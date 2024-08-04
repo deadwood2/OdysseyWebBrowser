@@ -103,6 +103,8 @@ public:
     virtual bool affectsOpacity() const { return false; }
     // True if the the value of one pixel can affect the value of another pixel under this operation, such as blur.
     virtual bool movesPixels() const { return false; }
+    // True if the filter should not be allowed to work on content that is not available from this security origin.
+    virtual bool shouldBeRestrictedBySecurityOrigin() const { return false; }
     // True if the filter needs the size of the box in order to calculate the animations.
     virtual bool blendingNeedsRendererSize() const { return false; }
 
@@ -182,6 +184,9 @@ public:
 
     bool affectsOpacity() const override { return true; }
     bool movesPixels() const override { return true; }
+    // FIXME: This only needs to return true for graphs that include ConvolveMatrix, DisplacementMap, Morphology and possibly Lighting.
+    // https://bugs.webkit.org/show_bug.cgi?id=171753
+    bool shouldBeRestrictedBySecurityOrigin() const override { return true; }
 
     const String& url() const { return m_url; }
     const String& fragment() const { return m_fragment; }
@@ -302,7 +307,7 @@ private:
 
 class WEBCORE_EXPORT DropShadowFilterOperation : public FilterOperation {
 public:
-    static PassRefPtr<DropShadowFilterOperation> create(const IntPoint& location, int stdDeviation, Color color)
+    static PassRefPtr<DropShadowFilterOperation> create(const IntPoint& location, int stdDeviation, const Color& color)
     {
         return adoptRef(new DropShadowFilterOperation(location, stdDeviation, color));
     }
@@ -316,7 +321,7 @@ public:
     int y() const { return m_location.y(); }
     IntPoint location() const { return m_location; }
     int stdDeviation() const { return m_stdDeviation; }
-    Color color() const { return m_color; }
+    const Color& color() const { return m_color; }
 
     bool affectsOpacity() const override { return true; }
     bool movesPixels() const override { return true; }
@@ -326,7 +331,7 @@ public:
 private:
     bool operator==(const FilterOperation&) const override;
 
-    DropShadowFilterOperation(const IntPoint& location, int stdDeviation, Color color)
+    DropShadowFilterOperation(const IntPoint& location, int stdDeviation, const Color& color)
         : FilterOperation(DROP_SHADOW)
         , m_location(location)
         , m_stdDeviation(stdDeviation)

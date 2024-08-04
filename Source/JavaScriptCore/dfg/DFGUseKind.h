@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef DFGUseKind_h
-#define DFGUseKind_h
+#pragma once
 
 #if ENABLE(DFG_JIT)
 
@@ -53,9 +52,12 @@ enum UseKind {
     KnownCellUse,
     CellOrOtherUse,
     ObjectUse,
+    ArrayUse,
     FunctionUse,
     FinalObjectUse,
     RegExpObjectUse,
+    ProxyObjectUse,
+    DerivedArrayUse,
     ObjectOrOtherUse,
     StringIdentUse,
     StringUse,
@@ -117,12 +119,18 @@ inline SpeculatedType typeFilterFor(UseKind useKind)
         return SpecCell | SpecOther;
     case ObjectUse:
         return SpecObject;
+    case ArrayUse:
+        return SpecArray;
     case FunctionUse:
         return SpecFunction;
     case FinalObjectUse:
         return SpecFinalObject;
     case RegExpObjectUse:
         return SpecRegExpObject;
+    case ProxyObjectUse:
+        return SpecProxyObject;
+    case DerivedArrayUse:
+        return SpecDerivedArray;
     case ObjectOrOtherUse:
         return SpecObject | SpecOther;
     case StringIdentUse:
@@ -218,9 +226,12 @@ inline bool isCell(UseKind kind)
     case CellUse:
     case KnownCellUse:
     case ObjectUse:
+    case ArrayUse:
     case FunctionUse:
     case FinalObjectUse:
     case RegExpObjectUse:
+    case ProxyObjectUse:
+    case DerivedArrayUse:
     case StringIdentUse:
     case StringUse:
     case KnownStringUse:
@@ -281,6 +292,3 @@ void printInternal(PrintStream&, JSC::DFG::UseKind);
 } // namespace WTF
 
 #endif // ENABLE(DFG_JIT)
-
-#endif // DFGUseKind_h
-

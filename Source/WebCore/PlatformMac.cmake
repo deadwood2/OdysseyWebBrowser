@@ -51,9 +51,10 @@ list(APPEND WebCore_LIBRARIES
     ${ZLIB_LIBRARIES}
 )
 
-add_definitions(-iframework ${QUARTZ_LIBRARY}/Frameworks)
-add_definitions(-iframework ${AVFOUNDATION_LIBRARY}/Versions/Current/Frameworks)
 add_definitions(-iframework ${APPLICATIONSERVICES_LIBRARY}/Versions/Current/Frameworks)
+add_definitions(-iframework ${AVFOUNDATION_LIBRARY}/Versions/Current/Frameworks)
+add_definitions(-iframework ${CARBON_LIBRARY}/Versions/Current/Frameworks)
+add_definitions(-iframework ${QUARTZ_LIBRARY}/Frameworks)
 
 find_library(DATADETECTORSCORE_FRAMEWORK DataDetectorsCore HINTS /System/Library/PrivateFrameworks)
 if (NOT DATADETECTORSCORE_FRAMEWORK-NOTFOUND)
@@ -67,9 +68,6 @@ endif ()
 
 list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${DERIVED_SOURCES_DIR}/ForwardingHeaders/JavaScriptCore"
-    "${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}"
-    "${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/inspector"
-    "${JAVASCRIPTCORE_DIR}/replay"
     "${THIRDPARTY_DIR}/ANGLE"
     "${THIRDPARTY_DIR}/ANGLE/include/KHR"
     "${WEBCORE_DIR}/accessibility/mac"
@@ -79,6 +77,7 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/ForwardingHeaders"
     "${WEBCORE_DIR}/ForwardingHeaders/bindings"
     "${WEBCORE_DIR}/ForwardingHeaders/bytecode"
+    "${WEBCORE_DIR}/ForwardingHeaders/domjit"
     "${WEBCORE_DIR}/ForwardingHeaders/debugger"
     "${WEBCORE_DIR}/ForwardingHeaders/heap"
     "${WEBCORE_DIR}/ForwardingHeaders/inspector"
@@ -108,6 +107,7 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/graphics/cocoa"
     "${WEBCORE_DIR}/platform/graphics/cg"
     "${WEBCORE_DIR}/platform/graphics/cv"
+    "${WEBCORE_DIR}/platform/graphics/egl"
     "${WEBCORE_DIR}/platform/graphics/opentype"
     "${WEBCORE_DIR}/platform/graphics/opengl"
     "${WEBCORE_DIR}/platform/graphics/mac"
@@ -124,7 +124,6 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/spi/ios"
     "${WEBCORE_DIR}/platform/spi/mac"
     "${WEBCORE_DIR}/plugins/mac"
-    "${WTF_DIR}"
 )
 
 list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
@@ -155,8 +154,6 @@ list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebCore_SOURCES
-    Modules/indieui/UIRequestEvent.cpp
-
     Modules/plugins/QuickTimePluginReplacement.mm
     Modules/plugins/YouTubePluginReplacement.cpp
 
@@ -176,10 +173,9 @@ list(APPEND WebCore_SOURCES
 
     crypto/CommonCryptoUtilities.cpp
     crypto/CryptoAlgorithm.cpp
-    crypto/CryptoAlgorithmDescriptionBuilder.cpp
     crypto/CryptoAlgorithmRegistry.cpp
     crypto/CryptoKey.cpp
-    crypto/CryptoKeyPair.cpp
+    crypto/SubtleCrypto.cpp
     crypto/WebKitSubtleCrypto.cpp
 
     crypto/algorithms/CryptoAlgorithmAES_CBC.cpp
@@ -198,6 +194,7 @@ list(APPEND WebCore_SOURCES
     crypto/keys/CryptoKeyDataOctetSequence.cpp
     crypto/keys/CryptoKeyDataRSAComponents.cpp
     crypto/keys/CryptoKeyHMAC.cpp
+    crypto/keys/CryptoKeyRSA.cpp
     crypto/keys/CryptoKeySerializationRaw.cpp
 
     crypto/mac/CryptoAlgorithmAES_CBCMac.cpp
@@ -258,10 +255,12 @@ list(APPEND WebCore_SOURCES
     page/CaptionUserPreferencesMediaAF.cpp
     page/PageDebuggable.cpp
 
-    page/cocoa/UserAgent.mm
+    page/cocoa/MemoryReleaseCocoa.mm
+    page/cocoa/PerformanceLoggingCocoa.mm
     page/cocoa/ResourceUsageOverlayCocoa.mm
     page/cocoa/ResourceUsageThreadCocoa.mm
     page/cocoa/SettingsCocoa.mm
+    page/cocoa/UserAgent.mm
 
     page/mac/ChromeMac.mm
     page/mac/DragControllerMac.mm
@@ -273,10 +272,12 @@ list(APPEND WebCore_SOURCES
     page/mac/WheelEventDeltaFilterMac.mm
 
     page/scrolling/AsyncScrollingCoordinator.cpp
+    page/scrolling/ScrollingMomentumCalculator.cpp
 
     page/scrolling/cocoa/ScrollingStateNode.mm
 
     page/scrolling/mac/ScrollingCoordinatorMac.mm
+    page/scrolling/mac/ScrollingMomentumCalculatorMac.mm
     page/scrolling/mac/ScrollingStateFrameScrollingNodeMac.mm
     page/scrolling/mac/ScrollingThreadMac.mm
     page/scrolling/mac/ScrollingTreeFixedNode.mm
@@ -287,7 +288,6 @@ list(APPEND WebCore_SOURCES
     platform/LocalizedStrings.cpp
     platform/RuntimeApplicationChecks.mm
     platform/ScrollableArea.cpp
-    platform/VNodeTracker.cpp
 
     platform/audio/AudioSession.cpp
 
@@ -313,9 +313,11 @@ list(APPEND WebCore_SOURCES
     platform/cf/SharedBufferCF.cpp
     platform/cf/URLCF.cpp
 
+    platform/cocoa/CPUTimeCocoa.mm
     platform/cocoa/ContentFilterUnblockHandlerCocoa.mm
     platform/cocoa/CoreVideoSoftLink.cpp
     platform/cocoa/DisplaySleepDisablerCocoa.cpp
+    platform/cocoa/FileSystemCocoa.mm
     platform/cocoa/KeyEventCocoa.mm
     platform/cocoa/LocalizedStringsCocoa.mm
     platform/cocoa/MIMETypeRegistryCocoa.mm
@@ -326,13 +328,11 @@ list(APPEND WebCore_SOURCES
     platform/cocoa/ScrollController.mm
     platform/cocoa/ScrollSnapAnimatorState.mm
     platform/cocoa/SearchPopupMenuCocoa.mm
+    platform/cocoa/SharedBufferCocoa.mm
     platform/cocoa/SystemVersion.mm
     platform/cocoa/TelephoneNumberDetectorCocoa.cpp
     platform/cocoa/ThemeCocoa.mm
-    platform/cocoa/VNodeTrackerCocoa.cpp
     platform/cocoa/WebCoreNSErrorExtras.mm
-
-    platform/crypto/commoncrypto/CryptoDigestCommonCrypto.cpp
 
     platform/gamepad/mac/HIDGamepad.cpp
     platform/gamepad/mac/HIDGamepadProvider.cpp
@@ -385,7 +385,6 @@ list(APPEND WebCore_SOURCES
     platform/graphics/ca/cocoa/WebSystemBackdropLayer.mm
     platform/graphics/ca/cocoa/WebTiledBackingLayer.mm
 
-    platform/graphics/cg/BitmapImageCG.cpp
     platform/graphics/cg/ColorCG.cpp
     platform/graphics/cg/FloatPointCG.cpp
     platform/graphics/cg/FloatRectCG.cpp
@@ -402,6 +401,7 @@ list(APPEND WebCore_SOURCES
     platform/graphics/cg/IntPointCG.cpp
     platform/graphics/cg/IntRectCG.cpp
     platform/graphics/cg/IntSizeCG.cpp
+    platform/graphics/cg/NativeImageCG.cpp
     platform/graphics/cg/PDFDocumentImage.cpp
     platform/graphics/cg/PathCG.cpp
     platform/graphics/cg/PatternCG.cpp
@@ -422,7 +422,6 @@ list(APPEND WebCore_SOURCES
     platform/graphics/cv/VideoTextureCopierCV.cpp
 
     platform/graphics/mac/ColorMac.mm
-    platform/graphics/mac/ComplexTextController.cpp
     platform/graphics/mac/ComplexTextControllerCoreText.mm
     platform/graphics/mac/DisplayRefreshMonitorMac.cpp
     platform/graphics/mac/FloatPointMac.mm
@@ -482,7 +481,6 @@ list(APPEND WebCore_SOURCES
     platform/mac/ScrollViewMac.mm
     platform/mac/ScrollbarThemeMac.mm
     platform/mac/SerializedPlatformRepresentationMac.mm
-    platform/mac/SharedBufferMac.mm
     platform/mac/SoundMac.mm
     platform/mac/SuddenTermination.mm
     platform/mac/SystemSleepListenerMac.mm
@@ -490,6 +488,7 @@ list(APPEND WebCore_SOURCES
     platform/mac/ThreadCheck.mm
     platform/mac/URLMac.mm
     platform/mac/UserActivityMac.mm
+    platform/mac/ValidationBubbleMac.mm
     platform/mac/WebCoreFullScreenPlaceholderView.mm
     platform/mac/WebCoreFullScreenWarningView.mm
     platform/mac/WebCoreFullScreenWindow.mm
@@ -516,9 +515,6 @@ list(APPEND WebCore_SOURCES
     platform/network/cf/NetworkStorageSessionCFNet.cpp
     platform/network/cf/ProxyServerCFNet.cpp
     platform/network/cf/ResourceErrorCF.cpp
-    platform/network/cf/ResourceHandleCFNet.cpp
-    platform/network/cf/ResourceHandleCFURLConnectionDelegate.cpp
-    platform/network/cf/ResourceHandleCFURLConnectionDelegateWithOperationQueue.cpp
     platform/network/cf/ResourceRequestCFNet.cpp
     platform/network/cf/ResourceResponseCFNet.cpp
     platform/network/cf/SocketStreamHandleImplCFNet.cpp
@@ -542,7 +538,6 @@ list(APPEND WebCore_SOURCES
     platform/network/mac/NetworkStateNotifierMac.cpp
     platform/network/mac/ResourceErrorMac.mm
     platform/network/mac/ResourceHandleMac.mm
-    platform/network/mac/ResourceRequestMac.mm
     platform/network/mac/SynchronousLoaderClient.mm
     platform/network/mac/UTIUtilities.mm
     platform/network/mac/WebCoreResourceHandleAsDelegate.mm
@@ -598,7 +593,6 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     Modules/indexeddb/shared
     Modules/indexeddb/server
 
-    bindings/generic
     bindings/js
 
     bridge/objc
@@ -609,6 +603,7 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     editing/cocoa
     editing/mac
 
+    html/canvas
     html/forms
     html/parser
     html/shadow
@@ -622,6 +617,7 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
 
     page/animation
     page/cocoa
+    page/csp
     page/mac
     page/scrolling
 
@@ -641,6 +637,7 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
 
     platform/audio/cocoa
 
+    platform/gamepad/cocoa
     platform/gamepad/mac
 
     platform/graphics/ca
@@ -652,6 +649,8 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     platform/graphics/transforms
 
     platform/graphics/ca/cocoa
+
+    platform/mediastream/libwebrtc
 
     platform/network/cf
     platform/network/cocoa
@@ -689,7 +688,6 @@ set(WebCore_FORWARDING_HEADERS_FILES
 
     editing/mac/TextAlternativeWithRange.h
 
-    history/BackForwardList.h
     history/HistoryItem.h
     history/PageCache.h
 
@@ -750,6 +748,9 @@ list(APPEND WebCoreTestSupport_SOURCES
     testing/Internals.mm
     testing/MockContentFilter.cpp
     testing/MockContentFilterSettings.cpp
+    testing/MockQuickLookHandleClient.cpp
+
+    testing/cocoa/WebArchiveDumpSupport.mm
 )
 
 set(CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS} "-compatibility_version 1 -current_version ${WEBKIT_MAC_VERSION}")

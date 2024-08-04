@@ -22,22 +22,16 @@
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
- *
  */
 
 [
     ActiveDOMObject,
     CustomConstructor(USVString scriptUrl),
 ] interface Worker : EventTarget {
-    attribute EventHandler onmessage;
-
-#if !(defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT)
-    [Custom, RaisesException] void postMessage(SerializedScriptValue message, optional Array messagePorts);
-#else
-    [RaisesException] void postMessage(SerializedScriptValue message, optional MessagePort messagePort);
-#endif
-
     void terminate();
+
+    [CallWith=ScriptState, MayThrowException] void postMessage(any message, optional sequence<object> transfer = []);
+    attribute EventHandler onmessage;
 };
 
 Worker implements AbstractWorker;

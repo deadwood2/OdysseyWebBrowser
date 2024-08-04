@@ -36,13 +36,11 @@
 #include "HitTestResult.h"
 #include "LocalizedStrings.h"
 #include "Page.h"
-#include "PlatformKeyboardEvent.h"
 #include "PopupMenu.h"
 #include "RenderLayer.h"
 #include "RenderScrollbar.h"
 #include "RenderTheme.h"
 #include "RenderView.h"
-#include "Settings.h"
 #include "StyleResolver.h"
 #include "TextControlInnerElements.h"
 
@@ -60,10 +58,17 @@ RenderSearchField::RenderSearchField(HTMLInputElement& element, RenderStyle&& st
 
 RenderSearchField::~RenderSearchField()
 {
+    // Do not add any code here. Add it to willBeDestroyed() instead.
+}
+
+void RenderSearchField::willBeDestroyed()
+{
     if (m_searchPopup) {
         m_searchPopup->popupMenu()->disconnectClient();
         m_searchPopup = nullptr;
     }
+
+    RenderTextControlSingleLine::willBeDestroyed();
 }
 
 inline HTMLElement* RenderSearchField::resultsButtonElement() const
@@ -85,7 +90,7 @@ void RenderSearchField::addSearchResult()
     if (value.isEmpty())
         return;
 
-    if (frame().page()->usesEphemeralSession())
+    if (page().usesEphemeralSession())
         return;
 
     m_recentSearches.removeAllMatching([value] (const RecentSearch& recentSearch) {
@@ -99,7 +104,7 @@ void RenderSearchField::addSearchResult()
 
     const AtomicString& name = autosaveName();
     if (!m_searchPopup)
-        m_searchPopup = document().page()->chrome().createSearchPopupMenu(this);
+        m_searchPopup = page().chrome().createSearchPopupMenu(*this);
 
     m_searchPopup->saveRecentSearches(name, m_recentSearches);
 }
@@ -110,7 +115,7 @@ void RenderSearchField::showPopup()
         return;
 
     if (!m_searchPopup)
-        m_searchPopup = document().page()->chrome().createSearchPopupMenu(this);
+        m_searchPopup = page().chrome().createSearchPopupMenu(*this);
 
     if (!m_searchPopup->enabled())
         return;
@@ -203,7 +208,7 @@ void RenderSearchField::valueChanged(unsigned listIndex, bool fireEvents)
             const AtomicString& name = autosaveName();
             if (!name.isEmpty()) {
                 if (!m_searchPopup)
-                    m_searchPopup = document().page()->chrome().createSearchPopupMenu(this);
+                    m_searchPopup = page().chrome().createSearchPopupMenu(*this);
                 m_searchPopup->saveRecentSearches(name, m_recentSearches);
             }
         }
@@ -346,15 +351,12 @@ HostWindow* RenderSearchField::hostWindow() const
     return view().frameView().hostWindow();
 }
 
-PassRefPtr<Scrollbar> RenderSearchField::createScrollbar(ScrollableArea& scrollableArea, ScrollbarOrientation orientation, ScrollbarControlSize controlSize)
+Ref<Scrollbar> RenderSearchField::createScrollbar(ScrollableArea& scrollableArea, ScrollbarOrientation orientation, ScrollbarControlSize controlSize)
 {
-    RefPtr<Scrollbar> widget;
     bool hasCustomScrollbarStyle = style().hasPseudoStyle(SCROLLBAR);
     if (hasCustomScrollbarStyle)
-        widget = RenderScrollbar::createCustomScrollbar(scrollableArea, orientation, &inputElement());
-    else
-        widget = Scrollbar::createNativeScrollbar(scrollableArea, orientation, controlSize);
-    return WTFMove(widget);
+        return RenderScrollbar::createCustomScrollbar(scrollableArea, orientation, &inputElement());
+    return Scrollbar::createNativeScrollbar(scrollableArea, orientation, controlSize);
 }
 
 LayoutUnit RenderSearchField::computeLogicalHeightLimit() const

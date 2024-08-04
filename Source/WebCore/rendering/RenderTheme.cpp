@@ -42,7 +42,6 @@
 #include "PaintInfo.h"
 #include "RenderStyle.h"
 #include "RenderView.h"
-#include "Settings.h"
 #include "SpinButtonElement.h"
 #include "StringTruncator.h"
 #include "TextControlInnerElements.h"
@@ -92,11 +91,18 @@ void RenderTheme::adjustStyle(StyleResolver& styleResolver, RenderStyle& style, 
         style.setDisplay(BLOCK);
 
     if (UAHasAppearance && isControlStyled(style, border, background, backgroundColor)) {
-        if (part == MenulistPart) {
+        switch (part) {
+        case MenulistPart:
             style.setAppearance(MenulistButtonPart);
             part = MenulistButtonPart;
-        } else
+            break;
+        case TextFieldPart:
+            adjustTextFieldStyle(styleResolver, style, element);
+            FALLTHROUGH;
+        default:
             style.setAppearance(NoControlPart);
+            break;
+        }
     }
 
     if (!style.hasAppearance())
@@ -147,7 +153,7 @@ void RenderTheme::adjustStyle(StyleResolver& styleResolver, RenderStyle& style, 
         // Padding
         LengthBox paddingBox = m_theme->controlPadding(part, style.fontCascade(), style.paddingBox(), style.effectiveZoom());
         if (paddingBox != style.paddingBox())
-            style.setPaddingBox(paddingBox);
+            style.setPaddingBox(WTFMove(paddingBox));
 
         // Whitespace
         if (m_theme->controlRequiresPreWhiteSpace(part))
@@ -156,19 +162,19 @@ void RenderTheme::adjustStyle(StyleResolver& styleResolver, RenderStyle& style, 
         // Width / Height
         // The width and height here are affected by the zoom.
         // FIXME: Check is flawed, since it doesn't take min-width/max-width into account.
-        LengthSize controlSize = m_theme->controlSize(part, style.fontCascade(), LengthSize(style.width(), style.height()), style.effectiveZoom());
-        if (controlSize.width() != style.width())
-            style.setWidth(controlSize.width());
-        if (controlSize.height() != style.height())
-            style.setHeight(controlSize.height());
-                
+        LengthSize controlSize = m_theme->controlSize(part, style.fontCascade(), { style.width(), style.height() }, style.effectiveZoom());
+        if (controlSize.width != style.width())
+            style.setWidth(WTFMove(controlSize.width));
+        if (controlSize.height != style.height())
+            style.setHeight(WTFMove(controlSize.height));
+
         // Min-Width / Min-Height
         LengthSize minControlSize = m_theme->minimumControlSize(part, style.fontCascade(), style.effectiveZoom());
-        if (minControlSize.width() != style.minWidth())
-            style.setMinWidth(minControlSize.width());
-        if (minControlSize.height() != style.minHeight())
-            style.setMinHeight(minControlSize.height());
-                
+        if (minControlSize.width != style.minWidth())
+            style.setMinWidth(WTFMove(minControlSize.width));
+        if (minControlSize.height != style.minHeight())
+            style.setMinHeight(WTFMove(minControlSize.height));
+
         // Font
         if (auto themeFont = m_theme->controlFont(part, style.fontCascade(), style.effectiveZoom())) {
             // If overriding the specified font with the theme font, also override the line height with the standard line height.
@@ -253,6 +259,10 @@ void RenderTheme::adjustStyle(StyleResolver& styleResolver, RenderStyle& style, 
 #endif
     case CapsLockIndicatorPart:
         return adjustCapsLockIndicatorStyle(styleResolver, style, element);
+#if ENABLE(APPLE_PAY)
+    case ApplePayButtonPart:
+        return adjustApplePayButtonStyle(styleResolver, style, element);
+#endif
 #if ENABLE(ATTACHMENT_ELEMENT)
     case AttachmentPart:
         return adjustAttachmentStyle(styleResolver, style, element);
@@ -284,7 +294,7 @@ bool RenderTheme::paint(const RenderBox& box, ControlStates& controlStates, cons
     FloatRect devicePixelSnappedRect = snapRectToDevicePixels(rect, deviceScaleFactor);
 
 #if USE(NEW_THEME)
-    float pageScaleFactor = box.document().page() ? box.document().page()->pageScaleFactor() : 1.0f;
+    float pageScaleFactor = box.page().pageScaleFactor();
     
     switch (part) {
     case CheckboxPart:
@@ -401,6 +411,10 @@ bool RenderTheme::paint(const RenderBox& box, ControlStates& controlStates, cons
 #endif
     case CapsLockIndicatorPart:
         return paintCapsLockIndicator(box, paintInfo, integralSnappedRect);
+#if ENABLE(APPLE_PAY)
+    case ApplePayButtonPart:
+        return paintApplePayButton(box, paintInfo, integralSnappedRect);
+#endif
 #if ENABLE(ATTACHMENT_ELEMENT)
     case AttachmentPart:
         return paintAttachment(box, paintInfo, integralSnappedRect);
@@ -702,9 +716,9 @@ bool RenderTheme::isControlStyled(const RenderStyle& style, const BorderData& bo
     case TextFieldPart:
     case TextAreaPart:
         // Test the style to see if the UA border and background match.
-        return (style.border() != border
-            || *style.backgroundLayers() != background
-            || !style.backgroundColorEqualsToColorIgnoringVisited(backgroundColor));
+        return style.border() != border
+            || style.backgroundLayers() != background
+            || !style.backgroundColorEqualsToColorIgnoringVisited(backgroundColor);
     default:
         return false;
     }
@@ -746,7 +760,7 @@ void RenderTheme::updateControlStatesForRenderer(const RenderBox& box, ControlSt
     ControlStates newStates = extractControlStatesForRenderer(box);
     controlStates.setStates(newStates.states());
     if (isFocused(box))
-        controlStates.setTimeSinceControlWasFocused(box.document().page()->focusController().timeSinceFocusWasSet());
+        controlStates.setTimeSinceControlWasFocused(box.page().focusController().timeSinceFocusWasSet());
 }
 
 ControlStates::States RenderTheme::extractControlStatesForRenderer(const RenderObject& o) const
@@ -777,13 +791,9 @@ ControlStates::States RenderTheme::extractControlStatesForRenderer(const RenderO
     return states;
 }
 
-bool RenderTheme::isActive(const RenderObject& o) const
+bool RenderTheme::isActive(const RenderObject& renderer) const
 {
-    Page* page = o.document().page();
-    if (!page)
-        return false;
-
-    return page->focusController().isActive();
+    return renderer.page().focusController().isActive();
 }
 
 bool RenderTheme::isChecked(const RenderObject& o) const
@@ -1282,14 +1292,14 @@ Color RenderTheme::tapHighlightColor()
 // Value chosen by observation. This can be tweaked.
 static const int minColorContrastValue = 1300;
 // For transparent or translucent background color, use lightening.
-static const int minDisabledColorAlphaValue = 128;
+static const float minDisabledColorAlphaValue = 0.5;
 
 Color RenderTheme::disabledTextColor(const Color& textColor, const Color& backgroundColor) const
 {
     // The explicit check for black is an optimization for the 99% case (black on white).
     // This also means that black on black will turn into grey on black when disabled.
     Color disabledColor;
-    if (textColor.rgb() == Color::black || backgroundColor.alpha() < minDisabledColorAlphaValue || differenceSquared(textColor, Color::white) > differenceSquared(backgroundColor, Color::white))
+    if (Color::isBlackColor(textColor) || backgroundColor.alphaAsFloat() < minDisabledColorAlphaValue || differenceSquared(textColor, Color::white) > differenceSquared(backgroundColor, Color::white))
         disabledColor = textColor.light();
     else
         disabledColor = textColor.dark();
@@ -1335,5 +1345,15 @@ String RenderTheme::fileListNameForWidth(const FileList* fileList, const FontCas
 
     return StringTruncator::centerTruncate(string, width, font);
 }
+
+#if ENABLE(TOUCH_EVENTS)
+Color RenderTheme::platformTapHighlightColor() const
+{
+    // This color is expected to be drawn on a semi-transparent overlay,
+    // making it more transparent than its alpha value indicates.
+    static NeverDestroyed<const Color> defaultTapHighlightColor = Color(0, 0, 0, 102);
+    return defaultTapHighlightColor;
+}
+#endif
 
 } // namespace WebCore

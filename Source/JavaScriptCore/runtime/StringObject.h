@@ -18,8 +18,7 @@
  *
  */
 
-#ifndef StringObject_h
-#define StringObject_h
+#pragma once
 
 #include "JSWrapperObject.h"
 #include "JSString.h"
@@ -75,7 +74,7 @@ StringObject* asStringObject(JSValue);
 
 inline StringObject* asStringObject(JSValue value)
 {
-    ASSERT(asObject(value)->inherits(StringObject::info()));
+    ASSERT(asObject(value)->inherits(*value.getObject()->vm(), StringObject::info()));
     return static_cast<StringObject*>(asObject(value));
 }
 
@@ -110,7 +109,4 @@ static inline JSString* jsSubstring(ExecState* exec, JSValue originalValue, cons
     return jsSubstring(exec, string, offset, length);
 }
 
-
 } // namespace JSC
-
-#endif // StringObject_h

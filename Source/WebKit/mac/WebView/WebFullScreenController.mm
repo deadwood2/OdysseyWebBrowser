@@ -37,7 +37,6 @@
 #import <WebCore/FrameView.h>
 #import <WebCore/HTMLElement.h>
 #import <WebCore/IntRect.h>
-#import <WebCore/Page.h>
 #import <WebCore/RenderLayer.h>
 #import <WebCore/RenderLayerBacking.h>
 #import <WebCore/RenderObject.h>
@@ -76,21 +75,14 @@ static NSRect convertRectToScreen(NSWindow *window, NSRect rect)
     return [window convertRectToScreen:rect];
 }
 
-@interface NSWindow(IsOnActiveSpaceAdditionForTigerAndLeopard)
-- (BOOL)isOnActiveSpace;
-@end
-
 @implementation WebFullScreenController
 
 #pragma mark -
 #pragma mark Initialization
 - (id)init
 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     // Do not defer window creation, to make sure -windowNumber is created (needed by WebWindowScaleAnimation).
-    NSWindow *window = [[WebCoreFullScreenWindow alloc] initWithContentRect:NSZeroRect styleMask:NSClosableWindowMask backing:NSBackingStoreBuffered defer:NO];
-#pragma clang diagnostic pop
+    NSWindow *window = [[WebCoreFullScreenWindow alloc] initWithContentRect:NSZeroRect styleMask:NSWindowStyleMaskClosable backing:NSBackingStoreBuffered defer:NO];
     self = [super initWithWindow:window];
     [window release];
     if (!self)
@@ -169,16 +161,13 @@ static NSRect convertRectToScreen(NSWindow *window, NSRect rect)
 
 - (void)applicationDidResignActive:(NSNotification*)notification
 {   
-    // Check to see if the fullscreenWindow is on the active space; this function is available
-    // on 10.6 and later, so default to YES if the function is not available:
     NSWindow* fullscreenWindow = [self window];
-    BOOL isOnActiveSpace = ([fullscreenWindow respondsToSelector:@selector(isOnActiveSpace)] ? [fullscreenWindow isOnActiveSpace] : YES);
 
     // Replicate the QuickTime Player (X) behavior when losing active application status:
     // Is the fullscreen screen the main screen? (Note: this covers the case where only a 
     // single screen is available.)  Is the fullscreen screen on the current space? IFF so, 
     // then exit fullscreen mode. 
-    if ([fullscreenWindow screen] == [[NSScreen screens] objectAtIndex:0] && isOnActiveSpace)
+    if (fullscreenWindow.screen == [NSScreen screens][0] && fullscreenWindow.onActiveSpace)
          [self cancelOperation:self];
 }
 
@@ -329,7 +318,7 @@ static NSRect convertRectToScreen(NSWindow *window, NSRect rect)
     [webWindow setAnimationBehavior:NSWindowAnimationBehaviorNone];
     // If the user has moved the fullScreen window into a new space, temporarily change
     // the collectionBehavior of the webView's window so that it is pulled into the active space:
-    if (!([webWindow respondsToSelector:@selector(isOnActiveSpace)] ? [webWindow isOnActiveSpace] : YES)) {
+    if (!webWindow.onActiveSpace) {
         NSWindowCollectionBehavior behavior = [webWindow collectionBehavior];
         [webWindow setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces];
         [webWindow orderWindow:NSWindowBelow relativeTo:[[self window] windowNumber]];
@@ -434,10 +423,7 @@ static NSRect convertRectToScreen(NSWindow *window, NSRect rect)
             options |= NSApplicationPresentationAutoHideDock;
     }
     
-    if ([NSApp respondsToSelector:@selector(setPresentationOptions:)])
-        [NSApp setPresentationOptions:options];
-    else
-        SetSystemUIMode(_isFullScreen ? kUIModeAllHidden : kUIModeNormal, 0);
+    NSApp.presentationOptions = options;
 }
 
 #pragma mark -
@@ -462,10 +448,7 @@ static NSRect convertRectToScreen(NSWindow *window, NSRect rect)
 
 static RetainPtr<NSWindow> createBackgroundFullscreenWindow(NSRect frame)
 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:frame styleMask:NSBorderlessWindowMask backing:NSBackingStoreBuffered defer:NO];
-#pragma clang diagnostic pop
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:frame styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
     [window setOpaque:YES];
     [window setBackgroundColor:[NSColor blackColor]];
     [window setReleasedWhenClosed:NO];

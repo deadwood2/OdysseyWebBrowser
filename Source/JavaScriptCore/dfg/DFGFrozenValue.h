@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef DFGFrozenValue_h
-#define DFGFrozenValue_h
+#pragma once
 
 #if ENABLE(DFG_JIT)
 
@@ -59,7 +58,7 @@ public:
         , m_strength(strength)
     {
         ASSERT((!!value && value.isCell()) == !!structure);
-        ASSERT(!value || !value.isCell() || value.asCell()->classInfo() == structure->classInfo());
+        ASSERT(!value || !value.isCell() || value.asCell()->classInfo(*value.asCell()->vm()) == structure->classInfo());
         ASSERT(!!structure || (strength == WeakValue));
     }
     
@@ -71,12 +70,12 @@ public:
     JSCell* cell() const { return m_value.asCell(); }
     
     template<typename T>
-    T dynamicCast()
+    T dynamicCast(VM& vm)
     {
         JSValue theValue = value();
         if (!theValue)
             return nullptr;
-        return jsDynamicCast<T>(theValue);
+        return jsDynamicCast<T>(vm, theValue);
     }
     template<typename T>
     T cast()
@@ -129,6 +128,3 @@ private:
 } } // namespace JSC::DFG
 
 #endif // ENABLE(DFG_JIT)
-
-#endif // DFGFrozenValue_h
-

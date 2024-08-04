@@ -27,7 +27,6 @@
 #include "RenderNamedFlowThread.h"
 
 #include "ComposedTreeAncestorIterator.h"
-#include "ExceptionCodePlaceholder.h"
 #include "FlowThreadController.h"
 #include "InlineTextBox.h"
 #include "InspectorInstrumentation.h"
@@ -57,12 +56,21 @@ RenderNamedFlowThread::RenderNamedFlowThread(Document& document, RenderStyle&& s
 
 RenderNamedFlowThread::~RenderNamedFlowThread()
 {
+    // Do not add any code here. Add it to willBeDestroyed() instead.
+}
+
+void RenderNamedFlowThread::willBeDestroyed()
+{
+    WTFLogAlways("RenderNamedFlowThread %p willBeDestroyed", this);
+
     // The flow thread can be destroyed without unregistering the content nodes if the document is destroyed.
     // This can lead to problems because the nodes are still marked as belonging to a flow thread.
     clearContentElements();
 
     // Also leave the NamedFlow object in a consistent state by calling mark for destruction.
     setMarkForDestruction();
+
+    RenderFlowThread::willBeDestroyed();
 }
 
 const char* RenderNamedFlowThread::renderName() const
@@ -95,40 +103,6 @@ void RenderNamedFlowThread::updateWritingMode()
     auto newStyle = RenderStyle::clone(style());
     newStyle.setWritingMode(firstFragment->style().writingMode());
     setStyle(WTFMove(newStyle));
-}
-
-RenderElement* RenderNamedFlowThread::nextRendererForElement(Element& element) const
-{
-    for (auto& child : m_flowThreadChildList) {
-        ASSERT(!child->isAnonymous());
-        ASSERT_WITH_MESSAGE(child->element(), "Can only be null for anonymous renderers");
-
-        unsigned short position = element.compareDocumentPosition(*child->element());
-        if (position & Node::DOCUMENT_POSITION_FOLLOWING)
-            return child;
-    }
-
-    return nullptr;
-}
-
-void RenderNamedFlowThread::addFlowChild(RenderElement& newChild)
-{
-    // The child list is used to sort the flow thread's children render objects 
-    // based on their corresponding nodes DOM order. The list is needed to avoid searching the whole DOM.
-
-    if (newChild.isAnonymous())
-        return;
-
-    auto* beforeChild = nextRendererForElement(*newChild.element());
-    if (beforeChild)
-        m_flowThreadChildList.insertBefore(beforeChild, &newChild);
-    else
-        m_flowThreadChildList.add(&newChild);
-}
-
-void RenderNamedFlowThread::removeFlowChild(RenderElement& child)
-{
-    m_flowThreadChildList.remove(&child);
 }
 
 bool RenderNamedFlowThread::dependsOn(RenderNamedFlowThread* otherRenderFlowThread) const
@@ -696,8 +670,9 @@ void RenderNamedFlowThread::getRanges(Vector<RefPtr<Range>>& rangeObjects, const
             if (!boxIntersectsRegion(logicalTopForRenderer, logicalBottomForRenderer, logicalTopForRegion, logicalBottomForRegion)) {
                 if (foundStartPosition) {
                     if (!startsAboveRegion) {
-                        if (range->intersectsNode(*node, IGNORE_EXCEPTION))
-                            range->setEndBefore(*node, IGNORE_EXCEPTION);
+                        auto intersectsResult = range->intersectsNode(*node);
+                        if (!intersectsResult.hasException() && intersectsResult.releaseReturnValue())
+                            range->setEndBefore(*node);
                         rangeObjects.append(range->cloneRange());
                         range = Range::create(contentElement->document());
                         startsAboveRegion = true;
@@ -705,7 +680,7 @@ void RenderNamedFlowThread::getRanges(Vector<RefPtr<Range>>& rangeObjects, const
                         skipOverOutsideNodes = true;
                 }
                 if (skipOverOutsideNodes)
-                    range->setStartAfter(*node, IGNORE_EXCEPTION);
+                    range->setStartAfter(*node);
                 foundStartPosition = false;
                 continue;
             }
@@ -735,7 +710,7 @@ void RenderNamedFlowThread::getRanges(Vector<RefPtr<Range>>& rangeObjects, const
                 // the range is closed.
                 if (startsAboveRegion) {
                     startsAboveRegion = false;
-                    range->setStartBefore(*node, IGNORE_EXCEPTION);
+                    range->setStartBefore(*node);
                 }
             }
             skipOverOutsideNodes  = false;
@@ -772,7 +747,7 @@ void RenderNamedFlowThread::getRanges(Vector<RefPtr<Range>>& rangeObjects, const
                 // for elements that ends inside the region, set the end position to be after them
                 // allow this end position to be changed only by other elements that are not descendants of the current end node
                 if (endsBelowRegion || (!endsBelowRegion && !node->isDescendantOf(lastEndNode))) {
-                    range->setEndAfter(*node, IGNORE_EXCEPTION);
+                    range->setEndAfter(*node);
                     endsBelowRegion = false;
                     lastEndNode = node;
                 }
@@ -812,7 +787,7 @@ void RenderNamedFlowThread::checkRegionsWithStyling()
     m_hasRegionsWithStyling = hasRegionsWithStyling;
 }
 
-void RenderNamedFlowThread::clearRenderObjectCustomStyle(const RenderObject* object)
+void RenderNamedFlowThread::clearRenderObjectCustomStyle(const RenderElement& object)
 {
     // Clear the styles for the object in the regions.
     // FIXME: Region styling is not computed only for the region range of the object so this is why we need to walk the whole chain.
@@ -820,7 +795,7 @@ void RenderNamedFlowThread::clearRenderObjectCustomStyle(const RenderObject* obj
         downcast<RenderNamedFlowFragment>(*region).clearObjectStyleInRegion(object);
 }
 
-void RenderNamedFlowThread::removeFlowChildInfo(RenderObject* child)
+void RenderNamedFlowThread::removeFlowChildInfo(RenderElement& child)
 {
     RenderFlowThread::removeFlowChildInfo(child);
     clearRenderObjectCustomStyle(child);

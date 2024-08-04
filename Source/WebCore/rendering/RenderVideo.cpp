@@ -56,8 +56,15 @@ RenderVideo::RenderVideo(HTMLVideoElement& element, RenderStyle&& style)
 
 RenderVideo::~RenderVideo()
 {
+    // Do not add any code here. Add it to willBeDestroyed() instead.
+}
+
+void RenderVideo::willBeDestroyed()
+{
     if (MediaPlayer* player = videoElement().player())
         player->setVisible(false);
+
+    RenderMedia::willBeDestroyed();
 }
 
 IntSize RenderVideo::defaultSize()
@@ -160,24 +167,22 @@ void RenderVideo::paintReplaced(PaintInfo& paintInfo, const LayoutPoint& paintOf
     MediaPlayer* mediaPlayer = videoElement().player();
     bool displayingPoster = videoElement().shouldDisplayPosterImage();
 
-    Page* page = frame().page();
-
     if (!displayingPoster && !mediaPlayer) {
-        if (page && paintInfo.phase == PaintPhaseForeground)
-            page->addRelevantUnpaintedObject(this, visualOverflowRect());
+        if (paintInfo.phase == PaintPhaseForeground)
+            page().addRelevantUnpaintedObject(this, visualOverflowRect());
         return;
     }
 
     LayoutRect rect = videoBox();
     if (rect.isEmpty()) {
-        if (page && paintInfo.phase == PaintPhaseForeground)
-            page->addRelevantUnpaintedObject(this, visualOverflowRect());
+        if (paintInfo.phase == PaintPhaseForeground)
+            page().addRelevantUnpaintedObject(this, visualOverflowRect());
         return;
     }
     rect.moveBy(paintOffset);
 
-    if (page && paintInfo.phase == PaintPhaseForeground)
-        page->addRelevantRepaintedObject(this, rect);
+    if (paintInfo.phase == PaintPhaseForeground)
+        page().addRelevantRepaintedObject(this, rect);
 
     LayoutRect contentRect = contentBoxRect();
     contentRect.moveBy(paintOffset);
@@ -218,7 +223,7 @@ void RenderVideo::updateFromElement()
 
 void RenderVideo::updatePlayer()
 {
-    if (documentBeingDestroyed())
+    if (renderTreeBeingDestroyed())
         return;
 
     bool intrinsicSizeChanged;
@@ -245,11 +250,6 @@ void RenderVideo::updatePlayer()
 LayoutUnit RenderVideo::computeReplacedLogicalWidth(ShouldComputePreferred shouldComputePreferred) const
 {
     return RenderReplaced::computeReplacedLogicalWidth(shouldComputePreferred);
-}
-
-LayoutUnit RenderVideo::computeReplacedLogicalHeight() const
-{
-    return RenderReplaced::computeReplacedLogicalHeight();
 }
 
 LayoutUnit RenderVideo::minimumReplacedHeight() const 

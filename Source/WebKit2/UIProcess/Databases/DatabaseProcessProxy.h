@@ -37,23 +37,25 @@
 namespace WebCore {
 class SecurityOrigin;
 class SessionID;
+struct SecurityOriginData;
 }
 
 namespace WebKit {
 
 class WebProcessPool;
 enum class WebsiteDataType;
+struct WebsiteData;
 
 class DatabaseProcessProxy : public ChildProcessProxy {
 public:
     static Ref<DatabaseProcessProxy> create(WebProcessPool*);
     ~DatabaseProcessProxy();
 
-    void fetchWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, std::function<void (WebsiteData)> completionHandler);
-    void deleteWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, std::chrono::system_clock::time_point modifiedSince, std::function<void ()> completionHandler);
-    void deleteWebsiteDataForOrigins(WebCore::SessionID, OptionSet<WebsiteDataType>, const Vector<RefPtr<WebCore::SecurityOrigin>>& origins, std::function<void ()> completionHandler);
+    void fetchWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, std::function<void(WebsiteData)> completionHandler);
+    void deleteWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, std::chrono::system_clock::time_point modifiedSince, std::function<void()> completionHandler);
+    void deleteWebsiteDataForOrigins(WebCore::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>&, std::function<void()> completionHandler);
 
-    void getDatabaseProcessConnection(PassRefPtr<Messages::WebProcessProxy::GetDatabaseProcessConnection::DelayedReply>);
+    void getDatabaseProcessConnection(Ref<Messages::WebProcessProxy::GetDatabaseProcessConnection::DelayedReply>&&);
 
 private:
     DatabaseProcessProxy(WebProcessPool*);
@@ -84,7 +86,7 @@ private:
     WebProcessPool* m_processPool;
 
     unsigned m_numPendingConnectionRequests;
-    Deque<RefPtr<Messages::WebProcessProxy::GetDatabaseProcessConnection::DelayedReply>> m_pendingConnectionReplies;
+    Deque<Ref<Messages::WebProcessProxy::GetDatabaseProcessConnection::DelayedReply>> m_pendingConnectionReplies;
 
     HashMap<uint64_t, std::function<void (WebsiteData)>> m_pendingFetchWebsiteDataCallbacks;
     HashMap<uint64_t, std::function<void ()>> m_pendingDeleteWebsiteDataCallbacks;

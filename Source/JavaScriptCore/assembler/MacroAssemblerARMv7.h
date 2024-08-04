@@ -24,8 +24,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef MacroAssemblerARMv7_h
-#define MacroAssemblerARMv7_h
+#pragma once
 
 #if ENABLE(ASSEMBLER)
 
@@ -1345,6 +1344,11 @@ public:
         m_assembler.dmbSY();
     }
     
+    void storeFence()
+    {
+        m_assembler.dmbISHST();
+    }
+    
     static void replaceWithJump(CodeLocationLabel instructionStart, CodeLocationLabel destination)
     {
         ARMv7Assembler::replaceWithJump(instructionStart.dataLocation(), destination.dataLocation());
@@ -1491,7 +1495,7 @@ public:
 
     Jump branch8(RelationalCondition cond, RegisterID left, TrustedImm32 right)
     {
-        TrustedImm32 right8(static_cast<int8_t>(right.m_value));
+        TrustedImm32 right8 = MacroAssemblerHelpers::mask8OnCondition(*this, cond, right);
         compare32AndSetFlags(left, right8);
         return Jump(makeBranch(cond));
     }
@@ -1499,25 +1503,25 @@ public:
     Jump branch8(RelationalCondition cond, Address left, TrustedImm32 right)
     {
         // use addressTempRegister incase the branch8 we call uses dataTempRegister. :-/
-        TrustedImm32 right8(static_cast<int8_t>(right.m_value));
-        load8(left, addressTempRegister);
+        TrustedImm32 right8 = MacroAssemblerHelpers::mask8OnCondition(*this, cond, right);
+        MacroAssemblerHelpers::load8OnCondition(*this, cond, left, addressTempRegister);
         return branch8(cond, addressTempRegister, right8);
     }
 
     Jump branch8(RelationalCondition cond, BaseIndex left, TrustedImm32 right)
     {
         // use addressTempRegister incase the branch32 we call uses dataTempRegister. :-/
-        TrustedImm32 right8(static_cast<int8_t>(right.m_value));
-        load8(left, addressTempRegister);
+        TrustedImm32 right8 = MacroAssemblerHelpers::mask8OnCondition(*this, cond, right);
+        MacroAssemblerHelpers::load8OnCondition(*this, cond, left, addressTempRegister);
         return branch32(cond, addressTempRegister, right8);
     }
     
     Jump branch8(RelationalCondition cond, AbsoluteAddress address, TrustedImm32 right)
     {
         // Use addressTempRegister instead of dataTempRegister, since branch32 uses dataTempRegister.
-        TrustedImm32 right8(static_cast<int8_t>(right.m_value));
+        TrustedImm32 right8 = MacroAssemblerHelpers::mask8OnCondition(*this, cond, right);
         move(TrustedImmPtr(address.m_ptr), addressTempRegister);
-        load8(Address(addressTempRegister), addressTempRegister);
+        MacroAssemblerHelpers::load8OnCondition(*this, cond, Address(addressTempRegister), addressTempRegister);
         return branch32(cond, addressTempRegister, right8);
     }
     
@@ -1552,25 +1556,25 @@ public:
     Jump branchTest8(ResultCondition cond, BaseIndex address, TrustedImm32 mask = TrustedImm32(-1))
     {
         // use addressTempRegister incase the branchTest8 we call uses dataTempRegister. :-/
-        TrustedImm32 mask8(static_cast<int8_t>(mask.m_value));
-        load8(address, addressTempRegister);
+        TrustedImm32 mask8 = MacroAssemblerHelpers::mask8OnCondition(*this, cond, mask);
+        MacroAssemblerHelpers::load8OnCondition(*this, cond, address, addressTempRegister);
         return branchTest32(cond, addressTempRegister, mask8);
     }
 
     Jump branchTest8(ResultCondition cond, Address address, TrustedImm32 mask = TrustedImm32(-1))
     {
         // use addressTempRegister incase the branchTest8 we call uses dataTempRegister. :-/
-        TrustedImm32 mask8(static_cast<int8_t>(mask.m_value));
-        load8(address, addressTempRegister);
+        TrustedImm32 mask8 = MacroAssemblerHelpers::mask8OnCondition(*this, cond, mask);
+        MacroAssemblerHelpers::load8OnCondition(*this, cond, address, addressTempRegister);
         return branchTest32(cond, addressTempRegister, mask8);
     }
 
     Jump branchTest8(ResultCondition cond, AbsoluteAddress address, TrustedImm32 mask = TrustedImm32(-1))
     {
         // use addressTempRegister incase the branchTest8 we call uses dataTempRegister. :-/
-        TrustedImm32 mask8(static_cast<int8_t>(mask.m_value));
+        TrustedImm32 mask8 = MacroAssemblerHelpers::mask8OnCondition(*this, cond, mask);
         move(TrustedImmPtr(address.m_ptr), addressTempRegister);
-        load8(Address(addressTempRegister), addressTempRegister);
+        MacroAssemblerHelpers::load8OnCondition(*this, cond, Address(addressTempRegister), addressTempRegister);
         return branchTest32(cond, addressTempRegister, mask8);
     }
 
@@ -1798,8 +1802,8 @@ public:
 
     void compare8(RelationalCondition cond, Address left, TrustedImm32 right, RegisterID dest)
     {
-        TrustedImm32 right8(static_cast<int8_t>(right.m_value));
-        load8(left, addressTempRegister);
+        TrustedImm32 right8 = MacroAssemblerHelpers::mask8OnCondition(*this, cond, right);
+        MacroAssemblerHelpers::load8OnCondition(*this, cond, left, addressTempRegister);
         compare32(cond, addressTempRegister, right8, dest);
     }
 
@@ -1826,8 +1830,8 @@ public:
 
     void test8(ResultCondition cond, Address address, TrustedImm32 mask, RegisterID dest)
     {
-        TrustedImm32 mask8(static_cast<int8_t>(mask.m_value));
-        load8(address, dataTempRegister);
+        TrustedImm32 mask8 = MacroAssemblerHelpers::mask8OnCondition(*this, cond, mask);
+        MacroAssemblerHelpers::load8OnCondition(*this, cond, address, dataTempRegister);
         test32(dataTempRegister, mask8);
         m_assembler.it(armV7Condition(cond), false);
         m_assembler.mov(dest, ARMThumbImmediate::makeUInt16(1));
@@ -2133,5 +2137,3 @@ private:
 } // namespace JSC
 
 #endif // ENABLE(ASSEMBLER)
-
-#endif // MacroAssemblerARMv7_h

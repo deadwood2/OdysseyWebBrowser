@@ -20,8 +20,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef CSSMarkup_h
-#define CSSMarkup_h
+#pragma once
 
 #include <wtf/text/WTFString.h>
 
@@ -33,9 +32,11 @@ namespace WebCore {
 void serializeIdentifier(const String& identifier, StringBuilder& appendTo, bool skipStartChecks = false);
 void serializeString(const String&, StringBuilder& appendTo);
 String serializeString(const String&);
-String serializeURI(const String&);
+String serializeURL(const String&);
 String serializeFontFamily(const String&);
 
-} // namespace WebCore
+// FIXME-NEWPARSER: This hybrid "check for both string or ident" function can be removed
+// once we have enabled CSSCustomIdentValue and CSSStringValue.
+String serializeAsStringOrCustomIdent(const String&);
 
-#endif // CSSMarkup_h
+} // namespace WebCore

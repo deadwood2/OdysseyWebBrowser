@@ -18,8 +18,7 @@
  *
  */
 
-#ifndef RenderSlider_h
-#define RenderSlider_h
+#pragma once
 
 #include "RenderFlexibleBox.h"
 
@@ -27,7 +26,6 @@ namespace WebCore {
 
 class HTMLInputElement;
 class MouseEvent;
-class SliderThumbElement;
 
 class RenderSlider final : public RenderFlexibleBox {
 public:
@@ -47,7 +45,6 @@ private:
     int baselinePosition(FontBaseline, bool firstLine, LineDirectionMode, LinePositionMode = PositionOnContainingLine) const override;
     void computeIntrinsicLogicalWidths(LayoutUnit& minLogicalWidth, LayoutUnit& maxLogicalWidth) const override;
     void computePreferredLogicalWidths() override;
-    bool requiresForcedStyleRecalcPropagation() const override { return true; }
     void layout() override;
 
     bool isFlexibleBoxImpl() const override { return true; }
@@ -56,5 +53,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderSlider, isSlider())
-
-#endif // RenderSlider_h

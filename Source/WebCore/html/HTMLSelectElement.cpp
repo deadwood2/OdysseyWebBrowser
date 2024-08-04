@@ -29,12 +29,9 @@
 #include "HTMLSelectElement.h"
 
 #include "AXObjectCache.h"
-#include "Chrome.h"
-#include "ChromeClient.h"
 #include "ElementTraversal.h"
 #include "EventHandler.h"
 #include "EventNames.h"
-#include "ExceptionCodePlaceholder.h"
 #include "FormController.h"
 #include "FormDataList.h"
 #include "Frame.h"
@@ -196,9 +193,7 @@ void HTMLSelectElement::listBoxSelectItem(int listIndex, bool allowMultiplySelec
 bool HTMLSelectElement::usesMenuList() const
 {
 #if !PLATFORM(IOS)
-    const Page* page = document().page();
-    RefPtr<RenderTheme> renderTheme = page ? &page->theme() : RenderTheme::defaultTheme();
-    if (renderTheme->delegatesMenuListRendering())
+    if (RenderTheme::themeForPage(document().page())->delegatesMenuListRendering())
         return true;
 
     return !m_multiple && m_size <= 1;
@@ -221,33 +216,38 @@ int HTMLSelectElement::activeSelectionEndListIndex() const
     return lastSelectedListIndex();
 }
 
-void HTMLSelectElement::add(HTMLElement& element, HTMLElement* beforeElement, ExceptionCode& ec)
+ExceptionOr<void> HTMLSelectElement::add(const OptionOrOptGroupElement& element, const std::optional<HTMLElementOrInt>& before)
 {
-    if (!(is<HTMLOptionElement>(element) || is<HTMLHRElement>(element) || is<HTMLOptGroupElement>(element)))
-        return;
-    insertBefore(element, beforeElement, ec);
+    HTMLElement* beforeElement = nullptr;
+    if (before) {
+        beforeElement = WTF::switchOn(before.value(),
+            [](const RefPtr<HTMLElement>& element) -> HTMLElement* { return element.get(); },
+            [this](int index) -> HTMLElement* { return item(index); }
+        );
+    }
+    HTMLElement& toInsert = WTF::switchOn(element,
+        [](const auto& htmlElement) -> HTMLElement& { return *htmlElement; }
+    );
+
+
+    return insertBefore(toInsert, beforeElement);
 }
 
-void HTMLSelectElement::add(HTMLElement& element, int beforeIndex, ExceptionCode& ec)
-{
-    add(element, item(beforeIndex), ec);
-}
-
-void HTMLSelectElement::removeByIndex(int optionIndex)
+void HTMLSelectElement::remove(int optionIndex)
 {
     int listIndex = optionToListIndex(optionIndex);
     if (listIndex < 0)
         return;
 
-    listItems()[listIndex]->remove(IGNORE_EXCEPTION);
+    listItems()[listIndex]->remove();
 }
 
-void HTMLSelectElement::remove(HTMLOptionElement& option)
+ExceptionOr<void> HTMLSelectElement::remove(HTMLOptionElement& option)
 {
     if (option.ownerSelectElement() != this)
-        return;
+        return { };
 
-    option.remove(IGNORE_EXCEPTION);
+    return option.remove();
 }
 
 String HTMLSelectElement::value() const
@@ -303,7 +303,7 @@ void HTMLSelectElement::parseAttribute(const QualifiedName& name, const AtomicSt
         m_size = size;
         updateValidity();
         if (m_size != oldSize) {
-            setNeedsStyleRecalc(ReconstructRenderTree);
+            invalidateStyleAndRenderersForSubtree();
             setRecalcListItems();
             updateValidity();
         }
@@ -423,63 +423,77 @@ HTMLOptionElement* HTMLSelectElement::item(unsigned index)
     return options()->item(index);
 }
 
-void HTMLSelectElement::setOption(unsigned index, HTMLOptionElement& option, ExceptionCode& ec)
+ExceptionOr<void> HTMLSelectElement::setItem(unsigned index, HTMLOptionElement* option)
 {
-    ec = 0;
+    if (!option) {
+        remove(index);
+        return { };
+    }
+
     if (index > maxSelectItems - 1)
         index = maxSelectItems - 1;
+
     int diff = index - length();
+    
     RefPtr<HTMLOptionElement> before;
     // Out of array bounds? First insert empty dummies.
     if (diff > 0) {
-        setLength(index, ec);
+        auto result = setLength(index);
+        if (result.hasException())
+            return result;
         // Replace an existing entry?
     } else if (diff < 0) {
         before = item(index + 1);
-        removeByIndex(index);
+        remove(index);
     }
+
     // Finally add the new element.
-    if (!ec) {
-        add(option, before.get(), ec);
-        if (diff >= 0 && option.selected())
-            optionSelectionStateChanged(option, true);
-    }
+    auto result = add(option, HTMLElementOrInt { before.get() });
+    if (result.hasException())
+        return result;
+
+    if (diff >= 0 && option->selected())
+        optionSelectionStateChanged(*option, true);
+
+    return { };
 }
 
-void HTMLSelectElement::setLength(unsigned newLength, ExceptionCode& ec)
+ExceptionOr<void> HTMLSelectElement::setLength(unsigned newLength)
 {
-    ec = 0;
-    if (newLength > maxSelectItems)
-        newLength = maxSelectItems;
+    if (newLength > length() && newLength > maxSelectItems) {
+        document().addConsoleMessage(MessageSource::Other, MessageLevel::Warning, String::format("Blocked attempt to expand the option list to %u items. The maximum number of items allowed is %u.", newLength, maxSelectItems));
+        return { };
+    }
+
     int diff = length() - newLength;
 
     if (diff < 0) { // Add dummy elements.
         do {
-            auto option = document().createElement(optionTag, false);
-            add(downcast<HTMLElement>(option.get()), nullptr, ec);
-            if (ec)
-                break;
+            auto result = add(HTMLOptionElement::create(document()).ptr(), std::nullopt);
+            if (result.hasException())
+                return result;
         } while (++diff);
     } else {
         auto& items = listItems();
 
         // Removing children fires mutation events, which might mutate the DOM further, so we first copy out a list
         // of elements that we intend to remove then attempt to remove them one at a time.
-        Vector<Ref<Element>> itemsToRemove;
+        Vector<Ref<HTMLOptionElement>> itemsToRemove;
         size_t optionIndex = 0;
         for (auto& item : items) {
             if (is<HTMLOptionElement>(*item) && optionIndex++ >= newLength) {
                 ASSERT(item->parentNode());
-                itemsToRemove.append(*item);
+                itemsToRemove.append(downcast<HTMLOptionElement>(*item));
             }
         }
 
-        for (auto& item : itemsToRemove) {
-            if (item->parentNode())
-                item->parentNode()->removeChild(item.get(), ec);
-        }
+        // FIXME: Clients can detect what order we remove the options in; is it good to remove them in ascending order?
+        // FIXME: This ignores exceptions. A previous version passed through the exception only for the last item removed.
+        // What exception behavior do we want?
+        for (auto& item : itemsToRemove)
+            item->remove();
     }
-    updateValidity();
+    return { };
 }
 
 bool HTMLSelectElement::isRequiredFormControl() const
@@ -744,12 +758,12 @@ void HTMLSelectElement::setRecalcListItems()
     // Manual selection anchor is reset when manipulating the select programmatically.
     m_activeSelectionAnchorIndex = -1;
     setOptionsChangedOnRenderer();
-    setNeedsStyleRecalc();
-    if (!inDocument()) {
+    invalidateStyleForSubtree();
+    if (!isConnected()) {
         if (HTMLCollection* collection = cachedHTMLCollection(SelectOptions))
             collection->invalidateCache(document());
     }
-    if (!inDocument())
+    if (!isConnected())
         invalidateSelectedItems();
     if (auto* cache = document().existingAXObjectCache())
         cache->childrenChanged(this);
@@ -770,10 +784,8 @@ void HTMLSelectElement::recalcListItems(bool updateSelectedStates) const
         }
         HTMLElement& current = downcast<HTMLElement>(*currentElement);
 
-        // optgroup tags may not nest. However, both FireFox and IE will
-        // flatten the tree automatically, so we follow suit.
-        // (http://www.w3.org/TR/html401/interact/forms.html#h-17.6)
-        if (is<HTMLOptGroupElement>(current)) {
+        // Only consider optgroup elements that are direct children of the select element.
+        if (is<HTMLOptGroupElement>(current) && current.parentNode() == this) {
             m_listItems.append(&current);
             if (Element* nextElement = ElementTraversal::firstWithin(current)) {
                 currentElement = nextElement;
@@ -1024,7 +1036,7 @@ void HTMLSelectElement::parseMultipleAttribute(const AtomicString& value)
     m_multiple = !value.isNull();
     updateValidity();
     if (oldUsesMenuList != usesMenuList())
-        setNeedsStyleRecalc(ReconstructRenderTree);
+        invalidateStyleAndRenderersForSubtree();
 }
 
 bool HTMLSelectElement::appendFormData(FormDataList& list, bool)
@@ -1073,7 +1085,7 @@ void HTMLSelectElement::reset()
         firstOption->setSelectedState(true);
 
     setOptionsChangedOnRenderer();
-    setNeedsStyleRecalc();
+    invalidateStyleForSubtree();
     updateValidity();
 }
 
@@ -1081,10 +1093,7 @@ void HTMLSelectElement::reset()
 
 bool HTMLSelectElement::platformHandleKeydownEvent(KeyboardEvent* event)
 {
-    const Page* page = document().page();
-    RefPtr<RenderTheme> renderTheme = page ? &page->theme() : RenderTheme::defaultTheme();
-
-    if (!renderTheme->popsMenuByArrowKeys())
+    if (!RenderTheme::themeForPage(document().page())->popsMenuByArrowKeys())
         return false;
 
     if (!isSpatialNavigationEnabled(document().frame())) {
@@ -1118,8 +1127,7 @@ void HTMLSelectElement::menuListDefaultEventHandler(Event& event)
     ASSERT(renderer());
     ASSERT(renderer()->isMenuList());
 
-    const Page* page = document().page();
-    RefPtr<RenderTheme> renderTheme = page ? &page->theme() : RenderTheme::defaultTheme();
+    RefPtr<RenderTheme> renderTheme = RenderTheme::themeForPage(document().page());
 
     if (event.type() == eventNames().keydownEvent) {
         if (!is<KeyboardEvent>(event))
@@ -1144,8 +1152,7 @@ void HTMLSelectElement::menuListDefaultEventHandler(Event& event)
 
         // When using caret browsing, we want to be able to move the focus
         // out of the select element when user hits a left or right arrow key.
-        const Frame* frame = document().frame();
-        if (frame && frame->settings().caretBrowsingEnabled()) {
+        if (document().settings().caretBrowsingEnabled()) {
             if (keyIdentifier == "Left" || keyIdentifier == "Right")
                 return;
         }

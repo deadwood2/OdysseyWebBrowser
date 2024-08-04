@@ -180,10 +180,6 @@ void ChildProcess::initializeSandbox(const ChildProcessInitializationParameters&
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
 void ChildProcess::setSharedHTTPCookieStorage(const Vector<uint8_t>& identifier)
 {
-    // FIXME: Remove the runtime check when it's not needed (soon).
-    if (![NSHTTPCookieStorage respondsToSelector:@selector(_setSharedHTTPCookieStorage:)])
-        return;
-
     RetainPtr<CFDataRef> cookieStorageData = adoptCF(CFDataCreate(kCFAllocatorDefault, identifier.data(), identifier.size()));
     RetainPtr<CFHTTPCookieStorageRef> uiProcessCookieStorage = adoptCF(CFHTTPCookieStorageCreateFromIdentifyingData(kCFAllocatorDefault, cookieStorageData.get()));
     [NSHTTPCookieStorage _setSharedHTTPCookieStorage:adoptNS([[NSHTTPCookieStorage alloc] _initWithCFHTTPCookieStorage:uiProcessCookieStorage.get()]).get()];
@@ -197,10 +193,7 @@ void ChildProcess::stopNSAppRunLoop()
     ASSERT([NSApp isRunning]);
     [NSApp stop:nil];
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    NSEvent *event = [NSEvent otherEventWithType:NSApplicationDefined location:NSMakePoint(0, 0) modifierFlags:0 timestamp:0.0 windowNumber:0 context:nil subtype:0 data1:0 data2:0];
-#pragma clang diagnostic pop
+    NSEvent *event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined location:NSMakePoint(0, 0) modifierFlags:0 timestamp:0.0 windowNumber:0 context:nil subtype:0 data1:0 data2:0];
     [NSApp postEvent:event atStart:true];
 }
 #endif

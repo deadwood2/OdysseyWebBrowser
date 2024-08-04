@@ -30,9 +30,13 @@
 #import "DataDetectionResult.h"
 #import "LoadParameters.h"
 #import "WebProcessProxy.h"
-
 #import <WebCore/SearchPopupMenuCocoa.h>
+#import <WebCore/ValidationBubble.h>
 #import <wtf/cf/TypeCastsCF.h>
+
+#if USE(APPLE_INTERNAL_SDK) && __has_include(<WebKitAdditions/WebPageProxyAdditions.mm>)
+#import <WebKitAdditions/WebPageProxyAdditions.mm>
+#endif
 
 namespace WebKit {
 

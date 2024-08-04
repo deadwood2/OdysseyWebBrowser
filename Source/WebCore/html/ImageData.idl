@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2009, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,14 +29,12 @@
 [
     Constructor(Uint8ClampedArray data, unsigned long sw, optional unsigned long sh = 0),
     Constructor(unsigned long sw, unsigned long sh),
-    ConstructorRaisesException,
+    ConstructorMayThrowException,
     CustomToJSObject,
     Exposed=(Window,Worker),
     ImplementationLacksVTable,
 ] interface ImageData {
-    readonly attribute long width;
-    readonly attribute long height;
-#if defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT
+    readonly attribute unsigned long width;
+    readonly attribute unsigned long height;
     readonly attribute Uint8ClampedArray data;
-#endif
 };

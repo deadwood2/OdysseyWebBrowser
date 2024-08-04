@@ -35,6 +35,7 @@
 #include <WebCore/TextIndicatorWindow.h>
 #include <WebCore/UserInterfaceLayoutDirection.h>
 #include <functional>
+#include <wtf/BlockPtr.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
@@ -42,6 +43,7 @@
 OBJC_CLASS NSImmediateActionGestureRecognizer;
 OBJC_CLASS NSTextInputContext;
 OBJC_CLASS NSView;
+OBJC_CLASS WKAccessibilitySettingsObserver;
 OBJC_CLASS WKBrowsingContextController;
 OBJC_CLASS WKEditorUndoTargetObjC;
 OBJC_CLASS WKFullScreenWindowController;
@@ -51,9 +53,17 @@ OBJC_CLASS WKWebView;
 OBJC_CLASS WKWindowVisibilityObserver;
 OBJC_CLASS _WKThumbnailView;
 
-#if USE(APPLE_INTERNAL_SDK) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
-#import <WebKitAdditions/WebViewImplAdditionsDeclarations.h>
-#endif
+#if HAVE(TOUCH_BAR)
+OBJC_CLASS AVFunctionBarPlaybackControlsProvider;
+OBJC_CLASS AVFunctionBarScrubber;
+OBJC_CLASS NSCandidateListTouchBarItem;
+OBJC_CLASS NSCustomTouchBarItem;
+OBJC_CLASS NSTouchBar;
+OBJC_CLASS NSTouchBarItem;
+OBJC_CLASS NSPopoverTouchBarItem;
+OBJC_CLASS WKTextTouchBarItemController;
+OBJC_CLASS WebPlaybackControlsManager;
+#endif // HAVE(TOUCH_BAR)
 
 @protocol WebViewImplDelegate
 
@@ -84,6 +94,8 @@ OBJC_CLASS _WKThumbnailView;
 @optional
 - (void)_web_didAddMediaControlsManager:(id)controlsManager;
 - (void)_web_didRemoveMediaControlsManager;
+- (void)_didHandleAcceptedCandidate;
+- (void)_didUpdateCandidateListVisibility:(BOOL)visible;
 
 @end
 
@@ -158,7 +170,7 @@ public:
     bool automaticallyAdjustsContentInsets() const { return m_automaticallyAdjustsContentInsets; }
     void updateContentInsetsIfAutomatic();
     void setTopContentInset(CGFloat);
-    CGFloat topContentInset() const { return m_topContentInset; }
+    CGFloat topContentInset() const;
 
     void prepareContentInRect(CGRect);
     void updateViewExposedRect();
@@ -197,6 +209,8 @@ public:
     bool shouldDelayWindowOrderingForEvent(NSEvent *);
     bool windowResizeMouseLocationIsInVisibleScrollerThumb(CGPoint);
 
+    void accessibilitySettingsDidChange();
+
     // -[NSView mouseDownCanMoveWindow] returns YES when the NSView is transparent,
     // but we don't want a drag in the NSView to move the window, even if it's transparent.
     static bool mouseDownCanMoveWindow() { return false; }
@@ -216,8 +230,8 @@ public:
     NSColor *underlayColor() const;
     NSColor *pageExtendedBackgroundColor() const;
 
-    void setOverlayScrollbarStyle(WTF::Optional<WebCore::ScrollbarOverlayStyle> scrollbarStyle);
-    WTF::Optional<WebCore::ScrollbarOverlayStyle> overlayScrollbarStyle() const;
+    void setOverlayScrollbarStyle(std::optional<WebCore::ScrollbarOverlayStyle> scrollbarStyle);
+    std::optional<WebCore::ScrollbarOverlayStyle> overlayScrollbarStyle() const;
 
     void beginDeferringViewInWindowChanges();
     // FIXME: Merge these two?
@@ -416,7 +430,7 @@ public:
     void setCustomSwipeViews(NSArray *);
     void setCustomSwipeViewsTopContentInset(float);
     bool tryToSwipeWithEvent(NSEvent *, bool ignoringPinnedState);
-    void setDidMoveSwipeSnapshotCallback(void(^)(CGRect));
+    void setDidMoveSwipeSnapshotCallback(BlockPtr<void (CGRect)>&&);
 
     void scrollWheel(NSEvent *);
     void swipeWithEvent(NSEvent *);
@@ -477,10 +491,8 @@ public:
     void rightMouseDragged(NSEvent *);
     void rightMouseUp(NSEvent *);
 
-    void updateWebViewImplAdditions();
+    void forceRequestCandidatesForTesting();
     bool shouldRequestCandidates() const;
-    void showCandidates(NSArray *candidates, NSString *, NSRect rectOfTypedString, NSRange selectedRange, NSView *, void (^completionHandler)(NSTextCheckingResult *acceptedCandidate));
-    void webViewImplAdditionsWillDestroyView();
 
     bool windowIsFrontWindowUnderMouse(NSEvent *);
 
@@ -492,12 +504,56 @@ public:
 
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200 
     void handleAcceptedCandidate(NSTextCheckingResult *acceptedCandidate);
-#if USE(APPLE_INTERNAL_SDK)
-#import <WebKitAdditions/WebViewImplAdditions.h>
-#endif
 #endif
 
+#if HAVE(TOUCH_BAR)
+    NSTouchBar *makeTouchBar();
+    void updateTouchBar();
+    NSTouchBar *currentTouchBar() const { return m_currentTouchBar.get(); }
+    NSCandidateListTouchBarItem *candidateListTouchBarItem() const;
+    AVFunctionBarScrubber *mediaPlaybackControlsView() const;
+    NSTouchBar *textTouchBar() const;
+    void dismissTextTouchBarPopoverItemWithIdentifier(NSString *);
+
+    bool clientWantsMediaPlaybackControlsView() const { return m_clientWantsMediaPlaybackControlsView; }
+    void setClientWantsMediaPlaybackControlsView(bool clientWantsMediaPlaybackControlsView) { m_clientWantsMediaPlaybackControlsView = clientWantsMediaPlaybackControlsView; }
+
+    void updateTouchBarAndRefreshTextBarIdentifiers();
+    void setIsCustomizingTouchBar(bool isCustomizingTouchBar) { m_isCustomizingTouchBar = isCustomizingTouchBar; };
+#endif // HAVE(TOUCH_BAR)
+
 private:
+#if HAVE(TOUCH_BAR)
+    void setUpTextTouchBar(NSTouchBar *);
+    void updateTextTouchBar();
+    void updateMediaTouchBar();
+
+    bool useMediaPlaybackControlsView() const;
+    bool isRichlyEditable() const;
+
+    bool m_clientWantsMediaPlaybackControlsView { false };
+    bool m_canCreateTouchBars { false };
+    bool m_startedListeningToCustomizationEvents { false };
+    bool m_isUpdatingTextTouchBar { false };
+    bool m_isCustomizingTouchBar { false };
+
+    RetainPtr<NSTouchBar> m_currentTouchBar;
+    RetainPtr<NSTouchBar> m_richTextTouchBar;
+    RetainPtr<NSTouchBar> m_plainTextTouchBar;
+    RetainPtr<NSTouchBar> m_passwordTextTouchBar;
+    RetainPtr<WKTextTouchBarItemController> m_textTouchBarItemController;
+    RetainPtr<NSCandidateListTouchBarItem> m_richTextCandidateListTouchBarItem;
+    RetainPtr<NSCandidateListTouchBarItem> m_plainTextCandidateListTouchBarItem;
+    RetainPtr<NSCandidateListTouchBarItem> m_passwordTextCandidateListTouchBarItem;
+    RetainPtr<WebPlaybackControlsManager> m_playbackControlsManager;
+    RetainPtr<NSCustomTouchBarItem> m_exitFullScreenButton;
+
+#if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
+    RetainPtr<AVFunctionBarPlaybackControlsProvider> m_mediaTouchBarProvider;
+    RetainPtr<AVFunctionBarScrubber> m_mediaPlaybackControlsView;
+#endif // ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
+#endif // HAVE(TOUCH_BAR)
+
     WeakPtr<WebViewImpl> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(); }
 
     bool supportsArbitraryLayoutModes() const;
@@ -526,6 +582,7 @@ private:
 
     bool mightBeginDragWhileInactive();
     bool mightBeginScrollWhileInactive();
+    void createSandboxExtensionsIfNeeded(const Vector<String>& files, SandboxExtension::Handle&, SandboxExtension::HandleArray& handles);
 
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
     void handleRequestedCandidates(NSInteger sequenceNumber, NSArray<NSTextCheckingResult *> *candidates);
@@ -549,7 +606,7 @@ private:
     bool m_windowOcclusionDetectionEnabled { true };
 
     bool m_automaticallyAdjustsContentInsets { false };
-    CGFloat m_topContentInset { 0 };
+    CGFloat m_pendingTopContentInset { 0 };
     bool m_didScheduleSetTopContentInset { false };
 
     CGSize m_resizeScrollOffset { 0, 0 };
@@ -578,6 +635,7 @@ private:
 #endif
 
     RetainPtr<WKWindowVisibilityObserver> m_windowVisibilityObserver;
+    RetainPtr<WKAccessibilitySettingsObserver> m_accessibilitySettingsObserver;
 
     bool m_shouldDeferViewInWindowChanges { false };
     bool m_viewInWindowChangeWasDeferred { false };
@@ -629,7 +687,7 @@ private:
     String m_promisedFilename;
     String m_promisedURL;
 
-    WTF::Optional<NSInteger> m_spellCheckerDocumentTag;
+    std::optional<NSInteger> m_spellCheckerDocumentTag;
 
     CGFloat m_totalHeightOfBanners { 0 };
 
@@ -649,6 +707,7 @@ private:
     bool m_isHandlingAcceptedCandidate { false };
     bool m_requiresUserActionForEditingControlsManager { false };
     bool m_editableElementIsFocused { false };
+    bool m_isTextInsertionReplacingSoftSpace { false };
 };
     
 } // namespace WebKit

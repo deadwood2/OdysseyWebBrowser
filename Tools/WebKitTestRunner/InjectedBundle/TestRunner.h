@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TestRunner_h
-#define TestRunner_h
+#pragma once
 
 #include "JSWrappable.h"
 #include "StringFunctions.h"
@@ -32,7 +31,7 @@
 #include <WebKit/WKBundleScriptWorld.h>
 #include <WebKit/WKRetainPtr.h>
 #include <string>
-#include <wtf/PassRefPtr.h>
+#include <wtf/Ref.h>
 #include <wtf/text/WTFString.h>
 
 #if PLATFORM(COCOA)
@@ -53,13 +52,15 @@ namespace WTR {
 
 class TestRunner : public JSWrappable {
 public:
-    static PassRefPtr<TestRunner> create();
+    static Ref<TestRunner> create();
     virtual ~TestRunner();
 
     // JSWrappable
     virtual JSClassRef wrapperClass();
 
     void makeWindowObject(JSContextRef, JSObjectRef windowObject, JSValueRef* exception);
+
+    bool isWebKit2() const { return true; }
 
     // The basics.
     WKURLRef testURL() const { return m_testURL.get(); }
@@ -102,15 +103,16 @@ public:
     void setXSSAuditorEnabled(bool);
     void setShadowDOMEnabled(bool);
     void setCustomElementsEnabled(bool);
-    void setDOMIteratorEnabled(bool);
+    void setModernMediaControlsEnabled(bool);
     void setWebGL2Enabled(bool);
     void setFetchAPIEnabled(bool);
     void setAllowUniversalAccessFromFileURLs(bool);
     void setAllowFileAccessFromFileURLs(bool);
+    void setNeedsStorageAccessFromFileURLsQuirk(bool);
     void setPluginsEnabled(bool);
     void setJavaScriptCanAccessClipboard(bool);
-    void setAutomaticLinkDetectionEnabled(bool);
     void setPrivateBrowsingEnabled(bool);
+    void setUseDashboardCompatibilityMode(bool);
     void setPopupBlockingEnabled(bool);
     void setAuthorAndUserStylesEnabled(bool);
     void setCustomPolicyDelegate(bool enabled, bool permissive = false);
@@ -126,6 +128,10 @@ public:
     void setAsynchronousSpellCheckingEnabled(bool);
     void setDownloadAttributeEnabled(bool);
     void setAllowsAnySSLCertificate(bool);
+    void setEncryptedMediaAPIEnabled(bool);
+    void setSubtleCryptoEnabled(bool);
+    void setMediaStreamEnabled(bool);
+    void setPeerConnectionEnabled(bool);
 
     // Special DOM functions.
     void clearBackForwardList();
@@ -283,7 +289,9 @@ public:
 
     // MediaStream
     void setUserMediaPermission(bool);
-    void setUserMediaPermissionForOrigin(bool permission, JSStringRef origin, JSStringRef parentOrigin);
+    void setUserMediaPersistentPermissionForOrigin(bool permission, JSStringRef origin, JSStringRef parentOrigin);
+    unsigned userMediaPermissionRequestCountForOrigin(JSStringRef origin, JSStringRef parentOrigin) const;
+    void resetUserMediaPermissionRequestCountForOrigin(JSStringRef origin, JSStringRef parentOrigin);
 
     void setPageVisibility(JSStringRef state);
     void resetPageVisibility();
@@ -311,6 +319,7 @@ public:
     void setShouldDecideNavigationPolicyAfterDelay(bool);
     void setNavigationGesturesEnabled(bool);
     void setIgnoresViewportScaleLimits(bool);
+    void setShouldDownloadUndisplayableMIMETypes(bool);
 
     void runUIScript(JSStringRef script, JSValueRef callback);
     void runUIScriptCallback(unsigned callbackID, JSStringRef result);
@@ -336,6 +345,20 @@ public:
     void setMockGamepadDetails(unsigned index, JSStringRef gamepadID, unsigned axisCount, unsigned buttonCount);
     void setMockGamepadAxisValue(unsigned index, unsigned axisIndex, double value);
     void setMockGamepadButtonValue(unsigned index, unsigned buttonIndex, double value);
+    
+    // Resource Load Statistics
+    void installStatisticsDidModifyDataRecordsCallback(JSValueRef callback);
+    void statisticsDidModifyDataRecordsCallback();
+    void statisticsFireDataModificationHandler();
+    void setStatisticsPrevalentResource(JSStringRef hostName, bool value);
+    bool isStatisticsPrevalentResource(JSStringRef hostName);
+    void setStatisticsHasHadUserInteraction(JSStringRef hostName, bool value);
+    bool isStatisticsHasHadUserInteraction(JSStringRef hostName);
+    void setStatisticsTimeToLiveUserInteraction(double seconds);
+    void setStatisticsNotifyPagesWhenDataRecordsWereScanned(bool);
+    void setStatisticsShouldClassifyResourcesBeforeDataRecordsRemoval(bool);
+    void setStatisticsMinimumTimeBetweeenDataRecordsRemoval(double);
+    void statisticsResetToConsistentState();
 
 private:
     TestRunner();
@@ -396,9 +419,9 @@ private:
 
     WKRetainPtr<WKArrayRef> m_allowedHosts;
 
+    size_t m_userMediaPermissionRequestCount { 0 };
+
     PlatformTimerRef m_waitToDumpWatchdogTimer;
 };
 
 } // namespace WTR
-
-#endif // TestRunner_h

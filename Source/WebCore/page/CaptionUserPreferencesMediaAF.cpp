@@ -27,6 +27,8 @@
 
 #if ENABLE(VIDEO_TRACK)
 
+#if !USE(DIRECT2D)
+
 #include "CaptionUserPreferencesMediaAF.h"
 
 #include "AudioTrackList.h"
@@ -49,6 +51,11 @@
 
 #if PLATFORM(IOS)
 #import "WebCoreThreadRun.h"
+#endif
+
+#if COMPILER(MSVC)
+// See https://msdn.microsoft.com/en-us/library/35bhkfb6.aspx
+#pragma warning(disable: 4273)
 #endif
 
 #if HAVE(MEDIA_ACCESSIBILITY_FRAMEWORK)
@@ -361,6 +368,11 @@ String CaptionUserPreferencesMediaAF::cssPropertyWithTextEdgeColor(CSSPropertyID
     if (important)
         builder.appendLiteral(" !important");
     builder.append(';');
+    if (id == CSSPropertyWebkitTextStroke) {
+        builder.append(" paint-order: stroke;");
+        builder.append(" stroke-linejoin: round;");
+        builder.append(" stroke-linecap: round;");
+    }
     
     return builder.toString();
 }
@@ -379,17 +391,40 @@ String CaptionUserPreferencesMediaAF::colorPropertyCSS(CSSPropertyID id, const C
     return builder.toString();
 }
 
+String CaptionUserPreferencesMediaAF::strokeWidth() const
+{
+    static NeverDestroyed<const String> strokeWidthDefault(ASCIILiteral(" .03em "));
+    
+    if (!MACaptionFontAttributeStrokeWidth && !canLoad_MediaAccessibility_MACaptionFontAttributeStrokeWidth())
+        return strokeWidthDefault;
+    
+    MACaptionAppearanceBehavior behavior;
+
+    auto font = adoptCF(MACaptionAppearanceCopyFontDescriptorForStyle(kMACaptionAppearanceDomainUser, &behavior, kMACaptionAppearanceFontStyleDefault));
+    if (!font)
+        return strokeWidthDefault;
+    
+    auto strokeWidthAttribute = adoptCF(CTFontDescriptorCopyAttribute(font.get(), MACaptionFontAttributeStrokeWidth));
+    if (!strokeWidthAttribute)
+        return strokeWidthDefault;
+    
+    int strokeWidth = 0;
+    if (!CFNumberGetValue(static_cast<CFNumberRef>(strokeWidthAttribute.get()), kCFNumberIntType, &strokeWidth))
+        return strokeWidthDefault;
+
+    return String::format(" %dpx ", strokeWidth);
+}
+
 String CaptionUserPreferencesMediaAF::captionsTextEdgeCSS() const
 {
     static NeverDestroyed<const String> edgeStyleRaised(ASCIILiteral(" -.05em -.05em 0 "));
     static NeverDestroyed<const String> edgeStyleDepressed(ASCIILiteral(" .05em .05em 0 "));
     static NeverDestroyed<const String> edgeStyleDropShadow(ASCIILiteral(" .075em .075em 0 "));
-    static NeverDestroyed<const String> edgeStyleUniform(ASCIILiteral(" .03em "));
 
     bool unused;
     Color color = captionsTextColor(unused);
     if (!color.isValid())
-        color.setNamedColor("black");
+        color = Color { Color::black };
     color = captionsEdgeColorForTextColor(color);
 
     MACaptionAppearanceBehavior behavior;
@@ -406,8 +441,8 @@ String CaptionUserPreferencesMediaAF::captionsTextEdgeCSS() const
     case kMACaptionAppearanceTextEdgeStyleDropShadow:
         return cssPropertyWithTextEdgeColor(CSSPropertyTextShadow, edgeStyleDropShadow, color, behavior == kMACaptionAppearanceBehaviorUseValue);
     case kMACaptionAppearanceTextEdgeStyleUniform:
-        return cssPropertyWithTextEdgeColor(CSSPropertyWebkitTextStroke, edgeStyleUniform, color, behavior == kMACaptionAppearanceBehaviorUseValue);
-            
+        return cssPropertyWithTextEdgeColor(CSSPropertyWebkitTextStroke, strokeWidth(), color, behavior == kMACaptionAppearanceBehaviorUseValue);
+    
     default:
         ASSERT_NOT_REACHED();
         break;
@@ -607,7 +642,7 @@ static String languageIdentifier(const String& languageCode)
 static void buildDisplayStringForTrackBase(StringBuilder& displayName, const TrackBase& track)
 {
     String label = track.label();
-    String trackLanguageIdentifier = track.language();
+    String trackLanguageIdentifier = track.validBCP47Language();
 
     RetainPtr<CFLocaleRef> currentLocale = adoptCF(CFLocaleCreate(kCFAllocatorDefault, defaultLanguage().createCFString().get()));
     RetainPtr<CFStringRef> localeIdentifier = adoptCF(CFLocaleCreateCanonicalLocaleIdentifierFromString(kCFAllocatorDefault, trackLanguageIdentifier.createCFString().get()));
@@ -730,7 +765,7 @@ int CaptionUserPreferencesMediaAF::textTrackSelectionScore(TextTrack* track, HTM
         if (!mediaElement || !mediaElement->player())
             return 0;
 
-        String textTrackLanguage = track->language();
+        String textTrackLanguage = track->validBCP47Language();
         if (textTrackLanguage.isEmpty())
             return 0;
 
@@ -797,7 +832,7 @@ int CaptionUserPreferencesMediaAF::textTrackSelectionScore(TextTrack* track, HTM
 static bool textTrackCompare(const RefPtr<TextTrack>& a, const RefPtr<TextTrack>& b)
 {
     String preferredLanguageDisplayName = displayNameForLanguageLocale(languageIdentifier(defaultLanguage()));
-    String aLanguageDisplayName = displayNameForLanguageLocale(languageIdentifier(a->language()));
+    String aLanguageDisplayName = displayNameForLanguageLocale(languageIdentifier(a->validBCP47Language()));
     String bLanguageDisplayName = displayNameForLanguageLocale(languageIdentifier(b->language()));
 
     // Tracks in the user's preferred language are always at the top of the menu.
@@ -837,7 +872,7 @@ Vector<RefPtr<AudioTrack>> CaptionUserPreferencesMediaAF::sortedTrackListForMenu
     
     for (unsigned i = 0, length = trackList->length(); i < length; ++i) {
         AudioTrack* track = trackList->item(i);
-        String language = displayNameForLanguageLocale(track->language());
+        String language = displayNameForLanguageLocale(track->validBCP47Language());
         tracksForMenu.append(track);
     }
     
@@ -860,7 +895,7 @@ Vector<RefPtr<TextTrack>> CaptionUserPreferencesMediaAF::sortedTrackListForMenu(
 
     for (unsigned i = 0, length = trackList->length(); i < length; ++i) {
         TextTrack* track = trackList->item(i);
-        String language = displayNameForLanguageLocale(track->language());
+        String language = displayNameForLanguageLocale(track->validBCP47Language());
 
         if (displayMode == Manual) {
             LOG(Media, "CaptionUserPreferencesMediaAF::sortedTrackListForMenu - adding '%s' track with language '%s' because selection mode is 'manual'", track->kindKeyword().string().utf8().data(), language.utf8().data());
@@ -959,5 +994,7 @@ Vector<RefPtr<TextTrack>> CaptionUserPreferencesMediaAF::sortedTrackListForMenu(
 }
     
 }
+
+#endif
 
 #endif // ENABLE(VIDEO_TRACK)

@@ -36,6 +36,7 @@
 #include "HTMLNames.h"
 #include "HTMLSpanElement.h"
 #include "InlineTextBox.h"
+#include "Logging.h"
 #include "PrintContext.h"
 #include "PseudoElement.h"
 #include "RenderBlockFlow.h"
@@ -354,7 +355,6 @@ void RenderTreeAsText::writeRenderObject(TextStream& ts, const RenderObject& o, 
         ts << " [r=" << c.rowIndex() << " c=" << c.col() << " rs=" << c.rowSpan() << " cs=" << c.colSpan() << "]";
     }
 
-#if ENABLE(DETAILS_ELEMENT)
     if (is<RenderDetailsMarker>(o)) {
         ts << ": ";
         switch (downcast<RenderDetailsMarker>(o).orientation()) {
@@ -372,7 +372,6 @@ void RenderTreeAsText::writeRenderObject(TextStream& ts, const RenderObject& o, 
             break;
         }
     }
-#endif
 
     if (is<RenderListMarker>(o)) {
         String text = downcast<RenderListMarker>(o).text();
@@ -494,18 +493,20 @@ static void writeTextRun(TextStream& ts, const RenderText& o, const InlineTextBo
     ts << "\n";
 }
 
-static void writeSimpleLine(TextStream& ts, const RenderText& o, const FloatRect& rect, StringView text)
+static void writeSimpleLine(TextStream& ts, const RenderText& renderText, const SimpleLineLayout::RunResolver::Run& run)
 {
+    auto rect = run.rect();
     int x = rect.x();
     int y = rect.y();
     int logicalWidth = ceilf(rect.x() + rect.width()) - x;
 
-    if (is<RenderTableCell>(*o.containingBlock()))
-        y -= floorToInt(downcast<RenderTableCell>(*o.containingBlock()).intrinsicPaddingBefore());
-        
+    if (is<RenderTableCell>(*renderText.containingBlock()))
+        y -= floorToInt(downcast<RenderTableCell>(*renderText.containingBlock()).intrinsicPaddingBefore());
+
     ts << "text run at (" << x << "," << y << ") width " << logicalWidth;
-    ts << ": "
-        << quoteAndEscapeNonPrintables(text);
+    ts << ": " << quoteAndEscapeNonPrintables(run.text());
+    if (run.hasHyphen())
+        ts << " + hyphen string " << quoteAndEscapeNonPrintables(renderText.style().hyphenString().string());
     ts << "\n";
 }
 
@@ -556,7 +557,7 @@ void write(TextStream& ts, const RenderObject& o, int indent, RenderAsTextBehavi
             auto resolver = runResolver(downcast<RenderBlockFlow>(*text.parent()), *layout);
             for (const auto& run : resolver.rangeForRenderer(text)) {
                 writeIndent(ts, indent + 1);
-                writeSimpleLine(ts, text, run.rect(), run.text());
+                writeSimpleLine(ts, text, run);
             }
         } else {
             for (auto* box = text.firstTextBox(); box; box = box->nextTextBox()) {
@@ -880,10 +881,12 @@ static void writeSelection(TextStream& ts, const RenderObject* renderer)
 
 static String externalRepresentation(RenderBox* renderer, RenderAsTextBehavior behavior)
 {
-    TextStream ts;
+    TextStream ts(TextStream::LineMode::MultipleLine, TextStream::Formatting::SVGStyleRect | TextStream::Formatting::LayoutUnitsAsIntegers);
     if (!renderer->hasLayer())
         return ts.release();
-        
+
+    LOG(Layout, "externalRepresentation: dumping layer tree");
+
     RenderLayer* layer = renderer->layer();
     writeLayers(ts, layer, layer, layer->rect(), 0, behavior);
     writeSelection(ts, renderer);
@@ -936,7 +939,7 @@ String counterValueForElement(Element* element)
     // Make sure the element is not freed during the layout.
     RefPtr<Element> elementRef(element);
     element->document().updateLayout();
-    TextStream stream;
+    TextStream stream(TextStream::LineMode::MultipleLine, TextStream::Formatting::SVGStyleRect | TextStream::Formatting::LayoutUnitsAsIntegers);
     bool isFirstCounter = true;
     // The counter renderers should be children of :before or :after pseudo-elements.
     if (PseudoElement* before = element->beforePseudoElement())

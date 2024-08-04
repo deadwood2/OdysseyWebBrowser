@@ -50,11 +50,7 @@ AcceleratedDrawingArea::~AcceleratedDrawingArea()
 }
 
 AcceleratedDrawingArea::AcceleratedDrawingArea(WebPage& webPage, const WebPageCreationParameters& parameters)
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-    : DrawingArea(DrawingAreaTypeCoordinated, webPage)
-#else
     : DrawingArea(DrawingAreaTypeImpl, webPage)
-#endif
     , m_exitCompositingTimer(RunLoop::main(), this, &AcceleratedDrawingArea::exitAcceleratedCompositingMode)
     , m_discardPreviousLayerTreeHostTimer(RunLoop::main(), this, &AcceleratedDrawingArea::discardPreviousLayerTreeHost)
 {
@@ -235,16 +231,10 @@ void AcceleratedDrawingArea::updateBackingStoreState(uint64_t stateID, bool resp
         m_webPage.layoutIfNeeded();
         m_webPage.scrollMainFrameIfNotAtMaxScrollPosition(scrollOffset);
 
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-        // Coordinated Graphics sets the size of the root layer to contents size.
-        if (!m_webPage.useFixedLayout())
-            m_layerTreeHost->sizeDidChange(m_webPage.size());
-#else
         if (m_layerTreeHost)
             m_layerTreeHost->sizeDidChange(m_webPage.size());
         else if (m_previousLayerTreeHost)
             m_previousLayerTreeHost->sizeDidChange(m_webPage.size());
-#endif
     } else {
         ASSERT(size == m_webPage.size());
         if (!m_shouldSendDidUpdateBackingStoreState) {
@@ -403,13 +393,6 @@ void AcceleratedDrawingArea::discardPreviousLayerTreeHost()
     m_previousLayerTreeHost = nullptr;
 }
 
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-void AcceleratedDrawingArea::didReceiveCoordinatedLayerTreeHostMessage(IPC::Connection& connection, IPC::Decoder& decoder)
-{
-    m_layerTreeHost->didReceiveCoordinatedLayerTreeHostMessage(connection, decoder);
-}
-#endif
-
 #if USE(TEXTURE_MAPPER_GL) && PLATFORM(GTK) && PLATFORM(X11) && !USE(REDIRECTED_XCOMPOSITE_WINDOW)
 void AcceleratedDrawingArea::setNativeSurfaceHandleForCompositing(uint64_t handle)
 {
@@ -447,9 +430,9 @@ void AcceleratedDrawingArea::deviceOrPageScaleFactorChanged()
 }
 #endif
 
-void AcceleratedDrawingArea::viewStateDidChange(ViewState::Flags changed, bool, const Vector<uint64_t>&)
+void AcceleratedDrawingArea::activityStateDidChange(ActivityState::Flags changed, bool, const Vector<uint64_t>&)
 {
-    if (changed & ViewState::IsVisible) {
+    if (changed & ActivityState::IsVisible) {
         if (m_webPage.isVisible())
             resumePainting();
         else

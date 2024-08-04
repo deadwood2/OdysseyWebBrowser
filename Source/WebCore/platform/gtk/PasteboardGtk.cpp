@@ -22,6 +22,7 @@
 
 #include "DragData.h"
 #include "Image.h"
+#include "NotImplemented.h"
 #include "PasteboardStrategy.h"
 #include "PlatformStrategies.h"
 #include "SelectionData.h"
@@ -84,6 +85,11 @@ Pasteboard::Pasteboard(SelectionData& selectionData)
 Pasteboard::Pasteboard(const String& name)
     : m_selectionData(SelectionData::create())
     , m_name(name)
+{
+}
+
+Pasteboard::Pasteboard()
+    : m_selectionData(SelectionData::create())
 {
 }
 
@@ -174,6 +180,11 @@ void Pasteboard::write(const PasteboardURL& pasteboardURL)
     writeToClipboard();
 }
 
+void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&)
+{
+    notImplemented();
+}
+
 void Pasteboard::write(const PasteboardImage& pasteboardImage)
 {
     m_selectionData->clearAll();
@@ -260,7 +271,7 @@ bool Pasteboard::canSmartReplace()
 }
 
 #if ENABLE(DRAG_SUPPORT)
-void Pasteboard::setDragImage(DragImageRef, const IntPoint&)
+void Pasteboard::setDragImage(DragImage, const IntPoint&)
 {
 }
 #endif
@@ -269,6 +280,10 @@ void Pasteboard::read(PasteboardPlainText& text)
 {
     readFromClipboard();
     text.text = m_selectionData->text();
+}
+
+void Pasteboard::read(PasteboardWebContentReader&)
+{
 }
 
 bool Pasteboard::hasData()
@@ -331,6 +346,10 @@ Vector<String> Pasteboard::readFilenames()
 {
     readFromClipboard();
     return m_selectionData->filenames();
+}
+
+void Pasteboard::writeMarkup(const String&)
+{
 }
 
 }

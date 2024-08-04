@@ -18,12 +18,12 @@
  *
  */
 
-#ifndef RegExpObject_h
-#define RegExpObject_h
+#pragma once
 
 #include "JSObject.h"
 #include "RegExp.h"
 #include "ThrowScope.h"
+#include "TypeError.h"
 
 namespace JSC {
     
@@ -51,7 +51,7 @@ public:
             m_lastIndex.setWithoutWriteBarrier(jsNumber(lastIndex));
             return true;
         }
-        throwTypeError(exec, scope, StrictModeReadonlyPropertyWriteError);
+        throwTypeError(exec, scope, ASCIILiteral(ReadonlyPropertyWriteError));
         return false;
     }
     bool setLastIndex(ExecState* exec, JSValue lastIndex, bool shouldThrow)
@@ -60,13 +60,11 @@ public:
         auto scope = DECLARE_THROW_SCOPE(vm);
 
         if (LIKELY(m_lastIndexIsWritable)) {
-            m_lastIndex.set(exec->vm(), this, lastIndex);
+            m_lastIndex.set(vm, this, lastIndex);
             return true;
         }
 
-        if (shouldThrow)
-            throwTypeError(exec, scope, StrictModeReadonlyPropertyWriteError);
-        return false;
+        return typeError(exec, scope, shouldThrow, ASCIILiteral(ReadonlyPropertyWriteError));
     }
     JSValue getLastIndex() const
     {
@@ -126,10 +124,8 @@ RegExpObject* asRegExpObject(JSValue);
 
 inline RegExpObject* asRegExpObject(JSValue value)
 {
-    ASSERT(asObject(value)->inherits(RegExpObject::info()));
+    ASSERT(asObject(value)->inherits(*value.getObject()->vm(), RegExpObject::info()));
     return static_cast<RegExpObject*>(asObject(value));
 }
 
 } // namespace JSC
-
-#endif // RegExpObject_h

@@ -26,7 +26,7 @@
 #include "config.h"
 #include "WebCoreTypedArrayController.h"
 
-#include "JSDOMBinding.h"
+#include "JSDOMConvertBufferSource.h"
 #include "JSDOMGlobalObject.h"
 #include <runtime/ArrayBuffer.h>
 #include <runtime/JSArrayBuffer.h>
@@ -50,6 +50,11 @@ JSC::JSArrayBuffer* WebCoreTypedArrayController::toJS(JSC::ExecState* state, JSC
 void WebCoreTypedArrayController::registerWrapper(JSC::JSGlobalObject* globalObject, JSC::ArrayBuffer* native, JSC::JSArrayBuffer* wrapper)
 {
     cacheWrapper(JSC::jsCast<JSDOMGlobalObject*>(globalObject)->world(), native, wrapper);
+}
+
+bool WebCoreTypedArrayController::isAtomicsWaitAllowedOnCurrentThread()
+{
+    return !isMainThread();
 }
 
 bool WebCoreTypedArrayController::JSArrayBufferOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, JSC::SlotVisitor& visitor)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -70,8 +70,8 @@ static void overrideSystemProxies(const String& httpProxy, const String& httpsPr
         URL httpProxyURL(URL(), httpProxy);
         if (httpProxyURL.isValid()) {
             [proxySettings setObject:nsStringFromWebCoreString(httpProxyURL.host()) forKey:(NSString *)kCFNetworkProxiesHTTPProxy];
-            if (httpProxyURL.hasPort()) {
-                NSNumber *port = [NSNumber numberWithInt:httpProxyURL.port()];
+            if (httpProxyURL.port()) {
+                NSNumber *port = [NSNumber numberWithInt:httpProxyURL.port().value()];
                 [proxySettings setObject:port forKey:(NSString *)kCFNetworkProxiesHTTPPort];
             }
         }
@@ -83,8 +83,8 @@ static void overrideSystemProxies(const String& httpProxy, const String& httpsPr
         URL httpsProxyURL(URL(), httpsProxy);
         if (httpsProxyURL.isValid()) {
             [proxySettings setObject:nsStringFromWebCoreString(httpsProxyURL.host()) forKey:(NSString *)kCFNetworkProxiesHTTPSProxy];
-            if (httpsProxyURL.hasPort()) {
-                NSNumber *port = [NSNumber numberWithInt:httpsProxyURL.port()];
+            if (httpsProxyURL.port()) {
+                NSNumber *port = [NSNumber numberWithInt:httpsProxyURL.port().value()];
                 [proxySettings setObject:port forKey:(NSString *)kCFNetworkProxiesHTTPSPort];
             }
         } else
@@ -100,11 +100,15 @@ void NetworkProcess::platformInitializeNetworkProcess(const NetworkProcessCreati
     platformInitializeNetworkProcessCocoa(parameters);
 
 #if ENABLE(SEC_ITEM_SHIM)
-    SecItemShim::singleton().initialize(this);
+    initializeSecItemShim(*this);
 #endif
 
     if (!parameters.httpProxy.isNull() || !parameters.httpsProxy.isNull())
         overrideSystemProxies(parameters.httpProxy, parameters.httpsProxy);
+
+#if ENABLE(WEB_RTC)
+    m_webRTCEnabled = parameters.webRTCEnabled;
+#endif
 }
 
 void NetworkProcess::allowSpecificHTTPSCertificateForHost(const CertificateInfo& certificateInfo, const String& host)
@@ -117,6 +121,11 @@ void NetworkProcess::initializeSandbox(const ChildProcessInitializationParameter
     // Need to overide the default, because service has a different bundle ID.
     NSBundle *webkit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKView")];
     sandboxParameters.setOverrideSandboxProfilePath([webkit2Bundle pathForResource:@"com.apple.WebKit.NetworkProcess" ofType:@"sb"]);
+
+#if ENABLE(WEB_RTC)
+    if (m_webRTCEnabled)
+        sandboxParameters.addParameter("ENABLE_WEB_RTC", "TRUE");
+#endif
 
     ChildProcess::initializeSandbox(parameters, sandboxParameters);
 }

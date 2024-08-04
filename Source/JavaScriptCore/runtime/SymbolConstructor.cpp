@@ -66,7 +66,7 @@ SymbolConstructor::SymbolConstructor(VM& vm, Structure* structure)
 
 void SymbolConstructor::finishCreation(VM& vm, SymbolPrototype* prototype)
 {
-    Base::finishCreation(vm, prototype->classInfo()->className);
+    Base::finishCreation(vm, prototype->classInfo(vm)->className);
     putDirectWithoutTransition(vm, vm.propertyNames->prototype, prototype, DontEnum | DontDelete | ReadOnly);
     putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(0), DontDelete | ReadOnly | DontEnum);
 
@@ -96,17 +96,18 @@ CallType SymbolConstructor::getCallData(JSCell*, CallData& callData)
 
 EncodedJSValue JSC_HOST_CALL symbolConstructorFor(ExecState* exec)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     JSString* stringKey = exec->argument(0).toString(exec);
-    if (exec->hadException())
-        return JSValue::encode(jsUndefined());
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
     String string = stringKey->value(exec);
-    if (exec->hadException())
-        return JSValue::encode(jsUndefined());
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
     return JSValue::encode(Symbol::create(exec->vm(), exec->vm().symbolRegistry().symbolForKey(string)));
 }
 
-const char* SymbolKeyForTypeError = "Symbol.keyFor requires that the first argument be a symbol";
+const char* const SymbolKeyForTypeError = "Symbol.keyFor requires that the first argument be a symbol";
 
 EncodedJSValue JSC_HOST_CALL symbolConstructorKeyFor(ExecState* exec)
 {
@@ -115,14 +116,14 @@ EncodedJSValue JSC_HOST_CALL symbolConstructorKeyFor(ExecState* exec)
 
     JSValue symbolValue = exec->argument(0);
     if (!symbolValue.isSymbol())
-        return JSValue::encode(throwTypeError(exec, scope, SymbolKeyForTypeError));
+        return JSValue::encode(throwTypeError(exec, scope, ASCIILiteral(SymbolKeyForTypeError)));
 
-    SymbolImpl* uid = asSymbol(symbolValue)->privateName().uid();
-    if (!uid->symbolRegistry())
+    SymbolImpl& uid = asSymbol(symbolValue)->privateName().uid();
+    if (!uid.symbolRegistry())
         return JSValue::encode(jsUndefined());
 
-    ASSERT(uid->symbolRegistry() == &vm.symbolRegistry());
-    return JSValue::encode(jsString(exec, vm.symbolRegistry().keyForSymbol(*uid)));
+    ASSERT(uid.symbolRegistry() == &vm.symbolRegistry());
+    return JSValue::encode(jsString(exec, vm.symbolRegistry().keyForSymbol(uid)));
 }
 
 } // namespace JSC

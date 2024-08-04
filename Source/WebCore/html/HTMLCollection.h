@@ -20,8 +20,7 @@
  *
  */
 
-#ifndef HTMLCollection_h
-#define HTMLCollection_h
+#pragma once
 
 #include "CollectionIndexCache.h"
 #include "HTMLNames.h"
@@ -112,7 +111,7 @@ protected:
 
 inline ContainerNode& HTMLCollection::rootNode() const
 {
-    if (isRootedAtDocument() && ownerNode().inDocument())
+    if (isRootedAtDocument() && ownerNode().isConnected())
         return ownerNode().document();
 
     return ownerNode();
@@ -188,7 +187,7 @@ inline CollectionType HTMLCollection::type() const
 
 inline ContainerNode& HTMLCollection::ownerNode() const
 {
-    return const_cast<ContainerNode&>(m_ownerNode.get());
+    return m_ownerNode;
 }
 
 inline Document& HTMLCollection::document() const
@@ -230,5 +229,3 @@ inline const CollectionNamedElementCache& HTMLCollection::namedItemCaches() cons
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::ClassName) \
     static bool isType(const WebCore::HTMLCollection& collection) { return collection.type() == WebCore::Type; } \
 SPECIALIZE_TYPE_TRAITS_END()
-
-#endif // HTMLCollection_h

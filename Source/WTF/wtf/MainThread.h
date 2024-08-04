@@ -33,8 +33,11 @@
 #include <functional>
 #include <stdint.h>
 #include <wtf/Function.h>
+#include <wtf/Optional.h>
 
 namespace WTF {
+
+class PrintStream;
 
 typedef uint32_t ThreadIdentifier;
 
@@ -65,10 +68,17 @@ inline bool isWebThread() { return isMainThread(); }
 inline bool isUIThread() { return isMainThread(); }
 #endif // USE(WEB_THREAD)
 
-void initializeGCThreads();
+WTF_EXPORT_PRIVATE void initializeGCThreads();
 
-WTF_EXPORT_PRIVATE void registerGCThread();
-WTF_EXPORT_PRIVATE bool mayBeGCThread();
+enum class GCThreadType {
+    Main,
+    Helper
+};
+
+void printInternal(PrintStream&, GCThreadType);
+
+WTF_EXPORT_PRIVATE void registerGCThread(GCThreadType);
+WTF_EXPORT_PRIVATE std::optional<GCThreadType> mayBeGCThread();
 WTF_EXPORT_PRIVATE bool isMainThreadOrGCThread();
 
 // NOTE: these functions are internal to the callOnMainThread implementation.
@@ -76,7 +86,7 @@ void initializeMainThreadPlatform();
 void scheduleDispatchFunctionsOnMainThread();
 void dispatchFunctionsFromMainThread();
 
-#if OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK)
+#if OS(DARWIN) && !PLATFORM(GTK)
 #if !USE(WEB_THREAD)
 // This version of initializeMainThread sets up the main thread as corresponding
 // to the process's main thread, and not necessarily the thread that calls this
@@ -88,6 +98,7 @@ void initializeMainThreadToProcessMainThreadPlatform();
 
 } // namespace WTF
 
+using WTF::GCThreadType;
 using WTF::callOnMainThread;
 using WTF::canAccessThreadLocalDataForThread;
 using WTF::isMainThread;

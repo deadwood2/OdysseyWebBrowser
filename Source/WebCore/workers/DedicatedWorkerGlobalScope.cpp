@@ -41,16 +41,16 @@
 
 namespace WebCore {
 
-Ref<DedicatedWorkerGlobalScope> DedicatedWorkerGlobalScope::create(const URL& url, const String& userAgent, DedicatedWorkerThread& thread, const ContentSecurityPolicyResponseHeaders& contentSecurityPolicyResponseHeaders, bool shouldBypassMainWorldContentSecurityPolicy, PassRefPtr<SecurityOrigin> topOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider)
+Ref<DedicatedWorkerGlobalScope> DedicatedWorkerGlobalScope::create(const URL& url, const String& identifier, const String& userAgent, DedicatedWorkerThread& thread, const ContentSecurityPolicyResponseHeaders& contentSecurityPolicyResponseHeaders, bool shouldBypassMainWorldContentSecurityPolicy, Ref<SecurityOrigin>&& topOrigin, MonotonicTime timeOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider)
 {
-    Ref<DedicatedWorkerGlobalScope> context = adoptRef(*new DedicatedWorkerGlobalScope(url, userAgent, thread, shouldBypassMainWorldContentSecurityPolicy, topOrigin, connectionProxy, socketProvider));
+    auto context = adoptRef(*new DedicatedWorkerGlobalScope(url, identifier, userAgent, thread, shouldBypassMainWorldContentSecurityPolicy, WTFMove(topOrigin), timeOrigin, connectionProxy, socketProvider));
     if (!shouldBypassMainWorldContentSecurityPolicy)
         context->applyContentSecurityPolicyResponseHeaders(contentSecurityPolicyResponseHeaders);
     return context;
 }
 
-DedicatedWorkerGlobalScope::DedicatedWorkerGlobalScope(const URL& url, const String& userAgent, DedicatedWorkerThread& thread, bool shouldBypassMainWorldContentSecurityPolicy, PassRefPtr<SecurityOrigin> topOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider)
-    : WorkerGlobalScope(url, userAgent, thread, shouldBypassMainWorldContentSecurityPolicy, topOrigin, connectionProxy, socketProvider)
+DedicatedWorkerGlobalScope::DedicatedWorkerGlobalScope(const URL& url, const String& identifier, const String& userAgent, DedicatedWorkerThread& thread, bool shouldBypassMainWorldContentSecurityPolicy, Ref<SecurityOrigin>&& topOrigin, MonotonicTime timeOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider)
+    : WorkerGlobalScope(url, identifier, userAgent, thread, shouldBypassMainWorldContentSecurityPolicy, WTFMove(topOrigin), timeOrigin, connectionProxy, socketProvider)
 {
 }
 
@@ -63,19 +63,26 @@ EventTargetInterface DedicatedWorkerGlobalScope::eventTargetInterface() const
     return DedicatedWorkerGlobalScopeEventTargetInterfaceType;
 }
 
-void DedicatedWorkerGlobalScope::postMessage(RefPtr<SerializedScriptValue>&& message, const MessagePortArray* ports, ExceptionCode& ec)
+ExceptionOr<void> DedicatedWorkerGlobalScope::postMessage(JSC::ExecState& state, JSC::JSValue messageValue, Vector<JSC::Strong<JSC::JSObject>>&& transfer)
 {
+    Vector<RefPtr<MessagePort>> ports;
+    auto message = SerializedScriptValue::create(state, messageValue, WTFMove(transfer), ports, SerializationContext::WorkerPostMessage);
+    if (message.hasException())
+        return message.releaseException();
+
     // Disentangle the port in preparation for sending it to the remote context.
-    auto channels = MessagePort::disentanglePorts(ports, ec);
-    if (ec)
-        return;
-    thread().workerObjectProxy().postMessageToWorkerObject(WTFMove(message), WTFMove(channels));
+    auto channels = MessagePort::disentanglePorts(WTFMove(ports));
+    if (channels.hasException())
+        return channels.releaseException();
+    thread().workerObjectProxy().postMessageToWorkerObject(message.releaseReturnValue(), channels.releaseReturnValue());
+    return { };
 }
 
-void DedicatedWorkerGlobalScope::importScripts(const Vector<String>& urls, ExceptionCode& ec)
+ExceptionOr<void> DedicatedWorkerGlobalScope::importScripts(const Vector<String>& urls)
 {
-    Base::importScripts(urls, ec);
+    auto result = Base::importScripts(urls);
     thread().workerObjectProxy().reportPendingActivity(hasPendingActivity());
+    return result;
 }
 
 DedicatedWorkerThread& DedicatedWorkerGlobalScope::thread()

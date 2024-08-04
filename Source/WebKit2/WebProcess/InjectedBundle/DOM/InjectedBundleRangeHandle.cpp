@@ -26,6 +26,7 @@
 #include "config.h"
 #include "InjectedBundleRangeHandle.h"
 
+#include "InjectedBundleNodeHandle.h"
 #include "ShareableBitmap.h"
 #include "WebImage.h"
 #include <JavaScriptCore/APICast.h>
@@ -56,9 +57,9 @@ static DOMHandleCache& domHandleCache()
     return cache;
 }
 
-PassRefPtr<InjectedBundleRangeHandle> InjectedBundleRangeHandle::getOrCreate(JSContextRef, JSObjectRef object)
+PassRefPtr<InjectedBundleRangeHandle> InjectedBundleRangeHandle::getOrCreate(JSContextRef context, JSObjectRef object)
 {
-    Range* range = JSRange::toWrapped(toJS(object));
+    Range* range = JSRange::toWrapped(toJS(context)->vm(), toJS(object));
     return getOrCreate(range);
 }
 
@@ -96,6 +97,11 @@ Range* InjectedBundleRangeHandle::coreRange() const
     return m_range.get();
 }
 
+Ref<InjectedBundleNodeHandle> InjectedBundleRangeHandle::document()
+{
+    return InjectedBundleNodeHandle::getOrCreate(m_range->ownerDocument());
+}
+
 WebCore::IntRect InjectedBundleRangeHandle::boundingRectInWindowCoordinates() const
 {
     FloatRect boundingRect = m_range->absoluteBoundingRect();
@@ -129,7 +135,7 @@ PassRefPtr<WebImage> InjectedBundleRangeHandle::renderedImage(SnapshotOptions op
         return nullptr;
 
     auto graphicsContext = backingStore->createGraphicsContext();
-    graphicsContext->scale(FloatSize(scaleFactor, scaleFactor));
+    graphicsContext->scale(scaleFactor);
 
     paintRect.move(frameView->frameRect().x(), frameView->frameRect().y());
     paintRect.moveBy(-frameView->scrollPosition());
@@ -151,7 +157,12 @@ PassRefPtr<WebImage> InjectedBundleRangeHandle::renderedImage(SnapshotOptions op
 
     frame->selection().setSelection(oldSelection);
 
-    return WebImage::create(backingStore);
+    return WebImage::create(backingStore.releaseNonNull());
+}
+
+String InjectedBundleRangeHandle::text() const
+{
+    return m_range->text();
 }
 
 } // namespace WebKit

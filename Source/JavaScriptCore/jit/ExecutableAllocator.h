@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2008, 2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef ExecutableAllocator_h
-#define ExecutableAllocator_h
+#pragma once
+
 #include "JITCompilationEffort.h"
 #include <stddef.h> // for ptrdiff_t
 #include <limits>
@@ -46,13 +46,6 @@
 #include <sys/cachectl.h>
 #endif
 
-#if CPU(SH4) && OS(LINUX)
-#include <asm/cachectl.h>
-#include <asm/unistd.h>
-#include <sys/syscall.h>
-#include <unistd.h>
-#endif
-
 #define JIT_ALLOCATOR_LARGE_ALLOC_SIZE (pageSize() * 4)
 
 #define EXECUTABLE_POOL_WRITABLE true
@@ -67,12 +60,9 @@ typedef WTF::MetaAllocatorHandle ExecutableMemoryHandle;
 
 #if ENABLE(ASSEMBLER)
 
-#if ENABLE(EXECUTABLE_ALLOCATOR_DEMAND)
-class DemandExecutableAllocator;
-#endif
-
-#if ENABLE(EXECUTABLE_ALLOCATOR_FIXED)
-#if CPU(ARM)
+#if defined(FIXED_EXECUTABLE_MEMORY_POOL_SIZE_IN_MB) && FIXED_EXECUTABLE_MEMORY_POOL_SIZE_IN_MB > 0
+static const size_t fixedExecutableMemoryPoolSize = FIXED_EXECUTABLE_MEMORY_POOL_SIZE_IN_MB * 1024 * 1024;
+#elif CPU(ARM)
 static const size_t fixedExecutableMemoryPoolSize = 16 * 1024 * 1024;
 #elif CPU(ARM64)
 static const size_t fixedExecutableMemoryPoolSize = 32 * 1024 * 1024;
@@ -107,13 +97,6 @@ static inline void* performJITMemcpy(void *dst, const void *src, size_t n)
     return memcpy(dst, src, n);
 }
 
-#else // ENABLE(EXECUTABLE_ALLOCATOR_FIXED)
-static inline void* performJITMemcpy(void *dst, const void *src, size_t n)
-{
-    return memcpy(dst, src, n);
-}
-#endif
-
 class ExecutableAllocator {
     enum ProtectionSetting { Writable, Executable };
 
@@ -147,5 +130,3 @@ public:
 #endif // ENABLE(JIT) && ENABLE(ASSEMBLER)
 
 } // namespace JSC
-
-#endif // !defined(ExecutableAllocator)

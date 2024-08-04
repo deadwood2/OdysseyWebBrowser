@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef ByValInfo_h
-#define ByValInfo_h
+#pragma once
 
 #include "ClassInfo.h"
 #include "CodeLocation.h"
@@ -165,6 +164,26 @@ inline bool jitArrayModePermitsPut(JITArrayMode mode)
     }
 }
 
+inline bool jitArrayModePermitsPutDirect(JITArrayMode mode)
+{
+    // We don't allow typed array putDirect here since putDirect has
+    // defineOwnProperty({configurable: true, writable:true, enumerable:true})
+    // semantics. Typed array indexed properties are non-configurable by
+    // default, so we can't simply store to a typed array for putDirect.
+    //
+    // We could model putDirect on ScopedArguments and DirectArguments, but we
+    // haven't found any performance incentive to do it yet.
+    switch (mode) {
+    case JITInt32:
+    case JITDouble:
+    case JITContiguous:
+    case JITArrayStorage:
+        return true;
+    default:
+        return false;
+    }
+}
+
 inline TypedArrayType typedArrayTypeForJITArrayMode(JITArrayMode mode)
 {
     switch (mode) {
@@ -256,6 +275,3 @@ typedef HashMap<int, void*> ByValInfoMap;
 #endif // ENABLE(JIT)
 
 } // namespace JSC
-
-#endif // ByValInfo_h
-

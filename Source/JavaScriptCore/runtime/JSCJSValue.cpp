@@ -76,10 +76,10 @@ double JSValue::toNumberSlowCase(ExecState* exec) const
     return isUndefined() ? PNaN : 0; // null and false both convert to 0.
 }
 
-Optional<double> JSValue::toNumberFromPrimitive() const
+std::optional<double> JSValue::toNumberFromPrimitive() const
 {
     if (isEmpty())
-        return Nullopt;
+        return std::nullopt;
     if (isNumber())
         return asNumber();
     if (isBoolean())
@@ -88,7 +88,7 @@ Optional<double> JSValue::toNumberFromPrimitive() const
         return PNaN;
     if (isNull())
         return 0;
-    return Nullopt;
+    return std::nullopt;
 }
 
 JSObject* JSValue::toObjectSlowCase(ExecState* exec, JSGlobalObject* globalObject) const
@@ -150,7 +150,7 @@ bool JSValue::putToPrimitive(ExecState* exec, PropertyName propertyName, JSValue
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    if (Optional<uint32_t> index = parseIndex(propertyName))
+    if (std::optional<uint32_t> index = parseIndex(propertyName))
         return putToPrimitiveByIndex(exec, index.value(), value, slot.isStrictMode());
 
     // Check if there are any setters or getters in the prototype chain
@@ -158,14 +158,13 @@ bool JSValue::putToPrimitive(ExecState* exec, PropertyName propertyName, JSValue
     if (UNLIKELY(!obj))
         return false;
     JSValue prototype;
-    if (propertyName != exec->propertyNames().underscoreProto) {
+    if (propertyName != vm.propertyNames->underscoreProto) {
         for (; !obj->structure()->hasReadOnlyOrGetterSetterPropertiesExcludingProto(); obj = asObject(prototype)) {
-            prototype = obj->getPrototypeDirect();
-            if (prototype.isNull()) {
-                if (slot.isStrictMode())
-                    throwTypeError(exec, scope, StrictModeReadonlyPropertyWriteError);
-                return false;
-            }
+            prototype = obj->getPrototype(vm, exec);
+            RETURN_IF_EXCEPTION(scope, false);
+
+            if (prototype.isNull())
+                return typeError(exec, scope, slot.isStrictMode(), ASCIILiteral(ReadonlyPropertyWriteError));
         }
     }
 
@@ -173,11 +172,8 @@ bool JSValue::putToPrimitive(ExecState* exec, PropertyName propertyName, JSValue
         unsigned attributes;
         PropertyOffset offset = obj->structure()->get(vm, propertyName, attributes);
         if (offset != invalidOffset) {
-            if (attributes & ReadOnly) {
-                if (slot.isStrictMode())
-                    throwTypeError(exec, scope, StrictModeReadonlyPropertyWriteError);
-                return false;
-            }
+            if (attributes & ReadOnly)
+                return typeError(exec, scope, slot.isStrictMode(), ASCIILiteral(ReadonlyPropertyWriteError));
 
             JSValue gs = obj->getDirect(offset);
             if (gs.isGetterSetter())
@@ -192,15 +188,12 @@ bool JSValue::putToPrimitive(ExecState* exec, PropertyName propertyName, JSValue
         }
 
         prototype = obj->getPrototype(vm, exec);
-        if (vm.exception())
-            return false;
+        RETURN_IF_EXCEPTION(scope, false);
         if (prototype.isNull())
             break;
     }
     
-    if (slot.isStrictMode())
-        throwTypeError(exec, scope, StrictModeReadonlyPropertyWriteError);
-    return false;
+    return typeError(exec, scope, slot.isStrictMode(), ASCIILiteral(ReadonlyPropertyWriteError));
 }
 
 bool JSValue::putToPrimitiveByIndex(ExecState* exec, unsigned propertyName, JSValue value, bool shouldThrow)
@@ -215,16 +208,14 @@ bool JSValue::putToPrimitiveByIndex(ExecState* exec, unsigned propertyName, JSVa
     
     JSObject* prototype = synthesizePrototype(exec);
     if (UNLIKELY(!prototype)) {
-        ASSERT(exec->hadException());
+        ASSERT(scope.exception());
         return false;
     }
     bool putResult = false;
     if (prototype->attemptToInterceptPutByIndexOnHoleForPrototype(exec, *this, propertyName, value, shouldThrow, putResult))
         return putResult;
     
-    if (shouldThrow)
-        throwTypeError(exec, scope, StrictModeReadonlyPropertyWriteError);
-    return false;
+    return typeError(exec, scope, shouldThrow, ASCIILiteral(ReadonlyPropertyWriteError));
 }
 
 void JSValue::dump(PrintStream& out) const
@@ -258,7 +249,7 @@ void JSValue::dumpInContextAssumingStructure(
 #endif
     } else if (isCell()) {
         if (structure->classInfo()->isSubClassOf(JSString::info())) {
-            JSString* string = jsCast<JSString*>(asCell());
+            JSString* string = asString(asCell());
             out.print("String");
             if (string->isRope())
                 out.print(" (rope)");
@@ -309,14 +300,14 @@ void JSValue::dumpForBacktrace(PrintStream& out) const
     else if (isDouble())
         out.printf("%lf", asDouble());
     else if (isCell()) {
-        if (asCell()->inherits(JSString::info())) {
-            JSString* string = jsCast<JSString*>(asCell());
+        if (asCell()->inherits(*asCell()->vm(), JSString::info())) {
+            JSString* string = asString(asCell());
             const StringImpl* impl = string->tryGetValueImpl();
             if (impl)
                 out.print("\"", impl, "\"");
             else
                 out.print("(unresolved string)");
-        } else if (asCell()->inherits(Structure::info())) {
+        } else if (asCell()->inherits(*asCell()->vm(), Structure::info())) {
             out.print("Structure[ ", asCell()->structure()->classInfo()->className);
 #if USE(JSVALUE64)
             out.print(" ID: ", asCell()->structureID());
@@ -381,12 +372,10 @@ JSString* JSValue::toStringSlowCase(ExecState* exec, bool returnEmptyStringOnErr
 
     ASSERT(isCell());
     JSValue value = asCell()->toPrimitive(exec, PreferString);
-    if (vm.exception())
-        return errorValue();
+    RETURN_IF_EXCEPTION(scope, errorValue());
     ASSERT(!value.isObject());
     JSString* result = value.toString(exec);
-    if (vm.exception())
-        return errorValue();
+    RETURN_IF_EXCEPTION(scope, errorValue());
     return result;
 }
 

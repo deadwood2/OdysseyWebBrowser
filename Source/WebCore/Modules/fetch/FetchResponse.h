@@ -31,43 +31,38 @@
 #if ENABLE(FETCH_API)
 
 #include "FetchBodyOwner.h"
-#include "FetchHeaders.h"
 #include "ResourceResponse.h"
 #include <runtime/TypedArrays.h>
 
 namespace JSC {
-class ArrayBuffer;
 class ExecState;
 class JSValue;
 };
 
 namespace WebCore {
 
-class Dictionary;
 class FetchRequest;
 class ReadableStreamSource;
-
-typedef int ExceptionCode;
 
 class FetchResponse final : public FetchBodyOwner {
 public:
     using Type = ResourceResponse::Type;
 
-    static Ref<FetchResponse> create(ScriptExecutionContext& context) { return adoptRef(*new FetchResponse(context, { }, FetchHeaders::create(FetchHeaders::Guard::Response), ResourceResponse())); }
+    static Ref<FetchResponse> create(ScriptExecutionContext& context) { return adoptRef(*new FetchResponse(context, std::nullopt, FetchHeaders::create(FetchHeaders::Guard::Response), ResourceResponse())); }
     static Ref<FetchResponse> error(ScriptExecutionContext&);
-    static RefPtr<FetchResponse> redirect(ScriptExecutionContext&, const String&, int, ExceptionCode&);
+    static ExceptionOr<Ref<FetchResponse>> redirect(ScriptExecutionContext&, const String& url, int status);
 
-    using FetchPromise = DOMPromise<FetchResponse>;
+    using FetchPromise = DOMPromise<IDLInterface<FetchResponse>>;
     static void fetch(ScriptExecutionContext&, FetchRequest&, FetchPromise&&);
 
-    void consume(unsigned, DeferredWrapper&&);
-#if ENABLE(STREAMS_API)
+    void consume(unsigned, Ref<DeferredPromise>&&);
+#if ENABLE(READABLE_STREAM_API)
     void startConsumingStream(unsigned);
     void consumeChunk(Ref<JSC::Uint8Array>&&);
-    void finishConsumingStream(DeferredWrapper&&);
+    void finishConsumingStream(Ref<DeferredPromise>&&);
 #endif
 
-    void setStatus(int, const String&, ExceptionCode&);
+    ExceptionOr<void> setStatus(int status, const String& statusText);
     void initializeWith(JSC::ExecState&, JSC::JSValue);
 
     Type type() const { return m_response.type(); }
@@ -80,31 +75,37 @@ public:
     FetchHeaders& headers() { return m_headers; }
     Ref<FetchResponse> cloneForJS();
 
-#if ENABLE(STREAMS_API)
+#if ENABLE(READABLE_STREAM_API)
     ReadableStreamSource* createReadableStreamSource();
     void consumeBodyAsStream();
+    void feedStream();
     void cancel();
 #endif
-    bool isLoading() const { return body().type() == FetchBody::Type::Loading; }
+
+    bool isLoading() const { return !!m_bodyLoader; }
 
 private:
-    FetchResponse(ScriptExecutionContext&, FetchBody&&, Ref<FetchHeaders>&&, ResourceResponse&&);
+    FetchResponse(ScriptExecutionContext&, std::optional<FetchBody>&&, Ref<FetchHeaders>&&, ResourceResponse&&);
 
     static void startFetching(ScriptExecutionContext&, const FetchRequest&, FetchPromise&&);
 
-    // ActiveDOMObject API
     void stop() final;
     const char* activeDOMObjectName() const final;
     bool canSuspendForDocumentSuspension() const final;
 
+#if ENABLE(READABLE_STREAM_API)
+    void closeStream();
+#endif
+
     class BodyLoader final : public FetchLoaderClient {
     public:
         BodyLoader(FetchResponse&, FetchPromise&&);
+        ~BodyLoader();
 
         bool start(ScriptExecutionContext&, const FetchRequest&);
         void stop();
 
-#if ENABLE(STREAMS_API)
+#if ENABLE(READABLE_STREAM_API)
         RefPtr<SharedBuffer> startStreaming();
 #endif
 
@@ -116,13 +117,12 @@ private:
         void didReceiveData(const char*, size_t) final;
 
         FetchResponse& m_response;
-        Optional<FetchPromise> m_promise;
+        std::optional<FetchPromise> m_promise;
         std::unique_ptr<FetchLoader> m_loader;
     };
 
     ResourceResponse m_response;
-    Ref<FetchHeaders> m_headers;
-    Optional<BodyLoader> m_bodyLoader;
+    std::optional<BodyLoader> m_bodyLoader;
     mutable String m_responseURL;
 
     FetchBodyConsumer m_consumer { FetchBodyConsumer::Type::ArrayBuffer  };

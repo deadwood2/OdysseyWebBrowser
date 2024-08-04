@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebInspectorUI_h
-#define WebInspectorUI_h
+#pragma once
 
 #include "Connection.h"
 #include "WebInspectorFrontendAPIDispatcher.h"
@@ -67,6 +66,7 @@ public:
 
     void attachedBottom() { setDockSide(DockSide::Bottom); }
     void attachedRight() { setDockSide(DockSide::Right); }
+    void attachedLeft() { setDockSide(DockSide::Left); }
     void detached() { setDockSide(DockSide::Undocked); }
 
     void setDockSide(DockSide);
@@ -90,6 +90,8 @@ public:
 
     void bringToFront() override;
     void closeWindow() override;
+
+    WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection() const override;
 
     void requestSetDockSide(DockSide) override;
     void changeAttachedWindowHeight(unsigned) override;
@@ -129,13 +131,6 @@ private:
     bool m_isVisible { false };
     DockSide m_dockSide { DockSide::Undocked };
     unsigned m_inspectionLevel { 1 };
-
-#if PLATFORM(COCOA)
-    mutable String m_localizedStringsURL;
-    mutable bool m_hasLocalizedStringsURL { false };
-#endif
 };
 
 } // namespace WebKit
-
-#endif // WebInspectorUI_h

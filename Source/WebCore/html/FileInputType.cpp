@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  * Copyright (C) 2010 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -191,7 +191,7 @@ void FileInputType::handleDOMActivateEvent(Event& event)
     if (!ScriptController::processingUserGesture())
         return;
 
-    if (Chrome* chrome = this->chrome()) {
+    if (auto* chrome = this->chrome()) {
         FileChooserSettings settings;
         HTMLInputElement& input = element();
         settings.allowsMultipleFiles = input.hasAttributeWithoutSynchronization(multipleAttr);
@@ -201,9 +201,8 @@ void FileInputType::handleDOMActivateEvent(Event& event)
 #if ENABLE(MEDIA_CAPTURE)
         settings.mediaCaptureType = input.mediaCaptureType();
 #endif
-
         applyFileChooserSettings(settings);
-        chrome->runOpenPanel(input.document().frame(), m_fileChooser);
+        chrome->runOpenPanel(*input.document().frame(), *m_fileChooser);
     }
 
     event.setDefaultHandled();
@@ -219,19 +218,9 @@ bool FileInputType::canSetStringValue() const
     return false;
 }
 
-bool FileInputType::canChangeFromAnotherType() const
-{
-    // Don't allow the type to be changed to file after the first type change.
-    // In other engines this might mean a JavaScript programmer could set a text
-    // field's value to something like /etc/passwd and then change it to a file input.
-    // I don't think this would actually occur in WebKit, but this rule still may be
-    // important for compatibility.
-    return false;
-}
-
 FileList* FileInputType::files()
 {
-    return m_fileList.get();
+    return m_fileList.ptr();
 }
 
 bool FileInputType::canSetValue(const String& value)
@@ -265,15 +254,15 @@ void FileInputType::setValue(const String&, bool, TextFieldEventBehavior)
     // FIXME: Should we clear the file list, or replace it with a new empty one here? This is observable from JavaScript through custom properties.
     m_fileList->clear();
     m_icon = nullptr;
-    element().setNeedsStyleRecalc();
+    element().invalidateStyleForSubtree();
 }
 
-PassRefPtr<FileList> FileInputType::createFileList(const Vector<FileChooserFileInfo>& files) const
+Ref<FileList> FileInputType::createFileList(const Vector<FileChooserFileInfo>& files)
 {
     Vector<RefPtr<File>> fileObjects;
-    for (const FileChooserFileInfo& info : files)
-        fileObjects.append(File::createWithName(info.path, info.displayName));
-
+    fileObjects.reserveInitialCapacity(files.size());
+    for (auto& info : files)
+        fileObjects.uncheckedAppend(File::createWithName(info.path, info.displayName));
     return FileList::create(WTFMove(fileObjects));
 }
 
@@ -285,7 +274,7 @@ bool FileInputType::isFileUpload() const
 void FileInputType::createShadowSubtree()
 {
     ASSERT(element().shadowRoot());
-    element().userAgentShadowRoot()->appendChild(element().multiple() ? UploadButtonElement::createForMultiple(element().document()): UploadButtonElement::create(element().document()), IGNORE_EXCEPTION);
+    element().userAgentShadowRoot()->appendChild(element().multiple() ? UploadButtonElement::createForMultiple(element().document()): UploadButtonElement::create(element().document()));
 }
 
 void FileInputType::disabledAttributeChanged()
@@ -312,28 +301,31 @@ void FileInputType::multipleAttributeChanged()
         button->setValue(element().multiple() ? fileButtonChooseMultipleFilesLabel() : fileButtonChooseFileLabel());
 }
 
+#if !PLATFORM(IOS)
+
 void FileInputType::requestIcon(const Vector<String>& paths)
 {
-#if PLATFORM(IOS)
-    UNUSED_PARAM(paths);
-#else
     if (!paths.size()) {
-        updateRendering(nullptr);
+        iconLoaded(nullptr);
         return;
     }
 
-    Chrome* chrome = this->chrome();
-    if (!chrome)
+    auto* chrome = this->chrome();
+    if (!chrome) {
+        iconLoaded(nullptr);
         return;
+    }
 
     if (m_fileIconLoader)
         m_fileIconLoader->invalidate();
 
-    m_fileIconLoader = std::make_unique<FileIconLoader>(static_cast<FileIconLoaderClient&>(*this));
+    FileIconLoaderClient& client = *this;
+    m_fileIconLoader = std::make_unique<FileIconLoader>(client);
 
-    chrome->loadIconForFiles(paths, m_fileIconLoader.get());
-#endif
+    chrome->loadIconForFiles(paths, *m_fileIconLoader);
 }
+
+#endif
 
 void FileInputType::applyFileChooserSettings(const FileChooserSettings& settings)
 {
@@ -343,18 +335,20 @@ void FileInputType::applyFileChooserSettings(const FileChooserSettings& settings
     m_fileChooser = FileChooser::create(this, settings);
 }
 
-void FileInputType::setFiles(PassRefPtr<FileList> files)
+void FileInputType::setFiles(RefPtr<FileList>&& files)
 {
     if (!files)
         return;
 
     Ref<HTMLInputElement> input(element());
 
+    unsigned length = files->length();
+
     bool pathsChanged = false;
-    if (files->length() != m_fileList->length())
+    if (length != m_fileList->length())
         pathsChanged = true;
     else {
-        for (unsigned i = 0; i < files->length(); ++i) {
+        for (unsigned i = 0; i < length; ++i) {
             if (files->item(i)->path() != m_fileList->item(i)->path()) {
                 pathsChanged = true;
                 break;
@@ -362,15 +356,18 @@ void FileInputType::setFiles(PassRefPtr<FileList> files)
         }
     }
 
-    m_fileList = files;
+    m_fileList = files.releaseNonNull();
 
     input->setFormControlValueMatchesRenderer(true);
     input->updateValidity();
 
+#if !PLATFORM(IOS)
     Vector<String> paths;
-    for (unsigned i = 0; i < m_fileList->length(); ++i)
-        paths.append(m_fileList->item(i)->path());
+    paths.reserveInitialCapacity(length);
+    for (unsigned i = 0; i < length; ++i)
+        paths.uncheckedAppend(m_fileList->item(i)->path());
     requestIcon(paths);
+#endif
 
     if (input->renderer())
         input->renderer()->repaint();
@@ -384,17 +381,19 @@ void FileInputType::setFiles(PassRefPtr<FileList> files)
 }
 
 #if PLATFORM(IOS)
+
 void FileInputType::filesChosen(const Vector<FileChooserFileInfo>& paths, const String& displayString, Icon* icon)
 {
     m_displayString = displayString;
     filesChosen(paths);
-    updateRendering(icon);
+    iconLoaded(icon);
 }
 
 String FileInputType::displayString() const
 {
     return m_displayString;
 }
+
 #endif
 
 void FileInputType::filesChosen(const Vector<FileChooserFileInfo>& files)
@@ -402,12 +401,12 @@ void FileInputType::filesChosen(const Vector<FileChooserFileInfo>& files)
     setFiles(createFileList(files));
 }
 
-void FileInputType::updateRendering(PassRefPtr<Icon> icon)
+void FileInputType::iconLoaded(RefPtr<Icon>&& icon)
 {
     if (m_icon == icon)
         return;
 
-    m_icon = icon;
+    m_icon = WTFMove(icon);
     if (element().renderer())
         element().renderer()->repaint();
 }
@@ -444,8 +443,7 @@ Icon* FileInputType::icon() const
 
 String FileInputType::defaultToolTip() const
 {
-    FileList* fileList = m_fileList.get();
-    unsigned listSize = fileList->length();
+    unsigned listSize = m_fileList->length();
     if (!listSize) {
         if (element().multiple())
             return fileButtonNoFilesSelectedLabel();
@@ -453,8 +451,8 @@ String FileInputType::defaultToolTip() const
     }
 
     StringBuilder names;
-    for (size_t i = 0; i < listSize; ++i) {
-        names.append(fileList->item(i)->name());
+    for (unsigned i = 0; i < listSize; ++i) {
+        names.append(m_fileList->item(i)->name());
         if (i != listSize - 1)
             names.append('\n');
     }

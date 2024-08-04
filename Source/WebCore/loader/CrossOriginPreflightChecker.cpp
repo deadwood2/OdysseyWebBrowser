@@ -40,7 +40,6 @@
 #include "DocumentThreadableLoader.h"
 #include "InspectorInstrumentation.h"
 #include "RuntimeEnabledFeatures.h"
-#include "ThreadableLoaderClient.h"
 
 namespace WebCore {
 
@@ -53,15 +52,13 @@ CrossOriginPreflightChecker::CrossOriginPreflightChecker(DocumentThreadableLoade
 CrossOriginPreflightChecker::~CrossOriginPreflightChecker()
 {
     if (m_resource)
-        m_resource->removeClient(this);
+        m_resource->removeClient(*this);
 }
 
 void CrossOriginPreflightChecker::validatePreflightResponse(DocumentThreadableLoader& loader, ResourceRequest&& request, unsigned long identifier, const ResourceResponse& response)
 {
     Frame* frame = loader.document().frame();
     ASSERT(frame);
-    auto cookie = InspectorInstrumentation::willReceiveResourceResponse(frame);
-    InspectorInstrumentation::didReceiveResourceResponse(cookie, identifier, frame->loader().documentLoader(), response, 0);
 
     if (!response.isSuccessful()) {
         loader.preflightFailure(identifier, ResourceError(errorDomainWebKitInternal, 0, request.url(), ASCIILiteral("Preflight response is not successful"), ResourceError::Type::AccessControl));
@@ -82,16 +79,26 @@ void CrossOriginPreflightChecker::validatePreflightResponse(DocumentThreadableLo
         return;
     }
 
+    // FIXME: <https://webkit.org/b/164889> Web Inspector: Show Preflight Request information in inspector
+    // This is only showing success preflight requests and responses but we should show network events
+    // for preflight failures and distinguish them better from non-preflight requests.
+    InspectorInstrumentation::didReceiveResourceResponse(*frame, identifier, frame->loader().documentLoader(), response, nullptr);
+    InspectorInstrumentation::didFinishLoading(frame, frame->loader().documentLoader(), identifier, 0);
+
     CrossOriginPreflightResultCache::singleton().appendEntry(loader.securityOrigin().toString(), request.url(), WTFMove(result));
     loader.preflightSuccess(WTFMove(request));
 }
 
-void CrossOriginPreflightChecker::notifyFinished(CachedResource* resource)
+void CrossOriginPreflightChecker::notifyFinished(CachedResource& resource)
 {
-    ASSERT_UNUSED(resource, resource == m_resource);
+    ASSERT_UNUSED(resource, &resource == m_resource);
     if (m_resource->loadFailedOrCanceled()) {
         ResourceError preflightError = m_resource->resourceError();
-        preflightError.setType(ResourceError::Type::AccessControl);
+        // If the preflight was cancelled by underlying code, it probably means the request was blocked due to some access control policy.
+        // FIXME:: According fetch, we should just pass the error to the layer above. But this may impact some clients like XHR or EventSource.
+        if (preflightError.isNull() || preflightError.isCancellation() || preflightError.isGeneral())
+            preflightError.setType(ResourceError::Type::AccessControl);
+
         m_loader.preflightFailure(m_resource->identifier(), preflightError);
         return;
     }
@@ -100,21 +107,19 @@ void CrossOriginPreflightChecker::notifyFinished(CachedResource* resource)
 
 void CrossOriginPreflightChecker::startPreflight()
 {
-    ResourceLoaderOptions options = static_cast<FetchOptions>(m_loader.options());
-    options.credentials = FetchOptions::Credentials::Omit;
+    ResourceLoaderOptions options;
+    options.referrerPolicy = m_loader.options().referrerPolicy;
     options.redirect = FetchOptions::Redirect::Manual;
+    options.contentSecurityPolicyImposition = ContentSecurityPolicyImposition::SkipPolicyCheck;
 
-    CachedResourceRequest preflightRequest(createAccessControlPreflightRequest(m_request, m_loader.securityOrigin()), options);
+    CachedResourceRequest preflightRequest(createAccessControlPreflightRequest(m_request, m_loader.securityOrigin(), m_loader.referrer()), options);
     if (RuntimeEnabledFeatures::sharedFeatures().resourceTimingEnabled())
         preflightRequest.setInitiator(m_loader.options().initiator);
 
-    if (!m_loader.referrer().isNull())
-        preflightRequest.mutableResourceRequest().setHTTPReferrer(m_loader.referrer());
-
     ASSERT(!m_resource);
-    m_resource = m_loader.document().cachedResourceLoader().requestRawResource(preflightRequest);
+    m_resource = m_loader.document().cachedResourceLoader().requestRawResource(WTFMove(preflightRequest));
     if (m_resource)
-        m_resource->addClient(this);
+        m_resource->addClient(*this);
 }
 
 void CrossOriginPreflightChecker::doPreflight(DocumentThreadableLoader& loader, ResourceRequest&& request)
@@ -122,19 +127,18 @@ void CrossOriginPreflightChecker::doPreflight(DocumentThreadableLoader& loader, 
     if (!loader.document().frame())
         return;
 
-    ResourceRequest preflightRequest = createAccessControlPreflightRequest(request, loader.securityOrigin());
+    ResourceRequest preflightRequest = createAccessControlPreflightRequest(request, loader.securityOrigin(), loader.referrer());
     ResourceError error;
     ResourceResponse response;
     RefPtr<SharedBuffer> data;
 
-    if (!loader.referrer().isNull())
-        preflightRequest.setHTTPReferrer(loader.referrer());
-
     unsigned identifier = loader.document().frame()->loader().loadResourceSynchronously(preflightRequest, DoNotAllowStoredCredentials, ClientCredentialPolicy::CannotAskClientForCredentials, error, response, data);
 
-    // FIXME: Investigate why checking for response httpStatusCode here. In particular, can we have a not-null error and a 2XX response.
-    if (!error.isNull() && response.httpStatusCode() <= 0) {
-        error.setType(ResourceError::Type::AccessControl);
+    if (!error.isNull()) {
+        // If the preflight was cancelled by underlying code, it probably means the request was blocked due to some access control policy.
+        // FIXME:: According fetch, we should just pass the error to the layer above. But this may impact some clients like XHR or EventSource.
+        if (error.isCancellation() || error.isGeneral())
+            error.setType(ResourceError::Type::AccessControl);
         loader.preflightFailure(identifier, error);
         return;
     }

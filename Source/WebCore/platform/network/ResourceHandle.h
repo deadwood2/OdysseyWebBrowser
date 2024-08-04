@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2006, 2011, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,12 +31,8 @@
 #include "ResourceLoadPriority.h"
 #include <wtf/RefCounted.h>
 
-#if PLATFORM(COCOA) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
 #include <wtf/RetainPtr.h>
-#endif
-
-#if USE(QUICK_LOOK)
-#include "QuickLook.h"
 #endif
 
 #if USE(SOUP)
@@ -60,14 +56,14 @@ typedef struct objc_object *id;
 #endif
 #endif
 
-#if USE(CFNETWORK)
+#if USE(CFURLCONNECTION)
 typedef const struct _CFCachedURLResponse* CFCachedURLResponseRef;
 typedef struct _CFURLConnection* CFURLConnectionRef;
 typedef int CFHTTPCookieStorageAcceptPolicy;
 typedef struct OpaqueCFHTTPCookieStorage* CFHTTPCookieStorageRef;
 #endif
 
-#if PLATFORM(COCOA) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
 typedef const struct __CFURLStorageSession* CFURLStorageSessionRef;
 #endif
 
@@ -83,31 +79,34 @@ class Frame;
 class URL;
 class NetworkingContext;
 class ProtectionSpace;
+class QuickLookHandle;
 class ResourceError;
 class ResourceHandleClient;
 class ResourceHandleInternal;
 class NetworkLoadTiming;
 class ResourceRequest;
 class ResourceResponse;
+class SoupNetworkSession;
 class SharedBuffer;
 class Timer;
 
-class ResourceHandle : public RefCounted<ResourceHandle>
-#if PLATFORM(COCOA) || USE(CFNETWORK) || USE(CURL) || USE(SOUP)
-    , public AuthenticationClient
-#endif
-    {
+class ResourceHandle : public RefCounted<ResourceHandle>, public AuthenticationClient {
 public:
     WEBCORE_EXPORT static RefPtr<ResourceHandle> create(NetworkingContext*, const ResourceRequest&, ResourceHandleClient*, bool defersLoading, bool shouldContentSniff);
     WEBCORE_EXPORT static void loadResourceSynchronously(NetworkingContext*, const ResourceRequest&, StoredCredentials, ResourceError&, ResourceResponse&, Vector<char>& data);
 
+#if USE(SOUP)
+    static RefPtr<ResourceHandle> create(SoupNetworkSession&, const ResourceRequest&, ResourceHandleClient*, bool defersLoading, bool shouldContentSniff);
+#endif
+
     WEBCORE_EXPORT virtual ~ResourceHandle();
 
-#if PLATFORM(COCOA) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
     ResourceRequest willSendRequest(ResourceRequest&&, ResourceResponse&&);
 #endif
 
-#if PLATFORM(COCOA) || USE(CFNETWORK) || USE(CURL) || USE(SOUP)
+    void didReceiveResponse(ResourceResponse&&);
+
     bool shouldUseCredentialStorage();
     void didReceiveAuthenticationChallenge(const AuthenticationChallenge&);
     void receivedCredential(const AuthenticationChallenge&, const Credential&) override;
@@ -115,9 +114,8 @@ public:
     void receivedCancellation(const AuthenticationChallenge&) override;
     void receivedRequestToPerformDefaultHandling(const AuthenticationChallenge&) override;
     void receivedChallengeRejection(const AuthenticationChallenge&) override;
-#endif
 
-#if PLATFORM(COCOA) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
     bool tryHandlePasswordBasedAuthentication(const AuthenticationChallenge&);
 #endif
 
@@ -125,7 +123,7 @@ public:
     bool canAuthenticateAgainstProtectionSpace(const ProtectionSpace&);
 #endif
 
-#if PLATFORM(COCOA) && !USE(CFNETWORK)
+#if PLATFORM(COCOA) && !USE(CFURLCONNECTION)
     WEBCORE_EXPORT NSURLConnection *connection() const;
     id makeDelegate(bool);
     id delegate();
@@ -133,7 +131,7 @@ public:
 #endif
         
 #if PLATFORM(COCOA) && ENABLE(WEB_TIMING)
-#if USE(CFNETWORK)
+#if USE(CFURLCONNECTION)
     static void getConnectionTimingData(CFURLConnectionRef, NetworkLoadTiming&);
 #else
     static void getConnectionTimingData(NSURLConnection *, NetworkLoadTiming&);
@@ -145,18 +143,13 @@ public:
     void unschedule(WTF::SchedulePair&);
 #endif
 
-#if USE(CFNETWORK)
+#if USE(CFURLCONNECTION)
     CFURLStorageSessionRef storageSession() const;
     CFURLConnectionRef connection() const;
     WEBCORE_EXPORT RetainPtr<CFURLConnectionRef> releaseConnectionForDownload();
     const ResourceRequest& currentRequest() const;
     static void setHostAllowsAnyHTTPSCertificate(const String&);
     static void setClientCertificate(const String& host, CFDataRef);
-#endif
-
-#if USE(QUICK_LOOK)
-    QuickLookHandle* quickLookHandle() { return m_quickLook.get(); }
-    void setQuickLookHandle(std::unique_ptr<QuickLookHandle> handle) { m_quickLook = WTFMove(handle); }
 #endif
 
 #if PLATFORM(WIN) && USE(CURL)
@@ -185,9 +178,6 @@ public:
     void ensureReadBuffer();
     size_t currentStreamPosition() const;
     void didStartRequest();
-    static void setHostAllowsAnyHTTPSCertificate(const String&);
-    static void setClientCertificate(const String& host, GTlsCertificate*);
-    static void setIgnoreSSLErrors(bool);
     double m_requestTime;
 #endif
 
@@ -211,10 +201,10 @@ public:
 #endif
 
     // Called in response to ResourceHandleClient::willCacheResponseAsync().
-#if USE(CFNETWORK)
+#if USE(CFURLCONNECTION)
     WEBCORE_EXPORT void continueWillCacheResponse(CFCachedURLResponseRef);
 #endif
-#if PLATFORM(COCOA) && !USE(CFNETWORK)
+#if PLATFORM(COCOA) && !USE(CFURLCONNECTION)
     WEBCORE_EXPORT void continueWillCacheResponse(NSCachedURLResponse *);
 #endif
 
@@ -230,11 +220,11 @@ public:
     using RefCounted<ResourceHandle>::ref;
     using RefCounted<ResourceHandle>::deref;
 
-#if PLATFORM(COCOA) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
     WEBCORE_EXPORT static CFStringRef synchronousLoadRunLoopMode();
 #endif
 
-#if PLATFORM(IOS) && USE(CFNETWORK)
+#if PLATFORM(IOS) && USE(CFURLCONNECTION)
     static CFMutableDictionaryRef createSSLPropertiesFromNSURLRequest(const ResourceRequest&);
 #endif
 
@@ -256,7 +246,13 @@ private:
         InvalidURLFailure
     };
 
+#if USE(SOUP)
+    ResourceHandle(SoupNetworkSession&, const ResourceRequest&, ResourceHandleClient*, bool defersLoading, bool shouldContentSniff);
+#endif
+
     void platformSetDefersLoading(bool);
+
+    void platformContinueSynchronousDidReceiveResponse();
 
     void scheduleFailure(FailureType);
 
@@ -266,19 +262,19 @@ private:
     void refAuthenticationClient() override { ref(); }
     void derefAuthenticationClient() override { deref(); }
 
-#if PLATFORM(COCOA) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
     enum class SchedulingBehavior { Asynchronous, Synchronous };
 #endif
 
-#if USE(CFNETWORK)
+#if USE(CFURLCONNECTION)
     void createCFURLConnection(bool shouldUseCredentialStorage, bool shouldContentSniff, SchedulingBehavior, CFDictionaryRef clientProperties);
 #endif
 
-#if PLATFORM(MAC) && !USE(CFNETWORK)
+#if PLATFORM(MAC) && !USE(CFURLCONNECTION)
     void createNSURLConnection(id delegate, bool shouldUseCredentialStorage, bool shouldContentSniff, SchedulingBehavior);
 #endif
 
-#if PLATFORM(IOS) && !USE(CFNETWORK)
+#if PLATFORM(IOS) && !USE(CFURLCONNECTION)
     void createNSURLConnection(id delegate, bool shouldUseCredentialStorage, bool shouldContentSniff, SchedulingBehavior, NSDictionary *connectionProperties);
 #endif
 
@@ -288,10 +284,6 @@ private:
 
     friend class ResourceHandleInternal;
     std::unique_ptr<ResourceHandleInternal> d;
-
-#if USE(QUICK_LOOK)
-    std::unique_ptr<QuickLookHandle> m_quickLook;
-#endif
 };
 
 }

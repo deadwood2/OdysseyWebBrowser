@@ -22,18 +22,22 @@
 
 #include <stddef.h>
 
+namespace std {
+template<typename T> class optional;
+}
+
 namespace WTF {
 
 template<typename T> class Function;
 template<typename T> class LazyNeverDestroyed;
 template<typename T> class NeverDestroyed;
 template<typename T> class OptionSet;
-template<typename T> class Optional;
 template<typename T> class PassRefPtr;
 template<typename T> class Ref;
 template<typename T> class RefPtr;
 template<typename T> class StringBuffer;
 
+template<typename... T> class Variant;
 template<typename T, size_t inlineCapacity, typename OverflowHandler, size_t minCapacity> class Vector;
 
 class AtomicString;
@@ -51,18 +55,6 @@ class TextPosition;
 
 }
 
-namespace std {
-namespace experimental {
-
-template<typename... T> class variant;
-
-}
-
-template<typename... Types>
-using variant = std::experimental::variant<Types...>;
-
-}
-
 using WTF::AtomicString;
 using WTF::AtomicStringImpl;
 using WTF::BinarySemaphore;
@@ -72,7 +64,6 @@ using WTF::FunctionDispatcher;
 using WTF::LazyNeverDestroyed;
 using WTF::NeverDestroyed;
 using WTF::OptionSet;
-using WTF::Optional;
 using WTF::OrdinalNumber;
 using WTF::PassRefPtr;
 using WTF::PrintStream;
@@ -84,4 +75,5 @@ using WTF::StringBuilder;
 using WTF::StringImpl;
 using WTF::StringView;
 using WTF::TextPosition;
+using WTF::Variant;
 using WTF::Vector;

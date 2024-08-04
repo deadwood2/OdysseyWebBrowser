@@ -62,6 +62,10 @@
 #include "WebMediaSessionFocusManager.h"
 #endif
 
+#if USE(SOUP)
+#include <WebCore/SoupNetworkProxySettings.h>
+#endif
+
 #if PLATFORM(COCOA)
 OBJC_CLASS NSMutableDictionary;
 OBJC_CLASS NSObject;
@@ -70,6 +74,7 @@ OBJC_CLASS NSString;
 
 namespace API {
 class AutomationClient;
+class CustomProtocolManagerClient;
 class DownloadClient;
 class LegacyContextHistoryClient;
 class PageConfiguration;
@@ -78,7 +83,9 @@ class PageConfiguration;
 namespace WebKit {
 
 class DownloadProxy;
+class HighPerformanceGraphicsUsageSampler;
 class UIGamepad;
+class PerActivityStateCPUUsageSampler;
 class WebAutomationSession;
 class WebContextSupplement;
 class WebIconDatabase;
@@ -135,6 +142,7 @@ public:
     void setHistoryClient(std::unique_ptr<API::LegacyContextHistoryClient>);
     void setDownloadClient(std::unique_ptr<API::DownloadClient>);
     void setAutomationClient(std::unique_ptr<API::AutomationClient>);
+    void setCustomProtocolManagerClient(std::unique_ptr<API::CustomProtocolManagerClient>&&);
 
     void setMaximumNumberOfProcesses(unsigned); // Can only be called when there are no processes running.
     unsigned maximumNumberOfProcesses() const { return !m_configuration->maximumProcessCount() ? UINT_MAX : m_configuration->maximumProcessCount(); }
@@ -166,7 +174,7 @@ public:
 
     const String& injectedBundlePath() const { return m_configuration->injectedBundlePath(); }
 
-    DownloadProxy* download(WebPageProxy* initiatingPage, const WebCore::ResourceRequest&);
+    DownloadProxy* download(WebPageProxy* initiatingPage, const WebCore::ResourceRequest&, const String& suggestedFilename = { });
     DownloadProxy* resumeDownload(const API::Data* resumeData, const String& path);
 
     void setInjectedBundleInitializationUserData(PassRefPtr<API::Object> userData) { m_injectedBundleInitializationUserData = userData; }
@@ -177,6 +185,7 @@ public:
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
     void setAdditionalPluginsDirectory(const String&);
+    void refreshPlugins();
 
     PluginInfoStore& pluginInfoStore() { return m_pluginInfoStore; }
 
@@ -199,9 +208,7 @@ public:
     void registerURLSchemeAsNoAccess(const String&);
     void registerURLSchemeAsDisplayIsolated(const String&);
     void registerURLSchemeAsCORSEnabled(const String&);
-#if ENABLE(CACHE_PARTITIONING)
     void registerURLSchemeAsCachePartitioned(const String&);
-#endif
 
     VisitedLinkStore& visitedLinkStore() { return m_visitedLinkStore.get(); }
 
@@ -215,6 +222,7 @@ public:
 
 #if USE(SOUP)
     void setInitialHTTPCookieAcceptPolicy(HTTPCookieAcceptPolicy policy) { m_initialHTTPCookieAcceptPolicy = policy; }
+    void setNetworkProxySettings(const WebCore::SoupNetworkProxySettings&);
 #endif
     void setEnhancedAccessibility(bool);
     
@@ -224,6 +232,8 @@ public:
 
     API::LegacyContextHistoryClient& historyClient() { return *m_historyClient; }
     WebContextClient& client() { return m_client; }
+
+    API::CustomProtocolManagerClient& customProtocolManagerClient() const { return *m_customProtocolManagerClient; }
 
     WebIconDatabase* iconDatabase() const { return m_iconDatabase.get(); }
 
@@ -243,6 +253,8 @@ public:
 
     void clearCachedCredentials();
     void terminateDatabaseProcess();
+
+    void reportWebContentCPUTime(int64_t cpuTime, uint64_t activityState);
 
     void allowSpecificHTTPSCertificateForHost(const WebCertificateInfo*, const String& host);
 
@@ -285,12 +297,12 @@ public:
     NetworkProcessProxy* networkProcess() { return m_networkProcess.get(); }
     void networkProcessCrashed(NetworkProcessProxy*);
 
-    void getNetworkProcessConnection(PassRefPtr<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>);
+    void getNetworkProcessConnection(Ref<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>&&);
 
 #if ENABLE(DATABASE_PROCESS)
     void ensureDatabaseProcess();
     DatabaseProcessProxy* databaseProcess() { return m_databaseProcess.get(); }
-    void getDatabaseProcessConnection(PassRefPtr<Messages::WebProcessProxy::GetDatabaseProcessConnection::DelayedReply>);
+    void getDatabaseProcessConnection(Ref<Messages::WebProcessProxy::GetDatabaseProcessConnection::DelayedReply>&&);
     void databaseProcessCrashed(DatabaseProcessProxy*);
 #endif
 
@@ -320,7 +332,6 @@ public:
     void registerSchemeForCustomProtocol(const String&);
     void unregisterSchemeForCustomProtocol(const String&);
 
-    static HashSet<String, ASCIICaseInsensitiveHash>& globalURLSchemesWithCustomProtocolHandlers();
     static void registerGlobalURLSchemeAsHavingCustomProtocolHandlers(const String&);
     static void unregisterGlobalURLSchemeAsHavingCustomProtocolHandlers(const String&);
 
@@ -365,6 +376,8 @@ public:
 
     bool resourceLoadStatisticsEnabled() { return m_resourceLoadStatisticsEnabled; }
     void setResourceLoadStatisticsEnabled(bool enabled) { m_resourceLoadStatisticsEnabled = enabled; }
+
+    bool alwaysRunsAtBackgroundPriority() { return m_alwaysRunsAtBackgroundPriority; }
 
 #if ENABLE(GAMEPAD)
     void gamepadConnected(const UIGamepad&);
@@ -434,6 +447,9 @@ private:
 
     void setAnyPageGroupMightHavePrivateBrowsingEnabled(bool);
 
+    void resolvePathsForSandboxExtensions();
+    void platformResolvePathsForSandboxExtensions();
+
     Ref<API::ProcessPoolConfiguration> m_configuration;
 
     IPC::MessageReceiverMap m_messageReceiverMap;
@@ -453,6 +469,7 @@ private:
     std::unique_ptr<API::AutomationClient> m_automationClient;
     std::unique_ptr<API::DownloadClient> m_downloadClient;
     std::unique_ptr<API::LegacyContextHistoryClient> m_historyClient;
+    std::unique_ptr<API::CustomProtocolManagerClient> m_customProtocolManagerClient;
 
     RefPtr<WebAutomationSession> m_automationSession;
 
@@ -473,9 +490,7 @@ private:
     HashSet<String> m_schemesToRegisterAsDisplayIsolated;
     HashSet<String> m_schemesToRegisterAsCORSEnabled;
     HashSet<String> m_schemesToRegisterAsAlwaysRevalidated;
-#if ENABLE(CACHE_PARTITIONING)
     HashSet<String> m_schemesToRegisterAsCachePartitioned;
-#endif
 
     bool m_alwaysUsesComplexTextCodePath;
     bool m_shouldUseFontSmoothing;
@@ -497,8 +512,10 @@ private:
     WebContextSupplementMap m_supplements;
 
 #if USE(SOUP)
-    HTTPCookieAcceptPolicy m_initialHTTPCookieAcceptPolicy;
+    HTTPCookieAcceptPolicy m_initialHTTPCookieAcceptPolicy { HTTPCookieAcceptPolicyOnlyFromMainDocumentDomain };
+    WebCore::SoupNetworkProxySettings m_networkProxySettings;
 #endif
+    HashSet<String, ASCIICaseInsensitiveHash> m_urlSchemesRegisteredForCustomProtocols;
 
 #if PLATFORM(MAC)
     RetainPtr<NSObject> m_enhancedAccessibilityObserver;
@@ -506,6 +523,9 @@ private:
     RetainPtr<NSObject> m_automaticSpellingCorrectionNotificationObserver;
     RetainPtr<NSObject> m_automaticQuoteSubstitutionNotificationObserver;
     RetainPtr<NSObject> m_automaticDashSubstitutionNotificationObserver;
+
+    std::unique_ptr<HighPerformanceGraphicsUsageSampler> m_highPerformanceGraphicsUsageSampler;
+    std::unique_ptr<PerActivityStateCPUUsageSampler> m_perActivityStateCPUUsageSampler;
 #endif
 
     String m_overrideIconDatabasePath;
@@ -533,6 +553,8 @@ private:
     bool m_memoryCacheDisabled;
     bool m_resourceLoadStatisticsEnabled { false };
 
+    bool m_alwaysRunsAtBackgroundPriority;
+
     UserObservablePageCounter m_userObservablePageCounter;
     ProcessSuppressionDisabledCounter m_processSuppressionDisabledForPageCounter;
     HiddenPageThrottlingAutoIncreasesCounter m_hiddenPageThrottlingAutoIncreasesCounter;
@@ -558,6 +580,22 @@ private:
 #if PLATFORM(COCOA)
     bool m_cookieStoragePartitioningEnabled { false };
 #endif
+
+    struct Paths {
+        String injectedBundlePath;
+        String applicationCacheDirectory;
+        String webSQLDatabaseDirectory;
+        String mediaCacheDirectory;
+        String mediaKeyStorageDirectory;
+        String uiProcessBundleResourcePath;
+
+#if PLATFORM(IOS)
+        String cookieStorageDirectory;
+        String containerCachesDirectory;
+        String containerTemporaryDirectory;
+#endif
+    };
+    Paths m_resolvedPaths;
 };
 
 template<typename T>

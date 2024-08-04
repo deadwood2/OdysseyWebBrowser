@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -46,7 +46,7 @@ class HTMLFormControlElement : public LabelableElement, public FormAssociatedEle
 public:
     virtual ~HTMLFormControlElement();
 
-    HTMLFormElement* form() const { return FormAssociatedElement::form(); }
+    HTMLFormElement* form() const final { return FormAssociatedElement::form(); }
 
     WEBCORE_EXPORT String formEnctype() const;
     WEBCORE_EXPORT void setFormEnctype(const String&);
@@ -92,18 +92,16 @@ public:
     virtual void setActivatedSubmit(bool) { }
 
 #if ENABLE(IOS_AUTOCORRECT_AND_AUTOCAPITALIZE)
-    WEBCORE_EXPORT bool autocorrect() const;
-    WEBCORE_EXPORT void setAutocorrect(bool);
-
-    WEBCORE_EXPORT WebAutocapitalizeType autocapitalizeType() const;
-    WEBCORE_EXPORT const AtomicString& autocapitalize() const;
-    WEBCORE_EXPORT void setAutocapitalize(const AtomicString&);
+    WEBCORE_EXPORT bool shouldAutocorrect() const final;
+    WEBCORE_EXPORT AutocapitalizeType autocapitalizeType() const final;
 #endif
 
     WEBCORE_EXPORT bool willValidate() const final;
     void updateVisibleValidationMessage();
     void hideVisibleValidationMessage();
-    WEBCORE_EXPORT bool checkValidity(Vector<RefPtr<FormAssociatedElement>>* unhandledInvalidControls = nullptr);
+    WEBCORE_EXPORT bool checkValidity(Vector<RefPtr<HTMLFormControlElement>>* unhandledInvalidControls = nullptr);
+    bool reportValidity();
+    void focusAndShowValidationMessage();
     // This must be called when a validation constraint or control value is changed.
     void updateValidity();
     void setCustomValidity(const String&) override;
@@ -140,7 +138,7 @@ protected:
     InsertionNotificationRequest insertedInto(ContainerNode&) override;
     void finishedInsertingSubtree() override;
     void removedFrom(ContainerNode&) override;
-    void didMoveToNewDocument(Document* oldDocument) override;
+    void didMoveToNewDocument(Document& oldDocument) override;
 
     bool supportsFocus() const override;
     bool isKeyboardFocusable(KeyboardEvent&) const override;
@@ -171,7 +169,6 @@ private:
 
     int tabIndex() const final;
 
-    HTMLFormElement* virtualForm() const override;
     bool isValidFormControlElement() const;
 
     bool computeIsDisabledByFieldsetAncestor() const;
@@ -181,14 +178,14 @@ private:
     HTMLFormControlElement* asFormNamedItem() final { return this; }
 
     std::unique_ptr<ValidationMessage> m_validationMessage;
-    bool m_disabled : 1;
-    bool m_isReadOnly : 1;
-    bool m_isRequired : 1;
-    bool m_valueMatchesRenderer : 1;
-    bool m_disabledByAncestorFieldset : 1;
+    unsigned m_disabled : 1;
+    unsigned m_isReadOnly : 1;
+    unsigned m_isRequired : 1;
+    unsigned m_valueMatchesRenderer : 1;
+    unsigned m_disabledByAncestorFieldset : 1;
 
     enum DataListAncestorState { Unknown, InsideDataList, NotInsideDataList };
-    mutable enum DataListAncestorState m_dataListAncestorState;
+    mutable unsigned m_dataListAncestorState : 2;
 
     // The initial value of m_willValidate depends on the derived class. We can't
     // initialize it with a virtual function in the constructor. m_willValidate
@@ -198,11 +195,11 @@ private:
 
     // Cache of validity()->valid().
     // But "candidate for constraint validation" doesn't affect m_isValid.
-    bool m_isValid : 1;
+    unsigned m_isValid : 1;
 
-    bool m_wasChangedSinceLastFormControlChangeEvent : 1;
+    unsigned m_wasChangedSinceLastFormControlChangeEvent : 1;
 
-    bool m_hasAutofocused : 1;
+    unsigned m_hasAutofocused : 1;
 };
 
 } // namespace WebCore

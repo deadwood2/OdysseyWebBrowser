@@ -45,34 +45,13 @@ bool isOnAccessControlSimpleRequestMethodWhitelist(const String& method)
     return method == "GET" || method == "HEAD" || method == "POST";
 }
 
-bool isOnAccessControlSimpleRequestHeaderWhitelist(HTTPHeaderName name, const String& value)
-{
-    switch (name) {
-    case HTTPHeaderName::Accept:
-    case HTTPHeaderName::AcceptLanguage:
-    case HTTPHeaderName::ContentLanguage:
-    case HTTPHeaderName::Origin:
-    case HTTPHeaderName::Referer:
-        return true;
-    case HTTPHeaderName::ContentType: {
-        // Preflight is required for MIME types that can not be sent via form submission.
-        String mimeType = extractMIMETypeFromMediaType(value);
-        return equalIgnoringASCIICase(mimeType, "application/x-www-form-urlencoded")
-            || equalIgnoringASCIICase(mimeType, "multipart/form-data")
-            || equalIgnoringASCIICase(mimeType, "text/plain");
-    }
-    default:
-        return false;
-    }
-}
-
 bool isSimpleCrossOriginAccessRequest(const String& method, const HTTPHeaderMap& headerMap)
 {
     if (!isOnAccessControlSimpleRequestMethodWhitelist(method))
         return false;
 
     for (const auto& header : headerMap) {
-        if (!header.keyAsHTTPHeaderName || !isOnAccessControlSimpleRequestHeaderWhitelist(header.keyAsHTTPHeaderName.value(), header.value))
+        if (!header.keyAsHTTPHeaderName || !isCrossOriginSafeRequestHeader(header.keyAsHTTPHeaderName.value(), header.value))
             return false;
     }
 
@@ -105,13 +84,17 @@ void updateRequestForAccessControl(ResourceRequest& request, SecurityOrigin& sec
     request.setHTTPOrigin(securityOrigin.toString());
 }
 
-ResourceRequest createAccessControlPreflightRequest(const ResourceRequest& request, SecurityOrigin& securityOrigin)
+ResourceRequest createAccessControlPreflightRequest(const ResourceRequest& request, SecurityOrigin& securityOrigin, const String& referrer)
 {
     ResourceRequest preflightRequest(request.url());
+    static const double platformDefaultTimeout = 0;
+    preflightRequest.setTimeoutInterval(platformDefaultTimeout);
     updateRequestForAccessControl(preflightRequest, securityOrigin, DoNotAllowStoredCredentials);
     preflightRequest.setHTTPMethod("OPTIONS");
     preflightRequest.setHTTPHeaderField(HTTPHeaderName::AccessControlRequestMethod, request.httpMethod());
     preflightRequest.setPriority(request.priority());
+    if (!referrer.isNull())
+        preflightRequest.setHTTPReferrer(referrer);
 
     const HTTPHeaderMap& requestHeaderFields = request.httpHeaderFields();
 
@@ -130,15 +113,15 @@ ResourceRequest createAccessControlPreflightRequest(const ResourceRequest& reque
 
         bool appendComma = false;
         for (const auto& headerField : unsafeHeaders) {
-            // FIXME: header names should be separated by 0x2C, without space.
             if (appendComma)
-                headerBuffer.appendLiteral(", ");
+                headerBuffer.append(',');
             else
                 appendComma = true;
 
             headerBuffer.append(headerField);
         }
-        preflightRequest.setHTTPHeaderField(HTTPHeaderName::AccessControlRequestHeaders, headerBuffer.toString());
+        if (!headerBuffer.isEmpty())
+            preflightRequest.setHTTPHeaderField(HTTPHeaderName::AccessControlRequestHeaders, headerBuffer.toString());
     }
 
     return preflightRequest;
@@ -146,7 +129,7 @@ ResourceRequest createAccessControlPreflightRequest(const ResourceRequest& reque
 
 bool isValidCrossOriginRedirectionURL(const URL& redirectURL)
 {
-    return SchemeRegistry::shouldTreatURLSchemeAsCORSEnabled(redirectURL.protocol())
+    return SchemeRegistry::shouldTreatURLSchemeAsCORSEnabled(redirectURL.protocol().toStringWithoutCopying())
         && redirectURL.user().isEmpty()
         && redirectURL.pass().isEmpty();
 }
@@ -170,12 +153,14 @@ bool passesAccessControlCheck(const ResourceResponse& response, StoredCredential
     if (accessControlOriginString == "*" && includeCredentials == DoNotAllowStoredCredentials)
         return true;
 
-    // FIXME: Access-Control-Allow-Origin can contain a list of origins.
-    if (accessControlOriginString != securityOrigin.toString()) {
+    String securityOriginString = securityOrigin.toString();
+    if (accessControlOriginString != securityOriginString) {
         if (accessControlOriginString == "*")
-            errorDescription = "Cannot use wildcard in Access-Control-Allow-Origin when credentials flag is true.";
+            errorDescription = ASCIILiteral("Cannot use wildcard in Access-Control-Allow-Origin when credentials flag is true.");
+        else if (accessControlOriginString.find(',') != notFound)
+            errorDescription = ASCIILiteral("Access-Control-Allow-Origin cannot contain more than one origin.");
         else
-            errorDescription =  "Origin " + securityOrigin.toString() + " is not allowed by Access-Control-Allow-Origin.";
+            errorDescription = makeString("Origin ", securityOriginString, " is not allowed by Access-Control-Allow-Origin.");
         return false;
     }
 

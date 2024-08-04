@@ -68,6 +68,13 @@ void HTMLAppletElement::parseAttribute(const QualifiedName& name, const AtomicSt
     HTMLPlugInImageElement::parseAttribute(name, value);
 }
 
+bool HTMLAppletElement::isURLAttribute(const Attribute& attribute) const
+{
+    return attribute.name().localName() == codebaseAttr
+        || attribute.name().localName() == objectAttr
+        || HTMLPlugInImageElement::isURLAttribute(attribute);
+}
+
 bool HTMLAppletElement::rendererIsNeeded(const RenderStyle& style)
 {
     if (!hasAttributeWithoutSynchronization(codeAttr))
@@ -174,14 +181,10 @@ bool HTMLAppletElement::canEmbedJava() const
     if (document().isSandboxed(SandboxPlugins))
         return false;
 
-    Settings* settings = document().settings();
-    if (!settings)
+    if (!document().settings().isJavaEnabled())
         return false;
 
-    if (!settings->isJavaEnabled())
-        return false;
-
-    if (document().securityOrigin()->isLocal() && !settings->isJavaEnabledForLocalFiles())
+    if (document().securityOrigin().isLocal() && !document().settings().isJavaEnabledForLocalFiles())
         return false;
 
     return true;

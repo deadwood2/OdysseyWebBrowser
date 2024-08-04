@@ -37,7 +37,6 @@
 #include "Blob.h"
 #include "CookieJar.h"
 #include "Document.h"
-#include "ExceptionCodePlaceholder.h"
 #include "FileError.h"
 #include "FileReaderLoader.h"
 #include "Frame.h"
@@ -47,7 +46,6 @@
 #include "ProgressTracker.h"
 #include "ResourceRequest.h"
 #include "ScriptExecutionContext.h"
-#include "Settings.h"
 #include "SocketProvider.h"
 #include "SocketStreamError.h"
 #include "SocketStreamHandle.h"
@@ -126,7 +124,8 @@ void WebSocketChannel::connect(const URL& requestedURL, const String& protocol)
         ref();
         Page* page = frame->page();
         SessionID sessionID = page ? page->sessionID() : SessionID::defaultSessionID();
-        m_handle = m_socketProvider->createSocketStreamHandle(m_handshake->url(), *this, sessionID);
+        String partition = m_document->topDocument().securityOrigin().domainForCachePartition();
+        m_handle = m_socketProvider->createSocketStreamHandle(m_handshake->url(), *this, sessionID, partition);
     }
 }
 
@@ -308,7 +307,7 @@ void WebSocketChannel::didCloseSocketStream(SocketStreamHandle& handle)
     deref();
 }
 
-void WebSocketChannel::didReceiveSocketStreamData(SocketStreamHandle& handle, const char* data, Optional<size_t> len)
+void WebSocketChannel::didReceiveSocketStreamData(SocketStreamHandle& handle, const char* data, std::optional<size_t> len)
 {
     if (len)
         LOG(Network, "WebSocketChannel %p didReceiveSocketStreamData() Received %zu bytes", this, len.value());
@@ -446,7 +445,7 @@ bool WebSocketChannel::processBuffer()
             if (!m_handshake->serverSetCookie().isEmpty()) {
                 if (m_document && cookiesEnabled(*m_document)) {
                     // Exception (for sandboxed documents) ignored.
-                    m_document->setCookie(m_handshake->serverSetCookie(), IGNORE_EXCEPTION);
+                    m_document->setCookie(m_handshake->serverSetCookie());
                 }
             }
             // FIXME: handle set-cookie2.

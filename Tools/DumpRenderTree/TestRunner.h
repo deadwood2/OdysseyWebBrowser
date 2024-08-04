@@ -25,9 +25,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
- 
-#ifndef TestRunner_h
-#define TestRunner_h
+
+#pragma once
 
 #include "UIScriptContext.h"
 #include <JavaScriptCore/JSObjectRef.h>
@@ -35,13 +34,14 @@
 #include <set>
 #include <string>
 #include <vector>
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
+
+extern FILE* testResult;
 
 class TestRunner : public WTR::UIScriptContextDelegate, public RefCounted<TestRunner> {
     WTF_MAKE_NONCOPYABLE(TestRunner);
 public:
-    static PassRefPtr<TestRunner> create(const std::string& testURL, const std::string& expectedPixelHash);
+    static Ref<TestRunner> create(const std::string& testURL, const std::string& expectedPixelHash);
 
     static const unsigned viewWidth;
     static const unsigned viewHeight;
@@ -96,6 +96,7 @@ public:
     void setFetchAPIEnabled(bool);
     void setAllowUniversalAccessFromFileURLs(bool);
     void setAllowFileAccessFromFileURLs(bool);
+    void setNeedsStorageAccessFromFileURLsQuirk(bool);
     void setAppCacheMaximumSize(unsigned long long quota);
     void setAuthorAndUserStylesEnabled(bool);
     void setCacheModel(int);
@@ -137,7 +138,7 @@ public:
     size_t webHistoryItemCount();
     int windowCount();
 
-#if ENABLE(IOS_TEXT_AUTOSIZING)
+#if ENABLE(TEXT_AUTOSIZING)
     void setTextAutosizingEnabled(bool);
 #endif
 
@@ -368,8 +369,13 @@ public:
     double timeout() { return m_timeout; }
 
     unsigned imageCountInGeneralPasteboard() const;
-    
+
     void callUIScriptCallback(unsigned callbackID, JSStringRef result);
+
+    void setDumpJSConsoleLogInStdErr(bool inStdErr) { m_dumpJSConsoleLogInStdErr = inStdErr; }
+    bool dumpJSConsoleLogInStdErr() const { return m_dumpJSConsoleLogInStdErr; }
+
+    void setSpellCheckerLoggingEnabled(bool);
 
 private:
     TestRunner(const std::string& testURL, const std::string& expectedPixelHash);
@@ -435,6 +441,7 @@ private:
     bool m_areLegacyWebNotificationPermissionRequestsIgnored;
     bool m_customFullScreenBehavior;
     bool m_hasPendingWebNotificationClick;
+    bool m_dumpJSConsoleLogInStdErr { false };
 
     double m_databaseDefaultQuota;
     double m_databaseMaxQuota;
@@ -466,5 +473,3 @@ private:
 
     int m_timeout;
 };
-
-#endif // TestRunner_h

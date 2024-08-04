@@ -29,8 +29,11 @@
 
 #include "ActiveDOMObject.h"
 #include "DOMWrapperWorld.h"
+#include "ExceptionOr.h"
+#include "IDBCursorDirection.h"
 #include "IDBCursorInfo.h"
 #include <heap/Strong.h>
+#include <wtf/Variant.h>
 
 namespace WebCore {
 
@@ -39,35 +42,28 @@ class IDBIndex;
 class IDBObjectStore;
 class IDBTransaction;
 
-struct ExceptionCodeWithMessage;
-
 class IDBCursor : public ScriptWrappable, public RefCounted<IDBCursor>, public ActiveDOMObject {
 public:
+    static Ref<IDBCursor> create(IDBTransaction&, IDBObjectStore&, const IDBCursorInfo&);
     static Ref<IDBCursor> create(IDBTransaction&, IDBIndex&, const IDBCursorInfo&);
-
-    static const AtomicString& directionNext();
-    static const AtomicString& directionNextUnique();
-    static const AtomicString& directionPrev();
-    static const AtomicString& directionPrevUnique();
-
-    static IndexedDB::CursorDirection stringToDirection(const String& modeString, ExceptionCode&);
-    static const AtomicString& directionToString(IndexedDB::CursorDirection mode);
     
     virtual ~IDBCursor();
 
-    const String& direction() const;
+    using Source = Variant<RefPtr<IDBObjectStore>, RefPtr<IDBIndex>>;
+
+    const Source& source() const;
+    IDBCursorDirection direction() const;
     JSC::JSValue key() const;
     JSC::JSValue primaryKey() const;
     JSC::JSValue value() const;
-    IDBObjectStore* objectStore() const { return m_objectStore.get(); }
-    IDBIndex* index() const { return m_index.get(); }
 
-    RefPtr<IDBRequest> update(JSC::ExecState&, JSC::JSValue, ExceptionCodeWithMessage&);
-    void advance(unsigned, ExceptionCodeWithMessage&);
-    void continueFunction(JSC::ExecState&, JSC::JSValue key, ExceptionCodeWithMessage&);
-    RefPtr<IDBRequest> deleteFunction(JSC::ExecState&, ExceptionCodeWithMessage&);
+    ExceptionOr<Ref<IDBRequest>> update(JSC::ExecState&, JSC::JSValue);
+    ExceptionOr<void> advance(unsigned);
+    ExceptionOr<void> continueFunction(JSC::ExecState&, JSC::JSValue key);
+    ExceptionOr<void> continuePrimaryKey(JSC::ExecState&, JSC::JSValue key, JSC::JSValue primaryKey);
+    ExceptionOr<Ref<IDBRequest>> deleteFunction(JSC::ExecState&);
 
-    void continueFunction(const IDBKeyData&, ExceptionCodeWithMessage&);
+    ExceptionOr<void> continueFunction(const IDBKeyData&);
 
     const IDBCursorInfo& info() const { return m_info; }
 
@@ -96,13 +92,13 @@ private:
     IDBTransaction& transaction() const;
 
     void uncheckedIterateCursor(const IDBKeyData&, unsigned count);
+    void uncheckedIterateCursor(const IDBKeyData&, const IDBKeyData&);
 
     // Cursors are created with an outstanding iteration request.
     unsigned m_outstandingRequestCount { 1 };
 
     IDBCursorInfo m_info;
-    RefPtr<IDBObjectStore> m_objectStore;
-    RefPtr<IDBIndex> m_index;
+    Source m_source;
     IDBRequest* m_request { nullptr };
 
     bool m_gotValue { false };
@@ -114,6 +110,17 @@ private:
     JSC::Strong<JSC::Unknown> m_currentPrimaryKey;
     JSC::Strong<JSC::Unknown> m_currentValue;
 };
+
+
+inline const IDBCursor::Source& IDBCursor::source() const
+{
+    return m_source;
+}
+
+inline IDBCursorDirection IDBCursor::direction() const
+{
+    return m_info.cursorDirection();
+}
 
 inline JSC::JSValue IDBCursor::key() const
 {

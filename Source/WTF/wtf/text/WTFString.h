@@ -26,6 +26,7 @@
 // on systems without case-sensitive file systems.
 
 #include <wtf/text/ASCIIFastPath.h>
+#include <wtf/text/IntegerToStringConversion.h>
 #include <wtf/text/StringImpl.h>
 
 #ifdef __OBJC__
@@ -138,10 +139,10 @@ public:
 
     void swap(String& o) { m_impl.swap(o.m_impl); }
 
-    static String adopt(StringBuffer<LChar>& buffer) { return StringImpl::adopt(buffer); }
-    static String adopt(StringBuffer<UChar>& buffer) { return StringImpl::adopt(buffer); }
+    static String adopt(StringBuffer<LChar>&& buffer) { return StringImpl::adopt(WTFMove(buffer)); }
+    static String adopt(StringBuffer<UChar>&& buffer) { return StringImpl::adopt(WTFMove(buffer)); }
     template<typename CharacterType, size_t inlineCapacity, typename OverflowHandler>
-    static String adopt(Vector<CharacterType, inlineCapacity, OverflowHandler>& vector) { return StringImpl::adopt(vector); }
+    static String adopt(Vector<CharacterType, inlineCapacity, OverflowHandler>&& vector) { return StringImpl::adopt(WTFMove(vector)); }
 
     bool isNull() const { return !m_impl; }
     bool isEmpty() const { return !m_impl || !m_impl->length(); }
@@ -330,6 +331,7 @@ public:
     WTF_EXPORT_STRING_API String convertToASCIILowercase() const;
     WTF_EXPORT_STRING_API String convertToASCIIUppercase() const;
     WTF_EXPORT_STRING_API String convertToLowercaseWithoutLocale() const;
+    WTF_EXPORT_STRING_API String convertToLowercaseWithoutLocaleStartingAtFailingIndex8Bit(unsigned) const;
     WTF_EXPORT_STRING_API String convertToUppercaseWithoutLocale() const;
     WTF_EXPORT_STRING_API String convertToLowercaseWithLocale(const AtomicString& localeIdentifier) const;
     WTF_EXPORT_STRING_API String convertToUppercaseWithLocale(const AtomicString& localeIdentifier) const;
@@ -466,6 +468,14 @@ public:
         if (!m_impl || index >= m_impl->length())
             return 0;
         return (*m_impl)[index];
+    }
+
+    // Turns this String empty if the StringImpl is not referenced by anyone else.
+    // This is useful for clearing String-based caches.
+    void clearImplIfNotShared()
+    {
+        if (m_impl && m_impl->hasOneRef())
+            m_impl = nullptr;
     }
 
 private:
@@ -703,6 +713,12 @@ template<unsigned length> inline bool startsWithLettersIgnoringASCIICase(const S
 {
     return startsWithLettersIgnoringASCIICase(string.impl(), lowercaseLetters);
 }
+
+template<> struct IntegerToStringConversionTrait<String> {
+    using ReturnType = String;
+    using AdditionalArgumentType = void;
+    static String flush(LChar* characters, unsigned length, void*) { return { characters, length }; }
+};
 
 }
 

@@ -30,8 +30,6 @@
 
 #include "JSDOMBinding.h"
 #include "JSIDBCursorWithValue.h"
-#include "JSIDBIndex.h"
-#include "JSIDBObjectStore.h"
 
 using namespace JSC;
 
@@ -44,19 +42,11 @@ void JSIDBCursor::visitAdditionalChildren(SlotVisitor& visitor)
         visitor.addOpaqueRoot(request);
 }
 
-JSValue JSIDBCursor::source(ExecState& state) const
-{
-    auto& cursor = wrapped();
-    if (auto* index = cursor.index())
-        return toJS(&state, globalObject(), *index);
-    return toJS(&state, globalObject(), cursor.objectStore());
-}
-
 JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, Ref<IDBCursor>&& cursor)
 {
     if (is<IDBCursorWithValue>(cursor))
-        return CREATE_DOM_WRAPPER(globalObject, IDBCursorWithValue, WTFMove(cursor));
-    return createWrapper<JSIDBCursor>(globalObject, WTFMove(cursor));
+        return createWrapper<IDBCursorWithValue>(globalObject, WTFMove(cursor));
+    return createWrapper<IDBCursor>(globalObject, WTFMove(cursor));
 }
 
 JSValue toJS(JSC::ExecState* state, JSDOMGlobalObject* globalObject, IDBCursor& cursor)

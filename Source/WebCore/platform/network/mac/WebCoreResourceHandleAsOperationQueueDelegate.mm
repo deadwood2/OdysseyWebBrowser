@@ -26,7 +26,7 @@
 #import "config.h"
 #import "WebCoreResourceHandleAsOperationQueueDelegate.h"
 
-#if !USE(CFNETWORK)
+#if !USE(CFURLCONNECTION)
 
 #import "AuthenticationChallenge.h"
 #import "AuthenticationMac.h"
@@ -199,7 +199,7 @@ using namespace WebCore;
 #else
         UNUSED_PARAM(connection);
 #endif
-        m_handle->client()->didReceiveResponseAsync(m_handle, WTFMove(resourceResponse));
+        m_handle->didReceiveResponse(WTFMove(resourceResponse));
     });
 
     dispatch_semaphore_wait(m_semaphore, DISPATCH_TIME_FOREVER);
@@ -330,5 +330,5 @@ using namespace WebCore;
 
 @end
 
-#endif // !USE(CFNETWORK)
+#endif // !USE(CFURLCONNECTION)
 

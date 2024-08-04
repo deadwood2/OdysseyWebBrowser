@@ -442,13 +442,13 @@ JITPutByIdGenerator JIT::emitPutByValWithCachedId(ByValInfo* byValInfo, Instruct
 
     // Write barrier breaks the registers. So after issuing the write barrier,
     // reload the registers.
-    emitWriteBarrier(base, value, ShouldFilterValue);
     emitGetVirtualRegisters(base, regT0, value, regT1);
 
     JITPutByIdGenerator gen(
         m_codeBlock, CodeOrigin(m_bytecodeOffset), CallSiteIndex(m_bytecodeOffset), RegisterSet::stubUnavailableRegisters(),
         JSValueRegs(regT0), JSValueRegs(regT1), regT2, m_codeBlock->ecmaMode(), putKind);
     gen.generateFastPath(*this);
+    emitWriteBarrier(base, value, ShouldFilterBase);
     doneCases.append(jump());
 
     Label coldPathBegin = label();
@@ -579,7 +579,7 @@ void JIT::emit_op_try_get_by_id(Instruction* currentInstruction)
 
     JITGetByIdGenerator gen(
         m_codeBlock, CodeOrigin(m_bytecodeOffset), CallSiteIndex(m_bytecodeOffset), RegisterSet::stubUnavailableRegisters(),
-        ident->impl(), JSValueRegs(regT0), JSValueRegs(regT0), AccessType::GetPure);
+        ident->impl(), JSValueRegs(regT0), JSValueRegs(regT0), AccessType::TryGet);
     gen.generateFastPath(*this);
     addSlowCase(gen.slowPathJump());
     m_getByIds.append(gen);
@@ -666,8 +666,6 @@ void JIT::emit_op_put_by_id(Instruction* currentInstruction)
     int valueVReg = currentInstruction[3].u.operand;
     unsigned direct = currentInstruction[8].u.putByIdFlags & PutByIdIsDirect;
 
-    emitWriteBarrier(baseVReg, valueVReg, ShouldFilterBase);
-
     // In order to be able to patch both the Structure, and the object offset, we store one pointer,
     // to just after the arguments have been loaded into registers 'hotPathBegin', and we generate code
     // such that the Structure & offset are always at the same distance from this.
@@ -684,6 +682,8 @@ void JIT::emit_op_put_by_id(Instruction* currentInstruction)
     gen.generateFastPath(*this);
     addSlowCase(gen.slowPathJump());
     
+    emitWriteBarrier(baseVReg, valueVReg, ShouldFilterBase);
+
     m_putByIds.append(gen);
 }
 
@@ -1008,7 +1008,6 @@ void JIT::emit_op_put_to_scope(Instruction* currentInstruction)
         switch (resolveType) {
         case GlobalProperty:
         case GlobalPropertyWithVarInjectionChecks: {
-            emitWriteBarrier(m_codeBlock->globalObject(), value, ShouldFilterValue);
             emitLoadWithStructureCheck(scope, structureSlot); // Structure check covers var injection.
             emitGetVirtualRegister(value, regT2);
             
@@ -1016,6 +1015,7 @@ void JIT::emit_op_put_to_scope(Instruction* currentInstruction)
             loadPtr(operandSlot, regT1);
             negPtr(regT1);
             storePtr(regT2, BaseIndex(regT0, regT1, TimesEight, (firstOutOfLineOffset - 2) * sizeof(EncodedJSValue)));
+            emitWriteBarrier(m_codeBlock->globalObject(), value, ShouldFilterValue);
             break;
         }
         case GlobalVar:
@@ -1024,7 +1024,6 @@ void JIT::emit_op_put_to_scope(Instruction* currentInstruction)
         case GlobalLexicalVarWithVarInjectionChecks: {
             JSScope* constantScope = JSScope::constantScopeForCodeBlock(resolveType, m_codeBlock);
             RELEASE_ASSERT(constantScope);
-            emitWriteBarrier(constantScope, value, ShouldFilterValue);
             emitVarInjectionCheck(needsVarInjectionChecks(resolveType));
             if (!isInitialization(getPutInfo.initializationMode()) && (resolveType == GlobalLexicalVar || resolveType == GlobalLexicalVarWithVarInjectionChecks)) {
                 // We need to do a TDZ check here because we can't always prove we need to emit TDZ checks statically.
@@ -1038,14 +1037,15 @@ void JIT::emit_op_put_to_scope(Instruction* currentInstruction)
                 emitPutGlobalVariableIndirect(bitwise_cast<JSValue**>(operandSlot), value, bitwise_cast<WatchpointSet**>(&currentInstruction[5]));
             else
                 emitPutGlobalVariable(bitwise_cast<JSValue*>(*operandSlot), value, currentInstruction[5].u.watchpointSet);
+            emitWriteBarrier(constantScope, value, ShouldFilterValue);
             break;
         }
         case LocalClosureVar:
         case ClosureVar:
         case ClosureVarWithVarInjectionChecks:
-            emitWriteBarrier(scope, value, ShouldFilterValue);
             emitVarInjectionCheck(needsVarInjectionChecks(resolveType));
             emitPutClosureVar(scope, *operandSlot, value, currentInstruction[5].u.watchpointSet);
+            emitWriteBarrier(scope, value, ShouldFilterValue);
             break;
         case ModuleVar:
         case Dynamic:
@@ -1157,11 +1157,11 @@ void JIT::emit_op_put_to_arguments(Instruction* currentInstruction)
     int index = currentInstruction[2].u.operand;
     int value = currentInstruction[3].u.operand;
     
-    emitWriteBarrier(arguments, value, ShouldFilterValue);
-    
     emitGetVirtualRegister(arguments, regT0);
     emitGetVirtualRegister(value, regT1);
     store64(regT1, Address(regT0, DirectArguments::storageOffset() + index * sizeof(WriteBarrier<Unknown>)));
+
+    emitWriteBarrier(arguments, value, ShouldFilterValue);
 }
 
 #endif // USE(JSVALUE64)
@@ -1180,8 +1180,8 @@ void JIT::emitWriteBarrier(unsigned owner, unsigned value, WriteBarrierMode mode
     if (mode == ShouldFilterBaseAndValue || mode == ShouldFilterBase)
         ownerNotCell = branchTest64(NonZero, regT0, tagMaskRegister);
 
-    Jump ownerIsRememberedOrInEden = jumpIfIsRememberedOrInEden(regT0);
-    callOperation(operationUnconditionalWriteBarrier, regT0);
+    Jump ownerIsRememberedOrInEden = barrierBranch(regT0, regT1);
+    callOperation(operationWriteBarrierSlowPath, regT0);
     ownerIsRememberedOrInEden.link(this);
 
     if (mode == ShouldFilterBaseAndValue || mode == ShouldFilterBase)
@@ -1218,8 +1218,8 @@ void JIT::emitWriteBarrier(unsigned owner, unsigned value, WriteBarrierMode mode
     if (mode == ShouldFilterBase || mode == ShouldFilterBaseAndValue)
         ownerNotCell = branch32(NotEqual, regT0, TrustedImm32(JSValue::CellTag));
 
-    Jump ownerIsRememberedOrInEden = jumpIfIsRememberedOrInEden(regT1);
-    callOperation(operationUnconditionalWriteBarrier, regT1);
+    Jump ownerIsRememberedOrInEden = barrierBranch(regT1, regT2);
+    callOperation(operationWriteBarrierSlowPath, regT1);
     ownerIsRememberedOrInEden.link(this);
 
     if (mode == ShouldFilterBase || mode == ShouldFilterBaseAndValue)
@@ -1246,12 +1246,9 @@ void JIT::emitWriteBarrier(JSCell* owner, unsigned value, WriteBarrierMode mode)
 
 void JIT::emitWriteBarrier(JSCell* owner)
 {
-    if (!owner->cellContainer().isMarked(owner)) {
-        Jump ownerIsRememberedOrInEden = jumpIfIsRememberedOrInEden(owner);
-        callOperation(operationUnconditionalWriteBarrier, owner);
-        ownerIsRememberedOrInEden.link(this);
-    } else
-        callOperation(operationUnconditionalWriteBarrier, owner);
+    Jump ownerIsRememberedOrInEden = barrierBranch(owner, regT0);
+    callOperation(operationWriteBarrierSlowPath, owner);
+    ownerIsRememberedOrInEden.link(this);
 }
 
 void JIT::emitByValIdentifierCheck(ByValInfo* byValInfo, RegisterID cell, RegisterID scratch, const Identifier& propertyName, JumpList& slowCases)
@@ -1327,7 +1324,7 @@ void JIT::privateCompileGetByValWithCachedId(ByValInfo* byValInfo, ReturnAddress
 
     JITGetByIdGenerator gen = emitGetByValWithCachedId(byValInfo, currentInstruction, propertyName, fastDoneCase, slowDoneCase, slowCases);
 
-    ConcurrentJITLocker locker(m_codeBlock->m_lock);
+    ConcurrentJSLocker locker(m_codeBlock->m_lock);
     LinkBuffer patchBuffer(*m_vm, *this, m_codeBlock);
     patchBuffer.link(slowCases, CodeLocationLabel(MacroAssemblerCodePtr::createFromExecutableAddress(returnAddress.value())).labelAtOffset(byValInfo->returnAddressToSlowPath));
     patchBuffer.link(fastDoneCase, byValInfo->badTypeJump.labelAtOffset(byValInfo->badTypeJumpToDone));
@@ -1390,8 +1387,8 @@ void JIT::privateCompilePutByVal(ByValInfo* byValInfo, ReturnAddressPtr returnAd
     patchBuffer.link(slowCases, CodeLocationLabel(MacroAssemblerCodePtr::createFromExecutableAddress(returnAddress.value())).labelAtOffset(byValInfo->returnAddressToSlowPath));
     patchBuffer.link(done, byValInfo->badTypeJump.labelAtOffset(byValInfo->badTypeJumpToDone));
     if (needsLinkForWriteBarrier) {
-        ASSERT(m_calls.last().to == operationUnconditionalWriteBarrier);
-        patchBuffer.link(m_calls.last().from, operationUnconditionalWriteBarrier);
+        ASSERT(m_calls.last().to == operationWriteBarrierSlowPath);
+        patchBuffer.link(m_calls.last().from, operationWriteBarrierSlowPath);
     }
     
     bool isDirect = m_interpreter->getOpcodeID(currentInstruction->u.opcode) == op_put_by_val_direct;
@@ -1418,7 +1415,7 @@ void JIT::privateCompilePutByValWithCachedId(ByValInfo* byValInfo, ReturnAddress
 
     JITPutByIdGenerator gen = emitPutByValWithCachedId(byValInfo, currentInstruction, putKind, propertyName, doneCases, slowCases);
 
-    ConcurrentJITLocker locker(m_codeBlock->m_lock);
+    ConcurrentJSLocker locker(m_codeBlock->m_lock);
     LinkBuffer patchBuffer(*m_vm, *this, m_codeBlock);
     patchBuffer.link(slowCases, CodeLocationLabel(MacroAssemblerCodePtr::createFromExecutableAddress(returnAddress.value())).labelAtOffset(byValInfo->returnAddressToSlowPath));
     patchBuffer.link(doneCases, byValInfo->badTypeJump.labelAtOffset(byValInfo->badTypeJumpToDone));
@@ -1461,7 +1458,7 @@ JIT::JumpList JIT::emitDirectArgumentsGetByVal(Instruction*, PatchableJump& badT
     badType = patchableBranch32(NotEqual, scratch, TrustedImm32(DirectArgumentsType));
     
     slowCases.append(branch32(AboveOrEqual, property, Address(base, DirectArguments::offsetOfLength())));
-    slowCases.append(branchTestPtr(NonZero, Address(base, DirectArguments::offsetOfOverrides())));
+    slowCases.append(branchTestPtr(NonZero, Address(base, DirectArguments::offsetOfMappedArguments())));
     
     zeroExtend32ToPtr(property, scratch);
     loadValue(BaseIndex(base, scratch, TimesEight, DirectArguments::storageOffset()), result);
@@ -1771,6 +1768,18 @@ JIT::JumpList JIT::emitFloatTypedArrayPutByVal(Instruction* currentInstruction, 
     }
     
     return slowCases;
+}
+
+void JIT::emit_op_define_data_property(Instruction* currentInstruction)
+{
+    JITSlowPathCall slowPathCall(this, currentInstruction, slow_path_define_data_property);
+    slowPathCall.call();
+}
+
+void JIT::emit_op_define_accessor_property(Instruction* currentInstruction)
+{
+    JITSlowPathCall slowPathCall(this, currentInstruction, slow_path_define_accessor_property);
+    slowPathCall.call();
 }
 
 } // namespace JSC

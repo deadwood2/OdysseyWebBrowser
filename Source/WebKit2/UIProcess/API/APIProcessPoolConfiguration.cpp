@@ -96,6 +96,7 @@ Ref<ProcessPoolConfiguration> ProcessPoolConfiguration::copy()
     copy->m_maximumProcessCount = this->m_maximumProcessCount;
     copy->m_cacheModel = this->m_cacheModel;
     copy->m_diskCacheSpeculativeValidationEnabled = this->m_diskCacheSpeculativeValidationEnabled;
+    copy->m_unresponsiveBackgroundProcessesTerminationEnabled = this->m_unresponsiveBackgroundProcessesTerminationEnabled;
     copy->m_diskCacheSizeOverride = this->m_diskCacheSizeOverride;
     copy->m_applicationCacheDirectory = this->m_applicationCacheDirectory;
     copy->m_applicationCacheFlatFileSubdirectoryName = this->m_applicationCacheFlatFileSubdirectoryName;
@@ -111,6 +112,12 @@ Ref<ProcessPoolConfiguration> ProcessPoolConfiguration::copy()
     copy->m_fullySynchronousModeIsAllowedForTesting = this->m_fullySynchronousModeIsAllowedForTesting;
     copy->m_ignoreSynchronousMessagingTimeoutsForTesting = this->m_ignoreSynchronousMessagingTimeoutsForTesting;
     copy->m_overrideLanguages = this->m_overrideLanguages;
+    copy->m_sourceApplicationBundleIdentifier = this->m_sourceApplicationBundleIdentifier;
+    copy->m_sourceApplicationSecondaryIdentifier = this->m_sourceApplicationSecondaryIdentifier;
+    copy->m_alwaysRunsAtBackgroundPriority = this->m_alwaysRunsAtBackgroundPriority;
+#if PLATFORM(IOS)
+    copy->m_ctDataConnectionServiceType = this->m_ctDataConnectionServiceType;
+#endif
     
     return copy;
 }

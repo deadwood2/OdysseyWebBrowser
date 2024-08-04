@@ -44,10 +44,6 @@ bool isSupported()
 
 bool isSupportedForInlining(CodeBlock* codeBlock)
 {
-#if ENABLE(WEBASSEMBLY)
-    if (codeBlock->ownerExecutable()->isWebAssemblyExecutable())
-        return false;
-#endif
     return codeBlock->ownerScriptExecutable()->isInliningCandidate();
 }
 
@@ -140,10 +136,9 @@ CapabilityLevel capabilityLevel(OpcodeID opcodeID, CodeBlock* codeBlock, Instruc
     case op_is_undefined:
     case op_is_boolean:
     case op_is_number:
-    case op_is_string:
-    case op_is_jsarray:
     case op_is_object:
     case op_is_object_or_null:
+    case op_is_cell_with_type:
     case op_is_function:
     case op_not:
     case op_less:
@@ -174,6 +169,8 @@ CapabilityLevel capabilityLevel(OpcodeID opcodeID, CodeBlock* codeBlock, Instruc
     case op_put_getter_setter_by_id:
     case op_put_getter_by_val:
     case op_put_setter_by_val:
+    case op_define_data_property:
+    case op_define_accessor_property:
     case op_del_by_id:
     case op_del_by_val:
     case op_jmp:
@@ -191,12 +188,15 @@ CapabilityLevel capabilityLevel(OpcodeID opcodeID, CodeBlock* codeBlock, Instruc
     case op_jngreatereq:
     case op_loop_hint:
     case op_watchdog:
+    case op_nop:
     case op_ret:
     case op_end:
     case op_new_object:
     case op_new_array:
     case op_new_array_with_size:
     case op_new_array_buffer:
+    case op_new_array_with_spread:
+    case op_spread:
     case op_strcat:
     case op_to_primitive:
     case op_throw:
@@ -213,6 +213,7 @@ CapabilityLevel capabilityLevel(OpcodeID opcodeID, CodeBlock* codeBlock, Instruc
     case op_create_cloned_arguments:
     case op_get_from_arguments:
     case op_put_to_arguments:
+    case op_get_argument:
     case op_jneq_ptr:
     case op_typeof:
     case op_to_number:
@@ -235,6 +236,8 @@ CapabilityLevel capabilityLevel(OpcodeID opcodeID, CodeBlock* codeBlock, Instruc
     case op_new_func_exp:
     case op_new_generator_func:
     case op_new_generator_func_exp:
+    case op_new_async_func:
+    case op_new_async_func_exp:
     case op_set_function_name:
     case op_create_lexical_environment:
     case op_get_parent_scope:

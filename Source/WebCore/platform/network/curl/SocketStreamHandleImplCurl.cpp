@@ -66,7 +66,7 @@ SocketStreamHandleImpl::~SocketStreamHandleImpl()
     ASSERT(!m_workerThread);
 }
 
-Optional<size_t> SocketStreamHandleImpl::platformSend(const char* data, size_t length)
+std::optional<size_t> SocketStreamHandleImpl::platformSend(const char* data, size_t length)
 {
     LOG(Network, "SocketStreamHandle %p platformSend", this);
 
@@ -209,7 +209,8 @@ void SocketStreamHandleImpl::startThread()
             return;
 
         curl_easy_setopt(curlHandle, CURLOPT_URL, m_url.host().utf8().data());
-        curl_easy_setopt(curlHandle, CURLOPT_PORT, m_url.port());
+        if (m_url.port())
+            curl_easy_setopt(curlHandle, CURLOPT_PORT, m_url.port().value());
         curl_easy_setopt(curlHandle, CURLOPT_CONNECT_ONLY, 1L);
 
         // Connect to host

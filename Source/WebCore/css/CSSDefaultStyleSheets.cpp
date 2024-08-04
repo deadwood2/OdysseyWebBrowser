@@ -46,6 +46,7 @@
 #include "Page.h"
 #include "RenderTheme.h"
 #include "RuleSet.h"
+#include "RuntimeEnabledFeatures.h"
 #include "SVGElement.h"
 #include "StyleSheetContents.h"
 #include "UserAgentStyleSheets.h"
@@ -83,19 +84,19 @@ static inline bool elementCanUseSimpleDefaultStyle(const Element& element)
 
 static const MediaQueryEvaluator& screenEval()
 {
-    static NeverDestroyed<const MediaQueryEvaluator> staticScreenEval("screen");
+    static NeverDestroyed<const MediaQueryEvaluator> staticScreenEval(String(ASCIILiteral("screen")));
     return staticScreenEval;
 }
 
 static const MediaQueryEvaluator& printEval()
 {
-    static NeverDestroyed<const MediaQueryEvaluator> staticPrintEval("print");
+    static NeverDestroyed<const MediaQueryEvaluator> staticPrintEval(String(ASCIILiteral("print")));
     return staticPrintEval;
 }
 
 static StyleSheetContents* parseUASheet(const String& str)
 {
-    StyleSheetContents& sheet = StyleSheetContents::create().leakRef(); // leak the sheet on purpose
+    StyleSheetContents& sheet = StyleSheetContents::create(CSSParserContext(UASheetMode)).leakRef(); // leak the sheet on purpose
     sheet.parseString(str);
     return &sheet;
 }

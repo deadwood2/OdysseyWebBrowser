@@ -36,7 +36,8 @@
 #include "LinkRelAttribute.h"
 #include "MediaList.h"
 #include "MediaQueryEvaluator.h"
-#include "SourceSizeList.h"
+#include "RenderView.h"
+#include "SizesAttributeParser.h"
 #include <wtf/MainThread.h>
 
 namespace WebCore {
@@ -118,7 +119,8 @@ public:
         }
         
         if (m_tagId == TagId::Source && !pictureState.isEmpty() && !pictureState.last() && m_mediaMatched && !m_srcSetAttribute.isEmpty()) {
-            float sourceSize = parseSizesAttribute(document, m_sizesAttribute);
+            
+            auto sourceSize = SizesAttributeParser(m_sizesAttribute, document).length();
             ImageCandidate imageCandidate = bestFitSourceForImageAttributes(m_deviceScaleFactor, m_urlToLoad, m_srcSetAttribute, sourceSize);
             if (!imageCandidate.isEmpty()) {
                 pictureState.last() = true;
@@ -128,7 +130,7 @@ public:
         
         // Resolve between src and srcSet if we have them and the tag is img.
         if (m_tagId == TagId::Img && !m_srcSetAttribute.isEmpty()) {
-            float sourceSize = parseSizesAttribute(document, m_sizesAttribute);
+            auto sourceSize = SizesAttributeParser(m_sizesAttribute, document).length();
             ImageCandidate imageCandidate = bestFitSourceForImageAttributes(m_deviceScaleFactor, m_urlToLoad, m_srcSetAttribute, sourceSize);
             setUrlToLoad(imageCandidate.string.toString(), true);
         }
@@ -142,8 +144,13 @@ public:
         if (!shouldPreload())
             return nullptr;
 
-        auto request = std::make_unique<PreloadRequest>(initiatorFor(m_tagId), m_urlToLoad, predictedBaseURL, resourceType(), m_mediaAttribute);
+        auto request = std::make_unique<PreloadRequest>(initiatorFor(m_tagId), m_urlToLoad, predictedBaseURL, resourceType(), m_mediaAttribute, m_moduleScript);
         request->setCrossOriginMode(m_crossOriginMode);
+        request->setNonce(m_nonceAttribute);
+
+        // According to the spec, the module tag ignores the "charset" attribute as the same to the worker's
+        // importScript. But WebKit supports the "charset" for importScript intentionally. So to be consistent,
+        // even for the module tags, we handle the "charset" attribute.
         request->setCharset(charset());
         return request;
     }
@@ -197,12 +204,17 @@ private:
             }
             if (match(attributeName, mediaAttr) && m_mediaAttribute.isNull()) {
                 m_mediaAttribute = attributeValue;
-                auto mediaSet = MediaQuerySet::createAllowingDescriptionSyntax(attributeValue);
+                auto mediaSet = MediaQuerySet::create(attributeValue);
                 auto* documentElement = document.documentElement();
                 m_mediaMatched = MediaQueryEvaluator { document.printing() ? "print" : "screen", document, documentElement ? documentElement->computedStyle() : nullptr }.evaluate(mediaSet.get());
             }
             break;
         case TagId::Script:
+            if (match(attributeName, typeAttr)) {
+                m_moduleScript = equalLettersIgnoringASCIICase(attributeValue, "module") ? PreloadRequest::ModuleScript::Yes : PreloadRequest::ModuleScript::No;
+                break;
+            } else if (match(attributeName, nonceAttr))
+                m_nonceAttribute = attributeValue;
             processImageAndScriptAttribute(attributeName, attributeValue);
             break;
         case TagId::Link:
@@ -216,6 +228,8 @@ private:
                 m_charset = attributeValue;
             else if (match(attributeName, crossoriginAttr))
                 m_crossOriginMode = stripLeadingAndTrailingHTMLSpaces(attributeValue);
+            else if (match(attributeName, nonceAttr))
+                m_nonceAttribute = attributeValue;
             break;
         case TagId::Input:
             if (match(attributeName, srcAttr))
@@ -312,10 +326,12 @@ private:
     String m_crossOriginMode;
     bool m_linkIsStyleSheet;
     String m_mediaAttribute;
+    String m_nonceAttribute;
     String m_metaContent;
     bool m_metaIsViewport;
     bool m_inputIsImage;
     float m_deviceScaleFactor;
+    PreloadRequest::ModuleScript m_moduleScript { PreloadRequest::ModuleScript::No };
 };
 
 TokenPreloadScanner::TokenPreloadScanner(const URL& documentURL, float deviceScaleFactor)

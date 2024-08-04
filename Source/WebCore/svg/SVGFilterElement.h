@@ -20,8 +20,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef SVGFilterElement_h
-#define SVGFilterElement_h
+#pragma once
 
 #include "SVGAnimatedBoolean.h"
 #include "SVGAnimatedEnumeration.h"
@@ -29,7 +28,6 @@
 #include "SVGAnimatedLength.h"
 #include "SVGElement.h"
 #include "SVGExternalResourcesRequired.h"
-#include "SVGNames.h"
 #include "SVGURIReference.h"
 #include "SVGUnitTypes.h"
 
@@ -75,6 +73,4 @@ private:
     END_DECLARE_ANIMATED_PROPERTIES
 };
 
-}
-
-#endif
+} // namespace WebCore

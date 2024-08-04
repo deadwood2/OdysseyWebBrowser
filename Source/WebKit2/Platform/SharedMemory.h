@@ -30,9 +30,9 @@
 #include <wtf/Noncopyable.h>
 #include <wtf/RefCounted.h>
 
-#if PLATFORM(GTK) || PLATFORM(EFL)
+#if USE(UNIX_DOMAIN_SOCKETS)
 #include "Attachment.h"
-#include <wtf/text/WTFString.h>
+#include <wtf/Optional.h>
 #endif
 
 namespace IPC {
@@ -110,10 +110,12 @@ private:
 
     size_t m_size;
     void* m_data;
+#if PLATFORM(COCOA)
     Protection m_protection;
+#endif
 
 #if USE(UNIX_DOMAIN_SOCKETS)
-    Optional<int> m_fileDescriptor;
+    std::optional<int> m_fileDescriptor;
     bool m_isWrappingMap { false };
 #elif OS(DARWIN)
     mach_port_t m_port;

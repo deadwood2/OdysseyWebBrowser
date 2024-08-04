@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010 Google, Inc. All Rights Reserved.
- * Copyright (C) 2015 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,7 +27,6 @@
 #include "config.h"
 #include "HTMLDocumentParser.h"
 
-#include "CachedScript.h"
 #include "DocumentFragment.h"
 #include "Frame.h"
 #include "HTMLDocument.h"
@@ -37,6 +36,7 @@
 #include "HTMLTreeBuilder.h"
 #include "HTMLUnknownElement.h"
 #include "JSCustomElementInterface.h"
+#include "ScriptElement.h"
 
 namespace WebCore {
 
@@ -87,7 +87,7 @@ HTMLDocumentParser::~HTMLDocumentParser()
 
 void HTMLDocumentParser::detach()
 {
-    DocumentParser::detach();
+    ScriptableDocumentParser::detach();
 
     if (m_scriptRunner)
         m_scriptRunner->detach();
@@ -191,27 +191,22 @@ void HTMLDocumentParser::runScriptsForPausedTreeBuilder()
 {
     ASSERT(scriptingContentIsAllowed(parserContentPolicy()));
 
-#if ENABLE(CUSTOM_ELEMENTS)
     if (std::unique_ptr<CustomElementConstructionData> constructionData = m_treeBuilder->takeCustomElementConstructionData()) {
         ASSERT(!m_treeBuilder->hasParserBlockingScriptWork());
 
-        RefPtr<Element> newElement = constructionData->elementInterface->constructElement(constructionData->name, JSCustomElementInterface::ShouldClearException::Clear);
-        if (!newElement) {
-            ASSERT(!m_treeBuilder->isParsingTemplateContents());
-            newElement = HTMLUnknownElement::create(QualifiedName(nullAtom, constructionData->name, xhtmlNamespaceURI), *document());
-        }
-
-        m_treeBuilder->didCreateCustomOrCallbackElement(newElement.releaseNonNull(), *constructionData);
+        // https://html.spec.whatwg.org/#create-an-element-for-the-token
+        auto& elementInterface = constructionData->elementInterface.get();
+        auto newElement = elementInterface.constructElementWithFallback(*document(), constructionData->name);
+        m_treeBuilder->didCreateCustomOrCallbackElement(WTFMove(newElement), *constructionData);
         return;
     }
-#endif
 
     TextPosition scriptStartPosition = TextPosition::belowRangePosition();
     if (auto scriptElement = m_treeBuilder->takeScriptToProcess(scriptStartPosition)) {
         ASSERT(!m_treeBuilder->hasParserBlockingScriptWork());
         // We will not have a scriptRunner when parsing a DocumentFragment.
         if (m_scriptRunner)
-            m_scriptRunner->execute(WTFMove(scriptElement), scriptStartPosition);
+            m_scriptRunner->execute(scriptElement.releaseNonNull(), scriptStartPosition);
     }
 }
 
@@ -322,7 +317,7 @@ void HTMLDocumentParser::constructTreeFromHTMLToken(HTMLTokenizer::TokenPtr& raw
         rawToken.clear();
     }
 
-    m_treeBuilder->constructTree(token);
+    m_treeBuilder->constructTree(WTFMove(token));
 }
 
 bool HTMLDocumentParser::hasInsertionPoint()
@@ -334,7 +329,7 @@ bool HTMLDocumentParser::hasInsertionPoint()
     return m_input.hasInsertionPoint() || (wasCreatedByScript() && !m_input.haveSeenEndOfFile());
 }
 
-void HTMLDocumentParser::insert(const SegmentedString& source)
+void HTMLDocumentParser::insert(SegmentedString&& source)
 {
     if (isStopped())
         return;
@@ -343,9 +338,8 @@ void HTMLDocumentParser::insert(const SegmentedString& source)
     // but we need to ensure it isn't deleted yet.
     Ref<HTMLDocumentParser> protectedThis(*this);
 
-    SegmentedString excludedLineNumberSource(source);
-    excludedLineNumberSource.setExcludeLineNumbers();
-    m_input.insertAtCurrentInsertionPoint(excludedLineNumberSource);
+    source.setExcludeLineNumbers();
+    m_input.insertAtCurrentInsertionPoint(WTFMove(source));
     pumpTokenizerIfPossible(ForceSynchronous);
 
     if (isWaitingForScripts()) {
@@ -369,7 +363,7 @@ void HTMLDocumentParser::append(RefPtr<StringImpl>&& inputSource)
     // but we need to ensure it isn't deleted yet.
     Ref<HTMLDocumentParser> protectedThis(*this);
 
-    String source(WTFMove(inputSource));
+    String source { WTFMove(inputSource) };
 
     if (m_preloadScanner) {
         if (m_input.current().isEmpty() && !isWaitingForScripts()) {
@@ -507,7 +501,7 @@ void HTMLDocumentParser::watchForLoad(PendingScript& pendingScript)
     // setClient would call notifyFinished if the load were complete.
     // Callers do not expect to be re-entered from this call, so they should
     // not an already-loaded PendingScript.
-    pendingScript.setClient(this);
+    pendingScript.setClient(*this);
 }
 
 void HTMLDocumentParser::stopWatchingForLoad(PendingScript& pendingScript)
@@ -528,6 +522,10 @@ void HTMLDocumentParser::notifyFinished(PendingScript& pendingScript)
     // but we need to ensure it isn't deleted yet.
     Ref<HTMLDocumentParser> protectedThis(*this);
 
+    // After Document parser is stopped or detached, the parser-inserted deferred script execution should be ignored.
+    if (isStopped())
+        return;
+
     ASSERT(m_scriptRunner);
     ASSERT(!isExecutingScript());
     if (isStopping()) {
@@ -538,6 +536,11 @@ void HTMLDocumentParser::notifyFinished(PendingScript& pendingScript)
     m_scriptRunner->executeScriptsWaitingForLoad(pendingScript);
     if (!isWaitingForScripts())
         resumeParsingAfterScriptExecution();
+}
+
+bool HTMLDocumentParser::hasScriptsWaitingForStylesheets() const
+{
+    return m_scriptRunner && m_scriptRunner->hasScriptsWaitingForStylesheets();
 }
 
 void HTMLDocumentParser::executeScriptsWaitingForStylesheets()

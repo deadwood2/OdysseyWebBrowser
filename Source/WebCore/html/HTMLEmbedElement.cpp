@@ -54,6 +54,11 @@ Ref<HTMLEmbedElement> HTMLEmbedElement::create(const QualifiedName& tagName, Doc
     return adoptRef(*new HTMLEmbedElement(tagName, document, createdByParser));
 }
 
+Ref<HTMLEmbedElement> HTMLEmbedElement::create(Document& document)
+{
+    return adoptRef(*new HTMLEmbedElement(embedTag, document, false));
+}
+
 static inline RenderWidget* findWidgetRenderer(const Node* node)
 {
     if (!node->renderer()) {
@@ -177,6 +182,10 @@ void HTMLEmbedElement::updateWidget(CreatePlugins createPlugins)
     if (!renderer()) // Do not load the plugin if beforeload removed this element or its renderer.
         return;
 
+    // beforeLoad could have changed the document. Make sure the URL is still safe to load.
+    if (!allowedToLoadFrameURL(m_url))
+        return;
+
     // FIXME: beforeLoad could have detached the renderer!  Just like in the <object> case above.
     requestObject(m_url, m_serviceType, paramNames, paramValues);
 }
@@ -203,7 +212,7 @@ bool HTMLEmbedElement::rendererIsNeeded(const RenderStyle& style)
 
 #if ENABLE(DASHBOARD_SUPPORT)
     // Workaround for <rdar://problem/6642221>.
-    if (document().frame()->settings().usesDashboardBackwardCompatibilityMode())
+    if (document().settings().usesDashboardBackwardCompatibilityMode())
         return true;
 #endif
 

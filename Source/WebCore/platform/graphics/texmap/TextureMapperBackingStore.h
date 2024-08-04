@@ -26,10 +26,6 @@
 #include "TextureMapperPlatformLayer.h"
 #include <wtf/RefPtr.h>
 
-#if USE(GRAPHICS_SURFACE)
-#include "GraphicsSurface.h"
-#endif
-
 namespace WebCore {
 
 class GraphicsLayer;
@@ -37,7 +33,7 @@ class GraphicsLayer;
 class TextureMapperBackingStore : public TextureMapperPlatformLayer, public RefCounted<TextureMapperBackingStore> {
 public:
     virtual RefPtr<BitmapTexture> texture() const = 0;
-    virtual void paintToTextureMapper(TextureMapper&, const FloatRect&, const TransformationMatrix&, float) = 0;
+    void paintToTextureMapper(TextureMapper&, const FloatRect&, const TransformationMatrix&, float) override = 0;
     virtual void drawRepaintCounter(TextureMapper&, int /* repaintCount */, const Color&, const FloatRect&, const TransformationMatrix&) { }
     virtual ~TextureMapperBackingStore() { }
 

@@ -54,9 +54,13 @@
 #include "OpenGLShims.h"
 #endif
 
+#if USE(TEXTURE_MAPPER)
+#include "TextureMapperGC3DPlatformLayer.h"
+#endif
+
 namespace WebCore {
 
-RefPtr<GraphicsContext3D> GraphicsContext3D::create(GraphicsContext3D::Attributes attributes, HostWindow* hostWindow, GraphicsContext3D::RenderStyle renderStyle)
+RefPtr<GraphicsContext3D> GraphicsContext3D::create(GraphicsContext3DAttributes attributes, HostWindow* hostWindow, GraphicsContext3D::RenderStyle renderStyle)
 {
     // This implementation doesn't currently support rendering directly to the HostWindow.
     if (renderStyle == RenderDirectlyToHostWindow)
@@ -76,7 +80,7 @@ RefPtr<GraphicsContext3D> GraphicsContext3D::create(GraphicsContext3D::Attribute
     return adoptRef(new GraphicsContext3D(attributes, hostWindow, renderStyle));
 }
 
-GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attributes, HostWindow*, GraphicsContext3D::RenderStyle renderStyle)
+GraphicsContext3D::GraphicsContext3D(GraphicsContext3DAttributes attributes, HostWindow*, GraphicsContext3D::RenderStyle renderStyle)
     : m_currentWidth(0)
     , m_currentHeight(0)
     , m_attrs(attributes)
@@ -90,8 +94,13 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attributes, H
     , m_multisampleFBO(0)
     , m_multisampleDepthStencilBuffer(0)
     , m_multisampleColorBuffer(0)
-    , m_private(std::make_unique<GraphicsContext3DPrivate>(this, renderStyle))
 {
+#if USE(TEXTURE_MAPPER)
+    m_texmapLayer = std::make_unique<TextureMapperGC3DPlatformLayer>(*this, renderStyle);
+#else
+    m_private = std::make_unique<GraphicsContext3DPrivate>(this, renderStyle);
+#endif
+
     makeContextCurrent();
 
     validateAttributes();
@@ -208,8 +217,13 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attributes, H
 
 GraphicsContext3D::~GraphicsContext3D()
 {
+#if USE(TEXTURE_MAPPER)
+    if (m_texmapLayer->renderStyle() == RenderToCurrentGLContext)
+        return;
+#else
     if (m_private->renderStyle() == RenderToCurrentGLContext)
         return;
+#endif
 
     makeContextCurrent();
     if (m_texture)
@@ -253,15 +267,19 @@ bool GraphicsContext3D::ImageExtractor::extractImage(bool premultiplyAlpha, bool
     if (!m_image)
         return false;
     // We need this to stay in scope because the native image is just a shallow copy of the data.
-    m_decoder = new ImageSource(premultiplyAlpha ? ImageSource::AlphaPremultiplied : ImageSource::AlphaNotPremultiplied, ignoreGammaAndColorProfile ? ImageSource::GammaAndColorProfileIgnored : ImageSource::GammaAndColorProfileApplied);
+    AlphaOption alphaOption = premultiplyAlpha ? AlphaOption::Premultiplied : AlphaOption::NotPremultiplied;
+    GammaAndColorProfileOption gammaAndColorProfileOption = ignoreGammaAndColorProfile ? GammaAndColorProfileOption::Ignored : GammaAndColorProfileOption::Applied;
+    m_decoder = new ImageSource(nullptr, alphaOption, gammaAndColorProfileOption);
+    
     if (!m_decoder)
         return false;
-    ImageSource& decoder = *m_decoder;
 
+    ImageSource& decoder = *m_decoder;
     m_alphaOp = AlphaDoNothing;
+
     if (m_image->data()) {
         decoder.setData(m_image->data(), true);
-        if (!decoder.frameCount() || !decoder.frameIsCompleteAtIndex(0))
+        if (!decoder.frameCount())
             return false;
         m_imageSurface = decoder.createFrameImageAtIndex(0);
     } else {
@@ -349,9 +367,14 @@ void GraphicsContext3D::setErrorMessageCallback(std::unique_ptr<ErrorMessageCall
 
 bool GraphicsContext3D::makeContextCurrent()
 {
-    if (!m_private)
-        return false;
-    return m_private->makeContextCurrent();
+#if USE(TEXTURE_MAPPER)
+    if (m_texmapLayer)
+        return m_texmapLayer->makeContextCurrent();
+#else
+    if (m_private)
+        return m_private->makeContextCurrent();
+#endif
+    return false;
 }
 
 void GraphicsContext3D::checkGPUStatusIfNecessary()
@@ -360,7 +383,11 @@ void GraphicsContext3D::checkGPUStatusIfNecessary()
 
 PlatformGraphicsContext3D GraphicsContext3D::platformGraphicsContext3D()
 {
+#if USE(TEXTURE_MAPPER)
+    return m_texmapLayer->platformContext();
+#else
     return m_private->platformContext();
+#endif
 }
 
 Platform3DObject GraphicsContext3D::platformTexture() const
@@ -379,11 +406,15 @@ bool GraphicsContext3D::isGLES2Compliant() const
 
 PlatformLayer* GraphicsContext3D::platformLayer() const
 {
+#if USE(TEXTURE_MAPPER)
+    return m_texmapLayer.get();
+#else
     return m_private.get();
+#endif
 }
 
 #if PLATFORM(GTK)
-Extensions3D* GraphicsContext3D::getExtensions()
+Extensions3D& GraphicsContext3D::getExtensions()
 {
     if (!m_extensions) {
 #if USE(OPENGL_ES_2)
@@ -394,7 +425,7 @@ Extensions3D* GraphicsContext3D::getExtensions()
         m_extensions = std::make_unique<Extensions3DOpenGL>(this, GLContext::current()->version() >= 320);
 #endif
     }
-    return m_extensions.get();
+    return *m_extensions;
 }
 #endif
 

@@ -24,10 +24,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef JSCustomElementInterface_h
-#define JSCustomElementInterface_h
-
-#if ENABLE(CUSTOM_ELEMENTS)
+#pragma once
 
 #include "ActiveDOMCallback.h"
 #include "QualifiedName.h"
@@ -41,10 +38,8 @@
 #include <wtf/text/AtomicStringHash.h>
 
 namespace JSC {
-
 class JSObject;
 class PrivateName;
-
 }
 
 namespace WebCore {
@@ -63,8 +58,8 @@ public:
         return adoptRef(*new JSCustomElementInterface(name, callback, globalObject));
     }
 
-    enum class ShouldClearException { Clear, DoNotClear };
-    RefPtr<Element> constructElement(const AtomicString&, ShouldClearException);
+    Ref<Element> constructElementWithFallback(Document&, const AtomicString&);
+    Ref<Element> constructElementWithFallback(Document&, const QualifiedName&);
 
     void upgradeElement(Element&);
 
@@ -98,6 +93,8 @@ public:
 private:
     JSCustomElementInterface(const QualifiedName&, JSC::JSObject* callback, JSDOMGlobalObject*);
 
+    RefPtr<Element> tryToConstructCustomElement(Document&, const AtomicString&);
+
     void invokeCallback(Element&, JSC::JSObject* callback, const WTF::Function<void(JSC::ExecState*, JSDOMGlobalObject*, JSC::MarkedArgumentBuffer&)>& addArguments = { });
 
     QualifiedName m_name;
@@ -112,7 +109,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif
-
-#endif

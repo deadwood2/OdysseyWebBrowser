@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CSSImageSetValue_h
-#define CSSImageSetValue_h
+#pragma once
 
 #include "CSSValueList.h"
 #include "CachedImageClient.h"
@@ -56,8 +55,6 @@ public:
 
     bool traverseSubresources(const std::function<bool (const CachedResource&)>& handler) const;
 
-    Ref<CSSImageSetValue> cloneForCSSOM() const;
-
     void updateDeviceScaleFactor(const Document&);
 
 protected:
@@ -65,7 +62,6 @@ protected:
 
 private:
     CSSImageSetValue();
-    CSSImageSetValue(const CSSImageSetValue& cloneFrom);
 
     void fillImageSet();
     static inline bool compareByScaleFactor(ImageWithScale first, ImageWithScale second) { return first.scaleFactor < second.scaleFactor; }
@@ -81,5 +77,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CSS_VALUE(CSSImageSetValue, isImageSetValue())
-
-#endif // CSSImageSetValue_h

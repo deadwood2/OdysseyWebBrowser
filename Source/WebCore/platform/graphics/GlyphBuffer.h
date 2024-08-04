@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2009, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2006, 2009, 2011, 2016 Apple Inc. All rights reserved.
  * Copyright (C) 2007-2008 Torch Mobile Inc.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -62,11 +62,17 @@ typedef Glyph GlyphBufferGlyph;
 struct GlyphBufferAdvance : CGSize {
 public:
     GlyphBufferAdvance() : CGSize(CGSizeZero) { }
-    GlyphBufferAdvance(CGSize size) : CGSize(size)
+    GlyphBufferAdvance(CGSize size)
+        : CGSize(size)
+    {
+    }
+    GlyphBufferAdvance(float width, float height)
+        : CGSize(CGSizeMake(width, height))
     {
     }
 
     void setWidth(CGFloat width) { this->CGSize::width = width; }
+    void setHeight(CGFloat height) { this->CGSize::height = height; }
     CGFloat width() const { return this->CGSize::width; }
     CGFloat height() const { return this->CGSize::height; }
 };
@@ -95,14 +101,12 @@ public:
     GlyphBufferAdvance* advances(unsigned from) { return m_advances.data() + from; }
     const GlyphBufferGlyph* glyphs(unsigned from) const { return m_glyphs.data() + from; }
     const GlyphBufferAdvance* advances(unsigned from) const { return m_advances.data() + from; }
+    size_t advancesCount() const { return m_advances.size(); }
 
     const Font* fontAt(unsigned index) const { return m_font[index]; }
 
     void setInitialAdvance(GlyphBufferAdvance initialAdvance) { m_initialAdvance = initialAdvance; }
     const GlyphBufferAdvance& initialAdvance() const { return m_initialAdvance; }
-
-    void setLeadingExpansion(float leadingExpansion) { m_leadingExpansion = leadingExpansion; }
-    float leadingExpansion() const { return m_leadingExpansion; }
     
     Glyph glyphAt(unsigned index) const
     {
@@ -246,7 +250,6 @@ private:
 #if PLATFORM(WIN)
     Vector<FloatSize, 2048> m_offsets;
 #endif
-    float m_leadingExpansion;
 };
 
 }

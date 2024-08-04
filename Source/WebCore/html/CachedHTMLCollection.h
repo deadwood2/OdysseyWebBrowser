@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CachedHTMLCollection_h
-#define CachedHTMLCollection_h
+#pragma once
 
 #include "CollectionTraversal.h"
 #include "HTMLCollection.h"
@@ -147,7 +146,7 @@ Element* CachedHTMLCollection<HTMLCollectionClass, traversalType>::namedItem(con
             return nullptr;
 
         if (candidate && collection().elementMatches(*candidate)) {
-            if (traversalType == CollectionTraversalType::ChildrenOnly ? candidate->parentNode() == &root : candidate->isDescendantOf(&root))
+            if (traversalType == CollectionTraversalType::ChildrenOnly ? candidate->parentNode() == &root : candidate->isDescendantOf(root))
                 return candidate;
         }
     }
@@ -156,6 +155,3 @@ Element* CachedHTMLCollection<HTMLCollectionClass, traversalType>::namedItem(con
 }
 
 } // namespace WebCore
-
-#endif // CachedHTMLCollection_h
-

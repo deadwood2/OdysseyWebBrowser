@@ -18,8 +18,7 @@
     Boston, MA 02110-1301, USA.
 */
 
-#ifndef PluginData_h
-#define PluginData_h
+#pragma once
 
 #include <wtf/RefCounted.h>
 #include <wtf/Vector.h>
@@ -99,7 +98,6 @@ public:
     };
 
     WEBCORE_EXPORT bool supportsWebVisibleMimeType(const String& mimeType, const AllowedPluginTypes) const;
-    String pluginNameForWebVisibleMimeType(const String& mimeType) const;
     String pluginFileForWebVisibleMimeType(const String& mimeType) const;
 
     WEBCORE_EXPORT bool supportsMimeType(const String& mimeType, const AllowedPluginTypes) const;
@@ -117,5 +115,3 @@ protected:
 };
 
 } // namespace WebCore
-
-#endif // PluginData_h

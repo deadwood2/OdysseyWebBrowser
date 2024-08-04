@@ -28,7 +28,7 @@
 #include <wtf/Vector.h>
 
 #if PLATFORM(IOS)
-#include "NativeImagePtr.h"
+#include "NativeImage.h"
 #include <CoreGraphics/CoreGraphics.h>
 #elif PLATFORM(MAC)
 OBJC_CLASS NSImage;
@@ -78,8 +78,6 @@ private:
 #elif PLATFORM(GTK)
     Icon();
     GdkPixbuf* m_icon;
-#elif PLATFORM(EFL)
-    Icon();
 #endif
 };
 

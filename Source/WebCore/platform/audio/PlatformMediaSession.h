@@ -55,6 +55,7 @@ public:
     enum MediaType {
         None = 0,
         Video,
+        VideoAudio,
         Audio,
         WebAudio,
     };
@@ -145,7 +146,6 @@ public:
 
     bool shouldOverrideBackgroundLoadingRestriction() const;
 
-    virtual bool canControlControlsManager() const { return false; }
     virtual bool canPlayToWirelessPlaybackTarget() const { return false; }
     virtual bool isPlayingToWirelessPlaybackTarget() const { return m_isPlayingToWirelessPlaybackTarget; }
     void isPlayingToWirelessPlaybackTargetChanged(bool);
@@ -162,10 +162,14 @@ public:
 #endif
 
     bool activeAudioSessionRequired();
-    bool canProduceAudio() const { return m_canProduceAudio; }
-    void setCanProduceAudio(bool);
+    bool canProduceAudio() const;
+    void canProduceAudioChanged();
 
     void scheduleClientDataBufferingCheck();
+    virtual void resetPlaybackSessionState() { }
+    String sourceApplicationIdentifier() const;
+
+    virtual bool allowsNowPlayingControlsVisibility() const { return false; }
 
 protected:
     PlatformMediaSessionClient& client() const { return m_client; }
@@ -182,7 +186,6 @@ private:
     int m_interruptionCount { 0 };
     bool m_notifyingClient;
     bool m_isPlayingToWirelessPlaybackTarget { false };
-    bool m_canProduceAudio { false };
 
     friend class PlatformMediaSessionManager;
 };
@@ -213,6 +216,7 @@ public:
 
     virtual void setShouldBufferData(bool) { }
     virtual bool elementIsHidden() const { return false; }
+    virtual bool canProduceAudio() const { return false; }
 
     virtual bool shouldOverrideBackgroundPlaybackRestriction(PlatformMediaSession::InterruptionType) const = 0;
     virtual bool shouldOverrideBackgroundLoadingRestriction() const { return false; }
@@ -224,6 +228,7 @@ public:
     virtual void setShouldPlayToPlaybackTarget(bool) { }
 
     virtual const Document* hostingDocument() const = 0;
+    virtual String sourceApplicationIdentifier() const = 0;
 
 protected:
     virtual ~PlatformMediaSessionClient() { }

@@ -36,7 +36,7 @@ class VM;
 template<typename T>
 class AuxiliaryBarrier {
 public:
-    AuxiliaryBarrier() { }
+    AuxiliaryBarrier(): m_value() { }
     
     template<typename U>
     AuxiliaryBarrier(VM&, JSCell*, U&&);
@@ -60,4 +60,3 @@ private:
 };
 
 } // namespace JSC
-

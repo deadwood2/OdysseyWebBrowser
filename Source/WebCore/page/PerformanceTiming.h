@@ -28,22 +28,21 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PerformanceTiming_h
-#define PerformanceTiming_h
+#pragma once
 
 #if ENABLE(WEB_TIMING)
 
 #include "DOMWindowProperty.h"
-#include <wtf/RefCounted.h>
+#include <wtf/MonotonicTime.h>
 #include <wtf/Ref.h>
+#include <wtf/RefCounted.h>
 
 namespace WebCore {
 
-class LoadTiming;
 class DocumentLoader;
-struct DocumentTiming;
 class Frame;
-class NetworkLoadTiming;
+class LoadTiming;
+struct DocumentTiming;
 
 class PerformanceTiming : public RefCounted<PerformanceTiming>, public DOMWindowProperty {
 public:
@@ -78,10 +77,9 @@ private:
     DocumentLoader* documentLoader() const;
     LoadTiming* loadTiming() const;
     unsigned long long resourceLoadTimeRelativeToFetchStart(double) const;
-    unsigned long long monotonicTimeToIntegerMilliseconds(double) const;
+    unsigned long long monotonicTimeToIntegerMilliseconds(MonotonicTime) const;
 };
 
-}
+} // namespace WebCore
 
-#endif // !ENABLE(WEB_TIMING)
-#endif // !defined(PerformanceTiming_h)
+#endif // ENABLE(WEB_TIMING)

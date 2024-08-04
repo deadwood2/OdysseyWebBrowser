@@ -73,6 +73,7 @@ SOFT_LINK_CLASS(UIKit, UIWindow)
 SOFT_LINK_CLASS(UIKit, UIView)
 SOFT_LINK_CLASS(UIKit, UIViewController)
 SOFT_LINK_CLASS(UIKit, UIColor)
+SOFT_LINK_CONSTANT(UIKit, UIRemoteKeyboardLevel, UIWindowLevel)
 
 #if !LOG_DISABLED
 static const char* boolString(bool val)
@@ -503,7 +504,9 @@ WebVideoFullscreenInterfaceAVKit::~WebVideoFullscreenInterfaceAVKit()
 {
     WebAVPlayerController* playerController = this->playerController();
     if (playerController && playerController.externalPlaybackActive)
-        setExternalPlayback(false, TargetTypeNone, "");
+        externalPlaybackChanged(false, WebPlaybackSessionModel::TargetTypeNone, "");
+    if (m_videoFullscreenModel)
+        m_videoFullscreenModel->removeClient(*this);
 }
 
 WebAVPlayerController *WebVideoFullscreenInterfaceAVKit::playerController() const
@@ -511,14 +514,18 @@ WebAVPlayerController *WebVideoFullscreenInterfaceAVKit::playerController() cons
     return m_playbackSessionInterface->playerController();
 }
 
-void WebVideoFullscreenInterfaceAVKit::resetMediaState()
-{
-    m_playbackSessionInterface->resetMediaState();
-}
-
 void WebVideoFullscreenInterfaceAVKit::setWebVideoFullscreenModel(WebVideoFullscreenModel* model)
 {
+    if (m_videoFullscreenModel)
+        m_videoFullscreenModel->removeClient(*this);
+
     m_videoFullscreenModel = model;
+
+    if (m_videoFullscreenModel)
+        m_videoFullscreenModel->addClient(*this);
+
+    hasVideoChanged(m_videoFullscreenModel ? m_videoFullscreenModel->hasVideo() : false);
+    videoDimensionsChanged(m_videoFullscreenModel ? m_videoFullscreenModel->videoDimensions() : FloatSize());
 }
 
 void WebVideoFullscreenInterfaceAVKit::setWebVideoFullscreenChangeObserver(WebVideoFullscreenChangeObserver* observer)
@@ -526,33 +533,17 @@ void WebVideoFullscreenInterfaceAVKit::setWebVideoFullscreenChangeObserver(WebVi
     m_fullscreenChangeObserver = observer;
 }
 
-void WebVideoFullscreenInterfaceAVKit::setDuration(double duration)
+void WebVideoFullscreenInterfaceAVKit::hasVideoChanged(bool hasVideo)
 {
-    m_playbackSessionInterface->setDuration(duration);
+    [playerController() setHasEnabledVideo:hasVideo];
 }
 
-void WebVideoFullscreenInterfaceAVKit::setCurrentTime(double currentTime, double anchorTime)
-{
-    m_playbackSessionInterface->setCurrentTime(currentTime, anchorTime);
-}
-
-void WebVideoFullscreenInterfaceAVKit::setBufferedTime(double bufferedTime)
-{
-    m_playbackSessionInterface->setBufferedTime(bufferedTime);
-}
-
-void WebVideoFullscreenInterfaceAVKit::setRate(bool isPlaying, float playbackRate)
-{
-    m_playbackSessionInterface->setRate(isPlaying, playbackRate);
-}
-
-void WebVideoFullscreenInterfaceAVKit::setVideoDimensions(bool hasVideo, float width, float height)
+void WebVideoFullscreenInterfaceAVKit::videoDimensionsChanged(const FloatSize& videoDimensions)
 {
     WebAVPlayerLayer *playerLayer = (WebAVPlayerLayer *)[m_playerLayerView playerLayer];
 
-    [playerLayer setVideoDimensions:CGSizeMake(width, height)];
-    [playerController() setHasEnabledVideo:hasVideo];
-    [playerController() setContentDimensions:CGSizeMake(width, height)];
+    [playerLayer setVideoDimensions:videoDimensions];
+    [playerController() setContentDimensions:videoDimensions];
     [m_playerLayerView setNeedsLayout];
 
     WebAVPictureInPicturePlayerLayerView *pipView = (WebAVPictureInPicturePlayerLayerView *)[m_playerLayerView pictureInPicturePlayerLayerView];
@@ -561,44 +552,9 @@ void WebVideoFullscreenInterfaceAVKit::setVideoDimensions(bool hasVideo, float w
     [pipView setNeedsLayout];    
 }
 
-void WebVideoFullscreenInterfaceAVKit::setSeekableRanges(const TimeRanges& timeRanges)
-{
-    m_playbackSessionInterface->setSeekableRanges(timeRanges);
-}
-
-void WebVideoFullscreenInterfaceAVKit::setCanPlayFastReverse(bool canPlayFastReverse)
-{
-    m_playbackSessionInterface->setCanPlayFastReverse(canPlayFastReverse);
-}
-
-void WebVideoFullscreenInterfaceAVKit::setAudioMediaSelectionOptions(const Vector<String>& options, uint64_t selectedIndex)
-{
-    m_playbackSessionInterface->setAudioMediaSelectionOptions(options, selectedIndex);
-}
-
-void WebVideoFullscreenInterfaceAVKit::setLegibleMediaSelectionOptions(const Vector<String>& options, uint64_t selectedIndex)
-{
-    m_playbackSessionInterface->setLegibleMediaSelectionOptions(options, selectedIndex);
-}
-
-void WebVideoFullscreenInterfaceAVKit::setExternalPlayback(bool enabled, ExternalPlaybackTargetType targetType, String localizedDeviceName)
-{
-    m_playbackSessionInterface->setExternalPlayback(enabled, targetType, localizedDeviceName);
-}
-
-void WebVideoFullscreenInterfaceAVKit::externalPlaybackEnabledChanged(bool enabled)
+void WebVideoFullscreenInterfaceAVKit::externalPlaybackChanged(bool enabled, WebPlaybackSessionModel::ExternalPlaybackTargetType, const String&)
 {
     [m_playerLayerView setHidden:enabled];
-}
-
-void WebVideoFullscreenInterfaceAVKit::setWirelessVideoPlaybackDisabled(bool disabled)
-{
-    m_playbackSessionInterface->setWirelessVideoPlaybackDisabled(disabled);
-}
-
-bool WebVideoFullscreenInterfaceAVKit::wirelessVideoPlaybackDisabled() const
-{
-    return m_playbackSessionInterface->wirelessVideoPlaybackDisabled();
 }
 
 void WebVideoFullscreenInterfaceAVKit::applicationDidBecomeActive()
@@ -651,6 +607,7 @@ void WebVideoFullscreenInterfaceAVKit::setupFullscreen(UIView& videoView, const 
         [[m_viewController view] setFrame:[m_window bounds]];
         [m_viewController _setIgnoreAppSupportedOrientations:YES];
         [m_window setRootViewController:m_viewController.get()];
+        [m_window setWindowLevel:getUIRemoteKeyboardLevel() + 1];
         [m_window makeKeyAndVisible];
     }
 
@@ -1027,8 +984,7 @@ bool WebVideoFullscreenInterfaceAVKit::shouldExitFullscreenWithReason(WebVideoFu
     if (webPlaybackSessionModel() && (reason == ExitFullScreenReason::DoneButtonTapped || reason == ExitFullScreenReason::RemoteControlStopEventReceived))
         webPlaybackSessionModel()->pause();
     
-
-    m_videoFullscreenModel->requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenModeNone);
+    m_videoFullscreenModel->requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenModeNone, reason == ExitFullScreenReason::DoneButtonTapped);
 
     if (!m_watchdogTimer.isActive())
         m_watchdogTimer.startOneShot(DefaultWatchdogTimerInterval);

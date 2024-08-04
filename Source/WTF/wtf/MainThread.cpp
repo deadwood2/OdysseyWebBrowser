@@ -41,7 +41,7 @@
 namespace WTF {
 
 static bool callbacksPaused; // This global variable is only accessed from main thread.
-#if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
+#if !OS(DARWIN) && !PLATFORM(GTK)
 static ThreadIdentifier mainThreadIdentifier;
 #endif
 
@@ -53,28 +53,14 @@ static Deque<Function<void ()>>& functionQueue()
     return functionQueue;
 }
 
-#if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
-
-void initializeMainThread()
-{
-    static bool initializedMainThread;
-    if (initializedMainThread)
-        return;
-    initializedMainThread = true;
-
-    mainThreadIdentifier = currentThread();
-
-    initializeMainThreadPlatform();
-    initializeGCThreads();
-}
-
-#else
-
+#if OS(DARWIN) || PLATFORM(GTK)
 static pthread_once_t initializeMainThreadKeyOnce = PTHREAD_ONCE_INIT;
 
 static void initializeMainThreadOnce()
 {
+    initializeThreading();
     initializeMainThreadPlatform();
+    initializeGCThreads();
 }
 
 void initializeMainThread()
@@ -82,17 +68,19 @@ void initializeMainThread()
     pthread_once(&initializeMainThreadKeyOnce, initializeMainThreadOnce);
 }
 
-#if !USE(WEB_THREAD)
+#if !USE(WEB_THREAD) && !PLATFORM(GTK)
 static void initializeMainThreadToProcessMainThreadOnce()
 {
+    initializeThreading();
     initializeMainThreadToProcessMainThreadPlatform();
+    initializeGCThreads();
 }
 
 void initializeMainThreadToProcessMainThread()
 {
     pthread_once(&initializeMainThreadKeyOnce, initializeMainThreadToProcessMainThreadOnce);
 }
-#else
+#elif !PLATFORM(GTK)
 static pthread_once_t initializeWebThreadKeyOnce = PTHREAD_ONCE_INIT;
 
 static void initializeWebThreadOnce()
@@ -106,6 +94,20 @@ void initializeWebThread()
 }
 #endif // !USE(WEB_THREAD)
 
+#else
+void initializeMainThread()
+{
+    static bool initializedMainThread;
+    if (initializedMainThread)
+        return;
+    initializedMainThread = true;
+
+    initializeThreading();
+    mainThreadIdentifier = currentThread();
+
+    initializeMainThreadPlatform();
+    initializeGCThreads();
+}
 #endif
 
 // 0.1 sec delays in UI is approximate threshold when they become noticeable. Have a limit that's half of that.
@@ -176,7 +178,7 @@ void setMainThreadCallbacksPaused(bool paused)
         scheduleDispatchFunctionsOnMainThread();
 }
 
-#if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
+#if !OS(DARWIN) && !PLATFORM(GTK)
 bool isMainThread()
 {
     return currentThread() == mainThreadIdentifier;
@@ -190,14 +192,19 @@ bool canAccessThreadLocalDataForThread(ThreadIdentifier threadId)
 }
 #endif
 
-static ThreadSpecific<bool>* isGCThread;
+static ThreadSpecific<std::optional<GCThreadType>, CanBeGCThread::True>* isGCThread;
 
 void initializeGCThreads()
 {
-    isGCThread = new ThreadSpecific<bool>();
+    static std::once_flag flag;
+    std::call_once(
+        flag,
+        [] {
+            isGCThread = new ThreadSpecific<std::optional<GCThreadType>, CanBeGCThread::True>();
+        });
 }
 
-void registerGCThread()
+void registerGCThread(GCThreadType type)
 {
     if (!isGCThread) {
         // This happens if we're running in a process that doesn't care about
@@ -205,7 +212,7 @@ void registerGCThread()
         return;
     }
 
-    **isGCThread = true;
+    **isGCThread = type;
 }
 
 bool isMainThreadOrGCThread()
@@ -216,9 +223,13 @@ bool isMainThreadOrGCThread()
     return isMainThread();
 }
 
-bool mayBeGCThread()
+std::optional<GCThreadType> mayBeGCThread()
 {
-    return isGCThread && isGCThread->isSet() && **isGCThread;
+    if (!isGCThread)
+        return std::nullopt;
+    if (!isGCThread->isSet())
+        return std::nullopt;
+    return **isGCThread;
 }
 
 } // namespace WTF

@@ -59,12 +59,12 @@ JSObject* createTerminatedExecutionException(VM* vm)
     return TerminatedExecutionError::create(*vm);
 }
 
-bool isTerminatedExecutionException(Exception* exception)
+bool isTerminatedExecutionException(VM& vm, Exception* exception)
 {
     if (!exception->value().isObject())
         return false;
 
-    return exception->value().inherits(TerminatedExecutionError::info());
+    return exception->value().inherits(vm, TerminatedExecutionError::info());
 }
 
 JSObject* createStackOverflowError(ExecState* exec)
@@ -85,7 +85,9 @@ JSObject* createUndefinedVariableError(ExecState* exec, const Identifier& ident)
 JSString* errorDescriptionForValue(ExecState* exec, JSValue v)
 {
     if (v.isString())
-        return jsNontrivialString(exec, makeString('"',  asString(v)->value(exec), '"'));
+        return jsNontrivialString(exec, makeString('"', asString(v)->value(exec), '"'));
+    if (v.isSymbol())
+        return jsNontrivialString(exec, asSymbol(v)->descriptiveString());
     if (v.isObject()) {
         CallData callData;
         JSObject* object = asObject(v);
@@ -101,7 +103,7 @@ static String defaultApproximateSourceError(const String& originalMessage, const
     return makeString(originalMessage, " (near '...", sourceText, "...')");
 }
 
-static String defaultSourceAppender(const String& originalMessage, const String& sourceText, RuntimeType, ErrorInstance::SourceTextWhereErrorOccurred occurrence)
+String defaultSourceAppender(const String& originalMessage, const String& sourceText, RuntimeType, ErrorInstance::SourceTextWhereErrorOccurred occurrence)
 {
     if (occurrence == ErrorInstance::FoundApproximateSource)
         return defaultApproximateSourceError(originalMessage, sourceText);
@@ -182,9 +184,13 @@ static String notAFunctionSourceAppender(const String& originalMessage, const St
     builder.appendLiteral("', '");
     builder.append(base);
     builder.appendLiteral("' is ");
-    if (type == TypeObject)
-        builder.appendLiteral("an instance of ");
-    builder.append(displayValue);
+    if (type == TypeSymbol)
+        builder.appendLiteral("a Symbol");
+    else {
+        if (type == TypeObject)
+            builder.appendLiteral("an instance of ");
+        builder.append(displayValue);
+    }
     builder.append(')');
 
     return builder.toString();
@@ -236,7 +242,11 @@ static String invalidParameterInstanceofhasInstanceValueNotFunctionSourceAppende
 
 JSObject* createError(ExecState* exec, JSValue value, const String& message, ErrorInstance::SourceAppender appender)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_CATCH_SCOPE(vm);
+
     String errorMessage = makeString(errorDescriptionForValue(exec, value)->value(exec), ' ', message);
+    ASSERT_UNUSED(scope, !scope.exception());
     JSObject* exception = createTypeError(exec, errorMessage, appender, runtimeTypeForValue(value));
     ASSERT(exception->isErrorInstance());
     return exception;

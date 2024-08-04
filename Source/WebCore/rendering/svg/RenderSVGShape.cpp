@@ -40,7 +40,6 @@
 #include "SVGRenderingContext.h"
 #include "SVGResources.h"
 #include "SVGResourcesCache.h"
-#include "SVGTransformList.h"
 #include "SVGURIReference.h"
 #include "StrokeStyleApplier.h"
 #include <wtf/StackStats.h>
@@ -201,7 +200,7 @@ Path* RenderSVGShape::nonScalingStrokePath(const Path* path, const AffineTransfo
 
 bool RenderSVGShape::setupNonScalingStrokeContext(AffineTransform& strokeTransform, GraphicsContextStateSaver& stateSaver)
 {
-    Optional<AffineTransform> inverse = strokeTransform.inverse();
+    std::optional<AffineTransform> inverse = strokeTransform.inverse();
     if (!inverse)
         return false;
 
@@ -264,7 +263,7 @@ void RenderSVGShape::strokeShape(const RenderStyle& style, GraphicsContext& orig
 
 void RenderSVGShape::strokeShape(GraphicsContext& context)
 {
-    if (!style().svgStyle().hasVisibleStroke())
+    if (!style().hasVisibleStroke())
         return;
 
     GraphicsContextStateSaver stateSaver(context, false);
@@ -278,7 +277,7 @@ void RenderSVGShape::strokeShape(GraphicsContext& context)
 
 void RenderSVGShape::fillStrokeMarkers(PaintInfo& childPaintInfo)
 {
-    auto paintOrder = style().svgStyle().paintTypesForPaintOrder();
+    auto paintOrder = style().paintTypesForPaintOrder();
     for (unsigned i = 0; i < paintOrder.size(); ++i) {
         switch (paintOrder.at(i)) {
         case PaintTypeFill:
@@ -339,7 +338,7 @@ bool RenderSVGShape::nodeAtFloatPoint(const HitTestRequest& request, HitTestResu
     if (hitTestAction != HitTestForeground)
         return false;
 
-    FloatPoint localPoint = m_localTransform.inverse().valueOr(AffineTransform()).mapPoint(pointInParent);
+    FloatPoint localPoint = m_localTransform.inverse().value_or(AffineTransform()).mapPoint(pointInParent);
 
     if (!SVGRenderSupport::pointInClippingArea(*this, localPoint))
         return false;
@@ -411,7 +410,7 @@ FloatRect RenderSVGShape::calculateStrokeBoundingBox() const
         BoundingRectStrokeStyleApplier strokeStyle(*this);
         if (hasNonScalingStroke()) {
             AffineTransform nonScalingTransform = nonScalingStrokeTransform();
-            if (Optional<AffineTransform> inverse = nonScalingTransform.inverse()) {
+            if (std::optional<AffineTransform> inverse = nonScalingTransform.inverse()) {
                 Path* usePath = nonScalingStrokePath(m_path.get(), nonScalingTransform);
                 FloatRect strokeBoundingRect = usePath->strokeBoundingRect(&strokeStyle);
                 strokeBoundingRect = inverse.value().mapRect(strokeBoundingRect);
@@ -439,7 +438,7 @@ void RenderSVGShape::updateRepaintBoundingBox()
 float RenderSVGShape::strokeWidth() const
 {
     SVGLengthContext lengthContext(&graphicsElement());
-    return lengthContext.valueForLength(style().svgStyle().strokeWidth());
+    return lengthContext.valueForLength(style().strokeWidth());
 }
 
 bool RenderSVGShape::hasSmoothStroke() const
@@ -447,8 +446,8 @@ bool RenderSVGShape::hasSmoothStroke() const
     const SVGRenderStyle& svgStyle = style().svgStyle();
     return svgStyle.strokeDashArray().isEmpty()
         && svgStyle.strokeMiterLimit() == svgStyle.initialStrokeMiterLimit()
-        && svgStyle.joinStyle() == svgStyle.initialJoinStyle()
-        && svgStyle.capStyle() == svgStyle.initialCapStyle();
+        && style().joinStyle() == style().initialJoinStyle()
+        && style().capStyle() == style().initialCapStyle();
 }
 
 void RenderSVGShape::drawMarkers(PaintInfo& paintInfo)

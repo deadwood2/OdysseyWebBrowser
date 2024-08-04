@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,10 +27,12 @@
 #import "WebProcess.h"
 
 #import "CustomProtocolManager.h"
+#import "Logging.h"
 #import "ObjCObjectGraph.h"
 #import "SandboxExtension.h"
 #import "SandboxInitializationParameters.h"
 #import "SecItemShim.h"
+#import "SessionTracker.h"
 #import "WKAPICast.h"
 #import "WKBrowsingContextHandleInternal.h"
 #import "WKFullKeyboardAccessWatcher.h"
@@ -48,12 +50,13 @@
 #import <WebCore/FontCache.h>
 #import <WebCore/FontCascade.h>
 #import <WebCore/LocalizedStrings.h>
-#import <WebCore/MemoryPressureHandler.h>
+#import <WebCore/MemoryRelease.h>
 #import <WebCore/NSAccessibilitySPI.h>
+#import <WebCore/PerformanceLogging.h>
+#import <WebCore/QuartzCoreSPI.h>
 #import <WebCore/RuntimeApplicationChecks.h>
-#import <WebCore/pthreadSPI.h>
-#import <WebCore/VNodeTracker.h>
 #import <WebCore/WebCoreNSURLExtras.h>
+#import <WebCore/pthreadSPI.h>
 #import <WebKitSystemInterface.h>
 #import <algorithm>
 #import <dispatch/dispatch.h>
@@ -90,6 +93,7 @@ static id NSApplicationAccessibilityFocusedUIElement(NSApplication*, SEL)
 void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& parameters)
 {
     WebCore::setApplicationBundleIdentifier(parameters.uiProcessBundleIdentifier);
+    SessionTracker::setIdentifierBase(parameters.uiProcessBundleIdentifier);
 
 #if ENABLE(SANDBOX_EXTENSIONS)
     SandboxExtension::consumePermanently(parameters.uiProcessBundleResourcePathExtensionHandle);
@@ -97,6 +101,9 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
     SandboxExtension::consumePermanently(parameters.applicationCacheDirectoryExtensionHandle);
     SandboxExtension::consumePermanently(parameters.mediaCacheDirectoryExtensionHandle);
     SandboxExtension::consumePermanently(parameters.mediaKeyStorageDirectoryExtensionHandle);
+#if ENABLE(MEDIA_STREAM)
+    SandboxExtension::consumePermanently(parameters.audioCaptureExtensionHandle);
+#endif
 #if PLATFORM(IOS)
     SandboxExtension::consumePermanently(parameters.cookieStorageDirectoryExtensionHandle);
     SandboxExtension::consumePermanently(parameters.containerCachesDirectoryExtensionHandle);
@@ -118,16 +125,8 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
     m_compositingRenderServerPort = WTFMove(parameters.acceleratedCompositingPort);
     m_presenterApplicationPid = parameters.presenterApplicationPid;
 
+    WebCore::registerMemoryReleaseNotifyCallbacks();
     MemoryPressureHandler::ReliefLogger::setLoggingEnabled(parameters.shouldEnableMemoryPressureReliefLogging);
-
-#if PLATFORM(IOS)
-    // Track the number of vnodes we are using on iOS and make sure we only use a
-    // reasonable amount because limits are fairly low on iOS devices and we can
-    // get killed when reaching the limit.
-    VNodeTracker::singleton().setPressureHandler([] (Critical critical) {
-        MemoryPressureHandler::singleton().releaseMemory(critical);
-    });
-#endif
 
     setEnhancedAccessibility(parameters.accessibilityEnhancedUserInterfaceEnabled);
 
@@ -191,6 +190,24 @@ void WebProcess::registerWithStateDumper()
             // dictionary will be serialized and passed back to os_state.
             auto stateDict = adoptNS([[NSMutableDictionary alloc] init]);
 
+            {
+                auto memoryUsageStats = adoptNS([[NSMutableDictionary alloc] init]);
+                for (auto& it : PerformanceLogging::memoryUsageStatistics(ShouldIncludeExpensiveComputations::Yes)) {
+                    auto keyString = adoptNS([[NSString alloc] initWithUTF8String:it.key]);
+                    [memoryUsageStats setObject:@(it.value) forKey:keyString.get()];
+                }
+                [stateDict setObject:memoryUsageStats.get() forKey:@"Memory Usage Stats"];
+            }
+
+            {
+                auto jsObjectCounts = adoptNS([[NSMutableDictionary alloc] init]);
+                for (auto& it : PerformanceLogging::javaScriptObjectCounts()) {
+                    auto keyString = adoptNS([[NSString alloc] initWithUTF8String:it.key]);
+                    [jsObjectCounts setObject:@(it.value) forKey:keyString.get()];
+                }
+                [stateDict setObject:jsObjectCounts.get() forKey:@"JavaScript Object Counts"];
+            }
+
             auto pageLoadTimes = adoptNS([[NSMutableArray alloc] init]);
             for (auto& page : m_pageMap.values()) {
                 if (page->usesEphemeralSession())
@@ -249,7 +266,7 @@ void WebProcess::platformInitializeProcess(const ChildProcessInitializationParam
 #endif
 
 #if ENABLE(SEC_ITEM_SHIM)
-    SecItemShim::singleton().initialize(this);
+    initializeSecItemShim(*this);
 #endif
 }
 
@@ -314,7 +331,7 @@ static NSURL *origin(WebPage& page)
     if (!mainFrameOrigin->isUnique())
         mainFrameOriginString = mainFrameOrigin->toRawString();
     else
-        mainFrameOriginString = mainFrameURL.protocol() + ':'; // toRawString() is not supposed to work with unique origins, and would just return "://".
+        mainFrameOriginString = makeString(mainFrameURL.protocol(), ':'); // toRawString() is not supposed to work with unique origins, and would just return "://".
 
     // +[NSURL URLWithString:] returns nil when its argument is malformed. It's unclear when we would have a malformed URL here,
     // but it happens in practice according to <rdar://problem/14173389>. Leaving an assertion in to catch a reproducible case.
@@ -420,7 +437,14 @@ RefPtr<ObjCObjectGraph> WebProcess::transformObjectsToHandles(ObjCObjectGraph& o
 
 void WebProcess::destroyRenderingResources()
 {
-    WKDestroyRenderingResources();
+#if !RELEASE_LOG_DISABLED
+    double startTime = monotonicallyIncreasingTime();
+#endif
+    CABackingStoreCollectBlocking();
+#if !RELEASE_LOG_DISABLED
+    double endTime = monotonicallyIncreasingTime();
+#endif
+    RELEASE_LOG(ProcessSuspension, "%p - WebProcess::destroyRenderingResources() took %.2fms", this, (endTime - startTime) * 1000.0);
 }
 
 } // namespace WebKit

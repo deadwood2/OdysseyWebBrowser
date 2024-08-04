@@ -24,8 +24,6 @@
 #include "config.h"
 #include "RenderSVGRoot.h"
 
-#include "Chrome.h"
-#include "ChromeClient.h"
 #include "Frame.h"
 #include "GraphicsContext.h"
 #include "HitTestResult.h"
@@ -39,7 +37,6 @@
 #include "RenderSVGResourceFilter.h"
 #include "RenderView.h"
 #include "SVGImage.h"
-#include "SVGLength.h"
 #include "SVGRenderingContext.h"
 #include "SVGResources.h"
 #include "SVGResourcesCache.h"
@@ -128,17 +125,11 @@ LayoutUnit RenderSVGRoot::computeReplacedLogicalWidth(ShouldComputePreferred sho
     if (isEmbeddedThroughFrameContainingSVGDocument())
         return containingBlock()->availableLogicalWidth();
 
-    if (style().logicalWidth().isSpecified() || style().logicalMaxWidth().isSpecified())
-        return RenderReplaced::computeReplacedLogicalWidth(shouldComputePreferred);
-
-    if (svgSVGElement().hasIntrinsicWidth())
-        return resolveLengthAttributeForSVG(svgSVGElement().intrinsicWidth(), style().effectiveZoom(), containingBlock()->availableLogicalWidth());
-
     // SVG embedded via SVGImage (background-image/border-image/etc) / Inline SVG.
     return RenderReplaced::computeReplacedLogicalWidth(shouldComputePreferred);
 }
 
-LayoutUnit RenderSVGRoot::computeReplacedLogicalHeight() const
+LayoutUnit RenderSVGRoot::computeReplacedLogicalHeight(std::optional<LayoutUnit> estimatedUsedWidth) const
 {
     // When we're embedded through SVGImage (border-image/background-image/<html:img>/...) we're forced to resize to a specific size.
     if (!m_containerSize.isEmpty())
@@ -147,14 +138,8 @@ LayoutUnit RenderSVGRoot::computeReplacedLogicalHeight() const
     if (isEmbeddedThroughFrameContainingSVGDocument())
         return containingBlock()->availableLogicalHeight(IncludeMarginBorderPadding);
 
-    if (style().logicalHeight().isSpecified() || style().logicalMaxHeight().isSpecified())
-        return RenderReplaced::computeReplacedLogicalHeight();
-
-    if (svgSVGElement().hasIntrinsicHeight())
-        return resolveLengthAttributeForSVG(svgSVGElement().intrinsicHeight(), style().effectiveZoom(), containingBlock()->availableLogicalHeight(IncludeMarginBorderPadding).toFloat());
-
     // SVG embedded via SVGImage (background-image/border-image/etc) / Inline SVG.
-    return RenderReplaced::computeReplacedLogicalHeight();
+    return RenderReplaced::computeReplacedLogicalHeight(estimatedUsedWidth);
 }
 
 void RenderSVGRoot::layout()
@@ -242,20 +227,18 @@ void RenderSVGRoot::paintReplaced(PaintInfo& paintInfo, const LayoutPoint& paint
     if (svgSVGElement().hasEmptyViewBox())
         return;
 
-    Page* page = frame().page();
-
     // Don't paint if we don't have kids, except if we have filters we should paint those.
     if (!firstChild()) {
         auto* resources = SVGResourcesCache::cachedResourcesForRenderer(*this);
         if (!resources || !resources->filter()) {
-            if (page && paintInfo.phase == PaintPhaseForeground)
-                page->addRelevantUnpaintedObject(this, visualOverflowRect());
+            if (paintInfo.phase == PaintPhaseForeground)
+                page().addRelevantUnpaintedObject(this, visualOverflowRect());
             return;
         }
     }
 
-    if (page && paintInfo.phase == PaintPhaseForeground)
-        page->addRelevantRepaintedObject(this, visualOverflowRect());
+    if (paintInfo.phase == PaintPhaseForeground)
+        page().addRelevantRepaintedObject(this, visualOverflowRect());
 
     // Make a copy of the PaintInfo because applyTransform will modify the damage rect.
     PaintInfo childPaintInfo(paintInfo);
@@ -340,10 +323,10 @@ void RenderSVGRoot::removeChild(RenderObject& child)
 void RenderSVGRoot::buildLocalToBorderBoxTransform()
 {
     float scale = style().effectiveZoom();
-    SVGPoint translate = svgSVGElement().currentTranslate();
+    FloatPoint translate = svgSVGElement().currentTranslateValue();
     LayoutSize borderAndPadding(borderLeft() + paddingLeft(), borderTop() + paddingTop());
     m_localToBorderBoxTransform = svgSVGElement().viewBoxToViewTransform(contentWidth() / scale, contentHeight() / scale);
-    if (borderAndPadding.isZero() && scale == 1 && translate == SVGPoint::zero())
+    if (borderAndPadding.isZero() && scale == 1 && translate == FloatPoint::zero())
         return;
     m_localToBorderBoxTransform = AffineTransform(scale, 0, 0, scale, borderAndPadding.width() + translate.x(), borderAndPadding.height() + translate.y()) * m_localToBorderBoxTransform;
 }
@@ -431,7 +414,7 @@ bool RenderSVGRoot::nodeAtPoint(const HitTestRequest& request, HitTestResult& re
     // Only test SVG content if the point is in our content box.
     // FIXME: This should be an intersection when rect-based hit tests are supported by nodeAtFloatPoint.
     if (contentBoxRect().contains(pointInBorderBox)) {
-        FloatPoint localPoint = localToParentTransform().inverse().valueOr(AffineTransform()).mapPoint(FloatPoint(pointInParent));
+        FloatPoint localPoint = localToParentTransform().inverse().value_or(AffineTransform()).mapPoint(FloatPoint(pointInParent));
 
         for (RenderObject* child = lastChild(); child; child = child->previousSibling()) {
             // FIXME: nodeAtFloatPoint() doesn't handle rect-based hit tests yet.

@@ -59,7 +59,6 @@
 #include <WebCore/NetscapePlugInStreamLoader.h>
 #include <WebCore/NetworkingContext.h>
 #include <WebCore/Page.h>
-#include <WebCore/PageThrottler.h>
 #include <WebCore/PlatformMouseEvent.h>
 #include <WebCore/ProtectionSpace.h>
 #include <WebCore/ProxyServer.h>
@@ -190,23 +189,19 @@ static String buildHTTPHeaders(const ResourceResponse& response, long long& expe
     if (!response.isHTTP())
         return String();
 
-    StringBuilder stringBuilder;
-    
-    String statusLine = String::format("HTTP %d ", response.httpStatusCode());
-    stringBuilder.append(statusLine);
-    stringBuilder.append(response.httpStatusText());
-    stringBuilder.append('\n');
-    
-    HTTPHeaderMap::const_iterator end = response.httpHeaderFields().end();
-    for (HTTPHeaderMap::const_iterator it = response.httpHeaderFields().begin(); it != end; ++it) {
-        stringBuilder.append(it->key);
-        stringBuilder.appendLiteral(": ");
-        stringBuilder.append(it->value);
-        stringBuilder.append('\n');
+    StringBuilder header;
+    header.appendLiteral("HTTP ");
+    header.appendNumber(response.httpStatusCode());
+    header.append(' ');
+    header.append(response.httpStatusText());
+    header.append('\n');
+    for (auto& field : response.httpHeaderFields()) {
+        header.append(field.key);
+        header.appendLiteral(": ");
+        header.append(field.value);
+        header.append('\n');
     }
-    
-    String headers = stringBuilder.toString();
-    
+
     // If the content is encoded (most likely compressed), then don't send its length to the plugin,
     // which is only interested in the decoded length, not yet known at the moment.
     // <rdar://problem/4470599> tracks a request for -[NSURLResponse expectedContentLength] to incorporate this logic.
@@ -214,7 +209,7 @@ static String buildHTTPHeaders(const ResourceResponse& response, long long& expe
     if (!contentEncoding.isNull() && contentEncoding != "identity")
         expectedContentLength = -1;
 
-    return headers;
+    return header.toString();
 }
 
 static uint32_t lastModifiedDateMS(const ResourceResponse& response)
@@ -297,37 +292,19 @@ static inline WebPage* webPage(HTMLPlugInElement* pluginElement)
     return webFrame->page();
 }
 
-Ref<PluginView> PluginView::create(PassRefPtr<HTMLPlugInElement> pluginElement, PassRefPtr<Plugin> plugin, const Plugin::Parameters& parameters)
+Ref<PluginView> PluginView::create(HTMLPlugInElement& pluginElement, Ref<Plugin>&& plugin, const Plugin::Parameters& parameters)
 {
-    return adoptRef(*new PluginView(pluginElement, plugin, parameters));
+    return adoptRef(*new PluginView(pluginElement, WTFMove(plugin), parameters));
 }
 
-PluginView::PluginView(PassRefPtr<HTMLPlugInElement> pluginElement, PassRefPtr<Plugin> plugin, const Plugin::Parameters& parameters)
+PluginView::PluginView(HTMLPlugInElement& pluginElement, Ref<Plugin>&& plugin, const Plugin::Parameters& parameters)
     : PluginViewBase(0)
-    , m_pluginElement(pluginElement)
-    , m_plugin(plugin)
+    , m_pluginElement(&pluginElement)
+    , m_plugin(WTFMove(plugin))
     , m_webPage(webPage(m_pluginElement.get()))
     , m_parameters(parameters)
-    , m_isInitialized(false)
-    , m_isWaitingForSynchronousInitialization(false)
-    , m_isWaitingUntilMediaCanStart(false)
-    , m_isBeingDestroyed(false)
-    , m_pluginProcessHasCrashed(false)
-#if ENABLE(PRIMARY_SNAPSHOTTED_PLUGIN_HEURISTIC)
-    , m_didPlugInStartOffScreen(false)
-#endif
     , m_pendingURLRequestsTimer(RunLoop::main(), this, &PluginView::pendingURLRequestsTimerFired)
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    , m_npRuntimeObjectMap(this)
-#endif
-    , m_manualStreamState(StreamStateInitial)
     , m_pluginSnapshotTimer(*this, &PluginView::pluginSnapshotTimerFired, pluginSnapshotTimerDelay)
-#if ENABLE(PRIMARY_SNAPSHOTTED_PLUGIN_HEURISTIC) || PLATFORM(COCOA)
-    , m_countSnapshotRetries(0)
-#endif
-    , m_didReceiveUserInteraction(false)
-    , m_pageScaleFactor(1)
-    , m_pluginIsPlayingAudio(false)
 {
     m_webPage->addPluginView(this);
 }
@@ -379,7 +356,7 @@ void PluginView::destroyPluginAndReset()
     cancelAllStreams();
 }
 
-void PluginView::recreateAndInitialize(PassRefPtr<Plugin> plugin)
+void PluginView::recreateAndInitialize(Ref<Plugin>&& plugin)
 {
     if (m_plugin) {
         if (m_pluginSnapshotTimer.isActive())
@@ -387,13 +364,12 @@ void PluginView::recreateAndInitialize(PassRefPtr<Plugin> plugin)
         destroyPluginAndReset();
     }
 
-    // Reset member variables to initial values.
-    m_plugin = plugin;
+    m_plugin = WTFMove(plugin);
     m_isInitialized = false;
     m_isWaitingForSynchronousInitialization = false;
     m_isWaitingUntilMediaCanStart = false;
     m_isBeingDestroyed = false;
-    m_manualStreamState = StreamStateInitial;
+    m_manualStreamState = ManualStreamState::Initial;
     m_transientPaintingSnapshot = nullptr;
 
     initializePlugin();
@@ -426,8 +402,8 @@ void PluginView::manualLoadDidReceiveResponse(const ResourceResponse& response)
         return;
 
     if (!m_isInitialized) {
-        ASSERT(m_manualStreamState == StreamStateInitial);
-        m_manualStreamState = StreamStateHasReceivedResponse;
+        ASSERT(m_manualStreamState == ManualStreamState::Initial);
+        m_manualStreamState = ManualStreamState::HasReceivedResponse;
         m_manualStreamResponse = response;
         return;
     }
@@ -453,7 +429,7 @@ void PluginView::manualLoadDidReceiveData(const char* bytes, int length)
         return;
 
     if (!m_isInitialized) {
-        ASSERT(m_manualStreamState == StreamStateHasReceivedResponse);
+        ASSERT(m_manualStreamState == ManualStreamState::HasReceivedResponse);
         if (!m_manualStreamData)
             m_manualStreamData = SharedBuffer::create();
 
@@ -471,8 +447,8 @@ void PluginView::manualLoadDidFinishLoading()
         return;
 
     if (!m_isInitialized) {
-        ASSERT(m_manualStreamState == StreamStateHasReceivedResponse);
-        m_manualStreamState = StreamStateFinished;
+        ASSERT(m_manualStreamState == ManualStreamState::HasReceivedResponse);
+        m_manualStreamState = ManualStreamState::Finished;
         return;
     }
 
@@ -486,7 +462,7 @@ void PluginView::manualLoadDidFail(const ResourceError& error)
         return;
 
     if (!m_isInitialized) {
-        m_manualStreamState = StreamStateFinished;
+        m_manualStreamState = ManualStreamState::Finished;
         m_manualStreamError = error;
         m_manualStreamData = nullptr;
         return;
@@ -539,29 +515,17 @@ void PluginView::webPageDestroyed()
     m_webPage = 0;
 }
 
-void PluginView::viewStateDidChange(ViewState::Flags changed)
+void PluginView::activityStateDidChange(ActivityState::Flags changed)
 {
     if (!m_plugin || !m_isInitialized)
         return;
 
-    if (changed & ViewState::IsVisibleOrOccluded)
+    if (changed & ActivityState::IsVisibleOrOccluded)
         m_plugin->windowVisibilityChanged(m_webPage->isVisibleOrOccluded());
-    if (changed & ViewState::WindowIsActive)
+    if (changed & ActivityState::WindowIsActive)
         m_plugin->windowFocusChanged(m_webPage->windowIsFocused());
 }
 
-WebCore::AudioHardwareActivityType PluginView::audioHardwareActivity() const
-{
-    if (!m_isInitialized || !m_plugin)
-        return AudioHardwareActivityType::IsInactive;
-    
-#if PLATFORM(COCOA)
-    return m_plugin->audioHardwareActivity();
-#else
-    return AudioHardwareActivityType::Unknown;
-#endif
-}
-    
 #if PLATFORM(COCOA)
 void PluginView::setDeviceScaleFactor(float scaleFactor)
 {
@@ -667,7 +631,7 @@ void PluginView::didInitializePlugin()
     if (m_pluginElement->displayState() < HTMLPlugInElement::Restarting) {
         if (m_plugin->pluginLayer() && frame()) {
             frame()->view()->enterCompositingMode();
-            m_pluginElement->setNeedsStyleRecalc(SyntheticStyleChange);
+            m_pluginElement->invalidateStyleAndLayerComposition();
         }
         if (frame() && !frame()->settings().maximumPlugInSnapshotAttempts()) {
             beginSnapshottingRunningPlugin();
@@ -677,7 +641,7 @@ void PluginView::didInitializePlugin()
     } else {
         if (m_plugin->pluginLayer() && frame()) {
             frame()->view()->enterCompositingMode();
-            m_pluginElement->setNeedsStyleRecalc(SyntheticStyleChange);
+            m_pluginElement->invalidateStyleAndLayerComposition();
         }
         if (m_pluginElement->displayState() == HTMLPlugInElement::RestartingWithPendingMouseClick)
             m_pluginElement->dispatchPendingMouseClick();
@@ -746,7 +710,7 @@ void PluginView::storageBlockingStateChanged()
     if (!m_isInitialized || !m_plugin)
         return;
 
-    bool storageBlockingPolicy = !frame()->document()->securityOrigin()->canAccessPluginStorage(frame()->document()->topOrigin());
+    bool storageBlockingPolicy = !frame()->document()->securityOrigin().canAccessPluginStorage(frame()->document()->topOrigin());
 
     m_plugin->storageBlockingStateChanged(storageBlockingPolicy);
 }
@@ -811,7 +775,7 @@ void PluginView::setFrameRect(const WebCore::IntRect& rect)
     viewGeometryDidChange();
 }
 
-void PluginView::paint(GraphicsContext& context, const IntRect& /*dirtyRect*/)
+void PluginView::paint(GraphicsContext& context, const IntRect& /*dirtyRect*/, Widget::SecurityOriginPaintPolicy)
 {
     if (!m_plugin || !m_isInitialized || m_pluginElement->displayState() < HTMLPlugInElement::Restarting)
         return;
@@ -1024,7 +988,7 @@ void PluginView::willDetatchRenderer()
     m_plugin->willDetatchRenderer();
 }
 
-PassRefPtr<SharedBuffer> PluginView::liveResourceData() const
+RefPtr<SharedBuffer> PluginView::liveResourceData() const
 {
     if (!m_isInitialized || !m_plugin)
         return 0;
@@ -1168,7 +1132,7 @@ void PluginView::focusPluginElement()
     ASSERT(frame());
     
     if (Page* page = frame()->page())
-        page->focusController().setFocusedElement(m_pluginElement.get(), frame());
+        page->focusController().setFocusedElement(m_pluginElement.get(), *frame());
     else
         frame()->document()->setFocusedElement(m_pluginElement.get());
 }
@@ -1216,13 +1180,13 @@ void PluginView::performFrameLoadURLRequest(URLRequest* request)
     if (!frame)
         return;
 
-    if (!m_pluginElement->document().securityOrigin()->canDisplay(request->request().url())) {
+    if (!m_pluginElement->document().securityOrigin().canDisplay(request->request().url())) {
         // We can't load the request, send back a reply to the plug-in.
         m_plugin->frameDidFail(request->requestID(), false);
         return;
     }
 
-    UserGestureIndicator gestureIndicator(request->allowPopups() ? Optional<ProcessingUserGestureState>(ProcessingUserGesture) : Nullopt);
+    UserGestureIndicator gestureIndicator(request->allowPopups() ? std::optional<ProcessingUserGestureState>(ProcessingUserGesture) : std::nullopt);
 
     // First, try to find a target frame.
     Frame* targetFrame = frame->loader().findFrameForNavigation(request->target());
@@ -1325,12 +1289,12 @@ void PluginView::cancelAllStreams()
 
 void PluginView::redeliverManualStream()
 {
-    if (m_manualStreamState == StreamStateInitial) {
+    if (m_manualStreamState == ManualStreamState::Initial) {
         // Nothing to do.
         return;
     }
 
-    if (m_manualStreamState == StreamStateFailed) {
+    if (m_manualStreamState == ManualStreamState::Failed) {
         manualLoadDidFail(m_manualStreamError);
         return;
     }
@@ -1351,7 +1315,7 @@ void PluginView::redeliverManualStream()
         m_manualStreamData = nullptr;
     }
 
-    if (m_manualStreamState == StreamStateFinished)
+    if (m_manualStreamState == ManualStreamState::Finished)
         manualLoadDidFinishLoading();
 }
 
@@ -1388,7 +1352,7 @@ void PluginView::setFocus(bool hasFocus)
     m_plugin->setFocus(hasFocus);
 }
 
-void PluginView::mediaCanStart()
+void PluginView::mediaCanStart(WebCore::Document&)
 {
     ASSERT(m_isWaitingUntilMediaCanStart);
     m_isWaitingUntilMediaCanStart = false;
@@ -1517,7 +1481,7 @@ bool PluginView::evaluate(NPObject* npObject, const String& scriptString, NPVari
     // protect the plug-in view from destruction.
     NPRuntimeObjectMap::PluginProtector pluginProtector(&m_npRuntimeObjectMap);
 
-    UserGestureIndicator gestureIndicator(allowPopups ? Optional<ProcessingUserGestureState>(ProcessingUserGesture) : Nullopt);
+    UserGestureIndicator gestureIndicator(allowPopups ? std::optional<ProcessingUserGestureState>(ProcessingUserGesture) : std::nullopt);
     return m_npRuntimeObjectMap.evaluate(npObject, scriptString, result);
 }
 
@@ -1535,7 +1499,7 @@ bool PluginView::isMuted() const
     if (!frame() || !frame()->page())
         return false;
 
-    return frame()->page()->isMuted();
+    return frame()->page()->isAudioMuted();
 }
 #endif
 
@@ -1548,7 +1512,7 @@ void PluginView::setStatusbarText(const String& statusbarText)
     if (!page)
         return;
 
-    page->chrome().setStatusbarText(frame(), statusbarText);
+    page->chrome().setStatusbarText(*frame(), statusbarText);
 }
 
 bool PluginView::isAcceleratedCompositingEnabled()
@@ -1574,7 +1538,7 @@ void PluginView::pluginProcessCrashed()
     if (!is<RenderEmbeddedObject>(renderer))
         return;
 
-    m_pluginElement->setNeedsStyleRecalc(SyntheticStyleChange);
+    m_pluginElement->invalidateStyleAndLayerComposition();
 
     downcast<RenderEmbeddedObject>(*renderer).setPluginUnavailabilityReason(RenderEmbeddedObject::PluginCrashed);
 
@@ -1629,7 +1593,12 @@ void PluginView::setCookiesForURL(const String& urlString, const String& cookieS
 
 bool PluginView::getAuthenticationInfo(const ProtectionSpace& protectionSpace, String& username, String& password)
 {
-    Credential credential = CredentialStorage::defaultCredentialStorage().get(protectionSpace);
+    auto* contentDocument = m_pluginElement->contentDocument();
+    if (!contentDocument)
+        return false;
+
+    String partitionName = contentDocument->topDocument().securityOrigin().domainForCachePartition();
+    Credential credential = CredentialStorage::defaultCredentialStorage().get(partitionName, protectionSpace);
     if (credential.isEmpty())
         credential = CredentialStorage::defaultCredentialStorage().getFromPersistentStorage(protectionSpace);
 
@@ -1648,7 +1617,7 @@ bool PluginView::isPrivateBrowsingEnabled()
     if (!frame())
         return true;
 
-    if (!frame()->document()->securityOrigin()->canAccessPluginStorage(frame()->document()->topOrigin()))
+    if (!frame()->document()->securityOrigin().canAccessPluginStorage(frame()->document()->topOrigin()))
         return true;
 
     return frame()->page()->usesEphemeralSession();
@@ -1735,7 +1704,7 @@ void PluginView::windowedPluginVisibilityDidChange(bool isVisible, uint64_t wind
 #if PLATFORM(COCOA)
 static bool isAlmostSolidColor(BitmapImage* bitmap)
 {
-    CGImageRef image = bitmap->getCGImageRef();
+    CGImageRef image = bitmap->nativeImage().get();
     ASSERT(CGImageGetBitsPerComponent(image) == 8);
 
     CGBitmapInfo imageInfo = CGImageGetBitmapInfo(image);

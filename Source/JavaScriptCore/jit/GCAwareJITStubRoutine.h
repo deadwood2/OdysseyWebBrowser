@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef GCAwareJITStubRoutine_h
-#define GCAwareJITStubRoutine_h
+#pragma once
 
 #if ENABLE(JIT)
 
@@ -112,7 +111,7 @@ private:
 // appropriate. Generally you only need to pass pointers that will be used
 // after the first call to C++ or JS.
 // 
-// PassRefPtr<JITStubRoutine> createJITStubRoutine(
+// Ref<JITStubRoutine> createJITStubRoutine(
 //    const MacroAssemblerCodeRef& code,
 //    VM& vm,
 //    const JSCell* owner,
@@ -125,7 +124,7 @@ private:
 // this function using varargs, I ended up with more code than this simple
 // way.
 
-PassRefPtr<JITStubRoutine> createJITStubRoutine(
+Ref<JITStubRoutine> createJITStubRoutine(
     const MacroAssemblerCodeRef&, VM&, const JSCell* owner, bool makesCalls,
     const Vector<JSCell*>& = { }, 
     CodeBlock* codeBlockForExceptionHandlers = nullptr, CallSiteIndex exceptionHandlingCallSiteIndex = CallSiteIndex(std::numeric_limits<unsigned>::max()));
@@ -133,6 +132,3 @@ PassRefPtr<JITStubRoutine> createJITStubRoutine(
 } // namespace JSC
 
 #endif // ENABLE(JIT)
-
-#endif // GCAwareJITStubRoutine_h
-

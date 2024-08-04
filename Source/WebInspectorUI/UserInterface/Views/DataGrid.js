@@ -39,6 +39,7 @@ WebInspector.DataGrid = class DataGrid extends WebInspector.View
         this._sortOrderSetting = null;
         this._hiddenColumnSetting = null;
         this._columnChooserEnabled = false;
+        this._headerVisible = true;
 
         this._rows = [];
 
@@ -131,6 +132,8 @@ WebInspector.DataGrid = class DataGrid extends WebInspector.View
         }
 
         this._updateScrollbarPadding();
+
+        this._copyTextDelimiter = "\t";
     }
 
     _updateScrollbarPadding()
@@ -207,6 +210,17 @@ WebInspector.DataGrid = class DataGrid extends WebInspector.View
         dataGrid.sortColumnIdentifier = columnNames[0];
 
         return dataGrid;
+    }
+
+    get headerVisible() { return this._headerVisible; }
+
+    set headerVisible(x)
+    {
+        if (x === this._headerVisible)
+            return;
+
+        this._headerVisible = x;
+        this.element.classList.toggle("no-header", !this._headerVisible);
     }
 
     get columnChooserEnabled() { return this._columnChooserEnabled; }
@@ -726,7 +740,7 @@ WebInspector.DataGrid = class DataGrid extends WebInspector.View
         if (column["collapsesGroup"]) {
             console.assert(column["group"] !== column["collapsesGroup"]);
 
-            var dividerElement = headerCellElement.createChild("div", "divider");
+            headerCellElement.createChild("div", "divider");
 
             var collapseDiv = headerCellElement.createChild("div", "collapser-button");
             collapseDiv.title = this._collapserButtonCollapseColumnsToolTip();
@@ -872,7 +886,7 @@ WebInspector.DataGrid = class DataGrid extends WebInspector.View
         var result = {};
         for (var [identifier, column] of this.columns) {
             var width = this._headerTableColumnGroupElement.children[column["ordinal"]].style.width;
-            result[columnIdentifier] = parseFloat(width);
+            result[identifier] = parseFloat(width);
         }
         return result;
     }
@@ -1634,23 +1648,32 @@ WebInspector.DataGrid = class DataGrid extends WebInspector.View
         if (this.dataGrid._refreshCallback && (!gridNode || gridNode !== this.placeholderNode))
             contextMenu.appendItem(WebInspector.UIString("Refresh"), this._refreshCallback.bind(this));
 
-        if (gridNode && gridNode.selectable && gridNode.copyable && !gridNode.isEventWithinDisclosureTriangle(event)) {
-            contextMenu.appendItem(WebInspector.UIString("Copy Row"), this._copyRow.bind(this, event.target));
-            contextMenu.appendItem(WebInspector.UIString("Copy Table"), this._copyTable.bind(this));
+        if (gridNode) {
+            if (gridNode.selectable && gridNode.copyable && !gridNode.isEventWithinDisclosureTriangle(event)) {
+                contextMenu.appendItem(WebInspector.UIString("Copy Row"), this._copyRow.bind(this, event.target));
+                contextMenu.appendItem(WebInspector.UIString("Copy Table"), this._copyTable.bind(this));
 
-            if (this.dataGrid._editCallback) {
-                if (gridNode === this.placeholderNode)
-                    contextMenu.appendItem(WebInspector.UIString("Add New"), this._startEditing.bind(this, event.target));
-                else {
-                    let element = event.target.enclosingNodeOrSelfWithNodeName("td");
-                    let columnIdentifier = element.__columnIdentifier;
-                    let columnTitle = this.dataGrid.columns.get(columnIdentifier)["title"];
-                    contextMenu.appendItem(WebInspector.UIString("Edit “%s”").format(columnTitle), this._startEditing.bind(this, event.target));
+                if (this.dataGrid._editCallback) {
+                    if (gridNode === this.placeholderNode)
+                        contextMenu.appendItem(WebInspector.UIString("Add New"), this._startEditing.bind(this, event.target));
+                    else {
+                        let element = event.target.enclosingNodeOrSelfWithNodeName("td");
+                        let columnIdentifier = element.__columnIdentifier;
+                        let columnTitle = this.dataGrid.columns.get(columnIdentifier)["title"];
+                        contextMenu.appendItem(WebInspector.UIString("Edit “%s”").format(columnTitle), this._startEditing.bind(this, event.target));
+                    }
                 }
+
+                if (this.dataGrid._deleteCallback && gridNode !== this.placeholderNode)
+                    contextMenu.appendItem(WebInspector.UIString("Delete"), this._deleteCallback.bind(this, gridNode));
             }
 
-            if (this.dataGrid._deleteCallback && gridNode !== this.placeholderNode)
-                contextMenu.appendItem(WebInspector.UIString("Delete"), this._deleteCallback.bind(this, gridNode));
+            if (gridNode.children.some((child) => child.hasChildren) || (gridNode.hasChildren && !gridNode.children.length)) {
+                contextMenu.appendSeparator();
+
+                contextMenu.appendItem(WebInspector.UIString("Expand All"), gridNode.expandRecursively.bind(gridNode));
+                contextMenu.appendItem(WebInspector.UIString("Collapse All"), gridNode.collapseRecursively.bind(gridNode));
+            }
         }
     }
 
@@ -1682,16 +1705,18 @@ WebInspector.DataGrid = class DataGrid extends WebInspector.View
         return (data instanceof Node ? data.textContent : data) || "";
     }
 
+    set copyTextDelimiter(value) { this._copyTextDelimiter = value; }
+
     _copyTextForDataGridNode(node)
     {
         let fields = node.dataGrid.orderedColumns.map((identifier) => this.textForDataGridNodeColumn(node, identifier));
-        return fields.join("\t");
+        return fields.join(this._copyTextDelimiter);
     }
 
     _copyTextForDataGridHeaders()
     {
         let fields = this.orderedColumns.map((identifier) => this.headerTableHeader(identifier).textContent);
-        return fields.join("\t");
+        return fields.join(this._copyTextDelimiter);
     }
 
     handleBeforeCopyEvent(event)
@@ -1763,7 +1788,7 @@ WebInspector.DataGrid = class DataGrid extends WebInspector.View
     resizerDragging(resizer, positionDelta)
     {
         console.assert(resizer === this._currentResizer, resizer, this._currentResizer);
-        if (resizer != this._currentResizer)
+        if (resizer !== this._currentResizer)
             return;
 
         // Constrain the dragpoint to be within the containing div of the
@@ -1771,22 +1796,22 @@ WebInspector.DataGrid = class DataGrid extends WebInspector.View
         var dragPoint = (resizer.initialPosition - positionDelta) - this.element.totalOffsetLeft;
         // Constrain the dragpoint to be within the space made up by the
         // column directly to the left and the column directly to the right.
-        var leftCellIndex = resizer[WebInspector.DataGrid.PreviousColumnOrdinalSymbol];
-        var rightCellIndex = resizer[WebInspector.DataGrid.NextColumnOrdinalSymbol];
+        var leftColumnIndex = resizer[WebInspector.DataGrid.PreviousColumnOrdinalSymbol];
+        var rightColumnIndex = resizer[WebInspector.DataGrid.NextColumnOrdinalSymbol];
         var firstRowCells = this._headerTableBodyElement.rows[0].cells;
         var leftEdgeOfPreviousColumn = 0;
-        for (var i = 0; i < leftCellIndex; i++)
+        for (var i = 0; i < leftColumnIndex; i++)
             leftEdgeOfPreviousColumn += firstRowCells[i].offsetWidth;
 
         // Differences for other resize methods
         if (this.resizeMethod === WebInspector.DataGrid.ResizeMethod.Last) {
-            rightCellIndex = this.resizers.length;
+            rightColumnIndex = this.resizers.length;
         } else if (this.resizeMethod === WebInspector.DataGrid.ResizeMethod.First) {
-            leftEdgeOfPreviousColumn += firstRowCells[leftCellIndex].offsetWidth - firstRowCells[0].offsetWidth;
-            leftCellIndex = 0;
+            leftEdgeOfPreviousColumn += firstRowCells[leftColumnIndex].offsetWidth - firstRowCells[0].offsetWidth;
+            leftColumnIndex = 0;
         }
 
-        var rightEdgeOfNextColumn = leftEdgeOfPreviousColumn + firstRowCells[leftCellIndex].offsetWidth + firstRowCells[rightCellIndex].offsetWidth;
+        var rightEdgeOfNextColumn = leftEdgeOfPreviousColumn + firstRowCells[leftColumnIndex].offsetWidth + firstRowCells[rightColumnIndex].offsetWidth;
 
         // Give each column some padding so that they don't disappear.
         var leftMinimum = leftEdgeOfPreviousColumn + this.ColumnResizePadding;
@@ -1797,22 +1822,36 @@ WebInspector.DataGrid = class DataGrid extends WebInspector.View
         resizer.element.style.left = (dragPoint - this.CenterResizerOverBorderAdjustment) + "px";
 
         var percentLeftColumn = (((dragPoint - leftEdgeOfPreviousColumn) / this._dataTableElement.offsetWidth) * 100) + "%";
-        this._headerTableColumnGroupElement.children[leftCellIndex].style.width = percentLeftColumn;
-        this._dataTableColumnGroupElement.children[leftCellIndex].style.width = percentLeftColumn;
+        this._headerTableColumnGroupElement.children[leftColumnIndex].style.width = percentLeftColumn;
+        this._dataTableColumnGroupElement.children[leftColumnIndex].style.width = percentLeftColumn;
 
         var percentRightColumn = (((rightEdgeOfNextColumn - dragPoint) / this._dataTableElement.offsetWidth) * 100) + "%";
-        this._headerTableColumnGroupElement.children[rightCellIndex].style.width =  percentRightColumn;
-        this._dataTableColumnGroupElement.children[rightCellIndex].style.width = percentRightColumn;
+        this._headerTableColumnGroupElement.children[rightColumnIndex].style.width = percentRightColumn;
+        this._dataTableColumnGroupElement.children[rightColumnIndex].style.width = percentRightColumn;
 
         this._positionResizerElements();
         this._positionHeaderViews();
+
+        const skipHidden = true;
+        const dontPopulate = true;
+
+        let leftColumnIdentifier = this.orderedColumns[leftColumnIndex];
+        let rightColumnIdentifier = this.orderedColumns[rightColumnIndex];
+        let child = this.children[0];
+
+        while (child) {
+            child.didResizeColumn(leftColumnIdentifier);
+            child.didResizeColumn(rightColumnIdentifier);
+            child = child.traverseNextNode(skipHidden, this, dontPopulate);
+        }
+
         event.preventDefault();
     }
 
     resizerDragEnded(resizer)
     {
         console.assert(resizer === this._currentResizer, resizer, this._currentResizer);
-        if (resizer != this._currentResizer)
+        if (resizer !== this._currentResizer)
             return;
 
         this._currentResizer = null;

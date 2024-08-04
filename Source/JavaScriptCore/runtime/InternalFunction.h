@@ -21,8 +21,7 @@
  *
  */
 
-#ifndef InternalFunction_h
-#define InternalFunction_h
+#pragma once
 
 #include "Identifier.h"
 #include "JSDestructibleObject.h"
@@ -64,10 +63,8 @@ InternalFunction* asInternalFunction(JSValue);
 
 inline InternalFunction* asInternalFunction(JSValue value)
 {
-    ASSERT(asObject(value)->inherits(InternalFunction::info()));
+    ASSERT(asObject(value)->inherits(*value.getObject()->vm(), InternalFunction::info()));
     return static_cast<InternalFunction*>(asObject(value));
 }
 
 } // namespace JSC
-
-#endif // InternalFunction_h

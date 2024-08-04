@@ -28,6 +28,7 @@
 
 #if ENABLE(INDEXED_DATABASE)
 
+#include "IDBKeyPath.h"
 #include <wtf/Forward.h>
 
 namespace JSC {
@@ -41,26 +42,22 @@ namespace WebCore {
 class IDBIndexInfo;
 class IDBKey;
 class IDBKeyData;
-class IDBKeyPath;
 class IDBValue;
 class IndexKey;
 class JSDOMGlobalObject;
-class ThreadSafeDataBuffer;
-
-IDBKeyPath idbKeyPathFromValue(JSC::ExecState&, JSC::JSValue);
-JSC::JSValue toJS(JSC::ExecState&, JSDOMGlobalObject&, const IDBKeyPath&);
 
 RefPtr<IDBKey> maybeCreateIDBKeyFromScriptValueAndKeyPath(JSC::ExecState&, const JSC::JSValue&, const IDBKeyPath&);
 bool canInjectIDBKeyIntoScriptValue(JSC::ExecState&, const JSC::JSValue&, const IDBKeyPath&);
 bool injectIDBKeyIntoScriptValue(JSC::ExecState&, const IDBKeyData&, JSC::JSValue, const IDBKeyPath&);
 
-JSC::JSValue toJS(JSC::ExecState&, JSC::JSGlobalObject&, IDBKey*);
-JSC::JSValue idbKeyDataToScriptValue(JSC::ExecState&, const IDBKeyData&);
 void generateIndexKeyForValue(JSC::ExecState&, const IDBIndexInfo&, JSC::JSValue, IndexKey& outKey);
 
-JSC::JSValue deserializeIDBValueToJSValue(JSC::ExecState&, const IDBValue&);
-
 Ref<IDBKey> scriptValueToIDBKey(JSC::ExecState&, const JSC::JSValue&);
+
+JSC::JSValue deserializeIDBValueToJSValue(JSC::ExecState&, const IDBValue&);
+JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject*, const IDBValue&);
+JSC::JSValue toJS(JSC::ExecState&, JSC::JSGlobalObject&, IDBKey*);
+JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject*, const IDBKeyData&);
 
 }
 

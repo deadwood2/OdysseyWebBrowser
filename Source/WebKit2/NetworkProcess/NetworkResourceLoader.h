@@ -26,6 +26,7 @@
 #ifndef NetworkResourceLoader_h
 #define NetworkResourceLoader_h
 
+#include "DownloadID.h"
 #include "MessageSender.h"
 #include "NetworkConnectionToWebProcessMessages.h"
 #include "NetworkLoadClient.h"
@@ -86,18 +87,17 @@ public:
 
     // NetworkLoadClient.
     void didSendData(unsigned long long bytesSent, unsigned long long totalBytesToBeSent) override;
+#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
     void canAuthenticateAgainstProtectionSpaceAsync(const WebCore::ProtectionSpace&) override;
+#endif
     bool isSynchronous() const override;
     void willSendRedirectedRequest(WebCore::ResourceRequest&&, WebCore::ResourceRequest&& redirectRequest, WebCore::ResourceResponse&&) override;
     ShouldContinueDidReceiveResponse didReceiveResponse(WebCore::ResourceResponse&&) override;
     void didReceiveBuffer(Ref<WebCore::SharedBuffer>&&, int reportedEncodedDataLength) override;
     void didFinishLoading(double finishTime) override;
     void didFailLoading(const WebCore::ResourceError&) override;
-#if USE(NETWORK_SESSION)
-    void didBecomeDownload() override;
-#endif
-    
-    void didConvertToDownload();
+
+    void convertToDownload(DownloadID, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&);
 
     bool isMainResource() const { return m_parameters.request.requester() == WebCore::ResourceRequest::Requester::Main; }
     bool isAlwaysOnLoggingAllowed() const;
@@ -116,6 +116,7 @@ private:
     void tryStoreAsCacheEntry();
     void retrieveCacheEntry(const WebCore::ResourceRequest&);
     void didRetrieveCacheEntry(std::unique_ptr<NetworkCache::Entry>);
+    void sendResultForCacheEntry(std::unique_ptr<NetworkCache::Entry>);
     void validateCacheEntry(std::unique_ptr<NetworkCache::Entry>);
     void dispatchWillSendRequestForCacheEntry(std::unique_ptr<NetworkCache::Entry>);
 #endif
@@ -150,9 +151,11 @@ private:
     std::unique_ptr<SynchronousLoadData> m_synchronousLoadData;
     Vector<RefPtr<WebCore::BlobDataFileReference>> m_fileReferences;
 
-    bool m_didConvertToDownload { false };
     bool m_didConsumeSandboxExtensions { false };
     bool m_defersLoading { false };
+    bool m_hasReceivedData { false };
+
+    unsigned m_retrievedDerivedDataCount { 0 };
 
     WebCore::Timer m_bufferingTimer;
 #if ENABLE(NETWORK_CACHE)

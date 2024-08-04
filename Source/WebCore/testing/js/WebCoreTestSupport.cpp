@@ -35,6 +35,7 @@
 #include "LogInitialization.h"
 #include "MockGamepadProvider.h"
 #include "Page.h"
+#include "URLParser.h"
 #include "WheelEventTestTrigger.h"
 #include <JavaScriptCore/APICast.h>
 #include <JavaScriptCore/JSValueRef.h>
@@ -110,7 +111,7 @@ void setLogChannelToAccumulate(const String& name)
 
 void initializeLogChannelsIfNecessary()
 {
-#if !LOG_DISABLED
+#if !LOG_DISABLED || !RELEASE_LOG_DISABLED
     WebCore::initializeLogChannelsIfNecessary();
 #endif
 }

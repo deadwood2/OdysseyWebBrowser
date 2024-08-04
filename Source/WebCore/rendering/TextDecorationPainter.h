@@ -20,8 +20,7 @@
  *
  */
 
-#ifndef TextDecorationPainter_h
-#define TextDecorationPainter_h
+#pragma once
 
 #include "Color.h"
 #include "FloatPoint.h"
@@ -32,6 +31,7 @@ namespace WebCore {
 class FontCascade;
 class GraphicsContext;
 class InlineTextBox;
+class RenderObject;
 class RenderStyle;
 class RenderText;
 class ShadowData;
@@ -49,6 +49,16 @@ public:
     void addTextShadow(const ShadowData* textShadow) { m_shadow = textShadow; }
 
     void paintTextDecoration(const TextRun&, const FloatPoint& textOrigin, const FloatPoint& boxOrigin);
+
+    struct Styles {
+        Color underlineColor;
+        Color overlineColor;
+        Color linethroughColor;
+        TextDecorationStyle underlineStyle;
+        TextDecorationStyle overlineStyle;
+        TextDecorationStyle linethroughStyle;
+    };
+    static Styles stylesForRenderer(const RenderObject&, unsigned requestedDecorations, bool firstLineStyle = false);
         
 private:
     GraphicsContext& m_context;
@@ -63,15 +73,8 @@ private:
     const InlineTextBox* m_inlineTextBox { nullptr };
     const FontCascade* m_font { nullptr };
     
-    Color m_underlineColor;
-    Color m_overlineColor;
-    Color m_linethroughColor;
-    TextDecorationStyle m_underlineStyle;
-    TextDecorationStyle m_overlineStyle;
-    TextDecorationStyle m_linethroughStyle;
+    Styles m_styles;
     const RenderStyle& m_lineStyle;
 };
     
 } // namespace WebCore
-
-#endif // TextDecorationPainter_h

@@ -28,7 +28,6 @@
 #include "CachedResourceLoader.h"
 #include "SVGCursorElement.h"
 #include "SVGLengthContext.h"
-#include "SVGNames.h"
 #include "SVGURIReference.h"
 #include "TreeScope.h"
 #include <wtf/MathExtras.h>
@@ -44,7 +43,7 @@ CSSCursorImageValue::CSSCursorImageValue(Ref<CSSValue>&& imageValue, bool hasHot
     , m_hotSpot(hotSpot)
 {
     if (is<CSSImageValue>(m_imageValue.get()))
-        m_originalURL = { ParsedURLString, downcast<CSSImageValue>(m_imageValue.get()).url() };
+        m_originalURL = downcast<CSSImageValue>(m_imageValue.get()).url();
 }
 
 CSSCursorImageValue::~CSSCursorImageValue()
@@ -107,7 +106,7 @@ std::pair<CachedImage*, float> CSSCursorImageValue::loadImage(CachedResourceLoad
 
     if (auto* cursorElement = updateCursorElement(*loader.document())) {
         if (cursorElement->href() != downcast<CSSImageValue>(m_imageValue.get()).url())
-            m_imageValue = CSSImageValue::create(cursorElement->href());
+            m_imageValue = CSSImageValue::create(loader.document()->completeURL(cursorElement->href()));
     }
 
     return { downcast<CSSImageValue>(m_imageValue.get()).loadImage(loader, options), 1 };

@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef ObjectPropertyCondition_h
-#define ObjectPropertyCondition_h
+#pragma once
 
 #include "JSObject.h"
 #include "PropertyCondition.h"
@@ -233,12 +232,12 @@ public:
     
     void validateReferences(const TrackedReferences&) const;
 
-    bool isValidValueForPresence(JSValue value) const
+    bool isValidValueForPresence(VM& vm, JSValue value) const
     {
-        return condition().isValidValueForPresence(value);
+        return condition().isValidValueForPresence(vm, value);
     }
 
-    ObjectPropertyCondition attemptToMakeEquivalenceWithoutBarrier() const;
+    ObjectPropertyCondition attemptToMakeEquivalenceWithoutBarrier(VM&) const;
 
 private:
     JSObject* m_object;
@@ -268,6 +267,3 @@ template<typename T> struct HashTraits;
 template<> struct HashTraits<JSC::ObjectPropertyCondition> : SimpleClassHashTraits<JSC::ObjectPropertyCondition> { };
 
 } // namespace WTF
-
-#endif // ObjectPropertyCondition_h
-

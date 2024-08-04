@@ -33,6 +33,7 @@
 #include "InspectorController.h"
 
 #include "CommandLineAPIHost.h"
+#include "CommonVM.h"
 #include "DOMWrapperWorld.h"
 #include "GraphicsContext.h"
 #include "InspectorApplicationCacheAgent.h"
@@ -51,7 +52,9 @@
 #include "InspectorPageAgent.h"
 #include "InspectorReplayAgent.h"
 #include "InspectorTimelineAgent.h"
+#include "InspectorWorkerAgent.h"
 #include "InstrumentingAgents.h"
+#include "JSDOMBindingSecurity.h"
 #include "JSDOMWindow.h"
 #include "JSDOMWindowCustom.h"
 #include "JSMainThreadExecState.h"
@@ -178,6 +181,7 @@ InspectorController::InspectorController(Page& page, InspectorClient* inspectorC
     m_agents.append(std::make_unique<InspectorDOMDebuggerAgent>(pageContext, m_domAgent, debuggerAgent));
     m_agents.append(std::make_unique<InspectorApplicationCacheAgent>(pageContext, pageAgent));
     m_agents.append(std::make_unique<InspectorLayerTreeAgent>(pageContext));
+    m_agents.append(std::make_unique<InspectorWorkerAgent>(pageContext));
 
     ASSERT(m_injectedScriptManager->commandLineAPIHost());
     if (CommandLineAPIHost* commandLineAPIHost = m_injectedScriptManager->commandLineAPIHost()) {
@@ -431,7 +435,8 @@ bool InspectorController::developerExtrasEnabled() const
 bool InspectorController::canAccessInspectedScriptState(JSC::ExecState* scriptState) const
 {
     JSLockHolder lock(scriptState);
-    JSDOMWindow* inspectedWindow = toJSDOMWindow(scriptState->lexicalGlobalObject());
+
+    JSDOMWindow* inspectedWindow = toJSDOMWindow(scriptState->vm(), scriptState->lexicalGlobalObject());
     if (!inspectedWindow)
         return false;
 
@@ -468,7 +473,7 @@ PageScriptDebugServer& InspectorController::scriptDebugServer()
 
 JSC::VM& InspectorController::vm()
 {
-    return JSDOMWindowBase::commonVM();
+    return commonVM();
 }
 
 void InspectorController::didComposite(Frame& frame)

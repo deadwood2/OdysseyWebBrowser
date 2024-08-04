@@ -54,10 +54,6 @@
 #include <gdk/gdkwayland.h>
 #endif
 
-#if PLATFORM(EFL) && defined(HAVE_ECORE_X)
-#include <Ecore_X.h>
-#endif
-
 #if USE(EGL)
 #include <EGL/egl.h>
 #include <wtf/HashSet.h>
@@ -82,8 +78,6 @@ std::unique_ptr<PlatformDisplay> PlatformDisplay::createPlatformDisplay()
         return std::make_unique<PlatformDisplayWayland>(gdk_wayland_display_get_wl_display(display));
 #endif
 #endif
-#elif PLATFORM(EFL) && defined(HAVE_ECORE_X)
-    return std::make_unique<PlatformDisplayX11>(static_cast<Display*>(ecore_x_display_get()));
 #elif PLATFORM(WIN)
     return std::make_unique<PlatformDisplayWin>();
 #endif
@@ -113,7 +107,14 @@ std::unique_ptr<PlatformDisplay> PlatformDisplay::createPlatformDisplay()
 PlatformDisplay& PlatformDisplay::sharedDisplay()
 {
     static std::once_flag onceFlag;
+#if COMPILER(CLANG)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wexit-time-destructors"
+#endif
     static std::unique_ptr<PlatformDisplay> display;
+#if COMPILER(CLANG)
+#pragma clang diagnostic pop
+#endif
     std::call_once(onceFlag, []{
         display = createPlatformDisplay();
     });
@@ -147,7 +148,7 @@ PlatformDisplay::~PlatformDisplay()
 #endif
 }
 
-#if !PLATFORM(EFL) && (USE(EGL) || USE(GLX))
+#if USE(EGL) || USE(GLX)
 GLContext* PlatformDisplay::sharingGLContext()
 {
     if (!m_sharingGLContext)

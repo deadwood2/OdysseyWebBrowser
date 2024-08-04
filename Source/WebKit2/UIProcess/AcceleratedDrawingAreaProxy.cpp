@@ -37,10 +37,6 @@
 #include "WebProcessProxy.h"
 #include <WebCore/Region.h>
 
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-#include "CoordinatedLayerTreeHostProxy.h"
-#endif
-
 #if PLATFORM(WAYLAND)
 #include "WaylandCompositor.h"
 #include <WebCore/PlatformDisplay.h>
@@ -51,16 +47,8 @@ using namespace WebCore;
 namespace WebKit {
 
 AcceleratedDrawingAreaProxy::AcceleratedDrawingAreaProxy(WebPageProxy& webPageProxy)
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-    : DrawingAreaProxy(DrawingAreaTypeCoordinated, webPageProxy)
-#else
     : DrawingAreaProxy(DrawingAreaTypeImpl, webPageProxy)
-#endif
 {
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-    // Construct the proxy early to allow messages to be sent to the web process while AC is entered there.
-    m_coordinatedLayerTreeHostProxy = std::make_unique<CoordinatedLayerTreeHostProxy>(webPageProxy);
-#endif
 }
 
 AcceleratedDrawingAreaProxy::~AcceleratedDrawingAreaProxy()
@@ -236,7 +224,7 @@ void AcceleratedDrawingAreaProxy::waitForAndDispatchDidUpdateBackingStoreState()
     // choose the most recent one, or the one that is closest to our current size.
 
     // The timeout, in seconds, we use when waiting for a DidUpdateBackingStoreState message when we're asked to paint.
-    m_webPageProxy.process().connection()->waitForAndDispatchImmediately<Messages::DrawingAreaProxy::DidUpdateBackingStoreState>(m_webPageProxy.pageID(), std::chrono::milliseconds(500));
+    m_webPageProxy.process().connection()->waitForAndDispatchImmediately<Messages::DrawingAreaProxy::DidUpdateBackingStoreState>(m_webPageProxy.pageID(), Seconds::fromMilliseconds(500));
 }
 
 void AcceleratedDrawingAreaProxy::enterAcceleratedCompositingMode(const LayerTreeContext& layerTreeContext)

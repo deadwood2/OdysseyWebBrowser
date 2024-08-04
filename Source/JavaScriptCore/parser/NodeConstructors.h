@@ -18,8 +18,7 @@
  *
  */
 
-#ifndef NodeConstructors_h
-#define NodeConstructors_h
+#pragma once
 
 #include "Nodes.h"
 #include "Lexer.h"
@@ -112,7 +111,7 @@ namespace JSC {
         previous->m_next = this;
     }
 
-    inline TemplateStringNode::TemplateStringNode(const JSTokenLocation& location, const Identifier& cooked, const Identifier& raw)
+    inline TemplateStringNode::TemplateStringNode(const JSTokenLocation& location, const Identifier* cooked, const Identifier* raw)
         : ExpressionNode(location)
         , m_cooked(cooked)
         , m_raw(raw)
@@ -165,6 +164,12 @@ namespace JSC {
 
     inline SuperNode::SuperNode(const JSTokenLocation& location)
         : ExpressionNode(location)
+    {
+    }
+
+    inline ImportNode::ImportNode(const JSTokenLocation& location, ExpressionNode* expr)
+        : ExpressionNode(location)
+        , m_expr(expr)
     {
     }
 
@@ -938,6 +943,12 @@ namespace JSC {
     {
     }
 
+    inline AwaitExprNode::AwaitExprNode(const JSTokenLocation& location, ExpressionNode* argument)
+        : ExpressionNode(location)
+        , m_argument(argument)
+    {
+    }
+
     inline ClassDeclNode::ClassDeclNode(const JSTokenLocation& location, ExpressionNode* classDeclaration)
         : StatementNode(location)
         , m_classDeclaration(classDeclaration)
@@ -1065,5 +1076,3 @@ namespace JSC {
     }
     
 } // namespace JSC
-
-#endif // NodeConstructors_h

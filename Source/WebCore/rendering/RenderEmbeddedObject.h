@@ -20,8 +20,7 @@
  *
  */
 
-#ifndef RenderEmbeddedObject_h
-#define RenderEmbeddedObject_h
+#pragma once
 
 #include "RenderWidget.h"
 
@@ -67,6 +66,7 @@ protected:
 
 protected:
     void layout() override;
+    void willBeDestroyed() override;
 
 private:
     const char* renderName() const override { return "RenderEmbeddedObject"; }
@@ -105,5 +105,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderEmbeddedObject, isEmbeddedObject())
-
-#endif // RenderEmbeddedObject_h

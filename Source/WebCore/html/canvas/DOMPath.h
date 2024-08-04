@@ -25,8 +25,7 @@
  * SUCH DAMAGE.
  */
 
-#ifndef DOMPath_h
-#define DOMPath_h
+#pragma once
 
 #include "CanvasPath.h"
 #include "SVGMatrix.h"
@@ -53,6 +52,7 @@ public:
 
 #if ENABLE(CANVAS_PATH)
     void addPath(const DOMPath* path) { addPath(path, AffineTransform()); }
+    void addPath(const DOMPath* path, SVGMatrix& matrix) { addPath(path, matrix.propertyReference()); }
     void addPath(const DOMPath* path, const AffineTransform& transform)
     {
         if (!path || !transform.isInvertible())
@@ -70,5 +70,4 @@ private:
     { }
 };
 
-}
-#endif
+} // namespace WebCore

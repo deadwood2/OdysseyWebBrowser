@@ -22,19 +22,18 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef WebFrameNetworkingContext_h
-#define WebFrameNetworkingContext_h
+#pragma once
 
 #include <WebCore/FrameNetworkingContext.h>
 
 class WebFrameNetworkingContext : public WebCore::FrameNetworkingContext {
 public:
-    static PassRefPtr<WebFrameNetworkingContext> create(WebCore::Frame* frame)
+    static Ref<WebFrameNetworkingContext> create(WebCore::Frame* frame)
     {
-        return adoptRef(new WebFrameNetworkingContext(frame));
+        return adoptRef(*new WebFrameNetworkingContext(frame));
     }
 
-#if USE(CFNETWORK)
+#if USE(CFURLCONNECTION)
     static void setCookieAcceptPolicyForAllContexts(WebKitCookieStorageAcceptPolicy);
 #endif
     static void setPrivateBrowsingStorageSessionIdentifierBase(const String&);
@@ -50,5 +49,3 @@ private:
     WebCore::ResourceError blockedError(const WebCore::ResourceRequest&) const override;
     WebCore::NetworkStorageSession& storageSession() const override;
 };
-
-#endif

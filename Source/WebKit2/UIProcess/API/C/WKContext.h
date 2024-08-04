@@ -75,7 +75,7 @@ typedef struct WKContextClientV1 {
     WKContextPlugInInformationBecameAvailableCallback                   plugInInformationBecameAvailable;
 
     // Version 1.
-    WKContextCopyWebCryptoMasterKeyCallback                             copyWebCryptoMasterKey;
+    void                                                                (*copyWebCryptoMasterKey_unavailable)(void);
 } WKContextClientV1;
 
 typedef struct WKContextClientV2 {
@@ -87,7 +87,7 @@ typedef struct WKContextClientV2 {
     WKContextPlugInInformationBecameAvailableCallback                   plugInInformationBecameAvailable;
 
     // Version 1.
-    WKContextCopyWebCryptoMasterKeyCallback                             copyWebCryptoMasterKey;
+    void                                                                (*copyWebCryptoMasterKey_unavailable)(void);
 
     // Version 2.
     WKContextDatabaseProcessDidCrashCallback                            databaseProcessDidCrash;
@@ -132,7 +132,6 @@ WK_EXPORT WKCacheModel WKContextGetCacheModel(WKContextRef context);
 
 // FIXME: Move these to WKDeprecatedFunctions.cpp once support for Mavericks has been dropped.
 WK_EXPORT void WKContextSetProcessModel(WKContextRef, WKProcessModel);
-WK_EXPORT WKProcessModel WKContextGetProcessModel(WKContextRef);
 
 WK_EXPORT void WKContextSetMaximumNumberOfProcesses(WKContextRef context, unsigned numberOfProcesses);
 WK_EXPORT unsigned WKContextGetMaximumNumberOfProcesses(WKContextRef context);
@@ -143,7 +142,6 @@ WK_EXPORT void WKContextStopMemorySampler(WKContextRef context);
 WK_EXPORT WKWebsiteDataStoreRef WKContextGetWebsiteDataStore(WKContextRef context);
 
 WK_EXPORT WKApplicationCacheManagerRef WKContextGetApplicationCacheManager(WKContextRef context);
-WK_EXPORT WKBatteryManagerRef WKContextGetBatteryManager(WKContextRef context);
 WK_EXPORT WKCookieManagerRef WKContextGetCookieManager(WKContextRef context);
 WK_EXPORT WKGeolocationManagerRef WKContextGetGeolocationManager(WKContextRef context);
 WK_EXPORT WKIconDatabaseRef WKContextGetIconDatabase(WKContextRef context);
@@ -163,6 +161,7 @@ WK_EXPORT WKDictionaryRef WKContextCopyPlugInAutoStartOriginHashes(WKContextRef 
 WK_EXPORT void WKContextSetPlugInAutoStartOriginHashes(WKContextRef context, WKDictionaryRef dictionary);
 WK_EXPORT void WKContextSetPlugInAutoStartOrigins(WKContextRef contextRef, WKArrayRef arrayRef);
 WK_EXPORT void WKContextSetPlugInAutoStartOriginsFilteringOutEntriesAddedAfterTime(WKContextRef contextRef, WKDictionaryRef dictionaryRef, double time);
+WK_EXPORT void WKContextRefreshPlugIns(WKContextRef context);
 
 #ifdef __cplusplus
 }

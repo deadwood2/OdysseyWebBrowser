@@ -28,12 +28,10 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef RenderListBox_h
-#define RenderListBox_h
+#pragma once
 
 #include "RenderBlockFlow.h"
 #include "ScrollableArea.h"
-
 #include <wtf/Optional.h>
 
 namespace WebCore {
@@ -69,6 +67,8 @@ public:
     bool scrolledToRight() const override;
 
 private:
+    void willBeDestroyed() override;
+
     void element() const = delete;
 
     const char* renderName() const override { return "RenderListBox"; }
@@ -87,7 +87,7 @@ private:
     void computeIntrinsicLogicalWidths(LayoutUnit& minLogicalWidth, LayoutUnit& maxLogicalWidth) const override;
     void computePreferredLogicalWidths() override;
     int baselinePosition(FontBaseline, bool firstLine, LineDirectionMode, LinePositionMode = PositionOnContainingLine) const override;
-    void computeLogicalHeight(LayoutUnit logicalHeight, LayoutUnit logicalTop, LogicalExtentComputedValues&) const override;
+    LogicalExtentComputedValues computeLogicalHeight(LayoutUnit logicalHeight, LayoutUnit logicalTop) const override;
 
     void layout() override;
 
@@ -147,7 +147,7 @@ private:
     void paintItem(PaintInfo&, const LayoutPoint&, PaintFunction);
 
     void setHasVerticalScrollbar(bool hasScrollbar);
-    PassRefPtr<Scrollbar> createScrollbar();
+    Ref<Scrollbar> createScrollbar();
     void destroyScrollbar();
     
     int maximumNumberOfItemsThatFitInPaddingBottomArea() const;
@@ -177,8 +177,8 @@ private:
     int m_optionsWidth;
     int m_indexOffset;
 
-    Optional<int> m_indexOfFirstVisibleItemInsidePaddingTopArea;
-    Optional<int> m_indexOfFirstVisibleItemInsidePaddingBottomArea;
+    std::optional<int> m_indexOfFirstVisibleItemInsidePaddingTopArea;
+    std::optional<int> m_indexOfFirstVisibleItemInsidePaddingBottomArea;
 
     RefPtr<Scrollbar> m_vBar;
 };
@@ -186,5 +186,3 @@ private:
 } // namepace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderListBox, isListBox())
-
-#endif // RenderListBox_h

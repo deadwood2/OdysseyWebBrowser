@@ -19,8 +19,7 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef ScriptController_h
-#define ScriptController_h
+#pragma once
 
 #include "FrameLoaderTypes.h"
 #include "JSDOMWindowShell.h"
@@ -38,13 +37,11 @@ OBJC_CLASS WebScriptObject;
 
 struct NPObject;
 
-namespace Deprecated {
-class ScriptValue;
-}
-
 namespace JSC {
-class JSGlobalObject;
 class ExecState;
+class JSGlobalObject;
+class JSInternalPromise;
+class JSModuleRecord;
 
 namespace Bindings {
 class Instance;
@@ -54,14 +51,18 @@ class RootObject;
 
 namespace WebCore {
 
+class CachedScriptFetcher;
 class Frame;
 class HTMLDocument;
 class HTMLPlugInElement;
+class LoadableModuleScript;
 class ScriptSourceCode;
 class SecurityOrigin;
+class URL;
 class Widget;
+struct ExceptionDetails;
 
-typedef HashMap<void*, RefPtr<JSC::Bindings::RootObject>> RootObjectMap;
+using RootObjectMap = HashMap<void*, RefPtr<JSC::Bindings::RootObject>>;
 
 enum ReasonForCallingCanExecuteScripts {
     AboutToExecuteScript,
@@ -114,6 +115,17 @@ public:
 
     JSC::JSValue evaluate(const ScriptSourceCode&, ExceptionDetails* = nullptr);
     JSC::JSValue evaluateInWorld(const ScriptSourceCode&, DOMWrapperWorld&, ExceptionDetails* = nullptr);
+
+    void loadModuleScriptInWorld(LoadableModuleScript&, const String& moduleName, DOMWrapperWorld&);
+    void loadModuleScript(LoadableModuleScript&, const String& moduleName);
+    void loadModuleScriptInWorld(LoadableModuleScript&, const ScriptSourceCode&, DOMWrapperWorld&);
+    void loadModuleScript(LoadableModuleScript&, const ScriptSourceCode&);
+
+    JSC::JSValue linkAndEvaluateModuleScriptInWorld(LoadableModuleScript& , DOMWrapperWorld&);
+    JSC::JSValue linkAndEvaluateModuleScript(LoadableModuleScript&);
+
+    JSC::JSValue evaluateModule(const URL&, JSC::JSModuleRecord&, DOMWrapperWorld&);
+    JSC::JSValue evaluateModule(const URL&, JSC::JSModuleRecord&);
 
     WTF::TextPosition eventHandlerPosition() const;
 
@@ -168,6 +180,7 @@ public:
 
 private:
     WEBCORE_EXPORT JSDOMWindowShell* initScript(DOMWrapperWorld&);
+    void setupModuleScriptHandlers(LoadableModuleScript&, JSC::JSInternalPromise&, DOMWrapperWorld&);
 
     void disconnectPlatformScriptObjects();
 
@@ -194,5 +207,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif // ScriptController_h

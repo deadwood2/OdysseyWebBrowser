@@ -52,65 +52,63 @@ Ref<FetchResponse> FetchResponse::error(ScriptExecutionContext& context)
     return response;
 }
 
-RefPtr<FetchResponse> FetchResponse::redirect(ScriptExecutionContext& context, const String& url, int status, ExceptionCode& ec)
+ExceptionOr<Ref<FetchResponse>> FetchResponse::redirect(ScriptExecutionContext& context, const String& url, int status)
 {
     // FIXME: Tighten the URL parsing algorithm according https://url.spec.whatwg.org/#concept-url-parser.
     URL requestURL = context.completeURL(url);
-    if (!requestURL.isValid() || !requestURL.user().isEmpty() || !requestURL.pass().isEmpty()) {
-        ec = TypeError;
-        return nullptr;
-    }
-    if (!isRedirectStatus(status)) {
-        ec = RangeError;
-        return nullptr;
-    }
+    if (!requestURL.isValid() || !requestURL.user().isEmpty() || !requestURL.pass().isEmpty())
+        return Exception { TypeError };
+    if (!isRedirectStatus(status))
+        return Exception { RangeError };
     auto redirectResponse = adoptRef(*new FetchResponse(context, { }, FetchHeaders::create(FetchHeaders::Guard::Immutable), { }));
     redirectResponse->m_response.setHTTPStatusCode(status);
     redirectResponse->m_headers->fastSet(HTTPHeaderName::Location, requestURL.string());
     return WTFMove(redirectResponse);
 }
 
-void FetchResponse::setStatus(int status, const String& statusText, ExceptionCode& ec)
+ExceptionOr<void> FetchResponse::setStatus(int status, const String& statusText)
 {
-    if (!isValidReasonPhrase(statusText)) {
-        ec = TypeError;
-        return;
-    }
+    if (!isValidReasonPhrase(statusText))
+        return Exception { TypeError };
     m_response.setHTTPStatusCode(status);
     m_response.setHTTPStatusText(statusText);
+    return { };
 }
 
 void FetchResponse::initializeWith(JSC::ExecState& execState, JSC::JSValue body)
 {
     ASSERT(scriptExecutionContext());
-    m_body = FetchBody::extract(*scriptExecutionContext(), execState, body);
-    m_body.updateContentType(m_headers);
+    extractBody(*scriptExecutionContext(), execState, body);
+    updateContentType();
 }
 
-FetchResponse::FetchResponse(ScriptExecutionContext& context, FetchBody&& body, Ref<FetchHeaders>&& headers, ResourceResponse&& response)
-    : FetchBodyOwner(context, WTFMove(body))
+FetchResponse::FetchResponse(ScriptExecutionContext& context, std::optional<FetchBody>&& body, Ref<FetchHeaders>&& headers, ResourceResponse&& response)
+    : FetchBodyOwner(context, WTFMove(body), WTFMove(headers))
     , m_response(WTFMove(response))
-    , m_headers(WTFMove(headers))
 {
 }
 
 Ref<FetchResponse> FetchResponse::cloneForJS()
 {
     ASSERT(scriptExecutionContext());
-    ASSERT(!isDisturbed());
-    return adoptRef(*new FetchResponse(*scriptExecutionContext(), FetchBody(m_body), FetchHeaders::create(headers()), ResourceResponse(m_response)));
+    ASSERT(!isDisturbedOrLocked());
+
+    auto clone = adoptRef(*new FetchResponse(*scriptExecutionContext(), std::nullopt, FetchHeaders::create(headers()), ResourceResponse(m_response)));
+    clone->cloneBody(*this);
+    return clone;
 }
 
 void FetchResponse::fetch(ScriptExecutionContext& context, FetchRequest& request, FetchPromise&& promise)
 {
+    if (request.isBodyReadableStream()) {
+        promise.reject(TypeError, "ReadableStream uploading is not supported");
+        return;
+    }
     auto response = adoptRef(*new FetchResponse(context, FetchBody::loadingBody(), FetchHeaders::create(FetchHeaders::Guard::Immutable), { }));
 
-    // Setting pending activity until BodyLoader didFail or didSucceed callback is called.
-    response->setPendingActivity(response.ptr());
-
-    response->m_bodyLoader = BodyLoader(response.get(), WTFMove(promise));
+    response->m_bodyLoader.emplace(response.get(), WTFMove(promise));
     if (!response->m_bodyLoader->start(context, request))
-        response->m_bodyLoader = Nullopt;
+        response->m_bodyLoader = std::nullopt;
 }
 
 const String& FetchResponse::url() const
@@ -123,29 +121,26 @@ const String& FetchResponse::url() const
 void FetchResponse::BodyLoader::didSucceed()
 {
     ASSERT(m_response.hasPendingActivity());
-    m_response.m_body.loadingSucceeded();
+    m_response.m_body->loadingSucceeded();
 
-#if ENABLE(STREAMS_API)
-    if (m_response.m_readableStreamSource && m_response.m_body.type() != FetchBody::Type::Loaded) {
-        // We only close the stream if FetchBody already enqueued data.
-        // Otherwise, FetchBody will close the stream when enqueuing data.
-        m_response.m_readableStreamSource->close();
-        m_response.m_readableStreamSource = nullptr;
-    }
+#if ENABLE(READABLE_STREAM_API)
+    if (m_response.m_readableStreamSource && !m_response.body().consumer().hasData())
+        m_response.closeStream();
 #endif
 
-    if (m_loader->isStarted())
-        m_response.m_bodyLoader = Nullopt;
-    m_response.unsetPendingActivity(&m_response);
+    if (m_loader->isStarted()) {
+        Ref<FetchResponse> protector(m_response);
+        m_response.m_bodyLoader = std::nullopt;
+    }
 }
 
 void FetchResponse::BodyLoader::didFail()
 {
     ASSERT(m_response.hasPendingActivity());
     if (m_promise)
-        std::exchange(m_promise, Nullopt)->reject(TypeError);
+        std::exchange(m_promise, std::nullopt)->reject(TypeError);
 
-#if ENABLE(STREAMS_API)
+#if ENABLE(READABLE_STREAM_API)
     if (m_response.m_readableStreamSource) {
         if (!m_response.m_readableStreamSource->isCancelling())
             m_response.m_readableStreamSource->error(ASCIILiteral("Loading failed"));
@@ -154,18 +149,22 @@ void FetchResponse::BodyLoader::didFail()
 #endif
 
     // Check whether didFail is called as part of FetchLoader::start.
-    if (m_loader->isStarted())
-        m_response.m_bodyLoader = Nullopt;
-
-    // FIXME: Handle the case of failing after didReceiveResponse is called.
-
-    m_response.unsetPendingActivity(&m_response);
+    if (m_loader->isStarted()) {
+        Ref<FetchResponse> protector(m_response);
+        m_response.m_bodyLoader = std::nullopt;
+    }
 }
 
 FetchResponse::BodyLoader::BodyLoader(FetchResponse& response, FetchPromise&& promise)
     : m_response(response)
     , m_promise(WTFMove(promise))
 {
+    m_response.setPendingActivity(&m_response);
+}
+
+FetchResponse::BodyLoader::~BodyLoader()
+{
+    m_response.unsetPendingActivity(&m_response);
 }
 
 void FetchResponse::BodyLoader::didReceiveResponse(const ResourceResponse& resourceResponse)
@@ -174,18 +173,30 @@ void FetchResponse::BodyLoader::didReceiveResponse(const ResourceResponse& resou
 
     m_response.m_response = resourceResponse;
     m_response.m_headers->filterAndFill(resourceResponse.httpHeaderFields(), FetchHeaders::Guard::Response);
-    m_response.m_body.setContentType(m_response.m_headers->fastGet(HTTPHeaderName::ContentType));
 
-    std::exchange(m_promise, Nullopt)->resolve(m_response);
+    std::exchange(m_promise, std::nullopt)->resolve(m_response);
 }
 
 void FetchResponse::BodyLoader::didReceiveData(const char* data, size_t size)
 {
-#if ENABLE(STREAMS_API)
+#if ENABLE(READABLE_STREAM_API)
     ASSERT(m_response.m_readableStreamSource);
+    auto& source = *m_response.m_readableStreamSource;
 
-    if (!m_response.m_readableStreamSource->enqueue(ArrayBuffer::tryCreate(data, size)))
+    if (!source.isPulling()) {
+        m_response.body().consumer().append(data, size);
+        return;
+    }
+
+    if (m_response.body().consumer().hasData() && !source.enqueue(m_response.body().consumer().takeAsArrayBuffer())) {
         stop();
+        return;
+    }
+    if (!source.enqueue(ArrayBuffer::tryCreate(data, size))) {
+        stop();
+        return;
+    }
+    source.resolvePullPromise();
 #else
     UNUSED_PARAM(data);
     UNUSED_PARAM(size);
@@ -194,23 +205,29 @@ void FetchResponse::BodyLoader::didReceiveData(const char* data, size_t size)
 
 bool FetchResponse::BodyLoader::start(ScriptExecutionContext& context, const FetchRequest& request)
 {
-    m_loader = std::make_unique<FetchLoader>(*this, &m_response.m_body.consumer());
+    m_loader = std::make_unique<FetchLoader>(*this, &m_response.m_body->consumer());
     m_loader->start(context, request);
     return m_loader->isStarted();
 }
 
 void FetchResponse::BodyLoader::stop()
 {
-    m_promise = Nullopt;
+    m_promise = std::nullopt;
     if (m_loader)
         m_loader->stop();
 }
 
-void FetchResponse::consume(unsigned type, DeferredWrapper&& wrapper)
+void FetchResponse::consume(unsigned type, Ref<DeferredPromise>&& wrapper)
 {
     ASSERT(type <= static_cast<unsigned>(FetchBodyConsumer::Type::Text));
+    auto consumerType = static_cast<FetchBodyConsumer::Type>(type);
 
-    switch (static_cast<FetchBodyConsumer::Type>(type)) {
+    if (isLoading()) {
+        consumeOnceLoadingFinished(consumerType, WTFMove(wrapper));
+        return;
+    }
+
+    switch (consumerType) {
     case FetchBodyConsumer::Type::ArrayBuffer:
         arrayBuffer(WTFMove(wrapper));
         return;
@@ -229,7 +246,7 @@ void FetchResponse::consume(unsigned type, DeferredWrapper&& wrapper)
     }
 }
 
-#if ENABLE(STREAMS_API)
+#if ENABLE(READABLE_STREAM_API)
 void FetchResponse::startConsumingStream(unsigned type)
 {
     m_isDisturbed = true;
@@ -241,18 +258,18 @@ void FetchResponse::consumeChunk(Ref<JSC::Uint8Array>&& chunk)
     m_consumer.append(chunk->data(), chunk->byteLength());
 }
 
-void FetchResponse::finishConsumingStream(DeferredWrapper&& promise)
+void FetchResponse::finishConsumingStream(Ref<DeferredPromise>&& promise)
 {
-    m_consumer.resolve(promise);
+    m_consumer.resolve(WTFMove(promise));
 }
 
 void FetchResponse::consumeBodyAsStream()
 {
     ASSERT(m_readableStreamSource);
     m_isDisturbed = true;
-    if (body().type() != FetchBody::Type::Loading) {
+    if (!isLoading()) {
         body().consumeAsStream(*this, *m_readableStreamSource);
-        if (!m_readableStreamSource->isStarting())
+        if (!m_readableStreamSource->isPulling())
             m_readableStreamSource = nullptr;
         return;
     }
@@ -261,18 +278,47 @@ void FetchResponse::consumeBodyAsStream()
 
     RefPtr<SharedBuffer> data = m_bodyLoader->startStreaming();
     if (data) {
-        // FIXME: We might want to enqueue each internal SharedBuffer chunk as an individual ArrayBuffer.
-        if (!m_readableStreamSource->enqueue(data->createArrayBuffer()))
+        if (!m_readableStreamSource->enqueue(data->createArrayBuffer())) {
             stop();
+            return;
+        }
+        m_readableStreamSource->resolvePullPromise();
     }
+}
+
+void FetchResponse::closeStream()
+{
+    ASSERT(m_readableStreamSource);
+    m_readableStreamSource->close();
+    m_readableStreamSource = nullptr;
+}
+
+void FetchResponse::feedStream()
+{
+    ASSERT(m_readableStreamSource);
+    bool shouldCloseStream = !m_bodyLoader;
+
+    if (body().consumer().hasData()) {
+        if (!m_readableStreamSource->enqueue(body().consumer().takeAsArrayBuffer())) {
+            stop();
+            return;
+        }
+        if (!shouldCloseStream) {
+            m_readableStreamSource->resolvePullPromise();
+            return;
+        }
+    } else if (!shouldCloseStream)
+        return;
+
+    closeStream();
 }
 
 ReadableStreamSource* FetchResponse::createReadableStreamSource()
 {
     ASSERT(!m_readableStreamSource);
-    ASSERT(!isDisturbed());
+    ASSERT(!m_isDisturbed);
 
-    if (body().isEmpty())
+    if (isBodyNull())
         return nullptr;
 
     m_readableStreamSource = adoptRef(*new FetchResponseSource(*this));
@@ -299,7 +345,7 @@ void FetchResponse::stop()
     FetchBodyOwner::stop();
     if (m_bodyLoader) {
         m_bodyLoader->stop();
-        ASSERT(!m_bodyLoader);
+        m_bodyLoader = std::nullopt;
     }
 }
 

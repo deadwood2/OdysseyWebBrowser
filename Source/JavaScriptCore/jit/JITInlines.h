@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef JITInlines_h
-#define JITInlines_h
+#pragma once
 
 #if ENABLE(JIT)
 
@@ -416,9 +415,25 @@ ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(V_JITOperation_ECIZC opera
     return appendCallWithExceptionCheck(operation);
 }
 
+ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(J_JITOperation_EJ operation, JSValueRegs result, JSValueRegs arg)
+{
+    setupArgumentsWithExecState(arg);
+    Call call = appendCallWithExceptionCheck(operation);
+    setupResults(result);
+    return call;
+}
+
 ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(J_JITOperation_EJJ operation, JSValueRegs result, JSValueRegs arg1, JSValueRegs arg2)
 {
     setupArgumentsWithExecState(arg1, arg2);
+    Call call = appendCallWithExceptionCheck(operation);
+    setupResults(result);
+    return call;
+}
+
+ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(J_JITOperation_EJArp operation, JSValueRegs result, JSValueRegs operand, ArithProfile* arithProfile)
+{
+    setupArgumentsWithExecState(operand, TrustedImmPtr(arithProfile));
     Call call = appendCallWithExceptionCheck(operation);
     setupResults(result);
     return call;
@@ -432,9 +447,9 @@ ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(J_JITOperation_EJJArp oper
     return call;
 }
 
-ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(J_JITOperation_EJJArpMic operation, JSValueRegs result, JSValueRegs arg1, JSValueRegs arg2, ArithProfile* arithProfile, TrustedImmPtr mathIC)
+ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(J_JITOperation_EJMic operation, JSValueRegs result, JSValueRegs arg, TrustedImmPtr mathIC)
 {
-    setupArgumentsWithExecState(arg1, arg2, TrustedImmPtr(arithProfile), mathIC);
+    setupArgumentsWithExecState(arg, mathIC);
     Call call = appendCallWithExceptionCheck(operation);
     setupResults(result);
     return call;
@@ -691,25 +706,25 @@ ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(J_JITOperation_EJI operati
 
 ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(J_JITOperation_EJJ operation, int dst, GPRReg arg1Tag, GPRReg arg1Payload, GPRReg arg2Tag, GPRReg arg2Payload)
 {
-    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1Payload, arg1Tag, SH4_32BIT_DUMMY_ARG arg2Payload, arg2Tag);
+    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1Payload, arg1Tag, arg2Payload, arg2Tag);
     return appendCallWithExceptionCheckSetJSValueResult(operation, dst);
 }
 
 ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(J_JITOperation_EJJAp operation, int dst, GPRReg arg1Tag, GPRReg arg1Payload, GPRReg arg2Tag, GPRReg arg2Payload, ArrayProfile* arrayProfile)
 {
-    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1Payload, arg1Tag, SH4_32BIT_DUMMY_ARG arg2Payload, arg2Tag, TrustedImmPtr(arrayProfile));
+    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1Payload, arg1Tag, arg2Payload, arg2Tag, TrustedImmPtr(arrayProfile));
     return appendCallWithExceptionCheckSetJSValueResult(operation, dst);
 }
 
 ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(J_JITOperation_EJJBy operation, int dst, GPRReg arg1Tag, GPRReg arg1Payload, GPRReg arg2Tag, GPRReg arg2Payload, ByValInfo* byValInfo)
 {
-    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1Payload, arg1Tag, SH4_32BIT_DUMMY_ARG arg2Payload, arg2Tag, TrustedImmPtr(byValInfo));
+    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1Payload, arg1Tag, arg2Payload, arg2Tag, TrustedImmPtr(byValInfo));
     return appendCallWithExceptionCheckSetJSValueResult(operation, dst);
 }
 
 ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(JIT::WithProfileTag, J_JITOperation_EJJ operation, int dst, GPRReg arg1Tag, GPRReg arg1Payload, GPRReg arg2Tag, GPRReg arg2Payload)
 {
-    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1Payload, arg1Tag, SH4_32BIT_DUMMY_ARG arg2Payload, arg2Tag);
+    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1Payload, arg1Tag, arg2Payload, arg2Tag);
     return appendCallWithExceptionCheckSetJSValueResultWithProfile(operation, dst);
 }
 
@@ -733,7 +748,7 @@ ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(S_JITOperation_EJI operati
 
 ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(S_JITOperation_EJJ operation, RegisterID arg1Tag, RegisterID arg1Payload, RegisterID arg2Tag, RegisterID arg2Payload)
 {
-    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1Payload, arg1Tag, SH4_32BIT_DUMMY_ARG arg2Payload, arg2Tag);
+    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1Payload, arg1Tag, arg2Payload, arg2Tag);
     return appendCallWithExceptionCheck(operation);
 }
 
@@ -775,19 +790,19 @@ ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(V_JITOperation_ESsiJJI ope
 
 ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(V_JITOperation_EJJJ operation, RegisterID regOp1Tag, RegisterID regOp1Payload, RegisterID regOp2Tag, RegisterID regOp2Payload, RegisterID regOp3Tag, RegisterID regOp3Payload)
 {
-    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG regOp1Payload, regOp1Tag, SH4_32BIT_DUMMY_ARG regOp2Payload, regOp2Tag, regOp3Payload, regOp3Tag);
+    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG regOp1Payload, regOp1Tag, regOp2Payload, regOp2Tag, regOp3Payload, regOp3Tag);
     return appendCallWithExceptionCheck(operation);
 }
 
 ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(V_JITOperation_EJJJAp operation, RegisterID regOp1Tag, RegisterID regOp1Payload, RegisterID regOp2Tag, RegisterID regOp2Payload, RegisterID regOp3Tag, RegisterID regOp3Payload, ArrayProfile* arrayProfile)
 {
-    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG regOp1Payload, regOp1Tag, SH4_32BIT_DUMMY_ARG regOp2Payload, regOp2Tag, regOp3Payload, regOp3Tag, TrustedImmPtr(arrayProfile));
+    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG regOp1Payload, regOp1Tag, regOp2Payload, regOp2Tag, regOp3Payload, regOp3Tag, TrustedImmPtr(arrayProfile));
     return appendCallWithExceptionCheck(operation);
 }
 
 ALWAYS_INLINE MacroAssembler::Call JIT::callOperation(V_JITOperation_EJJJBy operation, RegisterID regOp1Tag, RegisterID regOp1Payload, RegisterID regOp2Tag, RegisterID regOp2Payload, RegisterID regOp3Tag, RegisterID regOp3Payload, ByValInfo* byValInfo)
 {
-    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG regOp1Payload, regOp1Tag, SH4_32BIT_DUMMY_ARG regOp2Payload, regOp2Tag, regOp3Payload, regOp3Tag, TrustedImmPtr(byValInfo));
+    setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG regOp1Payload, regOp1Tag, regOp2Payload, regOp2Tag, regOp3Payload, regOp3Tag, TrustedImmPtr(byValInfo));
     return appendCallWithExceptionCheck(operation);
 }
 
@@ -981,7 +996,7 @@ inline void JIT::emitArrayProfilingSiteWithCell(RegisterID cell, RegisterID inde
         store32(indexingType, arrayProfile->addressOfLastSeenStructureID());
     }
 
-    load8(Address(cell, JSCell::indexingTypeOffset()), indexingType);
+    load8(Address(cell, JSCell::indexingTypeAndMiscOffset()), indexingType);
 }
 
 inline void JIT::emitArrayProfilingSiteForBytecodeIndexWithCell(RegisterID cell, RegisterID indexingType, unsigned bytecodeIndex)
@@ -1006,7 +1021,7 @@ static inline bool arrayProfileSaw(ArrayModes arrayModes, IndexingType capabilit
 
 inline JITArrayMode JIT::chooseArrayMode(ArrayProfile* profile)
 {
-    ConcurrentJITLocker locker(m_codeBlock->m_lock);
+    ConcurrentJSLocker locker(m_codeBlock->m_lock);
     profile->computeUpdatedPrediction(locker, m_codeBlock);
     ArrayModes arrayModes = profile->observedArrayModes(locker);
     if (arrayProfileSaw(arrayModes, DoubleShape))
@@ -1369,6 +1384,3 @@ inline Instruction* JIT::copiedInstruction(Instruction* inst)
 } // namespace JSC
 
 #endif // ENABLE(JIT)
-
-#endif // JITInlines_h
-

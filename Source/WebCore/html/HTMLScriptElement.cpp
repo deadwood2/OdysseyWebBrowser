@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -82,7 +82,7 @@ void HTMLScriptElement::finishedInsertingSubtree()
 // https://html.spec.whatwg.org/multipage/scripting.html#dom-script-text
 void HTMLScriptElement::setText(const String& value)
 {
-    setTextContent(value, ASSERT_NO_EXCEPTION);
+    setTextContent(value);
 }
 
 void HTMLScriptElement::setAsync(bool async)
@@ -148,14 +148,19 @@ String HTMLScriptElement::eventAttributeValue() const
     return attributeWithoutSynchronization(eventAttr).string();
 }
 
-bool HTMLScriptElement::asyncAttributeValue() const
+bool HTMLScriptElement::hasAsyncAttribute() const
 {
     return hasAttributeWithoutSynchronization(asyncAttr);
 }
 
-bool HTMLScriptElement::deferAttributeValue() const
+bool HTMLScriptElement::hasDeferAttribute() const
 {
     return hasAttributeWithoutSynchronization(deferAttr);
+}
+
+bool HTMLScriptElement::hasNoModuleAttribute() const
+{
+    return hasAttributeWithoutSynchronization(nomoduleAttr);
 }
 
 bool HTMLScriptElement::hasSourceAttribute() const

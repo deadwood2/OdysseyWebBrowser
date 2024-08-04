@@ -26,17 +26,16 @@
 #include "config.h"
 #include "HashMapImpl.h"
 
-#include "CopiedBlockInlines.h"
-#include "CopyVisitorInlines.h"
+#include "JSCInlines.h"
 
 namespace JSC {
 
 template<>
-const JS_EXPORTDATA ClassInfo HashMapBucket<HashMapBucketDataKey>::s_info =
+const ClassInfo HashMapBucket<HashMapBucketDataKey>::s_info =
     { "HashMapBucket", nullptr, 0, CREATE_METHOD_TABLE(HashMapBucket<HashMapBucketDataKey>) };
 
 template<>
-const JS_EXPORTDATA ClassInfo HashMapBucket<HashMapBucketDataKeyValue>::s_info =
+const ClassInfo HashMapBucket<HashMapBucketDataKeyValue>::s_info =
     { "HashMapBucket", nullptr, 0, CREATE_METHOD_TABLE(HashMapBucket<HashMapBucketDataKeyValue>) };
 
 template <typename Data>
@@ -46,19 +45,19 @@ void HashMapBucket<Data>::visitChildren(JSCell* cell, SlotVisitor& visitor)
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     Base::visitChildren(thisObject, visitor);
 
-    visitor.append(&thisObject->m_next);
-    visitor.append(&thisObject->m_prev);
+    visitor.append(thisObject->m_next);
+    visitor.append(thisObject->m_prev);
 
     static_assert(sizeof(Data) % sizeof(WriteBarrier<Unknown>) == 0, "We assume that these are filled with WriteBarrier<Unknown> members only.");
     visitor.appendValues(bitwise_cast<WriteBarrier<Unknown>*>(&thisObject->m_data), sizeof(Data) / sizeof(WriteBarrier<Unknown>));
 }
 
 template<>
-const JS_EXPORTDATA ClassInfo HashMapImpl<HashMapBucket<HashMapBucketDataKey>>::s_info =
+const ClassInfo HashMapImpl<HashMapBucket<HashMapBucketDataKey>>::s_info =
     { "HashMapImpl", nullptr, 0, CREATE_METHOD_TABLE(HashMapImpl<HashMapBucket<HashMapBucketDataKey>>) };
 
 template<>
-const JS_EXPORTDATA ClassInfo HashMapImpl<HashMapBucket<HashMapBucketDataKeyValue>>::s_info =
+const ClassInfo HashMapImpl<HashMapBucket<HashMapBucketDataKeyValue>>::s_info =
     { "HashMapImpl", nullptr, 0, CREATE_METHOD_TABLE(HashMapImpl<HashMapBucket<HashMapBucketDataKeyValue>>) };
 
 template <typename HashMapBucket>
@@ -68,26 +67,28 @@ void HashMapImpl<HashMapBucket>::visitChildren(JSCell* cell, SlotVisitor& visito
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     Base::visitChildren(thisObject, visitor);
 
-    visitor.append(&thisObject->m_head);
-    visitor.append(&thisObject->m_tail);
-
-    visitor.copyLater(thisObject, MapBackingStoreCopyToken, thisObject->m_buffer.get(), thisObject->bufferSizeInBytes());
+    visitor.append(thisObject->m_head);
+    visitor.append(thisObject->m_tail);
+    
+    if (HashMapBufferType* buffer = thisObject->m_buffer.get())
+        visitor.markAuxiliary(buffer);
 }
 
-template <typename HashMapBucket>
-void HashMapImpl<HashMapBucket>::copyBackingStore(JSCell* cell, CopyVisitor& visitor, CopyToken token)
+const ClassInfo* getHashMapBucketKeyClassInfo()
 {
-    Base::copyBackingStore(cell, visitor, token);
-
-    HashMapImpl* thisObject = jsCast<HashMapImpl*>(cell);
-    if (token == MapBackingStoreCopyToken && visitor.checkIfShouldCopy(thisObject->m_buffer.get())) {
-        HashMapBufferType* oldBuffer = thisObject->m_buffer.get();
-        size_t bufferSizeInBytes = thisObject->bufferSizeInBytes();
-        HashMapBufferType* newBuffer = static_cast<HashMapBufferType*>(visitor.allocateNewSpace(bufferSizeInBytes));
-        memcpy(newBuffer, oldBuffer, bufferSizeInBytes);
-        thisObject->m_buffer.setWithoutBarrier(newBuffer);
-        visitor.didCopy(oldBuffer, bufferSizeInBytes);
-    }
+    return &HashMapBucket<HashMapBucketDataKey>::s_info;
+}
+const ClassInfo* getHashMapBucketKeyValueClassInfo()
+{
+    return &HashMapBucket<HashMapBucketDataKeyValue>::s_info;
+}
+const ClassInfo* getHashMapImplKeyClassInfo()
+{
+    return &HashMapImpl<HashMapBucket<HashMapBucketDataKey>>::s_info;
+}
+const ClassInfo* getHashMapImplKeyValueClassInfo()
+{
+    return &HashMapImpl<HashMapBucket<HashMapBucketDataKeyValue>>::s_info;
 }
 
 } // namespace JSC

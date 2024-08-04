@@ -27,12 +27,13 @@
 #include "ResourceRequestBase.h"
 
 #include "HTTPHeaderNames.h"
+#include "PublicSuffix.h"
 #include "ResourceRequest.h"
 #include <wtf/PointerComparison.h>
 
 namespace WebCore {
 
-#if !USE(SOUP) && (!PLATFORM(COCOA) || USE(CFNETWORK))
+#if !USE(SOUP) && (!PLATFORM(MAC) || USE(CFURLCONNECTION))
 double ResourceRequestBase::s_defaultTimeoutInterval = INT_MAX;
 #else
 // Will use NSURLRequest default timeout unless set to a non-zero value with setDefaultTimeoutInterval().
@@ -65,6 +66,8 @@ void ResourceRequestBase::setAsIsolatedCopy(const ResourceRequest& other)
     setHTTPMethod(other.httpMethod().isolatedCopy());
     setPriority(other.priority());
     setRequester(other.requester());
+    setInitiatorIdentifier(other.initiatorIdentifier().isolatedCopy());
+    setCachePartition(other.cachePartition());
 
     updateResourceRequest();
     m_httpHeaderFields = other.httpHeaderFields().isolatedCopy();
@@ -85,8 +88,6 @@ void ResourceRequestBase::setAsIsolatedCopy(const ResourceRequest& other)
     if (other.m_httpBody)
         setHTTPBody(other.m_httpBody->isolatedCopy());
     setAllowCookies(other.m_allowCookies);
-
-    const_cast<ResourceRequest&>(asResourceRequest()).doPlatformSetAsIsolatedCopy(other);
 }
 
 bool ResourceRequestBase::isEmpty() const
@@ -288,6 +289,11 @@ String ResourceRequestBase::httpReferrer() const
     return httpHeaderField(HTTPHeaderName::Referer);
 }
 
+bool ResourceRequestBase::hasHTTPReferrer() const
+{
+    return m_httpHeaderFields.contains(HTTPHeaderName::Referer);
+}
+
 void ResourceRequestBase::setHTTPReferrer(const String& httpReferrer)
 {
     setHTTPHeaderField(HTTPHeaderName::Referer, httpReferrer);
@@ -326,6 +332,11 @@ void ResourceRequestBase::clearHTTPOrigin()
 
     if (url().protocolIsInHTTPFamily())
         m_platformRequestUpdated = false;
+}
+
+bool ResourceRequestBase::hasHTTPHeader(HTTPHeaderName name) const
+{
+    return m_httpHeaderFields.contains(name);
 }
 
 String ResourceRequestBase::httpUserAgent() const
@@ -454,6 +465,17 @@ void ResourceRequestBase::setPriority(ResourceLoadPriority priority)
         m_platformRequestUpdated = false;
 }
 
+void ResourceRequestBase::addHTTPHeaderFieldIfNotPresent(HTTPHeaderName name, const String& value)
+{
+    updateResourceRequest();
+
+    if (!m_httpHeaderFields.addIfNotPresent(name, value))
+        return;
+
+    if (url().protocolIsInHTTPFamily())
+        m_platformRequestUpdated = false;
+}
+
 void ResourceRequestBase::addHTTPHeaderField(HTTPHeaderName name, const String& value)
 {
     updateResourceRequest();
@@ -467,13 +489,18 @@ void ResourceRequestBase::addHTTPHeaderField(HTTPHeaderName name, const String& 
 void ResourceRequestBase::addHTTPHeaderField(const String& name, const String& value)
 {
     updateResourceRequest();
-    
+
     m_httpHeaderFields.add(name, value);
-    
+
     if (url().protocolIsInHTTPFamily())
         m_platformRequestUpdated = false;
 }
-    
+
+bool ResourceRequestBase::hasHTTPHeaderField(HTTPHeaderName headerName) const
+{
+    return m_httpHeaderFields.contains(headerName);
+}
+
 void ResourceRequestBase::setHTTPHeaderFields(HTTPHeaderMap headerFields)
 {
     updateResourceRequest();
@@ -592,7 +619,7 @@ void ResourceRequestBase::updateResourceRequest(HTTPBodyUpdatePolicy bodyPolicy)
     }
 }
 
-#if !PLATFORM(COCOA) && !USE(CFNETWORK) && !USE(SOUP)
+#if !PLATFORM(COCOA) && !USE(CFURLCONNECTION) && !USE(SOUP)
 unsigned initializeMaximumHTTPConnectionCountPerHost()
 {
     // This is used by the loader to control the number of issued parallel load requests. 
@@ -612,5 +639,33 @@ bool ResourceRequestBase::defaultAllowCookies()
     return s_defaultAllowCookies;
 }
 #endif
+
+void ResourceRequestBase::setCachePartition(const String& cachePartition)
+{
+#if ENABLE(CACHE_PARTITIONING)
+    ASSERT(!cachePartition.isNull());
+    ASSERT(cachePartition == partitionName(cachePartition));
+    m_cachePartition = cachePartition;
+#else
+    UNUSED_PARAM(cachePartition);
+#endif
+}
+
+String ResourceRequestBase::partitionName(const String& domain)
+{
+#if ENABLE(PUBLIC_SUFFIX_LIST)
+    if (domain.isNull())
+        return emptyString();
+    String highLevel = topPrivatelyControlledDomain(domain);
+    if (highLevel.isNull())
+        return emptyString();
+    return highLevel;
+#else
+#if ENABLE(CACHE_PARTITIONING)
+#error Cache partitioning requires PUBLIC_SUFFIX_LIST
+#endif
+    return emptyString();
+#endif
+}
 
 }

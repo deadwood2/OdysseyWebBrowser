@@ -67,19 +67,22 @@ RenderFrameSet::GridAxis::GridAxis()
 {
 }
 
-static Color borderStartEdgeColor()
+static const Color& borderStartEdgeColor()
 {
-    return Color(170, 170, 170);
+    static NeverDestroyed<Color> color(170, 170, 170);
+    return color;
 }
 
-static Color borderEndEdgeColor()
+static const Color& borderEndEdgeColor()
 {
-    return Color::black;
+    static NeverDestroyed<Color> color = Color::black;
+    return color;
 }
 
-static Color borderFillColor()
+static const Color& borderFillColor()
 {
-    return Color(208, 208, 208);
+    static NeverDestroyed<Color> color(208, 208, 208);
+    return color;
 }
 
 void RenderFrameSet::paintColumnBorder(const PaintInfo& paintInfo, const IntRect& borderRect)
@@ -531,10 +534,10 @@ void RenderFrameSet::positionFrames()
     }
 
     // all the remaining frames are hidden to avoid ugly spurious unflowed frames
-    for (; child; child = child->nextSiblingBox()) {
-        child->setWidth(0);
-        child->setHeight(0);
-        child->clearNeedsLayout();
+    for (auto* descendant = child; descendant; descendant = downcast<RenderBox>(RenderObjectTraversal::next(*descendant, this))) {
+        descendant->setWidth(0);
+        descendant->setHeight(0);
+        descendant->clearNeedsLayout();
     }
 }
 
@@ -648,7 +651,7 @@ void RenderFrameSet::positionFramesWithFlattening()
 
 bool RenderFrameSet::flattenFrameSet() const
 {
-    return frame().settings().frameFlatteningEnabled();
+    return settings().frameFlatteningEnabled();
 }
 
 void RenderFrameSet::startResizing(GridAxis& axis, int position)

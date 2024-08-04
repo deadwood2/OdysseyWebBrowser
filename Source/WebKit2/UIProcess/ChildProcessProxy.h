@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,20 +36,27 @@ namespace WebKit {
 class ChildProcessProxy : ProcessLauncher::Client, public IPC::Connection::Client, public ThreadSafeRefCounted<ChildProcessProxy> {
     WTF_MAKE_NONCOPYABLE(ChildProcessProxy);
 
+protected:
+    explicit ChildProcessProxy(bool alwaysRunsAtBackgroundPriority = false);
+
 public:
-    ChildProcessProxy();
     virtual ~ChildProcessProxy();
 
     void connect();
     void terminate();
 
     template<typename T> bool send(T&& message, uint64_t destinationID, OptionSet<IPC::SendOption> sendOptions = { });
-    template<typename T> bool sendSync(T&& message, typename T::Reply&&, uint64_t destinationID, std::chrono::milliseconds timeout = std::chrono::seconds(1), OptionSet<IPC::SendSyncOption> sendSyncOptions = { });
+    template<typename T> bool sendSync(T&& message, typename T::Reply&&, uint64_t destinationID, Seconds timeout = 1_s, OptionSet<IPC::SendSyncOption> sendSyncOptions = { });
 
     IPC::Connection* connection() const
     {
         ASSERT(m_connection);
         return m_connection.get();
+    }
+    
+    bool hasConnection(const IPC::Connection& connection) const
+    {
+        return m_connection == &connection;
     }
 
     void addMessageReceiver(IPC::StringReference messageReceiverName, IPC::MessageReceiver&);
@@ -64,7 +71,7 @@ public:
     };
     State state() const;
 
-    pid_t processIdentifier() const { return m_processLauncher->processIdentifier(); }
+    pid_t processIdentifier() const { return m_processLauncher ? m_processLauncher->processIdentifier() : 0; }
 
     bool canSendMessage() const { return state() != State::Terminated;}
     bool sendMessage(std::unique_ptr<IPC::Encoder>, OptionSet<IPC::SendOption>);
@@ -88,6 +95,7 @@ private:
     RefPtr<ProcessLauncher> m_processLauncher;
     RefPtr<IPC::Connection> m_connection;
     IPC::MessageReceiverMap m_messageReceiverMap;
+    bool m_alwaysRunsAtBackgroundPriority { false };
 };
 
 template<typename T>
@@ -102,7 +110,7 @@ bool ChildProcessProxy::send(T&& message, uint64_t destinationID, OptionSet<IPC:
 }
 
 template<typename U> 
-bool ChildProcessProxy::sendSync(U&& message, typename U::Reply&& reply, uint64_t destinationID, std::chrono::milliseconds timeout, OptionSet<IPC::SendSyncOption> sendSyncOptions)
+bool ChildProcessProxy::sendSync(U&& message, typename U::Reply&& reply, uint64_t destinationID, Seconds timeout, OptionSet<IPC::SendSyncOption> sendSyncOptions)
 {
     COMPILE_ASSERT(U::isSync, SyncMessageExpected);
 

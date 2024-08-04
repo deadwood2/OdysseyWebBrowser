@@ -26,6 +26,7 @@
 #include "Heap.h"
 #include "BumpAllocator.h"
 #include "Chunk.h"
+#include "DebugHeap.h"
 #include "PerProcess.h"
 #include "SmallLine.h"
 #include "SmallPage.h"
@@ -35,14 +36,17 @@ namespace bmalloc {
 
 Heap::Heap(std::lock_guard<StaticMutex>&)
     : m_vmPageSizePhysical(vmPageSizePhysical())
-    , m_isAllocatingPages(false)
     , m_scavenger(*this, &Heap::concurrentScavenge)
+    , m_debugHeap(nullptr)
 {
     RELEASE_BASSERT(vmPageSizePhysical() >= smallPageSize);
     RELEASE_BASSERT(vmPageSize() >= vmPageSizePhysical());
 
     initializeLineMetadata();
     initializePageMetadata();
+    
+    if (m_environment.isDebugHeapEnabled())
+        m_debugHeap = PerProcess<DebugHeap>::get();
 }
 
 void Heap::initializeLineMetadata()
@@ -103,46 +107,63 @@ void Heap::initializePageMetadata()
 
 void Heap::concurrentScavenge()
 {
+#if BOS(DARWIN)
+    pthread_set_qos_class_self_np(m_requestedScavengerThreadQOSClass, 0);
+#endif
+
     std::unique_lock<StaticMutex> lock(PerProcess<Heap>::mutex());
-    scavenge(lock, scavengeSleepDuration);
+
+    scavenge(lock, Async);
 }
 
-void Heap::scavenge(std::unique_lock<StaticMutex>& lock, std::chrono::milliseconds sleepDuration)
+void Heap::scavenge(std::unique_lock<StaticMutex>& lock, ScavengeMode scavengeMode)
 {
-    waitUntilFalse(lock, sleepDuration, m_isAllocatingPages);
+    m_isAllocatingPages.fill(false);
+    m_isAllocatingLargePages = false;
 
-    scavengeSmallPages(lock, sleepDuration);
-    scavengeLargeObjects(lock, sleepDuration);
+    if (scavengeMode == Async)
+        sleep(lock, scavengeSleepDuration);
 
-    sleep(lock, sleepDuration);
+    scavengeSmallPages(lock, scavengeMode);
+    scavengeLargeObjects(lock, scavengeMode);
 }
 
-void Heap::scavengeSmallPages(std::unique_lock<StaticMutex>& lock, std::chrono::milliseconds sleepDuration)
+void Heap::scavengeSmallPages(std::unique_lock<StaticMutex>& lock, ScavengeMode scavengeMode)
 {
-    for (auto& smallPages : m_smallPages) {
+    for (size_t pageClass = 0; pageClass < pageClassCount; pageClass++) {
+        auto& smallPages = m_smallPages[pageClass];
+
         while (!smallPages.isEmpty()) {
+            if (m_isAllocatingPages[pageClass]) {
+                m_scavenger.run();
+                break;
+            }
+
             SmallPage* page = smallPages.pop();
-            size_t pageClass = m_pageClasses[page->sizeClass()];
-            m_vmHeap.deallocateSmallPage(lock, pageClass, page);
-            waitUntilFalse(lock, sleepDuration, m_isAllocatingPages);
+            m_vmHeap.deallocateSmallPage(lock, pageClass, page, scavengeMode);
         }
     }
 }
 
-void Heap::scavengeLargeObjects(std::unique_lock<StaticMutex>& lock, std::chrono::milliseconds sleepDuration)
+void Heap::scavengeLargeObjects(std::unique_lock<StaticMutex>& lock, ScavengeMode scavengeMode)
 {
     auto& ranges = m_largeFree.ranges();
     for (size_t i = ranges.size(); i-- > 0; i = std::min(i, ranges.size())) {
+        if (m_isAllocatingLargePages) {
+            m_scavenger.run();
+            break;
+        }
+
         auto range = ranges.pop(i);
 
-        lock.unlock();
+        if (scavengeMode == Async)
+            lock.unlock();
         vmDeallocatePhysicalPagesSloppy(range.begin(), range.size());
-        lock.lock();
+        if (scavengeMode == Async)
+            lock.lock();
 
         range.setPhysicalSize(0);
         ranges.push(range);
-
-        waitUntilFalse(lock, sleepDuration, m_isAllocatingPages);
     }
 }
 
@@ -156,7 +177,7 @@ SmallPage* Heap::allocateSmallPage(std::lock_guard<StaticMutex>& lock, size_t si
         if (!m_smallPages[pageClass].isEmpty())
             return m_smallPages[pageClass].pop();
 
-        m_isAllocatingPages = true;
+        m_isAllocatingPages[pageClass] = true;
 
         SmallPage* page = m_vmHeap.allocateSmallPage(lock, pageClass);
         m_objectTypes.set(Chunk::get(page), ObjectType::Small);
@@ -325,7 +346,7 @@ LargeRange Heap::splitAndAllocate(LargeRange& range, size_t alignment, size_t si
     }
     
     if (range.physicalSize() < range.size()) {
-        m_isAllocatingPages = true;
+        m_isAllocatingLargePages = true;
 
         vmAllocatePhysicalPagesSloppy(range.begin() + range.physicalSize(), range.size() - range.physicalSize());
         range.setPhysicalSize(range.size());

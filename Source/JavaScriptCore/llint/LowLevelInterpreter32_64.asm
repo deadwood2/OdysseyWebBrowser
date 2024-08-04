@@ -49,7 +49,7 @@ macro dispatchAfterCall()
 end
 
 macro cCall2(function)
-    if ARM or ARMv7 or ARMv7_TRADITIONAL or MIPS or SH4
+    if ARM or ARMv7 or ARMv7_TRADITIONAL or MIPS
         call function
     elsif X86 or X86_WIN
         subp 8, sp
@@ -73,7 +73,7 @@ macro cCall2Void(function)
 end
 
 macro cCall4(function)
-    if ARM or ARMv7 or ARMv7_TRADITIONAL or MIPS or SH4
+    if ARM or ARMv7 or ARMv7_TRADITIONAL or MIPS
         call function
     elsif X86 or X86_WIN
         push a3
@@ -490,19 +490,12 @@ macro loadConstantOrVariablePayloadUnchecked(index, payload)
         payload)
 end
 
-macro storeStructureWithTypeInfo(cell, structure, scratch)
-    storep structure, JSCell::m_structureID[cell]
-
-    loadi Structure::m_blob + StructureIDBlob::u.words.word2[structure], scratch
-    storei scratch, JSCell::m_indexingType[cell]
-end
-
 macro writeBarrierOnOperand(cellOperand)
     loadisFromInstruction(cellOperand, t1)
     loadConstantOrVariablePayload(t1, CellTag, t2, .writeBarrierDone)
-    skipIfIsRememberedOrInEden(t2, t1, t3, 
-        macro(cellState)
-            btbnz cellState, .writeBarrierDone
+    skipIfIsRememberedOrInEden(
+        t2, 
+        macro()
             push cfr, PC
             # We make two extra slots because cCall2 will poke.
             subp 8, sp
@@ -511,8 +504,7 @@ macro writeBarrierOnOperand(cellOperand)
             cCall2Void(_llint_write_barrier_slow)
             addp 8, sp
             pop PC, cfr
-        end
-    )
+        end)
 .writeBarrierDone:
 end
 
@@ -532,9 +524,9 @@ macro writeBarrierOnGlobal(valueOperand, loadHelper)
 
     loadHelper(t3)
 
-    skipIfIsRememberedOrInEden(t3, t1, t2,
-        macro(gcData)
-            btbnz gcData, .writeBarrierDone
+    skipIfIsRememberedOrInEden(
+        t3,
+        macro()
             push cfr, PC
             # We make two extra slots because cCall2 will poke.
             subp 8, sp
@@ -543,8 +535,7 @@ macro writeBarrierOnGlobal(valueOperand, loadHelper)
             cCall2Void(_llint_write_barrier_slow)
             addp 8, sp
             pop PC, cfr
-        end
-    )
+        end)
 .writeBarrierDone:
 end
 
@@ -622,6 +613,10 @@ macro functionArityCheck(doneLabel, slowPath)
     // Move frame up t1 slots
     negi t1
     move cfr, t3
+    move t1, t0
+    lshiftp 3, t0
+    addp t0, cfr
+    addp t0, sp
 .copyLoop:
     loadi PayloadOffset[t3], t0
     storei t0, PayloadOffset[t3, t1, 8]
@@ -640,9 +635,6 @@ macro functionArityCheck(doneLabel, slowPath)
     addp 8, t3
     baddinz 1, t2, .fillLoop
 
-    lshiftp 3, t1
-    addp t1, cfr
-    addp t1, sp
 .continue:
     # Reload CodeBlock and PC, since the slow_path clobbered it.
     loadp CodeBlock[cfr], t1
@@ -679,6 +671,26 @@ _llint_op_enter:
 .opEnterDone:
     callOpcodeSlowPath(_slow_path_enter)
     dispatch(1)
+
+
+_llint_op_get_argument:
+    traceExecution()
+    loadisFromInstruction(1, t1)
+    loadisFromInstruction(2, t2)
+    loadi PayloadOffset + ArgumentCount[cfr], t0
+    bilteq t0, t2, .opGetArgumentOutOfBounds
+    loadi ThisArgumentOffset + TagOffset[cfr, t2, 8], t0
+    loadi ThisArgumentOffset + PayloadOffset[cfr, t2, 8], t3
+    storei t0, TagOffset[cfr, t1, 8]
+    storei t3, PayloadOffset[cfr, t1, 8]
+    valueProfile(t0, t3, 12, t1)
+    dispatch(4)
+
+.opGetArgumentOutOfBounds:
+    storei UndefinedTag, TagOffset[cfr, t1, 8]
+    storei 0, PayloadOffset[cfr, t1, 8]
+    valueProfile(UndefinedTag, 0, 12, t1)
+    dispatch(4)
 
 
 _llint_op_argument_count:
@@ -948,22 +960,27 @@ _llint_op_negate:
     loadi 8[PC], t0
     loadi 4[PC], t3
     loadConstantOrVariable(t0, t1, t2)
+    loadisFromInstruction(3, t0)
     bineq t1, Int32Tag, .opNegateSrcNotInt
     btiz t2, 0x7fffffff, .opNegateSlow
     negi t2
+    ori ArithProfileInt, t0
     storei Int32Tag, TagOffset[cfr, t3, 8]
+    storeisToInstruction(t0, 3)
     storei t2, PayloadOffset[cfr, t3, 8]
-    dispatch(3)
+    dispatch(4)
 .opNegateSrcNotInt:
     bia t1, LowestTag, .opNegateSlow
     xori 0x80000000, t1
-    storei t1, TagOffset[cfr, t3, 8]
+    ori ArithProfileNumber, t0
     storei t2, PayloadOffset[cfr, t3, 8]
-    dispatch(3)
+    storeisToInstruction(t0, 3)
+    storei t1, TagOffset[cfr, t3, 8]
+    dispatch(4)
 
 .opNegateSlow:
     callOpcodeSlowPath(_slow_path_negate)
-    dispatch(3)
+    dispatch(4)
 
 
 macro binaryOpCustomStore(integerOperationAndStore, doubleOperation, slowPath)
@@ -1257,34 +1274,20 @@ _llint_op_is_number:
     dispatch(3)
 
 
-_llint_op_is_string:
+_llint_op_is_cell_with_type:
     traceExecution()
     loadi 8[PC], t1
     loadi 4[PC], t2
     loadConstantOrVariable(t1, t0, t3)
     storei BooleanTag, TagOffset[cfr, t2, 8]
-    bineq t0, CellTag, .opIsStringNotCell
-    cbeq JSCell::m_type[t3], StringType, t1
+    bineq t0, CellTag, .notCellCase
+    loadi 12[PC], t0
+    cbeq JSCell::m_type[t3], t0, t1
     storei t1, PayloadOffset[cfr, t2, 8]
-    dispatch(3)
-.opIsStringNotCell:
+    dispatch(4)
+.notCellCase:
     storep 0, PayloadOffset[cfr, t2, 8]
-    dispatch(3)
-
-
-_llint_op_is_jsarray:
-    traceExecution()
-    loadi 8[PC], t1
-    loadi 4[PC], t2
-    loadConstantOrVariable(t1, t0, t3)
-    storei BooleanTag, TagOffset[cfr, t2, 8]
-    bineq t0, CellTag, .opIsJSArrayNotCell
-    cbeq JSCell::m_type[t3], ArrayType, t1
-    storei t1, PayloadOffset[cfr, t2, 8]
-    dispatch(3)
-.opIsJSArrayNotCell:
-    storep 0, PayloadOffset[cfr, t2, 8]
-    dispatch(3)
+    dispatch(4)
 
 
 _llint_op_is_object:
@@ -1539,6 +1542,12 @@ _llint_op_put_by_id:
 
 .opPutByIdTransitionDirect:
     storei t1, JSCell::m_structureID[t0]
+    loadi 12[PC], t1
+    loadConstantOrVariable(t1, t2, t3)
+    loadi 20[PC], t1
+    storePropertyAtVariableOffset(t1, t0, t2, t3)
+    writeBarrierOnOperand(1)
+    dispatch(9)
 
 .opPutByIdNotTransition:
     # The only thing live right now is t0, which holds the base.
@@ -2037,7 +2046,7 @@ macro nativeCallTrampoline(executableOffsetToFunction)
         andp MarkedBlockMask, t3
         loadp MarkedBlock::m_vm[t3], t3
         addp 8, sp
-    elsif ARM or ARMv7 or ARMv7_TRADITIONAL or C_LOOP or MIPS or SH4
+    elsif ARM or ARMv7 or ARMv7_TRADITIONAL or C_LOOP or MIPS
         subp 8, sp # align stack pointer
         # t1 already contains the Callee.
         andp MarkedBlockMask, t1
@@ -2060,13 +2069,13 @@ macro nativeCallTrampoline(executableOffsetToFunction)
         error
     end
     
-    functionEpilogue()
     btinz VM::m_exception[t3], .handleException
+
+    functionEpilogue()
     ret
 
 .handleException:
     storep cfr, VM::topCallFrame[t3]
-    restoreStackPointerAfterCall()
     jmp _llint_throw_from_slow_path_trampoline
 end
 

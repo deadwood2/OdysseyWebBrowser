@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef JSScope_h
-#define JSScope_h
+#pragma once
 
 #include "GetPutInfo.h"
 #include "JSObject.h"
@@ -52,7 +51,7 @@ public:
     static bool hasConstantScope(ResolveType);
     static JSScope* constantScopeForCodeBlock(ResolveType, CodeBlock*);
 
-    static void collectVariablesUnderTDZ(JSScope*, VariableEnvironment& result);
+    static void collectClosureVariablesUnderTDZ(JSScope*, VariableEnvironment& result);
 
     static void visitChildren(JSCell*, SlotVisitor&);
 
@@ -72,7 +71,7 @@ public:
     JSGlobalObject* globalObject(VM&);
     JSObject* globalThis();
 
-    SymbolTable* symbolTable();
+    SymbolTable* symbolTable(VM&);
 
 protected:
     JSScope(VM&, Structure*, JSScope* next);
@@ -147,7 +146,7 @@ inline JSScope* Register::scope() const
 
 inline JSGlobalObject* ExecState::lexicalGlobalObject() const
 {
-    return callee()->globalObject();
+    return jsCallee()->globalObject();
 }
 
 inline size_t JSScope::offsetOfNext()
@@ -156,5 +155,3 @@ inline size_t JSScope::offsetOfNext()
 }
 
 } // namespace JSC
-
-#endif // JSScope_h

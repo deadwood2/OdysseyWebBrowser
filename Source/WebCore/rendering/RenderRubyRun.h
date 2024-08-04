@@ -28,8 +28,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef RenderRubyRun_h
-#define RenderRubyRun_h
+#pragma once
 
 #include "RenderBlockFlow.h"
 
@@ -54,6 +53,7 @@ public:
 
     RenderObject* layoutSpecialExcludedChild(bool relayoutChildren) override;
     void layout() override;
+    void layoutBlock(bool relayoutChildren, LayoutUnit pageHeight = 0) override;
 
     bool isChildAllowed(const RenderObject&, const RenderStyle&) const override;
     void addChild(RenderObject* child, RenderObject* beforeChild = 0) override;
@@ -91,5 +91,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderRubyRun, isRubyRun())
-
-#endif // RenderRubyRun_h

@@ -21,12 +21,11 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef SVGPathSegListBuilder_h
-#define SVGPathSegListBuilder_h
+#pragma once
 
 #include "FloatPoint.h"
 #include "SVGPathConsumer.h"
-#include "SVGPathSegList.h"
+#include "SVGPathSegListValues.h"
 
 namespace WebCore {
 
@@ -34,7 +33,7 @@ class SVGPathElement;
 
 class SVGPathSegListBuilder final : public SVGPathConsumer {
 public:
-    SVGPathSegListBuilder(SVGPathElement&, SVGPathSegList&, SVGPathSegRole);
+    SVGPathSegListBuilder(SVGPathElement&, SVGPathSegListValues&, SVGPathSegRole);
 
 private:
     void incrementPathSegmentCount() final { }
@@ -55,10 +54,8 @@ private:
     void arcTo(float, float, float, bool largeArcFlag, bool sweepFlag, const FloatPoint&, PathCoordinateMode) final;
 
     SVGPathElement& m_pathElement;
-    SVGPathSegList& m_pathSegList;
+    SVGPathSegListValues& m_pathSegList;
     SVGPathSegRole m_pathSegRole { PathSegUndefinedRole };
 };
 
 } // namespace WebCore
-
-#endif // SVGPathSegListBuilder_h

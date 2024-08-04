@@ -45,6 +45,10 @@
 #include "OpenTypeVerticalData.h"
 #endif
 
+#if USE(DIRECT2D)
+#include <dwrite.h>
+#endif
+
 #if PLATFORM(IOS)
 #include <wtf/Noncopyable.h>
 
@@ -398,7 +402,7 @@ void FontCache::purgeInactiveFontData(unsigned purgeCount)
     keysToRemove.reserveInitialCapacity(fontPlatformDataCache().size());
     for (auto& entry : fontPlatformDataCache()) {
         if (entry.value && !cachedFonts().contains(*entry.value))
-            keysToRemove.append(entry.key);
+            keysToRemove.uncheckedAppend(entry.key);
     }
     for (auto& key : keysToRemove)
         fontPlatformDataCache().remove(key);

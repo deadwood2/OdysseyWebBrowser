@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2008, 2016 Apple Inc. All Rights Reserved.
+ *  Copyright (C) 2008-2017 Apple Inc. All Rights Reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -17,10 +17,10 @@
  *
  */
 
-#ifndef RegExpMatchesArray_h
-#define RegExpMatchesArray_h
+#pragma once
 
 #include "ButterflyInlines.h"
+#include "GCDeferralContextInlines.h"
 #include "JSArray.h"
 #include "JSCInlines.h"
 #include "JSGlobalObject.h"
@@ -32,13 +32,13 @@ namespace JSC {
 static const PropertyOffset RegExpMatchesArrayIndexPropertyOffset = 100;
 static const PropertyOffset RegExpMatchesArrayInputPropertyOffset = 101;
 
-ALWAYS_INLINE JSArray* tryCreateUninitializedRegExpMatchesArray(VM& vm, Structure* structure, unsigned initialLength)
+ALWAYS_INLINE JSArray* tryCreateUninitializedRegExpMatchesArray(VM& vm, GCDeferralContext* deferralContext, Structure* structure, unsigned initialLength)
 {
     unsigned vectorLength = initialLength;
     if (vectorLength > MAX_STORAGE_VECTOR_LENGTH)
         return 0;
 
-    void* temp = vm.heap.tryAllocateAuxiliary(nullptr, Butterfly::totalSize(0, structure->outOfLineCapacity(), true, vectorLength * sizeof(EncodedJSValue)));
+    void* temp = vm.auxiliarySpace.tryAllocate(deferralContext, Butterfly::totalSize(0, structure->outOfLineCapacity(), true, vectorLength * sizeof(EncodedJSValue)));
     if (!temp)
         return nullptr;
     Butterfly* butterfly = Butterfly::fromBase(temp, 0, structure->outOfLineCapacity());
@@ -48,7 +48,7 @@ ALWAYS_INLINE JSArray* tryCreateUninitializedRegExpMatchesArray(VM& vm, Structur
     for (unsigned i = initialLength; i < vectorLength; ++i)
         butterfly->contiguous()[i].clear();
     
-    return JSArray::createWithButterfly(vm, structure, butterfly);
+    return JSArray::createWithButterfly(vm, deferralContext, structure, butterfly);
 }
 
 ALWAYS_INLINE JSArray* createRegExpMatchesArray(
@@ -77,47 +77,49 @@ ALWAYS_INLINE JSArray* createRegExpMatchesArray(
     
     unsigned numSubpatterns = regExp->numSubpatterns();
     
+    GCDeferralContext deferralContext(vm.heap);
+    
     if (UNLIKELY(globalObject->isHavingABadTime())) {
-        array = JSArray::tryCreateUninitialized(vm, globalObject->regExpMatchesArrayStructure(), numSubpatterns + 1);
-        
+        array = JSArray::tryCreateForInitializationPrivate(vm, &deferralContext, globalObject->regExpMatchesArrayStructure(), numSubpatterns + 1);
+        // FIXME: we should probably throw an out of memory error here, but
+        // when making this change we should check that all clients of this
+        // function will correctly handle an exception being thrown from here.
+        // https://bugs.webkit.org/show_bug.cgi?id=169786
+        RELEASE_ASSERT(array);
+
         setProperties();
         
-        array->initializeIndex(vm, 0, jsUndefined());
-        
-        for (unsigned i = 1; i <= numSubpatterns; ++i)
-            array->initializeIndex(vm, i, jsUndefined());
-        
-        // Now the object is safe to scan by GC.
-        
-        array->initializeIndex(vm, 0, jsSubstringOfResolved(vm, input, result.start, result.end - result.start));
+        array->initializeIndexWithoutBarrier(0, jsSubstringOfResolved(vm, &deferralContext, input, result.start, result.end - result.start));
         
         for (unsigned i = 1; i <= numSubpatterns; ++i) {
             int start = subpatternResults[2 * i];
+            JSValue value;
             if (start >= 0)
-                array->initializeIndex(vm, i, JSRopeString::createSubstringOfResolved(vm, input, start, subpatternResults[2 * i + 1] - start));
+                value = JSRopeString::createSubstringOfResolved(vm, &deferralContext, input, start, subpatternResults[2 * i + 1] - start);
+            else
+                value = jsUndefined();
+            array->initializeIndexWithoutBarrier(i, value);
         }
     } else {
-        array = tryCreateUninitializedRegExpMatchesArray(vm, globalObject->regExpMatchesArrayStructure(), numSubpatterns + 1);
+        array = tryCreateUninitializedRegExpMatchesArray(vm, &deferralContext, globalObject->regExpMatchesArrayStructure(), numSubpatterns + 1);
         RELEASE_ASSERT(array);
         
         setProperties();
         
-        array->initializeIndex(vm, 0, jsUndefined(), ArrayWithContiguous);
-        
-        for (unsigned i = 1; i <= numSubpatterns; ++i)
-            array->initializeIndex(vm, i, jsUndefined(), ArrayWithContiguous);
-        
         // Now the object is safe to scan by GC.
 
-        array->initializeIndex(vm, 0, jsSubstringOfResolved(vm, input, result.start, result.end - result.start), ArrayWithContiguous);
+        array->initializeIndexWithoutBarrier(0, jsSubstringOfResolved(vm, &deferralContext, input, result.start, result.end - result.start), ArrayWithContiguous);
         
         for (unsigned i = 1; i <= numSubpatterns; ++i) {
             int start = subpatternResults[2 * i];
+            JSValue value;
             if (start >= 0)
-                array->initializeIndex(vm, i, JSRopeString::createSubstringOfResolved(vm, input, start, subpatternResults[2 * i + 1] - start), ArrayWithContiguous);
+                value = JSRopeString::createSubstringOfResolved(vm, &deferralContext, input, start, subpatternResults[2 * i + 1] - start);
+            else
+                value = jsUndefined();
+            array->initializeIndexWithoutBarrier(i, value, ArrayWithContiguous);
         }
     }
-
     return array;
 }
 
@@ -130,6 +132,4 @@ JSArray* createEmptyRegExpMatchesArray(JSGlobalObject*, JSString*, RegExp*);
 Structure* createRegExpMatchesArrayStructure(VM&, JSGlobalObject*);
 Structure* createRegExpMatchesArraySlowPutStructure(VM&, JSGlobalObject*);
 
-}
-
-#endif // RegExpMatchesArray_h
+} // namespace JSC

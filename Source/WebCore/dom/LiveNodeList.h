@@ -21,8 +21,7 @@
  *
  */
 
-#ifndef LiveNodeList_h
-#define LiveNodeList_h
+#pragma once
 
 #include "CollectionIndexCache.h"
 #include "CollectionTraversal.h"
@@ -48,7 +47,7 @@ public:
     virtual bool isRootedAtDocument() const = 0;
 
     ALWAYS_INLINE NodeListInvalidationType invalidationType() const { return static_cast<NodeListInvalidationType>(m_invalidationType); }
-    ContainerNode& ownerNode() const { return const_cast<ContainerNode&>(m_ownerNode.get()); }
+    ContainerNode& ownerNode() const { return m_ownerNode; }
     ALWAYS_INLINE void invalidateCacheForAttribute(const QualifiedName* attrName) const
     {
         if (!attrName || shouldInvalidateTypeOnAttributeChange(invalidationType(), *attrName))
@@ -114,8 +113,8 @@ ALWAYS_INLINE bool shouldInvalidateTypeOnAttributeChange(NodeListInvalidationTyp
         return attrName == HTMLNames::nameAttr;
     case InvalidateOnIdNameAttrChange:
         return attrName == HTMLNames::idAttr || attrName == HTMLNames::nameAttr;
-    case InvalidateOnForAttrChange:
-        return attrName == HTMLNames::forAttr;
+    case InvalidateOnForTypeAttrChange:
+        return attrName == HTMLNames::forAttr || attrName == HTMLNames::typeAttr;
     case InvalidateForFormControls:
         return attrName == HTMLNames::nameAttr || attrName == HTMLNames::idAttr || attrName == HTMLNames::forAttr
             || attrName == HTMLNames::formAttr || attrName == HTMLNames::typeAttr;
@@ -146,7 +145,7 @@ CachedLiveNodeList<NodeListType>::~CachedLiveNodeList()
 template <class NodeListType>
 inline ContainerNode& CachedLiveNodeList<NodeListType>::rootNode() const
 {
-    if (nodeList().isRootedAtDocument() && ownerNode().inDocument())
+    if (nodeList().isRootedAtDocument() && ownerNode().isConnected())
         return ownerNode().document();
 
     return ownerNode();
@@ -162,5 +161,3 @@ void CachedLiveNodeList<NodeListType>::invalidateCache(Document& document) const
 }
 
 } // namespace WebCore
-
-#endif // LiveNodeList_h

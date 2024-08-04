@@ -40,10 +40,6 @@
 
 #if USE(COORDINATED_GRAPHICS_THREADED)
 #include "ThreadSafeCoordinatedSurface.h"
-#elif USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-#include "CoordinatedGraphicsArgumentCoders.h"
-#include "CoordinatedLayerTreeHostProxyMessages.h"
-#include "WebCoreArgumentCoders.h"
 #endif
 
 using namespace WebCore;
@@ -65,9 +61,6 @@ CoordinatedLayerTreeHost::CoordinatedLayerTreeHost(WebPage& webPage)
     , m_layerFlushTimer(RunLoop::main(), this, &CoordinatedLayerTreeHost::layerFlushTimerFired)
 {
     m_coordinator.createRootLayer(m_webPage.size());
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-    m_layerTreeContext.contextID = downcast<CoordinatedGraphicsLayer>(*m_coordinator.rootLayer()).id();
-#endif
 
     CoordinatedSurface::setFactory(createCoordinatedSurface);
     scheduleLayerFlush();
@@ -164,7 +157,7 @@ void CoordinatedLayerTreeHost::didFlushRootLayer(const FloatRect& visibleContent
 {
     // Because our view-relative overlay root layer is not attached to the FrameView's GraphicsLayer tree, we need to flush it manually.
     if (m_viewOverlayRootLayer)
-        m_viewOverlayRootLayer->flushCompositingState(visibleContentRect,  m_webPage.mainFrame()->view()->viewportIsStable());
+        m_viewOverlayRootLayer->flushCompositingState(visibleContentRect);
 }
 
 void CoordinatedLayerTreeHost::layerFlushTimerFired()
@@ -196,9 +189,6 @@ void CoordinatedLayerTreeHost::paintLayerContents(const GraphicsLayer*, Graphics
 
 void CoordinatedLayerTreeHost::commitSceneState(const CoordinatedGraphicsState& state)
 {
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-    m_webPage.send(Messages::CoordinatedLayerTreeHostProxy::CommitCoordinatedGraphicsState(state));
-#endif
     m_isWaitingForRenderer = true;
 }
 
@@ -206,8 +196,6 @@ RefPtr<CoordinatedSurface> CoordinatedLayerTreeHost::createCoordinatedSurface(co
 {
 #if USE(COORDINATED_GRAPHICS_THREADED)
     return ThreadSafeCoordinatedSurface::create(size, flags);
-#elif USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-    return WebCoordinatedSurface::create(size, flags);
 #else
     UNUSED_PARAM(size);
     UNUSED_PARAM(flags);
@@ -230,7 +218,6 @@ GraphicsLayerFactory* CoordinatedLayerTreeHost::graphicsLayerFactory()
     return &m_coordinator;
 }
 
-#if ENABLE(REQUEST_ANIMATION_FRAME)
 void CoordinatedLayerTreeHost::scheduleAnimation()
 {
     if (m_isWaitingForRenderer)
@@ -242,7 +229,6 @@ void CoordinatedLayerTreeHost::scheduleAnimation()
     scheduleLayerFlush();
     m_layerFlushTimer.startOneShot(m_coordinator.nextAnimationServiceTime());
 }
-#endif
 
 void CoordinatedLayerTreeHost::commitScrollOffset(uint32_t layerID, const WebCore::IntSize& offset)
 {

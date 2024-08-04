@@ -32,11 +32,6 @@
 #include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/CString.h>
 
-#define WEBKIT_DOM_USE_UNSTABLE_API
-#include <webkitdom/WebKitDOMWebKitNamespace.h>
-#include <webkitdom/WebKitDOMUserMessageHandlersNamespace.h>
-#include <webkitdom/WebKitDOMUserMessageHandler.h>
-
 static const char introspectionXML[] =
     "<node>"
     " <interface name='org.webkit.gtk.WebExtensionTest'>"
@@ -56,6 +51,9 @@ static const char introspectionXML[] =
     "  <method name='RemoveAVPluginsFromGSTRegistry'>"
     "  </method>"
     "  <signal name='DocumentLoaded'/>"
+    "  <signal name='FormControlsAssociated'>"
+    "   <arg type='s' name='formIds' direction='out'/>"
+    "  </signal>"
     "  <signal name='URIChanged'>"
     "   <arg type='s' name='uri' direction='out'/>"
     "  </signal>"
@@ -66,6 +64,7 @@ static const char introspectionXML[] =
 typedef enum {
     DocumentLoadedSignal,
     URIChangedSignal,
+    FormControlsAssociatedSignal,
 } DelayedSignalType;
 
 struct DelayedSignal {
@@ -74,14 +73,14 @@ struct DelayedSignal {
     {
     }
 
-    DelayedSignal(DelayedSignalType type, const char* uri)
+    DelayedSignal(DelayedSignalType type, const char* str)
         : type(type)
-        , uri(uri)
+        , str(str)
     {
     }
 
     DelayedSignalType type;
-    CString uri;
+    CString str;
 };
 
 Deque<DelayedSignal> delayedSignalsQueue;
@@ -101,16 +100,9 @@ static void emitDocumentLoaded(GDBusConnection* connection)
 
 static void documentLoadedCallback(WebKitWebPage* webPage, WebKitWebExtension* extension)
 {
-    // FIXME: Too much code just to send a message, we need convenient custom API for this.
     WebKitDOMDocument* document = webkit_web_page_get_dom_document(webPage);
     GRefPtr<WebKitDOMDOMWindow> window = adoptGRef(webkit_dom_document_get_default_view(document));
-    if (WebKitDOMWebKitNamespace* webkit = webkit_dom_dom_window_get_webkit_namespace(window.get())) {
-        WebKitDOMUserMessageHandlersNamespace* messageHandlers = webkit_dom_webkit_namespace_get_message_handlers(webkit);
-        if (WebKitDOMUserMessageHandler* handler = webkit_dom_user_message_handlers_namespace_get_handler(messageHandlers, "dom"))
-            webkit_dom_user_message_handler_post_message(handler, "DocumentLoaded", nullptr);
-    }
-
-    webkit_dom_dom_window_webkit_message_handlers_post_message(window.get(), "dom-convenience", "DocumentLoaded");
+    webkit_dom_dom_window_webkit_message_handlers_post_message(window.get(), "dom", "DocumentLoaded");
 
     gpointer data = g_object_get_data(G_OBJECT(extension), "dbus-connection");
     if (data)
@@ -250,6 +242,36 @@ static void consoleMessageSentCallback(WebKitWebPage* webPage, WebKitConsoleMess
     webkit_dom_dom_window_webkit_message_handlers_post_message(window.get(), "console", messageString.get());
 }
 
+
+static void emitFormControlsAssociated(GDBusConnection* connection, const char* formIds)
+{
+    bool ok = g_dbus_connection_emit_signal(
+        connection,
+        nullptr,
+        "/org/webkit/gtk/WebExtensionTest",
+        "org.webkit.gtk.WebExtensionTest",
+        "FormControlsAssociated",
+        g_variant_new("(s)", formIds),
+        nullptr);
+    g_assert(ok);
+}
+
+static void formControlsAssociatedCallback(WebKitWebPage* webPage, GPtrArray* formElements, WebKitWebExtension* extension)
+{
+    GString* formIdsBuilder = g_string_new(nullptr);
+    for (int i = 0; i < formElements->len; ++i) {
+        g_assert(WEBKIT_DOM_IS_ELEMENT(g_ptr_array_index(formElements, i)));
+        auto domElement = WEBKIT_DOM_ELEMENT(g_ptr_array_index(formElements, i));
+        g_string_append(formIdsBuilder, webkit_dom_element_get_id(domElement));
+    }
+    GUniquePtr<char> formIds(g_string_free(formIdsBuilder, FALSE));
+    gpointer data = g_object_get_data(G_OBJECT(extension), "dbus-connection");
+    if (data)
+        emitFormControlsAssociated(G_DBUS_CONNECTION(data), formIds.get());
+    else
+        delayedSignalsQueue.append(DelayedSignal(FormControlsAssociatedSignal, formIds.get()));
+}
+
 static void pageCreatedCallback(WebKitWebExtension* extension, WebKitWebPage* webPage, gpointer)
 {
     g_signal_connect(webPage, "document-loaded", G_CALLBACK(documentLoadedCallback), extension);
@@ -257,6 +279,7 @@ static void pageCreatedCallback(WebKitWebExtension* extension, WebKitWebPage* we
     g_signal_connect(webPage, "send-request", G_CALLBACK(sendRequestCallback), nullptr);
     g_signal_connect(webPage, "context-menu", G_CALLBACK(contextMenuCallback), nullptr);
     g_signal_connect(webPage, "console-message-sent", G_CALLBACK(consoleMessageSentCallback), nullptr);
+    g_signal_connect(webPage, "form-controls-associated", G_CALLBACK(formControlsAssociatedCallback), extension);
 }
 
 static JSValueRef echoCallback(JSContextRef jsContext, JSObjectRef, JSObjectRef, size_t argumentCount, const JSValueRef arguments[], JSValueRef*)
@@ -373,7 +396,10 @@ static void busAcquiredCallback(GDBusConnection* connection, const char* name, g
             emitDocumentLoaded(connection);
             break;
         case URIChangedSignal:
-            emitURIChanged(connection, delayedSignal.uri.data());
+            emitURIChanged(connection, delayedSignal.str.data());
+            break;
+        case FormControlsAssociatedSignal:
+            emitFormControlsAssociated(connection, delayedSignal.str.data());
             break;
         }
     }

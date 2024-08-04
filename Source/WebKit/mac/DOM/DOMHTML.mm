@@ -42,21 +42,24 @@
 #import <WebCore/HTMLParserIdioms.h>
 #import <WebCore/HTMLSelectElement.h>
 #import <WebCore/HTMLTextAreaElement.h>
-#import <WebCore/Page.h>
 #import <WebCore/Range.h>
 #import <WebCore/RenderTextControl.h>
 #import <WebCore/Settings.h>
 #import <WebCore/markup.h>
 
 #if PLATFORM(IOS)
-#import <WebCore/Autocapitalize.h>
 #import "DOMHTMLElementInternal.h"
+#import <WebCore/Autocapitalize.h>
 #import <WebCore/HTMLTextFormControlElement.h>
 #import <WebCore/JSMainThreadExecState.h>
 #import <WebCore/RenderLayer.h>
 #import <WebCore/WAKWindow.h>
 #import <WebCore/WebCoreThreadMessage.h>
 #endif
+
+// FIXME: We should move all these into the various specific element source files.
+// These were originally here because they were hand written and the rest generated,
+// but that is no longer true.
 
 #if PLATFORM(IOS)
 
@@ -179,21 +182,6 @@ using namespace WebCore;
     return core(self)->isTextField();
 }
 
-#if PLATFORM(IOS)
-- (BOOL)_isAutofilled
-{
-    return core(self)->isAutoFilled();
-}
-
-- (void)_setAutofilled:(BOOL)filled
-{
-    // This notifies the input element that the content has been autofilled
-    // This allows WebKit to obey the -webkit-autofill pseudo style, which
-    // changes the background color.
-    core(self)->setAutoFilled(filled);
-}
-#endif // PLATFORM(IOS)
-
 @end
 
 @implementation DOMHTMLSelectElement (FormAutoFillTransition)
@@ -236,12 +224,28 @@ using namespace WebCore;
 
 @end
 
+static WebAutocapitalizeType webAutocapitalizeType(AutocapitalizeType type)
+{
+    switch (type) {
+    case AutocapitalizeTypeDefault:
+        return WebAutocapitalizeTypeDefault;
+    case AutocapitalizeTypeNone:
+        return WebAutocapitalizeTypeNone;
+    case AutocapitalizeTypeWords:
+        return WebAutocapitalizeTypeWords;
+    case AutocapitalizeTypeSentences:
+        return WebAutocapitalizeTypeSentences;
+    case AutocapitalizeTypeAllCharacters:
+        return WebAutocapitalizeTypeAllCharacters;
+    }
+}
+
 @implementation DOMHTMLInputElement (AutocapitalizeAdditions)
 
 - (WebAutocapitalizeType)_autocapitalizeType
 {
     WebCore::HTMLInputElement* inputElement = core(self);
-    return static_cast<WebAutocapitalizeType>(inputElement->autocapitalizeType());
+    return webAutocapitalizeType(inputElement->autocapitalizeType());
 }
 
 @end
@@ -251,7 +255,7 @@ using namespace WebCore;
 - (WebAutocapitalizeType)_autocapitalizeType
 {
     WebCore::HTMLTextAreaElement* textareaElement = core(self);
-    return static_cast<WebAutocapitalizeType>(textareaElement->autocapitalizeType());
+    return webAutocapitalizeType(textareaElement->autocapitalizeType());
 }
 
 @end
@@ -267,11 +271,11 @@ using namespace WebCore;
 - (void)setValueAsNumberWithChangeEvent:(double)newValueAsNumber
 {
     WebCore::JSMainThreadNullState state;
-    WebCore::ExceptionCode ec = 0;
-    core(self)->setValueAsNumber(newValueAsNumber, ec, DispatchInputAndChangeEvent);
+    core(self)->setValueAsNumber(newValueAsNumber, DispatchInputAndChangeEvent);
 }
 
 @end
+
 #endif
 
 Class kitClass(WebCore::HTMLCollection* collection)

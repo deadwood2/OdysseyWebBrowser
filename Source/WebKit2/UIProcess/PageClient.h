@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PageClient_h
-#define PageClient_h
+#pragma once
 
 #include "ShareableBitmap.h"
 #include "WebColorPicker.h"
@@ -33,6 +32,7 @@
 #include <WebCore/AlternativeTextClient.h>
 #include <WebCore/EditorClient.h>
 #include <WebCore/UserInterfaceLayoutDirection.h>
+#include <WebCore/ValidationBubble.h>
 #include <wtf/Forward.h>
 
 #if PLATFORM(COCOA)
@@ -137,6 +137,8 @@ public:
         return false;
     }
 
+    virtual void didStartProvisionalLoadForMainFrame() { };
+    virtual void didFailProvisionalLoadForMainFrame() { };
     virtual void didCommitLoadForMainFrame(const String& mimeType, bool useCustomContentProvider) = 0;
 
 #if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
@@ -145,10 +147,6 @@ public:
     virtual void pageTransitionViewportReady() = 0;
     virtual void didFindZoomableArea(const WebCore::IntPoint&, const WebCore::IntRect&) = 0;
 #endif
-
-#if PLATFORM(EFL)
-    virtual void updateTextInputState() = 0;
-#endif // PLATFORM(EFL)
 
     virtual void handleDownloadRequest(DownloadProxy*) = 0;
 
@@ -227,6 +225,10 @@ public:
 #endif
 
 #if PLATFORM(COCOA)
+    virtual Ref<WebCore::ValidationBubble> createValidationBubble(const String& message, const WebCore::ValidationBubble::Settings&) = 0;
+#endif
+
+#if PLATFORM(COCOA)
     virtual void setTextIndicator(Ref<WebCore::TextIndicator>, WebCore::TextIndicatorWindowLifetime) = 0;
     virtual void clearTextIndicator(WebCore::TextIndicatorWindowDismissalAnimation) = 0;
     virtual void setTextIndicatorAnimationProgress(float) = 0;
@@ -244,9 +246,10 @@ public:
     virtual void showCorrectionPanel(WebCore::AlternativeTextType, const WebCore::FloatRect& boundingBoxOfReplacedString, const String& replacedString, const String& replacementString, const Vector<String>& alternativeReplacementStrings) = 0;
     virtual void dismissCorrectionPanel(WebCore::ReasonForDismissingAlternativeText) = 0;
     virtual String dismissCorrectionPanelSoon(WebCore::ReasonForDismissingAlternativeText) = 0;
-    virtual void recordAutocorrectionResponse(WebCore::AutocorrectionResponseType, const String& replacedString, const String& replacementString) = 0;
+    virtual void recordAutocorrectionResponse(WebCore::AutocorrectionResponse, const String& replacedString, const String& replacementString) = 0;
     virtual void recommendedScrollbarStyleDidChange(WebCore::ScrollbarStyle) = 0;
     virtual void removeNavigationGestureSnapshot() = 0;
+    virtual void handleControlledElementIDResponse(const String&) = 0;
 
     virtual CGRect boundsOfLayerInLayerBackedWindowCoordinates(CALayer *) const = 0;
 
@@ -276,6 +279,10 @@ public:
 #endif // USE(APPKIT)
     virtual void setEditableElementIsFocused(bool) = 0;
 #endif // PLATFORM(MAC)
+
+#if PLATFORM(COCOA)
+    virtual void handleActiveNowPlayingSessionInfoResponse(bool hasActiveSession, const String& title, double duration, double elapsedTime) = 0;
+#endif
 
 #if PLATFORM(IOS)
     virtual void commitPotentialTapFailed() = 0;
@@ -365,8 +372,16 @@ public:
     virtual bool windowIsFrontWindowUnderMouse(const NativeWebMouseEvent&) { return false; }
 
     virtual WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection() = 0;
+
+#if USE(QUICK_LOOK)
+    virtual void requestPasswordForQuickLookDocument(const String& fileName, std::function<void(const String&)>&&) = 0;
+#endif
+
+#if ENABLE(DATA_INTERACTION)
+    virtual void didPerformDataInteractionControllerOperation() = 0;
+    virtual void didHandleStartDataInteractionRequest(bool started) = 0;
+    virtual void startDataInteractionWithImage(const WebCore::IntPoint& clientPosition, const ShareableBitmap::Handle& image, const WebCore::FloatPoint& anchorPoint, bool isLink) = 0;
+#endif
 };
 
 } // namespace WebKit
-
-#endif // PageClient_h

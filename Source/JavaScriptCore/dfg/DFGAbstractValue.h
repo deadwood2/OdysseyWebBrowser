@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef DFGAbstractValue_h
-#define DFGAbstractValue_h
+#pragma once
 
 #if ENABLE(DFG_JIT)
 
@@ -39,7 +38,6 @@
 #include "ResultType.h"
 #include "SpeculatedType.h"
 #include "DumpContext.h"
-#include "StructureSet.h"
 
 namespace JSC {
 
@@ -121,7 +119,7 @@ struct AbstractValue {
         value.observeInvalidationPoint();
     }
     
-    void observeTransition(Structure* from, Structure* to)
+    void observeTransition(RegisteredStructure from, RegisteredStructure to)
     {
         if (m_type & SpecCell) {
             m_structure.observeTransition(from, to);
@@ -134,7 +132,7 @@ struct AbstractValue {
     
     class TransitionObserver {
     public:
-        TransitionObserver(Structure* from, Structure* to)
+        TransitionObserver(RegisteredStructure from, RegisteredStructure to)
             : m_from(from)
             , m_to(to)
         {
@@ -145,8 +143,8 @@ struct AbstractValue {
             value.observeTransition(m_from, m_to);
         }
     private:
-        Structure* m_from;
-        Structure* m_to;
+        RegisteredStructure m_from;
+        RegisteredStructure m_to;
     };
     
     class TransitionsObserver {
@@ -210,7 +208,8 @@ struct AbstractValue {
     
     void set(Graph&, const FrozenValue&, StructureClobberState);
     void set(Graph&, Structure*);
-    void set(Graph&, const StructureSet&);
+    void set(Graph&, RegisteredStructure);
+    void set(Graph&, const RegisteredStructureSet&);
     
     // Set this value to represent the given set of types as precisely as possible.
     void setType(Graph&, SpeculatedType);
@@ -302,18 +301,19 @@ struct AbstractValue {
     // SpecCell. Hence, after this call, the value will no longer have any non-cell members. But, you can
     // use admittedTypes to preserve some non-cell types. Note that it's wrong for admittedTypes to overlap
     // with SpecCell.
-    FiltrationResult filter(Graph&, const StructureSet&, SpeculatedType admittedTypes = SpecNone);
+    FiltrationResult filter(Graph&, const RegisteredStructureSet&, SpeculatedType admittedTypes = SpecNone);
     
     FiltrationResult filterArrayModes(ArrayModes);
     FiltrationResult filter(SpeculatedType);
     FiltrationResult filterByValue(const FrozenValue& value);
     FiltrationResult filter(const AbstractValue&);
+    FiltrationResult filterClassInfo(Graph&, const ClassInfo*);
 
     FiltrationResult filter(Graph&, const InferredType::Descriptor&);
     
-    FiltrationResult changeStructure(Graph&, const StructureSet&);
+    FiltrationResult changeStructure(Graph&, const RegisteredStructureSet&);
     
-    bool contains(Structure*) const;
+    bool contains(RegisteredStructure) const;
 
     bool validate(JSValue value) const
     {
@@ -484,7 +484,3 @@ struct HashTraits<JSC::DFG::AbstractValue> : GenericHashTraits<JSC::DFG::Abstrac
 #endif // USE(JSVALUE64)
 
 #endif // ENABLE(DFG_JIT)
-
-#endif // DFGAbstractValue_h
-
-

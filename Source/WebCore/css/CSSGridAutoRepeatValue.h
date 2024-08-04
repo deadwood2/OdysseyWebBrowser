@@ -28,10 +28,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CSSGridAutoRepeatValue_h
-#define CSSGridAutoRepeatValue_h
-
-#if ENABLE(CSS_GRID_LAYOUT)
+#pragma once
 
 #include "CSSValueKeywords.h"
 #include "CSSValueList.h"
@@ -73,7 +70,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CSS_VALUE(CSSGridAutoRepeatValue, isGridAutoRepeatValue());
-
-#endif // ENABLE(CSS_GRID_LAYOUT)
-
-#endif // CSSGridAutoRepeatValue_h

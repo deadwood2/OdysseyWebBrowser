@@ -29,7 +29,7 @@
 #include "config.h"
 #include "KeyframeAnimation.h"
 
-#include "AnimationControllerPrivate.h"
+#include "CSSAnimationControllerPrivate.h"
 #include "CSSPropertyAnimation.h"
 #include "CSSPropertyNames.h"
 #include "CompositeAnimation.h"
@@ -39,6 +39,9 @@
 #include "RenderStyle.h"
 #include "StylePendingResources.h"
 #include "StyleResolver.h"
+#include "StyleScope.h"
+#include "TranslateTransformOperation.h"
+#include "WillChangeData.h"
 
 namespace WebCore {
 
@@ -55,6 +58,8 @@ KeyframeAnimation::KeyframeAnimation(const Animation& animation, RenderElement* 
 #if ENABLE(FILTERS_LEVEL_2)
     checkForMatchingBackdropFilterFunctionLists();
 #endif
+    computeStackingContextImpact();
+    computeLayoutDependency();
 }
 
 KeyframeAnimation::~KeyframeAnimation()
@@ -62,6 +67,43 @@ KeyframeAnimation::~KeyframeAnimation()
     // Make sure to tell the renderer that we are ending. This will make sure any accelerated animations are removed.
     if (!postActive())
         endAnimation();
+}
+
+void KeyframeAnimation::computeStackingContextImpact()
+{
+    for (auto propertyID : m_keyframes.properties()) {
+        if (WillChangeData::propertyCreatesStackingContext(propertyID)) {
+            m_triggersStackingContext = true;
+            break;
+        }
+    }
+}
+
+void KeyframeAnimation::computeLayoutDependency()
+{
+    if (!m_keyframes.containsProperty(CSSPropertyTransform))
+        return;
+
+    size_t numKeyframes = m_keyframes.size();
+    for (size_t i = 0; i < numKeyframes; i++) {
+        auto* keyframeStyle = m_keyframes[i].style();
+        if (!keyframeStyle) {
+            ASSERT_NOT_REACHED();
+            continue;
+        }
+        if (keyframeStyle->hasTransform()) {
+            auto& transformOperations = keyframeStyle->transform();
+            for (auto operation : transformOperations.operations()) {
+                if (operation->isTranslateTransformOperationType()) {
+                    auto translation = downcast<TranslateTransformOperation>(operation.get());
+                    if (translation->x().isPercent() || translation->y().isPercent()) {
+                        m_dependsOnLayout = true;
+                        return;
+                    }
+                }
+            }
+        }
+    }
 }
 
 void KeyframeAnimation::fetchIntervalEndpointsForProperty(CSSPropertyID property, const RenderStyle*& fromStyle, const RenderStyle*& toStyle, double& prog) const
@@ -112,7 +154,7 @@ void KeyframeAnimation::fetchIntervalEndpointsForProperty(CSSPropertyID property
     prog = progress(scale, offset, prevKeyframe.timingFunction(name()));
 }
 
-bool KeyframeAnimation::animate(CompositeAnimation* compositeAnimation, RenderElement*, const RenderStyle*, const RenderStyle* targetStyle, std::unique_ptr<RenderStyle>& animatedStyle)
+bool KeyframeAnimation::animate(CompositeAnimation* compositeAnimation, RenderElement*, const RenderStyle*, const RenderStyle* targetStyle, std::unique_ptr<RenderStyle>& animatedStyle, bool& didBlendStyle)
 {
     // Fire the start timeout if needed
     fireAnimationEventsIfNeeded();
@@ -147,6 +189,7 @@ bool KeyframeAnimation::animate(CompositeAnimation* compositeAnimation, RenderEl
         return false;
     }
 
+    // FIXME: the code below never changes the state, so this function always returns false.
     AnimationState oldState = state();
 
     // Run a cycle of animation.
@@ -163,15 +206,10 @@ bool KeyframeAnimation::animate(CompositeAnimation* compositeAnimation, RenderEl
         double progress = 0;
         fetchIntervalEndpointsForProperty(propertyID, fromStyle, toStyle, progress);
 
-        bool needsAnim = CSSPropertyAnimation::blendProperties(this, propertyID, animatedStyle.get(), fromStyle, toStyle, progress);
-        if (!needsAnim)
-            // If we are running an accelerated animation, set a flag in the style
-            // to indicate it. This can be used to make sure we get an updated
-            // style for hit testing, etc.
-            // FIXME: still need this?
-            animatedStyle->setIsRunningAcceleratedAnimation();
+        CSSPropertyAnimation::blendProperties(this, propertyID, animatedStyle.get(), fromStyle, toStyle, progress);
     }
     
+    didBlendStyle = true;
     return state() != oldState;
 }
 
@@ -313,12 +351,12 @@ bool KeyframeAnimation::sendAnimationEvent(const AtomicString& eventType, double
         // Dispatch the event
         RefPtr<Element> element = m_object->element();
 
-        ASSERT(!element || !element->document().inPageCache());
+        ASSERT(!element || element->document().pageCacheState() == Document::NotInPageCache);
         if (!element)
             return false;
 
         // Schedule event handling
-        m_compositeAnimation->animationController().addEventToDispatch(element, eventType, m_keyframes.animationName(), elapsedTime);
+        m_compositeAnimation->animationController().addEventToDispatch(*element, eventType, m_keyframes.animationName(), elapsedTime);
 
         // Restore the original (unanimated) style
         if ((eventType == eventNames().webkitAnimationEndEvent || eventType == eventNames().animationendEvent) && element->renderer())
@@ -355,7 +393,8 @@ void KeyframeAnimation::resolveKeyframeStyles()
         return;
     auto& element = *m_object->element();
 
-    element.styleResolver().keyframeStylesForAnimation(*m_object->element(), m_unanimatedStyle.get(), m_keyframes);
+    if (auto* styleScope = Style::Scope::forOrdinal(element, m_animation->nameStyleScopeOrdinal()))
+        styleScope->resolver().keyframeStylesForAnimation(*m_object->element(), m_unanimatedStyle.get(), m_keyframes);
 
     // Ensure resource loads for all the frames.
     for (auto& keyframe : m_keyframes.keyframes()) {

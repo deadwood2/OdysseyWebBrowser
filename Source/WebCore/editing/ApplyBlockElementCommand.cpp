@@ -157,11 +157,11 @@ void ApplyBlockElementCommand::formatSelection(const VisiblePosition& startOfSel
         // indentIntoBlockquote could move more than one paragraph if the paragraph
         // is in a list item or a table. As a result, endAfterSelection could refer to a position
         // no longer in the document.
-        if (endAfterSelection.isNotNull() && !endAfterSelection.deepEquivalent().anchorNode()->inDocument())
+        if (endAfterSelection.isNotNull() && !endAfterSelection.deepEquivalent().anchorNode()->isConnected())
             break;
         // Sanity check: Make sure our moveParagraph calls didn't remove endOfNextParagraph.deepEquivalent().deprecatedNode()
         // If somehow we did, return to prevent crashes.
-        if (endOfNextParagraph.isNotNull() && !endOfNextParagraph.deepEquivalent().anchorNode()->inDocument()) {
+        if (endOfNextParagraph.isNotNull() && !endOfNextParagraph.deepEquivalent().anchorNode()->isConnected()) {
             ASSERT_NOT_REACHED();
             return;
         }
@@ -175,13 +175,7 @@ static bool isNewLineAtPosition(const Position& position)
     int offset = position.offsetInContainerNode();
     if (!is<Text>(textNode) || offset < 0 || offset >= textNode->maxCharacterOffset())
         return false;
-
-    ExceptionCode ec = 0;
-    String textAtPosition = downcast<Text>(*textNode).substringData(offset, 1, ec);
-    if (ec)
-        return false;
-
-    return textAtPosition[0] == '\n';
+    return downcast<Text>(*textNode).data()[offset] == '\n';
 }
 
 const RenderStyle* ApplyBlockElementCommand::renderStyleOfEnclosingTextNode(const Position& position)
@@ -252,7 +246,7 @@ void ApplyBlockElementCommand::rangeForParagraphSplittingTextNodesIfNeeded(const
                 if (m_endOfLastParagraph.offsetInContainerNode() == end.offsetInContainerNode())
                     m_endOfLastParagraph = lastPositionInOrAfterNode(endContainer->previousSibling());
                 else
-                    m_endOfLastParagraph = Position(endContainer, m_endOfLastParagraph.offsetInContainerNode() - end.offsetInContainerNode());
+                    m_endOfLastParagraph = Position(endContainer.get(), m_endOfLastParagraph.offsetInContainerNode() - end.offsetInContainerNode());
             }
             end = lastPositionInNode(endContainer->previousSibling());
         }

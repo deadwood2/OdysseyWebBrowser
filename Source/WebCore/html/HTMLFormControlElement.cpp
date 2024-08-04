@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *           (C) 2006 Alexey Proskuryakov (ap@nypop.com)
  *
  * This library is free software; you can redistribute it and/or
@@ -89,7 +89,7 @@ void HTMLFormControlElement::setFormEnctype(const String& value)
 
 String HTMLFormControlElement::formMethod() const
 {
-    const AtomicString& formMethodAttr = attributeWithoutSynchronization(formmethodAttr);
+    auto& formMethodAttr = attributeWithoutSynchronization(formmethodAttr);
     if (formMethodAttr.isNull())
         return emptyString();
     return FormSubmission::Attributes::methodString(FormSubmission::Attributes::parseMethodType(formMethodAttr));
@@ -174,7 +174,7 @@ void HTMLFormControlElement::disabledAttributeChanged()
 void HTMLFormControlElement::disabledStateChanged()
 {
     setNeedsWillValidateCheck();
-    setNeedsStyleRecalc();
+    invalidateStyleForSubtree();
     if (renderer() && renderer()->style().hasAppearance())
         renderer()->theme().stateChanged(*renderer(), ControlStates::EnabledState);
 }
@@ -182,7 +182,7 @@ void HTMLFormControlElement::disabledStateChanged()
 void HTMLFormControlElement::readOnlyAttributeChanged()
 {
     setNeedsWillValidateCheck();
-    setNeedsStyleRecalc();
+    invalidateStyleForSubtree();
 }
 
 void HTMLFormControlElement::requiredAttributeChanged()
@@ -190,7 +190,7 @@ void HTMLFormControlElement::requiredAttributeChanged()
     updateValidity();
     // Style recalculation is needed because style selectors may include
     // :required and :optional pseudo-classes.
-    setNeedsStyleRecalc();
+    invalidateStyleForSubtree();
 }
 
 static bool shouldAutofocus(HTMLFormControlElement* element)
@@ -199,7 +199,7 @@ static bool shouldAutofocus(HTMLFormControlElement* element)
         return false;
     if (!element->hasAttributeWithoutSynchronization(autofocusAttr))
         return false;
-    if (!element->inDocument() || !element->document().renderView())
+    if (!element->isConnected() || !element->document().renderView())
         return false;
     if (element->document().isSandboxed(SandboxAutomaticFeatures)) {
         // FIXME: This message should be moved off the console once a solution to https://bugs.webkit.org/show_bug.cgi?id=103274 exists.
@@ -250,7 +250,7 @@ void HTMLFormControlElement::didAttachRenderers()
     }
 }
 
-void HTMLFormControlElement::didMoveToNewDocument(Document* oldDocument)
+void HTMLFormControlElement::didMoveToNewDocument(Document& oldDocument)
 {
     FormAssociatedElement::didMoveToNewDocument(oldDocument);
     HTMLElement::didMoveToNewDocument(oldDocument);
@@ -326,7 +326,7 @@ void HTMLFormControlElement::dispatchFormControlChangeEvent()
 void HTMLFormControlElement::dispatchFormControlInputEvent()
 {
     setChangedSinceLastFormControlChangeEvent(true);
-    HTMLElement::dispatchInputEvent();
+    dispatchInputEvent();
 }
 
 bool HTMLFormControlElement::isDisabledFormControl() const
@@ -370,10 +370,9 @@ bool HTMLFormControlElement::isFocusable() const
 
 bool HTMLFormControlElement::isKeyboardFocusable(KeyboardEvent& event) const
 {
-    if (isFocusable())
-        if (document().frame())
-            return document().frame()->eventHandler().tabsToAllFormControls(&event);
-    return false;
+    return isFocusable()
+        && document().frame()
+        && document().frame()->eventHandler().tabsToAllFormControls(event);
 }
 
 bool HTMLFormControlElement::isMouseFocusable() const
@@ -445,7 +444,7 @@ void HTMLFormControlElement::setNeedsWillValidateCheck()
     m_willValidate = newWillValidate;
 
     updateValidity();
-    setNeedsStyleRecalc();
+    invalidateStyleForSubtree();
 
     if (!m_willValidate && !wasValid) {
         removeInvalidElementToAncestorFromInsertionPoint(*this, parentNode());
@@ -476,7 +475,7 @@ void HTMLFormControlElement::hideVisibleValidationMessage()
         m_validationMessage->requestToHideMessage();
 }
 
-bool HTMLFormControlElement::checkValidity(Vector<RefPtr<FormAssociatedElement>>* unhandledInvalidControls)
+bool HTMLFormControlElement::checkValidity(Vector<RefPtr<HTMLFormControlElement>>* unhandledInvalidControls)
 {
     if (!willValidate() || isValidFormControlElement())
         return true;
@@ -484,16 +483,49 @@ bool HTMLFormControlElement::checkValidity(Vector<RefPtr<FormAssociatedElement>>
     Ref<HTMLFormControlElement> protectedThis(*this);
     Ref<Document> originalDocument(document());
     bool needsDefaultAction = dispatchEvent(Event::create(eventNames().invalidEvent, false, true));
-    if (needsDefaultAction && unhandledInvalidControls && inDocument() && originalDocument.ptr() == &document())
+    if (needsDefaultAction && unhandledInvalidControls && isConnected() && originalDocument.ptr() == &document())
         unhandledInvalidControls->append(this);
     return false;
+}
+
+bool HTMLFormControlElement::reportValidity()
+{
+    Vector<RefPtr<HTMLFormControlElement>> elements;
+    if (checkValidity(&elements))
+        return true;
+
+    if (elements.isEmpty())
+        return false;
+
+    // Needs to update layout now because we'd like to call isFocusable(), which
+    // has !renderer()->needsLayout() assertion.
+    document().updateLayoutIgnorePendingStylesheets();
+
+    if (isConnected() && isFocusable()) {
+        focusAndShowValidationMessage();
+        return false;
+    }
+
+    if (document().frame()) {
+        String message = makeString("An invalid form control with name='", name(), "' is not focusable.");
+        document().addConsoleMessage(MessageSource::Rendering, MessageLevel::Error, message);
+    }
+
+    return false;
+}
+
+void HTMLFormControlElement::focusAndShowValidationMessage()
+{
+    // Calling focus() will scroll the element into view.
+    focus();
+    updateVisibleValidationMessage();
 }
 
 inline bool HTMLFormControlElement::isValidFormControlElement() const
 {
     // If the following assertion fails, updateValidity() is not called
     // correctly when something which changes validity is updated.
-    ASSERT(m_isValid == valid());
+    ASSERT(m_isValid == isValid());
     return m_isValid;
 }
 
@@ -518,11 +550,11 @@ void HTMLFormControlElement::updateValidity()
     bool willValidate = this->willValidate();
     bool wasValid = m_isValid;
 
-    m_isValid = valid();
+    m_isValid = isValid();
 
     if (willValidate && m_isValid != wasValid) {
         // Update style for pseudo classes such as :valid :invalid.
-        setNeedsStyleRecalc();
+        invalidateStyleForSubtree();
 
         if (!m_isValid) {
             addInvalidElementToAncestorFromInsertionPoint(*this, parentNode());
@@ -560,48 +592,28 @@ void HTMLFormControlElement::dispatchBlurEvent(RefPtr<Element>&& newFocusedEleme
     hideVisibleValidationMessage();
 }
 
-HTMLFormElement* HTMLFormControlElement::virtualForm() const
-{
-    return FormAssociatedElement::form();
-}
-
 #if ENABLE(IOS_AUTOCORRECT_AND_AUTOCAPITALIZE)
 
 // FIXME: We should look to share this code with class HTMLFormElement instead of duplicating the logic.
 
-bool HTMLFormControlElement::autocorrect() const
+bool HTMLFormControlElement::shouldAutocorrect() const
 {
     const AtomicString& autocorrectValue = attributeWithoutSynchronization(autocorrectAttr);
     if (!autocorrectValue.isEmpty())
         return !equalLettersIgnoringASCIICase(autocorrectValue, "off");
     if (HTMLFormElement* form = this->form())
-        return form->autocorrect();
+        return form->shouldAutocorrect();
     return true;
 }
 
-void HTMLFormControlElement::setAutocorrect(bool autocorrect)
+AutocapitalizeType HTMLFormControlElement::autocapitalizeType() const
 {
-    setAttributeWithoutSynchronization(autocorrectAttr, autocorrect ? AtomicString("on", AtomicString::ConstructFromLiteral) : AtomicString("off", AtomicString::ConstructFromLiteral));
-}
-
-WebAutocapitalizeType HTMLFormControlElement::autocapitalizeType() const
-{
-    WebAutocapitalizeType type = autocapitalizeTypeForAttributeValue(attributeWithoutSynchronization(autocapitalizeAttr));
-    if (type == WebAutocapitalizeTypeDefault) {
+    AutocapitalizeType type = HTMLElement::autocapitalizeType();
+    if (type == AutocapitalizeTypeDefault) {
         if (HTMLFormElement* form = this->form())
             return form->autocapitalizeType();
     }
     return type;
-}
-
-const AtomicString& HTMLFormControlElement::autocapitalize() const
-{
-    return stringForAutocapitalizeType(autocapitalizeType());
-}
-
-void HTMLFormControlElement::setAutocapitalize(const AtomicString& value)
-{
-    setAttributeWithoutSynchronization(autocapitalizeAttr, value);
 }
 
 #endif

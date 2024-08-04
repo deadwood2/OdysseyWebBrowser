@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef GenericTypedArrayView_h
-#define GenericTypedArrayView_h
+#pragma once
 
 #include "ArrayBuffer.h"
 #include "ArrayBufferView.h"
@@ -34,12 +33,12 @@ namespace JSC {
 template<typename Adaptor>
 class GenericTypedArrayView : public ArrayBufferView {
 protected:
-    GenericTypedArrayView(PassRefPtr<ArrayBuffer>, unsigned byteOffset, unsigned length);
+    GenericTypedArrayView(RefPtr<ArrayBuffer>&&, unsigned byteOffset, unsigned length);
 
 public:
     static RefPtr<GenericTypedArrayView> create(unsigned length);
     static RefPtr<GenericTypedArrayView> create(const typename Adaptor::Type* array, unsigned length);
-    static RefPtr<GenericTypedArrayView> create(PassRefPtr<ArrayBuffer>, unsigned byteOffset, unsigned length);
+    static RefPtr<GenericTypedArrayView> create(RefPtr<ArrayBuffer>&&, unsigned byteOffset, unsigned length);
     
     static RefPtr<GenericTypedArrayView> createUninitialized(unsigned length);
     
@@ -113,6 +112,3 @@ private:
 };
 
 } // namespace JSC
-
-#endif // GenericTypedArrayView_h
-

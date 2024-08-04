@@ -29,6 +29,7 @@
 
 #include "CSSParser.h"
 #include "ElementDescendantIterator.h"
+#include "ExceptionCode.h"
 #include "HTMLNames.h"
 #include "SelectorChecker.h"
 #include "StaticNodeList.h"
@@ -69,7 +70,7 @@ static IdMatchingType findIdMatchingType(const CSSSelector& firstSelector)
                 return IdMatchingType::Rightmost;
             return IdMatchingType::Filter;
         }
-        if (selector->relation() != CSSSelector::SubSelector)
+        if (selector->relation() != CSSSelector::Subselector)
             inRightmost = false;
     }
     return IdMatchingType::None;
@@ -168,7 +169,7 @@ struct AllElementExtractorSelectorQueryTrait {
     ALWAYS_INLINE static void appendOutputForElement(OutputType& output, Element* element) { ASSERT(element); output.append(*element); }
 };
 
-RefPtr<NodeList> SelectorDataList::queryAll(ContainerNode& rootNode) const
+Ref<NodeList> SelectorDataList::queryAll(ContainerNode& rootNode) const
 {
     Vector<Ref<Element>> result;
     execute<AllElementExtractorSelectorQueryTrait>(rootNode, result);
@@ -195,7 +196,7 @@ Element* SelectorDataList::queryFirst(ContainerNode& rootNode) const
 
 static const CSSSelector* selectorForIdLookup(const ContainerNode& rootNode, const CSSSelector& firstSelector)
 {
-    if (!rootNode.inDocument())
+    if (!rootNode.isConnected())
         return nullptr;
     if (rootNode.document().inQuirksMode())
         return nullptr;
@@ -203,7 +204,7 @@ static const CSSSelector* selectorForIdLookup(const ContainerNode& rootNode, con
     for (const CSSSelector* selector = &firstSelector; selector; selector = selector->tagHistory()) {
         if (canBeUsedForIdFastPath(*selector))
             return selector;
-        if (selector->relation() != CSSSelector::SubSelector)
+        if (selector->relation() != CSSSelector::Subselector)
             break;
     }
 
@@ -227,7 +228,7 @@ ALWAYS_INLINE void SelectorDataList::executeFastPathForIdSelector(const Containe
         ASSERT(elements);
         bool rootNodeIsTreeScopeRoot = isTreeScopeRoot(rootNode);
         for (auto& element : *elements) {
-            if ((rootNodeIsTreeScopeRoot || element->isDescendantOf(&rootNode)) && selectorMatches(selectorData, *element, rootNode)) {
+            if ((rootNodeIsTreeScopeRoot || element->isDescendantOf(rootNode)) && selectorMatches(selectorData, *element, rootNode)) {
                 SelectorQueryTrait::appendOutputForElement(output, element);
                 if (SelectorQueryTrait::shouldOnlyMatchFirstElement)
                     return;
@@ -237,7 +238,7 @@ ALWAYS_INLINE void SelectorDataList::executeFastPathForIdSelector(const Containe
     }
 
     Element* element = rootNode.treeScope().getElementById(idToMatch);
-    if (!element || !(isTreeScopeRoot(rootNode) || element->isDescendantOf(&rootNode)))
+    if (!element || !(isTreeScopeRoot(rootNode) || element->isDescendantOf(rootNode)))
         return;
     if (selectorMatches(selectorData, *element, rootNode))
         SelectorQueryTrait::appendOutputForElement(output, element);
@@ -245,7 +246,7 @@ ALWAYS_INLINE void SelectorDataList::executeFastPathForIdSelector(const Containe
 
 static ContainerNode& filterRootById(ContainerNode& rootNode, const CSSSelector& firstSelector)
 {
-    if (!rootNode.inDocument())
+    if (!rootNode.isConnected())
         return rootNode;
     if (rootNode.document().inQuirksMode())
         return rootNode;
@@ -255,7 +256,7 @@ static ContainerNode& filterRootById(ContainerNode& rootNode, const CSSSelector&
     const CSSSelector* selector = &firstSelector;
     do {
         ASSERT(!canBeUsedForIdFastPath(*selector));
-        if (selector->relation() != CSSSelector::SubSelector)
+        if (selector->relation() != CSSSelector::Subselector)
             break;
         selector = selector->tagHistory();
     } while (selector);
@@ -268,12 +269,12 @@ static ContainerNode& filterRootById(ContainerNode& rootNode, const CSSSelector&
                 if (LIKELY(!rootNode.treeScope().containsMultipleElementsWithId(idToMatch))) {
                     if (inAdjacentChain)
                         searchRoot = searchRoot->parentNode();
-                    if (searchRoot && (isTreeScopeRoot(rootNode) || searchRoot == &rootNode || searchRoot->isDescendantOf(&rootNode)))
+                    if (searchRoot && (isTreeScopeRoot(rootNode) || searchRoot == &rootNode || searchRoot->isDescendantOf(rootNode)))
                         return *searchRoot;
                 }
             }
         }
-        if (selector->relation() == CSSSelector::SubSelector)
+        if (selector->relation() == CSSSelector::Subselector)
             continue;
         if (selector->relation() == CSSSelector::DirectAdjacent || selector->relation() == CSSSelector::IndirectAdjacent)
             inAdjacentChain = true;
@@ -615,31 +616,27 @@ SelectorQuery::SelectorQuery(CSSSelectorList&& selectorList)
 {
 }
 
-SelectorQuery* SelectorQueryCache::add(const String& selectors, Document& document, ExceptionCode& ec)
+ExceptionOr<SelectorQuery&> SelectorQueryCache::add(const String& selectors, Document& document)
 {
     auto it = m_entries.find(selectors);
     if (it != m_entries.end())
-        return it->value.get();
+        return *it->value;
 
     CSSParser parser(document);
     CSSSelectorList selectorList;
     parser.parseSelector(selectors, selectorList);
 
-    if (!selectorList.first() || selectorList.hasInvalidSelector()) {
-        ec = SYNTAX_ERR;
-        return nullptr;
-    }
+    if (!selectorList.first() || selectorList.hasInvalidSelector())
+        return Exception { SYNTAX_ERR };
 
-    if (selectorList.selectorsNeedNamespaceResolution()) {
-        ec = SYNTAX_ERR;
-        return nullptr;
-    }
+    if (selectorList.selectorsNeedNamespaceResolution())
+        return Exception { SYNTAX_ERR };
 
     const int maximumSelectorQueryCacheSize = 256;
     if (m_entries.size() == maximumSelectorQueryCacheSize)
         m_entries.remove(m_entries.begin());
 
-    return m_entries.add(selectors, std::make_unique<SelectorQuery>(WTFMove(selectorList))).iterator->value.get();
+    return *m_entries.add(selectors, std::make_unique<SelectorQuery>(WTFMove(selectorList))).iterator->value;
 }
 
 }

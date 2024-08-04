@@ -17,8 +17,7 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef JSDOMWindowBase_h
-#define JSDOMWindowBase_h
+#pragma once
 
 #include "JSDOMBinding.h"
 #include "JSDOMGlobalObject.h"
@@ -70,7 +69,6 @@ namespace WebCore {
 
         JSDOMWindowShell* shell() const;
 
-        static JSC::VM& commonVM();
         static void fireFrameClearedWatchpointsForWindow(DOMWindow*);
         static void visitChildren(JSC::JSCell*, JSC::SlotVisitor&);
 
@@ -81,6 +79,7 @@ namespace WebCore {
         static JSC::JSInternalPromise* moduleLoaderResolve(JSC::JSGlobalObject*, JSC::ExecState*, JSC::JSModuleLoader*, JSC::JSValue, JSC::JSValue, JSC::JSValue);
         static JSC::JSInternalPromise* moduleLoaderFetch(JSC::JSGlobalObject*, JSC::ExecState*, JSC::JSModuleLoader*, JSC::JSValue, JSC::JSValue);
         static JSC::JSValue moduleLoaderEvaluate(JSC::JSGlobalObject*, JSC::ExecState*, JSC::JSModuleLoader*, JSC::JSValue, JSC::JSValue, JSC::JSValue);
+        static JSC::JSInternalPromise* moduleLoaderImportModule(JSC::JSGlobalObject*, JSC::ExecState*, JSC::JSModuleLoader*, JSC::JSString*, const JSC::SourceOrigin&);
 
         RefPtr<DOMWindow> m_wrapped;
         JSDOMWindowShell* m_shell;
@@ -96,8 +95,10 @@ namespace WebCore {
 
     // Returns JSDOMWindow or 0
     JSDOMWindow* toJSDOMWindow(Frame*, DOMWrapperWorld&);
-    WEBCORE_EXPORT JSDOMWindow* toJSDOMWindow(JSC::JSValue);
+    WEBCORE_EXPORT JSDOMWindow* toJSDOMWindow(JSC::VM&, JSC::JSValue);
+
+    DOMWindow& callerDOMWindow(JSC::ExecState*);
+    DOMWindow& activeDOMWindow(JSC::ExecState*);
+    DOMWindow& firstDOMWindow(JSC::ExecState*);
 
 } // namespace WebCore
-
-#endif // JSDOMWindowBase_h

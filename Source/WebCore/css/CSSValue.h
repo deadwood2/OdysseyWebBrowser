@@ -20,7 +20,7 @@
 
 #pragma once
 
-#include "ExceptionCode.h"
+#include "ExceptionOr.h"
 #include "URLHash.h"
 #include <wtf/HashMap.h>
 #include <wtf/ListHashSet.h>
@@ -30,16 +30,13 @@
 
 namespace WebCore {
 
+class CSSCustomPropertyValue;
 class CachedResource;
+class DeprecatedCSSOMValue;
 class StyleSheetContents;
 
 enum CSSPropertyID : uint16_t;
 
-// FIXME: The current CSSValue and subclasses should be turned into internal types (StyleValue).
-// The few subtypes that are actually exposed in CSSOM can be seen in the cloneForCSSOM() function.
-// They should be handled by separate wrapper classes.
-
-// Please don't expose more CSSValue types to the web.
 class CSSValue : public RefCounted<CSSValue> {
 public:
     enum Type {
@@ -60,11 +57,8 @@ public:
             destroy();
     }
 
-    WEBCORE_EXPORT Type cssValueType() const;
-
-    WEBCORE_EXPORT String cssText() const;
-
-    void setCssText(const String&, ExceptionCode&) { } // FIXME: Not implemented.
+    Type cssValueType() const;
+    String cssText() const;
 
     bool isPrimitiveValue() const { return m_classType == PrimitiveClass; }
     bool isValueList() const { return m_classType >= ValueListClass; }
@@ -78,11 +72,11 @@ public:
     bool isCrossfadeValue() const { return m_classType == CrossfadeClass; }
     bool isCursorImageValue() const { return m_classType == CursorImageClass; }
     bool isCustomPropertyValue() const { return m_classType == CustomPropertyClass; }
-    bool isInvalidCustomPropertyValue() const;
-    bool isVariableDependentValue() const { return m_classType == VariableDependentClass; }
-    bool isVariableValue() const { return m_classType == VariableClass; }
     bool isFunctionValue() const { return m_classType == FunctionClass; }
     bool isFontFeatureValue() const { return m_classType == FontFeatureClass; }
+#if ENABLE(VARIATION_FONTS)
+    bool isFontVariationValue() const { return m_classType == FontVariationClass; }
+#endif
     bool isFontFaceSrcValue() const { return m_classType == FontFaceSrcClass; }
     bool isFontValue() const { return m_classType == FontClass; }
     bool isImageGeneratorValue() const { return m_classType >= CanvasClass && m_classType <= RadialGradientClass; }
@@ -104,36 +98,26 @@ public:
     bool isCubicBezierTimingFunctionValue() const { return m_classType == CubicBezierTimingFunctionClass; }
     bool isStepsTimingFunctionValue() const { return m_classType == StepsTimingFunctionClass; }
     bool isSpringTimingFunctionValue() const { return m_classType == SpringTimingFunctionClass; }
-    bool isWebKitCSSTransformValue() const { return m_classType == WebKitCSSTransformClass; }
     bool isLineBoxContainValue() const { return m_classType == LineBoxContainClass; }
     bool isCalcValue() const {return m_classType == CalculationClass; }
     bool isFilterImageValue() const { return m_classType == FilterImageClass; }
-    bool isWebKitCSSFilterValue() const { return m_classType == WebKitCSSFilterClass; }
     bool isContentDistributionValue() const { return m_classType == CSSContentDistributionClass; }
-#if ENABLE(CSS_GRID_LAYOUT)
     bool isGridAutoRepeatValue() const { return m_classType == GridAutoRepeatClass; }
     bool isGridTemplateAreasValue() const { return m_classType == GridTemplateAreasClass; }
     bool isGridLineNamesValue() const { return m_classType == GridLineNamesClass; }
-#endif
-    bool isSVGColor() const { return m_classType == SVGColorClass || m_classType == SVGPaintClass; }
-    bool isSVGPaint() const { return m_classType == SVGPaintClass; }
     bool isUnicodeRangeValue() const { return m_classType == UnicodeRangeClass; }
 
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
     bool isAnimationTriggerScrollValue() const { return m_classType == AnimationTriggerScrollClass; }
 #endif
 
-    bool isCSSOMSafe() const { return m_isCSSOMSafe; }
-    bool isSubtypeExposedToCSSOM() const
-    { 
-        return isPrimitiveValue() 
-            || isSVGColor()
-            || isValueList();
-    }
+    bool isCustomIdentValue() const { return m_classType == CustomIdentClass; }
+    bool isVariableReferenceValue() const { return m_classType == VariableReferenceClass; }
+    bool isPendingSubstitutionValue() const { return m_classType == PendingSubstitutionValueClass; }
+    
+    bool hasVariableReferences() const { return isVariableReferenceValue() || isPendingSubstitutionValue(); }
 
-    RefPtr<CSSValue> cloneForCSSOM() const;
-
-    void addSubresourceStyleURLs(ListHashSet<URL>&, const StyleSheetContents*) const;
+    Ref<DeprecatedCSSOMValue> createDeprecatedCSSOMWrapper() const;
 
     bool traverseSubresources(const std::function<bool (const CachedResource&)>& handler) const;
 
@@ -167,6 +151,9 @@ protected:
         AspectRatioClass,
         BorderImageSliceClass,
         FontFeatureClass,
+#if ENABLE(VARIATION_FONTS)
+        FontVariationClass,
+#endif
         FontClass,
         FontFaceSrcClass,
         FunctionClass,
@@ -181,33 +168,30 @@ protected:
         UnicodeRangeClass,
         LineBoxContainClass,
         CalculationClass,
-#if ENABLE(CSS_GRID_LAYOUT)
         GridTemplateAreasClass,
-#endif
-        SVGColorClass,
-        SVGPaintClass,
-
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
         AnimationTriggerScrollClass,
 #endif
 
         CSSContentDistributionClass,
-        CustomPropertyClass,
-        VariableDependentClass,
-        VariableClass,
+        
+        CustomIdentClass,
 
-        // List class types must appear after ValueListClass.
+        CustomPropertyClass,
+        VariableReferenceClass,
+        PendingSubstitutionValueClass,
+
+        // List class types must appear after ValueListClass. Note CSSFunctionValue
+        // is deliberately excluded, since we don't want it exposed to the CSS OM
+        // as a list.
         ValueListClass,
         ImageSetClass,
-        WebKitCSSFilterClass,
-        WebKitCSSTransformClass,
-#if ENABLE(CSS_GRID_LAYOUT)
         GridLineNamesClass,
         GridAutoRepeatClass,
-#endif
         // Do not append non-list class types here.
     };
 
+public:
     static const size_t ValueListSeparatorBits = 2;
     enum ValueListSeparator {
         SpaceSeparator,
@@ -215,12 +199,11 @@ protected:
         SlashSeparator
     };
 
+protected:
     ClassType classType() const { return static_cast<ClassType>(m_classType); }
 
-    explicit CSSValue(ClassType classType, bool isCSSOMSafe = false)
-        : m_isCSSOMSafe(isCSSOMSafe)
-        , m_isTextClone(false)
-        , m_primitiveUnitType(0)
+    explicit CSSValue(ClassType classType)
+        : m_primitiveUnitType(0)
         , m_hasCachedCSSText(false)
         , m_isQuirkValue(false)
         , m_valueListSeparator(SpaceSeparator)
@@ -237,13 +220,11 @@ private:
     WEBCORE_EXPORT void destroy();
 
 protected:
-    unsigned m_isCSSOMSafe : 1;
-    unsigned m_isTextClone : 1;
     // The bits in this section are only used by specific subclasses but kept here
     // to maximize struct packing.
 
     // CSSPrimitiveValue bits:
-    unsigned m_primitiveUnitType : 7; // CSSPrimitiveValue::UnitTypes
+    unsigned m_primitiveUnitType : 7; // CSSPrimitiveValue::UnitType
     mutable unsigned m_hasCachedCSSText : 1;
     unsigned m_isQuirkValue : 1;
 
@@ -284,7 +265,7 @@ inline bool compareCSSValue(const Ref<CSSValueType>& first, const Ref<CSSValueTy
     return first.get().equals(second);
 }
 
-typedef HashMap<AtomicString, RefPtr<CSSValue>> CustomPropertyValueMap;
+typedef HashMap<AtomicString, RefPtr<CSSCustomPropertyValue>> CustomPropertyValueMap;
 
 } // namespace WebCore
 

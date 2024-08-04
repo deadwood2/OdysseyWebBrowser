@@ -34,6 +34,7 @@
 #import <WebKit/WKWebViewConfiguration.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/mac/AppKitCompatibilityDeclarations.h>
 
 #if WK_API_ENABLED
 @interface WKWebView (Details)
@@ -145,7 +146,7 @@ PlatformWebView::PlatformWebView(WKWebViewConfiguration* configuration, const Te
 
     NSScreen *firstScreen = [[NSScreen screens] objectAtIndex:0];
     NSRect windowRect = m_options.shouldShowWebView ? NSOffsetRect(rect, 100, 100) : NSOffsetRect(rect, -10000, [firstScreen frame].size.height - rect.size.height + 10000);
-    m_window = [[WebKitTestRunnerWindow alloc] initWithContentRect:windowRect styleMask:NSBorderlessWindowMask backing:(NSBackingStoreType)_NSBackingStoreUnbuffered defer:YES];
+    m_window = [[WebKitTestRunnerWindow alloc] initWithContentRect:windowRect styleMask:NSWindowStyleMaskBorderless backing:(NSBackingStoreType)_NSBackingStoreUnbuffered defer:YES];
     m_window.platformWebView = this;
     [m_window setColorSpace:[firstScreen colorSpace]];
     [m_window setCollectionBehavior:NSWindowCollectionBehaviorStationary];
@@ -161,14 +162,18 @@ PlatformWebView::PlatformWebView(WKWebViewConfiguration* configuration, const Te
 void PlatformWebView::setWindowIsKey(bool isKey)
 {
     m_windowIsKey = isKey;
+    if (m_windowIsKey)
+        [m_window makeKeyWindow];
+    else
+        [m_window resignKeyWindow];
 }
 
-void PlatformWebView::resizeTo(unsigned width, unsigned height)
+void PlatformWebView::resizeTo(unsigned width, unsigned height, WebViewSizingMode sizingMode)
 {
     WKRect frame = windowFrame();
     frame.size.width = width;
     frame.size.height = height;
-    setWindowFrame(frame);
+    setWindowFrame(frame, sizingMode);
 }
 
 PlatformWebView::~PlatformWebView()
@@ -218,7 +223,7 @@ WKRect PlatformWebView::windowFrame()
     return wkFrame;
 }
 
-void PlatformWebView::setWindowFrame(WKRect frame)
+void PlatformWebView::setWindowFrame(WKRect frame, WebViewSizingMode)
 {
     [m_window setFrame:NSMakeRect(frame.origin.x, frame.origin.y, frame.size.width, frame.size.height) display:YES];
     [platformView() setFrame:NSMakeRect(0, 0, frame.size.width, frame.size.height)];
@@ -251,6 +256,16 @@ void PlatformWebView::removeChromeInputField()
     }
 }
 
+void PlatformWebView::addToWindow()
+{
+    [[m_window contentView] addSubview:m_view];
+}
+
+void PlatformWebView::removeFromWindow()
+{
+    [m_view removeFromSuperview];
+}
+
 void PlatformWebView::makeWebViewFirstResponder()
 {
     [m_window makeFirstResponder:platformView()];
@@ -272,7 +287,13 @@ WKRetainPtr<WKImageRef> PlatformWebView::windowSnapshotImage()
 
 bool PlatformWebView::viewSupportsOptions(const TestOptions& options) const
 {
-    if (m_options.useThreadedScrolling != options.useThreadedScrolling || m_options.overrideLanguages != options.overrideLanguages || m_options.useMockScrollbars != options.useMockScrollbars || m_options.needsSiteSpecificQuirks != options.needsSiteSpecificQuirks)
+    if (m_options.useThreadedScrolling != options.useThreadedScrolling
+        || m_options.overrideLanguages != options.overrideLanguages
+        || m_options.useMockScrollbars != options.useMockScrollbars
+        || m_options.needsSiteSpecificQuirks != options.needsSiteSpecificQuirks
+        || m_options.enableIntersectionObserver != options.enableIntersectionObserver
+        || m_options.enableModernMediaControls != options.enableModernMediaControls
+        || m_options.enablePointerLock != options.enablePointerLock)
         return false;
 
     return true;

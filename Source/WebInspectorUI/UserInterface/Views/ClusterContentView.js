@@ -57,21 +57,28 @@ WebInspector.ClusterContentView = class ClusterContentView extends WebInspector.
     {
         if (this._contentViewContainer.currentContentView)
             return this._contentViewContainer.currentContentView.supportsSplitContentBrowser;
-        return true;
+
+        return super.supportsSplitContentBrowser;
     }
 
     shown()
     {
+        super.shown();
+
         this._contentViewContainer.shown();
     }
 
     hidden()
     {
+        super.hidden();
+
         this._contentViewContainer.hidden();
     }
 
     closed()
     {
+        super.closed();
+
         this._contentViewContainer.closeAllContentViews();
 
         WebInspector.ContentView.removeEventListener(null, null, this);

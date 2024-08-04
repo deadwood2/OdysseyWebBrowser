@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef DFGAbstractInterpreter_h
-#define DFGAbstractInterpreter_h
+#pragma once
 
 #if ENABLE(DFG_JIT)
 
@@ -32,6 +31,7 @@
 #include "DFGBranchDirection.h"
 #include "DFGGraph.h"
 #include "DFGNode.h"
+#include "DFGNodeFlowProjection.h"
 #include "DFGPhiChildren.h"
 
 namespace JSC { namespace DFG {
@@ -42,7 +42,7 @@ public:
     AbstractInterpreter(Graph&, AbstractStateType&);
     ~AbstractInterpreter();
     
-    AbstractValue& forNode(Node* node)
+    AbstractValue& forNode(NodeFlowProjection node)
     {
         return m_state.forNode(node);
     }
@@ -112,7 +112,7 @@ public:
     void dump(PrintStream& out);
     
     template<typename T>
-    FiltrationResult filter(T node, const StructureSet& set, SpeculatedType admittedTypes = SpecNone)
+    FiltrationResult filter(T node, const RegisteredStructureSet& set, SpeculatedType admittedTypes = SpecNone)
     {
         return filter(forNode(node), set, admittedTypes);
     }
@@ -135,10 +135,17 @@ public:
         return filterByValue(forNode(node), value);
     }
     
-    FiltrationResult filter(AbstractValue&, const StructureSet&, SpeculatedType admittedTypes = SpecNone);
+    template<typename T>
+    FiltrationResult filterClassInfo(T node, const ClassInfo* classInfo)
+    {
+        return filterClassInfo(forNode(node), classInfo);
+    }
+
+    FiltrationResult filter(AbstractValue&, const RegisteredStructureSet&, SpeculatedType admittedTypes = SpecNone);
     FiltrationResult filterArrayModes(AbstractValue&, ArrayModes);
     FiltrationResult filter(AbstractValue&, SpeculatedType);
     FiltrationResult filterByValue(AbstractValue&, FrozenValue);
+    FiltrationResult filterClassInfo(AbstractValue&, const ClassInfo*);
     
     PhiChildren* phiChildren() { return m_phiChildren.get(); }
     
@@ -149,7 +156,7 @@ private:
     void forAllValues(unsigned indexInBlock, Functor&);
     
     void clobberStructures(unsigned indexInBlock);
-    void observeTransition(unsigned indexInBlock, Structure* from, Structure* to);
+    void observeTransition(unsigned indexInBlock, RegisteredStructure from, RegisteredStructure to);
     void observeTransitions(unsigned indexInBlock, const TransitionVector&);
     void setDidClobber();
     
@@ -190,6 +197,7 @@ private:
     
     CodeBlock* m_codeBlock;
     Graph& m_graph;
+    VM& m_vm;
     AbstractStateType& m_state;
     std::unique_ptr<PhiChildren> m_phiChildren;
 };
@@ -197,6 +205,3 @@ private:
 } } // namespace JSC::DFG
 
 #endif // ENABLE(DFG_JIT)
-
-#endif // DFGAbstractInterpreter_h
-

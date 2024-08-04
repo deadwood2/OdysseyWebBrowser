@@ -38,7 +38,7 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
-#include <wtf/TemporaryChange.h>
+#include <wtf/SetForScope.h>
 
 #if USE(CAIRO)
 #include "CairoUtilities.h"
@@ -229,7 +229,7 @@ void TextureMapperGL::drawBorder(const Color& color, float width, const FloatRec
     m_context3D->uniform4f(program->colorLocation(), r, g, b, a);
     m_context3D->lineWidth(width);
 
-    draw(targetRect, modelViewMatrix, program.get(), GraphicsContext3D::LINE_LOOP, color.hasAlpha() ? ShouldBlend : 0);
+    draw(targetRect, modelViewMatrix, program.get(), GraphicsContext3D::LINE_LOOP, !color.isOpaque() ? ShouldBlend : 0);
 }
 
 // FIXME: drawNumber() should save a number texture-atlas and re-use whenever possible.
@@ -246,9 +246,15 @@ void TextureMapperGL::drawNumber(int number, const Color& color, const FloatPoin
     cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
     cairo_t* cr = cairo_create(surface);
 
-    float r, g, b, a;
-    color.getRGBA(r, g, b, a);
-    cairo_set_source_rgba(cr, b, g, r, a); // Since we won't swap R+B when uploading a texture, paint with the swapped R+B color.
+    // Since we won't swap R+B when uploading a texture, paint with the swapped R+B color.
+    if (color.isExtended())
+        cairo_set_source_rgba(cr, color.asExtended().blue(), color.asExtended().green(), color.asExtended().red(), color.asExtended().alpha());
+    else {
+        float r, g, b, a;
+        color.getRGBA(r, g, b, a);
+        cairo_set_source_rgba(cr, b, g, r, a);
+    }
+
     cairo_rectangle(cr, 0, 0, width, height);
     cairo_fill(cr);
 
@@ -412,7 +418,7 @@ void TextureMapperGL::drawTexture(const BitmapTexture& texture, const FloatRect&
         return;
 
     const BitmapTextureGL& textureGL = static_cast<const BitmapTextureGL&>(texture);
-    TemporaryChange<const BitmapTextureGL::FilterInfo*> filterInfo(data().filterInfo, textureGL.filterInfo());
+    SetForScope<const BitmapTextureGL::FilterInfo*> filterInfo(data().filterInfo, textureGL.filterInfo());
 
     drawTexture(textureGL.id(), textureGL.isOpaque() ? 0 : ShouldBlend, textureGL.size(), targetRect, matrix, opacity, exposedEdges);
 }
@@ -420,7 +426,7 @@ void TextureMapperGL::drawTexture(const BitmapTexture& texture, const FloatRect&
 static bool driverSupportsNPOTTextures(GraphicsContext3D& context)
 {
     if (context.isGLES2Compliant()) {
-        static bool supportsNPOTTextures = context.getExtensions()->supports("GL_OES_texture_npot");
+        static bool supportsNPOTTextures = context.getExtensions().supports("GL_OES_texture_npot");
         return supportsNPOTTextures;
     }
 
@@ -742,8 +748,7 @@ IntRect TextureMapperGL::clipBounds()
 
 PassRefPtr<BitmapTexture> TextureMapperGL::createTexture()
 {
-    BitmapTextureGL* texture = new BitmapTextureGL(m_context3D);
-    return adoptRef(texture);
+    return BitmapTextureGL::create(*m_context3D);
 }
 
 std::unique_ptr<TextureMapper> TextureMapper::platformCreateAccelerated()

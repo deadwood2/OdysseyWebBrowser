@@ -35,7 +35,6 @@
 #include "AXObjectCache.h"
 #include "ElementChildIterator.h"
 #include "EventNames.h"
-#include "ExceptionCodePlaceholder.h"
 #include "HTMLInputElement.h"
 #include "HTMLParserIdioms.h"
 #include "InputTypeNames.h"
@@ -78,9 +77,6 @@ static Decimal ensureMaximum(const Decimal& proposedValue, const Decimal& minimu
 
 RangeInputType::RangeInputType(HTMLInputElement& element)
     : InputType(element)
-#if ENABLE(DATALIST_ELEMENT)
-    , m_tickMarkValuesDirty(true)
-#endif
 {
 }
 
@@ -99,9 +95,10 @@ double RangeInputType::valueAsDouble() const
     return parseToDoubleForNumberType(element().value());
 }
 
-void RangeInputType::setValueAsDecimal(const Decimal& newValue, TextFieldEventBehavior eventBehavior, ExceptionCode&) const
+ExceptionOr<void> RangeInputType::setValueAsDecimal(const Decimal& newValue, TextFieldEventBehavior eventBehavior) const
 {
     element().setValue(serialize(newValue), eventBehavior);
+    return { };
 }
 
 bool RangeInputType::typeMismatchFor(const String& value) const
@@ -139,7 +136,7 @@ bool RangeInputType::isSteppable() const
 #if !PLATFORM(IOS)
 void RangeInputType::handleMouseDownEvent(MouseEvent& event)
 {
-    if (element().isDisabledOrReadOnly())
+    if (element().isDisabledFormControl())
         return;
 
     Node* targetNode = event.target()->toNode();
@@ -161,7 +158,7 @@ void RangeInputType::handleTouchEvent(TouchEvent& event)
 #if PLATFORM(IOS)
     typedSliderThumbElement().handleTouchEvent(event);
 #elif ENABLE(TOUCH_SLIDER)
-    if (element().isDisabledOrReadOnly())
+    if (element().isDisabledFormControl())
         return;
 
     if (event.type() == eventNames().touchendEvent) {
@@ -196,7 +193,7 @@ void RangeInputType::disabledAttributeChanged()
 
 void RangeInputType::handleKeydownEvent(KeyboardEvent& event)
 {
-    if (element().isDisabledOrReadOnly())
+    if (element().isDisabledFormControl())
         return;
 
     const String& key = event.keyIdentifier();
@@ -242,7 +239,7 @@ void RangeInputType::handleKeydownEvent(KeyboardEvent& event)
 
     if (newValue != current) {
         EventQueueScope scope;
-        setValueAsDecimal(newValue, DispatchInputAndChangeEvent, IGNORE_EXCEPTION);
+        setValueAsDecimal(newValue, DispatchInputAndChangeEvent);
 
         if (AXObjectCache* cache = element().document().existingAXObjectCache())
             cache->postNotification(&element(), AXObjectCache::AXValueChanged);
@@ -258,10 +255,10 @@ void RangeInputType::createShadowSubtree()
     Document& document = element().document();
     auto track = HTMLDivElement::create(document);
     track->setPseudo(AtomicString("-webkit-slider-runnable-track", AtomicString::ConstructFromLiteral));
-    track->appendChild(SliderThumbElement::create(document), IGNORE_EXCEPTION);
+    track->appendChild(SliderThumbElement::create(document));
     auto container = SliderContainerElement::create(document);
-    container->appendChild(track, IGNORE_EXCEPTION);
-    element().userAgentShadowRoot()->appendChild(container, IGNORE_EXCEPTION);
+    container->appendChild(track);
+    element().userAgentShadowRoot()->appendChild(container);
 }
 
 HTMLElement* RangeInputType::sliderTrackElement() const
@@ -393,11 +390,11 @@ void RangeInputType::updateTickMarkValues()
     std::sort(m_tickMarkValues.begin(), m_tickMarkValues.end());
 }
 
-Optional<Decimal> RangeInputType::findClosestTickMarkValue(const Decimal& value)
+std::optional<Decimal> RangeInputType::findClosestTickMarkValue(const Decimal& value)
 {
     updateTickMarkValues();
     if (!m_tickMarkValues.size())
-        return Nullopt;
+        return std::nullopt;
 
     size_t left = 0;
     size_t right = m_tickMarkValues.size();
@@ -420,8 +417,8 @@ Optional<Decimal> RangeInputType::findClosestTickMarkValue(const Decimal& value)
             right = middle;
     }
 
-    Optional<Decimal> closestLeft = middle ? makeOptional(m_tickMarkValues[middle - 1]) : Nullopt;
-    Optional<Decimal> closestRight = middle != m_tickMarkValues.size() ? makeOptional(m_tickMarkValues[middle]) : Nullopt;
+    std::optional<Decimal> closestLeft = middle ? std::make_optional(m_tickMarkValues[middle - 1]) : std::nullopt;
+    std::optional<Decimal> closestRight = middle != m_tickMarkValues.size() ? std::make_optional(m_tickMarkValues[middle]) : std::nullopt;
 
     if (!closestLeft)
         return closestRight;

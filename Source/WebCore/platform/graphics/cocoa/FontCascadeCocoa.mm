@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2003, 2006, 2007, 2008, 2009, 2010, 2011 Apple Inc.
+ * Copyright (C) 2003, 2006-2011, 2016 Apple Inc.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -49,8 +49,6 @@ SOFT_LINK_CLASS(CoreUI, CUIStyleEffectConfiguration)
 SOFT_LINK_FRAMEWORK(UIKit)
 SOFT_LINK(UIKit, _UIKitGetTextEffectsCatalog, CUICatalog *, (void), ())
 #endif
-
-#define SYNTHETIC_OBLIQUE_ANGLE 14
 
 #ifdef __LP64__
 #define URefCon void*
@@ -120,7 +118,13 @@ static void showLetterpressedGlyphsWithAdvances(const FloatPoint& point, const F
         styleConfiguration.useSimplifiedEffect = YES;
     }
 
+    CGContextSetFont(context, adoptCF(CTFontCopyGraphicsFont(ctFont, nullptr)).get());
+    CGContextSetFontSize(context, platformData.size());
+
     [catalog drawGlyphs:glyphs atPositions:positions.data() inContext:context withFont:ctFont count:count stylePresetName:@"_UIKitNewLetterpressStyle" styleConfiguration:styleConfiguration foregroundColor:CGContextGetFillColorAsColor(context)];
+
+    CGContextSetFont(context, nullptr);
+    CGContextSetFontSize(context, 0);
 #else
     UNUSED_PARAM(point);
     UNUSED_PARAM(font);
@@ -144,7 +148,7 @@ static void showGlyphsWithAdvances(const FloatPoint& point, const Font& font, CG
         CGAffineTransform rotateLeftTransform = CGAffineTransformMake(0, -1, 1, 0, 0, 0);
         CGAffineTransform textMatrix = CGContextGetTextMatrix(context);
         CGAffineTransform runMatrix = CGAffineTransformConcat(textMatrix, rotateLeftTransform);
-        CGContextSetTextMatrix(context, runMatrix);
+        ScopedTextMatrix savedMatrix(runMatrix, context);
 
         Vector<CGSize, 256> translations(count);
         CTFontGetVerticalTranslationsForGlyphs(platformData.ctFont(), glyphs, translations.data(), count);
@@ -238,7 +242,7 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
     matrix.b = -matrix.b;
     matrix.d = -matrix.d;
     if (platformData.syntheticOblique()) {
-        static float obliqueSkew = tanf(SYNTHETIC_OBLIQUE_ANGLE * piFloat / 180);
+        static float obliqueSkew = tanf(syntheticObliqueAngle() * piFloat / 180);
         if (platformData.orientation() == Vertical)
             matrix = CGAffineTransformConcat(matrix, CGAffineTransformMake(1, obliqueSkew, 0, 1, 0, 0));
         else
@@ -269,7 +273,7 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
         // Paint simple shadows ourselves instead of relying on CG shadows, to avoid losing subpixel antialiasing.
         context.clearShadow();
         Color fillColor = context.fillColor();
-        Color shadowFillColor(shadowColor.red(), shadowColor.green(), shadowColor.blue(), shadowColor.alpha() * fillColor.alpha() / 255);
+        Color shadowFillColor = shadowColor.colorWithAlphaMultipliedBy(fillColor.alphaAsFloat());
         context.setFillColor(shadowFillColor);
         float shadowTextX = point.x() + shadowOffset.width();
         // If shadows are ignoring transforms, then we haven't applied the Y coordinate flip yet, so down is negative.
@@ -493,7 +497,7 @@ void FontCascade::adjustSelectionRectForComplexText(const TextRun& run, LayoutRe
     float afterWidth = controller.runWidthSoFar();
 
     if (run.rtl())
-        selectionRect.move(controller.totalWidth() - afterWidth + controller.leadingExpansion(), 0);
+        selectionRect.move(controller.totalWidth() - afterWidth, 0);
     else
         selectionRect.move(beforeWidth, 0);
     selectionRect.setWidth(LayoutUnit::fromFloatCeil(afterWidth - beforeWidth));
@@ -504,33 +508,27 @@ float FontCascade::getGlyphsAndAdvancesForComplexText(const TextRun& run, unsign
     float initialAdvance;
 
     ComplexTextController controller(*this, run, false, 0, forTextEmphasis);
-    controller.advance(from);
-    float beforeWidth = controller.runWidthSoFar();
+    GlyphBuffer dummyGlyphBuffer;
+    controller.advance(from, &dummyGlyphBuffer);
     controller.advance(to, &glyphBuffer);
 
     if (glyphBuffer.isEmpty())
         return 0;
 
-    float afterWidth = controller.runWidthSoFar();
-
     if (run.rtl()) {
-        initialAdvance = controller.totalWidth() + controller.finalRoundingWidth() - afterWidth + controller.leadingExpansion();
+        // Exploit the fact that the sum of the paint advances is equal to
+        // the sum of the layout advances.
+        initialAdvance = controller.totalWidth();
+        for (unsigned i = 0; i < glyphBuffer.size(); ++i)
+            initialAdvance -= glyphBuffer.advanceAt(i).width();
         glyphBuffer.reverse(0, glyphBuffer.size());
-    } else
-        initialAdvance = beforeWidth;
+    } else {
+        initialAdvance = dummyGlyphBuffer.initialAdvance().width();
+        for (unsigned i = 0; i < dummyGlyphBuffer.size(); ++i)
+            initialAdvance += dummyGlyphBuffer.advanceAt(i).width();
+    }
 
     return initialAdvance;
-}
-
-void FontCascade::drawEmphasisMarksForComplexText(GraphicsContext& context, const TextRun& run, const AtomicString& mark, const FloatPoint& point, unsigned from, unsigned to) const
-{
-    GlyphBuffer glyphBuffer;
-    float initialAdvance = getGlyphsAndAdvancesForComplexText(run, from, to, glyphBuffer, ForTextEmphasis);
-
-    if (glyphBuffer.isEmpty())
-        return;
-
-    drawEmphasisMarks(context, glyphBuffer, mark, FloatPoint(point.x() + initialAdvance, point.y()));
 }
 
 float FontCascade::floatWidthForComplexText(const TextRun& run, HashSet<const Font*>* fallbackFonts, GlyphOverflow* glyphOverflow) const
@@ -551,6 +549,7 @@ int FontCascade::offsetForPositionForComplexText(const TextRun& run, float x, bo
     return controller.offsetForPosition(x, includePartialGlyphs);
 }
 
+// FIXME: Use this on all ports.
 const Font* FontCascade::fontForCombiningCharacterSequence(const UChar* characters, size_t length) const
 {
     UChar32 baseCharacter;

@@ -25,10 +25,8 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebFrameNetworkingContext_h
-#define WebFrameNetworkingContext_h
+#pragma once
 
-#include "HTTPCookieAcceptPolicy.h"
 #include <WebCore/FrameNetworkingContext.h>
 #include <WebCore/SessionID.h>
 
@@ -45,16 +43,13 @@ public:
     }
 
     static void ensurePrivateBrowsingSession(WebCore::SessionID);
-    static void setCookieAcceptPolicyForAllContexts(HTTPCookieAcceptPolicy);
 
     WebFrameLoaderClient* webFrameLoaderClient() const;
 
 private:
     WebFrameNetworkingContext(WebFrame*);
 
-    virtual WebCore::NetworkStorageSession& storageSession() const;
+    WebCore::NetworkStorageSession& storageSession() const override;
 };
 
 }
-
-#endif // WebFrameNetworkingContext_h

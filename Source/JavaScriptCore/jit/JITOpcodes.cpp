@@ -29,7 +29,6 @@
 #include "JIT.h"
 
 #include "BasicBlockLocation.h"
-#include "CopiedSpaceInlines.h"
 #include "Exception.h"
 #include "Heap.h"
 #include "Interpreter.h"
@@ -84,7 +83,7 @@ void JIT::emit_op_new_object(Instruction* currentInstruction)
 {
     Structure* structure = currentInstruction[3].u.objectAllocationProfile->structure();
     size_t allocationSize = JSFinalObject::allocationSize(structure->inlineCapacity());
-    MarkedAllocator* allocator = m_vm->heap.allocatorForObjectWithoutDestructor(allocationSize);
+    MarkedAllocator* allocator = subspaceFor<JSFinalObject>(*m_vm)->allocatorFor(allocationSize);
 
     RegisterID resultReg = regT0;
     RegisterID allocatorReg = regT1;
@@ -95,6 +94,7 @@ void JIT::emit_op_new_object(Instruction* currentInstruction)
         addSlowCase(Jump());
     JumpList slowCases;
     emitAllocateJSObject(resultReg, allocator, allocatorReg, TrustedImmPtr(structure), TrustedImmPtr(0), scratchReg, slowCases);
+    emitInitializeInlineStorage(resultReg, structure->inlineCapacity());
     addSlowCase(slowCases);
     emitPutVirtualRegister(currentInstruction[1].u.operand);
 }
@@ -244,34 +244,16 @@ void JIT::emit_op_is_number(Instruction* currentInstruction)
     emitPutVirtualRegister(dst);
 }
 
-void JIT::emit_op_is_string(Instruction* currentInstruction)
+void JIT::emit_op_is_cell_with_type(Instruction* currentInstruction)
 {
     int dst = currentInstruction[1].u.operand;
     int value = currentInstruction[2].u.operand;
-    
-    emitGetVirtualRegister(value, regT0);
-    Jump isNotCell = emitJumpIfNotJSCell(regT0);
-    
-    compare8(Equal, Address(regT0, JSCell::typeInfoTypeOffset()), TrustedImm32(StringType), regT0);
-    emitTagBool(regT0);
-    Jump done = jump();
-    
-    isNotCell.link(this);
-    move(TrustedImm32(ValueFalse), regT0);
-    
-    done.link(this);
-    emitPutVirtualRegister(dst);
-}
-
-void JIT::emit_op_is_jsarray(Instruction* currentInstruction)
-{
-    int dst = currentInstruction[1].u.operand;
-    int value = currentInstruction[2].u.operand;
+    int type = currentInstruction[3].u.operand;
 
     emitGetVirtualRegister(value, regT0);
     Jump isNotCell = emitJumpIfNotJSCell(regT0);
 
-    compare8(Equal, Address(regT0, JSCell::typeInfoTypeOffset()), TrustedImm32(ArrayType), regT0);
+    compare8(Equal, Address(regT0, JSCell::typeInfoTypeOffset()), TrustedImm32(type), regT0);
     emitTagBool(regT0);
     Jump done = jump();
 
@@ -637,12 +619,6 @@ void JIT::emit_op_switch_string(Instruction* currentInstruction)
     jump(returnValueGPR);
 }
 
-void JIT::emit_op_throw_static_error(Instruction* currentInstruction)
-{
-    move(TrustedImm64(JSValue::encode(m_codeBlock->getConstant(currentInstruction[1].u.operand))), regT0);
-    callOperation(operationThrowStaticError, regT0, currentInstruction[2].u.operand);
-}
-
 void JIT::emit_op_debug(Instruction* currentInstruction)
 {
     load32(codeBlock()->debuggerRequestsAddress(), regT0);
@@ -777,6 +753,10 @@ void JIT::emit_op_create_this(Instruction* currentInstruction)
 
     JumpList slowCases;
     emitAllocateJSObject(resultReg, nullptr, allocatorReg, structureReg, TrustedImmPtr(0), scratchReg, slowCases);
+    emitGetVirtualRegister(callee, scratchReg);
+    loadPtr(Address(scratchReg, JSFunction::offsetOfRareData()), scratchReg);
+    load32(Address(scratchReg, FunctionRareData::offsetOfObjectAllocationProfile() + ObjectAllocationProfile::offsetOfInlineCapacity()), scratchReg);
+    emitInitializeInlineStorage(resultReg, scratchReg);
     addSlowCase(slowCases);
     emitPutVirtualRegister(currentInstruction[1].u.operand);
 }
@@ -957,6 +937,12 @@ void JIT::emitSlow_op_loop_hint(Instruction*, Vector<SlowCaseEntry>::iterator& i
 #endif
 }
 
+void JIT::emit_op_throw_static_error(Instruction* currentInstruction)
+{
+    JITSlowPathCall slowPathCall(this, currentInstruction, slow_path_throw_static_error);
+    slowPathCall.call();
+}
+
 void JIT::emit_op_watchdog(Instruction*)
 {
     ASSERT(m_vm->watchdog());
@@ -968,6 +954,10 @@ void JIT::emitSlow_op_watchdog(Instruction*, Vector<SlowCaseEntry>::iterator& it
     ASSERT(m_vm->watchdog());
     linkSlowCase(iter);
     callOperation(operationHandleWatchdogTimer);
+}
+
+void JIT::emit_op_nop(Instruction*)
+{
 }
 
 void JIT::emit_op_new_regexp(Instruction* currentInstruction)
@@ -990,9 +980,11 @@ void JIT::emitNewFuncCommon(Instruction* currentInstruction)
     OpcodeID opcodeID = m_vm->interpreter->getOpcodeID(currentInstruction->u.opcode);
     if (opcodeID == op_new_func)
         callOperation(operationNewFunction, dst, regT0, funcExec);
-    else {
-        ASSERT(opcodeID == op_new_generator_func);
+    else if (opcodeID == op_new_generator_func)
         callOperation(operationNewGeneratorFunction, dst, regT0, funcExec);
+    else {
+        ASSERT(opcodeID == op_new_async_func);
+        callOperation(operationNewAsyncFunction, dst, regT0, funcExec);
     }
 }
 
@@ -1002,6 +994,11 @@ void JIT::emit_op_new_func(Instruction* currentInstruction)
 }
 
 void JIT::emit_op_new_generator_func(Instruction* currentInstruction)
+{
+    emitNewFuncCommon(currentInstruction);
+}
+
+void JIT::emit_op_new_async_func(Instruction* currentInstruction)
 {
     emitNewFuncCommon(currentInstruction);
 }
@@ -1027,9 +1024,11 @@ void JIT::emitNewFuncExprCommon(Instruction* currentInstruction)
 
     if (opcodeID == op_new_func_exp)
         callOperation(operationNewFunction, dst, regT0, function);
-    else {
-        ASSERT(opcodeID == op_new_generator_func_exp);
+    else if (opcodeID == op_new_generator_func_exp)
         callOperation(operationNewGeneratorFunction, dst, regT0, function);
+    else {
+        ASSERT(opcodeID == op_new_async_func_exp);
+        callOperation(operationNewAsyncFunction, dst, regT0, function);
     }
 
     done.link(this);
@@ -1041,6 +1040,11 @@ void JIT::emit_op_new_func_exp(Instruction* currentInstruction)
 }
 
 void JIT::emit_op_new_generator_func_exp(Instruction* currentInstruction)
+{
+    emitNewFuncExprCommon(currentInstruction);
+}
+
+void JIT::emit_op_new_async_func_exp(Instruction* currentInstruction)
 {
     emitNewFuncExprCommon(currentInstruction);
 }
@@ -1077,6 +1081,18 @@ void JIT::emit_op_new_array_buffer(Instruction* currentInstruction)
     int size = currentInstruction[3].u.operand;
     const JSValue* values = codeBlock()->constantBuffer(valuesIndex);
     callOperation(operationNewArrayBufferWithProfile, dst, currentInstruction[4].u.arrayAllocationProfile, values, size);
+}
+
+void JIT::emit_op_new_array_with_spread(Instruction* currentInstruction)
+{
+    JITSlowPathCall slowPathCall(this, currentInstruction, slow_path_new_array_with_spread);
+    slowPathCall.call();
+}
+
+void JIT::emit_op_spread(Instruction* currentInstruction)
+{
+    JITSlowPathCall slowPathCall(this, currentInstruction, slow_path_spread);
+    slowPathCall.call();
 }
 
 #if USE(JSVALUE64)
@@ -1481,6 +1497,29 @@ void JIT::emit_op_get_rest_length(Instruction* currentInstruction)
     move(TrustedImm32(JSValue::Int32Tag), regT1);
     emitPutVirtualRegister(dst, JSValueRegs(regT1, regT0));
 #endif
+}
+
+void JIT::emit_op_get_argument(Instruction* currentInstruction)
+{
+    int dst = currentInstruction[1].u.operand;
+    int index = currentInstruction[2].u.operand;
+#if USE(JSVALUE64)
+    JSValueRegs resultRegs(regT0);
+#else
+    JSValueRegs resultRegs(regT1, regT0);
+#endif
+
+    load32(payloadFor(CallFrameSlot::argumentCount), regT2);
+    Jump argumentOutOfBounds = branch32(LessThanOrEqual, regT2, TrustedImm32(index));
+    loadValue(addressFor(CallFrameSlot::thisArgument + index), resultRegs);
+    Jump done = jump();
+
+    argumentOutOfBounds.link(this);
+    moveValue(jsUndefined(), resultRegs);
+
+    done.link(this);
+    emitValueProfilingSite();
+    emitPutVirtualRegister(dst, resultRegs);
 }
 
 } // namespace JSC

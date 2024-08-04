@@ -67,6 +67,7 @@
 #import <WebCore/TextIndicator.h>
 #import <WebCore/TextIndicatorWindow.h>
 #import <WebCore/TextUndoInsertionMarkupMac.h>
+#import <WebCore/ValidationBubble.h>
 #import <WebKitSystemInterface.h>
 #import <wtf/text/CString.h>
 #import <wtf/text/WTFString.h>
@@ -439,6 +440,11 @@ RefPtr<WebColorPicker> PageClientImpl::createColorPicker(WebPageProxy* page, con
 }
 #endif
 
+Ref<ValidationBubble> PageClientImpl::createValidationBubble(const String& message, const ValidationBubble::Settings& settings)
+{
+    return ValidationBubble::create(m_view, message, settings);
+}
+
 void PageClientImpl::setTextIndicator(Ref<TextIndicator> textIndicator, WebCore::TextIndicatorWindowLifetime lifetime)
 {
     m_impl->setTextIndicator(textIndicator.get(), lifetime);
@@ -562,10 +568,24 @@ String PageClientImpl::dismissCorrectionPanelSoon(WebCore::ReasonForDismissingAl
 #endif
 }
 
-void PageClientImpl::recordAutocorrectionResponse(AutocorrectionResponseType responseType, const String& replacedString, const String& replacementString)
+static inline NSCorrectionResponse toCorrectionResponse(AutocorrectionResponse response)
 {
-    NSCorrectionResponse response = responseType == AutocorrectionReverted ? NSCorrectionResponseReverted : NSCorrectionResponseEdited;
-    CorrectionPanel::recordAutocorrectionResponse(m_view, m_impl->spellCheckerDocumentTag(), response, replacedString, replacementString);
+    switch (response) {
+    case WebCore::AutocorrectionResponse::Reverted:
+        return NSCorrectionResponseReverted;
+    case WebCore::AutocorrectionResponse::Edited:
+        return NSCorrectionResponseEdited;
+    case WebCore::AutocorrectionResponse::Accepted:
+        return NSCorrectionResponseAccepted;
+    }
+
+    ASSERT_NOT_REACHED();
+    return NSCorrectionResponseAccepted;
+}
+
+void PageClientImpl::recordAutocorrectionResponse(AutocorrectionResponse response, const String& replacedString, const String& replacementString)
+{
+    CorrectionPanel::recordAutocorrectionResponse(m_impl->spellCheckerDocumentTag(), toCorrectionResponse(response), replacedString, replacementString);
 }
 
 void PageClientImpl::recommendedScrollbarStyleDidChange(ScrollbarStyle newStyle)
@@ -750,6 +770,20 @@ void PageClientImpl::removeNavigationGestureSnapshot()
 {
     if (auto gestureController = m_impl->gestureController())
         gestureController->removeSwipeSnapshot();
+}
+
+void PageClientImpl::handleControlledElementIDResponse(const String& identifier)
+{
+#if WK_API_ENABLED
+    [m_webView _handleControlledElementIDResponse:nsStringFromWebCoreString(identifier)];
+#endif
+}
+
+void PageClientImpl::handleActiveNowPlayingSessionInfoResponse(bool hasActiveSession, const String& title, double duration, double elapsedTime)
+{
+#if WK_API_ENABLED
+    [m_webView _handleActiveNowPlayingSessionInfoResponse:hasActiveSession title:nsStringFromWebCoreString(title) duration:duration elapsedTime:elapsedTime];
+#endif
 }
 
 void PageClientImpl::didChangeBackgroundColor()

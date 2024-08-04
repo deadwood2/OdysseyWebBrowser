@@ -175,7 +175,7 @@ void Node::convertToPutHint(const PromotedLocationDescriptor& descriptor, Node* 
 void Node::convertToPutStructureHint(Node* structure)
 {
     ASSERT(m_op == PutStructure);
-    ASSERT(structure->castConstant<Structure*>() == transition()->next);
+    ASSERT(structure->castConstant<Structure*>(*structure->asCell()->vm()) == transition()->next.get());
     convertToPutHint(StructurePLoc, child1().node(), structure);
 }
 
@@ -193,6 +193,51 @@ void Node::convertToPutClosureVarHint()
     convertToPutHint(
         PromotedLocationDescriptor(ClosureVarPLoc, scopeOffset().offset()),
         child1().node(), child2().node());
+}
+
+void Node::convertToDirectCall(FrozenValue* executable)
+{
+    NodeType newOp = LastNodeType;
+    switch (op()) {
+    case Call:
+        newOp = DirectCall;
+        break;
+    case Construct:
+        newOp = DirectConstruct;
+        break;
+    case TailCallInlinedCaller:
+        newOp = DirectTailCallInlinedCaller;
+        break;
+    case TailCall:
+        newOp = DirectTailCall;
+        break;
+    default:
+        RELEASE_ASSERT_NOT_REACHED();
+        break;
+    }
+    
+    m_op = newOp;
+    m_opInfo = executable;
+}
+
+void Node::convertToCallDOM(Graph& graph)
+{
+    ASSERT(op() == Call);
+    ASSERT(signature());
+
+    Edge edges[3];
+    // Skip the first one. This is callee.
+    RELEASE_ASSERT(numChildren() <= 4);
+    for (unsigned i = 1; i < numChildren(); ++i)
+        edges[i - 1] = graph.varArgChild(this, i);
+
+    setOpAndDefaultFlags(CallDOM);
+    children.setChild1(edges[0]);
+    children.setChild2(edges[1]);
+    children.setChild3(edges[2]);
+
+    if (!signature()->effect.mustGenerate())
+        clearFlags(NodeMustGenerate);
 }
 
 String Node::tryGetString(Graph& graph)

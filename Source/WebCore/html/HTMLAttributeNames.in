@@ -164,6 +164,7 @@ marginheight
 marginwidth
 max
 maxlength
+minlength
 mayscript
 media
 mediagroup
@@ -173,6 +174,7 @@ multiple
 muted
 name
 nohref
+nomodule
 nonce
 noresize
 noshade
@@ -187,6 +189,7 @@ onautocomplete
 onautocompleteerror
 onbeforecopy
 onbeforecut
+onbeforeinput
 onbeforeload
 onbeforepaste
 onbeforeunload
@@ -222,6 +225,7 @@ onkeyup
 ongesturestart
 ongesturechange
 ongestureend
+onlanguagechange
 onload
 onloadeddata
 onloadedmetadata
@@ -263,6 +267,7 @@ onstorage
 onsuspend
 onsubmit
 ontimeupdate
+ontoggle
 ontouchforcechange
 ontouchstart
 ontouchmove

@@ -72,7 +72,7 @@
 #endif
 #endif
 
-#endif
+#endif // defined(__clang__)
 
 /* COMPILER(GCC_OR_CLANG) - GNU Compiler Collection or Clang */
 #if defined(__GNUC__)
@@ -119,11 +119,14 @@
 /* COMPILER(MSVC) - Microsoft Visual C++ */
 
 #if defined(_MSC_VER)
+
 #define WTF_COMPILER_MSVC 1
+#define WTF_COMPILER_SUPPORTS_CXX_REFERENCE_QUALIFIED_FUNCTIONS 1
+
+#if _MSC_VER < 1900
+#error "Please use a newer version of Visual Studio. WebKit requires VS2015 or newer to compile."
 #endif
 
-#if defined(_MSC_VER) && _MSC_VER < 1800
-#error "Please use a newer version of Visual Studio. WebKit requires VS2013 or newer to compile."
 #endif
 
 /* COMPILER(SUNCC) */
@@ -142,6 +145,20 @@
 
 #if defined(__ARM_EABI__) || defined(__EABI__)
 #define WTF_COMPILER_SUPPORTS_EABI 1
+#endif
+
+/* RELAXED_CONSTEXPR */
+
+#if defined(__cpp_constexpr) && __cpp_constexpr >= 201304
+#define WTF_COMPILER_SUPPORTS_RELAXED_CONSTEXPR 1
+#endif
+
+#if !defined(RELAXED_CONSTEXPR)
+#if COMPILER_SUPPORTS(RELAXED_CONSTEXPR)
+#define RELAXED_CONSTEXPR constexpr
+#else
+#define RELAXED_CONSTEXPR
+#endif
 #endif
 
 #define ASAN_ENABLED COMPILER_HAS_CLANG_FEATURE(address_sanitizer)
@@ -176,13 +193,6 @@
 #else
 #define WTF_EXTERN_C_BEGIN
 #define WTF_EXTERN_C_END
-#endif
-
-/* FIXME: Remove this once we have transitioned to WTF_EXTERN_C_BEGIN/WTF_EXTERN_C_END. */
-#ifdef __cplusplus
-#define EXTERN_C extern "C"
-#else
-#define EXTERN_C extern
 #endif
 
 /* FALLTHROUGH */
@@ -231,6 +241,15 @@
 
 #if !defined(NO_RETURN)
 #define NO_RETURN
+#endif
+
+/* RETURNS_NONNULL */
+#if !defined(RETURNS_NONNULL) && COMPILER(GCC_OR_CLANG)
+#define RETURNS_NONNULL __attribute__((returns_nonnull))
+#endif
+
+#if !defined(RETURNS_NONNULL)
+#define RETURNS_NONNULL
 #endif
 
 /* NO_RETURN_WITH_VALUE */

@@ -44,6 +44,7 @@
 #include "ResourceRequest.h"
 #include "RuntimeEnabledFeatures.h"
 #include "SVGImage.h"
+#include "ScriptController.h"
 #include "SecurityOrigin.h"
 #include "SecurityPolicy.h"
 #include "Settings.h"
@@ -58,7 +59,6 @@ HTMLAnchorElement::HTMLAnchorElement(const QualifiedName& tagName, Document& doc
     : HTMLElement(tagName, document)
     , m_hasRootEditableElementForSelectionOnMouseDown(false)
     , m_wasShiftKeyDownOnMouseDown(false)
-    , m_linkRelations(0)
     , m_cachedVisitedLinkHash(0)
 {
 }
@@ -129,7 +129,7 @@ bool HTMLAnchorElement::isKeyboardFocusable(KeyboardEvent& event) const
     if (!document().frame())
         return false;
 
-    if (!document().frame()->eventHandler().tabsToLinks(&event))
+    if (!document().frame()->eventHandler().tabsToLinks(event))
         return false;
 
     if (!renderer() && ancestorsOfType<HTMLCanvasElement>(*this).first())
@@ -201,9 +201,7 @@ void HTMLAnchorElement::defaultEventHandler(Event& event)
 void HTMLAnchorElement::setActive(bool down, bool pause)
 {
     if (hasEditableStyle()) {
-        EditableLinkBehavior editableLinkBehavior = EditableLinkDefaultBehavior;
-        if (Settings* settings = document().settings())
-            editableLinkBehavior = settings->editableLinkBehavior();
+        EditableLinkBehavior editableLinkBehavior = document().settings().editableLinkBehavior();
             
         switch (editableLinkBehavior) {
             default:
@@ -236,7 +234,7 @@ void HTMLAnchorElement::parseAttribute(const QualifiedName& name, const AtomicSt
         bool wasLink = isLink();
         setIsLink(!value.isNull() && !shouldProhibitLinks(this));
         if (wasLink != isLink())
-            setNeedsStyleRecalc();
+            invalidateStyleForSubtree();
         if (isLink()) {
             String parsedURL = stripLeadingAndTrailingHTMLSpaces(value);
             if (document().isDNSPrefetchEnabled() && document().frame()) {
@@ -248,8 +246,15 @@ void HTMLAnchorElement::parseAttribute(const QualifiedName& name, const AtomicSt
     } else if (name == nameAttr || name == titleAttr) {
         // Do nothing.
     } else if (name == relAttr) {
-        if (SpaceSplitString::spaceSplitStringContainsValue(value, "noreferrer", true))
-            m_linkRelations |= RelationNoReferrer;
+        // Update HTMLAnchorElement::relList() if more rel attributes values are supported.
+        static NeverDestroyed<AtomicString> noReferrer("noreferrer", AtomicString::ConstructFromLiteral);
+        static NeverDestroyed<AtomicString> noOpener("noopener", AtomicString::ConstructFromLiteral);
+        const bool shouldFoldCase = true;
+        SpaceSplitString relValue(value, shouldFoldCase);
+        if (relValue.contains(noReferrer))
+            m_linkRelations |= Relation::NoReferrer;
+        if (relValue.contains(noOpener))
+            m_linkRelations |= Relation::NoOpener;
         if (m_relList)
             m_relList->associatedAttributeValueChanged(value);
     }
@@ -294,15 +299,17 @@ void HTMLAnchorElement::setHref(const AtomicString& value)
     setAttributeWithoutSynchronization(hrefAttr, value);
 }
 
-bool HTMLAnchorElement::hasRel(uint32_t relation) const
+bool HTMLAnchorElement::hasRel(Relation relation) const
 {
-    return m_linkRelations & relation;
+    return m_linkRelations.contains(relation);
 }
 
 DOMTokenList& HTMLAnchorElement::relList()
 {
     if (!m_relList) 
-        m_relList = std::make_unique<DOMTokenList>(*this, HTMLNames::relAttr);
+        m_relList = std::make_unique<DOMTokenList>(*this, HTMLNames::relAttr, [](StringView token) {
+            return equalIgnoringASCIICase(token, "noreferrer") || equalIgnoringASCIICase(token, "noopener");
+        });
     return *m_relList;
 }
 
@@ -334,7 +341,7 @@ String HTMLAnchorElement::text()
 
 void HTMLAnchorElement::setText(const String& text)
 {
-    setTextContent(text, ASSERT_NO_EXCEPTION);
+    setTextContent(text);
 }
 
 bool HTMLAnchorElement::isLiveLink() const
@@ -344,7 +351,10 @@ bool HTMLAnchorElement::isLiveLink() const
 
 void HTMLAnchorElement::sendPings(const URL& destinationURL)
 {
-    if (!hasAttributeWithoutSynchronization(pingAttr) || !document().settings() || !document().settings()->hyperlinkAuditingEnabled())
+    if (!document().frame())
+        return;
+
+    if (!hasAttributeWithoutSynchronization(pingAttr) || !document().settings().hyperlinkAuditingEnabled())
         return;
 
     SpaceSplitString pingURLs(attributeWithoutSynchronization(pingAttr), false);
@@ -363,17 +373,25 @@ void HTMLAnchorElement::handleClick(Event& event)
     StringBuilder url;
     url.append(stripLeadingAndTrailingHTMLSpaces(attributeWithoutSynchronization(hrefAttr)));
     appendServerMapMousePosition(url, event);
-    URL kurl = document().completeURL(url.toString());
+    URL completedURL = document().completeURL(url.toString());
 
     auto downloadAttribute = nullAtom;
 #if ENABLE(DOWNLOAD_ATTRIBUTE)
-    if (RuntimeEnabledFeatures::sharedFeatures().downloadAttributeEnabled())
-        downloadAttribute = attributeWithoutSynchronization(downloadAttr);
+    if (RuntimeEnabledFeatures::sharedFeatures().downloadAttributeEnabled()) {
+        // Ignore the download attribute completely if the href URL is cross origin.
+        bool isSameOrigin = completedURL.protocolIsData() || document().securityOrigin().canRequest(completedURL);
+        if (isSameOrigin)
+            downloadAttribute = attributeWithoutSynchronization(downloadAttr);
+        else if (hasAttributeWithoutSynchronization(downloadAttr))
+            document().addConsoleMessage(MessageSource::Security, MessageLevel::Warning, "The download attribute on anchor was ignored because its href URL has a different security origin.");
+    }
 #endif
 
-    frame->loader().urlSelected(kurl, target(), &event, LockHistory::No, LockBackForwardList::No, hasRel(RelationNoReferrer) ? NeverSendReferrer : MaybeSendReferrer, document().shouldOpenExternalURLsPolicyToPropagate(), downloadAttribute);
+    ShouldSendReferrer shouldSendReferrer = hasRel(Relation::NoReferrer) ? NeverSendReferrer : MaybeSendReferrer;
+    auto newFrameOpenerPolicy = hasRel(Relation::NoOpener) ? std::make_optional(NewFrameOpenerPolicy::Suppress) : std::nullopt;
+    frame->loader().urlSelected(completedURL, target(), &event, LockHistory::No, LockBackForwardList::No, shouldSendReferrer, document().shouldOpenExternalURLsPolicyToPropagate(), newFrameOpenerPolicy, downloadAttribute);
 
-    sendPings(kurl);
+    sendPings(completedURL);
 }
 
 HTMLAnchorElement::EventType HTMLAnchorElement::eventType(Event& event)
@@ -388,11 +406,7 @@ bool HTMLAnchorElement::treatLinkAsLiveForEventType(EventType eventType) const
     if (!hasEditableStyle())
         return true;
 
-    Settings* settings = document().settings();
-    if (!settings)
-        return true;
-
-    switch (settings->editableLinkBehavior()) {
+    switch (document().settings().editableLinkBehavior()) {
     case EditableLinkDefaultBehavior:
     case EditableLinkAlwaysLive:
         return true;

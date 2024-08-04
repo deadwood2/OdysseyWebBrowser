@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc.  All rights reserved.
+ * Copyright (C) 2016-2017 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ResourceLoadStatistics_h
-#define ResourceLoadStatistics_h
+#pragma once
 
 #include <wtf/HashCountedSet.h>
 #include <wtf/text/StringHash.h>
@@ -44,7 +43,7 @@ struct ResourceLoadStatistics {
     ResourceLoadStatistics() = default;
 
     void encode(KeyedEncoder&) const;
-    bool decode(KeyedDecoder&);
+    bool decode(KeyedDecoder&, unsigned version);
 
     String toString() const;
 
@@ -54,7 +53,10 @@ struct ResourceLoadStatistics {
 
     // User interaction
     bool hadUserInteraction { false };
-    
+    // Timestamp. Default value is negative, 0 means it was reset.
+    double mostRecentUserInteraction { -1 };
+    bool grandfathered { false };
+
     // Top frame stats
     unsigned topFrameHasBeenRedirectedTo { 0 };
     unsigned topFrameHasBeenRedirectedFrom { 0 };
@@ -84,8 +86,7 @@ struct ResourceLoadStatistics {
     // Prevalent resource stats
     HashCountedSet<String> redirectedToOtherPrevalentResourceOrigins;
     bool isPrevalentResource { false };
+    unsigned dataRecordsRemoved { 0 };
 };
 
 } // namespace WebCore
-
-#endif // ResourceLoadStatistics_h

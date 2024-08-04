@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,23 +28,19 @@
 
 #if USE(APPLE_INTERNAL_SDK)
 
+#include <QuartzCore/CABackingStore.h>
 #include <QuartzCore/CAColorMatrix.h>
 #include <QuartzCore/CARenderServer.h>
 
 #ifdef __OBJC__
 
+#import <QuartzCore/CAContext.h>
 #import <QuartzCore/CALayerHost.h>
 #import <QuartzCore/CALayerPrivate.h>
 #import <QuartzCore/QuartzCorePrivate.h>
 
 #if PLATFORM(IOS)
 #import <QuartzCore/CADisplay.h>
-#endif
-
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
-@interface CAContext ()
-- (void)setCommitPriority:(uint32_t)commitPriority;
-@end
 #endif
 
 #endif // __OBJC__
@@ -62,6 +58,7 @@
 - (uint32_t)createImageSlot:(CGSize)size hasAlpha:(BOOL)flag;
 - (void)deleteSlot:(uint32_t)name;
 - (void)invalidate;
+- (void)invalidateFences;
 - (mach_port_t)createFencePort;
 - (void)setFencePort:(mach_port_t)port;
 - (void)setFencePort:(mach_port_t)port commitHandler:(void(^)(void))block;
@@ -81,7 +78,6 @@
 - (CGSize)size;
 - (void *)regionBeingDrawn;
 - (void)setContentsChanged;
-@property BOOL acceleratesDrawing;
 @property BOOL allowsGroupBlending;
 @property BOOL canDrawConcurrently;
 @property BOOL contentsOpaque;
@@ -91,11 +87,6 @@
 #if PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90300 && __IPHONE_OS_VERSION_MAX_ALLOWED < 100000
 @property (copy) NSString *contentsFormat;
 #endif
-@end
-
-@interface CATiledLayer ()
-- (void)displayInRect:(CGRect)rect levelOfDetail:(int)levelOfDetail options:(NSDictionary *)dictionary;
-- (void)setNeedsDisplayInRect:(CGRect)rect levelOfDetail:(int)levelOfDetail options:(NSDictionary *)dictionary;
 @end
 
 #if PLATFORM(IOS)
@@ -133,7 +124,7 @@ typedef struct CAColorMatrix CAColorMatrix;
 @property (copy) NSString *name;
 @end
 
-#if TARGET_OS_IPHONE || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
+#if PLATFORM(IOS) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
 typedef enum {
     kCATransactionPhasePreLayout,
     kCATransactionPhasePreCommit,
@@ -168,35 +159,37 @@ typedef enum {
 
 #endif
 
+WTF_EXTERN_C_BEGIN
+
 // FIXME: Declare these functions even when USE(APPLE_INTERNAL_SDK) is true once we can fix <rdar://problem/26584828> in a better way.
 #if !USE(APPLE_INTERNAL_SDK)
-EXTERN_C void CARenderServerCaptureLayerWithTransform(mach_port_t, uint32_t clientId, uint64_t layerId, uint32_t slotId, int32_t ox, int32_t oy, const CATransform3D*);
+void CARenderServerCaptureLayerWithTransform(mach_port_t, uint32_t clientId, uint64_t layerId, uint32_t slotId, int32_t ox, int32_t oy, const CATransform3D*);
 
 #if USE(IOSURFACE)
-EXTERN_C void CARenderServerRenderLayerWithTransform(mach_port_t server_port, uint32_t client_id, uint64_t layer_id, IOSurfaceRef, int32_t ox, int32_t oy, const CATransform3D*);
-EXTERN_C void CARenderServerRenderDisplayLayerWithTransformAndTimeOffset(mach_port_t, CFStringRef display_name, uint32_t client_id, uint64_t layer_id, IOSurfaceRef, int32_t ox, int32_t oy, const CATransform3D*, CFTimeInterval);
+void CARenderServerRenderLayerWithTransform(mach_port_t server_port, uint32_t client_id, uint64_t layer_id, IOSurfaceRef, int32_t ox, int32_t oy, const CATransform3D*);
+void CARenderServerRenderDisplayLayerWithTransformAndTimeOffset(mach_port_t, CFStringRef display_name, uint32_t client_id, uint64_t layer_id, IOSurfaceRef, int32_t ox, int32_t oy, const CATransform3D*, CFTimeInterval);
 #else
 typedef struct CARenderServerBuffer* CARenderServerBufferRef;
-EXTERN_C CARenderServerBufferRef CARenderServerCreateBuffer(size_t, size_t);
-EXTERN_C void CARenderServerDestroyBuffer(CARenderServerBufferRef);
-EXTERN_C size_t CARenderServerGetBufferWidth(CARenderServerBufferRef);
-EXTERN_C size_t CARenderServerGetBufferHeight(CARenderServerBufferRef);
-EXTERN_C size_t CARenderServerGetBufferRowBytes(CARenderServerBufferRef);
-EXTERN_C uint8_t* CARenderServerGetBufferData(CARenderServerBufferRef);
-EXTERN_C size_t CARenderServerGetBufferDataSize(CARenderServerBufferRef);
+CARenderServerBufferRef CARenderServerCreateBuffer(size_t, size_t);
+void CARenderServerDestroyBuffer(CARenderServerBufferRef);
+size_t CARenderServerGetBufferWidth(CARenderServerBufferRef);
+size_t CARenderServerGetBufferHeight(CARenderServerBufferRef);
+size_t CARenderServerGetBufferRowBytes(CARenderServerBufferRef);
+uint8_t* CARenderServerGetBufferData(CARenderServerBufferRef);
+size_t CARenderServerGetBufferDataSize(CARenderServerBufferRef);
 
-EXTERN_C bool CARenderServerRenderLayerWithTransform(mach_port_t, uint32_t client_id, uint64_t layer_id, CARenderServerBufferRef, int32_t ox, int32_t oy, const CATransform3D*);
+bool CARenderServerRenderLayerWithTransform(mach_port_t, uint32_t client_id, uint64_t layer_id, CARenderServerBufferRef, int32_t ox, int32_t oy, const CATransform3D*);
 #endif
 #endif
 
-// FIXME: Move this into the APPLE_INTERNAL_SDK block once it's in an SDK.
-@interface CAContext (AdditionalDetails)
-#if PLATFORM(IOS) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
-- (void)invalidateFences;
-#endif
-@end
+typedef struct _CAMachPort *CAMachPortRef;
+CAMachPortRef CAMachPortCreate(mach_port_t);
+mach_port_t CAMachPortGetPort(CAMachPortRef);
+CFTypeID CAMachPortGetTypeID(void);
 
-extern NSString * const kCATiledLayerRemoveImmediately;
+void CABackingStoreCollectBlocking(void);
+
+WTF_EXTERN_C_END
 
 extern NSString * const kCAFilterColorInvert;
 extern NSString * const kCAFilterColorMatrix;
@@ -237,4 +230,5 @@ extern NSString * const kCAContentsFormatRGBA10XR;
 
 @protocol CAAnimationDelegate <NSObject>
 @end
-#endif
+
+#endif // USE(APPLE_INTERNAL_SDK)

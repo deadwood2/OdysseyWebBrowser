@@ -22,8 +22,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef RenderTable_h
-#define RenderTable_h
+#pragma once
 
 #include "CSSPropertyNames.h"
 #include "CollapsedBorderValue.h"
@@ -223,7 +222,7 @@ public:
     bool needsSectionRecalc() const { return m_needsSectionRecalc; }
     void setNeedsSectionRecalc()
     {
-        if (documentBeingDestroyed())
+        if (renderTreeBeingDestroyed())
             return;
         m_needsSectionRecalc = true;
         setNeedsLayout();
@@ -292,8 +291,8 @@ private:
     bool nodeAtPoint(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction) override;
 
     int baselinePosition(FontBaseline, bool firstLine, LineDirectionMode, LinePositionMode = PositionOnContainingLine) const final;
-    Optional<int> firstLineBaseline() const override;
-    Optional<int> inlineBlockBaseline(LineDirectionMode) const final;
+    std::optional<int> firstLineBaseline() const override;
+    std::optional<int> inlineBlockBaseline(LineDirectionMode) const final;
 
     RenderTableCol* slowColElement(unsigned col, bool* startEdge, bool* endEdge) const;
 
@@ -319,7 +318,9 @@ private:
 
     void recalcCollapsedBorders();
     void recalcSections() const;
-    void layoutCaption(RenderTableCaption*);
+    enum class BottomCaptionLayoutPhase { Yes, No };
+    void layoutCaptions(BottomCaptionLayoutPhase = BottomCaptionLayoutPhase::No);
+    void layoutCaption(RenderTableCaption&);
 
     void distributeExtraLogicalHeight(LayoutUnit extraLogicalHeight);
 
@@ -387,5 +388,3 @@ inline std::unique_ptr<RenderBox> RenderTable::createAnonymousBoxWithSameTypeAs(
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderTable, isTable())
-
-#endif // RenderTable_h

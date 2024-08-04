@@ -29,10 +29,12 @@
 
 namespace JSC {
 
+class Heap;
 class HeapCell;
 class LargeAllocation;
 class MarkedBlock;
 class WeakSet;
+class VM;
 
 typedef uint32_t HeapVersion;
 
@@ -56,6 +58,9 @@ public:
     {
     }
     
+    VM* vm() const;
+    Heap* heap() const;
+    
     explicit operator bool() const { return !!m_encodedPointer; }
     
     bool isMarkedBlock() const { return m_encodedPointer && !(m_encodedPointer & isLargeAllocationBit); }
@@ -73,14 +78,16 @@ public:
         return *bitwise_cast<LargeAllocation*>(m_encodedPointer - isLargeAllocationBit);
     }
     
-    void flipIfNecessary(HeapVersion);
-    void flipIfNecessary();
+    void aboutToMark(HeapVersion markingVersion);
+    bool areMarksStale() const;
     
-    bool isMarked() const;
     bool isMarked(HeapCell*) const;
-    bool isMarkedOrNewlyAllocated(HeapCell*) const;
+    bool isMarked(HeapVersion markingVersion, HeapCell*) const;
+    
+    bool isNewlyAllocated(HeapCell*) const;
     
     void noteMarked();
+    void assertValidCell(VM&, HeapCell*) const;
     
     size_t cellSize() const;
     

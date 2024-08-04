@@ -30,7 +30,7 @@
 #include "DataView.h"
 #include "Error.h"
 #include "JSCInlines.h"
-#include "Reject.h"
+#include "TypeError.h"
 
 namespace JSC {
 
@@ -44,14 +44,14 @@ JSDataView::JSDataView(VM& vm, ConstructionContext& context, ArrayBuffer* buffer
 }
 
 JSDataView* JSDataView::create(
-    ExecState* exec, Structure* structure, PassRefPtr<ArrayBuffer> passedBuffer,
+    ExecState* exec, Structure* structure, RefPtr<ArrayBuffer>&& buffer,
     unsigned byteOffset, unsigned byteLength)
 {
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    RefPtr<ArrayBuffer> buffer = passedBuffer;
-    if (!ArrayBufferView::verifySubRangeLength(buffer, byteOffset, byteLength, sizeof(uint8_t))) {
+    ASSERT(buffer);
+    if (!ArrayBufferView::verifySubRangeLength(*buffer, byteOffset, byteLength, sizeof(uint8_t))) {
         throwVMError(exec, scope, createRangeError(exec, ASCIILiteral("Length out of range of buffer")));
         return nullptr;
     }
@@ -60,7 +60,7 @@ JSDataView* JSDataView::create(
         return nullptr;
     }
     ConstructionContext context(
-        structure, buffer, byteOffset, byteLength, ConstructionContext::DataView);
+        structure, buffer.copyRef(), byteOffset, byteLength, ConstructionContext::DataView);
     ASSERT(context);
     JSDataView* result =
         new (NotNull, allocateCell<JSDataView>(vm.heap)) JSDataView(vm, context, buffer.get());
@@ -92,9 +92,14 @@ bool JSDataView::setIndex(ExecState*, unsigned, JSValue)
     return false;
 }
 
-PassRefPtr<DataView> JSDataView::typedImpl()
+RefPtr<DataView> JSDataView::possiblySharedTypedImpl()
 {
-    return DataView::create(buffer(), byteOffset(), length());
+    return DataView::create(possiblySharedBuffer(), byteOffset(), length());
+}
+
+RefPtr<DataView> JSDataView::unsharedTypedImpl()
+{
+    return DataView::create(unsharedBuffer(), byteOffset(), length());
 }
 
 bool JSDataView::getOwnPropertySlot(
@@ -117,15 +122,20 @@ bool JSDataView::put(
     JSCell* cell, ExecState* exec, PropertyName propertyName, JSValue value,
     PutPropertySlot& slot)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
     JSDataView* thisObject = jsCast<JSDataView*>(cell);
 
-    if (UNLIKELY(isThisValueAltered(slot, thisObject)))
+    if (UNLIKELY(isThisValueAltered(slot, thisObject))) {
+        scope.release();
         return ordinarySetSlow(exec, thisObject, propertyName, value, slot.thisValue(), slot.isStrictMode());
+    }
 
-    if (propertyName == exec->propertyNames().byteLength
-        || propertyName == exec->propertyNames().byteOffset)
-        return reject(exec, slot.isStrictMode(), "Attempting to write to read-only typed array property.");
+    if (propertyName == vm.propertyNames->byteLength
+        || propertyName == vm.propertyNames->byteOffset)
+        return typeError(exec, scope, slot.isStrictMode(), ASCIILiteral("Attempting to write to read-only typed array property."));
 
+    scope.release();
     return Base::put(thisObject, exec, propertyName, value, slot);
 }
 
@@ -133,10 +143,12 @@ bool JSDataView::defineOwnProperty(
     JSObject* object, ExecState* exec, PropertyName propertyName,
     const PropertyDescriptor& descriptor, bool shouldThrow)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
     JSDataView* thisObject = jsCast<JSDataView*>(object);
-    if (propertyName == exec->propertyNames().byteLength
-        || propertyName == exec->propertyNames().byteOffset)
-        return reject(exec, shouldThrow, "Attempting to define read-only typed array property.");
+    if (propertyName == vm.propertyNames->byteLength
+        || propertyName == vm.propertyNames->byteOffset)
+        return typeError(exec, scope, shouldThrow, ASCIILiteral("Attempting to define read-only typed array property."));
 
     return Base::defineOwnProperty(thisObject, exec, propertyName, descriptor, shouldThrow);
 }
@@ -171,10 +183,10 @@ ArrayBuffer* JSDataView::slowDownAndWasteMemory(JSArrayBufferView*)
     return 0;
 }
 
-PassRefPtr<ArrayBufferView> JSDataView::getTypedArrayImpl(JSArrayBufferView* object)
+RefPtr<ArrayBufferView> JSDataView::getTypedArrayImpl(JSArrayBufferView* object)
 {
     JSDataView* thisObject = jsCast<JSDataView*>(object);
-    return thisObject->typedImpl();
+    return thisObject->possiblySharedTypedImpl();
 }
 
 Structure* JSDataView::createStructure(

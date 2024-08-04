@@ -22,22 +22,23 @@
 #include "CSSImageValue.h"
 
 #include "CSSCursorImageValue.h"
-#include "CSSParser.h"
+#include "CSSMarkup.h"
+#include "CSSPrimitiveValue.h"
 #include "CSSValueKeywords.h"
 #include "CachedImage.h"
 #include "CachedResourceLoader.h"
 #include "CachedResourceRequest.h"
 #include "CachedResourceRequestInitiators.h"
 #include "CrossOriginAccessControl.h"
+#include "DeprecatedCSSOMPrimitiveValue.h"
 #include "Document.h"
 #include "Element.h"
-#include "MemoryCache.h"
 
 namespace WebCore {
 
-CSSImageValue::CSSImageValue(const String& url)
+CSSImageValue::CSSImageValue(URL&& url)
     : CSSValue(ImageClass)
-    , m_url(url)
+    , m_url(WTFMove(url))
     , m_accessedImage(false)
 {
 }
@@ -65,17 +66,17 @@ CachedImage* CSSImageValue::loadImage(CachedResourceLoader& loader, const Resour
     if (!m_accessedImage) {
         m_accessedImage = true;
 
-        CachedResourceRequest request(ResourceRequest(loader.document()->completeURL(m_url)), options);
+        CachedResourceRequest request(ResourceRequest(loader.document()->completeURL(m_url.string())), options);
         if (m_initiatorName.isEmpty())
             request.setInitiator(cachedResourceRequestInitiators().css);
         else
             request.setInitiator(m_initiatorName);
 
         if (options.mode == FetchOptions::Mode::Cors) {
-            ASSERT(loader.document()->securityOrigin());
-            updateRequestForAccessControl(request.mutableResourceRequest(), *loader.document()->securityOrigin(), options.allowCredentials);
+            ASSERT(loader.document());
+            request.updateForAccessControl(*loader.document());
         }
-        m_cachedImage = loader.requestImage(request);
+        m_cachedImage = loader.requestImage(WTFMove(request));
     }
     return m_cachedImage.get();
 }
@@ -94,15 +95,13 @@ bool CSSImageValue::equals(const CSSImageValue& other) const
 
 String CSSImageValue::customCSSText() const
 {
-    return "url(" + quoteCSSURLIfNeeded(m_url) + ')';
+    return serializeURL(m_url);
 }
 
-Ref<CSSValue> CSSImageValue::cloneForCSSOM() const
+Ref<DeprecatedCSSOMValue> CSSImageValue::createDeprecatedCSSOMWrapper() const
 {
     // NOTE: We expose CSSImageValues as URI primitive values in CSSOM to maintain old behavior.
-    Ref<CSSPrimitiveValue> uriValue = CSSPrimitiveValue::create(m_url, CSSPrimitiveValue::CSS_URI);
-    uriValue->setCSSOMSafe();
-    return WTFMove(uriValue);
+    return DeprecatedCSSOMPrimitiveValue::create(CSSPrimitiveValue::create(m_url, CSSPrimitiveValue::CSS_URI));
 }
 
 bool CSSImageValue::knownToBeOpaque(const RenderElement* renderer) const

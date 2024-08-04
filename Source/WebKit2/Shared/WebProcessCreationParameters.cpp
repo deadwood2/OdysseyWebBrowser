@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,20 +35,6 @@
 namespace WebKit {
 
 WebProcessCreationParameters::WebProcessCreationParameters()
-    : shouldAlwaysUseComplexTextCodePath(false)
-    , shouldEnableMemoryPressureReliefLogging(false)
-    , shouldUseFontSmoothing(true)
-    , defaultRequestTimeoutInterval(INT_MAX)
-#if PLATFORM(COCOA)
-    , shouldEnableJIT(false)
-    , shouldEnableFTLJIT(false)
-#endif
-    , memoryCacheDisabled(false)
-#if ENABLE(SERVICE_CONTROLS)
-    , hasImageServices(false)
-    , hasSelectionServices(false)
-    , hasRichContentServices(false)
-#endif
 {
 }
 
@@ -78,6 +64,9 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
 #endif
     encoder << mediaKeyStorageDirectory;
     encoder << mediaKeyStorageDirectoryExtensionHandle;
+#if ENABLE(MEDIA_STREAM)
+    encoder << audioCaptureExtensionHandle;
+#endif
     encoder << shouldUseTestingNetworkSession;
     encoder << urlSchemesRegisteredAsEmptyDocument;
     encoder << urlSchemesRegisteredAsSecure;
@@ -88,9 +77,7 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << urlSchemesRegisteredAsDisplayIsolated;
     encoder << urlSchemesRegisteredAsCORSEnabled;
     encoder << urlSchemesRegisteredAsAlwaysRevalidated;
-#if ENABLE(CACHE_PARTITIONING)
     encoder << urlSchemesRegisteredAsCachePartitioned;
-#endif
     encoder.encodeEnum(cacheModel);
     encoder << shouldAlwaysUseComplexTextCodePath;
     encoder << shouldEnableMemoryPressureReliefLogging;
@@ -104,7 +91,7 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << textCheckerState;
     encoder << fullKeyboardAccessEnabled;
     encoder << defaultRequestTimeoutInterval;
-#if PLATFORM(COCOA) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
     encoder << uiProcessBundleIdentifier;
 #endif
 #if PLATFORM(COCOA)
@@ -149,6 +136,10 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
 #if PLATFORM(WAYLAND)
     encoder << waylandCompositorDisplayName;
 #endif
+
+#if USE(SOUP)
+    encoder << proxySettings;
+#endif
 }
 
 bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreationParameters& parameters)
@@ -189,6 +180,10 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
         return false;
     if (!decoder.decode(parameters.mediaKeyStorageDirectoryExtensionHandle))
         return false;
+#if ENABLE(MEDIA_STREAM)
+    if (!decoder.decode(parameters.audioCaptureExtensionHandle))
+        return false;
+#endif
     if (!decoder.decode(parameters.shouldUseTestingNetworkSession))
         return false;
     if (!decoder.decode(parameters.urlSchemesRegisteredAsEmptyDocument))
@@ -209,10 +204,8 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
         return false;
     if (!decoder.decode(parameters.urlSchemesRegisteredAsAlwaysRevalidated))
         return false;
-#if ENABLE(CACHE_PARTITIONING)
     if (!decoder.decode(parameters.urlSchemesRegisteredAsCachePartitioned))
         return false;
-#endif
     if (!decoder.decodeEnum(parameters.cacheModel))
         return false;
     if (!decoder.decode(parameters.shouldAlwaysUseComplexTextCodePath))
@@ -239,7 +232,7 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
         return false;
     if (!decoder.decode(parameters.defaultRequestTimeoutInterval))
         return false;
-#if PLATFORM(COCOA) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
     if (!decoder.decode(parameters.uiProcessBundleIdentifier))
         return false;
 #endif
@@ -311,6 +304,11 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
 
 #if PLATFORM(WAYLAND)
     if (!decoder.decode(parameters.waylandCompositorDisplayName))
+        return false;
+#endif
+
+#if USE(SOUP)
+    if (!decoder.decode(parameters.proxySettings))
         return false;
 #endif
 

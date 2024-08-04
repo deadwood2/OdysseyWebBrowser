@@ -720,6 +720,13 @@ WebInspector.NativePrototypeFunctionParameters = {
         __proto__: null,
     },
 
+    CustomElementRegistry: {
+        define: "name, constructor",
+        get: "name",
+        whenDefined: "name",
+        __proto__: null,
+    },
+
     CustomEvent: {
         initCustomEvent: "[typeArg], [canBubbleArg], [cancelableArg], [detailArg]",
         __proto__: null,
@@ -872,7 +879,6 @@ WebInspector.NativePrototypeFunctionParameters = {
 
     HTMLCanvasElement: {
         getContext: "contextId",
-        probablySupportsContext: "contextId",
         toDataURL: "[type]",
         __proto__: null,
     },
@@ -1156,7 +1162,7 @@ WebInspector.NativePrototypeFunctionParameters = {
     },
 
     Navigator: {
-        webkitGetUserMedia: "options, successCallback, errorCallback",
+        getUserMedia: "options, successCallback, errorCallback",
         __proto__: null,
     },
 
@@ -1222,6 +1228,27 @@ WebInspector.NativePrototypeFunctionParameters = {
         moveTo: "[x], [y]",
         quadraticCurveTo: "[cpx], [cpy], [x], [y]",
         rect: "[x], [y], [width], [height]",
+        __proto__: null,
+    },
+
+    Performance: {
+        clearMarks: "[name]",
+        clearMeasures: "name",
+        getEntriesByName: "name, [type]",
+        getEntriesByType: "type",
+        mark: "name",
+        measure: "name, [startMark], [endMark]",
+        __proto__: null,
+    },
+
+    PerformanceObserver: {
+        observe: "options",
+        __proto__: null,
+    },
+
+    PerformanceObserverEntryList: {
+        getEntriesByName: "name, [type]",
+        getEntriesByType: "type",
         __proto__: null,
     },
 
@@ -2187,7 +2214,7 @@ WebInspector.NativePrototypeFunctionParameters = {
         before: "[node|string]...",
         replaceWith: "[node|string]...",
     };
-    Object.assign(WebInspector.NativePrototypeFunctionParameters.Element, ChildNode)
+    Object.assign(WebInspector.NativePrototypeFunctionParameters.Element, ChildNode);
     Object.assign(WebInspector.NativePrototypeFunctionParameters.CharacterData, ChildNode);
 
     var ParentNode = {

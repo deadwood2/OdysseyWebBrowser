@@ -31,7 +31,6 @@
 #include "InjectedBundleScriptWorld.h"
 #include "NotificationPermissionRequestManager.h"
 #include "SessionTracker.h"
-#include "TextChecker.h"
 #include "UserData.h"
 #include "WKAPICast.h"
 #include "WKBundleAPICast.h"
@@ -54,12 +53,15 @@
 #include <JavaScriptCore/JSLock.h>
 #include <WebCore/ApplicationCache.h>
 #include <WebCore/ApplicationCacheStorage.h>
+#include <WebCore/CommonVM.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/FrameView.h>
 #include <WebCore/GCController.h>
 #include <WebCore/GeolocationClient.h>
 #include <WebCore/GeolocationController.h>
 #include <WebCore/GeolocationPosition.h>
+#include <WebCore/JSDOMConvertBufferSource.h>
+#include <WebCore/JSDOMExceptionHandling.h>
 #include <WebCore/JSDOMWindow.h>
 #include <WebCore/JSNotification.h>
 #include <WebCore/MainFrame.h>
@@ -195,22 +197,41 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
     if (preference == "WebKitShadowDOMEnabled")
         RuntimeEnabledFeatures::sharedFeatures().setShadowDOMEnabled(enabled);
 
-    if (preference == "WebKitDOMIteratorEnabled")
-        RuntimeEnabledFeatures::sharedFeatures().setDOMIteratorEnabled(enabled);
-
-#if ENABLE(CSS_GRID_LAYOUT)
     if (preference == "WebKitCSSGridLayoutEnabled")
         RuntimeEnabledFeatures::sharedFeatures().setCSSGridLayoutEnabled(enabled);
-#endif
 
-#if ENABLE(CUSTOM_ELEMENTS)
     if (preference == "WebKitCustomElementsEnabled")
         RuntimeEnabledFeatures::sharedFeatures().setCustomElementsEnabled(enabled);
-#endif
+
+    if (preference == "WebKitInteractiveFormValidationEnabled")
+        RuntimeEnabledFeatures::sharedFeatures().setInteractiveFormValidationEnabled(enabled);
 
 #if ENABLE(WEBGL2)
     if (preference == "WebKitWebGL2Enabled")
         RuntimeEnabledFeatures::sharedFeatures().setWebGL2Enabled(enabled);
+#endif
+
+    if (preference == "WebKitModernMediaControlsEnabled")
+        RuntimeEnabledFeatures::sharedFeatures().setModernMediaControlsEnabled(enabled);
+
+#if ENABLE(ENCRYPTED_MEDIA)
+    if (preference == "WebKitEncryptedMediaAPIEnabled")
+        RuntimeEnabledFeatures::sharedFeatures().setEncryptedMediaAPIEnabled(enabled);
+#endif
+
+#if ENABLE(SUBTLE_CRYPTO)
+    if (preference == "WebKitSubtleCryptoEnabled")
+        RuntimeEnabledFeatures::sharedFeatures().setSubtleCryptoEnabled(enabled);
+#endif
+
+#if ENABLE(MEDIA_STREAM)
+    if (preference == "WebKitMediaStreamEnabled")
+        RuntimeEnabledFeatures::sharedFeatures().setMediaStreamEnabled(enabled);
+#endif
+
+#if ENABLE(WEB_RTC)
+    if (preference == "WebKitPeerConnectionEnabled")
+        RuntimeEnabledFeatures::sharedFeatures().setPeerConnectionEnabled(enabled);
 #endif
 
     // Map the names used in LayoutTests with the names used in WebCore::Settings and WebPreferencesStore.
@@ -225,16 +246,17 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
     macro(WebKitPageCacheSupportsPluginsPreferenceKey, PageCacheSupportsPlugins, pageCacheSupportsPlugins) \
     macro(WebKitPluginsEnabled, PluginsEnabled, pluginsEnabled) \
     macro(WebKitUsesPageCachePreferenceKey, UsesPageCache, usesPageCache) \
-    macro(WebKitAllowsPageCacheWithWindowOpenerKey, AllowsPageCacheWithWindowOpener, allowsPageCacheWithWindowOpener) \
     macro(WebKitWebAudioEnabled, WebAudioEnabled, webAudioEnabled) \
     macro(WebKitWebGLEnabled, WebGLEnabled, webGLEnabled) \
     macro(WebKitXSSAuditorEnabled, XSSAuditorEnabled, xssAuditorEnabled) \
     macro(WebKitShouldRespectImageOrientation, ShouldRespectImageOrientation, shouldRespectImageOrientation) \
     macro(WebKitEnableCaretBrowsing, CaretBrowsingEnabled, caretBrowsingEnabled) \
     macro(WebKitDisplayImagesKey, LoadsImagesAutomatically, loadsImagesAutomatically) \
-    macro(WebKitMediaStreamEnabled, MediaStreamEnabled, mediaStreamEnabled) \
     macro(WebKitHTTPEquivEnabled, HttpEquivEnabled, httpEquivEnabled) \
-    macro(WebKitVisualViewportEnabled, VisualViewportEnabled, visualViewportEnabled)
+    macro(WebKitVisualViewportEnabled, VisualViewportEnabled, visualViewportEnabled) \
+    macro(WebKitLargeImageAsyncDecodingEnabled, LargeImageAsyncDecodingEnabled, largeImageAsyncDecodingEnabled) \
+    macro(WebKitAnimatedImageAsyncDecodingEnabled, AnimatedImageAsyncDecodingEnabled, animatedImageAsyncDecodingEnabled) \
+    \
 
 #define OVERRIDE_PREFERENCE_AND_SET_IN_EXISTING_PAGES(TestRunnerName, SettingsName, WebPreferencesName) \
     if (preference == #TestRunnerName) { \
@@ -252,17 +274,6 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
 #undef FOR_EACH_OVERRIDE_BOOL_PREFERENCE
 }
 
-void InjectedBundle::overrideXSSAuditorEnabledForTestRunner(WebPageGroupProxy* pageGroup, bool enabled)
-{
-    // Override the preference for all future pages.
-    WebPreferencesStore::overrideBoolValueForKey(WebPreferencesKey::xssAuditorEnabledKey(), enabled);
-
-    // Change the setting for existing ones.
-    const HashSet<Page*>& pages = PageGroup::pageGroup(pageGroup->identifier())->pages();
-    for (HashSet<Page*>::iterator iter = pages.begin(); iter != pages.end(); ++iter)
-        (*iter)->settings().setXSSAuditorEnabled(enabled);
-}
-
 void InjectedBundle::setAllowUniversalAccessFromFileURLs(WebPageGroupProxy* pageGroup, bool enabled)
 {
     const HashSet<Page*>& pages = PageGroup::pageGroup(pageGroup->identifier())->pages();
@@ -275,6 +286,13 @@ void InjectedBundle::setAllowFileAccessFromFileURLs(WebPageGroupProxy* pageGroup
     const HashSet<Page*>& pages = PageGroup::pageGroup(pageGroup->identifier())->pages();
     for (HashSet<Page*>::iterator iter = pages.begin(); iter != pages.end(); ++iter)
         (*iter)->settings().setAllowFileAccessFromFileURLs(enabled);
+}
+
+void InjectedBundle::setNeedsStorageAccessFromFileURLsQuirk(WebPageGroupProxy* pageGroup, bool needsQuirk)
+{
+    const HashSet<Page*>& pages = PageGroup::pageGroup(pageGroup->identifier())->pages();
+    for (auto page : pages)
+        page->settings().setNeedsStorageAccessFromFileURLsQuirk(needsQuirk);
 }
 
 void InjectedBundle::setMinimumLogicalFontSize(WebPageGroupProxy* pageGroup, int size)
@@ -291,28 +309,11 @@ void InjectedBundle::setFrameFlatteningEnabled(WebPageGroupProxy* pageGroup, boo
         (*iter)->settings().setFrameFlatteningEnabled(enabled);
 }
 
-void InjectedBundle::setPluginsEnabled(WebPageGroupProxy* pageGroup, bool enabled)
-{
-    const HashSet<Page*>& pages = PageGroup::pageGroup(pageGroup->identifier())->pages();
-    for (HashSet<Page*>::iterator iter = pages.begin(); iter != pages.end(); ++iter)
-        (*iter)->settings().setPluginsEnabled(enabled);
-}
-
 void InjectedBundle::setJavaScriptCanAccessClipboard(WebPageGroupProxy* pageGroup, bool enabled)
 {
     const HashSet<Page*>& pages = PageGroup::pageGroup(pageGroup->identifier())->pages();
     for (HashSet<Page*>::iterator iter = pages.begin(); iter != pages.end(); ++iter)
         (*iter)->settings().setJavaScriptCanAccessClipboard(enabled);
-}
-
-void InjectedBundle::setAutomaticLinkDetectionEnabled(WebPageGroupProxy* pageGroup, bool enabled)
-{
-#if USE(APPKIT)
-    if (enabled == TextChecker::state().isAutomaticLinkDetectionEnabled)
-        return;
-    TextChecker::setAutomaticLinkDetectionEnabled(enabled);
-    WebProcess::singleton().setTextCheckerState(TextChecker::state());
-#endif
 }
 
 void InjectedBundle::setPrivateBrowsingEnabled(WebPageGroupProxy* pageGroup, bool enabled)
@@ -326,6 +327,14 @@ void InjectedBundle::setPrivateBrowsingEnabled(WebPageGroupProxy* pageGroup, boo
     const HashSet<Page*>& pages = PageGroup::pageGroup(pageGroup->identifier())->pages();
     for (HashSet<Page*>::iterator iter = pages.begin(); iter != pages.end(); ++iter)
         (*iter)->enableLegacyPrivateBrowsing(enabled);
+}
+
+void InjectedBundle::setUseDashboardCompatibilityMode(WebPageGroupProxy* pageGroup, bool enabled)
+{
+#if ENABLE(DASHBOARD_SUPPORT)
+    for (auto& page : PageGroup::pageGroup(pageGroup->identifier())->pages())
+        page->settings().setUsesDashboardBackwardCompatibilityMode(enabled);
+#endif
 }
 
 void InjectedBundle::setPopupBlockingEnabled(WebPageGroupProxy* pageGroup, bool enabled)
@@ -481,8 +490,8 @@ void InjectedBundle::garbageCollectJavaScriptObjectsOnAlternateThreadForDebuggin
 
 size_t InjectedBundle::javaScriptObjectsCount()
 {
-    JSLockHolder lock(JSDOMWindow::commonVM());
-    return JSDOMWindow::commonVM().heap.objectCount();
+    JSLockHolder lock(commonVM());
+    return commonVM().heap.objectCount();
 }
 
 void InjectedBundle::reportException(JSContextRef context, JSValueRef exception)
@@ -494,7 +503,8 @@ void InjectedBundle::reportException(JSContextRef context, JSValueRef exception)
     JSLockHolder lock(execState);
 
     // Make sure the context has a DOMWindow global object, otherwise this context didn't originate from a Page.
-    if (!toJSDOMWindow(execState->lexicalGlobalObject()))
+    JSC::JSGlobalObject* globalObject = execState->lexicalGlobalObject();
+    if (!toJSDOMWindow(globalObject->vm(), globalObject))
         return;
 
     WebCore::reportException(execState, toJS(execState, exception));
@@ -555,7 +565,7 @@ void InjectedBundle::removeAllWebNotificationPermissions(WebPage* page)
 uint64_t InjectedBundle::webNotificationID(JSContextRef jsContext, JSValueRef jsNotification)
 {
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
-    WebCore::Notification* notification = JSNotification::toWrapped(toJS(toJS(jsContext), jsNotification));
+    WebCore::Notification* notification = JSNotification::toWrapped(toJS(jsContext)->vm(), toJS(toJS(jsContext), jsNotification));
     if (!notification)
         return 0;
     return WebProcess::singleton().supplement<WebNotificationManager>()->notificationIDForTesting(notification);
@@ -570,7 +580,7 @@ uint64_t InjectedBundle::webNotificationID(JSContextRef jsContext, JSValueRef js
 PassRefPtr<API::Data> InjectedBundle::createWebDataFromUint8Array(JSContextRef context, JSValueRef data)
 {
     JSC::ExecState* execState = toJS(context);
-    RefPtr<Uint8Array> arrayData = WebCore::toUint8Array(toJS(execState, data));
+    RefPtr<Uint8Array> arrayData = WebCore::toUnsharedUint8Array(execState->vm(), toJS(execState, data));
     return API::Data::create(static_cast<unsigned char*>(arrayData->baseAddress()), arrayData->byteLength());
 }
 

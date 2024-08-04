@@ -28,7 +28,7 @@ WebInspector.TimelineTabContentView = class TimelineTabContentView extends WebIn
     constructor(identifier)
     {
         let {image, title} = WebInspector.TimelineTabContentView.tabInfo();
-        let tabBarItem = new WebInspector.TabBarItem(image, title);
+        let tabBarItem = new WebInspector.GeneralTabBarItem(image, title);
         let detailsSidebarPanels = [WebInspector.resourceDetailsSidebarPanel, WebInspector.probeDetailsSidebarPanel];
 
         super(identifier || "timeline", "timeline", tabBarItem, null, detailsSidebarPanels);
@@ -309,11 +309,6 @@ WebInspector.TimelineTabContentView = class TimelineTabContentView extends WebIn
         return representedObject instanceof WebInspector.TimelineRecording;
     }
 
-    get supportsSplitContentBrowser()
-    {
-        return false;
-    }
-
     // Protected
 
     restoreFromCookie(cookie)
@@ -435,7 +430,7 @@ WebInspector.TimelineTabContentView = class TimelineTabContentView extends WebIn
 
     _recordingCreated(event)
     {
-        this._addRecording(event.data.recording)
+        this._addRecording(event.data.recording);
         this._recordingCountChanged();
     }
 

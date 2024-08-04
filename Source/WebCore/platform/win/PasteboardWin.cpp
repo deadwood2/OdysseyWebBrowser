@@ -42,7 +42,6 @@
 #include "Image.h"
 #include "URL.h"
 #include "NotImplemented.h"
-#include "Page.h"
 #include "Range.h"
 #include "RenderImage.h"
 #include "SharedBuffer.h"
@@ -410,7 +409,7 @@ void Pasteboard::writeString(const String& type, const String& data)
 }
 
 #if ENABLE(DRAG_SUPPORT)
-void Pasteboard::setDragImage(DragImageRef, const IntPoint&)
+void Pasteboard::setDragImage(DragImage, const IntPoint&)
 {
     // Do nothing in Windows.
 }
@@ -719,6 +718,11 @@ void Pasteboard::write(const PasteboardURL& pasteboardURL)
     }
 
     writeURLToDataObject(pasteboardURL.url, pasteboardURL.title);
+}
+
+void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&)
+{
+    notImplemented();
 }
 
 void Pasteboard::writeImage(Element& element, const URL&, const String&)
@@ -1049,6 +1053,18 @@ void Pasteboard::writeMarkup(const String& markup)
     medium.hGlobal = createGlobalData(data);
     if (medium.hGlobal && FAILED(m_writableDataObject->SetData(htmlFormat(), &medium, TRUE)))
         GlobalFree(medium.hGlobal);
+}
+
+void Pasteboard::write(const PasteboardWebContent&)
+{
+}
+
+void Pasteboard::read(PasteboardWebContentReader&)
+{
+}
+
+void Pasteboard::write(const PasteboardImage&)
+{
 }
 
 } // namespace WebCore

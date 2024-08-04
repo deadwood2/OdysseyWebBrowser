@@ -78,10 +78,15 @@ void WebInspector::openFrontendConnection(bool underTest)
     IPC::Attachment connectionClientPort(socketPair.client);
 #elif OS(DARWIN)
     mach_port_t listeningPort;
-    mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &listeningPort);
+    if (mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &listeningPort) != KERN_SUCCESS)
+        CRASH();
+
+    if (mach_port_insert_right(mach_task_self(), listeningPort, listeningPort, MACH_MSG_TYPE_MAKE_SEND) != KERN_SUCCESS)
+        CRASH();
 
     IPC::Connection::Identifier connectionIdentifier(listeningPort);
-    IPC::Attachment connectionClientPort(listeningPort, MACH_MSG_TYPE_MAKE_SEND);
+    IPC::Attachment connectionClientPort(listeningPort, MACH_MSG_TYPE_MOVE_SEND);
+
 #else
     notImplemented();
     return;
@@ -143,7 +148,7 @@ void WebInspector::openInNewTab(const String& urlString)
     Frame& inspectedMainFrame = inspectedPage->mainFrame();
     FrameLoadRequest request(inspectedMainFrame.document()->securityOrigin(), ResourceRequest(urlString), "_blank", LockHistory::No, LockBackForwardList::No, MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Allow, ReplaceDocumentIfJavaScriptURL, ShouldOpenExternalURLsPolicy::ShouldNotAllow);
 
-    Page* newPage = inspectedPage->chrome().createWindow(&inspectedMainFrame, request, WindowFeatures(), NavigationAction(request.resourceRequest(), NavigationType::LinkClicked));
+    Page* newPage = inspectedPage->chrome().createWindow(inspectedMainFrame, request, WindowFeatures(), NavigationAction(request.resourceRequest(), NavigationType::LinkClicked));
     if (!newPage)
         return;
 
@@ -279,7 +284,7 @@ void WebInspector::sendMessageToBackend(const String& message)
     m_page->corePage()->inspectorController().dispatchMessageFromFrontend(message);
 }
 
-bool WebInspector::sendMessageToFrontend(const String& message)
+void WebInspector::sendMessageToFrontend(const String& message)
 {
 #if ENABLE(INSPECTOR_SERVER)
     if (m_remoteFrontendConnected)
@@ -287,7 +292,6 @@ bool WebInspector::sendMessageToFrontend(const String& message)
     else
 #endif
         m_frontendConnection->send(Messages::WebInspectorUI::SendMessageToFrontend(message), 0);
-    return true;
 }
 
 #if ENABLE(INSPECTOR_SERVER)

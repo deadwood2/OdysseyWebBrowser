@@ -72,8 +72,8 @@ private:
     void updatePreferences(const WebPreferencesStore&) override;
     void mainFrameContentSizeChanged(const WebCore::IntSize&) override;
 
-    void setViewExposedRect(Optional<WebCore::FloatRect>) override;
-    Optional<WebCore::FloatRect> viewExposedRect() const override { return m_scrolledViewExposedRect; }
+    void setViewExposedRect(std::optional<WebCore::FloatRect>) override;
+    std::optional<WebCore::FloatRect> viewExposedRect() const override { return m_scrolledViewExposedRect; }
 
     bool supportsAsyncScrolling() override { return true; }
 
@@ -81,10 +81,12 @@ private:
 
     bool shouldUseTiledBackingForFrameView(const WebCore::FrameView*) override;
 
-    void viewStateDidChange(WebCore::ViewState::Flags changed, bool wantsDidUpdateViewState, const Vector<uint64_t>&) override;
-    void didUpdateViewStateTimerFired();
+    void activityStateDidChange(WebCore::ActivityState::Flags changed, bool wantsDidUpdateActivityState, const Vector<uint64_t>&) override;
+    void didUpdateActivityStateTimerFired();
 
     void attachViewOverlayGraphicsLayer(WebCore::Frame*, WebCore::GraphicsLayer*) override;
+
+    bool dispatchDidReachLayoutMilestone(WebCore::LayoutMilestones) override;
 
     // WebCore::LayerFlushSchedulerClient
     bool flushLayers() override;
@@ -120,6 +122,8 @@ private:
     void updateScrolledExposedRect();
     void scaleViewToFitDocumentIfNeeded();
 
+    void sendPendingNewlyReachedLayoutMilestones();
+
     bool m_layerTreeStateIsFrozen;
     WebCore::LayerFlushScheduler m_layerFlushScheduler;
 
@@ -133,8 +137,8 @@ private:
 
     bool m_isPaintingSuspended;
 
-    Optional<WebCore::FloatRect> m_viewExposedRect;
-    Optional<WebCore::FloatRect> m_scrolledViewExposedRect;
+    std::optional<WebCore::FloatRect> m_viewExposedRect;
+    std::optional<WebCore::FloatRect> m_scrolledViewExposedRect;
 
     WebCore::IntSize m_lastSentIntrinsicContentSize;
     bool m_inUpdateGeometry;
@@ -144,9 +148,9 @@ private:
 
     WebCore::TransformationMatrix m_transform;
 
-    RunLoop::Timer<TiledCoreAnimationDrawingArea> m_sendDidUpdateViewStateTimer;
-    Vector<uint64_t> m_nextViewStateChangeCallbackIDs;
-    bool m_wantsDidUpdateViewState;
+    RunLoop::Timer<TiledCoreAnimationDrawingArea> m_sendDidUpdateActivityStateTimer;
+    Vector<uint64_t> m_nextActivityStateChangeCallbackIDs;
+    bool m_wantsDidUpdateActivityState;
 
     WebCore::GraphicsLayer* m_viewOverlayRootLayer;
 
@@ -154,6 +158,8 @@ private:
     bool m_isScalingViewToFitDocument { false };
     WebCore::IntSize m_lastViewSizeForScaleToFit;
     WebCore::IntSize m_lastDocumentSizeForScaleToFit;
+
+    WebCore::LayoutMilestones m_pendingNewlyReachedLayoutMilestones { 0 };
 };
 
 } // namespace WebKit

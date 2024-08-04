@@ -19,12 +19,12 @@
  * Boston, MA 02110-1301, USA.
  *
  */
-#if !PLATFORM(IOS)
 
-#ifndef RenderThemeMac_h
-#define RenderThemeMac_h
+#pragma once
 
-#import "RenderTheme.h"
+#if PLATFORM(MAC)
+
+#import "RenderThemeCocoa.h"
 #import <wtf/RetainPtr.h>
 #import <wtf/HashMap.h>
 
@@ -40,7 +40,7 @@ class RenderProgress;
 class RenderStyle;
 struct AttachmentLayout;
 
-class RenderThemeMac final : public RenderTheme {
+class RenderThemeMac final : public RenderThemeCocoa {
 public:
     static Ref<RenderTheme> create();
 
@@ -107,7 +107,9 @@ protected:
 #if ENABLE(VIDEO)
     // Media controls
     String mediaControlsStyleSheet() override;
+    String modernMediaControlsStyleSheet() override;
     String mediaControlsScript() override;
+    String mediaControlsBase64StringForIconAndPlatform(const String&, const String&) override;
 #endif
 
 #if ENABLE(SERVICE_CONTROLS)
@@ -170,6 +172,8 @@ private:
     String fileListNameForWidth(const FileList*, const FontCascade&, int width, bool multipleFilesAllowed) const override;
 
     Color systemColor(CSSValueID) const override;
+
+    void purgeCaches() override;
 
     // Get the control size based off the font. Used by some of the controls (like buttons).
     NSControlSize controlSizeForFont(const RenderStyle&) const;
@@ -244,12 +248,12 @@ private:
 
     RetainPtr<WebCoreRenderThemeNotificationObserver> m_notificationObserver;
 
+    String m_legacyMediaControlsScript;
     String m_mediaControlsScript;
+    String m_legacyMediaControlsStyleSheet;
     String m_mediaControlsStyleSheet;
 };
 
 } // namespace WebCore
 
-#endif // RenderThemeMac_h
-
-#endif // !PLATFORM(IOS)
+#endif // PLATFORM(MAC)

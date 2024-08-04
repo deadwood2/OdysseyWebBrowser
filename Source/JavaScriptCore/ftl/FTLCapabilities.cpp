@@ -71,6 +71,8 @@ inline CapabilityLevel canCompile(Node* node)
     case GetButterfly:
     case NewObject:
     case NewArray:
+    case NewArrayWithSpread:
+    case Spread:
     case NewArrayBuffer:
     case NewTypedArray:
     case GetByOffset:
@@ -94,6 +96,7 @@ inline CapabilityLevel canCompile(Node* node)
     case ArithAbs:
     case ArithSin:
     case ArithCos:
+    case ArithTan:
     case ArithPow:
     case ArithRandom:
     case ArithRound:
@@ -116,6 +119,7 @@ inline CapabilityLevel canCompile(Node* node)
     case CreateActivation:
     case NewFunction:
     case NewGeneratorFunction:
+    case NewAsyncFunction:
     case GetClosureVar:
     case PutClosureVar:
     case CreateDirectArguments:
@@ -123,6 +127,7 @@ inline CapabilityLevel canCompile(Node* node)
     case CreateClonedArguments:
     case GetFromArguments:
     case PutToArguments:
+    case GetArgument:
     case InvalidationPoint:
     case StringCharAt:
     case CheckCell:
@@ -134,13 +139,19 @@ inline CapabilityLevel canCompile(Node* node)
     case StringFromCharCode:
     case AllocatePropertyStorage:
     case ReallocatePropertyStorage:
+    case NukeStructureAndSetButterfly:
     case GetTypedArrayByteOffset:
     case NotifyWrite:
     case StoreBarrier:
+    case FencedStoreBarrier:
     case Call:
+    case DirectCall:
     case TailCall:
+    case DirectTailCall:
     case TailCallInlinedCaller:
+    case DirectTailCallInlinedCaller:
     case Construct:
+    case DirectConstruct:
     case CallVarargs:
     case CallEval:
     case TailCallVarargs:
@@ -177,10 +188,11 @@ inline CapabilityLevel canCompile(Node* node)
     case MultiPutByOffset:
     case ToPrimitive:
     case Throw:
-    case ThrowReferenceError:
+    case ThrowStaticError:
     case Unreachable:
     case In:
-    case IsJSArray:
+    case HasOwnProperty:
+    case IsCellWithType:
     case MapHash:
     case GetMapBucket:
     case LoadFromJSMapBucket:
@@ -189,11 +201,9 @@ inline CapabilityLevel canCompile(Node* node)
     case IsUndefined:
     case IsBoolean:
     case IsNumber:
-    case IsString:
     case IsObject:
     case IsObjectOrNull:
     case IsFunction:
-    case IsRegExpObject:
     case IsTypedArrayView:
     case CheckTypeInfoFlags:
     case OverridesHasInstance:
@@ -218,12 +228,16 @@ inline CapabilityLevel canCompile(Node* node)
     case PhantomNewObject:
     case PhantomNewFunction:
     case PhantomNewGeneratorFunction:
+    case PhantomNewAsyncFunction:
     case PhantomCreateActivation:
     case PutHint:
     case CheckStructureImmediate:
     case MaterializeNewObject:
     case MaterializeCreateActivation:
     case PhantomDirectArguments:
+    case PhantomCreateRest:
+    case PhantomSpread:
+    case PhantomNewArrayWithSpread:
     case PhantomClonedArguments:
     case GetMyArgumentByVal:
     case GetMyArgumentByValOutOfBounds:
@@ -262,6 +276,15 @@ inline CapabilityLevel canCompile(Node* node)
     case CompareGreater:
     case CompareGreaterEq:
     case CompareStrictEq:
+    case DefineDataProperty:
+    case DefineAccessorProperty:
+    case ToLowerCase:
+    case NumberToStringWithRadix:
+    case CheckDOM:
+    case CallDOM:
+    case CallDOMGetter:
+    case ArraySlice:
+    case ParseInt:
         // These are OK.
         break;
 
@@ -287,6 +310,7 @@ inline CapabilityLevel canCompile(Node* node)
         break;
     case GetArrayLength:
         switch (node->arrayMode().type()) {
+        case Array::Undecided:
         case Array::Int32:
         case Array::Double:
         case Array::Contiguous:
@@ -420,6 +444,7 @@ CapabilityLevel canCompile(Graph& graph)
                 case KnownCellUse:
                 case CellOrOtherUse:
                 case ObjectUse:
+                case ArrayUse:
                 case FunctionUse:
                 case ObjectOrOtherUse:
                 case StringUse:
@@ -433,6 +458,8 @@ CapabilityLevel canCompile(Graph& graph)
                 case SetObjectUse:
                 case FinalObjectUse:
                 case RegExpObjectUse:
+                case ProxyObjectUse:
+                case DerivedArrayUse:
                 case NotCellUse:
                 case OtherUse:
                 case MiscUse:

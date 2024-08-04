@@ -19,8 +19,7 @@
  *
  */
 
-#ifndef RenderWidget_h
-#define RenderWidget_h
+#pragma once
 
 #include "HTMLFrameOwnerElement.h"
 #include "OverlapTestRequestClient.h"
@@ -45,14 +44,13 @@ public:
     }
 
     static bool isSuspended() { return s_widgetHierarchyUpdateSuspendCount; }
-    static void scheduleWidgetToMove(Widget* widget, FrameView* frame) { widgetNewParentMap().set(widget, frame); }
+    static void scheduleWidgetToMove(Widget& widget, FrameView* frame) { widgetNewParentMap().set(&widget, frame); }
 
 private:
-    typedef HashMap<RefPtr<Widget>, FrameView*> WidgetToParentMap;
+    using WidgetToParentMap = HashMap<RefPtr<Widget>, FrameView*>;
     static WidgetToParentMap& widgetNewParentMap();
 
     WEBCORE_EXPORT void moveWidgets();
-
     WEBCORE_EXPORT static unsigned s_widgetHierarchyUpdateSuspendCount;
 };
     
@@ -63,9 +61,9 @@ public:
     HTMLFrameOwnerElement& frameOwnerElement() const { return downcast<HTMLFrameOwnerElement>(nodeForNonAnonymous()); }
 
     Widget* widget() const { return m_widget.get(); }
-    WEBCORE_EXPORT void setWidget(PassRefPtr<Widget>);
+    WEBCORE_EXPORT void setWidget(RefPtr<Widget>&&);
 
-    static RenderWidget* find(const Widget*);
+    static RenderWidget* find(const Widget&);
 
     enum class ChildWidgetState { Valid, Destroyed };
     ChildWidgetState updateWidgetPosition() WARN_UNUSED_RETURN;
@@ -81,6 +79,7 @@ public:
 protected:
     RenderWidget(HTMLFrameOwnerElement&, RenderStyle&&);
 
+    void willBeDestroyed() override;
     void styleDidChange(StyleDifference, const RenderStyle* oldStyle) final;
     void layout() override;
     void paint(PaintInfo&, const LayoutPoint&) override;
@@ -96,7 +95,6 @@ private:
     bool needsPreferredWidthsRecalculation() const final;
     RenderBox* embeddedContentBox() const final;
 
-    void willBeDestroyed() final;
     void setSelectionState(SelectionState) final;
     void setOverlapTestResult(bool) final;
 
@@ -119,5 +117,3 @@ inline void RenderWidget::deref()
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderWidget, isWidget())
-
-#endif // RenderWidget_h

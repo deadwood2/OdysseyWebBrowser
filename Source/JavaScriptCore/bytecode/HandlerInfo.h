@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef HandlerInfo_h
-#define HandlerInfo_h
+#pragma once
 
 #include "CodeLocation.h"
 #include <wtf/Vector.h>
@@ -32,9 +31,9 @@
 namespace JSC {
 
 enum class HandlerType {
-    Illegal = 0,
-    Catch = 1,
-    Finally = 2,
+    Catch = 0,
+    Finally = 1,
+    SynthesizedCatch = 2,
     SynthesizedFinally = 3
 };
 
@@ -54,6 +53,8 @@ struct HandlerInfoBase {
             return "catch";
         case HandlerType::Finally:
             return "finally";
+        case HandlerType::SynthesizedCatch:
+            return "synthesized catch";
         case HandlerType::SynthesizedFinally:
             return "synthesized finally";
         default:
@@ -119,6 +120,3 @@ struct HandlerInfo : public HandlerInfoBase {
 };
 
 } // namespace JSC
-
-#endif // HandlerInfo_h
-

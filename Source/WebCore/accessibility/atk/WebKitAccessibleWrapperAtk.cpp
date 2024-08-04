@@ -357,8 +357,6 @@ static AtkAttributeSet* webkitAccessibleGetAttributes(AtkObject* object)
     AtkAttributeSet* attributeSet = nullptr;
 #if PLATFORM(GTK)
     attributeSet = addToAtkAttributeSet(attributeSet, "toolkit", "WebKitGtk");
-#elif PLATFORM(EFL)
-    attributeSet = addToAtkAttributeSet(attributeSet, "toolkit", "WebKitEfl");
 #endif
 
     AccessibilityObject* coreObject = core(object);
@@ -532,8 +530,6 @@ static AtkRole atkRole(AccessibilityObject* coreObject)
 #if PLATFORM(GTK)
         // ATK_ROLE_COLOR_CHOOSER is defined as a dialog (i.e. it's what appears when you push the button).
         return ATK_ROLE_PUSH_BUTTON;
-#elif PLATFORM(EFL)
-        return ATK_ROLE_COLOR_CHOOSER;
 #endif
     case ListRole:
         return ATK_ROLE_LIST;
@@ -582,11 +578,12 @@ static AtkRole atkRole(AccessibilityObject* coreObject)
     case HeadingRole:
         return ATK_ROLE_HEADING;
     case ListBoxRole:
-        return ATK_ROLE_LIST_BOX;
+        // https://rawgit.com/w3c/aria/master/core-aam/core-aam.html#role-map-listbox
+        return coreObject->isDescendantOfRole(ComboBoxRole) ? ATK_ROLE_MENU : ATK_ROLE_LIST_BOX;
     case ListItemRole:
         return coreObject->inheritsPresentationalRole() ? ATK_ROLE_SECTION : ATK_ROLE_LIST_ITEM;
     case ListBoxOptionRole:
-        return ATK_ROLE_LIST_ITEM;
+        return coreObject->isDescendantOfRole(ComboBoxRole) ? ATK_ROLE_MENU_ITEM : ATK_ROLE_LIST_ITEM;
     case ParagraphRole:
         return ATK_ROLE_PARAGRAPH;
     case LabelRole:
@@ -750,6 +747,9 @@ static void setAtkStateSetFromCoreObject(AccessibilityObject* coreObject, AtkSta
     if (isListBoxOption && coreObject->isSelectedOptionActive())
         atk_state_set_add_state(stateSet, ATK_STATE_ACTIVE);
 
+    if (coreObject->isBusy())
+        atk_state_set_add_state(stateSet, ATK_STATE_BUSY);
+
 #if ATK_CHECK_VERSION(2,11,2)
     if (coreObject->supportsChecked() && coreObject->canSetValueAttribute())
         atk_state_set_add_state(stateSet, ATK_STATE_CHECKABLE);
@@ -841,10 +841,10 @@ static void setAtkStateSetFromCoreObject(AccessibilityObject* coreObject, AtkSta
     }
 
     // Mutually exclusive, so we group these two
-    if (coreObject->roleValue() == TextFieldRole)
-        atk_state_set_add_state(stateSet, ATK_STATE_SINGLE_LINE);
-    else if (coreObject->roleValue() == TextAreaRole)
+    if (coreObject->roleValue() == TextAreaRole || coreObject->ariaIsMultiline())
         atk_state_set_add_state(stateSet, ATK_STATE_MULTI_LINE);
+    else if (coreObject->roleValue() == TextFieldRole || coreObject->roleValue() == SearchFieldRole)
+        atk_state_set_add_state(stateSet, ATK_STATE_SINGLE_LINE);
 
     // TODO: ATK_STATE_SENSITIVE
 
@@ -1082,7 +1082,7 @@ static guint16 getInterfaceMaskFromObject(AccessibilityObject* coreObject)
     interfaceMask |= 1 << WAIAction;
 
     // Selection
-    if (coreObject->isListBox() || coreObject->isMenuList())
+    if (coreObject->canHaveSelectedChildren() || coreObject->isMenuList())
         interfaceMask |= 1 << WAISelection;
 
     // Get renderer if available.

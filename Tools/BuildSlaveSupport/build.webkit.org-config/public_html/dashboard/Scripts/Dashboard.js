@@ -27,15 +27,12 @@ Dashboard = {
     Platform: {
         macOSSierra: { name: "macos-sierra", readableName: "macOS Sierra", order: 8 },
         MacOSXElCapitan: { name: "mac-os-x-elcapitan", readableName: "OS X El Capitan", order: 9 },
-        MacOSXYosemite: { name: "mac-os-x-yosemite", readableName: "OS X Yosemite", order: 10 },
-        MacOSXMavericks: { name: "mac-os-x-mavericks", readableName: "OS X Mavericks", order: 20 },
-        iOS9Simulator: { name: "ios-simulator-9", readableName: "iOS 9 Simulator", order: 30 },
-        iOS9Device: { name: "ios-9", readableName: "iOS 9", order: 40 },
+        iOS10Simulator: { name: "ios-simulator-10", readableName: "iOS 10 Simulator", order: 30 },
+        iOS10Device: { name: "ios-10", readableName: "iOS 10", order: 40 },
         Windows8: { name: "windows-8", readableName: "Windows 8", order: 50 },
         Windows7: { name: "windows-7", readableName: "Windows 7", order: 60 },
         WindowsXP: { name: "windows-xp", readableName: "Windows XP", order: 70 },
-        LinuxGTK: { name : "linux-gtk", readableName: "Linux GTK", order: 90 },
-        LinuxEFL: { name: "linux-efl", readableName: "Linux EFL", order : 100 }
+        LinuxGTK: { name : "linux-gtk", readableName: "Linux GTK", order: 90 }
     },
     Branch: {},
     Repository: {

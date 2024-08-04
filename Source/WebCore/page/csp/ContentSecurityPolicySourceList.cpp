@@ -30,7 +30,6 @@
 #include "ContentSecurityPolicy.h"
 #include "ContentSecurityPolicyDirectiveNames.h"
 #include "ParsingUtilities.h"
-#include "SecurityOrigin.h"
 #include "URL.h"
 #include <wtf/ASCIICType.h>
 #include <wtf/NeverDestroyed.h>
@@ -173,7 +172,7 @@ void ContentSecurityPolicySourceList::parse(const UChar* begin, const UChar* end
         skipWhile<UChar, isSourceCharacter>(position, end);
 
         String scheme, host, path;
-        int port = 0;
+        std::optional<uint16_t> port;
         bool hostHasWildcard = false;
         bool portHasWildcard = false;
 
@@ -203,7 +202,7 @@ void ContentSecurityPolicySourceList::parse(const UChar* begin, const UChar* end
 //                   / ( [ scheme "://" ] host [ port ] [ path ] )
 //                   / "'self'"
 //
-bool ContentSecurityPolicySourceList::parseSource(const UChar* begin, const UChar* end, String& scheme, String& host, int& port, String& path, bool& hostHasWildcard, bool& portHasWildcard)
+bool ContentSecurityPolicySourceList::parseSource(const UChar* begin, const UChar* end, String& scheme, String& host, std::optional<uint16_t>& port, String& path, bool& hostHasWildcard, bool& portHasWildcard)
 {
     if (begin == end)
         return false;
@@ -292,7 +291,7 @@ bool ContentSecurityPolicySourceList::parseSource(const UChar* begin, const UCha
         return false;
 
     if (!beginPort)
-        port = 0;
+        port = std::nullopt;
     else {
         if (!parsePort(beginPort, beginPath, port, portHasWildcard))
             return false;
@@ -394,7 +393,7 @@ bool ContentSecurityPolicySourceList::parsePath(const UChar* begin, const UChar*
 
 // port              = ":" ( 1*DIGIT / "*" )
 //
-bool ContentSecurityPolicySourceList::parsePort(const UChar* begin, const UChar* end, int& port, bool& portHasWildcard)
+bool ContentSecurityPolicySourceList::parsePort(const UChar* begin, const UChar* end, std::optional<uint16_t>& port, bool& portHasWildcard)
 {
     ASSERT(begin <= end);
     ASSERT(!port);
@@ -407,7 +406,7 @@ bool ContentSecurityPolicySourceList::parsePort(const UChar* begin, const UChar*
         return false;
     
     if (end - begin == 1 && *begin == '*') {
-        port = 0;
+        port = std::nullopt;
         portHasWildcard = true;
         return true;
     }
@@ -419,7 +418,10 @@ bool ContentSecurityPolicySourceList::parsePort(const UChar* begin, const UChar*
         return false;
     
     bool ok;
-    port = charactersToIntStrict(begin, end - begin, &ok);
+    int portInt = charactersToIntStrict(begin, end - begin, &ok);
+    if (portInt < 0 || portInt > std::numeric_limits<uint16_t>::max())
+        return false;
+    port = portInt;
     return ok;
 }
 

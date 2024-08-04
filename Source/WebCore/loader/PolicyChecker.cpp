@@ -43,7 +43,6 @@
 #include "HTMLFormElement.h"
 #include "HTMLFrameOwnerElement.h"
 #include "HTMLPlugInElement.h"
-#include "SecurityOrigin.h"
 
 #if USE(QUICK_LOOK)
 #include "QuickLook.h"
@@ -55,10 +54,16 @@ static bool isAllowedByContentSecurityPolicy(const URL& url, const Element* owne
 {
     if (!ownerElement)
         return true;
+    // Elements in user agent show tree should load whatever the embedding document policy is.
+    if (ownerElement->isInUserAgentShadowTree())
+        return true;
+
     auto redirectResponseReceived = didReceiveRedirectResponse ? ContentSecurityPolicy::RedirectResponseReceived::Yes : ContentSecurityPolicy::RedirectResponseReceived::No;
+
+    ASSERT(ownerElement->document().contentSecurityPolicy());
     if (is<HTMLPlugInElement>(ownerElement))
-        return ownerElement->document().contentSecurityPolicy()->allowObjectFromSource(url, ownerElement->isInUserAgentShadowTree(), redirectResponseReceived);
-    return ownerElement->document().contentSecurityPolicy()->allowChildFrameFromSource(url, ownerElement->isInUserAgentShadowTree(), redirectResponseReceived);
+        return ownerElement->document().contentSecurityPolicy()->allowObjectFromSource(url, redirectResponseReceived);
+    return ownerElement->document().contentSecurityPolicy()->allowChildFrameFromSource(url, redirectResponseReceived);
 }
 
 PolicyChecker::PolicyChecker(Frame& frame)
@@ -74,7 +79,7 @@ void PolicyChecker::checkNavigationPolicy(const ResourceRequest& newRequest, boo
     checkNavigationPolicy(newRequest, didReceiveRedirectResponse, m_frame.loader().activeDocumentLoader(), nullptr, WTFMove(function));
 }
 
-void PolicyChecker::checkNavigationPolicy(const ResourceRequest& request, bool didReceiveRedirectResponse, DocumentLoader* loader, PassRefPtr<FormState> formState, NavigationPolicyDecisionFunction function)
+void PolicyChecker::checkNavigationPolicy(const ResourceRequest& request, bool didReceiveRedirectResponse, DocumentLoader* loader, FormState* formState, NavigationPolicyDecisionFunction function)
 {
     NavigationAction action = loader->triggeringAction();
     if (action.isEmpty()) {
@@ -116,7 +121,7 @@ void PolicyChecker::checkNavigationPolicy(const ResourceRequest& request, bool d
 
     loader->setLastCheckedRequest(request);
 
-    m_callback.set(request, formState.get(), WTFMove(function));
+    m_callback.set(request, formState, WTFMove(function));
 
 #if USE(QUICK_LOOK)
     // Always allow QuickLook-generated URLs based on the protocol scheme.
@@ -147,12 +152,12 @@ void PolicyChecker::checkNavigationPolicy(const ResourceRequest& request, bool d
     m_delegateIsDecidingNavigationPolicy = false;
 }
 
-void PolicyChecker::checkNewWindowPolicy(const NavigationAction& action, const ResourceRequest& request, PassRefPtr<FormState> formState, const String& frameName, NewWindowPolicyDecisionFunction function)
+void PolicyChecker::checkNewWindowPolicy(const NavigationAction& action, const ResourceRequest& request, FormState* formState, const String& frameName, NewWindowPolicyDecisionFunction function)
 {
     if (m_frame.document() && m_frame.document()->isSandboxed(SandboxPopups))
         return continueAfterNavigationPolicy(PolicyIgnore);
 
-    if (!DOMWindow::allowPopUp(&m_frame))
+    if (!DOMWindow::allowPopUp(m_frame))
         return continueAfterNavigationPolicy(PolicyIgnore);
 
     m_callback.set(request, formState, frameName, action, WTFMove(function));

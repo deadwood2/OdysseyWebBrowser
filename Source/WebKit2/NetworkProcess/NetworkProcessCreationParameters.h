@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,6 +33,7 @@
 
 #if USE(SOUP)
 #include "HTTPCookieAcceptPolicy.h"
+#include <WebCore/SoupNetworkProxySettings.h>
 #endif
 
 namespace IPC {
@@ -72,6 +73,7 @@ struct NetworkProcessCreationParameters {
 #endif
     bool shouldSuppressMemoryPressureHandler { false };
     bool shouldUseTestingNetworkSession;
+    std::chrono::milliseconds loadThrottleLatency { 0ms };
 
     Vector<String> urlSchemesRegisteredForCustomProtocols;
 
@@ -80,7 +82,11 @@ struct NetworkProcessCreationParameters {
     String uiProcessBundleIdentifier;
     uint64_t nsURLCacheMemoryCapacity;
     uint64_t nsURLCacheDiskCapacity;
-
+    String sourceApplicationBundleIdentifier;
+    String sourceApplicationSecondaryIdentifier;
+#if PLATFORM(IOS)
+    String ctDataConnectionServiceType;
+#endif
     String httpProxy;
     String httpsProxy;
 #if TARGET_OS_IPHONE || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
@@ -95,10 +101,20 @@ struct NetworkProcessCreationParameters {
     HTTPCookieAcceptPolicy cookieAcceptPolicy;
     bool ignoreTLSErrors;
     Vector<String> languages;
+    WebCore::SoupNetworkProxySettings proxySettings;
 #endif
 
 #if OS(LINUX)
     IPC::Attachment memoryPressureMonitorHandle;
+#endif
+
+#if ENABLE(NETWORK_CAPTURE)
+    String recordReplayMode;
+    String recordReplayCacheLocation;
+#endif
+
+#if ENABLE(WEB_RTC)
+    bool webRTCEnabled { false };
 #endif
 };
 

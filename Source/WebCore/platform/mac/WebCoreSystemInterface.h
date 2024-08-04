@@ -77,7 +77,7 @@ typedef struct _NSRect NSRect;
 #include <CoreGraphics/CoreGraphics.h>
 #endif
 
-#if USE(CFNETWORK)
+#if USE(CFURLCONNECTION)
 typedef struct OpaqueCFHTTPCookieStorage*  CFHTTPCookieStorageRef;
 typedef struct _CFURLProtectionSpace* CFURLProtectionSpaceRef;
 typedef struct _CFURLCredential* WKCFURLCredentialRef;
@@ -235,9 +235,7 @@ extern CGFloat (*wkNSReboundDeltaForElasticDelta)(CGFloat delta);
 extern bool (*wkIsPublicSuffix)(NSString *host);
 #endif
 
-#if ENABLE(CACHE_PARTITIONING)
 extern CFStringRef (*wkCachePartitionKey)(void);
-#endif
 
 typedef enum {
     wkExternalPlaybackTypeNone,

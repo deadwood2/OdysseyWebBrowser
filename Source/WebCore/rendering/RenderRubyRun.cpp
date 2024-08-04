@@ -158,7 +158,7 @@ void RenderRubyRun::removeChild(RenderObject& child)
 {
     // If the child is a ruby text, then merge the ruby base with the base of
     // the right sibling run, if possible.
-    if (!beingDestroyed() && !documentBeingDestroyed() && child.isRubyText()) {
+    if (!beingDestroyed() && !renderTreeBeingDestroyed() && child.isRubyText()) {
         RenderRubyBase* base = rubyBase();
         RenderObject* rightNeighbour = nextSibling();
         if (base && is<RenderRubyRun>(rightNeighbour)) {
@@ -167,7 +167,7 @@ void RenderRubyRun::removeChild(RenderObject& child)
             if (rightRun.hasRubyBase()) {
                 RenderRubyBase* rightBase = rightRun.rubyBaseSafe();
                 // Collect all children in a single base, then swap the bases.
-                rightBase->mergeChildrenWithBase(base);
+                rightBase->mergeChildrenWithBase(*base);
                 moveChildTo(&rightRun, base);
                 rightRun.moveChildTo(this, rightBase);
                 // The now empty ruby base will be removed below.
@@ -178,7 +178,7 @@ void RenderRubyRun::removeChild(RenderObject& child)
 
     RenderBlockFlow::removeChild(child);
 
-    if (!beingDestroyed() && !documentBeingDestroyed()) {
+    if (!beingDestroyed() && !renderTreeBeingDestroyed()) {
         // Check if our base (if any) is now empty. If so, destroy it.
         RenderBlock* base = rubyBase();
         if (base && !base->firstChild()) {
@@ -230,15 +230,26 @@ void RenderRubyRun::layout()
 {
     if (RenderRubyBase* base = rubyBase())
         base->reset();
-
     RenderBlockFlow::layout();
-    
+}
+
+void RenderRubyRun::layoutBlock(bool relayoutChildren, LayoutUnit pageHeight)
+{
+    if (!relayoutChildren) {
+        // Since the extra relayout in RenderBlockFlow::updateRubyForJustifiedText() causes the size of the RenderRubyText/RenderRubyBase
+        // dependent on the line's current expansion, whenever we relayout the RenderRubyRun, we need to relayout the RenderRubyBase/RenderRubyText as well.
+        // FIXME: We should take the expansion opportunities into account if possible.
+        relayoutChildren = style().textAlign() == JUSTIFY;
+    }
+
+    RenderBlockFlow::layoutBlock(relayoutChildren, pageHeight);
+
     RenderRubyText* rt = rubyText();
     if (!rt)
         return;
 
     rt->setLogicalLeft(0);
-    
+
     // Place the RenderRubyText such that its bottom is flush with the lineTop of the first line of the RenderRubyBase.
     LayoutUnit lastLineRubyTextBottom = rt->logicalHeight();
     LayoutUnit firstLineRubyTextTop = 0;

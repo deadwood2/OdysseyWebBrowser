@@ -18,8 +18,7 @@
  *
  */
 
-#ifndef ObjectPrototype_h
-#define ObjectPrototype_h
+#pragma once
 
 #include "JSObject.h"
 
@@ -32,7 +31,7 @@ public:
 
     static ObjectPrototype* create(VM&, JSGlobalObject*, Structure*);
 
-    DECLARE_INFO;
+    DECLARE_EXPORT_INFO;
 
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
     {
@@ -49,5 +48,3 @@ private:
 JS_EXPORT_PRIVATE EncodedJSValue JSC_HOST_CALL objectProtoFuncToString(ExecState*);
 
 } // namespace JSC
-
-#endif // ObjectPrototype_h

@@ -26,18 +26,14 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
  
-#ifndef JSLexicalEnvironment_h
-#define JSLexicalEnvironment_h
+#pragma once
 
 #include "CodeBlock.h"
-#include "CopiedSpaceInlines.h"
 #include "JSEnvironmentRecord.h"
 #include "SymbolTable.h"
 
 namespace JSC {
 
-class Register;
-    
 class JSLexicalEnvironment : public JSEnvironmentRecord {
 protected:
     JSLexicalEnvironment(VM&, Structure*, JSScope*, SymbolTable*);
@@ -85,10 +81,8 @@ inline JSLexicalEnvironment::JSLexicalEnvironment(VM& vm, Structure* structure, 
 
 inline JSLexicalEnvironment* asActivation(JSValue value)
 {
-    ASSERT(asObject(value)->inherits(JSLexicalEnvironment::info()));
+    ASSERT(asObject(value)->inherits(*value.getObject()->vm(), JSLexicalEnvironment::info()));
     return jsCast<JSLexicalEnvironment*>(asObject(value));
 }
     
 } // namespace JSC
-
-#endif // JSLexicalEnvironment_h

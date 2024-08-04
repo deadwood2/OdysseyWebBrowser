@@ -41,9 +41,10 @@ WebInspector.Popover = class Popover extends WebInspector.Object
         this._contentNeedsUpdate = false;
         this._dismissing = false;
 
+        this._canvasId = "popover-" + (WebInspector.Popover.canvasId++);
+
         this._element = document.createElement("div");
         this._element.className = "popover";
-        this._canvasId = "popover-" + (WebInspector.Popover.canvasId++);
         this._element.style.backgroundImage = "-webkit-canvas(" + this._canvasId + ")";
         this._element.addEventListener("transitionend", this, true);
 
@@ -147,9 +148,13 @@ WebInspector.Popover = class Popover extends WebInspector.Object
 
         console.assert(this._isListeningForPopoverEvents);
         this._isListeningForPopoverEvents = false;
+
         window.removeEventListener("mousedown", this, true);
         window.removeEventListener("scroll", this, true);
         window.removeEventListener("resize", this, true);
+        window.removeEventListener("keypress", this, true);
+
+        WebInspector.quickConsole.keyboardShortcutDisabled = false;
 
         this._element.classList.add(WebInspector.Popover.FadeOutClassName);
 
@@ -162,12 +167,18 @@ WebInspector.Popover = class Popover extends WebInspector.Object
         switch (event.type) {
         case "mousedown":
         case "scroll":
-            if (!this._element.contains(event.target) && !event.target.enclosingNodeOrSelfWithClass(WebInspector.Popover.IgnoreAutoDismissClassName))
+            if (!this._element.contains(event.target) && !event.target.enclosingNodeOrSelfWithClass(WebInspector.Popover.IgnoreAutoDismissClassName)
+                && !event[WebInspector.Popover.EventPreventDismissSymbol]) {
                 this.dismiss();
+            }
             break;
         case "resize":
             if (this._resizeHandler)
                 this._resizeHandler();
+            break;
+        case "keypress":
+            if (event.keyCode === WebInspector.KeyboardShortcut.Key.Escape.keyCode)
+                this.dismiss();
             break;
         case "transitionend":
             if (event.target === this._element) {
@@ -513,7 +524,7 @@ WebInspector.Popover = class Popover extends WebInspector.Object
 
         // Prevent the arrow from being positioned against one of the popover's rounded corners.
         let arrowPadding = cornerRadius + arrowHalfLength;
-        if (anchorEdge === WebInspector.RectEdge.MIN_Y ||anchorEdge === WebInspector.RectEdge.MAX_Y)
+        if (anchorEdge === WebInspector.RectEdge.MIN_Y || anchorEdge === WebInspector.RectEdge.MAX_Y)
             anchorPoint.x = Number.constrain(anchorPoint.x, bounds.minX() + arrowPadding, bounds.maxX() - arrowPadding);
         else
             anchorPoint.y = Number.constrain(anchorPoint.y, bounds.minY() + arrowPadding, bounds.maxY() - arrowPadding);
@@ -568,9 +579,13 @@ WebInspector.Popover = class Popover extends WebInspector.Object
     {
         if (!this._isListeningForPopoverEvents) {
             this._isListeningForPopoverEvents = true;
+
             window.addEventListener("mousedown", this, true);
             window.addEventListener("scroll", this, true);
             window.addEventListener("resize", this, true);
+            window.addEventListener("keypress", this, true);
+
+            WebInspector.quickConsole.keyboardShortcutDisabled = true;
         }
     }
 };
@@ -585,3 +600,4 @@ WebInspector.Popover.ContentPadding = 5;
 WebInspector.Popover.AnchorSize = new WebInspector.Size(22, 11);
 WebInspector.Popover.ShadowEdgeInsets = new WebInspector.EdgeInsets(WebInspector.Popover.ShadowPadding);
 WebInspector.Popover.IgnoreAutoDismissClassName = "popover-ignore-auto-dismiss";
+WebInspector.Popover.EventPreventDismissSymbol = Symbol("popover-event-prevent-dismiss");

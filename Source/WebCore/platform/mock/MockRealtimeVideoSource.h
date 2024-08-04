@@ -46,19 +46,13 @@ class GraphicsContext;
 class MockRealtimeVideoSource : public MockRealtimeMediaSource {
 public:
 
-    static Ref<MockRealtimeVideoSource> create();
-    static Ref<MockRealtimeVideoSource> createMuted(const String& name);
+    static RefPtr<MockRealtimeVideoSource> create(const String&, const MediaConstraints*);
+    static RefPtr<MockRealtimeVideoSource> createMuted(const String& name);
 
     virtual ~MockRealtimeVideoSource() { }
 
-    void setSize(const IntSize&);
-    const IntSize& size() const { return m_size; }
-
-    void setFrameRate(float);
-
 protected:
-    MockRealtimeVideoSource(const String& name = ASCIILiteral("Mock video device"));
-    virtual void updatePlatformLayer() const { }
+    MockRealtimeVideoSource(const String&);
     virtual void updateSampleBuffer() { }
 
     ImageBuffer* imageBuffer() const;
@@ -70,14 +64,18 @@ private:
     void initializeCapabilities(RealtimeMediaSourceCapabilities&) override;
     void initializeSupportedConstraints(RealtimeMediaSourceSupportedConstraints&) override;
 
-    void startProducingData() override;
-    void stopProducingData() override;
+    void startProducingData() final;
+    void stopProducingData() final;
 
     void drawAnimation(GraphicsContext&);
     void drawText(GraphicsContext&);
     void drawBoxes(GraphicsContext&);
 
-    PlatformLayer* platformLayer() const override { return nullptr; }
+    bool applySize(const IntSize&) override;
+    bool applyFrameRate(double) override;
+    bool applyFacingMode(RealtimeMediaSourceSettings::VideoFacingMode) override { return true; }
+    bool applyAspectRatio(double) override { return true; }
+
     RefPtr<Image> currentFrameImage() override;
     void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&) override;
 
@@ -94,14 +92,12 @@ private:
 
     mutable std::unique_ptr<ImageBuffer> m_imageBuffer;
 
-    IntSize m_size;
     Path m_path;
     DashArray m_dashWidths;
 
     double m_startTime { NAN };
     double m_elapsedTime { 0 };
 
-    unsigned m_frameRate { 30 };
     unsigned m_frameNumber { 0 };
 
     RunLoop::Timer<MockRealtimeVideoSource> m_timer;

@@ -133,12 +133,12 @@ void ResourceLoadNotifier::dispatchWillSendRequest(DocumentLoader* loader, unsig
 
     InspectorInstrumentation::willSendRequest(&m_frame, identifier, loader, request, redirectResponse);
 
-    // Report WebTiming for all frames.
-    if (loader && !request.isNull() && request.url() == loader->url())
-        request.setReportLoadTiming(true);
-
     if (RuntimeEnabledFeatures::sharedFeatures().resourceTimingEnabled())
         request.setReportLoadTiming(true);
+    else if (loader && !request.isNull() && request.url() == loader->url()) {
+        // Report WebTiming for all frames.
+        request.setReportLoadTiming(true);
+    }
 }
 
 void ResourceLoadNotifier::dispatchDidReceiveResponse(DocumentLoader* loader, unsigned long identifier, const ResourceResponse& r, ResourceLoader* resourceLoader)
@@ -147,8 +147,7 @@ void ResourceLoadNotifier::dispatchDidReceiveResponse(DocumentLoader* loader, un
     Ref<Frame> protect(m_frame);
     m_frame.loader().client().dispatchDidReceiveResponse(loader, identifier, r);
 
-    InspectorInstrumentationCookie cookie = InspectorInstrumentation::willReceiveResourceResponse(&m_frame);
-    InspectorInstrumentation::didReceiveResourceResponse(cookie, identifier, loader, r, resourceLoader);
+    InspectorInstrumentation::didReceiveResourceResponse(m_frame, identifier, loader, r, resourceLoader);
 }
 
 void ResourceLoadNotifier::dispatchDidReceiveData(DocumentLoader* loader, unsigned long identifier, const char* data, int dataLength, int encodedDataLength)

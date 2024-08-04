@@ -50,11 +50,6 @@
 #include "TemporaryOpenGLSetting.h"
 #include "WebGLRenderingContextBase.h"
 #include <cstring>
-#include <runtime/ArrayBuffer.h>
-#include <runtime/ArrayBufferView.h>
-#include <runtime/Float32Array.h>
-#include <runtime/Int32Array.h>
-#include <runtime/Uint8Array.h>
 #include <wtf/HexNumber.h>
 #include <wtf/MainThread.h>
 #include <wtf/ThreadSpecific.h>
@@ -64,6 +59,7 @@
 
 #if PLATFORM(IOS)
 #import <OpenGLES/ES2/glext.h>
+#import <OpenGLES/ES3/gl.h>
 // From <OpenGLES/glext.h>
 #define GL_RGBA32F_ARB                      0x8814
 #define GL_RGB32F_ARB                       0x8815
@@ -71,8 +67,12 @@
 #if USE(OPENGL_ES_2)
 #include "OpenGLESShims.h"
 #elif PLATFORM(MAC)
+#define GL_DO_NOT_WARN_IF_MULTI_GL_VERSION_HEADERS_INCLUDED
 #include <OpenGL/gl.h>
-#elif PLATFORM(GTK) || PLATFORM(EFL) || PLATFORM(WIN)
+#include <OpenGL/gl3.h>
+#include <OpenGL/gl3ext.h>
+#undef GL_DO_NOT_WARN_IF_MULTI_GL_VERSION_HEADERS_INCLUDED
+#elif PLATFORM(GTK) || PLATFORM(WIN)
 #include "OpenGLShims.h"
 #endif
 #endif
@@ -130,36 +130,36 @@ static uint64_t nameHashForShader(const char* name, size_t length)
     return result;
 }
 
-PassRefPtr<GraphicsContext3D> GraphicsContext3D::createForCurrentGLContext()
+RefPtr<GraphicsContext3D> GraphicsContext3D::createForCurrentGLContext()
 {
-    auto context = adoptRef(*new GraphicsContext3D(Attributes(), 0, GraphicsContext3D::RenderToCurrentGLContext));
+    auto context = adoptRef(*new GraphicsContext3D({ }, 0, GraphicsContext3D::RenderToCurrentGLContext));
+#if USE(TEXTURE_MAPPER)
+    if (!context->m_texmapLayer)
+        return nullptr;
+#else
     if (!context->m_private)
         return nullptr;
+#endif
     return WTFMove(context);
 }
 
 void GraphicsContext3D::validateDepthStencil(const char* packedDepthStencilExtension)
 {
-    Extensions3D* extensions = getExtensions();
+    Extensions3D& extensions = getExtensions();
     if (m_attrs.stencil) {
-        if (extensions->supports(packedDepthStencilExtension)) {
-            extensions->ensureEnabled(packedDepthStencilExtension);
+        if (extensions.supports(packedDepthStencilExtension)) {
+            extensions.ensureEnabled(packedDepthStencilExtension);
             // Force depth if stencil is true.
             m_attrs.depth = true;
         } else
             m_attrs.stencil = false;
     }
     if (m_attrs.antialias) {
-        if (!extensions->supports("GL_ANGLE_framebuffer_multisample") || isGLES2Compliant())
+        if (!extensions.supports("GL_ANGLE_framebuffer_multisample") || isGLES2Compliant())
             m_attrs.antialias = false;
         else
-            extensions->ensureEnabled("GL_ANGLE_framebuffer_multisample");
+            extensions.ensureEnabled("GL_ANGLE_framebuffer_multisample");
     }
-}
-
-bool GraphicsContext3D::isResourceSafe()
-{
-    return false;
 }
 
 void GraphicsContext3D::paintRenderingResultsToCanvas(ImageBuffer* imageBuffer)
@@ -200,12 +200,12 @@ bool GraphicsContext3D::paintCompositedResultsToCanvas(ImageBuffer*)
     return false;
 }
 
-PassRefPtr<ImageData> GraphicsContext3D::paintRenderingResultsToImageData()
+RefPtr<ImageData> GraphicsContext3D::paintRenderingResultsToImageData()
 {
     // Reading premultiplied alpha would involve unpremultiplying, which is
     // lossy.
     if (m_attrs.premultipliedAlpha)
-        return 0;
+        return nullptr;
 
     auto imageData = ImageData::create(IntSize(m_currentWidth, m_currentHeight));
     unsigned char* pixels = imageData->data()->data();
@@ -217,7 +217,7 @@ PassRefPtr<ImageData> GraphicsContext3D::paintRenderingResultsToImageData()
     for (int i = 0; i < totalBytes; i += 4)
         std::swap(pixels[i], pixels[i + 2]);
 
-    return WTFMove(imageData);
+    return imageData;
 }
 
 void GraphicsContext3D::prepareTexture()
@@ -305,11 +305,6 @@ void GraphicsContext3D::reshape(int width, int height)
         return;
 
     markContextChanged();
-
-#if PLATFORM(EFL) && USE(GRAPHICS_SURFACE)
-    ::glFlush(); // Make sure all GL calls have been committed before resizing.
-    createGraphicsSurfaces(IntSize(width, height));
-#endif
 
     m_currentWidth = width;
     m_currentHeight = height;
@@ -551,6 +546,38 @@ void GraphicsContext3D::bufferSubData(GC3Denum target, GC3Dintptr offset, GC3Dsi
     makeContextCurrent();
     ::glBufferSubData(target, offset, size, data);
 }
+
+#if PLATFORM(MAC) || PLATFORM(IOS)
+void* GraphicsContext3D::mapBufferRange(GC3Denum target, GC3Dintptr offset, GC3Dsizeiptr length, GC3Dbitfield access)
+{
+    makeContextCurrent();
+    return ::glMapBufferRange(target, offset, length, access);
+}
+
+GC3Dboolean GraphicsContext3D::unmapBuffer(GC3Denum target)
+{
+    makeContextCurrent();
+    return ::glUnmapBuffer(target);
+}
+
+void GraphicsContext3D::copyBufferSubData(GC3Denum readTarget, GC3Denum writeTarget, GC3Dintptr readOffset, GC3Dintptr writeOffset, GC3Dsizeiptr size)
+{
+    makeContextCurrent();
+    ::glCopyBufferSubData(readTarget, writeTarget, readOffset, writeOffset, size);
+}
+
+void GraphicsContext3D::texStorage2D(GC3Denum target, GC3Dsizei levels, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height)
+{
+    makeContextCurrent();
+    ::glTexStorage2D(target, levels, internalformat, width, height);
+}
+
+void GraphicsContext3D::texStorage3D(GC3Denum target, GC3Dsizei levels, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height, GC3Dsizei depth)
+{
+    makeContextCurrent();
+    ::glTexStorage3D(target, levels, internalformat, width, height, depth);
+}
+#endif
 
 GC3Denum GraphicsContext3D::checkFramebufferStatus(GC3Denum target)
 {
@@ -980,7 +1007,7 @@ int GraphicsContext3D::getAttribLocation(Platform3DObject program, const String&
     return ::glGetAttribLocation(program, mappedName.utf8().data());
 }
 
-GraphicsContext3D::Attributes GraphicsContext3D::getContextAttributes()
+GraphicsContext3DAttributes GraphicsContext3D::getContextAttributes()
 {
     return m_attrs;
 }
@@ -1389,7 +1416,7 @@ Platform3DObject GraphicsContext3D::createVertexArray()
 {
     makeContextCurrent();
     GLuint array = 0;
-#if !USE(OPENGL_ES_2) && (PLATFORM(GTK) || PLATFORM(EFL) || PLATFORM(WIN) || PLATFORM(IOS))
+#if !USE(OPENGL_ES_2) && (PLATFORM(GTK) || PLATFORM(WIN) || PLATFORM(IOS))
     glGenVertexArrays(1, &array);
 #elif defined(GL_APPLE_vertex_array_object) && GL_APPLE_vertex_array_object
     glGenVertexArraysAPPLE(1, &array);
@@ -1403,7 +1430,7 @@ void GraphicsContext3D::deleteVertexArray(Platform3DObject array)
         return;
     
     makeContextCurrent();
-#if !USE(OPENGL_ES_2) && (PLATFORM(GTK) || PLATFORM(EFL) || PLATFORM(WIN) || PLATFORM(IOS))
+#if !USE(OPENGL_ES_2) && (PLATFORM(GTK) || PLATFORM(WIN) || PLATFORM(IOS))
     glDeleteVertexArrays(1, &array);
 #elif defined(GL_APPLE_vertex_array_object) && GL_APPLE_vertex_array_object
     glDeleteVertexArraysAPPLE(1, &array);
@@ -1416,7 +1443,7 @@ GC3Dboolean GraphicsContext3D::isVertexArray(Platform3DObject array)
         return GL_FALSE;
     
     makeContextCurrent();
-#if !USE(OPENGL_ES_2) && (PLATFORM(GTK) || PLATFORM(EFL) || PLATFORM(WIN) || PLATFORM(IOS))
+#if !USE(OPENGL_ES_2) && (PLATFORM(GTK) || PLATFORM(WIN) || PLATFORM(IOS))
     return glIsVertexArray(array);
 #elif defined(GL_APPLE_vertex_array_object) && GL_APPLE_vertex_array_object
     return glIsVertexArrayAPPLE(array);
@@ -1427,7 +1454,7 @@ GC3Dboolean GraphicsContext3D::isVertexArray(Platform3DObject array)
 void GraphicsContext3D::bindVertexArray(Platform3DObject array)
 {
     makeContextCurrent();
-#if !USE(OPENGL_ES_2) && (PLATFORM(GTK) || PLATFORM(EFL) || PLATFORM(WIN) || PLATFORM(IOS))
+#if !USE(OPENGL_ES_2) && (PLATFORM(GTK) || PLATFORM(WIN) || PLATFORM(IOS))
     glBindVertexArray(array);
 #elif defined(GL_APPLE_vertex_array_object) && GL_APPLE_vertex_array_object
     glBindVertexArrayAPPLE(array);
@@ -1876,17 +1903,17 @@ void GraphicsContext3D::texImage2DDirect(GC3Denum target, GC3Dint level, GC3Denu
 
 void GraphicsContext3D::drawArraysInstanced(GC3Denum mode, GC3Dint first, GC3Dsizei count, GC3Dsizei primcount)
 {
-    getExtensions()->drawArraysInstanced(mode, first, count, primcount);
+    getExtensions().drawArraysInstanced(mode, first, count, primcount);
 }
 
 void GraphicsContext3D::drawElementsInstanced(GC3Denum mode, GC3Dsizei count, GC3Denum type, GC3Dintptr offset, GC3Dsizei primcount)
 {
-    getExtensions()->drawElementsInstanced(mode, count, type, offset, primcount);
+    getExtensions().drawElementsInstanced(mode, count, type, offset, primcount);
 }
 
 void GraphicsContext3D::vertexAttribDivisor(GC3Duint index, GC3Duint divisor)
 {
-    getExtensions()->vertexAttribDivisor(index, divisor);
+    getExtensions().vertexAttribDivisor(index, divisor);
 }
 
 }

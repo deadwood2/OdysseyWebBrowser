@@ -19,8 +19,7 @@
  *
  */
 
-#ifndef NodeRareData_h
-#define NodeRareData_h
+#pragma once
 
 #include "ChildNodeList.h"
 #include "ClassCollection.h"
@@ -203,24 +202,23 @@ public:
         invalidateCaches();
     }
 
-    void adoptDocument(Document* oldDocument, Document* newDocument)
+    void adoptDocument(Document& oldDocument, Document& newDocument)
     {
-        ASSERT(oldDocument);
-        if (oldDocument == newDocument) {
+        if (&oldDocument == &newDocument) {
             invalidateCaches();
             return;
         }
 
         for (auto& cache : m_atomicNameCaches.values())
-            cache->invalidateCache(*oldDocument);
+            cache->invalidateCache(oldDocument);
 
         for (auto& list : m_tagCollectionNSCache.values()) {
             ASSERT(!list->isRootedAtDocument());
-            list->invalidateCache(*oldDocument);
+            list->invalidateCache(oldDocument);
         }
 
         for (auto& collection : m_cachedCollections.values())
-            collection->invalidateCache(*oldDocument);
+            collection->invalidateCache(oldDocument);
     }
 
 private:
@@ -326,5 +324,3 @@ inline NodeRareData& Node::ensureRareData()
 static_assert(Page::maxNumberOfFrames < 1024, "Frame limit should fit in rare data count");
 
 } // namespace WebCore
-
-#endif // NodeRareData_h

@@ -39,6 +39,7 @@
 #import <WebCore/FrameView.h>
 #import <WebCore/GraphicsContext.h>
 #import <WebCore/LegacyWebArchive.h>
+#import <WebCore/MainFrame.h>
 #import <WebCore/WebCoreNSURLExtras.h>
 #import <WebCore/Page.h>
 #import <WebCore/RenderImage.h>
@@ -50,11 +51,22 @@
 using namespace WebCore;
 using namespace WebKit;
 
+#if USE(APPLE_INTERNAL_SDK) && __has_include(<WebKitAdditions/WebDragClientAdditions.mm>)
+#import <WebKitAdditions/WebDragClientAdditions.mm>
+#endif
+
+#if PLATFORM(MAC)
+
 namespace WebKit {
 
-static PassRefPtr<ShareableBitmap> convertImageToBitmap(NSImage *image, const IntSize& size)
+static PassRefPtr<ShareableBitmap> convertImageToBitmap(NSImage *image, const IntSize& size, Frame& frame)
 {
-    auto bitmap = ShareableBitmap::createShareable(size, ShareableBitmap::SupportsAlpha);
+    ShareableBitmap::Flags flags = ShareableBitmap::SupportsAlpha;
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
+    if (screenSupportsExtendedColor(frame.mainFrame().view()))
+        flags |= ShareableBitmap::SupportsExtendedColor;
+#endif
+    auto bitmap = ShareableBitmap::createShareable(size, flags);
     if (!bitmap)
         return nullptr;
 
@@ -63,20 +75,17 @@ static PassRefPtr<ShareableBitmap> convertImageToBitmap(NSImage *image, const In
     RetainPtr<NSGraphicsContext> savedContext = [NSGraphicsContext currentContext];
 
     [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithGraphicsPort:graphicsContext->platformContext() flipped:YES]];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    [image drawInRect:NSMakeRect(0, 0, bitmap->size().width(), bitmap->size().height()) fromRect:NSZeroRect operation:NSCompositeSourceOver fraction:1 respectFlipped:YES hints:nil];
-#pragma clang diagnostic pop
+    [image drawInRect:NSMakeRect(0, 0, bitmap->size().width(), bitmap->size().height()) fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
 
     [NSGraphicsContext setCurrentContext:savedContext.get()];
 
     return WTFMove(bitmap);
 }
 
-void WebDragClient::startDrag(RetainPtr<NSImage> image, const IntPoint& point, const IntPoint&, DataTransfer&, Frame& frame, bool linkDrag)
+void WebDragClient::startDrag(DragImage image, const IntPoint& point, const IntPoint&, const FloatPoint&, DataTransfer&, Frame& frame, DragSourceAction dragSourceAction)
 {
-    IntSize bitmapSize([image size]);
-    RefPtr<ShareableBitmap> bitmap = convertImageToBitmap(image.get(), bitmapSize);
+    IntSize bitmapSize([image.get() size]);
+    RefPtr<ShareableBitmap> bitmap = convertImageToBitmap(image.get().get(), bitmapSize, frame);
     ShareableBitmap::Handle handle;
     if (!bitmap || !bitmap->createHandle(handle))
         return;
@@ -84,7 +93,7 @@ void WebDragClient::startDrag(RetainPtr<NSImage> image, const IntPoint& point, c
     m_page->willStartDrag();
 
     // FIXME: Seems this message should be named StartDrag, not SetDragImage.
-    m_page->send(Messages::WebPageProxy::SetDragImage(frame.view()->contentsToWindow(point), handle, linkDrag));
+    m_page->send(Messages::WebPageProxy::SetDragImage(frame.view()->contentsToWindow(point), handle, { }, dragSourceAction == DragSourceActionLink));
 }
 
 static WebCore::CachedImage* cachedImage(Element& element)
@@ -101,7 +110,10 @@ static WebCore::CachedImage* cachedImage(Element& element)
 #if ENABLE(ATTACHMENT_ELEMENT)
 void WebDragClient::declareAndWriteAttachment(const String& pasteboardName, Element& element, const URL& url, const String& path, WebCore::Frame* frame)
 {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     ASSERT(pasteboardName == String(NSDragPboard));
+#pragma clang diagnostic pop
     
     NSURL* nsURL = (NSURL *)url;
     m_page->send(Messages::WebPageProxy::SetPromisedDataForAttachment(pasteboardName, String(nsURL.lastPathComponent), String(nsURL.pathExtension), path, String(nsURL.absoluteString), userVisibleString(nsURL)));
@@ -110,7 +122,10 @@ void WebDragClient::declareAndWriteAttachment(const String& pasteboardName, Elem
 
 void WebDragClient::declareAndWriteDragImage(const String& pasteboardName, Element& element, const URL& url, const String& label, Frame*)
 {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     ASSERT(pasteboardName == String(NSDragPboard));
+#pragma clang diagnostic pop
 
     WebCore::CachedImage* image = cachedImage(element);
 
@@ -158,5 +173,7 @@ void WebDragClient::declareAndWriteDragImage(const String& pasteboardName, Eleme
 }
 
 } // namespace WebKit
+
+#endif // PLATFORM(MAC)
 
 #endif // ENABLE(DRAG_SUPPORT)

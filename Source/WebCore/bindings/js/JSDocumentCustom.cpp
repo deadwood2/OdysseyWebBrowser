@@ -29,7 +29,6 @@
 #include "JSDOMWindowCustom.h"
 #include "JSHTMLDocument.h"
 #include "JSLocation.h"
-#include "JSNodeOrString.h"
 #include "JSXMLDocument.h"
 #include "Location.h"
 #include "NodeTraversal.h"
@@ -57,11 +56,11 @@ static inline JSValue createNewDocumentWrapper(ExecState& state, JSDOMGlobalObje
     auto& document = passedDocument.get();
     JSObject* wrapper;
     if (document.isHTMLDocument())
-        wrapper = CREATE_DOM_WRAPPER(&globalObject, HTMLDocument, WTFMove(passedDocument));
+        wrapper = createWrapper<HTMLDocument>(&globalObject, WTFMove(passedDocument));
     else if (document.isXMLDocument())
-        wrapper = CREATE_DOM_WRAPPER(&globalObject, XMLDocument, WTFMove(passedDocument));
+        wrapper = createWrapper<XMLDocument>(&globalObject, WTFMove(passedDocument));
     else
-        wrapper = CREATE_DOM_WRAPPER(&globalObject, Document, WTFMove(passedDocument));
+        wrapper = createWrapper<Document>(&globalObject, WTFMove(passedDocument));
 
     reportMemoryForDocumentIfFrameless(state, document);
 
@@ -78,7 +77,7 @@ JSObject* cachedDocumentWrapper(ExecState& state, JSDOMGlobalObject& globalObjec
         return nullptr;
 
     // Creating a wrapper for domWindow might have created a wrapper for document as well.
-    return getCachedWrapper(toJSDOMWindow(toJS(&state, *window))->world(), document);
+    return getCachedWrapper(toJSDOMWindow(state.vm(), toJS(&state, *window))->world(), document);
 }
 
 void reportMemoryForDocumentIfFrameless(ExecState& state, Document& document)
@@ -108,24 +107,6 @@ JSValue toJS(ExecState* state, JSDOMGlobalObject* globalObject, Document& docume
     return toJSNewlyCreated(state, globalObject, Ref<Document>(document));
 }
 
-JSValue JSDocument::prepend(ExecState& state)
-{
-    ExceptionCode ec = 0;
-    wrapped().prepend(toNodeOrStringVector(state), ec);
-    setDOMException(&state, ec);
-
-    return jsUndefined();
-}
-
-JSValue JSDocument::append(ExecState& state)
-{
-    ExceptionCode ec = 0;
-    wrapped().append(toNodeOrStringVector(state), ec);
-    setDOMException(&state, ec);
-
-    return jsUndefined();
-}
-
 #if ENABLE(TOUCH_EVENTS)
 JSValue JSDocument::createTouchList(ExecState& state)
 {
@@ -135,7 +116,7 @@ JSValue JSDocument::createTouchList(ExecState& state)
     auto touchList = TouchList::create();
 
     for (size_t i = 0; i < state.argumentCount(); ++i) {
-        auto* item = JSTouch::toWrapped(state.uncheckedArgument(i));
+        auto* item = JSTouch::toWrapped(vm, state.uncheckedArgument(i));
         if (!item)
             return JSValue::decode(throwArgumentTypeError(state, scope, i, "touches", "Document", "createTouchList", "Touch"));
 
@@ -153,17 +134,13 @@ JSValue JSDocument::getCSSCanvasContext(JSC::ExecState& state)
     if (UNLIKELY(state.argumentCount() < 4))
         return throwException(&state, scope, createNotEnoughArgumentsError(&state));
     auto contextId = state.uncheckedArgument(0).toWTFString(&state);
-    if (UNLIKELY(state.hadException()))
-        return jsUndefined();
+    RETURN_IF_EXCEPTION(scope, JSValue());
     auto name = state.uncheckedArgument(1).toWTFString(&state);
-    if (UNLIKELY(state.hadException()))
-        return jsUndefined();
-    auto width = convert<int32_t>(state, state.uncheckedArgument(2), NormalConversion);
-    if (UNLIKELY(state.hadException()))
-        return jsUndefined();
-    auto height = convert<int32_t>(state, state.uncheckedArgument(3), NormalConversion);
-    if (UNLIKELY(state.hadException()))
-        return jsUndefined();
+    RETURN_IF_EXCEPTION(scope, JSValue());
+    auto width = convert<IDLLong>(state, state.uncheckedArgument(2), IntegerConversionConfiguration::Normal);
+    RETURN_IF_EXCEPTION(scope, JSValue());
+    auto height = convert<IDLLong>(state, state.uncheckedArgument(3), IntegerConversionConfiguration::Normal);
+    RETURN_IF_EXCEPTION(scope, JSValue());
 
     auto* context = wrapped().getCSSCanvasContext(WTFMove(contextId), WTFMove(name), WTFMove(width), WTFMove(height));
     if (!context)
@@ -179,7 +156,7 @@ JSValue JSDocument::getCSSCanvasContext(JSC::ExecState& state)
 
 void JSDocument::visitAdditionalChildren(SlotVisitor& visitor)
 {
-    visitor.addOpaqueRoot(wrapped().scriptExecutionContext());
+    visitor.addOpaqueRoot(static_cast<ScriptExecutionContext*>(&wrapped()));
 }
 
 } // namespace WebCore

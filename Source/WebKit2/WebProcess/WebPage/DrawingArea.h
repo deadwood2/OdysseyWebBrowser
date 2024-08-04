@@ -28,12 +28,12 @@
 #include "DrawingAreaInfo.h"
 #include "LayerTreeContext.h"
 #include "MessageReceiver.h"
+#include <WebCore/ActivityState.h>
 #include <WebCore/FloatRect.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/LayerFlushThrottleState.h>
 #include <WebCore/LayoutMilestones.h>
 #include <WebCore/PlatformScreen.h>
-#include <WebCore/ViewState.h>
 #include <functional>
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
@@ -89,8 +89,8 @@ public:
     virtual void mainFrameContentSizeChanged(const WebCore::IntSize&) { }
 
 #if PLATFORM(COCOA)
-    virtual void setViewExposedRect(Optional<WebCore::FloatRect>) = 0;
-    virtual Optional<WebCore::FloatRect> viewExposedRect() const = 0;
+    virtual void setViewExposedRect(std::optional<WebCore::FloatRect>) = 0;
+    virtual std::optional<WebCore::FloatRect> viewExposedRect() const = 0;
 
     virtual void acceleratedAnimationDidStart(uint64_t /*layerID*/, const String& /*key*/, double /*startTime*/) { }
     virtual void acceleratedAnimationDidEnd(uint64_t /*layerID*/, const String& /*key*/) { }
@@ -115,13 +115,9 @@ public:
     virtual RefPtr<WebCore::DisplayRefreshMonitor> createDisplayRefreshMonitor(WebCore::PlatformDisplayID);
 #endif
 
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-    virtual void didReceiveCoordinatedLayerTreeHostMessage(IPC::Connection&, IPC::Decoder&) = 0;
-#endif
-
     virtual void dispatchAfterEnsuringUpdatedScrollPosition(std::function<void ()>);
 
-    virtual void viewStateDidChange(WebCore::ViewState::Flags, bool /* wantsDidUpdateViewState */, const Vector<uint64_t>& /* callbackIDs */) { }
+    virtual void activityStateDidChange(WebCore::ActivityState::Flags, bool /* wantsDidUpdateActivityState */, const Vector<uint64_t>& /* callbackIDs */) { }
     virtual void setLayerHostingMode(LayerHostingMode) { }
 
     virtual bool markLayersVolatileImmediatelyIfPossible() { return true; }

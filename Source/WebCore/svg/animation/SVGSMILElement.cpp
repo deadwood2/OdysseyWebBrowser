@@ -34,7 +34,6 @@
 #include "EventSender.h"
 #include "FloatConversion.h"
 #include "FrameView.h"
-#include "HTMLNames.h"
 #include "SMILTimeContainer.h"
 #include "SVGDocumentExtensions.h"
 #include "SVGNames.h"
@@ -170,7 +169,7 @@ void SVGSMILElement::buildPendingResource()
 {
     clearResourceReferences();
 
-    if (!inDocument()) {
+    if (!isConnected()) {
         // Reset the target element if we are no longer in the document.
         setTargetElement(nullptr);
         return;
@@ -185,7 +184,7 @@ void SVGSMILElement::buildPendingResource()
         target = SVGURIReference::targetElementFromIRIString(href, document(), &id);
     SVGElement* svgTarget = is<SVGElement>(target) ? downcast<SVGElement>(target) : nullptr;
 
-    if (svgTarget && !svgTarget->inDocument())
+    if (svgTarget && !svgTarget->isConnected())
         svgTarget = nullptr;
 
     if (svgTarget != targetElement())
@@ -207,24 +206,28 @@ void SVGSMILElement::buildPendingResource()
     }
 }
 
-static inline QualifiedName constructQualifiedName(const SVGElement* svgElement, const String& attributeName)
+inline QualifiedName SVGSMILElement::constructAttributeName() const
 {
-    ASSERT(svgElement);
-    if (attributeName.isEmpty())
+    auto parseResult = Document::parseQualifiedName(attributeWithoutSynchronization(SVGNames::attributeNameAttr));
+    if (parseResult.hasException())
         return anyQName();
-    if (!attributeName.contains(':'))
-        return QualifiedName(nullAtom, attributeName, nullAtom);
-    
-    String prefix;
-    String localName;
-    if (!Document::parseQualifiedName(attributeName, prefix, localName, IGNORE_EXCEPTION))
-        return anyQName();
-    
-    String namespaceURI = svgElement->lookupNamespaceURI(prefix);    
+
+    AtomicString prefix, localName;
+    std::tie(prefix, localName) = parseResult.releaseReturnValue();
+
+    if (prefix.isNull())
+        return { nullAtom, localName, nullAtom };
+
+    auto namespaceURI = lookupNamespaceURI(prefix);
     if (namespaceURI.isEmpty())
         return anyQName();
-    
-    return QualifiedName(nullAtom, localName, namespaceURI);
+
+    return { nullAtom, localName, namespaceURI };
+}
+
+inline void SVGSMILElement::updateAttributeName()
+{
+    setAttributeName(constructAttributeName());
 }
 
 static inline void clearTimesWithDynamicOrigins(Vector<SMILTimeWithOrigin>& timeList)
@@ -252,13 +255,14 @@ void SVGSMILElement::reset()
 Node::InsertionNotificationRequest SVGSMILElement::insertedInto(ContainerNode& rootParent)
 {
     SVGElement::insertedInto(rootParent);
-    if (!rootParent.inDocument())
+    if (!rootParent.isConnected())
         return InsertionDone;
 
     // Verify we are not in <use> instance tree.
     ASSERT(!isInShadowTree());
 
-    setAttributeName(constructQualifiedName(this, attributeWithoutSynchronization(SVGNames::attributeNameAttr)));
+    updateAttributeName();
+
     SVGSVGElement* owner = ownerSVGElement();
     if (!owner)
         return InsertionDone;
@@ -286,7 +290,7 @@ void SVGSMILElement::finishedInsertingSubtree()
 
 void SVGSMILElement::removedFrom(ContainerNode& rootParent)
 {
-    if (rootParent.inDocument()) {
+    if (rootParent.isConnected()) {
         clearResourceReferences();
         disconnectConditions();
         setTargetElement(nullptr);
@@ -477,7 +481,7 @@ void SVGSMILElement::parseAttribute(const QualifiedName& name, const AtomicStrin
             parseBeginOrEnd(attributeWithoutSynchronization(SVGNames::endAttr), End);
         }
         parseBeginOrEnd(value.string(), Begin);
-        if (inDocument())
+        if (isConnected())
             connectConditions();
     } else if (name == SVGNames::endAttr) {
         if (!m_conditions.isEmpty()) {
@@ -486,7 +490,7 @@ void SVGSMILElement::parseAttribute(const QualifiedName& name, const AtomicStrin
             parseBeginOrEnd(attributeWithoutSynchronization(SVGNames::beginAttr), Begin);
         }
         parseBeginOrEnd(value.string(), End);
-        if (inDocument())
+        if (isConnected())
             connectConditions();
     } else if (name == SVGNames::onendAttr)
         setAttributeEventListener(eventNames().endEventEvent, name, value);
@@ -514,11 +518,11 @@ void SVGSMILElement::svgAttributeChanged(const QualifiedName& attrName)
     else if (attrName == SVGNames::maxAttr)
         m_cachedMax = invalidCachedTime;
     else if (attrName == SVGNames::attributeNameAttr)
-        setAttributeName(constructQualifiedName(this, attributeWithoutSynchronization(SVGNames::attributeNameAttr)));
+        updateAttributeName();
     else if (attrName.matches(XLinkNames::hrefAttr)) {
         InstanceInvalidationGuard guard(*this);
         buildPendingResource();
-    } else if (inDocument()) {
+    } else if (isConnected()) {
         if (attrName == SVGNames::beginAttr)
             beginListChanged(elapsed());
         else if (attrName == SVGNames::endAttr)

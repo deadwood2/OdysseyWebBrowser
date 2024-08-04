@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2004-2009, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,8 +20,11 @@
  *
  */
 
-#ifndef HTMLElement_h
-#define HTMLElement_h
+#pragma once
+
+#if ENABLE(IOS_AUTOCORRECT_AND_AUTOCAPITALIZE)
+#include "Autocapitalize.h"
+#endif
 
 #include "StyledElement.h"
 
@@ -32,12 +35,6 @@ class FormNamedItem;
 class HTMLCollection;
 class HTMLFormElement;
 
-enum TranslateAttributeMode {
-    TranslateAttributeYes,
-    TranslateAttributeNo,
-    TranslateAttributeInherit
-};
-
 class HTMLElement : public StyledElement {
 public:
     static Ref<HTMLElement> create(const QualifiedName& tagName, Document&);
@@ -46,14 +43,14 @@ public:
 
     int tabIndex() const override;
 
-    WEBCORE_EXPORT void setInnerText(const String&, ExceptionCode&);
-    WEBCORE_EXPORT void setOuterText(const String&, ExceptionCode&);
+    WEBCORE_EXPORT ExceptionOr<void> setInnerText(const String&);
+    WEBCORE_EXPORT ExceptionOr<void> setOuterText(const String&);
 
     virtual bool hasCustomFocusLogic() const;
     bool supportsFocus() const override;
 
     WEBCORE_EXPORT String contentEditable() const;
-    WEBCORE_EXPORT void setContentEditable(const String&, ExceptionCode&);
+    WEBCORE_EXPORT ExceptionOr<void> setContentEditable(const String&);
 
     static Editability editabilityFromContentEditableAttr(const Node&);
 
@@ -73,7 +70,7 @@ public:
     bool rendererIsNeeded(const RenderStyle&) override;
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) override;
 
-    HTMLFormElement* form() const { return virtualForm(); }
+    WEBCORE_EXPORT virtual HTMLFormElement* form() const;
 
     WEBCORE_EXPORT const AtomicString& dir() const;
     WEBCORE_EXPORT void setDir(const AtomicString&);
@@ -98,6 +95,16 @@ public:
     // Only some element types can be disabled: https://html.spec.whatwg.org/multipage/scripting.html#concept-element-disabled
     bool canBeActuallyDisabled() const;
     bool isActuallyDisabled() const;
+
+#if ENABLE(IOS_AUTOCORRECT_AND_AUTOCAPITALIZE)
+    WEBCORE_EXPORT virtual AutocapitalizeType autocapitalizeType() const;
+    WEBCORE_EXPORT const AtomicString& autocapitalize() const;
+    WEBCORE_EXPORT void setAutocapitalize(const AtomicString& value);
+
+    bool autocorrect() const { return shouldAutocorrect(); }
+    WEBCORE_EXPORT virtual bool shouldAutocorrect() const;
+    WEBCORE_EXPORT void setAutocorrect(bool);
+#endif
 
 protected:
     HTMLElement(const QualifiedName& tagName, Document&, ConstructionType);
@@ -126,14 +133,10 @@ private:
 
     void mapLanguageAttributeToLocale(const AtomicString&, MutableStyleProperties&);
 
-    virtual HTMLFormElement* virtualForm() const;
-
     void dirAttributeChanged(const AtomicString&);
     void adjustDirectionalityIfNeededAfterChildAttributeChanged(Element* child);
     void adjustDirectionalityIfNeededAfterChildrenChanged(Element* beforeChange, ChildChangeType);
     TextDirection directionality(Node** strongDirectionalityTextNode= 0) const;
-
-    TranslateAttributeMode translateAttributeMode() const;
 
     static void populateEventHandlerNameMap(EventHandlerNameMap&, const QualifiedName* const table[], size_t tableSize);
     static EventHandlerNameMap createEventHandlerNameMap();
@@ -162,5 +165,3 @@ SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::HTMLElement)
 SPECIALIZE_TYPE_TRAITS_END()
 
 #include "HTMLElementTypeHelpers.h"
-
-#endif // HTMLElement_h

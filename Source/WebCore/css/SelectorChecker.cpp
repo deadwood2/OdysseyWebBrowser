@@ -35,17 +35,10 @@
 #include "ElementTraversal.h"
 #include "Frame.h"
 #include "FrameSelection.h"
-#include "HTMLAnchorElement.h"
 #include "HTMLDocument.h"
-#include "HTMLFrameElementBase.h"
-#include "HTMLInputElement.h"
 #include "HTMLNames.h"
-#include "HTMLOptGroupElement.h"
-#include "HTMLOptionElement.h"
 #include "HTMLParserIdioms.h"
-#include "HTMLProgressElement.h"
 #include "HTMLSlotElement.h"
-#include "HTMLStyleElement.h"
 #include "InspectorInstrumentation.h"
 #include "Page.h"
 #include "RenderElement.h"
@@ -81,7 +74,7 @@ struct SelectorChecker::LocalContext {
     bool pseudoElementEffective { true };
     bool hasScrollbarPseudo { false };
     bool hasSelectionPseudo { false };
-    bool didMoveToShadowHost { false };
+    bool mayMatchHostPseudoClass { false };
 
 };
 
@@ -189,6 +182,12 @@ bool SelectorChecker::match(const CSSSelector& selector, const Element& element,
     specificity = 0;
 
     LocalContext context(selector, element, checkingContext.resolvingMode == SelectorChecker::Mode::QueryingRules ? VisitedMatchType::Disabled : VisitedMatchType::Enabled, checkingContext.pseudoId);
+
+    if (checkingContext.isMatchingHostPseudoClass) {
+        ASSERT(element.shadowRoot());
+        context.mayMatchHostPseudoClass = true;
+    }
+
     PseudoIdSet pseudoIdSet;
     MatchResult result = matchRecursively(checkingContext, context, pseudoIdSet, specificity);
     if (result.match != Match::SelectorMatches)
@@ -215,10 +214,6 @@ bool SelectorChecker::matchHostPseudoClass(const CSSSelector& selector, const El
 
     specificity = selector.simpleSelectorSpecificity();
 
-    // :host doesn't combine with any other selectors.
-    if (selector.tagHistory())
-        return false;
-    
     if (auto* selectorList = selector.selectorList()) {
         LocalContext context(*selectorList->first(), element, VisitedMatchType::Enabled, NOPSEUDO);
         context.inFunctionalPseudoClass = true;
@@ -252,7 +247,7 @@ static SelectorChecker::LocalContext localContextForParent(const SelectorChecker
 
     updatedContext.isMatchElement = false;
 
-    if (updatedContext.didMoveToShadowHost) {
+    if (updatedContext.mayMatchHostPseudoClass) {
         updatedContext.element = nullptr;
         return updatedContext;
     }
@@ -260,7 +255,7 @@ static SelectorChecker::LocalContext localContextForParent(const SelectorChecker
     // Move to the shadow host if matching :host and the parent is the shadow root.
     if (context.selector->match() == CSSSelector::PseudoClass && context.selector->pseudoClassType() == CSSSelector::PseudoClassHost && is<ShadowRoot>(context.element->parentNode())) {
         updatedContext.element = downcast<ShadowRoot>(*context.element->parentNode()).host();
-        updatedContext.didMoveToShadowHost = true;
+        updatedContext.mayMatchHostPseudoClass = true;
         return updatedContext;
     }
 
@@ -292,7 +287,7 @@ SelectorChecker::MatchResult SelectorChecker::matchRecursively(CheckingContext& 
                 if (context.element->shadowPseudoId() != context.selector->value())
                     return MatchResult::fails(Match::SelectorFailsLocally);
 
-                if (context.selector->isWebKitCustomPseudoElement() && root->mode() != ShadowRoot::Mode::UserAgent)
+                if (context.selector->isWebKitCustomPseudoElement() && root->mode() != ShadowRootMode::UserAgent)
                     return MatchResult::fails(Match::SelectorFailsLocally);
             } else
                 return MatchResult::fails(Match::SelectorFailsLocally);
@@ -311,7 +306,7 @@ SelectorChecker::MatchResult SelectorChecker::matchRecursively(CheckingContext& 
     }
 
     // The rest of the selectors has to match
-    CSSSelector::Relation relation = context.selector->relation();
+    auto relation = context.selector->relation();
 
     // Prepare next selector
     const CSSSelector* leftSelector = context.selector->tagHistory();
@@ -321,13 +316,13 @@ SelectorChecker::MatchResult SelectorChecker::matchRecursively(CheckingContext& 
     LocalContext nextContext(context);
     nextContext.selector = leftSelector;
 
-    if (relation != CSSSelector::SubSelector) {
+    if (relation != CSSSelector::Subselector) {
         // Bail-out if this selector is irrelevant for the pseudoId
         if (context.pseudoId != NOPSEUDO && !dynamicPseudoIdSet.has(context.pseudoId))
             return MatchResult::fails(Match::SelectorFailsCompletely);
 
         // Disable :visited matching when we try to match anything else than an ancestors.
-        if (relation != CSSSelector::Descendant && relation != CSSSelector::Child)
+        if (!context.selector->hasDescendantOrChildRelation())
             nextContext.visitedMatchType = VisitedMatchType::Disabled;
 
         nextContext.pseudoId = NOPSEUDO;
@@ -337,7 +332,10 @@ SelectorChecker::MatchResult SelectorChecker::matchRecursively(CheckingContext& 
     }
 
     switch (relation) {
-    case CSSSelector::Descendant:
+    case CSSSelector::DescendantSpace:
+#if ENABLE(CSS_SELECTORS_LEVEL4)
+    case CSSSelector::DescendantDoubleChild:
+#endif
         nextContext = localContextForParent(nextContext);
         nextContext.firstSelectorOfTheFragment = nextContext.selector;
         for (; nextContext.element; nextContext = localContextForParent(nextContext)) {
@@ -416,7 +414,7 @@ SelectorChecker::MatchResult SelectorChecker::matchRecursively(CheckingContext& 
         };
         return MatchResult::fails(Match::SelectorFailsAllSiblings);
 
-    case CSSSelector::SubSelector:
+    case CSSSelector::Subselector:
         {
             // a selector is invalid if something follows a pseudo-element
             // We make an exception for scrollbar pseudo elements and allow a set of pseudo classes (but nothing else)
@@ -453,6 +451,7 @@ SelectorChecker::MatchResult SelectorChecker::matchRecursively(CheckingContext& 
             return MatchResult::updateWithMatchType(result, matchType);
         }
     }
+
 
     ASSERT_NOT_REACHED();
     return MatchResult::fails(Match::SelectorFailsCompletely);
@@ -626,11 +625,11 @@ static bool canMatchHoverOrActiveInQuirksMode(const SelectorChecker::LocalContex
             break;
         }
 
-        CSSSelector::Relation relation = selector->relation();
+        auto relation = selector->relation();
         if (relation == CSSSelector::ShadowDescendant)
             return true;
 
-        if (relation != CSSSelector::SubSelector)
+        if (relation != CSSSelector::Subselector)
             return false;
     }
     return false;
@@ -657,6 +656,14 @@ bool SelectorChecker::checkOne(CheckingContext& checkingContext, const LocalCont
     const CSSSelector& selector = *context.selector;
 
     specificity = CSSSelector::addSpecificities(specificity, selector.simpleSelectorSpecificity());
+
+    if (context.mayMatchHostPseudoClass) {
+        // :host doesn't combine with anything except pseudo elements.
+        bool isHostPseudoClass = selector.match() == CSSSelector::PseudoClass && selector.pseudoClassType() == CSSSelector::PseudoClassHost;
+        bool isPseudoElement = selector.match() == CSSSelector::PseudoElement;
+        if (!isHostPseudoClass && !isPseudoElement)
+            return false;
+    }
 
     if (selector.match() == CSSSelector::Tag)
         return tagMatches(element, selector);
@@ -1042,7 +1049,7 @@ bool SelectorChecker::checkOne(CheckingContext& checkingContext, const LocalCont
             break;
         }
         case CSSSelector::PseudoClassHost: {
-            if (!context.didMoveToShadowHost)
+            if (!context.mayMatchHostPseudoClass)
                 return false;
             unsigned hostSpecificity;
             if (!matchHostPseudoClass(selector, element, checkingContext, hostSpecificity))
@@ -1050,10 +1057,8 @@ bool SelectorChecker::checkOne(CheckingContext& checkingContext, const LocalCont
             specificity = CSSSelector::addSpecificities(specificity, hostSpecificity);
             return true;
         }
-#if ENABLE(CUSTOM_ELEMENTS)
         case CSSSelector::PseudoClassDefined:
             return isDefinedElement(element);
-#endif
         case CSSSelector::PseudoClassWindowInactive:
             return isWindowInactive(element);
 
@@ -1193,10 +1198,10 @@ unsigned SelectorChecker::determineLinkMatchType(const CSSSelector* selector)
                 break;
             }
         }
-        CSSSelector::Relation relation = selector->relation();
-        if (relation == CSSSelector::SubSelector)
+        auto relation = selector->relation();
+        if (relation == CSSSelector::Subselector)
             continue;
-        if (relation != CSSSelector::Descendant && relation != CSSSelector::Child)
+        if (!selector->hasDescendantOrChildRelation())
             return linkMatchType;
         if (linkMatchType != MatchAll)
             return linkMatchType;

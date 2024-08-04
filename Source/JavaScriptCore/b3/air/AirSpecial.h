@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef AirSpecial_h
-#define AirSpecial_h
+#pragma once
 
 #if ENABLE(B3_JIT)
 
@@ -56,7 +55,7 @@ public:
     virtual void forEachArg(Inst&, const ScopedLambda<Inst::EachArgCallback>&) = 0;
     virtual bool isValid(Inst&) = 0;
     virtual bool admitsStack(Inst&, unsigned argIndex) = 0;
-    virtual Optional<unsigned> shouldTryAliasingDef(Inst&);
+    virtual std::optional<unsigned> shouldTryAliasingDef(Inst&);
 
     // This gets called on for each Inst that uses this Special. Note that there is no way to
     // guarantee that a Special gets used from just one Inst, because Air might taildup late. So,
@@ -85,8 +84,8 @@ public:
     
     virtual CCallHelpers::Jump generate(Inst&, CCallHelpers&, GenerationContext&) = 0;
 
-    virtual const RegisterSet& extraEarlyClobberedRegs(Inst&) = 0;
-    virtual const RegisterSet& extraClobberedRegs(Inst&) = 0;
+    virtual RegisterSet extraEarlyClobberedRegs(Inst&) = 0;
+    virtual RegisterSet extraClobberedRegs(Inst&) = 0;
     
     // By default, this returns false.
     virtual bool isTerminal(Inst&);
@@ -139,6 +138,3 @@ inline DeepSpecialDump deepDump(const Special* special)
 } } } // namespace JSC::B3::Air
 
 #endif // ENABLE(B3_JIT)
-
-#endif // AirSpecial_h
-

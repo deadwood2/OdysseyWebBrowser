@@ -31,12 +31,9 @@
     GenerateIsReachable=Impl,
     JSCustomMarkFunction,
 ] interface MessagePort : EventTarget {
-#if !(defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT)
-    [Custom, RaisesException] void postMessage(any message, optional Array messagePorts);
-
+    [CallWith=ScriptState, MayThrowException] void postMessage(any message, optional sequence<object> transfer = []);
     void start();
     void close();
 
     attribute EventHandler onmessage;
-#endif
 };

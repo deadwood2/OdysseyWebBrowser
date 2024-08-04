@@ -34,11 +34,13 @@
 #import "InteractionInformationAtPosition.h"
 #import "NativeWebKeyboardEvent.h"
 #import "NavigationState.h"
+#import "StringUtilities.h"
 #import "UIKitSPI.h"
 #import "ViewSnapshotStore.h"
 #import "WKContentView.h"
 #import "WKContentViewInteraction.h"
 #import "WKGeolocationProviderIOS.h"
+#import "WKPasswordView.h"
 #import "WKProcessPoolInternal.h"
 #import "WKWebViewConfigurationInternal.h"
 #import "WKWebViewContentProviderRegistry.h"
@@ -51,6 +53,7 @@
 #import <WebCore/PlatformScreen.h>
 #import <WebCore/SharedBuffer.h>
 #import <WebCore/TextIndicator.h>
+#import <WebCore/ValidationBubble.h>
 
 #define MESSAGE_CHECK(assertion) MESSAGE_CHECK_BASE(assertion, m_webView->_page->process().connection())
 
@@ -225,8 +228,19 @@ bool PageClientImpl::decidePolicyForGeolocationPermissionRequest(WebFrameProxy& 
     return true;
 }
 
+void PageClientImpl::didStartProvisionalLoadForMainFrame()
+{
+    [m_webView _hidePasswordView];
+}
+
+void PageClientImpl::didFailProvisionalLoadForMainFrame()
+{
+    [m_webView _hidePasswordView];
+}
+
 void PageClientImpl::didCommitLoadForMainFrame(const String& mimeType, bool useCustomContentProvider)
 {
+    [m_webView _hidePasswordView];
     [m_webView _setHasCustomContentView:useCustomContentProvider loadedMIMEType:mimeType];
     [m_contentView _didCommitLoadForMainFrame];
 }
@@ -698,7 +712,6 @@ void PageClientImpl::didRemoveNavigationGestureSnapshot()
 
 void PageClientImpl::didFirstVisuallyNonEmptyLayoutForMainFrame()
 {
-    [m_webView _didFirstVisuallyNonEmptyLayoutForMainFrame];
 }
 
 void PageClientImpl::didFinishLoadForMainFrame()
@@ -743,6 +756,49 @@ WebCore::UserInterfaceLayoutDirection PageClientImpl::userInterfaceLayoutDirecti
         return WebCore::UserInterfaceLayoutDirection::LTR;
     return ([UIView userInterfaceLayoutDirectionForSemanticContentAttribute:[m_webView semanticContentAttribute]] == UIUserInterfaceLayoutDirectionLeftToRight) ? WebCore::UserInterfaceLayoutDirection::LTR : WebCore::UserInterfaceLayoutDirection::RTL;
 }
+
+Ref<ValidationBubble> PageClientImpl::createValidationBubble(const String& message, const ValidationBubble::Settings& settings)
+{
+    return ValidationBubble::create(m_contentView, message, settings);
+}
+
+#if ENABLE(DATA_INTERACTION)
+void PageClientImpl::didPerformDataInteractionControllerOperation()
+{
+    [m_contentView _didPerformDataInteractionControllerOperation];
+}
+
+void PageClientImpl::didHandleStartDataInteractionRequest(bool started)
+{
+    [m_contentView _didHandleStartDataInteractionRequest:started];
+}
+
+void PageClientImpl::startDataInteractionWithImage(const IntPoint& clientPosition, const ShareableBitmap::Handle& image, const FloatPoint& anchorPoint, bool isLink)
+{
+    [m_contentView _startDataInteractionWithImage:ShareableBitmap::create(image)->makeCGImageCopy() atClientPosition:CGPointMake(clientPosition.x(), clientPosition.y()) anchorPoint:anchorPoint isLink:isLink];
+}
+#endif
+
+void PageClientImpl::handleActiveNowPlayingSessionInfoResponse(bool hasActiveSession, const String& title, double duration, double elapsedTime)
+{
+    [m_webView _handleActiveNowPlayingSessionInfoResponse:hasActiveSession title:nsStringFromWebCoreString(title) duration:duration elapsedTime:elapsedTime];
+}
+
+#if USE(QUICK_LOOK)
+void PageClientImpl::requestPasswordForQuickLookDocument(const String& fileName, std::function<void(const String&)>&& completionHandler)
+{
+    auto passwordHandler = [completionHandler = WTFMove(completionHandler)](NSString *password) {
+        completionHandler(password);
+    };
+
+    if (WKPasswordView *passwordView = m_webView._passwordView) {
+        ASSERT(fileName == String { passwordView.documentName });
+        [passwordView showPasswordFailureAlert];
+        passwordView.userDidEnterPassword = passwordHandler;
+    } else
+        [m_webView _showPasswordViewWithDocumentName:fileName passwordHandler:passwordHandler];
+}
+#endif
 
 } // namespace WebKit
 

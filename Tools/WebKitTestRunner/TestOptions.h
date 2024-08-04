@@ -42,6 +42,10 @@ struct TestOptions {
     bool useMockScrollbars { true };
     bool needsSiteSpecificQuirks { false };
     bool ignoresViewportScaleLimits { false };
+    bool useCharacterSelectionGranularity { false };
+    bool enableIntersectionObserver { false };
+    bool enableModernMediaControls { true };
+    bool enablePointerLock { false };
 
     float deviceScaleFactor { 1 };
     Vector<String> overrideLanguages;

@@ -23,77 +23,24 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef AbstractMacroAssembler_h
-#define AbstractMacroAssembler_h
+#pragma once
 
 #include "AbortReason.h"
+#include "AssemblerBuffer.h"
+#include "AssemblerCommon.h"
+#include "CPU.h"
 #include "CodeLocation.h"
 #include "MacroAssemblerCodeRef.h"
+#include "MacroAssemblerHelpers.h"
 #include "Options.h"
 #include <wtf/CryptographicallyRandomNumber.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/SharedTask.h>
 #include <wtf/WeakRandom.h>
 
-#if ENABLE(ASSEMBLER)
-
 namespace JSC {
 
-inline bool isARMv7IDIVSupported()
-{
-#if HAVE(ARM_IDIV_INSTRUCTIONS)
-    return true;
-#else
-    return false;
-#endif
-}
-
-inline bool isARM64()
-{
-#if CPU(ARM64)
-    return true;
-#else
-    return false;
-#endif
-}
-
-inline bool isX86()
-{
-#if CPU(X86_64) || CPU(X86)
-    return true;
-#else
-    return false;
-#endif
-}
-
-inline bool isX86_64()
-{
-#if CPU(X86_64)
-    return true;
-#else
-    return false;
-#endif
-}
-
-inline bool optimizeForARMv7IDIVSupported()
-{
-    return isARMv7IDIVSupported() && Options::useArchitectureSpecificOptimizations();
-}
-
-inline bool optimizeForARM64()
-{
-    return isARM64() && Options::useArchitectureSpecificOptimizations();
-}
-
-inline bool optimizeForX86()
-{
-    return isX86() && Options::useArchitectureSpecificOptimizations();
-}
-
-inline bool optimizeForX86_64()
-{
-    return isX86_64() && Options::useArchitectureSpecificOptimizations();
-}
+#if ENABLE(ASSEMBLER)
 
 class AllowMacroScratchRegisterUsage;
 class DisallowMacroScratchRegisterUsage;
@@ -106,7 +53,6 @@ struct OSRExit;
 template <class AssemblerType, class MacroAssemblerType>
 class AbstractMacroAssembler {
 public:
-    friend class JITWriteBarrierBase;
     typedef AbstractMacroAssembler<AssemblerType, MacroAssemblerType> AbstractMacroAssemblerType;
     typedef AssemblerType AssemblerType_T;
 
@@ -611,12 +557,6 @@ public:
         {
             ASSERT((type == ARM64Assembler::JumpTestBit) || (type == ARM64Assembler::JumpTestBitFixedSize));
         }
-#elif CPU(SH4)
-        Jump(AssemblerLabel jmp, SH4Assembler::JumpType type = SH4Assembler::JumpFar)
-            : m_label(jmp)
-            , m_type(type)
-        {
-        }
 #else
         Jump(AssemblerLabel jmp)    
             : m_label(jmp)
@@ -648,8 +588,6 @@ public:
                 masm->m_assembler.linkJump(m_label, masm->m_assembler.label(), m_type, m_condition, m_bitNumber, m_compareRegister);
             else
                 masm->m_assembler.linkJump(m_label, masm->m_assembler.label(), m_type, m_condition);
-#elif CPU(SH4)
-            masm->m_assembler.linkJump(m_label, masm->m_assembler.label(), m_type);
 #else
             masm->m_assembler.linkJump(m_label, masm->m_assembler.label());
 #endif
@@ -688,9 +626,6 @@ public:
         bool m_is64Bit;
         unsigned m_bitNumber;
         ARM64Assembler::RegisterID m_compareRegister;
-#endif
-#if CPU(SH4)
-        SH4Assembler::JumpType m_type;
 #endif
     };
 
@@ -987,6 +922,11 @@ public:
     {
         AssemblerType::relinkJump(jump.dataLocation(), destination.dataLocation());
     }
+    
+    static void repatchJumpToNop(CodeLocationJump jump)
+    {
+        AssemblerType::relinkJumpToNop(jump.dataLocation());
+    }
 
     static void repatchNearCall(CodeLocationNearCall nearCall, CodeLocationLabel destination)
     {
@@ -1165,8 +1105,6 @@ AbstractMacroAssembler<AssemblerType, MacroAssemblerType>::Address::indexedBy(
     return BaseIndex(base, index, scale, offset);
 }
 
-} // namespace JSC
-
 #endif // ENABLE(ASSEMBLER)
 
-#endif // AbstractMacroAssembler_h
+} // namespace JSC

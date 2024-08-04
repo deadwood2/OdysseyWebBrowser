@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef HandleSet_h
-#define HandleSet_h
+#pragma once
 
 #include "Handle.h"
 #include "HandleBlock.h"
@@ -37,9 +36,9 @@
 namespace JSC {
 
 class HandleSet;
-class HeapRootVisitor;
 class VM;
 class JSValue;
+class SlotVisitor;
 
 class HandleNode {
 public:
@@ -74,7 +73,7 @@ public:
     HandleSlot allocate();
     void deallocate(HandleSlot);
 
-    void visitStrongHandles(HeapRootVisitor&);
+    void visitStrongHandles(SlotVisitor&);
 
     JS_EXPORT_PRIVATE void writeBarrier(HandleSlot, const JSValue&);
 
@@ -194,6 +193,4 @@ template<typename Functor> void HandleSet::forEachStrongHandle(const Functor& fu
     }
 }
 
-}
-
-#endif
+} // namespace JSC

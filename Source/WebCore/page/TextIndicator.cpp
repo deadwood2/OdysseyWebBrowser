@@ -38,7 +38,6 @@
 #include "ImageBuffer.h"
 #include "IntRect.h"
 #include "NodeTraversal.h"
-#include "Page.h"
 #include "Range.h"
 #include "RenderObject.h"
 
@@ -127,7 +126,7 @@ static bool hasNonInlineOrReplacedElements(const Range& range)
         RenderObject* renderer = node->renderer();
         if (!renderer)
             continue;
-        if ((!renderer->isInline() || renderer->isReplaced()) && range.intersectsNode(*node, ASSERT_NO_EXCEPTION))
+        if ((!renderer->isInline() || renderer->isReplaced()) && range.intersectsNode(*node).releaseReturnValue())
             return true;
     }
 

@@ -20,8 +20,7 @@
  *
  */
 
-#ifndef RenderQuote_h
-#define RenderQuote_h
+#pragma once
 
 #include "RenderInline.h"
 
@@ -35,6 +34,7 @@ public:
     void attachQuote();
 
 private:
+    void willBeDestroyed() override;
     void detachQuote();
 
     const char* renderName() const override { return "RenderQuote"; }
@@ -58,5 +58,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderQuote, isQuote())
-
-#endif // RenderQuote_h

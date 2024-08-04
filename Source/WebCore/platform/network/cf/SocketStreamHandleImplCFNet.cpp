@@ -63,12 +63,13 @@ extern "C" const CFStringRef _kCFStreamSocketSetNoDelay;
 
 namespace WebCore {
 
-SocketStreamHandleImpl::SocketStreamHandleImpl(const URL& url, SocketStreamHandleClient& client, SessionID sessionID)
+SocketStreamHandleImpl::SocketStreamHandleImpl(const URL& url, SocketStreamHandleClient& client, SessionID sessionID, const String& credentialPartition)
     : SocketStreamHandle(url, client)
     , m_connectingSubstate(New)
     , m_connectionType(Unknown)
     , m_sentStoredCredentials(false)
     , m_sessionID(sessionID)
+    , m_credentialPartition(credentialPartition)
 {
     LOG(Network, "SocketStreamHandle %p new client %p", this, &m_client);
 
@@ -359,7 +360,7 @@ bool SocketStreamHandleImpl::getStoredCONNECTProxyCredentials(const ProtectionSp
     if (auto* storageSession = NetworkStorageSession::storageSession(m_sessionID)) {
         storedCredential = storageSession->credentialStorage().getFromPersistentStorage(protectionSpace);
         if (storedCredential.isEmpty())
-            storedCredential = storageSession->credentialStorage().get(protectionSpace);
+            storedCredential = storageSession->credentialStorage().get(m_credentialPartition, protectionSpace);
     }
 
     if (storedCredential.isEmpty())
@@ -536,7 +537,7 @@ void SocketStreamHandleImpl::readStreamCallback(CFStreamEventType type)
         if (!length)
             return;
 
-        Optional<size_t> optionalLength;
+        std::optional<size_t> optionalLength;
         if (length != -1)
             optionalLength = length;
         
@@ -653,14 +654,14 @@ SocketStreamHandleImpl::~SocketStreamHandleImpl()
     ASSERT(!m_pacRunLoopSource);
 }
 
-Optional<size_t> SocketStreamHandleImpl::platformSend(const char* data, size_t length)
+std::optional<size_t> SocketStreamHandleImpl::platformSend(const char* data, size_t length)
 {
     if (!CFWriteStreamCanAcceptBytes(m_writeStream.get()))
         return 0;
 
     CFIndex result = CFWriteStreamWrite(m_writeStream.get(), reinterpret_cast<const UInt8*>(data), length);
     if (result == -1)
-        return Nullopt;
+        return std::nullopt;
 
     ASSERT(result >= 0);
     return static_cast<size_t>(result);
@@ -691,16 +692,16 @@ void SocketStreamHandleImpl::platformClose()
     CFReadStreamClose(m_readStream.get());
     CFWriteStreamClose(m_writeStream.get());
     
-    m_readStream = 0;
-    m_writeStream = 0;
+    m_readStream = nullptr;
+    m_writeStream = nullptr;
 
     m_client.didCloseSocketStream(*this);
 }
 
 unsigned short SocketStreamHandleImpl::port() const
 {
-    if (unsigned short urlPort = m_url.port())
-        return urlPort;
+    if (auto urlPort = m_url.port())
+        return urlPort.value();
     if (shouldUseSSL())
         return 443;
     return 80;

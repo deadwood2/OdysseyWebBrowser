@@ -43,12 +43,6 @@ var PLATFORMS = {
             'MAC': {
                 expectationsDirectory: 'mac',
                 subPlatforms: {
-                    'YOSEMITE': {
-                        subPlatforms: {
-                            'WK1': { fallbackPlatforms: ['APPLE_MAC_YOSEMITE', 'APPLE_MAC'] },
-                            'WK2': { fallbackPlatforms: ['APPLE_MAC_YOSEMITE', 'APPLE_MAC', 'WK2'], expectationsDirectory: 'mac-wk2'}
-                        }
-                    },
                     'ELCAPITAN': {
                         subPlatforms: {
                             'WK1': { fallbackPlatforms: ['APPLE_MAC_ELCAPITAN', 'APPLE_MAC'] },
@@ -79,16 +73,6 @@ var PLATFORMS = {
                 subPlatforms: {
                     'WK1': { fallbackPlatforms: ['GTK'] },
                     'WK2': { fallbackPlatforms: ['GTK', 'WK2'], expectationsDirectory: 'gtk-wk2' }
-                }
-            }
-        }
-    },
-    'EFL': {
-        expectationsDirectory: 'efl',
-        subPlatforms: {
-            'LINUX': {
-                subPlatforms: {
-                    'WK2': { fallbackPlatforms: ['EFL', 'WK2'], expectationsDirectory: 'efl-wk2' }
                 }
             }
         }
@@ -358,8 +342,6 @@ function determineBuilderPlatform(builderNameUpperCase)
         return determineWKPlatform(builderNameUpperCase, 'SIERRA');
     if (string.contains(builderNameUpperCase, 'EL CAPITAN'))
         return determineWKPlatform(builderNameUpperCase, 'APPLE_ELCAPITAN');
-    if (string.contains(builderNameUpperCase, 'YOSEMITE'))
-        return determineWKPlatform(builderNameUpperCase, 'APPLE_YOSEMITE');
     if (string.contains(builderNameUpperCase, 'MAVERICKS'))
         return determineWKPlatform(builderNameUpperCase, 'APPLE_MAVERICKS');
     if (string.contains(builderNameUpperCase, 'LION'))
@@ -368,8 +350,6 @@ function determineBuilderPlatform(builderNameUpperCase)
         return determineWKPlatform(builderNameUpperCase, 'APPLE_IOS_SIMULATOR');
     if (string.contains(builderNameUpperCase, 'GTK LINUX'))
         return determineWKPlatform(builderNameUpperCase, 'GTK_LINUX');
-    if (string.contains(builderNameUpperCase, 'EFL'))
-        return determineWKPlatform(builderNameUpperCase, 'EFL_LINUX');
 }
 
 function platformAndBuildType(builderName)

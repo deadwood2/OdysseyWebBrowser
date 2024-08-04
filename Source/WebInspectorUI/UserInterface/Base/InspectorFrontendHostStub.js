@@ -30,13 +30,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-if (!window.Symbol) {
-    window.Symbol = function(string)
-    {
-        return string;
-    }
-}
-
 if (!window.InspectorFrontendHost) {
     WebInspector.InspectorFrontendHostStub = function()
     {
@@ -71,6 +64,11 @@ if (!window.InspectorFrontendHost) {
             this._windowVisible = false;
         },
 
+        userInterfaceLayoutDirection: function()
+        {
+            return "ltr";
+        },
+
         requestSetDockSide: function(side)
         {
             InspectorFrontendAPI.setDockSide(side);
@@ -97,6 +95,11 @@ if (!window.InspectorFrontendHost) {
         },
 
         localizedStringsURL: function()
+        {
+            return undefined;
+        },
+
+        backendCommandsURL: function()
         {
             return undefined;
         },

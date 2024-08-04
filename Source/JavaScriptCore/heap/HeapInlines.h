@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,10 +23,9 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef HeapInlines_h
-#define HeapInlines_h
+#pragma once
 
-#include "CopyBarrier.h"
+#include "GCDeferralContext.h"
 #include "Heap.h"
 #include "HeapCellInlines.h"
 #include "IndexingHeader.h"
@@ -40,62 +39,44 @@
 
 namespace JSC {
 
-inline bool Heap::shouldCollect()
+ALWAYS_INLINE VM* Heap::vm() const
 {
-    if (isDeferred())
-        return false;
-    if (!m_isSafeToCollect)
-        return false;
-    if (m_operationInProgress != NoOperation)
-        return false;
-    if (Options::gcMaxHeapSize())
-        return m_bytesAllocatedThisCycle > Options::gcMaxHeapSize();
-    return m_bytesAllocatedThisCycle > m_maxEdenSize;
-}
-
-inline bool Heap::isBusy()
-{
-    return m_operationInProgress != NoOperation;
-}
-
-inline bool Heap::isCollecting()
-{
-    return m_operationInProgress == FullCollection || m_operationInProgress == EdenCollection;
+    return bitwise_cast<VM*>(bitwise_cast<uintptr_t>(this) - OBJECT_OFFSETOF(VM, heap));
 }
 
 ALWAYS_INLINE Heap* Heap::heap(const HeapCell* cell)
 {
+    if (!cell)
+        return nullptr;
     return cell->heap();
 }
 
 inline Heap* Heap::heap(const JSValue v)
 {
     if (!v.isCell())
-        return 0;
+        return nullptr;
     return heap(v.asCell());
 }
 
-inline bool Heap::isLive(const void* rawCell)
+inline bool Heap::hasHeapAccess() const
 {
-    ASSERT(!mayBeGCThread());
-    HeapCell* cell = bitwise_cast<HeapCell*>(rawCell);
-    if (cell->isLargeAllocation())
-        return cell->largeAllocation().isLive();
-    MarkedBlock& block = cell->markedBlock();
-    block.flipIfNecessary(block.vm()->heap.objectSpace().version());
-    return block.handle().isLiveCell(cell);
+    return m_worldState.load() & hasAccessBit;
+}
+
+inline bool Heap::collectorBelievesThatTheWorldIsStopped() const
+{
+    return m_collectorBelievesThatTheWorldIsStopped;
 }
 
 ALWAYS_INLINE bool Heap::isMarked(const void* rawCell)
 {
-    ASSERT(!mayBeGCThread());
+    ASSERT(mayBeGCThread() != GCThreadType::Helper);
     HeapCell* cell = bitwise_cast<HeapCell*>(rawCell);
     if (cell->isLargeAllocation())
         return cell->largeAllocation().isMarked();
     MarkedBlock& block = cell->markedBlock();
-    if (block.needsFlip(block.vm()->heap.objectSpace().version()))
-        return false;
-    return block.isMarked(cell);
+    return block.isMarked(
+        block.vm()->heap.objectSpace().markingVersion(), cell);
 }
 
 ALWAYS_INLINE bool Heap::isMarkedConcurrently(const void* rawCell)
@@ -104,32 +85,18 @@ ALWAYS_INLINE bool Heap::isMarkedConcurrently(const void* rawCell)
     if (cell->isLargeAllocation())
         return cell->largeAllocation().isMarked();
     MarkedBlock& block = cell->markedBlock();
-    if (block.needsFlip(block.vm()->heap.objectSpace().version()))
-        return false;
-    WTF::loadLoadFence();
-    return block.isMarked(cell);
+    return block.isMarkedConcurrently(
+        block.vm()->heap.objectSpace().markingVersion(), cell);
 }
 
-ALWAYS_INLINE bool Heap::testAndSetMarked(HeapVersion version, const void* rawCell)
+ALWAYS_INLINE bool Heap::testAndSetMarked(HeapVersion markingVersion, const void* rawCell)
 {
     HeapCell* cell = bitwise_cast<HeapCell*>(rawCell);
     if (cell->isLargeAllocation())
         return cell->largeAllocation().testAndSetMarked();
     MarkedBlock& block = cell->markedBlock();
-    block.flipIfNecessaryConcurrently(version);
+    block.aboutToMark(markingVersion);
     return block.testAndSetMarked(cell);
-}
-
-inline void Heap::setMarked(const void* rawCell)
-{
-    HeapCell* cell = bitwise_cast<HeapCell*>(rawCell);
-    if (cell->isLargeAllocation()) {
-        cell->largeAllocation().setMarked();
-        return;
-    }
-    MarkedBlock& block = cell->markedBlock();
-    block.flipIfNecessary(block.vm()->heap.objectSpace().version());
-    block.setMarked(cell);
 }
 
 ALWAYS_INLINE size_t Heap::cellSize(const void* rawCell)
@@ -152,63 +119,37 @@ inline void Heap::writeBarrier(const JSCell* from, JSCell* to)
 #if ENABLE(WRITE_BARRIER_PROFILING)
     WriteBarrierCounters::countWriteBarrier();
 #endif
-    if (!from || from->cellState() != CellState::OldBlack)
+    if (!from)
         return;
-    if (!to || to->cellState() != CellState::NewWhite)
+    if (!isWithinThreshold(from->cellState(), barrierThreshold()))
         return;
-    addToRememberedSet(from);
+    if (LIKELY(!to))
+        return;
+    writeBarrierSlowPath(from);
 }
 
 inline void Heap::writeBarrier(const JSCell* from)
 {
     ASSERT_GC_OBJECT_LOOKS_VALID(const_cast<JSCell*>(from));
-    if (!from || from->cellState() != CellState::OldBlack)
+    if (!from)
         return;
-    addToRememberedSet(from);
+    if (UNLIKELY(isWithinThreshold(from->cellState(), barrierThreshold())))
+        writeBarrierSlowPath(from);
 }
 
-inline void Heap::reportExtraMemoryAllocated(size_t size)
+inline void Heap::writeBarrierWithoutFence(const JSCell* from)
 {
-    if (size > minExtraMemory) 
-        reportExtraMemoryAllocatedSlowCase(size);
-}
-
-inline void Heap::reportExtraMemoryVisited(CellState dataBeforeVisiting, size_t size)
-{
-    // We don't want to double-count the extra memory that was reported in previous collections.
-    if (operationInProgress() == EdenCollection && dataBeforeVisiting == CellState::OldGrey)
+    ASSERT_GC_OBJECT_LOOKS_VALID(const_cast<JSCell*>(from));
+    if (!from)
         return;
-
-    size_t* counter = &m_extraMemorySize;
-    
-    for (;;) {
-        size_t oldSize = *counter;
-        if (WTF::weakCompareAndSwap(counter, oldSize, oldSize + size))
-            return;
-    }
+    if (UNLIKELY(isWithinThreshold(from->cellState(), blackThreshold)))
+        addToRememberedSet(from);
 }
 
-#if ENABLE(RESOURCE_USAGE)
-inline void Heap::reportExternalMemoryVisited(CellState dataBeforeVisiting, size_t size)
+inline void Heap::mutatorFence()
 {
-    // We don't want to double-count the external memory that was reported in previous collections.
-    if (operationInProgress() == EdenCollection && dataBeforeVisiting == CellState::OldGrey)
-        return;
-
-    size_t* counter = &m_externalMemorySize;
-
-    for (;;) {
-        size_t oldSize = *counter;
-        if (WTF::weakCompareAndSwap(counter, oldSize, oldSize + size))
-            return;
-    }
-}
-#endif
-
-inline void Heap::deprecatedReportExtraMemory(size_t size)
-{
-    if (size > minExtraMemory) 
-        deprecatedReportExtraMemorySlowCase(size);
+    if (isX86() || UNLIKELY(mutatorShouldBeFenced()))
+        WTF::storeStoreFence();
 }
 
 template<typename Functor> inline void Heap::forEachCodeBlock(const Functor& func)
@@ -216,133 +157,16 @@ template<typename Functor> inline void Heap::forEachCodeBlock(const Functor& fun
     forEachCodeBlockImpl(scopedLambdaRef<bool(CodeBlock*)>(func));
 }
 
+template<typename Functor> inline void Heap::forEachCodeBlockIgnoringJITPlans(const Functor& func)
+{
+    forEachCodeBlockIgnoringJITPlansImpl(scopedLambdaRef<bool(CodeBlock*)>(func));
+}
+
 template<typename Functor> inline void Heap::forEachProtectedCell(const Functor& functor)
 {
     for (auto& pair : m_protectedValues)
         functor(pair.key);
     m_handleSet.forEachStrongHandle(functor, m_protectedValues);
-}
-
-inline void* Heap::allocateWithDestructor(size_t bytes)
-{
-#if ENABLE(ALLOCATION_LOGGING)
-    dataLogF("JSC GC allocating %lu bytes with normal destructor.\n", bytes);
-#endif
-    ASSERT(isValidAllocation(bytes));
-    return m_objectSpace.allocateWithDestructor(bytes);
-}
-
-inline void* Heap::allocateWithoutDestructor(size_t bytes)
-{
-#if ENABLE(ALLOCATION_LOGGING)
-    dataLogF("JSC GC allocating %lu bytes without destructor.\n", bytes);
-#endif
-    ASSERT(isValidAllocation(bytes));
-    return m_objectSpace.allocateWithoutDestructor(bytes);
-}
-
-template<typename ClassType>
-inline void* Heap::allocateObjectOfType(size_t bytes)
-{
-    // JSCell::classInfo() expects objects allocated with normal destructor to derive from JSDestructibleObject.
-    ASSERT((!ClassType::needsDestruction || (ClassType::StructureFlags & StructureIsImmortal) || std::is_convertible<ClassType, JSDestructibleObject>::value));
-
-    if (ClassType::needsDestruction)
-        return allocateWithDestructor(bytes);
-    return allocateWithoutDestructor(bytes);
-}
-
-template<typename ClassType>
-inline MarkedSpace::Subspace& Heap::subspaceForObjectOfType()
-{
-    // JSCell::classInfo() expects objects allocated with normal destructor to derive from JSDestructibleObject.
-    ASSERT((!ClassType::needsDestruction || (ClassType::StructureFlags & StructureIsImmortal) || std::is_convertible<ClassType, JSDestructibleObject>::value));
-    
-    if (ClassType::needsDestruction)
-        return subspaceForObjectDestructor();
-    return subspaceForObjectWithoutDestructor();
-}
-
-template<typename ClassType>
-inline MarkedAllocator* Heap::allocatorForObjectOfType(size_t bytes)
-{
-    // JSCell::classInfo() expects objects allocated with normal destructor to derive from JSDestructibleObject.
-    ASSERT((!ClassType::needsDestruction || (ClassType::StructureFlags & StructureIsImmortal) || std::is_convertible<ClassType, JSDestructibleObject>::value));
-
-    MarkedAllocator* result;
-    if (ClassType::needsDestruction)
-        result = allocatorForObjectWithDestructor(bytes);
-    else
-        result = allocatorForObjectWithoutDestructor(bytes);
-    
-    ASSERT(result || !ClassType::info()->isSubClassOf(JSCallee::info()));
-    return result;
-}
-
-inline void* Heap::allocateAuxiliary(JSCell* intendedOwner, size_t bytes)
-{
-    void* result = m_objectSpace.allocateAuxiliary(bytes);
-#if ENABLE(ALLOCATION_LOGGING)
-    dataLogF("JSC GC allocating %lu bytes of auxiliary for %p: %p.\n", bytes, intendedOwner, result);
-#else
-    UNUSED_PARAM(intendedOwner);
-#endif
-    return result;
-}
-
-inline void* Heap::tryAllocateAuxiliary(JSCell* intendedOwner, size_t bytes)
-{
-    void* result = m_objectSpace.tryAllocateAuxiliary(bytes);
-#if ENABLE(ALLOCATION_LOGGING)
-    dataLogF("JSC GC allocating %lu bytes of auxiliary for %p: %p.\n", bytes, intendedOwner, result);
-#else
-    UNUSED_PARAM(intendedOwner);
-#endif
-    return result;
-}
-
-inline void* Heap::tryReallocateAuxiliary(JSCell* intendedOwner, void* oldBase, size_t oldSize, size_t newSize)
-{
-    void* newBase = tryAllocateAuxiliary(intendedOwner, newSize);
-    if (!newBase)
-        return nullptr;
-    memcpy(newBase, oldBase, oldSize);
-    return newBase;
-}
-
-inline CheckedBoolean Heap::tryAllocateStorage(JSCell* intendedOwner, size_t bytes, void** outPtr)
-{
-    CheckedBoolean result = m_storageSpace.tryAllocate(bytes, outPtr);
-#if ENABLE(ALLOCATION_LOGGING)
-    dataLogF("JSC GC allocating %lu bytes of storage for %p: %p.\n", bytes, intendedOwner, *outPtr);
-#else
-    UNUSED_PARAM(intendedOwner);
-#endif
-    return result;
-}
-
-inline CheckedBoolean Heap::tryReallocateStorage(JSCell* intendedOwner, void** ptr, size_t oldSize, size_t newSize)
-{
-#if ENABLE(ALLOCATION_LOGGING)
-    void* oldPtr = *ptr;
-#endif
-    CheckedBoolean result = m_storageSpace.tryReallocate(ptr, oldSize, newSize);
-#if ENABLE(ALLOCATION_LOGGING)
-    dataLogF("JSC GC reallocating %lu -> %lu bytes of storage for %p: %p -> %p.\n", oldSize, newSize, intendedOwner, oldPtr, *ptr);
-#else
-    UNUSED_PARAM(intendedOwner);
-#endif
-    return result;
-}
-
-inline void Heap::ascribeOwner(JSCell* intendedOwner, void* storage)
-{
-#if ENABLE(ALLOCATION_LOGGING)
-    dataLogF("JSC GC ascribing %p as owner of storage %p.\n", intendedOwner, storage);
-#else
-    UNUSED_PARAM(intendedOwner);
-    UNUSED_PARAM(storage);
-#endif
 }
 
 #if USE(FOUNDATION)
@@ -355,47 +179,45 @@ inline void Heap::releaseSoon(RetainPtr<T>&& object)
 
 inline void Heap::incrementDeferralDepth()
 {
-    RELEASE_ASSERT(m_deferralDepth < 100); // Sanity check to make sure this doesn't get ridiculous.
+    ASSERT(!mayBeGCThread() || m_collectorBelievesThatTheWorldIsStopped);
     m_deferralDepth++;
 }
 
 inline void Heap::decrementDeferralDepth()
 {
-    RELEASE_ASSERT(m_deferralDepth >= 1);
+    ASSERT(!mayBeGCThread() || m_collectorBelievesThatTheWorldIsStopped);
     m_deferralDepth--;
-}
-
-inline bool Heap::collectIfNecessaryOrDefer()
-{
-    if (!shouldCollect())
-        return false;
-
-    collect();
-    return true;
-}
-
-inline void Heap::collectAccordingToDeferGCProbability()
-{
-    if (isDeferred() || !m_isSafeToCollect || m_operationInProgress != NoOperation)
-        return;
-
-    if (randomNumber() < Options::deferGCProbability()) {
-        collect();
-        return;
-    }
-
-    // If our coin flip told us not to GC, we still might GC,
-    // but we GC according to our memory pressure markers.
-    collectIfNecessaryOrDefer();
 }
 
 inline void Heap::decrementDeferralDepthAndGCIfNeeded()
 {
-    decrementDeferralDepth();
-    if (UNLIKELY(Options::deferGCShouldCollectWithProbability()))
-        collectAccordingToDeferGCProbability();
-    else
-        collectIfNecessaryOrDefer();
+    ASSERT(!mayBeGCThread() || m_collectorBelievesThatTheWorldIsStopped);
+    m_deferralDepth--;
+    
+    if (UNLIKELY(m_didDeferGCWork)) {
+        decrementDeferralDepthAndGCIfNeededSlow();
+        
+        // Here are the possible relationships between m_deferralDepth and m_didDeferGCWork.
+        // Note that prior to the call to decrementDeferralDepthAndGCIfNeededSlow,
+        // m_didDeferGCWork had to have been true. Now it can be either false or true. There is
+        // nothing we can reliably assert.
+        //
+        // Possible arrangements of m_didDeferGCWork and !!m_deferralDepth:
+        //
+        // Both false: We popped out of all DeferGCs and we did whatever work was deferred.
+        //
+        // Only m_didDeferGCWork is true: We stopped for GC and the GC did DeferGC. This is
+        // possible because of how we handle the baseline JIT's worklist. It's also perfectly
+        // safe because it only protects reportExtraMemory. We can just ignore this.
+        //
+        // Only !!m_deferralDepth is true: m_didDeferGCWork had been set spuriously. It is only
+        // cleared by decrementDeferralDepthAndGCIfNeededSlow(). So, if we had deferred work but
+        // then decrementDeferralDepth()'d, then we might have the bit set even if we GC'd since
+        // then.
+        //
+        // Both true: We're in a recursive ~DeferGC. We wanted to do something about the
+        // deferred work, but were unable to.
+    }
 }
 
 inline HashSet<MarkedArgumentBuffer*>& Heap::markListSet()
@@ -405,34 +227,46 @@ inline HashSet<MarkedArgumentBuffer*>& Heap::markListSet()
     return *m_markListSet;
 }
 
-inline void Heap::registerWeakGCMap(void* weakGCMap, std::function<void()> pruningCallback)
+inline void Heap::reportExtraMemoryAllocated(size_t size)
 {
-    m_weakGCMaps.add(weakGCMap, WTFMove(pruningCallback));
+    if (size > minExtraMemory) 
+        reportExtraMemoryAllocatedSlowCase(size);
 }
 
-inline void Heap::unregisterWeakGCMap(void* weakGCMap)
+inline void Heap::deprecatedReportExtraMemory(size_t size)
 {
-    m_weakGCMaps.remove(weakGCMap);
+    if (size > minExtraMemory) 
+        deprecatedReportExtraMemorySlowCase(size);
 }
 
-inline void Heap::didAllocateBlock(size_t capacity)
+inline void Heap::acquireAccess()
 {
-#if ENABLE(RESOURCE_USAGE)
-    m_blockBytesAllocated += capacity;
-#else
-    UNUSED_PARAM(capacity);
-#endif
+    if (m_worldState.compareExchangeWeak(0, hasAccessBit))
+        return;
+    acquireAccessSlow();
 }
 
-inline void Heap::didFreeBlock(size_t capacity)
+inline bool Heap::hasAccess() const
 {
-#if ENABLE(RESOURCE_USAGE)
-    m_blockBytesAllocated -= capacity;
-#else
-    UNUSED_PARAM(capacity);
-#endif
+    return m_worldState.loadRelaxed() & hasAccessBit;
+}
+
+inline void Heap::releaseAccess()
+{
+    if (m_worldState.compareExchangeWeak(hasAccessBit, 0))
+        return;
+    releaseAccessSlow();
+}
+
+inline bool Heap::mayNeedToStop()
+{
+    return m_worldState.loadRelaxed() != hasAccessBit;
+}
+
+inline void Heap::stopIfNecessary()
+{
+    if (mayNeedToStop())
+        stopIfNecessarySlow();
 }
 
 } // namespace JSC
-
-#endif // HeapInlines_h

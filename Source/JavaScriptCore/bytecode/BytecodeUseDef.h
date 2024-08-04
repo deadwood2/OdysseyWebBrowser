@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef BytecodeUseDef_h
-#define BytecodeUseDef_h
+#pragma once
 
 #include "CodeBlock.h"
 #include "Interpreter.h"
@@ -55,6 +54,8 @@ void computeUsesForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     case op_create_cloned_arguments:
     case op_get_rest_length:
     case op_watchdog:
+    case op_get_argument:
+    case op_nop:
         return;
     case op_assert:
     case op_get_scope:
@@ -144,10 +145,29 @@ void computeUsesForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
         functor(codeBlock, instruction, opcodeID, instruction[4].u.operand);
         return;
     }
+    case op_define_data_property: {
+        ASSERT(opcodeLengths[opcodeID] > 4);
+        functor(codeBlock, instruction, opcodeID, instruction[1].u.operand);
+        functor(codeBlock, instruction, opcodeID, instruction[2].u.operand);
+        functor(codeBlock, instruction, opcodeID, instruction[3].u.operand);
+        functor(codeBlock, instruction, opcodeID, instruction[4].u.operand);
+        return;
+    }
+    case op_define_accessor_property: {
+        ASSERT(opcodeLengths[opcodeID] > 5);
+        functor(codeBlock, instruction, opcodeID, instruction[1].u.operand);
+        functor(codeBlock, instruction, opcodeID, instruction[2].u.operand);
+        functor(codeBlock, instruction, opcodeID, instruction[3].u.operand);
+        functor(codeBlock, instruction, opcodeID, instruction[4].u.operand);
+        functor(codeBlock, instruction, opcodeID, instruction[5].u.operand);
+        return;
+    }
+    case op_spread:
     case op_get_property_enumerator:
     case op_get_enumerable_length:
     case op_new_func_exp:
     case op_new_generator_func_exp:
+    case op_new_async_func_exp:
     case op_to_index_string:
     case op_create_lexical_environment:
     case op_resolve_scope:
@@ -163,10 +183,9 @@ void computeUsesForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     case op_is_undefined:
     case op_is_boolean:
     case op_is_number:
-    case op_is_string:
-    case op_is_jsarray:
     case op_is_object:
     case op_is_object_or_null:
+    case op_is_cell_with_type:
     case op_is_function:
     case op_to_number:
     case op_to_string:
@@ -181,6 +200,7 @@ void computeUsesForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     case op_unsigned:
     case op_new_func:
     case op_new_generator_func:
+    case op_new_async_func:
     case op_get_parent_scope:
     case op_create_scoped_arguments:
     case op_create_rest:
@@ -259,6 +279,7 @@ void computeUsesForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
         functor(codeBlock, instruction, opcodeID, instruction[3].u.operand);
         return;
     }
+    case op_new_array_with_spread:
     case op_new_array:
     case op_strcat: {
         int base = instruction[2].u.operand;
@@ -333,6 +354,8 @@ void computeDefsForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     case op_put_by_val:
     case op_put_by_val_direct:
     case op_put_by_index:
+    case op_define_data_property:
+    case op_define_accessor_property:
     case op_profile_type:
     case op_profile_control_flow:
     case op_put_to_arguments:
@@ -341,6 +364,7 @@ void computeDefsForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     case op_log_shadow_chicken_prologue:
     case op_log_shadow_chicken_tail:
     case op_yield:
+    case op_nop:
 #define LLINT_HELPER_OPCODES(opcode, length) case opcode:
         FOR_EACH_LLINT_OPCODE_EXTENSION(LLINT_HELPER_OPCODES);
 #undef LLINT_HELPER_OPCODES
@@ -364,6 +388,8 @@ void computeDefsForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     case op_to_primitive:
     case op_create_this:
     case op_new_array:
+    case op_new_array_with_spread:
+    case op_spread:
     case op_new_array_buffer:
     case op_new_array_with_size:
     case op_new_regexp:
@@ -371,6 +397,8 @@ void computeDefsForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     case op_new_func_exp:
     case op_new_generator_func:
     case op_new_generator_func_exp:
+    case op_new_async_func:
+    case op_new_async_func_exp:
     case op_call_varargs:
     case op_tail_call_varargs:
     case op_tail_call_forward_arguments:
@@ -396,10 +424,9 @@ void computeDefsForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     case op_is_undefined:
     case op_is_boolean:
     case op_is_number:
-    case op_is_string:
-    case op_is_jsarray:
     case op_is_object:
     case op_is_object_or_null:
+    case op_is_cell_with_type:
     case op_is_function:
     case op_in:
     case op_to_number:
@@ -442,6 +469,7 @@ void computeDefsForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     case op_del_by_val:
     case op_unsigned:
     case op_get_from_arguments: 
+    case op_get_argument:
     case op_create_rest:
     case op_get_rest_length: {
         ASSERT(opcodeLengths[opcodeID] > 1);
@@ -463,6 +491,3 @@ void computeDefsForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
 }
 
 } // namespace JSC
-
-#endif // BytecodeUseDef_h
-

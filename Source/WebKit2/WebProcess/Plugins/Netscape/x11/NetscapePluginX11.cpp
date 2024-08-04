@@ -44,8 +44,6 @@
 #endif
 #include <gdk/gdkx.h>
 #include <WebCore/GtkVersioning.h>
-#elif PLATFORM(EFL) && defined(HAVE_ECORE_X)
-#include <Ecore_X.h>
 #endif
 
 #if USE(CAIRO)
@@ -69,8 +67,6 @@ static Display* getPluginDisplay()
     // Since we're a gdk/gtk app, we'll (probably?) have the same X connection as any gdk-based
     // plugins, so we can return that. We might want to add other implementations here later.
     return GDK_DISPLAY_XDISPLAY(gdk_display_get_default());
-#elif PLATFORM(EFL) && defined(HAVE_ECORE_X)
-    return static_cast<Display*>(ecore_x_display_get());
 #else
     return nullptr;
 #endif
@@ -80,8 +76,6 @@ static inline int x11Screen()
 {
 #if PLATFORM(GTK)
     return gdk_screen_get_number(gdk_screen_get_default());
-#elif PLATFORM(EFL) && defined(HAVE_ECORE_X)
-    return ecore_x_screen_index_get(ecore_x_default_screen_get());
 #else
     return 0;
 #endif
@@ -91,8 +85,6 @@ static inline int displayDepth()
 {
 #if PLATFORM(GTK)
     return gdk_visual_get_depth(gdk_screen_get_system_visual(gdk_screen_get_default()));
-#elif PLATFORM(EFL) && defined(HAVE_ECORE_X)
-    return ecore_x_default_depth_get(x11HostDisplay(), ecore_x_default_screen_get());
 #else
     return 0;
 #endif
@@ -102,8 +94,6 @@ static inline unsigned long rootWindowID()
 {
 #if PLATFORM(GTK)
     return GDK_ROOT_WINDOW();
-#elif PLATFORM(EFL) && defined(HAVE_ECORE_X)
-    return ecore_x_window_root_first_get();
 #else
     return 0;
 #endif
@@ -245,6 +235,8 @@ void NetscapePluginX11::geometryDidChange()
     if (m_plugin.isWindowed()) {
         uint64_t windowID = 0;
 #if PLATFORM(GTK)
+        if (!gtk_plug_get_embedded(GTK_PLUG(m_platformPluginWidget)))
+            return;
         windowID = static_cast<uint64_t>(GDK_WINDOW_XID(gtk_plug_get_socket_window(GTK_PLUG(m_platformPluginWidget))));
 #endif
         m_plugin.controller()->windowedPluginGeometryDidChange(m_plugin.frameRectInWindowCoordinates(), m_plugin.clipRect(), windowID);
@@ -264,6 +256,8 @@ void NetscapePluginX11::visibilityDidChange()
     ASSERT(m_plugin.isWindowed());
     uint64_t windowID = 0;
 #if PLATFORM(GTK)
+    if (!gtk_plug_get_embedded(GTK_PLUG(m_platformPluginWidget)))
+        return;
     windowID = static_cast<uint64_t>(GDK_WINDOW_XID(gtk_plug_get_socket_window(GTK_PLUG(m_platformPluginWidget))));
 #endif
     m_plugin.controller()->windowedPluginVisibilityDidChange(m_plugin.isVisible(), windowID);
@@ -298,7 +292,7 @@ void NetscapePluginX11::paint(GraphicsContext& context, const IntRect& dirtyRect
     if (m_pluginDisplay != x11HostDisplay())
         XSync(m_pluginDisplay, false);
 
-#if PLATFORM(GTK) || (PLATFORM(EFL) && USE(CAIRO))
+#if PLATFORM(GTK)
     RefPtr<cairo_surface_t> drawableSurface = adoptRef(cairo_xlib_surface_create(m_pluginDisplay, m_drawable.get(),
         m_setWindowCallbackStruct.visual, m_plugin.size().width(), m_plugin.size().height()));
     cairo_t* cr = context.platformContext()->cr();

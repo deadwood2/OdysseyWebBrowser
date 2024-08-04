@@ -111,10 +111,12 @@ private:
     void respondToChangedContents() final;
     void respondToChangedSelection(WebCore::Frame*) final;
     void didChangeSelectionAndUpdateLayout() final { }
+    void updateEditorStateAfterLayoutIfEditabilityChanged() final;
     void discardedComposition(WebCore::Frame*) final;
+    void canceledComposition() final;
 
-    void registerUndoStep(PassRefPtr<WebCore::UndoStep>) final;
-    void registerRedoStep(PassRefPtr<WebCore::UndoStep>) final;
+    void registerUndoStep(WebCore::UndoStep&) final;
+    void registerRedoStep(WebCore::UndoStep&) final;
     void clearUndoRedoOperations() final;
 
     bool canCopyCut(WebCore::Frame*, bool defaultValue) const final;
@@ -164,7 +166,7 @@ private:
 
     void willSetInputMethodState() final;
     void setInputMethodState(bool enabled) final;
-    void requestCheckingOfString(PassRefPtr<WebCore::TextCheckingRequest>, const WebCore::VisibleSelection& currentSelection) final;
+    void requestCheckingOfString(WebCore::TextCheckingRequest&, const WebCore::VisibleSelection& currentSelection) final;
 
 #if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
     void requestCandidatesForSelection(const WebCore::VisibleSelection&) final;
@@ -172,7 +174,7 @@ private:
     void handleAcceptedCandidateWithSoftSpaces(WebCore::TextCheckingResult) final;
 #endif
 
-    void registerUndoOrRedoStep(PassRefPtr<WebCore::UndoStep>, bool isRedo);
+    void registerUndoOrRedoStep(WebCore::UndoStep&, bool isRedo);
 
     WebView *m_webView;
     RetainPtr<WebEditorUndoTarget> m_undoTarget;
@@ -191,6 +193,9 @@ private:
     NSRange m_rangeForCandidates;
     NSInteger m_lastCandidateRequestSequenceNumber;
 #endif
+
+    enum class EditorStateIsContentEditable { No, Yes, Unset };
+    EditorStateIsContentEditable m_lastEditorStateWasContentEditable { EditorStateIsContentEditable::Unset };
 
     WeakPtrFactory<WebEditorClient> m_weakPtrFactory;
 };

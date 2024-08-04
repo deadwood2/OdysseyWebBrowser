@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef DFGSafeToExecute_h
-#define DFGSafeToExecute_h
+#pragma once
 
 #if ENABLE(DFG_JIT)
 
@@ -55,9 +54,12 @@ public:
         case CellUse:
         case CellOrOtherUse:
         case ObjectUse:
+        case ArrayUse:
         case FunctionUse:
         case FinalObjectUse:
         case RegExpObjectUse:
+        case ProxyObjectUse:
+        case DerivedArrayUse:
         case MapObjectUse:
         case SetObjectUse:
         case ObjectOrOtherUse:
@@ -191,6 +193,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case ArithTrunc:
     case ArithSin:
     case ArithCos:
+    case ArithTan:
     case ArithLog:
     case ValueAdd:
     case TryGetById:
@@ -210,9 +213,14 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case PutGetterSetterById:
     case PutGetterByVal:
     case PutSetterByVal:
+    case DefineDataProperty:
+    case DefineAccessorProperty:
     case CheckStructure:
     case GetExecutable:
     case GetButterfly:
+    case CallDOMGetter:
+    case CallDOM:
+    case CheckDOM:
     case CheckArray:
     case Arrayify:
     case ArrayifyToStructure:
@@ -238,8 +246,11 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case CompareStrictEq:
     case CompareEqPtr:
     case Call:
+    case DirectCall:
     case TailCallInlinedCaller:
+    case DirectTailCallInlinedCaller:
     case Construct:
+    case DirectConstruct:
     case CallVarargs:
     case CallEval:
     case TailCallVarargsInlinedCaller:
@@ -252,23 +263,24 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case NewArray:
     case NewArrayWithSize:
     case NewArrayBuffer:
+    case NewArrayWithSpread:
+    case Spread:
     case NewRegexp:
     case ProfileType:
     case ProfileControlFlow:
     case CheckTypeInfoFlags:
+    case ParseInt:
     case OverridesHasInstance:
     case InstanceOf:
     case InstanceOfCustom:
-    case IsJSArray:
     case IsEmpty:
     case IsUndefined:
     case IsBoolean:
     case IsNumber:
-    case IsString:
     case IsObject:
     case IsObjectOrNull:
     case IsFunction:
-    case IsRegExpObject:
+    case IsCellWithType:
     case IsTypedArrayView:
     case TypeOf:
     case LogicalNot:
@@ -276,29 +288,34 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case ToPrimitive:
     case ToString:
     case ToNumber:
+    case NumberToStringWithRadix:
     case SetFunctionName:
     case StrCat:
     case CallStringConstructor:
     case NewStringObject:
     case MakeRope:
     case In:
+    case HasOwnProperty:
     case CreateActivation:
     case CreateDirectArguments:
     case CreateScopedArguments:
     case CreateClonedArguments:
     case GetFromArguments:
+    case GetArgument:
     case PutToArguments:
     case NewFunction:
     case NewGeneratorFunction:
+    case NewAsyncFunction:
     case Jump:
     case Branch:
     case Switch:
     case Return:
     case TailCall:
+    case DirectTailCall:
     case TailCallVarargs:
     case TailCallForwardVarargs:
     case Throw:
-    case ThrowReferenceError:
+    case ThrowStaticError:
     case CountExecution:
     case ForceOSRExit:
     case CheckWatchdogTimer:
@@ -312,7 +329,6 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case CheckTierUpAtReturn:
     case CheckTierUpAndOSREnter:
     case LoopHint:
-    case StoreBarrier:
     case InvalidationPoint:
     case NotifyWrite:
     case CheckInBounds:
@@ -338,12 +354,16 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case PhantomNewObject:
     case PhantomNewFunction:
     case PhantomNewGeneratorFunction:
+    case PhantomNewAsyncFunction:
     case PhantomCreateActivation:
     case PutHint:
     case CheckStructureImmediate:
     case MaterializeNewObject:
     case MaterializeCreateActivation:
     case PhantomDirectArguments:
+    case PhantomCreateRest:
+    case PhantomSpread:
+    case PhantomNewArrayWithSpread:
     case PhantomClonedArguments:
     case GetMyArgumentByVal:
     case GetMyArgumentByValOutOfBounds:
@@ -358,14 +378,32 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case PutDynamicVar:
     case ResolveScope:
     case MapHash:
+    case ToLowerCase:
     case GetMapBucket:
     case LoadFromJSMapBucket:
     case IsNonEmptyMapBucket:
         return true;
 
+    case ArraySlice: {
+        // You could plausibly move this code around as long as you proved the
+        // incoming array base structure is an original array at the hoisted location.
+        // Instead of doing that extra work, we just conservatively return false.
+        return false;
+    }
+
     case BottomValue:
         // If in doubt, assume that this isn't safe to execute, just because we have no way of
         // compiling this node.
+        return false;
+
+    case StoreBarrier:
+    case FencedStoreBarrier:
+    case PutStructure:
+    case NukeStructureAndSetButterfly:
+        // We conservatively assume that these cannot be put anywhere, which forces the compiler to
+        // keep them exactly where they were. This is sort of overkill since the clobberize effects
+        // already force these things to be ordered precisely. I'm just not confident enough in my
+        // effect based memory model to rely solely on that right now.
         return false;
 
     case GetByVal:
@@ -386,11 +424,10 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
         return node->arrayMode().modeForPut().alreadyChecked(
             graph, node, state.forNode(graph.varArgChild(node, 0)));
 
-    case PutStructure:
     case AllocatePropertyStorage:
     case ReallocatePropertyStorage:
         return state.forNode(node->child1()).m_structure.isSubsetOf(
-            StructureSet(node->transition()->previous));
+            RegisteredStructureSet(node->transition()->previous));
         
     case GetByOffset:
     case GetGetterSetterByOffset:
@@ -398,7 +435,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
         PropertyOffset offset = node->storageAccessData().offset;
 
         if (state.structureClobberState() == StructuresAreWatched) {
-            if (JSObject* knownBase = node->child1()->dynamicCastConstant<JSObject*>()) {
+            if (JSObject* knownBase = node->child1()->dynamicCastConstant<JSObject*>(graph.m_vm)) {
                 if (graph.isSafeToLoad(knownBase, offset))
                     return true;
             }
@@ -454,6 +491,3 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
 } } // namespace JSC::DFG
 
 #endif // ENABLE(DFG_JIT)
-
-#endif // DFGSafeToExecute_h
-

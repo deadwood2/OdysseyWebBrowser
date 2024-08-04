@@ -27,8 +27,7 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef LineWidth_h
-#define LineWidth_h
+#pragma once
 
 #include "LayoutUnit.h"
 
@@ -60,12 +59,18 @@ public:
     float logicalLeftOffset() const { return m_left; }
     
     bool hasCommitted() const { return m_hasCommitted; }
+    bool hasCommittedReplaced() const { return m_hasCommittedReplaced; }
 
     void updateAvailableWidth(LayoutUnit minimumHeight = 0);
     void shrinkAvailableWidthForNewFloatIfNeeded(const FloatingObject&);
     void addUncommittedWidth(float delta)
     {
         m_uncommittedWidth += delta;
+    }
+    void addUncommittedReplacedWidth(float delta)
+    {
+        addUncommittedWidth(delta);
+        m_hasUncommittedReplaced = true;
     }
     void commit();
     void applyOverhang(RenderRubyRun*, RenderObject* startRenderer, RenderObject* endRenderer);
@@ -79,9 +84,7 @@ private:
     void computeAvailableWidthFromLeftAndRight();
     bool fitsOnLineExcludingTrailingCollapsedWhitespace() const;
     void updateLineDimension(LayoutUnit newLineTop, LayoutUnit newLineWidth, float newLineLeft, float newLineRight);
-#if ENABLE(CSS_SHAPES)
     void wrapNextToShapeOutside(bool isFirstLine);
-#endif
 
     RenderBlockFlow& m_block;
     float m_uncommittedWidth { 0 };
@@ -94,11 +97,11 @@ private:
     float m_availableWidth { 0 };
     bool m_isFirstLine { true };
     bool m_hasCommitted { false };
+    bool m_hasCommittedReplaced { false };
+    bool m_hasUncommittedReplaced { false };
     IndentTextOrNot m_shouldIndentText;
 };
 
 IndentTextOrNot requiresIndent(bool isFirstLine, bool isAfterHardLineBreak, const RenderStyle&);
 
-}
-
-#endif // LineWidth_h
+} // namespace WebCore
