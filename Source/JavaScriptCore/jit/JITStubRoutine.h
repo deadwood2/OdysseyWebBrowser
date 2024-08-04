@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef JITStubRoutine_h
-#define JITStubRoutine_h
+#pragma once
 
 #if ENABLE(JIT)
 
@@ -71,11 +70,8 @@ public:
     // the churn.
     const MacroAssemblerCodeRef& code() const { return m_code; }
     
-    static MacroAssemblerCodePtr asCodePtr(PassRefPtr<JITStubRoutine> stubRoutine)
+    static MacroAssemblerCodePtr asCodePtr(Ref<JITStubRoutine>&& stubRoutine)
     {
-        if (!stubRoutine)
-            return MacroAssemblerCodePtr();
-        
         MacroAssemblerCodePtr result = stubRoutine->code().code();
         ASSERT(!!result);
         return result;
@@ -101,29 +97,15 @@ public:
     
     static bool canPerformRangeFilter()
     {
-#if ENABLE(EXECUTABLE_ALLOCATOR_FIXED)
         return true;
-#else
-        return false;
-#endif
     }
     static uintptr_t filteringStartAddress()
     {
-#if ENABLE(EXECUTABLE_ALLOCATOR_FIXED)
         return startOfFixedExecutableMemoryPool;
-#else
-        UNREACHABLE_FOR_PLATFORM();
-        return 0;
-#endif
     }
     static size_t filteringExtentSize()
     {
-#if ENABLE(EXECUTABLE_ALLOCATOR_FIXED)
         return fixedExecutableMemoryPoolSize;
-#else
-        UNREACHABLE_FOR_PLATFORM();
-        return 0;
-#endif
     }
     static bool passesFilter(uintptr_t address)
     {
@@ -158,6 +140,3 @@ protected:
 } // namespace JSC
 
 #endif // ENABLE(JIT)
-
-#endif // JITStubRoutine_h
-

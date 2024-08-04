@@ -27,8 +27,6 @@
 #include "config.h"
 #include "CompositionEvent.h"
 
-#include "EventNames.h"
-
 namespace WebCore {
 
 CompositionEvent::CompositionEvent()
@@ -41,8 +39,8 @@ CompositionEvent::CompositionEvent(const AtomicString& type, DOMWindow* view, co
 {
 }
 
-CompositionEvent::CompositionEvent(const AtomicString& type, const CompositionEventInit& initializer)
-    : UIEvent(type, initializer)
+CompositionEvent::CompositionEvent(const AtomicString& type, const Init& initializer, IsTrusted isTrusted)
+    : UIEvent(type, initializer, isTrusted)
     , m_data(initializer.data)
 {
 }

@@ -20,8 +20,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef CSSPropertyParser_h
-#define CSSPropertyParser_h
+#pragma once
 
 #include "CSSParserTokenRange.h"
 #include "StyleRule.h"
@@ -32,7 +31,8 @@ namespace WebCore {
 class CSSProperty;
 class CSSValue;
 class StylePropertyShorthand;
-
+class StyleSheetContents;
+    
 // Inputs: PropertyID, isImportant bool, CSSParserTokenRange.
 // Outputs: Vector of CSSProperties
 
@@ -40,28 +40,27 @@ class CSSPropertyParser {
     WTF_MAKE_NONCOPYABLE(CSSPropertyParser);
 public:
     static bool parseValue(CSSPropertyID, bool important,
-        const CSSParserTokenRange&, const CSSParserContext&,
+        const CSSParserTokenRange&, const CSSParserContext&, StyleSheetContents*,
         Vector<CSSProperty, 256>&, StyleRule::Type);
 
     // Parses a non-shorthand CSS property
-    static const CSSValue* parseSingleValue(CSSPropertyID, const CSSParserTokenRange&, const CSSParserContext&);
+    static RefPtr<CSSValue> parseSingleValue(CSSPropertyID, const CSSParserTokenRange&, const CSSParserContext&, StyleSheetContents*);
 
 private:
-    CSSPropertyParser(const CSSParserTokenRange&, const CSSParserContext&,
-        Vector<CSSProperty, 256>*);
+    CSSPropertyParser(const CSSParserTokenRange&, const CSSParserContext&, StyleSheetContents*, Vector<CSSProperty, 256>*);
 
     // FIXME: Rename once the CSSParserValue-based parseValue is removed
-    bool parseValueStart(CSSPropertyID unresolvedProperty, bool important);
-    bool consumeCSSWideKeyword(CSSPropertyID unresolvedProperty, bool important);
-    const CSSValue* parseSingleValue(CSSPropertyID, CSSPropertyID = CSSPropertyInvalid);
+    bool parseValueStart(CSSPropertyID, bool important);
+    bool consumeCSSWideKeyword(CSSPropertyID, bool important);
+    RefPtr<CSSValue> parseSingleValue(CSSPropertyID, CSSPropertyID = CSSPropertyInvalid);
 
-    bool inQuirksMode() const { return m_context.mode == CSSQuirksMode; }
+    bool inQuirksMode() const { return m_context.mode == HTMLQuirksMode; }
 
     bool parseViewportDescriptor(CSSPropertyID propId, bool important);
     bool parseFontFaceDescriptor(CSSPropertyID);
 
-    void addProperty(CSSPropertyID, CSSPropertyID, const CSSValue&, bool important, bool implicit = false);
-    void addExpandedPropertyForValue(CSSPropertyID propId, const CSSValue&, bool);
+    void addProperty(CSSPropertyID, CSSPropertyID, Ref<CSSValue>&&, bool important, bool implicit = false);
+    void addExpandedPropertyForValue(CSSPropertyID propId, Ref<CSSValue>&&, bool);
 
     bool consumeBorder(bool important);
 
@@ -70,7 +69,7 @@ private:
     bool consume4Values(const StylePropertyShorthand&, bool important);
 
     // Legacy parsing allows <string>s for animation-name
-    bool consumeAnimationShorthand(const StylePropertyShorthand&, bool useLegacyParsing, bool important);
+    bool consumeAnimationShorthand(const StylePropertyShorthand&, bool important);
     bool consumeBackgroundShorthand(const StylePropertyShorthand&, bool important);
 
     bool consumeColumns(bool important);
@@ -94,17 +93,25 @@ private:
 
     bool consumeLegacyBreakProperty(CSSPropertyID, bool important);
 
+    bool consumeTransformOrigin(bool important);
+    bool consumePerspectiveOrigin(bool important);
+
 private:
     // Inputs:
     CSSParserTokenRange m_range;
     const CSSParserContext& m_context;
+    StyleSheetContents* m_styleSheetContents;
+
     // Outputs:
     Vector<CSSProperty, 256>* m_parsedProperties;
 };
 
-CSSPropertyID unresolvedCSSPropertyID(StringView);
+CSSPropertyID cssPropertyID(StringView);
 CSSValueID cssValueKeywordID(StringView);
+bool isCustomPropertyName(const String&);
+
+#if PLATFORM(IOS)
+void cssPropertyNameIOSAliasing(const char* propertyName, const char*& propertyNameAlias, unsigned& newLength);
+#endif
 
 } // namespace WebCore
-
-#endif // CSSPropertyParser_h

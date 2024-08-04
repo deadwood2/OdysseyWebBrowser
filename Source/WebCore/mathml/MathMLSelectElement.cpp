@@ -36,7 +36,6 @@
 #include "RenderMathMLRow.h"
 #include "RenderTreeUpdater.h"
 #include "SVGElement.h"
-#include "SVGNames.h"
 
 namespace WebCore {
 
@@ -206,7 +205,7 @@ void MathMLSelectElement::updateSelectedChild()
         RenderTreeUpdater::tearDownRenderers(*m_selectedChild);
 
     m_selectedChild = newSelectedChild;
-    setNeedsStyleRecalc();
+    invalidateStyleForSubtree();
 }
 
 void MathMLSelectElement::defaultEventHandler(Event& event)

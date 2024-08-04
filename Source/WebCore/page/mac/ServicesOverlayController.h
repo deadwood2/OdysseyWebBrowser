@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ServicesOverlayController_h
-#define ServicesOverlayController_h
+#pragma once
 
 #if (ENABLE(SERVICE_CONTROLS) || ENABLE(TELEPHONE_NUMBER_DETECTION)) && PLATFORM(MAC)
 
@@ -32,17 +31,15 @@
 #include "PageOverlay.h"
 #include "Range.h"
 #include "Timer.h"
-#include <wtf/RefCounted.h>
 
 typedef struct __DDHighlight *DDHighlightRef;
 
 namespace WebCore {
+    
 class LayoutRect;
 class MainFrame;
-struct GapRects;
-}
 
-namespace WebCore {
+struct GapRects;
 
 class ServicesOverlayController : private PageOverlay::Client {
     WTF_MAKE_FAST_ALLOCATED;
@@ -57,14 +54,14 @@ private:
     class Highlight : public RefCounted<Highlight>, private GraphicsLayerClient {
         WTF_MAKE_NONCOPYABLE(Highlight);
     public:
-        static Ref<Highlight> createForSelection(ServicesOverlayController&, RetainPtr<DDHighlightRef>, PassRefPtr<Range>);
-        static Ref<Highlight> createForTelephoneNumber(ServicesOverlayController&, RetainPtr<DDHighlightRef>, PassRefPtr<Range>);
+        static Ref<Highlight> createForSelection(ServicesOverlayController&, RetainPtr<DDHighlightRef>, Ref<Range>&&);
+        static Ref<Highlight> createForTelephoneNumber(ServicesOverlayController&, RetainPtr<DDHighlightRef>, Ref<Range>&&);
         ~Highlight();
 
         void invalidate();
 
         DDHighlightRef ddHighlight() const { return m_ddHighlight.get(); }
-        Range* range() const { return m_range.get(); }
+        Range& range() const { return m_range.get(); }
         GraphicsLayer* layer() const { return m_graphicsLayer.get(); }
 
         enum {
@@ -80,7 +77,7 @@ private:
         void setDDHighlight(DDHighlightRef);
 
     private:
-        explicit Highlight(ServicesOverlayController&, Type, RetainPtr<DDHighlightRef>, PassRefPtr<Range>);
+        Highlight(ServicesOverlayController&, Type, RetainPtr<DDHighlightRef>, Ref<Range>&&);
 
         // GraphicsLayerClient
         void notifyFlushRequired(const GraphicsLayer*) override;
@@ -90,7 +87,7 @@ private:
         void didFinishFadeOutAnimation();
 
         RetainPtr<DDHighlightRef> m_ddHighlight;
-        RefPtr<Range> m_range;
+        Ref<Range> m_range;
         std::unique_ptr<GraphicsLayer> m_graphicsLayer;
         Type m_type;
         ServicesOverlayController* m_controller;
@@ -165,7 +162,6 @@ private:
     Timer m_buildHighlightsTimer;
 };
 
-} // namespace WebKit
+} // namespace WebCore
 
 #endif // (ENABLE(SERVICE_CONTROLS) || ENABLE(TELEPHONE_NUMBER_DETECTION)) && PLATFORM(MAC)
-#endif // ServicesOverlayController_h

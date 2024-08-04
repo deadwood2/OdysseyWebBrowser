@@ -33,20 +33,16 @@
 #import "DragData.h"
 #import "Editor.h"
 #import "EditorClient.h"
-#import "ExceptionCodePlaceholder.h"
 #import "Frame.h"
 #import "FrameView.h"
 #import "FrameLoaderClient.h"
 #import "HitTestResult.h"
-#import "HTMLAnchorElement.h"
 #import "htmlediting.h"
-#import "HTMLNames.h"
 #import "Image.h"
 #import "URL.h"
 #import "LegacyWebArchive.h"
 #import "LoaderNSURLExtras.h"
 #import "MIMETypeRegistry.h"
-#import "Page.h"
 #import "PasteboardStrategy.h"
 #import "PlatformStrategies.h"
 #import "RenderImage.h"
@@ -98,21 +94,19 @@ static const Vector<String> writableTypesForURL()
     return types;
 }
 
-static inline Vector<String> createWritableTypesForImage()
+static Vector<String> writableTypesForImage()
 {
     Vector<String> types;
-    
     types.append(String(NSTIFFPboardType));
     types.appendVector(writableTypesForURL());
     types.append(String(NSRTFDPboardType));
     return types;
 }
 
-static Vector<String> writableTypesForImage()
+Pasteboard::Pasteboard()
+    : m_pasteboardName(emptyString())
+    , m_changeCount(0)
 {
-    Vector<String> types;
-    types.appendVector(createWritableTypesForImage());
-    return types;
 }
 
 Pasteboard::Pasteboard(const String& pasteboardName)
@@ -124,7 +118,10 @@ Pasteboard::Pasteboard(const String& pasteboardName)
 
 std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste()
 {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     return std::make_unique<Pasteboard>(NSGeneralPboard);
+#pragma clang diagnostic pop
 }
 
 std::unique_ptr<Pasteboard> Pasteboard::createPrivate()
@@ -135,7 +132,10 @@ std::unique_ptr<Pasteboard> Pasteboard::createPrivate()
 #if ENABLE(DRAG_SUPPORT)
 std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop()
 {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     return std::make_unique<Pasteboard>(NSDragPboard);
+#pragma clang diagnostic pop
 }
 
 std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop(const DragData& dragData)
@@ -161,6 +161,8 @@ void Pasteboard::write(const PasteboardWebContent& content)
         types.append(String(NSRTFDPboardType));
     if (content.dataInRTFFormat)
         types.append(String(NSRTFPboardType));
+    if (!content.dataInHTMLFormat.isNull())
+        types.append(String(NSHTMLPboardType));
     if (!content.dataInStringFormat.isNull())
         types.append(String(NSStringPboardType));
     types.appendVector(content.clientTypes);
@@ -178,6 +180,8 @@ void Pasteboard::write(const PasteboardWebContent& content)
         m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.dataInRTFDFormat.get(), NSRTFDPboardType, m_pasteboardName);
     if (content.dataInRTFFormat)
         m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.dataInRTFFormat.get(), NSRTFPboardType, m_pasteboardName);
+    if (!content.dataInHTMLFormat.isNull())
+        m_changeCount = platformStrategies()->pasteboardStrategy()->setStringForType(content.dataInHTMLFormat, NSHTMLPboardType, m_pasteboardName);
     if (!content.dataInStringFormat.isNull())
         m_changeCount = platformStrategies()->pasteboardStrategy()->setStringForType(content.dataInStringFormat, NSStringPboardType, m_pasteboardName);
 }
@@ -233,6 +237,13 @@ void Pasteboard::write(const PasteboardURL& pasteboardURL)
     m_changeCount = writeURLForTypes(writableTypesForURL(), m_pasteboardName, pasteboardURL);
 }
 
+void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL& pasteboardURL)
+{
+    NSURL *cocoaURL = pasteboardURL.url;
+    Vector<String> paths = { [cocoaURL absoluteString], pasteboardURL.title.stripWhiteSpace() };
+    m_changeCount = platformStrategies()->pasteboardStrategy()->setPathnamesForType(paths, WebURLsWithTitlesPboardType, m_pasteboardName);
+}
+
 static NSFileWrapper* fileWrapper(const PasteboardImage& pasteboardImage)
 {
     NSFileWrapper *wrapper = [[[NSFileWrapper alloc] initRegularFileWithContents:pasteboardImage.resourceData->createNSData().get()] autorelease];
@@ -255,15 +266,21 @@ static void writeFileWrapperAsRTFDAttachment(NSFileWrapper *wrapper, const Strin
 
 void Pasteboard::write(const PasteboardImage& pasteboardImage)
 {
-    CFDataRef imageData = pasteboardImage.image->getTIFFRepresentation();
+    CFDataRef imageData = pasteboardImage.image->tiffRepresentation();
     if (!imageData)
         return;
 
     // FIXME: Why can we assert this? It doesn't seem like it's guaranteed.
     ASSERT(MIMETypeRegistry::isSupportedImageResourceMIMEType(pasteboardImage.resourceMIMEType));
 
-    m_changeCount = writeURLForTypes(writableTypesForImage(), m_pasteboardName, pasteboardImage.url);
+    auto types = writableTypesForImage();
+    if (pasteboardImage.dataInWebArchiveFormat)
+        types.append(WebArchivePboardType);
+
+    m_changeCount = writeURLForTypes(types, m_pasteboardName, pasteboardImage.url);
     m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(SharedBuffer::wrapCFData(imageData).ptr(), NSTIFFPboardType, m_pasteboardName);
+    if (pasteboardImage.dataInWebArchiveFormat)
+        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(pasteboardImage.dataInWebArchiveFormat.get(), WebArchivePboardType, m_pasteboardName);
     writeFileWrapperAsRTFDAttachment(fileWrapper(pasteboardImage), m_pasteboardName, m_changeCount);
 }
 
@@ -277,6 +294,10 @@ bool Pasteboard::canSmartReplace()
     Vector<String> types;
     platformStrategies()->pasteboardStrategy()->getTypes(types, m_pasteboardName);
     return types.contains(WebSmartPastePboardType);
+}
+
+void Pasteboard::writeMarkup(const String&)
+{
 }
 
 void Pasteboard::read(PasteboardPlainText& text)
@@ -393,6 +414,13 @@ void Pasteboard::read(PasteboardWebContentReader& reader)
         }
     }
 
+    if (types.contains(String(kUTTypeJPEG))) {
+        if (RefPtr<SharedBuffer> buffer = strategy.bufferForType(kUTTypeJPEG, m_pasteboardName)) {
+            if (reader.readImage(buffer.releaseNonNull(), ASCIILiteral("image/jpeg")))
+                return;
+        }
+    }
+
     if (types.contains(String(NSURLPboardType))) {
         URL url = strategy.url(m_pasteboardName);
         String title = strategy.stringForType(WebURLNamePboardType, m_pasteboardName);
@@ -402,6 +430,12 @@ void Pasteboard::read(PasteboardWebContentReader& reader)
 
     if (types.contains(String(NSStringPboardType))) {
         String string = strategy.stringForType(NSStringPboardType, m_pasteboardName);
+        if (!string.isNull() && reader.readPlainText(string))
+            return;
+    }
+
+    if (types.contains(String(kUTTypeUTF8PlainText))) {
+        String string = strategy.stringForType(kUTTypeUTF8PlainText, m_pasteboardName);
         if (!string.isNull() && reader.readPlainText(string))
             return;
     }
@@ -629,7 +663,7 @@ Vector<String> Pasteboard::readFilenames()
 }
 
 #if ENABLE(DRAG_SUPPORT)
-void Pasteboard::setDragImage(DragImageRef image, const IntPoint& location)
+void Pasteboard::setDragImage(DragImage image, const IntPoint& location)
 {
     // Don't allow setting the drag image if someone kept a pasteboard and is trying to set the image too late.
     if (m_changeCount != platformStrategies()->pasteboardStrategy()->changeCount(m_pasteboardName))
@@ -637,16 +671,13 @@ void Pasteboard::setDragImage(DragImageRef image, const IntPoint& location)
 
     // Dashboard wants to be able to set the drag image during dragging, but Cocoa does not allow this.
     // Instead we must drop down to the CoreGraphics API.
-    wkSetDragImage(image.get(), location);
+    wkSetDragImage(image.get().get(), location);
 
     // Hack: We must post an event to wake up the NSDragManager, which is sitting in a nextEvent call
     // up the stack from us because the CoreFoundation drag manager does not use the run loop by itself.
     // This is the most innocuous event to use, per Kristen Forster.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    NSEvent* event = [NSEvent mouseEventWithType:NSMouseMoved location:NSZeroPoint
+    NSEvent* event = [NSEvent mouseEventWithType:NSEventTypeMouseMoved location:NSZeroPoint
         modifierFlags:0 timestamp:0 windowNumber:0 context:nil eventNumber:0 clickCount:0 pressure:0];
-#pragma clang diagnostic pop
     [NSApp postEvent:event atStart:YES];
 }
 #endif

@@ -26,18 +26,18 @@
 #include "config.h"
 #include "CustomEvent.h"
 
-#include "EventNames.h"
 #include <runtime/JSCInlines.h>
 
 namespace WebCore {
 
-CustomEvent::CustomEvent()
+CustomEvent::CustomEvent(IsTrusted isTrusted)
+    : Event(isTrusted)
 {
 }
 
-CustomEvent::CustomEvent(const AtomicString& type, const CustomEventInit& initializer)
-    : Event(type, initializer)
-    , m_detail(initializer.detail)
+CustomEvent::CustomEvent(JSC::ExecState& state, const AtomicString& type, const Init& initializer, IsTrusted isTrusted)
+    : Event(type, initializer, isTrusted)
+    , m_detail(state.vm(), initializer.detail)
 {
 }
 
@@ -60,7 +60,7 @@ void CustomEvent::initCustomEvent(JSC::ExecState& state, const AtomicString& typ
 RefPtr<SerializedScriptValue> CustomEvent::trySerializeDetail(JSC::ExecState& state)
 {
     if (!m_triedToSerialize) {
-        m_serializedDetail = SerializedScriptValue::create(&state, m_detail, nullptr, nullptr, NonThrowing);
+        m_serializedDetail = SerializedScriptValue::create(state, m_detail, SerializationErrorMode::NonThrowing);
         m_triedToSerialize = true;
     }
     return m_serializedDetail;

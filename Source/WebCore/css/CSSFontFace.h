@@ -26,7 +26,7 @@
 #pragma once
 
 #include "CSSFontFaceRule.h"
-#include "FontFeatureSettings.h"
+#include "FontTaggedSettings.h"
 #include "TextFlags.h"
 #include "Timer.h"
 #include <memory>
@@ -87,8 +87,8 @@ public:
     Status status() const { return m_status; }
     StyleRuleFontFace* cssConnection() const { return m_cssConnection.get(); }
 
-    static Optional<FontTraitsMask> calculateStyleMask(CSSValue& style);
-    static Optional<FontTraitsMask> calculateWeightMask(CSSValue& weight);
+    static std::optional<FontTraitsMask> calculateStyleMask(CSSValue& style);
+    static std::optional<FontTraitsMask> calculateWeightMask(CSSValue& weight);
 
     class Client;
     void addClient(Client&);

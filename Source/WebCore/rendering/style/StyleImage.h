@@ -21,13 +21,11 @@
  *
  */
 
-#ifndef StyleImage_h
-#define StyleImage_h
+#pragma once
 
 #include "CSSValue.h"
 #include "FloatSize.h"
 #include "Image.h"
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 #include <wtf/TypeCasts.h>
@@ -49,9 +47,9 @@ public:
 
     virtual bool operator==(const StyleImage& other) const = 0;
 
-    virtual PassRefPtr<CSSValue> cssValue() const = 0;
+    virtual Ref<CSSValue> cssValue() const = 0;
 
-    virtual bool canRender(const RenderObject*, float /*multiplier*/) const { return true; }
+    virtual bool canRender(const RenderElement*, float /*multiplier*/) const { return true; }
     virtual bool isPending() const = 0;
     virtual void load(CachedResourceLoader&, const ResourceLoaderOptions&) = 0;
     virtual bool isLoaded() const { return true; }
@@ -89,5 +87,3 @@ protected:
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::ToClassName) \
     static bool isType(const WebCore::StyleImage& image) { return image.predicate(); } \
 SPECIALIZE_TYPE_TRAITS_END()
-
-#endif // StyleImage_h

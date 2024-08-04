@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2010 Google Inc. All rights reserved.
+ * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,13 +25,13 @@
  */
 
 #include "config.h"
-#include "IDBKeyPath.h"
 
 #if ENABLE(INDEXED_DATABASE)
+#include "IDBKeyPath.h"
 
-#include "KeyedCoding.h"
 #include <wtf/ASCIICType.h>
 #include <wtf/dtoa.h>
+#include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
 
@@ -191,111 +192,61 @@ void IDBParseKeyPath(const String& keyPath, Vector<String>& elements, IDBKeyPath
     }
 }
 
-IDBKeyPath::IDBKeyPath(const String& string)
-    : m_type(Type::String)
-    , m_string(string)
+bool isIDBKeyPathValid(const IDBKeyPath& keyPath)
 {
-    ASSERT(!m_string.isNull());
-}
-
-IDBKeyPath::IDBKeyPath(const Vector<String>& array)
-    : m_type(Type::Array)
-    , m_array(array)
-{
-#if !LOG_DISABLED
-    for (auto& key : array)
-        ASSERT(!key.isNull());
-#endif
-}
-
-bool IDBKeyPath::isValid() const
-{
-    switch (m_type) {
-    case Type::Null:
-        return false;
-    case Type::String:
-        return IDBIsValidKeyPath(m_string);
-    case Type::Array:
-        if (m_array.isEmpty())
+    auto visitor = WTF::makeVisitor([](const String& string) {
+        return IDBIsValidKeyPath(string);
+    }, [](const Vector<String>& vector) {
+        if (vector.isEmpty())
             return false;
-        for (auto& key : m_array) {
+        for (auto& key : vector) {
             if (!IDBIsValidKeyPath(key))
                 return false;
         }
         return true;
-    }
-    ASSERT_NOT_REACHED();
-    return false;
-}
-
-bool IDBKeyPath::operator==(const IDBKeyPath& other) const
-{
-    if (m_type != other.m_type)
-        return false;
-
-    switch (m_type) {
-    case Type::Null:
-        return true;
-    case Type::String:
-        return m_string == other.m_string;
-    case Type::Array:
-        return m_array == other.m_array;
-    }
-    ASSERT_NOT_REACHED();
-    return false;
-}
-
-IDBKeyPath IDBKeyPath::isolatedCopy() const
-{
-    IDBKeyPath result;
-    result.m_type = m_type;
-    result.m_string = m_string.isolatedCopy();
-    result.m_array.reserveInitialCapacity(m_array.size());
-    for (auto& key : m_array)
-        result.m_array.uncheckedAppend(key.isolatedCopy());
-    return result;
-}
-
-void IDBKeyPath::encode(KeyedEncoder& encoder) const
-{
-    encoder.encodeEnum("type", m_type);
-    switch (m_type) {
-    case Type::Null:
-        return;
-    case Type::String:
-        encoder.encodeString("string", m_string);
-        return;
-    case Type::Array:
-        encoder.encodeObjects("array", m_array.begin(), m_array.end(), [](WebCore::KeyedEncoder& encoder, const String& string) {
-            encoder.encodeString("string", string);
-        });
-        return;
-    };
-    ASSERT_NOT_REACHED();
-}
-
-bool IDBKeyPath::decode(KeyedDecoder& decoder, IDBKeyPath& result)
-{
-    bool succeeded = decoder.decodeEnum("type", result.m_type, [](Type value) {
-        return value == Type::Null || value == Type::String || value == Type::Array;
     });
-    if (!succeeded)
-        return false;
-
-    switch (result.m_type) {
-    case Type::Null:
-        return true;
-    case Type::String:
-        return decoder.decodeString("string", result.m_string);
-    case Type::Array:
-        result.m_array.clear();
-        return decoder.decodeObjects("array", result.m_array, [](KeyedDecoder& decoder, String& result) {
-            return decoder.decodeString("string", result);
-        });
-    }
-    ASSERT_NOT_REACHED();
-    return false;
+    return WTF::visit(visitor, keyPath);
 }
+
+IDBKeyPath isolatedCopy(const IDBKeyPath& keyPath)
+{
+    auto visitor = WTF::makeVisitor([](const String& string) -> IDBKeyPath {
+        return string.isolatedCopy();
+    }, [](const Vector<String>& vector) -> IDBKeyPath {
+        Vector<String> vectorCopy;
+        vectorCopy.reserveInitialCapacity(vector.size());
+        for (auto& string : vector)
+            vectorCopy.uncheckedAppend(string.isolatedCopy());
+        return vectorCopy;
+    });
+
+    return WTF::visit(visitor, keyPath);
+}
+
+#ifndef NDEBUG
+String loggingString(const IDBKeyPath& path)
+{
+    auto visitor = WTF::makeVisitor([](const String& string) {
+        return makeString("< ", string, " >");
+    }, [](const Vector<String>& strings) {
+        if (strings.isEmpty())
+            return String("< >");
+
+        StringBuilder builder;
+        builder.append("< ");
+        for (size_t i = 0; i < strings.size() - 1; ++i) {
+            builder.append(strings[i]);
+            builder.append(", ");
+        }
+        builder.append(strings.last());
+        builder.append(" >");
+
+        return builder.toString();
+    });
+
+    return WTF::visit(visitor, path);
+}
+#endif
 
 } // namespace WebCore
 

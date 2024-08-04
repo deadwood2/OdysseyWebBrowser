@@ -36,15 +36,11 @@
 #include <WebCore/SubresourceLoader.h>
 #include <WebCore/URL.h>
 #include <wtf/MainThread.h>
-#include <wtf/TemporaryChange.h>
+#include <wtf/SetForScope.h>
 #include <wtf/text/CString.h>
 
 #if PLATFORM(IOS)
 #include <WebCore/RuntimeApplicationChecks.h>
-#endif
-
-#if USE(QUICK_LOOK)
-#include <WebCore/QuickLook.h>
 #endif
 
 // Match the parallel connection count used by the networking layer.
@@ -149,7 +145,7 @@ void WebResourceLoadScheduler::scheduleLoad(ResourceLoader* resourceLoader)
     bool hadRequests = host->hasRequests();
     host->schedule(resourceLoader, priority);
 
-#if PLATFORM(COCOA) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
     if (ResourceRequest::resourcePrioritiesEnabled() && !isSuspendingPendingRequests()) {
         // Serve all requests at once to keep the pipeline full at the network layer.
         // FIXME: Does this code do anything useful, given that we also set maxRequestsInFlightPerHost to effectively unlimited on these platforms?

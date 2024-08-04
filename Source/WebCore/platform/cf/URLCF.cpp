@@ -27,6 +27,7 @@
 #include "URL.h"
 
 #include "CFURLExtras.h"
+#include "URLParser.h"
 #include <CoreFoundation/CFURL.h>
 #include <wtf/text/CString.h>
 
@@ -46,7 +47,8 @@ URL::URL(CFURLRef url)
     // FIXME: Why is it OK to ignore base URL here?
     CString urlBytes;
     getURLBytes(url, urlBytes);
-    parse(urlBytes.data());
+    URLParser parser(urlBytes.data());
+    *this = parser.result();
 }
 
 #if !USE(FOUNDATION)

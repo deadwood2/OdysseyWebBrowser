@@ -23,12 +23,12 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ResourceUsageOverlay_h
-#define ResourceUsageOverlay_h
+#pragma once
 
 #if ENABLE(RESOURCE_USAGE)
 
 #include "FloatRect.h"
+#include "GraphicsLayer.h"
 #include "IntRect.h"
 #include "MainFrame.h"
 #include "PageOverlay.h"
@@ -83,10 +83,13 @@ private:
     RetainPtr<CALayer> m_layer;
     RetainPtr<CALayer> m_containerLayer;
 #endif
+
+#if OS(LINUX)
+    std::unique_ptr<GraphicsLayer> m_paintLayer;
+    std::unique_ptr<GraphicsLayerClient> m_overlayPainter;
+#endif
 };
 
-}
+} // namespace WebCore
 
-#endif
-
-#endif
+#endif // ENABLE(RESOURCE_USAGE)

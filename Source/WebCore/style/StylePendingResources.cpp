@@ -54,6 +54,7 @@ static void loadPendingImage(Document& document, const StyleImage* styleImage, c
     if (loadPolicy == LoadPolicy::ShapeOutside) {
         options.mode = FetchOptions::Mode::Cors;
         options.allowCredentials = DoNotAllowStoredCredentials;
+        options.sameOriginDataURLFlag = SameOriginDataURLFlag::Set;
     }
 
     const_cast<StyleImage&>(*styleImage).load(document.cachedResourceLoader(), options);
@@ -61,7 +62,7 @@ static void loadPendingImage(Document& document, const StyleImage* styleImage, c
 
 void loadPendingResources(RenderStyle& style, Document& document, const Element* element)
 {
-    for (auto* backgroundLayer = style.backgroundLayers(); backgroundLayer; backgroundLayer = backgroundLayer->next())
+    for (auto* backgroundLayer = &style.backgroundLayers(); backgroundLayer; backgroundLayer = backgroundLayer->next())
         loadPendingImage(document, backgroundLayer->image(), element);
 
     for (auto* contentData = style.contentData(); contentData; contentData = contentData->next()) {
@@ -83,13 +84,11 @@ void loadPendingResources(RenderStyle& style, Document& document, const Element*
     if (auto* reflection = style.boxReflect())
         loadPendingImage(document, reflection->mask().image(), element);
 
-    for (auto* maskLayer = style.maskLayers(); maskLayer; maskLayer = maskLayer->next())
+    for (auto* maskLayer = &style.maskLayers(); maskLayer; maskLayer = maskLayer->next())
         loadPendingImage(document, maskLayer->image(), element);
 
-#if ENABLE(CSS_SHAPES)
     if (style.shapeOutside())
         loadPendingImage(document, style.shapeOutside()->image(), element, LoadPolicy::ShapeOutside);
-#endif
 }
 
 }

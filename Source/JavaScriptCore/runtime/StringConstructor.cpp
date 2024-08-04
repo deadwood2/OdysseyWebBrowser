@@ -22,7 +22,6 @@
 #include "StringConstructor.h"
 
 #include "Error.h"
-#include "Executable.h"
 #include "JITCode.h"
 #include "JSFunction.h"
 #include "JSGlobalObject.h"
@@ -45,7 +44,7 @@ const ClassInfo StringConstructor::s_info = { "Function", &InternalFunction::s_i
 
 /* Source for StringConstructor.lut.h
 @begin stringConstructorTable
-  fromCharCode          stringFromCharCode         DontEnum|Function 1
+  fromCharCode          stringFromCharCode         DontEnum|Function 1 FromCharCodeIntrinsic
   fromCodePoint         stringFromCodePoint        DontEnum|Function 1
   raw                   JSBuiltin                  DontEnum|Function 1
 @end
@@ -100,8 +99,7 @@ static EncodedJSValue JSC_HOST_CALL stringFromCodePoint(ExecState* exec)
 
     for (unsigned i = 0; i < length; ++i) {
         double codePointAsDouble = exec->uncheckedArgument(i).toNumber(exec);
-        if (exec->hadException())
-            return JSValue::encode(jsUndefined());
+        RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
         uint32_t codePoint = static_cast<uint32_t>(codePointAsDouble);
 
@@ -116,21 +114,24 @@ static EncodedJSValue JSC_HOST_CALL stringFromCodePoint(ExecState* exec)
         }
     }
 
+    scope.release();
     return JSValue::encode(jsString(exec, builder.toString()));
 }
 
 static EncodedJSValue JSC_HOST_CALL constructWithStringConstructor(ExecState* exec)
 {
-    JSGlobalObject* globalObject = asInternalFunction(exec->callee())->globalObject();
-    VM& vm = exec->vm();
+    JSGlobalObject* globalObject = asInternalFunction(exec->jsCallee())->globalObject();
+    VM& vm = globalObject->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
 
     Structure* structure = InternalFunction::createSubclassStructure(exec, exec->newTarget(), globalObject->stringObjectStructure());
-    if (exec->hadException())
-        return JSValue::encode(JSValue());
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
     if (!exec->argumentCount())
         return JSValue::encode(StringObject::create(vm, structure));
-    return JSValue::encode(StringObject::create(vm, structure, exec->uncheckedArgument(0).toString(exec)));
+    JSString* str = exec->uncheckedArgument(0).toString(exec);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    return JSValue::encode(StringObject::create(vm, structure, str));
 }
 
 ConstructType StringConstructor::getConstructData(JSCell*, ConstructData& constructData)

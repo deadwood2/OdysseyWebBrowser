@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef DFGNode_h
-#define DFGNode_h
+#pragma once
 
 #if ENABLE(DFG_JIT)
 
@@ -43,6 +42,8 @@
 #include "DFGNodeType.h"
 #include "DFGObjectMaterializationData.h"
 #include "DFGOpInfo.h"
+#include "DFGRegisteredStructure.h"
+#include "DFGRegisteredStructureSet.h"
 #include "DFGTransition.h"
 #include "DFGUseKind.h"
 #include "DFGVariableAccessData.h"
@@ -58,6 +59,13 @@
 #include <wtf/ListDump.h>
 
 namespace JSC {
+
+namespace DOMJIT {
+class GetterSetter;
+class Patchpoint;
+class CallDOMGetterPatchpoint;
+class Signature;
+}
 
 namespace Profiler {
 class ExecutionCounter;
@@ -225,6 +233,12 @@ struct StackAccessData {
     FlushFormat format;
     
     FlushedAt flushedAt() { return FlushedAt(format, machineLocal); }
+};
+
+struct CallDOMGetterData {
+    DOMJIT::GetterSetter* domJIT { nullptr };
+    DOMJIT::CallDOMGetterPatchpoint* patchpoint { nullptr };
+    unsigned identifierNumber { 0 };
 };
 
 // === Node ===
@@ -398,10 +412,10 @@ public:
 
     void remove();
 
-    void convertToCheckStructure(StructureSet* set)
+    void convertToCheckStructure(RegisteredStructureSet* set)
     {
         setOpAndDefaultFlags(CheckStructure);
-        m_opInfo = set; 
+        m_opInfo = set;
     }
 
     void convertToCheckStructureImmediate(Node* structure)
@@ -574,7 +588,7 @@ public:
 
     void convertToPhantomNewFunction()
     {
-        ASSERT(m_op == NewFunction || m_op == NewGeneratorFunction);
+        ASSERT(m_op == NewFunction || m_op == NewGeneratorFunction || m_op == NewAsyncFunction);
         m_op = PhantomNewFunction;
         m_flags |= NodeMustGenerate;
         m_opInfo = OpInfoWrapper();
@@ -586,6 +600,16 @@ public:
     {
         ASSERT(m_op == NewGeneratorFunction);
         m_op = PhantomNewGeneratorFunction;
+        m_flags |= NodeMustGenerate;
+        m_opInfo = OpInfoWrapper();
+        m_opInfo2 = OpInfoWrapper();
+        children = AdjacencyList();
+    }
+
+    void convertToPhantomNewAsyncFunction()
+    {
+        ASSERT(m_op == NewAsyncFunction);
+        m_op = PhantomNewAsyncFunction;
         m_flags |= NodeMustGenerate;
         m_opInfo = OpInfoWrapper();
         m_opInfo2 = OpInfoWrapper();
@@ -638,6 +662,10 @@ public:
         ASSERT(m_op == ArithAbs && child1().useKind() == Int32Use);
         m_op = ArithNegate;
     }
+    
+    void convertToDirectCall(FrozenValue*);
+
+    void convertToCallDOM(Graph&);
     
     JSValue asJSValue()
     {
@@ -710,17 +738,17 @@ public:
     }
      
     template<typename T>
-    T dynamicCastConstant()
+    T dynamicCastConstant(VM& vm)
     {
         if (!isCellConstant())
             return nullptr;
-        return jsDynamicCast<T>(asCell());
+        return jsDynamicCast<T>(vm, asCell());
     }
     
     template<typename T>
-    T castConstant()
+    T castConstant(VM& vm)
     {
-        T result = dynamicCastConstant<T>();
+        T result = dynamicCastConstant<T>(vm);
         RELEASE_ASSERT(result);
         return result;
     }
@@ -897,7 +925,7 @@ public:
 
     bool isStoreBarrier()
     {
-        return op() == StoreBarrier;
+        return op() == StoreBarrier || op() == FencedStoreBarrier;
     }
 
     bool hasIdentifier()
@@ -1044,6 +1072,12 @@ public:
         }
     }
 
+    BitVector* bitVector()
+    {
+        ASSERT(op() == NewArrayWithSpread || op() == PhantomNewArrayWithSpread);
+        return m_opInfo.as<BitVector*>();
+    }
+
     // Return the indexing type that an array allocation *wants* to use. It may end up using a different
     // type if we're having a bad time. You can determine the actual indexing type by asking the global
     // object:
@@ -1160,6 +1194,27 @@ public:
         ASSERT(hasLoadVarargsData());
         return m_opInfo.as<LoadVarargsData*>();
     }
+
+    bool hasQueriedType()
+    {
+        return op() == IsCellWithType;
+    }
+
+    JSType queriedType()
+    {
+        static_assert(std::is_same<uint8_t, std::underlying_type<JSType>::type>::value, "Ensure that uint8_t is the underlying type for JSType.");
+        return static_cast<JSType>(m_opInfo.as<uint32_t>());
+    }
+
+    bool hasSpeculatedTypeForQuery()
+    {
+        return op() == IsCellWithType;
+    }
+
+    SpeculatedType speculatedTypeForQuery()
+    {
+        return speculationFromJSType(queriedType());
+    }
     
     bool hasResult()
     {
@@ -1229,6 +1284,7 @@ public:
         case Switch:
         case Return:
         case TailCall:
+        case DirectTailCall:
         case TailCallVarargs:
         case TailCallForwardVarargs:
         case Unreachable:
@@ -1400,8 +1456,11 @@ public:
         case GetByVal:
         case GetByValWithThis:
         case Call:
+        case DirectCall:
         case TailCallInlinedCaller:
+        case DirectTailCallInlinedCaller:
         case Construct:
+        case DirectConstruct:
         case CallVarargs:
         case CallEval:
         case TailCallVarargsInlinedCaller:
@@ -1412,6 +1471,7 @@ public:
         case MultiGetByOffset:
         case GetClosureVar:
         case GetFromArguments:
+        case GetArgument:
         case ArrayPop:
         case ArrayPush:
         case RegExpExec:
@@ -1422,6 +1482,9 @@ public:
         case StringReplaceRegExp:
         case ToNumber:
         case LoadFromJSMapBucket:
+        case CallDOMGetter:
+        case CallDOM:
+        case ParseInt:
             return true;
         default:
             return false;
@@ -1447,10 +1510,15 @@ public:
         case OverridesHasInstance:
         case NewFunction:
         case NewGeneratorFunction:
+        case NewAsyncFunction:
         case CreateActivation:
         case MaterializeCreateActivation:
         case NewRegexp:
         case CompareEqPtr:
+        case DirectCall:
+        case DirectTailCall:
+        case DirectConstruct:
+        case DirectTailCallInlinedCaller:
             return true;
         default:
             return false;
@@ -1549,10 +1617,10 @@ public:
         }
     }
     
-    StructureSet& structureSet()
+    const RegisteredStructureSet& structureSet()
     {
         ASSERT(hasStructureSet());
-        return *m_opInfo.as<StructureSet*>();
+        return *m_opInfo.as<RegisteredStructureSet*>();
     }
     
     bool hasStructure()
@@ -1567,10 +1635,10 @@ public:
         }
     }
     
-    Structure* structure()
+    RegisteredStructure structure()
     {
         ASSERT(hasStructure());
-        return m_opInfo.as<Structure*>();
+        return m_opInfo.asRegisteredStructure();
     }
     
     bool hasStorageAccessData()
@@ -1678,6 +1746,7 @@ public:
         switch (op()) {
         case NewFunction:
         case NewGeneratorFunction:
+        case NewAsyncFunction:
             return true;
         default:
             return false;
@@ -1689,6 +1758,7 @@ public:
         switch (op()) {
         case PhantomNewFunction:
         case PhantomNewGeneratorFunction:
+        case PhantomNewAsyncFunction:
             return true;
         default:
             return false;
@@ -1700,9 +1770,13 @@ public:
         switch (op()) {
         case PhantomNewObject:
         case PhantomDirectArguments:
+        case PhantomCreateRest:
+        case PhantomSpread:
+        case PhantomNewArrayWithSpread:
         case PhantomClonedArguments:
         case PhantomNewFunction:
         case PhantomNewGeneratorFunction:
+        case PhantomNewAsyncFunction:
         case PhantomCreateActivation:
             return true;
         default:
@@ -1715,6 +1789,7 @@ public:
         switch (op()) {
         case GetIndexedPropertyStorage:
         case GetArrayLength:
+        case In:
         case PutByValDirect:
         case PutByVal:
         case PutByValAlias:
@@ -1934,6 +2009,11 @@ public:
     {
         return isInt32Speculation(prediction());
     }
+
+    bool shouldSpeculateNotInt32()
+    {
+        return isNotInt32Speculation(prediction());
+    }
     
     bool sawBooleans()
     {
@@ -1994,6 +2074,11 @@ public:
     {
         return isBooleanSpeculation(prediction());
     }
+
+    bool shouldSpeculateNotBoolean()
+    {
+        return isNotBooleanSpeculation(prediction());
+    }
     
     bool shouldSpeculateOther()
     {
@@ -2018,6 +2103,11 @@ public:
     bool shouldSpeculateString()
     {
         return isStringSpeculation(prediction());
+    }
+
+    bool shouldSpeculateNotString()
+    {
+        return isNotStringSpeculation(prediction());
     }
  
     bool shouldSpeculateStringOrOther()
@@ -2058,6 +2148,16 @@ public:
     bool shouldSpeculateArray()
     {
         return isArraySpeculation(prediction());
+    }
+
+    bool shouldSpeculateProxyObject()
+    {
+        return isProxyObjectSpeculation(prediction());
+    }
+
+    bool shouldSpeculateDerivedArray()
+    {
+        return isDerivedArraySpeculation(prediction());
     }
     
     bool shouldSpeculateDirectArguments()
@@ -2278,7 +2378,68 @@ public:
         ASSERT(hasBasicBlockLocation());
         return m_opInfo.as<BasicBlockLocation*>();
     }
-    
+
+    bool hasCheckDOMPatchpoint() const
+    {
+        return op() == CheckDOM;
+    }
+
+    DOMJIT::Patchpoint* checkDOMPatchpoint()
+    {
+        ASSERT(hasCheckDOMPatchpoint());
+        return m_opInfo.as<DOMJIT::Patchpoint*>();
+    }
+
+    bool hasCallDOMGetterData() const
+    {
+        return op() == CallDOMGetter;
+    }
+
+    CallDOMGetterData* callDOMGetterData()
+    {
+        ASSERT(hasCallDOMGetterData());
+        return m_opInfo.as<CallDOMGetterData*>();
+    }
+
+    bool hasClassInfo() const
+    {
+        return op() == CheckDOM;
+    }
+
+    const ClassInfo* classInfo()
+    {
+        return m_opInfo2.as<const ClassInfo*>();
+    }
+
+    bool hasSignature() const
+    {
+        // Note that this does not include TailCall node types intentionally.
+        // CallDOM node types are always converted from Call.
+        return op() == Call || op() == CallDOM;
+    }
+
+    const DOMJIT::Signature* signature()
+    {
+        return m_opInfo.as<const DOMJIT::Signature*>();
+    }
+
+    bool hasInternalMethodType() const
+    {
+        return op() == HasIndexedProperty;
+    }
+
+    PropertySlot::InternalMethodType internalMethodType() const
+    {
+        ASSERT(hasInternalMethodType());
+        return static_cast<PropertySlot::InternalMethodType>(m_opInfo2.as<uint32_t>());
+    }
+
+    void setInternalMethodType(PropertySlot::InternalMethodType type)
+    {
+        ASSERT(hasInternalMethodType());
+        m_opInfo2 = static_cast<uint32_t>(type);
+    }
+
     Node* replacement() const
     {
         return m_misc.replacement;
@@ -2301,7 +2462,18 @@ public:
 
     unsigned numberOfArgumentsToSkip()
     {
-        ASSERT(op() == CreateRest || op() == GetRestLength);
+        ASSERT(op() == CreateRest || op() == PhantomCreateRest || op() == GetRestLength || op() == GetMyArgumentByVal || op() == GetMyArgumentByValOutOfBounds);
+        return m_opInfo.as<unsigned>();
+    }
+
+    bool hasArgumentIndex()
+    {
+        return op() == GetArgument;
+    }
+
+    unsigned argumentIndex()
+    {
+        ASSERT(hasArgumentIndex());
         return m_opInfo.as<unsigned>();
     }
 
@@ -2337,8 +2509,7 @@ private:
     unsigned m_refCount;
     // The prediction ascribed to this node after propagation.
     SpeculatedType m_prediction { SpecNone };
-    // Immediate values, accesses type-checked via accessors above. The first one is
-    // big enough to store a pointer.
+    // Immediate values, accesses type-checked via accessors above.
     struct OpInfoWrapper {
         OpInfoWrapper()
         {
@@ -2357,6 +2528,16 @@ private:
         {
             u.int64 = 0;
             u.pointer = pointer;
+        }
+        OpInfoWrapper(const void* constPointer)
+        {
+            u.int64 = 0;
+            u.constPointer = constPointer;
+        }
+        OpInfoWrapper(RegisteredStructure structure)
+        {
+            u.int64 = 0;
+            u.pointer = bitwise_cast<void*>(structure);
         }
         OpInfoWrapper& operator=(uint32_t int32)
         {
@@ -2381,10 +2562,27 @@ private:
             u.pointer = pointer;
             return *this;
         }
+        OpInfoWrapper& operator=(const void* constPointer)
+        {
+            u.int64 = 0;
+            u.constPointer = constPointer;
+            return *this;
+        }
+        OpInfoWrapper& operator=(RegisteredStructure structure)
+        {
+            u.int64 = 0;
+            u.pointer = bitwise_cast<void*>(structure);
+            return *this;
+        }
         template <typename T>
-        ALWAYS_INLINE auto as() const -> typename std::enable_if<std::is_pointer<T>::value, T>::type
+        ALWAYS_INLINE auto as() const -> typename std::enable_if<std::is_pointer<T>::value && !std::is_const<typename std::remove_pointer<T>::type>::value, T>::type
         {
             return static_cast<T>(u.pointer);
+        }
+        template <typename T>
+        ALWAYS_INLINE auto as() const -> typename std::enable_if<std::is_pointer<T>::value && std::is_const<typename std::remove_pointer<T>::type>::value, T>::type
+        {
+            return static_cast<T>(u.constPointer);
         }
         template <typename T>
         ALWAYS_INLINE auto as() const -> typename std::enable_if<std::is_integral<T>::value && sizeof(T) == 4, T>::type
@@ -2396,10 +2594,16 @@ private:
         {
             return u.int64;
         }
+        ALWAYS_INLINE RegisteredStructure asRegisteredStructure() const
+        {
+            return bitwise_cast<RegisteredStructure>(u.pointer);
+        }
+
         union {
             uint32_t int32;
             uint64_t int64;
             void* pointer;
+            const void* constPointer;
         } u;
     };
     OpInfoWrapper m_opInfo;
@@ -2424,15 +2628,18 @@ public:
     BasicBlock* owner;
 };
 
-inline bool nodeComparator(Node* a, Node* b)
-{
-    return a->index() < b->index();
-}
+struct NodeComparator {
+    template<typename NodePtrType>
+    bool operator()(NodePtrType a, NodePtrType b) const
+    {
+        return a->index() < b->index();
+    }
+};
 
 template<typename T>
 CString nodeListDump(const T& nodeList)
 {
-    return sortedListDump(nodeList, nodeComparator);
+    return sortedListDump(nodeList, NodeComparator());
 }
 
 template<typename T>
@@ -2443,7 +2650,7 @@ CString nodeMapDump(const T& nodeMap, DumpContext* context = 0)
         typename T::const_iterator iter = nodeMap.begin();
         iter != nodeMap.end(); ++iter)
         keys.append(iter->key);
-    std::sort(keys.begin(), keys.end(), nodeComparator);
+    std::sort(keys.begin(), keys.end(), NodeComparator());
     StringPrintStream out;
     CommaPrinter comma;
     for(unsigned i = 0; i < keys.size(); ++i)
@@ -2457,7 +2664,7 @@ CString nodeValuePairListDump(const T& nodeValuePairList, DumpContext* context =
     using V = typename T::ValueType;
     T sortedList = nodeValuePairList;
     std::sort(sortedList.begin(), sortedList.end(), [](const V& a, const V& b) {
-        return nodeComparator(a.node, b.node);
+        return NodeComparator()(a.node, b.node);
     });
 
     StringPrintStream out;
@@ -2480,5 +2687,4 @@ inline JSC::DFG::Node* inContext(JSC::DFG::Node* node, JSC::DumpContext*) { retu
 
 using WTF::inContext;
 
-#endif
 #endif

@@ -118,7 +118,7 @@ FloatRect SVGInlineTextBox::selectionRectForTextFragment(const SVGTextFragment& 
     const FontMetrics& scaledFontMetrics = scaledFont.fontMetrics();
     FloatPoint textOrigin(fragment.x, fragment.y);
     if (scalingFactor != 1)
-        textOrigin.scale(scalingFactor, scalingFactor);
+        textOrigin.scale(scalingFactor);
 
     textOrigin.move(0, -scaledFontMetrics.floatAscent());
 
@@ -193,7 +193,7 @@ void SVGInlineTextBox::paintSelectionBackground(PaintInfo& paintInfo)
         return;
 
     Color backgroundColor = renderer().selectionBackgroundColor();
-    if (!backgroundColor.isValid() || !backgroundColor.alpha())
+    if (!backgroundColor.isVisible())
         return;
 
     if (!textShouldBePainted(renderer()))
@@ -260,7 +260,7 @@ void SVGInlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffse
     const SVGRenderStyle& svgStyle = style.svgStyle();
 
     bool hasFill = svgStyle.hasFill();
-    bool hasVisibleStroke = svgStyle.hasVisibleStroke();
+    bool hasVisibleStroke = style.hasVisibleStroke();
 
     const RenderStyle* selectionStyle = &style;
     if (hasSelection && shouldPaintSelectionHighlight) {
@@ -271,7 +271,7 @@ void SVGInlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffse
             if (!hasFill)
                 hasFill = svgSelectionStyle.hasFill();
             if (!hasVisibleStroke)
-                hasVisibleStroke = svgSelectionStyle.hasVisibleStroke();
+                hasVisibleStroke = selectionStyle->hasVisibleStroke();
         } else
             selectionStyle = &style;
     }
@@ -299,7 +299,7 @@ void SVGInlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffse
         if (decorations & TextDecorationOverline)
             paintDecoration(paintInfo.context(), TextDecorationOverline, fragment);
 
-        auto paintOrder = style.svgStyle().paintTypesForPaintOrder();
+        auto paintOrder = style.paintTypesForPaintOrder();
         for (unsigned i = 0; i < paintOrder.size(); ++i) {
             switch (paintOrder.at(i)) {
             case PaintTypeFill:
@@ -489,7 +489,7 @@ void SVGInlineTextBox::paintDecoration(GraphicsContext& context, TextDecoration 
     const SVGRenderStyle& svgDecorationStyle = decorationStyle.svgStyle();
 
     bool hasDecorationFill = svgDecorationStyle.hasFill();
-    bool hasVisibleDecorationStroke = svgDecorationStyle.hasVisibleStroke();
+    bool hasVisibleDecorationStroke = decorationStyle.hasVisibleStroke();
 
     if (hasDecorationFill) {
         m_paintingResourceMode = ApplyToFillMode;
@@ -527,8 +527,8 @@ void SVGInlineTextBox::paintDecorationWithStyle(GraphicsContext& context, TextDe
     GraphicsContextStateSaver stateSaver(context);
     if (scalingFactor != 1) {
         width *= scalingFactor;
-        decorationOrigin.scale(scalingFactor, scalingFactor);
-        context.scale(FloatSize(1 / scalingFactor, 1 / scalingFactor));
+        decorationOrigin.scale(scalingFactor);
+        context.scale(1 / scalingFactor);
     }
 
     decorationOrigin.move(0, -scaledFontMetrics.floatAscent() + positionOffsetForDecoration(decoration, scaledFontMetrics, thickness));
@@ -553,7 +553,7 @@ void SVGInlineTextBox::paintTextWithShadows(GraphicsContext& context, const Rend
     FloatSize textSize(fragment.width, fragment.height);
 
     if (scalingFactor != 1) {
-        textOrigin.scale(scalingFactor, scalingFactor);
+        textOrigin.scale(scalingFactor);
         textSize.scale(scalingFactor);
     }
 
@@ -569,7 +569,7 @@ void SVGInlineTextBox::paintTextWithShadows(GraphicsContext& context, const Rend
 
             if (!shadowApplier.didSaveContext())
                 usedContext->save();
-            usedContext->scale(FloatSize(1 / scalingFactor, 1 / scalingFactor));
+            usedContext->scale(1 / scalingFactor);
 
             scaledFont.drawText(*usedContext, textRun, textOrigin + shadowApplier.extraOffset(), startPosition, endPosition);
 

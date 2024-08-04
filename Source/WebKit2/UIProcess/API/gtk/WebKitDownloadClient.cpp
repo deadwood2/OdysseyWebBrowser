@@ -20,10 +20,11 @@
 #include "config.h"
 #include "WebKitDownloadClient.h"
 
-#include "APIURLResponse.h"
+#include "APIDownloadClient.h"
 #include "WebKitDownloadPrivate.h"
 #include "WebKitURIResponsePrivate.h"
 #include "WebKitWebContextPrivate.h"
+#include "WebKitWebViewPrivate.h"
 #include "WebProcessPool.h"
 #include <WebKit/WKString.h>
 #include <wtf/glib/GRefPtr.h>
@@ -32,85 +33,88 @@
 using namespace WebCore;
 using namespace WebKit;
 
-static void didStart(WKContextRef, WKDownloadRef wkDownload, const void* clientInfo)
-{
-    GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(toImpl(wkDownload));
-    webkitWebContextDownloadStarted(WEBKIT_WEB_CONTEXT(clientInfo), download.get());
-}
+class DownloadClient final : public API::DownloadClient {
+public:
+    explicit DownloadClient(WebKitWebContext* webContext)
+        : m_webContext(webContext)
+    {
+    }
 
-static void didReceiveResponse(WKContextRef, WKDownloadRef wkDownload, WKURLResponseRef wkResponse, const void* /* clientInfo */)
-{
-    GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(toImpl(wkDownload));
-    if (webkitDownloadIsCancelled(download.get()))
-        return;
+private:
+    void didStart(WebProcessPool*, DownloadProxy* downloadProxy) override
+    {
+        GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(downloadProxy);
+        webkitWebContextDownloadStarted(m_webContext, download.get());
+    }
 
-    GRefPtr<WebKitURIResponse> response = adoptGRef(webkitURIResponseCreateForResourceResponse(toImpl(wkResponse)->resourceResponse()));
-    webkitDownloadSetResponse(download.get(), response.get());
-}
+    void didReceiveAuthenticationChallenge(WebProcessPool*, DownloadProxy* downloadProxy, AuthenticationChallengeProxy* authenticationChallenge) override
+    {
+        GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(downloadProxy);
+        if (webkitDownloadIsCancelled(download.get()))
+            return;
 
-static void didReceiveData(WKContextRef, WKDownloadRef wkDownload, uint64_t length, const void* /* clientInfo */)
-{
-    GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(toImpl(wkDownload));
-    webkitDownloadNotifyProgress(download.get(), length);
-}
+        // FIXME: Add API to handle authentication of downloads without a web view associted.
+        if (auto* webView = webkit_download_get_web_view(download.get()))
+            webkitWebViewHandleAuthenticationChallenge(webView, authenticationChallenge);
+    }
 
-static WKStringRef decideDestinationWithSuggestedFilename(WKContextRef, WKDownloadRef wkDownload, WKStringRef filename, bool* allowOverwrite, const void* /* clientInfo */)
-{
-    GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(toImpl(wkDownload));
-    CString destinationURI = webkitDownloadDecideDestinationWithSuggestedFilename(download.get(), toImpl(filename)->string().utf8(), *allowOverwrite);
-    return WKStringCreateWithUTF8CString(destinationURI.data());
-}
+    void didReceiveResponse(WebProcessPool*, DownloadProxy* downloadProxy, const ResourceResponse& resourceResponse) override
+    {
+        GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(downloadProxy);
+        if (webkitDownloadIsCancelled(download.get()))
+            return;
 
-static void didCreateDestination(WKContextRef, WKDownloadRef wkDownload, WKStringRef path, const void* /* clientInfo */)
-{
-    GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(toImpl(wkDownload));
-    webkitDownloadDestinationCreated(download.get(), toImpl(path)->string().utf8());
-}
+        GRefPtr<WebKitURIResponse> response = adoptGRef(webkitURIResponseCreateForResourceResponse(resourceResponse));
+        webkitDownloadSetResponse(download.get(), response.get());
+    }
 
-static void didFail(WKContextRef, WKDownloadRef wkDownload, WKErrorRef error, const void* /* clientInfo */)
-{
-    GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(toImpl(wkDownload));
-    if (webkitDownloadIsCancelled(download.get())) {
-        // Cancellation takes precedence over other errors.
+    void didReceiveData(WebProcessPool*, DownloadProxy* downloadProxy, uint64_t length) override
+    {
+        GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(downloadProxy);
+        webkitDownloadNotifyProgress(download.get(), length);
+    }
+
+    String decideDestinationWithSuggestedFilename(WebProcessPool*, DownloadProxy* downloadProxy, const String& filename, bool& allowOverwrite) override
+    {
+        GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(downloadProxy);
+        return webkitDownloadDecideDestinationWithSuggestedFilename(download.get(), filename.utf8(), allowOverwrite);
+    }
+
+    void didCreateDestination(WebProcessPool*, DownloadProxy* downloadProxy, const String& path) override
+    {
+        GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(downloadProxy);
+        webkitDownloadDestinationCreated(download.get(), path);
+    }
+
+    void didFail(WebProcessPool*, DownloadProxy* downloadProxy, const ResourceError& error) override
+    {
+        GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(downloadProxy);
+        if (webkitDownloadIsCancelled(download.get())) {
+            // Cancellation takes precedence over other errors.
+            webkitDownloadCancelled(download.get());
+        } else
+            webkitDownloadFailed(download.get(), error);
+        webkitWebContextRemoveDownload(downloadProxy);
+    }
+
+    void didCancel(WebProcessPool*, DownloadProxy* downloadProxy) override
+    {
+        GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(downloadProxy);
         webkitDownloadCancelled(download.get());
-    } else
-        webkitDownloadFailed(download.get(), toImpl(error)->platformError());
-    webkitWebContextRemoveDownload(toImpl(wkDownload));
-}
+        webkitWebContextRemoveDownload(downloadProxy);
+    }
 
-static void didCancel(WKContextRef, WKDownloadRef wkDownload, const void* /* clientInfo */)
-{
-    GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(toImpl(wkDownload));
-    webkitDownloadCancelled(download.get());
-    webkitWebContextRemoveDownload(toImpl(wkDownload));
-}
+    void didFinish(WebProcessPool*, DownloadProxy* downloadProxy) override
+    {
+        GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(downloadProxy);
+        webkitDownloadFinished(download.get());
+        webkitWebContextRemoveDownload(downloadProxy);
+    }
 
-static void didFinish(WKContextRef, WKDownloadRef wkDownload, const void* /* clientInfo */)
-{
-    GRefPtr<WebKitDownload> download = webkitWebContextGetOrCreateDownload(toImpl(wkDownload));
-    webkitDownloadFinished(download.get());
-    webkitWebContextRemoveDownload(toImpl(wkDownload));
-}
+    WebKitWebContext* m_webContext;
+};
 
 void attachDownloadClientToContext(WebKitWebContext* webContext)
 {
-    WKContextDownloadClientV0 wkDownloadClient = {
-        {
-            0, // version
-            webContext, // ClientInfo
-        },
-        didStart,
-        0, // didReceiveAuthenticationChallenge
-        didReceiveResponse,
-        didReceiveData,
-        0, // shouldDecodeSourceDataOfMIMEType
-        decideDestinationWithSuggestedFilename,
-        didCreateDestination,
-        didFinish,
-        didFail,
-        didCancel,
-        0, // processDidCrash
-    };
-    WKContextSetDownloadClient(toAPI(webkitWebContextGetProcessPool(webContext)), &wkDownloadClient.base);
+    webkitWebContextGetProcessPool(webContext).setDownloadClient(std::make_unique<DownloadClient>(webContext));
 }
-

@@ -42,7 +42,6 @@
 #include "RenderText.h"
 #include "RenderTheme.h"
 #include "RenderView.h"
-#include "Settings.h"
 #include "StyleResolver.h"
 #include "TextRun.h"
 #include <math.h>
@@ -85,11 +84,18 @@ RenderMenuList::RenderMenuList(HTMLSelectElement& element, RenderStyle&& style)
 
 RenderMenuList::~RenderMenuList()
 {
+    // Do not add any code here. Add it to willBeDestroyed() instead.
+}
+
+void RenderMenuList::willBeDestroyed()
+{
 #if !PLATFORM(IOS)
     if (m_popup)
         m_popup->disconnectClient();
     m_popup = nullptr;
 #endif
+
+    RenderFlexibleBox::willBeDestroyed();
 }
 
 void RenderMenuList::createInnerBlock()
@@ -117,7 +123,7 @@ void RenderMenuList::adjustInnerStyle()
     // Use margin:auto instead of align-items:center to get safe centering, i.e.
     // when the content overflows, treat it the same as align-items: flex-start.
     // But we only do that for the cases where html.css would otherwise use center.
-    if (style().alignItemsPosition() == ItemPositionCenter) {
+    if (style().alignItems().position() == ItemPositionCenter) {
         innerStyle.setMarginTop(Length());
         innerStyle.setMarginBottom(Length());
         innerStyle.setAlignSelfPosition(ItemPositionFlexStart);
@@ -372,7 +378,7 @@ void RenderMenuList::showPopup()
     // inside the showPopup call and it would fail.
     createInnerBlock();
     if (!m_popup)
-        m_popup = document().page()->chrome().createPopupMenu(this);
+        m_popup = document().page()->chrome().createPopupMenu(*this);
     m_popupIsVisible = true;
 
     // Compute the top left taking transforms into account, but use
@@ -536,16 +542,16 @@ void RenderMenuList::getItemBackgroundColor(unsigned listIndex, Color& itemBackg
     HTMLElement* element = listItems[listIndex];
 
     Color backgroundColor = element->computedStyle()->visitedDependentColor(CSSPropertyBackgroundColor);
-    itemHasCustomBackgroundColor = backgroundColor.isValid() && backgroundColor.alpha();
+    itemHasCustomBackgroundColor = backgroundColor.isValid() && backgroundColor.isVisible();
     // If the item has an opaque background color, return that.
-    if (!backgroundColor.hasAlpha()) {
+    if (backgroundColor.isOpaque()) {
         itemBackgroundColor = backgroundColor;
         return;
     }
 
     // Otherwise, the item's background is overlayed on top of the menu background.
     backgroundColor = style().visitedDependentColor(CSSPropertyBackgroundColor).blend(backgroundColor);
-    if (!backgroundColor.hasAlpha()) {
+    if (backgroundColor.isOpaque()) {
         itemBackgroundColor = backgroundColor;
         return;
     }
@@ -570,15 +576,12 @@ HostWindow* RenderMenuList::hostWindow() const
     return view().frameView().hostWindow();
 }
 
-PassRefPtr<Scrollbar> RenderMenuList::createScrollbar(ScrollableArea& scrollableArea, ScrollbarOrientation orientation, ScrollbarControlSize controlSize)
+Ref<Scrollbar> RenderMenuList::createScrollbar(ScrollableArea& scrollableArea, ScrollbarOrientation orientation, ScrollbarControlSize controlSize)
 {
-    RefPtr<Scrollbar> widget;
     bool hasCustomScrollbarStyle = style().hasPseudoStyle(SCROLLBAR);
     if (hasCustomScrollbarStyle)
-        widget = RenderScrollbar::createCustomScrollbar(scrollableArea, orientation, &selectElement());
-    else
-        widget = Scrollbar::createNativeScrollbar(scrollableArea, orientation, controlSize);
-    return WTFMove(widget);
+        return RenderScrollbar::createCustomScrollbar(scrollableArea, orientation, &selectElement());
+    return Scrollbar::createNativeScrollbar(scrollableArea, orientation, controlSize);
 }
 
 int RenderMenuList::clientInsetLeft() const

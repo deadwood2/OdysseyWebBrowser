@@ -31,6 +31,9 @@ public:
     WebViewTest();
     virtual ~WebViewTest();
 
+    static bool shouldInitializeWebViewInConstructor;
+    void initializeWebView();
+
     virtual void loadURI(const char* uri);
     virtual void loadHtml(const char* html, const char* baseURI);
     virtual void loadPlainText(const char* plainText);
@@ -60,6 +63,8 @@ public:
     void clickMouseButton(int x, int y, unsigned button = 1, unsigned mouseModifiers = 0);
     void keyStroke(unsigned keyVal, unsigned keyModifiers = 0);
 
+    void emitPopupMenuSignal();
+
     WebKitJavascriptResult* runJavaScriptAndWaitUntilFinished(const char* javascript, GError**);
     WebKitJavascriptResult* runJavaScriptFromGResourceAndWaitUntilFinished(const char* resource, GError**);
 
@@ -81,17 +86,17 @@ public:
     static gboolean webProcessCrashed(WebKitWebView*, WebViewTest*);
 
     GRefPtr<WebKitUserContentManager> m_userContentManager;
-    WebKitWebView* m_webView;
+    WebKitWebView* m_webView { nullptr };
     GMainLoop* m_mainLoop;
     CString m_activeURI;
-    GtkWidget* m_parentWindow;
+    GtkWidget* m_parentWindow { nullptr };
     CString m_expectedTitle;
-    WebKitJavascriptResult* m_javascriptResult;
-    GError** m_javascriptError;
-    GUniquePtr<char> m_resourceData;
-    size_t m_resourceDataSize;
-    cairo_surface_t* m_surface;
-    bool m_expectedWebProcessCrash;
+    WebKitJavascriptResult* m_javascriptResult { nullptr };
+    GError** m_javascriptError { nullptr };
+    GUniquePtr<char> m_resourceData { nullptr };
+    size_t m_resourceDataSize { 0 };
+    cairo_surface_t* m_surface { nullptr };
+    bool m_expectedWebProcessCrash { false };
 
 private:
     void doMouseButtonEvent(GdkEventType, int, int, unsigned, unsigned);

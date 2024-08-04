@@ -40,8 +40,9 @@
 namespace WebKit {
 namespace NetworkCache {
 
-BlobStorage::BlobStorage(const String& blobDirectoryPath)
+BlobStorage::BlobStorage(const String& blobDirectoryPath, Salt salt)
     : m_blobDirectoryPath(blobDirectoryPath)
+    , m_salt(salt)
 {
 }
 
@@ -85,7 +86,7 @@ BlobStorage::Blob BlobStorage::add(const String& path, const Data& data)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto hash = computeSHA1(data);
+    auto hash = computeSHA1(data, m_salt);
     if (data.isEmpty())
         return { data, hash };
 
@@ -97,7 +98,8 @@ BlobStorage::Blob BlobStorage::add(const String& path, const Data& data)
     if (blobExists) {
         auto existingData = mapFile(blobPath.data());
         if (bytesEqual(existingData, data)) {
-            link(blobPath.data(), linkPath.data());
+            if (link(blobPath.data(), linkPath.data()) == -1)
+                WTFLogAlways("Failed to create hard link from %s to %s", blobPath.data(), linkPath.data());
             return { existingData, hash };
         }
         unlink(blobPath.data());
@@ -107,7 +109,8 @@ BlobStorage::Blob BlobStorage::add(const String& path, const Data& data)
     if (mappedData.isNull())
         return { };
 
-    link(blobPath.data(), linkPath.data());
+    if (link(blobPath.data(), linkPath.data()) == -1)
+        WTFLogAlways("Failed to create hard link from %s to %s", blobPath.data(), linkPath.data());
 
     m_approximateSize += mappedData.size();
 
@@ -121,7 +124,7 @@ BlobStorage::Blob BlobStorage::get(const String& path)
     auto linkPath = WebCore::fileSystemRepresentation(path);
     auto data = mapFile(linkPath.data());
 
-    return { data, computeSHA1(data) };
+    return { data, computeSHA1(data, m_salt) };
 }
 
 void BlobStorage::remove(const String& path)

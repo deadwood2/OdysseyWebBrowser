@@ -23,7 +23,6 @@
 #include "PageViewportController.h"
 
 #include "AcceleratedDrawingAreaProxy.h"
-#include "CoordinatedLayerTreeHostProxy.h"
 #include "PageViewportControllerClient.h"
 #include "WebPageProxy.h"
 #include <WebCore/FloatRect.h>
@@ -86,25 +85,6 @@ static inline bool isIntegral(float value)
 
 FloatPoint PageViewportController::pixelAlignedFloatPoint(const FloatPoint& framePosition)
 {
-#if PLATFORM(EFL)
-    float effectiveScale = m_pageScaleFactor * deviceScaleFactor();
-    if (!isIntegral(effectiveScale)) {
-        // To avoid blurryness, modify the position so that it maps into a discrete device position.
-        FloatPoint scaledPos(framePosition);
-
-        // Scale by the effective scale factor to compute the screen-relative position.
-        scaledPos.scale(effectiveScale, effectiveScale);
-
-        // Round to integer boundaries.
-        FloatPoint alignedPos = roundedIntPoint(scaledPos);
-
-        // Convert back to CSS coordinates.
-        alignedPos.scale(1 / effectiveScale, 1 / effectiveScale);
-
-        return alignedPos;
-    }
-#endif
-
     return framePosition;
 }
 
@@ -215,14 +195,6 @@ void PageViewportController::pageTransitionViewportReady()
         float initialScale = m_initiallyFitToViewport ? m_minimumScaleToFit : m_rawAttributes.initialScale;
         applyScaleAfterRenderingContents(innerBoundedViewportScale(initialScale));
     }
-
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-    // At this point we should already have received the first viewport arguments and the requested scroll
-    // position for the newly loaded page and sent our reactions to the web process. It's now safe to tell
-    // the web process to start rendering the new page contents and possibly re-use the current tiles.
-    // This assumes that all messages have been handled in order and that nothing has been pushed back on the event loop.
-    m_webPageProxy->commitPageTransitionViewport();
-#endif
 }
 
 void PageViewportController::pageDidRequestScroll(const IntPoint& cssPosition)

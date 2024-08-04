@@ -37,6 +37,12 @@ UIScriptController::UIScriptController(UIScriptContext& context)
 {
 }
 
+#if !PLATFORM(IOS)
+void UIScriptController::checkForOutstandingCallbacks()
+{
+}
+#endif
+
 void UIScriptController::contextDestroyed()
 {
     m_context = nullptr;
@@ -54,6 +60,22 @@ JSClassRef UIScriptController::wrapperClass()
 
 #if !PLATFORM(COCOA)
 void UIScriptController::doAsyncTask(JSValueRef)
+{
+}
+
+void simulateAccessibilitySettingsChangeNotification(JSValueRef)
+{
+}
+
+void UIScriptController::doAfterPresentationUpdate(JSValueRef)
+{
+}
+
+void UIScriptController::doAfterNextStablePresentationUpdate(JSValueRef)
+{
+}
+
+void UIScriptController::doAfterVisibleContentRectUpdate(JSValueRef)
 {
 }
 #endif
@@ -78,6 +100,28 @@ void UIScriptController::setDidEndFormControlInteractionCallback(JSValueRef call
 JSValueRef UIScriptController::didEndFormControlInteractionCallback() const
 {
     return m_context->callbackWithID(CallbackTypeDidEndFormControlInteraction);
+}
+    
+void UIScriptController::setDidShowForcePressPreviewCallback(JSValueRef callback)
+{
+    m_context->registerCallback(callback, CallbackTypeDidShowForcePressPreview);
+    platformSetDidShowForcePressPreviewCallback();
+}
+
+JSValueRef UIScriptController::didShowForcePressPreviewCallback() const
+{
+    return m_context->callbackWithID(CallbackTypeDidShowForcePressPreview);
+}
+
+void UIScriptController::setDidDismissForcePressPreviewCallback(JSValueRef callback)
+{
+    m_context->registerCallback(callback, CallbackTypeDidDismissForcePressPreview);
+    platformSetDidDismissForcePressPreviewCallback();
+}
+
+JSValueRef UIScriptController::didDismissForcePressPreviewCallback() const
+{
+    return m_context->callbackWithID(CallbackTypeDidDismissForcePressPreview);
 }
 
 void UIScriptController::setWillBeginZoomingCallback(JSValueRef callback)
@@ -135,11 +179,22 @@ JSValueRef UIScriptController::didHideKeyboardCallback() const
     return m_context->callbackWithID(CallbackTypeDidHideKeyboard);
 }
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(COCOA)
 void UIScriptController::zoomToScale(double, JSValueRef)
 {
 }
 
+void UIScriptController::simulateAccessibilitySettingsChangeNotification(JSValueRef)
+{
+}
+
+JSObjectRef UIScriptController::contentsOfUserInterfaceItem(JSStringRef interfaceItem) const
+{
+    return nullptr;
+}
+#endif
+
+#if !PLATFORM(IOS)
 void UIScriptController::touchDownAtPoint(long x, long y, long touchCount, JSValueRef)
 {
 }
@@ -159,12 +214,44 @@ void UIScriptController::doubleTapAtPoint(long x, long y, JSValueRef)
 void UIScriptController::dragFromPointToPoint(long startX, long startY, long endX, long endY, double durationSeconds, JSValueRef callback)
 {
 }
+    
+void UIScriptController::longPressAtPoint(long x, long y, JSValueRef)
+{
+}
+
+void UIScriptController::stylusDownAtPoint(long x, long y, float azimuthAngle, float altitudeAngle, float pressure, JSValueRef callback)
+{
+}
+
+void UIScriptController::stylusMoveToPoint(long x, long y, float azimuthAngle, float altitudeAngle, float pressure, JSValueRef callback)
+{
+}
+
+void UIScriptController::stylusUpAtPoint(long x, long y, JSValueRef callback)
+{
+}
+
+void UIScriptController::stylusTapAtPoint(long x, long y, float azimuthAngle, float altitudeAngle, float pressure, JSValueRef callback)
+{
+}
+
+void UIScriptController::sendEventStream(JSStringRef eventsJSON, JSValueRef callback)
+{
+}
 
 void UIScriptController::typeCharacterUsingHardwareKeyboard(JSStringRef, JSValueRef)
 {
 }
 
 void UIScriptController::keyUpUsingHardwareKeyboard(JSStringRef, JSValueRef)
+{
+}
+
+void UIScriptController::selectTextCandidateAtIndex(long, JSValueRef)
+{
+}
+
+void UIScriptController::waitForTextPredictionsViewAndSelectCandidateAtIndex(long, unsigned, float)
 {
 }
 
@@ -181,6 +268,14 @@ void UIScriptController::selectFormAccessoryPickerRow(long)
 }
 
 void UIScriptController::scrollToOffset(long x, long y)
+{
+}
+
+void UIScriptController::immediateScrollToOffset(long x, long y)
+{
+}
+
+void UIScriptController::immediateZoomToScale(double scale)
 {
 }
 
@@ -207,7 +302,40 @@ double UIScriptController::maximumZoomScale() const
     return 1;
 }
 
+std::optional<bool> UIScriptController::stableStateOverride() const
+{
+    return std::nullopt;
+}
+
+void UIScriptController::setStableStateOverride(std::optional<bool>)
+{
+}
+
 JSObjectRef UIScriptController::contentVisibleRect() const
+{
+    return nullptr;
+}
+
+JSObjectRef UIScriptController::selectionRangeViewRects() const
+{
+    return nullptr;
+}
+
+JSObjectRef UIScriptController::textSelectionCaretRect() const
+{
+    return nullptr;
+}
+
+JSObjectRef UIScriptController::inputViewBounds() const
+{
+    return nullptr;
+}
+
+void UIScriptController::removeAllDynamicDictionaries()
+{
+}
+
+JSRetainPtr<JSStringRef> UIScriptController::scrollingTreeAsText() const
 {
     return nullptr;
 }
@@ -217,6 +345,14 @@ void UIScriptController::platformSetDidStartFormControlInteractionCallback()
 }
 
 void UIScriptController::platformSetDidEndFormControlInteractionCallback()
+{
+}
+    
+void UIScriptController::platformSetDidShowForcePressPreviewCallback()
+{
+}
+
+void UIScriptController::platformSetDidDismissForcePressPreviewCallback()
 {
 }
 
@@ -243,6 +379,40 @@ void UIScriptController::platformSetDidHideKeyboardCallback()
 void UIScriptController::platformClearAllCallbacks()
 {
 }
+
+void UIScriptController::retrieveSpeakSelectionContent(JSValueRef)
+{
+}
+
+JSRetainPtr<JSStringRef> UIScriptController::accessibilitySpeakSelectionContent() const
+{
+    return nullptr;
+}
+
+#endif
+
+#if !PLATFORM(COCOA)
+
+void UIScriptController::removeViewFromWindow(JSValueRef)
+{
+}
+
+void UIScriptController::addViewToWindow(JSValueRef)
+{
+}
+
+#endif // !PLATFORM(COCOA)
+
+#if !PLATFORM(MAC)
+
+void UIScriptController::overridePreference(JSStringRef, JSStringRef)
+{
+}
+
+void UIScriptController::insertText(JSStringRef, int, int)
+{
+}
+
 #endif
 
 void UIScriptController::uiScriptComplete(JSStringRef result)

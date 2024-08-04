@@ -24,8 +24,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef HTMLDocumentParser_h
-#define HTMLDocumentParser_h
+#pragma once
 
 #include "HTMLInputStream.h"
 #include "HTMLScriptRunnerHost.h"
@@ -39,6 +38,7 @@
 namespace WebCore {
 
 class DocumentFragment;
+class Element;
 class HTMLDocument;
 class HTMLParserScheduler;
 class HTMLPreloadScanner;
@@ -65,7 +65,7 @@ public:
 protected:
     explicit HTMLDocumentParser(HTMLDocument&);
 
-    void insert(const SegmentedString&) final;
+    void insert(SegmentedString&&) final;
     void append(RefPtr<StringImpl>&&) override;
     void finish() override;
 
@@ -83,6 +83,7 @@ private:
     void stopParsing() final;
     bool isWaitingForScripts() const override;
     bool isExecutingScript() const final;
+    bool hasScriptsWaitingForStylesheets() const final;
     void executeScriptsWaitingForStylesheets() final;
     void suspendScheduledTasks() final;
     void resumeScheduledTasks() final;
@@ -161,6 +162,4 @@ inline HTMLTreeBuilder& HTMLDocumentParser::treeBuilder()
     return *m_treeBuilder;
 }
 
-}
-
-#endif
+} // namespace WebCore

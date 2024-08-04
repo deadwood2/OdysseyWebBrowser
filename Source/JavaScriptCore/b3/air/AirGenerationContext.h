@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef AirGenerationContext_h
-#define AirGenerationContext_h
+#pragma once
 
 #if ENABLE(B3_JIT)
 
@@ -40,6 +39,11 @@ namespace JSC { namespace B3 { namespace Air {
 class Code;
 
 struct GenerationContext {
+    WTF_MAKE_NONCOPYABLE(GenerationContext);
+public:
+
+    GenerationContext() = default;
+
     typedef void LatePathFunction(CCallHelpers&, GenerationContext&);
     typedef SharedTask<LatePathFunction> LatePath;
 
@@ -53,6 +57,3 @@ struct GenerationContext {
 } } } // namespace JSC::B3::Air
 
 #endif // ENABLE(B3_JIT)
-
-#endif // AirGenerationContext_h
-

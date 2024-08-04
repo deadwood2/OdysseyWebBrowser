@@ -49,13 +49,16 @@ public:
 const unsigned firstNonPersistentCallbackID = 1000;
 
 typedef enum  {
-    CallbackTypeWillBeginZooming = 0,
+    CallbackTypeInvalid = 0,
+    CallbackTypeWillBeginZooming,
     CallbackTypeDidEndZooming,
     CallbackTypeDidShowKeyboard,
     CallbackTypeDidHideKeyboard,
     CallbackTypeDidEndScrolling,
     CallbackTypeDidStartFormControlInteraction,
     CallbackTypeDidEndFormControlInteraction,
+    CallbackTypeDidShowForcePressPreview,
+    CallbackTypeDidDismissForcePressPreview,
     CallbackTypeNonPersistent = firstNonPersistentCallbackID
 } CallbackType;
 
@@ -81,6 +84,8 @@ public:
     unsigned nextTaskCallbackID(CallbackType);
 
     JSObjectRef objectFromRect(const WebCore::FloatRect&) const;
+
+    JSGlobalContextRef jsContext() const { return m_context.get(); }
 
 private:
     JSRetainPtr<JSGlobalContextRef> m_context;

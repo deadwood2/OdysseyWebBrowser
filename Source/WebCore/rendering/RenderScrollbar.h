@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef RenderScrollbar_h
-#define RenderScrollbar_h
+#pragma once
 
 #include "RenderPtr.h"
 #include "RenderStyleConstants.h"
@@ -42,7 +41,7 @@ class RenderStyle;
 class RenderScrollbar final : public Scrollbar {
 public:
     friend class Scrollbar;
-    static RefPtr<Scrollbar> createCustomScrollbar(ScrollableArea&, ScrollbarOrientation, Element*, Frame* owningFrame = nullptr);
+    static Ref<Scrollbar> createCustomScrollbar(ScrollableArea&, ScrollbarOrientation, Element*, Frame* owningFrame = nullptr);
     virtual ~RenderScrollbar();
 
     RenderBox* owningRenderer() const;
@@ -67,7 +66,7 @@ private:
     void setParent(ScrollView*) override;
     void setEnabled(bool) override;
 
-    void paint(GraphicsContext&, const IntRect& damageRect) override;
+    void paint(GraphicsContext&, const IntRect& damageRect, Widget::SecurityOriginPaintPolicy) override;
 
     void setHoveredPart(ScrollbarPart) override;
     void setPressedPart(ScrollbarPart) override;
@@ -93,5 +92,3 @@ private:
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::RenderScrollbar)
     static bool isType(const WebCore::Scrollbar& scrollbar) { return scrollbar.isCustomScrollbar(); }
 SPECIALIZE_TYPE_TRAITS_END()
-
-#endif // RenderScrollbar_h

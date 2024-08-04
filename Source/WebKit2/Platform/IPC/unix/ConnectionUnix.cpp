@@ -116,8 +116,6 @@ void Connection::platformInvalidate()
 #if PLATFORM(GTK)
     m_readSocketMonitor.stop();
     m_writeSocketMonitor.stop();
-#elif PLATFORM(EFL)
-    m_connectionQueue->unregisterSocketEventHandler(m_socketDescriptor);
 #endif
 
     m_socketDescriptor = -1;
@@ -133,6 +131,11 @@ bool Connection::processMessage()
     MessageInfo messageInfo;
     memcpy(&messageInfo, messageData, sizeof(messageInfo));
     messageData += sizeof(messageInfo);
+
+    if (messageInfo.attachmentCount() > attachmentMaxAmount || (!messageInfo.isBodyOutOfLine() && messageInfo.bodySize() > messageMaxSize)) {
+        ASSERT_NOT_REACHED();
+        return false;
+    }
 
     size_t messageLength = sizeof(MessageInfo) + messageInfo.attachmentCount() * sizeof(AttachmentInfo) + (messageInfo.isBodyOutOfLine() ? 0 : messageInfo.bodySize());
     if (m_readBuffer.size() < messageLength)
@@ -191,7 +194,7 @@ bool Connection::processMessage()
     if (messageInfo.isBodyOutOfLine()) {
         ASSERT(messageInfo.bodySize());
 
-        if (attachmentInfo[attachmentCount].isNull()) {
+        if (attachmentInfo[attachmentCount].isNull() || attachmentInfo[attachmentCount].size() != messageInfo.bodySize()) {
             ASSERT_NOT_REACHED();
             return false;
         }
@@ -212,7 +215,7 @@ bool Connection::processMessage()
     if (messageInfo.isBodyOutOfLine())
         messageBody = reinterpret_cast<uint8_t*>(oolMessageBody->data());
 
-    auto decoder = std::make_unique<Decoder>(DataReference(messageBody, messageInfo.bodySize()), WTFMove(attachments));
+    auto decoder = std::make_unique<Decoder>(messageBody, messageInfo.bodySize(), nullptr, WTFMove(attachments));
 
     processIncomingMessage(WTFMove(decoder));
 
@@ -269,6 +272,10 @@ static ssize_t readBytesFromSocket(int socketDescriptor, Vector<uint8_t>& buffer
         struct cmsghdr* controlMessage;
         for (controlMessage = CMSG_FIRSTHDR(&message); controlMessage; controlMessage = CMSG_NXTHDR(&message, controlMessage)) {
             if (controlMessage->cmsg_level == SOL_SOCKET && controlMessage->cmsg_type == SCM_RIGHTS) {
+                if (controlMessage->cmsg_len < CMSG_LEN(0) || controlMessage->cmsg_len > attachmentMaxAmount) {
+                    ASSERT_NOT_REACHED();
+                    break;
+                }
                 size_t previousFileDescriptorsSize = fileDescriptors.size();
                 size_t fileDescriptorsCount = (controlMessage->cmsg_len - CMSG_LEN(0)) / sizeof(int);
                 fileDescriptors.grow(fileDescriptors.size() + fileDescriptorsCount);
@@ -348,11 +355,6 @@ bool Connection::open()
         ASSERT_NOT_REACHED();
         return G_SOURCE_REMOVE;
     });
-#elif PLATFORM(EFL)
-    m_connectionQueue->registerSocketEventHandler(m_socketDescriptor,
-        [protectedThis] {
-            protectedThis->readyReadHandler();
-        });
 #endif
 
     // Schedule a call to readyReadHandler. Data may have arrived before installation of the signal handler.

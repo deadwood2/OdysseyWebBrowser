@@ -116,6 +116,8 @@ static WKEventModifiers parseModifier(JSStringRef modifier)
         return kWKEventModifiersAltKey;
     if (JSStringIsEqualToUTF8CString(modifier, "metaKey"))
         return kWKEventModifiersMetaKey;
+    if (JSStringIsEqualToUTF8CString(modifier, "capsLockKey"))
+        return kWKEventModifiersCapsLockKey;
     if (JSStringIsEqualToUTF8CString(modifier, "addSelectionKey")) {
 #if OS(MAC_OS_X)
         return kWKEventModifiersMetaKey;
@@ -164,9 +166,9 @@ static WKEventModifiers parseModifierArray(JSContextRef context, JSValueRef arra
     return modifiers;
 }
 
-PassRefPtr<EventSendingController> EventSendingController::create()
+Ref<EventSendingController> EventSendingController::create()
 {
-    return adoptRef(new EventSendingController);
+    return adoptRef(*new EventSendingController);
 }
 
 EventSendingController::EventSendingController()
@@ -545,14 +547,7 @@ JSValueRef EventSendingController::contextClick()
     WKBundleFrameRef mainFrame = WKBundlePageGetMainFrame(page);
     JSContextRef context = WKBundleFrameGetJavaScriptContext(mainFrame);
 #if ENABLE(CONTEXT_MENUS)
-#if PLATFORM(GTK) || PLATFORM(EFL)
-    // Do mouse context click.
-    mouseDown(2, 0);
-    mouseUp(2, 0);
-    WKRetainPtr<WKArrayRef> menuEntries = adoptWK(WKBundlePageCopyContextMenuItems(page));
-#else
     WKRetainPtr<WKArrayRef> menuEntries = adoptWK(WKBundlePageCopyContextMenuAtPointInWindow(page, m_position));
-#endif
     JSValueRef arrayResult = JSObjectMakeArray(context, 0, 0, 0);
     if (!menuEntries)
         return arrayResult;

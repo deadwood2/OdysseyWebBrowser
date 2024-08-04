@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef DFGPlan_h
-#define DFGPlan_h
+#pragma once
 
 #include "CompilationResult.h"
 #include "DFGCompilationKey.h"
@@ -70,7 +69,9 @@ struct Plan : public ThreadSafeRefCounted<Plan> {
     
     CompilationKey key();
     
-    void rememberCodeBlocks();
+    void markCodeBlocks(SlotVisitor&);
+    template<typename Func>
+    void iterateCodeBlocksForGC(const Func&);
     void checkLivenessAndVisitChildren(SlotVisitor&);
     bool isKnownToBeLiveDuringGC();
     void cancel();
@@ -132,6 +133,3 @@ private:
 #endif // ENABLE(DFG_JIT)
 
 } } // namespace JSC::DFG
-
-#endif // DFGPlan_h
-

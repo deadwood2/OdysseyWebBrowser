@@ -24,8 +24,6 @@
 #include "InlineTextBox.h"
 
 #include "BreakLines.h"
-#include "Chrome.h"
-#include "ChromeClient.h"
 #include "DashArray.h"
 #include "Document.h"
 #include "DocumentMarkerController.h"
@@ -46,7 +44,6 @@
 #include "RenderRubyText.h"
 #include "RenderTheme.h"
 #include "RenderView.h"
-#include "Settings.h"
 #include "Text.h"
 #include "TextDecorationPainter.h"
 #include "TextPaintStyle.h"
@@ -498,14 +495,12 @@ void InlineTextBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, 
             paintSelection(context, boxOrigin, lineStyle, font, selectionPaintStyle.fillColor);
     }
 
-    if (Page* page = renderer().frame().page()) {
-        // FIXME: Right now, InlineTextBoxes never call addRelevantUnpaintedObject() even though they might
-        // legitimately be unpainted if they are waiting on a slow-loading web font. We should fix that, and
-        // when we do, we will have to account for the fact the InlineTextBoxes do not always have unique
-        // renderers and Page currently relies on each unpainted object having a unique renderer.
-        if (paintInfo.phase == PaintPhaseForeground)
-            page->addRelevantRepaintedObject(&renderer(), IntRect(boxOrigin.x(), boxOrigin.y(), logicalWidth(), logicalHeight()));
-    }
+    // FIXME: Right now, InlineTextBoxes never call addRelevantUnpaintedObject() even though they might
+    // legitimately be unpainted if they are waiting on a slow-loading web font. We should fix that, and
+    // when we do, we will have to account for the fact the InlineTextBoxes do not always have unique
+    // renderers and Page currently relies on each unpainted object having a unique renderer.
+    if (paintInfo.phase == PaintPhaseForeground)
+        renderer().page().addRelevantRepaintedObject(&renderer(), IntRect(boxOrigin.x(), boxOrigin.y(), logicalWidth(), logicalHeight()));
 
     // 2. Now paint the foreground, including text and decorations like underline/overline (in quirks mode only).
     String alternateStringToRender;
@@ -617,7 +612,7 @@ std::pair<unsigned, unsigned> InlineTextBox::selectionStartEnd() const
     return { clampedOffset(start), clampedOffset(end) };
 }
 
-void InlineTextBox::paintSelection(GraphicsContext& context, const FloatPoint& boxOrigin, const RenderStyle& style, const FontCascade& font, Color textColor)
+void InlineTextBox::paintSelection(GraphicsContext& context, const FloatPoint& boxOrigin, const RenderStyle& style, const FontCascade& font, const Color& textColor)
 {
 #if ENABLE(TEXT_SELECTION)
     if (context.paintingDisabled())
@@ -651,7 +646,7 @@ void InlineTextBox::paintSelection(GraphicsContext& context, const FloatPoint& b
     bool respectHyphen = selectionEnd == length && hasHyphen();
     if (respectHyphen)
         hyphenatedString = hyphenatedStringForTextRun(style, length);
-    TextRun textRun = constructTextRun(style, hyphenatedString, Optional<unsigned>(length));
+    TextRun textRun = constructTextRun(style, hyphenatedString, std::optional<unsigned>(length));
     if (respectHyphen)
         selectionEnd = textRun.length();
 
@@ -821,7 +816,7 @@ void InlineTextBox::paintTextMatchMarker(GraphicsContext& context, const FloatPo
     if (!renderer().frame().editor().markedTextMatchesAreHighlighted())
         return;
 
-    Color color = marker.activeMatch() ? renderer().theme().platformActiveTextSearchHighlightColor() : renderer().theme().platformInactiveTextSearchHighlightColor();
+    Color color = marker.isActiveMatch() ? renderer().theme().platformActiveTextSearchHighlightColor() : renderer().theme().platformInactiveTextSearchHighlightColor();
     GraphicsContextStateSaver stateSaver(context);
     updateGraphicsContext(context, TextPaintStyle(color)); // Don't draw text at all!
 
@@ -1016,18 +1011,18 @@ float InlineTextBox::positionForOffset(unsigned offset) const
     return snapRectToDevicePixelsWithWritingDirection(selectionRect, renderer().document().deviceScaleFactor(), run.ltr()).maxX();
 }
 
-StringView InlineTextBox::substringToRender(Optional<unsigned> overridingLength) const
+StringView InlineTextBox::substringToRender(std::optional<unsigned> overridingLength) const
 {
-    return StringView(renderer().text()).substring(start(), overridingLength.valueOr(len()));
+    return StringView(renderer().text()).substring(start(), overridingLength.value_or(len()));
 }
 
-String InlineTextBox::hyphenatedStringForTextRun(const RenderStyle& style, Optional<unsigned> alternateLength) const
+String InlineTextBox::hyphenatedStringForTextRun(const RenderStyle& style, std::optional<unsigned> alternateLength) const
 {
     ASSERT(hasHyphen());
     return makeString(substringToRender(alternateLength), style.hyphenString());
 }
 
-TextRun InlineTextBox::constructTextRun(const RenderStyle& style, StringView alternateStringToRender, Optional<unsigned> alternateLength) const
+TextRun InlineTextBox::constructTextRun(const RenderStyle& style, StringView alternateStringToRender, std::optional<unsigned> alternateLength) const
 {
     if (alternateStringToRender.isNull())
         return constructTextRun(style, substringToRender(alternateLength), renderer().textLength() - start());

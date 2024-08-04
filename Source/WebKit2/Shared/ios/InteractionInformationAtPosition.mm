@@ -40,8 +40,12 @@ namespace WebKit {
 
 void InteractionInformationAtPosition::encode(IPC::Encoder& encoder) const
 {
-    encoder << point;
+    encoder << request;
+
     encoder << nodeAtPositionIsAssistedNode;
+#if ENABLE(DATA_INTERACTION)
+    encoder << hasDataInteractionAtPosition;
+#endif
     encoder << isSelectable;
     encoder << isNearMarkedText;
     encoder << touchCalloutEnabled;
@@ -50,6 +54,7 @@ void InteractionInformationAtPosition::encode(IPC::Encoder& encoder) const
     encoder << isAttachment;
     encoder << isAnimatedImage;
     encoder << isElement;
+    encoder << adjustedPointForNodeRespondingToClickEvents;
     encoder << url;
     encoder << imageURL;
     encoder << title;
@@ -80,11 +85,16 @@ void InteractionInformationAtPosition::encode(IPC::Encoder& encoder) const
 
 bool InteractionInformationAtPosition::decode(IPC::Decoder& decoder, InteractionInformationAtPosition& result)
 {
-    if (!decoder.decode(result.point))
+    if (!decoder.decode(result.request))
         return false;
 
     if (!decoder.decode(result.nodeAtPositionIsAssistedNode))
         return false;
+
+#if ENABLE(DATA_INTERACTION)
+    if (!decoder.decode(result.hasDataInteractionAtPosition))
+        return false;
+#endif
 
     if (!decoder.decode(result.isSelectable))
         return false;
@@ -108,6 +118,9 @@ bool InteractionInformationAtPosition::decode(IPC::Decoder& decoder, Interaction
         return false;
     
     if (!decoder.decode(result.isElement))
+        return false;
+
+    if (!decoder.decode(result.adjustedPointForNodeRespondingToClickEvents))
         return false;
 
     if (!decoder.decode(result.url))
@@ -167,6 +180,19 @@ bool InteractionInformationAtPosition::decode(IPC::Decoder& decoder, Interaction
 
     return true;
 }
-#endif
+
+void InteractionInformationAtPosition::mergeCompatibleOptionalInformation(const InteractionInformationAtPosition& oldInformation)
+{
+    if (oldInformation.request.point != request.point)
+        return;
+
+    if (oldInformation.request.includeSnapshot && !request.includeSnapshot)
+        image = oldInformation.image;
+
+    if (oldInformation.request.includeLinkIndicator && !request.includeLinkIndicator)
+        linkIndicator = oldInformation.linkIndicator;
+}
+
+#endif // PLATFORM(IOS)
 
 }

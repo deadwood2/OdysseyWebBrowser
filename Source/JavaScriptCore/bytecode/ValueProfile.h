@@ -26,10 +26,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ValueProfile_h
-#define ValueProfile_h
+#pragma once
 
-#include "ConcurrentJITLock.h"
+#include "ConcurrentJSLock.h"
 #include "Heap.h"
 #include "JSArray.h"
 #include "SpeculatedType.h"
@@ -40,8 +39,6 @@
 #include <wtf/StringPrintStream.h>
 
 namespace JSC {
-
-class CCallHelpers;
 
 template<unsigned numberOfBucketsArgument>
 struct ValueProfileBase {
@@ -109,7 +106,7 @@ struct ValueProfileBase {
         return false;
     }
     
-    CString briefDescription(const ConcurrentJITLocker& locker)
+    CString briefDescription(const ConcurrentJSLocker& locker)
     {
         computeUpdatedPrediction(locker);
         
@@ -137,7 +134,7 @@ struct ValueProfileBase {
     
     // Updates the prediction and returns the new one. Never call this from any thread
     // that isn't executing the code.
-    SpeculatedType computeUpdatedPrediction(const ConcurrentJITLocker&)
+    SpeculatedType computeUpdatedPrediction(const ConcurrentJSLocker&)
     {
         for (unsigned i = 0; i < totalNumberOfBuckets; ++i) {
             JSValue value = JSValue::decode(m_buckets[i]);
@@ -210,5 +207,3 @@ inline int getRareCaseProfileBytecodeOffset(RareCaseProfile* rareCaseProfile)
 }
 
 } // namespace JSC
-
-#endif // ValueProfile_h

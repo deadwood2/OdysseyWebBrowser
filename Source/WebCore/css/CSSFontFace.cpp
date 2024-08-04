@@ -73,7 +73,7 @@ void CSSFontFace::appendSources(CSSFontFace& fontFace, CSSValueList& srcList, Do
         fontFaceElement = item.svgFontFaceElement();
 #endif
         if (!item.isLocal()) {
-            Settings* settings = document ? document->settings() : nullptr;
+            const Settings* settings = document ? &document->settings() : nullptr;
             bool allowDownloading = foundSVGFont || (settings && settings->downloadableBinaryFontsEnabled());
             if (allowDownloading && item.isSupportedFormat() && document) {
                 if (CachedFont* cachedFont = item.cachedFont(document, foundSVGFont, isInitiatingElementInUserAgentShadowTree))
@@ -124,12 +124,12 @@ bool CSSFontFace::setFamilies(CSSValue& family)
     return true;
 }
 
-Optional<FontTraitsMask> CSSFontFace::calculateStyleMask(CSSValue& style)
+std::optional<FontTraitsMask> CSSFontFace::calculateStyleMask(CSSValue& style)
 {
     if (!is<CSSPrimitiveValue>(style))
-        return Nullopt;
+        return std::nullopt;
 
-    switch (downcast<CSSPrimitiveValue>(style).getValueID()) {
+    switch (downcast<CSSPrimitiveValue>(style).valueID()) {
     case CSSValueNormal:
         return FontStyleNormalMask;
     case CSSValueItalic:
@@ -159,12 +159,12 @@ bool CSSFontFace::setStyle(CSSValue& style)
     return false;
 }
 
-Optional<FontTraitsMask> CSSFontFace::calculateWeightMask(CSSValue& weight)
+std::optional<FontTraitsMask> CSSFontFace::calculateWeightMask(CSSValue& weight)
 {
     if (!is<CSSPrimitiveValue>(weight))
-        return Nullopt;
+        return std::nullopt;
 
-    switch (downcast<CSSPrimitiveValue>(weight).getValueID()) {
+    switch (downcast<CSSPrimitiveValue>(weight).valueID()) {
     case CSSValueBold:
     case CSSValueBolder:
     case CSSValue700:
@@ -448,6 +448,7 @@ void CSSFontFace::initializeWrapper()
         m_wrapper->fontStateChanged(*this, Status::Pending, Status::Failure);
         break;
     }
+    m_mayBePurged = false;
 }
 
 Ref<FontFace> CSSFontFace::wrapper()
@@ -458,7 +459,6 @@ Ref<FontFace> CSSFontFace::wrapper()
     auto wrapper = FontFace::create(*this);
     m_wrapper = wrapper->createWeakPtr();
     initializeWrapper();
-    m_mayBePurged = false;
     return wrapper;
 }
 
@@ -517,7 +517,7 @@ void CSSFontFace::fontLoaded(CSSFontFaceSource&)
 
 bool CSSFontFace::webFontsShouldAlwaysFallBack() const
 {
-    return m_fontSelector && m_fontSelector->document() && m_fontSelector->document()->settings() && m_fontSelector->document()->settings()->webFontsAlwaysFallBack();
+    return m_fontSelector && m_fontSelector->document() && m_fontSelector->document()->settings().webFontsAlwaysFallBack();
 }
 
 size_t CSSFontFace::pump()
@@ -597,7 +597,7 @@ RefPtr<Font> CSSFontFace::font(const FontDescription& fontDescription, bool synt
             fontIsLoading = true;
             if (status() == Status::TimedOut)
                 continue;
-            return Font::create(FontCache::singleton().lastResortFallbackFont(fontDescription)->platformData(), true, true);
+            return Font::create(FontCache::singleton().lastResortFallbackFontForEveryCharacter(fontDescription)->platformData(), true, true);
         case CSSFontFaceSource::Status::Success:
             if (RefPtr<Font> result = source->font(fontDescription, syntheticBold, syntheticItalic, m_featureSettings, m_variantSettings))
                 return result;

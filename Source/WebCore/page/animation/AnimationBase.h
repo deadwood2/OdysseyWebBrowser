@@ -26,13 +26,11 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef AnimationBase_h
-#define AnimationBase_h
+#pragma once
 
 #include "Animation.h"
 #include "CSSPropertyNames.h"
 #include "RenderStyleConstants.h"
-#include <wtf/RefCounted.h>
 #include <wtf/text/AtomicString.h>
 
 namespace WebCore {
@@ -123,7 +121,7 @@ public:
     bool fillingForwards() const { return m_animationState == AnimationState::FillingForwards; }
     bool active() const { return !postActive() && !preActive(); }
     bool running() const { return !isNew() && !postActive(); }
-    bool paused() const { return m_pauseTime >= 0 || m_animationState == AnimationState::PausedNew; }
+    bool paused() const { return m_pauseTime || m_animationState == AnimationState::PausedNew; }
     bool inPausedState() const { return m_animationState >= AnimationState::PausedNew && m_animationState <= AnimationState::PausedRun; }
     bool isNew() const { return m_animationState == AnimationState::New || m_animationState == AnimationState::PausedNew; }
     bool waitingForStartTime() const { return m_animationState == AnimationState::StartWaitResponse; }
@@ -136,7 +134,7 @@ public:
     double progress(double scale = 1, double offset = 0, const TimingFunction* = nullptr) const;
 
     // Returns true if the animation state changed.
-    virtual bool animate(CompositeAnimation*, RenderElement*, const RenderStyle* /*currentStyle*/, const RenderStyle* /*targetStyle*/, std::unique_ptr<RenderStyle>& /*animatedStyle*/) = 0;
+    virtual bool animate(CompositeAnimation*, RenderElement*, const RenderStyle* /*currentStyle*/, const RenderStyle* /*targetStyle*/, std::unique_ptr<RenderStyle>& /*animatedStyle*/, bool& didBlendStyle) = 0;
     virtual void getAnimatedStyle(std::unique_ptr<RenderStyle>& /*animatedStyle*/) = 0;
 
     virtual bool computeExtentOfTransformAnimation(LayoutRect&) const = 0;
@@ -246,11 +244,11 @@ protected:
     CompositeAnimation* m_compositeAnimation; // Ideally this would be a reference, but it has to be cleared if an animation is destroyed inside an event callback.
     Ref<Animation> m_animation;
 
-    double m_startTime { 0 };
-    double m_pauseTime { -1 };
+    std::optional<double> m_startTime;
+    std::optional<double> m_pauseTime;
     double m_requestedStartTime { 0 };
-    double m_totalDuration { -1 };
-    double m_nextIterationDuration { -1 };
+    std::optional<double> m_totalDuration;
+    std::optional<double> m_nextIterationDuration;
 
     AnimationState m_animationState { AnimationState::New };
     bool m_isAccelerated { false };
@@ -262,5 +260,3 @@ protected:
 };
 
 } // namespace WebCore
-
-#endif // AnimationBase_h

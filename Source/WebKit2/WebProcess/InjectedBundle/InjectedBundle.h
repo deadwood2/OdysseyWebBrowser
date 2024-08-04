@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -40,10 +40,6 @@
 typedef struct _GModule GModule;
 #endif
 
-#if PLATFORM(EFL)
-#include <Eina.h>
-#endif
-
 #if USE(FOUNDATION)
 OBJC_CLASS NSBundle;
 OBJC_CLASS NSMutableDictionary;
@@ -67,8 +63,6 @@ namespace WebKit {
 typedef NSBundle *PlatformBundle;
 #elif PLATFORM(GTK)
 typedef ::GModule* PlatformBundle;
-#elif PLATFORM(EFL)
-typedef Eina_Module* PlatformBundle;
 #endif
 
 class InjectedBundleScriptWorld;
@@ -99,15 +93,15 @@ public:
 
     // TestRunner only SPI
     void overrideBoolPreferenceForTestRunner(WebPageGroupProxy*, const String& preference, bool enabled);
-    void overrideXSSAuditorEnabledForTestRunner(WebPageGroupProxy* pageGroup, bool enabled);
     void setAllowUniversalAccessFromFileURLs(WebPageGroupProxy*, bool);
     void setAllowFileAccessFromFileURLs(WebPageGroupProxy*, bool);
+    void setNeedsStorageAccessFromFileURLsQuirk(WebPageGroupProxy*, bool);
     void setMinimumLogicalFontSize(WebPageGroupProxy*, int size);
     void setFrameFlatteningEnabled(WebPageGroupProxy*, bool);
     void setPluginsEnabled(WebPageGroupProxy*, bool);
     void setJavaScriptCanAccessClipboard(WebPageGroupProxy*, bool);
-    void setAutomaticLinkDetectionEnabled(WebPageGroupProxy*, bool enabled);
     void setPrivateBrowsingEnabled(WebPageGroupProxy*, bool);
+    void setUseDashboardCompatibilityMode(WebPageGroupProxy*, bool);
     void setPopupBlockingEnabled(WebPageGroupProxy*, bool);
     void setAuthorAndUserStylesEnabled(WebPageGroupProxy*, bool);
     void setSpatialNavigationEnabled(WebPageGroupProxy*, bool);

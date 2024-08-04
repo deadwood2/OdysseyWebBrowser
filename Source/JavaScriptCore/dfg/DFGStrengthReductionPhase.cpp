@@ -204,7 +204,7 @@ private:
             if (m_node->isBinaryUseKind(DoubleRepUse)
                 && m_node->child2()->isNumberConstant()) {
 
-                if (Optional<double> reciprocal = safeReciprocalForDivByConst(m_node->child2()->asNumber())) {
+                if (std::optional<double> reciprocal = safeReciprocalForDivByConst(m_node->child2()->asNumber())) {
                     Node* reciprocalNode = m_insertionSet.insertConstant(m_nodeIndex, m_node->origin, jsDoubleNumber(*reciprocal), DoubleConstant);
                     m_node->setOp(ArithMul);
                     m_node->child2() = Edge(reciprocalNode, DoubleRepUse);
@@ -322,8 +322,48 @@ private:
         // move these to the abstract interpreter once AbstractValue can support LazyJSValue.
         // https://bugs.webkit.org/show_bug.cgi?id=155204
 
+        case ValueAdd: {
+            if (m_node->child1()->isConstant()
+                && m_node->child2()->isConstant()
+                && (!!m_node->child1()->tryGetString(m_graph) || !!m_node->child2()->tryGetString(m_graph))) {
+                auto tryGetConstantString = [&] (Node* node) -> String {
+                    String string = node->tryGetString(m_graph);
+                    if (!string.isEmpty())
+                        return string;
+                    JSValue value = node->constant()->value();
+                    if (!value)
+                        return String();
+                    if (value.isInt32())
+                        return String::number(value.asInt32());
+                    if (value.isNumber())
+                        return String::numberToStringECMAScript(value.asNumber());
+                    if (value.isBoolean())
+                        return value.asBoolean() ? ASCIILiteral("true") : ASCIILiteral("false");
+                    if (value.isNull())
+                        return ASCIILiteral("null");
+                    if (value.isUndefined())
+                        return ASCIILiteral("undefined");
+                    return String();
+                };
+
+                String leftString = tryGetConstantString(m_node->child1().node());
+                if (!leftString)
+                    break;
+                String rightString = tryGetConstantString(m_node->child2().node());
+                if (!rightString)
+                    break;
+
+                StringBuilder builder;
+                builder.append(leftString);
+                builder.append(rightString);
+                m_node->convertToLazyJSConstant(
+                    m_graph, LazyJSValue::newString(m_graph, builder.toString()));
+                m_changed = true;
+            }
+            break;
+        }
+
         case MakeRope:
-        case ValueAdd:
         case StrCat: {
             String leftString = m_node->child1()->tryGetString(m_graph);
             if (!leftString)
@@ -350,6 +390,37 @@ private:
             break;
         }
 
+        case ToString:
+        case CallStringConstructor: {
+            Edge& child1 = m_node->child1();
+            switch (child1.useKind()) {
+            case Int32Use:
+            case Int52RepUse:
+            case DoubleRepUse: {
+                if (child1->hasConstant()) {
+                    JSValue value = child1->constant()->value();
+                    if (value) {
+                        String result;
+                        if (value.isInt32())
+                            result = String::number(value.asInt32());
+                        else if (value.isNumber())
+                            result = String::numberToStringECMAScript(value.asNumber());
+
+                        if (!result.isNull()) {
+                            m_node->convertToLazyJSConstant(m_graph, LazyJSValue::newString(m_graph, result));
+                            m_changed = true;
+                        }
+                    }
+                }
+                break;
+            }
+
+            default:
+                break;
+            }
+            break;
+        }
+
         case GetArrayLength: {
             if (m_node->arrayMode().type() == Array::Generic
                 || m_node->arrayMode().type() == Array::String) {
@@ -364,7 +435,7 @@ private:
         }
 
         case GetGlobalObject: {
-            if (JSObject* object = m_node->child1()->dynamicCastConstant<JSObject*>()) {
+            if (JSObject* object = m_node->child1()->dynamicCastConstant<JSObject*>(vm())) {
                 m_graph.convertToConstant(m_node, object->globalObject());
                 m_changed = true;
                 break;
@@ -374,7 +445,7 @@ private:
 
         case RegExpExec:
         case RegExpTest: {
-            JSGlobalObject* globalObject = m_node->child1()->dynamicCastConstant<JSGlobalObject*>();
+            JSGlobalObject* globalObject = m_node->child1()->dynamicCastConstant<JSGlobalObject*>(vm());
             if (!globalObject) {
                 if (verbose)
                     dataLog("Giving up because no global object.\n");
@@ -389,7 +460,7 @@ private:
 
             Node* regExpObjectNode = m_node->child2().node();
             RegExp* regExp;
-            if (RegExpObject* regExpObject = regExpObjectNode->dynamicCastConstant<RegExpObject*>())
+            if (RegExpObject* regExpObject = regExpObjectNode->dynamicCastConstant<RegExpObject*>(vm()))
                 regExp = regExpObject->regExp();
             else if (regExpObjectNode->op() == NewRegexp)
                 regExp = regExpObjectNode->castOperand<RegExp*>();
@@ -500,7 +571,7 @@ private:
 
             if (m_node->op() == RegExpExec) {
                 if (result) {
-                    StructureSet* structureSet = m_graph.addStructureSet(structure);
+                    RegisteredStructureSet* structureSet = m_graph.addStructureSet(structure);
 
                     // Create an array modeling the JS array that we will try to allocate. This is
                     // basically createRegExpMatchesArray but over C++ strings instead of JSStrings.
@@ -630,7 +701,7 @@ private:
             
             Node* regExpObjectNode = m_node->child2().node();
             RegExp* regExp;
-            if (RegExpObject* regExpObject = regExpObjectNode->dynamicCastConstant<RegExpObject*>())
+            if (RegExpObject* regExpObject = regExpObjectNode->dynamicCastConstant<RegExpObject*>(vm()))
                 regExp = regExpObject->regExp();
             else if (regExpObjectNode->op() == NewRegexp)
                 regExp = regExpObjectNode->castOperand<RegExp*>();
@@ -718,6 +789,38 @@ private:
             }
 
             m_node->origin = origin;
+            break;
+        }
+            
+        case Call:
+        case Construct:
+        case TailCallInlinedCaller:
+        case TailCall: {
+            ExecutableBase* executable = nullptr;
+            Edge callee = m_graph.varArgChild(m_node, 0);
+            if (JSFunction* function = callee->dynamicCastConstant<JSFunction*>(vm()))
+                executable = function->executable();
+            else if (callee->isFunctionAllocation())
+                executable = callee->castOperand<FunctionExecutable*>();
+            
+            if (!executable)
+                break;
+            
+            if (FunctionExecutable* functionExecutable = jsDynamicCast<FunctionExecutable*>(vm(), executable)) {
+                // We need to update m_parameterSlots before we get to the backend, but we don't
+                // want to do too much of this.
+                unsigned numAllocatedArgs =
+                    static_cast<unsigned>(functionExecutable->parameterCount()) + 1;
+                
+                if (numAllocatedArgs <= Options::maximumDirectCallStackSize()) {
+                    m_graph.m_parameterSlots = std::max(
+                        m_graph.m_parameterSlots,
+                        Graph::parameterSlotsForArgCount(numAllocatedArgs));
+                }
+            }
+            
+            m_node->convertToDirectCall(m_graph.freeze(executable));
+            m_changed = true;
             break;
         }
 

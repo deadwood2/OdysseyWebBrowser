@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,16 +33,21 @@
 #include "ClonedArguments.h"
 #include "CodeProfiling.h"
 #include "CommonSlowPathsExceptions.h"
+#include "DefinePropertyAttributes.h"
 #include "DirectArguments.h"
 #include "Error.h"
 #include "ErrorHandlingScope.h"
 #include "ExceptionFuzz.h"
 #include "GetterSetter.h"
 #include "HostCallReturnValue.h"
+#include "ICStats.h"
 #include "Interpreter.h"
+#include "IteratorOperations.h"
 #include "JIT.h"
+#include "JSArrayInlines.h"
 #include "JSCInlines.h"
 #include "JSCJSValue.h"
+#include "JSFixedArray.h"
 #include "JSGlobalObjectFunctions.h"
 #include "JSLexicalEnvironment.h"
 #include "JSPropertyNameEnumerator.h"
@@ -62,7 +67,9 @@ namespace JSC {
 
 #define BEGIN_NO_SET_PC() \
     VM& vm = exec->vm();      \
-    NativeCallFrameTracer tracer(&vm, exec)
+    NativeCallFrameTracer tracer(&vm, exec); \
+    auto throwScope = DECLARE_THROW_SCOPE(vm); \
+    UNUSED_PARAM(throwScope)
 
 #ifndef NDEBUG
 #define SET_PC_FOR_STUBS() do { \
@@ -91,18 +98,17 @@ namespace JSC {
 #define END_IMPL() RETURN_TWO(pc, exec)
 
 #define THROW(exceptionToThrow) do {                        \
-        auto scope = DECLARE_THROW_SCOPE(vm);               \
-        throwException(exec, scope, exceptionToThrow);      \
+        throwException(exec, throwScope, exceptionToThrow); \
         RETURN_TO_THROW(exec, pc);                          \
         END_IMPL();                                         \
     } while (false)
 
 #define CHECK_EXCEPTION() do {                    \
-        doExceptionFuzzingIfEnabled(exec, "CommonSlowPaths", pc);   \
-        if (UNLIKELY(vm.exception())) {           \
-            RETURN_TO_THROW(exec, pc);               \
+        doExceptionFuzzingIfEnabled(exec, throwScope, "CommonSlowPaths", pc);   \
+        if (UNLIKELY(throwScope.exception())) {   \
+            RETURN_TO_THROW(exec, pc);            \
             END_IMPL();                           \
-        }                                               \
+        }                                         \
     } while (false)
 
 #define END() do {                        \
@@ -144,7 +150,7 @@ namespace JSC {
 #define CALL_CHECK_EXCEPTION(exec, pc) do {                          \
         ExecState* cceExec = (exec);                                 \
         Instruction* ccePC = (pc);                                   \
-        if (UNLIKELY(vm.exception()))                                \
+        if (UNLIKELY(throwScope.exception()))                        \
             CALL_END_IMPL(cceExec, LLInt::callToThrow(cceExec));     \
     } while (false)
 
@@ -177,6 +183,7 @@ SLOW_PATH_DECL(slow_path_call_arityCheck)
         exec = exec->callerFrame();
         vm.topCallFrame = exec;
         ErrorHandlingScope errorScope(vm);
+        throwScope.release();
         CommonSlowPaths::interpreterThrowInCaller(exec, createStackOverflowError(exec));
         RETURN_TWO(bitwise_cast<void*>(static_cast<uintptr_t>(1)), exec);
     }
@@ -273,7 +280,7 @@ SLOW_PATH_DECL(slow_path_throw_tdz_error)
 SLOW_PATH_DECL(slow_path_throw_strict_mode_readonly_property_write_error)
 {
     BEGIN();
-    THROW(createTypeError(exec, ASCIILiteral(StrictModeReadonlyPropertyWriteError)));
+    THROW(createTypeError(exec, ASCIILiteral(ReadonlyPropertyWriteError)));
 }
 
 SLOW_PATH_DECL(slow_path_not)
@@ -348,17 +355,51 @@ SLOW_PATH_DECL(slow_path_to_string)
     RETURN(OP_C(2).jsValue().toString(exec));
 }
 
+#if ENABLE(JIT)
+static void updateArithProfileForUnaryArithOp(Instruction* pc, JSValue result, JSValue operand)
+{
+    ArithProfile& profile = *bitwise_cast<ArithProfile*>(&pc[3].u.operand);
+    profile.observeLHS(operand);
+    ASSERT(result.isNumber());
+    if (!result.isInt32()) {
+        if (operand.isInt32())
+            profile.setObservedInt32Overflow();
+
+        double doubleVal = result.asNumber();
+        if (!doubleVal && std::signbit(doubleVal))
+            profile.setObservedNegZeroDouble();
+        else {
+            profile.setObservedNonNegZeroDouble();
+
+            // The Int52 overflow check here intentionally omits 1ll << 51 as a valid negative Int52 value.
+            // Therefore, we will get a false positive if the result is that value. This is intentionally
+            // done to simplify the checking algorithm.
+            static const int64_t int52OverflowPoint = (1ll << 51);
+            int64_t int64Val = static_cast<int64_t>(std::abs(doubleVal));
+            if (int64Val >= int52OverflowPoint)
+                profile.setObservedInt52Overflow();
+        }
+    }
+}
+#else
+static void updateArithProfileForUnaryArithOp(Instruction*, JSValue, JSValue) { }
+#endif
+
 SLOW_PATH_DECL(slow_path_negate)
 {
     BEGIN();
-    RETURN(jsNumber(-OP_C(2).jsValue().toNumber(exec)));
+    JSValue operand = OP_C(2).jsValue();
+    JSValue result = jsNumber(-operand.toNumber(exec));
+    RETURN_WITH_PROFILING(result, {
+        updateArithProfileForUnaryArithOp(pc, result, operand);
+    });
 }
 
 #if ENABLE(DFG_JIT)
 static void updateArithProfileForBinaryArithOp(ExecState* exec, Instruction* pc, JSValue result, JSValue left, JSValue right)
 {
     CodeBlock* codeBlock = exec->codeBlock();
-    ArithProfile& profile = codeBlock->arithProfileForPC(pc);
+    ArithProfile& profile = *codeBlock->arithProfileForPC(pc);
 
     if (result.isNumber()) {
         if (!result.isInt32()) {
@@ -402,12 +443,14 @@ SLOW_PATH_DECL(slow_path_add)
     JSValue v2 = OP_C(3).jsValue();
     JSValue result;
 
-    ArithProfile& arithProfile = exec->codeBlock()->arithProfileForPC(pc);
+    ArithProfile& arithProfile = *exec->codeBlock()->arithProfileForPC(pc);
     arithProfile.observeLHSAndRHS(v1, v2);
 
-    if (v1.isString() && !v2.isObject())
-        result = jsString(exec, asString(v1), v2.toString(exec));
-    else if (v1.isNumber() && v2.isNumber())
+    if (v1.isString() && !v2.isObject()) {
+        JSString* v2String = v2.toString(exec);
+        if (LIKELY(!throwScope.exception()))
+            result = jsString(exec, asString(v1), v2String);
+    } else if (v1.isNumber() && v2.isNumber())
         result = jsNumber(v1.asNumber() + v2.asNumber());
     else
         result = jsAddSlowCase(exec, v1, v2);
@@ -427,7 +470,7 @@ SLOW_PATH_DECL(slow_path_mul)
     JSValue left = OP_C(2).jsValue();
     JSValue right = OP_C(3).jsValue();
     double a = left.toNumber(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     double b = right.toNumber(exec);
     JSValue result = jsNumber(a * b);
@@ -442,7 +485,7 @@ SLOW_PATH_DECL(slow_path_sub)
     JSValue left = OP_C(2).jsValue();
     JSValue right = OP_C(3).jsValue();
     double a = left.toNumber(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     double b = right.toNumber(exec);
     JSValue result = jsNumber(a - b);
@@ -457,10 +500,10 @@ SLOW_PATH_DECL(slow_path_div)
     JSValue left = OP_C(2).jsValue();
     JSValue right = OP_C(3).jsValue();
     double a = left.toNumber(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     double b = right.toNumber(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     JSValue result = jsNumber(a / b);
     RETURN_WITH_PROFILING(result, {
@@ -472,7 +515,7 @@ SLOW_PATH_DECL(slow_path_mod)
 {
     BEGIN();
     double a = OP_C(2).jsValue().toNumber(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     double b = OP_C(3).jsValue().toNumber(exec);
     RETURN(jsNumber(jsMod(a, b)));
@@ -482,10 +525,10 @@ SLOW_PATH_DECL(slow_path_pow)
 {
     BEGIN();
     double a = OP_C(2).jsValue().toNumber(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     double b = OP_C(3).jsValue().toNumber(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     RETURN(jsNumber(operationMathPow(a, b)));
 }
@@ -494,7 +537,7 @@ SLOW_PATH_DECL(slow_path_lshift)
 {
     BEGIN();
     int32_t a = OP_C(2).jsValue().toInt32(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     uint32_t b = OP_C(3).jsValue().toUInt32(exec);
     RETURN(jsNumber(a << (b & 31)));
@@ -504,7 +547,7 @@ SLOW_PATH_DECL(slow_path_rshift)
 {
     BEGIN();
     int32_t a = OP_C(2).jsValue().toInt32(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     uint32_t b = OP_C(3).jsValue().toUInt32(exec);
     RETURN(jsNumber(a >> (b & 31)));
@@ -514,7 +557,7 @@ SLOW_PATH_DECL(slow_path_urshift)
 {
     BEGIN();
     uint32_t a = OP_C(2).jsValue().toUInt32(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     uint32_t b = OP_C(3).jsValue().toUInt32(exec);
     RETURN(jsNumber(static_cast<int32_t>(a >> (b & 31))));
@@ -531,7 +574,7 @@ SLOW_PATH_DECL(slow_path_bitand)
 {
     BEGIN();
     int32_t a = OP_C(2).jsValue().toInt32(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     int32_t b = OP_C(3).jsValue().toInt32(exec);
     RETURN(jsNumber(a & b));
@@ -541,7 +584,7 @@ SLOW_PATH_DECL(slow_path_bitor)
 {
     BEGIN();
     int32_t a = OP_C(2).jsValue().toInt32(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     int32_t b = OP_C(3).jsValue().toInt32(exec);
     RETURN(jsNumber(a | b));
@@ -551,7 +594,7 @@ SLOW_PATH_DECL(slow_path_bitxor)
 {
     BEGIN();
     int32_t a = OP_C(2).jsValue().toInt32(exec);
-    if (UNLIKELY(vm.exception()))
+    if (UNLIKELY(throwScope.exception()))
         RETURN(JSValue());
     int32_t b = OP_C(3).jsValue().toInt32(exec);
     RETURN(jsNumber(a ^ b));
@@ -578,7 +621,7 @@ SLOW_PATH_DECL(slow_path_is_function)
 SLOW_PATH_DECL(slow_path_in)
 {
     BEGIN();
-    RETURN(jsBoolean(CommonSlowPaths::opIn(exec, OP_C(2).jsValue(), OP_C(3).jsValue())));
+    RETURN(jsBoolean(CommonSlowPaths::opIn(exec, OP_C(2).jsValue(), OP_C(3).jsValue(), pc[4].u.arrayProfile)));
 }
 
 SLOW_PATH_DECL(slow_path_del_by_val)
@@ -594,16 +637,16 @@ SLOW_PATH_DECL(slow_path_del_by_val)
     
     uint32_t i;
     if (subscript.getUInt32(i))
-        couldDelete = baseObject->methodTable()->deletePropertyByIndex(baseObject, exec, i);
+        couldDelete = baseObject->methodTable(vm)->deletePropertyByIndex(baseObject, exec, i);
     else {
         CHECK_EXCEPTION();
         auto property = subscript.toPropertyKey(exec);
         CHECK_EXCEPTION();
-        couldDelete = baseObject->methodTable()->deleteProperty(baseObject, exec, property);
+        couldDelete = baseObject->methodTable(vm)->deleteProperty(baseObject, exec, property);
     }
     
     if (!couldDelete && exec->codeBlock()->isStrictMode())
-        THROW(createTypeError(exec, "Unable to delete property."));
+        THROW(createTypeError(exec, UnableToDeletePropertyError));
     
     RETURN(jsBoolean(couldDelete));
 }
@@ -786,8 +829,10 @@ SLOW_PATH_DECL(slow_path_resolve_scope)
     if (resolveType == UnresolvedProperty || resolveType == UnresolvedPropertyWithVarInjectionChecks) {
         if (resolvedScope->isGlobalObject()) {
             JSGlobalObject* globalObject = jsCast<JSGlobalObject*>(resolvedScope);
-            if (globalObject->hasProperty(exec, ident)) {
-                ConcurrentJITLocker locker(exec->codeBlock()->m_lock);
+            bool hasProperty = globalObject->hasProperty(exec, ident);
+            CHECK_EXCEPTION();
+            if (hasProperty) {
+                ConcurrentJSLocker locker(exec->codeBlock()->m_lock);
                 if (resolveType == UnresolvedProperty)
                     pc[4].u.operand = GlobalProperty;
                 else
@@ -797,7 +842,7 @@ SLOW_PATH_DECL(slow_path_resolve_scope)
             }
         } else if (resolvedScope->isGlobalLexicalEnvironment()) {
             JSGlobalLexicalEnvironment* globalLexicalEnvironment = jsCast<JSGlobalLexicalEnvironment*>(resolvedScope);
-            ConcurrentJITLocker locker(exec->codeBlock()->m_lock);
+            ConcurrentJSLocker locker(exec->codeBlock()->m_lock);
             if (resolveType == UnresolvedProperty)
                 pc[4].u.operand = GlobalLexicalVar;
             else
@@ -814,7 +859,7 @@ SLOW_PATH_DECL(slow_path_create_rest)
     BEGIN();
     unsigned arraySize = OP_C(2).jsValue().asUInt32();
     JSGlobalObject* globalObject = exec->lexicalGlobalObject();
-    Structure* structure = globalObject->arrayStructureForIndexingTypeDuringAllocation(ArrayWithContiguous);
+    Structure* structure = globalObject->restParameterStructure();
     unsigned numParamsToSkip = pc[3].u.unsignedValue;
     JSValue* argumentsToCopyRegion = exec->addressOfArgumentsStart() + numParamsToSkip;
     RETURN(constructArray(exec, structure, argumentsToCopyRegion, arraySize));
@@ -892,6 +937,137 @@ SLOW_PATH_DECL(slow_path_put_by_val_with_this)
     PutPropertySlot slot(thisValue, exec->codeBlock()->isStrictMode());
     baseValue.put(exec, property, value, slot);
     END();
+}
+
+SLOW_PATH_DECL(slow_path_define_data_property)
+{
+    BEGIN();
+    JSObject* base = asObject(OP_C(1).jsValue());
+    JSValue property = OP_C(2).jsValue();
+    JSValue value = OP_C(3).jsValue();
+    JSValue attributes = OP_C(4).jsValue();
+    ASSERT(attributes.isInt32());
+
+    auto propertyName = property.toPropertyKey(exec);
+    CHECK_EXCEPTION();
+    PropertyDescriptor descriptor = toPropertyDescriptor(value, jsUndefined(), jsUndefined(), DefinePropertyAttributes(attributes.asInt32()));
+    ASSERT((descriptor.attributes() & Accessor) || (!descriptor.isAccessorDescriptor()));
+    base->methodTable(vm)->defineOwnProperty(base, exec, propertyName, descriptor, true);
+    END();
+}
+
+SLOW_PATH_DECL(slow_path_define_accessor_property)
+{
+    BEGIN();
+    JSObject* base = asObject(OP_C(1).jsValue());
+    JSValue property = OP_C(2).jsValue();
+    JSValue getter = OP_C(3).jsValue();
+    JSValue setter = OP_C(4).jsValue();
+    JSValue attributes = OP_C(5).jsValue();
+    ASSERT(attributes.isInt32());
+
+    auto propertyName = property.toPropertyKey(exec);
+    CHECK_EXCEPTION();
+    PropertyDescriptor descriptor = toPropertyDescriptor(jsUndefined(), getter, setter, DefinePropertyAttributes(attributes.asInt32()));
+    ASSERT((descriptor.attributes() & Accessor) || (!descriptor.isAccessorDescriptor()));
+    base->methodTable(vm)->defineOwnProperty(base, exec, propertyName, descriptor, true);
+    END();
+}
+
+SLOW_PATH_DECL(slow_path_throw_static_error)
+{
+    BEGIN();
+    JSValue errorMessageValue = OP_C(1).jsValue();
+    RELEASE_ASSERT(errorMessageValue.isString());
+    String errorMessage = asString(errorMessageValue)->value(exec);
+    ErrorType errorType = static_cast<ErrorType>(pc[2].u.unsignedValue);
+    THROW(createError(exec, errorType, errorMessage));
+}
+
+SLOW_PATH_DECL(slow_path_new_array_with_spread)
+{
+    BEGIN();
+    int numItems = pc[3].u.operand;
+    ASSERT(numItems >= 0);
+    const BitVector& bitVector = exec->codeBlock()->unlinkedCodeBlock()->bitVector(pc[4].u.unsignedValue);
+
+    JSValue* values = bitwise_cast<JSValue*>(&OP(2));
+
+    Checked<unsigned, RecordOverflow> checkedArraySize = 0;
+    for (int i = 0; i < numItems; i++) {
+        if (bitVector.get(i)) {
+            JSValue value = values[-i];
+            JSFixedArray* array = jsCast<JSFixedArray*>(value);
+            checkedArraySize += array->size();
+        } else
+            checkedArraySize += 1;
+    }
+    if (UNLIKELY(checkedArraySize.hasOverflowed()))
+        THROW(createOutOfMemoryError(exec));
+
+    unsigned arraySize = checkedArraySize.unsafeGet();
+    JSGlobalObject* globalObject = exec->lexicalGlobalObject();
+    Structure* structure = globalObject->arrayStructureForIndexingTypeDuringAllocation(ArrayWithContiguous);
+
+    JSArray* result = JSArray::tryCreateForInitializationPrivate(vm, structure, arraySize);
+    if (UNLIKELY(!result))
+        THROW(createOutOfMemoryError(exec));
+    CHECK_EXCEPTION();
+
+    unsigned index = 0;
+    for (int i = 0; i < numItems; i++) {
+        JSValue value = values[-i];
+        if (bitVector.get(i)) {
+            // We are spreading.
+            JSFixedArray* array = jsCast<JSFixedArray*>(value);
+            for (unsigned i = 0; i < array->size(); i++) {
+                RELEASE_ASSERT(array->get(i));
+                result->initializeIndex(vm, index, array->get(i));
+                ++index;
+            }
+        } else {
+            // We are not spreading.
+            result->initializeIndex(vm, index, value);
+            ++index;
+        }
+    }
+
+    RETURN(result);
+}
+
+SLOW_PATH_DECL(slow_path_spread)
+{
+    BEGIN();
+
+    JSValue iterable = OP_C(2).jsValue();
+
+    if (iterable.isCell() && isJSArray(iterable.asCell())) {
+        JSArray* array = jsCast<JSArray*>(iterable);
+        if (array->isIteratorProtocolFastAndNonObservable()) {
+            // JSFixedArray::createFromArray does not consult the prototype chain,
+            // so we must be sure that not consulting the prototype chain would
+            // produce the same value during iteration.
+            RETURN(JSFixedArray::createFromArray(exec, vm, array));
+        }
+    }
+
+    JSGlobalObject* globalObject = exec->lexicalGlobalObject();
+
+    JSArray* array;
+    {
+        JSFunction* iterationFunction = globalObject->iteratorProtocolFunction();
+        CallData callData;
+        CallType callType = JSC::getCallData(iterationFunction, callData);
+        ASSERT(callType != CallType::None);
+
+        MarkedArgumentBuffer arguments;
+        arguments.append(iterable);
+        JSValue arrayResult = call(exec, iterationFunction, callType, callData, jsNull(), arguments);
+        CHECK_EXCEPTION();
+        array = jsCast<JSArray*>(arrayResult);
+    }
+
+    RETURN(JSFixedArray::createFromArray(exec, vm, array));
 }
 
 } // namespace JSC

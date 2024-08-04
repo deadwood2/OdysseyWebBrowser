@@ -34,6 +34,8 @@
 #include <wtf/HashSet.h>
 #include <wtf/OptionSet.h>
 #include <wtf/Optional.h>
+#include <wtf/SHA1.h>
+#include <wtf/Variant.h>
 #include <wtf/Vector.h>
 
 namespace IPC {
@@ -68,8 +70,8 @@ template<typename T> struct ArgumentCoder<OptionSet<T>> {
     }
 };
 
-template<typename T> struct ArgumentCoder<WTF::Optional<T>> {
-    static void encode(Encoder& encoder, const WTF::Optional<T>& optional)
+template<typename T> struct ArgumentCoder<std::optional<T>> {
+    static void encode(Encoder& encoder, const std::optional<T>& optional)
     {
         if (!optional) {
             encoder << false;
@@ -80,14 +82,14 @@ template<typename T> struct ArgumentCoder<WTF::Optional<T>> {
         encoder << optional.value();
     }
 
-    static bool decode(Decoder& decoder, WTF::Optional<T>& optional)
+    static bool decode(Decoder& decoder, std::optional<T>& optional)
     {
         bool isEngaged;
         if (!decoder.decode(isEngaged))
             return false;
 
         if (!isEngaged) {
-            optional = Nullopt;
+            optional = std::nullopt;
             return true;
         }
 
@@ -396,6 +398,11 @@ template<> struct ArgumentCoder<CString> {
 template<> struct ArgumentCoder<String> {
     static void encode(Encoder&, const String&);
     static bool decode(Decoder&, String&);
+};
+
+template<> struct ArgumentCoder<SHA1::Digest> {
+    static void encode(Encoder&, const SHA1::Digest&);
+    static bool decode(Decoder&, SHA1::Digest&);
 };
 
 } // namespace IPC

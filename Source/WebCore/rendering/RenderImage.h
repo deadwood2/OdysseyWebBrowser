@@ -22,8 +22,7 @@
  *
  */
 
-#ifndef RenderImage_h
-#define RenderImage_h
+#pragma once
 
 #include "RenderImageResource.h"
 #include "RenderReplaced.h"
@@ -72,6 +71,8 @@ public:
     void setHasShadowControls(bool hasShadowControls) { m_hasShadowControls = hasShadowControls; }
 
 protected:
+    void willBeDestroyed() override;
+
     bool needsPreferredWidthsRecalculation() const final;
     RenderBox* embeddedContentBox() const final;
     void computeIntrinsicRatioInformation(FloatSize& intrinsicSize, double& intrinsicRatio) const final;
@@ -105,7 +106,7 @@ private:
 
     LayoutUnit minimumReplacedHeight() const override;
 
-    void notifyFinished(CachedResource*) final;
+    void notifyFinished(CachedResource&) final;
     bool nodeAtPoint(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction) final;
 
     bool boxShadowShouldBeAppliedToBackground(const LayoutPoint& paintOffset, BackgroundBleedAvoidance, InlineFlowBox*) const final;
@@ -137,5 +138,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderImage, isRenderImage())
-
-#endif // RenderImage_h

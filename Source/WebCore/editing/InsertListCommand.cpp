@@ -27,7 +27,6 @@
 #include "InsertListCommand.h"
 
 #include "ElementTraversal.h"
-#include "ExceptionCodePlaceholder.h"
 #include "HTMLBRElement.h"
 #include "HTMLLIElement.h"
 #include "HTMLNames.h"
@@ -150,7 +149,7 @@ void InsertListCommand::doApply()
                 // infinite loop and because there is no more work to be done.
                 // FIXME(<rdar://problem/5983974>): The endingSelection() may be incorrect here.  Compute 
                 // the new location of endOfSelection and use it as the end of the new selection.
-                if (!startOfLastParagraph.deepEquivalent().anchorNode()->inDocument())
+                if (!startOfLastParagraph.deepEquivalent().anchorNode()->isConnected())
                     return;
                 setEndingSelection(startOfCurrentParagraph);
 
@@ -193,6 +192,11 @@ void InsertListCommand::doApply()
     doApplyForSingleParagraph(false, listTag, endingSelection().firstRange().get());
 }
 
+EditAction InsertListCommand::editingAction() const
+{
+    return m_type == OrderedList ? EditActionInsertOrderedList : EditActionInsertUnorderedList;
+}
+
 void InsertListCommand::doApplyForSingleParagraph(bool forceCreateList, const HTMLQualifiedName& listTag, Range* currentSelection)
 {
     // FIXME: This will produce unexpected results for a selection that starts just before a
@@ -233,7 +237,7 @@ void InsertListCommand::doApplyForSingleParagraph(bool forceCreateList, const HT
             // Manually remove listNode because moveParagraphWithClones sometimes leaves it behind in the document.
             // See the bug 33668 and editing/execCommand/insert-list-orphaned-item-with-nested-lists.html.
             // FIXME: This might be a bug in moveParagraphWithClones or deleteSelection.
-            if (listNode && listNode->inDocument())
+            if (listNode && listNode->isConnected())
                 removeNode(listNode);
 
             newList = mergeWithNeighboringLists(newList);
@@ -241,9 +245,9 @@ void InsertListCommand::doApplyForSingleParagraph(bool forceCreateList, const HT
             // Restore the start and the end of current selection if they started inside listNode
             // because moveParagraphWithClones could have removed them.
             if (rangeStartIsInList && newList)
-                currentSelection->setStart(*newList, 0, IGNORE_EXCEPTION);
+                currentSelection->setStart(*newList, 0);
             if (rangeEndIsInList && newList)
-                currentSelection->setEnd(*newList, lastOffsetInNode(newList.get()), IGNORE_EXCEPTION);
+                currentSelection->setEnd(*newList, lastOffsetInNode(newList.get()));
 
             setEndingSelection(VisiblePosition(firstPositionInNode(newList.get())));
 

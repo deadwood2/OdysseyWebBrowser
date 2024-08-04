@@ -25,8 +25,8 @@
 
 #pragma once
 
-#include "CachedResourceClient.h"
-#include "CachedResourceHandle.h"
+#include "LoadableScript.h"
+#include "LoadableScriptClient.h"
 #include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/TextPosition.h>
@@ -34,18 +34,15 @@
 namespace WebCore {
 
 class CachedScript;
-class Element;
 class PendingScriptClient;
+class ScriptElement;
 
-// A container for an external script which may be loaded and executed.
-//
-// A CachedResourceHandle alone does not prevent the underlying CachedResource
-// from purging its data buffer. This class holds a dummy client open for its
-// lifetime in order to guarantee that the data buffer will not be purged.
-class PendingScript final : public RefCounted<PendingScript>, public CachedResourceClient {
+// A container for scripts which may be loaded and executed.
+// This can hold LoadableScript and non external inline script.
+class PendingScript final : public RefCounted<PendingScript>, public LoadableScriptClient {
 public:
-    static Ref<PendingScript> create(Element&, CachedScript&);
-    static Ref<PendingScript> create(Element&, TextPosition scriptStartPosition);
+    static Ref<PendingScript> create(ScriptElement&, LoadableScript&);
+    static Ref<PendingScript> create(ScriptElement&, TextPosition scriptStartPosition);
 
     virtual ~PendingScript();
 
@@ -54,29 +51,35 @@ public:
 
     bool watchingForLoad() const { return needsLoading() && m_client; }
 
-    Element& element() { return m_element.get(); }
-    const Element& element() const { return m_element.get(); }
+    ScriptElement& element() { return m_element.get(); }
+    const ScriptElement& element() const { return m_element.get(); }
 
-    CachedScript* cachedScript() const;
-    bool needsLoading() const { return cachedScript(); }
+    LoadableScript* loadableScript() const;
+    bool needsLoading() const { return loadableScript(); }
 
     bool isLoaded() const;
+    bool error() const;
 
-    void notifyFinished(CachedResource*) override;
+    void notifyFinished(LoadableScript&) override;
 
-    void setClient(PendingScriptClient*);
+    void setClient(PendingScriptClient&);
     void clearClient();
 
 private:
-    PendingScript(Element&, CachedScript&);
-    PendingScript(Element&, TextPosition startingPosition);
+    PendingScript(ScriptElement&, LoadableScript&);
+    PendingScript(ScriptElement&, TextPosition startingPosition);
 
     void notifyClientFinished();
 
-    Ref<Element> m_element;
+    Ref<ScriptElement> m_element;
     TextPosition m_startingPosition; // Only used for inline script tags.
-    CachedResourceHandle<CachedScript> m_cachedScript;
+    RefPtr<LoadableScript> m_loadableScript;
     PendingScriptClient* m_client { nullptr };
 };
+
+inline LoadableScript* PendingScript::loadableScript() const
+{
+    return m_loadableScript.get();
+}
 
 }

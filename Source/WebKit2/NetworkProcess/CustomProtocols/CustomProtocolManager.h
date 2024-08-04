@@ -23,27 +23,29 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CustomProtocolManager_h
-#define CustomProtocolManager_h
+#pragma once
 
-#include "Connection.h"
 #include "MessageReceiver.h"
 #include "NetworkProcessSupplement.h"
-#include <wtf/WorkQueue.h>
+#include <wtf/HashMap.h>
+#include <wtf/HashSet.h>
+#include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
 #if PLATFORM(COCOA)
-#include <wtf/HashMap.h>
-#include <wtf/HashSet.h>
 #include <wtf/RetainPtr.h>
-#include <wtf/Threading.h>
-#include <wtf/text/StringHash.h>
 OBJC_CLASS NSURLSessionConfiguration;
 OBJC_CLASS WKCustomProtocol;
-#else
-#include "CustomProtocolManagerImpl.h"
 #endif
 
+#if USE(SOUP)
+#include <wtf/glib/GRefPtr.h>
+
+typedef struct _GCancellable GCancellable;
+typedef struct _GInputStream GInputStream;
+typedef struct _GTask GTask;
+typedef struct _WebKitSoupRequestGeneric WebKitSoupRequestGeneric;
+#endif
 
 namespace IPC {
 class DataReference;
@@ -60,44 +62,48 @@ namespace WebKit {
 class ChildProcess;
 struct NetworkProcessCreationParameters;
 
-class CustomProtocolManager : public NetworkProcessSupplement
-#if PLATFORM(COCOA)
-    , public IPC::Connection::WorkQueueMessageReceiver {
-#endif
-#if USE(SOUP)
-    , public IPC::MessageReceiver {
-#endif
+class CustomProtocolManager : public NetworkProcessSupplement, public IPC::MessageReceiver {
     WTF_MAKE_NONCOPYABLE(CustomProtocolManager);
 public:
     explicit CustomProtocolManager(ChildProcess*);
 
     static const char* supplementName();
 
-    ChildProcess* childProcess() const { return m_childProcess; }
-
     void registerScheme(const String&);
     void unregisterScheme(const String&);
     bool supportsScheme(const String&);
-    
+
 #if PLATFORM(COCOA)
-    void addCustomProtocol(WKCustomProtocol *);
-    void removeCustomProtocol(WKCustomProtocol *);
-#if USE(NETWORK_SESSION)
-    void registerProtocolClass(NSURLSessionConfiguration *);
+    typedef RetainPtr<WKCustomProtocol> CustomProtocol;
 #endif
+#if USE(SOUP)
+    struct WebSoupRequestAsyncData {
+        WebSoupRequestAsyncData(GRefPtr<GTask>&&, WebKitSoupRequestGeneric*);
+        ~WebSoupRequestAsyncData();
+
+        GRefPtr<GTask> task;
+        WebKitSoupRequestGeneric* request;
+        GRefPtr<GCancellable> cancellable;
+        GRefPtr<GInputStream> stream;
+    };
+    typedef std::unique_ptr<WebSoupRequestAsyncData> CustomProtocol;
+#endif
+
+    uint64_t addCustomProtocol(CustomProtocol&&);
+    void removeCustomProtocol(uint64_t customProtocolID);
+    void startLoading(uint64_t customProtocolID, const WebCore::ResourceRequest&);
+    void stopLoading(uint64_t customProtocolID);
+
+#if PLATFORM(COCOA) && USE(NETWORK_SESSION)
+    void registerProtocolClass(NSURLSessionConfiguration*);
 #endif
 
 private:
-#if PLATFORM(COCOA)
-    // ChildProcessSupplement
-    void initializeConnection(IPC::Connection*) override;
-#endif
+    // NetworkProcessSupplement
+    void initialize(const NetworkProcessCreationParameters&) override;
 
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
-
-    // NetworkProcessSupplement
-    void initialize(const NetworkProcessCreationParameters&) override;
 
     void didFailWithError(uint64_t customProtocolID, const WebCore::ResourceError&);
     void didLoadData(uint64_t customProtocolID, const IPC::DataReference&);
@@ -105,26 +111,27 @@ private:
     void didFinishLoading(uint64_t customProtocolID);
     void wasRedirectedToRequest(uint64_t customProtocolID, const WebCore::ResourceRequest&, const WebCore::ResourceResponse& redirectResponse);
 
+    void registerProtocolClass();
+
     ChildProcess* m_childProcess;
 
+    typedef HashMap<uint64_t, CustomProtocol> CustomProtocolMap;
+    CustomProtocolMap m_customProtocolMap;
+    Lock m_customProtocolMapMutex;
+
 #if PLATFORM(COCOA)
-    RefPtr<WorkQueue> m_messageQueue;
     HashSet<String, ASCIICaseInsensitiveHash> m_registeredSchemes;
     Lock m_registeredSchemesMutex;
 
-    typedef HashMap<uint64_t, RetainPtr<WKCustomProtocol>> CustomProtocolMap;
-    CustomProtocolMap m_customProtocolMap;
-    Lock m_customProtocolMapMutex;
-    
     // WKCustomProtocol objects can be removed from the m_customProtocolMap from multiple threads.
     // We return a RetainPtr here because it is unsafe to return a raw pointer since the object might immediately be destroyed from a different thread.
     RetainPtr<WKCustomProtocol> protocolForID(uint64_t customProtocolID);
-#else
-    // FIXME: Move mac specific code to CustomProtocolManagerImpl.
-    std::unique_ptr<CustomProtocolManagerImpl> m_impl;
+#endif
+
+#if USE(SOUP)
+    GRefPtr<GPtrArray> m_registeredSchemes;
 #endif
 };
 
 } // namespace WebKit
 
-#endif // CustomProtocolManager_h

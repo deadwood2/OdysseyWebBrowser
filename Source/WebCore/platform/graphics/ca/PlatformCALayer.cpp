@@ -26,6 +26,8 @@
 #include "config.h"
 #include "PlatformCALayer.h"
 
+#if USE(CA)
+
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreText/CoreText.h>
 #include "GraphicsContextCG.h"
@@ -37,8 +39,6 @@
 #if PLATFORM(WIN)
 #include "CoreTextSPIWin.h"
 #endif
-
-#if USE(CA)
 
 namespace WebCore {
 
@@ -64,6 +64,14 @@ PlatformCALayer::~PlatformCALayer()
     // Clear the owner, which also clears it in the delegate to prevent attempts
     // to use the GraphicsLayerCA after it has been destroyed.
     setOwner(nullptr);
+}
+
+bool PlatformCALayer::canHaveBackingStore() const
+{
+    return m_layerType == LayerType::LayerTypeWebLayer
+        || m_layerType == LayerType::LayerTypeTiledBackingLayer
+        || m_layerType == LayerType::LayerTypePageTiledBackingLayer
+        || m_layerType == LayerType::LayerTypeTiledBackingTileLayer;
 }
 
 void PlatformCALayer::drawRepaintIndicator(CGContextRef context, PlatformCALayer* platformCALayer, int repaintCount, CGColorRef customBackgroundColor)
@@ -176,9 +184,6 @@ TextStream& operator<<(TextStream& ts, PlatformCALayer::LayerType layerType)
         break;
     case PlatformCALayer::LayerTypeTransformLayer:
         ts << "transform-layer";
-        break;
-    case PlatformCALayer::LayerTypeWebTiledLayer:
-        ts << "tiled-layer";
         break;
     case PlatformCALayer::LayerTypeTiledBackingLayer:
         ts << "tiled-backing-layer";

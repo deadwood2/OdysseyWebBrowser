@@ -27,8 +27,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef CSSParserFastPaths_h
-#define CSSParserFastPaths_h
+#pragma once
 
 #include "CSSParserMode.h"
 #include "CSSPropertyNames.h"
@@ -38,20 +37,19 @@
 namespace WebCore {
 
 class CSSValue;
+class StyleSheetContents;
 
 class CSSParserFastPaths {
 public:
     // Parses simple values like '10px' or 'green', but makes no guarantees
     // about handling any property completely.
-    static CSSValue* maybeParseValue(CSSPropertyID, const String&, CSSParserMode);
+    static RefPtr<CSSValue> maybeParseValue(CSSPropertyID, const String&, CSSParserMode);
 
     // Properties handled here shouldn't be explicitly handled in CSSPropertyParser
     static bool isKeywordPropertyID(CSSPropertyID);
     static bool isValidKeywordPropertyAndValue(CSSPropertyID, CSSValueID, CSSParserMode);
 
-    static CSSValue* parseColor(const String&, CSSParserMode);
+    static RefPtr<CSSValue> parseColor(const String&, CSSParserMode);
 };
 
 } // namespace WebCore
-
-#endif // CSSParserFastPaths_h

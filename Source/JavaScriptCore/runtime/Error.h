@@ -20,8 +20,7 @@
  *
  */
 
-#ifndef Error_h
-#define Error_h
+#pragma once
 
 #include "ErrorInstance.h"
 #include "InternalFunction.h"
@@ -38,6 +37,16 @@ class JSGlobalObject;
 class JSObject;
 class SourceCode;
 class Structure;
+
+enum class ErrorType : uint8_t {
+    Error,
+    EvalError,
+    RangeError,
+    ReferenceError,
+    SyntaxError,
+    TypeError,
+    URIError,
+};
 
 // ExecState wrappers.
 JSObject* createError(ExecState*, const String&, ErrorInstance::SourceAppender);
@@ -61,10 +70,11 @@ JS_EXPORT_PRIVATE JSObject* createNotEnoughArgumentsError(ExecState*);
 JS_EXPORT_PRIVATE JSObject* createURIError(ExecState*, const String&);
 JS_EXPORT_PRIVATE JSObject* createOutOfMemoryError(ExecState*);
 
+JS_EXPORT_PRIVATE JSObject* createError(ExecState*, ErrorType, const String&);
+
 
 bool addErrorInfoAndGetBytecodeOffset(ExecState*, VM&, JSObject*, bool, CallFrame*&, unsigned* = nullptr);
 
-bool hasErrorInfo(ExecState*, JSObject* error);
 JS_EXPORT_PRIVATE void addErrorInfo(ExecState*, JSObject*, bool); 
 JSObject* addErrorInfo(ExecState*, JSObject* error, int line, const SourceCode&);
 
@@ -82,6 +92,7 @@ inline JSObject* throwRangeError(ExecState* state, ThrowScope& scope, const Stri
 // Convenience wrappers, wrap result as an EncodedJSValue.
 inline void throwVMError(ExecState* exec, ThrowScope& scope, Exception* exception) { throwException(exec, scope, exception); }
 inline EncodedJSValue throwVMError(ExecState* exec, ThrowScope& scope, JSValue error) { return JSValue::encode(throwException(exec, scope, error)); }
+inline EncodedJSValue throwVMError(ExecState* exec, ThrowScope& scope, const char* errorMessage) { return JSValue::encode(throwException(exec, scope, createError(exec, ASCIILiteral(errorMessage)))); }
 inline EncodedJSValue throwVMTypeError(ExecState* exec, ThrowScope& scope) { return JSValue::encode(throwTypeError(exec, scope)); }
 inline EncodedJSValue throwVMTypeError(ExecState* exec, ThrowScope& scope, ASCIILiteral errorMessage) { return JSValue::encode(throwTypeError(exec, scope, errorMessage)); }
 inline EncodedJSValue throwVMTypeError(ExecState* exec, ThrowScope& scope, const String& errorMessage) { return JSValue::encode(throwTypeError(exec, scope, errorMessage)); }
@@ -111,7 +122,7 @@ public:
     {
         VM& vm = exec->vm();
         auto scope = DECLARE_THROW_SCOPE(vm);
-        throwTypeError(exec, scope, static_cast<StrictModeTypeErrorFunction*>(exec->callee())->m_message);
+        throwTypeError(exec, scope, static_cast<StrictModeTypeErrorFunction*>(exec->jsCallee())->m_message);
         return JSValue::encode(jsNull());
     }
 
@@ -125,7 +136,7 @@ public:
     {
         VM& vm = exec->vm();
         auto scope = DECLARE_THROW_SCOPE(vm);
-        throwTypeError(exec, scope, static_cast<StrictModeTypeErrorFunction*>(exec->callee())->m_message);
+        throwTypeError(exec, scope, static_cast<StrictModeTypeErrorFunction*>(exec->jsCallee())->m_message);
         return JSValue::encode(jsNull());
     }
 
@@ -148,4 +159,10 @@ private:
 
 } // namespace JSC
 
-#endif // Error_h
+namespace WTF {
+
+class PrintStream;
+
+void printInternal(PrintStream&, JSC::ErrorType);
+
+} // namespace WTF

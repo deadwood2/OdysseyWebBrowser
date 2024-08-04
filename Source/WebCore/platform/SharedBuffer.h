@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
  * Copyright (C) Research In Motion Limited 2009-2010. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,6 @@
 #include <wtf/text/WTFString.h>
 
 #if USE(CF)
-#include "VNodeTracker.h"
 #include <wtf/RetainPtr.h>
 #endif
 
@@ -44,6 +43,7 @@
 #endif
 
 #if USE(FOUNDATION)
+OBJC_CLASS NSArray;
 OBJC_CLASS NSData;
 #endif
 
@@ -64,6 +64,7 @@ public:
     
 #if USE(FOUNDATION)
     WEBCORE_EXPORT RetainPtr<NSData> createNSData();
+    WEBCORE_EXPORT RetainPtr<NSArray> createNSDataArray() const;
     WEBCORE_EXPORT static Ref<SharedBuffer> wrapNSData(NSData *);
 #endif
 #if USE(CF)
@@ -73,6 +74,7 @@ public:
 #endif
 
 #if USE(SOUP)
+    GUniquePtr<SoupBuffer> createSoupBuffer(unsigned offset = 0, unsigned size = 0);
     static Ref<SharedBuffer> wrapSoupBuffer(SoupBuffer*);
 #endif
 
@@ -98,8 +100,8 @@ public:
     unsigned platformDataSize() const;
 
 #if USE(NETWORK_CFDATA_ARRAY_CALLBACK)
-    static Ref<SharedBuffer> wrapCFDataArray(CFArrayRef);
-    void append(CFDataRef);
+    WEBCORE_EXPORT static Ref<SharedBuffer> wrapCFDataArray(CFArrayRef);
+    WEBCORE_EXPORT void append(CFDataRef);
 #endif
 
     WEBCORE_EXPORT Ref<SharedBuffer> copy() const;
@@ -169,7 +171,6 @@ private:
 #if USE(CF)
     explicit SharedBuffer(CFDataRef);
     RetainPtr<CFDataRef> m_cfData;
-    VNodeTracker::Token m_vnodeToken;
 #endif
 
 #if USE(SOUP)

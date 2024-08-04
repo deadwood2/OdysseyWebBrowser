@@ -23,14 +23,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef JSSetIterator_h
-#define JSSetIterator_h
+#pragma once
 
 #include "IterationKind.h"
 #include "JSObject.h"
 #include "JSSet.h"
-
-#include "MapData.h"
 
 namespace JSC {
 
@@ -59,10 +56,8 @@ public:
         if (!prev)
             return nullptr;
         HashMapBucketType* bucket = m_iter->next();
-        while (bucket && bucket->deleted()) {
-            prev = bucket;
+        while (bucket && bucket->deleted())
             bucket = bucket->next();
-        }
         if (!bucket) {
             setIterator(exec->vm(), nullptr);
             return nullptr;
@@ -110,6 +105,4 @@ private:
 };
 STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(JSSetIterator);
 
-}
-
-#endif // !defined(JSSetIterator_h)
+} // namespace JSC

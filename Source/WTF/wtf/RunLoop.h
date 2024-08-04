@@ -40,11 +40,6 @@
 #include <wtf/glib/GRefPtr.h>
 #endif
 
-#if USE(EFL_EVENT_LOOP)
-#include <Ecore.h>
-#include <wtf/efl/UniquePtrEfl.h>
-#endif
-
 namespace WTF {
 
 class RunLoop : public FunctionDispatcher {
@@ -91,6 +86,7 @@ public:
         void startRepeating(double repeatInterval) { start(repeatInterval, true); }
         void startRepeating(std::chrono::milliseconds repeatInterval) { startRepeating(repeatInterval.count() * 0.001); }
         void startOneShot(double interval) { start(interval, false); }
+        void startOneShot(std::chrono::milliseconds interval) { start(interval.count() * 0.001, false); }
 
         WTF_EXPORT_PRIVATE void stop();
         WTF_EXPORT_PRIVATE bool isActive() const;
@@ -113,10 +109,6 @@ public:
 #elif USE(COCOA_EVENT_LOOP)
         static void timerFired(CFRunLoopTimerRef, void*);
         RetainPtr<CFRunLoopTimerRef> m_timer;
-#elif USE(EFL_EVENT_LOOP)
-        static bool timerFired(void* data);
-        Ecore_Timer* m_timer;
-        bool m_isRepeating;
 #elif USE(GLIB_EVENT_LOOP)
         void updateReadyTime();
         GRefPtr<GSource> m_source;
@@ -141,7 +133,7 @@ public:
         }
 
     private:
-        virtual void fired() { (m_object->*m_function)(); }
+        void fired() override { (m_object->*m_function)(); }
 
         TimerFiredClass* m_object;
         TimerFiredFunction m_function;
@@ -169,15 +161,6 @@ private:
     static void performWork(void*);
     RetainPtr<CFRunLoopRef> m_runLoop;
     RetainPtr<CFRunLoopSourceRef> m_runLoopSource;
-    int m_nestingLevel;
-#elif USE(EFL_EVENT_LOOP)
-    Mutex m_pipeLock;
-    EflUniquePtr<Ecore_Pipe> m_pipe;
-
-    Mutex m_wakeUpEventRequestedLock;
-    bool m_wakeUpEventRequested;
-
-    static void wakeUpEvent(void* data, void*, unsigned);
 #elif USE(GLIB_EVENT_LOOP)
     GRefPtr<GMainContext> m_mainContext;
     Vector<GRefPtr<GMainLoop>> m_mainLoops;

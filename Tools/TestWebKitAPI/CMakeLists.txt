@@ -42,12 +42,15 @@ set(TestWTF_SOURCES
     ${TESTWEBKITAPI_DIR}/TestsController.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/AtomicString.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/BloomFilter.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/Consume.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/CrossThreadTask.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/CString.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/CheckedArithmeticOperations.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Condition.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/DateMath.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Deque.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/EnumTraits.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/Expected.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/HashCountedSet.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/HashMap.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/HashSet.cpp
@@ -59,6 +62,7 @@ set(TestWTF_SOURCES
     ${TESTWEBKITAPI_DIR}/Tests/WTF/MediaTime.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/MetaAllocator.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/NakedPtr.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/Optional.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/OptionSet.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/ParkingLot.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/RedBlackTree.cpp
@@ -70,12 +74,14 @@ set(TestWTF_SOURCES
     ${TESTWEBKITAPI_DIR}/Tests/WTF/SaturatedArithmeticOperations.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Scope.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/ScopedLambda.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/SetForScope.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/StringBuilder.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/StringHasher.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/StringImpl.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/StringOperators.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/StringView.cpp
-    ${TESTWEBKITAPI_DIR}/Tests/WTF/TemporaryChange.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/TextBreakIterator.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/Time.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/UniqueRef.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Variant.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Vector.cpp
@@ -93,25 +99,8 @@ include_directories(
     ${TESTWEBKITAPI_DIR}
     ${CMAKE_BINARY_DIR}
     ${CMAKE_SOURCE_DIR}/Source
-    ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}
-    ${DERIVED_SOURCES_WEBCORE_DIR}
     ${JAVASCRIPTCORE_DIR}
-    ${JAVASCRIPTCORE_DIR}/API
-    ${JAVASCRIPTCORE_DIR}/ForwardingHeaders
     ${THIRDPARTY_DIR}/gtest/include
-    ${WEBCORE_DIR}/css
-    ${WEBCORE_DIR}/css/parser
-    ${WEBCORE_DIR}/dom
-    ${WEBCORE_DIR}/editing
-    ${WEBCORE_DIR}/loader/cache
-    ${WEBCORE_DIR}/page
-    ${WEBCORE_DIR}/platform
-    ${WEBCORE_DIR}/platform/animation
-    ${WEBCORE_DIR}/platform/graphics
-    ${WEBCORE_DIR}/platform/text
-    ${WEBCORE_DIR}/platform/network
-    ${WEBCORE_DIR}/platform/network/soup
-    ${WEBCORE_DIR}/rendering/style
     ${WEBKIT2_DIR}/Platform/IPC
     ${WEBKIT2_DIR}/Shared
     ${WEBKIT2_DIR}/Shared/API
@@ -121,7 +110,6 @@ include_directories(
     ${WEBKIT2_DIR}/UIProcess/API
     ${WEBKIT2_DIR}/WebProcess/InjectedBundle
     ${WEBKIT2_DIR}/WebProcess/InjectedBundle/API/c
-    ${WTF_DIR}
 )
 
 if (ENABLE_WEBKIT2)
@@ -215,6 +203,8 @@ if (ENABLE_WEBKIT2)
         ${TESTWEBKITAPI_DIR}/PlatformUtilities.cpp
         ${TESTWEBKITAPI_DIR}/TestsController.cpp
     )
+
+    target_link_libraries(TestWebKitAPIBase JavaScriptCore WTF WebKit2 gtest)
 
     add_dependencies(TestWebKitAPIBase WebKit2 ${ForwardingHeadersForTestWebKitAPI_NAME} ${ForwardingNetworkHeadersForTestWebKitAPI_NAME})
 

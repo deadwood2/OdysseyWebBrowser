@@ -42,12 +42,13 @@ public:
     virtual bool supportsVersion(unsigned version) = 0;
     virtual bool canMakePayments() = 0;
     virtual void canMakePaymentsWithActiveCard(const String& merchantIdentifier, const String& domainName, std::function<void (bool)> completionHandler) = 0;
+    virtual void openPaymentSetup(const String& merchantIdentifier, const String& domainName, std::function<void (bool)> completionHandler) = 0;
 
     virtual bool showPaymentUI(const URL& originatingURL, const Vector<URL>& linkIconURLs, const PaymentRequest&) = 0;
     virtual void completeMerchantValidation(const PaymentMerchantSession&) = 0;
-    virtual void completeShippingMethodSelection(PaymentAuthorizationStatus, Optional<PaymentRequest::TotalAndLineItems> newTotalAndItems) = 0;
-    virtual void completeShippingContactSelection(PaymentAuthorizationStatus, const Vector<PaymentRequest::ShippingMethod>& newShippingMethods, Optional<PaymentRequest::TotalAndLineItems> newTotalAndItems) = 0;
-    virtual void completePaymentMethodSelection(Optional<WebCore::PaymentRequest::TotalAndLineItems> newTotalAndItems) = 0;
+    virtual void completeShippingMethodSelection(PaymentAuthorizationStatus, std::optional<PaymentRequest::TotalAndLineItems> newTotalAndItems) = 0;
+    virtual void completeShippingContactSelection(PaymentAuthorizationStatus, const Vector<PaymentRequest::ShippingMethod>& newShippingMethods, std::optional<PaymentRequest::TotalAndLineItems> newTotalAndItems) = 0;
+    virtual void completePaymentMethodSelection(std::optional<WebCore::PaymentRequest::TotalAndLineItems> newTotalAndItems) = 0;
     virtual void completePaymentSession(PaymentAuthorizationStatus) = 0;
     virtual void abortPaymentSession() = 0;
     virtual void paymentCoordinatorDestroyed() = 0;

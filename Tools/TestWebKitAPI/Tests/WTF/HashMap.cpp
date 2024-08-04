@@ -206,14 +206,14 @@ TEST(WTF_HashMap, UniquePtrKey_CustomDeleter)
     EXPECT_EQ(1u, ConstructorDestructorCounter::constructionCount);
     EXPECT_EQ(0u, ConstructorDestructorCounter::destructionCount);
 
-    EXPECT_EQ(0u, DeleterCounter<ConstructorDestructorCounter>::deleterCount);
+    EXPECT_EQ(0u, DeleterCounter<ConstructorDestructorCounter>::deleterCount());
 
     map.clear();
     
     EXPECT_EQ(1u, ConstructorDestructorCounter::constructionCount);
     EXPECT_EQ(1u, ConstructorDestructorCounter::destructionCount);
 
-    EXPECT_EQ(1u, DeleterCounter<ConstructorDestructorCounter>::deleterCount);
+    EXPECT_EQ(1u, DeleterCounter<ConstructorDestructorCounter>::deleterCount());
 }
 
 TEST(WTF_HashMap, UniquePtrKey_FindUsingRawPointer)
@@ -895,7 +895,7 @@ TEST(WTF_HashMap, Ref_Value)
         HashMap<int, Ref<RefLogger>> map;
 
         RefLogger a("a");
-        map.ensure(1, [&]() { 
+        map.ensure(1, [&]() mutable {
             Ref<RefLogger> ref(a);
             return ref; 
         });

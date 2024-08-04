@@ -33,7 +33,6 @@
 #include "WebPageProxy.h"
 #include "WebPasteboardProxy.h"
 #include "WebProcessPool.h"
-#include <WebCore/DOMImplementation.h>
 #include <WebCore/Image.h>
 #include <WebCore/MIMETypeRegistry.h>
 #include <stdio.h>
@@ -121,15 +120,13 @@ bool WebFrameProxy::isDisplayingStandaloneMediaDocument() const
 
 bool WebFrameProxy::isDisplayingMarkupDocument() const
 {
-    // FIXME: This check should be moved to somewhere in WebCore.
-    return m_MIMEType == "text/html" || m_MIMEType == "image/svg+xml" || m_MIMEType == "application/x-webarchive" || DOMImplementation::isXMLMIMEType(m_MIMEType);
+    // FIXME: This should be a call to a single MIMETypeRegistry function; adding a new one if needed.
+    // FIXME: This is doing case sensitive comparisons on MIME types, should be using ASCII case insensitive instead.
+    return m_MIMEType == "text/html" || m_MIMEType == "image/svg+xml" || m_MIMEType == "application/x-webarchive" || MIMETypeRegistry::isXMLMIMEType(m_MIMEType);
 }
 
 bool WebFrameProxy::isDisplayingPDFDocument() const
 {
-    if (m_MIMEType.isEmpty())
-        return false;
-
     return MIMETypeRegistry::isPDFOrPostScriptMIMEType(m_MIMEType);
 }
 
@@ -179,14 +176,14 @@ void WebFrameProxy::didChangeTitle(const String& title)
     m_title = title;
 }
 
-void WebFrameProxy::receivedPolicyDecision(WebCore::PolicyAction action, uint64_t listenerID, API::Navigation* navigation)
+void WebFrameProxy::receivedPolicyDecision(WebCore::PolicyAction action, uint64_t listenerID, API::Navigation* navigation, const WebsitePolicies& websitePolicies)
 {
     if (!m_page)
         return;
 
     ASSERT(m_activeListener);
     ASSERT(m_activeListener->listenerID() == listenerID);
-    m_page->receivedPolicyDecision(action, this, listenerID, navigation);
+    m_page->receivedPolicyDecision(action, *this, listenerID, navigation, websitePolicies);
 }
 
 WebFramePolicyListenerProxy& WebFrameProxy::setUpPolicyListenerProxy(uint64_t listenerID)

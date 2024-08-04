@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2009, 2015 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003-2017 Apple Inc. All rights reserved.
  *  Copyright (C) 2007 Eric Seidel <eric@webkit.org>
  *  Copyright (C) 2009 Acision BV. All rights reserved.
  *
@@ -32,6 +32,8 @@
 #include "VM.h"
 #include <setjmp.h>
 #include <stdlib.h>
+#include <wtf/MainThread.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/StdLibExtras.h>
 
 #if OS(DARWIN)
@@ -68,14 +70,14 @@
 // We use SIGUSR2 to suspend and resume machine threads in JavaScriptCore.
 static const int SigThreadSuspendResume = SIGUSR2;
 static StaticLock globalSignalLock;
-thread_local static std::atomic<JSC::MachineThreads::Thread*> threadLocalCurrentThread;
+thread_local static std::atomic<JSC::MachineThreads::ThreadData*> threadLocalCurrentThread { nullptr };
 
 static void pthreadSignalHandlerSuspendResume(int, siginfo_t*, void* ucontext)
 {
     // Touching thread local atomic types from signal handlers is allowed.
-    JSC::MachineThreads::Thread* thread = threadLocalCurrentThread.load();
+    JSC::MachineThreads::ThreadData* threadData = threadLocalCurrentThread.load();
 
-    if (thread->suspended.load(std::memory_order_acquire)) {
+    if (threadData->suspended.load(std::memory_order_acquire)) {
         // This is signal handler invocation that is intended to be used to resume sigsuspend.
         // So this handler invocation itself should not process.
         //
@@ -87,9 +89,9 @@ static void pthreadSignalHandlerSuspendResume(int, siginfo_t*, void* ucontext)
 
     ucontext_t* userContext = static_cast<ucontext_t*>(ucontext);
 #if CPU(PPC)
-    thread->suspendedMachineContext = *userContext->uc_mcontext.uc_regs;
+    threadData->suspendedMachineContext = *userContext->uc_mcontext.uc_regs;
 #else
-    thread->suspendedMachineContext = userContext->uc_mcontext;
+    threadData->suspendedMachineContext = userContext->uc_mcontext;
 #endif
 
     // Allow suspend caller to see that this thread is suspended.
@@ -98,7 +100,7 @@ static void pthreadSignalHandlerSuspendResume(int, siginfo_t*, void* ucontext)
     //
     // And sem_post emits memory barrier that ensures that suspendedMachineContext is correctly saved.
     // http://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap04.html#tag_04_11
-    sem_post(&thread->semaphoreForSuspendResume);
+    sem_post(&threadData->semaphoreForSuspendResume);
 
     // Reaching here, SigThreadSuspendResume is blocked in this handler (this is configured by sigaction's sa_mask).
     // So before calling sigsuspend, SigThreadSuspendResume to this thread is deferred. This ensures that the handler is not executed recursively.
@@ -108,7 +110,7 @@ static void pthreadSignalHandlerSuspendResume(int, siginfo_t*, void* ucontext)
     sigsuspend(&blockedSignalSet);
 
     // Allow resume caller to see that this thread is resumed.
-    sem_post(&thread->semaphoreForSuspendResume);
+    sem_post(&threadData->semaphoreForSuspendResume);
 }
 #endif // USE(PTHREADS) && !OS(WINDOWS) && !OS(DARWIN)
 
@@ -148,7 +150,7 @@ public:
     {
         LockHolder managerLock(m_lock);
         auto recordedMachineThreads = m_set.take(machineThreads);
-        RELEASE_ASSERT(recordedMachineThreads = machineThreads);
+        RELEASE_ASSERT(recordedMachineThreads == machineThreads);
     }
 
     bool contains(MachineThreads* machineThreads)
@@ -214,18 +216,29 @@ MachineThreads::~MachineThreads()
     }
 }
 
+static MachineThreads::ThreadData* threadData()
+{
+    static NeverDestroyed<ThreadSpecific<MachineThreads::ThreadData, CanBeGCThread::True>> threadData;
+    return threadData.get();
+}
+
+MachineThreads::Thread::Thread(ThreadData* threadData)
+    : data(threadData)
+{
+    ASSERT(threadData);
+}
+
 Thread* MachineThreads::Thread::createForCurrentThread()
 {
-    auto stackBounds = wtfThreadData().stack();
-    return new Thread(getCurrentPlatformThread(), stackBounds.origin(), stackBounds.end());
+    return new Thread(threadData());
 }
 
 bool MachineThreads::Thread::operator==(const PlatformThread& other) const
 {
 #if OS(DARWIN) || OS(WINDOWS)
-    return platformThread == other;
+    return data->platformThread == other;
 #elif USE(PTHREADS)
-    return !!pthread_equal(platformThread, other);
+    return !!pthread_equal(data->platformThread, other);
 #else
 #error Need a way to compare threads on this platform
 #endif
@@ -276,6 +289,17 @@ void THREAD_SPECIFIC_CALL MachineThreads::removeThread(void* p)
         // to be instantiated at the same address. Hence, this thread may or
         // may not be found in this MachineThreads registry. We only need to
         // do a removal if this thread is found in it.
+
+#if PLATFORM(WIN)
+        // On Windows the thread specific destructor is also called when the
+        // main thread is exiting. This may lead to the main thread waiting
+        // forever for the machine thread lock when exiting, if the sampling
+        // profiler thread was terminated by the system while holding the
+        // machine thread lock.
+        if (WTF::isMainThread())
+            return;
+#endif
+
         machineThreads->removeThreadIfFound(getCurrentPlatformThread());
     }
 }
@@ -302,20 +326,24 @@ void MachineThreads::removeThreadIfFound(PlatformThread platformThread)
 }
 
 SUPPRESS_ASAN
-void MachineThreads::gatherFromCurrentThread(ConservativeRoots& conservativeRoots, JITStubRoutineSet& jitStubRoutines, CodeBlockSet& codeBlocks, void* stackOrigin, void* stackTop, RegisterState& calleeSavedRegisters)
+void MachineThreads::gatherFromCurrentThread(ConservativeRoots& conservativeRoots, JITStubRoutineSet& jitStubRoutines, CodeBlockSet& codeBlocks, CurrentThreadState& currentThreadState)
 {
-    void* registersBegin = &calleeSavedRegisters;
-    void* registersEnd = reinterpret_cast<void*>(roundUpToMultipleOf<sizeof(void*)>(reinterpret_cast<uintptr_t>(&calleeSavedRegisters + 1)));
-    conservativeRoots.add(registersBegin, registersEnd, jitStubRoutines, codeBlocks);
+    if (currentThreadState.registerState) {
+        void* registersBegin = currentThreadState.registerState;
+        void* registersEnd = reinterpret_cast<void*>(roundUpToMultipleOf<sizeof(void*)>(reinterpret_cast<uintptr_t>(currentThreadState.registerState + 1)));
+        conservativeRoots.add(registersBegin, registersEnd, jitStubRoutines, codeBlocks);
+    }
 
-    conservativeRoots.add(stackTop, stackOrigin, jitStubRoutines, codeBlocks);
+    conservativeRoots.add(currentThreadState.stackTop, currentThreadState.stackOrigin, jitStubRoutines, codeBlocks);
 }
 
-MachineThreads::Thread::Thread(const PlatformThread& platThread, void* base, void* end)
-    : platformThread(platThread)
-    , stackBase(base)
-    , stackEnd(end)
+MachineThreads::ThreadData::ThreadData()
 {
+    auto stackBounds = wtfThreadData().stack();
+    platformThread = getCurrentPlatformThread();
+    stackBase = stackBounds.origin();
+    stackEnd = stackBounds.end();
+
 #if OS(WINDOWS)
     ASSERT(platformThread == GetCurrentThreadId());
     bool isSuccessful =
@@ -348,7 +376,7 @@ MachineThreads::Thread::Thread(const PlatformThread& platThread, void* base, voi
 #endif
 }
 
-MachineThreads::Thread::~Thread()
+MachineThreads::ThreadData::~ThreadData()
 {
 #if OS(WINDOWS)
     CloseHandle(platformThreadHandle);
@@ -357,7 +385,7 @@ MachineThreads::Thread::~Thread()
 #endif
 }
 
-bool MachineThreads::Thread::suspend()
+bool MachineThreads::ThreadData::suspend()
 {
 #if OS(DARWIN)
     kern_return_t result = thread_suspend(platformThread);
@@ -394,7 +422,7 @@ bool MachineThreads::Thread::suspend()
 #endif
 }
 
-void MachineThreads::Thread::resume()
+void MachineThreads::ThreadData::resume()
 {
 #if OS(DARWIN)
     thread_resume(platformThread);
@@ -425,9 +453,9 @@ void MachineThreads::Thread::resume()
 #endif
 }
 
-size_t MachineThreads::Thread::getRegisters(Thread::Registers& registers)
+size_t MachineThreads::ThreadData::getRegisters(ThreadData::Registers& registers)
 {
-    Thread::Registers::PlatformRegisters& regs = registers.regs;
+    ThreadData::Registers::PlatformRegisters& regs = registers.regs;
 #if OS(DARWIN)
 #if CPU(X86)
     unsigned user_count = sizeof(regs)/sizeof(int);
@@ -482,7 +510,7 @@ size_t MachineThreads::Thread::getRegisters(Thread::Registers& registers)
 #endif
 }
 
-void* MachineThreads::Thread::Registers::stackPointer() const
+void* MachineThreads::ThreadData::Registers::stackPointer() const
 {
 #if OS(DARWIN)
 
@@ -587,7 +615,7 @@ void* MachineThreads::Thread::Registers::stackPointer() const
 }
 
 #if ENABLE(SAMPLING_PROFILER)
-void* MachineThreads::Thread::Registers::framePointer() const
+void* MachineThreads::ThreadData::Registers::framePointer() const
 {
 #if OS(DARWIN)
 
@@ -670,7 +698,7 @@ void* MachineThreads::Thread::Registers::framePointer() const
 #endif
 }
 
-void* MachineThreads::Thread::Registers::instructionPointer() const
+void* MachineThreads::ThreadData::Registers::instructionPointer() const
 {
 #if OS(DARWIN)
 
@@ -751,7 +779,8 @@ void* MachineThreads::Thread::Registers::instructionPointer() const
 #error Need a way to get the instruction pointer for another thread on this platform
 #endif
 }
-void* MachineThreads::Thread::Registers::llintPC() const
+
+void* MachineThreads::ThreadData::Registers::llintPC() const
 {
     // LLInt uses regT4 as PC.
 #if OS(DARWIN)
@@ -844,9 +873,9 @@ void* MachineThreads::Thread::Registers::llintPC() const
 }
 #endif // ENABLE(SAMPLING_PROFILER)
 
-void MachineThreads::Thread::freeRegisters(Thread::Registers& registers)
+void MachineThreads::ThreadData::freeRegisters(ThreadData::Registers& registers)
 {
-    Thread::Registers::PlatformRegisters& regs = registers.regs;
+    ThreadData::Registers::PlatformRegisters& regs = registers.regs;
 #if USE(PTHREADS) && !OS(WINDOWS) && !OS(DARWIN)
     pthread_attr_destroy(&regs.attribute);
 #else
@@ -869,7 +898,7 @@ static inline int osRedZoneAdjustment()
     return redZoneAdjustment;
 }
 
-std::pair<void*, size_t> MachineThreads::Thread::captureStack(void* stackTop)
+std::pair<void*, size_t> MachineThreads::ThreadData::captureStack(void* stackTop)
 {
     char* begin = reinterpret_cast_ptr<char*>(stackBase);
     char* end = bitwise_cast<char*>(WTF::roundUpToMultipleOf<sizeof(void*)>(reinterpret_cast<uintptr_t>(stackTop)));
@@ -916,6 +945,23 @@ void MachineThreads::tryCopyOtherThreadStack(Thread* thread, void* buffer, size_
 {
     Thread::Registers registers;
     size_t registersSize = thread->getRegisters(registers);
+
+    // This is a workaround for <rdar://problem/27607384>. During thread initialization,
+    // for some target platforms, thread state is momentarily set to 0 before being
+    // filled in with the target thread's real register values. As a result, there's
+    // a race condition that may result in us getting a null stackPointer.
+    // This issue may manifest with workqueue threads where the OS may choose to recycle
+    // a thread for an expired task.
+    //
+    // The workaround is simply to indicate that there's nothing to copy and return.
+    // This is correct because we will only ever observe a null pointer during thread
+    // initialization. Hence, by definition, there's nothing there that we need to scan
+    // yet, and therefore, nothing that needs to be copied.
+    if (UNLIKELY(!registers.stackPointer())) {
+        *size = 0;
+        return;
+    }
+
     std::pair<void*, size_t> stack = thread->captureStack(registers.stackPointer());
 
     bool canCopy = *size + registersSize + stack.second <= capacity;
@@ -957,12 +1003,12 @@ bool MachineThreads::tryCopyOtherThreadStacks(LockHolder&, void* buffer, size_t 
                 }
                 
                 // Re-do the suspension to get the actual failure result for logging.
-                kern_return_t error = thread_suspend(thread->platformThread);
+                kern_return_t error = thread_suspend(thread->platformThread());
                 ASSERT(error != KERN_SUCCESS);
 
                 WTFReportError(__FILE__, __LINE__, WTF_PRETTY_FUNCTION,
                     "JavaScript garbage collection encountered an invalid thread (err 0x%x): Thread [%d/%d: %p] platformThread %p.",
-                    error, index, numberOfThreads, thread, reinterpret_cast<void*>(thread->platformThread));
+                    error, index, numberOfThreads, thread, reinterpret_cast<void*>(thread->platformThread()));
 
                 // Put the invalid thread on the threadsToBeDeleted list.
                 // We can't just delete it here because we have suspended other
@@ -1018,9 +1064,10 @@ static void growBuffer(size_t size, void** buffer, size_t* capacity)
     *buffer = fastMalloc(*capacity);
 }
 
-void MachineThreads::gatherConservativeRoots(ConservativeRoots& conservativeRoots, JITStubRoutineSet& jitStubRoutines, CodeBlockSet& codeBlocks, void* stackOrigin, void* stackTop, RegisterState& calleeSavedRegisters)
+void MachineThreads::gatherConservativeRoots(ConservativeRoots& conservativeRoots, JITStubRoutineSet& jitStubRoutines, CodeBlockSet& codeBlocks, CurrentThreadState* currentThreadState)
 {
-    gatherFromCurrentThread(conservativeRoots, jitStubRoutines, codeBlocks, stackOrigin, stackTop, calleeSavedRegisters);
+    if (currentThreadState)
+        gatherFromCurrentThread(conservativeRoots, jitStubRoutines, codeBlocks, *currentThreadState);
 
     size_t size;
     size_t capacity = 0;
@@ -1034,6 +1081,13 @@ void MachineThreads::gatherConservativeRoots(ConservativeRoots& conservativeRoot
 
     conservativeRoots.add(buffer, static_cast<char*>(buffer) + size, jitStubRoutines, codeBlocks);
     fastFree(buffer);
+}
+
+NEVER_INLINE int callWithCurrentThreadState(const ScopedLambda<void(CurrentThreadState&)>& lambda)
+{
+    DECLARE_AND_COMPUTE_CURRENT_THREAD_STATE(state);
+    lambda(state);
+    return 42; // Suppress tail call optimization.
 }
 
 } // namespace JSC

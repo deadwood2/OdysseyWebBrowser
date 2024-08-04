@@ -60,7 +60,7 @@ void BasicShapeCenterCoordinate::updateComputedLength()
     auto lhs = std::make_unique<CalcExpressionLength>(Length(100, Percent));
     auto rhs = std::make_unique<CalcExpressionLength>(m_length);
     auto op = std::make_unique<CalcExpressionBinaryOperation>(WTFMove(lhs), WTFMove(rhs), CalcSubtract);
-    m_computedLength = Length(CalculationValue::create(WTFMove(op), CalculationRangeAll));
+    m_computedLength = Length(CalculationValue::create(WTFMove(op), ValueRangeAll));
 }
 
 struct SVGPathTranslatedByteStream {
@@ -387,8 +387,8 @@ bool BasicShapeInset::operator==(const BasicShape& other) const
 
 static FloatSize floatSizeForLengthSize(const LengthSize& lengthSize, const FloatRect& boundingBox)
 {
-    return FloatSize(floatValueForLength(lengthSize.width(), boundingBox.width()),
-        floatValueForLength(lengthSize.height(), boundingBox.height()));
+    return { floatValueForLength(lengthSize.width, boundingBox.width()),
+        floatValueForLength(lengthSize.height, boundingBox.height()) };
 }
 
 const Path& BasicShapeInset::path(const FloatRect& boundingBox)

@@ -49,13 +49,12 @@ public:
 
 private:
     friend class MockRealtimeVideoSource;
-    MockRealtimeVideoSourceMac();
+    MockRealtimeVideoSourceMac(const String&);
 
     RetainPtr<CMSampleBufferRef> CMSampleBufferFromPixelBuffer(CVPixelBufferRef);
     RetainPtr<CVPixelBufferRef> pixelBufferFromCGImage(CGImageRef) const;
 
-    PlatformLayer* platformLayer() const override;
-    void updatePlatformLayer() const override;
+    PlatformLayer* platformLayer() const;
     void updateSampleBuffer() override;
 
     mutable RetainPtr<CGImageRef> m_previewImage;

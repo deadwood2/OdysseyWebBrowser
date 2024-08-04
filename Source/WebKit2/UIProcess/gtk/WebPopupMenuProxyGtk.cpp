@@ -122,6 +122,8 @@ void WebPopupMenuProxyGtk::showPopupMenu(const IntRect& rect, TextDirection, dou
         menuPosition.setY(menuPosition.y() - rect.height() / 2);
     }
 
+    gtk_menu_attach_to_widget(GTK_MENU(m_popup), GTK_WIDGET(m_webView), nullptr);
+
     const GdkEvent* event = m_client->currentlyProcessedMouseDownEvent() ? m_client->currentlyProcessedMouseDownEvent()->nativeEvent() : nullptr;
     gtk_menu_popup_for_device(GTK_MENU(m_popup), event ? gdk_event_get_device(event) : nullptr, nullptr, nullptr,
         [](GtkMenu*, gint* x, gint* y, gboolean* pushIn, gpointer userData) {
@@ -142,6 +144,12 @@ void WebPopupMenuProxyGtk::showPopupMenu(const IntRect& rect, TextDirection, dou
        m_client->failedToShowPopupMenu();
        return;
     }
+
+    // This ensures that the active item gets selected after popping up the menu, and
+    // as it says in "gtkcombobox.c" (line ~1606): it's ugly, but gets the job done.
+    GtkWidget* activeChild = gtk_menu_get_active(GTK_MENU(m_popup));
+    if (activeChild && gtk_widget_get_visible(activeChild))
+        gtk_menu_shell_select_item(GTK_MENU_SHELL(m_popup), activeChild);
 }
 
 void WebPopupMenuProxyGtk::hidePopupMenu()

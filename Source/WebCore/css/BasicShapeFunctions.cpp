@@ -144,28 +144,27 @@ static Length convertToLength(const CSSToLengthConversionData& conversionData, c
 static LengthSize convertToLengthSize(const CSSToLengthConversionData& conversionData, const CSSPrimitiveValue* value)
 {
     if (!value)
-        return LengthSize(Length(0, Fixed), Length(0, Fixed));
+        return { { 0, Fixed }, { 0, Fixed } };
 
-    Pair* pair = value->getPairValue();
-    return LengthSize(convertToLength(conversionData, pair->first()), convertToLength(conversionData, pair->second()));
+    auto& pair = *value->pairValue();
+    return { convertToLength(conversionData, pair.first()), convertToLength(conversionData, pair.second()) };
 }
 
 static BasicShapeCenterCoordinate convertToCenterCoordinate(const CSSToLengthConversionData& conversionData, CSSPrimitiveValue* value)
 {
-    BasicShapeCenterCoordinate::Direction direction;
-    Length offset = Length(0, Fixed);
-
     CSSValueID keyword = CSSValueTop;
+    Length offset { 0, Fixed };
     if (!value)
         keyword = CSSValueCenter;
     else if (value->isValueID())
-        keyword = value->getValueID();
-    else if (Pair* pair = value->getPairValue()) {
-        keyword = pair->first()->getValueID();
+        keyword = value->valueID();
+    else if (Pair* pair = value->pairValue()) {
+        keyword = pair->first()->valueID();
         offset = convertToLength(conversionData, pair->second());
     } else
         offset = convertToLength(conversionData, value);
 
+    BasicShapeCenterCoordinate::Direction direction;
     switch (keyword) {
     case CSSValueTop:
     case CSSValueLeft:
@@ -194,7 +193,7 @@ static BasicShapeRadius cssValueToBasicShapeRadius(const CSSToLengthConversionDa
         return BasicShapeRadius(BasicShapeRadius::ClosestSide);
 
     if (radius->isValueID()) {
-        switch (radius->getValueID()) {
+        switch (radius->valueID()) {
         case CSSValueClosestSide:
             return BasicShapeRadius(BasicShapeRadius::ClosestSide);
         case CSSValueFarthestSide:

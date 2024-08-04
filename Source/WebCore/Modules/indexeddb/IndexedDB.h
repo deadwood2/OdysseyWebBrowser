@@ -31,13 +31,6 @@ namespace WebCore {
 
 namespace IndexedDB {
 
-enum class TransactionMode {
-    ReadOnly = 0,
-    ReadWrite = 1,
-    VersionChange = 2,
-};
-const unsigned TransactionModeMaximum = 2;
-
 enum class TransactionState {
     Active,
     Inactive,
@@ -47,10 +40,10 @@ enum class TransactionState {
 };
 
 enum class CursorDirection {
-    Next = 0,
-    NextNoDuplicate = 1,
-    Prev = 2,
-    PrevNoDuplicate = 3,
+    Next,
+    Nextunique,
+    Prev,
+    Prevunique,
 };
 const unsigned CursorDirectionMaximum = 3;
 
@@ -81,11 +74,17 @@ enum class IndexRecordType {
     Value,
 };
 
+enum class ObjectStoreRecordType {
+    ValueOnly,
+    KeyOnly,
+};
+
 // In order of the least to the highest precedent in terms of sort order.
 enum KeyType {
     Max = -1,
     Invalid = 0,
     Array,
+    Binary,
     String,
     Date,
     Number,
@@ -96,6 +95,11 @@ enum class RequestType {
     Open,
     Delete,
     Other,
+};
+
+enum class GetAllType {
+    Keys,
+    Values,
 };
 
 } // namespace IndexedDB

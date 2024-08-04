@@ -20,8 +20,7 @@
     Boston, MA 02110-1301, USA.
  */
 
-#ifndef WebResourceLoadScheduler_h
-#define WebResourceLoadScheduler_h
+#pragma once
 
 #include <WebCore/FrameLoaderTypes.h>
 #include <WebCore/LoaderStrategy.h>
@@ -56,6 +55,8 @@ public:
     void resumePendingRequests() override;
 
     void createPingHandle(WebCore::NetworkingContext*, WebCore::ResourceRequest&, bool shouldUseCredentialStorage, bool shouldFollowRedirects) override;
+
+    void storeDerivedDataToCache(const SHA1::Digest&, const String&, const String&, WebCore::SharedBuffer&) override { }
 
     bool isSerialLoadingEnabled() const { return m_isSerialLoadingEnabled; }
     void setSerialLoadingEnabled(bool b) { m_isSerialLoadingEnabled = b; }
@@ -104,7 +105,7 @@ private:
     };
     
     HostInformation* hostForURL(const WebCore::URL&, CreateHostPolicy = FindOnly);
-    WEBCORE_EXPORT void servePendingRequests(HostInformation*, WebCore::ResourceLoadPriority);
+    void servePendingRequests(HostInformation*, WebCore::ResourceLoadPriority);
 
     typedef HashMap<String, HostInformation*, StringHash> HostMap;
     HostMap m_hosts;
@@ -115,5 +116,3 @@ private:
     unsigned m_suspendPendingRequestsCount;
     bool m_isSerialLoadingEnabled;
 };
-
-#endif

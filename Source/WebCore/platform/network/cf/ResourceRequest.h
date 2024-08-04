@@ -31,7 +31,7 @@
 
 OBJC_CLASS NSURLRequest;
 
-#if PLATFORM(COCOA) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
 typedef const struct _CFURLRequest* CFURLRequestRef;
 typedef const struct __CFURLStorageSession* CFURLStorageSessionRef;
 #endif
@@ -61,7 +61,7 @@ public:
     {
     }
     
-#if USE(CFNETWORK)
+#if USE(CFURLCONNECTION)
 #if PLATFORM(COCOA)
     WEBCORE_EXPORT ResourceRequest(NSURLRequest *);
     void updateNSURLRequest();
@@ -84,7 +84,7 @@ public:
     WEBCORE_EXPORT void updateFromDelegatePreservingOldProperties(const ResourceRequest&);
 
 #if PLATFORM(COCOA)
-#if USE(CFNETWORK)
+#if USE(CFURLCONNECTION)
     bool encodingRequiresPlatformData() const { return m_httpBody || m_cfRequest; }
 #else
     bool encodingRequiresPlatformData() const { return m_httpBody || m_nsRequest; }
@@ -94,18 +94,7 @@ public:
     WEBCORE_EXPORT static CFStringRef isUserInitiatedKey();
 #endif
 
-#if ENABLE(CACHE_PARTITIONING)
-    WEBCORE_EXPORT static String partitionName(const String& domain);
-    const String& cachePartition() const { return m_cachePartition.isNull() ? emptyString() : m_cachePartition; }
-    void setCachePartition(const String& cachePartition)
-    {
-        ASSERT(cachePartition == partitionName(cachePartition));
-        m_cachePartition = cachePartition;
-    }
-    void setDomainForCachePartition(const String& domain) { m_cachePartition = partitionName(domain); }
-#endif
-
-#if PLATFORM(COCOA) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
     WEBCORE_EXPORT CFURLRequestRef cfURLRequest(HTTPBodyUpdatePolicy) const;
     void setStorageSession(CFURLStorageSessionRef);
 #endif
@@ -125,14 +114,11 @@ private:
 
     void doPlatformSetAsIsolatedCopy(const ResourceRequest&);
 
-#if USE(CFNETWORK)
+#if USE(CFURLCONNECTION)
     RetainPtr<CFURLRequestRef> m_cfRequest;
 #endif
 #if PLATFORM(COCOA)
     RetainPtr<NSURLRequest> m_nsRequest;
-#endif
-#if ENABLE(CACHE_PARTITIONING)
-    String m_cachePartition;
 #endif
 
     static bool s_httpPipeliningEnabled;

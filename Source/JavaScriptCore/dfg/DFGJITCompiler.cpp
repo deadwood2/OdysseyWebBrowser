@@ -60,7 +60,7 @@ JITCompiler::JITCompiler(Graph& dfg)
 #if ENABLE(FTL_JIT)
     m_jitCode->tierUpInLoopHierarchy = WTFMove(m_graph.m_plan.tierUpInLoopHierarchy);
     for (unsigned tierUpBytecode : m_graph.m_plan.tierUpAndOSREnterBytecodes)
-        m_jitCode->tierUpEntryTriggers.add(tierUpBytecode, 0);
+        m_jitCode->tierUpEntryTriggers.add(tierUpBytecode, JITCode::TriggerReason::DontTrigger);
 #endif
 }
 
@@ -274,13 +274,30 @@ void JITCompiler::link(LinkBuffer& linkBuffer)
             start, linkBuffer.locationOf(m_ins[i].m_slowPathGenerator->label()));
     }
     
-    for (unsigned i = 0; i < m_jsCalls.size(); ++i) {
-        JSCallRecord& record = m_jsCalls[i];
-        CallLinkInfo& info = *record.m_info;
-        linkBuffer.link(record.m_slowCall, FunctionPtr(m_vm->getCTIStub(linkCallThunkGenerator).code().executableAddress()));
-        info.setCallLocations(linkBuffer.locationOfNearCall(record.m_slowCall),
-            linkBuffer.locationOf(record.m_targetToCheck),
-            linkBuffer.locationOfNearCall(record.m_fastCall));
+    for (auto& record : m_jsCalls) {
+        CallLinkInfo& info = *record.info;
+        linkBuffer.link(record.slowCall, FunctionPtr(m_vm->getCTIStub(linkCallThunkGenerator).code().executableAddress()));
+        info.setCallLocations(
+            CodeLocationLabel(linkBuffer.locationOfNearCall(record.slowCall)),
+            CodeLocationLabel(linkBuffer.locationOf(record.targetToCheck)),
+            linkBuffer.locationOfNearCall(record.fastCall));
+    }
+    
+    for (JSDirectCallRecord& record : m_jsDirectCalls) {
+        CallLinkInfo& info = *record.info;
+        linkBuffer.link(record.call, linkBuffer.locationOf(record.slowPath));
+        info.setCallLocations(
+            CodeLocationLabel(),
+            linkBuffer.locationOf(record.slowPath),
+            linkBuffer.locationOfNearCall(record.call));
+    }
+    
+    for (JSDirectTailCallRecord& record : m_jsDirectTailCalls) {
+        CallLinkInfo& info = *record.info;
+        info.setCallLocations(
+            linkBuffer.locationOf(record.patchableJump),
+            linkBuffer.locationOf(record.slowPath),
+            linkBuffer.locationOfNearCall(record.call));
     }
     
     MacroAssemblerCodeRef osrExitThunk = vm()->getCTIStub(osrExitGenerationThunkGenerator);
@@ -366,7 +383,7 @@ void JITCompiler::compile()
 
     // Generate slow path code.
     m_speculative->runSlowPathGenerators(m_pcToCodeOriginMapBuilder);
-    m_pcToCodeOriginMapBuilder.appendItem(label(), PCToCodeOriginMapBuilder::defaultCodeOrigin());
+    m_pcToCodeOriginMapBuilder.appendItem(labelIgnoringWatchpoints(), PCToCodeOriginMapBuilder::defaultCodeOrigin());
     
     compileExceptionHandlers();
     linkOSRExits();
@@ -390,7 +407,7 @@ void JITCompiler::compile()
     disassemble(*linkBuffer);
     
     m_graph.m_plan.finalizer = std::make_unique<JITFinalizer>(
-        m_graph.m_plan, WTFMove(m_jitCode), WTFMove(linkBuffer));
+        m_graph.m_plan, m_jitCode.releaseNonNull(), WTFMove(linkBuffer));
 }
 
 void JITCompiler::compileFunction()
@@ -459,7 +476,7 @@ void JITCompiler::compileFunction()
     
     // Generate slow path code.
     m_speculative->runSlowPathGenerators(m_pcToCodeOriginMapBuilder);
-    m_pcToCodeOriginMapBuilder.appendItem(label(), PCToCodeOriginMapBuilder::defaultCodeOrigin());
+    m_pcToCodeOriginMapBuilder.appendItem(labelIgnoringWatchpoints(), PCToCodeOriginMapBuilder::defaultCodeOrigin());
     
     compileExceptionHandlers();
     linkOSRExits();
@@ -487,7 +504,7 @@ void JITCompiler::compileFunction()
     MacroAssemblerCodePtr withArityCheck = linkBuffer->locationOf(m_arityCheck);
 
     m_graph.m_plan.finalizer = std::make_unique<JITFinalizer>(
-        m_graph.m_plan, WTFMove(m_jitCode), WTFMove(linkBuffer), withArityCheck);
+        m_graph.m_plan, m_jitCode.releaseNonNull(), WTFMove(linkBuffer), withArityCheck);
 }
 
 void JITCompiler::disassemble(LinkBuffer& linkBuffer)
@@ -570,7 +587,7 @@ void JITCompiler::noticeOSREntry(BasicBlock& basicBlock, JITCompiler::Label bloc
 
 void JITCompiler::appendExceptionHandlingOSRExit(ExitKind kind, unsigned eventStreamIndex, CodeOrigin opCatchOrigin, HandlerInfo* exceptionHandler, CallSiteIndex callSite, MacroAssembler::JumpList jumpsToFail)
 {
-    OSRExit exit(kind, JSValueRegs(), graph().methodOfGettingAValueProfileFor(nullptr), m_speculative.get(), eventStreamIndex);
+    OSRExit exit(kind, JSValueRegs(), MethodOfGettingAValueProfile(), m_speculative.get(), eventStreamIndex);
     exit.m_codeOrigin = opCatchOrigin;
     exit.m_exceptionHandlerCallSiteIndex = callSite;
     OSRExitCompilationInfo& exitInfo = appendExitInfo(jumpsToFail);

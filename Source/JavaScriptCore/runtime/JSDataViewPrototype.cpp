@@ -125,23 +125,18 @@ EncodedJSValue getData(ExecState* exec)
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    JSDataView* dataView = jsDynamicCast<JSDataView*>(exec->thisValue());
+    JSDataView* dataView = jsDynamicCast<JSDataView*>(vm, exec->thisValue());
     if (!dataView)
         return throwVMTypeError(exec, scope, ASCIILiteral("Receiver of DataView method must be a DataView"));
     
-    if (!exec->argumentCount())
-        return throwVMTypeError(exec, scope, ASCIILiteral("Need at least one argument (the byteOffset)"));
-    
-    unsigned byteOffset = exec->uncheckedArgument(0).toUInt32(exec);
-    if (exec->hadException())
-        return JSValue::encode(jsUndefined());
+    unsigned byteOffset = exec->argument(0).toIndex(exec, "byteOffset");
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
     
     bool littleEndian = false;
     unsigned elementSize = sizeof(typename Adaptor::Type);
     if (elementSize > 1 && exec->argumentCount() >= 2) {
         littleEndian = exec->uncheckedArgument(1).toBoolean(exec);
-        if (exec->hadException())
-            return JSValue::encode(jsUndefined());
+        RETURN_IF_EXCEPTION(scope, encodedJSValue());
     }
     
     unsigned byteLength = dataView->length();
@@ -173,16 +168,12 @@ EncodedJSValue setData(ExecState* exec)
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    JSDataView* dataView = jsDynamicCast<JSDataView*>(exec->thisValue());
+    JSDataView* dataView = jsDynamicCast<JSDataView*>(vm, exec->thisValue());
     if (!dataView)
         return throwVMTypeError(exec, scope, ASCIILiteral("Receiver of DataView method must be a DataView"));
     
-    if (exec->argumentCount() < 2)
-        return throwVMTypeError(exec, scope, ASCIILiteral("Need at least two argument (the byteOffset and value)"));
-    
-    unsigned byteOffset = exec->uncheckedArgument(0).toUInt32(exec);
-    if (exec->hadException())
-        return JSValue::encode(jsUndefined());
+    unsigned byteOffset = exec->argument(0).toIndex(exec, "byteOffset");
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
     const unsigned dataSize = sizeof(typename Adaptor::Type);
     union {
@@ -190,16 +181,14 @@ EncodedJSValue setData(ExecState* exec)
         uint8_t rawBytes[dataSize];
     } u;
 
-    u.value = toNativeFromValue<Adaptor>(exec, exec->uncheckedArgument(1));
-    if (exec->hadException())
-        return JSValue::encode(jsUndefined());
+    u.value = toNativeFromValue<Adaptor>(exec, exec->argument(1));
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
     
     bool littleEndian = false;
     unsigned elementSize = sizeof(typename Adaptor::Type);
     if (elementSize > 1 && exec->argumentCount() >= 3) {
         littleEndian = exec->uncheckedArgument(2).toBoolean(exec);
-        if (exec->hadException())
-            return JSValue::encode(jsUndefined());
+        RETURN_IF_EXCEPTION(scope, encodedJSValue());
     }
     
     unsigned byteLength = dataView->length();
@@ -229,11 +218,11 @@ EncodedJSValue JSC_HOST_CALL dataViewProtoGetterBuffer(ExecState* exec)
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    JSDataView* view = jsDynamicCast<JSDataView*>(exec->thisValue());
+    JSDataView* view = jsDynamicCast<JSDataView*>(vm, exec->thisValue());
     if (!view)
         return throwVMTypeError(exec, scope, "DataView.prototype.buffer expects |this| to be a DataView object");
 
-    return JSValue::encode(view->jsBuffer(exec));
+    return JSValue::encode(view->possiblySharedJSBuffer(exec));
 }
 
 EncodedJSValue JSC_HOST_CALL dataViewProtoGetterByteLength(ExecState* exec)
@@ -241,7 +230,7 @@ EncodedJSValue JSC_HOST_CALL dataViewProtoGetterByteLength(ExecState* exec)
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    JSDataView* view = jsDynamicCast<JSDataView*>(exec->thisValue());
+    JSDataView* view = jsDynamicCast<JSDataView*>(vm, exec->thisValue());
     if (!view)
         return throwVMTypeError(exec, scope, "DataView.prototype.buffer expects |this| to be a DataView object");
 
@@ -253,7 +242,7 @@ EncodedJSValue JSC_HOST_CALL dataViewProtoGetterByteOffset(ExecState* exec)
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    JSDataView* view = jsDynamicCast<JSDataView*>(exec->thisValue());
+    JSDataView* view = jsDynamicCast<JSDataView*>(vm, exec->thisValue());
     if (!view)
         return throwVMTypeError(exec, scope, "DataView.prototype.buffer expects |this| to be a DataView object");
 

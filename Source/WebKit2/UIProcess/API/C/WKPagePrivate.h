@@ -42,9 +42,6 @@ enum {
 };
 typedef unsigned WKPageDebugPaintFlags;
 
-WK_EXPORT void WKPageSetDebugPaintFlags(WKPageDebugPaintFlags flags);
-WK_EXPORT WKPageDebugPaintFlags WKPageGetDebugPaintFlags(void);
-
 WK_EXPORT WKStringRef WKPageCopyStandardUserAgentWithApplicationName(WKStringRef);
 
 enum {
@@ -96,6 +93,9 @@ WK_EXPORT void WKPageSetMayStartMediaWhenInWindow(WKPageRef page, bool mayStartM
 typedef void (*WKPageGetBytecodeProfileFunction)(WKStringRef, WKErrorRef, void*);
 WK_EXPORT void WKPageGetBytecodeProfile(WKPageRef page, void* context, WKPageGetBytecodeProfileFunction function);
 
+typedef void (*WKPageGetSamplingProfilerOutputFunction)(WKStringRef, WKErrorRef, void*);
+WK_EXPORT void WKPageGetSamplingProfilerOutput(WKPageRef page, void* context, WKPageGetSamplingProfilerOutputFunction function);
+
 typedef void (*WKPageIsWebProcessResponsiveFunction)(bool isWebProcessResponsive, void* context);
 WK_EXPORT void WKPageIsWebProcessResponsive(WKPageRef page, void* context, WKPageIsWebProcessResponsiveFunction function);
     
@@ -117,15 +117,29 @@ WK_EXPORT bool WKPageGetAddsVisitedLinks(WKPageRef page);
 WK_EXPORT void WKPageSetAddsVisitedLinks(WKPageRef page, bool visitedLinks);
 
 WK_EXPORT bool WKPageIsPlayingAudio(WKPageRef page);
-WK_EXPORT void WKPageSetMuted(WKPageRef page, bool muted);
+
+enum {
+    kWKMediaNoneMuted = 0,
+    kWKMediaAudioMuted = 1 << 0,
+    kWKMediaCaptureDevicesMuted = 1 << 1,
+};
+typedef uint32_t WKMediaMutedState;
+WK_EXPORT void WKPageSetMuted(WKPageRef page, WKMediaMutedState muted);
+
+WK_EXPORT void WKPageClearUserMediaState(WKPageRef page);
+
+WK_EXPORT void WKPageDidAllowPointerLock(WKPageRef page);
+WK_EXPORT void WKPageDidDenyPointerLock(WKPageRef page);
 
 enum {
     kWKMediaIsNotPlaying = 0,
     kWKMediaIsPlayingAudio = 1 << 0,
     kWKMediaIsPlayingVideo = 1 << 1,
-    kWKMediaHasActiveCaptureDevice = 1 << 2,
+    kWKMediaHasActiveAudioCaptureDevice = 1 << 2,
+    kWKMediaHasActiveVideoCaptureDevice = 1 << 3,
 };
 typedef uint32_t WKMediaState;
+
 
 WK_EXPORT WKMediaState WKPageGetMediaState(WKPageRef page);
 

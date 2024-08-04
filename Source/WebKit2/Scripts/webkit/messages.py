@@ -66,7 +66,7 @@ def surround_in_condition(string, condition):
     return '#if %s\n%s#endif\n' % (condition, string)
 
 
-def function_parameter_type(type):
+def function_parameter_type(type, kind):
     # Don't use references for built-in types.
     builtin_types = frozenset([
         'bool',
@@ -85,6 +85,9 @@ def function_parameter_type(type):
     if type in builtin_types:
         return type
 
+    if kind == 'enum':
+        return type
+
     return 'const %s&' % type
 
 
@@ -93,7 +96,7 @@ def reply_parameter_type(type):
 
 
 def arguments_type(message):
-    return 'std::tuple<%s>' % ', '.join(function_parameter_type(parameter.type) for parameter in message.parameters)
+    return 'std::tuple<%s>' % ', '.join(function_parameter_type(parameter.type, parameter.kind) for parameter in message.parameters)
 
 
 def reply_type(message):
@@ -102,7 +105,7 @@ def reply_type(message):
 
 def message_to_struct_declaration(message):
     result = []
-    function_parameters = [(function_parameter_type(x.type), x.name) for x in message.parameters]
+    function_parameters = [(function_parameter_type(x.type, x.kind), x.name) for x in message.parameters]
     result.append('class %s {\n' % message.name)
     result.append('public:\n')
     result.append('    typedef %s Arguments;\n' % arguments_type(message))
@@ -113,9 +116,9 @@ def message_to_struct_declaration(message):
     result.append('\n')
     if message.reply_parameters != None:
         if message.has_attribute(DELAYED_ATTRIBUTE):
-            send_parameters = [(function_parameter_type(x.type), x.name) for x in message.reply_parameters]
+            send_parameters = [(function_parameter_type(x.type, x.kind), x.name) for x in message.reply_parameters]
             result.append('    struct DelayedReply : public ThreadSafeRefCounted<DelayedReply> {\n')
-            result.append('        DelayedReply(PassRefPtr<IPC::Connection>, std::unique_ptr<IPC::Encoder>);\n')
+            result.append('        DelayedReply(Ref<IPC::Connection>&&, std::unique_ptr<IPC::Encoder>);\n')
             result.append('        ~DelayedReply();\n')
             result.append('\n')
             result.append('        bool send(%s);\n' % ', '.join([' '.join(x) for x in send_parameters]))
@@ -143,20 +146,21 @@ def message_to_struct_declaration(message):
     return surround_in_condition(''.join(result), message.condition)
 
 
-def struct_or_class(namespace, kind_and_type):
+def forward_declaration(namespace, kind_and_type):
     kind, type = kind_and_type
 
     qualified_name = '%s::%s' % (namespace, type)
     if kind == 'struct':
         return 'struct %s' % type
+    elif kind == 'enum':
+        return 'enum class %s' % type
     else:
         return 'class %s' % type
-
 
 def forward_declarations_for_namespace(namespace, kind_and_types):
     result = []
     result.append('namespace %s {\n' % namespace)
-    result += ['    %s;\n' % struct_or_class(namespace, x) for x in kind_and_types]
+    result += ['    %s;\n' % forward_declaration(namespace, x) for x in kind_and_types]
     result.append('}\n')
     return ''.join(result)
 
@@ -286,7 +290,7 @@ def class_template_headers(template_string):
 
     class_template_types = {
         'HashMap': {'headers': ['<wtf/HashMap.h>'], 'argument_coder_headers': ['"ArgumentCoders.h"']},
-        'Optional': {'headers': ['<wtf/Optional.h>'], 'argument_coder_headers': ['"ArgumentCoders.h"']},
+        'std::optional': {'headers': ['<wtf/Optional.h>'], 'argument_coder_headers': ['"ArgumentCoders.h"']},
         'OptionSet': {'headers': ['<wtf/OptionSet.h>'], 'argument_coder_headers': ['"ArgumentCoders.h"']},
         'Vector': {'headers': ['<wtf/Vector.h>'], 'argument_coder_headers': ['"ArgumentCoders.h"']},
         'std::pair': {'headers': ['<utility>'], 'argument_coder_headers': ['"ArgumentCoders.h"']},
@@ -344,22 +348,27 @@ def headers_for_type(type):
     special_cases = {
         'String': ['<wtf/text/WTFString.h>'],
         'WebCore::CompositionUnderline': ['<WebCore/Editor.h>'],
-        'WebCore::ExceptionDetails': ['<WebCore/JSDOMBinding.h>'],
+        'WebCore::ExceptionDetails': ['<WebCore/JSDOMExceptionHandling.h>'],
+        'WebCore::FileChooserSettings': ['<WebCore/FileChooser.h>'],
         'WebCore::GrammarDetail': ['<WebCore/TextCheckerClient.h>'],
-        'WebCore::TextureMapperAnimations': ['<WebCore/TextureMapperAnimation.h>'],
+        'WebCore::HasInsecureContent': ['<WebCore/FrameLoaderTypes.h>'],
+        'WebCore::Highlight': ['<WebCore/InspectorOverlay.h>'],
         'WebCore::KeyframeValueList': ['<WebCore/GraphicsLayer.h>'],
         'WebCore::KeypressCommand': ['<WebCore/KeyboardEvent.h>'],
-        'WebCore::FileChooserSettings': ['<WebCore/FileChooser.h>'],
-        'WebCore::Highlight': ['<WebCore/InspectorOverlay.h>'],
-        'WebCore::PluginInfo': ['<WebCore/PluginData.h>'],
+        'WebCore::MediaConstraintsData': ['<WebCore/MediaConstraintsImpl.h>'],
         'WebCore::PasteboardImage': ['<WebCore/Pasteboard.h>'],
         'WebCore::PasteboardWebContent': ['<WebCore/Pasteboard.h>'],
+        'WebCore::PluginInfo': ['<WebCore/PluginData.h>'],
         'WebCore::RecentSearch': ['<WebCore/SearchPopupMenu.h>'],
+        'WebCore::ShouldSample': ['<WebCore/DiagnosticLoggingClient.h>'],
         'WebCore::TextCheckingRequestData': ['<WebCore/TextChecking.h>'],
         'WebCore::TextCheckingResult': ['<WebCore/TextCheckerClient.h>'],
         'WebCore::TextIndicatorData': ['<WebCore/TextIndicator.h>'],
+        'WebCore::TextureMapperAnimations': ['<WebCore/TextureMapperAnimation.h>'],
         'WebCore::ViewportAttributes': ['<WebCore/ViewportArguments.h>'],
+        'WebCore::SelectionRect': ['"EditorState.h"'],
         'WebKit::BackForwardListItemState': ['"SessionState.h"'],
+        'WebKit::LayerHostingMode': ['"LayerTreeContext.h"'],
         'WebKit::PageState': ['"SessionState.h"'],
         'WebKit::WebGestureEvent': ['"WebEvent.h"'],
         'WebKit::WebKeyboardEvent': ['"WebEvent.h"'],
@@ -370,6 +379,7 @@ def headers_for_type(type):
         'struct WebKit::WebUserStyleSheetData': ['"WebUserContentControllerDataTypes.h"'],
         'struct WebKit::WebScriptMessageHandlerData': ['"WebUserContentControllerDataTypes.h"'],
         'std::chrono::system_clock::time_point': ['<chrono>'],
+        'WebKit::LayerHostingMode': ['"LayerTreeContext.h"'],
     }
 
     headers = []
@@ -473,13 +483,13 @@ def generate_message_handler(file):
         result.append('namespace Messages {\n\nnamespace %s {\n\n' % receiver.name)
 
         for message in sync_delayed_messages:
-            send_parameters = [(function_parameter_type(x.type), x.name) for x in message.reply_parameters]
+            send_parameters = [(function_parameter_type(x.type, x.kind), x.name) for x in message.reply_parameters]
 
             if message.condition:
                 result.append('#if %s\n\n' % message.condition)
 
-            result.append('%s::DelayedReply::DelayedReply(PassRefPtr<IPC::Connection> connection, std::unique_ptr<IPC::Encoder> encoder)\n' % message.name)
-            result.append('    : m_connection(connection)\n')
+            result.append('%s::DelayedReply::DelayedReply(Ref<IPC::Connection>&& connection, std::unique_ptr<IPC::Encoder> encoder)\n' % message.name)
+            result.append('    : m_connection(WTFMove(connection))\n')
             result.append('    , m_encoder(WTFMove(encoder))\n')
             result.append('{\n')
             result.append('}\n')

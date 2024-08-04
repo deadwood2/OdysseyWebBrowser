@@ -32,11 +32,11 @@ function initializeFetchResponse(body, init)
     if (init === @undefined)
         init = { };
     else if (!@isObject(init))
-        throw new @TypeError("Response init must be an object");
+        @throwTypeError("Response init must be an object");
 
     let status = (init.status !== @undefined) ? @toNumber(init.status) : 200;
     if (status < 200  || status > 599)
-        throw new @RangeError("Status must be between 200 and 599");
+        @throwRangeError("Status must be between 200 and 599");
 
     let statusText = (init.statusText !== @undefined) ? init.statusText : "OK";
 
@@ -46,11 +46,11 @@ function initializeFetchResponse(body, init)
         @fillFetchHeaders(this.headers, init.headers);
 
     if (body !== @undefined && body !== null) {
-        if (status == 101 || status == 204 || status == 205 || status == 304)
-            throw new @TypeError("Response cannot have a body with the given status");
+        if (status === 101 || status === 204 || status === 205 || status === 304)
+            @throwTypeError("Response cannot have a body with the given status");
 
-        // FIXME: Use @isReadableStream once it is no longer guarded by STREAMS_API guard.
-        let isBodyReadableStream = (@isObject(body) && !!body.@underlyingSource);
+        // FIXME: Use @isReadableStream once it is no longer guarded by READABLE_STREAM_API guard.
+        let isBodyReadableStream = (@isObject(body) && !!body.@readableStreamController);
         if (isBodyReadableStream)
           this.@body = body;
 
@@ -58,6 +58,17 @@ function initializeFetchResponse(body, init)
     }
 
     return this;
+}
+
+function bodyUsed()
+{
+   if (!(this instanceof @Response))
+        throw @makeGetterTypeError("Response", "bodyUsed");
+
+    if (this.@body)
+        return @isReadableStreamDisturbed(this.@body);
+
+    return @Response.prototype.@isDisturbed.@call(this);
 }
 
 function body()
@@ -83,8 +94,8 @@ function clone()
     if (!(this instanceof @Response))
         throw @makeThisTypeError("Response", "clone");
 
-    if (@Response.prototype.@isDisturbed.@call(this))
-        throw new @TypeError("Cannot clone a disturbed Response");
+    if (@Response.prototype.@isDisturbed.@call(this) || (this.@body && @isReadableStreamLocked(this.@body)))
+        @throwTypeError("Cannot clone a disturbed Response");
 
     var cloned = @Response.prototype.@cloneForJS.@call(this);
 
@@ -96,7 +107,7 @@ function clone()
     }
 
     if (this.@body) {
-        var teedReadableStreams = @teeReadableStream(this.@body, true);
+        var teedReadableStreams = @readableStreamTee(this.@body, true);
         this.@body = teedReadableStreams[0];
         cloned.@body = teedReadableStreams[1];
     }

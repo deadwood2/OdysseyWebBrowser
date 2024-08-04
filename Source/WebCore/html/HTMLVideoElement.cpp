@@ -24,16 +24,16 @@
  */
 
 #include "config.h"
+#include "HTMLVideoElement.h"
 
 #if ENABLE(VIDEO)
-
-#include "HTMLVideoElement.h"
 
 #include "CSSPropertyNames.h"
 #include "Chrome.h"
 #include "ChromeClient.h"
 #include "Document.h"
 #include "EventNames.h"
+#include "ExceptionCode.h"
 #include "Frame.h"
 #include "HTMLImageLoader.h"
 #include "HTMLNames.h"
@@ -60,18 +60,22 @@ inline HTMLVideoElement::HTMLVideoElement(const QualifiedName& tagName, Document
 {
     ASSERT(hasTagName(videoTag));
     setHasCustomStyleResolveCallbacks();
-    if (document.settings())
-        m_defaultPosterURL = document.settings()->defaultVideoPosterURL();
+    m_defaultPosterURL = document.settings().defaultVideoPosterURL();
 }
 
 Ref<HTMLVideoElement> HTMLVideoElement::create(const QualifiedName& tagName, Document& document, bool createdByParser)
 {
-    Ref<HTMLVideoElement> videoElement = adoptRef(*new HTMLVideoElement(tagName, document, createdByParser));
+    auto videoElement = adoptRef(*new HTMLVideoElement(tagName, document, createdByParser));
     videoElement->suspendIfNeeded();
     return videoElement;
 }
 
-bool HTMLVideoElement::rendererIsNeeded(const RenderStyle& style) 
+Ref<HTMLVideoElement> HTMLVideoElement::create(Document& document)
+{
+    return create(videoTag, document, false);
+}
+
+bool HTMLVideoElement::rendererIsNeeded(const RenderStyle& style)
 {
     return HTMLElement::rendererIsNeeded(style); 
 }
@@ -167,7 +171,7 @@ bool HTMLVideoElement::supportsFullscreen(HTMLMediaElementEnums::VideoFullscreen
 #if ENABLE(FULLSCREEN_API)
     // If the full screen API is enabled and is supported for the current element
     // do not require that the player has a video track to enter full screen.
-    if (videoFullscreenMode == HTMLMediaElementEnums::VideoFullscreenModeStandard && page->chrome().client().supportsFullScreenForElement(this, false))
+    if (videoFullscreenMode == HTMLMediaElementEnums::VideoFullscreenModeStandard && page->chrome().client().supportsFullScreenForElement(*this, false))
         return true;
 #endif
 
@@ -295,19 +299,18 @@ NativeImagePtr HTMLVideoElement::nativeImageForCurrentTime()
     return player()->nativeImageForCurrentTime();
 }
 
-void HTMLVideoElement::webkitEnterFullscreen(ExceptionCode& ec)
+ExceptionOr<void> HTMLVideoElement::webkitEnterFullscreen()
 {
     if (isFullscreen())
-        return;
+        return { };
 
     // Generate an exception if this isn't called in response to a user gesture, or if the 
     // element does not support fullscreen.
-    if (!mediaSession().fullscreenPermitted(*this) || !supportsFullscreen(HTMLMediaElementEnums::VideoFullscreenModeStandard)) {
-        ec = INVALID_STATE_ERR;
-        return;
-    }
+    if (!mediaSession().fullscreenPermitted(*this) || !supportsFullscreen(HTMLMediaElementEnums::VideoFullscreenModeStandard))
+        return Exception { INVALID_STATE_ERR };
 
     enterFullscreen();
+    return { };
 }
 
 void HTMLVideoElement::webkitExitFullscreen()
@@ -350,7 +353,7 @@ void HTMLVideoElement::setWebkitWirelessVideoPlaybackDisabled(bool disabled)
 }
 #endif
 
-void HTMLVideoElement::didMoveToNewDocument(Document* oldDocument)
+void HTMLVideoElement::didMoveToNewDocument(Document& oldDocument)
 {
     if (m_imageLoader)
         m_imageLoader->elementDidMoveToNewDocument();

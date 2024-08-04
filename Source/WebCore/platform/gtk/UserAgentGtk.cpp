@@ -24,10 +24,10 @@
  */
 
 #include "config.h"
-#include "UserAgentGtk.h"
+#include "UserAgent.h"
 
-#include "PublicSuffix.h"
 #include "URL.h"
+#include "UserAgentQuirks.h"
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/StringBuilder.h>
 
@@ -42,42 +42,6 @@
 // before changing user agent construction. You have been warned.
 
 namespace WebCore {
-
-class UserAgentQuirks {
-public:
-    enum UserAgentQuirk {
-        NeedsChromeBrowser,
-        NeedsFirefoxBrowser,
-        NeedsMacintoshPlatform,
-        NeedsLinuxDesktopPlatform,
-
-        NumUserAgentQuirks
-    };
-
-    UserAgentQuirks()
-        : m_quirks(0)
-    {
-        COMPILE_ASSERT(sizeof(m_quirks) * 8 >= NumUserAgentQuirks, not_enough_room_for_quirks);
-    }
-
-    void add(UserAgentQuirk quirk)
-    {
-        ASSERT(quirk >= 0);
-        ASSERT_WITH_SECURITY_IMPLICATION(quirk < NumUserAgentQuirks);
-
-        m_quirks |= (1 << quirk);
-    }
-
-    bool contains(UserAgentQuirk quirk) const
-    {
-        return m_quirks & (1 << quirk);
-    }
-
-    bool isEmpty() const { return !m_quirks; }
-
-private:
-    uint32_t m_quirks;
-};
 
 static const char* platformForUAString()
 {
@@ -117,41 +81,29 @@ static String buildUserAgentString(const UserAgentQuirks& quirks)
     uaString.append('(');
 
     if (quirks.contains(UserAgentQuirks::NeedsMacintoshPlatform))
-        uaString.appendLiteral("Macintosh");
+        uaString.append(UserAgentQuirks::stringForQuirk(UserAgentQuirks::NeedsMacintoshPlatform));
     else if (quirks.contains(UserAgentQuirks::NeedsLinuxDesktopPlatform))
-        uaString.appendLiteral("X11");
-    else
-        uaString.append(platformForUAString());
-
-    uaString.appendLiteral("; ");
-
-    if (quirks.contains(UserAgentQuirks::NeedsMacintoshPlatform))
-        uaString.appendLiteral("Intel Mac OS X 10_12");
-    else if (quirks.contains(UserAgentQuirks::NeedsLinuxDesktopPlatform))
-        uaString.appendLiteral("Linux x86_64");
-    else
-        uaString.append(platformVersionForUAString());
-
-    if (quirks.contains(UserAgentQuirks::NeedsFirefoxBrowser))
-        uaString.appendLiteral("; rv:50.0) ");
+        uaString.append(UserAgentQuirks::stringForQuirk(UserAgentQuirks::NeedsLinuxDesktopPlatform));
     else {
-        uaString.appendLiteral(") AppleWebKit/");
-        uaString.append(versionForUAString());
-        uaString.appendLiteral(" (KHTML, like Gecko) ");
+        uaString.append(platformForUAString());
+        uaString.appendLiteral("; ");
+        uaString.append(platformVersionForUAString());
     }
+
+    uaString.appendLiteral(") AppleWebKit/");
+    uaString.append(versionForUAString());
+    uaString.appendLiteral(" (KHTML, like Gecko) ");
 
     // Note that Chrome UAs advertise *both* Chrome and Safari.
-    if (quirks.contains(UserAgentQuirks::NeedsChromeBrowser))
-        uaString.appendLiteral("Chrome/56.0.2891.4 ");
-    else if (quirks.contains(UserAgentQuirks::NeedsFirefoxBrowser))
-        uaString.appendLiteral("Gecko/20100101 Firefox/50.0");
-
-    if (!quirks.contains(UserAgentQuirks::NeedsFirefoxBrowser)) {
-        // Version/X is mandatory *before* Safari/X to be a valid Safari UA. See
-        // https://bugs.webkit.org/show_bug.cgi?id=133403 for details.
-        uaString.appendLiteral("Version/10.0 Safari/");
-        uaString.append(versionForUAString());
+    if (quirks.contains(UserAgentQuirks::NeedsChromeBrowser)) {
+        uaString.append(UserAgentQuirks::stringForQuirk(UserAgentQuirks::NeedsChromeBrowser));
+        uaString.appendLiteral(" ");
     }
+
+    // Version/X is mandatory *before* Safari/X to be a valid Safari UA. See
+    // https://bugs.webkit.org/show_bug.cgi?id=133403 for details.
+    uaString.appendLiteral("Version/11.0 Safari/");
+    uaString.append(versionForUAString());
 
     return uaString.toString();
 }
@@ -182,88 +134,9 @@ String standardUserAgent(const String& applicationName, const String& applicatio
     return standardUserAgentStatic() + ' ' + applicationName + '/' + finalApplicationVersion;
 }
 
-static bool isGoogle(const URL& url)
-{
-    String baseDomain = topPrivatelyControlledDomain(url.host());
-
-    // Our Google UA is *very* complicated to get right. Read
-    // https://webkit.org/b/142074 carefully before changing. Test that Earth
-    // view is available in Google Maps. Test Google Calendar. Test downloading
-    // the Hangouts browser plugin. Change platformVersionForUAString() to
-    // return "FreeBSD amd64" and test Maps and Calendar again.
-    if (baseDomain.startsWith("google."))
-        return true;
-    if (baseDomain == "gstatic.com")
-        return true;
-    if (baseDomain == "googleapis.com")
-        return true;
-    if (baseDomain == "googleusercontent.com")
-        return true;
-
-    return false;
-}
-
-// Be careful with this quirk: it's an invitation for sites to use JavaScript we can't handle.
-static bool urlRequiresChromeBrowser(const URL& url)
-{
-    String baseDomain = topPrivatelyControlledDomain(url.host());
-
-    // Needed for fonts on many sites, https://bugs.webkit.org/show_bug.cgi?id=147296
-    if (baseDomain == "typekit.net" || baseDomain == "typekit.com")
-        return true;
-
-    // Slack completely blocks users with our standard user agent.
-    if (baseDomain == "slack.com")
-        return true;
-
-    return false;
-}
-
-static bool urlRequiresFirefoxBrowser(const URL& url)
-{
-    return isGoogle(url) && url.host() != "accounts.google.com";
-}
-
-static bool urlRequiresMacintoshPlatform(const URL& url)
-{
-    String baseDomain = topPrivatelyControlledDomain(url.host());
-
-    // At least finance.yahoo.com displays a mobile version with our standard user agent.
-    if (baseDomain == "yahoo.com")
-        return true;
-
-    // taobao.com displays a mobile version with our standard user agent.
-    if (baseDomain == "taobao.com")
-        return true;
-
-    // web.whatsapp.com completely blocks users with our standard user agent.
-    if (baseDomain == "whatsapp.com")
-        return true;
-
-    return false;
-}
-
-static bool urlRequiresLinuxDesktopPlatform(const URL& url)
-{
-    return isGoogle(url);
-}
-
 String standardUserAgentForURL(const URL& url)
 {
-    ASSERT(!url.isNull());
-
-    UserAgentQuirks quirks;
-
-    if (urlRequiresChromeBrowser(url))
-        quirks.add(UserAgentQuirks::NeedsChromeBrowser);
-    else if (urlRequiresFirefoxBrowser(url))
-        quirks.add(UserAgentQuirks::NeedsFirefoxBrowser);
-
-    if (urlRequiresMacintoshPlatform(url))
-        quirks.add(UserAgentQuirks::NeedsMacintoshPlatform);
-    else if (urlRequiresLinuxDesktopPlatform(url))
-        quirks.add(UserAgentQuirks::NeedsLinuxDesktopPlatform);
-
+    auto quirks = UserAgentQuirks::quirksForURL(url);
     // The null string means we don't need a specific UA for the given URL.
     return quirks.isEmpty() ? String() : buildUserAgentString(quirks);
 }

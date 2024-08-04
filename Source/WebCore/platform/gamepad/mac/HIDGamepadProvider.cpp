@@ -26,7 +26,7 @@
 #include "config.h"
 #include "HIDGamepadProvider.h"
 
-#if ENABLE(GAMEPAD)
+#if ENABLE(GAMEPAD) && PLATFORM(MAC)
 
 #include "GamepadProviderClient.h"
 #include "Logging.h"
@@ -237,7 +237,8 @@ void HIDGamepadProvider::valuesChanged(IOHIDValueRef value)
     if (!gamepad)
         return;
 
-    gamepad->valueChanged(value);
+    if (gamepad->valueChanged(value) == HIDInputType::ButtonPress)
+        setShouldMakeGamepadsVisibile();
 
     // This isActive check is necessary as we want to delay input notifications from the time of the first input,
     // and not push the notification out on every subsequent input.
@@ -250,8 +251,7 @@ void HIDGamepadProvider::inputNotificationTimerFired()
     if (!m_shouldDispatchCallbacks)
         return;
 
-    for (auto& client : m_clients)
-        client->platformGamepadInputActivity();
+    dispatchPlatformGamepadInputActivity();
 }
 
 std::unique_ptr<HIDGamepad> HIDGamepadProvider::removeGamepadForDevice(IOHIDDeviceRef device)
@@ -268,4 +268,4 @@ std::unique_ptr<HIDGamepad> HIDGamepadProvider::removeGamepadForDevice(IOHIDDevi
 
 } // namespace WebCore
 
-#endif // ENABLE(GAMEPAD)
+#endif // ENABLE(GAMEPAD) && PLATFORM(MAC)

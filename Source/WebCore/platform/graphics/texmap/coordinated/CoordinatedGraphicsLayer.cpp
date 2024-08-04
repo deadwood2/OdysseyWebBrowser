@@ -32,7 +32,7 @@
 #include "ScrollableArea.h"
 #include <wtf/CurrentTime.h>
 #ifndef NDEBUG
-#include <wtf/TemporaryChange.h>
+#include <wtf/SetForScope.h>
 #endif
 #include <wtf/text/CString.h>
 
@@ -122,10 +122,6 @@ CoordinatedGraphicsLayer::CoordinatedGraphicsLayer(Type layerType, GraphicsLayer
     , m_movingVisibleRect(false)
     , m_pendingContentsScaleAdjustment(false)
     , m_pendingVisibleRectAdjustment(false)
-#if USE(GRAPHICS_SURFACE)
-    , m_isValidPlatformLayer(false)
-    , m_pendingPlatformLayerOperation(None)
-#endif
 #if USE(COORDINATED_GRAPHICS_THREADED)
     , m_shouldSyncPlatformLayer(false)
     , m_shouldUpdatePlatformLayer(false)
@@ -381,10 +377,7 @@ bool GraphicsLayer::supportsContentsTiling()
 
 void CoordinatedGraphicsLayer::setContentsNeedsDisplay()
 {
-#if USE(GRAPHICS_SURFACE)
-    if (m_platformLayer)
-        m_pendingPlatformLayerOperation |= SyncPlatformLayer;
-#elif USE(COORDINATED_GRAPHICS_THREADED)
+#if USE(COORDINATED_GRAPHICS_THREADED)
     if (m_platformLayer)
         m_shouldUpdatePlatformLayer = true;
 #endif
@@ -395,30 +388,7 @@ void CoordinatedGraphicsLayer::setContentsNeedsDisplay()
 
 void CoordinatedGraphicsLayer::setContentsToPlatformLayer(PlatformLayer* platformLayer, ContentsLayerPurpose)
 {
-#if USE(GRAPHICS_SURFACE)
-    if (m_platformLayer) {
-        ASSERT(m_platformLayerToken.isValid());
-        if (!platformLayer) {
-            m_pendingPlatformLayerOperation |= DestroyPlatformLayer;
-            m_pendingPlatformLayerOperation &= ~CreatePlatformLayer;
-        }  else if ((m_platformLayerSize != platformLayer->platformLayerSize()) || (m_platformLayerToken != platformLayer->graphicsSurfaceToken())) {
-            // m_platformLayerToken can be different to platformLayer->graphicsSurfaceToken(), even if m_platformLayer equals platformLayer.
-            m_pendingPlatformLayerOperation |= RecreatePlatformLayer;
-        }
-    } else {
-        if (platformLayer)
-            m_pendingPlatformLayerOperation |= CreateAndSyncPlatformLayer;
-    }
-
-    m_platformLayer = platformLayer;
-    // m_platformLayerToken is updated only here. 
-    // In detail, when GraphicsContext3D is changed or reshaped, m_platformLayerToken is changed and setContentsToPlatformLayer() is always called.
-    m_platformLayerSize = m_platformLayer ? m_platformLayer->platformLayerSize() : IntSize();
-    m_platformLayerToken = m_platformLayer ? m_platformLayer->graphicsSurfaceToken() : GraphicsSurfaceToken();
-    ASSERT(!(!m_platformLayerToken.isValid() && m_platformLayer));
-
-    notifyFlushRequired();
-#elif USE(COORDINATED_GRAPHICS_THREADED)
+#if USE(COORDINATED_GRAPHICS_THREADED)
     if (m_platformLayer != platformLayer)
         m_shouldSyncPlatformLayer = true;
 
@@ -602,18 +572,18 @@ void CoordinatedGraphicsLayer::setFixedToViewport(bool isFixed)
     didChangeLayerState();
 }
 
-void CoordinatedGraphicsLayer::flushCompositingState(const FloatRect& rect, bool viewportIsStable)
+void CoordinatedGraphicsLayer::flushCompositingState(const FloatRect& rect)
 {
     if (CoordinatedGraphicsLayer* mask = downcast<CoordinatedGraphicsLayer>(maskLayer()))
-        mask->flushCompositingStateForThisLayerOnly(viewportIsStable);
+        mask->flushCompositingStateForThisLayerOnly();
 
     if (CoordinatedGraphicsLayer* replica = downcast<CoordinatedGraphicsLayer>(replicaLayer()))
-        replica->flushCompositingStateForThisLayerOnly(viewportIsStable);
+        replica->flushCompositingStateForThisLayerOnly();
 
-    flushCompositingStateForThisLayerOnly(viewportIsStable);
+    flushCompositingStateForThisLayerOnly();
 
     for (auto& child : children())
-        child->flushCompositingState(rect, viewportIsStable);
+        child->flushCompositingState(rect);
 }
 
 void CoordinatedGraphicsLayer::syncChildren()
@@ -661,9 +631,6 @@ void CoordinatedGraphicsLayer::syncImageBacking()
         m_layerState.imageChanged = true;
     } else
         releaseImageBackingIfNeeded();
-
-    // syncImageBacking() changed m_layerState.imageID.
-    didChangeLayerState();
 }
 
 void CoordinatedGraphicsLayer::syncLayerState()
@@ -726,22 +693,7 @@ void CoordinatedGraphicsLayer::syncAnimations()
 
 void CoordinatedGraphicsLayer::syncPlatformLayer()
 {
-#if USE(GRAPHICS_SURFACE)
-    destroyPlatformLayerIfNeeded();
-    createPlatformLayerIfNeeded();
-
-    if (!(m_pendingPlatformLayerOperation & SyncPlatformLayer))
-        return;
-
-    m_pendingPlatformLayerOperation &= ~SyncPlatformLayer;
-
-    if (!m_isValidPlatformLayer)
-        return;
-
-    ASSERT(m_platformLayer);
-    m_layerState.platformLayerFrontBuffer = m_platformLayer->copyToGraphicsSurface();
-    m_layerState.platformLayerShouldSwapBuffers = true;
-#elif USE(COORDINATED_GRAPHICS_THREADED)
+#if USE(COORDINATED_GRAPHICS_THREADED)
     if (!m_shouldSyncPlatformLayer)
         return;
 
@@ -764,40 +716,7 @@ void CoordinatedGraphicsLayer::updatePlatformLayer()
 #endif
 }
 
-#if USE(GRAPHICS_SURFACE)
-void CoordinatedGraphicsLayer::destroyPlatformLayerIfNeeded()
-{
-    if (!(m_pendingPlatformLayerOperation & DestroyPlatformLayer))
-        return;
-
-    if (m_isValidPlatformLayer) {
-        m_isValidPlatformLayer = false;
-        m_layerState.platformLayerToken = GraphicsSurfaceToken();
-        m_layerState.platformLayerChanged = true;
-    }
-
-    m_pendingPlatformLayerOperation &= ~DestroyPlatformLayer;
-}
-
-void CoordinatedGraphicsLayer::createPlatformLayerIfNeeded()
-{
-    if (!(m_pendingPlatformLayerOperation & CreatePlatformLayer))
-        return;
-
-    ASSERT(m_platformLayer);
-    if (!m_isValidPlatformLayer) {
-        m_layerState.platformLayerSize = m_platformLayer->platformLayerSize();
-        m_layerState.platformLayerToken = m_platformLayer->graphicsSurfaceToken();
-        m_layerState.platformLayerSurfaceFlags = m_platformLayer->graphicsSurfaceFlags();
-        m_layerState.platformLayerChanged = true;
-        m_isValidPlatformLayer = true;
-    }
-
-    m_pendingPlatformLayerOperation &= ~CreatePlatformLayer;
-}
-#endif
-
-void CoordinatedGraphicsLayer::flushCompositingStateForThisLayerOnly(bool)
+void CoordinatedGraphicsLayer::flushCompositingStateForThisLayerOnly()
 {
     // When we have a transform animation, we need to update visible rect every frame to adjust the visible rect of a backing store.
     bool hasActiveTransformAnimation = selfOrAncestorHasActiveTransformAnimation();
@@ -961,7 +880,7 @@ IntRect CoordinatedGraphicsLayer::transformedVisibleRect()
     // Return a projection of the visible rect (surface coordinates) onto the layer's plane (layer coordinates).
     // The resulting quad might be squewed and the visible rect is the bounding box of this quad,
     // so it might spread further than the real visible area (and then even more amplified by the cover rect multiplier).
-    ASSERT(m_cachedInverseTransform == m_layerTransform.combined().inverse().valueOr(TransformationMatrix()));
+    ASSERT(m_cachedInverseTransform == m_layerTransform.combined().inverse().value_or(TransformationMatrix()));
     FloatRect rect = m_cachedInverseTransform.clampedBoundsOfProjectedQuad(FloatQuad(m_coordinator->visibleContentsRect()));
     clampToContentsRectIfRectIsInfinite(rect, size());
     return enclosingIntRect(rect);
@@ -1055,7 +974,7 @@ void CoordinatedGraphicsLayer::updateContentBuffers()
 void CoordinatedGraphicsLayer::purgeBackingStores()
 {
 #ifndef NDEBUG
-    TemporaryChange<bool> updateModeProtector(m_isPurging, true);
+    SetForScope<bool> updateModeProtector(m_isPurging, true);
 #endif
     m_mainBackingStore = nullptr;
     m_previousBackingStore = nullptr;
@@ -1153,7 +1072,7 @@ void CoordinatedGraphicsLayer::computeTransformedVisibleRect()
     m_layerTransform.setChildrenTransform(childrenTransform());
     m_layerTransform.combineTransforms(parent() ? downcast<CoordinatedGraphicsLayer>(*parent()).m_layerTransform.combinedForChildren() : TransformationMatrix());
 
-    m_cachedInverseTransform = m_layerTransform.combined().inverse().valueOr(TransformationMatrix());
+    m_cachedInverseTransform = m_layerTransform.combined().inverse().value_or(TransformationMatrix());
 
     // The combined transform will be used in tiledBackingStoreVisibleRect.
     setNeedsVisibleRectAdjustment();

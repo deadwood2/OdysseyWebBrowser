@@ -37,6 +37,7 @@
 #include "WebProcessPool.h"
 #include "WebProtectionSpace.h"
 #include <WebCore/FileSystem.h>
+#include <WebCore/MIMETypeRegistry.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
@@ -91,7 +92,7 @@ void DownloadProxy::processDidClose()
     m_processPool->downloadClient().processDidCrash(m_processPool.get(), this);
 }
 
-void DownloadProxy::didStart(const ResourceRequest& request, const AtomicString& suggestedFilename)
+void DownloadProxy::didStart(const ResourceRequest& request, const String& suggestedFilename)
 {
     m_request = request;
     m_suggestedFilename = suggestedFilename;
@@ -113,6 +114,7 @@ void DownloadProxy::didReceiveAuthenticationChallenge(const AuthenticationChalle
 }
 
 #if USE(NETWORK_SESSION)
+#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
 void DownloadProxy::canAuthenticateAgainstProtectionSpace(const ProtectionSpace& protectionSpace)
 {
     if (!m_processPool)
@@ -126,6 +128,7 @@ void DownloadProxy::canAuthenticateAgainstProtectionSpace(const ProtectionSpace&
     
     networkProcessProxy->connection()->send(Messages::NetworkProcess::ContinueCanAuthenticateAgainstProtectionSpaceDownload(m_downloadID, result), 0);
 }
+#endif
 
 void DownloadProxy::willSendRequest(const ResourceRequest& proposedRequest, const ResourceResponse& redirectResponse)
 {
@@ -151,6 +154,13 @@ void DownloadProxy::didReceiveResponse(const ResourceResponse& response)
     if (!m_processPool)
         return;
 
+#if !USE(NETWORK_SESSION)
+    // As per https://html.spec.whatwg.org/#as-a-download (step 2), the filename from the Content-Disposition header
+    // should override the suggested filename from the download attribute.
+    if (!m_suggestedFilename.isNull() && response.isAttachmentWithFilename())
+        m_suggestedFilename = String();
+#endif
+
     m_processPool->downloadClient().didReceiveResponse(m_processPool.get(), this, response);
 }
 
@@ -172,7 +182,6 @@ void DownloadProxy::shouldDecodeSourceDataOfMIMEType(const String& mimeType, boo
     result = m_processPool->downloadClient().shouldDecodeSourceDataOfMIMEType(m_processPool.get(), this, mimeType);
 }
 
-#if USE(NETWORK_SESSION)
 void DownloadProxy::decideDestinationWithSuggestedFilenameAsync(DownloadID downloadID, const String& suggestedFilename)
 {
     bool allowOverwrite = false;
@@ -189,23 +198,23 @@ void DownloadProxy::decideDestinationWithSuggestedFilenameAsync(DownloadID downl
     if (NetworkProcessProxy* networkProcess = m_processPool->networkProcess())
         networkProcess->connection()->send(Messages::NetworkProcess::ContinueDecidePendingDownloadDestination(downloadID, destination, sandboxExtensionHandle, allowOverwrite), 0);
 }
-#else
-void DownloadProxy::decideDestinationWithSuggestedFilename(const String& filename, String& destination, bool& allowOverwrite, SandboxExtension::Handle& sandboxExtensionHandle)
+
+#if !USE(NETWORK_SESSION)
+
+void DownloadProxy::decideDestinationWithSuggestedFilename(const String& filename, const String& mimeType, String& destination, bool& allowOverwrite, SandboxExtension::Handle& sandboxExtensionHandle)
 {
     allowOverwrite = false;
 
     if (!m_processPool)
         return;
 
-    String suggestedFilename = filename;
-    if (!m_suggestedFilename.isNull())
-        suggestedFilename = m_suggestedFilename;
-    
+    String suggestedFilename = MIMETypeRegistry::appendFileExtensionIfNecessary(m_suggestedFilename.isNull() ? filename : m_suggestedFilename, mimeType);
     destination = m_processPool->downloadClient().decideDestinationWithSuggestedFilename(m_processPool.get(), this, suggestedFilename, allowOverwrite);
 
     if (!destination.isNull())
         SandboxExtension::createHandle(destination, SandboxExtension::ReadWrite, sandboxExtensionHandle);
 }
+
 #endif
 
 void DownloadProxy::didCreateDestination(const String& path)

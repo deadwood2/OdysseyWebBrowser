@@ -34,21 +34,17 @@
 #include <mach/mach.h>
 #include <mach/vm_statistics.h>
 #include <runtime/VM.h>
-#include <sys/sysctl.h>
 
 namespace WebCore {
 
-static size_t vmPageSize()
+size_t vmPageSize()
 {
-    static size_t pageSize;
-    static std::once_flag onceFlag;
-    std::call_once(onceFlag, [&] {
-        size_t outputSize = sizeof(pageSize);
-        int status = sysctlbyname("vm.pagesize", &pageSize, &outputSize, nullptr, 0);
-        ASSERT_UNUSED(status, status != -1);
-        ASSERT(pageSize);
-    });
-    return pageSize;
+#if PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 100000
+    return vm_kernel_page_size;
+#else
+    static size_t cached = sysconf(_SC_PAGESIZE);
+    return cached;
+#endif
 }
 
 void logFootprintComparison(const std::array<TagInfo, 256>& before, const std::array<TagInfo, 256>& after)
@@ -164,6 +160,8 @@ static float cpuUsage()
 
         if (!(threadBasicInfo->flags & TH_FLAGS_IDLE))
             usage += threadBasicInfo->cpu_usage / static_cast<float>(TH_USAGE_SCALE) * 100.0;
+
+        mach_port_deallocate(mach_task_self(), threadList[i]);
     }
 
     kr = vm_deallocate(mach_task_self(), (vm_offset_t)threadList, threadCount * sizeof(thread_t));

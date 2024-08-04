@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2004, 2006, 2007, 2008, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -20,8 +20,7 @@
  *
  */
 
-#ifndef HTMLObjectElement_h
-#define HTMLObjectElement_h
+#pragma once
 
 #include "FormAssociatedElement.h"
 #include "HTMLPlugInImageElement.h"
@@ -47,13 +46,15 @@ public:
     // Implementation of constraint validation API.
     // Note that the object elements are always barred from constraint validation.
     static bool checkValidity() { return true; }
+    static bool reportValidity() { return true; }
+
     void setCustomValidity(const String&) final { }
     String validationMessage() const final { return String(); }
 
     using HTMLPlugInImageElement::ref;
     using HTMLPlugInImageElement::deref;
 
-    using FormAssociatedElement::form;
+    HTMLFormElement* form() const final { return FormAssociatedElement::form(); }
 
 private:
     HTMLObjectElement(const QualifiedName&, Document&, HTMLFormElement*, bool createdByParser);
@@ -66,7 +67,7 @@ private:
     void finishedInsertingSubtree() final;
     void removedFrom(ContainerNode&) final;
 
-    void didMoveToNewDocument(Document* oldDocument) final;
+    void didMoveToNewDocument(Document& oldDocument) final;
 
     void childrenChanged(const ChildChange&) final;
 
@@ -90,7 +91,6 @@ private:
 
     void refFormAssociatedElement() final { ref(); }
     void derefFormAssociatedElement() final { deref(); }
-    HTMLFormElement* virtualForm() const final;
 
     FormNamedItem* asFormNamedItem() final { return this; }
     HTMLObjectElement& asHTMLElement() final { return *this; }
@@ -107,6 +107,4 @@ private:
     bool m_useFallbackContent : 1;
 };
 
-}
-
-#endif
+} // namespace WebCore

@@ -27,6 +27,8 @@
 #define UIScriptController_h
 
 #include "JSWrappable.h"
+#include <JavaScriptCore/JSRetainPtr.h>
+#include <wtf/Optional.h>
 #include <wtf/Ref.h>
 
 namespace WebCore {
@@ -45,21 +47,39 @@ public:
     }
 
     void contextDestroyed();
+    void checkForOutstandingCallbacks();
 
     void makeWindowObject(JSContextRef, JSObjectRef windowObject, JSValueRef* exception);
     
     void doAsyncTask(JSValueRef callback);
+    void doAfterPresentationUpdate(JSValueRef callback);
+    void doAfterNextStablePresentationUpdate(JSValueRef callback);
+    void doAfterVisibleContentRectUpdate(JSValueRef callback);
+
     void zoomToScale(double scale, JSValueRef callback);
+
+    void simulateAccessibilitySettingsChangeNotification(JSValueRef callback);
 
     void touchDownAtPoint(long x, long y, long touchCount, JSValueRef callback);
     void liftUpAtPoint(long x, long y, long touchCount, JSValueRef callback);
     void singleTapAtPoint(long x, long y, JSValueRef callback);
     void doubleTapAtPoint(long x, long y, JSValueRef callback);
     void dragFromPointToPoint(long startX, long startY, long endX, long endY, double durationSeconds, JSValueRef callback);
-    
+
+    void stylusDownAtPoint(long x, long y, float azimuthAngle, float altitudeAngle, float pressure, JSValueRef callback);
+    void stylusMoveToPoint(long x, long y, float azimuthAngle, float altitudeAngle, float pressure, JSValueRef callback);
+    void stylusUpAtPoint(long x, long y, JSValueRef callback);
+    void stylusTapAtPoint(long x, long y, float azimuthAngle, float altitudeAngle, float pressure, JSValueRef callback);
+
+    void longPressAtPoint(long x, long y, JSValueRef callback);
+
+    void sendEventStream(JSStringRef eventsJSON, JSValueRef callback);
+
     void typeCharacterUsingHardwareKeyboard(JSStringRef character, JSValueRef callback);
     void keyDownUsingHardwareKeyboard(JSStringRef character, JSValueRef callback);
     void keyUpUsingHardwareKeyboard(JSStringRef character, JSValueRef callback);
+
+    void selectTextCandidateAtIndex(long index, JSValueRef callback);
 
     void keyboardAccessoryBarNext();
     void keyboardAccessoryBarPrevious();
@@ -67,13 +87,25 @@ public:
     void dismissFormAccessoryView();
     void selectFormAccessoryPickerRow(long);
     
+    JSObjectRef contentsOfUserInterfaceItem(JSStringRef) const;
+    void overridePreference(JSStringRef preference, JSStringRef value);
+    
     void scrollToOffset(long x, long y);
+
+    void immediateScrollToOffset(long x, long y);
+    void immediateZoomToScale(double scale);
 
     void setDidStartFormControlInteractionCallback(JSValueRef);
     JSValueRef didStartFormControlInteractionCallback() const;
 
     void setDidEndFormControlInteractionCallback(JSValueRef);
     JSValueRef didEndFormControlInteractionCallback() const;
+    
+    void setDidShowForcePressPreviewCallback(JSValueRef);
+    JSValueRef didShowForcePressPreviewCallback() const;
+    
+    void setDidDismissForcePressPreviewCallback(JSValueRef);
+    JSValueRef didDismissForcePressPreviewCallback() const;
 
     void setWillBeginZoomingCallback(JSValueRef);
     JSValueRef willBeginZoomingCallback() const;
@@ -93,10 +125,29 @@ public:
     double zoomScale() const;
     double minimumZoomScale() const;
     double maximumZoomScale() const;
+    
+    std::optional<bool> stableStateOverride() const;
+    void setStableStateOverride(std::optional<bool>);
 
     JSObjectRef contentVisibleRect() const;
     
+    JSObjectRef selectionRangeViewRects() const;
+    JSObjectRef textSelectionCaretRect() const;
+    JSObjectRef inputViewBounds() const;
+
+    void insertText(JSStringRef, int location, int length);
+    void removeAllDynamicDictionaries();
+    
+    JSRetainPtr<JSStringRef> scrollingTreeAsText() const;
+
     void uiScriptComplete(JSStringRef result);
+    
+    void retrieveSpeakSelectionContent(JSValueRef);
+    JSRetainPtr<JSStringRef> accessibilitySpeakSelectionContent() const;
+
+    // These use a callback to allow the client to know when view visibility state updates get to the web process.
+    void removeViewFromWindow(JSValueRef);
+    void addViewToWindow(JSValueRef);
 
 private:
     UIScriptController(UIScriptContext&);
@@ -105,6 +156,8 @@ private:
 
     void platformSetDidStartFormControlInteractionCallback();
     void platformSetDidEndFormControlInteractionCallback();
+    void platformSetDidShowForcePressPreviewCallback();
+    void platformSetDidDismissForcePressPreviewCallback();
     void platformSetWillBeginZoomingCallback();
     void platformSetDidEndZoomingCallback();
     void platformSetDidShowKeyboardCallback();
@@ -115,6 +168,7 @@ private:
     JSClassRef wrapperClass() final;
 
     JSObjectRef objectFromRect(const WebCore::FloatRect&) const;
+    void waitForTextPredictionsViewAndSelectCandidateAtIndex(long index, unsigned callbackID, float interval);
 
     UIScriptContext* m_context;
 };

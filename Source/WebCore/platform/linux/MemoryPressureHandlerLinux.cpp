@@ -123,7 +123,7 @@ MemoryPressureHandler::EventFDPoller::EventFDPoller(int fd, std::function<void (
 
 MemoryPressureHandler::EventFDPoller::~EventFDPoller()
 {
-    m_fd = Nullopt;
+    m_fd = std::nullopt;
 #if USE(GLIB)
     g_source_destroy(m_source.get());
 #else
@@ -168,11 +168,11 @@ inline void MemoryPressureHandler::logErrorAndCloseFDs(const char* log)
 
     if (m_eventFD) {
         close(m_eventFD.value());
-        m_eventFD = Nullopt;
+        m_eventFD = std::nullopt;
     }
     if (m_pressureLevelFD) {
         close(m_pressureLevelFD.value());
-        m_pressureLevelFD = Nullopt;
+        m_pressureLevelFD = std::nullopt;
     }
 }
 
@@ -254,12 +254,12 @@ void MemoryPressureHandler::uninstall()
 
     if (m_pressureLevelFD) {
         close(m_pressureLevelFD.value());
-        m_pressureLevelFD = Nullopt;
+        m_pressureLevelFD = std::nullopt;
 
         // Only close the eventFD used for cgroups.
         if (m_eventFD) {
             close(m_eventFD.value());
-            m_eventFD = Nullopt;
+            m_eventFD = std::nullopt;
         }
     }
 
@@ -289,7 +289,7 @@ void MemoryPressureHandler::respondToMemoryPressure(Critical critical, Synchrono
 
     double startTime = monotonicallyIncreasingTime();
     int64_t processMemory = processMemoryUsage();
-    m_lowMemoryHandler(critical, synchronous);
+    releaseMemory(critical, synchronous);
     int64_t bytesFreed = processMemory - processMemoryUsage();
     unsigned holdOffTime = s_maximumHoldOffTime;
     if (bytesFreed > 0 && static_cast<size_t>(bytesFreed) >= s_minimumBytesFreedToUseMinimumHoldOffTime)
@@ -300,14 +300,13 @@ void MemoryPressureHandler::respondToMemoryPressure(Critical critical, Synchrono
 void MemoryPressureHandler::platformReleaseMemory(Critical)
 {
 #ifdef __GLIBC__
-    ReliefLogger log("Run malloc_trim");
     malloc_trim(0);
 #endif
 }
 
-size_t MemoryPressureHandler::ReliefLogger::platformMemoryUsage()
+std::optional<MemoryPressureHandler::ReliefLogger::MemoryUsage> MemoryPressureHandler::ReliefLogger::platformMemoryUsage()
 {
-    return processMemoryUsage();
+    return MemoryUsage {processMemoryUsage(), 0};
 }
 
 void MemoryPressureHandler::setMemoryPressureMonitorHandle(int fd)

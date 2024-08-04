@@ -77,10 +77,10 @@ TiledCoreAnimationDrawingArea::TiledCoreAnimationDrawingArea(WebPage& webPage, c
     : DrawingArea(DrawingAreaTypeTiledCoreAnimation, webPage)
     , m_layerTreeStateIsFrozen(false)
     , m_layerFlushScheduler(this)
-    , m_isPaintingSuspended(!(parameters.viewState & ViewState::IsVisible))
+    , m_isPaintingSuspended(!(parameters.activityState & ActivityState::IsVisible))
     , m_transientZoomScale(1)
-    , m_sendDidUpdateViewStateTimer(RunLoop::main(), this, &TiledCoreAnimationDrawingArea::didUpdateViewStateTimerFired)
-    , m_wantsDidUpdateViewState(false)
+    , m_sendDidUpdateActivityStateTimer(RunLoop::main(), this, &TiledCoreAnimationDrawingArea::didUpdateActivityStateTimerFired)
+    , m_wantsDidUpdateActivityState(false)
     , m_viewOverlayRootLayer(nullptr)
 {
     m_webPage.corePage()->settings().setForceCompositingMode(true);
@@ -226,6 +226,9 @@ void TiledCoreAnimationDrawingArea::updateRootLayers()
     }
 
     [m_hostingLayer setSublayers:m_viewOverlayRootLayer ? @[ m_rootLayer.get(), m_viewOverlayRootLayer->platformLayer() ] : @[ m_rootLayer.get() ]];
+    
+    if (m_debugInfoLayer)
+        [m_hostingLayer addSublayer:m_debugInfoLayer.get()];
 }
 
 void TiledCoreAnimationDrawingArea::attachViewOverlayGraphicsLayer(Frame* frame, GraphicsLayer* viewOverlayRootLayer)
@@ -394,6 +397,15 @@ void TiledCoreAnimationDrawingArea::dispatchAfterEnsuringUpdatedScrollPosition(s
 #endif
 }
 
+void TiledCoreAnimationDrawingArea::sendPendingNewlyReachedLayoutMilestones()
+{
+    if (!m_pendingNewlyReachedLayoutMilestones)
+        return;
+
+    m_webPage.send(Messages::WebPageProxy::DidReachLayoutMilestone(m_pendingNewlyReachedLayoutMilestones));
+    m_pendingNewlyReachedLayoutMilestones = 0;
+}
+
 bool TiledCoreAnimationDrawingArea::flushLayers()
 {
     ASSERT(!m_layerTreeStateIsFrozen);
@@ -416,16 +428,23 @@ bool TiledCoreAnimationDrawingArea::flushLayers()
 
         // Because our view-relative overlay root layer is not attached to the main GraphicsLayer tree, we need to flush it manually.
         if (m_viewOverlayRootLayer)
-            m_viewOverlayRootLayer->flushCompositingState(visibleRect, m_webPage.mainFrameView()->viewportIsStable());
+            m_viewOverlayRootLayer->flushCompositingState(visibleRect);
 
-#if TARGET_OS_IPHONE || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
         RefPtr<WebPage> retainedPage = &m_webPage;
+#if TARGET_OS_IPHONE || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
         [CATransaction addCommitHandler:[retainedPage] {
             if (Page* corePage = retainedPage->corePage()) {
                 if (Frame* coreFrame = retainedPage->mainFrame())
                     corePage->inspectorController().didComposite(*coreFrame);
             }
+            if (auto drawingArea = static_cast<TiledCoreAnimationDrawingArea*>(retainedPage->drawingArea()))
+                drawingArea->sendPendingNewlyReachedLayoutMilestones();
         } forPhase:kCATransactionPhasePostCommit];
+#else
+        dispatch_async(dispatch_get_main_queue(), [retainedPage] {
+            if (auto drawingArea = static_cast<TiledCoreAnimationDrawingArea*>(retainedPage->drawingArea()))
+                drawingArea->sendPendingNewlyReachedLayoutMilestones();
+        });
 #endif
 
         bool returnValue = m_webPage.mainFrameView()->flushCompositingStateIncludingSubframes();
@@ -443,34 +462,34 @@ bool TiledCoreAnimationDrawingArea::flushLayers()
     }
 }
 
-void TiledCoreAnimationDrawingArea::viewStateDidChange(ViewState::Flags changed, bool wantsDidUpdateViewState, const Vector<uint64_t>& nextViewStateChangeCallbackIDs)
+void TiledCoreAnimationDrawingArea::activityStateDidChange(ActivityState::Flags changed, bool wantsDidUpdateActivityState, const Vector<uint64_t>& nextActivityStateChangeCallbackIDs)
 {
-    m_nextViewStateChangeCallbackIDs.appendVector(nextViewStateChangeCallbackIDs);
-    m_wantsDidUpdateViewState |= wantsDidUpdateViewState;
+    m_nextActivityStateChangeCallbackIDs.appendVector(nextActivityStateChangeCallbackIDs);
+    m_wantsDidUpdateActivityState |= wantsDidUpdateActivityState;
 
-    if (changed & ViewState::IsVisible) {
+    if (changed & ActivityState::IsVisible) {
         if (m_webPage.isVisible())
             resumePainting();
         else
             suspendPainting();
     }
 
-    if (m_wantsDidUpdateViewState || !m_nextViewStateChangeCallbackIDs.isEmpty())
-        m_sendDidUpdateViewStateTimer.startOneShot(0);
+    if (m_wantsDidUpdateActivityState || !m_nextActivityStateChangeCallbackIDs.isEmpty())
+        m_sendDidUpdateActivityStateTimer.startOneShot(0);
 }
 
-void TiledCoreAnimationDrawingArea::didUpdateViewStateTimerFired()
+void TiledCoreAnimationDrawingArea::didUpdateActivityStateTimerFired()
 {
     [CATransaction flush];
 
-    if (m_wantsDidUpdateViewState)
-        m_webPage.send(Messages::WebPageProxy::DidUpdateViewState());
+    if (m_wantsDidUpdateActivityState)
+        m_webPage.send(Messages::WebPageProxy::DidUpdateActivityState());
 
-    for (uint64_t callbackID : m_nextViewStateChangeCallbackIDs)
+    for (uint64_t callbackID : m_nextActivityStateChangeCallbackIDs)
         m_webPage.send(Messages::WebPageProxy::VoidCallback(callbackID));
 
-    m_nextViewStateChangeCallbackIDs.clear();
-    m_wantsDidUpdateViewState = false;
+    m_nextActivityStateChangeCallbackIDs.clear();
+    m_wantsDidUpdateActivityState = false;
 }
 
 void TiledCoreAnimationDrawingArea::suspendPainting()
@@ -495,7 +514,7 @@ void TiledCoreAnimationDrawingArea::resumePainting()
     [[NSNotificationCenter defaultCenter] postNotificationName:@"NSCAViewRenderDidResumeNotification" object:nil userInfo:[NSDictionary dictionaryWithObject:m_hostingLayer.get() forKey:@"layer"]];
 }
 
-void TiledCoreAnimationDrawingArea::setViewExposedRect(Optional<WebCore::FloatRect> viewExposedRect)
+void TiledCoreAnimationDrawingArea::setViewExposedRect(std::optional<WebCore::FloatRect> viewExposedRect)
 {
     m_viewExposedRect = viewExposedRect;
     updateScrolledExposedRect();
@@ -632,9 +651,9 @@ void TiledCoreAnimationDrawingArea::setRootCompositingLayer(CALayer *layer)
     updateRootLayers();
 
     if (hadRootLayer != !!layer)
-        m_layerHostingContext->setRootLayer(layer ? m_hostingLayer.get() : 0);
+        m_layerHostingContext->setRootLayer(layer ? m_hostingLayer.get() : nil);
 
-    updateDebugInfoLayer(m_webPage.corePage()->settings().showTiledScrollingIndicator());
+    updateDebugInfoLayer(layer && m_webPage.corePage()->settings().showTiledScrollingIndicator());
 
     [CATransaction commit];
 }
@@ -647,6 +666,11 @@ TiledBacking* TiledCoreAnimationDrawingArea::mainFrameTiledBacking() const
 
 void TiledCoreAnimationDrawingArea::updateDebugInfoLayer(bool showLayer)
 {
+    if (m_debugInfoLayer) {
+        [m_debugInfoLayer removeFromSuperlayer];
+        m_debugInfoLayer = nil;
+    }
+    
     if (showLayer) {
         if (TiledBacking* tiledBacking = mainFrameTiledBacking()) {
             if (PlatformCALayer* indicatorLayer = tiledBacking->tiledScrollingIndicatorLayer())
@@ -654,14 +678,9 @@ void TiledCoreAnimationDrawingArea::updateDebugInfoLayer(bool showLayer)
         }
 
         if (m_debugInfoLayer) {
-#ifndef NDEBUG
             [m_debugInfoLayer setName:@"Debug Info"];
-#endif
             [m_hostingLayer addSublayer:m_debugInfoLayer.get()];
         }
-    } else if (m_debugInfoLayer) {
-        [m_debugInfoLayer removeFromSuperlayer];
-        m_debugInfoLayer = nullptr;
     }
 }
 
@@ -862,6 +881,12 @@ void TiledCoreAnimationDrawingArea::applyTransientZoomToPage(double scale, Float
 void TiledCoreAnimationDrawingArea::addFence(const MachSendRight& fencePort)
 {
     m_layerHostingContext->setFencePort(fencePort.sendRight());
+}
+
+bool TiledCoreAnimationDrawingArea::dispatchDidReachLayoutMilestone(WebCore::LayoutMilestones layoutMilestones)
+{
+    m_pendingNewlyReachedLayoutMilestones |= layoutMilestones;
+    return true;
 }
 
 } // namespace WebKit

@@ -49,13 +49,15 @@ public:
     // RenderElement when using fallback content.
     RenderWidget* renderWidget() const;
 
-    SVGDocument* getSVGDocument(ExceptionCode&) const;
+    ExceptionOr<Document&> getSVGDocument() const;
 
     virtual ScrollbarMode scrollingMode() const { return ScrollbarAuto; }
 
     SandboxFlags sandboxFlags() const { return m_sandboxFlags; }
 
-    void scheduleSetNeedsStyleRecalc(StyleChangeType = FullStyleChange);
+    void scheduleinvalidateStyleAndLayerComposition();
+
+    virtual bool isURLAllowed(const URL&) const { return true; }
 
 protected:
     HTMLFrameOwnerElement(const QualifiedName& tagName, Document&);
@@ -71,15 +73,17 @@ private:
 
 class SubframeLoadingDisabler {
 public:
-    explicit SubframeLoadingDisabler(ContainerNode& root)
+    explicit SubframeLoadingDisabler(ContainerNode* root)
         : m_root(root)
     {
-        disabledSubtreeRoots().add(&m_root);
+        if (m_root)
+            disabledSubtreeRoots().add(m_root);
     }
 
     ~SubframeLoadingDisabler()
     {
-        disabledSubtreeRoots().remove(&m_root);
+        if (m_root)
+            disabledSubtreeRoots().remove(m_root);
     }
 
     static bool canLoadFrame(HTMLFrameOwnerElement&);
@@ -91,7 +95,7 @@ private:
         return nodes;
     }
 
-    ContainerNode& m_root;
+    ContainerNode* m_root;
 };
 
 } // namespace WebCore

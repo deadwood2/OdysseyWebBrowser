@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef LLIntThunks_h
-#define LLIntThunks_h
+#pragma once
 
 #include "MacroAssemblerCodeRef.h"
 
@@ -39,6 +38,8 @@ extern "C" {
     EncodedJSValue vmEntryToNative(void*, VM*, ProtoCallFrame*);
 }
 
+EncodedJSValue JS_EXPORT_PRIVATE vmEntryToWasm(void*, VM*, ProtoCallFrame*);
+
 namespace LLInt {
 
 MacroAssemblerCodeRef functionForCallEntryThunkGenerator(VM*);
@@ -50,5 +51,3 @@ MacroAssemblerCodeRef programEntryThunkGenerator(VM*);
 MacroAssemblerCodeRef moduleProgramEntryThunkGenerator(VM*);
 
 } } // namespace JSC::LLInt
-
-#endif // LLIntThunks_h

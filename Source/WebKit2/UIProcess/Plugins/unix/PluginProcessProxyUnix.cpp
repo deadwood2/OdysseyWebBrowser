@@ -38,7 +38,7 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
-#if PLATFORM(GTK) || PLATFORM(EFL)
+#if PLATFORM(GTK)
 #include <glib.h>
 #include <wtf/glib/GUniquePtr.h>
 #endif
@@ -79,7 +79,7 @@ static bool pluginRequiresGtk2(const String& pluginPath)
 #if PLUGIN_ARCHITECTURE(X11)
 bool PluginProcessProxy::scanPlugin(const String& pluginPath, RawPluginMetaData& result)
 {
-#if PLATFORM(GTK) || PLATFORM(EFL)
+#if PLATFORM(GTK)
     String pluginProcessPath = executablePathOfPluginProcess();
 
 #if PLATFORM(GTK)
@@ -152,9 +152,9 @@ bool PluginProcessProxy::scanPlugin(const String& pluginPath, RawPluginMetaData&
     result.requiresGtk2 = requiresGtk2;
 #endif
     return !result.mimeDescription.isEmpty();
-#else // PLATFORM(GTK) || PLATFORM(EFL)
+#else // PLATFORM(GTK)
     return false;
-#endif // PLATFORM(GTK) || PLATFORM(EFL)
+#endif // PLATFORM(GTK)
 }
 #endif // PLUGIN_ARCHITECTURE(X11)
 

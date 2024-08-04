@@ -41,6 +41,7 @@
 #include "StyleProperties.h"
 #include "StyleResolver.h"
 #include "StyleRule.h"
+#include "StyleScope.h"
 #include <math.h>
 
 namespace WebCore {
@@ -49,7 +50,7 @@ using namespace SVGNames;
 
 inline SVGFontFaceElement::SVGFontFaceElement(const QualifiedName& tagName, Document& document)
     : SVGElement(tagName, document)
-    , m_fontFaceRule(StyleRuleFontFace::create(MutableStyleProperties::create(CSSStrictMode)))
+    , m_fontFaceRule(StyleRuleFontFace::create(MutableStyleProperties::create(HTMLStandardMode)))
     , m_fontElement(nullptr)
 {
     ASSERT(hasTagName(font_faceTag));
@@ -226,7 +227,7 @@ SVGFontElement* SVGFontFaceElement::associatedFontElement() const
 
 void SVGFontFaceElement::rebuildFontFace()
 {
-    if (!inDocument()) {
+    if (!isConnected()) {
         ASSERT(!m_fontElement);
         return;
     }
@@ -266,13 +267,13 @@ void SVGFontFaceElement::rebuildFontFace()
         }
     }
 
-    document().styleResolverChanged(DeferRecalcStyle);
+    document().styleScope().didChangeStyleSheetEnvironment();
 }
 
 Node::InsertionNotificationRequest SVGFontFaceElement::insertedInto(ContainerNode& rootParent)
 {
     SVGElement::insertedInto(rootParent);
-    if (!rootParent.inDocument()) {
+    if (!rootParent.isConnected()) {
         ASSERT(!m_fontElement);
         return InsertionDone;
     }
@@ -286,12 +287,12 @@ void SVGFontFaceElement::removedFrom(ContainerNode& rootParent)
 {
     SVGElement::removedFrom(rootParent);
 
-    if (rootParent.inDocument()) {
+    if (rootParent.isConnected()) {
         m_fontElement = nullptr;
         document().accessSVGExtensions().unregisterSVGFontFaceElement(this);
         m_fontFaceRule->mutableProperties().clear();
 
-        document().styleResolverChanged(DeferRecalcStyle);
+        document().styleScope().didChangeStyleSheetEnvironment();
     } else
         ASSERT(!m_fontElement);
 }

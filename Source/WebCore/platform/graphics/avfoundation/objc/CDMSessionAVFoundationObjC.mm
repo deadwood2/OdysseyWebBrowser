@@ -26,18 +26,19 @@
 #import "config.h"
 #import "CDMSessionAVFoundationObjC.h"
 
-#if ENABLE(ENCRYPTED_MEDIA_V2)
+#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
 
-#import "CDM.h"
-#import "CDMSession.h"
-#import "ExceptionCode.h"
+#import "LegacyCDM.h"
+#import "LegacyCDMSession.h"
 #import "MediaPlayer.h"
 #import "MediaPlayerPrivateAVFoundationObjC.h"
 #import "SoftLinking.h"
 #import "UUID.h"
 #import "WebCoreNSErrorExtras.h"
-#import <AVFoundation/AVFoundation.h>
+#import <AVFoundation/AVAsset.h>
+#import <AVFoundation/AVAssetResourceLoader.h>
 #import <objc/objc-runtime.h>
+#import <runtime/TypedArrayInlines.h>
 #import <wtf/MainThread.h>
 
 SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
@@ -100,7 +101,8 @@ RefPtr<Uint8Array> CDMSessionAVFoundationObjC::generateKeyRequest(const String& 
     destinationURL = String();
 
     RefPtr<ArrayBuffer> keyRequestBuffer = ArrayBuffer::create([keyRequest.get() bytes], [keyRequest.get() length]);
-    return Uint8Array::create(keyRequestBuffer, 0, keyRequestBuffer->byteLength());
+    unsigned byteLength = keyRequestBuffer->byteLength();
+    return Uint8Array::create(WTFMove(keyRequestBuffer), 0, byteLength);
 }
 
 void CDMSessionAVFoundationObjC::releaseKeys()

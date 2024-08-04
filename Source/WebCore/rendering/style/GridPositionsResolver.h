@@ -28,10 +28,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef GridPositionsResolver_h
-#define GridPositionsResolver_h
-
-#if ENABLE(CSS_GRID_LAYOUT)
+#pragma once
 
 #include "GridPosition.h"
 
@@ -80,7 +77,3 @@ public:
 };
 
 } // namespace WebCore
-
-#endif // ENABLE(CSS_GRID_LAYOUT)
-
-#endif // GridPositionsResolver_h

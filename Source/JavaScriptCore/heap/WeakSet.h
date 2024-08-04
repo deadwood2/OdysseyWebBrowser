@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WeakSet_h
-#define WeakSet_h
+#pragma once
 
 #include "CellContainer.h"
 #include "WeakBlock.h"
@@ -54,7 +53,8 @@ public:
 
     bool isEmpty() const;
 
-    unsigned visit(HeapRootVisitor&);
+    void visit(SlotVisitor&);
+
     void reap();
     void sweep();
     void shrink();
@@ -107,14 +107,10 @@ inline void WeakSet::lastChanceToFinalize()
         block->lastChanceToFinalize();
 }
 
-inline unsigned WeakSet::visit(HeapRootVisitor& visitor)
+inline void WeakSet::visit(SlotVisitor& visitor)
 {
-    unsigned count = 0;
-    for (WeakBlock* block = m_blocks.head(); block; block = block->next()) {
-        count++;
+    for (WeakBlock* block = m_blocks.head(); block; block = block->next())
         block->visit(visitor);
-    }
-    return count;
 }
 
 inline void WeakSet::reap()
@@ -130,5 +126,3 @@ inline void WeakSet::resetAllocator()
 }
 
 } // namespace JSC
-
-#endif // WeakSet_h

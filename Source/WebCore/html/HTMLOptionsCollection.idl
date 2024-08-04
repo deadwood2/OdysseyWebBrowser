@@ -24,28 +24,15 @@
     GenerateIsReachable=ImplOwnerNodeRoot,
     JSGenerateToNativeObject,
 ] interface HTMLOptionsCollection : HTMLCollection {
-    attribute long selectedIndex;
-    [CustomSetter, SetterRaisesException] attribute unsigned long length;
+    [CEReactions, SetterMayThrowException] attribute unsigned long length;
+    // [CEReactions] setter void (unsigned long index, HTMLOptionElement? option);
+    [CEReactions, MayThrowException] void add((HTMLOptionElement or HTMLOptGroupElement) element, optional (HTMLElement or long)? before = null);
+    [CEReactions] void remove(long index);
+    [CEReactions] void remove(HTMLOptionElement option); // FIXME: This overload is not in the specification and has been dropped from Blink.
 
-#if defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT
-    getter Node namedItem(DOMString name);
-#else
+    attribute long selectedIndex;
+
+    // FIXME: Can these just be inherited from HTMLCollection like in the spec?
     getter HTMLOptionElement? item(unsigned long index);
     getter HTMLOptionElement? namedItem(DOMString name);
-#endif
-
-#if !(defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT)
-    // FIXME: Should be:
-    // void add((HTMLOptionElement or HTMLOptGroupElement) element, optional (HTMLElement or long)? before = null);
-    [RaisesException] void add(HTMLElement element, optional HTMLElement? before = null);
-    [RaisesException] void add(HTMLElement element, long index);
-#else
-    [RaisesException] void add(HTMLOptionElement option, unsigned long index);
-#endif
-
-    void remove(long index);
-#if !(defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT)
-    // FIXME: This overload is not in the specification and has been dropped in Blink.
-    void remove(HTMLOptionElement option);
-#endif
 };

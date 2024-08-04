@@ -56,7 +56,6 @@ ResourceType toResourceType(CachedResource::Type type)
         return ResourceType::Font;
 
     case CachedResource::MediaResource:
-    case CachedResource::LinkPreload:
     case CachedResource::RawResource:
         return ResourceType::Raw;
 
@@ -109,7 +108,7 @@ bool ResourceLoadInfo::isThirdParty() const
     Ref<SecurityOrigin> mainDocumentSecurityOrigin = SecurityOrigin::create(mainDocumentURL);
     Ref<SecurityOrigin> resourceSecurityOrigin = SecurityOrigin::create(resourceURL);
 
-    return !mainDocumentSecurityOrigin->canAccess(&resourceSecurityOrigin.get());
+    return !mainDocumentSecurityOrigin->canAccess(resourceSecurityOrigin.get());
 }
     
 ResourceFlags ResourceLoadInfo::getResourceFlags() const

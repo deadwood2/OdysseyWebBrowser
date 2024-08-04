@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2012, 2014-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,7 @@
 
 #include "LLIntCommon.h"
 #include "LLIntData.h"
+#include "SigillCrashAnalyzer.h"
 #include <algorithm>
 #include <limits>
 #include <math.h>
@@ -55,15 +56,19 @@
 
 namespace JSC {
 
-static bool allowRestrictedOptions()
-{
+namespace {
 #ifdef NDEBUG
-    return false;
+bool restrictedOptionsEnabled = false;
 #else
-    return true;
+bool restrictedOptionsEnabled = true;
 #endif
 }
 
+void Options::enableRestrictedOptions(bool enableOrNot)
+{
+    restrictedOptionsEnabled = enableOrNot;
+}
+    
 static bool parse(const char* string, bool& value)
 {
     if (!strcasecmp(string, "true") || !strcasecmp(string, "yes") || !strcmp(string, "1")) {
@@ -128,12 +133,20 @@ static bool parse(const char* string, GCLogging::Level& value)
 bool Options::isAvailable(Options::ID id, Options::Availability availability)
 {
     if (availability == Availability::Restricted)
-        return allowRestrictedOptions();
+        return restrictedOptionsEnabled;
     ASSERT(availability == Availability::Configurable);
     
     UNUSED_PARAM(id);
 #if ENABLE(LLINT_STATS)
     if (id == reportLLIntStatsID || id == llintStatsFileID)
+        return true;
+#endif
+#if !defined(NDEBUG)
+    if (id == maxSingleAllocationSizeID)
+        return true;
+#endif
+#if OS(DARWIN)
+    if (id == useSigillCrashAnalyzerID)
         return true;
 #endif
     return false;
@@ -298,6 +311,20 @@ static void scaleJITPolicy()
     }
 }
 
+static void overrideDefaults()
+{
+    if (WTF::numberOfProcessorCores() < 4) {
+        Options::maximumMutatorUtilization() = 0.6;
+        Options::concurrentGCMaxHeadroom() = 1.4;
+        Options::minimumGCPauseMS() = 1;
+        Options::useStochasticMutatorScheduler() = false;
+        if (WTF::numberOfProcessorCores() <= 1)
+            Options::gcIncrementScale() = 1;
+        else
+            Options::gcIncrementScale() = 0;
+    }
+}
+
 static void recomputeDependentOptions()
 {
 #if !defined(NDEBUG)
@@ -308,11 +335,12 @@ static void recomputeDependentOptions()
     Options::useJIT() = false;
     Options::useDFGJIT() = false;
     Options::useFTLJIT() = false;
+    Options::useDOMJIT() = false;
 #endif
 #if !ENABLE(YARR_JIT)
     Options::useRegExpJIT() = false;
 #endif
-#if !ENABLE(CONCURRENT_JIT)
+#if !ENABLE(CONCURRENT_JS)
     Options::useConcurrentJIT() = false;
 #endif
 #if !ENABLE(DFG_JIT)
@@ -321,6 +349,10 @@ static void recomputeDependentOptions()
 #endif
 #if !ENABLE(FTL_JIT)
     Options::useFTLJIT() = false;
+#endif
+    
+#if !CPU(X86_64) && !CPU(ARM64)
+    Options::useConcurrentGC() = false;
 #endif
     
 #if OS(WINDOWS) && CPU(X86) 
@@ -348,9 +380,13 @@ static void recomputeDependentOptions()
         || Options::reportBaselineCompileTimes()
         || Options::reportDFGCompileTimes()
         || Options::reportFTLCompileTimes()
+        || Options::reportDFGPhaseTimes()
         || Options::verboseCFA()
         || Options::verboseFTLFailure())
         Options::alwaysComputeHash() = true;
+    
+    if (!Options::useConcurrentGC())
+        Options::collectContinuously() = false;
 
     if (Option(Options::jitPolicyScaleID).isOverridden())
         scaleJITPolicy();
@@ -378,6 +414,9 @@ static void recomputeDependentOptions()
     Options::useSeparatedWXHeap() = true;
 #endif
 
+    if (Options::alwaysUseShadowChicken())
+        Options::maximumInliningDepth() = 1;
+
     // Compute the maximum value of the reoptimization retry counter. This is simply
     // the largest value at which we don't overflow the execute counter, when using it
     // to left-shift the execution counter by this amount. Currently the value ends
@@ -389,11 +428,24 @@ static void recomputeDependentOptions()
 
     ASSERT((static_cast<int64_t>(Options::thresholdForOptimizeAfterLongWarmUp()) << Options::reoptimizationRetryCounterMax()) > 0);
     ASSERT((static_cast<int64_t>(Options::thresholdForOptimizeAfterLongWarmUp()) << Options::reoptimizationRetryCounterMax()) <= static_cast<int64_t>(std::numeric_limits<int32_t>::max()));
-    ASSERT(Options::deferGCProbability() >= 0.0 && Options::deferGCProbability() <= 1.0);
 
 #if ENABLE(LLINT_STATS)
     LLInt::Data::loadStats();
 #endif
+#if !defined(NDEBUG)
+    if (Options::maxSingleAllocationSize())
+        fastSetMaxSingleAllocationSize(Options::maxSingleAllocationSize());
+    else
+        fastSetMaxSingleAllocationSize(std::numeric_limits<size_t>::max());
+#endif
+
+    if (Options::useZombieMode()) {
+        Options::sweepSynchronously() = true;
+        Options::scribbleFreeCells() = true;
+    }
+
+    if (Options::useSigillCrashAnalyzer())
+        enableSigillCrashAnalyzer();
 }
 
 void Options::initialize()
@@ -409,6 +461,8 @@ void Options::initialize()
             name_##Default() = defaultValue_;
             JSC_OPTIONS(FOR_EACH_OPTION)
 #undef FOR_EACH_OPTION
+
+            overrideDefaults();
                 
             // Allow environment vars to override options if applicable.
             // The evn var should be the name of the option prefixed with

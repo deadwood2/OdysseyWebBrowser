@@ -98,6 +98,28 @@ JSObject* createURIError(ExecState* exec, const String& message, ErrorInstance::
     return ErrorInstance::create(exec, globalObject->vm(), globalObject->URIErrorConstructor()->errorStructure(), message, appender, TypeNothing, true);
 }
 
+JSObject* createError(ExecState* exec, ErrorType errorType, const String& message)
+{
+    switch (errorType) {
+    case ErrorType::Error:
+        return createError(exec, message);
+    case ErrorType::EvalError:
+        return createEvalError(exec, message);
+    case ErrorType::RangeError:
+        return createRangeError(exec, message);
+    case ErrorType::ReferenceError:
+        return createReferenceError(exec, message);
+    case ErrorType::SyntaxError:
+        return createSyntaxError(exec, message);
+    case ErrorType::TypeError:
+        return createTypeError(exec, message);
+    case ErrorType::URIError:
+        return createURIError(exec, message);
+    }
+    ASSERT_NOT_REACHED();
+    return nullptr;
+}
+
 class FindFirstCallerFrameWithCodeblockFunctor {
 public:
     FindFirstCallerFrameWithCodeblockFunctor(CallFrame* startCallFrame)
@@ -143,10 +165,10 @@ bool addErrorInfoAndGetBytecodeOffset(ExecState* exec, VM& vm, JSObject* obj, bo
 
         ASSERT(exec == vm.topCallFrame || exec == exec->lexicalGlobalObject()->globalExec() || exec == exec->vmEntryGlobalObject()->globalExec());
 
-        StackFrame* firstNonNativeFrame = nullptr;
+        StackFrame* firstFrameWithLineAndColumnInfo = nullptr;
         for (unsigned i = 0 ; i < stackTrace.size(); ++i) {
-            firstNonNativeFrame = &stackTrace.at(i);
-            if (!firstNonNativeFrame->isNative())
+            firstFrameWithLineAndColumnInfo = &stackTrace.at(i);
+            if (firstFrameWithLineAndColumnInfo->hasLineAndColumnInfo())
                 break;
         }
 
@@ -155,16 +177,18 @@ bool addErrorInfoAndGetBytecodeOffset(ExecState* exec, VM& vm, JSObject* obj, bo
             vm.topCallFrame->iterate(functor);
             callFrame = functor.foundCallFrame();
             unsigned stackIndex = functor.index();
-            *bytecodeOffset = stackTrace.at(stackIndex).bytecodeOffset;
+            *bytecodeOffset = 0;
+            if (stackTrace.at(stackIndex).hasBytecodeOffset())
+                *bytecodeOffset = stackTrace.at(stackIndex).bytecodeOffset();
         }
         
         unsigned line;
         unsigned column;
-        firstNonNativeFrame->computeLineAndColumn(line, column);
+        firstFrameWithLineAndColumnInfo->computeLineAndColumn(line, column);
         obj->putDirect(vm, vm.propertyNames->line, jsNumber(line));
         obj->putDirect(vm, vm.propertyNames->column, jsNumber(column));
 
-        String frameSourceURL = firstNonNativeFrame->sourceURL();
+        String frameSourceURL = firstFrameWithLineAndColumnInfo->sourceURL();
         if (!frameSourceURL.isEmpty())
             obj->putDirect(vm, vm.propertyNames->sourceURL, jsString(&vm, frameSourceURL));
 
@@ -191,13 +215,6 @@ JSObject* addErrorInfo(CallFrame* callFrame, JSObject* error, int line, const So
     if (!sourceURL.isNull())
         error->putDirect(*vm, Identifier::fromString(vm, sourceURLPropertyName), jsString(vm, sourceURL));
     return error;
-}
-
-
-bool hasErrorInfo(ExecState* exec, JSObject* error)
-{
-    return error->hasProperty(exec, Identifier::fromString(exec, linePropertyName))
-        || error->hasProperty(exec, Identifier::fromString(exec, sourceURLPropertyName));
 }
 
 JSObject* throwConstructorCannotBeCalledAsFunctionTypeError(ExecState* exec, ThrowScope& scope, const char* constructorName)
@@ -289,3 +306,36 @@ void StrictModeTypeErrorFunction::destroy(JSCell* cell)
 }
 
 } // namespace JSC
+
+namespace WTF {
+
+using namespace JSC;
+
+void printInternal(PrintStream& out, JSC::ErrorType errorType)
+{
+    switch (errorType) {
+    case JSC::ErrorType::Error:
+        out.print("Error");
+        break;
+    case JSC::ErrorType::EvalError:
+        out.print("EvalError");
+        break;
+    case JSC::ErrorType::RangeError:
+        out.print("RangeError");
+        break;
+    case JSC::ErrorType::ReferenceError:
+        out.print("ReferenceError");
+        break;
+    case JSC::ErrorType::SyntaxError:
+        out.print("SyntaxError");
+        break;
+    case JSC::ErrorType::TypeError:
+        out.print("TypeError");
+        break;
+    case JSC::ErrorType::URIError:
+        out.print("URIError");
+        break;
+    }
+}
+
+} // namespace WTF

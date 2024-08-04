@@ -1,12 +1,11 @@
 include(GNUInstallDirs)
 
 set(PROJECT_VERSION_MAJOR 2)
-set(PROJECT_VERSION_MINOR 14)
-set(PROJECT_VERSION_MICRO 7)
+set(PROJECT_VERSION_MINOR 16)
+set(PROJECT_VERSION_MICRO 6)
 set(PROJECT_VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_MICRO})
 set(WEBKITGTK_API_VERSION 4.0)
 
-# IndexedDB support requires GCC 4.9, see https://bugs.webkit.org/show_bug.cgi?id=98932.
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS "4.9.0")
         message(FATAL_ERROR "GCC 4.9.0 is required to build WebKitGTK+, use a newer GCC version or clang")
@@ -15,8 +14,8 @@ endif ()
 
 # Libtool library version, not to be confused with API version.
 # See http://www.gnu.org/software/libtool/manual/html_node/Libtool-versioning.html
-CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(WEBKIT2 51 14 14)
-CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(JAVASCRIPTCORE 22 14 4)
+CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(WEBKIT2 56 9 19)
+CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(JAVASCRIPTCORE 23 13 5)
 
 # These are shared variables, but we special case their definition so that we can use the
 # CMAKE_INSTALL_* variables that are populated by the GNUInstallDirs macro.
@@ -33,7 +32,7 @@ set(INTROSPECTION_INSTALL_TYPELIBDIR "${LIB_INSTALL_DIR}/girepository-1.0")
 find_package(Cairo 1.10.2 REQUIRED)
 find_package(Fontconfig 2.8.0 REQUIRED)
 find_package(Freetype2 2.4.2 REQUIRED)
-find_package(GnuTLS 3.0.0 REQUIRED)
+find_package(LibGcrypt 1.6.0 REQUIRED)
 find_package(GTK3 3.6.0 REQUIRED)
 find_package(GDK3 3.6.0 REQUIRED)
 find_package(HarfBuzz 0.9.2 REQUIRED)
@@ -41,7 +40,6 @@ find_package(ICU REQUIRED)
 find_package(JPEG REQUIRED)
 find_package(LibSoup 2.42.0 REQUIRED)
 find_package(LibXml2 2.8.0 REQUIRED)
-find_package(LibXslt 1.1.7 REQUIRED)
 find_package(PNG REQUIRED)
 find_package(Sqlite REQUIRED)
 find_package(Threads REQUIRED)
@@ -57,6 +55,12 @@ find_package(OpenGLES2)
 WEBKIT_OPTION_BEGIN()
 
 set(USE_WOFF2 ON)
+
+# For old versions of HarfBuzz that do not expose an API for the OpenType MATH
+# table, we enable our own code to parse that table.
+if ("${PC_HARFBUZZ_VERSION}" VERSION_LESS "1.3.3")
+    add_definitions(-DENABLE_OPENTYPE_MATH=1)
+endif ()
 
 # Set the default value for ENABLE_GLES2 automatically.
 # We are not enabling or disabling automatically a feature here, because
@@ -88,6 +92,7 @@ WEBKIT_OPTION_DEFINE(ENABLE_X11_TARGET "Whether to enable support for the X11 wi
 WEBKIT_OPTION_DEFINE(ENABLE_WAYLAND_TARGET "Whether to enable support for the Wayland windowing target." PUBLIC ${GTK3_SUPPORTS_WAYLAND})
 WEBKIT_OPTION_DEFINE(USE_LIBNOTIFY "Whether to enable the default web notification implementation." PUBLIC ON)
 WEBKIT_OPTION_DEFINE(USE_LIBHYPHEN "Whether to enable the default automatic hyphenation implementation." PUBLIC ON)
+WEBKIT_OPTION_DEFINE(USE_LIBSECRET "Whether to enable the persistent credential storage using libsecret." PUBLIC ON)
 
 # Private options specific to the GTK+ port. Changing these options is
 # completely unsupported. They are intended for use only by WebKit developers.
@@ -101,7 +106,6 @@ WEBKIT_OPTION_CONFLICT(ENABLE_ACCELERATED_2D_CANVAS ENABLE_GLES2)
 WEBKIT_OPTION_DEPEND(ENABLE_3D_TRANSFORMS ENABLE_OPENGL)
 WEBKIT_OPTION_DEPEND(ENABLE_ACCELERATED_2D_CANVAS ENABLE_OPENGL)
 WEBKIT_OPTION_DEPEND(ENABLE_GLES2 ENABLE_OPENGL)
-WEBKIT_OPTION_DEPEND(ENABLE_NETSCAPE_PLUGIN_API ENABLE_X11_TARGET)
 WEBKIT_OPTION_DEPEND(ENABLE_PLUGIN_PROCESS_GTK2 ENABLE_X11_TARGET)
 WEBKIT_OPTION_DEPEND(ENABLE_THREADED_COMPOSITOR ENABLE_OPENGL)
 WEBKIT_OPTION_DEPEND(ENABLE_WEBGL ENABLE_OPENGL)
@@ -125,15 +129,16 @@ endif ()
 
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_MEMORY_SAMPLER PUBLIC ON)
+    WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_RESOURCE_USAGE PRIVATE ON)
 else ()
     WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_MEMORY_SAMPLER PUBLIC OFF)
+    WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_RESOURCE_USAGE PRIVATE OFF)
 endif ()
 
 # Public options shared with other WebKit ports. Do not add any options here
 # without approval from a GTK+ reviewer. There must be strong reason to support
 # changing the value of the option.
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ACCELERATED_2D_CANVAS PUBLIC OFF)
-WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_CREDENTIAL_STORAGE PUBLIC ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_DRAG_SUPPORT PUBLIC ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_GEOLOCATION PUBLIC ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ICONDATABASE PUBLIC ON)
@@ -184,19 +189,17 @@ SET_AND_EXPOSE_TO_BUILD(WTF_PLATFORM_WAYLAND ${ENABLE_WAYLAND_TARGET})
 # only their definedness is. They should only be defined in the true case.
 if (${ENABLE_X11_TARGET})
     SET_AND_EXPOSE_TO_BUILD(MOZ_X11 1)
-endif ()
-if (${WTF_OS_UNIX})
     SET_AND_EXPOSE_TO_BUILD(XP_UNIX 1)
 endif ()
 
 set(ENABLE_WEBKIT OFF)
 set(ENABLE_WEBKIT2 ON)
-set(ENABLE_PLUGIN_PROCESS ${ENABLE_X11_TARGET})
+set(ENABLE_PLUGIN_PROCESS ${ENABLE_NETSCAPE_PLUGIN_API})
 
 add_definitions(-DBUILDING_GTK__=1)
 add_definitions(-DGETTEXT_PACKAGE="WebKit2GTK-${WEBKITGTK_API_VERSION}")
 add_definitions(-DDATA_DIR="${CMAKE_INSTALL_DATADIR}")
-add_definitions(-DUSER_AGENT_GTK_MAJOR_VERSION="603")
+add_definitions(-DUSER_AGENT_GTK_MAJOR_VERSION="604")
 add_definitions(-DUSER_AGENT_GTK_MINOR_VERSION="1")
 add_definitions(-DWEBKITGTK_API_VERSION_STRING="${WEBKITGTK_API_VERSION}")
 
@@ -214,6 +217,10 @@ if (ENABLE_GAMEPAD_DEPRECATED OR ENABLE_GEOLOCATION)
 endif ()
 find_package(GLIB 2.36 REQUIRED COMPONENTS ${glib_components})
 
+if (ENABLE_XSLT)
+    find_package(LibXslt 1.1.7 REQUIRED)
+endif ()
+
 if (ENABLE_ACCELERATED_2D_CANVAS)
     if (GLX_FOUND)
         list(APPEND CAIROGL_COMPONENTS cairo-glx)
@@ -228,10 +235,10 @@ if (ENABLE_ACCELERATED_2D_CANVAS)
     endif ()
 endif ()
 
-if (ENABLE_CREDENTIAL_STORAGE)
+if (USE_LIBSECRET)
     find_package(Libsecret)
     if (NOT LIBSECRET_FOUND)
-        message(FATAL_ERROR "libsecret is needed for ENABLE_CREDENTIAL_STORAGE")
+        message(FATAL_ERROR "libsecret is needed for USE_LIBSECRET")
     endif ()
 endif ()
 
@@ -329,7 +336,7 @@ if (ENABLE_VIDEO OR ENABLE_WEB_AUDIO)
         list(APPEND GSTREAMER_COMPONENTS audio fft)
     endif ()
 
-    find_package(GStreamer 1.0.3 REQUIRED COMPONENTS ${GSTREAMER_COMPONENTS})
+    find_package(GStreamer 1.2.3 REQUIRED COMPONENTS ${GSTREAMER_COMPONENTS})
 
     if (ENABLE_WEB_AUDIO)
         if (NOT PC_GSTREAMER_AUDIO_FOUND OR NOT PC_GSTREAMER_FFT_FOUND)
@@ -424,10 +431,8 @@ if (APPLE)
     set(ENABLE_GTKDOC OFF)
 endif ()
 
-set(DERIVED_SOURCES_GOBJECT_DOM_BINDINGS_DIR ${DERIVED_SOURCES_DIR}/webkitdom)
 set(DERIVED_SOURCES_WEBKITGTK_DIR ${DERIVED_SOURCES_DIR}/webkitgtk)
 set(DERIVED_SOURCES_WEBKITGTK_API_DIR ${DERIVED_SOURCES_WEBKITGTK_DIR}/webkit)
-set(DERIVED_SOURCES_GOBJECT_DOM_BINDINGS_DIR ${DERIVED_SOURCES_DIR}/webkitdom)
 set(DERIVED_SOURCES_WEBKIT2GTK_DIR ${DERIVED_SOURCES_DIR}/webkit2gtk)
 set(DERIVED_SOURCES_WEBKIT2GTK_API_DIR ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/webkit2)
 set(FORWARDING_HEADERS_DIR ${DERIVED_SOURCES_DIR}/ForwardingHeaders)

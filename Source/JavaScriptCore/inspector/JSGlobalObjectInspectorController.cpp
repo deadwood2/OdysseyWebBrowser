@@ -187,7 +187,7 @@ void JSGlobalObjectInspectorController::pause()
     m_debuggerAgent->pause(dummyError);
 }
 
-void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack* callStack)
+void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack& callStack)
 {
 #if OS(DARWIN) || (OS(LINUX) && !PLATFORM(GTK))
     static const int framesToShow = 31;
@@ -208,9 +208,9 @@ void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack* call
         if (mangledName)
             cxaDemangled = abi::__cxa_demangle(mangledName, nullptr, nullptr, nullptr);
         if (mangledName || cxaDemangled)
-            callStack->append(ScriptCallFrame(cxaDemangled ? cxaDemangled : mangledName, ASCIILiteral("[native code]"), noSourceID, 0, 0));
+            callStack.append(ScriptCallFrame(cxaDemangled ? cxaDemangled : mangledName, ASCIILiteral("[native code]"), noSourceID, 0, 0));
         else
-            callStack->append(ScriptCallFrame(ASCIILiteral("?"), ASCIILiteral("[native code]"), noSourceID, 0, 0));
+            callStack.append(ScriptCallFrame(ASCIILiteral("?"), ASCIILiteral("[native code]"), noSourceID, 0, 0));
         free(cxaDemangled);
     }
 #else
@@ -220,19 +220,21 @@ void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack* call
 
 void JSGlobalObjectInspectorController::reportAPIException(ExecState* exec, Exception* exception)
 {
-    if (isTerminatedExecutionException(exception))
+    VM& vm = exec->vm();
+    if (isTerminatedExecutionException(vm, exception))
         return;
 
-    ErrorHandlingScope errorScope(exec->vm());
+    auto scope = DECLARE_CATCH_SCOPE(vm);
+    ErrorHandlingScope errorScope(vm);
 
-    RefPtr<ScriptCallStack> callStack = createScriptCallStackFromException(exec, exception, ScriptCallStack::maxCallStackSizeToCapture);
+    Ref<ScriptCallStack> callStack = createScriptCallStackFromException(exec, exception, ScriptCallStack::maxCallStackSizeToCapture);
     if (includesNativeCallStackWhenReportingExceptions())
         appendAPIBacktrace(callStack.get());
 
     // FIXME: <http://webkit.org/b/115087> Web Inspector: Should not evaluate JavaScript handling exceptions
     // If this is a custom exception object, call toString on it to try and get a nice string representation for the exception.
-    String errorMessage = exception->value().toString(exec)->value(exec);
-    exec->clearException();
+    String errorMessage = exception->value().toWTFString(exec);
+    scope.clearException();
 
     if (JSGlobalObjectConsoleClient::logToSystemConsole()) {
         if (callStack->size()) {
@@ -242,7 +244,7 @@ void JSGlobalObjectInspectorController::reportAPIException(ExecState* exec, Exce
             ConsoleClient::printConsoleMessage(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, String(), 0, 0);
     }
 
-    m_consoleAgent->addMessageToConsole(std::make_unique<ConsoleMessage>(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, callStack));
+    m_consoleAgent->addMessageToConsole(std::make_unique<ConsoleMessage>(MessageSource::JS, MessageType::Log, MessageLevel::Error, errorMessage, WTFMove(callStack)));
 }
 
 ConsoleClient* JSGlobalObjectInspectorController::consoleClient() const

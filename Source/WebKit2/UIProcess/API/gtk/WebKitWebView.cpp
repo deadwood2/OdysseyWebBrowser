@@ -62,6 +62,7 @@
 #include "WebKitWebViewBasePrivate.h"
 #include "WebKitWebViewPrivate.h"
 #include "WebKitWebViewSessionStatePrivate.h"
+#include "WebKitWebsiteDataManagerPrivate.h"
 #include "WebKitWindowPropertiesPrivate.h"
 #include <JavaScriptCore/APICast.h>
 #include <WebCore/CertificateInfo.h>
@@ -153,6 +154,7 @@ enum {
     PROP_ZOOM_LEVEL,
     PROP_IS_LOADING,
     PROP_IS_PLAYING_AUDIO,
+    PROP_IS_EPHEMERAL,
     PROP_EDITABLE
 };
 
@@ -177,6 +179,7 @@ struct _WebKitWebViewPrivate {
     CString customTextEncoding;
     CString activeURI;
     bool isLoading;
+    bool isEphemeral;
 
     std::unique_ptr<PageLoadStateObserver> loadObserver;
 
@@ -208,6 +211,7 @@ struct _WebKitWebViewPrivate {
     SnapshotResultsMap snapshotResultsMap;
     GRefPtr<WebKitAuthenticationRequest> authenticationRequest;
 
+    GRefPtr<WebKitWebsiteDataManager> websiteDataManager;
 };
 
 static guint signals[LAST_SIGNAL] = { 0, };
@@ -325,7 +329,7 @@ static GtkWidget* webkitWebViewCreateJavaScriptDialog(WebKitWebView* webView, Gt
         GTK_DIALOG_DESTROY_WITH_PARENT, type, buttons, "%s", primaryText);
     if (secondaryText)
         gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s", secondaryText);
-    GUniquePtr<char> title(g_strdup_printf("JavaScript - %s", webkit_web_view_get_uri(webView)));
+    GUniquePtr<char> title(g_strdup_printf("JavaScript - %s", getPage(webView)->pageLoadState().url().utf8().data()));
     gtk_window_set_title(GTK_WINDOW(dialog), title.get());
     if (buttons != GTK_BUTTONS_NONE)
         gtk_dialog_set_default_response(GTK_DIALOG(dialog), defaultResponse);
@@ -641,12 +645,21 @@ static void webkitWebViewConstructed(GObject* object)
 
     WebKitWebView* webView = WEBKIT_WEB_VIEW(object);
     WebKitWebViewPrivate* priv = webView->priv;
-    if (priv->relatedView)
+    if (priv->relatedView) {
         priv->context = webkit_web_view_get_context(priv->relatedView);
-    else if (!priv->context)
+        priv->isEphemeral = webkit_web_view_is_ephemeral(priv->relatedView);
+    } else if (!priv->context)
         priv->context = webkit_web_context_get_default();
+    else if (!priv->isEphemeral)
+        priv->isEphemeral = webkit_web_context_is_ephemeral(priv->context.get());
+
     if (!priv->settings)
         priv->settings = adoptGRef(webkit_settings_new());
+
+    if (priv->isEphemeral && !webkit_web_context_is_ephemeral(priv->context.get())) {
+        priv->websiteDataManager = adoptGRef(webkit_website_data_manager_new_ephemeral());
+        webkitWebsiteDataManagerAddProcessPool(priv->websiteDataManager.get(), webkitWebContextGetProcessPool(priv->context.get()));
+    }
 
     webkitWebContextCreatePageForWebView(priv->context.get(), webView, priv->userContentManager.get(), priv->relatedView);
 
@@ -701,6 +714,9 @@ static void webkitWebViewSetProperty(GObject* object, guint propId, const GValue
     case PROP_ZOOM_LEVEL:
         webkit_web_view_set_zoom_level(webView, g_value_get_double(value));
         break;
+    case PROP_IS_EPHEMERAL:
+        webView->priv->isEphemeral = g_value_get_boolean(value);
+        break;
     case PROP_EDITABLE:
         webkit_web_view_set_editable(webView, g_value_get_boolean(value));
         break;
@@ -744,6 +760,9 @@ static void webkitWebViewGetProperty(GObject* object, guint propId, GValue* valu
     case PROP_IS_PLAYING_AUDIO:
         g_value_set_boolean(value, webkit_web_view_is_playing_audio(webView));
         break;
+    case PROP_IS_EPHEMERAL:
+        g_value_set_boolean(value, webkit_web_view_is_ephemeral(webView));
+        break;
     case PROP_EDITABLE:
         g_value_set_boolean(value, webkit_web_view_is_editable(webView));
         break;
@@ -762,9 +781,17 @@ static void webkitWebViewDispose(GObject* object)
     if (webView->priv->loadObserver) {
         getPage(webView)->pageLoadState().removeObserver(*webView->priv->loadObserver);
         webView->priv->loadObserver.reset();
+
+        // We notify the context here to ensure it's called only once. Ideally we should
+        // call this in finalize, not dispose, but finalize is used internally and we don't
+        // have access to the instance pointer from the private struct destructor.
+        webkitWebContextWebViewDestroyed(webView->priv->context.get(), webView);
     }
 
-    webkitWebContextWebViewDestroyed(webView->priv->context.get(), webView);
+    if (webView->priv->websiteDataManager) {
+        webkitWebsiteDataManagerRemoveProcessPool(webView->priv->websiteDataManager.get(), webkitWebContextGetProcessPool(webView->priv->context.get()));
+        webView->priv->websiteDataManager = nullptr;
+    }
 
     G_OBJECT_CLASS(webkit_web_view_parent_class)->dispose(object);
 }
@@ -974,6 +1001,29 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
             _("Whether the view is playing audio"),
             FALSE,
             WEBKIT_PARAM_READABLE));
+
+    /**
+     * WebKitWebView:is-ephemeral:
+     *
+     * Whether the #WebKitWebView is ephemeral. An ephemeral web view never writes
+     * website data to the client storage, no matter what #WebKitWebsiteDataManager
+     * its context is using. This is normally used to implement private browsing mode.
+     * This is a %G_PARAM_CONSTRUCT_ONLY property, so you have to create a ephemeral
+     * #WebKitWebView and it can't be changed. Note that all #WebKitWebView<!-- -->s
+     * created with an ephemeral #WebKitWebContext will be ephemeral automatically.
+     * See also webkit_web_context_new_ephemeral().
+     *
+     * Since: 2.16
+     */
+    g_object_class_install_property(
+        gObjectClass,
+        PROP_IS_EPHEMERAL,
+        g_param_spec_boolean(
+            "is-ephemeral",
+            "Is Ephemeral",
+            _("Whether the web view is ephemeral"),
+            FALSE,
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
 
     /**
      * WebKitWebView:editable:
@@ -1538,8 +1588,8 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      * @event: the #GdkEvent that triggered the context menu
      * @hit_test_result: a #WebKitHitTestResult
      *
-     * Emmited when a context menu is about to be displayed to give the application
-     * a chance to customize the proposed menu, prevent the menu from being displayed
+     * Emitted when a context menu is about to be displayed to give the application
+     * a chance to customize the proposed menu, prevent the menu from being displayed,
      * or build its own context menu.
      * <itemizedlist>
      * <listitem><para>
@@ -1563,6 +1613,22 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      * <listitem><para>
      *  If you just want the default menu to be shown always, simply don't connect to this
      *  signal because showing the proposed context menu is the default behaviour.
+     * </para></listitem>
+     * </itemizedlist>
+     *
+     * The @event is expected to be one of the following types:
+     * <itemizedlist>
+     * <listitem><para>
+     * a #GdkEventButton of type %GDK_BUTTON_PRESS when the context menu
+     * was triggered with mouse.
+     * </para></listitem>
+     * <listitem><para>
+     * a #GdkEventKey of type %GDK_KEY_PRESS if the keyboard was used to show
+     * the menu.
+     * </para></listitem>
+     * <listitem><para>
+     * a generic #GdkEvent of type %GDK_NOTHING when the #GtkWidget:popup-menu
+     * signal was used to show the context menu.
      * </para></listitem>
      * </itemizedlist>
      *
@@ -2021,7 +2087,9 @@ void webkitWebViewSubmitFormRequest(WebKitWebView* webView, WebKitFormSubmission
 
 void webkitWebViewHandleAuthenticationChallenge(WebKitWebView* webView, AuthenticationChallengeProxy* authenticationChallenge)
 {
-    gboolean privateBrowsingEnabled = webkit_settings_get_enable_private_browsing(webView->priv->settings.get());
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
+    gboolean privateBrowsingEnabled = webView->priv->isEphemeral || webkit_settings_get_enable_private_browsing(webView->priv->settings.get());
+    G_GNUC_END_IGNORE_DEPRECATIONS;
     webView->priv->authenticationRequest = adoptGRef(webkitAuthenticationRequestCreate(authenticationChallenge, privateBrowsingEnabled));
     gboolean returnValue;
     g_signal_emit(webView, signals[AUTHENTICATE], 0, webView->priv->authenticationRequest.get(), &returnValue);
@@ -2064,6 +2132,11 @@ void webkitWebViewRequestInstallMissingMediaPlugins(WebKitWebView* webView, Inst
 #endif
 }
 
+WebKitWebsiteDataManager* webkitWebViewGetWebsiteDataManager(WebKitWebView* webView)
+{
+    return webView->priv->websiteDataManager.get();
+}
+
 /**
  * webkit_web_view_new:
  *
@@ -2095,7 +2168,10 @@ GtkWidget* webkit_web_view_new_with_context(WebKitWebContext* context)
 {
     g_return_val_if_fail(WEBKIT_IS_WEB_CONTEXT(context), 0);
 
-    return GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", context, NULL));
+    return GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+        "is-ephemeral", webkit_web_context_is_ephemeral(context),
+        "web-context", context,
+        nullptr));
 }
 
 /**
@@ -2196,6 +2272,49 @@ WebKitUserContentManager* webkit_web_view_get_user_content_manager(WebKitWebView
     g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
 
     return webView->priv->userContentManager.get();
+}
+
+/**
+ * webkit_web_view_is_ephemeral:
+ * @web_view: a #WebKitWebView
+ *
+ * Get whether a #WebKitWebView is ephemeral. To create an ephemeral #WebKitWebView you need to
+ * use g_object_new() and pass is-ephemeral propery with %TRUE value. See
+ * #WebKitWebView:is-ephemeral for more details.
+ * If @web_view was created with a ephemeral #WebKitWebView:related-view or an
+ * ephemeral #WebKitWebView:web-context it will also be ephemeral.
+ *
+ * Returns: %TRUE if @web_view is ephemeral or %FALSE otherwise.
+ *
+ * Since: 2.16
+ */
+gboolean webkit_web_view_is_ephemeral(WebKitWebView* webView)
+{
+    g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), FALSE);
+
+    return webView->priv->isEphemeral;
+}
+
+/**
+ * webkit_web_view_get_website_data_manager:
+ * @web_view: a #WebKitWebView
+ *
+ * Get the #WebKitWebsiteDataManager associated to @web_view. If @web_view is not ephemeral,
+ * the returned #WebKitWebsiteDataManager will be the same as the #WebKitWebsiteDataManager
+ * of @web_view's #WebKitWebContext.
+ *
+ * Returns: (transfer none): a #WebKitWebsiteDataManager
+ *
+ * Since: 2.16
+ */
+WebKitWebsiteDataManager* webkit_web_view_get_website_data_manager(WebKitWebView* webView)
+{
+    g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
+
+    if (webView->priv->websiteDataManager)
+        return webView->priv->websiteDataManager.get();
+
+    return webkit_web_context_get_website_data_manager(webView->priv->context.get());
 }
 
 /**
@@ -2834,7 +2953,7 @@ gdouble webkit_web_view_get_zoom_level(WebKitWebView* webView)
  * @callback: (scope async): a #GAsyncReadyCallback to call when the request is satisfied
  * @user_data: (closure): the data to pass to callback function
  *
- * Asynchronously execute the given editing command.
+ * Asynchronously check if it is possible to execute the given editing command.
  *
  * When the operation is finished, @callback will be called. You can then call
  * webkit_web_view_can_execute_editing_command_finish() to get the result of the operation.
@@ -2971,7 +3090,7 @@ static void webkitWebViewRunJavaScriptCallback(API::SerializedScriptValue* wkSer
  * @user_data: (closure): the data to pass to callback function
  *
  * Asynchronously run @script in the context of the current page in @web_view. If
- * WebKitWebSettings:enable-javascript is FALSE, this method will do nothing.
+ * WebKitSettings:enable-javascript is FALSE, this method will do nothing.
  *
  * When the operation is finished, @callback will be called. You can then call
  * webkit_web_view_run_javascript_finish() to get the result of the operation.
@@ -3351,13 +3470,11 @@ gboolean webkit_web_view_save_to_file_finish(WebKitWebView* webView, GAsyncResul
  */
 WebKitDownload* webkit_web_view_download_uri(WebKitWebView* webView, const char* uri)
 {
-    g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), 0);
-    g_return_val_if_fail(uri, 0);
+    g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
+    g_return_val_if_fail(uri, nullptr);
 
-    WebKitDownload* download = webkitWebContextStartDownload(webView->priv->context.get(), uri, getPage(webView));
-    webkitDownloadSetWebView(download, webView);
-
-    return download;
+    GRefPtr<WebKitDownload> download = webkitWebContextStartDownload(webView->priv->context.get(), uri, getPage(webView));
+    return download.leakRef();
 }
 
 /**
@@ -3416,10 +3533,7 @@ void webKitWebViewDidReceiveSnapshot(WebKitWebView* webView, uint64_t callbackID
         return;
     }
 
-    if (RefPtr<ShareableBitmap> image = webImage->bitmap())
-        g_task_return_pointer(task.get(), image->createCairoSurface().leakRef(), reinterpret_cast<GDestroyNotify>(cairo_surface_destroy));
-    else
-        g_task_return_pointer(task.get(), 0, 0);
+    g_task_return_pointer(task.get(), webImage->bitmap().createCairoSurface().leakRef(), reinterpret_cast<GDestroyNotify>(cairo_surface_destroy));
 }
 
 static inline unsigned webKitSnapshotOptionsToSnapshotOptions(WebKitSnapshotOptions options)

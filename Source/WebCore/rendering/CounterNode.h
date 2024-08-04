@@ -19,8 +19,7 @@
  *
 */
 
-#ifndef CounterNode_h
-#define CounterNode_h
+#pragma once
 
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
@@ -65,10 +64,9 @@ public:
     CounterNode* nextInPreOrder(const CounterNode* stayWithin = nullptr) const;
     CounterNode* nextInPreOrderAfterChildren(const CounterNode* stayWithin = nullptr) const;
 
-    void insertAfter(CounterNode* newChild, CounterNode* beforeChild, const AtomicString& identifier);
-
+    void insertAfter(CounterNode& newChild, CounterNode* beforeChild, const AtomicString& identifier);
     // identifier must match the identifier of this counter.
-    void removeChild(CounterNode*);
+    void removeChild(CounterNode&);
 
 private:
     CounterNode(RenderElement&, bool isReset, int value);
@@ -94,8 +92,6 @@ private:
 } // namespace WebCore
 
 #if ENABLE(TREE_DEBUGGING)
-// Outside the WebCore namespace for ease of invocation from gdb.
+// Outside the WebCore namespace for ease of invocation from the debugger.
 void showCounterTree(const WebCore::CounterNode*);
 #endif
-
-#endif // CounterNode_h

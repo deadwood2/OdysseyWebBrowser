@@ -26,8 +26,10 @@
 #include "config.h"
 #include "JSImageData.h"
 
-#include "ImageData.h"
-#include "JSDOMBinding.h"
+#include "JSDOMConvertBufferSource.h"
+#include "JSDOMWrapperCache.h"
+#include <heap/HeapInlines.h>
+#include <runtime/IdentifierInlines.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/WTFString.h>
 
@@ -38,7 +40,7 @@ namespace WebCore {
 JSValue toJSNewlyCreated(ExecState* state, JSDOMGlobalObject* globalObject, Ref<ImageData>&& imageData)
 {
     auto* data = imageData->data();
-    auto* wrapper = CREATE_DOM_WRAPPER(globalObject, ImageData, WTFMove(imageData));
+    auto* wrapper = createWrapper<ImageData>(globalObject, WTFMove(imageData));
     Identifier dataName = Identifier::fromString(state, "data");
     wrapper->putDirect(state->vm(), dataName, toJS(state, globalObject, data), DontDelete | ReadOnly);
     // FIXME: Adopt reportExtraMemoryVisited, and switch to reportExtraMemoryAllocated.

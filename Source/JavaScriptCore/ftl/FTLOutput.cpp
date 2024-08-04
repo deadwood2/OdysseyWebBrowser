@@ -33,6 +33,7 @@
 #include "B3CCallValue.h"
 #include "B3Const32Value.h"
 #include "B3ConstPtrValue.h"
+#include "B3FenceValue.h"
 #include "B3MathExtras.h"
 #include "B3MemoryValue.h"
 #include "B3SlotBaseValue.h"
@@ -151,7 +152,7 @@ LValue Output::div(LValue left, LValue right)
 
 LValue Output::chillDiv(LValue left, LValue right)
 {
-    return m_block->appendNew<B3::Value>(m_proc, B3::ChillDiv, origin(), left, right);
+    return m_block->appendNew<B3::Value>(m_proc, chill(B3::Div), origin(), left, right);
 }
 
 LValue Output::mod(LValue left, LValue right)
@@ -161,7 +162,7 @@ LValue Output::mod(LValue left, LValue right)
 
 LValue Output::chillMod(LValue left, LValue right)
 {
-    return m_block->appendNew<B3::Value>(m_proc, B3::ChillMod, origin(), left, right);
+    return m_block->appendNew<B3::Value>(m_proc, chill(B3::Mod), origin(), left, right);
 }
 
 LValue Output::neg(LValue value)
@@ -299,6 +300,12 @@ LValue Output::doubleCos(LValue value)
     return callWithoutSideEffects(B3::Double, cosDouble, value);
 }
 
+LValue Output::doubleTan(LValue value)
+{
+    double (*tanDouble)(double) = tan;
+    return callWithoutSideEffects(B3::Double, tanDouble, value);
+}
+
 LValue Output::doublePow(LValue xOperand, LValue yOperand)
 {
     double (*powDouble)(double, double) = pow;
@@ -324,11 +331,6 @@ LValue Output::doubleLog(LValue value)
 {
     double (*logDouble)(double) = log;
     return callWithoutSideEffects(B3::Double, logDouble, value);
-}
-
-bool Output::hasSensibleDoubleToInt()
-{
-    return optimizeForX86();
 }
 
 LValue Output::doubleToInt(LValue value)
@@ -358,6 +360,11 @@ LValue Output::doubleToUInt(LValue value)
 LValue Output::signExt32To64(LValue value)
 {
     return m_block->appendNew<B3::Value>(m_proc, B3::SExt32, origin(), value);
+}
+
+LValue Output::signExt32ToPtr(LValue value)
+{
+    return signExt32To64(value);
 }
 
 LValue Output::zeroExt(LValue value, LType type)
@@ -437,6 +444,14 @@ void Output::store(LValue value, TypedPointer pointer)
 {
     LValue store = m_block->appendNew<MemoryValue>(m_proc, Store, origin(), value, pointer.value());
     m_heaps->decorateMemory(pointer.heap(), store);
+}
+
+FenceValue* Output::fence(const AbstractHeap* read, const AbstractHeap* write)
+{
+    FenceValue* result = m_block->appendNew<FenceValue>(m_proc, origin());
+    m_heaps->decorateFenceRead(read, result);
+    m_heaps->decorateFenceWrite(write, result);
+    return result;
 }
 
 void Output::store32As8(LValue value, TypedPointer pointer)
@@ -789,7 +804,7 @@ void Output::store(LValue value, TypedPointer pointer, StoreType type)
     RELEASE_ASSERT_NOT_REACHED();
 }
 
-TypedPointer Output::absolute(void* address)
+TypedPointer Output::absolute(const void* address)
 {
     return TypedPointer(m_heaps->absolute[address], constIntPtr(address));
 }

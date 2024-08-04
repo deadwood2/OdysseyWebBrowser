@@ -40,6 +40,7 @@
 #include "WebResourceLoaderMessages.h"
 #include <WebCore/BlobDataFileReference.h>
 #include <WebCore/CertificateInfo.h>
+#include <WebCore/DiagnosticLoggingKeys.h>
 #include <WebCore/HTTPHeaderNames.h>
 #include <WebCore/ProtectionSpace.h>
 #include <WebCore/SharedBuffer.h>
@@ -49,8 +50,8 @@
 
 using namespace WebCore;
 
-#define RELEASE_LOG_IF_ALLOWED(...) RELEASE_LOG_IF(isAlwaysOnLoggingAllowed(), __VA_ARGS__)
-#define RELEASE_LOG_ERROR_IF_ALLOWED(...) RELEASE_LOG_ERROR_IF(isAlwaysOnLoggingAllowed(), __VA_ARGS__)
+#define RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(isAlwaysOnLoggingAllowed(), Network, "%p - NetworkResourceLoader::" fmt, this, ##__VA_ARGS__)
+#define RELEASE_LOG_ERROR_IF_ALLOWED(fmt, ...) RELEASE_LOG_ERROR_IF(isAlwaysOnLoggingAllowed(), Network, "%p - NetworkResourceLoader::" fmt, this, ##__VA_ARGS__)
 
 namespace WebKit {
 
@@ -97,10 +98,13 @@ NetworkResourceLoader::NetworkResourceLoader(const NetworkResourceLoadParameters
         }
     }
 
+#if !USE(NETWORK_SESSION)
     if (originalRequest().url().protocolIsBlob()) {
         ASSERT(!m_parameters.resourceSandboxExtension);
         m_fileReferences.appendVector(NetworkBlobRegistry::singleton().filesInBlob(connection, originalRequest().url()));
     }
+#endif
+
 
     if (synchronousReply)
         m_synchronousLoadData = std::make_unique<SynchronousLoadData>(WTFMove(synchronousReply));
@@ -121,6 +125,8 @@ bool NetworkResourceLoader::canUseCache(const ResourceRequest& request) const
     if (sessionID().isEphemeral())
         return false;
     if (!request.url().protocolIsInHTTPFamily())
+        return false;
+    if (originalRequest().cachePolicy() == WebCore::DoNotUseAnyCache)
         return false;
 
     return true;
@@ -149,11 +155,14 @@ void NetworkResourceLoader::start()
 {
     ASSERT(RunLoop::isMain());
 
-    if (m_defersLoading)
+    if (m_defersLoading) {
+        RELEASE_LOG_IF_ALLOWED("start: Loading is deferred (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ", isMainResource = %d, isSynchronous = %d)", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier, isMainResource(), isSynchronous());
         return;
+    }
 
 #if ENABLE(NETWORK_CACHE)
     if (canUseCache(originalRequest())) {
+        RELEASE_LOG_IF_ALLOWED("start: Retrieving resource from cache (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ", isMainResource = %d, isSynchronous = %d)", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier, isMainResource(), isSynchronous());
         retrieveCacheEntry(originalRequest());
         return;
     }
@@ -168,7 +177,7 @@ void NetworkResourceLoader::retrieveCacheEntry(const ResourceRequest& request)
     ASSERT(canUseCache(request));
 
     RefPtr<NetworkResourceLoader> loader(this);
-    NetworkCache::singleton().retrieve(request, { m_parameters.webPageID, m_parameters.webFrameID }, [loader, request](auto entry) {
+    NetworkCache::singleton().retrieve(request, { m_parameters.webPageID, m_parameters.webFrameID }, [loader = WTFMove(loader), request](auto entry) {
         if (loader->hasOneRef()) {
             // The loader has been aborted and is only held alive by this lambda.
             return;
@@ -185,7 +194,7 @@ void NetworkResourceLoader::retrieveCacheEntry(const ResourceRequest& request)
             loader->startNetworkLoad(request);
             return;
         }
-        if (entry->needsValidation()) {
+        if (entry->needsValidation() || request.cachePolicy() == WebCore::RefreshAnyCacheData) {
             loader->validateCacheEntry(WTFMove(entry));
             return;
         }
@@ -196,6 +205,8 @@ void NetworkResourceLoader::retrieveCacheEntry(const ResourceRequest& request)
 
 void NetworkResourceLoader::startNetworkLoad(const ResourceRequest& request)
 {
+    RELEASE_LOG_IF_ALLOWED("startNetworkLoad: (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ", isMainResource = %d, isSynchronous = %d)", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier, isMainResource(), isSynchronous());
+
     consumeSandboxExtensions();
 
     if (isSynchronous() || m_parameters.maximumBufferingTime > 0ms)
@@ -206,16 +217,19 @@ void NetworkResourceLoader::startNetworkLoad(const ResourceRequest& request)
         m_bufferedDataForCache = SharedBuffer::create();
 #endif
 
-    RELEASE_LOG_IF_ALLOWED("Starting network resource load: loader = %p, pageID = %llu, frameID = %llu, isMainResource = %d, isSynchronous = %d", this, m_parameters.webPageID, m_parameters.webFrameID, isMainResource(), isSynchronous());
-
     NetworkLoadParameters parameters = m_parameters;
     parameters.defersLoading = m_defersLoading;
     parameters.request = request;
 
 #if USE(NETWORK_SESSION)
+    if (request.url().protocolIsBlob())
+        parameters.blobFileReferences = NetworkBlobRegistry::singleton().filesInBlob(m_connection, originalRequest().url());
+
     auto* networkSession = SessionTracker::networkSession(parameters.sessionID);
     if (!networkSession) {
         WTFLogAlways("Attempted to create a NetworkLoad with a session (id=%" PRIu64 ") that does not exist.", parameters.sessionID.sessionID());
+        RELEASE_LOG_ERROR_IF_ALLOWED("startNetworkLoad: Attempted to create a NetworkLoad with a session that does not exist (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ", sessionID=%" PRIu64 ")", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier, parameters.sessionID.sessionID());
+        NetworkProcess::singleton().logDiagnosticMessage(m_parameters.webPageID, WebCore::DiagnosticLoggingKeys::internalErrorKey(), WebCore::DiagnosticLoggingKeys::invalidSessionIDKey(), WebCore::ShouldSample::No);
         didFailLoading(internalError(request.url()));
         return;
     }
@@ -223,6 +237,11 @@ void NetworkResourceLoader::startNetworkLoad(const ResourceRequest& request)
 #else
     m_networkLoad = std::make_unique<NetworkLoad>(*this, WTFMove(parameters));
 #endif
+
+    if (m_defersLoading) {
+        RELEASE_LOG_IF_ALLOWED("startNetworkLoad: Created, but deferred (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ")",
+            m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier);
+    }
 }
 
 void NetworkResourceLoader::setDefersLoading(bool defers)
@@ -231,6 +250,11 @@ void NetworkResourceLoader::setDefersLoading(bool defers)
         return;
     m_defersLoading = defers;
 
+    if (defers)
+        RELEASE_LOG_IF_ALLOWED("setDefersLoading: Deferring resource load (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ")", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier);
+    else
+        RELEASE_LOG_IF_ALLOWED("setDefersLoading: Resuming deferred resource load (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ")", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier);
+
     if (m_networkLoad) {
         m_networkLoad->setDefersLoading(defers);
         return;
@@ -238,6 +262,8 @@ void NetworkResourceLoader::setDefersLoading(bool defers)
 
     if (!m_defersLoading)
         start();
+    else
+        RELEASE_LOG_IF_ALLOWED("setDefersLoading: defers = TRUE, but nothing to stop (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ")", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier);
 }
 
 void NetworkResourceLoader::cleanup()
@@ -254,27 +280,20 @@ void NetworkResourceLoader::cleanup()
     m_connection->didCleanupResourceLoader(*this);
 }
 
-void NetworkResourceLoader::didConvertToDownload()
+void NetworkResourceLoader::convertToDownload(DownloadID downloadID, const ResourceRequest& request, const ResourceResponse& response)
 {
-    ASSERT(!m_didConvertToDownload);
     ASSERT(m_networkLoad);
-    m_didConvertToDownload = true;
+    NetworkProcess::singleton().downloadManager().convertNetworkLoadToDownload(downloadID, std::exchange(m_networkLoad, nullptr), WTFMove(m_fileReferences), request, response);
 }
-    
-#if USE(NETWORK_SESSION)
-void NetworkResourceLoader::didBecomeDownload()
-{
-    ASSERT(m_didConvertToDownload);
-    ASSERT(m_networkLoad);
-    m_networkLoad = nullptr;
-}
-#endif
 
 void NetworkResourceLoader::abort()
 {
     ASSERT(RunLoop::isMain());
 
-    if (m_networkLoad && !m_didConvertToDownload) {
+    RELEASE_LOG_IF_ALLOWED("abort: Canceling resource load (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ")",
+        m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier);
+
+    if (m_networkLoad) {
 #if ENABLE(NETWORK_CACHE)
         if (canUseCache(m_networkLoad->currentRequest())) {
             // We might already have used data from this incomplete load. Ensure older versions don't remain in the cache after cancel.
@@ -290,7 +309,7 @@ void NetworkResourceLoader::abort()
 
 auto NetworkResourceLoader::didReceiveResponse(ResourceResponse&& receivedResponse) -> ShouldContinueDidReceiveResponse
 {
-    RELEASE_LOG_IF_ALLOWED("Received network resource response: loader = %p, pageID = %llu, frameID = %llu, isMainResource = %d, isSynchronous = %d, httpStatusCode = %d", this, m_parameters.webPageID, m_parameters.webFrameID, isMainResource(), isSynchronous(), receivedResponse.httpStatusCode());
+    RELEASE_LOG_IF_ALLOWED("didReceiveResponse: (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ", httpStatusCode = %d, length = %" PRId64 ")", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier, receivedResponse.httpStatusCode(), receivedResponse.expectedContentLength());
 
     m_response = WTFMove(receivedResponse);
 
@@ -320,10 +339,8 @@ auto NetworkResourceLoader::didReceiveResponse(ResourceResponse&& receivedRespon
     if (shouldSendDidReceiveResponse) {
         if (isSynchronous())
             m_synchronousLoadData->response = m_response;
-        else {
-            RELEASE_LOG_IF_ALLOWED("Sending didReceiveResponse message to the WebContent process: loader = %p, pageID = %llu, frameID = %llu, isMainResource = %d, isSynchronous = %d", this, static_cast<unsigned long long>(m_parameters.webPageID), static_cast<unsigned long long>(m_parameters.webFrameID), isMainResource(), isSynchronous());
+        else
             send(Messages::WebResourceLoader::DidReceiveResponse(m_response, shouldWaitContinueDidReceiveResponse));
-        }
     }
 
     // For main resources, the web process is responsible for sending back a NetworkResourceLoader::ContinueDidReceiveResponse message.
@@ -333,16 +350,21 @@ auto NetworkResourceLoader::didReceiveResponse(ResourceResponse&& receivedRespon
 #endif
 
     if (shouldContinueDidReceiveResponse) {
-        RELEASE_LOG_IF_ALLOWED("Should wait for message from WebContent process before continuing resource load: loader = %p, pageID = %llu, frameID = %llu, isMainResource = %d, isSynchronous = %d", this, static_cast<unsigned long long>(m_parameters.webPageID), static_cast<unsigned long long>(m_parameters.webFrameID), isMainResource(), isSynchronous());
+        RELEASE_LOG_IF_ALLOWED("didReceiveResponse: Should not wait for message from WebContent process before continuing resource load (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ")", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier);
         return ShouldContinueDidReceiveResponse::Yes;
     }
 
-    RELEASE_LOG_IF_ALLOWED("Should not wait for message from WebContent process before continuing resource load: loader = %p, pageID = %llu, frameID = %llu, isMainResource = %d, isSynchronous = %d", this, static_cast<unsigned long long>(m_parameters.webPageID), static_cast<unsigned long long>(m_parameters.webFrameID), isMainResource(), isSynchronous());
+    RELEASE_LOG_IF_ALLOWED("didReceiveResponse: Should wait for message from WebContent process before continuing resource load (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ")", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier);
     return ShouldContinueDidReceiveResponse::No;
 }
 
 void NetworkResourceLoader::didReceiveBuffer(Ref<SharedBuffer>&& buffer, int reportedEncodedDataLength)
 {
+    if (!m_hasReceivedData) {
+        RELEASE_LOG_IF_ALLOWED("didReceiveBuffer: Started receiving data (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ")", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier);
+        m_hasReceivedData = true;
+    }
+
 #if ENABLE(NETWORK_CACHE)
     ASSERT(!m_cacheEntryForValidation);
 
@@ -370,7 +392,7 @@ void NetworkResourceLoader::didReceiveBuffer(Ref<SharedBuffer>&& buffer, int rep
 
 void NetworkResourceLoader::didFinishLoading(double finishTime)
 {
-    RELEASE_LOG_IF_ALLOWED("Finished loading network resource: loader = %p, pageID = %llu, frameID = %llu, isMainResource = %d, isSynchronous = %d", this, static_cast<unsigned long long>(m_parameters.webPageID), static_cast<unsigned long long>(m_parameters.webFrameID), isMainResource(), isSynchronous());
+    RELEASE_LOG_IF_ALLOWED("didFinishLoading: (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ")", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier);
 
 #if ENABLE(NETWORK_CACHE)
     if (m_cacheEntryForValidation) {
@@ -401,7 +423,7 @@ void NetworkResourceLoader::didFinishLoading(double finishTime)
 
 void NetworkResourceLoader::didFailLoading(const ResourceError& error)
 {
-    RELEASE_LOG_IF_ALLOWED("Failed loading network resource: loader = %p, pageID = %llu, frameID = %llu, isMainResource = %d, isSynchronous = %d, isTimeout = %d, isCancellation = %d, errCode = %d", this, m_parameters.webPageID, m_parameters.webFrameID, isMainResource(), isSynchronous(), error.isTimeout(), error.isCancellation(), error.errorCode());
+    RELEASE_LOG_IF_ALLOWED("didFailLoading: (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ", isTimeout = %d, isCancellation = %d, errCode = %d)", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier, error.isTimeout(), error.isCancellation(), error.errorCode());
 
     ASSERT(!error.isNull());
 
@@ -447,10 +469,15 @@ void NetworkResourceLoader::willSendRedirectedRequest(ResourceRequest&& request,
 
 void NetworkResourceLoader::continueWillSendRequest(ResourceRequest&& newRequest)
 {
-    RELEASE_LOG_IF_ALLOWED("Following redirect of network resource: loader = %p, pageID = %llu, frameID = %llu, isMainResource = %d, isSynchronous = %d", this, static_cast<unsigned long long>(m_parameters.webPageID), static_cast<unsigned long long>(m_parameters.webFrameID), isMainResource(), isSynchronous());
+    RELEASE_LOG_IF_ALLOWED("continueWillSendRequest: (pageID = %" PRIu64 ", frameID = %" PRIu64 ", resourceID = %" PRIu64 ")", m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier);
+
+    // If there is a match in the network cache, we need to reuse the original cache policy.
+    newRequest.setCachePolicy(originalRequest().cachePolicy());
 
 #if ENABLE(NETWORK_CACHE)
     if (m_isWaitingContinueWillSendRequestForCachedRedirect) {
+        m_isWaitingContinueWillSendRequestForCachedRedirect = false;
+
         LOG(NetworkCache, "(NetworkProcess) Retrieving cached redirect");
 
         if (canUseCachedRedirect(newRequest))
@@ -458,7 +485,6 @@ void NetworkResourceLoader::continueWillSendRequest(ResourceRequest&& newRequest
         else
             startNetworkLoad(newRequest);
 
-        m_isWaitingContinueWillSendRequestForCachedRedirect = false;
         return;
     }
 #endif
@@ -538,23 +564,55 @@ void NetworkResourceLoader::didRetrieveCacheEntry(std::unique_ptr<NetworkCache::
     if (isSynchronous()) {
         m_synchronousLoadData->response = entry->response();
         sendReplyToSynchronousRequest(*m_synchronousLoadData, entry->buffer());
-    } else {
-        bool needsContinueDidReceiveResponseMessage = isMainResource();
-        send(Messages::WebResourceLoader::DidReceiveResponse(entry->response(), needsContinueDidReceiveResponseMessage));
-
-#if ENABLE(SHAREABLE_RESOURCE)
-        if (!entry->shareableResourceHandle().isNull())
-            send(Messages::WebResourceLoader::DidReceiveResource(entry->shareableResourceHandle(), currentTime()));
-        else {
-#endif
-            sendBuffer(*entry->buffer(), entry->buffer()->size());
-            send(Messages::WebResourceLoader::DidFinishResourceLoad(currentTime()));
-#if ENABLE(SHAREABLE_RESOURCE)
-        }
-#endif
+        cleanup();
+        return;
     }
 
+    bool needsContinueDidReceiveResponseMessage = isMainResource();
+    send(Messages::WebResourceLoader::DidReceiveResponse(entry->response(), needsContinueDidReceiveResponseMessage));
+
+    if (entry->sourceStorageRecord().bodyHash && !m_parameters.derivedCachedDataTypesToRetrieve.isEmpty()) {
+        auto bodyHash = *entry->sourceStorageRecord().bodyHash;
+        auto* entryPtr = entry.release();
+        auto retrieveCount = m_parameters.derivedCachedDataTypesToRetrieve.size();
+
+        for (auto& type : m_parameters.derivedCachedDataTypesToRetrieve) {
+            NetworkCache::DataKey key { originalRequest().cachePartition(), type, bodyHash };
+            NetworkCache::singleton().retrieveData(key, [loader = makeRef(*this), entryPtr, type, retrieveCount] (const uint8_t* data, size_t size) mutable {
+                loader->m_retrievedDerivedDataCount++;
+                bool retrievedAll = loader->m_retrievedDerivedDataCount == retrieveCount;
+                std::unique_ptr<NetworkCache::Entry> entry(retrievedAll ? entryPtr : nullptr);
+                if (loader->hasOneRef())
+                    return;
+                if (data) {
+                    IPC::DataReference dataReference(data, size);
+                    loader->send(Messages::WebResourceLoader::DidRetrieveDerivedData(type, dataReference));
+                }
+                if (retrievedAll) {
+                    loader->sendResultForCacheEntry(WTFMove(entry));
+                    loader->cleanup();
+                }
+            });
+        }
+        return;
+    }
+
+    sendResultForCacheEntry(WTFMove(entry));
+
     cleanup();
+}
+
+void NetworkResourceLoader::sendResultForCacheEntry(std::unique_ptr<NetworkCache::Entry> entry)
+{
+#if ENABLE(SHAREABLE_RESOURCE)
+    if (!entry->shareableResourceHandle().isNull()) {
+        send(Messages::WebResourceLoader::DidReceiveResource(entry->shareableResourceHandle(), currentTime()));
+        return;
+    }
+#endif
+
+    sendBuffer(*entry->buffer(), entry->buffer()->size());
+    send(Messages::WebResourceLoader::DidFinishResourceLoad(currentTime()));
 }
 
 void NetworkResourceLoader::validateCacheEntry(std::unique_ptr<NetworkCache::Entry> entry)
@@ -581,6 +639,8 @@ void NetworkResourceLoader::validateCacheEntry(std::unique_ptr<NetworkCache::Ent
 void NetworkResourceLoader::dispatchWillSendRequestForCacheEntry(std::unique_ptr<NetworkCache::Entry> entry)
 {
     ASSERT(entry->redirectRequest());
+    ASSERT(!m_isWaitingContinueWillSendRequestForCachedRedirect);
+
     LOG(NetworkCache, "(NetworkProcess) Executing cached redirect");
 
     ++m_redirectCount;
@@ -626,16 +686,12 @@ void NetworkResourceLoader::invalidateSandboxExtensions()
     m_fileReferences.clear();
 }
 
+#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
 void NetworkResourceLoader::canAuthenticateAgainstProtectionSpaceAsync(const ProtectionSpace& protectionSpace)
 {
-#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
     NetworkProcess::singleton().canAuthenticateAgainstProtectionSpace(*this, protectionSpace);
-#else
-    UNUSED_PARAM(protectionSpace);
-#endif
 }
 
-#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
 void NetworkResourceLoader::continueCanAuthenticateAgainstProtectionSpace(bool result)
 {
     if (m_networkLoad)

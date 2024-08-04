@@ -26,9 +26,6 @@
 #include "XErrorTrapper.h"
 #include <GL/glx.h>
 #include <cairo.h>
-#include <cstdlib>
-#include <wtf/HashSet.h>
-#include <wtf/NeverDestroyed.h>
 
 #if ENABLE(ACCELERATED_2D_CANVAS)
 #include <cairo-gl.h>

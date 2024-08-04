@@ -26,7 +26,6 @@
 #include "config.h"
 #include "ConstructData.h"
 
-#include "Executable.h"
 #include "Interpreter.h"
 #include "JSCInlines.h"
 #include "JSFunction.h"
@@ -45,6 +44,7 @@ JSObject* construct(ExecState* exec, JSValue constructorObject, const ArgList& a
     if (constructType == ConstructType::None)
         return throwTypeError(exec, scope, errorMessage);
 
+    scope.release();
     return construct(exec, constructorObject, constructType, constructData, args, constructorObject);
 }
 

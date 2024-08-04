@@ -34,7 +34,7 @@
 #import "TimeRanges.h"
 #import "WebPlaybackControlsManager.h"
 #import "WebPlaybackSessionModel.h"
-#import <AVFoundation/AVFoundation.h>
+#import <AVFoundation/AVTime.h>
 
 #import "CoreMediaSoftLink.h"
 
@@ -45,25 +45,26 @@ using namespace WebCore;
 
 namespace WebCore {
 
+Ref<WebPlaybackSessionInterfaceMac> WebPlaybackSessionInterfaceMac::create(WebPlaybackSessionModel& model)
+{
+    auto interface = adoptRef(*new WebPlaybackSessionInterfaceMac(model));
+    model.addClient(interface);
+    return interface;
+}
+
+WebPlaybackSessionInterfaceMac::WebPlaybackSessionInterfaceMac(WebPlaybackSessionModel& model)
+    : m_playbackSessionModel(&model)
+{
+}
+
 WebPlaybackSessionInterfaceMac::~WebPlaybackSessionInterfaceMac()
 {
+    invalidate();
 }
 
-void WebPlaybackSessionInterfaceMac::setWebPlaybackSessionModel(WebPlaybackSessionModel* model)
+void WebPlaybackSessionInterfaceMac::durationChanged(double duration)
 {
-    m_playbackSessionModel = model;
-}
-
-void WebPlaybackSessionInterfaceMac::setClient(WebPlaybackSessionInterfaceMacClient* client)
-{
-    m_client = client;
-
-    if (m_client && m_playbackSessionModel)
-        m_client->rateChanged(m_playbackSessionModel->isPlaying(), m_playbackSessionModel->playbackRate());
-}
-
-void WebPlaybackSessionInterfaceMac::setDuration(double duration)
-{
+#if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
     WebPlaybackControlsManager* controlsManager = playBackControlsManager();
 
     controlsManager.contentDuration = duration;
@@ -71,29 +72,49 @@ void WebPlaybackSessionInterfaceMac::setDuration(double duration)
     // FIXME: We take this as an indication that playback is ready, but that is not necessarily true.
     controlsManager.hasEnabledAudio = YES;
     controlsManager.hasEnabledVideo = YES;
+#else
+    UNUSED_PARAM(duration);
+#endif
 }
 
-void WebPlaybackSessionInterfaceMac::setCurrentTime(double currentTime, double anchorTime)
+void WebPlaybackSessionInterfaceMac::currentTimeChanged(double currentTime, double anchorTime)
 {
+#if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
     WebPlaybackControlsManager* controlsManager = playBackControlsManager();
-
-    NSTimeInterval anchorTimeStamp = ![controlsManager rate] ? NAN : anchorTime;
-    AVValueTiming *timing = [getAVValueTimingClass() valueTimingWithAnchorValue:currentTime
-        anchorTimeStamp:anchorTimeStamp rate:0];
-
-    [controlsManager setTiming:timing];
+    updatePlaybackControlsManagerTiming(currentTime, anchorTime, controlsManager.rate, controlsManager.playing);
+#else
+    UNUSED_PARAM(currentTime);
+    UNUSED_PARAM(anchorTime);
+#endif
 }
 
-void WebPlaybackSessionInterfaceMac::setRate(bool isPlaying, float playbackRate)
+void WebPlaybackSessionInterfaceMac::rateChanged(bool isPlaying, float playbackRate)
 {
+#if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
     WebPlaybackControlsManager* controlsManager = playBackControlsManager();
     [controlsManager setRate:isPlaying ? playbackRate : 0.];
     [controlsManager setPlaying:isPlaying];
-
-    if (m_client)
-        m_client->rateChanged(isPlaying, playbackRate);
+    updatePlaybackControlsManagerTiming(m_playbackSessionModel ? m_playbackSessionModel->currentTime() : 0, [[NSProcessInfo processInfo] systemUptime], playbackRate, isPlaying);
+#else
+    UNUSED_PARAM(isPlaying);
+    UNUSED_PARAM(playbackRate);
+#endif
 }
 
+void WebPlaybackSessionInterfaceMac::beginScrubbing()
+{
+#if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
+    updatePlaybackControlsManagerTiming(m_playbackSessionModel ? m_playbackSessionModel->currentTime() : 0, [[NSProcessInfo processInfo] systemUptime], 0, false);
+#endif
+    webPlaybackSessionModel()->beginScrubbing();
+}
+
+void WebPlaybackSessionInterfaceMac::endScrubbing()
+{
+    webPlaybackSessionModel()->endScrubbing();
+}
+
+#if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
 static RetainPtr<NSMutableArray> timeRangesToArray(const TimeRanges& timeRanges)
 {
     RetainPtr<NSMutableArray> rangeArray = adoptNS([[NSMutableArray alloc] init]);
@@ -106,41 +127,58 @@ static RetainPtr<NSMutableArray> timeRangesToArray(const TimeRanges& timeRanges)
 
     return rangeArray;
 }
+#endif
 
-void WebPlaybackSessionInterfaceMac::setSeekableRanges(const TimeRanges& timeRanges)
+void WebPlaybackSessionInterfaceMac::seekableRangesChanged(const TimeRanges& timeRanges)
 {
-    WebPlaybackControlsManager* controlsManager = playBackControlsManager();
-    [controlsManager setSeekableTimeRanges:timeRangesToArray(timeRanges).get()];
+#if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
+    [playBackControlsManager() setSeekableTimeRanges:timeRangesToArray(timeRanges).get()];
+#else
+    UNUSED_PARAM(timeRanges);
+#endif
 }
 
-void WebPlaybackSessionInterfaceMac::setAudioMediaSelectionOptions(const Vector<WTF::String>& options, uint64_t selectedIndex)
+void WebPlaybackSessionInterfaceMac::audioMediaSelectionOptionsChanged(const Vector<WTF::String>& options, uint64_t selectedIndex)
 {
-    WebPlaybackControlsManager* controlsManager = playBackControlsManager();
-    [controlsManager setAudioMediaSelectionOptions:options withSelectedIndex:static_cast<NSUInteger>(selectedIndex)];
+#if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
+    [playBackControlsManager() setAudioMediaSelectionOptions:options withSelectedIndex:static_cast<NSUInteger>(selectedIndex)];
+#else
+    UNUSED_PARAM(options);
+    UNUSED_PARAM(selectedIndex);
+#endif
 }
 
-void WebPlaybackSessionInterfaceMac::setLegibleMediaSelectionOptions(const Vector<WTF::String>& options, uint64_t selectedIndex)
+void WebPlaybackSessionInterfaceMac::legibleMediaSelectionOptionsChanged(const Vector<WTF::String>& options, uint64_t selectedIndex)
 {
-    WebPlaybackControlsManager* controlsManager = playBackControlsManager();
-    [controlsManager setLegibleMediaSelectionOptions:options withSelectedIndex:static_cast<NSUInteger>(selectedIndex)];
+#if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
+    [playBackControlsManager() setLegibleMediaSelectionOptions:options withSelectedIndex:static_cast<NSUInteger>(selectedIndex)];
+#else
+    UNUSED_PARAM(options);
+    UNUSED_PARAM(selectedIndex);
+#endif
 }
 
 void WebPlaybackSessionInterfaceMac::invalidate()
 {
+    if (!m_playbackSessionModel)
+        return;
+
+    m_playbackSessionModel->removeClient(*this);
+    m_playbackSessionModel = nullptr;
 }
 
 void WebPlaybackSessionInterfaceMac::ensureControlsManager()
 {
+#if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
     playBackControlsManager();
+#endif
 }
+
+#if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
 
 WebPlaybackControlsManager *WebPlaybackSessionInterfaceMac::playBackControlsManager()
 {
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
     return m_playbackControlsManager;
-#else
-    return nil;
-#endif
 }
 
 void WebPlaybackSessionInterfaceMac::setPlayBackControlsManager(WebPlaybackControlsManager *manager)
@@ -163,6 +201,29 @@ void WebPlaybackSessionInterfaceMac::setPlayBackControlsManager(WebPlaybackContr
     [manager setAudioMediaSelectionOptions:m_playbackSessionModel->audioMediaSelectionOptions() withSelectedIndex:static_cast<NSUInteger>(m_playbackSessionModel->audioMediaSelectedIndex())];
     [manager setLegibleMediaSelectionOptions:m_playbackSessionModel->legibleMediaSelectionOptions() withSelectedIndex:static_cast<NSUInteger>(m_playbackSessionModel->legibleMediaSelectedIndex())];
 }
+
+void WebPlaybackSessionInterfaceMac::updatePlaybackControlsManagerTiming(double currentTime, double anchorTime, double playbackRate, bool isPlaying)
+{
+    WebPlaybackControlsManager *manager = playBackControlsManager();
+    if (!manager)
+        return;
+
+    WebPlaybackSessionModel *model = webPlaybackSessionModel();
+    if (!model)
+        return;
+
+    double effectiveAnchorTime = playbackRate ? anchorTime : NAN;
+    double effectivePlaybackRate = playbackRate;
+    if (!isPlaying
+        || model->isScrubbing()
+        || (manager.rate > 0 && model->playbackStartedTime() >= currentTime)
+        || (manager.rate < 0 && model->playbackStartedTime() <= currentTime))
+        effectivePlaybackRate = 0;
+
+    manager.timing = [getAVValueTimingClass() valueTimingWithAnchorValue:currentTime anchorTimeStamp:effectiveAnchorTime rate:effectivePlaybackRate];
+}
+
+#endif // ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
 
 }
 

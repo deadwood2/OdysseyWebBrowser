@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  * Copyright (C) 2009, 2010, 2011 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -22,8 +22,7 @@
  *
  */
 
-#ifndef HTMLTextFormControlElement_h
-#define HTMLTextFormControlElement_h
+#pragma once
 
 #include "HTMLFormControlElementWithState.h"
 
@@ -40,7 +39,7 @@ enum TextFieldEventBehavior { DispatchNoEvent, DispatchChangeEvent, DispatchInpu
 
 class HTMLTextFormControlElement : public HTMLFormControlElementWithState {
 public:
-    // Common flag for HTMLInputElement::tooLong() and HTMLTextAreaElement::tooLong().
+    // Common flag for HTMLInputElement::tooLong() / tooShort() and HTMLTextAreaElement::tooLong() / tooShort().
     enum NeedsToCheckDirtyFlag {CheckDirtyFlag, IgnoreDirtyFlag};
 
     virtual ~HTMLTextFormControlElement();
@@ -48,7 +47,10 @@ public:
     void didEditInnerTextValue();
     void forwardEvent(Event&);
 
-    WEBCORE_EXPORT void setMaxLengthForBindings(int, ExceptionCode&);
+    int maxLength() const { return m_maxLength; }
+    WEBCORE_EXPORT ExceptionOr<void> setMaxLength(int);
+    int minLength() const { return m_minLength; }
+    ExceptionOr<void> setMinLength(int);
 
     InsertionNotificationRequest insertedInto(ContainerNode&) override;
 
@@ -68,11 +70,11 @@ public:
     WEBCORE_EXPORT void setSelectionEnd(int);
     WEBCORE_EXPORT void setSelectionDirection(const String&);
     WEBCORE_EXPORT void select(const AXTextStateChangeIntent& = AXTextStateChangeIntent());
-    WEBCORE_EXPORT virtual void setRangeText(const String& replacement, ExceptionCode&);
-    WEBCORE_EXPORT virtual void setRangeText(const String& replacement, unsigned start, unsigned end, const String& selectionMode, ExceptionCode&);
+    WEBCORE_EXPORT virtual ExceptionOr<void> setRangeText(const String& replacement);
+    WEBCORE_EXPORT virtual ExceptionOr<void> setRangeText(const String& replacement, unsigned start, unsigned end, const String& selectionMode);
     void setSelectionRange(int start, int end, const String& direction, const AXTextStateChangeIntent& = AXTextStateChangeIntent());
     WEBCORE_EXPORT void setSelectionRange(int start, int end, TextFieldSelectionDirection = SelectionHasNoDirection, const AXTextStateChangeIntent& = AXTextStateChangeIntent());
-    PassRefPtr<Range> selection() const;
+    RefPtr<Range> selection() const;
     String selectedText() const;
 
     void dispatchFormControlChangeEvent() final;
@@ -124,6 +126,9 @@ protected:
 
     void adjustInnerTextStyle(const RenderStyle& parentStyle, RenderStyle& textBlockStyle) const;
 
+    void internalSetMaxLength(int maxLength) { m_maxLength = maxLength; }
+    void internalSetMinLength(int minLength) { m_minLength = minLength; }
+
 private:
     TextFieldSelectionDirection cachedSelectionDirection() const { return static_cast<TextFieldSelectionDirection>(m_cachedSelectionDirection); }
 
@@ -146,14 +151,17 @@ private:
 
     bool placeholderShouldBeVisible() const;
 
+    unsigned m_cachedSelectionDirection : 2;
+    unsigned m_lastChangeWasUserEdit : 1;
+    unsigned m_isPlaceholderVisible : 1;
+
     String m_textAsOfLastFormControlChangeEvent;
 
     int m_cachedSelectionStart;
     int m_cachedSelectionEnd;
 
-    unsigned char m_cachedSelectionDirection : 2;
-    unsigned char m_lastChangeWasUserEdit : 1;
-    unsigned char m_isPlaceholderVisible : 1;
+    int m_maxLength { -1 };
+    int m_minLength { -1 };
 };
 
 HTMLTextFormControlElement* enclosingTextFormControl(const Position&);
@@ -164,5 +172,3 @@ SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::HTMLTextFormControlElement)
     static bool isType(const WebCore::Element& element) { return element.isTextFormControl(); }
     static bool isType(const WebCore::Node& node) { return is<WebCore::Element>(node) && isType(downcast<WebCore::Element>(node)); }
 SPECIALIZE_TYPE_TRAITS_END()
-
-#endif

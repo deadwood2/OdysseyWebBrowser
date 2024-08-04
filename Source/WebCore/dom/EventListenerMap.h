@@ -36,6 +36,7 @@
 #include <atomic>
 #include <memory>
 #include <wtf/Forward.h>
+#include <wtf/Lock.h>
 #include <wtf/text/AtomicString.h>
 
 namespace WebCore {
@@ -55,6 +56,7 @@ public:
 
     void clear();
 
+    void replace(const AtomicString& eventType, EventListener& oldListener, Ref<EventListener>&& newListener, const RegisteredEventListener::Options&);
     bool add(const AtomicString& eventType, Ref<EventListener>&&, const RegisteredEventListener::Options&);
     bool remove(const AtomicString& eventType, EventListener&, bool useCapture);
     WEBCORE_EXPORT EventListenerVector* find(const AtomicString& eventType) const;
@@ -62,6 +64,8 @@ public:
 
     void removeFirstEventListenerCreatedFromMarkup(const AtomicString& eventType);
     void copyEventListenersNotCreatedFromMarkupToTarget(EventTarget*);
+    
+    Lock& lock() { return m_lock; }
 
 private:
     friend class EventListenerIterator;
@@ -73,12 +77,15 @@ private:
 #ifndef NDEBUG
     std::atomic<int> m_activeIteratorCount { 0 };
 #endif
+
+    Lock m_lock;
 };
 
 class EventListenerIterator {
     WTF_MAKE_NONCOPYABLE(EventListenerIterator);
 public:
     explicit EventListenerIterator(EventTarget*);
+    explicit EventListenerIterator(EventListenerMap*);
 #ifndef NDEBUG
     ~EventListenerIterator();
 #endif

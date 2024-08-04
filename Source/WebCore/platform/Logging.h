@@ -31,7 +31,7 @@
 
 namespace WebCore {
 
-#if !LOG_DISABLED
+#if !LOG_DISABLED || !RELEASE_LOG_DISABLED
 
 #ifndef LOG_CHANNEL_PREFIX
 #define LOG_CHANNEL_PREFIX Log
@@ -46,45 +46,51 @@ namespace WebCore {
     M(DOMTimers) \
     M(Editing) \
     M(Events) \
-    M(FTP) \
     M(FileAPI) \
     M(Frames) \
+    M(FTP) \
     M(Fullscreen) \
     M(Gamepad) \
     M(History) \
     M(IconDatabase) \
     M(Images) \
     M(IndexedDB) \
+    M(IndexedDBOperations) \
+    M(Layers) \
     M(Layout) \
     M(Loading) \
     M(Media) \
     M(MediaSource) \
     M(MediaSourceSamples) \
+    M(MediaCaptureSamples) \
     M(MemoryPressure) \
     M(Network) \
     M(NotYetImplemented) \
     M(PageCache) \
+    M(PerformanceLogging) \
     M(PlatformLeaks) \
     M(Plugins) \
     M(PopupBlocking) \
     M(Progress) \
     M(RemoteInspector) \
     M(ResourceLoading) \
-    M(SQLDatabase) \
-    M(SVG) \
-    M(Services) \
+    M(ResourceLoadObserver) \
     M(Scrolling) \
+    M(Services) \
     M(SpellingAndGrammar) \
+    M(SQLDatabase) \
     M(StorageAPI) \
+    M(SVG) \
     M(TextAutosizing) \
+    M(Tiling) \
     M(Threading) \
     M(URLParser) \
     M(WebAudio) \
     M(WebGL) \
     M(WebReplay) \
     M(WheelEventTestTriggers) \
-    M(ResourceLoadObserver) \
 
+#undef DECLARE_LOG_CHANNEL
 #define DECLARE_LOG_CHANNEL(name) \
     WEBCORE_EXPORT extern WTFLogChannel JOIN_LOG_CHANNEL_WITH_PREFIX(LOG_CHANNEL_PREFIX, name);
 
@@ -97,6 +103,6 @@ WEBCORE_EXPORT void setLogChannelToAccumulate(const String& name);
 void registerNotifyCallback(const String& notifyID, std::function<void()> callback);
 #endif
 
-#endif // !LOG_DISABLED
+#endif // !LOG_DISABLED || !RELEASE_LOG_DISABLED
 
 } // namespace WebCore

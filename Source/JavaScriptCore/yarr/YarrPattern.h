@@ -24,8 +24,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef YarrPattern_h
-#define YarrPattern_h
+#pragma once
 
 #include "RegExpKey.h"
 #include <wtf/CheckedArithmetic.h>
@@ -333,6 +332,7 @@ struct YarrPattern {
         InvalidIdentityEscape,
         TooManyDisjunctions,
         OffsetTooLarge,
+        InvalidRegularExpressionFlags,
         NumberOfErrorCodes
     };
     
@@ -476,5 +476,3 @@ private:
 };
 
 } } // namespace JSC::Yarr
-
-#endif // YarrPattern_h

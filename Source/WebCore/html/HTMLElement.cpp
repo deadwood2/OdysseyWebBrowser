@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  * Copyright (C) 2009 Torch Mobile Inc. All rights reserved. (http://www.torchmobile.com/)
  * Copyright (C) 2011 Motorola Mobility. All rights reserved.
  *
@@ -25,7 +25,7 @@
 #include "config.h"
 #include "HTMLElement.h"
 
-#include "CSSParser.h"
+#include "CSSMarkup.h"
 #include "CSSPropertyNames.h"
 #include "CSSValueKeywords.h"
 #include "CSSValuePool.h"
@@ -58,7 +58,7 @@
 #include "NodeTraversal.h"
 #include "RenderElement.h"
 #include "ScriptController.h"
-#include "Settings.h"
+#include "SimulatedClick.h"
 #include "StyleProperties.h"
 #include "SubframeLoader.h"
 #include "Text.h"
@@ -101,7 +101,7 @@ static inline CSSValueID unicodeBidiAttributeForDirAuto(HTMLElement& element)
 
 unsigned HTMLElement::parseBorderWidthAttribute(const AtomicString& value) const
 {
-    if (Optional<int> borderWidth = parseHTMLNonNegativeInteger(value))
+    if (std::optional<unsigned> borderWidth = parseHTMLNonNegativeInteger(value))
         return borderWidth.value();
 
     return hasTagName(tableTag) ? 1 : 0;
@@ -117,7 +117,7 @@ void HTMLElement::mapLanguageAttributeToLocale(const AtomicString& value, Mutabl
 {
     if (!value.isEmpty()) {
         // Have to quote so the locale id is treated as a string instead of as a CSS keyword.
-        addPropertyToPresentationAttributeStyle(style, CSSPropertyWebkitLocale, quoteCSSString(value));
+        addPropertyToPresentationAttributeStyle(style, CSSPropertyWebkitLocale, serializeString(value));
     } else {
         // The empty string means the language is explicitly unknown.
         addPropertyToPresentationAttributeStyle(style, CSSPropertyWebkitLocale, CSSValueAuto);
@@ -230,6 +230,7 @@ HTMLElement::EventHandlerNameMap HTMLElement::createEventHandlerNameMap()
         &onautocompleteerrorAttr,
         &onbeforecopyAttr,
         &onbeforecutAttr,
+        &onbeforeinputAttr,
         &onbeforeloadAttr,
         &onbeforepasteAttr,
         &onblurAttr,
@@ -293,6 +294,7 @@ HTMLElement::EventHandlerNameMap HTMLElement::createEventHandlerNameMap()
         &onsubmitAttr,
         &onsuspendAttr,
         &ontimeupdateAttr,
+        &ontoggleAttr,
         &ontouchcancelAttr,
         &ontouchendAttr,
         &ontouchforcechangeAttr,
@@ -422,7 +424,7 @@ void HTMLElement::parseAttribute(const QualifiedName& name, const AtomicString& 
     if (name == tabindexAttr) {
         if (value.isEmpty())
             clearTabIndexExplicitlyIfNeeded();
-        else if (Optional<int> tabIndex = parseHTMLInteger(value))
+        else if (std::optional<int> tabIndex = parseHTMLInteger(value))
             setTabIndexExplicitly(tabIndex.value());
         return;
     }
@@ -464,20 +466,6 @@ static Ref<DocumentFragment> textToFragment(Document& document, const String& te
     return fragment;
 }
 
-static inline bool shouldProhibitSetInnerOuterText(const HTMLElement& element)
-{
-    return element.hasTagName(colTag)
-        || element.hasTagName(colgroupTag)
-        || element.hasTagName(framesetTag)
-        || element.hasTagName(headTag)
-        || element.hasTagName(htmlTag)
-        || element.hasTagName(tableTag)
-        || element.hasTagName(tbodyTag)
-        || element.hasTagName(tfootTag)
-        || element.hasTagName(theadTag)
-        || element.hasTagName(trTag);
-}
-
 // Returns the conforming 'dir' value associated with the state the attribute is in (in its canonical case), if any,
 // or the empty string if the attribute is in a state that has no associated keyword value or if the attribute is
 // not in a defined state (e.g. the attribute is missing and there is no missing value default).
@@ -506,42 +494,32 @@ void HTMLElement::setDir(const AtomicString& value)
     setAttributeWithoutSynchronization(dirAttr, value);
 }
 
-void HTMLElement::setInnerText(const String& text, ExceptionCode& ec)
+ExceptionOr<void> HTMLElement::setInnerText(const String& text)
 {
-    if (ieForbidsInsertHTML()) {
-        ec = NO_MODIFICATION_ALLOWED_ERR;
-        return;
-    }
-    if (shouldProhibitSetInnerOuterText(*this)) {
-        ec = NO_MODIFICATION_ALLOWED_ERR;
-        return;
-    }
-
     // FIXME: This doesn't take whitespace collapsing into account at all.
 
     if (!text.contains('\n') && !text.contains('\r')) {
-        if (text.isEmpty()) {
-            removeChildren();
-            return;
-        }
-        replaceChildrenWithText(*this, text, ec);
-        return;
+        if (text.isEmpty())
+            replaceAllChildren(nullptr);
+        else
+            replaceAllChildren(document().createTextNode(text));
+        return { };
     }
 
     // FIXME: Do we need to be able to detect preserveNewline style even when there's no renderer?
     // FIXME: Can the renderer be out of date here? Do we need to call updateStyleIfNeeded?
     // For example, for the contents of textarea elements that are display:none?
-    auto r = renderer();
-    if ((r && r->style().preserveNewline()) || (inDocument() && isTextControlInnerTextElement())) {
+    auto* r = renderer();
+    if ((r && r->style().preserveNewline()) || (isConnected() && isTextControlInnerTextElement())) {
         if (!text.contains('\r')) {
-            replaceChildrenWithText(*this, text, ec);
-            return;
+            replaceAllChildren(document().createTextNode(text));
+            return { };
         }
         String textWithConsistentLineBreaks = text;
         textWithConsistentLineBreaks.replace("\r\n", "\n");
         textWithConsistentLineBreaks.replace('\r', '\n');
-        replaceChildrenWithText(*this, textWithConsistentLineBreaks, ec);
-        return;
+        replaceAllChildren(document().createTextNode(textWithConsistentLineBreaks));
+        return { };
     }
 
     // Add text nodes and <br> elements.
@@ -549,31 +527,19 @@ void HTMLElement::setInnerText(const String& text, ExceptionCode& ec)
     // FIXME: This should use replaceAllChildren() once it accepts DocumentFragments as input.
     // It's safe to dispatch events on the new fragment since author scripts have no access to it yet.
     NoEventDispatchAssertion::EventAllowedScope allowedScope(fragment.get());
-    return replaceChildrenWithFragment(*this, WTFMove(fragment), ec);
+    return replaceChildrenWithFragment(*this, WTFMove(fragment));
 }
 
-void HTMLElement::setOuterText(const String& text, ExceptionCode& ec)
+ExceptionOr<void> HTMLElement::setOuterText(const String& text)
 {
-    if (ieForbidsInsertHTML()) {
-        ec = NO_MODIFICATION_ALLOWED_ERR;
-        return;
-    }
-    if (shouldProhibitSetInnerOuterText(*this)) {
-        ec = NO_MODIFICATION_ALLOWED_ERR;
-        return;
-    }
-
     RefPtr<ContainerNode> parent = parentNode();
-    if (!parent) {
-        ec = NO_MODIFICATION_ALLOWED_ERR;
-        return;
-    }
+    if (!parent)
+        return Exception { NO_MODIFICATION_ALLOWED_ERR };
 
     RefPtr<Node> prev = previousSibling();
     RefPtr<Node> next = nextSibling();
     RefPtr<Node> newChild;
-    ec = 0;
-    
+
     // Convert text to fragment with <br> tags instead of linebreaks if needed.
     if (text.contains('\r') || text.contains('\n'))
         newChild = textToFragment(document(), text);
@@ -581,16 +547,24 @@ void HTMLElement::setOuterText(const String& text, ExceptionCode& ec)
         newChild = Text::create(document(), text);
 
     if (!parentNode())
-        ec = HIERARCHY_REQUEST_ERR;
-    if (ec)
-        return;
-    parent->replaceChild(*newChild, *this, ec);
+        return Exception { HIERARCHY_REQUEST_ERR };
+
+    auto replaceResult = parent->replaceChild(*newChild, *this);
+    if (replaceResult.hasException())
+        return replaceResult.releaseException();
 
     RefPtr<Node> node = next ? next->previousSibling() : nullptr;
-    if (!ec && is<Text>(node.get()))
-        mergeWithNextTextNode(downcast<Text>(*node), ec);
-    if (!ec && is<Text>(prev.get()))
-        mergeWithNextTextNode(downcast<Text>(*prev), ec);
+    if (is<Text>(node.get())) {
+        auto result = mergeWithNextTextNode(downcast<Text>(*node));
+        if (result.hasException())
+            return result.releaseException();
+    }
+    if (is<Text>(prev.get())) {
+        auto result = mergeWithNextTextNode(downcast<Text>(*prev));
+        if (result.hasException())
+            return result.releaseException();
+    }
+    return { };
 }
 
 void HTMLElement::applyAlignmentAttributeToStyle(const AtomicString& alignment, MutableStyleProperties& style)
@@ -653,7 +627,7 @@ String HTMLElement::contentEditable() const
     return ASCIILiteral("inherit");
 }
 
-void HTMLElement::setContentEditable(const String& enabled, ExceptionCode& ec)
+ExceptionOr<void> HTMLElement::setContentEditable(const String& enabled)
 {
     if (equalLettersIgnoringASCIICase(enabled, "true"))
         setAttributeWithoutSynchronization(contenteditableAttr, AtomicString("true", AtomicString::ConstructFromLiteral));
@@ -664,7 +638,8 @@ void HTMLElement::setContentEditable(const String& enabled, ExceptionCode& ec)
     else if (equalLettersIgnoringASCIICase(enabled, "inherit"))
         removeAttribute(contenteditableAttr);
     else
-        ec = SYNTAX_ERR;
+        return Exception { SYNTAX_ERR };
+    return { };
 }
 
 bool HTMLElement::draggable() const
@@ -693,7 +668,7 @@ void HTMLElement::setSpellcheck(bool enable)
 
 void HTMLElement::click()
 {
-    dispatchSimulatedClickForBindings(nullptr);
+    simulateClick(*this, nullptr, SendNoEvents, DoNotShowPressedLook, SimulatedClickSource::Bindings);
 }
 
 void HTMLElement::accessKeyAction(bool sendMouseEvents)
@@ -713,30 +688,15 @@ int HTMLElement::tabIndex() const
     return -1;
 }
 
-TranslateAttributeMode HTMLElement::translateAttributeMode() const
-{
-    const AtomicString& value = attributeWithoutSynchronization(translateAttr);
-
-    if (value.isNull())
-        return TranslateAttributeInherit;
-    if (equalLettersIgnoringASCIICase(value, "yes") || value.isEmpty())
-        return TranslateAttributeYes;
-    if (equalLettersIgnoringASCIICase(value, "no"))
-        return TranslateAttributeNo;
-
-    return TranslateAttributeInherit;
-}
-
 bool HTMLElement::translate() const
 {
     for (auto& element : lineageOfType<HTMLElement>(*this)) {
-        TranslateAttributeMode mode = element.translateAttributeMode();
-        if (mode == TranslateAttributeInherit)
-            continue;
-        ASSERT(mode == TranslateAttributeYes || mode == TranslateAttributeNo);
-        return mode == TranslateAttributeYes;
+        const AtomicString& value = element.attributeWithoutSynchronization(translateAttr);
+        if (equalLettersIgnoringASCIICase(value, "yes") || (value.isEmpty() && !value.isNull()))
+            return true;
+        if (equalLettersIgnoringASCIICase(value, "no"))
+            return false;
     }
-
     // Default on the root element is translate=yes.
     return true;
 }
@@ -765,7 +725,7 @@ RenderPtr<RenderElement> HTMLElement::createElementRenderer(RenderStyle&& style,
     return RenderElement::createFor(*this, WTFMove(style));
 }
 
-HTMLFormElement* HTMLElement::virtualForm() const
+HTMLFormElement* HTMLElement::form() const
 {
     return HTMLFormElement::findClosestFormAncestor(*this);
 }
@@ -890,7 +850,7 @@ void HTMLElement::adjustDirectionalityIfNeededAfterChildAttributeChanged(Element
         return;
     for (auto& elementToAdjust : elementLineage(this)) {
         if (elementAffectsDirectionality(elementToAdjust)) {
-            elementToAdjust.setNeedsStyleRecalc();
+            elementToAdjust.invalidateStyleForSubtree();
             return;
         }
     }
@@ -902,7 +862,7 @@ void HTMLElement::calculateAndAdjustDirectionality()
     TextDirection textDirection = directionality(&strongDirectionalityTextNode);
     setHasDirAutoFlagRecursively(this, true, strongDirectionalityTextNode);
     if (renderer() && renderer()->style().direction() != textDirection)
-        setNeedsStyleRecalc();
+        invalidateStyleForSubtree();
 }
 
 void HTMLElement::adjustDirectionalityIfNeededAfterChildrenChanged(Element* beforeChange, ChildChangeType changeType)
@@ -1030,18 +990,13 @@ void HTMLElement::addHTMLColorToStyle(MutableStyleProperties& style, CSSProperty
     if (equalLettersIgnoringASCIICase(colorString, "transparent"))
         return;
 
-    // If the string is a named CSS color or a 3/6-digit hex color, use that.
-    // We can't use the default Color constructor because it accepts
-    // 4/8-digit hex, which conflict with some legacy HTML content using attributes.
-
     Color color;
-
-    if ((colorString.length() == 4 || colorString.length() == 7) && colorString[0] == '#')
+    // We can't always use the default Color constructor because it accepts
+    // 4/8-digit hex, which conflict with some legacy HTML content using attributes.
+    if ((colorString.length() != 5 && colorString.length() != 9) || colorString[0] != '#')
         color = Color(colorString);
     if (!color.isValid())
-        color.setNamedColor(colorString);
-    if (!color.isValid())
-        color.setRGB(parseColorStringWithCrazyLegacyRules(colorString));
+        color = Color(parseColorStringWithCrazyLegacyRules(colorString));
 
     style.setProperty(propertyID, CSSValuePool::singleton().createColorValue(color.rgb()));
 }
@@ -1076,6 +1031,37 @@ bool HTMLElement::isActuallyDisabled() const
 {
     return canBeActuallyDisabled() && isDisabledFormControl();
 }
+
+#if ENABLE(IOS_AUTOCORRECT_AND_AUTOCAPITALIZE)
+
+const AtomicString& HTMLElement::autocapitalize() const
+{
+    return stringForAutocapitalizeType(autocapitalizeType());
+}
+
+AutocapitalizeType HTMLElement::autocapitalizeType() const
+{
+    return autocapitalizeTypeForAttributeValue(attributeWithoutSynchronization(HTMLNames::autocapitalizeAttr));
+}
+
+void HTMLElement::setAutocapitalize(const AtomicString& value)
+{
+    setAttributeWithoutSynchronization(autocapitalizeAttr, value);
+}
+
+bool HTMLElement::shouldAutocorrect() const
+{
+    auto autocorrectValue = attributeWithoutSynchronization(HTMLNames::autocorrectAttr);
+    // Unrecognized values fall back to "on".
+    return !equalLettersIgnoringASCIICase(autocorrectValue, "off");
+}
+
+void HTMLElement::setAutocorrect(bool autocorrect)
+{
+    setAttributeWithoutSynchronization(autocorrectAttr, autocorrect ? AtomicString("on", AtomicString::ConstructFromLiteral) : AtomicString("off", AtomicString::ConstructFromLiteral));
+}
+
+#endif
 
 } // namespace WebCore
 

@@ -37,7 +37,7 @@
 #import "RenderObject.h"
 
 #if PLATFORM(IOS)
-#import "WebCoreThread.h"
+#import "WebCoreThreadInternal.h"
 #endif
 
 namespace WebCore {
@@ -45,13 +45,17 @@ namespace WebCore {
 void Page::platformInitialize()
 {
 #if PLATFORM(IOS)
-#if USE(CFNETWORK)
+#if USE(CFURLCONNECTION)
     addSchedulePair(SchedulePair::create(WebThreadRunLoop(), kCFRunLoopCommonModes));
 #else
     addSchedulePair(SchedulePair::create(WebThreadNSRunLoop(), kCFRunLoopCommonModes));
-#endif // USE(CFNETWORK)
+#endif // USE(CFURLCONNECTION)
+#else
+#if USE(CFURLCONNECTION)
+    addSchedulePair(SchedulePair::create([[NSRunLoop currentRunLoop] getCFRunLoop], kCFRunLoopCommonModes));
 #else
     addSchedulePair(SchedulePair::create([NSRunLoop currentRunLoop], kCFRunLoopCommonModes));
+#endif
 #endif
 
 #if ENABLE(TREE_DEBUGGING)
@@ -69,7 +73,7 @@ void Page::addSchedulePair(Ref<SchedulePair>&& pair)
         m_scheduledRunLoopPairs = std::make_unique<SchedulePairHashSet>();
     m_scheduledRunLoopPairs->add(pair.ptr());
 
-#if !USE(CFNETWORK)
+#if !USE(CFURLCONNECTION)
     for (Frame* frame = &m_mainFrame.get(); frame; frame = frame->tree().traverseNext()) {
         if (DocumentLoader* documentLoader = frame->loader().documentLoader())
             documentLoader->schedule(pair);
@@ -89,7 +93,7 @@ void Page::removeSchedulePair(Ref<SchedulePair>&& pair)
 
     m_scheduledRunLoopPairs->remove(pair.ptr());
 
-#if !USE(CFNETWORK)
+#if !USE(CFURLCONNECTION)
     for (Frame* frame = &m_mainFrame.get(); frame; frame = frame->tree().traverseNext()) {
         if (DocumentLoader* documentLoader = frame->loader().documentLoader())
             documentLoader->unschedule(pair);

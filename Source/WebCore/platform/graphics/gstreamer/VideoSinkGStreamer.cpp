@@ -1,7 +1,8 @@
 /*
  *  Copyright (C) 2007 OpenedHand
  *  Copyright (C) 2007 Alp Toker <alp@atoker.com>
- *  Copyright (C) 2009, 2010, 2011, 2012 Igalia S.L
+ *  Copyright (C) 2009, 2010, 2011, 2012, 2015, 2016 Igalia S.L
+ *  Copyright (C) 2015, 2016 Metrological Group B.V.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -46,13 +47,8 @@ using namespace WebCore;
 #else
 #define GST_CAPS_FORMAT "{ xRGB, ARGB }"
 #endif
-#if GST_CHECK_VERSION(1, 1, 0)
-#define GST_FEATURED_CAPS GST_VIDEO_CAPS_MAKE_WITH_FEATURES(GST_CAPS_FEATURE_META_GST_VIDEO_GL_TEXTURE_UPLOAD_META, GST_CAPS_FORMAT) ";"
-#else
-#define GST_FEATURED_CAPS
-#endif
 
-#define WEBKIT_VIDEO_SINK_PAD_CAPS GST_FEATURED_CAPS GST_VIDEO_CAPS_MAKE(GST_CAPS_FORMAT)
+#define WEBKIT_VIDEO_SINK_PAD_CAPS GST_VIDEO_CAPS_MAKE_WITH_FEATURES(GST_CAPS_FEATURE_META_GST_VIDEO_GL_TEXTURE_UPLOAD_META, GST_CAPS_FORMAT) ";" GST_VIDEO_CAPS_MAKE(GST_CAPS_FORMAT)
 
 static GstStaticPadTemplate s_sinkTemplate = GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK, GST_PAD_ALWAYS, GST_STATIC_CAPS(WEBKIT_VIDEO_SINK_PAD_CAPS));
 
@@ -62,6 +58,7 @@ GST_DEBUG_CATEGORY_STATIC(webkitVideoSinkDebug);
 
 enum {
     REPAINT_REQUESTED,
+    REPAINT_CANCELLED,
     LAST_SIGNAL
 };
 
@@ -98,6 +95,12 @@ public:
         m_timer.stop();
         m_dataCondition.notifyOne();
 #endif
+    }
+
+    void drain()
+    {
+        LockHolder locker(m_sampleMutex);
+        m_sample = nullptr;
     }
 
     bool requestRender(WebKitVideoSink* sink, GstBuffer* buffer)
@@ -181,13 +184,18 @@ G_DEFINE_TYPE_WITH_CODE(WebKitVideoSink, webkit_video_sink, GST_TYPE_VIDEO_SINK,
 static void webkit_video_sink_init(WebKitVideoSink* sink)
 {
     sink->priv = G_TYPE_INSTANCE_GET_PRIVATE(sink, WEBKIT_TYPE_VIDEO_SINK, WebKitVideoSinkPrivate);
-    g_object_set(GST_BASE_SINK(sink), "enable-last-sample", FALSE, NULL);
+    g_object_set(GST_BASE_SINK(sink), "enable-last-sample", FALSE, nullptr);
     new (sink->priv) WebKitVideoSinkPrivate();
 }
 
 static void webkitVideoSinkRepaintRequested(WebKitVideoSink* sink, GstSample* sample)
 {
     g_signal_emit(sink, webkitVideoSinkSignals[REPAINT_REQUESTED], 0, sample);
+}
+
+static void webkitVideoSinkRepaintCancelled(WebKitVideoSink* sink)
+{
+    g_signal_emit(sink, webkitVideoSinkSignals[REPAINT_CANCELLED], 0);
 }
 
 static GRefPtr<GstSample> webkitVideoSinkRequestRender(WebKitVideoSink* sink, GstBuffer* buffer)
@@ -282,6 +290,7 @@ static gboolean webkitVideoSinkUnlock(GstBaseSink* baseSink)
     WebKitVideoSinkPrivate* priv = WEBKIT_VIDEO_SINK(baseSink)->priv;
 
     priv->scheduler.stop();
+    webkitVideoSinkRepaintCancelled(WEBKIT_VIDEO_SINK(baseSink));
 
     return GST_CALL_PARENT_WITH_DEFAULT(GST_BASE_SINK_CLASS, unlock, (baseSink), TRUE);
 }
@@ -300,6 +309,7 @@ static gboolean webkitVideoSinkStop(GstBaseSink* baseSink)
     WebKitVideoSinkPrivate* priv = WEBKIT_VIDEO_SINK(baseSink)->priv;
 
     priv->scheduler.stop();
+    webkitVideoSinkRepaintCancelled(WEBKIT_VIDEO_SINK(baseSink));
     if (priv->currentCaps) {
         gst_caps_unref(priv->currentCaps);
         priv->currentCaps = nullptr;
@@ -339,7 +349,7 @@ static gboolean webkitVideoSinkSetCaps(GstBaseSink* baseSink, GstCaps* caps)
 static gboolean webkitVideoSinkProposeAllocation(GstBaseSink* baseSink, GstQuery* query)
 {
     GstCaps* caps;
-    gst_query_parse_allocation(query, &caps, 0);
+    gst_query_parse_allocation(query, &caps, nullptr);
     if (!caps)
         return FALSE;
 
@@ -347,12 +357,25 @@ static gboolean webkitVideoSinkProposeAllocation(GstBaseSink* baseSink, GstQuery
     if (!gst_video_info_from_caps(&sink->priv->info, caps))
         return FALSE;
 
-    gst_query_add_allocation_meta(query, GST_VIDEO_META_API_TYPE, 0);
-    gst_query_add_allocation_meta(query, GST_VIDEO_CROP_META_API_TYPE, 0);
-#if GST_CHECK_VERSION(1, 1, 0)
-    gst_query_add_allocation_meta(query, GST_VIDEO_GL_TEXTURE_UPLOAD_META_API_TYPE, 0);
-#endif
+    gst_query_add_allocation_meta(query, GST_VIDEO_META_API_TYPE, nullptr);
+    gst_query_add_allocation_meta(query, GST_VIDEO_CROP_META_API_TYPE, nullptr);
+    gst_query_add_allocation_meta(query, GST_VIDEO_GL_TEXTURE_UPLOAD_META_API_TYPE, nullptr);
     return TRUE;
+}
+
+static gboolean webkitVideoSinkEvent(GstBaseSink* baseSink, GstEvent* event)
+{
+    switch (GST_EVENT_TYPE(event)) {
+    case GST_EVENT_FLUSH_START: {
+        WebKitVideoSink* sink = WEBKIT_VIDEO_SINK(baseSink);
+        sink->priv->scheduler.drain();
+
+        GST_DEBUG_OBJECT(sink, "Flush-start, releasing m_sample");
+        }
+        FALLTHROUGH;
+    default:
+        return GST_CALL_PARENT_WITH_DEFAULT(GST_BASE_SINK_CLASS, event, (baseSink, event), TRUE);
+    }
 }
 
 static void webkit_video_sink_class_init(WebKitVideoSinkClass* klass)
@@ -376,6 +399,7 @@ static void webkit_video_sink_class_init(WebKitVideoSinkClass* klass)
     baseSinkClass->start = webkitVideoSinkStart;
     baseSinkClass->set_caps = webkitVideoSinkSetCaps;
     baseSinkClass->propose_allocation = webkitVideoSinkProposeAllocation;
+    baseSinkClass->event = webkitVideoSinkEvent;
 
     webkitVideoSinkSignals[REPAINT_REQUESTED] = g_signal_new("repaint-requested",
             G_TYPE_FROM_CLASS(klass),
@@ -387,12 +411,22 @@ static void webkit_video_sink_class_init(WebKitVideoSinkClass* klass)
             G_TYPE_NONE, // Return type
             1, // Only one parameter
             GST_TYPE_SAMPLE);
+    webkitVideoSinkSignals[REPAINT_CANCELLED] = g_signal_new("repaint-cancelled",
+        G_TYPE_FROM_CLASS(klass),
+        G_SIGNAL_RUN_LAST,
+        0, // Class offset
+        nullptr, // Accumulator
+        nullptr, // Accumulator data
+        g_cclosure_marshal_generic,
+        G_TYPE_NONE, // Return type
+        0, // No parameters
+        G_TYPE_NONE);
 }
 
 
 GstElement* webkitVideoSinkNew()
 {
-    return GST_ELEMENT(g_object_new(WEBKIT_TYPE_VIDEO_SINK, 0));
+    return GST_ELEMENT(g_object_new(WEBKIT_TYPE_VIDEO_SINK, nullptr));
 }
 
 #endif // ENABLE(VIDEO) && USE(GSTREAMER)

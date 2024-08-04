@@ -35,14 +35,13 @@
     attribute long tabIndex;
 
     // FIXME: Using "undefined" as default parameter value is wrong.
-    CSSValue getPresentationAttribute(optional DOMString name = "undefined");
+    // This method is deprecated, and we'd like to remove it someday.
+    DeprecatedCSSOMValue getPresentationAttribute(optional DOMString name = "undefined");
 
-#if !(defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT)
     void focus();
     void blur();
 
     readonly attribute DOMStringMap dataset;
-#endif
 };
 
 SVGElement implements GlobalEventHandlers;

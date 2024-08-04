@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2007 Alp Toker <alp@atoker.com>
- * Copyright (C) 2007 Apple Inc.
+ * Copyright (C) 2007, 2016 Apple Inc.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,19 +21,20 @@
 #include "config.h"
 #include "PrintContext.h"
 
+#include "ElementTraversal.h"
 #include "GraphicsContext.h"
 #include "Frame.h"
 #include "FrameView.h"
 #include "RenderView.h"
 #include "StyleInheritedData.h"
 #include "StyleResolver.h"
+#include "StyleScope.h"
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 PrintContext::PrintContext(Frame* frame)
     : m_frame(frame)
-    , m_isPrinting(false)
 {
 }
 
@@ -185,10 +186,11 @@ void PrintContext::spoolPage(GraphicsContext& ctx, int pageNumber, float width)
     float scale = width / pageRect.width();
 
     ctx.save();
-    ctx.scale(FloatSize(scale, scale));
+    ctx.scale(scale);
     ctx.translate(-pageRect.x(), -pageRect.y());
     ctx.clip(pageRect);
     m_frame->view()->paintContents(ctx, pageRect);
+    outputLinkedDestinations(ctx, *m_frame->document(), pageRect);
     ctx.restore();
 }
 
@@ -199,6 +201,7 @@ void PrintContext::spoolRect(GraphicsContext& ctx, const IntRect& rect)
     ctx.translate(-rect.x(), -rect.y());
     ctx.clip(rect);
     m_frame->view()->paintContents(ctx, rect);
+    outputLinkedDestinations(ctx, *m_frame->document(), rect);
     ctx.restore();
 }
 
@@ -207,6 +210,7 @@ void PrintContext::end()
     ASSERT(m_isPrinting);
     m_isPrinting = false;
     m_frame->setPrinting(false, FloatSize(), FloatSize(), 0, AdjustViewSize);
+    m_linkedDestinations = nullptr;
 }
 
 static inline RenderBoxModelObject* enclosingBoxModelObject(RenderElement* renderer)
@@ -245,18 +249,55 @@ int PrintContext::pageNumberForElement(Element* element, const FloatSize& pageSi
     return -1;
 }
 
+void PrintContext::collectLinkedDestinations(Document& document)
+{
+    for (Element* child = document.documentElement(); child; child = ElementTraversal::next(*child)) {
+        String outAnchorName;
+        if (Element* element = child->findAnchorElementForLink(outAnchorName))
+            m_linkedDestinations->add(outAnchorName, *element);
+    }
+}
+
+void PrintContext::outputLinkedDestinations(GraphicsContext& graphicsContext, Document& document, const IntRect& pageRect)
+{
+    if (!graphicsContext.supportsInternalLinks())
+        return;
+
+    if (!m_linkedDestinations) {
+        m_linkedDestinations = std::make_unique<HashMap<String, Ref<Element>>>();
+        collectLinkedDestinations(document);
+    }
+
+    for (const auto& it : *m_linkedDestinations) {
+        RenderElement* renderer = it.value->renderer();
+        if (!renderer)
+            continue;
+
+        FloatPoint point = renderer->absoluteAnchorRect().minXMinYCorner();
+        point = point.expandedTo(FloatPoint());
+
+        if (!pageRect.contains(roundedIntPoint(point)))
+            continue;
+
+        graphicsContext.addDestinationAtPoint(it.key, point);
+    }
+}
+
 String PrintContext::pageProperty(Frame* frame, const char* propertyName, int pageNumber)
 {
-    Document* document = frame->document();
+    ASSERT(frame);
+    ASSERT(frame->document());
+
+    auto& document = *frame->document();
     PrintContext printContext(frame);
     printContext.begin(800); // Any width is OK here.
-    document->updateLayout();
-    std::unique_ptr<RenderStyle> style = document->ensureStyleResolver().styleForPage(pageNumber);
+    document.updateLayout();
+    auto style = document.styleScope().resolver().styleForPage(pageNumber);
 
     // Implement formatters for properties we care about.
     if (!strcmp(propertyName, "margin-left")) {
         if (style->marginLeft().isAuto())
-            return String("auto");
+            return ASCIILiteral { "auto" };
         return String::number(style->marginLeft().value());
     }
     if (!strcmp(propertyName, "line-height"))
@@ -266,9 +307,9 @@ String PrintContext::pageProperty(Frame* frame, const char* propertyName, int pa
     if (!strcmp(propertyName, "font-family"))
         return style->fontDescription().firstFamily();
     if (!strcmp(propertyName, "size"))
-        return String::number(style->pageSize().width().value()) + ' ' + String::number(style->pageSize().height().value());
+        return String::number(style->pageSize().width.value()) + ' ' + String::number(style->pageSize().height.value());
 
-    return String("pageProperty() unimplemented for: ") + propertyName;
+    return makeString("pageProperty() unimplemented for: ", propertyName);
 }
 
 bool PrintContext::isPageBoxVisible(Frame* frame, int pageNumber)

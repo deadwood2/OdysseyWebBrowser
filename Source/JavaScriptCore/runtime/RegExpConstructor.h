@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2003, 2007, 2008 Apple Inc. All Rights Reserved.
+ *  Copyright (C) 2003, 2007-2008, 2016 Apple Inc. All Rights Reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -18,8 +18,7 @@
  *
  */
 
-#ifndef RegExpConstructor_h
-#define RegExpConstructor_h
+#pragma once
 
 #include "InternalFunction.h"
 #include "RegExp.h"
@@ -89,7 +88,7 @@ JSObject* constructRegExp(ExecState*, JSGlobalObject*, const ArgList&, JSObject*
 
 inline RegExpConstructor* asRegExpConstructor(JSValue value)
 {
-    ASSERT(asObject(value)->inherits(RegExpConstructor::info()));
+    ASSERT(asObject(value)->inherits(*value.getObject()->vm(), RegExpConstructor::info()));
     return static_cast<RegExpConstructor*>(asObject(value));
 }
 
@@ -133,21 +132,19 @@ ALWAYS_INLINE void RegExpConstructor::recordMatch(VM& vm, RegExp* regExp, JSStri
 
 ALWAYS_INLINE bool isRegExp(VM& vm, ExecState* exec, JSValue value)
 {
+    auto scope = DECLARE_THROW_SCOPE(vm);
     if (!value.isObject())
         return false;
 
     JSObject* object = asObject(value);
     JSValue matchValue = object->get(exec, vm.propertyNames->matchSymbol);
-    if (vm.exception())
-        return false;
+    RETURN_IF_EXCEPTION(scope, false);
     if (!matchValue.isUndefined())
         return matchValue.toBoolean(exec);
 
-    return object->inherits(RegExpObject::info());
+    return object->inherits(vm, RegExpObject::info());
 }
 
 EncodedJSValue JSC_HOST_CALL esSpecRegExpCreate(ExecState*);
 
 } // namespace JSC
-
-#endif // RegExpConstructor_h

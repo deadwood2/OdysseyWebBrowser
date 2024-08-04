@@ -23,43 +23,31 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef IncrementalSweeper_h
-#define IncrementalSweeper_h
+#pragma once
 
 #include "HeapTimer.h"
-#include "MarkedBlock.h"
 #include <wtf/Vector.h>
 
 namespace JSC {
 
 class Heap;
-class MarkedBlock;
+class MarkedAllocator;
 
 class IncrementalSweeper : public HeapTimer {
-    WTF_MAKE_FAST_ALLOCATED;
 public:
-#if USE(CF)
-    JS_EXPORT_PRIVATE IncrementalSweeper(Heap*, CFRunLoopRef);
-#else
-    explicit IncrementalSweeper(Heap*);
-#endif
+    JS_EXPORT_PRIVATE explicit IncrementalSweeper(Heap*);
 
-    void startSweeping();
+    JS_EXPORT_PRIVATE void startSweeping();
 
     JS_EXPORT_PRIVATE void doWork() override;
     bool sweepNextBlock();
-    void willFinishSweeping();
+    JS_EXPORT_PRIVATE void stopSweeping();
 
-#if USE(CF) || PLATFORM(EFL) || USE(GLIB)
 private:
     void doSweep(double startTime);
     void scheduleTimer();
-    void cancelTimer();
     
-    Vector<MarkedBlock::Handle*>& m_blocksToSweep;
-#endif
+    MarkedAllocator* m_currentAllocator;
 };
 
 } // namespace JSC
-
-#endif

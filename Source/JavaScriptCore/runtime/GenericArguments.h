@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef GenericArguments_h
-#define GenericArguments_h
+#pragma once
 
 #include "JSObject.h"
 
@@ -44,6 +43,7 @@ protected:
     {
     }
 
+    static void visitChildren(JSCell*, SlotVisitor&);
     static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
     static bool getOwnPropertySlotByIndex(JSObject*, ExecState*, unsigned propertyName, PropertySlot&);
     static void getOwnPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
@@ -53,10 +53,14 @@ protected:
     static bool deletePropertyByIndex(JSCell*, ExecState*, unsigned propertyName);
     static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
     
+    void initModifiedArgumentsDescriptor(VM&, unsigned length);
+    void initModifiedArgumentsDescriptorIfNecessary(VM&, unsigned length);
+    void setModifiedArgumentDescriptor(VM&, unsigned index, unsigned length);
+    bool isModifiedArgumentDescriptor(unsigned index, unsigned length);
+
     void copyToArguments(ExecState*, VirtualRegister firstElementDest, unsigned offset, unsigned length);
+    
+    AuxiliaryBarrier<bool*> m_modifiedArgumentsDescriptor;
 };
 
 } // namespace JSC
-
-#endif // GenericArguments_h
-

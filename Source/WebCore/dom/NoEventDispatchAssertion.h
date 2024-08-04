@@ -21,8 +21,7 @@
  *
  */
 
-#ifndef NoEventDispatchAssertion_h
-#define NoEventDispatchAssertion_h
+#pragma once
 
 #include "ContainerNode.h"
 #include <wtf/MainThread.h>
@@ -109,11 +108,35 @@ public:
 #endif
 
 #if !ASSERT_DISABLED
+    class DisableAssertionsInScope {
+    public:
+        DisableAssertionsInScope()
+        {
+            if (!isMainThread())
+                return;
+            s_existingCount = s_count;
+            s_count = 0;
+        }
+
+        ~DisableAssertionsInScope()
+        {
+            s_count = s_existingCount;
+            s_existingCount = 0;
+        }
+    private:
+        WEBCORE_EXPORT static unsigned s_existingCount;
+    };
+#else
+    class DisableAssertionsInScope {
+    public:
+        DisableAssertionsInScope() { }
+    };
+#endif
+
+#if !ASSERT_DISABLED
 private:
     WEBCORE_EXPORT static unsigned s_count;
 #endif
 };
 
-}
-
-#endif
+} // namespace WebCore

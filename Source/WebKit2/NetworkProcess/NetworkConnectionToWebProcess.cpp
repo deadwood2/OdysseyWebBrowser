@@ -27,11 +27,16 @@
 #include "NetworkConnectionToWebProcess.h"
 
 #include "BlobDataFileReferenceWithSandboxExtension.h"
+#include "DataReference.h"
 #include "NetworkBlobRegistry.h"
+#include "NetworkCache.h"
 #include "NetworkConnectionToWebProcessMessages.h"
 #include "NetworkLoad.h"
 #include "NetworkProcess.h"
 #include "NetworkProcessConnectionMessages.h"
+#include "NetworkRTCMonitorMessages.h"
+#include "NetworkRTCProviderMessages.h"
+#include "NetworkRTCSocketMessages.h"
 #include "NetworkResourceLoadParameters.h"
 #include "NetworkResourceLoader.h"
 #include "NetworkResourceLoaderMessages.h"
@@ -66,6 +71,10 @@ NetworkConnectionToWebProcess::NetworkConnectionToWebProcess(IPC::Connection::Id
 
 NetworkConnectionToWebProcess::~NetworkConnectionToWebProcess()
 {
+#if USE(LIBWEBRTC)
+    if (m_rtcProvider)
+        m_rtcProvider->close();
+#endif
 }
 
 void NetworkConnectionToWebProcess::didCleanupResourceLoader(NetworkResourceLoader& loader)
@@ -74,7 +83,7 @@ void NetworkConnectionToWebProcess::didCleanupResourceLoader(NetworkResourceLoad
 
     m_networkResourceLoaders.remove(loader.identifier());
 }
-    
+
 void NetworkConnectionToWebProcess::didReceiveMessage(IPC::Connection& connection, IPC::Decoder& decoder)
 {
     if (decoder.messageReceiverName() == Messages::NetworkConnectionToWebProcess::messageReceiverName()) {
@@ -83,14 +92,38 @@ void NetworkConnectionToWebProcess::didReceiveMessage(IPC::Connection& connectio
     }
 
     if (decoder.messageReceiverName() == Messages::NetworkResourceLoader::messageReceiverName()) {
-        HashMap<ResourceLoadIdentifier, RefPtr<NetworkResourceLoader>>::iterator loaderIterator = m_networkResourceLoaders.find(decoder.destinationID());
+        auto loaderIterator = m_networkResourceLoaders.find(decoder.destinationID());
         if (loaderIterator != m_networkResourceLoaders.end())
             loaderIterator->value->didReceiveNetworkResourceLoaderMessage(connection, decoder);
         return;
     }
-    
+
+#if USE(LIBWEBRTC)
+    if (decoder.messageReceiverName() == Messages::NetworkRTCSocket::messageReceiverName()) {
+        rtcProvider().didReceiveNetworkRTCSocketMessage(connection, decoder);
+        return;
+    }
+    if (decoder.messageReceiverName() == Messages::NetworkRTCMonitor::messageReceiverName()) {
+        rtcProvider().didReceiveNetworkRTCMonitorMessage(connection, decoder);
+        return;
+    }
+    if (decoder.messageReceiverName() == Messages::NetworkRTCProvider::messageReceiverName()) {
+        rtcProvider().didReceiveMessage(connection, decoder);
+        return;
+    }
+#endif
+
     ASSERT_NOT_REACHED();
 }
+
+#if USE(LIBWEBRTC)
+NetworkRTCProvider& NetworkConnectionToWebProcess::rtcProvider()
+{
+    if (!m_rtcProvider)
+        m_rtcProvider = NetworkRTCProvider::create(*this);
+    return *m_rtcProvider;
+}
+#endif
 
 void NetworkConnectionToWebProcess::didReceiveSyncMessage(IPC::Connection& connection, IPC::Decoder& decoder, std::unique_ptr<IPC::Encoder>& reply)
 {
@@ -114,6 +147,13 @@ void NetworkConnectionToWebProcess::didClose(IPC::Connection&)
 
     NetworkBlobRegistry::singleton().connectionToWebProcessDidClose(this);
     NetworkProcess::singleton().removeNetworkConnectionToWebProcess(this);
+
+#if USE(LIBWEBRTC)
+    if (m_rtcProvider) {
+        m_rtcProvider->close();
+        m_rtcProvider = nullptr;
+    }
+#endif
 }
 
 void NetworkConnectionToWebProcess::didReceiveInvalidMessage(IPC::Connection&, IPC::StringReference, IPC::StringReference)
@@ -127,7 +167,7 @@ void NetworkConnectionToWebProcess::scheduleResourceLoad(const NetworkResourceLo
     loader->start();
 }
 
-void NetworkConnectionToWebProcess::performSynchronousLoad(const NetworkResourceLoadParameters& loadParameters, RefPtr<Messages::NetworkConnectionToWebProcess::PerformSynchronousLoad::DelayedReply>&& reply)
+void NetworkConnectionToWebProcess::performSynchronousLoad(const NetworkResourceLoadParameters& loadParameters, Ref<Messages::NetworkConnectionToWebProcess::PerformSynchronousLoad::DelayedReply>&& reply)
 {
     auto loader = NetworkResourceLoader::create(loadParameters, *this, WTFMove(reply));
     m_networkResourceLoaders.add(loadParameters.identifier, loader.ptr());
@@ -189,14 +229,14 @@ static NetworkStorageSession& storageSession(SessionID sessionID)
 
 void NetworkConnectionToWebProcess::startDownload(SessionID sessionID, DownloadID downloadID, const ResourceRequest& request, const String& suggestedName)
 {
-    NetworkProcess::singleton().downloadManager().startDownload(sessionID, downloadID, request, suggestedName);
+    NetworkProcess::singleton().downloadManager().startDownload(this, sessionID, downloadID, request, suggestedName);
 }
 
 void NetworkConnectionToWebProcess::convertMainResourceLoadToDownload(SessionID sessionID, uint64_t mainResourceLoadIdentifier, DownloadID downloadID, const ResourceRequest& request, const ResourceResponse& response)
 {
     auto& networkProcess = NetworkProcess::singleton();
     if (!mainResourceLoadIdentifier) {
-        networkProcess.downloadManager().startDownload(sessionID, downloadID, request);
+        networkProcess.downloadManager().startDownload(this, sessionID, downloadID, request);
         return;
     }
 
@@ -206,16 +246,7 @@ void NetworkConnectionToWebProcess::convertMainResourceLoadToDownload(SessionID 
         return;
     }
 
-#if USE(NETWORK_SESSION)
-    loader->networkLoad()->convertTaskToDownload(downloadID, request, response);
-#else
-    networkProcess.downloadManager().convertHandleToDownload(downloadID, loader->networkLoad()->handle(), request, response);
-
-    // Unblock the URL connection operation queue.
-    loader->networkLoad()->handle()->continueDidReceiveResponse();
-    
-#endif
-    loader->didConvertToDownload();
+    loader->convertToDownload(downloadID, request, response);
 }
 
 void NetworkConnectionToWebProcess::cookiesForDOM(SessionID sessionID, const URL& firstParty, const URL& url, String& result)
@@ -260,7 +291,7 @@ void NetworkConnectionToWebProcess::registerFileBlobURL(const URL& url, const St
     NetworkBlobRegistry::singleton().registerFileBlobURL(this, url, path, WTFMove(extension), contentType);
 }
 
-void NetworkConnectionToWebProcess::registerBlobURL(const URL& url, Vector<BlobPart> blobParts, const String& contentType)
+void NetworkConnectionToWebProcess::registerBlobURL(const URL& url, Vector<BlobPart>&& blobParts, const String& contentType)
 {
     NetworkBlobRegistry::singleton().registerBlobURL(this, url, WTFMove(blobParts), contentType);
 }
@@ -329,6 +360,11 @@ void NetworkConnectionToWebProcess::writeBlobsToTemporaryFiles(const Vector<Stri
             m_connection->send(Messages::NetworkProcessConnection::DidWriteBlobsToTemporaryFiles(requestIdentifier, fileNames), 0);
         });
     });
+}
+
+void NetworkConnectionToWebProcess::storeDerivedDataToCache(const WebKit::NetworkCache::DataKey& dataKey, const IPC::DataReference& data)
+{
+    NetworkCache::singleton().storeData(dataKey, data.data(), data.size());
 }
 
 void NetworkConnectionToWebProcess::ensureLegacyPrivateBrowsingSession()

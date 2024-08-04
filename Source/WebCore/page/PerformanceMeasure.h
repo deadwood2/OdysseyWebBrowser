@@ -23,10 +23,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PerformanceMeasure_h
-#define PerformanceMeasure_h
+#pragma once
 
-#if ENABLE(USER_TIMING)
+#if ENABLE(WEB_TIMING)
 
 #include "PerformanceEntry.h"
 #include <wtf/text/WTFString.h>
@@ -40,16 +39,18 @@ public:
     bool isMeasure() const override { return true; }
 
 private:
-    PerformanceMeasure(const String& name, double startTime, double duration) : PerformanceEntry(name, "measure", startTime, duration) { }
+    PerformanceMeasure(const String& name, double startTime, double duration)
+        : PerformanceEntry(PerformanceEntry::Type::Measure, name, ASCIILiteral("measure"), startTime, duration)
+    {
+    }
+
     ~PerformanceMeasure() { }
 };
 
-}
+} // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::PerformanceMeasure)
     static bool isType(const WebCore::PerformanceEntry& entry) { return entry.isMeasure(); }
 SPECIALIZE_TYPE_TRAITS_END()
 
-#endif // ENABLE(USER_TIMING)
-
-#endif // !defined(PerformanceMeasure_h)
+#endif // ENABLE(WEB_TIMING)

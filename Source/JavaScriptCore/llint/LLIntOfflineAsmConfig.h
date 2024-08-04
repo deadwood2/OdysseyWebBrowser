@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef LLIntOfflineAsmConfig_h
-#define LLIntOfflineAsmConfig_h
+#pragma once
 
 #include "LLIntCommon.h"
 #include <wtf/Assertions.h>
@@ -43,7 +42,6 @@
 #define OFFLINE_ASM_ARMv7k 0
 #define OFFLINE_ASM_ARMv7s 0
 #define OFFLINE_ASM_MIPS 0
-#define OFFLINE_ASM_SH4 0
 
 #else // ENABLE(JIT)
 
@@ -110,12 +108,6 @@
 #define OFFLINE_ASM_MIPS 0
 #endif
 
-#if CPU(SH4)
-#define OFFLINE_ASM_SH4 1
-#else
-#define OFFLINE_ASM_SH4 0
-#endif
-
 #if CPU(ARM64)
 #define OFFLINE_ASM_ARM64 1
 #else
@@ -166,5 +158,3 @@
 #else
 #define OFFLINE_ASM_EXECUTION_TRACING 0
 #endif
-
-#endif // LLIntOfflineAsmConfig_h

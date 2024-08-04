@@ -23,8 +23,7 @@
  *
  */
 
-#ifndef RenderImageResourceStyleImage_h
-#define RenderImageResourceStyleImage_h
+#pragma once
 
 #include "RenderImageResource.h"
 #include "StyleImage.h"
@@ -44,7 +43,7 @@ private:
     void shutdown() override;
 
     bool hasImage() const override { return true; }
-    RefPtr<Image> image(int width = 0, int height = 0) const override;
+    RefPtr<Image> image(const IntSize& = { }) const override;
     bool errorOccurred() const override { return m_styleImage->errorOccurred(); }
 
     void setContainerSizeForRenderer(const IntSize&) override;
@@ -60,5 +59,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif // RenderImageStyleImage_h

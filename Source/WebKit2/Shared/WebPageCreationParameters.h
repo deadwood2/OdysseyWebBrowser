@@ -32,14 +32,16 @@
 #include "WebCoreArgumentCoders.h"
 #include "WebPageGroupData.h"
 #include "WebPreferencesStore.h"
+#include <WebCore/ActivityState.h>
 #include <WebCore/Color.h>
 #include <WebCore/FloatSize.h>
 #include <WebCore/IntSize.h>
+#include <WebCore/LayoutMilestones.h>
+#include <WebCore/MediaProducer.h>
 #include <WebCore/Pagination.h>
 #include <WebCore/ScrollTypes.h>
 #include <WebCore/SessionID.h>
 #include <WebCore/UserInterfaceLayoutDirection.h>
-#include <WebCore/ViewState.h>
 #include <wtf/text/WTFString.h>
 
 #if PLATFORM(MAC)
@@ -59,7 +61,7 @@ struct WebPageCreationParameters {
 
     WebCore::IntSize viewSize;
 
-    WebCore::ViewState::Flags viewState;
+    WebCore::ActivityState::Flags activityState;
     
     WebPreferencesStore store;
     DrawingAreaType drawingAreaType;
@@ -99,7 +101,7 @@ struct WebPageCreationParameters {
     float topContentInset;
     
     float mediaVolume;
-    bool muted;
+    WebCore::MediaProducer::MutedStateFlags muted;
     bool mayStartMediaWhenInWindow;
 
     WebCore::IntSize minimumLayoutSize;
@@ -107,9 +109,9 @@ struct WebPageCreationParameters {
     
     WebCore::ScrollPinningBehavior scrollPinningBehavior;
 
-    // FIXME: This should be WTF::Optional<WebCore::ScrollbarOverlayStyle>, but we would need to
+    // FIXME: This should be std::optional<WebCore::ScrollbarOverlayStyle>, but we would need to
     // correctly handle enums inside Optionals when encoding and decoding. 
-    WTF::Optional<uint32_t> scrollbarOverlayStyle;
+    std::optional<uint32_t> scrollbarOverlayStyle;
 
     bool backgroundExtendsBeyondPage;
 
@@ -133,10 +135,16 @@ struct WebPageCreationParameters {
     float textAutosizingWidth;
     bool ignoresViewportScaleLimits;
 #endif
+#if PLATFORM(COCOA)
+    bool smartInsertDeleteEnabled;
+#endif
     bool appleMailPaginationQuirkEnabled;
     bool shouldScaleViewToFitDocument;
 
     WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection;
+    WebCore::LayoutMilestones observedLayoutMilestones;
+
+    String overrideContentSecurityPolicy;
 };
 
 } // namespace WebKit

@@ -300,7 +300,10 @@ const double zoomButtonScaleMultiplier = 1.18920;
 
 - (void)pdfLayerController:(PDFLayerController *)pdfLayerController copyItems:(NSArray *)items withTypes:(NSArray *)types
 {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     _pdfPlugin->writeItemsToPasteboard(NSGeneralPboard, items, types);
+#pragma clang diagnostic pop
 }
 
 - (void)pdfLayerController:(PDFLayerController *)pdfLayerController showDefinitionForAttributedString:(NSAttributedString *)string atPoint:(CGPoint)point
@@ -840,23 +843,7 @@ void PDFPlugin::didCalculateSizes()
     pluginElement->setInlineStyleProperty(CSSPropertyWidth, m_pdfDocumentSize.width(), CSSPrimitiveValue::CSS_PX);
     pluginElement->setInlineStyleProperty(CSSPropertyHeight, m_pdfDocumentSize.height(), CSSPrimitiveValue::CSS_PX);
 
-    // FIXME: Can't do this in the overflow/subframe case. Where does scroll-snap-type go?
-    if (m_usingContinuousMode || !m_frame->isMainFrame() || !isFullFramePlugin())
-        return;
-
-    RetainPtr<NSArray> pageRects = [m_pdfLayerController pageRects];
-
-    StringBuilder coordinates;
-    for (NSValue *rect in pageRects.get()) {
-        // FIXME: Why 4?
-        coordinates.appendNumber((long)[rect rectValue].origin.y / 4);
-        coordinates.appendLiteral("px ");
-    }
-
-    pluginElement->setInlineStyleProperty(CSSPropertyWebkitScrollSnapCoordinate, coordinates.toString());
-
-    Document* document = webFrame()->coreFrame()->document();
-    document->bodyOrFrameset()->setInlineStyleProperty(CSSPropertyWebkitScrollSnapType, "mandatory");
+    // FIXME: Adopt the new scroll snap specification.
 }
 
 bool PDFPlugin::initialize(const Parameters& parameters)
@@ -932,7 +919,7 @@ IntRect PDFPlugin::boundsOnScreen() const
 void PDFPlugin::geometryDidChange(const IntSize& pluginSize, const IntRect&, const AffineTransform& pluginToRootViewTransform)
 {
     m_pluginToRootViewTransform = pluginToRootViewTransform;
-    m_rootViewToPluginTransform = pluginToRootViewTransform.inverse().valueOr(AffineTransform());
+    m_rootViewToPluginTransform = pluginToRootViewTransform.inverse().value_or(AffineTransform());
     m_size = pluginSize;
 
     FrameView* frameView = webFrame()->coreFrame()->view();
@@ -963,10 +950,10 @@ void PDFPlugin::didEvaluateJavaScript(uint64_t, const WTF::String&)
 
 static NSUInteger modifierFlagsFromWebEvent(const WebEvent& event)
 {
-    return (event.shiftKey() ? NSShiftKeyMask : 0)
-        | (event.controlKey() ? NSControlKeyMask : 0)
-        | (event.altKey() ? NSAlternateKeyMask : 0)
-        | (event.metaKey() ? NSCommandKeyMask : 0);
+    return (event.shiftKey() ? NSEventModifierFlagShift : 0)
+        | (event.controlKey() ? NSEventModifierFlagControl : 0)
+        | (event.altKey() ? NSEventModifierFlagOption : 0)
+        | (event.metaKey() ? NSEventModifierFlagCommand : 0);
 }
     
 static bool getEventTypeFromWebEvent(const WebEvent& event, NSEventType& eventType)
@@ -975,10 +962,10 @@ static bool getEventTypeFromWebEvent(const WebEvent& event, NSEventType& eventTy
     case WebEvent::MouseDown:
         switch (static_cast<const WebMouseEvent&>(event).button()) {
         case WebMouseEvent::LeftButton:
-            eventType = NSLeftMouseDown;
+            eventType = NSEventTypeLeftMouseDown;
             return true;
         case WebMouseEvent::RightButton:
-            eventType = NSRightMouseDown;
+            eventType = NSEventTypeRightMouseDown;
             return true;
         default:
             return false;
@@ -986,10 +973,10 @@ static bool getEventTypeFromWebEvent(const WebEvent& event, NSEventType& eventTy
     case WebEvent::MouseUp:
         switch (static_cast<const WebMouseEvent&>(event).button()) {
         case WebMouseEvent::LeftButton:
-            eventType = NSLeftMouseUp;
+            eventType = NSEventTypeLeftMouseUp;
             return true;
         case WebMouseEvent::RightButton:
-            eventType = NSRightMouseUp;
+            eventType = NSEventTypeRightMouseUp;
             return true;
         default:
             return false;
@@ -997,13 +984,13 @@ static bool getEventTypeFromWebEvent(const WebEvent& event, NSEventType& eventTy
     case WebEvent::MouseMove:
         switch (static_cast<const WebMouseEvent&>(event).button()) {
         case WebMouseEvent::LeftButton:
-            eventType = NSLeftMouseDragged;
+            eventType = NSEventTypeLeftMouseDragged;
             return true;
         case WebMouseEvent::RightButton:
-            eventType = NSRightMouseDragged;
+            eventType = NSEventTypeRightMouseDragged;
             return true;
         case WebMouseEvent::NoButton:
-            eventType = NSMouseMoved;
+            eventType = NSEventTypeMouseMoved;
             return true;
         default:
             return false;
@@ -1137,8 +1124,11 @@ bool PDFPlugin::handleEditingCommand(const String& commandName, const String& ar
         [m_pdfLayerController selectAll];
     else if (commandName == "takeFindStringFromSelection") {
         NSString *string = [m_pdfLayerController currentSelection].string;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         if (string.length)
             writeItemsToPasteboard(NSFindPboard, @[ [string dataUsingEncoding:NSUTF8StringEncoding] ], @[ NSPasteboardTypeString ]);
+#pragma clang diagnostic pop
     }
 
     return true;
@@ -1592,7 +1582,7 @@ void PDFPlugin::scrollToPoint(IntPoint scrollPoint)
 {
     Frame* frame = pluginView()->frame();
     float scale = frame->page()->pageScaleFactor();
-    scrollPoint.scale(scale, scale);
+    scrollPoint.scale(scale);
     frame->view()->scrollToOffsetWithoutAnimation(scrollPoint);
 }
 
@@ -1756,11 +1746,11 @@ bool PDFPlugin::HUD::mouseEvent(PageOverlay&, const PlatformMouseEvent& event)
 
     switch (event.type()) {
     case PlatformEvent::MouseMoved:
-        return [pdfLayerController mouseDragged:eventWithType(NSLeftMouseDragged) inHUDWithBounds:HUDRectInRootViewCoordinates];
+        return [pdfLayerController mouseDragged:eventWithType(NSEventTypeLeftMouseDragged) inHUDWithBounds:HUDRectInRootViewCoordinates];
     case PlatformEvent::MousePressed:
-        return [pdfLayerController mouseDown:eventWithType(NSLeftMouseDown) inHUDWithBounds:HUDRectInRootViewCoordinates];
+        return [pdfLayerController mouseDown:eventWithType(NSEventTypeLeftMouseDown) inHUDWithBounds:HUDRectInRootViewCoordinates];
     case PlatformEvent::MouseReleased:
-        return [pdfLayerController mouseUp:eventWithType(NSLeftMouseUp) inHUDWithBounds:HUDRectInRootViewCoordinates];
+        return [pdfLayerController mouseUp:eventWithType(NSEventTypeLeftMouseUp) inHUDWithBounds:HUDRectInRootViewCoordinates];
     default:
         break;
     }

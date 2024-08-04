@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef FTLOutput_h
-#define FTLOutput_h
+#pragma once
 
 #include "DFGCommon.h"
 
@@ -45,6 +44,7 @@
 #include "FTLValueFromBlock.h"
 #include "FTLWeight.h"
 #include "FTLWeightedTarget.h"
+#include "HeapCell.h"
 #include <wtf/OrderMaker.h>
 #include <wtf/StringPrintStream.h>
 
@@ -62,6 +62,7 @@ struct Node;
 } // namespace DFG
 
 namespace B3 {
+class FenceValue;
 class SlotBaseValue;
 } // namespace B3
 
@@ -104,9 +105,29 @@ public:
 
     LValue constBool(bool value);
     LValue constInt32(int32_t value);
+
+    LValue weakPointer(DFG::Graph& graph, JSCell* cell)
+    {
+        ASSERT(graph.m_plan.weakReferences.contains(cell));
+
+        if (sizeof(void*) == 8)
+            return constInt64(bitwise_cast<intptr_t>(cell));
+        return constInt32(bitwise_cast<intptr_t>(cell));
+    }
+
+    LValue weakPointer(DFG::FrozenValue* value)
+    {
+        RELEASE_ASSERT(value->value().isCell());
+
+        if (sizeof(void*) == 8)
+            return constInt64(bitwise_cast<intptr_t>(value->cell()));
+        return constInt32(bitwise_cast<intptr_t>(value->cell()));
+    }
+
     template<typename T>
     LValue constIntPtr(T* value)
     {
+        static_assert(!std::is_base_of<HeapCell, T>::value, "To use a GC pointer, the graph must be aware of it. Use gcPointer instead and make sure the graph is aware of this reference.");
         if (sizeof(void*) == 8)
             return constInt64(bitwise_cast<intptr_t>(value));
         return constInt32(bitwise_cast<intptr_t>(value));
@@ -163,6 +184,7 @@ public:
 
     LValue doubleSin(LValue);
     LValue doubleCos(LValue);
+    LValue doubleTan(LValue);
 
     LValue doublePow(LValue base, LValue exponent);
     LValue doublePowi(LValue base, LValue exponent);
@@ -171,11 +193,11 @@ public:
 
     LValue doubleLog(LValue);
 
-    static bool hasSensibleDoubleToInt();
     LValue doubleToInt(LValue);
     LValue doubleToUInt(LValue);
 
     LValue signExt32To64(LValue);
+    LValue signExt32ToPtr(LValue);
     LValue zeroExt(LValue, LType);
     LValue zeroExtPtr(LValue value) { return zeroExt(value, B3::Int64); }
     LValue intToDouble(LValue);
@@ -188,6 +210,7 @@ public:
 
     LValue load(TypedPointer, LType);
     void store(LValue, TypedPointer);
+    B3::FenceValue* fence(const AbstractHeap* read, const AbstractHeap* write);
 
     LValue load8SignExt32(TypedPointer);
     LValue load8ZeroExt32(TypedPointer);
@@ -284,7 +307,7 @@ public:
         return heap.baseIndex(*this, base, index, indexAsConstant, offset);
     }
 
-    TypedPointer absolute(void* address);
+    TypedPointer absolute(const void* address);
 
     LValue load8SignExt32(LValue base, const AbstractHeap& field) { return load8SignExt32(address(base, field)); }
     LValue load8ZeroExt32(LValue base, const AbstractHeap& field) { return load8ZeroExt32(address(base, field)); }
@@ -463,5 +486,3 @@ inline void Output::addIncomingToPhi(LValue phi, ValueFromBlock value, Params...
 } } // namespace JSC::FTL
 
 #endif // ENABLE(FTL_JIT)
-
-#endif // FTLOutput_h

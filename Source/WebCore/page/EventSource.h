@@ -33,6 +33,7 @@
 
 #include "ActiveDOMObject.h"
 #include "EventTarget.h"
+#include "ExceptionOr.h"
 #include "URL.h"
 #include "ThreadableLoaderClient.h"
 #include "Timer.h"
@@ -50,13 +51,13 @@ public:
     struct Init {
         bool withCredentials;
     };
-    static RefPtr<EventSource> create(ScriptExecutionContext&, const String& url, const Init&, ExceptionCode&);
+    static ExceptionOr<Ref<EventSource>> create(ScriptExecutionContext&, const String& url, const Init&);
     virtual ~EventSource();
 
     const String& url() const;
     bool withCredentials() const;
 
-    typedef short State;
+    using State = short;
     static const State CONNECTING = 0;
     static const State OPEN = 1;
     static const State CLOSED = 2;
@@ -77,6 +78,7 @@ private:
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
 
+    // ThreadableLoaderClient
     void didReceiveResponse(unsigned long, const ResourceResponse&) final;
     void didReceiveData(const char*, int) final;
     void didFinishLoading(unsigned long, double) final;
@@ -92,7 +94,7 @@ private:
     void scheduleReconnect();
     void abortConnectionAttempt();
     void parseEventStream();
-    void parseEventStreamLine(unsigned position, Optional<unsigned> fieldLength, unsigned lineLength);
+    void parseEventStreamLine(unsigned position, std::optional<unsigned> fieldLength, unsigned lineLength);
     void dispatchMessageEvent();
 
     bool responseIsValid(const ResourceResponse&) const;

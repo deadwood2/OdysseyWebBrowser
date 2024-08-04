@@ -29,14 +29,20 @@
 #include "JSCell.h"
 #include "LargeAllocation.h"
 #include "MarkedBlock.h"
+#include "VM.h"
 
 namespace JSC {
 
-inline bool CellContainer::isMarked() const
+inline VM* CellContainer::vm() const
 {
     if (isLargeAllocation())
-        return true;
-    return markedBlock().handle().isMarked();
+        return largeAllocation().vm();
+    return markedBlock().vm();
+}
+
+inline Heap* CellContainer::heap() const
+{
+    return &vm()->heap;
 }
 
 inline bool CellContainer::isMarked(HeapCell* cell) const
@@ -46,17 +52,25 @@ inline bool CellContainer::isMarked(HeapCell* cell) const
     return markedBlock().isMarked(cell);
 }
 
-inline bool CellContainer::isMarkedOrNewlyAllocated(HeapCell* cell) const
+inline bool CellContainer::isMarked(HeapVersion markingVersion, HeapCell* cell) const
 {
     if (isLargeAllocation())
-        return largeAllocation().isMarkedOrNewlyAllocated();
-    return markedBlock().isMarkedOrNewlyAllocated(cell);
+        return largeAllocation().isMarked();
+    return markedBlock().isMarked(markingVersion, cell);
 }
 
 inline void CellContainer::noteMarked()
 {
     if (!isLargeAllocation())
         markedBlock().noteMarked();
+}
+
+inline void CellContainer::assertValidCell(VM& vm, HeapCell* cell) const
+{
+    if (isLargeAllocation())
+        largeAllocation().assertValidCell(vm, cell);
+    else
+        markedBlock().assertValidCell(vm, cell);
 }
 
 inline size_t CellContainer::cellSize() const
@@ -73,16 +87,17 @@ inline WeakSet& CellContainer::weakSet() const
     return markedBlock().weakSet();
 }
 
-inline void CellContainer::flipIfNecessary(HeapVersion heapVersion)
+inline void CellContainer::aboutToMark(HeapVersion markingVersion)
 {
     if (!isLargeAllocation())
-        markedBlock().flipIfNecessary(heapVersion);
+        markedBlock().aboutToMark(markingVersion);
 }
 
-inline void CellContainer::flipIfNecessary()
+inline bool CellContainer::areMarksStale() const
 {
-    if (!isLargeAllocation())
-        markedBlock().flipIfNecessary();
+    if (isLargeAllocation())
+        return false;
+    return markedBlock().areMarksStale();
 }
 
 } // namespace JSC

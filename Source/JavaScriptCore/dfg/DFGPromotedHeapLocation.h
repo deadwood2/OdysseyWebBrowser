@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef DFGPromotedHeapLocation_h
-#define DFGPromotedHeapLocation_h
+#pragma once
 
 #if ENABLE(DFG_JIT)
 
@@ -62,7 +61,9 @@ enum PromotedLocationKind {
     NamedPropertyPLoc,
     PublicLengthPLoc,
     StructurePLoc,
-    VectorLengthPLoc
+    VectorLengthPLoc,
+    SpreadPLoc,
+    NewArrayWithSpreadArgumentPLoc,
 };
 
 class PromotedLocationDescriptor {
@@ -231,6 +232,3 @@ template<> struct HashTraits<JSC::DFG::PromotedLocationDescriptor> : SimpleClass
 } // namespace WTF
 
 #endif // ENABLE(DFG_JIT)
-
-#endif // DFGPromotedHeapLocation_h
-

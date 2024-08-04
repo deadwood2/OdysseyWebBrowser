@@ -36,6 +36,7 @@
 #include "FindOptions.h"
 #include "FrameSelection.h"
 #include "TextChecking.h"
+#include "TextEventInputType.h"
 #include "TextIteratorBehavior.h"
 #include "VisibleSelection.h"
 #include "WritingDirection.h"
@@ -68,6 +69,7 @@ class SharedBuffer;
 class Font;
 class SpellCheckRequest;
 class SpellChecker;
+class StaticRange;
 class StyleProperties;
 class Text;
 class TextCheckerClient;
@@ -97,10 +99,12 @@ enum class MailBlockquoteHandling {
 };
 
 #if PLATFORM(COCOA)
+
 struct FragmentAndResources {
     RefPtr<DocumentFragment> fragment;
-    Vector<RefPtr<ArchiveResource>> resources;
+    Vector<Ref<ArchiveResource>> resources;
 };
+
 #endif
 
 class Editor {
@@ -198,9 +202,14 @@ public:
     WEBCORE_EXPORT void applyStyleToSelection(Ref<EditingStyle>&&, EditAction);
     void applyParagraphStyleToSelection(StyleProperties*, EditAction);
 
+    // Returns whether or not we should proceed with editing.
+    bool willApplyEditing(CompositeEditCommand&, Vector<RefPtr<StaticRange>>&&) const;
+    bool willUnapplyEditing(const EditCommandComposition&) const;
+    bool willReapplyEditing(const EditCommandComposition&) const;
+
     void appliedEditing(PassRefPtr<CompositeEditCommand>);
-    void unappliedEditing(PassRefPtr<EditCommandComposition>);
-    void reappliedEditing(PassRefPtr<EditCommandComposition>);
+    void unappliedEditing(EditCommandComposition&);
+    void reappliedEditing(EditCommandComposition&);
     void unappliedSpellCorrection(const VisibleSelection& selectionOfCorrected, const String& corrected, const String& correction);
 
     // This is off by default, since most editors want this behavior (originally matched IE but not Firefox).
@@ -233,7 +242,7 @@ public:
     Command command(const String& commandName, EditorCommandSource);
     WEBCORE_EXPORT static bool commandIsSupportedFromMenuOrKeyBinding(const String& commandName); // Works without a frame.
 
-    WEBCORE_EXPORT bool insertText(const String&, Event* triggeringEvent);
+    WEBCORE_EXPORT bool insertText(const String&, Event* triggeringEvent, TextEventInputType = TextEventInputKeyboard);
     bool insertTextForConfirmedComposition(const String& text);
     WEBCORE_EXPORT bool insertDictatedText(const String&, const Vector<DictationAlternative>& dictationAlternatives, Event* triggeringEvent);
     bool insertTextWithoutSendingTextEvent(const String&, bool selectInsertedText, TextEvent* triggeringEvent);
@@ -371,8 +380,7 @@ public:
     String selectedTextForDataTransfer() const;
     WEBCORE_EXPORT bool findString(const String&, FindOptions);
 
-    RefPtr<Range> rangeOfString(const String&, Range*, FindOptions);
-    RefPtr<Range> findStringAndScrollToVisible(const String&, Range*, FindOptions);
+    WEBCORE_EXPORT RefPtr<Range> rangeOfString(const String&, Range*, FindOptions);
 
     const VisibleSelection& mark() const; // Mark, to be used as emacs uses it.
     void setMark(const VisibleSelection&);
@@ -384,6 +392,7 @@ public:
 
     WEBCORE_EXPORT IntRect firstRectForRange(Range*) const;
 
+    void selectionWillChange();
     void respondToChangedSelection(const VisibleSelection& oldSelection, FrameSelection::SetSelectionOptions);
     WEBCORE_EXPORT void updateEditorUINowIfScheduled();
     bool shouldChangeSelection(const VisibleSelection& oldSelection, const VisibleSelection& newSelection, EAffinity, bool stillSelecting) const;
@@ -409,7 +418,7 @@ public:
 
     EditorParagraphSeparator defaultParagraphSeparator() const { return m_defaultParagraphSeparator; }
     void setDefaultParagraphSeparator(EditorParagraphSeparator separator) { m_defaultParagraphSeparator = separator; }
-    Vector<String> dictationAlternativesForMarker(const DocumentMarker*);
+    Vector<String> dictationAlternativesForMarker(const DocumentMarker&);
     void applyDictationAlternativelternative(const String& alternativeString);
 
 #if USE(APPKIT)
@@ -436,11 +445,12 @@ public:
 
     RefPtr<DocumentFragment> webContentFromPasteboard(Pasteboard&, Range& context, bool allowPlainText, bool& chosePlainText);
 
-#if PLATFORM(COCOA)
+    WEBCORE_EXPORT const Font* fontForSelection(bool& hasMultipleFonts) const;
     WEBCORE_EXPORT static const RenderStyle* styleForSelectionStart(Frame* , Node *&nodeToRemove);
+
+#if PLATFORM(COCOA)
     void getTextDecorationAttributesRespectingTypingStyle(const RenderStyle&, NSMutableDictionary*) const;
-    WEBCORE_EXPORT const Font* fontForSelection(bool&) const;
-    WEBCORE_EXPORT NSDictionary *fontAttributesForSelectionStart() const;
+    WEBCORE_EXPORT RetainPtr<NSDictionary> fontAttributesForSelectionStart() const;
     WEBCORE_EXPORT String stringSelectionForPasteboard();
     String stringSelectionForPasteboardWithImageAltText();
 #if !PLATFORM(IOS)
@@ -454,7 +464,7 @@ public:
     WEBCORE_EXPORT void replaceSelectionWithAttributedString(NSAttributedString *, MailBlockquoteHandling = MailBlockquoteHandling::RespectBlockquote);
 #endif
 
-#if PLATFORM(COCOA) || PLATFORM(EFL) || PLATFORM(GTK)
+#if PLATFORM(COCOA) || PLATFORM(GTK)
     WEBCORE_EXPORT void writeSelectionToPasteboard(Pasteboard&);
     WEBCORE_EXPORT void writeImageToPasteboard(Pasteboard&, Element& imageElement, const URL&, const String& title);
 #endif
@@ -466,7 +476,14 @@ public:
 
     WEBCORE_EXPORT String stringForCandidateRequest() const;
     WEBCORE_EXPORT void handleAcceptedCandidate(TextCheckingResult);
+    WEBCORE_EXPORT RefPtr<Range> contextRangeForCandidateRequest() const;
+    RefPtr<Range> rangeForTextCheckingResult(const TextCheckingResult&) const;
     bool isHandlingAcceptedCandidate() const { return m_isHandlingAcceptedCandidate; }
+
+    void setIsGettingDictionaryPopupInfo(bool b) { m_isGettingDictionaryPopupInfo = b; }
+    bool isGettingDictionaryPopupInfo() const { return m_isGettingDictionaryPopupInfo; }
+
+    Ref<DocumentFragment> createFragmentForImageAndURL(const String&);
 
 private:
     class WebContentReader;
@@ -481,7 +498,7 @@ private:
 
     void revealSelectionAfterEditingOperation(const ScrollAlignment& = ScrollAlignment::alignCenterIfNeeded, RevealExtentOption = DoNotRevealExtent);
     void markMisspellingsOrBadGrammar(const VisibleSelection&, bool checkSpelling, RefPtr<Range>& firstMisspellingRange);
-    TextCheckingTypeMask resolveTextCheckingTypeMask(TextCheckingTypeMask);
+    TextCheckingTypeMask resolveTextCheckingTypeMask(const Node& rootEditableElement, TextCheckingTypeMask);
 
     WEBCORE_EXPORT String selectedText(TextIteratorBehavior) const;
 
@@ -500,13 +517,19 @@ private:
 
     bool unifiedTextCheckerEnabled() const;
 
+    RefPtr<Range> adjustedSelectionRange();
+
 #if PLATFORM(COCOA)
     RefPtr<SharedBuffer> selectionInWebArchiveFormat();
-    RefPtr<Range> adjustedSelectionRange();
+    String selectionInHTMLFormat();
+    RefPtr<SharedBuffer> imageInWebArchiveFormat(Element&);
     RefPtr<DocumentFragment> createFragmentForImageResourceAndAddResource(RefPtr<ArchiveResource>&&);
     RefPtr<DocumentFragment> createFragmentAndAddResources(NSAttributedString *);
     FragmentAndResources createFragment(NSAttributedString *);
     void fillInUserVisibleForm(PasteboardURL&);
+
+    static RefPtr<SharedBuffer> dataInRTFDFormat(NSAttributedString *);
+    static RefPtr<SharedBuffer> dataInRTFFormat(NSAttributedString *);
 #endif
 
     void postTextStateChangeNotificationForCut(const String&, const VisibleSelection&);
@@ -541,6 +564,8 @@ private:
     Timer m_telephoneNumberDetectionUpdateTimer;
     Vector<RefPtr<Range>> m_detectedTelephoneNumberRanges;
 #endif
+
+    bool m_isGettingDictionaryPopupInfo { false };
 };
 
 inline void Editor::setStartNewKillRingSequence(bool flag)

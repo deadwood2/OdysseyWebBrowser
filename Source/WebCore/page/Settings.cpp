@@ -39,13 +39,11 @@
 #include "FrameView.h"
 #include "HTMLMediaElement.h"
 #include "HistoryItem.h"
-#include "InspectorInstrumentation.h"
 #include "MainFrame.h"
 #include "Page.h"
 #include "PageCache.h"
 #include "RuntimeApplicationChecks.h"
 #include "StorageMap.h"
-#include "TextAutosizer.h"
 #include <limits>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/StdLibExtras.h>
@@ -85,12 +83,17 @@ bool Settings::gAVFoundationNSURLSessionEnabled = true;
 bool Settings::gQTKitEnabled = false;
 #endif
 
+#if USE(GSTREAMER)
+bool Settings::gGStreamerEnabled = true;
+#endif
+
 bool Settings::gMockScrollbarsEnabled = false;
 bool Settings::gUsesOverlayScrollbars = false;
 bool Settings::gMockScrollAnimatorEnabled = false;
 
 #if ENABLE(MEDIA_STREAM)
 bool Settings::gMockCaptureDevicesEnabled = false;
+bool Settings::gMediaCaptureRequiresSecureConnection = true;
 #endif
 
 #if PLATFORM(WIN)
@@ -132,6 +135,12 @@ static EditingBehaviorType editingBehaviorTypeForPlatform()
     ;
 }
 
+#if PLATFORM(COCOA)
+static const bool defaultYouTubeFlashPluginReplacementEnabled = true;
+#else
+static const bool defaultYouTubeFlashPluginReplacementEnabled = false;
+#endif
+
 #if PLATFORM(IOS)
 static const bool defaultFixedPositionCreatesStackingContext = true;
 static const bool defaultFixedBackgroundsPaintRelativeToDocument = true;
@@ -145,6 +154,7 @@ static const bool defaultShouldRespectImageOrientation = true;
 static const bool defaultImageSubsamplingEnabled = true;
 static const bool defaultScrollingTreeIncludesFrames = true;
 static const bool defaultMediaControlsScaleWithPageZoom = true;
+static const bool defaultQuickTimePluginReplacementEnabled = true;
 #else
 static const bool defaultFixedPositionCreatesStackingContext = false;
 static const bool defaultFixedBackgroundsPaintRelativeToDocument = false;
@@ -158,7 +168,10 @@ static const bool defaultShouldRespectImageOrientation = false;
 static const bool defaultImageSubsamplingEnabled = false;
 static const bool defaultScrollingTreeIncludesFrames = false;
 static const bool defaultMediaControlsScaleWithPageZoom = true;
+static const bool defaultQuickTimePluginReplacementEnabled = false;
 #endif
+
+static const bool defaultRequiresUserGestureToLoadVideo = true;
 
 static const bool defaultAllowsPictureInPictureMediaPlayback = true;
 
@@ -174,7 +187,7 @@ static const bool defaultSelectTrailingWhitespaceEnabled = false;
 // This amount of time must have elapsed before we will even consider scheduling a layout without a delay.
 // FIXME: For faster machines this value can really be lowered to 200. 250 is adequate, but a little high
 // for dual G5s. :)
-static const auto layoutScheduleThreshold = 250ms;
+static const Seconds layoutScheduleThreshold = 250_ms;
 
 Settings::Settings(Page* page)
     : m_page(nullptr)
@@ -183,9 +196,6 @@ Settings::Settings(Page* page)
     , m_storageBlockingPolicy(SecurityOrigin::AllowAllStorage)
     , m_layoutInterval(layoutScheduleThreshold)
     , m_minimumDOMTimerInterval(DOMTimer::defaultMinimumInterval())
-#if ENABLE(TEXT_AUTOSIZING)
-    , m_textAutosizingFontScaleFactor(1)
-#endif
     SETTINGS_INITIALIZER_LIST
     , m_isJavaEnabled(false)
     , m_isJavaEnabledForLocalFiles(true)
@@ -321,22 +331,6 @@ void Settings::setPictographFontFamily(const AtomicString& family, UScriptCode s
         invalidateAfterGenericFamilyChange(m_page);
 }
 
-#if ENABLE(TEXT_AUTOSIZING)
-void Settings::setTextAutosizingFontScaleFactor(float fontScaleFactor)
-{
-    m_textAutosizingFontScaleFactor = fontScaleFactor;
-
-    if (!m_page)
-        return;
-
-    // FIXME: I wonder if this needs to traverse frames like in WebViewImpl::resize, or whether there is only one document per Settings instance?
-    for (Frame* frame = m_page->mainFrame(); frame; frame = frame->tree().traverseNext())
-        frame->document()->textAutosizer()->recalculateMultipliers();
-
-    m_page->setNeedsRecalcStyleInAllFrames();
-}
-#endif
-
 float Settings::defaultMinimumZoomFontSize()
 {
     return 15;
@@ -398,7 +392,6 @@ void Settings::setScriptEnabled(bool isScriptEnabled)
 #if PLATFORM(IOS)
     m_page->setNeedsRecalcStyleInAllFrames();
 #endif
-    InspectorInstrumentation::scriptsEnabled(*m_page, m_isScriptEnabled);
 }
 
 void Settings::setJavaEnabled(bool isJavaEnabled)
@@ -470,7 +463,7 @@ void Settings::setMinimumDOMTimerInterval(std::chrono::milliseconds interval)
     }
 }
 
-void Settings::setLayoutInterval(std::chrono::milliseconds layoutInterval)
+void Settings::setLayoutInterval(Seconds layoutInterval)
 {
     // FIXME: It seems weird that this function may disregard the specified layout interval.
     // We should either expose layoutScheduleThreshold or better communicate this invariant.
@@ -593,6 +586,17 @@ void Settings::setQTKitEnabled(bool enabled)
 }
 #endif
 
+#if USE(GSTREAMER)
+void Settings::setGStreamerEnabled(bool enabled)
+{
+    if (gGStreamerEnabled == enabled)
+        return;
+
+    gGStreamerEnabled = enabled;
+    HTMLMediaElement::resetMediaEngines();
+}
+#endif
+
 #if ENABLE(MEDIA_STREAM)
 bool Settings::mockCaptureDevicesEnabled()
 {
@@ -603,6 +607,16 @@ void Settings::setMockCaptureDevicesEnabled(bool enabled)
 {
     gMockCaptureDevicesEnabled = enabled;
     MockRealtimeMediaSourceCenter::setMockRealtimeMediaSourceCenterEnabled(enabled);
+}
+
+bool Settings::mediaCaptureRequiresSecureConnection() const
+{
+    return gMediaCaptureRequiresSecureConnection;
+}
+
+void Settings::setMediaCaptureRequiresSecureConnection(bool mediaCaptureRequiresSecureConnection)
+{
+    gMediaCaptureRequiresSecureConnection = mediaCaptureRequiresSecureConnection;
 }
 #endif
 

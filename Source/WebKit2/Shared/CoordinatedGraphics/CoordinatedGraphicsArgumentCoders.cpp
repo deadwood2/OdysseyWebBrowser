@@ -51,10 +51,6 @@
 #include <WebCore/TransformationMatrix.h>
 #include <WebCore/TranslateTransformOperation.h>
 
-#if USE(GRAPHICS_SURFACE)
-#include <WebCore/GraphicsSurface.h>
-#endif
-
 using namespace WebCore;
 using namespace WebKit;
 
@@ -457,7 +453,7 @@ void ArgumentCoder<TextureMapperAnimation>::encode(Encoder& encoder, const Textu
     encoder << static_cast<uint32_t>(animationObject->fillMode());
     encoder << animationObject->duration();
     encoder << animationObject->iterationCount();
-    encodeTimingFunction(encoder, animationObject->timingFunction().get());
+    encodeTimingFunction(encoder, animationObject->timingFunction());
 
     const KeyframeValueList& keyframes = animation.keyframes();
     encoder.encodeEnum(keyframes.property());
@@ -527,7 +523,7 @@ bool ArgumentCoder<TextureMapperAnimation>::decode(Decoder& decoder, TextureMapp
     animationObject->setDuration(duration);
     animationObject->setIterationCount(iterationCount);
     if (timingFunction)
-        animationObject->setTimingFunction(timingFunction);
+        animationObject->setTimingFunction(WTFMove(timingFunction));
 
     AnimatedPropertyID property;
     if (!decoder.decodeEnum(property))
@@ -583,17 +579,6 @@ void ArgumentCoder<TextureMapperAnimations>::encode(Encoder& encoder, const Text
 bool ArgumentCoder<TextureMapperAnimations>::decode(Decoder& decoder, TextureMapperAnimations& animations)
 {
     return decoder.decode(animations.animations());
-}
-
-#if USE(GRAPHICS_SURFACE)
-void ArgumentCoder<WebCore::GraphicsSurfaceToken>::encode(Encoder& encoder, const WebCore::GraphicsSurfaceToken& token)
-{
-#if OS(DARWIN)
-    encoder << Attachment(token.frontBufferHandle, MACH_MSG_TYPE_MOVE_SEND);
-    encoder << Attachment(token.backBufferHandle, MACH_MSG_TYPE_MOVE_SEND);
-#elif OS(LINUX)
-    encoder << token.frontBufferHandle;
-#endif
 }
 
 bool ArgumentCoder<WebCore::GraphicsSurfaceToken>::decode(Decoder& decoder, WebCore::GraphicsSurfaceToken& token)
@@ -692,15 +677,6 @@ void ArgumentCoder<CoordinatedGraphicsLayerState>::encode(Encoder& encoder, cons
 
     encoder << state.tilesToUpdate;
 
-#if USE(GRAPHICS_SURFACE)
-    if (state.platformLayerChanged) {
-        encoder << state.platformLayerSize;
-        encoder << state.platformLayerToken;
-        encoder << state.platformLayerFrontBuffer;
-        encoder << state.platformLayerSurfaceFlags;
-    }
-#endif
-
     if (state.committedScrollOffsetChanged)
         encoder << state.committedScrollOffset;
 }
@@ -779,22 +755,6 @@ bool ArgumentCoder<CoordinatedGraphicsLayerState>::decode(Decoder& decoder, Coor
 
     if (!decoder.decode(state.tilesToUpdate))
         return false;
-
-#if USE(GRAPHICS_SURFACE)
-    if (state.platformLayerChanged) {
-        if (!decoder.decode(state.platformLayerSize))
-            return false;
-
-        if (!decoder.decode(state.platformLayerToken))
-            return false;
-
-        if (!decoder.decode(state.platformLayerFrontBuffer))
-            return false;
-
-        if (!decoder.decode(state.platformLayerSurfaceFlags))
-            return false;
-    }
-#endif
 
     if (state.committedScrollOffsetChanged && !decoder.decode(state.committedScrollOffset))
         return false;

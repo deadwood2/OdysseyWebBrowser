@@ -39,6 +39,7 @@
 #import <WebCore/DataDetection.h>
 #import <WebCore/DataDetectorsSPI.h>
 #import <WebCore/DictionaryLookup.h>
+#import <WebCore/Editor.h>
 #import <WebCore/EventHandler.h>
 #import <WebCore/FocusController.h>
 #import <WebCore/Frame.h>
@@ -63,8 +64,7 @@ SOFT_LINK_CLASS(QuickLookUI, QLPreviewMenuItem)
 @interface WebImmediateActionController () <QLPreviewMenuItemDelegate>
 @end
 
-@interface WebAnimationController : NSObject <NSImmediateActionAnimationController> {
-}
+@interface WebAnimationController : NSObject <NSImmediateActionAnimationController>
 @end
 
 @implementation WebAnimationController
@@ -128,8 +128,7 @@ using namespace WebCore;
         return;
 
     DDActionsManager *actionsManager = [getDDActionsManagerClass() sharedManager];
-    if ([actionsManager respondsToSelector:@selector(requestBubbleClosureUnanchorOnFailure:)])
-        [actionsManager requestBubbleClosureUnanchorOnFailure:YES];
+    [actionsManager requestBubbleClosureUnanchorOnFailure:YES];
 
     if (_currentActionContext && _hasActivatedActionContext) {
         _hasActivatedActionContext = NO;
@@ -150,7 +149,7 @@ using namespace WebCore;
     _hitTestResult = coreFrame->eventHandler().hitTestResultAtPoint(IntPoint(viewPoint));
     coreFrame->eventHandler().setImmediateActionStage(ImmediateActionStage::PerformedHitTest);
 
-    if (Element* element = _hitTestResult.innerElement())
+    if (Element* element = _hitTestResult.targetElement())
         _contentPreventsDefault = element->dispatchMouseForceWillBegin();
 }
 
@@ -256,10 +255,8 @@ using namespace WebCore;
 
 - (id <NSImmediateActionAnimationController>)_defaultAnimationController
 {
-    if (_contentPreventsDefault) {
-        RetainPtr<WebAnimationController> dummyController = [[WebAnimationController alloc] init];
-        return dummyController.get();
-    }
+    if (_contentPreventsDefault)
+        return [[[WebAnimationController alloc] init] autorelease];
 
     NSURL *url = _hitTestResult.absoluteLinkURL();
     NSString *absoluteURLString = [url absoluteString];
@@ -441,10 +438,8 @@ static IntRect elementBoundingBoxInWindowCoordinatesFromNode(Node* node)
 
     [actionContext setAltMode:YES];
     [actionContext setImmediate:YES];
-    if ([[getDDActionsManagerClass() sharedManager] respondsToSelector:@selector(hasActionsForResult:actionContext:)]) {
-        if (![[getDDActionsManagerClass() sharedManager] hasActionsForResult:[actionContext mainResult] actionContext:actionContext.get()])
-            return nil;
-    }
+    if (![[getDDActionsManagerClass() sharedManager] hasActionsForResult:[actionContext mainResult] actionContext:actionContext.get()])
+        return nil;
 
     auto indicator = TextIndicator::createWithRange(*detectedDataRange, TextIndicatorOptionDefault, TextIndicatorPresentationTransition::FadeIn);
 
@@ -504,19 +499,26 @@ static IntRect elementBoundingBoxInWindowCoordinatesFromNode(Node* node)
 
 + (DictionaryPopupInfo)_dictionaryPopupInfoForRange:(Range&)range inFrame:(Frame*)frame withLookupOptions:(NSDictionary *)lookupOptions indicatorOptions:(TextIndicatorOptions)indicatorOptions transition:(TextIndicatorPresentationTransition)presentationTransition
 {
+    Editor& editor = frame->editor();
+    editor.setIsGettingDictionaryPopupInfo(true);
+
     // Dictionary API will accept a whitespace-only string and display UI as if it were real text,
     // so bail out early to avoid that.
     DictionaryPopupInfo popupInfo;
-    if (range.text().stripWhiteSpace().isEmpty())
+    if (range.text().stripWhiteSpace().isEmpty()) {
+        editor.setIsGettingDictionaryPopupInfo(false);
         return popupInfo;
+    }
 
     RenderObject* renderer = range.startContainer().renderer();
     const RenderStyle& style = renderer->style();
 
     Vector<FloatQuad> quads;
     range.absoluteTextQuads(quads);
-    if (quads.isEmpty())
+    if (quads.isEmpty()) {
+        editor.setIsGettingDictionaryPopupInfo(false);
         return popupInfo;
+    }
 
     IntRect rangeRect = frame->view()->contentsToWindow(quads[0].enclosingBoundingBox());
 
@@ -543,6 +545,8 @@ static IntRect elementBoundingBoxInWindowCoordinatesFromNode(Node* node)
 
     if (auto textIndicator = TextIndicator::createWithRange(range, indicatorOptions, presentationTransition))
         popupInfo.textIndicator = textIndicator->data();
+
+    editor.setIsGettingDictionaryPopupInfo(false);
     return popupInfo;
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,10 +25,8 @@
 
 #pragma once
 
-#include "APISession.h"
 #include "APIUserInitiatedAction.h"
 #include "ChildProcessProxy.h"
-#include "CustomProtocolManagerProxy.h"
 #include "MessageReceiverMap.h"
 #include "PluginInfoStore.h"
 #include "ProcessLauncher.h"
@@ -57,12 +55,14 @@ struct PluginInfo;
 namespace WebKit {
 
 class NetworkProcessProxy;
+class UnresponsiveWebProcessTerminator;
 class WebBackForwardListItem;
 class WebPageGroup;
 class WebProcessPool;
 enum class WebsiteDataType;
 struct WebNavigationDataStore;
-    
+struct WebsiteData;
+
 class WebProcessProxy : public ChildProcessProxy, ResponsivenessTimer::Client, private ProcessThrottlerClient {
 public:
     typedef HashMap<uint64_t, RefPtr<WebBackForwardListItem>> WebBackForwardListItemMap;
@@ -84,6 +84,7 @@ public:
 
     WTF::IteratorRange<WebPageProxyMap::const_iterator::Values> pages() const { return m_pageMap.values(); }
     unsigned pageCount() const { return m_pageMap.size(); }
+    unsigned visiblePageCount() const { return m_visiblePageCounter.value(); }
 
     void addVisitedLinkStore(VisitedLinkStore&);
     void addWebUserContentControllerProxy(WebUserContentControllerProxy&);
@@ -100,6 +101,8 @@ public:
     void frameCreated(uint64_t, WebFrameProxy*);
     void disconnectFramesFromPage(WebPageProxy*); // Including main frame.
     size_t frameCountInPage(WebPageProxy*) const; // Including main frame.
+
+    VisibleWebPageToken visiblePageToken() const;
 
     void updateTextCheckerState();
 
@@ -118,9 +121,10 @@ public:
     void didSaveToPageCache();
     void releasePageCache();
 
-    void fetchWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, std::function<void (WebsiteData)> completionHandler);
-    void deleteWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, std::chrono::system_clock::time_point modifiedSince, std::function<void ()> completionHandler);
-    void deleteWebsiteDataForOrigins(WebCore::SessionID, OptionSet<WebsiteDataType>, const Vector<RefPtr<WebCore::SecurityOrigin>>& origins, std::function<void ()> completionHandler);
+    void fetchWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, Function<void(WebsiteData)> completionHandler);
+    void deleteWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, std::chrono::system_clock::time_point modifiedSince, Function<void()> completionHandler);
+    void deleteWebsiteDataForOrigins(WebCore::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>&, Function<void()> completionHandler);
+    static void deleteWebsiteDataForTopPrivatelyOwnedDomainsInAllPersistentDataStores(OptionSet<WebsiteDataType>, Vector<String>& topPrivatelyOwnedDomains, bool shouldNotifyPages, std::function<void()> completionHandler);
 
     void enableSuddenTermination();
     void disableSuddenTermination();
@@ -169,27 +173,27 @@ private:
 
     void shouldTerminate(bool& shouldTerminate);
 
-    void didFetchWebsiteData(uint64_t callbackID, const WebsiteData&);
-    void didDeleteWebsiteData(uint64_t callbackID);
-    void didDeleteWebsiteDataForOrigins(uint64_t callbackID);
-
     // Plugins
 #if ENABLE(NETSCAPE_PLUGIN_API)
     void getPlugins(bool refresh, Vector<WebCore::PluginInfo>& plugins, Vector<WebCore::PluginInfo>& applicationPlugins);
 #endif // ENABLE(NETSCAPE_PLUGIN_API)
 #if ENABLE(NETSCAPE_PLUGIN_API)
-    void getPluginProcessConnection(uint64_t pluginProcessToken, PassRefPtr<Messages::WebProcessProxy::GetPluginProcessConnection::DelayedReply>);
+    void getPluginProcessConnection(uint64_t pluginProcessToken, Ref<Messages::WebProcessProxy::GetPluginProcessConnection::DelayedReply>&&);
 #endif
-    void getNetworkProcessConnection(PassRefPtr<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>);
+    void getNetworkProcessConnection(Ref<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>&&);
 #if ENABLE(DATABASE_PROCESS)
-    void getDatabaseProcessConnection(PassRefPtr<Messages::WebProcessProxy::GetDatabaseProcessConnection::DelayedReply>);
+    void getDatabaseProcessConnection(Ref<Messages::WebProcessProxy::GetDatabaseProcessConnection::DelayedReply>&&);
 #endif
 
     void retainIconForPageURL(const String& pageURL);
     void releaseIconForPageURL(const String& pageURL);
     void releaseRemainingIconsForPageURLs();
 
+    bool platformIsBeingDebugged() const;
+
     static const HashSet<String>& platformPathsWithAssumedReadAccess();
+
+    void updateBackgroundResponsivenessTimer();
 
     // IPC::Connection::Client
     friend class WebConnectionToWebProcess;
@@ -203,6 +207,7 @@ private:
     void didBecomeResponsive() override;
     void willChangeIsResponsive() override;
     void didChangeIsResponsive() override;
+    bool mayBecomeUnresponsive() override;
 
     // ProcessThrottlerClient
     void sendProcessWillSuspendImminently() override;
@@ -236,12 +241,6 @@ private:
     HashSet<VisitedLinkStore*> m_visitedLinkStores;
     HashSet<WebUserContentControllerProxy*> m_webUserContentControllerProxies;
 
-    CustomProtocolManagerProxy m_customProtocolManagerProxy;
-
-    HashMap<uint64_t, std::function<void (WebsiteData)>> m_pendingFetchWebsiteDataCallbacks;
-    HashMap<uint64_t, std::function<void ()>> m_pendingDeleteWebsiteDataCallbacks;
-    HashMap<uint64_t, std::function<void ()>> m_pendingDeleteWebsiteDataForOriginsCallbacks;
-
     int m_numberOfTimesSuddenTerminationWasDisabled;
     ProcessThrottler m_throttler;
     ProcessThrottler::BackgroundActivityToken m_tokenForHoldingLockedFiles;
@@ -254,6 +253,9 @@ private:
 
     enum class NoOrMaybe { No, Maybe } m_isResponsive;
     Vector<std::function<void(bool webProcessIsResponsive)>> m_isResponsiveCallbacks;
+
+    VisibleWebPageCounter m_visiblePageCounter;
+    std::unique_ptr<UnresponsiveWebProcessTerminator> m_backgroundResponsivenessTimer;
 };
 
 } // namespace WebKit

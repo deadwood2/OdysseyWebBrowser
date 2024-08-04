@@ -33,11 +33,17 @@ namespace WebCore {
 class MediaSampleAVFObjC final : public MediaSample {
 public:
     static Ref<MediaSampleAVFObjC> create(CMSampleBufferRef sample, int trackID) { return adoptRef(*new MediaSampleAVFObjC(sample, trackID)); }
+    static Ref<MediaSampleAVFObjC> create(CMSampleBufferRef sample, AtomicString trackID) { return adoptRef(*new MediaSampleAVFObjC(sample, trackID)); }
     static Ref<MediaSampleAVFObjC> create(CMSampleBufferRef sample) { return adoptRef(*new MediaSampleAVFObjC(sample)); }
 
 private:
     MediaSampleAVFObjC(CMSampleBufferRef sample)
         : m_sample(sample)
+    {
+    }
+    MediaSampleAVFObjC(CMSampleBufferRef sample, AtomicString trackID)
+        : m_sample(sample)
+        , m_id(trackID)
     {
     }
     MediaSampleAVFObjC(CMSampleBufferRef sample, int trackID)
@@ -48,8 +54,10 @@ private:
     virtual ~MediaSampleAVFObjC() { }
 
     MediaTime presentationTime() const override;
+    MediaTime outputPresentationTime() const override;
     MediaTime decodeTime() const override;
     MediaTime duration() const override;
+    MediaTime outputDuration() const override;
 
     AtomicString trackID() const override { return m_id; }
     void setTrackID(const String& id) override { m_id = id; }
@@ -62,6 +70,9 @@ private:
     void dump(PrintStream&) const override;
     void offsetTimestampsBy(const MediaTime&) override;
     void setTimestamps(const MediaTime&, const MediaTime&) override;
+    bool isDivisable() const override;
+    std::pair<RefPtr<MediaSample>, RefPtr<MediaSample>> divide(const MediaTime& presentationTime) override;
+    Ref<MediaSample> createNonDisplayingCopy() const override;
 
     RetainPtr<CMSampleBufferRef> m_sample;
     AtomicString m_id;

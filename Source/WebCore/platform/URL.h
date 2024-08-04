@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef URL_h
-#define URL_h
+#pragma once
 
 #include "PlatformExportMacros.h"
 #include <wtf/Forward.h>
@@ -99,12 +98,13 @@ public:
 
     const String& string() const { return m_string; }
 
-    String stringCenterEllipsizedToLength(unsigned length = 1024) const;
+    WEBCORE_EXPORT String stringCenterEllipsizedToLength(unsigned length = 1024) const;
 
-    WEBCORE_EXPORT String protocol() const;
+    WEBCORE_EXPORT StringView protocol() const;
     WEBCORE_EXPORT String host() const;
-    WEBCORE_EXPORT unsigned short port() const;
-    bool hasPort() const;
+    WEBCORE_EXPORT std::optional<uint16_t> port() const;
+    WEBCORE_EXPORT String hostAndPort() const;
+    WEBCORE_EXPORT String protocolHostAndPort() const;
     WEBCORE_EXPORT String user() const;
     WEBCORE_EXPORT String pass() const;
     WEBCORE_EXPORT String path() const;
@@ -130,11 +130,13 @@ public:
     // Returns true if the current URL's protocol is the same as the null-
     // terminated ASCII argument. The argument must be lower-case.
     WEBCORE_EXPORT bool protocolIs(const char*) const;
+    bool protocolIs(StringView) const;
     bool protocolIsBlob() const { return protocolIs("blob"); }
     bool protocolIsData() const { return protocolIs("data"); }
     bool protocolIsInHTTPFamily() const;
     WEBCORE_EXPORT bool isLocalFile() const;
     bool isBlankURL() const;
+    bool cannotBeABaseURL() const { return m_cannotBeABaseURL; }
 
     WEBCORE_EXPORT bool setProtocol(const String&);
     void setHost(const String&);
@@ -157,7 +159,7 @@ public:
     // URL (with nothing after it). To clear the query, pass a null string.
     void setQuery(const String&);
 
-    void setFragmentIdentifier(const String&);
+    void setFragmentIdentifier(StringView);
     void removeFragmentIdentifier();
 
     WEBCORE_EXPORT friend bool equalIgnoringFragmentIdentifier(const URL&, const URL&);
@@ -218,6 +220,7 @@ private:
     String m_string;
     bool m_isValid : 1;
     bool m_protocolIsInHTTPFamily : 1;
+    bool m_cannotBeABaseURL : 1;
 
     unsigned m_schemeEnd;
     unsigned m_userStart;
@@ -311,9 +314,12 @@ WEBCORE_EXPORT bool protocolIs(const String& url, const char* protocol);
 WEBCORE_EXPORT bool protocolIsJavaScript(const String& url);
 WEBCORE_EXPORT bool protocolIsInHTTPFamily(const String& url);
 
-unsigned short defaultPortForProtocol(const String& protocol);
-WEBCORE_EXPORT bool isDefaultPortForProtocol(unsigned short port, const String& protocol);
+std::optional<uint16_t> defaultPortForProtocol(StringView protocol);
+WEBCORE_EXPORT bool isDefaultPortForProtocol(uint16_t port, StringView protocol);
 WEBCORE_EXPORT bool portAllowed(const URL&); // Blacklist ports that should never be used for Web resources.
+
+WEBCORE_EXPORT void registerDefaultPortForProtocolForTesting(uint16_t port, const String& protocol);
+WEBCORE_EXPORT void clearDefaultPortForProtocolMapForTesting();
 
 bool isValidProtocol(const String&);
 
@@ -388,11 +394,6 @@ inline bool URL::hasPath() const
     return m_pathEnd != m_portEnd;
 }
 
-inline bool URL::hasPort() const
-{
-    return m_hostEnd < m_portEnd;
-}
-
 inline bool URL::hasUsername() const
 {
     return m_userEnd > m_userStart;
@@ -454,5 +455,3 @@ namespace WTF {
     };
 
 } // namespace WTF
-
-#endif // URL_h

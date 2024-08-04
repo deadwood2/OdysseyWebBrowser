@@ -34,36 +34,34 @@
 
 #if ENABLE(WEB_TIMING)
 
-#include "DOMWindowProperty.h"
+#include "ContextDestructionObserver.h"
 #include "EventTarget.h"
-#include "PerformanceNavigation.h"
-#include "PerformanceTiming.h"
-#include "ScriptWrappable.h"
-#include <wtf/RefCounted.h>
-#include <wtf/RefPtr.h>
-#include <wtf/text/WTFString.h>
+#include "ExceptionOr.h"
+#include "GenericTaskQueue.h"
+#include <wtf/ListHashSet.h>
 
 namespace WebCore {
 
-class Document;
 class LoadTiming;
 class PerformanceEntry;
-class ResourceRequest;
+class PerformanceNavigation;
+class PerformanceObserver;
+class PerformanceTiming;
 class ResourceResponse;
-class UserTiming;
+class ResourceTiming;
+class ScriptExecutionContext;
 class URL;
+class UserTiming;
 
-class Performance final : public RefCounted<Performance>, public DOMWindowProperty, public EventTargetWithInlineData {
+class Performance final : public RefCounted<Performance>, public ContextDestructionObserver, public EventTargetWithInlineData {
 public:
-    static Ref<Performance> create(Frame& frame) { return adoptRef(*new Performance(frame)); }
+    static Ref<Performance> create(ScriptExecutionContext& context, MonotonicTime timeOrigin) { return adoptRef(*new Performance(context, timeOrigin)); }
     ~Performance();
 
-    EventTargetInterface eventTargetInterface() const override { return PerformanceEventTargetInterfaceType; }
-    ScriptExecutionContext* scriptExecutionContext() const override;
-
-    PerformanceNavigation* navigation() const;
-    PerformanceTiming* timing() const;
     double now() const;
+
+    PerformanceNavigation* navigation();
+    PerformanceTiming* timing();
 
     Vector<RefPtr<PerformanceEntry>> getEntries() const;
     Vector<RefPtr<PerformanceEntry>> getEntriesByType(const String& entryType) const;
@@ -72,39 +70,51 @@ public:
     void clearResourceTimings();
     void setResourceTimingBufferSize(unsigned);
 
-    void addResourceTiming(const String& initiatorName, Document*, const URL& originalURL, const ResourceResponse&, LoadTiming);
+    ExceptionOr<void> mark(const String& markName);
+    void clearMarks(const String& markName);
 
-    using RefCounted<Performance>::ref;
-    using RefCounted<Performance>::deref;
+    ExceptionOr<void> measure(const String& measureName, const String& startMark, const String& endMark);
+    void clearMeasures(const String& measureName);
 
-#if ENABLE(USER_TIMING)
-    void webkitMark(const String& markName, ExceptionCode&);
-    void webkitClearMarks(const String& markName);
+    void addResourceTiming(ResourceTiming&&);
 
-    void webkitMeasure(const String& measureName, const String& startMark, const String& endMark, ExceptionCode&);
-    void webkitClearMeasures(const String& measureName);
-#endif // ENABLE(USER_TIMING)
+    void registerPerformanceObserver(PerformanceObserver&);
+    void unregisterPerformanceObserver(PerformanceObserver&);
 
-    static double reduceTimeResolution(double seconds);
+    static Seconds reduceTimeResolution(Seconds);
+
+    ScriptExecutionContext* scriptExecutionContext() const final { return ContextDestructionObserver::scriptExecutionContext(); }
+
+    using RefCounted::ref;
+    using RefCounted::deref;
 
 private:
-    explicit Performance(Frame&);
+    Performance(ScriptExecutionContext&, MonotonicTime timeOrigin);
 
-    void refEventTarget() override { ref(); }
-    void derefEventTarget() override { deref(); }
-    bool isResourceTimingBufferFull();
+    void contextDestroyed() override;
+
+    EventTargetInterface eventTargetInterface() const final { return PerformanceEventTargetInterfaceType; }
+
+    void refEventTarget() final { ref(); }
+    void derefEventTarget() final { deref(); }
+
+    bool isResourceTimingBufferFull() const;
+
+    void queueEntry(PerformanceEntry&);
 
     mutable RefPtr<PerformanceNavigation> m_navigation;
     mutable RefPtr<PerformanceTiming> m_timing;
 
+    // https://w3c.github.io/resource-timing/#extensions-performance-interface recommends size of 150.
     Vector<RefPtr<PerformanceEntry>> m_resourceTimingBuffer;
-    unsigned m_resourceTimingBufferSize;
+    unsigned m_resourceTimingBufferSize { 150 };
 
-    double m_referenceTime;
+    MonotonicTime m_timeOrigin;
 
-#if ENABLE(USER_TIMING)
-    RefPtr<UserTiming> m_userTiming;
-#endif // ENABLE(USER_TIMING)
+    std::unique_ptr<UserTiming> m_userTiming;
+
+    GenericTaskQueue<ScriptExecutionContext> m_performanceTimelineTaskQueue;
+    ListHashSet<RefPtr<PerformanceObserver>> m_observers;
 };
 
 }

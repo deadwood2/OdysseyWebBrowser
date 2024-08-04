@@ -37,7 +37,6 @@
 #include "Event.h"
 #include "EventHandler.h"
 #include "EventNames.h"
-#include "ExceptionCode.h"
 #include "FrameSelection.h"
 #include "FrameTree.h"
 #include "FrameView.h"
@@ -131,17 +130,13 @@ Node* FocusNavigationScope::lastChildInScope(const Node& node) const
 
 Node* FocusNavigationScope::parentInScope(const Node& node) const
 {
-    if (is<Element>(node) && isFocusScopeOwner(downcast<Element>(node)))
+    if (m_rootTreeScope && &m_rootTreeScope->rootNode() == &node)
         return nullptr;
 
     if (UNLIKELY(m_slotElement && m_slotElement == node.assignedSlot()))
         return nullptr;
 
-    ContainerNode* parent = node.parentNode();
-    if (parent && is<Element>(parent) && isFocusScopeOwner(downcast<Element>(*parent)))
-        return nullptr;
-
-    return parent;
+    return node.parentNode();
 }
 
 Node* FocusNavigationScope::nextSiblingInScope(const Node& node) const
@@ -313,15 +308,15 @@ static inline int shadowAdjustedTabIndex(Element& element, KeyboardEvent& event)
     return element.tabIndex();
 }
 
-FocusController::FocusController(Page& page, ViewState::Flags viewState)
+FocusController::FocusController(Page& page, ActivityState::Flags activityState)
     : m_page(page)
     , m_isChangingFocusedFrame(false)
-    , m_viewState(viewState)
+    , m_activityState(activityState)
     , m_focusRepaintTimer(*this, &FocusController::focusRepaintTimerFired)
 {
 }
 
-void FocusController::setFocusedFrame(PassRefPtr<Frame> frame)
+void FocusController::setFocusedFrame(Frame* frame)
 {
     ASSERT(!frame || frame->page() == &m_page);
     if (m_focusedFrame == frame || m_isChangingFocusedFrame)
@@ -359,7 +354,7 @@ Frame& FocusController::focusedOrMainFrame() const
 
 void FocusController::setFocused(bool focused)
 {
-    m_page.setViewState(focused ? m_viewState | ViewState::IsFocused : m_viewState & ~ViewState::IsFocused);
+    m_page.setActivityState(focused ? m_activityState | ActivityState::IsFocused : m_activityState & ~ActivityState::IsFocused);
 }
 
 void FocusController::setFocusedInternal(bool focused)
@@ -383,8 +378,9 @@ Element* FocusController::findFocusableElementDescendingDownIntoFrameDocument(Fo
     // 2) the deepest-nested HTMLFrameOwnerElement.
     while (is<HTMLFrameOwnerElement>(element)) {
         HTMLFrameOwnerElement& owner = downcast<HTMLFrameOwnerElement>(*element);
-        if (!owner.contentFrame())
+        if (!owner.contentFrame() || !owner.contentFrame()->document())
             break;
+        owner.contentFrame()->document()->updateLayoutIgnorePendingStylesheets();
         Element* foundElement = findFocusableElementWithinScope(direction, FocusNavigationScope::scopeOwnedByIFrame(owner), nullptr, event);
         if (!foundElement)
             break;
@@ -770,8 +766,9 @@ static void clearSelectionIfNeeded(Frame* oldFocusedFrame, Frame* newFocusedFram
     oldFocusedFrame->selection().clear();
 }
 
-bool FocusController::setFocusedElement(Element* element, PassRefPtr<Frame> newFocusedFrame, FocusDirection direction)
+bool FocusController::setFocusedElement(Element* element, Frame& newFocusedFrame, FocusDirection direction)
 {
+    Ref<Frame> protectedNewFocusedFrame = newFocusedFrame;
     RefPtr<Frame> oldFocusedFrame = focusedFrame();
     RefPtr<Document> oldDocument = oldFocusedFrame ? oldFocusedFrame->document() : nullptr;
     
@@ -785,7 +782,7 @@ bool FocusController::setFocusedElement(Element* element, PassRefPtr<Frame> newF
 
     m_page.editorClient().willSetInputMethodState();
 
-    clearSelectionIfNeeded(oldFocusedFrame.get(), newFocusedFrame.get(), element);
+    clearSelectionIfNeeded(oldFocusedFrame.get(), &newFocusedFrame, element);
 
     if (!element) {
         if (oldDocument)
@@ -804,11 +801,11 @@ bool FocusController::setFocusedElement(Element* element, PassRefPtr<Frame> newF
     if (oldDocument && oldDocument != newDocument.ptr())
         oldDocument->setFocusedElement(nullptr);
 
-    if (newFocusedFrame && !newFocusedFrame->page()) {
+    if (!newFocusedFrame.page()) {
         setFocusedFrame(nullptr);
         return false;
     }
-    setFocusedFrame(newFocusedFrame);
+    setFocusedFrame(&newFocusedFrame);
 
     Ref<Element> protect(*element);
 
@@ -825,23 +822,23 @@ bool FocusController::setFocusedElement(Element* element, PassRefPtr<Frame> newF
     return true;
 }
 
-void FocusController::setViewState(ViewState::Flags viewState)
+void FocusController::setActivityState(ActivityState::Flags activityState)
 {
-    ViewState::Flags changed = m_viewState ^ viewState;
-    m_viewState = viewState;
+    ActivityState::Flags changed = m_activityState ^ activityState;
+    m_activityState = activityState;
 
-    if (changed & ViewState::IsFocused)
-        setFocusedInternal(viewState & ViewState::IsFocused);
-    if (changed & ViewState::WindowIsActive) {
-        setActiveInternal(viewState & ViewState::WindowIsActive);
-        if (changed & ViewState::IsVisible)
-            setIsVisibleAndActiveInternal(viewState & ViewState::WindowIsActive);
+    if (changed & ActivityState::IsFocused)
+        setFocusedInternal(activityState & ActivityState::IsFocused);
+    if (changed & ActivityState::WindowIsActive) {
+        setActiveInternal(activityState & ActivityState::WindowIsActive);
+        if (changed & ActivityState::IsVisible)
+            setIsVisibleAndActiveInternal(activityState & ActivityState::WindowIsActive);
     }
 }
 
 void FocusController::setActive(bool active)
 {
-    m_page.setViewState(active ? m_viewState | ViewState::WindowIsActive : m_viewState & ~ViewState::WindowIsActive);
+    m_page.setActivityState(active ? m_activityState | ActivityState::WindowIsActive : m_activityState & ~ActivityState::WindowIsActive);
 }
 
 void FocusController::setActiveInternal(bool active)

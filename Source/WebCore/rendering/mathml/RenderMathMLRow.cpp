@@ -49,13 +49,13 @@ MathMLRowElement& RenderMathMLRow::element() const
     return static_cast<MathMLRowElement&>(nodeForNonAnonymous());
 }
 
-Optional<int> RenderMathMLRow::firstLineBaseline() const
+std::optional<int> RenderMathMLRow::firstLineBaseline() const
 {
     auto* baselineChild = firstChildBox();
     if (!baselineChild)
-        return Optional<int>();
+        return std::optional<int>();
 
-    return Optional<int>(static_cast<int>(lroundf(ascentForChild(*baselineChild) + baselineChild->logicalTop())));
+    return std::optional<int>(static_cast<int>(lroundf(ascentForChild(*baselineChild) + baselineChild->logicalTop())));
 }
 
 void RenderMathMLRow::computeLineVerticalStretch(LayoutUnit& ascent, LayoutUnit& descent)
@@ -63,7 +63,7 @@ void RenderMathMLRow::computeLineVerticalStretch(LayoutUnit& ascent, LayoutUnit&
     for (auto* child = firstChildBox(); child; child = child->nextSiblingBox()) {
         if (is<RenderMathMLBlock>(child)) {
             auto* renderOperator = downcast<RenderMathMLBlock>(child)->unembellishedOperator();
-            if (renderOperator && renderOperator->hasOperatorFlag(MathMLOperatorDictionary::Stretchy))
+            if (renderOperator && renderOperator->isStretchy())
                 continue;
         }
 
@@ -109,7 +109,7 @@ void RenderMathMLRow::layoutRowItems(LayoutUnit& ascent, LayoutUnit& descent)
 
         if (is<RenderMathMLBlock>(child)) {
             auto renderOperator = downcast<RenderMathMLBlock>(child)->unembellishedOperator();
-            if (renderOperator && renderOperator->hasOperatorFlag(MathMLOperatorDictionary::Stretchy) && renderOperator->isVertical())
+            if (renderOperator && renderOperator->isStretchy() && renderOperator->isVertical())
                 renderOperator->stretchTo(ascent, descent);
         }
 

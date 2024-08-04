@@ -18,24 +18,23 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef CSSImageValue_h
-#define CSSImageValue_h
+#pragma once
 
 #include "CSSValue.h"
 #include "CachedResourceHandle.h"
-#include <wtf/RefPtr.h>
+#include <wtf/Ref.h>
 
 namespace WebCore {
 
 class CachedImage;
 class CachedResourceLoader;
-class Element;
+class DeprecatedCSSOMValue;
 class RenderElement;
 struct ResourceLoaderOptions;
 
 class CSSImageValue final : public CSSValue {
 public:
-    static Ref<CSSImageValue> create(const String& url) { return adoptRef(*new CSSImageValue(url)); }
+    static Ref<CSSImageValue> create(URL&& url) { return adoptRef(*new CSSImageValue(WTFMove(url))); }
     static Ref<CSSImageValue> create(CachedImage& image) { return adoptRef(*new CSSImageValue(image)); }
     ~CSSImageValue();
 
@@ -43,11 +42,11 @@ public:
     CachedImage* loadImage(CachedResourceLoader&, const ResourceLoaderOptions&);
     CachedImage* cachedImage() const { return m_cachedImage.get(); }
 
-    const String& url() const { return m_url; }
+    const URL& url() const { return m_url; }
 
     String customCSSText() const;
 
-    Ref<CSSValue> cloneForCSSOM() const;
+    Ref<DeprecatedCSSOMValue> createDeprecatedCSSOMWrapper() const;
 
     bool traverseSubresources(const std::function<bool (const CachedResource&)>& handler) const;
 
@@ -58,10 +57,10 @@ public:
     void setInitiator(const AtomicString& name) { m_initiatorName = name; }
 
 private:
-    explicit CSSImageValue(const String& url);
+    explicit CSSImageValue(URL&&);
     explicit CSSImageValue(CachedImage&);
 
-    String m_url;
+    URL m_url;
     CachedResourceHandle<CachedImage> m_cachedImage;
     bool m_accessedImage;
     AtomicString m_initiatorName;
@@ -70,5 +69,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CSS_VALUE(CSSImageValue, isImageValue())
-
-#endif // CSSImageValue_h

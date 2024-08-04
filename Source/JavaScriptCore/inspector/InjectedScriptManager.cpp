@@ -45,9 +45,9 @@ using namespace JSC;
 
 namespace Inspector {
 
-InjectedScriptManager::InjectedScriptManager(InspectorEnvironment& environment, PassRefPtr<InjectedScriptHost> injectedScriptHost)
+InjectedScriptManager::InjectedScriptManager(InspectorEnvironment& environment, Ref<InjectedScriptHost>&& injectedScriptHost)
     : m_environment(environment)
-    , m_injectedScriptHost(injectedScriptHost)
+    , m_injectedScriptHost(WTFMove(injectedScriptHost))
     , m_nextInjectedScriptId(1)
 {
 }
@@ -68,7 +68,7 @@ void InjectedScriptManager::discardInjectedScripts()
     m_scriptStateToId.clear();
 }
 
-InjectedScriptHost* InjectedScriptManager::injectedScriptHost()
+InjectedScriptHost& InjectedScriptManager::injectedScriptHost()
 {
     return m_injectedScriptHost.get();
 }
@@ -134,9 +134,11 @@ String InjectedScriptManager::injectedScriptSource()
 
 JSC::JSObject* InjectedScriptManager::createInjectedScript(const String& source, ExecState* scriptState, int id)
 {
-    JSLockHolder lock(scriptState);
+    VM& vm = scriptState->vm();
+    JSLockHolder lock(vm);
+    auto scope = DECLARE_CATCH_SCOPE(vm);
 
-    SourceCode sourceCode = makeSource(source);
+    SourceCode sourceCode = makeSource(source, { });
     JSGlobalObject* globalObject = scriptState->lexicalGlobalObject();
     JSValue globalThisValue = scriptState->globalThisValue();
 
@@ -157,7 +159,7 @@ JSC::JSObject* InjectedScriptManager::createInjectedScript(const String& source,
     args.append(jsNumber(id));
 
     JSValue result = JSC::call(scriptState, functionValue, callType, callData, globalThisValue, args);
-    scriptState->clearException();
+    scope.clearException();
     return result.getObject();
 }
 

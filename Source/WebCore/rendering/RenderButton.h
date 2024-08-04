@@ -18,8 +18,7 @@
  *
  */
 
-#ifndef RenderButton_h
-#define RenderButton_h
+#pragma once
 
 #include "RenderFlexibleBox.h"
 #include "Timer.h"
@@ -72,8 +71,6 @@ private:
 
     bool hasLineIfEmpty() const override;
 
-    bool requiresForcedStyleRecalcPropagation() const override { return true; }
-
     bool isFlexibleBoxImpl() const override { return true; }
 
     RenderTextFragment* m_buttonText;
@@ -83,5 +80,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderButton, isRenderButton())
-
-#endif // RenderButton_h

@@ -46,6 +46,7 @@
 #import <ImageIO/CGImageSourcePrivate.h>
 #else
 const CFStringRef kCGImageSourceSubsampleFactor = CFSTR("kCGImageSourceSubsampleFactor");
+const CFStringRef kCGImageSourceShouldCacheImmediately = CFSTR("kCGImageSourceShouldCacheImmediately");
 #endif
 
 namespace WebCore {
@@ -57,34 +58,68 @@ const CFStringRef WebCoreCGImagePropertyAPNGLoopCount = CFSTR("LoopCount");
 const CFStringRef kCGImageSourceShouldPreferRGB32 = CFSTR("kCGImageSourceShouldPreferRGB32");
 const CFStringRef kCGImageSourceSkipMetadata = CFSTR("kCGImageSourceSkipMetadata");
 
-static RetainPtr<CFDictionaryRef> createImageSourceOptions(SubsamplingLevel subsamplingLevel)
+static RetainPtr<CFMutableDictionaryRef> createImageSourceOptions()
 {
-    if (!subsamplingLevel) {
-        const unsigned numOptions = 3;
-        const void* keys[numOptions] = { kCGImageSourceShouldCache, kCGImageSourceShouldPreferRGB32, kCGImageSourceSkipMetadata };
-        const void* values[numOptions] = { kCFBooleanTrue, kCFBooleanTrue, kCFBooleanTrue };
-        return CFDictionaryCreate(nullptr, keys, values, numOptions, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-    }
-    
-    short constrainedSubsamplingLevel = std::min<short>(3, std::max<short>(0, subsamplingLevel));
-    int subsampleInt = 1 << constrainedSubsamplingLevel; // [0..3] => [1, 2, 4, 8]
-    
-    RetainPtr<CFNumberRef> subsampleNumber = adoptCF(CFNumberCreate(nullptr,  kCFNumberIntType,  &subsampleInt));
-    const CFIndex numOptions = 4;
-    const void* keys[numOptions] = { kCGImageSourceShouldCache, kCGImageSourceShouldPreferRGB32, kCGImageSourceSkipMetadata, kCGImageSourceSubsampleFactor };
-    const void* values[numOptions] = { kCFBooleanTrue, kCFBooleanTrue, kCFBooleanTrue, subsampleNumber.get() };
-    return adoptCF(CFDictionaryCreate(nullptr, keys, values, numOptions, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+    RetainPtr<CFMutableDictionaryRef> options = adoptCF(CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+    CFDictionarySetValue(options.get(), kCGImageSourceShouldCache, kCFBooleanTrue);
+    CFDictionarySetValue(options.get(), kCGImageSourceShouldPreferRGB32, kCFBooleanTrue);
+    CFDictionarySetValue(options.get(), kCGImageSourceSkipMetadata, kCFBooleanTrue);
+    return options;
 }
-
-static RetainPtr<CFDictionaryRef> imageSourceOptions(SubsamplingLevel subsamplingLevel = 0)
-{
-    if (subsamplingLevel)
-        return createImageSourceOptions(subsamplingLevel);
     
-    static NeverDestroyed<RetainPtr<CFDictionaryRef>> options = createImageSourceOptions(0);
+static RetainPtr<CFMutableDictionaryRef> createImageSourceAsyncOptions()
+{
+    RetainPtr<CFMutableDictionaryRef> options = createImageSourceOptions();
+    CFDictionarySetValue(options.get(), kCGImageSourceShouldCacheImmediately, kCFBooleanTrue);
+    CFDictionarySetValue(options.get(), kCGImageSourceCreateThumbnailFromImageAlways, kCFBooleanTrue);
     return options;
 }
 
+static RetainPtr<CFMutableDictionaryRef> appendImageSourceOption(RetainPtr<CFMutableDictionaryRef>&& options, SubsamplingLevel subsamplingLevel)
+{
+    RetainPtr<CFNumberRef> subsampleNumber;
+    subsamplingLevel = std::min(SubsamplingLevel::Last, std::max(SubsamplingLevel::First, subsamplingLevel));
+    int subsampleInt = 1 << static_cast<int>(subsamplingLevel); // [0..3] => [1, 2, 4, 8]
+    subsampleNumber = adoptCF(CFNumberCreate(nullptr,  kCFNumberIntType,  &subsampleInt));
+    CFDictionarySetValue(options.get(), kCGImageSourceSubsampleFactor, subsampleNumber.get());
+    return WTFMove(options);
+}
+
+static RetainPtr<CFMutableDictionaryRef> appendImageSourceOption(RetainPtr<CFMutableDictionaryRef>&& options, const IntSize& sizeForDrawing)
+{
+    unsigned maxPixelSize = std::max(sizeForDrawing.width(), sizeForDrawing.height());
+    RetainPtr<CFNumberRef> maxPixelSizeNumber = adoptCF(CFNumberCreate(nullptr, kCFNumberIntType, &maxPixelSize));
+    CFDictionarySetValue(options.get(), kCGImageSourceThumbnailMaxPixelSize, maxPixelSizeNumber.get());
+    return WTFMove(options);
+}
+    
+static RetainPtr<CFMutableDictionaryRef> appendImageSourceOptions(RetainPtr<CFMutableDictionaryRef>&& options, SubsamplingLevel subsamplingLevel, const std::optional<IntSize>& sizeForDrawing)
+{
+    if (subsamplingLevel != SubsamplingLevel::Default)
+        options = appendImageSourceOption(WTFMove(options), subsamplingLevel);
+    
+    if (sizeForDrawing)
+        options = appendImageSourceOption(WTFMove(options), sizeForDrawing.value());
+
+    return WTFMove(options);
+}
+    
+static RetainPtr<CFDictionaryRef> imageSourceOptions(SubsamplingLevel subsamplingLevel = SubsamplingLevel::Default)
+{
+    static NeverDestroyed<RetainPtr<CFMutableDictionaryRef>> options = createImageSourceOptions();
+    if (subsamplingLevel == SubsamplingLevel::Default)
+        return options.get();
+    return appendImageSourceOption(adoptCF(CFDictionaryCreateMutableCopy(nullptr, 0, options.get().get())), subsamplingLevel);
+}
+
+static RetainPtr<CFDictionaryRef> imageSourceAsyncOptions(SubsamplingLevel subsamplingLevel = SubsamplingLevel::Default, const std::optional<IntSize>& sizeForDrawing = { })
+{
+    static NeverDestroyed<RetainPtr<CFMutableDictionaryRef>> options = createImageSourceAsyncOptions();
+    if (subsamplingLevel == SubsamplingLevel::Default && !sizeForDrawing)
+        return options.get();
+    return appendImageSourceOptions(adoptCF(CFDictionaryCreateMutableCopy(nullptr, 0, options.get().get())), subsamplingLevel, sizeForDrawing);
+}
+    
 static ImageOrientation orientationFromProperties(CFDictionaryRef imageProperties)
 {
     ASSERT(imageProperties);
@@ -118,7 +153,7 @@ void sharedBufferRelease(void* info)
 }
 #endif
 
-ImageDecoder::ImageDecoder()
+ImageDecoder::ImageDecoder(AlphaOption, GammaAndColorProfileOption)
 {
     m_nativeDecoder = adoptCF(CGImageSourceCreateIncremental(nullptr));
 }
@@ -154,23 +189,16 @@ bool ImageDecoder::isSizeAvailable() const
     && CFDictionaryContainsKey(image0Properties.get(), kCGImagePropertyPixelHeight);
 }
 
-IntSize ImageDecoder::size() const
-{
-    if (m_size.isEmpty())
-        m_size = frameSizeAtIndex(0, 0);
-    return m_size;
-}
-
 size_t ImageDecoder::frameCount() const
 {
     return CGImageSourceGetCount(m_nativeDecoder.get());
 }
 
-int ImageDecoder::repetitionCount() const
+RepetitionCount ImageDecoder::repetitionCount() const
 {
     RetainPtr<CFDictionaryRef> properties = adoptCF(CGImageSourceCopyProperties(m_nativeDecoder.get(), imageSourceOptions().get()));
     if (!properties)
-        return cAnimationLoopOnce;
+        return RepetitionCountOnce;
     
     CFDictionaryRef gifProperties = (CFDictionaryRef)CFDictionaryGetValue(properties.get(), kCGImagePropertyGIFDictionary);
     if (gifProperties) {
@@ -178,47 +206,47 @@ int ImageDecoder::repetitionCount() const
         
         // No property means loop once.
         if (!num)
-            return cAnimationLoopOnce;
+            return RepetitionCountOnce;
         
-        int loopCount;
+        RepetitionCount loopCount;
         CFNumberGetValue(num, kCFNumberIntType, &loopCount);
         
         // A property with value 0 means loop forever.
-        return loopCount ? loopCount : cAnimationLoopInfinite;
+        return loopCount ? loopCount : RepetitionCountInfinite;
     }
     
     CFDictionaryRef pngProperties = (CFDictionaryRef)CFDictionaryGetValue(properties.get(), kCGImagePropertyPNGDictionary);
     if (pngProperties) {
         CFNumberRef num = (CFNumberRef)CFDictionaryGetValue(pngProperties, WebCoreCGImagePropertyAPNGLoopCount);
         if (!num)
-            return cAnimationLoopOnce;
+            return RepetitionCountOnce;
         
-        int loopCount;
+        RepetitionCount loopCount;
         CFNumberGetValue(num, kCFNumberIntType, &loopCount);
-        return loopCount ? loopCount : cAnimationLoopInfinite;
+        return loopCount ? loopCount : RepetitionCountInfinite;
     }
     
     // Turns out we're not an animated image after all, so we don't animate.
-    return cAnimationNone;
+    return RepetitionCountNone;
 }
 
-Optional<IntPoint> ImageDecoder::hotSpot() const
+std::optional<IntPoint> ImageDecoder::hotSpot() const
 {
     RetainPtr<CFDictionaryRef> properties = adoptCF(CGImageSourceCopyPropertiesAtIndex(m_nativeDecoder.get(), 0, imageSourceOptions().get()));
     if (!properties)
-        return Nullopt;
+        return std::nullopt;
     
     int x = -1, y = -1;
     CFNumberRef num = (CFNumberRef)CFDictionaryGetValue(properties.get(), CFSTR("hotspotX"));
     if (!num || !CFNumberGetValue(num, kCFNumberIntType, &x))
-        return Nullopt;
+        return std::nullopt;
     
     num = (CFNumberRef)CFDictionaryGetValue(properties.get(), CFSTR("hotspotY"));
     if (!num || !CFNumberGetValue(num, kCFNumberIntType, &y))
-        return Nullopt;
+        return std::nullopt;
     
     if (x < 0 || y < 0)
-        return Nullopt;
+        return std::nullopt;
     
     return IntPoint(x, y);
 }
@@ -249,7 +277,7 @@ bool ImageDecoder::frameIsCompleteAtIndex(size_t index) const
     return CGImageSourceGetStatusAtIndex(m_nativeDecoder.get(), index) == kCGImageStatusComplete;
 }
 
-ImageOrientation ImageDecoder::orientationAtIndex(size_t index) const
+ImageOrientation ImageDecoder::frameOrientationAtIndex(size_t index) const
 {
     RetainPtr<CFDictionaryRef> properties = adoptCF(CGImageSourceCopyPropertiesAtIndex(m_nativeDecoder.get(), index, imageSourceOptions().get()));
     if (!properties)
@@ -292,7 +320,7 @@ float ImageDecoder::frameDurationAtIndex(size_t index) const
     return duration;
 }
 
-bool ImageDecoder::allowSubsamplingOfFrameAtIndex(size_t) const
+bool ImageDecoder::frameAllowSubsamplingAtIndex(size_t) const
 {
     RetainPtr<CFDictionaryRef> properties = adoptCF(CGImageSourceCopyPropertiesAtIndex(m_nativeDecoder.get(), 0, imageSourceOptions().get()));
     if (!properties)
@@ -338,11 +366,29 @@ unsigned ImageDecoder::frameBytesAtIndex(size_t index, SubsamplingLevel subsampl
     return (frameSize.area() * 4).unsafeGet();
 }
 
-NativeImagePtr ImageDecoder::createFrameImageAtIndex(size_t index, SubsamplingLevel subsamplingLevel) const
+NativeImagePtr ImageDecoder::createFrameImageAtIndex(size_t index, SubsamplingLevel subsamplingLevel, const std::optional<IntSize>& sizeForDrawing) const
 {
     LOG(Images, "ImageDecoder %p createFrameImageAtIndex %lu", this, index);
+    RetainPtr<CFDictionaryRef> options;
+    RetainPtr<CGImageRef> image;
 
-    RetainPtr<CGImageRef> image = adoptCF(CGImageSourceCreateImageAtIndex(m_nativeDecoder.get(), index, imageSourceOptions(subsamplingLevel).get()));
+    if (!sizeForDrawing) {
+        // Decode an image synchronously for its native size.
+        options = imageSourceOptions(subsamplingLevel);
+        image = adoptCF(CGImageSourceCreateImageAtIndex(m_nativeDecoder.get(), index, options.get()));
+    } else {
+        IntSize size = frameSizeAtIndex(index, subsamplingLevel);
+
+        if (size.unclampedArea() < sizeForDrawing.value().unclampedArea()) {
+            // Decode an image asynchronously for its native size.
+            options = imageSourceAsyncOptions(subsamplingLevel);
+        } else {
+            // Decode an image asynchronously for sizeForDrawing since it is smaller than the image native size.
+            options = imageSourceAsyncOptions(subsamplingLevel, sizeForDrawing);
+        }
+        
+        image = adoptCF(CGImageSourceCreateThumbnailAtIndex(m_nativeDecoder.get(), index, options.get()));
+    }
     
 #if PLATFORM(IOS)
     // <rdar://problem/7371198> - CoreGraphics changed the default caching behaviour in iOS 4.0 to kCGImageCachingTransient
@@ -374,18 +420,15 @@ NativeImagePtr ImageDecoder::createFrameImageAtIndex(size_t index, SubsamplingLe
     return maskedImage ? maskedImage : image;
 }
 
-void ImageDecoder::setData(CFDataRef data, bool allDataReceived)
-{
-    CGImageSourceUpdateData(m_nativeDecoder.get(), data, allDataReceived);
-}
-
 void ImageDecoder::setData(SharedBuffer& data, bool allDataReceived)
 {
+    m_isAllDataReceived = allDataReceived;
+
 #if PLATFORM(COCOA)
     // On Mac the NSData inside the SharedBuffer can be secretly appended to without the SharedBuffer's knowledge.
     // We use SharedBuffer's ability to wrap itself inside CFData to get around this, ensuring that ImageIO is
     // really looking at the SharedBuffer.
-    setData(data.createCFData().get(), allDataReceived);
+    CGImageSourceUpdateData(m_nativeDecoder.get(), data.createCFData().get(), allDataReceived);
 #else
     // Create a CGDataProvider to wrap the SharedBuffer.
     data.ref();

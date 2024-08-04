@@ -170,6 +170,12 @@ WebInspector.CSSKeywordCompletions._propertyKeywordMap = {
     "clear": [
         "none", "left", "right", "both"
     ],
+    "fill-rule": [
+        "nonzero", "evenodd"
+    ],
+    "stroke-linecap": [
+        "butt", "round", "square"
+    ],
     "stroke-linejoin": [
         "round", "miter", "bevel"
     ],
@@ -296,7 +302,7 @@ WebInspector.CSSKeywordCompletions._propertyKeywordMap = {
         "hidden", "auto", "visible", "overlay", "scroll", "marquee", "-webkit-paged-x", "-webkit-paged-y"
     ],
     "margin-bottom-collapse": [
-        "collapse",  "separate", "discard"
+        "collapse", "separate", "discard"
     ],
     "-webkit-box-reflect": [
         "none", "left", "right", "above", "below"
@@ -608,7 +614,7 @@ WebInspector.CSSKeywordCompletions._propertyKeywordMap = {
     "clip-path": [
         "none", "url()", "circle()", "ellipse()", "inset()", "polygon()", "margin-box", "border-box", "padding-box", "content-box"
     ],
-    "-webkit-shape-outside": [
+    "shape-outside": [
         "none", "url()", "circle()", "ellipse()", "inset()", "polygon()", "margin-box", "border-box", "padding-box", "content-box"
     ],
     "orphans": [
@@ -839,6 +845,12 @@ WebInspector.CSSKeywordCompletions._propertyKeywordMap = {
     "orientation": [
         "auto", "portait", "landscape"
     ],
+    "scroll-snap-align": [
+        "none", "start", "center", "end"
+    ],
+    "scroll-snap-type": [
+        "none", "mandatory", "proximity", "x", "y", "inline", "block", "both"
+    ],
     "user-zoom": [
         "zoom", "fixed"
     ],
@@ -1008,21 +1020,6 @@ WebInspector.CSSKeywordCompletions._propertyKeywordMap = {
     */
     "-webkit-animation-trigger": [
         "auto", "container-scroll()"
-    ],
-    "-webkit-scroll-snap-type": [
-        "none", "mandatory", "proximity"
-    ],
-    "-webkit-scroll-snap-points-x": [
-        "elements", "repeat()"
-    ],
-    "-webkit-scroll-snap-points-y": [
-        "elements", "repeat()"
-    ],
-    "-webkit-scroll-snap-destination": [
-        "none", "left", "right", "bottom", "top", "center"
-    ],
-    "-webkit-scroll-snap-coordinate": [
-        "none", "left", "right", "bottom", "top", "center"
     ],
 
     // iOS Properties

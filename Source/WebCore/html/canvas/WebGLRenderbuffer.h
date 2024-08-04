@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef WebGLRenderbuffer_h
-#define WebGLRenderbuffer_h
+#pragma once
 
 #include "WebGLSharedObject.h"
 
@@ -34,7 +33,7 @@ class WebGLRenderbuffer final : public WebGLSharedObject {
 public:
     virtual ~WebGLRenderbuffer();
 
-    static Ref<WebGLRenderbuffer> create(WebGLRenderingContextBase*);
+    static Ref<WebGLRenderbuffer> create(WebGLRenderingContextBase&);
 
     void setInternalFormat(GC3Denum internalformat)
     {
@@ -62,7 +61,7 @@ public:
     void setHasEverBeenBound() { m_hasEverBeenBound = true; }
 
 protected:
-    WebGLRenderbuffer(WebGLRenderingContextBase*);
+    WebGLRenderbuffer(WebGLRenderingContextBase&);
 
     void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) override;
 
@@ -78,5 +77,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif // WebGLRenderbuffer_h

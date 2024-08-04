@@ -46,13 +46,14 @@ namespace bmalloc {
 
 class BeginTag;
 class BumpAllocator;
+class DebugHeap;
 class EndTag;
 
 class Heap {
 public:
     Heap(std::lock_guard<StaticMutex>&);
     
-    Environment& environment() { return m_environment; }
+    DebugHeap* debugHeap() { return m_debugHeap; }
 
     void allocateSmallBumpRanges(std::lock_guard<StaticMutex>&, size_t sizeClass, BumpAllocator&, BumpRangeCache&);
     void derefSmallLine(std::lock_guard<StaticMutex>&, Object);
@@ -65,7 +66,11 @@ public:
     size_t largeSize(std::lock_guard<StaticMutex>&, void*);
     void shrinkLarge(std::lock_guard<StaticMutex>&, const Range&, size_t);
 
-    void scavenge(std::unique_lock<StaticMutex>&, std::chrono::milliseconds sleepDuration);
+    void scavenge(std::unique_lock<StaticMutex>&, ScavengeMode);
+
+#if BOS(DARWIN)
+    void setScavengerThreadQOSClass(qos_class_t overrideClass) { m_requestedScavengerThreadQOSClass = overrideClass; }
+#endif
 
 private:
     struct LargeObjectHash {
@@ -97,8 +102,8 @@ private:
     LargeRange splitAndAllocate(LargeRange&, size_t alignment, size_t);
 
     void concurrentScavenge();
-    void scavengeSmallPages(std::unique_lock<StaticMutex>&, std::chrono::milliseconds);
-    void scavengeLargeObjects(std::unique_lock<StaticMutex>&, std::chrono::milliseconds);
+    void scavengeSmallPages(std::unique_lock<StaticMutex>&, ScavengeMode);
+    void scavengeLargeObjects(std::unique_lock<StaticMutex>&, ScavengeMode);
 
     size_t m_vmPageSizePhysical;
     Vector<LineMetadata> m_smallLineMetadata;
@@ -112,12 +117,19 @@ private:
 
     Map<Chunk*, ObjectType, ChunkHash> m_objectTypes;
 
-    bool m_isAllocatingPages;
+    std::array<bool, pageClassCount> m_isAllocatingPages;
+    bool m_isAllocatingLargePages;
+
     AsyncTask<Heap, decltype(&Heap::concurrentScavenge)> m_scavenger;
 
     Environment m_environment;
+    DebugHeap* m_debugHeap;
 
     VMHeap m_vmHeap;
+
+#if BOS(DARWIN)
+    qos_class_t m_requestedScavengerThreadQOSClass { QOS_CLASS_UNSPECIFIED };
+#endif
 };
 
 inline void Heap::allocateSmallBumpRanges(

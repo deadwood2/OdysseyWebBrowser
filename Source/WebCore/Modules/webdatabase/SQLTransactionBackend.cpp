@@ -34,7 +34,6 @@
 #include "DatabaseContext.h"
 #include "DatabaseThread.h"
 #include "DatabaseTracker.h"
-#include "ExceptionCode.h"
 #include "Logging.h"
 #include "OriginLock.h"
 #include "SQLError.h"
@@ -42,9 +41,7 @@
 #include "SQLStatementCallback.h"
 #include "SQLStatementErrorCallback.h"
 #include "SQLTransaction.h"
-#include "SQLTransactionClient.h"
 #include "SQLTransactionCoordinator.h"
-#include "SQLValue.h"
 #include "SQLiteTransaction.h"
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/WTFString.h>
@@ -356,7 +353,7 @@ SQLTransactionBackend::~SQLTransactionBackend()
 
 void SQLTransactionBackend::doCleanup()
 {
-    ASSERT(currentThread() == m_frontend.database().databaseContext()->databaseThread()->getThreadID());
+    ASSERT(currentThread() == m_frontend.database().databaseThread().getThreadID());
 
     m_frontend.releaseOriginLockIfNeeded();
 
@@ -468,7 +465,7 @@ void SQLTransactionBackend::computeNextStateAndCleanupIfNeeded()
 
 void SQLTransactionBackend::notifyDatabaseThreadIsShuttingDown()
 {
-    ASSERT(currentThread() == m_frontend.m_database->databaseContext()->databaseThread()->getThreadID());
+    ASSERT(currentThread() == m_frontend.database().databaseThread().getThreadID());
 
     // If the transaction is in progress, we should roll it back here, since this
     // is our last opportunity to do something related to this transaction on the

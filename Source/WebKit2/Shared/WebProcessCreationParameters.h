@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebProcessCreationParameters_h
-#define WebProcessCreationParameters_h
+#pragma once
 
 #include "CacheModel.h"
 #include "SandboxExtension.h"
@@ -43,6 +42,7 @@
 
 #if USE(SOUP)
 #include "HTTPCookieAcceptPolicy.h"
+#include <WebCore/SoupNetworkProxySettings.h>
 #endif
 
 namespace API {
@@ -84,9 +84,10 @@ struct WebProcessCreationParameters {
     SandboxExtension::Handle containerTemporaryDirectoryExtensionHandle;
 #endif
     SandboxExtension::Handle mediaKeyStorageDirectoryExtensionHandle;
+#if ENABLE(MEDIA_STREAM)
+    SandboxExtension::Handle audioCaptureExtensionHandle;
+#endif
     String mediaKeyStorageDirectory;
-
-    bool shouldUseTestingNetworkSession;
 
     Vector<String> urlSchemesRegisteredAsEmptyDocument;
     Vector<String> urlSchemesRegisteredAsSecure;
@@ -97,51 +98,52 @@ struct WebProcessCreationParameters {
     Vector<String> urlSchemesRegisteredAsDisplayIsolated;
     Vector<String> urlSchemesRegisteredAsCORSEnabled;
     Vector<String> urlSchemesRegisteredAsAlwaysRevalidated;
-#if ENABLE(CACHE_PARTITIONING)
     Vector<String> urlSchemesRegisteredAsCachePartitioned;
-#endif
+
+    Vector<String> fontWhitelist;
+    Vector<String> languages;
 
     CacheModel cacheModel;
 
-    bool shouldAlwaysUseComplexTextCodePath;
-    bool shouldEnableMemoryPressureReliefLogging;
+    double defaultRequestTimeoutInterval { INT_MAX };
+
+    bool shouldUseTestingNetworkSession { false };
+    bool shouldAlwaysUseComplexTextCodePath { false };
+    bool shouldEnableMemoryPressureReliefLogging { false };
     bool shouldSuppressMemoryPressureHandler { false };
-    bool shouldUseFontSmoothing;
+    bool shouldUseFontSmoothing { true };
     bool resourceLoadStatisticsEnabled { false };
+    bool iconDatabaseEnabled { false };
+    bool fullKeyboardAccessEnabled { false };
+    bool memoryCacheDisabled { false };
 
-    Vector<String> fontWhitelist;
+#if ENABLE(SERVICE_CONTROLS)
+    bool hasImageServices { false };
+    bool hasSelectionServices { false };
+    bool hasRichContentServices { false };
+#endif
 
-    bool iconDatabaseEnabled;
-
-    double terminationTimeout;
-
-    Vector<String> languages;
+    double terminationTimeout { 0 };
 
     TextCheckerState textCheckerState;
 
-    bool fullKeyboardAccessEnabled;
-
-    double defaultRequestTimeoutInterval;
-
-#if PLATFORM(COCOA) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
     String uiProcessBundleIdentifier;
 #endif
 
 #if PLATFORM(COCOA)
-    pid_t presenterApplicationPid;
-
-    bool accessibilityEnhancedUserInterfaceEnabled;
+    pid_t presenterApplicationPid { 0 };
 
     WebCore::MachSendRight acceleratedCompositingPort;
 
     String uiProcessBundleResourcePath;
     SandboxExtension::Handle uiProcessBundleResourcePathExtensionHandle;
 
-    bool shouldEnableJIT;
-    bool shouldEnableFTLJIT;
+    bool shouldEnableJIT { false };
+    bool shouldEnableFTLJIT { false };
+    bool accessibilityEnhancedUserInterfaceEnabled { false };
     
     RefPtr<API::Data> bundleParameterData;
-
 #endif // PLATFORM(COCOA)
 
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
@@ -150,14 +152,6 @@ struct WebProcessCreationParameters {
 
     HashMap<WebCore::SessionID, HashMap<unsigned, double>> plugInAutoStartOriginHashes;
     Vector<String> plugInAutoStartOrigins;
-
-    bool memoryCacheDisabled;
-
-#if ENABLE(SERVICE_CONTROLS)
-    bool hasImageServices;
-    bool hasSelectionServices;
-    bool hasRichContentServices;
-#endif
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
     HashMap<String, HashMap<String, HashMap<String, uint8_t>>> pluginLoadClientPolicies;
@@ -174,8 +168,10 @@ struct WebProcessCreationParameters {
 #if PLATFORM(WAYLAND)
     String waylandCompositorDisplayName;
 #endif
+
+#if USE(SOUP)
+    WebCore::SoupNetworkProxySettings proxySettings;
+#endif
 };
 
 } // namespace WebKit
-
-#endif // WebProcessCreationParameters_h

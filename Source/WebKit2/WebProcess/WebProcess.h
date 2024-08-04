@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,12 +23,12 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebProcess_h
-#define WebProcess_h
+#pragma once
 
 #include "CacheModel.h"
 #include "ChildProcess.h"
 #include "DrawingArea.h"
+#include "LibWebRTCNetwork.h"
 #include "PluginProcessConnectionManager.h"
 #include "ResourceCachesToClear.h"
 #include "SandboxExtension.h"
@@ -68,11 +68,13 @@ class SessionID;
 class UserGestureToken;
 struct PluginInfo;
 struct SecurityOriginData;
+struct SoupNetworkProxySettings;
 }
 
 namespace WebKit {
 
 class EventDispatcher;
+class GamepadData;
 class InjectedBundle;
 class NetworkProcessConnection;
 class ObjCObjectGraph;
@@ -86,11 +88,11 @@ class WebPage;
 class WebPageGroupProxy;
 class WebProcessSupplement;
 enum class WebsiteDataType;
-class GamepadData;
 struct WebPageCreationParameters;
 struct WebPageGroupData;
 struct WebPreferencesStore;
 struct WebProcessCreationParameters;
+struct WebsiteData;
 
 #if ENABLE(DATABASE_PROCESS)
 class WebToDatabaseProcessConnection;
@@ -115,7 +117,7 @@ public:
     WebConnectionToUIProcess* webConnectionToUIProcess() const { return m_webConnection.get(); }
 
     WebPage* webPage(uint64_t pageID) const;
-    void createWebPage(uint64_t pageID, const WebPageCreationParameters&);
+    void createWebPage(uint64_t pageID, WebPageCreationParameters&&);
     void removeWebPage(uint64_t pageID);
     WebPage* focusedWebPage() const;
 
@@ -130,6 +132,7 @@ public:
     void plugInDidReceiveUserInteraction(const String& pageOrigin, const String& pluginOrigin, const String& mimeType, WebCore::SessionID);
     void setPluginLoadClientPolicy(uint8_t policy, const String& host, const String& bundleIdentifier, const String& versionString);
     void clearPluginClientPolicies();
+    void refreshPlugins();
 
     bool fullKeyboardAccessEnabled() const { return m_fullKeyboardAccessEnabled; }
 
@@ -162,6 +165,10 @@ public:
     NetworkProcessConnection& networkConnection();
     void networkProcessConnectionClosed(NetworkProcessConnection*);
     WebLoaderStrategy& webLoaderStrategy();
+
+#if USE(LIBWEBRTC)
+    LibWebRTCNetwork& libWebRTCNetwork();
+#endif
 
 #if ENABLE(DATABASE_PROCESS)
     void webToDatabaseProcessConnectionClosed(WebToDatabaseProcessConnection*);
@@ -250,9 +257,7 @@ private:
     void registerURLSchemeAsDisplayIsolated(const String&) const;
     void registerURLSchemeAsCORSEnabled(const String&) const;
     void registerURLSchemeAsAlwaysRevalidated(const String&) const;
-#if ENABLE(CACHE_PARTITIONING)
     void registerURLSchemeAsCachePartitioned(const String&) const;
-#endif
     void setDefaultRequestTimeoutInterval(double);
     void setAlwaysUsesComplexTextCodePath(bool);
     void setShouldUseFontSmoothing(bool);
@@ -284,11 +289,15 @@ private:
     void gamepadDisconnected(unsigned index);
 #endif
 
+#if USE(SOUP)
+    void setNetworkProxySettings(const WebCore::SoupNetworkProxySettings&);
+#endif
+
     void releasePageCache();
 
-    void fetchWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, uint64_t callbackID);
-    void deleteWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, std::chrono::system_clock::time_point modifiedSince, uint64_t callbackID);
-    void deleteWebsiteDataForOrigins(WebCore::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>& origins, uint64_t callbackID);
+    void fetchWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, WebsiteData&);
+    void deleteWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, std::chrono::system_clock::time_point modifiedSince);
+    void deleteWebsiteDataForOrigins(WebCore::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>& origins);
 
     void setMemoryCacheDisabled(bool);
 
@@ -305,6 +314,8 @@ private:
 
     void ensureAutomationSessionProxy(const String& sessionIdentifier);
     void destroyAutomationSessionProxy();
+
+    void logDiagnosticMessageForNetworkProcessCrash();
 
     // ChildProcess
     void initializeProcess(const ChildProcessInitializationParameters&) override;
@@ -325,7 +336,6 @@ private:
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
     void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) override;
     void didClose(IPC::Connection&) override;
-    void didReceiveInvalidMessage(IPC::Connection&, IPC::StringReference messageReceiverName, IPC::StringReference messageName) override;
 
     // Implemented in generated WebProcessMessageReceiver.cpp
     void didReceiveWebProcessMessage(IPC::Connection&, IPC::Decoder&);
@@ -342,20 +352,18 @@ private:
     RefPtr<ViewUpdateDispatcher> m_viewUpdateDispatcher;
 #endif
 
-    bool m_inDidClose;
-
     HashMap<WebCore::SessionID, HashMap<unsigned, double>> m_plugInAutoStartOriginHashes;
     HashSet<String> m_plugInAutoStartOrigins;
 
-    bool m_hasSetCacheModel;
-    CacheModel m_cacheModel;
+    bool m_hasSetCacheModel { false };
+    CacheModel m_cacheModel { CacheModelDocumentViewer };
 
 #if PLATFORM(COCOA)
     WebCore::MachSendRight m_compositingRenderServerPort;
     pid_t m_presenterApplicationPid;
 #endif
 
-    bool m_fullKeyboardAccessEnabled;
+    bool m_fullKeyboardAccessEnabled { false };
 
     HashMap<uint64_t, WebFrame*> m_frameMap;
 
@@ -369,6 +377,11 @@ private:
     void ensureNetworkProcessConnection();
     RefPtr<NetworkProcessConnection> m_networkProcessConnection;
     WebLoaderStrategy& m_webLoaderStrategy;
+
+#if USE(LIBWEBRTC)
+    std::unique_ptr<LibWebRTCNetwork> m_libWebRTCNetwork;
+#endif
+
     HashSet<String> m_dnsPrefetchedHosts;
     WebCore::HysteresisActivity m_dnsPrefetchHystereris;
 
@@ -384,9 +397,9 @@ private:
 #endif
 
 #if ENABLE(SERVICE_CONTROLS)
-    bool m_hasImageServices;
-    bool m_hasSelectionServices;
-    bool m_hasRichContentServices;
+    bool m_hasImageServices { false };
+    bool m_hasSelectionServices { false };
+    bool m_hasRichContentServices { false };
 #endif
 
     HashSet<uint64_t> m_pagesInWindows;
@@ -399,7 +412,7 @@ private:
     WebSQLiteDatabaseTracker m_webSQLiteDatabaseTracker;
 #endif
 
-    Ref<WebCore::ResourceLoadStatisticsStore> m_resourceLoadStatisticsStorage;
+    Ref<WebCore::ResourceLoadStatisticsStore> m_resourceLoadStatisticsStore;
 
     unsigned m_pagesMarkingLayersAsVolatile { 0 };
     bool m_suppressMemoryPressureHandler { false };
@@ -412,5 +425,3 @@ private:
 };
 
 } // namespace WebKit
-
-#endif // WebProcess_h

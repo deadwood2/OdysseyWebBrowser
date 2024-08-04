@@ -42,6 +42,7 @@
 #include "FrameSelection.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
+#include "HTMLParserIdioms.h"
 #include "KeyboardEvent.h"
 #include "LocalizedStrings.h"
 #include "NodeRenderStyle.h"
@@ -51,7 +52,6 @@
 #include "RenderTextControlSingleLine.h"
 #include "RenderTheme.h"
 #include "ShadowRoot.h"
-#include <wtf/text/TextBreakIterator.h>
 #include "TextControlInnerElements.h"
 #include "TextEvent.h"
 #include "TextIterator.h"
@@ -244,16 +244,12 @@ bool TextFieldInputType::needsContainer() const
 
 bool TextFieldInputType::shouldHaveSpinButton() const
 {
-    Document& document = element().document();
-    RefPtr<RenderTheme> theme = document.page() ? &document.page()->theme() : RenderTheme::defaultTheme();
-    return theme->shouldHaveSpinButton(element());
+    return RenderTheme::themeForPage(element().document().page())->shouldHaveSpinButton(element());
 }
 
 bool TextFieldInputType::shouldHaveCapsLockIndicator() const
 {
-    Document& document = element().document();
-    RefPtr<RenderTheme> theme = document.page() ? &document.page()->theme() : RenderTheme::defaultTheme();
-    return theme->shouldHaveCapsLockIndicator(element());
+    return RenderTheme::themeForPage(element().document().page())->shouldHaveCapsLockIndicator(element());
 }
 
 void TextFieldInputType::createShadowSubtree()
@@ -274,7 +270,7 @@ void TextFieldInputType::createShadowSubtree()
     m_innerText = TextControlInnerTextElement::create(document);
 
     if (!createsContainer) {
-        element().userAgentShadowRoot()->appendChild(*m_innerText, IGNORE_EXCEPTION);
+        element().userAgentShadowRoot()->appendChild(*m_innerText);
         updatePlaceholderText();
         return;
     }
@@ -284,7 +280,7 @@ void TextFieldInputType::createShadowSubtree()
 
     if (shouldHaveSpinButton) {
         m_innerSpinButton = SpinButtonElement::create(document, *this);
-        m_container->appendChild(*m_innerSpinButton, IGNORE_EXCEPTION);
+        m_container->appendChild(*m_innerSpinButton);
     }
 
     if (shouldHaveCapsLockIndicator) {
@@ -294,7 +290,7 @@ void TextFieldInputType::createShadowSubtree()
         bool shouldDrawCapsLockIndicator = this->shouldDrawCapsLockIndicator();
         m_capsLockIndicator->setInlineStyleProperty(CSSPropertyDisplay, shouldDrawCapsLockIndicator ? CSSValueBlock : CSSValueNone, true);
 
-        m_container->appendChild(*m_capsLockIndicator, IGNORE_EXCEPTION);
+        m_container->appendChild(*m_capsLockIndicator);
     }
 
     updateAutoFillButton();
@@ -350,11 +346,10 @@ void TextFieldInputType::destroyShadowSubtree()
     m_container = nullptr;
 }
 
-void TextFieldInputType::attributeChanged()
+void TextFieldInputType::attributeChanged(const QualifiedName& attributeName)
 {
-    // FIXME: Updating the inner text on any attribute update should
-    // be unnecessary. We should figure out what attributes affect.
-    updateInnerTextValue();
+    if (attributeName == valueAttr || attributeName == placeholderAttr)
+        updateInnerTextValue();
 }
 
 void TextFieldInputType::disabledAttributeChanged()
@@ -383,22 +378,23 @@ bool TextFieldInputType::shouldUseInputMethod() const
     return true;
 }
 
-static bool isASCIILineBreak(UChar c)
+// FIXME: The name of this function doesn't make clear the two jobs it does:
+// 1) Limits the string to a particular number of grapheme clusters.
+// 2) Truncates the string at the first character which is a control character other than tab.
+// FIXME: TextFieldInputType::sanitizeValue doesn't need a limit on grapheme clusters. A limit on code units would do.
+// FIXME: Where does the "truncate at first control character" rule come from?
+static String limitLength(const String& string, unsigned maxNumGraphemeClusters)
 {
-    return c == '\r' || c == '\n';
-}
-
-static String limitLength(const String& string, int maxLength)
-{
-    unsigned newLength = numCharactersInGraphemeClusters(string, maxLength);
-    for (unsigned i = 0; i < newLength; ++i) {
-        const UChar current = string[i];
-        if (current < ' ' && current != '\t') {
-            newLength = i;
-            break;
-        }
-    }
-    return string.left(newLength);
+    StringView stringView { string };
+    unsigned firstNonTabControlCharacterIndex = stringView.find([] (UChar character) {
+        return character < ' ' && character != '\t';
+    });
+    unsigned limitedLength;
+    if (stringView.is8Bit())
+        limitedLength = std::min(firstNonTabControlCharacterIndex, maxNumGraphemeClusters);
+    else
+        limitedLength = numCharactersInGraphemeClusters(stringView.substring(0, firstNonTabControlCharacterIndex), maxNumGraphemeClusters);
+    return string.left(limitedLength);
 }
 
 static String autoFillButtonTypeToAccessibilityLabel(AutoFillButtonType autoFillButtonType)
@@ -446,7 +442,7 @@ static bool isAutoFillButtonTypeChanged(const AtomicString& attribute, AutoFillB
 
 String TextFieldInputType::sanitizeValue(const String& proposedValue) const
 {
-    return limitLength(proposedValue.removeCharacters(isASCIILineBreak), HTMLInputElement::maxEffectiveLength);
+    return limitLength(proposedValue.removeCharacters(isHTMLLineBreak), HTMLInputElement::maxEffectiveLength);
 }
 
 void TextFieldInputType::handleBeforeTextInsertedEvent(BeforeTextInsertedEvent& event)
@@ -470,7 +466,7 @@ void TextFieldInputType::handleBeforeTextInsertedEvent(BeforeTextInsertedEvent& 
         int selectionStart = element().selectionStart();
         ASSERT(selectionStart <= element().selectionEnd());
         int selectionCodeUnitCount = element().selectionEnd() - selectionStart;
-        selectionLength = selectionCodeUnitCount ? numGraphemeClusters(innerText.substring(selectionStart, selectionCodeUnitCount)) : 0;
+        selectionLength = selectionCodeUnitCount ? numGraphemeClusters(StringView(innerText).substring(selectionStart, selectionCodeUnitCount)) : 0;
     }
     ASSERT(oldLength >= selectionLength);
 
@@ -482,13 +478,12 @@ void TextFieldInputType::handleBeforeTextInsertedEvent(BeforeTextInsertedEvent& 
     // Truncate the inserted text to avoid violating the maxLength and other constraints.
     String eventText = event.text();
     unsigned textLength = eventText.length();
-    while (textLength > 0 && isASCIILineBreak(eventText[textLength - 1]))
+    while (textLength > 0 && isHTMLLineBreak(eventText[textLength - 1]))
         textLength--;
     eventText.truncate(textLength);
     eventText.replace("\r\n", " ");
     eventText.replace('\r', ' ');
     eventText.replace('\n', ' ');
-
     event.setText(limitLength(eventText, appendableLength));
 }
 
@@ -504,16 +499,16 @@ void TextFieldInputType::updatePlaceholderText()
     String placeholderText = element().strippedPlaceholder();
     if (placeholderText.isEmpty()) {
         if (m_placeholder) {
-            m_placeholder->parentNode()->removeChild(*m_placeholder, ASSERT_NO_EXCEPTION);
+            m_placeholder->parentNode()->removeChild(*m_placeholder);
             m_placeholder = nullptr;
         }
         return;
     }
     if (!m_placeholder) {
         m_placeholder = TextControlPlaceholderElement::create(element().document());
-        element().userAgentShadowRoot()->insertBefore(*m_placeholder, m_container ? m_container.get() : innerTextElement(), ASSERT_NO_EXCEPTION);        
+        element().userAgentShadowRoot()->insertBefore(*m_placeholder, m_container ? m_container.get() : innerTextElement());
     }
-    m_placeholder->setInnerText(placeholderText, ASSERT_NO_EXCEPTION);
+    m_placeholder->setInnerText(placeholderText);
 }
 
 bool TextFieldInputType::appendFormData(FormDataList& list, bool multipart) const
@@ -550,7 +545,7 @@ void TextFieldInputType::subtreeHasChanged()
     element().setValueFromRenderer(innerText);
     element().updatePlaceholderVisibility();
     // Recalc for :invalid change.
-    element().setNeedsStyleRecalc();
+    element().invalidateStyleForSubtree();
 
     didSetValueByUserEdit();
 }
@@ -649,10 +644,10 @@ void TextFieldInputType::createContainer()
     m_container->setPseudo(AtomicString("-webkit-textfield-decoration-container", AtomicString::ConstructFromLiteral));
 
     m_innerBlock = TextControlInnerElement::create(element().document());
-    m_innerBlock->appendChild(*m_innerText, IGNORE_EXCEPTION);
-    m_container->appendChild(*m_innerBlock, IGNORE_EXCEPTION);
+    m_innerBlock->appendChild(*m_innerText);
+    m_container->appendChild(*m_innerBlock);
 
-    element().userAgentShadowRoot()->appendChild(*m_container, IGNORE_EXCEPTION);
+    element().userAgentShadowRoot()->appendChild(*m_container);
 }
 
 void TextFieldInputType::createAutoFillButton(AutoFillButtonType autoFillButtonType)
@@ -666,7 +661,7 @@ void TextFieldInputType::createAutoFillButton(AutoFillButtonType autoFillButtonT
     m_autoFillButton->setPseudo(autoFillButtonTypeToAutoFillButtonPseudoClassName(autoFillButtonType));
     m_autoFillButton->setAttributeWithoutSynchronization(roleAttr, AtomicString("button", AtomicString::ConstructFromLiteral));
     m_autoFillButton->setAttributeWithoutSynchronization(aria_labelAttr, autoFillButtonTypeToAccessibilityLabel(autoFillButtonType));
-    m_container->appendChild(*m_autoFillButton, IGNORE_EXCEPTION);
+    m_container->appendChild(*m_autoFillButton);
 }
 
 void TextFieldInputType::updateAutoFillButton()

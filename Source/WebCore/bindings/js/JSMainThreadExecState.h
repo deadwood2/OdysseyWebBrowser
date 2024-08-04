@@ -93,25 +93,28 @@ public:
         task.run(exec);
     }
 
-    static JSC::JSInternalPromise* loadModule(JSC::ExecState* exec, const String& moduleName, JSC::JSValue initiator)
+    static JSC::JSInternalPromise& loadModule(JSC::ExecState& state, const String& moduleName, JSC::JSValue scriptFetcher)
     {
-        JSMainThreadExecState currentState(exec);
-        return JSC::loadModule(exec, moduleName, initiator);
+        JSMainThreadExecState currentState(&state);
+        return *JSC::loadModule(&state, moduleName, scriptFetcher);
     }
 
-    static JSC::JSInternalPromise* loadModule(JSC::ExecState* exec, const JSC::SourceCode& sourceCode, JSC::JSValue initiator)
+    static JSC::JSInternalPromise& loadModule(JSC::ExecState& state, const JSC::SourceCode& sourceCode, JSC::JSValue scriptFetcher)
     {
-        JSMainThreadExecState currentState(exec);
-        return JSC::loadModule(exec, sourceCode, initiator);
+        JSMainThreadExecState currentState(&state);
+        return *JSC::loadModule(&state, sourceCode, scriptFetcher);
     }
 
-    static JSC::JSValue linkAndEvaluateModule(JSC::ExecState* exec, const JSC::Identifier& moduleKey, JSC::JSValue initiator, NakedPtr<JSC::Exception>& returnedException)
+    static JSC::JSValue linkAndEvaluateModule(JSC::ExecState& state, const JSC::Identifier& moduleKey, JSC::JSValue scriptFetcher, NakedPtr<JSC::Exception>& returnedException)
     {
-        JSMainThreadExecState currentState(exec);
-        JSC::JSValue returnValue = JSC::linkAndEvaluateModule(exec, moduleKey, initiator);
-        if (exec->hadException()) {
-            returnedException = exec->vm().exception();
-            exec->clearException();
+        JSC::VM& vm = state.vm();
+        auto scope = DECLARE_CATCH_SCOPE(vm);
+    
+        JSMainThreadExecState currentState(&state);
+        auto returnValue = JSC::linkAndEvaluateModule(&state, moduleKey, scriptFetcher);
+        if (UNLIKELY(scope.exception())) {
+            returnedException = scope.exception();
+            scope.clearException();
             return JSC::jsUndefined();
         }
         return returnValue;
@@ -131,8 +134,10 @@ private:
 
     ~JSMainThreadExecState()
     {
+        JSC::VM& vm = s_mainThreadState->vm();
+        auto scope = DECLARE_CATCH_SCOPE(vm);
         ASSERT(isMainThread());
-        ASSERT(!s_mainThreadState->hadException());
+        ASSERT_UNUSED(scope, !scope.exception());
 
         bool didExitJavaScript = s_mainThreadState && !m_previousState;
 
@@ -171,9 +176,7 @@ public:
 
 private:
     JSC::ExecState* m_previousState;
-#if ENABLE(CUSTOM_ELEMENTS)
     CustomElementReactionStack m_customElementReactionStack;
-#endif
 };
 
 JSC::JSValue functionCallHandlerFromAnyThread(JSC::ExecState*, JSC::JSValue functionObject, JSC::CallType, const JSC::CallData&, JSC::JSValue thisValue, const JSC::ArgList& args, NakedPtr<JSC::Exception>& returnedException);

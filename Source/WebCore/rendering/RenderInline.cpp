@@ -30,7 +30,6 @@
 #include "HitTestResult.h"
 #include "InlineElementBox.h"
 #include "InlineTextBox.h"
-#include "Page.h"
 #include "RenderBlock.h"
 #include "RenderChildIterator.h"
 #include "RenderFullScreen.h"
@@ -85,7 +84,7 @@ void RenderInline::willBeDestroyed()
     // properly dirty line boxes that they are removed from.  Effects that do :before/:after only on hover could crash otherwise.
     destroyLeftoverChildren();
     
-    if (!documentBeingDestroyed()) {
+    if (!renderTreeBeingDestroyed()) {
         if (firstLineBox()) {
             // We can't wait for RenderBoxModelObject::destroy to clear the selection,
             // because by then we will have nuked the line boxes.
@@ -275,9 +274,12 @@ LayoutRect RenderInline::localCaretRect(InlineBox* inlineBox, unsigned, LayoutUn
 
 void RenderInline::addChild(RenderObject* newChild, RenderObject* beforeChild)
 {
+    auto* beforeChildOrPlaceholder = beforeChild;
+    if (auto* flowThread = flowThreadContainingBlock())
+        beforeChildOrPlaceholder = flowThread->resolveMovedChild(beforeChild);
     if (continuation())
-        return addChildToContinuation(newChild, beforeChild);
-    return addChildIgnoringContinuation(newChild, beforeChild);
+        return addChildToContinuation(newChild, beforeChildOrPlaceholder);
+    return addChildIgnoringContinuation(newChild, beforeChildOrPlaceholder);
 }
 
 static RenderBoxModelObject* nextContinuation(RenderObject* renderer)
@@ -324,7 +326,7 @@ void RenderInline::addChildIgnoringContinuation(RenderObject* newChild, RenderOb
     if (!beforeChild && isAfterContent(lastChild()))
         beforeChild = lastChild();
     
-    bool useNewBlockInsideInlineModel = document().settings()->newBlockInsideInlineModelEnabled();
+    bool useNewBlockInsideInlineModel = settings().newBlockInsideInlineModelEnabled();
     bool childInline = newChildIsInline(*newChild, *this);
     // This code is for the old block-inside-inline model that uses continuations.
     if (!useNewBlockInsideInlineModel && !childInline && !newChild->isFloatingOrOutOfFlowPositioned()) {
@@ -522,7 +524,8 @@ void RenderInline::splitInlines(RenderBlock* fromBlock, RenderBlock* toBlock,
     }
 
     // Clear the flow thread containing blocks cached during the detached state insertions.
-    cloneInline->invalidateFlowThreadContainingBlockIncludingDescendants();
+    for (auto& cloneBlockChild : childrenOfType<RenderBlock>(*cloneInline))
+        cloneBlockChild.resetFlowThreadContainingBlockAndChildInfoIncludingDescendants();
 
     // Now we are at the block level. We need to put the clone into the toBlock.
     toBlock->insertChildInternal(cloneInline.leakPtr(), nullptr, NotifyChildren);
@@ -618,16 +621,20 @@ void RenderInline::addChildToContinuation(RenderObject* newChild, RenderObject* 
     auto* flow = continuationBefore(beforeChild);
     // It may or may not be the direct parent of the beforeChild.
     RenderBoxModelObject* beforeChildAncestor = nullptr;
-    // In case of anonymous wrappers, the parent of the beforeChild is mostly irrelevant. What we need is the topmost wrapper.
     if (!beforeChild) {
         auto* continuation = nextContinuation(flow);
         beforeChildAncestor = continuation ? continuation : flow;
     } else if (canUseAsParentForContinuation(beforeChild->parent()))
         beforeChildAncestor = downcast<RenderBoxModelObject>(beforeChild->parent());
     else if (beforeChild->parent()) {
+        // In case of anonymous wrappers, the parent of the beforeChild is mostly irrelevant. What we need is the topmost wrapper.
         auto* parent = beforeChild->parent();
-        while (parent && parent->parent() && parent->parent()->isAnonymous())
+        while (parent && parent->parent() && parent->parent()->isAnonymous()) {
+            // The ancestor candidate needs to be inside the continuation.
+            if (parent->hasContinuation())
+                break;
             parent = parent->parent();
+        }
         ASSERT(parent && parent->parent());
         beforeChildAncestor = downcast<RenderBoxModelObject>(parent->parent());
     } else
@@ -1637,10 +1644,10 @@ void RenderInline::paintOutline(PaintInfo& paintInfo, const LayoutPoint& paintOf
     rects.append(LayoutRect());
 
     Color outlineColor = styleToUse.visitedDependentColor(CSSPropertyOutlineColor);
-    bool useTransparencyLayer = outlineColor.hasAlpha();
+    bool useTransparencyLayer = !outlineColor.isOpaque();
     if (useTransparencyLayer) {
-        graphicsContext.beginTransparencyLayer(static_cast<float>(outlineColor.alpha()) / 255);
-        outlineColor = Color(outlineColor.red(), outlineColor.green(), outlineColor.blue());
+        graphicsContext.beginTransparencyLayer(outlineColor.alphaAsFloat());
+        outlineColor = outlineColor.opaqueColor();
     }
 
     for (unsigned i = 1; i < rects.size() - 1; i++)
@@ -1651,7 +1658,7 @@ void RenderInline::paintOutline(PaintInfo& paintInfo, const LayoutPoint& paintOf
 }
 
 void RenderInline::paintOutlineForLine(GraphicsContext& graphicsContext, const LayoutPoint& paintOffset,
-    const LayoutRect& previousLine, const LayoutRect& thisLine, const LayoutRect& nextLine, const Color outlineColor)
+    const LayoutRect& previousLine, const LayoutRect& thisLine, const LayoutRect& nextLine, const Color& outlineColor)
 {
     const auto& styleToUse = style();
     float outlineOffset = styleToUse.outlineOffset();

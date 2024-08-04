@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2013, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *           (C) 2006 Alexey Proskuryakov (ap@nypop.com)
  * Copyright (C) 2007 Samuel Weinig (sam@webkit.org)
  * Copyright (C) 2009, 2010, 2011, 2012 Google Inc. All rights reserved.
@@ -40,7 +40,6 @@
 #include "EmailInputType.h"
 #include "EventNames.h"
 #include "ExceptionCode.h"
-#include "ExceptionCodePlaceholder.h"
 #include "FileInputType.h"
 #include "FileList.h"
 #include "FormController.h"
@@ -70,7 +69,6 @@
 #include "ShadowRoot.h"
 #include "SubmitInputType.h"
 #include "TelephoneInputType.h"
-#include <wtf/text/TextBreakIterator.h>
 #include "TextInputType.h"
 #include "TimeInputType.h"
 #include "URLInputType.h"
@@ -79,6 +77,7 @@
 #include <wtf/Assertions.h>
 #include <wtf/HashMap.h>
 #include <wtf/text/StringHash.h>
+#include <wtf/text/TextBreakIterator.h>
 
 namespace WebCore {
 
@@ -173,8 +172,7 @@ InputType::~InputType()
 bool InputType::themeSupportsDataListUI(InputType* type)
 {
     Document& document = type->element().document();
-    RefPtr<RenderTheme> theme = document.page() ? &document.page()->theme() : RenderTheme::defaultTheme();
-    return theme->supportsDataListUI(type->formControlType());
+    return RenderTheme::themeForPage(document.page())->supportsDataListUI(type->formControlType());
 }
 
 bool InputType::isTextField() const
@@ -228,9 +226,9 @@ double InputType::valueAsDate() const
     return DateComponents::invalidMilliseconds();
 }
 
-void InputType::setValueAsDate(double, ExceptionCode& ec) const
+ExceptionOr<void> InputType::setValueAsDate(double) const
 {
-    ec = INVALID_STATE_ERR;
+    return Exception { INVALID_STATE_ERR };
 }
 
 double InputType::valueAsDouble() const
@@ -238,14 +236,14 @@ double InputType::valueAsDouble() const
     return std::numeric_limits<double>::quiet_NaN();
 }
 
-void InputType::setValueAsDouble(double doubleValue, TextFieldEventBehavior eventBehavior, ExceptionCode& ec) const
+ExceptionOr<void> InputType::setValueAsDouble(double doubleValue, TextFieldEventBehavior eventBehavior) const
 {
-    setValueAsDecimal(Decimal::fromDouble(doubleValue), eventBehavior, ec);
+    return setValueAsDecimal(Decimal::fromDouble(doubleValue), eventBehavior);
 }
 
-void InputType::setValueAsDecimal(const Decimal&, TextFieldEventBehavior, ExceptionCode& ec) const
+ExceptionOr<void> InputType::setValueAsDecimal(const Decimal&, TextFieldEventBehavior) const
 {
-    ec = INVALID_STATE_ERR;
+    return Exception { INVALID_STATE_ERR };
 }
 
 bool InputType::supportsValidation() const
@@ -412,6 +410,9 @@ String InputType::validationMessage() const
     if (patternMismatch(value))
         return validationMessagePatternMismatchText();
 
+    if (element().tooShort())
+        return validationMessageTooShortText(numGraphemeClusters(value), element().minLength());
+
     if (element().tooLong())
         return validationMessageTooLongText(numGraphemeClusters(value), element().effectiveMaxLength());
 
@@ -481,11 +482,6 @@ bool InputType::shouldSubmitImplicitly(Event& event)
     return is<KeyboardEvent>(event) && event.type() == eventNames().keypressEvent && downcast<KeyboardEvent>(event).charCode() == '\r';
 }
 
-PassRefPtr<HTMLFormElement> InputType::formForSubmission() const
-{
-    return element().form();
-}
-
 RenderPtr<RenderElement> InputType::createInputRenderer(RenderStyle&& style)
 {
     return RenderPtr<RenderElement>(RenderElement::createFor(element(), WTFMove(style)));
@@ -550,7 +546,7 @@ Chrome* InputType::chrome() const
 {
     if (Page* page = element().document().page())
         return &page->chrome();
-    return 0;
+    return nullptr;
 }
 
 bool InputType::canSetStringValue() const
@@ -620,11 +616,6 @@ bool InputType::shouldRespectAlignAttribute()
     return false;
 }
 
-bool InputType::canChangeFromAnotherType() const
-{
-    return true;
-}
-
 void InputType::minOrMaxAttributeChanged()
 {
 }
@@ -640,7 +631,7 @@ bool InputType::canBeSuccessfulSubmitButton()
 
 HTMLElement* InputType::placeholderElement() const
 {
-    return 0;
+    return nullptr;
 }
 
 bool InputType::rendererIsNeeded()
@@ -650,10 +641,10 @@ bool InputType::rendererIsNeeded()
 
 FileList* InputType::files()
 {
-    return 0;
+    return nullptr;
 }
 
-void InputType::setFiles(PassRefPtr<FileList>)
+void InputType::setFiles(RefPtr<FileList>&&)
 {
 }
 
@@ -685,7 +676,7 @@ bool InputType::storesValueSeparateFromAttribute()
 void InputType::setValue(const String& sanitizedValue, bool valueChanged, TextFieldEventBehavior eventBehavior)
 {
     element().setValueInternal(sanitizedValue, eventBehavior);
-    element().setNeedsStyleRecalc();
+    element().invalidateStyleForSubtree();
     if (!valueChanged)
         return;
     switch (eventBehavior) {
@@ -735,25 +726,29 @@ String InputType::sanitizeValue(const String& proposedValue) const
 }
 
 #if ENABLE(DRAG_SUPPORT)
+
 bool InputType::receiveDroppedFiles(const DragData&)
 {
     ASSERT_NOT_REACHED();
     return false;
 }
+
 #endif
 
 Icon* InputType::icon() const
 {
     ASSERT_NOT_REACHED();
-    return 0;
+    return nullptr;
 }
 
 #if PLATFORM(IOS)
+
 String InputType::displayString() const
 {
     ASSERT_NOT_REACHED();
     return String();
 }
+
 #endif
 
 bool InputType::shouldResetOnDocumentActivation()
@@ -909,7 +904,7 @@ void InputType::updatePlaceholderText()
 {
 }
 
-void InputType::attributeChanged()
+void InputType::attributeChanged(const QualifiedName&)
 {
 }
 
@@ -959,10 +954,10 @@ void InputType::listAttributeTargetChanged()
 {
 }
 
-Optional<Decimal> InputType::findClosestTickMarkValue(const Decimal&)
+std::optional<Decimal> InputType::findClosestTickMarkValue(const Decimal&)
 {
     ASSERT_NOT_REACHED();
-    return Nullopt;
+    return std::nullopt;
 }
 #endif
 
@@ -991,47 +986,41 @@ unsigned InputType::width() const
     return 0;
 }
 
-void InputType::applyStep(int count, AnyStepHandling anyStepHandling, TextFieldEventBehavior eventBehavior, ExceptionCode& ec)
+ExceptionOr<void> InputType::applyStep(int count, AnyStepHandling anyStepHandling, TextFieldEventBehavior eventBehavior)
 {
     StepRange stepRange(createStepRange(anyStepHandling));
-    if (!stepRange.hasStep()) {
-        ec = INVALID_STATE_ERR;
-        return;
-    }
+    if (!stepRange.hasStep())
+        return Exception { INVALID_STATE_ERR };
 
     const Decimal current = parseToNumberOrNaN(element().value());
-    if (!current.isFinite()) {
-        ec = INVALID_STATE_ERR;
-        return;
-    }
+    if (!current.isFinite())
+        return Exception { INVALID_STATE_ERR };
     Decimal newValue = current + stepRange.step() * count;
-    if (!newValue.isFinite()) {
-        ec = INVALID_STATE_ERR;
-        return;
-    }
+    if (!newValue.isFinite())
+        return Exception { INVALID_STATE_ERR };
 
     const Decimal acceptableErrorValue = stepRange.acceptableError();
-    if (newValue - stepRange.minimum() < -acceptableErrorValue) {
-        ec = INVALID_STATE_ERR;
-        return;
-    }
+    if (newValue - stepRange.minimum() < -acceptableErrorValue)
+        return Exception { INVALID_STATE_ERR };
     if (newValue < stepRange.minimum())
         newValue = stepRange.minimum();
 
     if (!equalLettersIgnoringASCIICase(element().attributeWithoutSynchronization(stepAttr), "any"))
         newValue = stepRange.alignValueForStep(current, newValue);
 
-    if (newValue - stepRange.maximum() > acceptableErrorValue) {
-        ec = INVALID_STATE_ERR;
-        return;
-    }
+    if (newValue - stepRange.maximum() > acceptableErrorValue)
+        return Exception { INVALID_STATE_ERR };
     if (newValue > stepRange.maximum())
         newValue = stepRange.maximum();
 
-    setValueAsDecimal(newValue, eventBehavior, ec);
+    auto result = setValueAsDecimal(newValue, eventBehavior);
+    if (result.hasException())
+        return result;
 
     if (AXObjectCache* cache = element().document().existingAXObjectCache())
         cache->postNotification(&element(), AXObjectCache::AXValueChanged);
+
+    return result;
 }
 
 bool InputType::getAllowedValueStep(Decimal* step) const
@@ -1047,13 +1036,11 @@ StepRange InputType::createStepRange(AnyStepHandling) const
     return StepRange();
 }
 
-void InputType::stepUp(int n, ExceptionCode& ec)
+ExceptionOr<void> InputType::stepUp(int n)
 {
-    if (!isSteppable()) {
-        ec = INVALID_STATE_ERR;
-        return;
-    }
-    applyStep(n, RejectAny, DispatchNoEvent, ec);
+    if (!isSteppable())
+        return Exception { INVALID_STATE_ERR };
+    return applyStep(n, RejectAny, DispatchNoEvent);
 }
 
 void InputType::stepUpFromRenderer(int n)
@@ -1127,10 +1114,10 @@ void InputType::stepUpFromRenderer(int n)
             current = stepRange.minimum() - nextDiff;
         if (current > stepRange.maximum() - nextDiff)
             current = stepRange.maximum() - nextDiff;
-        setValueAsDecimal(current, DispatchNoEvent, IGNORE_EXCEPTION);
+        setValueAsDecimal(current, DispatchNoEvent);
     }
     if ((sign > 0 && current < stepRange.minimum()) || (sign < 0 && current > stepRange.maximum()))
-        setValueAsDecimal(sign > 0 ? stepRange.minimum() : stepRange.maximum(), DispatchInputAndChangeEvent, IGNORE_EXCEPTION);
+        setValueAsDecimal(sign > 0 ? stepRange.minimum() : stepRange.maximum(), DispatchInputAndChangeEvent);
     else {
         if (stepMismatch(element().value())) {
             ASSERT(!step.isZero());
@@ -1148,13 +1135,13 @@ void InputType::stepUpFromRenderer(int n)
             if (newValue > stepRange.maximum())
                 newValue = stepRange.maximum();
 
-            setValueAsDecimal(newValue, n == 1 || n == -1 ? DispatchInputAndChangeEvent : DispatchNoEvent, IGNORE_EXCEPTION);
+            setValueAsDecimal(newValue, n == 1 || n == -1 ? DispatchInputAndChangeEvent : DispatchNoEvent);
             if (n > 1)
-                applyStep(n - 1, AnyIsDefaultStep, DispatchInputAndChangeEvent, IGNORE_EXCEPTION);
+                applyStep(n - 1, AnyIsDefaultStep, DispatchInputAndChangeEvent);
             else if (n < -1)
-                applyStep(n + 1, AnyIsDefaultStep, DispatchInputAndChangeEvent, IGNORE_EXCEPTION);
+                applyStep(n + 1, AnyIsDefaultStep, DispatchInputAndChangeEvent);
         } else
-            applyStep(n, AnyIsDefaultStep, DispatchInputAndChangeEvent, IGNORE_EXCEPTION);
+            applyStep(n, AnyIsDefaultStep, DispatchInputAndChangeEvent);
     }
 }
 

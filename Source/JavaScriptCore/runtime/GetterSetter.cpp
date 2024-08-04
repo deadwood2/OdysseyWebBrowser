@@ -41,8 +41,8 @@ void GetterSetter::visitChildren(JSCell* cell, SlotVisitor& visitor)
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     JSCell::visitChildren(thisObject, visitor);
 
-    visitor.append(&thisObject->m_getter);
-    visitor.append(&thisObject->m_setter);
+    visitor.append(thisObject->m_getter);
+    visitor.append(thisObject->m_setter);
 }
 
 GetterSetter* GetterSetter::withGetter(VM& vm, JSGlobalObject* globalObject, JSObject* newGetter)
@@ -73,15 +73,17 @@ GetterSetter* GetterSetter::withSetter(VM& vm, JSGlobalObject* globalObject, JSO
 
 JSValue callGetter(ExecState* exec, JSValue base, JSValue getterSetter)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
     // FIXME: Some callers may invoke get() without checking for an exception first.
     // We work around that by checking here.
-    if (exec->hadException())
-        return exec->exception()->value();
+    RETURN_IF_EXCEPTION(scope, scope.exception()->value());
 
     JSObject* getter = jsCast<GetterSetter*>(getterSetter)->getter();
 
     CallData callData;
-    CallType callType = getter->methodTable(exec->vm())->getCallData(getter, callData);
+    CallType callType = getter->methodTable(vm)->getCallData(getter, callData);
+    scope.release();
     return call(exec, getter, callType, callData, base, ArgList());
 }
 
@@ -92,11 +94,8 @@ bool callSetter(ExecState* exec, JSValue base, JSValue getterSetter, JSValue val
 
     GetterSetter* getterSetterObj = jsCast<GetterSetter*>(getterSetter);
 
-    if (getterSetterObj->isSetterNull()) {
-        if (ecmaMode == StrictMode)
-            throwTypeError(exec, scope, StrictModeReadonlyPropertyWriteError);
-        return false;
-    }
+    if (getterSetterObj->isSetterNull())
+        return typeError(exec, scope, ecmaMode == StrictMode, ASCIILiteral(ReadonlyPropertyWriteError));
 
     JSObject* setter = getterSetterObj->setter();
 
@@ -105,6 +104,7 @@ bool callSetter(ExecState* exec, JSValue base, JSValue getterSetter, JSValue val
 
     CallData callData;
     CallType callType = setter->methodTable(vm)->getCallData(setter, callData);
+    scope.release();
     call(exec, setter, callType, callData, base, args);
     return true;
 }

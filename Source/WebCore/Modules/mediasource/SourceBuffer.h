@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2013 Google Inc. All rights reserved.
- * Copyright (C) 2013-2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -36,20 +36,17 @@
 #include "ActiveDOMObject.h"
 #include "AudioTrack.h"
 #include "EventTarget.h"
-#include "ExceptionCode.h"
+#include "ExceptionOr.h"
 #include "GenericEventQueue.h"
-#include "ScriptWrappable.h"
 #include "SourceBufferPrivateClient.h"
 #include "TextTrack.h"
 #include "Timer.h"
 #include "VideoTrack.h"
-#include <runtime/ArrayBufferView.h>
-#include <wtf/RefCounted.h>
-#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 class AudioTrackList;
+class BufferSource;
 class MediaSource;
 class PlatformTimeRanges;
 class SourceBufferPrivate;
@@ -57,56 +54,48 @@ class TextTrackList;
 class TimeRanges;
 class VideoTrackList;
 
-class SourceBuffer final : public RefCounted<SourceBuffer>, public ActiveDOMObject, public EventTargetWithInlineData, public SourceBufferPrivateClient, public AudioTrackClient, public VideoTrackClient, public TextTrackClient {
+class SourceBuffer final : public RefCounted<SourceBuffer>, public ActiveDOMObject, public EventTargetWithInlineData, private SourceBufferPrivateClient, private AudioTrackClient, private VideoTrackClient, private TextTrackClient {
 public:
     static Ref<SourceBuffer> create(Ref<SourceBufferPrivate>&&, MediaSource*);
-
     virtual ~SourceBuffer();
 
-    // SourceBuffer.idl methods
     bool updating() const { return m_updating; }
-    RefPtr<TimeRanges> buffered(ExceptionCode&) const;
-    const RefPtr<TimeRanges>& buffered() const;
+    ExceptionOr<Ref<TimeRanges>> buffered() const;
     double timestampOffset() const;
-    void setTimestampOffset(double, ExceptionCode&);
+    ExceptionOr<void> setTimestampOffset(double);
 
 #if ENABLE(VIDEO_TRACK)
-    VideoTrackList* videoTracks();
-    AudioTrackList* audioTracks();
-    TextTrackList* textTracks();
+    VideoTrackList& videoTracks();
+    AudioTrackList& audioTracks();
+    TextTrackList& textTracks();
 #endif
 
     double appendWindowStart() const;
-    void setAppendWindowStart(double, ExceptionCode&);
+    ExceptionOr<void> setAppendWindowStart(double);
     double appendWindowEnd() const;
-    void setAppendWindowEnd(double, ExceptionCode&);
+    ExceptionOr<void> setAppendWindowEnd(double);
 
-    void appendBuffer(ArrayBuffer&, ExceptionCode&);
-    void appendBuffer(ArrayBufferView&, ExceptionCode&);
-    void abort(ExceptionCode&);
-    void remove(double start, double end, ExceptionCode&);
-    void remove(const MediaTime&, const MediaTime&, ExceptionCode&);
+    ExceptionOr<void> appendBuffer(const BufferSource&);
+    ExceptionOr<void> abort();
+    ExceptionOr<void> remove(double start, double end);
+    ExceptionOr<void> remove(const MediaTime&, const MediaTime&);
 
-    void appendError(bool);
+    const TimeRanges& bufferedInternal() const { ASSERT(m_buffered); return *m_buffered; }
+
     void abortIfUpdating();
     void removedFromMediaSource();
     void seekToTime(const MediaTime&);
 
-    bool hasCurrentTime() const;
-    bool hasFutureTime() const;
-    bool canPlayThrough();
+    bool canPlayThroughRange(PlatformTimeRanges&);
 
     bool hasVideo() const;
-    bool hasAudio() const;
 
     bool active() const { return m_active; }
 
-    // EventTarget interface
-    ScriptExecutionContext* scriptExecutionContext() const override { return ActiveDOMObject::scriptExecutionContext(); }
-    EventTargetInterface eventTargetInterface() const override { return SourceBufferEventTargetInterfaceType; }
+    ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
 
-    using RefCounted<SourceBuffer>::ref;
-    using RefCounted<SourceBuffer>::deref;
+    using RefCounted::ref;
+    using RefCounted::deref;
 
     struct TrackBuffer;
 
@@ -114,60 +103,53 @@ public:
 
     enum class AppendMode { Segments, Sequence };
     AppendMode mode() const { return m_mode; }
-    void setMode(AppendMode, ExceptionCode&);
+    ExceptionOr<void> setMode(AppendMode);
 
-    bool shouldGenerateTimestamps() const { return m_shouldGenerateTimestamps; }
     void setShouldGenerateTimestamps(bool flag) { m_shouldGenerateTimestamps = flag; }
-
-    void rangeRemoval(const MediaTime&, const MediaTime&);
 
     bool isBufferedDirty() const { return m_bufferedDirty; }
     void setBufferedDirty(bool flag) { m_bufferedDirty = flag; }
 
-    // ActiveDOMObject API.
-    bool hasPendingActivity() const override;
+    MediaTime highestPresentationTimestamp() const;
+    void readyStateChanged();
 
-protected:
-    // EventTarget interface
-    void refEventTarget() override { ref(); }
-    void derefEventTarget() override { deref(); }
+    bool hasPendingActivity() const final;
 
 private:
     SourceBuffer(Ref<SourceBufferPrivate>&&, MediaSource*);
 
-    // ActiveDOMObject API.
-    void stop() override;
-    const char* activeDOMObjectName() const override;
-    bool canSuspendForDocumentSuspension() const override;
+    void refEventTarget() final { ref(); }
+    void derefEventTarget() final { deref(); }
 
-    // SourceBufferPrivateClient
-    void sourceBufferPrivateDidReceiveInitializationSegment(SourceBufferPrivate*, const InitializationSegment&) override;
-    void sourceBufferPrivateDidReceiveSample(SourceBufferPrivate*, MediaSample&) override;
-    bool sourceBufferPrivateHasAudio(const SourceBufferPrivate*) const override;
-    bool sourceBufferPrivateHasVideo(const SourceBufferPrivate*) const override;
-    void sourceBufferPrivateDidBecomeReadyForMoreSamples(SourceBufferPrivate*, AtomicString trackID) override;
-    MediaTime sourceBufferPrivateFastSeekTimeForMediaTime(SourceBufferPrivate*, const MediaTime&, const MediaTime& negativeThreshold, const MediaTime& positiveThreshold) override;
-    void sourceBufferPrivateAppendComplete(SourceBufferPrivate*, AppendResult) override;
-    void sourceBufferPrivateDidReceiveRenderingError(SourceBufferPrivate*, int errorCode) override;
+    void stop() final;
+    const char* activeDOMObjectName() const final;
+    bool canSuspendForDocumentSuspension() const final;
 
-    // AudioTrackClient
-    void audioTrackEnabledChanged(AudioTrack*) override;
+    void sourceBufferPrivateDidReceiveInitializationSegment(const InitializationSegment&) final;
+    void sourceBufferPrivateDidReceiveSample(MediaSample&) final;
+    bool sourceBufferPrivateHasAudio() const final;
+    bool sourceBufferPrivateHasVideo() const final;
+    void sourceBufferPrivateDidBecomeReadyForMoreSamples(const AtomicString& trackID) final;
+    MediaTime sourceBufferPrivateFastSeekTimeForMediaTime(const MediaTime&, const MediaTime& negativeThreshold, const MediaTime& positiveThreshold) final;
+    void sourceBufferPrivateAppendComplete(AppendResult) final;
+    void sourceBufferPrivateDidReceiveRenderingError(int errorCode) final;
 
-    // VideoTrackClient
-    void videoTrackSelectedChanged(VideoTrack*) override;
+    void audioTrackEnabledChanged(AudioTrack&) final;
+    void videoTrackSelectedChanged(VideoTrack&) final;
 
-    // TextTrackClient
-    void textTrackKindChanged(TextTrack*) override;
-    void textTrackModeChanged(TextTrack*) override;
-    void textTrackAddCues(TextTrack*, const TextTrackCueList*) override;
-    void textTrackRemoveCues(TextTrack*, const TextTrackCueList*) override;
-    void textTrackAddCue(TextTrack*, TextTrackCue&) override;
-    void textTrackRemoveCue(TextTrack*, TextTrackCue&) override;
+    void textTrackKindChanged(TextTrack&) final;
+    void textTrackModeChanged(TextTrack&) final;
+    void textTrackAddCues(TextTrack&, const TextTrackCueList&) final;
+    void textTrackRemoveCues(TextTrack&, const TextTrackCueList&) final;
+    void textTrackAddCue(TextTrack&, TextTrackCue&) final;
+    void textTrackRemoveCue(TextTrack&, TextTrackCue&) final;
+
+    EventTargetInterface eventTargetInterface() const final { return SourceBufferEventTargetInterfaceType; }
 
     bool isRemoved() const;
     void scheduleEvent(const AtomicString& eventName);
 
-    void appendBufferInternal(unsigned char*, unsigned, ExceptionCode&);
+    ExceptionOr<void> appendBufferInternal(const unsigned char*, unsigned);
     void appendBufferTimerFired();
     void resetParserState();
 
@@ -175,8 +157,8 @@ private:
 
     bool validateInitializationSegment(const InitializationSegment&);
 
-    void reenqueueMediaForTime(TrackBuffer&, AtomicString trackID, const MediaTime&);
-    void provideMediaData(TrackBuffer&, AtomicString trackID);
+    void reenqueueMediaForTime(TrackBuffer&, const AtomicString& trackID, const MediaTime&);
+    void provideMediaData(TrackBuffer&, const AtomicString& trackID);
     void didDropSample();
     void evictCodedFrames(size_t newDataSize);
     size_t maximumBufferSize() const;
@@ -189,11 +171,17 @@ private:
     size_t extraMemoryCost() const;
     void reportExtraMemoryAllocated();
 
-    std::unique_ptr<PlatformTimeRanges> bufferedAccountingForEndOfStream() const;
+    void updateBufferedFromTrackBuffers();
 
-    // Internals
+    void appendError(bool);
+
+    bool hasAudio() const;
+
+    void rangeRemoval(const MediaTime&, const MediaTime&);
+
     friend class Internals;
     WEBCORE_EXPORT Vector<String> bufferedSamplesForTrackID(const AtomicString&);
+    WEBCORE_EXPORT Vector<String> enqueuedSamplesForTrackID(const AtomicString&);
 
     Ref<SourceBufferPrivate> m_private;
     MediaSource* m_source;

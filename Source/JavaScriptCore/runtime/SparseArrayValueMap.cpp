@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2012, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,9 +31,9 @@
 #include "JSObject.h"
 #include "JSCInlines.h"
 #include "PropertySlot.h"
-#include "Reject.h"
 #include "SlotVisitor.h"
 #include "Structure.h"
+#include "TypeError.h"
 
 namespace JSC {
 
@@ -74,18 +74,35 @@ Structure* SparseArrayValueMap::createStructure(VM& vm, JSGlobalObject* globalOb
 
 SparseArrayValueMap::AddResult SparseArrayValueMap::add(JSObject* array, unsigned i)
 {
-    SparseArrayEntry entry;
-    entry.setWithoutWriteBarrier(jsUndefined());
-
-    AddResult result = m_map.add(i, entry);
-    size_t capacity = m_map.capacity();
-    if (capacity != m_reportedCapacity) {
+    AddResult result;
+    size_t capacity;
+    {
+        auto locker = holdLock(*this);
+        SparseArrayEntry entry;
+        entry.setWithoutWriteBarrier(jsUndefined());
+        
+        result = m_map.add(i, entry);
+        capacity = m_map.capacity();
+    }
+    if (capacity > m_reportedCapacity) {
         // FIXME: Adopt reportExtraMemoryVisited, and switch to reportExtraMemoryAllocated.
         // https://bugs.webkit.org/show_bug.cgi?id=142595
         Heap::heap(array)->deprecatedReportExtraMemory((capacity - m_reportedCapacity) * (sizeof(unsigned) + sizeof(WriteBarrier<Unknown>)));
         m_reportedCapacity = capacity;
     }
     return result;
+}
+
+void SparseArrayValueMap::remove(iterator it)
+{
+    auto locker = holdLock(*this);
+    m_map.remove(it);
+}
+
+void SparseArrayValueMap::remove(unsigned i)
+{
+    auto locker = holdLock(*this);
+    m_map.remove(i);
 }
 
 bool SparseArrayValueMap::putEntry(ExecState* exec, JSObject* array, unsigned i, JSValue value, bool shouldThrow)
@@ -102,18 +119,21 @@ bool SparseArrayValueMap::putEntry(ExecState* exec, JSObject* array, unsigned i,
     // extensible, this is not the right thing to have done - so remove again.
     if (result.isNewEntry && !array->isStructureExtensible()) {
         remove(result.iterator);
-        if (shouldThrow)
-            throwTypeError(exec, scope, StrictModeReadonlyPropertyWriteError);
-        return false;
+        return typeError(exec, scope, shouldThrow, ASCIILiteral(ReadonlyPropertyWriteError));
     }
     
+    scope.release();
     return entry.put(exec, array, this, value, shouldThrow);
 }
 
 bool SparseArrayValueMap::putDirect(ExecState* exec, JSObject* array, unsigned i, JSValue value, unsigned attributes, PutDirectIndexMode mode)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
     ASSERT(value);
     
+    bool shouldThrow = (mode == PutDirectIndexShouldThrow);
+
     AddResult result = add(array, i);
     SparseArrayEntry& entry = result.iterator->value;
 
@@ -122,11 +142,14 @@ bool SparseArrayValueMap::putDirect(ExecState* exec, JSObject* array, unsigned i
     // extensible, this is not the right thing to have done - so remove again.
     if (mode != PutDirectIndexLikePutDirect && result.isNewEntry && !array->isStructureExtensible()) {
         remove(result.iterator);
-        return reject(exec, mode == PutDirectIndexShouldThrow, "Attempting to define property on object that is not extensible.");
+        return typeError(exec, scope, shouldThrow, ASCIILiteral(NonExtensibleObjectPropertyDefineError));
     }
 
+    if (entry.attributes & ReadOnly)
+        return typeError(exec, scope, shouldThrow, ASCIILiteral(ReadonlyPropertyWriteError));
+
     entry.attributes = attributes;
-    entry.set(exec->vm(), this, value);
+    entry.set(vm, this, value);
     return true;
 }
 
@@ -154,16 +177,14 @@ bool SparseArrayEntry::put(ExecState* exec, JSValue thisValue, SparseArrayValueM
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     if (!(attributes & Accessor)) {
-        if (attributes & ReadOnly) {
-            if (shouldThrow)
-                throwTypeError(exec, scope, StrictModeReadonlyPropertyWriteError);
-            return false;
-        }
+        if (attributes & ReadOnly)
+            return typeError(exec, scope, shouldThrow, ASCIILiteral(ReadonlyPropertyWriteError));
 
         set(vm, map, value);
         return true;
     }
 
+    scope.release();
     return callSetter(exec, thisValue, Base::get(), value, shouldThrow ? StrictMode : NotStrictMode);
 }
 
@@ -178,9 +199,10 @@ void SparseArrayValueMap::visitChildren(JSCell* thisObject, SlotVisitor& visitor
     Base::visitChildren(thisObject, visitor);
     
     SparseArrayValueMap* thisMap = jsCast<SparseArrayValueMap*>(thisObject);
+    auto locker = holdLock(*thisMap);
     iterator end = thisMap->m_map.end();
     for (iterator it = thisMap->m_map.begin(); it != end; ++it)
-        visitor.append(&it->value);
+        visitor.append(it->value);
 }
 
 } // namespace JSC

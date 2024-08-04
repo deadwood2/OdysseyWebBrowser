@@ -40,9 +40,9 @@ const ClassInfo WeakMapConstructor::s_info = { "Function", &Base::s_info, 0, CRE
 
 void WeakMapConstructor::finishCreation(VM& vm, WeakMapPrototype* prototype)
 {
-    Base::finishCreation(vm, prototype->classInfo()->className);
+    Base::finishCreation(vm, prototype->classInfo(vm)->className);
     putDirectWithoutTransition(vm, vm.propertyNames->prototype, prototype, DontEnum | DontDelete | ReadOnly);
-    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(0), ReadOnly | DontEnum | DontDelete);
+    putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(0), DontEnum | ReadOnly);
 }
 
 static EncodedJSValue JSC_HOST_CALL callWeakMap(ExecState* exec)
@@ -57,41 +57,40 @@ static EncodedJSValue JSC_HOST_CALL constructWeakMap(ExecState* exec)
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    JSGlobalObject* globalObject = asInternalFunction(exec->callee())->globalObject();
+    JSGlobalObject* globalObject = asInternalFunction(exec->jsCallee())->globalObject();
     Structure* weakMapStructure = InternalFunction::createSubclassStructure(exec, exec->newTarget(), globalObject->weakMapStructure());
-    if (exec->hadException())
-        return JSValue::encode(JSValue());
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
     JSWeakMap* weakMap = JSWeakMap::create(exec, weakMapStructure);
     JSValue iterable = exec->argument(0);
     if (iterable.isUndefinedOrNull())
         return JSValue::encode(weakMap);
 
-    JSValue adderFunction = weakMap->JSObject::get(exec, exec->propertyNames().set);
-    if (exec->hadException())
-        return JSValue::encode(jsUndefined());
+    JSValue adderFunction = weakMap->JSObject::get(exec, vm.propertyNames->set);
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
     CallData adderFunctionCallData;
     CallType adderFunctionCallType = getCallData(adderFunction, adderFunctionCallData);
     if (adderFunctionCallType == CallType::None)
         return JSValue::encode(throwTypeError(exec, scope));
 
+    scope.release();
     forEachInIterable(exec, iterable, [&](VM& vm, ExecState* exec, JSValue nextItem) {
+        auto scope = DECLARE_THROW_SCOPE(vm);
         if (!nextItem.isObject()) {
             throwTypeError(exec, scope);
             return;
         }
 
         JSValue key = nextItem.get(exec, static_cast<unsigned>(0));
-        if (vm.exception())
-            return;
+        RETURN_IF_EXCEPTION(scope, void());
 
         JSValue value = nextItem.get(exec, static_cast<unsigned>(1));
-        if (vm.exception())
-            return;
+        RETURN_IF_EXCEPTION(scope, void());
 
         MarkedArgumentBuffer arguments;
         arguments.append(key);
         arguments.append(value);
+        scope.release();
         call(exec, adderFunction, adderFunctionCallType, adderFunctionCallData, weakMap, arguments);
     });
 

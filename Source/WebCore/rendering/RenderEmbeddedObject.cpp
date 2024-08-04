@@ -37,14 +37,12 @@
 #include "GraphicsContext.h"
 #include "HTMLAppletElement.h"
 #include "HTMLEmbedElement.h"
-#include "HTMLIFrameElement.h"
 #include "HTMLNames.h"
 #include "HTMLObjectElement.h"
 #include "HTMLParamElement.h"
 #include "HTMLPlugInElement.h"
 #include "HitTestResult.h"
 #include "LocalizedStrings.h"
-#include "MIMETypeRegistry.h"
 #include "MouseEvent.h"
 #include "Page.h"
 #include "PaintInfo.h"
@@ -75,25 +73,25 @@ static const float replacementArrowCirclePadding = 3;
 
 static const Color& replacementTextRoundedRectPressedColor()
 {
-    static const Color pressed(105, 105, 105, 242);
+    static NeverDestroyed<Color> pressed(105, 105, 105, 242);
     return pressed;
 }
 
 static const Color& replacementTextRoundedRectColor()
 {
-    static const Color standard(125, 125, 125, 242);
+    static NeverDestroyed<Color> standard(125, 125, 125, 242);
     return standard;
 }
 
 static const Color& replacementTextColor()
 {
-    static const Color standard(240, 240, 240, 255);
+    static NeverDestroyed<Color> standard(240, 240, 240, 255);
     return standard;
 }
 
 static const Color& unavailablePluginBorderColor()
 {
-    static const Color standard(255, 255, 255, 216);
+    static NeverDestroyed<Color> standard(255, 255, 255, 216);
     return standard;
 }
 
@@ -109,7 +107,13 @@ RenderEmbeddedObject::RenderEmbeddedObject(HTMLFrameOwnerElement& element, Rende
 
 RenderEmbeddedObject::~RenderEmbeddedObject()
 {
+    // Do not add any code here. Add it to willBeDestroyed() instead.
+}
+
+void RenderEmbeddedObject::willBeDestroyed()
+{
     view().frameView().removeEmbeddedObjectToUpdate(*this);
+    RenderWidget::willBeDestroyed();
 }
 
 RenderPtr<RenderEmbeddedObject> RenderEmbeddedObject::createForApplet(HTMLAppletElement& applet, RenderStyle&& style)
@@ -156,10 +160,9 @@ static String unavailablePluginReplacementText(RenderEmbeddedObject::PluginUnava
 }
 #endif
 
-static bool shouldUnavailablePluginMessageBeButton(Document& document, RenderEmbeddedObject::PluginUnavailabilityReason pluginUnavailabilityReason)
+static bool shouldUnavailablePluginMessageBeButton(Page& page, RenderEmbeddedObject::PluginUnavailabilityReason pluginUnavailabilityReason)
 {
-    Page* page = document.page();
-    return page && page->chrome().client().shouldUnavailablePluginMessageBeButton(pluginUnavailabilityReason);
+    return page.chrome().client().shouldUnavailablePluginMessageBeButton(pluginUnavailabilityReason);
 }
 
 void RenderEmbeddedObject::setPluginUnavailabilityReason(PluginUnavailabilityReason pluginUnavailabilityReason)
@@ -240,20 +243,18 @@ void RenderEmbeddedObject::paintContents(PaintInfo& paintInfo, const LayoutPoint
 
 void RenderEmbeddedObject::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 {
-    Page* page = frame().page();
-
     // The relevant repainted object heuristic is not tuned for plugin documents.
-    bool countsTowardsRelevantObjects = page && !document().isPluginDocument() && paintInfo.phase == PaintPhaseForeground;
+    bool countsTowardsRelevantObjects = !document().isPluginDocument() && paintInfo.phase == PaintPhaseForeground;
 
     if (isPluginUnavailable()) {
         if (countsTowardsRelevantObjects)
-            page->addRelevantUnpaintedObject(this, visualOverflowRect());
+            page().addRelevantUnpaintedObject(this, visualOverflowRect());
         RenderReplaced::paint(paintInfo, paintOffset);
         return;
     }
 
     if (countsTowardsRelevantObjects)
-        page->addRelevantRepaintedObject(this, visualOverflowRect());
+        page().addRelevantRepaintedObject(this, visualOverflowRect());
 
     RenderWidget::paint(paintInfo, paintOffset);
 }
@@ -326,7 +327,7 @@ void RenderEmbeddedObject::paintReplaced(PaintInfo& paintInfo, const LayoutPoint
     context.setFillColor(replacementTextColor());
     context.drawBidiText(font, run, FloatPoint(labelX, labelY));
 
-    if (shouldUnavailablePluginMessageBeButton(document(), m_pluginUnavailabilityReason)) {
+    if (shouldUnavailablePluginMessageBeButton(page(), m_pluginUnavailabilityReason)) {
         arrowRect.inflate(-replacementArrowCirclePadding);
 
         context.beginTransparencyLayer(1.0);
@@ -350,7 +351,7 @@ void RenderEmbeddedObject::setUnavailablePluginIndicatorIsHidden(bool hidden)
 
 bool RenderEmbeddedObject::getReplacementTextGeometry(const LayoutPoint& accumulatedOffset, FloatRect& contentRect, FloatRect& indicatorRect, FloatRect& replacementTextRect, FloatRect& arrowRect, FontCascade& font, TextRun& run, float& textWidth) const
 {
-    bool includesArrow = shouldUnavailablePluginMessageBeButton(document(), m_pluginUnavailabilityReason);
+    bool includesArrow = shouldUnavailablePluginMessageBeButton(page(), m_pluginUnavailabilityReason);
 
     contentRect = contentBoxRect();
     contentRect.moveBy(roundedIntPoint(accumulatedOffset));
@@ -358,7 +359,7 @@ bool RenderEmbeddedObject::getReplacementTextGeometry(const LayoutPoint& accumul
     FontCascadeDescription fontDescription;
     RenderTheme::defaultTheme()->systemFont(CSSValueWebkitSmallControl, fontDescription);
     fontDescription.setWeight(FontWeightBold);
-    fontDescription.setRenderingMode(frame().settings().fontRenderingMode());
+    fontDescription.setRenderingMode(settings().fontRenderingMode());
     fontDescription.setComputedSize(12);
     font = FontCascade(fontDescription, 0, 0);
     font.update(0);
@@ -423,12 +424,14 @@ bool RenderEmbeddedObject::isReplacementObscured() const
     if (!rootRenderView)
         return true;
 
-    IntRect rootViewRect = view().frameView().convertToRootView(snappedIntRect(rect));
-    
+    // We should always start hit testing a clean tree.
+    view().frameView().updateLayoutAndStyleIfNeededRecursive();
+
     HitTestRequest request(HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::IgnoreClipping | HitTestRequest::DisallowUserAgentShadowContent | HitTestRequest::AllowChildFrameContent);
     HitTestResult result;
     HitTestLocation location;
     
+    IntRect rootViewRect = view().frameView().convertToRootView(snappedIntRect(rect));
     LayoutUnit x = rootViewRect.x();
     LayoutUnit y = rootViewRect.y();
     LayoutUnit width = rootViewRect.width();
@@ -595,7 +598,7 @@ bool RenderEmbeddedObject::isInUnavailablePluginIndicator(const MouseEvent& even
 
 void RenderEmbeddedObject::handleUnavailablePluginIndicatorEvent(Event* event)
 {
-    if (!shouldUnavailablePluginMessageBeButton(document(), m_pluginUnavailabilityReason))
+    if (!shouldUnavailablePluginMessageBeButton(page(), m_pluginUnavailabilityReason))
         return;
 
     if (!is<MouseEvent>(*event))
@@ -619,8 +622,7 @@ void RenderEmbeddedObject::handleUnavailablePluginIndicatorEvent(Event* event)
             setUnavailablePluginIndicatorIsPressed(false);
         }
         if (m_mouseDownWasInUnavailablePluginIndicator && isInUnavailablePluginIndicator(mouseEvent)) {
-            if (Page* page = document().page())
-                page->chrome().client().unavailablePluginButtonClicked(&element, m_pluginUnavailabilityReason);
+            page().chrome().client().unavailablePluginButtonClicked(element, m_pluginUnavailabilityReason);
         }
         m_mouseDownWasInUnavailablePluginIndicator = false;
         event->setDefaultHandled();
@@ -633,7 +635,7 @@ void RenderEmbeddedObject::handleUnavailablePluginIndicatorEvent(Event* event)
 
 CursorDirective RenderEmbeddedObject::getCursor(const LayoutPoint& point, Cursor& cursor) const
 {
-    if (showsUnavailablePluginIndicator() && shouldUnavailablePluginMessageBeButton(document(), m_pluginUnavailabilityReason) && isInUnavailablePluginIndicator(point)) {
+    if (showsUnavailablePluginIndicator() && shouldUnavailablePluginMessageBeButton(page(), m_pluginUnavailabilityReason) && isInUnavailablePluginIndicator(point)) {
         cursor = handCursor();
         return SetCursor;
     }

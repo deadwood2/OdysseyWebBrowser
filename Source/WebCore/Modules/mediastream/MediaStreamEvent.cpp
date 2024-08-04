@@ -27,7 +27,6 @@
 
 #if ENABLE(WEB_RTC)
 
-#include "EventNames.h"
 #include "MediaStream.h"
 
 namespace WebCore {
@@ -37,9 +36,9 @@ Ref<MediaStreamEvent> MediaStreamEvent::create(const AtomicString& type, bool ca
     return adoptRef(*new MediaStreamEvent(type, canBubble, cancelable, WTFMove(stream)));
 }
 
-Ref<MediaStreamEvent> MediaStreamEvent::createForBindings(const AtomicString& type, const MediaStreamEventInit& initializer)
+Ref<MediaStreamEvent> MediaStreamEvent::create(const AtomicString& type, const Init& initializer, IsTrusted isTrusted)
 {
-    return adoptRef(*new MediaStreamEvent(type, initializer));
+    return adoptRef(*new MediaStreamEvent(type, initializer, isTrusted));
 }
 
 MediaStreamEvent::MediaStreamEvent(const AtomicString& type, bool canBubble, bool cancelable, RefPtr<MediaStream>&& stream)
@@ -48,8 +47,8 @@ MediaStreamEvent::MediaStreamEvent(const AtomicString& type, bool canBubble, boo
 {
 }
 
-MediaStreamEvent::MediaStreamEvent(const AtomicString& type, const MediaStreamEventInit& initializer)
-    : Event(type, initializer)
+MediaStreamEvent::MediaStreamEvent(const AtomicString& type, const Init& initializer, IsTrusted isTrusted)
+    : Event(type, initializer, isTrusted)
     , m_stream(initializer.stream)
 {
 }

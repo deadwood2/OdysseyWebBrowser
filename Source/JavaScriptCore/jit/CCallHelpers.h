@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef CCallHelpers_h
-#define CCallHelpers_h
+#pragma once
 
 #if ENABLE(JIT)
 
@@ -47,15 +46,6 @@ namespace JSC {
 #define EABI_32BIT_DUMMY_ARG      CCallHelpers::TrustedImm32(0),
 #else
 #define EABI_32BIT_DUMMY_ARG
-#endif
-
-// JSVALUE32_64 is a 64-bit integer that cannot be put half in an argument register and half on stack when using SH4 architecture.
-// To avoid this, let's occupy the 4th argument register (r7) with a dummy argument when necessary. This must only be done when there
-// is no other 32-bit value argument behind this 64-bit JSValue.
-#if CPU(SH4)
-#define SH4_32BIT_DUMMY_ARG      CCallHelpers::TrustedImm32(0),
-#else
-#define SH4_32BIT_DUMMY_ARG
 #endif
 
 class CCallHelpers : public AssemblyHelpers {
@@ -352,6 +342,16 @@ public:
     }
 
     ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, GPRReg arg2, TrustedImmPtr arg3, TrustedImm32 arg4)
+    {
+        resetCallArguments();
+        addCallArgument(GPRInfo::callFrameRegister);
+        addCallArgument(arg1);
+        addCallArgument(arg2);
+        addCallArgument(arg3);
+        addCallArgument(arg4);
+    }
+
+    ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, GPRReg arg2, TrustedImmPtr arg3, TrustedImmPtr arg4)
     {
         resetCallArguments();
         addCallArgument(GPRInfo::callFrameRegister);
@@ -868,6 +868,14 @@ public:
         addCallArgument(arg2);
     }
 
+    ALWAYS_INLINE void setupArgumentsWithExecState(FPRReg arg1, TrustedImm32 arg2)
+    {
+        resetCallArguments();
+        addCallArgument(GPRInfo::callFrameRegister);
+        addCallArgument(arg1);
+        addCallArgument(arg2);
+    }
+
     ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, GPRReg arg2, FPRReg arg3)
     {
         resetCallArguments();
@@ -977,7 +985,14 @@ public:
             swap(destB, destC);
     }
 
-    void setupFourStubArgsGPR(GPRReg destA, GPRReg destB, GPRReg destC, GPRReg destD, GPRReg srcA, GPRReg srcB, GPRReg srcC, GPRReg srcD);
+    void setupFourStubArgsGPR(GPRReg destA, GPRReg destB, GPRReg destC, GPRReg destD, GPRReg srcA, GPRReg srcB, GPRReg srcC, GPRReg srcD)
+    {
+        setupStubArgsGPR<4>({ { destA, destB, destC, destD } }, { { srcA, srcB, srcC, srcD } });
+    }
+    void setupFiveStubArgsGPR(GPRReg destA, GPRReg destB, GPRReg destC, GPRReg destD, GPRReg destE, GPRReg srcA, GPRReg srcB, GPRReg srcC, GPRReg srcD, GPRReg srcE)
+    {
+        setupStubArgsGPR<5>({ { destA, destB, destC, destD, destE } }, { { srcA, srcB, srcC, srcD, srcE } });
+    }
 
 #if CPU(X86_64) || CPU(ARM64)
     template<FPRReg destA, FPRReg destB>
@@ -1062,6 +1077,20 @@ public:
         move(GPRInfo::callFrameRegister, GPRInfo::argumentGPR0);
     }
 
+    ALWAYS_INLINE void setupArgumentsWithExecState(FPRReg arg1, TrustedImm32 arg2)
+    {
+#if OS(WINDOWS) && CPU(X86_64)
+        // On Windows, arguments map to designated registers based on the argument positions, even when there are interlaced scalar and floating point arguments.
+        // See http://msdn.microsoft.com/en-us/library/zthk2dkh.aspx
+        moveDouble(arg1, FPRInfo::argumentFPR1);
+        move(arg2, GPRInfo::argumentGPR2);
+#else
+        moveDouble(arg1, FPRInfo::argumentFPR0);
+        move(arg2, GPRInfo::argumentGPR1);
+#endif
+        move(GPRInfo::callFrameRegister, GPRInfo::argumentGPR0);
+    }
+
     ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, GPRReg arg2, FPRReg arg3)
     {
 #if OS(WINDOWS) && CPU(X86_64)
@@ -1104,6 +1133,13 @@ public:
         move(GPRInfo::callFrameRegister, GPRInfo::argumentGPR0);
     }
 
+    ALWAYS_INLINE void setupArgumentsWithExecState(FPRReg arg1, TrustedImm32 arg2)
+    {
+        moveDouble(arg1, FPRInfo::argumentFPR0);
+        move(arg2, GPRInfo::argumentGPR1);
+        move(GPRInfo::callFrameRegister, GPRInfo::argumentGPR0);
+    }
+
     ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, GPRReg arg2, FPRReg arg3)
     {
         moveDouble(arg3, FPRInfo::argumentFPR0);
@@ -1138,6 +1174,13 @@ public:
     }
 
     ALWAYS_INLINE void setupArgumentsWithExecState(FPRReg arg1, GPRReg arg2)
+    {
+        move(arg2, GPRInfo::argumentGPR3);
+        assembler().vmov(GPRInfo::argumentGPR1, GPRInfo::argumentGPR2, arg1);
+        move(GPRInfo::callFrameRegister, GPRInfo::argumentGPR0);
+    }
+
+    ALWAYS_INLINE void setupArgumentsWithExecState(FPRReg arg1, TrustedImm32 arg2)
     {
         move(arg2, GPRInfo::argumentGPR3);
         assembler().vmov(GPRInfo::argumentGPR1, GPRInfo::argumentGPR2, arg1);
@@ -1197,6 +1240,13 @@ public:
         poke(arg2, 4);
     }
 
+    ALWAYS_INLINE void setupArgumentsWithExecState(FPRReg arg1, TrustedImm32 arg2)
+    {
+        assembler().vmov(GPRInfo::argumentGPR2, GPRInfo::argumentGPR3, arg1);
+        move(GPRInfo::callFrameRegister, GPRInfo::argumentGPR0);
+        poke(arg2, 4);
+    }
+
     ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, GPRReg arg2, FPRReg arg3)
     {
         setupStubArguments(arg1, arg2);
@@ -1212,37 +1262,6 @@ public:
     ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, GPRReg arg2, TrustedImm32, FPRReg arg4)
     {
         setupArgumentsWithExecState(arg1, arg2, arg4);
-    }
-#elif CPU(SH4)
-    ALWAYS_INLINE void setupArguments(FPRReg arg1)
-    {
-        moveDouble(arg1, FPRInfo::argumentFPR0);
-    }
-
-    ALWAYS_INLINE void setupArguments(FPRReg arg1, FPRReg arg2)
-    {
-        if (arg2 != FPRInfo::argumentFPR0) {
-            moveDouble(arg1, FPRInfo::argumentFPR0);
-            moveDouble(arg2, FPRInfo::argumentFPR1);
-        } else if (arg1 != FPRInfo::argumentFPR1) {
-            moveDouble(arg2, FPRInfo::argumentFPR1);
-            moveDouble(arg1, FPRInfo::argumentFPR0);
-        } else
-            swapDouble(FPRInfo::argumentFPR0, FPRInfo::argumentFPR1);
-    }
-
-    ALWAYS_INLINE void setupArgumentsWithExecState(FPRReg arg1, GPRReg arg2)
-    {
-        moveDouble(arg1, FPRInfo::argumentFPR0);
-        move(arg2, GPRInfo::argumentGPR1);
-        move(GPRInfo::callFrameRegister, GPRInfo::argumentGPR0);
-    }
-
-    ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, GPRReg arg2, FPRReg arg3)
-    {
-        moveDouble(arg3, FPRInfo::argumentFPR0);
-        setupStubArguments(arg1, arg2);
-        move(GPRInfo::callFrameRegister, GPRInfo::argumentGPR0);
     }
 #else
 #error "JIT not supported on this platform."
@@ -1914,6 +1933,13 @@ public:
         setupArgumentsWithExecState(arg1, arg2, arg3);
     }
 
+    ALWAYS_INLINE void setupArgumentsWithExecState(TrustedImm32 arg1, GPRReg arg2, GPRReg arg3, TrustedImmPtr arg4, TrustedImmPtr arg5)
+    {
+        poke(arg5, POKE_ARGUMENT_OFFSET + 1);
+        poke(arg4, POKE_ARGUMENT_OFFSET);
+        setupArgumentsWithExecState(arg1, arg2, arg3);
+    }
+
     ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, GPRReg arg2, TrustedImmPtr arg3, GPRReg arg4, TrustedImm32 arg5)
     {
         poke(arg5, POKE_ARGUMENT_OFFSET + 1);
@@ -1938,6 +1964,14 @@ public:
     }
 
     ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, GPRReg arg2, TrustedImm32 arg3, GPRReg arg4, GPRReg arg5, TrustedImm32 arg6)
+    {
+        poke(arg6, POKE_ARGUMENT_OFFSET + 2);
+        poke(arg5, POKE_ARGUMENT_OFFSET + 1);
+        poke(arg4, POKE_ARGUMENT_OFFSET);
+        setupArgumentsWithExecState(arg1, arg2, arg3);
+    }
+
+    ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, GPRReg arg2, TrustedImm32 arg3, GPRReg arg4, GPRReg arg5, GPRReg arg6)
     {
         poke(arg6, POKE_ARGUMENT_OFFSET + 2);
         poke(arg5, POKE_ARGUMENT_OFFSET + 1);
@@ -2167,6 +2201,12 @@ public:
         move(GPRInfo::callFrameRegister, GPRInfo::argumentGPR0);
     }
 
+    ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, GPRReg arg2, GPRReg arg3, GPRReg arg4, GPRReg arg5)
+    {
+        setupFiveStubArgsGPR(GPRInfo::argumentGPR1, GPRInfo::argumentGPR2, GPRInfo::argumentGPR3, GPRInfo::argumentGPR4, GPRInfo::argumentGPR5, arg1, arg2, arg3, arg4, arg5);
+        move(GPRInfo::callFrameRegister, GPRInfo::argumentGPR0);
+    }
+
     ALWAYS_INLINE void setupArgumentsWithExecState(GPRReg arg1, TrustedImmPtr arg2, GPRReg arg3, GPRReg arg4)
     {
         setupStubArguments134(arg1, arg3, arg4);
@@ -2266,6 +2306,15 @@ public:
         move(arg4, GPRInfo::argumentGPR3);
     }
 #endif
+
+    void setupArgumentsWithExecState(JSValueRegs arg)
+    {
+#if USE(JSVALUE64)
+        setupArgumentsWithExecState(arg.gpr());
+#else
+        setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg.payloadGPR(), arg.tagGPR());
+#endif
+    }
     
     void setupArgumentsWithExecState(JSValueRegs arg1, JSValueRegs arg2)
     {
@@ -2273,6 +2322,15 @@ public:
         setupArgumentsWithExecState(arg1.gpr(), arg2.gpr());
 #else
         setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1.payloadGPR(), arg1.tagGPR(), arg2.payloadGPR(), arg2.tagGPR());
+#endif
+    }
+
+    void setupArgumentsWithExecState(JSValueRegs arg1, TrustedImmPtr arg2)
+    {
+#if USE(JSVALUE64)
+        setupArgumentsWithExecState(arg1.gpr(), arg2);
+#else
+        setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1.payloadGPR(), arg1.tagGPR(), arg2);
 #endif
     }
 
@@ -2291,6 +2349,15 @@ public:
         setupArgumentsWithExecState(arg1.gpr(), arg2.gpr(), arg3, arg4);
 #else
         setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1.payloadGPR(), arg1.tagGPR(), arg2.payloadGPR(), arg2.tagGPR(), arg3, arg4);
+#endif
+    }
+
+    void setupArgumentsWithExecState(JSValueRegs arg1, TrustedImmPtr arg2, TrustedImmPtr arg3)
+    {
+#if USE(JSVALUE64)
+        setupArgumentsWithExecState(arg1.gpr(), arg2, arg3);
+#else
+        setupArgumentsWithExecState(EABI_32BIT_DUMMY_ARG arg1.payloadGPR(), arg1.tagGPR(), arg2, arg3);
 #endif
     }
     
@@ -2398,7 +2465,7 @@ public:
 
         // We don't need the current frame beyond this point. Masquerade as our
         // caller.
-#if CPU(ARM) || CPU(SH4) || CPU(ARM64)
+#if CPU(ARM) || CPU(ARM64)
         loadPtr(Address(framePointerRegister, sizeof(void*)), linkRegister);
         subPtr(TrustedImm32(2 * sizeof(void*)), newFrameSizeGPR);
 #elif CPU(MIPS)
@@ -2428,6 +2495,105 @@ public:
         // Ready for a jump!
         move(newFramePointer, stackPointerRegister);
     }
+
+#if NUMBER_OF_ARGUMENT_REGISTERS >= 4
+    template<unsigned NumberOfRegisters>
+    void setupStubArgsGPR(std::array<GPRReg, NumberOfRegisters> destinations, std::array<GPRReg, NumberOfRegisters> sources)
+    {
+        if (!ASSERT_DISABLED) {
+            RegisterSet set;
+            for (GPRReg dest : destinations)
+                set.set(dest);
+            ASSERT_WITH_MESSAGE(set.numberOfSetGPRs() == NumberOfRegisters, "Destinations should not be aliased.");
+        }
+
+        typedef std::pair<GPRReg, GPRReg> RegPair;
+        Vector<RegPair, NumberOfRegisters> pairs;
+
+        for (unsigned i = 0; i < NumberOfRegisters; ++i) {
+            if (sources[i] != destinations[i])
+                pairs.append(std::make_pair(sources[i], destinations[i]));
+        }
+
+#if !ASSERT_DISABLED
+        auto numUniqueSources = [&] () -> unsigned {
+            RegisterSet set;
+            for (auto& pair : pairs) {
+                GPRReg source = pair.first;
+                set.set(source);
+            }
+            return set.numberOfSetGPRs();
+        };
+
+        auto numUniqueDests = [&] () -> unsigned {
+            RegisterSet set;
+            for (auto& pair : pairs) {
+                GPRReg dest = pair.second;
+                set.set(dest);
+            }
+            return set.numberOfSetGPRs();
+        };
+#endif
+
+        while (pairs.size()) {
+            RegisterSet freeDestinations;
+            for (auto& pair : pairs) {
+                GPRReg dest = pair.second;
+                freeDestinations.set(dest);
+            }
+            for (auto& pair : pairs) {
+                GPRReg source = pair.first;
+                freeDestinations.clear(source);
+            }
+
+            if (freeDestinations.numberOfSetGPRs()) {
+                bool madeMove = false;
+                for (unsigned i = 0; i < pairs.size(); i++) {
+                    auto& pair = pairs[i];
+                    GPRReg source = pair.first;
+                    GPRReg dest = pair.second;
+                    if (freeDestinations.get(dest)) {
+                        move(source, dest);
+                        pairs.remove(i);
+                        madeMove = true;
+                        break;
+                    }
+                }
+                ASSERT_UNUSED(madeMove, madeMove);
+                continue;
+            }
+
+            ASSERT(numUniqueDests() == numUniqueSources());
+            ASSERT(numUniqueDests() == pairs.size());
+            // The set of source and destination registers are equivalent sets. This means we don't have
+            // any free destination registers that won't also clobber a source. We get around this by
+            // exchanging registers.
+
+            GPRReg source = pairs[0].first;
+            GPRReg dest = pairs[0].second;
+            swap(source, dest);
+            pairs.remove(0);
+
+            GPRReg newSource = source;
+            for (auto& pair : pairs) {
+                GPRReg source = pair.first;
+                if (source == dest) {
+                    pair.first = newSource;
+                    break;
+                }
+            }
+
+            // We may have introduced pairs that have the same source and destination. Remove those now.
+            for (unsigned i = 0; i < pairs.size(); i++) {
+                auto& pair = pairs[i];
+                if (pair.first == pair.second) {
+                    pairs.remove(i);
+                    i--;
+                }
+            }
+        }
+    }
+#endif // NUMBER_OF_ARGUMENT_REGISTERS >= 4
     
     // These operations clobber all volatile registers. They assume that there is room on the top of
     // stack to marshall call arguments.
@@ -2440,6 +2606,3 @@ public:
 } // namespace JSC
 
 #endif // ENABLE(JIT)
-
-#endif // CCallHelpers_h
-

@@ -31,6 +31,7 @@
 #import "TestRunner.h"
 
 #import "DefaultPolicyDelegate.h"
+#import "DumpRenderTreeSpellChecker.h"
 #import "EditingDelegate.h"
 #import "MockGeolocationProvider.h"
 #import "MockWebNotificationProvider.h"
@@ -125,7 +126,7 @@ SOFT_LINK_STAGED_FRAMEWORK(WebInspectorUI, PrivateFrameworks, A)
 #endif
 
 @interface WebGeolocationPosition (Internal)
-- (id)initWithGeolocationPosition:(PassRefPtr<WebCore::GeolocationPosition>)coreGeolocationPosition;
+- (id)initWithGeolocationPosition:(RefPtr<WebCore::GeolocationPosition>)coreGeolocationPosition;
 @end
 
 TestRunner::~TestRunner()
@@ -208,6 +209,11 @@ void TestRunner::clearAllDatabases()
 void TestRunner::setStorageDatabaseIdleInterval(double interval)
 {
     [WebStorageManager setStorageDatabaseIdleInterval:interval];
+}
+
+void TestRunner::setSpellCheckerLoggingEnabled(bool enabled)
+{
+    ::setSpellCheckerLoggingEnabled(enabled);
 }
 
 void TestRunner::closeIdleLocalStorageDatabases()
@@ -501,6 +507,11 @@ void TestRunner::setAllowUniversalAccessFromFileURLs(bool enabled)
 void TestRunner::setAllowFileAccessFromFileURLs(bool enabled)
 {
     [[[mainFrame webView] preferences] setAllowFileAccessFromFileURLs:enabled];
+}
+
+void TestRunner::setNeedsStorageAccessFromFileURLsQuirk(bool needsQuirk)
+{
+    [[[mainFrame webView] preferences] setNeedsStorageAccessFromFileURLsQuirk:needsQuirk];
 }
 
 void TestRunner::setPopupBlockingEnabled(bool popupBlockingEnabled)

@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef JSGlobalLexicalEnvironment_h
-#define JSGlobalLexicalEnvironment_h
+#pragma once
 
 #include "JSSegmentedVariableObject.h"
 
@@ -43,7 +42,6 @@ public:
             new (NotNull, allocateCell<JSGlobalLexicalEnvironment>(vm.heap)) JSGlobalLexicalEnvironment(vm, structure, parentScope);
         result->finishCreation(vm);
         result->symbolTable()->setScopeType(SymbolTable::ScopeType::GlobalLexicalScope);
-        vm.heap.addFinalizer(result, destroy);
         return result;
     }
 
@@ -74,6 +72,3 @@ protected:
 };
 
 } // namespace JSC
-
-#endif // JSGlobalLexicalEnvironment_h
-

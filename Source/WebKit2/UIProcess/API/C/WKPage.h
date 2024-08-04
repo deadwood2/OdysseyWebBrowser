@@ -44,7 +44,6 @@
 #include <WebKit/WKPagePolicyClient.h>
 #include <WebKit/WKPageUIClient.h>
 #include <WebKit/WKPageVisibilityTypes.h>
-#include <WebKit/WKSessionRef.h>
 
 #ifndef __cplusplus
 #include <stdbool.h>
@@ -98,7 +97,9 @@ WK_EXPORT void WKPageGoToBackForwardListItem(WKPageRef page, WKBackForwardListIt
 WK_EXPORT void WKPageTryRestoreScrollPosition(WKPageRef page);
 WK_EXPORT WKBackForwardListRef WKPageGetBackForwardList(WKPageRef page);
 WK_EXPORT bool WKPageWillHandleHorizontalScrollEvents(WKPageRef page);
-    
+
+WK_EXPORT void WKPageUpdateWebsitePolicies(WKPageRef, WKWebsitePoliciesRef);
+
 WK_EXPORT WKStringRef WKPageCopyTitle(WKPageRef page);
 
 WK_EXPORT WKURLRef WKPageCopyPendingAPIRequestURL(WKPageRef page);
@@ -227,8 +228,6 @@ WK_EXPORT void WKPageSetPageInjectedBundleClient(WKPageRef page, const WKPageInj
 WK_EXPORT void WKPageSetPageLoaderClient(WKPageRef page, const WKPageLoaderClientBase* client);
 WK_EXPORT void WKPageSetPagePolicyClient(WKPageRef page, const WKPagePolicyClientBase* client);
 WK_EXPORT void WKPageSetPageNavigationClient(WKPageRef page, const WKPageNavigationClientBase* client);
-
-WK_EXPORT void WKPageSetSession(WKPageRef page, WKSessionRef session);
 
 typedef void (*WKPageRunJavaScriptFunction)(WKSerializedScriptValueRef, WKErrorRef, void*);
 WK_EXPORT void WKPageRunJavaScriptInMainFrame(WKPageRef page, WKStringRef script, void* context, WKPageRunJavaScriptFunction function);

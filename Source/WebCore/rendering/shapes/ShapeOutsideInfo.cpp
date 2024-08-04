@@ -29,8 +29,6 @@
 
 #include "config.h"
 
-#if ENABLE(CSS_SHAPES)
-
 #include "ShapeOutsideInfo.h"
 
 #include "BoxShape.h"
@@ -127,7 +125,7 @@ static inline bool checkShapeImageOrigin(Document& document, const StyleImage& s
 
     ASSERT(styleImage.cachedImage());
     CachedImage& cachedImage = *(styleImage.cachedImage());
-    if (cachedImage.isOriginClean(document.securityOrigin()))
+    if (cachedImage.isOriginClean(&document.securityOrigin()))
         return true;
 
     const URL& url = cachedImage.url();
@@ -340,5 +338,3 @@ ShapeOutsideDeltas ShapeOutsideInfo::computeDeltasForContainingBlockLine(const R
 }
 
 }
-
-#endif

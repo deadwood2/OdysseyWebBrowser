@@ -187,7 +187,9 @@ static void testWebViewAuthenticationNoCredential(AuthenticationTest* test, gcon
 static void testWebViewAuthenticationStorage(AuthenticationTest* test, gconstpointer)
 {
     // Enable private browsing before authentication request to test that credentials can't be saved.
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
     webkit_settings_set_enable_private_browsing(webkit_web_view_get_settings(test->m_webView), TRUE);
+    G_GNUC_END_IGNORE_DEPRECATIONS;
     test->loadURI(kServer->getURIForPath("/auth-test.html").data());
     WebKitAuthenticationRequest* request = test->waitForAuthenticationRequest();
     g_assert(!webkit_authentication_request_get_proposed_credential(request));
@@ -195,8 +197,10 @@ static void testWebViewAuthenticationStorage(AuthenticationTest* test, gconstpoi
 
     // If WebKit has been compiled with libsecret, and private browsing is disabled
     // then check that credentials can be saved.
-#if ENABLE(CREDENTIAL_STORAGE)
+#if USE(LIBSECRET)
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
     webkit_settings_set_enable_private_browsing(webkit_web_view_get_settings(test->m_webView), FALSE);
+    G_GNUC_END_IGNORE_DEPRECATIONS;
     test->loadURI(kServer->getURIForPath("/auth-test.html").data());
     request = test->waitForAuthenticationRequest();
     g_assert(!webkit_authentication_request_get_proposed_credential(request));

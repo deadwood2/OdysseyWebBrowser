@@ -55,6 +55,9 @@ public:
     bool diskCacheSpeculativeValidationEnabled() const { return m_diskCacheSpeculativeValidationEnabled; }
     void setDiskCacheSpeculativeValidationEnabled(bool enabled) { m_diskCacheSpeculativeValidationEnabled = enabled; }
 
+    bool unresponsiveBackgroundProcessesTerminationEnabled() const { return m_unresponsiveBackgroundProcessesTerminationEnabled; }
+    void setUnresponsiveBackgroundProcessesTerminationEnabled(bool enabled) { m_unresponsiveBackgroundProcessesTerminationEnabled = enabled; }
+
     WebKit::CacheModel cacheModel() const { return m_cacheModel; }
     void setCacheModel(WebKit::CacheModel cacheModel) { m_cacheModel = cacheModel; }
 
@@ -102,11 +105,26 @@ public:
     const Vector<WTF::String>& overrideLanguages() const { return m_overrideLanguages; }
     void setOverrideLanguages(Vector<WTF::String>&& languages) { m_overrideLanguages = WTFMove(languages); }
 
+    const WTF::String& sourceApplicationBundleIdentifier() const { return m_sourceApplicationBundleIdentifier; }
+    void setSourceApplicationBundleIdentifier(const WTF::String& sourceApplicationBundleIdentifier) { m_sourceApplicationBundleIdentifier = sourceApplicationBundleIdentifier; }
+
+    const WTF::String& sourceApplicationSecondaryIdentifier() const { return m_sourceApplicationSecondaryIdentifier; }
+    void setSourceApplicationSecondaryIdentifier(const WTF::String& sourceApplicationSecondaryIdentifier) { m_sourceApplicationSecondaryIdentifier = sourceApplicationSecondaryIdentifier; }
+
+    bool alwaysRunsAtBackgroundPriority() const { return m_alwaysRunsAtBackgroundPriority; }
+    void setAlwaysRunsAtBackgroundPriority(bool alwaysRunsAtBackgroundPriority) { m_alwaysRunsAtBackgroundPriority = alwaysRunsAtBackgroundPriority; }
+
+#if PLATFORM(IOS)
+    const WTF::String& ctDataConnectionServiceType() const { return m_ctDataConnectionServiceType; }
+    void setCTDataConnectionServiceType(const WTF::String& ctDataConnectionServiceType) { m_ctDataConnectionServiceType = ctDataConnectionServiceType; }
+#endif
+
 private:
     bool m_shouldHaveLegacyDataStore { false };
 
     unsigned m_maximumProcessCount { 0 };
     bool m_diskCacheSpeculativeValidationEnabled { false };
+    bool m_unresponsiveBackgroundProcessesTerminationEnabled { false };
     WebKit::CacheModel m_cacheModel { WebKit::CacheModelPrimaryWebBrowser };
     int64_t m_diskCacheSizeOverride { -1 };
 
@@ -125,6 +143,12 @@ private:
     bool m_fullySynchronousModeIsAllowedForTesting { false };
     bool m_ignoreSynchronousMessagingTimeoutsForTesting { false };
     Vector<WTF::String> m_overrideLanguages;
+    WTF::String m_sourceApplicationBundleIdentifier;
+    WTF::String m_sourceApplicationSecondaryIdentifier;
+    bool m_alwaysRunsAtBackgroundPriority { false };
+#if PLATFORM(IOS)
+    WTF::String m_ctDataConnectionServiceType;
+#endif
 };
 
 } // namespace API

@@ -21,7 +21,6 @@
 #include "config.h"
 #include "HTMLSummaryElement.h"
 
-#if ENABLE(DETAILS_ELEMENT)
 #include "DetailsMarkerControl.h"
 #include "EventNames.h"
 #include "HTMLDetailsElement.h"
@@ -42,7 +41,7 @@ class SummarySlotElement final : public SlotAssignment {
 private:
     void hostChildElementDidChange(const Element&, ShadowRoot& shadowRoot) override
     {
-        didChangeSlot(SlotAssignment::defaultSlotName(), SlotAssignment::ChangeType::DirectChild, shadowRoot);
+        didChangeSlot(SlotAssignment::defaultSlotName(), shadowRoot);
     }
 
     const AtomicString& slotNameForHostChild(const Node&) const override { return SlotAssignment::defaultSlotName(); }
@@ -68,7 +67,7 @@ RenderPtr<RenderElement> HTMLSummaryElement::createElementRenderer(RenderStyle&&
 
 void HTMLSummaryElement::didAddUserAgentShadowRoot(ShadowRoot* root)
 {
-    root->appendChild(DetailsMarkerControl::create(document()), ASSERT_NO_EXCEPTION);
+    root->appendChild(DetailsMarkerControl::create(document()));
     root->appendChild(HTMLSlotElement::create(slotTag, document()));
 }
 
@@ -159,5 +158,3 @@ bool HTMLSummaryElement::willRespondToMouseClickEvents()
 }
 
 }
-
-#endif

@@ -31,7 +31,7 @@
 
 #include "ExceptionCode.h"
 #include "Frame.h"
-#include "JSDOMBinding.h"
+#include "JSDOMConvert.h"
 #include "SerializedScriptValue.h"
 #include <runtime/JSFunction.h>
 
@@ -48,7 +48,7 @@ JSValue JSHistory::state(ExecState& state) const
         return cachedValue;
 
     RefPtr<SerializedScriptValue> serialized = history.state();
-    JSValue result = serialized ? serialized->deserialize(&state, globalObject(), 0) : jsNull();
+    JSValue result = serialized ? serialized->deserialize(state, globalObject()) : jsNull();
     m_state.set(state.vm(), this, result);
     return result;
 }
@@ -62,25 +62,20 @@ JSValue JSHistory::pushState(ExecState& state)
     if (UNLIKELY(argCount < 2))
         return throwException(&state, scope, createNotEnoughArgumentsError(&state));
 
-    auto historyState = SerializedScriptValue::create(&state, state.uncheckedArgument(0), 0, 0);
-    if (state.hadException())
-        return jsUndefined();
+    auto historyState = SerializedScriptValue::create(state, state.uncheckedArgument(0));
+    RETURN_IF_EXCEPTION(scope, JSValue());
 
     // FIXME: title should not be nullable.
-    String title = valueToStringWithUndefinedOrNullCheck(&state, state.uncheckedArgument(1));
-    if (state.hadException())
-        return jsUndefined();
+    String title = convert<IDLNullable<IDLDOMString>>(state, state.uncheckedArgument(1));
+    RETURN_IF_EXCEPTION(scope, JSValue());
 
     String url;
     if (argCount > 2) {
-        url = valueToUSVStringWithUndefinedOrNullCheck(&state, state.uncheckedArgument(2));
-        if (state.hadException())
-            return jsUndefined();
+        url = convert<IDLNullable<IDLUSVString>>(state, state.uncheckedArgument(2));
+        RETURN_IF_EXCEPTION(scope, JSValue());
     }
 
-    ExceptionCodeWithMessage ec;
-    wrapped().stateObjectAdded(WTFMove(historyState), title, url, History::StateObjectType::Push, ec);
-    setDOMException(&state, ec);
+    propagateException(state, scope, wrapped().stateObjectAdded(WTFMove(historyState), title, url, History::StateObjectType::Push));
 
     m_state.clear();
 
@@ -96,25 +91,20 @@ JSValue JSHistory::replaceState(ExecState& state)
     if (UNLIKELY(argCount < 2))
         return throwException(&state, scope, createNotEnoughArgumentsError(&state));
 
-    auto historyState = SerializedScriptValue::create(&state, state.uncheckedArgument(0), 0, 0);
-    if (state.hadException())
-        return jsUndefined();
+    auto historyState = SerializedScriptValue::create(state, state.uncheckedArgument(0));
+    RETURN_IF_EXCEPTION(scope, JSValue());
 
     // FIXME: title should not be nullable.
-    String title = valueToStringWithUndefinedOrNullCheck(&state, state.uncheckedArgument(1));
-    if (state.hadException())
-        return jsUndefined();
+    String title = convert<IDLNullable<IDLDOMString>>(state, state.uncheckedArgument(1));
+    RETURN_IF_EXCEPTION(scope, JSValue());
 
     String url;
     if (argCount > 2) {
-        url = valueToUSVStringWithUndefinedOrNullCheck(&state, state.uncheckedArgument(2));
-        if (state.hadException())
-            return jsUndefined();
+        url = convert<IDLNullable<IDLUSVString>>(state, state.uncheckedArgument(2));
+        RETURN_IF_EXCEPTION(scope, JSValue());
     }
 
-    ExceptionCodeWithMessage ec;
-    wrapped().stateObjectAdded(WTFMove(historyState), title, url, History::StateObjectType::Replace, ec);
-    setDOMException(&state, ec);
+    propagateException(state, scope, wrapped().stateObjectAdded(WTFMove(historyState), title, url, History::StateObjectType::Replace));
 
     m_state.clear();
 

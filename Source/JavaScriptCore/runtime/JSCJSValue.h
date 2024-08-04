@@ -20,8 +20,7 @@
  *
  */
 
-#ifndef JSCJSValue_h
-#define JSCJSValue_h
+#pragma once
 
 #include "JSExportMacros.h"
 #include "PureNaN.h"
@@ -117,17 +116,6 @@ enum WhichValueWord {
     TagWord,
     PayloadWord
 };
-
-// This implements ToInt32, defined in ECMA-262 9.5.
-JS_EXPORT_PRIVATE int32_t toInt32(double);
-
-// This implements ToUInt32, defined in ECMA-262 9.6.
-inline uint32_t toUInt32(double number)
-{
-    // As commented in the spec, the operation of ToInt32 and ToUint32 only differ
-    // in how the result is interpreted; see NOTEs in sections 9.5 and 9.6.
-    return toInt32(number);
-}
 
 int64_t tryConvertToInt52(double);
 bool isInt52(double);
@@ -240,8 +228,8 @@ public:
     bool isGetterSetter() const;
     bool isCustomGetterSetter() const;
     bool isObject() const;
-    bool inherits(const ClassInfo*) const;
-    const ClassInfo* classInfoOrNull() const;
+    bool inherits(VM&, const ClassInfo*) const;
+    const ClassInfo* classInfoOrNull(VM&) const;
         
     // Extracting the value.
     bool getString(ExecState*, WTF::String&) const;
@@ -263,7 +251,7 @@ public:
     double toNumber(ExecState*) const;
 
     // toNumber conversion if it can be done without side effects.
-    Optional<double> toNumberFromPrimitive() const;
+    std::optional<double> toNumberFromPrimitive() const;
 
     JSString* toString(ExecState*) const; // On exception, this returns the empty string.
     JSString* toStringOrNull(ExecState*) const; // On exception, this returns null, to make exception checks faster.
@@ -277,6 +265,7 @@ public:
     JS_EXPORT_PRIVATE double toIntegerPreserveNaN(ExecState*) const;
     int32_t toInt32(ExecState*) const;
     uint32_t toUInt32(ExecState*) const;
+    uint32_t toIndex(ExecState*, const char* errorName) const;
     double toLength(ExecState*) const;
 
     // Floating point conversions (this is a convenience function for WebCore;
@@ -327,9 +316,9 @@ public:
 
     // Constants used for Int52. Int52 isn't part of JSValue right now, but JSValues may be
     // converted to Int52s and back again.
-    static const unsigned numberOfInt52Bits = 52;
-    static const int64_t notInt52 = static_cast<int64_t>(1) << numberOfInt52Bits;
-    static const unsigned int52ShiftAmount = 12;
+    static constexpr const unsigned numberOfInt52Bits = 52;
+    static constexpr const int64_t notInt52 = static_cast<int64_t>(1) << numberOfInt52Bits;
+    static constexpr const unsigned int52ShiftAmount = 12;
     
     static ptrdiff_t offsetOfPayload() { return OBJECT_OFFSETOF(JSValue, u.asBits.payload); }
     static ptrdiff_t offsetOfTag() { return OBJECT_OFFSETOF(JSValue, u.asBits.tag); }
@@ -610,5 +599,3 @@ bool isThisValueAltered(const PutPropertySlot&, JSObject* baseObject);
 bool sameValue(ExecState*, JSValue a, JSValue b);
 
 } // namespace JSC
-
-#endif // JSCJSValue_h

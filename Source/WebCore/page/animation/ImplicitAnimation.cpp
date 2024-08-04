@@ -27,13 +27,13 @@
  */
 
 #include "config.h"
+#include "ImplicitAnimation.h"
 
-#include "AnimationControllerPrivate.h"
+#include "CSSAnimationControllerPrivate.h"
 #include "CSSPropertyAnimation.h"
 #include "CompositeAnimation.h"
 #include "EventNames.h"
 #include "GeometryUtilities.h"
-#include "ImplicitAnimation.h"
 #include "KeyframeAnimation.h"
 #include "RenderBox.h"
 #include "StylePendingResources.h"
@@ -61,7 +61,7 @@ bool ImplicitAnimation::shouldSendEventForListener(Document::ListenerType inList
     return m_object->document().hasListenerType(inListenerType);
 }
 
-bool ImplicitAnimation::animate(CompositeAnimation*, RenderElement*, const RenderStyle*, const RenderStyle* targetStyle, std::unique_ptr<RenderStyle>& animatedStyle)
+bool ImplicitAnimation::animate(CompositeAnimation*, RenderElement*, const RenderStyle*, const RenderStyle* targetStyle, std::unique_ptr<RenderStyle>& animatedStyle, bool& didBlendStyle)
 {
     // If we get this far and the animation is done, it means we are cleaning up a just finished animation.
     // So just return. Everything is already all cleaned up.
@@ -79,20 +79,14 @@ bool ImplicitAnimation::animate(CompositeAnimation*, RenderElement*, const Rende
     if (!animatedStyle)
         animatedStyle = RenderStyle::clonePtr(*targetStyle);
 
-    bool needsAnim = CSSPropertyAnimation::blendProperties(this, m_animatingProperty, animatedStyle.get(), m_fromStyle.get(), m_toStyle.get(), progress());
+    CSSPropertyAnimation::blendProperties(this, m_animatingProperty, animatedStyle.get(), m_fromStyle.get(), m_toStyle.get(), progress());
     // FIXME: we also need to detect cases where we have to software animate for other reasons,
     // such as a child using inheriting the transform. https://bugs.webkit.org/show_bug.cgi?id=23902
-    if (!needsAnim) {
-        // If we are running an accelerated animation, set a flag in the style which causes the style
-        // to compare as different to any other style. This ensures that changes to the property
-        // that is animating are correctly detected during the animation (e.g. when a transition
-        // gets interrupted).
-        // FIXME: still need this hack?
-        animatedStyle->setIsRunningAcceleratedAnimation();
-    }
 
     // Fire the start timeout if needed
     fireAnimationEventsIfNeeded();
+    
+    didBlendStyle = true;
     return state() != oldState;
 }
 
@@ -169,10 +163,9 @@ void ImplicitAnimation::onAnimationEnd(double elapsedTime)
     // running. But now that the transition has completed, we need to update this style with its new
     // destination. If we didn't, the next time through we would think a transition had started
     // (comparing the old unanimated style with the new final style of the transition).
-    RefPtr<KeyframeAnimation> keyframeAnim = m_compositeAnimation->getAnimationForProperty(m_animatingProperty);
-    if (keyframeAnim)
-        keyframeAnim->setUnanimatedStyle(RenderStyle::clonePtr(*m_toStyle));
-    
+    if (auto* animation = m_compositeAnimation->animationForProperty(m_animatingProperty))
+        animation->setUnanimatedStyle(RenderStyle::clonePtr(*m_toStyle));
+
     sendTransitionEvent(eventNames().transitionendEvent, elapsedTime);
     endAnimation();
 }
@@ -188,12 +181,12 @@ bool ImplicitAnimation::sendTransitionEvent(const AtomicString& eventType, doubl
             // Dispatch the event
             RefPtr<Element> element = m_object->element();
 
-            ASSERT(!element || !element->document().inPageCache());
+            ASSERT(!element || element->document().pageCacheState() == Document::NotInPageCache);
             if (!element)
                 return false;
 
             // Schedule event handling
-            m_compositeAnimation->animationController().addEventToDispatch(element, eventType, propertyName, elapsedTime);
+            m_compositeAnimation->animationController().addEventToDispatch(*element, eventType, propertyName, elapsedTime);
 
             // Restore the original (unanimated) style
             if (eventType == eventNames().transitionendEvent && element->renderer())

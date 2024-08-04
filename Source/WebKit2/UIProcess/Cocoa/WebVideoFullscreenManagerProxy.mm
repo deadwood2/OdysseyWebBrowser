@@ -57,7 +57,7 @@
 #else
 - (CALayer *)makeBackingLayer
 {
-    return [[CALayerHost alloc] init];
+    return [[[CALayerHost alloc] init] autorelease];
 }
 #endif
 
@@ -124,10 +124,22 @@ WebVideoFullscreenModelContext::~WebVideoFullscreenModelContext()
 {
 }
 
-void WebVideoFullscreenModelContext::requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenMode mode)
+void WebVideoFullscreenModelContext::addClient(WebVideoFullscreenModelClient& client)
+{
+    ASSERT(!m_clients.contains(&client));
+    m_clients.add(&client);
+}
+
+void WebVideoFullscreenModelContext::removeClient(WebVideoFullscreenModelClient& client)
+{
+    ASSERT(m_clients.contains(&client));
+    m_clients.remove(&client);
+}
+
+void WebVideoFullscreenModelContext::requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenMode mode, bool finishedWithMedia)
 {
     if (m_manager)
-        m_manager->requestFullscreenMode(m_contextId, mode);
+        m_manager->requestFullscreenMode(m_contextId, mode, finishedWithMedia);
 }
 
 void WebVideoFullscreenModelContext::setVideoLayerFrame(WebCore::FloatRect frame)
@@ -358,9 +370,14 @@ void WebVideoFullscreenManagerProxy::setupFullscreenWithID(uint64_t contextId, u
 #endif
 }
 
-void WebVideoFullscreenManagerProxy::setVideoDimensions(uint64_t contextId, bool hasVideo, unsigned width, unsigned height)
+void WebVideoFullscreenManagerProxy::setHasVideo(uint64_t contextId, bool hasVideo)
 {
-    ensureInterface(contextId).setVideoDimensions(hasVideo, width, height);
+    ensureInterface(contextId).hasVideoChanged(hasVideo);
+}
+
+void WebVideoFullscreenManagerProxy::setVideoDimensions(uint64_t contextId, const FloatSize& videoDimensions)
+{
+    ensureInterface(contextId).videoDimensionsChanged(videoDimensions);
 }
 
 void WebVideoFullscreenManagerProxy::enterFullscreen(uint64_t contextId)
@@ -418,9 +435,9 @@ void WebVideoFullscreenManagerProxy::preparedToReturnToInline(uint64_t contextId
 
 #pragma mark Messages to WebVideoFullscreenManager
 
-void WebVideoFullscreenManagerProxy::requestFullscreenMode(uint64_t contextId, WebCore::HTMLMediaElementEnums::VideoFullscreenMode mode)
+void WebVideoFullscreenManagerProxy::requestFullscreenMode(uint64_t contextId, WebCore::HTMLMediaElementEnums::VideoFullscreenMode mode, bool finishedWithMedia)
 {
-    m_page->send(Messages::WebVideoFullscreenManager::RequestFullscreenMode(contextId, mode), m_page->pageID());
+    m_page->send(Messages::WebVideoFullscreenManager::RequestFullscreenMode(contextId, mode, finishedWithMedia), m_page->pageID());
 }
 
 void WebVideoFullscreenManagerProxy::didSetupFullscreen(uint64_t contextId)

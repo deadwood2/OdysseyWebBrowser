@@ -102,9 +102,16 @@ using namespace HTMLNames;
 - (DOMDocumentFragment *)_documentFromRange:(NSRange)range document:(DOMDocument *)document documentAttributes:(NSDictionary *)attributes subresources:(NSArray **)subresources;
 @end
 
-static WebViewInsertAction kit(EditorInsertAction coreAction)
+static WebViewInsertAction kit(EditorInsertAction action)
 {
-    return static_cast<WebViewInsertAction>(coreAction);
+    switch (action) {
+    case EditorInsertAction::Typed:
+        return WebViewInsertActionTyped;
+    case EditorInsertAction::Pasted:
+        return WebViewInsertActionPasted;
+    case EditorInsertAction::Dropped:
+        return WebViewInsertActionDropped;
+    }
 }
 
 @interface WebUndoStep : NSObject
@@ -112,8 +119,8 @@ static WebViewInsertAction kit(EditorInsertAction coreAction)
     RefPtr<UndoStep> m_step;   
 }
 
-+ (WebUndoStep *)stepWithUndoStep:(PassRefPtr<UndoStep>)step;
-- (UndoStep *)step;
++ (WebUndoStep *)stepWithUndoStep:(UndoStep&)step;
+- (UndoStep&)step;
 
 @end
 
@@ -128,13 +135,12 @@ static WebViewInsertAction kit(EditorInsertAction coreAction)
 #endif
 }
 
-- (id)initWithUndoStep:(PassRefPtr<UndoStep>)step
+- (id)initWithUndoStep:(UndoStep&)step
 {
-    ASSERT(step);
     self = [super init];
     if (!self)
         return nil;
-    m_step = step;
+    m_step = &step;
     return self;
 }
 
@@ -146,14 +152,14 @@ static WebViewInsertAction kit(EditorInsertAction coreAction)
     [super dealloc];
 }
 
-+ (WebUndoStep *)stepWithUndoStep:(PassRefPtr<UndoStep>)step
++ (WebUndoStep *)stepWithUndoStep:(UndoStep&)step
 {
     return [[[WebUndoStep alloc] initWithUndoStep:step] autorelease];
 }
 
-- (UndoStep *)step
+- (UndoStep&)step
 {
-    return m_step.get();
+    return *m_step;
 }
 
 @end
@@ -170,13 +176,13 @@ static WebViewInsertAction kit(EditorInsertAction coreAction)
 - (void)undoEditing:(id)arg
 {
     ASSERT([arg isKindOfClass:[WebUndoStep class]]);
-    [arg step]->unapply();
+    [arg step].unapply();
 }
 
 - (void)redoEditing:(id)arg
 {
     ASSERT([arg isKindOfClass:[WebUndoStep class]]);
-    [arg step]->reapply();
+    [arg step].reapply();
 }
 
 @end
@@ -341,10 +347,14 @@ void WebEditorClient::respondToChangedContents()
 
 void WebEditorClient::respondToChangedSelection(Frame* frame)
 {
+    if (frame->editor().isGettingDictionaryPopupInfo())
+        return;
+
     NSView<WebDocumentView> *documentView = [[kit(frame) frameView] documentView];
     if ([documentView isKindOfClass:[WebHTMLView class]]) {
         [(WebHTMLView *)documentView _selectionChanged];
-        [m_webView updateWebViewAdditions];
+        [m_webView updateTouchBar];
+        m_lastEditorStateWasContentEditable = [(WebHTMLView *)documentView _isEditable] ? EditorStateIsContentEditable::Yes : EditorStateIsContentEditable::No;
     }
 
 #if !PLATFORM(IOS)
@@ -369,6 +379,13 @@ void WebEditorClient::respondToChangedSelection(Frame* frame)
 void WebEditorClient::discardedComposition(Frame*)
 {
     // The effects of this function are currently achieved via -[WebHTMLView _updateSelectionForInputManager].
+}
+
+void WebEditorClient::canceledComposition()
+{
+#if !PLATFORM(IOS)
+    [[NSTextInputContext currentInputContext] discardMarkedText];
+#endif
 }
 
 void WebEditorClient::didEndEditing()
@@ -425,7 +442,7 @@ static NSDictionary *attributesForAttributedStringConversion()
         // Omit tags that will get stripped when converted to a fragment anyway.
         @"doctype", @"html", @"head", @"body", 
         // Omit deprecated tags.
-        @"applet", @"basefont", @"center", @"dir", @"font", @"isindex", @"menu", @"s", @"strike", @"u", 
+        @"applet", @"basefont", @"center", @"dir", @"font", @"menu", @"s", @"strike", @"u",
         // Omit object so no file attachments are part of the fragment.
         @"object", nil];
 
@@ -562,6 +579,8 @@ static NSString* undoNameForEditAction(EditAction editAction)
     switch (editAction) {
         case EditActionUnspecified: return nil;
         case EditActionInsert: return nil;
+        case EditActionInsertReplacement: return nil;
+        case EditActionInsertFromDrop: return nil;
         case EditActionSetColor: return UI_STRING_KEY_INTERNAL("Set Color", "Set Color (Undo action name)", "Undo action name");
         case EditActionSetBackgroundColor: return UI_STRING_KEY_INTERNAL("Set Background Color", "Set Background Color (Undo action name)", "Undo action name");
         case EditActionTurnOffKerning: return UI_STRING_KEY_INTERNAL("Turn Off Kerning", "Turn Off Kerning (Undo action name)", "Undo action name");
@@ -586,15 +605,31 @@ static NSString* undoNameForEditAction(EditAction editAction)
         case EditActionUnderline: return UI_STRING_KEY_INTERNAL("Underline", "Underline (Undo action name)", "Undo action name");
         case EditActionOutline: return UI_STRING_KEY_INTERNAL("Outline", "Outline (Undo action name)", "Undo action name");
         case EditActionUnscript: return UI_STRING_KEY_INTERNAL("Unscript", "Unscript (Undo action name)", "Undo action name");
-        case EditActionDrag: return UI_STRING_KEY_INTERNAL("Drag", "Drag (Undo action name)", "Undo action name");
+        case EditActionDeleteByDrag: return UI_STRING_KEY_INTERNAL("Drag", "Drag (Undo action name)", "Undo action name");
         case EditActionCut: return UI_STRING_KEY_INTERNAL("Cut", "Cut (Undo action name)", "Undo action name");
         case EditActionPaste: return UI_STRING_KEY_INTERNAL("Paste", "Paste (Undo action name)", "Undo action name");
         case EditActionPasteFont: return UI_STRING_KEY_INTERNAL("Paste Font", "Paste Font (Undo action name)", "Undo action name");
         case EditActionPasteRuler: return UI_STRING_KEY_INTERNAL("Paste Ruler", "Paste Ruler (Undo action name)", "Undo action name");
-        case EditActionTyping: return UI_STRING_KEY_INTERNAL("Typing", "Typing (Undo action name)", "Undo action name");
+        case EditActionTypingDeleteSelection:
+        case EditActionTypingDeleteBackward:
+        case EditActionTypingDeleteForward:
+        case EditActionTypingDeleteWordBackward:
+        case EditActionTypingDeleteWordForward:
+        case EditActionTypingDeleteLineBackward:
+        case EditActionTypingDeleteLineForward:
+        case EditActionTypingDeletePendingComposition:
+        case EditActionTypingDeleteFinalComposition:
+        case EditActionTypingInsertText:
+        case EditActionTypingInsertLineBreak:
+        case EditActionTypingInsertParagraph:
+        case EditActionTypingInsertPendingComposition:
+        case EditActionTypingInsertFinalComposition:
+            return UI_STRING_KEY_INTERNAL("Typing", "Typing (Undo action name)", "Undo action name");
         case EditActionCreateLink: return UI_STRING_KEY_INTERNAL("Create Link", "Create Link (Undo action name)", "Undo action name");
         case EditActionUnlink: return UI_STRING_KEY_INTERNAL("Unlink", "Unlink (Undo action name)", "Undo action name");
-        case EditActionInsertList: return UI_STRING_KEY_INTERNAL("Insert List", "Insert List (Undo action name)", "Undo action name");
+        case EditActionInsertOrderedList:
+        case EditActionInsertUnorderedList:
+            return UI_STRING_KEY_INTERNAL("Insert List", "Insert List (Undo action name)", "Undo action name");
         case EditActionFormatBlock: return UI_STRING_KEY_INTERNAL("Formatting", "Format Block (Undo action name)", "Undo action name");
         case EditActionIndent: return UI_STRING_KEY_INTERNAL("Indent", "Indent (Undo action name)", "Undo action name");
         case EditActionOutdent: return UI_STRING_KEY_INTERNAL("Outdent", "Outdent (Undo action name)", "Undo action name");
@@ -606,10 +641,8 @@ static NSString* undoNameForEditAction(EditAction editAction)
     return nil;
 }
 
-void WebEditorClient::registerUndoOrRedoStep(PassRefPtr<UndoStep> step, bool isRedo)
+void WebEditorClient::registerUndoOrRedoStep(UndoStep& step, bool isRedo)
 {
-    ASSERT(step);
-    
     NSUndoManager *undoManager = [m_webView undoManager];
 
 #if PLATFORM(IOS)
@@ -620,7 +653,7 @@ void WebEditorClient::registerUndoOrRedoStep(PassRefPtr<UndoStep> step, bool isR
         return;
 #endif
 
-    NSString *actionName = undoNameForEditAction(step->editingAction());
+    NSString *actionName = undoNameForEditAction(step.editingAction());
     WebUndoStep *webEntry = [WebUndoStep stepWithUndoStep:step];
     [undoManager registerUndoWithTarget:m_undoTarget.get() selector:(isRedo ? @selector(redoEditing:) : @selector(undoEditing:)) object:webEntry];
     if (actionName)
@@ -628,12 +661,32 @@ void WebEditorClient::registerUndoOrRedoStep(PassRefPtr<UndoStep> step, bool isR
     m_haveUndoRedoOperations = YES;
 }
 
-void WebEditorClient::registerUndoStep(PassRefPtr<UndoStep> cmd)
+void WebEditorClient::updateEditorStateAfterLayoutIfEditabilityChanged()
+{
+    // FIXME: We should update EditorStateIsContentEditable to track whether the state is richly
+    // editable or plainttext-only.
+    if (m_lastEditorStateWasContentEditable == EditorStateIsContentEditable::Unset)
+        return;
+
+    Frame* frame = core([m_webView _selectedOrMainFrame]);
+    if (!frame)
+        return;
+
+    NSView<WebDocumentView> *documentView = [[kit(frame) frameView] documentView];
+    if (![documentView isKindOfClass:[WebHTMLView class]])
+        return;
+
+    EditorStateIsContentEditable editorStateIsContentEditable = [(WebHTMLView *)documentView _isEditable] ? EditorStateIsContentEditable::Yes : EditorStateIsContentEditable::No;
+    if (m_lastEditorStateWasContentEditable != editorStateIsContentEditable)
+        [m_webView updateTouchBar];
+}
+
+void WebEditorClient::registerUndoStep(UndoStep& cmd)
 {
     registerUndoOrRedoStep(cmd, false);
 }
 
-void WebEditorClient::registerRedoStep(PassRefPtr<UndoStep> cmd)
+void WebEditorClient::registerRedoStep(UndoStep& cmd)
 {
     registerUndoOrRedoStep(cmd, true);
 }
@@ -1142,6 +1195,10 @@ void WebEditorClient::requestCandidatesForSelection(const VisibleSelection& sele
     RefPtr<Range> selectedRange = selection.toNormalizedRange();
     if (!selectedRange)
         return;
+    
+    Frame* frame = core([m_webView _selectedOrMainFrame]);
+    if (!frame)
+        return;
 
     m_lastSelectionForRequestedCandidates = selection;
 
@@ -1154,7 +1211,7 @@ void WebEditorClient::requestCandidatesForSelection(const VisibleSelection& sele
     int lengthToSelectionStart = TextIterator::rangeLength(makeRange(paragraphStart, selectionStart).get());
     int lengthToSelectionEnd = TextIterator::rangeLength(makeRange(paragraphStart, selectionEnd).get());
     m_rangeForCandidates = NSMakeRange(lengthToSelectionStart, lengthToSelectionEnd - lengthToSelectionStart);
-    m_paragraphContextForCandidateRequest = plainText(makeRange(paragraphStart, paragraphEnd).get());
+    m_paragraphContextForCandidateRequest = plainText(frame->editor().contextRangeForCandidateRequest().get());
 
     NSTextCheckingTypes checkingTypes = NSTextCheckingTypeSpelling | NSTextCheckingTypeReplacement | NSTextCheckingTypeCorrection;
     auto weakEditor = m_weakPtrFactory.createWeakPtr();
@@ -1195,7 +1252,6 @@ void WebEditorClient::handleRequestedCandidates(NSInteger sequenceNumber, NSArra
         rectForSelectionCandidates = frame->view()->contentsToWindow(quads[0].enclosingBoundingBox());
 
     [m_webView showCandidates:candidates forString:m_paragraphContextForCandidateRequest.get() inRect:rectForSelectionCandidates forSelectedRange:m_rangeForCandidates view:m_webView completionHandler:nil];
-
 }
 
 void WebEditorClient::handleAcceptedCandidateWithSoftSpaces(TextCheckingResult acceptedCandidate)
@@ -1264,11 +1320,11 @@ void WebEditorClient::didCheckSucceed(int sequence, NSArray* results)
 
 #endif
 
-void WebEditorClient::requestCheckingOfString(PassRefPtr<WebCore::TextCheckingRequest> request, const VisibleSelection& currentSelection)
+void WebEditorClient::requestCheckingOfString(WebCore::TextCheckingRequest& request, const VisibleSelection& currentSelection)
 {
 #if !PLATFORM(IOS)
     ASSERT(!m_textCheckingRequest);
-    m_textCheckingRequest = request;
+    m_textCheckingRequest = &request;
 
     int sequence = m_textCheckingRequest->data().sequence();
     NSRange range = NSMakeRange(0, m_textCheckingRequest->data().text().length());

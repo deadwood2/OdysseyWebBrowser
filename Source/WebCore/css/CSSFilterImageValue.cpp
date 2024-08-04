@@ -33,6 +33,7 @@
 #include "CachedSVGDocumentReference.h"
 #include "CrossfadeGeneratedImage.h"
 #include "FilterEffectRenderer.h"
+#include "GraphicsContext.h"
 #include "ImageBuffer.h"
 #include "RenderElement.h"
 #include "StyleCachedImage.h"
@@ -45,7 +46,7 @@ namespace WebCore {
 CSSFilterImageValue::~CSSFilterImageValue()
 {
     if (m_cachedImage)
-        m_cachedImage->removeClient(&m_filterSubimageObserver);
+        m_cachedImage->removeClient(m_filterSubimageObserver);
 }
 
 String CSSFilterImageValue::customCSSText() const
@@ -92,9 +93,9 @@ void CSSFilterImageValue::loadSubimages(CachedResourceLoader& cachedResourceLoad
 
     if (m_cachedImage != oldCachedImage) {
         if (oldCachedImage)
-            oldCachedImage->removeClient(&m_filterSubimageObserver);
+            oldCachedImage->removeClient(m_filterSubimageObserver);
         if (m_cachedImage)
-            m_cachedImage->addClient(&m_filterSubimageObserver);
+            m_cachedImage->addClient(m_filterSubimageObserver);
     }
 
     for (auto& filterOperation : m_filterOperations.operations()) {
@@ -109,38 +110,36 @@ void CSSFilterImageValue::loadSubimages(CachedResourceLoader& cachedResourceLoad
 
 RefPtr<Image> CSSFilterImageValue::image(RenderElement* renderer, const FloatSize& size)
 {
+    ASSERT(renderer);
+
     if (size.isEmpty())
         return nullptr;
 
     // FIXME: Skip Content Security Policy check when filter is applied to an element in a user agent shadow tree.
     // See <https://bugs.webkit.org/show_bug.cgi?id=146663>.
     ResourceLoaderOptions options = CachedResourceLoader::defaultCachedResourceOptions();
-
-    CachedResourceLoader& cachedResourceLoader = renderer->document().cachedResourceLoader();
-    CachedImage* cachedImage = cachedImageForCSSValue(m_imageValue, cachedResourceLoader, options);
-
+    auto* cachedImage = cachedImageForCSSValue(m_imageValue, renderer->document().cachedResourceLoader(), options);
     if (!cachedImage)
         return Image::nullImage();
 
-    Image* image = cachedImage->imageForRenderer(renderer);
-
+    auto* image = cachedImage->imageForRenderer(renderer);
     if (!image)
         return Image::nullImage();
 
     // Transform Image into ImageBuffer.
     // FIXME (149424): This buffer should not be unconditionally unaccelerated.
-    std::unique_ptr<ImageBuffer> texture = ImageBuffer::create(size, Unaccelerated);
+    auto texture = ImageBuffer::create(size, Unaccelerated);
     if (!texture)
         return Image::nullImage();
 
-    FloatRect imageRect = FloatRect(FloatPoint(), size);
+    auto imageRect = FloatRect { { }, size };
     texture->context().drawImage(*image, imageRect);
 
-    RefPtr<FilterEffectRenderer> filterRenderer = FilterEffectRenderer::create();
+    auto filterRenderer = FilterEffectRenderer::create();
     filterRenderer->setSourceImage(WTFMove(texture));
     filterRenderer->setSourceImageRect(imageRect);
     filterRenderer->setFilterRegion(imageRect);
-    if (!filterRenderer->build(renderer, m_filterOperations, FilterFunction))
+    if (!filterRenderer->build(*renderer, m_filterOperations, FilterFunction))
         return Image::nullImage();
     filterRenderer->apply();
 
@@ -149,8 +148,8 @@ RefPtr<Image> CSSFilterImageValue::image(RenderElement* renderer, const FloatSiz
 
 void CSSFilterImageValue::filterImageChanged(const IntRect&)
 {
-    for (auto it = clients().begin(), end = clients().end(); it != end; ++it)
-        it->key->imageChanged(static_cast<WrappedImagePtr>(this));
+    for (auto& client : clients())
+        client.key->imageChanged(static_cast<WrappedImagePtr>(this));
 }
 
 void CSSFilterImageValue::createFilterOperations(StyleResolver* resolver)

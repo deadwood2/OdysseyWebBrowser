@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  * Copyright (C) 2012 Samsung Electronics. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -22,8 +22,7 @@
  *
  */
 
-#ifndef HTMLInputElement_h
-#define HTMLInputElement_h
+#pragma once
 
 #include "FileChooser.h"
 #include "HTMLTextFormControlElement.h"
@@ -40,24 +39,18 @@ class DragData;
 class FileList;
 class HTMLDataListElement;
 class HTMLImageLoader;
-class HTMLOptionElement;
 class Icon;
 class InputType;
 class ListAttributeTargetObserver;
 class RadioButtonGroups;
-class TextControlInnerTextElement;
 class URL;
+
 struct DateTimeChooserParameters;
 
 struct InputElementClickState {
-    InputElementClickState()
-        : stateful(false)
-        , checked(false)
-        , indeterminate(false)
-    { }
-    bool stateful;
-    bool checked;
-    bool indeterminate;
+    bool stateful { false };
+    bool checked { false };
+    bool indeterminate { false };
     RefPtr<HTMLInputElement> checkedRadioButton;
 };
 
@@ -74,9 +67,11 @@ public:
     bool rangeUnderflow() const final;
     bool rangeOverflow() const final;
     bool stepMismatch() const final;
+    bool tooShort() const final;
     bool tooLong() const final;
     bool typeMismatch() const final;
     bool valueMissing() const final;
+    bool isValid() const final;
     WEBCORE_EXPORT String validationMessage() const final;
 
     // Returns the minimum value for type=date, number, or range.  Don't call this for other types.
@@ -90,14 +85,12 @@ public:
     StepRange createStepRange(AnyStepHandling) const;
 
 #if ENABLE(DATALIST_ELEMENT)
-    Optional<Decimal> findClosestTickMarkValue(const Decimal&);
+    std::optional<Decimal> findClosestTickMarkValue(const Decimal&);
 #endif
 
-    // Implementations of HTMLInputElement::stepUp() and stepDown().
-    WEBCORE_EXPORT void stepUp(int, ExceptionCode&);
-    WEBCORE_EXPORT void stepDown(int, ExceptionCode&);
-    void stepUp(ExceptionCode& ec) { stepUp(1, ec); }
-    void stepDown(ExceptionCode& ec) { stepDown(1, ec); }
+    WEBCORE_EXPORT ExceptionOr<void> stepUp(int = 1);
+    WEBCORE_EXPORT ExceptionOr<void> stepDown(int = 1);
+
     // stepUp()/stepDown() for user-interaction.
     bool isSteppable() const;
 
@@ -172,8 +165,7 @@ public:
     WEBCORE_EXPORT void setType(const AtomicString&);
 
     WEBCORE_EXPORT String value() const final;
-    void setValue(const String&, ExceptionCode&, TextFieldEventBehavior = DispatchNoEvent);
-    WEBCORE_EXPORT void setValue(const String&, TextFieldEventBehavior = DispatchNoEvent);
+    WEBCORE_EXPORT ExceptionOr<void> setValue(const String&, TextFieldEventBehavior = DispatchNoEvent);
     WEBCORE_EXPORT void setValueForUser(const String&);
     // Checks if the specified string would be a valid value.
     // We should not call this for types with no string value such as CHECKBOX and RADIO.
@@ -190,10 +182,10 @@ public:
     WEBCORE_EXPORT void setEditingValue(const String&);
 
     WEBCORE_EXPORT double valueAsDate() const;
-    WEBCORE_EXPORT void setValueAsDate(double, ExceptionCode&);
+    WEBCORE_EXPORT ExceptionOr<void> setValueAsDate(double);
 
     WEBCORE_EXPORT double valueAsNumber() const;
-    WEBCORE_EXPORT void setValueAsNumber(double, ExceptionCode&, TextFieldEventBehavior = DispatchNoEvent);
+    WEBCORE_EXPORT ExceptionOr<void> setValueAsNumber(double, TextFieldEventBehavior = DispatchNoEvent);
 
     String valueWithDefault() const;
 
@@ -231,12 +223,10 @@ public:
     String accept() const;
     WEBCORE_EXPORT String alt() const;
 
-    WEBCORE_EXPORT void setSize(unsigned);
-    void setSize(unsigned, ExceptionCode&);
+    WEBCORE_EXPORT ExceptionOr<void> setSize(unsigned);
 
     URL src() const;
 
-    int maxLengthForBindings() const { return m_maxLength; }
     unsigned effectiveMaxLength() const;
 
     bool multiple() const;
@@ -248,7 +238,7 @@ public:
     WEBCORE_EXPORT void setShowAutoFillButton(AutoFillButtonType);
 
     WEBCORE_EXPORT FileList* files();
-    WEBCORE_EXPORT void setFiles(PassRefPtr<FileList>);
+    WEBCORE_EXPORT void setFiles(RefPtr<FileList>&&);
 
 #if ENABLE(DRAG_SUPPORT)
     // Returns true if the given DragData has more than one dropped files.
@@ -313,13 +303,14 @@ public:
 
     void endEditing();
 
-    void setSpellcheckEnabled(bool enabled) { m_isSpellCheckingEnabled = enabled; }
+    void setSpellcheckDisabledExceptTextReplacement(bool disabled) { m_isSpellcheckDisabledExceptTextReplacement = disabled; }
+    bool isSpellcheckDisabledExceptTextReplacement() const { return m_isSpellcheckDisabledExceptTextReplacement; }
 
     static Vector<FileChooserFileInfo> filesFromFileInputFormControlState(const FormControlState&);
 
     bool matchesReadWritePseudoClass() const final;
-    WEBCORE_EXPORT void setRangeText(const String& replacement, ExceptionCode&) final;
-    WEBCORE_EXPORT void setRangeText(const String& replacement, unsigned start, unsigned end, const String& selectionMode, ExceptionCode&) final;
+    WEBCORE_EXPORT ExceptionOr<void> setRangeText(const String& replacement) final;
+    WEBCORE_EXPORT ExceptionOr<void> setRangeText(const String& replacement, unsigned start, unsigned end, const String& selectionMode) final;
 
     HTMLImageLoader* imageLoader() { return m_imageLoader.get(); }
     HTMLImageLoader& ensureImageLoader();
@@ -331,6 +322,17 @@ public:
     void capsLockStateMayHaveChanged();
 
     bool shouldTruncateText(const RenderStyle&) const;
+
+    ExceptionOr<int> selectionStartForBindings() const;
+    ExceptionOr<void> setSelectionStartForBindings(int);
+
+    ExceptionOr<int> selectionEndForBindings() const;
+    ExceptionOr<void> setSelectionEndForBindings(int);
+
+    ExceptionOr<String> selectionDirectionForBindings() const;
+    ExceptionOr<void> setSelectionDirectionForBindings(const String&);
+
+    ExceptionOr<void> setSelectionRangeForBindings(int start, int end, const String& direction);
 
 protected:
     HTMLInputElement(const QualifiedName&, Document&, HTMLFormElement*, bool createdByParser);
@@ -347,7 +349,7 @@ private:
     InsertionNotificationRequest insertedInto(ContainerNode&) final;
     void finishedInsertingSubtree() final;
     void removedFrom(ContainerNode&) final;
-    void didMoveToNewDocument(Document* oldDocument) final;
+    void didMoveToNewDocument(Document& oldDocument) final;
 
     bool hasCustomFocusLogic() const final;
     bool isKeyboardFocusable(KeyboardEvent&) const final;
@@ -356,7 +358,6 @@ private:
     bool supportLabels() const final;
     void updateFocusAppearance(SelectionRestorationMode, SelectionRevealMode) final;
     bool shouldUseInputMethod() final;
-    bool isSpellCheckingEnabled() const final;
 
     bool isTextFormControl() const final { return isTextField(); }
 
@@ -402,9 +403,11 @@ private:
     void registerForSuspensionCallbackIfNeeded();
     void unregisterForSuspensionCallbackIfNeeded();
 
+    bool supportsMinLength() const { return isTextType(); }
     bool supportsMaxLength() const { return isTextType(); }
     bool isTextType() const;
-    bool tooLong(const String&, NeedsToCheckDirtyFlag) const;
+    bool tooShort(StringView, NeedsToCheckDirtyFlag) const;
+    bool tooLong(StringView, NeedsToCheckDirtyFlag) const;
 
     bool supportsPlaceholder() const final;
     void updatePlaceholderText() final;
@@ -427,6 +430,7 @@ private:
     void resetListAttributeTargetObserver();
 #endif
     void maxLengthAttributeChanged(const AtomicString& newValue);
+    void minLengthAttributeChanged(const AtomicString& newValue);
     void updateValueIfNeeded();
 
     void addToRadioButtonGroup();
@@ -435,7 +439,6 @@ private:
     AtomicString m_name;
     String m_valueIfDirty;
     unsigned m_size;
-    int m_maxLength;
     short m_maxResults;
     bool m_isChecked : 1;
     bool m_reflectsCheckedAttribute : 1;
@@ -456,7 +459,7 @@ private:
 #if ENABLE(TOUCH_EVENTS)
     bool m_hasTouchEventHandler : 1;
 #endif
-    bool m_isSpellCheckingEnabled : 1;
+    bool m_isSpellcheckDisabledExceptTextReplacement : 1;
     std::unique_ptr<InputType> m_inputType;
     // The ImageLoader must be owned by this element because the loader code assumes
     // that it lives as long as its owning element lives. If we move the loader into
@@ -467,5 +470,4 @@ private:
 #endif
 };
 
-} //namespace
-#endif
+}

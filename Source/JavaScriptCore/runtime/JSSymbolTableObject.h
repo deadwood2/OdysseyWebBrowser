@@ -26,8 +26,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef JSSymbolTableObject_h
-#define JSSymbolTableObject_h
+#pragma once
 
 #include "JSScope.h"
 #include "PropertyDescriptor.h"
@@ -40,7 +39,7 @@ namespace JSC {
 class JSSymbolTableObject : public JSScope {
 public:
     typedef JSScope Base;
-    static const unsigned StructureFlags = Base::StructureFlags | IsEnvironmentRecord | OverridesGetPropertyNames;
+    static const unsigned StructureFlags = Base::StructureFlags | OverridesGetPropertyNames;
     
     SymbolTable* symbolTable() const { return m_symbolTable.get(); }
     
@@ -82,7 +81,7 @@ inline bool symbolTableGet(
     SymbolTableObjectType* object, PropertyName propertyName, PropertySlot& slot)
 {
     SymbolTable& symbolTable = *object->symbolTable();
-    ConcurrentJITLocker locker(symbolTable.m_lock);
+    ConcurrentJSLocker locker(symbolTable.m_lock);
     SymbolTable::Map::iterator iter = symbolTable.find(locker, propertyName.uid());
     if (iter == symbolTable.end(locker))
         return false;
@@ -103,7 +102,7 @@ inline bool symbolTableGet(
     SymbolTableObjectType* object, PropertyName propertyName, PropertyDescriptor& descriptor)
 {
     SymbolTable& symbolTable = *object->symbolTable();
-    ConcurrentJITLocker locker(symbolTable.m_lock);
+    ConcurrentJSLocker locker(symbolTable.m_lock);
     SymbolTable::Map::iterator iter = symbolTable.find(locker, propertyName.uid());
     if (iter == symbolTable.end(locker))
         return false;
@@ -125,7 +124,7 @@ inline bool symbolTableGet(
     bool& slotIsWriteable)
 {
     SymbolTable& symbolTable = *object->symbolTable();
-    ConcurrentJITLocker locker(symbolTable.m_lock);
+    ConcurrentJSLocker locker(symbolTable.m_lock);
     SymbolTable::Map::iterator iter = symbolTable.find(locker, propertyName.uid());
     if (iter == symbolTable.end(locker))
         return false;
@@ -175,7 +174,7 @@ inline bool symbolTablePut(SymbolTableObjectType* object, ExecState* exec, Prope
         SymbolTable& symbolTable = *object->symbolTable();
         // FIXME: This is very suspicious. We shouldn't need a GC-safe lock here.
         // https://bugs.webkit.org/show_bug.cgi?id=134601
-        GCSafeConcurrentJITLocker locker(symbolTable.m_lock, vm.heap);
+        GCSafeConcurrentJSLocker locker(symbolTable.m_lock, vm.heap);
         SymbolTable::Map::iterator iter = symbolTable.find(locker, propertyName.uid());
         if (iter == symbolTable.end(locker))
             return false;
@@ -184,7 +183,7 @@ inline bool symbolTablePut(SymbolTableObjectType* object, ExecState* exec, Prope
         ASSERT(!fastEntry.isNull());
         if (fastEntry.isReadOnly() && !ignoreReadOnlyErrors) {
             if (shouldThrowReadOnlyError)
-                throwTypeError(exec, scope, StrictModeReadonlyPropertyWriteError);
+                throwTypeError(exec, scope, ASCIILiteral(ReadonlyPropertyWriteError));
             putResult = false;
             return true;
         }
@@ -228,6 +227,3 @@ inline bool symbolTablePutInvalidateWatchpointSet(
 }
 
 } // namespace JSC
-
-#endif // JSSymbolTableObject_h
-

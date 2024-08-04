@@ -35,7 +35,7 @@
 #include "WebProcessProxy.h"
 #include "WebsiteDataStore.h"
 #include <WebCore/PlatformDisplay.h>
-#include <WebCore/UserAgentGtk.h>
+#include <WebCore/UserAgent.h>
 #include <gtk/gtkx.h>
 #include <wtf/NeverDestroyed.h>
 

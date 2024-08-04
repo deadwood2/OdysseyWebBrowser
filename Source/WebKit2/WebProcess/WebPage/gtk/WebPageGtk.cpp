@@ -46,7 +46,7 @@
 #include <WebCore/PasteboardHelper.h>
 #include <WebCore/PlatformKeyboardEvent.h>
 #include <WebCore/Settings.h>
-#include <WebCore/UserAgentGtk.h>
+#include <WebCore/UserAgent.h>
 #include <wtf/glib/GUniquePtr.h>
 
 using namespace WebCore;
@@ -185,12 +185,11 @@ String WebPage::cachedSuggestedFilenameForURL(const URL&)
     return String();
 }
 
-PassRefPtr<SharedBuffer> WebPage::cachedResponseDataForURL(const URL&)
+RefPtr<SharedBuffer> WebPage::cachedResponseDataForURL(const URL&)
 {
     notImplemented();
     return 0;
 }
-
 
 String WebPage::platformUserAgent(const URL& url) const
 {

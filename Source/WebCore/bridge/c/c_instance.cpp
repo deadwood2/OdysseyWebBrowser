@@ -68,14 +68,13 @@ void CInstance::setGlobalException(String exception)
 
 void CInstance::moveGlobalExceptionToExecState(ExecState* exec)
 {
-    VM& vm = exec->vm();
-    auto scope = DECLARE_THROW_SCOPE(vm);
-
     if (globalExceptionString().isNull())
         return;
 
     {
-        JSLockHolder lock(exec);
+        VM& vm = exec->vm();
+        JSLockHolder lock(vm);
+        auto scope = DECLARE_THROW_SCOPE(vm);
         throwException(exec, scope, createError(exec, globalExceptionString()));
     }
 
@@ -142,7 +141,7 @@ private:
     void finishCreation(VM& vm, const String& name)
     {
         Base::finishCreation(vm, name);
-        ASSERT(inherits(info()));
+        ASSERT(inherits(vm, info()));
     }
 
 };
@@ -160,8 +159,8 @@ JSValue CInstance::invokeMethod(ExecState* exec, RuntimeMethod* runtimeMethod)
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    if (!asObject(runtimeMethod)->inherits(CRuntimeMethod::info()))
-        return throwTypeError(exec, scope, "Attempt to invoke non-plug-in method on plug-in object.");
+    if (!asObject(runtimeMethod)->inherits(vm, CRuntimeMethod::info()))
+        return throwTypeError(exec, scope, ASCIILiteral("Attempt to invoke non-plug-in method on plug-in object."));
 
     CMethod* method = static_cast<CMethod*>(runtimeMethod->method());
     ASSERT(method);

@@ -209,7 +209,7 @@ public:
                         || node->origin.forExit != previousNode->origin.forExit);
                 }
                 
-                VALIDATE((node), !node->hasStructure() || !!node->structure());
+                VALIDATE((node), !node->hasStructure() || !!node->structure().get());
                 VALIDATE((node), !node->hasCellOperand() || node->cellOperand()->value().isCell());
                 VALIDATE((node), !node->hasCellOperand() || !!node->cellOperand()->value());
                 
@@ -285,7 +285,7 @@ public:
                     }
                     break;
                 case MaterializeNewObject:
-                    for (Structure* structure : node->structureSet()) {
+                    for (RegisteredStructure structure : node->structureSet()) {
                         // This only supports structures that are JSFinalObject or JSArray.
                         VALIDATE(
                             (node),
@@ -309,6 +309,10 @@ public:
                     // while the inline one will not take a storage child at all.
                     // https://bugs.webkit.org/show_bug.cgi?id=159602
                     break;
+                case HasOwnProperty: {
+                    VALIDATE((node), !!m_graph.m_vm.hasOwnPropertyCache());
+                    break;
+                }
                 default:
                     break;
                 }
@@ -525,6 +529,7 @@ private:
                 case PhantomNewObject:
                 case PhantomNewFunction:
                 case PhantomNewGeneratorFunction:
+                case PhantomNewAsyncFunction:
                 case PhantomCreateActivation:
                 case GetMyArgumentByVal:
                 case GetMyArgumentByValOutOfBounds:
@@ -560,7 +565,7 @@ private:
                     // CPS disallows int32 and double arrays. Those require weird type checks and
                     // conversions. They are not needed in the DFG right now. We should add support
                     // for these if the DFG ever needs it.
-                    for (Structure* structure : node->structureSet()) {
+                    for (RegisteredStructure structure : node->structureSet()) {
                         VALIDATE((node), !hasInt32(structure->indexingType()));
                         VALIDATE((node), !hasDouble(structure->indexingType()));
                     }
@@ -633,8 +638,7 @@ private:
 
             bool didSeeExitOK = false;
             
-            for (unsigned nodeIndex = 0; nodeIndex < block->size(); ++nodeIndex) {
-                Node* node = block->at(nodeIndex);
+            for (auto* node : *block) {
                 didSeeExitOK |= node->origin.exitOK;
                 switch (node->op()) {
                 case Phi:
@@ -664,8 +668,10 @@ private:
                 case PhantomNewObject:
                 case PhantomNewFunction:
                 case PhantomNewGeneratorFunction:
+                case PhantomNewAsyncFunction:
                 case PhantomCreateActivation:
                 case PhantomDirectArguments:
+                case PhantomCreateRest:
                 case PhantomClonedArguments:
                 case MovHint:
                 case Upsilon:
@@ -685,6 +691,39 @@ private:
                 case PutHint:
                     VALIDATE((node), node->child1()->isPhantomAllocation());
                     break;
+
+                case PhantomSpread:
+                    VALIDATE((node), m_graph.m_form == SSA);
+                    // We currently only support PhantomSpread over PhantomCreateRest.
+                    VALIDATE((node), node->child1()->op() == PhantomCreateRest);
+                    break;
+
+                case PhantomNewArrayWithSpread: {
+                    VALIDATE((node), m_graph.m_form == SSA);
+                    BitVector* bitVector = node->bitVector();
+                    for (unsigned i = 0; i < node->numChildren(); i++) {
+                        Node* child = m_graph.varArgChild(node, i).node();
+                        if (bitVector->get(i)) {
+                            // We currently only support PhantomSpread over PhantomCreateRest.
+                            VALIDATE((node), child->op() == PhantomSpread);
+                        } else
+                            VALIDATE((node), !child->isPhantomAllocation());
+                    }
+                    break;
+                }
+
+                case NewArrayWithSpread: {
+                    BitVector* bitVector = node->bitVector();
+                    for (unsigned i = 0; i < node->numChildren(); i++) {
+                        Node* child = m_graph.varArgChild(node, i).node();
+                        if (child->isPhantomAllocation()) {
+                            VALIDATE((node), bitVector->get(i));
+                            VALIDATE((node), m_graph.m_form == SSA);
+                            VALIDATE((node), child->op() == PhantomSpread);
+                        }
+                    }
+                    break;
+                }
 
                 default:
                     m_graph.doToChildren(

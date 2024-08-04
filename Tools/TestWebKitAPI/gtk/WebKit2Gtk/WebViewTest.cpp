@@ -24,19 +24,15 @@
 #include <JavaScriptCore/JSRetainPtr.h>
 #include <WebCore/GUniquePtrGtk.h>
 
+bool WebViewTest::shouldInitializeWebViewInConstructor = true;
+
 WebViewTest::WebViewTest()
     : m_userContentManager(adoptGRef(webkit_user_content_manager_new()))
-    , m_webView(WEBKIT_WEB_VIEW(g_object_ref_sink(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", m_webContext.get(), "user-content-manager", m_userContentManager.get(), nullptr))))
     , m_mainLoop(g_main_loop_new(nullptr, TRUE))
-    , m_parentWindow(nullptr)
-    , m_javascriptResult(nullptr)
-    , m_resourceDataSize(0)
-    , m_surface(nullptr)
-    , m_expectedWebProcessCrash(false)
 {
-    assertObjectIsDeletedWhenTestFinishes(G_OBJECT(m_webView));
+    if (shouldInitializeWebViewInConstructor)
+        initializeWebView();
     assertObjectIsDeletedWhenTestFinishes(G_OBJECT(m_userContentManager.get()));
-    g_signal_connect(m_webView, "web-process-crashed", G_CALLBACK(WebViewTest::webProcessCrashed), this);
 }
 
 WebViewTest::~WebViewTest()
@@ -49,6 +45,15 @@ WebViewTest::~WebViewTest()
         cairo_surface_destroy(m_surface);
     g_object_unref(m_webView);
     g_main_loop_unref(m_mainLoop);
+}
+
+void WebViewTest::initializeWebView()
+{
+    g_assert(!m_webView);
+    m_webView = WEBKIT_WEB_VIEW(g_object_ref_sink(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", m_webContext.get(), "user-content-manager", m_userContentManager.get(), nullptr)));
+    assertObjectIsDeletedWhenTestFinishes(G_OBJECT(m_webView));
+
+    g_signal_connect(m_webView, "web-process-crashed", G_CALLBACK(WebViewTest::webProcessCrashed), this);
 }
 
 gboolean WebViewTest::webProcessCrashed(WebKitWebView*, WebViewTest* test)
@@ -326,6 +331,15 @@ void WebViewTest::clickMouseButton(int x, int y, unsigned button, unsigned mouse
 {
     doMouseButtonEvent(GDK_BUTTON_PRESS, x, y, button, mouseModifiers);
     doMouseButtonEvent(GDK_BUTTON_RELEASE, x, y, button, mouseModifiers);
+}
+
+void WebViewTest::emitPopupMenuSignal()
+{
+    GtkWidget* viewWidget = GTK_WIDGET(m_webView);
+    g_assert(gtk_widget_get_realized(viewWidget));
+
+    gboolean handled;
+    g_signal_emit_by_name(viewWidget, "popup-menu", &handled);
 }
 
 void WebViewTest::keyStroke(unsigned keyVal, unsigned keyModifiers)

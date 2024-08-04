@@ -34,7 +34,6 @@
 #include "WebInspectorServer.h"
 #include "WebProcessCreationParameters.h"
 #include "WebProcessMessages.h"
-#include "WebSoupCustomProtocolRequestManager.h"
 #include <WebCore/FileSystem.h>
 #include <WebCore/NotImplemented.h>
 #include <WebCore/SchemeRegistry.h>
@@ -94,6 +93,7 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
 {
     initInspectorServer();
     parameters.memoryCacheDisabled = m_memoryCacheDisabled || cacheModel() == CacheModelDocumentViewer;
+    parameters.proxySettings = m_networkProxySettings;
 }
 
 void WebProcessPool::platformInvalidateContext()
@@ -113,7 +113,7 @@ String WebProcessPool::legacyPlatformDefaultIndexedDBDatabaseDirectory()
 String WebProcessPool::platformDefaultIconDatabasePath() const
 {
     GUniquePtr<gchar> databaseDirectory(g_build_filename(g_get_user_cache_dir(), "webkitgtk", "icondatabase", nullptr));
-    return WebCore::filenameToString(databaseDirectory.get());
+    return WebCore::stringFromFileSystemRepresentation(databaseDirectory.get());
 }
 
 String WebProcessPool::legacyPlatformDefaultLocalStorageDirectory()
@@ -129,6 +129,10 @@ String WebProcessPool::legacyPlatformDefaultMediaKeysStorageDirectory()
 String WebProcessPool::legacyPlatformDefaultNetworkCacheDirectory()
 {
     return API::WebsiteDataStore::defaultNetworkCacheDirectory();
+}
+
+void WebProcessPool::platformResolvePathsForSandboxExtensions()
+{
 }
 
 } // namespace WebKit

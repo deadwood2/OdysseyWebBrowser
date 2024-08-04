@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2011, 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,11 +42,14 @@
 #include "DFGWorklist.h"
 #include "Disassembler.h"
 #include "ErrorInstance.h"
+#include "EvalCodeBlock.h"
 #include "Exception.h"
 #include "FTLThunks.h"
+#include "FunctionCodeBlock.h"
 #include "FunctionConstructor.h"
 #include "GCActivityCallback.h"
 #include "GetterSetter.h"
+#include "HasOwnPropertyCache.h"
 #include "Heap.h"
 #include "HeapIterationScope.h"
 #include "HeapProfiler.h"
@@ -60,24 +63,28 @@
 #include "JSAPIValueWrapper.h"
 #include "JSArray.h"
 #include "JSCInlines.h"
+#include "JSFixedArray.h"
 #include "JSFunction.h"
 #include "JSGlobalObjectFunctions.h"
 #include "JSInternalPromiseDeferred.h"
-#include "JSLexicalEnvironment.h"
 #include "JSLock.h"
 #include "JSMap.h"
 #include "JSPromiseDeferred.h"
 #include "JSPropertyNameEnumerator.h"
+#include "JSScriptFetcher.h"
+#include "JSSourceCode.h"
 #include "JSTemplateRegistryKey.h"
+#include "JSWebAssembly.h"
 #include "JSWithScope.h"
 #include "LLIntData.h"
 #include "Lexer.h"
 #include "Lookup.h"
-#include "MapData.h"
+#include "ModuleProgramCodeBlock.h"
 #include "NativeStdFunctionCell.h"
 #include "Nodes.h"
 #include "Parser.h"
 #include "ProfilerDatabase.h"
+#include "ProgramCodeBlock.h"
 #include "PropertyMapHashTable.h"
 #include "RegExpCache.h"
 #include "RegExpObject.h"
@@ -95,6 +102,7 @@
 #include "TypeProfilerLog.h"
 #include "UnlinkedCodeBlock.h"
 #include "VMEntryScope.h"
+#include "VMInspector.h"
 #include "Watchdog.h"
 #include "WeakGCMapInlines.h"
 #include "WeakMapData.h"
@@ -159,13 +167,20 @@ VM::VM(VMType vmType, HeapType heapType)
     , executableAllocator(*this)
 #endif
     , heap(this, heapType)
+    , auxiliarySpace("Auxiliary", heap, AllocatorAttributes(DoesNotNeedDestruction, HeapCell::Auxiliary))
+    , cellSpace("JSCell", heap, AllocatorAttributes(DoesNotNeedDestruction, HeapCell::JSCell))
+    , destructibleCellSpace("Destructible JSCell", heap, AllocatorAttributes(NeedsDestruction, HeapCell::JSCell))
+    , stringSpace("JSString", heap)
+    , destructibleObjectSpace("JSDestructibleObject", heap)
+    , segmentedVariableObjectSpace("JSSegmentedVariableObjectSpace", heap)
     , vmType(vmType)
     , clientData(0)
     , topVMEntryFrame(nullptr)
     , topCallFrame(CallFrame::noCaller())
+    , topJSWebAssemblyInstance(nullptr)
     , m_atomicStringTable(vmType == Default ? wtfThreadData().atomicStringTable() : new AtomicStringTable)
     , propertyNames(nullptr)
-    , emptyList(new MarkedArgumentBuffer)
+    , emptyList(new ArgList)
     , machineCodeBytesPerBytecodeWordForBaselineJIT(std::make_unique<SimpleStats>())
     , customGetterSetterFunctionMap(*this)
     , stringCache(*this)
@@ -223,12 +238,17 @@ VM::VM(VMType vmType, HeapType heapType)
     programExecutableStructure.set(*this, ProgramExecutable::createStructure(*this, 0, jsNull()));
     functionExecutableStructure.set(*this, FunctionExecutable::createStructure(*this, 0, jsNull()));
 #if ENABLE(WEBASSEMBLY)
-    webAssemblyExecutableStructure.set(*this, WebAssemblyExecutable::createStructure(*this, 0, jsNull()));
+    webAssemblyCalleeStructure.set(*this, JSWebAssemblyCallee::createStructure(*this, 0, jsNull()));
+    webAssemblyToJSCalleeStructure.set(*this, WebAssemblyToJSCallee::createStructure(*this, 0, jsNull()));
+    webAssemblyToJSCallee.set(*this, WebAssemblyToJSCallee::create(*this, webAssemblyToJSCalleeStructure.get()));
 #endif
     moduleProgramExecutableStructure.set(*this, ModuleProgramExecutable::createStructure(*this, 0, jsNull()));
     regExpStructure.set(*this, RegExp::createStructure(*this, 0, jsNull()));
     symbolStructure.set(*this, Symbol::createStructure(*this, 0, jsNull()));
     symbolTableStructure.set(*this, SymbolTable::createStructure(*this, 0, jsNull()));
+    fixedArrayStructure.set(*this, JSFixedArray::createStructure(*this, 0, jsNull()));
+    sourceCodeStructure.set(*this, JSSourceCode::createStructure(*this, 0, jsNull()));
+    scriptFetcherStructure.set(*this, JSScriptFetcher::createStructure(*this, 0, jsNull()));
     structureChainStructure.set(*this, StructureChain::createStructure(*this, 0, jsNull()));
     sparseArrayValueMapStructure.set(*this, SparseArrayValueMap::createStructure(*this, 0, jsNull()));
     templateRegistryKeyStructure.set(*this, JSTemplateRegistryKey::createStructure(*this, 0, jsNull()));
@@ -251,9 +271,6 @@ VM::VM(VMType vmType, HeapType heapType)
     moduleProgramCodeBlockStructure.set(*this, ModuleProgramCodeBlock::createStructure(*this, 0, jsNull()));
     evalCodeBlockStructure.set(*this, EvalCodeBlock::createStructure(*this, 0, jsNull()));
     functionCodeBlockStructure.set(*this, FunctionCodeBlock::createStructure(*this, 0, jsNull()));
-#if ENABLE(WEBASSEMBLY)
-    webAssemblyCodeBlockStructure.set(*this, WebAssemblyCodeBlock::createStructure(*this, 0, jsNull()));
-#endif
     hashMapBucketSetStructure.set(*this, HashMapBucket<HashMapBucketDataKey>::createStructure(*this, 0, jsNull()));
     hashMapBucketMapStructure.set(*this, HashMapBucket<HashMapBucketDataKeyValue>::createStructure(*this, 0, jsNull()));
     hashMapImplSetStructure.set(*this, HashMapImpl<HashMapBucket<HashMapBucketDataKey>>::createStructure(*this, 0, jsNull()));
@@ -333,10 +350,14 @@ VM::VM(VMType vmType, HeapType heapType)
         Watchdog& watchdog = ensureWatchdog();
         watchdog.setTimeLimit(timeoutMillis);
     }
+
+    VMInspector::instance().add(this);
 }
 
 VM::~VM()
 {
+    VMInspector::instance().remove(this);
+
     // Never GC, ever again.
     heap.incrementDeferralDepth();
 
@@ -355,7 +376,7 @@ VM::~VM()
     // Make sure concurrent compilations are done, but don't install them, since there is
     // no point to doing so.
     for (unsigned i = DFG::numberOfWorklists(); i--;) {
-        if (DFG::Worklist* worklist = DFG::worklistForIndexOrNull(i)) {
+        if (DFG::Worklist* worklist = DFG::existingWorklistForIndexOrNull(i)) {
             worklist->removeNonCompilingPlansForVM(*this);
             worklist->waitUntilAllPlansForVMAreReady(*this);
             worklist->removeAllReadyPlansForVM(*this);
@@ -448,7 +469,7 @@ Watchdog& VM::ensureWatchdog()
         // And if we've previously compiled any functions, we need to revert
         // them because they don't have the needed polling checks for the watchdog
         // yet.
-        deleteAllCode();
+        deleteAllCode(PreventCollectionAndDeleteAllCode);
     }
     return *m_watchdog;
 }
@@ -512,25 +533,25 @@ static ThunkGenerator thunkGeneratorForIntrinsic(Intrinsic intrinsic)
 
 NativeExecutable* VM::getHostFunction(NativeFunction function, NativeFunction constructor, const String& name)
 {
-    return getHostFunction(function, NoIntrinsic, constructor, name);
+    return getHostFunction(function, NoIntrinsic, constructor, nullptr, name);
 }
 
-NativeExecutable* VM::getHostFunction(NativeFunction function, Intrinsic intrinsic, NativeFunction constructor, const String& name)
+NativeExecutable* VM::getHostFunction(NativeFunction function, Intrinsic intrinsic, NativeFunction constructor, const DOMJIT::Signature* signature, const String& name)
 {
 #if ENABLE(JIT)
     if (canUseJIT()) {
         return jitStubs->hostFunctionStub(
             this, function, constructor,
             intrinsic != NoIntrinsic ? thunkGeneratorForIntrinsic(intrinsic) : 0,
-            intrinsic, name);
+            intrinsic, signature, name);
     }
 #else // ENABLE(JIT)
     UNUSED_PARAM(intrinsic);
 #endif // ENABLE(JIT)
     return NativeExecutable::create(*this,
-        adoptRef(new NativeJITCode(MacroAssemblerCodeRef::createLLIntCodeRef(llint_native_call_trampoline), JITCode::HostCallThunk)), function,
-        adoptRef(new NativeJITCode(MacroAssemblerCodeRef::createLLIntCodeRef(llint_native_construct_trampoline), JITCode::HostCallThunk)), constructor,
-        NoIntrinsic, name);
+        adoptRef(*new NativeJITCode(MacroAssemblerCodeRef::createLLIntCodeRef(llint_native_call_trampoline), JITCode::HostCallThunk)), function,
+        adoptRef(*new NativeJITCode(MacroAssemblerCodeRef::createLLIntCodeRef(llint_native_construct_trampoline), JITCode::HostCallThunk)), constructor,
+        NoIntrinsic, signature, name);
 }
 
 VM::ClientData::~ClientData()
@@ -555,20 +576,20 @@ void VM::whenIdle(std::function<void()> callback)
     entryScope->addDidPopListener(callback);
 }
 
-void VM::deleteAllLinkedCode()
+void VM::deleteAllLinkedCode(DeleteAllCodeEffort effort)
 {
-    whenIdle([this]() {
-        heap.deleteAllCodeBlocks();
+    whenIdle([=] () {
+        heap.deleteAllCodeBlocks(effort);
     });
 }
 
-void VM::deleteAllCode()
+void VM::deleteAllCode(DeleteAllCodeEffort effort)
 {
-    whenIdle([this]() {
+    whenIdle([=] () {
         m_codeCache->clear();
         m_regExpCache->deleteAllCode();
-        heap.deleteAllCodeBlocks();
-        heap.deleteAllUnlinkedCodeBlocks();
+        heap.deleteAllCodeBlocks(effort);
+        heap.deleteAllUnlinkedCodeBlocks(effort);
         heap.reportAbandonedObjectGraph();
     });
 }
@@ -589,7 +610,12 @@ void VM::clearSourceProviderCaches()
 void VM::throwException(ExecState* exec, Exception* exception)
 {
     if (Options::breakOnThrow()) {
-        dataLog("In call frame ", RawPointer(exec), " for code block ", *exec->codeBlock(), "\n");
+        CodeBlock* codeBlock = exec->codeBlock();
+        dataLog("Throwing exception in call frame ", RawPointer(exec), " for code block ");
+        if (codeBlock)
+            dataLog(*codeBlock, "\n");
+        else
+            dataLog("<nullptr>\n");
         CRASH();
     }
 
@@ -602,7 +628,8 @@ void VM::throwException(ExecState* exec, Exception* exception)
 
 JSValue VM::throwException(ExecState* exec, JSValue thrownValue)
 {
-    Exception* exception = jsDynamicCast<Exception*>(thrownValue);
+    VM& vm = exec->vm();
+    Exception* exception = jsDynamicCast<Exception*>(vm, thrownValue);
     if (!exception)
         exception = Exception::create(*this, thrownValue);
 
@@ -693,8 +720,7 @@ inline void VM::updateStackLimits()
 #if ENABLE(DFG_JIT)
 void VM::gatherConservativeRoots(ConservativeRoots& conservativeRoots)
 {
-    for (size_t i = 0; i < scratchBuffers.size(); i++) {
-        ScratchBuffer* scratchBuffer = scratchBuffers[i];
+    for (auto* scratchBuffer : scratchBuffers) {
         if (scratchBuffer->activeLength()) {
             void* bufferStart = scratchBuffer->dataBuffer();
             conservativeRoots.add(bufferStart, static_cast<void*>(static_cast<char*>(bufferStart) + scratchBuffer->activeLength()));
@@ -842,9 +868,9 @@ void VM::dumpTypeProfilerData()
     typeProfiler()->dumpTypeProfilerData(*this);
 }
 
-void VM::queueMicrotask(JSGlobalObject* globalObject, PassRefPtr<Microtask> task)
+void VM::queueMicrotask(JSGlobalObject* globalObject, Ref<Microtask>&& task)
 {
-    m_microtaskQueue.append(std::make_unique<QueuedTask>(*this, globalObject, task));
+    m_microtaskQueue.append(std::make_unique<QueuedTask>(*this, globalObject, WTFMove(task)));
 }
 
 void VM::drainMicrotasks()
@@ -893,5 +919,28 @@ bool VM::isSafeToRecurseSoftCLoop() const
     return interpreter->cloopStack().isSafeToRecurse();
 }
 #endif // !ENABLE(JIT)
+
+#if ENABLE(EXCEPTION_SCOPE_VERIFICATION)
+void VM::verifyExceptionCheckNeedIsSatisfied(unsigned recursionDepth, ExceptionEventLocation& location)
+{
+    if (!Options::validateExceptionChecks())
+        return;
+
+    if (UNLIKELY(m_needExceptionCheck)) {
+        auto throwDepth = m_simulatedThrowPointRecursionDepth;
+        auto& throwLocation = m_simulatedThrowPointLocation;
+
+        dataLog(
+            "ERROR: Unchecked JS exception:\n"
+            "    This scope can throw a JS exception: ", throwLocation, "\n"
+            "        (ExceptionScope::m_recursionDepth was ", throwDepth, ")\n"
+            "    But the exception was unchecked as of this scope: ", location, "\n"
+            "        (ExceptionScope::m_recursionDepth was ", recursionDepth, ")\n"
+            "\n");
+
+        RELEASE_ASSERT(!m_needExceptionCheck);
+    }
+}
+#endif
 
 } // namespace JSC

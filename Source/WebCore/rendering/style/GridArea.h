@@ -29,19 +29,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef GridArea_h
-#define GridArea_h
-
-#if ENABLE(CSS_GRID_LAYOUT)
+#pragma once
 
 #include "GridPositionsResolver.h"
 #include <wtf/HashMap.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
-
-// Recommended maximum size for both explicit and implicit grids.
-const int kGridMaxTracks = 1000000;
 
 // A span in a single direction (either rows or columns). Note that |startLine|
 // and |endLine| are grid lines' indexes.
@@ -206,7 +200,3 @@ public:
 typedef HashMap<String, GridArea> NamedGridAreaMap;
 
 } // namespace WebCore
-
-#endif /* ENABLE(CSS_GRID_LAYOUT) */
-
-#endif // GridArea_h

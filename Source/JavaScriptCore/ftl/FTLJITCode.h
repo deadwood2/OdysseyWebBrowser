@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef FTLJITCode_h
-#define FTLJITCode_h
+#pragma once
 
 #if ENABLE(FTL_JIT)
 
@@ -61,7 +60,7 @@ public:
 
     RegisterSet liveRegistersToPreserveAtExceptionHandlingCallSite(CodeBlock*, CallSiteIndex) override;
 
-    Optional<CodeOrigin> findPC(CodeBlock*, void* pc) override;
+    std::optional<CodeOrigin> findPC(CodeBlock*, void* pc) override;
 
     CodeRef b3Code() const { return m_b3Code; }
     
@@ -84,6 +83,3 @@ private:
 } } // namespace JSC::FTL
 
 #endif // ENABLE(FLT_JIT)
-
-#endif // FTLJITCode_h
-

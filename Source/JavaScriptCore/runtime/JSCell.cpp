@@ -24,11 +24,13 @@
 #include "JSCell.h"
 
 #include "ArrayBufferView.h"
+#include "JSCInlines.h"
 #include "JSFunction.h"
 #include "JSString.h"
 #include "JSObject.h"
+#include "JSWebAssemblyCallee.h"
 #include "NumberObject.h"
-#include "JSCInlines.h"
+#include "WebAssemblyToJSCallee.h"
 #include <wtf/MathExtras.h>
 
 namespace JSC {
@@ -48,7 +50,7 @@ void JSCell::dump(PrintStream& out) const
 
 void JSCell::dumpToStream(const JSCell* cell, PrintStream& out)
 {
-    out.printf("<%p, %s>", cell, cell->className());
+    out.printf("<%p, %s>", cell, cell->className(*cell->vm()));
 }
 
 size_t JSCell::estimatedSizeInBytes() const
@@ -59,10 +61,6 @@ size_t JSCell::estimatedSizeInBytes() const
 size_t JSCell::estimatedSize(JSCell* cell)
 {
     return cell->cellSize();
-}
-
-void JSCell::copyBackingStore(JSCell*, CopyVisitor&, CopyToken)
-{
 }
 
 void JSCell::heapSnapshot(JSCell*, HeapSnapshotBuilder&)
@@ -165,7 +163,7 @@ bool JSCell::getPrimitiveNumber(ExecState* exec, double& number, JSValue& value)
 }
 
 double JSCell::toNumber(ExecState* exec) const
-{ 
+{
     if (isString())
         return static_cast<const JSString*>(this)->toNumber(exec);
     if (isSymbol())
@@ -173,14 +171,13 @@ double JSCell::toNumber(ExecState* exec) const
     return static_cast<const JSObject*>(this)->toNumber(exec);
 }
 
-JSObject* JSCell::toObject(ExecState* exec, JSGlobalObject* globalObject) const
+JSObject* JSCell::toObjectSlow(ExecState* exec, JSGlobalObject* globalObject) const
 {
+    ASSERT(!isObject());
     if (isString())
         return static_cast<const JSString*>(this)->toObject(exec, globalObject);
-    if (isSymbol())
-        return static_cast<const Symbol*>(this)->toObject(exec, globalObject);
-    ASSERT(isObject());
-    return jsCast<JSObject*>(const_cast<JSCell*>(this));
+    ASSERT(isSymbol());
+    return static_cast<const Symbol*>(this)->toObject(exec, globalObject);
 }
 
 void slowValidateCell(JSCell* cell)
@@ -228,9 +225,9 @@ String JSCell::toStringName(const JSObject*, ExecState*)
     return String();
 }
 
-const char* JSCell::className() const
+const char* JSCell::className(VM& vm) const
 {
-    return classInfo()->className;
+    return classInfo(vm)->className;
 }
 
 void JSCell::getPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode)
@@ -253,13 +250,13 @@ bool JSCell::defineOwnProperty(JSObject*, ExecState*, PropertyName, const Proper
 ArrayBuffer* JSCell::slowDownAndWasteMemory(JSArrayBufferView*)
 {
     RELEASE_ASSERT_NOT_REACHED();
-    return 0;
+    return nullptr;
 }
 
-PassRefPtr<ArrayBufferView> JSCell::getTypedArrayImpl(JSArrayBufferView*)
+RefPtr<ArrayBufferView> JSCell::getTypedArrayImpl(JSArrayBufferView*)
 {
     RELEASE_ASSERT_NOT_REACHED();
-    return 0;
+    return nullptr;
 }
 
 uint32_t JSCell::getEnumerableLength(ExecState*, JSObject*)
@@ -296,6 +293,17 @@ bool JSCell::setPrototype(JSObject*, ExecState*, JSValue, bool)
 JSValue JSCell::getPrototype(JSObject*, ExecState*)
 {
     RELEASE_ASSERT_NOT_REACHED();
+}
+
+bool JSCell::isAnyWasmCallee(VM& vm) const
+{
+#if ENABLE(WEBASSEMBLY)
+    return inherits(vm, JSWebAssemblyCallee::info()) || inherits(vm, WebAssemblyToJSCallee::info());
+#else
+    UNUSED_PARAM(vm);
+    return false;
+#endif
+
 }
 
 } // namespace JSC

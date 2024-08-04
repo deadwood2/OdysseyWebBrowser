@@ -20,8 +20,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef RenderLayerModelObject_h
-#define RenderLayerModelObject_h
+#pragma once
 
 #include "RenderElement.h"
 
@@ -58,6 +57,7 @@ protected:
     RenderLayerModelObject(Document&, RenderStyle&&, BaseTypeFlags);
 
     void createLayer();
+    void willBeDestroyed() override;
 
 private:
     std::unique_ptr<RenderLayer> m_layer;
@@ -72,5 +72,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderLayerModelObject, isRenderLayerModelObject())
-
-#endif // RenderLayerModelObject_h

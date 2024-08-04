@@ -55,24 +55,21 @@ ProxyConstructor::ProxyConstructor(VM& vm, Structure* structure)
 
 static EncodedJSValue JSC_HOST_CALL makeRevocableProxy(ExecState* exec)
 {
-    auto scope = DECLARE_THROW_SCOPE(exec->vm());
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
     if (exec->argumentCount() < 2)
         return throwVMTypeError(exec, scope, ASCIILiteral("Proxy.revocable needs to be called with two arguments: the target and the handler"));
 
-    VM& vm = exec->vm();
     ArgList args(exec);
     JSValue target = args.at(0);
     JSValue handler = args.at(1);
     ProxyObject* proxy = ProxyObject::create(exec, exec->lexicalGlobalObject(), target, handler);
-    if (vm.exception())
-        return JSValue::encode(JSValue());
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
     ProxyRevoke* revoke = ProxyRevoke::create(vm, exec->lexicalGlobalObject()->proxyRevokeStructure(), proxy);
-    if (vm.exception())
-        return JSValue::encode(JSValue());
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
     JSObject* result = constructEmptyObject(exec);
-    if (vm.exception())
-        return JSValue::encode(JSValue());
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
     result->putDirect(vm, makeIdentifier(vm, "proxy"), proxy, None);
     result->putDirect(vm, makeIdentifier(vm, "revoke"), revoke, None);
 
@@ -89,7 +86,7 @@ void ProxyConstructor::finishCreation(VM& vm, const char* name, JSGlobalObject* 
 {
     Base::finishCreation(vm, name);
 
-    putDirect(vm, vm.propertyNames->length, jsNumber(2), ReadOnly | DontDelete | DontEnum);
+    putDirect(vm, vm.propertyNames->length, jsNumber(2), DontEnum | ReadOnly);
     putDirect(vm, makeIdentifier(vm, "revocable"), JSFunction::create(vm, globalObject, 2, ASCIILiteral("revocable"), makeRevocableProxy, NoIntrinsic, proxyRevocableConstructorThrowError));
 }
 
@@ -102,6 +99,7 @@ static EncodedJSValue JSC_HOST_CALL constructProxyObject(ExecState* exec)
     ArgList args(exec);
     JSValue target = args.at(0);
     JSValue handler = args.at(1);
+    scope.release();
     return JSValue::encode(ProxyObject::create(exec, exec->lexicalGlobalObject(), target, handler));
 }
 

@@ -9,8 +9,8 @@ list(APPEND WebCore_SOURCES
     platform/graphics/texmap/TextureMapperAnimation.cpp
     platform/graphics/texmap/TextureMapperBackingStore.cpp
     platform/graphics/texmap/TextureMapperFPSCounter.cpp
+    platform/graphics/texmap/TextureMapperGC3DPlatformLayer.cpp
     platform/graphics/texmap/TextureMapperLayer.cpp
-    platform/graphics/texmap/TextureMapperSurfaceBackingStore.cpp
     platform/graphics/texmap/TextureMapperTile.cpp
     platform/graphics/texmap/TextureMapperTiledBackingStore.cpp
 )

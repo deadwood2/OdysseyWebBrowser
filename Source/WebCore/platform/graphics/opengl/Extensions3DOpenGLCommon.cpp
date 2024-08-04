@@ -45,7 +45,7 @@
 #include <OpenGL/gl.h>
 #include <OpenGL/gl3.h>
 #undef GL_DO_NOT_WARN_IF_MULTI_GL_VERSION_HEADERS_INCLUDED
-#elif PLATFORM(GTK) || PLATFORM(EFL) || PLATFORM(WIN)
+#elif PLATFORM(GTK) || PLATFORM(WIN)
 #include "OpenGLShims.h"
 #endif
 #endif
@@ -215,6 +215,15 @@ void Extensions3DOpenGLCommon::initializeAvailableExtensions()
         ::glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
         for (GLint i = 0; i < numExtensions; ++i)
             m_availableExtensions.add(glGetStringi(GL_EXTENSIONS, i));
+
+        if (!m_availableExtensions.contains(ASCIILiteral("GL_ARB_texture_storage"))) {
+            GLint majorVersion;
+            glGetIntegerv(GL_MAJOR_VERSION, &majorVersion);
+            GLint minorVersion;
+            glGetIntegerv(GL_MINOR_VERSION, &minorVersion);
+            if (majorVersion > 4 || (majorVersion == 4 && minorVersion >= 2))
+                m_availableExtensions.add(ASCIILiteral("GL_ARB_texture_storage"));
+        }
     } else
 #endif
     {

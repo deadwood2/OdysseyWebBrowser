@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -328,7 +328,7 @@ Vector<String> listDirectory(const String& path, const String& filter)
     return entries;
 }
 
-#if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
+#if !OS(DARWIN) || PLATFORM(GTK)
 String openTemporaryFile(const String& prefix, PlatformFileHandle& handle)
 {
     char buffer[PATH_MAX];
@@ -381,6 +381,15 @@ bool hardLinkOrCopyFile(const String& source, const String& destination)
         unlink(fsDestination.data());
 
     return appendResult;
+}
+
+std::optional<int32_t> getFileDeviceId(const CString& fsFile)
+{
+    struct stat fileStat;
+    if (stat(fsFile.data(), &fileStat) == -1)
+        return std::nullopt;
+
+    return fileStat.st_dev;
 }
 
 } // namespace WebCore

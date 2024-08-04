@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef RangeBoundaryPoint_h
-#define RangeBoundaryPoint_h
+#pragma once
 
 #include "Node.h"
 #include "Position.h"
@@ -59,7 +58,7 @@ public:
 
 private:
     RefPtr<Node> m_containerNode;
-    mutable Optional<unsigned> m_offsetInContainer { 0 };
+    mutable std::optional<unsigned> m_offsetInContainer { 0 };
     RefPtr<Node> m_childBeforeBoundary;
 };
 
@@ -136,7 +135,7 @@ inline void RangeBoundaryPoint::setToBeforeChild(Node& child)
     ASSERT(child.parentNode());
     m_childBeforeBoundary = child.previousSibling();
     m_containerNode = child.parentNode();
-    m_offsetInContainer = m_childBeforeBoundary ? Nullopt : Optional<unsigned>(0);
+    m_offsetInContainer = m_childBeforeBoundary ? std::nullopt : std::optional<unsigned>(0);
 }
 
 inline void RangeBoundaryPoint::setToAfterChild(Node& child)
@@ -144,7 +143,7 @@ inline void RangeBoundaryPoint::setToAfterChild(Node& child)
     ASSERT(child.parentNode());
     m_childBeforeBoundary = &child;
     m_containerNode = child.parentNode();
-    m_offsetInContainer = m_childBeforeBoundary ? Nullopt : Optional<unsigned>(0);
+    m_offsetInContainer = m_childBeforeBoundary ? std::nullopt : std::optional<unsigned>(0);
 }
 
 inline void RangeBoundaryPoint::setToStartOfNode(Ref<Node>&& container)
@@ -162,7 +161,7 @@ inline void RangeBoundaryPoint::setToEndOfNode(Ref<Node>&& container)
         m_childBeforeBoundary = nullptr;
     } else {
         m_childBeforeBoundary = m_containerNode->lastChild();
-        m_offsetInContainer = m_childBeforeBoundary ? Nullopt : Optional<unsigned>(0);
+        m_offsetInContainer = m_childBeforeBoundary ? std::nullopt : std::optional<unsigned>(0);
     }
 }
 
@@ -178,7 +177,7 @@ inline void RangeBoundaryPoint::childBeforeWillBeRemoved()
 
 inline void RangeBoundaryPoint::invalidateOffset() const
 {
-    m_offsetInContainer = Nullopt;
+    m_offsetInContainer = std::nullopt;
 }
 
 inline bool operator==(const RangeBoundaryPoint& a, const RangeBoundaryPoint& b)
@@ -195,6 +194,4 @@ inline bool operator==(const RangeBoundaryPoint& a, const RangeBoundaryPoint& b)
     return true;
 }
 
-}
-
-#endif
+} // namespace WebCore

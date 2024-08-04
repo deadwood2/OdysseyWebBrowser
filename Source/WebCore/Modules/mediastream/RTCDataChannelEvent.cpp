@@ -27,23 +27,18 @@
 
 #if ENABLE(WEB_RTC)
 
-#include "EventNames.h"
 #include "RTCDataChannel.h"
 
 namespace WebCore {
 
-Ref<RTCDataChannelEvent> RTCDataChannelEvent::create(const AtomicString& type, bool canBubble, bool cancelable, RTCDataChannel& channel)
+Ref<RTCDataChannelEvent> RTCDataChannelEvent::create(const AtomicString& type, bool canBubble, bool cancelable, Ref<RTCDataChannel>&& channel)
 {
-    return adoptRef(*new RTCDataChannelEvent(type, canBubble, cancelable, channel));
+    return adoptRef(*new RTCDataChannelEvent(type, canBubble, cancelable, WTFMove(channel)));
 }
 
-RTCDataChannelEvent::RTCDataChannelEvent(const AtomicString& type, bool canBubble, bool cancelable, RTCDataChannel& channel)
+RTCDataChannelEvent::RTCDataChannelEvent(const AtomicString& type, bool canBubble, bool cancelable, Ref<RTCDataChannel>&& channel)
     : Event(type, canBubble, cancelable)
-    , m_channel(channel)
-{
-}
-
-RTCDataChannelEvent::~RTCDataChannelEvent()
+    , m_channel(WTFMove(channel))
 {
 }
 

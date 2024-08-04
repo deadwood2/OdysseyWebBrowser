@@ -43,6 +43,7 @@
 #include <wtf/RandomNumber.h>
 #include <wtf/UniStdExtras.h>
 #include <wtf/text/CString.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebKit {
 
@@ -164,7 +165,7 @@ RefPtr<SharedMemory> SharedMemory::map(const Handle& handle, Protection protecti
         return nullptr;
 
     RefPtr<SharedMemory> instance = wrapMap(data, handle.m_attachment.size(), -1);
-    instance->m_fileDescriptor = Nullopt;
+    instance->m_fileDescriptor = std::nullopt;
     instance->m_isWrappingMap = false;
     return instance;
 }

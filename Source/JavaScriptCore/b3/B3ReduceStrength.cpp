@@ -482,19 +482,56 @@ private:
         switch (m_value->opcode()) {
         case Add:
             handleCommutativity();
-
-            // Turn this: Add(Add(value, constant1), constant2)
-            // Into this: Add(value, constant1 + constant2)
+            
             if (m_value->child(0)->opcode() == Add && isInt(m_value->type())) {
+                // Turn this: Add(Add(value, constant1), constant2)
+                // Into this: Add(value, constant1 + constant2)
                 Value* newSum = m_value->child(1)->addConstant(m_proc, m_value->child(0)->child(1));
                 if (newSum) {
                     m_insertionSet.insertValue(m_index, newSum);
                     m_value->child(0) = m_value->child(0)->child(0);
                     m_value->child(1) = newSum;
                     m_changed = true;
+                    break;
+                }
+                
+                // Turn this: Add(Add(value, constant), otherValue)
+                // Into this: Add(Add(value, otherValue), constant)
+                if (!m_value->child(1)->hasInt() && m_value->child(0)->child(1)->hasInt()) {
+                    Value* value = m_value->child(0)->child(0);
+                    Value* constant = m_value->child(0)->child(1);
+                    Value* otherValue = m_value->child(1);
+                    // This could create duplicate code if Add(value, constant) is used elsewhere.
+                    // However, we already model adding a constant as if it was free in other places
+                    // so let's just roll with it. The alternative would mean having to do good use
+                    // counts, which reduceStrength() currently doesn't have.
+                    m_value->child(0) =
+                        m_insertionSet.insert<Value>(
+                            m_index, Add, m_value->origin(), value, otherValue);
+                    m_value->child(1) = constant;
+                    m_changed = true;
+                    break;
                 }
             }
-
+            
+            // Turn this: Add(otherValue, Add(value, constant))
+            // Into this: Add(Add(value, otherValue), constant)
+            if (isInt(m_value->type())
+                && !m_value->child(0)->hasInt()
+                && m_value->child(1)->opcode() == Add
+                && m_value->child(1)->child(1)->hasInt()) {
+                Value* value = m_value->child(1)->child(0);
+                Value* constant = m_value->child(1)->child(1);
+                Value* otherValue = m_value->child(0);
+                // This creates a duplicate add. That's dangerous but probably fine, see above.
+                m_value->child(0) =
+                    m_insertionSet.insert<Value>(
+                        m_index, Add, m_value->origin(), value, otherValue);
+                m_value->child(1) = constant;
+                m_changed = true;
+                break;
+            }
+            
             // Turn this: Add(constant1, constant2)
             // Into this: constant1 + constant2
             if (Value* constantAdd = m_value->child(0)->addConstant(m_proc, m_value->child(1))) {
@@ -648,10 +685,9 @@ private:
             break;
 
         case Div:
-        case ChillDiv:
             // Turn this: Div(constant1, constant2)
             // Into this: constant1 / constant2
-            // Note that this uses ChillDiv semantics. That's fine, because the rules for Div
+            // Note that this uses Div<Chill> semantics. That's fine, because the rules for Div
             // are strictly weaker: it has corner cases where it's allowed to do anything it
             // likes.
             if (replaceWithNewValue(m_value->child(0)->divConstant(m_proc, m_value->child(1))))
@@ -736,11 +772,39 @@ private:
             }
             break;
 
+        case UDiv:
+            // Turn this: UDiv(constant1, constant2)
+            // Into this: constant1 / constant2
+            if (replaceWithNewValue(m_value->child(0)->uDivConstant(m_proc, m_value->child(1))))
+                break;
+
+            if (m_value->child(1)->hasInt()) {
+                switch (m_value->child(1)->asInt()) {
+                case 0:
+                    // Turn this: UDiv(value, 0)
+                    // Into this: 0
+                    // We can do whatever we want here so we might as well do the chill thing,
+                    // in case we add chill versions of UDiv in the future.
+                    replaceWithIdentity(m_value->child(1));
+                    break;
+
+                case 1:
+                    // Turn this: UDiv(value, 1)
+                    // Into this: value
+                    replaceWithIdentity(m_value->child(0));
+                    break;
+                default:
+                    // FIXME: We should do comprehensive strength reduction for unsigned numbers. Likely,
+                    // we will just want copy what llvm does. https://bugs.webkit.org/show_bug.cgi?id=164809
+                    break;
+                }
+            }
+            break;
+
         case Mod:
-        case ChillMod:
             // Turn this: Mod(constant1, constant2)
             // Into this: constant1 / constant2
-            // Note that this uses ChillMod semantics.
+            // Note that this uses Mod<Chill> semantics.
             if (replaceWithNewValue(m_value->child(0)->modConstant(m_proc, m_value->child(1))))
                 break;
 
@@ -774,19 +838,8 @@ private:
                     //                = -2^31 - -2^31
                     //                = 0
 
-                    Opcode divOpcode;
-                    switch (m_value->opcode()) {
-                    case Mod:
-                        divOpcode = Div;
-                        break;
-                    case ChillMod:
-                        divOpcode = ChillDiv;
-                        break;
-                    default:
-                        divOpcode = Oops;
-                        RELEASE_ASSERT_NOT_REACHED();
-                        break;
-                    }
+                    Kind divKind = Div;
+                    divKind.setIsChill(m_value->isChill());
 
                     replaceWithIdentity(
                         m_insertionSet.insert<Value>(
@@ -795,7 +848,7 @@ private:
                             m_insertionSet.insert<Value>(
                                 m_index, Mul, m_value->origin(),
                                 m_insertionSet.insert<Value>(
-                                    m_index, divOpcode, m_value->origin(),
+                                    m_index, divKind, m_value->origin(),
                                     m_value->child(0), m_value->child(1)),
                                 m_value->child(1))));
                     break;
@@ -803,6 +856,14 @@ private:
                 break;
             }
             
+            break;
+
+        case UMod:
+            // Turn this: UMod(constant1, constant2)
+            // Into this: constant1 / constant2
+            replaceWithNewValue(m_value->child(0)->uModConstant(m_proc, m_value->child(1)));
+            // FIXME: We should do what we do for Mod since the same principle applies here.
+            // https://bugs.webkit.org/show_bug.cgi?id=164809
             break;
 
         case BitAnd:
@@ -1008,9 +1069,7 @@ private:
                 break;
             }
 
-            if (handleShiftAmount())
-                break;
-
+            handleShiftAmount();
             break;
 
         case SShr:
@@ -1070,9 +1129,7 @@ private:
                     break;
             }
 
-            if (handleShiftAmount())
-                break;
-
+            handleShiftAmount();
             break;
 
         case ZShr:
@@ -1083,9 +1140,29 @@ private:
                 break;
             }
 
-            if (handleShiftAmount())
-                break;
+            handleShiftAmount();
+            break;
 
+        case RotR:
+            // Turn this: RotR(constant1, constant2)
+            // Into this: (constant1 >> constant2) | (constant1 << sizeof(constant1) * 8 - constant2)
+            if (Value* constant = m_value->child(0)->rotRConstant(m_proc, m_value->child(1))) {
+                replaceWithNewValue(constant);
+                break;
+            }
+
+            handleShiftAmount();
+            break;
+
+        case RotL:
+            // Turn this: RotL(constant1, constant2)
+            // Into this: (constant1 << constant2) | (constant1 >> sizeof(constant1) * 8 - constant2)
+            if (Value* constant = m_value->child(0)->rotLConstant(m_proc, m_value->child(1))) {
+                replaceWithNewValue(constant);
+                break;
+            }
+
+            handleShiftAmount();
             break;
 
         case Abs:
@@ -1302,7 +1379,7 @@ private:
         case Trunc:
             // Turn this: Trunc(constant)
             // Into this: static_cast<int32_t>(constant)
-            if (m_value->child(0)->hasInt64()) {
+            if (m_value->child(0)->hasInt64() || m_value->child(0)->hasDouble()) {
                 replaceWithNewValue(
                     m_proc.addIntConstant(m_value, static_cast<int32_t>(m_value->child(0)->asInt64())));
                 break;
@@ -2123,12 +2200,12 @@ private:
         m_changed = true;
     }
 
-    bool handleShiftAmount()
+    void handleShiftAmount()
     {
         // Shift anything by zero is identity.
         if (m_value->child(1)->isInt32(0)) {
             replaceWithIdentity(m_value->child(0));
-            return true;
+            return;
         }
 
         // The shift already masks its shift amount. If the shift amount is being masked by a
@@ -2141,11 +2218,7 @@ private:
             && (m_value->child(1)->child(1)->asInt32() & mask) == mask) {
             m_value->child(1) = m_value->child(1)->child(0);
             m_changed = true;
-            // Don't need to return true, since we're still the same shift, and we can still cascade
-            // through other optimizations.
         }
-        
-        return false;
     }
 
     void replaceIfRedundant()

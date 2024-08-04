@@ -18,8 +18,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef SVGImageElement_h
-#define SVGImageElement_h
+#pragma once
 
 #include "SVGAnimatedBoolean.h"
 #include "SVGAnimatedLength.h"
@@ -59,7 +58,7 @@ private:
     bool haveLoadedRequiredResources() final;
 
     bool selfHasRelativeLengths() const final { return true; }
-    void didMoveToNewDocument(Document* oldDocument) final;
+    void didMoveToNewDocument(Document& oldDocument) final;
 
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGImageElement)
         DECLARE_ANIMATED_LENGTH(X, x)
@@ -75,5 +74,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif

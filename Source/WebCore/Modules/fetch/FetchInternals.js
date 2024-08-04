@@ -30,6 +30,9 @@ function fillFetchHeaders(headers, headersInit)
 {
     "use strict";
 
+    if (headersInit === @undefined)
+        return;
+
     if (headersInit instanceof @Headers) {
         @Headers.prototype.@fillFromJS.@call(headers, headersInit);
         return;
@@ -39,7 +42,7 @@ function fillFetchHeaders(headers, headersInit)
         for (let i = 0; i < headersInit.length; i++) {
             let header = headersInit[i];
             if (header.length !== 2)
-                throw new @TypeError("headersInit sequence items should contain two values");
+                @throwTypeError("headersInit sequence items should contain two values");
             @Headers.prototype.@appendFromJS.@call(headers, header[0], header[1]);
         }
         return this;
@@ -68,10 +71,10 @@ function consumeStream(response, type)
             if (result.done)
                 return @Response.prototype.@finishConsumingStream.@call(response);
             @Response.prototype.@consumeChunk.@call(response, result.value);
-            return @Promise.prototype.@then.@call(@readFromReadableStreamDefaultReader(reader), pull);
+            return @Promise.prototype.@then.@call(@readableStreamDefaultReaderRead(reader), pull);
         }
-        return @Promise.prototype.@then.@call(@readFromReadableStreamDefaultReader(reader), pull);
-    } catch(e) {
+        return @Promise.prototype.@then.@call(@readableStreamDefaultReaderRead(reader), pull);
+    } catch (e) {
         return @Promise.@reject(e);
     }
 }

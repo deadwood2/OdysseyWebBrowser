@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,6 +37,7 @@
 #include <WebCore/DatabaseDetails.h>
 #include <WebCore/DictationAlternative.h>
 #include <WebCore/DictionaryPopupInfo.h>
+#include <WebCore/DragData.h>
 #include <WebCore/Editor.h>
 #include <WebCore/EventTrackingRegions.h>
 #include <WebCore/FileChooser.h>
@@ -46,7 +47,7 @@
 #include <WebCore/GraphicsLayer.h>
 #include <WebCore/IDBGetResult.h>
 #include <WebCore/Image.h>
-#include <WebCore/JSDOMBinding.h>
+#include <WebCore/JSDOMExceptionHandling.h>
 #include <WebCore/Length.h>
 #include <WebCore/Path.h>
 #include <WebCore/PluginData.h>
@@ -69,6 +70,8 @@
 #include <WebCore/UserStyleSheet.h>
 #include <WebCore/ViewportArguments.h>
 #include <WebCore/WindowFeatures.h>
+#include <wtf/MonotonicTime.h>
+#include <wtf/Seconds.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringHash.h>
 
@@ -93,10 +96,45 @@
 #include <WebCore/MediaSessionMetadata.h>
 #endif
 
+#if ENABLE(MEDIA_STREAM)
+#include <WebCore/CaptureDevice.h>
+#include <WebCore/MediaConstraintsImpl.h>
+#endif
+
 using namespace WebCore;
 using namespace WebKit;
 
 namespace IPC {
+
+void ArgumentCoder<MonotonicTime>::encode(Encoder& encoder, const MonotonicTime& time)
+{
+    encoder << time.secondsSinceEpoch().value();
+}
+
+bool ArgumentCoder<MonotonicTime>::decode(Decoder& decoder, MonotonicTime& time)
+{
+    double value;
+    if (!decoder.decode(value))
+        return false;
+
+    time = MonotonicTime::fromRawSeconds(value);
+    return true;
+}
+
+void ArgumentCoder<Seconds>::encode(Encoder& encoder, const Seconds& seconds)
+{
+    encoder << seconds.value();
+}
+
+bool ArgumentCoder<Seconds>::decode(Decoder& decoder, Seconds& seconds)
+{
+    double value;
+    if (!decoder.decode(value))
+        return false;
+
+    seconds = Seconds(value);
+    return true;
+}
 
 void ArgumentCoder<AffineTransform>::encode(Encoder& encoder, const AffineTransform& affineTransform)
 {
@@ -427,6 +465,29 @@ bool ArgumentCoder<IntSize>::decode(Decoder& decoder, IntSize& intSize)
 {
     return SimpleArgumentCoder<IntSize>::decode(decoder, intSize);
 }
+
+
+void ArgumentCoder<LayoutSize>::encode(Encoder& encoder, const LayoutSize& layoutSize)
+{
+    SimpleArgumentCoder<LayoutSize>::encode(encoder, layoutSize);
+}
+
+bool ArgumentCoder<LayoutSize>::decode(Decoder& decoder, LayoutSize& layoutSize)
+{
+    return SimpleArgumentCoder<LayoutSize>::decode(decoder, layoutSize);
+}
+
+
+void ArgumentCoder<LayoutPoint>::encode(Encoder& encoder, const LayoutPoint& layoutPoint)
+{
+    SimpleArgumentCoder<LayoutPoint>::encode(encoder, layoutPoint);
+}
+
+bool ArgumentCoder<LayoutPoint>::decode(Decoder& decoder, LayoutPoint& layoutPoint)
+{
+    return SimpleArgumentCoder<LayoutPoint>::decode(decoder, layoutPoint);
+}
+
 
 static void pathEncodeApplierFunction(Encoder& encoder, const PathElement& element)
 {
@@ -918,10 +979,7 @@ bool ArgumentCoder<Cursor>::decode(Decoder& decoder, Cursor& cursor)
 
 void ArgumentCoder<ResourceRequest>::encode(Encoder& encoder, const ResourceRequest& resourceRequest)
 {
-#if ENABLE(CACHE_PARTITIONING)
     encoder << resourceRequest.cachePartition();
-#endif
-
     encoder << resourceRequest.hiddenFromInspector();
 
     if (resourceRequest.encodingRequiresPlatformData()) {
@@ -935,12 +993,10 @@ void ArgumentCoder<ResourceRequest>::encode(Encoder& encoder, const ResourceRequ
 
 bool ArgumentCoder<ResourceRequest>::decode(Decoder& decoder, ResourceRequest& resourceRequest)
 {
-#if ENABLE(CACHE_PARTITIONING)
     String cachePartition;
     if (!decoder.decode(cachePartition))
         return false;
     resourceRequest.setCachePartition(cachePartition);
-#endif
 
     bool isHiddenFromInspector;
     if (!decoder.decode(isHiddenFromInspector))
@@ -1091,6 +1147,18 @@ bool ArgumentCoder<WindowFeatures>::decode(Decoder& decoder, WindowFeatures& win
 
 void ArgumentCoder<Color>::encode(Encoder& encoder, const Color& color)
 {
+    if (color.isExtended()) {
+        encoder << true;
+        encoder << color.asExtended().red();
+        encoder << color.asExtended().green();
+        encoder << color.asExtended().blue();
+        encoder << color.asExtended().alpha();
+        encoder << color.asExtended().colorSpace();
+        return;
+    }
+
+    encoder << false;
+
     if (!color.isValid()) {
         encoder << false;
         return;
@@ -1102,6 +1170,30 @@ void ArgumentCoder<Color>::encode(Encoder& encoder, const Color& color)
 
 bool ArgumentCoder<Color>::decode(Decoder& decoder, Color& color)
 {
+    bool isExtended;
+    if (!decoder.decode(isExtended))
+        return false;
+
+    if (isExtended) {
+        float red;
+        float green;
+        float blue;
+        float alpha;
+        ColorSpace colorSpace;
+        if (!decoder.decode(red))
+            return false;
+        if (!decoder.decode(green))
+            return false;
+        if (!decoder.decode(blue))
+            return false;
+        if (!decoder.decode(alpha))
+            return false;
+        if (!decoder.decode(colorSpace))
+            return false;
+        color = Color(red, green, blue, alpha, colorSpace);
+        return true;
+    }
+
     bool isValid;
     if (!decoder.decode(isValid))
         return false;
@@ -1119,6 +1211,56 @@ bool ArgumentCoder<Color>::decode(Decoder& decoder, Color& color)
     return true;
 }
 
+#if ENABLE(DRAG_SUPPORT)
+void ArgumentCoder<DragData>::encode(Encoder& encoder, const DragData& dragData)
+{
+    encoder << dragData.clientPosition();
+    encoder << dragData.globalPosition();
+    encoder.encodeEnum(dragData.draggingSourceOperationMask());
+    encoder.encodeEnum(dragData.flags());
+#if PLATFORM(COCOA)
+    encoder << dragData.pasteboardName();
+#endif
+#if PLATFORM(MAC)
+    encoder << dragData.fileNames();
+#endif
+}
+
+bool ArgumentCoder<DragData>::decode(Decoder& decoder, DragData& dragData)
+{
+    IntPoint clientPosition;
+    if (!decoder.decode(clientPosition))
+        return false;
+
+    IntPoint globalPosition;
+    if (!decoder.decode(globalPosition))
+        return false;
+
+    DragOperation draggingSourceOperationMask;
+    if (!decoder.decodeEnum(draggingSourceOperationMask))
+        return false;
+
+    DragApplicationFlags applicationFlags;
+    if (!decoder.decodeEnum(applicationFlags))
+        return false;
+
+    String pasteboardName;
+#if PLATFORM(COCOA)
+    if (!decoder.decode(pasteboardName))
+        return false;
+#endif
+    Vector<String> fileNames;
+#if PLATFORM(MAC)
+    if (!decoder.decode(fileNames))
+        return false;
+#endif
+
+    dragData = DragData(pasteboardName, clientPosition, globalPosition, draggingSourceOperationMask, applicationFlags);
+    dragData.setFileNames(fileNames);
+
+    return true;
+}
+#endif
 
 void ArgumentCoder<CompositionUnderline>::encode(Encoder& encoder, const CompositionUnderline& underline)
 {
@@ -2105,6 +2247,8 @@ void ArgumentCoder<ResourceLoadStatistics>::encode(Encoder& encoder, const WebCo
     
     // User interaction
     encoder << statistics.hadUserInteraction;
+    encoder << statistics.mostRecentUserInteraction;
+    encoder << statistics.grandfathered;
     
     // Top frame stats
     encoder << statistics.topFrameHasBeenNavigatedToBefore;
@@ -2135,6 +2279,7 @@ void ArgumentCoder<ResourceLoadStatistics>::encode(Encoder& encoder, const WebCo
     // Prevalent Resource
     encoder << statistics.redirectedToOtherPrevalentResourceOrigins;
     encoder << statistics.isPrevalentResource;
+    encoder << statistics.dataRecordsRemoved;
 }
 
 bool ArgumentCoder<ResourceLoadStatistics>::decode(Decoder& decoder, WebCore::ResourceLoadStatistics& statistics)
@@ -2144,6 +2289,12 @@ bool ArgumentCoder<ResourceLoadStatistics>::decode(Decoder& decoder, WebCore::Re
     
     // User interaction
     if (!decoder.decode(statistics.hadUserInteraction))
+        return false;
+
+    if (!decoder.decode(statistics.mostRecentUserInteraction))
+        return false;
+
+    if (!decoder.decode(statistics.grandfathered))
         return false;
     
     // Top frame stats
@@ -2215,9 +2366,152 @@ bool ArgumentCoder<ResourceLoadStatistics>::decode(Decoder& decoder, WebCore::Re
     
     if (!decoder.decode(statistics.isPrevalentResource))
         return false;
-    
+
+    if (!decoder.decode(statistics.dataRecordsRemoved))
+        return false;
+
     return true;
 }
 
+#if ENABLE(MEDIA_STREAM)
+void ArgumentCoder<MediaConstraintsData>::encode(Encoder& encoder, const WebCore::MediaConstraintsData& constraint)
+{
+    encoder << constraint.mandatoryConstraints;
+
+    auto& advancedConstraints = constraint.advancedConstraints;
+    encoder << static_cast<uint64_t>(advancedConstraints.size());
+    for (const auto& advancedConstraint : advancedConstraints)
+        encoder << advancedConstraint;
+
+    encoder << constraint.isValid;
+}
+
+bool ArgumentCoder<MediaConstraintsData>::decode(Decoder& decoder, WebCore::MediaConstraintsData& constraints)
+{
+    MediaTrackConstraintSetMap mandatoryConstraints;
+    if (!decoder.decode(mandatoryConstraints))
+        return false;
+
+    uint64_t advancedCount;
+    if (!decoder.decode(advancedCount))
+        return false;
+
+    Vector<MediaTrackConstraintSetMap> advancedConstraints;
+    advancedConstraints.reserveInitialCapacity(advancedCount);
+    for (size_t i = 0; i < advancedCount; ++i) {
+        MediaTrackConstraintSetMap map;
+        if (!decoder.decode(map))
+            return false;
+
+        advancedConstraints.uncheckedAppend(WTFMove(map));
+    }
+
+    bool isValid;
+    if (!decoder.decode(isValid))
+        return false;
+
+    constraints.mandatoryConstraints = WTFMove(mandatoryConstraints);
+    constraints.advancedConstraints = WTFMove(advancedConstraints);
+    constraints.isValid = isValid;
+
+    return true;
+}
+
+void ArgumentCoder<CaptureDevice>::encode(Encoder& encoder, const WebCore::CaptureDevice& device)
+{
+    encoder << device.persistentId();
+    encoder << device.label();
+    encoder << device.groupId();
+    encoder << device.enabled();
+    encoder.encodeEnum(device.type());
+}
+
+bool ArgumentCoder<CaptureDevice>::decode(Decoder& decoder, WebCore::CaptureDevice& device)
+{
+    String persistentId;
+    if (!decoder.decode(persistentId))
+        return false;
+
+    String label;
+    if (!decoder.decode(label))
+        return false;
+
+    String groupId;
+    if (!decoder.decode(groupId))
+        return false;
+
+    bool enabled;
+    if (!decoder.decode(enabled))
+        return false;
+
+    CaptureDevice::DeviceType type;
+    if (!decoder.decodeEnum(type))
+        return false;
+
+    device.setPersistentId(persistentId);
+    device.setLabel(label);
+    device.setGroupId(groupId);
+    device.setType(type);
+    device.setEnabled(enabled);
+
+    return true;
+}
+#endif
+
+#if ENABLE(INDEXED_DATABASE)
+void ArgumentCoder<IDBKeyPath>::encode(Encoder& encoder, const IDBKeyPath& keyPath)
+{
+    bool isString = WTF::holds_alternative<String>(keyPath);
+    encoder << isString;
+    if (isString)
+        encoder << WTF::get<String>(keyPath);
+    else
+        encoder << WTF::get<Vector<String>>(keyPath);
+}
+
+bool ArgumentCoder<IDBKeyPath>::decode(Decoder& decoder, IDBKeyPath& keyPath)
+{
+    bool isString;
+    if (!decoder.decode(isString))
+        return false;
+    if (isString) {
+        String string;
+        if (!decoder.decode(string))
+            return false;
+        keyPath = string;
+    } else {
+        Vector<String> vector;
+        if (!decoder.decode(vector))
+            return false;
+        keyPath = vector;
+    }
+    return true;
+}
+#endif
+
+#if ENABLE(CSS_SCROLL_SNAP)
+
+void ArgumentCoder<ScrollOffsetRange<float>>::encode(Encoder& encoder, const ScrollOffsetRange<float>& range)
+{
+    encoder << range.start;
+    encoder << range.end;
+}
+
+bool ArgumentCoder<ScrollOffsetRange<float>>::decode(Decoder& decoder, ScrollOffsetRange<float>& range)
+{
+    float start;
+    if (!decoder.decode(start))
+        return false;
+
+    float end;
+    if (!decoder.decode(end))
+        return false;
+
+    range.start = start;
+    range.end = end;
+    return true;
+}
+
+#endif
 
 } // namespace IPC

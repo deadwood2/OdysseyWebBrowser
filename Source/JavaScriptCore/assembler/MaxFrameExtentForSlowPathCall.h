@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef MaxFrameExtentForSlowPathCall_h
-#define MaxFrameExtentForSlowPathCall_h
+#pragma once
 
 #include "Register.h"
 #include "StackAlignment.h"
@@ -59,10 +58,6 @@ static const size_t maxFrameExtentForSlowPathCall = 0;
 // First four args in registers, remaining 4 args on stack.
 static const size_t maxFrameExtentForSlowPathCall = 24;
 
-#elif CPU(SH4)
-// First four args in registers, remaining 4 args on stack.
-static const size_t maxFrameExtentForSlowPathCall = 24;
-
 #elif CPU(MIPS)
 // Though args are in registers, there need to be space on the stack for all args.
 static const size_t maxFrameExtentForSlowPathCall = 40;
@@ -82,6 +77,3 @@ COMPILE_ASSERT((maxFrameExtentForSlowPathCall % 16) == 16 - sizeof(CallerFrameAn
 static const size_t maxFrameExtentForSlowPathCallInRegisters = maxFrameExtentForSlowPathCall / sizeof(Register);
 
 } // namespace JSC
-
-#endif // MaxFrameExtentForSlowPathCall_h
-

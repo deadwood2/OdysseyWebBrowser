@@ -84,9 +84,9 @@ static String hostName(const URL& url, bool secure)
     ASSERT(url.protocolIs("wss") == secure);
     StringBuilder builder;
     builder.append(url.host().convertToASCIILowercase());
-    if (url.port() && ((!secure && url.port() != 80) || (secure && url.port() != 443))) {
+    if (url.port() && ((!secure && url.port().value() != 80) || (secure && url.port().value() != 443))) {
         builder.append(':');
-        builder.appendNumber(url.port());
+        builder.appendNumber(url.port().value());
     }
     return builder.toString();
 }
@@ -169,7 +169,7 @@ bool WebSocketHandshake::secure() const
 
 String WebSocketHandshake::clientOrigin() const
 {
-    return m_document->securityOrigin()->toString();
+    return m_document->securityOrigin().toString();
 }
 
 String WebSocketHandshake::clientLocation() const
@@ -487,7 +487,7 @@ int WebSocketHandshake::readStatusLine(const char* header, size_t headerLength, 
     if (statusCodeString.length() != 3) // Status code must consist of three digits.
         return lineLength;
     for (int i = 0; i < 3; ++i)
-        if (statusCodeString[i] < '0' || statusCodeString[i] > '9') {
+        if (!isASCIIDigit(statusCodeString[i])) {
             m_failureReason = makeString("Invalid status code: ", statusCodeString);
             return lineLength;
         }
@@ -605,7 +605,7 @@ bool WebSocketHandshake::checkResponseHeaders()
             return false;
         }
         Vector<String> result;
-        m_clientProtocol.split(String(WebSocket::subProtocolSeperator()), result);
+        m_clientProtocol.split(WebSocket::subprotocolSeparator(), result);
         if (!result.contains(serverWebSocketProtocol)) {
             m_failureReason = ASCIILiteral("Error during WebSocket handshake: Sec-WebSocket-Protocol mismatch");
             return false;

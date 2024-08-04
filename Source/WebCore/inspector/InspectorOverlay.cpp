@@ -30,12 +30,14 @@
 #include "InspectorOverlay.h"
 
 #include "DocumentLoader.h"
+#include "EditorClient.h"
 #include "Element.h"
 #include "EmptyClients.h"
 #include "FrameView.h"
 #include "GraphicsContext.h"
 #include "InspectorClient.h"
 #include "InspectorOverlayPage.h"
+#include "LibWebRTCProvider.h"
 #include "MainFrame.h"
 #include "Node.h"
 #include "Page.h"
@@ -54,8 +56,8 @@
 #include "ScriptController.h"
 #include "ScriptSourceCode.h"
 #include "Settings.h"
+#include "SocketProvider.h"
 #include "StyledElement.h"
-#include <bindings/ScriptValue.h>
 #include <inspector/InspectorProtocolObjects.h>
 #include <inspector/InspectorValues.h>
 
@@ -323,8 +325,8 @@ void InspectorOverlay::update()
         return;
 
     FrameView* overlayView = overlayPage()->mainFrame().view();
-    IntSize viewportSize = view->unscaledVisibleContentSizeIncludingObscuredArea();
-    IntSize frameViewFullSize = view->unscaledVisibleContentSizeIncludingObscuredArea(ScrollableArea::IncludeScrollbars);
+    IntSize viewportSize = view->sizeForVisibleContent();
+    IntSize frameViewFullSize = view->sizeForVisibleContent(ScrollableArea::IncludeScrollbars);
     overlayView->resize(frameViewFullSize);
 
     // Clear canvas and paint things.
@@ -588,7 +590,6 @@ static RefPtr<Inspector::Protocol::Array<Inspector::Protocol::OverlayTypes::Frag
     return WTFMove(arrayOfFragments);
 }
 
-#if ENABLE(CSS_SHAPES)
 static FloatPoint localPointToRoot(RenderObject* renderer, const FrameView* mainView, const FrameView* view, const FloatPoint& point)
 {
     FloatPoint result = renderer->localToAbsolute(point);
@@ -690,7 +691,6 @@ static RefPtr<Inspector::Protocol::OverlayTypes::ShapeOutsideData> buildObjectFo
 
     return WTFMove(shapeObject);
 }
-#endif
 
 static RefPtr<Inspector::Protocol::OverlayTypes::ElementData> buildObjectForElementData(Node* node, HighlightType type)
 {
@@ -769,13 +769,11 @@ static RefPtr<Inspector::Protocol::OverlayTypes::ElementData> buildObjectForElem
         elementData->setContentFlowData(WTFMove(contentFlowData));
     }
 
-#if ENABLE(CSS_SHAPES)
     if (is<RenderBox>(*renderer)) {
         auto& renderBox = downcast<RenderBox>(*renderer);
         if (RefPtr<Inspector::Protocol::OverlayTypes::ShapeOutsideData> shapeObject = buildObjectForShapeOutside(containingFrame, &renderBox))
             elementData->setShapeOutsideData(WTFMove(shapeObject));
     }
-#endif
 
     // Need to enable AX to get the computed role.
     if (!WebCore::AXObjectCache::accessibilityEnabled())
@@ -862,7 +860,11 @@ Page* InspectorOverlay::overlayPage()
     if (m_overlayPage)
         return m_overlayPage.get();
 
-    PageConfiguration pageConfiguration(makeUniqueRef<EmptyEditorClient>(), SocketProvider::create());
+    PageConfiguration pageConfiguration(
+        createEmptyEditorClient(),
+        SocketProvider::create(),
+        makeUniqueRef<LibWebRTCProvider>()
+    );
     fillWithEmptyClients(pageConfiguration);
     m_overlayPage = std::make_unique<Page>(WTFMove(pageConfiguration));
     m_overlayPage->setDeviceScaleFactor(m_page.deviceScaleFactor());
@@ -923,8 +925,7 @@ void InspectorOverlay::reset(const IntSize& viewportSize, const IntSize& frameVi
 
 static void evaluateCommandInOverlay(Page* page, Ref<InspectorArray>&& command)
 {
-    JSC::JSValue result = page->mainFrame().script().evaluate(ScriptSourceCode(makeString("dispatch(", command->toJSONString(), ')')));
-    ASSERT_UNUSED(result, result); // There should never be exceptions when evaluating in the overlay page.
+    page->mainFrame().script().evaluate(ScriptSourceCode(makeString("dispatch(", command->toJSONString(), ')')));
 }
 
 void InspectorOverlay::evaluateInOverlay(const String& method)

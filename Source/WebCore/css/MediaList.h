@@ -20,10 +20,10 @@
 
 #pragma once
 
+#include "ExceptionOr.h"
 #include <memory>
 #include <wtf/Forward.h>
 #include <wtf/Vector.h>
-#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
@@ -33,25 +33,18 @@ class CSSStyleSheet;
 class Document;
 class MediaQuery;
 
-using ExceptionCode = int;
-
 class MediaQuerySet final : public RefCounted<MediaQuerySet> {
 public:
     static Ref<MediaQuerySet> create()
     {
         return adoptRef(*new MediaQuerySet);
     }
-    static Ref<MediaQuerySet> create(const String& mediaString)
-    {
-        return adoptRef(*new MediaQuerySet(mediaString, false));
-    }
-    static Ref<MediaQuerySet> createAllowingDescriptionSyntax(const String& mediaString)
-    {
-        return adoptRef(*new MediaQuerySet(mediaString, true));
-    }
+
+    static WEBCORE_EXPORT Ref<MediaQuerySet> create(const String& mediaString);
+
     WEBCORE_EXPORT ~MediaQuerySet();
 
-    bool parse(const String&);
+    bool set(const String&);
     bool add(const String&);
     bool remove(const String&);
 
@@ -70,14 +63,10 @@ public:
 
 private:
     MediaQuerySet();
-    WEBCORE_EXPORT MediaQuerySet(const String& mediaQuery, bool fallbackToDescription);
+    WEBCORE_EXPORT MediaQuerySet(const String& mediaQuery);
     MediaQuerySet(const MediaQuerySet&);
 
-    Optional<MediaQuery> internalParse(CSSParser&, const String&);
-    Optional<MediaQuery> internalParse(const String&);
-
-    unsigned m_fallbackToDescriptor : 1; // true if failed media query parsing should fallback to media description parsing.
-    signed m_lastLine : 31;
+    signed m_lastLine;
     Vector<MediaQuery> m_queries;
 };
 
@@ -96,11 +85,11 @@ public:
 
     unsigned length() const { return m_mediaQueries->queryVector().size(); }
     WEBCORE_EXPORT String item(unsigned index) const;
-    WEBCORE_EXPORT void deleteMedium(const String& oldMedium, ExceptionCode&);
-    WEBCORE_EXPORT void appendMedium(const String& newMedium, ExceptionCode&);
+    WEBCORE_EXPORT ExceptionOr<void> deleteMedium(const String& oldMedium);
+    WEBCORE_EXPORT ExceptionOr<void> appendMedium(const String& newMedium);
 
     String mediaText() const { return m_mediaQueries->mediaText(); }
-    WEBCORE_EXPORT void setMediaText(const String&, ExceptionCode&);
+    WEBCORE_EXPORT ExceptionOr<void> setMediaText(const String&);
 
     CSSRule* parentRule() const { return m_parentRule; }
     CSSStyleSheet* parentStyleSheet() const { return m_parentStyleSheet; }
