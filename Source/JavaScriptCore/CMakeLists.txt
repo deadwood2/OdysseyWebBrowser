@@ -1368,7 +1368,10 @@ target_include_directories(LLIntOffsetsExtractor PRIVATE
 )
 target_include_directories(LLIntOffsetsExtractor SYSTEM PRIVATE ${JavaScriptCore_SYSTEM_INCLUDE_DIRECTORIES})
 
-add_subdirectory(shell)
+if (${PORT} STREQUAL "MUI")
+else ()
+    add_subdirectory(shell)
+endif ()
 
 target_include_directories(LowLevelInterpreterLib
     PRIVATE "$<TARGET_PROPERTY:JavaScriptCore,INCLUDE_DIRECTORIES>")
