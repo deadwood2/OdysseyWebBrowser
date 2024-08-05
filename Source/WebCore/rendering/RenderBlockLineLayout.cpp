@@ -130,10 +130,12 @@ RootInlineBox* RenderBlockFlow::createAndAppendRootInlineBox()
     RootInlineBox* rootBox = newRootBox.get();
     m_lineBoxes.appendLineBox(WTFMove(newRootBox));
 
+#if HAVE(ACCESSIBILITY)
     if (UNLIKELY(AXObjectCache::accessibilityEnabled()) && firstRootBox() == rootBox) {
         if (AXObjectCache* cache = document().existingAXObjectCache())
             cache->deferRecomputeIsIgnored(element());
     }
+#endif
 
     return rootBox;
 }
