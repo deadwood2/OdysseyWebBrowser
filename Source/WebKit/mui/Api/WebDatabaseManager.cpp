@@ -50,21 +50,27 @@ public:
     WebDatabaseTracker(WebDatabaseManager* manager) : m_webDatabaseManager(manager) {}
     ~WebDatabaseTracker() { m_webDatabaseManager = 0; }
 
-    void dispatchDidModifyOrigin(SecurityOrigin* origin)
+    void dispatchDidModifyOrigin(const SecurityOriginData& origin)
     {
+asm("int3");
+#if 0
         WebSecurityOrigin* securityOrigin = WebSecurityOrigin::createInstance(origin);
         WebCore::ObserverServiceData::createObserverService()->notifyObserver(WebDatabaseDidModifyOriginNotification, "", securityOrigin);
 
         delete securityOrigin;
+#endif
     }
 
-    void dispatchDidModifyDatabase(SecurityOrigin* origin, const String& databaseName)
+    void dispatchDidModifyDatabase(const SecurityOriginData& origin, const String& databaseName)
     {
+asm("int3");
+#if 0
         WebSecurityOrigin* securityOrigin = WebSecurityOrigin::createInstance(origin);
 
         WebCore::ObserverServiceData::createObserverService()->notifyObserver(WebDatabaseDidModifyDatabaseNotification, "", securityOrigin);
 
         delete securityOrigin;
+#endif
     }
 
 private:
