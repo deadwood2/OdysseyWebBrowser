@@ -28,6 +28,7 @@ set(WebKit_INCLUDE_DIRECTORIES
 set(WebKit_SYSTEM_INCLUDE_DIRECTORIES
     "${ICU_INCLUDE_DIRS}"
 )
+set(WebKit_INCLUDE_DIRECTORIES)
 
 set(WebKit_LIBRARIES
     PRIVATE JavaScriptCore${DEBUG_SUFFIX}
@@ -61,3 +62,9 @@ if (MSVC)
         COMMAND ${PERL_EXECUTABLE} ${WEBKIT_LIBRARIES_DIR}/tools/scripts/version-stamp.pl ${DERIVED_SOURCES_WEBKIT_DIR} $<TARGET_FILE:WebKit>
         VERBATIM)
 endif ()
+
+if (${PORT} STREQUAL "MUI")
+    add_custom_target(builddate COMMAND date +'%e.%m.%Y' | sed 's/\\\(.*\\\)/\#define DATE \\"\\1\\"/g' > ${WEBKIT_DIR}/mui/Api/MorphOS/builddate.h)
+    add_dependencies(WebKit builddate)
+endif ()
+

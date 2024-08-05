@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <WebCore/StorageNamespaceProvider.h>
+#include "StorageNamespaceProvider.h"
 
 namespace WebCore {
 struct SecurityOriginData;

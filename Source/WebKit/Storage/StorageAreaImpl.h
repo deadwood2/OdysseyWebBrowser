@@ -25,9 +25,9 @@
 
 #pragma once
 
-#include <WebCore/SecurityOriginData.h>
-#include <WebCore/StorageArea.h>
-#include <WebCore/Timer.h>
+#include "SecurityOriginData.h"
+#include "StorageArea.h"
+#include "Timer.h"
 #include <wtf/HashMap.h>
 #include <wtf/RefPtr.h>
 
