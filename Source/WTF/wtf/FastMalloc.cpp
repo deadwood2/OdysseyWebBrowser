@@ -112,6 +112,7 @@ TryMallocReturnValue tryFastZeroedMalloc(size_t n)
 #include <malloc.h>
 #elif OS(AROS)
 #include "mui/arosbailout.h"
+#include "mui/execallocator.h"
 #elif OS(MORPHOS)
 #include <clib/debug_protos.h>
 #endif
@@ -161,7 +162,12 @@ void* fastAlignedMalloc(size_t alignment, size_t size)
     ASSERT_IS_WITHIN_LIMIT(size);
 retry:
     void* p = nullptr;
+#if OS(AROS)
+    p = allocator_getmem_aligned(size, alignment);
+#else
     posix_memalign(&p, alignment, size ? size : 2);
+#endif
+
     if (UNLIKELY(!p))
     {
 #if OS(AROS)
@@ -177,6 +183,7 @@ retry:
             goto retry;
 #endif
     }
+
     return p;
 }
 
@@ -190,7 +197,11 @@ void* tryFastAlignedMalloc(size_t alignment, size_t size)
 
 void fastAlignedFree(void* p) 
 {
+#if OS(AROS)
+    allocator_freemem(p);
+#else
     free(p);
+#endif
 }
 
 #endif // OS(WINDOWS)
