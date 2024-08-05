@@ -23,11 +23,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.SidebarPanel = class SidebarPanel extends WebInspector.View
+WI.SidebarPanel = class SidebarPanel extends WI.View
 {
-    constructor(identifier, displayName, element, role, label)
+    constructor(identifier, displayName)
     {
-        super(element);
+        super();
 
         this._identifier = identifier;
         this._displayName = displayName;
@@ -37,10 +37,10 @@ WebInspector.SidebarPanel = class SidebarPanel extends WebInspector.View
 
         this.element.classList.add("panel", identifier);
 
-        this.element.setAttribute("role", role || "group");
-        this.element.setAttribute("aria-label", label || displayName);
+        this.element.setAttribute("role", "group");
+        this.element.setAttribute("aria-label", displayName);
 
-        this._contentView = new WebInspector.View;
+        this._contentView = new WI.View;
         this._contentView.element.classList.add("content");
         this.addSubview(this._contentView);
     }

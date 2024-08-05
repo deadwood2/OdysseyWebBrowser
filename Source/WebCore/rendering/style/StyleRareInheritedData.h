@@ -139,8 +139,13 @@ public:
     unsigned paintOrder : 3; // PaintOrder
     unsigned capStyle : 2; // LineCap
     unsigned joinStyle : 2; // LineJoin
+    unsigned hasSetStrokeWidth : 1;
+    unsigned hasSetStrokeColor : 1;
     Length strokeWidth;
-    
+    Color strokeColor;
+    Color visitedLinkStrokeColor;
+    float miterLimit;
+
     AtomicString hyphenationString;
     short hyphenationLimitBefore;
     short hyphenationLimitAfter;

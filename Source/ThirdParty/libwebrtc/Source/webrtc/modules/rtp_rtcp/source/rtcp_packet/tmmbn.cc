@@ -42,6 +42,11 @@ constexpr uint8_t Tmmbn::kFeedbackMessageType;
 //   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //   | MxTBR Exp |  MxTBR Mantissa                 |Measured Overhead|
 //   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+Tmmbn::Tmmbn() = default;
+
+Tmmbn::~Tmmbn() = default;
+
 bool Tmmbn::Parse(const CommonHeader& packet) {
   RTC_DCHECK_EQ(packet.type(), kPacketType);
   RTC_DCHECK_EQ(packet.fmt(), kFeedbackMessageType);
@@ -74,6 +79,11 @@ void Tmmbn::AddTmmbr(const TmmbItem& item) {
   items_.push_back(item);
 }
 
+size_t Tmmbn::BlockLength() const {
+  return kHeaderLength + kCommonFeedbackLength +
+         TmmbItem::kLength * items_.size();
+}
+
 bool Tmmbn::Create(uint8_t* packet,
                    size_t* index,
                    size_t max_length,
@@ -86,7 +96,7 @@ bool Tmmbn::Create(uint8_t* packet,
 
   CreateHeader(kFeedbackMessageType, kPacketType, HeaderLength(), packet,
                index);
-  RTC_DCHECK_EQ(0u, Rtpfb::media_ssrc());
+  RTC_DCHECK_EQ(0, Rtpfb::media_ssrc());
   CreateCommonFeedback(packet + *index);
   *index += kCommonFeedbackLength;
   for (const TmmbItem& item : items_) {

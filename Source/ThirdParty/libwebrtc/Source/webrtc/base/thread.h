@@ -22,7 +22,9 @@
 #endif
 #include "webrtc/base/constructormagic.h"
 #include "webrtc/base/event.h"
+#include "webrtc/base/export.h"
 #include "webrtc/base/messagequeue.h"
+#include "webrtc/base/platform_thread_types.h"
 
 #if defined(WEBRTC_WIN)
 #include "webrtc/base/win32.h"
@@ -36,9 +38,7 @@ class ThreadManager {
  public:
   static const int kForever = -1;
 
-  ThreadManager();
-  ~ThreadManager();
-
+  // Singleton, constructor and destructor are private.
   static ThreadManager* Instance();
 
   Thread* CurrentThread();
@@ -56,11 +56,16 @@ class ThreadManager {
   // unexpected contexts (like inside browser plugins) and it would be a
   // shame to break it.  It is also conceivable on Win32 that we won't even
   // be able to get synchronization privileges, in which case the result
-  // will have a NULL handle.
+  // will have a null handle.
   Thread *WrapCurrentThread();
   void UnwrapCurrentThread();
 
+  bool IsMainThread();
+
  private:
+  ThreadManager();
+  ~ThreadManager();
+
 #if defined(WEBRTC_POSIX)
   pthread_key_t key_;
 #endif
@@ -68,6 +73,9 @@ class ThreadManager {
 #if defined(WEBRTC_WIN)
   DWORD key_;
 #endif
+
+  // The thread to potentially autowrap.
+  PlatformThreadRef main_thread_ref_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(ThreadManager);
 };
@@ -93,7 +101,7 @@ class Runnable {
 
 // WARNING! SUBCLASSES MUST CALL Stop() IN THEIR DESTRUCTORS!  See ~Thread().
 
-class LOCKABLE WEBRTC_EXPORT Thread : public MessageQueue {
+class WEBRTC_DYLIB_EXPORT LOCKABLE Thread : public MessageQueue {
  public:
   // Create a new Thread and optionally assign it to the passed SocketServer.
   Thread();
@@ -123,9 +131,7 @@ class LOCKABLE WEBRTC_EXPORT Thread : public MessageQueue {
     const bool previous_state_;
   };
 
-  bool IsCurrent() const {
-    return Current() == this;
-  }
+  bool IsCurrent() const;
 
   // Sleeps the calling thread for the specified number of milliseconds, during
   // which time no processing is performed. Returns false if sleeping was
@@ -133,12 +139,12 @@ class LOCKABLE WEBRTC_EXPORT Thread : public MessageQueue {
   static bool SleepMs(int millis);
 
   // Sets the thread's name, for debugging. Must be called before Start().
-  // If |obj| is non-NULL, its value is appended to |name|.
+  // If |obj| is non-null, its value is appended to |name|.
   const std::string& name() const { return name_; }
   bool SetName(const std::string& name, const void* obj);
 
   // Starts the execution of the thread.
-  bool Start(Runnable* runnable = NULL);
+  bool Start(Runnable* runnable = nullptr);
 
   // Tells the thread to stop and waits until it is joined.
   // Never call Stop on the current thread.  Instead use the inherited Quit
@@ -154,7 +160,7 @@ class LOCKABLE WEBRTC_EXPORT Thread : public MessageQueue {
   virtual void Send(const Location& posted_from,
                     MessageHandler* phandler,
                     uint32_t id = 0,
-                    MessageData* pdata = NULL);
+                    MessageData* pdata = nullptr);
 
   // Convenience method to invoke a functor on another thread.  Caller must
   // provide the |ReturnT| template argument, which cannot (easily) be deduced.
@@ -168,13 +174,13 @@ class LOCKABLE WEBRTC_EXPORT Thread : public MessageQueue {
   ReturnT Invoke(const Location& posted_from, const FunctorT& functor) {
     FunctorMessageHandler<ReturnT, FunctorT> handler(functor);
     InvokeInternal(posted_from, &handler);
-    return handler.result();
+    return handler.MoveResult();
   }
 
   // From MessageQueue
   void Clear(MessageHandler* phandler,
              uint32_t id = MQID_ANY,
-             MessageList* removed = NULL) override;
+             MessageList* removed = nullptr) override;
   void ReceiveSends() override;
 
   // ProcessMessages will process I/O and dispatch messages until:
@@ -238,7 +244,16 @@ class LOCKABLE WEBRTC_EXPORT Thread : public MessageQueue {
   friend class ScopedDisallowBlockingCalls;
 
  private:
+  struct ThreadInit {
+    Thread* thread;
+    Runnable* runnable;
+  };
+
+#if defined(WEBRTC_WIN)
+  static DWORD WINAPI PreRun(LPVOID context);
+#else
   static void *PreRun(void *pv);
+#endif
 
   // ThreadManager calls this instead WrapCurrent() because
   // ThreadManager::Instance() cannot be used while ThreadManager is
@@ -251,11 +266,11 @@ class LOCKABLE WEBRTC_EXPORT Thread : public MessageQueue {
   // Return true if the thread was started and hasn't yet stopped.
   bool running() { return running_.Wait(0); }
 
-  // Processes received "Send" requests. If |source| is not NULL, only requests
+  // Processes received "Send" requests. If |source| is not null, only requests
   // from |source| are processed, otherwise, all requests are processed.
   void ReceiveSendsFromThread(const Thread* source);
 
-  // If |source| is not NULL, pops the first "Send" message from |source| in
+  // If |source| is not null, pops the first "Send" message from |source| in
   // |sendlist_|, otherwise, pops the first "Send" message of |sendlist_|.
   // The caller must lock |crit_| before calling.
   // Returns true if there is such a message.
@@ -297,36 +312,20 @@ class AutoThread : public Thread {
   RTC_DISALLOW_COPY_AND_ASSIGN(AutoThread);
 };
 
-// Win32 extension for threads that need to use COM
-#if defined(WEBRTC_WIN)
-class ComThread : public Thread {
- public:
-  ComThread() {}
-  ~ComThread() override { Stop(); }
+// AutoSocketServerThread automatically installs itself at
+// construction and uninstalls at destruction. If a Thread object is
+// already associated with the current OS thread, it is temporarily
+// disassociated and restored by the destructor.
 
- protected:
-  void Run() override;
+class AutoSocketServerThread : public Thread {
+ public:
+  explicit AutoSocketServerThread(SocketServer* ss);
+  ~AutoSocketServerThread() override;
 
  private:
-  RTC_DISALLOW_COPY_AND_ASSIGN(ComThread);
-};
-#endif
+  rtc::Thread* old_thread_;
 
-// Provides an easy way to install/uninstall a socketserver on a thread.
-class SocketServerScope {
- public:
-  explicit SocketServerScope(SocketServer* ss) {
-    old_ss_ = Thread::Current()->socketserver();
-    Thread::Current()->set_socketserver(ss);
-  }
-  ~SocketServerScope() {
-    Thread::Current()->set_socketserver(old_ss_);
-  }
-
- private:
-  SocketServer* old_ss_;
-
-  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(SocketServerScope);
+  RTC_DISALLOW_COPY_AND_ASSIGN(AutoSocketServerThread);
 };
 
 }  // namespace rtc

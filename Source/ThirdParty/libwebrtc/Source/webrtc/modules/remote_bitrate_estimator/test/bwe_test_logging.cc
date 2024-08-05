@@ -18,9 +18,9 @@
 #include <algorithm>
 #include <sstream>
 
+#include "webrtc/base/checks.h"
 #include "webrtc/base/format_macros.h"
 #include "webrtc/base/platform_thread.h"
-#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
 
 namespace webrtc {
 namespace testing {
@@ -57,29 +57,29 @@ Logging* Logging::GetInstance() {
 }
 
 void Logging::SetGlobalContext(uint32_t name) {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   thread_map_[rtc::CurrentThreadId()].global_state.tag = ToString(name);
 }
 
 void Logging::SetGlobalContext(const std::string& name) {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   thread_map_[rtc::CurrentThreadId()].global_state.tag = name;
 }
 
 void Logging::SetGlobalContext(const char* name) {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   thread_map_[rtc::CurrentThreadId()].global_state.tag = name;
 }
 
 void Logging::SetGlobalEnable(bool enabled) {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   thread_map_[rtc::CurrentThreadId()].global_state.enabled = enabled;
 }
 
 void Logging::Log(const char format[], ...) {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   ThreadMap::iterator it = thread_map_.find(rtc::CurrentThreadId());
-  assert(it != thread_map_.end());
+  RTC_DCHECK(it != thread_map_.end());
   const State& state = it->second.stack.top();
   if (state.enabled) {
     printf("%s\t", state.tag.c_str());
@@ -114,9 +114,9 @@ void Logging::Plot(int figure,
                    double value,
                    uint32_t ssrc,
                    const std::string& alg_name) {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   ThreadMap::iterator it = thread_map_.find(rtc::CurrentThreadId());
-  assert(it != thread_map_.end());
+  RTC_DCHECK(it != thread_map_.end());
   const State& state = it->second.stack.top();
   if (state.enabled) {
     printf("PLOT\t%d\t%s:%" PRIu32 "@%s\t%f\t%f\n", figure, name.c_str(), ssrc,
@@ -128,9 +128,9 @@ void Logging::PlotBar(int figure,
                       const std::string& name,
                       double value,
                       int flow_id) {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   ThreadMap::iterator it = thread_map_.find(rtc::CurrentThreadId());
-  assert(it != thread_map_.end());
+  RTC_DCHECK(it != thread_map_.end());
   const State& state = it->second.stack.top();
   if (state.enabled) {
     printf("BAR\t%d\t%s_%d\t%f\n", figure, name.c_str(), flow_id, value);
@@ -141,9 +141,9 @@ void Logging::PlotBaselineBar(int figure,
                               const std::string& name,
                               double value,
                               int flow_id) {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   ThreadMap::iterator it = thread_map_.find(rtc::CurrentThreadId());
-  assert(it != thread_map_.end());
+  RTC_DCHECK(it != thread_map_.end());
   const State& state = it->second.stack.top();
   if (state.enabled) {
     printf("BASELINE\t%d\t%s_%d\t%f\n", figure, name.c_str(), flow_id, value);
@@ -157,9 +157,9 @@ void Logging::PlotErrorBar(int figure,
                            double yhigh,
                            const std::string& error_title,
                            int flow_id) {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   ThreadMap::iterator it = thread_map_.find(rtc::CurrentThreadId());
-  assert(it != thread_map_.end());
+  RTC_DCHECK(it != thread_map_.end());
   const State& state = it->second.stack.top();
   if (state.enabled) {
     printf("ERRORBAR\t%d\t%s_%d\t%f\t%f\t%f\t%s\n", figure, name.c_str(),
@@ -176,9 +176,9 @@ void Logging::PlotLimitErrorBar(int figure,
                                 double ymax,
                                 const std::string& limit_title,
                                 int flow_id) {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   ThreadMap::iterator it = thread_map_.find(rtc::CurrentThreadId());
-  assert(it != thread_map_.end());
+  RTC_DCHECK(it != thread_map_.end());
   const State& state = it->second.stack.top();
   if (state.enabled) {
     printf("LIMITERRORBAR\t%d\t%s_%d\t%f\t%f\t%f\t%s\t%f\t%s\n", figure,
@@ -191,9 +191,9 @@ void Logging::PlotLabel(int figure,
                         const std::string& title,
                         const std::string& y_label,
                         int num_flows) {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   ThreadMap::iterator it = thread_map_.find(rtc::CurrentThreadId());
-  assert(it != thread_map_.end());
+  RTC_DCHECK(it != thread_map_.end());
   const State& state = it->second.stack.top();
   if (state.enabled) {
     printf("LABEL\t%d\t%s\t%s\t%d\n", figure, title.c_str(), y_label.c_str(),
@@ -202,8 +202,7 @@ void Logging::PlotLabel(int figure,
 }
 
 Logging::Logging()
-    : crit_sect_(CriticalSectionWrapper::CreateCriticalSection()),
-      thread_map_() {
+    : thread_map_() {
 }
 
 Logging::State::State() : tag(""), timestamp_ms(0), enabled(true) {}
@@ -227,7 +226,7 @@ void Logging::State::MergePrevious(const State& previous) {
 
 void Logging::PushState(const std::string& append_to_tag, int64_t timestamp_ms,
                         bool enabled) {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   State new_state(append_to_tag, timestamp_ms, enabled);
   ThreadState* thread_state = &thread_map_[rtc::CurrentThreadId()];
   std::stack<State>* stack = &thread_state->stack;
@@ -240,9 +239,9 @@ void Logging::PushState(const std::string& append_to_tag, int64_t timestamp_ms,
 }
 
 void Logging::PopState() {
-  CriticalSectionScoped cs(crit_sect_.get());
+  rtc::CritScope cs(&crit_sect_);
   ThreadMap::iterator it = thread_map_.find(rtc::CurrentThreadId());
-  assert(it != thread_map_.end());
+  RTC_DCHECK(it != thread_map_.end());
   std::stack<State>* stack = &it->second.stack;
   int64_t newest_timestamp_ms = stack->top().timestamp_ms;
   stack->pop();

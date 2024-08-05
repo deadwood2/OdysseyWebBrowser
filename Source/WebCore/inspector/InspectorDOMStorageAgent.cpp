@@ -31,11 +31,10 @@
 #include "config.h"
 #include "InspectorDOMStorageAgent.h"
 
+#include "DOMException.h"
 #include "DOMWindow.h"
 #include "Database.h"
 #include "Document.h"
-#include "ExceptionCode.h"
-#include "ExceptionCodeDescription.h"
 #include "Frame.h"
 #include "InspectorPageAgent.h"
 #include "InstrumentingAgents.h"
@@ -48,7 +47,7 @@
 #include "StorageType.h"
 #include "VoidCallback.h"
 #include <inspector/InspectorFrontendDispatchers.h>
-#include <inspector/InspectorValues.h>
+#include <wtf/JSONValues.h>
 
 using namespace Inspector;
 
@@ -88,7 +87,7 @@ void InspectorDOMStorageAgent::disable(ErrorString&)
     m_enabled = false;
 }
 
-void InspectorDOMStorageAgent::getDOMStorageItems(ErrorString& errorString, const InspectorObject& storageId, RefPtr<Inspector::Protocol::Array<Inspector::Protocol::Array<String>>>& items)
+void InspectorDOMStorageAgent::getDOMStorageItems(ErrorString& errorString, const JSON::Object& storageId, RefPtr<Inspector::Protocol::Array<Inspector::Protocol::Array<String>>>& items)
 {
     Frame* frame;
     RefPtr<StorageArea> storageArea = findStorageArea(errorString, storageId, frame);
@@ -112,7 +111,7 @@ void InspectorDOMStorageAgent::getDOMStorageItems(ErrorString& errorString, cons
     items = WTFMove(storageItems);
 }
 
-void InspectorDOMStorageAgent::setDOMStorageItem(ErrorString& errorString, const InspectorObject& storageId, const String& key, const String& value)
+void InspectorDOMStorageAgent::setDOMStorageItem(ErrorString& errorString, const JSON::Object& storageId, const String& key, const String& value)
 {
     Frame* frame;
     RefPtr<StorageArea> storageArea = findStorageArea(errorString, storageId, frame);
@@ -124,10 +123,10 @@ void InspectorDOMStorageAgent::setDOMStorageItem(ErrorString& errorString, const
     bool quotaException = false;
     storageArea->setItem(frame, key, value, quotaException);
     if (quotaException)
-        errorString = ExceptionCodeDescription(QUOTA_EXCEEDED_ERR).name;
+        errorString = DOMException::name(QuotaExceededError);
 }
 
-void InspectorDOMStorageAgent::removeDOMStorageItem(ErrorString& errorString, const InspectorObject& storageId, const String& key)
+void InspectorDOMStorageAgent::removeDOMStorageItem(ErrorString& errorString, const JSON::Object& storageId, const String& key)
 {
     Frame* frame;
     RefPtr<StorageArea> storageArea = findStorageArea(errorString, storageId, frame);
@@ -139,15 +138,14 @@ void InspectorDOMStorageAgent::removeDOMStorageItem(ErrorString& errorString, co
     storageArea->removeItem(frame, key);
 }
 
-String InspectorDOMStorageAgent::storageId(Storage* storage)
+String InspectorDOMStorageAgent::storageId(Storage& storage)
 {
-    ASSERT(storage);
-    Document* document = storage->frame()->document();
+    Document* document = storage.frame()->document();
     ASSERT(document);
     DOMWindow* window = document->domWindow();
     ASSERT(window);
     Ref<SecurityOrigin> securityOrigin = document->securityOrigin();
-    bool isLocalStorage = window->optionalLocalStorage() == storage;
+    bool isLocalStorage = window->optionalLocalStorage() == &storage;
     return storageId(securityOrigin.ptr(), isLocalStorage)->toJSONString();
 }
 
@@ -176,7 +174,7 @@ void InspectorDOMStorageAgent::didDispatchDOMStorageEvent(const String& key, con
         m_frontendDispatcher->domStorageItemUpdated(id, key, oldValue, newValue);
 }
 
-RefPtr<StorageArea> InspectorDOMStorageAgent::findStorageArea(ErrorString& errorString, const InspectorObject& storageId, Frame*& targetFrame)
+RefPtr<StorageArea> InspectorDOMStorageAgent::findStorageArea(ErrorString& errorString, const JSON::Object& storageId, Frame*& targetFrame)
 {
     String securityOrigin;
     bool isLocalStorage = false;

@@ -16,7 +16,6 @@
 #include <stdlib.h>
 
 #include "webrtc/common_types.h"
-#include "webrtc/modules/audio_coding/acm2/acm_common_defs.h"
 #include "webrtc/modules/audio_coding/codecs/audio_format_conversion.h"
 #include "webrtc/modules/audio_coding/include/audio_coding_module.h"
 #include "webrtc/modules/audio_coding/test/utility.h"
@@ -224,7 +223,7 @@ bool Receiver::PlayoutData() {
   if (_playoutLengthSmpls == 0) {
     return false;
   }
-  _pcmFile.Write10MsData(audioFrame.data_,
+  _pcmFile.Write10MsData(audioFrame.data(),
       audioFrame.samples_per_channel_ * audioFrame.num_channels_);
   return true;
 }

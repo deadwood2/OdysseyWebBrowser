@@ -17,9 +17,9 @@
 #include "webrtc/base/logging.h"
 #include "webrtc/base/random.h"
 #include "webrtc/common_types.h"
-#include "webrtc/modules/rtp_rtcp/source/rtp_header_extension.h"
-#include "webrtc/modules/rtp_rtcp/source/rtp_header_extensions.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_header_extension_map.h"
 #include "webrtc/modules/rtp_rtcp/source/byte_io.h"
+#include "webrtc/modules/rtp_rtcp/source/rtp_header_extensions.h"
 
 namespace webrtc {
 namespace rtp {
@@ -30,6 +30,11 @@ constexpr uint16_t kOneByteExtensionId = 0xBEDE;
 constexpr size_t kOneByteHeaderSize = 1;
 constexpr size_t kDefaultPacketSize = 1500;
 }  // namespace
+
+constexpr size_t Packet::kMaxExtensionHeaders;
+constexpr int Packet::kMinExtensionId;
+constexpr int Packet::kMaxExtensionId;
+
 //  0                   1                   2                   3
 //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -52,26 +57,30 @@ constexpr size_t kDefaultPacketSize = 1500;
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 // |               padding         | Padding size  |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+Packet::Packet() : Packet(nullptr, kDefaultPacketSize) {}
+
 Packet::Packet(const ExtensionManager* extensions)
-    : extensions_(extensions), buffer_(kDefaultPacketSize) {
-  Clear();
-}
+    : Packet(extensions, kDefaultPacketSize) {}
+
+Packet::Packet(const Packet&) = default;
 
 Packet::Packet(const ExtensionManager* extensions, size_t capacity)
-    : extensions_(extensions), buffer_(capacity) {
+    : buffer_(capacity) {
   RTC_DCHECK_GE(capacity, kFixedHeaderSize);
   Clear();
+  if (extensions) {
+    IdentifyExtensions(*extensions);
+  } else {
+    for (size_t i = 0; i < kMaxExtensionHeaders; ++i)
+      extension_entries_[i].type = ExtensionManager::kInvalidType;
+  }
 }
 
 Packet::~Packet() {}
 
-void Packet::IdentifyExtensions(const ExtensionManager* extensions) {
-  RTC_DCHECK(extensions);
-  extensions_ = extensions;
-  for (size_t i = 0; i < num_extensions_; ++i) {
-    uint8_t id = data()[extension_entries_[i].offset - 1] >> 4;
-    extension_entries_[i].type = extensions_->GetType(id);
-  }
+void Packet::IdentifyExtensions(const ExtensionManager& extensions) {
+  for (size_t i = 0; i < kMaxExtensionHeaders; ++i)
+    extension_entries_[i].type = extensions.GetType(i + 1);
 }
 
 bool Packet::Parse(const uint8_t* buffer, size_t buffer_size) {
@@ -82,6 +91,10 @@ bool Packet::Parse(const uint8_t* buffer, size_t buffer_size) {
   buffer_.SetData(buffer, buffer_size);
   RTC_DCHECK_EQ(size(), buffer_size);
   return true;
+}
+
+bool Packet::Parse(rtc::ArrayView<const uint8_t> packet) {
+  return Parse(packet.data(), packet.size());
 }
 
 bool Packet::Parse(rtc::CopyOnWriteBuffer buffer) {
@@ -158,6 +171,14 @@ void Packet::GetHeader(RTPHeader* header) const {
       &header->extension.voiceActivity, &header->extension.audioLevel);
   header->extension.hasVideoRotation =
       GetExtension<VideoOrientation>(&header->extension.videoRotation);
+  header->extension.hasVideoContentType =
+      GetExtension<VideoContentTypeExtension>(
+          &header->extension.videoContentType);
+  header->extension.has_video_timing =
+      GetExtension<VideoTimingExtension>(&header->extension.video_timing);
+  GetExtension<RtpStreamId>(&header->extension.stream_id);
+  GetExtension<RepairedRtpStreamId>(&header->extension.repaired_stream_id);
+  GetExtension<PlayoutDelayLimits>(&header->extension.playout_delay);
 }
 
 size_t Packet::headers_size() const {
@@ -172,8 +193,8 @@ size_t Packet::padding_size() const {
   return padding_size_;
 }
 
-const uint8_t* Packet::payload() const {
-  return data() + payload_offset_;
+rtc::ArrayView<const uint8_t> Packet::payload() const {
+  return rtc::MakeArrayView(data() + payload_offset_, payload_size_);
 }
 
 rtc::CopyOnWriteBuffer Packet::Buffer() const {
@@ -211,8 +232,7 @@ void Packet::CopyHeaderFrom(const Packet& packet) {
   timestamp_ = packet.timestamp_;
   ssrc_ = packet.ssrc_;
   payload_offset_ = packet.payload_offset_;
-  num_extensions_ = packet.num_extensions_;
-  for (size_t i = 0; i < num_extensions_; ++i) {
+  for (size_t i = 0; i < kMaxExtensionHeaders; ++i) {
     extension_entries_[i] = packet.extension_entries_[i];
   }
   extensions_size_ = packet.extensions_size_;
@@ -253,9 +273,9 @@ void Packet::SetSsrc(uint32_t ssrc) {
 }
 
 void Packet::SetCsrcs(const std::vector<uint32_t>& csrcs) {
-  RTC_DCHECK_EQ(num_extensions_, 0u);
-  RTC_DCHECK_EQ(payload_size_, 0u);
-  RTC_DCHECK_EQ(padding_size_, 0u);
+  RTC_DCHECK_EQ(extensions_size_, 0);
+  RTC_DCHECK_EQ(payload_size_, 0);
+  RTC_DCHECK_EQ(padding_size_, 0);
   RTC_DCHECK_LE(csrcs.size(), 0x0fu);
   RTC_DCHECK_LE(kFixedHeaderSize + 4 * csrcs.size(), capacity());
   payload_offset_ = kFixedHeaderSize + 4 * csrcs.size();
@@ -268,25 +288,119 @@ void Packet::SetCsrcs(const std::vector<uint32_t>& csrcs) {
   buffer_.SetSize(payload_offset_);
 }
 
+bool Packet::HasRawExtension(int id) const {
+  if (id == ExtensionManager::kInvalidId)
+    return false;
+  RTC_DCHECK_GE(id, kMinExtensionId);
+  RTC_DCHECK_LE(id, kMaxExtensionId);
+  return extension_entries_[id - 1].offset != 0;
+}
+
+rtc::ArrayView<const uint8_t> Packet::GetRawExtension(int id) const {
+  if (id == ExtensionManager::kInvalidId)
+    return nullptr;
+  RTC_DCHECK_GE(id, kMinExtensionId);
+  RTC_DCHECK_LE(id, kMaxExtensionId);
+  const ExtensionInfo& extension = extension_entries_[id - 1];
+  if (extension.offset == 0)
+    return nullptr;
+  return rtc::MakeArrayView(data() + extension.offset, extension.length);
+}
+
+bool Packet::SetRawExtension(int id, rtc::ArrayView<const uint8_t> data) {
+  auto buffer = AllocateRawExtension(id, data.size());
+  if (buffer.empty())
+    return false;
+  RTC_DCHECK_EQ(buffer.size(), data.size());
+  memcpy(buffer.data(), data.data(), data.size());
+  return true;
+}
+
+rtc::ArrayView<uint8_t> Packet::AllocateRawExtension(int id, size_t length) {
+  if (id == ExtensionManager::kInvalidId)
+    return nullptr;
+  RTC_DCHECK_GE(id, kMinExtensionId);
+  RTC_DCHECK_LE(id, kMaxExtensionId);
+  RTC_DCHECK_GE(length, 1);
+  RTC_DCHECK_LE(length, 16);
+
+  ExtensionInfo* extension_entry = &extension_entries_[id - 1];
+  if (extension_entry->offset != 0) {
+    // Extension already reserved. Check if same length is used.
+    if (extension_entry->length == length)
+      return rtc::MakeArrayView(WriteAt(extension_entry->offset), length);
+
+    LOG(LS_ERROR) << "Length mismatch for extension id " << id << " type "
+                  << static_cast<int>(extension_entry->type) << ": expected "
+                  << static_cast<int>(extension_entry->length) << ". received "
+                  << length;
+    return nullptr;
+  }
+  if (payload_size_ > 0) {
+    LOG(LS_ERROR) << "Can't add new extension id " << id
+                  << " after payload was set.";
+    return nullptr;
+  }
+  if (padding_size_ > 0) {
+    LOG(LS_ERROR) << "Can't add new extension id " << id
+                  << " after padding was set.";
+    return nullptr;
+  }
+
+  size_t num_csrc = data()[0] & 0x0F;
+  size_t extensions_offset = kFixedHeaderSize + (num_csrc * 4) + 4;
+  size_t new_extensions_size = extensions_size_ + kOneByteHeaderSize + length;
+  if (extensions_offset + new_extensions_size > capacity()) {
+    LOG(LS_ERROR)
+        << "Extension cannot be registered: Not enough space left in buffer.";
+    return nullptr;
+  }
+
+  // All checks passed, write down the extension headers.
+  if (extensions_size_ == 0) {
+    RTC_DCHECK_EQ(payload_offset_, kFixedHeaderSize + (num_csrc * 4));
+    WriteAt(0, data()[0] | 0x10);  // Set extension bit.
+    // Profile specific ID always set to OneByteExtensionHeader.
+    ByteWriter<uint16_t>::WriteBigEndian(WriteAt(extensions_offset - 4),
+                                         kOneByteExtensionId);
+  }
+
+  WriteAt(extensions_offset + extensions_size_, (id << 4) | (length - 1));
+
+  extension_entry->offset =
+      extensions_offset + extensions_size_ + kOneByteHeaderSize;
+  extension_entry->length = length;
+  extensions_size_ = new_extensions_size;
+
+  // Update header length field.
+  uint16_t extensions_words = (extensions_size_ + 3) / 4;  // Wrap up to 32bit.
+  ByteWriter<uint16_t>::WriteBigEndian(WriteAt(extensions_offset - 2),
+                                       extensions_words);
+  // Fill extension padding place with zeroes.
+  size_t extension_padding_size = 4 * extensions_words - extensions_size_;
+  memset(WriteAt(extensions_offset + extensions_size_), 0,
+         extension_padding_size);
+  payload_offset_ = extensions_offset + 4 * extensions_words;
+  buffer_.SetSize(payload_offset_);
+  return rtc::MakeArrayView(WriteAt(extension_entry->offset), length);
+}
+
 uint8_t* Packet::AllocatePayload(size_t size_bytes) {
-  RTC_DCHECK_EQ(padding_size_, 0u);
+  // Reset payload size to 0. If CopyOnWrite buffer_ was shared, this will cause
+  // reallocation and memcpy. Keeping just header reduces memcpy size.
+  SetPayloadSize(0);
+  return SetPayloadSize(size_bytes);
+}
+
+uint8_t* Packet::SetPayloadSize(size_t size_bytes) {
+  RTC_DCHECK_EQ(padding_size_, 0);
   if (payload_offset_ + size_bytes > capacity()) {
     LOG(LS_WARNING) << "Cannot set payload, not enough space in buffer.";
     return nullptr;
   }
-  // Reset payload size to 0. If CopyOnWrite buffer_ was shared, this will cause
-  // reallocation and memcpy. Setting size to just headers reduces memcpy size.
-  buffer_.SetSize(payload_offset_);
   payload_size_ = size_bytes;
   buffer_.SetSize(payload_offset_ + payload_size_);
   return WriteAt(payload_offset_);
-}
-
-void Packet::SetPayloadSize(size_t size_bytes) {
-  RTC_DCHECK_EQ(padding_size_, 0u);
-  RTC_DCHECK_LE(size_bytes, payload_size_);
-  payload_size_ = size_bytes;
-  buffer_.SetSize(payload_offset_ + payload_size_);
 }
 
 bool Packet::SetPadding(uint8_t size_bytes, Random* random) {
@@ -322,8 +436,11 @@ void Packet::Clear() {
   payload_offset_ = kFixedHeaderSize;
   payload_size_ = 0;
   padding_size_ = 0;
-  num_extensions_ = 0;
   extensions_size_ = 0;
+  for (ExtensionInfo& location : extension_entries_) {
+    location.offset = 0;
+    location.length = 0;
+  }
 
   memset(WriteAt(0), 0, kFixedHeaderSize);
   buffer_.SetSize(kFixedHeaderSize);
@@ -362,8 +479,11 @@ bool Packet::ParseBuffer(const uint8_t* buffer, size_t size) {
     padding_size_ = 0;
   }
 
-  num_extensions_ = 0;
   extensions_size_ = 0;
+  for (ExtensionInfo& location : extension_entries_) {
+    location.offset = 0;
+    location.length = 0;
+  }
   if (has_extension) {
     /* RTP header extension, RFC 3550.
      0                   1                   2                   3
@@ -392,7 +512,7 @@ bool Packet::ParseBuffer(const uint8_t* buffer, size_t size) {
       constexpr uint8_t kPaddingId = 0;
       constexpr uint8_t kReservedId = 15;
       while (extensions_size_ + kOneByteHeaderSize < extensions_capacity) {
-        uint8_t id = buffer[extension_offset + extensions_size_] >> 4;
+        int id = buffer[extension_offset + extensions_size_] >> 4;
         if (id == kReservedId) {
           break;
         } else if (id == kPaddingId) {
@@ -406,18 +526,16 @@ bool Packet::ParseBuffer(const uint8_t* buffer, size_t size) {
           LOG(LS_WARNING) << "Oversized rtp header extension.";
           break;
         }
-        if (num_extensions_ >= kMaxExtensionHeaders) {
-          LOG(LS_WARNING) << "Too many rtp header extensions.";
-          break;
+
+        size_t idx = id - 1;
+        if (extension_entries_[idx].length != 0) {
+          LOG(LS_VERBOSE) << "Duplicate rtp header extension id " << id
+                          << ". Overwriting.";
         }
+
         extensions_size_ += kOneByteHeaderSize;
-        extension_entries_[num_extensions_].type =
-            extensions_ ? extensions_->GetType(id)
-                        : ExtensionManager::kInvalidType;
-        extension_entries_[num_extensions_].length = length;
-        extension_entries_[num_extensions_].offset =
-            extension_offset + extensions_size_;
-        num_extensions_++;
+        extension_entries_[idx].offset = extension_offset + extensions_size_;
+        extension_entries_[idx].length = length;
         extensions_size_ += length;
       }
     }
@@ -431,95 +549,29 @@ bool Packet::ParseBuffer(const uint8_t* buffer, size_t size) {
   return true;
 }
 
-bool Packet::FindExtension(ExtensionType type,
-                           uint8_t length,
-                           uint16_t* offset) const {
-  RTC_DCHECK(offset);
-  for (size_t i = 0; i < num_extensions_; ++i) {
-    if (extension_entries_[i].type == type) {
-      if (length != extension_entries_[i].length) {
-        LOG(LS_WARNING) << "Length mismatch for extension '" << type
-                        << "': expected " << static_cast<int>(length)
-                        << ", received "
-                        << static_cast<int>(extension_entries_[i].length);
-        return false;
+rtc::ArrayView<const uint8_t> Packet::FindExtension(ExtensionType type) const {
+  for (const ExtensionInfo& extension : extension_entries_) {
+    if (extension.type == type) {
+      if (extension.length == 0) {
+        // Extension is registered but not set.
+        return nullptr;
       }
-      *offset = extension_entries_[i].offset;
-      return true;
+      return rtc::MakeArrayView(data() + extension.offset, extension.length);
     }
   }
-  return false;
+  return nullptr;
 }
 
-bool Packet::AllocateExtension(ExtensionType type,
-                               uint8_t length,
-                               uint16_t* offset) {
-  if (!extensions_) {
-    return false;
+rtc::ArrayView<uint8_t> Packet::AllocateExtension(ExtensionType type,
+                                                  size_t length) {
+  for (size_t i = 0; i < kMaxExtensionHeaders; ++i) {
+    if (extension_entries_[i].type == type) {
+      int extension_id = i + 1;
+      return AllocateRawExtension(extension_id, length);
+    }
   }
-  if (FindExtension(type, length, offset)) {
-    return true;
-  }
-
-  // Can't add new extension after payload/padding was set.
-  if (payload_size_ > 0) {
-    return false;
-  }
-  if (padding_size_ > 0) {
-    return false;
-  }
-
-  uint8_t extension_id = extensions_->GetId(type);
-  if (extension_id == ExtensionManager::kInvalidId) {
-    return false;
-  }
-  RTC_DCHECK_GT(length, 0u);
-  RTC_DCHECK_LE(length, 16u);
-
-  size_t num_csrc = data()[0] & 0x0F;
-  size_t extensions_offset = kFixedHeaderSize + (num_csrc * 4) + 4;
-  if (extensions_offset + extensions_size_ + kOneByteHeaderSize + length >
-      capacity()) {
-    LOG(LS_WARNING) << "Extension cannot be registered: "
-                       "Not enough space left in buffer.";
-    return false;
-  }
-
-  uint16_t new_extensions_size =
-      extensions_size_ + kOneByteHeaderSize + length;
-  uint16_t extensions_words =
-      (new_extensions_size + 3) / 4;  // Wrap up to 32bit.
-
-  // All checks passed, write down the extension.
-  if (num_extensions_ == 0) {
-    RTC_DCHECK_EQ(payload_offset_, kFixedHeaderSize + (num_csrc * 4));
-    RTC_DCHECK_EQ(extensions_size_, 0);
-    WriteAt(0, data()[0] | 0x10);  // Set extension bit.
-    // Profile specific ID always set to OneByteExtensionHeader.
-    ByteWriter<uint16_t>::WriteBigEndian(WriteAt(extensions_offset - 4),
-                                         kOneByteExtensionId);
-  }
-
-  WriteAt(extensions_offset + extensions_size_,
-          (extension_id << 4) | (length - 1));
-  RTC_DCHECK(num_extensions_ < kMaxExtensionHeaders);
-  extension_entries_[num_extensions_].type = type;
-  extension_entries_[num_extensions_].length = length;
-  *offset = extensions_offset + kOneByteHeaderSize + extensions_size_;
-  extension_entries_[num_extensions_].offset = *offset;
-  ++num_extensions_;
-  extensions_size_ = new_extensions_size;
-
-  // Update header length field.
-  ByteWriter<uint16_t>::WriteBigEndian(WriteAt(extensions_offset - 2),
-                                       extensions_words);
-  // Fill extension padding place with zeroes.
-  size_t extension_padding_size = 4 * extensions_words - extensions_size_;
-  memset(WriteAt(extensions_offset + extensions_size_), 0,
-         extension_padding_size);
-  payload_offset_ = extensions_offset + 4 * extensions_words;
-  buffer_.SetSize(payload_offset_);
-  return true;
+  // Extension not registered.
+  return nullptr;
 }
 
 uint8_t* Packet::WriteAt(size_t offset) {

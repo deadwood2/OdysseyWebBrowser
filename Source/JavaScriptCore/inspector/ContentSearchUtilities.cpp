@@ -29,7 +29,6 @@
 #include "config.h"
 #include "ContentSearchUtilities.h"
 
-#include "InspectorValues.h"
 #include "RegularExpression.h"
 #include "Yarr.h"
 #include "YarrInterpreter.h"
@@ -186,7 +185,7 @@ static String findMagicComment(const String& content, const String& patternStrin
 
     ASSERT(pattern.m_numSubpatterns == 1);
     Vector<int, 4> matches;
-    matches.resize(4);
+    matches.grow(4);
     unsigned result = JSC::Yarr::interpret(bytecodePattern.get(), content, 0, reinterpret_cast<unsigned*>(matches.data()));
     if (result == JSC::Yarr::offsetNoMatch)
         return String();

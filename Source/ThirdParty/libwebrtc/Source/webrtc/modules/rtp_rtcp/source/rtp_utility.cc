@@ -10,26 +10,21 @@
 
 #include "webrtc/modules/rtp_rtcp/source/rtp_utility.h"
 
-#include <string.h>
-
 #include "webrtc/base/logging.h"
+#include "webrtc/base/neverdestroyed.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_cvo.h"
 #include "webrtc/modules/rtp_rtcp/source/byte_io.h"
+#include "webrtc/modules/rtp_rtcp/source/rtp_header_extensions.h"
 
 namespace webrtc {
 
-RtpData* NullObjectRtpData() {
-  static NullRtpData null_rtp_data;
-  return &null_rtp_data;
-}
-
 RtpFeedback* NullObjectRtpFeedback() {
-  static NullRtpFeedback null_rtp_feedback;
+  static NeverDestroyed<NullRtpFeedback> null_rtp_feedback;
   return &null_rtp_feedback;
 }
 
 ReceiveStatistics* NullObjectReceiveStatistics() {
-  static NullReceiveStatistics null_receive_statistics;
+  static NeverDestroyed<NullReceiveStatistics> null_receive_statistics;
   return &null_receive_statistics;
 }
 
@@ -253,6 +248,13 @@ bool RtpHeaderParser::Parse(RTPHeader* header,
   header->extension.playout_delay.min_ms = -1;
   header->extension.playout_delay.max_ms = -1;
 
+  // May not be present in packet.
+  header->extension.hasVideoContentType = false;
+  header->extension.videoContentType = VideoContentType::UNSPECIFIED;
+
+  header->extension.has_video_timing = false;
+  header->extension.video_timing = {0u, 0u, 0u, 0u, 0u, 0u, false};
+
   if (X) {
     /* RTP header extension, RFC 3550.
      0                   1                   2                   3
@@ -281,6 +283,7 @@ bool RtpHeaderParser::Parse(RTPHeader* header,
     if (static_cast<size_t>(remain) < (4 + XLen)) {
       return false;
     }
+    static constexpr uint16_t kRtpOneByteHeaderExtensionId = 0xBEDE;
     if (definedByProfile == kRtpOneByteHeaderExtensionId) {
       const uint8_t* ptrRTPDataExtensionEnd = ptr + XLen;
       ParseOneByteExtensionHeader(header,
@@ -318,8 +321,13 @@ void RtpHeaderParser::ParseOneByteExtensionHeader(
     const int len = (*ptr & 0x0f);
     ptr++;
 
+    if (id == 0) {
+      // Padding byte, skip ignoring len.
+      continue;
+    }
+
     if (id == 15) {
-      LOG(LS_WARNING)
+      LOG(LS_VERBOSE)
           << "RTP extension header 15 encountered. Terminate parsing.";
       return;
     }
@@ -331,8 +339,8 @@ void RtpHeaderParser::ParseOneByteExtensionHeader(
       return;
     }
 
-    RTPExtensionType type;
-    if (ptrExtensionMap->GetType(id, &type) != 0) {
+    RTPExtensionType type = ptrExtensionMap->GetType(id);
+    if (type == RtpHeaderExtensionMap::kInvalidType) {
       // If we encounter an unknown extension, just skip over it.
       LOG(LS_WARNING) << "Failed to find extension id: " << id;
     } else {
@@ -434,35 +442,59 @@ void RtpHeaderParser::ParseOneByteExtensionHeader(
           int min_playout_delay = (ptr[0] << 4) | ((ptr[1] >> 4) & 0xf);
           int max_playout_delay = ((ptr[1] & 0xf) << 8) | ptr[2];
           header->extension.playout_delay.min_ms =
-              min_playout_delay * kPlayoutDelayGranularityMs;
+              min_playout_delay * PlayoutDelayLimits::kGranularityMs;
           header->extension.playout_delay.max_ms =
-              max_playout_delay * kPlayoutDelayGranularityMs;
+              max_playout_delay * PlayoutDelayLimits::kGranularityMs;
           break;
         }
-        default: {
-          LOG(LS_WARNING) << "Extension type not implemented: " << type;
+        case kRtpExtensionVideoContentType: {
+          if (len != 0) {
+            LOG(LS_WARNING) << "Incorrect video content type len: " << len;
+            return;
+          }
+          //    0                   1
+          //    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+          //   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+          //   |  ID   | len=0 | Content type  |
+          //   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+          if (ptr[0] <
+              static_cast<uint8_t>(VideoContentType::TOTAL_CONTENT_TYPES)) {
+            header->extension.hasVideoContentType = true;
+            header->extension.videoContentType =
+                static_cast<VideoContentType>(ptr[0]);
+          }
+          break;
+        }
+        case kRtpExtensionVideoTiming: {
+          if (len != VideoTimingExtension::kValueSizeBytes - 1) {
+            LOG(LS_WARNING) << "Incorrect video timing len: " << len;
+            return;
+          }
+          header->extension.has_video_timing = true;
+          VideoTimingExtension::Parse(rtc::MakeArrayView(ptr, len + 1),
+                                      &header->extension.video_timing);
+          break;
+        }
+        case kRtpExtensionRtpStreamId: {
+          header->extension.stream_id.Set(rtc::MakeArrayView(ptr, len + 1));
+          break;
+        }
+        case kRtpExtensionRepairedRtpStreamId: {
+          header->extension.repaired_stream_id.Set(
+              rtc::MakeArrayView(ptr, len + 1));
+          break;
+        }
+        case kRtpExtensionNone:
+        case kRtpExtensionNumberOfExtensions: {
+          RTC_NOTREACHED() << "Invalid extension type: " << type;
           return;
         }
       }
     }
     ptr += (len + 1);
-    uint8_t num_bytes = ParsePaddingBytes(ptrRTPDataExtensionEnd, ptr);
-    ptr += num_bytes;
   }
 }
 
-uint8_t RtpHeaderParser::ParsePaddingBytes(
-    const uint8_t* ptrRTPDataExtensionEnd,
-    const uint8_t* ptr) const {
-  uint8_t num_zero_bytes = 0;
-  while (ptrRTPDataExtensionEnd - ptr > 0) {
-    if (*ptr != 0) {
-      return num_zero_bytes;
-    }
-    ptr++;
-    num_zero_bytes++;
-  }
-  return num_zero_bytes;
-}
 }  // namespace RtpUtility
 }  // namespace webrtc

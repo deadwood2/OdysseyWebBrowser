@@ -12,6 +12,8 @@
 #define WEBRTC_VOICE_ENGINE_CHANNEL_PROXY_H_
 
 #include "webrtc/api/audio/audio_mixer.h"
+#include "webrtc/api/audio_codecs/audio_encoder.h"
+#include "webrtc/api/rtpreceiverinterface.h"
 #include "webrtc/base/constructormagic.h"
 #include "webrtc/base/race_checker.h"
 #include "webrtc/base/thread_checker.h"
@@ -27,7 +29,13 @@ namespace webrtc {
 class AudioSinkInterface;
 class PacketRouter;
 class RtcEventLog;
+class RtcpBandwidthObserver;
+class RtcpRttStats;
 class RtpPacketSender;
+class RtpPacketReceived;
+class RtpReceiver;
+class RtpRtcp;
+class RtpTransportControllerSendInterface;
 class Transport;
 class TransportFeedbackObserver;
 
@@ -48,6 +56,11 @@ class ChannelProxy {
   explicit ChannelProxy(const ChannelOwner& channel_owner);
   virtual ~ChannelProxy();
 
+  virtual bool SetEncoder(int payload_type,
+                          std::unique_ptr<AudioEncoder> encoder);
+  virtual void ModifyEncoder(
+      rtc::FunctionView<void(std::unique_ptr<AudioEncoder>*)> modifier);
+
   virtual void SetRTCPStatus(bool enable);
   virtual void SetLocalSSRC(uint32_t ssrc);
   virtual void SetRTCP_CNAME(const std::string& c_name);
@@ -57,37 +70,36 @@ class ChannelProxy {
   virtual void EnableSendTransportSequenceNumber(int id);
   virtual void EnableReceiveTransportSequenceNumber(int id);
   virtual void RegisterSenderCongestionControlObjects(
-      RtpPacketSender* rtp_packet_sender,
-      TransportFeedbackObserver* transport_feedback_observer,
-      PacketRouter* packet_router);
+      RtpTransportControllerSendInterface* transport,
+      RtcpBandwidthObserver* bandwidth_observer);
   virtual void RegisterReceiverCongestionControlObjects(
       PacketRouter* packet_router);
-  virtual void ResetCongestionControlObjects();
+  virtual void ResetSenderCongestionControlObjects();
+  virtual void ResetReceiverCongestionControlObjects();
   virtual CallStatistics GetRTCPStatistics() const;
   virtual std::vector<ReportBlock> GetRemoteRTCPReportBlocks() const;
   virtual NetworkStatistics GetNetworkStatistics() const;
   virtual AudioDecodingCallStats GetDecodingCallStatistics() const;
-  virtual int32_t GetSpeechOutputLevelFullRange() const;
+  virtual int GetSpeechOutputLevel() const;
+  virtual int GetSpeechOutputLevelFullRange() const;
   virtual uint32_t GetDelayEstimate() const;
-  virtual bool SetSendTelephoneEventPayloadType(int payload_type);
+  virtual bool SetSendTelephoneEventPayloadType(int payload_type,
+                                                int payload_frequency);
   virtual bool SendTelephoneEventOutband(int event, int duration_ms);
-  virtual void SetBitrate(int bitrate_bps);
+  virtual void SetBitrate(int bitrate_bps, int64_t probing_interval_ms);
+  virtual void SetRecPayloadType(int payload_type,
+                                 const SdpAudioFormat& format);
+  virtual void SetReceiveCodecs(const std::map<int, SdpAudioFormat>& codecs);
   virtual void SetSink(std::unique_ptr<AudioSinkInterface> sink);
   virtual void SetInputMute(bool muted);
   virtual void RegisterExternalTransport(Transport* transport);
   virtual void DeRegisterExternalTransport();
-  virtual bool ReceivedRTPPacket(const uint8_t* packet,
-                                 size_t length,
-                                 const PacketTime& packet_time);
+  virtual void OnRtpPacket(const RtpPacketReceived& packet);
   virtual bool ReceivedRTCPPacket(const uint8_t* packet, size_t length);
   virtual const rtc::scoped_refptr<AudioDecoderFactory>&
       GetAudioDecoderFactory() const;
   virtual void SetChannelOutputVolumeScaling(float scaling);
   virtual void SetRtcEventLog(RtcEventLog* event_log);
-  virtual void EnableAudioNetworkAdaptor(const std::string& config_string);
-  virtual void DisableAudioNetworkAdaptor();
-  virtual void SetReceiverFrameLengthRange(int min_frame_length_ms,
-                                           int max_frame_length_ms);
   virtual AudioMixer::Source::AudioFrameInfo GetAudioFrameWithInfo(
       int sample_rate_hz,
       AudioFrame* audio_frame);
@@ -95,12 +107,33 @@ class ChannelProxy {
   virtual void SetTransportOverhead(int transport_overhead_per_packet);
   virtual void AssociateSendChannel(const ChannelProxy& send_channel_proxy);
   virtual void DisassociateSendChannel();
+  virtual void GetRtpRtcp(RtpRtcp** rtp_rtcp,
+                          RtpReceiver** rtp_receiver) const;
+  virtual uint32_t GetPlayoutTimestamp() const;
+  virtual void SetMinimumPlayoutDelay(int delay_ms);
+  virtual void SetRtcpRttStats(RtcpRttStats* rtcp_rtt_stats);
+  virtual bool GetRecCodec(CodecInst* codec_inst) const;
+  virtual void OnTwccBasedUplinkPacketLossRate(float packet_loss_rate);
+  virtual void OnRecoverableUplinkPacketLossRate(
+      float recoverable_packet_loss_rate);
+  virtual void RegisterLegacyReceiveCodecs();
+  virtual std::vector<webrtc::RtpSource> GetSources() const;
 
  private:
   Channel* channel() const;
 
-  rtc::ThreadChecker thread_checker_;
-  rtc::RaceChecker race_checker_;
+  // Thread checkers document and lock usage of some methods on voe::Channel to
+  // specific threads we know about. The goal is to eventually split up
+  // voe::Channel into parts with single-threaded semantics, and thereby reduce
+  // the need for locks.
+  rtc::ThreadChecker worker_thread_checker_;
+  rtc::ThreadChecker module_process_thread_checker_;
+  // Methods accessed from audio and video threads are checked for sequential-
+  // only access. We don't necessarily own and control these threads, so thread
+  // checkers cannot be used. E.g. Chromium may transfer "ownership" from one
+  // audio thread to another, but access is still sequential.
+  rtc::RaceChecker audio_thread_race_checker_;
+  rtc::RaceChecker video_capture_thread_race_checker_;
   ChannelOwner channel_owner_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(ChannelProxy);

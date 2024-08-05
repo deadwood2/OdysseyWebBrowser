@@ -28,12 +28,13 @@
  * SUCH DAMAGE.
  */
 
-WebInspector.ContentFlowTreeElement = class ContentFlowTreeElement extends WebInspector.GeneralTreeElement
+WI.ContentFlowTreeElement = class ContentFlowTreeElement extends WI.GeneralTreeElement
 {
     constructor(representedObject)
     {
-        console.assert(representedObject instanceof WebInspector.ContentFlow);
+        console.assert(representedObject instanceof WI.ContentFlow);
 
-        super("content-flow-icon", representedObject.name, null, representedObject, false);
+        const subtitle = null;
+        super("content-flow-icon", representedObject.name, subtitle, representedObject);
     }
 };

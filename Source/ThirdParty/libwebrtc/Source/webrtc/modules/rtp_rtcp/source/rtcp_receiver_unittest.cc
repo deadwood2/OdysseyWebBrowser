@@ -14,6 +14,7 @@
 #include "webrtc/base/array_view.h"
 #include "webrtc/base/random.h"
 #include "webrtc/common_types.h"
+#include "webrtc/common_video/include/video_bitrate_allocator.h"
 #include "webrtc/modules/rtp_rtcp/source/byte_io.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/app.h"
@@ -27,10 +28,8 @@
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/rapid_resync_request.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/receiver_report.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/remb.h"
-#include "webrtc/modules/rtp_rtcp/source/rtcp_packet/rpsi.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/sdes.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/sender_report.h"
-#include "webrtc/modules/rtp_rtcp/source/rtcp_packet/sli.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/tmmbr.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/transport_feedback.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_receiver.h"
@@ -64,8 +63,6 @@ class MockRtcpPacketTypeCounterObserver : public RtcpPacketTypeCounterObserver {
 class MockRtcpIntraFrameObserver : public RtcpIntraFrameObserver {
  public:
   MOCK_METHOD1(OnReceivedIntraFrameRequest, void(uint32_t));
-  MOCK_METHOD2(OnReceivedSLI, void(uint32_t, uint8_t));
-  MOCK_METHOD2(OnReceivedRPSI, void(uint32_t, uint64_t));
 };
 
 class MockRtcpCallbackImpl : public RtcpStatisticsCallback {
@@ -76,9 +73,11 @@ class MockRtcpCallbackImpl : public RtcpStatisticsCallback {
 
 class MockTransportFeedbackObserver : public TransportFeedbackObserver {
  public:
-  MOCK_METHOD3(AddPacket, void(uint16_t, size_t, int));
+  MOCK_METHOD3(AddPacket, void(uint32_t, uint16_t, size_t));
+  MOCK_METHOD4(AddPacket,
+               void(uint32_t, uint16_t, size_t, const PacedPacketInfo&));
   MOCK_METHOD1(OnTransportFeedback, void(const rtcp::TransportFeedback&));
-  MOCK_CONST_METHOD0(GetTransportFeedbackVector, std::vector<PacketInfo>());
+  MOCK_CONST_METHOD0(GetTransportFeedbackVector, std::vector<PacketFeedback>());
 };
 
 class MockRtcpBandwidthObserver : public RtcpBandwidthObserver {
@@ -94,6 +93,13 @@ class MockModuleRtpRtcp : public RTCPReceiver::ModuleRtpRtcp {
   MOCK_METHOD0(OnRequestSendReport, void());
   MOCK_METHOD1(OnReceivedNack, void(const std::vector<uint16_t>&));
   MOCK_METHOD1(OnReceivedRtcpReportBlocks, void(const ReportBlockList&));
+};
+
+class MockVideoBitrateAllocationObserver
+    : public VideoBitrateAllocationObserver {
+ public:
+  MOCK_METHOD1(OnBitrateAllocationUpdated,
+               void(const BitrateAllocation& allocation));
 };
 
 // SSRC of remote peer, that sends rtcp packet to the rtcp receiver under test.
@@ -118,6 +124,7 @@ class RtcpReceiverTest : public ::testing::Test {
                        &bandwidth_observer_,
                        &intra_frame_observer_,
                        &transport_feedback_observer_,
+                       &bitrate_allocation_observer_,
                        &rtp_rtcp_impl_) {}
   void SetUp() {
     std::set<uint32_t> ssrcs = {kReceiverMainSsrc, kReceiverExtraSsrc};
@@ -142,6 +149,7 @@ class RtcpReceiverTest : public ::testing::Test {
   StrictMock<MockRtcpBandwidthObserver> bandwidth_observer_;
   StrictMock<MockRtcpIntraFrameObserver> intra_frame_observer_;
   StrictMock<MockTransportFeedbackObserver> transport_feedback_observer_;
+  StrictMock<MockVideoBitrateAllocationObserver> bitrate_allocation_observer_;
   StrictMock<MockModuleRtpRtcp> rtp_rtcp_impl_;
 
   RTCPReceiver rtcp_receiver_;
@@ -163,60 +171,6 @@ TEST_F(RtcpReceiverTest, InvalidFeedbackPacketIsIgnored) {
   // is not called once parser would be adjusted to avoid that callback on
   // semi-valid packets.
   InjectRtcpPacket(bad_packet);
-}
-
-TEST_F(RtcpReceiverTest, RpsiWithFractionalPaddingIsIgnored) {
-  // Padding size represent fractional number of bytes.
-  const uint8_t kPaddingSizeBits = 0x0b;
-  // clang-format off
-  const uint8_t bad_packet[] = {0x80 | rtcp::Rpsi::kFeedbackMessageType,
-                                      rtcp::Rpsi::kPacketType, 0, 3,
-                                0x12, 0x34, 0x56, 0x78,
-                                0x98, 0x76, 0x54, 0x32,
-                                kPaddingSizeBits, 0x00, 0x00, 0x00};
-  // clang-format on
-  EXPECT_CALL(intra_frame_observer_, OnReceivedRPSI(_, _)).Times(0);
-  InjectRtcpPacket(bad_packet);
-}
-
-TEST_F(RtcpReceiverTest, RpsiWithTooLargePaddingIsIgnored) {
-  // Padding size exceeds packet size.
-  const uint8_t kPaddingSizeBits = 0xa8;
-  // clang-format off
-  const uint8_t bad_packet[] = {0x80 | rtcp::Rpsi::kFeedbackMessageType,
-                                      rtcp::Rpsi::kPacketType, 0, 3,
-                                0x12, 0x34, 0x56, 0x78,
-                                0x98, 0x76, 0x54, 0x32,
-                                kPaddingSizeBits, 0x00, 0x00, 0x00};
-  // clang-format on
-  EXPECT_CALL(intra_frame_observer_, OnReceivedRPSI(_, _)).Times(0);
-  InjectRtcpPacket(bad_packet);
-}
-
-// With parsing using rtcp classes this test will make no sense.
-// With current stateful parser this test was failing.
-TEST_F(RtcpReceiverTest, TwoHalfValidRpsiAreIgnored) {
-  // clang-format off
-  const uint8_t bad_packet[] = {0x80 | rtcp::Rpsi::kFeedbackMessageType,
-                                      rtcp::Rpsi::kPacketType, 0, 2,
-                                0x12, 0x34, 0x56, 0x78,
-                                0x98, 0x76, 0x54, 0x32,
-                                0x80 | rtcp::Rpsi::kFeedbackMessageType,
-                                      rtcp::Rpsi::kPacketType, 0, 2,
-                                0x12, 0x34, 0x56, 0x78,
-                                0x98, 0x76, 0x54, 0x32};
-  // clang-format on
-  EXPECT_CALL(intra_frame_observer_, OnReceivedRPSI(_, _)).Times(0);
-  InjectRtcpPacket(bad_packet);
-}
-
-TEST_F(RtcpReceiverTest, InjectRpsiPacket) {
-  const uint64_t kPictureId = 0x123456789;
-  rtcp::Rpsi rpsi;
-  rpsi.SetPictureId(kPictureId);
-
-  EXPECT_CALL(intra_frame_observer_, OnReceivedRPSI(_, kPictureId));
-  InjectRtcpPacket(rpsi);
 }
 
 TEST_F(RtcpReceiverTest, InjectSrPacket) {
@@ -261,7 +215,7 @@ TEST_F(RtcpReceiverTest, InjectSrPacketCalculatesRTT) {
   EXPECT_EQ(
       -1, rtcp_receiver_.RTT(kSenderSsrc, &rtt_ms, nullptr, nullptr, nullptr));
 
-  uint32_t sent_ntp = CompactNtp(NtpTime(system_clock_));
+  uint32_t sent_ntp = CompactNtp(system_clock_.CurrentNtpTime());
   system_clock_.AdvanceTimeMilliseconds(kRttMs + kDelayMs);
 
   rtcp::SenderReport sr;
@@ -291,7 +245,7 @@ TEST_F(RtcpReceiverTest, InjectSrPacketCalculatesNegativeRTTAsOne) {
   EXPECT_EQ(
       -1, rtcp_receiver_.RTT(kSenderSsrc, &rtt_ms, nullptr, nullptr, nullptr));
 
-  uint32_t sent_ntp = CompactNtp(NtpTime(system_clock_));
+  uint32_t sent_ntp = CompactNtp(system_clock_.CurrentNtpTime());
   system_clock_.AdvanceTimeMilliseconds(kRttMs + kDelayMs);
 
   rtcp::SenderReport sr;
@@ -673,15 +627,6 @@ TEST_F(RtcpReceiverTest, FirPacketNotToUsIgnored) {
   InjectRtcpPacket(fir);
 }
 
-TEST_F(RtcpReceiverTest, InjectSliPacket) {
-  const uint8_t kPictureId = 40;
-  rtcp::Sli sli;
-  sli.AddPictureId(kPictureId);
-
-  EXPECT_CALL(intra_frame_observer_, OnReceivedSLI(_, kPictureId));
-  InjectRtcpPacket(sli);
-}
-
 TEST_F(RtcpReceiverTest, ExtendedReportsPacketWithZeroReportBlocksIgnored) {
   rtcp::ExtendedReports xr;
   xr.SetSenderSsrc(kSenderSsrc);
@@ -764,7 +709,7 @@ TEST_F(RtcpReceiverTest, InjectExtendedReportsDlrrPacketWithSubBlock) {
 
   InjectRtcpPacket(xr);
 
-  uint32_t compact_ntp_now = CompactNtp(NtpTime(system_clock_));
+  uint32_t compact_ntp_now = CompactNtp(system_clock_.CurrentNtpTime());
   EXPECT_TRUE(rtcp_receiver_.GetAndResetXrRrRtt(&rtt_ms));
   uint32_t rtt_ntp = compact_ntp_now - kDelay - kLastRR;
   EXPECT_NEAR(CompactNtpRttToMs(rtt_ntp), rtt_ms, 1);
@@ -783,7 +728,7 @@ TEST_F(RtcpReceiverTest, InjectExtendedReportsDlrrPacketWithMultipleSubBlocks) {
 
   InjectRtcpPacket(xr);
 
-  uint32_t compact_ntp_now = CompactNtp(NtpTime(system_clock_));
+  uint32_t compact_ntp_now = CompactNtp(system_clock_.CurrentNtpTime());
   int64_t rtt_ms = 0;
   EXPECT_TRUE(rtcp_receiver_.GetAndResetXrRrRtt(&rtt_ms));
   uint32_t rtt_ntp = compact_ntp_now - kDelay - kLastRR;
@@ -849,7 +794,7 @@ TEST_F(RtcpReceiverTest, RttCalculatedAfterExtendedReportsDlrr) {
   const uint32_t kDelayNtp = rand.Rand(0, 0x7fffffff);
   const int64_t kDelayMs = CompactNtpRttToMs(kDelayNtp);
   rtcp_receiver_.SetRtcpXrRrtrStatus(true);
-  NtpTime now(system_clock_);
+  NtpTime now = system_clock_.CurrentNtpTime();
   uint32_t sent_ntp = CompactNtp(now);
   system_clock_.AdvanceTimeMilliseconds(kRttMs + kDelayMs);
 
@@ -869,7 +814,7 @@ TEST_F(RtcpReceiverTest, XrDlrrCalculatesNegativeRttAsOne) {
   const int64_t kRttMs = rand.Rand(-3600 * 1000, -1);
   const uint32_t kDelayNtp = rand.Rand(0, 0x7fffffff);
   const int64_t kDelayMs = CompactNtpRttToMs(kDelayNtp);
-  NtpTime now(system_clock_);
+  NtpTime now = system_clock_.CurrentNtpTime();
   uint32_t sent_ntp = CompactNtp(now);
   system_clock_.AdvanceTimeMilliseconds(kRttMs + kDelayMs);
   rtcp_receiver_.SetRtcpXrRrtrStatus(true);
@@ -1264,6 +1209,44 @@ TEST_F(RtcpReceiverTest, ForceSenderReport) {
 
   EXPECT_CALL(rtp_rtcp_impl_, OnRequestSendReport());
   InjectRtcpPacket(rr);
+}
+
+TEST_F(RtcpReceiverTest, ReceivesTargetBitrate) {
+  BitrateAllocation expected_allocation;
+  expected_allocation.SetBitrate(0, 0, 10000);
+  expected_allocation.SetBitrate(0, 1, 20000);
+  expected_allocation.SetBitrate(1, 0, 40000);
+  expected_allocation.SetBitrate(1, 1, 80000);
+
+  rtcp::TargetBitrate bitrate;
+  bitrate.AddTargetBitrate(0, 0, expected_allocation.GetBitrate(0, 0) / 1000);
+  bitrate.AddTargetBitrate(0, 1, expected_allocation.GetBitrate(0, 1) / 1000);
+  bitrate.AddTargetBitrate(1, 0, expected_allocation.GetBitrate(1, 0) / 1000);
+  bitrate.AddTargetBitrate(1, 1, expected_allocation.GetBitrate(1, 1) / 1000);
+
+  rtcp::ExtendedReports xr;
+  xr.SetTargetBitrate(bitrate);
+
+  EXPECT_CALL(bitrate_allocation_observer_,
+              OnBitrateAllocationUpdated(expected_allocation));
+  InjectRtcpPacket(xr);
+}
+
+TEST_F(RtcpReceiverTest, HandlesIncorrectTargetBitrate) {
+  BitrateAllocation expected_allocation;
+  expected_allocation.SetBitrate(0, 0, 10000);
+
+  rtcp::TargetBitrate bitrate;
+  bitrate.AddTargetBitrate(0, 0, expected_allocation.GetBitrate(0, 0) / 1000);
+  bitrate.AddTargetBitrate(0, kMaxTemporalStreams, 20000);
+  bitrate.AddTargetBitrate(kMaxSpatialLayers, 0, 40000);
+
+  rtcp::ExtendedReports xr;
+  xr.SetTargetBitrate(bitrate);
+
+  EXPECT_CALL(bitrate_allocation_observer_,
+              OnBitrateAllocationUpdated(expected_allocation));
+  InjectRtcpPacket(xr);
 }
 
 }  // namespace webrtc

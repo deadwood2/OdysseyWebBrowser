@@ -32,9 +32,9 @@
 #include "InspectorWebAgentBase.h"
 #include "SecurityContext.h"
 #include <inspector/InspectorBackendDispatchers.h>
-#include <inspector/InspectorValues.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
+#include <wtf/JSONValues.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
 
@@ -112,13 +112,13 @@ public:
     void getStyleSheet(ErrorString&, const String& styleSheetId, RefPtr<Inspector::Protocol::CSS::CSSStyleSheetBody>& result) override;
     void getStyleSheetText(ErrorString&, const String& styleSheetId, String* result) override;
     void setStyleSheetText(ErrorString&, const String& styleSheetId, const String& text) override;
-    void setStyleText(ErrorString&, const Inspector::InspectorObject& styleId, const String& text, RefPtr<Inspector::Protocol::CSS::CSSStyle>& result) override;
-    void setRuleSelector(ErrorString&, const Inspector::InspectorObject& ruleId, const String& selector, RefPtr<Inspector::Protocol::CSS::CSSRule>& result) override;
+    void setStyleText(ErrorString&, const JSON::Object& styleId, const String& text, RefPtr<Inspector::Protocol::CSS::CSSStyle>& result) override;
+    void setRuleSelector(ErrorString&, const JSON::Object& ruleId, const String& selector, RefPtr<Inspector::Protocol::CSS::CSSRule>& result) override;
     void createStyleSheet(ErrorString&, const String& frameId, String* styleSheetId) override;
     void addRule(ErrorString&, const String& styleSheetId, const String& selector, RefPtr<Inspector::Protocol::CSS::CSSRule>& result) override;
     void getSupportedCSSProperties(ErrorString&, RefPtr<Inspector::Protocol::Array<Inspector::Protocol::CSS::CSSPropertyInfo>>& result) override;
     void getSupportedSystemFontFamilyNames(ErrorString&, RefPtr<Inspector::Protocol::Array<String>>& result) override;
-    void forcePseudoState(ErrorString&, int nodeId, const Inspector::InspectorArray& forcedPseudoClasses) override;
+    void forcePseudoState(ErrorString&, int nodeId, const JSON::Array& forcedPseudoClasses) override;
     void getNamedFlowCollection(ErrorString&, int documentNodeId, RefPtr<Inspector::Protocol::Array<Inspector::Protocol::CSS::NamedFlow>>& result) override;
 
 private:
@@ -135,7 +135,7 @@ private:
     typedef HashMap<int, unsigned> NodeIdToForcedPseudoState;
 
     void resetNonPersistentData();
-    InspectorStyleSheetForInlineStyle* asInspectorStyleSheet(Element* element);
+    InspectorStyleSheetForInlineStyle& asInspectorStyleSheet(StyledElement&);
     Element* elementForId(ErrorString&, int nodeId);
     int documentNodeWithRequestedFlowsId(Document*);
 
@@ -153,7 +153,7 @@ private:
     RefPtr<Inspector::Protocol::CSS::CSSRule> buildObjectForRule(StyleRule*, StyleResolver&, Element&);
     RefPtr<Inspector::Protocol::CSS::CSSRule> buildObjectForRule(CSSStyleRule*);
     RefPtr<Inspector::Protocol::Array<Inspector::Protocol::CSS::RuleMatch>> buildArrayForMatchedRuleList(const Vector<RefPtr<StyleRule>>&, StyleResolver&, Element&, PseudoId);
-    RefPtr<Inspector::Protocol::CSS::CSSStyle> buildObjectForAttributesStyle(Element*);
+    RefPtr<Inspector::Protocol::CSS::CSSStyle> buildObjectForAttributesStyle(StyledElement&);
     RefPtr<Inspector::Protocol::Array<Inspector::Protocol::CSS::Region>> buildArrayForRegions(ErrorString&, RefPtr<NodeList>&&, int documentNodeId);
     RefPtr<Inspector::Protocol::CSS::NamedFlow> buildObjectForNamedFlow(ErrorString&, WebKitNamedFlow*, int documentNodeId);
 

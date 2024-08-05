@@ -11,6 +11,7 @@
 #ifndef WEBRTC_COMMON_AUDIO_INCLUDE_AUDIO_UTIL_H_
 #define WEBRTC_COMMON_AUDIO_INCLUDE_AUDIO_UTIL_H_
 
+#include <algorithm>
 #include <limits>
 #include <cstring>
 
@@ -154,7 +155,7 @@ void DownmixInterleavedToMonoImpl(const T* interleaved,
                                   int num_channels,
                                   T* deinterleaved) {
   RTC_DCHECK_GT(num_channels, 0);
-  RTC_DCHECK_GT(num_frames, 0u);
+  RTC_DCHECK_GT(num_frames, 0);
 
   const T* const end = interleaved + num_frames * num_channels;
 

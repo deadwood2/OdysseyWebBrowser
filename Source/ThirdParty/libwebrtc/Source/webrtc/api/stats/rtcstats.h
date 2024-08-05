@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "webrtc/base/checks.h"
+#include "webrtc/base/export.h"
 
 namespace webrtc {
 
@@ -67,13 +68,14 @@ class RTCStats {
   // |Members| always returns the same members in the same order.
   std::vector<const RTCStatsMemberInterface*> Members() const;
   // Checks if the two stats objects are of the same type and have the same
-  // member values. These operators are exposed for testing.
+  // member values. Timestamps are not compared. These operators are exposed for
+  // testing.
   bool operator==(const RTCStats& other) const;
   bool operator!=(const RTCStats& other) const;
 
   // Creates a human readable string representation of the stats object, listing
   // all of its members (names and values).
-  std::string ToString() const;
+  WEBRTC_DYLIB_EXPORT std::string ToString() const;
 
   // Downcasts the stats object to an |RTCStats| subclass |T|. DCHECKs that the
   // object is of type |T|.
@@ -139,7 +141,7 @@ class RTCStats {
 //
 #define WEBRTC_RTCSTATS_DECL()                                                 \
  public:                                                                       \
-  static const char kType[];                                                   \
+  WEBRTC_DYLIB_EXPORT static const char kType[];                                                   \
                                                                                \
   std::unique_ptr<webrtc::RTCStats> copy() const override;                     \
   const char* type() const override;                                           \
@@ -271,6 +273,8 @@ class RTCStatsMember : public RTCStatsMemberInterface {
         static_cast<const RTCStatsMember<T>&>(other);
     if (!is_defined_)
       return !other_t.is_defined();
+    if (!other.is_defined())
+      return false;
     return value_ == other_t.value_;
   }
   std::string ValueToString() const override;

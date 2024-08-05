@@ -13,7 +13,8 @@
 #include <algorithm>
 
 #include "webrtc/base/checks.h"
-#include "webrtc/system_wrappers/include/logging.h"
+#include "webrtc/base/logging.h"
+#include "webrtc/base/timeutils.h"
 
 #ifdef ENABLE_RTC_EVENT_LOG
 
@@ -34,12 +35,9 @@ bool IsConfigEvent(const rtclog::Event& event) {
 // RtcEventLogImpl member functions.
 RtcEventLogHelperThread::RtcEventLogHelperThread(
     SwapQueue<ControlMessage>* message_queue,
-    SwapQueue<std::unique_ptr<rtclog::Event>>* event_queue,
-    const Clock* const clock)
+    SwapQueue<std::unique_ptr<rtclog::Event>>* event_queue)
     : message_queue_(message_queue),
       event_queue_(event_queue),
-      history_(kEventsInHistory),
-      config_history_(),
       file_(FileWrapper::Create()),
       thread_(&ThreadOutputFunction, this, "RtcEventLog thread"),
       max_size_bytes_(std::numeric_limits<int64_t>::max()),
@@ -47,22 +45,18 @@ RtcEventLogHelperThread::RtcEventLogHelperThread(
       start_time_(0),
       stop_time_(std::numeric_limits<int64_t>::max()),
       has_recent_event_(false),
-      most_recent_event_(),
-      output_string_(),
       wake_periodically_(false, false),
       wake_from_hibernation_(false, false),
-      file_finished_(false, false),
-      clock_(clock) {
+      file_finished_(false, false) {
   RTC_DCHECK(message_queue_);
   RTC_DCHECK(event_queue_);
-  RTC_DCHECK(clock_);
   thread_.Start();
 }
 
 RtcEventLogHelperThread::~RtcEventLogHelperThread() {
   ControlMessage message;
   message.message_type = ControlMessage::TERMINATE_THREAD;
-  message.stop_time = clock_->TimeInMicroseconds();
+  message.stop_time = rtc::TimeMicros();
   while (!message_queue_->Insert(&message)) {
     // We can't destroy the event log until we have stopped the thread,
     // so clear the message queue and try again. Note that if we clear
@@ -112,7 +106,7 @@ bool RtcEventLogHelperThread::LogToMemory() {
 
   // Process each event earlier than the current time and append it to the
   // appropriate history_.
-  int64_t current_time = clock_->TimeInMicroseconds();
+  int64_t current_time = rtc::TimeMicros();
   if (!has_recent_event_) {
     has_recent_event_ = event_queue_->Remove(&most_recent_event_);
   }
@@ -122,6 +116,8 @@ bool RtcEventLogHelperThread::LogToMemory() {
       config_history_.push_back(std::move(most_recent_event_));
     } else {
       history_.push_back(std::move(most_recent_event_));
+      if (history_.size() > kEventsInHistory)
+        history_.pop_front();
     }
     has_recent_event_ = event_queue_->Remove(&most_recent_event_);
     message_received = true;
@@ -180,7 +176,7 @@ bool RtcEventLogHelperThread::LogToFile() {
 
   // Append each event older than both the current time and the stop time
   // to the output_string_.
-  int64_t current_time = clock_->TimeInMicroseconds();
+  int64_t current_time = rtc::TimeMicros();
   int64_t time_limit = std::min(current_time, stop_time_);
   if (!has_recent_event_) {
     has_recent_event_ = event_queue_->Remove(&most_recent_event_);
@@ -228,7 +224,7 @@ void RtcEventLogHelperThread::StopLogFile() {
   // or because we have reached the log file size limit. Therefore, use the
   // current time if we have not reached the time limit.
   end_event.set_timestamp_us(
-      std::min(stop_time_, clock_->TimeInMicroseconds()));
+      std::min(stop_time_, rtc::TimeMicros()));
   end_event.set_type(rtclog::Event::LOG_END);
   AppendEventToString(&end_event);
 
@@ -309,10 +305,9 @@ void RtcEventLogHelperThread::ProcessEvents() {
   }
 }
 
-bool RtcEventLogHelperThread::ThreadOutputFunction(void* obj) {
+void RtcEventLogHelperThread::ThreadOutputFunction(void* obj) {
   RtcEventLogHelperThread* helper = static_cast<RtcEventLogHelperThread*>(obj);
   helper->ProcessEvents();
-  return false;
 }
 
 }  // namespace webrtc

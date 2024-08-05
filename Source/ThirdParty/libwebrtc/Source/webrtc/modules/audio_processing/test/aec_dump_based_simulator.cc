@@ -29,9 +29,10 @@ bool VerifyFixedBitExactness(const webrtc::audioproc::Stream& msg,
       msg.output_data().size()) {
     return false;
   } else {
+    const int16_t* frame_data = frame.data();
     for (size_t k = 0; k < frame.num_channels_ * frame.samples_per_channel_;
          ++k) {
-      if (msg.output_data().data()[k] != frame.data_[k]) {
+      if (msg.output_data().data()[k] != frame_data[k]) {
         return false;
       }
     }
@@ -62,6 +63,11 @@ bool VerifyFloatBitExactness(const webrtc::audioproc::Stream& msg,
 
 }  // namespace
 
+AecDumpBasedSimulator::AecDumpBasedSimulator(const SimulationSettings& settings)
+    : AudioProcessingSimulator(settings) {}
+
+AecDumpBasedSimulator::~AecDumpBasedSimulator() = default;
+
 void AecDumpBasedSimulator::PrepareProcessStreamCall(
     const webrtc::audioproc::Stream& msg,
     bool* set_stream_analog_level_called) {
@@ -73,10 +79,11 @@ void AecDumpBasedSimulator::PrepareProcessStreamCall(
     interface_used_ = InterfaceType::kFixedInterface;
 
     // Populate input buffer.
-    RTC_CHECK_EQ(sizeof(fwd_frame_.data_[0]) * fwd_frame_.samples_per_channel_ *
+    RTC_CHECK_EQ(sizeof(*fwd_frame_.data()) * fwd_frame_.samples_per_channel_ *
                      fwd_frame_.num_channels_,
                  msg.input_data().size());
-    memcpy(fwd_frame_.data_, msg.input_data().data(), msg.input_data().size());
+    memcpy(fwd_frame_.mutable_data(), msg.input_data().data(),
+           msg.input_data().size());
   } else {
     // Float interface processing.
     // Verify interface invariance.
@@ -88,11 +95,40 @@ void AecDumpBasedSimulator::PrepareProcessStreamCall(
                  static_cast<size_t>(msg.input_channel_size()));
 
     // Populate input buffer.
-    for (int i = 0; i < msg.input_channel_size(); ++i) {
+    for (size_t i = 0; i < in_buf_->num_channels(); ++i) {
       RTC_CHECK_EQ(in_buf_->num_frames() * sizeof(*in_buf_->channels()[i]),
                    msg.input_channel(i).size());
       std::memcpy(in_buf_->channels()[i], msg.input_channel(i).data(),
                   msg.input_channel(i).size());
+    }
+  }
+
+  if (artificial_nearend_buffer_reader_) {
+    if (artificial_nearend_buffer_reader_->Read(
+            artificial_nearend_buf_.get())) {
+      if (msg.has_input_data()) {
+        int16_t* fwd_frame_data = fwd_frame_.mutable_data();
+        for (size_t k = 0; k < in_buf_->num_frames(); ++k) {
+          fwd_frame_data[k] = rtc::saturated_cast<int16_t>(
+              fwd_frame_data[k] +
+              static_cast<int16_t>(32767 *
+                                   artificial_nearend_buf_->channels()[0][k]));
+        }
+      } else {
+        for (int i = 0; i < msg.input_channel_size(); ++i) {
+          for (size_t k = 0; k < in_buf_->num_frames(); ++k) {
+            in_buf_->channels()[i][k] +=
+                artificial_nearend_buf_->channels()[0][k];
+            in_buf_->channels()[i][k] = std::min(
+                32767.f, std::max(-32768.f, in_buf_->channels()[i][k]));
+          }
+        }
+      }
+    } else {
+      if (!artificial_nearend_eof_reported_) {
+        std::cout << "The artificial nearend file ended before the recording.";
+        artificial_nearend_eof_reported_ = true;
+      }
     }
   }
 
@@ -158,7 +194,7 @@ void AecDumpBasedSimulator::PrepareReverseProcessStreamCall(
     RTC_CHECK_EQ(sizeof(int16_t) * rev_frame_.samples_per_channel_ *
                      rev_frame_.num_channels_,
                  msg.data().size());
-    memcpy(rev_frame_.data_, msg.data().data(), msg.data().size());
+    memcpy(rev_frame_.mutable_data(), msg.data().data(), msg.data().size());
   } else {
     // Float interface processing.
     // Verify interface invariance.
@@ -188,6 +224,21 @@ void AecDumpBasedSimulator::Process() {
 
   CreateAudioProcessor();
   dump_input_file_ = OpenFile(settings_.aec_dump_input_filename->c_str(), "rb");
+
+  if (settings_.artificial_nearend_filename) {
+    std::unique_ptr<WavReader> artificial_nearend_file(
+        new WavReader(settings_.artificial_nearend_filename->c_str()));
+
+    RTC_CHECK_EQ(1, artificial_nearend_file->num_channels())
+        << "Only mono files for the artificial nearend are supported, "
+           "reverted to not using the artificial nearend file";
+
+    const int sample_rate_hz = artificial_nearend_file->sample_rate();
+    artificial_nearend_buffer_reader_.reset(
+        new ChannelBufferWavReader(std::move(artificial_nearend_file)));
+    artificial_nearend_buf_.reset(new ChannelBuffer<float>(
+        rtc::CheckedDivExact(sample_rate_hz, kChunksPerSecond), 1));
+  }
 
   webrtc::audioproc::Event event_msg;
   int num_forward_chunks_processed = 0;
@@ -403,8 +454,7 @@ void AecDumpBasedSimulator::HandleMessage(
 
     if (msg.has_hpf_enabled() || settings_.use_hpf) {
       bool enable = settings_.use_hpf ? *settings_.use_hpf : msg.hpf_enabled();
-      RTC_CHECK_EQ(AudioProcessing::kNoError,
-                   ap_->high_pass_filter()->Enable(enable));
+      apm_config.high_pass_filter.enabled = enable;
       if (settings_.use_verbose_logging) {
         std::cout << " hpf_enabled: " << (enable ? "true" : "false")
                   << std::endl;
@@ -443,15 +493,15 @@ void AecDumpBasedSimulator::HandleMessage(
     }
 
     if (settings_.use_aec3) {
-      config.Set<EchoCanceller3>(new EchoCanceller3(*settings_.use_aec3));
+      apm_config.echo_canceller3.enabled = *settings_.use_aec3;
     }
 
     if (settings_.use_lc) {
       apm_config.level_controller.enabled = *settings_.use_lc;
     }
 
-    if (settings_.use_red) {
-      apm_config.residual_echo_detector.enabled = *settings_.use_red;
+    if (settings_.use_ed) {
+      apm_config.residual_echo_detector.enabled = *settings_.use_ed;
     }
 
     ap_->ApplyConfig(apm_config);

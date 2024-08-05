@@ -57,11 +57,8 @@ bool LoopBackTransport::SendRtp(const uint8_t* data,
   RTC_CHECK_GE(len, header.headerLength);
   const size_t payload_length = len - header.headerLength;
   receive_statistics_->IncomingPacket(header, len, false);
-  if (!rtp_receiver_->IncomingRtpPacket(header, payload, payload_length,
-                                        payload_specific, true)) {
-    return false;
-  }
-  return true;
+  return rtp_receiver_->IncomingRtpPacket(header, payload, payload_length,
+                                          payload_specific, true);
 }
 
 bool LoopBackTransport::SendRtcp(const uint8_t* data, size_t len) {
@@ -94,6 +91,8 @@ class RtpRtcpAPITest : public ::testing::Test {
   }
   ~RtpRtcpAPITest() {}
 
+  const uint32_t initial_ssrc = 8888;
+
   void SetUp() override {
     RtpRtcp::Configuration configuration;
     configuration.audio = true;
@@ -101,14 +100,11 @@ class RtpRtcpAPITest : public ::testing::Test {
     configuration.outgoing_transport = &null_transport_;
     configuration.retransmission_rate_limiter = &retransmission_rate_limiter_;
     module_.reset(RtpRtcp::CreateRtpRtcp(configuration));
-    rtp_payload_registry_.reset(new RTPPayloadRegistry(
-            RTPPayloadStrategy::CreateStrategy(true)));
-    rtp_receiver_.reset(RtpReceiver::CreateAudioReceiver(
-        &fake_clock_, NULL, NULL, rtp_payload_registry_.get()));
+    module_->SetSSRC(initial_ssrc);
+    rtp_payload_registry_.reset(new RTPPayloadRegistry());
   }
 
   std::unique_ptr<RTPPayloadRegistry> rtp_payload_registry_;
-  std::unique_ptr<RtpReceiver> rtp_receiver_;
   std::unique_ptr<RtpRtcp> module_;
   uint32_t test_ssrc_;
   uint32_t test_timestamp_;
@@ -131,20 +127,9 @@ TEST_F(RtpRtcpAPITest, Basic) {
   EXPECT_TRUE(module_->Sending());
 }
 
-TEST_F(RtpRtcpAPITest, MTU) {
-  EXPECT_EQ(0, module_->SetMaxTransferUnit(1234));
-  EXPECT_EQ(1234 - 20 - 8, module_->MaxPayloadLength());
-
-  EXPECT_EQ(0, module_->SetTransportOverhead(true, true, 12));
-  EXPECT_EQ(1234 - 20 - 20 - 20 - 12, module_->MaxPayloadLength());
-
-  EXPECT_EQ(0, module_->SetTransportOverhead(false, false, 0));
-  EXPECT_EQ(1234 - 20 - 8, module_->MaxPayloadLength());
-
-  module_->SetTransportOverhead(28);
-  EXPECT_EQ(1234 - 28, module_->MaxPayloadLength());
-  module_->SetTransportOverhead(44);
-  EXPECT_EQ(1234 - 44, module_->MaxPayloadLength());
+TEST_F(RtpRtcpAPITest, PacketSize) {
+  module_->SetMaxRtpPacketSize(1234);
+  EXPECT_EQ(1234u, module_->MaxRtpPacketSize());
 }
 
 TEST_F(RtpRtcpAPITest, SSRC) {

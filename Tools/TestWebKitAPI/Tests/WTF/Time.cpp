@@ -314,5 +314,76 @@ TEST(WTF_Time, literals)
     EXPECT_TRUE(Seconds::fromNanoseconds(2.5) == 2.5_ns);
 }
 
+TEST(WTF_Time, clamp)
+{
+    Seconds positiveInfinity = Seconds::infinity();
+    EXPECT_TRUE(positiveInfinity.secondsAs<int32_t>() == INT32_MAX);
+    EXPECT_TRUE(positiveInfinity.secondsAs<uint32_t>() == UINT32_MAX);
+    EXPECT_TRUE(positiveInfinity.secondsAs<int64_t>() == INT64_MAX);
+    EXPECT_TRUE(positiveInfinity.secondsAs<uint64_t>() == UINT64_MAX);
+    EXPECT_TRUE(positiveInfinity.millisecondsAs<int32_t>() == INT32_MAX);
+    EXPECT_TRUE(positiveInfinity.millisecondsAs<uint32_t>() == UINT32_MAX);
+    EXPECT_TRUE(positiveInfinity.millisecondsAs<int64_t>() == INT64_MAX);
+    EXPECT_TRUE(positiveInfinity.millisecondsAs<uint64_t>() == UINT64_MAX);
+    EXPECT_TRUE(positiveInfinity.microsecondsAs<int32_t>() == INT32_MAX);
+    EXPECT_TRUE(positiveInfinity.microsecondsAs<uint32_t>() == UINT32_MAX);
+    EXPECT_TRUE(positiveInfinity.microsecondsAs<int64_t>() == INT64_MAX);
+    EXPECT_TRUE(positiveInfinity.microsecondsAs<uint64_t>() == UINT64_MAX);
+    EXPECT_TRUE(positiveInfinity.nanosecondsAs<int32_t>() == INT32_MAX);
+    EXPECT_TRUE(positiveInfinity.nanosecondsAs<uint32_t>() == UINT32_MAX);
+    EXPECT_TRUE(positiveInfinity.nanosecondsAs<int64_t>() == INT64_MAX);
+    EXPECT_TRUE(positiveInfinity.nanosecondsAs<uint64_t>() == UINT64_MAX);
+
+    Seconds negativeInfinity = -Seconds::infinity();
+    EXPECT_TRUE(negativeInfinity.secondsAs<int32_t>() == INT32_MIN);
+    EXPECT_TRUE(negativeInfinity.secondsAs<uint32_t>() == 0);
+    EXPECT_TRUE(negativeInfinity.secondsAs<int64_t>() == INT64_MIN);
+    EXPECT_TRUE(negativeInfinity.secondsAs<uint64_t>() == 0);
+    EXPECT_TRUE(negativeInfinity.millisecondsAs<int32_t>() == INT32_MIN);
+    EXPECT_TRUE(negativeInfinity.millisecondsAs<uint32_t>() == 0);
+    EXPECT_TRUE(negativeInfinity.millisecondsAs<int64_t>() == INT64_MIN);
+    EXPECT_TRUE(negativeInfinity.millisecondsAs<uint64_t>() == 0);
+    EXPECT_TRUE(negativeInfinity.microsecondsAs<int32_t>() == INT32_MIN);
+    EXPECT_TRUE(negativeInfinity.microsecondsAs<uint32_t>() == 0);
+    EXPECT_TRUE(negativeInfinity.microsecondsAs<int64_t>() == INT64_MIN);
+    EXPECT_TRUE(negativeInfinity.microsecondsAs<uint64_t>() == 0);
+    EXPECT_TRUE(negativeInfinity.nanosecondsAs<int32_t>() == INT32_MIN);
+    EXPECT_TRUE(negativeInfinity.nanosecondsAs<uint32_t>() == 0);
+    EXPECT_TRUE(negativeInfinity.nanosecondsAs<int64_t>() == INT64_MIN);
+    EXPECT_TRUE(negativeInfinity.nanosecondsAs<uint64_t>() == 0);
+}
+
+// Test MonotonicTime constexpr features. If they are not calculated in constexpr,
+// they invokes global constructors and becomes compile errors.
+static const MonotonicTime NaN = MonotonicTime::nan();
+static const MonotonicTime Infinity = MonotonicTime::infinity();
+static const MonotonicTime Zero = MonotonicTime::fromRawSeconds(0);
+static const MonotonicTime One = Zero + Seconds(1);
+static const MonotonicTime NegativeOne = Zero - Seconds(1);
+static const bool ZeroIsFalse = !!Zero;
+static const bool Equal = Zero == Zero;
+static const bool NotEqual = Zero != One;
+static const bool LessThan = Zero < One;
+static const bool GreaterThan = One > Zero;
+static const bool LessThanOrEqual = Zero <= Zero;
+static const bool GreaterThanOrEqual = Zero >= Zero;
+
+TEST(WTF_Time, constexprMonotonicTime)
+{
+    EXPECT_TRUE(std::isnan(NaN));
+    EXPECT_TRUE(std::isinf(Infinity));
+    EXPECT_TRUE(Zero.secondsSinceEpoch().value() == 0.0);
+    EXPECT_TRUE(One.secondsSinceEpoch().value() == 1.0);
+    EXPECT_TRUE(NegativeOne.secondsSinceEpoch().value() == -1.0);
+    EXPECT_FALSE(ZeroIsFalse);
+    EXPECT_TRUE(Equal);
+    EXPECT_TRUE(NotEqual);
+    EXPECT_TRUE(LessThan);
+    EXPECT_TRUE(GreaterThan);
+    EXPECT_TRUE(LessThanOrEqual);
+    EXPECT_TRUE(GreaterThanOrEqual);
+}
+
+
 } // namespace TestWebKitAPI
 

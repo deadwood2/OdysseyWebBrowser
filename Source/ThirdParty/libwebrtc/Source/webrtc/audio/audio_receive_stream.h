@@ -12,18 +12,20 @@
 #define WEBRTC_AUDIO_AUDIO_RECEIVE_STREAM_H_
 
 #include <memory>
+#include <vector>
 
 #include "webrtc/api/audio/audio_mixer.h"
-#include "webrtc/api/call/audio_receive_stream.h"
-#include "webrtc/api/call/audio_state.h"
+#include "webrtc/audio/audio_state.h"
 #include "webrtc/base/constructormagic.h"
 #include "webrtc/base/thread_checker.h"
-#include "webrtc/modules/rtp_rtcp/include/rtp_header_parser.h"
+#include "webrtc/call/audio_receive_stream.h"
+#include "webrtc/call/rtp_packet_sink_interface.h"
+#include "webrtc/call/syncable.h"
 
 namespace webrtc {
-class CongestionController;
-class RemoteBitrateEstimator;
+class PacketRouter;
 class RtcEventLog;
+class RtpPacketReceived;
 
 namespace voe {
 class ChannelProxy;
@@ -33,9 +35,11 @@ namespace internal {
 class AudioSendStream;
 
 class AudioReceiveStream final : public webrtc::AudioReceiveStream,
-                                 public AudioMixer::Source {
+                                 public AudioMixer::Source,
+                                 public Syncable,
+                                 public RtpPacketSinkInterface {
  public:
-  AudioReceiveStream(CongestionController* congestion_controller,
+  AudioReceiveStream(PacketRouter* packet_router,
                      const webrtc::AudioReceiveStream::Config& config,
                      const rtc::scoped_refptr<webrtc::AudioState>& audio_state,
                      webrtc::RtcEventLog* event_log);
@@ -45,32 +49,43 @@ class AudioReceiveStream final : public webrtc::AudioReceiveStream,
   void Start() override;
   void Stop() override;
   webrtc::AudioReceiveStream::Stats GetStats() const override;
+  int GetOutputLevel() const override;
   void SetSink(std::unique_ptr<AudioSinkInterface> sink) override;
   void SetGain(float gain) override;
+  std::vector<webrtc::RtpSource> GetSources() const override;
 
-  void AssociateSendStream(AudioSendStream* send_stream);
-  void SignalNetworkState(NetworkState state);
-  bool DeliverRtcp(const uint8_t* packet, size_t length);
-  bool DeliverRtp(const uint8_t* packet,
-                  size_t length,
-                  const PacketTime& packet_time);
-  const webrtc::AudioReceiveStream::Config& config() const;
+  // RtpPacketSinkInterface.
+  void OnRtpPacket(const RtpPacketReceived& packet) override;
 
   // AudioMixer::Source
   AudioFrameInfo GetAudioFrameWithInfo(int sample_rate_hz,
                                        AudioFrame* audio_frame) override;
-  int PreferredSampleRate() const override;
   int Ssrc() const override;
+  int PreferredSampleRate() const override;
+
+  // Syncable
+  int id() const override;
+  rtc::Optional<Syncable::Info> GetInfo() const override;
+  uint32_t GetPlayoutTimestamp() const override;
+  void SetMinimumPlayoutDelay(int delay_ms) override;
+
+  void AssociateSendStream(AudioSendStream* send_stream);
+  void SignalNetworkState(NetworkState state);
+  bool DeliverRtcp(const uint8_t* packet, size_t length);
+  const webrtc::AudioReceiveStream::Config& config() const;
 
  private:
   VoiceEngine* voice_engine() const;
+  AudioState* audio_state() const;
+  int SetVoiceEnginePlayout(bool playout);
 
-  rtc::ThreadChecker thread_checker_;
-  RemoteBitrateEstimator* remote_bitrate_estimator_ = nullptr;
+  rtc::ThreadChecker worker_thread_checker_;
+  rtc::ThreadChecker module_process_thread_checker_;
   const webrtc::AudioReceiveStream::Config config_;
   rtc::scoped_refptr<webrtc::AudioState> audio_state_;
-  std::unique_ptr<RtpHeaderParser> rtp_header_parser_;
   std::unique_ptr<voe::ChannelProxy> channel_proxy_;
+
+  bool playing_ ACCESS_ON(worker_thread_checker_) = false;
 
   RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(AudioReceiveStream);
 };

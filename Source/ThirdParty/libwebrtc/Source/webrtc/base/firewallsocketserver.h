@@ -26,8 +26,8 @@ enum FirewallDirection { FD_IN, FD_OUT, FD_ANY };
 
 class FirewallSocketServer : public SocketServer {
  public:
-  FirewallSocketServer(SocketServer * server,
-                       FirewallManager * manager = NULL,
+  FirewallSocketServer(SocketServer* server,
+                       FirewallManager* manager = nullptr,
                        bool should_delete_server = false);
   ~FirewallSocketServer() override;
 
@@ -35,7 +35,7 @@ class FirewallSocketServer : public SocketServer {
   void set_socketserver(SocketServer* server) {
     if (server_ && should_delete_server_) {
       delete server_;
-      server_ = NULL;
+      server_ = nullptr;
       should_delete_server_ = false;
     }
     server_ = server;
@@ -57,6 +57,16 @@ class FirewallSocketServer : public SocketServer {
 
   bool Check(FirewallProtocol p,
              const SocketAddress& src, const SocketAddress& dst);
+
+  // Set the IP addresses for which Bind will fail. By default this list is
+  // empty. This can be used to simulate a real OS that refuses to bind to
+  // addresses under various circumstances.
+  //
+  // No matter how many addresses are added (including INADDR_ANY), the server
+  // will still allow creating outgoing TCP connections, since they don't
+  // require explicitly binding a socket.
+  void SetUnbindableIps(const std::vector<rtc::IPAddress>& unbindable_ips);
+  bool IsBindableIp(const rtc::IPAddress& ip);
 
   Socket* CreateSocket(int type) override;
   Socket* CreateSocket(int family, int type) override;
@@ -83,6 +93,7 @@ class FirewallSocketServer : public SocketServer {
     SocketAddress dst;
   };
   std::vector<Rule> rules_;
+  std::vector<rtc::IPAddress> unbindable_ips_;
   bool should_delete_server_;
   bool udp_sockets_enabled_;
   bool tcp_sockets_enabled_;

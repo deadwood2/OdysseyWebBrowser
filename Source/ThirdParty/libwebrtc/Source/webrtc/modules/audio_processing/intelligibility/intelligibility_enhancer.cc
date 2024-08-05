@@ -18,6 +18,7 @@
 
 #include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
+#include "webrtc/base/safe_minmax.h"
 #include "webrtc/common_audio/include/audio_util.h"
 #include "webrtc/common_audio/window_generator.h"
 
@@ -58,7 +59,7 @@ void MapToErbBands(const float* pow,
                    const std::vector<std::vector<float>>& filter_bank,
                    float* result) {
   for (size_t i = 0; i < filter_bank.size(); ++i) {
-    RTC_DCHECK_GT(filter_bank[i].size(), 0u);
+    RTC_DCHECK_GT(filter_bank[i].size(), 0);
     result[i] = kPowerNormalizationFactor *
                 DotProduct(filter_bank[i].data(), pow, filter_bank[i].size());
   }
@@ -287,23 +288,23 @@ std::vector<std::vector<float>> IntelligibilityEnhancer::CreateErbBank(
   }
 
   for (size_t i = 1; i <= bank_size_; ++i) {
-    static const size_t kOne = 1;  // Avoids repeated static_cast<>s below.
-    size_t lll =
-        static_cast<size_t>(round(center_freqs_[std::max(kOne, i - lf) - 1] *
-                                  num_freqs / (0.5f * sample_rate_hz_)));
-    size_t ll = static_cast<size_t>(round(center_freqs_[std::max(kOne, i) - 1] *
-                                   num_freqs / (0.5f * sample_rate_hz_)));
-    lll = std::min(num_freqs, std::max(lll, kOne)) - 1;
-    ll = std::min(num_freqs, std::max(ll, kOne)) - 1;
+    size_t lll = static_cast<size_t>(
+        round(center_freqs_[rtc::SafeMax<size_t>(1, i - lf) - 1] * num_freqs /
+              (0.5f * sample_rate_hz_)));
+    size_t ll = static_cast<size_t>(
+        round(center_freqs_[rtc::SafeMax<size_t>(1, i) - 1] * num_freqs /
+              (0.5f * sample_rate_hz_)));
+    lll = rtc::SafeClamp<size_t>(lll, 1, num_freqs) - 1;
+    ll = rtc::SafeClamp<size_t>(ll, 1, num_freqs) - 1;
 
     size_t rrr = static_cast<size_t>(
-        round(center_freqs_[std::min(bank_size_, i + rf) - 1] * num_freqs /
-              (0.5f * sample_rate_hz_)));
+        round(center_freqs_[rtc::SafeMin<size_t>(bank_size_, i + rf) - 1] *
+              num_freqs / (0.5f * sample_rate_hz_)));
     size_t rr = static_cast<size_t>(
-        round(center_freqs_[std::min(bank_size_, i + 1) - 1] * num_freqs /
-              (0.5f * sample_rate_hz_)));
-    rrr = std::min(num_freqs, std::max(rrr, kOne)) - 1;
-    rr = std::min(num_freqs, std::max(rr, kOne)) - 1;
+        round(center_freqs_[rtc::SafeMin<size_t>(bank_size_, i + 1) - 1] *
+              num_freqs / (0.5f * sample_rate_hz_)));
+    rrr = rtc::SafeClamp<size_t>(rrr, 1, num_freqs) - 1;
+    rr = rtc::SafeClamp<size_t>(rr, 1, num_freqs) - 1;
 
     float step = ll == lll ? 0.f : 1.f / (ll - lll);
     float element = 0.f;
@@ -380,7 +381,7 @@ bool IntelligibilityEnhancer::IsSpeech(const float* audio) {
 }
 
 void IntelligibilityEnhancer::DelayHighBands(AudioBuffer* audio) {
-  RTC_DCHECK_EQ(audio->num_bands(), high_bands_buffers_.size() + 1u);
+  RTC_DCHECK_EQ(audio->num_bands(), high_bands_buffers_.size() + 1);
   for (size_t i = 0u; i < high_bands_buffers_.size(); ++i) {
     Band band = static_cast<Band>(i + 1);
     high_bands_buffers_[i]->Delay(audio->split_channels_f(band), chunk_length_);

@@ -17,13 +17,13 @@
 #include <vector>
 #include <utility>
 
+#include "webrtc/api/call/transport.h"
 #include "webrtc/base/platform_file.h"
 #include "webrtc/common_types.h"
 #include "webrtc/common_video/include/frame_callback.h"
 #include "webrtc/config.h"
 #include "webrtc/media/base/videosinkinterface.h"
 #include "webrtc/media/base/videosourceinterface.h"
-#include "webrtc/transport.h"
 
 namespace webrtc {
 
@@ -36,6 +36,7 @@ class VideoSendStream {
 
     FrameCounts frame_counts;
     bool is_rtx = false;
+    bool is_flexfec = false;
     int width = 0;
     int height = 0;
     // TODO(holmer): Move bitrate_bps out to the webrtc::Call layer.
@@ -68,9 +69,12 @@ class VideoSendStream {
     bool suspended = false;
     bool bw_limited_resolution = false;
     bool cpu_limited_resolution = false;
+    bool bw_limited_framerate = false;
+    bool cpu_limited_framerate = false;
     // Total number of times resolution as been requested to be changed due to
-    // CPU adaptation.
+    // CPU/quality adaptation.
     int number_of_cpu_adapt_changes = 0;
+    int number_of_quality_adapt_changes = 0;
     std::map<uint32_t, StreamStats> substreams;
   };
 
@@ -137,10 +141,21 @@ class VideoSendStream {
       // See UlpfecConfig for description.
       UlpfecConfig ulpfec;
 
-      // See FlexfecConfig for description.
-      // TODO(brandtr): Move this config to a new class FlexfecSendStream
-      // when we support multistream protection.
-      FlexfecConfig flexfec;
+      struct Flexfec {
+        // Payload type of FlexFEC. Set to -1 to disable sending FlexFEC.
+        int payload_type = -1;
+
+        // SSRC of FlexFEC stream.
+        uint32_t ssrc = 0;
+
+        // Vector containing a single element, corresponding to the SSRC of the
+        // media stream being protected by this FlexFEC stream.
+        // The vector MUST have size 1.
+        //
+        // TODO(brandtr): Update comment above when we support
+        // multistream protection.
+        std::vector<uint32_t> protected_media_ssrcs;
+      } flexfec;
 
       // Settings for RTP retransmission payload format, see RFC 4588 for
       // details.
@@ -184,6 +199,9 @@ class VideoSendStream {
     // stream may send at a rate higher than the estimated available bitrate.
     bool suspend_below_min_bitrate = false;
 
+    // Enables periodic bandwidth probing in application-limited region.
+    bool periodic_alr_bandwidth_probing = false;
+
    private:
     // Access to the copy constructor is private to force use of the Copy()
     // method for those exceptional cases where we do use it.
@@ -199,12 +217,21 @@ class VideoSendStream {
 
   // Based on the spec in
   // https://w3c.github.io/webrtc-pc/#idl-def-rtcdegradationpreference.
+  // These options are enforced on a best-effort basis. For instance, all of
+  // these options may suffer some frame drops in order to avoid queuing.
+  // TODO(sprang): Look into possibility of more strictly enforcing the
+  // maintain-framerate option.
   enum class DegradationPreference {
+    // Don't take any actions based on over-utilization signals.
+    kDegradationDisabled,
+    // On over-use, request lower frame rate, possibly causing frame drops.
     kMaintainResolution,
-    // TODO(perkj): Implement kMaintainFrameRate. kBalanced will drop frames
-    // if the encoder overshoots or the encoder can not encode fast enough.
+    // On over-use, request lower resolution, possibly causing down-scaling.
+    kMaintainFramerate,
+    // Try to strike a "pleasing" balance between frame rate or resolution.
     kBalanced,
   };
+
   virtual void SetSource(
       rtc::VideoSourceInterface<webrtc::VideoFrame>* source,
       const DegradationPreference& degradation_preference) = 0;

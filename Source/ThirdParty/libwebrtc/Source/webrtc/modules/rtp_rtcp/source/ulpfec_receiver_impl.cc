@@ -17,14 +17,15 @@
 #include "webrtc/base/logging.h"
 #include "webrtc/modules/rtp_rtcp/source/byte_io.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_receiver_video.h"
+#include "webrtc/system_wrappers/include/clock.h"
 
 namespace webrtc {
 
-UlpfecReceiver* UlpfecReceiver::Create(RtpData* callback) {
+UlpfecReceiver* UlpfecReceiver::Create(RecoveredPacketReceiver* callback) {
   return new UlpfecReceiverImpl(callback);
 }
 
-UlpfecReceiverImpl::UlpfecReceiverImpl(RtpData* callback)
+UlpfecReceiverImpl::UlpfecReceiverImpl(RecoveredPacketReceiver* callback)
     : recovered_packet_callback_(callback),
       fec_(ForwardErrorCorrection::CreateUlpfec()) {}
 
@@ -125,6 +126,10 @@ int32_t UlpfecReceiverImpl::AddReceivedRedPacket(
     }
   }
   ++packet_counter_.num_packets;
+  if (packet_counter_.first_packet_time_ms == -1) {
+    packet_counter_.first_packet_time_ms =
+        Clock::GetRealTimeClock()->TimeInMilliseconds();
+  }
 
   std::unique_ptr<ForwardErrorCorrection::ReceivedPacket>
       second_received_packet;
@@ -207,10 +212,8 @@ int32_t UlpfecReceiverImpl::ProcessReceivedFec() {
     if (!received_packets_.front()->is_fec) {
       ForwardErrorCorrection::Packet* packet = received_packets_.front()->pkt;
       crit_sect_.Leave();
-      if (!recovered_packet_callback_->OnRecoveredPacket(packet->data,
-                                                         packet->length)) {
-        return -1;
-      }
+      recovered_packet_callback_->OnRecoveredPacket(packet->data,
+                                                    packet->length);
       crit_sect_.Enter();
     }
     if (fec_->DecodeFec(&received_packets_, &recovered_packets_) != 0) {
@@ -228,10 +231,8 @@ int32_t UlpfecReceiverImpl::ProcessReceivedFec() {
     ForwardErrorCorrection::Packet* packet = recovered_packet->pkt;
     ++packet_counter_.num_recovered_packets;
     crit_sect_.Leave();
-    if (!recovered_packet_callback_->OnRecoveredPacket(packet->data,
-                                                       packet->length)) {
-      return -1;
-    }
+    recovered_packet_callback_->OnRecoveredPacket(packet->data,
+                                                  packet->length);
     crit_sect_.Enter();
     recovered_packet->returned = true;
   }

@@ -87,7 +87,7 @@ TEST_F(SharedBufferTest, appendBufferCreatedWithContentsOfExistingFile)
     EXPECT_EQ('a', buffer->data()[strlen(SharedBufferTest::testData())]);
 }
 
-TEST_F(SharedBufferTest, createArrayBuffer)
+TEST_F(SharedBufferTest, tryCreateArrayBuffer)
 {
     char testData0[] = "Hello";
     char testData1[] = "World";
@@ -95,22 +95,22 @@ TEST_F(SharedBufferTest, createArrayBuffer)
     RefPtr<SharedBuffer> sharedBuffer = SharedBuffer::create(testData0, strlen(testData0));
     sharedBuffer->append(testData1, strlen(testData1));
     sharedBuffer->append(testData2, strlen(testData2));
-    RefPtr<ArrayBuffer> arrayBuffer = sharedBuffer->createArrayBuffer();
+    RefPtr<ArrayBuffer> arrayBuffer = sharedBuffer->tryCreateArrayBuffer();
     char expectedConcatenation[] = "HelloWorldGoodbye";
     ASSERT_EQ(strlen(expectedConcatenation), arrayBuffer->byteLength());
     EXPECT_EQ(0, memcmp(expectedConcatenation, arrayBuffer->data(), strlen(expectedConcatenation)));
 }
 
-TEST_F(SharedBufferTest, createArrayBufferLargeSegments)
+TEST_F(SharedBufferTest, tryCreateArrayBufferLargeSegments)
 {
     Vector<char> vector0(0x4000, 'a');
     Vector<char> vector1(0x4000, 'b');
     Vector<char> vector2(0x4000, 'c');
 
-    RefPtr<SharedBuffer> sharedBuffer = SharedBuffer::adoptVector(vector0);
-    sharedBuffer->append(vector1);
-    sharedBuffer->append(vector2);
-    RefPtr<ArrayBuffer> arrayBuffer = sharedBuffer->createArrayBuffer();
+    RefPtr<SharedBuffer> sharedBuffer = SharedBuffer::create(WTFMove(vector0));
+    sharedBuffer->append(WTFMove(vector1));
+    sharedBuffer->append(WTFMove(vector2));
+    RefPtr<ArrayBuffer> arrayBuffer = sharedBuffer->tryCreateArrayBuffer();
     ASSERT_EQ(0x4000U + 0x4000U + 0x4000U, arrayBuffer->byteLength());
     int position = 0;
     for (int i = 0; i < 0x4000; ++i) {
@@ -158,6 +158,44 @@ TEST_F(SharedBufferTest, copy)
     ASSERT_EQ(0, memcmp(clone->data(), sharedBuffer->data(), clone->size()));
     clone->append(testData, length);
     ASSERT_EQ(length * 5, clone->size());
+}
+
+static void checkBuffer(const char* buffer, size_t bufferLength, const char* expected)
+{
+    // expected is null terminated, buffer is not.
+    size_t length = strlen(expected);
+    EXPECT_EQ(length, bufferLength);
+    for (size_t i = 0; i < length; ++i)
+        EXPECT_EQ(buffer[i], expected[i]);
+}
+
+TEST_F(SharedBufferTest, getSomeData)
+{
+    Vector<char> s1 = {'a', 'b', 'c', 'd'};
+    Vector<char> s2 = {'e', 'f', 'g', 'h'};
+    Vector<char> s3 = {'i', 'j', 'k', 'l'};
+    
+    auto buffer = SharedBuffer::create();
+    buffer->append(WTFMove(s1));
+    buffer->append(WTFMove(s2));
+    buffer->append(WTFMove(s3));
+    
+    auto abcd = buffer->getSomeData(0);
+    auto gh = buffer->getSomeData(6);
+    auto h = buffer->getSomeData(7);
+    auto ijkl = buffer->getSomeData(8);
+    auto kl = buffer->getSomeData(10);
+    auto abcdefghijkl = buffer->data();
+    auto ghijkl = buffer->getSomeData(6);
+    auto l = buffer->getSomeData(11);
+    checkBuffer(abcd.data(), abcd.size(), "abcd");
+    checkBuffer(gh.data(), gh.size(), "gh");
+    checkBuffer(h.data(), h.size(), "h");
+    checkBuffer(ijkl.data(), ijkl.size(), "ijkl");
+    checkBuffer(kl.data(), kl.size(), "kl");
+    checkBuffer(abcdefghijkl, buffer->size(), "abcdefghijkl");
+    checkBuffer(ghijkl.data(), ghijkl.size(), "ghijkl");
+    checkBuffer(l.data(), l.size(), "l");
 }
 
 }

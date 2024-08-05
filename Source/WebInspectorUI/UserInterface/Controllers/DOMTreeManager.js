@@ -30,7 +30,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
+WI.DOMTreeManager = class DOMTreeManager extends WI.Object
 {
     constructor()
     {
@@ -44,7 +44,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         this._restoreSelectedNodeIsAllowed = true;
         this._loadNodeAttributesTimeout = 0;
 
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+        WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
     }
 
     // Static
@@ -83,6 +83,11 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         }
 
         DOMAgent.getDocument(onDocumentAvailable.bind(this));
+    }
+
+    ensureDocument()
+    {
+        this.requestDocument(function(){});
     }
 
     pushNodeToFrontend(objectId, callback)
@@ -132,8 +137,8 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
             return;
 
         node._setAttribute(name, value);
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.AttributeModified, {node, name});
-        node.dispatchEventToListeners(WebInspector.DOMNode.Event.AttributeModified, {name});
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.AttributeModified, {node, name});
+        node.dispatchEventToListeners(WI.DOMNode.Event.AttributeModified, {name});
     }
 
     _attributeRemoved(nodeId, name)
@@ -143,8 +148,8 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
             return;
 
         node._removeAttribute(name);
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.AttributeRemoved, {node, name});
-        node.dispatchEventToListeners(WebInspector.DOMNode.Event.AttributeRemoved, {name});
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.AttributeRemoved, {node, name});
+        node.dispatchEventToListeners(WI.DOMNode.Event.AttributeRemoved, {name});
     }
 
     _inlineStyleInvalidated(nodeIds)
@@ -167,8 +172,8 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
             var node = this._idToDOMNode[nodeId];
             if (node) {
                 node._setAttributesPayload(attributes);
-                this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.AttributeModified, {node, name: "style"});
-                node.dispatchEventToListeners(WebInspector.DOMNode.Event.AttributeModified, {name: "style"});
+                this.dispatchEventToListeners(WI.DOMTreeManager.Event.AttributeModified, {node, name: "style"});
+                node.dispatchEventToListeners(WI.DOMNode.Event.AttributeModified, {name: "style"});
             }
         }
 
@@ -185,7 +190,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
     {
         var node = this._idToDOMNode[nodeId];
         node._nodeValue = newValue;
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.CharacterDataModified, {node});
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.CharacterDataModified, {node});
     }
 
     nodeForId(nodeId)
@@ -201,16 +206,21 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
     _setDocument(payload)
     {
         this._idToDOMNode = {};
+
+        let newDocument = null;
         if (payload && "nodeId" in payload)
-            this._document = new WebInspector.DOMNode(this, null, false, payload);
-        else
-            this._document = null;
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.DocumentUpdated, this._document);
+            newDocument = new WI.DOMNode(this, null, false, payload);
+
+        if (this._document === newDocument)
+            return;
+
+        this._document = newDocument;
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.DocumentUpdated, {document: this._document});
     }
 
     _setDetachedRoot(payload)
     {
-        new WebInspector.DOMNode(this, null, false, payload);
+        new WI.DOMNode(this, null, false, payload);
     }
 
     _setChildNodes(parentId, payloads)
@@ -228,7 +238,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
     {
         var node = this._idToDOMNode[nodeId];
         node.childNodeCount = newValue;
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.ChildNodeCountUpdated, node);
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.ChildNodeCountUpdated, node);
     }
 
     _childNodeInserted(parentId, prevId, payload)
@@ -237,7 +247,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         var prev = this._idToDOMNode[prevId];
         var node = parent._insertChild(prev, payload);
         this._idToDOMNode[node.id] = node;
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.NodeInserted, {node, parent});
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.NodeInserted, {node, parent});
     }
 
     _childNodeRemoved(parentId, nodeId)
@@ -246,14 +256,14 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         var node = this._idToDOMNode[nodeId];
         parent._removeChild(node);
         this._unbind(node);
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.NodeRemoved, {node, parent});
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.NodeRemoved, {node, parent});
     }
 
     _customElementStateChanged(elementId, newState)
     {
         const node = this._idToDOMNode[elementId];
         node._customElementState = newState;
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.CustomElementStateChanged, {node});
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.CustomElementStateChanged, {node});
     }
 
     _pseudoElementAdded(parentId, pseudoElement)
@@ -262,12 +272,12 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         if (!parent)
             return;
 
-        var node = new WebInspector.DOMNode(this, parent.ownerDocument, false, pseudoElement);
+        var node = new WI.DOMNode(this, parent.ownerDocument, false, pseudoElement);
         node.parentNode = parent;
         this._idToDOMNode[node.id] = node;
         console.assert(!parent.pseudoElements().get(node.pseudoType()));
         parent.pseudoElements().set(node.pseudoType(), node);
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.NodeInserted, {node, parent});
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.NodeInserted, {node, parent});
     }
 
     _pseudoElementRemoved(parentId, pseudoElementId)
@@ -284,7 +294,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
 
         parent._removeChild(pseudoElement);
         this._unbind(pseudoElement);
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.NodeRemoved, {node: pseudoElement, parent});
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.NodeRemoved, {node: pseudoElement, parent});
     }
 
     _unbind(node)
@@ -317,10 +327,10 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         if (!node || !node.ownerDocument)
             return;
 
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.DOMNodeWasInspected, {node});
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.DOMNodeWasInspected, {node});
 
         this._inspectModeEnabled = false;
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.InspectModeStateChanged);
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.InspectModeStateChanged);
     }
 
     inspectNodeObject(remoteObject)
@@ -339,12 +349,12 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
 
             // Re-resolve the node in the console's object group when adding to the console.
             let domNode = this.nodeForId(nodeId);
-            WebInspector.RemoteObject.resolveNode(domNode, WebInspector.RuntimeManager.ConsoleObjectGroup, function(remoteObject) {
+            WI.RemoteObject.resolveNode(domNode, WI.RuntimeManager.ConsoleObjectGroup, function(remoteObject) {
                 if (!remoteObject)
                     return;
                 let specialLogStyles = true;
                 let shouldRevealConsole = false;
-                WebInspector.consoleLogViewController.appendImmediateExecutionWithResult(WebInspector.UIString("Selected Element"), remoteObject, specialLogStyles, shouldRevealConsole);
+                WI.consoleLogViewController.appendImmediateExecutionWithResult(WI.UIString("Selected Element"), remoteObject, specialLogStyles, shouldRevealConsole);
             });
         }
 
@@ -416,11 +426,30 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
             DOMAgent.hideHighlight();
     }
 
+    highlightDOMNodeList(nodeIds, mode)
+    {
+        // COMPATIBILITY (iOS 11): DOM.highlightNodeList did not exist.
+        if (!DOMAgent.highlightNodeList)
+            return;
+
+        if (this._hideDOMNodeHighlightTimeout) {
+            clearTimeout(this._hideDOMNodeHighlightTimeout);
+            this._hideDOMNodeHighlightTimeout = undefined;
+        }
+
+        DOMAgent.highlightNodeList(nodeIds, this._buildHighlightConfig(mode));
+    }
+
     highlightSelector(selectorText, frameId, mode)
     {
         // COMPATIBILITY (iOS 8): DOM.highlightSelector did not exist.
         if (!DOMAgent.highlightSelector)
             return;
+
+        if (this._hideDOMNodeHighlightTimeout) {
+            clearTimeout(this._hideDOMNodeHighlightTimeout);
+            this._hideDOMNodeHighlightTimeout = undefined;
+        }
 
         DOMAgent.highlightSelector(this._buildHighlightConfig(mode), selectorText, frameId);
     }
@@ -461,7 +490,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
 
         DOMAgent.setInspectModeEnabled(enabled, this._buildHighlightConfig(), (error) => {
             this._inspectModeEnabled = error ? false : enabled;
-            this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.InspectModeStateChanged);
+            this.dispatchEventToListeners(WI.DOMTreeManager.Event.InspectModeStateChanged);
         });
     }
 
@@ -487,7 +516,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
     _createContentFlowFromPayload(flowPayload)
     {
         // FIXME: Collect the regions from the payload.
-        var flow = new WebInspector.ContentFlow(flowPayload.documentNodeId, flowPayload.name, flowPayload.overset, flowPayload.content.map(this.nodeForId.bind(this)));
+        var flow = new WI.ContentFlow(flowPayload.documentNodeId, flowPayload.name, flowPayload.overset, flowPayload.content.map(this.nodeForId.bind(this)));
 
         for (var contentNode of flow.contentNodes) {
             console.assert(!this._contentNodesToFlowsMap.has(contentNode.id));
@@ -516,7 +545,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
             var contentFlows = [];
             for (var i = 0; i < flows.length; ++i) {
                 var flowPayload = flows[i];
-                var flowKey = WebInspector.DOMTreeManager._flowPayloadHashKey(flowPayload);
+                var flowKey = WI.DOMTreeManager._flowPayloadHashKey(flowPayload);
                 var contentFlow = this._flows.get(flowKey);
                 if (contentFlow)
                     this._updateContentFlowFromPayload(contentFlow, flowPayload);
@@ -526,7 +555,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
                 }
                 contentFlows.push(contentFlow);
             }
-            this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.ContentFlowListWasUpdated, {documentNodeIdentifier, flows: contentFlows});
+            this.dispatchEventToListeners(WI.DOMTreeManager.Event.ContentFlowListWasUpdated, {documentNodeIdentifier, flows: contentFlows});
         }
 
         if (window.CSSAgent)
@@ -535,16 +564,16 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
 
     namedFlowCreated(flowPayload)
     {
-        var flowKey = WebInspector.DOMTreeManager._flowPayloadHashKey(flowPayload);
+        var flowKey = WI.DOMTreeManager._flowPayloadHashKey(flowPayload);
         console.assert(!this._flows.has(flowKey));
         var contentFlow = this._createContentFlowFromPayload(flowPayload);
         this._flows.set(flowKey, contentFlow);
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.ContentFlowWasAdded, {flow: contentFlow});
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.ContentFlowWasAdded, {flow: contentFlow});
     }
 
     namedFlowRemoved(documentNodeIdentifier, flowName)
     {
-        var flowKey = WebInspector.DOMTreeManager._flowPayloadHashKey({documentNodeId: documentNodeIdentifier, name: flowName});
+        var flowKey = WI.DOMTreeManager._flowPayloadHashKey({documentNodeId: documentNodeIdentifier, name: flowName});
         var contentFlow = this._flows.get(flowKey);
         console.assert(contentFlow);
         this._flows.delete(flowKey);
@@ -553,12 +582,12 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         for (var contentNode of contentFlow.contentNodes)
             this._contentNodesToFlowsMap.delete(contentNode.id);
 
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.ContentFlowWasRemoved, {flow: contentFlow});
+        this.dispatchEventToListeners(WI.DOMTreeManager.Event.ContentFlowWasRemoved, {flow: contentFlow});
     }
 
     _sendNamedFlowUpdateEvents(flowPayload)
     {
-        var flowKey = WebInspector.DOMTreeManager._flowPayloadHashKey(flowPayload);
+        var flowKey = WI.DOMTreeManager._flowPayloadHashKey(flowPayload);
         console.assert(this._flows.has(flowKey));
         this._updateContentFlowFromPayload(this._flows.get(flowKey), flowPayload);
     }
@@ -570,7 +599,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
 
     registeredNamedFlowContentElement(documentNodeIdentifier, flowName, contentNodeId, nextContentElementNodeId)
     {
-        var flowKey = WebInspector.DOMTreeManager._flowPayloadHashKey({documentNodeId: documentNodeIdentifier, name: flowName});
+        var flowKey = WI.DOMTreeManager._flowPayloadHashKey({documentNodeId: documentNodeIdentifier, name: flowName});
         console.assert(this._flows.has(flowKey));
         console.assert(!this._contentNodesToFlowsMap.has(contentNodeId));
 
@@ -599,7 +628,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         console.assert(this._contentNodesToFlowsMap.has(contentNodeId));
 
         var flow = this._contentNodesToFlowsMap.get(contentNodeId);
-        console.assert(flow.id === WebInspector.DOMTreeManager._flowPayloadHashKey({documentNodeId: documentNodeIdentifier, name: flowName}));
+        console.assert(flow.id === WI.DOMTreeManager._flowPayloadHashKey({documentNodeId: documentNodeIdentifier, name: flowName}));
 
         this._contentNodesToFlowsMap.delete(contentNodeId);
         flow.removeContentNode(this.nodeForId(contentNodeId));
@@ -631,7 +660,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
                 callback(lastError, nodes);
         }
 
-        WebInspector.runtimeManager.getPropertiesForRemoteObject(remoteObject.objectId, function(error, properties) {
+        WI.runtimeManager.getPropertiesForRemoteObject(remoteObject.objectId, function(error, properties) {
             if (error) {
                 callback(error);
                 return;
@@ -685,7 +714,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
             // The backend function can never return null.
             console.assert(remoteObject.type === "object");
             console.assert(remoteObject.objectId);
-            WebInspector.runtimeManager.getPropertiesForRemoteObject(remoteObject.objectId, remoteObjectPropertiesAvailable.bind(this));
+            WI.runtimeManager.getPropertiesForRemoteObject(remoteObject.objectId, remoteObjectPropertiesAvailable.bind(this));
         }
 
         function remoteObjectPropertiesAvailable(error, properties) {
@@ -703,14 +732,14 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
             var regionFlowNameProperty = properties.get("regionFlowName");
             if (regionFlowNameProperty && regionFlowNameProperty.value && regionFlowNameProperty.value.value) {
                 console.assert(regionFlowNameProperty.value.type === "string");
-                var regionFlowKey = WebInspector.DOMTreeManager._flowPayloadHashKey({documentNodeId: domNode.ownerDocument.id, name: regionFlowNameProperty.value.value});
+                var regionFlowKey = WI.DOMTreeManager._flowPayloadHashKey({documentNodeId: domNode.ownerDocument.id, name: regionFlowNameProperty.value.value});
                 result.regionFlow = this._flows.get(regionFlowKey);
             }
 
             var contentFlowNameProperty = properties.get("contentFlowName");
             if (contentFlowNameProperty && contentFlowNameProperty.value && contentFlowNameProperty.value.value) {
                 console.assert(contentFlowNameProperty.value.type === "string");
-                var contentFlowKey = WebInspector.DOMTreeManager._flowPayloadHashKey({documentNodeId: domNode.ownerDocument.id, name: contentFlowNameProperty.value.value});
+                var contentFlowKey = WI.DOMTreeManager._flowPayloadHashKey({documentNodeId: domNode.ownerDocument.id, name: contentFlowNameProperty.value.value});
                 result.contentFlow = this._flows.get(contentFlowKey);
             }
 
@@ -777,7 +806,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
     }
 };
 
-WebInspector.DOMTreeManager.Event = {
+WI.DOMTreeManager.Event = {
     AttributeModified: "dom-tree-manager-attribute-modified",
     AttributeRemoved: "dom-tree-manager-attribute-removed",
     CharacterDataModified: "dom-tree-manager-character-data-modified",

@@ -32,6 +32,11 @@ constexpr size_t App::kMaxDataSize;
 //    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //  8 |                   application-dependent data                ...
 //    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+App::App() : sub_type_(0), ssrc_(0), name_(0) {}
+
+App::~App() = default;
+
 bool App::Parse(const CommonHeader& packet) {
   RTC_DCHECK_EQ(packet.type(), kPacketType);
   if (packet.payload_size_bytes() < kAppBaseLength) {
@@ -58,11 +63,15 @@ void App::SetSubType(uint8_t subtype) {
 
 void App::SetData(const uint8_t* data, size_t data_length) {
   RTC_DCHECK(data);
-  RTC_DCHECK_EQ(data_length % 4, 0u) << "Data must be 32 bits aligned.";
+  RTC_DCHECK_EQ(data_length % 4, 0) << "Data must be 32 bits aligned.";
   RTC_DCHECK_LE(data_length, kMaxDataSize) << "App data size " << data_length
                                            << " exceed maximum of "
                                            << kMaxDataSize << " bytes.";
   data_.SetData(data, data_length);
+}
+
+size_t App::BlockLength() const {
+  return kHeaderLength + kAppBaseLength + data_.size();
 }
 
 bool App::Create(uint8_t* packet,

@@ -7,6 +7,8 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
+
+#include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/platform_thread.h"
 #include "webrtc/modules/audio_device/dummy/file_audio_device.h"
@@ -31,7 +33,6 @@ FileAudioDevice::FileAudioDevice(const int32_t id,
     _playoutBuffer(NULL),
     _recordingFramesLeft(0),
     _playoutFramesLeft(0),
-    _critSect(*CriticalSectionWrapper::CreateCriticalSection()),
     _recordingBufferSizeIn10MS(0),
     _recordingFramesIn10MS(0),
     _playoutFramesIn10MS(0),
@@ -159,7 +160,7 @@ int32_t FileAudioDevice::RecordingIsAvailable(bool& available) {
 }
 
 int32_t FileAudioDevice::InitRecording() {
-  CriticalSectionScoped lock(&_critSect);
+  rtc::CritScope lock(&_critSect);
 
   if (_recording) {
     return -1;
@@ -217,7 +218,7 @@ int32_t FileAudioDevice::StartPlayout() {
 
 int32_t FileAudioDevice::StopPlayout() {
   {
-      CriticalSectionScoped lock(&_critSect);
+      rtc::CritScope lock(&_critSect);
       _playing = false;
   }
 
@@ -227,7 +228,7 @@ int32_t FileAudioDevice::StopPlayout() {
       _ptrThreadPlay.reset();
   }
 
-  CriticalSectionScoped lock(&_critSect);
+  rtc::CritScope lock(&_critSect);
 
   _playoutFramesLeft = 0;
   delete [] _playoutBuffer;
@@ -278,7 +279,7 @@ int32_t FileAudioDevice::StartRecording() {
 
 int32_t FileAudioDevice::StopRecording() {
   {
-    CriticalSectionScoped lock(&_critSect);
+    rtc::CritScope lock(&_critSect);
     _recording = false;
   }
 
@@ -287,7 +288,7 @@ int32_t FileAudioDevice::StopRecording() {
       _ptrThreadRec.reset();
   }
 
-  CriticalSectionScoped lock(&_critSect);
+  rtc::CritScope lock(&_critSect);
   _recordingFramesLeft = 0;
   if (_recordingBuffer) {
       delete [] _recordingBuffer;
@@ -454,7 +455,7 @@ void FileAudioDevice::ClearRecordingWarning() {}
 void FileAudioDevice::ClearRecordingError() {}
 
 void FileAudioDevice::AttachAudioBuffer(AudioDeviceBuffer* audioBuffer) {
-  CriticalSectionScoped lock(&_critSect);
+  rtc::CritScope lock(&_critSect);
 
   _ptrAudioBuffer = audioBuffer;
 
@@ -492,7 +493,7 @@ bool FileAudioDevice::PlayThreadProcess()
         _critSect.Enter();
 
         _playoutFramesLeft = _ptrAudioBuffer->GetPlayoutData(_playoutBuffer);
-        assert(_playoutFramesLeft == _playoutFramesIn10MS);
+        RTC_DCHECK_EQ(_playoutFramesIn10MS, _playoutFramesLeft);
         if (_outputFile.is_open()) {
           _outputFile.Write(_playoutBuffer, kPlayoutBufferSize);
         }

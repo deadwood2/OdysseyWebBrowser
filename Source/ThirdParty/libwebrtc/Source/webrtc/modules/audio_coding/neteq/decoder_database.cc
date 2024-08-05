@@ -12,9 +12,9 @@
 
 #include <utility>  // pair
 
+#include "webrtc/api/audio_codecs/audio_decoder.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
-#include "webrtc/modules/audio_coding/codecs/audio_decoder.h"
 
 namespace webrtc {
 
@@ -42,8 +42,7 @@ DecoderDatabase::DecoderInfo::DecoderInfo(const SdpAudioFormat& audio_format,
 
 DecoderDatabase::DecoderInfo::DecoderInfo(NetEqDecoder ct,
                                           AudioDecoderFactory* factory)
-    : DecoderInfo(*acm2::RentACodec::NetEqDecoderToSdpAudioFormat(ct),
-                  factory) {}
+    : DecoderInfo(*NetEqDecoderToSdpAudioFormat(ct), factory) {}
 
 DecoderDatabase::DecoderInfo::DecoderInfo(const SdpAudioFormat& audio_format,
                                           AudioDecoder* ext_dec,
@@ -124,6 +123,38 @@ void DecoderDatabase::Reset() {
   active_cng_decoder_type_ = -1;
 }
 
+std::vector<int> DecoderDatabase::SetCodecs(
+    const std::map<int, SdpAudioFormat>& codecs) {
+  // First collect all payload types that we'll remove or reassign, then remove
+  // them from the database.
+  std::vector<int> changed_payload_types;
+  for (const std::pair<uint8_t, const DecoderInfo&> kv : decoders_) {
+    auto i = codecs.find(kv.first);
+    if (i == codecs.end() || i->second != kv.second.GetFormat()) {
+      changed_payload_types.push_back(kv.first);
+    }
+  }
+  for (int pl_type : changed_payload_types) {
+    Remove(pl_type);
+  }
+
+  // Enter the new and changed payload type mappings into the database.
+  for (const auto& kv : codecs) {
+    const int& rtp_payload_type = kv.first;
+    const SdpAudioFormat& audio_format = kv.second;
+    RTC_DCHECK_GE(rtp_payload_type, 0);
+    RTC_DCHECK_LE(rtp_payload_type, 0x7f);
+    if (decoders_.count(rtp_payload_type) == 0) {
+      decoders_.insert(std::make_pair(
+          rtp_payload_type, DecoderInfo(audio_format, decoder_factory_.get())));
+    } else {
+      // The mapping for this payload type hasn't changed.
+    }
+  }
+
+  return changed_payload_types;
+}
+
 int DecoderDatabase::RegisterPayload(uint8_t rtp_payload_type,
                                      NetEqDecoder codec_type,
                                      const std::string& name) {
@@ -135,8 +166,7 @@ int DecoderDatabase::RegisterPayload(uint8_t rtp_payload_type,
       !CodecSupported(codec_type)) {
     return kCodecNotSupported;
   }
-  const auto opt_format =
-      acm2::RentACodec::NetEqDecoderToSdpAudioFormat(codec_type);
+  const auto opt_format = NetEqDecoderToSdpAudioFormat(codec_type);
   if (!opt_format) {
     return kCodecNotSupported;
   }
@@ -175,8 +205,7 @@ int DecoderDatabase::InsertExternal(uint8_t rtp_payload_type,
     return kInvalidPointer;
   }
 
-  const auto opt_db_format =
-      acm2::RentACodec::NetEqDecoderToSdpAudioFormat(codec_type);
+  const auto opt_db_format = NetEqDecoderToSdpAudioFormat(codec_type);
   const SdpAudioFormat format = opt_db_format.value_or({"arbitrary", 0, 0});
 
   std::pair<DecoderMap::iterator, bool> ret;

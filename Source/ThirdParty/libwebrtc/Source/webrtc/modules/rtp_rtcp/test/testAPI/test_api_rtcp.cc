@@ -25,9 +25,6 @@
 namespace webrtc {
 namespace {
 
-const uint64_t kTestPictureId = 12345678;
-const uint8_t kSliPictureId = 156;
-
 class RtcpCallback : public RtcpIntraFrameObserver {
  public:
   void SetModule(RtpRtcp* module) {
@@ -38,14 +35,6 @@ class RtcpCallback : public RtcpIntraFrameObserver {
   virtual void OnLipSyncUpdate(const int32_t id,
                                const int32_t audioVideoOffset) {}
   virtual void OnReceivedIntraFrameRequest(uint32_t ssrc) {}
-  virtual void OnReceivedSLI(uint32_t ssrc,
-                             uint8_t pictureId) {
-    EXPECT_EQ(kSliPictureId & 0x3f, pictureId);
-  }
-  virtual void OnReceivedRPSI(uint32_t ssrc,
-                              uint64_t pictureId) {
-    EXPECT_EQ(kTestPictureId, pictureId);
-  }
 
  private:
   RtpRtcp* _rtpRtcpModule;
@@ -56,7 +45,7 @@ class TestRtpFeedback : public NullRtpFeedback {
   explicit TestRtpFeedback(RtpRtcp* rtp_rtcp) : rtp_rtcp_(rtp_rtcp) {}
   virtual ~TestRtpFeedback() {}
 
-  void OnIncomingSSRCChanged(const uint32_t ssrc) override {
+  void OnIncomingSSRCChanged(uint32_t ssrc) override {
     rtp_rtcp_->SetRemoteSSRC(ssrc);
   }
 
@@ -94,10 +83,8 @@ class RtpRtcpRtcpTest : public ::testing::Test {
     configuration.intra_frame_callback = myRTCPFeedback1;
     configuration.retransmission_rate_limiter = &retransmission_rate_limiter_;
 
-    rtp_payload_registry1_.reset(new RTPPayloadRegistry(
-            RTPPayloadStrategy::CreateStrategy(true)));
-    rtp_payload_registry2_.reset(new RTPPayloadRegistry(
-            RTPPayloadStrategy::CreateStrategy(true)));
+    rtp_payload_registry1_.reset(new RTPPayloadRegistry());
+    rtp_payload_registry2_.reset(new RTPPayloadRegistry());
 
     module1 = RtpRtcp::CreateRtpRtcp(configuration);
 
@@ -146,19 +133,9 @@ class RtpRtcpRtcpTest : public ::testing::Test {
     memcpy(voice_codec.plname, "PCMU", 5);
 
     EXPECT_EQ(0, module1->RegisterSendPayload(voice_codec));
-    EXPECT_EQ(0, rtp_receiver1_->RegisterReceivePayload(
-        voice_codec.plname,
-        voice_codec.pltype,
-        voice_codec.plfreq,
-        voice_codec.channels,
-        (voice_codec.rate < 0) ? 0 : voice_codec.rate));
+    EXPECT_EQ(0, rtp_receiver1_->RegisterReceivePayload(voice_codec));
     EXPECT_EQ(0, module2->RegisterSendPayload(voice_codec));
-    EXPECT_EQ(0, rtp_receiver2_->RegisterReceivePayload(
-        voice_codec.plname,
-        voice_codec.pltype,
-        voice_codec.plfreq,
-        voice_codec.channels,
-        (voice_codec.rate < 0) ? 0 : voice_codec.rate));
+    EXPECT_EQ(0, rtp_receiver2_->RegisterReceivePayload(voice_codec));
 
     // We need to send one RTP packet to get the RTCP packet to be accepted by
     // the receiving module.
@@ -202,11 +179,6 @@ class RtpRtcpRtcpTest : public ::testing::Test {
   SimulatedClock fake_clock;
   RateLimiter retransmission_rate_limiter_;
 };
-
-TEST_F(RtpRtcpRtcpTest, RTCP_PLI_RPSI) {
-  EXPECT_EQ(0, module1->SendRTCPReferencePictureSelection(kTestPictureId));
-  EXPECT_EQ(0, module1->SendRTCPSliceLossIndication(kSliPictureId));
-}
 
 TEST_F(RtpRtcpRtcpTest, RTCP_CNAME) {
   uint32_t testOfCSRC[webrtc::kRtpCsrcSize];

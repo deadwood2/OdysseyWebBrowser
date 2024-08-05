@@ -10,11 +10,10 @@
 
 #include "webrtc/modules/desktop_capture/win/screen_capturer_win_gdi.h"
 
-#include <assert.h>
-
 #include <utility>
 
 #include "webrtc/base/checks.h"
+#include "webrtc/base/logging.h"
 #include "webrtc/base/timeutils.h"
 #include "webrtc/modules/desktop_capture/desktop_capture_options.h"
 #include "webrtc/modules/desktop_capture/desktop_frame.h"
@@ -24,7 +23,6 @@
 #include "webrtc/modules/desktop_capture/win/cursor.h"
 #include "webrtc/modules/desktop_capture/win/desktop.h"
 #include "webrtc/modules/desktop_capture/win/screen_capture_utils.h"
-#include "webrtc/system_wrappers/include/logging.h"
 
 namespace webrtc {
 
@@ -95,6 +93,7 @@ void ScreenCapturerWinGdi::CaptureFrame() {
   frame->set_capture_time_ms(
       (rtc::TimeNanos() - capture_start_time_nanos) /
       rtc::kNumNanosecsPerMillisec);
+  frame->set_capturer_id(DesktopCapturerId::kScreenCapturerWinGdi);
   callback_->OnCaptureResult(Result::SUCCESS, std::move(frame));
 }
 
@@ -110,8 +109,8 @@ bool ScreenCapturerWinGdi::SelectSource(SourceId id) {
 }
 
 void ScreenCapturerWinGdi::Start(Callback* callback) {
-  assert(!callback_);
-  assert(callback);
+  RTC_DCHECK(!callback_);
+  RTC_DCHECK(callback);
 
   callback_ = callback;
 
@@ -169,15 +168,13 @@ void ScreenCapturerWinGdi::PrepareCaptureResources() {
   }
 
   if (!desktop_dc_) {
-    assert(!memory_dc_);
+    RTC_DCHECK(!memory_dc_);
 
     // Create GDI device contexts to capture from the desktop into memory.
     desktop_dc_ = GetDC(nullptr);
-    if (!desktop_dc_)
-      abort();
+    RTC_CHECK(desktop_dc_);
     memory_dc_ = CreateCompatibleDC(desktop_dc_);
-    if (!memory_dc_)
-      abort();
+    RTC_CHECK(memory_dc_);
 
     desktop_dc_rect_ = screen_rect;
 
@@ -198,8 +195,8 @@ bool ScreenCapturerWinGdi::CaptureImage() {
   // may still be reading from them.
   if (!queue_.current_frame() ||
       !queue_.current_frame()->size().equals(screen_rect.size())) {
-    assert(desktop_dc_);
-    assert(memory_dc_);
+    RTC_DCHECK(desktop_dc_);
+    RTC_DCHECK(memory_dc_);
 
     std::unique_ptr<DesktopFrame> buffer = DesktopFrameWin::Create(
         size, shared_memory_factory_.get(), desktop_dc_);
@@ -213,16 +210,22 @@ bool ScreenCapturerWinGdi::CaptureImage() {
   DesktopFrameWin* current = static_cast<DesktopFrameWin*>(
       queue_.current_frame()->GetUnderlyingFrame());
   HGDIOBJ previous_object = SelectObject(memory_dc_, current->bitmap());
-  if (previous_object) {
-    BitBlt(memory_dc_, 0, 0, screen_rect.width(), screen_rect.height(),
-           desktop_dc_, screen_rect.left(), screen_rect.top(),
-           SRCCOPY | CAPTUREBLT);
-
-    // Select back the previously selected object to that the device contect
-    // could be destroyed independently of the bitmap if needed.
-    SelectObject(memory_dc_, previous_object);
+  if (!previous_object || previous_object == HGDI_ERROR) {
+    return false;
   }
-  return true;
+
+  bool result = (BitBlt(memory_dc_, 0, 0, screen_rect.width(),
+      screen_rect.height(), desktop_dc_, screen_rect.left(), screen_rect.top(),
+      SRCCOPY | CAPTUREBLT) != FALSE);
+  if (!result) {
+    LOG_GLE(LS_WARNING) << "BitBlt failed";
+  }
+
+  // Select back the previously selected object to that the device contect
+  // could be destroyed independently of the bitmap if needed.
+  SelectObject(memory_dc_, previous_object);
+
+  return result;
 }
 
 }  // namespace webrtc

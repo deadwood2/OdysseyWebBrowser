@@ -67,14 +67,6 @@ TEST_F(TestVp8Impl, TestSwitchingToOneSmallStream) {
   TestVp8Simulcast::TestSwitchingToOneSmallStream();
 }
 
-TEST_F(TestVp8Impl, TestRPSIEncoder) {
-  TestVp8Simulcast::TestRPSIEncoder();
-}
-
-TEST_F(TestVp8Impl, TestRPSIEncodeDecode) {
-  TestVp8Simulcast::TestRPSIEncodeDecode();
-}
-
 TEST_F(TestVp8Impl, TestSaptioTemporalLayers333PatternEncoder) {
   TestVp8Simulcast::TestSaptioTemporalLayers333PatternEncoder();
 }
@@ -86,10 +78,5 @@ TEST_F(TestVp8Impl, TestSpatioTemporalLayers321PatternEncoder) {
 TEST_F(TestVp8Impl, TestStrideEncodeDecode) {
   TestVp8Simulcast::TestStrideEncodeDecode();
 }
-
-TEST_F(TestVp8Impl, TestSkipEncodingUnusedStreams) {
-  TestVp8Simulcast::TestSkipEncodingUnusedStreams();
-}
-
 }  // namespace testing
 }  // namespace webrtc

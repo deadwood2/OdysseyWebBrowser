@@ -31,7 +31,7 @@
 #include "ScriptValue.h"
 
 #include "APICast.h"
-#include "InspectorValues.h"
+#include "CatchScope.h"
 #include "JSCInlines.h"
 #include "JSLock.h"
 
@@ -40,7 +40,7 @@ using namespace Inspector;
 
 namespace Inspector {
 
-static RefPtr<InspectorValue> jsToInspectorValue(ExecState& scriptState, JSValue value, int maxDepth)
+static RefPtr<JSON::Value> jsToInspectorValue(ExecState& scriptState, JSValue value, int maxDepth)
 {
     if (!value) {
         ASSERT_NOT_REACHED();
@@ -53,19 +53,19 @@ static RefPtr<InspectorValue> jsToInspectorValue(ExecState& scriptState, JSValue
     maxDepth--;
 
     if (value.isUndefinedOrNull())
-        return InspectorValue::null();
+        return JSON::Value::null();
     if (value.isBoolean())
-        return InspectorValue::create(value.asBoolean());
+        return JSON::Value::create(value.asBoolean());
     if (value.isNumber() && value.isDouble())
-        return InspectorValue::create(value.asNumber());
+        return JSON::Value::create(value.asNumber());
     if (value.isNumber() && value.isAnyInt())
-        return InspectorValue::create(static_cast<int>(value.asAnyInt()));
+        return JSON::Value::create(static_cast<int>(value.asAnyInt()));
     if (value.isString())
-        return InspectorValue::create(asString(value)->value(&scriptState));
+        return JSON::Value::create(asString(value)->value(&scriptState));
 
     if (value.isObject()) {
         if (isJSArray(value)) {
-            auto inspectorArray = InspectorArray::create();
+            auto inspectorArray = JSON::Array::create();
             auto& array = *asArray(value);
             unsigned length = array.length();
             for (unsigned i = 0; i < length; i++) {
@@ -76,7 +76,7 @@ static RefPtr<InspectorValue> jsToInspectorValue(ExecState& scriptState, JSValue
             }
             return WTFMove(inspectorArray);
         }
-        auto inspectorObject = InspectorObject::create();
+        auto inspectorObject = JSON::Object::create();
         auto& object = *value.getObject();
         PropertyNameArray propertyNames(&scriptState, PropertyNameMode::Strings);
         object.methodTable()->getOwnPropertyNames(&object, &scriptState, propertyNames, EnumerationMode());
@@ -93,12 +93,12 @@ static RefPtr<InspectorValue> jsToInspectorValue(ExecState& scriptState, JSValue
     return nullptr;
 }
 
-RefPtr<InspectorValue> toInspectorValue(ExecState& state, JSValue value)
+RefPtr<JSON::Value> toInspectorValue(ExecState& state, JSValue value)
 {
     // FIXME: Maybe we should move the JSLockHolder stuff to the callers since this function takes a JSValue directly.
     // Doing the locking here made sense when we were trying to abstract the difference between multiple JavaScript engines.
     JSLockHolder holder(&state);
-    return jsToInspectorValue(state, value, InspectorValue::maxDepth);
+    return jsToInspectorValue(state, value, JSON::Value::maxDepth);
 }
 
 } // namespace Inspector
@@ -165,10 +165,10 @@ bool ScriptValue::isFunction() const
     return getCallData(m_value.get(), callData) != CallType::None;
 }
 
-RefPtr<InspectorValue> ScriptValue::toInspectorValue(ExecState* scriptState) const
+RefPtr<JSON::Value> ScriptValue::toInspectorValue(ExecState* scriptState) const
 {
     JSLockHolder holder(scriptState);
-    return jsToInspectorValue(*scriptState, m_value.get(), InspectorValue::maxDepth);
+    return jsToInspectorValue(*scriptState, m_value.get(), JSON::Value::maxDepth);
 }
 
 } // namespace Deprecated

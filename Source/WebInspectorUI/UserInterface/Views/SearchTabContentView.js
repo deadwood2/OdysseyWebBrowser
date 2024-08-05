@@ -23,19 +23,19 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.SearchTabContentView = class SearchTabContentView extends WebInspector.ContentBrowserTabContentView
+WI.SearchTabContentView = class SearchTabContentView extends WI.ContentBrowserTabContentView
 {
     constructor(identifier)
     {
-        let {image, title} = WebInspector.SearchTabContentView.tabInfo();
-        let tabBarItem = new WebInspector.GeneralTabBarItem(image, title);
-        let detailsSidebarPanels = [WebInspector.resourceDetailsSidebarPanel, WebInspector.probeDetailsSidebarPanel,
-            WebInspector.domNodeDetailsSidebarPanel, WebInspector.cssStyleDetailsSidebarPanel];
+        let {image, title} = WI.SearchTabContentView.tabInfo();
+        let tabBarItem = new WI.GeneralTabBarItem(image, title);
+        let detailsSidebarPanelConstructors = [WI.ResourceDetailsSidebarPanel, WI.ProbeDetailsSidebarPanel,
+            WI.DOMNodeDetailsSidebarPanel, WI.CSSStyleDetailsSidebarPanel];
 
-        if (WebInspector.layerTreeDetailsSidebarPanel)
-            detailsSidebarPanels.push(WebInspector.layerTreeDetailsSidebarPanel);
+        if (window.LayerTreeAgent)
+            detailsSidebarPanelConstructors.push(WI.LayerTreeDetailsSidebarPanel);
 
-        super(identifier || "search", "search", tabBarItem, WebInspector.SearchSidebarPanel, detailsSidebarPanels);
+        super(identifier || "search", "search", tabBarItem, WI.SearchSidebarPanel, detailsSidebarPanelConstructors);
 
         this._forcePerformSearch = false;
     }
@@ -44,7 +44,7 @@ WebInspector.SearchTabContentView = class SearchTabContentView extends WebInspec
     {
         return {
             image: "Images/SearchResults.svg",
-            title: WebInspector.UIString("Search"),
+            title: WI.UIString("Search"),
         };
     }
 
@@ -57,7 +57,7 @@ WebInspector.SearchTabContentView = class SearchTabContentView extends WebInspec
 
     get type()
     {
-        return WebInspector.SearchTabContentView.Type;
+        return WI.SearchTabContentView.Type;
     }
 
     shown()
@@ -70,7 +70,10 @@ WebInspector.SearchTabContentView = class SearchTabContentView extends WebInspec
 
     canShowRepresentedObject(representedObject)
     {
-        return representedObject instanceof WebInspector.Resource || representedObject instanceof WebInspector.Script || representedObject instanceof WebInspector.DOMTree;
+        if (!(representedObject instanceof WI.Resource) && !(representedObject instanceof WI.Script) && !(representedObject instanceof WI.DOMTree))
+            return false;
+
+        return !!this.navigationSidebarPanel.contentTreeOutline.getCachedTreeElement(representedObject);
     }
 
     focusSearchField()
@@ -83,6 +86,19 @@ WebInspector.SearchTabContentView = class SearchTabContentView extends WebInspec
     performSearch(searchQuery)
     {
         this.navigationSidebarPanel.performSearch(searchQuery);
+
+        this._forcePerformSearch = false;
+    }
+
+    handleCopyEvent(event)
+    {
+        let selectedTreeElement = this.navigationSidebarPanel.contentTreeOutline.selectedTreeElement;
+        if (!selectedTreeElement)
+            return;
+
+        event.clipboardData.setData("text/plain", selectedTreeElement.synthesizedTextValue);
+        event.stopPropagation();
+        event.preventDefault();
     }
 
     // Protected
@@ -95,4 +111,4 @@ WebInspector.SearchTabContentView = class SearchTabContentView extends WebInspec
     }
 };
 
-WebInspector.SearchTabContentView.Type = "search";
+WI.SearchTabContentView.Type = "search";

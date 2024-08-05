@@ -14,7 +14,6 @@
 #include <vector>
 
 #include "webrtc/base/basictypes.h"
-#include "webrtc/base/constructormagic.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/rtpfb.h"
 
 namespace webrtc {
@@ -33,13 +32,12 @@ class Nack : public Rtpfb {
   void SetPacketIds(const uint16_t* nack_list, size_t length);
   const std::vector<uint16_t>& packet_ids() const { return packet_ids_; }
 
- protected:
+  size_t BlockLength() const override;
+
   bool Create(uint8_t* packet,
               size_t* index,
               size_t max_length,
               RtcpPacket::PacketReadyCallback* callback) const override;
-
-  size_t BlockLength() const override;
 
  private:
   static constexpr size_t kNackItemLength = 4;
@@ -53,8 +51,6 @@ class Nack : public Rtpfb {
 
   std::vector<PackedNack> packed_;
   std::vector<uint16_t> packet_ids_;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(Nack);
 };
 
 }  // namespace rtcp

@@ -16,11 +16,11 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
+#include "webrtc/base/logging.h"
 #include "webrtc/modules/desktop_capture/desktop_capture_options.h"
 #include "webrtc/modules/desktop_capture/desktop_frame.h"
 #include "webrtc/modules/desktop_capture/mouse_cursor.h"
 #include "webrtc/modules/desktop_capture/x11/x_error_trap.h"
-#include "webrtc/system_wrappers/include/logging.h"
 
 namespace {
 
@@ -131,8 +131,8 @@ MouseCursorMonitorX11::~MouseCursorMonitorX11() {
 
 void MouseCursorMonitorX11::Init(Callback* callback, Mode mode) {
   // Init can be called only once per instance of MouseCursorMonitor.
-  assert(!callback_);
-  assert(callback);
+  RTC_DCHECK(!callback_);
+  RTC_DCHECK(callback);
 
   callback_ = callback;
   mode_ = mode;
@@ -152,7 +152,7 @@ void MouseCursorMonitorX11::Init(Callback* callback, Mode mode) {
 }
 
 void MouseCursorMonitorX11::Capture() {
-  assert(callback_);
+  RTC_DCHECK(callback_);
 
   // Process X11 events in case XFixes has sent cursor notification.
   x_display_->ProcessPendingXEvents();
@@ -185,6 +185,21 @@ void MouseCursorMonitorX11::Capture() {
           (window_ == root_window || child_window != None) ? INSIDE : OUTSIDE;
     }
 
+    // As the comments to GetTopLevelWindow() above indicate, in window capture,
+    // the cursor position capture happens in |window_|, while the frame catpure
+    // happens in |child_window|. These two windows are not alwyas same, as
+    // window manager may add some decorations to the |window_|. So translate
+    // the coordinate in |window_| to the coordinate space of |child_window|.
+    if (window_ != root_window && state == INSIDE) {
+      int translated_x, translated_y;
+      Window unused;
+      if (XTranslateCoordinates(display(), window_, child_window, win_x, win_y,
+                                &translated_x, &translated_y, &unused)) {
+        win_x = translated_x;
+        win_y = translated_y;
+      }
+    }
+
     callback_->OnMouseCursorPosition(state,
                                      webrtc::DesktopVector(win_x, win_y));
   }
@@ -204,7 +219,7 @@ bool MouseCursorMonitorX11::HandleXEvent(const XEvent& event) {
 }
 
 void MouseCursorMonitorX11::CaptureCursor() {
-  assert(have_xfixes_);
+  RTC_DCHECK(have_xfixes_);
 
   XFixesCursorImage* img;
   {

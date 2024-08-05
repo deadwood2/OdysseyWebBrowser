@@ -8,7 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-// TODO(hlundin): Reformat file to meet style guide.
+// TODO(henrik.lundin): Refactor or replace all of this application.
 
 /* header includes */
 #include <stdio.h>
@@ -196,9 +196,6 @@ void stereoInterleave(unsigned char* data, size_t dataLen, size_t stride);
      defined(CODEC_CNGCODEC32) || defined(CODEC_CNGCODEC48))
 #include "webrtc/modules/audio_coding/codecs/cng/webrtc_cng.h"
 #endif
-#if ((defined CODEC_SPEEX_8) || (defined CODEC_SPEEX_16))
-#include "SpeexInterface.h"
-#endif
 #ifdef CODEC_OPUS
 #include "webrtc/modules/audio_coding/codecs/opus/opus_interface.h"
 #endif
@@ -266,12 +263,6 @@ GSMFR_encinst_t* GSMFRenc_inst[2];
 #if (defined(CODEC_CNGCODEC8) || defined(CODEC_CNGCODEC16) || \
      defined(CODEC_CNGCODEC32) || defined(CODEC_CNGCODEC48))
 webrtc::ComfortNoiseEncoder *CNG_encoder[2];
-#endif
-#ifdef CODEC_SPEEX_8
-SPEEX_encinst_t* SPEEX8enc_inst[2];
-#endif
-#ifdef CODEC_SPEEX_16
-SPEEX_encinst_t* SPEEX16enc_inst[2];
 #endif
 #ifdef CODEC_OPUS
 OpusEncInst* opus_inst[2];
@@ -426,12 +417,6 @@ int main(int argc, char* argv[]) {
 #ifdef CODEC_G722
     printf("             : g722         g722 coder (16kHz) (the 64kbps "
            "version)\n");
-#endif
-#ifdef CODEC_SPEEX_8
-    printf("             : speex8       speex coder (8 kHz)\n");
-#endif
-#ifdef CODEC_SPEEX_16
-    printf("             : speex16      speex coder (16 kHz)\n");
 #endif
 #ifdef CODEC_RED
 #ifdef CODEC_G711
@@ -1012,68 +997,6 @@ int NetEQTest_init_coders(webrtc::NetEqDecoder coder,
         }
         break;
 #endif
-#ifdef CODEC_SPEEX_8
-      case webrtc::kDecoderSPEEX_8:
-        if (sampfreq == 8000) {
-          if ((enc_frameSize == 160) || (enc_frameSize == 320) ||
-              (enc_frameSize == 480)) {
-            ok = WebRtcSpeex_CreateEnc(&SPEEX8enc_inst[k], sampfreq);
-            if (ok != 0) {
-              printf("Error: Couldn't allocate memory for Speex encoding "
-                     "instance\n");
-              exit(0);
-            }
-          } else {
-            printf("\nError: Speex only supports 20, 40, and 60 ms!!\n\n");
-            exit(0);
-          }
-          if ((vad == 1) && (enc_frameSize != 160)) {
-            printf("\nError - This simulation only supports VAD for Speex at "
-                   "20ms packets (not %" PRIuS "ms)\n",
-                (enc_frameSize >> 3));
-            vad = 0;
-          }
-          ok = WebRtcSpeex_EncoderInit(SPEEX8enc_inst[k], 0 /*vbr*/,
-                                       3 /*complexity*/, vad);
-          if (ok != 0)
-            exit(0);
-        } else {
-          printf("\nError - Speex8 called with sample frequency other than 8 "
-                 "kHz.\n\n");
-        }
-        break;
-#endif
-#ifdef CODEC_SPEEX_16
-      case webrtc::kDecoderSPEEX_16:
-        if (sampfreq == 16000) {
-          if ((enc_frameSize == 320) || (enc_frameSize == 640) ||
-              (enc_frameSize == 960)) {
-            ok = WebRtcSpeex_CreateEnc(&SPEEX16enc_inst[k], sampfreq);
-            if (ok != 0) {
-              printf("Error: Couldn't allocate memory for Speex encoding "
-                     "instance\n");
-              exit(0);
-            }
-          } else {
-            printf("\nError: Speex only supports 20, 40, and 60 ms!!\n\n");
-            exit(0);
-          }
-          if ((vad == 1) && (enc_frameSize != 320)) {
-            printf("\nError - This simulation only supports VAD for Speex at "
-                   "20ms packets (not %" PRIuS "ms)\n",
-                (enc_frameSize >> 4));
-            vad = 0;
-          }
-          ok = WebRtcSpeex_EncoderInit(SPEEX16enc_inst[k], 0 /*vbr*/,
-                                       3 /*complexity*/, vad);
-          if (ok != 0)
-            exit(0);
-        } else {
-          printf("\nError - Speex16 called with sample frequency other than 16 "
-                 "kHz.\n\n");
-        }
-        break;
-#endif
 
 #ifdef CODEC_G722_1_16
       case webrtc::kDecoderG722_1_16:
@@ -1485,16 +1408,6 @@ int NetEQTest_free_coders(webrtc::NetEqDecoder coder, size_t numChannels) {
         WebRtcG7291_Free(G729_1_inst[k]);
         break;
 #endif
-#ifdef CODEC_SPEEX_8
-      case webrtc::NetEqDecoder::kDecoderSPEEX_8:
-        WebRtcSpeex_FreeEnc(SPEEX8enc_inst[k]);
-        break;
-#endif
-#ifdef CODEC_SPEEX_16
-      case webrtc::NetEqDecoder::kDecoderSPEEX_16:
-        WebRtcSpeex_FreeEnc(SPEEX16enc_inst[k]);
-        break;
-#endif
 
 #ifdef CODEC_G722_1_16
       case webrtc::NetEqDecoder::kDecoderG722_1_16:
@@ -1724,7 +1637,7 @@ size_t NetEQTest_encode(webrtc::NetEqDecoder coder,
 #ifdef CODEC_OPUS
     cdlen = WebRtcOpus_Encode(opus_inst[k], indata, frameLen, kRtpDataSize - 12,
                               encoded);
-    RTC_CHECK_GT(cdlen, 0u);
+    RTC_CHECK_GT(cdlen, 0);
 #endif
     indata += frameLen;
     encoded += cdlen;

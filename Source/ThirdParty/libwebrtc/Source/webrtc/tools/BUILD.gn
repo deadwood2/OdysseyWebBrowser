@@ -7,7 +7,7 @@
 # be found in the AUTHORS file in the root of the source tree.
 
 import("//third_party/protobuf/proto_library.gni")
-import("../build/webrtc.gni")
+import("../webrtc.gni")
 
 group("tools") {
   # This target shall build all targets in tools/.
@@ -30,11 +30,14 @@ group("tools") {
   if (rtc_include_tests) {
     public_deps += [
       ":activity_metric",
-      ":rtp_analyzer",
       ":tools_unittests",
     ]
     if (rtc_enable_protobuf) {
-      public_deps += [ ":event_log_visualizer" ]
+      public_deps += [
+        ":event_log_visualizer",
+        ":rtp_analyzer",
+        "network_tester",
+      ]
     }
   }
 }
@@ -46,6 +49,7 @@ rtc_static_library("command_line_parser") {
   ]
   deps = [
     "../base:gtest_prod",
+    "../base:rtc_base_approved",
   ]
 }
 
@@ -87,6 +91,29 @@ rtc_executable("psnr_ssim_analyzer") {
   ]
 }
 
+rtc_static_library("reference_less_video_analysis_lib") {
+  sources = [
+    "frame_analyzer/reference_less_video_analysis_lib.cc",
+    "frame_analyzer/reference_less_video_analysis_lib.h",
+  ]
+
+  deps = [
+    ":video_quality_analysis",
+  ]
+}
+
+rtc_executable("reference_less_video_analysis") {
+  sources = [
+    "frame_analyzer/reference_less_video_analysis.cc",
+  ]
+
+  deps = [
+    ":command_line_parser",
+    ":reference_less_video_analysis_lib",
+    "//build/win:default_exe_manifest",
+  ]
+}
+
 rtc_executable("rgba_to_i420_converter") {
   sources = [
     "converter/converter.cc",
@@ -116,6 +143,7 @@ rtc_static_library("frame_editing_lib") {
   }
 
   deps = [
+    "..:webrtc_common",
     "../common_video",
   ]
 }
@@ -177,12 +205,21 @@ if (rtc_enable_protobuf) {
     }
     defines = [ "ENABLE_RTC_EVENT_LOG" ]
     deps = [
+      "..:video_stream_api",
+      "../base:rtc_base_approved",
+      "../call:call_interfaces",
       "../logging:rtc_event_log_impl",
       "../logging:rtc_event_log_parser",
+      "../modules:module_api",
+      "../modules/audio_coding:ana_debug_dump_proto",
+      "../modules/audio_coding:neteq_tools",
+
+      # TODO(kwiberg): Remove this dependency.
+      "../api/audio_codecs:audio_codecs_api",
       "../modules/congestion_controller",
       "../modules/rtp_rtcp",
       "../system_wrappers:system_wrappers_default",
-      "//build/config/sanitizers:deps",
+      "//build/config:exe_and_shlib_deps",
     ]
     public_deps = [
       ":chart_proto",
@@ -208,8 +245,9 @@ if (rtc_include_tests) {
       defines = [ "ENABLE_RTC_EVENT_LOG" ]
       deps = [
         ":event_log_visualizer_utils",
+        "../base:rtc_base_approved",
         "../test:field_trial",
-        "//third_party/gflags",
+        "../test:test_support",
       ]
     }
   }
@@ -226,15 +264,21 @@ if (rtc_include_tests) {
     }
 
     deps = [
+      "../base:rtc_base_approved",
+      "../modules:module_api",
       "../modules/audio_processing",
       "../system_wrappers:metrics_default",
+      "../test:test_support",
       "//build/win:default_exe_manifest",
       "//testing/gtest",
-      "//third_party/gflags",
     ]
   }
 
-  tools_unittests_resources = [ "//resources/foreman_cif.yuv" ]
+  tools_unittests_resources = [
+    "//resources/foreman_cif.yuv",
+    "//resources/reference_less_video_test_file.y4m",
+    "//resources/video_quality_analysis_frame.txt",
+  ]
 
   if (is_ios) {
     bundle_data("tools_unittests_bundle_data") {
@@ -250,6 +294,7 @@ if (rtc_include_tests) {
     testonly = true
 
     sources = [
+      "frame_analyzer/reference_less_video_analysis_unittest.cc",
       "frame_analyzer/video_quality_analysis_unittest.cc",
       "frame_editing/frame_editing_unittest.cc",
       "simple_command_line_parser_unittest.cc",
@@ -266,10 +311,15 @@ if (rtc_include_tests) {
     deps = [
       ":command_line_parser",
       ":frame_editing_lib",
+      ":reference_less_video_analysis_lib",
       ":video_quality_analysis",
-      "../test:test_support_main",
+      "../test:test_main",
       "//testing/gtest",
     ]
+
+    if (rtc_enable_protobuf) {
+      deps += [ "network_tester:network_tester_unittests" ]
+    }
 
     data = tools_unittests_resources
     if (is_android) {

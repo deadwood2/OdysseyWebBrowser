@@ -14,9 +14,9 @@
 #include <memory>
 #include <vector>
 
+#include "webrtc/api/audio_codecs/audio_encoder.h"
 #include "webrtc/base/constructormagic.h"
 #include "webrtc/common_audio/vad/include/vad.h"
-#include "webrtc/modules/audio_coding/codecs/audio_encoder.h"
 #include "webrtc/modules/audio_coding/codecs/cng/webrtc_cng.h"
 
 namespace webrtc {
@@ -61,10 +61,15 @@ class AudioEncoderCng final : public AudioEncoder {
   bool SetDtx(bool enable) override;
   bool SetApplication(Application application) override;
   void SetMaxPlaybackRate(int frequency_hz) override;
-  void SetProjectedPacketLossRate(double fraction) override;
-  void SetTargetBitrate(int target_bps) override;
   rtc::ArrayView<std::unique_ptr<AudioEncoder>> ReclaimContainedEncoders()
       override;
+  void OnReceivedUplinkPacketLossFraction(
+      float uplink_packet_loss_fraction) override;
+  void OnReceivedUplinkRecoverablePacketLossFraction(
+      float uplink_recoverable_packet_loss_fraction) override;
+  void OnReceivedUplinkBandwidth(
+      int target_audio_bitrate_bps,
+      rtc::Optional<int64_t> probing_interval_ms) override;
 
  private:
   EncodedInfo EncodePassive(size_t frames_to_encode,

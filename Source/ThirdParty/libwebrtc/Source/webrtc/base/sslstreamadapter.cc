@@ -9,13 +9,8 @@
  */
 
 #include "webrtc/base/sslstreamadapter.h"
-#include "webrtc/base/sslconfig.h"
-
-#if SSL_USE_OPENSSL
 
 #include "webrtc/base/opensslstreamadapter.h"
-
-#endif  // SSL_USE_OPENSSL
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -100,12 +95,23 @@ CryptoOptions CryptoOptions::NoGcm() {
   return options;
 }
 
+std::vector<int> GetSupportedDtlsSrtpCryptoSuites(
+    const rtc::CryptoOptions& crypto_options) {
+  std::vector<int> crypto_suites;
+  if (crypto_options.enable_gcm_crypto_suites) {
+    crypto_suites.push_back(rtc::SRTP_AEAD_AES_256_GCM);
+    crypto_suites.push_back(rtc::SRTP_AEAD_AES_128_GCM);
+  }
+  // Note: SRTP_AES128_CM_SHA1_80 is what is required to be supported (by
+  // draft-ietf-rtcweb-security-arch), but SRTP_AES128_CM_SHA1_32 is allowed as
+  // well, and saves a few bytes per packet if it ends up selected.
+  crypto_suites.push_back(rtc::SRTP_AES128_CM_SHA1_32);
+  crypto_suites.push_back(rtc::SRTP_AES128_CM_SHA1_80);
+  return crypto_suites;
+}
+
 SSLStreamAdapter* SSLStreamAdapter::Create(StreamInterface* stream) {
-#if SSL_USE_OPENSSL
   return new OpenSSLStreamAdapter(stream);
-#else  // !SSL_USE_OPENSSL
-  return NULL;
-#endif  // SSL_USE_OPENSSL
 }
 
 SSLStreamAdapter::SSLStreamAdapter(StreamInterface* stream)
@@ -137,16 +143,6 @@ bool SSLStreamAdapter::GetDtlsSrtpCryptoSuite(int* crypto_suite) {
   return false;
 }
 
-#if SSL_USE_OPENSSL
-bool SSLStreamAdapter::HaveDtls() {
-  return OpenSSLStreamAdapter::HaveDtls();
-}
-bool SSLStreamAdapter::HaveDtlsSrtp() {
-  return OpenSSLStreamAdapter::HaveDtlsSrtp();
-}
-bool SSLStreamAdapter::HaveExporter() {
-  return OpenSSLStreamAdapter::HaveExporter();
-}
 bool SSLStreamAdapter::IsBoringSsl() {
   return OpenSSLStreamAdapter::IsBoringSsl();
 }
@@ -160,7 +156,9 @@ bool SSLStreamAdapter::IsAcceptableCipher(const std::string& cipher,
 std::string SSLStreamAdapter::SslCipherSuiteToName(int cipher_suite) {
   return OpenSSLStreamAdapter::SslCipherSuiteToName(cipher_suite);
 }
-#endif  // SSL_USE_OPENSSL
+void SSLStreamAdapter::enable_time_callback_for_testing() {
+  OpenSSLStreamAdapter::enable_time_callback_for_testing();
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 

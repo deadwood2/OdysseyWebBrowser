@@ -10,8 +10,8 @@
 
 #include "webrtc/modules/desktop_capture/cropping_window_capturer.h"
 
+#include "webrtc/base/logging.h"
 #include "webrtc/modules/desktop_capture/cropped_desktop_frame.h"
-#include "webrtc/system_wrappers/include/logging.h"
 
 namespace webrtc {
 
@@ -101,12 +101,8 @@ void CroppingWindowCapturer::OnCaptureResult(
 }
 
 #if !defined(WEBRTC_WIN)
-// static
-DesktopCapturer* CroppingWindowCapturer::Create(
-    const DesktopCaptureOptions& options) {
-  return DesktopCapturer::CreateWindowCapturer(options).release();
-}
-
+// CroppingWindowCapturer is implemented only for windows. On other platforms
+// the regular window capturer is used.
 // static
 std::unique_ptr<DesktopCapturer> CroppingWindowCapturer::CreateCapturer(
     const DesktopCaptureOptions& options) {

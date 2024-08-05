@@ -8,14 +8,14 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <stdint.h>
+
 #include <memory>
 
 #include "webrtc/base/asyncresolverinterface.h"
-#include "webrtc/base/basictypes.h"
 #include "webrtc/base/bind.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/base/gunit.h"
-#include "webrtc/base/physicalsocketserver.h"
 #include "webrtc/base/ssladapter.h"
 #include "webrtc/base/virtualsocketserver.h"
 #include "webrtc/p2p/base/basicpacketsocketfactory.h"
@@ -40,10 +40,8 @@ const rtc::SocketAddress kStunMappedAddr("77.77.77.77", 0);
 class StunProberTest : public testing::Test {
  public:
   StunProberTest()
-      : main_(rtc::Thread::Current()),
-        pss_(new rtc::PhysicalSocketServer),
-        ss_(new rtc::VirtualSocketServer(pss_.get())),
-        ss_scope_(ss_.get()),
+      : ss_(new rtc::VirtualSocketServer()),
+        main_(ss_.get()),
         result_(StunProber::SUCCESS),
         stun_server_1_(cricket::TestStunServer::Create(rtc::Thread::Current(),
                                                        kStunAddr1)),
@@ -119,10 +117,8 @@ class StunProberTest : public testing::Test {
     stopped_ = true;
   }
 
-  rtc::Thread* main_;
-  std::unique_ptr<rtc::PhysicalSocketServer> pss_;
   std::unique_ptr<rtc::VirtualSocketServer> ss_;
-  rtc::SocketServerScope ss_scope_;
+  rtc::AutoSocketServerThread main_;
   std::unique_ptr<StunProber> prober;
   int result_ = 0;
   bool stopped_ = false;

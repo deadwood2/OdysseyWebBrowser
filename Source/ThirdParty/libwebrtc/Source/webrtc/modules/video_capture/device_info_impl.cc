@@ -11,9 +11,9 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include "webrtc/base/logging.h"
 #include "webrtc/modules/video_capture/device_info_impl.h"
 #include "webrtc/modules/video_capture/video_capture_config.h"
-#include "webrtc/system_wrappers/include/logging.h"
 
 #ifndef abs
 #define abs(a) (a>=0?a:-a)
@@ -23,8 +23,8 @@ namespace webrtc
 {
 namespace videocapturemodule
 {
-DeviceInfoImpl::DeviceInfoImpl(const int32_t id)
-    : _id(id), _apiLock(*RWLockWrapper::CreateRWLock()), _lastUsedDeviceName(NULL),
+DeviceInfoImpl::DeviceInfoImpl()
+    : _apiLock(*RWLockWrapper::CreateRWLock()), _lastUsedDeviceName(NULL),
       _lastUsedDeviceNameLength(0)
 {
 }
@@ -153,8 +153,7 @@ int32_t DeviceInfoImpl::GetBestMatchedCapability(
     int32_t bestWidth = 0;
     int32_t bestHeight = 0;
     int32_t bestFrameRate = 0;
-    RawVideoType bestRawType = kVideoUnknown;
-    webrtc::VideoCodecType bestCodecType = webrtc::kVideoCodecUnknown;
+    VideoType bestVideoType = VideoType::kUnknown;
 
     const int32_t numberOfCapabilies =
         static_cast<int32_t>(_captureCapabilities.size());
@@ -194,159 +193,64 @@ int32_t DeviceInfoImpl::GetBestMatchedCapability(
                             if ((currentbestDiffFrameRate == diffFrameRate) // Same frame rate as previous  or frame rate allready good enough
                                 || (currentbestDiffFrameRate >= 0))
                             {
-                                if (bestRawType != requested.rawType
-                                    && requested.rawType != kVideoUnknown
-                                    && (capability.rawType == requested.rawType
-                                        || capability.rawType == kVideoI420
-                                        || capability.rawType == kVideoYUY2
-                                        || capability.rawType == kVideoYV12))
-                                {
-                                    bestCodecType = capability.codecType;
-                                    bestRawType = capability.rawType;
-                                    bestformatIndex = tmp;
+                              if (bestVideoType != requested.videoType &&
+                                  requested.videoType != VideoType::kUnknown &&
+                                  (capability.videoType ==
+                                       requested.videoType ||
+                                   capability.videoType == VideoType::kI420 ||
+                                   capability.videoType == VideoType::kYUY2 ||
+                                   capability.videoType == VideoType::kYV12)) {
+                                bestVideoType = capability.videoType;
+                                bestformatIndex = tmp;
                                 }
                                 // If width height and frame rate is full filled we can use the camera for encoding if it is supported.
                                 if (capability.height == requested.height
                                     && capability.width == requested.width
                                     && capability.maxFPS >= requested.maxFPS)
                                 {
-                                    if (capability.codecType == requested.codecType
-                                        && bestCodecType != requested.codecType)
-                                    {
-                                        bestCodecType = capability.codecType;
-                                        bestformatIndex = tmp;
-                                    }
+                                  bestformatIndex = tmp;
                                 }
                             }
                             else // Better frame rate
                             {
-                                if (requested.codecType == capability.codecType)
-                                {
-
-                                    bestWidth = capability.width;
-                                    bestHeight = capability.height;
-                                    bestFrameRate = capability.maxFPS;
-                                    bestCodecType = capability.codecType;
-                                    bestRawType = capability.rawType;
-                                    bestformatIndex = tmp;
-                                }
+                                bestWidth = capability.width;
+                                bestHeight = capability.height;
+                                bestFrameRate = capability.maxFPS;
+                                bestVideoType = capability.videoType;
+                                bestformatIndex = tmp;
                             }
                         }
                     }
                     else // Better width than previously
                     {
-                        if (requested.codecType == capability.codecType)
-                        {
-                            bestWidth = capability.width;
-                            bestHeight = capability.height;
-                            bestFrameRate = capability.maxFPS;
-                            bestCodecType = capability.codecType;
-                            bestRawType = capability.rawType;
-                            bestformatIndex = tmp;
-                        }
+                        bestWidth = capability.width;
+                        bestHeight = capability.height;
+                        bestFrameRate = capability.maxFPS;
+                        bestVideoType = capability.videoType;
+                        bestformatIndex = tmp;
                     }
                 }// else width no good
             }
             else // Better height
             {
-                if (requested.codecType == capability.codecType)
-                {
-                    bestWidth = capability.width;
-                    bestHeight = capability.height;
-                    bestFrameRate = capability.maxFPS;
-                    bestCodecType = capability.codecType;
-                    bestRawType = capability.rawType;
-                    bestformatIndex = tmp;
-                }
+                bestWidth = capability.width;
+                bestHeight = capability.height;
+                bestFrameRate = capability.maxFPS;
+                bestVideoType = capability.videoType;
+                bestformatIndex = tmp;
             }
         }// else height not good
     }//end for
 
     LOG(LS_VERBOSE) << "Best camera format: " << bestWidth << "x" << bestHeight
                     << "@" << bestFrameRate
-                    << "fps, color format: " << bestRawType;
+                    << "fps, color format: " << static_cast<int>(bestVideoType);
 
     // Copy the capability
     if (bestformatIndex < 0)
         return -1;
     resulting = _captureCapabilities[bestformatIndex];
     return bestformatIndex;
-}
-
-/* Returns the expected Capture delay*/
-int32_t DeviceInfoImpl::GetExpectedCaptureDelay(
-                                          const DelayValues delayValues[],
-                                          const uint32_t sizeOfDelayValues,
-                                          const char* productId,
-                                          const uint32_t width,
-                                          const uint32_t height)
-{
-    int32_t bestDelay = kDefaultCaptureDelay;
-
-    for (uint32_t device = 0; device < sizeOfDelayValues; ++device)
-    {
-        if (delayValues[device].productId && strncmp((char*) productId,
-                                                     (char*) delayValues[device].productId,
-                                                     kVideoCaptureProductIdLength) == 0)
-        {
-            // We have found the camera
-
-            int32_t bestWidth = 0;
-            int32_t bestHeight = 0;
-
-            //Loop through all tested sizes and find one that seems fitting
-            for (uint32_t delayIndex = 0; delayIndex < NoOfDelayValues; ++delayIndex)
-            {
-                const DelayValue& currentValue = delayValues[device].delayValues[delayIndex];
-
-                const int32_t diffWidth = currentValue.width - width;
-                const int32_t diffHeight = currentValue.height - height;
-
-                const int32_t currentbestDiffWith = bestWidth - width;
-                const int32_t currentbestDiffHeight = bestHeight - height;
-
-                if ((diffHeight >= 0 && diffHeight <= abs(currentbestDiffHeight)) // Height better or equal than previous.
-                    || (currentbestDiffHeight < 0 && diffHeight >= currentbestDiffHeight))
-                {
-
-                    if (diffHeight == currentbestDiffHeight) // Found best height. Care about the width)
-                    {
-                        if ((diffWidth >= 0 && diffWidth <= abs(currentbestDiffWith)) // Width better or equal
-                            || (currentbestDiffWith < 0 && diffWidth >= currentbestDiffWith))
-                        {
-                            if (diffWidth == currentbestDiffWith && diffHeight
-                                == currentbestDiffHeight) // Same size as previous
-                            {
-                            }
-                            else // Better width than previously
-                            {
-                                bestWidth = currentValue.width;
-                                bestHeight = currentValue.height;
-                                bestDelay = currentValue.delay;
-                            }
-                        }// else width no good
-                    }
-                    else // Better height
-                    {
-                        bestWidth = currentValue.width;
-                        bestHeight = currentValue.height;
-                        bestDelay = currentValue.delay;
-                    }
-                }// else height not good
-            }//end for
-            break;
-        }
-    }
-    if (bestDelay > kMaxCaptureDelay)
-    {
-        LOG(LS_WARNING) << "Expected capture delay (" << bestDelay
-                        << " ms) too high, using " << kMaxCaptureDelay
-                        << " ms.";
-        bestDelay = kMaxCaptureDelay;
-    }
-
-    return bestDelay;
-
 }
 
 //Default implementation. This should be overridden by Mobile implementations.

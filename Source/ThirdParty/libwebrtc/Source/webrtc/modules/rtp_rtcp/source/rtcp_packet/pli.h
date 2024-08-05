@@ -11,7 +11,6 @@
 #define WEBRTC_MODULES_RTP_RTCP_SOURCE_RTCP_PACKET_PLI_H_
 
 #include "webrtc/base/basictypes.h"
-#include "webrtc/base/constructormagic.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/psfb.h"
 
 namespace webrtc {
@@ -27,18 +26,12 @@ class Pli : public Psfb {
 
   bool Parse(const CommonHeader& packet);
 
- protected:
+  size_t BlockLength() const override;
+
   bool Create(uint8_t* packet,
               size_t* index,
               size_t max_length,
               RtcpPacket::PacketReadyCallback* callback) const override;
-
- private:
-  size_t BlockLength() const override {
-    return kHeaderLength + kCommonFeedbackLength;
-  }
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(Pli);
 };
 
 }  // namespace rtcp

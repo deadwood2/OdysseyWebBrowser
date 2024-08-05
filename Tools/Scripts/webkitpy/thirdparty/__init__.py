@@ -26,14 +26,22 @@
 
 
 import codecs
+import json
 import os
+import re
 import sys
+import urllib2
 
+from collections import namedtuple
+from distutils import spawn
 from webkitpy.common.system.autoinstall import AutoInstaller
 from webkitpy.common.system.filesystem import FileSystem
 
 _THIRDPARTY_DIR = os.path.dirname(__file__)
 _AUTOINSTALLED_DIR = os.path.join(_THIRDPARTY_DIR, "autoinstalled")
+
+CHROME_DRIVER_URL = "http://chromedriver.storage.googleapis.com/"
+FIREFOX_RELEASES_URL = "https://api.github.com/repos/mozilla/geckodriver/releases"
 
 # Putting the autoinstall code into webkitpy/thirdparty/__init__.py
 # ensures that no autoinstalling occurs until a caller imports from
@@ -46,6 +54,7 @@ _AUTOINSTALLED_DIR = os.path.join(_THIRDPARTY_DIR, "autoinstalled")
 # We put auto-installed third-party modules in this directory--
 #
 #     webkitpy/thirdparty/autoinstalled
+
 fs = FileSystem()
 fs.maybe_make_directory(_AUTOINSTALLED_DIR)
 
@@ -91,9 +100,23 @@ class AutoinstallImportHook(object):
             self._install_keyring()
         elif '.twisted_15_5_0' in fullname:
             self._install_twisted_15_5_0()
+        elif '.selenium' in fullname:
+            self._install_selenium()
+        elif '.chromedriver' in fullname:
+            self.install_chromedriver()
+        elif '.geckodriver' in fullname:
+            self.install_geckodriver()
+        elif '.mozlog' in fullname:
+            self._install_mozlog()
+        elif '.mozprocess' in fullname:
+            self._install_mozprocess()
+        elif '.pytest_timeout' in fullname:
+            self._install_pytest_timeout()
+        elif '.pytest' in fullname:
+            self._install_pytest()
 
     def _install_mechanize(self):
-        self._install("http://pypi.python.org/packages/source/m/mechanize/mechanize-0.2.5.tar.gz",
+        self._install("https://pypi.python.org/packages/source/m/mechanize/mechanize-0.2.5.tar.gz",
                              "mechanize-0.2.5/mechanize")
 
     def _install_keyring(self):
@@ -101,8 +124,30 @@ class AutoinstallImportHook(object):
                              "keyring-7.3.1/keyring")
 
     def _install_pep8(self):
-        self._install("http://pypi.python.org/packages/source/p/pep8/pep8-0.5.0.tar.gz#md5=512a818af9979290cd619cce8e9c2e2b",
+        self._install("https://pypi.python.org/packages/source/p/pep8/pep8-0.5.0.tar.gz#md5=512a818af9979290cd619cce8e9c2e2b",
                              "pep8-0.5.0/pep8.py")
+
+    def _install_mozlog(self):
+        self._ensure_autoinstalled_dir_is_in_sys_path()
+        self._install("https://pypi.python.org/packages/10/d5/d286b5dc3f40e32d2a9b3cab0b5b20a05d704958b44b4c5a9aed6472deab/mozlog-3.5.tar.gz#md5=3282c70e7037266f83d8c80119129b75",
+                              "mozlog-3.5/mozlog")
+
+    def _install_mozprocess(self):
+        self._ensure_autoinstalled_dir_is_in_sys_path()
+        self._install("https://pypi.python.org/packages/cb/26/144dbc28d1f40e392f8a0cbee771ba624a61017f016c77ad88424d84b230/mozprocess-0.25.tar.gz#md5=07a04e6ae1a705705e4b44969fe7a182",
+                              "mozprocess-0.25/mozprocess")
+
+    def _install_pytest_timeout(self):
+        self._install("https://pypi.python.org/packages/cc/b7/b2a61365ea6b6d2e8881360ae7ed8dad0327ad2df89f2f0be4a02304deb2/pytest-timeout-1.2.0.tar.gz#md5=83607d91aa163562c7ee835da57d061d",
+                              "pytest-timeout-1.2.0/pytest_timeout.py")
+
+    def _install_pytest(self):
+        self._install("https://pypi.python.org/packages/90/e3/e075127d39d35f09a500ebb4a90afd10f9ef0a1d28a6d09abeec0e444fdd/py-1.5.2.tar.gz#md5=279ca69c632069e1b71e11b14641ca28",
+                              "py-1.5.2/py")
+        self._install("https://pypi.python.org/packages/1f/f8/8cd74c16952163ce0db0bd95fdd8810cbf093c08be00e6e665ebf0dc3138/pytest-3.2.5.tar.gz#md5=6dbe9bb093883f75394a689a1426ac6f",
+                              "pytest-3.2.5/_pytest")
+        self._install("https://pypi.python.org/packages/1f/f8/8cd74c16952163ce0db0bd95fdd8810cbf093c08be00e6e665ebf0dc3138/pytest-3.2.5.tar.gz#md5=6dbe9bb093883f75394a689a1426ac6f",
+                              "pytest-3.2.5/pytest.py")
 
     def _install_pylint(self):
         self._ensure_autoinstalled_dir_is_in_sys_path()
@@ -113,9 +158,9 @@ class AutoinstallImportHook(object):
             files_to_remove = []
             if sys.platform == 'win32':
                 files_to_remove = ['test/data/write_protected_file.txt']
-            installer.install("http://pypi.python.org/packages/source/l/logilab-common/logilab-common-0.58.1.tar.gz#md5=77298ab2d8bb8b4af9219791e7cee8ce", url_subpath="logilab-common-0.58.1", target_name="logilab/common", files_to_remove=files_to_remove)
-            installer.install("http://pypi.python.org/packages/source/l/logilab-astng/logilab-astng-0.24.1.tar.gz#md5=ddaf66e4d85714d9c47a46d4bed406de", url_subpath="logilab-astng-0.24.1", target_name="logilab/astng")
-            installer.install('http://pypi.python.org/packages/source/p/pylint/pylint-0.25.1.tar.gz#md5=728bbc2b339bc3749af013709a7f87a5', url_subpath="pylint-0.25.1", target_name="pylint")
+            installer.install("https://pypi.python.org/packages/source/l/logilab-common/logilab-common-0.58.1.tar.gz#md5=77298ab2d8bb8b4af9219791e7cee8ce", url_subpath="logilab-common-0.58.1", target_name="logilab/common", files_to_remove=files_to_remove)
+            installer.install("https://pypi.python.org/packages/source/l/logilab-astng/logilab-astng-0.24.1.tar.gz#md5=ddaf66e4d85714d9c47a46d4bed406de", url_subpath="logilab-astng-0.24.1", target_name="logilab/astng")
+            installer.install('https://pypi.python.org/packages/source/p/pylint/pylint-0.25.1.tar.gz#md5=728bbc2b339bc3749af013709a7f87a5', url_subpath="pylint-0.25.1", target_name="pylint")
 
     # autoinstalled.buildbot is used by BuildSlaveSupport/build.webkit.org-config/mastercfg_unittest.py
     # and should ideally match the version of BuildBot used at build.webkit.org.
@@ -127,23 +172,23 @@ class AutoinstallImportHook(object):
         # without including other modules as a side effect.
         jinja_dir = self._fs.join(_AUTOINSTALLED_DIR, "jinja2")
         installer = AutoInstaller(append_to_search_path=True, target_dir=jinja_dir)
-        installer.install(url="http://pypi.python.org/packages/source/J/Jinja2/Jinja2-2.6.tar.gz#md5=1c49a8825c993bfdcf55bb36897d28a2",
+        installer.install(url="https://pypi.python.org/packages/source/J/Jinja2/Jinja2-2.6.tar.gz#md5=1c49a8825c993bfdcf55bb36897d28a2",
                                                 url_subpath="Jinja2-2.6/jinja2")
 
         SQLAlchemy_dir = self._fs.join(_AUTOINSTALLED_DIR, "sqlalchemy")
         installer = AutoInstaller(append_to_search_path=True, target_dir=SQLAlchemy_dir)
-        installer.install(url="http://pypi.python.org/packages/source/S/SQLAlchemy/SQLAlchemy-0.7.7.tar.gz#md5=ddf6df7e014cea318fa981364f3f93b9",
+        installer.install(url="https://pypi.python.org/packages/source/S/SQLAlchemy/SQLAlchemy-0.7.7.tar.gz#md5=ddf6df7e014cea318fa981364f3f93b9",
                                                  url_subpath="SQLAlchemy-0.7.7/lib/sqlalchemy")
 
         twisted_dir = self._fs.join(_AUTOINSTALLED_DIR, "twisted")
         installer = AutoInstaller(prepend_to_search_path=True, target_dir=twisted_dir)
         installer.install(url="https://pypi.python.org/packages/source/T/Twisted/Twisted-12.1.0.tar.bz2#md5=f396f1d6f5321e869c2f89b2196a9eb5", url_subpath="Twisted-12.1.0/twisted")
 
-        self._install("http://pypi.python.org/packages/source/b/buildbot/buildbot-0.8.6p1.tar.gz#md5=b6727d2810c692062c657492bcbeac6a", "buildbot-0.8.6p1/buildbot")
+        self._install("https://pypi.python.org/packages/source/b/buildbot/buildbot-0.8.6p1.tar.gz#md5=b6727d2810c692062c657492bcbeac6a", "buildbot-0.8.6p1/buildbot")
 
     def _install_coverage(self):
         self._ensure_autoinstalled_dir_is_in_sys_path()
-        self._install(url="http://pypi.python.org/packages/source/c/coverage/coverage-3.5.1.tar.gz#md5=410d4c8155a4dab222f2bc51212d4a24", url_subpath="coverage-3.5.1/coverage")
+        self._install(url="https://pypi.python.org/packages/source/c/coverage/coverage-3.5.1.tar.gz#md5=410d4c8155a4dab222f2bc51212d4a24", url_subpath="coverage-3.5.1/coverage")
 
     def _install_twisted_15_5_0(self):
         twisted_dir = self._fs.join(_AUTOINSTALLED_DIR, "twisted_15_5_0")
@@ -151,9 +196,44 @@ class AutoinstallImportHook(object):
         installer.install(url="https://pypi.python.org/packages/source/T/Twisted/Twisted-15.5.0.tar.bz2#md5=0831d7c90d0020062de0f7287530a285", url_subpath="Twisted-15.5.0/twisted")
         installer.install(url="https://pypi.python.org/packages/source/z/zope.interface/zope.interface-4.1.3.tar.gz#md5=9ae3d24c0c7415deb249dd1a132f0f79", url_subpath="zope.interface-4.1.3/src/zope")
 
+    def _install_selenium(self):
+        self._ensure_autoinstalled_dir_is_in_sys_path()
+        url, url_subpath = self.get_latest_pypi_url('selenium')
+        self._install(url=url, url_subpath=url_subpath)
+
+    def install_chromedriver(self):
+        filename_postfix = get_driver_filename().chrome
+        if filename_postfix != "unsupported":
+            version = urllib2.urlopen(CHROME_DRIVER_URL + 'LATEST_RELEASE').read().strip()
+            full_chrome_url = "{base_url}{version}/chromedriver_{os}.zip".format(base_url=CHROME_DRIVER_URL, version=version, os=filename_postfix)
+            self.install_binary(full_chrome_url, 'chromedriver')
+
+    def install_geckodriver(self):
+        filename_postfix = get_driver_filename().firefox
+        if filename_postfix != "unsupported":
+            firefox_releases_blob = urllib2.urlopen(FIREFOX_RELEASES_URL)
+            firefox_releases_line_separated = json.dumps(json.load(firefox_releases_blob), indent=0).strip()
+            all_firefox_release_urls = "\n".join(re.findall(r'.*browser_download_url.*', firefox_releases_line_separated))
+            full_firefox_url = re.findall(r'.*%s.*' % filename_postfix, all_firefox_release_urls)[0].split('"')[3]
+            self.install_binary(full_firefox_url, 'geckodriver')
+
     def _install(self, url, url_subpath=None, target_name=None):
         installer = AutoInstaller(target_dir=_AUTOINSTALLED_DIR)
         installer.install(url=url, url_subpath=url_subpath, target_name=target_name)
+
+    def get_latest_pypi_url(self, package_name, url_subpath_format='{name}-{version}/{lname}'):
+        json_url = "https://pypi.python.org/pypi/%s/json" % package_name
+        response = urllib2.urlopen(json_url)
+        data = json.load(response)
+        url = data['urls'][1]['url']
+        subpath = url_subpath_format.format(name=package_name, version=data['info']['version'], lname=package_name.lower())
+        return (url, subpath)
+
+    def install_binary(self, url, name):
+        self._install(url=url, target_name=name)
+        directory = os.path.join(_AUTOINSTALLED_DIR, name)
+        os.chmod(os.path.join(directory, name), 0755)
+        open(os.path.join(directory, '__init__.py'), 'w+').close()
 
 
 _hook = AutoinstallImportHook()
@@ -164,3 +244,21 @@ def autoinstall_everything():
     install_methods = [method for method in dir(_hook.__class__) if method.startswith('_install_')]
     for method in install_methods:
         getattr(_hook, method)()
+
+def get_driver_filename():
+    os_name, os_type = get_os_info()
+    chrome_os, filefox_os = 'unsupported', 'unsupported'
+    if os_name == 'Linux' and os_type == '64':
+        chrome_os, firefox_os = 'linux64', 'linux64'
+    elif os_name == 'Linux':
+        chrome_os, firefox_os = 'linux32', 'linux32'
+    elif os_name == 'Darwin':
+        chrome_os, firefox_os = 'mac64', 'macos'
+    DriverFilenameForBrowser = namedtuple('DriverFilenameForBrowser', ['chrome', 'firefox'])
+    return DriverFilenameForBrowser(chrome_os, firefox_os)
+
+def get_os_info():
+    import platform
+    os_name = platform.system()
+    os_type = platform.machine()[-2:]
+    return (os_name, os_type)

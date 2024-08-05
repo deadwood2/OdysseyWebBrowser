@@ -35,16 +35,16 @@ const int16_t kRefData[kTimeDataLength] = {
 
 class RealFFTTest : public ::testing::Test {
  protected:
-   RealFFTTest() {
-     WebRtcSpl_Init();
-   }
+  RealFFTTest() {
+    WebRtcSpl_Init();
+  }
 };
 
 TEST_F(RealFFTTest, CreateFailsOnBadInput) {
   RealFFT* fft = WebRtcSpl_CreateRealFFT(11);
-  EXPECT_TRUE(fft == NULL);
+  EXPECT_TRUE(fft == nullptr);
   fft = WebRtcSpl_CreateRealFFT(-1);
-  EXPECT_TRUE(fft == NULL);
+  EXPECT_TRUE(fft == nullptr);
 }
 
 TEST_F(RealFFTTest, RealAndComplexMatch) {
@@ -60,11 +60,11 @@ TEST_F(RealFFTTest, RealAndComplexMatch) {
   for (i = 0, j = 0; i < kTimeDataLength; i += 1, j += 2) {
     complex_fft_buff[j] = kRefData[i];
     complex_fft_buff[j + 1] = 0;  // Insert zero's to imaginary parts.
-  };
+  }
 
   // Create and run real forward FFT.
   RealFFT* fft = WebRtcSpl_CreateRealFFT(kOrder);
-  EXPECT_TRUE(fft != NULL);
+  EXPECT_TRUE(fft != nullptr);
   EXPECT_EQ(0, WebRtcSpl_RealForwardFFT(fft, real_fft_time, real_fft_freq));
 
   // Run complex forward FFT.

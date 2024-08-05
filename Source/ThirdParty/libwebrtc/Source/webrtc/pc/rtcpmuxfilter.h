@@ -11,7 +11,6 @@
 #ifndef WEBRTC_PC_RTCPMUXFILTER_H_
 #define WEBRTC_PC_RTCPMUXFILTER_H_
 
-#include "webrtc/base/basictypes.h"
 #include "webrtc/p2p/base/sessiondescription.h"
 
 namespace cricket {
@@ -45,9 +44,6 @@ class RtcpMuxFilter {
 
   // Specifies whether the answer indicates the use of RTCP mux.
   bool SetAnswer(bool answer_enable, ContentSource src);
-
-  // Determines whether the specified packet is RTCP.
-  bool DemuxRtcp(const char* data, int len);
 
  private:
   bool ExpectOffer(bool offer_enable, ContentSource source);

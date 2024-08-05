@@ -10,7 +10,7 @@
 #include "webrtc/modules/rtp_rtcp/include/rtp_header_parser.h"
 
 #include "webrtc/base/criticalsection.h"
-#include "webrtc/modules/rtp_rtcp/source/rtp_header_extension.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_header_extension_map.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_utility.h"
 
 namespace webrtc {
@@ -53,7 +53,7 @@ bool RtpHeaderParserImpl::Parse(const uint8_t* packet,
   RtpHeaderExtensionMap map;
   {
     rtc::CritScope cs(&critical_section_);
-    rtp_header_extension_map_.GetCopy(&map);
+    map = rtp_header_extension_map_;
   }
 
   const bool valid_rtpheader = rtp_parser.Parse(header, &map);
@@ -66,7 +66,7 @@ bool RtpHeaderParserImpl::Parse(const uint8_t* packet,
 bool RtpHeaderParserImpl::RegisterRtpHeaderExtension(RTPExtensionType type,
                                                      uint8_t id) {
   rtc::CritScope cs(&critical_section_);
-  return rtp_header_extension_map_.Register(type, id) == 0;
+  return rtp_header_extension_map_.RegisterByType(id, type);
 }
 
 bool RtpHeaderParserImpl::DeregisterRtpHeaderExtension(RTPExtensionType type) {

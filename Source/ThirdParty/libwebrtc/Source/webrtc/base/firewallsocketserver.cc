@@ -24,6 +24,14 @@ class FirewallSocket : public AsyncSocketAdapter {
     : AsyncSocketAdapter(socket), server_(server), type_(type) {
   }
 
+  int Bind(const SocketAddress& addr) override {
+    if (!server_->IsBindableIp(addr.ipaddr())) {
+      SetError(EINVAL);
+      return SOCKET_ERROR;
+    }
+    return AsyncSocketAdapter::Bind(addr);
+  }
+
   int Connect(const SocketAddress& addr) override {
     if (type_ == SOCK_STREAM) {
       if (!server_->Check(FP_TCP, GetLocalAddress(), addr)) {
@@ -121,7 +129,7 @@ FirewallSocketServer::~FirewallSocketServer() {
 
   if (server_ && should_delete_server_) {
     delete server_;
-    server_ = NULL;
+    server_ = nullptr;
   }
 }
 
@@ -176,6 +184,16 @@ bool FirewallSocketServer::Check(FirewallProtocol p,
   return true;
 }
 
+void FirewallSocketServer::SetUnbindableIps(
+    const std::vector<rtc::IPAddress>& unbindable_ips) {
+  unbindable_ips_ = unbindable_ips;
+}
+
+bool FirewallSocketServer::IsBindableIp(const rtc::IPAddress& ip) {
+  return std::find(unbindable_ips_.begin(), unbindable_ips_.end(), ip) ==
+         unbindable_ips_.end();
+}
+
 Socket* FirewallSocketServer::CreateSocket(int type) {
   return CreateSocket(AF_INET, type);
 }
@@ -210,7 +228,7 @@ AsyncSocket* FirewallSocketServer::WrapSocket(AsyncSocket* sock, int type) {
       (type == SOCK_DGRAM && !udp_sockets_enabled_)) {
     LOG(LS_VERBOSE) << "FirewallSocketServer socket creation denied";
     delete sock;
-    return NULL;
+    return nullptr;
   }
   return new FirewallSocket(this, sock, type);
 }

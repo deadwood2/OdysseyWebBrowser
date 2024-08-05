@@ -26,7 +26,7 @@ enum ProxyType {
 };
 const char * ProxyToString(ProxyType proxy);
 
-struct WEBRTC_EXPORT ProxyInfo {
+struct WEBRTC_DYLIB_EXPORT ProxyInfo {
   ProxyType type;
   SocketAddress address;
   std::string autoconfig_url;

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <utility>
 
 #include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
@@ -45,7 +46,7 @@ void RtpPacketHistory::SetStorePacketsStatus(bool enable,
 }
 
 void RtpPacketHistory::Allocate(size_t number_to_store) {
-  RTC_DCHECK_GT(number_to_store, 0u);
+  RTC_DCHECK_GT(number_to_store, 0);
   RTC_DCHECK_LE(number_to_store, kMaxCapacity);
   store_ = true;
   stored_packets_.resize(number_to_store);
