@@ -632,9 +632,11 @@ void Editor::replaceSelectionWithFragment(DocumentFragment& fragment, bool selec
     if (selection.isNone() || !selection.isContentEditable())
         return;
 
+#if HAVE(ACCESSIBILITY)
     AccessibilityReplacedText replacedText;
     if (AXObjectCache::accessibilityEnabled() && editingAction == EditActionPaste)
         replacedText = AccessibilityReplacedText(selection);
+#endif
 
     OptionSet<ReplaceSelectionCommand::CommandOption> options { ReplaceSelectionCommand::PreventNesting, ReplaceSelectionCommand::SanitizeFragment };
     if (selectReplacement)
@@ -654,11 +656,13 @@ void Editor::replaceSelectionWithFragment(DocumentFragment& fragment, bool selec
     if (selection.isInPasswordField())
         return;
 
+#if HAVE(ACCESSIBILITY)
     if (AXObjectCache::accessibilityEnabled() && editingAction == EditActionPaste) {
         String text = AccessibilityObject::stringForVisiblePositionRange(command->visibleSelectionForInsertedText());
         replacedText.postTextStateChangeNotification(document().existingAXObjectCache(), AXTextEditTypePaste, text, m_frame.selection().selection());
         command->composition()->setRangeDeletedByUnapply(replacedText.replacedRange());
     }
+#endif
 
     if (!isContinuousSpellCheckingEnabled())
         return;
