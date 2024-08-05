@@ -33,9 +33,7 @@
 #include "DFGArgumentPosition.h"
 #include "DFGBasicBlock.h"
 #include "DFGFrozenValue.h"
-#include "DFGLongLivedState.h"
 #include "DFGNode.h"
-#include "DFGNodeAllocator.h"
 #include "DFGPlan.h"
 #include "DFGPropertyTypeKey.h"
 #include "DFGScannable.h"
@@ -95,16 +93,18 @@ template<typename> class FlowMap;
         }                                                               \
     } while (false)
 
-#define DFG_ASSERT(graph, node, assertion) do {                         \
+#define DFG_ASSERT(graph, node, assertion, ...) do {                    \
         if (!!(assertion))                                              \
             break;                                                      \
-        (graph).handleAssertionFailure(                                 \
+        (graph).logAssertionFailure(                                    \
             (node), __FILE__, __LINE__, WTF_PRETTY_FUNCTION, #assertion); \
+        CRASH_WITH_SECURITY_IMPLICATION_AND_INFO(__VA_ARGS__);          \
     } while (false)
 
-#define DFG_CRASH(graph, node, reason) do {                             \
-        (graph).handleAssertionFailure(                                 \
+#define DFG_CRASH(graph, node, reason, ...) do {                        \
+        (graph).logAssertionFailure(                                    \
             (node), __FILE__, __LINE__, WTF_PRETTY_FUNCTION, (reason)); \
+        CRASH_WITH_SECURITY_IMPLICATION_AND_INFO(__VA_ARGS__);          \
     } while (false)
 
 struct InlineVariableData {
@@ -126,7 +126,7 @@ enum AddSpeculationMode {
 // Nodes that are 'dead' remain in the vector with refCount 0.
 class Graph : public virtual Scannable {
 public:
-    Graph(VM&, Plan&, LongLivedState&);
+    Graph(VM&, Plan&);
     ~Graph();
     
     void changeChild(Edge& edge, Node* newNode)
@@ -186,22 +186,20 @@ public:
     template<typename... Params>
     Node* addNode(Params... params)
     {
-        Node* node = new (m_allocator) Node(params...);
-        addNodeToMapByIndex(node);
-        return node;
+        return m_nodes.addNew(params...);
     }
+
     template<typename... Params>
     Node* addNode(SpeculatedType type, Params... params)
     {
-        Node* node = new (m_allocator) Node(params...);
+        Node* node = m_nodes.addNew(params...);
         node->predict(type);
-        addNodeToMapByIndex(node);
         return node;
     }
 
     void deleteNode(Node*);
-    unsigned maxNodeCount() const { return m_nodesByIndex.size(); }
-    Node* nodeAt(unsigned index) const { return m_nodesByIndex[index]; }
+    unsigned maxNodeCount() const { return m_nodes.size(); }
+    Node* nodeAt(unsigned index) const { return m_nodes[index]; }
     void packNodeIndices();
 
     void dethread();
@@ -219,6 +217,7 @@ public:
         return registerStructure(structure, ignored);
     }
     RegisteredStructure registerStructure(Structure*, StructureRegistrationResult&);
+    void registerAndWatchStructureTransition(Structure*);
     void assertIsRegistered(Structure* structure);
     
     // CodeBlock is optional, but may allow additional information to be dumped (e.g. Identifier names).
@@ -884,18 +883,20 @@ public:
     
     JSArrayBufferView* tryGetFoldableView(JSValue);
     JSArrayBufferView* tryGetFoldableView(JSValue, ArrayMode arrayMode);
+
+    bool canDoFastSpread(Node*, const AbstractValue&);
     
     void registerFrozenValues();
     
     void visitChildren(SlotVisitor&) override;
     
-    NO_RETURN_DUE_TO_CRASH void handleAssertionFailure(
+    void logAssertionFailure(
         std::nullptr_t, const char* file, int line, const char* function,
         const char* assertion);
-    NO_RETURN_DUE_TO_CRASH void handleAssertionFailure(
+    void logAssertionFailure(
         Node*, const char* file, int line, const char* function,
         const char* assertion);
-    NO_RETURN_DUE_TO_CRASH void handleAssertionFailure(
+    void logAssertionFailure(
         BasicBlock*, const char* file, int line, const char* function,
         const char* assertion);
 
@@ -921,8 +922,6 @@ public:
     CodeBlock* m_codeBlock;
     CodeBlock* m_profiledBlock;
     
-    NodeAllocator& m_allocator;
-
     Vector< RefPtr<BasicBlock> , 8> m_blocks;
     Vector<Edge, 16> m_varArgChildren;
 
@@ -983,7 +982,7 @@ public:
     HashMap<CodeBlock*, std::unique_ptr<BytecodeKills>> m_bytecodeKills;
     HashSet<std::pair<JSObject*, PropertyOffset>> m_safeToLoad;
     HashMap<PropertyTypeKey, InferredType::Descriptor> m_inferredTypes;
-    Vector<RefPtr<DOMJIT::Patchpoint>> m_domJITPatchpoints;
+    Vector<Ref<Snippet>> m_domJITSnippets;
     std::unique_ptr<Dominators> m_dominators;
     std::unique_ptr<PrePostNumbering> m_prePostNumbering;
     std::unique_ptr<NaturalLoops> m_naturalLoops;
@@ -999,7 +998,7 @@ public:
     HashMap<const StringImpl*, String> m_copiedStrings;
 
 #if USE(JSVALUE32_64)
-    std::unordered_map<int64_t, double*> m_doubleConstantsMap;
+    std::unordered_map<int64_t, double*, std::hash<int64_t>, std::equal_to<int64_t>, FastAllocator<std::pair<const int64_t, double*>>> m_doubleConstantsMap;
     std::unique_ptr<Bag<double>> m_doubleConstants;
 #endif
     
@@ -1018,8 +1017,6 @@ public:
     RegisteredStructure symbolStructure;
 
 private:
-    void addNodeToMapByIndex(Node*);
-
     bool isStringPrototypeMethodSane(JSGlobalObject*, UniquedStringImpl*);
 
     void handleSuccessor(Vector<BasicBlock*, 16>& worklist, BasicBlock*, BasicBlock* successor);
@@ -1052,8 +1049,7 @@ private:
         return bytecodeCanTruncateInteger(add->arithNodeFlags()) ? SpeculateInt32AndTruncateConstants : DontSpeculateInt32;
     }
 
-    Vector<Node*, 0, UnsafeVectorOverflow> m_nodesByIndex;
-    Vector<unsigned, 0, UnsafeVectorOverflow> m_nodeIndexFreeList;
+    B3::SparseCollection<Node> m_nodes;
     SegmentedVector<RegisteredStructureSet, 16> m_structureSets;
 };
 

@@ -29,7 +29,7 @@ PortAllocatorSession::PortAllocatorSession(const std::string& content_name,
   RTC_DCHECK(ice_ufrag.empty() == ice_pwd.empty());
 }
 
-void PortAllocator::SetConfiguration(
+bool PortAllocator::SetConfiguration(
     const ServerAddresses& stun_servers,
     const std::vector<RelayServerConfig>& turn_servers,
     int candidate_pool_size,
@@ -40,31 +40,44 @@ void PortAllocator::SetConfiguration(
   turn_servers_ = turn_servers;
   prune_turn_ports_ = prune_turn_ports;
 
+  if (candidate_pool_frozen_) {
+    if (candidate_pool_size != candidate_pool_size_) {
+      LOG(LS_ERROR) << "Trying to change candidate pool size after pool was "
+                    << "frozen.";
+      return false;
+    }
+    return true;
+  }
+
+  if (candidate_pool_size < 0) {
+    LOG(LS_ERROR) << "Can't set negative pool size.";
+    return false;
+  }
+
+  candidate_pool_size_ = candidate_pool_size;
+
   // If ICE servers changed, throw away any existing pooled sessions and create
   // new ones.
   if (ice_servers_changed) {
     pooled_sessions_.clear();
-    allocated_pooled_session_count_ = 0;
   }
 
-  // If |size| is less than the number of allocated sessions, get rid of the
-  // extras.
-  while (allocated_pooled_session_count_ > candidate_pool_size &&
-         !pooled_sessions_.empty()) {
+  // If |candidate_pool_size_| is less than the number of pooled sessions, get
+  // rid of the extras.
+  while (candidate_pool_size_ < static_cast<int>(pooled_sessions_.size())) {
     pooled_sessions_.front().reset(nullptr);
     pooled_sessions_.pop_front();
-    --allocated_pooled_session_count_;
   }
-  // If |size| is greater than the number of allocated sessions, create new
-  // sessions.
-  while (allocated_pooled_session_count_ < candidate_pool_size) {
+
+  // If |candidate_pool_size_| is greater than the number of pooled sessions,
+  // create new sessions.
+  while (static_cast<int>(pooled_sessions_.size()) < candidate_pool_size_) {
     PortAllocatorSession* pooled_session = CreateSessionInternal("", 0, "", "");
     pooled_session->StartGettingPorts();
     pooled_sessions_.push_back(
         std::unique_ptr<PortAllocatorSession>(pooled_session));
-    ++allocated_pooled_session_count_;
   }
-  target_pooled_session_count_ = candidate_pool_size;
+  return true;
 }
 
 std::unique_ptr<PortAllocatorSession> PortAllocator::CreateSession(
@@ -103,6 +116,14 @@ const PortAllocatorSession* PortAllocator::GetPooledSession() const {
     return nullptr;
   }
   return pooled_sessions_.front().get();
+}
+
+void PortAllocator::FreezeCandidatePool() {
+  candidate_pool_frozen_ = true;
+}
+
+void PortAllocator::DiscardCandidatePool() {
+  pooled_sessions_.clear();
 }
 
 }  // namespace cricket

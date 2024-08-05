@@ -22,13 +22,13 @@
 #include "webrtc/p2p/base/udpport.h"
 #include "webrtc/base/asynctcpsocket.h"
 #include "webrtc/base/buffer.h"
+#include "webrtc/base/checks.h"
 #include "webrtc/base/dscp.h"
 #include "webrtc/base/fakeclock.h"
 #include "webrtc/base/firewallsocketserver.h"
 #include "webrtc/base/gunit.h"
 #include "webrtc/base/helpers.h"
 #include "webrtc/base/logging.h"
-#include "webrtc/base/physicalsocketserver.h"
 #include "webrtc/base/socketadapters.h"
 #include "webrtc/base/socketaddress.h"
 #include "webrtc/base/ssladapter.h"
@@ -80,6 +80,8 @@ static const cricket::ProtocolAddress kTurnUdpProtoAddr(
     kTurnUdpIntAddr, cricket::PROTO_UDP);
 static const cricket::ProtocolAddress kTurnTcpProtoAddr(
     kTurnTcpIntAddr, cricket::PROTO_TCP);
+static const cricket::ProtocolAddress kTurnTlsProtoAddr(kTurnTcpIntAddr,
+                                                        cricket::PROTO_TLS);
 static const cricket::ProtocolAddress kTurnUdpIPv6ProtoAddr(
     kTurnUdpIPv6IntAddr, cricket::PROTO_UDP);
 
@@ -104,8 +106,7 @@ namespace cricket {
 
 class TurnPortTestVirtualSocketServer : public rtc::VirtualSocketServer {
  public:
-  explicit TurnPortTestVirtualSocketServer(SocketServer* ss)
-      : VirtualSocketServer(ss) {
+  TurnPortTestVirtualSocketServer() {
     // This configures the virtual socket server to always add a simulated
     // delay of exactly half of kSimulatedRtt.
     set_delay_mean(kSimulatedRtt / 2);
@@ -140,13 +141,11 @@ class TurnPortTest : public testing::Test,
                      public rtc::MessageHandler {
  public:
   TurnPortTest()
-      : main_(rtc::Thread::Current()),
-        pss_(new rtc::PhysicalSocketServer),
-        ss_(new TurnPortTestVirtualSocketServer(pss_.get())),
-        ss_scope_(ss_.get()),
+      : ss_(new TurnPortTestVirtualSocketServer()),
+        main_(ss_.get()),
         network_("unittest", "unittest", rtc::IPAddress(INADDR_ANY), 32),
         socket_factory_(rtc::Thread::Current()),
-        turn_server_(main_, kTurnUdpIntAddr, kTurnUdpExtAddr),
+        turn_server_(&main_, kTurnUdpIntAddr, kTurnUdpExtAddr),
         turn_ready_(false),
         turn_error_(false),
         turn_unknown_address_(false),
@@ -161,7 +160,7 @@ class TurnPortTest : public testing::Test,
   }
 
   virtual void OnMessage(rtc::Message* msg) {
-    ASSERT(msg->message_id == MSG_TESTFINISH);
+    RTC_CHECK(msg->message_id == MSG_TESTFINISH);
     if (msg->message_id == MSG_TESTFINISH)
       test_finish_ = true;
   }
@@ -240,7 +239,7 @@ class TurnPortTest : public testing::Test,
                       const std::string& password,
                       const ProtocolAddress& server_address) {
     RelayCredentials credentials(username, password);
-    turn_port_.reset(TurnPort::Create(main_, &socket_factory_, &network_,
+    turn_port_.reset(TurnPort::Create(&main_, &socket_factory_, &network_,
                                  local_address.ipaddr(), 0, 0,
                                  kIceUfrag1, kIcePwd1,
                                  server_address, credentials, 0,
@@ -258,7 +257,7 @@ class TurnPortTest : public testing::Test,
                                 const ProtocolAddress& server_address,
                                 const std::string& origin) {
     RelayCredentials credentials(username, password);
-    turn_port_.reset(TurnPort::Create(main_, &socket_factory_, &network_,
+    turn_port_.reset(TurnPort::Create(&main_, &socket_factory_, &network_,
                                  local_address.ipaddr(), 0, 0,
                                  kIceUfrag1, kIcePwd1,
                                  server_address, credentials, 0,
@@ -271,7 +270,7 @@ class TurnPortTest : public testing::Test,
   void CreateSharedTurnPort(const std::string& username,
                             const std::string& password,
                             const ProtocolAddress& server_address) {
-    ASSERT(server_address.proto == PROTO_UDP);
+    RTC_CHECK(server_address.proto == PROTO_UDP);
 
     if (!socket_) {
       socket_.reset(socket_factory_.CreateUdpSocket(
@@ -283,8 +282,8 @@ class TurnPortTest : public testing::Test,
 
     RelayCredentials credentials(username, password);
     turn_port_.reset(TurnPort::Create(
-        main_, &socket_factory_, &network_, socket_.get(), kIceUfrag1, kIcePwd1,
-        server_address, credentials, 0, std::string()));
+        &main_, &socket_factory_, &network_, socket_.get(), kIceUfrag1,
+        kIcePwd1, server_address, credentials, 0, std::string()));
     // This TURN port will be the controlling.
     turn_port_->SetIceRole(ICEROLE_CONTROLLING);
     ConnectSignals();
@@ -306,7 +305,7 @@ class TurnPortTest : public testing::Test,
   void CreateUdpPort() { CreateUdpPort(kLocalAddr2); }
 
   void CreateUdpPort(const SocketAddress& address) {
-    udp_port_.reset(UDPPort::Create(main_, &socket_factory_, &network_,
+    udp_port_.reset(UDPPort::Create(&main_, &socket_factory_, &network_,
                                     address.ipaddr(), 0, 0, kIceUfrag2,
                                     kIcePwd2, std::string(), false));
     // UDP port will be controlled.
@@ -332,7 +331,8 @@ class TurnPortTest : public testing::Test,
   }
 
   bool CheckConnectionFailedAndPruned(Connection* conn) {
-    return conn && !conn->active() && conn->state() == Connection::STATE_FAILED;
+    return conn && !conn->active() &&
+           conn->state() == IceCandidatePairState::FAILED;
   }
 
   // Checks that |turn_port_| has a nonempty set of connections and they are all
@@ -616,10 +616,8 @@ class TurnPortTest : public testing::Test,
 
  protected:
   rtc::ScopedFakeClock fake_clock_;
-  rtc::Thread* main_;
-  std::unique_ptr<rtc::PhysicalSocketServer> pss_;
   std::unique_ptr<TurnPortTestVirtualSocketServer> ss_;
-  rtc::SocketServerScope ss_scope_;
+  rtc::AutoSocketServerThread main_;
   rtc::Network network_;
   rtc::BasicPacketSocketFactory socket_factory_;
   std::unique_ptr<rtc::AsyncPacketSocket> socket_;
@@ -641,6 +639,40 @@ class TurnPortTest : public testing::Test,
 TEST_F(TurnPortTest, TestTurnPortType) {
   CreateTurnPort(kTurnUsername, kTurnPassword, kTurnUdpProtoAddr);
   EXPECT_EQ(cricket::RELAY_PORT_TYPE, turn_port_->Type());
+}
+
+// Tests that the URL of the servers can be correctly reconstructed when
+// gathering the candidates.
+TEST_F(TurnPortTest, TestReconstructedServerUrl) {
+  // Connect the TURN server using UDP.
+  CreateTurnPort(kTurnUsername, kTurnPassword, kTurnUdpProtoAddr);
+  turn_port_->PrepareAddress();
+  EXPECT_TRUE_SIMULATED_WAIT(turn_ready_, kSimulatedRtt * 2, fake_clock_);
+  std::string expected_server_url = "turn:99.99.99.3:3478?transport=udp";
+  EXPECT_EQ(turn_port_->Candidates()[0].url(), expected_server_url);
+
+  // Connect the server with IPV6 using UDP.
+  turn_ready_ = false;
+  turn_server_.AddInternalSocket(kTurnUdpIPv6IntAddr, PROTO_UDP);
+  CreateTurnPort(kLocalIPv6Addr, kTurnUsername, kTurnPassword,
+                 kTurnUdpIPv6ProtoAddr);
+  turn_port_->PrepareAddress();
+  EXPECT_TRUE_SIMULATED_WAIT(turn_ready_, kSimulatedRtt * 2, fake_clock_);
+  ASSERT_EQ(1U, turn_port_->Candidates().size());
+  expected_server_url =
+      "turn:2400:4030:1:2c00:be30:abcd:efab:cdef:3478?transport=udp";
+  EXPECT_EQ(turn_port_->Candidates()[0].url(), expected_server_url);
+
+  // Connection the server using TCP.
+  turn_ready_ = false;
+  turn_server_.AddInternalSocket(kTurnTcpIntAddr, PROTO_TCP);
+  CreateTurnPort(kTurnUsername, kTurnPassword, kTurnTcpProtoAddr);
+  turn_port_->PrepareAddress();
+  EXPECT_TRUE_SIMULATED_WAIT(turn_ready_, kSimulatedRtt * 3, fake_clock_);
+  ASSERT_EQ(1U, turn_port_->Candidates().size());
+  expected_server_url = "turn:99.99.99.4:3478?transport=tcp";
+  EXPECT_EQ(turn_port_->Candidates()[0].url(), expected_server_url);
+  turn_ready_ = false;
 }
 
 // Do a normal TURN allocation.
@@ -1027,8 +1059,8 @@ TEST_F(TurnPortTest, TestDestroyTurnConnectionUsingSharedSocket) {
 // Test that we fail to create a connection when we want to use TLS over TCP.
 // This test should be removed once we have TLS support.
 TEST_F(TurnPortTest, TestTurnTlsTcpConnectionFails) {
-  ProtocolAddress secure_addr(kTurnTcpProtoAddr.address,
-                              kTurnTcpProtoAddr.proto, true);
+  ProtocolAddress secure_addr(kTurnTlsProtoAddr.address,
+                              kTurnTlsProtoAddr.proto);
   CreateTurnPort(kTurnUsername, kTurnPassword, secure_addr);
   turn_port_->PrepareAddress();
   EXPECT_TRUE_SIMULATED_WAIT(turn_error_, kSimulatedRtt * 2, fake_clock_);

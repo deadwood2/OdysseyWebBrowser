@@ -17,6 +17,7 @@
 #include <algorithm>
 
 #include "webrtc/base/asynctcpsocket.h"
+#include "webrtc/base/checks.h"
 #include "webrtc/base/helpers.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/socketadapters.h"
@@ -59,7 +60,7 @@ void SendStunError(const StunMessage& msg, rtc::AsyncPacketSocket* socket,
   err_msg.SetType(GetStunErrorResponseType(msg.type()));
   err_msg.SetTransactionID(msg.transaction_id());
 
-  StunByteStringAttribute* magic_cookie_attr =
+  auto magic_cookie_attr =
       StunAttribute::CreateByteString(cricket::STUN_ATTR_MAGIC_COOKIE);
   if (magic_cookie.size() == 0) {
     magic_cookie_attr->CopyBytes(cricket::TURN_MAGIC_COOKIE_VALUE,
@@ -67,13 +68,13 @@ void SendStunError(const StunMessage& msg, rtc::AsyncPacketSocket* socket,
   } else {
     magic_cookie_attr->CopyBytes(magic_cookie.c_str(), magic_cookie.size());
   }
-  err_msg.AddAttribute(magic_cookie_attr);
+  err_msg.AddAttribute(std::move(magic_cookie_attr));
 
-  StunErrorCodeAttribute* err_code = StunAttribute::CreateErrorCode();
+  auto err_code = StunAttribute::CreateErrorCode();
   err_code->SetClass(error_code / 100);
   err_code->SetNumber(error_code % 100);
   err_code->SetReason(error_desc);
-  err_msg.AddAttribute(err_code);
+  err_msg.AddAttribute(std::move(err_code));
 
   SendStun(err_msg, socket, remote_addr);
 }
@@ -100,8 +101,9 @@ RelayServer::~RelayServer() {
 }
 
 void RelayServer::AddInternalSocket(rtc::AsyncPacketSocket* socket) {
-  ASSERT(internal_sockets_.end() ==
-      std::find(internal_sockets_.begin(), internal_sockets_.end(), socket));
+  RTC_DCHECK(internal_sockets_.end() == std::find(internal_sockets_.begin(),
+                                                  internal_sockets_.end(),
+                                                  socket));
   internal_sockets_.push_back(socket);
   socket->SignalReadPacket.connect(this, &RelayServer::OnInternalPacket);
 }
@@ -109,15 +111,16 @@ void RelayServer::AddInternalSocket(rtc::AsyncPacketSocket* socket) {
 void RelayServer::RemoveInternalSocket(rtc::AsyncPacketSocket* socket) {
   SocketList::iterator iter =
       std::find(internal_sockets_.begin(), internal_sockets_.end(), socket);
-  ASSERT(iter != internal_sockets_.end());
+  RTC_DCHECK(iter != internal_sockets_.end());
   internal_sockets_.erase(iter);
   removed_sockets_.push_back(socket);
   socket->SignalReadPacket.disconnect(this);
 }
 
 void RelayServer::AddExternalSocket(rtc::AsyncPacketSocket* socket) {
-  ASSERT(external_sockets_.end() ==
-      std::find(external_sockets_.begin(), external_sockets_.end(), socket));
+  RTC_DCHECK(external_sockets_.end() == std::find(external_sockets_.begin(),
+                                                  external_sockets_.end(),
+                                                  socket));
   external_sockets_.push_back(socket);
   socket->SignalReadPacket.connect(this, &RelayServer::OnExternalPacket);
 }
@@ -125,7 +128,7 @@ void RelayServer::AddExternalSocket(rtc::AsyncPacketSocket* socket) {
 void RelayServer::RemoveExternalSocket(rtc::AsyncPacketSocket* socket) {
   SocketList::iterator iter =
       std::find(external_sockets_.begin(), external_sockets_.end(), socket);
-  ASSERT(iter != external_sockets_.end());
+  RTC_DCHECK(iter != external_sockets_.end());
   external_sockets_.erase(iter);
   removed_sockets_.push_back(socket);
   socket->SignalReadPacket.disconnect(this);
@@ -133,8 +136,7 @@ void RelayServer::RemoveExternalSocket(rtc::AsyncPacketSocket* socket) {
 
 void RelayServer::AddInternalServerSocket(rtc::AsyncSocket* socket,
                                           cricket::ProtocolType proto) {
-  ASSERT(server_sockets_.end() ==
-         server_sockets_.find(socket));
+  RTC_DCHECK(server_sockets_.end() == server_sockets_.find(socket));
   server_sockets_[socket] = proto;
   socket->SignalReadEvent.connect(this, &RelayServer::OnReadEvent);
 }
@@ -142,7 +144,7 @@ void RelayServer::AddInternalServerSocket(rtc::AsyncSocket* socket,
 void RelayServer::RemoveInternalServerSocket(
     rtc::AsyncSocket* socket) {
   ServerSocketMap::iterator iter = server_sockets_.find(socket);
-  ASSERT(iter != server_sockets_.end());
+  RTC_DCHECK(iter != server_sockets_.end());
   server_sockets_.erase(iter);
   socket->SignalReadEvent.disconnect(this);
 }
@@ -174,7 +176,7 @@ bool RelayServer::HasConnection(const rtc::SocketAddress& address) const {
 }
 
 void RelayServer::OnReadEvent(rtc::AsyncSocket* socket) {
-  ASSERT(server_sockets_.find(socket) != server_sockets_.end());
+  RTC_DCHECK(server_sockets_.find(socket) != server_sockets_.end());
   AcceptConnection(socket);
 }
 
@@ -185,7 +187,7 @@ void RelayServer::OnInternalPacket(
 
   // Get the address of the connection we just received on.
   rtc::SocketAddressPair ap(remote_addr, socket->GetLocalAddress());
-  ASSERT(!ap.destination().IsNil());
+  RTC_DCHECK(!ap.destination().IsNil());
 
   // If this did not come from an existing connection, it should be a STUN
   // allocate request.
@@ -230,7 +232,7 @@ void RelayServer::OnExternalPacket(
 
   // Get the address of the connection we just received on.
   rtc::SocketAddressPair ap(remote_addr, socket->GetLocalAddress());
-  ASSERT(!ap.destination().IsNil());
+  RTC_DCHECK(!ap.destination().IsNil());
 
   // If this connection already exists, then forward the traffic.
   ConnectionMap::iterator piter = connections_.find(ap);
@@ -240,7 +242,7 @@ void RelayServer::OnExternalPacket(
     RelayServerConnection* int_conn =
         ext_conn->binding()->GetInternalConnection(
             ext_conn->addr_pair().source());
-    ASSERT(int_conn != NULL);
+    RTC_DCHECK(int_conn != NULL);
     int_conn->Send(bytes, size, ext_conn->addr_pair().source());
     ext_conn->Lock();  // allow outgoing packets
     return;
@@ -288,7 +290,7 @@ void RelayServer::OnExternalPacket(
   // Send this message on the appropriate internal connection.
   RelayServerConnection* int_conn = ext_conn->binding()->GetInternalConnection(
       ext_conn->addr_pair().source());
-  ASSERT(int_conn != NULL);
+  RTC_DCHECK(int_conn != NULL);
   int_conn->Send(bytes, size, ext_conn->addr_pair().source());
 }
 
@@ -419,26 +421,24 @@ void RelayServer::HandleStunAllocate(
   response.SetType(STUN_ALLOCATE_RESPONSE);
   response.SetTransactionID(request.transaction_id());
 
-  StunByteStringAttribute* magic_cookie_attr =
+  auto magic_cookie_attr =
       StunAttribute::CreateByteString(cricket::STUN_ATTR_MAGIC_COOKIE);
   magic_cookie_attr->CopyBytes(int_conn->binding()->magic_cookie().c_str(),
                                int_conn->binding()->magic_cookie().size());
-  response.AddAttribute(magic_cookie_attr);
+  response.AddAttribute(std::move(magic_cookie_attr));
 
   size_t index = rand() % external_sockets_.size();
   rtc::SocketAddress ext_addr =
       external_sockets_[index]->GetLocalAddress();
 
-  StunAddressAttribute* addr_attr =
-      StunAttribute::CreateAddress(STUN_ATTR_MAPPED_ADDRESS);
+  auto addr_attr = StunAttribute::CreateAddress(STUN_ATTR_MAPPED_ADDRESS);
   addr_attr->SetIP(ext_addr.ipaddr());
   addr_attr->SetPort(ext_addr.port());
-  response.AddAttribute(addr_attr);
+  response.AddAttribute(std::move(addr_attr));
 
-  StunUInt32Attribute* res_lifetime_attr =
-      StunAttribute::CreateUInt32(STUN_ATTR_LIFETIME);
+  auto res_lifetime_attr = StunAttribute::CreateUInt32(STUN_ATTR_LIFETIME);
   res_lifetime_attr->SetValue(int_conn->binding()->lifetime() / 1000);
-  response.AddAttribute(res_lifetime_attr);
+  response.AddAttribute(std::move(res_lifetime_attr));
 
   // TODO: Support transport-prefs (preallocate RTCP port).
   // TODO: Support bandwidth restrictions.
@@ -470,7 +470,7 @@ void RelayServer::HandleStunSend(
       int_conn->binding()->GetExternalConnection(ext_addr);
   if (!ext_conn) {
     // Create a new connection to establish the relationship with this binding.
-    ASSERT(external_sockets_.size() == 1);
+    RTC_DCHECK(external_sockets_.size() == 1);
     rtc::AsyncPacketSocket* socket = external_sockets_[0];
     rtc::SocketAddressPair ap(ext_addr, socket->GetLocalAddress());
     ext_conn = new RelayServerConnection(int_conn->binding(), ap, socket);
@@ -492,35 +492,35 @@ void RelayServer::HandleStunSend(
     response.SetType(STUN_SEND_RESPONSE);
     response.SetTransactionID(request.transaction_id());
 
-    StunByteStringAttribute* magic_cookie_attr =
+    auto magic_cookie_attr =
         StunAttribute::CreateByteString(cricket::STUN_ATTR_MAGIC_COOKIE);
     magic_cookie_attr->CopyBytes(int_conn->binding()->magic_cookie().c_str(),
                                  int_conn->binding()->magic_cookie().size());
-    response.AddAttribute(magic_cookie_attr);
+    response.AddAttribute(std::move(magic_cookie_attr));
 
-    StunUInt32Attribute* options2_attr =
-      StunAttribute::CreateUInt32(cricket::STUN_ATTR_OPTIONS);
+    auto options2_attr =
+        StunAttribute::CreateUInt32(cricket::STUN_ATTR_OPTIONS);
     options2_attr->SetValue(0x01);
-    response.AddAttribute(options2_attr);
+    response.AddAttribute(std::move(options2_attr));
 
     int_conn->SendStun(response);
   }
 }
 
 void RelayServer::AddConnection(RelayServerConnection* conn) {
-  ASSERT(connections_.find(conn->addr_pair()) == connections_.end());
+  RTC_DCHECK(connections_.find(conn->addr_pair()) == connections_.end());
   connections_[conn->addr_pair()] = conn;
 }
 
 void RelayServer::RemoveConnection(RelayServerConnection* conn) {
   ConnectionMap::iterator iter = connections_.find(conn->addr_pair());
-  ASSERT(iter != connections_.end());
+  RTC_DCHECK(iter != connections_.end());
   connections_.erase(iter);
 }
 
 void RelayServer::RemoveBinding(RelayServerBinding* binding) {
   BindingMap::iterator iter = bindings_.find(binding->username());
-  ASSERT(iter != bindings_.end());
+  RTC_DCHECK(iter != bindings_.end());
   bindings_.erase(iter);
 
   if (log_bindings_) {
@@ -530,10 +530,9 @@ void RelayServer::RemoveBinding(RelayServerBinding* binding) {
 }
 
 void RelayServer::OnMessage(rtc::Message *pmsg) {
-#if ENABLE_DEBUG
   static const uint32_t kMessageAcceptConnection = 1;
-  ASSERT(pmsg->message_id == kMessageAcceptConnection);
-#endif
+  RTC_DCHECK(pmsg->message_id == kMessageAcceptConnection);
+
   rtc::MessageData* data = pmsg->pdata;
   rtc::AsyncSocket* socket =
       static_cast <rtc::TypedMessageData<rtc::AsyncSocket*>*>
@@ -556,8 +555,8 @@ void RelayServer::AcceptConnection(rtc::AsyncSocket* server_socket) {
   if (accepted_socket != NULL) {
     // We had someone trying to connect, now check which protocol to
     // use and create a packet socket.
-    ASSERT(server_sockets_[server_socket] == cricket::PROTO_TCP ||
-           server_sockets_[server_socket] == cricket::PROTO_SSLTCP);
+    RTC_DCHECK(server_sockets_[server_socket] == cricket::PROTO_TCP ||
+               server_sockets_[server_socket] == cricket::PROTO_SSLTCP);
     if (server_sockets_[server_socket] == cricket::PROTO_SSLTCP) {
       accepted_socket = new rtc::AsyncSSLServerSocket(accepted_socket);
     }
@@ -602,23 +601,21 @@ void RelayServerConnection::Send(
   RelayMessage msg;
   msg.SetType(STUN_DATA_INDICATION);
 
-  StunByteStringAttribute* magic_cookie_attr =
+  auto magic_cookie_attr =
       StunAttribute::CreateByteString(cricket::STUN_ATTR_MAGIC_COOKIE);
   magic_cookie_attr->CopyBytes(binding_->magic_cookie().c_str(),
                                binding_->magic_cookie().size());
-  msg.AddAttribute(magic_cookie_attr);
+  msg.AddAttribute(std::move(magic_cookie_attr));
 
-  StunAddressAttribute* addr_attr =
-      StunAttribute::CreateAddress(STUN_ATTR_SOURCE_ADDRESS2);
+  auto addr_attr = StunAttribute::CreateAddress(STUN_ATTR_SOURCE_ADDRESS2);
   addr_attr->SetIP(from_addr.ipaddr());
   addr_attr->SetPort(from_addr.port());
-  msg.AddAttribute(addr_attr);
+  msg.AddAttribute(std::move(addr_attr));
 
-  StunByteStringAttribute* data_attr =
-      StunAttribute::CreateByteString(STUN_ATTR_DATA);
-  ASSERT(size <= 65536);
+  auto data_attr = StunAttribute::CreateByteString(STUN_ATTR_DATA);
+  RTC_DCHECK(size <= 65536);
   data_attr->CopyBytes(data, uint16_t(size));
-  msg.AddAttribute(data_attr);
+  msg.AddAttribute(std::move(data_attr));
 
   SendStun(msg);
 }
@@ -717,7 +714,7 @@ RelayServerConnection* RelayServerBinding::GetInternalConnection(
   }
 
   // If one was not found, we send to the first connection.
-  ASSERT(internal_connections_.size() > 0);
+  RTC_DCHECK(internal_connections_.size() > 0);
   return internal_connections_[0];
 }
 
@@ -732,7 +729,7 @@ RelayServerConnection* RelayServerBinding::GetExternalConnection(
 
 void RelayServerBinding::OnMessage(rtc::Message *pmsg) {
   if (pmsg->message_id == MSG_LIFETIME_TIMER) {
-    ASSERT(!pmsg->pdata);
+    RTC_DCHECK(!pmsg->pdata);
 
     // If the lifetime timeout has been exceeded, then send a signal.
     // Otherwise, just keep waiting.
@@ -745,7 +742,7 @@ void RelayServerBinding::OnMessage(rtc::Message *pmsg) {
     }
 
   } else {
-    ASSERT(false);
+    RTC_NOTREACHED();
   }
 }
 

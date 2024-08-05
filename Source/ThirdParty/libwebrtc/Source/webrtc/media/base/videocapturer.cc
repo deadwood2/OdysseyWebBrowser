@@ -14,11 +14,9 @@
 
 #include <algorithm>
 
-#include "libyuv/scale_argb.h"
-#include "webrtc/base/common.h"
+#include "webrtc/api/video/i420_buffer.h"
+#include "webrtc/api/video/video_frame.h"
 #include "webrtc/base/logging.h"
-#include "webrtc/base/systeminfo.h"
-#include "webrtc/video_frame.h"
 
 namespace cricket {
 
@@ -151,8 +149,9 @@ void VideoCapturer::OnSinkWantsChanged(const rtc::VideoSinkWants& wants) {
   apply_rotation_ = wants.rotation_applied;
 
   if (video_adapter()) {
-    video_adapter()->OnResolutionRequest(wants.max_pixel_count,
-                                         wants.max_pixel_count_step_up);
+    video_adapter()->OnResolutionFramerateRequest(wants.target_pixel_count,
+                                                  wants.max_pixel_count,
+                                                  wants.max_framerate_fps);
   }
 }
 
@@ -206,17 +205,17 @@ void VideoCapturer::OnFrame(const webrtc::VideoFrame& frame,
   if (apply_rotation_ && frame.rotation() != webrtc::kVideoRotation_0) {
     rtc::scoped_refptr<webrtc::VideoFrameBuffer> buffer(
         frame.video_frame_buffer());
-    if (buffer->native_handle()) {
-      // Sources producing native frames must handle apply_rotation
+    if (buffer->type() != webrtc::VideoFrameBuffer::Type::kI420) {
+      // Sources producing non-I420 frames must handle apply_rotation
       // themselves. But even if they do, we may occasionally end up
       // in this case, for frames in flight at the time
       // applied_rotation is set to true. In that case, we just drop
       // the frame.
-      LOG(LS_WARNING) << "Native frame requiring rotation. Discarding.";
+      LOG(LS_WARNING) << "Non-I420 frame requiring rotation. Discarding.";
       return;
     }
     broadcaster_.OnFrame(webrtc::VideoFrame(
-        webrtc::I420Buffer::Rotate(buffer, frame.rotation()),
+        webrtc::I420Buffer::Rotate(*buffer->GetI420(), frame.rotation()),
         webrtc::kVideoRotation_0, frame.timestamp_us()));
   } else {
     broadcaster_.OnFrame(frame);

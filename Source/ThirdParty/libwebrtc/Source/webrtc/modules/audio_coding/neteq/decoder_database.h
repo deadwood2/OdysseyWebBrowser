@@ -15,10 +15,11 @@
 #include <memory>
 #include <string>
 
+#include "webrtc/api/audio_codecs/audio_decoder_factory.h"
+#include "webrtc/api/audio_codecs/audio_format.h"
 #include "webrtc/base/constructormagic.h"
+#include "webrtc/base/scoped_ref_ptr.h"
 #include "webrtc/common_types.h"  // NULL
-#include "webrtc/modules/audio_coding/codecs/audio_decoder_factory.h"
-#include "webrtc/modules/audio_coding/codecs/audio_format.h"
 #include "webrtc/modules/audio_coding/codecs/cng/webrtc_cng.h"
 #include "webrtc/modules/audio_coding/neteq/audio_decoder_impl.h"
 #include "webrtc/modules/audio_coding/neteq/packet.h"
@@ -62,6 +63,10 @@ class DecoderDatabase {
     void DropDecoder() const { decoder_.reset(); }
 
     int SampleRateHz() const {
+      if (IsDtmf()) {
+        // DTMF has a 1:1 mapping between clock rate and sample rate.
+        return audio_format_.clockrate_hz;
+      }
       const AudioDecoder* decoder = GetDecoder();
       RTC_DCHECK_EQ(1, !!decoder + !!cng_decoder_);
       return decoder ? decoder->SampleRateHz() : cng_decoder_->sample_rate_hz;
@@ -143,6 +148,11 @@ class DecoderDatabase {
   // any AudioDecoder objects that were not externally created and inserted
   // using InsertExternal().
   virtual void Reset();
+
+  // Replaces the existing set of decoders with the given set. Returns the
+  // payload types that were reassigned or removed while doing so.
+  virtual std::vector<int> SetCodecs(
+      const std::map<int, SdpAudioFormat>& codecs);
 
   // Registers |rtp_payload_type| as a decoder of type |codec_type|. The |name|
   // is only used to populate the name field in the DecoderInfo struct in the

@@ -14,7 +14,6 @@
 #include <vector>
 
 #include "webrtc/base/basictypes.h"
-#include "webrtc/base/constructormagic.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/psfb.h"
 
 namespace webrtc {
@@ -27,8 +26,8 @@ class Remb : public Psfb {
   static constexpr uint8_t kFeedbackMessageType = 15;
   static constexpr size_t kMaxNumberOfSsrcs = 0xff;
 
-  Remb() : bitrate_bps_(0) {}
-  ~Remb() override {}
+  Remb();
+  ~Remb() override;
 
   // Parse assumes header is already parsed and validated.
   bool Parse(const CommonHeader& packet);
@@ -39,15 +38,12 @@ class Remb : public Psfb {
   uint64_t bitrate_bps() const { return bitrate_bps_; }
   const std::vector<uint32_t>& ssrcs() const { return ssrcs_; }
 
- protected:
+  size_t BlockLength() const override;
+
   bool Create(uint8_t* packet,
               size_t* index,
               size_t max_length,
               RtcpPacket::PacketReadyCallback* callback) const override;
-
-  size_t BlockLength() const override {
-    return kHeaderLength + kCommonFeedbackLength + (2 + ssrcs_.size()) * 4;
-  }
 
  private:
   static constexpr uint32_t kUniqueIdentifier = 0x52454D42;  // 'R' 'E' 'M' 'B'.
@@ -58,8 +54,6 @@ class Remb : public Psfb {
 
   uint64_t bitrate_bps_;
   std::vector<uint32_t> ssrcs_;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(Remb);
 };
 }  // namespace rtcp
 }  // namespace webrtc

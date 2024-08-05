@@ -50,7 +50,7 @@ class RtcpRttStatsTestImpl : public RtcpRttStats {
 };
 
 class SendTransport : public Transport,
-                      public NullRtpData {
+                      public RtpData {
  public:
   SendTransport()
       : receiver_(NULL),
@@ -87,6 +87,11 @@ class SendTransport : public Transport,
     EXPECT_TRUE(receiver_);
     EXPECT_EQ(0, receiver_->IncomingRtcpPacket(data, len));
     return true;
+  }
+  int32_t OnReceivedPayloadData(const uint8_t* payload_data,
+                                size_t payload_size,
+                                const WebRtcRTPHeader* rtp_header) override {
+    return 0;
   }
   ModuleRtpRtcpImpl* receiver_;
   SimulatedClock* clock_;
@@ -168,9 +173,9 @@ class RtpRtcpImplTest : public ::testing::Test {
         sender_(&clock_),
         receiver_(&clock_) {
     // Send module.
+    sender_.impl_->SetSSRC(kSenderSsrc);
     EXPECT_EQ(0, sender_.impl_->SetSendingStatus(true));
     sender_.impl_->SetSendingMediaStatus(true);
-    sender_.impl_->SetSSRC(kSenderSsrc);
     sender_.SetRemoteSsrc(kReceiverSsrc);
     sender_.impl_->SetSequenceNumber(kSequenceNumber);
     sender_.impl_->SetStorePacketsStatus(true, 100);
@@ -199,9 +204,17 @@ class RtpRtcpImplTest : public ::testing::Test {
   void SendFrame(const RtpRtcpModule* module, uint8_t tid) {
     RTPVideoHeaderVP8 vp8_header = {};
     vp8_header.temporalIdx = tid;
-    RTPVideoHeader rtp_video_header = {
-        codec_.width, codec_.height, kVideoRotation_0, {-1, -1}, true, 0,
-        kRtpVideoVp8, {vp8_header}};
+    RTPVideoHeader rtp_video_header;
+    rtp_video_header.width = codec_.width;
+    rtp_video_header.height = codec_.height;
+    rtp_video_header.rotation = kVideoRotation_0;
+    rtp_video_header.content_type = VideoContentType::UNSPECIFIED;
+    rtp_video_header.playout_delay = {-1, -1};
+    rtp_video_header.is_first_packet_in_frame = true;
+    rtp_video_header.simulcastIdx = 0;
+    rtp_video_header.codec = kRtpVideoVp8;
+    rtp_video_header.codecHeader = {vp8_header};
+    rtp_video_header.video_timing = {0u, 0u, 0u, 0u, 0u, 0u, false};
 
     const uint8_t payload[100] = {0};
     EXPECT_EQ(true, module->impl_->SendOutgoingData(

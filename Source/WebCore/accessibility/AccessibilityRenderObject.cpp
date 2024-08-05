@@ -36,6 +36,7 @@
 #include "AccessibilitySpinButton.h"
 #include "AccessibilityTable.h"
 #include "CachedImage.h"
+#include "Editing.h"
 #include "ElementIterator.h"
 #include "FloatRect.h"
 #include "Frame.h"
@@ -67,7 +68,6 @@
 #include "Page.h"
 #include "ProgressTracker.h"
 #include "RenderButton.h"
-#include "RenderFieldset.h"
 #include "RenderFileUploadControl.h"
 #include "RenderHTMLCanvas.h"
 #include "RenderImage.h"
@@ -98,7 +98,6 @@
 #include "TextControlInnerElements.h"
 #include "TextIterator.h"
 #include "VisibleUnits.h"
-#include "htmlediting.h"
 #include <wtf/NeverDestroyed.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/unicode/CharacterNames.h>
@@ -110,6 +109,7 @@ using namespace HTMLNames;
 AccessibilityRenderObject::AccessibilityRenderObject(RenderObject* renderer)
     : AccessibilityNodeObject(renderer->node())
     , m_renderer(renderer)
+    , m_weakPtrFactory(this)
 {
 #ifndef NDEBUG
     m_renderer->setHasAXObject(true);
@@ -411,7 +411,12 @@ AccessibilityObject* AccessibilityRenderObject::nextSibling() const
     if (!nextSibling)
         return nullptr;
     
-    return axObjectCache()->getOrCreate(nextSibling);
+    // Make sure next sibling has the same parent.
+    AccessibilityObject* nextObj = axObjectCache()->getOrCreate(nextSibling);
+    if (nextObj && nextObj->parentObject() != this->parentObject())
+        return nullptr;
+    
+    return nextObj;
 }
 
 static RenderBoxModelObject* nextContinuation(RenderObject& renderer)
@@ -604,10 +609,8 @@ String AccessibilityRenderObject::helpText() const
         
         // Only take help text from an ancestor element if its a group or an unknown role. If help was 
         // added to those kinds of elements, it is likely it was meant for a child element.
-        AccessibilityObject* axObj = axObjectCache()->getOrCreate(ancestor);
-        if (axObj) {
-            AccessibilityRole role = axObj->roleValue();
-            if (role != GroupRole && role != UnknownRole)
+        if (AccessibilityObject* axObj = axObjectCache()->getOrCreate(ancestor)) {
+            if (!axObj->isGroup() && axObj->roleValue() != UnknownRole)
                 break;
         }
     }
@@ -1009,7 +1012,7 @@ bool AccessibilityRenderObject::hasTextAlternative() const
     
 bool AccessibilityRenderObject::ariaHasPopup() const
 {
-    return elementAttributeValue(aria_haspopupAttr);
+    return !equalLettersIgnoringASCIICase(ariaPopupValue(), "false");
 }
 
 bool AccessibilityRenderObject::supportsARIADropping() const 
@@ -1044,7 +1047,7 @@ void AccessibilityRenderObject::determineARIADropEffects(Vector<String>& effects
     
 bool AccessibilityRenderObject::exposesTitleUIElement() const
 {
-    if (!isControl() && !isFigure())
+    if (!isControl() && !isFigureElement())
         return false;
 
     // If this control is ignored (because it's invisible), 
@@ -1079,9 +1082,9 @@ AccessibilityObject* AccessibilityRenderObject::titleUIElement() const
     
     // if isFieldset is true, the renderer is guaranteed to be a RenderFieldset
     if (isFieldset())
-        return axObjectCache()->getOrCreate(downcast<RenderFieldset>(*m_renderer).findLegend(RenderFieldset::IncludeFloatingOrOutOfFlow));
+        return axObjectCache()->getOrCreate(downcast<RenderBlock>(*m_renderer).findFieldsetLegend(RenderBlock::FieldsetIncludeFloatingOrOutOfFlow));
     
-    if (isFigure())
+    if (isFigureElement())
         return captionForFigure();
     
     Node* node = m_renderer->node();
@@ -1149,7 +1152,18 @@ AccessibilityObjectInclusion AccessibilityRenderObject::defaultObjectInclusion()
 
     return AccessibilityObject::defaultObjectInclusion();
 }
-
+    
+static bool webAreaIsPresentational(RenderObject* renderer)
+{
+    if (!is<RenderView>(*renderer))
+        return false;
+    
+    if (auto ownerElement = renderer->document().ownerElement())
+        return nodeHasPresentationRole(ownerElement);
+    
+    return false;
+}
+    
 bool AccessibilityRenderObject::computeAccessibilityIsIgnored() const
 {
 #ifndef NDEBUG
@@ -1178,6 +1192,10 @@ bool AccessibilityRenderObject::computeAccessibilityIsIgnored() const
     if (roleValue() == PresentationalRole || inheritsPresentationalRole())
         return true;
     
+    // WebAreas should be ignored if their iframe container is marked as presentational.
+    if (webAreaIsPresentational(m_renderer))
+        return true;
+        
     // An ARIA tree can only have tree items and static text as children.
     if (!isAllowedChildOfTree())
         return true;
@@ -1248,7 +1266,7 @@ bool AccessibilityRenderObject::computeAccessibilityIsIgnored() const
     if (isControl())
         return false;
     
-    if (isFigure())
+    if (isFigureElement())
         return false;
 
     switch (roleValue()) {
@@ -1259,6 +1277,7 @@ bool AccessibilityRenderObject::computeAccessibilityIsIgnored() const
     case DocumentArticleRole:
     case LandmarkRegionRole:
     case ListItemRole:
+    case TimeRole:
     case VideoRole:
         return false;
     default:
@@ -1487,7 +1506,7 @@ const AtomicString& AccessibilityRenderObject::accessKey() const
 {
     Node* node = m_renderer->node();
     if (!is<Element>(node))
-        return nullAtom;
+        return nullAtom();
     return downcast<Element>(*node).getAttribute(accesskeyAttr);
 }
 
@@ -1740,16 +1759,15 @@ void AccessibilityRenderObject::setValue(const String& string)
     if (!m_renderer || !is<Element>(m_renderer->node()))
         return;
     Element& element = downcast<Element>(*m_renderer->node());
-
-    if (!is<RenderBoxModelObject>(*m_renderer))
-        return;
-    RenderBoxModelObject& renderer = downcast<RenderBoxModelObject>(*m_renderer);
-
+    RenderObject& renderer = *m_renderer;
+    
     // FIXME: Do we want to do anything here for ARIA textboxes?
     if (renderer.isTextField() && is<HTMLInputElement>(element))
         downcast<HTMLInputElement>(element).setValue(string);
     else if (renderer.isTextArea() && is<HTMLTextAreaElement>(element))
         downcast<HTMLTextAreaElement>(element).setValue(string);
+    else if (is<HTMLElement>(element) && contentEditableAttributeIsEnabled(&element))
+        downcast<HTMLElement>(element).setInnerText(string);
 }
 
 bool AccessibilityRenderObject::supportsARIAOwns() const
@@ -2373,6 +2391,11 @@ AccessibilityObject* AccessibilityRenderObject::accessibilityHitTest(const IntPo
 
 bool AccessibilityRenderObject::shouldNotifyActiveDescendant() const
 {
+#if PLATFORM(GTK)
+    // According to the Core AAM spec, ATK expects object:state-changed:focused notifications
+    // whenever the active descendant changes.
+    return true;
+#endif
     // We want to notify that the combo box has changed its active descendant,
     // but we do not want to change the focus, because focus should remain with the combo box.
     if (isComboBox())
@@ -2384,7 +2407,7 @@ bool AccessibilityRenderObject::shouldNotifyActiveDescendant() const
 bool AccessibilityRenderObject::shouldFocusActiveDescendant() const
 {
     switch (ariaRoleAttribute()) {
-    case GroupRole:
+    case ApplicationGroupRole:
     case ListBoxRole:
     case MenuRole:
     case MenuBarRole:
@@ -2674,7 +2697,7 @@ AccessibilityRole AccessibilityRenderObject::determineAccessibilityRole()
         return SVGRootRole;
     
     if (isStyleFormatGroup())
-        return is<RenderInline>(*m_renderer) ? InlineRole : GroupRole;
+        return is<RenderInline>(*m_renderer) ? InlineRole : TextGroupRole;
     
     if (node && node->hasTagName(ddTag))
         return DescriptionListDetailRole;
@@ -2684,6 +2707,12 @@ AccessibilityRole AccessibilityRenderObject::determineAccessibilityRole()
 
     if (node && node->hasTagName(dlTag))
         return DescriptionListRole;
+
+    if (node && node->hasTagName(fieldsetTag))
+        return GroupRole;
+
+    if (node && node->hasTagName(figureTag))
+        return FigureRole;
 
     // Check for Ruby elements
     if (m_renderer->isRubyText())
@@ -2699,14 +2728,8 @@ AccessibilityRole AccessibilityRenderObject::determineAccessibilityRole()
     
     // This return value is what will be used if AccessibilityTableCell determines
     // the cell should not be treated as a cell (e.g. because it is a layout table.
-    // In ATK, there is a distinction between generic text block elements and other
-    // generic containers; AX API does not make this distinction.
     if (is<RenderTableCell>(m_renderer))
-#if PLATFORM(GTK)
-        return DivRole;
-#else
-        return GroupRole;
-#endif
+        return TextGroupRole;
 
     // Table sections should be ignored.
     if (m_renderer->isTableSection())
@@ -2746,7 +2769,7 @@ AccessibilityRole AccessibilityRenderObject::determineAccessibilityRole()
     // The HTML AAM spec says it is "strongly recommended" that ATs only convey and provide navigation
     // for section elements which have names.
     if (node && node->hasTagName(sectionTag))
-        return hasAttribute(aria_labelAttr) || hasAttribute(aria_labelledbyAttr) ? LandmarkRegionRole : GroupRole;
+        return hasAttribute(aria_labelAttr) || hasAttribute(aria_labelledbyAttr) ? LandmarkRegionRole : TextGroupRole;
 
     if (node && node->hasTagName(addressTag))
         return LandmarkContentInfoRole;
@@ -2795,19 +2818,15 @@ AccessibilityRole AccessibilityRenderObject::determineAccessibilityRole()
     if (node && node->hasTagName(menuTag) && equalLettersIgnoringASCIICase(getAttribute(typeAttr), "toolbar"))
         return ToolbarRole;
     
+    if (node && node->hasTagName(timeTag))
+        return TimeRole;
+    
     // If the element does not have role, but it has ARIA attributes, or accepts tab focus, accessibility should fallback to exposing it as a group.
     if (supportsARIAAttributes() || canSetFocusAttribute())
         return GroupRole;
 
-    if (m_renderer->isRenderBlockFlow()) {
-#if PLATFORM(GTK)
-        // For ATK, GroupRole maps to ATK_ROLE_PANEL. Panels are most commonly found (and hence
-        // expected) in UI elements; not text blocks.
-        return m_renderer->isAnonymousBlock() ? DivRole : GroupRole;
-#else
-        return GroupRole;
-#endif
-    }
+    if (m_renderer->isRenderBlockFlow())
+        return m_renderer->isAnonymousBlock() ? TextGroupRole : GroupRole;
     
     // InlineRole is the final fallback before assigning UnknownRole to an object. It makes it
     // possible to distinguish truly unknown objects from non-focusable inline text elements
@@ -2831,17 +2850,21 @@ AccessibilityOrientation AccessibilityRenderObject::orientation() const
     if (equalLettersIgnoringASCIICase(ariaOrientation, "undefined"))
         return AccessibilityOrientationUndefined;
 
-    // ARIA 1.1 Implicit defaults are defined on some roles.
-    // http://www.w3.org/TR/wai-aria-1.1/#aria-orientation
-    if (isScrollbar() || isComboBox() || isListBox() || isMenu() || isTree())
+    // In ARIA 1.1, the implicit value of aria-orientation changed from horizontal
+    // to undefined on all roles that don't have their own role-specific values. In
+    // addition, the implicit value of combobox became undefined.
+    if (isComboBox() || isRadioGroup() || isTreeGrid())
+        return AccessibilityOrientationUndefined;
+
+    if (isScrollbar() || isListBox() || isMenu() || isTree())
         return AccessibilityOrientationVertical;
     
-    if (isMenuBar() || isSplitter() || isTabList() || isToolbar())
+    if (isMenuBar() || isSplitter() || isTabList() || isToolbar() || isSlider())
         return AccessibilityOrientationHorizontal;
     
     return AccessibilityObject::orientation();
 }
-    
+
 bool AccessibilityRenderObject::inheritsPresentationalRole() const
 {
     // ARIA states if an item can get focus, it should not be presentational.
@@ -2851,48 +2874,41 @@ bool AccessibilityRenderObject::inheritsPresentationalRole() const
     // ARIA spec says that when a parent object is presentational, and it has required child elements,
     // those child elements are also presentational. For example, <li> becomes presentational from <ul>.
     // http://www.w3.org/WAI/PF/aria/complete#presentation
-    static NeverDestroyed<HashSet<QualifiedName>> listItemParents;
-    static NeverDestroyed<HashSet<QualifiedName>> tableCellParents;
 
-    HashSet<QualifiedName>* possibleParentTagNames = nullptr;
+    const Vector<const HTMLQualifiedName*>* parentTags;
     switch (roleValue()) {
     case ListItemRole:
-    case ListMarkerRole:
-        if (listItemParents.get().isEmpty()) {
-            listItemParents.get().add(ulTag);
-            listItemParents.get().add(olTag);
-            listItemParents.get().add(dlTag);
-        }
-        possibleParentTagNames = &listItemParents.get();
-        break;
-    case GridCellRole:
-    case CellRole:
-        if (tableCellParents.get().isEmpty())
-            tableCellParents.get().add(tableTag);
-        possibleParentTagNames = &tableCellParents.get();
-        break;
-    default:
+    case ListMarkerRole: {
+        static const auto listItemParents = makeNeverDestroyed(Vector<const HTMLQualifiedName*> { &dlTag, &olTag, &ulTag });
+        parentTags = &listItemParents.get();
         break;
     }
-    
-    // Not all elements need to check for this, only ones that are required children.
-    if (!possibleParentTagNames)
+    case GridCellRole:
+    case CellRole: {
+        static const auto tableCellParents = makeNeverDestroyed(Vector<const HTMLQualifiedName*> { &tableTag });
+        parentTags = &tableCellParents.get();
+        break;
+    }
+    default:
+        // Not all elements need to do the following check, only ones that are required children.
         return false;
-    
-    for (AccessibilityObject* parent = parentObject(); parent; parent = parent->parentObject()) { 
+    }
+
+    for (auto* parent = parentObject(); parent; parent = parent->parentObject()) {
         if (!is<AccessibilityRenderObject>(*parent))
             continue;
-        
+
         Node* node = downcast<AccessibilityRenderObject>(*parent).node();
         if (!is<Element>(node))
             continue;
-        
+
         // If native tag of the parent element matches an acceptable name, then return
         // based on its presentational status.
-        if (possibleParentTagNames->contains(downcast<Element>(node)->tagQName()))
+        auto& name = downcast<Element>(*node).tagQName();
+        if (std::any_of(parentTags->begin(), parentTags->end(), [&name] (auto* possibleName) { return *possibleName == name; }))
             return parent->roleValue() == PresentationalRole;
     }
-    
+
     return false;
 }
     
@@ -2991,7 +3007,7 @@ void AccessibilityRenderObject::addImageMapChildren()
 void AccessibilityRenderObject::updateChildrenIfNecessary()
 {
     if (needsToUpdateChildren())
-        clearChildren();        
+        clearChildren();
     
     AccessibilityObject::updateChildrenIfNecessary();
 }
@@ -3111,9 +3127,7 @@ void AccessibilityRenderObject::addAttachmentChildren()
     if (!widget || !widget->isFrameView())
         return;
     
-    AccessibilityObject* axWidget = axObjectCache()->getOrCreate(widget);
-    if (!axWidget->accessibilityIsIgnored())
-        m_children.append(axWidget);
+    addChild(axObjectCache()->getOrCreate(widget));
 }
 
 #if PLATFORM(COCOA)
@@ -3215,6 +3229,8 @@ void AccessibilityRenderObject::addChildren()
     
     for (RefPtr<AccessibilityObject> obj = firstChild(); obj; obj = obj->nextSibling())
         addChild(obj.get());
+    
+    m_subtreeDirty = false;
     
     addHiddenChildren();
     addAttachmentChildren();
@@ -3365,6 +3381,7 @@ void AccessibilityRenderObject::selectedChildren(AccessibilityChildrenVector& re
         return;
     case GridRole:
     case TreeRole:
+    case TreeGridRole:
         ariaSelectedRows(result);
         return;
     case TabListRole:
@@ -3446,10 +3463,10 @@ const String& AccessibilityRenderObject::actionVerb() const
     case WebCoreLinkRole:
         return linkAction;
     default:
-        return nullAtom;
+        return nullAtom();
     }
 #else
-    return nullAtom;
+    return nullAtom();
 #endif
 }
     
@@ -3508,7 +3525,7 @@ bool AccessibilityRenderObject::hasBoldFont() const
     if (!m_renderer)
         return false;
     
-    return m_renderer->style().fontDescription().weight() >= FontWeightBold;
+    return isFontWeightBold(m_renderer->style().fontDescription().weight());
 }
 
 bool AccessibilityRenderObject::hasItalicFont() const
@@ -3516,7 +3533,7 @@ bool AccessibilityRenderObject::hasItalicFont() const
     if (!m_renderer)
         return false;
     
-    return m_renderer->style().fontDescription().italic() == FontItalicOn;
+    return isItalic(m_renderer->style().fontDescription().italic());
 }
 
 bool AccessibilityRenderObject::hasPlainText() const
@@ -3526,8 +3543,8 @@ bool AccessibilityRenderObject::hasPlainText() const
     
     const RenderStyle& style = m_renderer->style();
     
-    return style.fontDescription().weight() == FontWeightNormal
-        && style.fontDescription().italic() == FontItalicOff
+    return style.fontDescription().weight() == normalWeightValue()
+        && style.fontDescription().italic() == normalItalicValue()
         && style.textDecorationsInEffect() == TextDecorationNone;
 }
 

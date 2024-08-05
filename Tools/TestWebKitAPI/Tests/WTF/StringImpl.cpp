@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include <wtf/Hasher.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/text/SymbolImpl.h>
 #include <wtf/text/WTFString.h>
 
@@ -54,6 +55,17 @@ TEST(WTF, StringImplCreationFromLiteral)
     ASSERT_TRUE(equal(programmaticStringNoLength.get(), stringWithoutLengthLiteral));
     ASSERT_EQ(stringWithoutLengthLiteral, reinterpret_cast<const char*>(programmaticStringNoLength->characters8()));
     ASSERT_TRUE(programmaticStringNoLength->is8Bit());
+
+    // AtomicStringImpl from createFromLiteral should use the same underlying string.
+    auto atomicStringWithTemplate = AtomicStringImpl::add(stringWithTemplate.ptr());
+    ASSERT_TRUE(atomicStringWithTemplate->is8Bit());
+    ASSERT_EQ(atomicStringWithTemplate->characters8(), stringWithTemplate->characters8());
+    auto atomicProgrammaticString = AtomicStringImpl::add(programmaticString.ptr());
+    ASSERT_TRUE(atomicProgrammaticString->is8Bit());
+    ASSERT_EQ(atomicProgrammaticString->characters8(), programmaticString->characters8());
+    auto atomicProgrammaticStringNoLength = AtomicStringImpl::add(programmaticStringNoLength.ptr());
+    ASSERT_TRUE(atomicProgrammaticStringNoLength->is8Bit());
+    ASSERT_EQ(atomicProgrammaticStringNoLength->characters8(), programmaticStringNoLength->characters8());
 }
 
 TEST(WTF, StringImplReplaceWithLiteral)
@@ -518,6 +530,7 @@ TEST(WTF, StringImplCreateNullSymbol)
 {
     auto reference = SymbolImpl::createNullSymbol();
     ASSERT_TRUE(reference->isSymbol());
+    ASSERT_FALSE(reference->isPrivate());
     ASSERT_TRUE(reference->isNullSymbol());
     ASSERT_FALSE(reference->isAtomic());
     ASSERT_EQ(0u, reference->length());
@@ -529,6 +542,7 @@ TEST(WTF, StringImplCreateSymbol)
     auto original = stringFromUTF8("original");
     auto reference = SymbolImpl::create(original);
     ASSERT_TRUE(reference->isSymbol());
+    ASSERT_FALSE(reference->isPrivate());
     ASSERT_FALSE(reference->isNullSymbol());
     ASSERT_FALSE(reference->isAtomic());
     ASSERT_FALSE(original->isSymbol());
@@ -539,6 +553,32 @@ TEST(WTF, StringImplCreateSymbol)
     auto empty = stringFromUTF8("");
     auto emptyReference = SymbolImpl::create(empty);
     ASSERT_TRUE(emptyReference->isSymbol());
+    ASSERT_FALSE(emptyReference->isPrivate());
+    ASSERT_FALSE(emptyReference->isNullSymbol());
+    ASSERT_FALSE(emptyReference->isAtomic());
+    ASSERT_FALSE(empty->isSymbol());
+    ASSERT_TRUE(empty->isAtomic());
+    ASSERT_EQ(empty->length(), emptyReference->length());
+    ASSERT_TRUE(equal(emptyReference.ptr(), ""));
+}
+
+TEST(WTF, StringImplCreatePrivateSymbol)
+{
+    auto original = stringFromUTF8("original");
+    auto reference = PrivateSymbolImpl::create(original);
+    ASSERT_TRUE(reference->isSymbol());
+    ASSERT_TRUE(reference->isPrivate());
+    ASSERT_FALSE(reference->isNullSymbol());
+    ASSERT_FALSE(reference->isAtomic());
+    ASSERT_FALSE(original->isSymbol());
+    ASSERT_FALSE(original->isAtomic());
+    ASSERT_EQ(original->length(), reference->length());
+    ASSERT_TRUE(equal(reference.ptr(), "original"));
+
+    auto empty = stringFromUTF8("");
+    auto emptyReference = PrivateSymbolImpl::create(empty);
+    ASSERT_TRUE(emptyReference->isSymbol());
+    ASSERT_TRUE(emptyReference->isPrivate());
     ASSERT_FALSE(emptyReference->isNullSymbol());
     ASSERT_FALSE(emptyReference->isAtomic());
     ASSERT_FALSE(empty->isSymbol());
@@ -552,6 +592,7 @@ TEST(WTF, StringImplSymbolToAtomicString)
     auto original = stringFromUTF8("original");
     auto reference = SymbolImpl::create(original);
     ASSERT_TRUE(reference->isSymbol());
+    ASSERT_FALSE(reference->isPrivate());
     ASSERT_FALSE(reference->isAtomic());
 
     auto result = AtomicStringImpl::lookUp(reference.ptr());
@@ -571,6 +612,7 @@ TEST(WTF, StringImplNullSymbolToAtomicString)
 {
     auto reference = SymbolImpl::createNullSymbol();
     ASSERT_TRUE(reference->isSymbol());
+    ASSERT_FALSE(reference->isPrivate());
     ASSERT_FALSE(reference->isAtomic());
 
     // Because the substring of the reference is the empty string which is already interned.
@@ -608,8 +650,12 @@ TEST(WTF, StringImplStaticToAtomicString)
     ASSERT_FALSE(original.isAtomic());
     ASSERT_TRUE(original.isStatic());
 
+    ASSERT_TRUE(atomic->is8Bit());
+    ASSERT_EQ(atomic->characters8(), original.characters8());
+
     auto result2 = AtomicStringImpl::lookUp(&original);
     ASSERT_TRUE(result2);
+    ASSERT_EQ(atomic, result2);
 }
 
 TEST(WTF, StringImplConstexprHasher)
@@ -624,6 +670,71 @@ TEST(WTF, StringImplConstexprHasher)
 TEST(WTF, StringImplEmpty)
 {
     ASSERT_FALSE(StringImpl::empty()->length());
+}
+
+static const String& neverDestroyedString()
+{
+    static NeverDestroyed<String> str(MAKE_STATIC_STRING_IMPL("NeverDestroyedString"));
+    return str;
+};
+
+static const String& getNeverDestroyedStringAtStackDepth(int i)
+{
+    if (--i)
+        return getNeverDestroyedStringAtStackDepth(i);
+    return neverDestroyedString();
+};
+
+TEST(WTF, StaticStringImpl)
+{
+    // Construct using MAKE_STATIC_STRING_IMPL.
+    String hello(MAKE_STATIC_STRING_IMPL("hello"));
+    String world(MAKE_STATIC_STRING_IMPL("world"));
+    String longer(MAKE_STATIC_STRING_IMPL("longer"));
+    String hello2(MAKE_STATIC_STRING_IMPL("hello"));
+
+    ASSERT_EQ(strlen("hello"), hello.length());
+    ASSERT_EQ(strlen("world"), world.length());
+    ASSERT_EQ(strlen("longer"), longer.length());
+    ASSERT_EQ(strlen("hello"), hello2.length());
+
+    ASSERT_TRUE(equal(hello, "hello"));
+    ASSERT_TRUE(equal(world, "world"));
+    ASSERT_TRUE(equal(longer, "longer"));
+    ASSERT_TRUE(equal(hello2, "hello"));
+
+    // Each StaticStringImpl* returned by MAKE_STATIC_STRING_IMPL should be unique.
+    ASSERT_NE(hello.impl(), hello2.impl());
+
+    // Test that MAKE_STATIC_STRING_IMPL isn't allocating a StaticStringImpl on the stack.
+    const String& str1 = getNeverDestroyedStringAtStackDepth(10);
+    ASSERT_EQ(strlen("NeverDestroyedString"), str1.length());
+    ASSERT_TRUE(equal(str1, "NeverDestroyedString"));
+
+    const String& str2 = getNeverDestroyedStringAtStackDepth(20);
+    ASSERT_EQ(strlen("NeverDestroyedString"), str2.length());
+    ASSERT_TRUE(equal(str2, "NeverDestroyedString"));
+
+    ASSERT_TRUE(equal(str1, str2));
+    ASSERT_EQ(&str1, &str2);
+    ASSERT_EQ(str1.impl(), str2.impl());
+}
+
+static SymbolImpl::StaticSymbolImpl staticSymbol {"Cocoa"};
+static SymbolImpl::StaticSymbolImpl staticPrivateSymbol {"Cocoa", SymbolImpl::s_flagIsPrivate };
+
+TEST(WTF, StaticSymbolImpl)
+{
+    auto& symbol = static_cast<SymbolImpl&>(staticSymbol);
+    ASSERT_TRUE(symbol.isSymbol());
+    ASSERT_FALSE(symbol.isPrivate());
+}
+
+TEST(WTF, StaticPrivateSymbolImpl)
+{
+    auto& symbol = static_cast<SymbolImpl&>(staticPrivateSymbol);
+    ASSERT_TRUE(symbol.isSymbol());
+    ASSERT_TRUE(symbol.isPrivate());
 }
 
 } // namespace TestWebKitAPI

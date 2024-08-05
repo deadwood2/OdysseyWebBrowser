@@ -26,6 +26,7 @@
 #include "lpc_tables.h"
 #include "settings.h"
 #include "signal_processing_library.h"
+#include "webrtc/base/sanitizer.h"
 
 /*
  * Eenumerations for arguments to functions WebRtcIsacfix_MatrixProduct1()
@@ -188,6 +189,22 @@ static void CalcCorrelation(int32_t *PSpecQ12, int32_t *CorrQ7)
   }
 }
 
+// Some arithmetic operations that are allowed to overflow. (It's still
+// undefined behavior, so not a good idea; this just makes UBSan ignore the
+// violations, so that our old code can continue to do what it's always been
+// doing.)
+static inline int32_t OverflowingMulS16S32ToS32(int16_t a, int32_t b)
+    RTC_NO_SANITIZE("signed-integer-overflow") {
+  return a * b;
+}
+static inline int32_t OverflowingAddS32S32ToS32(int32_t a, int32_t b)
+    RTC_NO_SANITIZE("signed-integer-overflow") {
+  return a + b;
+}
+static inline int32_t OverflowingSubS32S32ToS32(int32_t a, int32_t b)
+    RTC_NO_SANITIZE("signed-integer-overflow") {
+  return a - b;
+}
 
 /* compute inverse AR power spectrum */
 static void CalcInvArSpec(const int16_t *ARCoefQ12,
@@ -231,7 +248,10 @@ static void CalcInvArSpec(const int16_t *ARCoefQ12,
 
   for (k = 1; k < AR_ORDER; k += 2) {
     for (n = 0; n < FRAMESAMPLES/8; n++)
-      CurveQ16[n] += (WebRtcIsacfix_kCos[k][n] * CorrQ11[k + 1] + 2) >> 2;
+      CurveQ16[n] +=
+          (OverflowingMulS16S32ToS32(WebRtcIsacfix_kCos[k][n], CorrQ11[k + 1]) +
+           2) >>
+          2;
   }
 
   CS_ptrQ9 = WebRtcIsacfix_kCos[0];
@@ -256,8 +276,9 @@ static void CalcInvArSpec(const int16_t *ARCoefQ12,
 
   for (k=0; k<FRAMESAMPLES/8; k++) {
     int32_t diff_q16 = diffQ16[k] * (1 << shftVal);
-    CurveQ16[FRAMESAMPLES / 4 - 1 - k] = CurveQ16[k] - diff_q16;
-    CurveQ16[k] += diff_q16;
+    CurveQ16[FRAMESAMPLES / 4 - 1 - k] =
+        OverflowingSubS32S32ToS32(CurveQ16[k], diff_q16);
+    CurveQ16[k] = OverflowingAddS32S32ToS32(CurveQ16[k], diff_q16);
   }
 }
 

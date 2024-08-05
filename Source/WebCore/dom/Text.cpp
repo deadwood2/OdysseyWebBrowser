@@ -23,11 +23,9 @@
 #include "Text.h"
 
 #include "Event.h"
-#include "ExceptionCode.h"
 #include "RenderCombineText.h"
 #include "RenderSVGInlineText.h"
 #include "RenderText.h"
-#include "RenderTreeUpdater.h"
 #include "SVGElement.h"
 #include "SVGNames.h"
 #include "ScopedEventQueue.h"
@@ -59,7 +57,7 @@ Text::~Text()
 ExceptionOr<Ref<Text>> Text::splitText(unsigned offset)
 {
     if (offset > length())
-        return Exception { INDEX_SIZE_ERR };
+        return Exception { IndexSizeError };
 
     EventQueueScope scope;
     auto oldData = data();
@@ -219,14 +217,7 @@ void Text::updateRendererAfterContentChange(unsigned offsetOfReplacedData, unsig
     if (styleValidity() >= Style::Validity::SubtreeAndRenderersInvalid)
         return;
 
-    auto textUpdate = std::make_unique<Style::Update>(document());
-    textUpdate->addText(*this);
-
-    RenderTreeUpdater renderTreeUpdater(document());
-    renderTreeUpdater.commit(WTFMove(textUpdate));
-
-    if (auto* renderer = this->renderer())
-        renderer->setTextWithOffset(data(), offsetOfReplacedData, lengthOfReplacedData);
+    document().updateTextRenderer(*this, offsetOfReplacedData, lengthOfReplacedData);
 }
 
 #if ENABLE(TREE_DEBUGGING)

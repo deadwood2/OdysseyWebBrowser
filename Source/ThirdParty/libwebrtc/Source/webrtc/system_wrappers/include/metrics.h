@@ -16,7 +16,6 @@
 #include "webrtc/base/atomicops.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/common_types.h"
-#include "webrtc/system_wrappers/include/logging.h"
 
 // Macros for allowing WebRTC clients (e.g. Chrome) to gather and aggregate
 // statistics.
@@ -44,7 +43,7 @@
 //       Histogram* histogram_pointer, const std::string& name, int sample);
 //
 // - or link with the default implementations (i.e.
-//   system_wrappers/system_wrappers.gyp:metrics_default).
+//   system_wrappers:metrics_default).
 //
 //
 // Example usage:
@@ -58,6 +57,9 @@
 // };
 //
 // RTC_HISTOGRAM_ENUMERATION("WebRTC.Types", kTypeX, kBoundary);
+//
+// NOTE: It is recommended to do the Chromium review for modifications to
+// histograms.xml before new metrics are committed to WebRTC.
 
 
 // Macros for adding samples to a named histogram.
@@ -84,6 +86,11 @@
 #define RTC_HISTOGRAM_COUNTS(name, sample, min, max, bucket_count) \
   RTC_HISTOGRAM_COMMON_BLOCK(name, sample, \
       webrtc::metrics::HistogramFactoryGetCounts(name, min, max, bucket_count))
+
+#define RTC_HISTOGRAM_COUNTS_LINEAR(name, sample, min, max, bucket_count)      \
+  RTC_HISTOGRAM_COMMON_BLOCK(name, sample,                                     \
+                             webrtc::metrics::HistogramFactoryGetCountsLinear( \
+                                 name, min, max, bucket_count))
 
 // Deprecated.
 // TODO(asapersson): Remove.
@@ -213,6 +220,12 @@ class Histogram;
 Histogram* HistogramFactoryGetCounts(
     const std::string& name, int min, int max, int bucket_count);
 
+// Get histogram for counters with linear bucket spacing.
+Histogram* HistogramFactoryGetCountsLinear(const std::string& name,
+                                           int min,
+                                           int max,
+                                           int bucket_count);
+
 // Get histogram for enumerators.
 // |boundary| should be above the max enumerator sample.
 Histogram* HistogramFactoryGetEnumeration(
@@ -228,4 +241,3 @@ void HistogramAdd(Histogram* histogram_pointer, int sample);
 }  // namespace webrtc
 
 #endif  // WEBRTC_SYSTEM_WRAPPERS_INCLUDE_METRICS_H_
-

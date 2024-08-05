@@ -25,7 +25,6 @@
 #include "config.h"
 #include "HTMLFormElement.h"
 
-#include "AutocompleteErrorEvent.h"
 #include "DOMFormData.h"
 #include "DOMWindow.h"
 #include "Document.h"
@@ -60,9 +59,6 @@ using namespace HTMLNames;
 
 HTMLFormElement::HTMLFormElement(const QualifiedName& tagName, Document& document)
     : HTMLElement(tagName, document)
-#if ENABLE(REQUEST_AUTOCOMPLETE)
-    , m_requestAutocompletetimer(*this, &HTMLFormElement::requestAutocompleteTimerFired)
-#endif
 {
     ASSERT(hasTagName(formTag));
 }
@@ -133,20 +129,12 @@ Node::InsertionNotificationRequest HTMLFormElement::insertedInto(ContainerNode& 
     return InsertionDone;
 }
 
-static inline Node* findRoot(Node* n)
-{
-    Node* root = n;
-    for (; n; n = n->parentNode())
-        root = n;
-    return root;
-}
-
 void HTMLFormElement::removedFrom(ContainerNode& insertionPoint)
 {
-    Node* root = findRoot(this);
+    Node& root = traverseToRootNode(); // Do not rely on rootNode() because our IsInTreeScope is outdated.
     Vector<FormAssociatedElement*> associatedElements(m_associatedElements);
     for (auto& associatedElement : associatedElements)
-        associatedElement->formRemovedFromTree(root);
+        associatedElement->formOwnerRemovedFromTree(root);
     HTMLElement::removedFrom(insertionPoint);
 }
 
@@ -422,62 +410,6 @@ bool HTMLFormElement::shouldAutocorrect() const
 
 #endif
 
-#if ENABLE(REQUEST_AUTOCOMPLETE)
-
-void HTMLFormElement::requestAutocomplete()
-{
-    Frame* frame = document().frame();
-    if (!frame)
-        return;
-
-    if (!shouldAutocomplete() || !ScriptController::processingUserGesture()) {
-        finishRequestAutocomplete(AutocompleteResult::ErrorDisabled);
-        return;
-    }
-
-    StringPairVector controlNamesAndValues;
-    getTextFieldValues(controlNamesAndValues);
-
-    auto formState = FormState::create(this, controlNamesAndValues, &document(), SubmittedByJavaScript);
-    frame->loader().client().didRequestAutocomplete(WTFMove(formState));
-}
-
-void HTMLFormElement::finishRequestAutocomplete(AutocompleteResult result)
-{
-    RefPtr<Event> event;
-    switch (result) {
-    case AutocompleteResult::Success:
-        event = Event::create(eventNames().autocompleteEvent, false, false);
-        break;
-    case AutocompleteResult::ErrorDisabled:
-        event = AutocompleteErrorEvent::create("disabled");
-        break;
-    case AutocompleteResult::ErrorCancel:
-        event = AutocompleteErrorEvent::create("cancel");
-        break;
-    case AutocompleteResult::ErrorInvalid:
-        event = AutocompleteErrorEvent::create("invalid");
-        break;
-    }
-
-    event->setTarget(this);
-    m_pendingAutocompleteEvents.append(WTFMove(event));
-
-    // Dispatch events later as this API is meant to work asynchronously in all situations and implementations.
-    if (!m_requestAutocompleteTimer.isActive())
-        m_requestAutocompleteTimer.startOneShot(0);
-}
-
-void HTMLFormElement::requestAutocompleteTimerFired()
-{
-    Vector<RefPtr<Event>> pendingEvents;
-    m_pendingAutocompleteEvents.swap(pendingEvents);
-    for (auto& pendingEvent : pendingEvents)
-        dispatchEvent(pendingEvent.release());
-}
-
-#endif
-
 void HTMLFormElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
 {
     if (name == actionAttr) {
@@ -613,6 +545,9 @@ void HTMLFormElement::removeFormElement(FormAssociatedElement* e)
         --m_associatedElementsAfterIndex;
     removeFromPastNamesMap(e);
     m_associatedElements.remove(index);
+
+    if (auto* nodeLists = this->nodeLists())
+        nodeLists->invalidateCaches();
 
     if (e == m_defaultButton)
         resetDefaultButton();
@@ -867,14 +802,14 @@ void HTMLFormElement::resumeFromDocumentSuspension()
     resetAssociatedFormControlElements();
 }
 
-void HTMLFormElement::didMoveToNewDocument(Document& oldDocument)
+void HTMLFormElement::didMoveToNewDocument(Document& oldDocument, Document& newDocument)
 {
     if (!shouldAutocomplete()) {
         oldDocument.unregisterForDocumentSuspensionCallbacks(this);
         document().registerForDocumentSuspensionCallbacks(this);
     }
 
-    HTMLElement::didMoveToNewDocument(oldDocument);
+    HTMLElement::didMoveToNewDocument(oldDocument, newDocument);
 }
 
 bool HTMLFormElement::shouldAutocomplete() const

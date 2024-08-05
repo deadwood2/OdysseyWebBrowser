@@ -18,7 +18,7 @@ namespace webrtc {
 // Class to hold rtp packet with metadata for receiver side.
 class RtpPacketReceived : public rtp::Packet {
  public:
-  RtpPacketReceived() : Packet(nullptr) {}
+  RtpPacketReceived() = default;
   explicit RtpPacketReceived(const ExtensionManager* extensions)
       : Packet(extensions) {}
 
@@ -36,9 +36,9 @@ class RtpPacketReceived : public rtp::Packet {
   NtpTime capture_ntp_time() const { return capture_time_; }
   void set_capture_ntp_time(NtpTime time) { capture_time_ = time; }
 
-  // Flag if packet arrived via rtx.
-  bool retransmit() const { return retransmit_; }
-  void set_retransmit(bool value) { retransmit_ = value; }
+  // Flag if packet was recovered via RTX or FEC.
+  bool recovered() const { return recovered_; }
+  void set_recovered(bool value) { recovered_ = value; }
 
   int payload_type_frequency() const { return payload_type_frequency_; }
   void set_payload_type_frequency(int value) {
@@ -49,7 +49,7 @@ class RtpPacketReceived : public rtp::Packet {
   NtpTime capture_time_;
   int64_t arrival_time_ms_ = 0;
   int payload_type_frequency_ = 0;
-  bool retransmit_ = false;
+  bool recovered_ = false;
 };
 
 }  // namespace webrtc

@@ -12,15 +12,22 @@
 #define WEBRTC_MODULES_CONGESTION_CONTROLLER_INCLUDE_CONGESTION_CONTROLLER_H_
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "webrtc/base/constructormagic.h"
+#include "webrtc/base/criticalsection.h"
+#include "webrtc/base/networkroute.h"
+#include "webrtc/base/thread_checker.h"
 #include "webrtc/common_types.h"
+#include "webrtc/modules/congestion_controller/delay_based_bwe.h"
+#include "webrtc/modules/congestion_controller/include/receive_side_congestion_controller.h"
+#include "webrtc/modules/congestion_controller/include/send_side_congestion_controller.h"
 #include "webrtc/modules/congestion_controller/transport_feedback_adapter.h"
 #include "webrtc/modules/include/module.h"
 #include "webrtc/modules/include/module_common_types.h"
-#include "webrtc/modules/pacing/packet_router.h"
 #include "webrtc/modules/pacing/paced_sender.h"
-#include "webrtc/modules/remote_bitrate_estimator/remote_estimator_proxy.h"
+#include "webrtc/modules/pacing/packet_router.h"
 
 namespace rtc {
 struct SentPacket;
@@ -35,53 +42,62 @@ class RateLimiter;
 class RemoteBitrateEstimator;
 class RemoteBitrateObserver;
 class RtcEventLog;
-class TransportFeedbackObserver;
 
-class CongestionController : public CallStatsObserver, public Module {
+class CongestionController : public CallStatsObserver,
+                             public Module,
+                             public TransportFeedbackObserver {
  public:
-  // Observer class for bitrate changes announced due to change in bandwidth
-  // estimate or due to that the send pacer is full. Fraction loss and rtt is
-  // also part of this callback to allow the observer to optimize its settings
-  // for different types of network environments. The bitrate does not include
-  // packet headers and is measured in bits per second.
-  class Observer {
-   public:
-    virtual void OnNetworkChanged(uint32_t bitrate_bps,
-                                  uint8_t fraction_loss,  // 0 - 255.
-                                  int64_t rtt_ms) = 0;
+  using Observer = SendSideCongestionController::Observer;
 
-   protected:
-    virtual ~Observer() {}
-  };
-  CongestionController(Clock* clock,
+  CongestionController(const Clock* clock,
                        Observer* observer,
-                       RemoteBitrateObserver* remote_bitrate_observer,
-                       RtcEventLog* event_log);
-  CongestionController(Clock* clock,
-                       Observer* observer,
-                       RemoteBitrateObserver* remote_bitrate_observer,
+                       RemoteBitrateObserver* /* remote_bitrate_observer */,
                        RtcEventLog* event_log,
-                       std::unique_ptr<PacketRouter> packet_router,
-                       std::unique_ptr<PacedSender> pacer);
-  virtual ~CongestionController();
+                       PacketRouter* packet_router)
+      : send_side_cc_(clock, observer, event_log, packet_router),
+        receive_side_cc_(clock, packet_router) {}
+  CongestionController(const Clock* clock,
+                       Observer* observer,
+                       RemoteBitrateObserver* /* remote_bitrate_observer */,
+                       RtcEventLog* event_log,
+                       PacketRouter* packet_router,
+                       std::unique_ptr<PacedSender> pacer)
+      : send_side_cc_(clock, observer, event_log, std::move(pacer)),
+        receive_side_cc_(clock, packet_router) {}
+
+  virtual ~CongestionController() {}
+
+  virtual void OnReceivedPacket(int64_t arrival_time_ms,
+                                size_t payload_size,
+                                const RTPHeader& header);
 
   virtual void SetBweBitrates(int min_bitrate_bps,
                               int start_bitrate_bps,
                               int max_bitrate_bps);
   // Resets both the BWE state and the bitrate estimator. Note the first
   // argument is the bitrate_bps.
-  virtual void ResetBweAndBitrates(int bitrate_bps,
-                                   int min_bitrate_bps,
-                                   int max_bitrate_bps);
+  virtual void OnNetworkRouteChanged(const rtc::NetworkRoute& network_route,
+                                     int bitrate_bps,
+                                     int min_bitrate_bps,
+                                     int max_bitrate_bps);
   virtual void SignalNetworkState(NetworkState state);
+  virtual void SetTransportOverhead(size_t transport_overhead_bytes_per_packet);
+
   virtual BitrateController* GetBitrateController() const;
   virtual RemoteBitrateEstimator* GetRemoteBitrateEstimator(
       bool send_side_bwe);
   virtual int64_t GetPacerQueuingDelayMs() const;
-  virtual PacedSender* pacer() { return pacer_.get(); }
-  virtual PacketRouter* packet_router() { return packet_router_.get(); }
-  virtual TransportFeedbackObserver* GetTransportFeedbackObserver();
+  // TODO(nisse): Delete this accessor function. The pacer should be
+  // internal to the congestion controller. Currently needed by Call,
+  // to register the pacer module on the right thread.
+  virtual PacedSender* pacer() { return send_side_cc_.pacer(); }
+  // TODO(nisse): Delete this method, as soon as downstream projects
+  // are updated.
+  virtual TransportFeedbackObserver* GetTransportFeedbackObserver() {
+    return this;
+  }
   RateLimiter* GetRetransmissionRateLimiter();
+  void EnablePeriodicAlrProbing(bool enable);
 
   // SetAllocatedSendBitrateLimits sets bitrates limits imposed by send codec
   // settings.
@@ -105,32 +121,17 @@ class CongestionController : public CallStatsObserver, public Module {
   int64_t TimeUntilNextProcess() override;
   void Process() override;
 
- private:
-  void Init();
-  void MaybeTriggerOnNetworkChanged();
+  // Implements TransportFeedbackObserver.
+  void AddPacket(uint32_t ssrc,
+                 uint16_t sequence_number,
+                 size_t length,
+                 const PacedPacketInfo& pacing_info) override;
+  void OnTransportFeedback(const rtcp::TransportFeedback& feedback) override;
+  std::vector<PacketFeedback> GetTransportFeedbackVector() const override;
 
-  bool IsSendQueueFull() const;
-  bool IsNetworkDown() const;
-  bool HasNetworkParametersToReportChanged(uint32_t bitrate_bps,
-                                           uint8_t fraction_loss,
-                                           int64_t rtt);
-  Clock* const clock_;
-  Observer* const observer_;
-  const std::unique_ptr<PacketRouter> packet_router_;
-  const std::unique_ptr<PacedSender> pacer_;
-  const std::unique_ptr<RemoteBitrateEstimator> remote_bitrate_estimator_;
-  const std::unique_ptr<BitrateController> bitrate_controller_;
-  const std::unique_ptr<ProbeController> probe_controller_;
-  const std::unique_ptr<RateLimiter> retransmission_rate_limiter_;
-  RemoteEstimatorProxy remote_estimator_proxy_;
-  TransportFeedbackAdapter transport_feedback_adapter_;
-  int min_bitrate_bps_;
-  int max_bitrate_bps_;
-  rtc::CriticalSection critsect_;
-  uint32_t last_reported_bitrate_bps_ GUARDED_BY(critsect_);
-  uint8_t last_reported_fraction_loss_ GUARDED_BY(critsect_);
-  int64_t last_reported_rtt_ GUARDED_BY(critsect_);
-  NetworkState network_state_ GUARDED_BY(critsect_);
+ private:
+  SendSideCongestionController send_side_cc_;
+  ReceiveSideCongestionController receive_side_cc_;
 
   RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(CongestionController);
 };

@@ -6,7 +6,7 @@
 # in the file PATENTS.  All contributing project authors may
 # be found in the AUTHORS file in the root of the source tree.
 
-import("../build/webrtc.gni")
+import("../webrtc.gni")
 
 config("common_video_config") {
   include_dirs = [
@@ -24,7 +24,6 @@ rtc_static_library("common_video") {
     "h264/h264_common.h",
     "h264/pps_parser.cc",
     "h264/pps_parser.h",
-    "h264/profile_level_id.cc",
     "h264/profile_level_id.h",
     "h264/sps_parser.cc",
     "h264/sps_parser.h",
@@ -35,6 +34,8 @@ rtc_static_library("common_video") {
     "include/frame_callback.h",
     "include/i420_buffer_pool.h",
     "include/incoming_video_stream.h",
+    "include/video_bitrate_allocator.h",
+    "include/video_frame.h",
     "include/video_frame_buffer.h",
     "incoming_video_stream.cc",
     "libyuv/include/webrtc_libyuv.h",
@@ -56,26 +57,22 @@ rtc_static_library("common_video") {
 
   deps = [
     "..:webrtc_common",
+    "../base:rtc_base",
     "../base:rtc_task_queue",
+    "../media:rtc_media_base",
+    "../modules:module_api",
     "../system_wrappers",
+  ]
+  public_deps = [
+    "../api:video_frame_api",
   ]
 
   if (rtc_build_libyuv) {
     deps += [ "$rtc_libyuv_dir" ]
-    public_deps = [
-      "$rtc_libyuv_dir",
-    ]
+    public_deps += [ "$rtc_libyuv_dir" ]
   } else {
     # Need to add a directory normally exported by libyuv.
     include_dirs += [ "$rtc_libyuv_dir/include" ]
-  }
-
-  if (is_ios || is_mac) {
-    sources += [
-      "corevideo_frame_buffer.cc",
-      "include/corevideo_frame_buffer.h",
-    ]
-    libs = [ "CoreVideo.framework" ]
   }
 }
 
@@ -117,8 +114,11 @@ if (rtc_include_tests) {
 
     deps = [
       ":common_video",
+      "../base:rtc_base",
+      "../base:rtc_base_approved",
+      "../modules/video_capture:video_capture",
       "../system_wrappers:system_wrappers",
-      "../test:test_support_main",
+      "../test:test_main",
       "../test:video_test_common",
       "//testing/gmock",
       "//testing/gtest",

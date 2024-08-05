@@ -13,12 +13,12 @@
 
 #include <vector>
 
+#include "webrtc/api/video_codecs/video_encoder.h"
 #include "webrtc/base/constructormagic.h"
 #include "webrtc/base/criticalsection.h"
 #include "webrtc/base/thread_annotations.h"
 #include "webrtc/common_types.h"
 #include "webrtc/config.h"
-#include "webrtc/video_encoder.h"
 #include "webrtc/system_wrappers/include/atomic32.h"
 
 namespace webrtc {
@@ -36,12 +36,10 @@ class PayloadRouter : public EncodedImageCallback {
                 int payload_type);
   ~PayloadRouter();
 
-  static size_t DefaultMaxPayloadLength();
-
   // PayloadRouter will only route packets if being active, all packets will be
   // dropped otherwise.
-  void set_active(bool active);
-  bool active();
+  void SetActive(bool active);
+  bool IsActive();
 
   // Implements EncodedImageCallback.
   // Returns 0 if the packet was routed / sent, -1 otherwise.
@@ -50,9 +48,7 @@ class PayloadRouter : public EncodedImageCallback {
       const CodecSpecificInfo* codec_specific_info,
       const RTPFragmentationHeader* fragmentation) override;
 
-  // Returns the maximum allowed data payload length, given the configured MTU
-  // and RTP headers.
-  size_t MaxPayloadLength() const;
+  void OnBitrateAllocationUpdated(const BitrateAllocation& bitrate);
 
  private:
   void UpdateModuleSendingState() EXCLUSIVE_LOCKS_REQUIRED(crit_);

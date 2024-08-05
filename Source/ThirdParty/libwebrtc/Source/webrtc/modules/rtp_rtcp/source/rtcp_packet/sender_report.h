@@ -13,7 +13,6 @@
 
 #include <vector>
 
-#include "webrtc/base/constructormagic.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/report_block.h"
 #include "webrtc/system_wrappers/include/ntp_time.h"
@@ -27,7 +26,7 @@ class SenderReport : public RtcpPacket {
   static constexpr uint8_t kPacketType = 200;
 
   SenderReport();
-  ~SenderReport() override {}
+  ~SenderReport() override;
 
   // Parse assumes header is already parsed and validated.
   bool Parse(const CommonHeader& packet);
@@ -56,7 +55,8 @@ class SenderReport : public RtcpPacket {
     return report_blocks_;
   }
 
- protected:
+  size_t BlockLength() const override;
+
   bool Create(uint8_t* packet,
               size_t* index,
               size_t max_length,
@@ -66,19 +66,12 @@ class SenderReport : public RtcpPacket {
   static const size_t kMaxNumberOfReportBlocks = 0x1f;
   const size_t kSenderBaseLength = 24;
 
-  size_t BlockLength() const override {
-    return kHeaderLength + kSenderBaseLength +
-           report_blocks_.size() * ReportBlock::kLength;
-  }
-
   uint32_t sender_ssrc_;
   NtpTime ntp_;
   uint32_t rtp_timestamp_;
   uint32_t sender_packet_count_;
   uint32_t sender_octet_count_;
   std::vector<ReportBlock> report_blocks_;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(SenderReport);
 };
 
 }  // namespace rtcp

@@ -23,16 +23,62 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#pragma once
+
 #if ENABLE(DATA_INTERACTION)
 
 #import "TestWKWebView.h"
+
+#if USE(APPLE_INTERNAL_SDK)
+#import <UIKit/NSString+UIItemProvider.h>
+#import <UIKit/NSURL+UIItemProvider.h>
+#import <UIKit/UIImage+UIItemProvider.h>
 #import <UIKit/UIItemProvider.h>
+#import <UIKit/UIItemProvider_Private.h>
+#else
+
+@interface NSURL ()
+@property (nonatomic, copy, setter=_setTitle:) NSString *_title;
+@end
+
+@interface UIItemProvider : NSItemProvider
+@property (nonatomic) CGSize estimatedDisplayedSize;
+@end
+
+#define UIItemProviderRepresentationOptionsVisibilityAll NSItemProviderRepresentationVisibilityAll
+
+@protocol UIItemProviderReading <NSItemProviderReading>
+
+@required
+- (instancetype)initWithItemProviderData:(NSData *)data typeIdentifier:(NSString *)typeIdentifier error:(NSError **)outError;
+
+@end
+
+@protocol UIItemProviderWriting <NSItemProviderWriting>
+
+@required
+- (NSProgress *)loadDataWithTypeIdentifier:(NSString *)typeIdentifier forItemProviderCompletionHandler:(void (^)(NSData *, NSError *))completionHandler;
+
+@end
+
+@interface NSAttributedString () <UIItemProviderReading, UIItemProviderWriting>
+@end
+@interface NSString () <UIItemProviderReading, UIItemProviderWriting>
+@end
+@interface NSURL () <UIItemProviderReading, UIItemProviderWriting>
+@end
+@interface UIImage () <UIItemProviderReading, UIItemProviderWriting>
+@end
+
+#endif
+
 #import <UIKit/UIKit.h>
-#import <WebKit/_WKTestingDelegate.h>
+#import <WebKit/WKUIDelegatePrivate.h>
+#import <WebKit/_WKInputDelegate.h>
 #import <wtf/BlockPtr.h>
 
-@class MockLongPressGestureRecognizer;
-@class MockDataInteractionInfo;
+@class MockDataOperationSession;
+@class MockDataInteractionSession;
 
 extern NSString * const DataInteractionEnterEventName;
 extern NSString * const DataInteractionOverEventName;
@@ -41,33 +87,52 @@ extern NSString * const DataInteractionLeaveEventName;
 extern NSString * const DataInteractionStartEventName;
 
 typedef NS_ENUM(NSInteger, DataInteractionPhase) {
-    DataInteractionUnrecognized = 1,
+    DataInteractionCancelled = 0,
+    DataInteractionBeginning = 1,
     DataInteractionBegan = 2,
     DataInteractionEntered = 3,
     DataInteractionPerforming = 4
 };
 
-@interface DataInteractionSimulator : NSObject<_WKTestingDelegate> {
+@interface DataInteractionSimulator : NSObject<WKUIDelegatePrivate, _WKInputDelegate> {
+@private
     RetainPtr<TestWKWebView> _webView;
-    RetainPtr<MockLongPressGestureRecognizer> _gestureRecognizer;
-    RetainPtr<MockDataInteractionInfo> _dataInteractionInfo;
+    RetainPtr<MockDataInteractionSession> _dataInteractionSession;
+    RetainPtr<MockDataOperationSession> _dataOperationSession;
     RetainPtr<NSMutableArray> _observedEventNames;
-    RetainPtr<UIItemProvider> _externalItemProvider;
+    RetainPtr<NSArray> _externalItemProviders;
+    RetainPtr<NSArray *> _sourceItemProviders;
+    RetainPtr<NSArray *> _finalSelectionRects;
     CGPoint _startLocation;
     CGPoint _endLocation;
+    CGRect _lastKnownDragCaretRect;
 
-    double _gestureProgress;
+    bool _isDoneWaitingForInputSession;
+    BOOL _shouldPerformOperation;
+    double _currentProgress;
     bool _isDoneWithCurrentRun;
     DataInteractionPhase _phase;
 }
 
 - (instancetype)initWithWebView:(TestWKWebView *)webView;
 - (void)runFrom:(CGPoint)startLocation to:(CGPoint)endLocation;
+- (void)waitForInputSession;
 
-@property (nonatomic) BOOL forceRequestToFail;
-@property (nonatomic, strong) UIItemProvider *externalItemProvider;
-@property (nonatomic, readonly) BOOL didTryToBeginDataInteraction;
+@property (nonatomic) BOOL allowsFocusToStartInputSession;
+@property (nonatomic) BOOL shouldEnsureUIApplication;
+@property (nonatomic) BOOL shouldAllowMoveOperation;
+@property (nonatomic) BlockPtr<BOOL(_WKActivatedElementInfo *)> showCustomActionSheetBlock;
+@property (nonatomic) BlockPtr<NSArray *(UIItemProvider *, NSArray *, NSDictionary *)> convertItemProvidersBlock;
+@property (nonatomic) BlockPtr<NSArray *(id <UIDropSession>)> overridePerformDropBlock;
+@property (nonatomic, strong) NSArray *externalItemProviders;
+@property (nonatomic) BlockPtr<NSUInteger(NSUInteger, id)> overrideDataInteractionOperationBlock;
+@property (nonatomic) BlockPtr<void(BOOL, NSArray *)> dataInteractionOperationCompletionBlock;
+
+@property (nonatomic, readonly) NSArray *sourceItemProviders;
 @property (nonatomic, readonly) NSArray *observedEventNames;
+@property (nonatomic, readonly) NSArray *finalSelectionRects;
+@property (nonatomic, readonly) DataInteractionPhase phase;
+@property (nonatomic, readonly) CGRect lastKnownDragCaretRect;
 
 @end
 

@@ -35,6 +35,11 @@ int Fps() {
   return static_cast<int>(FLAGS_fps);
 }
 
+DEFINE_int32(capture_device_index, 0, "Capture device to select");
+size_t GetCaptureDevice() {
+  return static_cast<size_t>(FLAGS_capture_device_index);
+}
+
 DEFINE_int32(min_bitrate, 50, "Call and stream min bitrate in kbps.");
 int MinBitrateKbps() {
   return static_cast<int>(FLAGS_min_bitrate);
@@ -196,12 +201,16 @@ DEFINE_bool(send_side_bwe, true, "Use send-side bandwidth estimation");
 
 DEFINE_bool(allow_reordering, false, "Allow packet reordering to occur");
 
-DEFINE_bool(use_fec, false, "Use forward error correction.");
+DEFINE_bool(use_ulpfec, false, "Use RED+ULPFEC forward error correction.");
+
+DEFINE_bool(use_flexfec, false, "Use FlexFEC forward error correction.");
 
 DEFINE_bool(audio, false, "Add audio stream");
 
 DEFINE_bool(audio_video_sync, false, "Sync audio and video stream (no effect if"
     " audio is false)");
+
+DEFINE_bool(audio_dtx, false, "Enable audio DTX (no effect if audio is false)");
 
 DEFINE_bool(video, true, "Add video stream");
 
@@ -252,10 +261,13 @@ void Loopback() {
                   flags::NumTemporalLayers(),
                   flags::SelectedTL(),
                   0,  // No min transmit bitrate.
-                  flags::FLAGS_use_fec,
+                  flags::FLAGS_use_ulpfec,
+                  flags::FLAGS_use_flexfec,
                   flags::EncodedFramePath(),
-                  flags::Clip()};
-  params.audio = {flags::FLAGS_audio, flags::FLAGS_audio_video_sync};
+                  flags::Clip(),
+                  flags::GetCaptureDevice()};
+  params.audio = {flags::FLAGS_audio, flags::FLAGS_audio_video_sync,
+      flags::FLAGS_audio_dtx};
   params.screenshare.enabled = false;
   params.analyzer = {"video", 0.0, 0.0, flags::DurationSecs(),
       flags::OutputFilename(), flags::GraphTitle()};

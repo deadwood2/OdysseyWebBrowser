@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,6 +39,8 @@
 #include "Operations.h"
 #include "PutByIdStatus.h"
 #include "StringObject.h"
+
+#include <wtf/CheckedArithmetic.h>
 
 namespace JSC { namespace DFG {
 
@@ -131,7 +133,7 @@ void AbstractInterpreter<AbstractStateType>::verifyEdge(Node* node, Edge edge)
     if (!(forNode(edge).m_type & ~typeFilterFor(edge.useKind())))
         return;
     
-    DFG_CRASH(m_graph, node, toCString("Edge verification error: ", node, "->", edge, " was expected to have type ", SpeculationDump(typeFilterFor(edge.useKind())), " but has type ", SpeculationDump(forNode(edge).m_type), " (", forNode(edge).m_type, ")").data());
+    DFG_CRASH(m_graph, node, toCString("Edge verification error: ", node, "->", edge, " was expected to have type ", SpeculationDump(typeFilterFor(edge.useKind())), " but has type ", SpeculationDump(forNode(edge).m_type), " (", forNode(edge).m_type, ")").data(), AbstractInterpreterInvalidType, node->op(), edge->op(), edge.useKind(), forNode(edge).m_type);
 }
 
 template<typename AbstractStateType>
@@ -546,6 +548,13 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         }
         break;
     }
+        
+    case AtomicsIsLockFree: {
+        if (node->child1().useKind() != Int32Use)
+            clobberWorld(node->origin.semantic, clobberLimit);
+        forNode(node).setType(SpecBoolInt32);
+        break;
+    }
 
     case ArithClz32: {
         JSValue operand = forNode(node->child1()).value();
@@ -554,11 +563,58 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
             setConstant(node, jsNumber(clz32(value)));
             break;
         }
+        switch (node->child1().useKind()) {
+        case Int32Use:
+        case KnownInt32Use:
+            break;
+        default:
+            clobberWorld(node->origin.semantic, clobberLimit);
+            break;
+        }
         forNode(node).setType(SpecInt32Only);
         break;
     }
 
     case MakeRope: {
+        unsigned numberOfChildren = 0;
+        unsigned numberOfRemovedChildren = 0;
+        std::optional<unsigned> nonEmptyIndex;
+        for (unsigned i = 0; i < AdjacencyList::Size; ++i) {
+            Edge& edge = node->children.child(i);
+            if (!edge)
+                break;
+            ++numberOfChildren;
+
+            JSValue childConstant = m_state.forNode(edge).value();
+            if (!childConstant) {
+                nonEmptyIndex = i;
+                continue;
+            }
+            if (!childConstant.isString()) {
+                nonEmptyIndex = i;
+                continue;
+            }
+            if (asString(childConstant)->length()) {
+                nonEmptyIndex = i;
+                continue;
+            }
+
+            ++numberOfRemovedChildren;
+        }
+
+        if (numberOfRemovedChildren) {
+            m_state.setFoundConstants(true);
+            if (numberOfRemovedChildren == numberOfChildren) {
+                // Propagate the last child. This is the way taken in the constant folding phase.
+                forNode(node) = forNode(node->children.child(numberOfChildren - 1));
+                break;
+            }
+            if ((numberOfRemovedChildren + 1) == numberOfChildren) {
+                ASSERT(nonEmptyIndex);
+                forNode(node) = forNode(node->children.child(nonEmptyIndex.value()));
+                break;
+            }
+        }
         forNode(node).set(m_graph, m_vm.stringStructure.get());
         break;
     }
@@ -962,20 +1018,8 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         executeDoubleUnaryOpEffects(node, [](double value) -> double { return static_cast<float>(value); });
         break;
         
-    case ArithSin:
-        executeDoubleUnaryOpEffects(node, sin);
-        break;
-    
-    case ArithCos:
-        executeDoubleUnaryOpEffects(node, cos);
-        break;
-
-    case ArithTan:
-        executeDoubleUnaryOpEffects(node, tan);
-        break;
-
-    case ArithLog:
-        executeDoubleUnaryOpEffects(node, log);
+    case ArithUnary:
+        executeDoubleUnaryOpEffects(node, arithUnaryFunction(node->arithUnaryType()));
         break;
             
     case LogicalNot: {
@@ -1506,7 +1550,18 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         forNode(node).set(m_graph, m_vm.stringStructure.get());
         break;
             
-    case GetByVal: {
+    case GetByVal:
+    case AtomicsAdd:
+    case AtomicsAnd:
+    case AtomicsCompareExchange:
+    case AtomicsExchange:
+    case AtomicsLoad:
+    case AtomicsOr:
+    case AtomicsStore:
+    case AtomicsSub:
+    case AtomicsXor: {
+        if (node->op() != GetByVal)
+            clobberWorld(node->origin.semantic, clobberLimit);
         switch (node->arrayMode().type()) {
         case Array::SelectUsingPredictions:
         case Array::Unprofiled:
@@ -1663,6 +1718,11 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         forNode(node).set(m_graph, structureSet);
         break;
     }
+
+    case ArrayIndexOf: {
+        forNode(node).setType(SpecInt32Only);
+        break;
+    }
             
     case ArrayPop:
         clobberWorld(node->origin.semantic, clobberLimit);
@@ -1674,24 +1734,28 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         JSValue index = forNode(node->child2()).m_value;
         InlineCallFrame* inlineCallFrame = node->child1()->origin.semantic.inlineCallFrame;
 
-        if (index && index.isInt32()) {
+        if (index && index.isUInt32()) {
             // This pretends to return TOP for accesses that are actually proven out-of-bounds because
             // that's the conservative thing to do. Otherwise we'd need to write more code to mark such
             // paths as unreachable, or to return undefined. We could implement that eventually.
-            
-            unsigned argumentIndex = index.asUInt32() + node->numberOfArgumentsToSkip();
-            if (inlineCallFrame) {
-                if (argumentIndex < inlineCallFrame->arguments.size() - 1) {
-                    forNode(node) = m_state.variables().operand(
-                        virtualRegisterForArgument(argumentIndex + 1) + inlineCallFrame->stackOffset);
-                    m_state.setFoundConstants(true);
-                    break;
-                }
-            } else {
-                if (argumentIndex < m_state.variables().numberOfArguments() - 1) {
-                    forNode(node) = m_state.variables().argument(argumentIndex + 1);
-                    m_state.setFoundConstants(true);
-                    break;
+
+            Checked<unsigned, RecordOverflow> argumentIndexChecked = index.asUInt32();
+            argumentIndexChecked += node->numberOfArgumentsToSkip();
+            unsigned argumentIndex;
+            if (argumentIndexChecked.safeGet(argumentIndex) != CheckedState::DidOverflow) {
+                if (inlineCallFrame) {
+                    if (argumentIndex < inlineCallFrame->arguments.size() - 1) {
+                        forNode(node) = m_state.variables().operand(
+                            virtualRegisterForArgument(argumentIndex + 1) + inlineCallFrame->stackOffset);
+                        m_state.setFoundConstants(true);
+                        break;
+                    }
+                } else {
+                    if (argumentIndex < m_state.variables().numberOfArguments() - 1) {
+                        forNode(node) = m_state.variables().argument(argumentIndex + 1);
+                        m_state.setFoundConstants(true);
+                        break;
+                    }
                 }
             }
         }
@@ -2045,8 +2109,13 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         break;
 
     case NewFunction:
-        forNode(node).set(
-            m_graph, m_codeBlock->globalObjectFor(node->origin.semantic)->functionStructure());
+        if (node->castOperand<FunctionExecutable*>()->isStrictMode()) {
+            forNode(node).set(
+                m_graph, m_codeBlock->globalObjectFor(node->origin.semantic)->strictFunctionStructure());
+        } else {
+            forNode(node).set(
+                m_graph, m_codeBlock->globalObjectFor(node->origin.semantic)->sloppyFunctionStructure());
+        }
         break;
         
     case GetCallee:
@@ -2234,6 +2303,11 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         break;
     }
 
+    case GetVectorLength: {
+        forNode(node).setType(SpecInt32Only);
+        break;
+    }
+
     case DeleteById:
     case DeleteByVal: {
         // FIXME: This could decide if the delete will be successful based on the set of structures that
@@ -2329,6 +2403,7 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         }
         break;
     case GetButterfly:
+    case GetButterflyWithoutCaging:
     case AllocatePropertyStorage:
     case ReallocatePropertyStorage:
     case NukeStructureAndSetButterfly:
@@ -2336,7 +2411,7 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         // nobody would currently benefit from having that information. But it's a bug nonetheless.
         forNode(node).clear(); // The result is not a JS value.
         break;
-    case CheckDOM: {
+    case CheckSubClass: {
         JSValue constant = forNode(node->child1()).value();
         if (constant) {
             if (constant.isCell() && constant.asCell()->inherits(m_vm, node->classInfo())) {
@@ -2356,10 +2431,13 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
     }
     case CallDOMGetter: {
         CallDOMGetterData* callDOMGetterData = node->callDOMGetterData();
-        DOMJIT::CallDOMGetterPatchpoint* patchpoint = callDOMGetterData->patchpoint;
-        if (patchpoint->effect.writes)
+        DOMJIT::CallDOMGetterSnippet* snippet = callDOMGetterData->snippet;
+        if (!snippet || snippet->effect.writes)
             clobberWorld(node->origin.semantic, clobberLimit);
-        forNode(node).setType(m_graph, callDOMGetterData->domJIT->resultType());
+        if (callDOMGetterData->domJIT)
+            forNode(node).setType(m_graph, callDOMGetterData->domJIT->resultType());
+        else
+            forNode(node).makeBytecodeTop();
         break;
     }
     case CallDOM: {
@@ -2789,10 +2867,12 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
     }
     case HasGenericProperty: {
         forNode(node).setType(SpecBoolean);
+        clobberWorld(node->origin.semantic, clobberLimit);
         break;
     }
     case HasStructureProperty: {
         forNode(node).setType(SpecBoolean);
+        clobberWorld(node->origin.semantic, clobberLimit);
         break;
     }
     case HasIndexedProperty: {
@@ -2819,6 +2899,7 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
     }
     case GetPropertyEnumerator: {
         forNode(node).setType(m_graph, SpecCell);
+        clobberWorld(node->origin.semantic, clobberLimit);
         break;
     }
     case GetEnumeratorStructurePname: {
@@ -2855,11 +2936,16 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         clobberWorld(node->origin.semantic, clobberLimit);
         forNode(node).setType(m_graph, SpecObject);
         break;
-        
+
+    case ResolveScopeForHoistingFuncDeclInEval:
+        clobberWorld(node->origin.semantic, clobberLimit);
+        forNode(node).makeBytecodeTop();
+        break;
+
     case PutGlobalVariable:
     case NotifyWrite:
         break;
-            
+
     case OverridesHasInstance:
         forNode(node).setType(SpecBoolean);
         break;
@@ -2923,7 +3009,7 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         m_state.setStructureClobberState(StructuresAreWatched);
         break;
 
-    case CheckWatchdogTimer:
+    case CheckTraps:
     case LogShadowChickenPrologue:
     case LogShadowChickenTail:
         break;

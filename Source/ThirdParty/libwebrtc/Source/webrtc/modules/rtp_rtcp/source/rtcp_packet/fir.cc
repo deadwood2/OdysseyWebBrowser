@@ -43,6 +43,11 @@ constexpr uint8_t Fir::kFeedbackMessageType;
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //  | Seq nr.       |    Reserved = 0                               |
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+Fir::Fir() = default;
+
+Fir::~Fir() = default;
+
 bool Fir::Parse(const CommonHeader& packet) {
   RTC_DCHECK_EQ(packet.type(), kPacketType);
   RTC_DCHECK_EQ(packet.fmt(), kFeedbackMessageType);
@@ -72,6 +77,10 @@ bool Fir::Parse(const CommonHeader& packet) {
   return true;
 }
 
+size_t Fir::BlockLength() const {
+  return kHeaderLength + kCommonFeedbackLength + kFciLength * items_.size();
+}
+
 bool Fir::Create(uint8_t* packet,
                  size_t* index,
                  size_t max_length,
@@ -84,7 +93,7 @@ bool Fir::Create(uint8_t* packet,
   size_t index_end = *index + BlockLength();
   CreateHeader(kFeedbackMessageType, kPacketType, HeaderLength(), packet,
                index);
-  RTC_DCHECK_EQ(Psfb::media_ssrc(), 0u);
+  RTC_DCHECK_EQ(Psfb::media_ssrc(), 0);
   CreateCommonFeedback(packet + *index);
   *index += kCommonFeedbackLength;
 

@@ -13,14 +13,14 @@
 #include <algorithm>  // std::min
 #include <memory>
 
+#include "webrtc/api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/base/safe_conversions.h"
-#include "webrtc/modules/audio_coding/codecs/builtin_audio_decoder_factory.h"
+#include "webrtc/modules/audio_coding/acm2/rent_a_codec.h"
 #include "webrtc/modules/audio_coding/include/audio_coding_module.h"
 #include "webrtc/modules/audio_coding/neteq/tools/rtp_generator.h"
 #include "webrtc/system_wrappers/include/clock.h"
 #include "webrtc/test/gtest.h"
-#include "webrtc/test/test_suite.h"
 #include "webrtc/test/testsupport/fileutils.h"
 
 namespace webrtc {
@@ -103,8 +103,7 @@ class AcmReceiverTestOldApi : public AudioPacketizationCallback,
     frame.sample_rate_hz_ = codec.plfreq;
     frame.samples_per_channel_ = codec.plfreq / 100;  // 10 ms.
     frame.num_channels_ = codec.channels;
-    memset(frame.data_, 0, frame.samples_per_channel_ * frame.num_channels_ *
-           sizeof(int16_t));
+    frame.Mute();
     packet_sent_ = false;
     last_packet_send_timestamp_ = timestamp_;
     while (!packet_sent_) {

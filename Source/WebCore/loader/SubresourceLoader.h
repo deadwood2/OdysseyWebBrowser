@@ -30,14 +30,13 @@
 
 #include "FrameLoaderTypes.h"
 #include "ResourceLoader.h"
-
 #include <wtf/text/WTFString.h>
  
 namespace WebCore {
 
 class CachedResource;
 class CachedResourceLoader;
-class Document;
+class NetworkLoadMetrics;
 class ResourceRequest;
 class SecurityOrigin;
 
@@ -71,7 +70,7 @@ private:
     void didReceiveResponse(const ResourceResponse&) override;
     void didReceiveData(const char*, unsigned, long long encodedDataLength, DataPayloadType) override;
     void didReceiveBuffer(Ref<SharedBuffer>&&, long long encodedDataLength, DataPayloadType) override;
-    void didFinishLoading(double finishTime) override;
+    void didFinishLoading(const NetworkLoadMetrics&) override;
     void didFail(const ResourceError&) override;
     void willCancel(const ResourceError&) override;
     void didCancel(const ResourceError&) override;
@@ -84,10 +83,6 @@ private:
     CFCachedURLResponseRef willCacheResponse(ResourceHandle*, CFCachedURLResponseRef) override;
 #endif
 
-#if USE(NETWORK_CFDATA_ARRAY_CALLBACK)
-    bool supportsDataArray() override { return true; }
-    void didReceiveDataArray(CFArrayRef) override;
-#endif
     void releaseResources() override;
 
 #if USE(SOUP)
@@ -102,12 +97,10 @@ private:
 
     void notifyDone();
 
-#if ENABLE(WEB_TIMING)
-    void reportResourceTiming();
-#endif
+    void reportResourceTiming(const NetworkLoadMetrics&);
 
 #if USE(QUICK_LOOK)
-    bool shouldCreateQuickLookHandleForResponse(const ResourceResponse&) const;
+    bool shouldCreatePreviewLoaderForResponse(const ResourceResponse&) const;
 #endif
 
     enum SubresourceLoaderState {
@@ -135,11 +128,11 @@ private:
     ResourceRequest m_iOSOriginalRequest;
 #endif
     CachedResource* m_resource;
-    bool m_loadingMultipartContent;
     SubresourceLoaderState m_state;
     std::optional<RequestCountTracker> m_requestCountTracker;
     RefPtr<SecurityOrigin> m_origin;
     unsigned m_redirectCount { 0 };
+    bool m_loadingMultipartContent { false };
 };
 
 }

@@ -13,11 +13,16 @@
 #include <vector>
 
 #include "webrtc/base/bitbuffer.h"
-#include "webrtc/base/bytebuffer.h"
 #include "webrtc/base/checks.h"
 
 #include "webrtc/common_video/h264/h264_common.h"
 #include "webrtc/base/logging.h"
+
+namespace {
+const int kMaxAbsQpDeltaValue = 51;
+const int kMinQpValue = 0;
+const int kMaxQpValue = 51;
+}
 
 namespace webrtc {
 
@@ -40,13 +45,13 @@ H264BitstreamParser::Result H264BitstreamParser::ParseNonParameterSetNalu(
     return kInvalidStream;
 
   last_slice_qp_delta_ = rtc::Optional<int32_t>();
-  std::unique_ptr<rtc::Buffer> slice_rbsp(
-      H264::ParseRbsp(source, source_length));
-  if (slice_rbsp->size() < H264::kNaluTypeSize)
+  const std::vector<uint8_t> slice_rbsp =
+      H264::ParseRbsp(source, source_length);
+  if (slice_rbsp.size() < H264::kNaluTypeSize)
     return kInvalidStream;
 
-  rtc::BitBuffer slice_reader(slice_rbsp->data() + H264::kNaluTypeSize,
-                              slice_rbsp->size() - H264::kNaluTypeSize);
+  rtc::BitBuffer slice_reader(slice_rbsp.data() + H264::kNaluTypeSize,
+                              slice_rbsp.size() - H264::kNaluTypeSize);
   // Check to see if this is an IDR slice, which has an extra field to parse
   // out.
   bool is_idr = (source[0] & 0x0F) == H264::NaluType::kIdr;
@@ -242,12 +247,21 @@ H264BitstreamParser::Result H264BitstreamParser::ParseNonParameterSetNalu(
       }
     }
   }
-  // cabac not supported: entropy_coding_mode_flag == 0 asserted above.
-  // if (entropy_coding_mode_flag && slice_type != I && slice_type != SI)
-  //   cabac_init_idc
+  if (pps_->entropy_coding_mode_flag &&
+      slice_type != H264::SliceType::kI && slice_type != H264::SliceType::kSi) {
+    // cabac_init_idc: ue(v)
+    RETURN_INV_ON_FAIL(slice_reader.ReadExponentialGolomb(&golomb_tmp));
+  }
+
   int32_t last_slice_qp_delta;
   RETURN_INV_ON_FAIL(
       slice_reader.ReadSignedExponentialGolomb(&last_slice_qp_delta));
+  if (abs(last_slice_qp_delta) > kMaxAbsQpDeltaValue) {
+    // Something has gone wrong, and the parsed value is invalid.
+    LOG(LS_WARNING) << "Parsed QP value out of range.";
+    return kInvalidStream;
+  }
+
   last_slice_qp_delta_ = rtc::Optional<int32_t>(last_slice_qp_delta);
   return kOk;
 }
@@ -269,6 +283,9 @@ void H264BitstreamParser::ParseSlice(const uint8_t* slice, size_t length) {
         LOG(LS_WARNING) << "Unable to parse PPS from H264 bitstream.";
       break;
     }
+    case H264::NaluType::kAud:
+    case H264::NaluType::kSei:
+      break;  // Ignore these nalus, as we don't care about their contents.
     default:
       Result res = ParseNonParameterSetNalu(slice, length, nalu_type);
       if (res != kOk)
@@ -288,7 +305,12 @@ void H264BitstreamParser::ParseBitstream(const uint8_t* bitstream,
 bool H264BitstreamParser::GetLastSliceQp(int* qp) const {
   if (!last_slice_qp_delta_ || !pps_)
     return false;
-  *qp = 26 + pps_->pic_init_qp_minus26 + *last_slice_qp_delta_;
+  const int parsed_qp = 26 + pps_->pic_init_qp_minus26 + *last_slice_qp_delta_;
+  if (parsed_qp < kMinQpValue || parsed_qp > kMaxQpValue) {
+    LOG(LS_ERROR) << "Parsed invalid QP from bitstream.";
+    return false;
+  }
+  *qp = parsed_qp;
   return true;
 }
 

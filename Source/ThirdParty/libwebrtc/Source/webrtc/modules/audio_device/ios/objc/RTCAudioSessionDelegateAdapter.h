@@ -8,7 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#import "webrtc/modules/audio_device/ios/objc/RTCAudioSession.h"
+#import "webrtc/sdk/objc/Framework/Headers/WebRTC/RTCAudioSession.h"
 
 namespace webrtc {
 class AudioSessionObserver;
@@ -17,7 +17,7 @@ class AudioSessionObserver;
 /** Adapter that forwards RTCAudioSessionDelegate calls to the appropriate
  *  methods on the AudioSessionObserver.
  */
-@interface WebRTCAudioSessionDelegateAdapter : NSObject <WebRTCAudioSessionDelegate>
+@interface RTCAudioSessionDelegateAdapter : NSObject <RTCAudioSessionDelegate>
 
 - (instancetype)init NS_UNAVAILABLE;
 

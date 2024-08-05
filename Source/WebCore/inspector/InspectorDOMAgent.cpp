@@ -46,14 +46,15 @@
 #include "Cookie.h"
 #include "CookieJar.h"
 #include "DOMEditor.h"
+#include "DOMException.h"
 #include "DOMPatchSupport.h"
 #include "DOMWindow.h"
 #include "Document.h"
 #include "DocumentType.h"
+#include "Editing.h"
 #include "Element.h"
 #include "Event.h"
 #include "EventListener.h"
-#include "ExceptionCodeDescription.h"
 #include "FrameTree.h"
 #include "HTMLElement.h"
 #include "HTMLFrameOwnerElement.h"
@@ -84,6 +85,7 @@
 #include "RenderStyleConstants.h"
 #include "ScriptState.h"
 #include "ShadowRoot.h"
+#include "StaticNodeList.h"
 #include "StyleProperties.h"
 #include "StyleResolver.h"
 #include "StyleSheetList.h"
@@ -91,7 +93,6 @@
 #include "TextNodeTraversal.h"
 #include "Timer.h"
 #include "XPathResult.h"
-#include "htmlediting.h"
 #include "markup.h"
 #include <inspector/IdentifiersFactory.h>
 #include <inspector/InjectedScript.h>
@@ -111,7 +112,7 @@ using namespace HTMLNames;
 static const size_t maxTextSize = 10000;
 static const UChar ellipsisUChar[] = { 0x2026, 0 };
 
-static Color parseColor(const InspectorObject* colorObject)
+static Color parseColor(const JSON::Object* colorObject)
 {
     if (!colorObject)
         return Color::transparent;
@@ -135,15 +136,15 @@ static Color parseColor(const InspectorObject* colorObject)
     return Color(r, g, b, static_cast<int>(a * 255));
 }
 
-static Color parseConfigColor(const String& fieldName, const InspectorObject* configObject)
+static Color parseConfigColor(const String& fieldName, const JSON::Object* configObject)
 {
-    RefPtr<InspectorObject> colorObject;
+    RefPtr<JSON::Object> colorObject;
     configObject->getObject(fieldName, colorObject);
 
     return parseColor(colorObject.get());
 }
 
-static bool parseQuad(const InspectorArray& quadArray, FloatQuad* quad)
+static bool parseQuad(const JSON::Array& quadArray, FloatQuad* quad)
 {
     const size_t coordinatesInQuad = 8;
     double coordinates[coordinatesInQuad];
@@ -185,7 +186,7 @@ void RevalidateStyleAttributeTask::scheduleFor(Element* element)
 {
     m_elements.add(element);
     if (!m_timer.isActive())
-        m_timer.startOneShot(0);
+        m_timer.startOneShot(0_s);
 }
 
 void RevalidateStyleAttributeTask::timerFired()
@@ -201,16 +202,12 @@ void RevalidateStyleAttributeTask::timerFired()
 
 String InspectorDOMAgent::toErrorString(ExceptionCode ec)
 {
-    if (ec) {
-        ExceptionCodeDescription description(ec);
-        return description.name;
-    }
-    return emptyString();
+    return ec ? String(DOMException::name(ec)) : emptyString();
 }
 
 String InspectorDOMAgent::toErrorString(Exception&& exception)
 {
-    return ExceptionCodeDescription { exception.code() }.name;
+    return DOMException::name(exception.code());
 }
 
 InspectorDOMAgent::InspectorDOMAgent(WebAgentContext& context, InspectorPageAgent* pageAgent, InspectorOverlay* overlay)
@@ -876,7 +873,7 @@ void InspectorDOMAgent::getAccessibilityPropertiesForNode(ErrorString& errorStri
     axProperties = buildObjectForAccessibilityProperties(node);
 }
 
-void InspectorDOMAgent::performSearch(ErrorString& errorString, const String& whitespaceTrimmedQuery, const InspectorArray* nodeIds, String* searchId, int* resultCount)
+void InspectorDOMAgent::performSearch(ErrorString& errorString, const String& whitespaceTrimmedQuery, const JSON::Array* nodeIds, String* searchId, int* resultCount)
 {
     // FIXME: Search works with node granularity - number of matches within node is not calculated.
     InspectorNodeFinder finder(whitespaceTrimmedQuery);
@@ -1020,7 +1017,7 @@ void InspectorDOMAgent::highlightMousedOverNode()
         m_overlay->highlightNode(node, *m_inspectModeHighlightConfig);
 }
 
-void InspectorDOMAgent::setSearchingForNode(ErrorString& errorString, bool enabled, const InspectorObject* highlightInspectorObject)
+void InspectorDOMAgent::setSearchingForNode(ErrorString& errorString, bool enabled, const JSON::Object* highlightInspectorObject)
 {
     if (m_searchingForNode == enabled)
         return;
@@ -1041,7 +1038,7 @@ void InspectorDOMAgent::setSearchingForNode(ErrorString& errorString, bool enabl
         client->elementSelectionChanged(m_searchingForNode);
 }
 
-std::unique_ptr<HighlightConfig> InspectorDOMAgent::highlightConfigFromInspectorObject(ErrorString& errorString, const InspectorObject* highlightInspectorObject)
+std::unique_ptr<HighlightConfig> InspectorDOMAgent::highlightConfigFromInspectorObject(ErrorString& errorString, const JSON::Object* highlightInspectorObject)
 {
     if (!highlightInspectorObject) {
         errorString = ASCIILiteral("Internal error: highlight configuration parameter is missing");
@@ -1060,18 +1057,18 @@ std::unique_ptr<HighlightConfig> InspectorDOMAgent::highlightConfigFromInspector
     return highlightConfig;
 }
 
-void InspectorDOMAgent::setInspectModeEnabled(ErrorString& errorString, bool enabled, const InspectorObject* highlightConfig)
+void InspectorDOMAgent::setInspectModeEnabled(ErrorString& errorString, bool enabled, const JSON::Object* highlightConfig)
 {
     setSearchingForNode(errorString, enabled, highlightConfig ? highlightConfig : nullptr);
 }
 
-void InspectorDOMAgent::highlightRect(ErrorString&, int x, int y, int width, int height, const InspectorObject* color, const InspectorObject* outlineColor, const bool* usePageCoordinates)
+void InspectorDOMAgent::highlightRect(ErrorString&, int x, int y, int width, int height, const JSON::Object* color, const JSON::Object* outlineColor, const bool* usePageCoordinates)
 {
     auto quad = std::make_unique<FloatQuad>(FloatRect(x, y, width, height));
     innerHighlightQuad(WTFMove(quad), color, outlineColor, usePageCoordinates);
 }
 
-void InspectorDOMAgent::highlightQuad(ErrorString& errorString, const InspectorArray& quadArray, const InspectorObject* color, const InspectorObject* outlineColor, const bool* usePageCoordinates)
+void InspectorDOMAgent::highlightQuad(ErrorString& errorString, const JSON::Array& quadArray, const JSON::Object* color, const JSON::Object* outlineColor, const bool* usePageCoordinates)
 {
     auto quad = std::make_unique<FloatQuad>();
     if (!parseQuad(quadArray, quad.get())) {
@@ -1081,7 +1078,7 @@ void InspectorDOMAgent::highlightQuad(ErrorString& errorString, const InspectorA
     innerHighlightQuad(WTFMove(quad), color, outlineColor, usePageCoordinates);
 }
 
-void InspectorDOMAgent::innerHighlightQuad(std::unique_ptr<FloatQuad> quad, const InspectorObject* color, const InspectorObject* outlineColor, const bool* usePageCoordinates)
+void InspectorDOMAgent::innerHighlightQuad(std::unique_ptr<FloatQuad> quad, const JSON::Object* color, const JSON::Object* outlineColor, const bool* usePageCoordinates)
 {
     auto highlightConfig = std::make_unique<HighlightConfig>();
     highlightConfig->content = parseColor(color);
@@ -1090,7 +1087,7 @@ void InspectorDOMAgent::innerHighlightQuad(std::unique_ptr<FloatQuad> quad, cons
     m_overlay->highlightQuad(WTFMove(quad), *highlightConfig);
 }
 
-void InspectorDOMAgent::highlightSelector(ErrorString& errorString, const InspectorObject& highlightInspectorObject, const String& selectorString, const String* frameId)
+void InspectorDOMAgent::highlightSelector(ErrorString& errorString, const JSON::Object& highlightInspectorObject, const String& selectorString, const String* frameId)
 {
     RefPtr<Document> document;
 
@@ -1124,7 +1121,7 @@ void InspectorDOMAgent::highlightSelector(ErrorString& errorString, const Inspec
     m_overlay->highlightNodeList(queryResult.releaseReturnValue(), *highlightConfig);
 }
 
-void InspectorDOMAgent::highlightNode(ErrorString& errorString, const InspectorObject& highlightInspectorObject, const int* nodeId, const String* objectId)
+void InspectorDOMAgent::highlightNode(ErrorString& errorString, const JSON::Object& highlightInspectorObject, const int* nodeId, const String* objectId)
 {
     Node* node = nullptr;
     if (nodeId)
@@ -1146,7 +1143,41 @@ void InspectorDOMAgent::highlightNode(ErrorString& errorString, const InspectorO
     m_overlay->highlightNode(node, *highlightConfig);
 }
 
-void InspectorDOMAgent::highlightFrame(ErrorString& errorString, const String& frameId, const InspectorObject* color, const InspectorObject* outlineColor)
+void InspectorDOMAgent::highlightNodeList(ErrorString& errorString, const JSON::Array& nodeIds, const JSON::Object& highlightInspectorObject)
+{
+    Vector<Ref<Node>> nodes;
+    for (auto& nodeValue : nodeIds) {
+        if (!nodeValue) {
+            errorString = ASCIILiteral("Invalid nodeIds item.");
+            return;
+        }
+
+        int nodeId = 0;
+        if (!nodeValue->asInteger(nodeId)) {
+            errorString = ASCIILiteral("Invalid nodeIds item type. Expecting integer types.");
+            return;
+        }
+
+        // In the case that a node is removed in the time between when highlightNodeList is invoked
+        // by the frontend and it is executed by the backend, we should still attempt to highlight
+        // as many nodes as possible. As such, we should ignore any errors generated when attempting
+        // to get a Node from a given nodeId. 
+        ErrorString ignored;
+        Node* node = assertNode(ignored, nodeId);
+        if (!node)
+            continue;
+
+        nodes.append(*node);
+    }
+
+    std::unique_ptr<HighlightConfig> highlightConfig = highlightConfigFromInspectorObject(errorString, &highlightInspectorObject);
+    if (!highlightConfig)
+        return;
+
+    m_overlay->highlightNodeList(StaticNodeList::create(WTFMove(nodes)), *highlightConfig);
+}
+
+void InspectorDOMAgent::highlightFrame(ErrorString& errorString, const String& frameId, const JSON::Object* color, const JSON::Object* outlineColor)
 {
     Frame* frame = m_pageAgent->assertFrame(errorString, frameId);
     if (!frame)
@@ -1508,7 +1539,7 @@ Ref<Inspector::Protocol::DOM::EventListener> InspectorDOMAgent::buildObjectForEv
     if (auto scriptListener = JSEventListener::cast(eventListener.ptr())) {
         JSC::JSLockHolder lock(scriptListener->isolatedWorld().vm());
         state = execStateFromNode(scriptListener->isolatedWorld(), &node->document());
-        handler = scriptListener->jsFunction(&node->document());
+        handler = scriptListener->jsFunction(node->document());
         if (handler && state) {
             body = handler->toString(state)->value(state);
             if (auto function = jsDynamicDowncast<JSC::JSFunction*>(state->vm(), handler)) {
@@ -1546,6 +1577,10 @@ Ref<Inspector::Protocol::DOM::EventListener> InspectorDOMAgent::buildObjectForEv
         if (!sourceName.isEmpty())
             value->setSourceName(sourceName);
     }
+    if (registeredEventListener.isPassive())
+        value->setPassive(true);
+    if (registeredEventListener.isOnce())
+        value->setOnce(true);
     return value;
 }
     
@@ -2147,28 +2182,37 @@ Node* InspectorDOMAgent::nodeForPath(const String& path)
 {
     // The path is of form "1,HTML,2,BODY,1,DIV"
     if (!m_document)
-        return 0;
+        return nullptr;
 
     Node* node = m_document.get();
     Vector<String> pathTokens;
     path.split(',', false, pathTokens);
     if (!pathTokens.size())
-        return 0;
+        return nullptr;
+
     for (size_t i = 0; i < pathTokens.size() - 1; i += 2) {
         bool success = true;
         unsigned childNumber = pathTokens[i].toUInt(&success);
         if (!success)
-            return 0;
-        if (childNumber >= innerChildNodeCount(node))
-            return 0;
+            return nullptr;
 
-        Node* child = innerFirstChild(node);
-        String childName = pathTokens[i + 1];
-        for (size_t j = 0; child && j < childNumber; ++j)
-            child = innerNextSibling(child);
+        Node* child;
+        if (is<HTMLFrameOwnerElement>(*node)) {
+            ASSERT(!childNumber);
+            auto& frameOwner = downcast<HTMLFrameOwnerElement>(*node);
+            child = frameOwner.contentDocument();
+        } else {
+            if (childNumber >= innerChildNodeCount(node))
+                return nullptr;
 
+            child = innerFirstChild(node);
+            for (size_t j = 0; child && j < childNumber; ++j)
+                child = innerNextSibling(child);
+        }
+
+        const auto& childName = pathTokens[i + 1];
         if (!child || child->nodeName() != childName)
-            return 0;
+            return nullptr;
         node = child;
     }
     return node;

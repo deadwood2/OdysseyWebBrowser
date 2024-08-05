@@ -38,9 +38,7 @@ const int SRTP_AEAD_AES_128_GCM = 0x0007;
 const int SRTP_AEAD_AES_256_GCM = 0x0008;
 #endif
 
-// Cipher suite to use for SRTP. Typically a 80-bit HMAC will be used, except
-// in applications (voice) where the additional bandwidth may be significant.
-// A 80-bit HMAC is always used for SRTCP.
+// Names of SRTP profiles listed above.
 // 128-bit AES with 80-bit SHA-1 HMAC.
 extern const char CS_AES_CM_128_HMAC_SHA1_80[];
 // 128-bit AES with 32-bit SHA-1 HMAC.
@@ -81,6 +79,11 @@ struct CryptoOptions {
   // if both sides enable it.
   bool enable_gcm_crypto_suites = false;
 };
+
+// Returns supported crypto suites, given |crypto_options|.
+// CS_AES_CM_128_HMAC_SHA1_32 will be preferred by default.
+std::vector<int> GetSupportedDtlsSrtpCryptoSuites(
+    const rtc::CryptoOptions& crypto_options);
 
 // SSLStreamAdapter : A StreamInterfaceAdapter that does SSL/TLS.
 // After SSL has been started, the stream will only open on successful
@@ -156,6 +159,12 @@ class SSLStreamAdapter : public StreamAdapterInterface {
   // next lower will be used.
   virtual void SetMaxProtocolVersion(SSLProtocolVersion version) = 0;
 
+  // Set the initial retransmission timeout for DTLS messages. When the timeout
+  // expires, the message gets retransmitted and the timeout is exponentially
+  // increased.
+  // This should only be called before StartSSL().
+  virtual void SetInitialRetransmissionTimeout(int timeout_ms) = 0;
+
   // StartSSL starts negotiation with a peer, whose certificate is verified
   // using the certificate digest. Generally, SetIdentity() and possibly
   // SetServerRole() should have been called before this.
@@ -205,7 +214,7 @@ class SSLStreamAdapter : public StreamAdapterInterface {
   //                        part of the RFC defining each exporter
   //                        usage (IN)
   // context/context_len -- a context to bind to for this connection;
-  //                        optional, can be NULL, 0 (IN)
+  //                        optional, can be null, 0 (IN)
   // use_context         -- whether to use the context value
   //                        (needed to distinguish no context from
   //                        zero-length ones).
@@ -228,10 +237,9 @@ class SSLStreamAdapter : public StreamAdapterInterface {
   // SS_OPENING but IsTlsConnected should return true.
   virtual bool IsTlsConnected() = 0;
 
-  // Capabilities testing
-  static bool HaveDtls();
-  static bool HaveDtlsSrtp();
-  static bool HaveExporter();
+  // Capabilities testing.
+  // Used to have "DTLS supported", "DTLS-SRTP supported" etc. methods, but now
+  // that's assumed.
   static bool IsBoringSsl();
 
   // Returns true iff the supplied cipher is deemed to be strong.
@@ -243,6 +251,10 @@ class SSLStreamAdapter : public StreamAdapterInterface {
   // introduced such that any caller could depend on sslstreamadapter.h without
   // depending on specific SSL implementation.
   static std::string SslCipherSuiteToName(int cipher_suite);
+
+  // Use our timeutils.h source of timing in BoringSSL, allowing us to test
+  // using a fake clock.
+  static void enable_time_callback_for_testing();
 
   sigslot::signal1<SSLHandshakeError> SignalSSLHandshakeError;
 

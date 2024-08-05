@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -214,8 +214,8 @@ ArrayMode ArrayMode::refine(
             && arrayClass() == Array::OriginalArray
             && globalObject->arrayPrototypeChainIsSane()
             && !graph.hasExitSite(node->origin.semantic, OutOfBounds)) {
-            graph.watchpoints().addLazily(globalObject->arrayPrototype()->structure()->transitionWatchpointSet());
-            graph.watchpoints().addLazily(globalObject->objectPrototype()->structure()->transitionWatchpointSet());
+            graph.registerAndWatchStructureTransition(globalObject->arrayPrototype()->structure());
+            graph.registerAndWatchStructureTransition(globalObject->objectPrototype()->structure());
             if (globalObject->arrayPrototypeChainIsSane())
                 return withSpeculation(Array::SaneChain);
         }
@@ -629,6 +629,8 @@ IndexingType toIndexingShape(Array::Type type)
         return DoubleShape;
     case Array::Contiguous:
         return ContiguousShape;
+    case Array::Undecided:
+        return UndecidedShape;
     case Array::ArrayStorage:
         return ArrayStorageShape;
     case Array::SlowPutArrayStorage:
@@ -712,6 +714,8 @@ bool permitsBoundsCheckLowering(Array::Type type)
     case Array::Int32:
     case Array::Double:
     case Array::Contiguous:
+    case Array::ArrayStorage:
+    case Array::SlowPutArrayStorage:
     case Array::Int8Array:
     case Array::Int16Array:
     case Array::Int32Array:
@@ -725,9 +729,7 @@ bool permitsBoundsCheckLowering(Array::Type type)
         return true;
     default:
         // These don't allow for bounds check lowering either because the bounds
-        // check involves something other than GetArrayLength (like ArrayStorage),
-        // or because the bounds check isn't a speculation (like String, sort of),
-        // or because the type implies an impure access.
+        // check isn't a speculation (like String, sort of) or because the type implies an impure access.
         return false;
     }
 }

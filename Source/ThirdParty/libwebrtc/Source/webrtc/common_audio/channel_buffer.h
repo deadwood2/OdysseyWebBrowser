@@ -8,8 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef WEBRTC_MODULES_AUDIO_PROCESSING_CHANNEL_BUFFER_H_
-#define WEBRTC_MODULES_AUDIO_PROCESSING_CHANNEL_BUFFER_H_
+#ifndef WEBRTC_COMMON_AUDIO_CHANNEL_BUFFER_H_
+#define WEBRTC_COMMON_AUDIO_CHANNEL_BUFFER_H_
 
 #include <string.h>
 
@@ -94,7 +94,7 @@ class ChannelBuffer {
   // 0 <= sample < |num_frames_per_band_|
   const T* const* bands(size_t channel) const {
     RTC_DCHECK_LT(channel, num_channels_);
-    RTC_DCHECK_GE(channel, 0u);
+    RTC_DCHECK_GE(channel, 0);
     return &bands_[channel * num_bands_];
   }
   T* const* bands(size_t channel) {
@@ -183,4 +183,4 @@ class IFChannelBuffer {
 
 }  // namespace webrtc
 
-#endif  // WEBRTC_MODULES_AUDIO_PROCESSING_CHANNEL_BUFFER_H_
+#endif  // WEBRTC_COMMON_AUDIO_CHANNEL_BUFFER_H_

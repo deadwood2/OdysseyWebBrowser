@@ -21,8 +21,9 @@
 #include "webrtc/base/basictypes.h"
 #include "webrtc/base/bytebuffer.h"
 #include "webrtc/base/byteorder.h"
-#include "webrtc/base/common.h"
+#include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
+#include "webrtc/base/safe_minmax.h"
 #include "webrtc/base/socket.h"
 #include "webrtc/base/stringutils.h"
 #include "webrtc/base/timeutils.h"
@@ -155,10 +156,6 @@ inline uint16_t bytes_to_short(const void* buf) {
   return rtc::NetworkToHost16(*static_cast<const uint16_t*>(buf));
 }
 
-uint32_t bound(uint32_t lower, uint32_t middle, uint32_t upper) {
-  return std::min(std::max(lower, middle), upper);
-}
-
 //////////////////////////////////////////////////////////////////////
 // Debugging Statistics
 //////////////////////////////////////////////////////////////////////
@@ -218,7 +215,7 @@ PseudoTcp::PseudoTcp(IPseudoTcpNotify* notify, uint32_t conv)
       m_sbuf_len(DEFAULT_SND_BUF_SIZE),
       m_sbuf(m_sbuf_len) {
   // Sanity check on buffer sizes (needed for OnTcpWriteable notification logic)
-  ASSERT(m_rbuf_len + MIN_PACKET < m_sbuf_len);
+  RTC_DCHECK(m_rbuf_len + MIN_PACKET < m_sbuf_len);
 
   uint32_t now = Now();
 
@@ -235,7 +232,7 @@ PseudoTcp::PseudoTcp(IPseudoTcpNotify* notify, uint32_t conv)
 
   m_msslevel = 0;
   m_largest = 0;
-  ASSERT(MIN_PACKET > PACKET_OVERHEAD);
+  RTC_DCHECK(MIN_PACKET > PACKET_OVERHEAD);
   m_mss = MIN_PACKET - PACKET_OVERHEAD;
   m_mtu_advise = MAX_PACKET;
 
@@ -291,7 +288,7 @@ void PseudoTcp::NotifyClock(uint32_t now) {
     // Check if it's time to retransmit a segment
   if (m_rto_base && (rtc::TimeDiff32(m_rto_base + m_rx_rto, now) <= 0)) {
     if (m_slist.empty()) {
-      ASSERT(false);
+      RTC_NOTREACHED();
     } else {
       // Note: (m_slist.front().xmit == 0)) {
       // retransmit segments
@@ -378,7 +375,7 @@ void PseudoTcp::GetOption(Option opt, int* value) {
   } else if (opt == OPT_RCVBUF) {
     *value = m_rbuf_len;
   } else {
-    ASSERT(false);
+    RTC_NOTREACHED();
   }
 }
 void PseudoTcp::SetOption(Option opt, int value) {
@@ -387,13 +384,13 @@ void PseudoTcp::SetOption(Option opt, int value) {
   } else if (opt == OPT_ACKDELAY) {
     m_ack_delay = value;
   } else if (opt == OPT_SNDBUF) {
-    ASSERT(m_state == TCP_LISTEN);
+    RTC_DCHECK(m_state == TCP_LISTEN);
     resizeSendBuffer(value);
   } else if (opt == OPT_RCVBUF) {
-    ASSERT(m_state == TCP_LISTEN);
+    RTC_DCHECK(m_state == TCP_LISTEN);
     resizeReceiveBuffer(value);
   } else {
-    ASSERT(false);
+    RTC_NOTREACHED();
   }
 }
 
@@ -434,7 +431,7 @@ int PseudoTcp::Recv(char* buffer, size_t len) {
     m_error = EWOULDBLOCK;
     return SOCKET_ERROR;
   }
-  ASSERT(result == rtc::SR_SUCCESS);
+  RTC_DCHECK(result == rtc::SR_SUCCESS);
 
   size_t available_space = 0;
   m_rbuf.GetWriteRemaining(&available_space);
@@ -491,7 +488,7 @@ uint32_t PseudoTcp::queue(const char* data, uint32_t len, bool bCtrl) {
   m_sbuf.GetWriteRemaining(&available_space);
 
   if (len > static_cast<uint32_t>(available_space)) {
-    ASSERT(!bCtrl);
+    RTC_DCHECK(!bCtrl);
     len = static_cast<uint32_t>(available_space);
   }
 
@@ -516,7 +513,7 @@ IPseudoTcpNotify::WriteResult PseudoTcp::packet(uint32_t seq,
                                                 uint8_t flags,
                                                 uint32_t offset,
                                                 uint32_t len) {
-  ASSERT(HEADER_SIZE + len <= MAX_PACKET);
+  RTC_DCHECK(HEADER_SIZE + len <= MAX_PACKET);
 
   uint32_t now = Now();
 
@@ -538,9 +535,8 @@ IPseudoTcpNotify::WriteResult PseudoTcp::packet(uint32_t seq,
     size_t bytes_read = 0;
     rtc::StreamResult result = m_sbuf.ReadOffset(
         buffer.get() + HEADER_SIZE, len, offset, &bytes_read);
-    RTC_UNUSED(result);
-    ASSERT(result == rtc::SR_SUCCESS);
-    ASSERT(static_cast<uint32_t>(bytes_read) == len);
+    RTC_DCHECK(result == rtc::SR_SUCCESS);
+    RTC_DCHECK(static_cast<uint32_t>(bytes_read) == len);
   }
 
 #if _DEBUGMSG >= _DBG_VERBOSE
@@ -726,16 +722,15 @@ bool PseudoTcp::process(Segment& seg) {
           m_rx_rttvar = (3 * m_rx_rttvar + abs_err) / 4;
           m_rx_srtt = (7 * m_rx_srtt + rtt) / 8;
         }
-        m_rx_rto =
-            bound(MIN_RTO, m_rx_srtt + std::max<uint32_t>(1, 4 * m_rx_rttvar),
-                  MAX_RTO);
+        m_rx_rto = rtc::SafeClamp(m_rx_srtt + rtc::SafeMax(1, 4 * m_rx_rttvar),
+                                  MIN_RTO, MAX_RTO);
 #if _DEBUGMSG >= _DBG_VERBOSE
         LOG(LS_INFO) << "rtt: " << rtt
                      << "  srtt: " << m_rx_srtt
                      << "  rto: " << m_rx_rto;
 #endif // _DEBUGMSG
       } else {
-        ASSERT(false);
+        RTC_NOTREACHED();
       }
     }
 
@@ -749,7 +744,7 @@ bool PseudoTcp::process(Segment& seg) {
     m_sbuf.ConsumeReadData(nAcked);
 
     for (uint32_t nFree = nAcked; nFree > 0;) {
-      ASSERT(!m_slist.empty());
+      RTC_DCHECK(!m_slist.empty());
       if (nFree < m_slist.front().len) {
         m_slist.front().len -= nFree;
         nFree = 0;
@@ -909,10 +904,14 @@ bool PseudoTcp::process(Segment& seg) {
     } else {
       uint32_t nOffset = seg.seq - m_rcv_nxt;
 
-      rtc::StreamResult result = m_rbuf.WriteOffset(seg.data, seg.len,
-                                                          nOffset, NULL);
-      ASSERT(result == rtc::SR_SUCCESS);
-      RTC_UNUSED(result);
+      rtc::StreamResult result =
+          m_rbuf.WriteOffset(seg.data, seg.len, nOffset, NULL);
+      if (result == rtc::SR_BLOCK) {
+        // Ignore incoming packets outside of the receive window.
+        return false;
+      }
+
+      RTC_DCHECK(result == rtc::SR_SUCCESS);
 
       if (seg.seq == m_rcv_nxt) {
         m_rbuf.ConsumeWriteBuffer(seg.len);
@@ -988,7 +987,7 @@ bool PseudoTcp::transmit(const SList::iterator& seg, uint32_t now) {
       return false;
     }
 
-    ASSERT(wres == IPseudoTcpNotify::WR_TOO_LARGE);
+    RTC_DCHECK(wres == IPseudoTcpNotify::WR_TOO_LARGE);
 
     while (true) {
       if (PACKET_MAXIMUMS[m_msslevel + 1] == 0) {
@@ -1042,7 +1041,6 @@ void PseudoTcp::attemptSend(SendFlags sflags) {
 
 #if _DEBUGMSG
   bool bFirst = true;
-  RTC_UNUSED(bFirst);
 #endif // _DEBUGMSG
 
   while (true) {
@@ -1109,7 +1107,7 @@ void PseudoTcp::attemptSend(SendFlags sflags) {
     SList::iterator it = m_slist.begin();
     while (it->xmit > 0) {
       ++it;
-      ASSERT(it != m_slist.end());
+      RTC_DCHECK(it != m_slist.end());
     }
     SList::iterator seg = it;
 
@@ -1202,8 +1200,7 @@ void PseudoTcp::parseOptions(const char* data, uint32_t len) {
     }
 
     // Length of this option.
-    ASSERT(len != 0);
-    RTC_UNUSED(len);
+    RTC_DCHECK(len != 0);
     uint8_t opt_len = 0;
     buf.ReadUInt8(&opt_len);
 
@@ -1272,8 +1269,7 @@ void PseudoTcp::resizeReceiveBuffer(uint32_t new_size) {
   // buffer. This should always be true because this method is called either
   // before connection is established or when peers are exchanging connect
   // messages.
-  ASSERT(result);
-  RTC_UNUSED(result);
+  RTC_DCHECK(result);
   m_rbuf_len = new_size;
   m_rwnd_scale = scale_factor;
   m_ssthresh = new_size;

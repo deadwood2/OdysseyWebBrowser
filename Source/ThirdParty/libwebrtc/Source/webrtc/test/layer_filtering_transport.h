@@ -10,7 +10,7 @@
 #ifndef WEBRTC_TEST_LAYER_FILTERING_TRANSPORT_H_
 #define WEBRTC_TEST_LAYER_FILTERING_TRANSPORT_H_
 
-#include "webrtc/call.h"
+#include "webrtc/call/call.h"
 #include "webrtc/test/direct_transport.h"
 #include "webrtc/test/fake_network_pipe.h"
 
@@ -27,7 +27,8 @@ class LayerFilteringTransport : public test::DirectTransport {
                           uint8_t vp8_video_payload_type,
                           uint8_t vp9_video_payload_type,
                           int selected_tl,
-                          int selected_sl);
+                          int selected_sl,
+                          const std::map<uint8_t, MediaType>& payload_type_map);
   bool DiscardedLastPacket() const;
   bool SendRtp(const uint8_t* data,
                size_t length,

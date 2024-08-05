@@ -14,7 +14,6 @@
 #include <vector>
 
 #include "webrtc/base/basictypes.h"
-#include "webrtc/base/constructormagic.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/rtpfb.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/tmmb_item.h"
 
@@ -28,8 +27,8 @@ class Tmmbn : public Rtpfb {
  public:
   static constexpr uint8_t kFeedbackMessageType = 4;
 
-  Tmmbn() {}
-  ~Tmmbn() override {}
+  Tmmbn();
+  ~Tmmbn() override;
 
   // Parse assumes header is already parsed and validated.
   bool Parse(const CommonHeader& packet);
@@ -38,25 +37,19 @@ class Tmmbn : public Rtpfb {
 
   const std::vector<TmmbItem>& items() const { return items_; }
 
- protected:
+  size_t BlockLength() const override;
+
   bool Create(uint8_t* packet,
               size_t* index,
               size_t max_length,
               RtcpPacket::PacketReadyCallback* callback) const override;
 
  private:
-  size_t BlockLength() const override {
-    return kHeaderLength + kCommonFeedbackLength +
-           TmmbItem::kLength * items_.size();
-  }
-
   // Media ssrc is unused, shadow base class setter and getter.
   void SetMediaSsrc(uint32_t ssrc);
   uint32_t media_ssrc() const;
 
   std::vector<TmmbItem> items_;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(Tmmbn);
 };
 }  // namespace rtcp
 }  // namespace webrtc

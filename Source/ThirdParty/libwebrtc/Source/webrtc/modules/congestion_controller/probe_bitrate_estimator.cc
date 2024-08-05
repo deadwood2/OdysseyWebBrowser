@@ -14,10 +14,16 @@
 
 #include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
+#include "webrtc/logging/rtc_event_log/rtc_event_log.h"
 
 namespace {
-// The minumum number of probes we need for a valid cluster.
-constexpr int kMinNumProbesValidCluster = 4;
+// The minumum number of probes we need to receive feedback about in percent
+// in order to have a valid estimate.
+constexpr int kMinReceivedProbesPercent = 80;
+
+// The minumum number of bytes we need to receive feedback about in percent
+// in order to have a valid estimate.
+constexpr int kMinReceivedBytesPercent = 80;
 
 // The maximum (receive rate)/(send rate) ratio for a valid estimate.
 constexpr float kValidRatio = 2.0f;
@@ -34,35 +40,46 @@ constexpr int kMaxProbeIntervalMs = 1000;
 
 namespace webrtc {
 
-ProbeBitrateEstimator::ProbeBitrateEstimator() {}
+ProbeBitrateEstimator::ProbeBitrateEstimator(RtcEventLog* event_log)
+    : event_log_(event_log) {}
+
+ProbeBitrateEstimator::~ProbeBitrateEstimator() = default;
 
 int ProbeBitrateEstimator::HandleProbeAndEstimateBitrate(
-    const PacketInfo& packet_info) {
-  RTC_DCHECK_NE(packet_info.probe_cluster_id, PacketInfo::kNotAProbe);
+    const PacketFeedback& packet_feedback) {
+  int cluster_id = packet_feedback.pacing_info.probe_cluster_id;
+  RTC_DCHECK_NE(cluster_id, PacedPacketInfo::kNotAProbe);
 
-  EraseOldClusters(packet_info.arrival_time_ms - kMaxClusterHistoryMs);
+  EraseOldClusters(packet_feedback.arrival_time_ms - kMaxClusterHistoryMs);
 
-  int payload_size_bits = packet_info.payload_size * 8;
-  AggregatedCluster* cluster = &clusters_[packet_info.probe_cluster_id];
+  int payload_size_bits = packet_feedback.payload_size * 8;
+  AggregatedCluster* cluster = &clusters_[cluster_id];
 
-  if (packet_info.send_time_ms < cluster->first_send_ms) {
-    cluster->first_send_ms = packet_info.send_time_ms;
+  if (packet_feedback.send_time_ms < cluster->first_send_ms) {
+    cluster->first_send_ms = packet_feedback.send_time_ms;
   }
-  if (packet_info.send_time_ms > cluster->last_send_ms) {
-    cluster->last_send_ms = packet_info.send_time_ms;
+  if (packet_feedback.send_time_ms > cluster->last_send_ms) {
+    cluster->last_send_ms = packet_feedback.send_time_ms;
     cluster->size_last_send = payload_size_bits;
   }
-  if (packet_info.arrival_time_ms < cluster->first_receive_ms) {
-    cluster->first_receive_ms = packet_info.arrival_time_ms;
+  if (packet_feedback.arrival_time_ms < cluster->first_receive_ms) {
+    cluster->first_receive_ms = packet_feedback.arrival_time_ms;
     cluster->size_first_receive = payload_size_bits;
   }
-  if (packet_info.arrival_time_ms > cluster->last_receive_ms) {
-    cluster->last_receive_ms = packet_info.arrival_time_ms;
+  if (packet_feedback.arrival_time_ms > cluster->last_receive_ms) {
+    cluster->last_receive_ms = packet_feedback.arrival_time_ms;
   }
   cluster->size_total += payload_size_bits;
   cluster->num_probes += 1;
 
-  if (cluster->num_probes < kMinNumProbesValidCluster)
+  RTC_DCHECK_GT(packet_feedback.pacing_info.probe_cluster_min_probes, 0);
+  RTC_DCHECK_GT(packet_feedback.pacing_info.probe_cluster_min_bytes, 0);
+
+  int min_probes = packet_feedback.pacing_info.probe_cluster_min_probes *
+                   kMinReceivedProbesPercent / 100;
+  int min_bytes = packet_feedback.pacing_info.probe_cluster_min_bytes *
+                  kMinReceivedBytesPercent / 100;
+  if (cluster->num_probes < min_probes || cluster->size_total < min_bytes * 8)
     return -1;
 
   float send_interval_ms = cluster->last_send_ms - cluster->first_send_ms;
@@ -72,9 +89,13 @@ int ProbeBitrateEstimator::HandleProbeAndEstimateBitrate(
   if (send_interval_ms <= 0 || send_interval_ms > kMaxProbeIntervalMs ||
       receive_interval_ms <= 0 || receive_interval_ms > kMaxProbeIntervalMs) {
     LOG(LS_INFO) << "Probing unsuccessful, invalid send/receive interval"
-                 << " [cluster id: " << packet_info.probe_cluster_id
+                 << " [cluster id: " << cluster_id
                  << "] [send interval: " << send_interval_ms << " ms]"
                  << " [receive interval: " << receive_interval_ms << " ms]";
+    if (event_log_) {
+      event_log_->LogProbeResultFailure(cluster_id,
+                                        kInvalidSendReceiveInterval);
+    }
     return -1;
   }
   // Since the |send_interval_ms| does not include the time it takes to actually
@@ -94,8 +115,8 @@ int ProbeBitrateEstimator::HandleProbeAndEstimateBitrate(
   float ratio = receive_bps / send_bps;
   if (ratio > kValidRatio) {
     LOG(LS_INFO) << "Probing unsuccessful, receive/send ratio too high"
-                 << " [cluster id: " << packet_info.probe_cluster_id
-                 << "] [send: " << send_size << " bytes / " << send_interval_ms
+                 << " [cluster id: " << cluster_id << "] [send: " << send_size
+                 << " bytes / " << send_interval_ms
                  << " ms = " << send_bps / 1000 << " kb/s]"
                  << " [receive: " << receive_size << " bytes / "
                  << receive_interval_ms << " ms = " << receive_bps / 1000
@@ -103,16 +124,30 @@ int ProbeBitrateEstimator::HandleProbeAndEstimateBitrate(
                  << " [ratio: " << receive_bps / 1000 << " / "
                  << send_bps / 1000 << " = " << ratio << " > kValidRatio ("
                  << kValidRatio << ")]";
+    if (event_log_)
+      event_log_->LogProbeResultFailure(cluster_id, kInvalidSendReceiveRatio);
     return -1;
   }
   LOG(LS_INFO) << "Probing successful"
-               << " [cluster id: " << packet_info.probe_cluster_id
-               << "] [send: " << send_size << " bytes / " << send_interval_ms
-               << " ms = " << send_bps / 1000 << " kb/s]"
+               << " [cluster id: " << cluster_id << "] [send: " << send_size
+               << " bytes / " << send_interval_ms << " ms = " << send_bps / 1000
+               << " kb/s]"
                << " [receive: " << receive_size << " bytes / "
                << receive_interval_ms << " ms = " << receive_bps / 1000
                << " kb/s]";
-  return std::min(send_bps, receive_bps);
+
+  float res = std::min(send_bps, receive_bps);
+  if (event_log_)
+    event_log_->LogProbeResultSuccess(cluster_id, res);
+  estimated_bitrate_bps_ = rtc::Optional<int>(res);
+  return *estimated_bitrate_bps_;
+}
+
+rtc::Optional<int>
+ProbeBitrateEstimator::FetchAndResetLastEstimatedBitrateBps() {
+  rtc::Optional<int> estimated_bitrate_bps = estimated_bitrate_bps_;
+  estimated_bitrate_bps_.reset();
+  return estimated_bitrate_bps;
 }
 
 void ProbeBitrateEstimator::EraseOldClusters(int64_t timestamp_ms) {

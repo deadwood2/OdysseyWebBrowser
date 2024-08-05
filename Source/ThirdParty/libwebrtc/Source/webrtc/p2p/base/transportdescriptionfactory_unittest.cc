@@ -64,7 +64,7 @@ class TransportDescriptionFactoryTest : public testing::Test {
     // The initial offer / answer exchange.
     std::unique_ptr<TransportDescription> offer(f1_.CreateOffer(options, NULL));
     std::unique_ptr<TransportDescription> answer(
-        f2_.CreateAnswer(offer.get(), options, NULL));
+        f2_.CreateAnswer(offer.get(), options, true, NULL));
 
     // Create an updated offer where we restart ice.
     options.ice_restart = true;
@@ -76,7 +76,7 @@ class TransportDescriptionFactoryTest : public testing::Test {
     // Create a new answer. The transport ufrag and password is changed since
     // |options.ice_restart == true|
     std::unique_ptr<TransportDescription> restart_answer(
-        f2_.CreateAnswer(restart_offer.get(), options, answer.get()));
+        f2_.CreateAnswer(restart_offer.get(), options, true, answer.get()));
     ASSERT_TRUE(restart_answer.get() != NULL);
 
     VerifyUfragAndPasswordChanged(dtls, answer.get(), restart_answer.get());
@@ -108,7 +108,7 @@ class TransportDescriptionFactoryTest : public testing::Test {
     std::unique_ptr<TransportDescription> offer(
         f1_.CreateOffer(options, nullptr));
     std::unique_ptr<TransportDescription> answer(
-        f2_.CreateAnswer(offer.get(), options, nullptr));
+        f2_.CreateAnswer(offer.get(), options, true, nullptr));
     VerifyRenomination(offer.get(), false);
     VerifyRenomination(answer.get(), false);
 
@@ -117,8 +117,8 @@ class TransportDescriptionFactoryTest : public testing::Test {
         f1_.CreateOffer(options, offer.get()));
     VerifyRenomination(renomination_offer.get(), true);
 
-    std::unique_ptr<TransportDescription> renomination_answer(
-        f2_.CreateAnswer(renomination_offer.get(), options, answer.get()));
+    std::unique_ptr<TransportDescription> renomination_answer(f2_.CreateAnswer(
+        renomination_offer.get(), options, true, answer.get()));
     VerifyRenomination(renomination_answer.get(), true);
   }
 
@@ -127,8 +127,7 @@ class TransportDescriptionFactoryTest : public testing::Test {
                           bool renomination_expected) {
     ASSERT_TRUE(desc != nullptr);
     std::vector<std::string>& options = desc->transport_options;
-    auto iter = std::find(options.begin(), options.end(),
-                          cricket::ICE_RENOMINATION_STR);
+    auto iter = std::find(options.begin(), options.end(), "renomination");
     EXPECT_EQ(renomination_expected, iter != options.end());
   }
 
@@ -202,10 +201,9 @@ TEST_F(TransportDescriptionFactoryTest, TestAnswerDefault) {
       f1_.CreateOffer(TransportOptions(), NULL));
   ASSERT_TRUE(offer.get() != NULL);
   std::unique_ptr<TransportDescription> desc(
-      f2_.CreateAnswer(offer.get(), TransportOptions(), NULL));
+      f2_.CreateAnswer(offer.get(), TransportOptions(), true, NULL));
   CheckDesc(desc.get(), "", "", "", "");
-  desc.reset(f2_.CreateAnswer(offer.get(), TransportOptions(),
-                              NULL));
+  desc.reset(f2_.CreateAnswer(offer.get(), TransportOptions(), true, NULL));
   CheckDesc(desc.get(), "", "", "", "");
 }
 
@@ -215,10 +213,10 @@ TEST_F(TransportDescriptionFactoryTest, TestReanswer) {
       f1_.CreateOffer(TransportOptions(), NULL));
   ASSERT_TRUE(offer.get() != NULL);
   std::unique_ptr<TransportDescription> old_desc(
-      f2_.CreateAnswer(offer.get(), TransportOptions(), NULL));
+      f2_.CreateAnswer(offer.get(), TransportOptions(), true, NULL));
   ASSERT_TRUE(old_desc.get() != NULL);
   std::unique_ptr<TransportDescription> desc(
-      f2_.CreateAnswer(offer.get(), TransportOptions(), old_desc.get()));
+      f2_.CreateAnswer(offer.get(), TransportOptions(), true, old_desc.get()));
   ASSERT_TRUE(desc.get() != NULL);
   CheckDesc(desc.get(), "",
             old_desc->ice_ufrag, old_desc->ice_pwd, "");
@@ -232,7 +230,7 @@ TEST_F(TransportDescriptionFactoryTest, TestAnswerDtlsToNoDtls) {
       f1_.CreateOffer(TransportOptions(), NULL));
   ASSERT_TRUE(offer.get() != NULL);
   std::unique_ptr<TransportDescription> desc(
-      f2_.CreateAnswer(offer.get(), TransportOptions(), NULL));
+      f2_.CreateAnswer(offer.get(), TransportOptions(), true, NULL));
   CheckDesc(desc.get(), "", "", "", "");
 }
 
@@ -245,11 +243,10 @@ TEST_F(TransportDescriptionFactoryTest, TestAnswerNoDtlsToDtls) {
       f1_.CreateOffer(TransportOptions(), NULL));
   ASSERT_TRUE(offer.get() != NULL);
   std::unique_ptr<TransportDescription> desc(
-      f2_.CreateAnswer(offer.get(), TransportOptions(), NULL));
+      f2_.CreateAnswer(offer.get(), TransportOptions(), true, NULL));
   CheckDesc(desc.get(), "", "", "", "");
   f2_.set_secure(cricket::SEC_REQUIRED);
-  desc.reset(f2_.CreateAnswer(offer.get(), TransportOptions(),
-                              NULL));
+  desc.reset(f2_.CreateAnswer(offer.get(), TransportOptions(), true, NULL));
   ASSERT_TRUE(desc.get() == NULL);
 }
 
@@ -271,11 +268,10 @@ TEST_F(TransportDescriptionFactoryTest, TestAnswerDtlsToDtls) {
       f1_.CreateOffer(TransportOptions(), NULL));
   ASSERT_TRUE(offer.get() != NULL);
   std::unique_ptr<TransportDescription> desc(
-      f2_.CreateAnswer(offer.get(), TransportOptions(), NULL));
+      f2_.CreateAnswer(offer.get(), TransportOptions(), true, NULL));
   CheckDesc(desc.get(), "", "", "", digest_alg2);
   f2_.set_secure(cricket::SEC_REQUIRED);
-  desc.reset(f2_.CreateAnswer(offer.get(), TransportOptions(),
-                              NULL));
+  desc.reset(f2_.CreateAnswer(offer.get(), TransportOptions(), true, NULL));
   CheckDesc(desc.get(), "", "", "", digest_alg2);
 }
 
@@ -302,4 +298,15 @@ TEST_F(TransportDescriptionFactoryTest, TestIceRenomination) {
 // is enabled.
 TEST_F(TransportDescriptionFactoryTest, TestIceRenominationWithDtls) {
   TestIceRenomination(true);
+}
+
+// Test that offers and answers have ice-option:trickle.
+TEST_F(TransportDescriptionFactoryTest, AddsTrickleIceOption) {
+  cricket::TransportOptions options;
+  std::unique_ptr<TransportDescription> offer(
+      f1_.CreateOffer(options, nullptr));
+  EXPECT_TRUE(offer->HasOption("trickle"));
+  std::unique_ptr<TransportDescription> answer(
+      f2_.CreateAnswer(offer.get(), options, true, nullptr));
+  EXPECT_TRUE(answer->HasOption("trickle"));
 }

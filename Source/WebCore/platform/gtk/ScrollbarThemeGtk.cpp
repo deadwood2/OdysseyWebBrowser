@@ -799,7 +799,7 @@ ScrollbarButtonPressAction ScrollbarThemeGtk::handleMousePressEvent(Scrollbar&, 
 }
 
 #if GTK_CHECK_VERSION(3, 20, 0)
-int ScrollbarThemeGtk::scrollbarThickness(ScrollbarControlSize)
+int ScrollbarThemeGtk::scrollbarThickness(ScrollbarControlSize, ScrollbarExpansionState)
 {
     auto& scrollbarWidget = static_cast<RenderThemeScrollbar&>(RenderThemeWidget::getOrCreate(RenderThemeWidget::Type::VerticalScrollbarRight));
     scrollbarWidget.scrollbar().setState(GTK_STATE_FLAG_PRELIGHT);
@@ -809,7 +809,7 @@ int ScrollbarThemeGtk::scrollbarThickness(ScrollbarControlSize)
     return preferredSize.width();
 }
 #else
-int ScrollbarThemeGtk::scrollbarThickness(ScrollbarControlSize)
+int ScrollbarThemeGtk::scrollbarThickness(ScrollbarControlSize, ScrollbarExpansionState)
 {
     int thumbFat, troughBorderWidth;
     gtk_style_context_get_style(createStyleContext().get(), "slider-width", &thumbFat, "trough-border", &troughBorderWidth, nullptr);

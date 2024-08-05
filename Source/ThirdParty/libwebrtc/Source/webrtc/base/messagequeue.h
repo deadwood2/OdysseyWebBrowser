@@ -17,6 +17,7 @@
 #include <list>
 #include <memory>
 #include <queue>
+#include <utility>
 #include <vector>
 
 #include "webrtc/base/basictypes.h"
@@ -25,7 +26,6 @@
 #include "webrtc/base/location.h"
 #include "webrtc/base/messagehandler.h"
 #include "webrtc/base/scoped_ref_ptr.h"
-#include "webrtc/base/sharedexclusivelock.h"
 #include "webrtc/base/sigslot.h"
 #include "webrtc/base/socketserver.h"
 #include "webrtc/base/timeutils.h"
@@ -98,9 +98,20 @@ class TypedMessageData : public MessageData {
 template <class T>
 class ScopedMessageData : public MessageData {
  public:
-  explicit ScopedMessageData(T* data) : data_(data) { }
+  explicit ScopedMessageData(std::unique_ptr<T> data)
+      : data_(std::move(data)) {}
+  // Deprecated.
+  // TODO(deadbeef): Remove this once downstream applications stop using it.
+  explicit ScopedMessageData(T* data) : data_(data) {}
+  // Deprecated.
+  // TODO(deadbeef): Returning a reference to a unique ptr? Why. Get rid of
+  // this once downstream applications stop using it, then rename inner_data to
+  // just data.
   const std::unique_ptr<T>& data() const { return data_; }
   std::unique_ptr<T>& data() { return data_; }
+
+  const T& inner_data() const { return *data_; }
+  T& inner_data() { return *data_; }
 
  private:
   std::unique_ptr<T> data_;
@@ -145,8 +156,8 @@ struct Message {
   Message()
       : phandler(nullptr), message_id(0), pdata(nullptr), ts_sensitive(0) {}
   inline bool Match(MessageHandler* handler, uint32_t id) const {
-    return (handler == NULL || handler == phandler)
-           && (id == MQID_ANY || id == message_id);
+    return (handler == nullptr || handler == phandler) &&
+           (id == MQID_ANY || id == message_id);
   }
   Location posted_from;
   MessageHandler *phandler;
@@ -198,7 +209,6 @@ class MessageQueue {
   virtual ~MessageQueue();
 
   SocketServer* socketserver();
-  void set_socketserver(SocketServer* ss);
 
   // Note: The behavior of MessageQueue has changed.  When a MQ is stopped,
   // futher Posts and Sends will fail.  However, any pending Sends and *ready*
@@ -209,6 +219,10 @@ class MessageQueue {
   virtual void Quit();
   virtual bool IsQuitting();
   virtual void Restart();
+  // Not all message queues actually process messages (such as SignalThread).
+  // In those cases, it's important to know, before posting, that it won't be
+  // Processed.  Normally, this would be true until IsQuitting() is true.
+  virtual bool IsProcessingMessages();
 
   // Get() will process I/O until:
   //  1) A message is available (returns true)
@@ -220,27 +234,27 @@ class MessageQueue {
   virtual void Post(const Location& posted_from,
                     MessageHandler* phandler,
                     uint32_t id = 0,
-                    MessageData* pdata = NULL,
+                    MessageData* pdata = nullptr,
                     bool time_sensitive = false);
   virtual void PostDelayed(const Location& posted_from,
                            int cmsDelay,
                            MessageHandler* phandler,
                            uint32_t id = 0,
-                           MessageData* pdata = NULL);
+                           MessageData* pdata = nullptr);
   virtual void PostAt(const Location& posted_from,
                       int64_t tstamp,
                       MessageHandler* phandler,
                       uint32_t id = 0,
-                      MessageData* pdata = NULL);
+                      MessageData* pdata = nullptr);
   // TODO(honghaiz): Remove this when all the dependencies are removed.
   virtual void PostAt(const Location& posted_from,
                       uint32_t tstamp,
                       MessageHandler* phandler,
                       uint32_t id = 0,
-                      MessageData* pdata = NULL);
+                      MessageData* pdata = nullptr);
   virtual void Clear(MessageHandler* phandler,
                      uint32_t id = MQID_ANY,
-                     MessageList* removed = NULL);
+                     MessageList* removed = nullptr);
   virtual void Dispatch(Message *pmsg);
   virtual void ReceiveSends();
 
@@ -256,7 +270,7 @@ class MessageQueue {
   // Internally posts a message which causes the doomed object to be deleted
   template<class T> void Dispose(T* doomed) {
     if (doomed) {
-      Post(RTC_FROM_HERE, NULL, MQID_DISPOSE, new DisposeData<T>(doomed));
+      Post(RTC_FROM_HERE, nullptr, MQID_DISPOSE, new DisposeData<T>(doomed));
     }
   }
 
@@ -301,10 +315,9 @@ class MessageQueue {
   volatile int stop_;
 
   // The SocketServer might not be owned by MessageQueue.
-  SocketServer* ss_ GUARDED_BY(ss_lock_);
+  SocketServer* const ss_;
   // Used if SocketServer ownership lies with |this|.
   std::unique_ptr<SocketServer> own_ss_;
-  SharedExclusiveLock ss_lock_;
 
   RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(MessageQueue);
 };

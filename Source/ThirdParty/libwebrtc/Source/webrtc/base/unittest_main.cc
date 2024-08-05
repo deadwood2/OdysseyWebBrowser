@@ -19,8 +19,13 @@
 #include "webrtc/base/gunit.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/ssladapter.h"
+#include "webrtc/base/sslstreamadapter.h"
 #include "webrtc/test/field_trial.h"
 #include "webrtc/test/testsupport/fileutils.h"
+
+#if defined(WEBRTC_IOS)
+#include "webrtc/test/ios/test_support.h"
+#endif
 
 DEFINE_bool(help, false, "prints this message");
 DEFINE_string(log, "", "logging options to use");
@@ -65,7 +70,7 @@ int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   rtc::FlagList::SetFlagsFromCommandLine(&argc, argv, false);
   if (FLAG_help) {
-    rtc::FlagList::Print(NULL, false);
+    rtc::FlagList::Print(nullptr, false);
     return 0;
   }
 
@@ -88,9 +93,6 @@ int main(int argc, char** argv) {
 #endif
 #endif  // WEBRTC_WIN
 
-  rtc::Filesystem::SetOrganizationName("google");
-  rtc::Filesystem::SetApplicationName("unittest");
-
   // By default, log timestamps. Allow overrides by used of a --log flag.
   rtc::LogMessage::LogTimestamps();
   if (*FLAG_log != '\0') {
@@ -103,8 +105,13 @@ int main(int argc, char** argv) {
 
   // Initialize SSL which are used by several tests.
   rtc::InitializeSSL();
+  rtc::SSLStreamAdapter::enable_time_callback_for_testing();
 
-  int res = RUN_ALL_TESTS();
+#if defined(WEBRTC_IOS)
+  rtc::test::InitTestSuite(RUN_ALL_TESTS, argc, argv);
+  rtc::test::RunTestsFromIOSApp();
+#endif
+  const int res = RUN_ALL_TESTS();
 
   rtc::CleanupSSL();
 

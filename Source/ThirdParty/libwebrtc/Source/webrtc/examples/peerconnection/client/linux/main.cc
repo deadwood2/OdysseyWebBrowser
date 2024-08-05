@@ -20,9 +20,13 @@
 
 class CustomSocketServer : public rtc::PhysicalSocketServer {
  public:
-  CustomSocketServer(rtc::Thread* thread, GtkMainWnd* wnd)
-      : thread_(thread), wnd_(wnd), conductor_(NULL), client_(NULL) {}
+  explicit CustomSocketServer(GtkMainWnd* wnd)
+      : wnd_(wnd), conductor_(NULL), client_(NULL) {}
   virtual ~CustomSocketServer() {}
+
+  void SetMessageQueue(rtc::MessageQueue* queue) override {
+    message_queue_ = queue;
+  }
 
   void set_client(PeerConnectionClient* client) { client_ = client; }
   void set_conductor(Conductor* conductor) { conductor_ = conductor; }
@@ -39,14 +43,14 @@ class CustomSocketServer : public rtc::PhysicalSocketServer {
 
     if (!wnd_->IsWindow() && !conductor_->connection_active() &&
         client_ != NULL && !client_->is_connected()) {
-      thread_->Quit();
+      message_queue_->Quit();
     }
     return rtc::PhysicalSocketServer::Wait(0/*cms == -1 ? 1 : cms*/,
                                                  process_io);
   }
 
  protected:
-  rtc::Thread* thread_;
+  rtc::MessageQueue* message_queue_;
   GtkMainWnd* wnd_;
   Conductor* conductor_;
   PeerConnectionClient* client_;
@@ -54,7 +58,11 @@ class CustomSocketServer : public rtc::PhysicalSocketServer {
 
 int main(int argc, char* argv[]) {
   gtk_init(&argc, &argv);
-  g_type_init();
+  // g_type_init API is deprecated (and does nothing) since glib 2.35.0, see:
+  // https://mail.gnome.org/archives/commits-list/2012-November/msg07809.html
+#if !GLIB_CHECK_VERSION(2, 35, 0)
+    g_type_init();
+#endif
   // g_thread_init API is deprecated since glib 2.31.0, see release note:
   // http://mail.gnome.org/archives/gnome-announce-list/2011-October/msg00041.html
 #if !GLIB_CHECK_VERSION(2, 31, 0)
@@ -77,10 +85,8 @@ int main(int argc, char* argv[]) {
   GtkMainWnd wnd(FLAG_server, FLAG_port, FLAG_autoconnect, FLAG_autocall);
   wnd.Create();
 
-  rtc::AutoThread auto_thread;
-  rtc::Thread* thread = rtc::Thread::Current();
-  CustomSocketServer socket_server(thread, &wnd);
-  thread->set_socketserver(&socket_server);
+  CustomSocketServer socket_server(&wnd);
+  rtc::AutoSocketServerThread thread(&socket_server);
 
   rtc::InitializeSSL();
   // Must be constructed after we set the socketserver.
@@ -90,12 +96,11 @@ int main(int argc, char* argv[]) {
   socket_server.set_client(&client);
   socket_server.set_conductor(conductor);
 
-  thread->Run();
+  thread.Run();
 
   // gtk_main();
   wnd.Destroy();
 
-  thread->set_socketserver(NULL);
   // TODO(henrike): Run the Gtk main loop to tear down the connection.
   /*
   while (gtk_events_pending()) {

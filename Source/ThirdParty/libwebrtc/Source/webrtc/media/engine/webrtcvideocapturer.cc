@@ -25,55 +25,31 @@
 
 namespace cricket {
 
+namespace {
 struct kVideoFourCCEntry {
   uint32_t fourcc;
-  webrtc::RawVideoType webrtc_type;
+  webrtc::VideoType webrtc_type;
 };
 
 // This indicates our format preferences and defines a mapping between
 // webrtc::RawVideoType (from video_capture_defines.h) to our FOURCCs.
-static kVideoFourCCEntry kSupportedFourCCs[] = {
-  { FOURCC_I420, webrtc::kVideoI420 },   // 12 bpp, no conversion.
-  { FOURCC_YV12, webrtc::kVideoYV12 },   // 12 bpp, no conversion.
-  { FOURCC_YUY2, webrtc::kVideoYUY2 },   // 16 bpp, fast conversion.
-  { FOURCC_UYVY, webrtc::kVideoUYVY },   // 16 bpp, fast conversion.
-  { FOURCC_NV12, webrtc::kVideoNV12 },   // 12 bpp, fast conversion.
-  { FOURCC_NV21, webrtc::kVideoNV21 },   // 12 bpp, fast conversion.
-  { FOURCC_MJPG, webrtc::kVideoMJPEG },  // compressed, slow conversion.
-  { FOURCC_ARGB, webrtc::kVideoARGB },   // 32 bpp, slow conversion.
-  { FOURCC_24BG, webrtc::kVideoRGB24 },  // 24 bpp, slow conversion.
+kVideoFourCCEntry kSupportedFourCCs[] = {
+    {FOURCC_I420, webrtc::VideoType::kI420},   // 12 bpp, no conversion.
+    {FOURCC_YV12, webrtc::VideoType::kYV12},   // 12 bpp, no conversion.
+    {FOURCC_YUY2, webrtc::VideoType::kYUY2},   // 16 bpp, fast conversion.
+    {FOURCC_UYVY, webrtc::VideoType::kUYVY},   // 16 bpp, fast conversion.
+    {FOURCC_NV12, webrtc::VideoType::kNV12},   // 12 bpp, fast conversion.
+    {FOURCC_NV21, webrtc::VideoType::kNV21},   // 12 bpp, fast conversion.
+    {FOURCC_MJPG, webrtc::VideoType::kMJPEG},  // compressed, slow conversion.
+    {FOURCC_ARGB, webrtc::VideoType::kARGB},   // 32 bpp, slow conversion.
+    {FOURCC_24BG, webrtc::VideoType::kRGB24},  // 24 bpp, slow conversion.
 };
 
-class WebRtcVcmFactory : public WebRtcVcmFactoryInterface {
- public:
-  virtual rtc::scoped_refptr<webrtc::VideoCaptureModule> Create(
-      int id,
-      const char* device) {
-#if RTC_HAS_ASAN
-    // FIXME: this shouldn't be necessary.
-    return nullptr;
-#else
-    return webrtc::VideoCaptureFactory::Create(id, device);
-#endif
-  }
-  virtual webrtc::VideoCaptureModule::DeviceInfo* CreateDeviceInfo(int id) {
-#if RTC_HAS_ASAN
-    // FIXME: this shouldn't be necessary.
-    return nullptr;
-#else
-    return webrtc::VideoCaptureFactory::CreateDeviceInfo(id);
-#endif
-  }
-  virtual void DestroyDeviceInfo(webrtc::VideoCaptureModule::DeviceInfo* info) {
-    delete info;
-  }
-};
-
-static bool CapabilityToFormat(const webrtc::VideoCaptureCapability& cap,
-                               VideoFormat* format) {
+bool CapabilityToFormat(const webrtc::VideoCaptureCapability& cap,
+                        VideoFormat* format) {
   uint32_t fourcc = 0;
   for (size_t i = 0; i < arraysize(kSupportedFourCCs); ++i) {
-    if (kSupportedFourCCs[i].webrtc_type == cap.rawType) {
+    if (kSupportedFourCCs[i].webrtc_type == cap.videoType) {
       fourcc = kSupportedFourCCs[i].fourcc;
       break;
     }
@@ -89,28 +65,52 @@ static bool CapabilityToFormat(const webrtc::VideoCaptureCapability& cap,
   return true;
 }
 
-static bool FormatToCapability(const VideoFormat& format,
-                               webrtc::VideoCaptureCapability* cap) {
-  webrtc::RawVideoType webrtc_type = webrtc::kVideoUnknown;
+bool FormatToCapability(const VideoFormat& format,
+                        webrtc::VideoCaptureCapability* cap) {
+  webrtc::VideoType webrtc_type = webrtc::VideoType::kUnknown;
   for (size_t i = 0; i < arraysize(kSupportedFourCCs); ++i) {
     if (kSupportedFourCCs[i].fourcc == format.fourcc) {
       webrtc_type = kSupportedFourCCs[i].webrtc_type;
       break;
     }
   }
-  if (webrtc_type == webrtc::kVideoUnknown) {
+  if (webrtc_type == webrtc::VideoType::kUnknown) {
     return false;
   }
 
   cap->width = format.width;
   cap->height = format.height;
   cap->maxFPS = VideoFormat::IntervalToFps(format.interval);
-  cap->expectedCaptureDelay = 0;
-  cap->rawType = webrtc_type;
-  cap->codecType = webrtc::kVideoCodecUnknown;
+  cap->videoType = webrtc_type;
   cap->interlaced = false;
   return true;
 }
+
+}  // namespace
+
+class WebRtcVcmFactory : public WebRtcVcmFactoryInterface {
+ public:
+  virtual rtc::scoped_refptr<webrtc::VideoCaptureModule> Create(
+      const char* device) {
+#if RTC_HAS_ASAN
+    // FIXME: this shouldn't be necessary.
+    return nullptr;
+#else
+    return webrtc::VideoCaptureFactory::Create(device);
+#endif
+  }
+  virtual webrtc::VideoCaptureModule::DeviceInfo* CreateDeviceInfo() {
+#if RTC_HAS_ASAN
+    // FIXME: this shouldn't be necessary.
+    return nullptr;
+#else
+    return webrtc::VideoCaptureFactory::CreateDeviceInfo();
+#endif
+  }
+  virtual void DestroyDeviceInfo(webrtc::VideoCaptureModule::DeviceInfo* info) {
+    delete info;
+  }
+};
 
 ///////////////////////////////////////////////////////////////////////////
 // Implementation of class WebRtcVideoCapturer
@@ -139,7 +139,7 @@ bool WebRtcVideoCapturer::Init(const Device& device) {
     return false;
   }
 
-  webrtc::VideoCaptureModule::DeviceInfo* info = factory_->CreateDeviceInfo(0);
+  webrtc::VideoCaptureModule::DeviceInfo* info = factory_->CreateDeviceInfo();
   if (!info) {
     return false;
   }
@@ -178,7 +178,7 @@ bool WebRtcVideoCapturer::Init(const Device& device) {
         supported.push_back(format);
       } else {
         LOG(LS_WARNING) << "Ignoring unsupported WebRTC capture format "
-                        << cap.rawType;
+                        << static_cast<int>(cap.videoType);
       }
     }
   }
@@ -189,7 +189,7 @@ bool WebRtcVideoCapturer::Init(const Device& device) {
     return false;
   }
 
-  module_ = factory_->Create(0, vcm_id);
+  module_ = factory_->Create(vcm_id);
   if (!module_) {
     LOG(LS_ERROR) << "Failed to create capturer for id: " << device.id;
     return false;
@@ -243,12 +243,8 @@ void WebRtcVideoCapturer::OnSinkWantsChanged(const rtc::VideoSinkWants& wants) {
   // calls, can't take lock.
   RTC_DCHECK(module_);
 
-  const std::string group_name =
-      webrtc::field_trial::FindFullName("WebRTC-CVO");
-
-  if (group_name == "Disabled") {
+  if (webrtc::field_trial::FindFullName("WebRTC-CVO").find("Disabled") == 0)
     return;
-  }
 
   VideoCapturer::OnSinkWantsChanged(wants);
   bool result = module_->SetApplyRotation(wants.rotation_applied);
@@ -283,7 +279,7 @@ CaptureState WebRtcVideoCapturer::Start(const VideoFormat& capture_format) {
   }
 
   int64_t start = rtc::TimeMillis();
-  module_->RegisterCaptureDataCallback(*this);
+  module_->RegisterCaptureDataCallback(this);
   if (module_->StartCapture(cap) != 0) {
     LOG(LS_ERROR) << "Camera '" << GetId() << "' failed to start";
     module_->DeRegisterCaptureDataCallback();
@@ -347,8 +343,7 @@ bool WebRtcVideoCapturer::GetPreferredFourccs(std::vector<uint32_t>* fourccs) {
   return true;
 }
 
-void WebRtcVideoCapturer::OnIncomingCapturedFrame(
-    const int32_t id,
+void WebRtcVideoCapturer::OnFrame(
     const webrtc::VideoFrame& sample) {
   // This can only happen between Start() and Stop().
   RTC_DCHECK(start_thread_);
@@ -362,12 +357,7 @@ void WebRtcVideoCapturer::OnIncomingCapturedFrame(
                  << ". Expected format " << GetCaptureFormat()->ToString();
   }
 
-  OnFrame(sample, sample.width(), sample.height());
-}
-
-void WebRtcVideoCapturer::OnCaptureDelayChanged(const int32_t id,
-                                                const int32_t delay) {
-  LOG(LS_INFO) << "Capture delay changed to " << delay << " ms";
+  VideoCapturer::OnFrame(sample, sample.width(), sample.height());
 }
 
 }  // namespace cricket

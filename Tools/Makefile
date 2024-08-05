@@ -8,6 +8,9 @@ ifneq (,$(SDKROOT))
 		MODULES += MobileMiniBrowser
 	endif
 endif
+ifeq (,$(DO_NOT_BUILD_IMAGE_DIFF))
+	MODULES += ImageDiff
+endif
 
 all:
 	@for dir in $(MODULES); do ${MAKE} $@ -C $$dir; exit_status=$$?; \

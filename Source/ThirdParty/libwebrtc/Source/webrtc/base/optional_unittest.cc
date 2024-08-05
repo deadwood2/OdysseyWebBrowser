@@ -21,6 +21,34 @@ namespace rtc {
 
 namespace {
 
+struct MyUnprintableType {
+  int value;
+};
+
+struct MyPrintableType {
+  int value;
+};
+
+struct MyOstreamPrintableType {
+  int value;
+};
+
+void PrintTo(const MyPrintableType& mpt, std::ostream* os) {
+  *os << "The value is " << mpt.value;
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         const MyPrintableType& mpt) {
+  os << mpt.value;
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         const MyOstreamPrintableType& mpt) {
+  os << mpt.value;
+  return os;
+}
+
 // Class whose instances logs various method calls (constructor, destructor,
 // etc.). Each instance has a unique ID (a simple global sequence number) and
 // an origin ID. When a copy is made, the new object gets a fresh ID but copies
@@ -128,6 +156,7 @@ TEST(OptionalTest, TestConstructDefault) {
   {
     Optional<Logger> x;
     EXPECT_FALSE(x);
+    EXPECT_FALSE(x.has_value());
   }
   EXPECT_EQ(V(), *log);
 }
@@ -137,8 +166,10 @@ TEST(OptionalTest, TestConstructCopyEmpty) {
   {
     Optional<Logger> x;
     EXPECT_FALSE(x);
+    EXPECT_FALSE(x.has_value());
     auto y = x;
     EXPECT_FALSE(y);
+    EXPECT_FALSE(y.has_value());
   }
   EXPECT_EQ(V(), *log);
 }
@@ -149,9 +180,11 @@ TEST(OptionalTest, TestConstructCopyFull) {
     Logger a;
     Optional<Logger> x(a);
     EXPECT_TRUE(x);
+    EXPECT_TRUE(x.has_value());
     log->push_back("---");
     auto y = x;
     EXPECT_TRUE(y);
+    EXPECT_TRUE(y.has_value());
     log->push_back("---");
   }
   EXPECT_EQ(V("0:0. default constructor", "1:0. copy constructor (from 0:0)",
@@ -165,8 +198,10 @@ TEST(OptionalTest, TestConstructMoveEmpty) {
   {
     Optional<Logger> x;
     EXPECT_FALSE(x);
+    EXPECT_FALSE(x.has_value());
     auto y = std::move(x);
     EXPECT_FALSE(y);
+    EXPECT_FALSE(y.has_value());
   }
   EXPECT_EQ(V(), *log);
 }
@@ -176,10 +211,13 @@ TEST(OptionalTest, TestConstructMoveFull) {
   {
     Optional<Logger> x(Logger(17));
     EXPECT_TRUE(x);
+    EXPECT_TRUE(x.has_value());
     log->push_back("---");
     auto y = std::move(x);
     EXPECT_TRUE(x);
+    EXPECT_TRUE(x.has_value());
     EXPECT_TRUE(y);
+    EXPECT_TRUE(y.has_value());
     log->push_back("---");
   }
   EXPECT_EQ(
@@ -593,13 +631,35 @@ TEST(OptionalTest, TestDereference) {
     (*std::move(x)).Foo();
     (*std::move(y)).Foo();
     log->push_back("---");
+    x.value().Foo();
+    y.value().Foo();
+    std::move(x).value().Foo();
+    std::move(y).value().Foo();
+    log->push_back("---");
   }
+  // clang-format off
   EXPECT_EQ(V("0:42. explicit constructor",
-              "1:42. move constructor (from 0:42)", "0:42. destructor", "---",
-              "1:42. Foo()", "1:42. Foo() const", "1:42. Foo()",
-              "1:42. Foo() const", "---", "1:42. Foo()", "1:42. Foo() const",
-              "1:42. Foo()", "1:42. Foo() const", "---", "1:42. destructor"),
+              "1:42. move constructor (from 0:42)",
+              "0:42. destructor",
+              "---",
+              "1:42. Foo()",
+              "1:42. Foo() const",
+              "1:42. Foo()",
+              "1:42. Foo() const",
+              "---",
+              "1:42. Foo()",
+              "1:42. Foo() const",
+              "1:42. Foo()",
+              "1:42. Foo() const",
+              "---",
+              "1:42. Foo()",
+              "1:42. Foo() const",
+              "1:42. Foo()",
+              "1:42. Foo() const",
+              "---",
+              "1:42. destructor"),
             *log);
+  // clang-format on
 }
 
 TEST(OptionalTest, TestDereferenceWithDefault) {
@@ -723,6 +783,49 @@ TEST(OptionalTest, TestSwap) {
               "5:17. destructor", "3:17. destructor", "2:42. destructor",
               "1:42. destructor", "0:17. destructor"),
             *log);
+}
+
+TEST(OptionalTest, TestMoveValue) {
+  auto log = Logger::Setup();
+  {
+    Optional<Logger> x(Logger(42));
+    log->push_back("---");
+    Logger moved = x.MoveValue();
+    log->push_back("---");
+  }
+  EXPECT_EQ(
+      V("0:42. explicit constructor", "1:42. move constructor (from 0:42)",
+        "0:42. destructor", "---", "2:42. move constructor (from 1:42)", "---",
+        "2:42. destructor", "1:42. destructor"),
+      *log);
+}
+
+TEST(OptionalTest, TestPrintTo) {
+  constexpr char kEmptyOptionalMessage[] = "<empty optional>";
+  const Optional<MyUnprintableType> empty_unprintable;
+  const Optional<MyPrintableType> empty_printable;
+  const Optional<MyOstreamPrintableType> empty_ostream_printable;
+  EXPECT_EQ(kEmptyOptionalMessage, ::testing::PrintToString(empty_unprintable));
+  EXPECT_EQ(kEmptyOptionalMessage, ::testing::PrintToString(empty_printable));
+  EXPECT_EQ(kEmptyOptionalMessage,
+            ::testing::PrintToString(empty_ostream_printable));
+  EXPECT_NE("1", ::testing::PrintToString(Optional<MyUnprintableType>({1})));
+  EXPECT_NE("1", ::testing::PrintToString(Optional<MyPrintableType>({1})));
+  EXPECT_EQ("The value is 1",
+            ::testing::PrintToString(Optional<MyPrintableType>({1})));
+  EXPECT_EQ("1",
+            ::testing::PrintToString(Optional<MyOstreamPrintableType>({1})));
+}
+
+void UnusedFunctionWorkaround() {
+  // These are here to ensure we don't get warnings about ostream and PrintTo
+  // for MyPrintableType never getting called.
+  const MyPrintableType dont_warn{17};
+  const MyOstreamPrintableType dont_warn2{18};
+  std::stringstream sstr;
+  sstr << dont_warn;
+  PrintTo(dont_warn, &sstr);
+  sstr << dont_warn2;
 }
 
 }  // namespace rtc

@@ -17,9 +17,15 @@
 #include <algorithm>
 #include <limits>
 
+#include "webrtc/api/video/video_rotation.h"
 #include "webrtc/base/constructormagic.h"
+#include "webrtc/base/deprecation.h"
+#include "webrtc/base/optional.h"
+#include "webrtc/base/safe_conversions.h"
 #include "webrtc/common_types.h"
-#include "webrtc/common_video/rotation.h"
+#include "webrtc/modules/video_coding/codecs/h264/include/h264_globals.h"
+#include "webrtc/modules/video_coding/codecs/vp8/include/vp8_globals.h"
+#include "webrtc/modules/video_coding/codecs/vp9/include/vp9_globals.h"
 #include "webrtc/typedefs.h"
 
 namespace webrtc {
@@ -29,258 +35,6 @@ struct RTPAudioHeader {
   uint8_t arrOfEnergy[kRtpCsrcSize];  // one energy byte (0-9) per channel
   bool isCNG;                         // is this CNG
   size_t channel;                     // number of channels 2 = stereo
-};
-
-const int16_t kNoPictureId = -1;
-const int16_t kMaxOneBytePictureId = 0x7F;    // 7 bits
-const int16_t kMaxTwoBytePictureId = 0x7FFF;  // 15 bits
-const int16_t kNoTl0PicIdx = -1;
-const uint8_t kNoTemporalIdx = 0xFF;
-const uint8_t kNoSpatialIdx = 0xFF;
-const uint8_t kNoGofIdx = 0xFF;
-const uint8_t kNumVp9Buffers = 8;
-const size_t kMaxVp9RefPics = 3;
-const size_t kMaxVp9FramesInGof = 0xFF;  // 8 bits
-const size_t kMaxVp9NumberOfSpatialLayers = 8;
-const int kNoKeyIdx = -1;
-
-struct RTPVideoHeaderVP8 {
-  void InitRTPVideoHeaderVP8() {
-    nonReference = false;
-    pictureId = kNoPictureId;
-    tl0PicIdx = kNoTl0PicIdx;
-    temporalIdx = kNoTemporalIdx;
-    layerSync = false;
-    keyIdx = kNoKeyIdx;
-    partitionId = 0;
-    beginningOfPartition = false;
-  }
-
-  bool nonReference;          // Frame is discardable.
-  int16_t pictureId;          // Picture ID index, 15 bits;
-                              // kNoPictureId if PictureID does not exist.
-  int16_t tl0PicIdx;          // TL0PIC_IDX, 8 bits;
-                              // kNoTl0PicIdx means no value provided.
-  uint8_t temporalIdx;        // Temporal layer index, or kNoTemporalIdx.
-  bool layerSync;             // This frame is a layer sync frame.
-                              // Disabled if temporalIdx == kNoTemporalIdx.
-  int keyIdx;                 // 5 bits; kNoKeyIdx means not used.
-  int partitionId;            // VP8 partition ID
-  bool beginningOfPartition;  // True if this packet is the first
-                              // in a VP8 partition. Otherwise false
-};
-
-enum TemporalStructureMode {
-  kTemporalStructureMode1,  // 1 temporal layer structure - i.e., IPPP...
-  kTemporalStructureMode2,  // 2 temporal layers 01...
-  kTemporalStructureMode3,  // 3 temporal layers 0212...
-  kTemporalStructureMode4   // 3 temporal layers 02120212...
-};
-
-struct GofInfoVP9 {
-  void SetGofInfoVP9(TemporalStructureMode tm) {
-    switch (tm) {
-      case kTemporalStructureMode1:
-        num_frames_in_gof = 1;
-        temporal_idx[0] = 0;
-        temporal_up_switch[0] = false;
-        num_ref_pics[0] = 1;
-        pid_diff[0][0] = 1;
-        break;
-      case kTemporalStructureMode2:
-        num_frames_in_gof = 2;
-        temporal_idx[0] = 0;
-        temporal_up_switch[0] = false;
-        num_ref_pics[0] = 1;
-        pid_diff[0][0] = 2;
-
-        temporal_idx[1] = 1;
-        temporal_up_switch[1] = true;
-        num_ref_pics[1] = 1;
-        pid_diff[1][0] = 1;
-        break;
-      case kTemporalStructureMode3:
-        num_frames_in_gof = 4;
-        temporal_idx[0] = 0;
-        temporal_up_switch[0] = false;
-        num_ref_pics[0] = 1;
-        pid_diff[0][0] = 4;
-
-        temporal_idx[1] = 2;
-        temporal_up_switch[1] = true;
-        num_ref_pics[1] = 1;
-        pid_diff[1][0] = 1;
-
-        temporal_idx[2] = 1;
-        temporal_up_switch[2] = true;
-        num_ref_pics[2] = 1;
-        pid_diff[2][0] = 2;
-
-        temporal_idx[3] = 2;
-        temporal_up_switch[3] = false;
-        num_ref_pics[3] = 2;
-        pid_diff[3][0] = 1;
-        pid_diff[3][1] = 2;
-        break;
-      case kTemporalStructureMode4:
-        num_frames_in_gof = 8;
-        temporal_idx[0] = 0;
-        temporal_up_switch[0] = false;
-        num_ref_pics[0] = 1;
-        pid_diff[0][0] = 4;
-
-        temporal_idx[1] = 2;
-        temporal_up_switch[1] = true;
-        num_ref_pics[1] = 1;
-        pid_diff[1][0] = 1;
-
-        temporal_idx[2] = 1;
-        temporal_up_switch[2] = true;
-        num_ref_pics[2] = 1;
-        pid_diff[2][0] = 2;
-
-        temporal_idx[3] = 2;
-        temporal_up_switch[3] = false;
-        num_ref_pics[3] = 2;
-        pid_diff[3][0] = 1;
-        pid_diff[3][1] = 2;
-
-        temporal_idx[4] = 0;
-        temporal_up_switch[0] = false;
-        num_ref_pics[4] = 1;
-        pid_diff[4][0] = 4;
-
-        temporal_idx[5] = 2;
-        temporal_up_switch[1] = false;
-        num_ref_pics[5] = 2;
-        pid_diff[5][0] = 1;
-        pid_diff[5][1] = 2;
-
-        temporal_idx[6] = 1;
-        temporal_up_switch[2] = false;
-        num_ref_pics[6] = 2;
-        pid_diff[6][0] = 2;
-        pid_diff[6][1] = 4;
-
-        temporal_idx[7] = 2;
-        temporal_up_switch[3] = false;
-        num_ref_pics[7] = 2;
-        pid_diff[7][0] = 1;
-        pid_diff[7][1] = 2;
-        break;
-      default:
-        assert(false);
-    }
-  }
-
-  void CopyGofInfoVP9(const GofInfoVP9& src) {
-    num_frames_in_gof = src.num_frames_in_gof;
-    for (size_t i = 0; i < num_frames_in_gof; ++i) {
-      temporal_idx[i] = src.temporal_idx[i];
-      temporal_up_switch[i] = src.temporal_up_switch[i];
-      num_ref_pics[i] = src.num_ref_pics[i];
-      for (uint8_t r = 0; r < num_ref_pics[i]; ++r) {
-        pid_diff[i][r] = src.pid_diff[i][r];
-      }
-    }
-  }
-
-  size_t num_frames_in_gof;
-  uint8_t temporal_idx[kMaxVp9FramesInGof];
-  bool temporal_up_switch[kMaxVp9FramesInGof];
-  uint8_t num_ref_pics[kMaxVp9FramesInGof];
-  uint8_t pid_diff[kMaxVp9FramesInGof][kMaxVp9RefPics];
-  uint16_t pid_start;
-};
-
-struct RTPVideoHeaderVP9 {
-  void InitRTPVideoHeaderVP9() {
-    inter_pic_predicted = false;
-    flexible_mode = false;
-    beginning_of_frame = false;
-    end_of_frame = false;
-    ss_data_available = false;
-    picture_id = kNoPictureId;
-    max_picture_id = kMaxTwoBytePictureId;
-    tl0_pic_idx = kNoTl0PicIdx;
-    temporal_idx = kNoTemporalIdx;
-    spatial_idx = kNoSpatialIdx;
-    temporal_up_switch = false;
-    inter_layer_predicted = false;
-    gof_idx = kNoGofIdx;
-    num_ref_pics = 0;
-    num_spatial_layers = 1;
-  }
-
-  bool inter_pic_predicted;  // This layer frame is dependent on previously
-                             // coded frame(s).
-  bool flexible_mode;        // This frame is in flexible mode.
-  bool beginning_of_frame;   // True if this packet is the first in a VP9 layer
-                             // frame.
-  bool end_of_frame;  // True if this packet is the last in a VP9 layer frame.
-  bool ss_data_available;  // True if SS data is available in this payload
-                           // descriptor.
-  int16_t picture_id;      // PictureID index, 15 bits;
-                           // kNoPictureId if PictureID does not exist.
-  int16_t max_picture_id;  // Maximum picture ID index; either 0x7F or 0x7FFF;
-  int16_t tl0_pic_idx;     // TL0PIC_IDX, 8 bits;
-                           // kNoTl0PicIdx means no value provided.
-  uint8_t temporal_idx;    // Temporal layer index, or kNoTemporalIdx.
-  uint8_t spatial_idx;     // Spatial layer index, or kNoSpatialIdx.
-  bool temporal_up_switch;  // True if upswitch to higher frame rate is possible
-                            // starting from this frame.
-  bool inter_layer_predicted;  // Frame is dependent on directly lower spatial
-                               // layer frame.
-
-  uint8_t gof_idx;  // Index to predefined temporal frame info in SS data.
-
-  uint8_t num_ref_pics;  // Number of reference pictures used by this layer
-                         // frame.
-  uint8_t pid_diff[kMaxVp9RefPics];  // P_DIFF signaled to derive the PictureID
-                                     // of the reference pictures.
-  int16_t ref_picture_id[kMaxVp9RefPics];  // PictureID of reference pictures.
-
-  // SS data.
-  size_t num_spatial_layers;  // Always populated.
-  bool spatial_layer_resolution_present;
-  uint16_t width[kMaxVp9NumberOfSpatialLayers];
-  uint16_t height[kMaxVp9NumberOfSpatialLayers];
-  GofInfoVP9 gof;
-};
-
-// The packetization types that we support: single, aggregated, and fragmented.
-enum H264PacketizationTypes {
-  kH264SingleNalu,  // This packet contains a single NAL unit.
-  kH264StapA,       // This packet contains STAP-A (single time
-                    // aggregation) packets. If this packet has an
-                    // associated NAL unit type, it'll be for the
-                    // first such aggregated packet.
-  kH264FuA,         // This packet contains a FU-A (fragmentation
-                    // unit) packet, meaning it is a part of a frame
-                    // that was too large to fit into a single packet.
-};
-
-struct NaluInfo {
-  uint8_t type;
-  int sps_id;
-  int pps_id;
-
-  // Offset and size are only valid for non-FuA packets.
-  size_t offset;
-  size_t size;
-};
-
-const size_t kMaxNalusPerPacket = 10;
-
-struct RTPVideoHeaderH264 {
-  uint8_t nalu_type;  // The NAL unit type. If this is a header for a
-                      // fragmented packet, it's the NAL unit type of
-                      // the original data. If this is the header for an
-                      // aggregated packet, it's the NAL unit type of
-                      // the first NAL unit in the packet.
-  H264PacketizationTypes packetization_type;
-  NaluInfo nalus[kMaxNalusPerPacket];
-  size_t nalus_length;
 };
 
 union RTPVideoTypeHeader {
@@ -305,7 +59,11 @@ struct RTPVideoHeader {
 
   PlayoutDelay playout_delay;
 
-  bool isFirstPacket;    // first packet in frame
+  VideoContentType content_type;
+
+  VideoTiming video_timing;
+
+  bool is_first_packet_in_frame;
   uint8_t simulcastIdx;  // Index if the simulcast encoder creating
                          // this frame, 0 if not using simulcast.
   RtpVideoCodecTypes codec;
@@ -331,7 +89,7 @@ class RTPFragmentationHeader {
         fragmentationOffset(NULL),
         fragmentationLength(NULL),
         fragmentationTimeDiff(NULL),
-        fragmentationPlType(NULL) {};
+        fragmentationPlType(NULL) {}
 
   ~RTPFragmentationHeader() {
     delete[] fragmentationOffset;
@@ -515,19 +273,21 @@ class CallStatsObserver {
  * states.
  *
  * Notes
- * - The total number of samples in |data_| is
- *   samples_per_channel_ * num_channels_
- *
+ * - The total number of samples is samples_per_channel_ * num_channels_
  * - Stereo data is interleaved starting with the left channel.
- *
- * - The +operator assume that you would never add exactly opposite frames when
- *   deciding the resulting state. To do this use the -operator.
  */
 class AudioFrame {
  public:
-  // Stereo, 32 kHz, 60 ms (2 * 32 * 60)
+  // Using constexpr here causes linker errors unless the variable also has an
+  // out-of-class definition, which is impractical in this header-only class.
+  // (This makes no sense because it compiles as an enum value, which we most
+  // certainly cannot take the address of, just fine.) C++17 introduces inline
+  // variables which should allow us to switch to constexpr and keep this a
+  // header-only class.
   enum : size_t {
-    kMaxDataSizeSamples = 3840
+    // Stereo, 32 kHz, 60 ms (2 * 32 * 60)
+    kMaxDataSizeSamples = 3840,
+    kMaxDataSizeBytes = kMaxDataSizeSamples * sizeof(int16_t),
   };
 
   enum VADActivity {
@@ -545,8 +305,7 @@ class AudioFrame {
 
   AudioFrame();
 
-  // Resets all members to their default state (except does not modify the
-  // contents of |data_|).
+  // Resets all members to their default state.
   void Reset();
 
   void UpdateFrame(int id, uint32_t timestamp, const int16_t* data,
@@ -556,36 +315,58 @@ class AudioFrame {
 
   void CopyFrom(const AudioFrame& src);
 
-  void Mute();
+  // data() returns a zeroed static buffer if the frame is muted.
+  // mutable_frame() always returns a non-static buffer; the first call to
+  // mutable_frame() zeros the non-static buffer and marks the frame unmuted.
+  const int16_t* data() const;
+  int16_t* mutable_data();
 
-  AudioFrame& operator>>=(const int rhs);
-  AudioFrame& operator+=(const AudioFrame& rhs);
+  // Prefer to mute frames using AudioFrameOperations::Mute.
+  void Mute();
+  // Frame is muted by default.
+  bool muted() const;
+
+  // These methods are deprecated. Use the functions in
+  // webrtc/audio/utility instead. These methods will exists for a
+  // short period of time until webrtc clients have updated. See
+  // webrtc:6548 for details.
+  RTC_DEPRECATED AudioFrame& operator>>=(const int rhs);
+  RTC_DEPRECATED AudioFrame& operator+=(const AudioFrame& rhs);
 
   int id_;
   // RTP timestamp of the first sample in the AudioFrame.
-  uint32_t timestamp_;
+  uint32_t timestamp_ = 0;
   // Time since the first frame in milliseconds.
   // -1 represents an uninitialized value.
-  int64_t elapsed_time_ms_;
+  int64_t elapsed_time_ms_ = -1;
   // NTP time of the estimated capture time in local timebase in milliseconds.
   // -1 represents an uninitialized value.
-  int64_t ntp_time_ms_;
-  int16_t data_[kMaxDataSizeSamples];
-  size_t samples_per_channel_;
-  int sample_rate_hz_;
-  size_t num_channels_;
-  SpeechType speech_type_;
-  VADActivity vad_activity_;
+  int64_t ntp_time_ms_ = -1;
+  size_t samples_per_channel_ = 0;
+  int sample_rate_hz_ = 0;
+  size_t num_channels_ = 0;
+  SpeechType speech_type_ = kUndefined;
+  VADActivity vad_activity_ = kVadUnknown;
 
  private:
+  // A permamently zeroed out buffer to represent muted frames. This is a
+  // header-only class, so the only way to avoid creating a separate empty
+  // buffer per translation unit is to wrap a static in an inline function.
+  static const int16_t* empty_data() {
+    static const int16_t kEmptyData[kMaxDataSizeSamples] = {0};
+    static_assert(sizeof(kEmptyData) == kMaxDataSizeBytes, "kMaxDataSizeBytes");
+    return kEmptyData;
+  }
+
+  int16_t data_[kMaxDataSizeSamples];
+  bool muted_ = true;
+
   RTC_DISALLOW_COPY_AND_ASSIGN(AudioFrame);
 };
 
-// TODO(henrik.lundin) Can we remove the call to data_()?
-// See https://bugs.chromium.org/p/webrtc/issues/detail?id=5647.
-inline AudioFrame::AudioFrame()
-    : data_() {
-  Reset();
+inline AudioFrame::AudioFrame() {
+  // Visual Studio doesn't like this in the class definition.
+  static_assert(sizeof(data_) == kMaxDataSizeBytes, "kMaxDataSizeBytes");
 }
 
 inline void AudioFrame::Reset() {
@@ -595,6 +376,7 @@ inline void AudioFrame::Reset() {
   timestamp_ = 0;
   elapsed_time_ms_ = -1;
   ntp_time_ms_ = -1;
+  muted_ = true;
   samples_per_channel_ = 0;
   sample_rate_hz_ = 0;
   num_channels_ = 0;
@@ -620,10 +402,11 @@ inline void AudioFrame::UpdateFrame(int id,
 
   const size_t length = samples_per_channel * num_channels;
   assert(length <= kMaxDataSizeSamples);
-  if (data != NULL) {
+  if (data != nullptr) {
     memcpy(data_, data, sizeof(int16_t) * length);
+    muted_ = false;
   } else {
-    memset(data_, 0, sizeof(int16_t) * length);
+    muted_ = true;
   }
 }
 
@@ -634,6 +417,7 @@ inline void AudioFrame::CopyFrom(const AudioFrame& src) {
   timestamp_ = src.timestamp_;
   elapsed_time_ms_ = src.elapsed_time_ms_;
   ntp_time_ms_ = src.ntp_time_ms_;
+  muted_ = src.muted();
   samples_per_channel_ = src.samples_per_channel_;
   sample_rate_hz_ = src.sample_rate_hz_;
   speech_type_ = src.speech_type_;
@@ -642,33 +426,41 @@ inline void AudioFrame::CopyFrom(const AudioFrame& src) {
 
   const size_t length = samples_per_channel_ * num_channels_;
   assert(length <= kMaxDataSizeSamples);
-  memcpy(data_, src.data_, sizeof(int16_t) * length);
+  if (!src.muted()) {
+    memcpy(data_, src.data(), sizeof(int16_t) * length);
+    muted_ = false;
+  }
+}
+
+inline const int16_t* AudioFrame::data() const {
+  return muted_ ? empty_data() : data_;
+}
+
+// TODO(henrik.lundin) Can we skip zeroing the buffer?
+// See https://bugs.chromium.org/p/webrtc/issues/detail?id=5647.
+inline int16_t* AudioFrame::mutable_data() {
+  if (muted_) {
+    memset(data_, 0, kMaxDataSizeBytes);
+    muted_ = false;
+  }
+  return data_;
 }
 
 inline void AudioFrame::Mute() {
-  memset(data_, 0, samples_per_channel_ * num_channels_ * sizeof(int16_t));
+  muted_ = true;
 }
+
+inline bool AudioFrame::muted() const { return muted_; }
 
 inline AudioFrame& AudioFrame::operator>>=(const int rhs) {
   assert((num_channels_ > 0) && (num_channels_ < 3));
   if ((num_channels_ > 2) || (num_channels_ < 1)) return *this;
+  if (muted_) return *this;
 
   for (size_t i = 0; i < samples_per_channel_ * num_channels_; i++) {
     data_[i] = static_cast<int16_t>(data_[i] >> rhs);
   }
   return *this;
-}
-
-namespace {
-inline int16_t ClampToInt16(int32_t input) {
-  if (input < -0x00008000) {
-    return -0x8000;
-  } else if (input > 0x00007FFF) {
-    return 0x7FFF;
-  } else {
-    return static_cast<int16_t>(input);
-  }
-}
 }
 
 inline AudioFrame& AudioFrame::operator+=(const AudioFrame& rhs) {
@@ -677,7 +469,7 @@ inline AudioFrame& AudioFrame::operator+=(const AudioFrame& rhs) {
   if ((num_channels_ > 2) || (num_channels_ < 1)) return *this;
   if (num_channels_ != rhs.num_channels_) return *this;
 
-  bool noPrevData = false;
+  bool noPrevData = muted_;
   if (samples_per_channel_ != rhs.samples_per_channel_) {
     if (samples_per_channel_ == 0) {
       // special case we have no data to start with
@@ -696,42 +488,48 @@ inline AudioFrame& AudioFrame::operator+=(const AudioFrame& rhs) {
 
   if (speech_type_ != rhs.speech_type_) speech_type_ = kUndefined;
 
-  if (noPrevData) {
-    memcpy(data_, rhs.data_,
-           sizeof(int16_t) * rhs.samples_per_channel_ * num_channels_);
-  } else {
-    // IMPROVEMENT this can be done very fast in assembly
-    for (size_t i = 0; i < samples_per_channel_ * num_channels_; i++) {
-      int32_t wrap_guard =
-          static_cast<int32_t>(data_[i]) + static_cast<int32_t>(rhs.data_[i]);
-      data_[i] = ClampToInt16(wrap_guard);
+  if (!rhs.muted()) {
+    muted_ = false;
+    if (noPrevData) {
+      memcpy(data_, rhs.data(),
+             sizeof(int16_t) * rhs.samples_per_channel_ * num_channels_);
+    } else {
+      // IMPROVEMENT this can be done very fast in assembly
+      for (size_t i = 0; i < samples_per_channel_ * num_channels_; i++) {
+        int32_t wrap_guard =
+            static_cast<int32_t>(data_[i]) + static_cast<int32_t>(rhs.data_[i]);
+        data_[i] = rtc::saturated_cast<int16_t>(wrap_guard);
+      }
     }
   }
+
   return *this;
+}
+
+template <typename U>
+inline bool IsNewer(U value, U prev_value) {
+  static_assert(!std::numeric_limits<U>::is_signed, "U must be unsigned");
+  // kBreakpoint is the half-way mark for the type U. For instance, for a
+  // uint16_t it will be 0x8000, and for a uint32_t, it will be 0x8000000.
+  constexpr U kBreakpoint = (std::numeric_limits<U>::max() >> 1) + 1;
+  // Distinguish between elements that are exactly kBreakpoint apart.
+  // If t1>t2 and |t1-t2| = kBreakpoint: IsNewer(t1,t2)=true,
+  // IsNewer(t2,t1)=false
+  // rather than having IsNewer(t1,t2) = IsNewer(t2,t1) = false.
+  if (value - prev_value == kBreakpoint) {
+    return value > prev_value;
+  }
+  return value != prev_value &&
+         static_cast<U>(value - prev_value) < kBreakpoint;
 }
 
 inline bool IsNewerSequenceNumber(uint16_t sequence_number,
                                   uint16_t prev_sequence_number) {
-  // Distinguish between elements that are exactly 0x8000 apart.
-  // If s1>s2 and |s1-s2| = 0x8000: IsNewer(s1,s2)=true, IsNewer(s2,s1)=false
-  // rather than having IsNewer(s1,s2) = IsNewer(s2,s1) = false.
-  if (static_cast<uint16_t>(sequence_number - prev_sequence_number) == 0x8000) {
-    return sequence_number > prev_sequence_number;
-  }
-  return sequence_number != prev_sequence_number &&
-         static_cast<uint16_t>(sequence_number - prev_sequence_number) < 0x8000;
+  return IsNewer(sequence_number, prev_sequence_number);
 }
 
 inline bool IsNewerTimestamp(uint32_t timestamp, uint32_t prev_timestamp) {
-  // Distinguish between elements that are exactly 0x80000000 apart.
-  // If t1>t2 and |t1-t2| = 0x80000000: IsNewer(t1,t2)=true,
-  // IsNewer(t2,t1)=false
-  // rather than having IsNewer(t1,t2) = IsNewer(t2,t1) = false.
-  if (static_cast<uint32_t>(timestamp - prev_timestamp) == 0x80000000) {
-    return timestamp > prev_timestamp;
-  }
-  return timestamp != prev_timestamp &&
-         static_cast<uint32_t>(timestamp - prev_timestamp) < 0x80000000;
+  return IsNewer(timestamp, prev_timestamp);
 }
 
 inline uint16_t LatestSequenceNumber(uint16_t sequence_number1,
@@ -745,44 +543,78 @@ inline uint32_t LatestTimestamp(uint32_t timestamp1, uint32_t timestamp2) {
   return IsNewerTimestamp(timestamp1, timestamp2) ? timestamp1 : timestamp2;
 }
 
-// Utility class to unwrap a sequence number to a larger type, for easier
-// handling large ranges. Note that sequence numbers will never be unwrapped
-// to a negative value.
-class SequenceNumberUnwrapper {
+// Utility class to unwrap a number to a larger type. The numbers will never be
+// unwrapped to a negative value.
+template <typename U>
+class Unwrapper {
+  static_assert(!std::numeric_limits<U>::is_signed, "U must be unsigned");
+  static_assert(std::numeric_limits<U>::max() <=
+                    std::numeric_limits<uint32_t>::max(),
+                "U must not be wider than 32 bits");
+
  public:
-  SequenceNumberUnwrapper() : last_seq_(-1) {}
+  // Get the unwrapped value, but don't update the internal state.
+  int64_t UnwrapWithoutUpdate(U value) {
+    if (!last_value_)
+      return value;
 
-  // Get the unwrapped sequence, but don't update the internal state.
-  int64_t UnwrapWithoutUpdate(uint16_t sequence_number) {
-    if (last_seq_ == -1)
-      return sequence_number;
+    constexpr int64_t kMaxPlusOne =
+        static_cast<int64_t>(std::numeric_limits<U>::max()) + 1;
 
-    uint16_t cropped_last = static_cast<uint16_t>(last_seq_);
-    int64_t delta = sequence_number - cropped_last;
-    if (IsNewerSequenceNumber(sequence_number, cropped_last)) {
+    U cropped_last = static_cast<U>(*last_value_);
+    int64_t delta = value - cropped_last;
+    if (IsNewer(value, cropped_last)) {
       if (delta < 0)
-        delta += (1 << 16);  // Wrap forwards.
-    } else if (delta > 0 && (last_seq_ + delta - (1 << 16)) >= 0) {
-      // If sequence_number is older but delta is positive, this is a backwards
+        delta += kMaxPlusOne;  // Wrap forwards.
+    } else if (delta > 0 && (*last_value_ + delta - kMaxPlusOne) >= 0) {
+      // If value is older but delta is positive, this is a backwards
       // wrap-around. However, don't wrap backwards past 0 (unwrapped).
-      delta -= (1 << 16);
+      delta -= kMaxPlusOne;
     }
 
-    return last_seq_ + delta;
+    return *last_value_ + delta;
   }
 
-  // Only update the internal state to the specified last (unwrapped) sequence.
-  void UpdateLast(int64_t last_sequence) { last_seq_ = last_sequence; }
+  // Only update the internal state to the specified last (unwrapped) value.
+  void UpdateLast(int64_t last_value) {
+    last_value_ = rtc::Optional<int64_t>(last_value);
+  }
 
-  // Unwrap the sequence number and update the internal state.
-  int64_t Unwrap(uint16_t sequence_number) {
-    int64_t unwrapped = UnwrapWithoutUpdate(sequence_number);
+  // Unwrap the value and update the internal state.
+  int64_t Unwrap(U value) {
+    int64_t unwrapped = UnwrapWithoutUpdate(value);
     UpdateLast(unwrapped);
     return unwrapped;
   }
 
  private:
-  int64_t last_seq_;
+  rtc::Optional<int64_t> last_value_;
+};
+
+using SequenceNumberUnwrapper = Unwrapper<uint16_t>;
+using TimestampUnwrapper = Unwrapper<uint32_t>;
+
+struct PacedPacketInfo {
+  PacedPacketInfo() {}
+  PacedPacketInfo(int probe_cluster_id,
+                  int probe_cluster_min_probes,
+                  int probe_cluster_min_bytes)
+      : probe_cluster_id(probe_cluster_id),
+        probe_cluster_min_probes(probe_cluster_min_probes),
+        probe_cluster_min_bytes(probe_cluster_min_bytes) {}
+
+  bool operator==(const PacedPacketInfo& rhs) const {
+    return send_bitrate_bps == rhs.send_bitrate_bps &&
+           probe_cluster_id == rhs.probe_cluster_id &&
+           probe_cluster_min_probes == rhs.probe_cluster_min_probes &&
+           probe_cluster_min_bytes == rhs.probe_cluster_min_bytes;
+  }
+
+  static constexpr int kNotAProbe = -1;
+  int send_bitrate_bps = -1;
+  int probe_cluster_id = kNotAProbe;
+  int probe_cluster_min_probes = -1;
+  int probe_cluster_min_bytes = -1;
 };
 
 }  // namespace webrtc

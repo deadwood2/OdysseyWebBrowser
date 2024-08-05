@@ -15,9 +15,11 @@
 #include <sstream>
 
 #include "gflags/gflags.h"
+#include "webrtc/api/video_codecs/video_decoder.h"
 #include "webrtc/base/checks.h"
-#include "webrtc/call.h"
+#include "webrtc/call/call.h"
 #include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
+#include "webrtc/logging/rtc_event_log/rtc_event_log.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_header_parser.h"
 #include "webrtc/system_wrappers/include/clock.h"
 #include "webrtc/system_wrappers/include/sleep.h"
@@ -31,7 +33,6 @@
 #include "webrtc/test/video_capturer.h"
 #include "webrtc/test/video_renderer.h"
 #include "webrtc/typedefs.h"
-#include "webrtc/video_decoder.h"
 
 namespace webrtc {
 namespace flags {
@@ -211,7 +212,8 @@ void RtpReplay() {
   FileRenderPassthrough file_passthrough(flags::OutBase(),
                                          playback_video.get());
 
-  std::unique_ptr<Call> call(Call::Create(Call::Config()));
+  webrtc::RtcEventLogNullImpl event_log;
+  std::unique_ptr<Call> call(Call::Create(Call::Config(&event_log)));
 
   test::NullTransport transport;
   VideoReceiveStream::Config receive_config(&transport);
@@ -281,8 +283,8 @@ void RtpReplay() {
     if (!rtp_reader->NextPacket(&packet))
       break;
     ++num_packets;
-    switch (call->Receiver()->DeliverPacket(webrtc::MediaType::ANY, packet.data,
-                                            packet.length, PacketTime())) {
+    switch (call->Receiver()->DeliverPacket(
+        webrtc::MediaType::VIDEO, packet.data, packet.length, PacketTime())) {
       case PacketReceiver::DELIVERY_OK:
         break;
       case PacketReceiver::DELIVERY_UNKNOWN_SSRC: {
@@ -294,9 +296,16 @@ void RtpReplay() {
         ++unknown_packets[header.ssrc];
         break;
       }
-      case PacketReceiver::DELIVERY_PACKET_ERROR:
+      case PacketReceiver::DELIVERY_PACKET_ERROR: {
         fprintf(stderr, "Packet error, corrupt packets or incorrect setup?\n");
+        RTPHeader header;
+        std::unique_ptr<RtpHeaderParser> parser(RtpHeaderParser::Create());
+        parser->Parse(packet.data, packet.length, &header);
+        fprintf(stderr, "Packet len=%ld pt=%u seq=%u ts=%u ssrc=0x%8x\n",
+            packet.length, header.payloadType, header.sequenceNumber,
+            header.timestamp, header.ssrc);
         break;
+      }
     }
     if (last_time_ms != 0 && last_time_ms != packet.time_ms) {
       SleepMs(packet.time_ms - last_time_ms);

@@ -11,7 +11,10 @@
 #ifndef WEBRTC_MODULES_RTP_RTCP_SOURCE_RTP_RECEIVER_IMPL_H_
 #define WEBRTC_MODULES_RTP_RTCP_SOURCE_RTP_RECEIVER_IMPL_H_
 
+#include <list>
 #include <memory>
+#include <unordered_map>
+#include <vector>
 
 #include "webrtc/base/criticalsection.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_receiver.h"
@@ -33,11 +36,8 @@ class RtpReceiverImpl : public RtpReceiver {
 
   virtual ~RtpReceiverImpl();
 
-  int32_t RegisterReceivePayload(const char payload_name[RTP_PAYLOAD_NAME_SIZE],
-                                 const int8_t payload_type,
-                                 const uint32_t frequency,
-                                 const size_t channels,
-                                 const uint32_t rate) override;
+  int32_t RegisterReceivePayload(const CodecInst& audio_codec) override;
+  int32_t RegisterReceivePayload(const VideoCodec& video_codec) override;
 
   int32_t DeRegisterReceivePayload(const int8_t payload_type) override;
 
@@ -59,6 +59,16 @@ class RtpReceiverImpl : public RtpReceiver {
 
   TelephoneEventHandler* GetTelephoneEventHandler() override;
 
+  std::vector<RtpSource> GetSources() const override;
+
+  const std::vector<RtpSource>& ssrc_sources_for_testing() const {
+    return ssrc_sources_;
+  }
+
+  const std::list<RtpSource>& csrc_sources_for_testing() const {
+    return csrc_sources_;
+  }
+
  private:
   bool HaveReceivedFrame() const;
 
@@ -68,6 +78,9 @@ class RtpReceiverImpl : public RtpReceiver {
                               const int8_t first_payload_byte,
                               bool* is_red,
                               PayloadUnion* payload);
+
+  void UpdateSources();
+  void RemoveOutdatedSources(int64_t now_ms);
 
   Clock* clock_;
   RTPPayloadRegistry* rtp_payload_registry_;
@@ -87,6 +100,12 @@ class RtpReceiverImpl : public RtpReceiver {
   uint32_t last_received_timestamp_;
   int64_t last_received_frame_time_ms_;
   uint16_t last_received_sequence_number_;
+
+  std::unordered_map<uint32_t, std::list<RtpSource>::iterator>
+      iterator_by_csrc_;
+  // The RtpSource objects are sorted chronologically.
+  std::list<RtpSource> csrc_sources_;
+  std::vector<RtpSource> ssrc_sources_;
 };
 }  // namespace webrtc
 #endif  // WEBRTC_MODULES_RTP_RTCP_SOURCE_RTP_RECEIVER_IMPL_H_

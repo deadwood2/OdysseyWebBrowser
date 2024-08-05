@@ -12,10 +12,8 @@
 
 #include "webrtc/base/format_macros.h"
 #include "webrtc/modules/audio_processing/include/audio_processing.h"
-#include "webrtc/modules/utility/include/audio_frame_operations.h"
 #include "webrtc/system_wrappers/include/file_wrapper.h"
 #include "webrtc/system_wrappers/include/trace.h"
-#include "webrtc/voice_engine/include/voe_external_media.h"
 #include "webrtc/voice_engine/statistics.h"
 #include "webrtc/voice_engine/utility.h"
 
@@ -92,12 +90,7 @@ OutputMixer::Create(OutputMixer*& mixer, uint32_t instanceId)
 
 OutputMixer::OutputMixer(uint32_t instanceId) :
     _mixerModule(*AudioConferenceMixer::Create(instanceId)),
-    _audioLevel(),
     _instanceId(instanceId),
-    _externalMediaCallbackPtr(NULL),
-    _externalMedia(false),
-    _panLeft(1.0f),
-    _panRight(1.0f),
     _mixingFrequencyHz(8000),
     _outputFileRecording(false)
 {
@@ -126,10 +119,6 @@ OutputMixer::~OutputMixer()
 {
     WEBRTC_TRACE(kTraceMemory, kTraceVoice, VoEId(_instanceId,-1),
                  "OutputMixer::~OutputMixer() - dtor");
-    if (_externalMedia)
-    {
-        DeRegisterExternalMediaProcessing();
-    }
     {
         rtc::CritScope cs(&_fileCritSect);
         if (output_file_recorder_) {
@@ -160,31 +149,6 @@ OutputMixer::SetAudioProcessingModule(AudioProcessing* audioProcessingModule)
     return 0;
 }
 
-int OutputMixer::RegisterExternalMediaProcessing(
-    VoEMediaProcess& proccess_object)
-{
-    WEBRTC_TRACE(kTraceInfo, kTraceVoice, VoEId(_instanceId,-1),
-               "OutputMixer::RegisterExternalMediaProcessing()");
-
-    rtc::CritScope cs(&_callbackCritSect);
-    _externalMediaCallbackPtr = &proccess_object;
-    _externalMedia = true;
-
-    return 0;
-}
-
-int OutputMixer::DeRegisterExternalMediaProcessing()
-{
-    WEBRTC_TRACE(kTraceInfo, kTraceVoice, VoEId(_instanceId,-1),
-                 "OutputMixer::DeRegisterExternalMediaProcessing()");
-
-    rtc::CritScope cs(&_callbackCritSect);
-    _externalMedia = false;
-    _externalMediaCallbackPtr = NULL;
-
-    return 0;
-}
-
 int32_t
 OutputMixer::SetMixabilityStatus(MixerParticipant& participant,
                                  bool mixable)
@@ -203,47 +167,6 @@ int32_t
 OutputMixer::MixActiveChannels()
 {
     _mixerModule.Process();
-    return 0;
-}
-
-int
-OutputMixer::GetSpeechOutputLevel(uint32_t& level)
-{
-    int8_t currentLevel = _audioLevel.Level();
-    level = static_cast<uint32_t> (currentLevel);
-    WEBRTC_TRACE(kTraceStateInfo, kTraceVoice, VoEId(_instanceId,-1),
-                 "GetSpeechOutputLevel() => level=%u", level);
-    return 0;
-}
-
-int
-OutputMixer::GetSpeechOutputLevelFullRange(uint32_t& level)
-{
-    int16_t currentLevel = _audioLevel.LevelFullRange();
-    level = static_cast<uint32_t> (currentLevel);
-    WEBRTC_TRACE(kTraceStateInfo, kTraceVoice, VoEId(_instanceId,-1),
-                 "GetSpeechOutputLevelFullRange() => level=%u", level);
-    return 0;
-}
-
-int
-OutputMixer::SetOutputVolumePan(float left, float right)
-{
-    WEBRTC_TRACE(kTraceInfo, kTraceVoice, VoEId(_instanceId,-1),
-                 "OutputMixer::SetOutputVolumePan()");
-    _panLeft = left;
-    _panRight = right;
-    return 0;
-}
-
-int
-OutputMixer::GetOutputVolumePan(float& left, float& right)
-{
-    left = _panLeft;
-    right = _panRight;
-    WEBRTC_TRACE(kTraceStateInfo, kTraceVoice, VoEId(_instanceId,-1),
-                 "GetOutputVolumePan() => left=%2.1f, right=%2.1f",
-                 left, right);
     return 0;
 }
 
@@ -454,52 +377,14 @@ OutputMixer::DoOperationsOnCombinedSignal(bool feed_data_to_apm)
         _mixingFrequencyHz = _audioFrame.sample_rate_hz_;
     }
 
-    // Scale left and/or right channel(s) if balance is active
-    if (_panLeft != 1.0 || _panRight != 1.0)
-    {
-        if (_audioFrame.num_channels_ == 1)
-        {
-            AudioFrameOperations::MonoToStereo(&_audioFrame);
-        }
-        else
-        {
-            // Pure stereo mode (we are receiving a stereo signal).
-        }
-
-        assert(_audioFrame.num_channels_ == 2);
-        AudioFrameOperations::Scale(_panLeft, _panRight, _audioFrame);
-    }
-
     // --- Far-end Voice Quality Enhancement (AudioProcessing Module)
     if (feed_data_to_apm) {
       if (_audioProcessingModulePtr->ProcessReverseStream(&_audioFrame) != 0) {
         WEBRTC_TRACE(kTraceWarning, kTraceVoice, VoEId(_instanceId, -1),
                      "AudioProcessingModule::ProcessReverseStream() => error");
-        RTC_DCHECK(false);
+        RTC_NOTREACHED();
       }
     }
-
-    // --- External media processing
-    {
-        rtc::CritScope cs(&_callbackCritSect);
-        if (_externalMedia)
-        {
-            const bool is_stereo = (_audioFrame.num_channels_ == 2);
-            if (_externalMediaCallbackPtr)
-            {
-                _externalMediaCallbackPtr->Process(
-                    -1,
-                    kPlaybackAllChannelsMixed,
-                    (int16_t*)_audioFrame.data_,
-                    _audioFrame.samples_per_channel_,
-                    _audioFrame.sample_rate_hz_,
-                    is_stereo);
-            }
-        }
-    }
-
-    // --- Measure audio level (0-9) for the combined signal
-    _audioLevel.ComputeLevel(_audioFrame);
 
     return 0;
 }

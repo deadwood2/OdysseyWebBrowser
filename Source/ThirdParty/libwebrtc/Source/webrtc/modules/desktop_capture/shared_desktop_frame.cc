@@ -13,7 +13,6 @@
 #include <memory>
 
 #include "webrtc/base/constructormagic.h"
-#include "webrtc/system_wrappers/include/atomic32.h"
 
 namespace webrtc {
 
@@ -38,6 +37,7 @@ std::unique_ptr<SharedDesktopFrame> SharedDesktopFrame::Share() {
   std::unique_ptr<SharedDesktopFrame> result(new SharedDesktopFrame(core_));
   result->set_dpi(dpi());
   result->set_capture_time_ms(capture_time_ms());
+  result->set_capturer_id(capturer_id());
   *result->mutable_updated_region() = updated_region();
   return result;
 }

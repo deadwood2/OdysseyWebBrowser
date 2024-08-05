@@ -161,7 +161,8 @@ class CppProtocolTypesImplementationGenerator(CppGenerator):
         for domain in self.domains_to_generate():
             type_declarations = self.type_declarations_for_domain(domain)
             for type_declaration in filter(lambda decl: Generator.type_has_open_fields(decl.type), type_declarations):
-                for type_member in sorted(type_declaration.type_members, key=lambda member: member.member_name):
+                open_members = Generator.open_fields(type_declaration)
+                for type_member in sorted(open_members, key=lambda member: member.member_name):
                     field_name = '::'.join(['Inspector', 'Protocol', domain.domain_name, ucfirst(type_declaration.type_name), ucfirst(type_member.member_name)])
                     lines.append('const char* %s = "%s";' % (field_name, type_member.member_name))
 
@@ -197,10 +198,10 @@ class CppProtocolTypesImplementationGenerator(CppGenerator):
         lines = []
 
         lines.append('#if !ASSERT_DISABLED')
-        lines.append('void BindingTraits<%s>::assertValueHasExpectedType(Inspector::InspectorValue* value)' % (CppGenerator.cpp_protocol_type_for_type(object_declaration.type)))
+        lines.append('void BindingTraits<%s>::assertValueHasExpectedType(JSON::Value* value)' % (CppGenerator.cpp_protocol_type_for_type(object_declaration.type)))
         lines.append("""{
     ASSERT_ARG(value, value);
-    RefPtr<InspectorObject> object;
+    RefPtr<JSON::Object> object;
     bool castSucceeded = value->asObject(object);
     ASSERT_UNUSED(castSucceeded, castSucceeded);""")
         for type_member in required_members:
@@ -210,7 +211,7 @@ class CppProtocolTypesImplementationGenerator(CppGenerator):
             }
 
             lines.append("""    {
-        InspectorObject::iterator %(memberName)sPos = object->find(ASCIILiteral("%(memberName)s"));
+        JSON::Object::iterator %(memberName)sPos = object->find(ASCIILiteral("%(memberName)s"));
         ASSERT(%(memberName)sPos != object->end());
         %(assertMethod)s(%(memberName)sPos->value.get());
     }""" % args)
@@ -226,7 +227,7 @@ class CppProtocolTypesImplementationGenerator(CppGenerator):
             }
 
             lines.append("""    {
-        InspectorObject::iterator %(memberName)sPos = object->find(ASCIILiteral("%(memberName)s"));
+        JSON::Object::iterator %(memberName)sPos = object->find(ASCIILiteral("%(memberName)s"));
         if (%(memberName)sPos != object->end()) {
             %(assertMethod)s(%(memberName)sPos->value.get());""" % args)
 
@@ -245,7 +246,7 @@ class CppProtocolTypesImplementationGenerator(CppGenerator):
     def _generate_assertion_for_enum(self, enum_member, object_declaration):
         lines = []
         lines.append('#if !ASSERT_DISABLED')
-        lines.append('void %s(Inspector::InspectorValue* value)' % CppGenerator.cpp_assertion_method_for_type_member(enum_member, object_declaration))
+        lines.append('void %s(JSON::Value* value)' % CppGenerator.cpp_assertion_method_for_type_member(enum_member, object_declaration))
         lines.append('{')
         lines.append('    ASSERT_ARG(value, value);')
         lines.append('    String result;')

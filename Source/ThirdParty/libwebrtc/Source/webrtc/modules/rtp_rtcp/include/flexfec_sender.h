@@ -14,13 +14,14 @@
 #include <memory>
 #include <vector>
 
+#include "webrtc/base/array_view.h"
 #include "webrtc/base/basictypes.h"
 #include "webrtc/base/random.h"
-#include "webrtc/base/sequenced_task_checker.h"
 #include "webrtc/config.h"
 #include "webrtc/modules/include/module_common_types.h"
 #include "webrtc/modules/rtp_rtcp/include/flexfec_sender.h"
-#include "webrtc/modules/rtp_rtcp/source/rtp_header_extension.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_header_extension_map.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_packet_to_send.h"
 #include "webrtc/modules/rtp_rtcp/source/ulpfec_generator.h"
 #include "webrtc/system_wrappers/include/clock.h"
@@ -29,12 +30,17 @@ namespace webrtc {
 
 class RtpPacketToSend;
 
+// Note that this class is not thread safe, and thus requires external
+// synchronization. Currently, this is done using the lock in PayloadRouter.
+
 class FlexfecSender {
  public:
   FlexfecSender(int payload_type,
                 uint32_t ssrc,
                 uint32_t protected_media_ssrc,
                 const std::vector<RtpExtension>& rtp_header_extensions,
+                rtc::ArrayView<const RtpExtensionSize> extension_sizes,
+                const RtpState* rtp_state,
                 Clock* clock);
   ~FlexfecSender();
 
@@ -59,12 +65,14 @@ class FlexfecSender {
   // Returns the overhead, per packet, for FlexFEC.
   size_t MaxPacketOverhead() const;
 
+  // Only called on the VideoSendStream queue, after operation has shut down.
+  RtpState GetRtpState();
+
  private:
   // Utility.
   Clock* const clock_;
-  Random random_ GUARDED_BY(sequence_checker_);
-  int64_t last_generated_packet_ms_ GUARDED_BY(sequence_checker_);
-  rtc::SequencedTaskChecker sequence_checker_;
+  Random random_;
+  int64_t last_generated_packet_ms_;
 
   // Config.
   const int payload_type_;
@@ -72,11 +80,12 @@ class FlexfecSender {
   const uint32_t ssrc_;
   const uint32_t protected_media_ssrc_;
   // Sequence number of next packet to generate.
-  uint16_t seq_num_ GUARDED_BY(sequence_checker_);
+  uint16_t seq_num_;
 
   // Implementation.
-  UlpfecGenerator ulpfec_generator_ GUARDED_BY(sequence_checker_);
+  UlpfecGenerator ulpfec_generator_;
   const RtpHeaderExtensionMap rtp_header_extension_map_;
+  const size_t header_extensions_size_;
 };
 
 }  // namespace webrtc

@@ -33,7 +33,9 @@ namespace webrtc {
 
 class RtpPacketizerVp9 : public RtpPacketizer {
  public:
-  RtpPacketizerVp9(const RTPVideoHeaderVP9& hdr, size_t max_payload_length);
+  RtpPacketizerVp9(const RTPVideoHeaderVP9& hdr,
+                   size_t max_payload_length,
+                   size_t last_packet_reduction_len);
 
   virtual ~RtpPacketizerVp9();
 
@@ -43,21 +45,15 @@ class RtpPacketizerVp9 : public RtpPacketizer {
 
   std::string ToString() override;
 
-  // The payload data must be one encoded VP9 frame.
-  void SetPayloadData(const uint8_t* payload,
-                      size_t payload_size,
-                      const RTPFragmentationHeader* fragmentation) override;
+  // The payload data must be one encoded VP9 layer frame.
+  size_t SetPayloadData(const uint8_t* payload,
+                        size_t payload_size,
+                        const RTPFragmentationHeader* fragmentation) override;
 
   // Gets the next payload with VP9 payload header.
-  // |buffer| is a pointer to where the output will be written.
-  // |bytes_to_send| is an output variable that will contain number of bytes
-  // written to buffer.
-  // |last_packet| is true for the last packet of the frame, false otherwise
-  // (i.e. call the function again to get the next packet).
+  // Write payload and set marker bit of the |packet|.
   // Returns true on success, false otherwise.
-  bool NextPacket(uint8_t* buffer,
-                  size_t* bytes_to_send,
-                  bool* last_packet) override;
+  bool NextPacket(RtpPacketToSend* packet) override;
 
   typedef struct {
     size_t payload_start_pos;
@@ -73,11 +69,11 @@ class RtpPacketizerVp9 : public RtpPacketizer {
 
   // Writes the payload descriptor header and copies payload to the |buffer|.
   // |packet_info| determines which part of the payload to write.
-  // |bytes_to_send| contains the number of written bytes to the buffer.
+  // |last| indicates if the packet is the last packet in the frame.
   // Returns true on success, false otherwise.
   bool WriteHeaderAndPayload(const PacketInfo& packet_info,
-                             uint8_t* buffer,
-                             size_t* bytes_to_send) const;
+                             RtpPacketToSend* packet,
+                             bool last) const;
 
   // Writes payload descriptor header to |buffer|.
   // Returns true on success, false otherwise.
@@ -89,6 +85,7 @@ class RtpPacketizerVp9 : public RtpPacketizer {
   const size_t max_payload_length_;  // The max length in bytes of one packet.
   const uint8_t* payload_;           // The payload data to be packetized.
   size_t payload_size_;              // The size in bytes of the payload data.
+  const size_t last_packet_reduction_len_;
   PacketInfoQueue packets_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(RtpPacketizerVp9);

@@ -22,6 +22,16 @@
 
 namespace webrtc {
 
+namespace {
+size_t AddIntToSizeTWithLowerCap(int a, size_t b) {
+  const size_t ret = b + a;
+  // If a + b is negative, resulting in a negative wrap, cap it to zero instead.
+  static_assert(sizeof(size_t) >= sizeof(int),
+                "int must not be wider than size_t for this to work");
+  return (a < 0 && ret > b) ? 0 : ret;
+}
+}  // namespace
+
 // Allocating the static const so that it can be passed by reference to
 // RTC_DCHECK.
 const size_t StatisticsCalculator::kLenWaitingTimes;
@@ -148,6 +158,16 @@ void StatisticsCalculator::ExpandedNoiseSamples(size_t num_samples) {
   expanded_noise_samples_ += num_samples;
 }
 
+void StatisticsCalculator::ExpandedVoiceSamplesCorrection(int num_samples) {
+  expanded_speech_samples_ =
+      AddIntToSizeTWithLowerCap(num_samples, expanded_speech_samples_);
+}
+
+void StatisticsCalculator::ExpandedNoiseSamplesCorrection(int num_samples) {
+  expanded_noise_samples_ =
+      AddIntToSizeTWithLowerCap(num_samples, expanded_noise_samples_);
+}
+
 void StatisticsCalculator::PreemptiveExpandedSamples(size_t num_samples) {
   preemptive_samples_ += num_samples;
 }
@@ -218,7 +238,7 @@ void StatisticsCalculator::GetNetworkStatistics(
   stats->added_zero_samples = added_zero_samples_;
   stats->current_buffer_size_ms =
       static_cast<uint16_t>(num_samples_in_buffers * 1000 / fs_hz);
-  const int ms_per_packet = rtc::checked_cast<int>(
+  const int ms_per_packet = rtc::dchecked_cast<int>(
       decision_logic.packet_length_samples() / (fs_hz / 1000));
   stats->preferred_buffer_size_ms = (delay_manager.TargetLevel() >> 8) *
       ms_per_packet;

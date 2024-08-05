@@ -53,6 +53,8 @@ WebKitBuildbot = function()
             "Apple El Capitan LLINT CLoop (BuildAndTest)": {heading: "LLINT CLoop (BuildAndTest)"},
             "Apple El Capitan Debug JSC (Tests)": {heading: "Debug JSC (Tests)"},
             "Apple El Capitan Release JSC (Tests)": {heading: "Release JSC (Tests)"},
+            "Apple El Capitan Debug Test262 (Tests)": {heading: "Debug Test262 (Tests)"},
+            "Apple El Capitan Release Test262 (Tests)": {heading: "Release Test262 (Tests)"},
         }},
         "Apple iOS 10 Release (Build)": {platform: Dashboard.Platform.iOS10Device, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.Universal},
         "Apple iOS 10 Simulator Release (Build)": {platform: Dashboard.Platform.iOS10Simulator, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
@@ -65,14 +67,29 @@ WebKitBuildbot = function()
         "Apple Win Release (Build)": {platform: Dashboard.Platform.Windows7, builder: true, architecture: Buildbot.BuildArchitecture.ThirtyTwoBit},
         "Apple Win 7 Debug (Tests)": {platform: Dashboard.Platform.Windows7, debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
         "Apple Win 7 Release (Tests)": {platform: Dashboard.Platform.Windows7, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
+        "WPE Linux 64-bit Release (Build)": {platform: Dashboard.Platform.LinuxWPE, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
+        "WPE Linux 64-bit Release (Tests)": {platform: Dashboard.Platform.LinuxWPE, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
         "GTK Linux 64-bit Release (Build)": {platform: Dashboard.Platform.LinuxGTK, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
         "GTK Linux 64-bit Release (Tests)": {platform: Dashboard.Platform.LinuxGTK, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
         "GTK Linux 64-bit Debug (Build)": {platform: Dashboard.Platform.LinuxGTK, debug: true, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
         "GTK Linux 64-bit Debug (Tests)": {platform: Dashboard.Platform.LinuxGTK, debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
-        "GTK Linux 64-bit Release (Perf)": {platform: Dashboard.Platform.LinuxGTK, debug: false, performance: true, heading: "Performance"}
+        "GTK Linux 64-bit Release (Perf)": {platform: Dashboard.Platform.LinuxGTK, debug: false, performance: true, heading: "Performance"},
+        "GTK LTS Builders": {platform: Dashboard.Platform.LinuxGTK, heading: "LTS Builders", combinedQueues: {
+            "GTK Linux 64-bit Release Debian Stable (Build)": {heading: "Debian Stable (Build)"},
+            "GTK Linux 64-bit Release Ubuntu LTS (Build)": {heading: "Ubuntu LTS (Build)"},
+        }},
+        "GTK Wayland Testers": {platform: Dashboard.Platform.LinuxGTK, heading: "Wayland", combinedQueues: {
+            "GTK Linux 64-bit Release Wayland (Tests)": {heading: "Wayland"},
+        }},
+        "GTK ARM Testers": {platform: Dashboard.Platform.LinuxGTK, heading: "ARM", combinedQueues: {
+            "GTK Linux ARM Release": {heading: "ARM"}
+        }},
+        "GTK 32-bit Testers": {platform: Dashboard.Platform.LinuxGTK, heading: "32-bit", combinedQueues: {
+            "GTK Linux 32-bit Release": {heading: "32-bit"},
+        }}
     };
 
-    Buildbot.call(this, "https://build.webkit.org/", queueInfo);
+    Buildbot.call(this, "https://build.webkit.org/", queueInfo, {"USE_BUILDBOT_VERSION_LESS_THAN_09" : true});
 };
 
 BaseObject.addConstructorFunctions(WebKitBuildbot);

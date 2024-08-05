@@ -18,13 +18,12 @@
 #include <string>
 
 #include "webrtc/base/checks.h"
-#include "webrtc/base/common.h"
 #include "webrtc/base/logging.h"
+#include "webrtc/base/safe_minmax.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/bwe_defines.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/bwe_test_logging.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_utility.h"
 #include "webrtc/system_wrappers/include/field_trial.h"
-#include "webrtc/system_wrappers/include/trace.h"
 
 namespace webrtc {
 
@@ -60,20 +59,19 @@ bool ReadExperimentConstants(double* k_up, double* k_down) {
                 "%lf,%lf", k_up, k_down) == 2;
 }
 
-OveruseDetector::OveruseDetector(const OverUseDetectorOptions& options)
+OveruseDetector::OveruseDetector()
     // Experiment is on by default, but can be disabled with finch by setting
     // the field trial string to "WebRTC-AdaptiveBweThreshold/Disabled/".
     : in_experiment_(!AdaptiveThresholdExperimentIsDisabled()),
       k_up_(0.0087),
       k_down_(0.039),
       overusing_time_threshold_(100),
-      options_(options),
       threshold_(12.5),
       last_update_ms_(-1),
       prev_offset_(0.0),
       time_over_using_(-1),
       overuse_counter_(0),
-      hypothesis_(kBwNormal) {
+      hypothesis_(BandwidthUsage::kBwNormal) {
   if (!AdaptiveThresholdExperimentIsDisabled())
     InitializeExperiment();
 }
@@ -89,13 +87,11 @@ BandwidthUsage OveruseDetector::Detect(double offset,
                                        int num_of_deltas,
                                        int64_t now_ms) {
   if (num_of_deltas < 2) {
-    return kBwNormal;
+    return BandwidthUsage::kBwNormal;
   }
-  const double prev_offset = prev_offset_;
-  prev_offset_ = offset;
   const double T = std::min(num_of_deltas, kMinNumDeltas) * offset;
-  BWE_TEST_LOGGING_PLOT(1, "offset_ms#1", now_ms, offset);
-  BWE_TEST_LOGGING_PLOT(1, "gamma_ms#1", now_ms, threshold_ / kMinNumDeltas);
+  BWE_TEST_LOGGING_PLOT(1, "T", now_ms, T);
+  BWE_TEST_LOGGING_PLOT(1, "threshold", now_ms, threshold_);
   if (T > threshold_) {
     if (time_over_using_ == -1) {
       // Initialize the timer. Assume that we've been
@@ -108,21 +104,22 @@ BandwidthUsage OveruseDetector::Detect(double offset,
     }
     overuse_counter_++;
     if (time_over_using_ > overusing_time_threshold_ && overuse_counter_ > 1) {
-      if (offset >= prev_offset) {
+      if (offset >= prev_offset_) {
         time_over_using_ = 0;
         overuse_counter_ = 0;
-        hypothesis_ = kBwOverusing;
+        hypothesis_ = BandwidthUsage::kBwOverusing;
       }
     }
   } else if (T < -threshold_) {
     time_over_using_ = -1;
     overuse_counter_ = 0;
-    hypothesis_ = kBwUnderusing;
+    hypothesis_ = BandwidthUsage::kBwUnderusing;
   } else {
     time_over_using_ = -1;
     overuse_counter_ = 0;
-    hypothesis_ = kBwNormal;
+    hypothesis_ = BandwidthUsage::kBwNormal;
   }
+  prev_offset_ = offset;
 
   UpdateThreshold(T, now_ms);
 
@@ -148,11 +145,7 @@ void OveruseDetector::UpdateThreshold(double modified_offset, int64_t now_ms) {
   int64_t time_delta_ms = std::min(now_ms - last_update_ms_, kMaxTimeDeltaMs);
   threshold_ +=
       k * (fabs(modified_offset) - threshold_) * time_delta_ms;
-
-  const double kMinThreshold = 6;
-  const double kMaxThreshold = 600;
-  threshold_ = std::min(std::max(threshold_, kMinThreshold), kMaxThreshold);
-
+  threshold_ = rtc::SafeClamp(threshold_, 6.f, 600.f);
   last_update_ms_ = now_ms;
 }
 

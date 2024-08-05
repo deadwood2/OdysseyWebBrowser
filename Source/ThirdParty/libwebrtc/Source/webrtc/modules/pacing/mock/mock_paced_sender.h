@@ -21,18 +21,21 @@ namespace webrtc {
 
 class MockPacedSender : public PacedSender {
  public:
-  MockPacedSender() : PacedSender(Clock::GetRealTimeClock(), nullptr) {}
+  MockPacedSender()
+      : PacedSender(Clock::GetRealTimeClock(), nullptr, nullptr) {}
   MOCK_METHOD6(SendPacket, bool(Priority priority,
                                 uint32_t ssrc,
                                 uint16_t sequence_number,
                                 int64_t capture_time_ms,
                                 size_t bytes,
                                 bool retransmission));
-  MOCK_METHOD2(CreateProbeCluster, void(int, int));
+  MOCK_METHOD1(CreateProbeCluster, void(int));
   MOCK_METHOD1(SetEstimatedBitrate, void(uint32_t));
   MOCK_CONST_METHOD0(QueueInMs, int64_t());
   MOCK_CONST_METHOD0(QueueInPackets, int());
   MOCK_CONST_METHOD0(ExpectedQueueTimeMs, int64_t());
+  MOCK_CONST_METHOD0(GetApplicationLimitedRegionStartTime,
+                     rtc::Optional<int64_t>());
 };
 
 }  // namespace webrtc

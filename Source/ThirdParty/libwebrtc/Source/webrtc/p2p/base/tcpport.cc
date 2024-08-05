@@ -67,7 +67,7 @@
 #include "webrtc/p2p/base/tcpport.h"
 
 #include "webrtc/p2p/base/common.h"
-#include "webrtc/base/common.h"
+#include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
 
 namespace cricket {
@@ -96,23 +96,9 @@ TCPPort::TCPPort(rtc::Thread* thread,
       error_(0) {
   // TODO(mallinath) - Set preference value as per RFC 6544.
   // http://b/issue?id=7141794
-}
-
-bool TCPPort::Init() {
   if (allow_listen_) {
-    // Treat failure to create or bind a TCP socket as fatal.  This
-    // should never happen.
-    socket_ = socket_factory()->CreateServerTcpSocket(
-        rtc::SocketAddress(ip(), 0), min_port(), max_port(),
-        false /* ssl */);
-    if (!socket_) {
-      LOG_J(LS_ERROR, this) << "TCP socket creation failed.";
-      return false;
-    }
-    socket_->SignalNewConnection.connect(this, &TCPPort::OnNewConnection);
-    socket_->SignalAddressReady.connect(this, &TCPPort::OnAddressReady);
+    TryCreateServerSocket();
   }
-  return true;
 }
 
 TCPPort::~TCPPort() {
@@ -157,10 +143,19 @@ Connection* TCPPort::CreateConnection(const Candidate& address,
   TCPConnection* conn = NULL;
   if (rtc::AsyncPacketSocket* socket =
       GetIncoming(address.address(), true)) {
+    // Incoming connection; we already created a socket and connected signals,
+    // so we need to hand off the "read packet" responsibility to
+    // TCPConnection.
     socket->SignalReadPacket.disconnect(this);
     conn = new TCPConnection(this, address, socket);
   } else {
+    // Outgoing connection, which will create a new socket for which we still
+    // need to connect SignalReadyToSend and SignalSentPacket.
     conn = new TCPConnection(this, address);
+    if (conn->socket()) {
+      conn->socket()->SignalReadyToSend.connect(this, &TCPPort::OnReadyToSend);
+      conn->socket()->SignalSentPacket.connect(this, &TCPPort::OnSentPacket);
+    }
   }
   AddOrReplaceConnection(conn);
   return conn;
@@ -178,7 +173,7 @@ void TCPPort::PrepareAddress() {
       AddAddress(socket_->GetLocalAddress(), socket_->GetLocalAddress(),
                  rtc::SocketAddress(), TCP_PROTOCOL_NAME, "",
                  TCPTYPE_PASSIVE_STR, LOCAL_PORT_TYPE,
-                 ICE_TYPE_PREFERENCE_HOST_TCP, 0, true);
+                 ICE_TYPE_PREFERENCE_HOST_TCP, 0, "", true);
   } else {
     LOG_J(LS_INFO, this) << "Not listening due to firewall restrictions.";
     // Note: We still add the address, since otherwise the remote side won't
@@ -188,7 +183,7 @@ void TCPPort::PrepareAddress() {
     AddAddress(rtc::SocketAddress(ip(), DISCARD_PORT),
                rtc::SocketAddress(ip(), 0), rtc::SocketAddress(),
                TCP_PROTOCOL_NAME, "", TCPTYPE_ACTIVE_STR, LOCAL_PORT_TYPE,
-               ICE_TYPE_PREFERENCE_HOST_TCP, 0, true);
+               ICE_TYPE_PREFERENCE_HOST_TCP, 0, "", true);
   }
 }
 
@@ -251,7 +246,7 @@ int TCPPort::GetError() {
 
 void TCPPort::OnNewConnection(rtc::AsyncPacketSocket* socket,
                               rtc::AsyncPacketSocket* new_socket) {
-  ASSERT(socket == socket_);
+  RTC_DCHECK(socket == socket_);
 
   Incoming incoming;
   incoming.addr = new_socket->GetRemoteAddress();
@@ -263,6 +258,18 @@ void TCPPort::OnNewConnection(rtc::AsyncPacketSocket* socket,
   LOG_J(LS_VERBOSE, this) << "Accepted connection from "
                           << incoming.addr.ToSensitiveString();
   incoming_.push_back(incoming);
+}
+
+void TCPPort::TryCreateServerSocket() {
+  socket_ = socket_factory()->CreateServerTcpSocket(
+      rtc::SocketAddress(ip(), 0), min_port(), max_port(), false /* ssl */);
+  if (!socket_) {
+    LOG_J(LS_WARNING, this)
+        << "TCP server socket creation failed; continuing anyway.";
+    return;
+  }
+  socket_->SignalNewConnection.connect(this, &TCPPort::OnNewConnection);
+  socket_->SignalAddressReady.connect(this, &TCPPort::OnAddressReady);
 }
 
 rtc::AsyncPacketSocket* TCPPort::GetIncoming(
@@ -300,7 +307,7 @@ void TCPPort::OnAddressReady(rtc::AsyncPacketSocket* socket,
                              const rtc::SocketAddress& address) {
   AddAddress(address, address, rtc::SocketAddress(), TCP_PROTOCOL_NAME, "",
              TCPTYPE_PASSIVE_STR, LOCAL_PORT_TYPE, ICE_TYPE_PREFERENCE_HOST_TCP,
-             0, true);
+             0, "", true);
 }
 
 TCPConnection::TCPConnection(TCPPort* port,
@@ -320,7 +327,7 @@ TCPConnection::TCPConnection(TCPPort* port,
     LOG_J(LS_VERBOSE, this)
         << "socket ipaddr: " << socket_->GetLocalAddress().ToString()
         << ",port() ip:" << port->ip().ToString();
-    ASSERT(socket_->GetLocalAddress().ipaddr() == port->ip());
+    RTC_DCHECK(socket_->GetLocalAddress().ipaddr() == port->ip());
     ConnectSocketSignals(socket);
   }
 }
@@ -378,11 +385,11 @@ void TCPConnection::OnConnectionRequestResponse(ConnectionRequest* req,
     Connection::OnReadyToSend();
   }
   pretending_to_be_writable_ = false;
-  ASSERT(write_state() == STATE_WRITABLE);
+  RTC_DCHECK(write_state() == STATE_WRITABLE);
 }
 
 void TCPConnection::OnConnect(rtc::AsyncPacketSocket* socket) {
-  ASSERT(socket == socket_.get());
+  RTC_DCHECK(socket == socket_.get());
   // Do not use this connection if the socket bound to a different address than
   // the one we asked for. This is seen in Chrome, where TCP sockets cannot be
   // given a binding address, and the platform is expected to pick the
@@ -419,7 +426,7 @@ void TCPConnection::OnConnect(rtc::AsyncPacketSocket* socket) {
 }
 
 void TCPConnection::OnClose(rtc::AsyncPacketSocket* socket, int error) {
-  ASSERT(socket == socket_.get());
+  RTC_DCHECK(socket == socket_.get());
   LOG_J(LS_INFO, this) << "Connection closed with error " << error;
 
   // Guard against the condition where IPC socket will call OnClose for every
@@ -478,20 +485,20 @@ void TCPConnection::OnReadPacket(
   rtc::AsyncPacketSocket* socket, const char* data, size_t size,
   const rtc::SocketAddress& remote_addr,
   const rtc::PacketTime& packet_time) {
-  ASSERT(socket == socket_.get());
+  RTC_DCHECK(socket == socket_.get());
   Connection::OnReadPacket(data, size, packet_time);
 }
 
 void TCPConnection::OnReadyToSend(rtc::AsyncPacketSocket* socket) {
-  ASSERT(socket == socket_.get());
+  RTC_DCHECK(socket == socket_.get());
   Connection::OnReadyToSend();
 }
 
 void TCPConnection::CreateOutgoingTcpSocket() {
-  ASSERT(outgoing_);
+  RTC_DCHECK(outgoing_);
   // TODO(guoweis): Handle failures here (unlikely since TCP).
   int opts = (remote_candidate().protocol() == SSLTCP_PROTOCOL_NAME)
-                 ? rtc::PacketSocketFactory::OPT_SSLTCP
+                 ? rtc::PacketSocketFactory::OPT_TLS_FAKE
                  : 0;
   socket_.reset(port()->socket_factory()->CreateClientTcpSocket(
       rtc::SocketAddress(port()->ip(), 0), remote_candidate().address(),

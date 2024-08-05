@@ -14,7 +14,9 @@
 #include <string>
 #include <vector>
 
+#include "webrtc/base/task_queue.h"
 #include "webrtc/modules/audio_coding/neteq/tools/resample_input_audio_file.h"
+#include "webrtc/modules/audio_processing/aec_dump/aec_dump_factory.h"
 #include "webrtc/modules/audio_processing/test/debug_dump_replayer.h"
 #include "webrtc/modules/audio_processing/test/test_utils.h"
 #include "webrtc/test/gtest.h"
@@ -104,6 +106,7 @@ class DebugDumpGenerator {
   std::unique_ptr<ChannelBuffer<float>> reverse_;
   std::unique_ptr<ChannelBuffer<float>> output_;
 
+  rtc::TaskQueue worker_queue_;
   std::unique_ptr<AudioProcessing> apm_;
 
   const std::string dump_file_name_;
@@ -130,9 +133,9 @@ DebugDumpGenerator::DebugDumpGenerator(const std::string& input_file_name,
                                         reverse_config_.num_channels())),
       output_(new ChannelBuffer<float>(output_config_.num_frames(),
                                        output_config_.num_channels())),
+      worker_queue_("debug_dump_generator_worker_queue"),
       apm_(AudioProcessing::Create(config)),
-      dump_file_name_(dump_file_name) {
-}
+      dump_file_name_(dump_file_name) {}
 
 DebugDumpGenerator::DebugDumpGenerator(
     const Config& config,
@@ -187,7 +190,8 @@ void DebugDumpGenerator::SetOutputChannels(int channels) {
 }
 
 void DebugDumpGenerator::StartRecording() {
-  apm_->StartDebugRecording(dump_file_name_.c_str(), -1);
+  apm_->AttachAecDump(
+      AecDumpFactory::Create(dump_file_name_.c_str(), -1, &worker_queue_));
 }
 
 void DebugDumpGenerator::Process(size_t num_blocks) {
@@ -211,7 +215,7 @@ void DebugDumpGenerator::Process(size_t num_blocks) {
 }
 
 void DebugDumpGenerator::StopRecording() {
-  apm_->StopDebugRecording();
+  apm_->DetachAecDump();
 }
 
 void DebugDumpGenerator::ReadAndDeinterleave(ResampleInputAudioFile* audio,
@@ -377,9 +381,12 @@ TEST_F(DebugDumpTest, VerifyRefinedAdaptiveFilterExperimentalString) {
 
 TEST_F(DebugDumpTest, VerifyCombinedExperimentalStringInclusive) {
   Config config;
+  AudioProcessing::Config apm_config;
   config.Set<RefinedAdaptiveFilter>(new RefinedAdaptiveFilter(true));
-  config.Set<EchoCanceller3>(new EchoCanceller3(true));
-  DebugDumpGenerator generator(config, AudioProcessing::Config());
+  // Arbitrarily set clipping gain to 17, which will never be the default.
+  config.Set<ExperimentalAgc>(new ExperimentalAgc(true, 0, 17));
+  apm_config.echo_canceller3.enabled = true;
+  DebugDumpGenerator generator(config, apm_config);
   generator.StartRecording();
   generator.Process(100);
   generator.StopRecording();
@@ -396,7 +403,9 @@ TEST_F(DebugDumpTest, VerifyCombinedExperimentalStringInclusive) {
       ASSERT_TRUE(msg->has_experiments_description());
       EXPECT_PRED_FORMAT2(testing::IsSubstring, "RefinedAdaptiveFilter",
                           msg->experiments_description().c_str());
-      EXPECT_PRED_FORMAT2(testing::IsSubstring, "AEC3",
+      EXPECT_PRED_FORMAT2(testing::IsSubstring, "EchoCanceller3",
+                          msg->experiments_description().c_str());
+      EXPECT_PRED_FORMAT2(testing::IsSubstring, "AgcClippingLevelExperiment",
                           msg->experiments_description().c_str());
     }
   }
@@ -424,14 +433,17 @@ TEST_F(DebugDumpTest, VerifyCombinedExperimentalStringExclusive) {
                           msg->experiments_description().c_str());
       EXPECT_PRED_FORMAT2(testing::IsNotSubstring, "AEC3",
                           msg->experiments_description().c_str());
+      EXPECT_PRED_FORMAT2(testing::IsNotSubstring, "AgcClippingLevelExperiment",
+                          msg->experiments_description().c_str());
     }
   }
 }
 
 TEST_F(DebugDumpTest, VerifyAec3ExperimentalString) {
   Config config;
-  config.Set<EchoCanceller3>(new EchoCanceller3(true));
-  DebugDumpGenerator generator(config, AudioProcessing::Config());
+  AudioProcessing::Config apm_config;
+  apm_config.echo_canceller3.enabled = true;
+  DebugDumpGenerator generator(config, apm_config);
   generator.StartRecording();
   generator.Process(100);
   generator.StopRecording();
@@ -446,7 +458,7 @@ TEST_F(DebugDumpTest, VerifyAec3ExperimentalString) {
     if (event->type() == audioproc::Event::CONFIG) {
       const audioproc::Config* msg = &event->config();
       ASSERT_TRUE(msg->has_experiments_description());
-      EXPECT_PRED_FORMAT2(testing::IsSubstring, "AEC3",
+      EXPECT_PRED_FORMAT2(testing::IsSubstring, "EchoCanceller3",
                           msg->experiments_description().c_str());
     }
   }
@@ -472,6 +484,31 @@ TEST_F(DebugDumpTest, VerifyLevelControllerExperimentalString) {
       const audioproc::Config* msg = &event->config();
       ASSERT_TRUE(msg->has_experiments_description());
       EXPECT_PRED_FORMAT2(testing::IsSubstring, "LevelController",
+                          msg->experiments_description().c_str());
+    }
+  }
+}
+
+TEST_F(DebugDumpTest, VerifyAgcClippingLevelExperimentalString) {
+  Config config;
+  // Arbitrarily set clipping gain to 17, which will never be the default.
+  config.Set<ExperimentalAgc>(new ExperimentalAgc(true, 0, 17));
+  DebugDumpGenerator generator(config, AudioProcessing::Config());
+  generator.StartRecording();
+  generator.Process(100);
+  generator.StopRecording();
+
+  DebugDumpReplayer debug_dump_replayer_;
+
+  ASSERT_TRUE(debug_dump_replayer_.SetDumpFile(generator.dump_file_name()));
+
+  while (const rtc::Optional<audioproc::Event> event =
+             debug_dump_replayer_.GetNextEvent()) {
+    debug_dump_replayer_.RunNextEvent();
+    if (event->type() == audioproc::Event::CONFIG) {
+      const audioproc::Config* msg = &event->config();
+      ASSERT_TRUE(msg->has_experiments_description());
+      EXPECT_PRED_FORMAT2(testing::IsSubstring, "AgcClippingLevelExperiment",
                           msg->experiments_description().c_str());
     }
   }

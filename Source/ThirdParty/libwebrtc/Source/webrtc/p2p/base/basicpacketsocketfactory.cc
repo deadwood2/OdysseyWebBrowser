@@ -16,6 +16,7 @@
 #include "webrtc/p2p/base/stun.h"
 #include "webrtc/base/asynctcpsocket.h"
 #include "webrtc/base/asyncudpsocket.h"
+#include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/nethelpers.h"
 #include "webrtc/base/physicalsocketserver.h"
@@ -87,9 +88,9 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateServerTcpSocket(
     return NULL;
   }
 
-  // If using SSLTCP, wrap the TCP socket in a pseudo-SSL socket.
-  if (opts & PacketSocketFactory::OPT_SSLTCP) {
-    ASSERT(!(opts & PacketSocketFactory::OPT_TLS));
+  // If using fake TLS, wrap the TCP socket in a pseudo-SSL socket.
+  if (opts & PacketSocketFactory::OPT_TLS_FAKE) {
+    RTC_DCHECK(!(opts & PacketSocketFactory::OPT_TLS));
     socket = new AsyncSSLSocket(socket);
   }
 
@@ -113,10 +114,17 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
   }
 
   if (BindSocket(socket, local_address, 0, 0) < 0) {
-    LOG(LS_ERROR) << "TCP bind failed with error "
-                  << socket->GetError();
-    delete socket;
-    return NULL;
+    // Allow BindSocket to fail if we're binding to the ANY address, since this
+    // is mostly redundant in the first place. The socket will be bound when we
+    // call Connect() instead.
+    if (local_address.IsAnyIP()) {
+      LOG(LS_WARNING) << "TCP bind failed with error " << socket->GetError()
+                      << "; ignoring since socket is using 'any' address.";
+    } else {
+      LOG(LS_ERROR) << "TCP bind failed with error " << socket->GetError();
+      delete socket;
+      return NULL;
+    }
   }
 
   // If using a proxy, wrap the socket in a proxy socket.
@@ -129,13 +137,22 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
                                   proxy_info.username, proxy_info.password);
   }
 
-  // If using TLS, wrap the socket in an SSL adapter.
-  if (opts & PacketSocketFactory::OPT_TLS) {
-    ASSERT(!(opts & PacketSocketFactory::OPT_SSLTCP));
+  // Assert that at most one TLS option is used.
+  int tlsOpts =
+      opts & (PacketSocketFactory::OPT_TLS | PacketSocketFactory::OPT_TLS_FAKE |
+              PacketSocketFactory::OPT_TLS_INSECURE);
+  RTC_DCHECK((tlsOpts & (tlsOpts - 1)) == 0);
 
+  if ((tlsOpts & PacketSocketFactory::OPT_TLS) ||
+      (tlsOpts & PacketSocketFactory::OPT_TLS_INSECURE)) {
+    // Using TLS, wrap the socket in an SSL adapter.
     SSLAdapter* ssl_adapter = SSLAdapter::Create(socket);
     if (!ssl_adapter) {
       return NULL;
+    }
+
+    if (tlsOpts & PacketSocketFactory::OPT_TLS_INSECURE) {
+      ssl_adapter->set_ignore_bad_cert(true);
     }
 
     socket = ssl_adapter;
@@ -145,9 +162,8 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
       return NULL;
     }
 
-  // If using SSLTCP, wrap the TCP socket in a pseudo-SSL socket.
-  } else if (opts & PacketSocketFactory::OPT_SSLTCP) {
-    ASSERT(!(opts & PacketSocketFactory::OPT_TLS));
+  } else if (tlsOpts & PacketSocketFactory::OPT_TLS_FAKE) {
+    // Using fake TLS, wrap the TCP socket in a pseudo-SSL socket.
     socket = new AsyncSSLSocket(socket);
   }
 
@@ -196,7 +212,7 @@ int BasicPacketSocketFactory::BindSocket(AsyncSocket* socket,
 
 SocketFactory* BasicPacketSocketFactory::socket_factory() {
   if (thread_) {
-    ASSERT(thread_ == Thread::Current());
+    RTC_DCHECK(thread_ == Thread::Current());
     return thread_->socketserver();
   } else {
     return socket_factory_;

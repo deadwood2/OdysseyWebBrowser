@@ -34,7 +34,7 @@
 #include "IdentifiersFactory.h"
 #include "InjectedScript.h"
 #include "InjectedScriptManager.h"
-#include "InspectorValues.h"
+#include "InspectorFrontendDispatchers.h"
 #include "ScriptArguments.h"
 #include "ScriptCallFrame.h"
 #include "ScriptCallStack.h"

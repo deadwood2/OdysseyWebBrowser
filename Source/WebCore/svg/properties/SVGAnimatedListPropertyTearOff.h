@@ -34,7 +34,7 @@ class SVGAnimatedListPropertyTearOff : public SVGAnimatedProperty {
 public:
     using ListItemType = typename SVGPropertyTraits<PropertyType>::ListItemType;
     using ListItemTearOff = typename SVGPropertyTraits<PropertyType>::ListItemTearOff;
-    using ListWrapperCache = Vector<RefPtr<ListItemTearOff>>;
+    using ListWrapperCache = Vector<ListItemTearOff*>;
     using ListProperty = SVGListProperty<PropertyType>;
     using ListPropertyTearOff = typename SVGPropertyTraits<PropertyType>::ListPropertyTearOff;
     using ContentType = PropertyType;
@@ -73,6 +73,11 @@ public:
             m_baseVal = nullptr;
         else if (&property == m_animVal)
             m_animVal = nullptr;
+        else {
+            size_t i = m_wrappers.find(&property);
+            if (i != notFound)
+                m_wrappers[i] = nullptr;
+        }
     }
 
     int findItem(SVGProperty* property)
@@ -138,7 +143,11 @@ public:
 
     void synchronizeWrappersIfNeeded()
     {
-        ASSERT(isAnimating());
+        if (!isAnimating()) {
+            // This should never happen, but we've seen it in the field. Please comment in bug #181316 if you hit this.
+            ASSERT_NOT_REACHED();
+            return;
+        }
 
         // Eventually the wrapper list needs synchronization because any SVGAnimateLengthList::calculateAnimatedValue() call may
         // mutate the length of our values() list, and thus the wrapper() cache needs synchronization, to have the same size.

@@ -23,7 +23,6 @@
 #include "webrtc/test/gtest.h"
 #include "webrtc/test/testsupport/fileutils.h"
 #include "webrtc/typedefs.h"
-#include "webrtc/voice_engine_configurations.h"
 
 // Description of the test:
 // In this test we set up a one-way communication channel from a participant
@@ -458,7 +457,7 @@ void TestAllCodecs::Run(TestPack* channel) {
     ASSERT_FALSE(muted);
 
     // Write output speech to file.
-    outfile_b_.Write10MsData(audio_frame.data_,
+    outfile_b_.Write10MsData(audio_frame.data(),
                              audio_frame.samples_per_channel_);
 
     // Update loop counter

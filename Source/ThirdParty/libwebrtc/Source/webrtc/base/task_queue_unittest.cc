@@ -8,6 +8,13 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#if defined(WEBRTC_WIN)
+// clang-format off
+#include <windows.h>  // Must come first.
+#include <mmsystem.h>
+// clang-format on
+#endif
+
 #include <memory>
 #include <vector>
 
@@ -18,6 +25,26 @@
 #include "webrtc/base/timeutils.h"
 
 namespace rtc {
+namespace {
+// Noop on all platforms except Windows, where it turns on high precision
+// multimedia timers which increases the precision of TimeMillis() while in
+// scope.
+class EnableHighResTimers {
+ public:
+#if !defined(WEBRTC_WIN)
+  EnableHighResTimers() {}
+#else
+  EnableHighResTimers() : enabled_(timeBeginPeriod(1) == TIMERR_NOERROR) {}
+  ~EnableHighResTimers() {
+    if (enabled_)
+      timeEndPeriod(1);
+  }
+
+ private:
+  const bool enabled_;
+#endif
+};
+}
 
 namespace {
 void CheckCurrent(const char* expected_queue, Event* signal, TaskQueue* queue) {
@@ -37,22 +64,21 @@ TEST(TaskQueueTest, Construct) {
 
 TEST(TaskQueueTest, PostAndCheckCurrent) {
   static const char kQueueName[] = "PostAndCheckCurrent";
+  Event event(false, false);
   TaskQueue queue(kQueueName);
 
   // We're not running a task, so there shouldn't be a current queue.
   EXPECT_FALSE(queue.IsCurrent());
   EXPECT_FALSE(TaskQueue::Current());
 
-  Event event(false, false);
   queue.PostTask(Bind(&CheckCurrent, kQueueName, &event, &queue));
   EXPECT_TRUE(event.Wait(1000));
 }
 
 TEST(TaskQueueTest, PostCustomTask) {
   static const char kQueueName[] = "PostCustomImplementation";
-  TaskQueue queue(kQueueName);
-
   Event event(false, false);
+  TaskQueue queue(kQueueName);
 
   class CustomTask : public QueuedTask {
    public:
@@ -74,18 +100,27 @@ TEST(TaskQueueTest, PostCustomTask) {
 
 TEST(TaskQueueTest, PostLambda) {
   static const char kQueueName[] = "PostLambda";
+  Event event(false, false);
   TaskQueue queue(kQueueName);
 
-  Event event(false, false);
   queue.PostTask([&event]() { event.Set(); });
+  EXPECT_TRUE(event.Wait(1000));
+}
+
+TEST(TaskQueueTest, PostDelayedZero) {
+  static const char kQueueName[] = "PostDelayedZero";
+  Event event(false, false);
+  TaskQueue queue(kQueueName);
+
+  queue.PostDelayedTask([&event]() { event.Set(); }, 0);
   EXPECT_TRUE(event.Wait(1000));
 }
 
 TEST(TaskQueueTest, PostFromQueue) {
   static const char kQueueName[] = "PostFromQueue";
+  Event event(false, false);
   TaskQueue queue(kQueueName);
 
-  Event event(false, false);
   queue.PostTask(
       [&event, &queue]() { queue.PostTask([&event]() { event.Set(); }); });
   EXPECT_TRUE(event.Wait(1000));
@@ -93,18 +128,38 @@ TEST(TaskQueueTest, PostFromQueue) {
 
 TEST(TaskQueueTest, PostDelayed) {
   static const char kQueueName[] = "PostDelayed";
-  TaskQueue queue(kQueueName);
-
   Event event(false, false);
+  TaskQueue queue(kQueueName, TaskQueue::Priority::HIGH);
+
   uint32_t start = Time();
   queue.PostDelayedTask(Bind(&CheckCurrent, kQueueName, &event, &queue), 100);
   EXPECT_TRUE(event.Wait(1000));
   uint32_t end = Time();
   // These tests are a little relaxed due to how "powerful" our test bots can
-  // be.  Most recently we've seen windows bots fire the callback after 99ms,
+  // be.  Most recently we've seen windows bots fire the callback after 94-99ms,
   // which is why we have a little bit of leeway backwards as well.
-  EXPECT_GE(end - start, 95u);
-  EXPECT_NEAR(end - start, 195u, 100u);  // Accept 95-295.
+  EXPECT_GE(end - start, 90u);
+  EXPECT_NEAR(end - start, 190u, 100u);  // Accept 90-290.
+}
+
+// This task needs to be run manually due to the slowness of some of our bots.
+// TODO(tommi): Can we run this on the perf bots?
+TEST(TaskQueueTest, DISABLED_PostDelayedHighRes) {
+  EnableHighResTimers high_res_scope;
+
+  static const char kQueueName[] = "PostDelayedHighRes";
+  Event event(false, false);
+  TaskQueue queue(kQueueName, TaskQueue::Priority::HIGH);
+
+  uint32_t start = Time();
+  queue.PostDelayedTask(Bind(&CheckCurrent, kQueueName, &event, &queue), 3);
+  EXPECT_TRUE(event.Wait(1000));
+  uint32_t end = TimeMillis();
+  // These tests are a little relaxed due to how "powerful" our test bots can
+  // be.  Most recently we've seen windows bots fire the callback after 94-99ms,
+  // which is why we have a little bit of leeway backwards as well.
+  EXPECT_GE(end - start, 3u);
+  EXPECT_NEAR(end - start, 3, 3u);
 }
 
 TEST(TaskQueueTest, PostMultipleDelayed) {
@@ -112,14 +167,14 @@ TEST(TaskQueueTest, PostMultipleDelayed) {
   TaskQueue queue(kQueueName);
 
   std::vector<std::unique_ptr<Event>> events;
-  for (int i = 0; i < 10; ++i) {
+  for (int i = 0; i < 100; ++i) {
     events.push_back(std::unique_ptr<Event>(new Event(false, false)));
     queue.PostDelayedTask(
-        Bind(&CheckCurrent, kQueueName, events.back().get(), &queue), 10);
+        Bind(&CheckCurrent, kQueueName, events.back().get(), &queue), i);
   }
 
   for (const auto& e : events)
-    EXPECT_TRUE(e->Wait(100));
+    EXPECT_TRUE(e->Wait(1000));
 }
 
 TEST(TaskQueueTest, PostDelayedAfterDestruct) {
@@ -135,10 +190,10 @@ TEST(TaskQueueTest, PostDelayedAfterDestruct) {
 TEST(TaskQueueTest, PostAndReply) {
   static const char kPostQueue[] = "PostQueue";
   static const char kReplyQueue[] = "ReplyQueue";
+  Event event(false, false);
   TaskQueue post_queue(kPostQueue);
   TaskQueue reply_queue(kReplyQueue);
 
-  Event event(false, false);
   post_queue.PostTaskAndReply(
       Bind(&CheckCurrent, kPostQueue, nullptr, &post_queue),
       Bind(&CheckCurrent, kReplyQueue, &event, &reply_queue), &reply_queue);
@@ -148,6 +203,7 @@ TEST(TaskQueueTest, PostAndReply) {
 TEST(TaskQueueTest, PostAndReuse) {
   static const char kPostQueue[] = "PostQueue";
   static const char kReplyQueue[] = "ReplyQueue";
+  Event event(false, false);
   TaskQueue post_queue(kPostQueue);
   TaskQueue reply_queue(kReplyQueue);
 
@@ -184,7 +240,6 @@ TEST(TaskQueueTest, PostAndReuse) {
     Event* const event_;
   };
 
-  Event event(false, false);
   std::unique_ptr<QueuedTask> task(
       new ReusedTask(&call_count, &reply_queue, &event));
 
@@ -195,15 +250,30 @@ TEST(TaskQueueTest, PostAndReuse) {
 TEST(TaskQueueTest, PostAndReplyLambda) {
   static const char kPostQueue[] = "PostQueue";
   static const char kReplyQueue[] = "ReplyQueue";
+  Event event(false, false);
   TaskQueue post_queue(kPostQueue);
   TaskQueue reply_queue(kReplyQueue);
 
-  Event event(false, false);
   bool my_flag = false;
   post_queue.PostTaskAndReply([&my_flag]() { my_flag = true; },
                               [&event]() { event.Set(); }, &reply_queue);
   EXPECT_TRUE(event.Wait(1000));
   EXPECT_TRUE(my_flag);
+}
+
+// This test covers a particular bug that we had in the libevent implementation
+// where we could hit a deadlock while trying to post a reply task to a queue
+// that was being deleted.  The test isn't guaranteed to hit that case but it's
+// written in a way that makes it likely and by running with --gtest_repeat=1000
+// the bug would occur. Alas, now it should be fixed.
+TEST(TaskQueueTest, PostAndReplyDeadlock) {
+  Event event(false, false);
+  TaskQueue post_queue("PostQueue");
+  TaskQueue reply_queue("ReplyQueue");
+
+  post_queue.PostTaskAndReply([&event]() { event.Set(); }, []() {},
+                              &reply_queue);
+  EXPECT_TRUE(event.Wait(1000));
 }
 
 void TestPostTaskAndReply(TaskQueue* work_queue,
@@ -220,10 +290,10 @@ void TestPostTaskAndReply(TaskQueue* work_queue,
 TEST(TaskQueueTest, PostAndReply2) {
   static const char kQueueName[] = "PostAndReply2";
   static const char kWorkQueueName[] = "PostAndReply2_Worker";
+  Event event(false, false);
   TaskQueue queue(kQueueName);
   TaskQueue work_queue(kWorkQueueName);
 
-  Event event(false, false);
   queue.PostTask(
       Bind(&TestPostTaskAndReply, &work_queue, kWorkQueueName, &event));
   EXPECT_TRUE(event.Wait(1000));

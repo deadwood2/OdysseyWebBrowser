@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015, 2016 Ericsson AB. All rights reserved.
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -40,23 +40,23 @@
 #include "SDPProcessorScriptResource.h"
 #include "ScriptController.h"
 #include "ScriptSourceCode.h"
-#include "inspector/InspectorValues.h"
 #include <bindings/ScriptObject.h>
+#include <runtime/CatchScope.h>
+#include <wtf/JSONValues.h>
 #include <wtf/NeverDestroyed.h>
-
-using namespace Inspector;
 
 namespace WebCore {
 
 #define STRING_FUNCTION(name) \
     static const String& name##String() \
     { \
-        static NeverDestroyed<const String> name { ASCIILiteral(#name) }; \
+        static NeverDestroyed<const String> name(MAKE_STATIC_STRING_IMPL(#name)); \
         return name; \
     }
 
 STRING_FUNCTION(address)
 STRING_FUNCTION(apt)
+STRING_FUNCTION(bundlePolicy)
 STRING_FUNCTION(candidates)
 STRING_FUNCTION(ccmfir)
 STRING_FUNCTION(channels)
@@ -108,9 +108,9 @@ SDPProcessor::SDPProcessor(ScriptExecutionContext* context)
 // example, the JSON representation has an "ice" object which collects a set of properties under a
 // namespace. MediaEndpointSessionConfiguration has "ice"-prefixes on the corresponding properties.
 
-static RefPtr<InspectorObject> createCandidateObject(const IceCandidate& candidate)
+static RefPtr<JSON::Object> createCandidateObject(const IceCandidate& candidate)
 {
-    RefPtr<InspectorObject> candidateObject = InspectorObject::create();
+    RefPtr<JSON::Object> candidateObject = JSON::Object::create();
 
     candidateObject->setString(typeString(), candidate.type);
     candidateObject->setString(foundationString(), candidate.foundation);
@@ -129,7 +129,7 @@ static RefPtr<InspectorObject> createCandidateObject(const IceCandidate& candida
     return candidateObject;
 }
 
-static IceCandidate createCandidate(const InspectorObject& candidateObject)
+static IceCandidate createCandidate(const JSON::Object& candidateObject)
 {
     IceCandidate candidate;
     String stringValue;
@@ -170,11 +170,11 @@ static IceCandidate createCandidate(const InspectorObject& candidateObject)
 
 static RefPtr<MediaEndpointSessionConfiguration> configurationFromJSON(const String& json)
 {
-    RefPtr<InspectorValue> value;
-    if (!InspectorValue::parseJSON(json, value))
+    RefPtr<JSON::Value> value;
+    if (!JSON::Value::parseJSON(json, value))
         return nullptr;
 
-    RefPtr<InspectorObject> object;
+    RefPtr<JSON::Object> object;
     if (!value->asObject(object))
         return nullptr;
 
@@ -182,22 +182,21 @@ static RefPtr<MediaEndpointSessionConfiguration> configurationFromJSON(const Str
 
     String stringValue;
     unsigned intValue;
-    unsigned long longValue;
     bool boolValue;
 
-    RefPtr<InspectorObject> originatorObject = InspectorObject::create();
+    RefPtr<JSON::Object> originatorObject = JSON::Object::create();
     if (object->getObject(originatorString(), originatorObject)) {
-        if (originatorObject->getInteger(sessionIdString(), longValue))
-            configuration->setSessionId(longValue);
+        if (originatorObject->getString(sessionIdString(), stringValue))
+            configuration->setSessionId(stringValue.toInt64());
         if (originatorObject->getInteger(sessionVersionString(), intValue))
             configuration->setSessionVersion(intValue);
     }
 
-    RefPtr<InspectorArray> mediaDescriptionsArray = InspectorArray::create();
+    RefPtr<JSON::Array> mediaDescriptionsArray = JSON::Array::create();
     object->getArray(mediaDescriptionsString(), mediaDescriptionsArray);
 
     for (unsigned i = 0; i < mediaDescriptionsArray->length(); ++i) {
-        RefPtr<InspectorObject> mediaDescriptionObject = InspectorObject::create();
+        RefPtr<JSON::Object> mediaDescriptionObject = JSON::Object::create();
         mediaDescriptionsArray->get(i)->asObject(mediaDescriptionObject);
 
         PeerMediaDescription mediaDescription;
@@ -217,11 +216,11 @@ static RefPtr<MediaEndpointSessionConfiguration> configurationFromJSON(const Str
         if (mediaDescriptionObject->getString(midString(), stringValue))
             mediaDescription.mid = stringValue;
 
-        RefPtr<InspectorArray> payloadsArray = InspectorArray::create();
+        RefPtr<JSON::Array> payloadsArray = JSON::Array::create();
         mediaDescriptionObject->getArray(payloadsString(), payloadsArray);
 
         for (unsigned j = 0; j < payloadsArray->length(); ++j) {
-            RefPtr<InspectorObject> payloadsObject = InspectorObject::create();
+            RefPtr<JSON::Object> payloadsObject = JSON::Object::create();
             payloadsArray->get(j)->asObject(payloadsObject);
 
             MediaPayload payload;
@@ -247,7 +246,7 @@ static RefPtr<MediaEndpointSessionConfiguration> configurationFromJSON(const Str
             if (payloadsObject->getBoolean(nackString(), boolValue))
                 payload.nack = boolValue;
 
-            RefPtr<InspectorObject> parametersObject = InspectorObject::create();
+            RefPtr<JSON::Object> parametersObject = JSON::Object::create();
             if (payloadsObject->getObject(parametersString(), parametersObject)) {
                 if (parametersObject->getInteger(packetizationModeString(), intValue))
                     payload.addParameter("packetizationMode", intValue);
@@ -262,7 +261,7 @@ static RefPtr<MediaEndpointSessionConfiguration> configurationFromJSON(const Str
             mediaDescription.addPayload(WTFMove(payload));
         }
 
-        RefPtr<InspectorObject> rtcpObject = InspectorObject::create();
+        RefPtr<JSON::Object> rtcpObject = JSON::Object::create();
         if (mediaDescriptionObject->getObject(rtcpString(), rtcpObject)) {
             if (rtcpObject->getBoolean(muxString(), boolValue))
                 mediaDescription.rtcpMux = boolValue;
@@ -280,7 +279,7 @@ static RefPtr<MediaEndpointSessionConfiguration> configurationFromJSON(const Str
         if (mediaDescriptionObject->getString(mediaStreamTrackIdString(), stringValue))
             mediaDescription.mediaStreamTrackId = stringValue;
 
-        RefPtr<InspectorObject> dtlsObject = InspectorObject::create();
+        RefPtr<JSON::Object> dtlsObject = JSON::Object::create();
         if (mediaDescriptionObject->getObject(dtlsString(), dtlsObject)) {
             if (dtlsObject->getString(setupString(), stringValue))
                 mediaDescription.dtlsSetup = stringValue;
@@ -292,7 +291,7 @@ static RefPtr<MediaEndpointSessionConfiguration> configurationFromJSON(const Str
                 mediaDescription.dtlsFingerprint = stringValue;
         }
 
-        RefPtr<InspectorArray> ssrcsArray = InspectorArray::create();
+        RefPtr<JSON::Array> ssrcsArray = JSON::Array::create();
         mediaDescriptionObject->getArray(ssrcsString(), ssrcsArray);
 
         for (unsigned j = 0; j < ssrcsArray->length(); ++j) {
@@ -303,7 +302,7 @@ static RefPtr<MediaEndpointSessionConfiguration> configurationFromJSON(const Str
         if (mediaDescriptionObject->getString(cnameString(), stringValue))
             mediaDescription.cname = stringValue;
 
-        RefPtr<InspectorObject> iceObject = InspectorObject::create();
+        RefPtr<JSON::Object> iceObject = JSON::Object::create();
         if (mediaDescriptionObject->getObject(iceString(), iceObject)) {
             if (iceObject->getString(ufragString(), stringValue))
                 mediaDescription.iceUfrag = stringValue;
@@ -311,11 +310,11 @@ static RefPtr<MediaEndpointSessionConfiguration> configurationFromJSON(const Str
             if (iceObject->getString(passwordString(), stringValue))
                 mediaDescription.icePassword = stringValue;
 
-            RefPtr<InspectorArray> candidatesArray = InspectorArray::create();
+            RefPtr<JSON::Array> candidatesArray = JSON::Array::create();
             iceObject->getArray(candidatesString(), candidatesArray);
 
             for (unsigned j = 0; j < candidatesArray->length(); ++j) {
-                RefPtr<InspectorObject> candidateObject = InspectorObject::create();
+                RefPtr<JSON::Object> candidateObject = JSON::Object::create();
                 candidatesArray->get(j)->asObject(candidateObject);
 
                 mediaDescription.addIceCandidate(createCandidate(*candidateObject));
@@ -330,30 +329,44 @@ static RefPtr<MediaEndpointSessionConfiguration> configurationFromJSON(const Str
 
 static std::optional<IceCandidate> iceCandidateFromJSON(const String& json)
 {
-    RefPtr<InspectorValue> value;
-    if (!InspectorValue::parseJSON(json, value))
+    RefPtr<JSON::Value> value;
+    if (!JSON::Value::parseJSON(json, value))
         return std::nullopt;
 
-    RefPtr<InspectorObject> candidateObject;
+    RefPtr<JSON::Object> candidateObject;
     if (!value->asObject(candidateObject))
         return std::nullopt;
 
     return createCandidate(*candidateObject);
 }
 
+static String getBundlePolicyName(const PeerConnectionStates::BundlePolicy bundlePolicy)
+{
+    switch (bundlePolicy) {
+    case PeerConnectionStates::BundlePolicy::MaxCompat:
+        return "max-compat";
+    case PeerConnectionStates::BundlePolicy::MaxBundle:
+        return "max-bundle";
+    case PeerConnectionStates::BundlePolicy::Balanced:
+    default:
+        return "balanced";
+    };
+}
+
 static String configurationToJSON(const MediaEndpointSessionConfiguration& configuration)
 {
-    RefPtr<InspectorObject> object = InspectorObject::create();
+    RefPtr<JSON::Object> object = JSON::Object::create();
+    object->setString(bundlePolicyString(), getBundlePolicyName(configuration.bundlePolicy()));
 
-    RefPtr<InspectorObject> originatorObject = InspectorObject::create();
-    originatorObject->setDouble(sessionIdString(), configuration.sessionId());
+    RefPtr<JSON::Object> originatorObject = JSON::Object::create();
+    originatorObject->setString(sessionIdString(), String::number(configuration.sessionId()));
     originatorObject->setInteger(sessionVersionString(), configuration.sessionVersion());
     object->setObject(originatorString(), originatorObject);
 
-    RefPtr<InspectorArray> mediaDescriptionsArray = InspectorArray::create();
+    RefPtr<JSON::Array> mediaDescriptionsArray = JSON::Array::create();
 
     for (const auto& mediaDescription : configuration.mediaDescriptions()) {
-        RefPtr<InspectorObject> mediaDescriptionObject = InspectorObject::create();
+        RefPtr<JSON::Object> mediaDescriptionObject = JSON::Object::create();
 
         mediaDescriptionObject->setString(typeString(), mediaDescription.type);
         mediaDescriptionObject->setInteger(portString(), mediaDescription.port);
@@ -361,10 +374,10 @@ static String configurationToJSON(const MediaEndpointSessionConfiguration& confi
         mediaDescriptionObject->setString(modeString(), mediaDescription.mode);
         mediaDescriptionObject->setString(midString(), mediaDescription.mid);
 
-        RefPtr<InspectorArray> payloadsArray = InspectorArray::create();
+        RefPtr<JSON::Array> payloadsArray = JSON::Array::create();
 
         for (auto& payload : mediaDescription.payloads) {
-            RefPtr<InspectorObject> payloadObject = InspectorObject::create();
+            RefPtr<JSON::Object> payloadObject = JSON::Object::create();
 
             payloadObject->setInteger(typeString(), payload.type);
             payloadObject->setString(encodingNameString(), payload.encodingName);
@@ -375,7 +388,7 @@ static String configurationToJSON(const MediaEndpointSessionConfiguration& confi
             payloadObject->setBoolean(nackString(), payload.nack);
 
             if (!payload.parameters.isEmpty()) {
-                RefPtr<InspectorObject> parametersObject = InspectorObject::create();
+                RefPtr<JSON::Object> parametersObject = JSON::Object::create();
 
                 for (auto& name : payload.parameters.keys())
                     parametersObject->setInteger(name, payload.parameters.get(name));
@@ -387,7 +400,7 @@ static String configurationToJSON(const MediaEndpointSessionConfiguration& confi
         }
         mediaDescriptionObject->setArray(payloadsString(), payloadsArray);
 
-        RefPtr<InspectorObject> rtcpObject = InspectorObject::create();
+        RefPtr<JSON::Object> rtcpObject = JSON::Object::create();
         rtcpObject->setBoolean(muxString(), mediaDescription.rtcpMux);
         rtcpObject->setString(addressString(), mediaDescription.rtcpAddress);
         rtcpObject->setInteger(portString(), mediaDescription.rtcpPort);
@@ -396,13 +409,13 @@ static String configurationToJSON(const MediaEndpointSessionConfiguration& confi
         mediaDescriptionObject->setString(mediaStreamIdString(), mediaDescription.mediaStreamId);
         mediaDescriptionObject->setString(mediaStreamTrackIdString(), mediaDescription.mediaStreamTrackId);
 
-        RefPtr<InspectorObject> dtlsObject = InspectorObject::create();
+        RefPtr<JSON::Object> dtlsObject = JSON::Object::create();
         dtlsObject->setString(setupString(), mediaDescription.dtlsSetup);
         dtlsObject->setString(fingerprintHashFunctionString(), mediaDescription.dtlsFingerprintHashFunction);
         dtlsObject->setString(fingerprintString(), mediaDescription.dtlsFingerprint);
         mediaDescriptionObject->setObject(dtlsString(), dtlsObject);
 
-        RefPtr<InspectorArray> ssrcsArray = InspectorArray::create();
+        RefPtr<JSON::Array> ssrcsArray = JSON::Array::create();
 
         for (auto ssrc : mediaDescription.ssrcs)
             ssrcsArray->pushDouble(ssrc);
@@ -410,11 +423,11 @@ static String configurationToJSON(const MediaEndpointSessionConfiguration& confi
 
         mediaDescriptionObject->setString(cnameString(), mediaDescription.cname);
 
-        RefPtr<InspectorObject> iceObject = InspectorObject::create();
+        RefPtr<JSON::Object> iceObject = JSON::Object::create();
         iceObject->setString(ufragString(), mediaDescription.iceUfrag);
         iceObject->setString(passwordString(), mediaDescription.icePassword);
 
-        RefPtr<InspectorArray> candidatesArray = InspectorArray::create();
+        RefPtr<JSON::Array> candidatesArray = JSON::Array::create();
 
         for (auto& candidate : mediaDescription.iceCandidates)
             candidatesArray->pushObject(createCandidateObject(candidate));

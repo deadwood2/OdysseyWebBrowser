@@ -10,10 +10,12 @@
 
 #include "webrtc/modules/desktop_capture/win/screen_capturer_win_directx.h"
 
+#include <string>
 #include <utility>
 
 #include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
+#include "webrtc/base/ptr_util.h"
 #include "webrtc/base/timeutils.h"
 #include "webrtc/modules/desktop_capture/desktop_frame.h"
 
@@ -52,15 +54,6 @@ void ScreenCapturerWinDirectx::SetSharedMemoryFactory(
   shared_memory_factory_ = std::move(shared_memory_factory);
 }
 
-DesktopSize ScreenCapturerWinDirectx::SelectedDesktopSize() const {
-  if (current_screen_id_ == kFullDesktopScreenId) {
-    return DxgiDuplicatorController::Instance()->desktop_size();
-  }
-  return DxgiDuplicatorController::Instance()
-      ->ScreenRect(current_screen_id_)
-      .size();
-}
-
 void ScreenCapturerWinDirectx::CaptureFrame() {
   RTC_DCHECK(callback_);
 
@@ -68,52 +61,48 @@ void ScreenCapturerWinDirectx::CaptureFrame() {
 
   frames_.MoveToNextFrame();
   if (!frames_.current_frame()) {
-    std::unique_ptr<DesktopFrame> new_frame;
-    if (shared_memory_factory_) {
-      new_frame = SharedMemoryDesktopFrame::Create(
-          SelectedDesktopSize(), shared_memory_factory_.get());
-    } else {
-      new_frame.reset(new BasicDesktopFrame(SelectedDesktopSize()));
-    }
-    if (!new_frame) {
+    frames_.ReplaceCurrentFrame(
+        rtc::MakeUnique<DxgiFrame>(shared_memory_factory_.get()));
+  }
+
+  DxgiDuplicatorController::Result result;
+  if (current_screen_id_ == kFullDesktopScreenId) {
+    result = DxgiDuplicatorController::Instance()->Duplicate(
+        frames_.current_frame());
+  } else {
+    result = DxgiDuplicatorController::Instance()->DuplicateMonitor(
+        frames_.current_frame(), current_screen_id_);
+  }
+
+  using DuplicateResult = DxgiDuplicatorController::Result;
+  switch (result) {
+    case DuplicateResult::FRAME_PREPARE_FAILED: {
       LOG(LS_ERROR) << "Failed to allocate a new DesktopFrame.";
       // This usually means we do not have enough memory or SharedMemoryFactory
       // cannot work correctly.
       callback_->OnCaptureResult(Result::ERROR_PERMANENT, nullptr);
-      return;
+      break;
     }
-    frames_.ReplaceCurrentFrame(SharedDesktopFrame::Wrap(std::move(new_frame)));
-  }
-
-  if (current_screen_id_ == kFullDesktopScreenId) {
-    if (!DxgiDuplicatorController::Instance()->Duplicate(
-            &context_, frames_.current_frame())) {
-      // Screen size may be changed, so we need to reset the frames.
-      frames_.Reset();
+    case DuplicateResult::INVALID_MONITOR_ID: {
+      callback_->OnCaptureResult(Result::ERROR_PERMANENT, nullptr);
+      break;
+    }
+    case DuplicateResult::INITIALIZATION_FAILED:
+    case DuplicateResult::DUPLICATION_FAILED: {
       callback_->OnCaptureResult(Result::ERROR_TEMPORARY, nullptr);
-      return;
+      break;
     }
-  } else {
-    if (!DxgiDuplicatorController::Instance()->DuplicateMonitor(
-            &context_, current_screen_id_, frames_.current_frame())) {
-      // Screen size may be changed, so we need to reset the frames.
-      frames_.Reset();
-      if (current_screen_id_ >=
-          DxgiDuplicatorController::Instance()->ScreenCount()) {
-        // Current monitor has been removed from the system.
-        callback_->OnCaptureResult(Result::ERROR_PERMANENT, nullptr);
-      } else {
-        callback_->OnCaptureResult(Result::ERROR_TEMPORARY, nullptr);
-      }
-      return;
+    case DuplicateResult::SUCCEEDED: {
+      std::unique_ptr<DesktopFrame> frame =
+          frames_.current_frame()->frame()->Share();
+      frame->set_capture_time_ms(
+          (rtc::TimeNanos() - capture_start_time_nanos) /
+          rtc::kNumNanosecsPerMillisec);
+      frame->set_capturer_id(DesktopCapturerId::kScreenCapturerWinDirectx);
+      callback_->OnCaptureResult(Result::SUCCESS, std::move(frame));
+      break;
     }
   }
-
-  std::unique_ptr<DesktopFrame> result = frames_.current_frame()->Share();
-  result->set_capture_time_ms(
-      (rtc::TimeNanos() - capture_start_time_nanos) /
-      rtc::kNumNanosecsPerMillisec);
-  callback_->OnCaptureResult(Result::SUCCESS, std::move(result));
 }
 
 bool ScreenCapturerWinDirectx::GetSourceList(SourceList* sources) {
@@ -129,8 +118,6 @@ bool ScreenCapturerWinDirectx::SelectSource(SourceId id) {
     return true;
   }
 
-  // Changing target screen may or may not impact frame size. So resetting
-  // frames only when a Duplicate() function call returns false.
   if (id == kFullDesktopScreenId) {
     current_screen_id_ = id;
     return true;

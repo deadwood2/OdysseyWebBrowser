@@ -72,8 +72,7 @@ std::unique_ptr<Packet> RtpFileSource::NextPacket() {
         packet_memory.release(), temp_packet.length,
         temp_packet.original_length, temp_packet.time_ms, *parser_.get()));
     if (!packet->valid_header()) {
-      assert(false);
-      return NULL;
+      continue;
     }
     if (filter_.test(packet->header().payloadType) ||
         (use_ssrc_filter_ && packet->header().ssrc != ssrc_)) {
@@ -94,7 +93,7 @@ bool RtpFileSource::OpenFile(const std::string& file_name) {
     return true;
   rtp_reader_.reset(RtpFileReader::Create(RtpFileReader::kPcap, file_name));
   if (!rtp_reader_) {
-    FATAL() << "Couldn't open input file as either a rtpdump or .pcap. Note "
+    RTC_FATAL() << "Couldn't open input file as either a rtpdump or .pcap. Note "
                "that .pcapng is not supported.";
   }
   return true;

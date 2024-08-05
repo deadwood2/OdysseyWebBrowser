@@ -34,7 +34,6 @@
 #include "InstrumentingAgents.h"
 #include "MainFrame.h"
 #include "NetworkStateNotifier.h"
-#include <inspector/InspectorValues.h>
 #include <wtf/text/StringBuilder.h>
 
 using namespace Inspector;
@@ -83,8 +82,7 @@ void InspectorApplicationCacheAgent::updateApplicationCacheStatus(Frame* frame)
 
 void InspectorApplicationCacheAgent::networkStateChanged()
 {
-    bool isNowOnline = networkStateNotifier().onLine();
-    m_frontendDispatcher->networkStateUpdated(isNowOnline);
+    m_frontendDispatcher->networkStateUpdated(NetworkStateNotifier::singleton().onLine());
 }
 
 void InspectorApplicationCacheAgent::getFramesWithManifests(ErrorString&, RefPtr<Inspector::Protocol::Array<Inspector::Protocol::ApplicationCache::FrameWithManifest>>& result)

@@ -315,7 +315,7 @@ void EventSenderProxy::keyDown(WKStringRef keyRef, WKEventModifiers wkModifiers,
 
     GUniqueOutPtr<GdkKeymapKey> keys;
     gint nKeys;
-    if (gdk_keymap_get_entries_for_keyval(gdk_keymap_get_default(), gdkKeySym, &keys.outPtr(), &nKeys))
+    if (gdk_keymap_get_entries_for_keyval(gdk_keymap_get_default(), gdkKeySym, &keys.outPtr(), &nKeys) && nKeys)
         pressEvent->key.hardware_keycode = keys.get()[0].keycode;
 
     GdkEvent* releaseEvent = gdk_event_copy(pressEvent);
@@ -460,11 +460,6 @@ void EventSenderProxy::mouseScrollByWithWheelAndMomentumPhases(int x, int y, int
     mouseScrollBy(x, y);
 }
 
-void EventSenderProxy::swipeGestureWithWheelAndMomentumPhases(int, int, int, int)
-{
-    notImplemented();
-}
-
 void EventSenderProxy::leapForward(int milliseconds)
 {
     if (m_eventQueue.isEmpty())
@@ -510,7 +505,7 @@ void EventSenderProxy::addTouchPoint(int x, int y)
 
 void EventSenderProxy::updateTouchPoint(int index, int x, int y)
 {
-    ASSERT(index >= 0 && index < m_touchEvents.size());
+    ASSERT(index >= 0 && static_cast<size_t>(index) < m_touchEvents.size());
 
     const auto& event = m_touchEvents[index];
     ASSERT(event);
@@ -556,7 +551,7 @@ void EventSenderProxy::clearTouchPoints()
 
 void EventSenderProxy::releaseTouchPoint(int index)
 {
-    ASSERT(index >= 0 && index < m_touchEvents.size());
+    ASSERT(index >= 0 && static_cast<size_t>(index) < m_touchEvents.size());
 
     const auto& event = m_touchEvents[index];
     event->type = GDK_TOUCH_END;

@@ -19,6 +19,7 @@
 #include "webrtc/base/checks.h"
 #include "webrtc/base/stringutils.h"
 #include "webrtc/common_audio/include/audio_util.h"
+#include "webrtc/modules/audio_processing/aec_dump/aec_dump_factory.h"
 #include "webrtc/modules/audio_processing/include/audio_processing.h"
 
 namespace webrtc {
@@ -30,7 +31,7 @@ void CopyFromAudioFrame(const AudioFrame& src, ChannelBuffer<float>* dest) {
   RTC_CHECK_EQ(src.samples_per_channel_, dest->num_frames());
   // Copy the data from the input buffer.
   std::vector<float> tmp(src.samples_per_channel_ * src.num_channels_);
-  S16ToFloat(src.data_, tmp.size(), tmp.data());
+  S16ToFloat(src.data(), tmp.size(), tmp.data());
   Deinterleave(tmp.data(), src.samples_per_channel_, src.num_channels_,
                dest->channels());
 }
@@ -68,9 +69,10 @@ SimulationSettings::~SimulationSettings() = default;
 void CopyToAudioFrame(const ChannelBuffer<float>& src, AudioFrame* dest) {
   RTC_CHECK_EQ(src.num_channels(), dest->num_channels_);
   RTC_CHECK_EQ(src.num_frames(), dest->samples_per_channel_);
+  int16_t* dest_data = dest->mutable_data();
   for (size_t ch = 0; ch < dest->num_channels_; ++ch) {
     for (size_t sample = 0; sample < dest->samples_per_channel_; ++sample) {
-      dest->data_[sample * dest->num_channels_ + ch] =
+      dest_data[sample * dest->num_channels_ + ch] =
           src.channels()[ch][sample] * 32767;
     }
   }
@@ -78,11 +80,11 @@ void CopyToAudioFrame(const ChannelBuffer<float>& src, AudioFrame* dest) {
 
 AudioProcessingSimulator::AudioProcessingSimulator(
     const SimulationSettings& settings)
-    : settings_(settings) {
-  if (settings_.red_graph_output_filename &&
-      settings_.red_graph_output_filename->size() > 0) {
+    : settings_(settings), worker_queue_("file_writer_task_queue") {
+  if (settings_.ed_graph_output_filename &&
+      settings_.ed_graph_output_filename->size() > 0) {
     residual_echo_likelihood_graph_writer_.open(
-        *settings_.red_graph_output_filename);
+        *settings_.ed_graph_output_filename);
     RTC_CHECK(residual_echo_likelihood_graph_writer_.is_open());
     WriteEchoLikelihoodGraphFileHeader(&residual_echo_likelihood_graph_writer_);
   }
@@ -248,7 +250,7 @@ void AudioProcessingSimulator::SetupOutput() {
 
 void AudioProcessingSimulator::DestroyAudioProcessor() {
   if (settings_.aec_dump_output_filename) {
-    RTC_CHECK_EQ(AudioProcessing::kNoError, ap_->StopDebugRecording());
+    ap_->DetachAecDump();
   }
 }
 
@@ -268,11 +270,18 @@ void AudioProcessingSimulator::CreateAudioProcessor() {
     config.Set<Intelligibility>(new Intelligibility(*settings_.use_ie));
   }
   if (settings_.use_aec3) {
-    config.Set<EchoCanceller3>(new EchoCanceller3(*settings_.use_aec3));
+    apm_config.echo_canceller3.enabled = *settings_.use_aec3;
+  }
+  if (settings_.use_agc2) {
+    apm_config.gain_controller2.enabled = *settings_.use_agc2;
   }
   if (settings_.use_lc) {
     apm_config.level_controller.enabled = *settings_.use_lc;
   }
+  if (settings_.use_hpf) {
+    apm_config.high_pass_filter.enabled = *settings_.use_hpf;
+  }
+
   if (settings_.use_refined_adaptive_filter) {
     config.Set<RefinedAdaptiveFilter>(
         new RefinedAdaptiveFilter(*settings_.use_refined_adaptive_filter));
@@ -281,8 +290,10 @@ void AudioProcessingSimulator::CreateAudioProcessor() {
       !settings_.use_extended_filter || *settings_.use_extended_filter));
   config.Set<DelayAgnostic>(new DelayAgnostic(!settings_.use_delay_agnostic ||
                                               *settings_.use_delay_agnostic));
-  if (settings_.use_red) {
-    apm_config.residual_echo_detector.enabled = *settings_.use_red;
+  config.Set<ExperimentalAgc>(new ExperimentalAgc(
+      !settings_.use_experimental_agc || *settings_.use_experimental_agc));
+  if (settings_.use_ed) {
+    apm_config.residual_echo_detector.enabled = *settings_.use_ed;
   }
 
   ap_.reset(AudioProcessing::Create(config));
@@ -301,10 +312,6 @@ void AudioProcessingSimulator::CreateAudioProcessor() {
   if (settings_.use_agc) {
     RTC_CHECK_EQ(AudioProcessing::kNoError,
                  ap_->gain_control()->Enable(*settings_.use_agc));
-  }
-  if (settings_.use_hpf) {
-    RTC_CHECK_EQ(AudioProcessing::kNoError,
-                 ap_->high_pass_filter()->Enable(*settings_.use_hpf));
   }
   if (settings_.use_ns) {
     RTC_CHECK_EQ(AudioProcessing::kNoError,
@@ -327,7 +334,11 @@ void AudioProcessingSimulator::CreateAudioProcessor() {
                  ap_->gain_control()->set_target_level_dbfs(
                      *settings_.agc_target_level));
   }
-
+  if (settings_.agc_compression_gain) {
+    RTC_CHECK_EQ(AudioProcessing::kNoError,
+                 ap_->gain_control()->set_compression_gain_db(
+                     *settings_.agc_compression_gain));
+  }
   if (settings_.agc_mode) {
     RTC_CHECK_EQ(
         AudioProcessing::kNoError,
@@ -379,11 +390,8 @@ void AudioProcessingSimulator::CreateAudioProcessor() {
   }
 
   if (settings_.aec_dump_output_filename) {
-    size_t kMaxFilenameSize = AudioProcessing::kMaxFilenameSize;
-    RTC_CHECK_LE(settings_.aec_dump_output_filename->size(), kMaxFilenameSize);
-    RTC_CHECK_EQ(AudioProcessing::kNoError,
-                 ap_->StartDebugRecording(
-                     settings_.aec_dump_output_filename->c_str(), -1));
+    ap_->AttachAecDump(AecDumpFactory::Create(
+        *settings_.aec_dump_output_filename, -1, &worker_queue_));
   }
 }
 
