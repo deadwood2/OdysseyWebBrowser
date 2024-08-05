@@ -27,9 +27,9 @@
 
 using namespace WebCore;
 
-PassRefPtr<WebFrameNetworkingContext> WebFrameNetworkingContext::create(Frame* frame, const String& userAgent)
+Ref<WebFrameNetworkingContext> WebFrameNetworkingContext::create(Frame* frame, const String& userAgent)
 {
-    return adoptRef(new WebFrameNetworkingContext(frame, userAgent));
+    return (*new WebFrameNetworkingContext(frame, userAgent));
 }
 
 WebCore::NetworkStorageSession& WebFrameNetworkingContext::storageSession() const

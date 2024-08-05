@@ -65,7 +65,7 @@ public:
     virtual void focusedElementChanged(WebCore::Element*);
     virtual void focusedFrameChanged(WebCore::Frame*);
 
-    virtual WebCore::Page* createWindow(WebCore::Frame*, const WebCore::FrameLoadRequest&, const WebCore::WindowFeatures&, const WebCore::NavigationAction&);
+    WebCore::Page* createWindow(WebCore::Frame&, const WebCore::FrameLoadRequest&, const WebCore::WindowFeatures&, const WebCore::NavigationAction&) final;
     virtual void show();
 
     virtual bool canRunModal();
@@ -88,13 +88,13 @@ public:
     virtual void addMessageToConsole(MessageSource source, MessageLevel level, const WTF::String& message, unsigned lineNumber, unsigned columnNumber, const WTF::String& sourceID);
 
     virtual bool canRunBeforeUnloadConfirmPanel();
-    virtual bool runBeforeUnloadConfirmPanel(const WTF::String& message, WebCore::Frame* frame);
+    bool runBeforeUnloadConfirmPanel(const WTF::String& message, WebCore::Frame&) final;
 
     virtual void closeWindowSoon();
 
-    virtual void runJavaScriptAlert(WebCore::Frame*, const WTF::String&);
-    virtual bool runJavaScriptConfirm(WebCore::Frame*, const WTF::String&);
-    virtual bool runJavaScriptPrompt(WebCore::Frame*, const WTF::String& message, const WTF::String& defaultValue, WTF::String& result);
+    void runJavaScriptAlert(WebCore::Frame&, const WTF::String&) final;
+    bool runJavaScriptConfirm(WebCore::Frame&, const WTF::String&) final;
+    bool runJavaScriptPrompt(WebCore::Frame&, const WTF::String& message, const WTF::String& defaultValue, WTF::String& result) final;
     virtual void setStatusbarText(const WTF::String&);
     virtual bool shouldInterruptJavaScript();
     virtual WebCore::KeyboardUIMode keyboardUIMode();
@@ -110,7 +110,7 @@ public:
     virtual WebCore::IntPoint screenToRootView(const WebCore::IntPoint& p) const ;
     virtual WebCore::IntRect rootViewToScreen(const WebCore::IntRect& r) const;
     virtual PlatformPageClient platformPageClient() const;
-    virtual void contentsSizeChanged(WebCore::Frame*, const WebCore::IntSize&) const;
+    void contentsSizeChanged(WebCore::Frame&, const WebCore::IntSize&) const final;
 
     virtual void scrollbarsModeDidChange() const;
     virtual void mouseDidMoveOverElement(const WebCore::HitTestResult&, unsigned modifierFlags);
@@ -119,12 +119,12 @@ public:
 
     virtual void setToolTip(const WTF::String&, WebCore::TextDirection);
 
-    virtual void print(WebCore::Frame*);
+    void print(WebCore::Frame&) final;
 
-    virtual void exceededDatabaseQuota(WebCore::Frame*, const WTF::String&, WebCore::DatabaseDetails);
+    void exceededDatabaseQuota(WebCore::Frame&, const WTF::String&, WebCore::DatabaseDetails) final;
 
-    virtual void reachedMaxAppCacheSize(int64_t spaceNeeded);
-    virtual void reachedApplicationCacheOriginQuota(WebCore::SecurityOrigin*, int64_t totalSpaceNeeded);
+    void reachedMaxAppCacheSize(int64_t spaceNeeded) final;
+    void reachedApplicationCacheOriginQuota(WebCore::SecurityOrigin&, int64_t totalSpaceNeeded) final;
 
 	/*
 #if ENABLE(CONTEXT_MENUS)
@@ -132,19 +132,22 @@ public:
 #endif
 	*/
 #if ENABLE(INPUT_TYPE_COLOR)
-    virtual std::unique_ptr<WebCore::ColorChooser> createColorChooser(WebCore::ColorChooserClient*, const WebCore::Color&);
+    std::unique_ptr<WebCore::ColorChooser> createColorChooser(WebCore::ColorChooserClient&, const WebCore::Color&);
 #endif
 
 #if ENABLE(INPUT_TYPE_DATE)
     virtual PassRefPtr<WebCore::DateTimeChooser> openDateTimeChooser(WebCore::DateTimeChooserClient*, const WebCore::DateTimeChooserParameters&);
 #endif 
 
-    virtual void runOpenPanel(WebCore::Frame*, PassRefPtr<WebCore::FileChooser>);
-    virtual void loadIconForFiles(const Vector<WTF::String>&, WebCore::FileIconLoader*);
+    void runOpenPanel(WebCore::Frame&, WebCore::FileChooser&) final;
+    void loadIconForFiles(const Vector<WTF::String>&, WebCore::FileIconLoader&) final;
 
     virtual void setCursor(const WebCore::Cursor&);
     virtual void setCursorHiddenUntilMouseMoves(bool);
     virtual void setLastSetCursorToCurrentCursor();
+
+    void attachRootGraphicsLayer(WebCore::Frame&, WebCore::GraphicsLayer*) final;
+    void attachViewOverlayGraphicsLayer(WebCore::Frame&, WebCore::GraphicsLayer*) final;
 
     virtual void formStateDidChange(const WebCore::Node*);
 
@@ -172,8 +175,8 @@ public:
     virtual bool selectItemWritingDirectionIsNatural();
     virtual bool selectItemAlignmentFollowsMenuWritingDirection();
     virtual bool hasOpenedPopup() const;
-    virtual RefPtr<WebCore::PopupMenu> createPopupMenu(WebCore::PopupMenuClient*) const;
-    virtual RefPtr<WebCore::SearchPopupMenu> createSearchPopupMenu(WebCore::PopupMenuClient*) const;
+    RefPtr<WebCore::PopupMenu> createPopupMenu(WebCore::PopupMenuClient&) const final;
+    RefPtr<WebCore::SearchPopupMenu> createSearchPopupMenu(WebCore::PopupMenuClient&) const final;
 
 #if ENABLE(FULLSCREEN_API)
     virtual bool supportsFullScreenForElement(const WebCore::Element*, bool withKeyboard); 
@@ -182,9 +185,7 @@ public:
     virtual void fullScreenRendererChanged(WebCore::RenderBox*);
 #endif
 
-#if ENABLE(REQUEST_ANIMATION_FRAME)
     virtual void scheduleAnimation() {}
-#endif
 
     virtual bool shouldRubberBandInDirection(WebCore::ScrollDirection) const { return true; } 
     virtual void numWheelEventHandlersChanged(unsigned) { }
@@ -194,7 +195,6 @@ public:
 
      virtual void AXStartFrameLoad(); 
      virtual void AXFinishFrameLoad(); 
-     virtual void attachViewOverlayGraphicsLayer(WebCore::Frame*, WebCore::GraphicsLayer*) { };
 
 private:
     WebView* m_webView;

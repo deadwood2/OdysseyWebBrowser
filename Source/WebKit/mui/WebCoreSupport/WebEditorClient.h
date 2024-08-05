@@ -66,6 +66,8 @@ public:
 
     virtual void respondToChangedContents();
     virtual void respondToChangedSelection(WebCore::Frame*);
+    void updateEditorStateAfterLayoutIfEditabilityChanged() final { } 
+    void canceledComposition() final;
 
     bool shouldShowDeleteInterface(WebCore::HTMLElement*);
     bool shouldDeleteRange(WebCore::Range*);
@@ -82,8 +84,8 @@ public:
     bool smartInsertDeleteEnabled();
     bool isSelectTrailingWhitespaceEnabled();
 
-    void registerUndoStep(PassRefPtr<WebCore::UndoStep>);
-    void registerRedoStep(PassRefPtr<WebCore::UndoStep>);
+    void registerUndoStep(WebCore::UndoStep&) final;
+    void registerRedoStep(WebCore::UndoStep&) final;
     void clearUndoRedoOperations();
 
     bool canCopyCut(WebCore::Frame*, bool defaultValue) const;
@@ -121,7 +123,6 @@ public:
     virtual void willSetInputMethodState();
 
     virtual void setInputMethodState(bool);
-    virtual void requestCheckingOfString(WTF::PassRefPtr<WebCore::TextCheckingRequest>) { } 
     virtual WebCore::TextCheckerClient* textChecker() { return this; } 
 
     virtual void checkSpellingOfString(StringView, int* misspellingLocation, int* misspellingLength) { };
@@ -131,7 +132,7 @@ public:
     virtual void didChangeSelectionAndUpdateLayout() override;
 
     virtual void getGuessesForWord(const String& word, const String& context, const WebCore::VisibleSelection& currentSelection, Vector<String>& guesses) override;
-    virtual void requestCheckingOfString(PassRefPtr<WebCore::TextCheckingRequest>, const WebCore::VisibleSelection& currentSelection) override;
+    virtual void requestCheckingOfString(WebCore::TextCheckingRequest&, const WebCore::VisibleSelection& currentSelection) override;
 
 private:
     WebView* m_webView;

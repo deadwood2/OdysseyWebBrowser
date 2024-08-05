@@ -52,6 +52,7 @@
 #include "RenderLayer.h"
 #include "Settings.h"
 #include "JSDOMBinding.h"
+#include "CommonVM.h"
 #include "ScriptController.h"
 #include "npruntime_impl.h"
 #include "runtime_root.h"
@@ -157,7 +158,7 @@ void PluginView::handleKeyboardEvent(KeyboardEvent* event)
 
 	npEvent.type = 1;
 
-	JSC::JSLock::DropAllLocks dropAllLocks(JSDOMWindowBase::commonVM());
+	JSC::JSLock::DropAllLocks dropAllLocks(commonVM());
 	if (!m_plugin->pluginFuncs()->event || !m_plugin->pluginFuncs()->event(m_instance, (NPEvent) &npEvent))
         event->setDefaultHandled();
 }
@@ -168,7 +169,7 @@ void PluginView::handleMouseEvent(MouseEvent* event)
 
 	npEvent.type = 1;
 
-	JSC::JSLock::DropAllLocks dropAllLocks(JSDOMWindowBase::commonVM());
+	JSC::JSLock::DropAllLocks dropAllLocks(commonVM());
 	if (!m_plugin->pluginFuncs()->event  || !m_plugin->pluginFuncs()->event(m_instance, (NPEvent) &npEvent))
         event->setDefaultHandled();
 }
@@ -204,7 +205,7 @@ void PluginView::setNPWindowRect(const IntRect& rect)
 	//kprintf("PluginView::setNPWindowRect(%d %d %d %d)\n", m_npWindow.x, m_npWindow.y, m_npWindow.width, m_npWindow.height);
 
     PluginView::setCurrentPluginView(this);
-    JSC::JSLock::DropAllLocks dropAllLocks(JSDOMWindowBase::commonVM());
+    JSC::JSLock::DropAllLocks dropAllLocks(commonVM());
     setCallingPlugin(true);
     m_plugin->pluginFuncs()->setwindow(m_instance, &m_npWindow);
     setCallingPlugin(false);

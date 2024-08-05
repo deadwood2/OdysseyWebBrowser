@@ -63,15 +63,15 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${DERIVED_SOURCES_WEBCORE_DIR}"
     "${DERIVED_SOURCES_DIR}/ForwardingHeaders"
     "${CMAKE_BINARY_DIR}"
-    mui
-    mui/Api
-    mui/Api/MorphOS
-    mui/WebCoreSupport
-    mui/Widgets
-    mui/Plugins
-    Storage
-    WebCoreSupport
-    mui/Api/AROS/include/
+    "${WEBKIT_DIR}/mui"
+    "${WEBKIT_DIR}/mui/Api"
+    "${WEBKIT_DIR}/mui/Api/MorphOS"
+    "${WEBKIT_DIR}/mui/WebCoreSupport"
+    "${WEBKIT_DIR}/mui/Widgets"
+    "${WEBKIT_DIR}/mui/Plugins"
+    "${WEBKIT_DIR}/Storage"
+    "${WEBKIT_DIR}/WebCoreSupport"
+    "${WEBKIT_DIR}/mui/Api/AROS/include/"
     "${WEBCORE_DIR}/fileapi"
     "${WEBCORE_DIR}/platform/mui"
     "${WEBCORE_DIR}/platform/bal"
@@ -186,6 +186,7 @@ list(APPEND WebKit_SOURCES
     mui/Api/MorphOS/volumesliderclass.cpp
     mui/Api/MorphOS/WebViewPrivate.cpp
 
+    mui/Api/BackForwardList.cpp
     mui/Api/DefaultPolicyDelegate.cpp
     mui/Api/DOMCoreClasses.cpp
     mui/Api/DOMCSSClasses.cpp

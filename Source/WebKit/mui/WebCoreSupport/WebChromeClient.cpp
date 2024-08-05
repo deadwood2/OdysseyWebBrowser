@@ -146,7 +146,7 @@ void WebChromeClient::focusedFrameChanged(WebCore::Frame*)
 {
 }
 
-Page* WebChromeClient::createWindow(Frame*, const FrameLoadRequest& frameLoadRequest, const WindowFeatures& features, const WebCore::NavigationAction&)
+Page* WebChromeClient::createWindow(Frame&, const FrameLoadRequest& frameLoadRequest, const WindowFeatures& features, const WebCore::NavigationAction&)
 {
 	if (features.dialog)
 	{
@@ -266,7 +266,7 @@ bool WebChromeClient::canRunBeforeUnloadConfirmPanel()
     return false;
 }
 
-bool WebChromeClient::runBeforeUnloadConfirmPanel(const String& message, Frame* frame)
+bool WebChromeClient::runBeforeUnloadConfirmPanel(const String& message, Frame& frame)
 {
     kprintf("runBeforeUnloadConfirmPanel: %s\n", message.utf8().data());
     return false;
@@ -292,14 +292,14 @@ void WebChromeClient::closeWindowSoon()
     m_webView->closeWindowSoon();
 }
 
-void WebChromeClient::runJavaScriptAlert(Frame* frame, const String& message)
+void WebChromeClient::runJavaScriptAlert(Frame& frame, const String& message)
 {
     SharedPtr<JSActionDelegate> jsActionDelegate = m_webView->jsActionDelegate();
     if (jsActionDelegate)
         jsActionDelegate->jsAlert(m_webView->mainFrame(), message.utf8().data());
 }
 
-bool WebChromeClient::runJavaScriptConfirm(Frame *frame, const String& message)
+bool WebChromeClient::runJavaScriptConfirm(Frame& frame, const String& message)
 {
     SharedPtr<JSActionDelegate> jsActionDelegate = m_webView->jsActionDelegate();
     if (jsActionDelegate)
@@ -307,7 +307,7 @@ bool WebChromeClient::runJavaScriptConfirm(Frame *frame, const String& message)
     return false;
 }
 
-bool WebChromeClient::runJavaScriptPrompt(Frame *frame, const String& message, const String& defaultValue, String& result)
+bool WebChromeClient::runJavaScriptPrompt(Frame& frame, const String& message, const String& defaultValue, String& result)
 {
     char* value = 0;
     SharedPtr<JSActionDelegate> jsActionDelegate = m_webView->jsActionDelegate();
@@ -404,7 +404,7 @@ PlatformPageClient WebChromeClient::platformPageClient() const
     return m_webView->viewWindow();
 } 
 
-void WebChromeClient::contentsSizeChanged(Frame*, const IntSize&) const
+void WebChromeClient::contentsSizeChanged(Frame&, const IntSize&) const
 {
 }
 
@@ -432,14 +432,14 @@ void WebChromeClient::setToolTip(const String& toolTip, TextDirection)
     m_webView->setToolTip(toolTip.utf8().data());
 }
 
-void WebChromeClient::print(Frame* frame)
+void WebChromeClient::print(Frame& frame)
 {
-	DoMethod((Object *) getv(app, MA_OWBApp_PrinterWindow), MM_PrinterWindow_PrintDocument, frame);
+	DoMethod((Object *) getv(app, MA_OWBApp_PrinterWindow), MM_PrinterWindow_PrintDocument, &frame);
 }
 
-void WebChromeClient::exceededDatabaseQuota(Frame* frame, const String& databaseIdentifier, DatabaseDetails)
+void WebChromeClient::exceededDatabaseQuota(Frame& frame, const String& databaseIdentifier, DatabaseDetails)
 {
-    WebSecurityOrigin *origin = WebSecurityOrigin::createInstance(frame->document()->securityOrigin());
+    WebSecurityOrigin *origin = WebSecurityOrigin::createInstance(&frame.document()->securityOrigin());
     SharedPtr<JSActionDelegate> jsActionDelegate = m_webView->jsActionDelegate();
     if (jsActionDelegate)
         jsActionDelegate->exceededDatabaseQuota(m_webView->mainFrame(), origin, databaseIdentifier.utf8().data());
@@ -465,15 +465,15 @@ void WebChromeClient::reachedMaxAppCacheSize(int64_t spaceNeeded)
     notImplemented();
 }
 
-void WebChromeClient::reachedApplicationCacheOriginQuota(SecurityOrigin*, int64_t)
+void WebChromeClient::reachedApplicationCacheOriginQuota(SecurityOrigin&, int64_t)
 {
 	notImplemented();
 }
 
 #if ENABLE(INPUT_TYPE_COLOR)
-std::unique_ptr<ColorChooser> WebChromeClient::createColorChooser(ColorChooserClient* chooserClient, const Color&)
+std::unique_ptr<ColorChooser> WebChromeClient::createColorChooser(ColorChooserClient& chooserClient, const Color&)
 {
-    std::unique_ptr<ColorChooserController> controller = std::unique_ptr<ColorChooserController>(new ColorChooserController(this, chooserClient));
+    std::unique_ptr<ColorChooserController> controller = std::unique_ptr<ColorChooserController>(new ColorChooserController(this, &chooserClient));
     controller->openUI();
     return std::move(controller);
 }
@@ -495,10 +495,10 @@ PassRefPtr<DateTimeChooser> WebChromeClient::openDateTimeChooser(DateTimeChooser
 }
 #endif
 
-void WebChromeClient::runOpenPanel(Frame*, PassRefPtr<FileChooser> prpFileChooser)
+void WebChromeClient::runOpenPanel(Frame&, FileChooser& prpFileChooser)
 {
-    RefPtr<FileChooser> chooser = prpFileChooser;
-    bool multiFile = chooser->settings().allowsMultipleFiles;
+    FileChooser& chooser = prpFileChooser;
+    bool multiFile = chooser.settings().allowsMultipleFiles;
 
     if(multiFile)
     {
@@ -521,7 +521,7 @@ void WebChromeClient::runOpenPanel(Frame*, PassRefPtr<FileChooser> prpFileChoose
 				names.append(String(files[i]));
 			}
 
-			chooser->chooseFiles(names);
+			chooser.chooseFiles(names);
 			asl_free(count, files);
 		}
 	}
@@ -536,15 +536,15 @@ void WebChromeClient::runOpenPanel(Frame*, PassRefPtr<FileChooser> prpFileChoose
 		if(file)
 		{
 			//kprintf("file = %s\n", file);
-			chooser->chooseFile(String(file));
+			chooser.chooseFile(String(file));
 			FreeVecTaskPooled(file);
 		}
 	}
 }
 
-void WebChromeClient::loadIconForFiles(const Vector<WTF::String>& filenames, WebCore::FileIconLoader* loader)   
+void WebChromeClient::loadIconForFiles(const Vector<WTF::String>& filenames, WebCore::FileIconLoader& loader)   
 {
-   loader->notifyFinished(Icon::createIconForFiles(filenames));
+   loader.iconLoaded(Icon::createIconForFiles(filenames));
 }
 
 void WebChromeClient::setCursor(const Cursor& cursor)
@@ -682,14 +682,14 @@ bool WebChromeClient::hasOpenedPopup() const
 	return false;
 }
 
-RefPtr<PopupMenu> WebChromeClient::createPopupMenu(PopupMenuClient* client) const
+RefPtr<PopupMenu> WebChromeClient::createPopupMenu(PopupMenuClient& client) const
 {
-    return adoptRef(new PopupMenuMorphOS(client));
+    return adoptRef(new PopupMenuMorphOS(&client));
 }
 
-RefPtr<SearchPopupMenu> WebChromeClient::createSearchPopupMenu(PopupMenuClient* client) const
+RefPtr<SearchPopupMenu> WebChromeClient::createSearchPopupMenu(PopupMenuClient& client) const
 {
-    return adoptRef(new SearchPopupMenuMorphOS(client));
+    return adoptRef(new SearchPopupMenuMorphOS(&client));
 }
 
 void WebChromeClient::AXStartFrameLoad()
@@ -698,4 +698,13 @@ void WebChromeClient::AXStartFrameLoad()
 
 void WebChromeClient::AXFinishFrameLoad()
 {
-}         
+}
+
+void WebChromeClient::attachRootGraphicsLayer(WebCore::Frame&, WebCore::GraphicsLayer*)
+{
+}
+
+void WebChromeClient::attachViewOverlayGraphicsLayer(WebCore::Frame&, WebCore::GraphicsLayer*)
+{
+}
+  

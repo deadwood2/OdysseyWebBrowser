@@ -66,7 +66,7 @@ public:
     virtual void highlight();
 	virtual void hideHighlight();
 
-    virtual bool sendMessageToFrontend(const WTF::String& message);
+    virtual void sendMessageToFrontend(const WTF::String& message);
 
     virtual ConnectionType connectionType() const override { return ConnectionType::Local; }
     virtual void inspectedPageDestroyed() override;

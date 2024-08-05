@@ -55,7 +55,6 @@
 
 
 #include <wtf/text/WTFString.h>
-#include <AnimationController.h> 
 #include <Bookmarklet.h>
 #include <MemoryCache.h>
 #include <DocumentMarkerController.h>
@@ -661,7 +660,7 @@ bool WebFrame::allowsFollowingLink(const char* url) const
     if (!frame)
         return false;
 
-    return frame->document()->securityOrigin()->canDisplay(URL(URL(), url));
+    return frame->document()->securityOrigin().canDisplay(URL(URL(), url));
 }
 
 /*HRESULT WebFrame::elementWithName(BSTR name, IDOMElement* form, IDOMElement** element)
@@ -1330,7 +1329,7 @@ bool WebFrame::stringByEvaluatingJavaScriptInScriptWorld(WebScriptWorld* world, 
 
     // The global object is probably a shell object? - if so, we know how to use this!
     JSC::JSObject* globalObjectObj = toJS(globalObjectRef);
-    if (!strcmp(globalObjectObj->classInfo()->className, "JSDOMWindowShell"))
+    if (globalObjectObj->inherits(*globalObjectObj->vm(), JSDOMWindowShell::info()))
         anyWorldGlobalObject = static_cast<JSDOMWindowShell*>(globalObjectObj)->window();
 
     // Get the frame from the global object we've settled on.

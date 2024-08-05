@@ -64,12 +64,12 @@ WebDragClient::~WebDragClient()
 {
 }
 
-DragDestinationAction WebDragClient::actionMaskForDrag(DragData& dragData)
+DragDestinationAction WebDragClient::actionMaskForDrag(const DragData& dragData)
 {
     return DragDestinationActionAny;
 }
 
-void WebDragClient::willPerformDragDestinationAction(DragDestinationAction action, DragData& dragData)
+void WebDragClient::willPerformDragDestinationAction(DragDestinationAction action, const DragData& dragData)
 {
 	D(kprintf("willPerformDragDestinationAction action %d dragData %p\n", action, dragData));
 }
@@ -87,7 +87,7 @@ void WebDragClient::willPerformDragSourceAction(DragSourceAction action, const I
     // See WebKit/win/WebCoreSupport/WebDragClient.cpp for how to implement it.
 }
 
-void WebDragClient::startDrag(DragImageRef image, const IntPoint& imageOrigin, const IntPoint& dragPoint, DataTransfer& dataTransfer, Frame& frame, bool isLink)
+void WebDragClient::startDrag(DragImage image, const IntPoint& imageOrigin, const IntPoint& dragPoint, const WebCore::FloatPoint&, DataTransfer& dataTransfer, Frame& frame, DragSourceAction dragSourceAction)
 {
     D(kprintf("startDrag image %p islink %d imageOrigin (%d %d) dragPoint (%d %d) clipboard %p\n", image, isLink, imageOrigin.x(), imageOrigin.y(), dragPoint.x(), dragPoint.y(), clipboard));
 
@@ -98,7 +98,7 @@ void WebDragClient::startDrag(DragImageRef image, const IntPoint& imageOrigin, c
 	RefPtr<DataObjectMorphOS> dataObject = dataTransfer.pasteboard().dataObject();
 	D(kprintf("dataObject %p\n", dataObject.get()));
 
-	if(!isLink)
+	if (dragSourceAction != DragSourceActionLink)
 	{
 	    DragData dragData(dataObject.get(), IntPoint(0, 0), IntPoint(0,0), dataTransfer.sourceOperation());
 	    char *data = NULL;

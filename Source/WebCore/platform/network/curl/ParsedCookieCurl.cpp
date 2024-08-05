@@ -169,7 +169,7 @@ String ParsedCookie::toNameValuePair() const
     append(result, equal);
     append(result, m_value);
 
-    return String::adopt(result);
+    return String(result);
 }
 
 void ParsedCookie::appendWebCoreCookie(Vector<Cookie>& cookieVector) const

@@ -40,17 +40,6 @@
 
 namespace WebCore {
 
-Cursor::Cursor(const Cursor & other)
-  : m_platformCursor(other.m_platformCursor)
-{
-	//fprintf(stderr, "%s (%p)\n", __PRETTY_FUNCTION__, c);
-}
-
-Cursor::~Cursor()
-{
-
-}
-
 void Cursor::ensurePlatformCursor() const
 {
 #if !OS(AROS)

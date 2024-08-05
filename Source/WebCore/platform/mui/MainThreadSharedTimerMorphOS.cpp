@@ -377,9 +377,9 @@ void invalidateSharedTimer()
 {
 }
 
-void MainThreadSharedTimer::setFireInterval(double interval)
+void MainThreadSharedTimer::setFireInterval(Seconds interval)
 {
-    setSharedTimerFireInterval(interval);
+    setSharedTimerFireInterval(interval.value());
 }
         
 void MainThreadSharedTimer::stop()

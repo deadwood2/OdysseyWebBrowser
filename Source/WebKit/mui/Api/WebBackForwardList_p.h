@@ -34,9 +34,9 @@
 
 class WebBackForwardListPrivate {
 public:
-	WebBackForwardListPrivate(WebCore::BackForwardList* backForwardList) : m_backForwardList(backForwardList) {}
+	WebBackForwardListPrivate(BackForwardList* backForwardList) : m_backForwardList(backForwardList) {}
 
-	WebCore::BackForwardList* m_backForwardList;
+	BackForwardList* m_backForwardList;
 };
 
 #endif

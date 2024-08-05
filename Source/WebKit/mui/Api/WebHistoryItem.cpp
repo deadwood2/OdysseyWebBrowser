@@ -28,6 +28,7 @@
 #include "config.h"
 #include "WebHistoryItem.h"
 #include "WebHistoryItem_p.h"
+#include "BackForwardList.h"
 
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>

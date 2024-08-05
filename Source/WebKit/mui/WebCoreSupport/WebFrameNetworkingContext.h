@@ -26,7 +26,7 @@
 
 class WebFrameNetworkingContext : public WebCore::FrameNetworkingContext {
 public:
-    static PassRefPtr<WebFrameNetworkingContext> create(WebCore::Frame*, const WTF::String& userAgent);
+    static Ref<WebFrameNetworkingContext> create(WebCore::Frame*, const WTF::String& userAgent);
 
 	WTF::String url() const
 	{

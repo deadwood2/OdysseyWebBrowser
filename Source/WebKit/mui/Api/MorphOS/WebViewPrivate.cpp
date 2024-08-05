@@ -74,7 +74,7 @@
 #include "WebView.h"
 #include "WindowFeatures.h"
 
-#include "JSDOMWindow.h"
+#include "CommonVM.h"
 
 #include "owb-config.h"
 #include "cairo.h"
@@ -355,7 +355,7 @@ void MorphOSWebFrameDelegate::didFinishLoad(WebFrame* webFrame)
 		char *url = (char *) mainFrame->url();
         URL u(ParsedURLString, url);
 		Frame* coreFrame = core(mainFrame);
-		String title = coreFrame->loader().documentLoader()->title().string();
+		String title = coreFrame->loader().documentLoader()->title().string;
 
 		SetAttrs(widget->browser,
 		         MA_OWBBrowser_Loading, FALSE,
@@ -1198,7 +1198,7 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 #if OS(MORPHOS)
 				kprintf("\tmemory allocated by allocator: %d\n", WTF::memory_consumption);
 #endif
-				kprintf("\theap: used %ld - total %ld\n", JSDOMWindow::commonVM().heap.size(), JSDOMWindow::commonVM().heap.capacity());
+				kprintf("\theap: used %ld - total %ld\n", commonVM().heap.size(), commonVM().heap.capacity());
 
 				kprintf("\nPruning caches and running Garbage collector.\n");
 				
@@ -1366,7 +1366,7 @@ bool WebViewPrivate::onMouseButtonUp(BalEventButton event)
 				}
 
 				if (Page* newPage = oldPage->chrome().createWindow(
-				        frame,
+				        *frame,
 				        FrameLoadRequest(frame, ResourceRequest(urlToLoad, frame->loader().outgoingReferrer()), ShouldOpenExternalURLsPolicy::ShouldNotAllow),
 				        features, NavigationAction()))
 		            newPage->chrome().show();

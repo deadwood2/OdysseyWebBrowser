@@ -43,6 +43,11 @@
 
 namespace WebCore {
     class DatabaseDetails;
+    struct SecurityOriginData;
+}
+
+namespace WTF {
+    class String;
 }
 
 class WebDatabaseTracker;
@@ -184,6 +189,9 @@ public:
     virtual void dispatchDidModifyDatabase(WebSecurityOrigin*, const char* databaseName);
 
     WebDatabaseTracker* webDatabaseTracker() { return m_webDatabaseTracker; }
+
+    virtual void dispatchDidModifyOrigin(const WebCore::SecurityOriginData&);
+    virtual void dispatchDidModifyDatabase(const WebCore::SecurityOriginData&, const WTF::String& databaseName);
 
 private:
 

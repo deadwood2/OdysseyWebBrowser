@@ -68,8 +68,7 @@ const char* DOMCSSStyleDeclaration::cssText()
 void DOMCSSStyleDeclaration::setCssText(const char* cssText)
 {
     // FIXME: <rdar://5148045> return DOM exception info
-    WebCore::ExceptionCode ec;
-    m_style->setCssText(cssText, ec);
+    m_style->setCssText(cssText);
 }
 
 const char* DOMCSSStyleDeclaration::getPropertyValue(const char* propertyName)
@@ -95,8 +94,7 @@ const char* DOMCSSStyleDeclaration::getPropertyPriority(const char* /*propertyNa
 void DOMCSSStyleDeclaration::setProperty(const char* propertyName, const char* value, const char* priority)
 {
     // FIXME: <rdar://5148045> return DOM exception info
-    WebCore::ExceptionCode code;
-    m_style->setProperty(propertyName, value, priority, code);
+    m_style->setProperty(propertyName, value, priority);
 }
 
 unsigned DOMCSSStyleDeclaration::length()

@@ -90,7 +90,7 @@ void CookieDatabaseBackingStore::open(const String& cookieJar)
     createTableQuery.append("CREATE TABLE IF NOT EXISTS ");
     createTableQuery.append(m_tableName);
     // This table schema is compliant with Mozilla's.
-    createTableQuery.append(" (" + databaseFields + ", " + primaryKeyFields+");");
+    createTableQuery.append(String(" (" + databaseFields + ", " + primaryKeyFields + ");"));
 
 	m_db.setBusyTimeout(1000);
 
@@ -223,7 +223,8 @@ void CookieDatabaseBackingStore::getCookiesFromDatabase(Vector<ParsedCookie*>& s
     selectQuery.append(m_tableName);
     if (limit > 0) {
         selectQuery.append(" ORDER BY lastAccessed ASC");
-        selectQuery.append(" LIMIT " + String::number(limit));
+        selectQuery.append(" LIMIT ");
+        selectQuery.append(String::number(limit));
     }
     selectQuery.append(";");
 

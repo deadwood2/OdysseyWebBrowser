@@ -183,16 +183,15 @@ const char* DOMHTMLDocument::cookie()
 {
     if (!m_document)
         return "";
-    WebCore::ExceptionCode ex = 0;
-    return strdup(m_document->cookie(ex).utf8().data());
+    return strdup(m_document->cookie().releaseReturnValue().utf8().data());
 }
     
 void DOMHTMLDocument::setCookie(const char* cookie)
 {
     if (!m_document)
         return;
-    WebCore::ExceptionCode ex = 0;
-    m_document->setCookie(cookie, ex);
+
+    m_document->setCookie(cookie);
 }
     
 void DOMHTMLDocument::open()
@@ -295,8 +294,7 @@ void DOMHTMLElement::setInnerText(const char* text)
 {
     ASSERT(m_element && m_element->isHTMLElement());
     HTMLElement* htmlEle = static_cast<HTMLElement*>(m_element);
-    WebCore::ExceptionCode ec = 0;
-    htmlEle->setInnerText(text, ec);
+    htmlEle->setInnerText(text);
 }
 
 // DOMHTMLFormElement ---------------------------------------------------------

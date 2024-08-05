@@ -94,7 +94,7 @@ public:
     virtual void dispatchDidReceiveIcon();
     virtual void dispatchDidStartProvisionalLoad();
     virtual void dispatchDidReceiveTitle(const WebCore::StringWithDirection&);
-    virtual void dispatchDidCommitLoad();
+    void dispatchDidCommitLoad(std::optional<WebCore::HasInsecureContent>) override;
     virtual void dispatchDidFailProvisionalLoad(const WebCore::ResourceError&);
     virtual void dispatchDidFailLoad(const WebCore::ResourceError&);
     virtual void dispatchDidFinishDocumentLoad();
@@ -105,14 +105,14 @@ public:
     virtual void dispatchShow();
 
     virtual void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::FramePolicyFunction);
-    virtual void dispatchDecidePolicyForNewWindowAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, PassRefPtr<WebCore::FormState>, const WTF::String& frameName, WebCore::FramePolicyFunction);
-    virtual void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, PassRefPtr<WebCore::FormState>, WebCore::FramePolicyFunction);
+    void dispatchDecidePolicyForNewWindowAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, const WTF::String& frameName, WebCore::FramePolicyFunction) override;
+    void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, WebCore::FramePolicyFunction) override;
     virtual void cancelPolicyCheck();
 
     virtual void dispatchUnableToImplementPolicy(const WebCore::ResourceError&);
 
-    virtual void dispatchWillSendSubmitEvent(PassRefPtr<WebCore::FormState>);
-    virtual void dispatchWillSubmitForm(PassRefPtr<WebCore::FormState>, WebCore::FramePolicyFunction);
+    void dispatchWillSendSubmitEvent(Ref<WebCore::FormState>&&) override;
+    void dispatchWillSubmitForm(WebCore::FormState&, WebCore::FramePolicyFunction) override;
 
     virtual void revertToProvisionalState(WebCore::DocumentLoader*);
     virtual void setMainDocumentError(WebCore::DocumentLoader*, const WebCore::ResourceError&);
@@ -139,7 +139,7 @@ public:
     virtual void dispatchDidChangeBackForwardIndex() const;
 
     virtual void didDisplayInsecureContent();
-    virtual void didRunInsecureContent(WebCore::SecurityOrigin*, const WebCore::URL&);
+    void didRunInsecureContent(WebCore::SecurityOrigin&, const WebCore::URL&) override;
     virtual void didDetectXSS(const WebCore::URL&, bool dodBlockEntirePage);
 
     virtual WebCore::ResourceError cancelledError(const WebCore::ResourceRequest&);
@@ -186,12 +186,13 @@ public:
     virtual bool canCachePage() const;
     virtual void convertMainResourceLoadToDownload(WebCore::DocumentLoader*, WebCore::SessionID, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&) override;
 
-    virtual RefPtr<WebCore::Frame> createFrame(const WebCore::URL& url, const WTF::String& name, WebCore::HTMLFrameOwnerElement* ownerElement,
-    const WTF::String& referrer, bool allowsScrolling, int marginWidth, int marginHeight);
-    virtual RefPtr<WebCore::Widget> createPlugin(const WebCore::IntSize&, WebCore::HTMLPlugInElement*, const WebCore::URL&, const Vector<WTF::String>&, const Vector<WTF::String>&, const WTF::String&, bool loadManually);
+    RefPtr<WebCore::Frame> createFrame(const WebCore::URL&, const WTF::String& name, WebCore::HTMLFrameOwnerElement&,
+        const WTF::String& referrer, bool allowsScrolling, int marginWidth, int marginHeight) override;
+    RefPtr<WebCore::Widget> createPlugin(const WebCore::IntSize&, WebCore::HTMLPlugInElement&, const WebCore::URL&, const Vector<WTF::String>&, const Vector<WTF::String>&, const WTF::String&, bool loadManually) override;
     virtual void recreatePlugin(WebCore::Widget*) { }
-    virtual void redirectDataToPlugin(WebCore::Widget* pluginWidget);
-    virtual PassRefPtr<WebCore::Widget> createJavaAppletWidget(const WebCore::IntSize&, WebCore::HTMLAppletElement*, const WebCore::URL& baseURL, const Vector<WTF::String>& paramNames, const Vector<WTF::String>& paramValues);
+    void redirectDataToPlugin(WebCore::Widget&) override;
+
+    RefPtr<WebCore::Widget> createJavaAppletWidget(const WebCore::IntSize&, WebCore::HTMLAppletElement&, const WebCore::URL& baseURL, const Vector<WTF::String>& paramNames, const Vector<WTF::String>& paramValues) override;
 
     virtual WebCore::ObjectContentType objectContentType(const WebCore::URL&, const WTF::String& mimeType) override;
     virtual WTF::String overrideMediaType() const;
@@ -202,7 +203,7 @@ public:
 
     virtual void registerForIconNotification(bool listen);
 
-    virtual PassRefPtr<WebCore::FrameNetworkingContext> createNetworkingContext();
+    virtual Ref<WebCore::FrameNetworkingContext> createNetworkingContext();
 
     virtual bool shouldAlwaysUsePluginDocument(const WTF::String& mimeType) const;
 
@@ -216,6 +217,8 @@ public:
     virtual bool allowPlugins(bool enabledPerSettings);
 
     void prefetchDNS(const String&) override;
+
+    void dispatchDidFailToStartPlugin(const WebCore::PluginView*) const;
 
 private:
     PassRefPtr<WebCore::Frame> createFrame(const WebCore::URL&, const WTF::String& name, WebCore::HTMLFrameOwnerElement*, const WTF::String& referrer);

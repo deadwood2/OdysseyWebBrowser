@@ -523,7 +523,9 @@ void WebEditorClient::textDidChangeInTextArea(Element* e)
 static String undoNameForEditAction(EditAction editAction)
 {
     switch (editAction) {
-        case EditActionUnspecified: return "";
+        case EditActionUnspecified: 
+        case EditActionInsertReplacement:
+            return "";
         case EditActionSetColor: return "Set Color";
         case EditActionSetBackgroundColor: return "Set Background Color";
         case EditActionTurnOffKerning: return "Turn Off Kerning";
@@ -548,15 +550,31 @@ static String undoNameForEditAction(EditAction editAction)
         case EditActionUnderline: return "Underline";
         case EditActionOutline: return "Outline";
         case EditActionUnscript: return "Unscript";
-        case EditActionDrag: return "Drag";
+        case EditActionDeleteByDrag: return "Drag";
         case EditActionCut: return "Cut";
         case EditActionPaste: return "Paste";
         case EditActionPasteFont: return "Paste Font";
         case EditActionPasteRuler: return "Paste Ruler";
-        case EditActionTyping: return "Typing";
+        case EditActionTypingDeleteSelection:
+        case EditActionTypingDeleteBackward:
+        case EditActionTypingDeleteForward:
+        case EditActionTypingDeleteWordBackward:
+        case EditActionTypingDeleteWordForward:
+        case EditActionTypingDeleteLineBackward:
+        case EditActionTypingDeleteLineForward:
+        case EditActionTypingInsertText:
+        case EditActionTypingInsertLineBreak:
+        case EditActionTypingInsertParagraph:
+        case EditActionTypingDeletePendingComposition:
+        case EditActionTypingDeleteFinalComposition:
+        case EditActionTypingInsertPendingComposition:
+        case EditActionTypingInsertFinalComposition:
+            return "Typing";
         case EditActionCreateLink: return "Create Link";
         case EditActionUnlink: return "Unlink";
-        case EditActionInsertList: return "Insert List";
+        case EditActionInsertUnorderedList:
+        case EditActionInsertOrderedList:
+            return "Insert List";
         case EditActionFormatBlock: return "Formatting";
         case EditActionIndent: return "Indent";
         case EditActionOutdent: return "Outdent";
@@ -564,24 +582,26 @@ static String undoNameForEditAction(EditAction editAction)
         case EditActionItalics: return "Italics";
         case EditActionDictation: return "Dictation";
         case EditActionDelete: return "Delete";
-        case EditActionInsert: return "Insert";
+        case EditActionInsert:
+        case EditActionInsertFromDrop:
+            return "Insert";
     }
     return String();
 }
 
-void WebEditorClient::registerUndoStep(PassRefPtr<UndoStep> step)
+void WebEditorClient::registerUndoStep(UndoStep& step)
 {
-    String actionName = undoNameForEditAction(step->editingAction());
-    WebEditorUndoCommand* undoCommand = new WebEditorUndoCommand(step, true);
+    String actionName = undoNameForEditAction(step.editingAction());
+    WebEditorUndoCommand* undoCommand = new WebEditorUndoCommand(adoptRef(step), true);
     if (!undoCommand)
         return;
     m_undoTarget->append(actionName, undoCommand);
 }
 
-void WebEditorClient::registerRedoStep(PassRefPtr<UndoStep> step)
+void WebEditorClient::registerRedoStep(UndoStep& step)
 {
-    String actionName = undoNameForEditAction(step->editingAction());
-    WebEditorUndoCommand* undoCommand = new WebEditorUndoCommand(step, false);
+    String actionName = undoNameForEditAction(step.editingAction());
+    WebEditorUndoCommand* undoCommand = new WebEditorUndoCommand(adoptRef(step), false);
     if (!undoCommand)
         return;
     m_undoTarget->append(actionName, undoCommand);
@@ -984,8 +1004,10 @@ void WebEditorClient::getGuessesForWord(const String& word, const String& contex
 {
 }
 
-void WebEditorClient::requestCheckingOfString(PassRefPtr<TextCheckingRequest>, const VisibleSelection& currentSelection)
+void WebEditorClient::requestCheckingOfString(TextCheckingRequest&, const VisibleSelection& currentSelection)
 {
 }
 
-
+void WebEditorClient::canceledComposition()
+{
+}

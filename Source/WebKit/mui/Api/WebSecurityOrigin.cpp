@@ -33,6 +33,7 @@
 #include <wtf/text/WTFString.h>
 #include <SecurityOrigin.h>
 #include <DatabaseManager.h>
+#include <DatabaseTracker.h>
 
 using namespace WebCore;
 
@@ -63,20 +64,20 @@ const char* WebSecurityOrigin::host()
 
 unsigned short WebSecurityOrigin::port()
 {
-    return m_securityOrigin->port();
+    return m_securityOrigin->port().value_or(0);
 }
 
 unsigned long long WebSecurityOrigin::usage()
 {
-    return DatabaseManager::singleton().usageForOrigin(m_securityOrigin);
+    return DatabaseTracker::singleton().usage(SecurityOriginData::fromSecurityOrigin(*m_securityOrigin));
 }
 
 unsigned long long WebSecurityOrigin::quota()
 {
-    return DatabaseManager::singleton().quotaForOrigin(m_securityOrigin);
+    return DatabaseTracker::singleton().quota(SecurityOriginData::fromSecurityOrigin(*m_securityOrigin));
 }
 
 void WebSecurityOrigin::setQuota(unsigned long long quota) 
 {
-    DatabaseManager::singleton().setQuota(m_securityOrigin, quota);
+    DatabaseTracker::singleton().setQuota(SecurityOriginData::fromSecurityOrigin(*m_securityOrigin), quota);
 }

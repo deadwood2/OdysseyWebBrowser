@@ -29,13 +29,14 @@
  */
 
 #include "config.h"
+#include "WebFrameNetworkingContext.h"
 #include "WebDownload.h"
 #include "WebDownloadPrivate.h"
 
 #include <wtf/text/CString.h>
 #include "WebDownloadDelegate.h"
 #include "WebError.h"
-#include "WebFrameNetworkingContext.h"
+
 #include "WebMutableURLRequest.h"
 #include "WebURLAuthenticationChallenge.h"
 #include "WebURLCredential.h"

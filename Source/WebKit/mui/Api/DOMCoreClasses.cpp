@@ -355,8 +355,7 @@ DOMElement* DOMDocument::createElement(const char* tagName)
     if (!m_document)
         return 0;
 
-    ExceptionCode ec;
-    return DOMElement::createInstance(m_document->createElementForBindings(tagName, ec).get());
+    return DOMElement::createInstance(m_document->createElementForBindings(tagName).releaseReturnValue().ptr());
 }
 
 /*DOMDocumentFragment* DOMDocument::createDocumentFragment()
@@ -457,15 +456,14 @@ DOMCSSStyleDeclaration* DOMDocument::getComputedStyle(DOMElement* elt, const cha
     if (!dv)
         return 0;
     
-    return DOMCSSStyleDeclaration::createInstance(dv->getComputedStyle(*element, pseudoElt).get());
+    return DOMCSSStyleDeclaration::createInstance(dv->getComputedStyle(*element, pseudoElt).ptr());
 }
 
 // DOMDocument - DOMDocumentEvent --------------------------------------------
 
 DOMEvent* DOMDocument::createEvent(const char* eventType)
 {
-    WebCore::ExceptionCode ec = 0;
-    return DOMEvent::createInstance(m_document->createEvent(eventType, ec));
+    return DOMEvent::createInstance(m_document->createEvent(eventType).releaseReturnValue());
 }
 
 // DOMDocument - DOMDocument --------------------------------------------------
@@ -537,8 +535,7 @@ void DOMElement::setAttribute(const char* name, const char* value)
     if (!m_element)
         return;
 
-    WebCore::ExceptionCode ec = 0;
-    m_element->setAttribute(name, value, ec);
+    m_element->setAttribute(name, value);
 }
     
 void DOMElement::removeAttribute(const char* /*name*/)

@@ -119,6 +119,7 @@
 #include <IntPoint.h>
 #include <IntRect.h>
 #include <KeyboardEvent.h>
+#include <LibWebRTCProvider.h>
 #include <Logging.h>
 #include <MemoryCache.h>
 #include <MIMETypeRegistry.h>
@@ -388,7 +389,12 @@ WebView::WebView()
     WebFrameLoaderClient * pageWebFrameLoaderClient = new WebFrameLoaderClient();
     WebProgressTrackerClient * pageProgressTrackerClient = new WebProgressTrackerClient();
 
-    PageConfiguration configuration(makeUniqueRef<WebEditorClient>(this), SocketProvider::create());
+     PageConfiguration configuration(
+        makeUniqueRef<WebEditorClient>(this),
+        SocketProvider::create(),
+        makeUniqueRef<LibWebRTCProvider>()
+    );
+    configuration.backForwardClient = BackForwardList::create();
     configuration.chromeClient = new WebChromeClient(this);
     configuration.contextMenuClient = new WebContextMenuClient(this);
     configuration.dragClient = new WebDragClient(this);
@@ -1436,7 +1442,7 @@ WebFrame* WebView::focusedFrame()
 }
 WebBackForwardList* WebView::backForwardList()
 {
-    WebBackForwardListPrivate *p = new WebBackForwardListPrivate(static_cast<WebCore::BackForwardList*>(m_page->backForward().client()));
+    WebBackForwardListPrivate *p = new WebBackForwardListPrivate(static_cast<BackForwardList*>(m_page->backForward().client()));
     return WebBackForwardList::createInstance(p);
 }
 
@@ -2737,7 +2743,7 @@ bool WebView::canHandleRequest(WebMutableURLRequest *request)
 void WebView::clearFocusNode()
 {
     if (m_page)
-        m_page->focusController().setFocusedElement(0, 0);
+        m_page->focusController().setFocusedElement(nullptr, m_page->focusController().focusedOrMainFrame());
 }
 
 void WebView::setInitialFocus(bool forward)
@@ -2780,10 +2786,10 @@ void WebView::loadBackForwardListFromOtherView(WebView* otherView)
     // It turns out the right combination of behavior is done with the back/forward load
     // type.  (See behavior matrix at the top of WebFramePrivate.)  So we copy all the items
     // in the back forward list, and go to the current one.
-	BackForwardList* backForwardList = static_cast<WebCore::BackForwardList*>(m_page->backForward().client());
+	BackForwardList* backForwardList = static_cast<BackForwardList*>(m_page->backForward().client());
     ASSERT(!backForwardList->currentItem()); // destination list should be empty
 
-	BackForwardClient* otherBackForwardList = static_cast<WebCore::BackForwardList*>(otherView->m_page->backForward().client());
+	BackForwardClient* otherBackForwardList = static_cast<BackForwardList*>(otherView->m_page->backForward().client());
     if (!otherView->m_page->backForward().currentItem())
         return ; // empty back forward list, bail
     

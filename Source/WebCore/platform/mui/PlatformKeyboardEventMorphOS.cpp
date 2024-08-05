@@ -381,22 +381,22 @@ PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
 {
 	m_type = PlatformEvent::KeyDown;
 
-	m_modifiers = 0;
+	m_modifiers = OptionSet<PlatformEvent::Modifier>();
 
 	if (event->Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
-		m_modifiers |= ShiftKey;
+		m_modifiers |= PlatformEvent::Modifier::ShiftKey;
 
 	if (event->Qualifier & IEQUALIFIER_CONTROL)
-		m_modifiers |= CtrlKey;
+		m_modifiers |= PlatformEvent::Modifier::CtrlKey;
 
 	if( event->Qualifier & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
-		m_modifiers |= AltKey;
+		m_modifiers |= PlatformEvent::Modifier::AltKey;
 
         if( event->Qualifier & IEQUALIFIER_RALT)
-	        m_modifiers |= CtrlKey;
+	        m_modifiers |= PlatformEvent::Modifier::CtrlKey;
 
 	if (event->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
-		m_modifiers |= MetaKey;
+		m_modifiers |= PlatformEvent::Modifier::MetaKey;
 
 #if OS(MORPHOS)
 	UChar aSrc[2];

@@ -240,4 +240,10 @@ bool MIMETypeRegistry::isSupportedMediaSourceMIMEType(const String&, const Strin
 }
 #endif
 
+String MIMETypeRegistry::getPreferredExtensionForMIMEType(const String &)
+{
+    return String();
+}
+
+
 }

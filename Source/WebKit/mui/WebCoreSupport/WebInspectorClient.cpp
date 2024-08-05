@@ -151,9 +151,9 @@ void WebInspectorClient::updateHighlight()
 {
 }
 
-bool WebInspectorClient::sendMessageToFrontend(const String& message)
+void WebInspectorClient::sendMessageToFrontend(const String& message)
 {
-    return doDispatchMessageOnFrontendPage(m_frontendPage, message);
+    doDispatchMessageOnFrontendPage(m_frontendPage, message);
 
     /*
     if (!m_frontendPage)

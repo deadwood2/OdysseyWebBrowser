@@ -270,8 +270,7 @@ DEFTMETHOD(MediaControlsGroup_Volume)
 
 		if(element)
 		{
-			ExceptionCode e;
-			element->setVolume(((float) getv(data->sl_volume, MUIA_Slider_Level)) / 100.f, e);
+			element->setVolume(((float) getv(data->sl_volume, MUIA_Slider_Level)) / 100.f);
 		}
 #endif
 	}

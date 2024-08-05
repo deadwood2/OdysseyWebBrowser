@@ -601,6 +601,11 @@ String validationMessageTooLongText(int, int)
     return String::fromUTF8("too long");
 }
 
+String validationMessageTooShortText(int, int)
+{
+    return String::fromUTF8("too short");
+}
+
 String validationMessageTypeMismatchText()
 {
     return String::fromUTF8("type mismatch");

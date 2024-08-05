@@ -27,6 +27,8 @@
  */
 
 #include "config.h"
+
+#include <Editor.h>
 #include <wtf/bal/PtrAndFlags.h>
 #include "WebContextMenuClient.h"
 #include "UserGestureIndicator.h"
@@ -37,7 +39,6 @@
 #include "WebView.h"
 
 #include <ContextMenu.h>
-#include <Editor.h>
 #include <Event.h>
 #include <MainFrame.h>
 #include <FrameLoader.h>

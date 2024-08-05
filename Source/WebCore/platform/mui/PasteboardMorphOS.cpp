@@ -469,7 +469,7 @@ static void setWithClipboardContents(Pasteboard *pasteboard, int clipboard)
 	   pasteboard->dataObject()->setText(text);
 }
 
-void Pasteboard::setDragImage(DragImageRef, const IntPoint& )
+void Pasteboard::setDragImage(DragImage, const IntPoint& )
 {
 	D(kprintf("Pasteboard::setDragImage()\n"));
 }
@@ -659,6 +659,30 @@ Vector<String> Pasteboard::readFilenames()
 	setWithClipboardContents(this, m_morphosClipboard);
 
     return m_dataObject->filenames();
+}
+
+void Pasteboard::writeMarkup(const String& markup)
+{
+}
+
+void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&)
+{
+}
+
+void Pasteboard::write(const PasteboardImage&)
+{
+}
+
+void Pasteboard::write(const PasteboardWebContent&)
+{
+}
+
+void Pasteboard::read(PasteboardWebContentReader&)
+{
+}
+
+Pasteboard::Pasteboard()
+{
 }
 
 }

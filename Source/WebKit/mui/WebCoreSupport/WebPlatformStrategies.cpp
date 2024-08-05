@@ -141,4 +141,7 @@ void WebPlatformStrategies::addCookie(const NetworkStorageSession&, const URL&, 
 {
 }
 
+void WebPlatformStrategies::storeDerivedDataToCache(const SHA1::Digest& bodyKey, const String& type, const String& partition, WebCore::SharedBuffer&)
+{
+}
 

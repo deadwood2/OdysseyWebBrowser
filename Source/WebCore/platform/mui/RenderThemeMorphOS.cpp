@@ -160,7 +160,7 @@ static Path roundedRectForBorder(const RenderObject& object, const FloatRect& re
     LengthSize bottomRightRadius = style.borderBottomRightRadius();
 
     Path roundedRect;
-    roundedRect.addRoundedRect(rect, IntSize(bottomRightRadius.width().value(), bottomRightRadius.height().value()));
+    roundedRect.addRoundedRect(rect, IntSize(bottomRightRadius.width.value(), bottomRightRadius.height.value()));
     return roundedRect;
 }
 
@@ -197,11 +197,11 @@ static float determineFullScreenMultiplier(const Element* element)
     return fullScreenMultiplier;
 }
 
-PassRefPtr<RenderTheme> RenderTheme::themeForPage(Page* page)
+Ref<RenderTheme> RenderTheme::themeForPage(Page* page)
 {
     UNUSED_PARAM(page);
     static RenderTheme& theme = RenderThemeBal::create().leakRef();
-    return &theme;
+    return theme;
 }
 
 Ref<RenderTheme> RenderThemeBal::create()
@@ -243,9 +243,9 @@ double RenderThemeBal::caretBlinkInterval() const
 
 void RenderThemeBal::setButtonStyle(RenderStyle& style) const
 {
-    Length vertPadding(int(style.fontSize() / paddingDivisor), Fixed);
-    style.setPaddingTop(vertPadding);
-    style.setPaddingBottom(vertPadding);
+    int vertPadding = (style.fontSize() / paddingDivisor);
+    style.setPaddingTop(Length(vertPadding, Fixed));
+    style.setPaddingBottom(Length(vertPadding, Fixed));
 }
 
 void RenderThemeBal::adjustButtonStyle(StyleResolver&, RenderStyle& style, const Element*) const
@@ -318,9 +318,8 @@ void RenderThemeBal::adjustSearchFieldCancelButtonStyle(StyleResolver&, RenderSt
     // Scale the button size based on the font size
     float fontScale = style.fontSize() / defaultControlFontPixelSize;
     int cancelButtonSize = lroundf(std::min(std::max(minCancelButtonSize, defaultCancelButtonSize * fontScale), maxCancelButtonSize));
-    Length length(cancelButtonSize, Fixed);
-    style.setWidth(length);
-    style.setHeight(length);
+    style.setWidth(Length(cancelButtonSize, Fixed));
+    style.setHeight(Length(cancelButtonSize, Fixed));
 }
 
 bool RenderThemeBal::paintSearchField(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
@@ -372,10 +371,9 @@ void RenderThemeBal::adjustMenuListButtonStyle(StyleResolver&, RenderStyle& styl
 void RenderThemeBal::calculateButtonSize(RenderStyle& style) const
 {
     int size = style.fontSize();
-    Length length(size, Fixed);
     if (style.appearance() == CheckboxPart || style.appearance() == RadioPart) {
-        style.setWidth(length);
-        style.setHeight(length);
+        style.setWidth(Length(size, Fixed));
+        style.setHeight(Length(size, Fixed));
         return;
     }
 
@@ -384,10 +382,10 @@ void RenderThemeBal::calculateButtonSize(RenderStyle& style) const
         return;
 
     if (style.width().isIntrinsicOrAuto())
-        style.setWidth(length);
+        style.setWidth(Length(size, Fixed));
 
     if (style.height().isAuto())
-        style.setHeight(length);
+        style.setHeight(Length(size, Fixed));
 }
 
 bool RenderThemeBal::paintCheckbox(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
@@ -516,9 +514,8 @@ void RenderThemeBal::adjustCheckboxStyle(StyleResolver&, RenderStyle& style, con
 {
     setCheckboxSize(style);
     style.setBoxShadow(nullptr);
-    Length margin(marginSize, Fixed);
-    style.setMarginBottom(margin);
-    style.setMarginRight(margin);
+    style.setMarginBottom(Length(marginSize, Fixed));
+    style.setMarginRight(Length(marginSize, Fixed));
     //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
@@ -526,9 +523,8 @@ void RenderThemeBal::adjustRadioStyle(StyleResolver&, RenderStyle& style, const 
 {
     setRadioSize(style);
     style.setBoxShadow(nullptr);
-    Length margin(marginSize, Fixed);
-    style.setMarginBottom(margin);
-    style.setMarginRight(margin);
+    style.setMarginBottom(Length(marginSize, Fixed));
+    style.setMarginRight(Length(marginSize, Fixed));
     //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
@@ -844,11 +840,6 @@ void RenderThemeBal::adjustMediaControlStyle(StyleResolver&, RenderStyle& style,
         return;
 
     // We use multiples of mediaControlsHeight to make all objects scale evenly
-    Length zero(0, Fixed);
-    Length controlsHeight(mediaControlsHeight * fullScreenMultiplier, Fixed);
-    Length timeWidth(mediaControlsHeight * 3 / 2 * fullScreenMultiplier, Fixed);
-    Length volumeHeight(mediaControlsHeight * 4 * fullScreenMultiplier, Fixed);
-    Length padding(mediaControlsHeight / 8 * fullScreenMultiplier, Fixed);
     float fontSize = mediaControlsHeight / 2 * fullScreenMultiplier;
 
     switch (style.appearance()) {
@@ -856,22 +847,22 @@ void RenderThemeBal::adjustMediaControlStyle(StyleResolver&, RenderStyle& style,
     case MediaEnterFullscreenButtonPart:
     case MediaExitFullscreenButtonPart:
     case MediaMuteButtonPart:
-        style.setWidth(controlsHeight);
-        style.setHeight(controlsHeight);
-        style.setBottom(zero);
+        style.setWidth(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
+        style.setHeight(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
+        style.setBottom(Length(0, Fixed));
         break;
     case MediaCurrentTimePart:
     case MediaTimeRemainingPart:
-        style.setWidth(timeWidth);
-        style.setHeight(controlsHeight);
-        style.setPaddingRight(padding);
+        style.setWidth(Length(mediaControlsHeight * 3 / 2 * fullScreenMultiplier, Fixed));
+        style.setHeight(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
+        style.setPaddingRight(Length(mediaControlsHeight / 8 * fullScreenMultiplier, Fixed));
         style.setFontSize(static_cast<int>(fontSize));
-        style.setBottom(zero);
+        style.setBottom(Length(0, Fixed));
         break;
     case MediaVolumeSliderContainerPart:
-        style.setWidth(controlsHeight);
-        style.setHeight(volumeHeight);
-        style.setBottom(controlsHeight);
+        style.setWidth(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
+        style.setHeight(Length(mediaControlsHeight * 4 * fullScreenMultiplier, Fixed));
+        style.setBottom(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
         break;
     default:
         break;
@@ -886,13 +877,13 @@ void RenderThemeBal::adjustMediaControlStyle(StyleResolver&, RenderStyle& style,
         case MediaEnterFullscreenButtonPart:
         case MediaExitFullscreenButtonPart:
             style.setPosition(AbsolutePosition);
-            style.setBottom(zero);
-            style.setRight(controlsHeight);
+            style.setBottom(Length(0, Fixed));
+            style.setRight(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
             break;
         case MediaMuteButtonPart:
             style.setPosition(AbsolutePosition);
-            style.setBottom(zero);
-            style.setRight(zero);
+            style.setBottom(Length(0, Fixed));
+            style.setRight(Length(0, Fixed));
             break;
         default:
             break;
@@ -909,16 +900,13 @@ void RenderThemeBal::adjustSliderTrackStyle(StyleResolver&, RenderStyle& style, 
     float fullScreenMultiplier = determineFullScreenMultiplier(element);
 
     // We use multiples of mediaControlsHeight to make all objects scale evenly
-    Length controlsHeight(mediaControlsHeight * fullScreenMultiplier, Fixed);
-    Length mediaSliderHeight(19, Fixed);
-    Length volumeHeight(mediaControlsHeight * 4 * fullScreenMultiplier, Fixed);
     switch (style.appearance()) {
     case MediaSliderPart:
-        style.setHeight(mediaSliderHeight);
+        style.setHeight(Length(19, Fixed));
         break;
     case MediaVolumeSliderPart:
-        style.setWidth(controlsHeight);
-        style.setHeight(volumeHeight);
+        style.setWidth(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
+        style.setHeight(Length(mediaControlsHeight * 4 * fullScreenMultiplier, Fixed));
         break;
     case MediaFullScreenVolumeSliderPart:
     default:

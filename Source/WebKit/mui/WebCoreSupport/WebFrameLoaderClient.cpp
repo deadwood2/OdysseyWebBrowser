@@ -139,7 +139,7 @@ void WebFrameLoaderClient::forceLayout()
     if (!frame)
         return;
 
-    if (frame->document() && frame->document()->inPageCache())
+    if (frame->document() && frame->document()->pageCacheState() == Document::InPageCache)
         return;
 
     FrameView* view = frame->view();
@@ -166,7 +166,7 @@ void WebFrameLoaderClient::dispatchDidReceiveAuthenticationChallenge(DocumentLoa
 {
     ASSERT(challenge.authenticationClient());
 
-    Credential storedCredential = CredentialStorage::defaultCredentialStorage().get(challenge.protectionSpace());
+    Credential storedCredential = CredentialStorage::defaultCredentialStorage().get(emptyString(), challenge.protectionSpace());
     if(!storedCredential.isEmpty())
     {
 	challenge.authenticationClient()->receivedCredential(challenge, storedCredential);
@@ -374,10 +374,10 @@ void WebFrameLoaderClient::dispatchDidReceiveTitle(const WebCore::StringWithDire
 {
     SharedPtr<WebFrameLoadDelegate> webFrameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
     if (webFrameLoadDelegate)
-	webFrameLoadDelegate->titleChange(m_webFrame, title.string().utf8().data());
+	webFrameLoadDelegate->titleChange(m_webFrame, title.string.utf8().data());
 }
 
-void WebFrameLoaderClient::dispatchDidCommitLoad()
+void WebFrameLoaderClient::dispatchDidCommitLoad(std::optional<WebCore::HasInsecureContent>)
 {
     SharedPtr<WebFrameLoadDelegate> webFrameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
     if (webFrameLoadDelegate)
@@ -481,7 +481,7 @@ void WebFrameLoaderClient::updateGlobalHistory()
     SharedPtr<WebHistoryDelegate> historyDelegate = webView->historyDelegate();
     if (historyDelegate) {
         String url(loader->urlForHistory().string());
-        String title(loader->title().string());
+        String title(loader->title().string);
         String redirectSource(loader->clientRedirectSourceForHistory());
         WebURLResponse * urlResponse = WebURLResponse::createInstance(loader->response());
         WebMutableURLRequest * urlRequest = WebMutableURLRequest::createInstance(loader->originalRequestCopy());
@@ -496,15 +496,13 @@ void WebFrameLoaderClient::updateGlobalHistory()
     if (!history)
         return;
 
-    history->visitedURL(strdup(loader->urlForHistory().string().utf8().data()), strdup(loader->title().string().utf8().data()), strdup(loader->originalRequestCopy().httpMethod().utf8().data()), loader->urlForHistoryReflectsFailure());
+    history->visitedURL(strdup(loader->urlForHistory().string().utf8().data()), strdup(loader->title().string.utf8().data()), strdup(loader->originalRequestCopy().httpMethod().utf8().data()), loader->urlForHistoryReflectsFailure());
 }
 
 void WebFrameLoaderClient::updateGlobalHistoryRedirectLinks()
 {
     WebView* webView = m_webFrame->webView();
     SharedPtr<WebHistoryDelegate> historyDelegate = webView->historyDelegate();
-
-    WebHistory* history = WebHistory::sharedHistory();
 
     DocumentLoader* loader = core(m_webFrame)->loader().documentLoader();
     ASSERT(loader->unreachableURL().isEmpty());
@@ -514,11 +512,6 @@ void WebFrameLoaderClient::updateGlobalHistoryRedirectLinks()
             String sourceURL(loader->clientRedirectSourceForHistory());
             String destinationURL(loader->clientRedirectDestinationForHistory());
             historyDelegate->didPerformClientRedirectFromURL(webView, sourceURL.utf8().data(), destinationURL.utf8().data(), m_webFrame);
-        } else {
-            if (history) {
-                if (WebHistoryItem* webHistoryItem = history->itemForURLString(strdup(loader->clientRedirectSourceForHistory().utf8().data())))
-                    webHistoryItem->getPrivateItem()->m_historyItem.get()->addRedirectURL(loader->clientRedirectDestinationForHistory());
-            }
         }
     }
 
@@ -527,11 +520,6 @@ void WebFrameLoaderClient::updateGlobalHistoryRedirectLinks()
             String sourceURL(loader->serverRedirectSourceForHistory());
             String destinationURL(loader->serverRedirectDestinationForHistory());
             historyDelegate->didPerformServerRedirectFromURL(webView, sourceURL.utf8().data(), destinationURL.utf8().data(), m_webFrame);
-        } else {
-            if (history) {
-                if (WebHistoryItem *webHistoryItem = history->itemForURLString(strdup(loader->serverRedirectSourceForHistory().utf8().data())))
-                    webHistoryItem->getPrivateItem()->m_historyItem.get()->addRedirectURL(loader->serverRedirectDestinationForHistory());
-            }
         }
     }
 }
@@ -572,11 +560,11 @@ void WebFrameLoaderClient::didDisplayInsecureContent()
     }
 }
 
-void WebFrameLoaderClient::didRunInsecureContent(SecurityOrigin* origin, const URL& insecureURL)
+void WebFrameLoaderClient::didRunInsecureContent(SecurityOrigin& origin, const URL& insecureURL)
 {
     SharedPtr<WebFrameLoadDelegate> webFrameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
     if (webFrameLoadDelegate) {
-        WebSecurityOrigin* webSecurityOrigin = WebSecurityOrigin::createInstance(origin);
+        WebSecurityOrigin* webSecurityOrigin = WebSecurityOrigin::createInstance(&origin);
         webFrameLoadDelegate->didRunInsecureContent(m_webFrame, webSecurityOrigin);
     }
 }
@@ -604,7 +592,7 @@ void WebFrameLoaderClient::setTitle(const WebCore::StringWithDirection& title, c
     WebView* webView = m_webFrame->webView();
     SharedPtr<WebHistoryDelegate> historyDelegate = webView->historyDelegate();
     if (historyDelegate) {
-        historyDelegate->updateHistoryTitle(webView, title.string().utf8().data(), url.string().utf8().data());
+        historyDelegate->updateHistoryTitle(webView, title.string.utf8().data(), url.string().utf8().data());
         return;
     }
     bool privateBrowsingEnabled = false; 
@@ -628,12 +616,12 @@ void WebFrameLoaderClient::setTitle(const WebCore::StringWithDirection& title, c
     if (!item)
         return;
 
-    item->setTitle(title.string().utf8().data());
+    item->setTitle(title.string.utf8().data());
 
     // Not sure calling twice visitedURL is particularly smart, but else, title isn't set in our history
 //#warning "find something better, really, calling visitedURL is not optimal at all"
     DocumentLoader* loader = core(m_webFrame)->loader().documentLoader();
-    history->visitedURL(strdup(loader->urlForHistory().string().utf8().data()), strdup(loader->title().string().utf8().data()), strdup(loader->originalRequestCopy().httpMethod().utf8().data()), loader->urlForHistoryReflectsFailure());
+    history->visitedURL(strdup(loader->urlForHistory().string().utf8().data()), strdup(loader->title().string.utf8().data()), strdup(loader->originalRequestCopy().httpMethod().utf8().data()), loader->urlForHistoryReflectsFailure());
 }
 
 void WebFrameLoaderClient::savePlatformDataToCachedFrame(CachedFrame* cachedFrame)
@@ -677,9 +665,9 @@ bool WebFrameLoaderClient::canCachePage() const
     return true;
 }
 
-RefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String& name, HTMLFrameOwnerElement* ownerElement, const String& referrer, bool /*allowsScrolling*/, int /*marginWidth*/, int /*marginHeight*/)
+RefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String& name, HTMLFrameOwnerElement& ownerElement, const String& referrer, bool /*allowsScrolling*/, int /*marginWidth*/, int /*marginHeight*/)
 {
-    RefPtr<Frame> result = createFrame(url, name, ownerElement, referrer);
+    RefPtr<Frame> result = createFrame(url, name, &ownerElement, referrer);
     if (!result)
         return 0;
 
@@ -699,7 +687,7 @@ PassRefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String
     RefPtr<Frame> childFrame = webFrame->createSubframeWithOwnerElement(m_webFrame->webView(), coreFrame->page(), ownerElement);
 
     childFrame->tree().setName(name);
-    coreFrame->tree().appendChild(childFrame);
+    coreFrame->tree().appendChild(*childFrame.get());
     childFrame->init();
 
     // The creation of the frame may have run arbitrary JavaScript that removed it from the page already.
@@ -719,10 +707,10 @@ PassRefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String
     return childFrame.release();
 }
 
-RefPtr<Widget> WebFrameLoaderClient::createPlugin(const IntSize& pluginSize, HTMLPlugInElement* element, const URL& url, const Vector<String>& paramNames, const Vector<String>& paramValues, const String& mimeType, bool loadManually)
+RefPtr<Widget> WebFrameLoaderClient::createPlugin(const IntSize& pluginSize, HTMLPlugInElement& element, const URL& url, const Vector<String>& paramNames, const Vector<String>& paramValues, const String& mimeType, bool loadManually)
 {
     Frame* frame = core(m_webFrame);
-    RefPtr<PluginView> pluginView = PluginView::create(frame, pluginSize, element, url, paramNames, paramValues, mimeType, loadManually);
+    RefPtr<PluginView> pluginView = PluginView::create(frame, pluginSize, &element, url, paramNames, paramValues, mimeType, loadManually);
 
     if (pluginView->status() == PluginStatusLoadedSuccessfully)
         return pluginView;
@@ -730,11 +718,11 @@ RefPtr<Widget> WebFrameLoaderClient::createPlugin(const IntSize& pluginSize, HTM
     return pluginView;
 }
 
-void WebFrameLoaderClient::redirectDataToPlugin(Widget* pluginWidget)
+void WebFrameLoaderClient::redirectDataToPlugin(Widget& pluginWidget)
 {
     // Ideally, this function shouldn't be necessary, see <rdar://problem/4852889>
 
-    m_pluginView = static_cast<PluginView*>(pluginWidget);
+    m_pluginView = static_cast<PluginView*>(&pluginWidget);
 }
 
 WebHistory* WebFrameLoaderClient::webHistory() const
@@ -775,12 +763,12 @@ void WebFrameLoaderClient::cancelPolicyCheck()
     m_policyFunction = 0;
 }
 
-void WebFrameLoaderClient::dispatchWillSubmitForm(PassRefPtr<FormState> formState, FramePolicyFunction function)
+void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, FramePolicyFunction function)
 {
     Object * browser = m_webFrame->webView()->viewWindow()->browser;
     if(!getv(browser, MA_OWBBrowser_PrivateBrowsing))
     {
-        DoMethod(browser, MM_OWBBrowser_Autofill_SaveTextFields, formState->form());
+        DoMethod(browser, MM_OWBBrowser_Autofill_SaveTextFields, &formState.form());
     }
 
     // XXX: save credentials here as well instead of doing it in the defaultpolicydelegate, since it's a bit clumsy
@@ -788,12 +776,12 @@ void WebFrameLoaderClient::dispatchWillSubmitForm(PassRefPtr<FormState> formStat
     function(PolicyUse);
 }
 
-void WebFrameLoaderClient::dispatchWillSendSubmitEvent(PassRefPtr<WebCore::FormState> formState)
+void WebFrameLoaderClient::dispatchWillSendSubmitEvent(Ref<WebCore::FormState>&& formState)
 {
     Object * browser = m_webFrame->webView()->viewWindow()->browser;
     if(!getv(browser, MA_OWBBrowser_PrivateBrowsing))
     {
-        DoMethod(browser, MM_OWBBrowser_Autofill_SaveTextFields, formState->form());
+        DoMethod(browser, MM_OWBBrowser_Autofill_SaveTextFields, &formState->form());
     }
 }
 
@@ -983,14 +971,14 @@ void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const WebCore::Resour
     }
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const NavigationAction& action, const ResourceRequest& request, PassRefPtr<FormState> formState, const String& frameName, FramePolicyFunction function)
+void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const NavigationAction& action, const ResourceRequest& request,FormState* formState, const String& frameName, FramePolicyFunction function)
 {
     SharedPtr<WebPolicyDelegate> policyDelegate = m_webFrame->webView()->policyDelegate();
     if (!policyDelegate)
         policyDelegate = DefaultPolicyDelegate::sharedInstance();
 
     WebMutableURLRequest* urlRequest =  WebMutableURLRequest::createInstance(request);
-    WebNavigationAction* actionInformation = WebNavigationAction::createInstance(&action, formState ? formState->form() : 0, m_webFrame);
+    WebNavigationAction* actionInformation = WebNavigationAction::createInstance(&action, formState ? &formState->form() : nullptr, m_webFrame);
 
     //policyDelegate->decidePolicyForNewWindowAction(d->webView, actionInformation, urlRequest, frameName, setUpPolicyListener(function));
 
@@ -999,7 +987,7 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const Navigati
     delete actionInformation;
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, PassRefPtr<FormState> formState, FramePolicyFunction function)
+void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, FormState* formState, FramePolicyFunction function)
 {
     SharedPtr<WebPolicyDelegate> policyDelegate = m_webFrame->webView()->policyDelegate();
     if (!policyDelegate) {
@@ -1008,7 +996,7 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const Navigat
     }
 
     WebMutableURLRequest* urlRequest =  WebMutableURLRequest::createInstance(request);
-    WebNavigationAction* actionInformation = WebNavigationAction::createInstance(&action, formState ? formState->form() : 0, m_webFrame);
+    WebNavigationAction* actionInformation = WebNavigationAction::createInstance(&action, formState ? &formState->form() : nullptr, m_webFrame);
 
     policyDelegate->decidePolicyForNavigationAction(m_webFrame->webView(), actionInformation, urlRequest, m_webFrame, setUpPolicyListener(function));
 
@@ -1074,9 +1062,9 @@ void WebFrameLoaderClient::startDownload(const ResourceRequest&, const String& /
     notImplemented();
 }
 
-PassRefPtr<Widget> WebFrameLoaderClient::createJavaAppletWidget(const IntSize& pluginSize, HTMLAppletElement* element, const URL& /*baseURL*/, const Vector<String>& paramNames, const Vector<String>& paramValues)
+RefPtr<Widget> WebFrameLoaderClient::createJavaAppletWidget(const IntSize& pluginSize, HTMLAppletElement& element, const URL& /*baseURL*/, const Vector<String>& paramNames, const Vector<String>& paramValues)
 {
-    RefPtr<PluginView> pluginView = PluginView::create(core(m_webFrame), pluginSize, element, URL(), paramNames, paramValues, "application/x-java-applet", false);
+    RefPtr<PluginView> pluginView = PluginView::create(core(m_webFrame), pluginSize, &element, URL(), paramNames, paramValues, "application/x-java-applet", false);
 
     // Check if the plugin can be loaded successfully
     if (pluginView->plugin() && pluginView->plugin()->load())
@@ -1218,7 +1206,7 @@ bool WebFrameLoaderClient::allowPlugins(bool enabledPerSettings)
 	return enabledPerSettings;
 }
 
-PassRefPtr<FrameNetworkingContext> WebFrameLoaderClient::createNetworkingContext()
+Ref<FrameNetworkingContext> WebFrameLoaderClient::createNetworkingContext()
 {
     return WebFrameNetworkingContext::create(core(m_webFrame), userAgent(core(m_webFrame)->document()->url()));
 }
@@ -1228,3 +1216,6 @@ void WebFrameLoaderClient::prefetchDNS(const String& hostname)
     WebCore::prefetchDNS(hostname);
 }
 
+void WebFrameLoaderClient::dispatchDidFailToStartPlugin(const WebCore::PluginView*) const
+{
+}

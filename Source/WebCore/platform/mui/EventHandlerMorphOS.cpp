@@ -49,7 +49,7 @@ namespace WebCore {
 
 const double EventHandler::TextDragDelay = 0.0;
 
-bool EventHandler::tabsToAllFormControls(KeyboardEvent*) const
+bool EventHandler::tabsToAllFormControls(KeyboardEvent&) const
 {
     // We always allow tabs to all controls
     return true;
@@ -98,10 +98,14 @@ bool EventHandler::widgetDidHandleWheelEvent(const PlatformWheelEvent& event, Wi
     return downcast<FrameView>(widget).frame().eventHandler().handleWheelEvent(event);
 }
 
-PassRefPtr<DataTransfer> EventHandler::createDraggingDataTransfer() const
+#if ENABLE(DRAG_SUPPORT)
+
+Ref<DataTransfer> EventHandler::createDraggingDataTransfer() const
 {
-    return DataTransfer::createForDragAndDrop();
+    return DataTransfer::createForDrag();
 }
+
+#endif
 
 bool EventHandler::passMousePressEventToSubframe(MouseEventWithHitTestResults& mev, Frame* subframe)
 {
@@ -121,9 +125,9 @@ bool EventHandler::passMouseReleaseEventToSubframe(MouseEventWithHitTestResults&
     return true;
 }
 
-unsigned EventHandler::accessKeyModifiers()
+OptionSet<PlatformEvent::Modifier> EventHandler::accessKeyModifiers()
 {
-    return PlatformKeyboardEvent::AltKey;
+    return PlatformEvent::Modifier::AltKey;
 }
  
 }

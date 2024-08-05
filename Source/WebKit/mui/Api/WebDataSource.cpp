@@ -150,7 +150,7 @@ bool WebDataSource::isLoading()
 
 String WebDataSource::pageTitle()
 {
-    return m_loader->title().string();
+    return m_loader->title().string;
 }
 
 String WebDataSource::unreachableURL()

@@ -241,7 +241,7 @@ namespace WebCore {
 
         void invalidateWindowlessPluginRect(const IntRect&);
 
-        virtual void mediaCanStart();
+        void mediaCanStart(Document&) override;
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
         static bool platformGetValueStatic(NPNVariable variable, void* value, NPError* result);

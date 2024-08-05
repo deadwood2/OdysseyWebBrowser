@@ -127,7 +127,7 @@ ParsedCookie* CookieParser::parseOneCookie(const String& cookie, unsigned start,
     if (!res)
         LOG_AND_DELETE("Out of memory");
 
-    res->setProtocol(m_defaultCookieURL.protocol());
+    res->setProtocol(m_defaultCookieURL.protocol().toString());
 
     // Parse [NAME "="] VALUE
     unsigned tokenEnd = start; // Token end contains the position of the '=' or the end of a token
