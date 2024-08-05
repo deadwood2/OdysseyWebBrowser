@@ -82,6 +82,9 @@ list(APPEND WebCore_SOURCES
     platform/mui/SSLKeyGeneratorMorphOS.cpp
     platform/mui/WidgetMorphOS.cpp
 
+    platform/mui/KeyedDecoderGeneric.cpp
+    platform/mui/KeyedEncoderGeneric.cpp
+
     platform/image-decoders/cairo/ImageBackingStoreCairo.cpp
 
     platform/network/curl/CookieDatabaseBackingStoreCurl.cpp
