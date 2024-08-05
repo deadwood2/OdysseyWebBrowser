@@ -680,8 +680,10 @@ static void getInlineRun(RenderObject* start, RenderObject* boundary,
 
 void RenderBlock::deleteLines()
 {
+#if HAVE(ACCESSIBILITY)
     if (AXObjectCache* cache = document().existingAXObjectCache())
         cache->deferRecomputeIsIgnored(element());
+#endif
 }
 
 void RenderBlock::makeChildrenNonInline(RenderObject* insertionPoint)
