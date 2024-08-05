@@ -40,6 +40,7 @@
 #include <proto/exec.h>
 #include <clib/debug_protos.h>
 #define D(x)
+#undef USE_PTHREADS
 #endif
 
 #if OS(DARWIN)
