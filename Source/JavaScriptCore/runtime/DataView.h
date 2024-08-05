@@ -59,8 +59,9 @@ public:
                 return T();
             }
             *status = true;
-        } else
+        } else {
             ASSERT_WITH_SECURITY_IMPLICATION(offset + sizeof(T) <= byteLength());
+        }
         return flipBytesIfLittleEndian(
             *reinterpret_cast<T*>(static_cast<uint8_t*>(m_baseAddress) + offset),
             littleEndian);
@@ -84,8 +85,9 @@ public:
                 return;
             }
             *status = true;
-        } else
+        } else {
             ASSERT_WITH_SECURITY_IMPLICATION(offset + sizeof(T) <= byteLength());
+        }
         *reinterpret_cast<T*>(static_cast<uint8_t*>(m_baseAddress) + offset) =
             flipBytesIfLittleEndian(value, littleEndian);
     }

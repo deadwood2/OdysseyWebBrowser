@@ -44,6 +44,10 @@
 #include "CommonCryptoSPI.h"
 #endif
 
+#if OS(MORPHOS)
+#include <stdio.h>
+#endif  
+
 namespace WTF {
 
 #if !OS(DARWIN) && OS(UNIX)
@@ -88,6 +92,17 @@ void cryptographicallyRandomValuesFromOS(unsigned char* buffer, size_t length)
     if (!CryptGenRandom(hCryptProv, length, buffer))
         CRASH();
     CryptReleaseContext(hCryptProv, 0);
+#elif OS(AROS)
+    UNUSED_PARAM(buffer);
+    UNUSED_PARAM(length);
+    return;
+#elif OS(MORPHOS)
+    FILE *fd = fopen("RANDOM:", "r");
+    if(fd)
+      {
+	fread(buffer, length, 1, fd);
+	fclose(fd);
+      }      
 #else
     #error "This configuration doesn't have a strong source of randomness."
     // WARNING: When adding new sources of OS randomness, the randomness must

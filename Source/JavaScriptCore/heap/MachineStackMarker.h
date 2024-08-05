@@ -47,6 +47,8 @@
 typedef mach_port_t PlatformThread;
 #elif OS(WINDOWS)
 typedef DWORD PlatformThread;
+#elif PLATFORM(MUI)
+typedef void * PlatformThread;
 #elif USE(PTHREADS)
 typedef pthread_t PlatformThread;
 #endif // OS(DARWIN)
@@ -82,6 +84,7 @@ public:
 
         static ThreadData* createForCurrentThread();
 
+#if !OS(AROS)
         struct Registers {
             void* stackPointer() const;
 #if ENABLE(SAMPLING_PROFILER)
@@ -114,17 +117,67 @@ public:
                 pthread_attr_t attribute;
                 mcontext_t machineContext;
             };
+#elif OS(MORPHOS)
+typedef double                  float64_t;
+struct __QVector
+{
+        u_int32_t       A;
+        u_int32_t       B;
+        u_int32_t       C;
+        u_int32_t       D;
+} __attribute__((aligned(16)));
+
+typedef struct __QVector                vector128_t;
+
+struct PPCRegFrame
+{
+        u_int32_t               StackGap[4];            /* StackFrame Gap..so a function working
+                                                         * with the PPCRegFrame as the GPR1 doesn`t                                                                                            * overwrite any contents with a LR store at 4(1)
+                                                         */
+
+        u_int32_t               Version;                /* Version of the structure */
+        u_int32_t               Type;                   /* Type of the regframe */
+        u_int32_t               Flags;                  /* The filled up registers */
+        u_int32_t               State;                  /* State of the Thread(only used for Get) */
+
+        u_int32_t               SRR0;
+        u_int32_t               SRR1;
+        u_int32_t               LR;
+        u_int32_t               CTR;
+
+        u_int32_t               CR;
+        u_int32_t               XER;
+
+        u_int32_t               GPR[32];
+
+        float64_t               FPR[32];
+        float64_t               FPSCR;
+
+        u_int32_t               VSAVE;
+        u_int32_t               AlignPad0;
+        u_int32_t               AlignPad1;
+        u_int32_t               AlignPad2;
+        vector128_t             VSCR;
+        vector128_t             VMX[32];
+        /* no size
+         */
+};
+
+typedef struct PPCRegFrame PlatformRegisters;
 #else
 #error Need a thread register struct for this platform
 #endif
 
             PlatformRegisters regs;
         };
+#endif
 
         bool suspend();
         void resume();
+#if !OS(AROS)
         size_t getRegisters(Registers&);
         void freeRegisters(Registers&);
+#endif
         std::pair<void*, size_t> captureStack(void* stackTop);
 
         PlatformThread platformThread;
@@ -145,7 +198,9 @@ public:
         Thread(ThreadData*);
 
     public:
+#if !OS(AROS)
         using Registers = ThreadData::Registers;
+#endif
 
         static Thread* createForCurrentThread();
 
@@ -154,8 +209,10 @@ public:
 
         bool suspend() { return data->suspend(); }
         void resume() { data->resume(); }
+#if !OS(AROS)
         size_t getRegisters(Registers& regs) { return data->getRegisters(regs); }
         void freeRegisters(Registers& regs) { data->freeRegisters(regs); }
+#endif
         std::pair<void*, size_t> captureStack(void* stackTop) { return data->captureStack(stackTop); }
 
         const PlatformThread& platformThread() { return data->platformThread; }

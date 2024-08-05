@@ -39,7 +39,10 @@
 #include <unistd.h>
 #elif OS(WINDOWS)
 #include <windows.h>
+#elif PLATFORM(MUI)
+#include <proto/exec.h>
 #endif
+
 
 namespace WTF {
 
@@ -84,6 +87,15 @@ static size_t computeRAMSize()
     if (!result)
         return ramSizeGuess;
     return status.ullTotalPhys;
+#elif PLATFORM(MUI)
+    static const char * ramSizeSetting = getenv("OWB_RAM_SIZE");
+    if(ramSizeSetting)
+    {
+	size_t size = (size_t) atoi(ramSizeSetting) * MB;
+	if(size > 8 * MB)
+	    return size;
+    }
+    return AvailMem(MEMF_FAST);
 #endif
 }
 

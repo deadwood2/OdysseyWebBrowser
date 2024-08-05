@@ -28,6 +28,7 @@ set(ALL_PORTS
     JSCOnly
     Mac
     WinCairo
+    MUI
 )
 set(PORT "NOPORT" CACHE STRING "choose which WebKit port to build (one of ${ALL_PORTS})")
 
@@ -99,7 +100,7 @@ if (UNIX)
 elseif (CMAKE_SYSTEM_NAME MATCHES "Windows")
     set(WTF_OS_WINDOWS 1)
 else ()
-    message(FATAL_ERROR "Unknown OS '${CMAKE_SYSTEM_NAME}'")
+#    message(FATAL_ERROR "Unknown OS '${CMAKE_SYSTEM_NAME}'")
 endif ()
 
 # -----------------------------------------------------------------------------

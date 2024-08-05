@@ -438,7 +438,7 @@ static EncodedJSValue JSC_HOST_CALL functionValue(ExecState* exec)
     return JSValue::encode(jsString(exec, stream.toString()));
 }
 
-#if !PLATFORM(WIN)
+#if !PLATFORM(WIN) && !PLATFORM(MUI)
 static EncodedJSValue JSC_HOST_CALL functionGetPID(ExecState*)
 {
     return JSValue::encode(jsNumber(getpid()));
@@ -469,7 +469,7 @@ void JSDollarVMPrototype::finishCreation(VM& vm, JSGlobalObject* globalObject)
     addFunction(vm, globalObject, "printStack", functionPrintStack, 0);
 
     addFunction(vm, globalObject, "value", functionValue, 1);
-#if !PLATFORM(WIN)
+#if !PLATFORM(WIN) && !PLATFORM(MUI)
     addFunction(vm, globalObject, "getpid", functionGetPID, 0);
 #endif
 }

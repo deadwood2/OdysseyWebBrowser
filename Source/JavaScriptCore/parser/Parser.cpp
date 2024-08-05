@@ -381,7 +381,7 @@ template <class TreeBuilder> TreeSourceElements Parser<LexerType>::parseModuleSo
                 recordPauseLocation(context.breakpointLocation(statement));
             break;
 
-        case IMPORT: {
+        case IMPORT_IMPORT: {
             SavePoint savePoint = createSavePoint();
             next();
             bool isImportDeclaration = !match(OPENPAREN);
@@ -3012,7 +3012,7 @@ template <typename LexerType>
 template <class TreeBuilder> TreeStatement Parser<LexerType>::parseImportDeclaration(TreeBuilder& context)
 {
     // http://www.ecma-international.org/ecma-262/6.0/#sec-imports
-    ASSERT(match(IMPORT));
+    ASSERT(match(IMPORT_IMPORT));
     JSTokenLocation importLocation(tokenLocation());
     next();
 
@@ -4368,7 +4368,7 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parseMemberExpres
     }
 
     bool baseIsSuper = match(SUPER);
-    bool baseIsImport = match(IMPORT);
+    bool baseIsImport = match(IMPORT_IMPORT);
     semanticFailIfTrue((baseIsSuper || baseIsImport) && newCount, "Cannot use new with ", getToken());
 
     bool baseIsNewTarget = false;

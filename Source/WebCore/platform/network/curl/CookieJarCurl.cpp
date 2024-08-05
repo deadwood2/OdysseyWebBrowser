@@ -17,6 +17,8 @@
 #include "config.h"
 #include "PlatformCookieJar.h"
 
+#include "CookieManager.h"
+
 #if USE(CURL)
 
 #include "Cookie.h"
@@ -32,6 +34,7 @@
 
 namespace WebCore {
 
+#if !PLATFORM(MUI)
 static void readCurlCookieToken(const char*& cookie, String& token)
 {
     // Read the next token from a cookie with the Netscape cookie format.
@@ -93,8 +96,6 @@ static void addMatchingCurlCookie(const char* cookie, const String& domain, cons
 
     String cookieDomain;
     readCurlCookieToken(cookie, cookieDomain);
-
-    bool subDomain = false;
 
     // HttpOnly cookie entries begin with "#HttpOnly_".
     if (cookieDomain.startsWith("#HttpOnly_")) {
@@ -239,9 +240,13 @@ static String getNetscapeCookieFormat(const URL& url, const String& value)
 
     return cookieStr.toString();
 }
+#endif
 
 void setCookiesFromDOM(const NetworkStorageSession&, const URL&, const URL& url, const String& value)
 {
+#if PLATFORM(MUI)
+    cookieManager().setCookies(url, value);
+#else
     CURL* curl = curl_easy_init();
 
     if (!curl)
@@ -267,10 +272,14 @@ void setCookiesFromDOM(const NetworkStorageSession&, const URL&, const URL& url,
     curl_easy_setopt(curl, CURLOPT_COOKIELIST, strCookie.data());
 
     curl_easy_cleanup(curl);
+#endif
 }
 
 static String cookiesForSession(const NetworkStorageSession&, const URL&, const URL& url, bool httponly)
 {
+#if PLATFORM(MUI)
+    return cookieManager().getCookie(url, httponly ? WithHttpOnlyCookies : NoHttpOnlyCookie);
+#else
     String cookies;
     CURL* curl = curl_easy_init();
 
@@ -303,6 +312,7 @@ static String cookiesForSession(const NetworkStorageSession&, const URL&, const 
     curl_easy_cleanup(curl);
 
     return cookies;
+#endif
 }
 
 String cookiesForDOM(const NetworkStorageSession& session, const URL& firstParty, const URL& url)
@@ -343,7 +353,7 @@ void getHostnamesWithCookies(const NetworkStorageSession&, HashSet<String>& host
     // FIXME: Not yet implemented
 }
 
-void deleteCookiesForHostname(const NetworkStorageSession&, const String& hostname)
+void deleteCookiesForHostname(const NetworkStorageSession&, const String&)
 {
     // FIXME: Not yet implemented
 }

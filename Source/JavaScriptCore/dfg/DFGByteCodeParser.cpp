@@ -1586,15 +1586,17 @@ void ByteCodeParser::inlineCall(Node* callTargetNode, int resultOperand, CallVar
         ASSERT(!inlineStackEntry.m_unlinkedBlocks.isEmpty());
         if (inlineStackEntry.m_callsiteBlockHeadNeedsLinking)
             linkBlock(inlineStackEntry.m_callsiteBlockHead, inlineStackEntry.m_blockLinkingTargets);
-        else
+        else {
             ASSERT(inlineStackEntry.m_callsiteBlockHead->isLinked);
+        }
         
         if (callerLinkability == CallerDoesNormalLinking)
             cancelLinkingForBlock(inlineStackEntry.m_caller, inlineStackEntry.m_callsiteBlockHead);
         
         linkBlocks(inlineStackEntry.m_unlinkedBlocks, inlineStackEntry.m_blockLinkingTargets);
-    } else
+    } else {
         ASSERT(inlineStackEntry.m_unlinkedBlocks.isEmpty());
+    }
     
     BasicBlock* lastBlock = m_graph.lastBlock();
     // If there was a return, but no early returns, then we're done. We allow parsing of

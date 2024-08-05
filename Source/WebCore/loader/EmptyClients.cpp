@@ -439,6 +439,10 @@ class EmptyFrameLoaderClient final : public FrameLoaderClient {
     bool shouldCacheResponse(DocumentLoader*, unsigned long, const ResourceResponse&, const unsigned char*, unsigned long long) final { return true; }
 #endif
 
+#if USE(CURL_OPENSSL)
+    void didReceiveSSLSecurityExtension(const ResourceRequest&, const char*) final { };
+#endif
+
     Ref<FrameNetworkingContext> createNetworkingContext() final;
 
 #if ENABLE(REQUEST_AUTOCOMPLETE)

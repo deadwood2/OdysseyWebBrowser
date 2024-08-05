@@ -62,7 +62,7 @@ class DateTimeChooser : public RefCounted<DateTimeChooser> {
 public:
     virtual ~DateTimeChooser() { }
 
-    virtual void endChooser() = 0;
+    virtual void endChooser() { };
 };
 
 } // namespace WebCore

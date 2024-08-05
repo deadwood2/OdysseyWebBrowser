@@ -35,6 +35,8 @@ elseif ("${PORT}" STREQUAL "JSCOnly")
     if (ENABLE_API_TESTS)
         add_subdirectory(TestWebKitAPI)
     endif ()
+elseif ("${PORT}" STREQUAL "MUI")
+    add_subdirectory(OdysseyWebBrowser)
 endif ()
 
 if (WIN32)

@@ -29,6 +29,7 @@
 #pragma once
 
 #include "LoadTiming.h"
+#include "ResourceHandle.h"
 #include "ResourceHandleClient.h"
 #include "ResourceLoaderOptions.h"
 #include "ResourceLoaderTypes.h"
@@ -149,6 +150,12 @@ public:
 
     const ResourceLoaderOptions& options() const { return m_options; }
 
+#if PLATFORM(MUI)
+    void setHandle(PassRefPtr<ResourceHandle> handle)
+    {
+        m_handle = handle;
+    }
+#endif
 protected:
     ResourceLoader(Frame&, ResourceLoaderOptions);
 
@@ -210,6 +217,9 @@ private:
 #if PLATFORM(WIN) && USE(CFURLCONNECTION)
     // FIXME: Windows should use willCacheResponse - <https://bugs.webkit.org/show_bug.cgi?id=57257>.
     bool shouldCacheResponse(ResourceHandle*, CFCachedURLResponseRef) override;
+#endif
+#if USE(CURL_OPENSSL)
+    virtual void didReceiveSSLSecurityExtension(const ResourceRequest&, const char*);
 #endif
 
     ResourceRequest m_request;

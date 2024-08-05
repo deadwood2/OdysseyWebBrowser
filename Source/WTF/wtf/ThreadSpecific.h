@@ -52,7 +52,22 @@
 #include <windows.h>
 #endif
 
+#if PLATFORM(MUI)
+#include <exec/nodes.h>
+#endif
+
 namespace WTF {
+
+#if PLATFORM(MUI)
+//struct ThreadSpecificNode;
+struct ThreadSpecificNode
+{
+	struct MinNode n;
+	void (*destructor)(void *);
+	void *value;
+};
+typedef struct ThreadSpecificNode *ThreadSpecificKey;
+#endif
 
 #if OS(WINDOWS) && CPU(X86)
 #define THREAD_SPECIFIC_CALL __stdcall
@@ -102,6 +117,8 @@ private:
     pthread_key_t m_key;
 #elif OS(WINDOWS)
     int m_index;
+#elif PLATFORM(MUI)
+	ThreadSpecificKey m_key;
 #endif
 };
 
@@ -234,6 +251,41 @@ inline void ThreadSpecific<T, canBeGCThread>::set(T* ptr)
     FlsSetValue(flsKeys()[m_index], data);
 }
 
+#elif PLATFORM(MUI)
+
+void threadSpecificKeyCreate(ThreadSpecificKey*, void (*)(void *));
+void threadSpecificKeyDelete(ThreadSpecificKey);
+void threadSpecificSet(ThreadSpecificKey, void*);
+void* threadSpecificGet(ThreadSpecificKey);
+
+template<typename T>
+inline ThreadSpecific<T>::ThreadSpecific()
+{
+	threadSpecificKeyCreate(&m_key, 0);
+}
+
+template<typename T>
+inline ThreadSpecific<T>::~ThreadSpecific()
+{
+	threadSpecificKeyDelete(m_key);
+}
+
+template<typename T>
+inline T* ThreadSpecific<T>::get()
+{
+	Data* data = static_cast<Data*>(threadSpecificGet(m_key));
+    return data ? data->value : 0;
+}
+
+template<typename T>
+inline void ThreadSpecific<T>::set(T* ptr)
+{
+    ASSERT(!get());
+    Data* data = new Data(ptr, this);
+	threadSpecificSet(m_key, (void *) data);
+	m_key->destructor = &ThreadSpecific<T>::destroy;
+}
+
 #else
 #error ThreadSpecific is not implemented for this platform.
 #endif
@@ -256,6 +308,8 @@ inline void THREAD_SPECIFIC_CALL ThreadSpecific<T, canBeGCThread>::destroy(void*
     pthread_setspecific(data->owner->m_key, 0);
 #elif OS(WINDOWS)
     FlsSetValue(flsKeys()[data->owner->m_index], 0);
+#elif PLATFORM(MUI)
+	data->owner->m_key = 0;
 #else
 #error ThreadSpecific is not implemented for this platform.
 #endif

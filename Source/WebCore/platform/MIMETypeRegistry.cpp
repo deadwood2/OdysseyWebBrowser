@@ -416,6 +416,15 @@ static void initializeSupportedMediaMIMETypes()
 #endif
 }
 
+#if PLATFORM(MUI)
+void MIMETypeRegistry::reinitializeSupportedMediaMIMETypes()
+{
+    if(supportedMediaMIMETypes)
+        delete supportedMediaMIMETypes;
+    initializeSupportedMediaMIMETypes();
+}
+#endif
+
 static void initializeUnsupportedTextMIMETypes()
 {
     static const char* types[] = {
