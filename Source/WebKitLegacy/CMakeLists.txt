@@ -62,3 +62,8 @@ if (MSVC)
         COMMAND ${PERL_EXECUTABLE} ${WEBKIT_LIBRARIES_DIR}/tools/scripts/version-stamp.pl ${DERIVED_SOURCES_WEBKIT_DIR} $<TARGET_FILE:WebKit>
         VERBATIM)
 endif ()
+
+if (${PORT} STREQUAL "MUI")
+    string(TIMESTAMP BUILD_DATE "%d.%m.%Y")
+    add_definitions(-DOWB_BUILD_DATE="${BUILD_DATE}")
+endif ()

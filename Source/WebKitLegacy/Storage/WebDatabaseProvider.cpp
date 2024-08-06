@@ -23,9 +23,12 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "WebDatabaseProvider.h"
+#include "config.h"
 
-#include <WebCore/SessionID.h>
+#include "WebDatabaseProvider.h"
+#if ENABLE(INDEXED_DATABASE)
+#include <WebCore/IDBFactoryBackendInterface.h>
+#endif
 
 WebDatabaseProvider& WebDatabaseProvider::singleton()
 {
