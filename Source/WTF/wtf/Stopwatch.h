@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include <cmath>
+#include <wtf/MathExtras.h>
 #include <wtf/CurrentTime.h>
 #include <wtf/MonotonicTime.h>
 #include <wtf/RefCounted.h>

@@ -33,6 +33,7 @@
 
 #if USE(CAIRO)
 
+#include "Logging.h"
 #include "AffineTransform.h"
 #include "CairoUtilities.h"
 #include "Font.h"
@@ -96,6 +97,37 @@ static void drawGlyphsShadow(GraphicsContext& graphicsContext, const FloatPoint&
         shadow.endShadowLayer(graphicsContext);
     }
 }
+
+#if PLATFORM(MUI)
+
+bool FontCascade::canReturnFallbackFontsForComplexText()
+{
+    return false;
+}
+
+bool FontCascade::canExpandAroundIdeographsInComplexText()
+{
+    return false;
+}
+
+float FontCascade::floatWidthForComplexText(const TextRun& run, HashSet<const Font*>* fallbackFonts, GlyphOverflow* glyphOverflow) const
+{
+#warning "bullshit"
+    return floatWidthForSimpleText(run, fallbackFonts, glyphOverflow);
+}
+
+int FontCascade::offsetForPositionForComplexText(const TextRun& run, float x, bool includePartialGlyphs) const
+{
+#warning "bullshit"
+    return offsetForPositionForSimpleText(run, x, includePartialGlyphs);
+}
+
+void FontCascade::adjustSelectionRectForComplexText(const TextRun& run, LayoutRect& selectionRect, unsigned from, unsigned to) const
+{
+#warning "bullshit"
+    adjustSelectionRectForSimpleText(run, selectionRect, from, to);
+}
+#endif
 
 void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const GlyphBuffer& glyphBuffer,
     unsigned from, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode)
@@ -291,9 +323,9 @@ DashArray FontCascade::dashesForIntersectionsWithRect(const TextRun& run, const 
     float deltaX;
     if (codePath(run) != FontCascade::Complex)
         deltaX = getGlyphsAndAdvancesForSimpleText(run, 0, run.length(), glyphBuffer);
-    else
-        deltaX = getGlyphsAndAdvancesForComplexText(run, 0, run.length(), glyphBuffer);
-
+//    else
+//        deltaX = getGlyphsAndAdvancesForComplexText(run, 0, run.length(), glyphBuffer);
+//
     if (!glyphBuffer.size())
         return DashArray();
 

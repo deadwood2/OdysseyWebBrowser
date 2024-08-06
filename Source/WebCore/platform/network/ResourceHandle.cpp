@@ -170,6 +170,13 @@ void ResourceHandle::didReceiveResponse(ResourceResponse&& response)
     }
 }
 
+#if PLATFORM(MUI)
+void ResourceHandle::setClientInternal(ResourceHandleClient* client)
+{
+    d->m_client = client;
+}
+#endif
+
 #if !PLATFORM(COCOA) && !USE(CFURLCONNECTION) && !USE(SOUP)
 // ResourceHandle never uses async client calls on these platforms yet.
 void ResourceHandle::continueWillSendRequest(ResourceRequest&&)

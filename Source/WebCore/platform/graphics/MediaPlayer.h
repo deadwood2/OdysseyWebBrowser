@@ -81,6 +81,9 @@ class MediaStreamPrivate;
 class MediaPlayerPrivateInterface;
 class TextTrackRepresentation;
 struct Cookie;
+#if PLATFORM(MUI)
+class FrameView;
+#endif
 
 // Structure that will hold every native
 // types supported by the current media player.
@@ -333,6 +336,11 @@ public:
     bool hasVideo() const;
     bool hasAudio() const;
 
+#if PLATFORM(MUI)
+    void setFrameView(FrameView* frameView) { m_frameView = frameView; }
+    FrameView* frameView() { return m_frameView; }
+#endif
+
     bool inMediaDocument() const;
 
     IntSize size() const { return m_size; }
@@ -504,6 +512,10 @@ public:
     GraphicsDeviceAdapter* graphicsDeviceAdapter() const;
 #endif
 
+#if PLATFORM(MUI)
+    void setOutputPixelFormat(int pixfmt);
+#endif
+
     bool hasSingleSecurityOrigin() const;
 
     bool didPassCORSAccessCheck() const;
@@ -611,6 +623,9 @@ private:
     URL m_url;
     ContentType m_contentType;
     String m_keySystem;
+#if PLATFORM(MUI)
+    FrameView* m_frameView;
+#endif
     IntSize m_size;
     Preload m_preload;
     bool m_visible;

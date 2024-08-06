@@ -105,6 +105,10 @@ if (COMPILER_IS_GCC_OR_CLANG)
         WEBKIT_APPEND_GLOBAL_CXX_FLAGS(-std=c++14
                                        -fno-rtti)
 
+        if ("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "i386")
+            WEBKIT_APPEND_GLOBAL_COMPILER_FLAGS(-march=i686)
+        endif ()
+
         if (WIN32)
             WEBKIT_APPEND_GLOBAL_COMPILER_FLAGS(-mno-ms-bitfields)
             WEBKIT_PREPEND_GLOBAL_COMPILER_FLAGS(-Wno-unknown-pragmas)
@@ -119,8 +123,7 @@ if (COMPILER_IS_GCC_OR_CLANG)
                                          -Wformat-security
                                          -Wmissing-format-attribute
                                          -Wpointer-arith
-                                         -Wundef
-                                         -Wwrite-strings)
+                                         -Wundef)
 
     # Warnings to be disabled
     # FIXME: We should probably not be disabling -Wno-maybe-uninitialized?
@@ -129,6 +132,11 @@ if (COMPILER_IS_GCC_OR_CLANG)
                                          -Wno-maybe-uninitialized
                                          -Wno-noexcept-type
                                          -Wno-parentheses-equality)
+    if (${PORT} STREQUAL "MUI")
+    WEBKIT_PREPEND_GLOBAL_COMPILER_FLAGS(-Wno-unused-parameter
+                                         -Wno-write-strings
+                                         -Werror)
+    endif ()
 endif ()
 
 

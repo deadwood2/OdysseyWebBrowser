@@ -47,6 +47,10 @@ OBJC_CLASS NSArray;
 typedef struct HWND__* HWND;
 #endif
 
+#if PLATFORM(MUI)
+#include "DragData.h"
+#endif
+
 // FIXME: This class uses the DOM and makes calls to Editor.
 // It should be divested of its knowledge of the frame and editor.
 
@@ -162,6 +166,11 @@ public:
     explicit Pasteboard(const DragDataMap&);
 #endif
 
+#if PLATFORM(MUI)
+    explicit Pasteboard(RefPtr<DataObjectMorphOS> dataObject, int clipboard);
+    explicit Pasteboard(int clipboard);
+#endif
+
     WEBCORE_EXPORT static std::unique_ptr<Pasteboard> createForCopyAndPaste();
     static std::unique_ptr<Pasteboard> createPrivate(); // Temporary pasteboard. Can put data on this and then write to another pasteboard with writePasteboard.
 
@@ -196,7 +205,8 @@ public:
     virtual void setDragImage(DragImage, const IntPoint& hotSpot);
 #endif
 
-#if PLATFORM(WIN)
+
+#if PLATFORM(WIN) || PLATFORM(MUI)
     RefPtr<DocumentFragment> documentFragment(Frame&, Range&, bool allowPlainText, bool& chosePlainText); // FIXME: Layering violation.
     void writeImage(Element&, const URL&, const String& title); // FIXME: Layering violation.
     void writeSelection(Range&, bool canSmartCopyOrDelete, Frame&, ShouldSerializeSelectedTextForDataTransfer = DefaultSelectedTextType); // FIXME: Layering violation.
@@ -204,6 +214,13 @@ public:
 
 #if PLATFORM(GTK)
     const SelectionData& selectionData() const;
+    static std::unique_ptr<Pasteboard> createForGlobalSelection();
+#endif
+
+#if PLATFORM(MUI)
+    static std::unique_ptr<Pasteboard> create(RefPtr<DataObjectMorphOS>, int = 0);
+    static std::unique_ptr<Pasteboard> create(int);
+    RefPtr<DataObjectMorphOS> dataObject() const;
     static std::unique_ptr<Pasteboard> createForGlobalSelection();
 #endif
 
@@ -250,6 +267,11 @@ private:
     String m_name;
 #endif
 
+#if PLATFORM(MUI)
+    RefPtr<DataObjectMorphOS> m_dataObject;
+    int m_morphosClipboard;
+#endif
+
 #if PLATFORM(COCOA)
     String m_pasteboardName;
     long m_changeCount;
@@ -272,7 +294,7 @@ extern const char* const WebArchivePboardType;
 extern const char* const WebURLNamePboardType;
 #endif
 
-#if !PLATFORM(GTK)
+#if !(PLATFORM(GTK) || PLATFORM(MUI))
 
 inline Pasteboard::~Pasteboard()
 {

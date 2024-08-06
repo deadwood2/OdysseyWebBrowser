@@ -19,6 +19,8 @@
 #include "config.h"
 #include "CookieJarCurl.h"
 
+#include "CookieManager.h"
+
 #if USE(CURL)
 #include "Cookie.h"
 #include "CurlContext.h"
@@ -33,6 +35,7 @@
 
 namespace WebCore {
 
+#if !PLATFORM(MUI)
 static void readCurlCookieToken(const char*& cookie, String& token)
 {
     // Read the next token from a cookie with the Netscape cookie format.
@@ -238,9 +241,13 @@ static String getNetscapeCookieFormat(const URL& url, const String& value)
 
     return cookieStr.toString();
 }
+#endif
 
 void CookieJarCurlFileSystem::setCookiesFromDOM(const NetworkStorageSession&, const URL& firstParty, const URL& url, const String& value)
 {
+#if PLATFORM(MUI)
+    cookieManager().setCookies(url, value);
+#else
     CurlHandle curlHandle;
 
     curlHandle.enableShareHandle();
@@ -258,10 +265,14 @@ void CookieJarCurlFileSystem::setCookiesFromDOM(const NetworkStorageSession&, co
     CString strCookie(reinterpret_cast<const char*>(cookie.characters8()), cookie.length());
 
     curlHandle.setCookieList(strCookie.data());
+#endif
 }
 
 static String cookiesForSession(const NetworkStorageSession&, const URL&, const URL& url, bool httponly)
 {
+#if PLATFORM(MUI)
+    return cookieManager().getCookie(url, httponly ? WithHttpOnlyCookies : NoHttpOnlyCookie);
+#else
     String cookies;
 
     CurlHandle curlHandle;
@@ -285,6 +296,7 @@ static String cookiesForSession(const NetworkStorageSession&, const URL&, const 
     }
 
     return cookies;
+#endif
 }
 
 String CookieJarCurlFileSystem::cookiesForDOM(const NetworkStorageSession& session, const URL& firstParty, const URL& url)

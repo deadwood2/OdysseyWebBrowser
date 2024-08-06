@@ -72,6 +72,10 @@
 
 #endif
 
+#if OS(AROS)
+#include <semaphore.h>
+#endif
+
 namespace WTF {
 
 static StaticLock globalSuspendLock;
@@ -139,6 +143,7 @@ static UNUSED_FUNCTION NEVER_INLINE void* getApproximateStackPointer()
 #pragma clang diagnostic pop
 #endif // COMPILER(CLANG)
 
+#if !OS(AROS)
 static UNUSED_FUNCTION bool isOnAlternativeSignalStack()
 {
     stack_t stack { };
@@ -146,6 +151,7 @@ static UNUSED_FUNCTION bool isOnAlternativeSignalStack()
     RELEASE_ASSERT(!ret);
     return stack.ss_flags == SS_ONSTACK;
 }
+#endif
 
 void Thread::signalHandlerSuspendResume(int, siginfo_t*, void* ucontext)
 {
@@ -163,7 +169,9 @@ void Thread::signalHandlerSuspendResume(int, siginfo_t*, void* ucontext)
     }
 
     ucontext_t* userContext = static_cast<ucontext_t*>(ucontext);
+#if !OS(AROS)
     ASSERT_WITH_MESSAGE(!isOnAlternativeSignalStack(), "Using an alternative signal stack is not supported. Consider disabling the concurrent GC.");
+#endif
 
 #if HAVE(MACHINE_CONTEXT)
     thread->m_platformRegisters = &registersFromUContext(userContext);
@@ -215,7 +223,7 @@ void Thread::initializePlatformThreading()
 
 void Thread::initializeCurrentThreadEvenIfNonWTFCreated()
 {
-#if !OS(DARWIN)
+#if !OS(DARWIN) && !OS(AROS)
     sigset_t mask;
     sigemptyset(&mask);
     sigaddset(&mask, SigThreadSuspendResume);

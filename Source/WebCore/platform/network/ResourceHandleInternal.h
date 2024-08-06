@@ -48,6 +48,11 @@
 #include "FormDataStreamCurl.h"
 #include "MultipartHandle.h"
 #include <wtf/Lock.h>
+enum { STATUS_CONNECTING, STATUS_WAITING_DATA, STATUS_RECEIVING_DATA, STATUS_SENDING_DATA };
+#endif
+
+#if USE(CURL_OPENSSL)
+#include <openssl/ssl.h>
 #endif
 
 #if USE(SOUP)
@@ -91,6 +96,18 @@ public:
 #if USE(CURL)
         , m_handle { loader }
         , m_formDataStream { loader }
+        , m_shouldIncludeExpectHeader(true)
+        , m_canResume(false)
+        , m_startOffset(0)
+        , m_received(0)
+        , m_totalSize(0)
+        , m_state(0)
+        , m_disableEncoding(false)
+        , m_bodySize(0)
+        , m_bodyDataSent(0)
+#endif
+#if USE(CURL_OPENSSL)
+        , m_sslContext(0)
 #endif
 #if USE(SOUP)
         , m_timeoutSource(RunLoop::main(), loader, &ResourceHandle::timeoutFired)
@@ -183,6 +200,19 @@ public:
 
     void calculateWebTimingInformations();
 
+    bool m_shouldIncludeExpectHeader;
+    bool m_canResume;
+    unsigned long long m_startOffset;
+    String m_path;
+    long long m_received;
+    long long m_totalSize;
+    unsigned long m_state;
+    bool m_disableEncoding;
+    unsigned long m_bodySize;
+    unsigned long m_bodyDataSent;
+#endif
+#if USE(CURL_OPENSSL)
+    SSL_CTX* m_sslContext;
 #endif
 
 #if USE(SOUP)

@@ -64,6 +64,10 @@ typedef GtkWidget* PlatformWidget;
 typedef void* PlatformWidget;
 #endif
 
+#if PLATFORM(MUI)
+#include "BALBase.h"
+#endif
+
 typedef PlatformWidget PlatformPageClient;
 
 namespace WebCore {

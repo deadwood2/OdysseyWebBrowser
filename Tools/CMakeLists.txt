@@ -36,6 +36,8 @@ elseif ("${PORT}" STREQUAL "Win")
     add_subdirectory(TestWebKitAPI)
     add_subdirectory(MiniBrowser/win)
     add_subdirectory(ImageDiff)
+elseif ("${PORT}" STREQUAL "MUI")
+    add_subdirectory(OdysseyWebBrowser)
 endif ()
 
 if (ENABLE_WEBKIT AND ENABLE_API_TESTS)

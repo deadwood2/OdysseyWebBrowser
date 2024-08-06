@@ -36,6 +36,7 @@
 #include FT_TRUETYPE_TABLES_H
 #include <wtf/MathExtras.h>
 #include <wtf/text/WTFString.h>
+#include <mutex>
 
 namespace WebCore {
 
@@ -199,7 +200,6 @@ FontPlatformData& FontPlatformData::operator=(const FontPlatformData& other)
     m_fallbacks = nullptr;
 
     m_scaledFont = other.m_scaledFont;
-    m_harfBuzzFace = other.m_harfBuzzFace;
 
     return *this;
 }
@@ -238,14 +238,6 @@ FontPlatformData FontPlatformData::cloneWithSize(const FontPlatformData& source,
     ASSERT(copy.m_scaledFont.get());
     copy.buildScaledFont(cairo_scaled_font_get_font_face(copy.m_scaledFont.get()));
     return copy;
-}
-
-HarfBuzzFace* FontPlatformData::harfBuzzFace() const
-{
-    if (!m_harfBuzzFace)
-        m_harfBuzzFace = HarfBuzzFace::create(const_cast<FontPlatformData*>(this), hash());
-
-    return m_harfBuzzFace.get();
 }
 
 FcFontSet* FontPlatformData::fallbacks() const
