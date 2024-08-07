@@ -5,7 +5,7 @@ include(target/TargetJavaScriptCore)
 set_property(DIRECTORY . PROPERTY FOLDER "WebKitLegacy")
 
 set(WebKitLegacy_SOURCES
-    Storage/InprocessIDBServer.cpp
+    Storage/InProcessIDBServer.cpp
     Storage/StorageAreaImpl.cpp
     Storage/StorageAreaSync.cpp
     Storage/StorageNamespaceImpl.cpp
@@ -66,4 +66,9 @@ if (MSVC)
     if (USE_CA)
         add_subdirectory(win/WebKitQuartzCoreAdditions)
     endif ()
+endif ()
+
+if (${PORT} STREQUAL "MUI")
+    string(TIMESTAMP BUILD_DATE "%d.%m.%Y")
+    add_definitions(-DOWB_BUILD_DATE="${BUILD_DATE}")
 endif ()
