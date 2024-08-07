@@ -49,7 +49,7 @@
 namespace WebCore {
 
 #if ENABLE(DRAG_SUPPORT)
-const double EventHandler::TextDragDelay = 0.0;
+const Seconds EventHandler::TextDragDelay { 0_s };
 #endif
 
 bool EventHandler::tabsToAllFormControls(KeyboardEvent&) const
@@ -101,15 +101,6 @@ bool EventHandler::widgetDidHandleWheelEvent(const PlatformWheelEvent& event, Wi
     return downcast<FrameView>(widget).frame().eventHandler().handleWheelEvent(event);
 }
 
-#if ENABLE(DRAG_SUPPORT)
-
-Ref<DataTransfer> EventHandler::createDraggingDataTransfer() const
-{
-    return DataTransfer::createForDrag();
-}
-
-#endif
-
 bool EventHandler::passMousePressEventToSubframe(MouseEventWithHitTestResults& mev, Frame* subframe)
 {
     subframe->eventHandler().handleMousePressEvent(mev.event());
@@ -137,14 +128,19 @@ OptionSet<PlatformEvent::Modifier> EventHandler::accessKeyModifiers()
 // horizontal scrollbar while scrolling with the wheel; we need to
 // add the deltas and ticks here so that this behavior is consistent
 // for styled scrollbars.
-bool EventHandler::shouldTurnVerticalTicksIntoHorizontal(const HitTestResult& result, const PlatformWheelEvent& event) const
+bool EventHandler::shouldSwapScrollDirection(const HitTestResult& result, const PlatformWheelEvent& event) const
 {
 #if PLATFORM(GTK)
     FrameView* view = m_frame.view();
     Scrollbar* scrollbar = view ? view->scrollbarAtPoint(event.position()) : nullptr;
     if (!scrollbar)
         scrollbar = result.scrollbar();
-    return scrollbar && scrollbar->orientation() == HorizontalScrollbar;
+    if (!scrollbar)
+        return false;
+
+    // The directions are already swapped when shift key is pressed, but when scrolling
+    // over scrollbars we always want to follow the scrollbar direction.
+    return scrollbar->orientation() == HorizontalScrollbar ? !event.shiftKey() : event.shiftKey();
 #else
     UNUSED_PARAM(result);
     UNUSED_PARAM(event);

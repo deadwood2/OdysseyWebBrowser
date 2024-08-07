@@ -33,6 +33,7 @@ namespace WTR {
 
 struct TestOptions {
     bool useThreadedScrolling { false };
+    bool useAcceleratedDrawing { false };
     bool useRemoteLayerTree { false };
     bool shouldShowWebView { false };
     bool useFlexibleViewport { false };
@@ -43,15 +44,20 @@ struct TestOptions {
     bool needsSiteSpecificQuirks { false };
     bool ignoresViewportScaleLimits { false };
     bool useCharacterSelectionGranularity { false };
+    bool enableAttachmentElement { false };
     bool enableIntersectionObserver { false };
+    bool enableMenuItemElement { false };
     bool enableModernMediaControls { true };
     bool enablePointerLock { false };
-    bool enableCredentialManagement { false };
+    bool enableWebAuthentication { true };
     bool enableIsSecureContextAttribute { true };
     bool enableInspectorAdditions { false };
+    bool shouldShowTouches { false };
+    bool dumpJSConsoleLogInStdErr { false };
 
     float deviceScaleFactor { 1 };
     Vector<String> overrideLanguages;
+    std::string applicationManifest;
     
     TestOptions(const std::string& pathOrURL);
 
@@ -62,16 +68,21 @@ struct TestOptions {
     bool hasSameInitializationOptions(const TestOptions& options) const
     {
         if (useThreadedScrolling != options.useThreadedScrolling
+            || useAcceleratedDrawing != options.useAcceleratedDrawing
             || overrideLanguages != options.overrideLanguages
             || useMockScrollbars != options.useMockScrollbars
             || needsSiteSpecificQuirks != options.needsSiteSpecificQuirks
             || useCharacterSelectionGranularity != options.useCharacterSelectionGranularity
+            || enableAttachmentElement != options.enableAttachmentElement
             || enableIntersectionObserver != options.enableIntersectionObserver
+            || enableMenuItemElement != options.enableMenuItemElement
             || enableModernMediaControls != options.enableModernMediaControls
             || enablePointerLock != options.enablePointerLock
-            || enableCredentialManagement != options.enableCredentialManagement
+            || enableWebAuthentication != options.enableWebAuthentication
             || enableIsSecureContextAttribute != options.enableIsSecureContextAttribute
-            || enableInspectorAdditions != options.enableInspectorAdditions)
+            || enableInspectorAdditions != options.enableInspectorAdditions
+            || dumpJSConsoleLogInStdErr != options.dumpJSConsoleLogInStdErr
+            || applicationManifest != options.applicationManifest)
             return false;
 
         return true;

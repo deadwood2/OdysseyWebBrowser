@@ -32,6 +32,9 @@
 #include "PluginDebug.h"
 #include "PluginPackage.h"
 #include "WebFrameLoaderClient.h"
+#include <JavaScriptCore/JSCJSValue.h>
+#include <JavaScriptCore/JSLock.h>
+#include <JavaScriptCore/ScriptValue.h>
 #include <WebCore/BridgeJSC.h>
 #include <WebCore/Chrome.h>
 #include <WebCore/CommonVM.h>
@@ -72,9 +75,6 @@
 #include <WebCore/c_instance.h>
 #include <WebCore/npruntime_impl.h>
 #include <WebCore/runtime_root.h>
-#include <bindings/ScriptValue.h>
-#include <runtime/JSCJSValue.h>
-#include <runtime/JSLock.h>
 #include <wtf/ASCIICType.h>
 #include <wtf/text/WTFString.h>
 
@@ -89,8 +89,6 @@ using JSC::JSObject;
 using JSC::JSValue;
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
-
-using std::min;
 
 using namespace WTF;
 
@@ -1078,7 +1076,7 @@ NPError PluginView::handlePost(const char* url, const char* target, uint32_t len
                 String contentLength = headerFields.get(HTTPHeaderName::ContentLength);
 
                 if (!contentLength.isNull())
-                    dataLength = min(contentLength.toInt(), (int)dataLength);
+                    dataLength = std::min(contentLength.toInt(), (int)dataLength);
                 headerFields.remove(HTTPHeaderName::ContentLength);
 
                 postData += location;

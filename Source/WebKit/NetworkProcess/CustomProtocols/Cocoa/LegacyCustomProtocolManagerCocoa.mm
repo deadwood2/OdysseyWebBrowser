@@ -30,12 +30,12 @@
 #import "LegacyCustomProtocolManagerMessages.h"
 #import "NetworkProcess.h"
 #import <Foundation/NSURLSession.h>
-#import <WebCore/NSURLConnectionSPI.h>
 #import <WebCore/ResourceError.h>
 #import <WebCore/ResourceRequest.h>
 #import <WebCore/ResourceResponse.h>
 #import <WebCore/TextEncoding.h>
 #import <WebCore/URL.h>
+#import <pal/spi/cocoa/NSURLConnectionSPI.h>
 
 using namespace WebKit;
 
@@ -107,17 +107,12 @@ namespace WebKit {
 
 void LegacyCustomProtocolManager::registerProtocolClass()
 {
-#if !USE(NETWORK_SESSION)
-    [NSURLProtocol registerClass:[WKCustomProtocol class]];
-#endif
 }
 
-#if USE(NETWORK_SESSION)
 void LegacyCustomProtocolManager::registerProtocolClass(NSURLSessionConfiguration *configuration)
 {
     configuration.protocolClasses = @[[WKCustomProtocol class]];
 }
-#endif
 
 void LegacyCustomProtocolManager::registerScheme(const String& scheme)
 {

@@ -27,13 +27,13 @@
 #include "config.h"
 #include "WebPageProxy.h"
 
-#include "NotImplemented.h"
 #include "PageClientImpl.h"
 #include "WebKitWebViewBasePrivate.h"
 #include "WebPageMessages.h"
 #include "WebPasteboardProxy.h"
 #include "WebProcessProxy.h"
 #include "WebsiteDataStore.h"
+#include <WebCore/NotImplemented.h>
 #include <WebCore/PlatformDisplay.h>
 #include <WebCore/UserAgent.h>
 #include <gtk/gtkx.h>
@@ -75,8 +75,9 @@ void WebPageProxy::loadRecentSearches(const String&, Vector<WebCore::RecentSearc
     notImplemented();
 }
 
-void WebsiteDataStore::platformRemoveRecentSearches(std::chrono::system_clock::time_point oldestTimeToRemove)
+void WebsiteDataStore::platformRemoveRecentSearches(WallTime oldestTimeToRemove)
 {
+    UNUSED_PARAM(oldestTimeToRemove);
     notImplemented();
 }
 

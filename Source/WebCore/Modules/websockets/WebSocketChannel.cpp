@@ -49,7 +49,7 @@
 #include "UserContentProvider.h"
 #include "WebSocketChannelClient.h"
 #include "WebSocketHandshake.h"
-#include <runtime/ArrayBuffer.h>
+#include <JavaScriptCore/ArrayBuffer.h>
 #include <wtf/FastMalloc.h>
 #include <wtf/HashMap.h>
 #include <wtf/text/CString.h>
@@ -120,8 +120,8 @@ void WebSocketChannel::connect(const URL& requestedURL, const String& protocol)
     if (Frame* frame = m_document->frame()) {
         ref();
         Page* page = frame->page();
-        SessionID sessionID = page ? page->sessionID() : SessionID::defaultSessionID();
-        String partition = m_document->topDocument().securityOrigin().domainForCachePartition();
+        PAL::SessionID sessionID = page ? page->sessionID() : PAL::SessionID::defaultSessionID();
+        String partition = m_document->domainForCachePartition();
         m_handle = m_socketProvider->createSocketStreamHandle(m_handshake->url(), *this, sessionID, partition);
     }
 }
@@ -232,7 +232,8 @@ void WebSocketChannel::fail(const String& reason)
     m_deflateFramer.didFail();
     m_hasContinuousFrame = false;
     m_continuousFrameData.clear();
-    m_client->didReceiveMessageError();
+    if (m_client)
+        m_client->didReceiveMessageError();
 
     if (m_handle && !m_closed)
         m_handle->disconnect(); // Will call didCloseSocketStream() but maybe not synchronously.
@@ -442,13 +443,11 @@ bool WebSocketChannel::processBuffer()
         if (m_handshake->mode() == WebSocketHandshake::Connected) {
             if (m_identifier)
                 InspectorInstrumentation::didReceiveWebSocketHandshakeResponse(m_document, m_identifier, m_handshake->serverHandshakeResponse());
-            if (!m_handshake->serverSetCookie().isEmpty()) {
-                if (m_document && cookiesEnabled(*m_document)) {
-                    // Exception (for sandboxed documents) ignored.
-                    m_document->setCookie(m_handshake->serverSetCookie());
-                }
+            String serverSetCookie = m_handshake->serverSetCookie();
+            if (!serverSetCookie.isEmpty()) {
+                if (m_document && cookiesEnabled(*m_document))
+                    setCookies(*m_document, m_handshake->httpURLForAuthenticationAndCookies(), serverSetCookie);
             }
-            // FIXME: handle set-cookie2.
             LOG(Network, "WebSocketChannel %p Connected", this);
             skipBuffer(headerLength);
             m_client->didConnect();
@@ -829,7 +828,7 @@ void WebSocketChannel::sendFrame(WebSocketFrame::OpCode opCode, const char* data
     m_handle->sendData(frameData.data(), frameData.size(), WTFMove(completionHandler));
 }
 
-ResourceRequest WebSocketChannel::clientHandshakeRequest() const
+ResourceRequest WebSocketChannel::clientHandshakeRequest()
 {
     return m_handshake->clientHandshakeRequest();
 }

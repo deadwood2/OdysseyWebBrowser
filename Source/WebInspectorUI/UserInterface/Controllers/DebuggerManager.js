@@ -285,6 +285,8 @@ WI.DebuggerManager = class DebuggerManager extends WI.Object
             for (let script of targetData.scripts) {
                 if (script.resource)
                     continue;
+                if (isWebInspectorConsoleEvaluationScript(script.sourceURL))
+                    continue;
                 if (!WI.isDebugUIEnabled() && isWebKitInternalScript(script.sourceURL))
                     continue;
                 knownScripts.push(script);
@@ -708,11 +710,18 @@ WI.DebuggerManager = class DebuggerManager extends WI.Object
 
         targetData.addScript(script);
 
-        if (target !== WI.mainTarget && !target.mainResource) {
-            // FIXME: <https://webkit.org/b/164427> Web Inspector: WorkerTarget's mainResource should be a Resource not a Script
-            // We make the main resource of a WorkerTarget the Script instead of the Resource
-            // because the frontend may not be informed of the Resource. We should guarantee
-            // the frontend is informed of the Resource.
+        // FIXME: <https://webkit.org/b/164427> Web Inspector: WorkerTarget's mainResource should be a Resource not a Script
+        // We make the main resource of a WorkerTarget the Script instead of the Resource
+        // because the frontend may not be informed of the Resource. We should guarantee
+        // the frontend is informed of the Resource.
+        if (WI.sharedApp.debuggableType === WI.DebuggableType.ServiceWorker) {
+            // A ServiceWorker starts with a LocalScript for the main resource but we can replace it during initialization.
+            if (target.mainResource instanceof WI.LocalScript) {
+                if (script.url === target.name)
+                    target.mainResource = script;
+            }
+        } else if (!target.mainResource && target !== WI.mainTarget) {
+            // A Worker starts without a main resource and we insert one.
             if (script.url === target.name) {
                 target.mainResource = script;
                 if (script.resource)
@@ -732,7 +741,7 @@ WI.DebuggerManager = class DebuggerManager extends WI.Object
 
         this.dispatchEventToListeners(WI.DebuggerManager.Event.ScriptAdded, {script});
 
-        if (target !== WI.mainTarget && !script.isMainResource() && !script.resource)
+        if ((target !== WI.mainTarget || WI.sharedApp.debuggableType === WI.DebuggableType.ServiceWorker) && !script.isMainResource() && !script.resource)
             target.addScript(script);
     }
 
@@ -872,9 +881,8 @@ WI.DebuggerManager = class DebuggerManager extends WI.Object
             action.type = WI.BreakpointAction.Type.Evaluate;
         }
 
-        const onlyFirst = true;
         for (let invalidAction of invalidActions)
-            options.actions.remove(invalidAction, onlyFirst);
+            options.actions.remove(invalidAction);
 
         return options;
     }
@@ -920,18 +928,12 @@ WI.DebuggerManager = class DebuggerManager extends WI.Object
 
         // Convert BreakpointAction types to DebuggerAgent protocol types.
         // NOTE: Breakpoint.options returns new objects each time, so it is safe to modify.
-        // COMPATIBILITY (iOS 7): Debugger.BreakpointActionType did not exist yet.
-        let options;
-        if (DebuggerAgent.BreakpointActionType) {
-            options = this._debuggerBreakpointOptions(breakpoint);
-            if (options.actions.length) {
-                for (let action of options.actions)
-                    action.type = this._debuggerBreakpointActionType(action.type);
-            }
+        let options = this._debuggerBreakpointOptions(breakpoint);
+        if (options.actions.length) {
+            for (let action of options.actions)
+                action.type = this._debuggerBreakpointActionType(action.type);
         }
 
-        // COMPATIBILITY (iOS 7): iOS 7 and earlier, DebuggerAgent.setBreakpoint* took a "condition" string argument.
-        // This has been replaced with an "options" BreakpointOptions object.
         if (breakpoint.contentIdentifier) {
             let targets = specificTarget ? [specificTarget] : WI.targets;
             for (let target of targets) {
@@ -940,7 +942,6 @@ WI.DebuggerManager = class DebuggerManager extends WI.Object
                     url: breakpoint.contentIdentifier,
                     urlRegex: undefined,
                     columnNumber: breakpoint.sourceCodeLocation.columnNumber,
-                    condition: breakpoint.condition,
                     options
                 }, didSetBreakpoint.bind(this, target), target.DebuggerAgent);
             }
@@ -948,7 +949,6 @@ WI.DebuggerManager = class DebuggerManager extends WI.Object
             let target = breakpoint.target;
             target.DebuggerAgent.setBreakpoint.invoke({
                 location: {scriptId: breakpoint.scriptIdentifier, lineNumber: breakpoint.sourceCodeLocation.lineNumber, columnNumber: breakpoint.sourceCodeLocation.columnNumber},
-                condition: breakpoint.condition,
                 options
             }, didSetBreakpoint.bind(this, target), target.DebuggerAgent);
         }

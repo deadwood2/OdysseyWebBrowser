@@ -28,14 +28,14 @@
 
 #if USE(IOSURFACE)
 
-#import "CoreGraphicsSPI.h"
 #import "GraphicsContextCG.h"
 #import "IOSurfacePool.h"
-#import "IOSurfaceSPI.h"
 #import "ImageBuffer.h"
 #import "ImageBufferDataCG.h"
 #import "Logging.h"
 #import "MachSendRight.h"
+#import <pal/spi/cg/CoreGraphicsSPI.h>
+#import <pal/spi/cocoa/IOSurfaceSPI.h>
 #import <wtf/Assertions.h>
 #import <wtf/MathExtras.h>
 #import <wtf/text/TextStream.h>
@@ -372,6 +372,11 @@ IOSurfaceID IOSurface::surfaceID() const
 #endif
 }
 
+size_t IOSurface::bytesPerRow() const
+{
+    return IOSurfaceGetBytesPerRow(m_surface.get());
+}
+
 bool IOSurface::isInUse() const
 {
     return IOSurfaceIsInUse(m_surface.get());
@@ -431,6 +436,12 @@ void IOSurface::convertToFormat(std::unique_ptr<IOSurface>&& inSurface, Format f
     ASSERT_UNUSED(ret, ret == kIOReturnSuccess);
 }
 #endif // PLATFORM(IOS)
+
+void IOSurface::migrateColorSpaceToProperties()
+{
+    auto colorSpaceProperties = adoptCF(CGColorSpaceCopyPropertyList(m_colorSpace.get()));
+    IOSurfaceSetValue(m_surface.get(), kIOSurfaceColorSpace, colorSpaceProperties.get());
+}
 
 static TextStream& operator<<(TextStream& ts, IOSurface::Format format)
 {

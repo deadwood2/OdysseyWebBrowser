@@ -1,3 +1,552 @@
+2018-01-27  Dan Bernstein  <mitz@apple.com>
+
+        HaveInternalSDK includes should be "#include?"
+        https://bugs.webkit.org/show_bug.cgi?id=179670
+
+        * Configurations/Base.xcconfig:
+
+2018-01-26  Youenn Fablet  <youenn@apple.com>
+
+        Disable VCP for MacOS
+        https://bugs.webkit.org/show_bug.cgi?id=182183
+        <rdar://problem/36919791>
+
+        Reviewed by Eric Carlson.
+
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/VideoProcessingSoftLink.h:
+
+2018-01-19  Joseph Pecoraro  <pecoraro@apple.com>
+
+        Follow-up build fix for r227206.
+
+        Unreviewed.
+
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/VideoProcessingSoftLink.h:
+        Avoid duplicate and different definitions of ALWAYS_INLINE.
+
+2018-01-19  Youenn Fablet  <youenn@apple.com>
+
+        Softlink VideoProcessing in WebKit
+        https://bugs.webkit.org/show_bug.cgi?id=181853
+        <rdar://problem/36590005>
+
+        Reviewed by Eric Carlson.
+
+        * Configurations/libwebrtc.xcconfig:
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/VideoProcessingSoftLink.cpp: Added.
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/VideoProcessingSoftLink.h: Added.
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/encoder_vcp.h:
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/encoder_vcp.mm:
+        (internal::SetVTSessionProperty):
+        (webrtc::H264VideoToolboxEncoderVCP::Encode):
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/videocodecfactory.mm:
+        (webrtc::VideoToolboxVideoEncoderFactory::VideoToolboxVideoEncoderFactory):
+        * libwebrtc.xcodeproj/project.pbxproj:
+
+2018-01-18  Dan Bernstein  <mitz@apple.com>
+
+        [Xcode] Streamline and future-proof target-macOS-version-dependent build setting definitions
+        https://bugs.webkit.org/show_bug.cgi?id=181803
+
+        Reviewed by Tim Horton.
+
+        * Configurations/Base.xcconfig: Updated.
+        * Configurations/DebugRelease.xcconfig: Ditto.
+        * Configurations/macOSTargetConditionals.xcconfig: Added. Defines helper build settings
+          useful for defining settings that depend on the target macOS version.
+        * Configurations/opus.xcconfig: Adopted macOSTargetConditionals helper.
+
+2018-01-08  David Kilzer  <ddkilzer@apple.com>
+
+        libwebrtc: Fix 'ld: warning: cannot export hidden symbol' messages
+        <https://webkit.org/b/181378>
+
+        Reviewed by Youenn Fablet.
+
+        * Configurations/libwebrtc.iOS.exp:
+        * Configurations/libwebrtc.iOSsim.exp:
+        * Configurations/libwebrtc.mac.exp:
+        - Remove 117 symbols that are not currently exported.  These
+          warnings only appear in Release and Production builds.
+
+2018-01-05  Youenn Fablet  <youenn@apple.com>
+
+        Close WebRTC sockets when marked as defunct
+        https://bugs.webkit.org/show_bug.cgi?id=177324
+        rdar://problem/35244931
+
+        Reviewed by Eric Carlson.
+
+        In case selected sockets return an error when trying to accept an incoming socket,
+        check whether the socket is defunct or not.
+        If so, close it properly.
+
+        * Source/webrtc/base/asynctcpsocket.cc:
+        * Source/webrtc/base/physicalsocketserver.cc:
+        * Source/webrtc/base/socket.h:
+
+2017-12-15  Dan Bernstein  <mitz@apple.com>
+
+        libwebrtc installs an extra copy of encoder_vcp.h under /usr/local/include
+        https://bugs.webkit.org/show_bug.cgi?id=180858
+
+        Reviewed by Anders Carlsson.
+
+        * libwebrtc.xcodeproj/project.pbxproj: Demoted the header from Private to Project. A script build phase
+          copies it to the correct location under /usr/local/include/webrtc.
+
+2017-12-14  David Kilzer  <ddkilzer@apple.com>
+
+        Enable -Wstrict-prototypes for WebKit
+        <https://webkit.org/b/180757>
+        <rdar://problem/36024132>
+
+        Rubber-stamped by Joseph Pecoraro.
+
+        * Configurations/Base.xcconfig:
+        (CLANG_WARN_STRICT_PROTOTYPES): Add. Set to YES.
+        * Source/third_party/usrsctp/usrsctplib/usrsctplib/user_socket.c:
+        (wakeup_one): Modernize function argument declarations.
+        (getsockaddr): Ditto.
+        * Source/webrtc/common_audio/signal_processing/include/signal_processing_library.h:
+        (WebRtcSpl_Init): Add 'void' to C function declaration.
+        * Source/webrtc/common_audio/vad/include/webrtc_vad.h:
+        (WebRtcVad_Create): Ditto.
+        * Source/webrtc/modules/audio_coding/codecs/isac/fix/source/codec.h:
+        (WebRtcIsacfix_InitTransform): Ditto.
+        * Source/webrtc/modules/audio_processing/agc/legacy/gain_control.h:
+        (WebRtcAgc_Create): Ditto.
+        * Source/webrtc/modules/audio_processing/ns/noise_suppression.h:
+        (WebRtcNs_Create): Ditto.
+        (WebRtcNs_num_freq): Ditto.
+        * Source/webrtc/modules/audio_processing/ns/noise_suppression_x.h:
+        (WebRtcNsx_Create): Ditto.
+        (WebRtcNsx_num_freq): Ditto.
+
+2017-12-11  Youenn Fablet  <youenn@apple.com>
+
+        Use VCP H264 encoder for platforms supporting it
+        https://bugs.webkit.org/show_bug.cgi?id=179076
+        rdar://problem/35180773
+
+        Reviewed by Eric Carlson.
+
+        * Configurations/libwebrtc.iOS.exp:
+        * Configurations/libwebrtc.iOSsim.exp:
+        * Configurations/libwebrtc.mac.exp:
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/encoder_vcp.h: Added.
+        (webrtc::H264VideoToolboxEncoderVCP::SetActive):
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/encoder_vcp.mm: Copied from Source/ThirdParty/libwebrtc/Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/encoder.mm.
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/encoder.mm:
+        (internal::CFStringToString):
+        (internal::SetVTSessionProperty):
+        (internal::CopyVideoFrameToPixelBuffer):
+        (internal::CreatePixelBuffer):
+        (internal::VTCompressionOutputCallback):
+        (internal::ExtractProfile):
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/videocodecfactory.h:
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/videocodecfactory.mm:
+        (webrtc::VideoToolboxVideoEncoderFactory::VideoToolboxVideoEncoderFactory):
+        (webrtc::VideoToolboxVideoEncoderFactory::CreateSupportedVideoEncoder):
+        * libwebrtc.xcodeproj/project.pbxproj:
+
+2017-12-11  Tim Horton  <timothy_horton@apple.com>
+
+        Stop using deprecated target conditional for simulator builds
+        https://bugs.webkit.org/show_bug.cgi?id=180662
+        <rdar://problem/35136156>
+
+        Reviewed by Simon Fraser.
+
+        * Source/third_party/libyuv/source/mjpeg_decoder.cc:
+        * Source/webrtc/examples/objc/AppRTCMobile/ARDAppClient.m:
+        (-[ARDAppClient createLocalVideoTrack]):
+        * Source/webrtc/examples/objc/AppRTCMobile/tests/ARDAppClient_xctest.mm:
+        * Source/webrtc/modules/audio_device/ios/audio_device_ios.mm:
+        (webrtc::LogDeviceInfo):
+
+2017-11-06  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r224497.
+        https://bugs.webkit.org/show_bug.cgi?id=179335
+
+        It is breaking internal builds (Requested by youenn on
+        #webkit).
+
+        Reverted changeset:
+
+        "Use VCP H264 encoder for platforms supporting it"
+        https://bugs.webkit.org/show_bug.cgi?id=179076
+        https://trac.webkit.org/changeset/224497
+
+2017-11-06  Youenn Fablet  <youenn@apple.com>
+
+        Use VCP H264 encoder for platforms supporting it
+        https://bugs.webkit.org/show_bug.cgi?id=179076
+        rdar://problem/35180773
+
+        Reviewed by Eric Carlson.
+
+        * Configurations/libwebrtc.iOS.exp:
+        * Configurations/libwebrtc.iOSsim.exp:
+        * Configurations/libwebrtc.mac.exp:
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/encoder_vcp.h: Added.
+        (webrtc::H264VideoToolboxEncoderVCP::SetActive):
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/encoder_vcp.mm: Copied from Source/ThirdParty/libwebrtc/Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/encoder.mm.
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/encoder.mm:
+        (internal::CFStringToString):
+        (internal::SetVTSessionProperty):
+        (internal::CopyVideoFrameToPixelBuffer):
+        (internal::CreatePixelBuffer):
+        (internal::VTCompressionOutputCallback):
+        (internal::ExtractProfile):
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/videocodecfactory.h:
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/videocodecfactory.mm:
+        (webrtc::VideoToolboxVideoEncoderFactory::VideoToolboxVideoEncoderFactory):
+        (webrtc::VideoToolboxVideoEncoderFactory::CreateSupportedVideoEncoder):
+        * libwebrtc.xcodeproj/project.pbxproj:
+
+2017-11-03  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r224428, r224435, and r224440.
+        https://bugs.webkit.org/show_bug.cgi?id=179274
+
+        Broke iOS and internal builds (Requested by ryanhaddad on
+        #webkit).
+
+        Reverted changesets:
+
+        "Use VCP H264 encoder for platforms supporting it"
+        https://bugs.webkit.org/show_bug.cgi?id=179076
+        https://trac.webkit.org/changeset/224428
+
+        "Use VCP H264 encoder for platforms supporting it"
+        https://bugs.webkit.org/show_bug.cgi?id=179076
+        https://trac.webkit.org/changeset/224435
+
+        "Use VCP H264 encoder for platforms supporting it"
+        https://bugs.webkit.org/show_bug.cgi?id=179076
+        https://trac.webkit.org/changeset/224440
+
+2017-11-03  Youenn Fablet  <youenn@apple.com>
+
+        Use VCP H264 encoder for platforms supporting it
+        https://bugs.webkit.org/show_bug.cgi?id=179076
+        rdar://problem/35180773
+
+        Unreviewed.
+
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/encoder_vcp.h: build fix for iOS.
+
+2017-11-03  Youenn Fablet  <youenn@apple.com>
+
+        Use VCP H264 encoder for platforms supporting it
+        https://bugs.webkit.org/show_bug.cgi?id=179076
+        rdar://problem/35180773
+
+        Unreviewed.
+
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/encoder_vcp.h: build fix.
+
+2017-11-03  Youenn Fablet  <youenn@apple.com>
+
+        Use VCP H264 encoder for platforms supporting it
+        https://bugs.webkit.org/show_bug.cgi?id=179076
+        rdar://problem/35180773
+
+        Reviewed by Eric Carlson.
+
+        * Configurations/libwebrtc.iOS.exp:
+        * Configurations/libwebrtc.iOSsim.exp:
+        * Configurations/libwebrtc.mac.exp:
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/encoder_vcp.h: Added.
+        (webrtc::H264VideoToolboxEncoderVCP::SetActive):
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoProcessing/encoder_vcp.mm: Copied from Source/ThirdParty/libwebrtc/Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/encoder.mm.
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/encoder.mm:
+        (internal::CFStringToString):
+        (internal::SetVTSessionProperty):
+        (internal::CopyVideoFrameToPixelBuffer):
+        (internal::CreatePixelBuffer):
+        (internal::VTCompressionOutputCallback):
+        (internal::ExtractProfile):
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/videocodecfactory.h:
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/videocodecfactory.mm:
+        (webrtc::VideoToolboxVideoEncoderFactory::VideoToolboxVideoEncoderFactory):
+        (webrtc::VideoToolboxVideoEncoderFactory::CreateSupportedVideoEncoder):
+        * libwebrtc.xcodeproj/project.pbxproj:
+
+2017-10-04  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r222775.
+        https://bugs.webkit.org/show_bug.cgi?id=177890
+
+        Significantly increased the WebKit build time (Requested by
+        rniwa on #webkit).
+
+        Reverted changeset:
+
+        "Build libwebrtc unit tests executables"
+        https://bugs.webkit.org/show_bug.cgi?id=177211
+        http://trac.webkit.org/changeset/222775
+
+2017-10-03  Youenn Fablet  <youenn@apple.com>
+
+        Remove no longer needed WebRTC build infrastructure
+        https://bugs.webkit.org/show_bug.cgi?id=177756
+
+        Reviewed by Alejandro G. Castro.
+
+        * WebKit/project.json: Removed.
+        * WebKit/rtc_sdk_framework_objc_info_plist.plist: Removed.
+
+2017-10-03  Youenn Fablet  <youenn@apple.com>
+
+        Build libwebrtc unit tests executables
+        https://bugs.webkit.org/show_bug.cgi?id=177211
+
+        Reviewed by Alex Christensen.
+
+        Adding support for a new target called unittests that will be several executables.
+        Each executable run unit tests dedicated to a part of libwebrtc.
+
+        Adding one target/executable per unit test suite.
+        Adding one composite target to build all unit test targets.
+        Adding a target to build a static libwebrtctest library.
+        The static libwebrtctest library is then linked to each unit test executable which is also linked to libwebrtc dylib.
+
+        Some unit tests require a default codec (VP8) that is disabled in libwebrtc.
+        This ends up making some tests crashing.
+        An additional work should follow to execute only the meaningful subset of tests.
+
+        * Configurations/libwebrtc-base.xcconfig: Added.
+        * Configurations/libwebrtc-test-static.xcconfig: Added.
+        * Configurations/rtc_pc_unittests.xcconfig: Added.
+        * Source/third_party/gflags/gen/posix/include/private/config.h:
+        * Source/webrtc/modules/audio_coding/neteq/tools/neteq_test.cc: Replacing FATAL by RTC_FATAL.
+        * Source/webrtc/sdk/objc/Framework/Classes/Common/helpers.mm: Removing UIKit dependency.
+        * Source/webrtc/test/gmock.h: Using googletest version instead of checking in testing folder.
+        * Source/webrtc/test/gtest.h: Ditto.
+        * Source/webrtc/test/rtp_file_reader.cc: Replacing FATAL by RTC_FATAL.
+        * libwebrtc.xcodeproj/project.pbxproj:
+
+2017-09-29  Matt Lewis  <jlewis3@apple.com>
+
+        Unreviewed, rolling out r222652.
+
+        This broke an internal build.
+
+        Reverted changeset:
+
+        "Build libwebrtc unit tests executables"
+        https://bugs.webkit.org/show_bug.cgi?id=177211
+        http://trac.webkit.org/changeset/222652
+
+2017-09-29  Youenn Fablet  <youenn@apple.com>
+
+        Build libwebrtc unit tests executables
+        https://bugs.webkit.org/show_bug.cgi?id=177211
+
+        Reviewed by Alex Christensen.
+
+        Adding support for a new target called unittests that will be several executables.
+        Each executable run unit tests dedicated to a part of libwebrtc.
+
+        Adding one target/executable per unit test suite.
+        Adding one composite target to build all unit test targets.
+        Adding a target to build a static libwebrtctest library.
+        The static libwebrtctest library is then linked to each unit test executable which is also linked to libwebrtc dylib.
+
+        Some unit tests require a default codec (VP8) that is disabled in libwebrtc.
+        This ends up making some tests crashing.
+        An additional work should follow to execute only the meaningful subset of tests.
+
+        * Configurations/libwebrtc-base.xcconfig: Added.
+        * Configurations/libwebrtc-test-static.xcconfig: Added.
+        * Configurations/rtc_pc_unittests.xcconfig: Added.
+        * Source/third_party/gflags/gen/posix/include/private/config.h:
+        * Source/webrtc/modules/audio_coding/neteq/tools/neteq_test.cc: Replacing FATAL by RTC_FATAL.
+        * Source/webrtc/sdk/objc/Framework/Classes/Common/helpers.mm: Removing UIKit dependency.
+        * Source/webrtc/test/gmock.h: Using googletest version instead of checking in testing folder.
+        * Source/webrtc/test/gtest.h: Ditto.
+        * Source/webrtc/test/rtp_file_reader.cc: Replacing FATAL by RTC_FATAL.
+        * libwebrtc.xcodeproj/project.pbxproj:
+
+2017-09-27  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, rolling out r222537.
+
+        This change broke internal builds.
+
+        Reverted changeset:
+
+        "Build libwebrtc unit tests executables"
+        https://bugs.webkit.org/show_bug.cgi?id=177211
+        http://trac.webkit.org/changeset/222537
+
+2017-09-26  Youenn Fablet  <youenn@apple.com>
+
+        Build libwebrtc unit tests executables
+        https://bugs.webkit.org/show_bug.cgi?id=177211
+
+        Reviewed by Alex Christensen.
+
+        Adding support for a new target called unittests that will be several executables.
+        Each executable run unit tests dedicated to a part of libwebrtc.
+
+        Adding one target/executable per unit test suite.
+        Adding one composite target to build all unit test targets.
+        Adding a target to build a static libwebrtctest library.
+        The static libwebrtctest library is then linked to each unit test executable which is also linked to libwebrtc dylib.
+
+        Some unit tests require a default codec (VP8) that is disabled in libwebrtc.
+        This ends up making some tests crashing.
+        An additional work should follow to execute only the meaningful subset of tests.
+
+        * Configurations/libwebrtc-base.xcconfig: Added.
+        * Configurations/libwebrtc-test-static.xcconfig: Added.
+        * Configurations/rtc_pc_unittests.xcconfig: Added.
+        * Source/third_party/gflags/gen/posix/include/private/config.h:
+        * Source/webrtc/modules/audio_coding/neteq/tools/neteq_test.cc: Replacing FATAL by RTC_FATAL.
+        * Source/webrtc/sdk/objc/Framework/Classes/Common/helpers.mm: Removing UIKit dependency.
+        * Source/webrtc/test/gmock.h: Using googletest version instead of checking in testing folder.
+        * Source/webrtc/test/gtest.h: Ditto.
+        * Source/webrtc/test/rtp_file_reader.cc: Replacing FATAL by RTC_FATAL.
+        * libwebrtc.xcodeproj/project.pbxproj:
+
+2017-09-26  Youenn Fablet  <youenn@apple.com>
+
+        Remove unnecessary libwebrtc dependencies
+        https://bugs.webkit.org/show_bug.cgi?id=177494
+
+        Reviewed by Alex Christensen.
+
+        * libwebrtc.xcodeproj/project.pbxproj:
+
+2017-09-25  Youenn Fablet  <youenn@apple.com>
+
+        WebRTC video does not resume receiving when switching back to Safari 11 on iOS
+        https://bugs.webkit.org/show_bug.cgi?id=175472
+        <rdar://problem/33860863>
+
+        Reviewed by Darin Adler.
+
+        Adding a method to disable any decoding/encoding task.
+        When reenabling the decoder, the decoder will request an I frame after failing the first initial decoding task.
+
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/decoder.h:
+        (webrtc::H264VideoToolboxDecoder::SetActive):
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/decoder.mm:
+        (webrtc::H264VideoToolboxDecoder::Decode):
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/encoder.h:
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/encoder.mm:
+        (webrtc::H264VideoToolboxEncoder::Encode):
+
+2017-09-25  Youenn Fablet  <youenn@apple.com>
+
+        Adding per-platform libwebrtc export files
+        https://bugs.webkit.org/show_bug.cgi?id=177465
+
+        Reviewed by Alex Christensen.
+
+        Using per platform export symbol files for libwebrtc.dylib.
+        This allows exporting platform-specific symbols that are used by libwebrtc unit tests.
+
+        * Configurations/libwebrtc.iOS.exp: Added.
+        * Configurations/libwebrtc.iOSsim.exp: Added.
+        * Configurations/libwebrtc.mac.exp: Added.
+        * Configurations/libwebrtc.exp: Removed.
+        * Configurations/libwebrtc.xcconfig:
+        * libwebrtc.xcodeproj/project.pbxproj: Adding ISAC/fix codec files used for
+        by audio codec unit tests to libwebrtc.dylib. This files will allow us to add support to the ISAC/fix codec.
+
+2017-09-23  Youenn Fablet  <youenn@apple.com>
+
+        Export libwebrtc symbols through an export file
+        https://bugs.webkit.org/show_bug.cgi?id=177344
+
+        Reviewed by Darin Adler.
+
+        Removing export changes made to libwebrtc.
+        Exporting based on libwebrtc.exp file.
+
+        * Configurations/Base.xcconfig:
+        * Configurations/libwebrtc.exp: Added.
+        * Configurations/libwebrtc.xcconfig:
+        * Source/webrtc/api/jsep.h:
+        (): Deleted.
+        * Source/webrtc/api/mediatypes.h:
+        * Source/webrtc/api/peerconnectioninterface.h:
+        * Source/webrtc/api/rtcerror.h:
+        * Source/webrtc/api/stats/rtcstats.h:
+        * Source/webrtc/api/stats/rtcstatsreport.h:
+        (): Deleted.
+        * Source/webrtc/api/video/i420_buffer.h:
+        * Source/webrtc/api/video/video_frame.h:
+        (): Deleted.
+        * Source/webrtc/api/video/video_frame_buffer.h:
+        * Source/webrtc/base/asyncpacketsocket.h:
+        * Source/webrtc/base/asyncresolverinterface.h:
+        (): Deleted.
+        * Source/webrtc/base/checks.h:
+        (): Deleted.
+        * Source/webrtc/base/copyonwritebuffer.h:
+        (): Deleted.
+        * Source/webrtc/base/event.h:
+        (): Deleted.
+        * Source/webrtc/base/export.h: Removed.
+        * Source/webrtc/base/helpers.h:
+        * Source/webrtc/base/ipaddress.h:
+        * Source/webrtc/base/location.h:
+        (): Deleted.
+        * Source/webrtc/base/logging.h:
+        * Source/webrtc/base/messagehandler.h:
+        * Source/webrtc/base/network.h:
+        * Source/webrtc/base/proxyinfo.h:
+        * Source/webrtc/base/socketaddress.h:
+        (): Deleted.
+        * Source/webrtc/base/thread.h:
+        * Source/webrtc/common_video/include/i420_buffer_pool.h:
+        (): Deleted.
+        * Source/webrtc/common_video/include/video_frame_buffer.h:
+        (): Deleted.
+        * Source/webrtc/common_video/libyuv/include/webrtc_libyuv.h:
+        * Source/webrtc/media/engine/webrtcvideoencoderfactory.h:
+        (): Deleted.
+        * Source/webrtc/p2p/base/basicpacketsocketfactory.h:
+        (): Deleted.
+        * Source/webrtc/p2p/client/basicportallocator.h:
+        * Source/webrtc/pc/mediastream.h:
+        * Source/webrtc/sdk/objc/Framework/Classes/Video/corevideo_frame_buffer.h:
+        (): Deleted.
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/encoder.h:
+        (): Deleted.
+        * Source/webrtc/sdk/objc/Framework/Classes/VideoToolbox/videocodecfactory.h:
+        (): Deleted.
+        * libwebrtc.xcodeproj/project.pbxproj:
+
+2017-09-20  Youenn Fablet  <youenn@apple.com>
+
+        Upstream googletest framework
+        https://bugs.webkit.org/show_bug.cgi?id=177252
+
+        Reviewed by Alex Christensen.
+
+        This is used by libwebrtc.
+
+        * Source/third_party/googletest: Added.
+ 
+2017-09-15  Alicia Boya García  <aboya@igalia.com>
+
+        Normalize line terminators in jsoncpp Visual Studio files
+        https://bugs.webkit.org/show_bug.cgi?id=176991
+
+        Reviewed by Konstantin Tokarev.
+
+        * Source/third_party/jsoncpp/source/makefiles/vs71/jsoncpp.sln:
+        * Source/third_party/jsoncpp/source/makefiles/vs71/jsontest.vcproj:
+        * Source/third_party/jsoncpp/source/makefiles/vs71/lib_json.vcproj:
+        * Source/third_party/jsoncpp/source/makefiles/vs71/test_lib_json.vcproj:
+
 2017-07-18  Andy Estes  <aestes@apple.com>
 
         [Xcode] Enable CLANG_WARN_OBJC_LITERAL_CONVERSION

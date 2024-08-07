@@ -60,7 +60,7 @@ class SVNRepository(object):
         if not os.path.isdir(os.path.join(home_directory, ".subversion")):
             return False
         find_args = ["find", ".subversion", "-type", "f", "-exec", "grep", "-q", realm, "{}", ";", "-print"]
-        find_output = self.run(find_args, cwd=home_directory, error_handler=Executive.ignore_error).rstrip()
+        find_output = self.run(find_args, cwd=home_directory, ignore_errors=True).rstrip()
         if not find_output or not os.path.isfile(os.path.join(home_directory, find_output)):
             return False
         # Subversion either stores the password in the credential file, indicated by the presence of the key "password",
@@ -171,10 +171,13 @@ class SVN(SCM, SVNRepository):
             # This is robust against cwd != self.checkout_root
             absolute_path = self.absolute_path(path)
             # Completely lame that there is no easy way to remove both types with one call.
-            if os.path.isdir(path):
-                os.rmdir(absolute_path)
-            else:
-                os.remove(absolute_path)
+            try:
+                if os.path.isdir(path):
+                    os.rmdir(absolute_path)
+                else:
+                    os.remove(absolute_path)
+            except:
+                _log.warning('Could not delete: "%s".', absolute_path)
 
     def status_command(self):
         return [self.executable_name, 'status']
@@ -240,7 +243,7 @@ class SVN(SCM, SVNRepository):
         log_command = ['log', '--quiet', '--limit=%s' % limit, path]
         try:
             log_output = self._run_svn(log_command, cwd=self.checkout_root)
-        except ScriptError, e:
+        except ScriptError as e:
             return []
         for line in log_output.splitlines():
             match = re.search('^r(?P<revision>\d+) ', line)

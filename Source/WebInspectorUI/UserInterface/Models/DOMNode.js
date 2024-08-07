@@ -441,40 +441,26 @@ WI.DOMNode = class DOMNode extends WI.Object
         if (this.nodeType() !== Node.ELEMENT_NODE)
             return;
 
-        function resolvedNode(object)
-        {
-            if (!object)
-                return;
-
-            function inspectedPage_node_toggleClass(className, flag)
-            {
+        WI.RemoteObject.resolveNode(this).then((object) => {
+            function inspectedPage_node_toggleClass(className, flag) {
                 this.classList.toggle(className, flag);
             }
 
             object.callFunction(inspectedPage_node_toggleClass, [className, flag]);
             object.release();
-        }
-
-        WI.RemoteObject.resolveNode(this, "", resolvedNode);
+        });
     }
 
     scrollIntoView()
     {
-        function resolvedNode(object)
-        {
-            if (!object)
-                return;
-
-            function inspectedPage_node_scrollIntoView()
-            {
+        WI.RemoteObject.resolveNode(this).then((object) => {
+            function inspectedPage_node_scrollIntoView() {
                 this.scrollIntoViewIfNeeded(true);
             }
 
             object.callFunction(inspectedPage_node_scrollIntoView);
             object.release();
-        }
-
-        WI.RemoteObject.resolveNode(this, "", resolvedNode);
+        });
     }
 
     getChildNodes(callback)
@@ -512,6 +498,27 @@ WI.DOMNode = class DOMNode extends WI.Object
     setOuterHTML(html, callback)
     {
         DOMAgent.setOuterHTML(this.id, html, this._makeUndoableCallback(callback));
+    }
+
+    insertAdjacentHTML(position, html)
+    {
+        if (this.nodeType() !== Node.ELEMENT_NODE)
+            return;
+
+        // COMPATIBILITY (iOS 11.0): DOM.insertAdjacentHTML did not exist.
+        if (!DOMAgent.insertAdjacentHTML) {
+            WI.RemoteObject.resolveNode(this).then((object) => {
+                function inspectedPage_node_insertAdjacentHTML(position, html) {
+                    this.insertAdjacentHTML(position, html);
+                }
+
+                object.callFunction(inspectedPage_node_insertAdjacentHTML, [position, html]);
+                object.release();
+            });
+            return;
+        }
+
+        DOMAgent.insertAdjacentHTML(this.id, position, html, this._makeUndoableCallback());
     }
 
     removeNode(callback)
@@ -602,7 +609,7 @@ WI.DOMNode = class DOMNode extends WI.Object
 
         id = CSS.escape(id);
         if (/[\s'"]/.test(id))
-            return `[id=\"${id}\"]`;
+            return `[id="${id}"]`;
 
         return `#${id}`;
     }
@@ -629,6 +636,8 @@ WI.DOMNode = class DOMNode extends WI.Object
 
     get displayName()
     {
+        if (this.isPseudoElement())
+            return "::" + this._pseudoType;
         return this.nodeNameInCorrectCase() + this.escapedIdSelector + this.escapedClassSelector;
     }
 
@@ -833,7 +842,8 @@ WI.DOMNode = class DOMNode extends WI.Object
 WI.DOMNode.Event = {
     EnabledPseudoClassesChanged: "dom-node-enabled-pseudo-classes-did-change",
     AttributeModified: "dom-node-attribute-modified",
-    AttributeRemoved: "dom-node-attribute-removed"
+    AttributeRemoved: "dom-node-attribute-removed",
+    EventListenersChanged: "dom-node-event-listeners-changed",
 };
 
 WI.DOMNode.PseudoElementType = {

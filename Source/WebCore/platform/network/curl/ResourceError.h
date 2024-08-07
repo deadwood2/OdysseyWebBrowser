@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2006 Apple Inc.  All rights reserved.
+ * Copyright (C) 2017 Sony Interactive Entertainment Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,18 +26,13 @@
 
 #pragma once
 
-#include "CurlContext.h"
 #include "ResourceErrorBase.h"
-
-#if PLATFORM(WIN)
-#include <windows.h>
-#include <winsock2.h>
-#endif
 
 namespace WebCore {
 
-class ResourceError : public ResourceErrorBase
-{
+class ResourceError : public ResourceErrorBase {
+    friend class ResourceErrorBase;
+
 public:
     ResourceError(Type type = Type::Null)
         : ResourceErrorBase(type)
@@ -48,22 +44,21 @@ public:
     {
     }
 
-    ResourceError(const CurlHandle& curl, unsigned sslErrors)
-        : ResourceErrorBase(CurlContext::errorDomain, curl.errorCode(), curl.getEffectiveURL(), curl.errorDescription(), Type::General)
-        , m_sslErrors { sslErrors }
-    {
-    }
+    static ResourceError httpError(int errorCode, const URL& failingURL, Type = Type::General);
+    static ResourceError sslError(int errorCode, unsigned sslErrors, const URL& failingURL);
 
     unsigned sslErrors() const { return m_sslErrors; }
-    void setSSLErrors(unsigned sslVerifyResult) { m_sslErrors = sslVerifyResult; }
-    bool hasSSLConnectError() const { return errorCode() == CURLE_SSL_CONNECT_ERROR; }
+    void setSslErrors(unsigned sslErrors) { m_sslErrors = sslErrors; }
+    bool hasSSLConnectError() const;
+
+    static bool platformCompare(const ResourceError& a, const ResourceError& b);
 
 private:
-    friend class ResourceErrorBase;
-    void doPlatformIsolatedCopy(const ResourceError&) { }
+    void doPlatformIsolatedCopy(const ResourceError&);
+
+    static const char* const curlErrorDomain;
 
     unsigned m_sslErrors { 0 };
 };
 
-}
-
+} // namespace WebCore

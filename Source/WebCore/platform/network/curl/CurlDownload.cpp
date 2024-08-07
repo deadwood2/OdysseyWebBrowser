@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2013 Apple Inc.  All rights reserved.
  * Copyright (C) 2017 Sony Interactive Entertainment Inc.
+ * Copyright (C) 2017 NAVER Corp.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,263 +26,178 @@
  */
 
 #include "config.h"
+#include "CurlDownload.h"
 
 #if USE(CURL)
 
-#include "CurlDownload.h"
-
-#include "CurlContext.h"
-
-#include "HTTPHeaderNames.h"
 #include "HTTPParsers.h"
 #include "ResourceRequest.h"
-#include <wtf/MainThread.h>
-#include <wtf/text/CString.h>
-
-using namespace WebCore;
+#include "ResourceResponse.h"
+#include "SharedBuffer.h"
 
 namespace WebCore {
 
-// CurlDownload --------------------------------------------------------------------------
-
-CurlDownload::CurlDownload() = default;
-
 CurlDownload::~CurlDownload()
 {
-    closeFile();
-    moveFileToDestination();
+    if (m_curlRequest)
+        m_curlRequest->setClient(nullptr);
 }
 
-void CurlDownload::init(CurlDownloadListener* listener, const URL& url)
+void CurlDownload::init(CurlDownloadListener& listener, const URL& url)
 {
-    if (!listener)
-        return;
-
-    LockHolder locker(m_mutex);
-
-    m_curlHandle.enableShareHandle();
-
-    m_curlHandle.setUrl(url);
-    m_curlHandle.setPrivateData(this);
-    m_curlHandle.setHeaderCallbackFunction(headerCallback, this);
-    m_curlHandle.setWriteCallbackFunction(writeCallback, this);
-    m_curlHandle.enableFollowLocation();
-    m_curlHandle.enableHttpAuthentication(CURLAUTH_ANY);
-    m_curlHandle.enableCAInfoIfExists();
-
-    m_listener = listener;
+    m_listener = &listener;
+    m_request.setURL(url);
 }
 
-void CurlDownload::init(CurlDownloadListener* listener, ResourceHandle*, const ResourceRequest& request, const ResourceResponse&)
+void CurlDownload::init(CurlDownloadListener& listener, ResourceHandle*, const ResourceRequest& request, const ResourceResponse&)
 {
-    if (!listener)
-        return;
-
-    URL url(ParsedURLString, request.url());
-
-    init(listener, url);
-
-    addHeaders(request);
+    m_listener = &listener;
+    m_request = request.isolatedCopy();
 }
 
-bool CurlDownload::start()
+void CurlDownload::start()
 {
-    m_job = CurlJobManager::singleton().add(m_curlHandle, [this, protectedThis = makeRef(*this)](CurlJobResult result) mutable {
-        switch (result) {
-        case CurlJobResult::Done:
-            didFinish();
-            break;
+    ASSERT(isMainThread());
 
-        case CurlJobResult::Error:
-            didFail();
-            break;
-
-        case CurlJobResult::Cancelled:
-            break;
-        }
-    });
-    return true;
+    m_curlRequest = createCurlRequest(m_request);
+    m_curlRequest->enableDownloadToFile();
+    m_curlRequest->start();
 }
 
 bool CurlDownload::cancel()
 {
-    CurlJobManager::singleton().cancel(m_job);
+    m_isCancelled = true;
+
+    if (!m_curlRequest)
+        m_curlRequest->cancel();
+
     return true;
 }
 
-String CurlDownload::getTempPath() const
+Ref<CurlRequest> CurlDownload::createCurlRequest(ResourceRequest& request)
 {
-    LockHolder locker(m_mutex);
-    return m_tempPath;
+    return CurlRequest::create(request, this);
 }
 
-String CurlDownload::getUrl() const
+void CurlDownload::curlDidReceiveResponse(const CurlResponse& response)
 {
-    LockHolder locker(m_mutex);
-    return String(m_curlHandle.url());
-}
+    ASSERT(isMainThread());
 
-ResourceResponse CurlDownload::getResponse() const
-{
-    LockHolder locker(m_mutex);
-    return m_response;
-}
-
-void CurlDownload::closeFile()
-{
-    LockHolder locker(m_mutex);
-
-    if (m_tempHandle != invalidPlatformFileHandle) {
-        WebCore::closeFile(m_tempHandle);
-        m_tempHandle = invalidPlatformFileHandle;
-    }
-}
-
-void CurlDownload::moveFileToDestination()
-{
-    LockHolder locker(m_mutex);
-
-    if (m_destination.isEmpty())
+    if (m_isCancelled)
         return;
 
-    moveFile(m_tempPath, m_destination);
-}
+    m_response = ResourceResponse(response);
 
-void CurlDownload::writeDataToFile(const char* data, int size)
-{
-    if (m_tempPath.isEmpty())
-        m_tempPath = openTemporaryFile("download", m_tempHandle);
-
-    if (m_tempHandle != invalidPlatformFileHandle)
-        writeToFile(m_tempHandle, data, size);
-}
-
-void CurlDownload::addHeaders(const ResourceRequest& request)
-{
-    LockHolder locker(m_mutex);
-    m_curlHandle.appendRequestHeaders(request.httpHeaderFields());
-}
-
-void CurlDownload::didReceiveHeader(const String& header)
-{
-    LockHolder locker(m_mutex);
-
-    if (header == "\r\n" || header == "\n") {
-
-        long httpCode = 0;
-        m_curlHandle.getResponseCode(httpCode);
-
-        if (httpCode >= 200 && httpCode < 300) {
-            URL url = m_curlHandle.getEffectiveURL();
-            callOnMainThread([this, url = url.isolatedCopy(), protectedThis = makeRef(*this)] {
-                m_response.setURL(url);
-                m_response.setMimeType(extractMIMETypeFromMediaType(m_response.httpHeaderField(HTTPHeaderName::ContentType)));
-                m_response.setTextEncodingName(extractCharsetFromMediaType(m_response.httpHeaderField(HTTPHeaderName::ContentType)));
-
-                didReceiveResponse();
-            });
-        }
-    } else {
-        callOnMainThread([this, header = header.isolatedCopy(), protectedThis = makeRef(*this)] {
-            int splitPos = header.find(":");
-            if (splitPos != -1)
-                m_response.setHTTPHeaderField(header.left(splitPos), header.substring(splitPos + 1).stripWhiteSpace());
-        });
+    if (m_response.shouldRedirect()) {
+        willSendRequest();
+        return;
     }
-}
 
-void CurlDownload::didReceiveData(void* data, int size)
-{
-    LockHolder locker(m_mutex);
-
-    callOnMainThread([this, size, protectedThis = makeRef(*this)] {
-        didReceiveDataOfLength(size);
-    });
-
-    writeDataToFile(static_cast<const char*>(data), size);
-}
-
-void CurlDownload::didReceiveResponse()
-{
     if (m_listener)
-        m_listener->didReceiveResponse();
+        m_listener->didReceiveResponse(m_response);
+
+    m_curlRequest->completeDidReceiveResponse();
 }
 
-void CurlDownload::didReceiveDataOfLength(int size)
+
+void CurlDownload::curlDidReceiveBuffer(Ref<SharedBuffer>&& buffer)
 {
+    ASSERT(isMainThread());
+
+    if (m_isCancelled)
+        return;
+
     if (m_listener)
-        m_listener->didReceiveDataOfLength(size);
+        m_listener->didReceiveDataOfLength(buffer->size());
 }
 
-void CurlDownload::didFinish()
+void CurlDownload::curlDidComplete()
 {
-    closeFile();
-    moveFileToDestination();
+    ASSERT(isMainThread());
+
+    if (m_isCancelled)
+        return;
+
+    if (!m_destination.isEmpty()) {
+        if (m_curlRequest && !m_curlRequest->getDownloadedFilePath().isEmpty())
+            FileSystem::moveFile(m_curlRequest->getDownloadedFilePath(), m_destination);
+    }
 
     if (m_listener)
         m_listener->didFinish();
 }
 
-void CurlDownload::didFail()
+void CurlDownload::curlDidFailWithError(const ResourceError& resourceError)
 {
-    closeFile();
-    {
-        LockHolder locker(m_mutex);
+    ASSERT(isMainThread());
 
-        if (m_deletesFileUponFailure)
-            deleteFile(m_tempPath);
-    }
+    if (m_isCancelled)
+        return;
+
+    if (m_deletesFileUponFailure && m_curlRequest && !m_curlRequest->getDownloadedFilePath().isEmpty())
+        FileSystem::deleteFile(m_curlRequest->getDownloadedFilePath());
 
     if (m_listener)
         m_listener->didFail();
 }
 
-size_t CurlDownload::writeCallback(char* ptr, size_t size, size_t nmemb, void* data)
+bool CurlDownload::shouldRedirectAsGET(const ResourceRequest& request, bool crossOrigin)
 {
-    size_t totalSize = size * nmemb;
-    CurlDownload* download = reinterpret_cast<CurlDownload*>(data);
+    if ((request.httpMethod() == "GET") || (request.httpMethod() == "HEAD"))
+        return false;
 
-    if (download)
-        download->didReceiveData(static_cast<void*>(ptr), totalSize);
+    if (!request.url().protocolIsInHTTPFamily())
+        return true;
 
-    return totalSize;
+    if (m_response.isSeeOther())
+        return true;
+
+    if ((m_response.isMovedPermanently() || m_response.isFound()) && (request.httpMethod() == "POST"))
+        return true;
+
+    if (crossOrigin && (request.httpMethod() == "DELETE"))
+        return true;
+
+    return false;
 }
 
-size_t CurlDownload::headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
+void CurlDownload::willSendRequest()
 {
-    size_t totalSize = size * nmemb;
-    CurlDownload* download = reinterpret_cast<CurlDownload*>(data);
+    ASSERT(isMainThread());
 
-    String header(static_cast<const char*>(ptr), totalSize);
+    static const int maxRedirects = 20;
 
-    if (download)
-        download->didReceiveHeader(header);
+    if (m_redirectCount++ > maxRedirects) {
+        if (m_listener)
+            m_listener->didFail();
+        return;
+    }
 
-    return totalSize;
-}
+    String location = m_response.httpHeaderField(HTTPHeaderName::Location);
+    URL newURL = URL(m_response.url(), location);
+    bool crossOrigin = !protocolHostAndPortAreEqual(m_request.url(), newURL);
 
-void CurlDownload::downloadFinishedCallback(CurlDownload* download)
-{
-    if (download)
-        download->didFinish();
-}
+    ResourceRequest newRequest = m_request;
+    newRequest.setURL(newURL);
 
-void CurlDownload::downloadFailedCallback(CurlDownload* download)
-{
-    if (download)
-        download->didFail();
-}
+    if (shouldRedirectAsGET(newRequest, crossOrigin)) {
+        newRequest.setHTTPMethod("GET");
+        newRequest.setHTTPBody(nullptr);
+        newRequest.clearHTTPContentType();
+    }
 
-void CurlDownload::receivedDataCallback(CurlDownload* download, int size)
-{
-    if (download)
-        download->didReceiveDataOfLength(size);
-}
+    if (crossOrigin) {
+        // If the network layer carries over authentication headers from the original request
+        // in a cross-origin redirect, we want to clear those headers here. 
+        newRequest.clearHTTPAuthorization();
+        newRequest.clearHTTPOrigin();
+    }
 
-void CurlDownload::receivedResponseCallback(CurlDownload* download)
-{
-    if (download)
-        download->didReceiveResponse();
+    m_curlRequest->cancel();
+    m_curlRequest->setClient(nullptr);
+
+    m_curlRequest = createCurlRequest(newRequest);
+    m_curlRequest->start();
 }
 
 }

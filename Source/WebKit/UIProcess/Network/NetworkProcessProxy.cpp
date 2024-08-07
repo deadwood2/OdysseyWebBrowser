@@ -28,7 +28,9 @@
 
 #include "AuthenticationChallengeProxy.h"
 #include "DownloadProxyMessages.h"
+#if ENABLE(LEGACY_CUSTOM_PROTOCOL_MANAGER)
 #include "LegacyCustomProtocolManagerProxyMessages.h"
+#endif
 #include "Logging.h"
 #include "NetworkProcessCreationParameters.h"
 #include "NetworkProcessMessages.h"
@@ -38,6 +40,7 @@
 #include "WebProcessMessages.h"
 #include "WebProcessPool.h"
 #include "WebsiteData.h"
+#include <wtf/CompletionHandler.h>
 
 #if ENABLE(SEC_ITEM_SHIM)
 #include "SecItemShimProxy.h"
@@ -69,7 +72,9 @@ NetworkProcessProxy::NetworkProcessProxy(WebProcessPool& processPool)
     : ChildProcessProxy(processPool.alwaysRunsAtBackgroundPriority())
     , m_processPool(processPool)
     , m_numPendingConnectionRequests(0)
+#if ENABLE(LEGACY_CUSTOM_PROTOCOL_MANAGER)
     , m_customProtocolManagerProxy(*this)
+#endif
     , m_throttler(*this, processPool.shouldTakeUIBackgroundAssertion())
 {
     connect();
@@ -122,7 +127,7 @@ DownloadProxy* NetworkProcessProxy::createDownloadProxy(const ResourceRequest& r
     return m_downloadProxyMap->createDownloadProxy(m_processPool, resourceRequest);
 }
 
-void NetworkProcessProxy::fetchWebsiteData(SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, OptionSet<WebsiteDataFetchOption> fetchOptions, WTF::Function<void (WebsiteData)>&& completionHandler)
+void NetworkProcessProxy::fetchWebsiteData(PAL::SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, OptionSet<WebsiteDataFetchOption> fetchOptions, WTF::Function<void (WebsiteData)>&& completionHandler)
 {
     ASSERT(canSendMessage());
 
@@ -137,7 +142,7 @@ void NetworkProcessProxy::fetchWebsiteData(SessionID sessionID, OptionSet<Websit
     send(Messages::NetworkProcess::FetchWebsiteData(sessionID, dataTypes, fetchOptions, callbackID), 0);
 }
 
-void NetworkProcessProxy::deleteWebsiteData(WebCore::SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, std::chrono::system_clock::time_point modifiedSince, WTF::Function<void ()>&& completionHandler)
+void NetworkProcessProxy::deleteWebsiteData(PAL::SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, WallTime modifiedSince, WTF::Function<void ()>&& completionHandler)
 {
     auto callbackID = generateCallbackID();
     RELEASE_LOG_IF(sessionID.isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p - NetworkProcessProxy is taking a background assertion because the Network process is deleting Website data", this);
@@ -149,7 +154,7 @@ void NetworkProcessProxy::deleteWebsiteData(WebCore::SessionID sessionID, Option
     send(Messages::NetworkProcess::DeleteWebsiteData(sessionID, dataTypes, modifiedSince, callbackID), 0);
 }
 
-void NetworkProcessProxy::deleteWebsiteDataForOrigins(SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, const Vector<WebCore::SecurityOriginData>& origins, const Vector<String>& cookieHostNames, WTF::Function<void()>&& completionHandler)
+void NetworkProcessProxy::deleteWebsiteDataForOrigins(PAL::SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, const Vector<WebCore::SecurityOriginData>& origins, const Vector<String>& cookieHostNames, WTF::Function<void()>&& completionHandler)
 {
     ASSERT(canSendMessage());
 
@@ -234,9 +239,15 @@ void NetworkProcessProxy::didClose(IPC::Connection&)
 {
     if (m_downloadProxyMap)
         m_downloadProxyMap->processDidClose();
+#if ENABLE(LEGACY_CUSTOM_PROTOCOL_MANAGER)
     m_customProtocolManagerProxy.invalidate();
+#endif
 
     m_tokenForHoldingLockedFiles = nullptr;
+
+    for (auto& callback : m_writeBlobToFilePathCallbackMap.values())
+        callback(false);
+    m_writeBlobToFilePathCallbackMap.clear();
 
     // This may cause us to be deleted.
     networkProcessCrashed();
@@ -264,6 +275,14 @@ void NetworkProcessProxy::didCreateNetworkConnectionToWebProcess(const IPC::Atta
 
 void NetworkProcessProxy::didReceiveAuthenticationChallenge(uint64_t pageID, uint64_t frameID, const WebCore::AuthenticationChallenge& coreChallenge, uint64_t challengeID)
 {
+#if ENABLE(SERVICE_WORKER)
+    if (m_processPool.isServiceWorker(pageID)) {
+        auto authenticationChallenge = AuthenticationChallengeProxy::create(coreChallenge, challengeID, connection());
+        m_processPool.serviceWorkerProxy()->didReceiveAuthenticationChallenge(pageID, frameID, WTFMove(authenticationChallenge));
+        return;
+    }
+#endif
+
     WebPageProxy* page = WebProcessProxy::webPage(pageID);
     MESSAGE_CHECK(page);
 
@@ -296,7 +315,7 @@ void NetworkProcessProxy::grantSandboxExtensionsToStorageProcessForBlobs(uint64_
     extensions.allocate(paths.size());
     for (size_t i = 0; i < paths.size(); ++i) {
         // ReadWrite is required for creating hard links as well as deleting the temporary file, which the StorageProcess will do.
-        SandboxExtension::createHandle(paths[i], SandboxExtension::ReadWrite, extensions[i]);
+        SandboxExtension::createHandle(paths[i], SandboxExtension::Type::ReadWrite, extensions[i]);
     }
 
     m_processPool.sendToStorageProcessRelaunchingIfNecessary(Messages::StorageProcess::GrantSandboxExtensionsForBlobs(paths, extensions));
@@ -374,11 +393,59 @@ void NetworkProcessProxy::canAuthenticateAgainstProtectionSpace(uint64_t loaderI
             page->canAuthenticateAgainstProtectionSpace(loaderID, frameID, protectionSpace);
             return;
         }
+#if ENABLE(SERVICE_WORKER)
+    } else if (m_processPool.isServiceWorker(pageID)) {
+        send(Messages::NetworkProcess::ContinueCanAuthenticateAgainstProtectionSpace(loaderID, true), 0);
+        return;
+#endif
     }
-    
     // In the case where we will not be able to reply to this message with a client reply,
     // we should message back a default to the Networking process.
     send(Messages::NetworkProcess::ContinueCanAuthenticateAgainstProtectionSpace(loaderID, false), 0);
+}
+#endif
+
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
+static uint64_t nextRequestStorageAccessContextId()
+{
+    static uint64_t nextContextId = 0;
+    return ++nextContextId;
+}
+
+void NetworkProcessProxy::hasStorageAccessForFrame(PAL::SessionID sessionID, const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void(bool)>&& callback)
+{
+    auto contextId = nextRequestStorageAccessContextId();
+    auto addResult = m_storageAccessResponseCallbackMap.add(contextId, WTFMove(callback));
+    ASSERT_UNUSED(addResult, addResult.isNewEntry);
+    send(Messages::NetworkProcess::HasStorageAccessForFrame(sessionID, resourceDomain, firstPartyDomain, frameID, pageID, contextId), 0);
+}
+
+void NetworkProcessProxy::grantStorageAccessForFrame(PAL::SessionID sessionID, const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void(bool)>&& callback)
+{
+    auto contextId = nextRequestStorageAccessContextId();
+    auto addResult = m_storageAccessResponseCallbackMap.add(contextId, WTFMove(callback));
+    ASSERT_UNUSED(addResult, addResult.isNewEntry);
+    send(Messages::NetworkProcess::GrantStorageAccessForFrame(sessionID, resourceDomain, firstPartyDomain, frameID, pageID, contextId), 0);
+}
+
+void NetworkProcessProxy::storageAccessRequestResult(bool wasGranted, uint64_t contextId)
+{
+    auto callback = m_storageAccessResponseCallbackMap.take(contextId);
+    callback(wasGranted);
+}
+
+void NetworkProcessProxy::getAllStorageAccessEntries(PAL::SessionID sessionID, CompletionHandler<void(Vector<String>&& domains)>&& callback)
+{
+    auto contextId = nextRequestStorageAccessContextId();
+    auto addResult = m_allStorageAccessEntriesCallbackMap.add(contextId, WTFMove(callback));
+    ASSERT_UNUSED(addResult, addResult.isNewEntry);
+    send(Messages::NetworkProcess::GetAllStorageAccessEntries(sessionID, contextId), 0);
+}
+
+void NetworkProcessProxy::allStorageAccessEntriesResult(Vector<String>&& domains, uint64_t contextId)
+{
+    auto callback = m_allStorageAccessEntriesCallbackMap.take(contextId);
+    callback(WTFMove(domains));
 }
 #endif
 
@@ -407,6 +474,30 @@ void NetworkProcessProxy::sendProcessDidResume()
 {
     if (canSendMessage())
         send(Messages::NetworkProcess::ProcessDidResume(), 0);
+}
+
+void NetworkProcessProxy::writeBlobToFilePath(const WebCore::URL& url, const String& path, CompletionHandler<void(bool)>&& callback)
+{
+    if (!canSendMessage()) {
+        callback(false);
+        return;
+    }
+
+    static uint64_t writeBlobToFilePathCallbackIdentifiers = 0;
+    uint64_t callbackID = ++writeBlobToFilePathCallbackIdentifiers;
+    m_writeBlobToFilePathCallbackMap.add(callbackID, WTFMove(callback));
+
+    SandboxExtension::Handle handleForWriting;
+    SandboxExtension::createHandle(path, SandboxExtension::Type::ReadWrite, handleForWriting);
+    send(Messages::NetworkProcess::WriteBlobToFilePath(url, path, handleForWriting, callbackID), 0);
+}
+
+void NetworkProcessProxy::didWriteBlobToFilePath(bool success, uint64_t callbackID)
+{
+    if (auto handler = m_writeBlobToFilePathCallbackMap.take(callbackID))
+        handler(success);
+    else
+        ASSERT_NOT_REACHED();
 }
 
 void NetworkProcessProxy::processReadyToSuspend()

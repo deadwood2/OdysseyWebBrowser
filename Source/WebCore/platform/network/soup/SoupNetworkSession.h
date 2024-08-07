@@ -26,8 +26,9 @@
 #ifndef SoupNetworkSession_h
 #define SoupNetworkSession_h
 
-#include "SessionID.h"
-#include <glib-object.h>
+#include "URL.h"
+#include <gio/gio.h>
+#include <pal/SessionID.h>
 #include <wtf/Function.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/glib/GRefPtr.h>
@@ -48,7 +49,7 @@ struct SoupNetworkProxySettings;
 class SoupNetworkSession {
     WTF_MAKE_NONCOPYABLE(SoupNetworkSession); WTF_MAKE_FAST_ALLOCATED;
 public:
-    explicit SoupNetworkSession(SessionID = SessionID::defaultSessionID(), SoupCookieJar* = nullptr);
+    explicit SoupNetworkSession(PAL::SessionID = PAL::SessionID::defaultSessionID(), SoupCookieJar* = nullptr);
     ~SoupNetworkSession();
 
     SoupSession* soupSession() const { return m_soupSession.get(); }
@@ -65,7 +66,7 @@ public:
     void setAcceptLanguages(const CString&);
 
     static void setShouldIgnoreTLSErrors(bool);
-    static void checkTLSErrors(SoupRequest*, SoupMessage*, WTF::Function<void (const ResourceError&)>&&);
+    static std::optional<ResourceError> checkTLSErrors(const URL&, GTlsCertificate*, GTlsCertificateFlags);
     static void allowSpecificHTTPSCertificateForHost(const CertificateInfo&, const String& host);
 
     static void setCustomProtocolRequestType(GType);

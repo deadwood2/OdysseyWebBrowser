@@ -1,3 +1,5 @@
+include(WebKitDist)
+
 add_subdirectory(${WEBCORE_DIR}/platform/gtk/po)
 
 # This allows exposing a 'gir' target which builds all GObject introspection files.
@@ -6,17 +8,17 @@ if (ENABLE_INTROSPECTION)
 endif ()
 
 list(APPEND DocumentationDependencies
-    WebKit2
+    WebKit
     "${CMAKE_SOURCE_DIR}/Source/WebKit/UIProcess/API/gtk/docs/webkit2gtk-docs.sgml"
     "${CMAKE_SOURCE_DIR}/Source/WebKit/UIProcess/API/gtk/docs/webkit2gtk-${WEBKITGTK_API_VERSION}-sections.txt"
 )
 
 if (ENABLE_GTKDOC)
-    install(DIRECTORY ${CMAKE_BINARY_DIR}/Documentation/webkit2gtk-${WEBKITGTK_API_VERSION}/html/
-            DESTINATION "${CMAKE_INSTALL_DATADIR}/gtk-doc/html/webkit2gtk-${WEBKITGTK_API_VERSION}"
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/Documentation/webkit2gtk-${WEBKITGTK_API_VERSION}/html/webkit2gtk-${WEBKITGTK_API_VERSION}
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/gtk-doc/html"
     )
-    install(DIRECTORY ${CMAKE_BINARY_DIR}/Documentation/webkitdomgtk-${WEBKITGTK_API_VERSION}/html/
-            DESTINATION "${CMAKE_INSTALL_DATADIR}/gtk-doc/html/webkitdomgtk-${WEBKITGTK_API_VERSION}"
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/Documentation/webkitdomgtk-${WEBKITGTK_API_VERSION}/html/webkitdomgtk-${WEBKITGTK_API_VERSION}
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/gtk-doc/html"
     )
 endif ()
 
@@ -31,7 +33,7 @@ macro(ADD_GTKDOC_GENERATOR _stamp_name _extra_args)
     )
 endmacro()
 
-add_gtkdoc_generator("docs-build.stamp" "")
+ADD_GTKDOC_GENERATOR("docs-build.stamp" "")
 if (ENABLE_GTKDOC)
     add_custom_target(gtkdoc ALL DEPENDS "${CMAKE_BINARY_DIR}/docs-build.stamp")
 elseif (NOT ENABLED_COMPILER_SANITIZERS AND NOT CMAKE_CROSSCOMPILING AND NOT APPLE)
@@ -41,7 +43,7 @@ elseif (NOT ENABLED_COMPILER_SANITIZERS AND NOT CMAKE_CROSSCOMPILING AND NOT APP
     # or errors. This is useful to prevent breaking documentation inadvertently during
     # the course of development.
     if (DEVELOPER_MODE)
-        add_gtkdoc_generator("docs-build-no-html.stamp" "--skip-html")
+        ADD_GTKDOC_GENERATOR("docs-build-no-html.stamp" "--skip-html")
         add_custom_target(gtkdoc-no-html ALL DEPENDS "${CMAKE_BINARY_DIR}/docs-build-no-html.stamp")
     endif ()
 endif ()
@@ -52,45 +54,6 @@ add_custom_target(check
 )
 
 if (DEVELOPER_MODE)
-    configure_file(
-        ${TOOLS_DIR}/gtk/manifest.txt.in
-        ${CMAKE_BINARY_DIR}/manifest.txt
-    )
-
-    add_custom_command(
-        OUTPUT ${CMAKE_BINARY_DIR}/webkitgtk-${PROJECT_VERSION}.tar
-        DEPENDS ${TOOLS_DIR}/gtk/make-dist.py
-        DEPENDS ${CMAKE_BINARY_DIR}/manifest.txt
-        DEPENDS WebKit2
-        DEPENDS gtkdoc
-        COMMAND ${TOOLS_DIR}/gtk/make-dist.py
-                --source-dir=${CMAKE_SOURCE_DIR}
-                --build-dir=${CMAKE_BINARY_DIR}
-                --version=${PROJECT_VERSION}
-                ${CMAKE_BINARY_DIR}/manifest.txt
-    )
-
-    add_custom_command(
-        OUTPUT ${CMAKE_BINARY_DIR}/webkitgtk-${PROJECT_VERSION}.tar.xz
-        DEPENDS ${CMAKE_BINARY_DIR}/webkitgtk-${PROJECT_VERSION}.tar
-        COMMAND xz -f ${CMAKE_BINARY_DIR}/webkitgtk-${PROJECT_VERSION}.tar
-    )
-
-    add_custom_target(dist
-        DEPENDS ${CMAKE_BINARY_DIR}/webkitgtk-${PROJECT_VERSION}.tar.xz
-    )
-
-    add_custom_target(distcheck
-        DEPENDS ${TOOLS_DIR}/gtk/make-dist.py
-        DEPENDS ${CMAKE_BINARY_DIR}/manifest.txt
-        DEPENDS WebKit2
-        DEPENDS gtkdoc
-        COMMAND ${TOOLS_DIR}/gtk/make-dist.py
-                --check
-                --source-dir=${CMAKE_SOURCE_DIR}
-                --build-dir=${CMAKE_BINARY_DIR}
-                --version=${PROJECT_VERSION}
-                ${CMAKE_BINARY_DIR}/manifest.txt
-        COMMAND xz -f ${CMAKE_BINARY_DIR}/webkitgtk-${PROJECT_VERSION}.tar
-    )
+    add_custom_target(Documentation DEPENDS gtkdoc)
+    WEBKIT_DECLARE_DIST_TARGETS(GTK webkitgtk ${TOOLS_DIR}/gtk/manifest.txt.in)
 endif ()

@@ -5,36 +5,19 @@ find_library(CORESERVICES_LIBRARY CoreServices)
 # FIXME: We shouldn't need to define NS_RETURNS_RETAINED.
 add_definitions(-iframework ${QUARTZ_LIBRARY}/Frameworks -iframework ${CORESERVICES_LIBRARY}/Frameworks -DNS_RETURNS_RETAINED=)
 
-if ("${CURRENT_OSX_VERSION}" MATCHES "10.9")
-set(WEBKITSYSTEMINTERFACE_LIBRARY libWebKitSystemInterfaceMavericks.a)
-elif ("${CURRENT_OSX_VERSION}" MATCHES "10.10")
-set(WEBKITSYSTEMINTERFACE_LIBRARY libWebKitSystemInterfaceYosemite.a)
-else ()
-set(WEBKITSYSTEMINTERFACE_LIBRARY libWebKitSystemInterfaceElCapitan.a)
-endif ()
 link_directories(../../WebKitLibraries)
+include_directories(../../WebKitLibraries)
 
 list(APPEND TestNetscapePlugIn_LIBRARIES
     ${QUARTZ_LIBRARY}
-    WebKit2
+    WebKit
 )
 
 list(APPEND DumpRenderTree_LIBRARIES
     ${CARBON_LIBRARY}
     ${QUARTZ_LIBRARY}
-    ${WEBKITSYSTEMINTERFACE_LIBRARY}
-    WebKit2
+    WebKit
 )
-
-if ("${CURRENT_OSX_VERSION}" MATCHES "10.9")
-set(WEBKITSYSTEMINTERFACE_LIBRARY libWebKitSystemInterfaceMavericks.a)
-elif ("${CURRENT_OSX_VERSION}" MATCHES "10.10")
-set(WEBKITSYSTEMINTERFACE_LIBRARY libWebKitSystemInterfaceYosemite.a)
-else ()
-set(WEBKITSYSTEMINTERFACE_LIBRARY libWebKitSystemInterfaceElCapitan.a)
-endif ()
-link_directories(../../WebKitLibraries)
-include_directories(../../WebKitLibraries)
 
 list(APPEND DumpRenderTree_INCLUDE_DIRECTORIES
     cg

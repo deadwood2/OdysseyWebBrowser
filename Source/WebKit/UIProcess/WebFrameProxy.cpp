@@ -32,6 +32,7 @@
 #include "WebPageProxy.h"
 #include "WebPasteboardProxy.h"
 #include "WebProcessPool.h"
+#include "WebsitePoliciesData.h"
 #include <WebCore/Image.h>
 #include <WebCore/MIMETypeRegistry.h>
 #include <stdio.h>
@@ -75,7 +76,7 @@ bool WebFrameProxy::isMainFrame() const
     return this == m_page->mainFrame();
 }
 
-void WebFrameProxy::loadURL(const String& url)
+void WebFrameProxy::loadURL(const URL& url)
 {
     if (!m_page)
         return;
@@ -129,12 +130,12 @@ bool WebFrameProxy::isDisplayingPDFDocument() const
     return MIMETypeRegistry::isPDFOrPostScriptMIMEType(m_MIMEType);
 }
 
-void WebFrameProxy::didStartProvisionalLoad(const String& url)
+void WebFrameProxy::didStartProvisionalLoad(const URL& url)
 {
     m_frameLoadState.didStartProvisionalLoad(url);
 }
 
-void WebFrameProxy::didReceiveServerRedirectForProvisionalLoad(const String& url)
+void WebFrameProxy::didReceiveServerRedirectForProvisionalLoad(const URL& url)
 {
     m_frameLoadState.didReceiveServerRedirectForProvisionalLoad(url);
 }
@@ -165,7 +166,7 @@ void WebFrameProxy::didFailLoad()
     m_frameLoadState.didFailLoad();
 }
 
-void WebFrameProxy::didSameDocumentNavigation(const String& url)
+void WebFrameProxy::didSameDocumentNavigation(const URL& url)
 {
     m_frameLoadState.didSameDocumentNotification(url);
 }
@@ -175,14 +176,14 @@ void WebFrameProxy::didChangeTitle(const String& title)
     m_title = title;
 }
 
-void WebFrameProxy::receivedPolicyDecision(WebCore::PolicyAction action, uint64_t listenerID, API::Navigation* navigation, const WebsitePolicies& websitePolicies)
+void WebFrameProxy::receivedPolicyDecision(PolicyAction action, uint64_t listenerID, API::Navigation* navigation, std::optional<WebsitePoliciesData>&& data)
 {
     if (!m_page)
         return;
 
     ASSERT(m_activeListener);
     ASSERT(m_activeListener->listenerID() == listenerID);
-    m_page->receivedPolicyDecision(action, *this, listenerID, navigation, websitePolicies);
+    m_page->receivedPolicyDecision(action, *this, listenerID, navigation, WTFMove(data));
 }
 
 WebFramePolicyListenerProxy& WebFrameProxy::setUpPolicyListenerProxy(uint64_t listenerID)
@@ -223,13 +224,13 @@ void WebFrameProxy::getResourceData(API::URL* resourceURL, Function<void (API::D
     m_page->getResourceDataFromFrame(this, resourceURL, WTFMove(callbackFunction));
 }
 
-void WebFrameProxy::setUnreachableURL(const String& unreachableURL)
+void WebFrameProxy::setUnreachableURL(const URL& unreachableURL)
 {
     m_frameLoadState.setUnreachableURL(unreachableURL);
 }
 
 #if ENABLE(CONTENT_FILTERING)
-bool WebFrameProxy::didHandleContentFilterUnblockNavigation(const WebCore::ResourceRequest& request)
+bool WebFrameProxy::didHandleContentFilterUnblockNavigation(const ResourceRequest& request)
 {
     if (!m_contentFilterUnblockHandler.canHandleRequest(request)) {
         m_contentFilterUnblockHandler = { };

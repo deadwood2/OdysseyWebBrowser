@@ -36,21 +36,40 @@ StorageProcessCreationParameters::StorageProcessCreationParameters()
 
 void StorageProcessCreationParameters::encode(IPC::Encoder& encoder) const
 {
-#if ENABLE(INDEXED_DATABASE)
     encoder << sessionID;
-    encoder << indexedDatabaseDirectory;
-    encoder << indexedDatabaseDirectoryExtensionHandle;
+#if ENABLE(INDEXED_DATABASE)
+    encoder << indexedDatabaseDirectory << indexedDatabaseDirectoryExtensionHandle;
+#endif
+#if ENABLE(SERVICE_WORKER)
+    encoder << serviceWorkerRegistrationDirectory << serviceWorkerRegistrationDirectoryExtensionHandle << urlSchemesServiceWorkersCanHandle;
 #endif
 }
 
 bool StorageProcessCreationParameters::decode(IPC::Decoder& decoder, StorageProcessCreationParameters& result)
 {
-#if ENABLE(INDEXED_DATABASE)
     if (!decoder.decode(result.sessionID))
         return false;
+#if ENABLE(INDEXED_DATABASE)
     if (!decoder.decode(result.indexedDatabaseDirectory))
         return false;
-    if (!decoder.decode(result.indexedDatabaseDirectoryExtensionHandle))
+
+    std::optional<SandboxExtension::Handle> indexedDatabaseDirectoryExtensionHandle;
+    decoder >> indexedDatabaseDirectoryExtensionHandle;
+    if (!indexedDatabaseDirectoryExtensionHandle)
+        return false;
+    result.indexedDatabaseDirectoryExtensionHandle = WTFMove(*indexedDatabaseDirectoryExtensionHandle);
+#endif
+#if ENABLE(SERVICE_WORKER)
+    if (!decoder.decode(result.serviceWorkerRegistrationDirectory))
+        return false;
+    
+    std::optional<SandboxExtension::Handle> serviceWorkerRegistrationDirectoryExtensionHandle;
+    decoder >> serviceWorkerRegistrationDirectoryExtensionHandle;
+    if (!serviceWorkerRegistrationDirectoryExtensionHandle)
+        return false;
+    result.serviceWorkerRegistrationDirectoryExtensionHandle = WTFMove(*serviceWorkerRegistrationDirectoryExtensionHandle);
+
+    if (!decoder.decode(result.urlSchemesServiceWorkersCanHandle))
         return false;
 #endif
 

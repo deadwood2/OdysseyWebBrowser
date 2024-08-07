@@ -79,16 +79,19 @@
 #include <JavaScriptCore/InitializeThreading.h>
 #include <JavaScriptCore/JSCJSValue.h>
 #include <JavaScriptCore/JSLock.h>
+#include <JavaScriptCore/ScriptValue.h>
 #include <WebCore/AXObjectCache.h>
 #include <WebCore/ApplicationCacheStorage.h>
 #include <WebCore/BString.h>
 #include <WebCore/BackForwardController.h>
 #include <WebCore/BitmapInfo.h>
+#include <WebCore/CacheStorageProvider.h>
 #include <WebCore/Chrome.h>
 #include <WebCore/ContextMenu.h>
 #include <WebCore/ContextMenuController.h>
 #include <WebCore/Cursor.h>
 #include <WebCore/DatabaseManager.h>
+#include <WebCore/DeprecatedGlobalSettings.h>
 #include <WebCore/Document.h>
 #include <WebCore/DocumentMarkerController.h>
 #include <WebCore/DragController.h>
@@ -163,7 +166,6 @@
 #include <WebCore/UserStyleSheet.h>
 #include <WebCore/WindowMessageBroadcaster.h>
 #include <WebCore/WindowsTouch.h>
-#include <bindings/ScriptValue.h>
 #include <comdef.h>
 #include <d2d1.h>
 #include <wtf/MainThread.h>
@@ -505,13 +507,13 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
         if (preference && (CFStringGetTypeID() == CFGetTypeID(preference.get())))
             cfurlCacheDirectory = adoptCF(static_cast<CFStringRef>(preference.leakRef()));
         else
-            cfurlCacheDirectory = WebCore::localUserSpecificStorageDirectory().createCFString();
+            cfurlCacheDirectory = WebCore::FileSystem::localUserSpecificStorageDirectory().createCFString();
     }
     cacheDirectory = String(cfurlCacheDirectory.get());
     CFIndex cacheMemoryCapacity = 0;
     CFIndex cacheDiskCapacity = 0;
 #elif USE(CURL)
-    cacheDirectory = CurlCacheManager::getInstance().cacheDirectory();
+    cacheDirectory = CurlCacheManager::singleton().cacheDirectory();
     long cacheMemoryCapacity = 0;
     long cacheDiskCapacity = 0;
 #endif
@@ -682,7 +684,7 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     CFURLCacheSetMemoryCapacity(cfurlCache.get(), cacheMemoryCapacity);
     CFURLCacheSetDiskCapacity(cfurlCache.get(), cacheDiskCapacity);
 #elif USE(CURL)
-    CurlCacheManager::getInstance().setStorageSizeLimit(cacheDiskCapacity);
+    CurlCacheManager::singleton().setStorageSizeLimit(cacheDiskCapacity);
 #endif
 
     s_didSetCacheModel = true;
@@ -2042,7 +2044,7 @@ bool WebView::gesture(WPARAM wParam, LPARAM lParam)
             coreFrame->view()->scrollBy(logicalScrollDelta);
             scrolledArea = coreFrame->view();
         } else
-            scrollableLayer->scrollByRecursively(logicalScrollDelta, WebCore::RenderLayer::ScrollOffsetClamped, &scrolledArea);
+            scrollableLayer->scrollByRecursively(logicalScrollDelta, &scrolledArea);
 
         if (!(UpdatePanningFeedbackPtr() && BeginPanningFeedbackPtr() && EndPanningFeedbackPtr())) {
             CloseGestureInfoHandlePtr()(gestureHandle);
@@ -2340,9 +2342,7 @@ const char* WebView::interpretKeyEvent(const KeyboardEvent* evt)
 
 bool WebView::handleEditingKeyboardEvent(KeyboardEvent* evt)
 {
-    Node* node = evt->target()->toNode();
-    ASSERT(node);
-    Frame* frame = node->document().frame();
+    auto* frame = downcast<Node>(evt->target())->document().frame();
     ASSERT(frame);
 
     const PlatformKeyboardEvent* keyEvent = evt->keyEvent();
@@ -3095,14 +3095,15 @@ HRESULT WebView::initWithFrame(RECT frame, _In_ BSTR frameName, _In_ BSTR groupN
 
     BOOL useHighResolutionTimer;
     if (SUCCEEDED(m_preferences->shouldUseHighResolutionTimers(&useHighResolutionTimer)))
-        Settings::setShouldUseHighResolutionTimers(useHighResolutionTimer);
+        DeprecatedGlobalSettings::setShouldUseHighResolutionTimers(useHighResolutionTimer);
 
     m_inspectorClient = new WebInspectorClient(this);
 
     PageConfiguration configuration(
         makeUniqueRef<WebEditorClient>(this),
         SocketProvider::create(),
-        makeUniqueRef<LibWebRTCProvider>()
+        makeUniqueRef<LibWebRTCProvider>(),
+        WebCore::CacheStorageProvider::create()
     );
     configuration.backForwardClient = BackForwardList::create();
     configuration.chromeClient = new WebChromeClient(this);
@@ -3119,7 +3120,7 @@ HRESULT WebView::initWithFrame(RECT frame, _In_ BSTR frameName, _In_ BSTR groupN
     configuration.pluginInfoProvider = &WebPluginInfoProvider::singleton();
 
     m_page = new Page(WTFMove(configuration));
-    provideGeolocationTo(m_page, new WebGeolocationClient(this));
+    provideGeolocationTo(m_page, *new WebGeolocationClient(this));
 
     unsigned layoutMilestones = DidFirstLayout | DidFirstVisuallyNonEmptyLayout;
     m_page->addLayoutMilestones(static_cast<LayoutMilestones>(layoutMilestones));
@@ -3823,7 +3824,13 @@ HRESULT WebView::searchFor(_In_ BSTR str, BOOL forward, BOOL caseFlag, BOOL wrap
     if (!str || !SysStringLen(str))
         return E_INVALIDARG;
 
-    FindOptions options = (caseFlag ? 0 : CaseInsensitive) | (forward ? 0 : Backwards) | (wrapFlag ? WrapAround : 0);
+    FindOptions options;
+    if (!caseFlag)
+        options |= CaseInsensitive;
+    if (!forward)
+        options |= Backwards;
+    if (wrapFlag)
+        options |= WrapAround;
     *found = m_page->findString(toString(str), options);
     return S_OK;
 }
@@ -3886,7 +3893,11 @@ HRESULT WebView::markAllMatchesForText(_In_ BSTR str, BOOL caseSensitive, BOOL h
     if (!str || !SysStringLen(str))
         return E_INVALIDARG;
 
-    *matches = m_page->markAllMatchesForText(toString(str), caseSensitive ? TextCaseSensitive : TextCaseInsensitive, highlight, limit);
+    WebCore::FindOptions options;
+    if (!caseSensitive)
+        options |= WebCore::CaseInsensitive;
+
+    *matches = m_page->markAllMatchesForText(toString(str), options, highlight, limit);
     return S_OK;
 }
 
@@ -5133,7 +5144,7 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
     settings.setShouldDisplayTextDescriptions(enabled);
 #endif
 
-    COMPtr<IWebPreferencesPrivate5> prefsPrivate { Query, preferences };
+    COMPtr<IWebPreferencesPrivate6> prefsPrivate { Query, preferences };
     if (prefsPrivate) {
         hr = prefsPrivate->localStorageDatabasePath(&str);
         if (FAILED(hr))
@@ -5202,12 +5213,10 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
         return hr;
     RuntimeEnabledFeatures::sharedFeatures().setModernMediaControlsEnabled(!!enabled);
 
-#if ENABLE(WEB_ANIMATIONS)
     hr = prefsPrivate->webAnimationsEnabled(&enabled);
     if (FAILED(hr))
         return hr;
     RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsEnabled(!!enabled);
-#endif
 
     hr = prefsPrivate->userTimingEnabled(&enabled);
     if (FAILED(hr))
@@ -5224,6 +5233,11 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
         return hr;
     RuntimeEnabledFeatures::sharedFeatures().setLinkPreloadEnabled(!!enabled);
 
+    hr = prefsPrivate->fetchAPIKeepAliveEnabled(&enabled);
+    if (FAILED(hr))
+        return hr;
+    RuntimeEnabledFeatures::sharedFeatures().setFetchAPIKeepAliveEnabled(!!enabled);
+
     hr = prefsPrivate->mediaPreloadingEnabled(&enabled);
     if (FAILED(hr))
         return hr;
@@ -5233,6 +5247,21 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
     if (FAILED(hr))
         return hr;
     RuntimeEnabledFeatures::sharedFeatures().setIsSecureContextAttributeEnabled(!!enabled);
+
+    hr = prefsPrivate->dataTransferItemsEnabled(&enabled);
+    if (FAILED(hr))
+        return hr;
+    RuntimeEnabledFeatures::sharedFeatures().setDataTransferItemsEnabled(!!enabled);
+
+    hr = prefsPrivate->inspectorAdditionsEnabled(&enabled);
+    if (FAILED(hr))
+        return hr;
+    RuntimeEnabledFeatures::sharedFeatures().setInspectorAdditionsEnabled(!!enabled);
+
+    hr = prefsPrivate->visualViewportAPIEnabled(&enabled);
+    if (FAILED(hr))
+        return hr;
+    settings.setVisualViewportAPIEnabled(!!enabled);
 
     hr = preferences->privateBrowsingEnabled(&enabled);
     if (FAILED(hr))
@@ -5346,7 +5375,7 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
     hr = preferences->avFoundationEnabled(&enabled);
     if (FAILED(hr))
         return hr;
-    settings.setAVFoundationEnabled(enabled);
+    DeprecatedGlobalSettings::setAVFoundationEnabled(enabled);
 #endif
 
     if (prefsPrivate) {
@@ -5404,12 +5433,12 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
     hr = prefsPrivate->shouldUseHighResolutionTimers(&enabled);
     if (FAILED(hr))
         return hr;
-    settings.setShouldUseHighResolutionTimers(enabled);
+    DeprecatedGlobalSettings::setShouldUseHighResolutionTimers(enabled);
 
     hr = prefsPrivate->isFrameFlatteningEnabled(&enabled);
     if (FAILED(hr))
         return hr;
-    settings.setFrameFlattening(enabled ? FrameFlatteningFullyEnabled : FrameFlatteningDisabled);
+    settings.setFrameFlattening(enabled ? FrameFlattening::FullyEnabled : FrameFlattening::Disabled);
 
     hr = prefsPrivate->acceleratedCompositingEnabled(&enabled);
     if (FAILED(hr))
@@ -5505,7 +5534,7 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
     hr = prefsPrivate->mockScrollbarsEnabled(&enabled);
     if (FAILED(hr))
         return hr;
-    settings.setMockScrollbarsEnabled(enabled);
+    DeprecatedGlobalSettings::setMockScrollbarsEnabled(enabled);
 
     hr = prefsPrivate->isInheritURIQueryComponentEnabled(&enabled);
     if (FAILED(hr))
@@ -7242,7 +7271,7 @@ HRESULT WebView::geolocationDidFailWithError(_In_opt_ IWebError* error)
     if (FAILED(error->localizedDescription(&description)))
         return E_FAIL;
 
-    RefPtr<GeolocationError> geolocationError = GeolocationError::create(GeolocationError::PositionUnavailable, toString(description));
+    auto geolocationError = GeolocationError::create(GeolocationError::PositionUnavailable, toString(description));
     GeolocationController::from(m_page)->errorOccurred(geolocationError.get());
     return S_OK;
 }
@@ -7277,7 +7306,7 @@ HRESULT WebView::nextDisplayIsSynchronous()
     return S_OK;
 }
 
-void WebView::notifyAnimationStarted(const GraphicsLayer*, double)
+void WebView::notifyAnimationStarted(const GraphicsLayer*, const String&, double)
 {
     // We never set any animations on our backing layer.
     ASSERT_NOT_REACHED();
@@ -7288,7 +7317,7 @@ void WebView::notifyFlushRequired(const GraphicsLayer*)
     flushPendingGraphicsLayerChangesSoon();
 }
 
-void WebView::paintContents(const GraphicsLayer*, GraphicsContext& context, GraphicsLayerPaintingPhase, const FloatRect& inClipPixels)
+void WebView::paintContents(const GraphicsLayer*, GraphicsContext& context, GraphicsLayerPaintingPhase, const FloatRect& inClipPixels, GraphicsLayerPaintBehavior)
 {
     Frame* frame = core(m_mainFrame);
     if (!frame)
@@ -7772,7 +7801,22 @@ HRESULT WebView::findString(_In_ BSTR string, WebFindOptions options, _Deref_opt
     if (!found)
         return E_POINTER;
 
-    *found = m_page->findString(toString(string), options);
+    WebCore::FindOptions coreOptions;
+
+    if (options & WebFindOptionsCaseInsensitive)
+        coreOptions |= WebCore::CaseInsensitive;
+    if (options & WebFindOptionsAtWordStarts)
+        coreOptions |= WebCore::AtWordStarts;
+    if (options & WebFindOptionsTreatMedialCapitalAsWordStart)
+        coreOptions |= WebCore::TreatMedialCapitalAsWordStart;
+    if (options & WebFindOptionsBackwards)
+        coreOptions |= WebCore::Backwards;
+    if (options & WebFindOptionsWrapAround)
+        coreOptions |= WebCore::WrapAround;
+    if (options & WebFindOptionsStartInSelection)
+        coreOptions |= WebCore::StartInSelection;
+
+    *found = m_page->findString(toString(string), coreOptions);
     return S_OK;
 }
 

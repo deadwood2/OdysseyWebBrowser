@@ -97,7 +97,7 @@ void InjectedBundle::initialize(WKBundleRef bundle, WKTypeRef initializationUser
         didReceiveMessageToPage
     };
     WKBundleSetClient(m_bundle, &client.base);
-
+    WKBundleSetServiceWorkerProxyCreationCallback(m_bundle, WebCoreTestSupport::setupNewlyCreatedServiceWorker);
     platformInitialize(initializationUserData);
 
     activateFonts();
@@ -245,13 +245,37 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         return;
     }
 
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetPartitionOrBlockCookiesForHost")) {
+        m_testRunner->statisticsCallDidSetPartitionOrBlockCookiesForHostCallback();
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidReceiveAllStorageAccessEntries")) {
+        ASSERT(messageBody);
+        ASSERT(WKGetTypeID(messageBody) == WKArrayGetTypeID());
+
+        WKArrayRef domainsArray = static_cast<WKArrayRef>(messageBody);
+        auto size = WKArrayGetSize(domainsArray);
+        Vector<String> domains;
+        domains.reserveInitialCapacity(size);
+        for (size_t i = 0; i < size; ++i) {
+            WKTypeRef item = WKArrayGetItemAtIndex(domainsArray, i);
+            if (item && WKGetTypeID(item) == WKStringGetTypeID())
+                domains.append(toWTFString(static_cast<WKStringRef>(item)));
+        }
+
+        m_testRunner->callDidReceiveAllStorageAccessEntriesCallback(domains);
+        return;
+    }
+
     if (WKStringIsEqualToUTF8CString(messageName, "CallDidRemoveAllSessionCredentialsCallback")) {
         m_testRunner->callDidRemoveAllSessionCredentialsCallback();
         return;
     }
 
     if (WKStringIsEqualToUTF8CString(messageName, "NotifyDownloadDone")) {
-        m_testRunner->notifyDone();
+        if (m_testRunner->shouldFinishAfterDownload())
+            m_testRunner->notifyDone();
         return;
     }
 
@@ -294,6 +318,11 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         unsigned top3SubframeUnderTopFrameOrigins = (unsigned)WKUInt64GetValue(static_cast<WKUInt64Ref>(WKDictionaryGetItemForKey(messageBodyDictionary, WKStringCreateWithUTF8CString("Top3SubframeUnderTopFrameOrigins"))));
         
         m_testRunner->statisticsDidRunTelemetryCallback(totalPrevalentResources, totalPrevalentResourcesWithUserInteraction, top3SubframeUnderTopFrameOrigins);
+        return;
+    }
+    
+    if (WKStringIsEqualToUTF8CString(messageName, "DidGetApplicationManifest")) {
+        m_testRunner->didGetApplicationManifest();
         return;
     }
     
@@ -353,8 +382,6 @@ void InjectedBundle::beginTesting(WKDictionaryRef settings)
 
     m_testRunner->setWebGL2Enabled(true);
     m_testRunner->setWebGPUEnabled(true);
-
-    m_testRunner->setCacheAPIEnabled(true);
 
     m_testRunner->setWritableStreamAPIEnabled(true);
     m_testRunner->setReadableByteStreamAPIEnabled(true);
@@ -537,7 +564,7 @@ void InjectedBundle::setGeolocationPermission(bool enabled)
     WKBundlePagePostMessage(page()->page(), messageName.get(), messageBody.get());
 }
 
-void InjectedBundle::setMockGeolocationPosition(double latitude, double longitude, double accuracy, bool providesAltitude, double altitude, bool providesAltitudeAccuracy, double altitudeAccuracy, bool providesHeading, double heading, bool providesSpeed, double speed)
+void InjectedBundle::setMockGeolocationPosition(double latitude, double longitude, double accuracy, bool providesAltitude, double altitude, bool providesAltitudeAccuracy, double altitudeAccuracy, bool providesHeading, double heading, bool providesSpeed, double speed, bool providesFloorLevel, double floorLevel)
 {
     WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetMockGeolocationPosition"));
 
@@ -586,6 +613,14 @@ void InjectedBundle::setMockGeolocationPosition(double latitude, double longitud
     WKRetainPtr<WKStringRef> speedKeyWK(AdoptWK, WKStringCreateWithUTF8CString("speed"));
     WKRetainPtr<WKDoubleRef> speedWK(AdoptWK, WKDoubleCreate(speed));
     WKDictionarySetItem(messageBody.get(), speedKeyWK.get(), speedWK.get());
+
+    WKRetainPtr<WKStringRef> providesFloorLevelKeyWK(AdoptWK, WKStringCreateWithUTF8CString("providesFloorLevel"));
+    WKRetainPtr<WKBooleanRef> providesFloorLevelWK(AdoptWK, WKBooleanCreate(providesFloorLevel));
+    WKDictionarySetItem(messageBody.get(), providesFloorLevelKeyWK.get(), providesFloorLevelWK.get());
+
+    WKRetainPtr<WKStringRef> floorLevelKeyWK(AdoptWK, WKStringCreateWithUTF8CString("floorLevel"));
+    WKRetainPtr<WKDoubleRef> floorLevelWK(AdoptWK, WKDoubleCreate(floorLevel));
+    WKDictionarySetItem(messageBody.get(), floorLevelKeyWK.get(), floorLevelWK.get());
 
     WKBundlePagePostMessage(page()->page(), messageName.get(), messageBody.get());
 }
@@ -831,6 +866,11 @@ bool InjectedBundle::isAllowedHost(WKStringRef host)
 void InjectedBundle::setAllowsAnySSLCertificate(bool allowsAnySSLCertificate)
 {
     WebCoreTestSupport::setAllowsAnySSLCertificate(allowsAnySSLCertificate);
+}
+
+void InjectedBundle::statisticsNotifyObserver()
+{
+    WKBundleResourceLoadStatisticsNotifyObserver(m_bundle);
 }
 
 } // namespace WTR

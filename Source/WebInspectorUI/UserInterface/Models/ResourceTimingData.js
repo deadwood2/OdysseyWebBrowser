@@ -58,8 +58,8 @@ WI.ResourceTimingData = class ResourceTimingData
         payload = payload || {};
 
         // COMPATIBILITY (iOS 10): Resource Timing data was incomplete and incorrect. Do not use it.
-        // iOS 7 sent a requestTime and iOS 8-9.3 sent a navigationStart time.
-        if (typeof payload.requestTime === "number" || typeof payload.navigationStart === "number")
+        // iOS 8-9.3 sent a navigationStart time.
+        if (typeof payload.navigationStart === "number")
             payload = {};
 
         function offsetToTimestamp(offset) {
@@ -94,7 +94,7 @@ WI.ResourceTimingData = class ResourceTimingData
     get connectEnd() { return this._connectEnd; }
     get secureConnectionStart() { return this._secureConnectionStart; }
     get requestStart() { return this._requestStart || this._startTime || this._resource.requestSentTimestamp; }
-    get responseStart() { return this._responseStart || this._startTime || this._resource.responseReceivedTimestamp; }
+    get responseStart() { return this._responseStart || this._startTime || this._resource.responseReceivedTimestamp || this._resource.finishedOrFailedTimestamp; }
     get responseEnd() { return this._responseEnd || this._resource.finishedOrFailedTimestamp; }
 
     markResponseEndTime(responseEnd)

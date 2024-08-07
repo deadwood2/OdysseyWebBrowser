@@ -33,11 +33,13 @@
 #include <WebKit/WKPageContextMenuClient.h>
 #include <WebKit/WKPreferencesPrivate.h>
 #include <WebKit/WKRetainPtr.h>
+#include <WebKit/_WKDownload.h>
 
 namespace TestWebKitAPI {
 
 static bool didFinishLoad;
 static bool didDecideDownloadDestination;
+static WKPageRef expectedOriginatingPage;
 
 static void didFinishLoadForFrame(WKPageRef, WKFrameRef, WKTypeRef, const void*)
 {
@@ -68,12 +70,15 @@ static WKStringRef decideDestinationWithSuggestedFilename(WKContextRef, WKDownlo
     WKDownloadCancel(download);
     didDecideDownloadDestination = true;
 
+    EXPECT_EQ(expectedOriginatingPage, WKDownloadGetOriginatingPage(download));
+    EXPECT_TRUE(WKDownloadGetWasUserInitiated(download)); // Download was started via context menu so it is user initiated.
+
     return Util::toWK("/tmp/WebKitAPITest/ContextMenuDownload").leakRef();
 }
 
 // Checks that the HTML download attribute is used as suggested filename when selecting
 // the "Download Linked File" item in the context menu.
-TEST(WebKit2, ContextMenuDownloadHTMLDownloadAttribute)
+TEST(WebKit, ContextMenuDownloadHTMLDownloadAttribute)
 {
     WKRetainPtr<WKContextRef> context(AdoptWK, Util::createContextWithInjectedBundle());
 
@@ -100,6 +105,7 @@ TEST(WebKit2, ContextMenuDownloadHTMLDownloadAttribute)
 
     WKRetainPtr<WKURLRef> url(AdoptWK, Util::createURLForResource("link-with-download-attribute", "html"));
 
+    expectedOriginatingPage = webView.page();
     WKPageLoadURL(webView.page(), url.get());
     Util::run(&didFinishLoad);
 
@@ -119,7 +125,7 @@ static WKStringRef decideDestinationWithSuggestedFilenameContainingSlashes(WKCon
     return Util::toWK("/tmp/WebKitAPITest/ContextMenuDownload").leakRef();
 }
 
-TEST(WebKit2, ContextMenuDownloadHTMLDownloadAttributeWithSlashes)
+TEST(WebKit, ContextMenuDownloadHTMLDownloadAttributeWithSlashes)
 {
     WKRetainPtr<WKContextRef> context(AdoptWK, Util::createContextWithInjectedBundle());
 
@@ -146,6 +152,7 @@ TEST(WebKit2, ContextMenuDownloadHTMLDownloadAttributeWithSlashes)
 
     WKRetainPtr<WKURLRef> url(AdoptWK, Util::createURLForResource("link-with-download-attribute-with-slashes", "html"));
 
+    expectedOriginatingPage = webView.page();
     WKPageLoadURL(webView.page(), url.get());
     Util::run(&didFinishLoad);
 

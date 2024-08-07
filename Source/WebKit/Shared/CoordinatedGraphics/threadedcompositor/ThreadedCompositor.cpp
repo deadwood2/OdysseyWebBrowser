@@ -42,9 +42,8 @@
 #include <GL/gl.h>
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 Ref<ThreadedCompositor> ThreadedCompositor::create(Client& client, WebPage& webPage, const IntSize& viewportSize, float scaleFactor, ShouldDoFrameSync doFrameSync, TextureMapper::PaintFlags paintFlags)
 {
@@ -108,6 +107,8 @@ void ThreadedCompositor::invalidate()
     m_displayRefreshMonitor->invalidate();
 #endif
     m_compositingRunLoop->performTaskSync([this, protectedThis = makeRef(*this)] {
+        if (!m_context || !m_context->makeContextCurrent())
+            return;
         m_scene->purgeGLResources();
         m_context = nullptr;
         m_client.didDestroyGLContext();

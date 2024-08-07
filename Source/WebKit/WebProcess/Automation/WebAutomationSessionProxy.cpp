@@ -271,7 +271,10 @@ void WebAutomationSessionProxy::evaluateJavaScriptFunction(uint64_t pageID, uint
         JSValueMakeNumber(context, callbackTimeout)
     };
 
-    callPropertyFunction(context, scriptObject, ASCIILiteral("evaluateJavaScriptFunction"), WTF_ARRAY_LENGTH(functionArguments), functionArguments, &exception);
+    {
+        WebCore::UserGestureIndicator gestureIndicator(WebCore::ProcessingUserGesture, frame->coreFrame()->document());
+        callPropertyFunction(context, scriptObject, ASCIILiteral("evaluateJavaScriptFunction"), WTF_ARRAY_LENGTH(functionArguments), functionArguments, &exception);
+    }
 
     if (!exception)
         return;
@@ -650,35 +653,39 @@ void WebAutomationSessionProxy::selectOptionElement(uint64_t pageID, uint64_t fr
         return;
     }
 
-    if (selectElement->isDisabledFormControl() || optionElement.isDisabledFormControl()) {
-        String elementNotSelectableErrorType = Inspector::Protocol::AutomationHelpers::getEnumConstantValue(Inspector::Protocol::Automation::ErrorMessage::ElementNotSelectable);
-        WebProcess::singleton().parentProcessConnection()->send(Messages::WebAutomationSession::DidSelectOptionElement(callbackID, elementNotSelectableErrorType), 0);
-        return;
+    if (!selectElement->isDisabledFormControl() && !optionElement.isDisabledFormControl()) {
+        // FIXME: According to the spec we should fire mouse over, move and down events, then input and change, and finally mouse up and click.
+        // optionSelectedByUser() will fire input and change events if needed, but all other events should be fired manually here.
+        selectElement->optionSelectedByUser(optionElement.index(), true, selectElement->multiple());
     }
-
-    // FIXME: According to the spec we should fire mouse over, move and down events, then input and change, and finally mouse up and click.
-    // optionSelectedByUser() will fire input and change events if needed, but all other events should be fired manually here.
-    selectElement->optionSelectedByUser(optionElement.index(), true, selectElement->multiple());
     WebProcess::singleton().parentProcessConnection()->send(Messages::WebAutomationSession::DidSelectOptionElement(callbackID, { }), 0);
 }
 
-static WebCore::IntRect snapshotRectForScreenshot(WebPage& page, WebCore::Element* element)
+static WebCore::IntRect snapshotRectForScreenshot(WebPage& page, WebCore::Element* element, bool clipToViewport)
 {
+    auto* frameView = page.mainFrameView();
+    if (!frameView)
+        return { };
+
     if (element) {
         if (!element->renderer())
             return { };
 
         WebCore::LayoutRect topLevelRect;
-        return WebCore::snappedIntRect(element->renderer()->paintingRootRect(topLevelRect));
+        WebCore::IntRect elementRect = WebCore::snappedIntRect(element->renderer()->paintingRootRect(topLevelRect));
+        if (clipToViewport)
+            elementRect.intersect(frameView->visibleContentRect());
+
+        return elementRect;
     }
 
     if (auto* frameView = page.mainFrameView())
-        return frameView->visibleContentRect();
+        return clipToViewport ? frameView->visibleContentRect() : WebCore::IntRect(WebCore::IntPoint(0, 0), frameView->contentsSize());
 
     return { };
 }
 
-void WebAutomationSessionProxy::takeScreenshot(uint64_t pageID, uint64_t frameID, String nodeHandle, bool scrollIntoViewIfNeeded, uint64_t callbackID)
+void WebAutomationSessionProxy::takeScreenshot(uint64_t pageID, uint64_t frameID, String nodeHandle, bool scrollIntoViewIfNeeded, bool clipToViewport, uint64_t callbackID)
 {
     ShareableBitmap::Handle handle;
 
@@ -706,15 +713,15 @@ void WebAutomationSessionProxy::takeScreenshot(uint64_t pageID, uint64_t frameID
         }
     }
 
+    if (coreElement && scrollIntoViewIfNeeded)
+        coreElement->scrollIntoViewIfNeeded(false);
+
     String screenshotErrorType = Inspector::Protocol::AutomationHelpers::getEnumConstantValue(Inspector::Protocol::Automation::ErrorMessage::ScreenshotError);
-    WebCore::IntRect snapshotRect = snapshotRectForScreenshot(*page, coreElement);
+    WebCore::IntRect snapshotRect = snapshotRectForScreenshot(*page, coreElement, clipToViewport);
     if (snapshotRect.isEmpty()) {
         WebProcess::singleton().parentProcessConnection()->send(Messages::WebAutomationSession::DidTakeScreenshot(callbackID, handle, screenshotErrorType), 0);
         return;
     }
-
-    if (coreElement && scrollIntoViewIfNeeded)
-        coreElement->scrollIntoViewIfNeeded(false);
 
     RefPtr<WebImage> image = page->scaledSnapshotWithOptions(snapshotRect, 1, SnapshotOptionsShareable);
     if (!image) {

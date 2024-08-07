@@ -59,8 +59,7 @@ WI.SearchResultTreeElement = class SearchResultTreeElement extends WI.GeneralTre
         } else
             modifiedTitle = title;
 
-        // Truncate the tail of the title so the tooltip isn't so large.
-        modifiedTitle = modifiedTitle.trimEnd(searchTermIndex + searchTerm.length + charactersToShowAfterSearchMatch);
+        modifiedTitle = modifiedTitle.truncateEnd(searchTermIndex + searchTerm.length + charactersToShowAfterSearchMatch);
 
         console.assert(modifiedTitle.substring(searchTermIndex, searchTermIndex + searchTerm.length).toLowerCase() === searchTerm.toLowerCase());
 
@@ -88,5 +87,27 @@ WI.SearchResultTreeElement = class SearchResultTreeElement extends WI.GeneralTre
     get synthesizedTextValue()
     {
         return this.representedObject.sourceCodeTextRange.synthesizedTextValue + ":" + this.representedObject.title;
+    }
+
+    // Protected
+
+    populateContextMenu(contextMenu, event)
+    {
+        if (this.representedObject instanceof WI.DOMSearchMatchObject) {
+            contextMenu.appendItem(WI.UIString("Reveal in Elements Tab"), () => {
+                WI.showMainFrameDOMTree(this.representedObject.domNode, {
+                    ignoreSearchTab: true,
+                });
+            });
+        } else if (this.representedObject instanceof WI.SourceCodeSearchMatchObject) {
+            contextMenu.appendItem(WI.UIString("Reveal in Resources Tab"), () => {
+                WI.showOriginalOrFormattedSourceCodeTextRange(this.representedObject.sourceCodeTextRange, {
+                    ignoreNetworkTab: true,
+                    ignoreSearchTab: true,
+                });
+            });
+        }
+
+        super.populateContextMenu(contextMenu, event);
     }
 };

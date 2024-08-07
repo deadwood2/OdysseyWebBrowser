@@ -42,19 +42,11 @@ WI.FrameTreeElement = class FrameTreeElement extends WI.ResourceTreeElement
         frame.addEventListener(WI.Frame.Event.ChildFrameWasAdded, this._childFrameWasAdded, this);
         frame.addEventListener(WI.Frame.Event.ChildFrameWasRemoved, this._childFrameWasRemoved, this);
 
-        frame.domTree.addEventListener(WI.DOMTree.Event.ContentFlowWasAdded, this._childContentFlowWasAdded, this);
-        frame.domTree.addEventListener(WI.DOMTree.Event.ContentFlowWasRemoved, this._childContentFlowWasRemoved, this);
-        frame.domTree.addEventListener(WI.DOMTree.Event.RootDOMNodeInvalidated, this._rootDOMNodeInvalidated, this);
-
         this.shouldRefreshChildren = true;
         this.folderSettingsKey = this._frame.url.hash;
 
         this.registerFolderizeSettings("frames", WI.UIString("Frames"), this._frame.childFrameCollection, WI.FrameTreeElement);
-        this.registerFolderizeSettings("flows", WI.UIString("Flows"), this._frame.domTree.contentFlowCollection, WI.ContentFlowTreeElement);
         this.registerFolderizeSettings("extra-scripts", WI.UIString("Extra Scripts"), this._frame.extraScriptCollection, WI.ScriptTreeElement);
-
-        if (window.CanvasAgent && WI.settings.experimentalShowCanvasContextsInResources.value)
-            this.registerFolderizeSettings("canvases", WI.UIString("Canvases"), this._frame.canvasCollection, WI.CanvasTreeElement);
 
         function forwardingConstructor(representedObject, ...extraArguments) {
             if (representedObject instanceof WI.CSSStyleSheet)
@@ -124,21 +116,11 @@ WI.FrameTreeElement = class FrameTreeElement extends WI.ResourceTreeElement
         WI.GeneralTreeElement.prototype.onattach.call(this);
 
         WI.cssStyleManager.addEventListener(WI.CSSStyleManager.Event.StyleSheetAdded, this._styleSheetAdded, this);
-
-        if (window.CanvasAgent && WI.settings.experimentalShowCanvasContextsInResources.value) {
-            this._frame.canvasCollection.addEventListener(WI.Collection.Event.ItemAdded, this._canvasWasAdded, this);
-            this._frame.canvasCollection.addEventListener(WI.Collection.Event.ItemRemoved, this._canvasWasRemoved, this);
-        }
     }
 
     ondetach()
     {
         WI.cssStyleManager.removeEventListener(WI.CSSStyleManager.Event.StyleSheetAdded, this._styleSheetAdded, this);
-
-        if (window.CanvasAgent && WI.settings.experimentalShowCanvasContextsInResources.value) {
-            this._frame.canvasCollection.removeEventListener(WI.Collection.Event.ItemAdded, this._canvasWasAdded, this);
-            this._frame.canvasCollection.removeEventListener(WI.Collection.Event.ItemRemoved, this._canvasWasRemoved, this);
-        }
 
         super.ondetach();
     }
@@ -191,17 +173,9 @@ WI.FrameTreeElement = class FrameTreeElement extends WI.ResourceTreeElement
                 this.addChildForRepresentedObject(sourceMap.resources[j]);
         }
 
-        for (let contentFlow of this._frame.domTree.contentFlowCollection.items)
-            this.addChildForRepresentedObject(contentFlow);
-
         for (let extraScript of this._frame.extraScriptCollection.items) {
             if (extraScript.sourceURL || extraScript.sourceMappingURL)
                 this.addChildForRepresentedObject(extraScript);
-        }
-
-        if (window.CanvasAgent && WI.settings.experimentalShowCanvasContextsInResources.value) {
-            for (let canvas of this._frame.canvasCollection.items)
-                this.addChildForRepresentedObject(canvas);
         }
 
         const doNotCreateIfMissing = true;
@@ -211,7 +185,6 @@ WI.FrameTreeElement = class FrameTreeElement extends WI.ResourceTreeElement
     onexpand()
     {
         this._expandedSetting.value = true;
-        this._frame.domTree.requestContentFlowList();
     }
 
     oncollapse()
@@ -274,37 +247,11 @@ WI.FrameTreeElement = class FrameTreeElement extends WI.ResourceTreeElement
         this.removeChildForRepresentedObject(event.data.childFrame);
     }
 
-    _childContentFlowWasAdded(event)
-    {
-        this.addRepresentedObjectToNewChildQueue(event.data.flow);
-    }
-
-    _childContentFlowWasRemoved(event)
-    {
-        this.removeChildForRepresentedObject(event.data.flow);
-    }
-
-    _rootDOMNodeInvalidated()
-    {
-        if (this.expanded)
-            this._frame.domTree.requestContentFlowList();
-    }
-
     _styleSheetAdded(event)
     {
         if (!event.data.styleSheet.isInspectorStyleSheet())
             return;
 
         this.addRepresentedObjectToNewChildQueue(event.data.styleSheet);
-    }
-
-    _canvasWasAdded(event)
-    {
-        this.addRepresentedObjectToNewChildQueue(event.data.item);
-    }
-
-    _canvasWasRemoved(event)
-    {
-        this.removeChildForRepresentedObject(event.data.item);
     }
 };

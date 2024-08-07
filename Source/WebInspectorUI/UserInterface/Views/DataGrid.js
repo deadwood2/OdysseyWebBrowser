@@ -230,6 +230,9 @@ WI.DataGrid = class DataGrid extends WI.View
     get columnChooserEnabled() { return this._columnChooserEnabled; }
     set columnChooserEnabled(x) { this._columnChooserEnabled = x; }
 
+    get copyTextDelimiter() { return this._copyTextDelimiter; }
+    set copyTextDelimiter(x) { this._copyTextDelimiter = x; }
+
     get refreshCallback()
     {
         return this._refreshCallback;
@@ -638,10 +641,10 @@ WI.DataGrid = class DataGrid extends WI.View
         for (var identifier of this.columns.keys()) {
             var width = Math.round(100 * widths[identifier] / totalColumnWidths);
             if (minPercent && width < minPercent) {
-                recoupPercent += (minPercent - width);
+                recoupPercent += minPercent - width;
                 width = minPercent;
             } else if (maxPercent && width > maxPercent) {
-                recoupPercent -= (width - maxPercent);
+                recoupPercent -= width - maxPercent;
                 width = maxPercent;
             }
             widths[identifier] = width;
@@ -889,28 +892,6 @@ WI.DataGrid = class DataGrid extends WI.View
 
         this._cachedScrollTop = NaN;
         this._cachedScrollableOffsetHeight = NaN;
-    }
-
-    columnWidthsMap()
-    {
-        var result = {};
-        for (var [identifier, column] of this.columns) {
-            var width = this._headerTableColumnGroupElement.children[column["ordinal"]].style.width;
-            result[identifier] = parseFloat(width);
-        }
-        return result;
-    }
-
-    applyColumnWidthsMap(columnWidthsMap)
-    {
-        for (var [identifier, column] of this.columns) {
-            var width = (columnWidthsMap[identifier] || 0) + "%";
-            var ordinal = column["ordinal"];
-            this._headerTableColumnGroupElement.children[ordinal].style.width = width;
-            this._dataTableColumnGroupElement.children[ordinal].style.width = width;
-        }
-
-        this.needsLayout();
     }
 
     _isColumnVisible(columnIdentifier)
@@ -1303,10 +1284,16 @@ WI.DataGrid = class DataGrid extends WI.View
 
     sortNodes(comparator)
     {
+        // FIXME: This should use the layout loop and not its own requestAnimationFrame.
+        this._sortNodesComparator = comparator;
+
         if (this._sortNodesRequestId)
             return;
 
-        this._sortNodesRequestId = window.requestAnimationFrame(this._sortNodesCallback.bind(this, comparator));
+        this._sortNodesRequestId = window.requestAnimationFrame(() => {
+            if (this._sortNodesComparator)
+                this._sortNodesCallback(this._sortNodesComparator);
+        });
     }
 
     sortNodesImmediately(comparator)
@@ -1331,6 +1318,7 @@ WI.DataGrid = class DataGrid extends WI.View
         }
 
         this._sortNodesRequestId = undefined;
+        this._sortNodesComparator = null;
 
         if (this._editing) {
             this._sortAfterEditingCallback = this.sortNodes.bind(this, comparator);
@@ -1582,10 +1570,14 @@ WI.DataGrid = class DataGrid extends WI.View
     _mouseDownInDataTable(event)
     {
         var gridNode = this.dataGridNodeFromNode(event.target);
-        if (!gridNode || !gridNode.selectable)
+        if (!gridNode) {
+            if (this.selectedNode)
+                this.selectedNode.deselect();
+            
             return;
+        }
 
-        if (gridNode.isEventWithinDisclosureTriangle(event))
+        if (!gridNode.selectable || gridNode.isEventWithinDisclosureTriangle(event))
             return;
 
         if (event.metaKey) {
@@ -1640,6 +1632,9 @@ WI.DataGrid = class DataGrid extends WI.View
                 if (!didAddSeparator) {
                     contextMenu.appendSeparator();
                     didAddSeparator = true;
+
+                    const disabled = true;
+                    contextMenu.appendItem(WI.UIString("Displayed Columns"), () => {}, disabled);
                 }
 
                 contextMenu.appendCheckboxItem(columnInfo.title, () => {
@@ -1718,8 +1713,6 @@ WI.DataGrid = class DataGrid extends WI.View
         return (data instanceof Node ? data.textContent : data) || "";
     }
 
-    set copyTextDelimiter(value) { this._copyTextDelimiter = value; }
-
     _copyTextForDataGridNode(node)
     {
         let fields = node.dataGrid.orderedColumns.map((identifier) => this.textForDataGridNodeColumn(node, identifier));
@@ -1778,18 +1771,6 @@ WI.DataGrid = class DataGrid extends WI.View
         return gridNode && gridNode.selectable && gridNode.copyable;
     }
 
-    get resizeMethod()
-    {
-        if (!this._resizeMethod)
-            return WI.DataGrid.ResizeMethod.Nearest;
-        return this._resizeMethod;
-    }
-
-    set resizeMethod(method)
-    {
-        this._resizeMethod = method;
-    }
-
     resizerDragStarted(resizer)
     {
         if (!resizer[WI.DataGrid.NextColumnOrdinalSymbol])
@@ -1823,14 +1804,6 @@ WI.DataGrid = class DataGrid extends WI.View
         let leadingEdgeOfPreviousColumn = 0;
         for (let i = 0; i < leftColumnIndex; ++i)
             leadingEdgeOfPreviousColumn += firstRowCells[i].offsetWidth;
-
-        // Differences for other resize methods
-        if (this.resizeMethod === WI.DataGrid.ResizeMethod.Last) {
-            rightColumnIndex = this.resizers.length;
-        } else if (this.resizeMethod === WI.DataGrid.ResizeMethod.First) {
-            leadingEdgeOfPreviousColumn += firstRowCells[leftColumnIndex].offsetWidth - firstRowCells[0].offsetWidth;
-            leftColumnIndex = 0;
-        }
 
         let trailingEdgeOfNextColumn = leadingEdgeOfPreviousColumn + firstRowCells[leftColumnIndex].offsetWidth + firstRowCells[rightColumnIndex].offsetWidth;
 
@@ -1946,12 +1919,6 @@ WI.DataGrid.Event = {
     CollapsedNode: "datagrid-collapsed-node",
     FilterDidChange: "datagrid-filter-did-change",
     NodeWasFiltered: "datagrid-node-was-filtered"
-};
-
-WI.DataGrid.ResizeMethod = {
-    Nearest: "nearest",
-    First: "first",
-    Last: "last"
 };
 
 WI.DataGrid.SortOrder = {

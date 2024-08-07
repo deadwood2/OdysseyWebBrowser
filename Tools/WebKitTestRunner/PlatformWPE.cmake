@@ -1,9 +1,8 @@
-find_package(LibGBM REQUIRED)
-find_package(WPEBackend-mesa REQUIRED)
 find_package(Libxkbcommon 0.4.0 REQUIRED)
+find_package(WPEBackend-fdo REQUIRED)
 
 add_custom_target(WebKitTestRunner-forwarding-headers
-    COMMAND ${PERL_EXECUTABLE} ${WEBKIT2_DIR}/Scripts/generate-forwarding-headers.pl --include-path ${WEBKIT_TESTRUNNER_DIR} --output ${FORWARDING_HEADERS_DIR} --platform wpe
+    COMMAND ${PERL_EXECUTABLE} ${WEBKIT_DIR}/Scripts/generate-forwarding-headers.pl --include-path ${WEBKIT_TESTRUNNER_DIR} --output ${FORWARDING_HEADERS_DIR} --platform wpe
 )
 
 set(ForwardingHeadersForWebKitTestRunner_NAME WebKitTestRunner-forwarding-headers)
@@ -12,7 +11,6 @@ list(APPEND WebKitTestRunner_SOURCES
     ${WEBKIT_TESTRUNNER_DIR}/cairo/TestInvocationCairo.cpp
 
     ${WEBKIT_TESTRUNNER_DIR}/wpe/EventSenderProxyWPE.cpp
-    ${WEBKIT_TESTRUNNER_DIR}/wpe/HeadlessViewBackend.cpp
     ${WEBKIT_TESTRUNNER_DIR}/wpe/PlatformWebViewWPE.cpp
     ${WEBKIT_TESTRUNNER_DIR}/wpe/TestControllerWPE.cpp
     ${WEBKIT_TESTRUNNER_DIR}/wpe/main.cpp
@@ -21,19 +19,22 @@ list(APPEND WebKitTestRunner_SOURCES
 list(APPEND WebKitTestRunner_INCLUDE_DIRECTORIES
     ${WEBKIT_TESTRUNNER_DIR}/InjectedBundle/wpe
     ${FORWARDING_HEADERS_DIR}
+    ${TOOLS_DIR}/wpe/HeadlessViewBackend
+)
+
+list(APPEND WebKitTestRunner_SYSTEM_INCLUDE_DIRECTORIES
     ${CAIRO_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
-    ${LIBGBM_INCLUDE_DIRS}
     ${LIBXKBCOMMON_INCLUDE_DIRS}
-    ${WPE_MESA_INCLUDE_DIRS}
+    ${WPEBACKEND_FDO_INCLUDE_DIRS}
 )
 
 list(APPEND WebKitTestRunner_LIBRARIES
     ${CAIRO_LIBRARIES}
     ${GLIB_LIBRARIES}
-    ${LIBGBM_LIBRARIES}
     ${LIBXKBCOMMON_LIBRARIES}
-    ${WPE_MESA_LIBRARIES}
+    ${WPEBACKEND_FDO_LIBRARIES}
+    WPEHeadlessViewBackend
 )
 
 list(APPEND WebKitTestRunnerInjectedBundle_SOURCES

@@ -28,10 +28,13 @@
 #if WK_API_ENABLED
 
 #import "AppDelegate.h"
+#import "AppKitCompatibilityDeclarations.h"
 #import "SettingsController.h"
 #import <WebKit/WKFrameInfo.h>
+#import <WebKit/WKInspector.h>
 #import <WebKit/WKNavigationActionPrivate.h>
 #import <WebKit/WKNavigationDelegate.h>
+#import <WebKit/WKPage.h>
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKUIDelegate.h>
 #import <WebKit/WKUIDelegatePrivate.h>
@@ -202,9 +205,15 @@ static BOOL areEssentiallyEqual(double a, double b)
     else if (action == @selector(removeReinsertWebView:))
         [menuItem setTitle:[_webView window] ? @"Remove Web View" : @"Insert Web View"];
     else if (action == @selector(toggleZoomMode:))
-        [menuItem setState:_zoomTextOnly ? NSOnState : NSOffState];
+        [menuItem setState:_zoomTextOnly ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleEditable:))
-        [menuItem setState:self.isEditable ? NSOnState : NSOffState];
+        [menuItem setState:self.isEditable ? NSControlStateValueOn : NSControlStateValueOff];
+    else if (action == @selector(showHideWebInspector:))
+        [menuItem setTitle:WKInspectorIsVisible(WKPageGetInspector(_webView._pageRefForTransitionToWKWebView)) ? @"Close Web Inspector" : @"Show Web Inspector"];
+    else if (action == @selector(toggleAlwaysShowsHorizontalScroller:))
+        menuItem.state = _webView._alwaysShowsHorizontalScroller ? NSControlStateValueOn : NSControlStateValueOff;
+    else if (action == @selector(toggleAlwaysShowsVerticalScroller:))
+        menuItem.state = _webView._alwaysShowsVerticalScroller ? NSControlStateValueOn : NSControlStateValueOff;
 
     if (action == @selector(setPageScale:))
         [menuItem setState:areEssentiallyEqual([_webView _pageScale], [self pageScaleForMenuItemTag:[menuItem tag]])];
@@ -276,6 +285,25 @@ static BOOL areEssentiallyEqual(double a, double b)
 
 - (IBAction)dumpSourceToConsole:(id)sender
 {
+}
+
+- (IBAction)showHideWebInspector:(id)sender
+{
+    WKInspectorRef inspectorRef = WKPageGetInspector(_webView._pageRefForTransitionToWKWebView);
+    if (WKInspectorIsVisible(inspectorRef))
+        WKInspectorHide(inspectorRef);
+    else
+        WKInspectorShow(inspectorRef);
+}
+
+- (IBAction)toggleAlwaysShowsHorizontalScroller:(id)sender
+{
+    _webView._alwaysShowsHorizontalScroller = !_webView._alwaysShowsHorizontalScroller;
+}
+
+- (IBAction)toggleAlwaysShowsVerticalScroller:(id)sender
+{
+    _webView._alwaysShowsVerticalScroller = !_webView._alwaysShowsVerticalScroller;
 }
 
 - (NSURL *)currentURL

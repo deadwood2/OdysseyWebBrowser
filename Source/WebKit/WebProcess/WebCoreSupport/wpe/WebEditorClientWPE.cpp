@@ -26,13 +26,13 @@
 #include "config.h"
 #include "WebEditorClient.h"
 
-#include "PlatformKeyboardEvent.h"
 #include <WebCore/Document.h>
 #include <WebCore/Editor.h>
 #include <WebCore/EventNames.h>
 #include <WebCore/Frame.h>
 #include <WebCore/KeyboardEvent.h>
 #include <WebCore/Node.h>
+#include <WebCore/PlatformKeyboardEvent.h>
 #include <WebCore/WindowsKeyboardCodes.h>
 #include <wtf/NeverDestroyed.h>
 
@@ -208,9 +208,8 @@ static void handleKeyDown(Frame& frame, KeyboardEvent& event, const PlatformKeyb
 
 void WebEditorClient::handleKeyboardEvent(WebCore::KeyboardEvent* event)
 {
-    Node* node = event->target()->toNode();
-    ASSERT(node);
-    Frame* frame = node->document().frame();
+    ASSERT(event->target());
+    auto* frame = downcast<Node>(event->target())->document().frame();
     ASSERT(frame);
 
     // FIXME: Reorder the checks in a more sensible way.

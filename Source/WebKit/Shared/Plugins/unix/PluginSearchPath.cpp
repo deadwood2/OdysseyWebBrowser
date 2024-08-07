@@ -28,9 +28,8 @@
 
 #include <WebCore/FileSystem.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 Vector<String> pluginsDirectories()
 {
@@ -48,8 +47,8 @@ Vector<String> pluginsDirectories()
     if (!mozillaHome.isEmpty())
         result.append(mozillaHome + "/plugins");
 
-    result.append(homeDirectoryPath() + "/.mozilla/plugins");
-    result.append(homeDirectoryPath() + "/.netscape/plugins");
+    result.append(FileSystem::homeDirectoryPath() + "/.mozilla/plugins");
+    result.append(FileSystem::homeDirectoryPath() + "/.netscape/plugins");
     result.append("/usr/lib/browser/plugins");
     result.append("/usr/local/lib/mozilla/plugins");
     result.append("/usr/lib/firefox/plugins");

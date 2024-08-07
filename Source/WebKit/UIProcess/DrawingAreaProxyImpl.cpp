@@ -35,6 +35,7 @@
 #include "WebPreferences.h"
 #include "WebProcessProxy.h"
 #include <WebCore/Region.h>
+#include <wtf/CurrentTime.h>
 
 #if PLATFORM(GTK)
 #include <gtk/gtk.h>
@@ -44,9 +45,8 @@
 #include <wtf/glib/RunLoopSourcePriority.h>
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 DrawingAreaProxyImpl::DrawingAreaProxyImpl(WebPageProxy& webPageProxy)
     : AcceleratedDrawingAreaProxy(webPageProxy)

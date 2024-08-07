@@ -29,10 +29,10 @@
 #import "config.h"
 #import "FontCache.h"
 
-#import "CoreGraphicsSPI.h"
-#import "CoreTextSPI.h"
 #import "FontCascade.h"
 #import "RenderThemeIOS.h"
+#import <pal/spi/cg/CoreGraphicsSPI.h>
+#import <pal/spi/cocoa/CoreTextSPI.h>
 #import <wtf/HashSet.h>
 #import <wtf/NeverDestroyed.h>
 #import <wtf/RetainPtr.h>
@@ -73,11 +73,6 @@ FontPlatformData* FontCache::getCustomFallbackFont(const UInt32 c, const FontDes
     if (!family)
         return nullptr;
     return getCachedFontPlatformData(description, *family);
-}
-
-Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescription)
-{
-    return *fontForFamily(fontDescription, AtomicString(".PhoneFallback", AtomicString::ConstructFromLiteral));
 }
 
 static RetainPtr<CTFontDescriptorRef> baseSystemFontDescriptor(FontSelectionValue weight, bool bold, float size)

@@ -31,9 +31,12 @@
 #include <wtf/Deque.h>
 #include <wtf/Forward.h>
 
+namespace PAL {
+class SessionID;
+}
+
 namespace WebCore {
 class SecurityOrigin;
-class SessionID;
 struct SecurityOriginData;
 }
 
@@ -45,17 +48,17 @@ struct WebsiteData;
 
 class StorageProcessProxy : public ChildProcessProxy {
 public:
-    static Ref<StorageProcessProxy> create(WebProcessPool*);
+    static Ref<StorageProcessProxy> create(WebProcessPool&);
     ~StorageProcessProxy();
 
-    void fetchWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, WTF::Function<void(WebsiteData)>&& completionHandler);
-    void deleteWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, std::chrono::system_clock::time_point modifiedSince, WTF::Function<void()>&& completionHandler);
-    void deleteWebsiteDataForOrigins(WebCore::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>&, WTF::Function<void()>&& completionHandler);
+    void fetchWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, WTF::Function<void(WebsiteData)>&& completionHandler);
+    void deleteWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, WallTime modifiedSince, WTF::Function<void()>&& completionHandler);
+    void deleteWebsiteDataForOrigins(PAL::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>&, WTF::Function<void()>&& completionHandler);
 
-    void getStorageProcessConnection(Ref<Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply>&&);
+    void getStorageProcessConnection(bool isServiceWorkerProcess, Ref<Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply>&&);
 
 private:
-    StorageProcessProxy(WebProcessPool*);
+    StorageProcessProxy(WebProcessPool&);
 
     // ChildProcessProxy
     void getLaunchOptions(ProcessLauncher::LaunchOptions&) override;
@@ -76,11 +79,15 @@ private:
 #if ENABLE(SANDBOX_EXTENSIONS)
     void getSandboxExtensionsForBlobFiles(uint64_t requestID, const Vector<String>& paths);
 #endif
+#if ENABLE(SERVICE_WORKER)
+    void establishWorkerContextConnectionToStorageProcess();
+    void establishWorkerContextConnectionToStorageProcessForExplicitSession(PAL::SessionID);
+#endif
 
     // ProcessLauncher::Client
     void didFinishLaunching(ProcessLauncher*, IPC::Connection::Identifier) override;
 
-    WebProcessPool* m_processPool;
+    WebProcessPool& m_processPool;
 
     unsigned m_numPendingConnectionRequests;
     Deque<Ref<Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply>> m_pendingConnectionReplies;

@@ -52,12 +52,12 @@ WI.TimelineRecordingContentView = class TimelineRecordingContentView extends WI.
         this._selectedTimeRangePathComponent = this._entireRecordingPathComponent;
 
         this._filterBarNavigationItem = new WI.FilterBarNavigationItem;
-        this._filterBarNavigationItem.filterBar.placeholder = WI.UIString("Filter Records");
         this._filterBarNavigationItem.filterBar.addEventListener(WI.FilterBar.Event.FilterDidChange, this._filterDidChange, this);
         this._timelineContentBrowser.navigationBar.addNavigationItem(this._filterBarNavigationItem);
         this.addSubview(this._timelineContentBrowser);
 
-        this._clearTimelineNavigationItem = new WI.ButtonNavigationItem("clear-timeline", WI.UIString("Clear Timeline (%s)").format(WI.clearKeyboardShortcut.displayName), "Images/NavigationItemClear.svg", 16, 16);
+        this._clearTimelineNavigationItem = new WI.ButtonNavigationItem("clear-timeline", WI.UIString("Clear Timeline (%s)").format(WI.clearKeyboardShortcut.displayName), "Images/NavigationItemTrash.svg", 15, 15);
+        this._clearTimelineNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
         this._clearTimelineNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._clearTimeline, this);
 
         this._overviewTimelineView = new WI.OverviewTimelineView(recording);

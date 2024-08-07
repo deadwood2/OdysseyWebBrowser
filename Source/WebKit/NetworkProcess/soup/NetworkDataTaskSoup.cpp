@@ -43,14 +43,13 @@
 #include <wtf/MainThread.h>
 #include <wtf/glib/RunLoopSourcePriority.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static const size_t gDefaultReadBufferSize = 8192;
 
-NetworkDataTaskSoup::NetworkDataTaskSoup(NetworkSession& session, NetworkDataTaskClient& client, const ResourceRequest& requestWithCredentials, StoredCredentials storedCredentials, ContentSniffingPolicy shouldContentSniff, bool shouldClearReferrerOnHTTPSToHTTPRedirect)
-    : NetworkDataTask(session, client, requestWithCredentials, storedCredentials, shouldClearReferrerOnHTTPSToHTTPRedirect)
+NetworkDataTaskSoup::NetworkDataTaskSoup(NetworkSession& session, NetworkDataTaskClient& client, const ResourceRequest& requestWithCredentials, StoredCredentialsPolicy storedCredentialsPolicy, ContentSniffingPolicy shouldContentSniff, WebCore::ContentEncodingSniffingPolicy, bool shouldClearReferrerOnHTTPSToHTTPRedirect)
+    : NetworkDataTask(session, client, requestWithCredentials, storedCredentialsPolicy, shouldClearReferrerOnHTTPSToHTTPRedirect)
     , m_shouldContentSniff(shouldContentSniff)
     , m_timeoutSource(RunLoop::main(), this, &NetworkDataTaskSoup::timeoutFired)
 {
@@ -62,7 +61,7 @@ NetworkDataTaskSoup::NetworkDataTaskSoup(NetworkSession& session, NetworkDataTas
     if (request.url().protocolIsInHTTPFamily()) {
         m_startTime = MonotonicTime::now();
         auto url = request.url();
-        if (m_storedCredentials == AllowStoredCredentials) {
+        if (m_storedCredentialsPolicy == StoredCredentialsPolicy::Use) {
             m_user = url.user();
             m_password = url.pass();
             request.removeCredentials();
@@ -95,9 +94,9 @@ String NetworkDataTaskSoup::suggestedFilename() const
     return decodeURLEscapeSequences(m_response.url().lastPathComponent());
 }
 
-void NetworkDataTaskSoup::setPendingDownloadLocation(const String& filename, const SandboxExtension::Handle& sandboxExtensionHandle, bool allowOverwrite)
+void NetworkDataTaskSoup::setPendingDownloadLocation(const String& filename, SandboxExtension::Handle&& sandboxExtensionHandle, bool allowOverwrite)
 {
-    NetworkDataTask::setPendingDownloadLocation(filename, sandboxExtensionHandle, allowOverwrite);
+    NetworkDataTask::setPendingDownloadLocation(filename, WTFMove(sandboxExtensionHandle), allowOverwrite);
     m_allowOverwriteDownload = allowOverwrite;
 }
 
@@ -136,7 +135,7 @@ void NetworkDataTaskSoup::createRequest(ResourceRequest&& request)
     m_currentRequest.updateSoupMessage(soupMessage.get());
     if (m_shouldContentSniff == DoNotSniffContent)
         soup_message_disable_feature(soupMessage.get(), SOUP_TYPE_CONTENT_SNIFFER);
-    if (m_user.isEmpty() && m_password.isEmpty() && m_storedCredentials == DoNotAllowStoredCredentials) {
+    if (m_user.isEmpty() && m_password.isEmpty() && m_storedCredentialsPolicy == StoredCredentialsPolicy::DoNotUse) {
 #if SOUP_CHECK_VERSION(2, 57, 1)
         messageFlags |= SOUP_MESSAGE_DO_NOT_USE_AUTH_CACHE;
 #else
@@ -165,7 +164,6 @@ void NetworkDataTaskSoup::createRequest(ResourceRequest&& request)
     m_soupRequest = WTFMove(soupRequest);
     m_soupMessage = WTFMove(soupMessage);
 
-    g_signal_connect(m_soupMessage.get(), "notify::tls-errors", G_CALLBACK(tlsErrorsChangedCallback), this);
     g_signal_connect(m_soupMessage.get(), "got-headers", G_CALLBACK(gotHeadersCallback), this);
     g_signal_connect(m_soupMessage.get(), "wrote-body-data", G_CALLBACK(wroteBodyDataCallback), this);
     g_signal_connect(static_cast<NetworkSessionSoup&>(m_session.get()).soupSession(), "authenticate",  G_CALLBACK(authenticateCallback), this);
@@ -377,7 +375,7 @@ void NetworkDataTaskSoup::dispatchDidReceiveResponse()
         }
 
         switch (policyAction) {
-        case PolicyAction::PolicyUse:
+        case PolicyAction::Use:
             if (m_inputStream)
                 read();
             else if (m_multipartInputStream)
@@ -386,10 +384,10 @@ void NetworkDataTaskSoup::dispatchDidReceiveResponse()
                 ASSERT_NOT_REACHED();
 
             break;
-        case PolicyAction::PolicyIgnore:
+        case PolicyAction::Ignore:
             clearRequest();
             break;
-        case PolicyAction::PolicyDownload:
+        case PolicyAction::Download:
             download();
             break;
         }
@@ -404,28 +402,32 @@ void NetworkDataTaskSoup::dispatchDidCompleteWithError(const ResourceError& erro
     m_client->didCompleteWithError(error, m_networkLoadMetrics);
 }
 
-void NetworkDataTaskSoup::tlsErrorsChangedCallback(SoupMessage* soupMessage, GParamSpec*, NetworkDataTaskSoup* task)
+gboolean NetworkDataTaskSoup::tlsConnectionAcceptCertificateCallback(GTlsConnection* connection, GTlsCertificate* certificate, GTlsCertificateFlags errors, NetworkDataTaskSoup* task)
 {
     if (task->state() == State::Canceling || task->state() == State::Completed || !task->m_client) {
         task->clearRequest();
-        return;
+        return FALSE;
     }
 
-    ASSERT(soupMessage == task->m_soupMessage.get());
-    task->tlsErrorsChanged();
+    auto* connectionMessage = g_object_get_data(G_OBJECT(connection), "wk-soup-message");
+    if (connectionMessage != task->m_soupMessage.get())
+        return FALSE;
+
+    return task->tlsConnectionAcceptCertificate(certificate, errors);
 }
 
-void NetworkDataTaskSoup::tlsErrorsChanged()
+bool NetworkDataTaskSoup::tlsConnectionAcceptCertificate(GTlsCertificate* certificate, GTlsCertificateFlags tlsErrors)
 {
     ASSERT(m_soupRequest);
-    SoupNetworkSession::checkTLSErrors(m_soupRequest.get(), m_soupMessage.get(), [this] (const ResourceError& error) {
-        if (error.isNull())
-            return;
+    URL url(soup_request_get_uri(m_soupRequest.get()));
+    auto error = SoupNetworkSession::checkTLSErrors(url, certificate, tlsErrors);
+    if (!error)
+        return true;
 
-        RefPtr<NetworkDataTaskSoup> protectedThis(this);
-        invalidateAndCancel();
-        dispatchDidCompleteWithError(error);
-    });
+    RefPtr<NetworkDataTaskSoup> protectedThis(this);
+    invalidateAndCancel();
+    dispatchDidCompleteWithError(error.value());
+    return false;
 }
 
 void NetworkDataTaskSoup::applyAuthenticationToRequest(ResourceRequest& request)
@@ -469,7 +471,7 @@ static inline bool isAuthenticationFailureStatusCode(int httpStatusCode)
 void NetworkDataTaskSoup::authenticate(AuthenticationChallenge&& challenge)
 {
     ASSERT(m_soupMessage);
-    if (m_storedCredentials == AllowStoredCredentials) {
+    if (m_storedCredentialsPolicy == StoredCredentialsPolicy::Use) {
         if (!m_initialCredential.isEmpty() || challenge.previousFailureCount()) {
             // The stored credential wasn't accepted, stop using it. There is a race condition
             // here, since a different credential might have already been stored by another
@@ -498,9 +500,9 @@ void NetworkDataTaskSoup::authenticate(AuthenticationChallenge&& challenge)
     // of all request latency, versus a one-time latency for the small subset of requests that
     // use HTTP authentication. In the end, this doesn't matter much, because persistent credentials
     // will become session credentials after the first use.
-    if (m_storedCredentials == AllowStoredCredentials) {
+    if (m_storedCredentialsPolicy == StoredCredentialsPolicy::Use) {
         auto protectionSpace = challenge.protectionSpace();
-        m_session->networkStorageSession().getCredentialFromPersistentStorage(protectionSpace,
+        m_session->networkStorageSession().getCredentialFromPersistentStorage(protectionSpace, m_cancellable.get(),
             [this, protectedThis = makeRef(*this), authChallenge = WTFMove(challenge)] (Credential&& credential) mutable {
                 if (m_state == State::Canceling || m_state == State::Completed || !m_client) {
                     clearRequest();
@@ -529,7 +531,7 @@ void NetworkDataTaskSoup::continueAuthenticate(AuthenticationChallenge&& challen
         }
 
         if (disposition == AuthenticationChallengeDisposition::UseCredential && !credential.isEmpty()) {
-            if (m_storedCredentials == AllowStoredCredentials) {
+            if (m_storedCredentialsPolicy == StoredCredentialsPolicy::Use) {
                 // Eventually we will manage per-session credentials only internally or use some newly-exposed API from libsoup,
                 // because once we authenticate via libsoup, there is no way to ignore it for a particular request. Right now,
                 // we place the credentials in the store even though libsoup will never fire the authenticate signal again for
@@ -665,7 +667,7 @@ void NetworkDataTaskSoup::continueHTTPRedirection()
         // we want to strip here because the redirect is cross-origin.
         request.clearHTTPAuthorization();
         request.clearHTTPOrigin();
-    } else if (url.protocolIsInHTTPFamily() && m_storedCredentials == AllowStoredCredentials) {
+    } else if (url.protocolIsInHTTPFamily() && m_storedCredentialsPolicy == StoredCredentialsPolicy::Use) {
         if (m_user.isEmpty() && m_password.isEmpty()) {
             auto credential = m_session->networkStorageSession().credentialStorage().get(m_partition, request.url());
             if (!credential.isEmpty())
@@ -1041,16 +1043,16 @@ void NetworkDataTaskSoup::didFail(const ResourceError& error)
     dispatchDidCompleteWithError(error);
 }
 
-void NetworkDataTaskSoup::networkEventCallback(SoupMessage* soupMessage, GSocketClientEvent event, GIOStream*, NetworkDataTaskSoup* task)
+void NetworkDataTaskSoup::networkEventCallback(SoupMessage* soupMessage, GSocketClientEvent event, GIOStream* stream, NetworkDataTaskSoup* task)
 {
     if (task->state() == State::Canceling || task->state() == State::Completed || !task->m_client)
         return;
 
     ASSERT(task->m_soupMessage.get() == soupMessage);
-    task->networkEvent(event);
+    task->networkEvent(event, stream);
 }
 
-void NetworkDataTaskSoup::networkEvent(GSocketClientEvent event)
+void NetworkDataTaskSoup::networkEvent(GSocketClientEvent event, GIOStream* stream)
 {
     Seconds deltaTime = MonotonicTime::now() - m_startTime;
     switch (event) {
@@ -1073,6 +1075,9 @@ void NetworkDataTaskSoup::networkEvent(GSocketClientEvent event)
         break;
     case G_SOCKET_CLIENT_TLS_HANDSHAKING:
         m_networkLoadMetrics.secureConnectionStart = deltaTime;
+        RELEASE_ASSERT(G_IS_TLS_CONNECTION(stream));
+        g_object_set_data(G_OBJECT(stream), "wk-soup-message", m_soupMessage.get());
+        g_signal_connect(stream, "accept-certificate", G_CALLBACK(tlsConnectionAcceptCertificateCallback), this);
         break;
     case G_SOCKET_CLIENT_TLS_HANDSHAKED:
         break;

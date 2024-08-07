@@ -27,18 +27,8 @@ WI.ResourcesTabContentView = class ResourcesTabContentView extends WI.ContentBro
 {
     constructor(identifier)
     {
-        let {image, title} = WI.ResourcesTabContentView.tabInfo();
-        let tabBarItem = new WI.GeneralTabBarItem(image, title);
-        let detailsSidebarPanelConstructors = [WI.ResourceDetailsSidebarPanel, WI.ProbeDetailsSidebarPanel];
-
-        if (window.CanvasAgent && WI.settings.experimentalShowCanvasContextsInResources.value)
-            detailsSidebarPanelConstructors.push(WI.CanvasDetailsSidebarPanel);
-
-        // FIXME: Until ContentFlows are moved to the Elements tab, these details sidebar panels need to be included.
-        detailsSidebarPanelConstructors = detailsSidebarPanelConstructors.concat([WI.DOMNodeDetailsSidebarPanel, WI.CSSStyleDetailsSidebarPanel]);
-        if (window.LayerTreeAgent)
-            detailsSidebarPanelConstructors.push(WI.LayerTreeDetailsSidebarPanel);
-
+        let tabBarItem = WI.GeneralTabBarItem.fromTabInfo(WI.ResourcesTabContentView.tabInfo());
+        const detailsSidebarPanelConstructors = [WI.ResourceDetailsSidebarPanel, WI.ProbeDetailsSidebarPanel];
         super(identifier || "resources", "resources", tabBarItem, WI.ResourceSidebarPanel, detailsSidebarPanelConstructors);
     }
 
@@ -68,10 +58,7 @@ WI.ResourcesTabContentView = class ResourcesTabContentView extends WI.ContentBro
             || representedObject instanceof WI.Resource
             || representedObject instanceof WI.Script
             || representedObject instanceof WI.CSSStyleSheet
-            || representedObject instanceof WI.ContentFlow
-            || representedObject instanceof WI.Canvas
-            || representedObject instanceof WI.ShaderProgram
-            || representedObject instanceof WI.Collection;
+            || (representedObject instanceof WI.Collection && !(representedObject instanceof WI.CanvasCollection));
     }
 };
 

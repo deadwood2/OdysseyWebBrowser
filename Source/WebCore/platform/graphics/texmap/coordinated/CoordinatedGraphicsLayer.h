@@ -30,12 +30,16 @@
 #include "GraphicsLayerTransform.h"
 #include "Image.h"
 #include "IntSize.h"
+#include "NicosiaBuffer.h"
 #include "TextureMapperAnimation.h"
-#include "TextureMapperPlatformLayer.h"
 #include "TiledBackingStore.h"
 #include "TiledBackingStoreClient.h"
 #include "TransformationMatrix.h"
 #include <wtf/text/StringHash.h>
+
+namespace Nicosia {
+class PaintingEngine;
+}
 
 namespace WebCore {
 class CoordinatedGraphicsLayer;
@@ -48,16 +52,15 @@ public:
     virtual FloatRect visibleContentsRect() const = 0;
     virtual Ref<CoordinatedImageBacking> createImageBackingIfNeeded(Image&) = 0;
     virtual void detachLayer(CoordinatedGraphicsLayer*) = 0;
-    virtual bool paintToSurface(const IntSize&, CoordinatedSurface::Flags, uint32_t& atlasID, IntPoint&, CoordinatedSurface::Client&) = 0;
+    virtual void attachLayer(CoordinatedGraphicsLayer*) = 0;
+    virtual Ref<Nicosia::Buffer> getCoordinatedBuffer(const IntSize&, Nicosia::Buffer::Flags, uint32_t&, IntRect&) = 0;
+    virtual Nicosia::PaintingEngine& paintingEngine() = 0;
 
     virtual void syncLayerState(CoordinatedLayerID, CoordinatedGraphicsLayerState&) = 0;
 };
 
-class CoordinatedGraphicsLayer : public GraphicsLayer
+class WEBCORE_EXPORT CoordinatedGraphicsLayer : public GraphicsLayer
     , public TiledBackingStoreClient
-#if USE(COORDINATED_GRAPHICS_THREADED)
-    , public TextureMapperPlatformLayer::Client
-#endif
     , public CoordinatedImageBacking::Host {
 public:
     explicit CoordinatedGraphicsLayer(Type, GraphicsLayerClient&);
@@ -130,15 +133,13 @@ public:
     IntRect transformedVisibleRect();
 
     // TiledBackingStoreClient
-    void tiledBackingStorePaint(GraphicsContext&, const IntRect&) override;
-    void didUpdateTileBuffers() override;
     void tiledBackingStoreHasPendingTileCreation() override;
     void createTile(uint32_t tileID, float) override;
     void updateTile(uint32_t tileID, const SurfaceUpdateInfo&, const IntRect&) override;
     void removeTile(uint32_t tileID) override;
-    bool paintToSurface(const IntSize&, uint32_t& /* atlasID */, IntPoint&, CoordinatedSurface::Client&) override;
 
     void setCoordinator(CoordinatedGraphicsLayerClient*);
+    void setCoordinatorIncludingSubLayersIfNeeded(CoordinatedGraphicsLayerClient*);
 
     void setNeedsVisibleRectAdjustment();
     void purgeBackingStores();
@@ -150,10 +151,6 @@ private:
 
     void syncPlatformLayer();
     void updatePlatformLayer();
-#if USE(COORDINATED_GRAPHICS_THREADED)
-    void platformLayerWillBeDestroyed() override;
-    void setPlatformLayerNeedsDisplay() override;
-#endif
 
     void setDebugBorder(const Color&, float width) override;
 
@@ -165,6 +162,7 @@ private:
     void didChangeChildren();
     void didChangeFilters();
     void didChangeImageBacking();
+    void didUpdateTileBuffers();
 
     void resetLayerState();
     void syncLayerState();

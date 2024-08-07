@@ -27,8 +27,7 @@ WI.DebuggerTabContentView = class DebuggerTabContentView extends WI.ContentBrows
 {
     constructor(identifier)
     {
-        let {image, title} = WI.DebuggerTabContentView.tabInfo();
-        let tabBarItem = new WI.GeneralTabBarItem(image, title);
+        let tabBarItem = WI.GeneralTabBarItem.fromTabInfo(WI.DebuggerTabContentView.tabInfo());
         let detailsSidebarPanelConstructors = [WI.ScopeChainDetailsSidebarPanel, WI.ResourceDetailsSidebarPanel, WI.ProbeDetailsSidebarPanel];
 
         super(identifier || "debugger", "debugger", tabBarItem, WI.DebuggerSidebarPanel, detailsSidebarPanelConstructors);
@@ -72,11 +71,16 @@ WI.DebuggerTabContentView = class DebuggerTabContentView extends WI.ContentBrows
         if (!this._showScopeChainDetailsSidebarPanel)
             return;
 
-        let scopeChainDetailsSidebarPanel = WI.instanceForClass(WI.ScopeChainDetailsSidebarPanel);
-        if (!scopeChainDetailsSidebarPanel.parentSidebar)
+        let scopeChainDetailsSidebarPanel = this.detailsSidebarPanels.find((item) => item instanceof WI.ScopeChainDetailsSidebarPanel);
+        if (!scopeChainDetailsSidebarPanel)
             return;
 
-        scopeChainDetailsSidebarPanel.show();
+        let sidebar = scopeChainDetailsSidebarPanel.parentSidebar;
+        if (!sidebar)
+            return;
+
+        sidebar.selectedSidebarPanel = scopeChainDetailsSidebarPanel;
+        sidebar.collapsed = false;
 
         this._showScopeChainDetailsSidebarPanel = false;
     }

@@ -35,6 +35,7 @@
 #include "WebPage.h"
 #include "WebPageProxyMessages.h"
 #include "WebProcess.h"
+#include <JavaScriptCore/ScriptValue.h>
 #include <WebCore/BitmapImage.h>
 #include <WebCore/Chrome.h>
 #include <WebCore/CookieJar.h>
@@ -69,7 +70,7 @@
 #include <WebCore/SecurityPolicy.h>
 #include <WebCore/Settings.h>
 #include <WebCore/UserGestureIndicator.h>
-#include <bindings/ScriptValue.h>
+#include <wtf/CompletionHandler.h>
 #include <wtf/text/StringBuilder.h>
 
 #if PLATFORM(X11)
@@ -133,7 +134,7 @@ private:
     }
 
     // NetscapePluginStreamLoaderClient
-    void willSendRequest(NetscapePlugInStreamLoader*, ResourceRequest&&, const ResourceResponse& redirectResponse, WTF::Function<void (ResourceRequest&&)>&&) override;
+    void willSendRequest(NetscapePlugInStreamLoader*, ResourceRequest&&, const ResourceResponse& redirectResponse, CompletionHandler<void(ResourceRequest&&)>&&) override;
     void didReceiveResponse(NetscapePlugInStreamLoader*, const ResourceResponse&) override;
     void didReceiveData(NetscapePlugInStreamLoader*, const char*, int) override;
     void didFail(NetscapePlugInStreamLoader*, const ResourceError&) override;
@@ -142,7 +143,7 @@ private:
     PluginView* m_pluginView;
     uint64_t m_streamID;
     ResourceRequest m_request;
-    WTF::Function<void (ResourceRequest)> m_loadCallback;
+    CompletionHandler<void(ResourceRequest&&)> m_loadCallback;
 
     // True if the stream was explicitly cancelled by calling cancel().
     // (As opposed to being cancelled by the user hitting the stop button for example.
@@ -153,6 +154,8 @@ private:
 
 PluginView::Stream::~Stream()
 {
+    if (m_loadCallback)
+        m_loadCallback({ });
     ASSERT(!m_pluginView);
 }
     
@@ -164,7 +167,9 @@ void PluginView::Stream::start()
     Frame* frame = m_pluginView->m_pluginElement->document().frame();
     ASSERT(frame);
 
-    m_loader = WebProcess::singleton().webLoaderStrategy().schedulePluginStreamLoad(*frame, *this, m_request);
+    WebProcess::singleton().webLoaderStrategy().schedulePluginStreamLoad(*frame, *this, ResourceRequest {m_request}, [this, protectedThis = makeRef(*this)](RefPtr<NetscapePlugInStreamLoader>&& loader) {
+        m_loader = WTFMove(loader);
+    });
 }
 
 void PluginView::Stream::cancel()
@@ -181,7 +186,7 @@ void PluginView::Stream::continueLoad()
     ASSERT(m_pluginView->m_plugin);
     ASSERT(m_loadCallback);
 
-    m_loadCallback(m_request);
+    m_loadCallback(ResourceRequest(m_request));
 }
 
 static String buildHTTPHeaders(const ResourceResponse& response, long long& expectedContentLength)
@@ -218,10 +223,10 @@ static uint32_t lastModifiedDateMS(const ResourceResponse& response)
     if (!lastModified)
         return 0;
 
-    return std::chrono::duration_cast<std::chrono::milliseconds>(lastModified.value().time_since_epoch()).count();
+    return lastModified.value().secondsSinceEpoch().millisecondsAs<uint32_t>();
 }
 
-void PluginView::Stream::willSendRequest(NetscapePlugInStreamLoader*, ResourceRequest&& request, const ResourceResponse& redirectResponse, WTF::Function<void (ResourceRequest&&)>&& decisionHandler)
+void PluginView::Stream::willSendRequest(NetscapePlugInStreamLoader*, ResourceRequest&& request, const ResourceResponse& redirectResponse, CompletionHandler<void(ResourceRequest&&)>&& decisionHandler)
 {
     const URL& requestURL = request.url();
     const URL& redirectResponseURL = redirectResponse.url();
@@ -314,7 +319,7 @@ PluginView::~PluginView()
     if (m_webPage)
         m_webPage->removePluginView(this);
 
-    ASSERT(!m_isBeingDestroyed);
+    ASSERT(!m_plugin || !m_plugin->isBeingDestroyed());
 
     if (m_isWaitingUntilMediaCanStart)
         m_pluginElement->document().removeMediaCanStartListener(this);
@@ -335,9 +340,7 @@ void PluginView::destroyPluginAndReset()
         it->key->setLoadListener(0);
 
     if (m_plugin) {
-        m_isBeingDestroyed = true;
         m_plugin->destroyPlugin();
-        m_isBeingDestroyed = false;
 
         m_pendingURLRequests.clear();
         m_pendingURLRequestsTimer.stop();
@@ -368,7 +371,6 @@ void PluginView::recreateAndInitialize(Ref<Plugin>&& plugin)
     m_isInitialized = false;
     m_isWaitingForSynchronousInitialization = false;
     m_isWaitingUntilMediaCanStart = false;
-    m_isBeingDestroyed = false;
     m_manualStreamState = ManualStreamState::Initial;
     m_transientPaintingSnapshot = nullptr;
 
@@ -897,7 +899,7 @@ std::unique_ptr<WebEvent> PluginView::createWebEvent(MouseEvent& event) const
     if (event.metaKey())
         modifiers |= WebEvent::MetaKey;
 
-    return std::make_unique<WebMouseEvent>(type, button, m_plugin->convertToRootView(IntPoint(event.offsetX(), event.offsetY())), event.screenLocation(), 0, 0, 0, clickCount, static_cast<WebEvent::Modifiers>(modifiers), 0, 0);
+    return std::make_unique<WebMouseEvent>(type, button, event.buttons(), m_plugin->convertToRootView(IntPoint(event.offsetX(), event.offsetY())), event.screenLocation(), 0, 0, 0, clickCount, static_cast<WebEvent::Modifiers>(modifiers), WallTime { }, 0);
 }
 
 void PluginView::handleEvent(Event& event)
@@ -987,12 +989,12 @@ bool PluginView::shouldNotAddLayer() const
     return m_pluginElement->displayState() < HTMLPlugInElement::Restarting && !m_plugin->supportsSnapshotting();
 }
 
-void PluginView::willDetatchRenderer()
+void PluginView::willDetachRenderer()
 {
     if (!m_isInitialized || !m_plugin)
         return;
 
-    m_plugin->willDetatchRenderer();
+    m_plugin->willDetachRenderer();
 }
 
 RefPtr<SharedBuffer> PluginView::liveResourceData() const
@@ -1284,11 +1286,8 @@ void PluginView::removeStream(Stream* stream)
 
 void PluginView::cancelAllStreams()
 {
-    Vector<RefPtr<Stream>> streams;
-    copyValuesToVector(m_streams, streams);
-    
-    for (size_t i = 0; i < streams.size(); ++i)
-        streams[i]->cancel();
+    for (auto& stream : copyToVector(m_streams.values()))
+        stream->cancel();
 
     // Cancelling a stream removes it from the m_streams map, so if we cancel all streams the map should be empty.
     ASSERT(m_streams.isEmpty());
@@ -1596,7 +1595,7 @@ bool PluginView::getAuthenticationInfo(const ProtectionSpace& protectionSpace, S
     if (!contentDocument)
         return false;
 
-    String partitionName = contentDocument->topDocument().securityOrigin().domainForCachePartition();
+    String partitionName = contentDocument->topDocument().domainForCachePartition();
     Credential credential = CredentialStorage::defaultCredentialStorage().get(partitionName, protectionSpace);
     if (credential.isEmpty())
         credential = CredentialStorage::defaultCredentialStorage().getFromPersistentStorage(protectionSpace);
@@ -1639,13 +1638,13 @@ bool PluginView::artificialPluginInitializationDelayEnabled() const
 
 void PluginView::protectPluginFromDestruction()
 {
-    if (!m_isBeingDestroyed)
+    if (m_plugin && !m_plugin->isBeingDestroyed())
         ref();
 }
 
 void PluginView::unprotectPluginFromDestruction()
 {
-    if (m_isBeingDestroyed)
+    if (!m_plugin || m_plugin->isBeingDestroyed())
         return;
 
     // A plug-in may ask us to evaluate JavaScript that removes the plug-in from the
@@ -1838,7 +1837,7 @@ void PluginView::pluginDidReceiveUserInteraction()
     HTMLPlugInImageElement& plugInImageElement = downcast<HTMLPlugInImageElement>(*m_pluginElement);
     String pageOrigin = plugInImageElement.document().page()->mainFrame().document()->baseURL().host();
     String pluginOrigin = plugInImageElement.loadedUrl().host();
-    String mimeType = plugInImageElement.loadedMimeType();
+    String mimeType = plugInImageElement.serviceType();
 
     WebProcess::singleton().plugInDidReceiveUserInteraction(pageOrigin, pluginOrigin, mimeType, plugInImageElement.document().page()->sessionID());
 }

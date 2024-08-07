@@ -129,7 +129,7 @@ void Thread::entryPoint(NewThreadContext* newThreadContext)
     function();
 }
 
-RefPtr<Thread> Thread::create(const char* name, Function<void()>&& entryPoint)
+Ref<Thread> Thread::create(const char* name, Function<void()>&& entryPoint)
 {
     WTF::initializeThreading();
     Ref<Thread> thread = adoptRef(*new Thread());
@@ -142,10 +142,8 @@ RefPtr<Thread> Thread::create(const char* name, Function<void()>&& entryPoint)
     context->ref();
     {
         MutexLocker locker(context->mutex);
-        if (!thread->establishHandle(context.ptr())) {
-            context->deref();
-            return nullptr;
-        }
+        bool success = thread->establishHandle(context.ptr());
+        RELEASE_ASSERT(success);
         context->stage = NewThreadContext::Stage::EstablishedHandle;
 
 #if HAVE(STACK_BOUNDS_FOR_NEW_THREAD)
@@ -160,7 +158,7 @@ RefPtr<Thread> Thread::create(const char* name, Function<void()>&& entryPoint)
     }
 
     ASSERT(!thread->stack().isEmpty());
-    return WTFMove(thread);
+    return thread;
 }
 
 static bool shouldRemoveThreadFromThreadGroup()
@@ -197,8 +195,8 @@ void Thread::didExit()
             threadGroup->m_threads.remove(*this);
         }
     }
-    if (m_atomicStringTableDestructor)
-        m_atomicStringTableDestructor(m_defaultAtomicStringTable);
+
+    AtomicStringTable::destroy(m_defaultAtomicStringTable);
 
     // We would like to say "thread is exited" after unregistering threads from thread groups.
     // So we need to separate m_isShuttingDown from m_didExit.
@@ -273,7 +271,7 @@ qos_class_t Thread::adjustedQOSClass(qos_class_t originalClass)
 
 void Thread::dump(PrintStream& out) const
 {
-    out.print(m_id);
+    out.print("Thread:", RawPointer(this));
 }
 
 #if !HAVE(FAST_TLS)

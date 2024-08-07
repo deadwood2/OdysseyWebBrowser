@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2006, 2007, 2008, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -40,14 +40,14 @@
 #import "runtime_object.h"
 #import "runtime_root.h"
 #import <JavaScriptCore/APICast.h>
+#import <JavaScriptCore/CallFrame.h>
+#import <JavaScriptCore/CatchScope.h>
+#import <JavaScriptCore/Completion.h>
+#import <JavaScriptCore/InitializeThreading.h>
 #import <JavaScriptCore/JSContextInternal.h>
+#import <JavaScriptCore/JSGlobalObject.h>
+#import <JavaScriptCore/JSLock.h>
 #import <JavaScriptCore/JSValueInternal.h>
-#import <interpreter/CallFrame.h>
-#import <runtime/CatchScope.h>
-#import <runtime/Completion.h>
-#import <runtime/InitializeThreading.h>
-#import <runtime/JSGlobalObject.h>
-#import <runtime/JSLock.h>
 #import <wtf/HashMap.h>
 #import <wtf/Lock.h>
 #import <wtf/NeverDestroyed.h>
@@ -351,6 +351,7 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
         return nil;
 
     MarkedArgumentBuffer argList;
+    ASSERT(!argList.hasOverflowed());
     getListFromNSArray(exec, args, [self _rootObject], argList);
 
     if (![self _isSafeScript])
@@ -402,7 +403,7 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
 
     JSObject* object = jsDynamicDowncast<JSObject*>(vm, [self _imp]);
     PutPropertySlot slot(object);
-    object->methodTable()->put(object, exec, Identifier::fromString(exec, String(key)), convertObjcValueToValue(exec, &value, ObjcObjectType, [self _rootObject]), slot);
+    object->methodTable(vm)->put(object, exec, Identifier::fromString(exec, String(key)), convertObjcValueToValue(exec, &value, ObjcObjectType, [self _rootObject]), slot);
 
     if (UNLIKELY(scope.exception())) {
         addExceptionToConsole(exec);
@@ -456,7 +457,7 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
     auto scope = DECLARE_CATCH_SCOPE(vm);
     ExecState* exec = globalObject->globalExec();
 
-    [self _imp]->methodTable()->deleteProperty([self _imp], exec, Identifier::fromString(exec, String(key)));
+    [self _imp]->methodTable(vm)->deleteProperty([self _imp], exec, Identifier::fromString(exec, String(key)));
 
     if (UNLIKELY(scope.exception())) {
         addExceptionToConsole(exec);
@@ -537,7 +538,7 @@ static void getListFromNSArray(ExecState *exec, NSArray *array, RootObject* root
     auto scope = DECLARE_CATCH_SCOPE(vm);
     ExecState* exec = globalObject->globalExec();
 
-    [self _imp]->methodTable()->putByIndex([self _imp], exec, index, convertObjcValueToValue(exec, &value, ObjcObjectType, [self _rootObject]), false);
+    [self _imp]->methodTable(vm)->putByIndex([self _imp], exec, index, convertObjcValueToValue(exec, &value, ObjcObjectType, [self _rootObject]), false);
 
     if (UNLIKELY(scope.exception())) {
         addExceptionToConsole(exec);

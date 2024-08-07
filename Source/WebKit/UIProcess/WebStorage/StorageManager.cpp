@@ -39,9 +39,8 @@
 #include <wtf/WorkQueue.h>
 #include <wtf/threads/BinarySemaphore.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 class StorageManager::StorageArea : public ThreadSafeRefCounted<StorageManager::StorageArea> {
 public:
@@ -618,7 +617,7 @@ void StorageManager::deleteLocalStorageEntriesForOrigin(SecurityOriginData&& sec
     });
 }
 
-void StorageManager::deleteLocalStorageOriginsModifiedSince(std::chrono::system_clock::time_point time, Function<void()>&& completionHandler)
+void StorageManager::deleteLocalStorageOriginsModifiedSince(WallTime time, Function<void()>&& completionHandler)
 {
     m_queue->dispatch([this, protectedThis = makeRef(*this), time, completionHandler = WTFMove(completionHandler)]() mutable {
         auto deletedOrigins = m_localStorageDatabaseTracker->deleteDatabasesModifiedSince(time);

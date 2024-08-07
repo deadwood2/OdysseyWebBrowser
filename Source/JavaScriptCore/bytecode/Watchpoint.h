@@ -68,9 +68,7 @@ class Watchpoint : public BasicRawSentinelNode<Watchpoint> {
     WTF_MAKE_NONCOPYABLE(Watchpoint);
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    Watchpoint()
-    {
-    }
+    Watchpoint() = default;
     
     virtual ~Watchpoint();
 
@@ -89,10 +87,12 @@ enum WatchpointState {
 };
 
 class InlineWatchpointSet;
+class DeferredWatchpointFire;
 class VM;
 
 class WatchpointSet : public ThreadSafeRefCounted<WatchpointSet> {
     friend class LLIntOffsetsExtractor;
+    friend class DeferredWatchpointFire;
 public:
     JS_EXPORT_PRIVATE WatchpointSet(WatchpointState);
     
@@ -159,6 +159,13 @@ public:
         fireAllSlow(vm, detail);
     }
     
+    void fireAll(VM& vm, DeferredWatchpointFire* deferredWatchpoints)
+    {
+        if (LIKELY(m_state != IsWatched))
+            return;
+        fireAllSlow(vm, deferredWatchpoints);
+    }
+
     void fireAll(VM& vm, const char* reason)
     {
         if (LIKELY(m_state != IsWatched))
@@ -201,10 +208,12 @@ public:
     int8_t* addressOfSetIsNotEmpty() { return &m_setIsNotEmpty; }
     
     JS_EXPORT_PRIVATE void fireAllSlow(VM&, const FireDetail&); // Call only if you've checked isWatched.
+    JS_EXPORT_PRIVATE void fireAllSlow(VM&, DeferredWatchpointFire* deferredWatchpoints);
     JS_EXPORT_PRIVATE void fireAllSlow(VM&, const char* reason); // Ditto.
     
 private:
     void fireAllWatchpoints(VM&, const FireDetail&);
+    void take(WatchpointSet* other);
     
     friend class InlineWatchpointSet;
 
@@ -308,6 +317,18 @@ public:
         WTF::storeStoreFence();
     }
     
+    void fireAll(VM& vm, DeferredWatchpointFire* deferred)
+    {
+        if (isFat()) {
+            fat()->fireAll(vm, deferred);
+            return;
+        }
+        if (decodeState(m_data) == ClearWatchpoint)
+            return;
+        m_data = encodeState(IsInvalidated);
+        WTF::storeStoreFence();
+    }
+
     void invalidate(VM& vm, const FireDetail& detail)
     {
         if (isFat())
@@ -378,6 +399,17 @@ public:
             return fat()->isBeingWatched();
         return false;
     }
+
+    // We expose this because sometimes a client knows its about to start
+    // watching this InlineWatchpointSet, hence it'll become inflated regardless.
+    // Such clients may find it useful to have a WatchpointSet* pointer, for example,
+    // if they collect a Vector of WatchpointSet*.
+    WatchpointSet* inflate()
+    {
+        if (LIKELY(isFat()))
+            return fat();
+        return inflateSlow();
+    }
     
 private:
     static const uintptr_t IsThinFlag        = 1;
@@ -418,17 +450,25 @@ private:
         return fat(m_data);
     }
     
-    WatchpointSet* inflate()
-    {
-        if (LIKELY(isFat()))
-            return fat();
-        return inflateSlow();
-    }
-    
     JS_EXPORT_PRIVATE WatchpointSet* inflateSlow();
     JS_EXPORT_PRIVATE void freeFat();
     
     uintptr_t m_data;
+};
+
+class DeferredWatchpointFire : public FireDetail {
+    WTF_MAKE_NONCOPYABLE(DeferredWatchpointFire);
+public:
+    JS_EXPORT_PRIVATE DeferredWatchpointFire(VM&);
+    JS_EXPORT_PRIVATE ~DeferredWatchpointFire();
+
+    JS_EXPORT_PRIVATE void takeWatchpointsToFire(WatchpointSet*);
+    JS_EXPORT_PRIVATE void fireAll();
+
+    void dump(PrintStream& out) const override = 0;
+private:
+    VM& m_vm;
+    WatchpointSet m_watchpointsToFire;
 };
 
 } // namespace JSC

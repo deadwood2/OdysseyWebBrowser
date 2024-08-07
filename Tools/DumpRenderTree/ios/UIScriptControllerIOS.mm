@@ -319,6 +319,10 @@ void UIScriptController::simulateRotationLikeSafari(DeviceOrientation*, JSValueR
 {
 }
 
+void UIScriptController::findString(JSStringRef, unsigned long options, unsigned long maxCount)
+{
+}
+
 void UIScriptController::removeViewFromWindow(JSValueRef)
 {
 }
@@ -328,6 +332,14 @@ void UIScriptController::addViewToWindow(JSValueRef)
 }
 
 void UIScriptController::setSafeAreaInsets(double, double, double, double)
+{
+}
+
+void UIScriptController::beginBackSwipe(JSValueRef callback)
+{
+}
+
+void UIScriptController::completeBackSwipe(JSValueRef callback)
 {
 }
 

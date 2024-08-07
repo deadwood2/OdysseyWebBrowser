@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Devin Rousso <dcrousso+webkit@gmail.com>. All rights reserved.
+ * Copyright (C) 2016 Devin Rousso <webkit@devinrousso.com>. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,26 +42,7 @@ WI.appendContextMenuItemsForSourceCode = function(contextMenu, sourceCodeOrLocat
 
     contextMenu.appendSeparator();
 
-    if (sourceCode.url) {
-        contextMenu.appendItem(WI.UIString("Open in New Tab"), () => {
-            const frame = null;
-            WI.openURL(sourceCode.url, frame, {alwaysOpenExternally: true});
-        });
-
-        if (WI.frameResourceManager.resourceForURL(sourceCode.url) && !WI.isShowingResourcesTab()) {
-            contextMenu.appendItem(WI.UIString("Reveal in Resources Tab"), () => {
-                const options = {ignoreNetworkTab: true};
-                if (location)
-                    WI.showSourceCodeLocation(location, options);
-                else
-                    WI.showSourceCode(sourceCode, options);
-            });
-        }
-
-        contextMenu.appendItem(WI.UIString("Copy Link Address"), () => {
-            InspectorFrontendHost.copyText(sourceCode.url);
-        });
-    }
+    WI.appendContextMenuItemsForURL(contextMenu, sourceCode.url, {sourceCode, location});
 
     if (sourceCode instanceof WI.Resource) {
         if (sourceCode.urlComponents.scheme !== "data") {
@@ -99,6 +80,44 @@ WI.appendContextMenuItemsForSourceCode = function(contextMenu, sourceCodeOrLocat
     }
 };
 
+WI.appendContextMenuItemsForURL = function(contextMenu, url, options)
+{
+    if (!url)
+        return;
+
+    let {sourceCode, location, frame} = options;
+    function showResourceWithOptions(options) {
+        if (location)
+            WI.showSourceCodeLocation(location, options);
+        else if (sourceCode)
+            WI.showSourceCode(sourceCode, options);
+        else
+            WI.openURL(url, frame, options);
+    }
+
+    contextMenu.appendItem(WI.UIString("Open in New Tab"), () => {
+        const frame = null;
+        WI.openURL(url, frame, {alwaysOpenExternally: true});
+    });
+
+    if (WI.frameResourceManager.resourceForURL(url)) {
+        if (!WI.isShowingResourcesTab()) {
+            contextMenu.appendItem(WI.UIString("Reveal in Resources Tab"), () => {
+                showResourceWithOptions({ignoreNetworkTab: true, ignoreSearchTab: true});
+            });
+        }
+        if (!WI.isShowingNetworkTab()) {
+            contextMenu.appendItem(WI.UIString("Reveal in Network Tab"), () => {
+                showResourceWithOptions({ignoreResourcesTab: true, ignoreDebuggerTab: true, ignoreSearchTab: true});
+            });
+        }
+    }
+
+    contextMenu.appendItem(WI.UIString("Copy Link Address"), () => {
+        InspectorFrontendHost.copyText(sourceCode.url);
+    });
+};
+
 WI.appendContextMenuItemsForDOMNode = function(contextMenu, domNode, options = {})
 {
     console.assert(contextMenu instanceof WI.ContextMenu);
@@ -109,31 +128,26 @@ WI.appendContextMenuItemsForDOMNode = function(contextMenu, domNode, options = {
     if (!(domNode instanceof WI.DOMNode))
         return;
 
+    let copySubMenu = options.copySubMenu || contextMenu.appendSubMenuItem(WI.UIString("Copy"));
+
     let isElement = domNode.nodeType() === Node.ELEMENT_NODE;
-    if (isElement) {
-        contextMenu.appendItem(WI.UIString("Scroll Into View"), () => {
-            domNode.scrollIntoView();
-        });
-    }
-
-    contextMenu.appendSeparator();
-
     if (domNode.ownerDocument && isElement) {
-        contextMenu.appendItem(WI.UIString("Copy Selector Path"), () => {
+        copySubMenu.appendItem(WI.UIString("Selector Path"), () => {
             let cssPath = WI.cssPath(domNode);
             InspectorFrontendHost.copyText(cssPath);
         });
     }
 
     if (domNode.ownerDocument && !domNode.isPseudoElement()) {
-        contextMenu.appendItem(WI.UIString("Copy XPath"), () => {
+        copySubMenu.appendItem(WI.UIString("XPath"), () => {
             let xpath = WI.xpath(domNode);
             InspectorFrontendHost.copyText(xpath);
         });
     }
 
+    contextMenu.appendSeparator();
+
     if (domNode.isCustomElement()) {
-        contextMenu.appendSeparator();
         contextMenu.appendItem(WI.UIString("Jump to Definition"), () => {
             function didGetFunctionDetails(error, response) {
                 if (error)
@@ -159,16 +173,13 @@ WI.appendContextMenuItemsForDOMNode = function(contextMenu, domNode, options = {
                 result.release();
             }
 
-            function didResolveNode(remoteObject) {
-                if (!remoteObject)
-                    return;
-
+            WI.RemoteObject.resolveNode(domNode).then((remoteObject) => {
                 remoteObject.getProperty("constructor", didGetProperty);
                 remoteObject.release();
-            }
-
-            WI.RemoteObject.resolveNode(domNode, "", didResolveNode);
+            });
         });
+
+        contextMenu.appendSeparator();
     }
 
     if (WI.domDebuggerManager.supported && isElement && !domNode.isPseudoElement() && domNode.ownerDocument) {
@@ -189,10 +200,7 @@ WI.appendContextMenuItemsForDOMNode = function(contextMenu, domNode, options = {
     if (!options.excludeLogElement && !domNode.isInUserAgentShadowTree() && !domNode.isPseudoElement()) {
         let label = isElement ? WI.UIString("Log Element") : WI.UIString("Log Node");
         contextMenu.appendItem(label, () => {
-            WI.RemoteObject.resolveNode(domNode, WI.RuntimeManager.ConsoleObjectGroup, (remoteObject) => {
-                if (!remoteObject)
-                    return;
-
+            WI.RemoteObject.resolveNode(domNode, WI.RuntimeManager.ConsoleObjectGroup).then((remoteObject) => {
                 let text = isElement ? WI.UIString("Selected Element") : WI.UIString("Selected Node");
                 const addSpecialUserLogClass = true;
                 WI.consoleLogViewController.appendImmediateExecutionWithResult(text, remoteObject, addSpecialUserLogClass);
@@ -201,7 +209,7 @@ WI.appendContextMenuItemsForDOMNode = function(contextMenu, domNode, options = {
     }
 
     if (window.PageAgent) {
-        contextMenu.appendItem(WI.UIString("Capture Element Screenshot"), () => {
+        contextMenu.appendItem(WI.UIString("Capture Screenshot"), () => {
             PageAgent.snapshotNode(domNode.id, (error, dataURL) => {
                 if (error) {
                     const target = WI.mainTarget;
@@ -232,4 +240,12 @@ WI.appendContextMenuItemsForDOMNode = function(contextMenu, domNode, options = {
             });
         });
     }
+
+    if (isElement) {
+        contextMenu.appendItem(WI.UIString("Scroll Into View"), () => {
+            domNode.scrollIntoView();
+        });
+    }
+
+    contextMenu.appendSeparator();
 };

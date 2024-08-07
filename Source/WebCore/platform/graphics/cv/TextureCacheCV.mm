@@ -50,11 +50,10 @@ std::unique_ptr<TextureCacheCV> TextureCacheCV::create(GraphicsContext3D& contex
 TextureCacheCV::TextureCacheCV(GraphicsContext3D& context, RetainPtr<TextureCacheType>&& cache)
     : m_context(context)
     , m_cache(cache)
-    , m_weakPtrFactory(this)
 {
 }
 
-RetainPtr<TextureCacheCV::TextureType> TextureCacheCV::textureFromImage(CVImageBufferRef image, GC3Denum outputTarget, GC3Dint level, GC3Denum internalFormat, GC3Denum format, GC3Denum type)
+RetainPtr<TextureCacheCV::TextureType> TextureCacheCV::textureFromImage(CVPixelBufferRef image, GC3Denum outputTarget, GC3Dint level, GC3Denum internalFormat, GC3Denum format, GC3Denum type)
 {
     TextureType bareVideoTexture = nullptr;
 #if PLATFORM(IOS)
@@ -73,7 +72,7 @@ RetainPtr<TextureCacheCV::TextureType> TextureCacheCV::textureFromImage(CVImageB
 #endif
     RetainPtr<TextureType> videoTexture = adoptCF(bareVideoTexture);
 
-    auto weakThis = m_weakPtrFactory.createWeakPtr();
+    auto weakThis = m_weakPtrFactory.createWeakPtr(*this);
     dispatch_async(dispatch_get_main_queue(), [weakThis] {
         if (!weakThis)
             return;

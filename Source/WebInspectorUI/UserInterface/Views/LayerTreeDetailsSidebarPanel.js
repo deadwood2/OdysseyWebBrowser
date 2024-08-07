@@ -79,7 +79,9 @@ WI.LayerTreeDetailsSidebarPanel = class LayerTreeDetailsSidebarPanel extends WI.
         if (!this.domNode)
             return;
 
-        WI.layerTreeManager.layersForNode(this.domNode, (layerForNode, childLayers) => {
+        WI.layerTreeManager.layersForNode(this.domNode, (layers) => {
+            let layerForNode = layers[0] && layers[0].nodeId === this.domNode.id && !layers[0].isGeneratedContent ? layers[0] : null;
+            let childLayers = layers.slice(layerForNode ? 1 : 0);
             this._unfilteredChildLayers = childLayers;
             this._updateDisplayWithLayers(layerForNode, childLayers);
         });
@@ -347,9 +349,9 @@ WI.LayerTreeDetailsSidebarPanel = class LayerTreeDetailsSidebarPanel extends WI.
         var targetFrame = WI.Rect.rectFromClientRect(dataGridNode.element.getBoundingClientRect());
 
         if (content)
-            popover.content = content;
-
-        popover.present(targetFrame.pad(2), [WI.RectEdge.MIN_X]);
+            this._popover.presentNewContentWithFrame(content, targetFrame.pad(2), [WI.RectEdge.MIN_X]);
+        else
+            popover.present(targetFrame.pad(2), [WI.RectEdge.MIN_X]);
     }
 
     _hidePopover()

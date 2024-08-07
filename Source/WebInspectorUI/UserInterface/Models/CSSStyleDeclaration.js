@@ -40,13 +40,17 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
         this._node = node || null;
         this._inherited = inherited || false;
 
+        this._locked = false;
         this._pendingProperties = [];
         this._propertyNameMap = {};
 
         this._initialText = text;
         this._hasModifiedInitialText = false;
 
-        this.update(text, properties, styleSheetTextRange, true);
+        this._allProperties = [];
+        this._allVisibleProperties = null;
+
+        this.update(text, properties, styleSheetTextRange, {dontFireEvents: true});
     }
 
     // Public
@@ -90,8 +94,22 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
         return false;
     }
 
-    update(text, properties, styleSheetTextRange, dontFireEvents)
+    get selectorEditable()
     {
+        return this._ownerRule && this._ownerRule.editable;
+    }
+
+    get locked() { return this._locked; }
+    set locked(value) { this._locked = value; }
+
+    update(text, properties, styleSheetTextRange, options = {})
+    {
+        let dontFireEvents = options.dontFireEvents || false;
+        let suppressLock = options.suppressLock || false;
+
+        if (this._locked && !suppressLock && text !== this._text)
+            return;
+
         text = text || "";
         properties = properties || [];
 
@@ -99,19 +117,21 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
         var oldText = this._text;
 
         this._text = text;
-        this._properties = properties;
+        this._properties = properties.filter((property) => property.enabled);
+        this._allProperties = properties;
+
         this._styleSheetTextRange = styleSheetTextRange;
         this._propertyNameMap = {};
 
         delete this._visibleProperties;
+        this._allVisibleProperties = null;
 
         var editable = this.editable;
 
-        for (var i = 0; i < this._properties.length; ++i) {
-            var property = this._properties[i];
+        for (let property of this._allProperties) {
             property.ownerStyle = this;
 
-            // Store the property in a map if we arn't editable. This
+            // Store the property in a map if we aren't editable. This
             // allows for quick lookup for computed style. Editable
             // styles don't use the map since they need to account for
             // overridden properties.
@@ -151,8 +171,11 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
 
         // Don't fire the event if there is text and it hasn't changed.
         if (oldText && this._text && oldText === this._text) {
-            // We shouldn't have any added or removed properties in this case.
-            console.assert(!addedProperties.length && !removedProperties.length);
+            if (!this._locked || suppressLock) {
+                // We shouldn't have any added or removed properties in this case.
+                console.assert(!addedProperties.length && !removedProperties.length);
+            }
+
             if (!addedProperties.length && !removedProperties.length)
                 return;
         }
@@ -186,11 +209,11 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
         if (this._text === text)
             return;
 
-        let trimmedText = WI.CSSStyleDeclarationTextEditor.PrefixWhitespace + text.trim();
+        let trimmedText = WI.CSSStyleDeclaration.PrefixWhitespace + text.trim();
         if (this._text === trimmedText)
             return;
 
-        if (trimmedText === WI.CSSStyleDeclarationTextEditor.PrefixWhitespace || this._type === WI.CSSStyleDeclaration.Type.Inline)
+        if (trimmedText === WI.CSSStyleDeclaration.PrefixWhitespace || this._type === WI.CSSStyleDeclaration.Type.Inline)
             text = trimmedText;
 
         let modified = text !== this._initialText;
@@ -198,6 +221,10 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
             this._hasModifiedInitialText = modified;
             this.dispatchEventToListeners(WI.CSSStyleDeclaration.Event.InitialTextModified);
         }
+
+        // Update text immediately when it was modified via the styles sidebar.
+        if (this._locked)
+            this._text = text;
 
         this._nodeStyles.changeStyleText(this, text);
     }
@@ -217,14 +244,20 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
         return this._properties;
     }
 
+    get allProperties() { return this._allProperties; }
+
+    get allVisibleProperties()
+    {
+        if (!this._allVisibleProperties)
+            this._allVisibleProperties = this._allProperties.filter((property) => !!property.styleDeclarationTextRange);
+
+        return this._allVisibleProperties;
+    }
+
     get visibleProperties()
     {
-        if (this._visibleProperties)
-            return this._visibleProperties;
-
-        this._visibleProperties = this._properties.filter(function(property) {
-            return !!property.styleDeclarationTextRange;
-        });
+        if (!this._visibleProperties)
+            this._visibleProperties = this._properties.filter((property) => !!property.styleDeclarationTextRange);
 
         return this._visibleProperties;
     }
@@ -341,11 +374,74 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
         return !!this._properties.length;
     }
 
+    newBlankProperty(propertyIndex)
+    {
+        let text, name, value, priority, overridden, implicit, anonymous;
+        let enabled = true;
+        let valid = false;
+        let styleSheetTextRange = this._rangeAfterPropertyAtIndex(propertyIndex - 1);
+
+        let property = new WI.CSSProperty(propertyIndex, text, name, value, priority, enabled, overridden, implicit, anonymous, valid, styleSheetTextRange);
+
+        this._allProperties.insertAtIndex(property, propertyIndex);
+        for (let index = propertyIndex + 1; index < this._allProperties.length; index++)
+            this._allProperties[index].index = index;
+
+        this.update(this._text, this._allProperties, this._styleSheetTextRange, {dontFireEvents: true, suppressLock: true});
+
+        return property;
+    }
+
+    shiftPropertiesAfter(cssProperty, lineDelta, columnDelta, propertyWasRemoved)
+    {
+        // cssProperty.index could be set to NaN by WI.CSSStyleDeclaration.prototype.update.
+        let realIndex = this._allProperties.indexOf(cssProperty);
+        if (realIndex === -1)
+            return;
+
+        let endLine = cssProperty.styleSheetTextRange.endLine;
+
+        for (let i = realIndex + 1; i < this._allProperties.length; i++) {
+            let property = this._allProperties[i];
+
+            if (property._styleSheetTextRange) {
+                if (property.styleSheetTextRange.startLine === endLine) {
+                    // Only update column data if it's on the same line.
+                    property._styleSheetTextRange = property._styleSheetTextRange.cloneAndModify(lineDelta, columnDelta, lineDelta, columnDelta);
+                } else
+                    property._styleSheetTextRange = property._styleSheetTextRange.cloneAndModify(lineDelta, 0, lineDelta, 0);
+            }
+
+            if (propertyWasRemoved && !isNaN(property._index))
+                property._index--;
+        }
+
+        if (propertyWasRemoved)
+            this._allProperties.splice(realIndex, 1);
+
+        // Invalidate cached properties.
+        this._allVisibleProperties = null;
+    }
+
     // Protected
 
     get nodeStyles()
     {
         return this._nodeStyles;
+    }
+
+    // Private
+
+    _rangeAfterPropertyAtIndex(index)
+    {
+        if (index < 0)
+            return this._styleSheetTextRange.collapseToStart();
+
+        if (index >= this.allVisibleProperties.length)
+            return this._styleSheetTextRange.collapseToEnd();
+
+        let property = this.allVisibleProperties[index];
+        return property.styleSheetTextRange.collapseToEnd();
     }
 };
 
@@ -360,3 +456,5 @@ WI.CSSStyleDeclaration.Type = {
     Attribute: "css-style-declaration-type-attribute",
     Computed: "css-style-declaration-type-computed"
 };
+
+WI.CSSStyleDeclaration.PrefixWhitespace = "\n";

@@ -28,6 +28,7 @@
 #if ENABLE(DATA_INTERACTION)
 
 #import "TestWKWebView.h"
+#import <UIKit/NSItemProvider+UIKitAdditions.h>
 
 #if USE(APPLE_INTERNAL_SDK)
 #import <UIKit/NSString+UIItemProvider.h>
@@ -39,10 +40,6 @@
 
 @interface NSURL ()
 @property (nonatomic, copy, setter=_setTitle:) NSString *_title;
-@end
-
-@interface UIItemProvider : NSItemProvider
-@property (nonatomic) CGSize estimatedDisplayedSize;
 @end
 
 #define UIItemProviderRepresentationOptionsVisibilityAll NSItemProviderRepresentationVisibilityAll
@@ -70,6 +67,9 @@
 @interface UIImage () <UIItemProviderReading, UIItemProviderWriting>
 @end
 
+@interface UIItemProvider : NSItemProvider
+@end
+
 #endif
 
 #import <UIKit/UIKit.h>
@@ -77,14 +77,31 @@
 #import <WebKit/_WKInputDelegate.h>
 #import <wtf/BlockPtr.h>
 
-@class MockDataOperationSession;
-@class MockDataInteractionSession;
+@class MockDropSession;
+@class MockDragSession;
+
+@interface MockDragDropSession : NSObject <UIDragDropSession> {
+@private
+    RetainPtr<NSArray> _mockItems;
+    RetainPtr<UIWindow> _window;
+}
+@property (nonatomic) CGPoint mockLocationInWindow;
+@property (nonatomic) BOOL allowMove;
+@end
+
+@interface MockDropSession : MockDragDropSession <UIDropSession>
+@end
+
+@interface MockDragSession : MockDragDropSession <UIDragSession>
+@end
 
 extern NSString * const DataInteractionEnterEventName;
 extern NSString * const DataInteractionOverEventName;
 extern NSString * const DataInteractionPerformOperationEventName;
 extern NSString * const DataInteractionLeaveEventName;
 extern NSString * const DataInteractionStartEventName;
+
+typedef NSDictionary<NSNumber *, NSValue *> *ProgressToCGPointValueMap;
 
 typedef NS_ENUM(NSInteger, DataInteractionPhase) {
     DataInteractionCancelled = 0,
@@ -94,11 +111,18 @@ typedef NS_ENUM(NSInteger, DataInteractionPhase) {
     DataInteractionPerforming = 4
 };
 
+@interface WKWebView (DragAndDropTesting)
+- (id <UIDropInteractionDelegate>)dropInteractionDelegate;
+- (id <UIDragInteractionDelegate>)dragInteractionDelegate;
+- (UIDropInteraction *)dropInteraction;
+- (UIDragInteraction *)dragInteraction;
+@end
+
 @interface DataInteractionSimulator : NSObject<WKUIDelegatePrivate, _WKInputDelegate> {
 @private
     RetainPtr<TestWKWebView> _webView;
-    RetainPtr<MockDataInteractionSession> _dataInteractionSession;
-    RetainPtr<MockDataOperationSession> _dataOperationSession;
+    RetainPtr<MockDragSession> _dragSession;
+    RetainPtr<MockDropSession> _dropSession;
     RetainPtr<NSMutableArray> _observedEventNames;
     RetainPtr<NSArray> _externalItemProviders;
     RetainPtr<NSArray *> _sourceItemProviders;
@@ -107,16 +131,27 @@ typedef NS_ENUM(NSInteger, DataInteractionPhase) {
     CGPoint _endLocation;
     CGRect _lastKnownDragCaretRect;
 
+    RetainPtr<NSMutableDictionary<NSNumber *, NSValue *>>_remainingAdditionalItemRequestLocationsByProgress;
+    RetainPtr<NSMutableArray<NSValue *>>_queuedAdditionalItemRequestLocations;
+    RetainPtr<NSMutableArray<UITargetedDragPreview *>> _liftPreviews;
+
+    RetainPtr<NSMutableArray<_WKAttachment *>> _insertedAttachments;
+    RetainPtr<NSMutableArray<_WKAttachment *>> _removedAttachments;
+
     bool _isDoneWaitingForInputSession;
-    BOOL _shouldPerformOperation;
     double _currentProgress;
     bool _isDoneWithCurrentRun;
     DataInteractionPhase _phase;
+
+    RetainPtr<UIDropProposal> _currentDropProposal;
 }
 
 - (instancetype)initWithWebView:(TestWKWebView *)webView;
+// The start location, end location, and locations of additional item requests are all in window coordinates.
 - (void)runFrom:(CGPoint)startLocation to:(CGPoint)endLocation;
+- (void)runFrom:(CGPoint)startLocation to:(CGPoint)endLocation additionalItemRequestLocations:(ProgressToCGPointValueMap)additionalItemRequestLocations;
 - (void)waitForInputSession;
+- (void)endDataTransfer;
 
 @property (nonatomic) BOOL allowsFocusToStartInputSession;
 @property (nonatomic) BOOL shouldEnsureUIApplication;
@@ -133,6 +168,10 @@ typedef NS_ENUM(NSInteger, DataInteractionPhase) {
 @property (nonatomic, readonly) NSArray *finalSelectionRects;
 @property (nonatomic, readonly) DataInteractionPhase phase;
 @property (nonatomic, readonly) CGRect lastKnownDragCaretRect;
+@property (nonatomic, readonly) NSArray<UITargetedDragPreview *> *liftPreviews;
+
+@property (nonatomic, readonly) NSArray<_WKAttachment *> *insertedAttachments;
+@property (nonatomic, readonly) NSArray<_WKAttachment *> *removedAttachments;
 
 @end
 

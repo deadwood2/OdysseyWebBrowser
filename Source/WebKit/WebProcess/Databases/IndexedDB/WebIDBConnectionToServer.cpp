@@ -55,12 +55,12 @@ using namespace WebCore;
 
 namespace WebKit {
 
-Ref<WebIDBConnectionToServer> WebIDBConnectionToServer::create(SessionID sessionID)
+Ref<WebIDBConnectionToServer> WebIDBConnectionToServer::create(PAL::SessionID sessionID)
 {
     return adoptRef(*new WebIDBConnectionToServer(sessionID));
 }
 
-WebIDBConnectionToServer::WebIDBConnectionToServer(SessionID sessionID)
+WebIDBConnectionToServer::WebIDBConnectionToServer(PAL::SessionID sessionID)
     : m_sessionID(sessionID)
 {
     relaxAdoptionRequirement();
@@ -79,7 +79,7 @@ WebIDBConnectionToServer::~WebIDBConnectionToServer()
 
 IPC::Connection* WebIDBConnectionToServer::messageSenderConnection()
 {
-    return &WebProcess::singleton().webToStorageProcessConnection()->connection();
+    return &WebProcess::singleton().ensureWebToStorageProcessConnection(m_sessionID).connection();
 }
 
 IDBClient::IDBConnectionToServer& WebIDBConnectionToServer::coreConnectionToServer()
@@ -297,7 +297,7 @@ static void preregisterSandboxExtensionsIfNecessary(const WebIDBResult& result)
 #endif
 
     if (!filePaths.isEmpty())
-        WebProcess::singleton().networkConnection().connection().send(Messages::NetworkConnectionToWebProcess::PreregisterSandboxExtensionsForOptionallyFileBackedBlob(filePaths, result.handles()), 0);
+        WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::PreregisterSandboxExtensionsForOptionallyFileBackedBlob(filePaths, result.handles()), 0);
 }
 
 void WebIDBConnectionToServer::didGetRecord(const WebIDBResult& result)

@@ -33,12 +33,11 @@
 #import "WebPreferenceKeysPrivate.h"
 #import "WebSelectionServiceController.h"
 #import "WebViewGroup.h"
+#import <JavaScriptCore/InitializeThreading.h>
 #import <WebCore/AlternativeTextUIController.h>
-#import <WebCore/WebCoreObjCExtras.h>
 #import <WebCore/HistoryItem.h>
 #import <WebCore/TextIndicatorWindow.h>
 #import <WebCore/ValidationBubble.h>
-#import <runtime/InitializeThreading.h>
 #import <wtf/MainThread.h>
 #import <wtf/RunLoop.h>
 

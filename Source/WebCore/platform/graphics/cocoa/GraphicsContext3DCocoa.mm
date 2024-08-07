@@ -48,11 +48,12 @@
 #import <wtf/text/CString.h>
 
 #if PLATFORM(IOS)
-#import "OpenGLESSPI.h"
 #import <OpenGLES/EAGL.h>
 #import <OpenGLES/EAGLDrawable.h>
+#import <OpenGLES/EAGLIOSurface.h>
 #import <OpenGLES/ES2/glext.h>
 #import <QuartzCore/QuartzCore.h>
+#import <pal/spi/ios/OpenGLESSPI.h>
 #else
 #import <IOKit/IOKitLib.h>
 #import <OpenGL/CGLRenderers.h>
@@ -385,7 +386,16 @@ RefPtr<GraphicsContext3D> GraphicsContext3D::create(GraphicsContext3DAttributes 
     return context;
 }
 
-GraphicsContext3D::GraphicsContext3D(GraphicsContext3DAttributes attrs, HostWindow*, GraphicsContext3D::RenderStyle)
+Ref<GraphicsContext3D> GraphicsContext3D::createShared(GraphicsContext3D& sharedContext)
+{
+    auto context = adoptRef(*new GraphicsContext3D(sharedContext.getContextAttributes(), nullptr, sharedContext.m_renderStyle, &sharedContext));
+
+    manager().addContext(context.ptr());
+
+    return context;
+}
+
+GraphicsContext3D::GraphicsContext3D(GraphicsContext3DAttributes attrs, HostWindow*, GraphicsContext3D::RenderStyle, GraphicsContext3D* sharedContext)
     : m_attrs(attrs)
 #if PLATFORM(IOS)
     , m_compiler(SH_ESSL_OUTPUT)
@@ -394,7 +404,10 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3DAttributes attrs, HostWind
 {
 #if PLATFORM(IOS)
     EAGLRenderingAPI api = m_attrs.useGLES3 ? kEAGLRenderingAPIOpenGLES3 : kEAGLRenderingAPIOpenGLES2;
-    m_contextObj = [[EAGLContext alloc] initWithAPI:api];
+    if (!sharedContext)
+        m_contextObj = [[EAGLContext alloc] initWithAPI:api];
+    else
+        m_contextObj = [[EAGLContext alloc] initWithAPI:api sharegroup:sharedContext->m_contextObj.sharegroup];
     makeContextCurrent();
 #else
     Vector<CGLPixelFormatAttribute> attribs;
@@ -441,7 +454,7 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3DAttributes attrs, HostWind
     if (!numPixelFormats)
         return;
 
-    CGLError err = CGLCreateContext(pixelFormatObj, 0, &m_contextObj);
+    CGLError err = CGLCreateContext(pixelFormatObj, sharedContext ? sharedContext->m_contextObj : nullptr, &m_contextObj);
     GLint abortOnBlacklist = 0;
 #if PLATFORM(MAC)
     CGLSetParameter(m_contextObj, kCGLCPAbortOnGPURestartStatusBlacklisted, &abortOnBlacklist);
@@ -479,20 +492,22 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3DAttributes attrs, HostWind
         ::glEnable(GL_MULTISAMPLE);
 #endif
 
+    // Create the texture that will be used for the framebuffer.
 #if PLATFORM(IOS)
     ::glGenRenderbuffers(1, &m_texture);
 #else
-    // create a texture to render into
     ::glGenTextures(1, &m_texture);
-    ::glBindTexture(GL_TEXTURE_2D, m_texture);
-    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    ::glBindTexture(GL_TEXTURE_2D, 0);
+    // We bind to GL_TEXTURE_RECTANGLE_EXT rather than TEXTURE_2D because
+    // that's what is required for a texture backed by IOSurface.
+    ::glBindTexture(GL_TEXTURE_RECTANGLE_EXT, m_texture);
+    ::glTexParameteri(GL_TEXTURE_RECTANGLE_EXT, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    ::glTexParameteri(GL_TEXTURE_RECTANGLE_EXT, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    ::glTexParameteri(GL_TEXTURE_RECTANGLE_EXT, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    ::glTexParameteri(GL_TEXTURE_RECTANGLE_EXT, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    ::glBindTexture(GL_TEXTURE_RECTANGLE_EXT, 0);
 #endif
 
-    // create an FBO
+    // Create the framebuffer object.
     ::glGenFramebuffersEXT(1, &m_fbo);
     ::glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, m_fbo);
 
@@ -500,7 +515,7 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3DAttributes attrs, HostWind
     if (!m_attrs.antialias && (m_attrs.stencil || m_attrs.depth))
         ::glGenRenderbuffersEXT(1, &m_depthStencilBuffer);
 
-    // create an multisample FBO
+    // If necessary, create another framebuffer for the multisample results.
     if (m_attrs.antialias) {
         ::glGenFramebuffersEXT(1, &m_multisampleFBO);
         ::glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, m_multisampleFBO);
@@ -655,11 +670,12 @@ void GraphicsContext3D::checkGPUStatus()
 }
 
 #if PLATFORM(IOS)
-void GraphicsContext3D::endPaint()
+void GraphicsContext3D::presentRenderbuffer()
 {
     makeContextCurrent();
     if (m_attrs.antialias)
         resolveMultisamplingIfNecessary();
+
     ::glFlush();
     ::glBindRenderbuffer(GL_RENDERBUFFER, m_texture);
     [static_cast<EAGLContext*>(m_contextObj) presentRenderbuffer:GL_RENDERBUFFER];
@@ -667,7 +683,38 @@ void GraphicsContext3D::endPaint()
 }
 #endif
 
+bool GraphicsContext3D::texImageIOSurface2D(GC3Denum target, GC3Denum internalFormat, GC3Dsizei width, GC3Dsizei height, GC3Denum format, GC3Denum type, IOSurfaceRef surface, GC3Duint plane)
+{
 #if PLATFORM(MAC)
+    return kCGLNoError == CGLTexImageIOSurface2D(platformGraphicsContext3D(), target, internalFormat, width, height, format, type, surface, plane);
+#elif PLATFORM(IOS) && !PLATFORM(IOS_SIMULATOR)
+    return [platformGraphicsContext3D() texImageIOSurface:surface target:target internalFormat:internalFormat width:width height:height format:format type:type plane:plane];
+#else
+    UNUSED_PARAM(target);
+    UNUSED_PARAM(internalFormat);
+    UNUSED_PARAM(width);
+    UNUSED_PARAM(height);
+    UNUSED_PARAM(format);
+    UNUSED_PARAM(type);
+    UNUSED_PARAM(surface);
+    UNUSED_PARAM(plane);
+    return false;
+#endif
+}
+
+#if PLATFORM(MAC)
+void GraphicsContext3D::allocateIOSurfaceBackingStore(IntSize size)
+{
+    LOG(WebGL, "GraphicsContext3D::allocateIOSurfaceBackingStore at %d x %d. (%p)", size.width(), size.height(), this);
+    [m_webGLLayer allocateIOSurfaceBackingStoreWithSize:size usingAlpha:m_attrs.alpha];
+}
+
+void GraphicsContext3D::updateFramebufferTextureBackingStoreFromLayer()
+{
+    LOG(WebGL, "GraphicsContext3D::updateFramebufferTextureBackingStoreFromLayer(). (%p)", this);
+    [m_webGLLayer bindFramebufferToNextAvailableSurface];
+}
+
 void GraphicsContext3D::updateCGLContext()
 {
     if (!m_contextObj)

@@ -32,6 +32,7 @@
 // Test.
 InspectorBackend.registerEnum("Test.UncastedAnimals", {Pigs: "Pigs", Cows: "Cows", Cats: "Cats", Hens: "Hens"});
 InspectorBackend.registerEnum("Test.CastedAnimals", {Ducks: "Ducks", Hens: "Hens", Crows: "Crows", Flamingos: "Flamingos"});
+InspectorBackend.activateDomain("Test");
 ### End File: InspectorBackendCommands.js
 
 ### Begin File: TestAlternateBackendDispatchers.h
@@ -70,8 +71,8 @@ InspectorBackend.registerEnum("Test.CastedAnimals", {Ducks: "Ducks", Hens: "Hens
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
 
 #include "TestProtocolTypes.h"
-#include <inspector/InspectorFrontendRouter.h>
 #include <JavaScriptCore/InspectorBackendDispatcher.h>
+#include <JavaScriptCore/InspectorFrontendRouter.h>
 
 namespace Inspector {
 
@@ -125,7 +126,7 @@ private:
 #pragma once
 
 #include "TestProtocolObjects.h"
-#include <inspector/InspectorBackendDispatcher.h>
+#include <JavaScriptCore/InspectorBackendDispatcher.h>
 #include <wtf/text/WTFString.h>
 
 namespace Inspector {
@@ -171,7 +172,7 @@ typedef String ErrorString;
 #include "config.h"
 #include "TestBackendDispatchers.h"
 
-#include <inspector/InspectorFrontendRouter.h>
+#include <JavaScriptCore/InspectorFrontendRouter.h>
 #include <wtf/JSONValues.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
@@ -266,7 +267,7 @@ class FrontendRouter;
 #include "config.h"
 #include "TestFrontendDispatchers.h"
 
-#include <inspector/InspectorFrontendRouter.h>
+#include <JavaScriptCore/InspectorFrontendRouter.h>
 #include <wtf/text/CString.h>
 
 namespace Inspector {
@@ -308,7 +309,7 @@ namespace Inspector {
 
 #pragma once
 
-#include <inspector/InspectorProtocolTypes.h>
+#include <JavaScriptCore/InspectorProtocolTypes.h>
 #include <wtf/Assertions.h>
 
 namespace Inspector {
@@ -1104,7 +1105,7 @@ typedef NS_ENUM(NSInteger, TestProtocolTestCastedAnimals) {
 __attribute__((visibility ("default")))
 @interface TestProtocolTestTypeNeedingCast : RWIProtocolJSONObject
 - (instancetype)initWithPayload:(NSDictionary<NSString *, id> *)payload;
-- (instancetype)initWithJSONObject:(RWIProtocolJSONObject *)jsonObject;
+- (instancetype)initWithProtocolObject:(RWIProtocolJSONObject *)jsonObject;
 - (instancetype)initWithString:(NSString *)string number:(int)number animals:(TestProtocolTestCastedAnimals)animals identifier:(int)identifier tree:(TestProtocolTestRecursiveObject1 *)tree;
 /* required */ @property (nonatomic, copy) NSString *string;
 /* required */ @property (nonatomic, assign) int number;
@@ -1116,14 +1117,14 @@ __attribute__((visibility ("default")))
 __attribute__((visibility ("default")))
 @interface TestProtocolTestRecursiveObject1 : RWIProtocolJSONObject
 - (instancetype)initWithPayload:(NSDictionary<NSString *, id> *)payload;
-- (instancetype)initWithJSONObject:(RWIProtocolJSONObject *)jsonObject;
+- (instancetype)initWithProtocolObject:(RWIProtocolJSONObject *)jsonObject;
 /* optional */ @property (nonatomic, retain) TestProtocolTestRecursiveObject2 *obj;
 @end
 
 __attribute__((visibility ("default")))
 @interface TestProtocolTestRecursiveObject2 : RWIProtocolJSONObject
 - (instancetype)initWithPayload:(NSDictionary<NSString *, id> *)payload;
-- (instancetype)initWithJSONObject:(RWIProtocolJSONObject *)jsonObject;
+- (instancetype)initWithProtocolObject:(RWIProtocolJSONObject *)jsonObject;
 /* optional */ @property (nonatomic, retain) TestProtocolTestRecursiveObject1 *obj;
 @end
 
@@ -1474,9 +1475,9 @@ using namespace Inspector;
 
     return self;
 }
-- (instancetype)initWithJSONObject:(RWIProtocolJSONObject *)jsonObject
+- (instancetype)initWithProtocolObject:(RWIProtocolJSONObject *)object
 {
-    if (!(self = [super initWithInspectorObject:[jsonObject toInspectorObject].get()]))
+    if (!(self = [super initWithJSONObject:[object toJSONObject].get()]))
         return nil;
 
     return self;
@@ -1549,7 +1550,7 @@ using namespace Inspector;
     RWIProtocolJSONObject *object = [super objectForKey:@"tree"];
     if (!object)
         return nil;
-    return [[TestProtocolTestRecursiveObject1 alloc] initWithInspectorObject:[[super objectForKey:@"tree"] toInspectorObject].get()];
+    return [[TestProtocolTestRecursiveObject1 alloc] initWithJSONObject:[[super objectForKey:@"tree"] toJSONObject].get()];
 }
 
 @end
@@ -1565,9 +1566,9 @@ using namespace Inspector;
 
     return self;
 }
-- (instancetype)initWithJSONObject:(RWIProtocolJSONObject *)jsonObject
+- (instancetype)initWithProtocolObject:(RWIProtocolJSONObject *)object
 {
-    if (!(self = [super initWithInspectorObject:[jsonObject toInspectorObject].get()]))
+    if (!(self = [super initWithJSONObject:[object toJSONObject].get()]))
         return nil;
 
     return self;
@@ -1583,7 +1584,7 @@ using namespace Inspector;
     RWIProtocolJSONObject *object = [super objectForKey:@"obj"];
     if (!object)
         return nil;
-    return [[TestProtocolTestRecursiveObject2 alloc] initWithInspectorObject:[[super objectForKey:@"obj"] toInspectorObject].get()];
+    return [[TestProtocolTestRecursiveObject2 alloc] initWithJSONObject:[[super objectForKey:@"obj"] toJSONObject].get()];
 }
 
 @end
@@ -1599,9 +1600,9 @@ using namespace Inspector;
 
     return self;
 }
-- (instancetype)initWithJSONObject:(RWIProtocolJSONObject *)jsonObject
+- (instancetype)initWithProtocolObject:(RWIProtocolJSONObject *)object
 {
-    if (!(self = [super initWithInspectorObject:[jsonObject toInspectorObject].get()]))
+    if (!(self = [super initWithJSONObject:[object toJSONObject].get()]))
         return nil;
 
     return self;
@@ -1617,7 +1618,7 @@ using namespace Inspector;
     RWIProtocolJSONObject *object = [super objectForKey:@"obj"];
     if (!object)
         return nil;
-    return [[TestProtocolTestRecursiveObject1 alloc] initWithInspectorObject:[[super objectForKey:@"obj"] toInspectorObject].get()];
+    return [[TestProtocolTestRecursiveObject1 alloc] initWithJSONObject:[[super objectForKey:@"obj"] toJSONObject].get()];
 }
 
 @end

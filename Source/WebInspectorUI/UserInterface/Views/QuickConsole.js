@@ -30,6 +30,7 @@ WI.QuickConsole = class QuickConsole extends WI.View
         super(element);
 
         this._toggleOrFocusKeyboardShortcut = new WI.KeyboardShortcut(null, WI.KeyboardShortcut.Key.Escape, this._toggleOrFocus.bind(this));
+        this._toggleOrFocusKeyboardShortcut.implicitlyPreventsDefault = false;
 
         this._mainExecutionContextPathComponent = this._createExecutionContextPathComponent(WI.mainTarget.executionContext);
 
@@ -95,6 +96,18 @@ WI.QuickConsole = class QuickConsole extends WI.View
     set selectedExecutionContext(executionContext)
     {
         WI.runtimeManager.activeExecutionContext = executionContext;
+    }
+
+    closed()
+    {
+        WI.Frame.removeEventListener(null, null, this);
+        WI.debuggerManager.removeEventListener(null, null, this);
+        WI.runtimeManager.removeEventListener(null, null, this);
+        WI.targetManager.removeEventListener(null, null, this);
+        WI.consoleDrawer.removeEventListener(null, null, this);
+        WI.TabBrowser.removeEventListener(null, null, this);
+
+        super.closed();
     }
 
     // Protected
@@ -178,6 +191,8 @@ WI.QuickConsole = class QuickConsole extends WI.View
     _activeExecutionContextChanged(event)
     {
         this._rebuildExecutionContextPathComponents();
+
+        this._executionContextSelectorItem.element.classList.toggle("non-default-execution-context", this.selectedExecutionContext !== WI.mainTarget.executionContext);
     }
 
     _createExecutionContextPathComponent(executionContext, preferredName)
@@ -330,10 +345,13 @@ WI.QuickConsole = class QuickConsole extends WI.View
 
     _toggleOrFocus(event)
     {
-        if (this.prompt.focused)
+        if (this.prompt.focused) {
             WI.toggleSplitConsole();
-        else if (!WI.isEditingAnyField() && !WI.isEventTargetAnEditableField(event))
+            event.preventDefault();
+        } else if (!WI.isEditingAnyField() && !WI.isEventTargetAnEditableField(event)) {
             this.prompt.focus();
+            event.preventDefault();
+        }
     }
 
     _updateStyles()

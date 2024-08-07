@@ -30,9 +30,11 @@
 #import <CFNetwork/CFHTTPMessage.h>
 #import <CFNetwork/CFNetwork.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
+#import <pal/spi/cocoa/NSKeyedArchiverSPI.h>
 #import <wtf/NeverDestroyed.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/Vector.h>
+#import <wtf/cf/TypeCastsCF.h>
 
 using namespace WebCore;
 
@@ -40,9 +42,22 @@ namespace WebCoreTestSupport {
 
 static CFURLResponseRef createCFURLResponseFromResponseData(CFDataRef responseData)
 {
-    RetainPtr<NSKeyedUnarchiver> unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingWithData:(NSData *)responseData]);
-    NSURLResponse *response = [unarchiver decodeObjectForKey:@"WebResourceResponse"]; // WebResourceResponseKey in WebResource.m
-    [unarchiver finishDecoding];
+    NSURLResponse *response;
+#if USE(SECURE_ARCHIVER_API)
+    auto unarchiver = secureUnarchiverFromData((NSData *)responseData);
+    @try {
+        response = [unarchiver decodeObjectOfClass:[NSURLResponse class] forKey:@"WebResourceResponse"]; // WebResourceResponseKey in WebResource.m
+#else
+    // Because of <rdar://problem/34063313> we can't use secure coding for decoding in older OS's.
+    auto unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingWithData:(NSData *)responseData]);
+    @try {
+        response = [unarchiver decodeObjectForKey:@"WebResourceResponse"]; // WebResourceResponseKey in WebResource.m
+#endif
+        [unarchiver finishDecoding];
+    } @catch (NSException *exception) {
+        LOG_ERROR("Failed to decode NS(HTTP)URLResponse: %@", exception);
+        response = nil;
+    }
 
     if (![response isKindOfClass:[NSHTTPURLResponse class]])
         return CFURLResponseCreate(kCFAllocatorDefault, (CFURLRef)response.URL, (CFStringRef)response.MIMEType, response.expectedContentLength, (CFStringRef)response.textEncodingName, kCFURLCacheStorageAllowed);
@@ -76,7 +91,7 @@ static void convertMIMEType(CFMutableStringRef mimeType)
 
 static void convertWebResourceDataToString(CFMutableDictionaryRef resource)
 {
-    CFMutableStringRef mimeType = (CFMutableStringRef)CFDictionaryGetValue(resource, CFSTR("WebResourceMIMEType"));
+    CFMutableStringRef mimeType = checked_cf_cast<CFMutableStringRef>(CFDictionaryGetValue(resource, CFSTR("WebResourceMIMEType")));
     CFStringLowercase(mimeType, CFLocaleGetSystem());
     convertMIMEType(mimeType);
 
@@ -205,7 +220,7 @@ CFStringRef createXMLStringFromWebArchiveData(CFDataRef webArchiveData)
 {
     CFErrorRef error = 0;
     CFPropertyListFormat format = kCFPropertyListBinaryFormat_v1_0;
-    RetainPtr<CFMutableDictionaryRef> propertyList = adoptCF((CFMutableDictionaryRef)CFPropertyListCreateWithData(kCFAllocatorDefault, webArchiveData, kCFPropertyListMutableContainersAndLeaves, &format, &error));
+    RetainPtr<CFMutableDictionaryRef> propertyList = adoptCF(checked_cf_cast<CFMutableDictionaryRef>(CFPropertyListCreateWithData(kCFAllocatorDefault, webArchiveData, kCFPropertyListMutableContainersAndLeaves, &format, &error)));
 
     if (!propertyList) {
         if (error)
@@ -217,26 +232,26 @@ CFStringRef createXMLStringFromWebArchiveData(CFDataRef webArchiveData)
     CFArrayAppendValue(resources.get(), propertyList.get());
 
     while (CFArrayGetCount(resources.get())) {
-        RetainPtr<CFMutableDictionaryRef> resourcePropertyList = (CFMutableDictionaryRef)CFArrayGetValueAtIndex(resources.get(), 0);
+        RetainPtr<CFMutableDictionaryRef> resourcePropertyList = checked_cf_cast<CFMutableDictionaryRef>(CFArrayGetValueAtIndex(resources.get(), 0));
         CFArrayRemoveValueAtIndex(resources.get(), 0);
 
-        CFMutableDictionaryRef mainResource = (CFMutableDictionaryRef)CFDictionaryGetValue(resourcePropertyList.get(), CFSTR("WebMainResource"));
-        normalizeWebResourceURL((CFMutableStringRef)CFDictionaryGetValue(mainResource, CFSTR("WebResourceURL")));
+        CFMutableDictionaryRef mainResource = checked_cf_cast<CFMutableDictionaryRef>(CFDictionaryGetValue(resourcePropertyList.get(), CFSTR("WebMainResource")));
+        normalizeWebResourceURL(checked_cf_cast<CFMutableStringRef>(CFDictionaryGetValue(mainResource, CFSTR("WebResourceURL"))));
         convertWebResourceDataToString(mainResource);
 
         // Add subframeArchives to list for processing
-        CFMutableArrayRef subframeArchives = (CFMutableArrayRef)CFDictionaryGetValue(resourcePropertyList.get(), CFSTR("WebSubframeArchives")); // WebSubframeArchivesKey in WebArchive.m
+        CFMutableArrayRef subframeArchives = checked_cf_cast<CFMutableArrayRef>(CFDictionaryGetValue(resourcePropertyList.get(), CFSTR("WebSubframeArchives"))); // WebSubframeArchivesKey in WebArchive.m
         if (subframeArchives)
             CFArrayAppendArray(resources.get(), subframeArchives, CFRangeMake(0, CFArrayGetCount(subframeArchives)));
 
-        CFMutableArrayRef subresources = (CFMutableArrayRef)CFDictionaryGetValue(resourcePropertyList.get(), CFSTR("WebSubresources")); // WebSubresourcesKey in WebArchive.m
+        CFMutableArrayRef subresources = checked_cf_cast<CFMutableArrayRef>(CFDictionaryGetValue(resourcePropertyList.get(), CFSTR("WebSubresources"))); // WebSubresourcesKey in WebArchive.m
         if (!subresources)
             continue;
 
         CFIndex subresourcesCount = CFArrayGetCount(subresources);
         for (CFIndex i = 0; i < subresourcesCount; ++i) {
-            CFMutableDictionaryRef subresourcePropertyList = (CFMutableDictionaryRef)CFArrayGetValueAtIndex(subresources, i);
-            normalizeWebResourceURL((CFMutableStringRef)CFDictionaryGetValue(subresourcePropertyList, CFSTR("WebResourceURL")));
+            CFMutableDictionaryRef subresourcePropertyList = checked_cf_cast<CFMutableDictionaryRef>(CFArrayGetValueAtIndex(subresources, i));
+            normalizeWebResourceURL(checked_cf_cast<CFMutableStringRef>(CFDictionaryGetValue(subresourcePropertyList, CFSTR("WebResourceURL"))));
             convertWebResourceResponseToDictionary(subresourcePropertyList);
             convertWebResourceDataToString(subresourcePropertyList);
         }

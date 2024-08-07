@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # Copyright (C) 2009, 2015 Apple Inc.  All rights reserved.
 # Copyright (C) 2012 Google Inc. All rights reserved.
@@ -36,6 +36,8 @@ _configurationBuildDirectory = None
 _topLevelBuildDirectory = None
 _hostBuildDirectory = None
 
+PATH_TO_LAUNCHER = './Tools/WebKitArchiveSupport/run-webkit-archive'
+PATH_TO_README = './Tools/WebKitArchiveSupport/README'
 
 def main():
     parser = optparse.OptionParser("usage: %prog [options] [action]")
@@ -136,6 +138,9 @@ def createZipManually(directoryToZip, archiveFile):
 
     archiveZip.close()
 
+def addFilesToArchive(archiveFile, pathToLauncher, pathToReadme):
+    command = ['/usr/bin/zip', '-j', archiveFile, pathToLauncher, pathToReadme]
+    return subprocess.call(command)
 
 def createZip(directoryToZip, configuration, embedParentDirectoryNameOnDarwin=False, minify=False):
     archiveDir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "WebKitBuild"))
@@ -154,7 +159,7 @@ def createZip(directoryToZip, configuration, embedParentDirectoryNameOnDarwin=Fa
         if embedParentDirectoryNameOnDarwin:
             command += ['--keepParent']
         command += [directoryToZip, archiveFile]
-        return subprocess.call(command)
+        return subprocess.call(command) or addFilesToArchive(archiveFile, PATH_TO_LAUNCHER, PATH_TO_README) 
     elif sys.platform == 'cygwin':
         return subprocess.call(["zip", "-r", archiveFile, "bin32"], cwd=directoryToZip)
     elif sys.platform == 'win32':

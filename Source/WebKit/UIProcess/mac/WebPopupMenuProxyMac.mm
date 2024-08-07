@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,11 +29,11 @@
 #if USE(APPKIT)
 
 #import "NativeWebMouseEvent.h"
-#import "PageClientImpl.h"
+#import "PageClientImplMac.h"
 #import "PlatformPopupMenuData.h"
 #import "StringUtilities.h"
 #import "WebPopupItem.h"
-#import <WebKitSystemInterface.h>
+#import <pal/system/mac/PopupMenu.h>
 
 using namespace WebCore;
 
@@ -127,24 +127,15 @@ void WebPopupMenuProxyMac::showPopupMenu(const IntRect& rect, TextDirection text
         if (titleFrame.size.width <= 0 || titleFrame.size.height <= 0)
             titleFrame = rect;
         float verticalOffset = roundf((NSMaxY(rect) - NSMaxY(titleFrame)) + NSHeight(titleFrame)) + 1;
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
         if (textDirection == LTR)
             location = NSMakePoint(NSMinX(rect) + popOverHorizontalAdjust, NSMaxY(rect) - verticalOffset);
         else
             location = NSMakePoint(NSMaxX(rect) - popOverHorizontalAdjust, NSMaxY(rect) - verticalOffset);
-#else
-        location = NSMakePoint(NSMinX(rect) + popOverHorizontalAdjust, NSMaxY(rect) - verticalOffset);
-#endif
-
     } else {
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
         if (textDirection == LTR)
             location = NSMakePoint(NSMinX(rect) + popUnderHorizontalAdjust, NSMaxY(rect) + popUnderVerticalAdjust);
         else
             location = NSMakePoint(NSMaxX(rect) - popUnderHorizontalAdjust, NSMaxY(rect) + popUnderVerticalAdjust);
-#else
-        location = NSMakePoint(NSMinX(rect) + popUnderHorizontalAdjust, NSMaxY(rect) + popUnderVerticalAdjust);
-#endif
     }
     RetainPtr<NSView> dummyView = adoptNS([[NSView alloc] initWithFrame:rect]);
     [dummyView.get() setUserInterfaceLayoutDirection:textDirection == LTR ? NSUserInterfaceLayoutDirectionLeftToRight : NSUserInterfaceLayoutDirectionRightToLeft];
@@ -165,7 +156,7 @@ void WebPopupMenuProxyMac::showPopupMenu(const IntRect& rect, TextDirection text
     }
 
     Ref<WebPopupMenuProxyMac> protect(*this);
-    WKPopupMenu(menu, location, roundf(NSWidth(rect)), dummyView.get(), selectedIndex, font, controlSize, data.hideArrows);
+    PAL::popUpMenu(menu, location, roundf(NSWidth(rect)), dummyView.get(), selectedIndex, font, controlSize, data.hideArrows);
 
     [m_popup dismissPopUp];
     [dummyView removeFromSuperview];

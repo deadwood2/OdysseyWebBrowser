@@ -26,8 +26,6 @@
 #include "config.h"
 #include "NetworkCache.h"
 
-#if ENABLE(NETWORK_CACHE)
-
 #include "Logging.h"
 #include "NetworkCacheSpeculativeLoadManager.h"
 #include "NetworkCacheStatistics.h"
@@ -50,7 +48,7 @@
 #include <notify.h>
 #endif
 
-using namespace std::literals::chrono_literals;
+using namespace WebCore::FileSystem;
 
 namespace WebKit {
 namespace NetworkCache {
@@ -113,7 +111,7 @@ Cache::Cache(Ref<Storage>&& storage, OptionSet<Option> options)
 #endif
 #if PLATFORM(GTK)
         // Triggers with "touch $cachePath/dump".
-        CString dumpFilePath = WebCore::fileSystemRepresentation(WebCore::pathByAppendingComponent(m_storage->basePath(), "dump"));
+        CString dumpFilePath = fileSystemRepresentation(pathByAppendingComponent(m_storage->basePath(), "dump"));
         GRefPtr<GFile> dumpFile = adoptGRef(g_file_new_for_path(dumpFilePath.data()));
         GFileMonitor* monitor = g_file_monitor_file(dumpFile.get(), G_FILE_MONITOR_NONE, nullptr, nullptr);
         g_signal_connect_swapped(monitor, "changed", G_CALLBACK(dumpFileChanged), this);
@@ -155,7 +153,7 @@ static bool cachePolicyAllowsExpired(WebCore::ResourceRequestCachePolicy policy)
     return false;
 }
 
-static bool responseHasExpired(const WebCore::ResourceResponse& response, std::chrono::system_clock::time_point timestamp, std::optional<std::chrono::microseconds> maxStale)
+static bool responseHasExpired(const WebCore::ResourceResponse& response, WallTime timestamp, std::optional<Seconds> maxStale)
 {
     if (response.cacheControlContainsNoCache())
         return true;
@@ -163,7 +161,7 @@ static bool responseHasExpired(const WebCore::ResourceResponse& response, std::c
     auto age = WebCore::computeCurrentAge(response, timestamp);
     auto lifetime = WebCore::computeFreshnessLifetimeForHTTPFamily(response, timestamp);
 
-    auto maximumStaleness = maxStale ? maxStale.value() : 0ms;
+    auto maximumStaleness = maxStale ? maxStale.value() : 0_ms;
     bool hasExpired = age - lifetime > maximumStaleness;
 
 #ifndef LOG_DISABLED
@@ -174,13 +172,13 @@ static bool responseHasExpired(const WebCore::ResourceResponse& response, std::c
     return hasExpired;
 }
 
-static bool responseNeedsRevalidation(const WebCore::ResourceResponse& response, const WebCore::ResourceRequest& request, std::chrono::system_clock::time_point timestamp)
+static bool responseNeedsRevalidation(const WebCore::ResourceResponse& response, const WebCore::ResourceRequest& request, WallTime timestamp)
 {
     auto requestDirectives = WebCore::parseCacheControlDirectives(request.httpHeaderFields());
     if (requestDirectives.noCache)
         return true;
     // For requests we ignore max-age values other than zero.
-    if (requestDirectives.maxAge && requestDirectives.maxAge.value() == 0ms)
+    if (requestDirectives.maxAge && requestDirectives.maxAge.value() == 0_ms)
         return true;
 
     return responseHasExpired(response, timestamp, requestDirectives.maxStale);
@@ -222,13 +220,9 @@ static RetrieveDecision makeRetrieveDecision(const WebCore::ResourceRequest& req
     return RetrieveDecision::Yes;
 }
 
-static bool isMediaMIMEType(const String& mimeType)
+static bool isMediaMIMEType(const String& type)
 {
-    if (mimeType.startsWith("video/", /*caseSensitive*/ false))
-        return true;
-    if (mimeType.startsWith("audio/", /*caseSensitive*/ false))
-        return true;
-    return false;
+    return startsWithLettersIgnoringASCIICase(type, "video/") || startsWithLettersIgnoringASCIICase(type, "audio/");
 }
 
 static std::optional<size_t> expectedTotalResourceSizeFromContentRange(const WebCore::ResourceResponse& response)
@@ -284,8 +278,8 @@ static StoreDecision makeStoreDecision(const WebCore::ResourceRequest& originalR
     bool isMainResource = originalRequest.requester() == WebCore::ResourceRequest::Requester::Main;
     bool storeUnconditionallyForHistoryNavigation = isMainResource || originalRequest.priority() == WebCore::ResourceLoadPriority::VeryHigh;
     if (!storeUnconditionallyForHistoryNavigation) {
-        auto now = std::chrono::system_clock::now();
-        bool hasNonZeroLifetime = !response.cacheControlContainsNoCache() && WebCore::computeFreshnessLifetimeForHTTPFamily(response, now) > 0ms;
+        auto now = WallTime::now();
+        bool hasNonZeroLifetime = !response.cacheControlContainsNoCache() && WebCore::computeFreshnessLifetimeForHTTPFamily(response, now) > 0_ms;
 
         bool possiblyReusable = response.hasCacheValidatorFields() || hasNonZeroLifetime;
         if (!possiblyReusable)
@@ -353,7 +347,7 @@ void Cache::retrieve(const WebCore::ResourceRequest& request, const GlobalFrameI
     }
 #endif
 
-    auto startTime = std::chrono::system_clock::now();
+    auto startTime = WallTime::now();
     auto priority = static_cast<unsigned>(request.priority());
 
     m_storage->retrieve(storageKey, priority, [this, protectedThis = makeRef(*this), request, completionHandler = WTFMove(completionHandler), startTime, storageKey, frameID](auto record) {
@@ -383,8 +377,8 @@ void Cache::retrieve(const WebCore::ResourceRequest& request, const GlobalFrameI
         };
 
 #if !LOG_DISABLED
-        auto elapsedMS = static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startTime).count());
-        LOG(NetworkCache, "(NetworkProcess) retrieve complete useDecision=%d priority=%d time=%" PRIi64 "ms", static_cast<int>(useDecision), static_cast<int>(request.priority()), elapsedMS);
+        auto elapsed = WallTime::now() - startTime;
+        LOG(NetworkCache, "(NetworkProcess) retrieve complete useDecision=%d priority=%d time=%" PRIi64 "ms", static_cast<int>(useDecision), static_cast<int>(request.priority()), elapsed.millisecondsAs<int64_t>());
 #else
         UNUSED_PARAM(startTime);
 #endif
@@ -539,16 +533,16 @@ void Cache::traverse(Function<void (const TraversalEntry*)>&& traverseHandler)
 
 String Cache::dumpFilePath() const
 {
-    return WebCore::pathByAppendingComponent(m_storage->versionPath(), "dump.json");
+    return pathByAppendingComponent(m_storage->versionPath(), "dump.json");
 }
 
 void Cache::dumpContentsToFile()
 {
-    auto fd = WebCore::openFile(dumpFilePath(), WebCore::OpenForWrite);
-    if (!WebCore::isHandleValid(fd))
+    auto fd = openFile(dumpFilePath(), FileOpenMode::Write);
+    if (!isHandleValid(fd))
         return;
     auto prologue = String("{\n\"entries\": [\n").utf8();
-    WebCore::writeToFile(fd, prologue.data(), prologue.length());
+    writeToFile(fd, prologue.data(), prologue.length());
 
     struct Totals {
         unsigned count { 0 };
@@ -577,8 +571,8 @@ void Cache::dumpContentsToFile()
             epilogue.appendLiteral("\n");
             epilogue.appendLiteral("}\n}\n");
             auto writeData = epilogue.toString().utf8();
-            WebCore::writeToFile(fd, writeData.data(), writeData.length());
-            WebCore::closeFile(fd);
+            writeToFile(fd, writeData.data(), writeData.length());
+            closeFile(fd);
             return;
         }
         auto entry = Entry::decodeStorageRecord(*record);
@@ -592,18 +586,18 @@ void Cache::dumpContentsToFile()
         entry->asJSON(json, info);
         json.appendLiteral(",\n");
         auto writeData = json.toString().utf8();
-        WebCore::writeToFile(fd, writeData.data(), writeData.length());
+        writeToFile(fd, writeData.data(), writeData.length());
     });
 }
 
 void Cache::deleteDumpFile()
 {
     WorkQueue::create("com.apple.WebKit.Cache.delete")->dispatch([path = dumpFilePath().isolatedCopy()] {
-        WebCore::deleteFile(path);
+        deleteFile(path);
     });
 }
 
-void Cache::clear(std::chrono::system_clock::time_point modifiedSince, Function<void ()>&& completionHandler)
+void Cache::clear(WallTime modifiedSince, Function<void ()>&& completionHandler)
 {
     LOG(NetworkCache, "(NetworkProcess) clearing cache");
 
@@ -618,7 +612,7 @@ void Cache::clear(std::chrono::system_clock::time_point modifiedSince, Function<
 
 void Cache::clear()
 {
-    clear(std::chrono::system_clock::time_point::min(), nullptr);
+    clear(-WallTime::infinity(), nullptr);
 }
 
 String Cache::recordsPath() const
@@ -642,11 +636,9 @@ void Cache::retrieveData(const DataKey& dataKey, Function<void (const uint8_t* d
 void Cache::storeData(const DataKey& dataKey, const uint8_t* data, size_t size)
 {
     Key key { dataKey, m_storage->salt() };
-    Storage::Record record { key, std::chrono::system_clock::now(), { }, Data { data, size }, { } };
+    Storage::Record record { key, WallTime::now(), { }, Data { data, size }, { } };
     m_storage->store(record, { });
 }
 
 }
 }
-
-#endif

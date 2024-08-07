@@ -66,7 +66,15 @@ WI.TimelineManager = class TimelineManager extends WI.Object
 
     static defaultTimelineTypes()
     {
-        if (WI.debuggableType === WI.DebuggableType.JavaScript) {
+        if (WI.sharedApp.debuggableType === WI.DebuggableType.JavaScript) {
+            let defaultTypes = [WI.TimelineRecord.Type.Script];
+            if (WI.HeapAllocationsInstrument.supported())
+                defaultTypes.push(WI.TimelineRecord.Type.HeapAllocations);
+            return defaultTypes;
+        }
+
+        if (WI.sharedApp.debuggableType === WI.DebuggableType.ServiceWorker) {
+            // FIXME: Support Network Timeline in ServiceWorker.
             let defaultTypes = [WI.TimelineRecord.Type.Script];
             if (WI.HeapAllocationsInstrument.supported())
                 defaultTypes.push(WI.TimelineRecord.Type.HeapAllocations);
@@ -88,7 +96,7 @@ WI.TimelineManager = class TimelineManager extends WI.Object
     static availableTimelineTypes()
     {
         let types = WI.TimelineManager.defaultTimelineTypes();
-        if (WI.debuggableType === WI.DebuggableType.JavaScript)
+        if (WI.sharedApp.debuggableType === WI.DebuggableType.JavaScript || WI.sharedApp.debuggableType === WI.DebuggableType.ServiceWorker)
             return types;
 
         if (WI.MemoryInstrument.supported())
@@ -878,7 +886,7 @@ WI.TimelineManager = class TimelineManager extends WI.Object
     scriptProfilerProgrammaticCaptureStarted()
     {
         // FIXME: <https://webkit.org/b/158753> Generalize the concept of Instruments on the backend to work equally for JSContext and Web inspection
-        console.assert(WI.debuggableType === WI.DebuggableType.JavaScript);
+        console.assert(WI.sharedApp.debuggableType === WI.DebuggableType.JavaScript);
         console.assert(!this._isCapturing);
 
         this.programmaticCaptureStarted();
@@ -887,7 +895,7 @@ WI.TimelineManager = class TimelineManager extends WI.Object
     scriptProfilerProgrammaticCaptureStopped()
     {
         // FIXME: <https://webkit.org/b/158753> Generalize the concept of Instruments on the backend to work equally for JSContext and Web inspection
-        console.assert(WI.debuggableType === WI.DebuggableType.JavaScript);
+        console.assert(WI.sharedApp.debuggableType === WI.DebuggableType.JavaScript);
         console.assert(this._isCapturing);
 
         this.programmaticCaptureStopped();
@@ -977,7 +985,7 @@ WI.TimelineManager = class TimelineManager extends WI.Object
 
         // Associate the ScriptProfiler created records with Web Timeline records.
         // Filter out the already added ScriptProfiler events which should not have been wrapped.
-        if (WI.debuggableType !== WI.DebuggableType.JavaScript) {
+        if (WI.sharedApp.debuggableType !== WI.DebuggableType.JavaScript) {
             this._scriptProfilerRecords = this._scriptProfilerRecords.filter((x) => x.__scriptProfilerType === ScriptProfilerAgent.EventType.Other);
             this._mergeScriptProfileRecords();
         }

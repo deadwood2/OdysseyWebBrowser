@@ -29,10 +29,12 @@
 #include "Connection.h"
 #include "MessageSender.h"
 #include "WebIDBConnectionToServer.h"
-#include <WebCore/SessionID.h>
+#include "WebSWClientConnection.h"
+#include <WebCore/SWServer.h>
+#include <pal/SessionID.h>
 #include <wtf/RefCounted.h>
 
-namespace WebCore {
+namespace PAL {
 class SessionID;
 }
 
@@ -49,7 +51,11 @@ public:
     IPC::Connection& connection() { return m_connection.get(); }
 
 #if ENABLE(INDEXED_DATABASE)
-    WebIDBConnectionToServer& idbConnectionToServerForSession(const WebCore::SessionID&);
+    WebIDBConnectionToServer& idbConnectionToServerForSession(PAL::SessionID);
+#endif
+#if ENABLE(SERVICE_WORKER)
+    WebSWClientConnection* existingServiceWorkerConnectionForSession(PAL::SessionID sessionID) { return m_swConnectionsBySession.get(sessionID); }
+    WebSWClientConnection& serviceWorkerConnectionForSession(PAL::SessionID);
 #endif
 
 private:
@@ -57,6 +63,7 @@ private:
 
     // IPC::Connection::Client
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
+    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) override;
     void didClose(IPC::Connection&) override;
     void didReceiveInvalidMessage(IPC::Connection&, IPC::StringReference messageReceiverName, IPC::StringReference messageName) override;
 
@@ -67,8 +74,13 @@ private:
     Ref<IPC::Connection> m_connection;
 
 #if ENABLE(INDEXED_DATABASE)
-    HashMap<WebCore::SessionID, RefPtr<WebIDBConnectionToServer>> m_webIDBConnectionsBySession;
+    HashMap<PAL::SessionID, RefPtr<WebIDBConnectionToServer>> m_webIDBConnectionsBySession;
     HashMap<uint64_t, RefPtr<WebIDBConnectionToServer>> m_webIDBConnectionsByIdentifier;
+#endif
+
+#if ENABLE(SERVICE_WORKER)
+    HashMap<PAL::SessionID, RefPtr<WebSWClientConnection>> m_swConnectionsBySession;
+    HashMap<WebCore::SWServerConnectionIdentifier, WebSWClientConnection*> m_swConnectionsByIdentifier;
 #endif
 };
 

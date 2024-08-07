@@ -158,10 +158,10 @@ InspectorBackendClass = class InspectorBackendClass
         InspectorBackend.mainConnection.runAfterPendingDispatches(script);
     }
 
-    activateDomain(domainName, activationDebuggableType)
+    activateDomain(domainName, activationDebuggableTypes)
     {
-        if (!activationDebuggableType || InspectorFrontendHost.debuggableType() === activationDebuggableType) {
-            var agent = this._agents[domainName];
+        if (!activationDebuggableTypes || activationDebuggableTypes.includes(InspectorFrontendHost.debuggableType())) {
+            let agent = this._agents[domainName];
             agent.activate();
             return agent;
         }
@@ -285,8 +285,13 @@ InspectorBackend.Agent = class InspectorBackendAgent
 
     dispatchEvent(eventName, eventArguments)
     {
+        if (!this._dispatcher) {
+            console.error(`No domain dispatcher registered for domain '${this._domainName}', for event '${this._domainName}.${eventName}'`);
+            return false;
+        }
+
         if (!(eventName in this._dispatcher)) {
-            console.error("Protocol Error: Attempted to dispatch an unimplemented method '" + this._domainName + "." + eventName + "'");
+            console.error(`Protocol Error: Attempted to dispatch an unimplemented method '${this._domainName}.${eventName}'`);
             return false;
         }
 

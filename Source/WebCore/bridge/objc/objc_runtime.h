@@ -29,7 +29,7 @@
 #include "BridgeJSC.h"
 #include "JSDOMBinding.h"
 #include "objc_header.h"
-#include <runtime/JSGlobalObject.h>
+#include <JavaScriptCore/JSGlobalObject.h>
 #include <wtf/RetainPtr.h>
 
 namespace JSC {
@@ -97,9 +97,10 @@ public:
 
     static ObjcFallbackObjectImp* create(ExecState* exec, JSGlobalObject* globalObject, ObjcInstance* instance, const String& propertyName)
     {
+        VM& vm = globalObject->vm();
         // FIXME: deprecatedGetDOMStructure uses the prototype off of the wrong global object
         Structure* domStructure = WebCore::deprecatedGetDOMStructure<ObjcFallbackObjectImp>(exec);
-        ObjcFallbackObjectImp* fallbackObject = new (NotNull, allocateCell<ObjcFallbackObjectImp>(*exec->heap())) ObjcFallbackObjectImp(globalObject, domStructure, instance, propertyName);
+        ObjcFallbackObjectImp* fallbackObject = new (NotNull, allocateCell<ObjcFallbackObjectImp>(vm.heap)) ObjcFallbackObjectImp(globalObject, domStructure, instance, propertyName);
         fallbackObject->finishCreation(globalObject);
         return fallbackObject;
     }

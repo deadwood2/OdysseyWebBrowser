@@ -66,12 +66,9 @@ SecTaskRef SecTaskCreateWithAuditToken(CFAllocatorRef, audit_token_t);
 SecTaskRef SecTaskCreateFromSelf(CFAllocatorRef);
 CFTypeRef SecTaskCopyValueForEntitlement(SecTaskRef, CFStringRef entitlement, CFErrorRef *);
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
-CFStringRef SecTaskCopySigningIdentifier(SecTaskRef, CFErrorRef *);
-#endif
-
 #if PLATFORM(MAC)
 #include <Security/SecAsn1Types.h>
+CFStringRef SecTaskCopySigningIdentifier(SecTaskRef, CFErrorRef *);
 extern const SecAsn1Template kSecAsn1AlgorithmIDTemplate[];
 extern const SecAsn1Template kSecAsn1SubjectPublicKeyInfoTemplate[];
 #endif
@@ -80,5 +77,11 @@ extern const SecAsn1Template kSecAsn1SubjectPublicKeyInfoTemplate[];
 CF_RETURNS_RETAINED CFDataRef SecTrustSerialize(SecTrustRef, CFErrorRef *);
 CF_RETURNS_RETAINED SecTrustRef SecTrustDeserialize(CFDataRef serializedTrust, CFErrorRef *);
 #endif
+
+CF_RETURNS_RETAINED CFDictionaryRef SecTrustCopyInfo(SecTrustRef);
+
+extern const CFStringRef kSecTrustInfoExtendedValidationKey;
+extern const CFStringRef kSecTrustInfoCompanyNameKey;
+extern const CFStringRef kSecTrustInfoRevocationKey;
 
 WTF_EXTERN_C_END

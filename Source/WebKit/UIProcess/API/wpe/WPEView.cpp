@@ -35,8 +35,7 @@
 #include "NativeWebWheelEvent.h"
 #include "WebPageGroup.h"
 #include "WebProcessPool.h"
-#include <JavaScriptCore/JSBase.h>
-#include <wpe/view-backend.h>
+#include <wpe/wpe.h>
 
 using namespace WebKit;
 
@@ -48,7 +47,10 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
     , m_size { 800, 600 }
     , m_viewStateFlags(WebCore::ActivityState::WindowIsActive | WebCore::ActivityState::IsFocused | WebCore::ActivityState::IsVisible | WebCore::ActivityState::IsInWindow)
     , m_compositingManagerProxy(*this)
+    , m_backend(backend)
 {
+    ASSERT(m_backend);
+
     auto configuration = baseConfiguration.copy();
     auto* preferences = configuration->preferences();
     if (!preferences && configuration->pageGroup()) {
@@ -71,9 +73,6 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
         pool->startMemorySampler(0);
 #endif
 
-    m_backend = backend;
-    if (!m_backend)
-        m_backend = wpe_view_backend_create();
     m_compositingManagerProxy.initialize();
 
     static struct wpe_view_backend_client s_backendClient = {
@@ -88,7 +87,12 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
         {
             auto& view = *reinterpret_cast<View*>(data);
             view.frameDisplayed();
-        }
+        },
+        // padding
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr
     };
     wpe_view_backend_set_backend_client(m_backend, &s_backendClient, this);
 
@@ -125,6 +129,11 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
             auto& page = reinterpret_cast<View*>(data)->page();
             page.handleTouchEvent(WebKit::NativeWebTouchEvent(event, page.deviceScaleFactor()));
         },
+        // padding
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr
     };
     wpe_view_backend_set_input_client(m_backend, &s_inputClient, this);
 
@@ -136,7 +145,6 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
 View::~View()
 {
     m_compositingManagerProxy.finalize();
-    wpe_view_backend_destroy(m_backend);
 }
 
 void View::setClient(std::unique_ptr<API::ViewClient>&& client)
@@ -166,7 +174,7 @@ void View::setSize(const WebCore::IntSize& size)
 {
     m_size = size;
     if (m_pageProxy->drawingArea())
-        m_pageProxy->drawingArea()->setSize(size, WebCore::IntSize(), WebCore::IntSize());
+        m_pageProxy->drawingArea()->setSize(size);
 }
 
 void View::setViewState(WebCore::ActivityState::Flags flags)

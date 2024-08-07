@@ -37,8 +37,10 @@ WebViewTest::WebViewTest()
 WebViewTest::~WebViewTest()
 {
     platformDestroy();
+#if PLATFORM(GTK)
     if (m_javascriptResult)
         webkit_javascript_result_unref(m_javascriptResult);
+#endif
     if (m_surface)
         cairo_surface_destroy(m_surface);
     g_object_unref(m_webView);
@@ -48,14 +50,20 @@ WebViewTest::~WebViewTest()
 void WebViewTest::initializeWebView()
 {
     g_assert(!m_webView);
-    m_webView = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", m_webContext.get(), "user-content-manager", m_userContentManager.get(), nullptr));
+    m_webView = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+#if PLATFORM(WPE)
+        "backend", Test::createWebViewBackend(),
+#endif
+        "web-context", m_webContext.get(),
+        "user-content-manager", m_userContentManager.get(),
+        nullptr));
     platformInitializeWebView();
     assertObjectIsDeletedWhenTestFinishes(G_OBJECT(m_webView));
 
-    g_signal_connect(m_webView, "web-process-crashed", G_CALLBACK(WebViewTest::webProcessCrashed), this);
+    g_signal_connect(m_webView, "web-process-terminated", G_CALLBACK(WebViewTest::webProcessTerminated), this);
 }
 
-gboolean WebViewTest::webProcessCrashed(WebKitWebView*, WebViewTest* test)
+gboolean WebViewTest::webProcessTerminated(WebKitWebView*, WebKitWebProcessTerminationReason, WebViewTest* test)
 {
     if (test->m_expectedWebProcessCrash) {
         test->m_expectedWebProcessCrash = false;
@@ -253,6 +261,7 @@ const char* WebViewTest::mainResourceData(size_t& mainResourceDataSize)
     return m_resourceData.get();
 }
 
+#if PLATFORM(GTK)
 static void runJavaScriptReadyCallback(GObject*, GAsyncResult* result, WebViewTest* test)
 {
     test->m_javascriptResult = webkit_web_view_run_javascript_finish(test->m_webView, result, test->m_javascriptError);
@@ -352,7 +361,6 @@ bool WebViewTest::javascriptResultIsUndefined(WebKitJavascriptResult* javascript
     return JSValueIsUndefined(context, value);
 }
 
-#if PLATFORM(GTK)
 static void onSnapshotReady(WebKitWebView* web_view, GAsyncResult* res, WebViewTest* test)
 {
     GUniqueOutPtr<GError> error;
@@ -372,13 +380,24 @@ cairo_surface_t* WebViewTest::getSnapshotAndWaitUntilReady(WebKitSnapshotRegion 
     g_main_loop_run(m_mainLoop);
     return m_surface;
 }
-#endif
 
-bool WebViewTest::runWebProcessTest(const char* suiteName, const char* testName)
+bool WebViewTest::runWebProcessTest(const char* suiteName, const char* testName, const char* contents, const char* contentType)
 {
+    if (!contentType) {
+        static const char* emptyHTML = "<html><body></body></html>";
+        loadHtml(contents ? contents : emptyHTML, "webprocess://test");
+    } else {
+        GRefPtr<GBytes> bytes = adoptGRef(g_bytes_new_static(contents, strlen(contents)));
+        loadBytes(bytes.get(), contentType, nullptr, "webprocess://test");
+    }
+    waitUntilLoadFinished();
+
     GUniquePtr<char> script(g_strdup_printf("WebProcessTestRunner.runTest('%s/%s');", suiteName, testName));
     GUniqueOutPtr<GError> error;
     WebKitJavascriptResult* javascriptResult = runJavaScriptAndWaitUntilFinished(script.get(), &error.outPtr());
     g_assert(!error);
+    loadURI("about:blank");
+    waitUntilLoadFinished();
     return javascriptResultToBoolean(javascriptResult);
 }
+#endif

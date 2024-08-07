@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2018 Apple Inc. All rights reserved.
  * Copyright (C) 2009 Holger Hans Peter Freyther
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,6 +33,7 @@
 #include "ScrollTypes.h"
 #include "Widget.h"
 #include <wtf/HashSet.h>
+#include <wtf/WeakPtr.h>
 
 #if PLATFORM(IOS)
 
@@ -87,8 +88,8 @@ public:
 
     // Functions for child manipulation and inspection.
     const HashSet<Ref<Widget>>& children() const { return m_children; }
-    WEBCORE_EXPORT void addChild(Widget&);
-    virtual void removeChild(Widget&);
+    WEBCORE_EXPORT virtual void addChild(Widget&);
+    WEBCORE_EXPORT virtual void removeChild(Widget&);
 
     // If the scroll view does not use a native widget, then it will have cross-platform Scrollbars. These functions
     // can be used to obtain those scrollbars.
@@ -103,7 +104,7 @@ public:
     // Auto means show a scrollbar only when one is needed.
     // Note that for platforms with native widgets, these modes are considered advisory. In other words the underlying native
     // widget may choose not to honor the requested modes.
-    void setScrollbarModes(ScrollbarMode horizontalMode, ScrollbarMode verticalMode, bool horizontalLock = false, bool verticalLock = false);
+    WEBCORE_EXPORT void setScrollbarModes(ScrollbarMode horizontalMode, ScrollbarMode verticalMode, bool horizontalLock = false, bool verticalLock = false);
     void setHorizontalScrollbarMode(ScrollbarMode mode, bool lock = false) { setScrollbarModes(mode, verticalScrollbarMode(), lock, verticalScrollbarLock()); }
     void setVerticalScrollbarMode(ScrollbarMode mode, bool lock = false) { setScrollbarModes(horizontalScrollbarMode(), mode, horizontalScrollbarLock(), lock); };
     WEBCORE_EXPORT void scrollbarModes(ScrollbarMode& horizontalMode, ScrollbarMode& verticalMode) const;
@@ -128,11 +129,6 @@ public:
     // tiled backing store, this function can be set, so that the view paints the entire contents.
     bool paintsEntireContents() const { return m_paintsEntireContents; }
     WEBCORE_EXPORT void setPaintsEntireContents(bool);
-
-    // By default, paint events are clipped to the visible area.  If set to
-    // false, paint events are no longer clipped.  paintsEntireContents() implies !clipsRepaints().
-    bool clipsRepaints() const { return m_clipsRepaints; }
-    void setClipsRepaints(bool);
 
     // By default programmatic scrolling is handled by WebCore and not by the UI application.
     // In the case of using a tiled backing store, this mode can be set, so that the scroll requests
@@ -376,6 +372,8 @@ public:
     void setAllowsUnclampedScrollPositionForTesting(bool allowsUnclampedScrollPosition) { m_allowsUnclampedScrollPosition = allowsUnclampedScrollPosition; }
     bool allowsUnclampedScrollPosition() const { return m_allowsUnclampedScrollPosition; }
 
+    auto& weakPtrFactory() const { return m_weakPtrFactory; }
+
 protected:
     ScrollView();
 
@@ -462,6 +460,8 @@ private:
 
     IntPoint m_panScrollIconPoint;
 
+    WeakPtrFactory<ScrollView> m_weakPtrFactory;
+
     bool m_horizontalScrollbarLock { false };
     bool m_verticalScrollbarLock { false };
 
@@ -481,7 +481,6 @@ private:
     bool m_useFixedLayout { false };
 
     bool m_paintsEntireContents { false };
-    bool m_clipsRepaints { true };
     bool m_delegatesScrolling { false };
 
 

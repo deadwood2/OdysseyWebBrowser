@@ -26,8 +26,6 @@
 #include "config.h"
 #include "PendingDownload.h"
 
-#if USE(NETWORK_SESSION)
-
 #include "DataReference.h"
 #include "DownloadProxyMessages.h"
 #include "NetworkLoad.h"
@@ -81,12 +79,7 @@ void PendingDownload::cancel()
 #if USE(PROTECTION_SPACE_AUTH_CALLBACK)
 void PendingDownload::canAuthenticateAgainstProtectionSpaceAsync(const WebCore::ProtectionSpace& protectionSpace)
 {
-    send(Messages::DownloadProxy::CanAuthenticateAgainstProtectionSpace(protectionSpace));
-}
-
-void PendingDownload::continueCanAuthenticateAgainstProtectionSpace(bool canAuthenticate)
-{
-    m_networkLoad->continueCanAuthenticateAgainstProtectionSpace(canAuthenticate);
+    m_networkLoad->continueCanAuthenticateAgainstProtectionSpace(true);
 }
 #endif
 
@@ -106,5 +99,3 @@ uint64_t PendingDownload::messageSenderDestinationID()
 }
     
 }
-
-#endif

@@ -34,7 +34,7 @@
 namespace WebKit {
 
 class WebFrameProxy;
-struct WebsitePolicies;
+struct WebsitePoliciesData;
 
 class WebFrameListenerProxy : public API::Object {
 public:
@@ -43,13 +43,12 @@ public:
     void invalidate();
     uint64_t listenerID() const { return m_listenerID; }
 
-    API::Navigation* navigation() { return m_navigation.get(); }
     void setNavigation(Ref<API::Navigation>&& navigation) { m_navigation = WTFMove(navigation); }
 
 protected:
     WebFrameListenerProxy(WebFrameProxy*, uint64_t listenerID);
 
-    void receivedPolicyDecision(WebCore::PolicyAction, const WebsitePolicies&);
+    void receivedPolicyDecision(WebCore::PolicyAction, std::optional<WebsitePoliciesData>&&);
 
 private:
     RefPtr<WebFrameProxy> m_frame;

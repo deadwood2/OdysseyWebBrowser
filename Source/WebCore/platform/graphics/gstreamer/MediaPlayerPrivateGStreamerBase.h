@@ -34,6 +34,7 @@
 #include <wtf/Condition.h>
 #include <wtf/Forward.h>
 #include <wtf/RunLoop.h>
+#include <wtf/WeakPtr.h>
 
 #if USE(TEXTURE_MAPPER_GL)
 #include "TextureMapperPlatformLayerProxyProvider.h"
@@ -76,7 +77,7 @@ public:
 
 #if USE(GSTREAMER_GL)
     bool ensureGstGLContext();
-    static GstContext* requestGLContext(const gchar* contextType, MediaPlayerPrivateGStreamerBase*);
+    GstContext* requestGLContext(const char* contextType);
 #endif
     static bool initializeGStreamerAndRegisterWebKitElements();
     bool supportsMuting() const override { return true; }
@@ -90,10 +91,25 @@ public:
     void setSize(const IntSize&) override;
     void sizeChanged();
 
+    // Prefer MediaTime based methods over float based.
+    float duration() const override { return durationMediaTime().toFloat(); }
+    double durationDouble() const override { return durationMediaTime().toDouble(); }
+    MediaTime durationMediaTime() const override { return MediaTime::zeroTime(); }
+    float currentTime() const override { return currentMediaTime().toFloat(); }
+    double currentTimeDouble() const override { return currentMediaTime().toDouble(); }
+    MediaTime currentMediaTime() const override { return MediaTime::zeroTime(); }
+    void seek(float time) override { seek(MediaTime::createWithFloat(time)); }
+    void seekDouble(double time) override { seek(MediaTime::createWithDouble(time)); }
+    void seek(const MediaTime&) override { }
+    float maxTimeSeekable() const override { return maxMediaTimeSeekable().toFloat(); }
+    MediaTime maxMediaTimeSeekable() const override { return MediaTime::zeroTime(); }
+    double minTimeSeekable() const override { return minMediaTimeSeekable().toFloat(); }
+    MediaTime minMediaTimeSeekable() const override { return MediaTime::zeroTime(); }
+
     void paint(GraphicsContext&, const FloatRect&) override;
 
     bool hasSingleSecurityOrigin() const override { return true; }
-    virtual float maxTimeLoaded() const { return 0.0; }
+    virtual MediaTime maxTimeLoaded() const { return MediaTime::zeroTime(); }
 
     bool supportsFullscreen() const override;
     PlatformMedia platformMedia() const override;
@@ -118,6 +134,15 @@ public:
 #else
     bool supportsAcceleratedRendering() const override { return true; }
 #endif
+#endif
+
+#if ENABLE(ENCRYPTED_MEDIA)
+    void cdmInstanceAttached(CDMInstance&) override;
+    void cdmInstanceDetached(CDMInstance&) override;
+    void dispatchDecryptionKey(GstBuffer*);
+    void handleProtectionEvent(GstEvent*);
+    void attemptToDecryptWithLocalInstance();
+    void attemptToDecryptWithInstance(CDMInstance&) override;
 #endif
 
     static bool supportsKeySystem(const String& keySystem, const String& mimeType);
@@ -145,6 +170,7 @@ protected:
     GstElement* createVideoSinkGL();
     GstGLContext* gstGLContext() const { return m_glContext.get(); }
     GstGLDisplay* gstGLDisplay() const { return m_glDisplay.get(); }
+    void ensureGLVideoSinkContext();
 #endif
 
 #if USE(TEXTURE_MAPPER_GL)
@@ -164,7 +190,7 @@ protected:
 
     void triggerRepaint(GstSample*);
     void repaint();
-    void cancelRepaint();
+    void cancelRepaint(bool destroying = false);
 
     static void repaintCallback(MediaPlayerPrivateGStreamerBase*, GstSample*);
     static void repaintCancelledCallback(MediaPlayerPrivateGStreamerBase*);
@@ -187,6 +213,7 @@ protected:
         SizeChanged = 1 << 6
     };
 
+    WeakPtrFactory<MediaPlayerPrivateGStreamerBase> m_weakPtrFactory;
     Ref<MainThreadNotifier<MainThreadNotification>> m_notifier;
     MediaPlayer* m_player;
     GRefPtr<GstElement> m_pipeline;
@@ -205,21 +232,30 @@ protected:
 
     Condition m_drawCondition;
     Lock m_drawMutex;
-    bool m_drawCancelled { false };
+    bool m_destroying { false };
     RunLoop::Timer<MediaPlayerPrivateGStreamerBase> m_drawTimer;
 
 #if USE(TEXTURE_MAPPER_GL)
-    RefPtr<GraphicsContext3D> m_context3D;
     RefPtr<TextureMapperPlatformLayerProxy> m_platformLayerProxy;
 #endif
 
 #if USE(GSTREAMER_GL)
     GRefPtr<GstGLContext> m_glContext;
     GRefPtr<GstGLDisplay> m_glDisplay;
+    GRefPtr<GstContext> m_glDisplayElementContext;
+    GRefPtr<GstContext> m_glAppElementContext;
     std::unique_ptr<VideoTextureCopierGStreamer> m_videoTextureCopier;
 #endif
 
     ImageOrientation m_videoSourceOrientation;
+
+#if ENABLE(ENCRYPTED_MEDIA)
+    Lock m_protectionMutex;
+    Condition m_protectionCondition;
+    RefPtr<const CDMInstance> m_cdmInstance;
+    HashSet<uint32_t> m_handledProtectionEvents;
+    bool m_needToResendCredentials { false };
+#endif
 };
 
 }

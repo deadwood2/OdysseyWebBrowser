@@ -31,6 +31,7 @@
 
 // Debugger.
 InspectorBackend.registerEnum("Debugger.Reason", {Died: "Died", Fainted: "Fainted", Hungry: "Hungry"});
+InspectorBackend.activateDomain("Debugger");
 ### End File: InspectorBackendCommands.js
 
 ### Begin File: TestAlternateBackendDispatchers.h
@@ -69,8 +70,8 @@ InspectorBackend.registerEnum("Debugger.Reason", {Died: "Died", Fainted: "Fainte
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
 
 #include "TestProtocolTypes.h"
-#include <inspector/InspectorFrontendRouter.h>
 #include <JavaScriptCore/InspectorBackendDispatcher.h>
+#include <JavaScriptCore/InspectorFrontendRouter.h>
 
 namespace Inspector {
 
@@ -124,7 +125,7 @@ private:
 #pragma once
 
 #include "TestProtocolObjects.h"
-#include <inspector/InspectorBackendDispatcher.h>
+#include <JavaScriptCore/InspectorBackendDispatcher.h>
 #include <wtf/text/WTFString.h>
 
 namespace Inspector {
@@ -170,7 +171,7 @@ typedef String ErrorString;
 #include "config.h"
 #include "TestBackendDispatchers.h"
 
-#include <inspector/InspectorFrontendRouter.h>
+#include <JavaScriptCore/InspectorFrontendRouter.h>
 #include <wtf/JSONValues.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
@@ -265,7 +266,7 @@ class FrontendRouter;
 #include "config.h"
 #include "TestFrontendDispatchers.h"
 
-#include <inspector/InspectorFrontendRouter.h>
+#include <JavaScriptCore/InspectorFrontendRouter.h>
 #include <wtf/text/CString.h>
 
 namespace Inspector {
@@ -307,7 +308,7 @@ namespace Inspector {
 
 #pragma once
 
-#include <inspector/InspectorProtocolTypes.h>
+#include <JavaScriptCore/InspectorProtocolTypes.h>
 #include <wtf/Assertions.h>
 
 namespace Inspector {
@@ -330,11 +331,11 @@ typedef int BreakpointId;
 
 namespace Runtime {
 typedef int ObjectId;
-typedef Inspector::Protocol::Array<int> LuckyNumbers;
-typedef Inspector::Protocol::Array<String> BabyNames;
-typedef Inspector::Protocol::Array<Inspector::Protocol::Runtime::ObjectId> NewObjects;
-typedef Inspector::Protocol::Array<Inspector::Protocol::Debugger::BreakpointId> OldObjects;
-typedef Inspector::Protocol::Array<Inspector::Protocol::Debugger::Reason> StopReasons;
+typedef JSON::ArrayOf<int> LuckyNumbers;
+typedef JSON::ArrayOf<String> BabyNames;
+typedef JSON::ArrayOf<int> NewObjects;
+typedef JSON::ArrayOf<int> OldObjects;
+typedef JSON::ArrayOf<Inspector::Protocol::Debugger::Reason> StopReasons;
 } // Runtime
 // End of typedefs.
 

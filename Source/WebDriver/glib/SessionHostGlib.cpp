@@ -29,6 +29,7 @@
 #include "WebDriverService.h"
 #include <gio/gio.h>
 #include <wtf/RunLoop.h>
+#include <wtf/UUID.h>
 #include <wtf/glib/GUniquePtr.h>
 
 #define REMOTE_INSPECTOR_CLIENT_DBUS_INTERFACE "org.webkit.RemoteInspectorClient"
@@ -234,37 +235,43 @@ void SessionHost::setupConnection(GRefPtr<GDBusConnection>&& connection)
     g_dbus_connection_register_object(m_dbusConnection.get(), REMOTE_INSPECTOR_CLIENT_OBJECT_PATH, introspectionData->interfaces[0], &s_interfaceVTable, this, nullptr, nullptr);
 }
 
-std::optional<String> SessionHost::matchCapabilities(GVariant* capabilities)
+static bool matchBrowserOptions(const String& browserName, const String& browserVersion, const Capabilities& capabilities)
 {
-    const char* browserName;
-    const char* browserVersion;
-    g_variant_get(capabilities, "(&s&s)", &browserName, &browserVersion);
+    if (capabilities.browserName && capabilities.browserName.value() != browserName)
+        return false;
 
-    if (m_capabilities.browserName) {
-        if (m_capabilities.browserName.value() != browserName)
-            return makeString("expected browserName ", m_capabilities.browserName.value(), " but got ", browserName);
-    } else
-        m_capabilities.browserName = String(browserName);
+    if (capabilities.browserVersion && !WebDriverService::platformCompareBrowserVersions(capabilities.browserVersion.value(), browserVersion))
+        return false;
 
-    if (m_capabilities.browserVersion) {
-        if (!WebDriverService::platformCompareBrowserVersions(m_capabilities.browserVersion.value(), browserVersion))
-            return makeString("requested browserVersion is ", m_capabilities.browserVersion.value(), " but actual version is ", browserVersion);
-    } else
-        m_capabilities.browserVersion = String(browserVersion);
-
-    return std::nullopt;
+    return true;
 }
 
-void SessionHost::startAutomationSession(const String& sessionID, Function<void (std::optional<String>)>&& completionHandler)
+bool SessionHost::matchCapabilities(GVariant* capabilities)
+{
+    const char* name;
+    const char* version;
+    g_variant_get(capabilities, "(&s&s)", &name, &version);
+
+    auto browserName = String::fromUTF8(name);
+    auto browserVersion = String::fromUTF8(version);
+    bool didMatch = matchBrowserOptions(browserName, browserVersion, m_capabilities);
+    m_capabilities.browserName = browserName;
+    m_capabilities.browserVersion = browserVersion;
+
+    return didMatch;
+}
+
+void SessionHost::startAutomationSession(Function<void (bool, std::optional<String>)>&& completionHandler)
 {
     ASSERT(m_dbusConnection);
     ASSERT(!m_startSessionCompletionHandler);
     m_startSessionCompletionHandler = WTFMove(completionHandler);
+    m_sessionID = createCanonicalUUIDString();
     g_dbus_connection_call(m_dbusConnection.get(), nullptr,
         INSPECTOR_DBUS_OBJECT_PATH,
         INSPECTOR_DBUS_INTERFACE,
         "StartAutomationSession",
-        g_variant_new("(s)", sessionID.utf8().data()),
+        g_variant_new("(s)", m_sessionID.utf8().data()),
         nullptr, G_DBUS_CALL_FLAGS_NO_AUTO_START,
         -1, m_cancellable.get(), [](GObject* source, GAsyncResult* result, gpointer userData) {
             GUniqueOutPtr<GError> error;
@@ -275,14 +282,13 @@ void SessionHost::startAutomationSession(const String& sessionID, Function<void 
             auto sessionHost = static_cast<SessionHost*>(userData);
             if (!resultVariant) {
                 auto completionHandler = std::exchange(sessionHost->m_startSessionCompletionHandler, nullptr);
-                completionHandler(String("Failed to start automation session"));
+                completionHandler(false, String("Failed to start automation session"));
                 return;
             }
 
-            auto errorString = sessionHost->matchCapabilities(resultVariant.get());
-            if (errorString) {
+            if (!sessionHost->matchCapabilities(resultVariant.get())) {
                 auto completionHandler = std::exchange(sessionHost->m_startSessionCompletionHandler, nullptr);
-                completionHandler(errorString);
+                completionHandler(false, std::nullopt);
                 return;
             }
         }, this
@@ -300,6 +306,8 @@ void SessionHost::setTargetList(uint64_t connectionID, Vector<Target>&& targetLi
     if (targetList.isEmpty()) {
         m_target = Target();
         m_connectionID = 0;
+        if (m_dbusConnection)
+            g_dbus_connection_close(m_dbusConnection.get(), nullptr, nullptr, nullptr);
         return;
     }
 
@@ -324,7 +332,7 @@ void SessionHost::setTargetList(uint64_t connectionID, Vector<Target>&& targetLi
         -1, m_cancellable.get(), dbusConnectionCallAsyncReadyCallback, nullptr);
 
     auto startSessionCompletionHandler = std::exchange(m_startSessionCompletionHandler, nullptr);
-    startSessionCompletionHandler(std::nullopt);
+    startSessionCompletionHandler(true, std::nullopt);
 }
 
 void SessionHost::sendMessageToFrontend(uint64_t connectionID, uint64_t targetID, const char* message)
@@ -334,19 +342,38 @@ void SessionHost::sendMessageToFrontend(uint64_t connectionID, uint64_t targetID
     dispatchMessage(String::fromUTF8(message));
 }
 
-void SessionHost::sendMessageToBackend(const String& message)
+struct MessageContext {
+    long messageID;
+    SessionHost* host;
+};
+
+void SessionHost::sendMessageToBackend(long messageID, const String& message)
 {
     ASSERT(m_dbusConnection);
     ASSERT(m_connectionID);
     ASSERT(m_target.id);
 
+    auto messageContext = std::make_unique<MessageContext>(MessageContext { messageID, this });
     g_dbus_connection_call(m_dbusConnection.get(), nullptr,
         INSPECTOR_DBUS_OBJECT_PATH,
         INSPECTOR_DBUS_INTERFACE,
         "SendMessageToBackend",
         g_variant_new("(tts)", m_connectionID, m_target.id, message.utf8().data()),
         nullptr, G_DBUS_CALL_FLAGS_NO_AUTO_START,
-        -1, m_cancellable.get(), dbusConnectionCallAsyncReadyCallback, nullptr);
+        -1, m_cancellable.get(), [](GObject* source, GAsyncResult* result, gpointer userData) {
+            auto messageContext = std::unique_ptr<MessageContext>(static_cast<MessageContext*>(userData));
+            GUniqueOutPtr<GError> error;
+            GRefPtr<GVariant> resultVariant = adoptGRef(g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), result, &error.outPtr()));
+            if (!resultVariant && !g_error_matches(error.get(), G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+                auto responseHandler = messageContext->host->m_commandRequests.take(messageContext->messageID);
+                if (responseHandler) {
+                    auto errorObject = JSON::Object::create();
+                    errorObject->setInteger(ASCIILiteral("code"), -32603);
+                    errorObject->setString(ASCIILiteral("message"), String::fromUTF8(error->message));
+                    responseHandler({ WTFMove(errorObject), true });
+                }
+            }
+        }, messageContext.release());
 }
 
 } // namespace WebDriver

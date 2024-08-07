@@ -42,7 +42,7 @@ WI.Sidebar = class Sidebar extends WI.View
         if (hasNavigationBar) {
             this.element.classList.add("has-navigation-bar");
 
-            this._navigationBar = new WI.NavigationBar(null, null, "tablist");
+            this._navigationBar = new WI.SidebarNavigationBar(null, null, "tablist");
             this._navigationBar.addEventListener(WI.NavigationBar.Event.NavigationItemSelected, this._navigationItemSelected, this);
             this.addSubview(this._navigationBar);
         }
@@ -85,8 +85,6 @@ WI.Sidebar = class Sidebar extends WI.View
             console.assert(sidebarPanel.navigationItem);
             this._navigationBar.insertNavigationItem(sidebarPanel.navigationItem, index);
         }
-
-        sidebarPanel.added();
     }
 
     removeSidebarPanel(sidebarPanelOrIdentifierOrIndex)
@@ -114,8 +112,6 @@ WI.Sidebar = class Sidebar extends WI.View
             console.assert(sidebarPanel.navigationItem);
             this._navigationBar.removeNavigationItem(sidebarPanel.navigationItem);
         }
-
-        sidebarPanel.removed();
     }
 
     get selectedSidebarPanel()
@@ -168,9 +164,7 @@ WI.Sidebar = class Sidebar extends WI.View
 
     get maximumWidth()
     {
-        // FIXME: This is kind of arbitrary and ideally would be a more complex calculation based on the
-        // available space for the sibling elements.
-        return Math.round(window.innerWidth / 3);
+        return WI.getMaximumSidebarWidth(this);
     }
 
     get width()
@@ -263,7 +257,7 @@ WI.Sidebar = class Sidebar extends WI.View
 
         var newWidth = positionDelta + this._widthBeforeResize;
         this.width = newWidth;
-        this.collapsed = (newWidth < (this.minimumWidth / 2));
+        this.collapsed = newWidth < (this.minimumWidth / 2);
     }
 
     resizerDragEnded(resizer)

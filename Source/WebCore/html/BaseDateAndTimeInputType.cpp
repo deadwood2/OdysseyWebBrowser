@@ -86,7 +86,7 @@ bool BaseDateAndTimeInputType::typeMismatch() const
 
 Decimal BaseDateAndTimeInputType::defaultValueForStepUp() const
 {
-    double ms = currentTimeMS();
+    double ms = WallTime::now().secondsSinceEpoch().milliseconds();
     int offset = calculateLocalTimeOffset(ms).offset / msPerMinute;
     return Decimal::fromDouble(ms + (offset * msPerMinute));
 }
@@ -98,7 +98,8 @@ bool BaseDateAndTimeInputType::isSteppable() const
 
 void BaseDateAndTimeInputType::minOrMaxAttributeChanged()
 {
-    element().invalidateStyleForSubtree();
+    if (auto* element = this->element())
+        element->invalidateStyleForSubtree();
 }
 
 Decimal BaseDateAndTimeInputType::parseToNumber(const String& source, const Decimal& defaultValue) const

@@ -27,11 +27,11 @@
 #include "JSDOMExceptionHandling.h"
 #include "JSDOMGlobalObject.h"
 #include "ScriptExecutionContext.h"
-#include <runtime/JSArray.h>
+#include <JavaScriptCore/JSArray.h>
 
-using namespace JSC;
 
 namespace WebCore {
+using namespace JSC;
 
 JSTestCallbackFunctionRethrow::JSTestCallbackFunctionRethrow(JSObject* callback, JSDOMGlobalObject* globalObject)
     : TestCallbackFunctionRethrow(globalObject->scriptExecutionContext())
@@ -68,6 +68,7 @@ CallbackResult<typename IDLDOMString::ImplementationType> JSTestCallbackFunction
     JSValue thisValue = jsUndefined();
     MarkedArgumentBuffer args;
     args.append(toJS<IDLSequence<IDLLong>>(state, globalObject, argument));
+    ASSERT(!args.hasOverflowed());
 
     NakedPtr<JSC::Exception> returnedException;
     auto jsResult = m_data->invokeCallback(thisValue, args, JSCallbackData::CallbackType::Function, Identifier(), returnedException);

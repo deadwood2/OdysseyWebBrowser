@@ -38,9 +38,8 @@
 #include <unistd.h>
 #include <wtf/text/StringBuilder.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 class StdoutDevNullRedirector {
 public:
@@ -162,7 +161,7 @@ bool NetscapePluginModule::getPluginInfo(const String& pluginPath, PluginModuleI
         return false;
 
     plugin.path = pluginPath;
-    plugin.info.file = pathGetFileName(pluginPath);
+    plugin.info.file = FileSystem::pathGetFileName(pluginPath);
     plugin.info.name = metaData.name;
     plugin.info.desc = metaData.description;
     parseMIMEDescription(metaData.mimeDescription, plugin.info.mimes);

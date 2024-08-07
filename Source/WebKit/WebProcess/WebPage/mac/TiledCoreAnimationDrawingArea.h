@@ -23,11 +23,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TiledCoreAnimationDrawingArea_h
-#define TiledCoreAnimationDrawingArea_h
+#pragma once
 
 #if !PLATFORM(IOS)
 
+#include "CallbackID.h"
 #include "DrawingArea.h"
 #include "LayerTreeContext.h"
 #include <WebCore/FloatRect.h>
@@ -92,7 +92,7 @@ private:
     bool flushLayers() override;
 
     // Message handlers.
-    void updateGeometry(const WebCore::IntSize& viewSize, const WebCore::IntSize& layerPosition, bool flushSynchronously, const WebCore::MachSendRight& fencePort) override;
+    void updateGeometry(const WebCore::IntSize& viewSize, bool flushSynchronously, const WebCore::MachSendRight& fencePort) override;
     void setDeviceScaleFactor(float) override;
     void suspendPainting();
     void resumePainting();
@@ -100,6 +100,7 @@ private:
     void setColorSpace(const ColorSpaceData&) override;
     void addFence(const WebCore::MachSendRight&) override;
 
+    void addTransactionCallbackID(CallbackID) override;
     void setShouldScaleViewToFitDocument(bool) override;
 
     void adjustTransientZoom(double scale, WebCore::FloatPoint origin) override;
@@ -160,6 +161,7 @@ private:
     WebCore::IntSize m_lastDocumentSizeForScaleToFit;
 
     WebCore::LayoutMilestones m_pendingNewlyReachedLayoutMilestones { 0 };
+    Vector<CallbackID> m_pendingCallbackIDs;
 };
 
 } // namespace WebKit
@@ -168,4 +170,3 @@ SPECIALIZE_TYPE_TRAITS_DRAWING_AREA(TiledCoreAnimationDrawingArea, DrawingAreaTy
 
 #endif // !PLATFORM(IOS)
 
-#endif // TiledCoreAnimationDrawingArea_h

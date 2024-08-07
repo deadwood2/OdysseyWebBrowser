@@ -51,12 +51,12 @@
 #import <AVFoundation/AVMetadataItem.h>
 #import <Foundation/NSString.h>
 #import <JavaScriptCore/APICast.h>
+#import <JavaScriptCore/CatchScope.h>
 #import <JavaScriptCore/JavaScriptCore.h>
 #import <objc/runtime.h>
-#import <runtime/CatchScope.h>
 #import <wtf/text/Base64.h>
 
-#import "CoreMediaSoftLink.h"
+#import <pal/cf/CoreMediaSoftLink.h>
 
 typedef AVMetadataItem AVMetadataItemType;
 SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
@@ -64,6 +64,7 @@ SOFT_LINK_CLASS(AVFoundation, AVMetadataItem)
 #define AVMetadataItem getAVMetadataItemClass()
 
 namespace WebCore {
+using namespace PAL;
 
 #if PLATFORM(IOS)
 static JSValue *jsValueWithValueInContext(id, JSContext *);
@@ -194,7 +195,7 @@ bool QuickTimePluginReplacement::installReplacement(ShadowRoot& root)
     JSC::JSObject* replacementObject = replacementFunction.toObject(exec);
     scope.assertNoException();
     JSC::CallData callData;
-    JSC::CallType callType = replacementObject->methodTable()->getCallData(replacementObject, callData);
+    JSC::CallType callType = replacementObject->methodTable(vm)->getCallData(replacementObject, callData);
     if (callType == JSC::CallType::None)
         return false;
 
@@ -204,6 +205,7 @@ bool QuickTimePluginReplacement::installReplacement(ShadowRoot& root)
     argList.append(toJS(exec, globalObject, this));
     argList.append(toJS<IDLSequence<IDLNullable<IDLDOMString>>>(*exec, *globalObject, m_names));
     argList.append(toJS<IDLSequence<IDLNullable<IDLDOMString>>>(*exec, *globalObject, m_values));
+    ASSERT(!argList.hasOverflowed());
     JSC::JSValue replacement = call(exec, replacementObject, callType, callData, globalObject, argList);
     if (UNLIKELY(scope.exception())) {
         scope.clearException();
@@ -347,7 +349,7 @@ static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItemType *item, JSC
         [dictionary setObject:item.locale forKey:@"locale"];
 
     if (CMTIME_IS_VALID(item.time)) {
-        CFDictionaryRef timeDict = CMTimeCopyAsDictionary(item.time, kCFAllocatorDefault);
+        CFDictionaryRef timeDict = PAL::CMTimeCopyAsDictionary(item.time, kCFAllocatorDefault);
 
         if (timeDict) {
             [dictionary setObject:(id)timeDict forKey:@"timestamp"];

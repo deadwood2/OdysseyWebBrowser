@@ -250,9 +250,7 @@ void MutationObserver::notifyMutationObservers()
     deliveryInProgress = true;
 
     if (!suspendedMutationObservers().isEmpty()) {
-        Vector<RefPtr<MutationObserver>> suspended;
-        copyToVector(suspendedMutationObservers(), suspended);
-        for (auto& observer : suspended) {
+        for (auto& observer : copyToVector(suspendedMutationObservers())) {
             if (!observer->canDeliver())
                 continue;
 
@@ -263,8 +261,7 @@ void MutationObserver::notifyMutationObservers()
 
     while (!activeMutationObservers().isEmpty() || !signalSlotList().isEmpty()) {
         // 2. Let notify list be a copy of unit of related similar-origin browsing contexts' list of MutationObserver objects.
-        Vector<RefPtr<MutationObserver>> notifyList;
-        copyToVector(activeMutationObservers(), notifyList);
+        auto notifyList = copyToVector(activeMutationObservers());
         activeMutationObservers().clear();
         std::sort(notifyList.begin(), notifyList.end(), [](auto& lhs, auto& rhs) {
             return lhs->m_priority < rhs->m_priority;

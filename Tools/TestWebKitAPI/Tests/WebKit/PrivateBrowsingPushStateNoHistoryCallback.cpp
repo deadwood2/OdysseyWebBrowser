@@ -30,6 +30,7 @@
 #include "PlatformUtilities.h"
 #include "PlatformWebView.h"
 #include "Test.h"
+#include <WebKit/WKPreferencesRefPrivate.h>
 #include <WebKit/WKRetainPtr.h>
 
 namespace TestWebKitAPI {
@@ -53,7 +54,7 @@ static void didSameDocumentNavigationForFrame(WKPageRef page, WKFrameRef frame, 
     didSameDocumentNavigation = true;
 }
 
-TEST(WebKit2, PrivateBrowsingPushStateNoHistoryCallback)
+TEST(WebKit, PrivateBrowsingPushStateNoHistoryCallback)
 {
     WKRetainPtr<WKContextRef> context(AdoptWK, WKContextCreate());
 
@@ -77,6 +78,7 @@ TEST(WebKit2, PrivateBrowsingPushStateNoHistoryCallback)
 
     WKRetainPtr<WKPreferencesRef> preferences(AdoptWK, WKPreferencesCreate());
     WKPreferencesSetPrivateBrowsingEnabled(preferences.get(), true);
+    WKPreferencesSetUniversalAccessFromFileURLsAllowed(preferences.get(), true);
 
     WKPageGroupRef pageGroup = WKPageGetPageGroup(webView.page());
     WKPageGroupSetPreferences(pageGroup, preferences.get());

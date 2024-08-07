@@ -33,6 +33,9 @@ WI.CanvasDetailsSidebarPanel = class CanvasDetailsSidebarPanel extends WI.Detail
 
         this._canvas = null;
         this._node = null;
+
+        this._sections = [];
+        this._emptyContentPlaceholder = null;
     }
 
     // Public
@@ -42,11 +45,17 @@ WI.CanvasDetailsSidebarPanel = class CanvasDetailsSidebarPanel extends WI.Detail
         if (!(objects instanceof Array))
             objects = [objects];
 
-        objects = objects.map((object) => object instanceof WI.Recording ? object.source : object);
+        objects = objects.map((object) => {
+            if (object instanceof WI.Recording)
+                return object.source;
+            if (object instanceof WI.ShaderProgram)
+                return object.canvas;
+            return object;
+        });
 
         this.canvas = objects.find((object) => object instanceof WI.Canvas);
 
-        return !!this._canvas;
+        return true;
     }
 
     get canvas()
@@ -68,6 +77,7 @@ WI.CanvasDetailsSidebarPanel = class CanvasDetailsSidebarPanel extends WI.Detail
 
         if (this._canvas) {
             this._canvas.removeEventListener(WI.Canvas.Event.MemoryChanged, this._canvasMemoryChanged, this);
+            this._canvas.removeEventListener(WI.Canvas.Event.ExtensionEnabled, this._refreshExtensionsSection, this);
             this._canvas.removeEventListener(WI.Canvas.Event.CSSCanvasClientNodesChanged, this._refreshCSSCanvasSection, this);
         }
 
@@ -75,6 +85,7 @@ WI.CanvasDetailsSidebarPanel = class CanvasDetailsSidebarPanel extends WI.Detail
 
         if (this._canvas) {
             this._canvas.addEventListener(WI.Canvas.Event.MemoryChanged, this._canvasMemoryChanged, this);
+            this._canvas.addEventListener(WI.Canvas.Event.ExtensionEnabled, this._refreshExtensionsSection, this);
             this._canvas.addEventListener(WI.Canvas.Event.CSSCanvasClientNodesChanged, this._refreshCSSCanvasSection, this);
         }
 
@@ -94,7 +105,7 @@ WI.CanvasDetailsSidebarPanel = class CanvasDetailsSidebarPanel extends WI.Detail
 
         let identitySection = new WI.DetailsSection("canvas-details", WI.UIString("Identity"));
         identitySection.groups = [new WI.DetailsSectionGroup([this._nameRow, this._typeRow, this._memoryRow])];
-        this.contentView.element.appendChild(identitySection.element);
+        this._sections.push(identitySection);
 
         this._nodeRow = new WI.DetailsSectionSimpleRow(WI.UIString("Node"));
         this._cssCanvasRow = new WI.DetailsSectionSimpleRow(WI.UIString("CSS Canvas"));
@@ -104,33 +115,61 @@ WI.CanvasDetailsSidebarPanel = class CanvasDetailsSidebarPanel extends WI.Detail
 
         let sourceSection = new WI.DetailsSection("canvas-source", WI.UIString("Source"));
         sourceSection.groups = [new WI.DetailsSectionGroup([this._nodeRow, this._cssCanvasRow, this._widthRow, this._heightRow, this._datachedRow])];
-        this.contentView.element.appendChild(sourceSection.element);
+        this._sections.push(sourceSection);
 
         this._attributesDataGridRow = new WI.DetailsSectionDataGridRow(null, WI.UIString("No Attributes"));
 
-        let attributesSection = new WI.DetailsSection("canvas-attributes", WI.UIString("Attributes"));
-        attributesSection.groups = [new WI.DetailsSectionGroup([this._attributesDataGridRow])];
-        this.contentView.element.appendChild(attributesSection.element);
+        this._attributesSection = new WI.DetailsSection("canvas-attributes", WI.UIString("Attributes"));
+        this._attributesSection.groups = [new WI.DetailsSectionGroup([this._attributesDataGridRow])];
+        this._attributesSection.element.hidden = true;
+        this._sections.push(this._attributesSection);
+
+        this._extensionsSection = new WI.DetailsSection("canvas-extensions", WI.UIString("Extensions"));
+        this._extensionsSection.element.hidden = true;
+        this._sections.push(this._extensionsSection);
 
         this._cssCanvasClientsRow = new WI.DetailsSectionSimpleRow(WI.UIString("Nodes"));
 
         this._cssCanvasSection = new WI.DetailsSection("canvas-css", WI.UIString("CSS"));
         this._cssCanvasSection.groups = [new WI.DetailsSectionGroup([this._cssCanvasClientsRow])];
         this._cssCanvasSection.element.hidden = true;
-        this.contentView.element.appendChild(this._cssCanvasSection.element);
+        this._sections.push(this._cssCanvasSection);
+
+        const selectable = false;
+        let backtraceTreeOutline = new WI.TreeOutline(null, selectable);
+        backtraceTreeOutline.disclosureButtons = false;
+        this._backtraceTreeController = new WI.CallFrameTreeController(backtraceTreeOutline);
+
+        let backtraceRow = new WI.DetailsSectionRow;
+        backtraceRow.element.appendChild(backtraceTreeOutline.element);
+        this._backtraceSection = new WI.DetailsSection("canvas-backtrace", WI.UIString("Backtrace"));
+        this._backtraceSection.groups = [new WI.DetailsSectionGroup([backtraceRow])];
+
+        this._backtraceSection.element.hidden = true;
+        this._sections.push(this._backtraceSection);
+
+        this._emptyContentPlaceholder = WI.createMessageTextView(WI.UIString("No Canvas Selected"));
     }
 
     layout()
     {
         super.layout();
 
-        if (!this._canvas)
+        this.contentView.element.removeChildren();
+
+        if (!this._canvas) {
+            this.contentView.element.appendChild(this._emptyContentPlaceholder);
             return;
+        }
+
+        this.contentView.element.append(...this._sections.map(section => section.element));
 
         this._refreshIdentitySection();
         this._refreshSourceSection();
         this._refreshAttributesSection();
+        this._refreshExtensionsSection();
         this._refreshCSSCanvasSection();
+        this._refreshBacktraceSection();
     }
 
     sizeDidChange()
@@ -161,10 +200,7 @@ WI.CanvasDetailsSidebarPanel = class CanvasDetailsSidebarPanel extends WI.Detail
         this._heightRow.value = emDash;
         this._datachedRow.value = null;
 
-        this._canvas.requestNode((node) => {
-            if (!node)
-                return;
-
+        this._canvas.requestNode().then((node) => {
             if (node !== this._node) {
                 if (this._node) {
                     this._node.removeEventListener(WI.DOMNode.Event.AttributeModified, this._refreshSourceSection, this);
@@ -198,10 +234,7 @@ WI.CanvasDetailsSidebarPanel = class CanvasDetailsSidebarPanel extends WI.Detail
                 // attributes, we need to invoke the getter for each to get the actual value.
                 //  - https://html.spec.whatwg.org/multipage/canvas.html#attr-canvas-width
                 //  - https://html.spec.whatwg.org/multipage/canvas.html#attr-canvas-height
-                WI.RemoteObject.resolveNode(node, "", (remoteObject) => {
-                    if (!remoteObject)
-                        return;
-
+                WI.RemoteObject.resolveNode(node).then((remoteObject) => {
                     function setRowValueToPropertyValue(row, property) {
                         remoteObject.getProperty(property, (error, result, wasThrown) => {
                             if (!error && result.type === "number")
@@ -223,11 +256,10 @@ WI.CanvasDetailsSidebarPanel = class CanvasDetailsSidebarPanel extends WI.Detail
 
     _refreshAttributesSection()
     {
-        if (isEmptyObject(this._canvas.contextAttributes)) {
-            // Remove the DataGrid to show the placeholder text.
-            this._attributesDataGridRow.dataGrid = null;
+        let hasAttributes = !isEmptyObject(this._canvas.contextAttributes);
+        this._attributesSection.element.hidden = !hasAttributes;
+        if (!hasAttributes)
             return;
-        }
 
         let dataGrid = this._attributesDataGridRow.dataGrid;
         if (!dataGrid) {
@@ -246,6 +278,21 @@ WI.CanvasDetailsSidebarPanel = class CanvasDetailsSidebarPanel extends WI.Detail
         }
 
         dataGrid.updateLayoutIfNeeded();
+    }
+
+    _refreshExtensionsSection()
+    {
+        let hasEnabledExtensions = this._canvas.extensions.size > 0;
+        this._extensionsSection.element.hidden = !hasEnabledExtensions;
+        if (!hasEnabledExtensions)
+            return;
+
+        let element = document.createElement("ul");
+        for (let extension of this._canvas.extensions) {
+            let listElement = element.appendChild(document.createElement("li"));
+            listElement.textContent = extension;
+        }
+        this._extensionsSection.groups = [{element}];
     }
 
     _refreshCSSCanvasSection()
@@ -271,6 +318,13 @@ WI.CanvasDetailsSidebarPanel = class CanvasDetailsSidebarPanel extends WI.Detail
                 fragment.appendChild(WI.linkifyNodeReference(clientNode));
             this._cssCanvasClientsRow.value = fragment;
         });
+    }
+
+    _refreshBacktraceSection()
+    {
+        let callFrames = this._canvas.backtrace;
+        this._backtraceTreeController.callFrames = callFrames;
+        this._backtraceSection.element.hidden = !callFrames.length;
     }
 
     _formatMemoryRow()

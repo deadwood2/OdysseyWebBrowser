@@ -46,74 +46,28 @@ WI.LayerTreeManager = class LayerTreeManager extends WI.Object
     {
         console.assert(this.supported);
 
-        if (isEmptyObject(previousLayers)) {
-            return {
-                preserved: [],
-                additions: newLayers,
-                removals: []
-            };
-        }
+        if (isEmptyObject(previousLayers))
+            return {preserved: [], additions: newLayers, removals: []};
 
-        function nodeIdForLayer(layer)
-        {
-            return layer.isGeneratedContent ? layer.pseudoElementId : layer.nodeId;
-        }
+        let previousLayerIds = new Set;
+        let newLayerIds = new Set;
 
-        var layerIdsInPreviousLayers = [];
-        var nodeIdsInPreviousLayers = [];
-        var nodeIdsForReflectionsInPreviousLayers = [];
+        let preserved = [];
+        let additions = [];
 
-        previousLayers.forEach(function(layer) {
-            layerIdsInPreviousLayers.push(layer.layerId);
+        for (let layer of previousLayers)
+            previousLayerIds.add(layer.layerId);
 
-            var nodeId = nodeIdForLayer(layer);
-            if (!nodeId)
-                return;
+        for (let layer of newLayers) {
+            newLayerIds.add(layer.layerId);
 
-            if (layer.isReflection)
-                nodeIdsForReflectionsInPreviousLayers.push(nodeId);
-            else
-                nodeIdsInPreviousLayers.push(nodeId);
-        });
-
-        var preserved = [];
-        var additions = [];
-
-        var layerIdsInNewLayers = [];
-        var nodeIdsInNewLayers = [];
-        var nodeIdsForReflectionsInNewLayers = [];
-
-        newLayers.forEach(function(layer) {
-            layerIdsInNewLayers.push(layer.layerId);
-
-            var existed = layerIdsInPreviousLayers.includes(layer.layerId);
-
-            var nodeId = nodeIdForLayer(layer);
-            if (!nodeId)
-                return;
-
-            if (layer.isReflection) {
-                nodeIdsForReflectionsInNewLayers.push(nodeId);
-                existed = existed || nodeIdsForReflectionsInPreviousLayers.includes(nodeId);
-            } else {
-                nodeIdsInNewLayers.push(nodeId);
-                existed = existed || nodeIdsInPreviousLayers.includes(nodeId);
-            }
-
-            if (existed)
+            if (previousLayerIds.has(layer.layerId))
                 preserved.push(layer);
             else
                 additions.push(layer);
-        });
+        }
 
-        var removals = previousLayers.filter(function(layer) {
-            var nodeId = nodeIdForLayer(layer);
-
-            if (layer.isReflection)
-                return !nodeIdsForReflectionsInNewLayers.includes(nodeId);
-            else
-                return !nodeIdsInNewLayers.includes(nodeId) && !layerIdsInNewLayers.includes(layer.layerId);
-        });
+        let removals = previousLayers.filter((layer) => !newLayerIds.has(layer.layerId));
 
         return {preserved, additions, removals};
     }
@@ -122,15 +76,8 @@ WI.LayerTreeManager = class LayerTreeManager extends WI.Object
     {
         console.assert(this.supported);
 
-        LayerTreeAgent.layersForNode(node.id, function(error, layers) {
-            if (error || isEmptyObject(layers)) {
-                callback(null, []);
-                return;
-            }
-
-            var firstLayer = layers[0];
-            var layerForNode = firstLayer.nodeId === node.id && !firstLayer.isGeneratedContent ? layers.shift() : null;
-            callback(layerForNode, layers);
+        LayerTreeAgent.layersForNode(node.id, (error, layers) => {
+            callback(error ? [] : layers.map(WI.Layer.fromPayload));
         });
     }
 

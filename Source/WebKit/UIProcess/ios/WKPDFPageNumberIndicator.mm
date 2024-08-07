@@ -30,7 +30,7 @@
 
 #import "UIKitSPI.h"
 #import <WebCore/LocalizedStrings.h>
-#import <WebCore/QuartzCoreSPI.h>
+#import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/text/WTFString.h>
 
@@ -183,7 +183,10 @@ const NSTimeInterval indicatorMoveDuration = 0.3;
     CGContextSaveGState(context);
     CGContextAddRect(context, cornerImageBounds);
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     UIBezierPath *cornerPath = [UIBezierPath bezierPathWithRoundedRect:cornerImageBounds byRoundingCorners:(UIRectCorner)UIAllCorners cornerRadii:CGSizeMake(indicatorCornerRadius, indicatorCornerRadius)];
+#pragma clang diagnostic pop
     CGContextAddPath(context, [cornerPath CGPath]);
     CGContextEOClip(context);
     CGContextFillRect(context, cornerImageBounds);

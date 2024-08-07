@@ -26,8 +26,6 @@
 #include "config.h"
 #include "NetworkCacheStorage.h"
 
-#if ENABLE(NETWORK_CACHE)
-
 #include "Logging.h"
 #include "NetworkCacheCoders.h"
 #include "NetworkCacheFileSystem.h"
@@ -138,29 +136,29 @@ public:
 static String makeVersionedDirectoryPath(const String& baseDirectoryPath)
 {
     String versionSubdirectory = versionDirectoryPrefix + String::number(Storage::version);
-    return WebCore::pathByAppendingComponent(baseDirectoryPath, versionSubdirectory);
+    return WebCore::FileSystem::pathByAppendingComponent(baseDirectoryPath, versionSubdirectory);
 }
 
 static String makeRecordsDirectoryPath(const String& baseDirectoryPath)
 {
-    return WebCore::pathByAppendingComponent(makeVersionedDirectoryPath(baseDirectoryPath), recordsDirectoryName);
+    return WebCore::FileSystem::pathByAppendingComponent(makeVersionedDirectoryPath(baseDirectoryPath), recordsDirectoryName);
 }
 
 static String makeBlobDirectoryPath(const String& baseDirectoryPath)
 {
-    return WebCore::pathByAppendingComponent(makeVersionedDirectoryPath(baseDirectoryPath), blobsDirectoryName);
+    return WebCore::FileSystem::pathByAppendingComponent(makeVersionedDirectoryPath(baseDirectoryPath), blobsDirectoryName);
 }
 
 static String makeSaltFilePath(const String& baseDirectoryPath)
 {
-    return WebCore::pathByAppendingComponent(makeVersionedDirectoryPath(baseDirectoryPath), saltFileName);
+    return WebCore::FileSystem::pathByAppendingComponent(makeVersionedDirectoryPath(baseDirectoryPath), saltFileName);
 }
 
 RefPtr<Storage> Storage::open(const String& cachePath, Mode mode)
 {
     ASSERT(RunLoop::isMain());
 
-    if (!WebCore::makeAllDirectories(makeVersionedDirectoryPath(cachePath)))
+    if (!WebCore::FileSystem::makeAllDirectories(makeVersionedDirectoryPath(cachePath)))
         return nullptr;
     auto salt = readOrMakeSalt(makeSaltFilePath(cachePath));
     if (!salt)
@@ -173,13 +171,13 @@ void traverseRecordsFiles(const String& recordsPath, const String& expectedType,
     traverseDirectory(recordsPath, [&](const String& partitionName, DirectoryEntryType entryType) {
         if (entryType != DirectoryEntryType::Directory)
             return;
-        String partitionPath = WebCore::pathByAppendingComponent(recordsPath, partitionName);
+        String partitionPath = WebCore::FileSystem::pathByAppendingComponent(recordsPath, partitionName);
         traverseDirectory(partitionPath, [&](const String& actualType, DirectoryEntryType entryType) {
             if (entryType != DirectoryEntryType::Directory)
                 return;
             if (!expectedType.isEmpty() && expectedType != actualType)
                 return;
-            String recordDirectoryPath = WebCore::pathByAppendingComponent(partitionPath, actualType);
+            String recordDirectoryPath = WebCore::FileSystem::pathByAppendingComponent(partitionPath, actualType);
             traverseDirectory(recordDirectoryPath, [&function, &recordDirectoryPath, &actualType](const String& fileName, DirectoryEntryType entryType) {
                 if (entryType != DirectoryEntryType::File || fileName.length() < Key::hashStringLength())
                     return;
@@ -199,18 +197,18 @@ static void deleteEmptyRecordsDirectories(const String& recordsPath)
             return;
 
         // Delete [type] sub-folders.
-        String partitionPath = WebCore::pathByAppendingComponent(recordsPath, partitionName);
+        String partitionPath = WebCore::FileSystem::pathByAppendingComponent(recordsPath, partitionName);
         traverseDirectory(partitionPath, [&partitionPath](const String& subdirName, DirectoryEntryType entryType) {
             if (entryType != DirectoryEntryType::Directory)
                 return;
 
             // Let system figure out if it is really empty.
-            WebCore::deleteEmptyDirectory(WebCore::pathByAppendingComponent(partitionPath, subdirName));
+            WebCore::FileSystem::deleteEmptyDirectory(WebCore::FileSystem::pathByAppendingComponent(partitionPath, subdirName));
         });
 
         // Delete [Partition] folders.
         // Let system figure out if it is really empty.
-        WebCore::deleteEmptyDirectory(WebCore::pathByAppendingComponent(recordsPath, partitionName));
+        WebCore::FileSystem::deleteEmptyDirectory(WebCore::FileSystem::pathByAppendingComponent(recordsPath, partitionName));
     });
 }
 
@@ -278,17 +276,17 @@ void Storage::synchronize()
         unsigned count = 0;
         String anyType;
         traverseRecordsFiles(recordsPath(), anyType, [&recordFilter, &blobFilter, &recordsSize, &count](const String& fileName, const String& hashString, const String& type, bool isBlob, const String& recordDirectoryPath) {
-            auto filePath = WebCore::pathByAppendingComponent(recordDirectoryPath, fileName);
+            auto filePath = WebCore::FileSystem::pathByAppendingComponent(recordDirectoryPath, fileName);
 
             Key::HashType hash;
             if (!Key::stringToHash(hashString, hash)) {
-                WebCore::deleteFile(filePath);
+                WebCore::FileSystem::deleteFile(filePath);
                 return;
             }
             long long fileSize = 0;
-            WebCore::getFileSize(filePath, fileSize);
+            WebCore::FileSystem::getFileSize(filePath, fileSize);
             if (!fileSize) {
-                WebCore::deleteFile(filePath);
+                WebCore::FileSystem::deleteFile(filePath);
                 return;
             }
 
@@ -354,12 +352,12 @@ bool Storage::mayContainBlob(const Key& key) const
 String Storage::recordDirectoryPathForKey(const Key& key) const
 {
     ASSERT(!key.type().isEmpty());
-    return WebCore::pathByAppendingComponent(WebCore::pathByAppendingComponent(recordsPath(), key.partitionHashAsString()), key.type());
+    return WebCore::FileSystem::pathByAppendingComponent(WebCore::FileSystem::pathByAppendingComponent(recordsPath(), key.partitionHashAsString()), key.type());
 }
 
 String Storage::recordPathForKey(const Key& key) const
 {
-    return WebCore::pathByAppendingComponent(recordDirectoryPathForKey(key), key.hashAsString());
+    return WebCore::FileSystem::pathByAppendingComponent(recordDirectoryPathForKey(key), key.hashAsString());
 }
 
 static String blobPathForRecordPath(const String& recordPath)
@@ -381,7 +379,7 @@ struct RecordMetaData {
 
     unsigned cacheStorageVersion;
     Key key;
-    std::chrono::system_clock::time_point timeStamp;
+    WallTime timeStamp;
     SHA1::Digest headerHash;
     uint64_t headerSize { 0 };
     SHA1::Digest bodyHash;
@@ -455,7 +453,7 @@ void Storage::readRecord(ReadOperation& readOperation, const Data& recordData)
         return;
 
     // Sanity check against time stamps in future.
-    if (metaData.timeStamp > std::chrono::system_clock::now())
+    if (metaData.timeStamp > WallTime::now())
         return;
 
     Data bodyData;
@@ -563,13 +561,15 @@ void Storage::remove(const Key& key)
     if (!mayContain(key))
         return;
 
+    auto protectedThis = makeRef(*this);
+
     // We can't remove the key from the Bloom filter (but some false positives are expected anyway).
     // For simplicity we also don't reduce m_approximateSize on removals.
     // The next synchronization will update everything.
 
     removeFromPendingWriteOperations(key);
 
-    serialBackgroundIOQueue().dispatch([this, protectedThis = makeRef(*this), key] () mutable {
+    serialBackgroundIOQueue().dispatch([this, protectedThis = WTFMove(protectedThis), key] () mutable {
         deleteFiles(key);
         RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis)] { });
     });
@@ -604,7 +604,7 @@ void Storage::deleteFiles(const Key& key)
 {
     ASSERT(!RunLoop::isMain());
 
-    WebCore::deleteFile(recordPathForKey(key));
+    WebCore::FileSystem::deleteFile(recordPathForKey(key));
     m_blobStorage.remove(blobPathForKey(key));
 }
 
@@ -667,6 +667,8 @@ void Storage::finishReadOperation(ReadOperation& readOperation)
             updateFileModificationTime(recordPathForKey(readOperation.key));
         else if (!readOperation.isCanceled)
             remove(readOperation.key);
+
+        auto protectedThis = makeRef(*this);
 
         ASSERT(m_activeReadOperations.contains(&readOperation));
         m_activeReadOperations.remove(&readOperation);
@@ -766,7 +768,7 @@ void Storage::dispatchWriteOperation(std::unique_ptr<WriteOperation> writeOperat
         auto recordDirectorPath = recordDirectoryPathForKey(writeOperation.record.key);
         auto recordPath = recordPathForKey(writeOperation.record.key);
 
-        WebCore::makeAllDirectories(recordDirectorPath);
+        WebCore::FileSystem::makeAllDirectories(recordDirectorPath);
 
         ++writeOperation.activeCount;
 
@@ -795,6 +797,8 @@ void Storage::finishWriteOperation(WriteOperation& writeOperation)
 
     if (--writeOperation.activeCount)
         return;
+
+    auto protectedThis = makeRef(*this);
 
     m_activeWriteOperations.remove(&writeOperation);
     dispatchPendingWriteOperations();
@@ -846,10 +850,7 @@ void Storage::store(const Record& record, MappedBodyHandler&& mappedBodyHandler)
     if (!isInitialWrite)
         return;
 
-    // Delay the start of writes a bit to avoid affecting early page load.
-    // Completing writes will dispatch more writes without delay.
-    static const Seconds initialWriteDelay = 1_s;
-    m_writeOperationDispatchTimer.startOneShot(initialWriteDelay);
+    m_writeOperationDispatchTimer.startOneShot(m_initialWriteDelay);
 }
 
 void Storage::traverse(const String& type, TraverseFlags flags, TraverseHandler&& traverseHandler)
@@ -864,11 +865,11 @@ void Storage::traverse(const String& type, TraverseFlags flags, TraverseHandler&
 
     ioQueue().dispatch([this, &traverseOperation] {
         traverseRecordsFiles(recordsPath(), traverseOperation.type, [this, &traverseOperation](const String& fileName, const String& hashString, const String& type, bool isBlob, const String& recordDirectoryPath) {
-            ASSERT(type == traverseOperation.type);
+            ASSERT(type == traverseOperation.type || traverseOperation.type.isEmpty());
             if (isBlob)
                 return;
 
-            auto recordPath = WebCore::pathByAppendingComponent(recordDirectoryPath, fileName);
+            auto recordPath = WebCore::FileSystem::pathByAppendingComponent(recordDirectoryPath, fileName);
 
             double worth = -1;
             if (traverseOperation.flags & TraverseFlag::ComputeWorth)
@@ -920,6 +921,9 @@ void Storage::traverse(const String& type, TraverseFlags flags, TraverseHandler&
         }
         RunLoop::main().dispatch([this, &traverseOperation] {
             traverseOperation.handler(nullptr, { });
+
+            auto protectedThis = makeRef(*this);
+
             m_activeTraverseOperations.remove(&traverseOperation);
         });
     });
@@ -943,7 +947,7 @@ void Storage::setCapacity(size_t capacity)
     shrinkIfNeeded();
 }
 
-void Storage::clear(const String& type, std::chrono::system_clock::time_point modifiedSinceTime, Function<void ()>&& completionHandler)
+void Storage::clear(const String& type, WallTime modifiedSinceTime, Function<void ()>&& completionHandler)
 {
     ASSERT(RunLoop::isMain());
     LOG(NetworkCacheStorage, "(NetworkProcess) clearing cache");
@@ -957,13 +961,13 @@ void Storage::clear(const String& type, std::chrono::system_clock::time_point mo
     ioQueue().dispatch([this, protectedThis = makeRef(*this), modifiedSinceTime, completionHandler = WTFMove(completionHandler), type = type.isolatedCopy()] () mutable {
         auto recordsPath = this->recordsPath();
         traverseRecordsFiles(recordsPath, type, [modifiedSinceTime](const String& fileName, const String& hashString, const String& type, bool isBlob, const String& recordDirectoryPath) {
-            auto filePath = WebCore::pathByAppendingComponent(recordDirectoryPath, fileName);
-            if (modifiedSinceTime > std::chrono::system_clock::time_point::min()) {
+            auto filePath = WebCore::FileSystem::pathByAppendingComponent(recordDirectoryPath, fileName);
+            if (modifiedSinceTime > -WallTime::infinity()) {
                 auto times = fileTimes(filePath);
                 if (times.modification < modifiedSinceTime)
                     return;
             }
-            WebCore::deleteFile(filePath);
+            WebCore::FileSystem::deleteFile(filePath);
         });
 
         deleteEmptyRecordsDirectories(recordsPath);
@@ -980,19 +984,16 @@ void Storage::clear(const String& type, std::chrono::system_clock::time_point mo
 
 static double computeRecordWorth(FileTimes times)
 {
-    using namespace std::chrono;
-    using namespace std::literals::chrono_literals;
-
-    auto age = system_clock::now() - times.creation;
+    auto age = WallTime::now() - times.creation;
     // File modification time is updated manually on cache read. We don't use access time since OS may update it automatically.
     auto accessAge = times.modification - times.creation;
 
     // For sanity.
-    if (age <= 0s || accessAge < 0s || accessAge > age)
+    if (age <= 0_s || accessAge < 0_s || accessAge > age)
         return 0;
 
     // We like old entries that have been accessed recently.
-    return duration<double>(accessAge) / age;
+    return accessAge / age;
 }
 
 static double deletionProbability(FileTimes times, unsigned bodyShareCount)
@@ -1043,7 +1044,7 @@ void Storage::shrink()
             if (isBlob)
                 return;
 
-            auto recordPath = WebCore::pathByAppendingComponent(recordDirectoryPath, fileName);
+            auto recordPath = WebCore::FileSystem::pathByAppendingComponent(recordDirectoryPath, fileName);
             auto blobPath = blobPathForRecordPath(recordPath);
 
             auto times = fileTimes(recordPath);
@@ -1055,7 +1056,7 @@ void Storage::shrink()
             LOG(NetworkCacheStorage, "Deletion probability=%f bodyLinkCount=%d shouldDelete=%d", probability, bodyShareCount, shouldDelete);
 
             if (shouldDelete) {
-                WebCore::deleteFile(recordPath);
+                WebCore::FileSystem::deleteFile(recordPath);
                 m_blobStorage.remove(blobPath);
             }
         });
@@ -1091,7 +1092,7 @@ void Storage::deleteOldVersions()
                 return;
 #endif
 
-            auto oldVersionPath = WebCore::pathByAppendingComponent(cachePath, subdirName);
+            auto oldVersionPath = WebCore::FileSystem::pathByAppendingComponent(cachePath, subdirName);
             LOG(NetworkCacheStorage, "(NetworkProcess) deleting old cache version, path %s", oldVersionPath.utf8().data());
 
             deleteDirectoryRecursively(oldVersionPath);
@@ -1103,5 +1104,3 @@ void Storage::deleteOldVersions()
 
 }
 }
-
-#endif

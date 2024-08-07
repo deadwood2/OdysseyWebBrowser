@@ -41,16 +41,14 @@ static RefPtr<cairo_surface_t> createCairoImageSurfaceWithFastMalloc(const IntSi
 
 BackingStoreBackendCairoImpl::BackingStoreBackendCairoImpl(const IntSize& size, float deviceScaleFactor)
     : BackingStoreBackendCairo(size)
-    , m_scrolledHysteresis([this](HysteresisState state) { if (state == HysteresisState::Stopped) m_scrollSurface = nullptr; }, scrollHysteresisDuration)
+    , m_scrolledHysteresis([this](PAL::HysteresisState state) { if (state == PAL::HysteresisState::Stopped) m_scrollSurface = nullptr; }, scrollHysteresisDuration)
 {
     IntSize scaledSize = m_size;
     scaledSize.scale(deviceScaleFactor);
     m_surface = createCairoImageSurfaceWithFastMalloc(scaledSize, deviceScaleFactor);
 }
 
-BackingStoreBackendCairoImpl::~BackingStoreBackendCairoImpl()
-{
-}
+BackingStoreBackendCairoImpl::~BackingStoreBackendCairoImpl() = default;
 
 void BackingStoreBackendCairoImpl::scroll(const IntRect& scrollRect, const IntSize& scrollOffset)
 {

@@ -23,12 +23,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef APIWebsiteDataStore_h
-#define APIWebsiteDataStore_h
+#pragma once
 
 #include "APIHTTPCookieStore.h"
 #include "WebsiteDataStore.h"
-#include <WebCore/SessionID.h>
+#include <pal/SessionID.h>
 #include <wtf/text/WTFString.h>
 
 namespace API {
@@ -41,22 +40,26 @@ public:
     static Ref<WebsiteDataStore> createNonPersistentDataStore();
     static Ref<WebsiteDataStore> createLegacy(WebKit::WebsiteDataStore::Configuration);
 
-    explicit WebsiteDataStore(WebKit::WebsiteDataStore::Configuration, WebCore::SessionID);
+    explicit WebsiteDataStore(WebKit::WebsiteDataStore::Configuration, PAL::SessionID);
     virtual ~WebsiteDataStore();
 
     bool isPersistent();
 
     bool resourceLoadStatisticsEnabled() const;
     void setResourceLoadStatisticsEnabled(bool);
+    bool resourceLoadStatisticsDebugMode() const;
+    void setResourceLoadStatisticsDebugMode(bool);
 
-    WebKit::WebsiteDataStore& websiteDataStore() { return *m_websiteDataStore; }
+    WebKit::WebsiteDataStore& websiteDataStore() { return m_websiteDataStore.get(); }
     HTTPCookieStore& httpCookieStore();
 
     static String defaultApplicationCacheDirectory();
+    static String defaultCacheStorageDirectory();
     static String defaultNetworkCacheDirectory();
     static String defaultMediaCacheDirectory();
 
     static String defaultIndexedDBDatabaseDirectory();
+    static String defaultServiceWorkerRegistrationDirectory();
     static String defaultLocalStorageDirectory();
     static String defaultMediaKeysStorageDirectory();
     static String defaultWebSQLDatabaseDirectory();
@@ -75,10 +78,8 @@ private:
     static String cacheDirectoryFileSystemRepresentation(const String& directoryName);
     static String websiteDataDirectoryFileSystemRepresentation(const String& directoryName);
 
-    RefPtr<WebKit::WebsiteDataStore> m_websiteDataStore;
+    Ref<WebKit::WebsiteDataStore> m_websiteDataStore;
     RefPtr<HTTPCookieStore> m_apiHTTPCookieStore;
 };
 
 }
-
-#endif // APIWebsiteDataStore_h

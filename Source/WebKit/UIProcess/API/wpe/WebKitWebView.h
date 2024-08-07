@@ -28,7 +28,6 @@
 #ifndef WebKitWebView_h
 #define WebKitWebView_h
 
-#include <JavaScriptCore/JSBase.h>
 #include <wpe/WebKitAuthenticationRequest.h>
 #include <wpe/WebKitBackForwardList.h>
 #include <wpe/WebKitContextMenu.h>
@@ -38,7 +37,6 @@
 #include <wpe/WebKitFindController.h>
 #include <wpe/WebKitFormSubmissionRequest.h>
 #include <wpe/WebKitHitTestResult.h>
-#include <wpe/WebKitJavascriptResult.h>
 #include <wpe/WebKitNavigationAction.h>
 #include <wpe/WebKitNotification.h>
 #include <wpe/WebKitPermissionRequest.h>
@@ -49,6 +47,7 @@
 #include <wpe/WebKitUserContentManager.h>
 #include <wpe/WebKitWebContext.h>
 #include <wpe/WebKitWebResource.h>
+#include <wpe/WebKitWebViewBackend.h>
 #include <wpe/WebKitWebViewSessionState.h>
 #include <wpe/WebKitWindowProperties.h>
 
@@ -152,6 +151,20 @@ typedef enum {
     WEBKIT_INSECURE_CONTENT_DISPLAYED
 } WebKitInsecureContentEvent;
 
+/**
+ * WebKitWebProcessTerminationReason:
+ * @WEBKIT_WEB_PROCESS_CRASHED: the web process crashed.
+ * @WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT: the web process exceeded the memory limit.
+ *
+ * Enum values used to specify the reason why the web process terminated abnormally.
+ *
+ * Since: 2.20
+ */
+typedef enum {
+    WEBKIT_WEB_PROCESS_CRASHED,
+    WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT
+} WebKitWebProcessTerminationReason;
+
 struct _WebKitWebView {
     GObject parent;
 
@@ -212,6 +225,8 @@ struct _WebKitWebViewClass {
                                                     GTlsCertificateFlags         errors);
     gboolean       (* show_notification)           (WebKitWebView               *web_view,
                                                     WebKitNotification          *notification);
+    void           (* web_process_terminated)      (WebKitWebView               *web_view,
+                                                    WebKitWebProcessTerminationReason reason);
 
     void (*_webkit_reserved0) (void);
     void (*_webkit_reserved1) (void);
@@ -221,26 +236,32 @@ struct _WebKitWebViewClass {
     void (*_webkit_reserved5) (void);
     void (*_webkit_reserved6) (void);
     void (*_webkit_reserved7) (void);
-    void (*_webkit_reserved8) (void);
 };
 
 WEBKIT_API GType
 webkit_web_view_get_type                             (void);
 
 WEBKIT_API WebKitWebView *
-webkit_web_view_new                                  (void);
+webkit_web_view_new                                  (WebKitWebViewBackend      *backend);
 
 WEBKIT_API WebKitWebView *
-webkit_web_view_new_with_context                     (WebKitWebContext          *context);
+webkit_web_view_new_with_context                     (WebKitWebViewBackend      *backend,
+                                                      WebKitWebContext          *context);
 
 WEBKIT_API WebKitWebView *
-webkit_web_view_new_with_settings                    (WebKitSettings            *settings);
+webkit_web_view_new_with_settings                    (WebKitWebViewBackend      *backend,
+                                                      WebKitSettings            *settings);
 
 WEBKIT_API WebKitWebView *
-webkit_web_view_new_with_related_view                (WebKitWebView             *web_view);
+webkit_web_view_new_with_related_view                (WebKitWebViewBackend      *backend,
+                                                      WebKitWebView             *web_view);
 
 WEBKIT_API WebKitWebView *
-webkit_web_view_new_with_user_content_manager        (WebKitUserContentManager  *user_content_manager);
+webkit_web_view_new_with_user_content_manager        (WebKitWebViewBackend      *backend,
+                                                      WebKitUserContentManager  *user_content_manager);
+
+WEBKIT_API WebKitWebViewBackend *
+webkit_web_view_get_backend                          (WebKitWebView             *web_view);
 
 WEBKIT_API gboolean
 webkit_web_view_is_ephemeral                         (WebKitWebView             *web_view);
@@ -376,32 +397,6 @@ webkit_web_view_execute_editing_command_with_argument(WebKitWebView             
 
 WEBKIT_API WebKitFindController *
 webkit_web_view_get_find_controller                  (WebKitWebView             *web_view);
-
-WEBKIT_API JSGlobalContextRef
-webkit_web_view_get_javascript_global_context        (WebKitWebView             *web_view);
-
-WEBKIT_API void
-webkit_web_view_run_javascript                       (WebKitWebView             *web_view,
-                                                      const gchar               *script,
-                                                      GCancellable              *cancellable,
-                                                      GAsyncReadyCallback        callback,
-                                                      gpointer                   user_data);
-WEBKIT_API WebKitJavascriptResult *
-webkit_web_view_run_javascript_finish                (WebKitWebView             *web_view,
-                                                      GAsyncResult              *result,
-                                                      GError                   **error);
-
-WEBKIT_API void
-webkit_web_view_run_javascript_from_gresource        (WebKitWebView             *web_view,
-                                                      const gchar               *resource,
-                                                      GCancellable              *cancellable,
-                                                      GAsyncReadyCallback        callback,
-                                                      gpointer                   user_data);
-
-WEBKIT_API WebKitJavascriptResult *
-webkit_web_view_run_javascript_from_gresource_finish (WebKitWebView             *web_view,
-                                                      GAsyncResult              *result,
-                                                      GError                   **error);
 
 WEBKIT_API WebKitWebResource *
 webkit_web_view_get_main_resource                    (WebKitWebView             *web_view);

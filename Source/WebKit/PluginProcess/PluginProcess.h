@@ -45,7 +45,8 @@ struct PluginProcessCreationParameters;
 class PluginProcess : public ChildProcess
 {
     WTF_MAKE_NONCOPYABLE(PluginProcess);
-    friend class NeverDestroyed<PluginProcess>;
+    friend NeverDestroyed<PluginProcess>;
+
 public:
     static PluginProcess& singleton();
 
@@ -94,7 +95,7 @@ private:
     void createWebProcessConnection();
 
     void getSitesWithData(uint64_t callbackID);
-    void deleteWebsiteData(std::chrono::system_clock::time_point modifiedSince, uint64_t callbackID);
+    void deleteWebsiteData(WallTime modifiedSince, uint64_t callbackID);
     void deleteWebsiteDataForHostNames(const Vector<String>& hostNames, uint64_t callbackID);
 
     void platformInitializePluginProcess(PluginProcessCreationParameters&&);

@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include <wtf/Condition.h>
+#include <wtf/CurrentTime.h>
 #include <wtf/ThreadGroup.h>
 #include <wtf/Vector.h>
 
@@ -41,12 +42,12 @@ static void testThreadGroup(Mode mode)
     Lock lock;
     Condition condition;
     Condition restartCondition;
-    Vector<RefPtr<Thread>> threads;
+    Vector<Ref<Thread>> threads;
 
     {
         auto locker = holdLock(lock);
         for (unsigned i = 0; i < numberOfThreads; ++i) {
-            RefPtr<Thread> thread = Thread::create("ThreadGroupWorker", [&] {
+            Ref<Thread> thread = Thread::create("ThreadGroupWorker", [&] {
                 auto locker = holdLock(lock);
                 if (mode == Mode::AddCurrentThread)
                     threadGroup->addCurrentThread();
@@ -57,8 +58,8 @@ static void testThreadGroup(Mode mode)
                 });
             });
             if (mode == Mode::Add)
-                EXPECT_TRUE(threadGroup->add(*thread) == ThreadGroupAddResult::NewlyAdded);
-            threads.append(thread);
+                EXPECT_TRUE(threadGroup->add(thread.get()) == ThreadGroupAddResult::NewlyAdded);
+            threads.append(WTFMove(thread));
         }
 
         condition.wait(lock, [&] {
@@ -77,7 +78,7 @@ static void testThreadGroup(Mode mode)
         }
 
         // While holding ThreadGroup lock, threads do not exit.
-        WTF::sleep(0.1);
+        WTF::sleep(100_ms);
         EXPECT_EQ(threadGroup->threads(threadGroupLocker).size(), numberOfThreads);
     }
     {
@@ -102,9 +103,9 @@ TEST(WTF, ThreadGroupAddCurrentThread)
 TEST(WTF, ThreadGroupDoNotAddDeadThread)
 {
     std::shared_ptr<ThreadGroup> threadGroup = ThreadGroup::create();
-    RefPtr<Thread> thread = Thread::create("ThreadGroupWorker", [&] { });
+    Ref<Thread> thread = Thread::create("ThreadGroupWorker", [&] { });
     thread->waitForCompletion();
-    EXPECT_TRUE(threadGroup->add(*thread) == ThreadGroupAddResult::NotAdded);
+    EXPECT_TRUE(threadGroup->add(thread.get()) == ThreadGroupAddResult::NotAdded);
 
     auto threadGroupLocker = holdLock(threadGroup->getLock());
     EXPECT_EQ(threadGroup->threads(threadGroupLocker).size(), 0u);
@@ -116,14 +117,14 @@ TEST(WTF, ThreadGroupAddDuplicateThreads)
     Lock lock;
     Condition restartCondition;
     std::shared_ptr<ThreadGroup> threadGroup = ThreadGroup::create();
-    RefPtr<Thread> thread = Thread::create("ThreadGroupWorker", [&] {
+    Ref<Thread> thread = Thread::create("ThreadGroupWorker", [&] {
         auto locker = holdLock(lock);
         restartCondition.wait(lock, [&] {
             return restarting;
         });
     });
-    EXPECT_TRUE(threadGroup->add(*thread) == ThreadGroupAddResult::NewlyAdded);
-    EXPECT_TRUE(threadGroup->add(*thread) == ThreadGroupAddResult::AlreadyAdded);
+    EXPECT_TRUE(threadGroup->add(thread.get()) == ThreadGroupAddResult::NewlyAdded);
+    EXPECT_TRUE(threadGroup->add(thread.get()) == ThreadGroupAddResult::AlreadyAdded);
 
     {
         auto threadGroupLocker = holdLock(threadGroup->getLock());

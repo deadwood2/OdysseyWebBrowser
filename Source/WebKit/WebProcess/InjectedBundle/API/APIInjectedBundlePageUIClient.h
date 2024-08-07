@@ -23,11 +23,10 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef APIInjectedBundlePageUIClient_h
-#define APIInjectedBundlePageUIClient_h
+#pragma once
 
 #include "WebEvent.h"
-#include <runtime/ConsoleTypes.h>
+#include <JavaScriptCore/ConsoleTypes.h>
 
 namespace WebCore {
 class HitTestResult;
@@ -94,5 +93,3 @@ public:
 } // namespace InjectedBundle
 
 } // namespace API
-
-#endif // APIInjectedBundlePageUIClient_h

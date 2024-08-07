@@ -36,6 +36,7 @@
 #import "WebTypesInternal.h"
 #import "WebView.h"
 #import "WebViewPrivate.h"
+#import <JavaScriptCore/InitializeThreading.h>
 #import <WebCore/DragController.h>
 #import <WebCore/Frame.h>
 #import <WebCore/HitTestResult.h>
@@ -43,7 +44,6 @@
 #import <WebCore/WebCoreObjCExtras.h>
 #import <WebKitLegacy/DOMCore.h>
 #import <WebKitLegacy/DOMExtensions.h>
-#import <runtime/InitializeThreading.h>
 #import <wtf/MainThread.h>
 #import <wtf/RunLoop.h>
 
@@ -148,7 +148,7 @@ static void cacheValueForKey(const void *key, const void *value, void *self)
     if (value || _cacheComplete || [_nilValues containsObject:key])
         return value;
 
-    SEL selector = (SEL)CFDictionaryGetValue(lookupTable, key);
+    SEL selector = static_cast<SEL>(const_cast<void*>(CFDictionaryGetValue(lookupTable, key)));
     if (!selector)
         return nil;
     value = [self performSelector:selector];

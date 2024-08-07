@@ -27,11 +27,11 @@
 #include "JSDOMGlobalObject.h"
 #include "JSTestNode.h"
 #include "ScriptExecutionContext.h"
-#include <runtime/JSArray.h>
+#include <JavaScriptCore/JSArray.h>
 
-using namespace JSC;
 
 namespace WebCore {
+using namespace JSC;
 
 JSTestCallbackFunctionWithThisObject::JSTestCallbackFunctionWithThisObject(JSObject* callback, JSDOMGlobalObject* globalObject)
     : TestCallbackFunctionWithThisObject(globalObject->scriptExecutionContext())
@@ -68,6 +68,7 @@ CallbackResult<typename IDLVoid::ImplementationType> JSTestCallbackFunctionWithT
     JSValue thisValue = toJS<IDLInterface<TestNode>>(state, globalObject, thisObject);
     MarkedArgumentBuffer args;
     args.append(toJS<IDLSequence<IDLInterface<TestNode>>>(state, globalObject, parameter));
+    ASSERT(!args.hasOverflowed());
 
     NakedPtr<JSC::Exception> returnedException;
     m_data->invokeCallback(thisValue, args, JSCallbackData::CallbackType::Function, Identifier(), returnedException);

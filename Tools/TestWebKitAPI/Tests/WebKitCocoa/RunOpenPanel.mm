@@ -25,12 +25,13 @@
 
 #import "config.h"
 
-#if WK_API_ENABLED && PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
+#if WK_API_ENABLED && PLATFORM(MAC)
 
 #import "PlatformUtilities.h"
 #import "TestNavigationDelegate.h"
 #import "Utilities.h"
 #import <AppKit/AppKit.h>
+#import <WebKit/WKOpenPanelParametersPrivate.h>
 #import <WebKit/WebKit.h>
 #import <wtf/RetainPtr.h>
 
@@ -44,6 +45,10 @@ static NSString * const expectedFileName = @"这是中文";
 
 - (void)webView:(WKWebView *)webView runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSArray<NSURL *> * _Nullable))completionHandler
 {
+    EXPECT_FALSE(parameters.allowsMultipleSelection);
+    EXPECT_FALSE(parameters.allowsDirectories);
+    EXPECT_EQ(0ull, parameters._acceptedMIMETypes.count);
+    EXPECT_EQ(0ull, parameters._acceptedFileExtensions.count);
     completionHandler(@[ [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:expectedFileName]] ]);
     fileSelected = true;
 }
@@ -52,7 +57,7 @@ static NSString * const expectedFileName = @"这是中文";
 
 namespace TestWebKitAPI {
 
-TEST(WebKit2, RunOpenPanelNonLatin1)
+TEST(WebKit, RunOpenPanelNonLatin1)
 {
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)]);
     auto uiDelegate = adoptNS([[RunOpenPanelUIDelegate alloc] init]);
@@ -77,4 +82,4 @@ TEST(WebKit2, RunOpenPanelNonLatin1)
     
 } // namespace TestWebKitAPI
 
-#endif // WK_API_ENABLED && PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
+#endif // WK_API_ENABLED && PLATFORM(MAC)

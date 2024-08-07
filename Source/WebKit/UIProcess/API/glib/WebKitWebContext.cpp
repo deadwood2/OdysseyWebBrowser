@@ -55,11 +55,11 @@
 #include "WebsiteDataType.h"
 #include <JavaScriptCore/RemoteInspector.h>
 #include <WebCore/FileSystem.h>
-#include <WebCore/Language.h>
 #include <glib/gi18n-lib.h>
 #include <libintl.h>
 #include <memory>
 #include <wtf/HashMap.h>
+#include <wtf/Language.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
@@ -109,7 +109,9 @@ using namespace WebKit;
 enum {
     PROP_0,
 
+#if PLATFORM(GTK)
     PROP_LOCAL_STORAGE_DIRECTORY,
+#endif
     PROP_WEBSITE_DATA_MANAGER
 };
 
@@ -240,6 +242,12 @@ private:
 
     WebKitWebContext* m_webContext;
 };
+
+void webkitWebContextWillCloseAutomationSession(WebKitWebContext* webContext)
+{
+    webContext->priv->processPool->setAutomationSession(nullptr);
+    webContext->priv->automationSession = nullptr;
+}
 #endif // ENABLE(REMOTE_INSPECTOR)
 
 WEBKIT_DEFINE_TYPE(WebKitWebContext, webkit_web_context, G_TYPE_OBJECT)
@@ -263,8 +271,8 @@ static const char* injectedBundleDirectory()
         G_DIR_SEPARATOR_S "injected-bundle" G_DIR_SEPARATOR_S;
     return injectedBundlePath;
 #elif PLATFORM(WPE)
-    // FIXME: Make it possible to use installed injected bundle in WPE.
-    return nullptr;
+    static const char* injectedBundlePath = PKGLIBDIR G_DIR_SEPARATOR_S "injected-bundle" G_DIR_SEPARATOR_S;
+    return injectedBundlePath;
 #endif
 }
 
@@ -273,9 +281,11 @@ static void webkitWebContextGetProperty(GObject* object, guint propID, GValue* v
     WebKitWebContext* context = WEBKIT_WEB_CONTEXT(object);
 
     switch (propID) {
+#if PLATFORM(GTK)
     case PROP_LOCAL_STORAGE_DIRECTORY:
         g_value_set_string(value, context->priv->localStorageDirectory.data());
         break;
+#endif
     case PROP_WEBSITE_DATA_MANAGER:
         g_value_set_object(value, webkit_web_context_get_website_data_manager(context));
         break;
@@ -289,9 +299,11 @@ static void webkitWebContextSetProperty(GObject* object, guint propID, const GVa
     WebKitWebContext* context = WEBKIT_WEB_CONTEXT(object);
 
     switch (propID) {
+#if PLATFORM(GTK)
     case PROP_LOCAL_STORAGE_DIRECTORY:
         context->priv->localStorageDirectory = g_value_get_string(value);
         break;
+#endif
     case PROP_WEBSITE_DATA_MANAGER: {
         gpointer manager = g_value_get_object(value);
         context->priv->websiteDataManager = manager ? WEBKIT_WEBSITE_DATA_MANAGER(manager) : nullptr;
@@ -320,20 +332,20 @@ static void webkitWebContextConstructed(GObject* object)
     GUniquePtr<char> bundleFilename(g_build_filename(injectedBundleDirectory(), INJECTED_BUNDLE_FILENAME, nullptr));
 
     API::ProcessPoolConfiguration configuration;
-    configuration.setInjectedBundlePath(WebCore::stringFromFileSystemRepresentation(bundleFilename.get()));
+    configuration.setInjectedBundlePath(WebCore::FileSystem::stringFromFileSystemRepresentation(bundleFilename.get()));
     configuration.setMaximumProcessCount(1);
     configuration.setDiskCacheSpeculativeValidationEnabled(true);
 
     WebKitWebContext* webContext = WEBKIT_WEB_CONTEXT(object);
     WebKitWebContextPrivate* priv = webContext->priv;
     if (priv->websiteDataManager && !webkit_website_data_manager_is_ephemeral(priv->websiteDataManager.get())) {
-        configuration.setLocalStorageDirectory(WebCore::stringFromFileSystemRepresentation(webkit_website_data_manager_get_local_storage_directory(priv->websiteDataManager.get())));
-        configuration.setDiskCacheDirectory(WebCore::pathByAppendingComponent(WebCore::stringFromFileSystemRepresentation(webkit_website_data_manager_get_disk_cache_directory(priv->websiteDataManager.get())), networkCacheSubdirectory));
-        configuration.setApplicationCacheDirectory(WebCore::stringFromFileSystemRepresentation(webkit_website_data_manager_get_offline_application_cache_directory(priv->websiteDataManager.get())));
-        configuration.setIndexedDBDatabaseDirectory(WebCore::stringFromFileSystemRepresentation(webkit_website_data_manager_get_indexeddb_directory(priv->websiteDataManager.get())));
-        configuration.setWebSQLDatabaseDirectory(WebCore::stringFromFileSystemRepresentation(webkit_website_data_manager_get_websql_directory(priv->websiteDataManager.get())));
+        configuration.setLocalStorageDirectory(WebCore::FileSystem::stringFromFileSystemRepresentation(webkit_website_data_manager_get_local_storage_directory(priv->websiteDataManager.get())));
+        configuration.setDiskCacheDirectory(WebCore::FileSystem::pathByAppendingComponent(WebCore::FileSystem::stringFromFileSystemRepresentation(webkit_website_data_manager_get_disk_cache_directory(priv->websiteDataManager.get())), networkCacheSubdirectory));
+        configuration.setApplicationCacheDirectory(WebCore::FileSystem::stringFromFileSystemRepresentation(webkit_website_data_manager_get_offline_application_cache_directory(priv->websiteDataManager.get())));
+        configuration.setIndexedDBDatabaseDirectory(WebCore::FileSystem::stringFromFileSystemRepresentation(webkit_website_data_manager_get_indexeddb_directory(priv->websiteDataManager.get())));
+        configuration.setWebSQLDatabaseDirectory(WebCore::FileSystem::stringFromFileSystemRepresentation(webkit_website_data_manager_get_websql_directory(priv->websiteDataManager.get())));
     } else if (!priv->localStorageDirectory.isNull())
-        configuration.setLocalStorageDirectory(WebCore::stringFromFileSystemRepresentation(priv->localStorageDirectory.data()));
+        configuration.setLocalStorageDirectory(WebCore::FileSystem::stringFromFileSystemRepresentation(priv->localStorageDirectory.data()));
 
     priv->processPool = WebProcessPool::create(configuration);
 
@@ -394,6 +406,7 @@ static void webkit_web_context_class_init(WebKitWebContextClass* webContextClass
     gObjectClass->constructed = webkitWebContextConstructed;
     gObjectClass->dispose = webkitWebContextDispose;
 
+#if PLATFORM(GTK)
     /**
      * WebKitWebContext:local-storage-directory:
      *
@@ -412,6 +425,7 @@ static void webkit_web_context_class_init(WebKitWebContextClass* webContextClass
             _("The directory where local storage data will be saved"),
             nullptr,
             static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
+#endif
 
     /**
      * WebKitWebContext:website-data-manager:
@@ -764,7 +778,7 @@ void webkit_web_context_clear_cache(WebKitWebContext* context)
     websiteDataTypes |= WebsiteDataType::MemoryCache;
     websiteDataTypes |= WebsiteDataType::DiskCache;
     auto& websiteDataStore = webkitWebsiteDataManagerGetDataStore(context->priv->websiteDataManager.get()).websiteDataStore();
-    websiteDataStore.removeData(websiteDataTypes, std::chrono::system_clock::time_point::min(), [] { });
+    websiteDataStore.removeData(websiteDataTypes, -WallTime::infinity(), [] { });
 }
 
 /**
@@ -909,7 +923,7 @@ void webkit_web_context_set_favicon_database_directory(WebKitWebContext* context
     WebKitWebContextPrivate* priv = context->priv;
     ensureFaviconDatabase(context);
 
-    String directoryPath = WebCore::stringFromFileSystemRepresentation(path);
+    String directoryPath = WebCore::FileSystem::stringFromFileSystemRepresentation(path);
     // Use default if nullptr is passed as parameter.
     if (directoryPath.isEmpty()) {
 #if PLATFORM(GTK)
@@ -918,7 +932,7 @@ void webkit_web_context_set_favicon_database_directory(WebKitWebContext* context
         const char* portDirectory = "wpe";
 #endif
         GUniquePtr<gchar> databaseDirectory(g_build_filename(g_get_user_cache_dir(), portDirectory, "icondatabase", nullptr));
-        directoryPath = WebCore::stringFromFileSystemRepresentation(databaseDirectory.get());
+        directoryPath = WebCore::FileSystem::stringFromFileSystemRepresentation(databaseDirectory.get());
     }
     priv->faviconDatabaseDirectory = directoryPath.utf8();
 
@@ -927,7 +941,7 @@ void webkit_web_context_set_favicon_database_directory(WebKitWebContext* context
         "WebpageIcons.db", nullptr));
 
     // Setting the path will cause the icon database to be opened.
-    webkitFaviconDatabaseOpen(priv->faviconDatabase.get(), WebCore::stringFromFileSystemRepresentation(faviconDatabasePath.get()));
+    webkitFaviconDatabaseOpen(priv->faviconDatabase.get(), WebCore::FileSystem::stringFromFileSystemRepresentation(faviconDatabasePath.get()));
 
     if (webkit_web_context_is_ephemeral(context))
         webkitFaviconDatabaseSetPrivateBrowsingEnabled(priv->faviconDatabase.get(), true);
@@ -1011,7 +1025,7 @@ void webkit_web_context_set_additional_plugins_directory(WebKitWebContext* conte
     g_return_if_fail(directory);
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
-    context->priv->processPool->setAdditionalPluginsDirectory(WebCore::stringFromFileSystemRepresentation(directory));
+    context->priv->processPool->setAdditionalPluginsDirectory(WebCore::FileSystem::stringFromFileSystemRepresentation(directory));
 #endif
 }
 
@@ -1257,7 +1271,7 @@ void webkit_web_context_set_preferred_languages(WebKitWebContext* context, const
         else
             languages.append(String::fromUTF8(languageList[i]).convertToASCIILowercase().replace("_", "-"));
     }
-    WebCore::overrideUserPreferredLanguages(languages);
+    overrideUserPreferredLanguages(languages);
 }
 
 /**
@@ -1337,6 +1351,7 @@ void webkit_web_context_set_web_extensions_initialization_user_data(WebKitWebCon
     context->priv->webExtensionsInitializationUserData = userData;
 }
 
+#if PLATFORM(GTK)
 /**
  * webkit_web_context_set_disk_cache_directory:
  * @context: a #WebKitWebContext
@@ -1357,8 +1372,9 @@ void webkit_web_context_set_disk_cache_directory(WebKitWebContext* context, cons
     g_return_if_fail(WEBKIT_IS_WEB_CONTEXT(context));
     g_return_if_fail(directory);
 
-    context->priv->processPool->configuration().setDiskCacheDirectory(WebCore::pathByAppendingComponent(WebCore::stringFromFileSystemRepresentation(directory), networkCacheSubdirectory));
+    context->priv->processPool->configuration().setDiskCacheDirectory(WebCore::FileSystem::pathByAppendingComponent(WebCore::FileSystem::stringFromFileSystemRepresentation(directory), networkCacheSubdirectory));
 }
+#endif
 
 /**
  * webkit_web_context_prefetch_dns:
@@ -1617,9 +1633,7 @@ void webkitWebContextStopLoadingCustomProtocol(WebKitWebContext* context, uint64
 
 void webkitWebContextInvalidateCustomProtocolRequests(WebKitWebContext* context, LegacyCustomProtocolManagerProxy& manager)
 {
-    Vector<GRefPtr<WebKitURISchemeRequest>> requests;
-    copyValuesToVector(context->priv->uriSchemeRequests, requests);
-    for (auto& request : requests) {
+    for (auto& request : copyToVector(context->priv->uriSchemeRequests.values())) {
         if (webkitURISchemeRequestGetManager(request.get()) == &manager)
             webkitURISchemeRequestInvalidate(request.get());
     }

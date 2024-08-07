@@ -52,36 +52,43 @@
 #include "WebScriptWorld.h"
 #include "WebURLResponse.h"
 #include "WebView.h"
+#include <JavaScriptCore/APICast.h>
+#include <JavaScriptCore/HeapInlines.h>
+#include <JavaScriptCore/JSCJSValue.h>
+#include <JavaScriptCore/JSLock.h>
+#include <JavaScriptCore/JSObject.h>
+#include <JavaScriptCore/ScriptValue.h>
 #include <WebCore/BString.h>
 #include <WebCore/COMPtr.h>
 #include <WebCore/CSSAnimationController.h>
-#include <WebCore/MemoryCache.h>
+#include <WebCore/DOMWindow.h>
 #include <WebCore/Document.h>
 #include <WebCore/DocumentLoader.h>
 #include <WebCore/DocumentMarkerController.h>
-#include <WebCore/DOMWindow.h>
 #include <WebCore/Editor.h>
 #include <WebCore/Event.h>
 #include <WebCore/EventHandler.h>
 #include <WebCore/FormState.h>
-#include <WebCore/FrameLoader.h>
 #include <WebCore/FrameLoadRequest.h>
+#include <WebCore/FrameLoader.h>
 #include <WebCore/FrameTree.h>
 #include <WebCore/FrameView.h>
 #include <WebCore/FrameWin.h>
 #include <WebCore/GDIObjectCounter.h>
 #include <WebCore/GraphicsContext.h>
-#include <WebCore/HistoryItem.h>
 #include <WebCore/HTMLAppletElement.h>
-#include <WebCore/HTMLFormElement.h>
 #include <WebCore/HTMLFormControlElement.h>
+#include <WebCore/HTMLFormElement.h>
 #include <WebCore/HTMLInputElement.h>
 #include <WebCore/HTMLNames.h>
 #include <WebCore/HTMLPlugInElement.h>
+#include <WebCore/HistoryItem.h>
+#include <WebCore/JSDOMBinding.h>
 #include <WebCore/JSDOMWindow.h>
 #include <WebCore/KeyboardEvent.h>
 #include <WebCore/MIMETypeRegistry.h>
 #include <WebCore/MainFrame.h>
+#include <WebCore/MemoryCache.h>
 #include <WebCore/MouseRelatedEvent.h>
 #include <WebCore/NotImplemented.h>
 #include <WebCore/Page.h>
@@ -89,22 +96,15 @@
 #include <WebCore/PluginData.h>
 #include <WebCore/PolicyChecker.h>
 #include <WebCore/PrintContext.h>
+#include <WebCore/RenderTreeAsText.h>
+#include <WebCore/RenderView.h>
 #include <WebCore/ResourceHandle.h>
 #include <WebCore/ResourceLoader.h>
 #include <WebCore/ResourceRequest.h>
-#include <WebCore/RenderView.h>
-#include <WebCore/RenderTreeAsText.h>
-#include <WebCore/Settings.h>
-#include <WebCore/TextIterator.h>
-#include <WebCore/JSDOMBinding.h>
 #include <WebCore/ScriptController.h>
 #include <WebCore/SecurityOrigin.h>
-#include <JavaScriptCore/APICast.h>
-#include <JavaScriptCore/HeapInlines.h>
-#include <JavaScriptCore/JSCJSValue.h>
-#include <JavaScriptCore/JSLock.h>
-#include <JavaScriptCore/JSObject.h>
-#include <bindings/ScriptValue.h>
+#include <WebCore/Settings.h>
+#include <WebCore/TextIterator.h>
 #include <wtf/MathExtras.h>
 
 #if USE(CG)
@@ -916,7 +916,7 @@ HRESULT WebFrame::layout()
     if (!view)
         return E_FAIL;
 
-    view->layout();
+    view->layoutContext().layout();
     return S_OK;
 }
 
@@ -1088,13 +1088,12 @@ HRESULT WebFrame::elementWithName(BSTR name, IDOMElement* form, IDOMElement** el
 
     HTMLFormElement* formElement = formElementFromDOMElement(form);
     if (formElement) {
-        const Vector<FormAssociatedElement*>& elements = formElement->associatedElements();
         AtomicString targetName((UChar*)name, SysStringLen(name));
-        for (unsigned int i = 0; i < elements.size(); i++) {
-            if (!is<HTMLFormControlElement>(*elements[i]))
+        for (auto& associatedElement : formElement->copyAssociatedElementsVector()) {
+            if (!is<HTMLFormControlElement>(associatedElement.get()))
                 continue;
-            HTMLFormControlElement& elt = downcast<HTMLFormControlElement>(*elements[i]);
-            // Skip option elements, other duds
+            auto& elt = downcast<HTMLFormControlElement>(associatedElement.get());
+            // Skip option elements, other duds.
             if (elt.name() == targetName) {
                 *element = DOMElement::createInstance(&elt);
                 return S_OK;
@@ -1171,7 +1170,7 @@ HRESULT WebFrame::pauseAnimation(_In_ BSTR animationName, _In_opt_ IDOMNode* nod
     if (!domNode)
         return E_FAIL;
 
-    *animationWasRunning = frame->animation().pauseAnimationAtTime(downcast<RenderElement>(domNode->node()->renderer()), String(animationName, SysStringLen(animationName)), secondsFromNow);
+    *animationWasRunning = frame->animation().pauseAnimationAtTime(downcast<Element>(*domNode->node()), String(animationName, SysStringLen(animationName)), secondsFromNow);
     return S_OK;
 }
 
@@ -1190,7 +1189,7 @@ HRESULT WebFrame::pauseTransition(_In_ BSTR propertyName, _In_opt_ IDOMNode* nod
     if (!domNode)
         return E_FAIL;
 
-    *transitionWasRunning = frame->animation().pauseTransitionAtTime(downcast<RenderElement>(domNode->node()->renderer()), String(propertyName, SysStringLen(propertyName)), secondsFromNow);
+    *transitionWasRunning = frame->animation().pauseTransitionAtTime(downcast<Element>(*domNode->node()), String(propertyName, SysStringLen(propertyName)), secondsFromNow);
     return S_OK;
 }
 
@@ -1267,8 +1266,9 @@ HRESULT WebFrame::controlsInForm(IDOMElement* form, IDOMElement** controls, int*
     if (!formElement)
         return E_FAIL;
 
+    auto elements = formElement->copyAssociatedElementsVector();
     int inCount = *cControls;
-    int count = (int) formElement->associatedElements().size();
+    int count = (int) elements.size();
     *cControls = count;
     if (!controls)
         return S_OK;
@@ -1276,10 +1276,10 @@ HRESULT WebFrame::controlsInForm(IDOMElement* form, IDOMElement** controls, int*
         return E_FAIL;
 
     *cControls = 0;
-    const Vector<FormAssociatedElement*>& elements = formElement->associatedElements();
-    for (int i = 0; i < count; i++) {
-        if (elements.at(i)->isEnumeratable()) { // Skip option elements, other duds
-            controls[*cControls] = DOMElement::createInstance(&elements.at(i)->asHTMLElement());
+    for (auto& element : elements) {
+        if (element->isEnumeratable()) {
+            // Skip option elements, other duds.
+            controls[*cControls] = DOMElement::createInstance(&element->asHTMLElement());
             (*cControls)++;
         }
     }

@@ -50,7 +50,7 @@ StorageThread::~StorageThread()
     ASSERT(!m_thread);
 }
 
-bool StorageThread::start()
+void StorageThread::start()
 {
     ASSERT(isMainThread());
     if (!m_thread) {
@@ -59,7 +59,6 @@ bool StorageThread::start()
         });
     }
     activeStorageThreads().add(this);
-    return m_thread;
 }
 
 void StorageThread::threadEntryPoint()

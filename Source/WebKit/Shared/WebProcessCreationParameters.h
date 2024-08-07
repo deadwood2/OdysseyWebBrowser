@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,14 +29,15 @@
 #include "SandboxExtension.h"
 #include "TextCheckerState.h"
 #include "UserData.h"
-#include <WebCore/SessionID.h>
+#include <pal/SessionID.h>
+#include <wtf/HashMap.h>
+#include <wtf/ProcessID.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/Vector.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
 #if PLATFORM(COCOA)
-#include "MachPort.h"
 #include <WebCore/MachSendRight.h>
 #endif
 
@@ -93,6 +94,9 @@ struct WebProcessCreationParameters {
 #endif
     String mediaKeyStorageDirectory;
 
+    String webCoreLoggingChannels;
+    String webKitLoggingChannels;
+
     Vector<String> urlSchemesRegisteredAsEmptyDocument;
     Vector<String> urlSchemesRegisteredAsSecure;
     Vector<String> urlSchemesRegisteredAsBypassingContentSecurityPolicy;
@@ -103,6 +107,7 @@ struct WebProcessCreationParameters {
     Vector<String> urlSchemesRegisteredAsCORSEnabled;
     Vector<String> urlSchemesRegisteredAsAlwaysRevalidated;
     Vector<String> urlSchemesRegisteredAsCachePartitioned;
+    Vector<String> urlSchemesServiceWorkersCanHandle;
 
     Vector<String> fontWhitelist;
     Vector<String> languages;
@@ -126,15 +131,19 @@ struct WebProcessCreationParameters {
     bool hasRichContentServices { false };
 #endif
 
+#if ENABLE(SERVICE_WORKER)
+    bool hasRegisteredServiceWorkers { true };
+#endif
+
     Seconds terminationTimeout;
 
     TextCheckerState textCheckerState;
 
-#if PLATFORM(COCOA) || USE(CFURLCONNECTION)
+#if PLATFORM(COCOA)
     String uiProcessBundleIdentifier;
 #endif
 
-    pid_t presentingApplicationPID { 0 };
+    ProcessID presentingApplicationPID { 0 };
 
 #if PLATFORM(COCOA)
     WebCore::MachSendRight acceleratedCompositingPort;
@@ -153,7 +162,7 @@ struct WebProcessCreationParameters {
     HashMap<String, bool> notificationPermissions;
 #endif
 
-    HashMap<WebCore::SessionID, HashMap<unsigned, double>> plugInAutoStartOriginHashes;
+    HashMap<PAL::SessionID, HashMap<unsigned, WallTime>> plugInAutoStartOriginHashes;
     Vector<String> plugInAutoStartOrigins;
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
@@ -174,6 +183,10 @@ struct WebProcessCreationParameters {
 
 #if USE(SOUP)
     WebCore::SoupNetworkProxySettings proxySettings;
+#endif
+
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
+    bool shouldLogUserInteraction { false };
 #endif
 };
 
