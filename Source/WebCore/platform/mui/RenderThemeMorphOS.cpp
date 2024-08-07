@@ -197,17 +197,22 @@ static float determineFullScreenMultiplier(const Element* element)
     return fullScreenMultiplier;
 }
 
+#if 0
 Ref<RenderTheme> RenderTheme::themeForPage(Page* page)
 {
     UNUSED_PARAM(page);
     static RenderTheme& theme = RenderThemeBal::create().leakRef();
     return theme;
 }
+#endif
 
+#if 0
 Ref<RenderTheme> RenderThemeBal::create()
 {
     return adoptRef(*new RenderThemeBal());
 }
+#endif
+
 RenderTheme& RenderTheme::singleton()
 {
     static NeverDestroyed<RenderThemeBal> theme;

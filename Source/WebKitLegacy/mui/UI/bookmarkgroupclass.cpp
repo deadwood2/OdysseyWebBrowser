@@ -31,7 +31,9 @@
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
 #include "URL.h"
+#if 0
 #include "IconDatabase.h"
+#endif
 
 #include <proto/intuition.h>
 #include <proto/utility.h>
@@ -1222,7 +1224,9 @@ DEFSMETHOD(Bookmarkgroup_LoadHtml)
 				// Retain it for icondatabase
 				if(newnode.address)
 				{
+#if 0
 					iconDatabase().retainIconForPageURL(String(newnode.address));
+#endif
 				}
 
 				// Add entry

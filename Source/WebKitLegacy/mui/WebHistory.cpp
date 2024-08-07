@@ -41,7 +41,9 @@
 #include "wtf/Vector.h"
 #include "PageGroup.h"
 #include "HistoryItem.h"
+#if 0
 #include "IconDatabase.h"
+#endif
 
 #include "gui.h"
 #include <clib/debug_protos.h>
@@ -168,8 +170,10 @@ bool WebHistory::loadHistoryFromDatabase(int sortCriterium, bool desc, std::vect
 
 			destList->push_back(item);
 
+#if 0
 			// Retain it for icondatabase
 			iconDatabase().retainIconForPageURL(select.getColumnText(0));
+#endif
 		}
 	}
 

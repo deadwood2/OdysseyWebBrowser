@@ -237,11 +237,14 @@ void CurlJobManager::workerThread()
 
             jobs.getFdSet(fdread, fdwrite, fdexcep, maxfd);
 
+#if 0
+asm("int3");
             // When the 3 file descriptors are empty, winsock will return -1
             // and bail out, stopping the file download. So make sure we
             // have valid file descriptors before calling select.
             if (maxfd >= 0)
                 rc = ::select(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout);
+#endif
         } while (rc == -1 && errno == EINTR);
 
         int activeCount = 0;

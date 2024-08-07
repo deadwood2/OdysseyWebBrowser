@@ -39,8 +39,6 @@ public:
 
     virtual void contextMenuDestroyed();
 
-    virtual void contextMenuItemSelected(WebCore::ContextMenuItem*, const WebCore::ContextMenu*);
-
     virtual void downloadURL(const WebCore::URL& url);
     virtual void copyImageToClipboard(const WebCore::HitTestResult&);
     virtual void searchWithGoogle(const WebCore::Frame*);
@@ -48,7 +46,6 @@ public:
 	virtual void speak(const WTF::String&);
     virtual void stopSpeaking();
     virtual bool isSpeaking();
-    virtual WebCore::ContextMenuItem shareMenuItem(const WebCore::HitTestResult&);
 
 private:
     WebView* m_webView;

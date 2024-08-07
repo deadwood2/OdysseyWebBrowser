@@ -27,7 +27,7 @@
  */
 #include "config.h"
 
-#if ENABLE(ICONDATABASE)
+#if 0
 #include "WebIconDatabase.h"
 
 #include "WebPreferences.h"

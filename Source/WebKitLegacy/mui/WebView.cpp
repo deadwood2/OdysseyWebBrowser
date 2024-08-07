@@ -212,7 +212,7 @@ private:
 
 void WebViewObserver::observe(const WTF::String &topic, const WTF::String &data, void *userData)
 {
-#if ENABLE(ICONDATABASE)
+#if 0
     if (topic == WebIconDatabase::iconDatabaseDidAddIconNotification())
 	m_webView->notifyDidAddIcon();
 #endif
@@ -706,7 +706,7 @@ void WebView::close()
     delete m_page;
     m_page = 0;
 
-#if ENABLE(ICONDATABASE)
+#if 0
     registerForIconNotification(false);
 #endif
     WebCore::ObserverServiceData::createObserverService()->removeObserver(WebPreferences::webPreferencesChangedNotification(), m_webViewObserver);
@@ -1275,7 +1275,7 @@ void WebView::setToolTip(const char* toolTip)
 	}
 }
 
-#if ENABLE(ICONDATABASE)
+#if 0
 void WebView::notifyDidAddIcon()
 {
     dispatchDidReceiveIconFromWebFrame(m_mainFrame);
@@ -2611,7 +2611,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     settings->setXSSAuditorEnabled(!!enabled);
 
     enabled = preferences->isFrameFlatteningEnabled();
-    settings->setFrameFlatteningEnabled(enabled);
+    settings->setFrameFlattening(enabled ? FrameFlatteningFullyEnabled : FrameFlatteningDisabled);
     
     enabled = preferences->webGLEnabled();
     settings->setWebGLEnabled(enabled);

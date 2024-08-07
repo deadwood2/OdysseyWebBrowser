@@ -358,7 +358,7 @@ void WebFrameLoaderClient::dispatchWillClose()
 
 void WebFrameLoaderClient::dispatchDidReceiveIcon()
 {
-#if ENABLE(ICONDATABASE)
+#if 0
     m_webFrame->webView()->dispatchDidReceiveIconFromWebFrame(m_webFrame);
 #endif
 }
@@ -946,18 +946,20 @@ WebFramePolicyListener* WebFrameLoaderClient::setUpPolicyListener(FramePolicyFun
     return m_policyListener;
 }
 
+#if 0
 void WebFrameLoaderClient::receivedPolicyDecision(PolicyAction action)
 {
     ASSERT(m_policyListener);
     ASSERT(m_policyFunction);
 
-    FramePolicyFunction function = m_policyFunction;
+    FramePolicyFunction function = WTFMove(m_policyFunction);
 
     m_policyListener = 0;
     m_policyFunction = 0;
 
     function(action);
 }
+#endif
 
 void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const ResourceResponse& response, const ResourceRequest& request, FramePolicyFunction&& function)
 {
@@ -1159,7 +1161,7 @@ void WebFrameLoaderClient::frameLoaderDestroyed()
 
 void WebFrameLoaderClient::registerForIconNotification(bool listen)
 {
-#if ENABLE(ICONDATABASE)
+#if 0
 	m_webFrame->webView()->registerForIconNotification(listen);
 #endif
 }

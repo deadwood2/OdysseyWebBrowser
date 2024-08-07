@@ -103,7 +103,7 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
 
 			case MA_FavIcon_PageURL:
 			{
-				WebIconDatabase* sharedWebIconDatabase = WebIconDatabase::sharedWebIconDatabase();
+				WebIconDatabase* sharedWebIconDatabase = NULL;//WebIconDatabase::sharedWebIconDatabase();
 					
 				if(sharedWebIconDatabase)
 				{

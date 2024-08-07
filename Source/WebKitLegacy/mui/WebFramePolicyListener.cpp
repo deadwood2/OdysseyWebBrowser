@@ -78,9 +78,11 @@ void WebFramePolicyListener::continueSubmit(void)
 
 void WebFramePolicyListener::receivedPolicyDecision(WebPolicyAction action)
 {
+#if 0
     Frame* coreFrame = core(m_frame);
     if (coreFrame)
         static_cast<WebFrameLoaderClient&>(coreFrame->loader().client()).receivedPolicyDecision(static_cast<PolicyAction>(action));
+#endif
 }
 
 void WebFramePolicyListener::invalidate()

@@ -73,9 +73,11 @@
 #include "ContextMenu.h"
 #include "ContextMenuController.h"
 #include "PluginDatabase.h"
+#if 0
 #if ENABLE(ICONDATABASE)
 #include "IconDatabase.h"
 #include "WebIconDatabase.h"
+#endif
 #endif
 #include "WebHistory.h"
 #include "WebHistoryItem.h"
@@ -1119,6 +1121,7 @@ DEFDISP
 
 	/* Free shared instances that really need to be freed */
 	
+#if 0
 	WebIconDatabase *sharedWebIconDatabase = WebIconDatabase::sharedWebIconDatabase();
 	if(sharedWebIconDatabase)
 	{
@@ -1132,6 +1135,7 @@ DEFDISP
 	{
 		delete sharedResourceHandleManager;
 	}
+#endif
 
 	FreeWebKitLeakedObjects();
 
@@ -2281,8 +2285,11 @@ void prefs_update(Object *obj, struct Data *data)
 	stccpy(data->certificate_path, (char *) getv(data->prefswin, MA_OWBApp_CertificatePath), sizeof(data->certificate_path));
 
 	int activeconnections = (int) getv(data->prefswin, MA_OWBApp_ActiveConnections);
+#if 0
 	ResourceHandleManager::setMaxConnections(activeconnections);
+#endif
 	stccpy(data->useragent, (char *) getv(data->prefswin, MA_OWBApp_UserAgent), sizeof(data->useragent));
+#if 0
 	ResourceHandleManager *sharedResourceHandleManager = ResourceHandleManager::sharedInstance();
 	if(getv(data->prefswin, MA_OWBApp_ProxyEnabled))
 		sharedResourceHandleManager->setProxyInfo(
@@ -2293,6 +2300,7 @@ void prefs_update(Object *obj, struct Data *data)
 											String((char *)getv(data->prefswin, MA_OWBApp_ProxyPassword)) );
 	else
 		sharedResourceHandleManager->setProxyInfo();
+#endif
 
 	data->savesession = getv(data->prefswin, MA_OWBApp_SaveSession);
 	data->deletesessionatexit = getv(data->prefswin, MA_OWBApp_DeleteSessionAtExit);
@@ -2356,7 +2364,9 @@ void prefs_update(Object *obj, struct Data *data)
 	sharedPreferences->setShouldPrintBackgrounds((bool) getv(data->prefswin, MA_OWBApp_ShouldPrintBackgrounds));
 	sharedPreferences->setPlugInsEnabled((bool) getv(data->prefswin, MA_OWBApp_EnablePlugins));
 	sharedPreferences->setIconDatabaseEnabled(data->showfavicons);
+#if 0
 	iconDatabase().setEnabled(data->showfavicons);
+#endif
 	
 	WebCore::ad_block_enabled = (bool) getv(data->prefswin, MA_OWBApp_EnableContentBlocking); // Hack
 
@@ -3488,11 +3498,13 @@ DEFSMETHOD(BlockManagerGroup_DidInsert)
 
 DEFTMETHOD(OWBApp_EraseFavicons)
 {
+#if 0
     WebIconDatabase *sharedWebIconDatabase = WebIconDatabase::sharedWebIconDatabase();
 	if(sharedWebIconDatabase)
 	{
 		sharedWebIconDatabase->removeAllIcons();
 	}
+#endif
 	return 0;
 }
 

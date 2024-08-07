@@ -835,8 +835,10 @@ static void doset(APTR obj, struct Data *data, struct TagItem *tags)
 			// Update client counter
 			set(app, MA_OWBApp_PrivateBrowsingClients, enable ? ++clientcount : --clientcount);
 
+#if 0
 			// Only restore icondatabase normal behaviour if private browsing is not used anymore (privatebrowsing unfortunately global to icondatabase)
 			WebIconDatabase::sharedWebIconDatabase()->setPrivateBrowsingEnabled(getv(app, MA_OWBApp_PrivateBrowsingClients) > 0);
+#endif
 		}
 		break;
 
@@ -3217,9 +3219,11 @@ DEFMMETHOD(CreateDragImage)
 
 		url = (STRPTR) getv(obj, MA_OWBBrowser_DragURL);
 
+
 		// If we have a real dragimage, use it
 		if(data->dragimage)
 		{
+#if 0
 			unsigned int stride = cairo_image_surface_get_stride((cairo_surface_t *)data->dragimage);
 			unsigned char *src  = cairo_image_surface_get_data((cairo_surface_t *)data->dragimage);
 			IntSize size = dragImageSize(data->dragimage);
@@ -3247,6 +3251,7 @@ DEFMMETHOD(CreateDragImage)
 			InitRastPort(&rp);
 			rp.BitMap = di->bm;
 			WritePixelArray(src, 0,0, stride, &rp, 0, 0, width, height, RECTFMT_ARGB);
+#endif
 		}
 		// Else, generate some text (XXX: consider more relevant data using MA_OWBBrowser_DragData)
 #if 0

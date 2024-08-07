@@ -145,6 +145,7 @@ DEFSMETHOD(NetworkWindow_Cancel)
 {
 	GETDATA;
 
+#if 0
 	ResourceHandleManager *sharedResourceHandleManager = ResourceHandleManager::sharedInstance();
 	
 	if (msg->all)
@@ -174,6 +175,7 @@ DEFSMETHOD(NetworkWindow_Cancel)
 			sharedResourceHandleManager->cancel(job);
 		}
 	}
+#endif
 
 	return 0;
 }

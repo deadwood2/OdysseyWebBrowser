@@ -67,10 +67,12 @@ void WebContextMenuClient::contextMenuDestroyed()
     delete this;
 }
 
+#if 0
 void WebContextMenuClient::contextMenuItemSelected(ContextMenuItem* item, const ContextMenu* parentMenu)
 {
     DoMethod(app, MM_OWBApp_SelectUserMenu, (APTR) item, (APTR) &(m_webView->page()->contextMenuController()));
 }
+#endif
 
 void WebContextMenuClient::downloadURL(const URL& url)
 {
@@ -134,7 +136,9 @@ bool WebContextMenuClient::isSpeaking()
     return false;
 }
 
+#if 0
 WebCore::ContextMenuItem WebContextMenuClient::shareMenuItem(const WebCore::HitTestResult&)
 {
     return WebCore::ContextMenuItem();
 }
+#endif
