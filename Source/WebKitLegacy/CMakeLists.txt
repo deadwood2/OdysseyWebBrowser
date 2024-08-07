@@ -65,3 +65,8 @@ if (MSVC)
          add_subdirectory(win/WebKitQuartzCoreAdditions)
      endif ()
 endif ()
+
+if (${PORT} STREQUAL "MUI")
+    string(TIMESTAMP BUILD_DATE "%d.%m.%Y")
+    add_definitions(-DOWB_BUILD_DATE="${BUILD_DATE}")
+endif ()
