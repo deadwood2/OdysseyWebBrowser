@@ -56,7 +56,8 @@ inline ProcessID getCurrentProcessID()
 #elif OS(MORPHOS)
 	return FindTask(0)->tc_ETask->UniqueID;
 #elif PLATFORM(MUI)
-    return (int) FindTask(NULL);
+    // FIXME: wrong for 64-bits
+    return (int) (IPTR) FindTask(NULL);
 #else
     return getpid();
 #endif
