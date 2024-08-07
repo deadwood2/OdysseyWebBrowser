@@ -31,7 +31,6 @@
 #include <wtf/JSONValues.h>
 #include <wtf/OptionSet.h>
 #include <wtf/RefCounted.h>
-#include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebDriver {
@@ -47,8 +46,9 @@ public:
     }
     ~Session();
 
-    const String& id() const { return m_id; }
+    const String& id() const;
     const Capabilities& capabilities() const;
+    bool isConnected() const;
     Seconds scriptTimeout() const  { return m_scriptTimeout; }
     Seconds pageLoadTimeout() const { return m_pageLoadTimeout; }
     Seconds implicitWaitTimeout() const { return m_implicitWaitTimeout; }
@@ -63,7 +63,7 @@ public:
         std::optional<String> domain;
         std::optional<bool> secure;
         std::optional<bool> httpOnly;
-        std::optional<unsigned> expiry;
+        std::optional<uint64_t> expiry;
     };
 
     void waitForNavigationToComplete(Function<void (CommandResult&&)>&&);
@@ -121,8 +121,6 @@ private:
     void closeAllToplevelBrowsingContexts(const String& toplevelBrowsingContext, Function<void (CommandResult&&)>&&);
 
     void getToplevelBrowsingContextRect(Function<void (CommandResult&&)>&&);
-    void moveToplevelBrowsingContextWindow(double x, double y, Function<void (CommandResult&&)>&&);
-    void resizeToplevelBrowsingContextWindow(double width, double height, Function<void (CommandResult&&)>&&);
 
     std::optional<String> pageLoadStrategyString() const;
 
@@ -182,7 +180,6 @@ private:
     void performKeyboardInteractions(Vector<KeyboardInteraction>&&, Function<void (CommandResult&&)>&&);
 
     std::unique_ptr<SessionHost> m_host;
-    String m_id;
     Seconds m_scriptTimeout;
     Seconds m_pageLoadTimeout;
     Seconds m_implicitWaitTimeout;

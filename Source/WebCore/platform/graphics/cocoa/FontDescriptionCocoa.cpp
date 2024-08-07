@@ -26,9 +26,9 @@
 #include "config.h"
 #include "FontDescription.h"
 
-#include "CoreTextSPI.h"
 #include "FontCache.h"
 #include "FontFamilySpecificationCoreText.h"
+#include <pal/spi/cocoa/CoreTextSPI.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashTraits.h>
 #include <wtf/text/AtomicString.h>
@@ -181,9 +181,11 @@ private:
         Vector<RetainPtr<CTFontDescriptorRef>> result;
         // WebKit handles the cascade list, and WebKit 2's IPC code doesn't know how to serialize Core Text's cascade list.
         result.append(removeCascadeList(adoptCF(CTFontCopyFontDescriptor(font)).get()));
-        CFIndex arrayLength = CFArrayGetCount(cascadeList.get());
-        for (CFIndex i = 0; i < arrayLength; ++i)
-            result.append(static_cast<CTFontDescriptorRef>(CFArrayGetValueAtIndex(cascadeList.get(), i)));
+        if (cascadeList) {
+            CFIndex arrayLength = CFArrayGetCount(cascadeList.get());
+            for (CFIndex i = 0; i < arrayLength; ++i)
+                result.append(static_cast<CTFontDescriptorRef>(CFArrayGetValueAtIndex(cascadeList.get(), i)));
+        }
         return result;
     }
 

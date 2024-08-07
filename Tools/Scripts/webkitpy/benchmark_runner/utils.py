@@ -4,9 +4,7 @@ import imp
 import inspect
 import logging
 import os
-import signal
 import shutil
-import sys
 
 from webkitpy.common.memoized import memoized
 
@@ -41,7 +39,10 @@ def get_path_from_project_root(relative_path_to_project_root):
 
 def force_remove(path):
     try:
-        shutil.rmtree(path)
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
     except Exception as error:
         # Directory/file does not exist or privilege issue, just ignore it
         _log.info("Error removing %s: %s" % (path, error))
@@ -77,26 +78,3 @@ def write_defaults(domain, key, value):
     defaults.setPersistentDomain_forName_(mutable_defaults_for_domain, domain)
     defaults.synchronize()
     return True
-
-
-# Borrow this code from
-# 'http://stackoverflow.com/questions/2281850/timeout-function-if-it-takes-too-long-to-finish'
-class TimeoutError(Exception):
-    pass
-
-
-class timeout:
-
-    def __init__(self, seconds=1, error_message='Timeout'):
-        self.seconds = seconds
-        self.error_message = error_message
-
-    def handle_timeout(self, signum, frame):
-        raise TimeoutError(self.error_message)
-
-    def __enter__(self):
-        signal.signal(signal.SIGALRM, self.handle_timeout)
-        signal.alarm(self.seconds)
-
-    def __exit__(self, type, value, traceback):
-        signal.alarm(0)

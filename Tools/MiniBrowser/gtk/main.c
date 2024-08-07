@@ -37,6 +37,7 @@
 #define MINI_BROWSER_ERROR (miniBrowserErrorQuark())
 
 static const gchar **uriArguments = NULL;
+static const gchar **ignoreHosts = NULL;
 static GdkRGBA *backgroundColor;
 static gboolean editorMode;
 static const char *sessionFile;
@@ -44,6 +45,7 @@ static char *geometry;
 static gboolean privateMode;
 static gboolean automationMode;
 static gboolean fullScreen;
+static const char *proxy;
 
 typedef enum {
     MINI_BROWSER_ERROR_INVALID_ABOUT_PATH
@@ -100,6 +102,8 @@ static const GOptionEntry commandLineOptions[] =
     { "full-screen", 'f', 0, G_OPTION_ARG_NONE, &fullScreen, "Set the window to full-screen mode", NULL },
     { "private", 'p', 0, G_OPTION_ARG_NONE, &privateMode, "Run in private browsing mode", NULL },
     { "automation", 0, 0, G_OPTION_ARG_NONE, &automationMode, "Run in automation mode", NULL },
+    { "proxy", 0, 0, G_OPTION_ARG_STRING, &proxy, "Set proxy", "PROXY" },
+    { "ignore-host", 0, 0, G_OPTION_ARG_STRING_ARRAY, &ignoreHosts, "Set proxy ignore hosts", "HOSTS" },
     { G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_FILENAME_ARRAY, &uriArguments, 0, "[URL…]" },
     { 0, 0, 0, 0, 0, 0, 0 }
 };
@@ -470,10 +474,11 @@ static void automationStartedCallback(WebKitWebContext *webContext, WebKitAutoma
 
 int main(int argc, char *argv[])
 {
-    gtk_init(&argc, &argv);
 #if ENABLE_DEVELOPER_MODE
     g_setenv("WEBKIT_INJECTED_BUNDLE_PATH", WEBKIT_INJECTED_BUNDLE_PATH, FALSE);
 #endif
+
+    gtk_init(&argc, &argv);
 
     GOptionContext *context = g_option_context_new(NULL);
     g_option_context_add_main_entries(context, commandLineOptions, 0);
@@ -497,6 +502,12 @@ int main(int argc, char *argv[])
     g_option_context_free (context);
 
     WebKitWebContext *webContext = (privateMode || automationMode) ? webkit_web_context_new_ephemeral() : webkit_web_context_get_default();
+
+    if (proxy) {
+        WebKitNetworkProxySettings *webkitProxySettings = webkit_network_proxy_settings_new(proxy, ignoreHosts);
+        webkit_web_context_set_network_proxy_settings(webContext, WEBKIT_NETWORK_PROXY_MODE_CUSTOM, webkitProxySettings);
+        webkit_network_proxy_settings_free(webkitProxySettings);
+    }
 
     const gchar *singleprocess = g_getenv("MINIBROWSER_SINGLEPROCESS");
     webkit_web_context_set_process_model(webContext, (singleprocess && *singleprocess) ?

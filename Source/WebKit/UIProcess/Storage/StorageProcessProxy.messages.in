@@ -30,4 +30,9 @@ messages -> StorageProcessProxy LegacyReceiver {
 #if ENABLE(SANDBOX_EXTENSIONS)
     GetSandboxExtensionsForBlobFiles(uint64_t requestID, Vector<String> paths)
 #endif
+
+#if ENABLE(SERVICE_WORKER)
+    EstablishWorkerContextConnectionToStorageProcess()
+    EstablishWorkerContextConnectionToStorageProcessForExplicitSession(PAL::SessionID explicitSession)
+#endif
 }

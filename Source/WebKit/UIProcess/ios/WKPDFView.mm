@@ -49,6 +49,11 @@
 #import <wtf/RetainPtr.h>
 #import <wtf/Vector.h>
 
+// All of UIPDFPage* are deprecated, so just ignore deprecated declarations
+// in this file until we switch off them.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
 using namespace WebCore;
 using namespace WebKit;
 
@@ -411,6 +416,8 @@ static void detachViewForPage(PDFPageInfo& page)
         CGSize pageSize = [page cropBoxAccountForRotation].size;
         pageFrame.size.height = pageSize.height / pageSize.width * pageFrame.size.width;
         CGRect pageFrameWithMarginApplied = CGRectInset(pageFrame, pdfPageMargin, pdfPageMargin);
+        if (CGRectIsNull(pageFrameWithMarginApplied))
+            pageFrameWithMarginApplied = CGRectZero;
 
         PDFPageInfo pageInfo;
         pageInfo.page = page;
@@ -601,6 +608,9 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions options)
             _currentFindSelection = match;
 
             CGRect zoomRect = [pageInfo.view convertRectFromPDFPageSpace:match.bounds];
+            if (CGRectIsNull(zoomRect))
+                return;
+
             [self zoom:pageInfo.view.get() to:zoomRect atPoint:CGPointZero kind:kUIPDFObjectKindText];
 
             return;
@@ -879,5 +889,7 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions options)
 }
 
 @end
+
+#pragma clang diagnostic pop
 
 #endif /* PLATFORM(IOS) */

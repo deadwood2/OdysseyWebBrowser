@@ -38,7 +38,7 @@ Ref<WebsiteDataStore> WebsiteDataStore::defaultDataStore()
     WebKit::InitializeWebKit2();
 
     if (!globalDefaultDataStore)
-        globalDefaultDataStore = adoptRef(new WebsiteDataStore(defaultDataStoreConfiguration(), WebCore::SessionID::defaultSessionID())).leakRef();
+        globalDefaultDataStore = adoptRef(new WebsiteDataStore(defaultDataStoreConfiguration(), PAL::SessionID::defaultSessionID())).leakRef();
 
     return *globalDefaultDataStore;
 }
@@ -55,7 +55,7 @@ Ref<WebsiteDataStore> WebsiteDataStore::createNonPersistentDataStore()
 
 Ref<WebsiteDataStore> WebsiteDataStore::createLegacy(WebKit::WebsiteDataStore::Configuration configuration)
 {
-    return adoptRef(*new WebsiteDataStore(WTFMove(configuration), WebCore::SessionID::defaultSessionID()));
+    return adoptRef(*new WebsiteDataStore(WTFMove(configuration), PAL::SessionID::defaultSessionID()));
 }
 
 WebsiteDataStore::WebsiteDataStore()
@@ -63,7 +63,7 @@ WebsiteDataStore::WebsiteDataStore()
 {
 }
 
-WebsiteDataStore::WebsiteDataStore(WebKit::WebsiteDataStore::Configuration configuration, WebCore::SessionID sessionID)
+WebsiteDataStore::WebsiteDataStore(WebKit::WebsiteDataStore::Configuration configuration, PAL::SessionID sessionID)
     : m_websiteDataStore(WebKit::WebsiteDataStore::create(WTFMove(configuration), sessionID))
 {
 }
@@ -93,6 +93,16 @@ bool WebsiteDataStore::resourceLoadStatisticsEnabled() const
 void WebsiteDataStore::setResourceLoadStatisticsEnabled(bool enabled)
 {
     m_websiteDataStore->setResourceLoadStatisticsEnabled(enabled);
+}
+
+bool WebsiteDataStore::resourceLoadStatisticsDebugMode() const
+{
+    return m_websiteDataStore->resourceLoadStatisticsDebugMode();
+}
+
+void WebsiteDataStore::setResourceLoadStatisticsDebugMode(bool enabled)
+{
+    m_websiteDataStore->setResourceLoadStatisticsDebugMode(enabled);
 }
 
 #if !PLATFORM(COCOA)

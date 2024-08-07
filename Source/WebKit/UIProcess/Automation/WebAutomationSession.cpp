@@ -71,9 +71,7 @@ WebAutomationSession::WebAutomationSession()
 WebAutomationSession::~WebAutomationSession()
 {
     ASSERT(!m_client);
-
-    if (m_processPool)
-        m_processPool->removeMessageReceiver(Messages::WebAutomationSession::messageReceiverName());
+    ASSERT(!m_processPool);
 }
 
 void WebAutomationSession::setClient(std::unique_ptr<API::AutomationSessionClient>&& client)
@@ -208,11 +206,8 @@ String WebAutomationSession::handleForWebFrameProxy(const WebFrameProxy& webFram
     return handleForWebFrameID(webFrameProxy.frameID());
 }
 
-RefPtr<Inspector::Protocol::Automation::BrowsingContext> WebAutomationSession::buildBrowsingContextForPage(WebPageProxy& page)
+Ref<Inspector::Protocol::Automation::BrowsingContext> WebAutomationSession::buildBrowsingContextForPage(WebPageProxy& page, WebCore::FloatRect windowFrame)
 {
-    WebCore::FloatRect windowFrame;
-    page.getWindowFrame(windowFrame);
-
     auto originObject = Inspector::Protocol::Automation::Point::create()
         .setX(windowFrame.x())
         .setY(windowFrame.y())
@@ -236,28 +231,44 @@ RefPtr<Inspector::Protocol::Automation::BrowsingContext> WebAutomationSession::b
 
 // Platform-independent Commands.
 
-void WebAutomationSession::getBrowsingContexts(Inspector::ErrorString& errorString, RefPtr<Inspector::Protocol::Array<Inspector::Protocol::Automation::BrowsingContext>>& contexts)
+void WebAutomationSession::getNextContext(Ref<WebAutomationSession>&& protectedThis, Vector<Ref<WebPageProxy>>&& pages, Ref<JSON::ArrayOf<Inspector::Protocol::Automation::BrowsingContext>> contexts, Ref<WebAutomationSession::GetBrowsingContextsCallback>&& callback)
 {
-    contexts = Inspector::Protocol::Array<Inspector::Protocol::Automation::BrowsingContext>::create();
-
+    if (pages.isEmpty()) {
+        callback->sendSuccess(WTFMove(contexts));
+        return;
+    }
+    auto page = pages.takeLast();
+    auto& webPageProxy = page.get();
+    webPageProxy.getWindowFrameWithCallback([this, protectedThis = WTFMove(protectedThis), callback = WTFMove(callback), pages = WTFMove(pages), contexts = WTFMove(contexts), page = WTFMove(page)](WebCore::FloatRect windowFrame) mutable {
+        contexts->addItem(protectedThis->buildBrowsingContextForPage(page.get(), windowFrame));
+        getNextContext(WTFMove(protectedThis), WTFMove(pages), WTFMove(contexts), WTFMove(callback));
+    });
+}
+    
+void WebAutomationSession::getBrowsingContexts(Inspector::ErrorString& errorString, Ref<GetBrowsingContextsCallback>&& callback)
+{
+    Vector<Ref<WebPageProxy>> pages;
     for (auto& process : m_processPool->processes()) {
         for (auto* page : process->pages()) {
             ASSERT(page);
             if (!page->isControlledByAutomation())
                 continue;
-
-            contexts->addItem(buildBrowsingContextForPage(*page));
+            pages.append(*page);
         }
     }
+    
+    getNextContext(makeRef(*this), WTFMove(pages), JSON::ArrayOf<Inspector::Protocol::Automation::BrowsingContext>::create(), WTFMove(callback));
 }
 
-void WebAutomationSession::getBrowsingContext(Inspector::ErrorString& errorString, const String& handle, RefPtr<Inspector::Protocol::Automation::BrowsingContext>& context)
+void WebAutomationSession::getBrowsingContext(Inspector::ErrorString& errorString, const String& handle, Ref<GetBrowsingContextCallback>&& callback)
 {
     WebPageProxy* page = webPageProxyForHandle(handle);
     if (!page)
         FAIL_WITH_PREDEFINED_ERROR(WindowNotFound);
 
-    context = buildBrowsingContextForPage(*page);
+    page->getWindowFrameWithCallback([protectedThis = makeRef(*this), page = makeRef(*page), callback = WTFMove(callback)](WebCore::FloatRect windowFrame) mutable {
+        callback->sendSuccess(protectedThis->buildBrowsingContextForPage(page.get(), windowFrame));
+    });
 }
 
 void WebAutomationSession::createBrowsingContext(Inspector::ErrorString& errorString, String* handle)
@@ -302,89 +313,58 @@ void WebAutomationSession::switchToBrowsingContext(Inspector::ErrorString& error
     page->process().send(Messages::WebAutomationSessionProxy::FocusFrame(page->pageID(), frameID.value()), 0);
 }
 
-void WebAutomationSession::resizeWindowOfBrowsingContext(Inspector::ErrorString& errorString, const String& handle, const JSON::Object& sizeObject)
+void WebAutomationSession::setWindowFrameOfBrowsingContext(Inspector::ErrorString& errorString, const String& handle, const JSON::Object* optionalOriginObject, const JSON::Object* optionalSizeObject, Ref<SetWindowFrameOfBrowsingContextCallback>&& callback)
 {
 #if PLATFORM(IOS)
     FAIL_WITH_PREDEFINED_ERROR(NotImplemented);
 #else
-    float width;
-    if (!sizeObject.getDouble(WTF::ASCIILiteral("width"), width))
-        FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(MissingParameter, "The 'width' parameter was not found or invalid.");
+    std::optional<float> x;
+    std::optional<float> y;
+    if (optionalOriginObject) {
+        if (!(x = optionalOriginObject->getNumber<float>(WTF::ASCIILiteral("x"))))
+            FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(MissingParameter, "The 'x' parameter was not found or invalid.");
 
-    float height;
-    if (!sizeObject.getDouble(WTF::ASCIILiteral("height"), height))
-        FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(MissingParameter, "The 'height' parameter was not found or invalid.");
+        if (!(y = optionalOriginObject->getNumber<float>(WTF::ASCIILiteral("y"))))
+            FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(MissingParameter, "The 'y' parameter was not found or invalid.");
 
-    if (width < 0)
-        FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The 'width' parameter had an invalid value.");
+        if (x.value() < 0)
+            FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The 'x' parameter had an invalid value.");
 
-    if (height < 0)
-        FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The 'height' parameter had an invalid value.");
+        if (y.value() < 0)
+            FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The 'y' parameter had an invalid value.");
+    }
+
+    std::optional<float> width;
+    std::optional<float> height;
+    if (optionalSizeObject) {
+        if (!(width = optionalSizeObject->getNumber<float>(WTF::ASCIILiteral("width"))))
+            FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(MissingParameter, "The 'width' parameter was not found or invalid.");
+
+        if (!(height = optionalSizeObject->getNumber<float>(WTF::ASCIILiteral("height"))))
+            FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(MissingParameter, "The 'height' parameter was not found or invalid.");
+
+        if (width.value() < 0)
+            FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The 'width' parameter had an invalid value.");
+
+        if (height.value() < 0)
+            FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The 'height' parameter had an invalid value.");
+    }
 
     WebPageProxy* page = webPageProxyForHandle(handle);
     if (!page)
         FAIL_WITH_PREDEFINED_ERROR(WindowNotFound);
 
-    WebCore::FloatRect originalFrame;
-    page->getWindowFrame(originalFrame);
+    // FIXME (§10.7.2 Step 10): We need to exit fullscreen before setting the frame.
+    // FIXME (§10.7.2 Step 11): We need to de-miniaturize the window before setting the frame.
 
-    WebCore::FloatRect newFrame = WebCore::FloatRect(originalFrame.location(), WebCore::FloatSize(width, height));
-    if (newFrame == originalFrame)
-        return;
+    page->getWindowFrameWithCallback([callback = WTFMove(callback), page = makeRef(*page), width, height, x, y](WebCore::FloatRect originalFrame) mutable {
+        WebCore::FloatRect newFrame = WebCore::FloatRect(WebCore::FloatPoint(x.value_or(originalFrame.location().x()), y.value_or(originalFrame.location().y())), WebCore::FloatSize(width.value_or(originalFrame.size().width()), height.value_or(originalFrame.size().height())));
+        if (newFrame == originalFrame)
+            return callback->sendSuccess();
 
-    page->setWindowFrame(newFrame);
-
-#if !PLATFORM(GTK)
-    // If nothing changed at all, it's probably fair to report that something went wrong.
-    // (We can't assume that the requested frame size will be honored exactly, however.)
-    WebCore::FloatRect updatedFrame;
-    page->getWindowFrame(updatedFrame);
-    if (originalFrame == updatedFrame)
-        FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InternalError, "The window size was expected to have changed, but did not.");
-#endif
-#endif
-}
-
-void WebAutomationSession::moveWindowOfBrowsingContext(Inspector::ErrorString& errorString, const String& handle, const JSON::Object& positionObject)
-{
-#if PLATFORM(IOS)
-    FAIL_WITH_PREDEFINED_ERROR(NotImplemented);
-#else
-    float x;
-    if (!positionObject.getDouble(WTF::ASCIILiteral("x"), x))
-        FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(MissingParameter, "The 'x' parameter was not found or invalid.");
-
-    float y;
-    if (!positionObject.getDouble(WTF::ASCIILiteral("y"), y))
-        FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(MissingParameter, "The 'y' parameter was not found or invalid.");
-
-    if (x < 0)
-        FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The 'x' parameter had an invalid value.");
-
-    if (y < 0)
-        FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The 'y' parameter had an invalid value.");
-
-    WebPageProxy* page = webPageProxyForHandle(handle);
-    if (!page)
-        FAIL_WITH_PREDEFINED_ERROR(WindowNotFound);
-
-    WebCore::FloatRect originalFrame;
-    page->getWindowFrame(originalFrame);
-
-    WebCore::FloatRect newFrame = WebCore::FloatRect(WebCore::FloatPoint(x, y), originalFrame.size());
-    if (newFrame == originalFrame)
-        return;
-
-    page->setWindowFrame(newFrame);
-
-#if !PLATFORM(GTK)
-    // If nothing changed at all, it's probably fair to report that something went wrong.
-    // (We can't assume that the requested frame size will be honored exactly, however.)
-    WebCore::FloatRect updatedFrame;
-    page->getWindowFrame(updatedFrame);
-    if (originalFrame == updatedFrame)
-        FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InternalError, "The window position was expected to have changed, but did not.");
-#endif
+        page->setWindowFrame(newFrame);
+        callback->sendSuccess();
+    });
 #endif
 }
 
@@ -487,7 +467,7 @@ void WebAutomationSession::waitForNavigationToCompleteOnFrame(WebFrameProxy& fra
 void WebAutomationSession::respondToPendingPageNavigationCallbacksWithTimeout(HashMap<uint64_t, RefPtr<Inspector::BackendDispatcher::CallbackBase>>& map)
 {
     Inspector::ErrorString timeoutError = STRING_FOR_PREDEFINED_ERROR_NAME(Timeout);
-    for (auto id : map.keys()) {
+    for (auto id : copyToVector(map.keys())) {
         auto page = WebProcessProxy::webPage(id);
         auto callback = map.take(id);
         if (page && m_client->isShowingJavaScriptDialogOnPage(*this, *page))
@@ -509,7 +489,7 @@ static WebPageProxy* findPageForFrameID(const WebProcessPool& processPool, uint6
 void WebAutomationSession::respondToPendingFrameNavigationCallbacksWithTimeout(HashMap<uint64_t, RefPtr<Inspector::BackendDispatcher::CallbackBase>>& map)
 {
     Inspector::ErrorString timeoutError = STRING_FOR_PREDEFINED_ERROR_NAME(Timeout);
-    for (auto id : map.keys()) {
+    for (auto id : copyToVector(map.keys())) {
         auto* page = findPageForFrameID(*m_processPool, id);
         auto callback = map.take(id);
         if (page && m_client->isShowingJavaScriptDialogOnPage(*this, *page))
@@ -539,13 +519,14 @@ void WebAutomationSession::willShowJavaScriptDialog(WebPageProxy& page)
             return;
 
         if (page->pageLoadState().isLoading()) {
+            m_loadTimer.stop();
             respondToPendingFrameNavigationCallbacksWithTimeout(m_pendingNormalNavigationInBrowsingContextCallbacksPerFrame);
             respondToPendingPageNavigationCallbacksWithTimeout(m_pendingNormalNavigationInBrowsingContextCallbacksPerPage);
         }
 
         if (!m_evaluateJavaScriptFunctionCallbacks.isEmpty()) {
             Inspector::ErrorString unexpectedAlertOpenError = STRING_FOR_PREDEFINED_ERROR_NAME(UnexpectedAlertOpen);
-            for (auto key : m_evaluateJavaScriptFunctionCallbacks.keys()) {
+            for (auto key : copyToVector(m_evaluateJavaScriptFunctionCallbacks.keys())) {
                 auto callback = m_evaluateJavaScriptFunctionCallbacks.take(key);
                 callback->sendFailure(unexpectedAlertOpenError);
             }
@@ -655,8 +636,12 @@ void WebAutomationSession::inspectorFrontendLoaded(const WebPageProxy& page)
 
 void WebAutomationSession::keyboardEventsFlushedForPage(const WebPageProxy& page)
 {
-    if (auto callback = m_pendingKeyboardEventsFlushedCallbacksPerPage.take(page.pageID()))
+    if (auto callback = m_pendingKeyboardEventsFlushedCallbacksPerPage.take(page.pageID())) {
         callback->sendSuccess(JSON::Object::create());
+
+        if (m_pendingKeyboardEventsFlushedCallbacksPerPage.isEmpty())
+            m_simulatingUserInteraction = false;
+    }
 }
 
 void WebAutomationSession::willClosePage(const WebPageProxy& page)
@@ -667,7 +652,7 @@ void WebAutomationSession::willClosePage(const WebPageProxy& page)
 
 static bool fileCanBeAcceptedForUpload(const String& filename, const HashSet<String>& allowedMIMETypes, const HashSet<String>& allowedFileExtensions)
 {
-    if (!WebCore::fileExists(filename))
+    if (!WebCore::FileSystem::fileExists(filename))
         return false;
 
     if (allowedMIMETypes.isEmpty() && allowedFileExtensions.isEmpty())
@@ -1096,7 +1081,7 @@ static Ref<Inspector::Protocol::Automation::Cookie> buildObjectForCookie(const W
         .setValue(cookie.value)
         .setDomain(cookie.domain)
         .setPath(cookie.path)
-        .setExpires(cookie.expires)
+        .setExpires(cookie.expires ? cookie.expires / 1000 : 0)
         .setSize((cookie.name.length() + cookie.value.length()))
         .setHttpOnly(cookie.httpOnly)
         .setSecure(cookie.secure)
@@ -1104,9 +1089,9 @@ static Ref<Inspector::Protocol::Automation::Cookie> buildObjectForCookie(const W
         .release();
 }
 
-static Ref<Inspector::Protocol::Array<Inspector::Protocol::Automation::Cookie>> buildArrayForCookies(Vector<WebCore::Cookie>& cookiesList)
+static Ref<JSON::ArrayOf<Inspector::Protocol::Automation::Cookie>> buildArrayForCookies(Vector<WebCore::Cookie>& cookiesList)
 {
-    auto cookies = Inspector::Protocol::Array<Inspector::Protocol::Automation::Cookie>::create();
+    auto cookies = JSON::ArrayOf<Inspector::Protocol::Automation::Cookie>::create();
 
     for (const auto& cookie : cookiesList)
         cookies->addItem(buildObjectForCookie(cookie));
@@ -1157,6 +1142,18 @@ void WebAutomationSession::didDeleteCookie(uint64_t callbackID, const String& er
     callback->sendSuccess();
 }
 
+static String domainByAddingDotPrefixIfNeeded(String domain)
+{
+    if (domain[0] != '.') {
+        // RFC 2965: If an explicitly specified value does not start with a dot, the user agent supplies a leading dot.
+        // Assume that any host that ends with a digit is trying to be an IP address.
+        if (!WebCore::URL::hostIsIPAddress(domain))
+            return makeString('.', domain);
+    }
+    
+    return domain;
+}
+
 void WebAutomationSession::addSingleCookie(ErrorString& errorString, const String& browsingContextHandle, const JSON::Object& cookieObject, Ref<AddSingleCookieCallback>&& callback)
 {
     WebPageProxy* page = webPageProxyForHandle(browsingContextHandle);
@@ -1182,7 +1179,7 @@ void WebAutomationSession::addSingleCookie(ErrorString& errorString, const Strin
     if (domain.isEmpty())
         domain = activeURL.host();
 
-    cookie.domain = domain;
+    cookie.domain = domainByAddingDotPrefixIfNeeded(domain);
 
     if (!cookieObject.getString(WTF::ASCIILiteral("path"), cookie.path))
         FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(MissingParameter, "The parameter 'path' was not found.");
@@ -1224,7 +1221,51 @@ void WebAutomationSession::deleteAllCookies(ErrorString& errorString, const Stri
     ASSERT(activeURL.isValid());
 
     WebCookieManagerProxy* cookieManager = m_processPool->supplement<WebCookieManagerProxy>();
-    cookieManager->deleteCookiesForHostname(page->websiteDataStore().sessionID(), activeURL.host());
+    cookieManager->deleteCookiesForHostname(page->websiteDataStore().sessionID(), domainByAddingDotPrefixIfNeeded(activeURL.host()));
+}
+
+void WebAutomationSession::getSessionPermissions(ErrorString&, RefPtr<JSON::ArrayOf<Inspector::Protocol::Automation::SessionPermissionData>>& out_permissions)
+{
+    auto permissionsObjectArray = JSON::ArrayOf<Inspector::Protocol::Automation::SessionPermissionData>::create();
+    auto getUserMediaPermissionObject = Inspector::Protocol::Automation::SessionPermissionData::create()
+        .setPermission(Inspector::Protocol::Automation::SessionPermission::GetUserMedia)
+        .setValue(m_permissionForGetUserMedia)
+        .release();
+
+    permissionsObjectArray->addItem(WTFMove(getUserMediaPermissionObject));
+    out_permissions = WTFMove(permissionsObjectArray);
+}
+
+void WebAutomationSession::setSessionPermissions(ErrorString& errorString, const JSON::Array& permissions)
+{
+    for (auto it = permissions.begin(); it != permissions.end(); ++it) {
+        RefPtr<JSON::Object> permission;
+        if (!it->get()->asObject(permission))
+            FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The parameter 'permissions' is invalid.");
+
+        String permissionName;
+        if (!permission->getString(WTF::ASCIILiteral("permission"), permissionName))
+            FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The parameter 'permission' is missing or invalid.");
+
+        auto parsedPermissionName = Inspector::Protocol::AutomationHelpers::parseEnumValueFromString<Inspector::Protocol::Automation::SessionPermission>(permissionName);
+        if (!parsedPermissionName)
+            FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The parameter 'permission' has an unknown value.");
+
+        bool permissionValue;
+        if (!permission->getBoolean(WTF::ASCIILiteral("value"), permissionValue))
+            FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The parameter 'value' is missing or invalid.");
+
+        switch (parsedPermissionName.value()) {
+        case Inspector::Protocol::Automation::SessionPermission::GetUserMedia:
+            m_permissionForGetUserMedia = permissionValue;
+            break;
+        }
+    }
+}
+
+bool WebAutomationSession::shouldAllowGetUserMediaForPage(const WebPageProxy&) const
+{
+    return m_permissionForGetUserMedia;
 }
 
 #if USE(APPKIT) || PLATFORM(GTK)
@@ -1245,9 +1286,9 @@ static WebEvent::Modifiers protocolModifierToWebEventModifier(Inspector::Protoco
 
     RELEASE_ASSERT_NOT_REACHED();
 }
-#endif // USE(APPKIT)
+#endif // USE(APPKIT) || PLATFORM(GTK)
 
-void WebAutomationSession::performMouseInteraction(Inspector::ErrorString& errorString, const String& handle, const JSON::Object& requestedPositionObject, const String& mouseButtonString, const String& mouseInteractionString, const JSON::Array& keyModifierStrings, RefPtr<Inspector::Protocol::Automation::Point>& updatedPositionObject)
+void WebAutomationSession::performMouseInteraction(Inspector::ErrorString& errorString, const String& handle, const JSON::Object& requestedPositionObject, const String& mouseButtonString, const String& mouseInteractionString, const JSON::Array& keyModifierStrings, Ref<PerformMouseInteractionCallback>&& callback)
 {
 #if !USE(APPKIT) && !PLATFORM(GTK)
     FAIL_WITH_PREDEFINED_ERROR(NotImplemented);
@@ -1264,22 +1305,6 @@ void WebAutomationSession::performMouseInteraction(Inspector::ErrorString& error
     if (!requestedPositionObject.getDouble(WTF::ASCIILiteral("y"), y))
         FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(MissingParameter, "The parameter 'y' was not found.");
 
-    WebCore::FloatRect windowFrame;
-    page->getWindowFrame(windowFrame);
-
-    x = std::min(std::max(0.0f, x), windowFrame.size().width());
-    y = std::min(std::max(0.0f, y + page->topContentInset()), windowFrame.size().height());
-
-    WebCore::IntPoint viewPosition = WebCore::IntPoint(static_cast<int>(x), static_cast<int>(y));
-
-    auto parsedInteraction = Inspector::Protocol::AutomationHelpers::parseEnumValueFromString<Inspector::Protocol::Automation::MouseInteraction>(mouseInteractionString);
-    if (!parsedInteraction)
-        FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The parameter 'interaction' is invalid.");
-
-    auto parsedButton = Inspector::Protocol::AutomationHelpers::parseEnumValueFromString<Inspector::Protocol::Automation::MouseButton>(mouseButtonString);
-    if (!parsedButton)
-        FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The parameter 'button' is invalid.");
-
     WebEvent::Modifiers keyModifiers = (WebEvent::Modifiers)0;
     for (auto it = keyModifierStrings.begin(); it != keyModifierStrings.end(); ++it) {
         String modifierString;
@@ -1292,14 +1317,30 @@ void WebAutomationSession::performMouseInteraction(Inspector::ErrorString& error
         WebEvent::Modifiers enumValue = protocolModifierToWebEventModifier(parsedModifier.value());
         keyModifiers = (WebEvent::Modifiers)(enumValue | keyModifiers);
     }
+    
+    page->getWindowFrameWithCallback([this, protectedThis = makeRef(*this), callback = WTFMove(callback), page = makeRef(*page), x, y, mouseInteractionString, mouseButtonString, keyModifiers](WebCore::FloatRect windowFrame) mutable {
 
-    platformSimulateMouseInteraction(*page, viewPosition, parsedInteraction.value(), parsedButton.value(), keyModifiers);
+        x = std::min(std::max(0.0f, x), windowFrame.size().width());
+        y = std::min(std::max(0.0f, y + page->topContentInset()), windowFrame.size().height());
 
-    updatedPositionObject = Inspector::Protocol::Automation::Point::create()
-        .setX(x)
-        .setY(y - page->topContentInset())
-        .release();
-#endif // USE(APPKIT)
+        WebCore::IntPoint viewPosition = WebCore::IntPoint(static_cast<int>(x), static_cast<int>(y));
+
+        auto parsedInteraction = Inspector::Protocol::AutomationHelpers::parseEnumValueFromString<Inspector::Protocol::Automation::MouseInteraction>(mouseInteractionString);
+        if (!parsedInteraction)
+            return callback->sendFailure(STRING_FOR_PREDEFINED_ERROR_NAME_AND_DETAILS(InvalidParameter, "The parameter 'interaction' is invalid."));
+
+        auto parsedButton = Inspector::Protocol::AutomationHelpers::parseEnumValueFromString<Inspector::Protocol::Automation::MouseButton>(mouseButtonString);
+        if (!parsedButton)
+            return callback->sendFailure(STRING_FOR_PREDEFINED_ERROR_NAME_AND_DETAILS(InvalidParameter, "The parameter 'button' is invalid."));
+
+        platformSimulateMouseInteraction(page, viewPosition, parsedInteraction.value(), parsedButton.value(), keyModifiers);
+
+        callback->sendSuccess(Inspector::Protocol::Automation::Point::create()
+            .setX(x)
+            .setY(y - page->topContentInset())
+            .release());
+    });
+#endif // USE(APPKIT) || PLATFORM(GTK)
 }
 
 void WebAutomationSession::performKeyboardInteractions(ErrorString& errorString, const String& handle, const JSON::Array& interactions, Ref<PerformKeyboardInteractionsCallback>&& callback)
@@ -1372,12 +1413,15 @@ void WebAutomationSession::performKeyboardInteractions(ErrorString& errorString,
         callbackInMap->sendFailure(STRING_FOR_PREDEFINED_ERROR_NAME(Timeout));
     callbackInMap = WTFMove(callback);
 
+    // This is cleared when all keyboard events are flushed.
+    m_simulatingUserInteraction = true;
+
     for (auto& action : actionsToPerform)
         action();
-#endif // PLATFORM(COCOA)
+#endif // PLATFORM(COCOA) || PLATFORM(GTK)
 }
 
-void WebAutomationSession::takeScreenshot(ErrorString& errorString, const String& handle, const String* optionalFrameHandle, const String* optionalNodeHandle, const bool* optionalScrollIntoViewIfNeeded, Ref<TakeScreenshotCallback>&& callback)
+void WebAutomationSession::takeScreenshot(ErrorString& errorString, const String& handle, const String* optionalFrameHandle, const String* optionalNodeHandle, const bool* optionalScrollIntoViewIfNeeded, const bool* optionalClipToViewport, Ref<TakeScreenshotCallback>&& callback)
 {
     WebPageProxy* page = webPageProxyForHandle(handle);
     if (!page)
@@ -1389,11 +1433,12 @@ void WebAutomationSession::takeScreenshot(ErrorString& errorString, const String
 
     bool scrollIntoViewIfNeeded = optionalScrollIntoViewIfNeeded ? *optionalScrollIntoViewIfNeeded : false;
     String nodeHandle = optionalNodeHandle ? *optionalNodeHandle : emptyString();
+    bool clipToViewport = optionalClipToViewport ? *optionalClipToViewport : false;
 
     uint64_t callbackID = m_nextScreenshotCallbackID++;
     m_screenshotCallbacks.set(callbackID, WTFMove(callback));
 
-    page->process().send(Messages::WebAutomationSessionProxy::TakeScreenshot(page->pageID(), frameID.value(), nodeHandle, scrollIntoViewIfNeeded, callbackID), 0);
+    page->process().send(Messages::WebAutomationSessionProxy::TakeScreenshot(page->pageID(), frameID.value(), nodeHandle, scrollIntoViewIfNeeded, clipToViewport, callbackID), 0);
 }
 
 void WebAutomationSession::didTakeScreenshot(uint64_t callbackID, const ShareableBitmap::Handle& imageDataHandle, const String& errorType)

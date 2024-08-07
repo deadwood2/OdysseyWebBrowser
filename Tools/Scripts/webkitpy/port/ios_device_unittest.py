@@ -26,18 +26,14 @@ from webkitpy.common.system.outputcapture import OutputCapture
 from webkitpy.common.system.executive_mock import MockExecutive2, ScriptError
 from webkitpy.port.ios_device import IOSDevicePort
 from webkitpy.port import ios_testcase
+from webkitpy.port import port_testcase
 
 
 class IOSDeviceTest(ios_testcase.IOSTest):
     os_name = 'ios'
-    os_version = ''
+    os_version = None
     port_name = 'ios-device'
     port_maker = IOSDevicePort
-
-    def make_port(self, host=None, port_name=None, options=None, os_name=None, os_version=None, **kwargs):
-        port = super(IOSDeviceTest, self).make_port(host=host, port_name=port_name, options=options, os_name=os_name, s_version=os_version, kwargs=kwargs)
-        port.set_option('version', '11.0')
-        return port
 
     def test_operating_system(self):
         self.assertEqual('ios-device', self.make_port().operating_system())
@@ -49,7 +45,7 @@ class IOSDeviceTest(ios_testcase.IOSTest):
 
     def test_spindump(self):
         def logging_run_command(args):
-            print args
+            print(args)
 
         port = self.make_port()
         port.host.filesystem.files['/__im_tmp/tmp_0_/test-42-spindump.txt'] = 'Spindump file'
@@ -63,7 +59,7 @@ class IOSDeviceTest(ios_testcase.IOSTest):
         def logging_run_command(args):
             if args[0] == '/usr/sbin/spindump':
                 return 1
-            print args
+            print(args)
             return 0
 
         port = self.make_port()
@@ -88,3 +84,19 @@ class IOSDeviceTest(ios_testcase.IOSTest):
         port = self.make_port(port_name=self.port_name)
         with self.assertRaises(RuntimeError):
             port._get_crash_log('DumpRenderTree', 1234, None, None, time.time(), wait_for_log=False)
+
+    def test_layout_test_searchpath_with_apple_additions(self):
+        with port_testcase.bind_mock_apple_additions():
+            search_path = self.make_port().default_baseline_search_path()
+        self.assertEqual(search_path[0], '/additional_testing_path/ios-device-add-ios11-wk1')
+        self.assertEqual(search_path[1], '/mock-checkout/LayoutTests/platform/ios-device-11-wk1')
+        self.assertEqual(search_path[2], '/additional_testing_path/ios-device-add-ios11')
+        self.assertEqual(search_path[3], '/mock-checkout/LayoutTests/platform/ios-device-11')
+        self.assertEqual(search_path[4], '/additional_testing_path/ios-device-wk1')
+        self.assertEqual(search_path[5], '/mock-checkout/LayoutTests/platform/ios-device-wk1')
+        self.assertEqual(search_path[6], '/additional_testing_path/ios-device')
+        self.assertEqual(search_path[7], '/mock-checkout/LayoutTests/platform/ios-device')
+        self.assertEqual(search_path[8], '/additional_testing_path/ios-add-ios11')
+        self.assertEqual(search_path[9], '/mock-checkout/LayoutTests/platform/ios-11')
+        self.assertEqual(search_path[10], '/additional_testing_path/ios-wk1')
+        self.assertEqual(search_path[11], '/mock-checkout/LayoutTests/platform/ios-wk1')

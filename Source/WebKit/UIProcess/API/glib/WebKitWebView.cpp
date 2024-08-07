@@ -35,6 +35,7 @@
 #include "WebKitContextMenuItemPrivate.h"
 #include "WebKitContextMenuPrivate.h"
 #include "WebKitDownloadPrivate.h"
+#include "WebKitEditingCommands.h"
 #include "WebKitEditorStatePrivate.h"
 #include "WebKitEnumTypes.h"
 #include "WebKitError.h"
@@ -44,9 +45,8 @@
 #include "WebKitIconLoadingClient.h"
 #include "WebKitInstallMissingMediaPluginsPermissionRequestPrivate.h"
 #include "WebKitJavascriptResultPrivate.h"
-#include "WebKitLoaderClient.h"
+#include "WebKitNavigationClient.h"
 #include "WebKitNotificationPrivate.h"
-#include "WebKitPolicyClient.h"
 #include "WebKitPrivate.h"
 #include "WebKitResponsePolicyDecision.h"
 #include "WebKitScriptDialogPrivate.h"
@@ -66,6 +66,7 @@
 #include <WebCore/GUniquePtrSoup.h>
 #include <WebCore/JSDOMExceptionHandling.h>
 #include <WebCore/RefPtrCairo.h>
+#include <WebCore/URL.h>
 #include <glib/gi18n-lib.h>
 #include <wtf/SetForScope.h>
 #include <wtf/glib/GRefPtr.h>
@@ -83,6 +84,7 @@
 #if PLATFORM(WPE)
 #include "APIViewClient.h"
 #include "WPEView.h"
+#include "WebKitWebViewBackendPrivate.h"
 #endif
 
 #if USE(LIBNOTIFY)
@@ -142,7 +144,10 @@ enum {
 
     INSECURE_CONTENT_DETECTED,
 
+#if PLATFORM(GTK)
     WEB_PROCESS_CRASHED,
+#endif
+    WEB_PROCESS_TERMINATED,
 
     AUTHENTICATE,
 
@@ -159,6 +164,10 @@ enum {
 
 enum {
     PROP_0,
+
+#if PLATFORM(WPE)
+    PROP_BACKEND,
+#endif
 
     PROP_WEB_CONTEXT,
     PROP_RELATED_VIEW,
@@ -194,6 +203,7 @@ struct _WebKitWebViewPrivate {
     }
 
 #if PLATFORM(WPE)
+    GRefPtr<WebKitWebViewBackend> backend;
     std::unique_ptr<WKWPE::View> view;
 #endif
 
@@ -357,11 +367,6 @@ private:
     void handleDownloadRequest(WKWPE::View&, DownloadProxy& downloadProxy) override
     {
         webkitWebViewHandleDownloadRequest(m_webView, &downloadProxy);
-    }
-
-    JSGlobalContextRef javascriptGlobalContext() override
-    {
-        return webkit_web_view_get_javascript_global_context(m_webView);
     }
 
     WebKitWebView* m_webView;
@@ -646,9 +651,8 @@ static void webkitWebViewConstructed(GObject* object)
     // The related view is only valid during the construction.
     priv->relatedView = nullptr;
 
-    attachLoaderClientToView(webView);
+    attachNavigationClientToView(webView);
     attachUIClientToView(webView);
-    attachPolicyClientToView(webView);
     attachContextMenuClientToView(webView);
     attachFormClientToView(webView);
 
@@ -673,6 +677,13 @@ static void webkitWebViewSetProperty(GObject* object, guint propId, const GValue
     WebKitWebView* webView = WEBKIT_WEB_VIEW(object);
 
     switch (propId) {
+#if PLATFORM(WPE)
+    case PROP_BACKEND: {
+        gpointer backend = g_value_get_boxed(value);
+        webView->priv->backend = backend ? adoptGRef(static_cast<WebKitWebViewBackend*>(backend)) : nullptr;
+        break;
+    }
+#endif
     case PROP_WEB_CONTEXT: {
         gpointer webContext = g_value_get_object(value);
         webView->priv->context = webContext ? WEBKIT_WEB_CONTEXT(webContext) : nullptr;
@@ -715,6 +726,11 @@ static void webkitWebViewGetProperty(GObject* object, guint propId, GValue* valu
     WebKitWebView* webView = WEBKIT_WEB_VIEW(object);
 
     switch (propId) {
+#if PLATFORM(WPE)
+    case PROP_BACKEND:
+        g_value_set_static_boxed(value, webView->priv->backend.get());
+        break;
+#endif
     case PROP_WEB_CONTEXT:
         g_value_set_object(value, webView->priv->context.get());
         break;
@@ -820,6 +836,25 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
     webViewClass->run_file_chooser = webkitWebViewRunFileChooser;
     webViewClass->authenticate = webkitWebViewAuthenticate;
     webViewClass->show_notification = webkitWebViewShowNotification;
+
+#if PLATFORM(WPE)
+    /**
+     * WebKitWebView:backend:
+     *
+     * The #WebKitWebViewBackend of the view.
+     *
+     * since: 2.20
+     */
+    g_object_class_install_property(
+        gObjectClass,
+        PROP_BACKEND,
+        g_param_spec_boxed(
+            "backend",
+            _("Backend"),
+            _("The backend for the web view"),
+            WEBKIT_TYPE_WEB_VIEW_BACKEND,
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
+#endif
 
     /**
      * WebKitWebView:web-context:
@@ -1753,6 +1788,7 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
             G_TYPE_NONE, 1,
             WEBKIT_TYPE_INSECURE_CONTENT_EVENT);
 
+#if PLATFORM(GTK)
     /**
      * WebKitWebView::web-process-crashed:
      * @web_view: the #WebKitWebView
@@ -1761,6 +1797,8 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * Returns: %TRUE to stop other handlers from being invoked for the event.
      *    %FALSE to propagate the event further.
+     *
+     * Deprecated: 2.20: Use WebKitWebView::web-process-terminated instead.
      */
     signals[WEB_PROCESS_CRASHED] = g_signal_new(
         "web-process-crashed",
@@ -1770,6 +1808,27 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
         g_signal_accumulator_true_handled, nullptr,
         g_cclosure_marshal_generic,
         G_TYPE_BOOLEAN, 0);
+#endif
+
+    /**
+     * WebKitWebView::web-process-terminated:
+     * @web_view: the #WebKitWebView
+     * @reason: the a #WebKitWebProcessTerminationReason
+     *
+     * This signal is emitted when the web process terminates abnormally due
+     * to @reason.
+     *
+     * Since: 2.20
+     */
+    signals[WEB_PROCESS_TERMINATED] = g_signal_new(
+        "web-process-terminated",
+        G_TYPE_FROM_CLASS(webViewClass),
+        G_SIGNAL_RUN_LAST,
+        G_STRUCT_OFFSET(WebKitWebViewClass, web_process_terminated),
+        0, 0,
+        g_cclosure_marshal_VOID__ENUM,
+        G_TYPE_NONE, 1,
+        WEBKIT_TYPE_WEB_PROCESS_TERMINATION_REASON);
 
     /**
      * WebKitWebView::authenticate:
@@ -1915,7 +1974,7 @@ void webkitWebViewCreatePage(WebKitWebView* webView, Ref<API::PageConfiguration>
 #if PLATFORM(GTK)
     webkitWebViewBaseCreateWebPage(WEBKIT_WEB_VIEW_BASE(webView), WTFMove(configuration));
 #elif PLATFORM(WPE)
-    webView->priv->view.reset(WKWPE::View::create(nullptr, configuration.get()));
+    webView->priv->view.reset(WKWPE::View::create(webkit_web_view_backend_get_wpe_backend(webView->priv->backend.get()), configuration.get()));
 #endif
 }
 
@@ -2285,9 +2344,13 @@ void webkitWebViewSubmitFormRequest(WebKitWebView* webView, WebKitFormSubmission
 
 void webkitWebViewHandleAuthenticationChallenge(WebKitWebView* webView, AuthenticationChallengeProxy* authenticationChallenge)
 {
+#if PLATFORM(GTK)
     G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
     gboolean privateBrowsingEnabled = webView->priv->isEphemeral || webkit_settings_get_enable_private_browsing(webView->priv->settings.get());
     G_GNUC_END_IGNORE_DEPRECATIONS;
+#else
+    gboolean privateBrowsingEnabled = webView->priv->isEphemeral;
+#endif
     webView->priv->authenticationRequest = adoptGRef(webkitAuthenticationRequestCreate(authenticationChallenge, privateBrowsingEnabled));
     gboolean returnValue;
     g_signal_emit(webView, signals[AUTHENTICATE], 0, webView->priv->authenticationRequest.get(), &returnValue);
@@ -2344,6 +2407,25 @@ bool webkitWebViewShowOptionMenu(WebKitWebView* webView, const IntRect& rect, We
     gboolean handled;
     g_signal_emit(webView, signals[SHOW_OPTION_MENU], 0, menu, event, &menuRect, &handled);
     return handled;
+}
+#endif
+
+#if PLATFORM(WPE)
+/**
+ * webkit_web_view_get_backend:
+ * @web_view: a #WebKitWebView
+ *
+ * Get the #WebKitWebViewBackend of @web_view
+ *
+ * Returns: (transfer none): the #WebKitWebViewBackend of @web_view
+ *
+ * Since: 2.20
+ */
+WebKitWebViewBackend* webkit_web_view_get_backend(WebKitWebView* webView)
+{
+    g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
+
+    return webView->priv->backend.get();
 }
 #endif
 
@@ -2520,7 +2602,7 @@ void webkit_web_view_load_alternate_html(WebKitWebView* webView, const gchar* co
     g_return_if_fail(content);
     g_return_if_fail(contentURI);
 
-    getPage(webView).loadAlternateHTMLString(String::fromUTF8(content), String::fromUTF8(baseURI), String::fromUTF8(contentURI));
+    getPage(webView).loadAlternateHTMLString(String::fromUTF8(content), URL(URL(), String::fromUTF8(baseURI)), URL(URL(), String::fromUTF8(contentURI)));
 }
 
 /**
@@ -2656,7 +2738,7 @@ void webkit_web_view_reload_bypass_cache(WebKitWebView* webView)
 {
     g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
 
-    getPage(webView).reload(WebCore::ReloadOption::FromOrigin);
+    getPage(webView).reload(ReloadOption::FromOrigin);
 }
 
 /**
@@ -3085,9 +3167,9 @@ void webkit_web_view_can_execute_editing_command(WebKitWebView* webView, const c
     g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
     g_return_if_fail(command);
 
-    GTask* task = g_task_new(webView, cancellable, callback, userData);
-    getPage(webView).validateCommand(String::fromUTF8(command), [task](const String&, bool isEnabled, int32_t, WebKit::CallbackBase::Error) {
-        g_task_return_boolean(adoptGRef(task).get(), isEnabled);        
+    GRefPtr<GTask> task = adoptGRef(g_task_new(webView, cancellable, callback, userData));
+    getPage(webView).validateCommand(String::fromUTF8(command), [task = WTFMove(task)](const String&, bool isEnabled, int32_t, WebKit::CallbackBase::Error) {
+        g_task_return_boolean(task.get(), isEnabled);
     });
 }
 
@@ -3167,6 +3249,7 @@ WebKitFindController* webkit_web_view_get_find_controller(WebKitWebView* webView
     return webView->priv->findController.get();
 }
 
+#if PLATFORM(GTK)
 /**
  * webkit_web_view_get_javascript_global_context:
  * @web_view: a #WebKitWebView
@@ -3186,7 +3269,7 @@ JSGlobalContextRef webkit_web_view_get_javascript_global_context(WebKitWebView* 
     return webView->priv->javascriptGlobalContext.get();
 }
 
-static void webkitWebViewRunJavaScriptCallback(API::SerializedScriptValue* wkSerializedScriptValue, const WebCore::ExceptionDetails& exceptionDetails, GTask* task)
+static void webkitWebViewRunJavaScriptCallback(API::SerializedScriptValue* wkSerializedScriptValue, const ExceptionDetails& exceptionDetails, GTask* task)
 {
     if (g_task_return_error_if_cancelled(task))
         return;
@@ -3213,7 +3296,7 @@ static void webkitWebViewRunJavaScriptCallback(API::SerializedScriptValue* wkSer
 
     auto* jsContext = webkit_web_view_get_javascript_global_context(WEBKIT_WEB_VIEW(g_task_get_source_object(task)));
     g_task_return_pointer(task, webkitJavascriptResultCreate(jsContext,
-        *wkSerializedScriptValue->internalRepresentation()),
+        wkSerializedScriptValue->internalRepresentation()),
         reinterpret_cast<GDestroyNotify>(webkit_javascript_result_unref));
 }
 
@@ -3237,7 +3320,7 @@ void webkit_web_view_run_javascript(WebKitWebView* webView, const gchar* script,
     g_return_if_fail(script);
 
     GTask* task = g_task_new(webView, cancellable, callback, userData);
-    getPage(webView).runJavaScriptInMainFrame(String::fromUTF8(script), true, [task](API::SerializedScriptValue* serializedScriptValue, bool, const WebCore::ExceptionDetails& exceptionDetails, WebKit::CallbackBase::Error) {
+    getPage(webView).runJavaScriptInMainFrame(String::fromUTF8(script), true, [task](API::SerializedScriptValue* serializedScriptValue, bool, const ExceptionDetails& exceptionDetails, WebKit::CallbackBase::Error) {
         webkitWebViewRunJavaScriptCallback(serializedScriptValue, exceptionDetails, adoptGRef(task).get());
     });
 }
@@ -3328,7 +3411,7 @@ static void resourcesStreamReadCallback(GObject* object, GAsyncResult* result, g
     WebKitWebView* webView = WEBKIT_WEB_VIEW(g_task_get_source_object(task.get()));
     gpointer outputStreamData = g_memory_output_stream_get_data(G_MEMORY_OUTPUT_STREAM(object));
     getPage(webView).runJavaScriptInMainFrame(String::fromUTF8(reinterpret_cast<const gchar*>(outputStreamData)), true,
-        [task](API::SerializedScriptValue* serializedScriptValue, bool, const WebCore::ExceptionDetails& exceptionDetails, WebKit::CallbackBase::Error) {
+        [task](API::SerializedScriptValue* serializedScriptValue, bool, const ExceptionDetails& exceptionDetails, WebKit::CallbackBase::Error) {
             webkitWebViewRunJavaScriptCallback(serializedScriptValue, exceptionDetails, task.get());
         });
 }
@@ -3387,6 +3470,7 @@ WebKitJavascriptResult* webkit_web_view_run_javascript_from_gresource_finish(Web
 
     return static_cast<WebKitJavascriptResult*>(g_task_propagate_pointer(G_TASK(result), error));
 }
+#endif
 
 /**
  * webkit_web_view_get_main_resource:
@@ -3754,10 +3838,15 @@ cairo_surface_t* webkit_web_view_get_snapshot_finish(WebKitWebView* webView, GAs
 }
 #endif
 
-void webkitWebViewWebProcessCrashed(WebKitWebView* webView)
+void webkitWebViewWebProcessTerminated(WebKitWebView* webView, WebKitWebProcessTerminationReason reason)
 {
-    gboolean returnValue;
-    g_signal_emit(webView, signals[WEB_PROCESS_CRASHED], 0, &returnValue);
+#if PLATFORM(GTK)
+    if (reason == WEBKIT_WEB_PROCESS_CRASHED) {
+        gboolean returnValue;
+        g_signal_emit(webView, signals[WEB_PROCESS_CRASHED], 0, &returnValue);
+    }
+#endif
+    g_signal_emit(webView, signals[WEB_PROCESS_TERMINATED], 0, reason);
 }
 
 #if PLATFORM(GTK)
@@ -3893,7 +3982,7 @@ WebKitEditorState* webkit_web_view_get_editor_state(WebKitWebView *webView)
     g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
 
     if (!webView->priv->editorState)
-        webView->priv->editorState = adoptGRef(webkitEditorStateCreate(getPage(webView).editorState()));
+        webView->priv->editorState = adoptGRef(webkitEditorStateCreate(getPage(webView)));
 
     return webView->priv->editorState.get();
 }

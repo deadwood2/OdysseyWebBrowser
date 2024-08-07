@@ -44,13 +44,13 @@ static uint64_t generateCallbackID()
     return ++callbackID;
 }
 
-Ref<StorageProcessProxy> StorageProcessProxy::create(WebProcessPool* processPool)
+Ref<StorageProcessProxy> StorageProcessProxy::create(WebProcessPool& processPool)
 {
     return adoptRef(*new StorageProcessProxy(processPool));
 }
 
-StorageProcessProxy::StorageProcessProxy(WebProcessPool* processPool)
-    : ChildProcessProxy(processPool->alwaysRunsAtBackgroundPriority())
+StorageProcessProxy::StorageProcessProxy(WebProcessPool& processPool)
+    : ChildProcessProxy(processPool.alwaysRunsAtBackgroundPriority())
     , m_processPool(processPool)
     , m_numPendingConnectionRequests(0)
 {
@@ -83,7 +83,7 @@ void StorageProcessProxy::didReceiveMessage(IPC::Connection& connection, IPC::De
     }
 }
 
-void StorageProcessProxy::fetchWebsiteData(SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, WTF::Function<void (WebsiteData)>&& completionHandler)
+void StorageProcessProxy::fetchWebsiteData(PAL::SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, WTF::Function<void (WebsiteData)>&& completionHandler)
 {
     ASSERT(canSendMessage());
 
@@ -93,7 +93,7 @@ void StorageProcessProxy::fetchWebsiteData(SessionID sessionID, OptionSet<Websit
     send(Messages::StorageProcess::FetchWebsiteData(sessionID, dataTypes, callbackID), 0);
 }
 
-void StorageProcessProxy::deleteWebsiteData(WebCore::SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, std::chrono::system_clock::time_point modifiedSince, WTF::Function<void ()>&& completionHandler)
+void StorageProcessProxy::deleteWebsiteData(PAL::SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, WallTime modifiedSince, WTF::Function<void ()>&& completionHandler)
 {
     auto callbackID = generateCallbackID();
 
@@ -101,7 +101,7 @@ void StorageProcessProxy::deleteWebsiteData(WebCore::SessionID sessionID, Option
     send(Messages::StorageProcess::DeleteWebsiteData(sessionID, dataTypes, modifiedSince, callbackID), 0);
 }
 
-void StorageProcessProxy::deleteWebsiteDataForOrigins(SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, const Vector<WebCore::SecurityOriginData>& origins, WTF::Function<void()>&& completionHandler)
+void StorageProcessProxy::deleteWebsiteDataForOrigins(PAL::SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, const Vector<WebCore::SecurityOriginData>& origins, WTF::Function<void()>&& completionHandler)
 {
     ASSERT(canSendMessage());
 
@@ -111,7 +111,7 @@ void StorageProcessProxy::deleteWebsiteDataForOrigins(SessionID sessionID, Optio
     send(Messages::StorageProcess::DeleteWebsiteDataForOrigins(sessionID, dataTypes, origins, callbackID), 0);
 }
 
-void StorageProcessProxy::getStorageProcessConnection(Ref<Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply>&& reply)
+void StorageProcessProxy::getStorageProcessConnection(bool isServiceWorkerProcess, Ref<Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply>&& reply)
 {
     m_pendingConnectionReplies.append(WTFMove(reply));
 
@@ -120,7 +120,7 @@ void StorageProcessProxy::getStorageProcessConnection(Ref<Messages::WebProcessPr
         return;
     }
 
-    send(Messages::StorageProcess::CreateStorageToWebProcessConnection(), 0, IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply);
+    send(Messages::StorageProcess::CreateStorageToWebProcessConnection(isServiceWorkerProcess), 0, IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply);
 }
 
 void StorageProcessProxy::didClose(IPC::Connection&)
@@ -151,7 +151,7 @@ void StorageProcessProxy::didClose(IPC::Connection&)
     m_pendingDeleteWebsiteDataForOriginsCallbacks.clear();
 
     // Tell ProcessPool to forget about this storage process. This may cause us to be deleted.
-    m_processPool->storageProcessCrashed(this);
+    m_processPool.storageProcessCrashed(this);
 }
 
 void StorageProcessProxy::didReceiveInvalidMessage(IPC::Connection&, IPC::StringReference messageReceiverName, IPC::StringReference messageName)
@@ -198,7 +198,7 @@ void StorageProcessProxy::getSandboxExtensionsForBlobFiles(uint64_t requestID, c
     extensions.allocate(paths.size());
     for (size_t i = 0; i < paths.size(); ++i) {
         // ReadWrite is required for creating hard links, which is something that might be done with these extensions.
-        SandboxExtension::createHandle(paths[i], SandboxExtension::ReadWrite, extensions[i]);
+        SandboxExtension::createHandle(paths[i], SandboxExtension::Type::ReadWrite, extensions[i]);
     }
 
     send(Messages::StorageProcess::DidGetSandboxExtensionsForBlobFiles(requestID, extensions), 0);
@@ -215,9 +215,21 @@ void StorageProcessProxy::didFinishLaunching(ProcessLauncher* launcher, IPC::Con
     }
 
     for (unsigned i = 0; i < m_numPendingConnectionRequests; ++i)
-        send(Messages::StorageProcess::CreateStorageToWebProcessConnection(), 0);
+        send(Messages::StorageProcess::CreateStorageToWebProcessConnection(false), 0);
     
     m_numPendingConnectionRequests = 0;
 }
+
+#if ENABLE(SERVICE_WORKER)
+void StorageProcessProxy::establishWorkerContextConnectionToStorageProcess()
+{
+    m_processPool.establishWorkerContextConnectionToStorageProcess(*this, std::nullopt);
+}
+
+void StorageProcessProxy::establishWorkerContextConnectionToStorageProcessForExplicitSession(PAL::SessionID sessionID)
+{
+    m_processPool.establishWorkerContextConnectionToStorageProcess(*this, sessionID);
+}
+#endif
 
 } // namespace WebKit

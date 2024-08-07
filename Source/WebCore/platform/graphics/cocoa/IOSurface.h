@@ -27,6 +27,7 @@
 
 #if USE(IOSURFACE)
 
+#include <objc/objc.h>
 #include "GraphicsContext.h"
 #include "IntSize.h"
 
@@ -46,6 +47,39 @@ public:
         YUV422,
         RGB10,
         RGB10A8,
+    };
+    
+    class Locker {
+    public:
+        enum class AccessMode {
+            ReadOnly,
+            ReadWrite
+        };
+
+        Locker(IOSurface& surface, AccessMode mode = AccessMode::ReadOnly)
+            : m_surface(surface)
+            , m_flags(flagsFromMode(mode))
+        {
+            IOSurfaceLock(m_surface.surface(), m_flags, nullptr);
+        }
+
+        ~Locker()
+        {
+            IOSurfaceUnlock(m_surface.surface(), m_flags, nullptr);
+        }
+
+        void * surfaceBaseAddress() const
+        {
+            return IOSurfaceGetBaseAddress(m_surface.surface());
+        }
+
+    private:
+        static uint32_t flagsFromMode(AccessMode mode)
+        {
+            return mode == AccessMode::ReadOnly ? kIOSurfaceLockReadOnly : 0;
+        }
+        IOSurface& m_surface;
+        uint32_t m_flags;
     };
 
     WEBCORE_EXPORT static std::unique_ptr<IOSurface> create(IntSize, CGColorSpaceRef, Format = Format::RGBA);
@@ -67,7 +101,7 @@ public:
     WEBCORE_EXPORT RetainPtr<CGImageRef> createImage();
     WEBCORE_EXPORT static RetainPtr<CGImageRef> sinkIntoImage(std::unique_ptr<IOSurface>);
 
-    id asLayerContents() const { return (id)(CFTypeRef)m_surface.get(); }
+    id asLayerContents() const { return reinterpret_cast<id>(m_surface.get()); }
     IOSurfaceRef surface() const { return m_surface.get(); }
     WEBCORE_EXPORT GraphicsContext& ensureGraphicsContext();
     WEBCORE_EXPORT CGContextRef ensurePlatformContext();
@@ -88,9 +122,11 @@ public:
 
     IntSize size() const { return m_size; }
     size_t totalBytes() const { return m_totalBytes; }
+
     CGColorSpaceRef colorSpace() const { return m_colorSpace.get(); }
     WEBCORE_EXPORT Format format() const;
     IOSurfaceID surfaceID() const;
+    size_t bytesPerRow() const;
 
     WEBCORE_EXPORT bool isInUse() const;
 
@@ -102,6 +138,8 @@ public:
     WEBCORE_EXPORT static bool allowConversionFromFormatToFormat(Format, Format);
     WEBCORE_EXPORT static void convertToFormat(std::unique_ptr<WebCore::IOSurface>&& inSurface, Format, WTF::Function<void(std::unique_ptr<WebCore::IOSurface>)>&&);
 #endif
+
+    void migrateColorSpaceToProperties();
 
 private:
     IOSurface(IntSize, IntSize contextSize, CGColorSpaceRef, Format, bool& success);

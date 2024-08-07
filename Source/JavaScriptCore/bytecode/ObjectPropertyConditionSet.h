@@ -67,7 +67,8 @@ public:
     }
 
     bool isValidAndWatchable() const;
-    
+
+    size_t size() const { return m_data ? m_data->vector.size() : 0; }
     bool isEmpty() const
     {
         return !m_data;
@@ -163,9 +164,6 @@ ObjectPropertyConditionSet generateConditionsForPropertyMiss(
 ObjectPropertyConditionSet generateConditionsForPropertySetterMiss(
     VM&, JSCell* owner, ExecState*, Structure* headStructure, UniquedStringImpl* uid);
 ObjectPropertyConditionSet generateConditionsForPrototypePropertyHit(
-    VM&, JSCell* owner, ExecState*, Structure* headStructure, JSObject* prototype,
-    UniquedStringImpl* uid);
-ObjectPropertyConditionSet generateConditionsForPrototypePropertyHitCustom(
     VM&, JSCell* owner, ExecState*, Structure* headStructure, JSObject* prototype,
     UniquedStringImpl* uid);
 

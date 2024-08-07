@@ -29,15 +29,13 @@ WI.RecordingTraceDetailsSidebarPanel = class RecordingTraceDetailsSidebarPanel e
     {
         super("recording-trace", WI.UIString("Trace"));
 
+        const selectable = false;
+        this._backtraceTreeOutline = new WI.TreeOutline(null, selectable);
+        this._backtraceTreeOutline.disclosureButtons = false;
+        this._backtraceTreeController = new WI.CallFrameTreeController(this._backtraceTreeOutline);
+
         this._recording = null;
-        this._index = NaN;
-    }
-
-    // Static
-
-    static disallowInstanceForClass()
-    {
-        return true;
+        this._action = null;
     }
 
     // Public
@@ -58,34 +56,33 @@ WI.RecordingTraceDetailsSidebarPanel = class RecordingTraceDetailsSidebarPanel e
             return;
 
         this._recording = recording;
-        this._index = NaN;
+        this._action = null;
 
         this.contentView.element.removeChildren();
     }
 
-    updateActionIndex(index, context, options = {})
+    updateAction(action, context, options = {})
     {
-        console.assert(!this._recording || (index >= 0 && index < this._recording.actions.length));
-        if (!this._recording || index < 0 || index > this._recording.actions.length || index === this._index)
+        if (!this._recording || action === this._action)
             return;
 
-        this._index = index;
+        this._action = action;
 
         this.contentView.element.removeChildren();
 
-        let trace = this._recording.actions[this._index].trace;
+        let trace = this._action.trace;
+        this._backtraceTreeController.callFrames = trace;
+
         if (!trace.length) {
             let noTraceDataElement = this.contentView.element.appendChild(document.createElement("div"));
             noTraceDataElement.classList.add("no-trace-data");
 
             let noTraceDataMessageElement = noTraceDataElement.appendChild(document.createElement("div"));
             noTraceDataMessageElement.classList.add("message");
-            noTraceDataMessageElement.textContent = WI.UIString("No Trace Data");
+            noTraceDataMessageElement.textContent = WI.UIString("Call Stack Unavailable");
             return;
         }
 
-        const showFunctionName = true;
-        for (let callFrame of trace)
-            this.contentView.element.appendChild(new WI.CallFrameView(callFrame, showFunctionName));
+        this.contentView.element.appendChild(this._backtraceTreeOutline.element);
     }
 };

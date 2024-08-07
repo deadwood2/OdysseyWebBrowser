@@ -43,16 +43,17 @@
 #import <QuartzCore/CATransaction.h>
 #import <objc/runtime.h>
 
-#import "CoreMediaSoftLink.h"
+#import <pal/cf/CoreMediaSoftLink.h>
 #import "CoreVideoSoftLink.h"
 
 namespace WebCore {
+using namespace PAL;
 
 static const int videoSampleRate = 90000;
 
-CaptureSourceOrError MockRealtimeVideoSource::create(const String& name, const MediaConstraints* constraints)
+CaptureSourceOrError MockRealtimeVideoSource::create(const String& deviceID, const String& name, const MediaConstraints* constraints)
 {
-    auto source = adoptRef(*new MockRealtimeVideoSourceMac(name));
+    auto source = adoptRef(*new MockRealtimeVideoSourceMac(deviceID, name));
     // FIXME: We should report error messages
     if (constraints && source->applyConstraints(*constraints))
         return { };
@@ -60,14 +61,14 @@ CaptureSourceOrError MockRealtimeVideoSource::create(const String& name, const M
     return CaptureSourceOrError(WTFMove(source));
 }
 
-MockRealtimeVideoSourceMac::MockRealtimeVideoSourceMac(const String& name)
-    : MockRealtimeVideoSource(name)
+MockRealtimeVideoSourceMac::MockRealtimeVideoSourceMac(const String& deviceID, const String& name)
+    : MockRealtimeVideoSource(deviceID, name)
 {
 }
 
 RetainPtr<CMSampleBufferRef> MockRealtimeVideoSourceMac::CMSampleBufferFromPixelBuffer(CVPixelBufferRef pixelBuffer)
 {
-    if (!pixelBuffer)
+        if (!pixelBuffer)
         return nullptr;
 
     CMTime sampleTime = CMTimeMake((elapsedTime() + .1) * videoSampleRate, videoSampleRate);
@@ -93,7 +94,7 @@ RetainPtr<CMSampleBufferRef> MockRealtimeVideoSourceMac::CMSampleBufferFromPixel
 
 RetainPtr<CVPixelBufferRef> MockRealtimeVideoSourceMac::pixelBufferFromCGImage(CGImageRef image) const
 {
-    static CGColorSpaceRef deviceRGBColorSpace = CGColorSpaceCreateDeviceRGB();
+    static CGColorSpaceRef sRGBColorSpace = sRGBColorSpaceRef();
 
     CGSize imageSize = CGSizeMake(CGImageGetWidth(image), CGImageGetHeight(image));
     if (!m_bufferPool) {
@@ -128,7 +129,7 @@ RetainPtr<CVPixelBufferRef> MockRealtimeVideoSourceMac::pixelBufferFromCGImage(C
 
     CVPixelBufferLockBaseAddress(pixelBuffer, 0);
     void* data = CVPixelBufferGetBaseAddress(pixelBuffer);
-    auto context = adoptCF(CGBitmapContextCreate(data, imageSize.width, imageSize.height, 8, CVPixelBufferGetBytesPerRow(pixelBuffer), deviceRGBColorSpace, (CGBitmapInfo) kCGImageAlphaNoneSkipFirst));
+    auto context = adoptCF(CGBitmapContextCreate(data, imageSize.width, imageSize.height, 8, CVPixelBufferGetBytesPerRow(pixelBuffer), sRGBColorSpace, (CGBitmapInfo) kCGImageAlphaNoneSkipFirst));
     CGContextDrawImage(context.get(), CGRectMake(0, 0, CGImageGetWidth(image), CGImageGetHeight(image)), image);
     CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
 

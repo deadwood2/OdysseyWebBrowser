@@ -38,7 +38,7 @@ namespace WebKit {
 
 struct NavigationActionData {
     void encode(IPC::Encoder&) const;
-    static bool decode(IPC::Decoder&, NavigationActionData&);
+    static std::optional<NavigationActionData> decode(IPC::Decoder&);
 
     WebCore::NavigationType navigationType { WebCore::NavigationType::Other };
     WebEvent::Modifiers modifiers { };
@@ -49,6 +49,7 @@ struct NavigationActionData {
     WebCore::ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicy { WebCore::ShouldOpenExternalURLsPolicy::ShouldNotAllow };
     WTF::String downloadAttribute;
     WebCore::FloatPoint clickLocationInRootViewCoordinates;
+    bool isRedirect { false };
 };
 
 }

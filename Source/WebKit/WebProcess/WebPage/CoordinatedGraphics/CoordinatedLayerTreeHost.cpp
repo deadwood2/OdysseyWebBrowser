@@ -37,17 +37,12 @@
 #include <WebCore/MainFrame.h>
 #include <WebCore/PageOverlayController.h>
 
-#if USE(COORDINATED_GRAPHICS_THREADED)
-#include "ThreadSafeCoordinatedSurface.h"
-#endif
-
 #if USE(GLIB_EVENT_LOOP)
 #include <wtf/glib/RunLoopSourcePriority.h>
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 Ref<CoordinatedLayerTreeHost> CoordinatedLayerTreeHost::create(WebPage& webPage)
 {
@@ -69,7 +64,6 @@ CoordinatedLayerTreeHost::CoordinatedLayerTreeHost(WebPage& webPage)
 #endif
     m_coordinator.createRootLayer(m_webPage.size());
 
-    CoordinatedSurface::setFactory(createCoordinatedSurface);
     scheduleLayerFlush();
 }
 
@@ -192,6 +186,7 @@ void CoordinatedLayerTreeHost::layerFlushTimerFired()
         return;
 
     m_coordinator.syncDisplayState();
+    m_webPage.flushPendingEditorStateUpdate();
 
     if (!m_isValid || !m_coordinator.rootCompositingLayer())
         return;
@@ -209,24 +204,9 @@ void CoordinatedLayerTreeHost::layerFlushTimerFired()
     }
 }
 
-void CoordinatedLayerTreeHost::paintLayerContents(const GraphicsLayer*, GraphicsContext&, const IntRect&)
-{
-}
-
 void CoordinatedLayerTreeHost::commitSceneState(const CoordinatedGraphicsState& state)
 {
     m_isWaitingForRenderer = true;
-}
-
-RefPtr<CoordinatedSurface> CoordinatedLayerTreeHost::createCoordinatedSurface(const IntSize& size, CoordinatedSurface::Flags flags)
-{
-#if USE(COORDINATED_GRAPHICS_THREADED)
-    return ThreadSafeCoordinatedSurface::create(size, flags);
-#else
-    UNUSED_PARAM(size);
-    UNUSED_PARAM(flags);
-    return nullptr;
-#endif
 }
 
 void CoordinatedLayerTreeHost::deviceOrPageScaleFactorChanged()

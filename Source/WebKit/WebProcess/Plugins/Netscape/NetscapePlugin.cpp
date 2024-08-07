@@ -33,12 +33,12 @@
 #include "NetscapePluginStream.h"
 #include "PluginController.h"
 #include "ShareableBitmap.h"
+#include <JavaScriptCore/JSObject.h>
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/HTTPHeaderMap.h>
 #include <WebCore/IntRect.h>
-#include <WebCore/URL.h>
 #include <WebCore/SharedBuffer.h>
-#include <runtime/JSObject.h>
+#include <WebCore/URL.h>
 #include <utility>
 #include <wtf/text/CString.h>
 
@@ -568,11 +568,8 @@ NetscapePluginStream* NetscapePlugin::streamFromID(uint64_t streamID)
 
 void NetscapePlugin::stopAllStreams()
 {
-    Vector<RefPtr<NetscapePluginStream>> streams;
-    copyValuesToVector(m_streams, streams);
-
-    for (size_t i = 0; i < streams.size(); ++i)
-        streams[i]->stop(NPRES_USER_BREAK);
+    for (auto& stream : copyToVector(m_streams.values()))
+        stream->stop(NPRES_USER_BREAK);
 }
 
 bool NetscapePlugin::allowPopups() const
@@ -756,7 +753,7 @@ RefPtr<ShareableBitmap> NetscapePlugin::snapshot()
     IntSize backingStoreSize = m_pluginSize;
     backingStoreSize.scale(contentsScaleFactor());
 
-    RefPtr<ShareableBitmap> bitmap = ShareableBitmap::createShareable(backingStoreSize, ShareableBitmap::SupportsAlpha);
+    RefPtr<ShareableBitmap> bitmap = ShareableBitmap::createShareable(backingStoreSize, { });
     auto context = bitmap->createGraphicsContext();
 
     // FIXME: We should really call applyDeviceScaleFactor instead of scale, but that ends up calling into WKSI

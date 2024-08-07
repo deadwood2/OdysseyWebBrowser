@@ -32,6 +32,11 @@ WI.DOMObserver = class DOMObserver
         WI.domTreeManager._documentUpdated();
     }
 
+    inspect(nodeId)
+    {
+        WI.domTreeManager.inspectElement(nodeId);
+    }
+
     setChildNodes(parentId, payloads)
     {
         WI.domTreeManager._setChildNodes(parentId, payloads);
@@ -95,5 +100,15 @@ WI.DOMObserver = class DOMObserver
     pseudoElementRemoved(parentNodeId, pseudoElementId)
     {
         WI.domTreeManager._pseudoElementRemoved(parentNodeId, pseudoElementId);
+    }
+
+    didAddEventListener(nodeId)
+    {
+        WI.domTreeManager.didAddEventListener(nodeId);
+    }
+
+    willRemoveEventListener(nodeId)
+    {
+        WI.domTreeManager.willRemoveEventListener(nodeId);
     }
 };

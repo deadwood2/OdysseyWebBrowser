@@ -1,6 +1,6 @@
 set(MiniBrowser_INCLUDE_DIRECTORIES
     "${FORWARDING_HEADERS_DIR}"
-    "${FORWARDING_HEADERS_DIR}/WebKit"
+    "${FORWARDING_HEADERS_DIR}/WebKitLegacy"
     "${CMAKE_SOURCE_DIR}"
     "${CMAKE_SOURCE_DIR}/Source"
 )
@@ -22,25 +22,21 @@ set(MiniBrowser_SOURCES
 set(MiniBrowser_LIBRARIES
     DbgHelp
     WTF
-    WebKit
-    WebKitGUID
+    WebKitLegacy
+    WebKitLegacyGUID
     comctl32
     comsupp
     comsuppw
     shlwapi
 )
 
-if (WTF_PLATFORM_WIN_CAIRO)
+if (USE_CF)
     list(APPEND MiniBrowser_LIBRARIES
-        CFLite
-    )
-else ()
-    list(APPEND MiniBrowser_LIBRARIES
-        CoreFoundation
+        ${COREFOUNDATION_LIBRARY}
     )
 endif ()
 
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /NODEFAULTLIB:MSVCRT /NODEFAULTLIB:MSVCRTD")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${MSVC_RUNTIME_LINKER_FLAGS}")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ENTRY:wWinMainCRTStartup")
 
 if (${WTF_PLATFORM_WIN_CAIRO})

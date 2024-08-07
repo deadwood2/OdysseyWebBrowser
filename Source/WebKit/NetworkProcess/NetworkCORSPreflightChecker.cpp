@@ -26,14 +26,11 @@
 #include "config.h"
 #include "NetworkCORSPreflightChecker.h"
 
-#if USE(NETWORK_SESSION)
-
 #include "AuthenticationManager.h"
 #include "Logging.h"
 #include "NetworkLoadParameters.h"
 #include "SessionTracker.h"
 #include <WebCore/CrossOriginAccessControl.h>
-#include <WebCore/CrossOriginPreflightResultCache.h>
 #include <WebCore/SecurityOrigin.h>
 
 #define RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(m_parameters.sessionID.isAlwaysOnLoggingAllowed(), Network, "%p - NetworkCORSPreflightChecker::" fmt, this, ##__VA_ARGS__)
@@ -60,11 +57,6 @@ NetworkCORSPreflightChecker::~NetworkCORSPreflightChecker()
 void NetworkCORSPreflightChecker::startPreflight()
 {
     RELEASE_LOG_IF_ALLOWED("startPreflight");
-    if (CrossOriginPreflightResultCache::singleton().canSkipPreflight(m_parameters.sourceOrigin->toString(), m_parameters.originalRequest.url(), m_parameters.allowStoredCredentials, m_parameters.originalRequest.httpMethod(), m_parameters.originalRequest.httpHeaderFields())) {
-        RELEASE_LOG_IF_ALLOWED("startPreflight - preflight can be skipped thanks to cached result");
-        m_completionCallback(Result::Success);
-        return;
-    }
 
     NetworkLoadParameters loadParameters;
     loadParameters.sessionID = m_parameters.sessionID;
@@ -95,7 +87,7 @@ void NetworkCORSPreflightChecker::didReceiveResponseNetworkSession(WebCore::Reso
 {
     RELEASE_LOG_IF_ALLOWED("didReceiveResponseNetworkSession");
     m_response = WTFMove(response);
-    completionHandler(PolicyAction::PolicyUse);
+    completionHandler(PolicyAction::Use);
 }
 
 void NetworkCORSPreflightChecker::didReceiveData(Ref<WebCore::SharedBuffer>&&)
@@ -114,7 +106,7 @@ void NetworkCORSPreflightChecker::didCompleteWithError(const WebCore::ResourceEr
     RELEASE_LOG_IF_ALLOWED("didComplete http_status_code: %d", m_response.httpStatusCode());
 
     String errorDescription;
-    if (!validatePreflightResponse(m_parameters.originalRequest, m_response, m_parameters.allowStoredCredentials, m_parameters.sourceOrigin, errorDescription)) {
+    if (!validatePreflightResponse(m_parameters.originalRequest, m_response, m_parameters.storedCredentialsPolicy, m_parameters.sourceOrigin, errorDescription)) {
         RELEASE_LOG_IF_ALLOWED("didComplete, AccessControl error: %s", errorDescription.utf8().data());
         m_completionCallback(Result::Failure);
         return;
@@ -139,5 +131,3 @@ void NetworkCORSPreflightChecker::cannotShowURL()
 }
 
 } // Namespace WebKit
-
-#endif // USE(NETWORK_SESSION)

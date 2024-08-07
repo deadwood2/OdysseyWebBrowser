@@ -57,7 +57,7 @@ void HTTPCookieStore::cookies(Function<void (const Vector<WebCore::Cookie>&)>&& 
     auto* pool = m_owningDataStore->processPoolForCookieStorageOperations();
     if (!pool) {
         Vector<WebCore::Cookie> allCookies;
-        if (m_owningDataStore->sessionID() == WebCore::SessionID::defaultSessionID())
+        if (m_owningDataStore->sessionID() == PAL::SessionID::defaultSessionID())
             allCookies = WebCore::NetworkStorageSession::defaultStorageSession().getAllCookies();
         else
             allCookies = m_owningDataStore->pendingCookies();
@@ -78,7 +78,7 @@ void HTTPCookieStore::setCookie(const WebCore::Cookie& cookie, Function<void ()>
 {
     auto* pool = m_owningDataStore->processPoolForCookieStorageOperations();
     if (!pool) {
-        if (m_owningDataStore->sessionID() == WebCore::SessionID::defaultSessionID())
+        if (m_owningDataStore->sessionID() == PAL::SessionID::defaultSessionID())
             WebCore::NetworkStorageSession::defaultStorageSession().setCookie(cookie);
         else
             m_owningDataStore->addPendingCookie(cookie);
@@ -99,7 +99,7 @@ void HTTPCookieStore::deleteCookie(const WebCore::Cookie& cookie, Function<void 
 {
     auto* pool = m_owningDataStore->processPoolForCookieStorageOperations();
     if (!pool) {
-        if (m_owningDataStore->sessionID() == WebCore::SessionID::defaultSessionID())
+        if (m_owningDataStore->sessionID() == PAL::SessionID::defaultSessionID())
             WebCore::NetworkStorageSession::defaultStorageSession().deleteCookie(cookie);
         else
             m_owningDataStore->removePendingCookie(cookie);

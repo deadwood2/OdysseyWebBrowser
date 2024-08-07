@@ -32,6 +32,7 @@
 #include "ScrollGestureController.h"
 #include "WPEView.h"
 #include "WebContextMenuProxy.h"
+#include "WebContextMenuProxyWPE.h"
 #include <WebCore/ActivityState.h>
 #include <WebCore/NotImplemented.h>
 
@@ -230,9 +231,9 @@ RefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy&)
 }
 
 #if ENABLE(CONTEXT_MENUS)
-RefPtr<WebContextMenuProxy> PageClientImpl::createContextMenuProxy(WebPageProxy&, const ContextMenuContextData&, const UserData&)
+Ref<WebContextMenuProxy> PageClientImpl::createContextMenuProxy(WebPageProxy&, ContextMenuContextData&& context, const UserData& userData)
 {
-    return nullptr;
+    return WebContextMenuProxyWPE::create(WTFMove(context), userData);
 }
 #endif
 
@@ -324,5 +325,59 @@ JSGlobalContextRef PageClientImpl::javascriptGlobalContext()
 {
     return m_view.javascriptGlobalContext();
 }
+
+#if ENABLE(FULLSCREEN_API)
+WebFullScreenManagerProxyClient& PageClientImpl::fullScreenManagerProxyClient()
+{
+    return *this;
+}
+
+void PageClientImpl::closeFullScreenManager()
+{
+    notImplemented();
+}
+
+bool PageClientImpl::isFullScreen()
+{
+    return m_view.isFullScreen();
+}
+
+void PageClientImpl::enterFullScreen()
+{
+    if (isFullScreen())
+        return;
+
+    WebFullScreenManagerProxy* fullScreenManagerProxy = m_view.page().fullScreenManager();
+    if (fullScreenManagerProxy) {
+        fullScreenManagerProxy->willEnterFullScreen();
+        m_view.setFullScreen(true);
+        fullScreenManagerProxy->didEnterFullScreen();
+    }
+}
+
+void PageClientImpl::exitFullScreen()
+{
+    if (!isFullScreen())
+        return;
+
+    WebFullScreenManagerProxy* fullScreenManagerProxy = m_view.page().fullScreenManager();
+    if (fullScreenManagerProxy) {
+        fullScreenManagerProxy->willExitFullScreen();
+        m_view.setFullScreen(false);
+        fullScreenManagerProxy->didExitFullScreen();
+    }
+}
+
+void PageClientImpl::beganEnterFullScreen(const WebCore::IntRect& /* initialFrame */, const WebCore::IntRect& /* finalFrame */)
+{
+    notImplemented();
+}
+
+void PageClientImpl::beganExitFullScreen(const WebCore::IntRect& /* initialFrame */, const WebCore::IntRect& /* finalFrame */)
+{
+    notImplemented();
+}
+
+#endif // ENABLE(FULLSCREEN_API)
 
 } // namespace WebKit

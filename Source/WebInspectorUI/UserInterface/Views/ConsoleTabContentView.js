@@ -27,8 +27,7 @@ WI.ConsoleTabContentView = class ConsoleTabContentView extends WI.ContentBrowser
 {
     constructor(identifier)
     {
-        let {image, title} = WI.ConsoleTabContentView.tabInfo();
-        let tabBarItem = new WI.GeneralTabBarItem(image, title);
+        let tabBarItem = WI.GeneralTabBarItem.fromTabInfo(WI.ConsoleTabContentView.tabInfo());
 
         super(identifier || "console", "console", tabBarItem, null, null, true);
     }
@@ -52,17 +51,12 @@ WI.ConsoleTabContentView = class ConsoleTabContentView extends WI.ContentBrowser
     {
         super.shown();
 
-        WI.consoleContentView.prompt.focus();
-
-        if (this.contentBrowser.currentContentView === WI.consoleContentView)
-            return;
-
-        // Be sure to close the view in the split content browser before showing it in the
-        // tab content browser. We can only show a content view in one browser at a time.
-        if (WI.consoleContentView.parentContainer)
-            WI.consoleContentView.parentContainer.closeContentView(WI.consoleContentView);
+        WI.hideSplitConsole();
 
         this.contentBrowser.showContentView(WI.consoleContentView);
+        WI.consoleContentView.dispatchEventToListeners(WI.ContentView.Event.NavigationItemsDidChange);
+
+        WI.consoleContentView.prompt.focus();
 
         console.assert(this.contentBrowser.currentContentView === WI.consoleContentView);
     }

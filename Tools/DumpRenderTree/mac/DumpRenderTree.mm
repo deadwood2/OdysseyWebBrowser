@@ -62,6 +62,7 @@
 #import <WebKit/DOMElement.h>
 #import <WebKit/DOMExtensions.h>
 #import <WebKit/DOMRange.h>
+#import <WebKit/WKCrashReporter.h>
 #import <WebKit/WKRetainPtr.h>
 #import <WebKit/WKString.h>
 #import <WebKit/WKStringCF.h>
@@ -86,7 +87,6 @@
 #import <WebKit/WebResourceLoadDelegate.h>
 #import <WebKit/WebStorageManagerPrivate.h>
 #import <WebKit/WebViewPrivate.h>
-#import <WebKitSystemInterface.h>
 #import <getopt.h>
 #import <wtf/Assertions.h>
 #import <wtf/FastMalloc.h>
@@ -107,12 +107,12 @@
 #import "UIKitSPI.h"
 #import "UIKitTestSPI.h"
 #import <QuartzCore/QuartzCore.h>
-#import <WebCore/CoreGraphicsSPI.h>
 #import <WebKit/WAKWindow.h>
 #import <WebKit/WebCoreThread.h>
 #import <WebKit/WebCoreThreadRun.h>
 #import <WebKit/WebDOMOperations.h>
 #import <fcntl.h>
+#import <pal/spi/cg/CoreGraphicsSPI.h>
 #endif
 
 extern "C" {
@@ -394,6 +394,7 @@ static NSSet *allowedFontFamilySet()
         @"New Peninim MT",
         @"Optima",
         @"Osaka",
+        @"Palatino",
         @"Papyrus",
         @"PCMyungjo",
         @"PilGi",
@@ -840,22 +841,24 @@ static NSString *libraryPathForDumpRenderTree()
 static void enableExperimentalFeatures(WebPreferences* preferences)
 {
     [preferences setCSSGridLayoutEnabled:YES];
-    [preferences setDisplayContentsEnabled:YES];
     // FIXME: SpringTimingFunction
     [preferences setGamepadsEnabled:YES];
     [preferences setLinkPreloadEnabled:YES];
     [preferences setMediaPreloadingEnabled:YES];
     // FIXME: InputEvents
+    [preferences setFetchAPIKeepAliveEnabled:YES];
     [preferences setWebAnimationsEnabled:YES];
-    [preferences setBeaconAPIEnabled:YES];
     [preferences setWebGL2Enabled:YES];
     [preferences setWebGPUEnabled:YES];
     // FIXME: AsyncFrameScrollingEnabled
     [preferences setWebRTCLegacyAPIEnabled:YES];
-    [preferences setCredentialManagementEnabled:YES];
+    [preferences setWebAuthenticationEnabled:NO];
     [preferences setCacheAPIEnabled:NO];
     [preferences setReadableByteStreamAPIEnabled:YES];
     [preferences setWritableStreamAPIEnabled:YES];
+    preferences.encryptedMediaAPIEnabled = YES;
+    [preferences setAccessibilityObjectModelEnabled:YES];
+    [preferences setVisualViewportAPIEnabled:YES];
 }
 
 // Called before each test.
@@ -952,10 +955,14 @@ static void resetWebPreferencesToConsistentValues()
     [preferences setShadowDOMEnabled:YES];
     [preferences setCustomElementsEnabled:YES];
 
+    [preferences setDataTransferItemsEnabled:YES];
+    [preferences setCustomPasteboardDataEnabled:YES];
+
     [preferences setWebGL2Enabled:YES];
     [preferences setWebGPUEnabled:YES];
 
     [preferences setDownloadAttributeEnabled:YES];
+    [preferences setDirectoryUploadEnabled:YES];
 
     [preferences setHiddenPageDOMTimerThrottlingEnabled:NO];
     [preferences setHiddenPageCSSAnimationSuspensionEnabled:NO];
@@ -969,6 +976,7 @@ static void resetWebPreferencesToConsistentValues()
     [preferences setUserTimingEnabled:YES];
 
     [preferences setCacheAPIEnabled:NO];
+    preferences.mediaCapabilitiesEnabled = YES;
 
     [WebPreferences _clearNetworkLoaderSession];
     [WebPreferences _setCurrentNetworkLoaderSessionCookieAcceptPolicy:NSHTTPCookieAcceptPolicyOnlyFromMainDocumentDomain];
@@ -978,9 +986,12 @@ static void setWebPreferencesForTestOptions(const TestOptions& options)
 {
     WebPreferences *preferences = [WebPreferences standardPreferences];
 
+    preferences.attachmentElementEnabled = options.enableAttachmentElement;
+    preferences.acceleratedDrawingEnabled = options.useAcceleratedDrawing;
     preferences.intersectionObserverEnabled = options.enableIntersectionObserver;
+    preferences.menuItemElementEnabled = options.enableMenuItemElement;
     preferences.modernMediaControlsEnabled = options.enableModernMediaControls;
-    preferences.credentialManagementEnabled = options.enableCredentialManagement;
+    preferences.webAuthenticationEnabled = options.enableWebAuthentication;
     preferences.isSecureContextAttributeEnabled = options.enableIsSecureContextAttribute;
     preferences.inspectorAdditionsEnabled = options.enableInspectorAdditions;
 }
@@ -1028,9 +1039,6 @@ static void setDefaultsToConsistentValuesForTesting()
         @"NSOverlayScrollersEnabled": @NO,
         @"AppleShowScrollBars": @"Always",
         @"NSButtonAnimationsEnabled": @NO, // Ideally, we should find a way to test animations, but for now, make sure that the dumped snapshot matches actual state.
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200
-        @"AppleSystemFontOSSubversion": @(10),
-#endif
         @"NSWindowDisplayWithRunLoopObserver": @YES, // Temporary workaround, see <rdar://problem/20351297>.
         @"AppleEnableSwipeNavigateWithScrolls": @YES,
         @"com.apple.swipescrolldirection": @1,
@@ -1038,53 +1046,14 @@ static void setDefaultsToConsistentValuesForTesting()
 
     [[NSUserDefaults standardUserDefaults] setValuesForKeysWithDictionary:dict];
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200
-    // Make NSFont use the new defaults.
-    [NSFont initialize];
-#endif
-
     NSDictionary *processInstanceDefaults = @{
         WebDatabaseDirectoryDefaultsKey: [libraryPath stringByAppendingPathComponent:@"Databases"],
         WebStorageDirectoryDefaultsKey: [libraryPath stringByAppendingPathComponent:@"LocalStorage"],
         WebKitLocalCacheDefaultsKey: [libraryPath stringByAppendingPathComponent:@"LocalCache"],
         WebKitResourceLoadStatisticsDirectoryDefaultsKey: [libraryPath stringByAppendingPathComponent:@"LocalStorage"],
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200
-        // This needs to also be added to argument domain because of <rdar://problem/20210002>.
-        @"AppleSystemFontOSSubversion": @(10),
-#endif
     };
 
     [[NSUserDefaults standardUserDefaults] setVolatileDomain:processInstanceDefaults forName:NSArgumentDomain];
-}
-
-static void runThread()
-{
-    static ThreadIdentifier previousId = 0;
-    ThreadIdentifier currentId = currentThread();
-    // Verify 2 successive threads do not get the same Id.
-    ASSERT(previousId != currentId);
-    previousId = currentId;
-}
-
-static void* runPthread(void*)
-{
-    runThread();
-    return nullptr;
-}
-
-static void testThreadIdentifierMap()
-{
-    // Imitate 'foreign' threads that are not created by WTF.
-    pthread_t pthread;
-    pthread_create(&pthread, 0, &runPthread, 0);
-    pthread_join(pthread, 0);
-
-    pthread_create(&pthread, 0, &runPthread, 0);
-    pthread_join(pthread, 0);
-
-    // Now create another thread using WTF. On OSX, it will have the same pthread handle
-    // but should get a different RefPtr<Thread>.
-    Thread::create("DumpRenderTree: test", runThread);
 }
 
 static void allocateGlobalControllers()
@@ -1274,9 +1243,6 @@ void dumpRenderTree(int argc, const char *argv[])
 
     [NSURLRequest setAllowsAnyHTTPSCertificate:YES forHost:@"localhost"];
     [NSURLRequest setAllowsAnyHTTPSCertificate:YES forHost:@"127.0.0.1"];
-
-    // http://webkit.org/b/32689
-    testThreadIdentifierMap();
 
     if (threaded)
         startJavaScriptThreads();
@@ -1585,9 +1551,9 @@ static void changeWindowScaleIfNeeded(const char* testPathOrUR)
     WTF::String localPathOrUrl = String(testPathOrUR);
     float currentScaleFactor = [[[mainFrame webView] window] backingScaleFactor];
     float requiredScaleFactor = 1;
-    if (localPathOrUrl.findIgnoringCase("/hidpi-3x-") != notFound)
+    if (localPathOrUrl.containsIgnoringASCIICase("/hidpi-3x-"))
         requiredScaleFactor = 3;
-    else if (localPathOrUrl.findIgnoringCase("/hidpi-") != notFound)
+    else if (localPathOrUrl.containsIgnoringASCIICase("/hidpi-"))
         requiredScaleFactor = 2;
     if (currentScaleFactor == requiredScaleFactor)
         return;
@@ -1938,7 +1904,7 @@ static void runTest(const string& inputLine)
         testPath = [url absoluteString];
 
     NSString *informationString = [@"CRASHING TEST: " stringByAppendingString:testPath];
-    WKSetCrashReportApplicationSpecificInformation((CFStringRef)informationString);
+    WebKit::setCrashReportApplicationSpecificInformation((CFStringRef)informationString);
 
     TestOptions options(url, command);
     if (!mainFrameTestOptions || !options.webViewIsCompatibleWithOptions(mainFrameTestOptions.value())) {
@@ -1960,7 +1926,7 @@ static void runTest(const string& inputLine)
     gTestRunner = TestRunner::create(testURL, command.expectedPixelHash);
     gTestRunner->setAllowedHosts(allowedHosts);
     gTestRunner->setCustomTimeout(command.timeout);
-    gTestRunner->setDumpJSConsoleLogInStdErr(command.dumpJSConsoleLogInStdErr);
+    gTestRunner->setDumpJSConsoleLogInStdErr(command.dumpJSConsoleLogInStdErr || options.dumpJSConsoleLogInStdErr);
     topLoadingFrame = nil;
 #if !PLATFORM(IOS)
     ASSERT(!draggingInfo); // the previous test should have called eventSender.mouseUp to drop!

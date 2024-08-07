@@ -1,4 +1,4 @@
-# Copyright (C) 2011 Apple Inc. All rights reserved.
+# Copyright (C) 2011-2018 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -933,6 +933,20 @@ class Instruction < Node
             raise "Unhandled opcode #{opcode} at #{codeOriginString}"
         end
     end
+
+    def prepareToLower(backendName)
+        if respond_to?("recordMetaData#{backendName}")
+            send("recordMetaData#{backendName}")
+        else
+            recordMetaDataDefault
+        end
+    end
+
+    def recordMetaDataDefault
+        $asm.codeOrigin codeOriginString if $enableCodeOriginComments
+        $asm.annotation annotation if $enableInstrAnnotations
+        $asm.debugAnnotation codeOrigin.debugDirective if $enableDebugAnnotations
+    end
 end
 
 class Error < NoChildren
@@ -1110,10 +1124,18 @@ end
 
 class LabelReference < Node
     attr_reader :label
+    attr_accessor :offset
     
     def initialize(codeOrigin, label)
         super(codeOrigin)
         @label = label
+        @offset = 0
+    end
+    
+    def plusOffset(additionalOffset)
+        result = LabelReference.new(codeOrigin, label)
+        result.offset = @offset + additionalOffset
+        result
     end
     
     def children

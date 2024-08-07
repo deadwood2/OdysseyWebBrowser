@@ -26,6 +26,7 @@
 #pragma once
 
 #include "PageClient.h"
+#include "WebFullScreenManagerProxy.h"
 
 namespace WKWPE {
 class View;
@@ -35,7 +36,11 @@ namespace WebKit {
 
 class ScrollGestureController;
 
-class PageClientImpl final : public PageClient {
+class PageClientImpl final : public PageClient
+#if ENABLE(FULLSCREEN_API)
+    , public WebFullScreenManagerProxyClient
+#endif
+{
 public:
     PageClientImpl(WKWPE::View&);
     virtual ~PageClientImpl();
@@ -83,7 +88,7 @@ private:
 
     RefPtr<WebPopupMenuProxy> createPopupMenuProxy(WebPageProxy&) override;
 #if ENABLE(CONTEXT_MENUS)
-    RefPtr<WebContextMenuProxy> createContextMenuProxy(WebPageProxy&, const ContextMenuContextData&, const UserData&) override;
+    Ref<WebContextMenuProxy> createContextMenuProxy(WebPageProxy&, ContextMenuContextData&&, const UserData&) override;
 #endif
 
     void enterAcceleratedCompositingMode(const LayerTreeContext&) override;
@@ -105,6 +110,8 @@ private:
     void didSameDocumentNavigationForMainFrame(SameDocumentNavigationType) override;
 
     void didChangeBackgroundColor() override;
+    void isPlayingAudioWillChange() final { }
+    void isPlayingAudioDidChange() final { }
 
     void refView() override;
     void derefView() override;
@@ -114,6 +121,17 @@ private:
 #endif
 
     void didRestoreScrollPosition() override;
+
+#if ENABLE(FULLSCREEN_API)
+    WebFullScreenManagerProxyClient& fullScreenManagerProxyClient() final;
+
+    void closeFullScreenManager() override;
+    bool isFullScreen() override;
+    void enterFullScreen() override;
+    void exitFullScreen() override;
+    void beganEnterFullScreen(const WebCore::IntRect& initialFrame, const WebCore::IntRect& finalFrame) override;
+    void beganExitFullScreen(const WebCore::IntRect& initialFrame, const WebCore::IntRect& finalFrame) override;
+#endif
 
     WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection() override;
 

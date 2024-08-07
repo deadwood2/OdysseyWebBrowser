@@ -15,19 +15,73 @@ set(TestWebKitAPI_LIBRARIES
 )
 
 if (ENABLE_WEBKIT)
-    set(test_webkit2_api_LIBRARIES
+    set(test_webkit_api_LIBRARIES
         JavaScriptCore
         TestWebKitAPIBase
         WTF
-        WebKit2
+        WebKit
         gtest
     )
+
+    set(test_webkit_api_SOURCES
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/AboutBlankLoad.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/CanHandleRequest.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/CookieManager.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/DocumentStartUserScriptAlertCrash.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/DOMWindowExtensionBasic.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/DOMWindowExtensionNoCache.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/DownloadDecideDestinationCrash.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/EnumerateMediaDevices.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/EvaluateJavaScript.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/FailedLoad.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/Find.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/ForceRepaint.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/FrameMIMETypeHTML.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/FrameMIMETypePNG.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/Geolocation.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/GetInjectedBundleInitializationUserDataCallback.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/HitTestResultNodeHandle.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/InjectedBundleBasic.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/InjectedBundleFrameHitTest.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/InjectedBundleInitializationUserDataCallbackWins.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/LoadAlternateHTMLStringWithNonDirectoryURL.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/LoadCanceledNoServerRedirectCallback.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/LoadPageOnCrash.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/MouseMoveAfterCrash.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/NewFirstVisuallyNonEmptyLayout.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/NewFirstVisuallyNonEmptyLayoutFails.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/NewFirstVisuallyNonEmptyLayoutForImages.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/NewFirstVisuallyNonEmptyLayoutFrames.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/PageLoadBasic.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/PageLoadDidChangeLocationWithinPageForFrame.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/ParentFrame.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/PendingAPIRequestURL.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/PreventEmptyUserAgent.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/PrivateBrowsingPushStateNoHistoryCallback.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/ProvisionalURLAfterWillSendRequestCallback.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/ReloadPageAfterCrash.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/ResizeWindowAfterCrash.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/RestoreSessionStateContainingFormData.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/ShouldGoToBackForwardListItem.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/TextFieldDidBeginAndEndEditing.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/UserMedia.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/UserMessage.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/WillSendSubmitEvent.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/WKPageCopySessionStateWithFiltering.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/WKPageGetScaleFactorNotZero.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/WKPreferences.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/WKRetainPtr.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/WKString.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/WKStringJSString.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit/WKURL.cpp
+    )
+
     list(APPEND TestWebKitAPI_LIBRARIES
-        WebKit2
+        WebKit
     )
 else ()
     list(APPEND TestWebKitAPI_LIBRARIES
-        WebKit${DEBUG_SUFFIX}
+        WebKitLegacy${DEBUG_SUFFIX}
     )
 endif ()
 
@@ -39,6 +93,7 @@ set(TestWTF_SOURCES
     ${TESTWEBKITAPI_DIR}/Tests/WTF/BloomFilter.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/CString.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/CheckedArithmeticOperations.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/ConcurrentPtrHashSet.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Condition.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/CrossThreadTask.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/DateMath.cpp
@@ -49,10 +104,12 @@ set(TestWTF_SOURCES
     ${TESTWEBKITAPI_DIR}/Tests/WTF/HashCountedSet.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/HashMap.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/HashSet.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/Hasher.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/IntegerToStringConversion.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/JSONValue.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/LEBDecoder.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/LifecycleLogger.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/LineEnding.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/ListHashSet.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Lock.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Logger.cpp
@@ -65,6 +122,12 @@ set(TestWTF_SOURCES
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Optional.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/OptionSet.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/ParkingLot.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/Poisoned.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/PoisonedRef.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/PoisonedRefPtr.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/PoisonedUniquePtr.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/PoisonedUniquePtrForNonTriviallyDestructibleArrays.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/PoisonedUniquePtrForTriviallyDestructibleArrays.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/PriorityQueue.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/RedBlackTree.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Ref.cpp
@@ -86,6 +149,7 @@ set(TestWTF_SOURCES
     ${TESTWEBKITAPI_DIR}/Tests/WTF/TextBreakIterator.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/ThreadGroup.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/ThreadMessages.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/Threading.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Time.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/UniqueRef.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Variant.cpp
@@ -107,15 +171,16 @@ include_directories(
     ${JAVASCRIPTCORE_DIR}
     ${PAL_DIR}
     ${THIRDPARTY_DIR}/gtest/include
-    ${WEBKIT2_DIR}/Platform/IPC
-    ${WEBKIT2_DIR}/Shared
-    ${WEBKIT2_DIR}/Shared/API
-    ${WEBKIT2_DIR}/Shared/API/c
-    ${WEBKIT2_DIR}/Shared/Plugins
-    ${WEBKIT2_DIR}/UIProcess
-    ${WEBKIT2_DIR}/UIProcess/API
-    ${WEBKIT2_DIR}/WebProcess/InjectedBundle
-    ${WEBKIT2_DIR}/WebProcess/InjectedBundle/API/c
+    ${WEBKIT_DIR}/Platform/IPC
+    ${WEBKIT_DIR}/Shared
+    ${WEBKIT_DIR}/Shared/API
+    ${WEBKIT_DIR}/Shared/API/c
+    ${WEBKIT_DIR}/Shared/Plugins
+    ${WEBKIT_DIR}/UIProcess
+    ${WEBKIT_DIR}/UIProcess/API
+    ${WEBKIT_DIR}/UIProcess/API/C
+    ${WEBKIT_DIR}/WebProcess/InjectedBundle
+    ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/c
 )
 
 if (ENABLE_WEBKIT)
@@ -201,18 +266,24 @@ if (COMPILER_IS_GCC_OR_CLANG)
                                         -Wno-unused-parameter)
 endif ()
 
+# FIXME: This works around compatibility problems in the old version of the third-pary
+# googletest source code checkout. It should be removed once we upgrade to a newer version.
+if (COMPILER_IS_CLANG)
+    add_definitions(-DGTEST_HAS_TR1_TUPLE=0)
+endif ()
+
 if (ENABLE_WEBKIT)
     add_library(TestWebKitAPIBase
         ${test_main_SOURCES}
-        ${webkit2_api_harness_SOURCES}
+        ${webkit_api_harness_SOURCES}
         ${TESTWEBKITAPI_DIR}/JavaScriptTest.cpp
         ${TESTWEBKITAPI_DIR}/PlatformUtilities.cpp
         ${TESTWEBKITAPI_DIR}/TestsController.cpp
     )
 
-    target_link_libraries(TestWebKitAPIBase JavaScriptCore WTF WebKit2 gtest)
+    target_link_libraries(TestWebKitAPIBase JavaScriptCore WTF WebKit gtest)
 
-    add_dependencies(TestWebKitAPIBase WebKit2 ${ForwardingHeadersForTestWebKitAPI_NAME} ${ForwardingNetworkHeadersForTestWebKitAPI_NAME})
+    add_dependencies(TestWebKitAPIBase WebKit ${ForwardingHeadersForTestWebKitAPI_NAME} ${ForwardingNetworkHeadersForTestWebKitAPI_NAME})
 
     if (COMPILER_IS_GCC_OR_CLANG)
         WEBKIT_ADD_TARGET_CXX_FLAGS(TestWebKitAPIBase -Wno-sign-compare

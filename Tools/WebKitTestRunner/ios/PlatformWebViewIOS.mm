@@ -29,12 +29,12 @@
 #import "TestController.h"
 #import "TestRunnerWKWebView.h"
 #import "UIKitTestSPI.h"
-#import <WebCore/QuartzCoreSPI.h>
 #import <WebKit/WKImageCG.h>
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKSnapshotConfiguration.h>
 #import <WebKit/WKWebViewConfiguration.h>
 #import <WebKit/WKWebViewPrivate.h>
+#import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <wtf/BlockObjCExceptions.h>
 #import <wtf/RetainPtr.h>
 
@@ -345,7 +345,7 @@ RetainPtr<CGImageRef> PlatformWebView::windowSnapshotImage()
     size_t rowBytes = CARenderServerGetBufferRowBytes(buffer);
 
     static CGColorSpaceRef sRGBSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-    RetainPtr<CGDataProviderRef> provider = adoptCF(CGDataProviderCreateWithData(0, data, CARenderServerGetBufferDataSize(buffer), releaseDataProviderData));
+    RetainPtr<CGDataProviderRef> provider = adoptCF(CGDataProviderCreateWithData(buffer, data, CARenderServerGetBufferDataSize(buffer), releaseDataProviderData));
     
     RetainPtr<CGImageRef> cgImage = adoptCF(CGImageCreate(bufferWidth, bufferHeight, 8, 32, rowBytes, sRGBSpace, kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host, provider.get(), 0, false, kCGRenderingIntentDefault));
 
@@ -356,6 +356,9 @@ RetainPtr<CGImageRef> PlatformWebView::windowSnapshotImage()
 
 void PlatformWebView::setNavigationGesturesEnabled(bool enabled)
 {
+#if WK_API_ENABLED
+    [platformView() setAllowsBackForwardNavigationGestures:enabled];
+#endif
 }
 
 } // namespace WTR

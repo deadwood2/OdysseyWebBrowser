@@ -53,12 +53,24 @@ public:
 
     const WebCore::ResourceRequest& request() const { return m_request; }
 
+    void appendRedirectionURL(const WebCore::URL&);
+    Vector<WebCore::URL> takeRedirectChain() { return WTFMove(m_redirectChain); }
+
+    void setWasUserInitiated(bool value) { m_wasUserInitiated = value; }
+    bool wasUserInitiated() const { return m_wasUserInitiated; }
+
+    void setShouldForceDownload(bool value) { m_shouldForceDownload = value; }
+    bool shouldForceDownload() const { return m_shouldForceDownload; }
+
 private:
     explicit Navigation(WebKit::WebNavigationState&);
     explicit Navigation(WebKit::WebNavigationState&, WebCore::ResourceRequest&&);
 
     uint64_t m_navigationID;
     WebCore::ResourceRequest m_request;
+    Vector<WebCore::URL> m_redirectChain;
+    bool m_wasUserInitiated { true };
+    bool m_shouldForceDownload { false };
 };
 
 } // namespace API

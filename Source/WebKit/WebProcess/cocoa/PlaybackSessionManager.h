@@ -99,6 +99,8 @@ class PlaybackSessionManager : public RefCounted<PlaybackSessionManager>, privat
 public:
     static Ref<PlaybackSessionManager> create(WebPage&);
     virtual ~PlaybackSessionManager();
+    
+    void invalidate();
 
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
 
@@ -144,7 +146,7 @@ protected:
     void togglePlayState(uint64_t contextId);
     void beginScrubbing(uint64_t contextId);
     void endScrubbing(uint64_t contextId);
-    void seekToTime(uint64_t contextId, double time);
+    void seekToTime(uint64_t contextId, double time, double toleranceBefore, double toleranceAfter);
     void fastSeek(uint64_t contextId, double time);
     void beginScanningForward(uint64_t contextId);
     void beginScanningBackward(uint64_t contextId);

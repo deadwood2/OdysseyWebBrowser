@@ -36,6 +36,15 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
         this._nodeRemoteObject = null;
     }
 
+    // Public
+
+    closed()
+    {
+        WI.domTreeManager.removeEventListener(null, null, this);
+
+        super.closed();
+    }
+
     // Protected
 
     initialLayout()
@@ -65,7 +74,7 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
         var propertiesGroup = new WI.DetailsSectionGroup([this._propertiesRow]);
         var propertiesSection = new WI.DetailsSection("dom-node-properties", WI.UIString("Properties"), [propertiesGroup]);
 
-        let eventListenersFilterElement = useSVGSymbol("Images/FilterFieldGlyph.svg", "filter", WI.UIString("Grouping Method"));
+        let eventListenersFilterElement = WI.ImageUtilities.useSVGSymbol("Images/FilterFieldGlyph.svg", "filter", WI.UIString("Grouping Method"));
 
         let eventListenersGroupMethodSelectElement = eventListenersFilterElement.appendChild(document.createElement("select"));
         eventListenersGroupMethodSelectElement.addEventListener("change", (event) => {
@@ -150,6 +159,20 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
         this._attributesDataGridRow.sizeDidChange();
     }
 
+    attached()
+    {
+        super.attached();
+
+        WI.DOMNode.addEventListener(WI.DOMNode.Event.EventListenersChanged, this._eventListenersChanged, this);
+    }
+
+    detached()
+    {
+        WI.DOMNode.removeEventListener(WI.DOMNode.Event.EventListenersChanged, this._eventListenersChanged, this);
+
+        super.detached();
+    }
+
     // Private
 
     _accessibilitySupported()
@@ -206,13 +229,8 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
 
         let domNode = this.domNode;
         RuntimeAgent.releaseObjectGroup(WI.DOMNodeDetailsSidebarPanel.PropertiesObjectGroupName);
-        WI.RemoteObject.resolveNode(domNode, WI.DOMNodeDetailsSidebarPanel.PropertiesObjectGroupName, nodeResolved.bind(this));
 
-        function nodeResolved(object)
-        {
-            if (!object)
-                return;
-
+        WI.RemoteObject.resolveNode(domNode, WI.DOMNodeDetailsSidebarPanel.PropertiesObjectGroupName).then((object) => {
             // Bail if the DOM node changed while we were waiting for the async response.
             if (this.domNode !== domNode)
                 return;
@@ -239,7 +257,7 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
             const args = undefined;
             const generatePreview = false;
             object.callFunction(inspectedPage_node_collectPrototypes, args, generatePreview, nodePrototypesReady.bind(this));
-        }
+        });
 
         function nodePrototypesReady(error, object, wasThrown)
         {
@@ -735,6 +753,12 @@ WI.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel extends WI.DOMD
         }
 
         domNode.accessibilityProperties(accessibilityPropertiesCallback.bind(this));
+    }
+
+    _eventListenersChanged(event)
+    {
+        if (event.target === this.domNode || event.target.isAncestor(this.domNode))
+            this._refreshEventListeners();
     }
 
     _attributesChanged(event)

@@ -310,17 +310,15 @@ WI.ResourceTimelineDataGridNode = class ResourceTimelineDataGridNode extends WI.
                 this.createGoToArrowButton(cell, this._dataGridNodeGoToArrowClicked.bind(this));
         }
 
-        if (this._spinner)
-            this._spinner.element.remove();
-
-        if (this._resource.finished || this._resource.failed)
-            return;
-
-        if (!this._spinner)
-            this._spinner = new WI.IndeterminateProgressSpinner;
-
-        let contentElement = cell.firstChild;
-        contentElement.appendChild(this._spinner.element);
+        if (this._resource.isLoading()) {
+            if (!this._spinner)
+                this._spinner = new WI.IndeterminateProgressSpinner;
+            let contentElement = cell.firstChild;
+            contentElement.appendChild(this._spinner.element);
+        } else {
+            if (this._spinner)
+                this._spinner.element.remove();
+        }
     }
 
     _mouseoverRecordBar(event)
@@ -362,7 +360,7 @@ WI.ResourceTimelineDataGridNode = class ResourceTimelineDataGridNode extends WI.
             if (resource.failed)
                 descriptionElement.textContent = WI.UIString("Resource failed to load.");
             else if (resource.urlComponents.scheme === "data")
-                descriptionElement.textContent = WI.UIString("Resource was loaded with the “data“ scheme.");
+                descriptionElement.textContent = WI.UIString("Resource was loaded with the “data” scheme.");
             else
                 descriptionElement.textContent = WI.UIString("Resource was served from the cache.");
             popoverContentElement.appendChild(descriptionElement);
@@ -386,7 +384,7 @@ WI.ResourceTimelineDataGridNode = class ResourceTimelineDataGridNode extends WI.
             popoverContentElement.appendChild(popoverDataGrid.element);
 
             let graphDataSource = {
-                get secondsPerPixel() { return resource.duration / WI.ResourceTimelineDataGridNode.PopoverGraphColumnWidthPixels; },
+                get secondsPerPixel() { return resource.totalDuration / WI.ResourceTimelineDataGridNode.PopoverGraphColumnWidthPixels; },
                 get zeroTime() { return resource.firstTimestamp; },
                 get startTime() { return resource.firstTimestamp; },
                 get currentTime() { return this.endTime; },

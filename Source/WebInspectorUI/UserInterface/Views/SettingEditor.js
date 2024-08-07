@@ -65,6 +65,7 @@ WI.SettingEditor = class SettingEditor extends WI.Object
         let editor = new WI.SettingEditor(type, label, options);
         editor.value = setting.value;
         editor.addEventListener(WI.SettingEditor.Event.ValueDidChange, () => { setting.value = editor.value; });
+        setting.addEventListener(WI.Setting.Event.Changed, () => { editor.value = setting.value; });
 
         return editor;
     }
@@ -88,7 +89,7 @@ WI.SettingEditor = class SettingEditor extends WI.Object
         let oldValue = this._value;
         this._value = value;
 
-        if (this._type == WI.SettingEditor.Type.Checkbox)
+        if (this._type === WI.SettingEditor.Type.Checkbox)
             this._editorElement.checked = !!this._value;
         else
             this._editorElement.value = this._value;

@@ -1,0 +1,53 @@
+=================
+WPE WebKit 2.20.2
+=================
+
+What's new in WPE WebKit 2.20.1?
+
+  - Fix a rendering bug which would occasionally cause frames to be dropped when animating
+    elements using requestAnimationFrame().
+  - Security fixes: CVE-2018-4261, CVE-2018-4262, CVE-2018-4263, CVE-2018-4264, CVE-2018-4265, CVE-2018-4266,
+    CVE-2018-4267, CVE-2018-4270, CVE-2018-4272, CVE-2018-4273, CVE-2018-4278, CVE-2018-4284.
+
+=================
+WPE WebKit 2.20.1
+=================
+
+What's new in WPE WebKit 2.20.1?
+
+  - Fixed a crash when trying to use the remote Web inspector.
+  - Disable Gigacage if mmap fails to allocate in Linux.
+  - Add user agent quirk for paypal website.
+  - Properly detect compiler flags, needed libs, and fallbacks for usage of 64-bit atomic operations.
+  - Fix a network process crash when trying to get cookies of about:blank page.
+  - Fix UI process crash when closing the window under Wayland.
+  - Fix several crashes and rendering issues.
+  - Security fixes: CVE-2018-4190, CVE-2018-4199, CVE-2018-4218, CVE-2018-4222, CVE-2018-4232,
+    CVE-2018-4233, CVE-2018-4246, CVE-2018-11646.
+
+=================
+WPE WebKit 2.20.0
+=================
+
+What's new in WPE WebKit 2.20.0?
+
+  - Add support for the fullscreen API.
+  - Fix build in architectures which need linking with libatomic to support atomic operations on 64-bit values.
+  - Fix build failure when using the RaspberryPi userland GPU drivers in combination with GStreamer-GL.
+
+==================
+WPE WebKit 2.19.93
+==================
+
+What's new in WPE WebKit 2.19.93?
+
+  - Remove unusable JavaScript APIs
+  - Fix missing WebKitHitTestResult.h
+
+==================
+WPE WebKit 2.19.92
+==================
+
+What's new in WPE WebKit 2.19.92?
+
+  - First release in stable 2.20 series.

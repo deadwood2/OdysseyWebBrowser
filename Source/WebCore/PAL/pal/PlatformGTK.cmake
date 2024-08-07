@@ -1,9 +1,15 @@
 list(APPEND PAL_SOURCES
     crypto/gcrypt/CryptoDigestGCrypt.cpp
 
+    system/ClockGeneric.cpp
+
+    system/glib/SleepDisablerGLib.cpp
+
     system/gtk/SoundGtk.cpp
 
-    text/KillRingNone.cpp
+    text/KillRing.cpp
+
+    unix/LoggingUnix.cpp
 )
 
 if (ENABLE_SUBTLE_CRYPTO)

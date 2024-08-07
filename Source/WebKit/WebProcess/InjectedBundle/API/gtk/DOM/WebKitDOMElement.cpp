@@ -95,48 +95,48 @@ static gboolean webkit_dom_element_remove_event_listener(WebKitDOMEventTarget* t
     return WebKit::GObjectEventListener::removeEventListener(G_OBJECT(target), coreTarget, eventName, handler, useCapture);
 }
 
-static void webkit_dom_event_target_init(WebKitDOMEventTargetIface* iface)
+static void webkit_dom_element_dom_event_target_init(WebKitDOMEventTargetIface* iface)
 {
     iface->dispatch_event = webkit_dom_element_dispatch_event;
     iface->add_event_listener = webkit_dom_element_add_event_listener;
     iface->remove_event_listener = webkit_dom_element_remove_event_listener;
 }
 
-G_DEFINE_TYPE_WITH_CODE(WebKitDOMElement, webkit_dom_element, WEBKIT_DOM_TYPE_NODE, G_IMPLEMENT_INTERFACE(WEBKIT_DOM_TYPE_EVENT_TARGET, webkit_dom_event_target_init))
+G_DEFINE_TYPE_WITH_CODE(WebKitDOMElement, webkit_dom_element, WEBKIT_DOM_TYPE_NODE, G_IMPLEMENT_INTERFACE(WEBKIT_DOM_TYPE_EVENT_TARGET, webkit_dom_element_dom_event_target_init))
 
 enum {
-    PROP_0,
-    PROP_TAG_NAME,
-    PROP_ATTRIBUTES,
-    PROP_STYLE,
-    PROP_ID,
-    PROP_NAMESPACE_URI,
-    PROP_PREFIX,
-    PROP_LOCAL_NAME,
-    PROP_OFFSET_LEFT,
-    PROP_OFFSET_TOP,
-    PROP_OFFSET_WIDTH,
-    PROP_OFFSET_HEIGHT,
-    PROP_CLIENT_LEFT,
-    PROP_CLIENT_TOP,
-    PROP_CLIENT_WIDTH,
-    PROP_CLIENT_HEIGHT,
-    PROP_SCROLL_LEFT,
-    PROP_SCROLL_TOP,
-    PROP_SCROLL_WIDTH,
-    PROP_SCROLL_HEIGHT,
-    PROP_OFFSET_PARENT,
-    PROP_INNER_HTML,
-    PROP_OUTER_HTML,
-    PROP_CLASS_NAME,
-    PROP_CLASS_LIST,
-    PROP_WEBKIT_REGION_OVERSET,
-    PROP_PREVIOUS_ELEMENT_SIBLING,
-    PROP_NEXT_ELEMENT_SIBLING,
-    PROP_CHILDREN,
-    PROP_FIRST_ELEMENT_CHILD,
-    PROP_LAST_ELEMENT_CHILD,
-    PROP_CHILD_ELEMENT_COUNT,
+    DOM_ELEMENT_PROP_0,
+    DOM_ELEMENT_PROP_TAG_NAME,
+    DOM_ELEMENT_PROP_ATTRIBUTES,
+    DOM_ELEMENT_PROP_STYLE,
+    DOM_ELEMENT_PROP_ID,
+    DOM_ELEMENT_PROP_NAMESPACE_URI,
+    DOM_ELEMENT_PROP_PREFIX,
+    DOM_ELEMENT_PROP_LOCAL_NAME,
+    DOM_ELEMENT_PROP_OFFSET_LEFT,
+    DOM_ELEMENT_PROP_OFFSET_TOP,
+    DOM_ELEMENT_PROP_OFFSET_WIDTH,
+    DOM_ELEMENT_PROP_OFFSET_HEIGHT,
+    DOM_ELEMENT_PROP_CLIENT_LEFT,
+    DOM_ELEMENT_PROP_CLIENT_TOP,
+    DOM_ELEMENT_PROP_CLIENT_WIDTH,
+    DOM_ELEMENT_PROP_CLIENT_HEIGHT,
+    DOM_ELEMENT_PROP_SCROLL_LEFT,
+    DOM_ELEMENT_PROP_SCROLL_TOP,
+    DOM_ELEMENT_PROP_SCROLL_WIDTH,
+    DOM_ELEMENT_PROP_SCROLL_HEIGHT,
+    DOM_ELEMENT_PROP_OFFSET_PARENT,
+    DOM_ELEMENT_PROP_INNER_HTML,
+    DOM_ELEMENT_PROP_OUTER_HTML,
+    DOM_ELEMENT_PROP_CLASS_NAME,
+    DOM_ELEMENT_PROP_CLASS_LIST,
+    DOM_ELEMENT_PROP_WEBKIT_REGION_OVERSET,
+    DOM_ELEMENT_PROP_PREVIOUS_ELEMENT_SIBLING,
+    DOM_ELEMENT_PROP_NEXT_ELEMENT_SIBLING,
+    DOM_ELEMENT_PROP_CHILDREN,
+    DOM_ELEMENT_PROP_FIRST_ELEMENT_CHILD,
+    DOM_ELEMENT_PROP_LAST_ELEMENT_CHILD,
+    DOM_ELEMENT_PROP_CHILD_ELEMENT_COUNT,
 };
 
 static void webkit_dom_element_set_property(GObject* object, guint propertyId, const GValue* value, GParamSpec* pspec)
@@ -144,22 +144,22 @@ static void webkit_dom_element_set_property(GObject* object, guint propertyId, c
     WebKitDOMElement* self = WEBKIT_DOM_ELEMENT(object);
 
     switch (propertyId) {
-    case PROP_ID:
+    case DOM_ELEMENT_PROP_ID:
         webkit_dom_element_set_id(self, g_value_get_string(value));
         break;
-    case PROP_SCROLL_LEFT:
+    case DOM_ELEMENT_PROP_SCROLL_LEFT:
         webkit_dom_element_set_scroll_left(self, g_value_get_long(value));
         break;
-    case PROP_SCROLL_TOP:
+    case DOM_ELEMENT_PROP_SCROLL_TOP:
         webkit_dom_element_set_scroll_top(self, g_value_get_long(value));
         break;
-    case PROP_INNER_HTML:
+    case DOM_ELEMENT_PROP_INNER_HTML:
         webkit_dom_element_set_inner_html(self, g_value_get_string(value), nullptr);
         break;
-    case PROP_OUTER_HTML:
+    case DOM_ELEMENT_PROP_OUTER_HTML:
         webkit_dom_element_set_outer_html(self, g_value_get_string(value), nullptr);
         break;
-    case PROP_CLASS_NAME:
+    case DOM_ELEMENT_PROP_CLASS_NAME:
         webkit_dom_element_set_class_name(self, g_value_get_string(value));
         break;
     default:
@@ -173,97 +173,98 @@ static void webkit_dom_element_get_property(GObject* object, guint propertyId, G
     WebKitDOMElement* self = WEBKIT_DOM_ELEMENT(object);
 
     switch (propertyId) {
-    case PROP_TAG_NAME:
+    case DOM_ELEMENT_PROP_TAG_NAME:
         g_value_take_string(value, webkit_dom_element_get_tag_name(self));
         break;
-    case PROP_ATTRIBUTES:
+    case DOM_ELEMENT_PROP_ATTRIBUTES:
         g_value_set_object(value, webkit_dom_element_get_attributes(self));
         break;
-    case PROP_STYLE:
+    case DOM_ELEMENT_PROP_STYLE:
         g_value_set_object(value, webkit_dom_element_get_style(self));
         break;
-    case PROP_ID:
+    case DOM_ELEMENT_PROP_ID:
         g_value_take_string(value, webkit_dom_element_get_id(self));
         break;
-    case PROP_NAMESPACE_URI:
+    case DOM_ELEMENT_PROP_NAMESPACE_URI:
         g_value_take_string(value, webkit_dom_element_get_namespace_uri(self));
         break;
-    case PROP_PREFIX:
+    case DOM_ELEMENT_PROP_PREFIX:
         g_value_take_string(value, webkit_dom_element_get_prefix(self));
         break;
-    case PROP_LOCAL_NAME:
+    case DOM_ELEMENT_PROP_LOCAL_NAME:
         g_value_take_string(value, webkit_dom_element_get_local_name(self));
         break;
-    case PROP_OFFSET_LEFT:
+    case DOM_ELEMENT_PROP_OFFSET_LEFT:
         g_value_set_double(value, webkit_dom_element_get_offset_left(self));
         break;
-    case PROP_OFFSET_TOP:
+    case DOM_ELEMENT_PROP_OFFSET_TOP:
         g_value_set_double(value, webkit_dom_element_get_offset_top(self));
         break;
-    case PROP_OFFSET_WIDTH:
+    case DOM_ELEMENT_PROP_OFFSET_WIDTH:
         g_value_set_double(value, webkit_dom_element_get_offset_width(self));
         break;
-    case PROP_OFFSET_HEIGHT:
+    case DOM_ELEMENT_PROP_OFFSET_HEIGHT:
         g_value_set_double(value, webkit_dom_element_get_offset_height(self));
         break;
-    case PROP_CLIENT_LEFT:
+    case DOM_ELEMENT_PROP_CLIENT_LEFT:
         g_value_set_double(value, webkit_dom_element_get_client_left(self));
         break;
-    case PROP_CLIENT_TOP:
+    case DOM_ELEMENT_PROP_CLIENT_TOP:
         g_value_set_double(value, webkit_dom_element_get_client_top(self));
         break;
-    case PROP_CLIENT_WIDTH:
+    case DOM_ELEMENT_PROP_CLIENT_WIDTH:
         g_value_set_double(value, webkit_dom_element_get_client_width(self));
         break;
-    case PROP_CLIENT_HEIGHT:
+    case DOM_ELEMENT_PROP_CLIENT_HEIGHT:
         g_value_set_double(value, webkit_dom_element_get_client_height(self));
         break;
-    case PROP_SCROLL_LEFT:
+    case DOM_ELEMENT_PROP_SCROLL_LEFT:
         g_value_set_long(value, webkit_dom_element_get_scroll_left(self));
         break;
-    case PROP_SCROLL_TOP:
+    case DOM_ELEMENT_PROP_SCROLL_TOP:
         g_value_set_long(value, webkit_dom_element_get_scroll_top(self));
         break;
-    case PROP_SCROLL_WIDTH:
+    case DOM_ELEMENT_PROP_SCROLL_WIDTH:
         g_value_set_long(value, webkit_dom_element_get_scroll_width(self));
         break;
-    case PROP_SCROLL_HEIGHT:
+    case DOM_ELEMENT_PROP_SCROLL_HEIGHT:
         g_value_set_long(value, webkit_dom_element_get_scroll_height(self));
         break;
-    case PROP_OFFSET_PARENT:
+    case DOM_ELEMENT_PROP_OFFSET_PARENT:
         g_value_set_object(value, webkit_dom_element_get_offset_parent(self));
         break;
-    case PROP_INNER_HTML:
+    case DOM_ELEMENT_PROP_INNER_HTML:
         g_value_take_string(value, webkit_dom_element_get_inner_html(self));
         break;
-    case PROP_OUTER_HTML:
+    case DOM_ELEMENT_PROP_OUTER_HTML:
         g_value_take_string(value, webkit_dom_element_get_outer_html(self));
         break;
-    case PROP_CLASS_NAME:
+    case DOM_ELEMENT_PROP_CLASS_NAME:
         g_value_take_string(value, webkit_dom_element_get_class_name(self));
         break;
-    case PROP_CLASS_LIST:
+    case DOM_ELEMENT_PROP_CLASS_LIST:
         g_value_set_object(value, webkit_dom_element_get_class_list(self));
         break;
-    case PROP_WEBKIT_REGION_OVERSET:
-        g_value_take_string(value, webkit_dom_element_get_webkit_region_overset(self));
+    case DOM_ELEMENT_PROP_WEBKIT_REGION_OVERSET:
+        g_warning("%s: CSS Regions support has been removed, the webkit-region-overset property no longer works.", __func__);
+        g_value_set_static_string(value, nullptr);
         break;
-    case PROP_PREVIOUS_ELEMENT_SIBLING:
+    case DOM_ELEMENT_PROP_PREVIOUS_ELEMENT_SIBLING:
         g_value_set_object(value, webkit_dom_element_get_previous_element_sibling(self));
         break;
-    case PROP_NEXT_ELEMENT_SIBLING:
+    case DOM_ELEMENT_PROP_NEXT_ELEMENT_SIBLING:
         g_value_set_object(value, webkit_dom_element_get_next_element_sibling(self));
         break;
-    case PROP_CHILDREN:
+    case DOM_ELEMENT_PROP_CHILDREN:
         g_value_set_object(value, webkit_dom_element_get_children(self));
         break;
-    case PROP_FIRST_ELEMENT_CHILD:
+    case DOM_ELEMENT_PROP_FIRST_ELEMENT_CHILD:
         g_value_set_object(value, webkit_dom_element_get_first_element_child(self));
         break;
-    case PROP_LAST_ELEMENT_CHILD:
+    case DOM_ELEMENT_PROP_LAST_ELEMENT_CHILD:
         g_value_set_object(value, webkit_dom_element_get_last_element_child(self));
         break;
-    case PROP_CHILD_ELEMENT_COUNT:
+    case DOM_ELEMENT_PROP_CHILD_ELEMENT_COUNT:
         g_value_set_ulong(value, webkit_dom_element_get_child_element_count(self));
         break;
     default:
@@ -280,7 +281,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_TAG_NAME,
+        DOM_ELEMENT_PROP_TAG_NAME,
         g_param_spec_string(
             "tag-name",
             "Element:tag-name",
@@ -290,7 +291,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_ATTRIBUTES,
+        DOM_ELEMENT_PROP_ATTRIBUTES,
         g_param_spec_object(
             "attributes",
             "Element:attributes",
@@ -300,7 +301,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_STYLE,
+        DOM_ELEMENT_PROP_STYLE,
         g_param_spec_object(
             "style",
             "Element:style",
@@ -310,7 +311,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_ID,
+        DOM_ELEMENT_PROP_ID,
         g_param_spec_string(
             "id",
             "Element:id",
@@ -320,7 +321,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_NAMESPACE_URI,
+        DOM_ELEMENT_PROP_NAMESPACE_URI,
         g_param_spec_string(
             "namespace-uri",
             "Element:namespace-uri",
@@ -330,7 +331,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_PREFIX,
+        DOM_ELEMENT_PROP_PREFIX,
         g_param_spec_string(
             "prefix",
             "Element:prefix",
@@ -340,7 +341,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_LOCAL_NAME,
+        DOM_ELEMENT_PROP_LOCAL_NAME,
         g_param_spec_string(
             "local-name",
             "Element:local-name",
@@ -350,7 +351,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_OFFSET_LEFT,
+        DOM_ELEMENT_PROP_OFFSET_LEFT,
         g_param_spec_double(
             "offset-left",
             "Element:offset-left",
@@ -360,7 +361,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_OFFSET_TOP,
+        DOM_ELEMENT_PROP_OFFSET_TOP,
         g_param_spec_double(
             "offset-top",
             "Element:offset-top",
@@ -370,7 +371,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_OFFSET_WIDTH,
+        DOM_ELEMENT_PROP_OFFSET_WIDTH,
         g_param_spec_double(
             "offset-width",
             "Element:offset-width",
@@ -380,7 +381,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_OFFSET_HEIGHT,
+        DOM_ELEMENT_PROP_OFFSET_HEIGHT,
         g_param_spec_double(
             "offset-height",
             "Element:offset-height",
@@ -390,7 +391,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_CLIENT_LEFT,
+        DOM_ELEMENT_PROP_CLIENT_LEFT,
         g_param_spec_double(
             "client-left",
             "Element:client-left",
@@ -400,7 +401,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_CLIENT_TOP,
+        DOM_ELEMENT_PROP_CLIENT_TOP,
         g_param_spec_double(
             "client-top",
             "Element:client-top",
@@ -410,7 +411,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_CLIENT_WIDTH,
+        DOM_ELEMENT_PROP_CLIENT_WIDTH,
         g_param_spec_double(
             "client-width",
             "Element:client-width",
@@ -420,7 +421,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_CLIENT_HEIGHT,
+        DOM_ELEMENT_PROP_CLIENT_HEIGHT,
         g_param_spec_double(
             "client-height",
             "Element:client-height",
@@ -430,7 +431,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_SCROLL_LEFT,
+        DOM_ELEMENT_PROP_SCROLL_LEFT,
         g_param_spec_long(
             "scroll-left",
             "Element:scroll-left",
@@ -440,7 +441,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_SCROLL_TOP,
+        DOM_ELEMENT_PROP_SCROLL_TOP,
         g_param_spec_long(
             "scroll-top",
             "Element:scroll-top",
@@ -450,7 +451,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_SCROLL_WIDTH,
+        DOM_ELEMENT_PROP_SCROLL_WIDTH,
         g_param_spec_long(
             "scroll-width",
             "Element:scroll-width",
@@ -460,7 +461,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_SCROLL_HEIGHT,
+        DOM_ELEMENT_PROP_SCROLL_HEIGHT,
         g_param_spec_long(
             "scroll-height",
             "Element:scroll-height",
@@ -470,7 +471,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_OFFSET_PARENT,
+        DOM_ELEMENT_PROP_OFFSET_PARENT,
         g_param_spec_object(
             "offset-parent",
             "Element:offset-parent",
@@ -480,7 +481,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_INNER_HTML,
+        DOM_ELEMENT_PROP_INNER_HTML,
         g_param_spec_string(
             "inner-html",
             "Element:inner-html",
@@ -490,7 +491,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_OUTER_HTML,
+        DOM_ELEMENT_PROP_OUTER_HTML,
         g_param_spec_string(
             "outer-html",
             "Element:outer-html",
@@ -500,7 +501,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_CLASS_NAME,
+        DOM_ELEMENT_PROP_CLASS_NAME,
         g_param_spec_string(
             "class-name",
             "Element:class-name",
@@ -510,7 +511,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_CLASS_LIST,
+        DOM_ELEMENT_PROP_CLASS_LIST,
         g_param_spec_object(
             "class-list",
             "Element:class-list",
@@ -518,9 +519,16 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
             WEBKIT_DOM_TYPE_DOM_TOKEN_LIST,
             WEBKIT_PARAM_READABLE));
 
+    /**
+     * WebKitDOMElement:webkit-region-overset:
+     *
+     * This property is always %NULL.
+     *
+     * Deprecated: 2.20
+     */
     g_object_class_install_property(
         gobjectClass,
-        PROP_WEBKIT_REGION_OVERSET,
+        DOM_ELEMENT_PROP_WEBKIT_REGION_OVERSET,
         g_param_spec_string(
             "webkit-region-overset",
             "Element:webkit-region-overset",
@@ -530,7 +538,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_PREVIOUS_ELEMENT_SIBLING,
+        DOM_ELEMENT_PROP_PREVIOUS_ELEMENT_SIBLING,
         g_param_spec_object(
             "previous-element-sibling",
             "Element:previous-element-sibling",
@@ -540,7 +548,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_NEXT_ELEMENT_SIBLING,
+        DOM_ELEMENT_PROP_NEXT_ELEMENT_SIBLING,
         g_param_spec_object(
             "next-element-sibling",
             "Element:next-element-sibling",
@@ -550,7 +558,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_CHILDREN,
+        DOM_ELEMENT_PROP_CHILDREN,
         g_param_spec_object(
             "children",
             "Element:children",
@@ -560,7 +568,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_FIRST_ELEMENT_CHILD,
+        DOM_ELEMENT_PROP_FIRST_ELEMENT_CHILD,
         g_param_spec_object(
             "first-element-child",
             "Element:first-element-child",
@@ -570,7 +578,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_LAST_ELEMENT_CHILD,
+        DOM_ELEMENT_PROP_LAST_ELEMENT_CHILD,
         g_param_spec_object(
             "last-element-child",
             "Element:last-element-child",
@@ -580,7 +588,7 @@ static void webkit_dom_element_class_init(WebKitDOMElementClass* requestClass)
 
     g_object_class_install_property(
         gobjectClass,
-        PROP_CHILD_ELEMENT_COUNT,
+        DOM_ELEMENT_PROP_CHILD_ELEMENT_COUNT,
         g_param_spec_ulong(
             "child-element-count",
             "Element:child-element-count",
@@ -1324,21 +1332,6 @@ WebKitDOMDOMTokenList* webkit_dom_element_get_class_list(WebKitDOMElement* self)
     WebCore::Element* item = WebKit::core(self);
     RefPtr<WebCore::DOMTokenList> gobjectResult = WTF::getPtr(item->classList());
     return WebKit::kit(gobjectResult.get());
-}
-
-gchar* webkit_dom_element_get_webkit_region_overset(WebKitDOMElement* self)
-{
-#if ENABLE(CSS_REGIONS)
-    WebCore::JSMainThreadNullState state;
-    g_return_val_if_fail(WEBKIT_DOM_IS_ELEMENT(self), 0);
-    WebCore::Element* item = WebKit::core(self);
-    gchar* result = convertToUTF8String(item->webkitRegionOverset());
-    return result;
-#else
-    UNUSED_PARAM(self);
-    WEBKIT_WARN_FEATURE_NOT_PRESENT("Css Regions")
-    return 0;
-#endif /* ENABLE(CSS_REGIONS) */
 }
 
 WebKitDOMElement* webkit_dom_element_get_previous_element_sibling(WebKitDOMElement* self)

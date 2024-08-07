@@ -32,9 +32,9 @@
 
 #include "InjectedBundle.h"
 #include "InjectedBundlePage.h"
-#include "NotImplemented.h"
 #include <JavaScriptCore/JSStringRef.h>
 #include <JavaScriptCore/OpaqueJSString.h>
+#include <WebCore/NotImplemented.h>
 #if ATK_CHECK_VERSION(2,11,90)
 #include <WebKit/WKBundleFrame.h>
 #endif
@@ -665,24 +665,28 @@ static JSRetainPtr<JSStringRef> createStringWithAttributes(const Vector<RefPtr<A
     return JSStringCreateWithUTF8CString(builder.toString().utf8().data());
 }
 
-static Vector<RefPtr<AccessibilityUIElement> > getRowHeaders(AtkTable* accessible)
+static Vector<RefPtr<AccessibilityUIElement> > getTableRowHeaders(AtkTable* accessible)
 {
     Vector<RefPtr<AccessibilityUIElement> > rowHeaders;
 
     int rowsCount = atk_table_get_n_rows(accessible);
-    for (int row = 0; row < rowsCount; ++row)
-        rowHeaders.append(AccessibilityUIElement::create(atk_table_get_row_header(accessible, row)));
+    for (int row = 0; row < rowsCount; ++row) {
+        if (AtkObject* header = atk_table_get_row_header(accessible, row))
+            rowHeaders.append(AccessibilityUIElement::create(header));
+    }
 
     return rowHeaders;
 }
 
-static Vector<RefPtr<AccessibilityUIElement> > getColumnHeaders(AtkTable* accessible)
+static Vector<RefPtr<AccessibilityUIElement> > getTableColumnHeaders(AtkTable* accessible)
 {
     Vector<RefPtr<AccessibilityUIElement> > columnHeaders;
 
     int columnsCount = atk_table_get_n_columns(accessible);
-    for (int column = 0; column < columnsCount; ++column)
-        columnHeaders.append(AccessibilityUIElement::create(atk_table_get_column_header(accessible, column)));
+    for (int column = 0; column < columnsCount; ++column) {
+        if (AtkObject* header = atk_table_get_column_header(accessible, column))
+            columnHeaders.append(AccessibilityUIElement::create(header));
+    }
 
     return columnHeaders;
 }
@@ -1137,40 +1141,34 @@ JSValueRef AccessibilityUIElement::uiElementArrayAttributeValue(JSStringRef attr
 
 JSValueRef AccessibilityUIElement::rowHeaders() const
 {
-#if ATK_CHECK_VERSION(2,11,90)
+    if (ATK_IS_TABLE(m_element.get()))
+        return convertToJSObjectArray(getTableRowHeaders(ATK_TABLE(m_element.get())));
+
+    Vector<RefPtr<AccessibilityUIElement>> headers;
     if (!ATK_IS_TABLE_CELL(m_element.get()))
-        return nullptr;
+        return convertToJSObjectArray(headers);
 
-    GRefPtr<GPtrArray> array = adoptGRef(atk_table_cell_get_row_header_cells(ATK_TABLE_CELL(m_element.get())));
-    if (!array)
-        return nullptr;
-
-    Vector<RefPtr<AccessibilityUIElement>> rows = convertGPtrArrayToVector(array.get());
-    return convertToJSObjectArray(rows);
-#else
-    return nullptr;
+#if ATK_CHECK_VERSION(2,11,90)
+    if (GRefPtr<GPtrArray> array = adoptGRef(atk_table_cell_get_row_header_cells(ATK_TABLE_CELL(m_element.get()))))
+        headers = convertGPtrArrayToVector(array.get());
 #endif
+    return convertToJSObjectArray(headers);
 }
 
 JSValueRef AccessibilityUIElement::columnHeaders() const
 {
+    if (ATK_IS_TABLE(m_element.get()))
+        return convertToJSObjectArray(getTableColumnHeaders(ATK_TABLE(m_element.get())));
+
+    Vector<RefPtr<AccessibilityUIElement>> headers;
+    if (!ATK_IS_TABLE_CELL(m_element.get()))
+        return convertToJSObjectArray(headers);
+
 #if ATK_CHECK_VERSION(2,11,90)
-    if (!ATK_IS_TABLE_CELL(m_element.get()) && !ATK_IS_TABLE(m_element.get()))
-        return nullptr;
-
-    Vector<RefPtr<AccessibilityUIElement>> columns;
-    if (ATK_IS_TABLE_CELL(m_element.get())) {
-        GRefPtr<GPtrArray> array = adoptGRef(atk_table_cell_get_column_header_cells(ATK_TABLE_CELL(m_element.get())));
-        if (!array)
-            return nullptr;
-
-        columns = convertGPtrArrayToVector(array.get());
-    } else
-        columns = getColumnHeaders(ATK_TABLE(m_element.get()));
-    return convertToJSObjectArray(columns);
-#else
-    return nullptr;
+    if (GRefPtr<GPtrArray> array = adoptGRef(atk_table_cell_get_column_header_cells(ATK_TABLE_CELL(m_element.get()))))
+        headers = convertGPtrArrayToVector(array.get());
 #endif
+    return convertToJSObjectArray(headers);
 }
 
 RefPtr<AccessibilityUIElement> AccessibilityUIElement::uiElementAttributeValue(JSStringRef attribute) const
@@ -1690,7 +1688,7 @@ int AccessibilityUIElement::hierarchicalLevel() const
     return 0;
 }
 
-JSRetainPtr<JSStringRef> AccessibilityUIElement::speak()
+JSRetainPtr<JSStringRef> AccessibilityUIElement::speakAs()
 {
     // FIXME: implement
     return JSStringCreateWithCharacters(0, 0);
@@ -1779,7 +1777,6 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::attributedStringForRange(unsign
     builder.append(attributeSetToString(getAttributeSet(m_element.get(), TextAttributeType), "\n\t\t"));
 
     // The attribute run provides attributes specific to the range of text at the specified offset.
-    AtkAttributeSet* attributeSet;
     AtkText* text = ATK_TEXT(m_element.get());
     gint start = 0, end = 0;
     for (unsigned i = location; i < location + length; i = end) {
@@ -1788,8 +1785,6 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::attributedStringForRange(unsign
         builder.append(String::format("\n\tRange attributes for '%s':\n\t\t", substring.get()));
         builder.append(attributeSetToString(attributeSet, "\n\t\t"));
     }
-
-    atk_attribute_set_free(attributeSet);
 
     return JSStringCreateWithUTF8CString(builder.toString().utf8().data());
 }
@@ -1823,7 +1818,7 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::attributesOfColumnHeaders()
     if (!ATK_IS_TABLE(m_element.get()))
         return JSStringCreateWithCharacters(0, 0);
 
-    Vector<RefPtr<AccessibilityUIElement> > columnHeaders = getColumnHeaders(ATK_TABLE(m_element.get()));
+    Vector<RefPtr<AccessibilityUIElement> > columnHeaders = getTableColumnHeaders(ATK_TABLE(m_element.get()));
     return createStringWithAttributes(columnHeaders);
 }
 
@@ -1832,7 +1827,7 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::attributesOfRowHeaders()
     if (!ATK_IS_TABLE(m_element.get()))
         return JSStringCreateWithCharacters(0, 0);
 
-    Vector<RefPtr<AccessibilityUIElement> > rowHeaders = getRowHeaders(ATK_TABLE(m_element.get()));
+    Vector<RefPtr<AccessibilityUIElement> > rowHeaders = getTableRowHeaders(ATK_TABLE(m_element.get()));
     return createStringWithAttributes(rowHeaders);
 }
 
@@ -2033,6 +2028,9 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::url()
 
     AtkHyperlink* hyperlink = atk_hyperlink_impl_get_hyperlink(ATK_HYPERLINK_IMPL(m_element.get()));
     GUniquePtr<char> hyperlinkURI(atk_hyperlink_get_uri(hyperlink, 0));
+
+    if (!hyperlinkURI.get())
+        return JSStringCreateWithUTF8CString("AXURL: (null)");
 
     // Build the result string, stripping the absolute URL paths if present.
     char* localURI = g_strstr_len(hyperlinkURI.get(), -1, "LayoutTests");

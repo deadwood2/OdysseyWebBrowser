@@ -113,7 +113,7 @@ WI.SourceMapManager = class SourceMapManager extends WI.Object
                 var baseURL = sourceMapURL.startsWith("data:") ? originalSourceCode.url : sourceMapURL;
                 var sourceMap = new WI.SourceMap(baseURL, payload, originalSourceCode);
                 this._loadAndParseSucceeded(sourceMapURL, sourceMap);
-            } catch (e) {
+            } catch {
                 this._loadAndParseFailed(sourceMapURL);
             }
         }
@@ -125,9 +125,7 @@ WI.SourceMapManager = class SourceMapManager extends WI.Object
             return;
         }
 
-        // COMPATIBILITY (iOS 7): Network.loadResource did not exist.
-        // Also, JavaScript Debuggable may reach this.
-        if (!window.NetworkAgent || !NetworkAgent.loadResource) {
+        if (!window.NetworkAgent) {
             this._loadAndParseFailed(sourceMapURL);
             return;
         }
@@ -137,7 +135,7 @@ WI.SourceMapManager = class SourceMapManager extends WI.Object
             frameIdentifier = originalSourceCode.parentFrame.id;
 
         if (!frameIdentifier)
-            frameIdentifier = WI.frameResourceManager.mainFrame.id;
+            frameIdentifier = WI.frameResourceManager.mainFrame ? WI.frameResourceManager.mainFrame.id : "";
 
         NetworkAgent.loadResource(frameIdentifier, sourceMapURL, sourceMapLoaded.bind(this));
     }

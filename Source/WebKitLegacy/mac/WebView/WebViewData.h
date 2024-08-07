@@ -31,7 +31,7 @@
 #import "WebDelegateImplementationCaching.h"
 #import "WebUIDelegate.h"
 #if HAVE(TOUCH_BAR)
-#import <WebCore/AVKitSPI.h>
+#import <pal/spi/cocoa/AVKitSPI.h>
 #endif
 #import <WebCore/AlternativeTextClient.h>
 #import <WebCore/LayerFlushScheduler.h>
@@ -301,7 +301,7 @@ private:
 #if ENABLE(DATA_INTERACTION)
     RetainPtr<WebUITextIndicatorData> textIndicatorData;
     RetainPtr<WebUITextIndicatorData> dataOperationTextIndicator;
-    CGRect draggedElementBounds;
+    CGRect dragPreviewFrameInRootViewCoordinates;
     WebDragSourceAction dragSourceAction;
     RetainPtr<NSURL> draggedLinkURL;
     RetainPtr<NSString> draggedLinkTitle;

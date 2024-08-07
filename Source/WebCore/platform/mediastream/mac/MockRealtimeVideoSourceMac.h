@@ -44,11 +44,11 @@ namespace WebCore {
 
 class MockRealtimeVideoSourceMac final : public MockRealtimeVideoSource, private OrientationNotifier::Observer {
 public:
-    virtual ~MockRealtimeVideoSourceMac() { }
+    virtual ~MockRealtimeVideoSourceMac() = default;
 
 private:
     friend class MockRealtimeVideoSource;
-    MockRealtimeVideoSourceMac(const String&);
+    MockRealtimeVideoSourceMac(const String& deviceID, const String& name);
 
     RetainPtr<CMSampleBufferRef> CMSampleBufferFromPixelBuffer(CVPixelBufferRef);
     RetainPtr<CVPixelBufferRef> pixelBufferFromCGImage(CGImageRef) const;

@@ -192,6 +192,9 @@ static void webkitFaviconDatabaseSetIconURLForPageURL(WebKitFaviconDatabase* dat
     if (!priv->isURLImportCompleted)
         return;
 
+    if (pageURL.isEmpty())
+        return;
+
     const String& currentIconURL = priv->pageURLToIconURLMap.get(pageURL);
     if (iconURL == currentIconURL)
         return;
@@ -269,7 +272,7 @@ void webkitFaviconDatabaseOpen(WebKitFaviconDatabase* database, const String& pa
     priv->iconDatabase->setEnabled(true);
     priv->iconDatabase->setPrivateBrowsingEnabled(WebPreferences::anyPagesAreUsingPrivateBrowsing());
 
-    if (!priv->iconDatabase->open(WebCore::directoryName(path), WebCore::pathGetFileName(path))) {
+    if (!priv->iconDatabase->open(WebCore::FileSystem::directoryName(path), WebCore::FileSystem::pathGetFileName(path))) {
         priv->iconDatabase = nullptr;
         IconDatabase::allowDatabaseCleanup();
     }
@@ -314,6 +317,9 @@ void webkitFaviconDatabaseGetLoadDecisionForIcon(WebKitFaviconDatabase* database
 void webkitFaviconDatabaseSetIconForPageURL(WebKitFaviconDatabase* database, const LinkIcon& icon, API::Data& iconData, const String& pageURL)
 {
     if (!webkitFaviconDatabaseIsOpen(database))
+        return;
+
+    if (pageURL.isEmpty())
         return;
 
     WebKitFaviconDatabasePrivate* priv = database->priv;

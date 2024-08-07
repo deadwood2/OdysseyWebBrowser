@@ -79,7 +79,6 @@ ApplicationStateTracker::ApplicationStateTracker(UIView *view, SEL didEnterBackg
     , m_didFinishSnapshottingAfterEnteringBackgroundSelector(didFinishSnapshottingAfterEnteringBackgroundSelector)
     , m_willEnterForegroundSelector(willEnterForegroundSelector)
     , m_isInBackground(true)
-    , m_weakPtrFactory(this)
     , m_didEnterBackgroundObserver(nullptr)
     , m_didCreateWindowContextObserver(nullptr)
     , m_didFinishSnapshottingAfterEnteringBackgroundObserver(nullptr)
@@ -94,7 +93,7 @@ ApplicationStateTracker::ApplicationStateTracker(UIView *view, SEL didEnterBackg
     ASSERT(window);
 
     NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
-    auto weakThis = m_weakPtrFactory.createWeakPtr();
+    auto weakThis = m_weakPtrFactory.createWeakPtr(*this);
     m_didCreateWindowContextObserver = [notificationCenter addObserverForName:@"_UIWindowDidCreateWindowContextNotification" object:window queue:nil usingBlock:[weakThis](NSNotification *) {
         auto applicationStateTracker = weakThis.get();
         if (!applicationStateTracker)
@@ -145,6 +144,12 @@ ApplicationStateTracker::ApplicationStateTracker(UIView *view, SEL didEnterBackg
         auto applicationStateMonitor = adoptNS([[BKSApplicationStateMonitor alloc] init]);
         m_isInBackground = isBackgroundState([applicationStateMonitor mostElevatedApplicationStateForPID:applicationPID]);
         [applicationStateMonitor invalidate];
+
+        // Workaround for <rdar://problem/34028921>. If the host application is StoreKitUIService then it is also a ViewService
+        // and is always in the background. We need to treat StoreKitUIService as foreground for the purpose of process suspension
+        // or its ViewServices will get suspended.
+        if ([serviceViewController._hostApplicationBundleIdentifier isEqualToString:@"com.apple.ios.StoreKitUIService"])
+            m_isInBackground = false;
 
         m_didEnterBackgroundObserver = [notificationCenter addObserverForName:@"_UIViewServiceHostDidEnterBackgroundNotification" object:serviceViewController queue:nil usingBlock:[this](NSNotification *) {
             applicationDidEnterBackground();

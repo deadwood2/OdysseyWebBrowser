@@ -31,19 +31,26 @@
 
 #import "PlatformUtilities.h"
 #import "Test.h"
+#import "TestProtocol.h"
+#import "TestWKWebView.h"
 #import <WebCore/FileSystem.h>
 #import <WebKit/_WKDownload.h>
 #import <WebKit/_WKDownloadDelegate.h>
 #import <WebKit/WKNavigationDelegatePrivate.h>
 #import <WebKit/WKProcessPoolPrivate.h>
+#import <WebKit/WKUIDelegatePrivate.h>
 #import <WebKit/WKWebView.h>
 #import <WebKit/WKWebViewConfiguration.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/mac/AppKitCompatibilityDeclarations.h>
 #import <wtf/text/WTFString.h>
 
 static bool isDone;
+static unsigned redirectCount = 0;
 static bool hasReceivedResponse;
 static NSURL *sourceURL = [[NSBundle mainBundle] URLForResource:@"simple" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
+static WKWebView* expectedOriginatingWebView;
+static bool expectedUserInitiatedState = false;
 
 @interface DownloadDelegate : NSObject <_WKDownloadDelegate>
 @end
@@ -60,6 +67,7 @@ static NSURL *sourceURL = [[NSBundle mainBundle] URLForResource:@"simple" withEx
     EXPECT_NULL(_download);
     EXPECT_NOT_NULL(download);
     EXPECT_TRUE([[[[download request] URL] path] isEqualToString:[sourceURL path]]);
+    EXPECT_EQ(expectedUserInitiatedState, download.wasUserInitiated);
     _download = download;
 }
 
@@ -84,10 +92,10 @@ static NSURL *sourceURL = [[NSBundle mainBundle] URLForResource:@"simple" withEx
     EXPECT_TRUE(hasReceivedResponse);
     EXPECT_EQ(_download, download);
 
-    WebCore::PlatformFileHandle fileHandle;
-    _destinationPath = WebCore::openTemporaryFile("TestWebKitAPI", fileHandle);
-    EXPECT_TRUE(fileHandle != WebCore::invalidPlatformFileHandle);
-    WebCore::closeFile(fileHandle);
+    WebCore::FileSystem::PlatformFileHandle fileHandle;
+    _destinationPath = WebCore::FileSystem::openTemporaryFile("TestWebKitAPI", fileHandle);
+    EXPECT_TRUE(fileHandle != WebCore::FileSystem::invalidPlatformFileHandle);
+    WebCore::FileSystem::closeFile(fileHandle);
 
     *allowOverwrite = YES;
     return _destinationPath;
@@ -96,9 +104,10 @@ static NSURL *sourceURL = [[NSBundle mainBundle] URLForResource:@"simple" withEx
 - (void)_downloadDidFinish:(_WKDownload *)download
 {
     EXPECT_EQ(_download, download);
+    EXPECT_EQ(expectedUserInitiatedState, download.wasUserInitiated);
     EXPECT_TRUE(_expectedContentLength == NSURLResponseUnknownLength || static_cast<uint64_t>(_expectedContentLength) == _receivedContentLength);
     EXPECT_TRUE([[NSFileManager defaultManager] contentsEqualAtPath:_destinationPath andPath:[sourceURL path]]);
-    WebCore::deleteFile(_destinationPath);
+    WebCore::FileSystem::deleteFile(_destinationPath);
     isDone = true;
 }
 
@@ -126,6 +135,7 @@ static void runTest(id <WKNavigationDelegate> navigationDelegate, id <_WKDownloa
 
     isDone = false;
     hasReceivedResponse = false;
+    expectedUserInitiatedState = false;
     [webView loadRequest:[NSURLRequest requestWithURL:url]];
     TestWebKitAPI::Util::run(&isDone);
 }
@@ -333,6 +343,7 @@ TEST(_WKDownload, DownloadRequestOriginalURLDirectDownloadWithLoadedContent)
     [webView setNavigationDelegate:[[DownloadRequestOriginalURLNavigationDelegate alloc] init]];
     [[[webView configuration] processPool] _setDownloadDelegate:[[DownloadRequestOriginalURLDelegate alloc] initWithExpectedOriginalURL:sourceURL]];
 
+    expectedUserInitiatedState = false;
     NSURL *contentURL = [[NSBundle mainBundle] URLForResource:@"simple2" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
     // Here is to test if the original URL can be set correctly when the current document
     // is completely unrelated to the download.
@@ -357,6 +368,7 @@ TEST(_WKDownload, DownloadRequestOriginalURLDirectDownloadWithLoadedContent)
     EXPECT_NULL(_download);
     EXPECT_NOT_NULL(download);
     EXPECT_TRUE([[[[download request] URL] scheme] isEqualToString:@"blob"]);
+    EXPECT_EQ(expectedUserInitiatedState, download.wasUserInitiated);
     _download = download;
 }
 
@@ -381,10 +393,10 @@ TEST(_WKDownload, DownloadRequestOriginalURLDirectDownloadWithLoadedContent)
     EXPECT_TRUE(hasReceivedResponse);
     EXPECT_EQ(_download, download);
 
-    WebCore::PlatformFileHandle fileHandle;
-    _destinationPath = WebCore::openTemporaryFile("TestWebKitAPI", fileHandle);
-    EXPECT_TRUE(fileHandle != WebCore::invalidPlatformFileHandle);
-    WebCore::closeFile(fileHandle);
+    WebCore::FileSystem::PlatformFileHandle fileHandle;
+    _destinationPath = WebCore::FileSystem::openTemporaryFile("TestWebKitAPI", fileHandle);
+    EXPECT_TRUE(fileHandle != WebCore::FileSystem::invalidPlatformFileHandle);
+    WebCore::FileSystem::closeFile(fileHandle);
 
     *allowOverwrite = YES;
     return _destinationPath;
@@ -393,11 +405,12 @@ TEST(_WKDownload, DownloadRequestOriginalURLDirectDownloadWithLoadedContent)
 - (void)_downloadDidFinish:(_WKDownload *)download
 {
     EXPECT_EQ(_download, download);
+    EXPECT_EQ(expectedUserInitiatedState, download.wasUserInitiated);
     EXPECT_TRUE(_expectedContentLength == NSURLResponseUnknownLength || static_cast<uint64_t>(_expectedContentLength) == _receivedContentLength);
     NSString* expectedContent = @"{\"x\":42,\"s\":\"hello, world\"}";
     NSData* expectedData = [expectedContent dataUsingEncoding:NSUTF8StringEncoding];
     EXPECT_TRUE([[[NSFileManager defaultManager] contentsAtPath:_destinationPath] isEqualToData:expectedData]);
-    WebCore::deleteFile(_destinationPath);
+    WebCore::FileSystem::deleteFile(_destinationPath);
     isDone = true;
 }
 
@@ -420,6 +433,153 @@ TEST(_WKDownload, DownloadRequestBlobURL)
 {
     NSURL *originalURL = [[NSBundle mainBundle] URLForResource:@"DownloadRequestBlobURL" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
     runTest(adoptNS([[DownloadBlobURLNavigationDelegate alloc] init]).get(), adoptNS([[BlobDownloadDelegate alloc] init]).get(), originalURL);
+}
+
+@interface UIDownloadAsFileTestDelegate : NSObject <WKUIDelegatePrivate>
+@end
+
+@implementation UIDownloadAsFileTestDelegate
+
+- (NSMenu *)_webView:(WKWebView *)webView contextMenu:(NSMenu *)menu forElement:(_WKContextMenuElementInfo *)element
+{
+    static const long downloadLinkedFileTag = 2;
+    auto index = [menu indexOfItemWithTag:downloadLinkedFileTag];
+    [menu performActionForItemAtIndex:index];
+    return nil;
+}
+
+@end
+
+@interface RedirectedDownloadDelegate : NSObject <_WKDownloadDelegate>
+@end
+
+@implementation RedirectedDownloadDelegate {
+    String _destinationPath;
+}
+
+- (void)_downloadDidStart:(_WKDownload *)download
+{
+    EXPECT_NOT_NULL(download);
+    EXPECT_EQ(expectedOriginatingWebView, download.originatingWebView);
+    EXPECT_EQ(expectedUserInitiatedState, download.wasUserInitiated);
+}
+
+- (NSString *)_download:(_WKDownload *)download decideDestinationWithSuggestedFilename:(NSString *)filename allowOverwrite:(BOOL *)allowOverwrite
+{
+    WebCore::FileSystem::PlatformFileHandle fileHandle;
+    _destinationPath = WebCore::FileSystem::openTemporaryFile("TestWebKitAPI", fileHandle);
+    EXPECT_TRUE(fileHandle != WebCore::FileSystem::invalidPlatformFileHandle);
+    WebCore::FileSystem::closeFile(fileHandle);
+    *allowOverwrite = YES;
+    return _destinationPath;
+}
+
+- (void)_download:(_WKDownload *)download didReceiveServerRedirectToURL:(NSURL *)url
+{
+    if (!redirectCount)
+        EXPECT_STREQ("http://redirect/?pass", [url.absoluteString UTF8String]);
+    else
+        EXPECT_STREQ("http://pass/", [url.absoluteString UTF8String]);
+    ++redirectCount = true;
+}
+
+- (void)_downloadDidFinish:(_WKDownload *)download
+{
+    EXPECT_EQ(expectedUserInitiatedState, download.wasUserInitiated);
+
+    NSArray<NSURL *> *redirectChain = download.redirectChain;
+    EXPECT_EQ(3U, redirectChain.count);
+    if (redirectChain.count > 0)
+        EXPECT_STREQ("http://redirect/?redirect/?pass", [redirectChain[0].absoluteString UTF8String]);
+    if (redirectChain.count > 1)
+        EXPECT_STREQ("http://redirect/?pass", [redirectChain[1].absoluteString UTF8String]);
+    if (redirectChain.count > 2)
+        EXPECT_STREQ("http://pass/", [redirectChain[2].absoluteString UTF8String]);
+
+    WebCore::FileSystem::deleteFile(_destinationPath);
+    isDone = true;
+}
+
+@end
+
+TEST(_WKDownload, RedirectedDownload)
+{
+    [TestProtocol registerWithScheme:@"http"];
+
+    redirectCount = 0;
+    isDone = false;
+
+    auto delegate = adoptNS([[UIDownloadAsFileTestDelegate alloc] init]);
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600) configuration:configuration.get()]);
+    [webView setUIDelegate:delegate.get()];
+    auto downloadDelegate = adoptNS([[RedirectedDownloadDelegate alloc] init]);
+    [[[webView configuration] processPool] _setDownloadDelegate:downloadDelegate.get()];
+
+    auto window = adoptNS([[NSWindow alloc] initWithContentRect:[webView frame] styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:YES]);
+    [[window contentView] addSubview:webView.get()];
+
+    // Do 2 loads in the same view to make sure the redirect chain is properly cleared between loads.
+    [webView synchronouslyLoadHTMLString:@"<div>First load</div>"];
+    [webView synchronouslyLoadHTMLString:@"<a style='display: block; height: 100%; width: 100%' href='http://redirect/?redirect/?pass'>test</a>"];
+
+    expectedOriginatingWebView = webView.get();
+    expectedUserInitiatedState = true;
+    NSPoint clickPoint = NSMakePoint(100, 100);
+    [[webView hitTest:clickPoint] mouseDown:[NSEvent mouseEventWithType:NSEventTypeRightMouseDown location:clickPoint modifierFlags:0 timestamp:0 windowNumber:[window windowNumber] context:nil eventNumber:0 clickCount:1 pressure:1]];
+    [[webView hitTest:clickPoint] mouseUp:[NSEvent mouseEventWithType:NSEventTypeRightMouseUp location:clickPoint modifierFlags:0 timestamp:0 windowNumber:[window windowNumber] context:nil eventNumber:0 clickCount:1 pressure:1]];
+
+    isDone = false;
+    TestWebKitAPI::Util::run(&isDone);
+    EXPECT_EQ(1U, redirectCount);
+
+    [TestProtocol unregister];
+}
+
+TEST(_WKDownload, RedirectedLoadConvertedToDownload)
+{
+    [TestProtocol registerWithScheme:@"http"];
+
+    auto navigationDelegate = adoptNS([[ConvertResponseToDownloadNavigationDelegate alloc] init]);
+    auto downloadDelegate = adoptNS([[RedirectedDownloadDelegate alloc] init]);
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    [webView setNavigationDelegate:navigationDelegate.get()];
+    [[[webView configuration] processPool] _setDownloadDelegate:downloadDelegate.get()];
+
+    expectedOriginatingWebView = webView.get();
+    expectedUserInitiatedState = false;
+    isDone = false;
+    redirectCount = 0;
+    hasReceivedResponse = false;
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://redirect/?redirect/?pass"]]];
+    TestWebKitAPI::Util::run(&isDone);
+    EXPECT_EQ(0U, redirectCount);
+
+    [TestProtocol unregister];
+}
+
+TEST(_WKDownload, RedirectedSubframeLoadConvertedToDownload)
+{
+    [TestProtocol registerWithScheme:@"http"];
+
+    auto navigationDelegate = adoptNS([[ConvertResponseToDownloadNavigationDelegate alloc] init]);
+    auto downloadDelegate = adoptNS([[RedirectedDownloadDelegate alloc] init]);
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    [webView setNavigationDelegate:navigationDelegate.get()];
+    [[[webView configuration] processPool] _setDownloadDelegate:downloadDelegate.get()];
+
+    expectedOriginatingWebView = webView.get();
+    expectedUserInitiatedState = false;
+    isDone = false;
+    redirectCount = 0;
+    hasReceivedResponse = false;
+    [webView loadHTMLString:@"<body><iframe src='http://redirect/?redirect/?pass'></iframe></body>" baseURL:nil];
+    TestWebKitAPI::Util::run(&isDone);
+    EXPECT_EQ(0U, redirectCount);
+
+    [TestProtocol unregister];
 }
 
 #endif

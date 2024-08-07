@@ -37,6 +37,7 @@ WI.Popover = class Popover extends WI.Object
         this._anchorPoint = new WI.Point;
         this._preferredEdges = null;
         this._resizeHandler = null;
+        this._backgroundStyle = WI.Popover.BackgroundStyle.Default;
 
         this._contentNeedsUpdate = false;
         this._dismissing = false;
@@ -51,19 +52,16 @@ WI.Popover = class Popover extends WI.Object
 
     // Public
 
-    get element()
+    get element() { return this._element; }
+
+    get visible()
     {
-        return this._element;
+        return this._element.parentNode === document.body && !this._element.classList.contains(WI.Popover.FadeOutClassName);
     }
 
     get frame()
     {
         return this._frame;
-    }
-
-    get visible()
-    {
-        return this._element.parentNode === document.body && !this._element.classList.contains(WI.Popover.FadeOutClassName);
     }
 
     set frame(frame)
@@ -74,6 +72,18 @@ WI.Popover = class Popover extends WI.Object
         this._element.style.height = frame.size.height + "px";
         this._element.style.backgroundSize = frame.size.width + "px " + frame.size.height + "px";
         this._frame = frame;
+    }
+
+    get backgroundStyle()
+    {
+        return this._backgroundStyle;
+    }
+
+    set backgroundStyle(style)
+    {
+        console.assert(Object.values(WI.Popover.BackgroundStyle).includes(style));
+
+        this._backgroundStyle = style;
     }
 
     set content(content)
@@ -211,14 +221,15 @@ WI.Popover = class Popover extends WI.Object
 
         this._dismissing = false;
 
+        if (this._edge !== null)
+            this._element.classList.remove(this._cssClassNameForEdge());
+
         if (this._contentNeedsUpdate) {
             // Reset CSS properties on element so that the element may be sized to fit its content.
             this._element.style.removeProperty("left");
             this._element.style.removeProperty("top");
             this._element.style.removeProperty("width");
             this._element.style.removeProperty("height");
-            if (this._edge !== null)
-                this._element.classList.remove(this._cssClassNameForEdge());
 
             // Add the content in place of the wrapper to get the raw metrics.
             this._container.replaceWith(this._content);
@@ -422,11 +433,8 @@ WI.Popover = class Popover extends WI.Object
         this._drawFrame(ctx, bounds, this._edge, this._anchorPoint);
         ctx.clip();
 
-        // Gradient fill, top-to-bottom.
-        var fillGradient = ctx.createLinearGradient(0, 0, 0, height);
-        fillGradient.addColorStop(0, "rgba(255, 255, 255, 0.95)");
-        fillGradient.addColorStop(1, "rgba(235, 235, 235, 0.95)");
-        ctx.fillStyle = fillGradient;
+        // Panel background color fill.
+        ctx.fillStyle = this._backgroundStyle === WI.Popover.BackgroundStyle.White ? "white" : "rgb(236, 236, 236)";
         ctx.fillRect(0, 0, width, height);
 
         // Stroke.
@@ -582,6 +590,11 @@ WI.Popover = class Popover extends WI.Object
             WI.quickConsole.keyboardShortcutDisabled = true;
         }
     }
+};
+
+WI.Popover.BackgroundStyle = {
+    Default: "popover-background-default",
+    White: "popover-background-white",
 };
 
 WI.Popover.FadeOutClassName = "fade-out";

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Devin Rousso <dcrousso+webkit@gmail.com>. All rights reserved.
+ * Copyright (C) 2016 Devin Rousso <webkit@devinrousso.com>. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,24 +25,33 @@
 
 WI.Collection = class Collection extends WI.Object
 {
-    constructor(typeVerifier)
+    constructor(items = [])
     {
         super();
 
         this._items = new Set;
 
-        console.assert(!typeVerifier || typeof typeVerifier === "function");
-        this._typeVerifier = typeVerifier || WI.Collection.TypeVerifier.Any;
+        for (let item of items)
+            this.add(item);
     }
 
-     // Public
+    // Public
 
     get items() { return this._items; }
-    get typeVerifier() { return this._typeVerifier; }
+
+    get displayName()
+    {
+        throw WI.NotImplementedError.subclassMustOverride();
+    }
+
+    objectIsRequiredType(object)
+    {
+        throw WI.NotImplementedError.subclassMustOverride();
+    }
 
     add(item)
     {
-        let isValidType = this._typeVerifier(item);
+        let isValidType = this.objectIsRequiredType(item);
         console.assert(isValidType);
         if (!isValidType)
             return;
@@ -105,18 +114,8 @@ WI.Collection = class Collection extends WI.Object
     }
 };
 
- WI.Collection.Event = {
+WI.Collection.Event = {
     ItemAdded: "collection-item-added",
     ItemRemoved: "collection-item-removed",
 };
 
- WI.Collection.TypeVerifier = {
-    Any: (object) => true,
-    ContentFlow: (object) => object instanceof WI.ContentFlow,
-    Frame: (object) => object instanceof WI.Frame,
-    Resource: (object) => object instanceof WI.Resource,
-    Script: (object) => object instanceof WI.Script,
-    CSSStyleSheet: (object) => object instanceof WI.CSSStyleSheet,
-    Canvas: (object) => object instanceof WI.Canvas,
-    ShaderProgram: (object) => object instanceof WI.ShaderProgram,
-};

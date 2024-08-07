@@ -620,6 +620,12 @@ void UIScriptController::simulateRotationLikeSafari(DeviceOrientation* orientati
     [[UIDevice currentDevice] setOrientation:toUIDeviceOrientation(orientation) animated:YES];
 }
 
+void UIScriptController::findString(JSStringRef string, unsigned long options, unsigned long maxCount)
+{
+    TestRunnerWKWebView *webView = TestController::singleton().mainWebView()->platformView();
+    [webView _findString:toWTFString(toWK(string)) options:options maxCount:maxCount];
+}
+
 void UIScriptController::removeViewFromWindow(JSValueRef callback)
 {
     TestController::singleton().mainWebView()->removeFromWindow();
@@ -741,6 +747,24 @@ void UIScriptController::setSafeAreaInsets(double top, double right, double bott
     UIEdgeInsets insets = UIEdgeInsetsMake(top, left, bottom, right);
     TestRunnerWKWebView *webView = TestController::singleton().mainWebView()->platformView();
     webView.overrideSafeAreaInsets = insets;
+}
+
+void UIScriptController::beginBackSwipe(JSValueRef callback)
+{
+    TestRunnerWKWebView *webView = TestController::singleton().mainWebView()->platformView();
+    [webView _beginBackSwipeForTesting];
+
+    unsigned callbackID = m_context->prepareForAsyncTask(callback, CallbackTypeNonPersistent);
+    m_context->asyncTaskComplete(callbackID);
+}
+
+void UIScriptController::completeBackSwipe(JSValueRef callback)
+{
+    TestRunnerWKWebView *webView = TestController::singleton().mainWebView()->platformView();
+    [webView _completeBackSwipeForTesting];
+
+    unsigned callbackID = m_context->prepareForAsyncTask(callback, CallbackTypeNonPersistent);
+    m_context->asyncTaskComplete(callbackID);
 }
 
 }

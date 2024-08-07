@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,19 +35,35 @@
 
 @interface NowPlayingTestWebView : TestWKWebView
 @property (nonatomic, readonly) BOOL hasActiveNowPlayingSession;
+@property (nonatomic, readonly) BOOL registeredAsNowPlayingApplication;
 @property (readonly) NSString *lastUpdatedTitle;
 @property (readonly) double lastUpdatedDuration;
 @property (readonly) double lastUpdatedElapsedTime;
+@property (readonly) NSInteger lastUniqueIdentifier;
 @end
 
 @implementation NowPlayingTestWebView {
     bool _receivedNowPlayingInfoResponse;
     BOOL _hasActiveNowPlayingSession;
+    BOOL _registeredAsNowPlayingApplication;
 }
 - (BOOL)hasActiveNowPlayingSession
 {
     _receivedNowPlayingInfoResponse = false;
-    [self _requestActiveNowPlayingSessionInfo];
+
+    auto completionHandler = [retainedSelf = retainPtr(self), self](BOOL active, BOOL registeredAsNowPlayingApplication, NSString *title, double duration, double elapsedTime, NSInteger uniqueIdentifier) {
+        _hasActiveNowPlayingSession = active;
+        _registeredAsNowPlayingApplication = registeredAsNowPlayingApplication;
+        _lastUpdatedTitle = [title copy];
+        _lastUpdatedDuration = duration;
+        _lastUpdatedElapsedTime = elapsedTime;
+        _lastUniqueIdentifier = uniqueIdentifier;
+
+        _receivedNowPlayingInfoResponse = true;
+    };
+
+    [self _requestActiveNowPlayingSessionInfo:completionHandler];
+
     TestWebKitAPI::Util::run(&_receivedNowPlayingInfoResponse);
 
     return _hasActiveNowPlayingSession;
@@ -60,38 +76,6 @@
         [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantPast]];
         finishedWaiting = self.hasActiveNowPlayingSession == hasActiveNowPlayingSession;
     }
-}
-
-- (void)waitForNowPlayingInfoToChange
-{
-    BOOL initialHasActiveNowPlayingSession = self.hasActiveNowPlayingSession;
-    NSString *initialTitle = self.lastUpdatedTitle;
-    double initialDuration = self.lastUpdatedDuration;
-    double initialElapsedTime = self.lastUpdatedElapsedTime;
-    while ([[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantPast]]) {
-        BOOL currentlyHasActiveNowPlayingSession = self.hasActiveNowPlayingSession;
-        if (initialHasActiveNowPlayingSession != currentlyHasActiveNowPlayingSession)
-            break;
-
-        if (initialDuration != self.lastUpdatedDuration)
-            break;
-
-        if (initialElapsedTime != self.lastUpdatedElapsedTime)
-            break;
-
-        if (![initialTitle isEqualToString:self.lastUpdatedTitle] && self.lastUpdatedTitle != initialTitle)
-            break;
-    }
-}
-
-- (void)_handleActiveNowPlayingSessionInfoResponse:(BOOL)hasActiveSession title:(NSString *)title duration:(double)duration elapsedTime:(double)elapsedTime
-{
-    _hasActiveNowPlayingSession = hasActiveSession;
-    _lastUpdatedTitle = [title copy];
-    _lastUpdatedDuration = duration;
-    _lastUpdatedElapsedTime = elapsedTime;
-
-    _receivedNowPlayingInfoResponse = true;
 }
 
 - (void)setWindowVisible:(BOOL)isVisible
@@ -111,77 +95,128 @@ TEST(NowPlayingControlsTests, NowPlayingControlsDoNotShowForForegroundPage)
 {
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
-    NowPlayingTestWebView *webView = [[NowPlayingTestWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration];
+    auto webView = adoptNS([[NowPlayingTestWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration]);
     [webView loadTestPageNamed:@"large-video-test-now-playing"];
     [webView waitForMessage:@"playing"];
 
+    [webView setWindowVisible:NO];
+    [webView.get().window resignKeyWindow];
+    [webView expectHasActiveNowPlayingSession:YES];
+
     [webView setWindowVisible:YES];
-    [webView.window makeKeyWindow];
+    [webView.get().window makeKeyWindow];
     [webView expectHasActiveNowPlayingSession:NO];
 
-    ASSERT_STREQ("foo", webView.lastUpdatedTitle.UTF8String);
-    ASSERT_EQ(10, webView.lastUpdatedDuration);
-    ASSERT_GE(webView.lastUpdatedElapsedTime, 0);
+    ASSERT_STREQ("foo", webView.get().lastUpdatedTitle.UTF8String);
+    ASSERT_EQ(10, webView.get().lastUpdatedDuration);
+    ASSERT_GE(webView.get().lastUpdatedElapsedTime, 0);
 }
 
 TEST(NowPlayingControlsTests, NowPlayingControlsShowForBackgroundPage)
 {
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
-    NowPlayingTestWebView *webView = [[NowPlayingTestWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration];
+    auto webView = adoptNS([[NowPlayingTestWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration]);
     [webView loadTestPageNamed:@"large-video-test-now-playing"];
     [webView waitForMessage:@"playing"];
 
     [webView setWindowVisible:NO];
-    [webView.window resignKeyWindow];
+    [webView.get().window resignKeyWindow];
     [webView expectHasActiveNowPlayingSession:YES];
 
-    ASSERT_STREQ("foo", webView.lastUpdatedTitle.UTF8String);
-    ASSERT_EQ(10, webView.lastUpdatedDuration);
-    ASSERT_GE(webView.lastUpdatedElapsedTime, 0);
+    ASSERT_STREQ("foo", webView.get().lastUpdatedTitle.UTF8String);
+    ASSERT_EQ(10, webView.get().lastUpdatedDuration);
+    ASSERT_GE(webView.get().lastUpdatedElapsedTime, 0);
 }
 
 TEST(NowPlayingControlsTests, NowPlayingControlsHideAfterShowingKeepsSessionActive)
 {
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
-    NowPlayingTestWebView *webView = [[NowPlayingTestWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration];
+    auto webView = adoptNS([[NowPlayingTestWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration]);
     [webView loadTestPageNamed:@"large-video-test-now-playing"];
     [webView waitForMessage:@"playing"];
 
     [webView setWindowVisible:NO];
-    [webView.window resignKeyWindow];
+    [webView.get().window resignKeyWindow];
 
     [webView expectHasActiveNowPlayingSession:YES];
 
     [webView setWindowVisible:YES];
-    [webView.window makeKeyWindow];
+    [webView.get().window makeKeyWindow];
 
     [webView expectHasActiveNowPlayingSession:NO];
 
-    ASSERT_STREQ("foo", webView.lastUpdatedTitle.UTF8String);
-    ASSERT_EQ(10, webView.lastUpdatedDuration);
-    ASSERT_GE(webView.lastUpdatedElapsedTime, 0);
+    ASSERT_STREQ("foo", webView.get().lastUpdatedTitle.UTF8String);
+    ASSERT_EQ(10, webView.get().lastUpdatedDuration);
+    ASSERT_GE(webView.get().lastUpdatedElapsedTime, 0);
 }
 
 TEST(NowPlayingControlsTests, NowPlayingControlsClearInfoAfterSessionIsNoLongerValid)
 {
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
-    NowPlayingTestWebView *webView = [[NowPlayingTestWebView alloc] initWithFrame:NSMakeRect(0, 0, 480, 320) configuration:configuration];
+    auto webView = adoptNS([[NowPlayingTestWebView alloc] initWithFrame:NSMakeRect(0, 0, 480, 320) configuration:configuration]);
     [webView loadTestPageNamed:@"large-video-test-now-playing"];
     [webView waitForMessage:@"playing"];
 
+    BOOL initialHasActiveNowPlayingSession = webView.get().hasActiveNowPlayingSession;
+    NSString *initialTitle = webView.get().lastUpdatedTitle;
+    double initialDuration = webView.get().lastUpdatedDuration;
+    double initialElapsedTime = webView.get().lastUpdatedElapsedTime;
+    NSInteger initialUniqueIdentifier = webView.get().lastUniqueIdentifier;
+
     [webView stringByEvaluatingJavaScript:@"document.querySelector('video').muted = true"];
     [webView setWindowVisible:NO];
-    [webView.window resignKeyWindow];
+    [webView.get().window resignKeyWindow];
 
-    [webView waitForNowPlayingInfoToChange];
+    while ([[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantPast]]) {
+        if (initialHasActiveNowPlayingSession != webView.get().hasActiveNowPlayingSession)
+            break;
 
-    ASSERT_STREQ("", webView.lastUpdatedTitle.UTF8String);
-    ASSERT_TRUE(isnan(webView.lastUpdatedDuration));
-    ASSERT_TRUE(isnan(webView.lastUpdatedElapsedTime));
+        if (initialUniqueIdentifier != webView.get().lastUniqueIdentifier)
+            break;
+
+        if (initialDuration != webView.get().lastUpdatedDuration)
+            break;
+
+        if (initialElapsedTime != webView.get().lastUpdatedElapsedTime)
+            break;
+
+        if (![initialTitle isEqualToString:webView.get().lastUpdatedTitle])
+            break;
+    }
+
+    ASSERT_STREQ("", webView.get().lastUpdatedTitle.UTF8String);
+    ASSERT_TRUE(isnan(webView.get().lastUpdatedDuration));
+    ASSERT_TRUE(isnan(webView.get().lastUpdatedElapsedTime));
+    ASSERT_TRUE(!webView.get().lastUniqueIdentifier);
 }
+
+TEST(NowPlayingControlsTests, NowPlayingControlsCheckRegistered)
+{
+    WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+    configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
+    auto webView = adoptNS([[NowPlayingTestWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration]);
+    [webView loadTestPageNamed:@"large-video-test-now-playing"];
+    [webView waitForMessage:@"playing"];
+    [webView setWindowVisible:NO];
+    [webView.get().window resignKeyWindow];
+
+    [webView expectHasActiveNowPlayingSession:YES];
+    ASSERT_TRUE(webView.get().registeredAsNowPlayingApplication);
+
+    [webView stringByEvaluatingJavaScript:@"pause()"];
+    [webView waitForMessage:@"paused"];
+    [webView expectHasActiveNowPlayingSession:YES];
+    ASSERT_TRUE(webView.get().registeredAsNowPlayingApplication);
+
+    auto result = [webView stringByEvaluatingJavaScript:@"removeVideoElement()"];
+    ASSERT_STREQ("<null>", result.UTF8String);
+    [webView expectHasActiveNowPlayingSession:NO];
+    ASSERT_FALSE(webView.get().registeredAsNowPlayingApplication);
+}
+
 #endif // PLATFORM(MAC)
 
 #if PLATFORM(IOS)
@@ -190,14 +225,14 @@ TEST(NowPlayingControlsTests, DISABLED_NowPlayingControlsIOS)
 {
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
-    NowPlayingTestWebView *webView = [[NowPlayingTestWebView alloc] initWithFrame:NSMakeRect(0, 0, 480, 320) configuration:configuration];
+    auto webView = adoptNS([[NowPlayingTestWebView alloc] initWithFrame:NSMakeRect(0, 0, 480, 320) configuration:configuration]);
     [webView loadTestPageNamed:@"large-video-test-now-playing"];
     [webView waitForMessage:@"playing"];
 
     [webView expectHasActiveNowPlayingSession:YES];
-    ASSERT_STREQ("foo", webView.lastUpdatedTitle.UTF8String);
-    ASSERT_EQ(10, webView.lastUpdatedDuration);
-    ASSERT_GE(webView.lastUpdatedElapsedTime, 0);
+    ASSERT_STREQ("foo", webView.get().lastUpdatedTitle.UTF8String);
+    ASSERT_EQ(10, webView.get().lastUpdatedDuration);
+    ASSERT_GE(webView.get().lastUpdatedElapsedTime, 0);
 }
 #endif
 

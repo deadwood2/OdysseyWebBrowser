@@ -44,9 +44,8 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static CString buildAcceptLanguages(const Vector<String>& languages)
 {
@@ -110,7 +109,7 @@ void NetworkProcess::platformInitializeNetworkProcess(const NetworkProcessCreati
     ASSERT(!parameters.diskCacheDirectory.isEmpty());
     m_diskCacheDirectory = parameters.diskCacheDirectory;
 
-    SoupNetworkSession::clearOldSoupCache(WebCore::directoryName(m_diskCacheDirectory));
+    SoupNetworkSession::clearOldSoupCache(WebCore::FileSystem::directoryName(m_diskCacheDirectory));
 
     OptionSet<NetworkCache::Cache::Option> cacheOptions { NetworkCache::Cache::Option::RegisterNotify };
     if (parameters.shouldEnableNetworkCacheEfficacyLogging)
@@ -153,10 +152,10 @@ void NetworkProcess::clearCacheForAllOrigins(uint32_t cachesToClear)
     if (cachesToClear == InMemoryResourceCachesOnly)
         return;
 
-    clearDiskCache(std::chrono::system_clock::time_point::min(), [] { });
+    clearDiskCache(-WallTime::infinity(), [] { });
 }
 
-void NetworkProcess::clearDiskCache(std::chrono::system_clock::time_point modifiedSince, Function<void ()>&& completionHandler)
+void NetworkProcess::clearDiskCache(WallTime modifiedSince, Function<void ()>&& completionHandler)
 {
     if (!m_cache)
         return;

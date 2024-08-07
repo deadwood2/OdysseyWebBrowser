@@ -26,29 +26,25 @@
 #import "config.h"
 #import "PublicSuffix.h"
 
-#import "WebCoreSystemInterface.h"
-#import "WebCoreNSURLExtras.h"
-
 #if ENABLE(PUBLIC_SUFFIX_LIST)
 
-@interface NSString (WebCoreNSURLExtras)
-- (BOOL)_web_looksLikeIPAddress;
-@end
+#import "URL.h"
+#import <pal/spi/cf/CFNetworkSPI.h>
 
 namespace WebCore {
 
 bool isPublicSuffix(const String& domain)
 {
     NSString *host = decodeHostName(domain);
-    return host && wkIsPublicSuffix(host);
+    return host && _CFHostIsDomainTopLevel((CFStringRef)host);
 }
 
 String topPrivatelyControlledDomain(const String& domain)
 {
-    if ([domain _web_looksLikeIPAddress])
+    if (URL::hostIsIPAddress(domain))
         return domain;
 
-    if (!domain.containsOnlyASCII())
+    if (!domain.isAllASCII())
         return domain;
     
     const auto& lowercaseDomain = domain.convertToASCIILowercase();

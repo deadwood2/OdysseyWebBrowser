@@ -30,6 +30,18 @@
 #include <CFNetwork/CFNetwork.h>
 #include <pal/spi/cf/CFNetworkConnectionCacheSPI.h>
 
+#if ((PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101302 && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300) || (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110200) || (PLATFORM(WATCHOS) && __WATCH_OS_VERSION_MIN_REQUIRED >= 40200) || (PLATFORM(TVOS) && __TV_OS_VERSION_MIN_REQUIRED >= 110200))
+#define USE_CFNETWORK_IGNORE_HSTS 1
+
+/* FIXME: Remove after rdar 35390452 is fixed: */
+#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101400
+#undef USE_CFNETWORK_IGNORE_HSTS
+#define USE_CFNETWORK_IGNORE_HSTS 0
+#endif
+
+#endif
+
+
 #if PLATFORM(WIN) || USE(APPLE_INTERNAL_SDK)
 
 #include <CFNetwork/CFHTTPCookiesPriv.h>
@@ -97,10 +109,20 @@ typedef void (^CFCachedURLResponseCallBackBlock)(CFCachedURLResponseRef);
 - (id)_initWithCFURLRequest:(CFURLRequestRef)request;
 - (id)_propertyForKey:(NSString *)key;
 - (void)_setProperty:(id)value forKey:(NSString *)key;
+#if USE(CFNETWORK_IGNORE_HSTS)
+- (BOOL)_schemeWasUpgradedDueToDynamicHSTS;
+- (BOOL)_preventHSTSStorage;
+- (BOOL)_ignoreHSTS;
+#endif
 @end
 
 @interface NSMutableURLRequest ()
 - (void)setContentDispositionEncodingFallbackArray:(NSArray *)theEncodingFallbackArray;
+- (void)setBoundInterfaceIdentifier:(NSString *)identifier;
+#if USE(CFNETWORK_IGNORE_HSTS)
+- (void)_setPreventHSTSStorage:(BOOL)preventHSTSStorage;
+- (void)_setIgnoreHSTS:(BOOL)ignoreHSTS;
+#endif
 @end
 
 @interface NSURLResponse ()
@@ -113,8 +135,16 @@ typedef void (^CFCachedURLResponseCallBackBlock)(CFCachedURLResponseRef);
 - (NSDictionary *)_timingData;
 @end
 
+#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300) || (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000)
+@interface NSURLSessionTask (ResourceHints)
+@property (nonatomic, assign) BOOL _preconnect;
+@end
+#endif
+
 @interface NSHTTPCookie ()
 - (CFHTTPCookieRef)_CFHTTPCookie;
++ (CFArrayRef __nullable)_ns2cfCookies:(NSArray * __nullable)nsCookies CF_RETURNS_RETAINED;
+- (CFHTTPCookieRef __nullable)_GetInternalCFHTTPCookie;
 @end
 
 @interface NSURLSessionConfiguration ()
@@ -125,6 +155,9 @@ typedef void (^CFCachedURLResponseCallBackBlock)(CFCachedURLResponseRef);
 @property BOOL _shouldSkipPreferredClientCertificateLookup NS_AVAILABLE(10_10, 8_0);
 #if PLATFORM(IOS)
 @property (nullable, copy) NSString *_CTDataConnectionServiceType;
+#endif
+#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300) || (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000)
+@property (nullable, copy) NSSet *_suppressedAutoAddedHTTPHeaders;
 #endif
 @end
 
@@ -139,20 +172,19 @@ typedef void (^CFCachedURLResponseCallBackBlock)(CFCachedURLResponseRef);
 @end
 #endif
 
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200) || PLATFORM(IOS)
 @interface NSHTTPCookie ()
 @property (nullable, readonly, copy) NSString *_storagePartition;
 @end
 
 @interface NSHTTPCookieStorage ()
 - (void)_getCookiesForURL:(NSURL *)url mainDocumentURL:(NSURL *)mainDocumentURL partition:(NSString *)partition completionHandler:(void (^)(NSArray *))completionHandler;
+- (id)_initWithIdentifier:(NSString *)identifier private:(bool)isPrivate;
 @end
 
 @interface NSURLSessionTask ()
 @property (readwrite, copy) NSString *_pathToDownloadTaskFile;
 @property (copy) NSString *_storagePartitionIdentifier;
 @end
-#endif
 
 #endif // defined(__OBJC__)
 
@@ -171,6 +203,7 @@ CFURLCacheRef CFURLCacheCopySharedURLCache();
 void CFURLCacheSetMemoryCapacity(CFURLCacheRef, CFIndex memoryCapacity);
 CFIndex CFURLCacheMemoryCapacity(CFURLCacheRef);
 void CFURLCacheSetDiskCapacity(CFURLCacheRef, CFIndex);
+CFCachedURLResponseRef CFURLCacheCopyResponseForRequest(CFURLCacheRef, CFURLRequestRef);
 
 #if PLATFORM(COCOA)
 Boolean _CFNetworkIsKnownHSTSHostWithSession(CFURLRef, CFURLStorageSessionRef);
@@ -191,7 +224,13 @@ void _CFCachedURLResponseSetBecameFileBackedCallBackBlock(CFCachedURLResponseRef
 extern CFStringRef const kCFHTTPCookieLocalFileDomain;
 extern const CFStringRef kCFHTTPVersion1_1;
 extern const CFStringRef kCFURLRequestAllowAllPOSTCaching;
+extern const CFStringRef _kCFURLCachePartitionKey;
 extern const CFStringRef _kCFURLConnectionPropertyShouldSniff;
+extern const CFStringRef _kCFURLStorageSessionIsPrivate;
+
+#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101302
+extern const CFStringRef kCFURLRequestContentDecoderSkipURLCheck;
+#endif
 
 CFHTTPCookieStorageRef _CFHTTPCookieStorageGetDefault(CFAllocatorRef);
 CFHTTPCookieStorageRef CFHTTPCookieStorageCreateFromFile(CFAllocatorRef, CFURLRef, CFHTTPCookieStorageRef);
@@ -228,8 +267,25 @@ CFURLRef CFURLRequestGetURL(CFURLRequestRef);
 CFURLResponseRef CFURLResponseCreate(CFAllocatorRef, CFURLRef, CFStringRef mimeType, SInt64 expectedContentLength, CFStringRef textEncodingName, CFURLCacheStoragePolicy);
 void CFURLResponseSetExpectedContentLength(CFURLResponseRef, SInt64 length);
 CFURLResponseRef CFURLResponseCreateWithHTTPResponse(CFAllocatorRef, CFURLRef, CFHTTPMessageRef, CFURLCacheStoragePolicy);
+CFArrayRef CFHTTPCookieStorageCopyCookies(CFHTTPCookieStorageRef);
+void CFHTTPCookieStorageSetCookies(CFHTTPCookieStorageRef, CFArrayRef cookies, CFURLRef, CFURLRef mainDocumentURL);
+void CFHTTPCookieStorageDeleteCookie(CFHTTPCookieStorageRef, CFHTTPCookieRef);
+CFMutableURLRequestRef CFURLRequestCreateMutableCopy(CFAllocatorRef, CFURLRequestRef);
+CFStringRef _CFURLCacheCopyCacheDirectory(CFURLCacheRef);
+Boolean _CFHostIsDomainTopLevel(CFStringRef domain);
+void _CFURLRequestCreateArchiveList(CFAllocatorRef, CFURLRequestRef, CFIndex* version, CFTypeRef** objects, CFIndex* objectCount, CFDictionaryRef* protocolProperties);
+CFMutableURLRequestRef _CFURLRequestCreateFromArchiveList(CFAllocatorRef, CFIndex version, CFTypeRef* objects, CFIndex objectCount, CFDictionaryRef protocolProperties);
 
 #endif // !PLATFORM(WIN)
+
+CFN_EXPORT const CFStringRef kCFStreamPropertyCONNECTProxy;
+CFN_EXPORT const CFStringRef kCFStreamPropertyCONNECTProxyHost;
+CFN_EXPORT const CFStringRef kCFStreamPropertyCONNECTProxyPort;
+CFN_EXPORT const CFStringRef kCFStreamPropertyCONNECTAdditionalHeaders;
+CFN_EXPORT const CFStringRef kCFStreamPropertyCONNECTResponse;
+
+CFN_EXPORT void _CFHTTPMessageSetResponseURL(CFHTTPMessageRef, CFURLRef);
+CFN_EXPORT void _CFHTTPMessageSetResponseProxyURL(CFHTTPMessageRef, CFURLRef);
 
 WTF_EXTERN_C_END
 
@@ -287,5 +343,25 @@ WTF_EXTERN_C_END
 @interface NSURLResponse ()
 - (void)_setMIMEType:(NSString *)type;
 @end
+
+static bool schemeWasUpgradedDueToDynamicHSTS(NSURLRequest *request)
+{
+    if ([request respondsToSelector:@selector(_schemeWasUpgradedDueToDynamicHSTS)])
+        return [request performSelector:@selector(_schemeWasUpgradedDueToDynamicHSTS)];
+    return false;
+}
+
+static void setIgnoreHSTS(NSMutableURLRequest *request, bool ignoreHSTS)
+{
+    if ([request respondsToSelector:@selector(_setIgnoreHSTS)])
+        [request performSelector:@selector(_setIgnoreHSTS) withObject:[NSNumber numberWithBool:ignoreHSTS]];
+}
+
+static bool ignoreHSTS(NSURLRequest *request)
+{
+    if ([request respondsToSelector:@selector(_ignoreHSTS)])
+        return [request performSelector:@selector(_ignoreHSTS)];
+    return false;
+}
 
 #endif // defined(__OBJC__)

@@ -28,10 +28,10 @@
 
 #include "WebAutomationSessionMacros.h"
 #include "WebPageProxy.h"
-
-using namespace WebCore;
+#include <gtk/gtk.h>
 
 namespace WebKit {
+using namespace WebCore;
 
 static unsigned modifiersToEventState(WebEvent::Modifiers modifiers)
 {

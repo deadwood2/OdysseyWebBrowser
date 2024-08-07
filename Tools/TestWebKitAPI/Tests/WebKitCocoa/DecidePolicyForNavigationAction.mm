@@ -28,6 +28,8 @@
 #if PLATFORM(MAC)
 
 #import "PlatformUtilities.h"
+#import "TestProtocol.h"
+#import <WebKit/WKNavigationActionPrivate.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/mac/AppKitCompatibilityDeclarations.h>
 
@@ -71,7 +73,7 @@ static NSString *secondURL = @"data:text/html,Second";
 
 @end
 
-TEST(WebKit2, DecidePolicyForNavigationActionReload)
+TEST(WebKit, DecidePolicyForNavigationActionReload)
 {
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
 
@@ -101,7 +103,7 @@ TEST(WebKit2, DecidePolicyForNavigationActionReload)
     action = nullptr;
 }
 
-TEST(WebKit2, DecidePolicyForNavigationActionReloadFromOrigin)
+TEST(WebKit, DecidePolicyForNavigationActionReloadFromOrigin)
 {
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
 
@@ -131,7 +133,7 @@ TEST(WebKit2, DecidePolicyForNavigationActionReloadFromOrigin)
     action = nullptr;
 }
 
-TEST(WebKit2, DecidePolicyForNavigationActionGoBack)
+TEST(WebKit, DecidePolicyForNavigationActionGoBack)
 {
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
 
@@ -165,7 +167,7 @@ TEST(WebKit2, DecidePolicyForNavigationActionGoBack)
     action = nullptr;
 }
 
-TEST(WebKit2, DecidePolicyForNavigationActionGoForward)
+TEST(WebKit, DecidePolicyForNavigationActionGoForward)
 {
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
 
@@ -203,7 +205,7 @@ TEST(WebKit2, DecidePolicyForNavigationActionGoForward)
     action = nullptr;
 }
 
-TEST(WebKit2, DecidePolicyForNavigationActionOpenNewWindowAndDeallocSourceWebView)
+TEST(WebKit, DecidePolicyForNavigationActionOpenNewWindowAndDeallocSourceWebView)
 {
     auto controller = adoptNS([[DecidePolicyForNavigationActionController alloc] init]);
 
@@ -234,7 +236,7 @@ TEST(WebKit2, DecidePolicyForNavigationActionOpenNewWindowAndDeallocSourceWebVie
     action = nullptr;
 }
 
-TEST(WebKit2, DecidePolicyForNavigationActionForTargetedHyperlink)
+TEST(WebKit, DecidePolicyForNavigationActionForTargetedHyperlink)
 {
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
 
@@ -283,7 +285,7 @@ TEST(WebKit2, DecidePolicyForNavigationActionForTargetedHyperlink)
     action = nullptr;
 }
 
-TEST(WebKit2, DecidePolicyForNavigationActionForTargetedWindowOpen)
+TEST(WebKit, DecidePolicyForNavigationActionForTargetedWindowOpen)
 {
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
 
@@ -332,7 +334,7 @@ TEST(WebKit2, DecidePolicyForNavigationActionForTargetedWindowOpen)
     action = nullptr;
 }
 
-TEST(WebKit2, DecidePolicyForNavigationActionForTargetedFormSubmission)
+TEST(WebKit, DecidePolicyForNavigationActionForTargetedFormSubmission)
 {
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
 
@@ -378,6 +380,185 @@ TEST(WebKit2, DecidePolicyForNavigationActionForTargetedFormSubmission)
 
     newWebView = nullptr;
     action = nullptr;
+}
+
+TEST(WebKit, DecidePolicyForNavigationActionForHyperlinkThatRedirects)
+{
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+
+    auto window = adoptNS([[NSWindow alloc] initWithContentRect:[webView frame] styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:YES]);
+    [[window contentView] addSubview:webView.get()];
+
+    auto controller = adoptNS([[DecidePolicyForNavigationActionController alloc] init]);
+    [webView setNavigationDelegate:controller.get()];
+    [webView setUIDelegate:controller.get()];
+
+    [TestProtocol registerWithScheme:@"http"];
+    finishedNavigation = false;
+    [webView loadHTMLString:@"<a style=\"display: block; height: 100%\" href=\"http://redirect/?result\">" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    TestWebKitAPI::Util::run(&finishedNavigation);
+
+    decidedPolicy = false;
+    [newWebView setNavigationDelegate:controller.get()];
+    NSPoint clickPoint = NSMakePoint(100, 100);
+    [[webView hitTest:clickPoint] mouseDown:[NSEvent mouseEventWithType:NSEventTypeLeftMouseDown location:clickPoint modifierFlags:0 timestamp:0 windowNumber:[window windowNumber] context:nil eventNumber:0 clickCount:1 pressure:1]];
+    [[webView hitTest:clickPoint] mouseUp:[NSEvent mouseEventWithType:NSEventTypeLeftMouseUp location:clickPoint modifierFlags:0 timestamp:0 windowNumber:[window windowNumber] context:nil eventNumber:0 clickCount:1 pressure:1]];
+    TestWebKitAPI::Util::run(&decidedPolicy);
+
+    EXPECT_EQ(WKNavigationTypeLinkActivated, [action navigationType]);
+    EXPECT_TRUE([action sourceFrame] == [action targetFrame]);
+    EXPECT_WK_STREQ("GET", [[action request] HTTPMethod]);
+    EXPECT_WK_STREQ("http://redirect/?result", [[[action request] URL] absoluteString]);
+    EXPECT_EQ(webView.get(), [[action sourceFrame] webView]);
+    EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
+    EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
+    EXPECT_FALSE([action _isRedirect]);
+
+    // Wait to decide policy for redirect.
+    decidedPolicy = false;
+    TestWebKitAPI::Util::run(&decidedPolicy);
+
+    EXPECT_EQ(WKNavigationTypeLinkActivated, [action navigationType]);
+    EXPECT_TRUE([action sourceFrame] == [action targetFrame]);
+    EXPECT_WK_STREQ("GET", [[action request] HTTPMethod]);
+    EXPECT_WK_STREQ("http://result/", [[[action request] URL] absoluteString]);
+    EXPECT_EQ(webView.get(), [[action sourceFrame] webView]);
+    EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
+    EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
+    EXPECT_TRUE([action _isRedirect]);
+
+    [TestProtocol unregister];
+    newWebView = nullptr;
+    action = nullptr;
+}
+
+TEST(WebKit, DecidePolicyForNavigationActionForPOSTFormSubmissionThatRedirectsToGET)
+{
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+
+    auto window = adoptNS([[NSWindow alloc] initWithContentRect:[webView frame] styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:YES]);
+    [[window contentView] addSubview:webView.get()];
+
+    auto controller = adoptNS([[DecidePolicyForNavigationActionController alloc] init]);
+    [webView setNavigationDelegate:controller.get()];
+    [webView setUIDelegate:controller.get()];
+
+    finishedNavigation = false;
+    [webView loadHTMLString:@"<form action=\"http://redirect/?result\" method=\"POST\"><input type=\"submit\" name=\"submitButton\" value=\"Submit\"></form>" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    TestWebKitAPI::Util::run(&finishedNavigation);
+
+    [TestProtocol registerWithScheme:@"http"];
+    decidedPolicy = false;
+    [webView evaluateJavaScript:@"document.forms[0].submit()" completionHandler:nil];
+    TestWebKitAPI::Util::run(&decidedPolicy);
+
+    EXPECT_EQ(WKNavigationTypeFormSubmitted, [action navigationType]);
+    EXPECT_TRUE([action sourceFrame] == [action targetFrame]);
+    EXPECT_WK_STREQ("POST", [[action request] HTTPMethod]);
+    EXPECT_WK_STREQ("http://redirect/?result", [[[action request] URL] absoluteString]);
+    EXPECT_EQ(webView.get(), [[action sourceFrame] webView]);
+    EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
+    EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
+    EXPECT_FALSE([action _isRedirect]);
+
+    // Wait to decide policy for redirect.
+    decidedPolicy = false;
+    TestWebKitAPI::Util::run(&decidedPolicy);
+
+    EXPECT_EQ(WKNavigationTypeFormSubmitted, [action navigationType]);
+    EXPECT_TRUE([action sourceFrame] == [action targetFrame]);
+    EXPECT_WK_STREQ("GET", [[action request] HTTPMethod]);
+    EXPECT_WK_STREQ("http://result/", [[[action request] URL] absoluteString]);
+    EXPECT_EQ(webView.get(), [[action sourceFrame] webView]);
+    EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
+    EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
+    EXPECT_TRUE([action _isRedirect]);
+
+    [TestProtocol unregister];
+    newWebView = nullptr;
+    action = nullptr;
+}
+
+TEST(WebKit, DecidePolicyForNavigationActionForPOSTFormSubmissionThatRedirectsToPOST)
+{
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+
+    auto window = adoptNS([[NSWindow alloc] initWithContentRect:[webView frame] styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:YES]);
+    [[window contentView] addSubview:webView.get()];
+
+    auto controller = adoptNS([[DecidePolicyForNavigationActionController alloc] init]);
+    [webView setNavigationDelegate:controller.get()];
+    [webView setUIDelegate:controller.get()];
+
+    finishedNavigation = false;
+    [webView loadHTMLString:@"<form action=\"http://307-redirect/?result\" method=\"POST\"><input type=\"submit\" name=\"submitButton\" value=\"Submit\"></form>" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    TestWebKitAPI::Util::run(&finishedNavigation);
+
+    [TestProtocol registerWithScheme:@"http"];
+    decidedPolicy = false;
+    [webView evaluateJavaScript:@"document.forms[0].submit()" completionHandler:nil];
+    TestWebKitAPI::Util::run(&decidedPolicy);
+
+    EXPECT_EQ(WKNavigationTypeFormSubmitted, [action navigationType]);
+    EXPECT_TRUE([action sourceFrame] == [action targetFrame]);
+    EXPECT_WK_STREQ("POST", [[action request] HTTPMethod]);
+    EXPECT_WK_STREQ("http://307-redirect/?result", [[[action request] URL] absoluteString]);
+    EXPECT_EQ(webView.get(), [[action sourceFrame] webView]);
+    EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
+    EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
+    EXPECT_FALSE([action _isRedirect]);
+
+    // Wait to decide policy for redirect.
+    decidedPolicy = false;
+    TestWebKitAPI::Util::run(&decidedPolicy);
+
+    EXPECT_EQ(WKNavigationTypeFormSubmitted, [action navigationType]);
+    EXPECT_TRUE([action sourceFrame] == [action targetFrame]);
+    EXPECT_WK_STREQ("POST", [[action request] HTTPMethod]);
+    EXPECT_WK_STREQ("http://result/", [[[action request] URL] absoluteString]);
+    EXPECT_EQ(webView.get(), [[action sourceFrame] webView]);
+    EXPECT_WK_STREQ("http", [[[action sourceFrame] securityOrigin] protocol]);
+    EXPECT_WK_STREQ("webkit.org", [[[action sourceFrame] securityOrigin] host]);
+    EXPECT_TRUE([action _isRedirect]);
+
+    [TestProtocol unregister];
+    newWebView = nullptr;
+    action = nullptr;
+}
+
+static size_t calls;
+static bool done;
+
+@interface DecidePolicyForNavigationActionFragmentDelegate : NSObject <WKNavigationDelegate>
+@end
+
+@implementation DecidePolicyForNavigationActionFragmentDelegate
+
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler
+{
+    decisionHandler(WKNavigationActionPolicyAllow);
+    const char* url = navigationAction.request.URL.absoluteString.UTF8String;
+    switch (calls++) {
+    case 0:
+        EXPECT_STREQ(url, "http://webkit.org/");
+        return;
+    case 1:
+        EXPECT_STREQ(url, "http://webkit.org/#fragment");
+        done = true;
+        return;
+    }
+    ASSERT_NOT_REACHED();
+}
+
+@end
+
+TEST(WebKit, DecidePolicyForNavigationActionFragment)
+{
+    auto webView = adoptNS([[WKWebView alloc] init]);
+    auto delegate = adoptNS([[DecidePolicyForNavigationActionFragmentDelegate alloc] init]);
+    [webView setNavigationDelegate:delegate.get()];
+    [webView loadHTMLString:@"<script>window.location.href='#fragment';</script>" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    TestWebKitAPI::Util::run(&done);
 }
 
 #endif

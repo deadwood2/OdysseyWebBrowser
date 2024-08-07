@@ -108,6 +108,7 @@ $tarball = false
 $tarFileName = "payload.tar.gz"
 $copyVM = false
 $testRunnerType = nil
+$testWriter = "default"
 $remoteUser = nil
 $remoteHost = nil
 $remotePort = nil
@@ -116,7 +117,7 @@ $architecture = nil
 $hostOS = nil
 $filter = nil
 $envVars = []
-$quickMode = false
+$mode = "full"
 $buildType = "release"
 $forceCollectContinuously = false
 
@@ -142,6 +143,10 @@ def usage
     puts "--shell-runner              Uses the shell-based test runner instead of the default make-based runner."
     puts "                            In general the shell runner is slower than the make runner."
     puts "--make-runner               Uses the faster make-based runner."
+    puts "--ruby-runner               Uses the ruby runner for machines without unix shell or make."
+    puts "--test-writer [writer]      Specifies the test script format."
+    puts "                            default is to use shell scripts to run the tests"
+    puts "                            \"ruby\" to use ruby scripts for systems without a unix shell."
     puts "--remote                    Specify a remote host on which to run tests from command line argument."
     puts "--remote-config-file        Specify a remote host on which to run tests from JSON file."
     puts "--child-processes    (-c)   Specify the number of child processes."
@@ -152,6 +157,10 @@ def usage
     puts "                            e.g. \"foo=bar x=y\" (no quotes). Note, if you pass DYLD_FRAMEWORK_PATH"
     puts "                            it will override the default value."
     puts "--quick              (-q)   Only run with the default and no-cjit-validate modes."
+    puts "--basic                     Run with default and these additional modes: no-llint,"
+    puts "                            no-cjit-validate-phases, no-cjit-collect-continuously, dfg-eager"
+    puts "                            and for FTL platforms: no-ftl, ftl-eager-no-cjit and"
+    puts "                            ftl-no-cjit-small-pool."
     exit 1
 end
 
@@ -171,6 +180,8 @@ GetoptLong.new(['--help', '-h', GetoptLong::NO_ARGUMENT],
                ['--os', GetoptLong::REQUIRED_ARGUMENT],
                ['--shell-runner', GetoptLong::NO_ARGUMENT],
                ['--make-runner', GetoptLong::NO_ARGUMENT],
+               ['--ruby-runner', GetoptLong::NO_ARGUMENT],
+               ['--test-writer', GetoptLong::REQUIRED_ARGUMENT],
                ['--remote', GetoptLong::REQUIRED_ARGUMENT],
                ['--remote-config-file', GetoptLong::REQUIRED_ARGUMENT],
                ['--child-processes', '-c', GetoptLong::REQUIRED_ARGUMENT],
@@ -179,7 +190,8 @@ GetoptLong.new(['--help', '-h', GetoptLong::NO_ARGUMENT],
                ['--env-vars', GetoptLong::REQUIRED_ARGUMENT],
                ['--debug', GetoptLong::NO_ARGUMENT],
                ['--release', GetoptLong::NO_ARGUMENT],
-               ['--quick', '-q', GetoptLong::NO_ARGUMENT]).each {
+               ['--quick', '-q', GetoptLong::NO_ARGUMENT],
+               ['--basic', GetoptLong::NO_ARGUMENT]).each {
     | opt, arg |
     case opt
     when '--help'
@@ -210,6 +222,10 @@ GetoptLong.new(['--help', '-h', GetoptLong::NO_ARGUMENT],
         $testRunnerType = :shell
     when '--make-runner'
         $testRunnerType = :make
+    when '--ruby-runner'
+        $testRunnerType = :ruby
+    when '--test-writer'
+        $testWriter = arg
     when '--remote'
         $copyVM = true
         $tarball = true
@@ -229,7 +245,9 @@ GetoptLong.new(['--help', '-h', GetoptLong::NO_ARGUMENT],
     when '--env-vars'
         $envVars = arg.gsub(/\s+/, ' ').split(' ')
     when '--quick'
-        $quickMode = true
+        $mode = "quick"
+    when '--basic'
+        $mode = "basic"
     when '--debug'
         $buildType = "debug"
     when '--release'
@@ -415,6 +433,10 @@ $hostOS = determineOS unless $hostOS
 $architecture = determineArchitecture unless $architecture
 $isFTLPlatform = !($architecture == "x86" || $architecture == "arm" || $architecture == "mips" || $hostOS == "windows")
 
+def isFTLEnabled
+    $jitTests && $isFTLPlatform
+end
+
 if !$testRunnerType
     if $remote and $hostOS == "darwin"
         $testRunnerType = :shell
@@ -423,18 +445,25 @@ if !$testRunnerType
     end
 end
 
+if $testWriter
+    if /[^-a-zA-Z0-9_]/.match($testWriter)
+        raise "Invalid test writer #{$testWriter} given"
+    end
+end
+
 $numFailures = 0
 $numPasses = 0
 
 # We force all tests to use a smaller (1.5M) stack so that stack overflow tests can run faster.
-BASE_OPTIONS = ["--useFTLJIT=false", "--useFunctionDotArguments=true", "--maxPerThreadStackUsage=1572864"]
+BASE_OPTIONS = ["--useFTLJIT=false", "--useFunctionDotArguments=true", "--validateExceptionChecks=true", "--useDollarVM=true", "--maxPerThreadStackUsage=1572864"]
 EAGER_OPTIONS = ["--thresholdForJITAfterWarmUp=10", "--thresholdForJITSoon=10", "--thresholdForOptimizeAfterWarmUp=20", "--thresholdForOptimizeAfterLongWarmUp=20", "--thresholdForOptimizeSoon=20", "--thresholdForFTLOptimizeAfterWarmUp=20", "--thresholdForFTLOptimizeSoon=20", "--maximumEvalCacheableSourceLength=150000", "--useEagerCodeBlockJettisonTiming=true"]
 # NOTE: Tests rely on this using scribbleFreeCells.
 NO_CJIT_OPTIONS = ["--useConcurrentJIT=false", "--thresholdForJITAfterWarmUp=100", "--scribbleFreeCells=true"]
 B3O1_OPTIONS = ["--defaultB3OptLevel=1"]
 FTL_OPTIONS = ["--useFTLJIT=true"]
+PROBE_OSR_EXIT_OPTION = ["--useProbeOSRExit=true"]
 
-require_relative "webkitruby/jsc-stress-test-writer-default"
+require_relative "webkitruby/jsc-stress-test-writer-#{$testWriter}"
 
 def shouldCollectContinuously?
     $buildType == "release" or $forceCollectContinuously
@@ -488,7 +517,7 @@ def baseOutputName(kind)
     "#{$collectionName}/#{$benchmark}.#{kind}"
 end
 
-def addRunCommand(kind, command, outputHandler, errorHandler)
+def addRunCommand(kind, command, outputHandler, errorHandler, *additionalEnv)
     $didAddRunCommand = true
     name = baseOutputName(kind)
     if $filter and name !~ $filter
@@ -497,6 +526,7 @@ def addRunCommand(kind, command, outputHandler, errorHandler)
     plan = Plan.new(
         $benchmarkDirectory, command, "#{$collectionName}/#{$benchmark}", name, outputHandler,
         errorHandler)
+    plan.additionalEnv.push(*additionalEnv)
     if $numChildProcesses > 1 and $runCommandOptions[:isSlow]
         $runlist.unshift plan
     else
@@ -590,16 +620,20 @@ def runDefault(*optionalTestSpecificOptions)
     run("default", *(FTL_OPTIONS + optionalTestSpecificOptions))
 end
 
+def runBigIntEnabled(*optionalTestSpecificOptions)
+    run("big-int-enabled", "--useBigInt=true" , *(FTL_OPTIONS + optionalTestSpecificOptions))
+end
+
 def runFTLNoCJIT(*optionalTestSpecificOptions)
     run("misc-ftl-no-cjit", *(FTL_OPTIONS + NO_CJIT_OPTIONS + optionalTestSpecificOptions))
 end
 
 def runFTLNoCJITB3O1(*optionalTestSpecificOptions)
-    run("ftl-no-cjit-b3o1", "--useArrayAllocationProfiling=false", *(FTL_OPTIONS + NO_CJIT_OPTIONS + B3O1_OPTIONS + optionalTestSpecificOptions))
+    run("ftl-no-cjit-b3o1", "--useArrayAllocationProfiling=false", "--forcePolyProto=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS + B3O1_OPTIONS + optionalTestSpecificOptions))
 end
 
 def runFTLNoCJITValidate(*optionalTestSpecificOptions)
-    run("ftl-no-cjit-validate-sampling-profiler", "--validateGraph=true", "--useSamplingProfiler=true", "--airForceIRCAllocator=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS + optionalTestSpecificOptions))
+    run("ftl-no-cjit-validate-sampling-profiler", "--validateGraph=true", "--useSamplingProfiler=true", "--airForceIRCAllocator=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS + PROBE_OSR_EXIT_OPTION + optionalTestSpecificOptions))
 end
 
 def runFTLNoCJITNoPutStackValidate(*optionalTestSpecificOptions)
@@ -615,7 +649,7 @@ def runFTLNoCJITOSRValidation(*optionalTestSpecificOptions)
 end
 
 def runDFGEager(*optionalTestSpecificOptions)
-    run("dfg-eager", *(EAGER_OPTIONS + COLLECT_CONTINUOUSLY_OPTIONS + optionalTestSpecificOptions))
+    run("dfg-eager", *(EAGER_OPTIONS + COLLECT_CONTINUOUSLY_OPTIONS + PROBE_OSR_EXIT_OPTION + optionalTestSpecificOptions))
 end
 
 def runDFGEagerNoCJITValidate(*optionalTestSpecificOptions)
@@ -623,7 +657,7 @@ def runDFGEagerNoCJITValidate(*optionalTestSpecificOptions)
 end
 
 def runFTLEager(*optionalTestSpecificOptions)
-    run("ftl-eager", "--airForceBriggsAllocator=true", *(FTL_OPTIONS + EAGER_OPTIONS + COLLECT_CONTINUOUSLY_OPTIONS + optionalTestSpecificOptions))
+    run("ftl-eager", "--airForceBriggsAllocator=true", "--forcePolyProto=true", *(FTL_OPTIONS + EAGER_OPTIONS + COLLECT_CONTINUOUSLY_OPTIONS + optionalTestSpecificOptions))
 end
 
 def runFTLEagerWatchdog(*optionalTestSpecificOptions)
@@ -672,7 +706,7 @@ def runShadowChicken(*optionalTestSpecificOptions)
 end
 
 def defaultRun
-    if $quickMode
+    if $mode == "quick"
         defaultQuickRun
     else
         runDefault
@@ -681,26 +715,31 @@ def defaultRun
             runNoCJITValidatePhases
             runNoCJITCollectContinuously if shouldCollectContinuously?
             runDFGEager
-            runDFGEagerNoCJITValidate
-            runDFGMaximalFlushPhase
+            if $mode != "basic"
+                runDFGEagerNoCJITValidate
+                runDFGMaximalFlushPhase
+            end
 
             return if !$isFTLPlatform
 
             runNoFTL
+            runFTLEager
+            runFTLEagerNoCJITValidate
+            runFTLNoCJITSmallPool
+
+            return if $mode == "basic"
+
             runFTLNoCJITValidate
             runFTLNoCJITB3O1
             runFTLNoCJITNoPutStackValidate
             runFTLNoCJITNoInlineValidate
-            runFTLEager
-            runFTLEagerNoCJITValidate
             runFTLEagerNoCJITB3O1
-            runFTLNoCJITSmallPool
         end
     end
 end
 
 def defaultNoNoLLIntRun
-    if $quickMode
+    if $mode == "quick"
         defaultQuickRun
     else
         runDefault
@@ -708,19 +747,24 @@ def defaultNoNoLLIntRun
             runNoCJITValidatePhases
             runNoCJITCollectContinuously if shouldCollectContinuously?
             runDFGEager
-            runDFGEagerNoCJITValidate
-            runDFGMaximalFlushPhase
+            if $mode != "basic"
+                runDFGEagerNoCJITValidate
+                runDFGMaximalFlushPhase
+            end
 
             return if !$isFTLPlatform
 
             runNoFTL
             runFTLNoCJITValidate
+            runFTLNoCJITSmallPool
+
+            return if $mode == "basic"
+
             runFTLNoCJITB3O1
             runFTLNoCJITNoPutStackValidate
             runFTLNoCJITNoInlineValidate
             runFTLEager
             runFTLEagerNoCJITValidate
-            runFTLNoCJITSmallPool
         end
     end
 end
@@ -730,7 +774,7 @@ def defaultQuickRun
     if $jitTests
         runNoCJITValidate
 
-        return if $isFTLPlatform
+        return if !$isFTLPlatform
 
         runNoFTL
         runFTLNoCJITValidate
@@ -767,6 +811,9 @@ def defaultNoEagerRun
 
         runNoFTL
         runFTLNoCJITValidate
+
+        return if $mode == "basic"
+
         runFTLNoCJITNoInlineValidate
         runFTLNoCJITB3O1
     end
@@ -809,12 +856,12 @@ def runProfiler
 end
 
 def runExceptionFuzz
-    subCommand = escapeAll([pathToVM.to_s, $benchmark.to_s])
+    subCommand = escapeAll([pathToVM.to_s, "--useDollarVM=true", $benchmark.to_s])
     addRunCommand("exception-fuzz", ["perl", (pathToHelpers + "js-exception-fuzz").to_s, subCommand], silentOutputHandler, simpleErrorHandler)
 end
 
 def runExecutableAllocationFuzz(name, *options)
-    subCommand = escapeAll([pathToVM.to_s, $benchmark.to_s] + options)
+    subCommand = escapeAll([pathToVM.to_s, "--useDollarVM=true", $benchmark.to_s] + options)
     addRunCommand("executable-allocation-fuzz-" + name, ["perl", (pathToHelpers + "js-executable-allocation-fuzz").to_s, subCommand], silentOutputHandler, simpleErrorHandler)
 end
 
@@ -823,10 +870,12 @@ def runTypeProfiler
         return
     end
 
+    run("ftl-type-profiler", "--useTypeProfiler=true", *(FTL_OPTIONS))
+    run("ftl-no-cjit-type-profiler-force-poly-proto", "--useTypeProfiler=true", "--forcePolyProto=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS))
+
     return if !$isFTLPlatform
 
-    run("ftl-no-cjit-type-profiler", "--useTypeProfiler=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS))
-    run("ftl-type-profiler", "--useTypeProfiler=true", *(FTL_OPTIONS))
+    run("ftl-type-profiler-ftl-eager", "--useTypeProfiler=true", *(FTL_OPTIONS + EAGER_OPTIONS))
 end
 
 def runControlFlowProfiler
@@ -876,6 +925,8 @@ def runTest262(mode, exception, includeFiles, flags)
     when :failDueToOutdatedOrBadTest
         errorHandler = expectedFailErrorHandler
         outputHandler = noisyOutputHandler
+    when :skip
+        return
     else
         raise "Invalid mode: #{mode}"
     end
@@ -909,6 +960,8 @@ def runES6(mode)
         errorHandler = expectedFailErrorHandler
     when :failDueToOutdatedOrBadTest
         errorHandler = expectedFailErrorHandler
+    when :skip
+        return
     else
         raise "Invalid mode: #{mode}"
     end
@@ -944,7 +997,7 @@ def runWebAssembly
     prepareExtraAbsoluteFiles(WASMTESTS_PATH, ["wasm.json"])
     prepareExtraRelativeFiles(modules.map { |f| "../" + f }, $collection)
     run("default-wasm", "-m", *FTL_OPTIONS)
-    if !$quickMode
+    if $mode != "quick"
         run("wasm-no-cjit-yes-tls-context", "-m", "--useFastTLSForWasmContext=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS))
         run("wasm-eager-jettison", "-m", "--forceCodeBlockToJettisonDueToOldAge=true", *FTL_OPTIONS)
         run("wasm-no-call-ic", "-m", "--useCallICsForWebAssemblyToJSCalls=false", *FTL_OPTIONS)
@@ -963,7 +1016,7 @@ def runWebAssemblyEmscripten(mode)
     wasm = $benchmark.to_s.sub! '.js', '.wasm'
     prepareExtraRelativeFiles([Pathname('..') + wasm], $collection)
     run("default-wasm", *FTL_OPTIONS)
-    if !$quickMode
+    if $mode != "quick"
         run("wasm-no-cjit-yes-tls-context", "--useFastTLSForWasmContext=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS))
         run("wasm-eager-jettison", "--forceCodeBlockToJettisonDueToOldAge=true", *FTL_OPTIONS)
         run("wasm-no-call-ic", "--useCallICsForWebAssemblyToJSCalls=false", *FTL_OPTIONS)
@@ -987,7 +1040,7 @@ def runWebAssemblySpecTest(mode)
     prepareExtraRelativeFiles(harness.map { |f| "../../spec-harness/" + f }, $collection)
 
     runWithOutputHandler("default-wasm", noisyOutputHandler, "../spec-harness.js", *FTL_OPTIONS)
-    if !$quickMode
+    if $mode != "quick"
       runWithOutputHandler("wasm-no-cjit-yes-tls-context", noisyOutputHandler, "../spec-harness.js",  "--useFastTLSForWasmContext=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS))
       runWithOutputHandler("wasm-eager-jettison", noisyOutputHandler, "../spec-harness.js", "--forceCodeBlockToJettisonDueToOldAge=true", *FTL_OPTIONS)
       runWithOutputHandler("wasm-no-call-ic", noisyOutputHandler, "../spec-harness.js", "--useCallICsForWebAssemblyToJSCalls=false", *FTL_OPTIONS)
@@ -1117,7 +1170,7 @@ def defaultQuickRunLayoutTest
 end
 
 def defaultRunLayoutTest
-    if $quickMode
+    if $mode == "quick"
         defaultQuickRunLayoutTest
     else
         runLayoutTestDefault
@@ -1202,6 +1255,8 @@ def runMozillaTest(kind, mode, extraFiles, *options)
         errorHandler = mozillaExit3ErrorHandler
     when :fail
         errorHandler = mozillaFailErrorHandler
+    when :failDueToOutdatedOrBadTest
+        errorHandler = mozillaFailErrorHandler
     when :skip
         return
     else
@@ -1247,7 +1302,7 @@ def defaultQuickRunMozillaTest(mode, *extraFiles)
 end
 
 def defaultRunMozillaTest(mode, *extraFiles)
-    if $quickMode
+    if $mode == "quick"
         defaultQuickRunMozillaTest(mode, *extraFiles)
     else
         runMozillaTestNoFTL(mode, *extraFiles)
@@ -1261,8 +1316,16 @@ def defaultRunMozillaTest(mode, *extraFiles)
     end
 end
 
+def runNoisyTestImpl(kind, options, additionalEnv)
+    addRunCommand(kind, [pathToVM.to_s] + BASE_OPTIONS + options + [$benchmark.to_s], noisyOutputHandler, noisyErrorHandler, *additionalEnv)
+end
+
 def runNoisyTest(kind, *options)
-    addRunCommand(kind, [pathToVM.to_s] + BASE_OPTIONS + options + [$benchmark.to_s], noisyOutputHandler, noisyErrorHandler)
+    runNoisyTestImpl(kind, options, [])
+end
+
+def runNoisyTestWithEnv(kind, *additionalEnv)
+    runNoisyTestImpl(kind, [], additionalEnv)
 end
 
 def runNoisyTestDefault
@@ -1512,6 +1575,14 @@ def prepareBundle
         if frameworkPath
             source = frameworkPath
             destination = Pathname.new(".vm")
+        elsif $hostOS == "windows"
+            # Make sure to copy dll along with jsc on Windows
+            source = [originalJSCPath] + Dir.glob(File.dirname(originalJSCPath) + "/jscLib.dll")
+            destination = $jscPath.dirname
+
+            Dir.chdir($outputDir) {
+                FileUtils.mkdir_p destination
+            }
         else
             source = originalJSCPath
             destination = $jscPath
@@ -1626,6 +1697,8 @@ def prepareTestRunner
         prepareMakeTestRunner
     when :shell
         prepareShellTestRunner
+    when :ruby
+        prepareRubyTestRunner
     else
         raise "Unknown test runner type: #{$testRunnerType.to_s}"
     end

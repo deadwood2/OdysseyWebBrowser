@@ -215,7 +215,7 @@ def chakraPassFailErrorHandler
 end
 
 class Plan
-    attr_reader :directory, :arguments, :family, :name, :outputHandler, :errorHandler
+    attr_reader :directory, :arguments, :family, :name, :outputHandler, :errorHandler, :additionalEnv
     attr_accessor :index
     
     def initialize(directory, arguments, family, name, outputHandler, errorHandler)
@@ -226,6 +226,7 @@ class Plan
         @outputHandler = outputHandler
         @errorHandler = errorHandler
         @isSlow = !!$runCommandOptions[:isSlow]
+        @additionalEnv = []
     end
     
     def shellCommand
@@ -233,7 +234,7 @@ class Plan
         # in the subshell when we return we will be in our original directory. This is nice because we don't
         # have to bend over backwards to do things relative to the root.
         script = "(cd ../#{Shellwords.shellescape(@directory.to_s)} && ("
-        $envVars.each { |var| script += "export " << var << "; " }
+        ($envVars + additionalEnv).each { |var| script += "export " << var << "; " }
         script += "\"$@\" " + escapeAll(@arguments) + "))"
         return script
     end
@@ -344,12 +345,24 @@ def prepareMakeTestRunner
     }
 end
 
+def prepareRubyTestRunner
+    File.open($runnerDir + "runscript", "w") {
+        | outp |
+        $runlist.each {
+            | plan |
+            outp.puts "print `sh test_script_#{plan.index} 2>&1`"
+        }
+    }
+end
+
 def testRunnerCommand
     case $testRunnerType
     when :shell
         command = "sh runscript"
     when :make
         command = "make -j #{$numChildProcesses.to_s} -s -f Makefile"
+    when :ruby
+        command = "ruby runscript"
     else
         raise "Unknown test runner type: #{$testRunnerType.to_s}"
     end

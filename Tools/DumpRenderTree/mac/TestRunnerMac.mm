@@ -74,9 +74,9 @@
 #import <WebKit/WebStorageManagerPrivate.h>
 #import <WebKit/WebView.h>
 #import <WebKit/WebViewPrivate.h>
-#import <wtf/CurrentTime.h>
 #import <wtf/HashMap.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/WallTime.h>
 
 #if !PLATFORM(IOS)
 #import <wtf/SoftLinking.h>
@@ -125,7 +125,7 @@ SOFT_LINK_STAGED_FRAMEWORK(WebInspectorUI, PrivateFrameworks, A)
 #endif
 
 @interface WebGeolocationPosition (Internal)
-- (id)initWithGeolocationPosition:(RefPtr<WebCore::GeolocationPosition>)coreGeolocationPosition;
+- (id)initWithGeolocationPosition:(WebCore::GeolocationPosition&&)coreGeolocationPosition;
 @end
 
 TestRunner::~TestRunner()
@@ -442,15 +442,25 @@ void TestRunner::setMockDeviceOrientation(bool canProvideAlpha, double alpha, bo
     [orientation release];
 }
 
-void TestRunner::setMockGeolocationPosition(double latitude, double longitude, double accuracy, bool providesAltitude, double altitude, bool providesAltitudeAccuracy, double altitudeAccuracy, bool providesHeading, double heading, bool providesSpeed, double speed)
+void TestRunner::setMockGeolocationPosition(double latitude, double longitude, double accuracy, bool providesAltitude, double altitude, bool providesAltitudeAccuracy, double altitudeAccuracy, bool providesHeading, double heading, bool providesSpeed, double speed, bool providesFloorLevel, double floorLevel)
 {
     WebGeolocationPosition *position = nil;
     if (!providesAltitude && !providesAltitudeAccuracy && !providesHeading && !providesSpeed) {
         // Test the exposed API.
-        position = [[WebGeolocationPosition alloc] initWithTimestamp:currentTime() latitude:latitude longitude:longitude accuracy:accuracy];
+        position = [[WebGeolocationPosition alloc] initWithTimestamp:WallTime::now().secondsSinceEpoch().seconds() latitude:latitude longitude:longitude accuracy:accuracy];
     } else {
-        auto coreGeolocationPosition = WebCore::GeolocationPosition::create(currentTime(), latitude, longitude, accuracy, providesAltitude, altitude, providesAltitudeAccuracy, altitudeAccuracy, providesHeading, heading, providesSpeed, speed);
-        position = [[WebGeolocationPosition alloc] initWithGeolocationPosition:(WTFMove(coreGeolocationPosition))];
+        WebCore::GeolocationPosition geolocationPosition { WallTime::now().secondsSinceEpoch().seconds(), latitude, longitude, accuracy };
+        if (providesAltitude)
+            geolocationPosition.altitude = altitude;
+        if (providesAltitudeAccuracy)
+            geolocationPosition.altitudeAccuracy = altitudeAccuracy;
+        if (providesHeading)
+            geolocationPosition.heading = heading;
+        if (providesSpeed)
+            geolocationPosition.speed = speed;
+        if (providesFloorLevel)
+            geolocationPosition.floorLevel = floorLevel;
+        position = [[WebGeolocationPosition alloc] initWithGeolocationPosition:(WTFMove(geolocationPosition))];
     }
     [[MockGeolocationProvider shared] setPosition:position];
     [position release];

@@ -27,10 +27,7 @@
 #include "Internals.h"
 
 #include "DOMURL.h"
-#include "Document.h"
-#include "Editor.h"
-#include "EditorClient.h"
-#include "Frame.h"
+#include "WebCoreNSURLExtras.h"
 #include <wtf/SoftLinking.h>
 
 #if PLATFORM(IOS)
@@ -42,7 +39,7 @@ namespace WebCore {
 
 String Internals::userVisibleString(const DOMURL& url)
 {
-    return contextDocument()->frame()->editor().client()->userVisibleString(url.href());
+    return WebCore::userVisibleString(url.href());
 }
 
 #if PLATFORM(COCOA)
@@ -50,10 +47,8 @@ bool Internals::userPrefersReducedMotion() const
 {
 #if PLATFORM(IOS)
     return UIAccessibilityIsReduceMotionEnabled();
-#elif PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
-    return [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceMotion];
 #else
-    return false;
+    return [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceMotion];
 #endif
 }
 #endif

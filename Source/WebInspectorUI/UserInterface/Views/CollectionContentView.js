@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Devin Rousso <dcrousso+webkit@gmail.com>. All rights reserved.
+ * Copyright (C) 2016 Devin Rousso <webkit@devinrousso.com>. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,122 +25,100 @@
 
 WI.CollectionContentView = class CollectionContentView extends WI.ContentView
 {
-    constructor(collection)
+    constructor(collection, contentViewConstructor, contentPlaceholder)
     {
         console.assert(collection instanceof WI.Collection);
 
         super(collection);
 
-        this.representedObject.addEventListener(WI.Collection.Event.ItemAdded, this._handleItemAdded, this);
-        this.representedObject.addEventListener(WI.Collection.Event.ItemRemoved, this._handleItemRemoved, this);
-
-        this._contentViewMap = new WeakMap;
-        this._handleClickMap = new WeakMap;
-
-        this._contentViewConstructor = null;
-        let title = "";
-        switch (this.representedObject.typeVerifier) {
-        case WI.Collection.TypeVerifier.Frame:
-            title = WI.UIString("Frames");
-            break;
-
-        case WI.Collection.TypeVerifier.ContentFlow:
-            title = WI.UIString("Flows");
-            break;
-
-        case WI.Collection.TypeVerifier.Script:
-            title = WI.UIString("Extra Scripts");
-            break;
-
-        case WI.Collection.TypeVerifier.Resource:
-            title = WI.UIString("Resource");
-            break;
-
-        case WI.ResourceCollection.TypeVerifier.Document:
-            title = WI.Resource.displayNameForType(WI.Resource.Type.Document, true);
-            break;
-
-        case WI.ResourceCollection.TypeVerifier.Stylesheet:
-            title = WI.Resource.displayNameForType(WI.Resource.Type.Stylesheet, true);
-            break;
-
-        case WI.ResourceCollection.TypeVerifier.Image:
-            this._contentViewConstructor = WI.ImageResourceContentView;
-            title = WI.Resource.displayNameForType(WI.Resource.Type.Image, true);
-            break;
-
-        case WI.ResourceCollection.TypeVerifier.Font:
-            title = WI.Resource.displayNameForType(WI.Resource.Type.Font, true);
-            break;
-
-        case WI.ResourceCollection.TypeVerifier.Script:
-            title = WI.Resource.displayNameForType(WI.Resource.Type.Script, true);
-            break;
-
-        case WI.ResourceCollection.TypeVerifier.XHR:
-            title = WI.Resource.displayNameForType(WI.Resource.Type.XHR, true);
-            break;
-
-        case WI.ResourceCollection.TypeVerifier.Fetch:
-            title = WI.Resource.displayNameForType(WI.Resource.Type.Fetch, true);
-            break;
-
-        case WI.ResourceCollection.TypeVerifier.WebSocket:
-            title = WI.Resource.displayNameForType(WI.Resource.Type.WebSocket, true);
-            break;
-
-        case WI.ResourceCollection.TypeVerifier.Other:
-            title = WI.Resource.displayNameForType(WI.Resource.Type.Other, true);
-            break;
-        }
-
-        this._contentPlaceholder = new WI.TitleView(title);
-
         this.element.classList.add("collection");
+
+        this._contentPlaceholder = contentPlaceholder || collection.displayName;
+        this._contentPlaceholderElement = null;
+        this._contentViewConstructor = contentViewConstructor;
+        this._contentViewMap = new Map;
+        this._handleClickMap = new WeakMap;
+        this._selectedItem = null;
+        this._selectionEnabled = false;
     }
 
-     // Public
+    // Public
 
-    initialLayout()
+    get supplementalRepresentedObjects()
     {
-        let items = this.representedObject.items;
-        if (this._contentViewConstructor && items.size) {
-            for (let item of items)
-                this._addContentViewForItem(item);
-        } else
-            this.addSubview(this._contentPlaceholder);
+        if (this._selectedItem)
+            return [this._selectedItem];
+        return [];
     }
 
-     // Private
+    get selectionEnabled()
+    {
+        return this._selectionEnabled;
+    }
 
-    _addContentViewForItem(item)
+    set selectionEnabled(value)
+    {
+        if (this._selectionEnabled === value)
+            return;
+
+        this._selectionEnabled = value;
+        if (!this._selectionEnabled)
+            this._selectItem(null);
+    }
+
+    setSelectedItem(item)
+    {
+        console.assert(this._selectionEnabled, "Attempted to set selected item when selection is disabled.");
+        if (!this._selectionEnabled)
+            return;
+
+        let contentView = this._contentViewMap.get(item);
+        console.assert(contentView, "Missing contet view for item.", item);
+        if (!contentView)
+            return;
+
+        this._selectItem(item);
+        contentView.element.scrollIntoViewIfNeeded();
+    }
+
+    // Protected
+
+    addContentViewForItem(item)
     {
         if (!this._contentViewConstructor)
             return;
 
-        if (this._contentPlaceholder.parentView)
-            this.removeSubview(this._contentPlaceholder);
+        if (this._contentViewMap.has(item)) {
+            console.assert(false, "Already added ContentView for item.", item);
+            return;
+        }
+
+        this._hideContentPlaceholder();
 
         let contentView = new this._contentViewConstructor(item);
-
-        contentView.addEventListener(WI.ResourceContentView.Event.ContentError, this._handleContentError, this);
+        console.assert(contentView instanceof WI.ContentView);
 
         let handleClick = (event) => {
             if (event.button !== 0 || event.ctrlKey)
                 return;
 
-            WI.showRepresentedObject(item);
+            if (this._selectionEnabled)
+                this._selectItem(item);
+            else
+                WI.showRepresentedObject(item);
         };
+
+        this._contentViewMap.set(item, contentView);
         this._handleClickMap.set(item, handleClick);
         contentView.element.addEventListener("click", handleClick);
 
-        contentView.element.title = WI.displayNameForURL(item.url, item.urlComponents);
-
         this.addSubview(contentView);
-        this._contentViewMap.set(item, contentView);
+        this.contentViewAdded(contentView);
+
+        contentView.shown();
     }
 
-    _removeContentViewForItem(item)
+    removeContentViewForItem(item)
     {
         if (!this._contentViewConstructor)
             return;
@@ -150,21 +128,78 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         if (!contentView)
             return;
 
+        if (this._selectedItem === item)
+            this._selectItem(null);
+
         this.removeSubview(contentView);
         this._contentViewMap.delete(item);
+        this.contentViewRemoved(contentView);
+
+        contentView.hidden();
 
         contentView.removeEventListener(null, null, this);
 
         let handleClick = this._handleClickMap.get(item);
         console.assert(handleClick);
+
         if (handleClick) {
             contentView.element.removeEventListener("click", handleClick);
             this._handleClickMap.delete(item);
         }
 
-        if (!this.representedObject.resources.length)
-            this.addSubview(this._contentPlaceholder);
+        if (!this.subviews.length)
+            this._showContentPlaceholder();
     }
+
+    contentViewAdded(contentView)
+    {
+        // Implemented by subclasses.
+    }
+
+    contentViewRemoved(contentView)
+    {
+        // Implemented by subclasses.
+    }
+
+    initialLayout()
+    {
+        let items = this.representedObject.items;
+        if (!items.size || !this._contentViewConstructor) {
+            this._showContentPlaceholder();
+            return;
+        }
+    }
+
+    attached()
+    {
+        super.attached();
+
+        this.representedObject.addEventListener(WI.Collection.Event.ItemAdded, this._handleItemAdded, this);
+        this.representedObject.addEventListener(WI.Collection.Event.ItemRemoved, this._handleItemRemoved, this);
+
+        for (let item of this._contentViewMap.keys()) {
+            if (this.representedObject.items.has(item))
+                continue;
+
+            this.removeContentViewForItem(item);
+            if (this._selectedItem === item)
+                this._selectItem(null);
+        }
+
+        for (let item of this.representedObject.items) {
+            if (!this._contentViewMap.has(item))
+                this.addContentViewForItem(item);
+        }
+    }
+
+    detached()
+    {
+        this.representedObject.removeEventListener(null, null, this);
+
+        super.detached();
+    }
+
+     // Private
 
     _handleItemAdded(event)
     {
@@ -172,7 +207,7 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         if (!item)
             return;
 
-        this._addContentViewForItem(item);
+        this.addContentViewForItem(item);
     }
 
     _handleItemRemoved(event)
@@ -181,12 +216,53 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         if (!item)
             return;
 
-        this._removeContentViewForItem(item);
+        this.removeContentViewForItem(item);
     }
 
     _handleContentError(event)
     {
         if (event && event.target)
             this._removeContentViewForItem(event.target.representedObject);
+    }
+
+    _selectItem(item)
+    {
+        if (this._selectedItem === item)
+            return;
+
+        if (this._selectedItem) {
+            let contentView = this._contentViewMap.get(this._selectedItem);
+            console.assert(contentView, "Missing ContentView for deselected item.", this._selectedItem);
+            contentView.element.classList.remove("selected");
+        }
+
+        this._selectedItem = item;
+
+        if (this._selectedItem) {
+            let selectedContentView = this._contentViewMap.get(this._selectedItem);
+            console.assert(selectedContentView, "Missing ContentView for selected item.", this._selectedItem);
+            selectedContentView.element.classList.add("selected");
+        }
+
+        this.dispatchEventToListeners(WI.ContentView.Event.SupplementalRepresentedObjectsDidChange);
+    }
+
+    _showContentPlaceholder()
+    {
+        if (!this._contentPlaceholderElement) {
+            if (typeof this._contentPlaceholder === "string")
+                this._contentPlaceholderElement = WI.createMessageTextView(this._contentPlaceholder);
+            else if (this._contentPlaceholder instanceof HTMLElement)
+                this._contentPlaceholderElement =  this._contentPlaceholder;
+        }
+
+        if (!this._contentPlaceholderElement.parentNode)
+            this.element.appendChild(this._contentPlaceholderElement);
+    }
+
+    _hideContentPlaceholder()
+    {
+        if (this._contentPlaceholderElement)
+            this._contentPlaceholderElement.remove();
     }
 };

@@ -1241,14 +1241,14 @@ class _EnumState(object):
 
 def regex_for_lambdas_and_blocks(line, line_number, file_state, error):
     cpp_result = search(r'\s\[.*?\]\s', line)
-    objc_result = search(r'(\s\^\s?\(.*?\)\s|\^\s?\{|:\^\s?\(.*?\)\s\{)', line)
+    objc_result = search(r'(\s\^\s?\(.*?\)\s?|\^\s*\{|:\^(\s|\w+)?\(.*?\)\s\{)', line)
     if cpp_result:
         group = cpp_result.group()
         targ_error = None
 
         if search(r'(\[\s|\s\]|\s,)', group):
             targ_error = [line_number, 'whitespace/brackets', 4,
-              'Extra space in capture list.']
+              'Extra space in capture list.',line]
 
         if targ_error and regex_for_lambdas_and_blocks.__last_error != targ_error:
             error(targ_error[0], targ_error[1], targ_error[2], targ_error[3])
@@ -1261,13 +1261,13 @@ def regex_for_lambdas_and_blocks(line, line_number, file_state, error):
 
         if search(r'(\(\s|\s\)|\s,)', group):
             targ_error = [line_number, 'whitespace/brackets', 4,
-              'Extra space in block arguments.']
-        if search(r'\^\{', group):
+              'Extra space in block arguments.',line]
+        if search(r'\^\s+\{', group):
             targ_error = [line_number, 'whitespace/brackets', 4,
-              'No space between ^ and block definition.']
+              'Extra space between ^ and block definition.',line]
         if search(r'\^\s\(', group):
             targ_error = [line_number, 'whitespace/brackets', 4,
-              'Extra space between ^ and block arguments.']
+              'Extra space between ^ and block arguments.',line]
 
         if targ_error and regex_for_lambdas_and_blocks.__last_error != targ_error:
             error(targ_error[0], targ_error[1], targ_error[2], targ_error[3])
@@ -1869,9 +1869,9 @@ def check_spacing(file_extension, clean_lines, line_number, file_state, error):
 
     # Don't try to do spacing checks for operator methods
     line = sub(r'operator(==|!=|<|<<|<=|>=|>>|>|\+=|-=|\*=|/=|%=|&=|\|=|^=|<<=|>>=|/)\(', 'operator\(', line)
-    # Don't try to do spacing checks for #include, #import, or #if statements at
+    # Don't try to do spacing checks for #include, #import, #if, or #elif statements at
     # minimum because it messes up checks for spacing around /
-    if match(r'\s*#\s*(?:include|import|if)', line):
+    if match(r'\s*#\s*(?:include|import|if|elif)', line):
         return
     if not is_objective_c_property and not is_objective_c_synthesize and search(r'[\w.]=[\w.]', line):
         error(line_number, 'whitespace/operators', 4,
@@ -1969,11 +1969,11 @@ def check_spacing(file_extension, clean_lines, line_number, file_state, error):
     # Next we will look for issues with function calls.
     check_spacing_for_function_call(line, line_number, file_state, error)
 
-    # Except after an opening paren, ^ for blocks, or @ for Objective-C
-    # literal NSDictionary, you should have spaces before your braces.
-    # Since you should never have braces at the beginning of a line, this
-    # is an easy test.
-    if search(r'[^ ({\^@]{', line):
+    # Except after an opening paren, ^ for blocks, @ for Objective-C literal
+    # NSDictionary, or os_log format parameters, you should have spaces before
+    # your braces. Since you should never have braces at the beginning of a
+    # line, this is an easy test.
+    if search(r'[^ ({\^@%]{', line):
         error(line_number, 'whitespace/braces', 5,
               'Missing space before {')
 
@@ -2431,7 +2431,7 @@ def check_braces(clean_lines, line_number, file_state, error):
         # and '- (' and '+ (' for Objective-C methods.
         previous_line = get_previous_non_blank_line(clean_lines, line_number)[0]
         if ((not search(r'[;:}{)=]\s*$|\)\s*((const|override|const override|final|const final)\s*)?(->\s*\S+)?\s*$', previous_line)
-             or search(r'\b(if|for|while|switch|else|NS_ENUM|NS_ERROR_ENUM|NS_OPTIONS)\b', previous_line)
+             or search(r'\b(if|for|while|switch|else|CF_OPTIONS|NS_ENUM|NS_ERROR_ENUM|NS_OPTIONS)\b', previous_line)
              or regex_for_lambdas_and_blocks(previous_line, line_number, file_state, error))
             and previous_line.find('#') < 0
             and previous_line.find('- (') != 0
@@ -2440,7 +2440,7 @@ def check_braces(clean_lines, line_number, file_state, error):
                   'This { should be at the end of the previous line')
     elif (search(r'\)\s*(((const|override|final)\s*)*\s*)?{\s*$', line)
           and line.count('(') == line.count(')')
-          and not search(r'(\s*(if|for|while|switch|NS_ENUM|NS_ERROR_ENUM|NS_OPTIONS|@synchronized)|} @catch)\b', line)
+          and not search(r'(\s*(if|for|while|switch|CF_OPTIONS|NS_ENUM|NS_ERROR_ENUM|NS_OPTIONS|@synchronized)|} @catch)\b', line)
           and not regex_for_lambdas_and_blocks(line, line_number, file_state, error)
           and line.find("](") < 0
           and not match(r'\s+[A-Z_][A-Z_0-9]+\b', line)):
@@ -2767,6 +2767,27 @@ def get_line_width(line):
     return len(line)
 
 
+def check_min_versions_of_wk_api_available(clean_lines, line_number, error):
+    """Checks the min version numbers of WK_API_AVAILABLE
+
+    Args:
+      clean_lines: A CleansedLines instance containing the file.
+      line_number: The number of the line to check.
+      error: The function to call with any errors found.
+    """
+
+    line = clean_lines.elided[line_number]  # Get rid of comments and strings.
+
+    wk_api_available = search(r'WK_API_AVAILABLE\(macosx\(([^\)]+)\), ios\(([^\)]+)\)\)', line)
+    if wk_api_available:
+        macosxMinVersion = wk_api_available.group(1)
+        if not match(r'^([\d\.]+|WK_MAC_TBA)$', macosxMinVersion):
+            error(line_number, 'build/wk_api_available', 5, '%s is neither a version number nor WK_MAC_TBA' % macosxMinVersion)
+
+        iosMinVersion = wk_api_available.group(2)
+        if not match(r'^([\d\.]+|WK_IOS_TBA)$', iosMinVersion):
+            error(line_number, 'build/wk_api_available', 5, '%s is neither a version number nor WK_IOS_TBA' % iosMinVersion)
+
 def check_style(clean_lines, line_number, file_extension, class_state, file_state, enum_state, error):
     """Checks rules from the 'C++ style rules' section of cppguide.html.
 
@@ -2842,6 +2863,7 @@ def check_style(clean_lines, line_number, file_extension, class_state, file_stat
     check_soft_link_class_alloc(clean_lines, line_number, error)
     check_indentation_amount(clean_lines, line_number, error)
     check_enum_casing(clean_lines, line_number, enum_state, error)
+    check_min_versions_of_wk_api_available(clean_lines, line_number, error)
 
 
 _RE_PATTERN_INCLUDE_NEW_STYLE = re.compile(r'#(?:include|import) +"[^/]+\.h"')
@@ -3177,6 +3199,13 @@ def check_language(filename, clean_lines, line_number, file_extension, include_s
         error(line_number, 'runtime/printf', 3,
               'If you can, use sizeof(%s) instead of %s as the 2nd arg '
               'to snprintf.' % (matched.group(1), matched.group(2)))
+
+    # Warn when Debug ASSERT_WITH_SECURITY_IMPLICATION() is used.
+    if filename != 'Source/WTF/wtf/Assertions.h':
+        if search(r'\bASSERT_WITH_SECURITY_IMPLICATION\b\(', line):
+            error(line_number, 'security/assertion', 5,
+                'Please replace ASSERT_WITH_SECURITY_IMPLICATION() with '
+                'RELEASE_ASSERT_WITH_SECURITY_IMPLICATION().')
 
     # Check if some verboten C functions are being used.
     if search(r'\bsprintf\b', line):
@@ -3885,6 +3914,7 @@ class CppChecker(object):
         'build/using_std',
         'build/using_namespace',
         'build/cpp_comment',
+        'build/wk_api_available',
         'legal/copyright',
         'readability/braces',
         'readability/casting',
@@ -3930,6 +3960,7 @@ class CppChecker(object):
         'runtime/unsigned',
         'runtime/virtual',
         'runtime/wtf_move',
+        'security/assertion',
         'security/printf',
         'security/temp_file',
         'whitespace/blank_line',

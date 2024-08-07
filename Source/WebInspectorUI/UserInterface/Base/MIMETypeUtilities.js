@@ -25,13 +25,16 @@
 
 WI.fileExtensionForURL = function(url)
 {
-    var lastPathComponent = parseURL(url).lastPathComponent;
+    let lastPathComponent = parseURL(url).lastPathComponent;
     if (!lastPathComponent)
-        return "";
+        return null;
 
-    var index = lastPathComponent.indexOf(".");
+    let index = lastPathComponent.lastIndexOf(".");
     if (index === -1)
-        return "";
+        return null;
+
+    if (index === lastPathComponent.length - 1)
+        return null;
 
     return lastPathComponent.substr(index + 1);
 };
@@ -51,6 +54,7 @@ WI.mimeTypeForFileExtension = function(extension)
         "coffee": "text/x-coffeescript",
         "ls": "text/x-livescript",
         "ts": "text/typescript",
+        "jsx": "text/jsx",
 
         // Stylesheet types.
         "css": "text/css",
@@ -81,6 +85,9 @@ WI.mimeTypeForFileExtension = function(extension)
 
 WI.fileExtensionForMIMEType = function(mimeType)
 {
+    if (!mimeType)
+        return null;
+
     const mimeTypeToExtension = {
         // Document types.
         "text/html": "html",
@@ -94,6 +101,7 @@ WI.fileExtensionForMIMEType = function(mimeType)
         "text/x-coffeescript": "coffee",
         "text/x-livescript": "ls",
         "text/typescript": "ts",
+        "text/jsx": "jsx",
 
         // Stylesheet types.
         "text/css": "css",
@@ -118,5 +126,31 @@ WI.fileExtensionForMIMEType = function(mimeType)
     };
 
     let extension = mimeTypeToExtension[mimeType];
-    return extension ? `.${extension}` : null;
+    if (extension)
+        return extension;
+
+    if (mimeType.endsWith("+json"))
+        return "json";
+    if (mimeType.endsWith("+xml"))
+        return "xml";
+
+    return null;
+};
+
+WI.shouldTreatMIMETypeAsText = function(mimeType)
+{
+    if (!mimeType)
+        return false;
+
+    if (mimeType.startsWith("text/"))
+        return true;
+
+    if (mimeType.endsWith("+json") || mimeType.endsWith("+xml"))
+        return true;
+
+    // Various script and JSON mime types.
+    if (mimeType.startsWith("application/"))
+        return mimeType.endsWith("script") || mimeType.endsWith("json");
+
+    return false;
 };

@@ -8,8 +8,7 @@ set(GTEST_DIR "${THIRDPARTY_DIR}/gtest")
 set(GTEST_INCLUDE_DIRECTORIES
     "${GTEST_DIR}"
     "${GTEST_DIR}/include"
-    "${JAVASCRIPTCORE_DIR}"
-    "${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}"
+    "${FORWARDING_HEADERS_DIR}"
 )
 
 set(GTEST_SOURCES
@@ -36,6 +35,7 @@ include_directories(${GTEST_INCLUDE_DIRECTORIES})
 add_definitions(-DGTEST_HAS_RTTI=0)
 
 WEBKIT_ADD_TARGET_CXX_FLAGS(gtest -Wno-undef
+                                  -Wno-stringop-truncation
                                   -Wno-suggest-attribute=format)
 
 # FIXME: This works around compatibility problems in the old version of the third-pary
@@ -47,6 +47,7 @@ endif ()
 target_link_libraries(gtest
     WTF
 )
+add_dependencies(gtest JavaScriptCoreForwardingHeaders)
 
 if (CMAKE_USE_PTHREADS_INIT)
     target_link_libraries(gtest ${CMAKE_THREAD_LIBS_INIT})

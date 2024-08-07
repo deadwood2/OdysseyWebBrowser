@@ -49,6 +49,7 @@ directory Source
 exclude Source/JavaScriptCore/tests
 exclude Source/ThirdParty/libwebrtc
 exclude Source/ThirdParty/qunit
+exclude Source/ThirdParty/openvr
 exclude Source/WebCore/platform/audio/resources
 exclude Source/WebCore/bindings/scripts/test
 exclude Source/WebCore/Resources
@@ -58,15 +59,12 @@ exclude Source/cmake/OptionsWindows.cmake$
 exclude Source/cmake/OptionsAppleWin.cmake$
 exclude Source/cmake/OptionsGTK.cmake$
 exclude Source/WebInspectorUI/Tools
-exclude Source/WebInspectorUI/UserInterface/Images
 
 exclude Source/WebKit/Resources
 
 # We do want to include the NEWS, but we want it to be in the root of the archive.
-# FIXME: No NEWS file for now.
-#file Source/WebKit/wpe/NEWS NEWS
+file Source/WebKit/wpe/NEWS NEWS
 
-directory Source/WebInspectorUI/UserInterface/Images/gtk
 file Source/WebCore/English.lproj/mediaControlsLocalizedStrings.js Source/WebCore/English.lproj/mediaControlsLocalizedStrings.js
 file Source/WebInspectorUI/Localizations/en.lproj/localizedStrings.js Source/WebInspectorUI/Localizations/en.lproj/localizedStrings.js
 
@@ -84,6 +82,8 @@ directory Tools/wpe
 exclude Tools/wpe/patches
 exclude Tools/wpe/jhbuild.modules
 exclude Tools/wpe/jhbuildrc
+
+file Tools/glib/generate-inspector-gresource-manifest.py
 
 directory Tools/TestWebKitAPI
 

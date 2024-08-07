@@ -51,7 +51,7 @@ namespace WebKit {
 class WebCertificateInfo;
 class WebFramePolicyListenerProxy;
 class WebPageProxy;
-struct WebsitePolicies;
+struct WebsitePoliciesData;
 
 typedef GenericCallback<API::Data*> DataCallback;
 
@@ -76,14 +76,14 @@ public:
 
     FrameLoadState& frameLoadState() { return m_frameLoadState; }
 
-    void loadURL(const String&);
+    void loadURL(const WebCore::URL&);
     void stopLoading() const;
 
-    const String& url() const { return m_frameLoadState.url(); }
-    const String& provisionalURL() const { return m_frameLoadState.provisionalURL(); }
+    const WebCore::URL& url() const { return m_frameLoadState.url(); }
+    const WebCore::URL& provisionalURL() const { return m_frameLoadState.provisionalURL(); }
 
-    void setUnreachableURL(const String&);
-    const String& unreachableURL() const { return m_frameLoadState.unreachableURL(); }
+    void setUnreachableURL(const WebCore::URL&);
+    const WebCore::URL& unreachableURL() const { return m_frameLoadState.unreachableURL(); }
 
     const String& mimeType() const { return m_MIMEType; }
     bool containsPluginDocument() const { return m_containsPluginDocument; }
@@ -104,17 +104,17 @@ public:
     void getMainResourceData(Function<void (API::Data*, CallbackBase::Error)>&&);
     void getResourceData(API::URL*, Function<void (API::Data*, CallbackBase::Error)>&&);
 
-    void didStartProvisionalLoad(const String& url);
-    void didReceiveServerRedirectForProvisionalLoad(const String& url);
+    void didStartProvisionalLoad(const WebCore::URL&);
+    void didReceiveServerRedirectForProvisionalLoad(const WebCore::URL&);
     void didFailProvisionalLoad();
     void didCommitLoad(const String& contentType, WebCertificateInfo&, bool containsPluginDocument);
     void didFinishLoad();
     void didFailLoad();
-    void didSameDocumentNavigation(const String&); // eg. anchor navigation, session state change.
+    void didSameDocumentNavigation(const WebCore::URL&); // eg. anchor navigation, session state change.
     void didChangeTitle(const String&);
 
     // Policy operations.
-    void receivedPolicyDecision(WebCore::PolicyAction, uint64_t listenerID, API::Navigation*, const WebsitePolicies&);
+    void receivedPolicyDecision(WebCore::PolicyAction, uint64_t listenerID, API::Navigation*, std::optional<WebsitePoliciesData>&&);
     WebFramePolicyListenerProxy& setUpPolicyListenerProxy(uint64_t listenerID);
 
 #if ENABLE(CONTENT_FILTERING)
@@ -140,7 +140,6 @@ private:
     RefPtr<WebCertificateInfo> m_certificateInfo;
     RefPtr<WebFrameListenerProxy> m_activeListener;
     uint64_t m_frameID;
-
 #if ENABLE(CONTENT_FILTERING)
     WebCore::ContentFilterUnblockHandler m_contentFilterUnblockHandler;
 #endif

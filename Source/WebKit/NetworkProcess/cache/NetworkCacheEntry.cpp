@@ -33,14 +33,12 @@
 #include <WebCore/SharedBuffer.h>
 #include <wtf/text/StringBuilder.h>
 
-#if ENABLE(NETWORK_CACHE)
-
 namespace WebKit {
 namespace NetworkCache {
 
 Entry::Entry(const Key& key, const WebCore::ResourceResponse& response, RefPtr<WebCore::SharedBuffer>&& buffer, const Vector<std::pair<String, String>>& varyingRequestHeaders)
     : m_key(key)
-    , m_timeStamp(std::chrono::system_clock::now())
+    , m_timeStamp(WallTime::now())
     , m_response(response)
     , m_varyingRequestHeaders(varyingRequestHeaders)
     , m_buffer(WTFMove(buffer))
@@ -50,7 +48,7 @@ Entry::Entry(const Key& key, const WebCore::ResourceResponse& response, RefPtr<W
 
 Entry::Entry(const Key& key, const WebCore::ResourceResponse& response, const WebCore::ResourceRequest& redirectRequest, const Vector<std::pair<String, String>>& varyingRequestHeaders)
     : m_key(key)
-    , m_timeStamp(std::chrono::system_clock::now())
+    , m_timeStamp(WallTime::now())
     , m_response(response)
     , m_varyingRequestHeaders(varyingRequestHeaders)
 {
@@ -197,6 +195,13 @@ bool Entry::needsValidation() const
 
 void Entry::setNeedsValidation(bool value)
 {
+    if (value) {
+        // Validation keeps the entry alive waiting for the network response. Pull data from a mapped file into a buffer early
+        // to protect against map disappearing due to device becoming locked.
+        // FIXME: Cache files should be Class B/C, or we shoudn't use mapped files at all in these cases.
+        if (!NetworkProcess::singleton().cache()->canUseSharedMemoryForBodyData())
+            buffer();
+    }
     m_response.setSource(value ? WebCore::ResourceResponse::Source::DiskCacheAfterValidation : WebCore::ResourceResponse::Source::DiskCache);
 }
 
@@ -216,7 +221,7 @@ void Entry::asJSON(StringBuilder& json, const Storage::RecordInfo& info) const
     json.appendQuotedJSONString(m_key.partition());
     json.appendLiteral(",\n");
     json.appendLiteral("\"timestamp\": ");
-    json.appendNumber(std::chrono::duration_cast<std::chrono::milliseconds>(m_timeStamp.time_since_epoch()).count());
+    json.appendNumber(m_timeStamp.secondsSinceEpoch().milliseconds());
     json.appendLiteral(",\n");
     json.appendLiteral("\"URL\": ");
     json.appendQuotedJSONString(m_response.url().string());
@@ -244,5 +249,3 @@ void Entry::asJSON(StringBuilder& json, const Storage::RecordInfo& info) const
 
 }
 }
-
-#endif

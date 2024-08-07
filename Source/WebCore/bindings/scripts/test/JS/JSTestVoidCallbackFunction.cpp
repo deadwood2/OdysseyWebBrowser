@@ -36,9 +36,9 @@
 #include "ScriptExecutionContext.h"
 #include "SerializedScriptValue.h"
 
-using namespace JSC;
 
 namespace WebCore {
+using namespace JSC;
 
 JSTestVoidCallbackFunction::JSTestVoidCallbackFunction(JSObject* callback, JSDOMGlobalObject* globalObject)
     : TestVoidCallbackFunction(globalObject->scriptExecutionContext())
@@ -80,6 +80,7 @@ CallbackResult<typename IDLVoid::ImplementationType> JSTestVoidCallbackFunction:
     args.append(toJS<IDLBoolean>(boolParam));
     args.append(toJS<IDLLong>(longParam));
     args.append(toJS<IDLInterface<TestNode>>(state, globalObject, testNodeParam));
+    ASSERT(!args.hasOverflowed());
 
     NakedPtr<JSC::Exception> returnedException;
     m_data->invokeCallback(thisValue, args, JSCallbackData::CallbackType::Function, Identifier(), returnedException);

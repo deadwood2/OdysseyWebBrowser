@@ -31,7 +31,7 @@
 #import "APIContextMenuClient.h"
 #import "DataReference.h"
 #import "MenuUtilities.h"
-#import "PageClientImpl.h"
+#import "PageClientImplMac.h"
 #import "ServicesController.h"
 #import "ShareableBitmap.h"
 #import "StringUtilities.h"
@@ -43,10 +43,9 @@
 #import "WebProcessProxy.h"
 #import <WebCore/GraphicsContext.h>
 #import <WebCore/IntRect.h>
-#import <WebCore/NSMenuSPI.h>
-#import <WebCore/NSSharingServicePickerSPI.h>
-#import <WebCore/NSSharingServiceSPI.h>
-#import <WebKitSystemInterface.h>
+#import <pal/spi/mac/NSMenuSPI.h>
+#import <pal/spi/mac/NSSharingServicePickerSPI.h>
+#import <pal/spi/mac/NSSharingServiceSPI.h>
 #import <wtf/RetainPtr.h>
 
 using namespace WebCore;
@@ -140,7 +139,7 @@ using namespace WebCore;
         return;
     }
 
-    WebKit::WebContextMenuItemData item(ActionType, static_cast<ContextMenuAction>([sender tag]), [sender title], [sender isEnabled], [sender state] == NSOnState);
+    WebKit::WebContextMenuItemData item(ActionType, static_cast<ContextMenuAction>([sender tag]), [sender title], [sender isEnabled], [sender state] == NSControlStateValueOn);
     if (representedObject) {
         ASSERT([representedObject isKindOfClass:[WKUserDataWrapper class]]);
         item.setUserData([static_cast<WKUserDataWrapper *>(representedObject) userData]);
@@ -153,8 +152,8 @@ using namespace WebCore;
 
 namespace WebKit {
 
-WebContextMenuProxyMac::WebContextMenuProxyMac(NSView* webView, WebPageProxy& page, const ContextMenuContextData& context, const UserData& userData)
-    : WebContextMenuProxy(context, userData)
+WebContextMenuProxyMac::WebContextMenuProxyMac(NSView* webView, WebPageProxy& page, ContextMenuContextData&& context, const UserData& userData)
+    : WebContextMenuProxy(WTFMove(context), userData)
     , m_webView(webView)
     , m_page(page)
 {
@@ -283,8 +282,8 @@ RetainPtr<NSMenuItem> WebContextMenuProxyMac::createShareMenuItem()
     }
 
     if (hitTestData.imageSharedMemory && hitTestData.imageSize) {
-        auto image = adoptNS([[NSImage alloc] initWithData:[NSData dataWithBytes:(unsigned char*)hitTestData.imageSharedMemory->data() length:hitTestData.imageSize]]);
-        [items addObject:image.get()];
+        if (auto image = adoptNS([[NSImage alloc] initWithData:[NSData dataWithBytes:(unsigned char*)hitTestData.imageSharedMemory->data() length:hitTestData.imageSize]]))
+            [items addObject:image.get()];
     }
 
     if (!m_context.selectedText().isEmpty())
@@ -426,7 +425,7 @@ RetainPtr<NSMenuItem> WebContextMenuProxyMac::createContextMenuItem(const WebCon
 
         [menuItem setTag:item.action()];
         [menuItem setEnabled:item.enabled()];
-        [menuItem setState:item.checked() ? NSOnState : NSOffState];
+        [menuItem setState:item.checked() ? NSControlStateValueOn : NSControlStateValueOff];
         [menuItem setTarget:[WKMenuTarget sharedMenuTarget]];
         [menuItem setIdentifier:menuItemIdentifier(item.action())];
 
@@ -452,12 +451,22 @@ RetainPtr<NSMenuItem> WebContextMenuProxyMac::createContextMenuItem(const WebCon
     }
 }
 
-void WebContextMenuProxyMac::showContextMenuWithItems(const Vector<WebContextMenuItemData>& items)
+void WebContextMenuProxyMac::showContextMenuWithItems(Vector<Ref<WebContextMenuItem>>&& items)
 {
-    auto menu = createContextMenuFromItems(items);
-    m_menu = m_page.contextMenuClient().menuFromProposedMenu(m_page, menu.get(), m_context.webHitTestResultData(), m_userData.object());
+    if (m_page.contextMenuClient().showContextMenu(m_page, m_context.menuLocation(), items))
+        return;
 
+    if (items.isEmpty())
+        return;
+
+    Vector<WebContextMenuItemData> data;
+    data.reserveInitialCapacity(items.size());
+    for (auto& item : items)
+        data.uncheckedAppend(item->data());
+    
+    auto menu = createContextMenuFromItems(data);
     [[WKMenuTarget sharedMenuTarget] setMenuProxy:this];
+    m_menu = m_page.contextMenuClient().menuFromProposedMenu(m_page, menu.get(), m_context.webHitTestResultData(), m_userData.object());
 
     NSPoint menuLocation = [m_webView convertPoint:m_context.menuLocation() toView:nil];
     NSEvent *event = [NSEvent mouseEventWithType:NSEventTypeRightMouseUp location:menuLocation modifierFlags:0 timestamp:0 windowNumber:m_webView.window.windowNumber context:nil eventNumber:0 clickCount:0 pressure:0];
@@ -471,12 +480,9 @@ void WebContextMenuProxyMac::showContextMenuWithItems(const Vector<WebContextMen
 
 void WebContextMenuProxyMac::showContextMenu()
 {
-    Vector<RefPtr<WebContextMenuItem>> proposedAPIItems;
+    Vector<Ref<WebContextMenuItem>> proposedAPIItems;
     for (auto& item : m_context.menuItems())
         proposedAPIItems.append(WebContextMenuItem::create(item));
-
-    Vector<RefPtr<WebContextMenuItem>> clientItems;
-    bool useProposedItems = true;
 
     if (m_contextMenuListener) {
         m_contextMenuListener->invalidate();
@@ -485,24 +491,7 @@ void WebContextMenuProxyMac::showContextMenu()
 
     m_contextMenuListener = WebContextMenuListenerProxy::create(this);
 
-    if (m_page.contextMenuClient().getContextMenuFromProposedMenuAsync(m_page, proposedAPIItems, m_contextMenuListener.get(), m_context.webHitTestResultData(), m_page.process().transformHandlesToObjects(m_userData.object()).get()))
-        return;
-
-    // FIXME: Get rid of these two client calls once we don't need to support the C SPI.
-    if (m_page.contextMenuClient().getContextMenuFromProposedMenu(m_page, proposedAPIItems, clientItems, m_context.webHitTestResultData(), m_page.process().transformHandlesToObjects(m_userData.object()).get()))
-        useProposedItems = false;
-
-    if (m_page.contextMenuClient().showContextMenu(m_page, m_context.menuLocation(), useProposedItems ? proposedAPIItems : clientItems))
-        return;
-
-    Vector<WebContextMenuItemData> items;
-    for (auto& item : (useProposedItems ? proposedAPIItems : clientItems))
-        items.append(item->data());
-
-    if (items.isEmpty())
-        return;
-
-    showContextMenuWithItems(items);
+    m_page.contextMenuClient().getContextMenuFromProposedMenu(m_page, WTFMove(proposedAPIItems), *m_contextMenuListener, m_context.webHitTestResultData(), m_page.process().transformHandlesToObjects(m_userData.object()).get());
 }
 
 NSWindow *WebContextMenuProxyMac::window() const

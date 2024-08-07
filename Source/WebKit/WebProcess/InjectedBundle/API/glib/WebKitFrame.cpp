@@ -85,11 +85,12 @@ const gchar* webkit_frame_get_uri(WebKitFrame* frame)
     g_return_val_if_fail(WEBKIT_IS_FRAME(frame), 0);
 
     if (frame->priv->uri.isNull())
-        frame->priv->uri = frame->priv->webFrame->url().utf8();
+        frame->priv->uri = frame->priv->webFrame->url().string().utf8();
 
     return frame->priv->uri.data();
 }
 
+#if PLATFORM(GTK)
 /**
  * webkit_frame_get_javascript_global_context:
  * @frame: a #WebKitFrame
@@ -126,3 +127,4 @@ JSGlobalContextRef webkit_frame_get_javascript_context_for_script_world(WebKitFr
 
     return frame->priv->webFrame->jsContextForWorld(webkitScriptWorldGetInjectedBundleScriptWorld(world));
 }
+#endif

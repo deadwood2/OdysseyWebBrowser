@@ -243,14 +243,24 @@ WI.DOMTreeOutline = class DOMTreeOutline extends WI.TreeOutline
         let commentNode = event.target.enclosingNodeOrSelfWithClass("html-comment");
         let pseudoElement = event.target.enclosingNodeOrSelfWithClass("html-pseudo-element");
 
-        if (tag && treeElement._populateTagContextMenu)
-            treeElement._populateTagContextMenu(contextMenu, event);
-        else if (textNode && treeElement._populateTextContextMenu)
-            treeElement._populateTextContextMenu(contextMenu, textNode);
-        else if ((commentNode || pseudoElement) && treeElement._populateNodeContextMenu)
-            treeElement._populateNodeContextMenu(contextMenu);
+        let subMenus = {
+            add: new WI.ContextSubMenuItem(contextMenu, WI.UIString("Add")),
+            edit: new WI.ContextSubMenuItem(contextMenu, WI.UIString("Edit")),
+            copy: new WI.ContextSubMenuItem(contextMenu, WI.UIString("Copy")),
+            delete: new WI.ContextSubMenuItem(contextMenu, WI.UIString("Delete")),
+        };
 
-        const options = {excludeRevealElement: this._excludeRevealElementContextMenu};
+        if (tag && treeElement._populateTagContextMenu)
+            treeElement._populateTagContextMenu(contextMenu, event, subMenus);
+        else if (textNode && treeElement._populateTextContextMenu)
+            treeElement._populateTextContextMenu(contextMenu, textNode, subMenus);
+        else if ((commentNode || pseudoElement) && treeElement._populateNodeContextMenu)
+            treeElement._populateNodeContextMenu(contextMenu, subMenus);
+
+        let options = {
+            excludeRevealElement: this._excludeRevealElementContextMenu,
+            copySubMenu: subMenus.copy,
+        };
         WI.appendContextMenuItemsForDOMNode(contextMenu, treeElement.representedObject, options);
 
         super.populateContextMenu(contextMenu, event, treeElement);
@@ -352,7 +362,7 @@ WI.DOMTreeOutline = class DOMTreeOutline extends WI.TreeOutline
 
     _ondragover(event)
     {
-        if (event.dataTransfer.types.includes(WI.CSSStyleDetailsSidebarPanel.ToggledClassesDragType)) {
+        if (event.dataTransfer.types.includes(WI.GeneralStyleDetailsSidebarPanel.ToggledClassesDragType)) {
             event.preventDefault();
             event.dataTransfer.dropEffect = "copy";
             return false;
@@ -434,7 +444,7 @@ WI.DOMTreeOutline = class DOMTreeOutline extends WI.TreeOutline
 
             this._nodeBeingDragged.moveTo(parentNode, anchorNode, callback.bind(this));
         } else {
-            let className = event.dataTransfer.getData(WI.CSSStyleDetailsSidebarPanel.ToggledClassesDragType);
+            let className = event.dataTransfer.getData(WI.GeneralStyleDetailsSidebarPanel.ToggledClassesDragType);
             if (className && treeElement)
                 treeElement.representedObject.toggleClass(className, true);
         }
@@ -490,45 +500,7 @@ WI.DOMTreeOutline = class DOMTreeOutline extends WI.TreeOutline
 
         event.preventDefault();
 
-        var effectiveNode = this.selectedTreeElement.representedObject;
-        console.assert(effectiveNode);
-        if (!effectiveNode)
-            return;
-
-        if (effectiveNode.isPseudoElement()) {
-            effectiveNode = effectiveNode.parentNode;
-            console.assert(effectiveNode);
-            if (!effectiveNode)
-                return;
-        }
-
-        if (effectiveNode.nodeType() !== Node.ELEMENT_NODE)
-            return;
-
-        function resolvedNode(object)
-        {
-            if (!object)
-                return;
-
-            function injectStyleAndToggleClass()
-            {
-                var hideElementStyleSheetIdOrClassName = "__WebInspectorHideElement__";
-                var styleElement = document.getElementById(hideElementStyleSheetIdOrClassName);
-                if (!styleElement) {
-                    styleElement = document.createElement("style");
-                    styleElement.id = hideElementStyleSheetIdOrClassName;
-                    styleElement.textContent = "." + hideElementStyleSheetIdOrClassName + " { visibility: hidden !important; }";
-                    document.head.appendChild(styleElement);
-                }
-
-                this.classList.toggle(hideElementStyleSheetIdOrClassName);
-            }
-
-            object.callFunction(injectStyleAndToggleClass, undefined, false, function(){});
-            object.release();
-        }
-
-        WI.RemoteObject.resolveNode(effectiveNode, "", resolvedNode);
+        this.selectedTreeElement.toggleElementVisibility();
     }
 };
 

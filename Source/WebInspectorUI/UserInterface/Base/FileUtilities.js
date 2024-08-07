@@ -43,8 +43,11 @@ WI.saveDataToFile = function(saveData, forceSaveAs)
     if (!suggestedName) {
         suggestedName = WI.UIString("Untitled");
         let dataURLTypeMatch = /^data:([^;]+)/.exec(url);
-        if (dataURLTypeMatch)
-            suggestedName += WI.fileExtensionForMIMEType(dataURLTypeMatch[1]) || "";
+        if (dataURLTypeMatch) {
+            let fileExtension = WI.fileExtensionForMIMEType(dataURLTypeMatch[1]);
+            if (fileExtension)
+                suggestedName += "." + fileExtension;
+        }
     }
 
     if (typeof saveData.content === "string") {
@@ -73,11 +76,12 @@ WI.loadDataFromFile = function(callback)
             return;
         }
 
+        let file = inputElement.files[0];
         let reader = new FileReader;
         reader.addEventListener("loadend", (event) => {
-            callback(reader.result);
+            callback(reader.result, file.name);
         });
-        reader.readAsText(inputElement.files[0]);
+        reader.readAsText(file);
     });
     inputElement.click();
 };

@@ -48,6 +48,7 @@
 #import "WebUIDelegate.h"
 #import "WebViewInternal.h"
 #import <Foundation/NSURLRequest.h>
+#import <JavaScriptCore/JSLock.h>
 #import <WebCore/CommonVM.h>
 #import <WebCore/DocumentLoader.h>
 #import <WebCore/Frame.h>
@@ -57,9 +58,9 @@
 #import <WebCore/HTMLNames.h>
 #import <WebCore/ResourceRequest.h>
 #import <WebCore/ScriptController.h>
+#import <WebCore/UserGestureIndicator.h>
 #import <WebCore/WebCoreURLResponse.h>
 #import <objc/runtime.h>
-#import <runtime/JSLock.h>
 #import <wtf/text/WTFString.h>
 
 #if PLATFORM(IOS)
@@ -455,7 +456,7 @@ static void cancelOutstandingCheck(const void *item, void *context)
 #if PLATFORM(IOS)
 - (BOOL)processingUserGesture
 {
-    return ScriptController::processingUserGesture();
+    return UserGestureIndicator::processingUserGesture();
 }
 #endif
 

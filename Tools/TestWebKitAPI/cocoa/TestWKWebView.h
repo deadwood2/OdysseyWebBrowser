@@ -23,10 +23,10 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#if WK_API_ENABLED
+
 #import <WebKit/WebKit.h>
 #import <wtf/RetainPtr.h>
-
-#if WK_API_ENABLED
 
 @class _WKProcessPoolConfiguration;
 
@@ -45,13 +45,16 @@
 - (void)loadTestPageNamed:(NSString *)pageName;
 - (void)synchronouslyLoadHTMLString:(NSString *)html;
 - (void)synchronouslyLoadTestPageNamed:(NSString *)pageName;
+- (id)objectByEvaluatingJavaScript:(NSString *)script;
 - (NSString *)stringByEvaluatingJavaScript:(NSString *)script;
 - (void)waitForMessage:(NSString *)message;
 - (void)performAfterLoading:(dispatch_block_t)actions;
+- (void)waitForNextPresentationUpdate;
 @end
 
 #if PLATFORM(IOS)
 @interface TestWKWebView (IOSOnly)
+@property (nonatomic, readonly) UIView <UITextInput> *textInputContentView;
 @property (nonatomic, readonly) RetainPtr<NSArray> selectionRectsAfterPresentationUpdate;
 - (_WKActivatedElementInfo *)activatedElementAtPosition:(CGPoint)position;
 @end
@@ -62,8 +65,10 @@
 // Simulates clicking with a pressure-sensitive device, if possible.
 - (void)mouseDownAtPoint:(NSPoint)point simulatePressure:(BOOL)simulatePressure;
 - (void)mouseUpAtPoint:(NSPoint)point;
+- (void)mouseMoveToPoint:(NSPoint)point withFlags:(NSEventModifierFlags)flags;
 - (void)sendClicksAtPoint:(NSPoint)point numberOfClicks:(NSUInteger)numberOfClicks;
 - (void)typeCharacter:(char)character;
+- (NSWindow *)hostWindow;
 @end
 #endif
 

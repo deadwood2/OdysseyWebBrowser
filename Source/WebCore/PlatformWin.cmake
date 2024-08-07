@@ -1,44 +1,19 @@
 add_definitions(/bigobj -D__STDC_CONSTANT_MACROS)
 
 list(APPEND WebCore_INCLUDE_DIRECTORIES
-    "${WEBCORE_DIR}/ForwardingHeaders"
     "${CMAKE_BINARY_DIR}/../include/private"
     "${CMAKE_BINARY_DIR}/../include/private/JavaScriptCore"
-    "${FORWARDING_HEADERS_DIR}/ANGLE"
-    "${FORWARDING_HEADERS_DIR}/ANGLE/include/KHR"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/ForwardingHeaders"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/API"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/assembler"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/builtins"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/bytecode"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/bytecompiler"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/dfg"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/disassembler"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/domjit"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/heap"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/debugger"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/interpreter"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/jit"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/llint"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/parser"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/profiler"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/runtime"
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/yarr"
-    "${FORWARDING_HEADERS_DIR}/WTF"
     "${WEBCORE_DIR}/accessibility/win"
     "${WEBCORE_DIR}/page/win"
-    "${WEBCORE_DIR}/platform/cf"
-    "${WEBCORE_DIR}/platform/cf/win"
     "${WEBCORE_DIR}/platform/graphics/egl"
     "${WEBCORE_DIR}/platform/graphics/opengl"
     "${WEBCORE_DIR}/platform/graphics/opentype"
     "${WEBCORE_DIR}/platform/graphics/win"
     "${WEBCORE_DIR}/platform/network/win"
-    "${WEBCORE_DIR}/platform/spi/win"
     "${WEBCORE_DIR}/platform/win"
     "${THIRDPARTY_DIR}/ANGLE/include"
     "${THIRDPARTY_DIR}/ANGLE/include/egl"
+    "${DERIVED_SOURCES_PAL_DIR}"
 )
 
 list(APPEND WebCore_SOURCES
@@ -51,8 +26,6 @@ list(APPEND WebCore_SOURCES
 
     html/HTMLSelectElementWin.cpp
 
-    loader/archive/cf/LegacyWebArchive.cpp
-
     page/win/DragControllerWin.cpp
     page/win/EventHandlerWin.cpp
     page/win/FrameWin.cpp
@@ -62,15 +35,6 @@ list(APPEND WebCore_SOURCES
     platform/StaticPasteboard.cpp
 
     platform/audio/PlatformMediaSessionManager.cpp
-
-    platform/cf/CFURLExtras.cpp
-    platform/cf/FileSystemCF.cpp
-    platform/cf/KeyedDecoderCF.cpp
-    platform/cf/KeyedEncoderCF.cpp
-    platform/cf/SharedBufferCF.cpp
-    platform/cf/URLCF.cpp
-
-    platform/cf/win/CertificateCFWin.cpp
 
     platform/graphics/GraphicsContext3DPrivate.cpp
 
@@ -110,8 +74,6 @@ list(APPEND WebCore_SOURCES
     platform/network/win/NetworkStateNotifierWin.cpp
 
     platform/text/LocaleNone.cpp
-
-    platform/text/cf/HyphenationCF.cpp
 
     platform/win/BString.cpp
     platform/win/BitmapInfo.cpp
@@ -159,6 +121,7 @@ list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
 set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     .
     accessibility
+    animation
     bindings
     bridge
     contentextensions
@@ -181,6 +144,8 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     workers
     xml
 
+    Modules/cache
+    Modules/fetch
     Modules/geolocation
     Modules/indexeddb
     Modules/mediastream
@@ -202,8 +167,6 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
 
     css/parser
 
-    history/cf
-
     html/forms
     html/parser
     html/shadow
@@ -214,7 +177,6 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     loader/cache
     loader/icon
 
-    loader/archive/cf
 
     page/animation
     page/csp
@@ -223,15 +185,12 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
 
     platform/animation
     platform/audio
-    platform/cf
     platform/graphics
     platform/mock
     platform/network
     platform/sql
     platform/text
     platform/win
-
-    platform/cf/win
 
     platform/graphics/filters
     platform/graphics/opengl
@@ -254,10 +213,59 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     svg/properties
 
     svg/graphics/filters
+
+    workers/service
 )
 
+if (ENABLE_WEBKIT)
+    list(APPEND WebCore_FORWARDING_HEADERS_DIRECTORIES
+        Modules/applicationmanifest
+
+        dom/messageports
+
+        inspector/agents
+
+        platform/mediastream
+
+        workers/service/context
+        workers/service/server
+    )
+endif ()
+
+if (USE_CF)
+    list(APPEND WebCore_INCLUDE_DIRECTORIES
+        "${WEBCORE_DIR}/platform/cf"
+        "${WEBCORE_DIR}/platform/cf/win"
+    )
+
+    list(APPEND WebCore_SOURCES
+        loader/archive/cf/LegacyWebArchive.cpp
+
+        platform/cf/CFURLExtras.cpp
+        platform/cf/FileSystemCF.cpp
+        platform/cf/KeyedDecoderCF.cpp
+        platform/cf/KeyedEncoderCF.cpp
+        platform/cf/SharedBufferCF.cpp
+        platform/cf/URLCF.cpp
+
+        platform/cf/win/CertificateCFWin.cpp
+
+        platform/text/cf/HyphenationCF.cpp
+    )
+
+    list(APPEND WebCore_FORWARDING_HEADERS_DIRECTORIES
+        history/cf
+
+        loader/archive/cf
+
+        platform/cf
+
+        platform/cf/win
+    )
+endif ()
+
 if (CMAKE_SIZEOF_VOID_P EQUAL 4)
-    list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/makesafeseh.obj)
+    list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/makesafeseh.obj)
     add_custom_command(
         OUTPUT ${DERIVED_SOURCES_WEBCORE_DIR}/makesafeseh.obj
         DEPENDS ${WEBCORE_DIR}/platform/win/makesafeseh.asm
@@ -284,25 +292,24 @@ file(COPY
     DESTINATION
     ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources
 )
-if (WTF_PLATFORM_WIN_CAIRO AND EXISTS ${WEBKIT_LIBRARIES_DIR}/cacert.pem)
+if (WTF_PLATFORM_WIN_CAIRO AND EXISTS ${WEBKIT_LIBRARIES_DIR}/etc/ssl/cert.pem)
     make_directory(${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources/certificates)
     file(COPY
-        ${WEBKIT_LIBRARIES_DIR}/cacert.pem
+        ${WEBKIT_LIBRARIES_DIR}/etc/ssl/cert.pem
         DESTINATION
         ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources/certificates
     )
+    file(RENAME
+        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources/certificates/cert.pem
+        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources/certificates/cacert.pem
+    )
 endif ()
 
-file(MAKE_DIRECTORY ${FORWARDING_HEADERS_DIR}/WebCore)
-
-set(WebCore_DERIVED_SOURCES_PRE_BUILD_COMMAND "${CMAKE_BINARY_DIR}/DerivedSources/WebCore/preBuild.cmd")
-file(WRITE "${WebCore_DERIVED_SOURCES_PRE_BUILD_COMMAND}" "@xcopy /y /s /d /f \"${WEBCORE_DIR}/ForwardingHeaders/*.h\" \"${FORWARDING_HEADERS_DIR}/WebCore\" >nul 2>nul\n")
-foreach (_directory ${WebCore_FORWARDING_HEADERS_DIRECTORIES})
-    file(APPEND "${WebCore_DERIVED_SOURCES_PRE_BUILD_COMMAND}" "@xcopy /y /d /f \"${WEBCORE_DIR}/${_directory}/*.h\" \"${FORWARDING_HEADERS_DIR}/WebCore\" >nul 2>nul\n")
-endforeach ()
-
-set(WebCore_POST_BUILD_COMMAND "${CMAKE_BINARY_DIR}/DerivedSources/WebCore/postBuild.cmd")
-file(WRITE "${WebCore_POST_BUILD_COMMAND}" "@xcopy /y /s /d /f \"${DERIVED_SOURCES_WEBCORE_DIR}/*.h\" \"${FORWARDING_HEADERS_DIR}/WebCore\" >nul 2>nul\n")
+WEBKIT_MAKE_FORWARDING_HEADERS(WebCore
+    DIRECTORIES ${WebCore_FORWARDING_HEADERS_DIRECTORIES}
+    DERIVED_SOURCE_DIRECTORIES ${DERIVED_SOURCES_WEBCORE_DIR} ${DERIVED_SOURCES_PAL_DIR}
+    FLATTENED
+)
 
 set(WebCore_OUTPUT_NAME
     WebCore${DEBUG_SUFFIX}

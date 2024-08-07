@@ -35,14 +35,12 @@ import sys
 import time
 import traceback
 
-from datetime import datetime
 from optparse import make_option
 from StringIO import StringIO
 
 from webkitpy.common.config.committervalidator import CommitterValidator
 from webkitpy.common.config.ports import DeprecatedPort
 from webkitpy.common.net.bugzilla import Attachment
-from webkitpy.common.net.statusserver import StatusServer
 from webkitpy.common.system.executive import ScriptError
 from webkitpy.tool.bot.botinfo import BotInfo
 from webkitpy.tool.bot.commitqueuetask import CommitQueueTask, CommitQueueTaskDelegate
@@ -81,7 +79,7 @@ class AbstractQueue(Command, QueueEngineDelegate):
     def _cc_watchers(self, bug_id):
         try:
             self._tool.bugs.add_cc_to_bug(bug_id, self.watchers)
-        except Exception, e:
+        except Exception as e:
             traceback.print_exc()
             _log.error("Failed to CC watchers.")
 
@@ -103,7 +101,7 @@ class AbstractQueue(Command, QueueEngineDelegate):
             args_for_printing[0] = 'webkit-patch'  # Printing our path for each log is redundant.
             _log.info("Running: %s" % self._tool.executive.command_for_printing(args_for_printing))
             command_output = self._tool.executive.run_command(webkit_patch_args, cwd=self._tool.scm().checkout_root)
-        except ScriptError, e:
+        except ScriptError as e:
             # Make sure the whole output gets printed if the command failed.
             _log.error(e.message_with_output(output_limit=None))
             raise
@@ -272,7 +270,7 @@ class PatchProcessingQueue(AbstractPatchQueue):
     def _new_port_name_from_old(self, port_name, platform):
         # ApplePort.determine_full_port_name asserts if the name doesn't include version.
         if port_name == 'mac':
-            return 'mac-' + platform.os_version
+            return 'mac-' + platform.os_version_name().lower().replace(' ', '')
         if port_name == 'win':
             return 'win-future'
         return port_name
@@ -347,7 +345,7 @@ class CommitQueue(PatchProcessingQueue, StepSequenceErrorHandler, CommitQueueTas
         except PatchIsNotValid as error:
             self._did_error(patch, "%s did not process patch. Reason: %s" % (self.name, error.failure_message))
             return False
-        except ScriptError, e:
+        except ScriptError as e:
             validator = CommitterValidator(self._tool)
             validator.reject_patch_from_commit_queue(patch.id(), self._error_message_for_bug(task, patch, e))
             results_archive = task.results_archive_from_patch_test_run(patch)
@@ -480,13 +478,13 @@ class StyleQueue(AbstractReviewQueue, StyleQueueTaskDelegate):
                 # Caller unlocks when review_patch returns True, so we only need to unlock on transient failure.
                 self._unlock_patch(patch)
             return style_check_succeeded
-        except UnableToApplyPatch, e:
+        except UnableToApplyPatch as e:
             self._did_error(patch, "%s unable to apply patch." % self.name)
             return False
         except PatchIsNotValid as error:
             self._did_error(patch, "%s did not process patch. Reason: %s" % (self.name, error.failure_message))
             return False
-        except ScriptError, e:
+        except ScriptError as e:
             output = re.sub(r'Failed to run .+ exit_code: 1', '', e.output)
             message = "Attachment %s did not pass %s:\n\n%s\n\nIf any of these errors are false positives, please file a bug against check-webkit-style." % (patch.id(), self.name, output)
             self._tool.bugs.post_comment_to_bug(patch.bug_id(), message, cc=self.watchers)

@@ -25,7 +25,6 @@
 
 #include "config.h"
 
-#if ENABLE(NETWORK_CACHE)
 #include "NetworkCacheStatistics.h"
 
 #include "Logging.h"
@@ -78,7 +77,7 @@ std::unique_ptr<Statistics> Statistics::open(Cache& cache, const String& cachePa
 {
     ASSERT(RunLoop::isMain());
 
-    String databasePath = WebCore::pathByAppendingComponent(cachePath, StatisticsDatabaseName);
+    String databasePath = WebCore::FileSystem::pathByAppendingComponent(cachePath, StatisticsDatabaseName);
     return std::make_unique<Statistics>(cache, databasePath);
 }
 
@@ -94,12 +93,12 @@ void Statistics::initialize(const String& databasePath)
 {
     ASSERT(RunLoop::isMain());
 
-    auto startTime = std::chrono::system_clock::now();
+    auto startTime = WallTime::now();
 
     serialBackgroundIOQueue().dispatch([this, databasePath = databasePath.isolatedCopy(), networkCachePath = m_cache.recordsPath(), startTime] {
         WebCore::SQLiteTransactionInProgressAutoCounter transactionCounter;
 
-        if (!WebCore::makeAllDirectories(WebCore::directoryName(databasePath)))
+        if (!WebCore::FileSystem::makeAllDirectories(WebCore::FileSystem::directoryName(databasePath)))
             return;
 
         LOG(NetworkCache, "(NetworkProcess) Opening network cache statistics database at %s...", databasePath.utf8().data());
@@ -122,20 +121,20 @@ void Statistics::initialize(const String& databasePath)
         m_approximateEntryCount = statement.getColumnInt(0);
 
 #if !LOG_DISABLED
-        auto elapsedMS = static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startTime).count());
+        auto elapsed = WallTime::now() - startTime;
 #else
         UNUSED_PARAM(startTime);
 #endif
-        LOG(NetworkCache, "(NetworkProcess) Network cache statistics database load complete, entries=%lu time=%" PRIi64 "ms", static_cast<size_t>(m_approximateEntryCount), elapsedMS);
+        LOG(NetworkCache, "(NetworkProcess) Network cache statistics database load complete, entries=%lu time=%" PRIi64 "ms", static_cast<size_t>(m_approximateEntryCount), elapsed.millisecondsAs<int64_t>());
 
         if (!m_approximateEntryCount) {
             bootstrapFromNetworkCache(networkCachePath);
 #if !LOG_DISABLED
-            elapsedMS = static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - startTime).count());
+            elapsed = WallTime::now() - startTime;
 #else
             UNUSED_PARAM(startTime);
 #endif
-            LOG(NetworkCache, "(NetworkProcess) Network cache statistics database bootstrapping complete, entries=%lu time=%" PRIi64 "ms", static_cast<size_t>(m_approximateEntryCount), elapsedMS);
+            LOG(NetworkCache, "(NetworkProcess) Network cache statistics database bootstrapping complete, entries=%lu time=%" PRIi64 "ms", static_cast<size_t>(m_approximateEntryCount), elapsed.millisecondsAs<int64_t>());
         }
     });
 }
@@ -452,5 +451,3 @@ void Statistics::addStoreDecisionsToDatabase(const HashMap<String, NetworkCache:
 
 }
 }
-
-#endif // ENABLE(NETWORK_CACHE)

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
- * Copyright (C) 2016 Devin Rousso <dcrousso+webkit@gmail.com>. All rights reserved.
+ * Copyright (C) 2016 Devin Rousso <webkit@devinrousso.com>. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -44,12 +44,8 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
         return {
             image: "Images/Gear.svg",
             title: WI.UIString("Settings"),
+            isEphemeral: true,
         };
-    }
-
-    static isEphemeral()
-    {
-        return true;
     }
 
     static shouldSaveTab()
@@ -60,6 +56,11 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
     // Public
 
     get type() { return WI.SettingsTabContentView.Type; }
+
+    get supportsSplitContentBrowser()
+    {
+        return false;
+    }
 
     get selectedSettingsView()
     {
@@ -197,21 +198,6 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
 
         generalSettingsView.addSeparator();
 
-        let stylesEditingGroup = generalSettingsView.addGroup(WI.UIString("Styles Editing:"));
-        stylesEditingGroup.addSetting(WI.settings.stylesShowInlineWarnings, WI.UIString("Show inline warnings"));
-        stylesEditingGroup.addSetting(WI.settings.stylesInsertNewline, WI.UIString("Automatically insert newline"));
-        stylesEditingGroup.addSetting(WI.settings.stylesSelectOnFirstClick, WI.UIString("Select text on first click"));
-
-        generalSettingsView.addSeparator();
-
-        generalSettingsView.addSetting(WI.UIString("Network:"), WI.settings.clearNetworkOnNavigate, WI.UIString("Clear when page loads"));
-
-        generalSettingsView.addSeparator();
-
-        generalSettingsView.addSetting(WI.UIString("Console:"), WI.settings.clearLogOnNavigate, WI.UIString("Clear when page loads"));
-
-        generalSettingsView.addSeparator();
-
         generalSettingsView.addSetting(WI.UIString("Debugger:"), WI.settings.showScopeChainOnPause, WI.UIString("Show Scope Chain on pause"));
 
         generalSettingsView.addSeparator();
@@ -224,21 +210,47 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
         zoomEditor.addEventListener(WI.SettingEditor.Event.ValueDidChange, () => { WI.setZoomFactor(zoomEditor.value); });
         WI.settings.zoomFactor.addEventListener(WI.Setting.Event.Changed, () => { zoomEditor.value = WI.getZoomFactor().maxDecimals(2); });
 
+        if (WI.LogManager.supportsLogChannels()) {
+            const logLevels = [
+                [WI.LoggingChannel.Level.Off, WI.UIString("Off")],
+                [WI.LoggingChannel.Level.Basic, WI.UIString("Basic")],
+                [WI.LoggingChannel.Level.Verbose, WI.UIString("Verbose")],
+            ];
+            const editorLabels = {
+                media: WI.UIString("Media Logging:"),
+                webrtc: WI.UIString("WebRTC Logging:"),
+            };
+
+            let channels = WI.logManager.customLoggingChannels;
+            for (let channel of channels) {
+                let logEditor = generalSettingsView.addGroupWithCustomSetting(editorLabels[channel.source], WI.SettingEditor.Type.Select, {values: logLevels});
+                logEditor.value = channel.level;
+                logEditor.addEventListener(WI.SettingEditor.Event.ValueDidChange, () => { ConsoleAgent.setLoggingChannelLevel(channel.source, logEditor.value); });
+            }
+        }
+
         this.addSettingsView(generalSettingsView);
     }
 
     _createExperimentalSettingsView()
     {
+        if (!(window.CanvasAgent || window.CSSAgent || window.NetworkAgent || window.LayerTreeAgent))
+            return;
+
         let experimentalSettingsView = new WI.SettingsView("experimental", WI.UIString("Experimental"));
 
-        if (window.CanvasAgent) {
-            experimentalSettingsView.addSetting(WI.UIString("Canvas:"), WI.settings.experimentalShowCanvasContextsInResources, WI.UIString("Show Contexts in Resources Tab"));
+        if (window.CSSAgent) {
+            let stylesGroup = experimentalSettingsView.addGroup(WI.UIString("Styles Sidebar:"));
+            stylesGroup.addSetting(WI.settings.experimentalLegacyStyleEditor, WI.UIString("Legacy Style Editor"));
+            stylesGroup.addSetting(WI.settings.experimentalLegacyVisualSidebar, WI.UIString("Legacy Visual Styles Panel"));
+        }
 
+        if (window.LayerTreeAgent) {
+            experimentalSettingsView.addSetting(WI.UIString("Layers:"), WI.settings.experimentalEnableLayersTab, WI.UIString("Enable Layers Tab"));
             experimentalSettingsView.addSeparator();
         }
 
-        experimentalSettingsView.addSetting(WI.UIString("Styles Panel:"), WI.settings.experimentalSpreadsheetStyleEditor, WI.UIString("Spreadsheet Style Editor"));
-
+        experimentalSettingsView.addSetting(WI.UIString("User Interface:"), WI.settings.experimentalEnableNewTabBar, WI.UIString("Enable New Tab Bar"));
         experimentalSettingsView.addSeparator();
 
         let reloadInspectorButton = document.createElement("button");
@@ -255,10 +267,10 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
             });
         }
 
-        if (window.CanvasAgent)
-            listenForChange(WI.settings.experimentalShowCanvasContextsInResources);
-
-        listenForChange(WI.settings.experimentalSpreadsheetStyleEditor);
+        listenForChange(WI.settings.experimentalLegacyStyleEditor);
+        listenForChange(WI.settings.experimentalLegacyVisualSidebar);
+        listenForChange(WI.settings.experimentalEnableLayersTab);
+        listenForChange(WI.settings.experimentalEnableNewTabBar);
 
         this.addSettingsView(experimentalSettingsView);
     }
@@ -280,6 +292,10 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
         });
 
         protocolMessagesGroup.addSetting(WI.settings.autoLogTimeStats, WI.unlocalizedString("Time Stats"));
+
+        this._debugSettingsView.addSeparator();
+
+        this._debugSettingsView.addSetting(WI.unlocalizedString("Layout Flashing:"), WI.settings.enableLayoutFlashing, WI.unlocalizedString("Draw borders when a view performs a layout"));
 
         this._debugSettingsView.addSeparator();
 

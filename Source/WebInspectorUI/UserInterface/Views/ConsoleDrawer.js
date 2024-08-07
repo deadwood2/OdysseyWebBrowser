@@ -39,6 +39,7 @@ WI.ConsoleDrawer = class ConsoleDrawer extends WI.ContentBrowser
         this.navigationBar.element.addEventListener("mousedown", this._consoleResizerMouseDown.bind(this));
 
         this._toggleDrawerButton = new WI.ToggleButtonNavigationItem("toggle-drawer", WI.UIString("Hide Console"), WI.UIString("Show Console"), "Images/HideConsoleDrawer.svg", "Images/ShowConsoleDrawer.svg");
+        this._toggleDrawerButton.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
         this._toggleDrawerButton.addEventListener(WI.ButtonNavigationItem.Event.Clicked, () => { WI.toggleSplitConsole(); });
         this.navigationBar.insertNavigationItem(this._toggleDrawerButton, 0);
 
@@ -146,11 +147,11 @@ WI.ConsoleDrawer = class ConsoleDrawer extends WI.ContentBrowser
         const minimumHeight = 64;
         const maximumHeight = this.element.parentNode.offsetHeight - 100;
 
-        height = Number.constrain(height, minimumHeight, maximumHeight);
-        if (height === this.element.style.height)
+        let heightCSSValue = Number.constrain(height, minimumHeight, maximumHeight) + "px";
+        if (this.element.style.height === heightCSSValue)
             return;
 
-        this.element.style.height = height + "px";
+        this.element.style.height = heightCSSValue;
 
         this.dispatchEventToListeners(WI.ConsoleDrawer.Event.Resized);
     }

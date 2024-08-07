@@ -7,17 +7,39 @@ list(APPEND WTF_LIBRARIES
     ${READLINE_LIBRARY}
 )
 
+list(APPEND WTF_HEADERS
+    cf/TypeCastsCF.h
+
+    cocoa/SoftLinking.h
+
+    darwin/WeakLinking.h
+
+    mac/AppKitCompatibilityDeclarations.h
+
+    spi/cf/CFBundleSPI.h
+    spi/cf/CFStringSPI.h
+
+    spi/cocoa/NSMapTableSPI.h
+    spi/cocoa/SecuritySPI.h
+
+    spi/darwin/SandboxSPI.h
+    spi/darwin/XPCSPI.h
+    spi/darwin/dyldSPI.h
+
+    text/cf/TextBreakIteratorCF.h
+)
+
 list(APPEND WTF_SOURCES
     AutodrainedPoolMac.mm
     BlockObjCExceptions.mm
-    PlatformUserPreferredLanguagesMac.mm
     RunLoopTimerCF.cpp
     SchedulePairCF.cpp
     SchedulePairMac.mm
 
-    text/mac/TextBreakIteratorInternalICUMac.mm
-
+    cf/LanguageCF.cpp
     cf/RunLoopCF.cpp
+
+    text/mac/TextBreakIteratorInternalICUMac.mm
 
     cocoa/CPUTimeCocoa.mm
     cocoa/MemoryFootprintCocoa.cpp
@@ -37,9 +59,8 @@ list(APPEND WTF_SOURCES
     text/mac/StringViewObjC.mm
 )
 
-list(APPEND WTF_INCLUDE_DIRECTORIES
+list(APPEND WTF_PRIVATE_INCLUDE_DIRECTORIES
     "${WTF_DIR}/icu"
-    "${WTF_DIR}/wtf/spi/darwin"
     ${DERIVED_SOURCES_WTF_DIR}
 )
 

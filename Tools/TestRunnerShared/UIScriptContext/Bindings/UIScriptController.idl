@@ -226,7 +226,7 @@ interface UIScriptController {
     readonly attribute object textSelectionCaretRect; // An object with 'left', 'top', 'width', 'height' properties.
     readonly attribute object inputViewBounds;
 
-    void insertText(DOMString text, long location, long length);
+    void replaceTextAtRange(DOMString text, long location, long length);
     void removeAllDynamicDictionaries();
 
     readonly attribute DOMString scrollingTreeAsText;
@@ -238,6 +238,8 @@ interface UIScriptController {
     
     void simulateRotation(DeviceOrientation orientation, object callback);
     void simulateRotationLikeSafari(DeviceOrientation orientation, object callback);
+
+    void findString(DOMString string, unsigned long options, unsigned long maxCount);
 
     // Unparent and parent the web view, simulating, for example, tab switching.
     void removeViewFromWindow(object callback);

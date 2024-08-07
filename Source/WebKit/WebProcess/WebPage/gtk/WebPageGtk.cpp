@@ -29,13 +29,11 @@
 #include "WebPage.h"
 
 #include "EditorState.h"
-#include "NotImplemented.h"
 #include "WebEvent.h"
 #include "WebFrame.h"
 #include "WebPageAccessibilityObject.h"
 #include "WebPageProxyMessages.h"
 #include "WebProcess.h"
-#include "WindowsKeyboardCodes.h"
 #include <WebCore/BackForwardController.h>
 #include <WebCore/Editor.h>
 #include <WebCore/EventHandler.h>
@@ -43,17 +41,18 @@
 #include <WebCore/Frame.h>
 #include <WebCore/FrameView.h>
 #include <WebCore/KeyboardEvent.h>
+#include <WebCore/NotImplemented.h>
 #include <WebCore/Page.h>
 #include <WebCore/PasteboardHelper.h>
 #include <WebCore/PlatformKeyboardEvent.h>
 #include <WebCore/Settings.h>
 #include <WebCore/SharedBuffer.h>
 #include <WebCore/UserAgent.h>
+#include <WebCore/WindowsKeyboardCodes.h>
 #include <wtf/glib/GUniquePtr.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 void WebPage::platformInitialize()
 {
@@ -74,7 +73,7 @@ void WebPage::platformDetach()
 
 void WebPage::platformEditorState(Frame& frame, EditorState& result, IncludePostLayoutDataHint shouldIncludePostLayoutData) const
 {
-    if (shouldIncludePostLayoutData == IncludePostLayoutDataHint::No) {
+    if (shouldIncludePostLayoutData == IncludePostLayoutDataHint::No || !frame.view() || frame.view()->needsLayout()) {
         result.isMissingPostLayoutData = true;
         return;
     }
@@ -117,11 +116,6 @@ void WebPage::updateAccessibilityTree()
     webPageAccessibilityObjectRefresh(m_accessibilityObject.get());
 }
 #endif
-
-void WebPage::platformPreferencesDidChange(const WebPreferencesStore&)
-{
-    notImplemented();
-}
 
 bool WebPage::performDefaultBehaviorForKeyEvent(const WebKeyboardEvent& keyboardEvent)
 {

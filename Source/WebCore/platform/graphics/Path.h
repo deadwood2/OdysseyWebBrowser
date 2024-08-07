@@ -33,7 +33,6 @@
 #include <wtf/FastMalloc.h>
 #include <wtf/Function.h>
 #include <wtf/Forward.h>
-#include <wtf/Vector.h>
 
 #if USE(CG)
 
@@ -116,7 +115,9 @@ namespace WebCore {
         WEBCORE_EXPORT ~Path();
 
         WEBCORE_EXPORT Path(const Path&);
+        WEBCORE_EXPORT Path(Path&&);
         WEBCORE_EXPORT Path& operator=(const Path&);
+        WEBCORE_EXPORT Path& operator=(Path&&);
         
         static Path polygonPathFromPoints(const Vector<FloatPoint>&);
 

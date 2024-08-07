@@ -547,7 +547,7 @@ static void webViewloadChanged(WebKitWebView* webView, WebKitLoadEvent loadEvent
 static void testWebResourceGetDataError(Test* test, gconstpointer)
 {
     GRefPtr<GMainLoop> mainLoop = adoptGRef(g_main_loop_new(nullptr, FALSE));
-    GRefPtr<WebKitWebView> webView = WEBKIT_WEB_VIEW(webkit_web_view_new_with_context(test->m_webContext.get()));
+    GRefPtr<WebKitWebView> webView = WEBKIT_WEB_VIEW(Test::createWebView(test->m_webContext.get()));
     webkit_web_view_load_html(webView.get(), "<html></html>", nullptr);
     g_signal_connect(webView.get(), "load-changed", G_CALLBACK(webViewloadChanged), mainLoop.get());
     g_main_loop_run(mainLoop.get());
@@ -728,6 +728,7 @@ public:
     unsigned m_resourcesToStartPending;
 };
 
+#if SOUP_CHECK_VERSION(2, 49, 91)
 static void testWebViewSyncRequestOnMaxConns(SyncRequestOnMaxConnsTest* test, gconstpointer)
 {
     WTF::GMutexLocker<GMutex> lock(s_serverMutex);
@@ -762,6 +763,7 @@ static void testWebViewSyncRequestOnMaxConns(SyncRequestOnMaxConnsTest* test, gc
     if (context.unlockServerSourceID)
         g_source_remove(context.unlockServerSourceID);
 }
+#endif
 
 static void addCacheHTTPHeadersToResponse(SoupMessage* message)
 {

@@ -63,9 +63,11 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
     refreshIfNeeded()
     {
+        if (this._pendingRefreshTask)
+            return this._pendingRefreshTask;
         if (!this._needsRefresh)
-            return;
-        this.refresh();
+            return Promise.resolve(this);
+        return this.refresh();
     }
 
     refresh()
@@ -258,6 +260,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         this._pendingRefreshTask = Promise.all([fetchedMatchedStylesPromise.promise, fetchedInlineStylesPromise.promise, fetchedComputedStylesPromise.promise])
         .then(() => {
             this._pendingRefreshTask = null;
+            return this;
         });
 
         return this._pendingRefreshTask;
@@ -523,7 +526,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
     {
         var text = payload.text || "";
         var name = payload.name;
-        var value = (payload.value || "").replace(/\s*!important\s*$/, "");
+        var value = payload.value || "";
         var priority = payload.priority || "";
 
         var enabled = true;
@@ -773,7 +776,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         if (styleSheet) {
             if (!sourceCodeLocation && styleSheet.isInspectorStyleSheet())
-                sourceCodeLocation = styleSheet.createSourceCodeLocation(sourceRange.startLine, sourceRange.startColumn)
+                sourceCodeLocation = styleSheet.createSourceCodeLocation(sourceRange.startLine, sourceRange.startColumn);
 
             sourceCodeLocation = styleSheet.offsetSourceCodeLocation(sourceCodeLocation);
         }
@@ -901,7 +904,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
             for (var j = 0; j < properties.length; ++j) {
                 var property = properties[j];
-                if (!property.enabled || !property.valid) {
+                if (!property.attached || !property.valid) {
                     property.overridden = false;
                     continue;
                 }

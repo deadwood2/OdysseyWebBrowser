@@ -58,13 +58,6 @@ void TestController::platformInitializeContext()
 {
 }
 
-static GMainContext* threadDefaultContext()
-{
-    if (GMainContext* context = g_main_context_get_thread_default())
-        return context;
-    return g_main_context_default();
-}
-
 void TestController::platformRunUntil(bool& condition, double timeout)
 {
     struct TimeoutTimer {
@@ -116,7 +109,7 @@ void TestController::runModal(PlatformWebView*)
 
 WKContextRef TestController::platformContext()
 {
-    return nullptr;
+    return m_context.get();
 }
 
 const char* TestController::platformLibraryPathForTesting()

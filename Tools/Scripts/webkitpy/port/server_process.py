@@ -64,7 +64,13 @@ class ServerProcess(object):
         self._port = port_obj
         self._name = name  # Should be the command name (e.g. DumpRenderTree, ImageDiff)
         self._cmd = cmd
-        self._env = env
+
+        # Windows does not allow unicode values in the environment
+        if env and self._port.host.platform.is_native_win():
+            self._env = {key: env[key].encode('utf-8') for key in env}
+        else:
+            self._env = env
+
         # Set if the process outputs non-standard newlines like '\r\n' or '\r'.
         # Don't set if there will be binary data or the data must be ASCII encoded.
         self._universal_newlines = universal_newlines
@@ -110,20 +116,29 @@ class ServerProcess(object):
         if self._proc:
             raise ValueError("%s already running" % self._name)
         self._reset()
-        # close_fds is a workaround for http://bugs.python.org/issue2320
-        # In Python 2.7.10, close_fds is also supported on Windows.
-        close_fds = True
         self._proc = self._target_host.executive.popen(self._cmd, stdin=self._target_host.executive.PIPE,
             stdout=self._target_host.executive.PIPE,
             stderr=self._target_host.executive.PIPE,
-            close_fds=close_fds,
+            close_fds=self._should_close_fds(),
             env=self._env,
             universal_newlines=self._universal_newlines)
         self._pid = self._proc.pid
-        self._port.find_system_pid(self.process_name(), self._pid)
         if not self._use_win32_apis:
             self._set_file_nonblocking(self._proc.stdout)
             self._set_file_nonblocking(self._proc.stderr)
+
+    def _should_close_fds(self):
+        # We need to pass close_fds=True to work around Python bug #2320
+        # (otherwise we can hang when we kill DumpRenderTree when we are running
+        # multiple threads). See http://bugs.python.org/issue2320 .
+        # In Python 2.7.10, close_fds is also supported on Windows.
+        # However, "you cannot set close_fds to true and also redirect the standard
+        # handles by setting stdin, stdout or stderr.".
+        platform = self._port.host.platform
+        if platform.is_win() and not platform.is_cygwin():
+            return False
+        else:
+            return True
 
     def _handle_possible_interrupt(self):
         """This routine checks to see if the process crashed or exited
@@ -151,7 +166,7 @@ class ServerProcess(object):
             self._start()
         try:
             self._proc.stdin.write(bytes)
-        except IOError, e:
+        except IOError as e:
             self.stop(0.0)
             # stop() calls _reset(), so we have to set crashed to True after calling stop()
             # unless we already know that this is a timeout.
@@ -240,7 +255,7 @@ class ServerProcess(object):
         select_fds = (out_fd, err_fd)
         try:
             read_fds, _, _ = select.select(select_fds, [], select_fds, max(deadline - time.time(), 0))
-        except select.error, e:
+        except select.error as e:
             # We can ignore EINVAL since it's likely the process just crashed and we'll
             # figure that out the next time through the loop in _read().
             # We also ignore EINTR as we can resume reading the next time
@@ -268,7 +283,7 @@ class ServerProcess(object):
                     _log.debug('This test marked as a crash because of no data while reading stdout for the server process.')
                     self._crashed = True
                 self._error += data
-        except IOError, e:
+        except IOError as e:
             # We can ignore the IOErrors because we will detect if the subporcess crashed
             # the next time through the loop in _read()
             pass
@@ -299,7 +314,7 @@ class ServerProcess(object):
             if avail > 0:
                 _, buf = win32file.ReadFile(handle, avail, None)
                 return buf
-        except Exception, e:
+        except Exception as e:
             if e[0] not in (109, errno.ESHUTDOWN):  # 109 == win32 ERROR_BROKEN_PIPE
                 raise
         return None
@@ -348,25 +363,29 @@ class ServerProcess(object):
         if self.poll() is None:
             self._port.check_for_leaks(self.process_name(), self.pid())
 
-        now = time.time()
         if self._proc.stdin:
             self._proc.stdin.close()
             self._proc.stdin = None
+
+        return self._wait_for_stop(timeout_secs)
+
+    def _wait_for_stop(self, timeout_secs=3.0):
+        now = time.time()
         killed = False
         if timeout_secs:
             deadline = now + timeout_secs
-            while self._proc.poll() is None and time.time() < deadline:
+            while self._proc and self._proc.poll() is None and time.time() < deadline:
                 time.sleep(0.01)
-            if self._proc.poll() is None:
+            if self._proc and self._proc.poll() is None:
                 _log.warning('stopping %s(pid %d) timed out, killing it' % (self._name, self._proc.pid))
 
-        if self._proc.poll() is None:
+        if self._proc and self._proc.poll() is None:
             self._kill()
             killed = True
             _log.debug('killed pid %d' % self._proc.pid)
 
         # read any remaining data on the pipes and return it.
-        if not killed:
+        if self._proc and not killed:
             if self._use_win32_apis:
                 self._wait_for_data_and_update_buffers_using_win32_apis(now)
             else:

@@ -27,7 +27,7 @@
 #pragma once
 
 #include "SandboxExtension.h"
-#include <WebCore/SessionID.h>
+#include <pal/SessionID.h>
 #include <wtf/text/WTFString.h>
 
 namespace IPC {
@@ -43,11 +43,17 @@ struct StorageProcessCreationParameters {
     void encode(IPC::Encoder&) const;
     static bool decode(IPC::Decoder&, StorageProcessCreationParameters&);
 
-    WebCore::SessionID sessionID;
+    PAL::SessionID sessionID;
     
 #if ENABLE(INDEXED_DATABASE)
     String indexedDatabaseDirectory;
     SandboxExtension::Handle indexedDatabaseDirectoryExtensionHandle;
+#endif
+
+#if ENABLE(SERVICE_WORKER)
+    String serviceWorkerRegistrationDirectory;
+    SandboxExtension::Handle serviceWorkerRegistrationDirectoryExtensionHandle;
+    Vector<String> urlSchemesServiceWorkersCanHandle;
 #endif
 };
 

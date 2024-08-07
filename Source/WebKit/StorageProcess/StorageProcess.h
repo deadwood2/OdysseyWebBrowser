@@ -29,20 +29,36 @@
 #include "SandboxExtension.h"
 #include <WebCore/IDBBackingStore.h>
 #include <WebCore/IDBServer.h>
-#include <WebCore/SessionID.h>
+#include <WebCore/ServiceWorkerIdentifier.h>
+#include <WebCore/ServiceWorkerTypes.h>
 #include <WebCore/UniqueIDBDatabase.h>
+#include <pal/SessionID.h>
 #include <wtf/CrossThreadTask.h>
 #include <wtf/Function.h>
 
+namespace IPC {
+class FormDataReference;
+}
+
 namespace WebCore {
+class SWServer;
+class ServiceWorkerRegistrationKey;
+struct MessageWithMessagePorts;
 struct SecurityOriginData;
+struct ServiceWorkerClientIdentifier;
 }
 
 namespace WebKit {
 
 class StorageToWebProcessConnection;
+class WebSWServerConnection;
+class WebSWServerToContextConnection;
 enum class WebsiteDataType;
 struct StorageProcessCreationParameters;
+
+#if ENABLE(SERVICE_WORKER)
+class WebSWOriginStore;
+#endif
 
 class StorageProcess : public ChildProcess
 #if ENABLE(INDEXED_DATABASE)
@@ -50,20 +66,17 @@ class StorageProcess : public ChildProcess
 #endif
 {
     WTF_MAKE_NONCOPYABLE(StorageProcess);
-    friend class NeverDestroyed<StorageProcess>;
+    friend NeverDestroyed<StorageProcess>;
 public:
     static StorageProcess& singleton();
     ~StorageProcess();
 
-#if ENABLE(INDEXED_DATABASE)
-    WebCore::IDBServer::IDBServer& idbServer(WebCore::SessionID);
-#endif
-
     WorkQueue& queue() { return m_queue.get(); }
-
     void postStorageTask(CrossThreadTask&&);
 
 #if ENABLE(INDEXED_DATABASE)
+    WebCore::IDBServer::IDBServer& idbServer(PAL::SessionID);
+
     // WebCore::IDBServer::IDBBackingStoreFileHandler
     void prepareForAccessToTemporaryFile(const String& path) final;
     void accessToTemporaryFileComplete(const String& path) final;
@@ -71,6 +84,23 @@ public:
 
 #if ENABLE(SANDBOX_EXTENSIONS)
     void getSandboxExtensionsForBlobFiles(const Vector<String>& filenames, WTF::Function<void (SandboxExtension::HandleArray&&)>&& completionHandler);
+#endif
+
+#if ENABLE(SERVICE_WORKER)
+    // For now we just have one global connection to service worker context processes.
+    // This will change in the future.
+    WebSWServerToContextConnection* globalServerToContextConnection();
+    void createServerToContextConnection(std::optional<PAL::SessionID>);
+
+    WebCore::SWServer& swServerForSession(PAL::SessionID);
+    void registerSWServerConnection(WebSWServerConnection&);
+    void unregisterSWServerConnection(WebSWServerConnection&);
+#endif
+
+    void didReceiveStorageProcessMessage(IPC::Connection&, IPC::Decoder&);
+
+#if ENABLE(SERVICE_WORKER)
+    void connectionToContextProcessWasClosed();
 #endif
 
 private:
@@ -86,20 +116,30 @@ private:
     // IPC::Connection::Client
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
     void didClose(IPC::Connection&) override;
-    void didReceiveStorageProcessMessage(IPC::Connection&, IPC::Decoder&);
 
     // Message Handlers
     void initializeWebsiteDataStore(const StorageProcessCreationParameters&);
-    void createStorageToWebProcessConnection();
+    void createStorageToWebProcessConnection(bool isServiceWorkerProcess);
 
-    void fetchWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType> websiteDataTypes, uint64_t callbackID);
-    void deleteWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType> websiteDataTypes, std::chrono::system_clock::time_point modifiedSince, uint64_t callbackID);
-    void deleteWebsiteDataForOrigins(WebCore::SessionID, OptionSet<WebsiteDataType> websiteDataTypes, const Vector<WebCore::SecurityOriginData>& origins, uint64_t callbackID);
+    void fetchWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType> websiteDataTypes, uint64_t callbackID);
+    void deleteWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType> websiteDataTypes, WallTime modifiedSince, uint64_t callbackID);
+    void deleteWebsiteDataForOrigins(PAL::SessionID, OptionSet<WebsiteDataType> websiteDataTypes, const Vector<WebCore::SecurityOriginData>& origins, uint64_t callbackID);
 #if ENABLE(SANDBOX_EXTENSIONS)
-    void grantSandboxExtensionsForBlobs(const Vector<String>& paths, const SandboxExtension::HandleArray&);
+    void grantSandboxExtensionsForBlobs(const Vector<String>& paths, SandboxExtension::HandleArray&&);
     void didGetSandboxExtensionsForBlobFiles(uint64_t requestID, SandboxExtension::HandleArray&&);
 #endif
+#if ENABLE(SERVICE_WORKER)
+    void didReceiveFetchResponse(WebCore::SWServerConnectionIdentifier, uint64_t fetchIdentifier, const WebCore::ResourceResponse&);
+    void didReceiveFetchData(WebCore::SWServerConnectionIdentifier, uint64_t fetchIdentifier, const IPC::DataReference&, int64_t encodedDataLength);
+    void didReceiveFetchFormData(WebCore::SWServerConnectionIdentifier, uint64_t fetchIdentifier, const IPC::FormDataReference&);
+    void didFinishFetch(WebCore::SWServerConnectionIdentifier, uint64_t fetchIdentifier);
+    void didFailFetch(WebCore::SWServerConnectionIdentifier, uint64_t fetchIdentifier);
+    void didNotHandleFetch(WebCore::SWServerConnectionIdentifier, uint64_t fetchIdentifier);
 
+    void postMessageToServiceWorkerClient(const WebCore::ServiceWorkerClientIdentifier& destinationIdentifier, WebCore::MessageWithMessagePorts&&, WebCore::ServiceWorkerIdentifier sourceIdentifier, const String& sourceOrigin);
+    WebSWOriginStore& swOriginStoreForSession(PAL::SessionID);
+    bool needsServerToContextConnection() const;
+#endif
 #if ENABLE(INDEXED_DATABASE)
     Vector<WebCore::SecurityOriginData> indexedDatabaseOrigins(const String& path);
 #endif
@@ -108,19 +148,29 @@ private:
     void performNextStorageTask();
     void ensurePathExists(const String&);
 
-    Vector<RefPtr<StorageToWebProcessConnection>> m_databaseToWebProcessConnections;
+    Vector<Ref<StorageToWebProcessConnection>> m_storageToWebProcessConnections;
 
     Ref<WorkQueue> m_queue;
 
 #if ENABLE(INDEXED_DATABASE)
-    HashMap<WebCore::SessionID, String> m_idbDatabasePaths;
-    HashMap<WebCore::SessionID, RefPtr<WebCore::IDBServer::IDBServer>> m_idbServers;
+    HashMap<PAL::SessionID, String> m_idbDatabasePaths;
+    HashMap<PAL::SessionID, RefPtr<WebCore::IDBServer::IDBServer>> m_idbServers;
 #endif
     HashMap<String, RefPtr<SandboxExtension>> m_blobTemporaryFileSandboxExtensions;
     HashMap<uint64_t, WTF::Function<void (SandboxExtension::HandleArray&&)>> m_sandboxExtensionForBlobsCompletionHandlers;
 
     Deque<CrossThreadTask> m_storageTasks;
     Lock m_storageTaskMutex;
+    
+#if ENABLE(SERVICE_WORKER)
+    void didCreateWorkerContextProcessConnection(const IPC::Attachment&);
+
+    RefPtr<WebSWServerToContextConnection> m_serverToContextConnection;
+    bool m_waitingForServerToContextProcessConnection { false };
+    HashMap<PAL::SessionID, String> m_swDatabasePaths;
+    HashMap<PAL::SessionID, std::unique_ptr<WebCore::SWServer>> m_swServers;
+    HashMap<WebCore::SWServerConnectionIdentifier, WebSWServerConnection*> m_swServerConnections;
+#endif
 };
 
 } // namespace WebKit

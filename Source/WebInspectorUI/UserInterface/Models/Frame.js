@@ -38,10 +38,9 @@ WI.Frame = class Frame extends WI.Object
 
         this._resourceCollection = new WI.ResourceCollection;
         this._provisionalResourceCollection = new WI.ResourceCollection;
-        this._extraScriptCollection = new WI.Collection(WI.Collection.TypeVerifier.Script);
-        this._canvasCollection = new WI.Collection(WI.Collection.TypeVerifier.Canvas);
+        this._extraScriptCollection = new WI.ScriptCollection;
 
-        this._childFrameCollection = new WI.Collection(WI.Collection.TypeVerifier.Frame);
+        this._childFrameCollection = new WI.FrameCollection;
         this._childFrameIdentifierMap = new Map;
 
         this._parentFrame = null;
@@ -59,7 +58,6 @@ WI.Frame = class Frame extends WI.Object
 
     get resourceCollection() { return this._resourceCollection; }
     get extraScriptCollection() { return this._extraScriptCollection; }
-    get canvasCollection() { return this._canvasCollection; }
     get childFrameCollection() { return this._childFrameCollection; }
 
     initialize(name, securityOrigin, loaderIdentifier, mainResource)
@@ -135,7 +133,6 @@ WI.Frame = class Frame extends WI.Object
         this._resourceCollection = this._provisionalResourceCollection;
         this._provisionalResourceCollection = new WI.ResourceCollection;
         this._extraScriptCollection.clear();
-        this._canvasCollection.clear();
 
         this.clearExecutionContexts(true);
         this.clearProvisionalLoad(true);

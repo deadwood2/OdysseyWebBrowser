@@ -30,17 +30,15 @@
 #import "config.h"
 #import "FontCache.h"
 
-#import "CoreGraphicsSPI.h"
-#import "CoreTextSPI.h"
 #import "Font.h"
 #import "FontCascade.h"
 #import "FontPlatformData.h"
+#import <pal/spi/cg/CoreGraphicsSPI.h>
+#import <pal/spi/cocoa/CoreTextSPI.h>
 
 #if PLATFORM(MAC)
-#import "NSFontSPI.h"
-#import "WebCoreNSStringExtras.h"
-#import "WebCoreSystemInterface.h"
 #import <AppKit/AppKit.h>
+#import <pal/spi/mac/NSFontSPI.h>
 #import <wtf/MainThread.h>
 #import <wtf/NeverDestroyed.h>
 #import <wtf/StdLibExtras.h>
@@ -126,20 +124,6 @@ RetainPtr<CTFontRef> platformFontWithFamilySpecialCase(const AtomicString& famil
     }
 
     return nullptr;
-}
-
-Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescription)
-{
-    // FIXME: Would be even better to somehow get the user's default font here.  For now we'll pick
-    // the default that the user would get without changing any prefs.
-    if (RefPtr<Font> font = fontForFamily(fontDescription, AtomicString("Times", AtomicString::ConstructFromLiteral)))
-        return *font;
-
-    // The Times fallback will almost always work, but in the highly unusual case where
-    // the user doesn't have it, we fall back on Lucida Grande because that's
-    // guaranteed to be there, according to Nathan Taylor. This is good enough
-    // to avoid a crash at least.
-    return *fontForFamily(fontDescription, AtomicString("Lucida Grande", AtomicString::ConstructFromLiteral), nullptr, nullptr, { }, false);
 }
 
 #endif // PLATFORM(MAC)

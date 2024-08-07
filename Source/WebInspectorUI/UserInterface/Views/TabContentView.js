@@ -65,12 +65,6 @@ WI.TabContentView = class TabContentView extends WI.ContentView
         return true;
     }
 
-    static isEphemeral()
-    {
-        // Returns true if the tab should not be shown in the new tab content view.
-        return false;
-    }
-
     static shouldSaveTab()
     {
         // Returns false if the tab should not be restored when re-opening the Inspector.
@@ -178,7 +172,8 @@ WI.TabContentView = class TabContentView extends WI.ContentView
         if (!this._navigationSidebarPanelConstructor)
             return null;
         if (!this._navigationSidebarPanel)
-            this._navigationSidebarPanel = WI.instanceForClass(this._navigationSidebarPanelConstructor);
+            this._navigationSidebarPanel = new this._navigationSidebarPanelConstructor;
+
         return this._navigationSidebarPanel;
     }
 
@@ -188,7 +183,7 @@ WI.TabContentView = class TabContentView extends WI.ContentView
     get detailsSidebarPanels()
     {
         if (!this._detailsSidebarPanels)
-            this._detailsSidebarPanels = this._detailsSidebarPanelConstructors.map(constructor => WI.instanceForClass(constructor));
+            this._detailsSidebarPanels = this._detailsSidebarPanelConstructors.map((constructor) => new constructor);
 
         return this._detailsSidebarPanels;
     }

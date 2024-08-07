@@ -28,12 +28,14 @@
 #include "Connection.h"
 #include "MessageSender.h"
 
-#include <WebCore/SessionID.h>
+#include <WebCore/SWServer.h>
+#include <pal/SessionID.h>
 #include <wtf/HashMap.h>
 
 namespace WebKit {
 
 class WebIDBConnectionToClient;
+class WebSWServerConnection;
 
 class StorageToWebProcessConnection : public RefCounted<StorageToWebProcessConnection>, private IPC::Connection::Client, private IPC::MessageSender {
 public:
@@ -41,6 +43,10 @@ public:
     ~StorageToWebProcessConnection();
 
     IPC::Connection& connection() { return m_connection.get(); }
+
+#if ENABLE(SERVICE_WORKER)
+    void workerContextProcessConnectionCreated();
+#endif
 
 private:
     StorageToWebProcessConnection(IPC::Connection::Identifier);
@@ -59,11 +65,16 @@ private:
 
 #if ENABLE(INDEXED_DATABASE)
     // Messages handlers (Modern IDB)
-    void establishIDBConnectionToServer(WebCore::SessionID, uint64_t& serverConnectionIdentifier);
+    void establishIDBConnectionToServer(PAL::SessionID, uint64_t& serverConnectionIdentifier);
     void removeIDBConnectionToServer(uint64_t serverConnectionIdentifier);
 
     HashMap<uint64_t, RefPtr<WebIDBConnectionToClient>> m_webIDBConnections;
 #endif // ENABLE(INDEXED_DATABASE)
+
+#if ENABLE(SERVICE_WORKER)
+    void establishSWServerConnection(PAL::SessionID, WebCore::SWServerConnectionIdentifier&);
+    HashMap<WebCore::SWServerConnectionIdentifier, std::unique_ptr<WebSWServerConnection>> m_swConnections;
+#endif
 
     Ref<IPC::Connection> m_connection;
 };

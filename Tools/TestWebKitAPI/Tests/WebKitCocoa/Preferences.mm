@@ -28,12 +28,14 @@
 #if WK_API_ENABLED
 
 #import "Test.h"
+#import "Utilities.h"
 #import <WebKit/WKFoundation.h>
 #import <WebKit/WKPreferencesPrivate.h>
+#import <WebKit/WKUIDelegate.h>
 #import <WebKit/_WKExperimentalFeature.h>
 #import <wtf/RetainPtr.h>
 
-TEST(WebKit2, DefaultWKPreferences)
+TEST(WebKit, DefaultWKPreferences)
 {
     RetainPtr<WKPreferences> preferences = adoptNS([[WKPreferences alloc] init]);
 
@@ -42,7 +44,7 @@ TEST(WebKit2, DefaultWKPreferences)
     EXPECT_TRUE([preferences _isStandalone]);
 }
 
-TEST(WebKit2, LoadsImagesAutomatically)
+TEST(WebKit, LoadsImagesAutomatically)
 {
     RetainPtr<WKPreferences> preferences = adoptNS([[WKPreferences alloc] init]);
 
@@ -53,7 +55,7 @@ TEST(WebKit2, LoadsImagesAutomatically)
     EXPECT_TRUE([preferences _loadsImagesAutomatically]);
 }
 
-TEST(WebKit2, ExperimentalFeatures)
+TEST(WebKit, ExperimentalFeatures)
 {
     NSArray *features = [WKPreferences _experimentalFeatures];
     EXPECT_NOT_NULL(features);
@@ -66,4 +68,52 @@ TEST(WebKit2, ExperimentalFeatures)
     }
 }
 
-#endif
+#if PLATFORM(MAC)
+
+static bool receivedAlert;
+
+@interface AlertSaver : NSObject <WKUIDelegate>
+@end
+
+@implementation AlertSaver {
+    RetainPtr<NSString> alert;
+}
+
+- (NSString *)alert
+{
+    return alert.get();
+}
+
+- (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler
+{
+    alert = message;
+    completionHandler();
+    receivedAlert = true;
+}
+
+@end
+
+TEST(WebKit, WebGLEnabled)
+{
+    NSString *html = @"<script>if(document.createElement('canvas').getContext('webgl')){alert('enabled')}else{alert('disabled')}</script>";
+    auto delegate = adoptNS([[AlertSaver alloc] init]);
+
+    auto webView = adoptNS([[WKWebView alloc] init]);
+    [webView setUIDelegate:delegate.get()];
+    [webView loadHTMLString:html baseURL:nil];
+    TestWebKitAPI::Util::run(&receivedAlert);
+    EXPECT_STREQ([delegate alert].UTF8String, "enabled");
+
+    receivedAlert = false;
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [[configuration preferences] _setWebGLEnabled:NO];
+    webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    [webView setUIDelegate:delegate.get()];
+    [webView loadHTMLString:html baseURL:nil];
+    TestWebKitAPI::Util::run(&receivedAlert);
+    EXPECT_STREQ([delegate alert].UTF8String, "disabled");
+}
+
+#endif // PLATFORM(MAC)
+
+#endif // WK_API_ENABLED

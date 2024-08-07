@@ -417,6 +417,26 @@ RefPtr<AccessibilityUIElement> AccessibilityUIElement::ariaControlsElementAtInde
     return nullptr;
 }
 
+RefPtr<AccessibilityUIElement> AccessibilityUIElement::ariaDetailsElementAtIndex(unsigned index)
+{
+    BEGIN_AX_OBJC_EXCEPTIONS
+    NSArray* details = [m_element accessibilityAttributeValue:@"AXDetailsElements"];
+    if (index < [details count])
+        return AccessibilityUIElement::create([details objectAtIndex:index]);
+    END_AX_OBJC_EXCEPTIONS
+    return nullptr;
+}
+
+RefPtr<AccessibilityUIElement> AccessibilityUIElement::ariaErrorMessageElementAtIndex(unsigned index)
+{
+    BEGIN_AX_OBJC_EXCEPTIONS
+    NSArray* errorMessages = [m_element accessibilityAttributeValue:@"AXErrorMessageElements"];
+    if (index < [errorMessages count])
+        return AccessibilityUIElement::create([errorMessages objectAtIndex:index]);
+    END_AX_OBJC_EXCEPTIONS
+    return nullptr;
+}
+
 RefPtr<AccessibilityUIElement> AccessibilityUIElement::disclosedRowAtIndex(unsigned index)
 {
     BEGIN_AX_OBJC_EXCEPTIONS
@@ -983,12 +1003,12 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::classList() const
     return nullptr;
 }
 
-JSRetainPtr<JSStringRef> AccessibilityUIElement::speak()
+JSRetainPtr<JSStringRef> AccessibilityUIElement::speakAs()
 {
     BEGIN_AX_OBJC_EXCEPTIONS
     id value = [m_element accessibilityAttributeValue:@"AXDRTSpeechAttribute"];
-    if ([value isKindOfClass:[NSString class]])
-        return [value createJSStringRef];
+    if ([value isKindOfClass:[NSArray class]])
+        return [[(NSArray *)value componentsJoinedByString:@", "] createJSStringRef];
     END_AX_OBJC_EXCEPTIONS
         
     return nullptr;
@@ -1415,7 +1435,7 @@ void AccessibilityUIElement::press()
 void AccessibilityUIElement::setSelectedChild(AccessibilityUIElement* element) const
 {
     BEGIN_AX_OBJC_EXCEPTIONS
-    NSArray* array = [NSArray arrayWithObject:element->platformUIElement()];
+    NSArray* array = element ? [NSArray arrayWithObject:element->platformUIElement()] : [NSArray array];
     [m_element accessibilitySetValue:array forAttribute:NSAccessibilitySelectedChildrenAttribute];
     END_AX_OBJC_EXCEPTIONS    
 }

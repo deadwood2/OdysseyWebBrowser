@@ -47,6 +47,11 @@ typedef NSWindow *PlatformWindow;
 #elif PLATFORM(GTK)
 typedef WKViewRef PlatformWKView;
 typedef GtkWidget *PlatformWindow;
+#elif PLATFORM(WPE)
+class HeadlessViewBackend;
+struct wpe_view_backend;
+typedef WKViewRef PlatformWKView;
+typedef HeadlessViewBackend *PlatformWindow;
 #endif
 
 namespace TestWebKitAPI {
@@ -77,7 +82,7 @@ public:
 private:
 #if PLATFORM(MAC)
     void initialize(WKPageConfigurationRef, Class wkViewSubclass);
-#elif PLATFORM(GTK)
+#elif PLATFORM(GTK) || PLATFORM(WPE)
     void initialize(WKPageConfigurationRef);
 #endif
 

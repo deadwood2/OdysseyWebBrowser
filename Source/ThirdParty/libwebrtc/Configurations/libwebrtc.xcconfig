@@ -2,6 +2,10 @@
 
 PRODUCT_NAME = libwebrtc;
 
+EXPORTED_SYMBOLS_FILE[sdk=macosx*] = Configurations/libwebrtc.mac.exp
+EXPORTED_SYMBOLS_FILE[sdk=iphoneos*] = Configurations/libwebrtc.iOS.exp
+EXPORTED_SYMBOLS_FILE[sdk=iphonesimulator*] = Configurations/libwebrtc.iOSsim.exp
+
 INSTALL_PATH = $(NORMAL_WEBCORE_FRAMEWORKS_DIR)/WebCore.framework/Frameworks;
 INSTALL_PATH[sdk=macosx*] = $(INSTALL_PATH_USE_OVERRIDE_FRAMEWORKS_DIR_$(WK_USE_OVERRIDE_FRAMEWORKS_DIR));
 INSTALL_PATH_USE_OVERRIDE_FRAMEWORKS_DIR_NO = $(NORMAL_WEBCORE_FRAMEWORKS_DIR)/WebCore.framework/Versions/A/Frameworks;
@@ -35,3 +39,6 @@ GCC_PREPROCESSOR_DEFINITIONS[sdk=iphonesimulator*] = $(inherited) WEBRTC_IOS;
 EXCLUDED_SOURCE_FILE_NAMES[sdk=iphoneos*] = *_sse.cc *_sse2.cc macutils.cc macwindowpicker.cc audio_device_mac.cc audio_mixer_manager_mac.cc;
 EXCLUDED_SOURCE_FILE_NAMES[sdk=iphonesimulator*] = macutils.cc macwindowpicker.cc audio_device_mac.cc audio_mixer_manager_mac.cc;
 EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*] = voice_processing_audio_unit.mm;
+
+OTHER_LDFLAGS[sdk=macosx10.13*] = $(inherited);
+OTHER_LDFLAGS[sdk=macosx10.14*] = $(inherited);

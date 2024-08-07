@@ -28,6 +28,8 @@
 
 #if WK_API_ENABLED
 
+#import "WKWebsiteDataStoreInternal.h"
+
 @implementation _WKWebsitePolicies
 
 - (void)dealloc
@@ -67,6 +69,9 @@
     if (allowedQuirks & _WKWebsiteAutoplayQuirkSynthesizedPauseEvents)
         quirks |= WebKit::WebsiteAutoplayQuirk::SynthesizedPauseEvents;
 
+    if (allowedQuirks & _WKWebsiteAutoplayQuirkArbitraryUserGestures)
+        quirks |= WebKit::WebsiteAutoplayQuirk::ArbitraryUserGestures;
+
     _websitePolicies->setAllowedAutoplayQuirks(quirks);
 }
 
@@ -80,6 +85,9 @@
 
     if (allowedQuirks.contains(WebKit::WebsiteAutoplayQuirk::SynthesizedPauseEvents))
         quirks |= _WKWebsiteAutoplayQuirkSynthesizedPauseEvents;
+
+    if (allowedQuirks.contains(WebKit::WebsiteAutoplayQuirk::ArbitraryUserGestures))
+        quirks |= _WKWebsiteAutoplayQuirkArbitraryUserGestures;
 
     return quirks;
 }
@@ -114,6 +122,66 @@
     case WebKit::WebsiteAutoplayPolicy::Deny:
         return _WKWebsiteAutoplayPolicyDeny;
     }
+}
+
+- (void)setPopUpPolicy:(_WKWebsitePopUpPolicy)policy
+{
+    switch (policy) {
+    case _WKWebsitePopUpPolicyDefault:
+        _websitePolicies->setPopUpPolicy(WebKit::WebsitePopUpPolicy::Default);
+        break;
+    case _WKWebsitePopUpPolicyAllow:
+        _websitePolicies->setPopUpPolicy(WebKit::WebsitePopUpPolicy::Allow);
+        break;
+    case _WKWebsitePopUpPolicyBlock:
+        _websitePolicies->setPopUpPolicy(WebKit::WebsitePopUpPolicy::Block);
+        break;
+    }
+}
+
+- (_WKWebsitePopUpPolicy)popUpPolicy
+{
+    switch (_websitePolicies->popUpPolicy()) {
+    case WebKit::WebsitePopUpPolicy::Default:
+        return _WKWebsitePopUpPolicyDefault;
+    case WebKit::WebsitePopUpPolicy::Allow:
+        return _WKWebsitePopUpPolicyAllow;
+    case WebKit::WebsitePopUpPolicy::Block:
+        return _WKWebsitePopUpPolicyBlock;
+    }
+}
+
+- (NSDictionary<NSString *, NSString *> *)customHeaderFields
+{
+    const auto& fields = _websitePolicies->customHeaderFields();
+    NSMutableDictionary *dictionary = [[[NSMutableDictionary alloc] initWithCapacity:fields.size()] autorelease];
+    for (const auto& field : fields)
+        [dictionary setObject:field.value() forKey:field.name()];
+    return dictionary;
+}
+
+- (void)setCustomHeaderFields:(NSDictionary<NSString *, NSString *> *)fields
+{
+    Vector<WebCore::HTTPHeaderField> parsedFields;
+    parsedFields.reserveInitialCapacity(fields.count);
+    
+    for (NSString* name in fields) {
+        auto field = WebCore::HTTPHeaderField::create(name, [fields objectForKey:name]);
+        if (field && startsWithLettersIgnoringASCIICase(field->name(), "x-"))
+            parsedFields.uncheckedAppend(WTFMove(*field));
+    }
+    _websitePolicies->setCustomHeaderFields(WTFMove(parsedFields));
+}
+
+- (WKWebsiteDataStore *)websiteDataStore
+{
+    auto* store = _websitePolicies->websiteDataStore();
+    return store ? WebKit::wrapper(*store) : nil;
+}
+
+- (void)setWebsiteDataStore:(WKWebsiteDataStore *)websiteDataStore
+{
+    _websitePolicies->setWebsiteDataStore(websiteDataStore->_websiteDataStore.get());
 }
 
 - (NSString *)description

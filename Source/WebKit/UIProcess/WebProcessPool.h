@@ -38,17 +38,19 @@
 #include "PlugInAutoStartProvider.h"
 #include "PluginInfoStore.h"
 #include "ProcessThrottler.h"
+#include "ServiceWorkerProcessProxy.h"
 #include "StatisticsRequest.h"
 #include "StorageProcessProxy.h"
 #include "VisitedLinkStore.h"
 #include "WebContextClient.h"
 #include "WebContextConnectionClient.h"
 #include "WebProcessProxy.h"
-#include <WebCore/LinkHash.h>
-#include <WebCore/SessionID.h>
+#include <WebCore/SharedStringHash.h>
+#include <pal/SessionID.h>
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
+#include <wtf/ProcessID.h>
 #include <wtf/RefCounter.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/StringHash.h>
@@ -84,6 +86,7 @@ class DownloadProxy;
 class HighPerformanceGraphicsUsageSampler;
 class UIGamepad;
 class PerActivityStateCPUUsageSampler;
+class ServiceWorkerProcessProxy;
 class WebAutomationSession;
 class WebContextSupplement;
 class WebPageGroup;
@@ -173,8 +176,8 @@ public:
 
     Ref<WebPageProxy> createWebPage(PageClient&, Ref<API::PageConfiguration>&&);
 
-    void pageAddedToProcess(WebPageProxy&);
-    void pageRemovedFromProcess(WebPageProxy&);
+    void pageBeginUsingWebsiteDataStore(WebPageProxy&);
+    void pageEndUsingWebsiteDataStore(WebPageProxy&);
 
     const String& injectedBundlePath() const { return m_configuration->injectedBundlePath(); }
 
@@ -199,8 +202,10 @@ public:
     const HashMap<String, HashMap<String, HashMap<String, uint8_t>>>& pluginLoadClientPolicies() const { return m_pluginLoadClientPolicies; }
 #endif
 
-    pid_t networkProcessIdentifier();
-    pid_t storageProcessIdentifier();
+    ProcessID networkProcessIdentifier();
+    ProcessID storageProcessIdentifier();
+
+    WebPageGroup& defaultPageGroup() { return m_defaultPageGroup.get(); }
 
     void setAlwaysUsesComplexTextCodePath(bool);
     void setShouldUseFontSmoothing(bool);
@@ -215,6 +220,8 @@ public:
     void registerURLSchemeAsDisplayIsolated(const String&);
     void registerURLSchemeAsCORSEnabled(const String&);
     void registerURLSchemeAsCachePartitioned(const String&);
+    void registerURLSchemeServiceWorkersCanHandle(const String&);
+    void preconnectToServer(const WebCore::URL&);
 
     VisitedLinkStore& visitedLinkStore() { return m_visitedLinkStore.get(); }
 
@@ -233,7 +240,7 @@ public:
     void setEnhancedAccessibility(bool);
     
     // Downloads.
-    DownloadProxy* createDownloadProxy(const WebCore::ResourceRequest&);
+    DownloadProxy* createDownloadProxy(const WebCore::ResourceRequest&, WebPageProxy* originatingPage);
     API::DownloadClient& downloadClient() { return *m_downloadClient; }
 
     API::LegacyContextHistoryClient& historyClient() { return *m_historyClient; }
@@ -258,6 +265,7 @@ public:
     void clearCachedCredentials();
     void terminateStorageProcess();
     void terminateNetworkProcess();
+    void terminateServiceWorkerProcess();
 
     void syncNetworkProcessCookies();
 
@@ -303,7 +311,7 @@ public:
     Ref<API::Dictionary> plugInAutoStartOriginHashes() const;
     void setPlugInAutoStartOriginHashes(API::Dictionary&);
     void setPlugInAutoStartOrigins(API::Array&);
-    void setPlugInAutoStartOriginsFilteringOutEntriesAddedAfterTime(API::Dictionary&, double time);
+    void setPlugInAutoStartOriginsFilteringOutEntriesAddedAfterTime(API::Dictionary&, WallTime);
 
     // Network Process Management
     NetworkProcessProxy& ensureNetworkProcess(WebsiteDataStore* withWebsiteDataStore = nullptr);
@@ -315,8 +323,16 @@ public:
 
     void ensureStorageProcessAndWebsiteDataStore(WebsiteDataStore* relevantDataStore);
     StorageProcessProxy* storageProcess() { return m_storageProcess.get(); }
-    void getStorageProcessConnection(Ref<Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply>&&);
+    void getStorageProcessConnection(bool isServiceWorkerProcess, PAL::SessionID initialSessionID, Ref<Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply>&&);
     void storageProcessCrashed(StorageProcessProxy*);
+#if ENABLE(SERVICE_WORKER)
+    void establishWorkerContextConnectionToStorageProcess(StorageProcessProxy&, std::optional<PAL::SessionID>);
+    bool isServiceWorker(uint64_t pageID) const { return m_serviceWorkerProcess && m_serviceWorkerProcess->pageID() == pageID; }
+    ServiceWorkerProcessProxy* serviceWorkerProxy() const { return m_serviceWorkerProcess; }
+    void setAllowsAnySSLCertificateForServiceWorker(bool allows) { m_allowsAnySSLCertificateForServiceWorker = allows; }
+    bool allowsAnySSLCertificateForServiceWorker() const { return m_allowsAnySSLCertificateForServiceWorker; }
+    void updateServiceWorkerUserAgent(const String& userAgent);
+#endif
 
 #if PLATFORM(COCOA)
     bool processSuppressionEnabled() const;
@@ -404,10 +420,17 @@ public:
 #if PLATFORM(COCOA)
     bool cookieStoragePartitioningEnabled() const { return m_cookieStoragePartitioningEnabled; }
     void setCookieStoragePartitioningEnabled(bool);
+    bool storageAccessAPIEnabled() const { return m_storageAccessAPIEnabled; }
+    void setStorageAccessAPIEnabled(bool);
 #endif
 
     static uint64_t registerProcessPoolCreationListener(Function<void(WebProcessPool&)>&&);
     static void unregisterProcessPoolCreationListener(uint64_t identifier);
+
+#if PLATFORM(IOS)
+    ForegroundWebProcessToken foregroundWebProcessToken() const { return ForegroundWebProcessToken(m_foregroundWebProcessCounter.count()); }
+    BackgroundWebProcessToken backgroundWebProcessToken() const { return BackgroundWebProcessToken(m_backgroundWebProcessCounter.count()); }
+#endif
 
 private:
     void platformInitialize();
@@ -416,6 +439,7 @@ private:
     void platformInvalidateContext();
 
     WebProcessProxy& createNewWebProcess(WebsiteDataStore&);
+    void initializeNewWebProcess(WebProcessProxy&, WebsiteDataStore&);
 
     void requestWebContentStatistics(StatisticsRequest*);
     void requestNetworkingStatistics(StatisticsRequest*);
@@ -433,6 +457,9 @@ private:
 
     void processStoppedUsingGamepads(WebProcessProxy&);
 #endif
+
+    void reinstateNetworkProcessAssertionState(NetworkProcessProxy&);
+    void updateProcessAssertions();
 
     // IPC::MessageReceiver.
     // Implemented in generated WebProcessPoolMessageReceiver.cpp
@@ -458,8 +485,8 @@ private:
     void unregisterNotificationObservers();
 #endif
 
-    void addPlugInAutoStartOriginHash(const String& pageOrigin, unsigned plugInOriginHash, WebCore::SessionID);
-    void plugInDidReceiveUserInteraction(unsigned plugInOriginHash, WebCore::SessionID);
+    void addPlugInAutoStartOriginHash(const String& pageOrigin, unsigned plugInOriginHash, PAL::SessionID);
+    void plugInDidReceiveUserInteraction(unsigned plugInOriginHash, PAL::SessionID);
 
     void setAnyPageGroupMightHavePrivateBrowsingEnabled(bool);
 
@@ -471,9 +498,16 @@ private:
     IPC::MessageReceiverMap m_messageReceiverMap;
 
     Vector<RefPtr<WebProcessProxy>> m_processes;
-    bool m_haveInitialEmptyProcess;
+    bool m_haveInitialEmptyProcess { false };
 
-    WebProcessProxy* m_processWithPageCache;
+    WebProcessProxy* m_processWithPageCache { nullptr };
+#if ENABLE(SERVICE_WORKER)
+    ServiceWorkerProcessProxy* m_serviceWorkerProcess { nullptr };
+    bool m_waitingForWorkerContextProcessConnection { false };
+    bool m_allowsAnySSLCertificateForServiceWorker { false };
+    String m_serviceWorkerUserAgent;
+    std::optional<WebPreferencesStore> m_serviceWorkerPreferences;
+#endif
 
     Ref<WebPageGroup> m_defaultPageGroup;
 
@@ -493,9 +527,9 @@ private:
     PluginInfoStore m_pluginInfoStore;
 #endif
     Ref<VisitedLinkStore> m_visitedLinkStore;
-    bool m_visitedLinksPopulated;
+    bool m_visitedLinksPopulated { false };
 
-    PlugInAutoStartProvider m_plugInAutoStartProvider;
+    PlugInAutoStartProvider m_plugInAutoStartProvider { this };
         
     HashSet<String> m_schemesToRegisterAsEmptyDocument;
     HashSet<String> m_schemesToRegisterAsSecure;
@@ -507,9 +541,10 @@ private:
     HashSet<String> m_schemesToRegisterAsCORSEnabled;
     HashSet<String> m_schemesToRegisterAsAlwaysRevalidated;
     HashSet<String> m_schemesToRegisterAsCachePartitioned;
+    HashSet<String> m_schemesServiceWorkersCanHandle;
 
-    bool m_alwaysUsesComplexTextCodePath;
-    bool m_shouldUseFontSmoothing;
+    bool m_alwaysUsesComplexTextCodePath { false };
+    bool m_shouldUseFontSmoothing { true };
 
     Vector<String> m_fontWhitelist;
 
@@ -517,8 +552,8 @@ private:
     // The client should use initialization messages instead, so that a restarted process would get the same state.
     Vector<std::pair<String, RefPtr<API::Object>>> m_messagesToInjectedBundlePostedToEmptyContext;
 
-    bool m_memorySamplerEnabled;
-    double m_memorySamplerInterval;
+    bool m_memorySamplerEnabled { false };
+    double m_memorySamplerInterval { 1400.0 };
 
     RefPtr<API::WebsiteDataStore> m_websiteDataStore;
 
@@ -544,12 +579,12 @@ private:
 
     String m_overrideCookieStorageDirectory;
 
-    bool m_shouldUseTestingNetworkSession;
+    bool m_shouldUseTestingNetworkSession { false };
 
-    bool m_processTerminationEnabled;
+    bool m_processTerminationEnabled { true };
 
-    bool m_canHandleHTTPSServerTrustEvaluation;
-    bool m_didNetworkProcessCrash;
+    bool m_canHandleHTTPSServerTrustEvaluation { true };
+    bool m_didNetworkProcessCrash { false };
     RefPtr<NetworkProcessProxy> m_networkProcess;
     RefPtr<StorageProcessProxy> m_storageProcess;
 
@@ -560,7 +595,7 @@ private:
     bool m_ignoreTLSErrors { true };
 #endif
 
-    bool m_memoryCacheDisabled;
+    bool m_memoryCacheDisabled { false };
     bool m_resourceLoadStatisticsEnabled { false };
     bool m_javaScriptConfigurationFileEnabled { false };
     bool m_alwaysRunsAtBackgroundPriority;
@@ -590,6 +625,7 @@ private:
 
 #if PLATFORM(COCOA)
     bool m_cookieStoragePartitioningEnabled { false };
+    bool m_storageAccessAPIEnabled { false };
 #endif
 
     struct Paths {
@@ -611,7 +647,19 @@ private:
     };
     Paths m_resolvedPaths;
 
-    HashMap<WebCore::SessionID, HashSet<WebPageProxy*>> m_sessionToPagesMap;
+    HashMap<PAL::SessionID, HashSet<WebPageProxy*>> m_sessionToPagesMap;
+    RunLoop::Timer<WebProcessPool> m_serviceWorkerProcessTerminationTimer;
+
+#if PLATFORM(IOS)
+    ForegroundWebProcessCounter m_foregroundWebProcessCounter;
+    BackgroundWebProcessCounter m_backgroundWebProcessCounter;
+    ProcessThrottler::ForegroundActivityToken m_foregroundTokenForNetworkProcess;
+    ProcessThrottler::BackgroundActivityToken m_backgroundTokenForNetworkProcess;
+#if ENABLE(SERVICE_WORKER)
+    ProcessThrottler::ForegroundActivityToken m_foregroundTokenForServiceWorkerProcess;
+    ProcessThrottler::BackgroundActivityToken m_backgroundTokenForServiceWorkerProcess;
+#endif
+#endif
 };
 
 template<typename T>

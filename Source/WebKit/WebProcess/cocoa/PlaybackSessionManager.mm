@@ -184,7 +184,15 @@ PlaybackSessionManager::~PlaybackSessionManager()
     m_mediaElements.clear();
     m_clientCounts.clear();
 
+    if (m_page)
+        WebProcess::singleton().removeMessageReceiver(Messages::PlaybackSessionManager::messageReceiverName(), m_page->pageID());
+}
+
+void PlaybackSessionManager::invalidate()
+{
+    ASSERT(m_page);
     WebProcess::singleton().removeMessageReceiver(Messages::PlaybackSessionManager::messageReceiverName(), m_page->pageID());
+    m_page = nullptr;
 }
 
 PlaybackSessionManager::ModelInterfaceTuple PlaybackSessionManager::createModelAndInterface(uint64_t contextId)
@@ -401,10 +409,10 @@ void PlaybackSessionManager::endScrubbing(uint64_t contextId)
     ensureModel(contextId).endScrubbing();
 }
 
-void PlaybackSessionManager::seekToTime(uint64_t contextId, double time)
+void PlaybackSessionManager::seekToTime(uint64_t contextId, double time, double toleranceBefore, double toleranceAfter)
 {
     UserGestureIndicator indicator(ProcessingUserGesture);
-    ensureModel(contextId).seekToTime(time);
+    ensureModel(contextId).seekToTime(time, toleranceBefore, toleranceAfter);
 }
 
 void PlaybackSessionManager::fastSeek(uint64_t contextId, double time)

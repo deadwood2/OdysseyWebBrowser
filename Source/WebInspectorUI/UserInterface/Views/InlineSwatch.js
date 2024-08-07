@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Apple Inc. All rights reserved.
- * Copyright (C) 2016 Devin Rousso <dcrousso+webkit@gmail.com>. All rights reserved.
+ * Copyright (C) 2016 Devin Rousso <webkit@devinrousso.com>. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,29 +35,35 @@ WI.InlineSwatch = class InlineSwatch extends WI.Object
         this._swatchElement = document.createElement("span");
         this._swatchElement.classList.add("inline-swatch", this._type.split("-").lastValue);
 
-        switch (this._type) {
-        case WI.InlineSwatch.Type.Color:
-            this._swatchElement.title = WI.UIString("Click to select a color. Shift-click to switch color formats.");
-            break;
-        case WI.InlineSwatch.Type.Gradient:
-            this._swatchElement.title = WI.UIString("Edit custom gradient");
-            break;
-        case WI.InlineSwatch.Type.Bezier:
-            this._swatchElement.title = WI.UIString("Edit “cubic-bezier“ function");
-            break;
-        case WI.InlineSwatch.Type.Spring:
-            this._swatchElement.title = WI.UIString("Edit “spring“ function");
-            break;
-        case WI.InlineSwatch.Type.Variable:
-            this._swatchElement.title = WI.UIString("View variable value");
-            break;
-        default:
-            WI.reportInternalError(`Unknown InlineSwatch type "${type}"`);
-            break;
-        }
-
         this._boundSwatchElementClicked = null;
-        if (!readOnly) {
+
+        if (readOnly)
+            this._swatchElement.classList.add("read-only");
+        else {
+            switch (this._type) {
+            case WI.InlineSwatch.Type.Color:
+                this._swatchElement.title = WI.UIString("Click to select a color. Shift-click to switch color formats.");
+                break;
+            case WI.InlineSwatch.Type.Gradient:
+                this._swatchElement.title = WI.UIString("Edit custom gradient");
+                break;
+            case WI.InlineSwatch.Type.Bezier:
+                this._swatchElement.title = WI.UIString("Edit “cubic-bezier“ function");
+                break;
+            case WI.InlineSwatch.Type.Spring:
+                this._swatchElement.title = WI.UIString("Edit “spring“ function");
+                break;
+            case WI.InlineSwatch.Type.Variable:
+                this._swatchElement.title = WI.UIString("View variable value");
+                break;
+            case WI.InlineSwatch.Type.Image:
+                this._swatchElement.title = WI.UIString("View Image");
+                break;
+            default:
+                WI.reportInternalError(`Unknown InlineSwatch type "${type}"`);
+                break;
+            }
+
             this._boundSwatchElementClicked = this._swatchElementClicked.bind(this);
             this._swatchElement.addEventListener("click", this._boundSwatchElementClicked);
             if (this._type === WI.InlineSwatch.Type.Color)
@@ -128,6 +134,8 @@ WI.InlineSwatch = class InlineSwatch extends WI.Object
     {
         if (this._type === WI.InlineSwatch.Type.Color || this._type === WI.InlineSwatch.Type.Gradient)
             this._swatchInnerElement.style.background = this._value ? this._value.toString() : null;
+        else if (this._type === WI.InlineSwatch.Type.Image)
+            this._swatchInnerElement.style.setProperty("background-image", `url(${this._value.src})`);
 
         if (!dontFireEvents)
             this.dispatchEventToListeners(WI.InlineSwatch.Event.ValueChanged, {value: this._value});
@@ -157,21 +165,30 @@ WI.InlineSwatch = class InlineSwatch extends WI.Object
         };
 
         this._valueEditor = null;
-        if (this._type === WI.InlineSwatch.Type.Color) {
+        switch (this._type) {
+        case WI.InlineSwatch.Type.Color:
             this._valueEditor = new WI.ColorPicker;
             this._valueEditor.addEventListener(WI.ColorPicker.Event.ColorChanged, this._valueEditorValueDidChange, this);
             this._valueEditor.addEventListener(WI.ColorPicker.Event.FormatChanged, (event) => popover.update());
-        } else if (this._type === WI.InlineSwatch.Type.Gradient) {
+            break;
+
+        case WI.InlineSwatch.Type.Gradient:
             this._valueEditor = new WI.GradientEditor;
             this._valueEditor.addEventListener(WI.GradientEditor.Event.GradientChanged, this._valueEditorValueDidChange, this);
             this._valueEditor.addEventListener(WI.GradientEditor.Event.ColorPickerToggled, (event) => popover.update());
-        } else if (this._type === WI.InlineSwatch.Type.Bezier) {
+            break;
+
+        case WI.InlineSwatch.Type.Bezier:
             this._valueEditor = new WI.BezierEditor;
             this._valueEditor.addEventListener(WI.BezierEditor.Event.BezierChanged, this._valueEditorValueDidChange, this);
-        } else if (this._type === WI.InlineSwatch.Type.Spring) {
+            break;
+
+        case WI.InlineSwatch.Type.Spring:
             this._valueEditor = new WI.SpringEditor;
             this._valueEditor.addEventListener(WI.SpringEditor.Event.SpringChanged, this._valueEditorValueDidChange, this);
-        } else if (this._type === WI.InlineSwatch.Type.Variable) {
+            break;
+
+        case WI.InlineSwatch.Type.Variable:
             this._valueEditor = {};
 
             this._valueEditor.element = document.createElement("div");
@@ -179,11 +196,21 @@ WI.InlineSwatch = class InlineSwatch extends WI.Object
 
             this._valueEditor.codeMirror = WI.CodeMirrorEditor.create(this._valueEditor.element, {
                 mode: "css",
-                readOnly: "nocursor",
+                readOnly: true,
             });
             this._valueEditor.codeMirror.on("update", () => {
                 popover.update();
             });
+            break;
+
+        case WI.InlineSwatch.Type.Image:
+            this._valueEditor = {};
+            this._valueEditor.element = document.createElement("img");
+            this._valueEditor.element.src = this._value.src;
+            this._valueEditor.element.classList.add("show-grid");
+            this._valueEditor.element.style.setProperty("max-width", "50vw");
+            this._valueEditor.element.style.setProperty("max-height", "50vh");
+            break;
         }
 
         if (!this._valueEditor)
@@ -198,16 +225,27 @@ WI.InlineSwatch = class InlineSwatch extends WI.Object
         this.dispatchEventToListeners(WI.InlineSwatch.Event.Activated);
 
         let value = this._value || this._fallbackValue();
-        if (this._type === WI.InlineSwatch.Type.Color)
+        switch (this._type) {
+        case WI.InlineSwatch.Type.Color:
             this._valueEditor.color = value;
-        else if (this._type === WI.InlineSwatch.Type.Gradient)
+            break;
+
+        case WI.InlineSwatch.Type.Gradient:
             this._valueEditor.gradient = value;
-        else if (this._type === WI.InlineSwatch.Type.Bezier)
+            break;
+
+        case WI.InlineSwatch.Type.Bezier:
             this._valueEditor.bezier = value;
-        else if (this._type === WI.InlineSwatch.Type.Spring)
+            break;
+
+        case WI.InlineSwatch.Type.Spring:
             this._valueEditor.spring = value;
-        else if (this._type === WI.InlineSwatch.Type.Variable)
+            break;
+
+        case WI.InlineSwatch.Type.Variable:
             this._valueEditor.codeMirror.setValue(value);
+            break;
+        }
     }
 
     _valueEditorValueDidChange(event)
@@ -330,6 +368,7 @@ WI.InlineSwatch.Type = {
     Bezier: "inline-swatch-type-bezier",
     Spring: "inline-swatch-type-spring",
     Variable: "inline-swatch-type-variable",
+    Image: "inline-swatch-type-image",
 };
 
 WI.InlineSwatch.Event = {

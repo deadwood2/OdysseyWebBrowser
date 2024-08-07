@@ -33,6 +33,7 @@
 #include <glib.h>
 #include <iostream>
 #include <libsoup/soup.h>
+#include <wtf/CurrentTime.h>
 
 using namespace WebCore;
 
@@ -44,7 +45,7 @@ public:
     {
 #if ENABLE(DEVELOPER_MODE)
         if (g_getenv("WEBKIT2_PAUSE_WEB_PROCESS_ON_LAUNCH"))
-            WTF::sleep(30);
+            WTF::sleep(30_s);
 #endif
 
         return true;
@@ -52,14 +53,14 @@ public:
 
     bool parseCommandLine(int argc, char** argv) override
     {
-        ASSERT(argc == 3);
-        if (argc < 3)
+        ASSERT(argc == 4);
+        if (argc < 4)
             return false;
 
         if (!ChildProcessMainBase::parseCommandLine(argc, argv))
             return false;
 
-        int wpeFd = atoi(argv[2]);
+        int wpeFd = atoi(argv[3]);
         RunLoop::main().dispatch(
             [wpeFd] {
                 RELEASE_ASSERT(is<PlatformDisplayWPE>(PlatformDisplay::sharedDisplay()));

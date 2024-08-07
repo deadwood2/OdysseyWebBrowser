@@ -26,8 +26,6 @@
 #include "config.h"
 #include "NetworkSession.h"
 
-#if USE(NETWORK_SESSION)
-
 #include "NetworkDataTask.h"
 #include <WebCore/NetworkStorageSession.h>
 #include <wtf/MainThread.h>
@@ -45,25 +43,13 @@ using namespace WebCore;
 
 namespace WebKit {
 
-Ref<NetworkSession> NetworkSession::create(SessionID sessionID, LegacyCustomProtocolManager* customProtocolManager)
+Ref<NetworkSession> NetworkSession::create(NetworkSessionCreationParameters&& parameters)
 {
 #if PLATFORM(COCOA)
-    return NetworkSessionCocoa::create(sessionID, customProtocolManager);
+    return NetworkSessionCocoa::create(WTFMove(parameters));
 #endif
 #if USE(SOUP)
-    UNUSED_PARAM(customProtocolManager);
-    return NetworkSessionSoup::create(sessionID);
-#endif
-}
-
-NetworkSession& NetworkSession::defaultSession()
-{
-#if PLATFORM(COCOA)
-    return NetworkSessionCocoa::defaultSession();
-#else
-    ASSERT(RunLoop::isMain());
-    static NetworkSession* session = &NetworkSession::create(SessionID::defaultSessionID()).leakRef();
-    return *session;
+    return NetworkSessionSoup::create(WTFMove(parameters));
 #endif
 }
 
@@ -74,7 +60,7 @@ NetworkStorageSession& NetworkSession::networkStorageSession() const
     return *storageSession;
 }
 
-NetworkSession::NetworkSession(SessionID sessionID)
+NetworkSession::NetworkSession(PAL::SessionID sessionID)
     : m_sessionID(sessionID)
 {
 }
@@ -89,6 +75,13 @@ void NetworkSession::invalidateAndCancel()
         task->invalidateAndCancel();
 }
 
-} // namespace WebKit
+bool NetworkSession::allowsSpecificHTTPSCertificateForHost(const WebCore::AuthenticationChallenge& challenge)
+{
+#if PLATFORM(COCOA)
+    return NetworkSessionCocoa::allowsSpecificHTTPSCertificateForHost(challenge);
+#else
+    return false;
+#endif
+}
 
-#endif // USE(NETWORK_SESSION)
+} // namespace WebKit

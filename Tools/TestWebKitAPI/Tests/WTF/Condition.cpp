@@ -27,6 +27,7 @@
 #include <mutex>
 #include <thread>
 #include <wtf/Condition.h>
+#include <wtf/CurrentTime.h>
 #include <wtf/DataLog.h>
 #include <wtf/Deque.h>
 #include <wtf/Lock.h>
@@ -89,14 +90,14 @@ void runTest(
     Condition emptyCondition;
     Condition fullCondition;
 
-    Vector<RefPtr<Thread>> consumerThreads;
-    Vector<RefPtr<Thread>> producerThreads;
+    Vector<Ref<Thread>> consumerThreads;
+    Vector<Ref<Thread>> producerThreads;
 
     Vector<unsigned> received;
     Lock receivedLock;
     
     for (unsigned i = numConsumers; i--;) {
-        RefPtr<Thread> threadIdentifier = Thread::create(
+        consumerThreads.append(Thread::create(
             "Consumer thread",
             [&] () {
                 for (;;) {
@@ -124,14 +125,13 @@ void runTest(
                         received.append(result);
                     }
                 }
-            });
-        consumerThreads.append(threadIdentifier);
+            }));
     }
 
     sleep(delay);
 
     for (unsigned i = numProducers; i--;) {
-        RefPtr<Thread> threadIdentifier = Thread::create(
+        producerThreads.append(Thread::create(
             "Producer Thread",
             [&] () {
                 for (unsigned i = 0; i < numMessagesPerProducer; ++i) {
@@ -151,12 +151,11 @@ void runTest(
                     }
                     notify(notifyStyle, emptyCondition, shouldNotify);
                 }
-            });
-        producerThreads.append(threadIdentifier);
+            }));
     }
 
-    for (RefPtr<Thread> threadIdentifier : producerThreads)
-        threadIdentifier->waitForCompletion();
+    for (auto& thread : producerThreads)
+        thread->waitForCompletion();
 
     {
         std::lock_guard<Lock> locker(lock);
@@ -164,8 +163,8 @@ void runTest(
     }
     emptyCondition.notifyAll();
 
-    for (RefPtr<Thread> threadIdentifier : consumerThreads)
-        threadIdentifier->waitForCompletion();
+    for (auto& thread : consumerThreads)
+        thread->waitForCompletion();
 
     EXPECT_EQ(numProducers * numMessagesPerProducer, received.size());
     std::sort(received.begin(), received.end());

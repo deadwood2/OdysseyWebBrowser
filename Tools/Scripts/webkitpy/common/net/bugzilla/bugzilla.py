@@ -139,6 +139,9 @@ class BugzillaQueries(object):
     # This is kinda a hack.  There is probably a better way to get this information from bugzilla.
     def _parse_result_count(self, results_page):
         result_count_text = BeautifulSoup(results_page).find(attrs={'class': 'bz_result_count'}).string
+        if result_count_text is None:
+            _log.warn("BeautifulSoup returned None while finding class: bz_result_count in:\n{}".format(results_page))
+            return 0
         result_count_parts = result_count_text.strip().split(" ")
         if result_count_parts[0] == "Zarro":
             return 0
@@ -162,6 +165,7 @@ class BugzillaQueries(object):
             bug_id = int(results_url.split("=")[-1])
             return [self._fetch_bug(bug_id)]
         if not self._parse_result_count(results_page):
+            _log.warn('Failed to find bugs for {}'.format(results_url))
             return []
         # Bugzilla results pages have an "XML" submit button at the bottom
         # which can be used to get an XML page containing all of the <bug> elements.
@@ -620,6 +624,14 @@ class Bugzilla(object):
             self.browser['comment'] = comment_text
         self.browser.submit()
 
+    @staticmethod
+    def _parse_attachment_id_from_add_patch_to_bug_response(response_html):
+        match = re.search('<title>Attachment (?P<attachment_id>\d+) added to Bug \d+</title>', response_html)
+        if match:
+            return match.group('attachment_id')
+        _log.warning('Unable to parse attachment id')
+        return None
+
     # FIXME: The arguments to this function should be simplified and then
     # this should be merged into add_attachment_to_bug
     def add_patch_to_bug(self,
@@ -652,7 +664,8 @@ class Bugzilla(object):
         if comment_text:
             _log.info(comment_text)
             self.browser['comment'] = comment_text
-        self.browser.submit()
+        response = self.browser.submit()
+        return self._parse_attachment_id_from_add_patch_to_bug_response(response.read())
 
     # FIXME: There has to be a more concise way to write this method.
     def _check_create_bug_response(self, response_html):

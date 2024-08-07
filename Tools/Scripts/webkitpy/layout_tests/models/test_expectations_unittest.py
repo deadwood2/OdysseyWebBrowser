@@ -168,7 +168,7 @@ class MiscTests(Base):
                 "Bug(rniwa) non-existent-test.html [ Failure ]\n"
                 "Bug(rniwa) disabled-test.html-disabled [ ImageOnlyFailure ]", is_lint_mode=True)
             self.assertFalse(True, "ParseError wasn't raised")
-        except ParseError, e:
+        except ParseError as e:
             warnings = ("expectations:1 Unrecognized modifier 'foo' failures/expected/text.html\n"
                         "expectations:2 Path does not exist. non-existent-test.html")
             self.assertEqual(str(e), warnings)
@@ -369,7 +369,7 @@ class SemanticTests(Base):
         try:
             self.parse_exp('BUG1234 failures/expected/text.html [ Failure ]', is_lint_mode=True)
             self.fail('should have raised an error about a bad bug identifier')
-        except ParseError, exp:
+        except ParseError as exp:
             self.assertEqual(len(exp.warnings), 1)
 
     def test_missing_bugid(self):
@@ -474,7 +474,7 @@ Bug(y) [ Win Mac Debug ] failures/expected/foo.html [ Crash ]
 
         actual_expectations = expectations.remove_configuration_from_test('failures/expected/foo.html', test_config)
 
-        self.assertEqual("""Bug(x) [ Linux Vista Win7 Release ] failures/expected/foo.html [ Failure ]
+        self.assertEqual("""Bug(x) [ 7SP0 Linux Vista Release ] failures/expected/foo.html [ Failure ]
 Bug(y) [ Win Mac Debug ] failures/expected/foo.html [ Crash ]
 """, actual_expectations)
 
@@ -493,7 +493,7 @@ Bug(y) [ Win Debug ] failures/expected/foo.html [ Crash ]
 
         actual_expectations = expectations.remove_configuration_from_test('failures/expected/foo.html', test_config)
         actual_expectations = expectations.remove_configuration_from_test('failures/expected/foo.html', host.port_factory.get('test-win-vista', None).test_configuration())
-        actual_expectations = expectations.remove_configuration_from_test('failures/expected/foo.html', host.port_factory.get('test-win-win7', None).test_configuration())
+        actual_expectations = expectations.remove_configuration_from_test('failures/expected/foo.html', host.port_factory.get('test-win-7sp0', None).test_configuration())
 
         self.assertEqual("""Bug(y) [ Win Debug ] failures/expected/foo.html [ Crash ]
 """, actual_expectations)

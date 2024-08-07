@@ -38,6 +38,10 @@
 @class WebHistoryItem;
 @class WebResource;
 
+namespace PAL {
+class SessionID;
+}
+
 namespace WebCore {
 class AuthenticationChallenge;
 class CachedFrame;
@@ -45,7 +49,6 @@ class HistoryItem;
 class ProtectionSpace;
 class ResourceLoader;
 class ResourceRequest;
-class SessionID;
 }
 
 class WebFrameLoaderClient : public WebCore::FrameLoaderClient {
@@ -59,6 +62,10 @@ private:
     void frameLoaderDestroyed() final;
     bool hasWebView() const final; // mainly for assertions
 
+    std::optional<uint64_t> pageID() const final;
+    std::optional<uint64_t> frameID() const final;
+    PAL::SessionID sessionID() const final;
+
     void makeRepresentation(WebCore::DocumentLoader*) final;
     bool hasHTMLView() const final;
 #if PLATFORM(IOS)
@@ -71,7 +78,7 @@ private:
     void detachedFromParent2() final;
     void detachedFromParent3() final;
 
-    void convertMainResourceLoadToDownload(WebCore::DocumentLoader*, WebCore::SessionID, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&) final;
+    void convertMainResourceLoadToDownload(WebCore::DocumentLoader*, PAL::SessionID, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&) final;
 
     void assignIdentifierToInitialRequest(unsigned long identifier, WebCore::DocumentLoader*, const WebCore::ResourceRequest&) final;
 
@@ -99,7 +106,7 @@ private:
     void dispatchDidDispatchOnloadEvents() final;
     void dispatchDidReceiveServerRedirectForProvisionalLoad() final;
     void dispatchDidCancelClientRedirect() final;
-    void dispatchWillPerformClientRedirect(const WebCore::URL&, double interval, double fireDate) final;
+    void dispatchWillPerformClientRedirect(const WebCore::URL&, double interval, WallTime fireDate) final;
     void dispatchDidChangeLocationWithinPage() final;
     void dispatchDidPushStateWithinPage() final;
     void dispatchDidReplaceStateWithinPage() final;
@@ -120,7 +127,7 @@ private:
 
     void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::FramePolicyFunction&&) final;
     void dispatchDecidePolicyForNewWindowAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, const WTF::String& frameName, WebCore::FramePolicyFunction&&) final;
-    void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, WebCore::FramePolicyFunction&&) final;
+    void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, bool didReceiveRedirectResponse, WebCore::FormState*, WebCore::FramePolicyFunction&&) final;
     void cancelPolicyCheck() final;
 
     void dispatchUnableToImplementPolicy(const WebCore::ResourceError&) final;
@@ -208,8 +215,8 @@ private:
     void redirectDataToPlugin(WebCore::Widget&) final;
 
 #if ENABLE(WEBGL)
-    WebCore::WebGLLoadPolicy webGLPolicyForURL(const String&) const final;
-    WebCore::WebGLLoadPolicy resolveWebGLPolicyForURL(const String&) const final;
+    WebCore::WebGLLoadPolicy webGLPolicyForURL(const WebCore::URL&) const final;
+    WebCore::WebGLLoadPolicy resolveWebGLPolicyForURL(const WebCore::URL&) const final;
 #endif
 
     RefPtr<WebCore::Widget> createJavaAppletWidget(const WebCore::IntSize&, WebCore::HTMLAppletElement&, const WebCore::URL& baseURL,

@@ -26,6 +26,7 @@
 #import "config.h"
 #import "TestController.h"
 
+#import "GeneratedTouchesDebugWindow.h"
 #import "HIDEventGenerator.h"
 #import "IOSLayoutTestCommunication.h"
 #import "PlatformWebView.h"
@@ -51,6 +52,8 @@ void TestController::notifyDone()
 void TestController::platformInitialize()
 {
     setUpIOSLayoutTestCommunication();
+    cocoaPlatformInitialize();
+
     [UIApplication sharedApplication].idleTimerDisabled = YES;
     [[UIScreen mainScreen] _setScale:2.0];
 }
@@ -116,17 +119,17 @@ void TestController::platformConfigureViewForTest(const TestInvocation& test)
             doneResizing = true;
         }];
 
-        platformRunUntil(doneResizing, 10);
-        if (!doneResizing)
-            WTFLogAlways("Timed out waiting for view resize to complete in platformConfigureViewForTest()");
+        platformRunUntil(doneResizing, noTimeout);
     }
     
     // We also pass data to InjectedBundle::beginTesting() to have it call
     // WKBundlePageSetUseTestingViewportConfiguration(false).
 }
 
-void TestController::updatePlatformSpecificTestOptionsForTest(TestOptions&, const std::string&) const
+void TestController::updatePlatformSpecificTestOptionsForTest(TestOptions& options, const std::string&) const
 {
+    options.shouldShowTouches = shouldShowTouches();
+    [[GeneratedTouchesDebugWindow sharedGeneratedTouchesDebugWindow] setShouldShowTouches:options.shouldShowTouches];
 }
 
 void TestController::platformInitializeContext()

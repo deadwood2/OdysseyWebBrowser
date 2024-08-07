@@ -20,20 +20,20 @@
 
 #if USE(CAIRO)
 #include "BackingStoreBackendCairo.h"
-#include "HysteresisActivity.h"
+#include <pal/HysteresisActivity.h>
 
 namespace WebCore {
 
 class BackingStoreBackendCairoImpl final : public BackingStoreBackendCairo {
 public:
-    BackingStoreBackendCairoImpl(const IntSize&, float deviceScaleFactor);
+    WEBCORE_EXPORT BackingStoreBackendCairoImpl(const IntSize&, float deviceScaleFactor);
     virtual ~BackingStoreBackendCairoImpl();
 
 private:
     void scroll(const IntRect&, const IntSize&) override;
 
     RefPtr<cairo_surface_t> m_scrollSurface;
-    HysteresisActivity m_scrolledHysteresis;
+    PAL::HysteresisActivity m_scrolledHysteresis;
 };
 
 } // namespace WebCore

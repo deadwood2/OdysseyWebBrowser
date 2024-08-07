@@ -28,7 +28,7 @@
 
 WI.TreeOutline = class TreeOutline extends WI.Object
 {
-    constructor(element)
+    constructor(element, selectable = true)
     {
         super();
 
@@ -53,6 +53,7 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         this._large = false;
         this._disclosureButtons = true;
         this._customIndent = false;
+        this._selectable = selectable;
 
         this._virtualizedScrollContainer = null;
         this._virtualizedTreeItemHeight = NaN;
@@ -63,6 +64,9 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         this._childrenListNode.addEventListener("keydown", this._treeKeyDown.bind(this), true);
 
         WI.TreeOutline._generateStyleRulesIfNeeded();
+
+        if (!this._selectable)
+            this.element.classList.add("non-selectable");
     }
 
     // Public
@@ -143,6 +147,8 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         this.element.classList.toggle(WI.TreeOutline.CustomIndentStyleClassName, this._customIndent);
     }
 
+    get selectable() { return this._selectable; }
+
     appendChild(child)
     {
         console.assert(child);
@@ -192,7 +198,7 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         if (!child)
             return;
 
-        var previousChild = (index > 0 ? this.children[index - 1] : null);
+        var previousChild = index > 0 ? this.children[index - 1] : null;
         if (previousChild) {
             previousChild.nextSibling = child;
             child.previousSibling = previousChild;
@@ -662,25 +668,24 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         if (!this.virtualized)
             return;
 
-        function walk(parent, callback) {
-            let count = 0;
+        function walk(parent, callback, count = 0) {
             let shouldReturn = false;
-            for (let i = 0; i < parent.children.length; ++i) {
-                if (!parent.children[i].revealed(false))
+            for (let child of parent.children) {
+                if (!child.revealed(false))
                     continue;
 
                 shouldReturn = callback({
                     parent,
-                    treeElement: parent.children[i],
+                    treeElement: child,
                     count,
                 });
                 if (shouldReturn)
                     break;
 
                 ++count;
-                if (parent.children[i].expanded) {
-                    let result = walk(parent.children[i], callback);
-                    count += result.count;
+                if (child.expanded) {
+                    let result = walk(child, callback, count);
+                    count = result.count;
                     if (result.shouldReturn)
                         break;
                 }
@@ -693,6 +698,7 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         let firstItem = Math.floor(this._virtualizedScrollContainer.scrollTop / this._virtualizedTreeItemHeight) - extraRows;
         let lastItem = firstItem + numberVisible + (extraRows * 2);
 
+        let shouldScroll = false;
         if (focusedTreeElement && focusedTreeElement.revealed(false)) {
             let index = walk(this, ({treeElement}) => treeElement === focusedTreeElement).count;
             if (index < firstItem) {
@@ -702,16 +708,18 @@ WI.TreeOutline = class TreeOutline extends WI.Object
                 firstItem = index - numberVisible - extraRows;
                 lastItem = index + extraRows;
             }
+
+            shouldScroll = index < firstItem || index > lastItem;
         }
 
         let totalItems = walk(this, ({parent, treeElement, count}) => {
-            if (count < firstItem || count > lastItem)
-                treeElement.element.remove();
-            else {
+            if (count >= firstItem && count <= lastItem) {
                 parent._childrenListNode.appendChild(treeElement.element);
                 if (treeElement._childrenListNode)
                     parent._childrenListNode.appendChild(treeElement._childrenListNode);
-            }
+            } else
+                treeElement.element.remove();
+
             return false;
         }).count;
 
@@ -721,7 +729,7 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         this._virtualizedBottomSpacer.style.height = (Math.max(totalItems - lastItem, 0) * this._virtualizedTreeItemHeight) + "px";
         this.element.parentNode.insertBefore(this._virtualizedBottomSpacer, this.element.nextElementSibling);
 
-        if (focusedTreeElement)
+        if (shouldScroll)
             this._virtualizedScrollContainer.scrollTop = (firstItem + extraRows) * this._virtualizedTreeItemHeight;
     }
 
@@ -732,10 +740,20 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         let scrollContainer = this.element.parentElement;
 
         // We choose this X coordinate based on the knowledge that our list
-        // items extend at least to the right edge of the outer <ol> container.
+        // items extend at least to the trailing edge of the outer <ol> container.
         // In the no-word-wrap mode the outer <ol> may be wider than the tree container
-        // (and partially hidden), in which case we are left to use only its right boundary.
-        let x = scrollContainer.totalOffsetLeft + scrollContainer.offsetWidth - 36;
+        // (and partially hidden), in which case we are left to use only its trailing boundary.
+        // This adjustment is useful in order to find the inner-most tree element that
+        // lines up horizontally with the location of the event. If the mouse event
+        // happened in the space preceding a nested tree element (in the leading indentated
+        // space) we use this adjustment to get the nested tree element and not a tree element
+        // from a parent / outer tree outline / tree element.
+        //
+        // NOTE: This can fail if there is floating content over the trailing edge of
+        // the <li> content, since the element from point could hit that.
+        let isRTL = WI.resolvedLayoutDirection() === WI.LayoutDirection.RTL;
+        let trailingEdgeOffset = isRTL ? 36 : (scrollContainer.offsetWidth - 36);
+        let x = scrollContainer.totalOffsetLeft + trailingEdgeOffset;
         let y = event.pageY;
 
         // Our list items have 1-pixel cracks between them vertically. We avoid
@@ -810,6 +828,7 @@ WI.TreeOutline.Event = {
     ElementAdded: Symbol("element-added"),
     ElementDidChange: Symbol("element-did-change"),
     ElementRemoved: Symbol("element-removed"),
+    ElementClicked: Symbol("element-clicked"),
     ElementDisclosureDidChanged: Symbol("element-disclosure-did-change"),
     ElementVisibilityDidChange: Symbol("element-visbility-did-change"),
     SelectionDidChange: Symbol("selection-did-change")

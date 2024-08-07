@@ -28,6 +28,7 @@
 #include "HTMLTextFormControlElement.h"
 #include "StepRange.h"
 #include <memory>
+#include <wtf/WeakPtr.h>
 
 #if PLATFORM(IOS)
 #include "DateComponents.h"
@@ -97,7 +98,7 @@ public:
     bool isTextButton() const;
 
     bool isRadioButton() const;
-    WEBCORE_EXPORT bool isTextField() const;
+    WEBCORE_EXPORT bool isTextField() const final;
     WEBCORE_EXPORT bool isSearchField() const;
     bool isInputTypeHidden() const;
     WEBCORE_EXPORT bool isPasswordField() const;
@@ -134,8 +135,8 @@ public:
 
     HTMLElement* containerElement() const;
     
-    TextControlInnerTextElement* innerTextElement() const final;
-    RenderStyle createInnerTextStyle(const RenderStyle&) const override;
+    RefPtr<TextControlInnerTextElement> innerTextElement() const final;
+    RenderStyle createInnerTextStyle(const RenderStyle&) override;
 
     HTMLElement* innerBlockElement() const;
     HTMLElement* innerSpinButtonElement() const;
@@ -236,8 +237,14 @@ public:
     bool isAutoFilled() const { return m_isAutoFilled; }
     WEBCORE_EXPORT void setAutoFilled(bool = true);
 
-    AutoFillButtonType autoFillButtonType() const { return (AutoFillButtonType)m_autoFillButtonType; }
+    AutoFillButtonType lastAutoFillButtonType() const { return static_cast<AutoFillButtonType>(m_lastAutoFillButtonType); }
+    AutoFillButtonType autoFillButtonType() const { return static_cast<AutoFillButtonType>(m_autoFillButtonType); }
     WEBCORE_EXPORT void setShowAutoFillButton(AutoFillButtonType);
+
+    bool hasAutoFillStrongPasswordButton() const  { return autoFillButtonType() == AutoFillButtonType::StrongPassword || autoFillButtonType() == AutoFillButtonType::StrongConfirmationPassword; }
+
+    bool isAutoFillAvailable() const { return m_isAutoFillAvailable; }
+    void setAutoFillAvailable(bool autoFillAvailable) { m_isAutoFillAvailable = autoFillAvailable; }
 
     WEBCORE_EXPORT FileList* files();
     WEBCORE_EXPORT void setFiles(RefPtr<FileList>&&);
@@ -261,8 +268,8 @@ public:
     bool willRespondToMouseClickEvents() override;
 
 #if ENABLE(DATALIST_ELEMENT)
-    HTMLElement* list() const;
-    HTMLDataListElement* dataList() const;
+    RefPtr<HTMLElement> list() const;
+    RefPtr<HTMLDataListElement> dataList() const;
     void listAttributeTargetChanged();
 #endif
 
@@ -282,7 +289,7 @@ public:
     void cacheSelectionInResponseToSetValue(int caretOffset) { cacheSelection(caretOffset, caretOffset, SelectionHasNoDirection); }
 
     Color valueAsColor() const; // Returns transparent color if not type=color.
-    WEBCORE_EXPORT void selectColor(const Color&); // Does nothing if not type=color. Simulates user selection of color; intended for testing.
+    WEBCORE_EXPORT void selectColor(StringView); // Does nothing if not type=color. Simulates user selection of color; intended for testing.
 
     String defaultToolTip() const;
 
@@ -335,6 +342,8 @@ public:
 
     ExceptionOr<void> setSelectionRangeForBindings(int start, int end, const String& direction);
 
+    auto& weakPtrFactory() const { return m_weakFactory; }
+
 protected:
     HTMLInputElement(const QualifiedName&, Document&, HTMLFormElement*, bool createdByParser);
 
@@ -343,13 +352,13 @@ protected:
 private:
     enum AutoCompleteSetting { Uninitialized, On, Off };
 
-    void didAddUserAgentShadowRoot(ShadowRoot*) final;
+    void didAddUserAgentShadowRoot(ShadowRoot&) final;
 
     void willChangeForm() final;
     void didChangeForm() final;
-    InsertionNotificationRequest insertedInto(ContainerNode&) final;
-    void finishedInsertingSubtree() final;
-    void removedFrom(ContainerNode&) final;
+    InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) final;
+    void didFinishInsertingNode() final;
+    void removedFromAncestor(RemovalType, ContainerNode&) final;
     void didMoveToNewDocument(Document& oldDocument, Document& newDocument) final;
 
     bool hasCustomFocusLogic() const final;
@@ -360,7 +369,7 @@ private:
     void updateFocusAppearance(SelectionRestorationMode, SelectionRevealMode) final;
     bool shouldUseInputMethod() final;
 
-    bool isTextFormControl() const final { return isTextField(); }
+    bool isInnerTextElementEditable() const final { return !hasAutoFillStrongPasswordButton() && HTMLTextFormControlElement::isInnerTextElementEditable(); }
 
     bool canTriggerImplicitSubmission() const final { return isTextField(); }
 
@@ -382,7 +391,7 @@ private:
 
     void copyNonAttributePropertiesFromElement(const Element&) final;
 
-    bool appendFormData(FormDataList&, bool) final;
+    bool appendFormData(DOMFormData&, bool) final;
 
     bool isSuccessfulSubmitButton() const final;
     bool matchesDefaultPseudoClass() const final;
@@ -440,7 +449,7 @@ private:
     AtomicString m_name;
     String m_valueIfDirty;
     unsigned m_size;
-    short m_maxResults;
+    short m_maxResults { -1 };
     bool m_isChecked : 1;
     bool m_reflectsCheckedAttribute : 1;
     bool m_isIndeterminate : 1;
@@ -448,7 +457,9 @@ private:
     bool m_isActivatedSubmit : 1;
     unsigned m_autocomplete : 2; // AutoCompleteSetting
     bool m_isAutoFilled : 1;
-    unsigned m_autoFillButtonType : 2; // AutoFillButtonType;
+    unsigned m_autoFillButtonType : 3; // AutoFillButtonType
+    unsigned m_lastAutoFillButtonType : 3; // AutoFillButtonType
+    bool m_isAutoFillAvailable : 1;
 #if ENABLE(DATALIST_ELEMENT)
     bool m_hasNonEmptyList : 1;
 #endif
@@ -461,7 +472,7 @@ private:
     bool m_hasTouchEventHandler : 1;
 #endif
     bool m_isSpellcheckDisabledExceptTextReplacement : 1;
-    std::unique_ptr<InputType> m_inputType;
+    RefPtr<InputType> m_inputType;
     // The ImageLoader must be owned by this element because the loader code assumes
     // that it lives as long as its owning element lives. If we move the loader into
     // the ImageInput object we may delete the loader while this element lives on.
@@ -469,6 +480,7 @@ private:
 #if ENABLE(DATALIST_ELEMENT)
     std::unique_ptr<ListAttributeTargetObserver> m_listAttributeTargetObserver;
 #endif
+    WeakPtrFactory<HTMLInputElement> m_weakFactory;
 };
 
 }

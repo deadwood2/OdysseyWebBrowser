@@ -34,6 +34,7 @@ WI.ImageResourceContentView = class ImageResourceContentView extends WI.Resource
         const toolTip = WI.UIString("Show Grid");
         const activatedToolTip = WI.UIString("Hide Grid");
         this._showGridButtonNavigationItem = new WI.ActivateButtonNavigationItem("show-grid", toolTip, activatedToolTip, "Images/NavigationItemCheckers.svg", 13, 13);
+        this._showGridButtonNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
         this._showGridButtonNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._showGridButtonClicked, this);
         this._showGridButtonNavigationItem.activated = !!WI.settings.showImageGrid.value;
     }
@@ -47,13 +48,18 @@ WI.ImageResourceContentView = class ImageResourceContentView extends WI.Resource
 
     contentAvailable(content, base64Encoded)
     {
+        this.removeLoadingIndicator();
+
+        if (!content) {
+            this.showGenericNoContentMessage();
+            return;
+        }
+
         let objectURL = this.resource.createObjectURL();
         if (!objectURL) {
             this.showGenericErrorMessage();
             return;
         }
-
-        this.removeLoadingIndicator();
 
         this._imageElement = document.createElement("img");
         this._imageElement.addEventListener("load", function() { URL.revokeObjectURL(objectURL); });

@@ -25,11 +25,9 @@
 
 WI.SearchSidebarPanel = class SearchSidebarPanel extends WI.NavigationSidebarPanel
 {
-    constructor(contentBrowser)
+    constructor()
     {
         super("search", WI.UIString("Search"), true, true);
-
-        this.contentBrowser = contentBrowser;
 
         var searchElement = document.createElement("div");
         searchElement.classList.add("search-bar");
@@ -44,8 +42,6 @@ WI.SearchSidebarPanel = class SearchSidebarPanel extends WI.NavigationSidebarPan
         this._inputElement.setAttribute("autosave", "inspector-search-autosave");
         this._inputElement.setAttribute("placeholder", WI.UIString("Search Resource Content"));
         searchElement.appendChild(this._inputElement);
-
-        this.filterBar.placeholder = WI.UIString("Filter Search Results");
 
         this._searchQuerySetting = new WI.Setting("search-sidebar-query", "");
         this._inputElement.value = this._searchQuerySetting.value;
@@ -66,7 +62,11 @@ WI.SearchSidebarPanel = class SearchSidebarPanel extends WI.NavigationSidebarPan
 
     focusSearchField(performSearch)
     {
-        this.show();
+        if (!this.parentSidebar)
+            return;
+
+        this.parentSidebar.selectedSidebarPanel = this;
+        this.parentSidebar.collapsed = false;
 
         this._inputElement.select();
 
