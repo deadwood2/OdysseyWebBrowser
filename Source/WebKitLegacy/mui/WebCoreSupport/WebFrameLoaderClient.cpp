@@ -112,7 +112,7 @@ WebFrameLoaderClient::WebFrameLoaderClient(WebFrame* webFrame)
     : m_webFrame(webFrame)
     , m_pluginView(0)
     , m_hasSentResponseToPlugin(false)
-    , m_policyFunction(0)
+    , m_policyFunction(nullptr)
     , m_policyListener(0)
 {
     ASSERT_ARG(webFrame, webFrame);
@@ -645,7 +645,9 @@ void WebFrameLoaderClient::transitionToCommittedForNewPage()
     BalRectangle rect = view->frameRect();
     bool transparent = view->transparent();
     Color backgroundColor = transparent ? Color::transparent : Color::white;
-    core(m_webFrame)->createView(IntRect(rect).size(), backgroundColor, transparent);
+    FloatRect logicalFrame(rect);
+//    logicalFrame.scale(1.0f / view->deviceScaleFactor());
+    core(m_webFrame)->createView(enclosingIntRect(logicalFrame).size(), backgroundColor, transparent, /* fixedLayoutSize */ { }, /* fixedVisibleContentRect */ { });
 }
 
 void WebFrameLoaderClient::didSaveToPageCache()
@@ -674,7 +676,7 @@ RefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String& na
     return result;
 }
 
-PassRefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String& name, HTMLFrameOwnerElement* ownerElement, const String& referrer)
+RefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String& name, HTMLFrameOwnerElement* ownerElement, const String& referrer)
 {
     if (url.string().isEmpty())
         return 0;
@@ -704,7 +706,7 @@ PassRefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String
         return 0;
     }
 
-    return childFrame.release();
+    return childFrame;
 }
 
 RefPtr<Widget> WebFrameLoaderClient::createPlugin(const IntSize& pluginSize, HTMLPlugInElement& element, const URL& url, const Vector<String>& paramNames, const Vector<String>& paramValues, const String& mimeType, bool loadManually)
@@ -760,10 +762,10 @@ void WebFrameLoaderClient::cancelPolicyCheck()
         m_policyListener = 0;
     }
 
-    m_policyFunction = 0;
+    m_policyFunction = nullptr;
 }
 
-void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, FramePolicyFunction function)
+void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, WTF::Function<void(void)>&& function)
 {
     Object * browser = m_webFrame->webView()->viewWindow()->browser;
     if(!getv(browser, MA_OWBBrowser_PrivateBrowsing))
@@ -773,7 +775,7 @@ void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, FramePol
 
     // XXX: save credentials here as well instead of doing it in the defaultpolicydelegate, since it's a bit clumsy
 
-    function(PolicyUse);
+    function();
 }
 
 void WebFrameLoaderClient::dispatchWillSendSubmitEvent(Ref<WebCore::FormState>&& formState)
@@ -925,7 +927,7 @@ bool WebFrameLoaderClient::shouldFallBack(const ResourceError& error)
     return error.errorCode() != WebURLErrorCancelled;
 }
 
-WebFramePolicyListener* WebFrameLoaderClient::setUpPolicyListener(FramePolicyFunction function)
+WebFramePolicyListener* WebFrameLoaderClient::setUpPolicyListener(FramePolicyFunction&& function)
 {
     // FIXME: <rdar://5634381> We need to support multiple active policy listeners.
 
@@ -939,7 +941,7 @@ WebFramePolicyListener* WebFrameLoaderClient::setUpPolicyListener(FramePolicyFun
 	}
 
     m_policyListener = WebFramePolicyListener::createInstance(m_webFrame);
-    m_policyFunction = function;
+    m_policyFunction = WTFMove(function);
 
     return m_policyListener;
 }
@@ -957,7 +959,7 @@ void WebFrameLoaderClient::receivedPolicyDecision(PolicyAction action)
     function(action);
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const WebCore::ResourceResponse& response, const ResourceRequest& request, FramePolicyFunction function)
+void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const ResourceResponse& response, const ResourceRequest& request, FramePolicyFunction&& function)
 {
     SharedPtr<WebPolicyDelegate> policyDelegate = m_webFrame->webView()->policyDelegate();
     if (!policyDelegate)
@@ -965,13 +967,13 @@ void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const WebCore::Resour
 
     WebMutableURLRequest* urlRequest = WebMutableURLRequest::createInstance(request);
 
-    if (policyDelegate->decidePolicyForMIMEType(m_webFrame->webView(), response, urlRequest, m_webFrame, setUpPolicyListener(function))) {
+    if (policyDelegate->decidePolicyForMIMEType(m_webFrame->webView(), response, urlRequest, m_webFrame, setUpPolicyListener(WTFMove(function)))) {
         delete urlRequest;
         return;
     }
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const NavigationAction& action, const ResourceRequest& request,FormState* formState, const String& frameName, FramePolicyFunction function)
+void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const NavigationAction& action, const ResourceRequest& request, FormState* formState, const String& frameName, FramePolicyFunction&& function)
 {
     SharedPtr<WebPolicyDelegate> policyDelegate = m_webFrame->webView()->policyDelegate();
     if (!policyDelegate)
@@ -987,7 +989,7 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const Navigati
     delete actionInformation;
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, FormState* formState, FramePolicyFunction function)
+void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, FormState* formState, FramePolicyFunction&& function)
 {
     SharedPtr<WebPolicyDelegate> policyDelegate = m_webFrame->webView()->policyDelegate();
     if (!policyDelegate) {
@@ -998,7 +1000,7 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const Navigat
     WebMutableURLRequest* urlRequest =  WebMutableURLRequest::createInstance(request);
     WebNavigationAction* actionInformation = WebNavigationAction::createInstance(&action, formState ? &formState->form() : nullptr, m_webFrame);
 
-    policyDelegate->decidePolicyForNavigationAction(m_webFrame->webView(), actionInformation, urlRequest, m_webFrame, setUpPolicyListener(function));
+    policyDelegate->decidePolicyForNavigationAction(m_webFrame->webView(), actionInformation, urlRequest, m_webFrame, setUpPolicyListener(WTFMove(function)));
 
     delete urlRequest;
     delete actionInformation;

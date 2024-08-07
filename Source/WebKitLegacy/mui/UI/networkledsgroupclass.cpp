@@ -29,8 +29,8 @@
 /* OWB */
 #include "config.h"
 #include "GraphicsContext.h"
-#include <Api/WebFrame.h>
-#include <Api/WebView.h>
+#include "WebFrame.h"
+#include "WebView.h"
 #include <wtf/text/CString.h>
 #include "Page.h"
 #include "DOMImplementation.h"
@@ -40,7 +40,6 @@
 #include "FrameView.h"
 #include "Timer.h"
 #include <wtf/MainThread.h>
-#include "ResourceHandleManager.h"
 #include "ResourceHandle.h"
 #include "ResourceHandleInternal.h"
 #include <FrameLoader.h>

@@ -623,7 +623,7 @@ void CookieManager::initiateCookieLimitCleanUp()
 {
     if (!m_limitTimer.isActive()) {
         CookieLog("CookieManager - Starting a timer for cookie cleanup\n");
-        m_limitTimer.startOneShot(s_delayToStartCookieCleanup);
+        m_limitTimer.startOneShot(Seconds(s_delayToStartCookieCleanup));
     } else {
 #ifndef NDEBUG
         CookieLog("CookieManager - Cookie cleanup timer already running\n");

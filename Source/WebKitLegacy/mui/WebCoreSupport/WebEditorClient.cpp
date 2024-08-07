@@ -65,16 +65,16 @@ using namespace HTMLNames;
 class WebEditorUndoCommand
 {
 public:
-    WebEditorUndoCommand(PassRefPtr<UndoStep>, bool isUndo);
+    WebEditorUndoCommand(UndoStep& step, bool isUndo);
     void execute();
     bool isUndo() { return m_isUndo; }
 
 private:
-	RefPtr<UndoStep> m_step;
+	Ref<UndoStep> m_step;
     bool m_isUndo;
 };
 
-WebEditorUndoCommand::WebEditorUndoCommand(PassRefPtr<UndoStep> step, bool isUndo)
+WebEditorUndoCommand::WebEditorUndoCommand(UndoStep& step, bool isUndo)
     : m_step(step)
     , m_isUndo(isUndo) 
 { 
@@ -357,7 +357,7 @@ bool WebEditorClient::shouldInsertText(const String& str, Range* replacingRange,
     return true; 
 }
 
-bool WebEditorClient::isSelectTrailingWhitespaceEnabled(void)
+bool WebEditorClient::isSelectTrailingWhitespaceEnabled(void) const
 {
     return m_webView->isSelectTrailingWhitespaceEnabled();
 }

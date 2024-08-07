@@ -94,7 +94,7 @@ void WebDataSource::initWithRequest(WebMutableURLRequest* /*request*/)
 {
 }
 
-PassRefPtr<SharedBuffer> WebDataSource::data()
+RefPtr<SharedBuffer> WebDataSource::data()
 {
     if (!m_loader)
         return 0;

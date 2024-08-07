@@ -78,8 +78,8 @@
 #endif
 
 /* OWB */
-#include <Api/WebFrame.h>
-#include <Api/WebView.h>
+#include "WebFrame.h"
+#include "WebView.h"
 
 /* Posix */
 #include <unistd.h>
@@ -518,8 +518,8 @@ DEFNEW
 						ResourceResponse response(URL(), mimeType, dataSource->size(), frame->loader().documentLoader()->overrideEncoding());
 						SubstituteData substituteData(WTFMove(dataSource), failingURL, response, SubstituteData::SessionHistoryVisibility::Hidden);
 
-						FrameLoadRequest frameLoadRequest(frame, request, ShouldOpenExternalURLsPolicy::ShouldNotAllow, substituteData);
-						frame->loader().load(frameLoadRequest);
+						FrameLoadRequest frameLoadRequest(*frame, request, ShouldOpenExternalURLsPolicy::ShouldNotAllow, substituteData);
+						frame->loader().load(WTFMove(frameLoadRequest));
 
 						set(obj, MA_OWBBrowser_URL, (char *) getv(browser, MA_OWBBrowser_URL));
 						set(obj, MA_OWBBrowser_Title, (char *) getv(browser, MA_OWBBrowser_Title));
@@ -4237,7 +4237,7 @@ public:
 	void start(unsigned long ms)
 	{
 		if(!m_pluginTimer.isActive())
-			m_pluginTimer.startOneShot((double)(1.0*ms)/1000.0);
+			m_pluginTimer.startOneShot(Seconds((double)(1.0*ms)/1000.0));
 	}
 
 	void stop()

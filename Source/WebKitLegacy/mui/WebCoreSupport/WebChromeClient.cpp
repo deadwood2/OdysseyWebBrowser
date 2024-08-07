@@ -480,7 +480,7 @@ std::unique_ptr<ColorChooser> WebChromeClient::createColorChooser(ColorChooserCl
 #endif
 
 #if ENABLE(INPUT_TYPE_DATE)
-PassRefPtr<DateTimeChooser> WebChromeClient::openDateTimeChooser(DateTimeChooserClient* chooserClient, const DateTimeChooserParameters& parameters)
+RefPtr<WebCore::DateTimeChooser> WebChromeClient::openDateTimeChooser(WebCore::DateTimeChooserClient*, const WebCore::DateTimeChooserParameters&)
 {
     /*
     kprintf("WebChromeClient::openDateTimeChooser\n");
@@ -490,7 +490,7 @@ PassRefPtr<DateTimeChooser> WebChromeClient::openDateTimeChooser(DateTimeChooser
     return controller.release();    
     */
 
-    PassRefPtr<DateTimeChooser> ret;
+    RefPtr<DateTimeChooser> ret;
     return ret;
 }
 #endif
@@ -706,5 +706,10 @@ void WebChromeClient::attachRootGraphicsLayer(WebCore::Frame&, WebCore::Graphics
 
 void WebChromeClient::attachViewOverlayGraphicsLayer(WebCore::Frame&, WebCore::GraphicsLayer*)
 {
+}
+
+RefPtr<WebCore::Icon> WebChromeClient::createIconForFiles(const Vector<String>&)
+{
+    return nullptr;
 }
   

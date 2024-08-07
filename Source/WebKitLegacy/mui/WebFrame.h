@@ -617,7 +617,7 @@ protected:
 	/**
      *  init WebFrame
      */
-	WTF::PassRefPtr<WebCore::Frame> createSubframeWithOwnerElement(WebView*, WebCore::Page*, WebCore::HTMLFrameOwnerElement*); 
+	WTF::Ref<WebCore::Frame> createSubframeWithOwnerElement(WebView*, WebCore::Page*, WebCore::HTMLFrameOwnerElement*); 
  	void initWithWebView(WebView*, WebCore::Page*); 
 
     /**

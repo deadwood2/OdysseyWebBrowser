@@ -1,5 +1,4 @@
 /*
- * Copyright 2009 Fabien Coeurjoly <fabien.coeurjoly@wanadoo.fr>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,77 +26,16 @@
  */
 
 #include "config.h"
-#include "GraphicsContext.h"
-#include "WebView.h"
+#include "NetworkStateNotifier.h"
 
-#include <proto/exec.h>
-#include <proto/intuition.h>
-#include <proto/utility.h>
-#include <clib/macros.h>
+namespace WebCore {
 
-#include "gui.h"
-
-using namespace WebCore;
-
-struct Data
+void NetworkStateNotifier::updateStateWithoutNotifying()
 {
-	Object *group;
-};
-
-DEFNEW
-{
-	Object *group;
-
-	obj = (Object *) DoSuperNew(cl, obj,
-			MUIA_Window_ID, MAKE_ID('W','B','L','O'),
-			MUIA_Window_Title, GSI(MSG_BLOCKMANAGERWINDOW_TITLE),
-			MUIA_Window_NoMenus, TRUE,
-			WindowContents, group = (Object *) NewObject(getblockmanagergroupclass(), NULL, TAG_DONE),
-			TAG_MORE, msg->ops_AttrList);
-
-	if (obj)
-	{
-		GETDATA;
-
-		data->group = group;
-
-		DoMethod(obj, MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 3, MUIM_Set, MUIA_Window_Open, FALSE);
-	}
-
-	return (IPTR)obj;
 }
 
-DEFGET
+void NetworkStateNotifier::startObserving()
 {
-	switch (msg->opg_AttrID)
-	{
-		case MA_OWB_WindowType:
-		{
-			*msg->opg_Storage = (IPTR) MV_OWB_Window_BlockManager;
-		}
-		return TRUE;
-	}
-
-	return DOSUPER;
 }
 
-DEFSMETHOD(BlockManagerGroup_DidInsert)
-{
-	GETDATA;
-	return DoMethodA(data->group, (_Msg_*)msg);
 }
-
-DEFTMETHOD(BlockManagerGroup_Load)
-{
-	GETDATA;
-	return DoMethodA(data->group, (_Msg_*)msg);
-}
-
-BEGINMTABLE
-DECNEW
-DECGET
-DECSMETHOD(BlockManagerGroup_DidInsert)
-DECTMETHOD(BlockManagerGroup_Load)
-ENDMTABLE
-
-DECSUBCLASS_NC(MUIC_Window, blockmanagerwindowclass)

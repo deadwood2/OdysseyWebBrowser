@@ -26,8 +26,7 @@ namespace WebCore {
 
 class RenderThemeBal : public RenderTheme {
 public:
-    static Ref<RenderTheme> create();
-    virtual ~RenderThemeBal();
+    friend NeverDestroyed<RenderThemeBal>;
 
     virtual String extraDefaultStyleSheet() override;
 
@@ -37,7 +36,7 @@ public:
 #endif
     virtual bool supportsHover(const RenderStyle*) const { return true; }
 
-    virtual double caretBlinkInterval() const override;
+    virtual Seconds caretBlinkInterval() const override;
 
     virtual bool paintCheckbox(const RenderObject&, const PaintInfo&, const IntRect&) override;
     virtual void setCheckboxSize(RenderStyle&) const override;
@@ -129,6 +128,8 @@ private:
     static float defaultFontSize;
 
     RenderThemeBal();
+    virtual ~RenderThemeBal();
+
     void setButtonStyle(RenderStyle&) const;
     void calculateButtonSize(RenderStyle&) const;
 

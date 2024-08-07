@@ -23,6 +23,7 @@
 #include "BitmapImage.h"
 #include "FrameView.h"
 #include "Frame.h"
+#include "Element.h"
 #include "HostWindow.h"
 #include "Image.h"
 #include "RefPtrCairo.h"
@@ -37,7 +38,7 @@ namespace WebCore {
 IntSize dragImageSize(DragImageRef image)
 {
     if (image)
-		return IntSize(cairo_image_surface_get_width((cairo_surface_t*)image), cairo_image_surface_get_height((cairo_surface_t *)image));
+		return IntSize(cairo_image_surface_get_width((cairo_surface_t*)image.get()), cairo_image_surface_get_height((cairo_surface_t *)image.get()));
 
     return IntSize(0, 0);
 }
@@ -45,7 +46,7 @@ IntSize dragImageSize(DragImageRef image)
 void deleteDragImage(DragImageRef image)
 {
     if (image)
-        cairo_surface_destroy((cairo_surface_t *)image);
+        cairo_surface_destroy((cairo_surface_t *)image.get());
 }
 
 DragImageRef scaleDragImage(DragImageRef image, FloatSize scale)
@@ -53,19 +54,19 @@ DragImageRef scaleDragImage(DragImageRef image, FloatSize scale)
     if (!image)
         return 0;
 
-    int newWidth = scale.width() * cairo_image_surface_get_width((cairo_surface_t *)image);
-    int newHeight = scale.height() * cairo_image_surface_get_height((cairo_surface_t *)image);
-    cairo_surface_t* scaledSurface = cairo_surface_create_similar((cairo_surface_t *)image, CAIRO_CONTENT_COLOR_ALPHA, newWidth, newHeight);
+    int newWidth = scale.width() * cairo_image_surface_get_width((cairo_surface_t *)image.get());
+    int newHeight = scale.height() * cairo_image_surface_get_height((cairo_surface_t *)image.get());
+    cairo_surface_t* scaledSurface = cairo_surface_create_similar((cairo_surface_t *)image.get(), CAIRO_CONTENT_COLOR_ALPHA, newWidth, newHeight);
 
     RefPtr<cairo_t> context = adoptRef(cairo_create(scaledSurface));
     cairo_scale(context.get(), scale.width(), scale.height());
     cairo_pattern_set_extend(cairo_get_source(context.get()), CAIRO_EXTEND_PAD);
     cairo_pattern_set_filter(cairo_get_source(context.get()), CAIRO_FILTER_BEST);
     cairo_set_operator(context.get(), CAIRO_OPERATOR_SOURCE);
-    cairo_set_source_surface(context.get(), (cairo_surface_t *)image, 0, 0);
+    cairo_set_source_surface(context.get(), (cairo_surface_t *)image.get(), 0, 0);
     cairo_paint(context.get());
 
-    deleteDragImage((cairo_surface_t *)image);
+    deleteDragImage((cairo_surface_t *)image.get());
     return scaledSurface;
 }
 
@@ -74,7 +75,7 @@ DragImageRef dissolveDragImageToFraction(DragImageRef image, float fraction)
     if (!image)
         return 0;
 
-    RefPtr<cairo_t> context = adoptRef(cairo_create((cairo_surface_t *)image));
+    RefPtr<cairo_t> context = adoptRef(cairo_create((cairo_surface_t *)image.get()));
     cairo_set_operator(context.get(), CAIRO_OPERATOR_DEST_IN);
     cairo_set_source_rgba(context.get(), 0, 0, 0, fraction);
     cairo_paint(context.get());
@@ -91,13 +92,13 @@ DragImageRef createDragImageIconForCachedImageFilename(const String&)
     return 0;
 }
 
-DragImageRef createDragImageForLink(URL& url, const String& inLabel, FontRenderingMode , Frame* frame)
+DragImageRef createDragImageForLink(Element& element, URL& url, const String& inLabel, TextIndicatorData&, FontRenderingMode fontRenderingMode, float)
 {
     UNUSED_PARAM(inLabel)
 
     D(kprintf("createDragImageForLink %s %s\n", url.string().latin1().data(), inLabel.latin1().data()));
 
-    FrameView *frameView = frame->view();
+    FrameView *frameView = element.document().frame()->view();
     BalWidget *widget = frameView->hostWindow()->platformPageClient();
 
     if(widget)

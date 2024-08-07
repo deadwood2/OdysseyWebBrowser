@@ -50,7 +50,7 @@
 #include "IntRect.h"
 #include <wtf/MainThread.h>
 #include "MemoryCache.h"
-#include "MemoryPressureHandler.h"
+#include <wtf/MemoryPressureHandler.h>
 #include "MouseEvent.h"
 #include "MouseEventWithHitTestResults.h"
 #include "Node.h"
@@ -1367,7 +1367,7 @@ bool WebViewPrivate::onMouseButtonUp(BalEventButton event)
 
 				if (Page* newPage = oldPage->chrome().createWindow(
 				        *frame,
-				        FrameLoadRequest(frame, ResourceRequest(urlToLoad, frame->loader().outgoingReferrer()), ShouldOpenExternalURLsPolicy::ShouldNotAllow),
+				        FrameLoadRequest(*frame, ResourceRequest(urlToLoad, frame->loader().outgoingReferrer()), ShouldOpenExternalURLsPolicy::ShouldNotAllow),
 				        features, NavigationAction()))
 		            newPage->chrome().show();
 		    }
@@ -1599,7 +1599,7 @@ void WebViewPrivate::move(BalPoint lastPos, BalPoint newPos)
 
 void WebViewPrivate::closeWindowSoon()
 {
-    m_closeWindowTimer.startOneShot(0);
+    m_closeWindowTimer.startOneShot(Seconds(0));
 }
 
 void WebViewPrivate::closeWindowTimerFired()

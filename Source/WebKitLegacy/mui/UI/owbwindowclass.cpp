@@ -29,8 +29,8 @@
 
 /* OWB */
 #include "config.h"
-#include <Api/WebFrame.h>
-#include <Api/WebView.h>
+#include "WebFrame.h"
+#include "WebView.h"
 #include <wtf/text/CString.h>
 #include <wtf/CurrentTime.h>
 #include "DOMImplementation.h"
@@ -143,7 +143,7 @@ struct Data
 	Object *fastlinkseparator;
 
 	/* Completion objects */
-	ThreadIdentifier completion_thread;
+	RefPtr<Thread> completion_thread;
 	ULONG abort_completion;
 	ULONG completion_mode_popup;
 	ULONG completion_mode_string;
@@ -548,8 +548,8 @@ DEFDISP
 	if(data->completion_thread)
 	{
 		data->abort_completion = TRUE;
-		waitForThreadCompletion(data->completion_thread);
-		data->completion_thread = 0;
+		data->completion_thread->waitForCompletion();
+		data->completion_thread = nullptr;
 	}
 
 	DoMethod((Object *) getv(app, MA_OWBApp_BookmarkWindow), MM_Bookmarkgroup_UnRegisterQLGroup, data->fastlinkgroup);
@@ -3164,7 +3164,7 @@ DEFSMETHOD(OWBWindow_AutoComplete)
 		if(data->completion_thread)
 		{
 			data->abort_completion = TRUE;
-			waitForThreadCompletion(data->completion_thread);
+			data->completion_thread->waitForCompletion();
 			data->abort_completion = FALSE;
 		}
 
@@ -3174,7 +3174,9 @@ DEFSMETHOD(OWBWindow_AutoComplete)
 			arg->cl = cl;
 			arg->obj = obj;
 
-			data->completion_thread = createThread(completion_thread_start, arg, "[OWB] Completion Thread");
+			data->completion_thread = Thread::create("[OWB] Completion Thread", [arg] {
+                completion_thread_start(arg);
+            });
 		}
 	}
 	else

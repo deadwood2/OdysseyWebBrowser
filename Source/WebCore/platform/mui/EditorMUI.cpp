@@ -53,7 +53,7 @@ static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pas
     RefPtr<DataObjectMorphOS> dataObject = pasteboard.dataObject();
     if (dataObject->hasMarkup() && frame.document()) {
         if (RefPtr<DocumentFragment> fragment = createFragmentFromMarkup(*frame.document(), dataObject->markup(), emptyString(), DisallowScriptingAndPluginContent))
-            return fragment.release();
+            return fragment;
     }
 
     if (!allowPlainText)
@@ -62,7 +62,7 @@ static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pas
     if (dataObject->hasText()) {
         chosePlainText = true;
         if (RefPtr<DocumentFragment> fragment = createFragmentFromText(range, dataObject->text()))
-            return fragment.release();
+            return fragment;
     }
 
     return nullptr;
@@ -76,7 +76,7 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, bool allowPlainText, Ma
 
     bool chosePlainText;
     RefPtr<DocumentFragment> fragment = createFragmentFromPasteboardData(*pasteboard, m_frame, *range, allowPlainText, chosePlainText);
-    if (fragment && shouldInsertFragment(fragment, range, EditorInsertAction::Pasted))
+    if (fragment && shouldInsertFragment(*fragment.get(), range.get(), EditorInsertAction::Pasted))
         pasteAsFragment(fragment.releaseNonNull(), canSmartReplaceWithPasteboard(*pasteboard), chosePlainText, mailBlockquoteHandling);
 }
 

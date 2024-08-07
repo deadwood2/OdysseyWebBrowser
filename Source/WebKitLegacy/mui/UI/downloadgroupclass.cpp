@@ -30,7 +30,7 @@
 #include "config.h"
 #include "GraphicsContext.h"
 
-#include "Api/WebView.h"
+#include "WebView.h"
 #include "URL.h"
 #include "FileIOLinux.h"
 #include "WebDownload.h"

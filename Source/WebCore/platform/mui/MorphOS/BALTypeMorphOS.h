@@ -66,15 +66,12 @@ typedef void BalPixbuf;
 typedef MorphOS_Color BalColor;
 typedef struct _cairo_matrix BalMatrix;
 
-//typedef _cairo PlatformGraphicsContext;
 typedef BalWidget* PlatformWidget;
 typedef _cairo_pattern* PlatformPatternPtr;
 
 namespace WebCore {
   typedef _cairo_pattern *PlatformGradient;
-  //  typedef WebCore::CairoPath PlatformPath;
   typedef void* PlatformCursor;
-  typedef void* DragImageRef;
   typedef WebCore::DataObjectMorphOS* DragDataRef;
   typedef void* PlatformCursorHandle;
 }

@@ -30,7 +30,6 @@
 #define DOMEventsClasses_H
 
 #include "DOMCoreClasses.h"
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefPtr.h>
 
 namespace WebCore {
@@ -99,9 +98,9 @@ public:
 class DOMEvent : public DOMObject
 {
 public:
-    static DOMEvent* createInstance(PassRefPtr<WebCore::Event> e);
+    static DOMEvent* createInstance(RefPtr<WebCore::Event>&& e);
 protected:
-    DOMEvent(PassRefPtr<WebCore::Event> e);
+    DOMEvent(RefPtr<WebCore::Event>&& e);
     ~DOMEvent();
 
 public:
@@ -181,7 +180,7 @@ protected:
 class DOMUIEvent : public DOMEvent
 {
 public:
-    DOMUIEvent(PassRefPtr<WebCore::Event> e) : DOMEvent(e) {}
+    DOMUIEvent(RefPtr<WebCore::Event>&& e) : DOMEvent(WTFMove(e)) {}
 
     /**
      * throw exception
@@ -274,7 +273,7 @@ public:
 class DOMKeyboardEvent : public DOMUIEvent
 {
 public:
-    DOMKeyboardEvent(PassRefPtr<WebCore::Event> e) : DOMUIEvent(e) { }
+    DOMKeyboardEvent(RefPtr<WebCore::Event>&& e) : DOMUIEvent(WTFMove(e)) { }
 
     /**
      * throw exception
@@ -386,7 +385,7 @@ public:
 class DOMMouseEvent : public DOMUIEvent
 {
 public:
-    DOMMouseEvent(PassRefPtr<WebCore::Event> e) : DOMUIEvent(e) { }
+    DOMMouseEvent(RefPtr<WebCore::Event>&& e) : DOMUIEvent(WTFMove(e)) { }
 
     /**
      * throw exception
@@ -514,7 +513,7 @@ public:
 class DOMMutationEvent : public DOMEvent
 {
 public:
-    DOMMutationEvent(PassRefPtr<WebCore::Event> e) : DOMEvent(e) { }
+    DOMMutationEvent(RefPtr<WebCore::Event>&& e) : DOMEvent(WTFMove(e)) { }
 
     /**
      * throw exception
@@ -599,7 +598,7 @@ public:
 class DOMOverflowEvent : public DOMEvent
 {
 public:
-    DOMOverflowEvent(PassRefPtr<WebCore::Event> e) : DOMEvent(e) { }
+    DOMOverflowEvent(RefPtr<WebCore::Event>&& e) : DOMEvent(WTFMove(e)) { }
 
     /**
      * throw exception
@@ -678,7 +677,7 @@ public:
 class DOMWheelEvent : public DOMUIEvent
 {
 public:
-    DOMWheelEvent(PassRefPtr<WebCore::Event> e) : DOMUIEvent(e) { }
+    DOMWheelEvent(RefPtr<WebCore::Event>&& e) : DOMUIEvent(WTFMove(e)) { }
 
     /**
      * throw exception

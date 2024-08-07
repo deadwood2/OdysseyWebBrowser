@@ -128,7 +128,7 @@ void  WebPlatformStrategies::resumePendingRequests()
 {
 }
 
-void  WebPlatformStrategies::createPingHandle(NetworkingContext*, ResourceRequest&, bool shouldUseCredentialStorage, bool shouldFollowRedirects)
+void  WebPlatformStrategies::createPingHandle(WebCore::NetworkingContext*, WebCore::ResourceRequest&, Ref<WebCore::SecurityOrigin>&& sourceOrigin, const WebCore::FetchOptions&)
 {
 }
 
@@ -145,3 +145,6 @@ void WebPlatformStrategies::storeDerivedDataToCache(const SHA1::Digest& bodyKey,
 {
 }
 
+void WebPlatformStrategies::setCaptureExtraNetworkLoadMetricsEnabled(bool)
+{
+}

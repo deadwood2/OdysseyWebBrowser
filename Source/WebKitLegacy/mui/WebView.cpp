@@ -365,6 +365,9 @@ WebView::WebView()
     , m_dragOperation(WebDragOperationNone)
     , m_currentDragData(0)
 {
+    JSC::initializeThreading();
+    RunLoop::initializeMainRunLoop();
+
     d->clearDirtyRegion();
 
 	globalUserAgent = getenv("OWB_USER_AGENT");
@@ -506,7 +509,7 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     unsigned cacheTotalCapacity = 0;
     unsigned cacheMinDeadCapacity = 0;
     unsigned cacheMaxDeadCapacity = 0;
-    auto deadDecodedDataDeletionInterval = std::chrono::seconds { 0 };
+    auto deadDecodedDataDeletionInterval = Seconds(0);
 
     unsigned pageCacheSize = 0;
 
@@ -626,7 +629,7 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
         // can prove that the overall system gain would justify the regression.
         cacheMaxDeadCapacity = max(24u, cacheMaxDeadCapacity);
 
-        deadDecodedDataDeletionInterval = std::chrono::seconds { 60 };
+        deadDecodedDataDeletionInterval = Seconds(60);
 
         // Memory cache capacity (in bytes)
         // (These values are small because WebCore does most caching itself.)
@@ -774,7 +777,7 @@ void WebView::selectionChanged()
     if (!targetFrame || !targetFrame->editor().hasComposition())
         return;
     
-    if (targetFrame->editor().ignoreCompositionSelectionChange())
+    if (targetFrame->editor().ignoreSelectionChanges())
         return;
 
     unsigned start;
@@ -1240,7 +1243,7 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
     m_page->focusController().setFocusedFrame(&(m_page->mainFrame()));
     m_page->focusController().setActive(true); 
     m_page->focusController().setFocused(true);
-    m_page->settings().setMinimumDOMTimerInterval(std::chrono::milliseconds(4));
+    m_page->settings().setMinimumDOMTimerInterval(Seconds(4.0/1000.0));
 
     Frame* mainFrame = &(m_page->mainFrame());
     Frame* focusedFrame = &(m_page->focusController().focusedOrMainFrame());

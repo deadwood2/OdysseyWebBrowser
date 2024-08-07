@@ -37,9 +37,9 @@ static bool isAutofillable(HTMLInputElement* element)
         && !element->isAutoFilled() && element->shouldAutocomplete();
 }
 
-PassRefPtr<AutofillManager> AutofillManager::create(void *browser)
+RefPtr<AutofillManager> AutofillManager::create(void *browser)
 {
-	return adoptRef(new AutofillManager(browser));
+	return new AutofillManager(browser);
 }
 
 void AutofillManager::didChangeInTextField(HTMLInputElement* element)

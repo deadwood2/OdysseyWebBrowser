@@ -86,7 +86,7 @@ public:
     void didStart();
     virtual void didReceiveResponse(ResourceHandle*, WebCore::ResourceResponse&&) override;
     virtual void didReceiveData(ResourceHandle*, const char*, unsigned, int) override;
-    virtual void didFinishLoading(ResourceHandle*, double) override;
+    virtual void didFinishLoading(ResourceHandle*) override;
     virtual void didFail(ResourceHandle*, const ResourceError&) override;
     virtual void wasBlocked(ResourceHandle*) override;
     virtual void cannotShowURL(ResourceHandle*) override;
@@ -239,7 +239,7 @@ void DownloadClient::didReceiveData(ResourceHandle*, const char* data, unsigned 
 	}
 }
 
-void DownloadClient::didFinishLoading(ResourceHandle*, double)
+void DownloadClient::didFinishLoading(ResourceHandle*)
 {
     if (!m_download->downloadDelegate())
         return;
@@ -362,7 +362,6 @@ WebDownload::~WebDownload()
             m_priv->resourceHandle->cancel();
         }
 
-        m_priv->resourceHandle.release();
         m_priv->resourceHandle = nullptr;
     }
     

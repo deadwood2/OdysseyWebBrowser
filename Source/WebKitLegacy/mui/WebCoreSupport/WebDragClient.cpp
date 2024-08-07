@@ -87,7 +87,7 @@ void WebDragClient::willPerformDragSourceAction(DragSourceAction action, const I
     // See WebKit/win/WebCoreSupport/WebDragClient.cpp for how to implement it.
 }
 
-void WebDragClient::startDrag(DragImage image, const IntPoint& imageOrigin, const IntPoint& dragPoint, const WebCore::FloatPoint&, DataTransfer& dataTransfer, Frame& frame, DragSourceAction dragSourceAction)
+void WebDragClient::startDrag(DragItem item, DataTransfer& dataTransfer, Frame& frame)
 {
     D(kprintf("startDrag image %p islink %d imageOrigin (%d %d) dragPoint (%d %d) clipboard %p\n", image, isLink, imageOrigin.x(), imageOrigin.y(), dragPoint.x(), dragPoint.y(), clipboard));
 
@@ -98,7 +98,7 @@ void WebDragClient::startDrag(DragImage image, const IntPoint& imageOrigin, cons
 	RefPtr<DataObjectMorphOS> dataObject = dataTransfer.pasteboard().dataObject();
 	D(kprintf("dataObject %p\n", dataObject.get()));
 
-	if (dragSourceAction != DragSourceActionLink)
+	if (item.sourceAction != DragSourceActionLink)
 	{
 	    DragData dragData(dataObject.get(), IntPoint(0, 0), IntPoint(0,0), dataTransfer.sourceOperation());
 	    char *data = NULL;

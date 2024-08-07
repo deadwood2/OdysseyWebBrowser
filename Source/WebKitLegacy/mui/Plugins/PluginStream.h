@@ -56,9 +56,9 @@ namespace WebCore {
 
     class PluginStream : public RefCounted<PluginStream>, private NetscapePlugInStreamLoaderClient {
     public:
-        static PassRefPtr<PluginStream> create(PluginStreamClient* client, Frame* frame, const ResourceRequest& request, bool sendNotification, void* notifyData, const NPPluginFuncs* functions, NPP instance, const PluginQuirkSet& quirks)
+        static Ref<PluginStream> create(PluginStreamClient* client, Frame* frame, const ResourceRequest& request, bool sendNotification, void* notifyData, const NPPluginFuncs* functions, NPP instance, const PluginQuirkSet& quirks)
         {
-            return adoptRef(new PluginStream(client, frame, request, sendNotification, notifyData, functions, instance, quirks));
+            return adoptRef(*new PluginStream(client, frame, request, sendNotification, notifyData, functions, instance, quirks));
         }
         virtual ~PluginStream();
         
@@ -75,7 +75,7 @@ namespace WebCore {
         static NPP ownerForStream(NPStream*);
 
         // NetscapePlugInStreamLoaderClient
-        virtual void willSendRequest(NetscapePlugInStreamLoader*, ResourceRequest&&, const ResourceResponse& redirectResponse, std::function<void (ResourceRequest&&)>&&);
+        void willSendRequest(NetscapePlugInStreamLoader*, ResourceRequest&&, const ResourceResponse& redirectResponse, WTF::Function<void (ResourceRequest&&)>&&) override;
         virtual void didReceiveResponse(NetscapePlugInStreamLoader*, const ResourceResponse&);
         virtual void didReceiveData(NetscapePlugInStreamLoader*, const char*, int);
         virtual void didFail(NetscapePlugInStreamLoader*, const ResourceError&);

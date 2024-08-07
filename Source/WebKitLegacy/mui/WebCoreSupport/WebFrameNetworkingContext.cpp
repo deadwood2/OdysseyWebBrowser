@@ -24,6 +24,7 @@
 #include "FrameLoaderClient.h"
 #include "NetworkStorageSession.h"
 #include "Page.h"
+#include <WebCore/FrameLoader.h>
 
 using namespace WebCore;
 

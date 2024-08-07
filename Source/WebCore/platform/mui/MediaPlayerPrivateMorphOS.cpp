@@ -35,6 +35,7 @@
 #include "Document.h"
 #include "Frame.h"
 #include "FrameView.h"
+#include "FrameLoader.h"
 #include "GraphicsContext.h"
 #include "HostWindow.h"
 #include "HTMLMediaElement.h"
@@ -604,14 +605,14 @@ public:
 
         buffer_mutex = new Mutex;
 
-		video_thread = 0;
+		video_thread = nullptr;
 		video_thread_running = false;
 		video_queue_size = 0;
 		video_queue  = new Vector<ACPackage>;
 		video_mutex  = new Mutex;
 		video_condition = new ThreadCondition;
 
-		audio_thread = 0;
+		audio_thread = nullptr;
 		audio_thread_running = false;
 		audio_queue_size = 0;
 		audio_queue  = new Vector<ACPackage>;
@@ -898,7 +899,7 @@ public:
 
 	/* video decoder thread and queue */
 	Vector<ACPackage>*     video_queue;
-	ThreadIdentifier       video_thread;
+	RefPtr<Thread>         video_thread;
 	bool                   video_thread_running;
 	Mutex*                 video_mutex;
 	ThreadCondition*       video_condition;
@@ -906,14 +907,14 @@ public:
 
 	/* audio decoder thread and queue */
 	Vector<ACPackage>*     audio_queue;
-	ThreadIdentifier       audio_thread;
+	RefPtr<Thread>         audio_thread;
 	bool                   audio_thread_running;
 	Mutex*                 audio_mutex;
 	ThreadCondition*       audio_condition;
 	int                    audio_queue_size;
 
 	/* audio output thread */
-	ThreadIdentifier       audiooutput_thread;
+	RefPtr<Thread>         audiooutput_thread;
 	bool                   audiooutput_thread_running;
 	Mutex*                 audio_output_mutex;
 
@@ -1468,7 +1469,10 @@ bool MediaPlayerPrivate::audioOpen()
 		}
 
 		m_lock.lock();
-		m_ctx->audiooutput_thread         = createThread(MediaPlayerPrivate::audioOutputStart, this, "[OWB] Audio Output");
+		m_ctx->audiooutput_thread         = Thread::create("[OWB] Audio Output", [this] {
+            MediaPlayerPrivate::audioOutputStart(this);
+        });
+
 		m_ctx->audiooutput_thread_running = m_ctx->audiooutput_thread;
 		m_lock.unlock();
 
@@ -1610,7 +1614,7 @@ void MediaPlayerPrivate::audioClose()
 		{
 			D(kprintf("[MediaPlayer Thread] Wait for audio output thread end\n"));
 			Signal(stream->audiotask, 1L<<stream->sigkill);
-			waitForThreadCompletion(m_ctx->audiooutput_thread);
+			m_ctx->audiooutput_thread->waitForCompletion();
 		}
 
 		D(kprintf("[MediaPlayer Thread] Free AHI objects\n"));
@@ -1776,7 +1780,7 @@ public:
 		m_mediaPlayer->didReceiveData(data, length, lengthReceived);
 	}
 
-	virtual void didFinishLoading(ResourceHandle*, double) override
+	virtual void didFinishLoading(ResourceHandle*) override
 	{
 		D(kprintf("[StreamClient] didFinishLoading\n"));
 		m_mediaPlayer->didFinishLoading();
@@ -2116,7 +2120,6 @@ void MediaPlayerPrivate::didReceiveResponse(const ResourceResponse& response)
 void MediaPlayerPrivate::didFinishLoading()
 {
 	m_ctx->transfer_completed = m_ctx->media_buffer.isComplete(m_ctx);
-	m_ctx->resource_handle.release();
 	m_ctx->resource_handle = nullptr;
 
 	D(kprintf("[MediaPlayer] didFinishLoading: eof %d\n", m_ctx->transfer_completed));
@@ -2147,7 +2150,6 @@ void MediaPlayerPrivate::didFailLoading(const ResourceError& error)
 {
 	m_ctx->transfer_completed = false;
 	m_ctx->network_error = error.errorCode();
-	m_ctx->resource_handle.release();
 	m_ctx->resource_handle = nullptr;
 
 	D(kprintf("Network Error %d\n", m_ctx->network_error));
@@ -2223,7 +2225,6 @@ bool MediaPlayerPrivate::fetchData(unsigned long long startOffset)
 	{
 		m_ctx->resource_handle->clearClient();
 		m_ctx->resource_handle->cancel();
-		m_ctx->resource_handle.release();
 		m_ctx->resource_handle = nullptr;
 	}
 
@@ -2302,7 +2303,6 @@ void MediaPlayerPrivate::cancelFetch()
 	{
 		m_ctx->resource_handle->clearClient();
 		m_ctx->resource_handle->cancel();
-		m_ctx->resource_handle.release();
 		m_ctx->resource_handle = nullptr;
 	}
 
@@ -2858,7 +2858,9 @@ void MediaPlayerPrivate::playerLoop()
 					if(ctx->has_video)
 					{
 						m_lock.lock();
-						ctx->video_thread = createThread(MediaPlayerPrivate::videoDecoderStart, this, "[OWB] MediaPlayer Video");
+						ctx->video_thread = Thread::create("[OWB] MediaPlayer Video", [this] {
+                            MediaPlayerPrivate::videoDecoderStart(this);
+                        });
 						ctx->video_thread_running = ctx->video_thread;
 						m_lock.unlock();
 
@@ -2871,7 +2873,9 @@ void MediaPlayerPrivate::playerLoop()
 					if(ctx->has_audio)
 					{
 						m_lock.lock();
-						ctx->audio_thread = createThread(MediaPlayerPrivate::audioDecoderStart, this, "[OWB] MediaPlayer Audio");
+						ctx->audio_thread = Thread::create("[OWB] MediaPlayer Audio", [this] {
+                            MediaPlayerPrivate::audioDecoderStart(this);
+                        });
 						ctx->audio_thread_running = ctx->audio_thread;
 						m_lock.unlock();
 
@@ -3162,7 +3166,7 @@ void MediaPlayerPrivate::playerLoop()
 		ctx->video_mutex->lock();
 		ctx->video_condition->signal();
 		ctx->video_mutex->unlock();
-		waitForThreadCompletion(ctx->video_thread);
+		ctx->video_thread->waitForCompletion();
 	}
 
 	if(ctx->audio_thread_running)
@@ -3171,7 +3175,7 @@ void MediaPlayerPrivate::playerLoop()
 		ctx->audio_mutex->lock();
 		ctx->audio_condition->signal();
 		ctx->audio_mutex->unlock();
-		waitForThreadCompletion(ctx->audio_thread);
+		ctx->audio_thread->waitForCompletion();
 	}
 
 #if DUMPINFO
@@ -3290,7 +3294,9 @@ MediaPlayerPrivate::MediaPlayerPrivate(MediaPlayer* player)
 
 	/* Start player thread */
 	m_lock.lock();
-	m_thread = createThread(MediaPlayerPrivate::playerLoopStart, this, "[OWB] MediaPlayer");
+	m_thread = Thread::create("[OWB] MediaPlayer", [this] {
+        MediaPlayerPrivate::playerLoopStart(this);
+    });
 	m_threadRunning = m_thread;
 	m_lock.unlock();
 
@@ -3326,7 +3332,7 @@ asm("int3");
 		sendCommand(IPCCommand(IPC_CMD_STOP));
 
 		D(kprintf("[MediaPlayer] Wait for thread end\n"));
-		waitForThreadCompletion(m_thread);
+		m_thread->waitForCompletion();
 	}
 
 	m_ctx->mediaplayer = 0;
@@ -3347,7 +3353,6 @@ asm("int3");
 	{
 		m_ctx->resource_handle->clearClient();
 		m_ctx->resource_handle->cancel();
-		m_ctx->resource_handle.release();
 		m_ctx->resource_handle = nullptr;
 	}
 
@@ -3920,15 +3925,15 @@ MediaPlayer::SupportsType MediaPlayerPrivate::supportsType(const MediaEngineSupp
 {
     HashSet<String, ASCIICaseInsensitiveHash> types;
 
-    if (parameters.type.isNull() || parameters.type.isEmpty())
+    if (parameters.type.containerType().isNull() || parameters.type.containerType().isEmpty())
         return MediaPlayer::IsNotSupported;
 
     getSupportedTypes(types);
     D(kprintf("supportsType(%s, %s) %d\n", parameters.type.utf8().data(), parameters.codecs.utf8().data(), types.contains(parameters.type)));
 
     // spec says we should not return "probably" if the codecs string is empty
-    if(types.contains(parameters.type))
-	return parameters.codecs.isEmpty() ? MediaPlayer::MayBeSupported : MediaPlayer::IsSupported;	
+    if(types.contains(parameters.type.containerType()))
+        return parameters.type.codecs().isEmpty() ? MediaPlayer::MayBeSupported : MediaPlayer::IsSupported;	
 
     return MediaPlayer::IsNotSupported;
 }

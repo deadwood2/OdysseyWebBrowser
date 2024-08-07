@@ -82,7 +82,7 @@ Color DragData::asColor() const
     return Color();
 }
 
-bool DragData::containsCompatibleContent() const
+bool DragData::containsCompatibleContent(DraggingPurpose) const
 {
     return containsPlainText() || containsURL(DragData::DoNotConvertFilenames) || m_platformDragData->hasMarkup() || containsColor() || containsFiles();
 }

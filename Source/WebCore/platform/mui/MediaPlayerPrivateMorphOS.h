@@ -214,7 +214,7 @@ namespace WebCore
         WTF::Vector<IPCCommand> m_commandQueue;
 
         /* Thread/Synchronisation Handling */
-        ThreadIdentifier m_thread;
+        RefPtr<Thread> m_thread;
         bool m_threadRunning;
         ThreadCondition m_condition;
 

@@ -28,7 +28,7 @@
 
 #include "config.h"
 #include "GraphicsContext.h"
-#include "Api/WebView.h"
+#include "WebView.h"
 
 #include <proto/exec.h>
 #include <proto/intuition.h>

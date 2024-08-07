@@ -35,8 +35,8 @@
 /* OWB */
 #include "config.h"
 #include "GraphicsContext.h"
-#include <Api/WebFrame.h>
-#include <Api/WebView.h>
+#include "WebFrame.h"
+#include "WebView.h"
 #include <wtf/text/CString.h>
 #include "Page.h"
 #include "DOMImplementation.h"
@@ -62,7 +62,6 @@
 #include "WebFramePolicyListener.h"
 #include "DownloadDelegateMorphOS.h"
 #include "CookieManager.h"
-#include "ResourceHandleManager.h"
 #include "ResourceHandle.h"
 #include "ResourceError.h"
 #include "ResourceResponse.h"

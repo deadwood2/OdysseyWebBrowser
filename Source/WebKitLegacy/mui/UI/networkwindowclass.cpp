@@ -32,7 +32,6 @@
 #include <wtf/text/CString.h>
 #include "ResourceHandle.h"
 #include "ResourceHandleInternal.h"
-#include "ResourceHandleManager.h"
 #include "ResourceRequest.h"
 
 #include <proto/exec.h>

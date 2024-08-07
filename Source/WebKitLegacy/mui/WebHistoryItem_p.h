@@ -34,7 +34,7 @@
 
 class WebHistoryItemPrivate {
 public:
-    WebHistoryItemPrivate(PassRefPtr<WebCore::HistoryItem> historyItem) : m_historyItem(historyItem) {}
+    WebHistoryItemPrivate(RefPtr<WebCore::HistoryItem> historyItem) : m_historyItem(historyItem) {}
 
     RefPtr<WebCore::HistoryItem> m_historyItem;
 };

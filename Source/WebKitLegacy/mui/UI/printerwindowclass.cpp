@@ -32,8 +32,8 @@
 #include "FrameView.h"
 #include "HostWindow.h"
 
-#include <Api/WebFrame.h>
-#include <Api/WebView.h>
+#include "WebFrame.h"
+#include "WebView.h"
 
 #include <proto/dos.h>
 #include <cairo/cairo-ps.h>

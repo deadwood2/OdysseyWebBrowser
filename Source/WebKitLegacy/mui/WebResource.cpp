@@ -34,7 +34,7 @@
 
 using namespace WebCore;
 
-WebResource::WebResource(PassRefPtr<WebCore::SharedBuffer> data, const WebCore::URL& url, const WTF::String& mimeType, const WTF::String& textEncodingName, const WTF::String& frameName)
+WebResource::WebResource(RefPtr<WebCore::SharedBuffer>&& data, const WebCore::URL& url, const WTF::String& mimeType, const WTF::String& textEncodingName, const WTF::String& frameName)
     : m_data(data)
     , m_url(url)
     , m_mimeType(mimeType)
@@ -47,13 +47,13 @@ WebResource::~WebResource()
 {
 }
 
-WebResource* WebResource::createInstance(PassRefPtr<WebCore::SharedBuffer> data, const WebCore::ResourceResponse& response)
+WebResource* WebResource::createInstance(RefPtr<WebCore::SharedBuffer>&& data, const WebCore::ResourceResponse& response)
 {
-    WebResource* instance = new WebResource(data, response.url(), response.mimeType(), response.textEncodingName(), String());
+    WebResource* instance = new WebResource(WTFMove(data), response.url(), response.mimeType(), response.textEncodingName(), String());
     return instance;
 }
 
-void WebResource::initWithData( PassRefPtr<WebCore::SharedBuffer> data, String url, String mimeType, String textEncodingName, String frameName)
+void WebResource::initWithData( RefPtr<WebCore::SharedBuffer>&& data, String url, String mimeType, String textEncodingName, String frameName)
 {
     kprintf("WebResource::initWithData\n");
     m_data = data;
@@ -64,7 +64,7 @@ void WebResource::initWithData( PassRefPtr<WebCore::SharedBuffer> data, String u
 }
 
     
-PassRefPtr<WebCore::SharedBuffer> WebResource::data()
+RefPtr<WebCore::SharedBuffer> WebResource::data()
 {
     return m_data;
 }

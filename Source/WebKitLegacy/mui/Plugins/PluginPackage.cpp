@@ -31,6 +31,7 @@
 #include "PluginDatabase.h"
 #include "PluginDebug.h"
 #include "PluginView.h"
+#include <JavaScriptCore/CatchScope.h>
 #include <JavaScriptCore/Completion.h>
 #include <JavaScriptCore/JSGlobalObject.h>
 #include "IdentifierRep.h"
@@ -69,7 +70,7 @@ void PluginPackage::freeLibrarySoon()
     ASSERT(m_module);
     ASSERT(!m_loadCount);
 
-    m_freeLibraryTimer.startOneShot(0);
+    m_freeLibraryTimer.startOneShot(0_s);
 }
 
 void PluginPackage::freeLibraryTimerFired()
@@ -170,14 +171,14 @@ void PluginPackage::setEnabled(bool enabled)
     m_isEnabled = enabled;
 }
 
-PassRefPtr<PluginPackage> PluginPackage::createPackage(const String& path, const time_t& lastModified)
+RefPtr<PluginPackage> PluginPackage::createPackage(const String& path, const time_t& lastModified)
 {
     RefPtr<PluginPackage> package = adoptRef(new PluginPackage(path, lastModified));
 
     if (!package->fetchInfo())
-        return 0;
+        return nullptr;
 
-    return package.release();
+    return package;
 }
 
 #if ENABLE(NETSCAPE_PLUGIN_METADATA_CACHE)

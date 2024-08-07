@@ -41,7 +41,7 @@ void DOMEventListener::handleEvent(DOMEvent* /*evt*/)
 
 // DOMEvent -------------------------------------------------------------------
 
-DOMEvent::DOMEvent(PassRefPtr<WebCore::Event> e)
+DOMEvent::DOMEvent(RefPtr<WebCore::Event>&& e)
 : m_event(0)
 {
     m_event = e;
@@ -51,15 +51,15 @@ DOMEvent::~DOMEvent()
 {
 }
 
-DOMEvent* DOMEvent::createInstance(PassRefPtr<WebCore::Event> e)
+DOMEvent* DOMEvent::createInstance(RefPtr<WebCore::Event>&& e)
 {
     if (!e)
         return 0;
 
     if (e->isKeyboardEvent()) 
-        return new DOMKeyboardEvent(e);
+        return new DOMKeyboardEvent(WTFMove(e));
     else if (e->isMouseEvent()) 
-        return new DOMMouseEvent(e);
+        return new DOMMouseEvent(WTFMove(e));
     /*
     else if (e->isMutationEvent())
         return new DOMMutationEvent(e);
@@ -71,7 +71,7 @@ DOMEvent* DOMEvent::createInstance(PassRefPtr<WebCore::Event> e)
         return new DOMUIEvent(e);
     */
     else
-        return new DOMEvent(e);
+        return new DOMEvent(WTFMove(e));
 
     return 0;
 }

@@ -42,7 +42,7 @@
 #include <wtf/text/WTFString.h>
 #include <ResourceResponse.h>
 #include <SharedBuffer.h>
-#include <wtf/PassRefPtr.h>
+#include <wtf/RefPtr.h>
 
 class WebResource {
 public:
@@ -50,13 +50,13 @@ public:
     /**
      * create a new instance of WebResource
      */
-    static WebResource* createInstance(PassRefPtr<WebCore::SharedBuffer> data, const WebCore::ResourceResponse& response);
+    static WebResource* createInstance(RefPtr<WebCore::SharedBuffer>&& data, const WebCore::ResourceResponse& response);
 protected:
 
     /**
      * WebResource constructor
      */
-    WebResource(PassRefPtr<WebCore::SharedBuffer> data, const WebCore::URL& url, const WTF::String& mimeType, const WTF::String& textEncodingName, const WTF::String& frameName);
+    WebResource(RefPtr<WebCore::SharedBuffer>&& data, const WebCore::URL& url, const WTF::String& mimeType, const WTF::String& textEncodingName, const WTF::String& frameName);
 
 public:
 
@@ -74,13 +74,13 @@ public:
         @param frameName The frame name of the resource if the resource represents the contents of an entire HTML frame (can be nil).
         @result An initialized WebResource.
      */
-    virtual void initWithData(PassRefPtr<WebCore::SharedBuffer> data, WTF::String url, WTF::String mimeType, WTF::String textEncodingName, WTF::String frameName);
+    virtual void initWithData(RefPtr<WebCore::SharedBuffer>&& data, WTF::String url, WTF::String mimeType, WTF::String textEncodingName, WTF::String frameName);
 
     /**
      *  data 
      * @result The data of the resource.
      */
-    virtual PassRefPtr<WebCore::SharedBuffer> data();
+    virtual RefPtr<WebCore::SharedBuffer> data();
 
     /**
      *  URL 

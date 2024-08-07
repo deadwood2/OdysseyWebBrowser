@@ -39,6 +39,7 @@
 #include <Document.h>
 #include <Element.h>
 #include <Font.h>
+#include <FontCascade.h>
 #include <Event.h>
 #include <HTMLCollection.h>
 #include <HTMLFormElement.h>
@@ -666,7 +667,7 @@ WebFontDescription* DOMElement::font()
     webFontDescription->family = strdup(family.string().utf8().data());
     webFontDescription->familyLength = family.length();
     webFontDescription->size = fontDescription.computedSize();
-    webFontDescription->weight = fontDescription.weight() >= FontWeight600;
+    webFontDescription->weight = isFontWeightBold(fontDescription.weight());
     webFontDescription->italic = fontDescription.italic();
 
     return webFontDescription;
@@ -687,7 +688,7 @@ DOMCSSStyleDeclaration* DOMElement::style()
     if (!m_element)
         return 0;
 
-    WebCore::CSSStyleDeclaration* style = m_element->cssomStyle();
+    WebCore::CSSStyleDeclaration* style = &downcast<WebCore::StyledElement>(*m_element).cssomStyle();
     if (!style)
         return 0;
 

@@ -92,9 +92,9 @@ void WebDesktopNotificationsDelegate::requestPermission(WebCore::ScriptExecution
   D(kprintf("requestPermission\n"));
 
     NotificationClient::Permission permission = checkPermission(context);
-	if (permission != NotificationClient::PermissionNotAllowed) {
-		if (callback)
-			callback->handleEvent(Notification::permissionString(permission));
+    if (permission != NotificationClient::Permission::Default) {
+        if (callback)
+            callback->handleEvent(permission);
 		return;
 	}
 }
@@ -112,7 +112,7 @@ NotificationClient::Permission WebDesktopNotificationsDelegate::checkPermission(
     if (hasNotificationDelegate())
       notificationDelegate()->checkNotificationPermission(SecurityOrigin::create(url)->toString(), &out);*/
 	//return NotificationClient::PermissionNotAllowed; // (NotificationClient::Permission) out;
-	return NotificationClient::PermissionAllowed;
+	return NotificationClient::Permission::Granted;
 }
 
 bool WebDesktopNotificationsDelegate::hasPendingPermissionRequests(WebCore::ScriptExecutionContext*) const

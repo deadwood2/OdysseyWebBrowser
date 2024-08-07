@@ -136,10 +136,10 @@ std::unique_ptr<Pasteboard> Pasteboard::create(int clipboard)
 	return std::make_unique<Pasteboard>(clipboard);
 }
 
-std::unique_ptr<Pasteboard> Pasteboard::create(PassRefPtr<DataObjectMorphOS> dataObject, int clipboard)
+std::unique_ptr<Pasteboard> Pasteboard::create(RefPtr<DataObjectMorphOS> dataObject, int clipboard)
 {
 	D(kprintf("Pasteboard::create(dataobject %p clipboard %d)\n", dataObject.get(), clipboard));
-    return std::make_unique<Pasteboard>(dataObject, clipboard);
+    return std::make_unique<Pasteboard>(dataObject.get(), clipboard);
 }
 
 std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste()
@@ -172,7 +172,7 @@ std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop(const DragData& dra
 	return create(dragData.platformData(), 1);
 }
 
-Pasteboard::Pasteboard(PassRefPtr<DataObjectMorphOS> dataObject, int clipboard)
+Pasteboard::Pasteboard(RefPtr<DataObjectMorphOS> dataObject, int clipboard)
     : m_dataObject(dataObject)
 	, m_morphosClipboard(clipboard)
 {
@@ -192,7 +192,7 @@ Pasteboard::~Pasteboard()
 {
 }
 
-PassRefPtr<DataObjectMorphOS> Pasteboard::dataObject() const
+RefPtr<DataObjectMorphOS> Pasteboard::dataObject() const
 {
     return m_dataObject;
 }
@@ -488,7 +488,7 @@ RefPtr<DocumentFragment> Pasteboard::documentFragment(Frame& frame, Range& conte
     if (m_dataObject->hasMarkup()) {
         RefPtr<DocumentFragment> fragment = createFragmentFromMarkup(*frame.document(), m_dataObject->markup(), emptyString(), DisallowScriptingAndPluginContent);
         if (fragment)
-            return fragment.release();
+            return fragment;
     }
 
     if (!allowPlainText)
@@ -498,7 +498,7 @@ RefPtr<DocumentFragment> Pasteboard::documentFragment(Frame& frame, Range& conte
         chosePlainText = true;
         RefPtr<DocumentFragment> fragment = createFragmentFromText(context, m_dataObject->text());
         if (fragment)
-            return fragment.release();
+            return fragment;
     }
 
     return 0;

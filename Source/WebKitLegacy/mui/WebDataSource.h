@@ -91,7 +91,7 @@ public:
         @result Returns the raw data associated with the datasource.  Returns nil
         if the datasource hasn't loaded any data.
      */
-    virtual WTF::PassRefPtr<WebCore::SharedBuffer> data();
+    virtual WTF::RefPtr<WebCore::SharedBuffer> data();
 
     /**
      *  A representation holds a type specific representation

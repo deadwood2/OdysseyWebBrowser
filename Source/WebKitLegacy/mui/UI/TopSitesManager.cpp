@@ -231,14 +231,14 @@ String TopSitesManager::title(URL &url)
 	return title;
 }
 
-PassRefPtr<Image> TopSitesManager::screenshot(URL &url)
+RefPtr<Image> TopSitesManager::screenshot(URL &url)
 {
 	RefPtr<Image> image;
 	
 	SQLiteStatement select(m_topSitesDB, "SELECT screenshot FROM topsites WHERE url=?1;");
 
 	if(select.prepare())
-		return image.release();
+		return image;
 	
 	select.bindText(1, url.string());
 	
@@ -255,7 +255,7 @@ PassRefPtr<Image> TopSitesManager::screenshot(URL &url)
 		image->setData(WTFMove(imageData), true);
     }
 		
-	return image.release();
+	return image;
 }
 
 double TopSitesManager::lastAccessed(URL &url)

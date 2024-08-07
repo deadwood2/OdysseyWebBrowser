@@ -57,14 +57,14 @@ protected:
      * create a new instance of WebURLAuthenticationChallengeSender
      */
     static WebURLAuthenticationChallengeSender* createInstance(WebCore::AuthenticationClient*);
-	static WebURLAuthenticationChallengeSender* createInstance(PassRefPtr<WebCore::ResourceHandle>);
+	static WebURLAuthenticationChallengeSender* createInstance(RefPtr<WebCore::ResourceHandle>&&);
 private:
 
     /**
      *  WebURLAuthenticationChallengeSender constructor
      */
     WebURLAuthenticationChallengeSender(WebCore::AuthenticationClient*);
-	WebURLAuthenticationChallengeSender(PassRefPtr<WebCore::ResourceHandle>);
+	WebURLAuthenticationChallengeSender(RefPtr<WebCore::ResourceHandle>&&);
 public:
 
     /**

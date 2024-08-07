@@ -82,7 +82,7 @@ public:
     void webViewDidChangeSelection(WebNotification*);
 
     bool smartInsertDeleteEnabled();
-    bool isSelectTrailingWhitespaceEnabled();
+    bool isSelectTrailingWhitespaceEnabled() const final;
 
     void registerUndoStep(WebCore::UndoStep&) final;
     void registerRedoStep(WebCore::UndoStep&) final;
@@ -133,6 +133,8 @@ public:
 
     virtual void getGuessesForWord(const String& word, const String& context, const WebCore::VisibleSelection& currentSelection, Vector<String>& guesses) override;
     virtual void requestCheckingOfString(WebCore::TextCheckingRequest&, const WebCore::VisibleSelection& currentSelection) override;
+
+    bool performTwoStepDrop(WebCore::DocumentFragment&, WebCore::Range&, bool) final { return false; }
 
 private:
     WebView* m_webView;

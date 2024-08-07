@@ -58,6 +58,7 @@
 #include <Bookmarklet.h>
 #include <MemoryCache.h>
 #include <DocumentMarkerController.h>
+#include <WebCore/CSSAnimationController.h>
 #include <Editor.h>
 #include <Event.h>
 #include <FormState.h>
@@ -255,7 +256,7 @@ void WebFrame::reloadFromOrigin()
     if (!coreFrame)
         return;
 
-    coreFrame->loader().reload(true);
+    coreFrame->loader().reload(WebCore::ReloadOption::FromOrigin);
 }
 
 const char* WebFrame::name()
@@ -330,9 +331,9 @@ void WebFrame::loadURL(const char* url)
     if (isAbsolute(url)) {
         string u = "file://";
         u += url;
-        coreFrame->loader().load(FrameLoadRequest(coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(u.c_str()))), ShouldOpenExternalURLsPolicy::ShouldNotAllow));
+        coreFrame->loader().load(FrameLoadRequest(*coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(u.c_str()))), ShouldOpenExternalURLsPolicy::ShouldNotAllow));
     } else
-        coreFrame->loader().load(FrameLoadRequest(coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(url))), ShouldOpenExternalURLsPolicy::ShouldNotAllow));
+        coreFrame->loader().load(FrameLoadRequest(*coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(url))), ShouldOpenExternalURLsPolicy::ShouldNotAllow));
 }
 
 JSGlobalContextRef WebFrame::contextForScriptWorld(WebScriptWorld* world)
@@ -350,7 +351,7 @@ void WebFrame::loadRequest(WebMutableURLRequest* request)
     if (!coreFrame)
         return;
 
-    coreFrame->loader().load(FrameLoadRequest(coreFrame, request->resourceRequest(), ShouldOpenExternalURLsPolicy::ShouldNotAllow));
+    coreFrame->loader().load(FrameLoadRequest(*coreFrame, request->resourceRequest(), ShouldOpenExternalURLsPolicy::ShouldNotAllow));
 }
 
 void WebFrame::loadHTMLString(const char* string, const char* baseURL, const char* unreachableURL)
@@ -364,10 +365,10 @@ void WebFrame::loadHTMLString(const char* string, const char* baseURL, const cha
 
     ResourceRequest request(_baseURL);
     ResourceResponse response(URL(), mimeType, data.get()->size(), utf8Encoding);
-    SubstituteData substituteData(data.release(), failingURL, response, SubstituteData::SessionHistoryVisibility::Hidden);
+    SubstituteData substituteData(WTFMove(data), failingURL, response, SubstituteData::SessionHistoryVisibility::Hidden);
 
     if (Frame* coreFrame = core(this))
-        coreFrame->loader().load(FrameLoadRequest(coreFrame, request, ShouldOpenExternalURLsPolicy::ShouldNotAllow, substituteData));
+        coreFrame->loader().load(FrameLoadRequest(*coreFrame, request, ShouldOpenExternalURLsPolicy::ShouldNotAllow, substituteData));
 }
 
 void WebFrame::loadHTMLString(const char* string, const char* baseURL)
@@ -615,13 +616,13 @@ bool WebFrame::deselectAll()
     return coreFrame->editor().command("Unselect").execute();
 }
 
-PassRefPtr<Frame> WebFrame::createSubframeWithOwnerElement(WebView* webView, Page* page, HTMLFrameOwnerElement* ownerElement)
+Ref<Frame> WebFrame::createSubframeWithOwnerElement(WebView* webView, Page* page, HTMLFrameOwnerElement* ownerElement)
 {
     d->webView = webView;
 
-    RefPtr<Frame> frame = Frame::create(page, ownerElement, new WebFrameLoaderClient(this));
-    d->frame = frame.get();
-    return frame.release();
+    Ref<Frame> frame = Frame::create(page, ownerElement, new WebFrameLoaderClient(this));
+    d->frame = frame.ptr();
+    return frame;
 }
 
 void WebFrame::initWithWebView(WebView* webView, Page* page) 
@@ -641,7 +642,7 @@ void WebFrame::invalidate()
     ASSERT(coreFrame);
 
     if (Document* document = coreFrame->document())
-        document->recalcStyle(WebCore::Style::Force);
+        document->resolveStyle(WebCore::Document::ResolveStyleType::Rebuild);
 }
 
 bool WebFrame::isDisplayingStandaloneImage()
@@ -1327,10 +1328,10 @@ bool WebFrame::stringByEvaluatingJavaScriptInScriptWorld(WebScriptWorld* world, 
     // Start off with some guess at a frame and a global object, we'll try to do better...!
     JSDOMWindow* anyWorldGlobalObject = coreFrame->script().globalObject(mainThreadNormalWorld());
 
-    // The global object is probably a shell object? - if so, we know how to use this!
+    // The global object is probably a proxy object? - if so, we know how to use this!
     JSC::JSObject* globalObjectObj = toJS(globalObjectRef);
-    if (globalObjectObj->inherits(*globalObjectObj->vm(), JSDOMWindowShell::info()))
-        anyWorldGlobalObject = static_cast<JSDOMWindowShell*>(globalObjectObj)->window();
+    if (globalObjectObj->inherits(*globalObjectObj->vm(), JSDOMWindowProxy::info()))
+        anyWorldGlobalObject = static_cast<JSDOMWindowProxy*>(globalObjectObj)->window();
 
     // Get the frame from the global object we've settled on.
     Frame* frame = anyWorldGlobalObject->wrapped().frame();

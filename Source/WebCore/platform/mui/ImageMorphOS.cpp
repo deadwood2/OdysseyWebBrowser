@@ -37,12 +37,12 @@ void BitmapImage::invalidatePlatformData()
 {
 }
 
-static PassRefPtr<SharedBuffer> loadResourceSharedBufferFallback()
+static RefPtr<SharedBuffer> loadResourceSharedBufferFallback()
 {
     return SharedBuffer::create(); // TODO: fallback image?
 }
 
-static PassRefPtr<SharedBuffer> loadResourceSharedBuffer(const char* name)
+static RefPtr<SharedBuffer> loadResourceSharedBuffer(const char* name)
 {
     String fullPath = "";
     String fname = String(name);
@@ -59,17 +59,17 @@ static PassRefPtr<SharedBuffer> loadResourceSharedBuffer(const char* name)
     }
 
     RefPtr<SharedBuffer> buffer = SharedBuffer::createWithContentsOfFile(fullPath);
-    if (buffer)
-	return buffer.release();
+    if (buffer.get())
+        return buffer;
     return loadResourceSharedBufferFallback();
 }
 
-PassRefPtr<Image> Image::loadPlatformResource(const char* name)
+Ref<Image> Image::loadPlatformResource(const char* name)
 {
-    RefPtr<BitmapImage> img = BitmapImage::create();
+    Ref<BitmapImage> img = BitmapImage::create();
     RefPtr<SharedBuffer> buffer = loadResourceSharedBuffer(name);
-    img->setData(buffer.release(), true);
-    return img.release();
+    img->setData(WTFMove(buffer), true);
+    return img;
 }
 
 }    

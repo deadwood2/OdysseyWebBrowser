@@ -28,8 +28,8 @@
 
 #include "config.h"
 #include "GraphicsContext.h"
-#include <Api/WebFrame.h>
-#include <Api/WebView.h>
+#include "WebFrame.h"
+#include "WebView.h"
 
 #include <clib/macros.h>
 #include <proto/dos.h>

@@ -299,7 +299,6 @@ DEFDISP
 	{
 		data->resource_handle->clearClient();
 		data->resource_handle->cancel();
-		data->resource_handle.release();
 		data->resource_handle = nullptr;
 	}
 
@@ -492,7 +491,6 @@ DEFTMETHOD(SuggestPopString_Abort)
 	{
 		data->resource_handle->clearClient();
 		data->resource_handle->cancel();
-		data->resource_handle.release();
 		data->resource_handle = nullptr;
 	}
 
@@ -533,7 +531,6 @@ DEFTMETHOD(SuggestPopString_Initiate)
 			{
 				data->resource_handle->clearClient();
 				data->resource_handle->cancel();
-				data->resource_handle.release();
 				data->resource_handle = nullptr;
 			}
 

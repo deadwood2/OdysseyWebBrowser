@@ -44,7 +44,6 @@
 
 #if USE(CURL)
 #include "URL.h"
-#include "ResourceHandleManager.h"
 #include <CookieManager.h>
 #endif
 

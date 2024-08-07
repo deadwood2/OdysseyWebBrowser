@@ -64,8 +64,9 @@ private:
     virtual void suspendPendingRequests() override;
     virtual void resumePendingRequests() override;
 
-    virtual void createPingHandle(WebCore::NetworkingContext*, WebCore::ResourceRequest&, bool shouldUseCredentialStorage, bool shouldFollowRedirects) override;
+    virtual void createPingHandle(WebCore::NetworkingContext*, WebCore::ResourceRequest&, Ref<WebCore::SecurityOrigin>&& sourceOrigin, const WebCore::FetchOptions&) override;
     void storeDerivedDataToCache(const SHA1::Digest& bodyKey, const String& type, const String& partition, WebCore::SharedBuffer&) override;
+    void setCaptureExtraNetworkLoadMetricsEnabled(bool) override;
 };
 
 #endif // WebPlatformStrategies_h

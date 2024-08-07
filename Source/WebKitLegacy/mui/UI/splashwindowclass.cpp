@@ -27,8 +27,8 @@
  */
 
 #include "config.h"
-#include <Api/WebFrame.h>
-#include <Api/WebView.h>
+#include "WebFrame.h"
+#include "WebView.h"
 #include "Page.h"
 #include "Frame.h"
 #include <wtf/CurrentTime.h>

@@ -35,7 +35,7 @@ public:
     ScrollbarThemeBal() {};
     virtual ~ScrollbarThemeBal();
 
-    virtual int scrollbarThickness(ScrollbarControlSize = RegularScrollbar) override;
+    virtual int scrollbarThickness(ScrollbarControlSize = RegularScrollbar, ScrollbarExpansionState = ScrollbarExpansionState::Expanded) override;
 
     virtual void themeChanged() override;
     

@@ -74,7 +74,7 @@ ScrollbarThemeBal::~ScrollbarThemeBal()
 }
 
 
-int ScrollbarThemeBal::scrollbarThickness(ScrollbarControlSize controlSize)
+int ScrollbarThemeBal::scrollbarThickness(ScrollbarControlSize controlSize, ScrollbarExpansionState)
 {
     UNUSED_PARAM(controlSize);
     return 11;

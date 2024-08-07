@@ -36,7 +36,7 @@
 #include "Timer.h"
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
-#include <wtf/PassRefPtr.h>
+#include <wtf/RefPtr.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
 #include <wtf/text/CString.h>
@@ -81,8 +81,8 @@ namespace WebCore {
     class PluginRequest {
         WTF_MAKE_NONCOPYABLE(PluginRequest); WTF_MAKE_FAST_ALLOCATED;
     public:
-        PluginRequest(const FrameLoadRequest& frameLoadRequest, bool sendNotification, void* notifyData, bool shouldAllowPopups)
-            : m_frameLoadRequest(frameLoadRequest)
+        PluginRequest(FrameLoadRequest&& frameLoadRequest, bool sendNotification, void* notifyData, bool shouldAllowPopups)
+            : m_frameLoadRequest(WTFMove(frameLoadRequest))
             , m_notifyData(notifyData)
             , m_sendNotification(sendNotification)
             , m_shouldAllowPopups(shouldAllowPopups) { }
@@ -114,7 +114,7 @@ namespace WebCore {
                      , public PluginManualLoader
                      , private MediaCanStartListener {
     public:
-        static PassRefPtr<PluginView> create(Frame* parentFrame, const IntSize&, HTMLPlugInElement*, const URL&, const Vector<String>& paramNames, const Vector<String>& paramValues, const String& mimeType, bool loadManually);
+        static Ref<PluginView> create(Frame* parentFrame, const IntSize&, HTMLPlugInElement*, const URL&, const Vector<String>& paramNames, const Vector<String>& paramValues, const String& mimeType, bool loadManually);
         virtual ~PluginView();
 
         PluginPackage* plugin() const { return m_plugin.get(); }
@@ -232,7 +232,7 @@ namespace WebCore {
         void platformDestroy();
         static void setCurrentPluginView(PluginView*);
 #if ENABLE(NETSCAPE_PLUGIN_API)
-        NPError load(const FrameLoadRequest&, bool sendNotification, void* notifyData);
+        NPError load(FrameLoadRequest&&, bool sendNotification, void* notifyData);
         NPError handlePost(const char* url, const char* target, uint32_t len, const char* buf, bool file, void* notifyData, bool sendNotification, bool allowHeaders);
         NPError handlePostReadFile(Vector<char>& buffer, uint32_t len, const char* buf);
 #endif
@@ -279,7 +279,7 @@ namespace WebCore {
         void handleKeyboardEvent(KeyboardEvent*);
         void handleMouseEvent(MouseEvent*);
 
-        PassRefPtr<Image> snapshot();
+        RefPtr<Image> snapshot();
 
         int m_mode;
         int m_paramCount;

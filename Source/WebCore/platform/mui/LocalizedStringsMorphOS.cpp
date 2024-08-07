@@ -39,6 +39,10 @@
 
 namespace WebCore {
 
+String localizedString(const char* key)
+{
+    return String(key);
+}
 
 String submitButtonDefaultLabel()
 {
@@ -326,11 +330,6 @@ String searchMenuClearRecentSearchesText()
 	return String::fromUTF8(GSI(MSG_LOCALIZED_CLEAR_RECENT_SEARCHES));
 }
 
-String AXDescriptionListText()
-{
-        return String::fromUTF8("Description");
-}
-
 String AXDefinitionListTermText()
 {
 	return String::fromUTF8(GSI(MSG_LOCALIZED_TERM));
@@ -339,86 +338,6 @@ String AXDefinitionListTermText()
 String AXDefinitionListDefinitionText()
 {
 	return String::fromUTF8(GSI(MSG_LOCALIZED_DEFINITION));
-}
-
-String AXFileUploadButtonText()
-{
-    return String();
-}
-
-String AXButtonActionVerb()
-{
-    return String();
-}
-
-String AXRadioButtonActionVerb()
-{
-    return String();
-}
-
-String AXTextFieldActionVerb()
-{
-    return String();
-}
-
-String AXCheckedCheckBoxActionVerb()
-{
-    return String();
-}
-
-String AXUncheckedCheckBoxActionVerb()
-{
-    return String();
-}
-
-String AXMenuListPopupActionVerb()
-{
-    return String();
-}
-
-String AXMenuListActionVerb()
-{
-    return String();
-}
-
-String AXLinkActionVerb()
-{
-    return String();
-}
-
-String AXListItemActionVerb()
-{
-    return String();
-}
-
-String AXSearchFieldCancelButtonText()
-{
-    return String();
-}
-
-String AXAutoFillButtonText()
-{
-    return String::fromUTF8("autofill");
-}
-
-String AXAutoFillCredentialsLabel()
-{
-    return String::fromUTF8("password auto fill");
-}
-
-String AXAutoFillContactsLabel()
-{
-    return String::fromUTF8("contact info auto fill");
-}
-
-String unknownFileSizeText()
-{
-	return String::fromUTF8(GSI(MSG_LOCALIZED_UNKNOWN));
-}
-
-String imageTitle(const String&, const IntSize&)
-{
-    return String();
 }
 
 String contextMenuItemTagLeftToRight()
@@ -444,246 +363,6 @@ String contextMenuItemTagWritingDirectionMenu()
 String contextMenuItemTagTextDirectionMenu()
 {
 	return String::fromUTF8(GSI(MSG_LOCALIZED_TEXT_DIRECTION));
-}
-
-String multipleFileUploadText(unsigned)
-{
-    return String();
-}
-
-#if ENABLE(VIDEO)
-
-String mediaElementLoadingStateText()
-{
-    return String::fromUTF8("Loading ...");
-}
-
-String mediaElementLiveBroadcastStateText()
-{
-    return String::fromUTF8("Live broadcast");
-}
-
-String localizedMediaControlElementString(const String& name)
-{
-    if (name == "AudioElement")
-        return String::fromUTF8("audio element controller");
-    if (name == "VideoElement")
-        return String::fromUTF8("video element controller");
-    if (name == "MuteButton")
-        return String::fromUTF8("mute");
-    if (name == "UnMuteButton")
-        return String::fromUTF8("unmute");
-    if (name == "PlayButton")
-        return String::fromUTF8("play");
-    if (name == "PauseButton")
-        return String::fromUTF8("pause");
-    if (name == "Slider")
-        return String::fromUTF8("movie time");
-    if (name == "SliderThumb")
-        return String::fromUTF8("timeline slider thumb");
-    if (name == "RewindButton")
-        return String::fromUTF8("back 30 seconds");
-    if (name == "ReturnToRealtimeButton")
-        return String::fromUTF8("return to realtime");
-    if (name == "CurrentTimeDisplay")
-        return String::fromUTF8("elapsed time");
-    if (name == "TimeRemainingDisplay")
-        return String::fromUTF8("remaining time");
-    if (name == "StatusDisplay")
-        return String::fromUTF8("status");
-    if (name == "FullscreenButton")
-        return String::fromUTF8("fullscreen");
-    if (name == "SeekForwardButton")
-        return String::fromUTF8("fast forward");
-    if (name == "SeekBackButton")
-        return String::fromUTF8("fast reverse");
-
-    ASSERT_NOT_REACHED();
-    return String();
-}
-
-String localizedMediaControlElementHelpText(const String& name)
-{
-    if (name == "AudioElement")
-        return String::fromUTF8("audio element playback controls and status display");
-    if (name == "VideoElement")
-        return String::fromUTF8("video element playback controls and status display");
-    if (name == "MuteButton")
-        return String::fromUTF8("mute audio tracks");
-    if (name == "UnMuteButton")
-        return String::fromUTF8("unmute audio tracks");
-    if (name == "PlayButton")
-        return String::fromUTF8("begin playback");
-    if (name == "PauseButton")
-        return String::fromUTF8("pause playback");
-    if (name == "Slider")
-        return String::fromUTF8("movie time scrubber");
-    if (name == "SliderThumb")
-        return String::fromUTF8("movie time scrubber thumb");
-    if (name == "RewindButton")
-        return String::fromUTF8("seek movie back 30 seconds");
-    if (name == "ReturnToRealtimeButton")
-        return String::fromUTF8("return streaming movie to real time");
-    if (name == "CurrentTimeDisplay")
-        return String::fromUTF8("current movie time in seconds");
-    if (name == "TimeRemainingDisplay")
-        return String::fromUTF8("number of seconds of movie remaining");
-    if (name == "StatusDisplay")
-        return String::fromUTF8("current movie status");
-    if (name == "SeekBackButton")
-        return String::fromUTF8("seek quickly back");
-    if (name == "SeekForwardButton")
-        return String::fromUTF8("seek quickly forward");
-    if (name == "FullscreenButton")
-        return String::fromUTF8("Play movie in fullscreen mode");
-
-    ASSERT_NOT_REACHED();
-    return String();
-}
-
-String localizedMediaTimeDescription(float time)
-{
-    if (!std::isfinite(time))
-        return String::fromUTF8("indefinite time");
-
-    int seconds = (int)fabsf(time);
-    int days = seconds / (60 * 60 * 24);
-    int hours = seconds / (60 * 60);
-    int minutes = (seconds / 60) % 60;
-    seconds %= 60;
-
-    String timeString;
-    if (days) {
-        timeString.append(String::number(days));
-        timeString.append(" days ");
-    }
-
-    if (hours) {
-        timeString.append(String::number(hours));
-        timeString.append(" hours ");
-
-    }
-
-    if (minutes) {
-        timeString.append(String::number(minutes));
-	timeString.append( " minutes ");
-    }
-
-    timeString.append(String::number(seconds));
-    timeString.append(" seconds");
-    return timeString;
-}
-
-#endif // ENABLE(VIDEO)
-
-String validationMessagePatternMismatchText()
-{
-    return String::fromUTF8("pattern mismatch");
-}
-
-String validationMessageRangeOverflowText(const String&)
-{
-    return String::fromUTF8("range overflow");
-}
-
-String validationMessageRangeUnderflowText(const String&)
-{
-    return String::fromUTF8("range underflow");
-}
-
-String validationMessageStepMismatchText(const String&, const String&)
-{
-    return String::fromUTF8("step mismatch");
-}
-
-String validationMessageTooLongText(int, int)
-{
-    return String::fromUTF8("too long");
-}
-
-String validationMessageTooShortText(int, int)
-{
-    return String::fromUTF8("too short");
-}
-
-String validationMessageTypeMismatchText()
-{
-    return String::fromUTF8("type mismatch");
-}
-
-String validationMessageTypeMismatchForEmailText()
-{
-    return String::fromUTF8("type mismatch");
-}
-
-String validationMessageTypeMismatchForMultipleEmailText()
-{
-    return String::fromUTF8("type mismatch");
-}
-
-String validationMessageTypeMismatchForURLText()
-{
-    return String::fromUTF8("type mismatch");
-}
-
-String validationMessageValueMissingText()
-{
-    return String::fromUTF8("value missing");
-}
-
-String validationMessageValueMissingForCheckboxText()
-{
-    notImplemented();
-    return validationMessageValueMissingText();
-}
-
-String validationMessageValueMissingForFileText()
-{
-    notImplemented();
-    return validationMessageValueMissingText();
-}
-
-String validationMessageValueMissingForMultipleFileText()
-{
-    notImplemented();
-    return validationMessageValueMissingText();
-}
-
-String validationMessageValueMissingForRadioText()
-{
-    notImplemented();
-    return validationMessageValueMissingText();
-}
-
-String validationMessageValueMissingForSelectText()
-{
-    notImplemented();
-    return validationMessageValueMissingText();
-}
-
-String missingPluginText()
-{
-	return String::fromUTF8("Missing plugin");
-}
-
-String crashedPluginText()
-{
-	return String::fromUTF8("Crashed plugin");
-}
-
-String blockedPluginByContentSecurityPolicyText()
-{
-    return String::fromUTF8("Blocked plugin");
-}
-
-String insecurePluginVersionText()
-{
-    return String::fromUTF8("Insecure plugin");
-}
-
-String inactivePluginText()
-{
-    return String::fromUTF8("Inactive plugin");
 }
 
 String contextMenuItemTagOpenVideoInNewWindow()
@@ -741,64 +420,12 @@ String contextMenuItemTagDownloadAudioToDisk()
     return String::fromUTF8(GSI(MSG_LOCALIZED_DOWNLOADMEDIA));
 }
 
-String validationMessageBadInputForNumberText()
-{
-    return String();
-}
-
-String clickToExitFullScreenText()
-{
-    return String();
-}
-
 #if ENABLE(INPUT_TYPE_WEEK)
 String weekFormatInLDML()
 {
     return String();
 }
 #endif
-
-#if ENABLE(VIDEO_TRACK)
-String textTrackClosedCaptionsText()
-{
-  return String::fromUTF8("Closed Captions");
-}
-
-String textTrackSubtitlesText()
-{
-  return String::fromUTF8("Subtitleq");
-}
-
-String textTrackOffMenuItemText()
-{
-  return String::fromUTF8("Off");
-}
-
-String textTrackAutomaticMenuItemText()
-{
-  return String::fromUTF8("Automatic (todo)");
-}
-
-String textTrackNoLabelText()
-{
-  return String::fromUTF8("No Label");
-}
-
-String audioTrackNoLabelText()
-{
-  return String::fromUTF8("No Label");
-}
-#endif
-
-String snapshottedPlugInLabelTitle()
-{
-  return String::fromUTF8("Snapshotted Plug-In");
-}
-
-String snapshottedPlugInLabelSubtitle()
-{
-  return String::fromUTF8("Click to restart");
-}
 
 }
 

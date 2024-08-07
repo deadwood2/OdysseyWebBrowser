@@ -33,7 +33,7 @@
 #include "GraphicsContext.h"
 #include "Logging.h"
 #include "MIMETypeRegistry.h"
-#include <wtf/PassRefPtr.h>
+#include <wtf/RefPtr.h>
 #include "BitmapImage.h"
 
 #include <cstdio>
@@ -72,7 +72,7 @@ RefPtr<Icon> Icon::createIconForFiles(const Vector<String>& filenames)
 		iconPath = String(rexx_result());
 		RefPtr<Icon> icon = adoptRef(new Icon);
 		icon->m_icon = Image::loadPlatformResource(iconPath.utf8().data());
-		return icon.release();
+		return icon;
     }
 
     return 0;

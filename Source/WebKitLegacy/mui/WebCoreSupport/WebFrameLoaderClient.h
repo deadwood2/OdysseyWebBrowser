@@ -40,6 +40,7 @@ namespace WebCore {
     class PluginView;
     class FrameLoader;
     class Widget;
+    enum PolicyAction;
 }
 
 class WebObjectApplicationManager;
@@ -104,15 +105,15 @@ public:
     virtual WebCore::Frame* dispatchCreatePage(const WebCore::NavigationAction&);
     virtual void dispatchShow();
 
-    virtual void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::FramePolicyFunction);
-    void dispatchDecidePolicyForNewWindowAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, const WTF::String& frameName, WebCore::FramePolicyFunction) override;
-    void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, WebCore::FramePolicyFunction) override;
+    void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::FramePolicyFunction&&) override;
+    void dispatchDecidePolicyForNewWindowAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, const WTF::String& frameName, WebCore::FramePolicyFunction&&) override;
+    void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, WebCore::FramePolicyFunction&&) override;
     virtual void cancelPolicyCheck();
 
     virtual void dispatchUnableToImplementPolicy(const WebCore::ResourceError&);
 
     void dispatchWillSendSubmitEvent(Ref<WebCore::FormState>&&) override;
-    void dispatchWillSubmitForm(WebCore::FormState&, WebCore::FramePolicyFunction) override;
+    void dispatchWillSubmitForm(WebCore::FormState&, WTF::Function<void(void)>&&) override;
 
     virtual void revertToProvisionalState(WebCore::DocumentLoader*);
     virtual void setMainDocumentError(WebCore::DocumentLoader*, const WebCore::ResourceError&);
@@ -207,7 +208,7 @@ public:
 
     virtual bool shouldAlwaysUsePluginDocument(const WTF::String& mimeType) const;
 
-    WebFramePolicyListener* setUpPolicyListener(WebCore::FramePolicyFunction function);
+    WebFramePolicyListener* setUpPolicyListener(WebCore::FramePolicyFunction&& function);
     void receivedPolicyDecision(WebCore::PolicyAction);
 
 #if USE(CURL_OPENSSL)
@@ -221,7 +222,7 @@ public:
     void dispatchDidFailToStartPlugin(const WebCore::PluginView*) const;
 
 private:
-    PassRefPtr<WebCore::Frame> createFrame(const WebCore::URL&, const WTF::String& name, WebCore::HTMLFrameOwnerElement*, const WTF::String& referrer);
+    RefPtr<WebCore::Frame> createFrame(const WebCore::URL&, const WTF::String& name, WebCore::HTMLFrameOwnerElement*, const WTF::String& referrer);
     WebHistory* webHistory() const;
     
     WebFrame* m_webFrame;

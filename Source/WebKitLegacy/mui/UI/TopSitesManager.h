@@ -19,7 +19,7 @@
 #ifndef TopSitesManager_h
 #define TopSitesManager_h
 
-#include <wtf/PassRefPtr.h>
+#include <wtf/RefPtr.h>
 #include <wtf/RefCounted.h>
 
 #include "WebKitTypes.h"
@@ -64,7 +64,7 @@ protected:
 
 	// Attributes
 	WTF::String title(URL &url);
-	WTF::PassRefPtr<Image> screenshot(URL &url);
+	WTF::RefPtr<Image> screenshot(URL &url);
 	int visitCount(URL &url);
 	double lastAccessed(URL &url);
 	

@@ -30,7 +30,7 @@
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringHash.h>
-#include "ResourceHandleManager.h"
+#include <wtf/HashMap.h>
 #include "ResourceHandle.h"
 #include "SQLiteDatabase.h"
 #include "SQLiteStatement.h"

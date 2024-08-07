@@ -136,7 +136,7 @@ public:
 #endif
 
 #if ENABLE(INPUT_TYPE_DATE)
-    virtual PassRefPtr<WebCore::DateTimeChooser> openDateTimeChooser(WebCore::DateTimeChooserClient*, const WebCore::DateTimeChooserParameters&);
+    virtual RefPtr<WebCore::DateTimeChooser> openDateTimeChooser(WebCore::DateTimeChooserClient*, const WebCore::DateTimeChooserParameters&);
 #endif 
 
     void runOpenPanel(WebCore::Frame&, WebCore::FileChooser&) final;
@@ -191,10 +191,12 @@ public:
     virtual void numWheelEventHandlersChanged(unsigned) { }
     virtual void wheelEventHandlersChanged(bool) { }
 
-     WebView* webView() { return m_webView; }
+    WebView* webView() { return m_webView; }
 
-     virtual void AXStartFrameLoad(); 
-     virtual void AXFinishFrameLoad(); 
+    virtual void AXStartFrameLoad(); 
+    virtual void AXFinishFrameLoad(); 
+
+    RefPtr<WebCore::Icon> createIconForFiles(const Vector<String>&) final;
 
 private:
     WebView* m_webView;

@@ -1,3 +1,5 @@
+include(platform/Cairo.cmake)
+include(platform/Curl.cmake)
 include(platform/ImageDecoders.cmake)
 include(platform/TextureMapper.cmake)
 
@@ -9,8 +11,8 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/network/curl"
     "${WEBCORE_DIR}/platform/mui"
     "${WEBCORE_DIR}/platform/bal"
-    "${WEBKIT_DIR}/mui/Api/MorphOS"
-    "${WEBKIT_DIR}/mui/Api/AROS/include"
+    "${WEBKIT_DIR}/mui/UI"
+    "${WEBKIT_DIR}/mui/UI/AROS/include"
 )
 
 list(APPEND WebCore_SOURCES
@@ -21,22 +23,6 @@ list(APPEND WebCore_SOURCES
     platform/bal/ObserverServiceData.cpp
 
     platform/Cursor.cpp
-
-    platform/graphics/cairo/CairoUtilities.cpp
-    platform/graphics/cairo/FontCairo.cpp
-    platform/graphics/cairo/GradientCairo.cpp
-    platform/graphics/cairo/GraphicsContext3DCairo.cpp
-    platform/graphics/cairo/GraphicsContextCairo.cpp
-    platform/graphics/cairo/ImageBufferCairo.cpp
-    platform/graphics/cairo/ImageCairo.cpp
-    platform/graphics/cairo/IntRectCairo.cpp
-    platform/graphics/cairo/NativeImageCairo.cpp
-    platform/graphics/cairo/PathCairo.cpp
-    platform/graphics/cairo/PatternCairo.cpp
-    platform/graphics/cairo/PlatformContextCairo.cpp
-    platform/graphics/cairo/PlatformPathCairo.cpp
-    platform/graphics/cairo/RefPtrCairo.cpp
-    platform/graphics/cairo/TransformationMatrixCairo.cpp
 
     platform/graphics/freetype/FontCacheFreeType.cpp
     platform/graphics/freetype/FontCustomPlatformDataFreeType.cpp
@@ -69,6 +55,7 @@ list(APPEND WebCore_SOURCES
     platform/mui/MainThreadSharedTimerMorphOS.cpp
     platform/mui/MediaPlayerPrivateMorphOS.cpp
     platform/mui/MIMETypeRegistryMorphOS.cpp
+    platform/mui/NetworkStateNotifierMUI.cpp
     platform/mui/PasteboardMorphOS.cpp
     platform/mui/PlatformKeyboardEventMorphOS.cpp
     platform/mui/PlatformMouseEventMorphOS.cpp
@@ -78,33 +65,19 @@ list(APPEND WebCore_SOURCES
     platform/mui/RenderThemeMorphOS.cpp
     platform/mui/ScrollbarThemeMorphOS.cpp
     platform/mui/SearchPopupMenuMorphOS.cpp
-    platform/mui/SoundMorphOS.cpp
     platform/mui/SSLKeyGeneratorMorphOS.cpp
     platform/mui/WidgetMorphOS.cpp
 
     platform/image-decoders/cairo/ImageBackingStoreCairo.cpp
 
     platform/network/curl/CookieDatabaseBackingStoreCurl.cpp
-    platform/network/curl/CookieJarCurl.cpp
     platform/network/curl/CookieManagerCurl.cpp
     platform/network/curl/CookieMapCurl.cpp
     platform/network/curl/CookieParserCurl.cpp
-    platform/network/curl/CurlCacheEntry.cpp
-    platform/network/curl/CurlCacheManager.cpp
-    platform/network/curl/DNSCurl.cpp
-    platform/network/curl/FormDataStreamCurl.cpp
-    platform/network/curl/MultipartHandle.cpp
     platform/network/curl/ParsedCookieCurl.cpp
-    platform/network/curl/ProxyServerCurl.cpp
-    platform/network/curl/ResourceHandleCurl.cpp
-    platform/network/curl/ResourceHandleManager.cpp
-    platform/network/curl/SocketStreamHandleImplCurl.cpp
-    platform/network/curl/SSLHandle.cpp
-
     platform/network/HTTPParsers.cpp
     platform/network/NetworkStorageSessionStub.cpp
 
-    platform/KillRingNone.cpp
     platform/PlatformStrategies.cpp
 
     platform/posix/FileSystemPOSIX.cpp
@@ -138,4 +111,101 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     ${SQLITE_INCLUDE_DIR}
     ${ZLIB_INCLUDE_DIRS}
 )
+
+set(WebCore_FORWARDING_HEADERS_DIRECTORIES
+    .
+    accessibility
+    bindings
+    bridge
+    contentextensions
+    css
+    dom
+    editing
+    fileapi
+    history
+    html
+    inspector
+    loader
+    page
+    platform
+    plugins
+    rendering
+    storage
+    style
+    svg
+    websockets
+    workers
+    xml
+
+    Modules/geolocation
+    Modules/indexeddb
+    Modules/mediastream
+    Modules/websockets
+
+    Modules/indexeddb/client
+    Modules/indexeddb/legacy
+    Modules/indexeddb/server
+    Modules/indexeddb/shared
+    Modules/notifications
+    Modules/webdatabase
+
+    bindings/js
+
+    bridge/c
+    bridge/jsc
+
+    css/parser
+
+    html/forms
+    html/parser
+    html/shadow
+    html/track
+
+    loader/appcache
+    loader/archive
+    loader/cache
+    loader/icon
+
+
+    page/animation
+    page/csp
+    page/scrolling
+
+    platform/animation
+    platform/audio
+    platform/graphics
+    platform/mock
+    platform/network
+    platform/network/curl
+    platform/sql
+    platform/text
+
+
+    platform/graphics/filters
+    platform/graphics/opengl
+    platform/graphics/opentype
+    platform/graphics/texmap
+    platform/graphics/transforms
+    platform/graphics/win
+
+    platform/mediastream/libwebrtc
+
+    platform/text/transcoder
+
+    rendering/line
+    rendering/shapes
+    rendering/style
+    rendering/svg
+
+    svg/animation
+    svg/graphics
+    svg/properties
+
+    svg/graphics/filters
+)
+
+set(WebCore_FORWARDING_HEADERS_FILES
+)
+
+WEBKIT_CREATE_FORWARDING_HEADERS(WebCore DIRECTORIES ${WebCore_FORWARDING_HEADERS_DIRECTORIES} FILES ${WebCore_FORWARDING_HEADERS_FILES})
 

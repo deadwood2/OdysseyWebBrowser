@@ -31,7 +31,7 @@ namespace WebCore {
 
 class DataObjectMorphOS : public RefCounted<DataObjectMorphOS> {
 public:
-	static PassRefPtr<DataObjectMorphOS> create()
+	static RefPtr<DataObjectMorphOS> create()
     {
 		return adoptRef(new DataObjectMorphOS());
     }
@@ -40,7 +40,7 @@ public:
     const String& uriList() const { return m_uriList; }
     const Vector<String>& filenames() const { return m_filenames; }
 	NativeImagePtr image() const { return m_image; }
-    void setRange(PassRefPtr<Range> newRange) { m_range = newRange; }
+    void setRange(RefPtr<Range> newRange) { m_range = newRange; }
 	void setImage(NativeImagePtr newImage) { m_image = newImage; }
     void setURL(const URL&, const String&);
     bool hasText() const { return m_range || !m_text.isEmpty(); }

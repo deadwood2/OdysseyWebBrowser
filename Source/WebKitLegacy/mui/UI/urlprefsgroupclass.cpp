@@ -34,8 +34,8 @@
 #include <yarr/RegularExpression.h>
 #include "Settings.h"
 #include "CookieManager.h"
-#include "Api/WebView.h"
-#include "Api/WebPreferences.h"
+#include "WebView.h"
+#include "WebPreferences.h"
 
 #include <proto/exec.h>
 #include <proto/intuition.h>

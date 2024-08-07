@@ -19,7 +19,7 @@
 #ifndef AutofillManager_h
 #define AutofillManager_h
 
-#include <wtf/PassRefPtr.h>
+#include <wtf/RefPtr.h>
 #include <wtf/RefCounted.h>
 
 namespace WTF {
@@ -32,7 +32,7 @@ class HTMLInputElement;
 
 class AutofillManager : public RefCounted<AutofillManager> {
 public:
-	static PassRefPtr<AutofillManager> create(void *browser);
+	static RefPtr<AutofillManager> create(void *browser);
 
     void didChangeInTextField(HTMLInputElement*);
     void autofillTextField(const WTF::String&);
