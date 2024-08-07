@@ -50,7 +50,8 @@ inline ProcessID getCurrentProcessID()
 #if OS(WINDOWS)
     return GetCurrentProcessId();
 #elif PLATFORM(MUI)
-    return (int) FindTask(NULL);
+    // FIXME: wrong for 64-bits
+    return (int) (IPTR) FindTask(NULL);
 #else
     return getpid();
 #endif
