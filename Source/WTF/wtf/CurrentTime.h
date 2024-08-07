@@ -35,6 +35,11 @@
 #include <time.h>
 #include <wtf/Seconds.h>
 
+#if PLATFORM(MUI)
+extern long get_DST_offset(void);
+extern long get_GMT_offset(void);
+#endif
+
 namespace WTF {
 
 // Provides a monotonically increasing time in seconds since an arbitrary point in the past.

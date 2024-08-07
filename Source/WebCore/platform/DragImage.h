@@ -43,6 +43,9 @@ OBJC_CLASS NSImage;
 typedef struct HBITMAP__* HBITMAP;
 #elif USE(CAIRO)
 #include "RefPtrCairo.h"
+typedef struct _cairo_surface cairo_surface_t;
+#elif PLATFORM(MUI)
+#include "BALBase.h"
 #endif
 
 // We need to #define YOffset as it needs to be shared with WebKit

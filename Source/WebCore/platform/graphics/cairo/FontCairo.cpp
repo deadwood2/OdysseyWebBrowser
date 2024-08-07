@@ -33,6 +33,7 @@
 
 #if USE(CAIRO)
 
+#include "Logging.h"
 #include "AffineTransform.h"
 #include "CairoUtilities.h"
 #include "Font.h"
@@ -46,6 +47,20 @@
 #include "ShadowBlur.h"
 
 namespace WebCore {
+
+#if PLATFORM(MUI)
+
+bool FontCascade::canReturnFallbackFontsForComplexText()
+{
+    return false;
+}
+
+bool FontCascade::canExpandAroundIdeographsInComplexText()
+{
+    return false;
+}
+
+#endif
 
 void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const GlyphBuffer& glyphBuffer,
     unsigned from, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode)
@@ -223,9 +238,9 @@ DashArray FontCascade::dashesForIntersectionsWithRect(const TextRun& run, const 
     float deltaX;
     if (codePath(run) != FontCascade::Complex)
         deltaX = getGlyphsAndAdvancesForSimpleText(run, 0, run.length(), glyphBuffer);
-    else
-        deltaX = getGlyphsAndAdvancesForComplexText(run, 0, run.length(), glyphBuffer);
-
+//    else
+//        deltaX = getGlyphsAndAdvancesForComplexText(run, 0, run.length(), glyphBuffer);
+//
     if (!glyphBuffer.size())
         return DashArray();
 

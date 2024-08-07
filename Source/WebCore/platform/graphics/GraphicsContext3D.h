@@ -25,6 +25,7 @@
 
 #pragma once
 
+#if !PLATFORM(MUI)
 #include "ANGLEWebKitBridge.h"
 #include "GraphicsContext3DAttributes.h"
 #include "GraphicsTypes3D.h"
@@ -37,6 +38,7 @@
 #include <wtf/ListHashSet.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
+#include <wtf/text/CString.h>
 
 #if USE(CA)
 #include "PlatformCALayer.h"
@@ -1496,3 +1498,5 @@ private:
 };
 
 } // namespace WebCore
+
+#endif

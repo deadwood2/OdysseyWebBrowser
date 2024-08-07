@@ -1,3 +1,4 @@
+
 /*
  * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
  *
@@ -154,7 +155,7 @@ public:
     static void setClientCertificate(const String& host, CFDataRef);
 #endif
 
-#if OS(WINDOWS) && USE(CURL)
+#if (OS(WINDOWS) || PLATFORM(MUI)) && USE(CURL)
     static void setHostAllowsAnyHTTPSCertificate(const String&);
     static void setClientCertificateInfo(const String&, const String&, const String&);
 #endif
@@ -185,6 +186,16 @@ public:
     MonotonicTime m_requestTime;
 #endif
 
+#if PLATFORM(MUI)
+    bool canResume();
+    void checkAndSendCookies(URL& url);
+    bool isResuming();
+    void setCanResume(bool value);
+    void setCookies();
+    void setStartOffset(unsigned long long offset);
+    unsigned long long startOffset();
+#endif
+
     bool hasAuthenticationChallenge() const;
     void clearAuthentication();
     WEBCORE_EXPORT virtual void cancel();
@@ -192,6 +203,9 @@ public:
     // The client may be 0, in which case no callbacks will be made.
     WEBCORE_EXPORT ResourceHandleClient* client() const;
     WEBCORE_EXPORT void clearClient();
+#if PLATFORM(MUI)
+    void setClientInternal(ResourceHandleClient*);
+#endif
 
 #if USE(PROTECTION_SPACE_AUTH_CALLBACK)
     // Called in response to ResourceHandleClient::canAuthenticateAgainstProtectionSpaceAsync().

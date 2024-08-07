@@ -102,7 +102,9 @@ public:
             , m_structure(structure)
         {
             if (hasStructure(kind))
+            {
                 ASSERT(structure);
+            }
         }
 
         static Descriptor forValue(JSValue);

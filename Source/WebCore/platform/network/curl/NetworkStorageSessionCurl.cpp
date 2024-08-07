@@ -48,7 +48,8 @@ static String defaultCookieJarPath()
     if (cookieJarPath)
         return cookieJarPath;
 
-    String cookieJarDirectory = FileSystem::localUserSpecificStorageDirectory();
+asm("int3");
+    String cookieJarDirectory;// = FileSystem::localUserSpecificStorageDirectory();
 
     if (!FileSystem::makeAllDirectories(cookieJarDirectory))
         return defaultFileName;

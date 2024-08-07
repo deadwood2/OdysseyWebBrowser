@@ -42,6 +42,10 @@
 #include <wtf/MainThread.h>
 #include <wtf/text/CString.h>
 
+#if PLATFORM(MUI)
+#include <proto/bsdsocket.h>
+#endif
+
 namespace WebCore {
 
 static std::unique_ptr<char[]> createCopy(const char* data, int length)
@@ -186,7 +190,7 @@ bool SocketStreamHandleImpl::waitForAvailableData(CURL* curlHandle, Seconds sele
     fd_set fdread;
     FD_ZERO(&fdread);
     FD_SET(socket, &fdread);
-    int rc = ::select(0, &fdread, nullptr, nullptr, &timeout);
+    int rc = select(0, &fdread, nullptr, nullptr, &timeout);
     return rc == 1;
 }
 

@@ -84,6 +84,7 @@
     || OS(FREEBSD)             \
     || OS(OPENBSD)             \
     || OS(HURD)                \
+    || OS(AROS)                \
     || OS(NETBSD)              \
     || COMPILER(MINGW)
     // GNU as-compatible syntax.

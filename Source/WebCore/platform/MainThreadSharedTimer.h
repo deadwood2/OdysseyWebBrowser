@@ -44,6 +44,9 @@ public:
     void setFireInterval(Seconds) override;
     void stop() override;
     void invalidate() override;
+#if PLATFORM(MUI)
+    void fireTimerIfNeeded();
+#endif
 
     // FIXME: This should be private, but CF and Windows implementations
     // need to call this from non-member functions at the moment.

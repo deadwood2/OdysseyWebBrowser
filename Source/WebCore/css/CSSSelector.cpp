@@ -99,6 +99,7 @@ static unsigned selectorSpecificity(const CSSSelector& firstSimpleSelector, bool
     return total;
 }
 
+#if ENABLE(CSS_SELECTORS_LEVEL4)
 static unsigned maxSpecificity(const CSSSelectorList& selectorList)
 {
     unsigned maxSpecificity = 0;
@@ -106,6 +107,7 @@ static unsigned maxSpecificity(const CSSSelectorList& selectorList)
         maxSpecificity = std::max(maxSpecificity, selectorSpecificity(*subSelector, true));
     return maxSpecificity;
 }
+#endif
 
 static unsigned simpleSelectorSpecificityInternal(const CSSSelector& simpleSelector, bool isComputingMaximumSpecificity)
 {

@@ -441,7 +441,6 @@ set(WTF_PRIVATE_INCLUDE_DIRECTORIES
 )
 
 set(WTF_LIBRARIES
-    ${CMAKE_DL_LIBS}
 )
 
 if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
@@ -479,11 +478,6 @@ if (WIN32)
     )
     list(APPEND WTF_LIBRARIES
         winmm
-    )
-else ()
-    list(APPEND WTF_SOURCES
-        OSAllocatorPosix.cpp
-        ThreadingPthreads.cpp
     )
 endif ()
 

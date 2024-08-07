@@ -34,6 +34,10 @@
     #define suppressNotImplementedWarning() false
 #endif
 
+#if PLATFORM(MUI)
+#define balNotImplemented() notImplemented();
+#endif
+
 #if LOG_DISABLED
     #define notImplemented() ((void)0)
 #else

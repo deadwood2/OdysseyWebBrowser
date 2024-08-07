@@ -35,6 +35,8 @@ elseif ("${PORT}" STREQUAL "Win")
     if (ENABLE_WEBKIT_LEGACY)
         add_subdirectory(MiniBrowser/win)
     endif ()
+elseif ("${PORT}" STREQUAL "MUI")
+    add_subdirectory(OdysseyWebBrowser)
 endif ()
 
 if (ENABLE_API_TESTS)

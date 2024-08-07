@@ -239,8 +239,13 @@ static inline double currentTime()
 static inline double currentTime()
 {
     struct timeval now;
-    gettimeofday(&now, 0);
-    return now.tv_sec + now.tv_usec / 1000000.0;
+
+	gettimeofday(&now, 0);
+#if PLATFORM(MUI)
+	return now.tv_sec + now.tv_usec / 1000000.0 + (double) (get_GMT_offset()) + (double) (get_DST_offset());
+#else
+	return now.tv_sec + now.tv_usec / 1000000.0;
+#endif
 }
 
 #endif
