@@ -896,6 +896,7 @@ void ResourceHandleManager::downloadTimerCallback()
         ASSERT(d->m_handle == handle);
 
         if (d->m_cancelled) {
+            CurlCacheManager::getInstance().didCancel(*job);
             removeFromCurl(job);
             continue;
         }
@@ -911,6 +912,7 @@ void ResourceHandleManager::downloadTimerCallback()
             if (!d->m_response.responseFired()) {
                 handleLocalReceiveResponse(d->m_handle, job, d);
                 if (d->m_cancelled) {
+                    CurlCacheManager::getInstance().didCancel(*job);
                     removeFromCurl(job);
                     continue;
                 }

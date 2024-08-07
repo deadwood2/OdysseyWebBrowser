@@ -177,9 +177,12 @@ void CurlCacheManager::saveIndex()
     auto it = m_LRUEntryList.begin();
     const auto& end = m_LRUEntryList.end();
     while (it != end) {
-        const CString& urlLatin1 = it->latin1();
-        FileSystem::writeToFile(indexFile, urlLatin1.data(), urlLatin1.length());
-        FileSystem::writeToFile(indexFile, "\n", 1);
+        auto iit = m_index.find(*it);
+        if (iit != m_index.end() && !iit->value->isLoading()) {
+            const CString& urlLatin1 = it->latin1();
+            FileSystem::writeToFile(indexFile, urlLatin1.data(), urlLatin1.length());
+            FileSystem::writeToFile(indexFile, "\n", 1);
+        }
         ++it;
     }
 
@@ -336,6 +339,13 @@ void CurlCacheManager::invalidateCacheEntry(const String& url)
 }
 
 void CurlCacheManager::didFail(ResourceHandle &job)
+{
+    const String& url = job.firstRequest().url().string();
+
+    invalidateCacheEntry(url);
+}
+
+void CurlCacheManager::didCancel(ResourceHandle &job)
 {
     const String& url = job.firstRequest().url().string();
 
