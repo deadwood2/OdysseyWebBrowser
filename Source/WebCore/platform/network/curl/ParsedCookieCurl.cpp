@@ -28,7 +28,6 @@
 #include "ParsedCookie.h"
 
 #include "CookieManager.h"
-#include <wtf/CurrentTime.h>
 #include "URL.h"
 #include "Logging.h"
 #include <curl/curl.h>
@@ -178,9 +177,12 @@ void ParsedCookie::appendWebCoreCookie(Vector<Cookie>& cookieVector) const
     URL commentURL;
     Vector<uint16_t> ports;
 
+asm("int3");
+#if 0
     cookieVector.append(Cookie(String(m_name), String(m_value), String(m_domain),
             // We multiply m_expiry by 1000 to convert from seconds to milliseconds.
             // This value is passed to Web Inspector and used in the JavaScript Date constructor.
             String(m_path), m_creationTime, (m_expiry * 1000), m_isHttpOnly, m_isSecure, m_isSession, comment, commentURL, ports));
+#endif
 }
 } // namespace WebCore

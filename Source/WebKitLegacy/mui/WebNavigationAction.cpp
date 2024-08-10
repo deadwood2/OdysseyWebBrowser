@@ -87,20 +87,25 @@ static const MouseEvent* findMouseEvent(const Event* event)
 
 WebHitTestResults* WebNavigationAction::webHitTestResults()
 {
+#if 0
     if (const MouseEvent* mouseEvent = findMouseEvent(m_action->event()))
         return WebHitTestResults::createInstance(core(m_frame)->eventHandler().hitTestResultAtPoint(mouseEvent->absoluteLocation(), false));
+#endif
     return 0;
 }
 
 unsigned short WebNavigationAction::button()
 {
+#if 0
     if (const MouseEvent* mouseEvent = findMouseEvent(m_action->event()))
         return mouseEvent->button();
+#endif
     return 0;
 }
 
 int WebNavigationAction::modifiers()
 {
+#if 0
     if (const UIEventWithKeyState* keyEvent = findEventWithKeyState(const_cast<Event*>(m_action->event()))) {
         int mod = 0;
 
@@ -112,6 +117,7 @@ int WebNavigationAction::modifiers()
             mod |= WEBALT;
         return mod;
     }
+#endif
     return 0;
 }
 

@@ -2654,8 +2654,10 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     /* int limit = preferences->memoryLimit();
     WTF::setMemoryLimit(limit); */
 
+#if 0
     enabled = preferences->allowScriptsToCloseWindows();
     settings->setAllowScriptsToCloseWindows(enabled);
+#endif
     
     settings->setSpatialNavigationEnabled(preferences->spatialNavigationEnabled());
 
