@@ -40,9 +40,8 @@
 SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
 SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVPlayerLayer)
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static NSString * const platformCALayerPointer = @"WKPlatformCALayer";
 
@@ -137,12 +136,12 @@ Ref<WebCore::PlatformCALayer> PlatformCALayerRemoteCustom::clone(PlatformCALayer
 
 CFTypeRef PlatformCALayerRemoteCustom::contents() const
 {
-    return [m_platformLayer contents];
+    return (__bridge CFTypeRef)[m_platformLayer contents];
 }
 
 void PlatformCALayerRemoteCustom::setContents(CFTypeRef contents)
 {
-    [m_platformLayer setContents:(id)contents];
+    [m_platformLayer setContents:(__bridge id)contents];
 }
 
 void PlatformCALayerRemoteCustom::setNeedsDisplayInRect(const FloatRect& rect)

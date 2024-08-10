@@ -316,4 +316,120 @@ TEST(WTF_OptionSet, IterationOrderTheSameRegardlessOfInsertionOrder)
     EXPECT_TRUE(*it1 == *it2);
 }
 
+TEST(WTF_OptionSet, OperatorAnd)
+{
+    OptionSet<ExampleFlags> a { ExampleFlags::A };
+    OptionSet<ExampleFlags> ac { ExampleFlags::A, ExampleFlags::C };
+    OptionSet<ExampleFlags> bc { ExampleFlags::B, ExampleFlags::C };
+    {
+        auto set = a & ac;
+        EXPECT_TRUE(!!set);
+        EXPECT_FALSE(set.isEmpty());
+        EXPECT_TRUE(set.contains(ExampleFlags::A));
+        EXPECT_FALSE(set.contains(ExampleFlags::B));
+        EXPECT_FALSE(set.contains(ExampleFlags::C));
+    }
+    {
+        auto set = a & bc;
+        EXPECT_FALSE(!!set);
+        EXPECT_TRUE(set.isEmpty());
+        EXPECT_FALSE(set.contains(ExampleFlags::A));
+        EXPECT_FALSE(set.contains(ExampleFlags::B));
+        EXPECT_FALSE(set.contains(ExampleFlags::C));
+    }
+    {
+        auto set = ac & bc;
+        EXPECT_TRUE(!!set);
+        EXPECT_FALSE(set.isEmpty());
+        EXPECT_FALSE(set.contains(ExampleFlags::A));
+        EXPECT_FALSE(set.contains(ExampleFlags::B));
+        EXPECT_TRUE(set.contains(ExampleFlags::C));
+    }
+    {
+        auto set = ExampleFlags::A & bc;
+        EXPECT_FALSE(!!set);
+        EXPECT_TRUE(set.isEmpty());
+        EXPECT_FALSE(set.contains(ExampleFlags::A));
+        EXPECT_FALSE(set.contains(ExampleFlags::B));
+        EXPECT_FALSE(set.contains(ExampleFlags::C));
+    }
+    {
+        auto set = ExampleFlags::A & ac;
+        EXPECT_TRUE(!!set);
+        EXPECT_FALSE(set.isEmpty());
+        EXPECT_TRUE(set.contains(ExampleFlags::A));
+        EXPECT_FALSE(set.contains(ExampleFlags::B));
+        EXPECT_FALSE(set.contains(ExampleFlags::C));
+    }
+    {
+        auto set = bc & ExampleFlags::A;
+        EXPECT_FALSE(!!set);
+        EXPECT_TRUE(set.isEmpty());
+        EXPECT_FALSE(set.contains(ExampleFlags::A));
+        EXPECT_FALSE(set.contains(ExampleFlags::B));
+        EXPECT_FALSE(set.contains(ExampleFlags::C));
+    }
+    {
+        auto set = ac & ExampleFlags::A;
+        EXPECT_TRUE(!!set);
+        EXPECT_FALSE(set.isEmpty());
+        EXPECT_TRUE(set.contains(ExampleFlags::A));
+        EXPECT_FALSE(set.contains(ExampleFlags::B));
+        EXPECT_FALSE(set.contains(ExampleFlags::C));
+    }
+}
+
+TEST(WTF_OptionSet, OperatorXor)
+{
+    OptionSet<ExampleFlags> a { ExampleFlags::A };
+    OptionSet<ExampleFlags> ac { ExampleFlags::A, ExampleFlags::C };
+    OptionSet<ExampleFlags> bc { ExampleFlags::B, ExampleFlags::C };
+    {
+        auto set = a ^ ac;
+        EXPECT_FALSE(set.contains(ExampleFlags::A));
+        EXPECT_FALSE(set.contains(ExampleFlags::B));
+        EXPECT_TRUE(set.contains(ExampleFlags::C));
+    }
+    {
+        auto set = a ^ bc;
+        EXPECT_TRUE(set.contains(ExampleFlags::A));
+        EXPECT_TRUE(set.contains(ExampleFlags::B));
+        EXPECT_TRUE(set.contains(ExampleFlags::C));
+    }
+    {
+        auto set = ac ^ bc;
+        EXPECT_TRUE(set.contains(ExampleFlags::A));
+        EXPECT_TRUE(set.contains(ExampleFlags::B));
+        EXPECT_FALSE(set.contains(ExampleFlags::C));
+    }
+}
+
+TEST(WTF_OptionSet, ContainsAny)
+{
+    OptionSet<ExampleFlags> set { ExampleFlags::A, ExampleFlags::B };
+
+    EXPECT_TRUE(set.containsAny({ ExampleFlags::A }));
+    EXPECT_TRUE(set.containsAny({ ExampleFlags::B }));
+    EXPECT_FALSE(set.containsAny({ ExampleFlags::C }));
+    EXPECT_FALSE(set.containsAny({ ExampleFlags::C, ExampleFlags::D }));
+    EXPECT_TRUE(set.containsAny({ ExampleFlags::A, ExampleFlags::B }));
+    EXPECT_TRUE(set.containsAny({ ExampleFlags::B, ExampleFlags::C }));
+    EXPECT_TRUE(set.containsAny({ ExampleFlags::A, ExampleFlags::C }));
+    EXPECT_TRUE(set.containsAny({ ExampleFlags::A, ExampleFlags::B, ExampleFlags::C }));
+}
+
+TEST(WTF_OptionSet, ContainsAll)
+{
+    OptionSet<ExampleFlags> set { ExampleFlags::A, ExampleFlags::B };
+
+    EXPECT_TRUE(set.containsAll({ ExampleFlags::A }));
+    EXPECT_TRUE(set.containsAll({ ExampleFlags::B }));
+    EXPECT_FALSE(set.containsAll({ ExampleFlags::C }));
+    EXPECT_FALSE(set.containsAll({ ExampleFlags::C, ExampleFlags::D }));
+    EXPECT_TRUE(set.containsAll({ ExampleFlags::A, ExampleFlags::B }));
+    EXPECT_FALSE(set.containsAll({ ExampleFlags::B, ExampleFlags::C }));
+    EXPECT_FALSE(set.containsAll({ ExampleFlags::A, ExampleFlags::C }));
+    EXPECT_FALSE(set.containsAll({ ExampleFlags::A, ExampleFlags::B, ExampleFlags::C }));
+}
+
 } // namespace TestWebKitAPI

@@ -142,7 +142,7 @@ namespace WebCore {
 #if !PLATFORM(IOS)
         NSEvent* macEvent() const { return m_macEvent.get(); }
 #else
-        WebEvent *event() const { return m_Event.get(); }
+        ::WebEvent *event() const { return m_Event.get(); }
 #endif
 #endif
 
@@ -162,6 +162,14 @@ namespace WebCore {
         static int windowsKeyCodeForGdkKeyCode(unsigned);
         static String singleCharacterString(unsigned);
         static bool modifiersContainCapsLock(unsigned);
+#endif
+
+#if PLATFORM(WPE)
+        static String keyValueForWPEKeyCode(unsigned);
+        static String keyCodeForHardwareKeyCode(unsigned);
+        static String keyIdentifierForWPEKeyCode(unsigned);
+        static int windowsKeyCodeForWPEKeyCode(unsigned);
+        static String singleCharacterString(unsigned);
 #endif
 
     protected:
@@ -191,7 +199,7 @@ namespace WebCore {
 #if !PLATFORM(IOS)
         RetainPtr<NSEvent> m_macEvent;
 #else
-        RetainPtr<WebEvent> m_Event;
+        RetainPtr<::WebEvent> m_Event;
 #endif
 #endif
 #if PLATFORM(GTK)

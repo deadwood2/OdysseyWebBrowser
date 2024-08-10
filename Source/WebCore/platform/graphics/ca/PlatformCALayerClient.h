@@ -40,9 +40,9 @@ public:
 
     virtual void platformCALayerCustomSublayersChanged(PlatformCALayer*) { }
 
-    virtual void platformCALayerAnimationStarted(const String& /*animationKey*/, CFTimeInterval) { }
+    virtual void platformCALayerAnimationStarted(const String& /*animationKey*/, MonotonicTime) { }
     virtual void platformCALayerAnimationEnded(const String& /*animationKey*/) { }
-    virtual GraphicsLayer::CompositingCoordinatesOrientation platformCALayerContentsOrientation() const { return GraphicsLayer::CompositingCoordinatesTopDown; }
+    virtual GraphicsLayer::CompositingCoordinatesOrientation platformCALayerContentsOrientation() const { return GraphicsLayer::CompositingCoordinatesOrientation::TopDown; }
     virtual void platformCALayerPaintContents(PlatformCALayer*, GraphicsContext&, const FloatRect& inClip, GraphicsLayerPaintBehavior) = 0;
     virtual bool platformCALayerShowDebugBorders() const { return false; }
     virtual bool platformCALayerShowRepaintCounter(PlatformCALayer*) const { return false; }

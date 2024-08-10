@@ -61,9 +61,11 @@ BEGIN {
        &appDisplayNameFromBundle
        &appendToEnvironmentVariableList
        &archCommandLineArgumentsForRestrictedEnvironmentVariables
+       &availableXcodeSDKs
        &baseProductDir
        &chdirWebKit
        &checkFrameworks
+       &cmakeArgsFromFeatures
        &cmakeBasedPortArguments
        &currentSVNRevision
        &debugSafari
@@ -92,6 +94,7 @@ BEGIN {
        &shutDownIOSSimulatorDevice
        &willUseIOSDeviceSDK
        &willUseIOSSimulatorSDK
+       DO_NOT_USE_OPEN_COMMAND
        SIMULATOR_DEVICE_SUFFIX_FOR_WEBKIT_DEVELOPMENT
        USE_OPEN_COMMAND
    );
@@ -114,6 +117,7 @@ use constant {
 };
 
 use constant USE_OPEN_COMMAND => 1; # Used in runMacWebKitApp().
+use constant DO_NOT_USE_OPEN_COMMAND => 2;
 use constant SIMULATOR_DEVICE_STATE_SHUTDOWN => "1";
 use constant SIMULATOR_DEVICE_STATE_BOOTED => "3";
 use constant SIMULATOR_DEVICE_SUFFIX_FOR_WEBKIT_DEVELOPMENT  => "For WebKit Development";
@@ -142,6 +146,7 @@ my $iosVersion;
 my $generateDsym;
 my $isCMakeBuild;
 my $isGenerateProjectOnly;
+my $shouldBuild32Bit;
 my $isWin64;
 my $isInspectorFrontend;
 my $portName;
@@ -227,7 +232,7 @@ sub determineXcodeVersion
 {
     return if defined $xcodeVersion;
     my $xcodebuildVersionOutput = `xcodebuild -version`;
-    $xcodeVersion = ($xcodebuildVersionOutput =~ /Xcode ([0-9](\.[0-9]+)*)/) ? $1 : "3.0";
+    $xcodeVersion = ($xcodebuildVersionOutput =~ /Xcode ([0-9]+(\.[0-9]+)*)/) ? $1 : "3.0";
 }
 
 sub readXcodeUserDefault($)
@@ -434,6 +439,8 @@ sub determineNumberOfCPUs
         $numberOfCPUs = `ls /proc/registry/HKEY_LOCAL_MACHINE/HARDWARE/DESCRIPTION/System/CentralProcessor | wc -w`;
     } elsif (isDarwin() || isBSD()) {
         chomp($numberOfCPUs = `sysctl -n hw.ncpu`);
+    } else {
+        $numberOfCPUs = 1;
     }
 }
 
@@ -498,33 +505,70 @@ sub extractNonMacOSHostConfiguration
     return @args;
 }
 
+# FIXME: Convert to json <rdar://problem/21594308>
+sub parseAvailableXcodeSDKs($)
+{
+    my @outputToParse = @{$_[0]};
+    my @result = ();
+    foreach my $line (@outputToParse) {
+        # Examples:
+        #    iOS 12.0 -sdk iphoneos12.0
+        #    Simulator - iOS 12.0 -sdk iphonesimulator12.0
+        #    macOS 10.14 -sdk macosx10.14
+        if ($line =~ /-sdk (\D+)([\d\.]+)(\D*)\n/) {
+            if ($3) {
+                push @result, "$1.$3";
+            } else {
+                push @result, "$1";
+            }
+        }
+    }
+    return @result;
+}
+
+sub availableXcodeSDKs
+{
+    my @output = `xcodebuild -showsdks`;
+    return parseAvailableXcodeSDKs(\@output);
+}
+
 sub determineXcodeSDK
 {
     return if defined $xcodeSDK;
     my $sdk;
+    
+    # The user explicitly specified the sdk, don't assume anything
     if (checkForArgumentAndRemoveFromARGVGettingValue("--sdk", \$sdk)) {
         $xcodeSDK = $sdk;
+        return;
     }
     if (checkForArgumentAndRemoveFromARGV("--device") || checkForArgumentAndRemoveFromARGV("--ios-device")) {
-        my $hasInternalSDK = exitStatus(system("xcrun --sdk iphoneos.internal --show-sdk-version > /dev/null 2>&1")) == 0;
-        $xcodeSDK ||= $hasInternalSDK ? "iphoneos.internal" : "iphoneos";
+        $xcodeSDK ||= "iphoneos";
     }
     if (checkForArgumentAndRemoveFromARGV("--simulator") || checkForArgumentAndRemoveFromARGV("--ios-simulator")) {
         $xcodeSDK ||= 'iphonesimulator';
     }
     if (checkForArgumentAndRemoveFromARGV("--tvos-device")) {
-        my $hasInternalSDK = exitStatus(system("xcrun --sdk appletvos.internal --show-sdk-version > /dev/null 2>&1")) == 0;
-        $xcodeSDK ||=  $hasInternalSDK ? "appletvos.internal" : "appletvos";
+        $xcodeSDK ||=  "appletvos";
     }
     if (checkForArgumentAndRemoveFromARGV("--tvos-simulator")) {
         $xcodeSDK ||= "appletvsimulator";
     }
     if (checkForArgumentAndRemoveFromARGV("--watchos-device")) {
-        my $hasInternalSDK = exitStatus(system("xcrun --sdk watchos.internal --show-sdk-version > /dev/null 2>&1")) == 0;
-        $xcodeSDK ||=  $hasInternalSDK ? "watchos.internal" : "watchos";
+        $xcodeSDK ||=  "watchos";
     }
     if (checkForArgumentAndRemoveFromARGV("--watchos-simulator")) {
         $xcodeSDK ||= "watchsimulator";
+    }
+    return if !defined $xcodeSDK;
+    
+    # Prefer the internal version of an sdk, if it exists.
+    my @availableSDKs = availableXcodeSDKs();
+
+    foreach my $sdk (@availableSDKs) {
+        next if $sdk ne "$xcodeSDK.internal";
+        $xcodeSDK = $sdk;
+        last;
     }
 }
 
@@ -772,10 +816,10 @@ sub executableProductDir
     my $productDirectory = productDir();
 
     my $binaryDirectory;
-    if (isGtk() || isJSCOnly() || isWPE()) {
-        $binaryDirectory = "bin";
-    } elsif (isAnyWindows()) {
+    if (isAnyWindows()) {
         $binaryDirectory = isWin64() ? "bin64" : "bin32";
+    } elsif (isGtk() || isJSCOnly() || isWPE()) {
+        $binaryDirectory = "bin";
     } else {
         return $productDirectory;
     }
@@ -845,6 +889,7 @@ sub XcodeOptions
     determineXcodeSDK();
 
     my @options;
+    push @options, "-UseNewBuildSystem=NO";
     push @options, "-UseSanitizedBuildSystemEnvironment=YES";
     push @options, ("-configuration", $configuration);
     push @options, ("-xcconfig", sourceDir() . "/Tools/asan/asan.xcconfig", "ASAN_IGNORE=" . sourceDir() . "/Tools/asan/webkit-asan-ignore.txt") if $asanIsEnabled;
@@ -933,7 +978,7 @@ sub determinePassedArchitecture
     $searchedForPassedArchitecture = 1;
 
     $passedArchitecture = undef;
-    if (checkForArgumentAndRemoveFromARGV("--32-bit")) {
+    if (shouldBuild32Bit()) {
         if (isAppleCocoaWebKit()) {
             # PLATFORM_IOS: Don't run `arch` command inside Simulator environment
             local %ENV = %ENV;
@@ -984,7 +1029,7 @@ sub setArchitecture
 # Locate Safari.
 sub safariPath
 {
-    die "Safari path is only relevant on Apple Mac platform\n" unless isAppleCocoaWebKit();
+    die "Safari path is only relevant on Apple Mac platform\n" unless isAppleMacWebKit();
 
     my $safariPath;
 
@@ -1231,6 +1276,18 @@ sub isWinCairo()
     return portName() eq WinCairo;
 }
 
+sub shouldBuild32Bit()
+{
+    determineShouldBuild32Bit();
+    return $shouldBuild32Bit;
+}
+
+sub determineShouldBuild32Bit()
+{
+    return if defined($shouldBuild32Bit);
+    $shouldBuild32Bit = checkForArgumentAndRemoveFromARGV("--32-bit");
+}
+
 sub isWin64()
 {
     determineIsWin64();
@@ -1240,7 +1297,7 @@ sub isWin64()
 sub determineIsWin64()
 {
     return if defined($isWin64);
-    $isWin64 = checkForArgumentAndRemoveFromARGV("--64-bit");
+    $isWin64 = checkForArgumentAndRemoveFromARGV("--64-bit") || ((isWinCairo() || isJSCOnly()) && !shouldBuild32Bit());
 }
 
 sub determineIsWin64FromArchitecture($)
@@ -1356,14 +1413,39 @@ sub isCrossCompilation()
     return 0;
 }
 
+sub isIOSWebKit()
+{
+    return portName() eq iOS;
+}
+
+sub isTVOSWebKit()
+{
+    return portName() eq tvOS;
+}
+
+sub isWatchOSWebKit()
+{
+    return portName() eq watchOS;
+}
+
+sub isEmbeddedWebKit()
+{
+    return isIOSWebKit() || isTVOSWebKit() || isWatchOSWebKit();
+}
+
 sub isAppleWebKit()
 {
     return isAppleCocoaWebKit() || isAppleWinWebKit();
 }
 
+sub isAppleMacWebKit()
+{
+    return portName() eq Mac;
+}
+
 sub isAppleCocoaWebKit()
 {
-    return (portName() eq Mac) || isIOSWebKit() || isTVOSWebKit() || isWatchOSWebKit();
+    return isAppleMacWebKit() || isEmbeddedWebKit();
 }
 
 sub isAppleWinWebKit()
@@ -1447,26 +1529,6 @@ sub willUseWatchDeviceSDK()
 sub willUseWatchSimulatorSDK()
 {
     return xcodeSDKPlatformName() eq "watchsimulator";
-}
-
-sub isIOSWebKit()
-{
-    return portName() eq iOS;
-}
-
-sub isTVOSWebKit()
-{
-    return portName() eq tvOS;
-}
-
-sub isWatchOSWebKit()
-{
-    return portName() eq watchOS;
-}
-
-sub isEmbeddedWebKit()
-{
-    return isIOSWebKit() || isTVOSWebKit() || isWatchOSWebKit();
 }
 
 sub determineNmPath()
@@ -1620,6 +1682,9 @@ sub launcherPath()
 {
     my $relativeScriptsPath = relativeScriptsDir();
     if (isGtk() || isWPE()) {
+        if (inFlatpakSandbox()) {
+            return "Tools/Scripts/run-minibrowser";
+        }
         return "$relativeScriptsPath/run-minibrowser";
     } elsif (isAppleWebKit()) {
         return "$relativeScriptsPath/run-safari";
@@ -1628,14 +1693,12 @@ sub launcherPath()
 
 sub launcherName()
 {
-    if (isGtk()) {
+    if (isGtk() || isWPE()) {
         return "MiniBrowser";
-    } elsif (isAppleCocoaWebKit()) {
+    } elsif (isAppleMacWebKit()) {
         return "Safari";
     } elsif (isAppleWinWebKit()) {
         return "MiniBrowser";
-    } elsif (isWPE()) {
-        return "dyz";
     }
 }
 
@@ -1917,7 +1980,9 @@ sub buildVisualStudioProject
     chomp($warningLogFile = `cygpath -w "$warningLogFile"`) if isCygwin();
     my $warningLogging = "/flp1:LogFile=" . $warningLogFile . ";WarningsOnly";
 
-    my @command = ($vcBuildPath, "/verbosity:minimal", $project, $action, $config, $platform, "/fl", $errorLogging, "/fl1", $warningLogging);
+    my $maxCPUCount = '/maxcpucount:' . numberOfCPUs();
+
+    my @command = ($vcBuildPath, "/verbosity:minimal", $project, $action, $config, $platform, "/fl", $errorLogging, "/fl1", $warningLogging, $maxCPUCount);
     print join(" ", @command), "\n";
     return system @command;
 }
@@ -1933,9 +1998,25 @@ sub getJhbuildPath()
     } elsif (isWPE()) {
         push(@jhbuildPath, "DependenciesWPE");
     } else {
-        die "Cannot get JHBuild path for platform that isn't GTK+.\n";
+        die "Cannot get JHBuild path for platform that isn't GTK+ or WPE.\n";
     }
     return File::Spec->catdir(@jhbuildPath);
+}
+
+sub getFlatpakPath()
+{
+    my @flatpakBuildPath = File::Spec->splitdir(baseProductDir());
+    if (isGtk()) {
+        push(@flatpakBuildPath, "GTK");
+    } elsif (isWPE()) {
+        push(@flatpakBuildPath, "WPE");
+    } else {
+        die "Cannot get Flatpak path for platform that isn't GTK+ or WPE.\n";
+    }
+    my @configuration = configuration();
+    push(@flatpakBuildPath, "FlatpakTree$configuration");
+
+    return File::Spec->catdir(@flatpakBuildPath);
 }
 
 sub isCachedArgumentfileOutOfDate($@)
@@ -1947,7 +2028,7 @@ sub isCachedArgumentfileOutOfDate($@)
     }
 
     open(CONTENTS_FILE, $filename);
-    chomp(my $previousContents = <CONTENTS_FILE>);
+    chomp(my $previousContents = <CONTENTS_FILE> || "");
     close(CONTENTS_FILE);
 
     if ($previousContents ne $currentContents) {
@@ -1960,8 +2041,43 @@ sub isCachedArgumentfileOutOfDate($@)
     return 0;
 }
 
+sub inFlatpakSandbox()
+{
+    if (-f "/usr/manifest.json") {
+        return 1;
+    }
+
+    return 0;
+}
+
+sub runInFlatpak(@)
+{
+    my @arg = @_;
+    my @command = (File::Spec->catfile(sourceDir(), "Tools", "Scripts", "webkit-flatpak"));
+    exec @command, argumentsForConfiguration(), "--command", @_, argumentsForConfiguration(), @ARGV or die;
+}
+
+sub runInFlatpakIfAvalaible(@)
+{
+    if (inFlatpakSandbox()) {
+        return 0;
+    }
+
+    my @command = (File::Spec->catfile(sourceDir(), "Tools", "Scripts", "webkit-flatpak"));
+    if (system(@command, "--avalaible") != 0) {
+        return 0;
+    }
+
+    if (! -e getFlatpakPath()) {
+        return 0;
+    }
+
+    runInFlatpak(@_)
+}
+
 sub wrapperPrefixIfNeeded()
 {
+
     if (isAnyWindows() || isJSCOnly()) {
         return ();
     }
@@ -1986,6 +2102,11 @@ sub wrapperPrefixIfNeeded()
 sub shouldUseJhbuild()
 {
     return ((isGtk() or isWPE()) and -e getJhbuildPath());
+}
+
+sub shouldUseFlatpak()
+{
+    return ((isGtk() or isWPE()) and ! inFlatpakSandbox() and -e getFlatpakPath());
 }
 
 sub cmakeCachePath()
@@ -2131,6 +2252,8 @@ sub generateBuildSystemFromCMakeProject
         push @args, "-DCMAKE_BUILD_TYPE=Debug";
     }
 
+    push @args, "-DENABLE_ADDRESS_SANITIZER=ON" if asanIsEnabled();
+
     if ($willUseNinja) {
         push @args, "-G";
         if (canUseEclipseNinjaGenerator()) {
@@ -2146,7 +2269,7 @@ sub generateBuildSystemFromCMakeProject
     push @args, '-DSHOW_BINDINGS_GENERATION_PROGRESS=1' unless ($willUseNinja && -t STDOUT);
 
     # Some ports have production mode, but build-webkit should always use developer mode.
-    push @args, "-DDEVELOPER_MODE=ON" if isGtk() || isJSCOnly() || isWPE();
+    push @args, "-DDEVELOPER_MODE=ON" if isGtk() || isJSCOnly() || isWPE() || isWinCairo();
 
     push @args, @cmakeArgs if @cmakeArgs;
 
@@ -2233,6 +2356,26 @@ sub buildCMakeProjectOrExit($$$@)
     exit($returnCode) if $returnCode;
     return 0;
 }
+
+sub cmakeArgsFromFeatures(\@;$)
+{
+    my ($featuresArrayRef, $enableExperimentalFeatures) = @_;
+
+    my @args;
+    push @args, "-DENABLE_EXPERIMENTAL_FEATURES=ON" if $enableExperimentalFeatures;
+    foreach (@$featuresArrayRef) {
+        my $featureName = $_->{define};
+        if ($featureName) {
+            my $featureValue = ${$_->{value}}; # Undef to let the build system use its default.
+            if (defined($featureValue)) {
+                my $featureEnabled = $featureValue ? "ON" : "OFF";
+                push @args, "-D$featureName=$featureEnabled";
+            }
+        }
+    }
+    return @args;
+}
+
 
 sub cmakeBasedPortArguments()
 {
@@ -2391,7 +2534,7 @@ sub mobileSafariBundle()
     determineConfigurationProductDir();
 
     # Use MobileSafari.app in product directory if present.
-    if (isAppleCocoaWebKit() && -d "$configurationProductDir/MobileSafari.app") {
+    if (isIOSWebKit() && -d "$configurationProductDir/MobileSafari.app") {
         return "$configurationProductDir/MobileSafari.app";
     }
     return installedMobileSafariBundle();
@@ -2432,6 +2575,14 @@ sub waitUntilIOSSimulatorDeviceIsInState($$)
     }
 }
 
+sub waitUntilProcessNotRunning($)
+{
+    my ($process) = @_;
+    while (system("/bin/ps -eo pid,comm | /usr/bin/grep '$process\$'") == 0) {
+        usleep(500 * 1000);
+    }
+}
+
 sub shutDownIOSSimulatorDevice($)
 {
     my ($simulatorDevice) = @_;
@@ -2457,6 +2608,7 @@ sub relaunchIOSSimulator($)
     system("open", "-a", $iosSimulatorPath, "--args", "-CurrentDeviceUDID", $simulatedDevice->{UDID}) == 0 or die "Failed to open $iosSimulatorPath: $!"; 
 
     waitUntilIOSSimulatorDeviceIsInState($simulatedDevice->{UDID}, SIMULATOR_DEVICE_STATE_BOOTED);
+    waitUntilProcessNotRunning("com.apple.datamigrator");
 }
 
 sub quitIOSSimulator(;$)
@@ -2518,8 +2670,8 @@ sub findOrCreateSimulatorForIOSDevice($)
     my $simulatorName;
     my $simulatorDeviceType;
     if (architecture() eq "x86_64") {
-        $simulatorName = "iPhone 5s " . $simulatorNameSuffix;
-        $simulatorDeviceType = "com.apple.CoreSimulator.SimDeviceType.iPhone-5s";
+        $simulatorName = "iPhone SE " . $simulatorNameSuffix;
+        $simulatorDeviceType = "com.apple.CoreSimulator.SimDeviceType.iPhone-SE";
     } else {
         $simulatorName = "iPhone 5 " . $simulatorNameSuffix;
         $simulatorDeviceType = "com.apple.CoreSimulator.SimDeviceType.iPhone-5";
@@ -2695,7 +2847,7 @@ sub execMacWebKitAppForDebugging($)
 
 sub debugSafari
 {
-    if (isAppleCocoaWebKit()) {
+    if (isAppleMacWebKit()) {
         checkFrameworks();
         execMacWebKitAppForDebugging(safariPath());
     }
@@ -2709,7 +2861,7 @@ sub runSafari
         return runIOSWebKitApp(mobileSafariBundle());
     }
 
-    if (isAppleCocoaWebKit()) {
+    if (isAppleMacWebKit()) {
         return runMacWebKitApp(safariPath());
     }
 
@@ -2724,20 +2876,19 @@ sub runSafari
 
 sub runMiniBrowser
 {
-    if (isAppleCocoaWebKit()) {
+    if (isAppleMacWebKit()) {
         return runMacWebKitApp(File::Spec->catfile(productDir(), "MiniBrowser.app", "Contents", "MacOS", "MiniBrowser"));
-    } elsif (isAppleWinWebKit()) {
-        my $result;
+    }
+    if (isAppleWinWebKit()) {
         my $webKitLauncherPath = File::Spec->catfile(executableProductDir(), "MiniBrowser.exe");
         return system { $webKitLauncherPath } $webKitLauncherPath, @ARGV;
     }
-
     return 1;
 }
 
 sub debugMiniBrowser
 {
-    if (isAppleCocoaWebKit()) {
+    if (isAppleMacWebKit()) {
         execMacWebKitAppForDebugging(File::Spec->catfile(productDir(), "MiniBrowser.app", "Contents", "MacOS", "MiniBrowser"));
     }
     
@@ -2746,7 +2897,7 @@ sub debugMiniBrowser
 
 sub runWebKitTestRunner
 {
-    if (isAppleCocoaWebKit()) {
+    if (isAppleMacWebKit()) {
         return runMacWebKitApp(File::Spec->catfile(productDir(), "WebKitTestRunner"));
     }
 
@@ -2755,7 +2906,7 @@ sub runWebKitTestRunner
 
 sub debugWebKitTestRunner
 {
-    if (isAppleCocoaWebKit()) {
+    if (isAppleMacWebKit()) {
         execMacWebKitAppForDebugging(File::Spec->catfile(productDir(), "WebKitTestRunner"));
     }
 

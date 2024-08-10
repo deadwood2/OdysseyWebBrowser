@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/Document.h>
 #include <WebCore/ExceptionCode.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMDOMWindowPrivate.h"
 #include "WebKitDOMEventPrivate.h"
 #include "WebKitDOMPrivate.h"
@@ -32,6 +32,8 @@
 #include "ConvertToUTF8String.h"
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -129,8 +131,7 @@ void webkit_dom_wheel_event_init_wheel_event(WebKitDOMWheelEvent* self, glong wh
     g_return_if_fail(WEBKIT_DOM_IS_WHEEL_EVENT(self));
     g_return_if_fail(WEBKIT_DOM_IS_DOM_WINDOW(view));
     WebCore::WheelEvent* item = WebKit::core(self);
-    WebCore::DOMWindow* convertedView = WebKit::core(view);
-    item->initWheelEvent(wheelDeltaX, wheelDeltaY, convertedView, screenX, screenY, clientX, clientY, ctrlKey, altKey, shiftKey, metaKey);
+    item->initWebKitWheelEvent(wheelDeltaX, wheelDeltaY, WebKit::toWindowProxy(view), screenX, screenY, clientX, clientY, ctrlKey, altKey, shiftKey, metaKey);
 }
 
 glong webkit_dom_wheel_event_get_wheel_delta_x(WebKitDOMWheelEvent* self)
@@ -159,3 +160,4 @@ glong webkit_dom_wheel_event_get_wheel_delta(WebKitDOMWheelEvent* self)
     glong result = item->wheelDelta();
     return result;
 }
+G_GNUC_END_IGNORE_DEPRECATIONS;

@@ -30,14 +30,17 @@
 
 #include "CompositingRunLoop.h"
 #include "ThreadedCompositor.h"
+
+#if USE(GLIB_EVENT_LOOP)
 #include <wtf/glib/RunLoopSourcePriority.h>
+#endif
 
 namespace WebKit {
 
-ThreadedDisplayRefreshMonitor::ThreadedDisplayRefreshMonitor(ThreadedCompositor& compositor)
-    : WebCore::DisplayRefreshMonitor(0)
+ThreadedDisplayRefreshMonitor::ThreadedDisplayRefreshMonitor(WebCore::PlatformDisplayID displayID, Client& client)
+    : WebCore::DisplayRefreshMonitor(displayID)
     , m_displayRefreshTimer(RunLoop::main(), this, &ThreadedDisplayRefreshMonitor::displayRefreshCallback)
-    , m_compositor(&compositor)
+    , m_client(&client)
 {
 #if USE(GLIB_EVENT_LOOP)
     m_displayRefreshTimer.setPriority(RunLoopSourcePriority::DisplayRefreshMonitorTimer);
@@ -47,7 +50,7 @@ ThreadedDisplayRefreshMonitor::ThreadedDisplayRefreshMonitor(ThreadedCompositor&
 
 bool ThreadedDisplayRefreshMonitor::requestRefreshCallback()
 {
-    if (!m_compositor)
+    if (!m_client)
         return false;
 
     bool previousFrameDone { false };
@@ -61,7 +64,7 @@ bool ThreadedDisplayRefreshMonitor::requestRefreshCallback()
     // refresh notifications under ThreadedDisplayRefreshMonitor::displayRefreshCallback().
     // Any such schedule request is handled in that method after the notifications.
     if (previousFrameDone)
-        m_compositor->requestDisplayRefreshMonitorUpdate();
+        m_client->requestDisplayRefreshMonitorUpdate();
 
     return true;
 }
@@ -74,15 +77,15 @@ bool ThreadedDisplayRefreshMonitor::requiresDisplayRefreshCallback()
 
 void ThreadedDisplayRefreshMonitor::dispatchDisplayRefreshCallback()
 {
-    if (!m_compositor)
+    if (!m_client)
         return;
-    m_displayRefreshTimer.startOneShot(0);
+    m_displayRefreshTimer.startOneShot(0_s);
 }
 
 void ThreadedDisplayRefreshMonitor::invalidate()
 {
     m_displayRefreshTimer.stop();
-    m_compositor = nullptr;
+    m_client = nullptr;
 }
 
 void ThreadedDisplayRefreshMonitor::displayRefreshCallback()
@@ -108,8 +111,8 @@ void ThreadedDisplayRefreshMonitor::displayRefreshCallback()
     // Notify the compositor about the completed DisplayRefreshMonitor update, passing
     // along information about any schedule request that might have occurred during
     // the notification handling.
-    if (m_compositor)
-        m_compositor->handleDisplayRefreshMonitorUpdate(hasBeenRescheduled);
+    if (m_client)
+        m_client->handleDisplayRefreshMonitorUpdate(hasBeenRescheduled);
 }
 
 } // namespace WebKit

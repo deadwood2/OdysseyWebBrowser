@@ -34,6 +34,7 @@
 #import "FontDescription.h"
 #import "OpenTypeCG.h"
 #import "SharedBuffer.h"
+#import <CoreText/CoreText.h>
 #import <float.h>
 #import <pal/spi/cg/CoreGraphicsSPI.h>
 #import <pal/spi/cocoa/CoreTextSPI.h>
@@ -44,10 +45,8 @@
 
 #if USE(APPKIT)
 #import <AppKit/AppKit.h>
-#import <ApplicationServices/ApplicationServices.h>
-#else
-#import <CoreText/CoreText.h>
 #endif
+
 
 #if USE(APPKIT)
 @interface NSFont (WebAppKitSecretAPI)
@@ -164,7 +163,7 @@ void Font::platformInit()
     }
 #endif
     
-    if (platformData().orientation() == Vertical && !isTextOrientationFallback())
+    if (platformData().orientation() == FontOrientation::Vertical && !isTextOrientationFallback())
         m_hasVerticalGlyphs = fontHasVerticalGlyphs(m_platformData.ctFont());
 
 #if PLATFORM(IOS)
@@ -180,7 +179,7 @@ void Font::platformInit()
 
     CGFloat xHeight = 0;
     if (m_platformData.size()) {
-        if (platformData().orientation() == Horizontal) {
+        if (platformData().orientation() == FontOrientation::Horizontal) {
             // Measure the actual character "x", since it's possible for it to extend below the baseline, and we need the
             // reported x-height to only include the portion of the glyph that is above the baseline.
             Glyph xGlyph = glyphForCharacter('x');
@@ -573,7 +572,7 @@ void Font::determinePitch()
 FloatRect Font::platformBoundsForGlyph(Glyph glyph) const
 {
     FloatRect boundingBox;
-    boundingBox = CTFontGetBoundingRectsForGlyphs(m_platformData.ctFont(), platformData().orientation() == Vertical ? kCTFontOrientationVertical : kCTFontOrientationHorizontal, &glyph, 0, 1);
+    boundingBox = CTFontGetBoundingRectsForGlyphs(m_platformData.ctFont(), platformData().orientation() == FontOrientation::Vertical ? kCTFontOrientationVertical : kCTFontOrientationHorizontal, &glyph, 0, 1);
     boundingBox.setY(-boundingBox.maxY());
     if (m_syntheticBoldOffset)
         boundingBox.setWidth(boundingBox.width() + m_syntheticBoldOffset);
@@ -584,7 +583,7 @@ FloatRect Font::platformBoundsForGlyph(Glyph glyph) const
 float Font::platformWidthForGlyph(Glyph glyph) const
 {
     CGSize advance = CGSizeZero;
-    bool horizontal = platformData().orientation() == Horizontal;
+    bool horizontal = platformData().orientation() == FontOrientation::Horizontal;
     CGFontRenderingStyle style = kCGFontRenderingStyleAntialiasing | kCGFontRenderingStyleSubpixelPositioning | kCGFontRenderingStyleSubpixelQuantization | kCGFontAntialiasingStyleUnfiltered;
 
     if (platformData().size()) {
@@ -598,53 +597,13 @@ float Font::platformWidthForGlyph(Glyph glyph) const
     return advance.width + m_syntheticBoldOffset;
 }
 
-struct ProviderInfo {
-    const UChar* characters;
-    size_t length;
-    CFDictionaryRef attributes;
-};
-
-static const UniChar* provideStringAndAttributes(CFIndex stringIndex, CFIndex* count, CFDictionaryRef* attributes, void* context)
+bool Font::platformSupportsCodePoint(UChar32 character) const
 {
-    ProviderInfo* info = static_cast<struct ProviderInfo*>(context);
-    if (stringIndex < 0 || static_cast<size_t>(stringIndex) >= info->length)
-        return 0;
-
-    *count = info->length - stringIndex;
-    *attributes = info->attributes;
-    return info->characters + stringIndex;
-}
-
-bool Font::canRenderCombiningCharacterSequence(const UChar* characters, size_t length) const
-{
-    ASSERT(isMainThread());
-
-    if (!m_combiningCharacterSequenceSupport)
-        m_combiningCharacterSequenceSupport = std::make_unique<HashMap<String, bool>>();
-
-    WTF::HashMap<String, bool>::AddResult addResult = m_combiningCharacterSequenceSupport->add(String(characters, length), false);
-    if (!addResult.isNewEntry)
-        return addResult.iterator->value;
-
-    RetainPtr<CFTypeRef> fontEqualityObject = platformData().objectForEqualityCheck();
-
-    ProviderInfo info = { characters, length, getCFStringAttributes(false, platformData().orientation()) };
-    RetainPtr<CTLineRef> line = adoptCF(CTLineCreateWithUniCharProvider(&provideStringAndAttributes, 0, &info));
-
-    CFArrayRef runArray = CTLineGetGlyphRuns(line.get());
-    CFIndex runCount = CFArrayGetCount(runArray);
-
-    for (CFIndex r = 0; r < runCount; r++) {
-        CTRunRef ctRun = static_cast<CTRunRef>(CFArrayGetValueAtIndex(runArray, r));
-        ASSERT(CFGetTypeID(ctRun) == CTRunGetTypeID());
-        CFDictionaryRef runAttributes = CTRunGetAttributes(ctRun);
-        CTFontRef runFont = static_cast<CTFontRef>(CFDictionaryGetValue(runAttributes, kCTFontAttributeName));
-        if (!CFEqual(fontEqualityObject.get(), FontPlatformData::objectForEqualityCheck(runFont).get()))
-            return false;
-    }
-
-    addResult.iterator->value = true;
-    return true;
+    UniChar codeUnits[2];
+    CGGlyph glyphs[2];
+    CFIndex count = 0;
+    U16_APPEND_UNSAFE(codeUnits, count, character);
+    return CTFontGetGlyphsForCharacters(platformData().ctFont(), codeUnits, glyphs, count);
 }
 
 } // namespace WebCore

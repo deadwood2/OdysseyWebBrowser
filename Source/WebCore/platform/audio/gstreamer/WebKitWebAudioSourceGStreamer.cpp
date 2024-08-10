@@ -25,8 +25,7 @@
 
 #include "AudioBus.h"
 #include "AudioIOCallback.h"
-#include "GRefPtrGStreamer.h"
-#include "GStreamerUtilities.h"
+#include "GStreamerCommon.h"
 #include <gst/app/gstappsrc.h>
 #include <gst/audio/audio-info.h>
 #include <gst/pbutils/missing-plugins.h>
@@ -420,9 +419,7 @@ static GstStateChangeReturn webKitWebAudioSrcChangeState(GstElement* element, Gs
     case GST_STATE_CHANGE_PAUSED_TO_READY:
         GST_DEBUG_OBJECT(src, "PAUSED->READY");
 
-#if GST_CHECK_VERSION(1, 4, 0)
         gst_buffer_pool_set_flushing(src->priv->pool.get(), TRUE);
-#endif
         if (!gst_task_join(src->priv->task.get()))
             returnValue = GST_STATE_CHANGE_FAILURE;
         gst_buffer_pool_set_active(src->priv->pool.get(), FALSE);

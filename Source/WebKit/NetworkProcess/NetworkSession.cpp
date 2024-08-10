@@ -37,11 +37,12 @@
 #if USE(SOUP)
 #include "NetworkSessionSoup.h"
 #endif
-
-
-using namespace WebCore;
+#if USE(CURL)
+#include "NetworkSessionCurl.h"
+#endif
 
 namespace WebKit {
+using namespace WebCore;
 
 Ref<NetworkSession> NetworkSession::create(NetworkSessionCreationParameters&& parameters)
 {
@@ -50,6 +51,9 @@ Ref<NetworkSession> NetworkSession::create(NetworkSessionCreationParameters&& pa
 #endif
 #if USE(SOUP)
     return NetworkSessionSoup::create(WTFMove(parameters));
+#endif
+#if USE(CURL)
+    return NetworkSessionCurl::create(WTFMove(parameters));
 #endif
 }
 
@@ -73,15 +77,6 @@ void NetworkSession::invalidateAndCancel()
 {
     for (auto* task : m_dataTaskSet)
         task->invalidateAndCancel();
-}
-
-bool NetworkSession::allowsSpecificHTTPSCertificateForHost(const WebCore::AuthenticationChallenge& challenge)
-{
-#if PLATFORM(COCOA)
-    return NetworkSessionCocoa::allowsSpecificHTTPSCertificateForHost(challenge);
-#else
-    return false;
-#endif
 }
 
 } // namespace WebKit

@@ -39,9 +39,8 @@
 #include <WebCore/SecurityOrigin.h>
 #include <WebCore/SecurityOriginData.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static uint64_t generateGeolocationID()
 {
@@ -74,7 +73,7 @@ void GeolocationPermissionRequestManager::startRequestForGeolocation(Geolocation
 
     SecurityOrigin& origin = frame->document()->securityOrigin();
 
-    m_page.send(Messages::WebPageProxy::RequestGeolocationPermissionForFrame(geolocationID, webFrame->frameID(), SecurityOriginData::fromSecurityOrigin(origin).databaseIdentifier()));
+    m_page.send(Messages::WebPageProxy::RequestGeolocationPermissionForFrame(geolocationID, webFrame->frameID(), origin.data().databaseIdentifier()));
 }
 
 void GeolocationPermissionRequestManager::cancelRequestForGeolocation(Geolocation& geolocation)

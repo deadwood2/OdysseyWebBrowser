@@ -33,11 +33,18 @@
 
 #include "AcceleratedSurface.h"
 #include "WebPage.h"
+#include <WebCore/Frame.h>
 #include <WebCore/FrameView.h>
-#include <WebCore/MainFrame.h>
 
 namespace WebKit {
 using namespace WebCore;
+
+static const PlatformDisplayID primaryDisplayID = 0;
+#if PLATFORM(GTK)
+static const PlatformDisplayID compositingDisplayID = 1;
+#else
+static const PlatformDisplayID compositingDisplayID = primaryDisplayID;
+#endif
 
 Ref<ThreadedCoordinatedLayerTreeHost> ThreadedCoordinatedLayerTreeHost::create(WebPage& webPage)
 {
@@ -70,10 +77,12 @@ ThreadedCoordinatedLayerTreeHost::ThreadedCoordinatedLayerTreeHost(WebPage& webP
         if (m_surface->shouldPaintMirrored())
             paintFlags |= TextureMapper::PaintingMirrored;
 
-        m_compositor = ThreadedCompositor::create(m_compositorClient, webPage, scaledSize, scaleFactor, ThreadedCompositor::ShouldDoFrameSync::Yes, paintFlags);
+        m_compositor = ThreadedCompositor::create(m_compositorClient, m_compositorClient, compositingDisplayID, scaledSize, scaleFactor, ThreadedCompositor::ShouldDoFrameSync::Yes, paintFlags);
         m_layerTreeContext.contextID = m_surface->surfaceID();
     } else
-        m_compositor = ThreadedCompositor::create(m_compositorClient, webPage, scaledSize, scaleFactor);
+        m_compositor = ThreadedCompositor::create(m_compositorClient, m_compositorClient, compositingDisplayID, scaledSize, scaleFactor);
+
+    m_webPage.windowScreenDidChange(compositingDisplayID);
 
     didChangeViewport();
 }
@@ -94,6 +103,22 @@ void ThreadedCoordinatedLayerTreeHost::forceRepaint()
 void ThreadedCoordinatedLayerTreeHost::frameComplete()
 {
     m_compositor->frameComplete();
+}
+
+void ThreadedCoordinatedLayerTreeHost::requestDisplayRefreshMonitorUpdate()
+{
+    // Flush layers to cause a repaint. If m_isWaitingForRenderer was true at this point, the layer
+    // flush won't do anything, but that means there's a painting ongoing that will send the
+    // display refresh notification when it's done.
+    flushLayersAndForceRepaint();
+}
+
+void ThreadedCoordinatedLayerTreeHost::handleDisplayRefreshMonitorUpdate(bool hasBeenRescheduled)
+{
+    // Call renderNextFrame. If hasBeenRescheduled is true, the layer flush will force a repaint
+    // that will cause the display refresh notification to come.
+    renderNextFrame(hasBeenRescheduled);
+    m_compositor->handleDisplayRefreshMonitorUpdate();
 }
 
 uint64_t ThreadedCoordinatedLayerTreeHost::nativeSurfaceHandleForCompositing()
@@ -152,7 +177,7 @@ void ThreadedCoordinatedLayerTreeHost::deviceOrPageScaleFactorChanged()
         return;
     }
 
-    if (m_surface && m_surface->resize(m_webPage.size()))
+    if (m_surface && m_surface->hostResize(m_webPage.size()))
         m_layerTreeContext.contextID = m_surface->surfaceID();
 
     CoordinatedLayerTreeHost::deviceOrPageScaleFactorChanged();
@@ -178,7 +203,7 @@ void ThreadedCoordinatedLayerTreeHost::sizeDidChange(const IntSize& size)
         return;
     }
 
-    if (m_surface && m_surface->resize(size))
+    if (m_surface && m_surface->hostResize(size))
         m_layerTreeContext.contextID = m_surface->surfaceID();
 
     CoordinatedLayerTreeHost::sizeDidChange(size);
@@ -224,7 +249,7 @@ void ThreadedCoordinatedLayerTreeHost::didChangeViewport()
     if (scrollbar && !scrollbar->isOverlayScrollbar())
         visibleRect.expand(0, scrollbar->height());
 
-    CoordinatedLayerTreeHost::setVisibleContentsRect(visibleRect, FloatPoint::zero());
+    CoordinatedLayerTreeHost::setVisibleContentsRect(visibleRect);
 
     float pageScale = m_viewportController.pageScaleFactor();
     IntPoint scrollPosition = roundedIntPoint(visibleRect.location());
@@ -248,18 +273,15 @@ void ThreadedCoordinatedLayerTreeHost::commitSceneState(const CoordinatedGraphic
     m_compositor->updateSceneState(state);
 }
 
-void ThreadedCoordinatedLayerTreeHost::releaseUpdateAtlases(const Vector<uint32_t>& atlasesToRemove)
-{
-    m_compositor->releaseUpdateAtlases(atlasesToRemove);
-}
-
 void ThreadedCoordinatedLayerTreeHost::setIsDiscardable(bool discardable)
 {
     m_isDiscardable = discardable;
     if (m_isDiscardable) {
         m_discardableSyncActions = OptionSet<DiscardableSyncActions>();
+        m_webPage.windowScreenDidChange(primaryDisplayID);
         return;
     }
+    m_webPage.windowScreenDidChange(compositingDisplayID);
 
     if (m_discardableSyncActions.isEmpty())
         return;

@@ -47,12 +47,7 @@ void WebPageProxy::platformInitialize()
 
 GtkWidget* WebPageProxy::viewWidget()
 {
-    return static_cast<PageClientImpl&>(m_pageClient).viewWidget();
-}
-
-JSGlobalContextRef WebPageProxy::javascriptGlobalContext()
-{
-    return m_pageClient.javascriptGlobalContext();
+    return static_cast<PageClientImpl&>(pageClient()).viewWidget();
 }
 
 String WebPageProxy::standardUserAgent(const String& applicationNameForUserAgent)
@@ -89,7 +84,7 @@ void WebPageProxy::editorStateChanged(const EditorState& editorState)
         return;
     if (m_editorState.selectionIsRange)
         WebPasteboardProxy::singleton().setPrimarySelectionOwner(focusedFrame());
-    m_pageClient.selectionDidChange();
+    pageClient().selectionDidChange();
 }
 
 #if PLATFORM(X11)
@@ -158,5 +153,10 @@ void WebPageProxy::getCenterForZoomGesture(const WebCore::IntPoint& centerInView
     process().sendSync(Messages::WebPage::GetCenterForZoomGesture(centerInViewCoordinates), Messages::WebPage::GetCenterForZoomGesture::Reply(center), m_pageID);
 }
 #endif
+
+bool WebPageProxy::makeGLContextCurrent()
+{
+    return webkitWebViewBaseMakeGLContextCurrent(WEBKIT_WEB_VIEW_BASE(viewWidget()));
+}
 
 } // namespace WebKit

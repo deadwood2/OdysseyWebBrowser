@@ -31,6 +31,7 @@
 
 #import "CommonVM.h"
 #import "Event.h"
+#import "Frame.h"
 #import "HTMLPlugInElement.h"
 #import "HTMLVideoElement.h"
 #import "JSDOMBinding.h"
@@ -41,7 +42,6 @@
 #import "JSHTMLVideoElement.h"
 #import "JSQuickTimePluginReplacement.h"
 #import "Logging.h"
-#import "MainFrame.h"
 #import "RenderElement.h"
 #import "ScriptController.h"
 #import "ScriptSourceCode.h"
@@ -159,7 +159,7 @@ bool QuickTimePluginReplacement::ensureReplacementScriptInjected()
     JSC::ExecState* exec = globalObject->globalExec();
     
     JSC::JSValue replacementFunction = globalObject->get(exec, JSC::Identifier::fromString(exec, "createPluginReplacement"));
-    if (replacementFunction.isFunction())
+    if (replacementFunction.isFunction(vm))
         return true;
     
     scriptController.evaluateInWorld(ScriptSourceCode(quickTimePluginReplacementScript()), world);
@@ -250,7 +250,7 @@ unsigned long long QuickTimePluginReplacement::movieSize() const
 void QuickTimePluginReplacement::postEvent(const String& eventName)
 {
     Ref<HTMLPlugInElement> protect(*m_parentElement);
-    Ref<Event> event = Event::create(eventName, false, true);
+    Ref<Event> event = Event::create(eventName, Event::CanBubble::No, Event::IsCancelable::Yes);
     m_parentElement->dispatchEvent(event);
 }
 

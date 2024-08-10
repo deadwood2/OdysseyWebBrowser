@@ -45,7 +45,7 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
     : m_client(std::make_unique<API::ViewClient>())
     , m_pageClient(std::make_unique<PageClientImpl>(*this))
     , m_size { 800, 600 }
-    , m_viewStateFlags(WebCore::ActivityState::WindowIsActive | WebCore::ActivityState::IsFocused | WebCore::ActivityState::IsVisible | WebCore::ActivityState::IsInWindow)
+    , m_viewStateFlags { WebCore::ActivityState::WindowIsActive, WebCore::ActivityState::IsFocused, WebCore::ActivityState::IsVisible, WebCore::ActivityState::IsInWindow }
     , m_compositingManagerProxy(*this)
     , m_backend(backend)
 {
@@ -104,7 +104,7 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
             if (event->pressed
                 && event->modifiers & wpe_input_keyboard_modifier_control
                 && event->modifiers & wpe_input_keyboard_modifier_shift
-                && event->keyCode == 'G') {
+                && event->key_code == WPE_KEY_G) {
                 auto& preferences = view.page().preferences();
                 preferences.setResourceUsageOverlayVisible(!preferences.resourceUsageOverlayVisible());
                 return;
@@ -165,11 +165,6 @@ void View::handleDownloadRequest(DownloadProxy& download)
     m_client->handleDownloadRequest(*this, download);
 }
 
-JSGlobalContextRef View::javascriptGlobalContext()
-{
-    return m_client->javascriptGlobalContext();
-}
-
 void View::setSize(const WebCore::IntSize& size)
 {
     m_size = size;
@@ -177,11 +172,11 @@ void View::setSize(const WebCore::IntSize& size)
         m_pageProxy->drawingArea()->setSize(size);
 }
 
-void View::setViewState(WebCore::ActivityState::Flags flags)
+void View::setViewState(OptionSet<WebCore::ActivityState::Flag> flags)
 {
-    static const WebCore::ActivityState::Flags defaultFlags = WebCore::ActivityState::WindowIsActive | WebCore::ActivityState::IsFocused;
+    static const OptionSet<WebCore::ActivityState::Flag> defaultFlags { WebCore::ActivityState::WindowIsActive, WebCore::ActivityState::IsFocused };
 
-    WebCore::ActivityState::Flags changedFlags = m_viewStateFlags ^ (defaultFlags | flags);
+    auto changedFlags = m_viewStateFlags ^ (defaultFlags | flags);
     m_viewStateFlags = defaultFlags | flags;
 
     if (changedFlags)

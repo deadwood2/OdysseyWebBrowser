@@ -97,6 +97,16 @@ public:
     void decrement();
     void showMenu();
     void press();
+    bool dismiss();
+#if PLATFORM(MAC)
+    void syncPress();
+    void asyncIncrement();
+    void asyncDecrement();
+#else
+    void syncPress() { press(); }
+    void asyncIncrement() { }
+    void asyncDecrement() { };
+#endif
 
     // Attributes - platform-independent implementations
     JSRetainPtr<JSStringRef> stringAttributeValue(JSStringRef attribute);
@@ -238,6 +248,8 @@ public:
     bool setSelectedTextRange(unsigned location, unsigned length);
     JSRetainPtr<JSStringRef> stringForRange(unsigned location, unsigned length);
     JSRetainPtr<JSStringRef> attributedStringForRange(unsigned location, unsigned length);
+    JSRetainPtr<JSStringRef> attributedStringForElement();
+
     bool attributedStringRangeIsMisspelled(unsigned location, unsigned length);
     unsigned uiElementCountForSearchPredicate(JSContextRef, AccessibilityUIElement* startElement, bool isDirectionNext, JSValueRef searchKey, JSStringRef searchText, bool visibleOnly, bool immediateDescendantsOnly);
     RefPtr<AccessibilityUIElement> uiElementForSearchPredicate(JSContextRef, AccessibilityUIElement* startElement, bool isDirectionNext, JSValueRef searchKey, JSStringRef searchText, bool visibleOnly, bool immediateDescendantsOnly);
@@ -275,6 +287,8 @@ public:
     RefPtr<AccessibilityTextMarker> nextTextMarker(AccessibilityTextMarker*);
     RefPtr<AccessibilityUIElement> accessibilityElementForTextMarker(AccessibilityTextMarker*);
     JSRetainPtr<JSStringRef> stringForTextMarkerRange(AccessibilityTextMarkerRange*);
+    JSRetainPtr<JSStringRef> attributedStringForTextMarkerRange(AccessibilityTextMarkerRange*);
+    JSRetainPtr<JSStringRef> attributedStringForTextMarkerRangeWithOptions(AccessibilityTextMarkerRange*, bool);
     int textMarkerRangeLength(AccessibilityTextMarkerRange*);
     bool attributedStringForTextMarkerRangeContainsAttribute(JSStringRef, AccessibilityTextMarkerRange*);
     int indexForTextMarker(AccessibilityTextMarker*);

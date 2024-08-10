@@ -22,14 +22,13 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
-
 #include "config.h"
 #include "CookieJarCurlDatabase.h"
 
 #if USE(CURL)
 #include "Cookie.h"
 #include "CookieJarDB.h"
+#include "CookieRequestHeaderFieldProxy.h"
 #include "NetworkStorageSession.h"
 #include "NotImplemented.h"
 #include "URL.h"
@@ -40,16 +39,16 @@
 
 namespace WebCore {
 
-static String cookiesForSession(const NetworkStorageSession& session, const URL&, const URL& url, bool httponly)
+static String cookiesForSession(const NetworkStorageSession& session, const URL&, const URL& url, bool forHTTPHeader)
 {
     StringBuilder cookies;
 
     CookieJarDB& cookieJarDB = session.cookieDatabase();
-    auto isHttpOnly = (httponly ? std::nullopt : std::optional<bool> {false});
+    auto searchHTTPOnly = (forHTTPHeader ? std::nullopt : std::optional<bool> {false});
     auto secure = url.protocolIs("https") ? std::nullopt : std::optional<bool> {false};
 
     Vector<Cookie> results;
-    if (cookieJarDB.searchCookies(url.string(), isHttpOnly, secure, std::nullopt, results)) {
+    if (cookieJarDB.searchCookies(url.string(), searchHTTPOnly, secure, std::nullopt, results)) {
         for (auto result : results) {
             if (!cookies.isEmpty())
                 cookies.append("; ");
@@ -61,10 +60,11 @@ static String cookiesForSession(const NetworkStorageSession& session, const URL&
     return cookies.toString();
 }
 
-void CookieJarCurlDatabase::setCookiesFromDOM(const NetworkStorageSession& session, const URL& firstParty, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, const String& value) const
+void CookieJarCurlDatabase::setCookiesFromDOM(const NetworkStorageSession& session, const URL& firstParty, const SameSiteInfo&, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, const String& value) const
 {
     UNUSED_PARAM(frameID);
     UNUSED_PARAM(pageID);
+    UNUSED_PARAM(firstParty);
 
     CookieJarDB& cookieJarDB = session.cookieDatabase();
     cookieJarDB.setCookie(url.string(), value, true);
@@ -76,7 +76,7 @@ void CookieJarCurlDatabase::setCookiesFromHTTPResponse(const NetworkStorageSessi
     cookieJarDB.setCookie(url.string(), value, false);
 }
 
-std::pair<String, bool> CookieJarCurlDatabase::cookiesForDOM(const NetworkStorageSession& session, const URL& firstParty, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, IncludeSecureCookies) const
+std::pair<String, bool> CookieJarCurlDatabase::cookiesForDOM(const NetworkStorageSession& session, const URL& firstParty, const SameSiteInfo&, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, IncludeSecureCookies) const
 {
     UNUSED_PARAM(frameID);
     UNUSED_PARAM(pageID);
@@ -85,7 +85,7 @@ std::pair<String, bool> CookieJarCurlDatabase::cookiesForDOM(const NetworkStorag
     return { cookiesForSession(session, firstParty, url, false), false };
 }
 
-std::pair<String, bool> CookieJarCurlDatabase::cookieRequestHeaderFieldValue(const NetworkStorageSession& session, const URL& firstParty, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, IncludeSecureCookies) const
+std::pair<String, bool> CookieJarCurlDatabase::cookieRequestHeaderFieldValue(const NetworkStorageSession& session, const URL& firstParty, const SameSiteInfo&, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, IncludeSecureCookies) const
 {
     UNUSED_PARAM(frameID);
     UNUSED_PARAM(pageID);
@@ -94,12 +94,17 @@ std::pair<String, bool> CookieJarCurlDatabase::cookieRequestHeaderFieldValue(con
     return { cookiesForSession(session, firstParty, url, true), false };
 }
 
-bool CookieJarCurlDatabase::cookiesEnabled(const NetworkStorageSession& session) const
+std::pair<String, bool> CookieJarCurlDatabase::cookieRequestHeaderFieldValue(const NetworkStorageSession& session, const CookieRequestHeaderFieldProxy& headerFieldProxy) const
 {
-    return true;
+    return cookieRequestHeaderFieldValue(session, headerFieldProxy.firstParty, headerFieldProxy.sameSiteInfo, headerFieldProxy.url, headerFieldProxy.frameID, headerFieldProxy.pageID, headerFieldProxy.includeSecureCookies);
 }
 
-bool CookieJarCurlDatabase::getRawCookies(const NetworkStorageSession& session, const URL& firstParty, const URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, Vector<Cookie>& rawCookies) const
+bool CookieJarCurlDatabase::cookiesEnabled(const NetworkStorageSession& session) const
+{
+    return session.cookieDatabase().isEnabled();
+}
+
+bool CookieJarCurlDatabase::getRawCookies(const NetworkStorageSession& session, const URL& firstParty, const SameSiteInfo&, const URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, Vector<Cookie>& rawCookies) const
 {
     UNUSED_PARAM(frameID);
     UNUSED_PARAM(pageID);
@@ -108,17 +113,17 @@ bool CookieJarCurlDatabase::getRawCookies(const NetworkStorageSession& session, 
     return cookieJarDB.searchCookies(firstParty.string(), std::nullopt, std::nullopt, std::nullopt, rawCookies);
 }
 
-void CookieJarCurlDatabase::deleteCookie(const NetworkStorageSession&, const URL& url, const String& cookieName) const
+void CookieJarCurlDatabase::deleteCookie(const NetworkStorageSession&, const URL&, const String&) const
 {
     // FIXME: Not yet implemented
 }
 
-void CookieJarCurlDatabase::getHostnamesWithCookies(const NetworkStorageSession&, HashSet<String>& hostnames) const
+void CookieJarCurlDatabase::getHostnamesWithCookies(const NetworkStorageSession&, HashSet<String>&) const
 {
     // FIXME: Not yet implemented
 }
 
-void CookieJarCurlDatabase::deleteCookiesForHostnames(const NetworkStorageSession&, const Vector<String>& cookieHostNames) const
+void CookieJarCurlDatabase::deleteCookiesForHostnames(const NetworkStorageSession&, const Vector<String>&) const
 {
     // FIXME: Not yet implemented
 }

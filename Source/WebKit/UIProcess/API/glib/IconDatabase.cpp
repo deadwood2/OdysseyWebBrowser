@@ -46,9 +46,8 @@
 #define IS_ICON_SYNC_THREAD() (m_syncThread == &Thread::current())
 #define ASSERT_ICON_SYNC_THREAD() ASSERT(IS_ICON_SYNC_THREAD())
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static int databaseCleanupCounter = 0;
 
@@ -909,7 +908,7 @@ void IconDatabase::iconDatabaseSyncThread()
 #endif
 
     // Uncomment the following line to simulate a long lasting URL import (*HUGE* icon databases, or network home directories)
-    // while (monotonicallyIncreasingTime() - timeStamp < 10);
+    // while (MonotonicTime::now() - timeStamp < 10_s);
 
     // Read in URL mappings from the database
     LOG(IconDatabase, "(THREAD) Starting iconURL import");

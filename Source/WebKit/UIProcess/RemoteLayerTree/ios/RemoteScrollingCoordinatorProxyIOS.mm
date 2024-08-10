@@ -44,9 +44,8 @@
 #import <WebCore/ScrollingTreeFrameScrollingNode.h>
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static LayerRepresentation layerRepresentationFromLayerOrView(LayerOrView *layerOrView)
 {
@@ -67,7 +66,8 @@ void RemoteScrollingCoordinatorProxy::connectStateNodeLayers(ScrollingStateTree&
                 scrollingStateNode.setScrolledContentsLayer(layerRepresentationFromLayerOrView(layerTreeHost.getLayer(scrollingStateNode.scrolledContentsLayer())));
             break;
         };
-        case FrameScrollingNode: {
+        case MainFrameScrollingNode:
+        case SubframeScrollingNode: {
             ScrollingStateFrameScrollingNode& scrollingStateNode = downcast<ScrollingStateFrameScrollingNode>(*currNode);
             
             if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::ScrollLayer))

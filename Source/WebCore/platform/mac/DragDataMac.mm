@@ -173,12 +173,17 @@ unsigned DragData::numberOfFiles() const
 Vector<String> DragData::asFilenames() const
 {
 #if PLATFORM(MAC)
+    Vector<String> types;
+    platformStrategies()->pasteboardStrategy()->getTypes(types, m_pasteboardName);
+    if (types.contains(String(legacyFilesPromisePasteboardType())))
+        return fileNames();
+
     Vector<String> results;
     platformStrategies()->pasteboardStrategy()->getPathnamesForType(results, String(legacyFilenamesPasteboardType()), m_pasteboardName);
-    if (!results.isEmpty())
-        return results;
-#endif
+    return results;
+#else
     return fileNames();
+#endif
 }
 
 bool DragData::containsPlainText() const
@@ -246,6 +251,8 @@ bool DragData::containsCompatibleContent(DraggingPurpose purpose) const
 
 bool DragData::containsPromise() const
 {
+    // FIXME: legacyFilesPromisePasteboardType() contains UTIs, not path names. Also, why do we
+    // think promises should only contain one file (or UTI)?
     Vector<String> files;
 #if PLATFORM(MAC)
     platformStrategies()->pasteboardStrategy()->getPathnamesForType(files, String(legacyFilesPromisePasteboardType()), m_pasteboardName);

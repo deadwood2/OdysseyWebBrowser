@@ -40,6 +40,7 @@ class CookieJarDB {
     WTF_MAKE_NONCOPYABLE(CookieJarDB);
 
 public:
+    void open();
     bool isEnabled();
     void setEnabled(bool);
 
@@ -51,17 +52,17 @@ public:
     int deleteCookies(const String& url);
     int deleteAllCookies();
 
-    CookieJarDB(const String& databasePath);
-    ~CookieJarDB();
+    WEBCORE_EXPORT CookieJarDB(const String& databasePath);
+    WEBCORE_EXPORT ~CookieJarDB();
 
 private:
 
-    bool m_cookieEnable {true};
+    bool m_isEnabled {true};
     String m_databasePath;
 
     bool m_detectedDatabaseCorruption {false};
 
-    bool isOnMemory() const { return (m_databasePath == ":onmemory:"); };
+    bool isOnMemory() const { return (m_databasePath == ":memory:"); };
 
     bool openDatabase();
     void closeDatabase();

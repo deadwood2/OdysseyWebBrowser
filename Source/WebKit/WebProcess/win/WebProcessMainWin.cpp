@@ -28,13 +28,11 @@
 
 #include "ChildProcessMain.h"
 #include "WebProcess.h"
-#include <wtf/CurrentTime.h>
-
-using namespace WebCore;
 
 namespace WebKit {
+using namespace WebCore;
 
-class WebProcessMain final: public ChildProcessMainBase {
+class WebProcessMain final : public ChildProcessMainBase {
 public:
     bool platformInitialize() override
     {

@@ -31,9 +31,8 @@
 #include "WebCoreArgumentCoders.h"
 #include <WebCore/SecurityOriginData.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 void NetworkResourceLoadParameters::encode(IPC::Encoder& encoder) const
 {
@@ -82,18 +81,28 @@ void NetworkResourceLoadParameters::encode(IPC::Encoder& encoder) const
     encoder << shouldClearReferrerOnHTTPSToHTTPRedirect;
     encoder << defersLoading;
     encoder << needsCertificateInfo;
+    encoder << isMainFrameNavigation;
     encoder << maximumBufferingTime;
     encoder << derivedCachedDataTypesToRetrieve;
 
     encoder << static_cast<bool>(sourceOrigin);
     if (sourceOrigin)
-        encoder << SecurityOriginData::fromSecurityOrigin(*sourceOrigin);
-    encoder.encodeEnum(mode);
+        encoder << *sourceOrigin;
+    encoder << options;
     encoder << cspResponseHeaders;
+    encoder << originalRequestHeaders;
+
+    encoder << shouldRestrictHTTPResponseAccess;
+
+    encoder.encodeEnum(preflightPolicy);
+
+    encoder << shouldEnableCrossOriginResourcePolicy;
+
+    encoder << frameAncestorOrigins;
 
 #if ENABLE(CONTENT_EXTENSIONS)
     encoder << mainDocumentURL;
-    encoder << contentRuleLists;
+    encoder << userContentControllerIdentifier;
 #endif
 }
 
@@ -159,6 +168,8 @@ bool NetworkResourceLoadParameters::decode(IPC::Decoder& decoder, NetworkResourc
         return false;
     if (!decoder.decode(result.needsCertificateInfo))
         return false;
+    if (!decoder.decode(result.isMainFrameNavigation))
+        return false;
     if (!decoder.decode(result.maximumBufferingTime))
         return false;
     if (!decoder.decode(result.derivedCachedDataTypesToRetrieve))
@@ -168,27 +179,49 @@ bool NetworkResourceLoadParameters::decode(IPC::Decoder& decoder, NetworkResourc
     if (!decoder.decode(hasSourceOrigin))
         return false;
     if (hasSourceOrigin) {
-        std::optional<SecurityOriginData> sourceOriginData;
-        decoder >> sourceOriginData;
-        if (!sourceOriginData)
+        result.sourceOrigin = SecurityOrigin::decode(decoder);
+        if (!result.sourceOrigin)
             return false;
-        ASSERT(!sourceOriginData->isEmpty());
-        result.sourceOrigin = sourceOriginData->securityOrigin();
     }
-    if (!decoder.decodeEnum(result.mode))
+
+    std::optional<FetchOptions> options;
+    decoder >> options;
+    if (!options)
         return false;
+    result.options = *options;
+
     if (!decoder.decode(result.cspResponseHeaders))
         return false;
+    if (!decoder.decode(result.originalRequestHeaders))
+        return false;
 
+    std::optional<bool> shouldRestrictHTTPResponseAccess;
+    decoder >> shouldRestrictHTTPResponseAccess;
+    if (!shouldRestrictHTTPResponseAccess)
+        return false;
+    result.shouldRestrictHTTPResponseAccess = *shouldRestrictHTTPResponseAccess;
+
+    if (!decoder.decodeEnum(result.preflightPolicy))
+        return false;
+
+    std::optional<bool> shouldEnableCrossOriginResourcePolicy;
+    decoder >> shouldEnableCrossOriginResourcePolicy;
+    if (!shouldEnableCrossOriginResourcePolicy)
+        return false;
+    result.shouldEnableCrossOriginResourcePolicy = *shouldEnableCrossOriginResourcePolicy;
+
+    if (!decoder.decode(result.frameAncestorOrigins))
+        return false;
+    
 #if ENABLE(CONTENT_EXTENSIONS)
     if (!decoder.decode(result.mainDocumentURL))
         return false;
 
-    std::optional<Vector<std::pair<String, WebCompiledContentRuleListData>>> contentRuleLists;
-    decoder >> contentRuleLists;
-    if (!contentRuleLists)
+    std::optional<std::optional<UserContentControllerIdentifier>> userContentControllerIdentifier;
+    decoder >> userContentControllerIdentifier;
+    if (!userContentControllerIdentifier)
         return false;
-    result.contentRuleLists = WTFMove(*contentRuleLists);
+    result.userContentControllerIdentifier = *userContentControllerIdentifier;
 #endif
 
     return true;

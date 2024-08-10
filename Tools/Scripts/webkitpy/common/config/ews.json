@@ -9,7 +9,8 @@
         "port": "win",
         "watchers": [
             "bfulgham@apple.com"
-        ]
+        ],
+        "runTests": true
     },
     "iOS EWS": {
         "port": "ios-device",
@@ -51,6 +52,15 @@
         "name": "jsc-ews",
         "group": "jsc",
         "runTests": true
+    },
+    "JSC MIPS32el EWS": {
+        "port": "jsc-only",
+        "name": "jsc-mips-ews",
+        "group": "jsc",
+        "runTests": false,
+        "watchers": [
+            "guijemont@igalia.com"
+        ]
     },
     "Bindings EWS": {
         "port": "mac",

@@ -21,8 +21,6 @@
 #include "config.h"
 #include "WebKitTestServer.h"
 #include "WebViewTest.h"
-#include <JavaScriptCore/JSStringRef.h>
-#include <JavaScriptCore/JSValueRef.h>
 #include <glib/gstdio.h>
 #include <wtf/glib/GRefPtr.h>
 
@@ -306,54 +304,64 @@ static void testWebViewRunJavaScript(WebViewTest* test, gconstpointer)
     GUniqueOutPtr<GError> error;
     WebKitJavascriptResult* javascriptResult = test->runJavaScriptAndWaitUntilFinished("window.document.getElementById('WebKitLink').title;", &error.outPtr());
     g_assert(javascriptResult);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(webkit_javascript_result_get_js_value(javascriptResult)));
     g_assert(!error.get());
     GUniquePtr<char> valueString(WebViewTest::javascriptResultToCString(javascriptResult));
     g_assert_cmpstr(valueString.get(), ==, "WebKitGTK+ Title");
 
     javascriptResult = test->runJavaScriptAndWaitUntilFinished("window.document.getElementById('WebKitLink').href;", &error.outPtr());
     g_assert(javascriptResult);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(webkit_javascript_result_get_js_value(javascriptResult)));
     g_assert(!error.get());
     valueString.reset(WebViewTest::javascriptResultToCString(javascriptResult));
     g_assert_cmpstr(valueString.get(), ==, "http://www.webkitgtk.org/");
 
     javascriptResult = test->runJavaScriptAndWaitUntilFinished("window.document.getElementById('WebKitLink').textContent", &error.outPtr());
     g_assert(javascriptResult);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(webkit_javascript_result_get_js_value(javascriptResult)));
     g_assert(!error.get());
     valueString.reset(WebViewTest::javascriptResultToCString(javascriptResult));
     g_assert_cmpstr(valueString.get(), ==, "WebKitGTK+ Website");
 
     javascriptResult = test->runJavaScriptAndWaitUntilFinished("a = 25;", &error.outPtr());
     g_assert(javascriptResult);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(webkit_javascript_result_get_js_value(javascriptResult)));
     g_assert(!error.get());
     g_assert_cmpfloat(WebViewTest::javascriptResultToNumber(javascriptResult), ==, 25);
 
     javascriptResult = test->runJavaScriptAndWaitUntilFinished("a = 2.5;", &error.outPtr());
     g_assert(javascriptResult);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(webkit_javascript_result_get_js_value(javascriptResult)));
     g_assert(!error.get());
     g_assert_cmpfloat(WebViewTest::javascriptResultToNumber(javascriptResult), ==, 2.5);
 
     javascriptResult = test->runJavaScriptAndWaitUntilFinished("a = true", &error.outPtr());
     g_assert(javascriptResult);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(webkit_javascript_result_get_js_value(javascriptResult)));
     g_assert(!error.get());
     g_assert(WebViewTest::javascriptResultToBoolean(javascriptResult));
 
     javascriptResult = test->runJavaScriptAndWaitUntilFinished("a = false", &error.outPtr());
     g_assert(javascriptResult);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(webkit_javascript_result_get_js_value(javascriptResult)));
     g_assert(!error.get());
     g_assert(!WebViewTest::javascriptResultToBoolean(javascriptResult));
 
     javascriptResult = test->runJavaScriptAndWaitUntilFinished("a = null", &error.outPtr());
     g_assert(javascriptResult);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(webkit_javascript_result_get_js_value(javascriptResult)));
     g_assert(!error.get());
     g_assert(WebViewTest::javascriptResultIsNull(javascriptResult));
 
     javascriptResult = test->runJavaScriptAndWaitUntilFinished("function Foo() { a = 25; } Foo();", &error.outPtr());
     g_assert(javascriptResult);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(webkit_javascript_result_get_js_value(javascriptResult)));
     g_assert(!error.get());
     g_assert(WebViewTest::javascriptResultIsUndefined(javascriptResult));
 
     javascriptResult = test->runJavaScriptFromGResourceAndWaitUntilFinished("/org/webkit/glib/tests/link-title.js", &error.outPtr());
     g_assert(javascriptResult);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(webkit_javascript_result_get_js_value(javascriptResult)));
     g_assert(!error.get());
     valueString.reset(WebViewTest::javascriptResultToCString(javascriptResult));
     g_assert_cmpstr(valueString.get(), ==, "WebKitGTK+ Title");
@@ -363,6 +371,29 @@ static void testWebViewRunJavaScript(WebViewTest* test, gconstpointer)
     g_assert_error(error.get(), G_RESOURCE_ERROR, G_RESOURCE_ERROR_NOT_FOUND);
 
     javascriptResult = test->runJavaScriptAndWaitUntilFinished("foo();", &error.outPtr());
+    g_assert(!javascriptResult);
+    g_assert_error(error.get(), WEBKIT_JAVASCRIPT_ERROR, WEBKIT_JAVASCRIPT_ERROR_SCRIPT_FAILED);
+
+    // Values of the main world are not available in the isolated one.
+    javascriptResult = test->runJavaScriptInWorldAndWaitUntilFinished("a", "WebExtensionTestScriptWorld", &error.outPtr());
+    g_assert(!javascriptResult);
+    g_assert_error(error.get(), WEBKIT_JAVASCRIPT_ERROR, WEBKIT_JAVASCRIPT_ERROR_SCRIPT_FAILED);
+
+    javascriptResult = test->runJavaScriptInWorldAndWaitUntilFinished("a = 50", "WebExtensionTestScriptWorld", &error.outPtr());
+    g_assert(javascriptResult);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(webkit_javascript_result_get_js_value(javascriptResult)));
+    g_assert(!error.get());
+    g_assert_cmpfloat(WebViewTest::javascriptResultToNumber(javascriptResult), ==, 50);
+
+    // Values of the isolated world are not available in the normal one.
+    javascriptResult = test->runJavaScriptAndWaitUntilFinished("a", &error.outPtr());
+    g_assert(javascriptResult);
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(webkit_javascript_result_get_js_value(javascriptResult)));
+    g_assert(!error.get());
+    g_assert_cmpfloat(WebViewTest::javascriptResultToNumber(javascriptResult), ==, 25);
+
+    // Running a script in a world that doesn't exist should fail.
+    javascriptResult = test->runJavaScriptInWorldAndWaitUntilFinished("a", "InvalidScriptWorld", &error.outPtr());
     g_assert(!javascriptResult);
     g_assert_error(error.get(), WEBKIT_JAVASCRIPT_ERROR, WEBKIT_JAVASCRIPT_ERROR_SCRIPT_FAILED);
 }

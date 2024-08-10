@@ -26,21 +26,22 @@
 #include "config.h"
 #include "WebFrameProxy.h"
 
+#include "APINavigation.h"
 #include "WebCertificateInfo.h"
 #include "WebFramePolicyListenerProxy.h"
 #include "WebPageMessages.h"
 #include "WebPageProxy.h"
 #include "WebPasteboardProxy.h"
 #include "WebProcessPool.h"
+#include "WebsiteDataStore.h"
 #include "WebsitePoliciesData.h"
 #include <WebCore/Image.h>
 #include <WebCore/MIMETypeRegistry.h>
 #include <stdio.h>
 #include <wtf/text/WTFString.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 WebFrameProxy::WebFrameProxy(WebPageProxy* page, uint64_t frameID)
     : m_page(page)
@@ -63,7 +64,7 @@ void WebFrameProxy::webProcessWillShutDown()
     m_page = nullptr;
 
     if (m_activeListener) {
-        m_activeListener->invalidate();
+        m_activeListener->ignore();
         m_activeListener = nullptr;
     }
 }
@@ -176,22 +177,15 @@ void WebFrameProxy::didChangeTitle(const String& title)
     m_title = title;
 }
 
-void WebFrameProxy::receivedPolicyDecision(PolicyAction action, uint64_t listenerID, API::Navigation* navigation, std::optional<WebsitePoliciesData>&& data)
-{
-    if (!m_page)
-        return;
-
-    ASSERT(m_activeListener);
-    ASSERT(m_activeListener->listenerID() == listenerID);
-    m_page->receivedPolicyDecision(action, *this, listenerID, navigation, WTFMove(data));
-}
-
-WebFramePolicyListenerProxy& WebFrameProxy::setUpPolicyListenerProxy(uint64_t listenerID)
+WebFramePolicyListenerProxy& WebFrameProxy::setUpPolicyListenerProxy(CompletionHandler<void(WebCore::PolicyAction, API::WebsitePolicies*, ShouldProcessSwapIfPossible, Vector<SafeBrowsingResult>&&)>&& completionHandler, ShouldExpectSafeBrowsingResult expect)
 {
     if (m_activeListener)
-        m_activeListener->invalidate();
-    m_activeListener = WebFramePolicyListenerProxy::create(this, listenerID);
-    return *static_cast<WebFramePolicyListenerProxy*>(m_activeListener.get());
+        m_activeListener->ignore();
+    m_activeListener = WebFramePolicyListenerProxy::create([this, protectedThis = makeRef(*this), completionHandler = WTFMove(completionHandler)] (WebCore::PolicyAction action, API::WebsitePolicies* policies, ShouldProcessSwapIfPossible swap, Vector<SafeBrowsingResult>&& safeBrowsingResults) mutable {
+        completionHandler(action, policies, swap, WTFMove(safeBrowsingResults));
+        m_activeListener = nullptr;
+    }, expect);
+    return *m_activeListener;
 }
 
 void WebFrameProxy::getWebArchive(Function<void (API::Data*, CallbackBase::Error)>&& callbackFunction)

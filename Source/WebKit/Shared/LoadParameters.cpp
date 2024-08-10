@@ -41,13 +41,13 @@ void LoadParameters::encode(IPC::Encoder& encoder) const
 
     encoder << sandboxExtensionHandle;
     encoder << data;
-    encoder << string;
     encoder << MIMEType;
     encoder << encodingName;
     encoder << baseURLString;
     encoder << unreachableURLString;
     encoder << provisionalLoadErrorURLString;
     encoder << shouldOpenExternalURLsPolicy;
+    encoder << shouldTreatAsContinuingLoad;
     encoder << userData;
 
     platformEncode(encoder);
@@ -81,9 +81,6 @@ bool LoadParameters::decode(IPC::Decoder& decoder, LoadParameters& data)
     if (!decoder.decode(data.data))
         return false;
 
-    if (!decoder.decode(data.string))
-        return false;
-
     if (!decoder.decode(data.MIMEType))
         return false;
 
@@ -100,6 +97,9 @@ bool LoadParameters::decode(IPC::Decoder& decoder, LoadParameters& data)
         return false;
 
     if (!decoder.decode(data.shouldOpenExternalURLsPolicy))
+        return false;
+
+    if (!decoder.decode(data.shouldTreatAsContinuingLoad))
         return false;
 
     if (!decoder.decode(data.userData))

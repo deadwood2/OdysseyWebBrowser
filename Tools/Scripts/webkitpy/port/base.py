@@ -47,9 +47,9 @@ from webkitpy.common import find_files
 from webkitpy.common import read_checksum_from_png
 from webkitpy.common.memoized import memoized
 from webkitpy.common.prettypatch import PrettyPatch
-from webkitpy.common.system import path
+from webkitpy.common.system import path, pemfile
 from webkitpy.common.system.executive import ScriptError
-from webkitpy.common.version_name_map import PUBLIC_TABLE, VersionNameMap
+from webkitpy.common.version_name_map import PUBLIC_TABLE, INTERNAL_TABLE, VersionNameMap
 from webkitpy.common.wavediff import WaveDiff
 from webkitpy.common.webkit_finder import WebKitFinder
 from webkitpy.layout_tests.models.test_configuration import TestConfiguration
@@ -223,7 +223,7 @@ class Port(object):
             return factory.get(target_port).default_baseline_search_path()
         return []
 
-    def check_build(self, needs_http):
+    def check_build(self):
         """This routine is used to ensure that the build is up to date
         and all the needed binaries are present."""
         # If we're using a pre-built copy of WebKit (--root), we assume it also includes a build of DRT.
@@ -240,6 +240,27 @@ class Port(object):
                 return False
         return True
 
+    def check_api_test_build(self):
+        if not self._root_was_set and self.get_option('build') and not self._build_api_tests():
+            return False
+        if self.get_option('install') and not self._check_port_build():
+            return False
+
+        for binary in self.path_to_api_test_binaries():
+            if not self._filesystem.exists(binary):
+                _log.error('{} was not found at {}'.format(os.path.basename(binary), binary))
+                return False
+        return True
+
+    def environment_for_api_tests(self):
+        build_root_path = str(self._build_path())
+        return {
+            'DYLD_LIBRARY_PATH': build_root_path,
+            '__XPC_DYLD_LIBRARY_PATH': build_root_path,
+            'DYLD_FRAMEWORK_PATH': build_root_path,
+            '__XPC_DYLD_FRAMEWORK_PATH': build_root_path,
+        }
+
     def _check_driver(self):
         driver_path = self._path_to_driver()
         if not self._filesystem.exists(driver_path):
@@ -251,14 +272,12 @@ class Port(object):
         # Ports can override this method to do additional checks.
         return True
 
-    def check_sys_deps(self, needs_http):
+    def check_sys_deps(self):
         """If the port needs to do some runtime checks to ensure that the
         tests can be run successfully, it should override this routine.
         This step can be skipped with --nocheck-sys-deps.
 
         Returns whether the system is properly configured."""
-        if needs_http:
-            return self.check_httpd()
         return True
 
     def check_image_diff(self, override_step=None, logging=True):
@@ -681,10 +700,10 @@ class Port(object):
 
     def normalize_test_name(self, test_name):
         """Returns a normalized version of the test name or test directory."""
-        if test_name.endswith(os.path.sep):
+        if test_name.endswith(self.TEST_PATH_SEPARATOR):
             return test_name
         if self.test_isdir(test_name):
-            return test_name + os.path.sep
+            return test_name + self.TEST_PATH_SEPARATOR
         return test_name
 
     def driver_cmd_line_for_logging(self):
@@ -774,7 +793,10 @@ class Port(object):
         expectations, determining search paths, and logging information."""
         if self._os_version is None:
             return None
-        return VersionNameMap.map(self.host.platform).to_name(self._os_version, table=PUBLIC_TABLE)
+        result = VersionNameMap.map(self.host.platform).to_name(self._os_version, table=PUBLIC_TABLE)
+        if not result:
+            result = VersionNameMap.map(self.host.platform).to_name(self._os_version, table=INTERNAL_TABLE)
+        return result
 
     def get_option(self, name, default_value=None):
         return getattr(self._options, name, default_value)
@@ -808,7 +830,7 @@ class Port(object):
         # Ports that run on windows need to override this method to deal with
         # filenames with backslashes in them.
         if filename.startswith(self.layout_tests_dir()):
-            return self.host.filesystem.relpath(filename, self.layout_tests_dir())
+            return self.host.filesystem.relpath(filename, self.layout_tests_dir()).replace(self.host.filesystem.sep, self.TEST_PATH_SEPARATOR)
         else:
             return self.host.filesystem.abspath(filename)
 
@@ -817,7 +839,7 @@ class Port(object):
         """Returns the full path to the file for a given test name. This is the
         inverse of relative_test_filename() if no target_host is specified."""
         host = target_host or self.host
-        return host.filesystem.join(host.filesystem.map_base_host_path(self.layout_tests_dir()), test_name)
+        return host.filesystem.join(host.filesystem.map_base_host_path(self.layout_tests_dir()), test_name.replace(self.TEST_PATH_SEPARATOR, self.host.filesystem.sep))
 
     def jsc_results_directory(self):
         return self._build_path()
@@ -846,6 +868,12 @@ class Port(object):
         # Results are store relative to the built products to make it easy
         # to have multiple copies of webkit checked out and built.
         return self._build_path('layout-test-results')
+
+    def wpt_metadata_directory(self):
+        return self._build_path('web-platform-tests-metadata')
+
+    def wpt_manifest_file(self):
+        return self._build_path('web-platform-tests-manifest.json')
 
     def setup_test_run(self, device_class=None):
         """Perform port-specific work at the beginning of a test run."""
@@ -964,6 +992,9 @@ class Port(object):
 
         Ports can stub this out if they don't need a web server to be running."""
         assert not self._http_server, 'Already running an http server.'
+        if not self.check_httpd():
+            return
+
         http_port = self.get_option('http_port')
         if self._uses_apache():
             server = apache_http_server.LayoutTestApacheHttpd(self, self.results_directory(), additional_dirs=additional_dirs, port=http_port)
@@ -988,12 +1019,6 @@ class Port(object):
             return True
         return web_platform_test_server.is_wpt_server_running(self)
 
-    def _extract_certificate_from_pem(self, pem_file, destination_certificate_file):
-        return self._executive.run_command(['openssl', 'x509', '-outform', 'pem', '-in', pem_file, '-out', destination_certificate_file], return_exit_code=True) == 0
-
-    def _extract_private_key_from_pem(self, pem_file, destination_private_key_file):
-        return self._executive.run_command(['openssl', 'rsa', '-in', pem_file, '-out', destination_private_key_file], return_exit_code=True) == 0
-
     def start_websocket_server(self):
         """Start a web server. Raise an error if it can't start or is already running.
 
@@ -1004,16 +1029,20 @@ class Port(object):
         server.start()
         self._websocket_server = server
 
-        pem_file = self._filesystem.join(self.layout_tests_dir(), "http", "conf", "webkit-httpd.pem")
         websocket_server_temporary_directory = self._filesystem.mkdtemp(prefix='webkitpy-websocket-server')
-        certificate_file = self._filesystem.join(str(websocket_server_temporary_directory), 'webkit-httpd.crt')
-        private_key_file = self._filesystem.join(str(websocket_server_temporary_directory), 'webkit-httpd.key')
         self._websocket_server_temporary_directory = websocket_server_temporary_directory
-        if self._extract_certificate_from_pem(pem_file, certificate_file) and self._extract_private_key_from_pem(pem_file, private_key_file):
-            secure_server = self._websocket_secure_server = websocket_server.PyWebSocket(self, self.results_directory(),
-                                use_tls=True, port=websocket_server.PyWebSocket.DEFAULT_WSS_PORT, private_key=private_key_file, certificate=certificate_file)
-            secure_server.start()
-            self._websocket_secure_server = secure_server
+
+        pem_file = self._filesystem.join(self.layout_tests_dir(), "http", "conf", "webkit-httpd.pem")
+        pem = pemfile.load(self._filesystem, pem_file)
+        certificate_file = self._filesystem.join(str(websocket_server_temporary_directory), 'webkit-httpd.crt')
+        self._filesystem.write_text_file(certificate_file, pem.certificate)
+        private_key_file = self._filesystem.join(str(websocket_server_temporary_directory), 'webkit-httpd.key')
+        self._filesystem.write_text_file(private_key_file, pem.private_key)
+
+        secure_server = self._websocket_secure_server = websocket_server.PyWebSocket(self, self.results_directory(),
+            use_tls=True, port=websocket_server.PyWebSocket.DEFAULT_WSS_PORT, private_key=private_key_file, certificate=certificate_file)
+        secure_server.start()
+        self._websocket_secure_server = secure_server
 
     def start_web_platform_test_server(self, additional_dirs=None, number_of_servers=None):
         assert not self._web_platform_test_server, 'Already running a Web Platform Test server.'
@@ -1197,7 +1226,7 @@ class Port(object):
         This is needed only by ports that use the apache_http_server module."""
         # The Apache binary path can vary depending on OS and distribution
         # See http://wiki.apache.org/httpd/DistrosDefaultLayout
-        for path in ["/usr/sbin/httpd", "/usr/sbin/apache2"]:
+        for path in ["/usr/sbin/httpd", "/usr/sbin/apache2", "/app/bin/httpd"]:
             if self._filesystem.exists(path):
                 return path
         _log.error("Could not find apache. Not installed or unknown path.")
@@ -1223,16 +1252,19 @@ class Port(object):
     def _is_arch_based(self):
         return self._filesystem.exists('/etc/arch-release')
 
+    def _is_flatpak(self):
+        return self._filesystem.exists('/usr/manifest.json')
+
     def _apache_version(self):
         config = self._executive.run_command([self._path_to_apache(), '-v'])
         return re.sub(r'(?:.|\n)*Server version: Apache/(\d+\.\d+)(?:.|\n)*', r'\1', config)
 
     def _debian_php_version(self):
-        if self._filesystem.exists("/usr/lib/apache2/modules/libphp7.0.so"):
-            return "-php7.0"
-        elif self._filesystem.exists("/usr/lib/apache2/modules/libphp7.1.so"):
-            return "-php7.1"
-        _log.error("No libphp7.x.so found")
+        prefix = "/usr/lib/apache2/modules/"
+        for version in ("7.0", "7.1", "7.2"):
+            if self._filesystem.exists("%s/libphp%s.so" % (prefix, version)):
+                return "-php%s" % version
+        _log.error("No libphp7.x.so found in %s" % prefix)
         return ""
 
     def _darwin_php_version(self):
@@ -1247,8 +1279,10 @@ class Port(object):
 
     # We pass sys_platform into this method to make it easy to unit test.
     def _apache_config_file_name_for_platform(self, sys_platform):
-        if sys_platform == 'cygwin' or sys_platform.startswith('win'):
+        if sys_platform == 'cygwin':
             return 'apache' + self._apache_version() + '-httpd-win.conf'
+        if sys_platform == 'win32':
+            return 'win-httpd-' + self._apache_version() + '-php7.conf'
         if sys_platform == 'darwin':
             return 'apache' + self._apache_version() + self._darwin_php_version() + '-httpd.conf'
         if sys_platform.startswith('linux'):
@@ -1258,6 +1292,8 @@ class Port(object):
                 return 'debian-httpd-' + self._apache_version() + self._debian_php_version() + '.conf'
             if self._is_arch_based():
                 return 'archlinux-httpd.conf'
+            if self._is_flatpak():
+                return 'flatpak-httpd.conf'
         # All platforms use apache2 except for CYGWIN (and Mac OS X Tiger and prior, which we no longer support).
         return 'apache' + self._apache_version() + '-httpd.conf'
 
@@ -1280,11 +1316,11 @@ class Port(object):
     def _build_path(self, *comps):
         root_directory = self.get_option('_cached_root') or self.get_option('root')
         if not root_directory:
+            root_directory = self._config.build_directory(self.get_option('configuration'))
             build_directory = self.get_option('build_directory')
             if build_directory:
-                root_directory = self._filesystem.join(build_directory, self.get_option('configuration'))
-            else:
-                root_directory = self._config.build_directory(self.get_option('configuration'))
+                root_directory = self._filesystem.join(build_directory, root_directory.split('/')[-1])
+
             # We take advantage of the behavior that self._options is passed by reference to worker
             # subprocesses to use it as data store to cache the computed root directory path. This
             # avoids making each worker subprocess compute this path again which is slow because of
@@ -1332,6 +1368,17 @@ class Port(object):
 
         This is likely used only by diff_image()"""
         return self._build_path('ImageDiff')
+
+    def path_to_api_test_binaries(self):
+        binary_names = ['TestWTF']
+        if self.host.platform.is_win():
+            binary_names += ['TestWebCore', 'TestWebKitLegacy']
+        else:
+            binary_names += ['TestWebKitAPI']
+        binary_paths = [self._build_path(binary_name) for binary_name in binary_names]
+        if self.host.platform.is_win():
+            binary_paths = [os.path.splitext(binary_path)[0] + '.exe' for binary_path in binary_paths]
+        return binary_paths
 
     def _path_to_lighttpd(self):
         """Returns the path to the LigHTTPd binary.
@@ -1399,7 +1446,19 @@ class Port(object):
         # --pixel-test-directory is not specified.
         return True
 
+    def _should_use_flatpak(self):
+        suffix = ""
+        if self.port_name:
+            suffix = self.port_name.upper()
+        return self._filesystem.exists(self.path_from_webkit_base('WebKitBuild', suffix, "FlatpakTree"))
+
+    def _in_flatpak_sandbox(self):
+        return os.path.exists("/usr/manifest.json")
+
     def _should_use_jhbuild(self):
+        if self._in_flatpak_sandbox():
+            return False
+
         suffix = ""
         if self.port_name:
             suffix = self.port_name.upper()
@@ -1441,6 +1500,15 @@ class Port(object):
             self._run_script("build-dumprendertree", args=self._build_driver_flags(), env=env)
             if self.get_option('webkit_test_runner'):
                 self._run_script("build-webkittestrunner", args=self._build_driver_flags(), env=env)
+        except ScriptError as e:
+            _log.error(e.message_with_output(output_limit=None))
+            return False
+        return True
+
+    def _build_api_tests(self):
+        environment = self.host.copy_current_environment().to_dictionary()
+        try:
+            self._run_script('build-api-tests', args=self._build_driver_flags(), env=environment)
         except ScriptError as e:
             _log.error(e.message_with_output(output_limit=None))
             return False

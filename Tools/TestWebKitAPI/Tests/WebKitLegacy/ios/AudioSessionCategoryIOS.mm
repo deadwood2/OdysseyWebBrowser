@@ -59,6 +59,16 @@ static bool didBeginPlaying = false;
 
 namespace TestWebKitAPI {
 
+static void waitUntilAudioSessionCategoryIsEqualTo(NSString *expectedValue)
+{
+    int tries = 0;
+    do {
+        if ([[[getAVAudioSessionClass() sharedInstance] category] isEqualToString:expectedValue])
+            return;
+        Util::sleep(0.1);
+    } while (++tries <= 100);
+}
+
 TEST(WebKitLegacy, AudioSessionCategoryIOS)
 {
     WebCore::DeprecatedGlobalSettings::setShouldManageAudioSessionCategory(true);
@@ -76,6 +86,7 @@ TEST(WebKitLegacy, AudioSessionCategoryIOS)
 
     Util::run(&didBeginPlaying);
 
+    waitUntilAudioSessionCategoryIsEqualTo(getAVAudioSessionCategoryPlayback());
     EXPECT_WK_STREQ(getAVAudioSessionCategoryPlayback(), [[getAVAudioSessionClass() sharedInstance] category]);
 
     didBeginPlaying = false;
@@ -84,6 +95,7 @@ TEST(WebKitLegacy, AudioSessionCategoryIOS)
 
     Util::run(&didBeginPlaying);
 
+    waitUntilAudioSessionCategoryIsEqualTo(getAVAudioSessionCategoryAmbient());
     EXPECT_WK_STREQ(getAVAudioSessionCategoryAmbient(), [[getAVAudioSessionClass() sharedInstance] category]);
 
     didBeginPlaying = false;
@@ -92,6 +104,7 @@ TEST(WebKitLegacy, AudioSessionCategoryIOS)
 
     Util::run(&didBeginPlaying);
 
+    waitUntilAudioSessionCategoryIsEqualTo(getAVAudioSessionCategoryAmbient());
     EXPECT_WK_STREQ(getAVAudioSessionCategoryAmbient(), [[getAVAudioSessionClass() sharedInstance] category]);
 
     didBeginPlaying = false;
@@ -100,7 +113,17 @@ TEST(WebKitLegacy, AudioSessionCategoryIOS)
 
     Util::run(&didBeginPlaying);
 
+    waitUntilAudioSessionCategoryIsEqualTo(getAVAudioSessionCategoryAmbient());
     EXPECT_WK_STREQ(getAVAudioSessionCategoryAmbient(), [[getAVAudioSessionClass() sharedInstance] category]);
+
+    didBeginPlaying = false;
+
+    [uiWebView loadRequest:[NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"video-with-paused-audio-and-playing-muted" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]]];
+
+    Util::run(&didBeginPlaying);
+
+    waitUntilAudioSessionCategoryIsEqualTo(getAVAudioSessionCategoryPlayback());
+    EXPECT_WK_STREQ(getAVAudioSessionCategoryPlayback(), [[getAVAudioSessionClass() sharedInstance] category]);
 }
 
 }

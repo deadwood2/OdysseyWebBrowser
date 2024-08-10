@@ -8,7 +8,9 @@ set(WebKit_StorageProcess_OUTPUT_NAME WPEStorageProcess)
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_WPE_API_DIR})
 file(MAKE_DIRECTORY ${FORWARDING_HEADERS_WPE_DIR})
 file(MAKE_DIRECTORY ${FORWARDING_HEADERS_WPE_EXTENSION_DIR})
+file(MAKE_DIRECTORY ${FORWARDING_HEADERS_WPE_DOM_DIR})
 
+configure_file(UIProcess/API/wpe/WebKitVersion.h.in ${DERIVED_SOURCES_WPE_API_DIR}/WebKitVersion.h)
 configure_file(wpe/wpe-webkit.pc.in ${CMAKE_BINARY_DIR}/wpe-webkit-${WPE_API_VERSION}.pc @ONLY)
 configure_file(wpe/wpe-web-extension.pc.in ${CMAKE_BINARY_DIR}/wpe-web-extension-${WPE_API_VERSION}.pc @ONLY)
 
@@ -44,9 +46,17 @@ add_custom_command(
     COMMAND ln -n -s -f ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe ${FORWARDING_HEADERS_WPE_EXTENSION_DIR}/wpe
 )
 
+add_custom_command(
+    OUTPUT ${FORWARDING_HEADERS_WPE_DOM_DIR}/wpe
+    DEPENDS ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM
+    COMMAND ln -n -s -f ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM ${FORWARDING_HEADERS_WPE_DOM_DIR}/wpe
+    VERBATIM
+)
+
 add_custom_target(webkitwpe-fake-api-headers
     DEPENDS ${FORWARDING_HEADERS_WPE_DIR}/wpe
             ${FORWARDING_HEADERS_WPE_EXTENSION_DIR}/wpe
+            ${FORWARDING_HEADERS_WPE_DOM_DIR}/wpe
 )
 
 set(WEBKIT_EXTRA_DEPENDENCIES
@@ -87,6 +97,7 @@ list(APPEND WebKit_DERIVED_SOURCES
 
 set(WPE_API_INSTALLED_HEADERS
     ${DERIVED_SOURCES_WPE_API_DIR}/WebKitEnumTypes.h
+    ${DERIVED_SOURCES_WPE_API_DIR}/WebKitVersion.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitApplicationInfo.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitAuthenticationRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitAutomationSession.h
@@ -109,6 +120,7 @@ set(WPE_API_INSTALLED_HEADERS
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitGeolocationPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitHitTestResult.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitInstallMissingMediaPluginsPermissionRequest.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitJavascriptResult.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitMimeInfo.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitNavigationAction.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitNavigationPolicyDecision.h
@@ -144,10 +156,18 @@ set(WPE_WEB_EXTENSION_API_INSTALLED_HEADERS
     ${DERIVED_SOURCES_WPE_API_DIR}/WebKitWebProcessEnumTypes.h
     ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitConsoleMessage.h
     ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitFrame.h
+    ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitScriptWorld.h
     ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitWebEditor.h
     ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitWebExtension.h
+    ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitWebHitTestResult.h
     ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitWebPage.h
     ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/webkit-web-extension.h
+    ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM/webkitdom.h
+    ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM/WebKitDOMDefines.h
+    ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM/WebKitDOMDocument.h
+    ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM/WebKitDOMElement.h
+    ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM/WebKitDOMNode.h
+    ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM/WebKitDOMObject.h
 )
 
 # To generate WebKitEnumTypes.h we want to use all installed headers, except WebKitEnumTypes.h itself.
@@ -203,9 +223,13 @@ add_custom_command(
 )
 
 list(APPEND WebKit_INCLUDE_DIRECTORIES
+    "${DERIVED_SOURCES_JAVASCRIPCOREWPE_DIR}"
     "${FORWARDING_HEADERS_DIR}"
+    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/"
+    "${FORWARDING_HEADERS_DIR}/JavaScriptCore/glib"
     "${FORWARDING_HEADERS_WPE_DIR}"
     "${FORWARDING_HEADERS_WPE_EXTENSION_DIR}"
+    "${FORWARDING_HEADERS_WPE_DOM_DIR}"
     "${DERIVED_SOURCES_DIR}"
     "${DERIVED_SOURCES_WPE_API_DIR}"
     "${WEBCORE_DIR}/platform/graphics/cairo"
@@ -214,7 +238,6 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/graphics/texmap/coordinated"
     "${WEBCORE_DIR}/platform/network/soup"
     "${WEBKIT_DIR}/NetworkProcess/CustomProtocols/soup"
-    "${WEBKIT_DIR}/NetworkProcess/Downloads/soup"
     "${WEBKIT_DIR}/NetworkProcess/soup"
     "${WEBKIT_DIR}/NetworkProcess/unix"
     "${WEBKIT_DIR}/Platform/IPC/glib"
@@ -239,7 +262,9 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/UIProcess/soup"
     "${WEBKIT_DIR}/UIProcess/wpe"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/glib"
+    "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/glib/DOM"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe"
+    "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM"
     "${WEBKIT_DIR}/WebProcess/soup"
     "${WEBKIT_DIR}/WebProcess/unix"
     "${WEBKIT_DIR}/WebProcess/WebCoreSupport/soup"
@@ -261,13 +286,15 @@ list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebKit_LIBRARIES
-    ${CAIRO_LIBRARIES}
-    ${FREETYPE2_LIBRARIES}
-    ${GLIB_LIBRARIES}
-    ${GSTREAMER_LIBRARIES}
-    ${HARFBUZZ_LIBRARIES}
-    ${LIBSOUP_LIBRARIES}
-    ${WPE_LIBRARIES}
+    PRIVATE
+        ${CAIRO_LIBRARIES}
+        ${FREETYPE2_LIBRARIES}
+        ${GLIB_LIBRARIES}
+        ${GLIB_GMODULE_LIBRARIES}
+        ${GSTREAMER_LIBRARIES}
+        ${HARFBUZZ_LIBRARIES}
+        ${LIBSOUP_LIBRARIES}
+        ${WPE_LIBRARIES}
 )
 
 WEBKIT_BUILD_INSPECTOR_GRESOURCES(${DERIVED_SOURCES_WEBINSPECTORUI_DIR})

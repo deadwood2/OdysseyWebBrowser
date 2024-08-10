@@ -32,15 +32,14 @@
 #import "RemoteLayerBackingStoreCollection.h"
 #import "RemoteLayerTreeTransaction.h"
 #import "WebPage.h"
+#import <WebCore/Frame.h>
 #import <WebCore/FrameView.h>
-#import <WebCore/MainFrame.h>
 #import <WebCore/Page.h>
 #import <wtf/SetForScope.h>
 #import <wtf/SystemTracing.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 RemoteLayerTreeContext::RemoteLayerTreeContext(WebPage& webPage)
     : m_webPage(webPage)
@@ -143,7 +142,7 @@ void RemoteLayerTreeContext::willStartAnimationOnLayer(PlatformCALayerRemote& la
     m_layersWithAnimations.add(layer.layerID(), &layer);
 }
 
-void RemoteLayerTreeContext::animationDidStart(WebCore::GraphicsLayer::PlatformLayerID layerID, const String& key, double startTime)
+void RemoteLayerTreeContext::animationDidStart(WebCore::GraphicsLayer::PlatformLayerID layerID, const String& key, MonotonicTime startTime)
 {
     auto it = m_layersWithAnimations.find(layerID);
     if (it != m_layersWithAnimations.end())

@@ -236,6 +236,10 @@ inline WKProcessTerminationReason toAPI(ProcessTerminationReason reason)
         return kWKProcessTerminationReasonExceededMemoryLimit;
     case ProcessTerminationReason::ExceededCPULimit:
         return kWKProcessTerminationReasonExceededCPULimit;
+    case ProcessTerminationReason::NavigationSwap:
+        // We probably shouldn't bother coming up with a new C-API type for process-swapping.
+        // "Requested by client" seems like the best match for existing types.
+        FALLTHROUGH;
     case ProcessTerminationReason::RequestedByClient:
         return kWKProcessTerminationReasonRequestedByClient;
     case ProcessTerminationReason::Crash:
@@ -360,6 +364,8 @@ inline WKProtectionSpaceAuthenticationScheme toAPI(WebCore::ProtectionSpaceAuthe
         return kWKProtectionSpaceAuthenticationSchemeClientCertificateRequested;
     case WebCore::ProtectionSpaceAuthenticationSchemeServerTrustEvaluationRequested:
         return kWKProtectionSpaceAuthenticationSchemeServerTrustEvaluationRequested;
+    case WebCore::ProtectionSpaceAuthenticationSchemeOAuth:
+        return kWKProtectionSpaceAuthenticationSchemeOAuth;
     default:
         return kWKProtectionSpaceAuthenticationSchemeUnknown;
     }
@@ -566,6 +572,10 @@ inline WKWebGLLoadPolicy toAPI(WebCore::WebGLLoadPolicy webGLLoadPolicy)
 
 #if defined(BUILDING_WPE__)
 #include "WKAPICastWPE.h"
+#endif
+
+#if defined(WIN32) || defined(_WIN32)
+#include "WKAPICastWin.h"
 #endif
 
 #endif // WKAPICast_h

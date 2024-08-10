@@ -49,6 +49,7 @@
 #include <wpe/WebKitGeolocationPermissionRequest.h>
 #include <wpe/WebKitHitTestResult.h>
 #include <wpe/WebKitInstallMissingMediaPluginsPermissionRequest.h>
+#include <wpe/WebKitJavascriptResult.h>
 #include <wpe/WebKitMimeInfo.h>
 #include <wpe/WebKitNavigationAction.h>
 #include <wpe/WebKitNavigationPolicyDecision.h>
@@ -68,6 +69,7 @@
 #include <wpe/WebKitUserContent.h>
 #include <wpe/WebKitUserContentManager.h>
 #include <wpe/WebKitUserMediaPermissionRequest.h>
+#include <wpe/WebKitVersion.h>
 #include <wpe/WebKitWebContext.h>
 #include <wpe/WebKitWebResource.h>
 #include <wpe/WebKitWebView.h>

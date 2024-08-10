@@ -131,8 +131,7 @@ void CurlCacheManager::loadIndex()
 
     // Create strings from buffer
     String headerContent = String(buffer.data(), buffer.size());
-    Vector<String> indexURLs;
-    headerContent.split('\n', indexURLs);
+    Vector<String> indexURLs = headerContent.split('\n');
     buffer.clear();
 
     // Add entries to index
@@ -197,10 +196,6 @@ void CurlCacheManager::makeRoomForNewEntry()
 void CurlCacheManager::didReceiveResponse(ResourceHandle& job, ResourceResponse& response)
 {
     if (m_disabled)
-        return;
-
-    ResourceHandleInternal* d = job.getInternal();
-    if (!d->m_delegate->hasHandle())
         return;
 
     const String& url = job.firstRequest().url().string();

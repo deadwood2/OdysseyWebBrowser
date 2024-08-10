@@ -27,6 +27,7 @@ from webkitpy.common.version import Version
 
 
 PUBLIC_TABLE = 'public'
+INTERNAL_TABLE = 'internal'
 
 
 class VersionNameMap(object):
@@ -58,7 +59,7 @@ class VersionNameMap(object):
                 'El Capitan': Version(10, 11),
                 'Sierra': Version(10, 12),
                 'High Sierra': Version(10, 13),
-                'Future': Version(10, 14),
+                'Mojave': Version(10, 14),
             },
             'ios': self._automap_to_major_version('iOS', minimum=Version(10), maximum=Version(12)),
             'tvos': self._automap_to_major_version('tvOS', minimum=Version(10), maximum=Version(12)),
@@ -143,6 +144,4 @@ class VersionNameMap(object):
     def mapping_for_platform(self, platform=None, table=PUBLIC_TABLE):
         """return proper os_name: os_version mapping for platform"""
         platform = self.default_system_platform if platform is None else platform
-        assert table in self.mapping
-        assert platform in self.mapping[table]
-        return self.mapping[table][platform]
+        return self.mapping.get(table, {}).get(platform, {})

@@ -28,11 +28,11 @@
 #if ENABLE(MEDIA_STREAM) && PLATFORM(MAC)
 
 #include "DisplayCaptureSourceCocoa.h"
+#include "IOSurface.h"
 #include <CoreGraphics/CGDisplayConfiguration.h>
 #include <CoreGraphics/CGDisplayStream.h>
 #include <wtf/Lock.h>
 #include <wtf/OSObjectPtr.h>
-#include <wtf/WeakPtr.h>
 
 typedef struct __CVBuffer *CVPixelBufferRef;
 typedef struct opaqueCMSampleBuffer *CMSampleBufferRef;
@@ -43,9 +43,8 @@ class ScreenDisplayCaptureSourceMac : public DisplayCaptureSourceCocoa {
 public:
     static CaptureSourceOrError create(const String&, const MediaConstraints*);
 
-    WEBCORE_EXPORT static VideoCaptureFactory& factory();
-
-    WEBCORE_EXPORT static std::optional<CGDirectDisplayID> updateDisplayID(CGDirectDisplayID);
+    static std::optional<CaptureDevice> screenCaptureDeviceWithPersistentID(const String&);
+    static void screenCaptureDevices(Vector<CaptureDevice>&);
 
 private:
     ScreenDisplayCaptureSourceMac(uint32_t);
@@ -64,8 +63,6 @@ private:
     bool applyFrameRate(double) final;
     void commitConfiguration() final;
 
-    RetainPtr<CMSampleBufferRef> sampleBufferFromPixelBuffer(CVPixelBufferRef);
-    RetainPtr<CVPixelBufferRef> pixelBufferFromIOSurface(IOSurfaceRef);
     bool createDisplayStream();
     void startDisplayStream();
     
@@ -97,15 +94,10 @@ private:
     mutable Lock m_currentFrameMutex;
     DisplaySurface m_currentFrame;
     RetainPtr<CGDisplayStreamRef> m_displayStream;
-    RetainPtr<CFMutableDictionaryRef> m_bufferAttributes;
     CGDisplayStreamFrameAvailableHandler m_frameAvailableBlock;
-    WeakPtrFactory<ScreenDisplayCaptureSourceMac> m_weakFactory;
-    MediaTime m_presentationTimeStamp;
-    MediaTime m_frameDuration;
 
     OSObjectPtr<dispatch_queue_t> m_captureQueue;
 
-    double m_lastFrameTime { NAN };
     uint32_t m_displayID { 0 };
     bool m_isRunning { false };
     bool m_observingDisplayChanges { false };

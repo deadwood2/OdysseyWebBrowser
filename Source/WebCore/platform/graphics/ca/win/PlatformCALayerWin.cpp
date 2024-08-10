@@ -40,7 +40,6 @@
 #include "WebTiledBackingLayerWin.h"
 #include <QuartzCore/CoreAnimationCF.h>
 #include <WebKitSystemInterface/WebKitSystemInterface.h>
-#include <wtf/CurrentTime.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 
@@ -133,7 +132,6 @@ static void layoutSublayersProc(CACFLayerRef caLayer)
 
 PlatformCALayerWin::PlatformCALayerWin(LayerType layerType, PlatformLayer* layer, PlatformCALayerClient* owner)
     : PlatformCALayer(layer ? LayerTypeCustom : layerType, owner)
-    , m_customAppearance(GraphicsLayer::NoCustomAppearance)
 {
     if (layer) {
         m_layer = layer;
@@ -208,7 +206,7 @@ PlatformCALayer* PlatformCALayerWin::rootLayer() const
     return host ? host->rootLayer() : nullptr;
 }
 
-void PlatformCALayerWin::animationStarted(const String& animationKey, CFTimeInterval beginTime)
+void PlatformCALayerWin::animationStarted(const String& animationKey, MonotonicTime beginTime)
 {
     // Update start time for any animation not yet started
     CFTimeInterval cacfBeginTime = currentTimeToMediaTime(beginTime);
@@ -536,6 +534,11 @@ void PlatformCALayerWin::setSupportsSubpixelAntialiasedText(bool)
 {
 }
 
+bool PlatformCALayerWin::hasContents() const
+{
+    return !!CACFLayerGetContents(m_layer.get());
+}
+
 CFTypeRef PlatformCALayerWin::contents() const
 {
     return CACFLayerGetContents(m_layer.get());
@@ -671,7 +674,7 @@ void PlatformCALayerWin::setShapeRoundedRect(const FloatRoundedRect&)
 WindRule PlatformCALayerWin::shapeWindRule() const
 {
     // FIXME: implement.
-    return RULE_NONZERO;
+    return WindRule::NonZero;
 }
 
 void PlatformCALayerWin::setShapeWindRule(WindRule)
@@ -921,7 +924,7 @@ String PlatformCALayerWin::layerTreeAsString() const
 
     StringBuilder builder;
     builder.append("\n\n** Render tree at time ");
-    builder.appendNumber(monotonicallyIncreasingTime());
+    builder.appendNumber(MonotonicTime::now().secondsSinceEpoch().seconds());
     builder.append(" (bounds ");
     builder.appendNumber(rootBounds.origin.x);
     builder.append(", ");
@@ -964,7 +967,7 @@ void PlatformCALayerWin::drawTextAtPoint(CGContextRef context, CGFloat x, CGFloa
 
     desc.setComputedSize(scale.width * fontSize);
 
-    FontCascade font = FontCascade(desc, 0, 0);
+    FontCascade font = FontCascade(WTFMove(desc), 0, 0);
     font.update(nullptr);
 
     GraphicsContext cg(context);

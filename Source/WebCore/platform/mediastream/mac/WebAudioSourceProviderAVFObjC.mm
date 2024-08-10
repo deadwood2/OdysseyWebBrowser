@@ -159,8 +159,12 @@ void WebAudioSourceProviderAVFObjC::unprepare()
     }
 }
 
-void WebAudioSourceProviderAVFObjC::audioSamplesAvailable(MediaStreamTrackPrivate&, const MediaTime&, const PlatformAudioData& data, const AudioStreamDescription& description, size_t frameCount)
+// May get called on a background thread.
+void WebAudioSourceProviderAVFObjC::audioSamplesAvailable(MediaStreamTrackPrivate& track, const MediaTime&, const PlatformAudioData& data, const AudioStreamDescription& description, size_t frameCount)
 {
+    if (!track.enabled())
+        return;
+
     ASSERT(description.platformDescription().type == PlatformDescription::CAAudioStreamBasicType);
     auto& basicDescription = *WTF::get<const AudioStreamBasicDescription*>(description.platformDescription().description);
     if (!m_inputDescription || m_inputDescription->streamDescription() != basicDescription)

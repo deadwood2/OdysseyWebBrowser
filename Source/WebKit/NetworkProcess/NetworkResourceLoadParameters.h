@@ -27,7 +27,7 @@
 
 #include "NetworkLoadParameters.h"
 #include "SandboxExtension.h"
-#include "WebCompiledContentRuleListData.h"
+#include "UserContentControllerIdentifier.h"
 #include <WebCore/ContentSecurityPolicyResponseHeaders.h>
 #include <WebCore/FetchOptions.h>
 #include <WebCore/ResourceLoaderOptions.h>
@@ -56,12 +56,17 @@ public:
     Seconds maximumBufferingTime;
     Vector<String> derivedCachedDataTypesToRetrieve;
     RefPtr<WebCore::SecurityOrigin> sourceOrigin;
-    WebCore::FetchOptions::Mode mode;
+    WebCore::FetchOptions options;
     std::optional<WebCore::ContentSecurityPolicyResponseHeaders> cspResponseHeaders;
+    WebCore::HTTPHeaderMap originalRequestHeaders;
+    bool shouldRestrictHTTPResponseAccess { false };
+    WebCore::PreflightPolicy preflightPolicy { WebCore::PreflightPolicy::Consider };
+    bool shouldEnableCrossOriginResourcePolicy { false };
+    Vector<RefPtr<WebCore::SecurityOrigin>> frameAncestorOrigins;
 
 #if ENABLE(CONTENT_EXTENSIONS)
     WebCore::URL mainDocumentURL;
-    Vector<std::pair<String, WebCompiledContentRuleListData>> contentRuleLists;
+    std::optional<UserContentControllerIdentifier> userContentControllerIdentifier;
 #endif
 };
 

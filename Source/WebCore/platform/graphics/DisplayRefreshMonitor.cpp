@@ -30,11 +30,14 @@
 
 #include "DisplayRefreshMonitorClient.h"
 #include "DisplayRefreshMonitorManager.h"
+#include "Logging.h"
 
 #if PLATFORM(IOS)
 #include "DisplayRefreshMonitorIOS.h"
 #elif PLATFORM(MAC)
 #include "DisplayRefreshMonitorMac.h"
+#elif PLATFORM(GTK)
+#include "DisplayRefreshMonitorGtk.h"
 #endif
 
 namespace WebCore {
@@ -46,6 +49,9 @@ RefPtr<DisplayRefreshMonitor> DisplayRefreshMonitor::createDefaultDisplayRefresh
 #endif
 #if PLATFORM(IOS)
     return DisplayRefreshMonitorIOS::create(displayID);
+#endif
+#if PLATFORM(GTK)
+    return DisplayRefreshMonitorGtk::create(displayID);
 #endif
     UNUSED_PARAM(displayID);
     return nullptr;

@@ -38,7 +38,7 @@ class Encoder;
 namespace WebKit {
 
 struct PlatformPopupMenuData {
-    PlatformPopupMenuData();
+    PlatformPopupMenuData() = default;
 
     void encode(IPC::Encoder&) const;
     static bool decode(IPC::Decoder&, PlatformPopupMenuData&);
@@ -46,9 +46,18 @@ struct PlatformPopupMenuData {
 
 #if PLATFORM(COCOA)
     FontInfo fontInfo;
-    bool shouldPopOver;
-    bool hideArrows;
-    WebCore::PopupMenuStyle::PopupMenuSize menuSize;
+    bool shouldPopOver { false };
+    bool hideArrows { false };
+    WebCore::PopupMenuStyle::PopupMenuSize menuSize { WebCore::PopupMenuStyle::PopupMenuSize::PopupMenuSizeNormal };
+#elif PLATFORM(WIN)
+    int m_clientPaddingLeft { 0 };
+    int m_clientPaddingRight { 0 };
+    int m_clientInsetLeft { 0 };
+    int m_clientInsetRight { 0 };
+    int m_popupWidth { 0 };
+    int m_itemHeight { 0 };
+    RefPtr<ShareableBitmap> m_notSelectedBackingStore;
+    RefPtr<ShareableBitmap> m_selectedBackingStore;
 #endif
 };
 

@@ -32,6 +32,10 @@
     --z-index-glass-pane-for-drag: 2048;
     --z-index-uncaught-exception-sheet: 4096;
 
+    --text-color-active: black;
+
+    --background-color-content: white;
+
     --selected-foreground-color: white;
     --selected-secondary-text-color: hsla(0, 100%, 100%, 0.7);
     --selected-background-color: hsl(212, 92%, 54%);
@@ -67,7 +71,6 @@
     --error-text-color: hsl(0, 86%, 47%);
 
     --value-changed-highlight: hsla(83, 100%, 48%, 0.4);
-    --value-visual-highlight: hsla(60, 100%, 50%, 0.4);
 
     --breakpoint-fill-color: hsl(212, 45%, 54%);
     --breakpoint-stroke-color: hsl(212, 45%, 48%);

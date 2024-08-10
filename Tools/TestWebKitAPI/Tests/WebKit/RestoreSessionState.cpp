@@ -32,25 +32,42 @@
 #include "PlatformWebView.h"
 #include "Test.h"
 #include <WebKit/WKSessionStateRef.h>
+#include <wtf/RunLoop.h>
 
 namespace TestWebKitAPI {
 
 static bool didFinishLoad;
 
-static void didFinishLoadForFrame(WKPageRef, WKFrameRef, WKTypeRef, const void*)
+static void didFinishNavigation(WKPageRef, WKNavigationRef, WKTypeRef, const void*)
 {
     didFinishLoad = true;
 }
 
+static void decidePolicyForNavigationAction(WKPageRef page, WKFrameRef frame, WKFrameNavigationType navigationType, WKEventModifiers modifiers, WKEventMouseButton mouseButton, WKFrameRef originatingFrame, WKURLRequestRef request, WKFramePolicyListenerRef listener, WKTypeRef userData, const void* clientInfo)
+{
+    WKRetainPtr<WKFramePolicyListenerRef> retainedListener(listener);
+    RunLoop::main().dispatch([retainedListener = WTFMove(retainedListener)] {
+        WKFramePolicyListenerUse(retainedListener.get());
+    });
+}
+
+static void decidePolicyForResponse(WKPageRef page, WKFrameRef frame, WKURLResponseRef response, WKURLRequestRef request, bool canShowMIMEType, WKFramePolicyListenerRef listener, WKTypeRef userData, const void* clientInfo)
+{
+    WKRetainPtr<WKFramePolicyListenerRef> retainedListener(listener);
+    RunLoop::main().dispatch([retainedListener = WTFMove(retainedListener)] {
+        WKFramePolicyListenerUse(retainedListener.get());
+    });
+}
+
 static void setPageLoaderClient(WKPageRef page)
 {
-    WKPageLoaderClientV0 loaderClient;
+    WKPageNavigationClientV0 loaderClient;
     memset(&loaderClient, 0, sizeof(loaderClient));
 
     loaderClient.base.version = 0;
-    loaderClient.didFinishLoadForFrame = didFinishLoadForFrame;
+    loaderClient.didFinishNavigation = didFinishNavigation;
 
-    WKPageSetPageLoaderClient(page, &loaderClient.base);
+    WKPageSetPageNavigationClient(page, &loaderClient.base);
 }
 
 static WKRetainPtr<WKDataRef> createSessionStateData(WKContextRef context)
@@ -84,6 +101,43 @@ TEST(WebKit, RestoreSessionStateContainingScrollRestorationDefault)
     EXPECT_JS_EQ(webView.page(), "history.scrollRestoration", "auto");
 }
 
+TEST(WebKit, RestoreSessionStateContainingScrollRestorationDefaultWithAsyncPolicyDelegates)
+{
+    WKRetainPtr<WKContextRef> context(AdoptWK, WKContextCreate());
+
+    PlatformWebView webView(context.get());
+    setPageLoaderClient(webView.page());
+
+    WKPagePolicyClientV1 policyClient;
+    memset(&policyClient, 0, sizeof(policyClient));
+    policyClient.base.version = 1;
+    policyClient.decidePolicyForNavigationAction = decidePolicyForNavigationAction;
+    policyClient.decidePolicyForResponse = decidePolicyForResponse;
+    WKPageSetPagePolicyClient(webView.page(), &policyClient.base);
+
+    WKRetainPtr<WKDataRef> data = createSessionStateData(context.get());
+    EXPECT_NOT_NULL(data);
+
+    auto sessionState = adoptWK(WKSessionStateCreateFromData(data.get()));
+    WKPageRestoreFromSessionState(webView.page(), sessionState.get());
+
+    Util::run(&didFinishLoad);
+
+    EXPECT_JS_EQ(webView.page(), "history.scrollRestoration", "auto");
+}
+
+TEST(WebKit, RestoreSessionStateAfterClose)
+{
+    auto context = adoptWK(WKContextCreate());
+    PlatformWebView webView(context.get());
+    setPageLoaderClient(webView.page());
+    auto data = createSessionStateData(context.get());
+    EXPECT_NOT_NULL(data);
+    WKPageClose(webView.page());
+    auto sessionState = adoptWK(WKSessionStateCreateFromData(data.get()));
+    WKPageRestoreFromSessionState(webView.page(), sessionState.get());
+}
+    
 } // namespace TestWebKitAPI
 
 #endif

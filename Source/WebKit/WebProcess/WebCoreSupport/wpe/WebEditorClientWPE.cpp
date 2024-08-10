@@ -36,9 +36,8 @@
 #include <WebCore/WindowsKeyboardCodes.h>
 #include <wtf/NeverDestroyed.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 // The idea for the array/map below comes from Blink's EditingBehavior.cpp.
 
@@ -214,7 +213,7 @@ void WebEditorClient::handleKeyboardEvent(WebCore::KeyboardEvent* event)
 
     // FIXME: Reorder the checks in a more sensible way.
 
-    const PlatformKeyboardEvent* platformEvent = event->keyEvent();
+    auto* platformEvent = event->underlyingPlatformEvent();
     if (!platformEvent)
         return;
 
@@ -237,7 +236,7 @@ void WebEditorClient::handleKeyboardEvent(WebCore::KeyboardEvent* event)
 
 void WebEditorClient::handleInputMethodKeydown(WebCore::KeyboardEvent* event)
 {
-    const PlatformKeyboardEvent* platformEvent = event->keyEvent();
+    auto* platformEvent = event->underlyingPlatformEvent();
     if (platformEvent && platformEvent->windowsVirtualKeyCode() == VK_PROCESSKEY)
         event->preventDefault();
 }

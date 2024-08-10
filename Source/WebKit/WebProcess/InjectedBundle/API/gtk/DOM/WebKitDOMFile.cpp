@@ -24,13 +24,15 @@
 #include "DOMObjectCache.h"
 #include <WebCore/Document.h>
 #include <WebCore/ExceptionCode.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMBlobPrivate.h"
 #include "WebKitDOMFilePrivate.h"
 #include "WebKitDOMPrivate.h"
 #include "ConvertToUTF8String.h"
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -102,3 +104,4 @@ gchar* webkit_dom_file_get_name(WebKitDOMFile* self)
     gchar* result = convertToUTF8String(item->name());
     return result;
 }
+G_GNUC_END_IGNORE_DEPRECATIONS;

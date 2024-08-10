@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/DOMException.h>
 #include <WebCore/Document.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMDOMTokenListPrivate.h"
 #include "WebKitDOMPrivate.h"
 #include "ConvertToUTF8String.h"
@@ -36,6 +36,8 @@
 typedef struct _WebKitDOMDOMTokenListPrivate {
     RefPtr<WebCore::DOMTokenList> coreObject;
 } WebKitDOMDOMTokenListPrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -280,3 +282,4 @@ void webkit_dom_dom_token_list_set_value(WebKitDOMDOMTokenList* self, const gcha
     item->setValue(convertedValue);
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

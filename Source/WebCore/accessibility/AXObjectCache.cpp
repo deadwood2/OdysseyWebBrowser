@@ -210,6 +210,7 @@ AXObjectCache::AXObjectCache(Document& document)
     , m_liveRegionChangedPostTimer(*this, &AXObjectCache::liveRegionChangedNotificationPostTimerFired)
     , m_focusModalNodeTimer(*this, &AXObjectCache::focusModalNodeTimerFired)
     , m_currentModalNode(nullptr)
+    , m_performCacheUpdateTimer(*this, &AXObjectCache::performCacheUpdateTimerFired)
 {
     findModalNodes();
 }
@@ -219,6 +220,7 @@ AXObjectCache::~AXObjectCache()
     m_notificationPostTimer.stop();
     m_liveRegionChangedPostTimer.stop();
     m_focusModalNodeTimer.stop();
+    m_performCacheUpdateTimer.stop();
 
     for (const auto& object : m_objects.values()) {
         detachWrapper(object.get(), AccessibilityDetachmentType::CacheDestroyed);
@@ -286,7 +288,7 @@ bool AXObjectCache::isNodeVisible(Node* node) const
     if (!renderer)
         return false;
     const RenderStyle& style = renderer->style();
-    if (style.display() == NONE || style.visibility() != VISIBLE)
+    if (style.display() == DisplayType::None || style.visibility() != Visibility::Visible)
         return false;
     
     // We also need to consider aria hidden status.
@@ -737,10 +739,15 @@ void AXObjectCache::remove(Node& node)
     if (is<Element>(node)) {
         m_deferredRecomputeIsIgnoredList.remove(downcast<Element>(&node));
         m_deferredSelectedChildredChangedList.remove(downcast<Element>(&node));
+        m_deferredChildrenChangedNodeList.remove(&node);
         m_deferredTextFormControlValue.remove(downcast<Element>(&node));
         m_deferredAttributeChange.remove(downcast<Element>(&node));
     }
     m_deferredTextChangedList.remove(&node);
+    // Remove the entry if the new focused node is being removed.
+    m_deferredFocusedNodeChange.removeAllMatching([&node](auto& entry) -> bool {
+        return entry.second == &node;
+    });
     removeNodeForUse(node);
 
     remove(m_nodeObjectMapping.take(&node));
@@ -845,10 +852,8 @@ void AXObjectCache::handleLiveRegionCreated(Node* node)
     
 void AXObjectCache::childrenChanged(Node* node, Node* newChild)
 {
-    if (newChild) {
-        handleMenuOpened(newChild);
-        handleLiveRegionCreated(newChild);
-    }
+    if (newChild)
+        m_deferredChildrenChangedNodeList.add(newChild);
 
     childrenChanged(get(node));
 }
@@ -858,14 +863,9 @@ void AXObjectCache::childrenChanged(RenderObject* renderer, RenderObject* newChi
     if (!renderer)
         return;
 
-    // FIXME: Refactor the code to avoid calling updateLayout in this call stack.
-    ScriptDisallowedScope::LayoutAssertionDisableScope disableScope;
-    
-    if (newChild) {
-        handleMenuOpened(newChild->node());
-        handleLiveRegionCreated(newChild->node());
-    }
-    
+    if (newChild && newChild->node())
+        m_deferredChildrenChangedNodeList.add(newChild->node());
+
     childrenChanged(get(renderer));
 }
 
@@ -874,7 +874,7 @@ void AXObjectCache::childrenChanged(AccessibilityObject* obj)
     if (!obj)
         return;
 
-    obj->childrenChanged();
+    m_deferredChildredChangedList.add(obj);
 }
     
 void AXObjectCache::notificationPostTimerFired()
@@ -1018,9 +1018,11 @@ void AXObjectCache::handleMenuItemSelected(Node* node)
     
 void AXObjectCache::deferFocusedUIElementChangeIfNeeded(Node* oldNode, Node* newNode)
 {
-    if (nodeAndRendererAreValid(newNode) && rendererNeedsDeferredUpdate(*newNode->renderer()))
+    if (nodeAndRendererAreValid(newNode) && rendererNeedsDeferredUpdate(*newNode->renderer())) {
         m_deferredFocusedNodeChange.append({ oldNode, newNode });
-    else
+        if (!newNode->renderer()->needsLayout() && !m_performCacheUpdateTimer.isActive())
+            m_performCacheUpdateTimer.startOneShot(0_s);
+    } else
         handleFocusedUIElementChanged(oldNode, newNode);
 }
     
@@ -1587,7 +1589,7 @@ VisiblePosition AXObjectCache::visiblePositionForTextMarkerData(TextMarkerData& 
         return VisiblePosition();
     
     AXObjectCache* cache = renderer->document().axObjectCache();
-    if (!cache->m_idsInUse.contains(textMarkerData.axID))
+    if (cache && !cache->m_idsInUse.contains(textMarkerData.axID))
         return VisiblePosition();
 
     return visiblePos;
@@ -1686,6 +1688,11 @@ CharacterOffset AXObjectCache::traverseToOffsetInRange(RefPtr<Range>range, int o
                             currentNode = shadowHost;
                             continue;
                         }
+                    } else if (previousNode && previousNode->isTextNode() && previousNode->isDescendantOf(currentNode) && currentNode->hasTagName(pTag)) {
+                        // TextIterator is emitting an extra newline after the <p> element. We should
+                        // ignore that since the extra text node is not in the DOM tree.
+                        currentNode = previousNode;
+                        continue;
                     } else if (currentNode != previousNode) {
                         // We should set the start offset and length for the current node in case this is the last iteration.
                         lastStartOffset = 1;
@@ -2200,6 +2207,8 @@ std::optional<TextMarkerData> AXObjectCache::textMarkerDataForVisiblePosition(co
 
     // find or create an accessibility object for this node
     AXObjectCache* cache = domNode->document().axObjectCache();
+    if (!cache)
+        return std::nullopt;
     RefPtr<AccessibilityObject> obj = cache->getOrCreate(domNode);
 
     // This memory must be zero'd so instances of TextMarkerData can be tested for byte-equivalence.
@@ -2227,6 +2236,9 @@ std::optional<TextMarkerData> AXObjectCache::textMarkerDataForFirstPositionInTex
         return std::nullopt;
 
     AXObjectCache* cache = textControl.document().axObjectCache();
+    if (!cache)
+        return std::nullopt;
+
     RefPtr<AccessibilityObject> obj = cache->getOrCreate(&textControl);
     if (!obj)
         return std::nullopt;
@@ -2828,6 +2840,7 @@ void AXObjectCache::prepareForDocumentDestruction(const Document& document)
     filterListForRemoval(m_deferredRecomputeIsIgnoredList, document, nodesToRemove);
     filterListForRemoval(m_deferredTextChangedList, document, nodesToRemove);
     filterListForRemoval(m_deferredSelectedChildredChangedList, document, nodesToRemove);
+    filterListForRemoval(m_deferredChildrenChangedNodeList, document, nodesToRemove);
     filterMapForRemoval(m_deferredTextFormControlValue, document, nodesToRemove);
     filterMapForRemoval(m_deferredAttributeChange, document, nodesToRemove);
     filterVectorPairForRemoval(m_deferredFocusedNodeChange, document, nodesToRemove);
@@ -2844,6 +2857,15 @@ bool AXObjectCache::nodeIsTextControl(const Node* node)
     const AccessibilityObject* axObject = getOrCreate(const_cast<Node*>(node));
     return axObject && axObject->isTextControl();
 }
+
+void AXObjectCache::performCacheUpdateTimerFired()
+{
+    // If there's a pending layout, let the layout trigger the AX update.
+    if (!document().view() || document().view()->needsLayout())
+        return;
+    
+    performDeferredCacheUpdate();
+}
     
 void AXObjectCache::performDeferredCacheUpdate()
 {
@@ -2851,6 +2873,17 @@ void AXObjectCache::performDeferredCacheUpdate()
         return;
 
     SetForScope<bool> performingDeferredCacheUpdate(m_performingDeferredCacheUpdate, true);
+
+    for (auto* nodeChild : m_deferredChildrenChangedNodeList) {
+        handleMenuOpened(nodeChild);
+        handleLiveRegionCreated(nodeChild);
+    }
+    m_deferredChildrenChangedNodeList.clear();
+
+    for (auto& child : m_deferredChildredChangedList)
+        child->childrenChanged();
+    m_deferredChildredChangedList.clear();
+
     for (auto* node : m_deferredTextChangedList)
         textChanged(node);
     m_deferredTextChangedList.clear();

@@ -29,7 +29,6 @@
 #include "AuthenticationManager.h"
 #include "DataReference.h"
 #include "Download.h"
-#include "DownloadSoupErrors.h"
 #include "NetworkLoad.h"
 #include "NetworkProcess.h"
 #include "NetworkSessionSoup.h"
@@ -48,8 +47,8 @@ using namespace WebCore;
 
 static const size_t gDefaultReadBufferSize = 8192;
 
-NetworkDataTaskSoup::NetworkDataTaskSoup(NetworkSession& session, NetworkDataTaskClient& client, const ResourceRequest& requestWithCredentials, StoredCredentialsPolicy storedCredentialsPolicy, ContentSniffingPolicy shouldContentSniff, WebCore::ContentEncodingSniffingPolicy, bool shouldClearReferrerOnHTTPSToHTTPRedirect)
-    : NetworkDataTask(session, client, requestWithCredentials, storedCredentialsPolicy, shouldClearReferrerOnHTTPSToHTTPRedirect)
+NetworkDataTaskSoup::NetworkDataTaskSoup(NetworkSession& session, NetworkDataTaskClient& client, const ResourceRequest& requestWithCredentials, StoredCredentialsPolicy storedCredentialsPolicy, ContentSniffingPolicy shouldContentSniff, WebCore::ContentEncodingSniffingPolicy, bool shouldClearReferrerOnHTTPSToHTTPRedirect, bool dataTaskIsForMainFrameNavigation)
+    : NetworkDataTask(session, client, requestWithCredentials, storedCredentialsPolicy, shouldClearReferrerOnHTTPSToHTTPRedirect, dataTaskIsForMainFrameNavigation)
     , m_shouldContentSniff(shouldContentSniff)
     , m_timeoutSource(RunLoop::main(), this, &NetworkDataTaskSoup::timeoutFired)
 {
@@ -133,7 +132,7 @@ void NetworkDataTaskSoup::createRequest(ResourceRequest&& request)
     unsigned messageFlags = SOUP_MESSAGE_NO_REDIRECT;
 
     m_currentRequest.updateSoupMessage(soupMessage.get());
-    if (m_shouldContentSniff == DoNotSniffContent)
+    if (m_shouldContentSniff == ContentSniffingPolicy::DoNotSniffContent)
         soup_message_disable_feature(soupMessage.get(), SOUP_TYPE_CONTENT_SNIFFER);
     if (m_user.isEmpty() && m_password.isEmpty() && m_storedCredentialsPolicy == StoredCredentialsPolicy::DoNotUse) {
 #if SOUP_CHECK_VERSION(2, 57, 1)
@@ -320,7 +319,7 @@ void NetworkDataTaskSoup::sendRequestCallback(SoupRequest* soupRequest, GAsyncRe
 void NetworkDataTaskSoup::didSendRequest(GRefPtr<GInputStream>&& inputStream)
 {
     if (m_soupMessage) {
-        if (m_shouldContentSniff == SniffContent && m_soupMessage->status_code != SOUP_STATUS_NOT_MODIFIED)
+        if (m_shouldContentSniff == ContentSniffingPolicy::SniffContent && m_soupMessage->status_code != SOUP_STATUS_NOT_MODIFIED)
             m_response.setSniffedContentType(soup_request_get_content_type(m_soupRequest.get()));
         m_response.updateFromSoupMessage(m_soupMessage.get());
         if (m_response.mimeType().isEmpty() && m_soupMessage->status_code != SOUP_STATUS_NOT_MODIFIED)
@@ -384,6 +383,9 @@ void NetworkDataTaskSoup::dispatchDidReceiveResponse()
                 ASSERT_NOT_REACHED();
 
             break;
+        case PolicyAction::Suspend:
+            LOG_ERROR("PolicyAction::Suspend encountered - Treating as PolicyAction::Ignore for now");
+            FALLTHROUGH;
         case PolicyAction::Ignore:
             clearRequest();
             break;
@@ -518,7 +520,7 @@ void NetworkDataTaskSoup::authenticate(AuthenticationChallenge&& challenge)
 
 void NetworkDataTaskSoup::continueAuthenticate(AuthenticationChallenge&& challenge)
 {
-    m_client->didReceiveChallenge(challenge, [this, protectedThis = makeRef(*this), challenge](AuthenticationChallengeDisposition disposition, const Credential& credential) {
+    m_client->didReceiveChallenge(AuthenticationChallenge(challenge), [this, protectedThis = makeRef(*this), challenge](AuthenticationChallengeDisposition disposition, const Credential& credential) {
         if (m_state == State::Canceling || m_state == State::Completed) {
             clearRequest();
             return;

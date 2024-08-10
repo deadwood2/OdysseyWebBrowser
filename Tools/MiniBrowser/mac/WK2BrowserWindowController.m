@@ -396,6 +396,8 @@ static BOOL areEssentiallyEqual(double a, double b)
     SettingsController *settings = [SettingsController shared];
     WKPreferences *preferences = _webView.configuration.preferences;
 
+    _webView._useSystemAppearance = settings.useSystemAppearance;
+
     preferences._tiledScrollingIndicatorVisible = settings.tiledScrollingIndicatorVisible;
     preferences._compositingBordersVisible = settings.layerBordersVisible;
     preferences._compositingRepaintCountersVisible = settings.layerBordersVisible;
@@ -408,6 +410,8 @@ static BOOL areEssentiallyEqual(double a, double b)
     preferences._visualViewportEnabled = settings.visualViewportEnabled;
     preferences._largeImageAsyncDecodingEnabled = settings.largeImageAsyncDecodingEnabled;
     preferences._animatedImageAsyncDecodingEnabled = settings.animatedImageAsyncDecodingEnabled;
+    preferences._colorFilterEnabled = settings.appleColorFilterEnabled;
+    preferences._punchOutWhiteBackgroundsInDarkMode = settings.punchOutWhiteBackgroundsInDarkMode;
 
     _webView.configuration.websiteDataStore._resourceLoadStatisticsEnabled = settings.resourceLoadStatisticsEnabled;
 

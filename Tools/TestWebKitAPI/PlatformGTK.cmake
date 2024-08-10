@@ -10,11 +10,13 @@ add_custom_target(TestWebKitAPI-forwarding-headers
     DEPENDS WebKit-forwarding-headers
 )
 
-set(ForwardingHeadersForTestWebKitAPI_NAME TestWebKitAPI-forwarding-headers)
+set(ForwardingHeadersForTestWebKitAPI_NAME TestWebKitAPI-forwarding-headers PALForwardingHeaders)
 
 include_directories(
     ${FORWARDING_HEADERS_DIR}
     ${FORWARDING_HEADERS_DIR}/JavaScriptCore
+    ${FORWARDING_HEADERS_DIR}/JavaScriptCore/glib
+    ${DERIVED_SOURCES_JAVASCRIPCOREGTK_DIR}
     ${WEBKIT_DIR}/UIProcess/API/C/soup
     ${WEBKIT_DIR}/UIProcess/API/C/gtk
     ${WEBKIT_DIR}/UIProcess/API/gtk
@@ -87,6 +89,7 @@ add_executable(TestWebCore
     ${TESTWEBKITAPI_DIR}/TestsController.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebCore/CSSParser.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebCore/ComplexTextController.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WebCore/DNS.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebCore/FileMonitor.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebCore/FileSystem.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebCore/GridPosition.cpp
@@ -111,9 +114,21 @@ set_tests_properties(TestWebCore PROPERTIES TIMEOUT 60)
 set_target_properties(TestWebCore PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY}/WebCore)
 
 list(APPEND TestWTF_SOURCES
+    ${TESTWEBKITAPI_DIR}/glib/UtilitiesGLib.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/glib/GUniquePtr.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/glib/WorkQueueGLib.cpp
 )
+
+add_definitions(-DWEBKIT_SRC_DIR="${CMAKE_SOURCE_DIR}")
+add_executable(TestJSC ${TESTWEBKITAPI_DIR}/Tests/JavaScriptCore/glib/TestJSC.cpp)
+target_link_libraries(TestJSC
+    ${GLIB_LIBRARIES}
+    JavaScriptCore
+)
+add_dependencies(TestJSC ${ForwardingHeadersForTestWebKitAPI_NAME})
+add_test(TestJSC ${TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY}/JavaScriptCore/TestJSC)
+set_tests_properties(TestJSC PROPERTIES TIMEOUT 60)
+set_target_properties(TestJSC PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY}/JavaScriptCore)
 
 if (COMPILER_IS_GCC_OR_CLANG)
     WEBKIT_ADD_TARGET_CXX_FLAGS(TestWebKit -Wno-sign-compare
@@ -123,4 +138,8 @@ if (COMPILER_IS_GCC_OR_CLANG)
     WEBKIT_ADD_TARGET_CXX_FLAGS(TestWebCore -Wno-sign-compare
                                             -Wno-undef
                                             -Wno-unused-parameter)
+
+    WEBKIT_ADD_TARGET_CXX_FLAGS(TestJSC -Wno-sign-compare
+                                        -Wno-undef
+                                        -Wno-unused-parameter)
 endif ()

@@ -1,3 +1,115 @@
+2018-09-21  Adrian Perez de Castro  <aperez@igalia.com>
+
+        [GTK] ANGLE's eglplatform.h does not support Wayland-only builds
+        https://bugs.webkit.org/show_bug.cgi?id=189844
+
+        Reviewed by Michael Catanzaro.
+
+        This makes it possible to build WebKitGTK+ after r225340 when the
+        build is configured to support only Wayland, and the X11 headers
+        are not present.
+
+        * changes.diff: Updated.
+        * include/EGL/eglplatform.h: Include the X11 headers only when
+        ANGLE_USE_X11 is defined and, for consistency with Mesa's version
+        of the header, when MESA_EGL_NO_X11_HEADERS is not defined.
+
+2018-08-03  Alex Christensen  <achristensen@webkit.org>
+
+        Fix spelling of "overridden"
+        https://bugs.webkit.org/show_bug.cgi?id=188315
+
+        Reviewed by Darin Adler.
+
+        * src/libANGLE/renderer/ProgramImpl.h:
+
+2018-07-14  Kocsen Chung  <kocsen_chung@apple.com>
+
+        Ensure WebKit stack is ad-hoc signed
+        https://bugs.webkit.org/show_bug.cgi?id=187667
+
+        Reviewed by Alexey Proskuryakov.
+
+        * Configurations/Base.xcconfig:
+
+2018-07-04  Tim Horton  <timothy_horton@apple.com>
+
+        Introduce PLATFORM(IOSMAC)
+        https://bugs.webkit.org/show_bug.cgi?id=187315
+
+        Reviewed by Dan Bernstein.
+
+        * Configurations/Base.xcconfig:
+
+2018-06-09  Dan Bernstein  <mitz@apple.com>
+
+        [Xcode] Clean up and modernize some build setting definitions
+        https://bugs.webkit.org/show_bug.cgi?id=186463
+
+        Reviewed by Sam Weinig.
+
+        * Configurations/Base.xcconfig: Removed definition for macOS 10.11.
+        * Configurations/DebugRelease.xcconfig: Ditto.
+
+2018-05-30  David Kilzer  <ddkilzer@apple.com>
+
+        ANGLE: Fix clang static analyzer issues in GetExecutablePath() and GetExecutableDirectory()
+        <https://webkit.org/b/186106>
+        <rdar://problem/40659179>
+
+        Reviewed by Alex Christensen.
+
+        * src/common/system_utils_linux.cpp:
+        (angle::GetExecutablePath):
+        (angle::GetExecutableDirectory):
+        * src/common/system_utils_mac.cpp:
+        (angle::GetExecutablePath):
+        (angle::GetExecutableDirectory):
+        * src/common/system_utils_win.cpp:
+        (angle::GetExecutablePath):
+        (angle::GetExecutableDirectory):
+
+2018-05-22  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, rolling out r232052.
+
+        Breaks internal builds.
+
+        Reverted changeset:
+
+        "Use more C++17"
+        https://bugs.webkit.org/show_bug.cgi?id=185176
+        https://trac.webkit.org/changeset/232052
+
+2018-05-21  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        Use more C++17
+        https://bugs.webkit.org/show_bug.cgi?id=185176
+
+        Reviewed by JF Bastien.
+
+        * Configurations/Base.xcconfig:
+
+2018-04-18  Jer Noble  <jer.noble@apple.com>
+
+        Don't put build products into WK_ALTERNATE_WEBKIT_SDK_PATH for engineering builds
+        https://bugs.webkit.org/show_bug.cgi?id=184762
+
+        Reviewed by Dan Bernstein.
+
+        * Configurations/Base.xcconfig:
+
+2018-04-19  David Kilzer  <ddkilzer@apple.com>
+
+        Enable Objective-C weak references
+        <https://webkit.org/b/184789>
+        <rdar://problem/39571716>
+
+        Reviewed by Dan Bernstein.
+
+        * Configurations/Base.xcconfig:
+        (CLANG_ENABLE_OBJC_WEAK): Enable.
+
 2018-03-19  Carlos Alberto Lopez Perez  <clopez@igalia.com>
 
         REGRESSION(r225340): WPE port should not be getting EGL X11 types on ANGLE
@@ -9,6 +121,18 @@
 
         * changes.diff:
         * include/EGL/eglplatform.h:
+
+2018-03-15  Tim Horton  <timothy_horton@apple.com>
+
+        Add and adopt WK_ALTERNATE_FRAMEWORKS_DIR in ANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=183675
+        <rdar://problem/38515281>
+
+        Reviewed by Dan Bernstein.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * Configurations/ANGLE.xcconfig:
+        * Configurations/Base.xcconfig:
 
 2018-01-27  Dan Bernstein  <mitz@apple.com>
 

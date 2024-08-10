@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005, 2007, 2008, 2015-2016 Apple Inc. All rights reserved.
+ *  Copyright (C) 2005-2018 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -43,6 +43,8 @@ enum class PropertyAttribute : unsigned {
     DontDelete        = 1 << 3,  // property can't be deleted
     Accessor          = 1 << 4,  // property is a getter/setter
     CustomAccessor    = 1 << 5,
+    CustomValue       = 1 << 6,
+    CustomAccessorOrValue = CustomAccessor | CustomValue,
 
     // Things that are used by static hashtables are not in the attributes byte in PropertyMapEntry.
     Function          = 1 << 8,  // property is a function - only used by static hashtables
@@ -257,6 +259,7 @@ public:
         ASSERT(attributes == attributesForStructure(attributes));
         
         ASSERT(getValue);
+        assertIsCFunctionPtr(getValue);
         m_data.custom.getValue = getValue;
         m_attributes = attributes;
 
@@ -278,6 +281,7 @@ public:
         ASSERT(attributes == attributesForStructure(attributes));
         
         ASSERT(getValue);
+        assertIsCFunctionPtr(getValue);
         m_data.custom.getValue = getValue;
         m_attributes = attributes;
 
@@ -297,6 +301,7 @@ public:
     void setCustomGetterSetter(JSObject* slotBase, unsigned attributes, CustomGetterSetter* getterSetter)
     {
         ASSERT(attributes == attributesForStructure(attributes));
+        ASSERT(attributes & PropertyAttribute::CustomAccessor);
 
         disableCaching();
 

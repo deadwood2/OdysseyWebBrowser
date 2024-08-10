@@ -1,128 +1,197 @@
+=================
+WebKitGTK+ 2.22.7
+=================
+
+What's new in WebKitGTK+ 2.22.7?
+
+  - Fix rendering of glyphs in Hebrew (and possibly other languages) when
+    Unicode NFC normalization is used.
+  - Fix several crashes and race conditions.
+
+=================
+WebKitGTK+ 2.22.6
+=================
+
+What's new in WebKitGTK+ 2.22.6?
+
+  - Make kinetic scrolling slow down smoothly when reaching the ends of
+    pages, instead of abruptly, to better match the GTK+ behaviour.
+  - Fix Web inspector magnifier under Wayland.
+  - Fix garbled rendering of some websites (e.g. YouTube) while scrolling
+    under X11.
+  - Fix several crashes, race conditions, and rendering issues.
+
+=================
+WebKitGTK+ 2.22.5
+=================
+
+What's new in WebKitGTK+ 2.22.5?
+
+  - Improved the logic to determine for which architectures to enable
+    the JIT compiler support and USE_SYSTEM_MALLOC at build time.
+  - Fix the build with ENABLE_VIDEO=OFF and ENABLE_OPENGL=OFF.
+  - Fix several crashes.
+
+=================
+WebKitGTK+ 2.22.4
+=================
+
+What's new in WebKitGTK+ 2.22.4?
+
+  - Expose ENABLE_MEDIA_SOURCE as a public build option.
+  - Fix a crash when using Cairo versions between 1.15 and 1.16.0
+  - Fix the build with -DLOG_DISABLED=0.
+  - Fix the build with ENABLE_VIDEO=OFF and ENABLE_WEB_AUDIO=OFF.
+  - Fix debug builds of JavaScriptCore.
+  - Fix several crashes and rendering issues.
+
+=================
+WebKitGTK+ 2.22.3
+=================
+
+What's new in WebKitGTK+ 2.22.3?
+
+  - Many improvements and fixes for video playback with media source
+    extensions (MSE), which improve the user experience across the board,
+    and in particular for playback of WebM videos.
+  - Fix a memory leak during media playback when using playbin3.
+  - Fix portions of Web views not being rendered after resizing.
+  - Fix Resource Timing reporting for <iframe> elements.
+  - Fix the build with the remote Web Inspector disabled.
+  - Fix the build on ARMv7 with NEON extensions.
+  - Fix several crashes and rendering issues.
+
+=================
+WebKitGTK+ 2.22.2
+=================
+
+What's new in WebKitGTK+ 2.22.2?
+
+  - Several fixes for video playback with media source extensions (MSE).
+    This allows using WebM support for YouTube, which no longer works through
+    regular video source. Note that MSE is still disabled by default and
+    webkit_settings_set_enable_mediasource() has to be used to enable the
+    feature.
+  - Fix the build when only Wayland support is enabled and X11 headers are
+    not available.
+
+=================
+WebKitGTK+ 2.22.1
+=================
+
+What's new in WebKitGTK+ 2.22.1?
+
+  - Fix printing in landscape.
+  - Fix the build in several platforms: s390x, ppc64le, armv7hl.
+  - Fix the build with a11y disabled.
+  - Fix the build with video disabled.
+  - Fix several crashes and rendering issues.
+
 ==================
-WebKitGTK+  2.20.5
+WebKitGTK+ 2.22.0
 ==================
 
-What's new in WebKitGTK+ 2.20.5?
+What's new in WebKitGTK+ 2.22.0?
 
-  - Fix rendering artifacts in some web sites due to a bug introduced in 2.20.4.
-
-==================
-WebKitGTK+  2.20.4
-==================
-
-What's new in WebKitGTK+ 2.20.4?
-
-  - Fix a crash when leaving accelerated compositing mode.
-  - Fix non-deterministic build failure due to missing JavaScriptCore/JSContextRef.h.
-  - Security fixes: CVE-2018-4261, CVE-2018-4262, CVE-2018-4263, CVE-2018-4264, CVE-2018-4265, CVE-2018-4266,
-    CVE-2018-4267, CVE-2018-4270, CVE-2018-4272, CVE-2018-4273, CVE-2018-4278, CVE-2018-4284.
+  - Add warn_unused_result attribute to some JavaScriptCore GLib APIs.
+  - Make pinch to zoom scale the page without changing the layout.
+  - Fix the build in mips64.
 
 ==================
-WebKitGTK+  2.20.3
+WebKitGTK+ 2.21.92
 ==================
 
-What's new in WebKitGTK+ 2.20.3?
+What's new in WebKitGTK+ 2.21.92?
 
-  - Fix installation directory of API documentation.
-  - Disable Gigacage if mmap fails to allocate in Linux.
-  - Add user agent quirk for paypal website.
-  - Properly detect compiler flags, needed libs, and fallbacks for usage of 64-bit atomic operations.
+  - Add new API to inject/register user content in isolated worlds.
+  - Add more API to JSCException to handle column number, convert exception to string, get the exception backtrace,
+    create exceptions with a custom error name and report exception message with full details.
+  - Fix excessive CPU usage when getting the process memory footprint.
+  - Fix several crashes and rendering issues.
+  - Translation updates: Polish
+
+==================
+WebKitGTK+ 2.21.91
+==================
+
+What's new in WebKitGTK+ 2.21.91?
+
+  - Add enable-media-capabilities setting.
+  - Stop pushing buffers when seeking status changes in media player.
+  - Fix rendering of theme styled buttons.
+  - Fix several crashes and rendering issues.
+  - Translation updates: Brazilian Portuguese.
+
+=================
+WebKitGTK+ 2.21.5
+=================
+
+What's new in WebKitGTK+ 2.21.5?
+
+  - Add API to evaluate code in a new object to JavaScriptCore GLib API.
+  - Add API to check for syntax errors in given code to JavaScriptCore GLib API.
+  - Update jsc_context_evaluate_with_source_uri() to receive also a starting line number.
+  - Add API to allow creating variadic functions to JavaScriptCore GLib API.
+  - Add --host option to WebDriver process.
+  - Handle acceptInsecureCertificates capability in WebDriver.
+  - Fix video freezes when GStreamerGL is not installed.
+  - Fix several crashes and rendering issues.
+  - Translation updates: Ukrainian.
+
+=================
+WebKitGTK+ 2.21.4
+=================
+
+What's new in WebKitGTK+ 2.21.4?
+
+  - Switch to use a popup window with a tree view instead of a menu for option menu default implementation.
+  - Add API to run javascript from a WebKitWebView in an isolated world.
+  - Fix UI process crash in WebKitFaviconDatabase when pageURL is unset.
+  - Fix several crashes and rendering issues.
+
+=================
+WebKitGTK+ 2.21.3
+=================
+
+What's new in WebKitGTK+ 2.21.3?
+
+  - Ensure memory monitor properly notifies all child processes.
+  - Add maximize, minimize and fullscreen window commands to WebDriver.
   - Fix a network process crash when trying to get cookies of about:blank page.
   - Fix UI process crash when closing the window under Wayland.
+  - Disable Gigacage if mmap fails to allocate in Linux.
   - Fix several crashes and rendering issues.
-  - Security fixes: CVE-2018-4190, CVE-2018-4199, CVE-2018-4218, CVE-2018-4222, CVE-2018-4232,
-    CVE-2018-4233, CVE-2018-4246, CVE-2018-11646.
 
-==================
-WebKitGTK+  2.20.2
-==================
+=================
+WebKitGTK+ 2.21.2
+=================
 
-What's new in WebKitGTK+ 2.20.2?
+What's new in WebKitGTK+ 2.21.2?
 
+  - Remove resource load statistics API, it's not ready yet.
+  - Add initial implementation of WebDriver advance user insteraction commands.
+  - Add introspectable alternatives for functions using vargars to JavaScriptCore GLib API.
+  - Implement MouseEvent.buttons.
   - Do TLS error checking on GTlsConnection::accept-certificate to finish the load earlier in case of errors.
-  - Properly close the connection to the nested wayland compositor in the Web Process.
-  - Avoid painting backing stores for zero-opacity layers.
   - Fix downloads started by context menu failing in some websites due to missing user agent HTTP header.
-  - Fix video unpause when GStreamerGL is disabled.
-  - Fix several GObject introspection annotations.
-  - Update user agent quiks to fix Outlook.com and Chase.com.
+  - Avoid painting backing stores for zero-opacity layers.
+  - Fix the installation path of API documentation.
   - Fix several crashes and rendering issues.
-  - Security fixes: CVE-2018-4200.
 
-==================
-WebKitGTK+  2.20.1
-==================
+=================
+WebKitGTK+ 2.21.1
+=================
 
-What's new in WebKitGTK+ 2.20.1?
+What's new in WebKitGTK+ 2.21.1?
 
-  - Improve error message when Gigacage cannot allocate virtual memory.
-  - Add missing WebKitWebProcessEnumTypes.h to webkit-web-extension.h.
-  - Improve web process memory monitor thresholds.
-  - Fix a web process crash when the web view is created and destroyed quickly.
-  - Fix a network process crash when load is cancelled while searching for stored HTTP auth credentials.
-  - Fix the build when ENABLE_VIDEO, ENABLE_WEB_AUDIO and ENABLE_XSLT are disabled.
-  - Fix several crashes and rendering issues.
-  - Translation updates: Brazilian Portuguese, Czech.
-
-==================
-WebKitGTK+  2.20.0
-==================
-
-What's new in WebKitGTK+ 2.20.0?
-
-  - Remove resource load statistics API, it's not ready for stable yet.
-  - Make it possible to close the inspector when webkit_web_view_get_inspector() hasn't been called.
-  - Use WebKitDOMElement instead of WebKitDOMHTMLFormElement in paramater of signal WebKitWebPage::will-submit-form.
-  - Fix a crash when trying to disconnect the wayland connection.
-
-==================
-WebKitGTK+ 2.19.92
-==================
-
-What's new in WebKitGTK+ 2.19.92?
-
-  - Ensure DNS prefetching cannot be re-enabled if disabled by settings.
-  - Fix seek sometimes not working.
-  - Fix rendering of emojis that were using the wrong scale factor in some cases.
-  - Fix rendering of combining enclosed keycap.
-  - Fix rendering scale of some layers in HiDPI.
-  - Fix a crash in Wayland when closing the web view.
-  - Fix crashes upower crashes when running inside a chroot or on systems with broken dbus/upower.
-  - Fix memory leaks in GStreamer media backend when using GStreamer 1.14.
-  - Fix the build with Enchant 2.x.
-  - Fix several crashes and rendering issues.
-  - Translation updates: Indonesian.
-
-==================
-WebKitGTK+ 2.19.91
-==================
-
-What's new in WebKitGTK+ 2.19.91?
-
-  - Add ENABLE_ADDRESS_SANITIZER to make it easier to build with asan support.
-  - Fix a crash a under Wayland when using mesa software rasterization.
-  - Make fullscreen video work again.
-  - Fix handling of missing GStreamer elements.
-  - Fix rendering when webm video is played twice.
-  - Fix kinetic scrolling sometimes jumping around.
-  - Fix build with ICU configured without collation support.
-  - Fix several crashes and rendering issues.
-  - Translation updates: Polish.
-
-==================
-WebKitGTK+ 2.19.90
-==================
-
-What's new in WebKitGTK+ 2.19.90?
-
-  - WebSockets use system proxy settings now (requires libsoup 2.61.90).
-  - Show the context menu on long-press gesture.
-  - Add support for Shift + mouse scroll to scroll horizontally.
-  - Fix zoom gesture to actually zoom instead of changing the page scale.
+  - Add initial JavaScriptCore GLib API.
+  - Use JavaScriptCore GLib API in WebKit layer and deprecate most of the DOM bindings API as well as
+    methods using the JavaScriptCore C API.
+  - Switch to use complex text code path unconditionally.
+  - Properly close the connection to the Wayland nested compositor in the WebProcess.
   - Implement support for Graphics ARIA roles.
-  - Make sleep inhibitors work under Flatpak.
-  - Add get element CSS value command to WebDriver.
-  - Fix a crash aftter a swipe gesture.
+  - Add playbin3 support to GStreamer media backend.
+  - Fix a deadlock when destroying the media player in non accelerated compositing mode.
   - Fix several crashes and rendering issues.
 
 =================

@@ -26,6 +26,8 @@
 #include "CookieJarDB.h"
 
 #include "CookieUtil.h"
+#include "FileSystem.h"
+#include "Logging.h"
 #include "SQLiteFileSystem.h"
 #include "URL.h"
 
@@ -69,21 +71,25 @@ namespace WebCore {
 
 void CookieJarDB::setEnabled(bool enable)
 {
-    CookieJarDB::m_cookieEnable = enable;
+    m_isEnabled = enable;
 }
 
 CookieJarDB::CookieJarDB(const String& databasePath)
     : m_databasePath(databasePath)
 {
-    checkDatabaseCorruptionAndRemoveIfNeeded();
-
-    if (!openDatabase())
-        return;
 }
 
 CookieJarDB::~CookieJarDB()
 {
     closeDatabase();
+}
+
+void CookieJarDB::open()
+{
+    if (!m_database.isOpen()) {
+        checkDatabaseCorruptionAndRemoveIfNeeded();
+        openDatabase();
+    }
 }
 
 bool CookieJarDB::openDatabase()
@@ -112,6 +118,9 @@ bool CookieJarDB::openDatabase()
     }
 
     if (!existsDatabaseFile) {
+        if (!FileSystem::makeAllDirectories(FileSystem::directoryName(m_databasePath)))
+            LOG_ERROR("Unable to create the Cookie Database path %s", m_databasePath.utf8().data());
+
         if (m_database.open(m_databasePath, false)) {
             bool databaseValidity = true;
             databaseValidity &= (executeSimpleSql(CREATE_COOKIE_TABLE_SQL) == SQLITE_DONE);
@@ -163,22 +172,19 @@ void CookieJarDB::flagDatabaseCorruption()
     if (isOnMemory())
         return;
 
-    FILE* f = fopen(getCorruptionMarkerPath().utf8().data(), "wb");
-    fclose(f);
+    auto handle = FileSystem::openFile(getCorruptionMarkerPath(), FileSystem::FileOpenMode::Write);
+    if (FileSystem::isHandleValid(handle))
+        FileSystem::closeFile(handle);
 }
 
 bool CookieJarDB::checkDatabaseCorruptionAndRemoveIfNeeded()
 {
-    if (isOnMemory())
-        return false;
+    if (!isOnMemory() && FileSystem::fileExists(getCorruptionMarkerPath())) {
+        deleteAllDatabaseFiles();
+        return true;
+    }
 
-    struct stat st = { 0 };
-    int ret = stat(getCorruptionMarkerPath().utf8().data(), &st);
-    if (!ret)
-        return false;
-
-    deleteAllDatabaseFiles();
-    return true;
+    return false;
 }
 
 bool CookieJarDB::checkSQLiteReturnCode(int actual, int expected)
@@ -230,7 +236,7 @@ bool CookieJarDB::isEnabled()
     if (m_databasePath.isEmpty())
         return false;
 
-    return m_cookieEnable;
+    return m_isEnabled;
 }
 
 bool CookieJarDB::searchCookies(const String& requestUrl, const std::optional<bool>& httpOnly, const std::optional<bool>& secure, const std::optional<bool>& session, Vector<Cookie>& results)
@@ -239,7 +245,7 @@ bool CookieJarDB::searchCookies(const String& requestUrl, const std::optional<bo
         return false;
 
     URL requestUrlObj(ParsedURLString, requestUrl);
-    String requestHost(requestUrlObj.host().convertToASCIILowercase());
+    String requestHost(requestUrlObj.host().toString().convertToASCIILowercase());
     String requestPath(requestUrlObj.path().convertToASCIILowercase());
 
     if (requestHost.isEmpty())
@@ -310,20 +316,16 @@ bool CookieJarDB::searchCookies(const String& requestUrl, const std::optional<bo
         if (!isPathMatched)
             continue;
 
-        Cookie result(cookieName,
-            cookieValue,
-            cookieDomain,
-            cookiePath,
-            0,
-            cookieExpires,
-            cookieHttpOnly,
-            cookieSecure,
-            cookieSession,
-            String(),
-            URL(),
-            Vector<uint16_t>());
-
-        results.append(result);
+        Cookie cookie;
+        cookie.name = cookieName;
+        cookie.value = cookieValue;
+        cookie.domain = cookieDomain;
+        cookie.path = cookiePath;
+        cookie.expires = cookieExpires;
+        cookie.httpOnly = cookieHttpOnly;
+        cookie.secure = cookieSecure;
+        cookie.session = cookieSession;
+        results.append(WTFMove(cookie));
     }
     pstmt->finalize();
 
@@ -380,7 +382,7 @@ int CookieJarDB::setCookie(const String& url, const String& cookie, bool fromJav
         return -1;
 
     URL urlObj(ParsedURLString, url);
-    String host(urlObj.host());
+    String host(urlObj.host().toString());
     String path(urlObj.path());
 
     Cookie cookieObj;
@@ -391,7 +393,7 @@ int CookieJarDB::setCookie(const String& url, const String& cookie, bool fromJav
         cookieObj.domain = String(host);
 
     if (cookieObj.path.isEmpty())
-        cookieObj.path = String(path);
+        cookieObj.path = CookieUtil::defaultPathForURL(urlObj);
 
     // FIXME: Need to check that a domain doesn't a set cookie for a tld when wincairo supports PSL
 
@@ -415,7 +417,7 @@ int CookieJarDB::deleteCookie(const String& url, const String& name)
 
     URL urlObj(ParsedURLString, urlCopied);
     if (urlObj.isValid()) {
-        String hostStr(urlObj.host());
+        String hostStr(urlObj.host().toString());
         String pathStr(urlObj.path());
         int ret = deleteCookieInternal(name, hostStr, pathStr);
         ASSERT(checkSQLiteReturnCode(ret, SQLITE_DONE));
@@ -445,7 +447,7 @@ int CookieJarDB::deleteCookieInternal(const String& name, const String& domain, 
     return statement->step();
 }
 
-int CookieJarDB::deleteCookies(const String& url)
+int CookieJarDB::deleteCookies(const String&)
 {
     // NOT IMPLEMENTED
     // TODO: this function will be called if application calls WKCookieManagerDeleteCookiesForHostname() in WKCookieManager.h.

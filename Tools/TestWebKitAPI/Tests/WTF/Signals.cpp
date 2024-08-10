@@ -26,7 +26,6 @@
 #include "config.h"
 
 #include <type_traits>
-#include <wtf/CurrentTime.h>
 #include <wtf/DataLog.h>
 #include <wtf/Threading.h>
 #include <wtf/threads/Signals.h>
@@ -55,7 +54,7 @@ TEST(Signals, SignalsWorkOnExit)
 
     bool signalFired;
     {
-        std::unique_lock<std::mutex> locker(static_cast<ReflectedThread&>(receiverThread.get()).m_mutex);
+        std::unique_lock<WordLock> locker(static_cast<ReflectedThread&>(receiverThread.get()).m_mutex);
         receiverShouldKeepRunning.store(false);
         EXPECT_FALSE(static_cast<ReflectedThread&>(receiverThread.get()).hasExited());
         sleep(1_s);

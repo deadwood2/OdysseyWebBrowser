@@ -1,53 +1,126 @@
 =================
-WPE WebKit 2.20.2
+WPE WebKit 2.22.5
 =================
 
-What's new in WPE WebKit 2.20.1?
+What's new in WPE WebKit 2.22.5?
 
-  - Fix a rendering bug which would occasionally cause frames to be dropped when animating
-    elements using requestAnimationFrame().
-  - Security fixes: CVE-2018-4261, CVE-2018-4262, CVE-2018-4263, CVE-2018-4264, CVE-2018-4265, CVE-2018-4266,
-    CVE-2018-4267, CVE-2018-4270, CVE-2018-4272, CVE-2018-4273, CVE-2018-4278, CVE-2018-4284.
+  - Fix rendering of glyphs in Hebrew (and possibly other languages) when
+    Unicode NFC normalization is used.
+  - Fix several crashes and race conditions.
 
 =================
-WPE WebKit 2.20.1
+WPE WebKit 2.22.4
 =================
 
-What's new in WPE WebKit 2.20.1?
+What's new in WPE WebKit 2.22.4?
 
-  - Fixed a crash when trying to use the remote Web inspector.
-  - Disable Gigacage if mmap fails to allocate in Linux.
-  - Add user agent quirk for paypal website.
-  - Properly detect compiler flags, needed libs, and fallbacks for usage of 64-bit atomic operations.
-  - Fix a network process crash when trying to get cookies of about:blank page.
-  - Fix UI process crash when closing the window under Wayland.
+  - Add missing WebKitVersion.h to the set of installed haders.
+  - Fix several crashes, race conditions, and rendering issues.
+
+=================
+WPE WebKit 2.22.3
+=================
+
+What's new in WPE WebKit 2.22.3?
+
+  - Improved the logic to determine for which architectures to enable
+    the JIT compiler support and USE_SYSTEM_MALLOC at build time.
+  - Fix the build with ENABLE_VIDEO=OFF and ENABLE_OPENGL=OFF.
+  - Fix several crashes.
+
+=================
+WPE WebKit 2.22.2
+=================
+
+What's new in WPE WebKit 2.22.2?
+
+  - Fix a crash when using Cairo versions between 1.15 and 1.16.0
+  - Fix the build with -DLOG_DISABLED=0.
   - Fix several crashes and rendering issues.
-  - Security fixes: CVE-2018-4190, CVE-2018-4199, CVE-2018-4218, CVE-2018-4222, CVE-2018-4232,
-    CVE-2018-4233, CVE-2018-4246, CVE-2018-11646.
 
 =================
-WPE WebKit 2.20.0
+WPE WebKit 2.22.1
 =================
 
-What's new in WPE WebKit 2.20.0?
+What's new in WPE WebKit 2.22.1?
 
-  - Add support for the fullscreen API.
-  - Fix build in architectures which need linking with libatomic to support atomic operations on 64-bit values.
-  - Fix build failure when using the RaspberryPi userland GPU drivers in combination with GStreamer-GL.
+  - Many improvements and fixes for video playback with media source
+    extensions (MSE), which improve the user experience across the board,
+    and in particular for playback of WebM videos.
+  - Expose ENABLE_MEDIA_SOURCE as a public build option.
+  - Fix Resource Timing reporting for <iframe> elements.
+  - Fix the build with ENABLE_VIDEO=OFF and ENABLE_WEB_AUDIO=OFF.
+  - Fix the build with the remote Web Inspector disabled.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.22.0
+=================
+
+What's new in WPE WebKit 2.22.0?
+
+  - Several fixes for video playback with media source extensions (MSE).
+    This allows using WebM support for YouTube, which no longer works through
+    regular video source. Note that MSE is still disabled by default and
+    webkit_settings_set_enable_mediasource() has to be used to enable the
+    feature.
+  - Add warn_unused_result attribute to some JavaScriptCore GLib APIs.
+  - Fix the build in several platforms: s390x, ppc64le, armv7hl, mips64.
+  - Fix the build with video disabled.
+  - Fix symbols with jsc_ prefix not being exported.
+  - Fix a memory leak during media playback when using playbin3.
+  - Fix several crashes and rendering issues.
 
 ==================
-WPE WebKit 2.19.93
+WPE WebKit 2.21.92
 ==================
 
-What's new in WPE WebKit 2.19.93?
+What's new in WPE WebKit 2.21.91?
 
-  - Remove unusable JavaScript APIs
-  - Fix missing WebKitHitTestResult.h
+  - New MiniBrowser for WPE, which can be enabled at build time.
+  - Add warn_unused_result attribute to some JavaScriptCore GLib APIs.
+  - Fix the build in mips64.
+  - Add new API to inject/register user content in isolated worlds.
+  - Add more API to JSCException to handle column number, convert exception to string, get the exception backtrace,
+    create exceptions with a custom error name and report exception message with full details.
+  - Fix excessive CPU usage when getting the process memory footprint.
+  - Fix several crashes and rendering issues.
 
 ==================
-WPE WebKit 2.19.92
+WPE WebKit 2.21.91
 ==================
 
-What's new in WPE WebKit 2.19.92?
+What's new in WPE WebKit 2.21.91?
 
-  - First release in stable 2.20 series.
+  - Add API to evaluate code in a new object to JavaScriptCore GLib API.
+  - Add API to check for syntax errors in given code to JavaScriptCore GLib API.
+  - Update jsc_context_evaluate_with_source_uri() to receive also a starting line number.
+  - Add API to allow creating variadic functions to JavaScriptCore GLib API.
+  - Add API to run javascript from a WebKitWebView in an isolated world.
+  - Disable Gigacage if mmap fails to allocate in Linux.
+  - Fix WebProcess crash when trying to use the remote Web Inspector.
+  - Fix a network process crash when trying to get cookies of about:blank page.
+  - Fix some frames being dropped when using requestAnimationFrame() to animate elements.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.21.2
+=================
+
+What' new in WPE WebKit 2.21.2?
+
+  - Add initial support for the fullscreen Web API.
+  - Add initial implementation of WebDriver advance user interaction commands.
+  - Add introspectable alternatives for functions using vargars to JavaScriptCore GLib API.
+  - Fix memory pressure monitor to reliably notify all subprocesses.
+  - Fix building with the Raspberry Pi userland GPU driver and certain versions of GStreamer-GL.
+  - Fix building with the ICU headers in a non-default directory.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.21.1
+=================
+
+What's new in WPE WebKit 2.21.1?
+
+  - Everything. This is the first release. Enjoy.

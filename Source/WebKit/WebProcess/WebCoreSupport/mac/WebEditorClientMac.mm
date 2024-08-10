@@ -42,9 +42,8 @@
 #import <WebCore/NotImplemented.h>
 #import <WebCore/WebCoreNSURLExtras.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
     
 void WebEditorClient::handleKeyboardEvent(KeyboardEvent* event)
 {
@@ -100,7 +99,7 @@ void WebEditorClient::showSubstitutionsPanel(bool)
 
 bool WebEditorClient::substitutionsPanelIsShowing()
 {
-    bool isShowing;
+    bool isShowing { false };
     m_page->sendSync(Messages::WebPageProxy::SubstitutionsPanelIsShowing(), Messages::WebPageProxy::SubstitutionsPanelIsShowing::Reply(isShowing));
     return isShowing;
 }

@@ -30,9 +30,8 @@
 #include "WebScriptMessageHandler.h"
 #include <WebCore/URL.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 class ScriptMessageClient final : public WebScriptMessageHandler::Client {
 public:
@@ -44,8 +43,7 @@ public:
     void didPostMessage(WebPageProxy& page, const FrameInfoData&, WebCore::SerializedScriptValue& serializedScriptValue) override
     {
         String message = serializedScriptValue.toString();
-        Vector<String> tokens;
-        message.split(":", tokens);
+        Vector<String> tokens = message.split(':');
         if (tokens.size() != 2)
             return;
 

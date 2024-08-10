@@ -34,7 +34,6 @@
 #include "DefaultPolicyDelegate.h"
 #include "EmbeddedWidget.h"
 #include "MarshallingHelpers.h"
-#include "NotImplemented.h"
 #include "PluginDatabase.h"
 #include "PluginPackage.h"
 #include "PluginView.h"
@@ -76,6 +75,7 @@
 #include <WebCore/HistoryItem.h>
 #include <WebCore/LocalizedStrings.h>
 #include <WebCore/MIMETypeRegistry.h>
+#include <WebCore/NotImplemented.h>
 #include <WebCore/Page.h>
 #include <WebCore/PolicyChecker.h>
 #include <WebCore/RenderWidget.h>
@@ -565,7 +565,7 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const Navigati
     m_policyListenerPrivate->m_policyFunction(PolicyAction::Use);
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, bool, FormState* formState, FramePolicyFunction&& function)
+void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, const ResourceResponse&, FormState* formState, WebCore::PolicyDecisionMode, FramePolicyFunction&& function)
 {
     WebView* webView = m_webFrame->webView();
     Frame* coreFrame = core(m_webFrame);
@@ -599,7 +599,7 @@ void WebFrameLoaderClient::dispatchWillSendSubmitEvent(Ref<WebCore::FormState>&&
 {
 }
 
-void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, WTF::Function<void(void)>&& function)
+void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, CompletionHandler<void()>&& completionHandler)
 {
     WebView* webView = m_webFrame->webView();
     Frame* coreFrame = core(m_webFrame);
@@ -608,7 +608,7 @@ void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, WTF::Fun
     COMPtr<IWebFormDelegate> formDelegate;
 
     if (FAILED(webView->formDelegate(&formDelegate))) {
-        function();
+        completionHandler();
         return;
     }
 
@@ -623,11 +623,11 @@ void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, WTF::Fun
     COMPtr<IPropertyBag> formValuesPropertyBag(AdoptCOM, COMPropertyBag<String>::createInstance(formValuesMap));
 
     COMPtr<WebFrame> sourceFrame(kit(formState.sourceDocument().frame()));
-    if (SUCCEEDED(formDelegate->willSubmitForm(m_webFrame, sourceFrame.get(), formElement.get(), formValuesPropertyBag.get(), setUpPolicyListener([function = WTFMove(function)] (PolicyAction) { function(); }).get())))
+    if (SUCCEEDED(formDelegate->willSubmitForm(m_webFrame, sourceFrame.get(), formElement.get(), formValuesPropertyBag.get(), setUpPolicyListener([completionHandler = WTFMove(completionHandler)] (PolicyAction) { completionHandler(); }).get())))
         return;
 
     // FIXME: Add a sane default implementation
-    function();
+    completionHandler();
 }
 
 void WebFrameLoaderClient::setMainDocumentError(DocumentLoader*, const ResourceError& error)
@@ -1169,6 +1169,7 @@ RefPtr<Widget> WebFrameLoaderClient::createPlugin(const IntSize& pluginSize, HTM
         }
     }
 
+#if ENABLE(NETSCAPE_PLUGIN_API)
     Frame* frame = core(m_webFrame);
     RefPtr<PluginView> pluginView = PluginView::create(frame, pluginSize, &element, url, paramNames, paramValues, mimeType, loadManually);
 
@@ -1176,7 +1177,7 @@ RefPtr<Widget> WebFrameLoaderClient::createPlugin(const IntSize& pluginSize, HTM
         return pluginView;
 
     dispatchDidFailToStartPlugin(pluginView.get());
-
+#endif
     return nullptr;
 }
 
@@ -1191,6 +1192,7 @@ void WebFrameLoaderClient::redirectDataToPlugin(Widget& pluginWidget)
 
 RefPtr<Widget> WebFrameLoaderClient::createJavaAppletWidget(const IntSize& pluginSize, HTMLAppletElement& element, const URL& /*baseURL*/, const Vector<String>& paramNames, const Vector<String>& paramValues)
 {
+#if ENABLE(NETSCAPE_PLUGIN_API)
     RefPtr<PluginView> pluginView = PluginView::create(core(m_webFrame), pluginSize, &element, URL(), paramNames, paramValues, "application/x-java-applet", false);
 
     // Check if the plugin can be loaded successfully
@@ -1213,6 +1215,9 @@ RefPtr<Widget> WebFrameLoaderClient::createJavaAppletWidget(const IntSize& plugi
     resourceLoadDelegate->plugInFailedWithError(webView, error.get(), getWebDataSource(coreFrame->loader().documentLoader()));
 
     return WTFMove(pluginView);
+#else
+    return nullptr;
+#endif
 }
 
 WebHistory* WebFrameLoaderClient::webHistory() const

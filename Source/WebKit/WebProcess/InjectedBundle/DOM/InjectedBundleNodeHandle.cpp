@@ -55,16 +55,15 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/WTFString.h>
 
+namespace WebKit {
 using namespace WebCore;
 using namespace HTMLNames;
 
-namespace WebKit {
+typedef HashMap<Node*, InjectedBundleNodeHandle*> DOMNodeHandleCache;
 
-typedef HashMap<Node*, InjectedBundleNodeHandle*> DOMHandleCache;
-
-static DOMHandleCache& domHandleCache()
+static DOMNodeHandleCache& domNodeHandleCache()
 {
-    static NeverDestroyed<DOMHandleCache> cache;
+    static NeverDestroyed<DOMNodeHandleCache> cache;
     return cache;
 }
 
@@ -84,7 +83,7 @@ RefPtr<InjectedBundleNodeHandle> InjectedBundleNodeHandle::getOrCreate(Node* nod
 
 Ref<InjectedBundleNodeHandle> InjectedBundleNodeHandle::getOrCreate(Node& node)
 {
-    DOMHandleCache::AddResult result = domHandleCache().add(&node, nullptr);
+    DOMNodeHandleCache::AddResult result = domNodeHandleCache().add(&node, nullptr);
     if (!result.isNewEntry)
         return Ref<InjectedBundleNodeHandle>(*result.iterator->value);
 
@@ -105,7 +104,7 @@ InjectedBundleNodeHandle::InjectedBundleNodeHandle(Node& node)
 
 InjectedBundleNodeHandle::~InjectedBundleNodeHandle()
 {
-    domHandleCache().remove(m_node.ptr());
+    domNodeHandleCache().remove(m_node.ptr());
 }
 
 Node* InjectedBundleNodeHandle::coreNode()
@@ -169,13 +168,13 @@ static RefPtr<WebImage> imageForRect(FrameView* frameView, const IntRect& painti
     if (options & SnapshotOptionsExcludeSelectionHighlighting)
         shouldPaintSelection = FrameView::ExcludeSelection;
 
-    PaintBehavior paintBehavior = frameView->paintBehavior() | (PaintBehaviorFlattenCompositingLayers | PaintBehaviorSnapshotting);
+    auto paintBehavior = frameView->paintBehavior() | PaintBehavior::FlattenCompositingLayers | PaintBehavior::Snapshotting;
     if (options & SnapshotOptionsForceBlackText)
-        paintBehavior |= PaintBehaviorForceBlackText;
+        paintBehavior |= PaintBehavior::ForceBlackText;
     if (options & SnapshotOptionsForceWhiteText)
-        paintBehavior |= PaintBehaviorForceWhiteText;
+        paintBehavior |= PaintBehavior::ForceWhiteText;
 
-    PaintBehavior oldPaintBehavior = frameView->paintBehavior();
+    auto oldPaintBehavior = frameView->paintBehavior();
     frameView->setPaintBehavior(paintBehavior);
     frameView->paintContentsForSnapshot(*graphicsContext.get(), paintingRect, shouldPaintSelection, FrameView::DocumentCoordinates);
     frameView->setPaintBehavior(oldPaintBehavior);
@@ -334,7 +333,7 @@ bool InjectedBundleNodeHandle::isTextField() const
     if (!is<HTMLInputElement>(m_node))
         return false;
 
-    return downcast<HTMLInputElement>(m_node.get()).isText();
+    return downcast<HTMLInputElement>(m_node.get()).isTextField();
 }
 
 RefPtr<InjectedBundleNodeHandle> InjectedBundleNodeHandle::htmlTableCellElementCellAbove()

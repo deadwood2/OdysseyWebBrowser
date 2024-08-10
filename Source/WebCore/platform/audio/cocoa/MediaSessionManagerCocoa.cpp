@@ -24,7 +24,7 @@
  */
 
 #include "config.h"
-#include "PlatformMediaSessionManager.h"
+#include "MediaSessionManagerCocoa.h"
 
 #if USE(AUDIO_SESSION)
 
@@ -38,9 +38,9 @@ using namespace WebCore;
 static const size_t kWebAudioBufferSize = 128;
 static const size_t kLowPowerVideoBufferSize = 4096;
 
-void PlatformMediaSessionManager::updateSessionState()
+void MediaSessionManagerCocoa::updateSessionState()
 {
-    LOG(Media, "PlatformMediaSessionManager::updateSessionState() - types: Video(%d), Audio(%d), WebAudio(%d)", count(PlatformMediaSession::Video), count(PlatformMediaSession::Audio), count(PlatformMediaSession::WebAudio));
+    LOG(Media, "PlatformMediaSessionManager::scheduleUpdateSessionState() - types: Video(%d), Audio(%d), WebAudio(%d)", count(PlatformMediaSession::Video), count(PlatformMediaSession::Audio), count(PlatformMediaSession::WebAudio));
 
     if (has(PlatformMediaSession::WebAudio))
         AudioSession::sharedSession().setPreferredBufferSize(kWebAudioBufferSize);
@@ -48,12 +48,12 @@ void PlatformMediaSessionManager::updateSessionState()
     // while having a large enough buffer so that the audio rendering remains stable, hence a computation based on sample rate.
     else if (has(PlatformMediaSession::MediaStreamCapturingAudio))
         AudioSession::sharedSession().setPreferredBufferSize(AudioSession::sharedSession().sampleRate() / 50);
-    else if ((has(PlatformMediaSession::Video) || has(PlatformMediaSession::Audio)) && DeprecatedGlobalSettings::lowPowerVideoAudioBufferSizeEnabled()) {
+    else if ((has(PlatformMediaSession::VideoAudio) || has(PlatformMediaSession::Audio)) && DeprecatedGlobalSettings::lowPowerVideoAudioBufferSizeEnabled()) {
         // FIXME: <http://webkit.org/b/116725> Figure out why enabling the code below
         // causes media LayoutTests to fail on 10.8.
 
         size_t bufferSize;
-        if (m_audioHardwareListener && m_audioHardwareListener->outputDeviceSupportsLowPowerMode())
+        if (audioHardwareListener() && audioHardwareListener()->outputDeviceSupportsLowPowerMode())
             bufferSize = kLowPowerVideoBufferSize;
         else
             bufferSize = kWebAudioBufferSize;
@@ -70,7 +70,9 @@ void PlatformMediaSessionManager::updateSessionState()
         auto type = session.mediaType();
         if (type == PlatformMediaSession::WebAudio)
             hasWebAudioType = true;
-        if ((type == PlatformMediaSession::VideoAudio || type == PlatformMediaSession::Audio) && session.canProduceAudio())
+        if ((type == PlatformMediaSession::VideoAudio || type == PlatformMediaSession::Audio) && session.canProduceAudio() && session.hasPlayedSinceLastInterruption())
+            hasAudibleAudioOrVideoMediaType = true;
+        if (session.isPlayingToWirelessPlaybackTarget())
             hasAudibleAudioOrVideoMediaType = true;
         return (type == PlatformMediaSession::MediaStreamCapturingAudio);
     });
@@ -83,6 +85,17 @@ void PlatformMediaSessionManager::updateSessionState()
         AudioSession::sharedSession().setCategory(AudioSession::AmbientSound);
     else
         AudioSession::sharedSession().setCategory(AudioSession::None);
+}
+
+void MediaSessionManagerCocoa::beginInterruption(PlatformMediaSession::InterruptionType type)
+{
+    if (type == PlatformMediaSession::InterruptionType::SystemInterruption) {
+        forEachSession([] (PlatformMediaSession& session, size_t) {
+            session.clearHasPlayedSinceLastInterruption();
+        });
+    }
+
+    PlatformMediaSessionManager::beginInterruption(type);
 }
 
 #endif // USE(AUDIO_SESSION)

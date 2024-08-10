@@ -24,7 +24,9 @@
 #include "WebKitWebView.h"
 
 #include "APIData.h"
+#include "APINavigation.h"
 #include "APISerializedScriptValue.h"
+#include "DataReference.h"
 #include "ImageOptions.h"
 #include "WebCertificateInfo.h"
 #include "WebContextMenuItem.h"
@@ -62,6 +64,7 @@
 #include "WebKitWindowPropertiesPrivate.h"
 #include <JavaScriptCore/APICast.h>
 #include <JavaScriptCore/JSRetainPtr.h>
+#include <jsc/JSCContextPrivate.h>
 #include <WebCore/CertificateInfo.h>
 #include <WebCore/GUniquePtrSoup.h>
 #include <WebCore/JSDOMExceptionHandling.h>
@@ -230,7 +233,6 @@ struct _WebKitWebViewPrivate {
     WebEvent::Modifiers mouseTargetModifiers;
 
     GRefPtr<WebKitFindController> findController;
-    JSRetainPtr<JSGlobalContextRef> javascriptGlobalContext;
 
     GRefPtr<WebKitWebResource> mainResource;
     LoadingResourcesMap loadingResourcesMap;
@@ -238,6 +240,8 @@ struct _WebKitWebViewPrivate {
     WebKitScriptDialog* currentScriptDialog;
 
 #if PLATFORM(GTK)
+    GRefPtr<JSCContext> jsContext;
+
     GRefPtr<WebKitWebInspector> inspector;
 
     RefPtr<cairo_surface_t> favicon;
@@ -2580,7 +2584,7 @@ void webkit_web_view_load_html(WebKitWebView* webView, const gchar* content, con
     g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
     g_return_if_fail(content);
 
-    getPage(webView).loadHTMLString(String::fromUTF8(content), String::fromUTF8(baseURI));
+    getPage(webView).loadData({ reinterpret_cast<const uint8_t*>(content), content ? strlen(content) : 0 }, "text/html"_s, "UTF-8"_s, String::fromUTF8(baseURI));
 }
 
 /**
@@ -2602,7 +2606,7 @@ void webkit_web_view_load_alternate_html(WebKitWebView* webView, const gchar* co
     g_return_if_fail(content);
     g_return_if_fail(contentURI);
 
-    getPage(webView).loadAlternateHTMLString(String::fromUTF8(content), URL(URL(), String::fromUTF8(baseURI)), URL(URL(), String::fromUTF8(contentURI)));
+    getPage(webView).loadAlternateHTML({ reinterpret_cast<const uint8_t*>(content), content ? strlen(content) : 0 }, "UTF-8"_s, URL(URL(), String::fromUTF8(baseURI)), URL(URL(), String::fromUTF8(contentURI)));
 }
 
 /**
@@ -2619,13 +2623,7 @@ void webkit_web_view_load_plain_text(WebKitWebView* webView, const gchar* plainT
     g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
     g_return_if_fail(plainText);
 
-    getPage(webView).loadPlainTextString(String::fromUTF8(plainText));
-}
-
-static void releaseGBytes(unsigned char*, const void* bytes)
-{
-    // Balanced by g_bytes_ref in webkit_web_view_load_bytes().
-    g_bytes_unref(static_cast<GBytes*>(const_cast<void*>(bytes)));
+    getPage(webView).loadData({ reinterpret_cast<const uint8_t*>(plainText), plainText ? strlen(plainText) : 0 }, "text/plain"_s, "UTF-8"_s, blankURL().string());
 }
 
 /**
@@ -2653,11 +2651,7 @@ void webkit_web_view_load_bytes(WebKitWebView* webView, GBytes* bytes, const cha
     gconstpointer bytesData = g_bytes_get_data(bytes, &bytesDataSize);
     g_return_if_fail(bytesDataSize);
 
-    // Balanced by g_bytes_unref in releaseGBytes.
-    g_bytes_ref(bytes);
-
-    Ref<API::Data> data = API::Data::createWithoutCopying(static_cast<const unsigned char*>(bytesData), bytesDataSize, releaseGBytes, bytes);
-    getPage(webView).loadData(data.ptr(), mimeType ? String::fromUTF8(mimeType) : String::fromUTF8("text/html"),
+    getPage(webView).loadData({ reinterpret_cast<const uint8_t*>(bytesData), bytesDataSize }, mimeType ? String::fromUTF8(mimeType) : String::fromUTF8("text/html"),
         encoding ? String::fromUTF8(encoding) : String::fromUTF8("UTF-8"), String::fromUTF8(baseURI));
 }
 
@@ -3032,7 +3026,7 @@ void webkit_web_view_go_to_back_forward_list_item(WebKitWebView* webView, WebKit
     g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
     g_return_if_fail(WEBKIT_IS_BACK_FORWARD_LIST_ITEM(listItem));
 
-    getPage(webView).goToBackForwardItem(webkitBackForwardListItemGetItem(listItem));
+    getPage(webView).goToBackForwardItem(*webkitBackForwardListItemGetItem(listItem));
 }
 
 /**
@@ -3124,6 +3118,7 @@ void webkit_web_view_set_zoom_level(WebKitWebView* webView, gdouble zoomLevel)
         return;
 
     auto& page = getPage(webView);
+    page.scalePage(1.0, IntPoint()); // Reset page scale when zoom level is changed
     if (webkit_settings_get_zoom_text_only(webView->priv->settings.get()))
         page.setTextZoomFactor(zoomLevel);
     else
@@ -3251,7 +3246,7 @@ WebKitFindController* webkit_web_view_get_find_controller(WebKitWebView* webView
 
 #if PLATFORM(GTK)
 /**
- * webkit_web_view_get_javascript_global_context:
+ * webkit_web_view_get_javascript_global_context: (skip)
  * @web_view: a #WebKitWebView
  *
  * Get the global JavaScript context used by @web_view to deserialize the
@@ -3259,15 +3254,20 @@ WebKitFindController* webkit_web_view_get_find_controller(WebKitWebView* webView
  *
  * Returns: the <function>JSGlobalContextRef</function> used by @web_view to deserialize
  *    the result values of scripts.
+ *
+ * Deprecated: 2.22: Use jsc_value_get_context() instead.
  */
 JSGlobalContextRef webkit_web_view_get_javascript_global_context(WebKitWebView* webView)
 {
     g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
 
-    if (!webView->priv->javascriptGlobalContext)
-        webView->priv->javascriptGlobalContext = adopt(JSGlobalContextCreate(nullptr));
-    return webView->priv->javascriptGlobalContext.get();
+    // We keep a reference to the js context in the view only when this method is called
+    // for backwards compatibility.
+    if (!webView->priv->jsContext)
+        webView->priv->jsContext = SharedJavascriptContext::singleton().getOrCreateContext();
+    return jscContextGetJSContext(webView->priv->jsContext.get());
 }
+#endif
 
 static void webkitWebViewRunJavaScriptCallback(API::SerializedScriptValue* wkSerializedScriptValue, const ExceptionDetails& exceptionDetails, GTask* task)
 {
@@ -3294,9 +3294,7 @@ static void webkitWebViewRunJavaScriptCallback(API::SerializedScriptValue* wkSer
         return;
     }
 
-    auto* jsContext = webkit_web_view_get_javascript_global_context(WEBKIT_WEB_VIEW(g_task_get_source_object(task)));
-    g_task_return_pointer(task, webkitJavascriptResultCreate(jsContext,
-        wkSerializedScriptValue->internalRepresentation()),
+    g_task_return_pointer(task, webkitJavascriptResultCreate(wkSerializedScriptValue->internalRepresentation()),
         reinterpret_cast<GDestroyNotify>(webkit_javascript_result_unref));
 }
 
@@ -3319,9 +3317,9 @@ void webkit_web_view_run_javascript(WebKitWebView* webView, const gchar* script,
     g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
     g_return_if_fail(script);
 
-    GTask* task = g_task_new(webView, cancellable, callback, userData);
-    getPage(webView).runJavaScriptInMainFrame(String::fromUTF8(script), true, [task](API::SerializedScriptValue* serializedScriptValue, bool, const ExceptionDetails& exceptionDetails, WebKit::CallbackBase::Error) {
-        webkitWebViewRunJavaScriptCallback(serializedScriptValue, exceptionDetails, adoptGRef(task).get());
+    GRefPtr<GTask> task = adoptGRef(g_task_new(webView, cancellable, callback, userData));
+    getPage(webView).runJavaScriptInMainFrame(String::fromUTF8(script), true, [task = WTFMove(task)](API::SerializedScriptValue* serializedScriptValue, bool, const ExceptionDetails& exceptionDetails, WebKit::CallbackBase::Error) {
+        webkitWebViewRunJavaScriptCallback(serializedScriptValue, exceptionDetails, task.get());
     });
 }
 
@@ -3343,8 +3341,7 @@ void webkit_web_view_run_javascript(WebKitWebView* webView, const gchar* script,
  *                               gpointer      user_data)
  * {
  *     WebKitJavascriptResult *js_result;
- *     JSValueRef              value;
- *     JSGlobalContextRef      context;
+ *     JSCValue               *value;
  *     GError                 *error = NULL;
  *
  *     js_result = webkit_web_view_run_javascript_finish (WEBKIT_WEB_VIEW (object), result, &error);
@@ -3354,19 +3351,17 @@ void webkit_web_view_run_javascript(WebKitWebView* webView, const gchar* script,
  *         return;
  *     }
  *
- *     context = webkit_javascript_result_get_global_context (js_result);
- *     value = webkit_javascript_result_get_value (js_result);
- *     if (JSValueIsString (context, value)) {
- *         JSStringRef js_str_value;
- *         gchar      *str_value;
- *         gsize       str_length;
+ *     value = webkit_javascript_result_get_js_value (js_result);
+ *     if (jsc_value_is_string (value)) {
+ *         JSCException *exception;
+ *         gchar        *str_value;
  *
- *         js_str_value = JSValueToStringCopy (context, value, NULL);
- *         str_length = JSStringGetMaximumUTF8CStringSize (js_str_value);
- *         str_value = (gchar *)g_malloc (str_length);
- *         JSStringGetUTF8CString (js_str_value, str_value, str_length);
- *         JSStringRelease (js_str_value);
- *         g_print ("Script result: %s\n", str_value);
+ *         str_value = jsc_value_to_string (value);
+ *         exception = jsc_context_get_exception (jsc_value_get_context (value));
+ *         if (exception)
+ *             g_warning ("Error running javascript: %s", jsc_exception_get_message (exception));
+ *         else
+ *             g_print ("Script result: %s\n", str_value);
  *         g_free (str_value);
  *     } else {
  *         g_warning ("Error running javascript: unexpected return value");
@@ -3391,8 +3386,58 @@ void webkit_web_view_run_javascript(WebKitWebView* webView, const gchar* script,
  */
 WebKitJavascriptResult* webkit_web_view_run_javascript_finish(WebKitWebView* webView, GAsyncResult* result, GError** error)
 {
-    g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), 0);
-    g_return_val_if_fail(g_task_is_valid(result, webView), 0);
+    g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
+    g_return_val_if_fail(g_task_is_valid(result, webView), nullptr);
+
+    return static_cast<WebKitJavascriptResult*>(g_task_propagate_pointer(G_TASK(result), error));
+}
+
+/**
+ * webkit_web_view_run_javascript_in_world:
+ * @web_view: a #WebKitWebView
+ * @script: the script to run
+ * @world_name: the name of a #WebKitScriptWorld
+ * @cancellable: (allow-none): a #GCancellable or %NULL to ignore
+ * @callback: (scope async): a #GAsyncReadyCallback to call when the script finished
+ * @user_data: (closure): the data to pass to callback function
+ *
+ * Asynchronously run @script in the script world with name @world_name of the current page context in @web_view.
+ * If WebKitSettings:enable-javascript is FALSE, this method will do nothing.
+ *
+ * When the operation is finished, @callback will be called. You can then call
+ * webkit_web_view_run_javascript_in_world_finish() to get the result of the operation.
+ *
+ * Since: 2.22
+ */
+void webkit_web_view_run_javascript_in_world(WebKitWebView* webView, const gchar* script, const char* worldName, GCancellable* cancellable, GAsyncReadyCallback callback, gpointer userData)
+{
+    g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
+    g_return_if_fail(script);
+    g_return_if_fail(worldName);
+
+    GRefPtr<GTask> task = adoptGRef(g_task_new(webView, cancellable, callback, userData));
+    getPage(webView).runJavaScriptInMainFrameScriptWorld(String::fromUTF8(script), true, String::fromUTF8(worldName), [task = WTFMove(task)](API::SerializedScriptValue* serializedScriptValue, bool, const ExceptionDetails& exceptionDetails, WebKit::CallbackBase::Error) {
+        webkitWebViewRunJavaScriptCallback(serializedScriptValue, exceptionDetails, task.get());
+    });
+}
+
+/**
+ * webkit_web_view_run_javascript_in_world_finish:
+ * @web_view: a #WebKitWebView
+ * @result: a #GAsyncResult
+ * @error: return location for error or %NULL to ignore
+ *
+ * Finish an asynchronous operation started with webkit_web_view_run_javascript_in_world().
+ *
+ * Returns: (transfer full): a #WebKitJavascriptResult with the result of the last executed statement in @script
+ *    or %NULL in case of error
+ *
+ * Since: 2.22
+ */
+WebKitJavascriptResult* webkit_web_view_run_javascript_in_world_finish(WebKitWebView* webView, GAsyncResult* result, GError** error)
+{
+    g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
+    g_return_val_if_fail(g_task_is_valid(result, webView), nullptr);
 
     return static_cast<WebKitJavascriptResult*>(g_task_propagate_pointer(G_TASK(result), error));
 }
@@ -3470,7 +3515,6 @@ WebKitJavascriptResult* webkit_web_view_run_javascript_from_gresource_finish(Web
 
     return static_cast<WebKitJavascriptResult*>(g_task_propagate_pointer(G_TASK(result), error));
 }
-#endif
 
 /**
  * webkit_web_view_get_main_resource:

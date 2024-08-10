@@ -28,7 +28,7 @@
 #include <WebCore/CSSImportRule.h>
 #include <WebCore/Document.h>
 #include <WebCore/ExceptionCode.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
 
@@ -37,6 +37,8 @@
 typedef struct _WebKitDOMClientRectListPrivate {
     RefPtr<WebCore::DOMRectList> coreObject;
 } WebKitDOMClientRectListPrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -144,3 +146,4 @@ gulong webkit_dom_client_rect_list_get_length(WebKitDOMClientRectList* self)
     g_return_val_if_fail(WEBKIT_DOM_IS_CLIENT_RECT_LIST(self), 0);
     return WebKit::core(self)->length();
 }
+G_GNUC_END_IGNORE_DEPRECATIONS;

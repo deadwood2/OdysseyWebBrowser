@@ -55,6 +55,7 @@ public:
     WEBCORE_EXPORT void setVideoElement(HTMLVideoElement*);
     HTMLVideoElement* videoElement() const { return m_videoElement.get(); }
     WEBCORE_EXPORT void setVideoFullscreenLayer(PlatformLayer*, WTF::Function<void()>&& completionHandler = [] { });
+    WEBCORE_EXPORT void willExitFullscreen();
     WEBCORE_EXPORT void waitForPreparedForInlineThen(WTF::Function<void()>&& completionHandler = [] { });
     
     WEBCORE_EXPORT void handleEvent(WebCore::ScriptExecutionContext&, WebCore::Event&) override;
@@ -68,8 +69,8 @@ public:
     WEBCORE_EXPORT void setVideoLayerGravity(VideoGravity) override;
     WEBCORE_EXPORT void fullscreenModeChanged(HTMLMediaElementEnums::VideoFullscreenMode) override;
     WEBCORE_EXPORT bool isVisible() const override;
-    WEBCORE_EXPORT FloatSize videoDimensions() const override { return m_videoDimensions; }
-    WEBCORE_EXPORT bool hasVideo() const override { return m_hasVideo; }
+    FloatSize videoDimensions() const override { return m_videoDimensions; }
+    bool hasVideo() const override { return m_hasVideo; }
 
 
 protected:
@@ -78,6 +79,12 @@ protected:
 private:
     void setHasVideo(bool);
     void setVideoDimensions(const FloatSize&);
+
+    void willEnterPictureInPicture() override;
+    void didEnterPictureInPicture() override;
+    void failedToEnterPictureInPicture() override;
+    void willExitPictureInPicture() override;
+    void didExitPictureInPicture() override;
 
     static const Vector<WTF::AtomicString>& observedEventNames();
     const WTF::AtomicString& eventNameAll();

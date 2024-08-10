@@ -88,6 +88,8 @@ class AbstractEarlyWarningSystem(AbstractReviewQueue, EarlyWarningSystemTaskDele
             message += "\n\n%s" % extra_message_text
         # FIXME: We might want to add some text about rejecting from the commit-queue in
         # the case where patch.commit_queue() isn't already set to '-'.
+        if not self._can_access_bug(patch.bug_id()):
+            return
         if self.watchers:
             tool.bugs.add_cc_to_bug(patch.bug_id(), self.watchers)
         tool.bugs.set_flag_on_attachment(patch.id(), "commit-queue", "-", message)
@@ -150,7 +152,7 @@ class AbstractEarlyWarningSystem(AbstractReviewQueue, EarlyWarningSystemTaskDele
         return self._group
 
     def refetch_patch(self, patch):
-        return self._tool.bugs.fetch_attachment(patch.id())
+        return super(AbstractEarlyWarningSystem, self)._refetch_patch(patch)
 
     def report_flaky_tests(self, patch, flaky_test_results, results_archive):
         pass
@@ -160,7 +162,7 @@ class AbstractEarlyWarningSystem(AbstractReviewQueue, EarlyWarningSystemTaskDele
     @classmethod
     def handle_script_error(cls, tool, state, script_error):
         # FIXME: Why does this not exit(1) like the superclass does?
-        _log.error(script_error.message_with_output())
+        _log.error(script_error.message_with_output(output_limit=5000))
 
     @classmethod
     def load_ews_classes(cls):

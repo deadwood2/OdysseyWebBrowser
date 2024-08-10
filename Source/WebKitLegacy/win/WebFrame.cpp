@@ -30,7 +30,6 @@
 #include "CFDictionaryPropertyBag.h"
 #include "COMPropertyBag.h"
 #include "DOMCoreClasses.h"
-#include "HTMLFrameOwnerElement.h"
 #include "MarshallingHelpers.h"
 #include "PluginDatabase.h"
 #include "PluginView.h"
@@ -57,7 +56,6 @@
 #include <JavaScriptCore/JSCJSValue.h>
 #include <JavaScriptCore/JSLock.h>
 #include <JavaScriptCore/JSObject.h>
-#include <JavaScriptCore/ScriptValue.h>
 #include <WebCore/BString.h>
 #include <WebCore/COMPtr.h>
 #include <WebCore/CSSAnimationController.h>
@@ -69,6 +67,7 @@
 #include <WebCore/Event.h>
 #include <WebCore/EventHandler.h>
 #include <WebCore/FormState.h>
+#include <WebCore/Frame.h>
 #include <WebCore/FrameLoadRequest.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/FrameTree.h>
@@ -79,6 +78,7 @@
 #include <WebCore/HTMLAppletElement.h>
 #include <WebCore/HTMLFormControlElement.h>
 #include <WebCore/HTMLFormElement.h>
+#include <WebCore/HTMLFrameOwnerElement.h>
 #include <WebCore/HTMLInputElement.h>
 #include <WebCore/HTMLNames.h>
 #include <WebCore/HTMLPlugInElement.h>
@@ -87,7 +87,6 @@
 #include <WebCore/JSDOMWindow.h>
 #include <WebCore/KeyboardEvent.h>
 #include <WebCore/MIMETypeRegistry.h>
-#include <WebCore/MainFrame.h>
 #include <WebCore/MemoryCache.h>
 #include <WebCore/MouseRelatedEvent.h>
 #include <WebCore/NotImplemented.h>
@@ -110,7 +109,7 @@
 #if USE(CG)
 #include <CoreGraphics/CoreGraphics.h>
 #elif USE(CAIRO)
-#include "PlatformContextCairo.h"
+#include <WebCore/PlatformContextCairo.h>
 #include <cairo-win32.h>
 #endif
 
@@ -2003,8 +2002,12 @@ HRESULT WebFrame::stringByEvaluatingJavaScriptInScriptWorld(IWebScriptWorld* iWo
 
     // The global object is probably a proxy object? - if so, we know how to use this!
     JSC::JSObject* globalObjectObj = toJS(globalObjectRef);
-    if (globalObjectObj->inherits(*globalObjectObj->vm(), JSDOMWindowProxy::info()))
-        anyWorldGlobalObject = static_cast<JSDOMWindowProxy*>(globalObjectObj)->window();
+    auto& vm = *globalObjectObj->vm();
+    if (globalObjectObj->inherits<JSWindowProxy>(vm))
+        anyWorldGlobalObject = JSC::jsDynamicCast<JSDOMWindow*>(vm, static_cast<JSWindowProxy*>(globalObjectObj)->window());
+
+    if (!anyWorldGlobalObject)
+        return E_INVALIDARG;
 
     // Get the frame frome the global object we've settled on.
     Frame* frame = anyWorldGlobalObject->wrapped().frame();

@@ -25,7 +25,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#include "config.h"
+#if ENABLE(NETSCAPE_PLUGIN_API)
 #include "PluginView.h"
 
 #include "PluginDatabase.h"
@@ -75,7 +75,7 @@
 #include <wtf/win/GDIObject.h>
 
 #if USE(CAIRO)
-#include "PlatformContextCairo.h"
+#include <WebCore/PlatformContextCairo.h>
 #include <cairo-win32.h>
 #endif
 
@@ -977,3 +977,5 @@ float PluginView::deviceScaleFactor() const
 }
 
 } // namespace WebCore
+
+#endif

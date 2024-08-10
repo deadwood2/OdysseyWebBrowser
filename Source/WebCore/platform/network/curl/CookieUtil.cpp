@@ -171,12 +171,25 @@ bool parseCookieHeader(const String& cookieLine, const String& domain, Cookie& r
     bool hasMaxAge = false;
     result.session = true;
 
-    Vector<String> cookieAttributes;
-    cookieLine.split(';', true, cookieAttributes);
-    for (auto attribute : cookieAttributes)
+    for (auto attribute : cookieLine.splitAllowingEmptyEntries(';'))
         parseCookieAttributes(attribute, domain, hasMaxAge, result);
 
     return true;
+}
+
+String defaultPathForURL(const URL& url)
+{
+    // Algorithm to generate the default path is outlined in https://tools.ietf.org/html/rfc6265#section-5.1.4
+
+    String path = url.path();
+    if (path.isEmpty() || !path.startsWith('/'))
+        return "/";
+
+    auto lastSlashPosition = path.reverseFind('/');
+    if (!lastSlashPosition)
+        return "/";
+
+    return path.substring(0, lastSlashPosition);
 }
 
 } // namespace CookieUtil

@@ -23,14 +23,15 @@
 #if ENABLE(VIDEO) && USE(GSTREAMER) && ENABLE(MEDIA_SOURCE)
 
 #include "AudioTrackPrivateGStreamer.h"
+#include "GUniquePtrGStreamer.h"
+#include "MainThreadNotifier.h"
 #include "SourceBufferPrivateGStreamer.h"
 #include "VideoTrackPrivateGStreamer.h"
 #include "WebKitMediaSourceGStreamer.h"
 
 #include <gst/app/gstappsrc.h>
 #include <gst/gst.h>
-#include <wtf/Condition.h>
-#include <wtf/RefPtr.h>
+#include <wtf/Forward.h>
 #include <wtf/glib/GRefPtr.h>
 
 namespace WebCore {
@@ -51,15 +52,12 @@ struct _Stream {
 
     // AppSrc. Never modified after first assignment.
     GstElement* appsrc;
-    GstPad* decodebinSinkPad;
 
     // Never modified after first assignment.
     WebCore::SourceBufferPrivateGStreamer* sourceBuffer;
 
     // Fields filled when the track is attached.
     WebCore::MediaSourceStreamTypeGStreamer type;
-    // Might be 0, e.g. for VP8/VP9.
-    GstElement* parser;
     GRefPtr<GstCaps> caps;
 
     // Only audio, video or nothing at a given time.
@@ -97,6 +95,11 @@ enum OnSeekDataAction {
     MediaSourceSeekToTime
 };
 
+enum WebKitMediaSrcMainThreadNotification {
+    ReadyForMoreSamples = 1 << 0,
+    SeekNeedsData = 1 << 1
+};
+
 struct _WebKitMediaSrcPrivate {
     // Used to coordinate the release of Stream track info.
     Lock streamLock;
@@ -120,8 +123,10 @@ struct _WebKitMediaSrcPrivate {
     int appsrcSeekDataCount;
     int appsrcNeedDataCount;
 
-    GRefPtr<GstBus> bus;
     WebCore::MediaPlayerPrivateGStreamerMSE* mediaPlayerPrivate;
+
+    RefPtr<WebCore::MainThreadNotifier<WebKitMediaSrcMainThreadNotification>> notifier;
+    GUniquePtr<GstFlowCombiner> flowCombiner;
 };
 
 extern guint webKitMediaSrcSignals[LAST_SIGNAL];
@@ -139,7 +144,7 @@ gint64 webKitMediaSrcGetSize(WebKitMediaSrc*);
 gboolean webKitMediaSrcQueryWithParent(GstPad*, GstObject*, GstQuery*);
 void webKitMediaSrcUpdatePresentationSize(GstCaps*, Stream*);
 void webKitMediaSrcLinkStreamToSrcPad(GstPad*, Stream*);
-void webKitMediaSrcLinkParser(GstPad*, GstCaps*, Stream*);
+void webKitMediaSrcLinkSourcePad(GstPad*, GstCaps*, Stream*);
 void webKitMediaSrcFreeStream(WebKitMediaSrc*, Stream*);
 void webKitMediaSrcCheckAllTracksConfigured(WebKitMediaSrc*);
 GstURIType webKitMediaSrcUriGetType(GType);

@@ -28,6 +28,7 @@
 
 #import "WebKitNSStringExtras.h"
 
+#import <WebCore/ColorMac.h>
 #import <WebCore/FontCascade.h>
 #import <WebCore/GraphicsContext.h>
 #import <WebCore/LoaderNSURLExtras.h>
@@ -67,7 +68,7 @@ static bool canUseFastRenderer(const UniChar* buffer, unsigned length)
     [self getCharacters:buffer.data()];
 
     if (canUseFastRenderer(buffer.data(), length)) {
-        FontCascade webCoreFont(FontPlatformData(reinterpret_cast<CTFontRef>(font), [font pointSize]));
+        FontCascade webCoreFont(FontPlatformData((__bridge CTFontRef)font, [font pointSize]));
         TextRun run(StringView(buffer.data(), length));
 
         // The following is a half-assed attempt to match AppKit's rounding rules for drawAtPoint.
@@ -87,15 +88,7 @@ static bool canUseFastRenderer(const UniChar* buffer, unsigned length)
         if (!flipped)
             CGContextScaleCTM(cgContext, 1, -1);
 
-        CGFloat red;
-        CGFloat green;
-        CGFloat blue;
-        CGFloat alpha;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        [[textColor colorUsingColorSpaceName:NSDeviceRGBColorSpace] getRed:&red green:&green blue:&blue alpha:&alpha];
-#pragma clang diagnostic pop
-        graphicsContext.setFillColor(Color(static_cast<float>(red * 255), static_cast<float>(green * 255.0f), static_cast<float>(blue * 255.0f), static_cast<float>(alpha * 255.0f)));
+        graphicsContext.setFillColor(colorFromNSColor(textColor));
         webCoreFont.drawText(graphicsContext, run, FloatPoint(point.x, flipped ? point.y : -point.y));
 
         if (!flipped)
@@ -118,7 +111,7 @@ static bool canUseFastRenderer(const UniChar* buffer, unsigned length)
     [self getCharacters:buffer.data()];
 
     if (canUseFastRenderer(buffer.data(), length)) {
-        FontCascade webCoreFont(FontPlatformData(reinterpret_cast<CTFontRef>(font), [font pointSize]));
+        FontCascade webCoreFont(FontPlatformData((__bridge CTFontRef)font, [font pointSize]));
         TextRun run(StringView(buffer.data(), length));
         return webCoreFont.width(run);
     }
@@ -169,7 +162,7 @@ static bool canUseFastRenderer(const UniChar* buffer, unsigned length)
 -(NSString *)_webkit_stringByTrimmingWhitespace
 {
     NSMutableString *trimmed = [[self mutableCopy] autorelease];
-    CFStringTrimWhitespace((CFMutableStringRef)trimmed);
+    CFStringTrimWhitespace((__bridge CFMutableStringRef)trimmed);
     return trimmed;
 }
 

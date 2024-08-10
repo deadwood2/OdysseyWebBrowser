@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/Document.h>
 #include <WebCore/ExceptionCode.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMPrivate.h"
 #include "WebKitDOMStyleSheetListPrivate.h"
 #include "WebKitDOMStyleSheetPrivate.h"
@@ -37,6 +37,8 @@
 typedef struct _WebKitDOMStyleSheetListPrivate {
     RefPtr<WebCore::StyleSheetList> coreObject;
 } WebKitDOMStyleSheetListPrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -150,3 +152,4 @@ gulong webkit_dom_style_sheet_list_get_length(WebKitDOMStyleSheetList* self)
     return result;
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

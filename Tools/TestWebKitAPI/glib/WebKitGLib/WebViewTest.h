@@ -67,9 +67,11 @@ public:
     void showInWindow(GtkWindowType = GTK_WINDOW_POPUP);
     void showInWindowAndWaitUntilMapped(GtkWindowType = GTK_WINDOW_POPUP, int width = 0, int height = 0);
     void emitPopupMenuSignal();
+#endif
 
     WebKitJavascriptResult* runJavaScriptAndWaitUntilFinished(const char* javascript, GError**);
     WebKitJavascriptResult* runJavaScriptFromGResourceAndWaitUntilFinished(const char* resource, GError**);
+    WebKitJavascriptResult* runJavaScriptInWorldAndWaitUntilFinished(const char* javascript, const char* world, GError**);
 
     // Javascript result helpers.
     static char* javascriptResultToCString(WebKitJavascriptResult*);
@@ -78,10 +80,11 @@ public:
     static bool javascriptResultIsNull(WebKitJavascriptResult*);
     static bool javascriptResultIsUndefined(WebKitJavascriptResult*);
 
+#if PLATFORM(GTK)
     cairo_surface_t* getSnapshotAndWaitUntilReady(WebKitSnapshotRegion, WebKitSnapshotOptions);
+#endif
 
     bool runWebProcessTest(const char* suiteName, const char* testName, const char* contents = nullptr, const char* contentType = nullptr);
-#endif
 
     // Prohibit overrides because this is called when the web view is created
     // in our constructor, before a derived class's vtable is ready.
@@ -94,9 +97,7 @@ public:
     GMainLoop* m_mainLoop;
     CString m_activeURI;
     CString m_expectedTitle;
-#if PLATFORM(GTK)
     WebKitJavascriptResult* m_javascriptResult { nullptr };
-#endif
     GError** m_javascriptError { nullptr };
     GUniquePtr<char> m_resourceData { nullptr };
     size_t m_resourceDataSize { 0 };

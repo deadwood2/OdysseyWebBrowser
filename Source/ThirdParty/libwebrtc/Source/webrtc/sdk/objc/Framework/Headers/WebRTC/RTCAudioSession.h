@@ -11,7 +11,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Foundation/Foundation.h>
 
-#import "WebRTC/RTCMacros.h"
+#import <WebRTC/RTCMacros.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -28,6 +28,7 @@ extern NSInteger const kRTCAudioSessionErrorConfiguration;
 // from AVAudioSession and handle them before calling these delegate methods,
 // at which point applications can perform additional processing if required.
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCAudioSessionDelegate")))
 @protocol RTCAudioSessionDelegate <NSObject>
 
 @optional
@@ -78,6 +79,12 @@ RTC_EXPORT
 - (void)audioSession:(RTCAudioSession *)audioSession
     didChangeOutputVolume:(float)outputVolume;
 
+/** Called when the audio device detects a playout glitch. The argument is the
+ *  number of glitches detected so far in the current audio playout session.
+ */
+- (void)audioSession:(RTCAudioSession *)audioSession
+    didDetectPlayoutGlitch:(int64_t)totalNumberOfGlitches;
+
 @end
 
 /** This is a protocol used to inform RTCAudioSession when the audio session
@@ -85,6 +92,7 @@ RTC_EXPORT
  *  case of this is when CallKit activates the audio session for the application
  */
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCAudioSessionActivationDelegate")))
 @protocol RTCAudioSessionActivationDelegate <NSObject>
 
 /** Called when the audio session is activated outside of the app by iOS. */
@@ -103,6 +111,7 @@ RTC_EXPORT
  *  activated only once. See |setActive:error:|.
  */
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCAudioSession")))
 @interface RTCAudioSession : NSObject <RTCAudioSessionActivationDelegate>
 
 /** Convenience property to access the AVAudioSession singleton. Callers should

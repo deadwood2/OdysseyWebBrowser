@@ -83,7 +83,7 @@ void XPCServiceInitializer(OSObjectPtr<xpc_connection_t> connection, xpc_object_
 
     ChildProcessInitializationParameters parameters;
     if (priorityBoostMessage)
-        parameters.priorityBoostMessage = adoptOSObject(xpc_retain(priorityBoostMessage));
+        parameters.priorityBoostMessage = priorityBoostMessage;
 
     if (!delegate.getConnectionIdentifier(parameters.connectionIdentifier))
         exit(EXIT_FAILURE);
@@ -108,12 +108,16 @@ void XPCServiceInitializer(OSObjectPtr<xpc_connection_t> connection, xpc_object_
 #endif
 
 #if HAVE(QOS_CLASSES)
-    if (parameters.extraInitializationData.contains(ASCIILiteral("always-runs-at-background-priority")))
+    if (parameters.extraInitializationData.contains("always-runs-at-background-priority"_s))
         Thread::setGlobalMaxQOSClass(QOS_CLASS_UTILITY);
 #endif
 
+    parameters.processType = XPCServiceType::processType;
+
     XPCServiceType::singleton().initialize(parameters);
 }
+
+int XPCServiceMain();
 
 void XPCServiceExit(OSObjectPtr<xpc_object_t>&& priorityBoostMessage);
 

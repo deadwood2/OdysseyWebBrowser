@@ -29,7 +29,7 @@
 #include <WebCore/CSSImportRule.h>
 #include <WebCore/DOMException.h>
 #include <WebCore/Document.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
 
@@ -38,6 +38,8 @@
 typedef struct _WebKitDOMNamedNodeMapPrivate {
     RefPtr<WebCore::NamedNodeMap> coreObject;
 } WebKitDOMNamedNodeMapPrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -238,3 +240,4 @@ gulong webkit_dom_named_node_map_get_length(WebKitDOMNamedNodeMap* self)
     return result;
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

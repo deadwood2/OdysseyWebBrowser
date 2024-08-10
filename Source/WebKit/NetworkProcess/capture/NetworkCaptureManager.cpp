@@ -42,10 +42,10 @@
 
 #define DEBUG_CLASS Manager
 
-using namespace WebCore::FileSystem;
-
 namespace WebKit {
 namespace NetworkCapture {
+
+using namespace WebCore::FileSystem;
 
 static const char* kDirNameRecordReplay = "WebKitPerf/record_replay";
 static const char* kDirNameResources = "resources";
@@ -216,9 +216,8 @@ int Manager::fuzzyMatchURLs(const WebCore::URL& requestURL, const WebCore::URLPa
     const auto& requestPath = requestURL.path();
     const auto& resourcePath = resourceURL.path();
 
-    Vector<String> requestPathComponents, resourcePathComponents;
-    requestPath.split('/', requestPathComponents);
-    resourcePath.split('/', resourcePathComponents);
+    Vector<String> requestPathComponents = requestPath.split('/');
+    Vector<String> resourcePathComponents = resourcePath.split('/');
 
     auto updatedIterators = std::mismatch(
         std::begin(requestPathComponents), std::end(requestPathComponents),
@@ -582,5 +581,7 @@ bool Manager::getWord(uint8_t const *& p, uint8_t const * const end, String& wor
 
 } // namespace NetworkCapture
 } // namespace WebKit
+
+#undef DEBUG_CLASS
 
 #endif // ENABLE(NETWORK_CAPTURE)

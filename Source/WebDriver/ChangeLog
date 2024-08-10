@@ -1,3 +1,379 @@
+2019-01-31  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [GLIB] WebDriver: race condition when session starts
+        https://bugs.webkit.org/show_bug.cgi?id=194086
+
+        Reviewed by Philippe Normand.
+
+        This is causing flakiness in the bots, I can only reproduce it locally when my CPUs are at 100%. The thing
+        is that sometimes we receive an empty target list right after the connection is established because
+        RemoteInspector::setClient() calls pushListingsSoon() before a target has been registered. Most of the times the
+        target is registered before the listing is pushed, but it can happen that when pushed, the listing is still
+        empty. After the target is registered an empty target list means the connection was lost, so we clear the
+        connection and target. We need to ensure we do that only after the target has been registered.
+
+        * glib/SessionHostGlib.cpp:
+
+2018-08-13  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        WebDriver: do not try to set the caret when focusing non text element in send keys command
+        https://bugs.webkit.org/show_bug.cgi?id=188515
+
+        Reviewed by Brian Burg.
+
+        It causes a type error exception.
+
+        * Session.cpp:
+        (WebDriver::Session::elementSendKeys):
+
+2018-08-13  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        WebDriver: include all capabilities in the new session response
+        https://bugs.webkit.org/show_bug.cgi?id=188511
+
+        Reviewed by Brian Burg.
+
+        As expected by the tests, using the default values when the capability is not provided by the user.
+
+        * WebDriverService.cpp:
+        (WebDriver::WebDriverService::createSession):
+
+2018-08-13  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        WebDriver: several element_send_keys tests are failing since added
+        https://bugs.webkit.org/show_bug.cgi?id=181644
+
+        Reviewed by Michael Catanzaro.
+
+        This is because we are implementing an old version of the spec that received a "value" parameter to send keys
+        command, instead of the "text" one.
+
+        14.3 Element Send Keys
+        https://w3c.github.io/webdriver/#element-send-keys
+
+        * Session.cpp:
+        (WebDriver::Session::virtualKeyForKey): Receive a single character instead of a sequence.
+        (WebDriver::Session::elementSendKeys): It now receives a String and passes every character to virtualKeyForKey.
+        (WebDriver::Session::performActions): Pass first character of sequence to virtualKeyForKey.
+        * Session.h:
+        * WebDriverService.cpp:
+        (WebDriver::WebDriverService::elementSendKeys): Get text as a String, instead of value as an array.
+
+2018-08-12  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        WebDriver: do not handle prompts that appear while running scripts
+        https://bugs.webkit.org/show_bug.cgi?id=188468
+
+        Reviewed by Žan Doberšek.
+
+        This changed in the spec, we should just finish the script without handling the alert at all.
+        https://github.com/w3c/webdriver/commit/afb578090bc95718debeab6a6821da8d12b952c8
+
+        "If at any point during the algorithm a user prompt appears, abort all subsequent substeps of this algorithm,
+        and return success with data null."
+        https://w3c.github.io/webdriver/#dfn-execute-a-function-body
+
+        * Session.cpp:
+        (WebDriver::Session::executeScript):
+
+2018-08-10  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [GTK][WPE] WebDriver: do not use default browser arguments when browser binary has been provided
+        https://bugs.webkit.org/show_bug.cgi?id=188465
+
+        Reviewed by Žan Doberšek.
+
+        We only want to use --automation when no options or no browser binary is provided, because we fallback to
+        MiniBrowser and we know it needs --automation flag.
+
+        * glib/SessionHostGlib.cpp:
+        (WebDriver::SessionHost::launchBrowser): Handle the case of browser arguments being std::nullopt.
+        * gtk/WebDriverServiceGtk.cpp:
+        (WebDriver::WebDriverService::platformParseCapabilities const): Initialize browser arguments to std:nullopt if
+        browser binary was provided.
+        * wpe/WebDriverServiceWPE.cpp:
+        (WebDriver::WebDriverService::platformParseCapabilities const): Ditto.
+
+2018-08-03  Ms2ger  <Ms2ger@igalia.com>
+
+        Fix invalid optional access in WebDriver Session::createTopLevelBrowsingContext.
+        https://bugs.webkit.org/show_bug.cgi?id=188304
+
+        Reviewed by Brian Burg.
+
+        * Session.cpp:
+        (WebDriver::Session::createTopLevelBrowsingContext): remove incorrect value() call.
+
+2018-07-26  Ross Kirsling  <ross.kirsling@sony.com>
+
+        String(View) should have a splitAllowingEmptyEntries function instead of a flag parameter
+        https://bugs.webkit.org/show_bug.cgi?id=187963
+
+        Reviewed by Alex Christensen.
+
+        * WebDriverService.cpp:
+        (WebDriver::WebDriverService::findCommand):
+        * glib/WebDriverServiceGLib.cpp:
+        (WebDriver::parseVersion):
+        Update split/splitAllowingEmptyEntries usage.
+
+2018-07-05  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [GTK][WPE] Add --host option to WebDriver process
+        https://bugs.webkit.org/show_bug.cgi?id=187288
+
+        Reviewed by Žan Doberšek.
+
+        We currently allow to pass a port number and the server always listens for connections on localhost. We should
+        allow to optionally pass a host IP address to be able to use WebDriver remotely.
+
+        * HTTPServer.h:
+        * WebDriverService.cpp:
+        (WebDriver::printUsageStatement): Update usage to include --host option.
+        (WebDriver::WebDriverService::run): Parse --host option and pass it to HTTPServer::listen().
+        * soup/HTTPServerSoup.cpp:
+        (WebDriver::soupServerListen): Helper to call soup_server_listen_local(), soup_server_listen_all() or
+        soup_server_listen() depending on the given host.
+        (WebDriver::HTTPServer::listen): Use soupServerListen() helper.
+
+2018-06-24  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Fix WebDriver tests after r233077.
+
+        WebDriver process is crashing because GVariant doesn't allow to pass a nullptr array when using @ modifier.
+
+        * SessionHost.h:
+        * glib/SessionHostGlib.cpp:
+        (WebDriver::SessionHost::buildSessionCapabilities const): Receive a GVariantBuilder and return true if there are
+        session capabilities.
+        (WebDriver::SessionHost::startAutomationSession): Remove the @ modifier and use a GVariantBuilder instead, or
+        nullptr if there aren't session capabilities.
+
+2018-06-21  Brian Burg  <bburg@apple.com>
+
+        Web Automation: key actions should support multiple pressed virtual keys
+        https://bugs.webkit.org/show_bug.cgi?id=186899
+        <rdar://problem/38222248>
+
+        Reviewed by Timothy Hatcher.
+
+        Adopt new protocol command argument types.
+
+        * Session.cpp:
+        (WebDriver::Session::performActions):
+
+2018-06-23  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        [WTF] Add user-defined literal for ASCIILiteral
+        https://bugs.webkit.org/show_bug.cgi?id=186839
+
+        Reviewed by Darin Adler.
+
+        * CommandResult.cpp:
+        (WebDriver::CommandResult::errorString const):
+        * Session.cpp:
+        (WebDriver::Session::webElementIdentifier):
+        (WebDriver::Session::getTimeouts):
+        (WebDriver::Session::createTopLevelBrowsingContext):
+        (WebDriver::Session::handleUserPrompts):
+        (WebDriver::Session::reportUnexpectedAlertOpen):
+        (WebDriver::Session::go):
+        (WebDriver::Session::getCurrentURL):
+        (WebDriver::Session::back):
+        (WebDriver::Session::forward):
+        (WebDriver::Session::refresh):
+        (WebDriver::Session::getTitle):
+        (WebDriver::Session::getWindowHandle):
+        (WebDriver::Session::closeTopLevelBrowsingContext):
+        (WebDriver::Session::switchToWindow):
+        (WebDriver::Session::getWindowHandles):
+        (WebDriver::Session::switchToFrame):
+        (WebDriver::Session::switchToParentFrame):
+        (WebDriver::Session::getToplevelBrowsingContextRect):
+        (WebDriver::Session::setWindowRect):
+        (WebDriver::Session::maximizeWindow):
+        (WebDriver::Session::minimizeWindow):
+        (WebDriver::Session::fullscreenWindow):
+        (WebDriver::Session::computeElementLayout):
+        (WebDriver::Session::findElements):
+        (WebDriver::Session::getActiveElement):
+        (WebDriver::Session::isElementSelected):
+        (WebDriver::Session::getElementText):
+        (WebDriver::Session::getElementTagName):
+        (WebDriver::Session::getElementRect):
+        (WebDriver::Session::isElementEnabled):
+        (WebDriver::Session::isElementDisplayed):
+        (WebDriver::Session::getElementAttribute):
+        (WebDriver::Session::getElementProperty):
+        (WebDriver::Session::getElementCSSValue):
+        (WebDriver::Session::waitForNavigationToComplete):
+        (WebDriver::Session::selectOptionElement):
+        (WebDriver::Session::elementClear):
+        (WebDriver::Session::virtualKeyForKeySequence):
+        (WebDriver::Session::elementSendKeys):
+        (WebDriver::Session::executeScript):
+        (WebDriver::mouseButtonForAutomation):
+        (WebDriver::Session::performMouseInteraction):
+        (WebDriver::Session::performKeyboardInteractions):
+        (WebDriver::parseAutomationCookie):
+        (WebDriver::builtAutomationCookie):
+        (WebDriver::serializeCookie):
+        (WebDriver::Session::getAllCookies):
+        (WebDriver::Session::getNamedCookie):
+        (WebDriver::Session::addCookie):
+        (WebDriver::Session::deleteCookie):
+        (WebDriver::Session::deleteAllCookies):
+        (WebDriver::Session::performActions):
+        (WebDriver::Session::releaseActions):
+        (WebDriver::Session::dismissAlert):
+        (WebDriver::Session::acceptAlert):
+        (WebDriver::Session::getAlertText):
+        (WebDriver::Session::sendAlertText):
+        (WebDriver::Session::takeScreenshot):
+        * SessionHost.cpp:
+        (WebDriver::SessionHost::dispatchMessage):
+        * WebDriverService.cpp:
+        (WebDriver::WebDriverService::sendResponse const):
+        (WebDriver::WebDriverService::parseCapabilities const):
+        (WebDriver::WebDriverService::findSessionOrCompleteWithError):
+        (WebDriver::WebDriverService::matchCapabilities const):
+        (WebDriver::WebDriverService::processCapabilities const):
+        (WebDriver::WebDriverService::createSession):
+        (WebDriver::WebDriverService::deleteSession):
+        (WebDriver::WebDriverService::status):
+        (WebDriver::WebDriverService::go):
+        (WebDriver::WebDriverService::setWindowRect):
+        (WebDriver::WebDriverService::switchToWindow):
+        (WebDriver::WebDriverService::switchToFrame):
+        (WebDriver::findElementOrCompleteWithError):
+        (WebDriver::findStrategyAndSelectorOrCompleteWithError):
+        (WebDriver::WebDriverService::getElementAttribute):
+        (WebDriver::WebDriverService::getElementProperty):
+        (WebDriver::WebDriverService::getElementCSSValue):
+        (WebDriver::WebDriverService::elementSendKeys):
+        (WebDriver::findScriptAndArgumentsOrCompleteWithError):
+        (WebDriver::WebDriverService::getNamedCookie):
+        (WebDriver::deserializeCookie):
+        (WebDriver::WebDriverService::addCookie):
+        (WebDriver::WebDriverService::deleteCookie):
+        (WebDriver::processPauseAction):
+        (WebDriver::processNullAction):
+        (WebDriver::processKeyAction):
+        (WebDriver::processPointerAction):
+        (WebDriver::processPointerParameters):
+        (WebDriver::processInputActionSequence):
+        (WebDriver::WebDriverService::performActions):
+        (WebDriver::WebDriverService::sendAlertText):
+        (WebDriver::WebDriverService::takeElementScreenshot):
+        * glib/SessionHostGlib.cpp:
+        (WebDriver::SessionHost::sendMessageToBackend):
+        * gtk/WebDriverServiceGtk.cpp:
+        (WebDriver::WebDriverService::platformValidateCapability const):
+        (WebDriver::WebDriverService::platformParseCapabilities const):
+        * wpe/WebDriverServiceWPE.cpp:
+        (WebDriver::WebDriverService::platformValidateCapability const):
+        (WebDriver::WebDriverService::platformParseCapabilities const):
+
+2018-06-22  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [GTK] WebDriver: use a dictionary for session capabilities in StartAutomationSession message
+        https://bugs.webkit.org/show_bug.cgi?id=186915
+
+        Reviewed by Žan Doberšek.
+
+        Instead of growing the message signature every time we add a new capability, use a dictionary a{sv} and simply add
+        new entries when new capabilities are added. This way we won't need to change the message signature anymore.
+
+        * SessionHost.h:
+        * glib/SessionHostGlib.cpp:
+        (WebDriver::SessionHost::buildSessionCapabilities const): Helper to build the session capabilities dictionary.
+        (WebDriver::SessionHost::startAutomationSession):
+
+2018-06-21  Zan Dobersek  <zdobersek@igalia.com>
+
+        [GTK] WebDriver: allow applying host-specific TLS certificates for automated sessions
+        https://bugs.webkit.org/show_bug.cgi?id=186884
+
+        Reviewed by Carlos Garcia Campos.
+
+        Start handling the 'certificates' capability for the GTK+ port. This is
+        a list of host-certificate pairs that should be marked as allowed for a
+        given automation session. This object should be positioned inside the
+        'webkitgtk:browserOptions' dictionary in the capabilities JSON.
+
+        * Capabilities.h:
+        * glib/SessionHostGlib.cpp:
+        (WebDriver::SessionHost::startAutomationSession): Include any
+        host-certificate pairs in the StartAutomationSession DBus message.
+        * gtk/WebDriverServiceGtk.cpp:
+        (WebDriver::WebDriverService::platformValidateCapability const):
+        Properly validate the 'certificates' value, if present.
+        (WebDriver::WebDriverService::platformParseCapabilities const):
+        Properly parse the 'certificates' value, if present, and extract the
+        host-certificate pairs.
+
+2018-06-14  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [GTK][WPE] WebDriver: handle acceptInsecureCertificates capability
+        https://bugs.webkit.org/show_bug.cgi?id=186560
+
+        Reviewed by Brian Burg.
+
+        Send session capabilities as part of the StartAutomationSession message. For now only acceptInsecureCerts
+        capability is sent.
+
+        * glib/SessionHostGlib.cpp:
+        (WebDriver::SessionHost::startAutomationSession):
+        * gtk/WebDriverServiceGtk.cpp:
+        (WebDriver::WebDriverService::platformCapabilities): Remove default value of acceptInsecureCerts, since that's
+        now handled by the browser.
+        * wpe/WebDriverServiceWPE.cpp:
+        (WebDriver::WebDriverService::platformCapabilities): Ditto.
+
+2018-06-10  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [WPE] Add a MiniBrowser and use it to run WebDriver tests
+        https://bugs.webkit.org/show_bug.cgi?id=186345
+
+        Reviewed by Žan Doberšek.
+
+        Use MiniBrowser instead of dyz as the default WebDriver browser for WPE.
+
+        * wpe/WebDriverServiceWPE.cpp:
+        (WebDriver::WebDriverService::platformParseCapabilities const):
+
+2018-06-04  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [WPE] WebDriver: stop making mandatory to provide a browser path if wpe:browserOptions is present in capabilities
+        https://bugs.webkit.org/show_bug.cgi?id=186264
+
+        Reviewed by Žan Doberšek.
+
+        Everything should be optional. Do not consider invalid to not provide a browser binary when wpe:browserOptions
+        is present.
+
+        * wpe/WebDriverServiceWPE.cpp:
+        (WebDriver::WebDriverService::platformParseCapabilities const):
+
+2018-05-24  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        WebDriver: implement maximize, minimize and fullscreen window commands
+        https://bugs.webkit.org/show_bug.cgi?id=180398
+
+        Reviewed by Brian Burg.
+
+        * CMakeLists.txt: Add EnterFullscreen.js to the build.
+        * Session.cpp:
+        (WebDriver::Session::maximizeWindow):
+        (WebDriver::Session::minimizeWindow):
+        (WebDriver::Session::fullscreenWindow):
+        * Session.h:
+        * WebDriverService.cpp:
+        (WebDriver::WebDriverService::maximizeWindow):
+        (WebDriver::WebDriverService::minimizeWindow):
+        (WebDriver::WebDriverService::fullscreenWindow):
+        * WebDriverService.h:
+
 2018-05-23  Carlos Garcia Campos  <cgarcia@igalia.com>
 
         [GTK] WebDriver: implement AutomationSessionClient::didDisconnectFromRemote
@@ -9,6 +385,61 @@
 
         * glib/SessionHostGlib.cpp:
         (WebDriver::SessionHost::setTargetList):
+
+2018-05-21  Olivier Blin  <olivier.blin@softathome.com>
+
+        [WPE][WebDriver] add ICU include dirs
+        https://bugs.webkit.org/show_bug.cgi?id=185824
+
+        Reviewed by Konstantin Tokarev.
+
+        WebDriver does not build in the WPE port when ICU headers are in a non-default directory.
+
+        * PlatformWPE.cmake: Add ICU include dirs
+
+2018-05-09  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        WebDriver: implement advance user interactions
+        https://bugs.webkit.org/show_bug.cgi?id=174616
+
+        Reviewed by Brian Burg.
+
+        Add initial implementation of action commands.
+
+        * Actions.h: Added.
+        (WebDriver::Action::Action):
+        * CommandResult.cpp:
+        (WebDriver::CommandResult::CommandResult): Handle MoveTargetOutOfBounds error.
+        (WebDriver::CommandResult::httpStatusCode const): Ditto.
+        (WebDriver::CommandResult::errorString const): Ditto.
+        * CommandResult.h:
+        * Session.cpp:
+        (WebDriver::Session::webElementIdentifier): Helper to return the web element id.
+        (WebDriver::Session::createElement): Use webElementIdentifier().
+        (WebDriver::Session::extractElementID): Ditto.
+        (WebDriver::Session::virtualKeyForKeySequence): Add more kay codes includes in the spec.
+        (WebDriver::mouseButtonForAutomation): Helper to get the mouse button string to pass to automation.
+        (WebDriver::Session::performMouseInteraction): Use mouseButtonForAutomation().
+        (WebDriver::Session::getOrCreateInputSource): Ensure an input source for given id and add it to the active input
+        sources.
+        (WebDriver::Session::inputSourceState): Return the current input source state for the given id.
+        (WebDriver::Session::computeInViewCenterPointOfElements): Get the in view center point for the list of elements given.
+        (WebDriver::automationSourceType): Helper to get the input source type to pass to automation.
+        (WebDriver::Session::performActions): Process the list of action by tick and generate a list of states to pass
+        to automation.
+        (WebDriver::Session::releaseActions): Reset input sources and state table and send a message to automation.
+        * Session.h:
+        * WebDriverService.cpp:
+        (WebDriver::processPauseAction):
+        (WebDriver::processNullAction):
+        (WebDriver::processKeyAction):
+        (WebDriver::actionMouseButton):
+        (WebDriver::processPointerAction):
+        (WebDriver::processPointerParameters):
+        (WebDriver::processInputActionSequence):
+        (WebDriver::WebDriverService::performActions):
+        (WebDriver::WebDriverService::releaseActions):
+        * WebDriverService.h:
 
 2018-03-05  Carlos Garcia Campos  <cgarcia@igalia.com>
 

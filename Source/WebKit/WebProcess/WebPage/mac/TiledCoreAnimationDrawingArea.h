@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -81,7 +81,7 @@ private:
 
     bool shouldUseTiledBackingForFrameView(const WebCore::FrameView&) override;
 
-    void activityStateDidChange(WebCore::ActivityState::Flags changed, bool wantsDidUpdateActivityState, const Vector<CallbackID>&) override;
+    void activityStateDidChange(OptionSet<WebCore::ActivityState::Flag> changed, ActivityStateChangeID, const Vector<CallbackID>&) override;
     void didUpdateActivityStateTimerFired();
 
     void attachViewOverlayGraphicsLayer(WebCore::Frame*, WebCore::GraphicsLayer*) override;
@@ -92,16 +92,18 @@ private:
     bool flushLayers() override;
 
     // Message handlers.
-    void updateGeometry(const WebCore::IntSize& viewSize, bool flushSynchronously, const WebCore::MachSendRight& fencePort) override;
+    void updateGeometry(const WebCore::IntSize& viewSize, bool flushSynchronously, const WTF::MachSendRight& fencePort) override;
     void setDeviceScaleFactor(float) override;
     void suspendPainting();
     void resumePainting();
     void setLayerHostingMode(LayerHostingMode) override;
     void setColorSpace(const ColorSpaceData&) override;
-    void addFence(const WebCore::MachSendRight&) override;
+    void addFence(const WTF::MachSendRight&) override;
 
     void addTransactionCallbackID(CallbackID) override;
     void setShouldScaleViewToFitDocument(bool) override;
+
+    void attachDrawingArea() override;
 
     void adjustTransientZoom(double scale, WebCore::FloatPoint origin) override;
     void commitTransientZoom(double scale, WebCore::FloatPoint origin) override;
@@ -151,7 +153,7 @@ private:
 
     RunLoop::Timer<TiledCoreAnimationDrawingArea> m_sendDidUpdateActivityStateTimer;
     Vector<CallbackID> m_nextActivityStateChangeCallbackIDs;
-    bool m_wantsDidUpdateActivityState;
+    ActivityStateChangeID m_activityStateChangeID { ActivityStateChangeAsynchronous };
 
     WebCore::GraphicsLayer* m_viewOverlayRootLayer;
 

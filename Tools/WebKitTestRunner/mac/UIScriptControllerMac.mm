@@ -46,7 +46,7 @@ namespace WTR {
 
 NSString *nsString(JSStringRef string)
 {
-    return (NSString *)adoptCF(JSStringCopyCFString(kCFAllocatorDefault, string)).autorelease();
+    return CFBridgingRelease(JSStringCopyCFString(kCFAllocatorDefault, string));
 }
 
 void UIScriptController::doAsyncTask(JSValueRef callback)
@@ -168,6 +168,18 @@ void UIScriptController::findString(JSStringRef, unsigned long options, unsigned
 {
 }
 
+bool UIScriptController::isShowingDataListSuggestions() const
+{
+#if WK_API_ENABLED
+    TestRunnerWKWebView *webView = TestController::singleton().mainWebView()->platformView();
+    for (NSWindow *childWindow in webView.window.childWindows) {
+        if ([childWindow isKindOfClass:NSClassFromString(@"WKDataListSuggestionWindow")])
+            return true;
+    }
+#endif
+    return false;
+}
+
 void UIScriptController::removeViewFromWindow(JSValueRef callback)
 {
 #if WK_API_ENABLED
@@ -236,7 +248,29 @@ void UIScriptController::completeBackSwipe(JSValueRef callback)
 void UIScriptController::platformPlayBackEventStream(JSStringRef eventStream, JSValueRef callback)
 {
     RetainPtr<CFStringRef> stream = adoptCF(JSStringCopyCFString(kCFAllocatorDefault, eventStream));
-    playBackEvents(m_context, (NSString *)stream.get(), callback);
+    playBackEvents(m_context, (__bridge NSString *)stream.get(), callback);
+}
+
+void UIScriptController::firstResponderSuppressionForWebView(bool shouldSuppress)
+{
+#if WK_API_ENABLED
+    auto* webView = TestController::singleton().mainWebView()->platformView();
+    [webView _setShouldSuppressFirstResponderChanges:shouldSuppress];
+#else
+    UNUSED_PARAM(shouldSuppress);
+#endif
+}
+
+void UIScriptController::makeWindowContentViewFirstResponder()
+{
+    NSWindow *window = [TestController::singleton().mainWebView()->platformView() window];
+    [window makeFirstResponder:[window contentView]];
+}
+
+bool UIScriptController::isWindowContentViewFirstResponder() const
+{
+    NSWindow *window = [TestController::singleton().mainWebView()->platformView() window];
+    return [window firstResponder] == [window contentView];
 }
 
 } // namespace WTR

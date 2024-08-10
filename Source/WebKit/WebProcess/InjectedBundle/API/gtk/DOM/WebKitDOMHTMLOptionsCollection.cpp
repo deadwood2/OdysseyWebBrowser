@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/Document.h>
 #include <WebCore/ExceptionCode.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMHTMLCollectionPrivate.h"
 #include "WebKitDOMHTMLOptionElementPrivate.h"
 #include "WebKitDOMHTMLOptionsCollectionPrivate.h"
@@ -33,6 +33,8 @@
 #include "ConvertToUTF8String.h"
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -163,3 +165,4 @@ gulong webkit_dom_html_options_collection_get_length(WebKitDOMHTMLOptionsCollect
     return result;
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

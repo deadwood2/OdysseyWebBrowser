@@ -41,11 +41,7 @@
 #import <wtf/SoftLinking.h>
 #import <wtf/text/Base64.h>
 
-
 SOFT_LINK_STAGED_FRAMEWORK(WebInspectorUI, PrivateFrameworks, A)
-
-using namespace WebCore;
-using namespace WebKit;
 
 static const NSUInteger windowStyleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView;
 
@@ -55,13 +51,13 @@ static const Seconds webViewCloseTimeout { 1_min };
 
 @interface WKWebInspectorProxyObjCAdapter () <WKInspectorViewControllerDelegate>
 
-- (instancetype)initWithWebInspectorProxy:(WebInspectorProxy*)inspectorProxy;
+- (instancetype)initWithWebInspectorProxy:(WebKit::WebInspectorProxy*)inspectorProxy;
 - (void)invalidate;
 
 @end
 
 @implementation WKWebInspectorProxyObjCAdapter {
-    WebInspectorProxy* _inspectorProxy;
+    WebKit::WebInspectorProxy* _inspectorProxy;
 }
 
 - (WKInspectorRef)inspectorRef
@@ -69,7 +65,7 @@ static const Seconds webViewCloseTimeout { 1_min };
     return toAPI(_inspectorProxy);
 }
 
-- (instancetype)initWithWebInspectorProxy:(WebInspectorProxy*)inspectorProxy
+- (instancetype)initWithWebInspectorProxy:(WebKit::WebInspectorProxy*)inspectorProxy
 {
     ASSERT_ARG(inspectorProxy, inspectorProxy);
 
@@ -146,6 +142,7 @@ static const Seconds webViewCloseTimeout { 1_min };
 @end
 
 namespace WebKit {
+using namespace WebCore;
 
 void WebInspectorProxy::attachmentViewDidChange(NSView *oldView, NSView *newView)
 {
@@ -216,6 +213,11 @@ WebPageProxy* WebInspectorProxy::platformCreateFrontendPage()
     ASSERT(!m_inspectorPage);
 
     m_closeFrontendAfterInactivityTimer.stop();
+
+    if (m_inspectorViewController) {
+        ASSERT(m_objCAdapter);
+        return [m_inspectorViewController webView]->_page.get();
+    }
 
     m_objCAdapter = adoptNS([[WKWebInspectorProxyObjCAdapter alloc] initWithWebInspectorProxy:this]);
     NSView *inspectedView = inspectedPage()->inspectorAttachmentView();
@@ -651,7 +653,7 @@ String WebInspectorProxy::inspectorPageURL()
     NSString *path = [[NSBundle bundleWithIdentifier:@"com.apple.WebInspectorUI"] pathForResource:@"Main" ofType:@"html"];
     ASSERT([path length]);
 
-    return [[NSURL fileURLWithPath:path] absoluteString];
+    return [[NSURL fileURLWithPath:path isDirectory:NO] absoluteString];
 }
 
 String WebInspectorProxy::inspectorTestPageURL()
@@ -665,7 +667,7 @@ String WebInspectorProxy::inspectorTestPageURL()
     if (!path)
         return String();
 
-    return [[NSURL fileURLWithPath:path] absoluteString];
+    return [[NSURL fileURLWithPath:path isDirectory:NO] absoluteString];
 }
 
 String WebInspectorProxy::inspectorBaseURL()
@@ -676,7 +678,7 @@ String WebInspectorProxy::inspectorBaseURL()
     NSString *path = [[NSBundle bundleWithIdentifier:@"com.apple.WebInspectorUI"] resourcePath];
     ASSERT([path length]);
 
-    return [[NSURL fileURLWithPath:path] absoluteString];
+    return [[NSURL fileURLWithPath:path isDirectory:YES] absoluteString];
 }
 
 } // namespace WebKit

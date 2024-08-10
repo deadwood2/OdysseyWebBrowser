@@ -802,7 +802,7 @@ HRESULT DOMDocument::getComputedStyle(_In_opt_ IDOMElement* elt, _In_ BSTR pseud
     if (!element)
         return E_FAIL;
 
-    WebCore::DOMWindow* dv = m_document->defaultView();
+    auto* dv = m_document->domWindow();
     String pseudoEltString(pseudoElt);
     
     if (!dv)
@@ -1295,7 +1295,7 @@ HRESULT DOMElement::font(_Out_ WebFontDescription* webFontDescription)
     webFontDescription->familyLength = family.length();
     webFontDescription->size = fontDescription.computedSize();
     webFontDescription->bold = isFontWeightBold(fontDescription.weight());
-    webFontDescription->italic = fontDescription.italic();
+    webFontDescription->italic = isItalic(fontDescription.italic());
 
     return S_OK;
 }

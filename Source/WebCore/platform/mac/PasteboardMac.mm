@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,6 +26,8 @@
 #import "config.h"
 #import "Pasteboard.h"
 
+#if PLATFORM(MAC)
+
 #import "DragData.h"
 #import "Image.h"
 #import "LegacyNSPasteboardTypes.h"
@@ -40,6 +42,7 @@
 #import "WebNSAttributedStringExtras.h"
 #import <pal/spi/cg/CoreGraphicsSPI.h>
 #import <pal/spi/mac/HIServicesSPI.h>
+#import <wtf/ProcessPrivilege.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/StdLibExtras.h>
 #import <wtf/text/StringBuilder.h>
@@ -49,10 +52,10 @@ namespace WebCore {
 
 const char* const WebArchivePboardType = "Apple Web Archive pasteboard type";
 const char* const WebURLNamePboardType = "public.url-name";
+const char* const WebURLsWithTitlesPboardType = "WebURLsWithTitlesPboardType";
 
 const char WebSmartPastePboardType[] = "NeXT smart paste pasteboard type";
 const char WebURLPboardType[] = "public.url";
-const char WebURLsWithTitlesPboardType[] = "WebURLsWithTitlesPboardType";
 
 static const Vector<String> writableTypesForURL()
 {
@@ -86,9 +89,10 @@ Pasteboard::Pasteboard()
 {
 }
 
-Pasteboard::Pasteboard(const String& pasteboardName)
+Pasteboard::Pasteboard(const String& pasteboardName, const Vector<String>& promisedFilePaths)
     : m_pasteboardName(pasteboardName)
     , m_changeCount(platformStrategies()->pasteboardStrategy()->changeCount(m_pasteboardName))
+    , m_promisedFilePaths(promisedFilePaths)
 {
     ASSERT(pasteboardName);
 }
@@ -112,7 +116,7 @@ std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop()
 
 std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop(const DragData& dragData)
 {
-    return std::make_unique<Pasteboard>(dragData.pasteboardName());
+    return std::make_unique<Pasteboard>(dragData.pasteboardName(), dragData.fileNames());
 }
 #endif
 
@@ -193,10 +197,8 @@ static long writeURLForTypes(const Vector<String>& types, const String& pasteboa
     }
 
     if (types.contains(WebURLsWithTitlesPboardType)) {
-        Vector<String> paths;
-        paths.append([cocoaURL absoluteString]);
-        paths.append(pasteboardURL.title.stripWhiteSpace());
-        newChangeCount = platformStrategies()->pasteboardStrategy()->setPathnamesForType(paths, WebURLsWithTitlesPboardType, pasteboardName);
+        PasteboardURL url = { pasteboardURL.url, String(title).stripWhiteSpace(), emptyString() };
+        newChangeCount = platformStrategies()->pasteboardStrategy()->setURL(url, pasteboardName);
     }
     if (types.contains(String(legacyURLPasteboardType())))
         newChangeCount = platformStrategies()->pasteboardStrategy()->setStringForType([cocoaURL absoluteString], legacyURLPasteboardType(), pasteboardName);
@@ -217,9 +219,8 @@ void Pasteboard::write(const PasteboardURL& pasteboardURL)
 
 void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL& pasteboardURL)
 {
-    NSURL *cocoaURL = pasteboardURL.url;
-    Vector<String> paths = { [cocoaURL absoluteString], pasteboardURL.title.stripWhiteSpace() };
-    m_changeCount = platformStrategies()->pasteboardStrategy()->setPathnamesForType(paths, WebURLsWithTitlesPboardType, m_pasteboardName);
+    PasteboardURL url = { pasteboardURL.url, pasteboardURL.title.stripWhiteSpace(), emptyString() };
+    m_changeCount = platformStrategies()->pasteboardStrategy()->setURL(url, m_pasteboardName);
 }
 
 static NSFileWrapper* fileWrapper(const PasteboardImage& pasteboardImage)
@@ -273,6 +274,20 @@ void Pasteboard::writeMarkup(const String&)
 {
 }
 
+// FIXME: This should be a general utility function for Vectors of Strings (or things that can be
+// converted to Strings). It could also be faster by computing the total length and reserving that
+// capacity in the StringBuilder.
+static String joinPathnames(const Vector<String>& pathnames)
+{
+    StringBuilder builder;
+    for (auto& path : pathnames) {
+        if (!builder.isEmpty())
+            builder.append('\n');
+        builder.append(path);
+    }
+    return builder.toString();
+}
+
 void Pasteboard::read(PasteboardPlainText& text)
 {
     PasteboardStrategy& strategy = *platformStrategies()->pasteboardStrategy();
@@ -312,16 +327,16 @@ void Pasteboard::read(PasteboardPlainText& text)
         }
     }
 
+    if (types.contains(String(legacyFilesPromisePasteboardType()))) {
+        text.text = joinPathnames(m_promisedFilePaths);
+        text.isURL = false;
+        return;
+    }
+
     if (types.contains(String(legacyFilenamesPasteboardType()))) {
         Vector<String> pathnames;
         strategy.getPathnamesForType(pathnames, legacyFilenamesPasteboardType(), m_pasteboardName);
-        StringBuilder builder;
-        for (size_t i = 0, size = pathnames.size(); i < size; i++) {
-            if (i)
-                builder.append('\n');
-            builder.append(pathnames[i]);
-        }
-        text.text = builder.toString();
+        text.text = joinPathnames(pathnames);
         text.isURL = false;
         return;
     }
@@ -331,7 +346,7 @@ void Pasteboard::read(PasteboardPlainText& text)
     text.isURL = !text.text.isNull();
 }
 
-void Pasteboard::read(PasteboardWebContentReader& reader)
+void Pasteboard::read(PasteboardWebContentReader& reader, WebContentReadingPolicy policy)
 {
     PasteboardStrategy& strategy = *platformStrategies()->pasteboardStrategy();
 
@@ -347,7 +362,12 @@ void Pasteboard::read(PasteboardWebContentReader& reader)
         }
     }
 
-    if (types.contains(String(legacyFilenamesPasteboardType()))) {
+    if (policy == WebContentReadingPolicy::AnyType && types.contains(String(legacyFilesPromisePasteboardType()))) {
+        if (m_changeCount != changeCount() || reader.readFilePaths(m_promisedFilePaths))
+            return;
+    }
+
+    if (policy == WebContentReadingPolicy::AnyType && types.contains(String(legacyFilenamesPasteboardType()))) {
         Vector<String> paths;
         strategy.getPathnamesForType(paths, legacyFilenamesPasteboardType(), m_pasteboardName);
         if (m_changeCount != changeCount() || reader.readFilePaths(paths))
@@ -374,30 +394,33 @@ void Pasteboard::read(PasteboardWebContentReader& reader)
         }
     }
 
+    if (policy == WebContentReadingPolicy::OnlyRichTextTypes)
+        return;
+
     if (types.contains(String(legacyTIFFPasteboardType()))) {
         if (RefPtr<SharedBuffer> buffer = strategy.bufferForType(legacyTIFFPasteboardType(), m_pasteboardName)) {
-            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), ASCIILiteral("image/tiff")))
+            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), "image/tiff"_s))
                 return;
         }
     }
 
     if (types.contains(String(legacyPDFPasteboardType()))) {
         if (RefPtr<SharedBuffer> buffer = strategy.bufferForType(legacyPDFPasteboardType(), m_pasteboardName)) {
-            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), ASCIILiteral("application/pdf")))
+            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), "application/pdf"_s))
                 return;
         }
     }
 
     if (types.contains(String(kUTTypePNG))) {
         if (RefPtr<SharedBuffer> buffer = strategy.bufferForType(kUTTypePNG, m_pasteboardName)) {
-            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), ASCIILiteral("image/png")))
+            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), "image/png"_s))
                 return;
         }
     }
 
     if (types.contains(String(kUTTypeJPEG))) {
         if (RefPtr<SharedBuffer> buffer = strategy.bufferForType(kUTTypeJPEG, m_pasteboardName)) {
-            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), ASCIILiteral("image/jpeg")))
+            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), "image/jpeg"_s))
                 return;
         }
     }
@@ -458,23 +481,6 @@ void Pasteboard::clear(const String& type)
     m_changeCount = platformStrategies()->pasteboardStrategy()->setStringForType(emptyString(), cocoaType, m_pasteboardName);
 }
 
-static Vector<String> absoluteURLsFromPasteboardFilenames(const String& pasteboardName, bool onlyFirstURL = false)
-{
-    Vector<String> fileList;
-    platformStrategies()->pasteboardStrategy()->getPathnamesForType(fileList, String(legacyFilenamesPasteboardType()), pasteboardName);
-
-    if (fileList.isEmpty())
-        return fileList;
-
-    size_t count = onlyFirstURL ? 1 : fileList.size();
-    Vector<String> urls;
-    for (size_t i = 0; i < count; i++) {
-        NSURL *url = [NSURL fileURLWithPath:fileList[i]];
-        urls.append(String([url absoluteString]));
-    }
-    return urls;
-}
-
 String Pasteboard::readPlatformValueAsString(const String& domType, long changeCount, const String& pasteboardName)
 {
     const String& cocoaType = cocoaTypeFromHTMLClipboardType(domType);
@@ -509,11 +515,11 @@ void Pasteboard::addHTMLClipboardTypesForCocoaType(ListHashSet<String>& resultTy
 
     // UTI may not do these right, so make sure we get the right, predictable result
     if (cocoaType == String(legacyStringPasteboardType()) || cocoaType == String(NSPasteboardTypeString)) {
-        resultTypes.add(ASCIILiteral("text/plain"));
+        resultTypes.add("text/plain"_s);
         return;
     }
     if (cocoaType == String(legacyURLPasteboardType())) {
-        resultTypes.add(ASCIILiteral("text/uri-list"));
+        resultTypes.add("text/uri-list"_s);
         return;
     }
     if (cocoaType == String(legacyFilenamesPasteboardType()) || Pasteboard::shouldTreatCocoaTypeAsFile(cocoaType))
@@ -556,16 +562,21 @@ void Pasteboard::writeString(const String& type, const String& data)
 
 Vector<String> Pasteboard::readFilePaths()
 {
-    // FIXME: Seems silly to convert paths to URLs and then back to paths. Does that do anything helpful?
-    Vector<String> absoluteURLs = absoluteURLsFromPasteboardFilenames(m_pasteboardName);
-    Vector<String> paths;
-    paths.reserveCapacity(absoluteURLs.size());
-    for (size_t i = 0; i < absoluteURLs.size(); i++) {
-        NSURL *absoluteURL = [NSURL URLWithString:absoluteURLs[i]];
-        ASSERT([absoluteURL isFileURL]);
-        paths.uncheckedAppend([absoluteURL path]);
+    auto& strategy = *platformStrategies()->pasteboardStrategy();
+
+    Vector<String> types;
+    strategy.getTypes(types, m_pasteboardName);
+
+    if (types.contains(String(legacyFilesPromisePasteboardType())))
+        return m_promisedFilePaths;
+
+    if (types.contains(String(legacyFilenamesPasteboardType()))) {
+        Vector<String> filePaths;
+        strategy.getPathnamesForType(filePaths, legacyFilenamesPasteboardType(), m_pasteboardName);
+        return filePaths;
     }
-    return paths;
+
+    return { };
 }
 
 #if ENABLE(DRAG_SUPPORT)
@@ -658,11 +669,18 @@ void Pasteboard::setDragImage(DragImage image, const IntPoint& location)
 
     // Hack: We must post an event to wake up the NSDragManager, which is sitting in a nextEvent call
     // up the stack from us because the CoreFoundation drag manager does not use the run loop by itself.
-    // This is the most innocuous event to use, per Kristen Forster.
-    NSEvent* event = [NSEvent mouseEventWithType:NSEventTypeMouseMoved location:NSZeroPoint
-        modifierFlags:0 timestamp:0 windowNumber:0 context:nil eventNumber:0 clickCount:0 pressure:0];
-    [NSApp postEvent:event atStart:YES];
+    // This is the most innocuous event to use, per Kristin Forster.
+    // This is only relevant in WK1. Do not execute in the WebContent process, since it is now using
+    // NSRunLoop, and not the NSApplication run loop.
+    if ([NSApp isRunning]) {
+        ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+        NSEvent* event = [NSEvent mouseEventWithType:NSEventTypeMouseMoved location:NSZeroPoint
+            modifierFlags:0 timestamp:0 windowNumber:0 context:nil eventNumber:0 clickCount:0 pressure:0];
+        [NSApp postEvent:event atStart:YES];
+    }
 }
 #endif
 
 }
+
+#endif // PLATFORM(MAC)

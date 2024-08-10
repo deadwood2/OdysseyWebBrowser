@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/Document.h>
 #include <WebCore/ExceptionCode.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include <WebCore/KeyboardEvent.h>
 #include "WebKitDOMDOMWindowPrivate.h"
 #include "WebKitDOMEventPrivate.h"
@@ -33,6 +33,8 @@
 #include "ConvertToUTF8String.h"
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -202,8 +204,7 @@ void webkit_dom_ui_event_init_ui_event(WebKitDOMUIEvent* self, const gchar* type
     g_return_if_fail(WEBKIT_DOM_IS_DOM_WINDOW(view));
     WebCore::UIEvent* item = WebKit::core(self);
     WTF::String convertedType = WTF::String::fromUTF8(type);
-    WebCore::DOMWindow* convertedView = WebKit::core(view);
-    item->initUIEvent(convertedType, canBubble, cancelable, convertedView, detail);
+    item->initUIEvent(convertedType, canBubble, cancelable, WebKit::toWindowProxy(view), detail);
 }
 
 WebKitDOMDOMWindow* webkit_dom_ui_event_get_view(WebKitDOMUIEvent* self)
@@ -211,8 +212,7 @@ WebKitDOMDOMWindow* webkit_dom_ui_event_get_view(WebKitDOMUIEvent* self)
     WebCore::JSMainThreadNullState state;
     g_return_val_if_fail(WEBKIT_DOM_IS_UI_EVENT(self), 0);
     WebCore::UIEvent* item = WebKit::core(self);
-    RefPtr<WebCore::DOMWindow> gobjectResult = WTF::getPtr(item->view());
-    return WebKit::kit(gobjectResult.get());
+    return WebKit::kit(item->view());
 }
 
 glong webkit_dom_ui_event_get_detail(WebKitDOMUIEvent* self)
@@ -277,3 +277,4 @@ glong webkit_dom_ui_event_get_page_y(WebKitDOMUIEvent* self)
     glong result = item->pageY();
     return result;
 }
+G_GNUC_END_IGNORE_DEPRECATIONS;

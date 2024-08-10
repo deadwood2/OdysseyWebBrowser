@@ -100,7 +100,7 @@ public:
     }
 
 private:
-    void writeSource(const String&) final { }
+    void writeSource(String&&) final { }
 
     void writeActions(Vector<ContentExtensions::SerializedActionByte>&& actions, bool conditionsApplyOnlyToDomain) final
     {
@@ -150,7 +150,8 @@ public:
     {
         CompiledContentExtensionData extensionData;
         InMemoryContentExtensionCompilationClient client(extensionData);
-        auto compilerError = ContentExtensions::compileRuleList(client, WTFMove(filter));
+        auto parsedRules = ContentExtensions::parseRuleList(filter);
+        auto compilerError = ContentExtensions::compileRuleList(client, WTFMove(filter), WTFMove(parsedRules.value()));
 
         // Compiling should always succeed here. We have other tests for compile failures.
         EXPECT_FALSE(compilerError);
@@ -1371,7 +1372,12 @@ void checkCompilerError(const char* json, std::error_code expectedError)
 {
     CompiledContentExtensionData extensionData;
     InMemoryContentExtensionCompilationClient client(extensionData);
-    std::error_code compilerError = ContentExtensions::compileRuleList(client, json);
+    auto parsedRules = ContentExtensions::parseRuleList(json);
+    std::error_code compilerError;
+    if (parsedRules.has_value())
+        compilerError = ContentExtensions::compileRuleList(client, json, WTFMove(parsedRules.value()));
+    else
+        compilerError = parsedRules.error();
     EXPECT_EQ(compilerError.value(), expectedError.value());
     if (compilerError.value())
         EXPECT_STREQ(compilerError.category().name(), expectedError.category().name());
@@ -1383,34 +1389,34 @@ TEST_F(ContentExtensionTest, MatchesEverything)
     // should go in the global display:none stylesheet. css-display-none rules with domain rules or flags
     // are applied separately on pages where they apply.
     auto backend1 = makeBackend("[{\"action\":{\"type\":\"css-display-none\",\"selector\":\".hidden\"},\"trigger\":{\"url-filter\":\".*\"}}]");
-    EXPECT_TRUE(nullptr != backend1.globalDisplayNoneStyleSheet(ASCIILiteral("testFilter")));
+    EXPECT_TRUE(nullptr != backend1.globalDisplayNoneStyleSheet("testFilter"_s));
     testRequest(backend1, mainDocumentRequest("http://webkit.org"), { }); // Selector is in global stylesheet.
     
     auto backend2 = makeBackend("[{\"action\":{\"type\":\"css-display-none\",\"selector\":\".hidden\"},\"trigger\":{\"url-filter\":\".*\",\"if-domain\":[\"webkit.org\"]}}]");
-    EXPECT_EQ(nullptr, backend2.globalDisplayNoneStyleSheet(ASCIILiteral("testFilter")));
+    EXPECT_EQ(nullptr, backend2.globalDisplayNoneStyleSheet("testFilter"_s));
     testRequest(backend2, mainDocumentRequest("http://webkit.org"), { ContentExtensions::ActionType::CSSDisplayNoneSelector });
     testRequest(backend2, mainDocumentRequest("http://w3c.org"), { });
     
     auto backend3 = makeBackend("[{\"action\":{\"type\":\"css-display-none\",\"selector\":\".hidden\"},\"trigger\":{\"url-filter\":\".*\",\"unless-domain\":[\"webkit.org\"]}}]");
-    EXPECT_EQ(nullptr, backend3.globalDisplayNoneStyleSheet(ASCIILiteral("testFilter")));
+    EXPECT_EQ(nullptr, backend3.globalDisplayNoneStyleSheet("testFilter"_s));
     testRequest(backend3, mainDocumentRequest("http://webkit.org"), { });
     testRequest(backend3, mainDocumentRequest("http://w3c.org"), { ContentExtensions::ActionType::CSSDisplayNoneSelector });
     
     auto backend4 = makeBackend("[{\"action\":{\"type\":\"css-display-none\",\"selector\":\".hidden\"},\"trigger\":{\"url-filter\":\".*\",\"load-type\":[\"third-party\"]}}]");
-    EXPECT_EQ(nullptr, backend4.globalDisplayNoneStyleSheet(ASCIILiteral("testFilter")));
+    EXPECT_EQ(nullptr, backend4.globalDisplayNoneStyleSheet("testFilter"_s));
     testRequest(backend4, mainDocumentRequest("http://webkit.org"), { });
     testRequest(backend4, subResourceRequest("http://not_webkit.org", "http://webkit.org"), { ContentExtensions::ActionType::CSSDisplayNoneSelector });
 
     // css-display-none rules after ignore-previous-rules should not be put in the default stylesheet.
     auto backend5 = makeBackend("[{\"action\":{\"type\":\"ignore-previous-rules\"},\"trigger\":{\"url-filter\":\".*\"}},"
         "{\"action\":{\"type\":\"css-display-none\",\"selector\":\".hidden\"},\"trigger\":{\"url-filter\":\".*\"}}]");
-    EXPECT_EQ(nullptr, backend5.globalDisplayNoneStyleSheet(ASCIILiteral("testFilter")));
+    EXPECT_EQ(nullptr, backend5.globalDisplayNoneStyleSheet("testFilter"_s));
     testRequest(backend5, mainDocumentRequest("http://webkit.org"), { ContentExtensions::ActionType::CSSDisplayNoneSelector }, 0);
     
     auto backend6 = makeBackend("[{\"action\":{\"type\":\"block\"},\"trigger\":{\"url-filter\":\".*\",\"if-domain\":[\"webkit.org\",\"*w3c.org\"],\"resource-type\":[\"document\",\"script\"]}},"
         "{\"action\":{\"type\":\"ignore-previous-rules\"},\"trigger\":{\"url-filter\":\"ignore\",\"if-domain\":[\"*webkit.org\",\"w3c.org\"]}},"
         "{\"action\":{\"type\":\"block-cookies\"},\"trigger\":{\"url-filter\":\".*\",\"unless-domain\":[\"webkit.org\",\"whatwg.org\"],\"resource-type\":[\"script\",\"image\"],\"load-type\":[\"third-party\"]}}]");
-    EXPECT_EQ(nullptr, backend6.globalDisplayNoneStyleSheet(ASCIILiteral("testFilter")));
+    EXPECT_EQ(nullptr, backend6.globalDisplayNoneStyleSheet("testFilter"_s));
     testRequest(backend6, mainDocumentRequest("http://webkit.org"), { ContentExtensions::ActionType::BlockLoad });
     testRequest(backend6, mainDocumentRequest("http://w3c.org"), { ContentExtensions::ActionType::BlockLoad });
     testRequest(backend6, mainDocumentRequest("http://whatwg.org"), { });

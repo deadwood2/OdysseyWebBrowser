@@ -136,6 +136,14 @@ public:
 
     void statisticsNotifyObserver();
 
+    void textDidChangeInTextField();
+    void textFieldDidBeginEditing();
+    void textFieldDidEndEditing();
+
+    void resetUserScriptInjectedCount() { m_userScriptInjectedCount = 0; }
+    void increaseUserScriptInjectedCount() { ++m_userScriptInjectedCount; }
+    size_t userScriptInjectedCount() const { return m_userScriptInjectedCount; }
+
 private:
     InjectedBundle();
     ~InjectedBundle();
@@ -152,10 +160,13 @@ private:
     void didReceiveMessage(WKStringRef messageName, WKTypeRef messageBody);
     void didReceiveMessageToPage(WKBundlePageRef, WKStringRef messageName, WKTypeRef messageBody);
 
+    void setUpInjectedBundleClients(WKBundlePageRef);
+
     void platformInitialize(WKTypeRef initializationUserData);
     void resetLocalSettings();
 
-    void beginTesting(WKDictionaryRef initialSettings);
+    enum class BegingTestingMode { New, Resume };
+    void beginTesting(WKDictionaryRef initialSettings, BegingTestingMode);
 
     bool booleanForKey(WKDictionaryRef, const char* key);
 
@@ -192,6 +203,8 @@ private:
     WKRetainPtr<WKArrayRef> m_repaintRects;
 
     Vector<String> m_allowedHosts;
+
+    size_t m_userScriptInjectedCount { 0 };
 };
 
 } // namespace WTR

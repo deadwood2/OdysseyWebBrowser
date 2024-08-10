@@ -135,12 +135,13 @@ private:
     int eventNumber;
 #elif PLATFORM(GTK)
     Deque<WTREventQueueItem> m_eventQueue;
-    unsigned m_mouseButtonCurrentlyDown;
+    unsigned m_mouseButtonsCurrentlyDown { 0 };
     Vector<GUniquePtr<GdkEvent>> m_touchEvents;
     HashSet<int> m_updatedTouchEvents;
 #elif PLATFORM(WPE)
     struct wpe_view_backend* m_viewBackend;
     uint32_t m_buttonState;
+    uint32_t m_mouseButtonsCurrentlyDown { 0 };
     Vector<struct wpe_input_touch_event_raw> m_touchEvents;
     HashSet<unsigned, DefaultHash<unsigned>::Hash, WTF::UnsignedWithZeroKeyHashTraits<unsigned>> m_updatedTouchEvents;
 #endif

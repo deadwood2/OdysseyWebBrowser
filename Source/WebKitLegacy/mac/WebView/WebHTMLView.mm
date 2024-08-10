@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2018 Apple Inc. All rights reserved.
  *           (C) 2006, 2007 Graham Dennis (graham.dennis@gmail.com)
  *
  * Redistribution and use in source and binary forms, with or without
@@ -109,7 +109,6 @@
 #import <WebCore/LegacyWebArchive.h>
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/MIMETypeRegistry.h>
-#import <WebCore/MainFrame.h>
 #import <WebCore/Page.h>
 #import <WebCore/PrintContext.h>
 #import <WebCore/Range.h>
@@ -149,7 +148,6 @@
 #import "WebNSEventExtras.h"
 #import "WebNSPasteboardExtras.h"
 #import <AppKit/NSAccessibility.h>
-#import <ApplicationServices/ApplicationServices.h>
 #import <WebCore/PlatformEventFactoryMac.h>
 #import <pal/spi/mac/NSMenuSPI.h>
 #endif
@@ -717,7 +715,9 @@ extern "C" NSString *NSTextInputReplacementRangeAttributeName;
 - (void)_recursiveDisplayRectIfNeededIgnoringOpacity:(NSRect)rect isVisibleRect:(BOOL)isVisibleRect rectIsVisibleRectForView:(NSView *)visibleView topView:(BOOL)topView;
 - (void)_recursiveDisplayAllDirtyWithLockFocus:(BOOL)needsLockFocus visRect:(NSRect)visRect;
 #if PLATFORM(MAC)
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+- (void)_recursive:(BOOL)recursive displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)graphicsContext shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor stopAtLayerBackedViews:(BOOL)stopAtLayerBackedViews;
+#elif __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
 - (void)_recursive:(BOOL)recurse displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)context shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor;
 - (void)_recursive:(BOOL)recurseX displayRectIgnoringOpacity:(NSRect)displayRect inGraphicsContext:(NSGraphicsContext *)graphicsContext shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor;
 #else
@@ -1335,7 +1335,7 @@ static NSControlStateValue kit(TriState state)
     if ([types containsObject:WebArchivePboardType]) {
         if (RefPtr<LegacyWebArchive> coreArchive = LegacyWebArchive::createFromSelection(core([self _frame]))) {
             if (RetainPtr<CFDataRef> data = coreArchive ? coreArchive->rawDataRepresentation() : 0)
-                [pasteboard setData:(NSData *)data.get() forType:WebArchivePboardType];
+                [pasteboard setData:(__bridge NSData *)data.get() forType:WebArchivePboardType];
         }
     }
 
@@ -1427,7 +1427,8 @@ static NSControlStateValue kit(TriState state)
 {
     // Copy subviews because [self subviews] returns the view's mutable internal array,
     // and we must avoid mutating the array while enumerating it.
-    for (NSView *view in adoptNS([[self subviews] copy]).get()) {
+    auto subviewsCopy = adoptNS([self.subviews copy]);
+    for (NSView *view in subviewsCopy.get()) {
         if ([view isKindOfClass:[WebBaseNetscapePluginView class]])
             [view performSelector:selector withObject:object];
     }
@@ -1667,14 +1668,18 @@ static NSControlStateValue kit(TriState state)
 }
 
 // Don't let AppKit even draw subviews. We take care of that.
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+- (void)_recursive:(BOOL)recursive displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)graphicsContext shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor stopAtLayerBackedViews:(BOOL)stopAtLayerBackedViews
+#elif __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
 - (void)_recursive:(BOOL)recurse displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)context shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor
 #else
 - (void)_recursive:(BOOL)recurse displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)context topView:(BOOL)topView
 #endif
 {
     [self _setAsideSubviews];
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+    [super _recursive:recursive displayRectIgnoringOpacity:displayRect inContext:graphicsContext shouldChangeFontReferenceColor:shouldChangeFontReferenceColor stopAtLayerBackedViews:stopAtLayerBackedViews];
+#elif __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
     [super _recursive:recurse displayRectIgnoringOpacity:displayRect inContext:context shouldChangeFontReferenceColor:shouldChangeFontReferenceColor];
 #else
     [super _recursive:recurse displayRectIgnoringOpacity:displayRect inContext:context topView:topView];
@@ -1682,6 +1687,7 @@ static NSControlStateValue kit(TriState state)
     [self _restoreSubviews];
 }
 
+#if __MAC_OS_X_VERSION_MIN_REQUIRED < 101400
 // Don't let AppKit even draw subviews. We take care of that.
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
 - (void)_recursive:(BOOL)recurseX displayRectIgnoringOpacity:(NSRect)displayRect inGraphicsContext:(NSGraphicsContext *)graphicsContext shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor
@@ -1695,7 +1701,7 @@ static NSControlStateValue kit(TriState state)
         [self _setAsideSubviews];
         didSetAsideSubviews = YES;
     }
-    
+
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
     [super _recursive:recurseX displayRectIgnoringOpacity:displayRect inGraphicsContext:graphicsContext shouldChangeFontReferenceColor:shouldChangeFontReferenceColor];
 #else
@@ -1705,6 +1711,7 @@ static NSControlStateValue kit(TriState state)
     if (didSetAsideSubviews)
         [self _restoreSubviews];
 }
+#endif
 
 static BOOL isQuickLookEvent(NSEvent *event)
 {
@@ -2013,7 +2020,7 @@ static bool mouseEventIsPartOfClickOrDrag(NSEvent *event)
         [pasteboard _web_writePromisedRTFDFromArchive:archive.get() containsImage:[[pasteboard types] containsObject:legacyTIFFPasteboardType()]];
     } else if ([type isEqualToString:legacyTIFFPasteboardType()] && _private->promisedDragTIFFDataSource) {
         if (auto* image = _private->promisedDragTIFFDataSource->image())
-            [pasteboard setData:(NSData *)image->tiffRepresentation() forType:legacyTIFFPasteboardType()];
+            [pasteboard setData:(__bridge NSData *)image->tiffRepresentation() forType:legacyTIFFPasteboardType()];
         [self setPromisedDragTIFFDataSource:nullptr];
     }
 }
@@ -3707,7 +3714,7 @@ static RetainPtr<NSArray> customMenuFromDefaultItems(WebView *webView, const Con
 
     NSArray *delegateSuppliedItems = CallUIDelegate(webView, selector, element.get(), defaultMenuItems.get());
 
-    return fixMenusReceivedFromOldClients(delegateSuppliedItems, savedItems.get()).autorelease();
+    return fixMenusReceivedFromOldClients(delegateSuppliedItems, savedItems.get());
 }
 
 - (NSMenu *)menuForEvent:(NSEvent *)event
@@ -4380,7 +4387,7 @@ static bool matchesExtensionOrEquivalent(NSString *filename, NSString *extension
     // FIXME: Report an error if we fail to create a file.
     NSString *path = [[dropDestination path] stringByAppendingPathComponent:[wrapper preferredFilename]];
     path = [[NSFileManager defaultManager] _webkit_pathWithUniqueFilenameForPath:path];
-    if (![wrapper writeToURL:[NSURL fileURLWithPath:path] options:NSFileWrapperWritingWithNameUpdating originalContentsURL:nil error:nullptr])
+    if (![wrapper writeToURL:[NSURL fileURLWithPath:path isDirectory:NO] options:NSFileWrapperWritingWithNameUpdating originalContentsURL:nil error:nullptr])
         LOG_ERROR("Failed to create image file via -[NSFileWrapper writeToURL:options:originalContentsURL:error:]");
     
     if (draggingElementURL)
@@ -4534,10 +4541,10 @@ static RefPtr<KeyboardEvent> currentKeyboardEvent(Frame* coreFrame)
     case NSEventTypeKeyDown: {
         PlatformKeyboardEvent platformEvent = PlatformEventFactory::createPlatformKeyboardEvent(event);
         platformEvent.disambiguateKeyDownEvent(PlatformEvent::RawKeyDown);
-        return KeyboardEvent::create(platformEvent, coreFrame->document()->defaultView());
+        return KeyboardEvent::create(platformEvent, &coreFrame->windowProxy());
     }
     case NSEventTypeKeyUp:
-        return KeyboardEvent::create(PlatformEventFactory::createPlatformKeyboardEvent(event), coreFrame->document()->defaultView());
+        return KeyboardEvent::create(PlatformEventFactory::createPlatformKeyboardEvent(event), &coreFrame->windowProxy());
     default:
         return nullptr;
     }
@@ -4548,7 +4555,7 @@ static RefPtr<KeyboardEvent> currentKeyboardEvent(Frame* coreFrame)
     WebEventType type = event.type;
     if (type == WebEventKeyDown || type == WebEventKeyUp) {
         Document* document = coreFrame->document();
-        return KeyboardEvent::create(PlatformEventFactory::createPlatformKeyboardEvent(event), document ? document->defaultView() : 0);
+        return KeyboardEvent::create(PlatformEventFactory::createPlatformKeyboardEvent(event), document ? document->windowProxy() : 0);
     }
     return nullptr;
 #endif
@@ -5197,17 +5204,13 @@ static RefPtr<KeyboardEvent> currentKeyboardEvent(Frame* coreFrame)
 
 - (void)_applyStyleToSelection:(DOMCSSStyleDeclaration *)style withUndoAction:(EditAction)undoAction
 {
-    if (Frame* coreFrame = core([self _frame])) {
-        // FIXME: We shouldn't have to make a copy here. We want callers of this function to work directly with StyleProperties eventually.
-        Ref<MutableStyleProperties> properties(core(style)->copyProperties());
-        coreFrame->editor().applyStyleToSelection(properties.ptr(), undoAction);
-    }
+    [self _applyEditingStyleToSelection:EditingStyle::create(core(style)) withUndoAction:undoAction];
 }
 
 - (void)_applyEditingStyleToSelection:(Ref<EditingStyle>&&)editingStyle withUndoAction:(EditAction)undoAction
 {
     if (Frame* coreFrame = core([self _frame]))
-        coreFrame->editor().applyStyleToSelection(WTFMove(editingStyle), undoAction);
+        coreFrame->editor().applyStyleToSelection(WTFMove(editingStyle), undoAction, Editor::ColorFilterMode::InvertColor);
 }
 
 #if PLATFORM(MAC)
@@ -6148,7 +6151,7 @@ static BOOL writingDirectionKeyBindingsEnabled()
     // We assume the IM will *not* consume hotkey sequences
     parameters.consumedByIM = savingCommands && !event->metaKey();
 
-    const PlatformKeyboardEvent* platformEvent = event->keyEvent();
+    auto* platformEvent = event->underlyingPlatformEvent();
     if (!platformEvent)
         return NO;
 
@@ -6224,7 +6227,7 @@ static BOOL writingDirectionKeyBindingsEnabled()
     // embedded as the whole view, as in Mail, and tabs should input tabs as expected
     // in a text editor.
     
-    if (const PlatformKeyboardEvent* platformEvent = wcEvent->keyEvent()) {
+    if (auto* platformEvent = wcEvent->underlyingPlatformEvent()) {
         WebEvent *event = platformEvent->event();
         if (![[self _webView] isEditable] && event.isTabKey) 
             return NO;
@@ -6747,8 +6750,8 @@ static void extractUnderlines(NSAttributedString *string, Vector<CompositionUnde
             Editor::Command command = [self coreCommandBySelector:selector];
             if (command.isSupported())
                 eventWasHandled = command.execute(event);
-#if PLATFORM(MAC)
             else {
+#if PLATFORM(MAC)
                 // If WebKit does not support this command, we need to pass the selector to super.
                 _private->selectorForDoCommandBySelector = selector;
 
@@ -6760,8 +6763,10 @@ static void extractUnderlines(NSAttributedString *string, Vector<CompositionUnde
                 [sink detach];
 
                 _private->selectorForDoCommandBySelector = 0;
-            }
+#else
+                eventWasHandled = false;
 #endif
+            }
         }
 
         if (parameters)
@@ -7006,8 +7011,8 @@ static CGImageRef imageFromRect(Frame* frame, CGRect rect)
     
     WebHTMLView *view = (WebHTMLView *)documentView;
     
-    PaintBehavior oldPaintBehavior = frame->view()->paintBehavior();
-    frame->view()->setPaintBehavior(oldPaintBehavior | PaintBehaviorFlattenCompositingLayers | PaintBehaviorSnapshotting);
+    OptionSet<PaintBehavior> oldPaintBehavior = frame->view()->paintBehavior();
+    frame->view()->setPaintBehavior(oldPaintBehavior | PaintBehavior::FlattenCompositingLayers | PaintBehavior::Snapshotting);
 
     BEGIN_BLOCK_OBJC_EXCEPTIONS;
     
@@ -7062,10 +7067,10 @@ static CGImageRef imageFromRect(Frame* frame, CGRect rect)
 static CGImageRef selectionImage(Frame* frame, bool forceBlackText)
 {
     ASSERT(!WebThreadIsEnabled() || WebThreadIsLocked());
-    frame->view()->setPaintBehavior(PaintBehaviorSelectionOnly | (forceBlackText ? PaintBehaviorForceBlackText : 0));
+    frame->view()->setPaintBehavior(PaintBehavior::SelectionOnly | (forceBlackText ? OptionSet<PaintBehavior>(PaintBehavior::ForceBlackText) : OptionSet<PaintBehavior>()));
     frame->document()->updateLayout();
     CGImageRef result = imageFromRect(frame, frame->selection().selectionBounds());
-    frame->view()->setPaintBehavior(PaintBehaviorNormal);
+    frame->view()->setPaintBehavior(PaintBehavior::Normal);
     return result;
 }
 

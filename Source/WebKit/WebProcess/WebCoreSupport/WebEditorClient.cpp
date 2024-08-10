@@ -27,6 +27,7 @@
 #include "WebEditorClient.h"
 
 #include "EditorState.h"
+#include "UndoOrRedo.h"
 #include "WKBundlePageEditorClient.h"
 #include "WebCoreArgumentCoders.h"
 #include "WebFrame.h"
@@ -60,10 +61,9 @@
 #include <WebCore/PlatformDisplay.h>
 #endif
 
+namespace WebKit {
 using namespace WebCore;
 using namespace HTMLNames;
-
-namespace WebKit {
 
 static uint64_t generateTextCheckingRequestID()
 {
@@ -304,27 +304,25 @@ bool WebEditorClient::canPaste(Frame*, bool defaultValue) const
 bool WebEditorClient::canUndo() const
 {
     bool result = false;
-    m_page->sendSync(Messages::WebPageProxy::CanUndoRedo(static_cast<uint32_t>(WebPageProxy::Undo)), Messages::WebPageProxy::CanUndoRedo::Reply(result));
+    m_page->sendSync(Messages::WebPageProxy::CanUndoRedo(UndoOrRedo::Undo), Messages::WebPageProxy::CanUndoRedo::Reply(result));
     return result;
 }
 
 bool WebEditorClient::canRedo() const
 {
     bool result = false;
-    m_page->sendSync(Messages::WebPageProxy::CanUndoRedo(static_cast<uint32_t>(WebPageProxy::Redo)), Messages::WebPageProxy::CanUndoRedo::Reply(result));
+    m_page->sendSync(Messages::WebPageProxy::CanUndoRedo(UndoOrRedo::Redo), Messages::WebPageProxy::CanUndoRedo::Reply(result));
     return result;
 }
 
 void WebEditorClient::undo()
 {
-    bool result = false;
-    m_page->sendSync(Messages::WebPageProxy::ExecuteUndoRedo(static_cast<uint32_t>(WebPageProxy::Undo)), Messages::WebPageProxy::ExecuteUndoRedo::Reply(result));
+    m_page->sendSync(Messages::WebPageProxy::ExecuteUndoRedo(UndoOrRedo::Undo), Messages::WebPageProxy::ExecuteUndoRedo::Reply());
 }
 
 void WebEditorClient::redo()
 {
-    bool result = false;
-    m_page->sendSync(Messages::WebPageProxy::ExecuteUndoRedo(static_cast<uint32_t>(WebPageProxy::Redo)), Messages::WebPageProxy::ExecuteUndoRedo::Reply(result));
+    m_page->sendSync(Messages::WebPageProxy::ExecuteUndoRedo(UndoOrRedo::Redo), Messages::WebPageProxy::ExecuteUndoRedo::Reply());
 }
 
 #if !PLATFORM(GTK) && !PLATFORM(COCOA) && !PLATFORM(WPE)
@@ -468,7 +466,7 @@ bool WebEditorClient::shouldEraseMarkersAfterChangeSelection(WebCore::TextChecki
 {
     // This prevents erasing spelling markers on OS X Lion or later to match AppKit on these Mac OS X versions.
 #if PLATFORM(COCOA)
-    return type != TextCheckingTypeSpelling;
+    return type != TextCheckingType::Spelling;
 #else
     UNUSED_PARAM(type);
     return true;
@@ -519,12 +517,10 @@ static int32_t insertionPointFromCurrentSelection(const VisibleSelection& curren
 }
 
 #if USE(UNIFIED_TEXT_CHECKING)
-Vector<TextCheckingResult> WebEditorClient::checkTextOfParagraph(StringView stringView, WebCore::TextCheckingTypeMask checkingTypes, const VisibleSelection& currentSelection)
+Vector<TextCheckingResult> WebEditorClient::checkTextOfParagraph(StringView stringView, OptionSet<WebCore::TextCheckingType> checkingTypes, const VisibleSelection& currentSelection)
 {
     Vector<TextCheckingResult> results;
-
     m_page->sendSync(Messages::WebPageProxy::CheckTextOfParagraph(stringView.toStringWithoutCopying(), checkingTypes, insertionPointFromCurrentSelection(currentSelection)), Messages::WebPageProxy::CheckTextOfParagraph::Reply(results));
-
     return results;
 }
 #endif

@@ -18,6 +18,8 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /**
+ * DEPRECATED Use RTCCameraVideoCapturer instead.
+ *
  * RTCAVFoundationVideoSource is a video source that uses
  * webrtc::AVFoundationVideoCapturer. We do not currently provide a wrapper for
  * that capturer because cricket::VideoCapturer is not ref counted and we cannot
@@ -25,6 +27,7 @@ NS_ASSUME_NONNULL_BEGIN
  * counted video source interface.
  */
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCAVFoundationVideoSource")))
 @interface RTCAVFoundationVideoSource : RTCVideoSource
 
 - (instancetype)init NS_UNAVAILABLE;

@@ -17,11 +17,13 @@
 #import "RTCNV12TextureCache.h"
 #import "WebRTC/RTCLogging.h"
 #import "WebRTC/RTCVideoFrame.h"
+#import "WebRTC/RTCVideoFrameBuffer.h"
 
 // RTCDisplayLinkTimer wraps a CADisplayLink and is set to fire every two screen
 // refreshes, which should be 30fps. We wrap the display link in order to avoid
 // a retain cycle since CADisplayLink takes a strong reference onto its target.
 // The timer is paused by default.
+__attribute__((objc_runtime_name("WK_RTCDisplayLinkTimer")))
 @interface RTCDisplayLinkTimer : NSObject
 
 @property(nonatomic) BOOL isPaused;
@@ -120,7 +122,9 @@
 - (instancetype)initWithFrame:(CGRect)frame shader:(id<RTCVideoViewShading>)shader {
   if (self = [super initWithFrame:frame]) {
     _shader = shader;
-    [self configure];
+    if (![self configure]) {
+      return nil;
+    }
   }
   return self;
 }
@@ -128,16 +132,22 @@
 - (instancetype)initWithCoder:(NSCoder *)aDecoder shader:(id<RTCVideoViewShading>)shader {
   if (self = [super initWithCoder:aDecoder]) {
     _shader = shader;
-    [self configure];
+    if (![self configure]) {
+      return nil;
+    }
   }
   return self;
 }
 
-- (void)configure {
+- (BOOL)configure {
   EAGLContext *glContext =
     [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES3];
   if (!glContext) {
     glContext = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
+  }
+  if (!glContext) {
+    RTCLogError(@"Failed to create EAGLContext");
+    return NO;
   }
   _glContext = glContext;
 
@@ -174,7 +184,10 @@
       RTCEAGLVideoView *strongSelf = weakSelf;
       [strongSelf displayLinkTimerDidFire];
     }];
-  [self setupGL];
+  if ([[UIApplication sharedApplication] applicationState] == UIApplicationStateActive) {
+    [self setupGL];
+  }
+  return YES;
 }
 
 - (void)dealloc {
@@ -185,6 +198,8 @@
     [self teardownGL];
   }
   [_timer invalidate];
+  [self ensureGLContext];
+  _shader = nil;
   if (_glContext && [EAGLContext currentContext] == _glContext) {
     [EAGLContext setCurrentContext:nil];
   }
@@ -220,7 +235,7 @@
   }
   [self ensureGLContext];
   glClear(GL_COLOR_BUFFER_BIT);
-  if (frame.nativeHandle) {
+  if ([frame.buffer isKindOfClass:[RTCCVPixelBuffer class]]) {
     if (!_nv12TextureCache) {
       _nv12TextureCache = [[RTCNV12TextureCache alloc] initWithContext:_glContext];
     }

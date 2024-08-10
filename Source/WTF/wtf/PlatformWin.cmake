@@ -1,10 +1,9 @@
-list(APPEND WTF_HEADERS
+list(APPEND WTF_PUBLIC_HEADERS
     text/win/WCharStringExtras.h
 
     win/GDIObject.h
     win/SoftLinking.h
     win/Win32Handle.h
-    win/WorkItemContext.h
 )
 
 list(APPEND WTF_SOURCES
@@ -16,12 +15,11 @@ list(APPEND WTF_SOURCES
     win/MemoryFootprintWin.cpp
     win/MemoryPressureHandlerWin.cpp
     win/RunLoopWin.cpp
-    win/WorkItemContext.cpp
     win/WorkQueueWin.cpp
 )
 
 if (USE_CF)
-    list(APPEND WTF_HEADERS
+    list(APPEND WTF_PUBLIC_HEADERS
         cf/TypeCastsCF.h
 
         text/cf/TextBreakIteratorCF.h

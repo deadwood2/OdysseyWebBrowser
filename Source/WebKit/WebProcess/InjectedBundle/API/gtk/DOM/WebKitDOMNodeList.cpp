@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/Document.h>
 #include <WebCore/ExceptionCode.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMNodeListPrivate.h"
 #include "WebKitDOMNodePrivate.h"
 #include "WebKitDOMPrivate.h"
@@ -37,6 +37,8 @@
 typedef struct _WebKitDOMNodeListPrivate {
     RefPtr<WebCore::NodeList> coreObject;
 } WebKitDOMNodeListPrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -150,3 +152,4 @@ gulong webkit_dom_node_list_get_length(WebKitDOMNodeList* self)
     return result;
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

@@ -39,10 +39,9 @@
 #include <pal/SessionID.h>
 #include <wtf/text/WTFString.h>
 
+namespace WebKit {
 using namespace PAL;
 using namespace WebCore;
-
-namespace WebKit {
 
 WebServiceWorkerProvider& WebServiceWorkerProvider::singleton()
 {
@@ -88,10 +87,11 @@ void WebServiceWorkerProvider::handleFetch(ResourceLoader& loader, CachedResourc
     }
 
     auto& connection = WebProcess::singleton().ensureWebToStorageProcessConnection(sessionID).serviceWorkerConnectionForSession(sessionID);
-    m_ongoingFetchTasks.add(loader.identifier(), ServiceWorkerClientFetch::create(*this, loader, loader.identifier(), connection, shouldClearReferrerOnHTTPSToHTTPRedirect, WTFMove(callback)));
+    auto fetchIdentifier = makeObjectIdentifier<FetchIdentifierType>(loader.identifier());
+    m_ongoingFetchTasks.add(fetchIdentifier, ServiceWorkerClientFetch::create(*this, loader, fetchIdentifier, connection, shouldClearReferrerOnHTTPSToHTTPRedirect, WTFMove(callback)));
 }
 
-bool WebServiceWorkerProvider::cancelFetch(uint64_t fetchIdentifier)
+bool WebServiceWorkerProvider::cancelFetch(FetchIdentifier fetchIdentifier)
 {
     auto fetch = m_ongoingFetchTasks.take(fetchIdentifier);
     if (fetch)
@@ -99,14 +99,14 @@ bool WebServiceWorkerProvider::cancelFetch(uint64_t fetchIdentifier)
     return !!fetch;
 }
 
-void WebServiceWorkerProvider::fetchFinished(uint64_t fetchIdentifier)
+void WebServiceWorkerProvider::fetchFinished(FetchIdentifier fetchIdentifier)
 {
     m_ongoingFetchTasks.take(fetchIdentifier);
 }
 
 void WebServiceWorkerProvider::didReceiveServiceWorkerClientFetchMessage(IPC::Connection& connection, IPC::Decoder& decoder)
 {
-    if (auto fetch = m_ongoingFetchTasks.get(decoder.destinationID()))
+    if (auto fetch = m_ongoingFetchTasks.get(makeObjectIdentifier<FetchIdentifierType>(decoder.destinationID())))
         fetch->didReceiveMessage(connection, decoder);
 }
 

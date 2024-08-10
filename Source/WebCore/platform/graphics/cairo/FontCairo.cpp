@@ -34,6 +34,7 @@
 #if USE(CAIRO)
 
 #include "AffineTransform.h"
+#include "CairoOperations.h"
 #include "CairoUtilities.h"
 #include "Font.h"
 #include "GlyphBuffer.h"
@@ -74,7 +75,7 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
     auto& state = context.state();
     Cairo::drawGlyphs(*context.platformContext(), Cairo::FillSource(state), Cairo::StrokeSource(state),
         Cairo::ShadowState(state), point, scaledFont, syntheticBoldOffset, glyphs, xOffset,
-        state.textDrawingMode, state.strokeThickness, state.shadowOffset, state.shadowColor, context);
+        state.textDrawingMode, state.strokeThickness, state.shadowOffset, state.shadowColor);
 }
 
 #if ENABLE(CSS3_TEXT_DECORATION_SKIP_INK)

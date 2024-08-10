@@ -27,7 +27,7 @@
 #include "GObjectEventListener.h"
 #include <WebCore/HTMLNames.h>
 #include <WebCore/HTMLOptGroupElement.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMEventPrivate.h"
 #include "WebKitDOMEventTarget.h"
 #include "WebKitDOMHTMLCollectionPrivate.h"
@@ -41,6 +41,8 @@
 #include "ConvertToUTF8String.h"
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -565,3 +567,4 @@ gboolean webkit_dom_html_select_element_get_will_validate(WebKitDOMHTMLSelectEle
     gboolean result = item->willValidate();
     return result;
 }
+G_GNUC_END_IGNORE_DEPRECATIONS;

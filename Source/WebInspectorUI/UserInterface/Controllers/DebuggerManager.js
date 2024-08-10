@@ -99,6 +99,14 @@ WI.DebuggerManager = class DebuggerManager extends WI.Object
         if (DebuggerAgent.setAsyncStackTraceDepth)
             DebuggerAgent.setAsyncStackTraceDepth(this._asyncStackTraceDepthSetting.value);
 
+        // COMPATIBILITY (iOS 12): DebuggerAgent.setPauseForInternalScripts did not exist yet.
+        if (DebuggerAgent.setPauseForInternalScripts) {
+            let updateBackendSetting = () => { DebuggerAgent.setPauseForInternalScripts(WI.settings.pauseForInternalScripts.value); };
+            WI.settings.pauseForInternalScripts.addEventListener(WI.Setting.Event.Changed, updateBackendSetting);
+
+            updateBackendSetting();
+        }
+
         this._ignoreBreakpointDisplayLocationDidChangeEvent = false;
 
         function restoreBreakpointsSoon() {
@@ -820,6 +828,8 @@ WI.DebuggerManager = class DebuggerManager extends WI.Object
             return WI.DebuggerManager.PauseReason.DOM;
         case DebuggerAgent.PausedReason.DebuggerStatement:
             return WI.DebuggerManager.PauseReason.DebuggerStatement;
+        case DebuggerAgent.PausedReason.EventListener:
+            return WI.DebuggerManager.PauseReason.EventListener;
         case DebuggerAgent.PausedReason.Exception:
             return WI.DebuggerManager.PauseReason.Exception;
         case DebuggerAgent.PausedReason.PauseOnNextStatement:
@@ -1228,6 +1238,7 @@ WI.DebuggerManager.PauseReason = {
     CSPViolation: "CSP-violation",
     DebuggerStatement: "debugger-statement",
     DOM: "DOM",
+    EventListener: "event-listener",
     Exception: "exception",
     PauseOnNextStatement: "pause-on-next-statement",
     XHR: "xhr",
