@@ -27,6 +27,7 @@
 #include "config.h"
 #include "WebInspectorProxy.h"
 
+#include "APINavigation.h"
 #include "APIProcessPoolConfiguration.h"
 #include "WebAutomationSession.h"
 #include "WebFrameProxy.h"
@@ -46,9 +47,8 @@
 #include "WebInspectorProxyClient.h"
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 const unsigned WebInspectorProxy::minimumWindowWidth = 500;
 const unsigned WebInspectorProxy::minimumWindowHeight = 400;

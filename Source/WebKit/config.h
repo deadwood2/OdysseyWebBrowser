@@ -34,14 +34,8 @@
 #include <wtf/DisallowCType.h>
 
 #if PLATFORM(WIN)
-
-#ifndef _WINSOCKAPI_
-#define _WINSOCKAPI_ // Prevent inclusion of winsock.h in windows.h
-#endif
-
 #undef WEBCORE_EXPORT
 #define WEBCORE_EXPORT WTF_EXPORT_DECLARATION
-
 #endif // PLATFORM(WIN)
 
 #ifdef __cplusplus
@@ -95,12 +89,6 @@
 #endif
 #endif
 
-#ifndef HAVE_OS_ACTIVITY
-#if PLATFORM(IOS) || PLATFORM(MAC)
-#define HAVE_OS_ACTIVITY 1
-#endif
-#endif
-
 #ifndef ENABLE_NETWORK_CAPTURE
 #if PLATFORM(COCOA)
 #define ENABLE_NETWORK_CAPTURE 1
@@ -116,7 +104,7 @@
 #endif
 
 #ifndef HAVE_SAFARI_SERVICES_FRAMEWORK
-#if PLATFORM(IOS) && (!defined TARGET_OS_IOS || TARGET_OS_IOS)
+#if PLATFORM(IOS) && (!defined TARGET_OS_IOS || TARGET_OS_IOS) && !PLATFORM(IOSMAC)
 #define HAVE_SAFARI_SERVICES_FRAMEWORK 1
 #else
 #define HAVE_SAFARI_SERVICES_FRAMEWORK 0
@@ -129,4 +117,18 @@
 #else
 #define HAVE_LINK_PREVIEW 0
 #endif
+#endif
+
+#ifndef HAVE_MOBILE_WIFI
+#if PLATFORM(IOS) && !TARGET_OS_SIMULATOR && !PLATFORM(IOSMAC) && USE(APPLE_INTERNAL_SDK)
+#define HAVE_MOBILE_WIFI 1
+#else
+#define HAVE_MOBILE_WIFI 0
+#endif
+#endif
+
+#if ((PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300) || (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000)) && !defined(__i386__) && !PLATFORM(IOSMAC)
+#define HAVE_SAFE_BROWSING 1
+#else
+#define HAVE_SAFE_BROWSING 0
 #endif

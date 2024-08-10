@@ -23,13 +23,17 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
+#import "config.h"
+#import "Test.h"
 
 #if PLATFORM(IOS)
 
+#import "ClassMethodSwizzler.h"
 #import "InstanceMethodSwizzler.h"
 #import "PlatformUtilities.h"
+#import "TestNavigationDelegate.h"
 #import "TestWKWebView.h"
+#import "TestWKWebViewController.h"
 #import "UIKitSPI.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <WebKit/WKUIDelegatePrivate.h>
@@ -74,6 +78,70 @@ private:
     }
     InstanceMethodSwizzler m_swizzler;
 };
+
+static RetainPtr<UIViewController> gOverrideViewControllerForFullscreenPresentation;
+static void setOverrideViewControllerForFullscreenPresentation(UIViewController *viewController)
+{
+    gOverrideViewControllerForFullscreenPresentation = viewController;
+}
+
+static UIViewController *overrideViewControllerForFullscreenPresentation()
+{
+    return gOverrideViewControllerForFullscreenPresentation.get();
+}
+
+TEST(ActionSheetTests, DismissingActionSheetShouldNotDismissPresentingViewController)
+{
+    IPadUserInterfaceSwizzler iPadUserInterface;
+    UIApplicationInitialize();
+
+    auto navigationDelegate = adoptNS([[TestNavigationDelegate alloc] init]);
+    auto window = adoptNS([[TestWKWebViewControllerWindow alloc] initWithFrame:CGRectMake(0, 0, 1024, 768)]);
+    auto rootViewController = adoptNS([[UIViewController alloc] init]);
+    auto navigationController = adoptNS([[UINavigationController alloc] initWithRootViewController:rootViewController.get()]);
+    auto observer = adoptNS([[ActionSheetObserver alloc] init]);
+    [window setRootViewController:navigationController.get()];
+    [window makeKeyAndVisible];
+
+    auto webViewController = adoptNS([[TestWKWebViewController alloc] initWithFrame:CGRectMake(0, 0, 1024, 768) configuration:nil]);
+    TestWKWebView *webView = [webViewController webView];
+    webView.UIDelegate = observer.get();
+    [webView synchronouslyLoadTestPageNamed:@"link-and-input"];
+    [webView setNavigationDelegate:navigationDelegate.get()];
+    [rootViewController presentViewController:webViewController.get() animated:NO completion:nil];
+
+    // Since TestWebKitAPI is not a UI application, +[UIViewController _viewControllerForFullScreenPresentationFromView:]
+    // returns nil. To ensure that we actually present the action sheet from the web view controller, we mock this for the
+    // time being until https://webkit.org/b/175204 is fixed.
+    setOverrideViewControllerForFullscreenPresentation(webViewController.get());
+    ClassMethodSwizzler swizzler([UIViewController class], @selector(_viewControllerForFullScreenPresentationFromView:), reinterpret_cast<IMP>(overrideViewControllerForFullscreenPresentation));
+
+    [observer setPresentationHandler:^(_WKActivatedElementInfo *, NSArray *actions) {
+        // Killing the web content process should dismiss the action sheet.
+        // This should not tell the web view controller to dismiss in the process.
+        [webView _killWebContentProcess];
+        return actions;
+    }];
+
+    __block bool done = false;
+    [navigationDelegate setWebContentProcessDidTerminate:^(WKWebView *) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            done = true;
+        });
+    }];
+
+    __block bool didDismissWebViewController = false;
+    [webViewController setDismissalHandler:^{
+        didDismissWebViewController = true;
+    }];
+
+    [webView _simulateLongPressActionAtLocation:CGPointMake(100, 100)];
+    TestWebKitAPI::Util::run(&done);
+
+    EXPECT_FALSE(didDismissWebViewController);
+    EXPECT_NULL([webViewController presentedViewController]);
+    EXPECT_NOT_NULL([webViewController presentingViewController]);
+}
 
 TEST(ActionSheetTests, ImageMapDoesNotDestroySelection)
 {
@@ -140,7 +208,7 @@ TEST(ActionSheetTests, DataDetectorsLinkIsNotPresentedAsALink)
     EXPECT_TRUE(runTest(@"０８０８０８０８０８０"));
 }
 
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000
+#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
 
 static void presentActionSheetAndChooseAction(WKWebView *webView, ActionSheetObserver *observer, CGPoint location, _WKElementActionType actionType)
 {
@@ -272,7 +340,31 @@ TEST(ActionSheetTests, CopyImageElementWithoutHREF)
     TestWebKitAPI::Util::run(&done);
 }
 
-#endif // __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000
+TEST(ActionSheetTests, CopyLinkWritesURLAndPlainText)
+{
+    UIApplicationInitialize();
+    [UIPasteboard generalPasteboard].items = @[ ];
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    auto observer = adoptNS([[ActionSheetObserver alloc] init]);
+    [webView setUIDelegate:observer.get()];
+    [webView synchronouslyLoadTestPageNamed:@"link-and-input"];
+
+    presentActionSheetAndChooseAction(webView.get(), observer.get(), CGPointMake(100, 100), _WKElementActionTypeCopy);
+
+    [webView synchronouslyLoadTestPageNamed:@"DataTransfer"];
+    [webView paste:nil];
+
+    EXPECT_WK_STREQ("text/uri-list, text/plain", [webView stringByEvaluatingJavaScript:@"types.textContent"]);
+    EXPECT_WK_STREQ("(STRING, text/uri-list), (STRING, text/plain)", [webView stringByEvaluatingJavaScript:@"items.textContent"]);
+    EXPECT_WK_STREQ("", [webView stringByEvaluatingJavaScript:@"files.textContent"]);
+    EXPECT_WK_STREQ("https://www.apple.com/", [webView stringByEvaluatingJavaScript:@"textData.textContent"]);
+    EXPECT_WK_STREQ("https://www.apple.com/", [webView stringByEvaluatingJavaScript:@"urlData.textContent"]);
+    EXPECT_WK_STREQ("", [webView stringByEvaluatingJavaScript:@"htmlData.textContent"]);
+    EXPECT_WK_STREQ("", [webView stringByEvaluatingJavaScript:@"rawHTMLData.textContent"]);
+}
+
+#endif // !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
 
 } // namespace TestWebKitAPI
 

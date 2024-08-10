@@ -34,12 +34,19 @@
 @class _WKActivatedElementInfo;
 #endif
 
+@interface WKWebView (AdditionalDeclarations)
+#if PLATFORM(MAC)
+- (void)paste:(id)sender;
+#endif
+@end
+
 @interface TestMessageHandler : NSObject <WKScriptMessageHandler>
 - (void)addMessage:(NSString *)message withHandler:(dispatch_block_t)handler;
 @end
 
 @interface TestWKWebView : WKWebView
 - (instancetype)initWithFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration processPoolConfiguration:(_WKProcessPoolConfiguration *)processPoolConfiguration;
+- (instancetype)initWithFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration addToWindow:(BOOL)addToWindow;
 - (void)clearMessageHandlers:(NSArray *)messageNames;
 - (void)performAfterReceivingMessage:(NSString *)message action:(dispatch_block_t)action;
 - (void)loadTestPageNamed:(NSString *)pageName;
@@ -56,6 +63,8 @@
 @interface TestWKWebView (IOSOnly)
 @property (nonatomic, readonly) UIView <UITextInput> *textInputContentView;
 @property (nonatomic, readonly) RetainPtr<NSArray> selectionRectsAfterPresentationUpdate;
+@property (nonatomic, readonly) CGRect caretViewRectInContentCoordinates;
+@property (nonatomic, readonly) NSArray<NSValue *> *selectionViewRectsInContentCoordinates;
 - (_WKActivatedElementInfo *)activatedElementAtPosition:(CGPoint)position;
 @end
 #endif
@@ -63,12 +72,14 @@
 #if PLATFORM(MAC)
 @interface TestWKWebView (MacOnly)
 // Simulates clicking with a pressure-sensitive device, if possible.
-- (void)mouseDownAtPoint:(NSPoint)point simulatePressure:(BOOL)simulatePressure;
-- (void)mouseUpAtPoint:(NSPoint)point;
-- (void)mouseMoveToPoint:(NSPoint)point withFlags:(NSEventModifierFlags)flags;
-- (void)sendClicksAtPoint:(NSPoint)point numberOfClicks:(NSUInteger)numberOfClicks;
-- (void)typeCharacter:(char)character;
+- (void)mouseDownAtPoint:(NSPoint)pointInWindow simulatePressure:(BOOL)simulatePressure;
+- (void)mouseDragToPoint:(NSPoint)pointInWindow;
+- (void)mouseEnterAtPoint:(NSPoint)pointInWindow;
+- (void)mouseUpAtPoint:(NSPoint)pointInWindow;
+- (void)mouseMoveToPoint:(NSPoint)pointInWindow withFlags:(NSEventModifierFlags)flags;
+- (void)sendClicksAtPoint:(NSPoint)pointInWindow numberOfClicks:(NSUInteger)numberOfClicks;
 - (NSWindow *)hostWindow;
+- (void)typeCharacter:(char)character;
 @end
 #endif
 

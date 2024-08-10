@@ -43,7 +43,6 @@
 #include "Timer.h"
 #include "URL.h"
 #include <pal/spi/cg/CoreGraphicsSPI.h>
-#include <wtf/CurrentTime.h>
 #include <wtf/MathExtras.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/text/TextStream.h>
@@ -159,7 +158,7 @@ static InterpolationQuality convertInterpolationQuality(CGInterpolationQuality q
 static CGBlendMode selectCGBlendMode(CompositeOperator compositeOperator, BlendMode blendMode)
 {
     switch (blendMode) {
-    case BlendModeNormal:
+    case BlendMode::Normal:
         switch (compositeOperator) {
         case CompositeClear:
             return kCGBlendModeClear;
@@ -191,39 +190,39 @@ static CGBlendMode selectCGBlendMode(CompositeOperator compositeOperator, BlendM
             return kCGBlendModeDifference;
         }
         break;
-    case BlendModeMultiply:
+    case BlendMode::Multiply:
         return kCGBlendModeMultiply;
-    case BlendModeScreen:
+    case BlendMode::Screen:
         return kCGBlendModeScreen;
-    case BlendModeOverlay:
+    case BlendMode::Overlay:
         return kCGBlendModeOverlay;
-    case BlendModeDarken:
+    case BlendMode::Darken:
         return kCGBlendModeDarken;
-    case BlendModeLighten:
+    case BlendMode::Lighten:
         return kCGBlendModeLighten;
-    case BlendModeColorDodge:
+    case BlendMode::ColorDodge:
         return kCGBlendModeColorDodge;
-    case BlendModeColorBurn:
+    case BlendMode::ColorBurn:
         return kCGBlendModeColorBurn;
-    case BlendModeHardLight:
+    case BlendMode::HardLight:
         return kCGBlendModeHardLight;
-    case BlendModeSoftLight:
+    case BlendMode::SoftLight:
         return kCGBlendModeSoftLight;
-    case BlendModeDifference:
+    case BlendMode::Difference:
         return kCGBlendModeDifference;
-    case BlendModeExclusion:
+    case BlendMode::Exclusion:
         return kCGBlendModeExclusion;
-    case BlendModeHue:
+    case BlendMode::Hue:
         return kCGBlendModeHue;
-    case BlendModeSaturation:
+    case BlendMode::Saturation:
         return kCGBlendModeSaturation;
-    case BlendModeColor:
+    case BlendMode::Color:
         return kCGBlendModeColor;
-    case BlendModeLuminosity:
+    case BlendMode::Luminosity:
         return kCGBlendModeLuminosity;
-    case BlendModePlusDarker:
+    case BlendMode::PlusDarker:
         return kCGBlendModePlusDarker;
-    case BlendModePlusLighter:
+    case BlendMode::PlusLighter:
         return kCGBlendModePlusLighter;
     }
 
@@ -331,7 +330,7 @@ void GraphicsContext::drawNativeImage(const RetainPtr<CGImageRef>& image, const 
             adjustedDestRect.setHeight(subimageRect.height() / yScale);
 
 #if CACHE_SUBIMAGES
-            subImage = subimageCache().getSubimage(subImage.get(), subimageRect);
+            subImage = SubimageCacheWithTimer::getSubimage(subImage.get(), subimageRect);
 #else
             subImage = adoptCF(CGImageCreateWithImageInRect(subImage.get(), subimageRect));
 #endif
@@ -688,7 +687,7 @@ static inline bool calculateDrawingMode(const GraphicsContextState& state, CGPat
 {
     bool shouldFill = state.fillPattern || state.fillColor.isVisible();
     bool shouldStroke = state.strokePattern || (state.strokeStyle != NoStroke && state.strokeColor.isVisible());
-    bool useEOFill = state.fillRule == RULE_EVENODD;
+    bool useEOFill = state.fillRule == WindRule::EvenOdd;
 
     if (shouldFill) {
         if (shouldStroke) {
@@ -775,7 +774,7 @@ void GraphicsContext::fillPath(const Path& path)
             CGContextAddPath(layerContext, path.platformPath());
             CGContextConcatCTM(layerContext, m_state.fillGradient->gradientSpaceTransform());
 
-            if (fillRule() == RULE_EVENODD)
+            if (fillRule() == WindRule::EvenOdd)
                 CGContextEOClip(layerContext);
             else
                 CGContextClip(layerContext);
@@ -789,7 +788,7 @@ void GraphicsContext::fillPath(const Path& path)
             CGContextStateSaver stateSaver(context);
             CGContextConcatCTM(context, m_state.fillGradient->gradientSpaceTransform());
 
-            if (fillRule() == RULE_EVENODD)
+            if (fillRule() == WindRule::EvenOdd)
                 CGContextEOClip(context);
             else
                 CGContextClip(context);
@@ -803,11 +802,11 @@ void GraphicsContext::fillPath(const Path& path)
     if (m_state.fillPattern)
         applyFillPattern();
 #if USE_DRAW_PATH_DIRECT
-    CGContextDrawPathDirect(context, fillRule() == RULE_EVENODD ? kCGPathEOFill : kCGPathFill, path.platformPath(), nullptr);
+    CGContextDrawPathDirect(context, fillRule() == WindRule::EvenOdd ? kCGPathEOFill : kCGPathFill, path.platformPath(), nullptr);
 #else
     CGContextBeginPath(context);
     CGContextAddPath(context, path.platformPath());
-    if (fillRule() == RULE_EVENODD)
+    if (fillRule() == WindRule::EvenOdd)
         CGContextEOFillPath(context);
     else
         CGContextFillPath(context);
@@ -1035,7 +1034,7 @@ void GraphicsContext::fillRectWithRoundedHole(const FloatRect& rect, const Float
     WindRule oldFillRule = fillRule();
     Color oldFillColor = fillColor();
 
-    setFillRule(RULE_EVENODD);
+    setFillRule(WindRule::EvenOdd);
     setFillColor(color);
 
     // fillRectWithRoundedHole() assumes that the edges of rect are clipped out, so we only care about shadows cast around inside the hole.
@@ -1128,7 +1127,7 @@ void GraphicsContext::clipPath(const Path& path, WindRule clipRule)
         CGContextBeginPath(platformContext());
         CGContextAddPath(platformContext(), path.platformPath());
 
-        if (clipRule == RULE_EVENODD)
+        if (clipRule == WindRule::EvenOdd)
             CGContextEOClip(context);
         else
             CGContextClip(context);

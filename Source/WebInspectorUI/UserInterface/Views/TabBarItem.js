@@ -38,9 +38,13 @@ WI.TabBarItem = class TabBarItem extends WI.Object
         this._element.tabIndex = 0;
         this._element[WI.TabBarItem.ElementReferenceSymbol] = this;
 
+        this._element.createChild("div", "flex-space");
+
         this._iconElement = document.createElement("img");
         this._iconElement.classList.add("icon");
         this._element.appendChild(this._iconElement);
+
+        this._element.createChild("div", "flex-space");
 
         this.title = title;
         this.image = image;
@@ -95,8 +99,25 @@ WI.TabBarItem = class TabBarItem extends WI.Object
     get image() { return this._iconElement.src; }
     set image(url) { this._iconElement.src = url || ""; }
 
-    get title() { return this._element.title || ""; }
-    set title(title) { this._element.title = title || ""; }
+    get title()
+    {
+        return this._title;
+    }
+
+    set title(title)
+    {
+        title = title || "";
+        if (this._title === title)
+            return;
+
+        this._title = title;
+        this.titleDidChange();
+    }
+
+    titleDidChange()
+    {
+        // Implemented by subclasses.
+    }
 };
 
 WI.TabBarItem.StyleClassName = "item";

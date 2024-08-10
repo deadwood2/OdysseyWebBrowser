@@ -52,12 +52,18 @@
 #include "GLContext.h"
 #include "TextureMapperGL.h"
 
-#if USE(EGL) && USE(LIBEPOXY)
+#if USE(EGL)
+#if USE(LIBEPOXY)
 #include "EpoxyEGL.h"
+#else
+#include <EGL/egl.h>
+#endif
 #endif
 #include <cairo-gl.h>
 
-#if USE(OPENGL_ES_2)
+#if USE(LIBEPOXY)
+#include <epoxy/gl.h>
+#elif USE(OPENGL_ES)
 #include <GLES2/gl2.h>
 #else
 #include "OpenGLShims.h"
@@ -85,8 +91,13 @@ ImageBufferData::ImageBufferData(const IntSize& size, RenderingMode renderingMod
 #endif
 {
 #if ENABLE(ACCELERATED_2D_CANVAS) && USE(COORDINATED_GRAPHICS_THREADED)
-    if (m_renderingMode == RenderingMode::Accelerated)
+    if (m_renderingMode == RenderingMode::Accelerated) {
+#if USE(NICOSIA)
+        m_nicosiaLayer = Nicosia::ContentLayer::create(Nicosia::ContentLayerTextureMapperImpl::createFactory(*this));
+#else
         m_platformLayerProxy = adoptRef(new TextureMapperPlatformLayerProxy);
+#endif
+    }
 #endif
 }
 
@@ -96,6 +107,10 @@ ImageBufferData::~ImageBufferData()
         return;
 
 #if ENABLE(ACCELERATED_2D_CANVAS)
+#if USE(COORDINATED_GRAPHICS_THREADED) && USE(NICOSIA)
+    downcast<Nicosia::ContentLayerTextureMapperImpl>(m_nicosiaLayer->impl()).invalidateClient();
+#endif
+
     GLContext* previousActiveContext = GLContext::current();
     PlatformDisplay::sharedDisplayForCompositing().sharingGLContext()->makeContextCurrent();
 
@@ -133,10 +148,12 @@ void ImageBufferData::createCompositorBuffer()
     cairo_set_antialias(m_compositorCr.get(), CAIRO_ANTIALIAS_NONE);
 }
 
+#if !USE(NICOSIA)
 RefPtr<TextureMapperPlatformLayerProxy> ImageBufferData::proxy() const
 {
     return m_platformLayerProxy.copyRef();
 }
+#endif
 
 void ImageBufferData::swapBuffersIfNeeded()
 {
@@ -144,8 +161,18 @@ void ImageBufferData::swapBuffersIfNeeded()
 
     if (!m_compositorTexture) {
         createCompositorBuffer();
-        LockHolder holder(m_platformLayerProxy->lock());
-        m_platformLayerProxy->pushNextBuffer(std::make_unique<TextureMapperPlatformLayerBuffer>(m_compositorTexture, m_size, TextureMapperGL::ShouldBlend, GL_RGBA));
+
+        auto proxyOperation =
+            [this](TextureMapperPlatformLayerProxy& proxy)
+            {
+                LockHolder holder(proxy.lock());
+                proxy.pushNextBuffer(std::make_unique<TextureMapperPlatformLayerBuffer>(m_compositorTexture, m_size, TextureMapperGL::ShouldBlend, GL_RGBA));
+            };
+#if USE(NICOSIA)
+        proxyOperation(downcast<Nicosia::ContentLayerTextureMapperImpl>(m_nicosiaLayer->impl()).proxy());
+#else
+        proxyOperation(*m_platformLayerProxy);
+#endif
     }
 
     // It would be great if we could just swap the buffers here as we do with webgl, but that breaks the cases
@@ -198,7 +225,42 @@ void ImageBufferData::createCairoGLSurface()
 }
 #endif
 
-ImageBuffer::ImageBuffer(const FloatSize& size, float resolutionScale, ColorSpace, RenderingMode renderingMode, bool& success)
+static RefPtr<cairo_surface_t>
+cairoSurfaceCoerceToImage(cairo_surface_t* surface)
+{
+    if (cairo_surface_get_type(surface) == CAIRO_SURFACE_TYPE_IMAGE
+        && cairo_surface_get_content(surface) == CAIRO_CONTENT_COLOR_ALPHA)
+        return surface;
+
+    auto copy = adoptRef(cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
+        cairo_image_surface_get_width(surface),
+        cairo_image_surface_get_height(surface)));
+
+    auto cr = adoptRef(cairo_create(copy.get()));
+    cairo_set_operator(cr.get(), CAIRO_OPERATOR_SOURCE);
+    cairo_set_source_surface(cr.get(), surface, 0, 0);
+    cairo_paint(cr.get());
+
+    return copy;
+}
+
+Vector<uint8_t> ImageBuffer::toBGRAData() const
+{
+    auto surface = cairoSurfaceCoerceToImage(m_data.m_surface.get());
+    cairo_surface_flush(surface.get());
+
+    Vector<uint8_t> imageData;
+    if (cairo_surface_status(surface.get()))
+        return imageData;
+
+    auto pixels = cairo_image_surface_get_data(surface.get());
+    imageData.append(pixels, cairo_image_surface_get_stride(surface.get()) *
+        cairo_image_surface_get_height(surface.get()));
+
+    return imageData;
+}
+
+ImageBuffer::ImageBuffer(const FloatSize& size, float resolutionScale, ColorSpace, RenderingMode renderingMode, const HostWindow*, bool& success)
     : m_data(IntSize(size), renderingMode)
     , m_logicalSize(size)
     , m_resolutionScale(resolutionScale)
@@ -630,8 +692,13 @@ void ImageBufferData::paintToTextureMapper(TextureMapper& textureMapper, const F
 PlatformLayer* ImageBuffer::platformLayer() const
 {
 #if ENABLE(ACCELERATED_2D_CANVAS)
+#if USE(NICOSIA)
+    if (m_data.m_renderingMode == RenderingMode::Accelerated)
+        return m_data.m_nicosiaLayer.get();
+#else
     if (m_data.m_texture)
         return const_cast<ImageBufferData*>(&m_data);
+#endif
 #endif
     return 0;
 }

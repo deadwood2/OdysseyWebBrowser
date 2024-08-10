@@ -28,6 +28,7 @@
 
 #if PLATFORM(MAC) && WK_API_ENABLED
 
+#import "APINavigation.h"
 #import "VersionChecks.h"
 #import "WKFrameInfo.h"
 #import "WKInspectorWKWebView.h"
@@ -37,12 +38,12 @@
 #import "WKPreferencesPrivate.h"
 #import "WKProcessPoolInternal.h"
 #import "WKUIDelegatePrivate.h"
-#import "WKWebView.h"
 #import "WKWebViewConfigurationPrivate.h"
-#import "WeakObjCPtr.h"
+#import "WKWebViewPrivate.h"
 #import "WebInspectorProxy.h"
 #import "WebInspectorUtilities.h"
 #import "WebPageProxy.h"
+#import <wtf/WeakObjCPtr.h>
 
 using namespace WebKit;
 
@@ -52,7 +53,7 @@ using namespace WebKit;
 @implementation WKInspectorViewController {
     WebPageProxy* _inspectedPage;
     RetainPtr<WKInspectorWKWebView> _webView;
-    WebKit::WeakObjCPtr<id <WKInspectorViewControllerDelegate>> _delegate;
+    WeakObjCPtr<id <WKInspectorViewControllerDelegate>> _delegate;
 }
 
 - (instancetype)initWithInspectedPage:(WebKit::WebPageProxy* _Nullable)inspectedPage
@@ -93,6 +94,7 @@ using namespace WebKit;
         [_webView setNavigationDelegate:self];
         [_webView setInspectorWKWebViewDelegate:self];
         [_webView _setAutomaticallyAdjustsContentInsets:NO];
+        [_webView _setUseSystemAppearance:YES];
         [_webView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     }
 
@@ -224,6 +226,9 @@ using namespace WebKit;
 
     // Prevent everything else.
     decisionHandler(WKNavigationActionPolicyCancel);
+    
+    // And instead load it in the inspected page.
+    _inspectedPage->loadRequest(navigationAction.request);
 }
 
 // MARK: WKInspectorWKWebViewDelegate methods

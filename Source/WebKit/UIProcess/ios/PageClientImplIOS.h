@@ -39,7 +39,9 @@ struct PromisedBlobInfo;
 }
 
 namespace WebKit {
-    
+
+enum class UndoOrRedo;
+
 class PageClientImpl : public PageClientImplCocoa
 #if ENABLE(FULLSCREEN_API)
     , public WebFullScreenManagerProxyClient
@@ -76,16 +78,17 @@ private:
     void setCursor(const WebCore::Cursor&) override;
     void setCursorHiddenUntilMouseMoves(bool) override;
     void didChangeViewportProperties(const WebCore::ViewportAttributes&) override;
-    void registerEditCommand(Ref<WebEditCommandProxy>&&, WebPageProxy::UndoOrRedo) override;
+    void registerEditCommand(Ref<WebEditCommandProxy>&&, UndoOrRedo) override;
     void clearAllEditCommands() override;
-    bool canUndoRedo(WebPageProxy::UndoOrRedo) override;
-    void executeUndoRedo(WebPageProxy::UndoOrRedo) override;
+    bool canUndoRedo(UndoOrRedo) override;
+    void executeUndoRedo(UndoOrRedo) override;
     void accessibilityWebProcessTokenReceived(const IPC::DataReference&) override;
     bool executeSavedCommandBySelector(const String& selector) override;
     void updateSecureInputState() override;
     void resetSecureInputState() override;
     void notifyInputContextAboutDiscardedComposition() override;
     void makeFirstResponder() override;
+    void assistiveTechnologyMakeFirstResponder() override;
     WebCore::FloatRect convertToDeviceSpace(const WebCore::FloatRect&) override;
     WebCore::FloatRect convertToUserSpace(const WebCore::FloatRect&) override;
     WebCore::IntPoint screenToRootView(const WebCore::IntPoint&) override;
@@ -98,6 +101,14 @@ private:
 #endif
     RefPtr<WebPopupMenuProxy> createPopupMenuProxy(WebPageProxy&) override;
     Ref<WebCore::ValidationBubble> createValidationBubble(const String& message, const WebCore::ValidationBubble::Settings&) final;
+
+#if ENABLE(INPUT_TYPE_COLOR)
+    RefPtr<WebColorPicker> createColorPicker(WebPageProxy*, const WebCore::Color& initialColor, const WebCore::IntRect&, Vector<WebCore::Color>&&) final;
+#endif
+
+#if ENABLE(DATALIST_ELEMENT)
+    RefPtr<WebDataListSuggestionsDropdown> createDataListSuggestionsDropdown(WebPageProxy&) final;
+#endif
 
     void setTextIndicator(Ref<WebCore::TextIndicator>, WebCore::TextIndicatorWindowLifetime) override;
     void clearTextIndicator(WebCore::TextIndicatorWindowDismissalAnimation) override;
@@ -119,7 +130,6 @@ private:
     void didCommitLayerTree(const RemoteLayerTreeTransaction&) override;
     void layerTreeCommitComplete() override;
 
-    void dynamicViewportUpdateChangedTarget(double newScale, const WebCore::FloatPoint& newScrollPosition, uint64_t transactionID) override;
     void couldNotRestorePageState() override;
     void restorePageState(std::optional<WebCore::FloatPoint>, const WebCore::FloatPoint&, const WebCore::FloatBoxExtent&, double) override;
     void restorePageCenterAndScale(std::optional<WebCore::FloatPoint>, double) override;
@@ -131,10 +141,7 @@ private:
     bool interpretKeyEvent(const NativeWebKeyboardEvent&, bool isCharEvent) override;
     void positionInformationDidChange(const InteractionInformationAtPosition&) override;
     void saveImageToLibrary(Ref<WebCore::SharedBuffer>&&) override;
-#if __IPHONE_OS_VERSION_MAX_ALLOWED < 120000
-    void didUpdateBlockSelectionWithTouch(uint32_t touch, uint32_t flags, float growThreshold, float shrinkThreshold) override;
-#endif
-    void showPlaybackTargetPicker(bool hasVideo, const WebCore::IntRect& elementRect) override;
+    void showPlaybackTargetPicker(bool hasVideo, const WebCore::IntRect& elementRect, WebCore::RouteSharingPolicy, const String&) override;
 
     bool handleRunOpenPanel(WebPageProxy*, WebFrameProxy*, API::OpenPanelParameters*, WebOpenPanelResultListenerProxy*) override;
     void disableDoubleTapGesturesDuringTapIfNecessary(uint64_t requestID) override;
@@ -189,6 +196,7 @@ private:
     void didCompleteSyntheticClick() override;
 
     void didChangeBackgroundColor() override;
+    void videoControlsManagerDidChange() override;
 
     void refView() override;
     void derefView() override;
@@ -209,6 +217,8 @@ private:
     void didConcludeEditDataInteraction(std::optional<WebCore::TextIndicatorData>) override;
     void didChangeDataInteractionCaretRect(const WebCore::IntRect& previousCaretRect, const WebCore::IntRect& caretRect) override;
 #endif
+
+    void didFinishProcessingAllPendingMouseEvents() final { }
 
     WKContentView *m_contentView;
     RetainPtr<WKEditorUndoTargetObjC> m_undoTarget;

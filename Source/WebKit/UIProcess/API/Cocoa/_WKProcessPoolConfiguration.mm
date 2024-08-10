@@ -102,6 +102,16 @@
     _processPoolConfiguration->setIgnoreSynchronousMessagingTimeoutsForTesting(ignoreSynchronousMessagingTimeoutsForTesting);
 }
 
+- (BOOL)attrStyleEnabled
+{
+    return _processPoolConfiguration->attrStyleEnabled();
+}
+
+- (void)setAttrStyleEnabled:(BOOL)enabled
+{
+    return _processPoolConfiguration->setAttrStyleEnabled(enabled);
+}
+
 - (NSArray<NSURL *> *)additionalReadAccessAllowedURLs
 {
     auto paths = _processPoolConfiguration->additionalReadAccessAllowedPaths();
@@ -128,6 +138,18 @@
 
     _processPoolConfiguration->setAdditionalReadAccessAllowedPaths(WTFMove(paths));
 }
+
+#if ENABLE(WIFI_ASSERTIONS)
+- (NSUInteger)wirelessContextIdentifier
+{
+    return _processPoolConfiguration->wirelessContextIdentifier();
+}
+
+- (void)setWirelessContextIdentifier:(NSUInteger)identifier
+{
+    _processPoolConfiguration->setWirelessContextIdentifier(identifier);
+}
+#endif
 
 - (NSArray *)cachePartitionedURLSchemes
 {
@@ -227,6 +249,69 @@
     return _processPoolConfiguration->presentingApplicationPID();
 }
 
+- (void)setProcessSwapsOnNavigation:(BOOL)swaps
+{
+    _processPoolConfiguration->setProcessSwapsOnNavigation(swaps);
+}
+
+- (BOOL)processSwapsOnNavigation
+{
+    return _processPoolConfiguration->processSwapsOnNavigation();
+}
+
+- (void)setMaximumPrewarmedProcessCount:(NSUInteger)count
+{
+    _processPoolConfiguration->setMaximumPrewarmedProcessCount(count);
+}
+
+- (NSUInteger)maximumPrewarmedProcessCount
+{
+    return _processPoolConfiguration->maximumPrewarmedProcessCount();
+}
+
+- (void)setAlwaysKeepAndReuseSwappedProcesses:(BOOL)swaps
+{
+    _processPoolConfiguration->setAlwaysKeepAndReuseSwappedProcesses(swaps);
+}
+
+- (BOOL)alwaysKeepAndReuseSwappedProcesses
+{
+    return _processPoolConfiguration->alwaysKeepAndReuseSwappedProcesses();
+}
+
+- (void)setProcessSwapsOnWindowOpenWithOpener:(BOOL)swaps
+{
+    _processPoolConfiguration->setProcessSwapsOnWindowOpenWithOpener(swaps);
+}
+
+- (BOOL)processSwapsOnWindowOpenWithOpener
+{
+    return _processPoolConfiguration->processSwapsOnWindowOpenWithOpener();
+}
+
+- (BOOL)pageCacheEnabled
+{
+    return _processPoolConfiguration->cacheModel() != WebKit::CacheModelDocumentViewer;
+}
+
+- (void)setPageCacheEnabled:(BOOL)enabled
+{
+    if (!enabled)
+        _processPoolConfiguration->setCacheModel(WebKit::CacheModelDocumentViewer);
+    else if (![self pageCacheEnabled])
+        _processPoolConfiguration->setCacheModel(WebKit::CacheModelPrimaryWebBrowser);
+}
+
+- (BOOL)suppressesConnectionTerminationOnSystemChange
+{
+    return _processPoolConfiguration->suppressesConnectionTerminationOnSystemChange();
+}
+
+- (void)setSuppressesConnectionTerminationOnSystemChange:(BOOL)suppressesConnectionTerminationOnSystemChange
+{
+    _processPoolConfiguration->setSuppressesConnectionTerminationOnSystemChange(suppressesConnectionTerminationOnSystemChange);
+}
+
 #if PLATFORM(IOS)
 - (NSString *)CTDataConnectionServiceType
 {
@@ -272,6 +357,16 @@
 - (id)copyWithZone:(NSZone *)zone
 {
     return wrapper(_processPoolConfiguration->copy().leakRef());
+}
+
+- (NSString *)customWebContentServiceBundleIdentifier
+{
+    return _processPoolConfiguration->customWebContentServiceBundleIdentifier();
+}
+
+- (void)setCustomWebContentServiceBundleIdentifier:(NSString *)customWebContentServiceBundleIdentifier
+{
+    _processPoolConfiguration->setCustomWebContentServiceBundleIdentifier(customWebContentServiceBundleIdentifier);
 }
 
 #pragma mark WKObject protocol implementation

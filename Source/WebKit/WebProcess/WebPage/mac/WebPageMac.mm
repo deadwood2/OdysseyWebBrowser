@@ -63,17 +63,17 @@
 #import <WebCore/Editor.h>
 #import <WebCore/EventHandler.h>
 #import <WebCore/FocusController.h>
+#import <WebCore/Frame.h>
 #import <WebCore/FrameLoader.h>
 #import <WebCore/FrameView.h>
 #import <WebCore/GraphicsContext.h>
+#import <WebCore/GraphicsContext3D.h>
 #import <WebCore/HTMLConverter.h>
 #import <WebCore/HTMLPlugInImageElement.h>
 #import <WebCore/HitTestResult.h>
 #import <WebCore/KeyboardEvent.h>
 #import <WebCore/MIMETypeRegistry.h>
-#import <WebCore/MainFrame.h>
 #import <WebCore/NetworkStorageSession.h>
-#import <WebCore/NetworkingContext.h>
 #import <WebCore/NodeRenderStyle.h>
 #import <WebCore/Page.h>
 #import <WebCore/PageOverlayController.h>
@@ -97,9 +97,8 @@
 #import <WebCore/MediaPlaybackTargetMock.h>
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 void WebPage::platformInitialize()
 {
@@ -254,7 +253,7 @@ bool WebPage::executeKeypressCommandsInternal(const Vector<WebCore::KeypressComm
                 bool commandExecutedByEditor = command.execute(event);
                 eventWasHandled |= commandExecutedByEditor;
                 if (!commandExecutedByEditor) {
-                    bool performedNonEditingBehavior = event->keyEvent()->type() == PlatformEvent::RawKeyDown && performNonEditingBehaviorForSelector(commands[i].commandName, event);
+                    bool performedNonEditingBehavior = event->underlyingPlatformEvent()->type() == PlatformEvent::RawKeyDown && performNonEditingBehaviorForSelector(commands[i].commandName, event);
                     eventWasHandled |= performedNonEditingBehavior;
                 }
             } else {
@@ -272,10 +271,10 @@ bool WebPage::handleEditingKeyboardEvent(KeyboardEvent* event)
 {
     Frame* frame = frameForEvent(event);
     
-    const PlatformKeyboardEvent* platformEvent = event->keyEvent();
+    auto* platformEvent = event->underlyingPlatformEvent();
     if (!platformEvent)
         return false;
-    const Vector<KeypressCommand>& commands = event->keypressCommands();
+    auto& commands = event->keypressCommands();
 
     ASSERT(!platformEvent->macEvent()); // Cannot have a native event in WebProcess.
 
@@ -297,8 +296,8 @@ bool WebPage::handleEditingKeyboardEvent(KeyboardEvent* event)
     // If there are no text insertion commands, default keydown handler is the right time to execute the commands.
     // Keypress (Char event) handler is the latest opportunity to execute.
     if (!haveTextInsertionCommands || platformEvent->type() == PlatformEvent::Char) {
-        eventWasHandled = executeKeypressCommandsInternal(event->keypressCommands(), event);
-        event->keypressCommands().clear();
+        eventWasHandled = executeKeypressCommandsInternal(commands, event);
+        commands.clear();
     }
 
     return eventWasHandled;
@@ -399,8 +398,9 @@ void WebPage::performDictionaryLookupAtLocation(const FloatPoint& floatPoint)
 
     // Find the frame the point is over.
     HitTestResult result = m_page->mainFrame().eventHandler().hitTestResultAtPoint(m_page->mainFrame().view()->windowToContents(roundedIntPoint(floatPoint)));
-    NSDictionary *options = nil;
-    auto range = DictionaryLookup::rangeAtHitTestResult(result, &options);
+    RefPtr<Range> range;
+    NSDictionary *options;
+    std::tie(range, options) = DictionaryLookup::rangeAtHitTestResult(result);
     if (!range)
         return;
 
@@ -413,8 +413,10 @@ void WebPage::performDictionaryLookupAtLocation(const FloatPoint& floatPoint)
 
 void WebPage::performDictionaryLookupForSelection(Frame& frame, const VisibleSelection& selection, TextIndicatorPresentationTransition presentationTransition)
 {
-    NSDictionary *options = nil;
-    if (auto selectedRange = DictionaryLookup::rangeForSelection(selection, &options))
+    RefPtr<Range> selectedRange;
+    NSDictionary *options;
+    std::tie(selectedRange, options) = DictionaryLookup::rangeForSelection(selection);
+    if (selectedRange)
         performDictionaryLookupForRange(frame, *selectedRange, options, presentationTransition);
 }
 
@@ -459,10 +461,10 @@ DictionaryPopupInfo WebPage::dictionaryPopupInfoForRange(Frame& frame, Range& ra
         RetainPtr<NSMutableDictionary> scaledAttributes = adoptNS([attributes mutableCopy]);
 
         NSFont *font = [scaledAttributes objectForKey:NSFontAttributeName];
-        if (font) {
-            font = [fontManager convertFont:font toSize:[font pointSize] * pageScaleFactor()];
+        if (font)
+            font = [fontManager convertFont:font toSize:font.pointSize * pageScaleFactor()];
+        if (font)
             [scaledAttributes setObject:font forKey:NSFontAttributeName];
-        }
 
         [scaledNSAttributedString addAttributes:scaledAttributes.get() range:range];
     }];
@@ -677,50 +679,10 @@ WKAccessibilityWebPageObject* WebPage::accessibilityRemoteObject()
 {
     return m_mockAccessibilityElement.get();
 }
-         
-bool WebPage::platformHasLocalDataForURL(const WebCore::URL& url)
-{
-    NSMutableURLRequest* request = [[NSMutableURLRequest alloc] initWithURL:url];
-    [request setValue:(NSString*)userAgent(url) forHTTPHeaderField:@"User-Agent"];
-    NSCachedURLResponse *cachedResponse;
-    if (CFURLStorageSessionRef storageSession = corePage()->mainFrame().loader().networkingContext()->storageSession().platformSession())
-        cachedResponse = cachedResponseForRequest(storageSession, request);
-    else
-        cachedResponse = [[NSURLCache sharedURLCache] cachedResponseForRequest:request];
-    [request release];
-    
-    return cachedResponse;
-}
-
-static NSCachedURLResponse *cachedResponseForURL(WebPage* webPage, const URL& url)
-{
-    RetainPtr<NSMutableURLRequest> request = adoptNS([[NSMutableURLRequest alloc] initWithURL:url]);
-    [request setValue:(NSString *)webPage->userAgent(url) forHTTPHeaderField:@"User-Agent"];
-
-    if (CFURLStorageSessionRef storageSession = webPage->corePage()->mainFrame().loader().networkingContext()->storageSession().platformSession())
-        return cachedResponseForRequest(storageSession, request.get());
-
-    return [[NSURLCache sharedURLCache] cachedResponseForRequest:request.get()];
-}
-
-String WebPage::cachedSuggestedFilenameForURL(const URL& url)
-{
-    return [[cachedResponseForURL(this, url) response] suggestedFilename];
-}
-
-String WebPage::cachedResponseMIMETypeForURL(const URL& url)
-{
-    return [[cachedResponseForURL(this, url) response] MIMEType];
-}
-
-RefPtr<SharedBuffer> WebPage::cachedResponseDataForURL(const URL& url)
-{
-    return SharedBuffer::create([cachedResponseForURL(this, url) data]);
-}
 
 bool WebPage::platformCanHandleRequest(const WebCore::ResourceRequest& request)
 {
-    if ([NSURLConnection canHandleRequest:request.nsURLRequest(DoNotUpdateHTTPBody)])
+    if ([NSURLConnection canHandleRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody)])
         return true;
 
     // FIXME: Return true if this scheme is any one WebKit2 knows how to handle.
@@ -774,7 +736,7 @@ void WebPage::setTopOverhangImage(WebImage* image)
 
     layer->setSize(image->size());
     layer->setPosition(FloatPoint(0, -image->size().height()));
-    layer->platformLayer().contents = (id)image->bitmap().makeCGImageCopy().get();
+    layer->platformLayer().contents = (__bridge id)image->bitmap().makeCGImageCopy().get();
 }
 
 void WebPage::setBottomOverhangImage(WebImage* image)
@@ -788,7 +750,7 @@ void WebPage::setBottomOverhangImage(WebImage* image)
         return;
 
     layer->setSize(image->size());
-    layer->platformLayer().contents = (id)image->bitmap().makeCGImageCopy().get();
+    layer->platformLayer().contents = (__bridge id)image->bitmap().makeCGImageCopy().get();
 }
 
 void WebPage::updateHeaderAndFooterLayersForDeviceScaleChange(float scaleFactor)
@@ -976,7 +938,7 @@ void WebPage::performImmediateActionHitTestAtLocation(WebCore::FloatPoint locati
 {
     layoutIfNeeded();
 
-    MainFrame& mainFrame = corePage()->mainFrame();
+    auto& mainFrame = corePage()->mainFrame();
     if (!mainFrame.view() || !mainFrame.view()->renderView()) {
         send(Messages::WebPageProxy::DidPerformImmediateActionHitTest(WebHitTestResultData(), false, UserData()));
         return;
@@ -1013,7 +975,7 @@ void WebPage::performImmediateActionHitTestAtLocation(WebCore::FloatPoint locati
     }
 
     bool pageOverlayDidOverrideDataDetectors = false;
-    for (const auto& overlay : mainFrame.pageOverlayController().pageOverlays()) {
+    for (const auto& overlay : corePage()->pageOverlayController().pageOverlays()) {
         WebPageOverlay* webOverlay = WebPageOverlay::fromCoreOverlay(*overlay);
         if (!webOverlay)
             continue;
@@ -1092,9 +1054,7 @@ std::tuple<RefPtr<WebCore::Range>, NSDictionary *> WebPage::lookupTextAtLocation
 
     auto point = roundedIntPoint(locationInViewCoordinates);
     auto result = mainFrame.eventHandler().hitTestResultAtPoint(m_page->mainFrame().view()->windowToContents(point));
-    NSDictionary *options = nil;
-    auto range = DictionaryLookup::rangeAtHitTestResult(result, &options);
-    return { WTFMove(range), WTFMove(options) };
+    return DictionaryLookup::rangeAtHitTestResult(result);
 }
 
 void WebPage::immediateActionDidUpdate()
@@ -1118,8 +1078,7 @@ void WebPage::immediateActionDidComplete()
 
 void WebPage::dataDetectorsDidPresentUI(PageOverlay::PageOverlayID overlayID)
 {
-    MainFrame& mainFrame = corePage()->mainFrame();
-    for (const auto& overlay : mainFrame.pageOverlayController().pageOverlays()) {
+    for (const auto& overlay : corePage()->pageOverlayController().pageOverlays()) {
         if (overlay->pageOverlayID() == overlayID) {
             if (WebPageOverlay* webOverlay = WebPageOverlay::fromCoreOverlay(*overlay))
                 webOverlay->dataDetectorsDidPresentUI();
@@ -1130,8 +1089,7 @@ void WebPage::dataDetectorsDidPresentUI(PageOverlay::PageOverlayID overlayID)
 
 void WebPage::dataDetectorsDidChangeUI(PageOverlay::PageOverlayID overlayID)
 {
-    MainFrame& mainFrame = corePage()->mainFrame();
-    for (const auto& overlay : mainFrame.pageOverlayController().pageOverlays()) {
+    for (const auto& overlay : corePage()->pageOverlayController().pageOverlays()) {
         if (overlay->pageOverlayID() == overlayID) {
             if (WebPageOverlay* webOverlay = WebPageOverlay::fromCoreOverlay(*overlay))
                 webOverlay->dataDetectorsDidChangeUI();
@@ -1142,12 +1100,12 @@ void WebPage::dataDetectorsDidChangeUI(PageOverlay::PageOverlayID overlayID)
 
 void WebPage::dataDetectorsDidHideUI(PageOverlay::PageOverlayID overlayID)
 {
-    MainFrame& mainFrame = corePage()->mainFrame();
+    auto& mainFrame = corePage()->mainFrame();
 
     // Dispatching a fake mouse event will allow clients to display any UI that is normally displayed on hover.
     mainFrame.eventHandler().dispatchFakeMouseMoveEventSoon();
 
-    for (const auto& overlay : mainFrame.pageOverlayController().pageOverlays()) {
+    for (const auto& overlay : corePage()->pageOverlayController().pageOverlays()) {
         if (overlay->pageOverlayID() == overlayID) {
             if (WebPageOverlay* webOverlay = WebPageOverlay::fromCoreOverlay(*overlay))
                 webOverlay->dataDetectorsDidHideUI();
@@ -1188,7 +1146,6 @@ void WebPage::setShouldPlayToPlaybackTarget(uint64_t contextId, bool shouldPlay)
     m_page->setShouldPlayToPlaybackTarget(contextId, shouldPlay);
 }
 #endif
-
 
 } // namespace WebKit
 

@@ -294,7 +294,7 @@ void adjustMIMETypeIfNecessary(CFURLResponseRef cfResponse, bool isMainResourceL
 
     if (!result) {
         auto url = CFURLResponseGetURL(cfResponse);
-        if ([(NSURL *)url isFileURL]) {
+        if ([(__bridge NSURL *)url isFileURL]) {
             RetainPtr<CFStringRef> extension = adoptCF(CFURLCopyPathExtension(url));
             if (extension) {
                 // <rdar://problem/7007389> CoreTypes UTI map is missing 100+ file extensions that GateKeeper knew about
@@ -326,6 +326,17 @@ void adjustMIMETypeIfNecessary(CFURLResponseRef cfResponse, bool isMainResourceL
         CFURLResponseSetMIMEType(cfResponse, result.get());
 }
 #endif
+
+static bool schemeWasUpgradedDueToDynamicHSTS(NSURLRequest *request)
+{
+#if !USE(CFNETWORK_IGNORE_HSTS)
+    UNUSED_PARAM(request);
+    return false;
+#else
+    return [request respondsToSelector:@selector(_schemeWasUpgradedDueToDynamicHSTS)]
+        && [request _schemeWasUpgradedDueToDynamicHSTS];
+#endif
+}
 
 NSURLResponse *synthesizeRedirectResponseIfNecessary(NSURLRequest *currentRequest, NSURLRequest *newRequest, NSURLResponse *redirectResponse)
 {

@@ -46,7 +46,6 @@
 #import <WebKit/WKWebsiteDataStorePrivate.h>
 #import <WebKit/WKWebsiteDataStoreRef.h>
 #import <WebKit/_WKApplicationManifest.h>
-#import <WebKit/_WKProcessPoolConfiguration.h>
 #import <WebKit/_WKUserContentExtensionStore.h>
 #import <WebKit/_WKUserContentExtensionStorePrivate.h>
 #import <wtf/MainThread.h>
@@ -61,17 +60,16 @@ void initializeWebViewConfiguration(const char* libraryPath, WKStringRef injecte
     [globalWebViewConfiguration release];
     globalWebViewConfiguration = [[WKWebViewConfiguration alloc] init];
 
-    globalWebViewConfiguration.processPool = (WKProcessPool *)context;
-    globalWebViewConfiguration.websiteDataStore = (WKWebsiteDataStore *)WKContextGetWebsiteDataStore(context);
+    globalWebViewConfiguration.processPool = (__bridge WKProcessPool *)context;
+    globalWebViewConfiguration.websiteDataStore = (__bridge WKWebsiteDataStore *)WKContextGetWebsiteDataStore(context);
     globalWebViewConfiguration._allowUniversalAccessFromFileURLs = YES;
     globalWebViewConfiguration._applePayEnabled = YES;
 
 #if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300) || PLATFORM(IOS)
-    WKCookieManagerSetCookieStoragePartitioningEnabled(WKContextGetCookieManager(context), true);
     WKCookieManagerSetStorageAccessAPIEnabled(WKContextGetCookieManager(context), true);
 #endif
 
-    WKWebsiteDataStore* poolWebsiteDataStore = (WKWebsiteDataStore *)WKContextGetWebsiteDataStore((WKContextRef)globalWebViewConfiguration.processPool);
+    WKWebsiteDataStore* poolWebsiteDataStore = (__bridge WKWebsiteDataStore *)WKContextGetWebsiteDataStore((__bridge WKContextRef)globalWebViewConfiguration.processPool);
     [poolWebsiteDataStore _setCacheStoragePerOriginQuota: 400 * 1024];
     if (libraryPath) {
         String cacheStorageDirectory = String(libraryPath) + '/' + "CacheStorage";
@@ -93,6 +91,10 @@ void initializeWebViewConfiguration(const char* libraryPath, WKStringRef injecte
 #endif
     globalWebViewConfiguration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
 #endif
+
+#if USE(SYSTEM_PREVIEW)
+    globalWebViewConfiguration._systemPreviewEnabled = YES;
+#endif
 }
 
 void TestController::cocoaPlatformInitialize()
@@ -113,7 +115,7 @@ void TestController::cocoaPlatformInitialize()
 WKContextRef TestController::platformContext()
 {
 #if WK_API_ENABLED
-    return (WKContextRef)globalWebViewConfiguration.processPool;
+    return (__bridge WKContextRef)globalWebViewConfiguration.processPool;
 #else
     return nullptr;
 #endif
@@ -122,10 +124,18 @@ WKContextRef TestController::platformContext()
 WKPreferencesRef TestController::platformPreferences()
 {
 #if WK_API_ENABLED
-    return (WKPreferencesRef)globalWebViewConfiguration.preferences;
+    return (__bridge WKPreferencesRef)globalWebViewConfiguration.preferences;
 #else
     return nullptr;
 #endif
+}
+
+void TestController::platformAddTestOptions(TestOptions& options) const
+{
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"EnableProcessSwapOnNavigation"])
+        options.enableProcessSwapOnNavigation = true;
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"EnableProcessSwapOnWindowOpen"])
+        options.enableProcessSwapOnWindowOpen = true;
 }
 
 void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOptions& options)
@@ -147,6 +157,9 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
     if (options.enableAttachmentElement)
         [copiedConfiguration _setAttachmentElementEnabled: YES];
 
+    if (options.enableColorFilter)
+        [copiedConfiguration _setColorFilterEnabled: YES];
+
     if (options.applicationManifest.length()) {
         auto manifestPath = [NSString stringWithUTF8String:options.applicationManifest.c_str()];
         NSString *text = [NSString stringWithContentsOfFile:manifestPath usedEncoding:nullptr error:nullptr];
@@ -154,6 +167,9 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
     }
 
     m_mainWebView = std::make_unique<PlatformWebView>(copiedConfiguration.get(), options);
+
+    if (options.punchOutWhiteBackgroundsInDarkMode)
+        m_mainWebView->setDrawsBackground(false);
 #else
     m_mainWebView = std::make_unique<PlatformWebView>(globalWebViewConfiguration, options);
 #endif
@@ -174,7 +190,7 @@ WKContextRef TestController::platformAdjustContext(WKContextRef context, WKConte
 {
 #if WK_API_ENABLED
     initializeWebViewConfiguration(libraryPathForTesting(), injectedBundlePath(), context, contextConfiguration);
-    return (WKContextRef)globalWebViewConfiguration.processPool;
+    return (__bridge WKContextRef)globalWebViewConfiguration.processPool;
 #else
     return nullptr;
 #endif
@@ -252,13 +268,26 @@ void TestController::removeAllSessionCredentials()
 void TestController::getAllStorageAccessEntries()
 {
 #if WK_API_ENABLED
-    [globalWebViewConfiguration.websiteDataStore _getAllStorageAccessEntries:^(NSArray<NSString *> *nsDomains) {
+    auto* parentView = mainWebView();
+    if (!parentView)
+        return;
+
+    [globalWebViewConfiguration.websiteDataStore _getAllStorageAccessEntriesFor:parentView->platformView() completionHandler:^(NSArray<NSString *> *nsDomains) {
         Vector<String> domains;
         domains.reserveInitialCapacity(nsDomains.count);
         for (NSString *domain : nsDomains)
             domains.uncheckedAppend(domain);
         m_currentInvocation->didReceiveAllStorageAccessEntries(domains);
     }];
+#endif
+}
+
+void TestController::injectUserScript(WKStringRef script)
+{
+#if WK_API_ENABLED
+    auto userScript = adoptNS([[WKUserScript alloc] initWithSource: toWTFString(script) injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:NO]);
+
+    [[globalWebViewConfiguration userContentController] addUserScript: userScript.get()];
 #endif
 }
 

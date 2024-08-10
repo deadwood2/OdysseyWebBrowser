@@ -54,7 +54,7 @@ bool WebEditorClient::executePendingEditorCommands(Frame* frame, const Vector<WT
 
 void WebEditorClient::handleKeyboardEvent(KeyboardEvent* event)
 {
-    const PlatformKeyboardEvent* platformEvent = event->keyEvent();
+    auto* platformEvent = event->underlyingPlatformEvent();
     if (!platformEvent)
         return;
 
@@ -110,7 +110,7 @@ void WebEditorClient::handleKeyboardEvent(KeyboardEvent* event)
 
 void WebEditorClient::handleInputMethodKeydown(KeyboardEvent* event)
 {
-    const PlatformKeyboardEvent* platformEvent = event->keyEvent();
+    auto* platformEvent = event->underlyingPlatformEvent();
     if (platformEvent && platformEvent->handledByInputMethod())
         event->setDefaultHandled();
 }

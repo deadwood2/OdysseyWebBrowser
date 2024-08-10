@@ -34,6 +34,7 @@ from webkitpy.common.system.outputcapture import OutputCapture
 from webkitpy.tool.mocktool import MockOptions
 from webkitpy.common.system.executive_mock import MockExecutive, MockExecutive2, ScriptError
 from webkitpy.common.version import Version
+from webkitpy.common.version_name_map import VersionNameMap
 
 
 class MacTest(darwin_testcase.DarwinTest):
@@ -41,6 +42,11 @@ class MacTest(darwin_testcase.DarwinTest):
     os_version = Version.from_name('Lion')
     port_name = 'mac-lion'
     port_maker = MacPort
+
+    # 2 minor versions from the current version should always be a future version.
+    FUTURE_VERSION = Version.from_iterable(MacPort.CURRENT_VERSION)
+    FUTURE_VERSION.minor += 2
+
 
     def test_version(self):
         port = self.make_port()
@@ -68,8 +74,9 @@ class MacTest(darwin_testcase.DarwinTest):
         self.assert_name('mac', 'highsierra', 'mac-highsierra')
         self.assert_name('mac-highsierra', 'elcapitan', 'mac-highsierra')
         self.assert_name('mac-highsierra', 'sierra', 'mac-highsierra')
-        self.assert_name('mac', 'future', 'mac-future')
-        self.assert_name('mac-future', 'future', 'mac-future')
+        self.assert_name('mac', 'mojave', 'mac-mojave')
+        self.assert_name('mac-mojave', 'sierra', 'mac-mojave')
+        self.assert_name('mac-mojave', 'highsierra', 'mac-mojave')
         self.assertRaises(AssertionError, self.assert_name, 'mac-tiger', 'leopard', 'mac-leopard')
 
     def test_setup_environ_for_server(self):
@@ -152,3 +159,68 @@ class MacTest(darwin_testcase.DarwinTest):
         self.assertEqual(search_path[3], '/mock-checkout/LayoutTests/platform/mac-lion')
         self.assertEqual(search_path[4], '/additional_testing_path/mac-add-mountainlion-wk1')
         self.assertEqual(search_path[5], '/mock-checkout/LayoutTests/platform/mac-mountainlion-wk1')
+
+    def test_factory_with_future_version(self):
+        port = self.make_port(options=MockOptions(webkit_test_runner=True), os_version=MacTest.FUTURE_VERSION, os_name='mac', port_name='mac')
+        self.assertEqual(port.driver_name(), 'WebKitTestRunner')
+        self.assertEqual(port.version_name(), VersionNameMap().to_name(MacPort.CURRENT_VERSION, platform=MacPort.port_name))
+
+        port = self.make_port(options=MockOptions(webkit_test_runner=False), os_version=MacTest.FUTURE_VERSION, os_name='mac', port_name='mac')
+        self.assertEqual(port.driver_name(), 'DumpRenderTree')
+        self.assertEqual(port.version_name(), VersionNameMap().to_name(MacPort.CURRENT_VERSION, platform=MacPort.port_name))
+
+        port = self.make_port(options=MockOptions(webkit_test_runner=False), os_version=MacTest.FUTURE_VERSION, os_name='mac', port_name='mac-wk2')
+        self.assertEqual(port.driver_name(), 'WebKitTestRunner')
+        self.assertEqual(port.version_name(), VersionNameMap().to_name(MacPort.CURRENT_VERSION, platform=MacPort.port_name))
+
+        port = self.make_port(options=MockOptions(webkit_test_runner=True), os_version=MacTest.FUTURE_VERSION, os_name='mac', port_name='mac-wk2')
+        self.assertEqual(port.driver_name(), 'WebKitTestRunner')
+        self.assertEqual(port.version_name(), VersionNameMap().to_name(MacPort.CURRENT_VERSION, platform=MacPort.port_name))
+
+    def test_factory_with_future_version_and_apple_additions(self):
+        with port_testcase.bind_mock_apple_additions():
+            port = self.make_port(options=MockOptions(webkit_test_runner=True), os_version=MacTest.FUTURE_VERSION, os_name='mac', port_name='mac')
+            self.assertEqual(port.driver_name(), 'WebKitTestRunner')
+            self.assertEqual(port.version_name(), None)
+
+            port = self.make_port(options=MockOptions(webkit_test_runner=False), os_version=MacTest.FUTURE_VERSION, os_name='mac', port_name='mac')
+            self.assertEqual(port.driver_name(), 'DumpRenderTree')
+            self.assertEqual(port.version_name(), None)
+
+            port = self.make_port(options=MockOptions(webkit_test_runner=False), os_version=MacTest.FUTURE_VERSION, os_name='mac', port_name='mac-wk2')
+            self.assertEqual(port.driver_name(), 'WebKitTestRunner')
+            self.assertEqual(port.version_name(), None)
+
+            port = self.make_port(options=MockOptions(webkit_test_runner=True), os_version=MacTest.FUTURE_VERSION, os_name='mac', port_name='mac-wk2')
+            self.assertEqual(port.driver_name(), 'WebKitTestRunner')
+            self.assertEqual(port.version_name(), None)
+
+    def test_factory_with_portname_version(self):
+        port = self.make_port(options=MockOptions(webkit_test_runner=False), port_name='mac-mountainlion')
+        self.assertEqual(port.driver_name(), 'DumpRenderTree')
+        self.assertEqual(port.version_name(), 'Mountain Lion')
+
+        port = self.make_port(options=MockOptions(webkit_test_runner=True), port_name='mac-mountainlion')
+        self.assertEqual(port.driver_name(), 'WebKitTestRunner')
+        self.assertEqual(port.version_name(), 'Mountain Lion')
+
+        port = self.make_port(options=MockOptions(webkit_test_runner=True), port_name='mac-mountainlion-wk2')
+        self.assertEqual(port.driver_name(), 'WebKitTestRunner')
+        self.assertEqual(port.version_name(), 'Mountain Lion')
+
+        port = self.make_port(options=MockOptions(webkit_test_runner=False), port_name='mac-mountainlion-wk2')
+        self.assertEqual(port.driver_name(), 'WebKitTestRunner')
+        self.assertEqual(port.version_name(), 'Mountain Lion')
+
+    def test_factory_with_portname_wk2(self):
+        port = self.make_port(options=MockOptions(webkit_test_runner=False), port_name='mac')
+        self.assertEqual(port.driver_name(), 'DumpRenderTree')
+
+        port = self.make_port(options=MockOptions(webkit_test_runner=True), port_name='mac')
+        self.assertEqual(port.driver_name(), 'WebKitTestRunner')
+
+        port = self.make_port(options=MockOptions(webkit_test_runner=True), port_name='mac-wk2')
+        self.assertEqual(port.driver_name(), 'WebKitTestRunner')
+
+        port = self.make_port(options=MockOptions(webkit_test_runner=False), port_name='mac-wk2')
+        self.assertEqual(port.driver_name(), 'WebKitTestRunner')

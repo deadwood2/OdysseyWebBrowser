@@ -26,9 +26,7 @@
 #include "config.h"
 #include "WebProcess.h"
 
-#include "SharedBuffer.h"
-
-using namespace WebCore;
+#include <WebCore/SharedBuffer.h>
 
 WTF_EXPORT RefPtr<WebCore::SharedBuffer> loadResourceIntoBuffer(const char* name)
 {

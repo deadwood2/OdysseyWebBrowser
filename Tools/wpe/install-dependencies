@@ -107,6 +107,7 @@ function installDependenciesWithApt {
     packages="$packages \
         git \
         gsettings-desktop-schemas-dev \
+        libegl1-mesa-dev \
         libexpat1-dev \
         libgles2-mesa-dev \
         libluajit-5.1-dev \
@@ -118,13 +119,14 @@ function installDependenciesWithApt {
         libsrtp0-dev \
         libtheora-dev \
         libtool-bin \
-        libva-dev \
         libvorbis-dev \
         libvpx-dev \
         libxcb-xkb-dev \
+        libxkbcommon-dev \
         libxml-libxml-perl \
         libwayland-dev \
-        luajit"
+        luajit \
+        yasm"
 
     # These are dependencies necessary for using webkit-patch
     packages="$packages \
@@ -137,6 +139,7 @@ function installDependenciesWithApt {
 function installDependenciesWithPacman {
     # These are dependencies necessary for building WPE.
     packages=" \
+        alsa-lib \
         autoconf \
         automake \
         bison \
@@ -204,10 +207,10 @@ function installDependenciesWithPacman {
         libsrtp \
         libtheora \
         libv4l-dev \
-        libva \
         libvorbis \
         libvpx \
         libxcb \
+        libxkbcommon \
         luajit \
         mesa \
         mesa-libgl \
@@ -216,7 +219,9 @@ function installDependenciesWithPacman {
         perl-xml-libxml \
         util-linux \
         v4l-utils \
-        wayland"
+        xorg-xrandr \
+        wayland \
+        yasm"
 
     # These are dependencies necessary for using webkit-patch
     packages="$packages \
@@ -229,10 +234,11 @@ function installDependenciesWithPacman {
 }
 
 function installDependenciesWithDnf {
-    # These are dependencies necessary for building WebKitGTK+.
+    # These are dependencies necessary for building WebKitWPE.
     packages=" \
         autoconf \
         automake \
+        alsa-lib-devel \
         bison \
         cmake \
         flex \
@@ -255,6 +261,7 @@ function installDependenciesWithDnf {
         ninja-build \
         patch \
         perl-File-Copy-Recursive \
+        perl-JSON-PP \
         perl-Time-HiRes \
         perl-version \
         ruby \
@@ -288,18 +295,21 @@ function installDependenciesWithDnf {
         libsrtp-devel \
         libtheora-devel \
         libv4l-devel \
-        libva-devel \
         libvorbis-devel \
         libvpx-devel \
         libxcb-devel \
+        libxkbcommon-devel \
+        libXrandr-devel \
         luajit \
         luajit-devel \
         mesa-libGLES-devel \
+        mesa-libEGL-devel \
         opus-devel \
         orc-devel \
         perl-XML-LibXML \
         pulseaudio-libs-devel \
-        wayland-devel"
+        wayland-devel \
+        yasm"
 
     # These are dependencies necessary for using webkit-patch
     packages="$packages

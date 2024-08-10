@@ -40,7 +40,6 @@
 #include "ResourceRequest.h"
 #include "ResourceResponse.h"
 #include "SharedBuffer.h"
-#include <wtf/CurrentTime.h>
 #include <wtf/DateMath.h>
 #include <wtf/HexNumber.h>
 #include <wtf/MD5.h>
@@ -156,8 +155,7 @@ bool CurlCacheEntry::loadResponseHeaders()
         return false;
 
     String headerContent = String(buffer.data(), buffer.size());
-    Vector<String> headerFields;
-    headerContent.split('\n', headerFields);
+    Vector<String> headerFields = headerContent.split('\n');
 
     Vector<String>::const_iterator it = headerFields.begin();
     Vector<String>::const_iterator end = headerFields.end();
@@ -276,7 +274,6 @@ bool CurlCacheEntry::parseResponseHeaders(const ResourceResponse& response)
         return false;
 
     WallTime fileTime;
-    time_t fileModificationDate;
 
     if (auto fileTimeFromFile = FileSystem::getFileModificationTime(m_headerFilename))
         fileTime = fileTimeFromFile.value();

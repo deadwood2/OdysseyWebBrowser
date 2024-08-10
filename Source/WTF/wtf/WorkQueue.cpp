@@ -38,10 +38,6 @@
 #include <wtf/Threading.h>
 #include <wtf/text/WTFString.h>
 
-#if USE(WINDOWS_EVENT_LOOP)
-#include <wtf/win/WorkItemContext.h>
-#endif
-
 namespace WTF {
 
 Ref<WorkQueue> WorkQueue::create(const char* name, Type type, QOS qos)
@@ -79,7 +75,7 @@ void WorkQueue::concurrentApply(size_t iterations, WTF::Function<void (size_t in
 
             m_workers.reserveInitialCapacity(threadCount);
             for (unsigned i = 0; i < threadCount; ++i) {
-                m_workers.append(Thread::create(String::format("ThreadPool Worker %u", i).utf8().data(), [this] {
+                m_workers.append(Thread::create("ThreadPool Worker", [this] {
                     threadBody();
                 }));
             }

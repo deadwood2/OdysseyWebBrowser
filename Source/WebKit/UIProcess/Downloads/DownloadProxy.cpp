@@ -41,9 +41,8 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static uint64_t generateDownloadID()
 {
@@ -99,7 +98,7 @@ WebPageProxy* DownloadProxy::originatingPage() const
 
 void DownloadProxy::setOriginatingPage(WebPageProxy* page)
 {
-    m_originatingPage = page ? page->createWeakPtr() : nullptr;
+    m_originatingPage = makeWeakPtr(page);
 }
 
 void DownloadProxy::didStart(const ResourceRequest& request, const String& suggestedFilename)
@@ -116,12 +115,12 @@ void DownloadProxy::didStart(const ResourceRequest& request, const String& sugge
     m_processPool->downloadClient().didStart(*m_processPool, *this);
 }
 
-void DownloadProxy::didReceiveAuthenticationChallenge(const AuthenticationChallenge& authenticationChallenge, uint64_t challengeID)
+void DownloadProxy::didReceiveAuthenticationChallenge(AuthenticationChallenge&& authenticationChallenge, uint64_t challengeID)
 {
     if (!m_processPool)
         return;
 
-    auto authenticationChallengeProxy = AuthenticationChallengeProxy::create(authenticationChallenge, challengeID, m_processPool->networkingProcessConnection());
+    auto authenticationChallengeProxy = AuthenticationChallengeProxy::create(WTFMove(authenticationChallenge), challengeID, m_processPool->networkingProcessConnection());
 
     m_processPool->downloadClient().didReceiveAuthenticationChallenge(*m_processPool, *this, authenticationChallengeProxy.get());
 }

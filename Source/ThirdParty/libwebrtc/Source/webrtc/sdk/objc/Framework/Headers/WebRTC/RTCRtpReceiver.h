@@ -26,6 +26,7 @@ typedef NS_ENUM(NSInteger, RTCRtpMediaType) {
 @class RTCRtpReceiver;
 
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCRtpReceiverDelegate")))
 @protocol RTCRtpReceiverDelegate <NSObject>
 
 /** Called when the first RTP packet is received.
@@ -46,6 +47,7 @@ RTC_EXPORT
 @end
 
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCRtpReceiver")))
 @protocol RTCRtpReceiver <NSObject>
 
 /** A unique identifier for this receiver. */
@@ -65,7 +67,7 @@ RTC_EXPORT
  *  RTCMediaStreamTrack. Use isEqual: instead of == to compare
  *  RTCMediaStreamTrack instances.
  */
-@property(nonatomic, readonly) RTCMediaStreamTrack *track;
+@property(nonatomic, readonly, nullable) RTCMediaStreamTrack *track;
 
 /** The delegate for this RtpReceiver. */
 @property(nonatomic, weak) id<RTCRtpReceiverDelegate> delegate;
@@ -73,6 +75,7 @@ RTC_EXPORT
 @end
 
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCRtpReceiver")))
 @interface RTCRtpReceiver : NSObject <RTCRtpReceiver>
 
 - (instancetype)init NS_UNAVAILABLE;

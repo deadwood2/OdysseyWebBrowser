@@ -95,8 +95,6 @@ class TestRunner(object):
         self._test_env["TEST_WEBKIT_API_WEBKIT2_INJECTED_BUNDLE_PATH"] = common.library_build_path()
         self._test_env["WEBKIT_EXEC_PATH"] = self._programs_path
 
-        return True
-
     def _tear_down_testing_environment(self):
         if self._driver:
             self._driver.stop()
@@ -147,10 +145,11 @@ class TestRunner(object):
 
     def _run_test_glib(self, test_program):
         timeout = self._options.timeout
-        test = os.path.join(os.path.basename(os.path.dirname(test_program)), os.path.basename(test_program))
-        if self._expectations.is_slow(os.path.basename(test_program)):
-            timeout *= 10
-        return GLibTestRunner(test_program, timeout).run(skipped=self._test_cases_to_skip(test_program), env=self._test_env)
+
+        def is_slow_test(test, subtest):
+            return self._expectations.is_slow(test, subtest)
+
+        return GLibTestRunner(test_program, timeout, is_slow_test, timeout * 10).run(skipped=self._test_cases_to_skip(test_program), env=self._test_env)
 
     def _get_tests_from_google_test_suite(self, test_program):
         try:
@@ -232,8 +231,7 @@ class TestRunner(object):
             sys.stderr.flush()
             return 1
 
-        if not self._setup_testing_environment():
-            return 1
+        self._setup_testing_environment()
 
         # Remove skipped tests now instead of when we find them, because
         # some tests might be skipped while setting up the test environment.

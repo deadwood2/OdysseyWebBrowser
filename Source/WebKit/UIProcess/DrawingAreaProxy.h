@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
  * Portions Copyright (c) 2010 Motorola Mobility, Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,7 +38,7 @@
 #include <wtf/TypeCasts.h>
 
 #if PLATFORM(COCOA)
-namespace WebCore {
+namespace WTF {
 class MachSendRight;
 }
 #endif
@@ -71,7 +71,7 @@ public:
     static constexpr Seconds didUpdateBackingStoreStateTimeout() { return Seconds::fromMilliseconds(500); }
 
     virtual void colorSpaceDidChange() { }
-    virtual void minimumLayoutSizeDidChange() { }
+    virtual void viewLayoutSizeDidChange() { }
 
     virtual void adjustTransientZoom(double, WebCore::FloatPoint) { }
     virtual void commitTransientZoom(double, WebCore::FloatPoint) { }
@@ -84,7 +84,7 @@ public:
 
     virtual void updateDebugIndicator() { }
 
-    virtual void waitForDidUpdateActivityState() { }
+    virtual void waitForDidUpdateActivityState(ActivityStateChangeID) { }
     
     virtual void dispatchAfterEnsuringDrawing(WTF::Function<void (CallbackBase::Error)>&&) { ASSERT_NOT_REACHED(); }
 
@@ -101,7 +101,7 @@ public:
     virtual void prepareForAppSuspension() { }
 
 #if PLATFORM(COCOA)
-    virtual WebCore::MachSendRight createFence();
+    virtual WTF::MachSendRight createFence();
 #endif
 
     virtual void dispatchPresentationCallbacksAfterFlushingLayers(const Vector<CallbackID>&) { }

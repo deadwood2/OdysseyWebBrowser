@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,6 +34,9 @@
 #include "ViewUpdateDispatcher.h"
 #include "WebInspectorInterruptDispatcher.h"
 #include <WebCore/ActivityState.h>
+#if PLATFORM(MAC)
+#include <WebCore/ScreenProperties.h>
+#endif
 #include <WebCore/Timer.h>
 #include <pal/HysteresisActivity.h>
 #include <pal/SessionID.h>
@@ -46,11 +49,7 @@
 
 #if PLATFORM(COCOA)
 #include <dispatch/dispatch.h>
-#include <WebCore/MachSendRight.h>
-#endif
-
-#if PLATFORM(IOS)
-#include "WebSQLiteDatabaseTracker.h"
+#include <wtf/MachSendRight.h>
 #endif
 
 namespace API {
@@ -70,6 +69,7 @@ class ResourceRequest;
 class UserGestureToken;
 struct MessagePortIdentifier;
 struct MessageWithMessagePorts;
+struct MockMediaDevice;
 struct PluginInfo;
 struct SecurityOriginData;
 struct SoupNetworkProxySettings;
@@ -109,6 +109,7 @@ struct WebsiteDataStoreParameters;
 class WebProcess : public ChildProcess {
 public:
     static WebProcess& singleton();
+    static constexpr ProcessType processType = ProcessType::WebContent;
 
     template <typename T>
     T* supplement()
@@ -132,7 +133,7 @@ public:
     InjectedBundle* injectedBundle() const { return m_injectedBundle.get(); }
 
 #if PLATFORM(COCOA)
-    const WebCore::MachSendRight& compositingRenderServerPort() const { return m_compositingRenderServerPort; }
+    const WTF::MachSendRight& compositingRenderServerPort() const { return m_compositingRenderServerPort; }
 #endif
 
     bool shouldPlugInAutoStartFromOrigin(WebPage&, const String& pageOrigin, const String& pluginOrigin, const String& mimeType);
@@ -171,9 +172,7 @@ public:
     void networkProcessConnectionClosed(NetworkProcessConnection*);
     WebLoaderStrategy& webLoaderStrategy();
 
-#if USE(LIBWEBRTC)
     LibWebRTCNetwork& libWebRTCNetwork();
-#endif
 
     void webToStorageProcessConnectionClosed(WebToStorageProcessConnection*);
     WebToStorageProcessConnection* existingWebToStorageProcessConnection() { return m_webToStorageProcessConnection.get(); }
@@ -196,7 +195,7 @@ public:
 #endif
 
     void updateActivePages();
-    void pageActivityStateDidChange(uint64_t pageID, WebCore::ActivityState::Flags changed);
+    void pageActivityStateDidChange(uint64_t pageID, OptionSet<WebCore::ActivityState::Flag> changed);
 
     void setHiddenPageDOMTimerThrottlingIncreaseLimit(int milliseconds);
 
@@ -239,6 +238,10 @@ public:
     void accessibilityProcessSuspendedNotification(bool);
 #endif
 
+#if PLATFORM(COCOA)
+    void setMediaMIMETypes(const Vector<String>);
+#endif
+
 private:
     WebProcess();
     ~WebProcess();
@@ -250,7 +253,7 @@ private:
     void registerWithStateDumper();
 #endif
 
-    void markAllLayersVolatile(WTF::Function<void()>&& completionHandler);
+    void markAllLayersVolatile(WTF::Function<void(bool)>&& completionHandler);
     void cancelMarkAllLayersVolatile();
     void setAllLayerTreeStatesFrozen(bool);
     void processSuspensionCleanupTimerFired();
@@ -258,6 +261,7 @@ private:
     void clearCachedCredentials();
 
     void platformTerminate();
+
     void registerURLSchemeAsEmptyDocument(const String&);
     void registerURLSchemeAsSecure(const String&) const;
     void registerURLSchemeAsBypassingContentSecurityPolicy(const String&) const;
@@ -268,6 +272,8 @@ private:
     void registerURLSchemeAsCORSEnabled(const String&) const;
     void registerURLSchemeAsAlwaysRevalidated(const String&) const;
     void registerURLSchemeAsCachePartitioned(const String&) const;
+    void registerURLSchemeAsCanDisplayOnlyIfCanRequest(const String&) const;
+
     void setDefaultRequestTimeoutInterval(double);
     void setAlwaysUsesComplexTextCodePath(bool);
     void setShouldUseFontSmoothing(bool);
@@ -312,7 +318,7 @@ private:
 #endif
 #if ENABLE(SERVICE_WORKER)
     void establishWorkerContextConnectionToStorageProcess(uint64_t pageGroupID, uint64_t pageID, const WebPreferencesStore&, PAL::SessionID);
-    void registerServiceWorkerClients(PAL::SessionID);
+    void registerServiceWorkerClients();
 #endif
 
     void releasePageCache();
@@ -355,17 +361,30 @@ private:
     void stopRunLoop() override;
 #endif
 
+#if ENABLE(MEDIA_STREAM)
+    void addMockMediaDevice(const WebCore::MockMediaDevice&);
+    void clearMockMediaDevices();
+    void removeMockMediaDevice(const String& persistentId);
+    void resetMockMediaDevices();
+#endif
+
     void platformInitializeProcess(const ChildProcessInitializationParameters&);
 
     // IPC::Connection::Client
     friend class WebConnectionToUIProcess;
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
     void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) override;
-    void didClose(IPC::Connection&) override;
 
     // Implemented in generated WebProcessMessageReceiver.cpp
     void didReceiveWebProcessMessage(IPC::Connection&, IPC::Decoder&);
     void didReceiveSyncWebProcessMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&);
+
+#if PLATFORM(MAC)
+    void setScreenProperties(const WebCore::ScreenProperties&);
+#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
+    void scrollerStylePreferenceChanged(bool useOverlayScrollbars);
+#endif
+#endif
 
     RefPtr<WebConnectionToUIProcess> m_webConnection;
 
@@ -386,7 +405,7 @@ private:
     CacheModel m_cacheModel { CacheModelDocumentViewer };
 
 #if PLATFORM(COCOA)
-    WebCore::MachSendRight m_compositingRenderServerPort;
+    WTF::MachSendRight m_compositingRenderServerPort;
 #endif
 
     bool m_fullKeyboardAccessEnabled { false };
@@ -403,9 +422,7 @@ private:
 
     Ref<WebCacheStorageProvider> m_cacheStorageProvider;
 
-#if USE(LIBWEBRTC)
     std::unique_ptr<LibWebRTCNetwork> m_libWebRTCNetwork;
-#endif
 
     HashSet<String> m_dnsPrefetchedHosts;
     PAL::HysteresisActivity m_dnsPrefetchHystereris;
@@ -429,13 +446,10 @@ private:
 
     RefPtr<WebCore::ApplicationCacheStorage> m_applicationCacheStorage;
 
-#if PLATFORM(IOS)
-    WebSQLiteDatabaseTracker m_webSQLiteDatabaseTracker;
-#endif
-
     enum PageMarkingLayersAsVolatileCounterType { };
     using PageMarkingLayersAsVolatileCounter = RefCounter<PageMarkingLayersAsVolatileCounterType>;
     std::unique_ptr<PageMarkingLayersAsVolatileCounter> m_pageMarkingLayersAsVolatileCounter;
+    unsigned m_countOfPagesFailingToMarkVolatile { 0 };
 
     bool m_suppressMemoryPressureHandler { false };
 #if PLATFORM(MAC)

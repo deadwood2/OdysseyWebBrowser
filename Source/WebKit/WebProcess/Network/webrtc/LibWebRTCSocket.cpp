@@ -40,13 +40,6 @@
 
 namespace WebKit {
 
-static inline void sendOnMainThread(Function<void(IPC::Connection&)>&& callback)
-{
-    callOnMainThread([callback = WTFMove(callback)]() {
-        callback(WebProcess::singleton().ensureNetworkProcessConnection().connection());
-    });
-}
-
 LibWebRTCSocket::LibWebRTCSocket(LibWebRTCSocketFactory& factory, uint64_t identifier, Type type, const rtc::SocketAddress& localAddress, const rtc::SocketAddress& remoteAddress)
     : m_factory(factory)
     , m_identifier(identifier)
@@ -54,13 +47,19 @@ LibWebRTCSocket::LibWebRTCSocket(LibWebRTCSocketFactory& factory, uint64_t ident
     , m_localAddress(localAddress)
     , m_remoteAddress(remoteAddress)
 {
-    memset(&m_options, 1, MAX_SOCKET_OPTION);
 }
 
 LibWebRTCSocket::~LibWebRTCSocket()
 {
     Close();
     m_factory.detach(*this);
+}
+
+void LibWebRTCSocket::sendOnMainThread(Function<void(IPC::Connection&)>&& callback)
+{
+    callOnMainThread([callback = WTFMove(callback)]() {
+        callback(WebProcess::singleton().ensureNetworkProcessConnection().connection());
+    });
 }
 
 rtc::SocketAddress LibWebRTCSocket::GetLocalAddress() const
@@ -157,10 +156,11 @@ int LibWebRTCSocket::Close()
 int LibWebRTCSocket::GetOption(rtc::Socket::Option option, int* value)
 {
     ASSERT(option < MAX_SOCKET_OPTION);
-    int storedValue = m_options[option];
-    if (storedValue != -1)
-        *value = m_options[option];
-    return 0;
+    if (auto storedValue = m_options[option]) {
+        *value = *storedValue;
+        return 0;
+    }
+    return -1;
 }
 
 int LibWebRTCSocket::SetOption(rtc::Socket::Option option, int value)

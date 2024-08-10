@@ -61,7 +61,8 @@ class SimulatedDeviceManager(object):
     AVAILABLE_DEVICES = []
     INITIALIZED_DEVICES = None
 
-    MEMORY_ESTIMATE_PER_SIMULATOR_INSTANCE = 2 * (1024 ** 3)  # 2GB a simulator.
+    # FIXME: Simulators should only take up 2GB, but because of <rdar://problem/39393590> something in the OS thinks they're taking closer to 6GB
+    MEMORY_ESTIMATE_PER_SIMULATOR_INSTANCE = 6 * (1024 ** 3)  # 6GB a simulator.
     PROCESS_COUNT_ESTIMATE_PER_SIMULATOR_INSTANCE = 125
 
     xcrun = '/usr/bin/xcrun'
@@ -313,7 +314,7 @@ class SimulatedDeviceManager(object):
         SimulatedDeviceManager.INITIALIZED_DEVICES.append(device)
 
     @staticmethod
-    def initialize_devices(requests, host=SystemHost(), name_base='Managed', simulator_ui=True, timeout=60, **kwargs):
+    def initialize_devices(requests, host=SystemHost(), name_base='Managed', simulator_ui=True, timeout=180, **kwargs):
         if SimulatedDeviceManager.INITIALIZED_DEVICES is not None:
             return SimulatedDeviceManager.INITIALIZED_DEVICES
 
@@ -364,6 +365,7 @@ class SimulatedDeviceManager(object):
         deadline = time.time() + timeout
         for device in SimulatedDeviceManager.INITIALIZED_DEVICES:
             SimulatedDeviceManager._wait_until_device_in_state(device, SimulatedDevice.DeviceState.BOOTED, deadline)
+        SimulatedDeviceManager.wait_until_data_migration_is_done(host, max(0, deadline - time.time()))
 
         return SimulatedDeviceManager.INITIALIZED_DEVICES
 
@@ -393,7 +395,7 @@ class SimulatedDeviceManager(object):
         return min(max_supported_simulators_locally, max_supported_simulators_for_hardware)
 
     @staticmethod
-    def swap(device, request, host=SystemHost(), name_base='Managed', timeout=60):
+    def swap(device, request, host=SystemHost(), name_base='Managed', timeout=180):
         if SimulatedDeviceManager.INITIALIZED_DEVICES is None:
             raise RuntimeError('Cannot swap when there are no initialized devices')
         if device not in SimulatedDeviceManager.INITIALIZED_DEVICES:
@@ -414,6 +416,17 @@ class SimulatedDeviceManager(object):
 
         deadline = time.time() + timeout
         SimulatedDeviceManager._wait_until_device_in_state(device, SimulatedDevice.DeviceState.BOOTED, deadline)
+        SimulatedDeviceManager.wait_until_data_migration_is_done(host, max(0, deadline - time.time()))
+
+    @staticmethod
+    def wait_until_data_migration_is_done(host, timeout=180):
+        # The existence of a datamigrator process means that simulators are still booting.
+        deadline = time.time() + timeout
+        _log.debug('Waiting until no com.apple.datamigrator processes are found')
+        while host.executive.running_pids(lambda process_name: 'com.apple.datamigrator' in process_name):
+            if time.time() > deadline:
+                raise RuntimeError('Timed out while waiting for data migration')
+            time.sleep(1)
 
     @staticmethod
     def tear_down(host=SystemHost(), timeout=60):

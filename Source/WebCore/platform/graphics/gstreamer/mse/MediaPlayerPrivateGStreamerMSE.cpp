@@ -30,12 +30,13 @@
 
 #include "AppendPipeline.h"
 #include "AudioTrackPrivateGStreamer.h"
-#include "GStreamerUtilities.h"
+#include "GStreamerCommon.h"
 #include "InbandTextTrackPrivateGStreamer.h"
 #include "MIMETypeRegistry.h"
 #include "MediaDescription.h"
 #include "MediaPlayer.h"
 #include "NotImplemented.h"
+#include "PlaybackPipeline.h"
 #include "SourceBufferPrivateGStreamer.h"
 #include "TimeRanges.h"
 #include "URL.h"
@@ -86,9 +87,6 @@ void MediaPlayerPrivateGStreamerMSE::registerMediaEngine(MediaEngineRegistrar re
 
 bool initializeGStreamerAndRegisterWebKitMSEElement()
 {
-    if (UNLIKELY(!initializeGStreamer()))
-        return false;
-
     registerWebKitGStreamerElements();
 
     GST_DEBUG_CATEGORY_INIT(webkit_mse_debug, "webkitmse", 0, "WebKit MSE media player");
@@ -486,10 +484,9 @@ std::unique_ptr<PlatformTimeRanges> MediaPlayerPrivateGStreamerMSE::buffered() c
     return m_mediaSource ? m_mediaSource->buffered() : std::make_unique<PlatformTimeRanges>();
 }
 
-void MediaPlayerPrivateGStreamerMSE::sourceChanged()
+void MediaPlayerPrivateGStreamerMSE::sourceSetup(GstElement* sourceElement)
 {
-    m_source = nullptr;
-    g_object_get(m_pipeline.get(), "source", &m_source.outPtr(), nullptr);
+    m_source = sourceElement;
 
     ASSERT(WEBKIT_IS_MEDIA_SRC(m_source.get()));
 
@@ -959,8 +956,7 @@ void MediaPlayerPrivateGStreamerMSE::attemptToDecryptWithInstance(CDMInstance& i
         gst_structure_set_value(structure.get(), "key-ids", &keyIDList);
         gst_structure_set_value(structure.get(), "key-values", &keyValueList);
 
-        for (auto it : m_appendPipelinesMap)
-            it.value->dispatchDecryptionStructure(GUniquePtr<GstStructure>(gst_structure_copy(structure.get())));
+        gst_element_send_event(m_playbackPipeline->pipeline(), gst_event_new_custom(GST_EVENT_CUSTOM_DOWNSTREAM_OOB, structure.release()));
     }
 }
 #endif

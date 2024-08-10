@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,6 +30,7 @@
 #include "InjectedBundlePage.h"
 #include "StringFunctions.h"
 #include "WebCoreTestSupport.h"
+#include <JavaScriptCore/Options.h>
 #include <WebKit/WKBundle.h>
 #include <WebKit/WKBundlePage.h>
 #include <WebKit/WKBundlePagePrivate.h>
@@ -41,6 +42,21 @@
 #include <wtf/Vector.h>
 
 namespace WTR {
+
+static void handleTextDidChangeInTextField(WKBundlePageRef, WKBundleNodeHandleRef, WKBundleFrameRef, const void* context)
+{
+    static_cast<InjectedBundle*>(const_cast<void*>(context))->textDidChangeInTextField();
+}
+
+static void handleTextFieldDidBeginEditing(WKBundlePageRef, WKBundleNodeHandleRef, WKBundleFrameRef, const void* context)
+{
+    static_cast<InjectedBundle*>(const_cast<void*>(context))->textFieldDidBeginEditing();
+}
+
+static void handleTextFieldDidEndEditing(WKBundlePageRef, WKBundleNodeHandleRef, WKBundleFrameRef, const void* context)
+{
+    static_cast<InjectedBundle*>(const_cast<void*>(context))->textFieldDidEndEditing();
+}
 
 InjectedBundle& InjectedBundle::singleton()
 {
@@ -105,7 +121,25 @@ void InjectedBundle::initialize(WKBundleRef bundle, WKTypeRef initializationUser
 
 void InjectedBundle::didCreatePage(WKBundlePageRef page)
 {
+    bool isMainPage = m_pages.isEmpty();
     m_pages.append(std::make_unique<InjectedBundlePage>(page));
+
+    setUpInjectedBundleClients(page);
+
+    if (!isMainPage)
+        return;
+
+    WKRetainPtr<WKStringRef> messsageName(AdoptWK, WKStringCreateWithUTF8CString("Initialization"));
+    WKTypeRef result = 0;
+    WKBundlePostSynchronousMessage(m_bundle, messsageName.get(), 0, &result);
+    ASSERT(WKGetTypeID(result) == WKDictionaryGetTypeID());
+    WKDictionaryRef initializationDictionary = static_cast<WKDictionaryRef>(result);
+
+    WKRetainPtr<WKStringRef> resumeTestingKey(AdoptWK, WKStringCreateWithUTF8CString("ResumeTesting"));
+    WKTypeRef resumeTestingValue = WKDictionaryGetItemForKey(initializationDictionary, resumeTestingKey.get());
+    ASSERT(WKGetTypeID(resumeTestingValue) == WKBooleanGetTypeID());
+    if (WKBooleanGetValue(static_cast<WKBooleanRef>(resumeTestingValue)))
+        beginTesting(initializationDictionary, BegingTestingMode::Resume);
 }
 
 void InjectedBundle::willDestroyPage(WKBundlePageRef page)
@@ -118,6 +152,24 @@ void InjectedBundle::willDestroyPage(WKBundlePageRef page)
 void InjectedBundle::didInitializePageGroup(WKBundlePageGroupRef pageGroup)
 {
     m_pageGroup = pageGroup;
+}
+
+void InjectedBundle::setUpInjectedBundleClients(WKBundlePageRef page)
+{
+    WKBundlePageFormClientV2 formClient = {
+        { 2, this },
+        handleTextFieldDidBeginEditing,
+        handleTextFieldDidEndEditing,
+        handleTextDidChangeInTextField,
+        0, // textDidChangeInTextArea
+        0, // shouldPerformActionInTextField
+        0, // willSubmitForm
+        0, // willSendSubmitEvent
+        0, // didFocusTextField
+        0, // shouldNotifyOnFormChanges
+        0, // didAssociateFormControls
+    };
+    WKBundlePageSetFormClient(page, &formClient.base);
 }
 
 InjectedBundlePage* InjectedBundle::page() const
@@ -162,7 +214,7 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         WKRetainPtr<WKStringRef> ackMessageBody(AdoptWK, WKStringCreateWithUTF8CString("BeginTest"));
         WKBundlePagePostMessage(page, ackMessageName.get(), ackMessageBody.get());
 
-        beginTesting(messageBodyDictionary);
+        beginTesting(messageBodyDictionary, BegingTestingMode::New);
         return;
     }
 
@@ -170,6 +222,12 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         ASSERT(messageBody);
         ASSERT(WKGetTypeID(messageBody) == WKDictionaryGetTypeID());
         WKDictionaryRef messageBodyDictionary = static_cast<WKDictionaryRef>(messageBody);
+        WKRetainPtr<WKStringRef> jscOptionsKey(AdoptWK, WKStringCreateWithUTF8CString("JSCOptions"));
+        WKRetainPtr<WKStringRef> jscOptionsString = static_cast<WKStringRef>(WKDictionaryGetItemForKey(messageBodyDictionary, jscOptionsKey.get()));
+        if (jscOptionsString) {
+            String options = toWTFString(jscOptionsString);
+            JSC::Options::setOptions(options.utf8().data());
+        }
 
         WKRetainPtr<WKStringRef> shouldGCKey(AdoptWK, WKStringCreateWithUTF8CString("ShouldGC"));
         bool shouldGC = WKBooleanGetValue(static_cast<WKBooleanRef>(WKDictionaryGetItemForKey(messageBodyDictionary, shouldGCKey.get())));
@@ -180,6 +238,8 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         WKRetainPtr<WKStringRef> allowedHostsKey(AdoptWK, WKStringCreateWithUTF8CString("AllowedHosts"));
         WKTypeRef allowedHostsValue = WKDictionaryGetItemForKey(messageBodyDictionary, allowedHostsKey.get());
         if (allowedHostsValue && WKGetTypeID(allowedHostsValue) == WKArrayGetTypeID()) {
+            m_allowedHosts.clear();
+
             WKArrayRef allowedHostsArray = static_cast<WKArrayRef>(allowedHostsValue);
             for (size_t i = 0, size = WKArrayGetSize(allowedHostsArray); i < size; ++i) {
                 WKTypeRef item = WKArrayGetItemAtIndex(allowedHostsArray, i);
@@ -245,11 +305,46 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         return;
     }
 
-    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetPartitionOrBlockCookiesForHost")) {
-        m_testRunner->statisticsCallDidSetPartitionOrBlockCookiesForHostCallback();
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidResetStatisticsToConsistentState")) {
+        m_testRunner->statisticsCallDidResetToConsistentStateCallback();
+        return;
+    }
+    
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetBlockCookiesForHost")) {
+        m_testRunner->statisticsCallDidSetBlockCookiesForHostCallback();
         return;
     }
 
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetStatisticsDebugMode")) {
+        m_testRunner->statisticsCallDidSetDebugModeCallback();
+        return;
+    }
+    
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetPrevalentResourceForDebugMode")) {
+        m_testRunner->statisticsCallDidSetPrevalentResourceForDebugModeCallback();
+        return;
+    }
+    
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetLastSeen")) {
+        m_testRunner->statisticsCallDidSetLastSeenCallback();
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetPrevalentResource")) {
+        m_testRunner->statisticsCallDidSetPrevalentResourceCallback();
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetVeryPrevalentResource")) {
+        m_testRunner->statisticsCallDidSetVeryPrevalentResourceCallback();
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetHasHadUserInteraction")) {
+        m_testRunner->statisticsCallDidSetHasHadUserInteractionCallback();
+        return;
+    }
+    
     if (WKStringIsEqualToUTF8CString(messageName, "CallDidReceiveAllStorageAccessEntries")) {
         ASSERT(messageBody);
         ASSERT(WKGetTypeID(messageBody) == WKArrayGetTypeID());
@@ -295,7 +390,7 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
     }
 
     if (WKStringIsEqualToUTF8CString(messageName, "WorkQueueProcessedCallback")) {
-        if (!topLoadingFrame() && !m_testRunner->waitToDump())
+        if (!topLoadingFrame() && !m_testRunner->shouldWaitUntilDone())
             InjectedBundle::page()->dump();
         return;
     }
@@ -342,7 +437,7 @@ bool InjectedBundle::booleanForKey(WKDictionaryRef dictionary, const char* key)
     return WKBooleanGetValue(static_cast<WKBooleanRef>(value));
 }
 
-void InjectedBundle::beginTesting(WKDictionaryRef settings)
+void InjectedBundle::beginTesting(WKDictionaryRef settings, BegingTestingMode testingMode)
 {
     m_state = Testing;
 
@@ -376,7 +471,6 @@ void InjectedBundle::beginTesting(WKDictionaryRef settings)
 
     m_testRunner->setPluginsEnabled(true);
 
-    m_testRunner->setShouldDumpFrameLoadCallbacks(booleanForKey(settings, "DumpFrameLoadDelegates"));
     m_testRunner->setUserStyleSheetEnabled(false);
     m_testRunner->setXSSAuditorEnabled(false);
 
@@ -397,6 +491,9 @@ void InjectedBundle::beginTesting(WKDictionaryRef settings)
         m_testRunner->setCustomTimeout(m_timeout);
 
     page()->prepare();
+
+    if (testingMode != BegingTestingMode::New)
+        return;
 
     WKBundleClearAllDatabases(m_bundle);
     WKBundlePageClearApplicationCache(page()->page());
@@ -419,7 +516,9 @@ void InjectedBundle::done()
 
     m_testRunner->invalidateWaitToDumpWatchdogTimer();
 
+#if HAVE(ACCESSIBILITY)
     m_accessibilityController->resetToConsistentState();
+#endif
 
     WKRetainPtr<WKStringRef> doneMessageName(AdoptWK, WKStringCreateWithUTF8CString("Done"));
     WKRetainPtr<WKMutableDictionaryRef> doneMessageBody(AdoptWK, WKMutableDictionaryCreate());
@@ -760,6 +859,11 @@ bool InjectedBundle::shouldProcessWorkQueue() const
     WKBundlePagePostSynchronousMessageForTesting(page()->page(), messageName.get(), 0, &resultToPass);
     WKRetainPtr<WKBooleanRef> isEmpty(AdoptWK, static_cast<WKBooleanRef>(resultToPass));
 
+    // The IPC failed. This happens when swapping processes on navigation because the WebPageProxy unregisters itself
+    // as a MessageReceiver from the old WebProcessProxy and register itself with the new WebProcessProxy instead.
+    if (!isEmpty)
+        return false;
+
     return !WKBooleanGetValue(isEmpty.get());
 }
 
@@ -871,6 +975,21 @@ void InjectedBundle::setAllowsAnySSLCertificate(bool allowsAnySSLCertificate)
 void InjectedBundle::statisticsNotifyObserver()
 {
     WKBundleResourceLoadStatisticsNotifyObserver(m_bundle);
+}
+
+void InjectedBundle::textDidChangeInTextField()
+{
+    m_testRunner->textDidChangeInTextFieldCallback();
+}
+
+void InjectedBundle::textFieldDidBeginEditing()
+{
+    m_testRunner->textFieldDidBeginEditingCallback();
+}
+
+void InjectedBundle::textFieldDidEndEditing()
+{
+    m_testRunner->textFieldDidEndEditingCallback();
 }
 
 } // namespace WTR

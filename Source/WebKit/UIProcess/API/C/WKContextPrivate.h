@@ -63,17 +63,19 @@ WK_EXPORT void WKContextRegisterURLSchemeAsBypassingContentSecurityPolicy(WKCont
 
 WK_EXPORT void WKContextRegisterURLSchemeAsCachePartitioned(WKContextRef context, WKStringRef urlScheme);
 
+WK_EXPORT void WKContextRegisterURLSchemeAsCanDisplayOnlyIfCanRequest(WKContextRef context, WKStringRef urlScheme);
+
 WK_EXPORT void WKContextSetDomainRelaxationForbiddenForURLScheme(WKContextRef context, WKStringRef urlScheme);
 
 WK_EXPORT void WKContextSetCanHandleHTTPSServerTrustEvaluation(WKContextRef context, bool value);
+
+WK_EXPORT void WKContextSetMaximumNumberOfPrewarmedProcesses(WKContextRef context, unsigned count);
 
 WK_EXPORT void WKContextSetDiskCacheSpeculativeValidationEnabled(WKContextRef context, bool value);
 
 WK_EXPORT void WKContextSetIconDatabasePath(WKContextRef context, WKStringRef iconDatabasePath);
 
 WK_EXPORT void WKContextAllowSpecificHTTPSCertificateForHost(WKContextRef context, WKCertificateInfoRef certificate, WKStringRef host);
-
-WK_EXPORT void WKContextSetCookieStorageDirectory(WKContextRef context, WKStringRef cookieStorageDirectory);
 
 // FIXME: This is a workaround for testing purposes only and should be removed once a better
 // solution has been found for testing.
@@ -90,6 +92,7 @@ WK_EXPORT void WKContextSetUsesNetworkProcess(WKContextRef, bool);
 
 WK_EXPORT void WKContextTerminateNetworkProcess(WKContextRef);
 WK_EXPORT void WKContextTerminateServiceWorkerProcess(WKContextRef);
+WK_EXPORT void WKContextTerminateStorageProcess(WKContextRef);
 
 WK_EXPORT void WKContextSetAllowsAnySSLCertificateForWebSocketTesting(WKContextRef, bool);
 WK_EXPORT void WKContextSetAllowsAnySSLCertificateForServiceWorkerTesting(WKContextRef, bool);
@@ -111,6 +114,9 @@ WK_EXPORT void WKContextPreconnectToServer(WKContextRef context, WKURLRef server
 
 WK_EXPORT WKProcessID WKContextGetNetworkProcessIdentifier(WKContextRef context);
 WK_EXPORT WKProcessID WKContextGetDatabaseProcessIdentifier(WKContextRef context);
+
+WK_EXPORT void WKContextAddSupportedPlugin(WKContextRef context, WKStringRef domain, WKStringRef name, WKArrayRef mimeTypes, WKArrayRef extensions);
+WK_EXPORT void WKContextClearSupportedPlugins(WKContextRef context);
 
 #ifdef __cplusplus
 }

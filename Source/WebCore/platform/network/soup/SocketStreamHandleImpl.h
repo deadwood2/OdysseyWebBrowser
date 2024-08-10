@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2018 Apple Inc. All rights reserved.
  * Copyright (C) 2009 Google Inc.  All rights reserved.
  * Copyright (C) 2012 Samsung Electronics Ltd. All Rights Reserved.
  *
@@ -38,6 +38,7 @@
 
 #include <pal/SessionID.h>
 #include <wtf/StreamBuffer.h>
+#include <wtf/UniqueArray.h>
 #include <wtf/glib/GRefPtr.h>
 
 namespace WebCore {
@@ -52,13 +53,14 @@ public:
 
     const URL& url() const { return m_url; }
 
-    void platformSend(const char* data, size_t length, Function<void(bool)>&&) final;
+    void platformSend(const uint8_t* data, size_t length, Function<void(bool)>&&) final;
+    void platformSendHandshake(const uint8_t* data, size_t length, const std::optional<CookieRequestHeaderFieldProxy>&, Function<void(bool, bool)>&&) final;
     void platformClose() final;
 private:
     SocketStreamHandleImpl(const URL&, SocketStreamHandleClient&);
 
     size_t bufferedAmount() final;
-    std::optional<size_t> platformSendInternal(const char*, size_t);
+    std::optional<size_t> platformSendInternal(const uint8_t*, size_t);
     bool sendPendingData();
 
     void beginWaitingForSocketWritability();
@@ -78,9 +80,9 @@ private:
     GRefPtr<GPollableOutputStream> m_outputStream;
     GRefPtr<GSource> m_writeReadySource;
     GRefPtr<GCancellable> m_cancellable;
-    std::unique_ptr<char[]> m_readBuffer;
+    UniqueArray<char> m_readBuffer;
 
-    StreamBuffer<char, 1024 * 1024> m_buffer;
+    StreamBuffer<uint8_t, 1024 * 1024> m_buffer;
     static const unsigned maxBufferSize = 100 * 1024 * 1024;
 };
 

@@ -35,7 +35,6 @@
 #include "WebPage.h"
 #include "WebPageProxyMessages.h"
 #include "WebProcess.h"
-#include <JavaScriptCore/ScriptValue.h>
 #include <WebCore/BitmapImage.h>
 #include <WebCore/Chrome.h>
 #include <WebCore/CookieJar.h>
@@ -45,6 +44,7 @@
 #include <WebCore/EventHandler.h>
 #include <WebCore/EventNames.h>
 #include <WebCore/FocusController.h>
+#include <WebCore/Frame.h>
 #include <WebCore/FrameLoadRequest.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/FrameLoaderClient.h>
@@ -55,10 +55,8 @@
 #include <WebCore/HTTPHeaderNames.h>
 #include <WebCore/HostWindow.h>
 #include <WebCore/MIMETypeRegistry.h>
-#include <WebCore/MainFrame.h>
 #include <WebCore/MouseEvent.h>
 #include <WebCore/NetscapePlugInStreamLoader.h>
-#include <WebCore/NetworkingContext.h>
 #include <WebCore/Page.h>
 #include <WebCore/PlatformMouseEvent.h>
 #include <WebCore/ProtectionSpace.h>
@@ -77,10 +75,9 @@
 #include <WebCore/PlatformDisplay.h>
 #endif
 
+namespace WebKit {
 using namespace JSC;
 using namespace WebCore;
-
-namespace WebKit {
 
 // This simulated mouse click delay in HTMLPlugInImageElement.cpp should generally be the same or shorter than this delay.
 static const Seconds pluginSnapshotTimerDelay { 1100_ms };
@@ -517,7 +514,7 @@ void PluginView::webPageDestroyed()
     m_webPage = 0;
 }
 
-void PluginView::activityStateDidChange(ActivityState::Flags changed)
+void PluginView::activityStateDidChange(OptionSet<WebCore::ActivityState::Flag> changed)
 {
     if (!m_plugin || !m_isInitialized)
         return;
@@ -790,7 +787,7 @@ void PluginView::paint(GraphicsContext& context, const IntRect& /*dirtyRect*/, W
         return;
 
     if (context.paintingDisabled()) {
-        if (context.updatingControlTints())
+        if (context.invalidatingControlTints())
             m_plugin->updateControlTints(context);
         return;
     }
@@ -1443,14 +1440,14 @@ void PluginView::cancelManualStreamLoad()
 NPObject* PluginView::windowScriptNPObject()
 {
     if (!frame())
-        return 0;
+        return nullptr;
 
     if (!frame()->script().canExecuteScripts(NotAboutToExecuteScript)) {
         // FIXME: Investigate if other browsers allow plug-ins to access JavaScript objects even if JavaScript is disabled.
-        return 0;
+        return nullptr;
     }
 
-    return m_npRuntimeObjectMap.getOrCreateNPObject(pluginWorld().vm(), frame()->script().windowProxy(pluginWorld())->window());
+    return m_npRuntimeObjectMap.getOrCreateNPObject(pluginWorld().vm(), frame()->windowProxy().jsWindowProxy(pluginWorld())->window());
 }
 
 NPObject* PluginView::pluginElementNPObject()
@@ -1573,9 +1570,7 @@ float PluginView::contentsScaleFactor()
     
 String PluginView::proxiesForURL(const String& urlString)
 {
-    const FrameLoader* frameLoader = frame() ? &frame()->loader() : 0;
-    const NetworkingContext* context = frameLoader ? frameLoader->networkingContext() : 0;
-    Vector<ProxyServer> proxyServers = proxyServersForURL(URL(URL(), urlString), context);
+    Vector<ProxyServer> proxyServers = proxyServersForURL(URL(URL(), urlString));
     return toString(proxyServers);
 }
 
@@ -1835,8 +1830,8 @@ void PluginView::pluginDidReceiveUserInteraction()
     m_didReceiveUserInteraction = true;
 
     HTMLPlugInImageElement& plugInImageElement = downcast<HTMLPlugInImageElement>(*m_pluginElement);
-    String pageOrigin = plugInImageElement.document().page()->mainFrame().document()->baseURL().host();
-    String pluginOrigin = plugInImageElement.loadedUrl().host();
+    String pageOrigin = plugInImageElement.document().page()->mainFrame().document()->baseURL().host().toString();
+    String pluginOrigin = plugInImageElement.loadedUrl().host().toString();
     String mimeType = plugInImageElement.serviceType();
 
     WebProcess::singleton().plugInDidReceiveUserInteraction(pageOrigin, pluginOrigin, mimeType, plugInImageElement.document().page()->sessionID());
@@ -1851,7 +1846,7 @@ bool PluginView::shouldCreateTransientPaintingSnapshot() const
         return false;
 
     if (FrameView* frameView = frame()->view()) {
-        if (frameView->paintBehavior() & (PaintBehaviorSelectionOnly | PaintBehaviorSelectionAndBackgroundsOnly | PaintBehaviorForceBlackText)) {
+        if (frameView->paintBehavior().containsAny({ PaintBehavior::SelectionOnly, PaintBehavior::SelectionAndBackgroundsOnly, PaintBehavior::ForceBlackText})) {
             // This paint behavior is used when drawing the find indicator and there's no need to
             // snapshot plug-ins, because they can never be painted as part of the find indicator.
             return false;

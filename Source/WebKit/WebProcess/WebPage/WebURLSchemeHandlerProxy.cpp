@@ -26,14 +26,21 @@
 #include "config.h"
 #include "WebURLSchemeHandlerProxy.h"
 
+#include "DataReference.h"
+#include "URLSchemeTaskParameters.h"
+#include "WebCoreArgumentCoders.h"
 #include "WebErrors.h"
 #include "WebLoaderStrategy.h"
+#include "WebPage.h"
+#include "WebPageProxyMessages.h"
 #include "WebProcess.h"
+#include <WebCore/ResourceError.h>
 #include <WebCore/ResourceLoader.h>
-
-using namespace WebCore;
+#include <WebCore/ResourceRequest.h>
+#include <WebCore/ResourceResponse.h>
 
 namespace WebKit {
+using namespace WebCore;
 
 WebURLSchemeHandlerProxy::WebURLSchemeHandlerProxy(WebPage& page, uint64_t identifier)
     : m_webPage(page)
@@ -53,6 +60,18 @@ void WebURLSchemeHandlerProxy::startNewTask(ResourceLoader& loader)
 
     WebProcess::singleton().webLoaderStrategy().addURLSchemeTaskProxy(*result.iterator->value);
     result.iterator->value->startLoading();
+}
+
+void WebURLSchemeHandlerProxy::loadSynchronously(ResourceLoadIdentifier loadIdentifier, const ResourceRequest& request, ResourceResponse& response, ResourceError& error, Vector<char>& data)
+{
+    IPC::DataReference dataReference;
+    if (!m_webPage.sendSync(Messages::WebPageProxy::LoadSynchronousURLSchemeTask(URLSchemeTaskParameters { m_identifier, loadIdentifier, request }), Messages::WebPageProxy::LoadSynchronousURLSchemeTask::Reply(response, error, dataReference))) {
+        error = failedCustomProtocolSyncLoad(request);
+        return;
+    }
+    
+    data.resize(dataReference.size());
+    memcpy(data.data(), dataReference.data(), dataReference.size());
 }
 
 void WebURLSchemeHandlerProxy::stopAllTasks()

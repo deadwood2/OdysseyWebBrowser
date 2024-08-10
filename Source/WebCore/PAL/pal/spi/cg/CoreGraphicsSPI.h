@@ -28,7 +28,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
 
-#if USE(IOSURFACE)
+#if HAVE(IOSURFACE)
 #include <pal/spi/cocoa/IOSurfaceSPI.h>
 #endif
 
@@ -249,11 +249,12 @@ bool CGContextGetAllowsFontSubpixelPositioning(CGContextRef);
 bool CGContextDrawsWithCorrectShadowOffsets(CGContextRef);
 CGPatternRef CGPatternCreateWithImage2(CGImageRef, CGAffineTransform, CGPatternTiling);
 
-#if USE(IOSURFACE)
+#if HAVE(IOSURFACE)
 CGContextRef CGIOSurfaceContextCreate(IOSurfaceRef, size_t, size_t, size_t, size_t, CGColorSpaceRef, CGBitmapInfo);
 CGImageRef CGIOSurfaceContextCreateImage(CGContextRef);
 CGImageRef CGIOSurfaceContextCreateImageReference(CGContextRef);
 CGColorSpaceRef CGIOSurfaceContextGetColorSpace(CGContextRef);
+void CGIOSurfaceContextSetDisplayMask(CGContextRef, uint32_t mask);
 #endif
 
 #if PLATFORM(COCOA)
@@ -287,6 +288,8 @@ void CGFontCacheSetMaxSize(CGFontCache*, size_t);
 #endif
 
 #if PLATFORM(MAC)
+void CGSShutdownServerConnections(void);
+
 CGSConnectionID CGSMainConnectionID(void);
 CFArrayRef CGSHWCaptureWindowList(CGSConnectionID, CGSWindowIDList windowList, CGSWindowCount, CGSWindowCaptureOptions);
 CGError CGSSetConnectionProperty(CGSConnectionID, CGSConnectionID ownerCid, CFStringRef key, CFTypeRef value);
@@ -298,6 +301,10 @@ bool ColorSyncProfileIsWideGamut(ColorSyncProfileRef);
 
 size_t CGDisplayModeGetPixelsWide(CGDisplayModeRef);
 size_t CGDisplayModeGetPixelsHigh(CGDisplayModeRef);
+
+#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
+CGError CGSSetDenyWindowServerConnections(bool);
+#endif // ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
 
 #endif
 

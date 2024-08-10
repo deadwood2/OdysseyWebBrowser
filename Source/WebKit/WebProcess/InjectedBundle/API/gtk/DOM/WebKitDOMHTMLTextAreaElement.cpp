@@ -26,7 +26,7 @@
 #include <WebCore/Document.h>
 #include "GObjectEventListener.h"
 #include <WebCore/HTMLNames.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMEventPrivate.h"
 #include "WebKitDOMEventTarget.h"
 #include "WebKitDOMHTMLFormElementPrivate.h"
@@ -37,6 +37,8 @@
 #include "ConvertToUTF8String.h"
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -572,3 +574,4 @@ gboolean webkit_dom_html_text_area_element_is_edited(WebKitDOMHTMLTextAreaElemen
 
     return WebKit::core(area)->lastChangeWasUserEdit();
 }
+G_GNUC_END_IGNORE_DEPRECATIONS;

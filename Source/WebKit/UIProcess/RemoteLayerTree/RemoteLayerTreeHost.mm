@@ -31,6 +31,7 @@
 #import "RemoteLayerTreePropertyApplier.h"
 #import "RemoteLayerTreeTransaction.h"
 #import "ShareableBitmap.h"
+#import "WKAnimationDelegate.h"
 #import "WebPageProxy.h"
 #import "WebProcessProxy.h"
 #import <QuartzCore/QuartzCore.h>
@@ -45,9 +46,8 @@
 #import <UIKit/UIView.h>
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 #define RELEASE_LOG_IF_ALLOWED(...) RELEASE_LOG_IF(m_drawingArea.isAlwaysOnLoggingAllowed(), ViewState, __VA_ARGS__)
 
@@ -87,7 +87,7 @@ bool RemoteLayerTreeHost::updateLayerTree(const RemoteLayerTreeTransaction& tran
     typedef std::pair<GraphicsLayer::PlatformLayerID, GraphicsLayer::PlatformLayerID> LayerIDPair;
     Vector<LayerIDPair> clonesToUpdate;
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || PLATFORM(IOSMAC)
     // Can't use the iOS code on macOS yet: rdar://problem/31247730
     auto layerContentsType = RemoteLayerBackingStore::LayerContentsType::IOSurface;
 #else
@@ -158,7 +158,7 @@ void RemoteLayerTreeHost::layerWillBeRemoved(WebCore::GraphicsLayer::PlatformLay
     m_layers.remove(layerID);
 }
 
-void RemoteLayerTreeHost::animationDidStart(WebCore::GraphicsLayer::PlatformLayerID layerID, CAAnimation *animation, double startTime)
+void RemoteLayerTreeHost::animationDidStart(WebCore::GraphicsLayer::PlatformLayerID layerID, CAAnimation *animation, MonotonicTime startTime)
 {
     CALayer *layer = asLayer(getLayer(layerID));
     if (!layer)
@@ -289,11 +289,11 @@ void RemoteLayerTreeHost::detachRootLayer()
     m_rootLayer = nullptr;
 }
 
-#if USE(IOSURFACE)
+#if HAVE(IOSURFACE)
 static void recursivelyMapIOSurfaceBackingStore(CALayer *layer)
 {
     if (layer.contents && CFGetTypeID(layer.contents) == CAMachPortGetTypeID()) {
-        MachSendRight port = MachSendRight::create(CAMachPortGetPort((CAMachPortRef)layer.contents));
+        MachSendRight port = MachSendRight::create(CAMachPortGetPort((__bridge CAMachPortRef)layer.contents));
         auto surface = WebCore::IOSurface::createFromSendRight(WTFMove(port), sRGBColorSpaceRef());
         layer.contents = surface ? surface->asLayerContents() : nil;
     }
@@ -305,9 +305,11 @@ static void recursivelyMapIOSurfaceBackingStore(CALayer *layer)
 
 void RemoteLayerTreeHost::mapAllIOSurfaceBackingStore()
 {
-#if USE(IOSURFACE)
+#if HAVE(IOSURFACE)
     recursivelyMapIOSurfaceBackingStore(asLayer(m_rootLayer));
 #endif
 }
 
 } // namespace WebKit
+
+#undef RELEASE_LOG_IF_ALLOWED

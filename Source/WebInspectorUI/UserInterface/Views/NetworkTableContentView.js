@@ -35,6 +35,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._pendingInsertions = [];
         this._pendingUpdates = [];
         this._pendingFilter = false;
+        this._showingRepresentedObjectCookie = null;
 
         this._table = null;
         this._nameColumnWidthSetting = new WI.Setting("network-table-content-view-name-column-width", 250);
@@ -289,7 +290,9 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             return;
         }
 
+        this._showingRepresentedObjectCookie = cookie;
         this._table.selectRow(rowIndex);
+        this._showingRepresentedObjectCookie = null;
     }
 
     // NetworkResourceDetailView delegate
@@ -324,14 +327,6 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
     // Table delegate
 
-    tableCellMouseDown(table, cell, column, rowIndex, event)
-    {
-        if (column !== this._nameColumn)
-            return;
-
-        this._table.selectRow(rowIndex);
-    }
-
     tableCellContextMenuClicked(table, cell, column, rowIndex, event)
     {
         if (column !== this._nameColumn)
@@ -345,6 +340,11 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
         contextMenu.appendSeparator();
         contextMenu.appendItem(WI.UIString("Export HAR"), () => { this._exportHAR(); });
+    }
+
+    tableShouldSelectRow(table, cell, column, rowIndex)
+    {
+        return column === this._nameColumn;
     }
 
     tableSelectedRowChanged(table, rowIndex)
@@ -394,6 +394,9 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         case "protocol":
             cell.textContent = entry.protocol || emDash;
             break;
+        case "initiator":
+            this._populateInitiatorCell(cell, entry);
+            break;
         case "priority":
             cell.textContent = WI.Resource.displayNameForPriority(entry.priority) || emDash;
             break;
@@ -441,6 +444,8 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
         let nameElement = cell.appendChild(document.createElement("span"));
         nameElement.textContent = entry.name;
+
+        cell.title = entry.resource.url;
     }
 
     _populateDomainCell(cell, entry)
@@ -459,6 +464,21 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         }
 
         cell.append(entry.domain);
+    }
+
+    _populateInitiatorCell(cell, entry)
+    {
+        let initiatorLocation = entry.resource.initiatorSourceCodeLocation;
+        if (!initiatorLocation) {
+            cell.textContent = emDash;
+            return;
+        }
+
+        const options = {
+            dontFloat: true,
+            ignoreSearchTab: true,
+        };
+        cell.appendChild(WI.createSourceCodeLocationLink(initiatorLocation, options));
     }
 
     _populateTransferSizeCell(cell, entry)
@@ -579,6 +599,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         case "method":
         case "scheme":
         case "protocol":
+        case "initiator":
         case "remoteAddress":
             // Simple string.
             comparator = (a, b) => (a[sortColumnIdentifier] || "").extendedLocaleCompare(b[sortColumnIdentifier] || "");
@@ -718,6 +739,13 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             initialWidth: 75,
         });
 
+        this._initiatorColumn = new WI.TableColumn("initiator", WI.UIString("Initiator"), {
+            hidden: true,
+            minWidth: 75,
+            maxWidth: 175,
+            initialWidth: 125,
+        });
+
         this._priorityColumn = new WI.TableColumn("priority", WI.UIString("Priority"), {
             hidden: true,
             minWidth: 65,
@@ -778,6 +806,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._table.addColumn(this._schemeColumn);
         this._table.addColumn(this._statusColumn);
         this._table.addColumn(this._protocolColumn);
+        this._table.addColumn(this._initiatorColumn);
         this._table.addColumn(this._priorityColumn);
         this._table.addColumn(this._remoteAddressColumn);
         this._table.addColumn(this._connectionIdentifierColumn);
@@ -881,17 +910,17 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             else if (frame.mainResource)
                 this._pendingInsertions.push(frame.mainResource);
 
-            for (let resource of frame.resourceCollection.items)
+            for (let resource of frame.resourceCollection)
                 this._pendingInsertions.push(resource);
 
-            for (let childFrame of frame.childFrameCollection.items)
+            for (let childFrame of frame.childFrameCollection)
                 populateResourcesForFrame(childFrame);
         };
 
         let populateResourcesForTarget = (target) => {
             if (target.mainResource instanceof WI.Resource)
                 this._pendingInsertions.push(target.mainResource);
-            for (let resource of target.resourceCollection.items)
+            for (let resource of target.resourceCollection)
                 this._pendingInsertions.push(resource);
         };
 
@@ -970,6 +999,10 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             this.replaceSubview(oldResourceDetailView, this._resourceDetailView);
         } else
             this.addSubview(this._resourceDetailView);
+
+        if (this._showingRepresentedObjectCookie)
+            this._resourceDetailView.willShowWithCookie(this._showingRepresentedObjectCookie);
+
         this._resourceDetailView.shown();
 
         this.element.classList.add("showing-detail");
@@ -1198,6 +1231,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             transferSize: !isNaN(resource.networkTotalTransferSize) ? resource.networkTotalTransferSize : resource.estimatedTotalTransferSize,
             time: resource.totalDuration,
             protocol: resource.protocol,
+            initiator: resource.initiatorSourceCodeLocation ? resource.initiatorSourceCodeLocation.displayLocationString() : "",
             priority: resource.priority,
             remoteAddress: resource.remoteAddress,
             connectionIdentifier: resource.connectionIdentifier,
@@ -1243,7 +1277,9 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
     _updateSortAndFilteredEntries()
     {
-        this._entries = this._entries.sort(this._entriesSortComparator);
+        if (this._entriesSortComparator)
+            this._entries = this._entries.sort(this._entriesSortComparator);
+
         this._updateFilteredEntries();
     }
 
@@ -1404,7 +1440,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
     _waterfallPopoverContentForResource(resource)
     {
         let contentElement = document.createElement("div");
-        contentElement.className = "waterfall-popover";
+        contentElement.className = "waterfall-popover-content";
 
         if (!resource.hasResponse() || !resource.timingData.startTime || !resource.timingData.responseEnd) {
             contentElement.textContent = WI.UIString("Resource has no timing data");
@@ -1422,7 +1458,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
     {
         if (!this._waterfallPopover) {
             this._waterfallPopover = new WI.Popover;
-            this._waterfallPopover.backgroundStyle = WI.Popover.BackgroundStyle.White;
+            this._waterfallPopover.element.classList.add("waterfall-popover");
         }
 
         if (this._waterfallPopover.visible)

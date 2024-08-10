@@ -90,6 +90,8 @@ String URLUtils<T>::origin() const
 template <typename T>
 String URLUtils<T>::protocol() const
 {
+    if (protocolIsJavaScript(href()))
+        return "javascript:"_s;
     return makeString(href().protocol(), ':');
 }
 
@@ -186,7 +188,7 @@ void URLUtils<T>::setHost(const String& value)
 template <typename T>
 String URLUtils<T>::hostname() const
 {
-    return href().host();
+    return href().host().toString();
 }
 
 template <typename T>

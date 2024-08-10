@@ -100,6 +100,12 @@ void VideoFullscreenModelVideoElement::updateForEventName(const WTF::AtomicStrin
     }
 }
 
+void VideoFullscreenModelVideoElement::willExitFullscreen()
+{
+    if (m_videoElement)
+        m_videoElement->willExitFullscreen();
+}
+
 void VideoFullscreenModelVideoElement::setVideoFullscreenLayer(PlatformLayer* videoLayer, WTF::Function<void()>&& completionHandler)
 {
     if (m_videoFullscreenLayer == videoLayer) {
@@ -232,6 +238,36 @@ void VideoFullscreenModelVideoElement::setVideoDimensions(const FloatSize& video
 
     for (auto& client : m_clients)
         client->videoDimensionsChanged(m_videoDimensions);
+}
+
+void VideoFullscreenModelVideoElement::willEnterPictureInPicture()
+{
+    for (auto& client : m_clients)
+        client->willEnterPictureInPicture();
+}
+
+void VideoFullscreenModelVideoElement::didEnterPictureInPicture()
+{
+    for (auto& client : m_clients)
+        client->didEnterPictureInPicture();
+}
+
+void VideoFullscreenModelVideoElement::failedToEnterPictureInPicture()
+{
+    for (auto& client : m_clients)
+        client->failedToEnterPictureInPicture();
+}
+
+void VideoFullscreenModelVideoElement::willExitPictureInPicture()
+{
+    for (auto& client : m_clients)
+        client->willExitPictureInPicture();
+}
+
+void VideoFullscreenModelVideoElement::didExitPictureInPicture()
+{
+    for (auto& client : m_clients)
+        client->didExitPictureInPicture();
 }
 
 #endif

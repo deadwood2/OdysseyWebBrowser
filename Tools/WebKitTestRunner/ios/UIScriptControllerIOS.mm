@@ -331,6 +331,13 @@ void UIScriptController::longPressAtPoint(long x, long y, JSValueRef callback)
     }];
 }
 
+void UIScriptController::enterText(JSStringRef text)
+{
+    TestRunnerWKWebView *webView = TestController::singleton().mainWebView()->platformView();
+    auto textAsCFString = adoptCF(JSStringCopyCFString(kCFAllocatorDefault, text));
+    [webView _simulateTextEntered:(NSString *)textAsCFString.get()];
+}
+
 void UIScriptController::typeCharacterUsingHardwareKeyboard(JSStringRef character, JSValueRef callback)
 {
     unsigned callbackID = m_context->prepareForAsyncTask(callback, CallbackTypeNonPersistent);
@@ -367,61 +374,40 @@ void UIScriptController::keyUpUsingHardwareKeyboard(JSStringRef character, JSVal
     }];
 }
 
-void UIScriptController::selectTextCandidateAtIndex(long index, JSValueRef callback)
-{
-#if USE(APPLE_INTERNAL_SDK)
-    static const float textPredictionsPollingInterval = 0.1;
-    unsigned callbackID = m_context->prepareForAsyncTask(callback, CallbackTypeNonPersistent);
-    waitForTextPredictionsViewAndSelectCandidateAtIndex(index, callbackID, textPredictionsPollingInterval);
-#else
-    // FIXME: This is a no-op on non-internal builds due to UIKeyboardPredictionView being unavailable. Ideally, there should be a better way to
-    // retrieve information and interact with the predictive text view that will be compatible with OpenSource.
-    UNUSED_PARAM(index);
-    UNUSED_PARAM(callback);
-#endif
-}
-
-void UIScriptController::waitForTextPredictionsViewAndSelectCandidateAtIndex(long index, unsigned callbackID, float interval)
-{
-    id UIKeyboardPredictionViewClass = NSClassFromString(@"UIKeyboardPredictionView");
-    if (!UIKeyboardPredictionViewClass)
-        return;
-
-#if USE(APPLE_INTERNAL_SDK)
-    UIKeyboardPredictionView *predictionView = (UIKeyboardPredictionView *)[UIKeyboardPredictionViewClass activeInstance];
-    if (![predictionView hasPredictions]) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, interval * NSEC_PER_SEC), dispatch_get_main_queue(), ^() {
-            waitForTextPredictionsViewAndSelectCandidateAtIndex(index, callbackID, interval);
-        });
-        return;
-    }
-
-    PlatformWKView webView = TestController::singleton().mainWebView()->platformView();
-    CGRect predictionViewFrame = [predictionView frame];
-    // This assumes there are 3 predicted text cells of equal width, which is the case on iOS.
-    float offsetX = (index * 2 + 1) * CGRectGetWidth(predictionViewFrame) / 6;
-    float offsetY = CGRectGetHeight(webView.window.frame) - CGRectGetHeight([[predictionView superview] frame]) + CGRectGetHeight(predictionViewFrame) / 2;
-    [[HIDEventGenerator sharedHIDEventGenerator] tap:CGPointMake(offsetX, offsetY) completionBlock:^{
-        if (m_context)
-            m_context->asyncTaskComplete(callbackID);
-    }];
-#else
-    UNUSED_PARAM(index);
-    UNUSED_PARAM(callbackID);
-    UNUSED_PARAM(interval);
-#endif
-}
-
 void UIScriptController::dismissFormAccessoryView()
 {
     TestRunnerWKWebView *webView = TestController::singleton().mainWebView()->platformView();
     [webView dismissFormAccessoryView];
 }
 
+JSRetainPtr<JSStringRef> UIScriptController::selectFormPopoverTitle() const
+{
+    TestRunnerWKWebView *webView = TestController::singleton().mainWebView()->platformView();
+    return JSStringCreateWithCFString((CFStringRef)webView.selectFormPopoverTitle);
+}
+
+JSRetainPtr<JSStringRef> UIScriptController::textContentType() const
+{
+    TestRunnerWKWebView *webView = TestController::singleton().mainWebView()->platformView();
+    return JSStringCreateWithCFString((CFStringRef)(webView.textContentTypeForTesting ?: @""));
+}
+
+JSRetainPtr<JSStringRef> UIScriptController::formInputLabel() const
+{
+    TestRunnerWKWebView *webView = TestController::singleton().mainWebView()->platformView();
+    return JSStringCreateWithCFString((CFStringRef)webView.formInputLabel);
+}
+
 void UIScriptController::selectFormAccessoryPickerRow(long rowIndex)
 {
     TestRunnerWKWebView *webView = TestController::singleton().mainWebView()->platformView();
     [webView selectFormAccessoryPickerRow:rowIndex];
+}
+
+void UIScriptController::setTimePickerValue(long hour, long minute)
+{
+    TestRunnerWKWebView *webView = TestController::singleton().mainWebView()->platformView();
+    [webView setTimePickerValueToHour:hour minute:minute];
 }
     
 JSObjectRef UIScriptController::contentsOfUserInterfaceItem(JSStringRef interfaceItem) const
@@ -546,6 +532,26 @@ JSObjectRef UIScriptController::selectionRangeViewRects() const
 JSObjectRef UIScriptController::textSelectionCaretRect() const
 {
     return JSValueToObject(m_context->jsContext(), [JSValue valueWithObject:toNSDictionary(TestController::singleton().mainWebView()->platformView()._uiTextCaretRect) inContext:[JSContext contextWithJSGlobalContextRef:m_context->jsContext()]].JSValueRef, nullptr);
+}
+
+JSObjectRef UIScriptController::selectionStartGrabberViewRect() const
+{
+    WKWebView *webView = TestController::singleton().mainWebView()->platformView();
+    UIView *contentView = [webView valueForKeyPath:@"_currentContentView"];
+    UIView *selectionRangeView = [contentView valueForKeyPath:@"interactionAssistant.selectionView.rangeView"];
+    auto frameInContentCoordinates = [selectionRangeView convertRect:[[selectionRangeView valueForKeyPath:@"startGrabber"] frame] toView:contentView];
+    auto jsContext = m_context->jsContext();
+    return JSValueToObject(jsContext, [JSValue valueWithObject:toNSDictionary(frameInContentCoordinates) inContext:[JSContext contextWithJSGlobalContextRef:jsContext]].JSValueRef, nullptr);
+}
+
+JSObjectRef UIScriptController::selectionEndGrabberViewRect() const
+{
+    WKWebView *webView = TestController::singleton().mainWebView()->platformView();
+    UIView *contentView = [webView valueForKeyPath:@"_currentContentView"];
+    UIView *selectionRangeView = [contentView valueForKeyPath:@"interactionAssistant.selectionView.rangeView"];
+    auto frameInContentCoordinates = [selectionRangeView convertRect:[[selectionRangeView valueForKeyPath:@"endGrabber"] frame] toView:contentView];
+    auto jsContext = m_context->jsContext();
+    return JSValueToObject(jsContext, [JSValue valueWithObject:toNSDictionary(frameInContentCoordinates) inContext:[JSContext contextWithJSGlobalContextRef:jsContext]].JSValueRef, nullptr);
 }
 
 JSObjectRef UIScriptController::inputViewBounds() const

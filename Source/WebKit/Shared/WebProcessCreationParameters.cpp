@@ -85,6 +85,7 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << urlSchemesRegisteredAsAlwaysRevalidated;
     encoder << urlSchemesRegisteredAsCachePartitioned;
     encoder << urlSchemesServiceWorkersCanHandle;
+    encoder << urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest;
     encoder.encodeEnum(cacheModel);
     encoder << shouldAlwaysUseComplexTextCodePath;
     encoder << shouldEnableMemoryPressureReliefLogging;
@@ -94,11 +95,15 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << fontWhitelist;
     encoder << terminationTimeout;
     encoder << languages;
+#if USE(GSTREAMER)
+    encoder << gstreamerOptions;
+#endif
     encoder << textCheckerState;
     encoder << fullKeyboardAccessEnabled;
     encoder << defaultRequestTimeoutInterval;
 #if PLATFORM(COCOA)
     encoder << uiProcessBundleIdentifier;
+    encoder << uiProcessSDKVersion;
 #endif
     encoder << presentingApplicationPID;
 #if PLATFORM(COCOA)
@@ -120,15 +125,12 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << plugInAutoStartOriginHashes;
     encoder << plugInAutoStartOrigins;
     encoder << memoryCacheDisabled;
+    encoder << attrStyleEnabled;
 
 #if ENABLE(SERVICE_CONTROLS)
     encoder << hasImageServices;
     encoder << hasSelectionServices;
     encoder << hasRichContentServices;
-#endif
-
-#if ENABLE(SERVICE_WORKER)
-    encoder << hasRegisteredServiceWorkers;
 #endif
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
@@ -137,10 +139,6 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
 
 #if PLATFORM(COCOA)
     IPC::encode(encoder, networkATSContext.get());
-#endif
-
-#if OS(LINUX)
-    encoder << memoryPressureMonitorHandle;
 #endif
 
 #if PLATFORM(WAYLAND)
@@ -153,6 +151,15 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
     encoder << shouldLogUserInteraction;
+#endif
+
+#if PLATFORM(COCOA)
+    encoder << mediaMIMETypes;
+#endif
+
+#if PLATFORM(MAC)
+    encoder << screenProperties;
+    encoder << useOverlayScrollbars;
 #endif
 }
 
@@ -282,6 +289,8 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
         return false;
     if (!decoder.decode(parameters.urlSchemesServiceWorkersCanHandle))
         return false;
+    if (!decoder.decode(parameters.urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest))
+        return false;
     if (!decoder.decodeEnum(parameters.cacheModel))
         return false;
     if (!decoder.decode(parameters.shouldAlwaysUseComplexTextCodePath))
@@ -300,6 +309,10 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
         return false;
     if (!decoder.decode(parameters.languages))
         return false;
+#if USE(GSTREAMER)
+    if (!decoder.decode(parameters.gstreamerOptions))
+        return false;
+#endif
     if (!decoder.decode(parameters.textCheckerState))
         return false;
     if (!decoder.decode(parameters.fullKeyboardAccessEnabled))
@@ -308,6 +321,8 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
         return false;
 #if PLATFORM(COCOA)
     if (!decoder.decode(parameters.uiProcessBundleIdentifier))
+        return false;
+    if (!decoder.decode(parameters.uiProcessSDKVersion))
         return false;
 #endif
     if (!decoder.decode(parameters.presentingApplicationPID))
@@ -355,6 +370,8 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
         return false;
     if (!decoder.decode(parameters.memoryCacheDisabled))
         return false;
+    if (!decoder.decode(parameters.attrStyleEnabled))
+        return false;
 
 #if ENABLE(SERVICE_CONTROLS)
     if (!decoder.decode(parameters.hasImageServices))
@@ -365,11 +382,6 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
         return false;
 #endif
 
-#if ENABLE(SERVICE_WORKER)
-    if (!decoder.decode(parameters.hasRegisteredServiceWorkers))
-        return false;
-#endif
-
 #if ENABLE(NETSCAPE_PLUGIN_API)
     if (!decoder.decode(parameters.pluginLoadClientPolicies))
         return false;
@@ -377,11 +389,6 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
 
 #if PLATFORM(COCOA)
     if (!IPC::decode(decoder, parameters.networkATSContext))
-        return false;
-#endif
-
-#if OS(LINUX)
-    if (!decoder.decode(parameters.memoryPressureMonitorHandle))
         return false;
 #endif
 
@@ -397,6 +404,21 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
     if (!decoder.decode(parameters.shouldLogUserInteraction))
+        return false;
+#endif
+
+#if PLATFORM(COCOA)
+    if (!decoder.decode(parameters.mediaMIMETypes))
+        return false;
+#endif
+
+#if PLATFORM(MAC)
+    std::optional<WebCore::ScreenProperties> screenProperties;
+    decoder >> screenProperties;
+    if (!screenProperties)
+        return false;
+    parameters.screenProperties = WTFMove(*screenProperties);
+    if (!decoder.decode(parameters.useOverlayScrollbars))
         return false;
 #endif
 

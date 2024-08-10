@@ -38,9 +38,9 @@ void WebPageProxy::platformInitialize()
     notImplemented();
 }
 
-JSGlobalContextRef WebPageProxy::javascriptGlobalContext()
+struct wpe_view_backend* WebPageProxy::viewBackend()
 {
-    return m_pageClient.javascriptGlobalContext();
+    return static_cast<PageClientImpl&>(pageClient()).viewBackend();
 }
 
 String WebPageProxy::standardUserAgent(const String& applicationNameForUserAgent)

@@ -51,9 +51,11 @@ typedef WKViewRef PlatformWKView;
 typedef GtkWidget* PlatformWindow;
 typedef cairo_surface_t *PlatformImage;
 #elif PLATFORM(WPE)
+namespace WPEToolingBackends {
 class HeadlessViewBackend;
+}
 typedef WKViewRef PlatformWKView;
-typedef HeadlessViewBackend* PlatformWindow;
+typedef WPEToolingBackends::HeadlessViewBackend* PlatformWindow;
 typedef cairo_surface_t* PlatformImage;
 #endif
 
@@ -91,11 +93,14 @@ public:
     void makeWebViewFirstResponder();
     void setWindowIsKey(bool);
     bool windowIsKey() const { return m_windowIsKey; }
-    
+
+    bool drawsBackground() const;
+    void setDrawsBackground(bool);
+
     void removeFromWindow();
     void addToWindow();
 
-    bool viewSupportsOptions(const TestOptions& options) const { return m_options.hasSameInitializationOptions(options); }
+    bool viewSupportsOptions(const TestOptions& options) const { return !options.runSingly && m_options.hasSameInitializationOptions(options); }
 
     PlatformImage windowSnapshotImage();
     const TestOptions& options() const { return m_options; }
@@ -114,6 +119,9 @@ private:
     PlatformWindow m_window;
     bool m_windowIsKey;
     const TestOptions m_options;
+#if PLATFORM(GTK)
+    GtkWidget* m_otherWindow { nullptr };
+#endif
 };
 
 } // namespace WTR

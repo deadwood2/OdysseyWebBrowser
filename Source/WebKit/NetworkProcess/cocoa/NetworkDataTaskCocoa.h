@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,8 +25,10 @@
 
 #pragma once
 
+#include "NetworkActivityTracker.h"
 #include "NetworkDataTask.h"
 #include "NetworkLoadParameters.h"
+#include "WiFiAssertionHolder.h"
 #include <WebCore/NetworkLoadMetrics.h>
 #include <wtf/RetainPtr.h>
 
@@ -40,9 +42,9 @@ class NetworkSessionCocoa;
 class NetworkDataTaskCocoa final : public NetworkDataTask {
     friend class NetworkSessionCocoa;
 public:
-    static Ref<NetworkDataTask> create(NetworkSession& session, NetworkDataTaskClient& client, const WebCore::ResourceRequest& request, uint64_t frameID, uint64_t pageID, WebCore::StoredCredentialsPolicy storedCredentialsPolicy, WebCore::ContentSniffingPolicy shouldContentSniff, WebCore::ContentEncodingSniffingPolicy shouldContentEncodingSniff, bool shouldClearReferrerOnHTTPSToHTTPRedirect, PreconnectOnly shouldPreconnectOnly)
+    static Ref<NetworkDataTask> create(NetworkSession& session, NetworkDataTaskClient& client, const WebCore::ResourceRequest& request, uint64_t frameID, uint64_t pageID, WebCore::StoredCredentialsPolicy storedCredentialsPolicy, WebCore::ContentSniffingPolicy shouldContentSniff, WebCore::ContentEncodingSniffingPolicy shouldContentEncodingSniff, bool shouldClearReferrerOnHTTPSToHTTPRedirect, PreconnectOnly shouldPreconnectOnly, bool dataTaskIsForMainFrameNavigation, std::optional<NetworkActivityTracker> networkActivityTracker)
     {
-        return adoptRef(*new NetworkDataTaskCocoa(session, client, request, frameID, pageID, storedCredentialsPolicy, shouldContentSniff, shouldContentEncodingSniff, shouldClearReferrerOnHTTPSToHTTPRedirect, shouldPreconnectOnly));
+        return adoptRef(*new NetworkDataTaskCocoa(session, client, request, frameID, pageID, storedCredentialsPolicy, shouldContentSniff, shouldContentEncodingSniff, shouldClearReferrerOnHTTPSToHTTPRedirect, shouldPreconnectOnly, dataTaskIsForMainFrameNavigation, networkActivityTracker));
     }
 
     ~NetworkDataTaskCocoa();
@@ -50,7 +52,7 @@ public:
     typedef uint64_t TaskIdentifier;
 
     void didSendData(uint64_t totalBytesSent, uint64_t totalBytesExpectedToSend);
-    void didReceiveChallenge(const WebCore::AuthenticationChallenge&, ChallengeCompletionHandler&&);
+    void didReceiveChallenge(WebCore::AuthenticationChallenge&&, ChallengeCompletionHandler&&);
     void didCompleteWithError(const WebCore::ResourceError&, const WebCore::NetworkLoadMetrics&);
     void didReceiveData(Ref<WebCore::SharedBuffer>&&);
 
@@ -71,8 +73,18 @@ public:
     uint64_t frameID() const { return m_frameID; };
     uint64_t pageID() const { return m_pageID; };
 
+#if ENABLE(WIFI_ASSERTIONS)
+    void maybeHoldWiFiAssertion(bool shouldHoldWiFiAssertion)
+    {
+        ASSERT(!m_wiFiAssertionHolder);
+        m_wiFiAssertionHolder.emplace(shouldHoldWiFiAssertion);
+    }
+#endif
+
+    String description() const override;
+
 private:
-    NetworkDataTaskCocoa(NetworkSession&, NetworkDataTaskClient&, const WebCore::ResourceRequest&, uint64_t frameID, uint64_t pageID, WebCore::StoredCredentialsPolicy, WebCore::ContentSniffingPolicy, WebCore::ContentEncodingSniffingPolicy, bool shouldClearReferrerOnHTTPSToHTTPRedirect, PreconnectOnly);
+    NetworkDataTaskCocoa(NetworkSession&, NetworkDataTaskClient&, const WebCore::ResourceRequest&, uint64_t frameID, uint64_t pageID, WebCore::StoredCredentialsPolicy, WebCore::ContentSniffingPolicy, WebCore::ContentEncodingSniffingPolicy, bool shouldClearReferrerOnHTTPSToHTTPRedirect, PreconnectOnly, bool dataTaskIsForMainFrameNavigation, std::optional<NetworkActivityTracker>);
 
     bool tryPasswordBasedAuthentication(const WebCore::AuthenticationChallenge&, ChallengeCompletionHandler&);
     void applySniffingPoliciesAndBindRequestToInferfaceIfNeeded(NSURLRequest*&, bool shouldContentSniff, bool shouldContentEncodingSniff);
@@ -80,8 +92,9 @@ private:
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING)
     static NSHTTPCookieStorage *statelessCookieStorage();
     void applyCookieBlockingPolicy(bool shouldBlock);
-    void applyCookiePartitioningPolicy(const String& requiredStoragePartition, const String& currentStoragePartition);
 #endif
+    bool isThirdPartyRequest(const WebCore::ResourceRequest&);
+    bool isAlwaysOnLoggingAllowed() const;
 
     RefPtr<SandboxExtension> m_sandboxExtension;
     RetainPtr<NSURLSessionDataTask> m_task;
@@ -91,6 +104,10 @@ private:
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING)
     bool m_hasBeenSetToUseStatelessCookieStorage { false };
+#endif
+
+#if ENABLE(WIFI_ASSERTIONS)
+    std::optional<WiFiAssertionHolder> m_wiFiAssertionHolder;
 #endif
 };
 

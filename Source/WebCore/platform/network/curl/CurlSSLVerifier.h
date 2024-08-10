@@ -26,12 +26,12 @@
 
 #pragma once
 
-#include <wtf/ListHashSet.h>
+#include "CertificateInfo.h"
 #include <wtf/Noncopyable.h>
 #include <wtf/text/WTFString.h>
 
 struct x509_store_ctx_st;
-typedef struct x509_store_ctx_st X509_STORE_CTX;
+typedef struct x509_store_ctx_st X509StoreCTX;
 
 namespace WebCore {
 
@@ -50,22 +50,20 @@ public:
         SSL_CERTIFICATE_GENERIC_ERROR = (1 << 6) // Some other error occurred validating the certificate
     };
 
-    CurlSSLVerifier(CurlHandle*, const String& hostName, void* sslCtx);
+    CurlSSLVerifier(CurlHandle&, void* sslCtx);
 
     int sslErrors() { return m_sslErrors; }
+    const CertificateInfo& certificateInfo() const { return m_certificateInfo; }
 
 private:
-    static int certVerifyCallback(int, X509_STORE_CTX*);
+    static int verifyCallback(int, X509StoreCTX*);
 
-#if !PLATFORM(WIN)
-    static bool getPemDataFromCtx(X509_STORE_CTX*, ListHashSet<String>&);
-#endif
+    CurlHandle& m_curlHandle;
 
-    SSLCertificateFlags convertToSSLCertificateFlags(const unsigned&);
-
-    CurlHandle* m_curlHandle { };
-    String m_hostName;
     int m_sslErrors { 0 };
+    CertificateInfo m_certificateInfo;
+
+    void collectInfo(X509StoreCTX*);
 };
 
 } // namespace WebCore

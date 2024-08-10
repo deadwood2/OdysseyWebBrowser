@@ -31,7 +31,7 @@ WI.CanvasTabContentView = class CanvasTabContentView extends WI.ContentBrowserTa
 
         let tabBarItem = WI.GeneralTabBarItem.fromTabInfo(WI.CanvasTabContentView.tabInfo());
 
-        const navigationSidebarPanelConstructor = WI.RecordingNavigationSidebarPanel;
+        const navigationSidebarPanelConstructor = WI.CanvasSidebarPanel;
         const detailsSidebarPanelConstructors = [WI.RecordingStateDetailsSidebarPanel, WI.RecordingTraceDetailsSidebarPanel, WI.CanvasDetailsSidebarPanel];
         const disableBackForward = true;
         super("canvas", ["canvas"], tabBarItem, navigationSidebarPanelConstructor, detailsSidebarPanelConstructors, disableBackForward);
@@ -41,19 +41,18 @@ WI.CanvasTabContentView = class CanvasTabContentView extends WI.ContentBrowserTa
         this._canvasTreeOutline = new WI.TreeOutline;
         this._canvasTreeOutline.addEventListener(WI.TreeOutline.Event.SelectionDidChange, this._canvasTreeOutlineSelectionDidChange, this);
 
-        const leftArrow = "Images/BackForwardArrows.svg#left-arrow-mask";
-        const rightArrow = "Images/BackForwardArrows.svg#right-arrow-mask";
-        let isRTL = WI.resolvedLayoutDirection() === WI.LayoutDirection.RTL;
-        let backButtonImage = isRTL ? rightArrow : leftArrow;
-        this._overviewNavigationItem = new WI.ButtonNavigationItem("canvas-overview", WI.UIString("Canvas Overview"), backButtonImage, 8, 13);
-        this._overviewNavigationItem.hidden = true;
-        this._overviewNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
-        this._overviewNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, () => { this.showRepresentedObject(this._canvasCollection); });
+        this._overviewTreeElement = new WI.GeneralTreeElement("canvas-overview", WI.UIString("Overview"), null, this._canvasCollection);
+        this._canvasTreeOutline.appendChild(this._overviewTreeElement);
 
-        this.contentBrowser.navigationBar.insertNavigationItem(this._overviewNavigationItem, 2);
-        this.contentBrowser.navigationBar.insertNavigationItem(new WI.DividerNavigationItem, 3);
+        this._importedRecordingsTreeElement = new WI.FolderTreeElement(WI.UIString("Imported Recordings"));
+        this._importedRecordingsTreeElement.hidden = true;
+        this._overviewTreeElement.appendChild(this._importedRecordingsTreeElement);
 
-        this.navigationSidebarPanel.contentTreeOutline.addEventListener(WI.TreeOutline.Event.SelectionDidChange, this._navigationSidebarTreeOutlineSelectionChanged, this);
+        this._recordShortcut = new WI.KeyboardShortcut(null, WI.KeyboardShortcut.Key.Space, this._handleSpace.bind(this));
+        this._recordShortcut.implicitlyPreventsDefault = false;
+
+        this._recordSingleFrameShortcut = new WI.KeyboardShortcut(WI.KeyboardShortcut.Modifier.Shift, WI.KeyboardShortcut.Key.Space, this._handleSpace.bind(this));
+        this._recordSingleFrameShortcut.implicitlyPreventsDefault = false;
     }
 
     static tabInfo()
@@ -86,31 +85,17 @@ WI.CanvasTabContentView = class CanvasTabContentView extends WI.ContentBrowserTa
         return true;
     }
 
-    canShowRepresentedObject(representedObject)
+    get managesNavigationSidebarPanel()
     {
-        return representedObject instanceof WI.CanvasCollection
-            || representedObject instanceof WI.Recording
-            || representedObject instanceof WI.ShaderProgram;
+        return true;
     }
 
-    showRepresentedObject(representedObject, cookie)
+    canShowRepresentedObject(representedObject)
     {
-        super.showRepresentedObject(representedObject, cookie);
-
-        this.navigationSidebarPanel.recording = null;
-
-        if (representedObject instanceof WI.CanvasCollection || representedObject instanceof WI.ShaderProgram) {
-            this._overviewNavigationItem.hidden = true;
-            return;
-        }
-
-        if (representedObject instanceof WI.Recording) {
-            this._overviewNavigationItem.hidden = false;
-            this.navigationSidebarPanel.recording = representedObject;
-            return;
-        }
-
-        console.assert(false, "Should not be reached.");
+        return representedObject instanceof WI.Canvas
+            || representedObject instanceof WI.CanvasCollection
+            || representedObject instanceof WI.Recording
+            || representedObject instanceof WI.ShaderProgram;
     }
 
     shown()
@@ -141,17 +126,16 @@ WI.CanvasTabContentView = class CanvasTabContentView extends WI.ContentBrowserTa
         WI.canvasManager.addEventListener(WI.CanvasManager.Event.CanvasRemoved, this._handleCanvasRemoved, this);
         WI.canvasManager.addEventListener(WI.CanvasManager.Event.RecordingImported, this._recordingImportedOrStopped, this);
         WI.canvasManager.addEventListener(WI.CanvasManager.Event.RecordingStopped, this._recordingImportedOrStopped, this);
-        WI.RecordingContentView.addEventListener(WI.RecordingContentView.Event.RecordingActionIndexChanged, this._recordingActionIndexChanged, this);
 
-        let canvases = new Set(Array.from(this._canvasCollection.items).concat(WI.canvasManager.canvases));
+        let canvases = new Set([...this._canvasCollection, ...WI.canvasManager.canvases]);
 
-        for (let canvas of this._canvasCollection.items) {
+        for (let canvas of this._canvasCollection) {
             if (!canvases.has(canvas))
                 this._removeCanvas(canvas);
         }
 
         for (let canvas of canvases) {
-            if (!this._canvasCollection.items.has(canvas))
+            if (!this._canvasCollection.has(canvas))
                 this._addCanvas(canvas);
         }
     }
@@ -168,32 +152,24 @@ WI.CanvasTabContentView = class CanvasTabContentView extends WI.ContentBrowserTa
 
     _addCanvas(canvas)
     {
-        this._canvasTreeOutline.appendChild(new WI.CanvasTreeElement(canvas));
+        this._overviewTreeElement.appendChild(new WI.CanvasTreeElement(canvas));
         this._canvasCollection.add(canvas);
 
-        for (let recording of canvas.recordingCollection.items)
+        for (let recording of canvas.recordingCollection)
             this._recordingAdded(recording, {suppressShowRecording: true});
     }
 
     _removeCanvas(canvas)
     {
-        // Move all existing recordings for the removed canvas to be imported recordings, as the
-        // recording's source is no longer valid.
-        for (let recording of canvas.recordingCollection.items) {
-            recording.source = null;
-            recording.createDisplayName();
-
-            const subtitle = null;
-            this._canvasTreeOutline.appendChild(new WI.GeneralTreeElement(["recording"], recording.displayName, subtitle, recording));
-        }
+        // FIXME: Create tree elements/cards for recordings belonging to the removed canvas.
 
         let treeElement = this._canvasTreeOutline.findTreeElement(canvas);
         console.assert(treeElement, "Missing tree element for canvas.", canvas);
-        this._canvasTreeOutline.removeChild(treeElement);
+        this._overviewTreeElement.removeChild(treeElement);
         this._canvasCollection.remove(canvas);
 
         let currentContentView = this.contentBrowser.currentContentView;
-        if (currentContentView instanceof WI.RecordingContentView && canvas.recordingCollection.items.has(currentContentView.representedObject))
+        if (currentContentView instanceof WI.RecordingContentView && canvas.recordingCollection.has(currentContentView.representedObject))
             this.contentBrowser.updateHierarchicalPathForCurrentContentView();
     }
 
@@ -214,22 +190,12 @@ WI.CanvasTabContentView = class CanvasTabContentView extends WI.ContentBrowserTa
             return;
 
         let representedObject = selectedElement.representedObject;
-
-        if (this.canShowRepresentedObject(representedObject)) {
-            this.showRepresentedObject(representedObject);
-
-            if (representedObject instanceof WI.Recording)
-                this._updateActionIndex(0);
+        if (!this.canShowRepresentedObject(representedObject)) {
+            console.assert(false, "Unexpected representedObject.", representedObject);
             return;
         }
 
-        if (representedObject instanceof WI.Canvas) {
-            this.showRepresentedObject(this._canvasCollection);
-            this.contentBrowser.currentContentView.setSelectedItem(representedObject);
-            return;
-        }
-
-        console.assert(false, "Unexpected representedObject.", representedObject);
+        this.showRepresentedObject(representedObject);
     }
 
     _recordingImportedOrStopped(event)
@@ -243,57 +209,39 @@ WI.CanvasTabContentView = class CanvasTabContentView extends WI.ContentBrowserTa
         });
     }
 
-    _navigationSidebarTreeOutlineSelectionChanged(event)
-    {
-        if (!event.data.selectedElement)
-            return;
-
-        let recordingContentView = this.contentBrowser.currentContentView;
-        if (!(recordingContentView instanceof WI.RecordingContentView))
-            return;
-
-        let selectedTreeElement = event.data.selectedElement;
-        if (selectedTreeElement instanceof WI.FolderTreeElement)
-            selectedTreeElement = selectedTreeElement.children.lastValue;
-
-        this._updateActionIndex(selectedTreeElement.index, {suppressNavigationSidebarUpdate: true});
-    }
-
     _recordingAdded(recording, options = {})
     {
         if (!recording.source) {
             const subtitle = null;
             let recordingTreeElement = new WI.GeneralTreeElement(["recording"], recording.displayName, subtitle, recording);
-            this._canvasTreeOutline.appendChild(recordingTreeElement);
+            this._importedRecordingsTreeElement.hidden = false;
+            this._importedRecordingsTreeElement.appendChild(recordingTreeElement);
         }
 
-        if (!options.suppressShowRecording) {
+        if (!options.suppressShowRecording)
             this.showRepresentedObject(recording);
-            this._updateActionIndex(0, {suppressNavigationSidebarUpdate: true});
-        }
     }
 
-    _recordingActionIndexChanged(event)
+    _handleSpace(event)
     {
-        if (event.target !== this.contentBrowser.currentContentView)
+        if (WI.isEventTargetAnEditableField(event))
             return;
 
-        this._updateActionIndex(event.data.index);
-    }
+        if (!this.navigationSidebarPanel)
+            return;
 
-    _updateActionIndex(index, options = {})
-    {
-        options.actionCompletedCallback = (action, context) => {
-            for (let detailsSidebarPanel of this.detailsSidebarPanels) {
-                if (detailsSidebarPanel.updateAction)
-                    detailsSidebarPanel.updateAction(action, context, options);
-            }
-        };
+        let canvas = this.navigationSidebarPanel.canvas;
+        if (!canvas)
+            return;
 
-        if (!options.suppressNavigationSidebarUpdate)
-            this.navigationSidebarPanel.updateActionIndex(index, options);
+        if (canvas.isRecording)
+            WI.canvasManager.stopRecording();
+        else if (!WI.canvasManager.recordingCanvas) {
+            let singleFrame = !!event.shiftKey;
+            WI.canvasManager.startRecording(canvas, singleFrame);
+        }
 
-        this.contentBrowser.currentContentView.updateActionIndex(index, options);
+        event.preventDefault();
     }
 };
 

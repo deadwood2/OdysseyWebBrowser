@@ -30,7 +30,7 @@
 
 #import "DownloadProxy.h"
 #import "WKWebViewInternal.h"
-#import "WeakObjCPtr.h"
+#import <wtf/WeakObjCPtr.h>
 
 @implementation _WKDownload {
     API::ObjectStorage<WebKit::DownloadProxy> _download;
@@ -50,7 +50,7 @@
 
 - (NSURLRequest *)request
 {
-    return _download->request().nsURLRequest(WebCore::DoNotUpdateHTTPBody);
+    return _download->request().nsURLRequest(WebCore::HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody);
 }
 
 - (WKWebView *)originatingWebView

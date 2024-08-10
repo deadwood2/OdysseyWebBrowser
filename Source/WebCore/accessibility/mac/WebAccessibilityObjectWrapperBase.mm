@@ -245,21 +245,20 @@ static NSArray *convertMathPairsToNSArray(const AccessibilityObject::Accessibili
     return array;
 }
 
-
 NSArray *convertToNSArray(const AccessibilityObject::AccessibilityChildrenVector& vector)
 {
     NSMutableArray *array = [NSMutableArray arrayWithCapacity:vector.size()];
     for (const auto& child : vector) {
-        WebAccessibilityObjectWrapper* wrapper = child->wrapper();
-        ASSERT(wrapper);
-        if (wrapper) {
-            // we want to return the attachment view instead of the object representing the attachment.
-            // otherwise, we get palindrome errors in the AX hierarchy
-            if (child->isAttachment() && [wrapper attachmentView])
-                [array addObject:[wrapper attachmentView]];
-            else
-                [array addObject:wrapper];
-        }
+        auto wrapper = (WebAccessibilityObjectWrapperBase *)child->wrapper();
+        if (!wrapper)
+            continue;
+
+        // We want to return the attachment view instead of the object representing the attachment,
+        // otherwise, we get palindrome errors in the AX hierarchy.
+        if (child->isAttachment() && [wrapper attachmentView])
+            [array addObject:[wrapper attachmentView]];
+        else
+            [array addObject:wrapper];
     }
     return [[array copy] autorelease];
 }
@@ -284,8 +283,9 @@ NSArray *convertToNSArray(const AccessibilityObject::AccessibilityChildrenVector
 {
     // Calling updateBackingStore() can invalidate this element so self must be retained.
     // If it does become invalidated, m_object will be nil.
-    [[self retain] autorelease];
-    
+    CFRetain((__bridge CFTypeRef)self);
+    CFAutorelease((__bridge CFTypeRef)self);
+
     if (!m_object)
         return NO;
     
@@ -405,18 +405,18 @@ NSArray *convertToNSArray(const AccessibilityObject::AccessibilityChildrenVector
 
 - (NSArray<NSString *> *)baseAccessibilitySpeechHint
 {
-    ESpeakAs speak = m_object->speakAsProperty();
+    auto speak = m_object->speakAsProperty();
     NSMutableArray<NSString *> *hints = [NSMutableArray array];
-    if (speak & SpeakSpellOut)
+    if (speak & SpeakAs::SpellOut)
         [hints addObject:@"spell-out"];
     else
         [hints addObject:@"normal"];
 
-    if (speak & SpeakDigits)
+    if (speak & SpeakAs::Digits)
         [hints addObject:@"digits"];
-    if (speak & SpeakLiteralPunctuation)
+    if (speak & SpeakAs::LiteralPunctuation)
         [hints addObject:@"literal-punctuation"];
-    if (speak & SpeakNoPunctuation)
+    if (speak & SpeakAs::NoPunctuation)
         [hints addObject:@"no-punctuation"];
     
     return hints;
@@ -503,7 +503,8 @@ static void convertPathToScreenSpaceFunction(PathConversionInfo& conversion, con
     path.apply([&conversion](const PathElement& pathElement) {
         convertPathToScreenSpaceFunction(conversion, pathElement);
     });
-    return (CGPathRef)[(id)conversion.path autorelease];
+    CFAutorelease(conversion.path);
+    return conversion.path;
 }
 
 - (CGPoint)convertPointToScreenSpace:(FloatPoint &)point

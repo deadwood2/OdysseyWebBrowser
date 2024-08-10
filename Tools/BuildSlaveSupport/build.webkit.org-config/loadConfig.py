@@ -33,6 +33,7 @@ import json
 import operator
 
 from committer_auth import CommitterAuth
+import make_passwords_json
 import wkbuild
 
 trunk_filter = ChangeFilter(branch=["trunk", None])
@@ -42,9 +43,12 @@ def pickLatestBuild(builder, requests):
     return max(requests, key=operator.attrgetter("submittedAt"))
 
 
-def loadBuilderConfig(c):
+def loadBuilderConfig(c, test_mode_is_enabled=False):
     # FIXME: These file handles are leaked.
-    passwords = json.load(open('passwords.json'))
+    if test_mode_is_enabled:
+        passwords = make_passwords_json.create_mock_slave_passwords_dict()
+    else:
+        passwords = json.load(open('passwords.json'))
     config = json.load(open('config.json'))
 
     c['slaves'] = [BuildSlave(slave['name'], passwords[slave['name']], max_builds=1) for slave in config['slaves']]
@@ -53,13 +57,13 @@ def loadBuilderConfig(c):
     for scheduler in config['schedulers']:
         if "change_filter" in scheduler:
             scheduler["change_filter"] = globals()[scheduler["change_filter"]]
-        kls = globals()[scheduler.pop('type')]
+        schedulerType = globals()[scheduler.pop('type')]
         # Python 2.6 can't handle unicode keys as keyword arguments:
         # http://bugs.python.org/issue2646.  Modern versions of json return
         # unicode strings from json.load, so we map all keys to str objects.
         scheduler = dict(map(lambda key_value_pair: (str(key_value_pair[0]), key_value_pair[1]), scheduler.items()))
 
-        c['schedulers'].append(kls(**scheduler))
+        c['schedulers'].append(schedulerType(**scheduler))
 
     forceScheduler = ForceScheduler(
         name="force",
@@ -111,6 +115,8 @@ def loadBuilderConfig(c):
             builder["category"] = 'GTK'
         elif platform.startswith('wpe'):
             builder["category"] = 'WPE'
+        elif platform == 'wincairo':
+            builder["category"] = 'WinCairo'
         else:
             builder["category"] = 'misc'
 

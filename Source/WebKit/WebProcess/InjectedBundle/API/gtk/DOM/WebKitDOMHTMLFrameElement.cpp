@@ -26,7 +26,7 @@
 #include <WebCore/Document.h>
 #include "GObjectEventListener.h"
 #include <WebCore/HTMLNames.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMDOMWindowPrivate.h"
 #include "WebKitDOMDocumentPrivate.h"
 #include "WebKitDOMEventPrivate.h"
@@ -37,6 +37,8 @@
 #include "ConvertToUTF8String.h"
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -490,8 +492,7 @@ WebKitDOMDOMWindow* webkit_dom_html_frame_element_get_content_window(WebKitDOMHT
     WebCore::JSMainThreadNullState state;
     g_return_val_if_fail(WEBKIT_DOM_IS_HTML_FRAME_ELEMENT(self), 0);
     WebCore::HTMLFrameElement* item = WebKit::core(self);
-    RefPtr<WebCore::DOMWindow> gobjectResult = WTF::getPtr(item->contentWindow());
-    return WebKit::kit(gobjectResult.get());
+    return WebKit::kit(item->contentWindow());
 }
 
 glong webkit_dom_html_frame_element_get_width(WebKitDOMHTMLFrameElement* self)
@@ -512,3 +513,4 @@ glong webkit_dom_html_frame_element_get_height(WebKitDOMHTMLFrameElement* self)
     return result;
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

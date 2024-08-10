@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -523,9 +523,9 @@ static bool readyForClick;
 
 - (void)_webView:(WKWebView *)webView didClickAutoFillButtonWithUserInfo:(id <NSSecureCoding>)userInfo
 {
+    done = true;
     ASSERT_TRUE([(id<NSObject>)userInfo isKindOfClass:[NSString class]]);
     ASSERT_STREQ([(NSString*)userInfo UTF8String], "user data string");
-    done = true;
 }
 
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler
@@ -551,6 +551,58 @@ TEST(WebKit, ClickAutoFillButton)
     TestWebKitAPI::Util::run(&done);
 }
 
+static bool readytoResign;
+
+@interface DidResignInputElementStrongPasswordAppearanceDelegate : NSObject <WKUIDelegatePrivate>
+@end
+
+@implementation DidResignInputElementStrongPasswordAppearanceDelegate
+
+- (void)_webView:(WKWebView *)webView didResignInputElementStrongPasswordAppearanceWithUserInfo:(id <NSSecureCoding>)userInfo
+{
+    done = true;
+    ASSERT_TRUE([(id<NSObject>)userInfo isKindOfClass:[NSString class]]);
+    ASSERT_STREQ([(NSString*)userInfo UTF8String], "user data string");
+}
+
+- (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler
+{
+    completionHandler();
+    ASSERT_STREQ(message.UTF8String, "ready to resign!");
+    readytoResign = true;
+}
+
+@end
+
+static void testDidResignInputElementStrongPasswordAppearanceAfterEvaluatingJavaScript(NSString *script)
+{
+    done = false;
+    readytoResign = false;
+    WKWebViewConfiguration *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"DidResignInputElementStrongPasswordAppearance"];
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600) configuration:configuration]);
+    auto delegate = adoptNS([[DidResignInputElementStrongPasswordAppearanceDelegate alloc] init]);
+    [webView setUIDelegate:delegate.get()];
+    TestWebKitAPI::Util::run(&readytoResign);
+    [webView evaluateJavaScript:script completionHandler:nil];
+    TestWebKitAPI::Util::run(&done);
+}
+
+TEST(WebKit, DidResignInputElementStrongPasswordAppearanceWhenTypeDidChange)
+{
+    testDidResignInputElementStrongPasswordAppearanceAfterEvaluatingJavaScript(@"document.querySelector('input').type = 'text'");
+}
+
+TEST(WebKit, DidResignInputElementStrongPasswordAppearanceWhenValueDidChange)
+{
+    testDidResignInputElementStrongPasswordAppearanceAfterEvaluatingJavaScript(@"document.querySelector('input').value = ''");
+}
+
+TEST(WebKit, DidResignInputElementStrongPasswordAppearanceWhenFormIsReset)
+{
+    testDidResignInputElementStrongPasswordAppearanceAfterEvaluatingJavaScript(@"document.forms[0].reset()");
+}
+
 @interface AutoFillAvailableDelegate : NSObject <WKUIDelegatePrivate>
 @end
 
@@ -559,8 +611,8 @@ TEST(WebKit, ClickAutoFillButton)
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)())completionHandler
 {
     completionHandler();
-    ASSERT_STREQ(message.UTF8String, "autofill available");
     done = true;
+    ASSERT_STREQ(message.UTF8String, "autofill available");
 }
 
 @end
@@ -575,6 +627,30 @@ TEST(WebKit, AutoFillAvailable)
     TestWebKitAPI::Util::run(&done);
 }
 
+@interface InjectedBundleNodeHandleIsTextFieldDelegate : NSObject <WKUIDelegatePrivate>
+@end
+
+@implementation InjectedBundleNodeHandleIsTextFieldDelegate
+
+- (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)())completionHandler
+{
+    completionHandler();
+    done = true;
+    ASSERT_STREQ(message.UTF8String, "isTextField success");
+}
+
+@end
+
+TEST(WebKit, InjectedBundleNodeHandleIsTextField)
+{
+    WKWebViewConfiguration *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"InjectedBundleNodeHandleIsTextField"];
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600) configuration:configuration]);
+    auto delegate = adoptNS([[InjectedBundleNodeHandleIsTextFieldDelegate alloc] init]);
+    [webView setUIDelegate:delegate.get()];
+    TestWebKitAPI::Util::run(&done);
+}
+
 @interface PinnedStateObserver : NSObject
 @end
 
@@ -584,7 +660,7 @@ TEST(WebKit, AutoFillAvailable)
 {
     EXPECT_TRUE([keyPath isEqualToString:NSStringFromSelector(@selector(_pinnedState))]);
     EXPECT_TRUE([[object class] isEqual:[TestWKWebView class]]);
-    EXPECT_EQ([[change objectForKey:NSKeyValueChangeOldKey] integerValue], _WKRectEdgeAll);
+    EXPECT_EQ([[change objectForKey:NSKeyValueChangeOldKey] unsignedIntegerValue], _WKRectEdgeAll);
     EXPECT_EQ([[change objectForKey:NSKeyValueChangeNewKey] unsignedIntegerValue], _WKRectEdgeLeft | _WKRectEdgeRight);
     EXPECT_TRUE(context == nullptr);
     done = true;

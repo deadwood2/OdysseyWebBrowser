@@ -29,13 +29,11 @@
 #if PLATFORM(IOS)
 
 #import "APIUIClient.h"
-#import "SandboxUtilities.h"
 #import "TCCSPI.h"
 #import "UIKitSPI.h"
 #import "WKActionSheet.h"
 #import "WKContentViewInteraction.h"
 #import "WKNSURLExtras.h"
-#import "WeakObjCPtr.h"
 #import "WebPageProxy.h"
 #import "_WKActivatedElementInfoInternal.h"
 #import "_WKElementActionInternal.h"
@@ -45,6 +43,8 @@
 #import <WebCore/PathUtilities.h>
 #import <WebCore/WebCoreNSURLExtras.h>
 #import <wtf/SoftLinking.h>
+#import <wtf/WeakObjCPtr.h>
+#import <wtf/cocoa/Entitlements.h>
 #import <wtf/text/WTFString.h>
 
 #if HAVE(APP_LINKS)
@@ -61,12 +61,10 @@ SOFT_LINK_PRIVATE_FRAMEWORK(TCC)
 SOFT_LINK(TCC, TCCAccessPreflight, TCCAccessPreflightResult, (CFStringRef service, CFDictionaryRef options), (service, options))
 SOFT_LINK_CONSTANT(TCC, kTCCServicePhotos, CFStringRef)
 
-using namespace WebKit;
-
 #if HAVE(APP_LINKS)
 static bool applicationHasAppLinkEntitlements()
 {
-    static bool hasEntitlement = processHasEntitlement(@"com.apple.private.canGetAppLinkInfo") && processHasEntitlement(@"com.apple.private.canModifyAppLinkPermissions");
+    static bool hasEntitlement = WTF::processHasEntitlement("com.apple.private.canGetAppLinkInfo") && WTF::processHasEntitlement("com.apple.private.canModifyAppLinkPermissions");
     return hasEntitlement;
 }
 
@@ -396,7 +394,7 @@ static const CGFloat presentationElementRectPadding = 15;
     showImageSheetWithAlternateURLBlock(nil, nil);
 }
 
-static WKActionSheetPresentationStyle presentationStyleForView(UIView *view, const InteractionInformationAtPosition& positionInfo, _WKActivatedElementInfo *elementInfo)
+static WKActionSheetPresentationStyle presentationStyleForView(UIView *view, const WebKit::InteractionInformationAtPosition& positionInfo, _WKActivatedElementInfo *elementInfo)
 {
     auto apparentElementRect = [view convertRect:positionInfo.bounds toView:view.window];
     if (CGRectIsEmpty(apparentElementRect))

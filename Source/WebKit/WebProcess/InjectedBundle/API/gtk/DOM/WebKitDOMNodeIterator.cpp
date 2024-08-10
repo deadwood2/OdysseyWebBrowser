@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/Document.h>
 #include <WebCore/ExceptionCode.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMNodeFilterPrivate.h"
 #include "WebKitDOMNodeIteratorPrivate.h"
 #include "WebKitDOMNodePrivate.h"
@@ -38,6 +38,8 @@
 typedef struct _WebKitDOMNodeIteratorPrivate {
     RefPtr<WebCore::NodeIterator> coreObject;
 } WebKitDOMNodeIteratorPrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -272,3 +274,4 @@ gboolean webkit_dom_node_iterator_get_pointer_before_reference_node(WebKitDOMNod
     return result;
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

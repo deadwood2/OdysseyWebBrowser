@@ -36,6 +36,7 @@
 #include <WebCore/CompositionUnderline.h>
 #include <WebCore/Credential.h>
 #include <WebCore/Cursor.h>
+#include <WebCore/DataListSuggestionPicker.h>
 #include <WebCore/DatabaseDetails.h>
 #include <WebCore/DictationAlternative.h>
 #include <WebCore/DictionaryPopupInfo.h>
@@ -67,6 +68,7 @@
 #include <WebCore/ScrollingConstraints.h>
 #include <WebCore/ScrollingCoordinator.h>
 #include <WebCore/SearchPopupMenu.h>
+#include <WebCore/SecurityOrigin.h>
 #include <WebCore/ServiceWorkerClientData.h>
 #include <WebCore/ServiceWorkerClientIdentifier.h>
 #include <WebCore/ServiceWorkerData.h>
@@ -79,8 +81,6 @@
 #include <WebCore/ViewportArguments.h>
 #include <WebCore/WindowFeatures.h>
 #include <pal/SessionID.h>
-#include <wtf/MonotonicTime.h>
-#include <wtf/Seconds.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringHash.h>
 
@@ -171,36 +171,6 @@ static bool decodeTypesAndData(Decoder& decoder, Vector<String>& types, Vector<R
     for (auto& buffer : data)
         decodeSharedBuffer(decoder, buffer);
 
-    return true;
-}
-
-void ArgumentCoder<MonotonicTime>::encode(Encoder& encoder, const MonotonicTime& time)
-{
-    encoder << time.secondsSinceEpoch().value();
-}
-
-bool ArgumentCoder<MonotonicTime>::decode(Decoder& decoder, MonotonicTime& time)
-{
-    double value;
-    if (!decoder.decode(value))
-        return false;
-
-    time = MonotonicTime::fromRawSeconds(value);
-    return true;
-}
-
-void ArgumentCoder<Seconds>::encode(Encoder& encoder, const Seconds& seconds)
-{
-    encoder << seconds.value();
-}
-
-bool ArgumentCoder<Seconds>::decode(Decoder& decoder, Seconds& seconds)
-{
-    double value;
-    if (!decoder.decode(value))
-        return false;
-
-    seconds = Seconds(value);
     return true;
 }
 
@@ -690,6 +660,14 @@ bool ArgumentCoder<ViewportArguments>::decode(Decoder& decoder, ViewportArgument
 {
     return SimpleArgumentCoder<ViewportArguments>::decode(decoder, viewportArguments);
 }
+
+std::optional<ViewportArguments> ArgumentCoder<ViewportArguments>::decode(Decoder& decoder)
+{
+    ViewportArguments viewportArguments;
+    if (!SimpleArgumentCoder<ViewportArguments>::decode(decoder, viewportArguments))
+        return std::nullopt;
+    return WTFMove(viewportArguments);
+}
 #endif // PLATFORM(IOS)
 
 
@@ -994,8 +972,8 @@ void ArgumentCoder<PluginInfo>::encode(Encoder& encoder, const PluginInfo& plugi
     encoder << pluginInfo.mimes;
     encoder << pluginInfo.isApplicationPlugin;
     encoder.encodeEnum(pluginInfo.clientLoadPolicy);
-#if PLATFORM(MAC)
     encoder << pluginInfo.bundleIdentifier;
+#if PLATFORM(MAC)
     encoder << pluginInfo.versionString;
 #endif
 }
@@ -1015,9 +993,9 @@ std::optional<WebCore::PluginInfo> ArgumentCoder<PluginInfo>::decode(Decoder& de
         return std::nullopt;
     if (!decoder.decodeEnum(pluginInfo.clientLoadPolicy))
         return std::nullopt;
-#if PLATFORM(MAC)
     if (!decoder.decode(pluginInfo.bundleIdentifier))
         return std::nullopt;
+#if PLATFORM(MAC)
     if (!decoder.decode(pluginInfo.versionString))
         return std::nullopt;
 #endif
@@ -1269,6 +1247,14 @@ void ArgumentCoder<ResourceRequest>::encode(Encoder& encoder, const ResourceRequ
     encoder << resourceRequest.cachePartition();
     encoder << resourceRequest.hiddenFromInspector();
 
+#if USE(SYSTEM_PREVIEW)
+    if (resourceRequest.isSystemPreview()) {
+        encoder << true;
+        encoder << resourceRequest.systemPreviewRect();
+    } else
+        encoder << false;
+#endif
+
     if (resourceRequest.encodingRequiresPlatformData()) {
         encoder << true;
         encodePlatformData(encoder, resourceRequest);
@@ -1290,6 +1276,20 @@ bool ArgumentCoder<ResourceRequest>::decode(Decoder& decoder, ResourceRequest& r
         return false;
     resourceRequest.setHiddenFromInspector(isHiddenFromInspector);
 
+#if USE(SYSTEM_PREVIEW)
+    bool isSystemPreview;
+    if (!decoder.decode(isSystemPreview))
+        return false;
+    resourceRequest.setSystemPreview(isSystemPreview);
+
+    if (isSystemPreview) {
+        IntRect systemPreviewRect;
+        if (!decoder.decode(systemPreviewRect))
+            return false;
+        resourceRequest.setSystemPreviewRect(systemPreviewRect);
+    }
+#endif
+
     bool hasPlatformData;
     if (!decoder.decode(hasPlatformData))
         return false;
@@ -1301,12 +1301,28 @@ bool ArgumentCoder<ResourceRequest>::decode(Decoder& decoder, ResourceRequest& r
 
 void ArgumentCoder<ResourceError>::encode(Encoder& encoder, const ResourceError& resourceError)
 {
+    encoder.encodeEnum(resourceError.type());
+    if (resourceError.type() == ResourceError::Type::Null)
+        return;
     encodePlatformData(encoder, resourceError);
 }
 
 bool ArgumentCoder<ResourceError>::decode(Decoder& decoder, ResourceError& resourceError)
 {
-    return decodePlatformData(decoder, resourceError);
+    ResourceError::Type type;
+    if (!decoder.decodeEnum(type))
+        return false;
+
+    if (type == ResourceError::Type::Null) {
+        resourceError = { };
+        return true;
+    }
+
+    if (!decodePlatformData(decoder, resourceError))
+        return false;
+
+    resourceError.setType(type);
+    return true;
 }
 
 #if PLATFORM(IOS)
@@ -1499,6 +1515,15 @@ bool ArgumentCoder<Color>::decode(Decoder& decoder, Color& color)
     return true;
 }
 
+std::optional<Color> ArgumentCoder<Color>::decode(Decoder& decoder)
+{
+    Color color;
+    if (!decode(decoder, color))
+        return std::nullopt;
+
+    return color;
+}
+
 #if ENABLE(DRAG_SUPPORT)
 void ArgumentCoder<DragData>::encode(Encoder& encoder, const DragData& dragData)
 {
@@ -1616,6 +1641,29 @@ bool ArgumentCoder<DatabaseDetails>::decode(Decoder& decoder, DatabaseDetails& d
     return true;
 }
 
+#if ENABLE(DATALIST_ELEMENT)
+void ArgumentCoder<DataListSuggestionInformation>::encode(Encoder& encoder, const WebCore::DataListSuggestionInformation& info)
+{
+    encoder.encodeEnum(info.activationType);
+    encoder << info.suggestions;
+    encoder << info.elementRect;
+}
+
+bool ArgumentCoder<DataListSuggestionInformation>::decode(Decoder& decoder, WebCore::DataListSuggestionInformation& info)
+{
+    if (!decoder.decodeEnum(info.activationType))
+        return false;
+
+    if (!decoder.decode(info.suggestions))
+        return false;
+
+    if (!decoder.decode(info.elementRect))
+        return false;
+
+    return true;
+}
+#endif
+
 void ArgumentCoder<PasteboardCustomData>::encode(Encoder& encoder, const PasteboardCustomData& data)
 {
     encoder << data.origin;
@@ -1637,6 +1685,38 @@ bool ArgumentCoder<PasteboardCustomData>::decode(Decoder& decoder, PasteboardCus
 
     if (!decoder.decode(data.sameOriginCustomData))
         return false;
+
+    return true;
+}
+
+void ArgumentCoder<PasteboardURL>::encode(Encoder& encoder, const PasteboardURL& content)
+{
+    encoder << content.url;
+    encoder << content.title;
+#if PLATFORM(MAC)
+    encoder << content.userVisibleForm;
+#endif
+#if PLATFORM(GTK)
+    encoder << content.markup;
+#endif
+}
+
+bool ArgumentCoder<PasteboardURL>::decode(Decoder& decoder, PasteboardURL& content)
+{
+    if (!decoder.decode(content.url))
+        return false;
+
+    if (!decoder.decode(content.title))
+        return false;
+
+#if PLATFORM(MAC)
+    if (!decoder.decode(content.userVisibleForm))
+        return false;
+#endif
+#if PLATFORM(GTK)
+    if (!decoder.decode(content.markup))
+        return false;
+#endif
 
     return true;
 }
@@ -1676,23 +1756,6 @@ bool ArgumentCoder<Highlight>::decode(Decoder& decoder, Highlight& highlight)
         return false;
     if (!decoder.decode(highlight.quads))
         return false;
-    return true;
-}
-
-void ArgumentCoder<PasteboardURL>::encode(Encoder& encoder, const PasteboardURL& content)
-{
-    encoder << content.url;
-    encoder << content.title;
-}
-
-bool ArgumentCoder<PasteboardURL>::decode(Decoder& decoder, PasteboardURL& content)
-{
-    if (!decoder.decode(content.url))
-        return false;
-
-    if (!decoder.decode(content.title))
-        return false;
-
     return true;
 }
 
@@ -1884,7 +1947,7 @@ void ArgumentCoder<TextCheckingRequestData>::encode(Encoder& encoder, const Text
 {
     encoder << request.sequence();
     encoder << request.text();
-    encoder << request.mask();
+    encoder << request.checkingTypes();
     encoder.encodeEnum(request.processType());
 }
 
@@ -1898,15 +1961,15 @@ bool ArgumentCoder<TextCheckingRequestData>::decode(Decoder& decoder, TextChecki
     if (!decoder.decode(text))
         return false;
 
-    TextCheckingTypeMask mask;
-    if (!decoder.decode(mask))
+    OptionSet<TextCheckingType> checkingTypes;
+    if (!decoder.decode(checkingTypes))
         return false;
 
     TextCheckingProcessType processType;
     if (!decoder.decodeEnum(processType))
         return false;
 
-    request = TextCheckingRequestData(sequence, text, mask, processType);
+    request = TextCheckingRequestData { sequence, text, checkingTypes, processType };
     return true;
 }
 
@@ -2188,6 +2251,9 @@ void ArgumentCoder<FilterOperation>::encode(Encoder& encoder, const FilterOperat
     case FilterOperation::CONTRAST:
         encoder << downcast<BasicComponentTransferFilterOperation>(filter).amount();
         break;
+    case FilterOperation::APPLE_INVERT_LIGHTNESS:
+        ASSERT_NOT_REACHED(); // APPLE_INVERT_LIGHTNESS is only used in -apple-color-filter.
+        break;
     case FilterOperation::BLUR:
         encoder << downcast<BlurFilterOperation>(filter).stdDeviation();
         break;
@@ -2238,6 +2304,9 @@ bool decodeFilterOperation(Decoder& decoder, RefPtr<FilterOperation>& filter)
         filter = BasicComponentTransferFilterOperation::create(amount, type);
         break;
     }
+    case FilterOperation::APPLE_INVERT_LIGHTNESS:
+        ASSERT_NOT_REACHED(); // APPLE_INVERT_LIGHTNESS is only used in -apple-color-filter.
+        break;
     case FilterOperation::BLUR: {
         Length stdDeviation;
         if (!decoder.decode(stdDeviation))
@@ -2552,6 +2621,7 @@ void ArgumentCoder<ResourceLoadStatistics>::encode(Encoder& encoder, const WebCo
 
     // Prevalent Resource
     encoder << statistics.isPrevalentResource;
+    encoder << statistics.isVeryPrevalentResource;
     encoder << statistics.dataRecordsRemoved;
 }
 
@@ -2607,6 +2677,9 @@ std::optional<ResourceLoadStatistics> ArgumentCoder<ResourceLoadStatistics>::dec
     if (!decoder.decode(statistics.isPrevalentResource))
         return std::nullopt;
 
+    if (!decoder.decode(statistics.isVeryPrevalentResource))
+        return std::nullopt;
+    
     if (!decoder.decode(statistics.dataRecordsRemoved))
         return std::nullopt;
 
@@ -2844,5 +2917,28 @@ bool ArgumentCoder<AttachmentInfo>::decode(Decoder& decoder, AttachmentInfo& inf
 }
 
 #endif // ENABLE(ATTACHMENT_ELEMENT)
+
+void ArgumentCoder<Vector<RefPtr<SecurityOrigin>>>::encode(Encoder& encoder, const Vector<RefPtr<SecurityOrigin>>& origins)
+{
+    encoder << static_cast<uint64_t>(origins.size());
+    for (auto& origin : origins)
+        encoder << *origin;
+}
+    
+bool ArgumentCoder<Vector<RefPtr<SecurityOrigin>>>::decode(Decoder& decoder, Vector<RefPtr<SecurityOrigin>>& origins)
+{
+    uint64_t dataSize;
+    if (!decoder.decode(dataSize))
+        return false;
+
+    origins.reserveInitialCapacity(dataSize);
+    for (uint64_t i = 0; i < dataSize; ++i) {
+        auto decodedOriginRefPtr = SecurityOrigin::decode(decoder);
+        if (!decodedOriginRefPtr)
+            return false;
+        origins.uncheckedAppend(decodedOriginRefPtr.releaseNonNull());
+    }
+    return true;
+}
 
 } // namespace IPC

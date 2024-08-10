@@ -28,7 +28,7 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
 {
     constructor(identifier)
     {
-        let tabBarItem = new WI.PinnedTabBarItem("Images/Gear.svg", WI.UIString("Open Settings"));
+        let tabBarItem = WI.PinnedTabBarItem.fromTabInfo(WI.SettingsTabContentView.tabInfo());
 
         super(identifier || "settings", "settings", tabBarItem);
 
@@ -250,7 +250,16 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
             experimentalSettingsView.addSeparator();
         }
 
+        experimentalSettingsView.addSetting(WI.UIString("Sources:"), WI.settings.experimentalEnableSourcesTab, WI.UIString("Enable Sources Tab"));
+        experimentalSettingsView.addSeparator();
+
         experimentalSettingsView.addSetting(WI.UIString("User Interface:"), WI.settings.experimentalEnableNewTabBar, WI.UIString("Enable New Tab Bar"));
+        experimentalSettingsView.addSeparator();
+
+        experimentalSettingsView.addSetting(WI.UIString("Accessibility Audit:"), WI.settings.experimentalEnableAccessibilityAuditTab, WI.UIString("Enable Accessibility Audit Tab"));
+        experimentalSettingsView.addSeparator();
+
+        experimentalSettingsView.addSetting(WI.UIString("Canvas:"), WI.settings.experimentalRecordingHasVisualEffect, WI.UIString("Enable Visual Change Detection"));
         experimentalSettingsView.addSeparator();
 
         let reloadInspectorButton = document.createElement("button");
@@ -270,7 +279,9 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
         listenForChange(WI.settings.experimentalLegacyStyleEditor);
         listenForChange(WI.settings.experimentalLegacyVisualSidebar);
         listenForChange(WI.settings.experimentalEnableLayersTab);
+        listenForChange(WI.settings.experimentalEnableSourcesTab);
         listenForChange(WI.settings.experimentalEnableNewTabBar);
+        listenForChange(WI.settings.experimentalEnableAccessibilityAuditTab);
 
         this.addSettingsView(experimentalSettingsView);
     }
@@ -298,6 +309,8 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
         this._debugSettingsView.addSetting(WI.unlocalizedString("Layout Flashing:"), WI.settings.enableLayoutFlashing, WI.unlocalizedString("Draw borders when a view performs a layout"));
 
         this._debugSettingsView.addSeparator();
+
+        this._debugSettingsView.addSetting(WI.unlocalizedString("Debugging:"), WI.settings.pauseForInternalScripts, WI.unlocalizedString("Pause in WebKit-internal scripts"));
 
         this._debugSettingsView.addSetting(WI.unlocalizedString("Uncaught Exception Reporter:"), WI.settings.enableUncaughtExceptionReporter, WI.unlocalizedString("Enabled"));
 

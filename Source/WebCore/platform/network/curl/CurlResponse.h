@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Sony Interactive Entertainment Inc.
+ * Copyright (C) 2018 Sony Interactive Entertainment Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,13 +39,15 @@ public:
 
         copy.url = url.isolatedCopy();
         copy.statusCode = statusCode;
+        copy.httpConnectCode = httpConnectCode;
         copy.expectedContentLength = expectedContentLength;
 
         for (const auto& header : headers)
             copy.headers.append(header.isolatedCopy());
 
-        copy.connectPort = connectPort;
+        copy.proxyUrl = proxyUrl.isolatedCopy();
         copy.availableHttpAuth = availableHttpAuth;
+        copy.availableProxyAuth = availableProxyAuth;
         copy.httpVersion = httpVersion;
 
         return copy;
@@ -53,11 +55,13 @@ public:
 
     URL url;
     long statusCode { 0 };
+    long httpConnectCode { 0 };
     long long expectedContentLength { 0 };
     Vector<String> headers;
 
-    uint16_t connectPort { 0 };
+    URL proxyUrl;
     long availableHttpAuth { 0 };
+    long availableProxyAuth { 0 };
     long httpVersion { 0 };
 };
 

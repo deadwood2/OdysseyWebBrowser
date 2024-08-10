@@ -46,9 +46,8 @@
 #include "NetscapePluginUnix.h"
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 // The plug-in that we're currently calling NPP_New for.
 static NetscapePlugin* currentNPPNewPlugin;
@@ -601,8 +600,7 @@ static bool isTransparentSilverlightBackgroundValue(const String& lowercaseBackg
             return true;
         }
     } else if (lowercaseBackgroundValue.startsWith("sc#")) {
-        Vector<String> components;
-        lowercaseBackgroundValue.substring(3).split(',', components);
+        Vector<String> components = lowercaseBackgroundValue.substring(3).split(',');
 
         // An ScRGB value with alpha transparency, in the form sc#A,R,G,B.
         if (components.size() == 4) {

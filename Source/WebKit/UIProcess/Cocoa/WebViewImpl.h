@@ -28,16 +28,17 @@
 #if PLATFORM(MAC)
 
 #include "PluginComplexTextInputState.h"
+#include "ShareableBitmap.h"
 #include "WKDragDestinationAction.h"
 #include "WKLayoutMode.h"
-#include "WeakObjCPtr.h"
-#include "WebPageProxy.h"
 #include "_WKOverlayScrollbarStyle.h"
+#include <WebCore/ScrollTypes.h>
 #include <WebCore/TextIndicatorWindow.h>
 #include <WebCore/UserInterfaceLayoutDirection.h>
 #include <pal/spi/cocoa/AVKitSPI.h>
 #include <wtf/BlockPtr.h>
 #include <wtf/RetainPtr.h>
+#include <wtf/WeakObjCPtr.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
 
@@ -55,6 +56,7 @@ OBJC_CLASS WKImmediateActionController;
 OBJC_CLASS WKViewLayoutStrategy;
 OBJC_CLASS WKWebView;
 OBJC_CLASS WKWindowVisibilityObserver;
+OBJC_CLASS _WKRemoteObjectRegistry;
 OBJC_CLASS _WKThumbnailView;
 
 #if HAVE(TOUCH_BAR)
@@ -66,6 +68,12 @@ OBJC_CLASS NSPopoverTouchBarItem;
 OBJC_CLASS WKTextTouchBarItemController;
 OBJC_CLASS WebPlaybackControlsManager;
 #endif // HAVE(TOUCH_BAR)
+
+namespace API {
+class HitTestResult;
+class Object;
+class PageConfiguration;
+}
 
 @protocol WebViewImplDelegate
 
@@ -108,23 +116,30 @@ OBJC_CLASS WebPlaybackControlsManager;
 
 namespace WebCore {
 struct DragItem;
-struct KeyPressCommand;
+struct KeypressCommand;
 }
 
 namespace WebKit {
 
+class PageClient;
 class PageClientImpl;
 class DrawingAreaProxy;
 class ViewGestureController;
+class ViewSnapshot;
+class WebBackForwardListItem;
 class WebEditCommandProxy;
+class WebFrameProxy;
 class WebPageProxy;
+class WebProcessPool;
 struct ColorSpaceData;
+struct WebHitTestResultData;
+enum class UndoOrRedo;
 
 typedef id <NSValidatedUserInterfaceItem> ValidationItem;
 typedef Vector<RetainPtr<ValidationItem>> ValidationVector;
 typedef HashMap<String, ValidationVector> ValidationMap;
 
-class WebViewImpl {
+class WebViewImpl : public CanMakeWeakPtr<WebViewImpl> {
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(WebViewImpl);
 public:
@@ -142,6 +157,8 @@ public:
 
     void setDrawsBackground(bool);
     bool drawsBackground() const;
+    void setBackgroundColor(NSColor *);
+    NSColor *backgroundColor() const;
     bool isOpaque() const;
 
     void setShouldSuppressFirstResponderChanges(bool);
@@ -288,7 +305,7 @@ public:
     bool isEditable() const;
     bool executeSavedCommandBySelector(SEL);
     void executeEditCommandForSelector(SEL, const String& argument = String());
-    void registerEditCommand(Ref<WebEditCommandProxy>&&, WebPageProxy::UndoOrRedo);
+    void registerEditCommand(Ref<WebEditCommandProxy>&&, UndoOrRedo);
     void clearAllEditCommands();
     bool writeSelectionToPasteboard(NSPasteboard *, NSArray *types);
     bool readSelectionFromPasteboard(NSPasteboard *);
@@ -509,6 +526,9 @@ public:
 
     void handleAcceptedCandidate(NSTextCheckingResult *acceptedCandidate);
 
+    void doAfterProcessingAllPendingMouseEvents(dispatch_block_t action);
+    void didFinishProcessingAllPendingMouseEvents();
+
 #if HAVE(TOUCH_BAR)
     NSTouchBar *makeTouchBar();
     void updateTouchBar();
@@ -533,6 +553,12 @@ public:
 
     bool beginBackSwipeForTesting();
     bool completeBackSwipeForTesting();
+    
+    void setUseSystemAppearance(bool);
+    bool useSystemAppearance();
+
+    void effectiveAppearanceDidChange();
+    bool effectiveAppearanceIsDark();
 
 private:
 #if HAVE(TOUCH_BAR)
@@ -571,8 +597,6 @@ private:
 #endif // ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
 #endif // HAVE(TOUCH_BAR)
 
-    WeakPtr<WebViewImpl> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(*this); }
-
     bool supportsArbitraryLayoutModes() const;
     float intrinsicDeviceScaleFactor() const;
     void dispatchSetTopContentInset();
@@ -601,12 +625,11 @@ private:
     bool mightBeginScrollWhileInactive();
 
     void handleRequestedCandidates(NSInteger sequenceNumber, NSArray<NSTextCheckingResult *> *candidates);
+    void flushPendingMouseEventCallbacks();
 
     WeakObjCPtr<NSView<WebViewImplDelegate>> m_view;
     std::unique_ptr<PageClient> m_pageClient;
     Ref<WebPageProxy> m_page;
-
-    WeakPtrFactory<WebViewImpl> m_weakPtrFactory;
 
     bool m_willBecomeFirstResponderAgain { false };
     bool m_inBecomeFirstResponder { false };
@@ -661,6 +684,8 @@ private:
 
     RetainPtr<NSColorSpace> m_colorSpace;
 
+    RetainPtr<NSColor> m_backgroundColor;
+
     RetainPtr<NSEvent> m_lastMouseDownEvent;
     RetainPtr<NSEvent> m_lastPressureEvent;
 
@@ -672,7 +697,6 @@ private:
     RetainPtr<NSImmediateActionGestureRecognizer> m_immediateActionGestureRecognizer;
 
     bool m_allowsLinkPreview { true };
-    bool m_didRegisterForLookupPopoverCloseNotifications { false };
 
     RetainPtr<NSTrackingArea> m_primaryTrackingArea;
 
@@ -712,6 +736,7 @@ private:
     // that has been already sent to WebCore.
     RetainPtr<NSEvent> m_keyDownEventBeingResent;
     Vector<WebCore::KeypressCommand>* m_collectedKeypressCommands { nullptr };
+    Vector<BlockPtr<void()>> m_callbackHandlersAfterProcessingPendingMouseEvents;
 
     String m_lastStringForCandidateRequest;
     NSInteger m_lastCandidateRequestSequenceNumber;

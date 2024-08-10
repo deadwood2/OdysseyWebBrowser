@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,12 +36,10 @@
 #if BCPU(ARM64)
 #define PRIMITIVE_GIGACAGE_SIZE 0x80000000llu
 #define JSVALUE_GIGACAGE_SIZE 0x40000000llu
-#define STRING_GIGACAGE_SIZE 0x40000000llu
 #define GIGACAGE_ALLOCATION_CAN_FAIL 1
 #else
 #define PRIMITIVE_GIGACAGE_SIZE 0x800000000llu
 #define JSVALUE_GIGACAGE_SIZE 0x400000000llu
-#define STRING_GIGACAGE_SIZE 0x400000000llu
 #define GIGACAGE_ALLOCATION_CAN_FAIL 0
 #endif
 
@@ -54,13 +52,11 @@
 
 static_assert(bmalloc::isPowerOfTwo(PRIMITIVE_GIGACAGE_SIZE), "");
 static_assert(bmalloc::isPowerOfTwo(JSVALUE_GIGACAGE_SIZE), "");
-static_assert(bmalloc::isPowerOfTwo(STRING_GIGACAGE_SIZE), "");
 
 #define GIGACAGE_SIZE_TO_MASK(size) ((size) - 1)
 
 #define PRIMITIVE_GIGACAGE_MASK GIGACAGE_SIZE_TO_MASK(PRIMITIVE_GIGACAGE_SIZE)
 #define JSVALUE_GIGACAGE_MASK GIGACAGE_SIZE_TO_MASK(JSVALUE_GIGACAGE_SIZE)
-#define STRING_GIGACAGE_MASK GIGACAGE_SIZE_TO_MASK(STRING_GIGACAGE_SIZE)
 
 #if ((BOS(DARWIN) || BOS(LINUX)) && \
     (BCPU(X86_64) || (BCPU(ARM64) && !defined(__ILP32__) && (!BPLATFORM(IOS) || __IPHONE_OS_VERSION_MIN_REQUIRED >= 110300))))
@@ -79,22 +75,25 @@ extern "C" alignas(GIGACAGE_BASE_PTRS_SIZE) BEXPORT char g_gigacageBasePtrs[GIGA
 
 namespace Gigacage {
 
-extern BEXPORT bool g_wasEnabled;
-BINLINE bool wasEnabled() { return g_wasEnabled; }
+BINLINE bool wasEnabled() { return g_gigacageBasePtrs[0]; }
+BINLINE void setWasEnabled() { g_gigacageBasePtrs[0] = true; }
 
 struct BasePtrs {
+    uintptr_t reservedForFlags;
     void* primitive;
     void* jsValue;
-    void* string;
 };
 
 enum Kind {
+    ReservedForFlagsAndNotABasePtr = 0,
     Primitive,
     JSValue,
-    String
 };
 
-static constexpr unsigned numKinds = 3;
+static_assert(offsetof(BasePtrs, primitive) == Kind::Primitive * sizeof(void*), "");
+static_assert(offsetof(BasePtrs, jsValue) == Kind::JSValue * sizeof(void*), "");
+
+static constexpr unsigned numKinds = 2;
 
 BEXPORT void ensureGigacage();
 
@@ -113,12 +112,12 @@ inline bool canPrimitiveGigacageBeDisabled() { return !isDisablingPrimitiveGigac
 BINLINE const char* name(Kind kind)
 {
     switch (kind) {
+    case ReservedForFlagsAndNotABasePtr:
+        RELEASE_BASSERT_NOT_REACHED();
     case Primitive:
         return "Primitive";
     case JSValue:
         return "JSValue";
-    case String:
-        return "String";
     }
     BCRASH();
     return nullptr;
@@ -127,12 +126,12 @@ BINLINE const char* name(Kind kind)
 BINLINE void*& basePtr(BasePtrs& basePtrs, Kind kind)
 {
     switch (kind) {
+    case ReservedForFlagsAndNotABasePtr:
+        RELEASE_BASSERT_NOT_REACHED();
     case Primitive:
         return basePtrs.primitive;
     case JSValue:
         return basePtrs.jsValue;
-    case String:
-        return basePtrs.string;
     }
     BCRASH();
     return basePtrs.primitive;
@@ -156,12 +155,12 @@ BINLINE bool isEnabled(Kind kind)
 BINLINE size_t size(Kind kind)
 {
     switch (kind) {
+    case ReservedForFlagsAndNotABasePtr:
+        RELEASE_BASSERT_NOT_REACHED();
     case Primitive:
         return static_cast<size_t>(PRIMITIVE_GIGACAGE_SIZE);
     case JSValue:
         return static_cast<size_t>(JSVALUE_GIGACAGE_SIZE);
-    case String:
-        return static_cast<size_t>(STRING_GIGACAGE_SIZE);
     }
     BCRASH();
     return 0;
@@ -182,7 +181,6 @@ void forEachKind(const Func& func)
 {
     func(Primitive);
     func(JSValue);
-    func(String);
 }
 
 template<typename T>

@@ -51,9 +51,10 @@
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <pal/spi/cocoa/NSKeyedArchiverSPI.h>
 #import <sys/param.h>
+#import <wtf/ProcessPrivilege.h>
+#import <wtf/spi/darwin/dyldSPI.h>
 
 #if PLATFORM(IOS)
-#import "ArgumentCodersCF.h"
 #import "WebMemoryPressureHandlerIOS.h"
 #else
 #import <QuartzCore/CARemoteLayerServer.h>
@@ -145,7 +146,6 @@ void WebProcessPool::platformInitialize()
     registerNotificationObservers();
 
 #if PLATFORM(IOS)
-    IPC::setAllowsDecodingSecKeyRef(true);
     installMemoryPressureHandler();
 #endif
 
@@ -181,6 +181,7 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
 #if PLATFORM(MAC)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     parameters.accessibilityEnhancedUserInterfaceEnabled = [[NSApp accessibilityAttributeValue:@"AXEnhancedUserInterface"] boolValue];
 #pragma clang diagnostic pop
 #else
@@ -205,6 +206,7 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
     SandboxExtension::createHandleWithoutResolvingPath(parameters.uiProcessBundleResourcePath, SandboxExtension::Type::ReadOnly, parameters.uiProcessBundleResourcePathExtensionHandle);
 
     parameters.uiProcessBundleIdentifier = String([[NSBundle mainBundle] bundleIdentifier]);
+    parameters.uiProcessSDKVersion = dyld_get_program_sdk_version();
 
 #if PLATFORM(IOS)
     if (!m_resolvedPaths.cookieStorageDirectory.isEmpty())
@@ -248,6 +250,7 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
 
 #if PLATFORM(MAC)
     ASSERT(parameters.uiProcessCookieStorageIdentifier.isEmpty());
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
     parameters.uiProcessCookieStorageIdentifier = identifyingDataFromCookieStorage([[NSHTTPCookieStorage sharedHTTPCookieStorage] _cookieStorage]);
 #endif
 #if ENABLE(MEDIA_STREAM)
@@ -279,16 +282,18 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
     parameters.shouldLogUserInteraction = [defaults boolForKey:WebKitLogCookieInformationDefaultsKey];
 #endif
+    
+#if PLATFORM(MAC)
+    auto screenProperties = WebCore::collectScreenProperties();
+    parameters.screenProperties = WTFMove(screenProperties);
+    parameters.useOverlayScrollbars = ([NSScroller preferredScrollerStyle] == NSScrollerStyleOverlay);
+#endif
 }
 
 void WebProcessPool::platformInitializeNetworkProcess(NetworkProcessCreationParameters& parameters)
 {
-    NSURLCache *urlCache = [NSURLCache sharedURLCache];
-    parameters.nsURLCacheMemoryCapacity = [urlCache memoryCapacity];
-    parameters.nsURLCacheDiskCapacity = [urlCache diskCapacity];
-
-    parameters.parentProcessName = [[NSProcessInfo processInfo] processName];
     parameters.uiProcessBundleIdentifier = [[NSBundle mainBundle] bundleIdentifier];
+    parameters.uiProcessSDKVersion = dyld_get_program_sdk_version();
 
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
 
@@ -296,7 +301,6 @@ void WebProcessPool::platformInitializeNetworkProcess(NetworkProcessCreationPara
     parameters.httpsProxy = [defaults stringForKey:WebKit2HTTPSProxyDefaultsKey];
     parameters.networkATSContext = adoptCF(_CFNetworkCopyATSContext());
 
-    parameters.shouldEnableNetworkCache = isNetworkCacheEnabled();
     parameters.shouldEnableNetworkCacheEfficacyLogging = [defaults boolForKey:WebKitNetworkCacheEfficacyLoggingEnabledDefaultsKey];
 
     parameters.sourceApplicationBundleIdentifier = m_configuration->sourceApplicationBundleIdentifier();
@@ -310,11 +314,12 @@ void WebProcessPool::platformInitializeNetworkProcess(NetworkProcessCreationPara
 
 #if PLATFORM(MAC)
     ASSERT(parameters.uiProcessCookieStorageIdentifier.isEmpty());
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
     parameters.uiProcessCookieStorageIdentifier = identifyingDataFromCookieStorage([[NSHTTPCookieStorage sharedHTTPCookieStorage] _cookieStorage]);
 #endif
 
-    parameters.cookieStoragePartitioningEnabled = cookieStoragePartitioningEnabled();
     parameters.storageAccessAPIEnabled = storageAccessAPIEnabled();
+    parameters.suppressesConnectionTerminationOnSystemChange = m_configuration->suppressesConnectionTerminationOnSystemChange();
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
     parameters.logCookieInformation = [defaults boolForKey:WebKitLogCookieInformationDefaultsKey];
@@ -325,6 +330,10 @@ void WebProcessPool::platformInitializeNetworkProcess(NetworkProcessCreationPara
     parameters.recordReplayCacheLocation = [defaults stringForKey:WebKitRecordReplayCacheLocationDefaultsKey];
     if (parameters.recordReplayCacheLocation.isEmpty())
         parameters.recordReplayCacheLocation = parameters.diskCacheDirectory;
+#endif
+
+#if ENABLE(WIFI_ASSERTIONS)
+    parameters.wirelessContextIdentifier = m_configuration->wirelessContextIdentifier();
 #endif
 }
 
@@ -472,12 +481,11 @@ String WebProcessPool::legacyPlatformDefaultApplicationCacheDirectory()
 
 String WebProcessPool::legacyPlatformDefaultNetworkCacheDirectory()
 {
-    RetainPtr<NSString> cachePath = adoptNS((NSString *)_CFURLCacheCopyCacheDirectory([[NSURLCache sharedURLCache] _CFURLCache]));
+    NSString *cachePath = CFBridgingRelease(_CFURLCacheCopyCacheDirectory([[NSURLCache sharedURLCache] _CFURLCache]));
     if (!cachePath)
         cachePath = @"~/Library/Caches/com.apple.WebKit.WebProcess";
 
-    if (isNetworkCacheEnabled())
-        cachePath = [cachePath stringByAppendingPathComponent:@"WebKitCache"];
+    cachePath = [cachePath stringByAppendingPathComponent:@"WebKitCache"];
 
     return stringByResolvingSymlinksInPath([cachePath stringByStandardizingPath]);
 }
@@ -508,17 +516,6 @@ void WebProcessPool::setJavaScriptConfigurationFileEnabledFromDefaults()
     setJavaScriptConfigurationFileEnabled([defaults boolForKey:@"WebKitJavaScriptCoreUseConfigFile"]);
 }
 #endif
-
-bool WebProcessPool::isNetworkCacheEnabled()
-{
-    registerUserDefaultsIfNeeded();
-
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-
-    bool networkCacheEnabledByDefaults = [defaults boolForKey:WebKitNetworkCacheEnabledDefaultsKey];
-
-    return networkCacheEnabledByDefaults && linkedOnOrAfter(SDKVersion::FirstWithNetworkCache);
-}
 
 bool WebProcessPool::omitPDFSupport()
 {
@@ -558,6 +555,18 @@ void WebProcessPool::registerNotificationObservers()
         TextChecker::didChangeAutomaticDashSubstitutionEnabled();
         textCheckerStateChanged();
     }];
+
+    m_accessibilityDisplayOptionsNotificationObserver = [[NSWorkspace.sharedWorkspace notificationCenter] addObserverForName:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification object:nil queue:[NSOperationQueue currentQueue] usingBlock:^(NSNotification *notification) {
+        screenPropertiesStateChanged();
+    }];
+
+#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
+    m_scrollerStyleNotificationObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSPreferredScrollerStyleDidChangeNotification object:nil queue:[NSOperationQueue currentQueue] usingBlock:^(NSNotification *notification) {
+        auto scrollbarStyle = [NSScroller preferredScrollerStyle];
+        sendToAllProcesses(Messages::WebProcess::ScrollerStylePreferenceChanged(scrollbarStyle));
+    }];
+#endif
+
 #endif // !PLATFORM(IOS)
 }
 
@@ -569,6 +578,10 @@ void WebProcessPool::unregisterNotificationObservers()
     [[NSNotificationCenter defaultCenter] removeObserver:m_automaticSpellingCorrectionNotificationObserver.get()];
     [[NSNotificationCenter defaultCenter] removeObserver:m_automaticQuoteSubstitutionNotificationObserver.get()];
     [[NSNotificationCenter defaultCenter] removeObserver:m_automaticDashSubstitutionNotificationObserver.get()];
+    [[NSWorkspace.sharedWorkspace notificationCenter] removeObserver:m_accessibilityDisplayOptionsNotificationObserver.get()];
+#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
+    [[NSNotificationCenter defaultCenter] removeObserver:m_scrollerStyleNotificationObserver.get()];
+#endif
 #endif // !PLATFORM(IOS)
 }
 
@@ -578,8 +591,7 @@ static CFURLStorageSessionRef privateBrowsingSession()
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         NSString *identifier = [NSString stringWithFormat:@"%@.PrivateBrowsing", [[NSBundle mainBundle] bundleIdentifier]];
-
-        session = createPrivateStorageSession((CFStringRef)identifier);
+        session = createPrivateStorageSession((__bridge CFStringRef)identifier);
     });
 
     return session;
@@ -605,10 +617,10 @@ void WebProcessPool::resetHSTSHostsAddedAfterDate(double startDateIntervalSince1
     _CFNetworkResetHSTSHostsSinceDate(privateBrowsingSession(), (__bridge CFDateRef)startDate);
 }
 
+// FIXME: Deprecated. Left here until a final decision is made.
 void WebProcessPool::setCookieStoragePartitioningEnabled(bool enabled)
 {
     m_cookieStoragePartitioningEnabled = enabled;
-    sendToNetworkingProcess(Messages::NetworkProcess::SetCookieStoragePartitioningEnabled(enabled));
 }
 
 void WebProcessPool::setStorageAccessAPIEnabled(bool enabled)

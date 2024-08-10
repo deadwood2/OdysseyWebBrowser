@@ -34,10 +34,7 @@
 #include <WebCore/SecurityOrigin.h>
 #include <WebCore/SecurityOriginData.h>
 
-using namespace WebCore;
-
 namespace WebKit {
-
 using namespace WebCore;
 
 static uint64_t generateRequestID()
@@ -94,7 +91,7 @@ void UserMediaPermissionRequestManager::sendUserMediaRequest(UserMediaRequest& u
     ASSERT(webFrame);
 
     auto* topLevelDocumentOrigin = userRequest.topLevelDocumentOrigin();
-    m_page.send(Messages::WebPageProxy::RequestUserMediaPermissionForFrame(requestID, webFrame->frameID(), SecurityOriginData::fromSecurityOrigin(*userRequest.userMediaDocumentOrigin()), SecurityOriginData::fromSecurityOrigin(*topLevelDocumentOrigin), userRequest.request()));
+    m_page.send(Messages::WebPageProxy::RequestUserMediaPermissionForFrame(requestID, webFrame->frameID(), userRequest.userMediaDocumentOrigin()->data(), topLevelDocumentOrigin->data(), userRequest.request()));
 }
 
 void UserMediaPermissionRequestManager::cancelUserMediaRequest(UserMediaRequest& request)
@@ -182,7 +179,7 @@ void UserMediaPermissionRequestManager::enumerateMediaDevices(MediaDevicesEnumer
 
     SecurityOrigin* topLevelDocumentOrigin = request.topLevelDocumentOrigin();
     ASSERT(topLevelDocumentOrigin);
-    m_page.send(Messages::WebPageProxy::EnumerateMediaDevicesForFrame(requestID, webFrame->frameID(), SecurityOriginData::fromSecurityOrigin(*request.userMediaDocumentOrigin()), SecurityOriginData::fromSecurityOrigin(*topLevelDocumentOrigin)));
+    m_page.send(Messages::WebPageProxy::EnumerateMediaDevicesForFrame(requestID, webFrame->frameID(), request.userMediaDocumentOrigin()->data(), topLevelDocumentOrigin->data()));
 }
 
 void UserMediaPermissionRequestManager::cancelMediaDevicesEnumeration(WebCore::MediaDevicesEnumerationRequest& request)

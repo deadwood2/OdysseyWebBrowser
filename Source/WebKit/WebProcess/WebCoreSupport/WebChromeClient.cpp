@@ -40,6 +40,7 @@
 #include "UserData.h"
 #include "WebColorChooser.h"
 #include "WebCoreArgumentCoders.h"
+#include "WebDataListSuggestionPicker.h"
 #include "WebFrame.h"
 #include "WebFrameLoaderClient.h"
 #include "WebFullScreenManager.h"
@@ -57,10 +58,12 @@
 #include <WebCore/ApplicationCacheStorage.h>
 #include <WebCore/AXObjectCache.h>
 #include <WebCore/ColorChooser.h>
+#include <WebCore/DataListSuggestionPicker.h>
 #include <WebCore/DatabaseTracker.h>
 #include <WebCore/DocumentLoader.h>
 #include <WebCore/FileChooser.h>
 #include <WebCore/FileIconLoader.h>
+#include <WebCore/Frame.h>
 #include <WebCore/FrameLoadRequest.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/FrameView.h>
@@ -69,7 +72,6 @@
 #include <WebCore/HTMLParserIdioms.h>
 #include <WebCore/HTMLPlugInImageElement.h>
 #include <WebCore/Icon.h>
-#include <WebCore/MainFrame.h>
 #include <WebCore/NotImplemented.h>
 #include <WebCore/Page.h>
 #include <WebCore/ScriptController.h>
@@ -90,10 +92,9 @@
 #include "PrinterListGtk.h"
 #endif
 
+namespace WebKit {
 using namespace WebCore;
 using namespace HTMLNames;
-
-namespace WebKit {
 
 static double area(WebFrame* frame)
 {
@@ -210,6 +211,11 @@ void WebChromeClient::elementDidBlur(Element& element)
 void WebChromeClient::makeFirstResponder()
 {
     m_page.send(Messages::WebPageProxy::MakeFirstResponder());
+}
+
+void WebChromeClient::assistiveTechnologyMakeFirstResponder()
+{
+    m_page.send(Messages::WebPageProxy::AssistiveTechnologyMakeFirstResponder());
 }
 
 #endif    
@@ -544,18 +550,6 @@ void WebChromeClient::scroll(const IntSize& scrollDelta, const IntRect& scrollRe
     m_page.drawingArea()->scroll(intersection(scrollRect, clipRect), scrollDelta);
 }
 
-#if USE(COORDINATED_GRAPHICS)
-void WebChromeClient::delegatedScrollRequested(const IntPoint& scrollOffset)
-{
-    m_page.pageDidRequestScroll(scrollOffset);
-}
-
-void WebChromeClient::resetUpdateAtlasForTesting()
-{
-    m_page.drawingArea()->resetUpdateAtlasForTesting();
-}
-#endif
-
 IntPoint WebChromeClient::screenToRootView(const IntPoint& point) const
 {
     return m_page.screenToRootView(point);
@@ -633,6 +627,7 @@ bool WebChromeClient::shouldUnavailablePluginMessageBeButton(RenderEmbeddedObjec
 
     case RenderEmbeddedObject::PluginCrashed:
     case RenderEmbeddedObject::PluginBlockedByContentSecurityPolicy:
+    case RenderEmbeddedObject::UnsupportedPlugin:
         return false;
     }
 
@@ -725,17 +720,17 @@ void WebChromeClient::exceededDatabaseQuota(Frame& frame, const String& database
     ASSERT(webFrame);
     
     auto& origin = frame.document()->securityOrigin();
-    auto originData = SecurityOriginData::fromSecurityOrigin(origin);
+    auto& originData = origin.data();
     auto& tracker = DatabaseTracker::singleton();
     auto currentQuota = tracker.quota(originData);
     auto currentOriginUsage = tracker.usage(originData);
     uint64_t newQuota = 0;
-    RefPtr<API::SecurityOrigin> securityOrigin = API::SecurityOrigin::create(SecurityOriginData::fromDatabaseIdentifier(SecurityOriginData::fromSecurityOrigin(origin).databaseIdentifier())->securityOrigin());
+    RefPtr<API::SecurityOrigin> securityOrigin = API::SecurityOrigin::create(SecurityOriginData::fromDatabaseIdentifier(originData.databaseIdentifier())->securityOrigin());
     newQuota = m_page.injectedBundleUIClient().didExceedDatabaseQuota(&m_page, securityOrigin.get(), databaseName, details.displayName(), currentQuota, currentOriginUsage, details.currentUsage(), details.expectedUsage());
 
     if (!newQuota) {
         WebProcess::singleton().parentProcessConnection()->sendSync(
-            Messages::WebPageProxy::ExceededDatabaseQuota(webFrame->frameID(), SecurityOriginData::fromSecurityOrigin(origin).databaseIdentifier(), databaseName, details.displayName(), currentQuota, currentOriginUsage, details.currentUsage(), details.expectedUsage()),
+            Messages::WebPageProxy::ExceededDatabaseQuota(webFrame->frameID(), originData.databaseIdentifier(), databaseName, details.displayName(), currentQuota, currentOriginUsage, details.currentUsage(), details.expectedUsage()),
             Messages::WebPageProxy::ExceededDatabaseQuota::Reply(newQuota), m_page.pageID(), Seconds::infinity(), IPC::SendSyncOption::InformPlatformProcessWillSuspend);
     }
 
@@ -760,7 +755,7 @@ void WebChromeClient::reachedApplicationCacheOriginQuota(SecurityOrigin& origin,
 
     uint64_t newQuota = 0;
     WebProcess::singleton().parentProcessConnection()->sendSync(
-        Messages::WebPageProxy::ReachedApplicationCacheOriginQuota(SecurityOriginData::fromSecurityOrigin(origin).databaseIdentifier(), currentQuota, totalBytesNeeded),
+        Messages::WebPageProxy::ReachedApplicationCacheOriginQuota(origin.data().databaseIdentifier(), currentQuota, totalBytesNeeded),
         Messages::WebPageProxy::ReachedApplicationCacheOriginQuota::Reply(newQuota), m_page.pageID(), Seconds::infinity(), IPC::SendSyncOption::InformPlatformProcessWillSuspend);
 
     cacheStorage.storeUpdatedQuotaForOrigin(&origin, newQuota);
@@ -791,6 +786,15 @@ String WebChromeClient::generateReplacementFile(const String& path)
 std::unique_ptr<ColorChooser> WebChromeClient::createColorChooser(ColorChooserClient& client, const Color& initialColor)
 {
     return std::make_unique<WebColorChooser>(&m_page, &client, initialColor);
+}
+
+#endif
+
+#if ENABLE(DATALIST_ELEMENT)
+
+std::unique_ptr<DataListSuggestionPicker> WebChromeClient::createDataListSuggestionPicker(DataListSuggestionsClient& client)
+{
+    return std::make_unique<WebDataListSuggestionPicker>(&m_page, &client);
 }
 
 #endif
@@ -934,9 +938,13 @@ bool WebChromeClient::layerTreeStateIsFrozen() const
 RefPtr<ScrollingCoordinator> WebChromeClient::createScrollingCoordinator(Page& page) const
 {
     ASSERT_UNUSED(page, m_page.corePage() == &page);
+#if PLATFORM(COCOA)
     if (m_page.drawingArea()->type() != DrawingAreaTypeRemoteLayerTree)
         return nullptr;
     return RemoteScrollingCoordinator::create(&m_page);
+#else
+    return nullptr;
+#endif
 }
 
 #endif
@@ -1020,7 +1028,17 @@ FloatSize WebChromeClient::availableScreenSize() const
     return m_page.availableScreenSize();
 }
 
+FloatSize WebChromeClient::overrideScreenSize() const
+{
+    return m_page.overrideScreenSize();
+}
+
 #endif
+
+void WebChromeClient::dispatchDisabledAdaptationsDidChange(const OptionSet<DisabledAdaptations>& disabledAdaptations) const
+{
+    m_page.disabledAdaptationsDidChange(disabledAdaptations);
+}
 
 void WebChromeClient::dispatchViewportPropertiesDidChange(const ViewportArguments& viewportArguments) const
 {
@@ -1165,6 +1183,14 @@ bool WebChromeClient::unwrapCryptoKey(const Vector<uint8_t>& wrappedKey, Vector<
 
 #endif
 
+String WebChromeClient::signedPublicKeyAndChallengeString(unsigned keySizeIndex, const String& challengeString, const WebCore::URL& url) const
+{
+    String result;
+    if (!WebProcess::singleton().parentProcessConnection()->sendSync(Messages::WebPageProxy::SignedPublicKeyAndChallengeString(keySizeIndex, challengeString, url), Messages::WebPageProxy::SignedPublicKeyAndChallengeString::Reply(result), m_page.pageID()))
+        return emptyString();
+    return result;
+}
+
 #if ENABLE(TELEPHONE_NUMBER_DETECTION) && PLATFORM(MAC)
 
 void WebChromeClient::handleTelephoneNumberClick(const String& number, const IntPoint& point)
@@ -1203,6 +1229,18 @@ void WebChromeClient::handleAutoFillButtonClick(HTMLInputElement& inputElement)
 
     // Notify the UIProcess.
     m_page.send(Messages::WebPageProxy::HandleAutoFillButtonClick(UserData(WebProcess::singleton().transformObjectsToHandles(userData.get()).get())));
+}
+
+void WebChromeClient::inputElementDidResignStrongPasswordAppearance(HTMLInputElement& inputElement)
+{
+    RefPtr<API::Object> userData;
+
+    // Notify the bundle client.
+    auto nodeHandle = InjectedBundleNodeHandle::getOrCreate(inputElement);
+    m_page.injectedBundleUIClient().didResignInputElementStrongPasswordAppearance(m_page, nodeHandle.get(), userData);
+
+    // Notify the UIProcess.
+    m_page.send(Messages::WebPageProxy::DidResignInputElementStrongPasswordAppearance { UserData { WebProcess::singleton().transformObjectsToHandles(userData.get()).get() } });
 }
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && !PLATFORM(IOS)
@@ -1261,15 +1299,22 @@ void WebChromeClient::didInvalidateDocumentMarkerRects()
 }
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING)
-void WebChromeClient::hasStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void (bool)>&& callback)
+void WebChromeClient::hasStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t, CompletionHandler<void(bool)>&& callback)
 {
-    m_page.hasStorageAccess(WTFMove(subFrameHost), WTFMove(topFrameHost), frameID, pageID, WTFMove(callback));
+    m_page.hasStorageAccess(WTFMove(subFrameHost), WTFMove(topFrameHost), frameID, WTFMove(callback));
 }
 
-void WebChromeClient::requestStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void (bool)>&& callback)
+void WebChromeClient::requestStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t, CompletionHandler<void(bool)>&& callback)
 {
-    m_page.requestStorageAccess(WTFMove(subFrameHost), WTFMove(topFrameHost), frameID, pageID, WTFMove(callback));
+    m_page.requestStorageAccess(WTFMove(subFrameHost), WTFMove(topFrameHost), frameID, WTFMove(callback));
 }
 #endif
+
+bool WebChromeClient::isViewVisible()
+{
+    bool isVisible = false;
+    WebProcess::singleton().parentProcessConnection()->sendSync(Messages::WebPageProxy::GetIsViewVisible(), Messages::WebPageProxy::GetIsViewVisible::Reply(isVisible), m_page.pageID());
+    return isVisible;
+}
 
 } // namespace WebKit

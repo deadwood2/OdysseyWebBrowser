@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/DOMException.h>
 #include <WebCore/Document.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMDOMSelectionPrivate.h"
 #include "WebKitDOMNodePrivate.h"
 #include "WebKitDOMPrivate.h"
@@ -38,6 +38,8 @@
 typedef struct _WebKitDOMDOMSelectionPrivate {
     RefPtr<WebCore::DOMSelection> coreObject;
 } WebKitDOMDOMSelectionPrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -529,3 +531,4 @@ gulong webkit_dom_dom_selection_get_extent_offset(WebKitDOMDOMSelection* self)
     return result;
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

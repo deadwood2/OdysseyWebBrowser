@@ -1184,7 +1184,7 @@ static JSValueRef setXSSAuditorEnabledCallback(JSContextRef context, JSObjectRef
 
 static JSValueRef setSpatialNavigationEnabledCallback(JSContextRef context, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception)
 {
-    // Has mac implementation.
+    // Has mac & windows implementation.
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
@@ -1788,6 +1788,16 @@ static JSValueRef setSpellCheckerLoggingEnabledCallback(JSContextRef context, JS
     return JSValueMakeUndefined(context);
 }
 
+static JSValueRef setSpellCheckerResultsCallback(JSContextRef context, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception)
+{
+    if (argumentCount < 1)
+        return JSValueMakeUndefined(context);
+
+    auto* runner = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
+    runner->setSpellCheckerResults(context, JSValueToObject(context, arguments[0], nullptr));
+    return JSValueMakeUndefined(context);
+}
+
 static JSValueRef setOpenPanelFilesCallback(JSContextRef context, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception)
 {
     if (argumentCount == 1)
@@ -1807,6 +1817,12 @@ static JSValueRef getGlobalFlagCallback(JSContextRef context, JSObjectRef thisOb
 {
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
     return JSValueMakeBoolean(context, controller->globalFlag());
+}
+
+static JSValueRef getDidCancelClientRedirect(JSContextRef context, JSObjectRef thisObject, JSStringRef propertyName, JSValueRef* exception)
+{
+    TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
+    return JSValueMakeBoolean(context, controller->didCancelClientRedirect());
 }
 
 static JSValueRef getDatabaseDefaultQuotaCallback(JSContextRef context, JSObjectRef thisObject, JSStringRef propertyName, JSValueRef* exception)
@@ -2077,6 +2093,7 @@ JSClassRef TestRunner::getJSClass()
 JSStaticValue* TestRunner::staticValues()
 {
     static JSStaticValue staticValues[] = {
+        { "didCancelClientRedirect", getDidCancelClientRedirect, 0, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "timeout", getTimeoutCallback, 0, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "globalFlag", getGlobalFlagCallback, setGlobalFlagCallback, kJSPropertyAttributeNone },
         { "webHistoryItemCount", getWebHistoryItemCountCallback, 0, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
@@ -2248,6 +2265,7 @@ JSStaticFunction* TestRunner::staticFunctions()
         { "runUIScript", runUIScriptCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "imageCountInGeneralPasteboard", imageCountInGeneralPasteboardCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setSpellCheckerLoggingEnabled", setSpellCheckerLoggingEnabledCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
+        { "setSpellCheckerResults", setSpellCheckerResultsCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setOpenPanelFiles", setOpenPanelFilesCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "forceImmediateCompletion", forceImmediateCompletionCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { 0, 0, 0 }
@@ -2328,9 +2346,16 @@ void TestRunner::addURLToRedirect(std::string origin, std::string destination)
     m_URLsToRedirect[origin] = destination;
 }
 
-const std::string& TestRunner::redirectionDestinationForURL(std::string origin)
+const char* TestRunner::redirectionDestinationForURL(const char* origin)
 {
-    return m_URLsToRedirect[origin];
+    if (!origin)
+        return nullptr;
+
+    auto iterator = m_URLsToRedirect.find(origin);
+    if (iterator == m_URLsToRedirect.end())
+        return nullptr;
+
+    return iterator->second.data();
 }
 
 void TestRunner::setShouldPaintBrokenImage(bool shouldPaintBrokenImage)

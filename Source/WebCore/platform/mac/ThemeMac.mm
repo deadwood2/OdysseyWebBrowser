@@ -26,12 +26,15 @@
 #import "config.h"
 #import "ThemeMac.h"
 
+#if PLATFORM(MAC)
+
 #import "AXObjectCache.h"
 #import "ControlStates.h"
 #import "GraphicsContext.h"
 #import "ImageBuffer.h"
 #import "LengthSize.h"
 #import "LocalCurrentGraphicsContext.h"
+#import "LocalDefaultSystemAppearance.h"
 #import "ScrollView.h"
 #import <Carbon/Carbon.h>
 #import <pal/spi/cocoa/NSButtonCellSPI.h>
@@ -209,6 +212,10 @@ static void updateStates(NSCell* cell, const ControlStates& controlStates, bool 
         [(NSButtonCell*)cell _setState:newState animated:useAnimation];
     }
 
+    // Presenting state
+    if (states & ControlStates::PresentingState)
+        [(NSButtonCell*)cell _setHighlighted:YES animated:NO];
+
     // Window inactive state does not need to be checked explicitly, since we paint parented to 
     // a view in a window whose key state can be detected.
 }
@@ -359,12 +366,15 @@ static bool drawCellFocusRingWithFrameAtTime(NSCell *cell, NSRect cellFrame, NSV
 
     CGFocusRingStyle focusRingStyle;
     bool needsRepaint = NSInitializeCGFocusRingStyleForTime(NSFocusRingOnly, &focusRingStyle, timeOffset);
+
     // We want to respect the CGContext clipping and also not overpaint any
     // existing focus ring. The way to do this is set accumulate to
     // -1. According to CoreGraphics, the reasoning for this behavior has been
     // lost in time.
     focusRingStyle.accumulate = -1;
-    auto style = adoptCF(CGStyleCreateFocusRingWithColor(&focusRingStyle, GraphicsContext::focusRingColor()));
+
+    // FIXME: This color should be shared with RenderThemeMac. For now just use the same NSColor color.
+    auto style = adoptCF(CGStyleCreateFocusRingWithColor(&focusRingStyle, [NSColor keyboardFocusIndicatorColor].CGColor));
     CGContextSetStyle(cgContext, style.get());
 
     CGContextBeginTransparencyLayerWithRect(cgContext, NSRectToCGRect(cellFrame), nullptr);
@@ -421,7 +431,6 @@ static void paintToggleButton(ControlPart buttonType, ControlStates& controlStat
         context.scale(zoomFactor);
         context.translate(-inflatedRect.location());
     }
-
     LocalCurrentGraphicsContext localContext(context);
 
     NSView *view = ThemeMac::ensuredView(scrollView, controlStates, true /* useUnparentedView */);
@@ -487,7 +496,11 @@ static void setUpButtonCell(NSButtonCell *cell, ControlPart part, const ControlS
 {
     // Set the control size based off the rectangle we're painting into.
     const std::array<IntSize, 3>& sizes = buttonSizes();
-    if (part == SquareButtonPart || zoomedSize.height() > buttonSizes()[NSControlSizeRegular].height() * zoomFactor) {
+    if (part == SquareButtonPart
+#if ENABLE(INPUT_TYPE_COLOR)
+        || part == ColorWellPart
+#endif
+        || zoomedSize.height() > buttonSizes()[NSControlSizeRegular].height() * zoomFactor) {
         // Use the square button
         if ([cell bezelStyle] != NSBezelStyleShadowlessSquare)
             [cell setBezelStyle:NSBezelStyleShadowlessSquare];
@@ -643,6 +656,7 @@ NSView *ThemeMac::ensuredView(ScrollView* scrollView, const ControlStates& contr
     // Use a fake view.
     static WebCoreThemeView *themeView = [[WebCoreThemeView alloc] init];
     [themeView setFrameSize:NSSizeFromCGSize(scrollView->totalContentsSize())];
+    [themeView setAppearance:[NSAppearance currentAppearance]];
 
     themeWindowHasKeyAppearance = !(controlStates.states() & ControlStates::WindowInactiveState);
 
@@ -692,6 +706,46 @@ bool ThemeMac::drawCellOrFocusRingWithViewIntoContext(NSCell *cell, GraphicsCont
     
     return needsRepaint;
 }
+
+// Color Well
+
+#if ENABLE(INPUT_TYPE_COLOR)
+static void paintColorWell(ControlStates& controlStates, GraphicsContext& context, const FloatRect& zoomedRect, float zoomFactor, ScrollView* scrollView, float deviceScaleFactor, float pageScaleFactor)
+{
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
+
+    // Determine the width and height needed for the control and prepare the cell for painting.
+    ControlStates::States states = controlStates.states();
+    NSButtonCell *buttonCell = button(ColorWellPart, controlStates, IntSize(zoomedRect.size()), zoomFactor);
+    GraphicsContextStateSaver stateSaver(context);
+
+    NSControlSize controlSize = [buttonCell controlSize];
+    IntSize zoomedSize = buttonSizes()[controlSize];
+    zoomedSize.setWidth(zoomedRect.width()); // Buttons don't ever constrain width, so the zoomed width can just be honored.
+    zoomedSize.setHeight(zoomedSize.height() * zoomFactor);
+    FloatRect inflatedRect = zoomedRect;
+
+    LocalCurrentGraphicsContext localContext(context);
+
+    NSView *view = ThemeMac::ensuredView(scrollView, controlStates);
+    NSWindow *window = [view window];
+    NSButtonCell *previousDefaultButtonCell = [window defaultButtonCell];
+
+    bool useImageBuffer = pageScaleFactor != 1.0f || zoomFactor != 1.0f;
+    bool needsRepaint = ThemeMac::drawCellOrFocusRingWithViewIntoContext(buttonCell, context, inflatedRect, view, true, states & ControlStates::FocusState, useImageBuffer, deviceScaleFactor);
+    if ([previousDefaultButtonCell isEqual:buttonCell])
+        [window setDefaultButtonCell:nil];
+
+    controlStates.setNeedsRepaint(needsRepaint);
+
+    [buttonCell setControlView:nil];
+
+    if (![previousDefaultButtonCell isEqual:buttonCell])
+        [window setDefaultButtonCell:previousDefaultButtonCell];
+
+    END_BLOCK_OBJC_EXCEPTIONS
+}
+#endif
 
 // Theme overrides
 
@@ -743,6 +797,9 @@ LengthSize ThemeMac::minimumControlSize(ControlPart part, const FontCascade& fon
 {
     switch (part) {
     case SquareButtonPart:
+#if ENABLE(INPUT_TYPE_COLOR)
+    case ColorWellPart:
+#endif
     case DefaultButtonPart:
     case ButtonPart:
         return { { 0, Fixed }, { static_cast<int>(15 * zoomFactor), Fixed } };
@@ -760,6 +817,9 @@ LengthBox ThemeMac::controlBorder(ControlPart part, const FontCascade& font, con
 {
     switch (part) {
     case SquareButtonPart:
+#if ENABLE(INPUT_TYPE_COLOR)
+    case ColorWellPart:
+#endif
     case DefaultButtonPart:
     case ButtonPart:
         return LengthBox(0, zoomedBox.right().value(), 0, zoomedBox.left().value());
@@ -842,8 +902,10 @@ void ThemeMac::inflateControlPaintRect(ControlPart part, const ControlStates& st
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
-void ThemeMac::paint(ControlPart part, ControlStates& states, GraphicsContext& context, const FloatRect& zoomedRect, float zoomFactor, ScrollView* scrollView, float deviceScaleFactor, float pageScaleFactor)
+void ThemeMac::paint(ControlPart part, ControlStates& states, GraphicsContext& context, const FloatRect& zoomedRect, float zoomFactor, ScrollView* scrollView, float deviceScaleFactor, float pageScaleFactor, bool useSystemAppearance, bool useDarkAppearance)
 {
+    LocalDefaultSystemAppearance localAppearance(useSystemAppearance, useDarkAppearance);
+
     switch (part) {
         case CheckboxPart:
             paintToggleButton(part, states, context, zoomedRect, zoomFactor, scrollView, deviceScaleFactor, pageScaleFactor);
@@ -857,6 +919,11 @@ void ThemeMac::paint(ControlPart part, ControlStates& states, GraphicsContext& c
         case SquareButtonPart:
             paintButton(part, states, context, zoomedRect, zoomFactor, scrollView, deviceScaleFactor, pageScaleFactor);
             break;
+#if ENABLE(INPUT_TYPE_COLOR)
+        case ColorWellPart:
+            paintColorWell(states, context, zoomedRect, zoomFactor, scrollView, deviceScaleFactor, pageScaleFactor);
+            break;
+#endif
         case InnerSpinButtonPart:
             paintStepper(states, context, zoomedRect, zoomFactor, scrollView);
             break;
@@ -871,3 +938,5 @@ bool ThemeMac::userPrefersReducedMotion() const
 }
 
 }
+
+#endif // PLATFORM(MAC)

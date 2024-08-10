@@ -29,6 +29,8 @@
 #include "PlatformMouseEvent.h"
 #include "PlatformWheelEvent.h"
 
+#if PLATFORM(MAC)
+
 namespace WebCore {
 
 class PlatformEventFactory {
@@ -49,10 +51,13 @@ WEBCORE_EXPORT String keyIdentifierForKeyEvent(NSEvent *);
 WEBCORE_EXPORT String keyForKeyEvent(NSEvent *);
 WEBCORE_EXPORT String codeForKeyEvent(NSEvent *);
 WEBCORE_EXPORT WallTime eventTimeStampSince1970(NSEvent *);
-    
+
+WEBCORE_EXPORT OptionSet<PlatformEvent::Modifier> modifiersForEvent(NSEvent *);
 WEBCORE_EXPORT void getWheelEventDeltas(NSEvent *, float& deltaX, float& deltaY, BOOL& continuous);
 WEBCORE_EXPORT UInt8 keyCharForEvent(NSEvent *);
 
 #endif
 
 } // namespace WebCore
+
+#endif // PLATFORM(MAC)

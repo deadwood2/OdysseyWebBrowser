@@ -71,10 +71,10 @@ void Editor::getTextDecorationAttributesRespectingTypingStyle(const RenderStyle&
                 [result setObject:@(NSUnderlineStyleSingle) forKey:NSUnderlineStyleAttributeName];
         }
     } else {
-        int decoration = style.textDecorationsInEffect();
-        if (decoration & TextDecorationLineThrough)
+        auto decoration = style.textDecorationsInEffect();
+        if (decoration & TextDecoration::LineThrough)
             [result setObject:@(NSUnderlineStyleSingle) forKey:NSStrikethroughStyleAttributeName];
-        if (decoration & TextDecorationUnderline)
+        if (decoration & TextDecoration::Underline)
             [result setObject:@(NSUnderlineStyleSingle) forKey:NSUnderlineStyleAttributeName];
     }
 }
@@ -89,15 +89,20 @@ RetainPtr<NSDictionary> Editor::fontAttributesForSelectionStart() const
     RetainPtr<NSMutableDictionary> attributes = adoptNS([[NSMutableDictionary alloc] init]);
 
     if (auto ctFont = style->fontCascade().primaryFont().getCTFont())
-        [attributes setObject:(id)ctFont forKey:NSFontAttributeName];
+        [attributes setObject:(__bridge id)ctFont forKey:NSFontAttributeName];
 
     // FIXME: Why would we not want to retrieve these attributes on iOS?
 #if PLATFORM(MAC)
-    if (style->visitedDependentColor(CSSPropertyBackgroundColor).isVisible())
-        [attributes setObject:nsColor(style->visitedDependentColor(CSSPropertyBackgroundColor)) forKey:NSBackgroundColorAttributeName];
+    // FIXME: for now, always report the colors after applying -apple-color-filter. In future not all clients
+    // may want this, so we may have to add a setting to control it. See also editingAttributedStringFromRange().
+    Color backgroundColor = style->visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor);
+    if (backgroundColor.isVisible())
+        [attributes setObject:nsColor(backgroundColor) forKey:NSBackgroundColorAttributeName];
 
-    if (style->visitedDependentColor(CSSPropertyColor).isValid() && !Color::isBlackColor(style->visitedDependentColor(CSSPropertyColor)))
-        [attributes setObject:nsColor(style->visitedDependentColor(CSSPropertyColor)) forKey:NSForegroundColorAttributeName];
+    Color foregroundColor = style->visitedDependentColorWithColorFilter(CSSPropertyColor);
+    // FIXME: isBlackColor not suitable for dark mode.
+    if (foregroundColor.isValid() && !Color::isBlackColor(foregroundColor))
+        [attributes setObject:nsColor(foregroundColor) forKey:NSForegroundColorAttributeName];
 
     const ShadowData* shadowData = style->textShadow();
     if (shadowData) {
@@ -110,19 +115,19 @@ RetainPtr<NSDictionary> Editor::fontAttributesForSelectionStart() const
 
     int superscriptInt = 0;
     switch (style->verticalAlign()) {
-    case BASELINE:
-    case BOTTOM:
-    case BASELINE_MIDDLE:
-    case LENGTH:
-    case MIDDLE:
-    case TEXT_BOTTOM:
-    case TEXT_TOP:
-    case TOP:
+    case VerticalAlign::Baseline:
+    case VerticalAlign::Bottom:
+    case VerticalAlign::BaselineMiddle:
+    case VerticalAlign::Length:
+    case VerticalAlign::Middle:
+    case VerticalAlign::TextBottom:
+    case VerticalAlign::TextTop:
+    case VerticalAlign::Top:
         break;
-    case SUB:
+    case VerticalAlign::Sub:
         superscriptInt = -1;
         break;
-    case SUPER:
+    case VerticalAlign::Super:
         superscriptInt = 1;
         break;
     }

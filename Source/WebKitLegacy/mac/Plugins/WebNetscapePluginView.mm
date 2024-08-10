@@ -1098,7 +1098,7 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
                 // FIXME: This code can be shared between WebHostedNetscapePluginView and WebNetscapePluginView.
                 // Since this layer isn't going to be inserted into a view, we need to create another layer and flip its geometry
                 // in order to get the coordinate system right.
-                RetainPtr<CALayer> realPluginLayer = adoptNS(_pluginLayer.leakRef());
+                RetainPtr<CALayer> realPluginLayer = WTFMove(_pluginLayer);
                 
                 _pluginLayer = adoptNS([[CALayer alloc] init]);
                 _pluginLayer.get().bounds = realPluginLayer.get().bounds;
@@ -1724,19 +1724,18 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
 
     if (file) {
         // If we're posting a file, buf is either a file URL or a path to the file.
-        NSString *bufString = (NSString *)CFStringCreateWithCString(kCFAllocatorDefault, buf, kCFStringEncodingWindowsLatin1);
+        auto bufString = adoptCF(CFStringCreateWithCString(kCFAllocatorDefault, buf, kCFStringEncodingWindowsLatin1));
         if (!bufString) {
             return NPERR_INVALID_PARAM;
         }
-        NSURL *fileURL = [NSURL _web_URLWithDataAsString:bufString];
+        NSURL *fileURL = [NSURL _web_URLWithDataAsString:(__bridge NSString *)bufString.get()];
         NSString *path;
         if ([fileURL isFileURL]) {
             path = [fileURL path];
         } else {
-            path = bufString;
+            path = (__bridge NSString *)bufString.get();
         }
         postData = [NSData dataWithContentsOfFile:path];
-        CFRelease(bufString);
         if (!postData) {
             return NPERR_FILE_NOT_FOUND;
         }
@@ -1866,7 +1865,7 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
     
     LOG(Plugins, "NPN_Status: %@", status);
     WebView *wv = [self webView];
-    [[wv _UIDelegateForwarder] webView:wv setStatusText:(NSString *)status];
+    [[wv _UIDelegateForwarder] webView:wv setStatusText:(__bridge NSString *)status];
     CFRelease(status);
 }
 
@@ -2120,7 +2119,7 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
     if (!currentEvent)
         return NPERR_GENERIC_ERROR;
     
-    [NSMenu popUpContextMenu:(NSMenu *)menu withEvent:currentEvent forView:self];
+    [NSMenu popUpContextMenu:(__bridge NSMenu *)menu withEvent:currentEvent forView:self];
     return NPERR_NO_ERROR;
 }
 
@@ -2162,7 +2161,7 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
             if (!URL)
                 break;
 
-            Vector<ProxyServer> proxyServers = proxyServersForURL(URL, 0);
+            Vector<ProxyServer> proxyServers = proxyServersForURL(URL);
             CString proxiesUTF8 = toString(proxyServers).utf8();
             
             *value = static_cast<char*>(NPN_MemAlloc(proxiesUTF8.length()));

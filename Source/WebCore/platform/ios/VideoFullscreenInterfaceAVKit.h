@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,13 +34,13 @@
 #include "PlaybackSessionInterfaceAVKit.h"
 #include "VideoFullscreenModel.h"
 #include <objc/objc.h>
+#include <wtf/Forward.h>
 #include <wtf/Function.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/RunLoop.h>
 
-OBJC_CLASS AVPlayerViewController;
 OBJC_CLASS UIViewController;
 OBJC_CLASS UIWindow;
 OBJC_CLASS UIView;
@@ -48,12 +48,9 @@ OBJC_CLASS CALayer;
 OBJC_CLASS WebAVPlayerController;
 OBJC_CLASS WebAVPlayerLayerView;
 OBJC_CLASS WebAVPlayerLayer;
+OBJC_CLASS WebAVPlayerViewController;
 OBJC_CLASS WebAVPlayerViewControllerDelegate;
 OBJC_CLASS NSError;
-
-namespace WTF {
-class String;
-}
 
 namespace WebCore {
 class IntRect;
@@ -61,16 +58,17 @@ class FloatSize;
 class VideoFullscreenModel;
 class VideoFullscreenChangeObserver;
     
-class WEBCORE_EXPORT VideoFullscreenInterfaceAVKit final
+class VideoFullscreenInterfaceAVKit final
     : public VideoFullscreenModelClient
     , public PlaybackSessionModelClient
     , public ThreadSafeRefCounted<VideoFullscreenInterfaceAVKit> {
 
 public:
-    static Ref<VideoFullscreenInterfaceAVKit> create(PlaybackSessionInterfaceAVKit&);
+    WEBCORE_EXPORT static Ref<VideoFullscreenInterfaceAVKit> create(PlaybackSessionInterfaceAVKit&);
     virtual ~VideoFullscreenInterfaceAVKit();
     WEBCORE_EXPORT void setVideoFullscreenModel(VideoFullscreenModel*);
     WEBCORE_EXPORT void setVideoFullscreenChangeObserver(VideoFullscreenChangeObserver*);
+    PlaybackSessionInterfaceAVKit& playbackSessionInterface() const { return m_playbackSessionInterface.get(); }
     PlaybackSessionModel* playbackSessionModel() const { return m_playbackSessionInterface->playbackSessionModel(); }
 
     // VideoFullscreenModelClient
@@ -87,6 +85,7 @@ public:
     WEBCORE_EXPORT void invalidate();
     WEBCORE_EXPORT void requestHideAndExitFullscreen();
     WEBCORE_EXPORT void preparedToReturnToInline(bool visible, const IntRect& inlineRect);
+    WEBCORE_EXPORT void preparedToExitFullscreen();
 #if ENABLE(FULLSCREEN_API)
     WEBCORE_EXPORT void setHasVideoContentLayer(bool);
     WEBCORE_EXPORT void setInlineRect(const IntRect&, bool visible);
@@ -132,14 +131,14 @@ public:
     Mode m_targetMode;
 #endif
 
-    VideoFullscreenModel* model() const { return m_videoFullscreenModel; }
+    VideoFullscreenModel* videoFullscreenModel() const { return m_videoFullscreenModel; }
     bool shouldExitFullscreenWithReason(ExitFullScreenReason);
     HTMLMediaElementEnums::VideoFullscreenMode mode() const { return m_currentMode.mode(); }
     bool allowsPictureInPicturePlayback() const { return m_allowsPictureInPicturePlayback; }
     WEBCORE_EXPORT bool mayAutomaticallyShowVideoPictureInPicture() const;
     void fullscreenMayReturnToInline(WTF::Function<void(bool)>&& callback);
     bool wirelessVideoPlaybackDisabled() const;
-    void applicationDidBecomeActive();
+    WEBCORE_EXPORT void applicationDidBecomeActive();
 
     void willStartPictureInPicture();
     void didStartPictureInPicture();
@@ -151,10 +150,18 @@ public:
     void exitFullscreenHandler(BOOL success, NSError *);
     void enterFullscreenHandler(BOOL success, NSError *);
 #endif
+    bool isPlayingVideoInEnhancedFullscreen() const;
 
-    void setMode(HTMLMediaElementEnums::VideoFullscreenMode);
+    WEBCORE_EXPORT void setMode(HTMLMediaElementEnums::VideoFullscreenMode);
     void clearMode(HTMLMediaElementEnums::VideoFullscreenMode);
     bool hasMode(HTMLMediaElementEnums::VideoFullscreenMode mode) const { return m_currentMode.hasMode(mode); }
+
+#if PLATFORM(IOS)
+    UIViewController *presentingViewController();
+    UIViewController *fullscreenViewController() const { return m_viewController.get(); }
+    WebAVPlayerLayerView* playerLayerView() const { return m_playerLayerView.get(); }
+    WEBCORE_EXPORT bool pictureInPictureWasStartedWhenEnteringBackground() const;
+#endif
 
 protected:
     WEBCORE_EXPORT VideoFullscreenInterfaceAVKit(PlaybackSessionInterfaceAVKit&);
@@ -174,7 +181,7 @@ protected:
 
     Ref<PlaybackSessionInterfaceAVKit> m_playbackSessionInterface;
     RetainPtr<WebAVPlayerViewControllerDelegate> m_playerViewControllerDelegate;
-    RetainPtr<AVPlayerViewController> m_playerViewController;
+    RetainPtr<WebAVPlayerViewController> m_playerViewController;
     VideoFullscreenModel* m_videoFullscreenModel { nullptr };
     VideoFullscreenChangeObserver* m_fullscreenChangeObserver { nullptr };
 
@@ -223,6 +230,7 @@ protected:
     bool m_exitCompleted { false };
     bool m_enterRequested { false };
     bool m_shouldReturnToFullscreenAfterEnteringForeground { false };
+    bool m_waitingForPreparedToExit { false };
 #endif
 };
 

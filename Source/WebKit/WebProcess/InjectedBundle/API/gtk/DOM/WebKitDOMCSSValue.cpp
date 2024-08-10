@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/DOMException.h>
 #include <WebCore/Document.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMCSSValuePrivate.h"
 #include "WebKitDOMPrivate.h"
 #include "ConvertToUTF8String.h"
@@ -36,6 +36,8 @@
 typedef struct _WebKitDOMCSSValuePrivate {
     RefPtr<WebCore::DeprecatedCSSOMValue> coreObject;
 } WebKitDOMCSSValuePrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -193,3 +195,4 @@ gushort webkit_dom_css_value_get_css_value_type(WebKitDOMCSSValue* self)
     return result;
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

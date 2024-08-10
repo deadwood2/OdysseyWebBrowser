@@ -41,15 +41,14 @@
 #include <WebCore/IdentifierRep.h>
 #include <wtf/text/WTFString.h>
 
+namespace WebKit {
 using namespace JSC;
 using namespace WebCore;
-
-namespace WebKit {
 
 NPJSObject* NPJSObject::create(VM& vm, NPRuntimeObjectMap* objectMap, JSObject* jsObject)
 {
     // We should never have a JSNPObject inside an NPJSObject.
-    ASSERT(!jsObject->inherits(vm, JSNPObject::info()));
+    ASSERT(!jsObject->inherits<JSNPObject>(vm));
 
     NPJSObject* npJSObject = toNPJSObject(createNPObject(0, npClass()));
     npJSObject->initialize(vm, objectMap, jsObject);
@@ -110,7 +109,7 @@ bool NPJSObject::hasMethod(NPIdentifier methodName)
     scope.clearException();
 
     CallData callData;
-    return getCallData(value, callData) != CallType::None;
+    return getCallData(vm, value, callData) != CallType::None;
 }
 
 bool NPJSObject::invoke(NPIdentifier methodName, const NPVariant* arguments, uint32_t argumentCount, NPVariant* result)
@@ -278,7 +277,7 @@ bool NPJSObject::construct(const NPVariant* arguments, uint32_t argumentCount, N
     auto scope = DECLARE_CATCH_SCOPE(vm);
 
     ConstructData constructData;
-    ConstructType constructType = getConstructData(m_jsObject.get(), constructData);
+    ConstructType constructType = getConstructData(vm, m_jsObject.get(), constructData);
     if (constructType == ConstructType::None)
         return false;
 
@@ -303,7 +302,7 @@ bool NPJSObject::invoke(ExecState* exec, JSGlobalObject* globalObject, JSValue f
     auto scope = DECLARE_CATCH_SCOPE(vm);
 
     CallData callData;
-    CallType callType = getCallData(function, callData);
+    CallType callType = getCallData(vm, function, callData);
     if (callType == CallType::None)
         return false;
 

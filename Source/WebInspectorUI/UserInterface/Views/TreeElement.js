@@ -271,6 +271,9 @@ WI.TreeElement = class TreeElement extends WI.Object
             this._listItemNode.parentNode.removeChild(this._listItemNode);
         if (this._childrenListNode && this._childrenListNode.parentNode)
             this._childrenListNode.parentNode.removeChild(this._childrenListNode);
+
+        if (this.treeOutline)
+            this.treeOutline.soon.updateVirtualizedElements();
     }
 
     static treeElementMouseDown(event)
@@ -583,7 +586,7 @@ WI.TreeElement = class TreeElement extends WI.Object
 
     onpopulate()
     {
-        // Overriden by subclasses.
+        // Overridden by subclasses.
     }
 
     traverseNextTreeElement(skipUnrevealed, stayWithin, dontPopulate, info)

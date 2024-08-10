@@ -20,6 +20,9 @@ if (ENABLE_GTKDOC)
     install(DIRECTORY ${CMAKE_BINARY_DIR}/Documentation/webkitdomgtk-${WEBKITGTK_API_VERSION}/html/webkitdomgtk-${WEBKITGTK_API_VERSION}
             DESTINATION "${CMAKE_INSTALL_DATADIR}/gtk-doc/html"
     )
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/Documentation/jsc-glib-${WEBKITGTK_API_VERSION}/html/jsc-glib-${WEBKITGTK_API_VERSION}
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/gtk-doc/html"
+    )
 endif ()
 
 macro(ADD_GTKDOC_GENERATOR _stamp_name _extra_args)
@@ -50,7 +53,8 @@ endif ()
 
 add_custom_target(check
     COMMAND ${TOOLS_DIR}/Scripts/run-gtk-tests
-    COMMAND ${TOOLS_DIR}/gtk/check-for-webkitdom-api-breaks
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    VERBATIM
 )
 
 if (DEVELOPER_MODE)

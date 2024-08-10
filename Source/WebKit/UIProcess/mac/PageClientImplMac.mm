@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,12 +33,14 @@
 #import "DataReference.h"
 #import "DownloadProxy.h"
 #import "DrawingAreaProxy.h"
+#import "Logging.h"
 #import "NativeWebGestureEvent.h"
 #import "NativeWebKeyboardEvent.h"
 #import "NativeWebMouseEvent.h"
 #import "NativeWebWheelEvent.h"
 #import "NavigationState.h"
 #import "StringUtilities.h"
+#import "UndoOrRedo.h"
 #import "ViewGestureController.h"
 #import "ViewSnapshotStore.h"
 #import "WKAPICast.h"
@@ -48,7 +50,9 @@
 #import "WKWebViewInternal.h"
 #import "WebColorPickerMac.h"
 #import "WebContextMenuProxyMac.h"
+#import "WebDataListSuggestionsDropdownMac.h"
 #import "WebEditCommandProxy.h"
+#import "WebPageProxy.h"
 #import "WebPopupMenuProxyMac.h"
 #import "WebViewImpl.h"
 #import "WindowServerConnection.h"
@@ -65,6 +69,7 @@
 #import <WebCore/Image.h>
 #import <WebCore/KeyboardEvent.h>
 #import <WebCore/NotImplemented.h>
+#import <WebCore/PlatformScreen.h>
 #import <WebCore/PromisedBlobInfo.h>
 #import <WebCore/SharedBuffer.h>
 #import <WebCore/TextIndicator.h>
@@ -72,6 +77,7 @@
 #import <WebCore/TextUndoInsertionMarkupMac.h>
 #import <WebCore/ValidationBubble.h>
 #import <WebCore/WebCoreCALayerExtras.h>
+#import <wtf/ProcessPrivilege.h>
 #import <wtf/text/CString.h>
 #import <wtf/text/WTFString.h>
 
@@ -93,10 +99,8 @@
 @end
 #endif
 
-using namespace WebCore;
-using namespace WebKit;
-
 namespace WebKit {
+using namespace WebCore;
 
 PageClientImpl::PageClientImpl(NSView* view, WKWebView *webView)
     : PageClientImplCocoa(webView)
@@ -160,6 +164,7 @@ NSWindow *PageClientImpl::activeWindow() const
 
 bool PageClientImpl::isViewWindowActive()
 {
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     NSWindow *activeViewWindow = activeWindow();
     return activeViewWindow.isKeyWindow || [NSApp keyWindow] == activeViewWindow;
 }
@@ -174,6 +179,11 @@ bool PageClientImpl::isViewFocused()
     return m_impl->isFocused();
 }
 
+void PageClientImpl::assistiveTechnologyMakeFirstResponder()
+{
+    [[m_view window] makeFirstResponder:m_view];
+}
+    
 void PageClientImpl::makeFirstResponder()
 {
     if (m_shouldSuppressFirstResponderChanges)
@@ -187,6 +197,13 @@ bool PageClientImpl::isViewVisible()
     NSView *activeView = this->activeView();
     NSWindow *activeViewWindow = activeWindow();
 
+    auto windowIsOccluded = [&]()->bool {
+        return m_impl && m_impl->windowOcclusionDetectionEnabled() && (activeViewWindow.occlusionState & NSWindowOcclusionStateVisible) != NSWindowOcclusionStateVisible;
+    };
+
+    LOG_WITH_STREAM(ActivityState, stream << "PageClientImpl " << this << " isViewVisible(): activeViewWindow " << activeViewWindow
+        << " (window visible " << activeViewWindow.isVisible << ", view hidden " << activeView.isHiddenOrHasHiddenAncestor << ", window occluded " << windowIsOccluded() << ")");
+
     if (!activeViewWindow)
         return false;
 
@@ -196,7 +213,7 @@ bool PageClientImpl::isViewVisible()
     if (activeView.isHiddenOrHasHiddenAncestor)
         return false;
 
-    if (m_impl->windowOcclusionDetectionEnabled() && (activeViewWindow.occlusionState & NSWindowOcclusionStateVisible) != NSWindowOcclusionStateVisible)
+    if (windowIsOccluded())
         return false;
 
     return true;
@@ -285,6 +302,7 @@ void PageClientImpl::didChangeContentSize(const WebCore::IntSize& newSize)
 
 void PageClientImpl::setCursor(const WebCore::Cursor& cursor)
 {
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     // FIXME: Would be nice to share this code with WebKit1's WebChromeClient.
 
     // The Web process may have asked to change the cursor when the view was in an active window, but
@@ -321,7 +339,7 @@ void PageClientImpl::didChangeViewportProperties(const WebCore::ViewportAttribut
 {
 }
 
-void PageClientImpl::registerEditCommand(Ref<WebEditCommandProxy>&& command, WebPageProxy::UndoOrRedo undoOrRedo)
+void PageClientImpl::registerEditCommand(Ref<WebEditCommandProxy>&& command, UndoOrRedo undoOrRedo)
 {
     m_impl->registerEditCommand(WTFMove(command), undoOrRedo);
 }
@@ -338,14 +356,14 @@ void PageClientImpl::clearAllEditCommands()
     m_impl->clearAllEditCommands();
 }
 
-bool PageClientImpl::canUndoRedo(WebPageProxy::UndoOrRedo undoOrRedo)
+bool PageClientImpl::canUndoRedo(UndoOrRedo undoOrRedo)
 {
-    return (undoOrRedo == WebPageProxy::Undo) ? [[m_view undoManager] canUndo] : [[m_view undoManager] canRedo];
+    return (undoOrRedo == UndoOrRedo::Undo) ? [[m_view undoManager] canUndo] : [[m_view undoManager] canRedo];
 }
 
-void PageClientImpl::executeUndoRedo(WebPageProxy::UndoOrRedo undoOrRedo)
+void PageClientImpl::executeUndoRedo(UndoOrRedo undoOrRedo)
 {
-    return (undoOrRedo == WebPageProxy::Undo) ? [[m_view undoManager] undo] : [[m_view undoManager] redo];
+    return (undoOrRedo == UndoOrRedo::Undo) ? [[m_view undoManager] undo] : [[m_view undoManager] redo];
 }
 
 void PageClientImpl::startDrag(const WebCore::DragItem& item, const ShareableBitmap::Handle& image)
@@ -444,9 +462,16 @@ Ref<WebContextMenuProxy> PageClientImpl::createContextMenuProxy(WebPageProxy& pa
 #endif
 
 #if ENABLE(INPUT_TYPE_COLOR)
-RefPtr<WebColorPicker> PageClientImpl::createColorPicker(WebPageProxy* page, const WebCore::Color& initialColor,  const WebCore::IntRect& rect)
+RefPtr<WebColorPicker> PageClientImpl::createColorPicker(WebPageProxy* page, const WebCore::Color& initialColor, const WebCore::IntRect& rect, Vector<WebCore::Color>&& suggestions)
 {
-    return WebColorPickerMac::create(page, initialColor, rect, m_view);
+    return WebColorPickerMac::create(page, initialColor, rect, WTFMove(suggestions), m_view);
+}
+#endif
+
+#if ENABLE(DATALIST_ELEMENT)
+RefPtr<WebDataListSuggestionsDropdown> PageClientImpl::createDataListSuggestionsDropdown(WebPageProxy& page)
+{
+    return WebDataListSuggestionsDropdownMac::create(page, m_view);
 }
 #endif
 
@@ -747,6 +772,12 @@ void PageClientImpl::didRemoveNavigationGestureSnapshot()
 #endif
 }
 
+void PageClientImpl::didStartProvisionalLoadForMainFrame()
+{
+    if (auto gestureController = m_impl->gestureController())
+        gestureController->didStartProvisionalLoadForMainFrame();
+}
+
 void PageClientImpl::didFirstVisuallyNonEmptyLayoutForMainFrame()
 {
     if (auto gestureController = m_impl->gestureController())
@@ -855,6 +886,11 @@ _WKRemoteObjectRegistry *PageClientImpl::remoteObjectRegistry()
 }
 #endif
 
+void PageClientImpl::didFinishProcessingAllPendingMouseEvents()
+{
+    m_impl->didFinishProcessingAllPendingMouseEvents();
+}
+
 void PageClientImpl::didRestoreScrollPosition()
 {
     m_impl->didRestoreScrollPosition();
@@ -870,6 +906,11 @@ WebCore::UserInterfaceLayoutDirection PageClientImpl::userInterfaceLayoutDirecti
     if (!m_view)
         return WebCore::UserInterfaceLayoutDirection::LTR;
     return (m_view.userInterfaceLayoutDirection == NSUserInterfaceLayoutDirectionLeftToRight) ? WebCore::UserInterfaceLayoutDirection::LTR : WebCore::UserInterfaceLayoutDirection::RTL;
+}
+
+bool PageClientImpl::effectiveAppearanceIsDark() const
+{
+    return m_impl->effectiveAppearanceIsDark();
 }
 
 } // namespace WebKit

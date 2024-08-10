@@ -38,10 +38,9 @@
 #include "WebServiceWorkerProvider.h"
 #include <WebCore/SWContextManager.h>
 
+namespace WebKit {
 using namespace PAL;
 using namespace WebCore;
-
-namespace WebKit {
 
 WebToStorageProcessConnection::WebToStorageProcessConnection(IPC::Connection::Identifier connectionIdentifier)
     : m_connection(IPC::Connection::createClientConnection(connectionIdentifier, *this))
@@ -101,12 +100,11 @@ void WebToStorageProcessConnection::didReceiveSyncMessage(IPC::Connection& conne
 
 void WebToStorageProcessConnection::didClose(IPC::Connection& connection)
 {
+    auto protectedThis = makeRef(*this);
+
 #if ENABLE(INDEXED_DATABASE)
     for (auto& connection : m_webIDBConnectionsByIdentifier.values())
         connection->connectionToServerLost();
-
-    m_webIDBConnectionsByIdentifier.clear();
-    m_webIDBConnectionsBySession.clear();
 #endif
 #if ENABLE(SERVICE_WORKER)
     for (auto& connection : m_swConnectionsBySession.values())
@@ -117,6 +115,11 @@ void WebToStorageProcessConnection::didClose(IPC::Connection& connection)
 #endif
 
     WebProcess::singleton().webToStorageProcessConnectionClosed(this);
+
+#if ENABLE(INDEXED_DATABASE)
+    m_webIDBConnectionsByIdentifier.clear();
+    m_webIDBConnectionsBySession.clear();
+#endif
 }
 
 void WebToStorageProcessConnection::didReceiveInvalidMessage(IPC::Connection&, IPC::StringReference messageReceiverName, IPC::StringReference messageName)

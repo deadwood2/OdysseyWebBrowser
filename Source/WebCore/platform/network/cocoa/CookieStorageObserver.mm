@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,14 +28,19 @@
 
 #import <pal/spi/cocoa/NSURLConnectionSPI.h>
 #import <wtf/MainThread.h>
+#import <wtf/ProcessPrivilege.h>
 
-@interface WebNSHTTPCookieStorageInternal : NSObject {
+@interface WebNSHTTPCookieStorageDummyForInternalAccess : NSObject {
 @public
-    id internal;
+    NSHTTPCookieStorageInternal *_internal;
 }
 @end
 
-@implementation WebNSHTTPCookieStorageInternal
+@implementation WebNSHTTPCookieStorageDummyForInternalAccess
+@end
+
+@interface NSHTTPCookieStorageInternal : NSObject
+- (void)registerForPostingNotificationsWithContext:(NSHTTPCookieStorage *)context;
 @end
 
 @interface WebCookieObserverAdapter : NSObject {
@@ -79,6 +84,7 @@ CookieStorageObserver::CookieStorageObserver(NSHTTPCookieStorage *cookieStorage)
 {
     ASSERT(isMainThread());
     ASSERT(m_cookieStorage);
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
 }
 
 CookieStorageObserver::~CookieStorageObserver()
@@ -96,16 +102,15 @@ void CookieStorageObserver::startObserving(WTF::Function<void()>&& callback)
     ASSERT(isMainThread());
     ASSERT(!m_cookieChangeCallback);
     ASSERT(!m_observerAdapter);
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
 
     m_cookieChangeCallback = WTFMove(callback);
     m_observerAdapter = adoptNS([[WebCookieObserverAdapter alloc] initWithObserver:*this]);
 
     if (!m_hasRegisteredInternalsForNotifications) {
         if (m_cookieStorage.get() != [NSHTTPCookieStorage sharedHTTPCookieStorage]) {
-            auto selector = NSSelectorFromString(@"registerForPostingNotificationsWithContext:");
-            id internalObject = (static_cast<WebNSHTTPCookieStorageInternal *>(m_cookieStorage.get()))->internal;
-            RELEASE_ASSERT([internalObject respondsToSelector:selector]);
-            [internalObject performSelector:selector withObject:m_cookieStorage.get()];
+            auto internalObject = (static_cast<WebNSHTTPCookieStorageDummyForInternalAccess *>(m_cookieStorage.get()))->_internal;
+            [internalObject registerForPostingNotificationsWithContext:m_cookieStorage.get()];
         }
 
         m_hasRegisteredInternalsForNotifications = true;
@@ -119,6 +124,7 @@ void CookieStorageObserver::stopObserving()
     ASSERT(isMainThread());
     ASSERT(m_cookieChangeCallback);
     ASSERT(m_observerAdapter);
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
 
     [[NSNotificationCenter defaultCenter] removeObserver:m_observerAdapter.get() name:NSHTTPCookieManagerCookiesChangedNotification object:nil];
 

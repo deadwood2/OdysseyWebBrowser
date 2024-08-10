@@ -33,15 +33,14 @@
 #import "WebPageProxyMessages.h"
 #import <WebCore/DictionaryLookup.h>
 #import <WebCore/Editor.h>
+#import <WebCore/Frame.h>
 #import <WebCore/FrameView.h>
-#import <WebCore/MainFrame.h>
 #import <WebCore/Page.h>
 #import <WebCore/TextIndicator.h>
 #import <wtf/text/WTFString.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 void WebContextMenuClient::lookUpInDictionary(Frame* frame)
 {

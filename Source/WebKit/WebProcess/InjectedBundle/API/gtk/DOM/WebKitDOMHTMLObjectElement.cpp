@@ -26,7 +26,7 @@
 #include <WebCore/Document.h>
 #include "GObjectEventListener.h"
 #include <WebCore/HTMLNames.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMDocumentPrivate.h"
 #include "WebKitDOMEventPrivate.h"
 #include "WebKitDOMEventTarget.h"
@@ -37,6 +37,8 @@
 #include "ConvertToUTF8String.h"
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -750,3 +752,4 @@ WebKitDOMDocument* webkit_dom_html_object_element_get_content_document(WebKitDOM
     return WebKit::kit(gobjectResult.get());
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

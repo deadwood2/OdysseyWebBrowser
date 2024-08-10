@@ -31,7 +31,7 @@
 #include <WebCore/CSSImportRule.h>
 #include <WebCore/DOMException.h>
 #include <WebCore/Document.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include <WebCore/SVGTests.h>
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
@@ -41,6 +41,8 @@
 typedef struct _WebKitDOMDOMImplementationPrivate {
     RefPtr<WebCore::DOMImplementation> coreObject;
 } WebKitDOMDOMImplementationPrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -181,3 +183,4 @@ WebKitDOMHTMLDocument* webkit_dom_dom_implementation_create_html_document(WebKit
     return WebKit::kit(gobjectResult.get());
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

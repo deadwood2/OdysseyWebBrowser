@@ -23,7 +23,7 @@
 #include <WebCore/CSSImportRule.h>
 #include "DOMObjectCache.h"
 #include <WebCore/Document.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMCSSRuleListPrivate.h"
 #include "WebKitDOMCSSRulePrivate.h"
 #include "WebKitDOMPrivate.h"
@@ -36,6 +36,8 @@
 typedef struct _WebKitDOMCSSRuleListPrivate {
     RefPtr<WebCore::CSSRuleList> coreObject;
 } WebKitDOMCSSRuleListPrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -149,3 +151,4 @@ gulong webkit_dom_css_rule_list_get_length(WebKitDOMCSSRuleList* self)
     return result;
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

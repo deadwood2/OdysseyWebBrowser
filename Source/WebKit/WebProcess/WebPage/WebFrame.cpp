@@ -71,8 +71,6 @@
 #include <WebCore/JSElement.h>
 #include <WebCore/JSFile.h>
 #include <WebCore/JSRange.h>
-#include <WebCore/MainFrame.h>
-#include <WebCore/NetworkingContext.h>
 #include <WebCore/NodeTraversal.h>
 #include <WebCore/Page.h>
 #include <WebCore/PluginDocument.h>
@@ -92,10 +90,9 @@
 #include <wtf/RefCountedLeakCounter.h>
 #endif
 
+namespace WebKit {
 using namespace JSC;
 using namespace WebCore;
-
-namespace WebKit {
 
 DEFINE_DEBUG_ONLY_GLOBAL(WTF::RefCountedLeakCounter, webFrameCounter, ("WebFrame"));
 
@@ -166,6 +163,10 @@ WebFrame::~WebFrame()
 {
     ASSERT(!m_coreFrame);
 
+    auto willSubmitFormCompletionHandlers = WTFMove(m_willSubmitFormCompletionHandlers);
+    for (auto& completionHandler : willSubmitFormCompletionHandlers.values())
+        completionHandler();
+
 #ifndef NDEBUG
     webFrameCounter.decrement();
 #endif
@@ -222,7 +223,7 @@ uint64_t WebFrame::setUpPolicyListener(WebCore::FramePolicyFunction&& policyFunc
     return m_policyListenerID;
 }
 
-uint64_t WebFrame::setUpWillSubmitFormListener(WTF::Function<void(void)>&& completionHandler)
+uint64_t WebFrame::setUpWillSubmitFormListener(CompletionHandler<void()>&& completionHandler)
 {
     uint64_t identifier = generateListenerID();
     invalidatePolicyListener();
@@ -247,9 +248,10 @@ void WebFrame::invalidatePolicyListener()
     if (auto function = std::exchange(m_policyFunction, nullptr))
         function(PolicyAction::Ignore);
     m_policyFunctionForNavigationAction = ForNavigationAction::No;
-    for (auto& function : m_willSubmitFormCompletionHandlers.values())
-        function();
-    m_willSubmitFormCompletionHandlers.clear();
+
+    auto willSubmitFormCompletionHandlers = WTFMove(m_willSubmitFormCompletionHandlers);
+    for (auto& completionHandler : willSubmitFormCompletionHandlers.values())
+        completionHandler();
 }
 
 void WebFrame::didReceivePolicyDecision(uint64_t listenerID, PolicyAction action, uint64_t navigationID, DownloadID downloadID, std::optional<WebsitePoliciesData>&& websitePolicies)
@@ -315,6 +317,14 @@ void WebFrame::convertMainResourceLoadToDownload(DocumentLoader* documentLoader,
         mainResourceLoadIdentifier = 0;
 
     webProcess.ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::ConvertMainResourceLoadToDownload(sessionID, mainResourceLoadIdentifier, policyDownloadID, request, response), 0);
+}
+
+void WebFrame::addConsoleMessage(MessageSource messageSource, MessageLevel messageLevel, const String& message, uint64_t requestID)
+{
+    if (!m_coreFrame)
+        return;
+    if (auto* document = m_coreFrame->document())
+        document->addConsoleMessage(messageSource, messageLevel, message, requestID);
 }
 
 String WebFrame::source() const
@@ -695,7 +705,7 @@ WebFrame* WebFrame::frameForContext(JSContextRef context)
 {
 
     JSC::JSGlobalObject* globalObjectObj = toJS(context)->lexicalGlobalObject();
-    JSDOMWindow* window = jsDynamicDowncast<JSDOMWindow*>(globalObjectObj->vm(), globalObjectObj);
+    JSDOMWindow* window = jsDynamicCast<JSDOMWindow*>(globalObjectObj->vm(), globalObjectObj);
     if (!window)
         return nullptr;
     return WebFrame::fromCoreFrame(*(window->wrapped().frame()));
@@ -739,7 +749,7 @@ JSValueRef WebFrame::jsWrapperForWorld(InjectedBundleFileHandle* fileHandle, Inj
 
 String WebFrame::counterValue(JSObjectRef element)
 {
-    if (!toJS(element)->inherits(*toJS(element)->vm(), JSElement::info()))
+    if (!toJS(element)->inherits<JSElement>(*toJS(element)->vm()))
         return String();
 
     return counterValueForElement(&jsCast<JSElement*>(toJS(element))->wrapped());
@@ -775,7 +785,7 @@ String WebFrame::suggestedFilenameForResourceWithURL(const URL& url) const
     if (resource)
         return resource->response().suggestedFilename();
 
-    return page()->cachedSuggestedFilenameForURL(url);
+    return String();
 }
 
 String WebFrame::mimeTypeForResourceWithURL(const URL& url) const
@@ -796,7 +806,7 @@ String WebFrame::mimeTypeForResourceWithURL(const URL& url) const
     if (resource)
         return resource->mimeType();
 
-    return page()->cachedResponseMIMETypeForURL(url);
+    return String();
 }
 
 void WebFrame::setTextDirection(const String& direction)

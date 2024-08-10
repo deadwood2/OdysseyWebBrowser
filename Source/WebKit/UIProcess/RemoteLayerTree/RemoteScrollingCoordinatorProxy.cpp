@@ -40,9 +40,8 @@
 #include <WebCore/ScrollingStateTree.h>
 #include <WebCore/ScrollingTreeScrollingNode.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 RemoteScrollingCoordinatorProxy::RemoteScrollingCoordinatorProxy(WebPageProxy& webPageProxy)
     : m_webPageProxy(webPageProxy)
@@ -103,7 +102,8 @@ void RemoteScrollingCoordinatorProxy::connectStateNodeLayers(ScrollingStateTree&
             currNode->setLayer(layerTreeHost.getLayer(currNode->layer()));
 
         switch (currNode->nodeType()) {
-        case FrameScrollingNode: {
+        case MainFrameScrollingNode:
+        case SubframeScrollingNode: {
             ScrollingStateFrameScrollingNode& scrollingStateNode = downcast<ScrollingStateFrameScrollingNode>(*currNode);
             
             if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrolledContentsLayer))

@@ -52,9 +52,8 @@
 #include <wtf/MainThread.h>
 #include <wtf/RunLoop.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static const unsigned bufferSize = 512 * 1024;
 
@@ -72,7 +71,7 @@ static const char* httpInternalErrorText = "Internal Server Error";
 static const char* const webKitBlobResourceDomain = "WebKitBlobResource";
 
 NetworkDataTaskBlob::NetworkDataTaskBlob(NetworkSession& session, NetworkDataTaskClient& client, const ResourceRequest& request, ContentSniffingPolicy shouldContentSniff, const Vector<RefPtr<WebCore::BlobDataFileReference>>& fileReferences)
-    : NetworkDataTask(session, client, request, StoredCredentialsPolicy::DoNotUse, false)
+    : NetworkDataTask(session, client, request, StoredCredentialsPolicy::DoNotUse, false, false)
     , m_stream(std::make_unique<AsyncFileStream>(*this))
     , m_fileReferences(fileReferences)
 {
@@ -317,6 +316,9 @@ void NetworkDataTaskBlob::dispatchDidReceiveResponse(Error errorCode)
             m_buffer.resize(bufferSize);
             read();
             break;
+        case PolicyAction::Suspend:
+            LOG_ERROR("PolicyAction::Suspend encountered - Treating as PolicyAction::Ignore for now");
+            FALLTHROUGH;
         case PolicyAction::Ignore:
             break;
         case PolicyAction::Download:
@@ -455,7 +457,7 @@ String NetworkDataTaskBlob::suggestedFilename() const
     if (!m_suggestedFilename.isEmpty())
         return m_suggestedFilename;
 
-    return ASCIILiteral("unknown");
+    return "unknown"_s;
 }
 
 void NetworkDataTaskBlob::download()

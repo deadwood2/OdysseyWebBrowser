@@ -57,7 +57,6 @@
 #import <JavaScriptCore/JSContextInternal.h>
 #import <JavaScriptCore/JSLock.h>
 #import <JavaScriptCore/JSObject.h>
-#import <JavaScriptCore/ScriptValue.h>
 #import <WebCore/AXObjectCache.h>
 #import <WebCore/AccessibilityObject.h>
 #import <WebCore/CSSAnimationController.h>
@@ -73,6 +72,7 @@
 #import <WebCore/Editor.h>
 #import <WebCore/EventHandler.h>
 #import <WebCore/EventNames.h>
+#import <WebCore/Frame.h>
 #import <WebCore/FrameLoadRequest.h>
 #import <WebCore/FrameLoader.h>
 #import <WebCore/FrameLoaderStateMachine.h>
@@ -85,7 +85,6 @@
 #import <WebCore/JSNode.h>
 #import <WebCore/LegacyWebArchive.h>
 #import <WebCore/MIMETypeRegistry.h>
-#import <WebCore/MainFrame.h>
 #import <WebCore/Page.h>
 #import <WebCore/PlatformEventFactoryMac.h>
 #import <WebCore/PluginData.h>
@@ -103,7 +102,6 @@
 #import <WebCore/ThreadCheck.h>
 #import <WebCore/VisibleUnits.h>
 #import <WebCore/markup.h>
-#import <wtf/CurrentTime.h>
 
 #if PLATFORM(IOS)
 #import "WebMailDelegate.h"
@@ -362,15 +360,15 @@ static NSURL *createUniqueWebDataURL();
 
 - (void)_attachScriptDebugger
 {
-    ScriptController& scriptController = _private->coreFrame->script();
+    auto& windowProxy = _private->coreFrame->windowProxy();
 
     // Calling ScriptController::globalObject() would create a window proxy, and dispatch corresponding callbacks, which may be premature
     // if the script debugger is attached before a document is created.  These calls use the debuggerWorld(), we will need to pass a world
     // to be able to debug isolated worlds.
-    if (!scriptController.existingWindowProxy(debuggerWorld()))
+    if (!windowProxy.existingJSWindowProxy(debuggerWorld()))
         return;
 
-    JSGlobalObject* globalObject = scriptController.globalObject(debuggerWorld());
+    auto* globalObject = windowProxy.globalObject(debuggerWorld());
     if (!globalObject)
         return;
 
@@ -593,30 +591,30 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
     return plainText(core(range), TextIteratorDefaultBehavior, true);
 }
 
-- (PaintBehavior)_paintBehaviorForDestinationContext:(CGContextRef)context
+- (OptionSet<PaintBehavior>)_paintBehaviorForDestinationContext:(CGContextRef)context
 {
 #if PLATFORM(MAC)
     // -currentContextDrawingToScreen returns YES for bitmap contexts.
     BOOL isPrinting = ![NSGraphicsContext currentContextDrawingToScreen];
     if (isPrinting)
-        return PaintBehaviorFlattenCompositingLayers | PaintBehaviorSnapshotting;
+        return OptionSet<PaintBehavior>(PaintBehavior::FlattenCompositingLayers) | PaintBehavior::Snapshotting;
 #endif
 
     if (CGContextGetType(context) != kCGContextTypeBitmap)
-        return PaintBehaviorNormal;
+        return PaintBehavior::Normal;
 
     // If we're drawing into a bitmap, we could be snapshotting or drawing into a layer-backed view.
     if (WebHTMLView *documentView = [self _webHTMLDocumentView]) {
 #if PLATFORM(IOS)
-        return [[documentView window] isInSnapshottingPaint] ? PaintBehaviorSnapshotting : PaintBehaviorNormal;
+        return [[documentView window] isInSnapshottingPaint] ? PaintBehavior::Snapshotting : PaintBehavior::Normal;
 #endif
 #if PLATFORM(MAC)
         if ([documentView _web_isDrawingIntoLayer])
-            return PaintBehaviorNormal;
+            return PaintBehavior::Normal;
 #endif
     }
     
-    return PaintBehaviorFlattenCompositingLayers | PaintBehaviorSnapshotting;
+    return OptionSet<PaintBehavior>(PaintBehavior::FlattenCompositingLayers) | PaintBehavior::Snapshotting;
 }
 
 - (void)_drawRect:(NSRect)rect contentsOnly:(BOOL)contentsOnly
@@ -644,20 +642,20 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
 
     FrameView* view = _private->coreFrame->view();
     
-    PaintBehavior oldBehavior = view->paintBehavior();
-    PaintBehavior paintBehavior = oldBehavior;
+    OptionSet<PaintBehavior> oldBehavior = view->paintBehavior();
+    OptionSet<PaintBehavior> paintBehavior = oldBehavior;
     
     if (Frame* parentFrame = _private->coreFrame->tree().parent()) {
         // For subframes, we need to inherit the paint behavior from our parent
         if (FrameView* parentView = parentFrame ? parentFrame->view() : nullptr) {
-            if (parentView->paintBehavior() & PaintBehaviorFlattenCompositingLayers)
-                paintBehavior |= PaintBehaviorFlattenCompositingLayers;
+            if (parentView->paintBehavior().contains(PaintBehavior::FlattenCompositingLayers))
+                paintBehavior |= PaintBehavior::FlattenCompositingLayers;
             
-            if (parentView->paintBehavior() & PaintBehaviorSnapshotting)
-                paintBehavior |= PaintBehaviorSnapshotting;
+            if (parentView->paintBehavior().contains(PaintBehavior::Snapshotting))
+                paintBehavior |= PaintBehavior::Snapshotting;
             
-            if (parentView->paintBehavior() & PaintBehaviorTileFirstPaint)
-                paintBehavior |= PaintBehaviorTileFirstPaint;
+            if (parentView->paintBehavior().contains(PaintBehavior::TileFirstPaint))
+                paintBehavior |= PaintBehavior::TileFirstPaint;
         }
     } else
         paintBehavior |= [self _paintBehaviorForDestinationContext:ctx];
@@ -743,12 +741,12 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
         
     if (startNode && startNode->renderer()) {
 #if !PLATFORM(IOS)
-        startNode->renderer()->scrollRectToVisible(SelectionRevealMode::Reveal, enclosingIntRect(rangeRect), insideFixed, ScrollAlignment::alignToEdgeIfNeeded, ScrollAlignment::alignToEdgeIfNeeded);
+        startNode->renderer()->scrollRectToVisible(SelectionRevealMode::Reveal, enclosingIntRect(rangeRect), insideFixed, ScrollAlignment::alignToEdgeIfNeeded, ScrollAlignment::alignToEdgeIfNeeded, ShouldAllowCrossOriginScrolling::Yes);
 #else
         RenderLayer* layer = startNode->renderer()->enclosingLayer();
         if (layer) {
             layer->setAdjustForIOSCaretWhenScrolling(true);
-            startNode->renderer()->scrollRectToVisible(SelectionRevealMode::Reveal, enclosingIntRect(rangeRect), insideFixed, ScrollAlignment::alignToEdgeIfNeeded, ScrollAlignment::alignToEdgeIfNeeded);
+            startNode->renderer()->scrollRectToVisible(SelectionRevealMode::Reveal, enclosingIntRect(rangeRect), insideFixed, ScrollAlignment::alignToEdgeIfNeeded, ScrollAlignment::alignToEdgeIfNeeded, ShouldAllowCrossOriginScrolling::Yes);
             layer->setAdjustForIOSCaretWhenScrolling(false);
             _private->coreFrame->selection().setCaretRectNeedsUpdate();
             _private->coreFrame->selection().updateAppearance();
@@ -768,7 +766,7 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
         RenderLayer* layer = startNode->renderer()->enclosingLayer();
         if (layer) {
             layer->setAdjustForIOSCaretWhenScrolling(true);
-            startNode->renderer()->scrollRectToVisible(SelectionRevealMode::Reveal, enclosingIntRect(rangeRect), insideFixed, ScrollAlignment::alignToEdgeIfNeeded, ScrollAlignment::alignToEdgeIfNeeded);
+            startNode->renderer()->scrollRectToVisible(SelectionRevealMode::Reveal, enclosingIntRect(rangeRect), insideFixed, ScrollAlignment::alignToEdgeIfNeeded, ScrollAlignment::alignToEdgeIfNeeded, ShouldAllowCrossOriginScrolling::Yes);
             layer->setAdjustForIOSCaretWhenScrolling(false);
 
             Frame *coreFrame = core(self);
@@ -1036,7 +1034,7 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
     RenderObject* bodyRenderer = body->renderer();
     if (!bodyRenderer)
         return nil;
-    Color color = bodyRenderer->style().visitedDependentColor(CSSPropertyBackgroundColor);
+    Color color = bodyRenderer->style().visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor);
     if (!color.isValid())
         return nil;
 #if !PLATFORM(IOS)
@@ -1249,7 +1247,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
     RefPtr<Range> domRange = [self _convertToDOMRange:range];
     if (domRange) {
         const VisibleSelection& newSelection = VisibleSelection(*domRange, SEL_DEFAULT_AFFINITY);
-        _private->coreFrame->selection().setSelection(newSelection, 0);
+        _private->coreFrame->selection().setSelection(newSelection, { });
         
         _private->coreFrame->editor().ensureLastEditCommandHasCurrentSelectionIfOpenForMoreTyping();
     }
@@ -2094,8 +2092,11 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
     // The global object is probably a proxy object? - if so, we know how to use this!
     JSC::JSObject* globalObjectObj = toJS(globalObjectRef);
     JSC::VM& vm = *globalObjectObj->vm();
-    if (!strcmp(globalObjectObj->classInfo(vm)->className, "JSDOMWindowProxy"))
-        anyWorldGlobalObject = static_cast<JSDOMWindowProxy*>(globalObjectObj)->window();
+    if (!strcmp(globalObjectObj->classInfo(vm)->className, "JSWindowProxy"))
+        anyWorldGlobalObject = JSC::jsDynamicCast<JSDOMWindow*>(vm, static_cast<JSWindowProxy*>(globalObjectObj)->window());
+
+    if (!anyWorldGlobalObject)
+        return @"";
 
     // Get the frame frome the global object we've settled on.
     Frame* frame = anyWorldGlobalObject->wrapped().frame();
@@ -2336,7 +2337,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
     Frame* coreFrame = _private->coreFrame;
     if (!coreFrame)
         return;
-    coreFrame->loader().client().dispatchDidReceiveTitle({ title, LTR });
+    coreFrame->loader().client().dispatchDidReceiveTitle({ title, TextDirection::LTR });
 }
 
 #endif // PLATFORM(IOS)

@@ -57,6 +57,8 @@ using namespace WebKit;
     BOOL _snapshotWasDeferred;
     CGFloat _lastSnapshotScale;
     CGSize _lastSnapshotMaximumSize;
+
+    RetainPtr<NSColor *> _overrideBackgroundColor;
 }
 
 @synthesize snapshotSize=_snapshotSize;
@@ -70,7 +72,6 @@ using namespace WebKit;
         return nil;
 
     self.wantsLayer = YES;
-    self.layer.backgroundColor = [NSColor whiteColor].CGColor;
     _scale = 1;
     _lastSnapshotScale = NAN;
     
@@ -101,6 +102,19 @@ using namespace WebKit;
     _originalSourceViewIsInWindow = !![_wkWebView window];
     
     return self;
+}
+
+- (BOOL)wantsUpdateLayer
+{
+    return YES;
+}
+
+- (void)updateLayer
+{
+    [super updateLayer];
+
+    NSColor *backgroundColor = self.overrideBackgroundColor ?: [NSColor quaternaryLabelColor];
+    self.layer.backgroundColor = backgroundColor.CGColor;
 }
 
 - (void)requestSnapshot
@@ -134,6 +148,20 @@ using namespace WebKit;
         RetainPtr<CGImageRef> cgImage = bitmap ? bitmap->makeCGImage() : nullptr;
         [thumbnailView _didTakeSnapshot:cgImage.get()];
     });
+}
+
+- (void)setOverrideBackgroundColor:(NSColor *)overrideBackgroundColor
+{
+    if ([_overrideBackgroundColor isEqual:overrideBackgroundColor])
+        return;
+
+    _overrideBackgroundColor = overrideBackgroundColor;
+    [self setNeedsDisplay:YES];
+}
+
+- (NSColor *)overrideBackgroundColor
+{
+    return _overrideBackgroundColor.get();
 }
 
 - (void)_viewWasUnparented
@@ -197,7 +225,7 @@ using namespace WebKit;
     _waitingForSnapshot = NO;
     self.layer.sublayers = @[];
     self.layer.contentsGravity = kCAGravityResizeAspectFill;
-    self.layer.contents = (id)image;
+    self.layer.contents = (__bridge id)image;
 
     // If we got a scale change while snapshotting, we'll take another snapshot once the first one returns.
     if (_snapshotWasDeferred) {

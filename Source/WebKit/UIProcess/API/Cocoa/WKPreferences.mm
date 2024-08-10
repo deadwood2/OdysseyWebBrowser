@@ -29,6 +29,7 @@
 #if WK_API_ENABLED
 
 #import "APIArray.h"
+#import "PluginProcessManager.h"
 #import "WKNSArray.h"
 #import "WebPreferences.h"
 #import "_WKExperimentalFeature.h"
@@ -127,6 +128,16 @@
 - (void)setJavaScriptCanOpenWindowsAutomatically:(BOOL)javaScriptCanOpenWindowsAutomatically
 {
     _preferences->setJavaScriptCanOpenWindowsAutomatically(javaScriptCanOpenWindowsAutomatically);
+}
+
+- (BOOL)_storageAccessPromptsEnabled
+{
+    return _preferences->storageAccessPromptsEnabled();
+}
+
+- (void)_setStorageAccessPromptsEnabled:(BOOL)enabled
+{
+    _preferences->setStorageAccessPromptsEnabled(enabled);
 }
 
 #pragma mark OS X-specific methods
@@ -731,6 +742,46 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
     _preferences->setEditableLinkBehavior(toEditableLinkBehavior(editableLinkBehavior));
 }
 
+- (void)_setAVFoundationEnabled:(BOOL)enabled
+{
+    _preferences->setAVFoundationEnabled(enabled);
+}
+
+- (BOOL)_avFoundationEnabled
+{
+    return _preferences->isAVFoundationEnabled();
+}
+
+- (void)_setColorFilterEnabled:(BOOL)enabled
+{
+    _preferences->setColorFilterEnabled(enabled);
+}
+
+- (BOOL)_colorFilterEnabled
+{
+    return _preferences->colorFilterEnabled();
+}
+
+- (void)_setPunchOutWhiteBackgroundsInDarkMode:(BOOL)punches
+{
+    _preferences->setPunchOutWhiteBackgroundsInDarkMode(punches);
+}
+
+- (BOOL)_punchOutWhiteBackgroundsInDarkMode
+{
+    return _preferences->punchOutWhiteBackgroundsInDarkMode();
+}
+
+- (void)_setLowPowerVideoAudioBufferSizeEnabled:(BOOL)enabled
+{
+    _preferences->setLowPowerVideoAudioBufferSizeEnabled(enabled);
+}
+
+- (BOOL)_lowPowerVideoAudioBufferSizeEnabled
+{
+    return _preferences->lowPowerVideoAudioBufferSizeEnabled();
+}
+
 #if PLATFORM(MAC)
 - (void)_setJavaEnabledForLocalFiles:(BOOL)enabled
 {
@@ -872,16 +923,6 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
     return _preferences->allowUniversalAccessFromFileURLs();
 }
 
-- (void)_setAVFoundationEnabled:(BOOL)enabled
-{
-    _preferences->setAVFoundationEnabled(enabled);
-}
-
-- (BOOL)_avFoundationEnabled
-{
-    return _preferences->isAVFoundationEnabled();
-}
-
 - (void)_setSuppressesIncrementalRendering:(BOOL)enabled
 {
     _preferences->setSuppressesIncrementalRendering(enabled);
@@ -910,6 +951,19 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
 - (BOOL)_artificialPluginInitializationDelayEnabled
 {
     return _preferences->artificialPluginInitializationDelayEnabled();
+}
+
+- (void)_setExperimentalPlugInSandboxProfilesEnabled:(BOOL)enabled
+{
+#if ENABLE(NETSCAPE_PLUGIN_API)
+    WebKit::PluginProcessManager::singleton().setExperimentalPlugInSandboxProfilesEnabled(enabled);
+#endif
+    _preferences->setExperimentalPlugInSandboxProfilesEnabled(enabled);
+}
+
+- (BOOL)_experimentalPlugInSandboxProfilesEnabled
+{
+    return _preferences->experimentalPlugInSandboxProfilesEnabled();
 }
 
 - (void)_setCookieEnabled:(BOOL)enabled
@@ -972,6 +1026,16 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
     return _preferences->cssAnimationTriggersEnabled();
 }
 
+- (void)_setWebAnimationsCSSIntegrationEnabled:(BOOL)enabled
+{
+    _preferences->setWebAnimationsCSSIntegrationEnabled(enabled);
+}
+
+- (BOOL)_webAnimationsCSSIntegrationEnabled
+{
+    return _preferences->webAnimationsCSSIntegrationEnabled();
+}
+
 - (void)_setStandardFontFamily:(NSString *)family
 {
     _preferences->setStandardFontFamily(family);
@@ -1011,6 +1075,197 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
 {
     return _preferences->webGLEnabled();
 }
+
+- (void)_setAllowsInlineMediaPlayback:(BOOL)enabled
+{
+    _preferences->setAllowsInlineMediaPlayback(enabled);
+}
+
+- (BOOL)_allowsInlineMediaPlayback
+{
+    return _preferences->allowsInlineMediaPlayback();
+}
+
+- (void)_setApplePayEnabled:(BOOL)enabled
+{
+    _preferences->setApplePayEnabled(enabled);
+}
+
+- (BOOL)_applePayEnabled
+{
+    return _preferences->applePayEnabled();
+}
+
+- (void)_setDNSPrefetchingEnabled:(BOOL)enabled
+{
+    _preferences->setDNSPrefetchingEnabled(enabled);
+}
+
+- (BOOL)_dnsPrefetchingEnabled
+{
+    return _preferences->dnsPrefetchingEnabled();
+}
+
+- (void)_setInlineMediaPlaybackRequiresPlaysInlineAttribute:(BOOL)enabled
+{
+    _preferences->setInlineMediaPlaybackRequiresPlaysInlineAttribute(enabled);
+}
+
+- (BOOL)_inlineMediaPlaybackRequiresPlaysInlineAttribute
+{
+    return _preferences->inlineMediaPlaybackRequiresPlaysInlineAttribute();
+}
+
+- (void)_setInvisibleMediaAutoplayNotPermitted:(BOOL)enabled
+{
+    _preferences->setInvisibleAutoplayNotPermitted(enabled);
+}
+
+- (BOOL)_invisibleMediaAutoplayNotPermitted
+{
+    return _preferences->invisibleAutoplayNotPermitted();
+}
+
+- (void)_setLegacyEncryptedMediaAPIEnabled:(BOOL)enabled
+{
+    _preferences->setLegacyEncryptedMediaAPIEnabled(enabled);
+}
+
+- (BOOL)_legacyEncryptedMediaAPIEnabled
+{
+    return _preferences->legacyEncryptedMediaAPIEnabled();
+}
+
+- (void)_setMainContentUserGestureOverrideEnabled:(BOOL)enabled
+{
+    _preferences->setMainContentUserGestureOverrideEnabled(enabled);
+}
+
+- (BOOL)_mainContentUserGestureOverrideEnabled
+{
+    return _preferences->mainContentUserGestureOverrideEnabled();
+}
+
+- (void)_setMediaStreamEnabled:(BOOL)enabled
+{
+    _preferences->setMediaStreamEnabled(enabled);
+}
+
+- (BOOL)_mediaStreamEnabled
+{
+    return _preferences->mediaStreamEnabled();
+}
+
+- (void)_setNeedsStorageAccessFromFileURLsQuirk:(BOOL)enabled
+{
+    _preferences->setNeedsStorageAccessFromFileURLsQuirk(enabled);
+}
+
+- (BOOL)_needsStorageAccessFromFileURLsQuirk
+{
+    return _preferences->needsStorageAccessFromFileURLsQuirk();
+}
+
+- (void)_setPDFPluginEnabled:(BOOL)enabled
+{
+    _preferences->setPDFPluginEnabled(enabled);
+}
+
+- (BOOL)_pdfPluginEnabled
+{
+    return _preferences->pdfPluginEnabled();
+}
+
+- (void)_setRequiresUserGestureForAudioPlayback:(BOOL)enabled
+{
+    _preferences->setRequiresUserGestureForAudioPlayback(enabled);
+}
+
+- (BOOL)_requiresUserGestureForAudioPlayback
+{
+    return _preferences->requiresUserGestureForAudioPlayback();
+}
+
+- (void)_setRequiresUserGestureForVideoPlayback:(BOOL)enabled
+{
+    _preferences->setRequiresUserGestureForVideoPlayback(enabled);
+}
+
+- (BOOL)_requiresUserGestureForVideoPlayback
+{
+    return _preferences->requiresUserGestureForVideoPlayback();
+}
+
+- (void)_setServiceControlsEnabled:(BOOL)enabled
+{
+    _preferences->setServiceControlsEnabled(enabled);
+}
+
+- (BOOL)_serviceControlsEnabled
+{
+    return _preferences->serviceControlsEnabled();
+}
+
+- (void)_setShowsToolTipOverTruncatedText:(BOOL)enabled
+{
+    _preferences->setShowsToolTipOverTruncatedText(enabled);
+}
+
+- (BOOL)_showsToolTipOverTruncatedText
+{
+    return _preferences->showsToolTipOverTruncatedText();
+}
+
+- (void)_setTextAreasAreResizable:(BOOL)enabled
+{
+    _preferences->setTextAreasAreResizable(enabled);
+}
+
+- (BOOL)_textAreasAreResizable
+{
+    return _preferences->textAreasAreResizable();
+}
+
+- (void)_setUseGiantTiles:(BOOL)enabled
+{
+    _preferences->setUseGiantTiles(enabled);
+}
+
+- (BOOL)_useGiantTiles
+{
+    return _preferences->useGiantTiles();
+}
+
+- (void)_setWantsBalancedSetDefersLoadingBehavior:(BOOL)enabled
+{
+    _preferences->setWantsBalancedSetDefersLoadingBehavior(enabled);
+}
+
+- (BOOL)_wantsBalancedSetDefersLoadingBehavior
+{
+    return _preferences->wantsBalancedSetDefersLoadingBehavior();
+}
+
+- (void)_setWebAudioEnabled:(BOOL)enabled
+{
+    _preferences->setWebAudioEnabled(enabled);
+}
+
+- (BOOL)_webAudioEnabled
+{
+    return _preferences->webAudioEnabled();
+}
+
+- (void)_setAggressiveTileRetentionEnabled:(BOOL)enabled
+{
+    _preferences->setAggressiveTileRetentionEnabled(enabled);
+}
+
+- (BOOL)_aggressiveTileRetentionEnabled
+{
+    return _preferences->aggressiveTileRetentionEnabled();
+}
+
 #endif // PLATFORM(MAC)
 
 - (BOOL)_javaScriptCanAccessClipboard
@@ -1026,6 +1281,22 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
 - (BOOL)_domPasteAllowed
 {
     return _preferences->domPasteAllowed();
+}
+
+- (void)_setShouldEnableTextAutosizingBoost:(BOOL)shouldEnableTextAutosizingBoost
+{
+#if ENABLE(TEXT_AUTOSIZING)
+    _preferences->setShouldEnableTextAutosizingBoost(shouldEnableTextAutosizingBoost);
+#endif
+}
+
+- (BOOL)_shouldEnableTextAutosizingBoost
+{
+#if ENABLE(TEXT_AUTOSIZING)
+    return _preferences->shouldEnableTextAutosizingBoost();
+#else
+    return NO;
+#endif
 }
 
 @end

@@ -30,15 +30,22 @@
 #if USE(APPLE_INTERNAL_SDK)
 
 #import <UIKit/UIApplication_Private.h>
+#import <UIKit/UIResponder_Private.h>
 #import <UIKit/UITextInputTraits_Private.h>
 #import <UIKit/UITextInput_Private.h>
+#import <UIKit/UIViewController_Private.h>
 
 #if ENABLE(DRAG_SUPPORT)
 @protocol UIDragSession;
 @class UIDragInteraction;
 @class UIDragItem;
+#import <UIKit/NSString+UIItemProvider.h>
+#import <UIKit/NSURL+UIItemProvider.h>
 #import <UIKit/UIDragInteraction_Private.h>
-#endif
+#import <UIKit/UIImage+UIItemProvider.h>
+#import <UIKit/UIItemProvider.h>
+#import <UIKit/UIItemProvider_Private.h>
+#endif // ENABLE(DRAG_SUPPORT)
 
 #else
 
@@ -61,9 +68,48 @@ WTF_EXTERN_C_END
 @property (nonatomic, readonly) UIColor *insertionPointColor;
 @end
 
+@class WebEvent;
+
 @protocol UITextInputPrivate <UITextInput, UITextInputTraits_Private>
 - (void)insertTextSuggestion:(UITextSuggestion *)textSuggestion;
+- (void)handleKeyWebEvent:(WebEvent *)theEvent withCompletionHandler:(void (^)(WebEvent *, BOOL))completionHandler;
 @end
+
+#if ENABLE(DRAG_SUPPORT)
+
+@interface NSURL ()
+@property (nonatomic, copy, setter=_setTitle:) NSString *_title;
+@end
+
+#define UIItemProviderRepresentationOptionsVisibilityAll NSItemProviderRepresentationVisibilityAll
+
+@protocol UIItemProviderReading <NSItemProviderReading>
+
+@required
+- (instancetype)initWithItemProviderData:(NSData *)data typeIdentifier:(NSString *)typeIdentifier error:(NSError **)outError;
+
+@end
+
+@protocol UIItemProviderWriting <NSItemProviderWriting>
+
+@required
+- (NSProgress *)loadDataWithTypeIdentifier:(NSString *)typeIdentifier forItemProviderCompletionHandler:(void (^)(NSData *, NSError *))completionHandler;
+
+@end
+
+@interface NSAttributedString () <UIItemProviderReading, UIItemProviderWriting>
+@end
+@interface NSString () <UIItemProviderReading, UIItemProviderWriting>
+@end
+@interface NSURL () <UIItemProviderReading, UIItemProviderWriting>
+@end
+@interface UIImage () <UIItemProviderReading, UIItemProviderWriting>
+@end
+
+@interface UIItemProvider : NSItemProvider
+@end
+
+#endif
 
 #endif
 
@@ -93,6 +139,14 @@ WTF_EXTERN_C_END
 
 @interface NSURL (UIKitSPI)
 @property (nonatomic, copy, setter=_setTitle:) NSString *_title;
+@end
+
+@interface UIViewController (UIKitSPI)
++ (UIViewController *)_viewControllerForFullScreenPresentationFromView:(UIView *)view;
+@end
+
+@interface UIResponder (UIKitSPI)
+- (UIResponder *)firstResponder;
 @end
 
 #endif // PLATFORM(IOS)

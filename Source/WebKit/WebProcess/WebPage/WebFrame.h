@@ -30,6 +30,7 @@
 #include "ShareableBitmap.h"
 #include "WKBase.h"
 #include "WebFrameLoaderClient.h"
+#include <JavaScriptCore/ConsoleTypes.h>
 #include <JavaScriptCore/JSBase.h>
 #include <WebCore/FrameLoaderClient.h>
 #include <WebCore/FrameLoaderTypes.h>
@@ -88,11 +89,13 @@ public:
     void invalidatePolicyListener();
     void didReceivePolicyDecision(uint64_t listenerID, WebCore::PolicyAction, uint64_t navigationID, DownloadID, std::optional<WebsitePoliciesData>&&);
 
-    uint64_t setUpWillSubmitFormListener(WTF::Function<void(void)>&&);
+    uint64_t setUpWillSubmitFormListener(CompletionHandler<void()>&&);
     void continueWillSubmitForm(uint64_t);
 
     void startDownload(const WebCore::ResourceRequest&, const String& suggestedName = { });
     void convertMainResourceLoadToDownload(WebCore::DocumentLoader*, PAL::SessionID, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&);
+
+    void addConsoleMessage(MessageSource, MessageLevel, const String&, uint64_t requestID = 0);
 
     String source() const;
     String contentsAsString() const;
@@ -180,7 +183,7 @@ private:
     uint64_t m_policyListenerID { 0 };
     WebCore::FramePolicyFunction m_policyFunction;
     ForNavigationAction m_policyFunctionForNavigationAction { ForNavigationAction::No };
-    HashMap<uint64_t, WTF::Function<void(void)>> m_willSubmitFormCompletionHandlers;
+    HashMap<uint64_t, CompletionHandler<void()>> m_willSubmitFormCompletionHandlers;
     DownloadID m_policyDownloadID { 0 };
 
     std::unique_ptr<WebFrameLoaderClient> m_frameLoaderClient;

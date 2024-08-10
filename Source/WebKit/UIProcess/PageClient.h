@@ -25,20 +25,26 @@
 
 #pragma once
 
+#include "LayerTreeContext.h"
+#include "SameDocumentNavigationType.h"
 #include "ShareableBitmap.h"
 #include "WebColorPicker.h"
-#include "WebPageProxy.h"
+#include "WebDataListSuggestionsDropdown.h"
 #include "WebPopupMenuProxy.h"
 #include <WebCore/AlternativeTextClient.h>
 #include <WebCore/EditorClient.h>
 #include <WebCore/UserInterfaceLayoutDirection.h>
 #include <WebCore/ValidationBubble.h>
 #include <wtf/Forward.h>
+#include <wtf/WeakPtr.h>
 
 #if PLATFORM(COCOA)
+#include "LayerRepresentation.h"
 #include "PluginComplexTextInputState.h"
+#include "WKFoundation.h"
 
 OBJC_CLASS CALayer;
+OBJC_CLASS _WKRemoteObjectRegistry;
 
 #if USE(APPKIT)
 OBJC_CLASS WKView;
@@ -46,14 +52,37 @@ OBJC_CLASS NSTextAlternatives;
 #endif
 #endif
 
+namespace API {
+class HitTestResult;
+class Object;
+class OpenPanelParameters;
+class SecurityOrigin;
+}
+
+namespace IPC {
+class DataReference;
+}
+
 namespace WebCore {
+class Color;
 class Cursor;
+class FloatQuad;
+class Region;
 class TextIndicator;
 class WebMediaSessionManager;
+
+enum class RouteSharingPolicy;
+enum class ScrollbarStyle;
 enum class TextIndicatorWindowLifetime : uint8_t;
 enum class TextIndicatorWindowDismissalAnimation : uint8_t;
+
+struct DictionaryPopupInfo;
 struct Highlight;
+struct TextIndicatorData;
 struct ViewportAttributes;
+
+template <typename> class RectEdges;
+using FloatBoxExtent = RectEdges<float>;
 }
 
 #if ENABLE(DRAG_SUPPORT)
@@ -64,14 +93,29 @@ struct DragItem;
 
 namespace WebKit {
 
+enum class UndoOrRedo;
+
+class ContextMenuContextData;
+class DownloadProxy;
 class DrawingAreaProxy;
+class NativeWebGestureEvent;
 class NativeWebKeyboardEvent;
 class NativeWebMouseEvent;
+class NativeWebWheelEvent;
 class RemoteLayerTreeTransaction;
+class UserData;
 class ViewSnapshot;
+class WebBackForwardListItem;
 class WebContextMenuProxy;
 class WebEditCommandProxy;
+class WebFrameProxy;
+class WebOpenPanelResultListenerProxy;
+class WebPageProxy;
 class WebPopupMenuProxy;
+
+struct AssistedNodeInformation;
+struct InteractionInformationAtPosition;
+struct WebHitTestResultData;
 
 #if ENABLE(TOUCH_EVENTS)
 class NativeWebTouchEvent;
@@ -79,6 +123,10 @@ class NativeWebTouchEvent;
 
 #if ENABLE(INPUT_TYPE_COLOR)
 class WebColorPicker;
+#endif
+
+#if ENABLE(DATALIST_ELEMENT)
+class WebDataListSuggestionsDropdown;
 #endif
 
 #if ENABLE(FULLSCREEN_API)
@@ -93,7 +141,7 @@ class InstallMissingMediaPluginsPermissionRequest;
 struct ColorSpaceData;
 #endif
 
-class PageClient {
+class PageClient : public CanMakeWeakPtr<PageClient> {
 public:
     virtual ~PageClient() { }
 
@@ -156,27 +204,31 @@ public:
 
     virtual void didChangeContentSize(const WebCore::IntSize&) = 0;
 
-#if PLATFORM(GTK) && ENABLE(DRAG_SUPPORT)
+#if ENABLE(DRAG_SUPPORT)
+#if PLATFORM(GTK)
     virtual void startDrag(Ref<WebCore::SelectionData>&&, WebCore::DragOperation, RefPtr<ShareableBitmap>&& dragImage) = 0;
+#else
+    virtual void startDrag(const WebCore::DragItem&, const ShareableBitmap::Handle&) { }
 #endif
+#endif // ENABLE(DRAG_SUPPORT)
 
     virtual void setCursor(const WebCore::Cursor&) = 0;
     virtual void setCursorHiddenUntilMouseMoves(bool) = 0;
     virtual void didChangeViewportProperties(const WebCore::ViewportAttributes&) = 0;
 
-    virtual void registerEditCommand(Ref<WebEditCommandProxy>&&, WebPageProxy::UndoOrRedo) = 0;
+    virtual void registerEditCommand(Ref<WebEditCommandProxy>&&, UndoOrRedo) = 0;
     virtual void clearAllEditCommands() = 0;
-    virtual bool canUndoRedo(WebPageProxy::UndoOrRedo) = 0;
-    virtual void executeUndoRedo(WebPageProxy::UndoOrRedo) = 0;
+    virtual bool canUndoRedo(UndoOrRedo) = 0;
+    virtual void executeUndoRedo(UndoOrRedo) = 0;
     virtual void wheelEventWasNotHandledByWebCore(const NativeWebWheelEvent&) = 0;
 #if PLATFORM(COCOA)
     virtual void accessibilityWebProcessTokenReceived(const IPC::DataReference&) = 0;
     virtual bool executeSavedCommandBySelector(const String& selector) = 0;
-    virtual void startDrag(const WebCore::DragItem&, const ShareableBitmap::Handle&) { }
     virtual void updateSecureInputState() = 0;
     virtual void resetSecureInputState() = 0;
     virtual void notifyInputContextAboutDiscardedComposition() = 0;
     virtual void makeFirstResponder() = 0;
+    virtual void assistiveTechnologyMakeFirstResponder() = 0;
     virtual void setAcceleratedCompositingRootLayer(LayerOrView *) = 0;
     virtual LayerOrView *acceleratedCompositingRootLayer() const = 0;
     virtual RefPtr<ViewSnapshot> takeViewSnapshot() = 0;
@@ -218,7 +270,11 @@ public:
 #endif
 
 #if ENABLE(INPUT_TYPE_COLOR)
-    virtual RefPtr<WebColorPicker> createColorPicker(WebPageProxy*, const WebCore::Color& initialColor, const WebCore::IntRect&) = 0;
+    virtual RefPtr<WebColorPicker> createColorPicker(WebPageProxy*, const WebCore::Color& initialColor, const WebCore::IntRect&, Vector<WebCore::Color>&&) = 0;
+#endif
+
+#if ENABLE(DATALIST_ELEMENT)
+    virtual RefPtr<WebDataListSuggestionsDropdown> createDataListSuggestionsDropdown(WebPageProxy&) = 0;
 #endif
 
 #if PLATFORM(COCOA)
@@ -256,6 +312,8 @@ public:
     virtual NSWindow *platformWindow() = 0;
     virtual void setShouldSuppressFirstResponderChanges(bool) = 0;
 
+    virtual bool effectiveAppearanceIsDark() const = 0;
+
 #if WK_API_ENABLED
     virtual NSView *inspectorAttachmentView() = 0;
     virtual _WKRemoteObjectRegistry *remoteObjectRegistry() = 0;
@@ -283,7 +341,6 @@ public:
     virtual void didCommitLayerTree(const RemoteLayerTreeTransaction&) = 0;
     virtual void layerTreeCommitComplete() = 0;
 
-    virtual void dynamicViewportUpdateChangedTarget(double newScale, const WebCore::FloatPoint& newScrollPosition, uint64_t transactionID) = 0;
     virtual void couldNotRestorePageState() = 0;
     virtual void restorePageState(std::optional<WebCore::FloatPoint> scrollPosition, const WebCore::FloatPoint& scrollOrigin, const WebCore::FloatBoxExtent& obscuredInsetsOnSave, double scale) = 0;
     virtual void restorePageCenterAndScale(std::optional<WebCore::FloatPoint> center, double scale) = 0;
@@ -294,10 +351,7 @@ public:
     virtual bool interpretKeyEvent(const NativeWebKeyboardEvent&, bool isCharEvent) = 0;
     virtual void positionInformationDidChange(const InteractionInformationAtPosition&) = 0;
     virtual void saveImageToLibrary(Ref<WebCore::SharedBuffer>&&) = 0;
-#if __IPHONE_OS_VERSION_MAX_ALLOWED < 120000
-    virtual void didUpdateBlockSelectionWithTouch(uint32_t touch, uint32_t flags, float growThreshold, float shrinkThreshold) = 0;
-#endif
-    virtual void showPlaybackTargetPicker(bool hasVideo, const WebCore::IntRect& elementRect) = 0;
+    virtual void showPlaybackTargetPicker(bool hasVideo, const WebCore::IntRect& elementRect, WebCore::RouteSharingPolicy, const String&) = 0;
     virtual void disableDoubleTapGesturesDuringTapIfNecessary(uint64_t requestID) = 0;
     virtual double minimumZoomScale() const = 0;
     virtual WebCore::FloatRect documentRect() const = 0;
@@ -340,8 +394,8 @@ public:
     virtual void didChangeBackgroundColor() = 0;
     virtual void isPlayingAudioWillChange() = 0;
     virtual void isPlayingAudioDidChange() = 0;
-    virtual void pinnedStateWillChange() { };
-    virtual void pinnedStateDidChange() { };
+    virtual void pinnedStateWillChange() { }
+    virtual void pinnedStateDidChange() { }
 
 #if PLATFORM(MAC)
     virtual void didPerformImmediateActionHitTest(const WebHitTestResultData&, bool contentPreventsDefault, API::Object*) = 0;
@@ -349,9 +403,10 @@ public:
     virtual void* immediateActionAnimationControllerForHitTestResult(RefPtr<API::HitTestResult>, uint64_t, RefPtr<API::Object>) = 0;
 
     virtual void didHandleAcceptedCandidate() = 0;
-
-    virtual void videoControlsManagerDidChange() = 0;
 #endif
+    virtual void didFinishProcessingAllPendingMouseEvents() = 0;
+
+    virtual void videoControlsManagerDidChange() { }
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && !PLATFORM(IOS)
     virtual WebCore::WebMediaSessionManager& mediaSessionManager() = 0;
@@ -385,10 +440,6 @@ public:
 #if ENABLE(ATTACHMENT_ELEMENT)
     virtual void didInsertAttachment(const String& identifier, const String& source) { }
     virtual void didRemoveAttachment(const String& identifier) { }
-#endif
-
-#if PLATFORM(GTK) || PLATFORM(WPE)
-    virtual JSGlobalContextRef javascriptGlobalContext() { return nullptr; }
 #endif
 };
 

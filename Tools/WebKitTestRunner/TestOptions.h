@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -54,11 +54,19 @@ struct TestOptions {
     bool enableInspectorAdditions { false };
     bool shouldShowTouches { false };
     bool dumpJSConsoleLogInStdErr { false };
+    bool allowCrossOriginSubresourcesToAskForCredentials { false };
+    bool enableWebAnimationsCSSIntegration { false };
+    bool enableProcessSwapOnNavigation { true };
+    bool enableProcessSwapOnWindowOpen { false };
+    bool enableColorFilter { false };
+    bool punchOutWhiteBackgroundsInDarkMode { false };
+    bool runSingly { false };
 
     float deviceScaleFactor { 1 };
     Vector<String> overrideLanguages;
     std::string applicationManifest;
-    
+    std::string jscOptions;
+
     TestOptions(const std::string& pathOrURL);
 
     // Add here options that can only be set upon PlatformWebView
@@ -82,10 +90,23 @@ struct TestOptions {
             || enableIsSecureContextAttribute != options.enableIsSecureContextAttribute
             || enableInspectorAdditions != options.enableInspectorAdditions
             || dumpJSConsoleLogInStdErr != options.dumpJSConsoleLogInStdErr
-            || applicationManifest != options.applicationManifest)
+            || applicationManifest != options.applicationManifest
+            || allowCrossOriginSubresourcesToAskForCredentials != options.allowCrossOriginSubresourcesToAskForCredentials
+            || enableWebAnimationsCSSIntegration != options.enableWebAnimationsCSSIntegration
+            || enableProcessSwapOnNavigation != options.enableProcessSwapOnNavigation
+            || enableProcessSwapOnWindowOpen != options.enableProcessSwapOnWindowOpen
+            || enableColorFilter != options.enableColorFilter
+            || punchOutWhiteBackgroundsInDarkMode != options.punchOutWhiteBackgroundsInDarkMode
+            || jscOptions != options.jscOptions
+            || runSingly != options.runSingly)
             return false;
 
         return true;
+    }
+    
+    bool shouldEnableProcessSwapOnNavigation() const
+    {
+        return enableProcessSwapOnNavigation || enableProcessSwapOnWindowOpen;
     }
 };
 

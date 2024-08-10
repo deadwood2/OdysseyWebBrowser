@@ -42,7 +42,7 @@ using namespace WebCore;
 
 PreconnectTask::PreconnectTask(NetworkLoadParameters&& parameters, WTF::CompletionHandler<void(const ResourceError&)>&& completionHandler)
     : m_completionHandler(WTFMove(completionHandler))
-    , m_timeoutTimer([this] { didFinish(ResourceError { String(), 0, m_networkLoad->parameters().request.url(), ASCIILiteral("Preconnection timed out"), ResourceError::Type::Timeout }); })
+    , m_timeoutTimer([this] { didFinish(ResourceError { String(), 0, m_networkLoad->parameters().request.url(), "Preconnection timed out"_s, ResourceError::Type::Timeout }); })
 {
     RELEASE_LOG(Network, "%p - PreconnectTask::PreconnectTask()", this);
 
@@ -94,21 +94,6 @@ void PreconnectTask::didFailLoading(const ResourceError& error)
 void PreconnectTask::didSendData(unsigned long long bytesSent, unsigned long long totalBytesToBeSent)
 {
     ASSERT_NOT_REACHED();
-}
-
-void PreconnectTask::canAuthenticateAgainstProtectionSpaceAsync(const ProtectionSpace& protectionSpace)
-{
-    if (!pageID()) {
-        // The preconnect was started by the UIProcess.
-        continueCanAuthenticateAgainstProtectionSpace(false);
-        return;
-    }
-    NetworkProcess::singleton().canAuthenticateAgainstProtectionSpace(*this, protectionSpace);
-}
-
-void PreconnectTask::continueCanAuthenticateAgainstProtectionSpace(bool result)
-{
-    m_networkLoad->continueCanAuthenticateAgainstProtectionSpace(result);
 }
 
 void PreconnectTask::didFinish(const ResourceError& error)

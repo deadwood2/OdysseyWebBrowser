@@ -37,37 +37,36 @@
 #import <wtf/FastMalloc.h>
 #import <wtf/RetainPtr.h>
 
-#if PLATFORM(MAC)
+#if USE(OPENGL)
 #import <OpenGL/OpenGL.h>
 #import <OpenGL/gl.h>
 #endif
-
-using namespace WebCore;
 
 @implementation WebGLLayer
 
 @synthesize context=_context;
 
--(id)initWithGraphicsContext3D:(GraphicsContext3D*)context
+-(id)initWithGraphicsContext3D:(WebCore::GraphicsContext3D*)context
 {
     _context = context;
     self = [super init];
     _devicePixelRatio = context->getContextAttributes().devicePixelRatio;
-#if PLATFORM(MAC)
+#if USE(OPENGL)
     self.contentsOpaque = !context->getContextAttributes().alpha;
     self.transform = CATransform3DIdentity;
     self.contentsScale = _devicePixelRatio;
+#else
+    self.opaque = !context->getContextAttributes().alpha;
 #endif
     return self;
 }
 
-#if PLATFORM(MAC)
-// On Mac, we need to flip the layer to take into account
-// that the IOSurface provides content in Y-up. This
-// means that any incoming transform (unlikely, since this
-// is a contents layer) and anchor point must add a
-// Y scale of -1 and make sure the transform happens from
-// the top.
+#if USE(OPENGL)
+// When using an IOSurface as layer contents, we need to flip the
+// layer to take into account that the IOSurface provides content
+// in Y-up. This means that any incoming transform (unlikely, since
+// this is a contents layer) and anchor point must add a Y scale of
+// -1 and make sure the transform happens from the top.
 
 - (void)setTransform:(CATransform3D)t
 {
@@ -85,20 +84,17 @@ static void freeData(void *, const void *data, size_t /* size */)
 }
 #endif
 
--(CGImageRef)copyImageSnapshotWithColorSpace:(CGColorSpaceRef)colorSpace
+- (CGImageRef)copyImageSnapshotWithColorSpace:(CGColorSpaceRef)colorSpace
 {
     if (!_context)
         return nullptr;
 
-#if PLATFORM(IOS)
-    UNUSED_PARAM(colorSpace);
-    return nullptr;
-#else
+#if USE(OPENGL)
     CGLSetCurrentContext(_context->platformGraphicsContext3D());
 
     RetainPtr<CGColorSpaceRef> imageColorSpace = colorSpace;
     if (!imageColorSpace)
-        imageColorSpace = sRGBColorSpaceRef();
+        imageColorSpace = WebCore::sRGBColorSpaceRef();
 
     CGRect layerBounds = CGRectIntegral([self bounds]);
 
@@ -119,6 +115,9 @@ static void freeData(void *, const void *data, size_t /* size */)
         kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host, provider, 0, true, kCGRenderingIntentDefault);
     CGDataProviderRelease(provider);
     return image;
+#else
+    UNUSED_PARAM(colorSpace);
+    return nullptr;
 #endif
 }
 
@@ -127,7 +126,7 @@ static void freeData(void *, const void *data, size_t /* size */)
     if (!_context)
         return;
 
-#if PLATFORM(MAC)
+#if USE(OPENGL)
     _context->prepareTexture();
     if (_drawingBuffer) {
         std::swap(_contentsBuffer, _drawingBuffer);
@@ -140,19 +139,19 @@ static void freeData(void *, const void *data, size_t /* size */)
 #endif
 
     _context->markLayerComposited();
-    PlatformCALayer* layer = PlatformCALayer::platformCALayer(self);
+    WebCore::PlatformCALayer* layer = WebCore::PlatformCALayer::platformCALayer((__bridge void*)self);
     if (layer && layer->owner())
         layer->owner()->platformCALayerLayerDidDisplay(layer);
 }
 
-#if PLATFORM(MAC)
-- (void)allocateIOSurfaceBackingStoreWithSize:(IntSize)size usingAlpha:(BOOL)usingAlpha
+#if USE(OPENGL)
+- (void)allocateIOSurfaceBackingStoreWithSize:(WebCore::IntSize)size usingAlpha:(BOOL)usingAlpha
 {
     _bufferSize = size;
     _usingAlpha = usingAlpha;
-    _contentsBuffer = WebCore::IOSurface::create(size, sRGBColorSpaceRef());
-    _drawingBuffer = WebCore::IOSurface::create(size, sRGBColorSpaceRef());
-    _spareBuffer = WebCore::IOSurface::create(size, sRGBColorSpaceRef());
+    _contentsBuffer = WebCore::IOSurface::create(size, WebCore::sRGBColorSpaceRef());
+    _drawingBuffer = WebCore::IOSurface::create(size, WebCore::sRGBColorSpaceRef());
+    _spareBuffer = WebCore::IOSurface::create(size, WebCore::sRGBColorSpaceRef());
 
     ASSERT(_contentsBuffer);
     ASSERT(_drawingBuffer);

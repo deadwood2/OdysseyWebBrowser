@@ -45,7 +45,7 @@
 #import "WebEditingDelegatePrivate.h"
 #import "WebFormDelegate.h"
 #import "WebFrameInternal.h"
-#import "WebHTMLView.h"
+#import "WebFrameView.h"
 #import "WebHTMLViewInternal.h"
 #import "WebKitLogging.h"
 #import "WebKitVersionChecks.h"
@@ -90,6 +90,10 @@
 #import "DOMElementInternal.h"
 #import "WebFrameView.h"
 #import "WebUIKitDelegate.h"
+#endif
+
+#if PLATFORM(MAC)
+#import <WebCore/LocalDefaultSystemAppearance.h>
 #endif
 
 using namespace WebCore;
@@ -473,6 +477,11 @@ static NSDictionary *attributesForAttributedStringConversion()
 
 void _WebCreateFragment(Document& document, NSAttributedString *string, FragmentAndResources& result)
 {
+#if PLATFORM(MAC)
+    auto* page = document.page();
+    LocalDefaultSystemAppearance localAppearance(page->useSystemAppearance(), page->useDarkAppearance());
+#endif
+
     static NSDictionary *documentAttributes = [attributesForAttributedStringConversion() retain];
     NSArray *subresources;
     DOMDocumentFragment* fragment = [string _documentFromRange:NSMakeRange(0, [string length])
@@ -763,7 +772,7 @@ void WebEditorClient::handleKeyboardEvent(KeyboardEvent* event)
 {
     auto* frame = downcast<Node>(event->target())->document().frame();
 #if !PLATFORM(IOS)
-    WebHTMLView *webHTMLView = [[kit(frame) frameView] documentView];
+    WebHTMLView *webHTMLView = (WebHTMLView *)[[kit(frame) frameView] documentView];
     if ([webHTMLView _interpretKeyEvent:event savingCommands:NO])
         event->setDefaultHandled();
 #else
@@ -778,7 +787,7 @@ void WebEditorClient::handleInputMethodKeydown(KeyboardEvent* event)
 #if !PLATFORM(IOS)
     // FIXME: Switch to WebKit2 model, interpreting the event before it's sent down to WebCore.
     auto* frame = downcast<Node>(event->target())->document().frame();
-    WebHTMLView *webHTMLView = [[kit(frame) frameView] documentView];
+    WebHTMLView *webHTMLView = (WebHTMLView *)[[kit(frame) frameView] documentView];
     if ([webHTMLView _interpretKeyEvent:event savingCommands:YES])
         event->setDefaultHandled();
 #else
@@ -924,9 +933,9 @@ bool WebEditorClient::performTwoStepDrop(DocumentFragment& fragment, Range& dest
     return false;
 }
 
-Vector<TextCheckingResult> WebEditorClient::checkTextOfParagraph(StringView string, TextCheckingTypeMask checkingTypes, const VisibleSelection&)
+Vector<TextCheckingResult> WebEditorClient::checkTextOfParagraph(StringView string, OptionSet<TextCheckingType> checkingTypes, const VisibleSelection&)
 {
-    ASSERT(checkingTypes & NSTextCheckingTypeSpelling);
+    ASSERT(checkingTypes.contains(TextCheckingType::Spelling));
 
     Vector<TextCheckingResult> results;
 
@@ -935,7 +944,7 @@ Vector<TextCheckingResult> WebEditorClient::checkTextOfParagraph(StringView stri
         NSRange resultRange = [incomingResult rangeValue];
         ASSERT(resultRange.location != NSNotFound && resultRange.length > 0);
         TextCheckingResult result;
-        result.type = TextCheckingTypeSpelling;
+        result.type = TextCheckingType::Spelling;
         result.location = resultRange.location;
         result.length = resultRange.length;
         results.append(result);
@@ -956,7 +965,7 @@ bool WebEditorClient::performTwoStepDrop(DocumentFragment&, Range&, bool)
 bool WebEditorClient::shouldEraseMarkersAfterChangeSelection(TextCheckingType type) const
 {
     // This prevents erasing spelling markers on OS X Lion or later to match AppKit on these Mac OS X versions.
-    return type != TextCheckingTypeSpelling;
+    return type != TextCheckingType::Spelling;
 }
 
 void WebEditorClient::ignoreWordInSpellDocument(const String& text)
@@ -1019,7 +1028,7 @@ void WebEditorClient::checkGrammarOfString(StringView text, Vector<GrammarDetail
     }
 }
 
-static Vector<TextCheckingResult> core(NSArray *incomingResults, TextCheckingTypeMask checkingTypes)
+static Vector<TextCheckingResult> core(NSArray *incomingResults, OptionSet<TextCheckingType> checkingTypes)
 {
     Vector<TextCheckingResult> results;
 
@@ -1028,16 +1037,16 @@ static Vector<TextCheckingResult> core(NSArray *incomingResults, TextCheckingTyp
         NSTextCheckingType resultType = [incomingResult resultType];
         ASSERT(resultRange.location != NSNotFound);
         ASSERT(resultRange.length > 0);
-        if (NSTextCheckingTypeSpelling == resultType && 0 != (checkingTypes & NSTextCheckingTypeSpelling)) {
+        if (resultType == NSTextCheckingTypeSpelling && checkingTypes.contains(TextCheckingType::Spelling)) {
             TextCheckingResult result;
-            result.type = TextCheckingTypeSpelling;
+            result.type = TextCheckingType::Spelling;
             result.location = resultRange.location;
             result.length = resultRange.length;
             results.append(result);
-        } else if (NSTextCheckingTypeGrammar == resultType && 0 != (checkingTypes & NSTextCheckingTypeGrammar)) {
+        } else if (resultType == NSTextCheckingTypeGrammar && checkingTypes.contains(TextCheckingType::Grammar)) {
             TextCheckingResult result;
             NSArray *details = [incomingResult grammarDetails];
-            result.type = TextCheckingTypeGrammar;
+            result.type = TextCheckingType::Grammar;
             result.location = resultRange.location;
             result.length = resultRange.length;
             for (NSDictionary *incomingDetail in details) {
@@ -1057,37 +1066,37 @@ static Vector<TextCheckingResult> core(NSArray *incomingResults, TextCheckingTyp
                 result.details.append(detail);
             }
             results.append(result);
-        } else if (NSTextCheckingTypeLink == resultType && 0 != (checkingTypes & NSTextCheckingTypeLink)) {
+        } else if (resultType == NSTextCheckingTypeLink && checkingTypes.contains(TextCheckingType::Link)) {
             TextCheckingResult result;
-            result.type = TextCheckingTypeLink;
+            result.type = TextCheckingType::Link;
             result.location = resultRange.location;
             result.length = resultRange.length;
             result.replacement = [[incomingResult URL] absoluteString];
             results.append(result);
-        } else if (NSTextCheckingTypeQuote == resultType && 0 != (checkingTypes & NSTextCheckingTypeQuote)) {
+        } else if (resultType == NSTextCheckingTypeQuote && checkingTypes.contains(TextCheckingType::Quote)) {
             TextCheckingResult result;
-            result.type = TextCheckingTypeQuote;
+            result.type = TextCheckingType::Quote;
             result.location = resultRange.location;
             result.length = resultRange.length;
             result.replacement = [incomingResult replacementString];
             results.append(result);
-        } else if (NSTextCheckingTypeDash == resultType && 0 != (checkingTypes & NSTextCheckingTypeDash)) {
+        } else if (resultType == NSTextCheckingTypeDash && checkingTypes.contains(TextCheckingType::Dash)) {
             TextCheckingResult result;
-            result.type = TextCheckingTypeDash;
+            result.type = TextCheckingType::Dash;
             result.location = resultRange.location;
             result.length = resultRange.length;
             result.replacement = [incomingResult replacementString];
             results.append(result);
-        } else if (NSTextCheckingTypeReplacement == resultType && 0 != (checkingTypes & NSTextCheckingTypeReplacement)) {
+        } else if (resultType == NSTextCheckingTypeReplacement && checkingTypes.contains(TextCheckingType::Replacement)) {
             TextCheckingResult result;
-            result.type = TextCheckingTypeReplacement;
+            result.type = TextCheckingType::Replacement;
             result.location = resultRange.location;
             result.length = resultRange.length;
             result.replacement = [incomingResult replacementString];
             results.append(result);
-        } else if (NSTextCheckingTypeCorrection == resultType && 0 != (checkingTypes & NSTextCheckingTypeCorrection)) {
+        } else if (resultType == NSTextCheckingTypeCorrection && checkingTypes.contains(TextCheckingType::Correction)) {
             TextCheckingResult result;
-            result.type = TextCheckingTypeCorrection;
+            result.type = TextCheckingType::Correction;
             result.location = resultRange.location;
             result.length = resultRange.length;
             result.replacement = [incomingResult replacementString];
@@ -1107,13 +1116,13 @@ static int insertionPointFromCurrentSelection(const VisibleSelection& currentSel
 }
 #endif
 
-Vector<TextCheckingResult> WebEditorClient::checkTextOfParagraph(StringView string, TextCheckingTypeMask checkingTypes, const VisibleSelection& currentSelection)
+Vector<TextCheckingResult> WebEditorClient::checkTextOfParagraph(StringView string, OptionSet<TextCheckingType> coreCheckingTypes, const VisibleSelection& currentSelection)
 {
     NSDictionary *options = nil;
 #if HAVE(ADVANCED_SPELL_CHECKING)
     options = @{ NSTextCheckingInsertionPointKey :  [NSNumber numberWithUnsignedInteger:insertionPointFromCurrentSelection(currentSelection)] };
 #endif
-    return core([[NSSpellChecker sharedSpellChecker] checkString:string.createNSStringWithoutCopying().get() range:NSMakeRange(0, string.length()) types:(checkingTypes | NSTextCheckingTypeOrthography) options:options inSpellDocumentWithTag:spellCheckerDocumentTag() orthography:NULL wordCount:NULL], checkingTypes);
+    return core([[NSSpellChecker sharedSpellChecker] checkString:string.createNSStringWithoutCopying().get() range:NSMakeRange(0, string.length()) types:(nsTextCheckingTypes(coreCheckingTypes) | NSTextCheckingTypeOrthography) options:options inSpellDocumentWithTag:spellCheckerDocumentTag() orthography:NULL wordCount:NULL], coreCheckingTypes);
 }
 
 void WebEditorClient::updateSpellingUIWithGrammarString(const String& badGrammarPhrase, const GrammarDetail& grammarDetail)
@@ -1213,7 +1222,7 @@ void WebEditorClient::requestCandidatesForSelection(const VisibleSelection& sele
     m_paragraphContextForCandidateRequest = plainText(frame->editor().contextRangeForCandidateRequest().get());
 
     NSTextCheckingTypes checkingTypes = NSTextCheckingTypeSpelling | NSTextCheckingTypeReplacement | NSTextCheckingTypeCorrection;
-    auto weakEditor = m_weakPtrFactory.createWeakPtr(*this);
+    auto weakEditor = makeWeakPtr(*this);
     m_lastCandidateRequestSequenceNumber = [[NSSpellChecker sharedSpellChecker] requestCandidatesForSelectedRange:m_rangeForCandidates inString:m_paragraphContextForCandidateRequest.get() types:checkingTypes options:nil inSpellDocumentWithTag:spellCheckerDocumentTag() completionHandler:[weakEditor](NSInteger sequenceNumber, NSArray<NSTextCheckingResult *> *candidates) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!weakEditor)
@@ -1318,7 +1327,7 @@ void WebEditorClient::handleAcceptedCandidateWithSoftSpaces(TextCheckingResult a
 void WebEditorClient::didCheckSucceed(int sequence, NSArray* results)
 {
     ASSERT_UNUSED(sequence, sequence == m_textCheckingRequest->data().sequence());
-    m_textCheckingRequest->didSucceed(core(results, m_textCheckingRequest->data().mask()));
+    m_textCheckingRequest->didSucceed(core(results, m_textCheckingRequest->data().checkingTypes()));
     m_textCheckingRequest = nullptr;
 }
 

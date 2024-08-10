@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/Document.h>
 #include <WebCore/ExceptionCode.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMNodeFilterPrivate.h"
 #include "WebKitDOMNodePrivate.h"
 #include "WebKitDOMPrivate.h"
@@ -38,6 +38,8 @@
 typedef struct _WebKitDOMTreeWalkerPrivate {
     RefPtr<WebCore::TreeWalker> coreObject;
 } WebKitDOMTreeWalkerPrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -320,3 +322,4 @@ void webkit_dom_tree_walker_set_current_node(WebKitDOMTreeWalker* self, WebKitDO
     item->setCurrentNode(*convertedValue);
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
  * Copyright (C) 2013 Company 100 Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,12 +33,12 @@
 #import <WebCore/ContentFilterUnblockHandler.h>
 #import <WebCore/Credential.h>
 #import <WebCore/KeyboardEvent.h>
-#import <WebCore/MachSendRight.h>
 #import <WebCore/ProtectionSpace.h>
 #import <WebCore/ResourceError.h>
 #import <WebCore/ResourceRequest.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <pal/spi/cocoa/NSKeyedArchiverSPI.h>
+#import <wtf/MachSendRight.h>
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
 #import <WebCore/MediaPlaybackTargetContext.h>
@@ -49,8 +49,6 @@
 SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
 SOFT_LINK_CLASS(AVFoundation, AVOutputContext)
 #endif
-
-using namespace WebCore;
 
 namespace IPC {
 
@@ -184,9 +182,9 @@ static RetainPtr<NSURLRequest> createNSURLRequestFromSerializableRepresentation(
     return adoptNS([[NSURLRequest alloc] _initWithCFURLRequest:cfRequest.get()]);
 }
     
-void ArgumentCoder<ResourceRequest>::encodePlatformData(Encoder& encoder, const ResourceRequest& resourceRequest)
+void ArgumentCoder<WebCore::ResourceRequest>::encodePlatformData(Encoder& encoder, const WebCore::ResourceRequest& resourceRequest)
 {
-    RetainPtr<NSURLRequest> requestToSerialize = resourceRequest.nsURLRequest(DoNotUpdateHTTPBody);
+    RetainPtr<NSURLRequest> requestToSerialize = resourceRequest.nsURLRequest(WebCore::HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody);
 
     bool requestIsPresent = requestToSerialize;
     encoder << requestIsPresent;
@@ -211,14 +209,14 @@ void ArgumentCoder<ResourceRequest>::encodePlatformData(Encoder& encoder, const 
     encoder.encodeEnum(resourceRequest.cachePolicy());
 }
 
-bool ArgumentCoder<ResourceRequest>::decodePlatformData(Decoder& decoder, ResourceRequest& resourceRequest)
+bool ArgumentCoder<WebCore::ResourceRequest>::decodePlatformData(Decoder& decoder, WebCore::ResourceRequest& resourceRequest)
 {
     bool requestIsPresent;
     if (!decoder.decode(requestIsPresent))
         return false;
 
     if (!requestIsPresent) {
-        resourceRequest = ResourceRequest();
+        resourceRequest = WebCore::ResourceRequest();
         return true;
     }
 
@@ -230,7 +228,7 @@ bool ArgumentCoder<ResourceRequest>::decodePlatformData(Decoder& decoder, Resour
     if (!nsURLRequest)
         return false;
 
-    resourceRequest = ResourceRequest(nsURLRequest.get());
+    resourceRequest = WebCore::ResourceRequest(nsURLRequest.get());
     
     Vector<String> responseContentDispositionEncodingFallbackArray;
     if (!decoder.decode(responseContentDispositionEncodingFallbackArray))
@@ -242,12 +240,12 @@ bool ArgumentCoder<ResourceRequest>::decodePlatformData(Decoder& decoder, Resour
         responseContentDispositionEncodingFallbackArray.size() > 2 ? responseContentDispositionEncodingFallbackArray[2] : String()
     );
 
-    ResourceRequest::Requester requester;
+    WebCore::ResourceRequest::Requester requester;
     if (!decoder.decodeEnum(requester))
         return false;
     resourceRequest.setRequester(requester);
 
-    ResourceRequestCachePolicy cachePolicy;
+    WebCore::ResourceRequestCachePolicy cachePolicy;
     if (!decoder.decodeEnum(cachePolicy))
         return false;
     resourceRequest.setCachePolicy(cachePolicy);
@@ -255,51 +253,51 @@ bool ArgumentCoder<ResourceRequest>::decodePlatformData(Decoder& decoder, Resour
     return true;
 }
 
-void ArgumentCoder<CertificateInfo>::encode(Encoder& encoder, const CertificateInfo& certificateInfo)
+void ArgumentCoder<WebCore::CertificateInfo>::encode(Encoder& encoder, const WebCore::CertificateInfo& certificateInfo)
 {
     encoder.encodeEnum(certificateInfo.type());
 
     switch (certificateInfo.type()) {
 #if HAVE(SEC_TRUST_SERIALIZATION)
-    case CertificateInfo::Type::Trust:
+    case WebCore::CertificateInfo::Type::Trust:
         IPC::encode(encoder, certificateInfo.trust());
         break;
 #endif
-    case CertificateInfo::Type::CertificateChain:
+    case WebCore::CertificateInfo::Type::CertificateChain:
         IPC::encode(encoder, certificateInfo.certificateChain());
         break;
-    case CertificateInfo::Type::None:
+    case WebCore::CertificateInfo::Type::None:
         // Do nothing.
         break;
     }
 }
 
-bool ArgumentCoder<CertificateInfo>::decode(Decoder& decoder, CertificateInfo& certificateInfo)
+bool ArgumentCoder<WebCore::CertificateInfo>::decode(Decoder& decoder, WebCore::CertificateInfo& certificateInfo)
 {
-    CertificateInfo::Type certificateInfoType;
+    WebCore::CertificateInfo::Type certificateInfoType;
     if (!decoder.decodeEnum(certificateInfoType))
         return false;
 
     switch (certificateInfoType) {
 #if HAVE(SEC_TRUST_SERIALIZATION)
-    case CertificateInfo::Type::Trust: {
+    case WebCore::CertificateInfo::Type::Trust: {
         RetainPtr<SecTrustRef> trust;
         if (!IPC::decode(decoder, trust))
             return false;
 
-        certificateInfo = CertificateInfo(WTFMove(trust));
+        certificateInfo = WebCore::CertificateInfo(WTFMove(trust));
         return true;
     }
 #endif
-    case CertificateInfo::Type::CertificateChain: {
+    case WebCore::CertificateInfo::Type::CertificateChain: {
         RetainPtr<CFArrayRef> certificateChain;
         if (!IPC::decode(decoder, certificateChain))
             return false;
 
-        certificateInfo = CertificateInfo(WTFMove(certificateChain));
+        certificateInfo = WebCore::CertificateInfo(WTFMove(certificateChain));
         return true;
     }    
-    case CertificateInfo::Type::None:
+    case WebCore::CertificateInfo::Type::None:
         // Do nothing.
         break;
     }
@@ -321,38 +319,57 @@ static void encodeNSError(Encoder& encoder, NSError *nsError)
 
     [userInfo enumerateKeysAndObjectsUsingBlock:^(id key, id value, BOOL*) {
         if ([value isKindOfClass:[NSString class]] || [value isKindOfClass:[NSURL class]] || [value isKindOfClass:[NSNumber class]])
-            CFDictionarySetValue(filteredUserInfo.get(), key, value);
+            CFDictionarySetValue(filteredUserInfo.get(), (__bridge CFTypeRef)key, (__bridge CFTypeRef)value);
     }];
 
     if (NSArray *clientIdentityAndCertificates = [userInfo objectForKey:@"NSErrorClientCertificateChainKey"]) {
         ASSERT([clientIdentityAndCertificates isKindOfClass:[NSArray class]]);
         ASSERT(^{
             for (id object in clientIdentityAndCertificates) {
-                if (CFGetTypeID(object) != SecIdentityGetTypeID() && CFGetTypeID(object) != SecCertificateGetTypeID())
+                if (CFGetTypeID((__bridge CFTypeRef)object) != SecIdentityGetTypeID() && CFGetTypeID((__bridge CFTypeRef)object) != SecCertificateGetTypeID())
                     return false;
             }
             return true;
         }());
 
-        CFDictionarySetValue(filteredUserInfo.get(), @"NSErrorClientCertificateChainKey", clientIdentityAndCertificates);
+        // Turn SecIdentity members into SecCertificate to strip out private key information.
+        id clientCertificates = [NSMutableArray arrayWithCapacity:clientIdentityAndCertificates.count];
+        for (id object in clientIdentityAndCertificates) {
+            if (CFGetTypeID((__bridge CFTypeRef)object) != SecIdentityGetTypeID()) {
+                [clientCertificates addObject:object];
+                continue;
+            }
+            SecCertificateRef certificate = nil;
+            OSStatus status = SecIdentityCopyCertificate((SecIdentityRef)object, &certificate);
+            RetainPtr<SecCertificateRef> retainCertificate = adoptCF(certificate);
+            // The SecIdentity member is the key information of this attribute. Without it, we should nil
+            // the attribute.
+            if (status != errSecSuccess) {
+                LOG_ERROR("Failed to encode nsError.userInfo[NSErrorClientCertificateChainKey]: %d", status);
+                clientCertificates = nil;
+                break;
+            }
+            [clientCertificates addObject:(__bridge id)certificate];
+        }
+        CFDictionarySetValue(filteredUserInfo.get(), CFSTR("NSErrorClientCertificateChainKey"), (__bridge CFTypeRef)clientCertificates);
     }
 
     id peerCertificateChain = [userInfo objectForKey:@"NSErrorPeerCertificateChainKey"];
     if (!peerCertificateChain) {
-        if (SecTrustRef peerTrust = (SecTrustRef)[userInfo objectForKey:NSURLErrorFailingURLPeerTrustErrorKey]) {
+        if (SecTrustRef peerTrust = (__bridge SecTrustRef)[userInfo objectForKey:NSURLErrorFailingURLPeerTrustErrorKey]) {
             CFIndex count = SecTrustGetCertificateCount(peerTrust);
             peerCertificateChain = [NSMutableArray arrayWithCapacity:count];
             for (CFIndex i = 0; i < count; ++i)
-                [peerCertificateChain addObject:(id)SecTrustGetCertificateAtIndex(peerTrust, i)];
+                [peerCertificateChain addObject:(__bridge id)SecTrustGetCertificateAtIndex(peerTrust, i)];
         }
     }
     ASSERT(!peerCertificateChain || [peerCertificateChain isKindOfClass:[NSArray class]]);
     if (peerCertificateChain)
-        CFDictionarySetValue(filteredUserInfo.get(), @"NSErrorPeerCertificateChainKey", peerCertificateChain);
+        CFDictionarySetValue(filteredUserInfo.get(), CFSTR("NSErrorPeerCertificateChainKey"), (__bridge CFTypeRef)peerCertificateChain);
 
 #if HAVE(SEC_TRUST_SERIALIZATION)
-    if (SecTrustRef peerTrust = (SecTrustRef)[userInfo objectForKey:NSURLErrorFailingURLPeerTrustErrorKey])
-        CFDictionarySetValue(filteredUserInfo.get(), NSURLErrorFailingURLPeerTrustErrorKey, peerTrust);
+    if (SecTrustRef peerTrust = (__bridge SecTrustRef)[userInfo objectForKey:NSURLErrorFailingURLPeerTrustErrorKey])
+        CFDictionarySetValue(filteredUserInfo.get(), (__bridge CFStringRef)NSURLErrorFailingURLPeerTrustErrorKey, peerTrust);
 #endif
 
     IPC::encode(encoder, filteredUserInfo.get());
@@ -365,16 +382,9 @@ static void encodeNSError(Encoder& encoder, NSError *nsError)
         encoder << false;
 }
 
-void ArgumentCoder<ResourceError>::encodePlatformData(Encoder& encoder, const ResourceError& resourceError)
+void ArgumentCoder<WebCore::ResourceError>::encodePlatformData(Encoder& encoder, const WebCore::ResourceError& resourceError)
 {
-    bool errorIsNull = resourceError.isNull();
-    encoder << errorIsNull;
-
-    if (errorIsNull)
-        return;
-
-    NSError *nsError = resourceError.nsError();
-    encodeNSError(encoder, nsError);
+    encodeNSError(encoder, resourceError.nsError());
 }
 
 static bool decodeNSError(Decoder& decoder, RetainPtr<NSError>& nsError)
@@ -401,50 +411,41 @@ static bool decodeNSError(Decoder& decoder, RetainPtr<NSError>& nsError)
             return false;
 
         auto mutableUserInfo = adoptCF(CFDictionaryCreateMutableCopy(kCFAllocatorDefault, CFDictionaryGetCount(userInfo.get()) + 1, userInfo.get()));
-        CFDictionarySetValue(mutableUserInfo.get(), NSUnderlyingErrorKey, underlyingNSError.get());
+        CFDictionarySetValue(mutableUserInfo.get(), (__bridge CFStringRef)NSUnderlyingErrorKey, (__bridge CFTypeRef)underlyingNSError.get());
         userInfo = WTFMove(mutableUserInfo);
     }
 
-    nsError = adoptNS([[NSError alloc] initWithDomain:domain code:code userInfo:(NSDictionary *)userInfo.get()]);
+    nsError = adoptNS([[NSError alloc] initWithDomain:domain code:code userInfo:(__bridge NSDictionary *)userInfo.get()]);
     return true;
 }
 
-bool ArgumentCoder<ResourceError>::decodePlatformData(Decoder& decoder, ResourceError& resourceError)
+bool ArgumentCoder<WebCore::ResourceError>::decodePlatformData(Decoder& decoder, WebCore::ResourceError& resourceError)
 {
-    bool errorIsNull;
-    if (!decoder.decode(errorIsNull))
-        return false;
-    
-    if (errorIsNull) {
-        resourceError = ResourceError();
-        return true;
-    }
-    
     RetainPtr<NSError> nsError;
     if (!decodeNSError(decoder, nsError))
         return false;
 
-    resourceError = ResourceError(nsError.get());
+    resourceError = WebCore::ResourceError(nsError.get());
     return true;
 }
 
-void ArgumentCoder<ProtectionSpace>::encodePlatformData(Encoder& encoder, const ProtectionSpace& space)
+void ArgumentCoder<WebCore::ProtectionSpace>::encodePlatformData(Encoder& encoder, const WebCore::ProtectionSpace& space)
 {
     auto archiver = secureArchiver();
     [archiver encodeObject:space.nsSpace() forKey:@"protectionSpace"];
-    IPC::encode(encoder, reinterpret_cast<CFDataRef>(archiver.get().encodedData));
+    IPC::encode(encoder, (__bridge CFDataRef)archiver.get().encodedData);
 }
 
-bool ArgumentCoder<ProtectionSpace>::decodePlatformData(Decoder& decoder, ProtectionSpace& space)
+bool ArgumentCoder<WebCore::ProtectionSpace>::decodePlatformData(Decoder& decoder, WebCore::ProtectionSpace& space)
 {
     RetainPtr<CFDataRef> data;
     if (!IPC::decode(decoder, data))
         return false;
 
-    auto unarchiver = secureUnarchiverFromData((NSData *)data.get());
+    auto unarchiver = secureUnarchiverFromData((__bridge NSData *)data.get());
     @try {
         if (RetainPtr<NSURLProtectionSpace> nsSpace = [unarchiver decodeObjectOfClass:[NSURLProtectionSpace class] forKey:@"protectionSpace"])
-            space = ProtectionSpace(nsSpace.get());
+            space = WebCore::ProtectionSpace(nsSpace.get());
     } @catch (NSException *exception) {
         LOG_ERROR("Failed to decode NSURLProtectionSpace: %@", exception);
     }
@@ -453,7 +454,7 @@ bool ArgumentCoder<ProtectionSpace>::decodePlatformData(Decoder& decoder, Protec
     return true;
 }
 
-void ArgumentCoder<Credential>::encodePlatformData(Encoder& encoder, const Credential& credential)
+void ArgumentCoder<WebCore::Credential>::encodePlatformData(Encoder& encoder, const WebCore::Credential& credential)
 {
     NSURLCredential *nsCredential = credential.nsCredential();
     // NSURLCredential doesn't serialize identities correctly, so we encode the pieces individually
@@ -464,7 +465,7 @@ void ArgumentCoder<Credential>::encodePlatformData(Encoder& encoder, const Crede
 
         if (NSArray *certificates = nsCredential.certificates) {
             encoder << true;
-            IPC::encode(encoder, reinterpret_cast<CFArrayRef>(certificates));
+            IPC::encode(encoder, (__bridge CFArrayRef)certificates);
         } else
             encoder << false;
 
@@ -476,10 +477,10 @@ void ArgumentCoder<Credential>::encodePlatformData(Encoder& encoder, const Crede
 
     auto archiver = secureArchiver();
     [archiver encodeObject:nsCredential forKey:@"credential"];
-    IPC::encode(encoder, reinterpret_cast<CFDataRef>(archiver.get().encodedData));
+    IPC::encode(encoder, (__bridge CFDataRef)archiver.get().encodedData);
 }
 
-bool ArgumentCoder<Credential>::decodePlatformData(Decoder& decoder, Credential& credential)
+bool ArgumentCoder<WebCore::Credential>::decodePlatformData(Decoder& decoder, WebCore::Credential& credential)
 {
     bool hasIdentity;
     if (!decoder.decode(hasIdentity))
@@ -504,7 +505,7 @@ bool ArgumentCoder<Credential>::decodePlatformData(Decoder& decoder, Credential&
         if (!decoder.decode(persistence))
             return false;
 
-        credential = Credential(adoptNS([[NSURLCredential alloc] initWithIdentity:identity.get() certificates:(NSArray *)certificates.get() persistence:(NSURLCredentialPersistence)persistence]).get());
+        credential = WebCore::Credential(adoptNS([[NSURLCredential alloc] initWithIdentity:identity.get() certificates:(__bridge NSArray *)certificates.get() persistence:(NSURLCredentialPersistence)persistence]).get());
         return true;
     }
 
@@ -512,10 +513,10 @@ bool ArgumentCoder<Credential>::decodePlatformData(Decoder& decoder, Credential&
     if (!IPC::decode(decoder, data))
         return false;
 
-    auto unarchiver = secureUnarchiverFromData((NSData *)data.get());
+    auto unarchiver = secureUnarchiverFromData((__bridge NSData *)data.get());
     @try {
         if (RetainPtr<NSURLCredential> nsCredential = [unarchiver decodeObjectOfClass:[NSURLCredential class] forKey:@"credential"])
-            credential = Credential(nsCredential.get());
+            credential = WebCore::Credential(nsCredential.get());
     } @catch (NSException *exception) {
         LOG_ERROR("Failed to decode NSURLCredential: %@", exception);
     }
@@ -547,12 +548,12 @@ bool ArgumentCoder<MachSendRight>::decode(Decoder& decoder, MachSendRight& sendR
     return true;
 }
 
-void ArgumentCoder<KeypressCommand>::encode(Encoder& encoder, const KeypressCommand& keypressCommand)
+void ArgumentCoder<WebCore::KeypressCommand>::encode(Encoder& encoder, const WebCore::KeypressCommand& keypressCommand)
 {
     encoder << keypressCommand.commandName << keypressCommand.text;
 }
     
-std::optional<KeypressCommand> ArgumentCoder<KeypressCommand>::decode(Decoder& decoder)
+std::optional<WebCore::KeypressCommand> ArgumentCoder<WebCore::KeypressCommand>::decode(Decoder& decoder)
 {
     std::optional<String> commandName;
     decoder >> commandName;
@@ -564,33 +565,35 @@ std::optional<KeypressCommand> ArgumentCoder<KeypressCommand>::decode(Decoder& d
     if (!text)
         return std::nullopt;
     
-    KeypressCommand command;
+    WebCore::KeypressCommand command;
     command.commandName = WTFMove(*commandName);
     command.text = WTFMove(*text);
     return WTFMove(command);
 }
 
 #if ENABLE(CONTENT_FILTERING)
-void ArgumentCoder<ContentFilterUnblockHandler>::encode(Encoder& encoder, const ContentFilterUnblockHandler& contentFilterUnblockHandler)
+
+void ArgumentCoder<WebCore::ContentFilterUnblockHandler>::encode(Encoder& encoder, const WebCore::ContentFilterUnblockHandler& contentFilterUnblockHandler)
 {
     auto archiver = secureArchiver();
     contentFilterUnblockHandler.encode(archiver.get());
-    IPC::encode(encoder, reinterpret_cast<CFDataRef>(archiver.get().encodedData));
+    IPC::encode(encoder, (__bridge CFDataRef)archiver.get().encodedData);
 }
 
-bool ArgumentCoder<ContentFilterUnblockHandler>::decode(Decoder& decoder, ContentFilterUnblockHandler& contentFilterUnblockHandler)
+bool ArgumentCoder<WebCore::ContentFilterUnblockHandler>::decode(Decoder& decoder, WebCore::ContentFilterUnblockHandler& contentFilterUnblockHandler)
 {
     RetainPtr<CFDataRef> data;
     if (!IPC::decode(decoder, data))
         return false;
 
-    auto unarchiver = secureUnarchiverFromData((NSData *)data.get());
-    if (!ContentFilterUnblockHandler::decode(unarchiver.get(), contentFilterUnblockHandler))
+    auto unarchiver = secureUnarchiverFromData((__bridge NSData *)data.get());
+    if (!WebCore::ContentFilterUnblockHandler::decode(unarchiver.get(), contentFilterUnblockHandler))
         return false;
 
     [unarchiver finishDecoding];
     return true;
 }
+
 #endif
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
@@ -601,17 +604,17 @@ static NSString *deviceContextKey()
     return key;
 }
 
-void ArgumentCoder<MediaPlaybackTargetContext>::encodePlatformData(Encoder& encoder, const MediaPlaybackTargetContext& target)
+void ArgumentCoder<WebCore::MediaPlaybackTargetContext>::encodePlatformData(Encoder& encoder, const WebCore::MediaPlaybackTargetContext& target)
 {
     auto archiver = secureArchiver();
 
     if ([getAVOutputContextClass() conformsToProtocol:@protocol(NSSecureCoding)])
         [archiver encodeObject:target.avOutputContext() forKey:deviceContextKey()];
 
-    IPC::encode(encoder, reinterpret_cast<CFDataRef>(archiver.get().encodedData));
+    IPC::encode(encoder, (__bridge CFDataRef)archiver.get().encodedData);
 }
 
-bool ArgumentCoder<MediaPlaybackTargetContext>::decodePlatformData(Decoder& decoder, MediaPlaybackTargetContext& target)
+bool ArgumentCoder<WebCore::MediaPlaybackTargetContext>::decodePlatformData(Decoder& decoder, WebCore::MediaPlaybackTargetContext& target)
 {
     if (![getAVOutputContextClass() conformsToProtocol:@protocol(NSSecureCoding)])
         return false;
@@ -620,7 +623,7 @@ bool ArgumentCoder<MediaPlaybackTargetContext>::decodePlatformData(Decoder& deco
     if (!IPC::decode(decoder, data))
         return false;
 
-    auto unarchiver = secureUnarchiverFromData((NSData *)data.get());
+    auto unarchiver = secureUnarchiverFromData((__bridge NSData *)data.get());
 
     AVOutputContext *context = nil;
     @try {
@@ -630,11 +633,12 @@ bool ArgumentCoder<MediaPlaybackTargetContext>::decodePlatformData(Decoder& deco
         return false;
     }
 
-    target = MediaPlaybackTargetContext(context);
+    target = WebCore::MediaPlaybackTargetContext(context);
     
     [unarchiver finishDecoding];
     return true;
 }
+
 #endif
 
 } // namespace IPC

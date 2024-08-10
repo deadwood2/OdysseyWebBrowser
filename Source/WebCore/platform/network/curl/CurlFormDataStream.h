@@ -35,13 +35,13 @@ namespace WebCore {
 class CurlFormDataStream {
 public:
     CurlFormDataStream(const FormData*);
-    ~CurlFormDataStream();
+    WEBCORE_EXPORT ~CurlFormDataStream();
 
     void clean();
 
     size_t elementSize() { return m_formData ? m_formData->elements().size() : 0; }
 
-    std::optional<const Vector<char>&> getPostData();
+    const Vector<char>* getPostData();
     bool shouldUseChunkTransfer();
     unsigned long long totalSize();
 

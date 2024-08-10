@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/Document.h>
 #include <WebCore/ExceptionCode.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMDOMWindowPrivate.h"
 #include "WebKitDOMEventPrivate.h"
 #include "WebKitDOMKeyboardEventPrivate.h"
@@ -32,6 +32,8 @@
 #include "ConvertToUTF8String.h"
 #include <wtf/GetPtr.h>
 #include <wtf/RefPtr.h>
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -200,9 +202,8 @@ void webkit_dom_keyboard_event_init_keyboard_event(WebKitDOMKeyboardEvent* self,
     g_return_if_fail(keyIdentifier);
     WebCore::KeyboardEvent* item = WebKit::core(self);
     WTF::String convertedType = WTF::String::fromUTF8(type);
-    WebCore::DOMWindow* convertedView = WebKit::core(view);
     WTF::String convertedKeyIdentifier = WTF::String::fromUTF8(keyIdentifier);
-    item->initKeyboardEvent(convertedType, canBubble, cancelable, convertedView, convertedKeyIdentifier, location, ctrlKey, altKey, shiftKey, metaKey, altGraphKey);
+    item->initKeyboardEvent(convertedType, canBubble, cancelable, WebKit::toWindowProxy(view), convertedKeyIdentifier, location, ctrlKey, altKey, shiftKey, metaKey, altGraphKey);
 }
 
 gchar* webkit_dom_keyboard_event_get_key_identifier(WebKitDOMKeyboardEvent* self)
@@ -268,3 +269,4 @@ gboolean webkit_dom_keyboard_event_get_alt_graph_key(WebKitDOMKeyboardEvent* sel
     return result;
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

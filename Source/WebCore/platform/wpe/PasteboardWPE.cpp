@@ -97,7 +97,7 @@ void Pasteboard::read(PasteboardPlainText& text)
     text.text = platformStrategies()->pasteboardStrategy()->readStringFromPasteboard(0, "text/plain;charset=utf-8");
 }
 
-void Pasteboard::read(PasteboardWebContentReader&)
+void Pasteboard::read(PasteboardWebContentReader&, WebContentReadingPolicy)
 {
     notImplemented();
 }
@@ -125,10 +125,10 @@ void Pasteboard::write(const PasteboardWebContent& content)
     platformStrategies()->pasteboardStrategy()->writeToPasteboard(content);
 }
 
-bool Pasteboard::containsFiles()
+Pasteboard::FileContentState Pasteboard::fileContentState()
 {
     notImplemented();
-    return false;
+    return FileContentState::NoFileOrImageData;
 }
 
 bool Pasteboard::canSmartReplace()

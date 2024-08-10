@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/Document.h>
 #include <WebCore/ExceptionCode.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMHTMLCollectionPrivate.h"
 #include "WebKitDOMNodePrivate.h"
 #include "WebKitDOMPrivate.h"
@@ -37,6 +37,8 @@
 typedef struct _WebKitDOMHTMLCollectionPrivate {
     RefPtr<WebCore::HTMLCollection> coreObject;
 } WebKitDOMHTMLCollectionPrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -161,3 +163,4 @@ gulong webkit_dom_html_collection_get_length(WebKitDOMHTMLCollection* self)
     return result;
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

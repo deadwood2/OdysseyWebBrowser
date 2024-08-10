@@ -12,9 +12,11 @@
 
 #import <Foundation/Foundation.h>
 
+__attribute__((objc_runtime_name("WK_RTCUIApplicationStatusObserver")))
 @interface RTCUIApplicationStatusObserver : NSObject
 
 + (instancetype)sharedInstance;
++ (void)prepareForUse;
 
 - (BOOL)isApplicationActive;
 

@@ -41,8 +41,8 @@
 #import <WebKit/WKViewPrivate.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
-#import <wtf/CurrentTime.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/Seconds.h>
 #import <wtf/mac/AppKitCompatibilityDeclarations.h>
 
 static bool receivedLoadedMessage;
@@ -78,7 +78,7 @@ static void waitUntilOnLoadIsCompleted(WKPageRef page)
     }
 }
 
-static void didFinishLoadForFrame(WKPageRef, WKFrameRef, WKTypeRef, const void*)
+static void didFinishNavigation(WKPageRef, WKNavigationRef, WKTypeRef, const void*)
 {
     receivedLoadedMessage = true;
 }
@@ -122,6 +122,7 @@ TEST(PictureInPicture, WKUIDelegate)
     
     RetainPtr<NSWindow> window = adoptNS([[NSWindow alloc] initWithContentRect:[webView frame] styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO]);
     [[window contentView] addSubview:webView.get()];
+    [window makeKeyAndOrderFront:nil];
 
     NSURLRequest *request = [NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"PictureInPictureDelegate" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]];
     
@@ -164,11 +165,11 @@ TEST(PictureInPicture, WKPageUIClient)
     uiClient.hasVideoInPictureInPictureDidChange = hasVideoInPictureInPictureDidChange;
     WKPageSetPageUIClient(webView.page(), &uiClient.base);
     
-    WKPageLoaderClientV0 loaderClient;
+    WKPageNavigationClientV0 loaderClient;
     memset(&loaderClient, 0 , sizeof(loaderClient));
     loaderClient.base.version = 0;
-    loaderClient.didFinishLoadForFrame = didFinishLoadForFrame;
-    WKPageSetPageLoaderClient(webView.page(), &loaderClient.base);
+    loaderClient.didFinishNavigation = didFinishNavigation;
+    WKPageSetPageNavigationClient(webView.page(), &loaderClient.base);
     
     RetainPtr<NSWindow> window = adoptNS([[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 100, 100) styleMask:NSBorderlessWindowMask backing:NSBackingStoreBuffered defer:NO]);
     [window.get() makeKeyAndOrderFront:nil];

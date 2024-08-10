@@ -29,10 +29,9 @@
 
 import re
 import sys
-import platform
 
 from webkitpy.common.version import Version
-from webkitpy.common.version_name_map import PUBLIC_TABLE, VersionNameMap
+from webkitpy.common.version_name_map import PUBLIC_TABLE, INTERNAL_TABLE, VersionNameMap
 from webkitpy.common.system.executive import Executive
 
 
@@ -49,16 +48,13 @@ class PlatformInfo(object):
     newer than one known to the code.
     """
 
-    def __init__(self, sys_module=None, platform_module=None, executive=None):
-        sys_platform = (sys_module or sys).platform
-        platform_module = platform_module or platform
-
+    def __init__(self, sys_module, platform_module, executive):
         self._executive = executive
         self._platform_module = platform_module
-        self.os_name = self._determine_os_name(sys_platform)
+        self.os_name = self._determine_os_name(sys_module.platform)
         self.os_version = None
 
-        self._is_cygwin = sys_platform == 'cygwin'
+        self._is_cygwin = sys_module.platform == 'cygwin'
 
         if self.os_name.startswith('mac'):
             self.os_version = Version.from_string(platform_module.mac_ver()[0])
@@ -69,13 +65,6 @@ class PlatformInfo(object):
         else:
             # Most other platforms (namely iOS) return conforming version strings.
             self.os_version = Version.from_string(platform_module.release())
-
-    @property
-    def executive(self):
-        if self._executive is None:
-            self._executive = Executive()
-
-        return self._executive
 
     def is_mac(self):
         return self.os_name == 'mac'
@@ -114,14 +103,19 @@ class PlatformInfo(object):
         # Windows-2008ServerR2-6.1.7600
         return self._platform_module.platform()
 
-    def os_version_name(self, table=PUBLIC_TABLE):
+    def os_version_name(self, table=None):
         if not self.os_version:
             return None
-        return VersionNameMap.map(self).to_name(self.os_version, table=table)
+        if table:
+            return VersionNameMap.map(self).to_name(self.os_version, table=table)
+        version_name = VersionNameMap.map(self).to_name(self.os_version, table=PUBLIC_TABLE)
+        if not version_name:
+            version_name = VersionNameMap.map(self).to_name(self.os_version, table=INTERNAL_TABLE)
+        return version_name
 
     def total_bytes_memory(self):
         if self.is_mac():
-            return long(self.executive.run_command(["sysctl", "-n", "hw.memsize"]))
+            return long(self._executive.run_command(["sysctl", "-n", "hw.memsize"]))
         return None
 
     def terminal_width(self):
@@ -152,7 +146,7 @@ class PlatformInfo(object):
     def xcode_sdk_version(self, sdk_name):
         if self.is_mac():
             # Assumes that xcrun does not write to standard output on failure (e.g. SDK does not exist).
-            xcrun_output = self.executive.run_command(['xcrun', '--sdk', sdk_name, '--show-sdk-version'], return_stderr=False, ignore_errors=True).rstrip()
+            xcrun_output = self._executive.run_command(['xcrun', '--sdk', sdk_name, '--show-sdk-version'], return_stderr=False, ignore_errors=True).rstrip()
             if xcrun_output:
                 return Version.from_string(xcrun_output)
         return None
@@ -160,13 +154,13 @@ class PlatformInfo(object):
     def xcode_simctl_list(self):
         if not self.is_mac():
             return ()
-        output = self.executive.run_command(['xcrun', 'simctl', 'list'], return_stderr=False)
+        output = self._executive.run_command(['xcrun', 'simctl', 'list'], return_stderr=False)
         return (line for line in output.splitlines())
 
     def xcode_version(self):
         if not self.is_mac():
             raise NotImplementedError
-        return Version.from_string(self.executive.run_command(['xcodebuild', '-version']).split()[1])
+        return Version.from_string(self._executive.run_command(['xcodebuild', '-version']).split()[1])
 
     def _determine_os_name(self, sys_platform):
         if sys_platform == 'darwin':
@@ -196,4 +190,4 @@ class PlatformInfo(object):
         if version:
             return version
         # Note that this should only ever be called on windows, so this should always work.
-        return self.executive.run_command(['cmd', '/c', 'ver'], decode_output=False)
+        return self._executive.run_command(['cmd', '/c', 'ver'], decode_output=False)

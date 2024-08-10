@@ -38,9 +38,8 @@
 #include <WebCore/WebAudioBufferList.h>
 #include <wtf/UniqueRef.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 class UserMediaCaptureManagerProxy::SourceProxy : public RealtimeMediaSource::Observer, public SharedRingBufferStorage::Client {
 public:
@@ -80,6 +79,7 @@ public:
         m_manager.process().send(Messages::UserMediaCaptureManager::SourceSettingsChanged(m_id, m_source->settings()), 0);
     }
 
+    // May get called on a background thread.
     void audioSamplesAvailable(const MediaTime& time, const PlatformAudioData& audioData, const AudioStreamDescription& description, size_t numberOfFrames) final {
         if (m_description != description) {
             ASSERT(description.platformDescription().type == PlatformDescription::CAAudioStreamBasicType);

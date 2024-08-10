@@ -21,7 +21,6 @@
       <dep package="glib"/>
       <dep package="glib-networking"/>
       <dep package="adwaita-icon-theme"/>
-      <dep package="gtk-doc"/>
       <dep package="icu"/>
       <dep package="libsoup"/>
       <dep package="atk"/>
@@ -29,6 +28,7 @@
       <dep package="pango"/>
       <dep package="llvm"/>
       <dep package="shared-mime-info"/>
+      <dep package="libsecret"/>
       <dep package="libgpg-error"/>
       <dep package="libgcrypt"/>
       <if condition-set="linux">
@@ -323,7 +323,7 @@
     <dependencies>
       <dep package="pixman"/>
     </dependencies>
-    <branch module="/releases/individual/xserver/xorg-server-1.19.6.tar.bz2" version="1.16.4"
+    <branch module="/releases/individual/xserver/xorg-server-${version}.tar.bz2" version="1.19.6"
             repo="xorg"
             hash="sha256:a732502f1db000cf36a376cd0c010ffdbf32ecdd7f1fa08ba7f5bdf9601cc197"
             md5sum="3e47777ff034a331aed2322b078694a8">
@@ -336,18 +336,18 @@
              autogen-sh="configure"
              autogenargs="--disable-documentation">
     <pkg-config>wayland-server.pc</pkg-config>
-    <branch module="releases/wayland-1.12.0.tar.xz"
-            version="1.12.0"
+    <branch module="releases/wayland-${version}.tar.xz"
+            version="1.14.0"
             repo="wayland.freedesktop.org"
-            hash="sha256:d6b4135cba0188abcb7275513c72dede751d6194f6edc5b82183a3ba8b821ab1"/>
+            hash="sha256:ed80cabc0961a759a42092e2c39aabfc1ec9a13c86c98bbe2b812f008da27ab8"/>
   </autotools>
 
   <autotools id="wayland-protocols"
              autogen-sh="configure">
-    <branch module="releases/wayland-protocols-1.7.tar.xz"
-            version="1.7"
+    <branch module="releases/wayland-protocols-${version}.tar.xz"
+            version="1.12"
 	    repo="wayland.freedesktop.org"
-	    hash="sha256:635f2a937d318f1fecb97b54074ca211486e38af943868dd0fa82ea38d091c1f"/>
+	    hash="sha256:3b19e8a9e1e19474756a7069db23b90ca9b8ebb438448c6063b4a7fc89b7c8b2"/>
   </autotools>
 
   <autotools id="weston"
@@ -362,31 +362,17 @@
       <dep package="libinput"/>
       <dep package="wayland-protocols"/>
     </dependencies>
-    <branch module="releases/weston-1.12.0.tar.xz"
-            version="1.12.0"
+    <branch module="releases/weston-${version}.tar.xz"
+            version="3.0.0"
             repo="wayland.freedesktop.org"
-            hash="sha256:ac7ac2a32e3b9f50131fccded5d2326bd36b2226712d90b61999118a09af5033">
-      <patch file="weston-libweston-include-weston-egl-ext.h-in-drm-x11-and-wa.patch" strip="1"/>
-    </branch>
-  </autotools>
-
-  <autotools id="gtk-doc" autogen-sh="configure">
-    <if condition-set="macos">
-      <autogenargs value="--with-xml-catalog=/usr/local/etc/xml/catalog"/>
-    </if>
-    <dependencies>
-      <dep package="glib"/>
-    </dependencies>
-    <branch module="/pub/GNOME/sources/gtk-doc/${version}/gtk-doc-${version}.tar.xz" version="1.25"
-            repo="ftp.gnome.org"
-            hash="sha256:1ea46ed400e6501f975acaafea31479cea8f32f911dca4dff036f59e6464fd42"/>
+            hash="sha256:cde1d55e8dd70c3cbb3d1ec72f60e60000041579caa1d6a262bd9c35e93723a5"/>
   </autotools>
 
   <autotools id="libdrm" autogen-sh="configure">
     <pkg-config>libdrm.pc</pkg-config>
-    <branch module="/libdrm/libdrm-2.4.65.tar.bz2" version="2.4.65"
+    <branch module="/libdrm/libdrm-${version}.tar.bz2" version="2.4.89"
             repo="dri.freedesktop.org"
-            hash="sha256:71960ac8bde7d710992b1bc8879935e8300a870c36bd06f22412d0447e3d96c4"/>
+            hash="sha256:629f9782aabbb4809166de5f24d26fe0766055255038f16935602d89f136a02e"/>
   </autotools>
 
   <autotools id="mesa"
@@ -396,10 +382,10 @@
     <!--- WARNING: At jhbuildrc, when we define the path to the Gallium llvmpipe software rasterizer (needed by XvfbDriver),
           we assume that the directory is named "Mesa". So, don't change the checkoutdir name even if you update the version.  -->
     <branch checkoutdir="Mesa"
-            version="11.0.6"
-            module="/archive/older-versions/11.x/${version}/mesa-${version}.tar.xz"
+            version="18.0.3"
+            module="/archive/mesa-${version}.tar.xz"
             repo="mesa.freedesktop.org"
-            hash="sha256:8340e64cdc91999840404c211496f3de38e7b4cb38db34e2f72f1642c5134760">
+            hash="sha256:099d9667327a76a61741a533f95067d76ea71a656e66b91507b3c0caf1d49e30">
     </branch>
     <dependencies>
       <dep package="llvm"/>
@@ -408,13 +394,12 @@
     </dependencies>
   </autotools>
 
-  <autotools id="llvm"
-             autogen-sh="configure"
-             autogenargs="--enable-optimized --disable-terminfo --disable-zlib --enable-targets=host --disable-backtraces --disable-crash-overrides --disable-expensive-checks --disable-debug-runtime --disable-assertions --enable-shared --enable-bindings=none">
+  <cmake id="llvm"
+         cmakeargs="-DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_TERMINFO=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_TARGETS_TO_BUILD=host -DLLVM_ENABLE_BACKTRACES=OFF -DLLVM_ENABLE_CRASH_OVERRIDES=OFF -DLLVM_ENABLE_EXPENSIVE_CHECKS=OFF -DLLVM_ENABLE_ASSERTIONS=OFF -DBUILD_SHARED_LIBS=ON">
     <branch repo="llvm.org"
-            module="/releases/3.7.0/llvm-3.7.0.src.tar.xz" version="3.7.0" checkoutdir="llvm-3.7.0"
-            hash="sha256:ab45895f9dcdad1e140a3a79fd709f64b05ad7364e308c0e582c5b02e9cc3153"/>
-  </autotools>
+            module="/releases/6.0.0/llvm-6.0.0.src.tar.xz" version="6.0.0" checkoutdir="llvm-6.0.0"
+            hash="sha256:1ff53c915b4e761ef400b803f07261ade637b0c269d99569f18040f3dcee4408"/>
+  </cmake>
 
   <autotools id="gsettings-desktop-schemas"
              autogen-sh="configure">
@@ -503,6 +488,23 @@
             version="1.6.3"
             repo="freedesktop.org"
             hash="sha256:74da2798728e79c3aedfffa268d8fe811c3766ca3708309c0dc45502be137da1"/>
+  </autotools>
+
+
+  <!-- libsecret is only built if the system version is less than 0.18.6 (unreleased
+       as of writing this) in order to cherry pick a fix for a bug that causes crashes
+       with layout tests. -->
+  <autotools id="libsecret" autogen-sh="configure">
+    <pkg-config>libsecret-1.pc</pkg-config>
+    <branch repo="ftp.gnome.org"
+            version="0.18.6"
+            module="/pub/GNOME/sources/libsecret/0.18/libsecret-0.18.5.tar.xz"
+            hash="sha256:9ce7bd8dd5831f2786c935d82638ac428fa085057cc6780aba0e39375887ccb3">
+    <patch file="libsecret-secret-methods-Don-t-unref-NULL-when-search-fails.patch" strip="1"/>
+    </branch>
+    <dependencies>
+      <dep package="glib"/>
+    </dependencies>
   </autotools>
 
   <distutils id="meson" python3="1">

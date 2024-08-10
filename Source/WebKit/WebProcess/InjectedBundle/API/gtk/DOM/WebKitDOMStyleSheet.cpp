@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/Document.h>
 #include <WebCore/ExceptionCode.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMMediaListPrivate.h"
 #include "WebKitDOMNodePrivate.h"
 #include "WebKitDOMPrivate.h"
@@ -38,6 +38,8 @@
 typedef struct _WebKitDOMStyleSheetPrivate {
     RefPtr<WebCore::StyleSheet> coreObject;
 } WebKitDOMStyleSheetPrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -303,3 +305,4 @@ WebKitDOMMediaList* webkit_dom_style_sheet_get_media(WebKitDOMStyleSheet* self)
     return WebKit::kit(gobjectResult.get());
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

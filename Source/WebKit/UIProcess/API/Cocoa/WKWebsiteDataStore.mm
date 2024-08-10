@@ -31,12 +31,15 @@
 #import "APIString.h"
 #import "WKHTTPCookieStoreInternal.h"
 #import "WKNSArray.h"
+#import "WKWebViewInternal.h"
 #import "WKWebsiteDataRecordInternal.h"
+#import "WebPageProxy.h"
 #import "WebResourceLoadStatisticsStore.h"
 #import "WebResourceLoadStatisticsTelemetry.h"
 #import "WebsiteDataFetchOption.h"
 #import "_WKWebsiteDataStoreConfiguration.h"
 #import <WebCore/URL.h>
+#import <WebKit/ServiceWorkerProcessProxy.h>
 #import <wtf/BlockPtr.h>
 
 using namespace WebCore;
@@ -200,6 +203,10 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
         config.cookieStorageFile = configuration._cookieStorageFile.path;
     if (configuration._resourceLoadStatisticsDirectory)
         config.resourceLoadStatisticsDirectory = configuration._resourceLoadStatisticsDirectory.path;
+    if (configuration._cacheStorageDirectory)
+        config.cacheStorageDirectory = configuration._cacheStorageDirectory.path;
+    if (configuration._serviceWorkerRegistrationDirectory)
+        config.serviceWorkerRegistrationDirectory = configuration._serviceWorkerRegistrationDirectory.path;
 
     API::Object::constructInWrapper<API::WebsiteDataStore>(self, config, PAL::SessionID::generatePersistentSessionID());
 
@@ -295,6 +302,16 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
     return _websiteDataStore->websiteDataStore().allowsCellularAccess() == WebKit::AllowsCellularAccess::Yes;
 }
 
+- (void)_setProxyConfiguration:(NSDictionary *)configuration
+{
+    _websiteDataStore->websiteDataStore().setProxyConfiguration((__bridge CFDictionaryRef)configuration);
+}
+
+- (NSDictionary *)_proxyConfiguration
+{
+    return (__bridge NSDictionary *)_websiteDataStore->websiteDataStore().proxyConfiguration();
+}
+
 - (void)_resourceLoadStatisticsSetShouldSubmitTelemetry:(BOOL)value
 {
     auto* store = _websiteDataStore->websiteDataStore().resourceLoadStatistics();
@@ -306,6 +323,9 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
 
 - (void)_setResourceLoadStatisticsTestingCallback:(void (^)(WKWebsiteDataStore *, NSString *))callback
 {
+    if (!_websiteDataStore->isPersistent())
+        return;
+
     if (callback) {
         _websiteDataStore->websiteDataStore().enableResourceLoadStatisticsAndSetTestingCallback([callback = makeBlockPtr(callback), self](const String& event) {
             callback(self, (NSString *)event);
@@ -325,16 +345,31 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
     WebKit::WebsiteDataStore::allowWebsiteDataRecordsForAllOrigins();
 }
 
-- (void)_getAllStorageAccessEntries:(void (^)(NSArray<NSString *> *domains))completionHandler
+- (void)_getAllStorageAccessEntriesFor:(WKWebView *)webView completionHandler:(void (^)(NSArray<NSString *> *domains))completionHandler
 {
-    _websiteDataStore->websiteDataStore().getAllStorageAccessEntries([completionHandler = makeBlockPtr(completionHandler)](auto domains) {
+    if (!webView) {
+        completionHandler({ });
+        return;
+    }
+
+    auto* webPageProxy = [webView _page];
+    if (!webPageProxy) {
+        completionHandler({ });
+        return;
+    }
+
+    _websiteDataStore->websiteDataStore().getAllStorageAccessEntries(webPageProxy->pageID(), [completionHandler = makeBlockPtr(completionHandler)](auto domains) {
         Vector<RefPtr<API::Object>> apiDomains;
         apiDomains.reserveInitialCapacity(domains.size());
         for (auto& domain : domains)
             apiDomains.uncheckedAppend(API::String::create(domain));
-
         completionHandler(wrapper(API::Array::create(WTFMove(apiDomains))));
     });
+}
+
+- (bool)_hasRegisteredServiceWorker
+{
+    return WebKit::ServiceWorkerProcessProxy::hasRegisteredServiceWorkers(_websiteDataStore->websiteDataStore().serviceWorkerRegistrationDirectory());
 }
 
 @end

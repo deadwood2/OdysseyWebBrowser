@@ -34,7 +34,6 @@
 #endif
 
 #if defined(__APPLE__) && __APPLE__
-
 #ifdef __OBJC__
 #if PLATFORM(IOS)
 #import <Foundation/Foundation.h>
@@ -42,26 +41,11 @@
 #import <Cocoa/Cocoa.h>
 #endif
 #endif
-
-#elif PLATFORM(WIN)
-
-#if PLATFORM(WIN_CAIRO)
-#undef USE_CG
-#define USE_CURL 1
-#ifndef _WINSOCKAPI_
-#define _WINSOCKAPI_ // Prevent inclusion of winsock.h in windows.h
 #endif
-#else
-#define USE_CG 1
-#undef USE_CAIRO
-#undef USE_CURL
-#endif
-
-#endif // PLATFORM(WIN)
 
 #include <stdint.h>
 
-#if !PLATFORM(IOS) && !PLATFORM(WIN) && !defined(BUILDING_JSCONLY__)
+#if !PLATFORM(IOS) && !defined(BUILDING_JSCONLY__) && (!PLATFORM(WIN) || PLATFORM(WIN_CAIRO))
 #include <WebKit/WebKit2_C.h>
 #endif
 

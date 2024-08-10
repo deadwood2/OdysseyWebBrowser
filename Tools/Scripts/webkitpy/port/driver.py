@@ -254,10 +254,10 @@ class Driver(object):
             return shlex.split(self._port.get_option('wrapper')) + wrapper_arguments
         return wrapper_arguments
 
-    HTTP_DIR = normpath("http/tests") + os.sep
-    HTTP_LOCAL_DIR = normpath("http/tests/local") + os.sep
-    WEBKIT_SPECIFIC_WEB_PLATFORM_TEST_SUBDIR = normpath("http/wpt") + os.sep
-    WEBKIT_WEB_PLATFORM_TEST_SERVER_ROUTE = normpath("WebKit") + os.sep
+    HTTP_DIR = "http/tests/"
+    HTTP_LOCAL_DIR = "http/tests/local/"
+    WEBKIT_SPECIFIC_WEB_PLATFORM_TEST_SUBDIR = "http/wpt/"
+    WEBKIT_WEB_PLATFORM_TEST_SERVER_ROUTE = "WebKit/"
 
     def is_http_test(self, test_name):
         return test_name.startswith(self.HTTP_DIR) and not test_name.startswith(self.HTTP_LOCAL_DIR)
@@ -367,6 +367,11 @@ class Driver(object):
         environment['LOCAL_RESOURCE_ROOT'] = str(self._port.layout_tests_dir())
         environment['ASAN_OPTIONS'] = "allocator_may_return_null=1"
         environment['__XPC_ASAN_OPTIONS'] = environment['ASAN_OPTIONS']
+
+        # Disable vnode-guard related simulated crashes for WKTR / DRT (rdar://problem/40674034).
+        environment['SQLITE_EXEMPT_PATH_FROM_VNODE_GUARDS'] = os.path.realpath(environment['DUMPRENDERTREE_TEMP'])
+        environment['__XPC_SQLITE_EXEMPT_PATH_FROM_VNODE_GUARDS'] = environment['SQLITE_EXEMPT_PATH_FROM_VNODE_GUARDS']
+
         if self._profiler:
             environment = self._profiler.adjusted_environment(environment)
         return environment

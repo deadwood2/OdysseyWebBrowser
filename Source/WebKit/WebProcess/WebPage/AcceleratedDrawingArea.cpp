@@ -33,7 +33,7 @@
 #include "WebPage.h"
 #include "WebPageCreationParameters.h"
 #include "WebPreferencesKeys.h"
-#include <WebCore/MainFrame.h>
+#include <WebCore/Frame.h>
 #include <WebCore/Page.h>
 #include <WebCore/PageOverlayController.h>
 #include <WebCore/Settings.h>
@@ -151,7 +151,10 @@ void AcceleratedDrawingArea::setPaintingEnabled(bool paintingEnabled)
 
 void AcceleratedDrawingArea::updatePreferences(const WebPreferencesStore& store)
 {
-    m_webPage.corePage()->settings().setForceCompositingMode(store.getBoolValueForKey(WebPreferencesKey::forceCompositingModeKey()));
+    Settings& settings = m_webPage.corePage()->settings();
+    bool forceCompositiongMode = store.getBoolValueForKey(WebPreferencesKey::forceCompositingModeKey());
+    settings.setForceCompositingMode(forceCompositiongMode);
+    settings.setAcceleratedCompositingForFixedPositionEnabled(forceCompositiongMode);
     if (!m_layerTreeHost)
         enterAcceleratedCompositingMode(nullptr);
 }
@@ -356,6 +359,9 @@ void AcceleratedDrawingArea::enterAcceleratedCompositingMode(GraphicsLayer* grap
     } else {
         m_layerTreeHost = LayerTreeHost::create(m_webPage);
 
+        if (!m_layerTreeHost)
+            return;
+
         if (m_isPaintingSuspended)
             m_layerTreeHost->pauseRendering();
     }
@@ -382,16 +388,6 @@ void AcceleratedDrawingArea::exitAcceleratedCompositingModeSoon()
 
     m_exitCompositingTimer.startOneShot(0_s);
 }
-
-#if USE(COORDINATED_GRAPHICS)
-void AcceleratedDrawingArea::resetUpdateAtlasForTesting()
-{
-    if (!m_layerTreeHost || exitAcceleratedCompositingModePending())
-        return;
-
-    m_layerTreeHost->clearUpdateAtlases();
-}
-#endif
 
 void AcceleratedDrawingArea::exitAcceleratedCompositingModeNow()
 {
@@ -459,7 +455,7 @@ void AcceleratedDrawingArea::deviceOrPageScaleFactorChanged()
 }
 #endif
 
-void AcceleratedDrawingArea::activityStateDidChange(ActivityState::Flags changed, bool, const Vector<CallbackID>&)
+void AcceleratedDrawingArea::activityStateDidChange(OptionSet<ActivityState::Flag> changed, ActivityStateChangeID, const Vector<CallbackID>&)
 {
     if (changed & ActivityState::IsVisible) {
         if (m_webPage.isVisible())

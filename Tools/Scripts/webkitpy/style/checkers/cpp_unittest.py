@@ -386,6 +386,7 @@ class FunctionDetectionTest(CppStyleTestBase):
         self.assertEqual(function_state.is_pure, function_information['is_pure'])
         self.assertEqual(function_state.is_virtual(), function_information['is_virtual'])
         self.assertEqual(function_state.is_declaration, function_information['is_declaration'])
+        self.assertEqual(function_state.export_macro(), function_information['export_macro'] if 'export_macro' in function_information else None)
         self.assert_positions_equal(function_state.function_name_start_position, function_information['function_name_start_position'])
         self.assert_positions_equal(function_state.parameter_start_position, function_information['parameter_start_position'])
         self.assert_positions_equal(function_state.parameter_end_position, function_information['parameter_end_position'])
@@ -623,6 +624,75 @@ class FunctionDetectionTest(CppStyleTestBase):
              'is_virtual': False,
              'is_pure': False,
              'is_declaration': True})
+
+    def test_webcore_export(self):
+        self.perform_function_detection(
+            ['void theTestFunctionName();'],
+            {'name': 'theTestFunctionName',
+             'modifiers_and_return_type': 'void',
+             'function_name_start_position': (0, 5),
+             'parameter_start_position': (0, 24),
+             'parameter_end_position': (0, 26),
+             'body_start_position': (0, 26),
+             'end_position': (0, 27),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
+             'is_pure': False,
+             'is_declaration': True,
+             'export_macro': None})
+
+        self.perform_function_detection(
+            ['WEBCORE_EXPORT void theTestFunctionName();'],
+            {'name': 'theTestFunctionName',
+             'modifiers_and_return_type': 'WEBCORE_EXPORT void',
+             'function_name_start_position': (0, 20),
+             'parameter_start_position': (0, 39),
+             'parameter_end_position': (0, 41),
+             'body_start_position': (0, 41),
+             'end_position': (0, 42),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
+             'is_pure': False,
+             'is_declaration': True,
+             'export_macro': 'WEBCORE_EXPORT'})
+
+        self.perform_function_detection(
+            ['void theTestFunctionName()',
+             '{',
+             '}'],
+            {'name': 'theTestFunctionName',
+             'modifiers_and_return_type': 'void',
+             'function_name_start_position': (0, 5),
+             'parameter_start_position': (0, 24),
+             'parameter_end_position': (0, 26),
+             'body_start_position': (1, 0),
+             'end_position': (2, 1),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
+             'is_pure': False,
+             'is_declaration': False,
+             'export_macro': None})
+
+        self.perform_function_detection(
+            ['WEBCORE_EXPORT void theTestFunctionName()',
+             '{',
+             '}'],
+            {'name': 'theTestFunctionName',
+             'modifiers_and_return_type': 'WEBCORE_EXPORT void',
+             'function_name_start_position': (0, 20),
+             'parameter_start_position': (0, 39),
+             'parameter_end_position': (0, 41),
+             'body_start_position': (1, 0),
+             'end_position': (2, 1),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
+             'is_pure': False,
+             'is_declaration': False,
+             'export_macro': 'WEBCORE_EXPORT'})
 
     def test_ignore_macros(self):
         self.perform_function_detection(['void aFunctionName(int); \\'], None)
@@ -1587,6 +1657,15 @@ class CppStyleTest(CppStyleTestBase):
             '  [security/temp_file] [5]')
         self.assert_lint('mkstemp(template);', '')
         self.assert_lint('mkostemp(template);', '')
+
+    def test_dispatch_set_target_queue(self):
+        self.assert_lint(
+            '''\
+            globalQueue = dispatch_queue_create("My Serial Queue", DISPATCH_QUEUE_SERIAL);
+            dispatch_set_target_queue(globalQueue, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0));''',
+            'Never use dispatch_set_target_queue.  Use dispatch_queue_create_with_target instead.'
+            '  [runtime/dispatch_set_target_queue] [5]')
+        self.assert_lint('globalQueue = dispatch_queue_create_with_target("My Serial Queue", DISPATCH_QUEUE_SERIAL, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0));', '')
 
     # Variable-length arrays are not permitted.
     def test_variable_length_array_detection(self):
@@ -2813,6 +2892,11 @@ class OrderOfIncludesTest(CppStyleTestBase):
         self.assert_language_rules_check('foo.h',
                                          '#include "bar.h"\n'
                                          '#include "array.lut.h"\n',
+                                         '')
+
+        self.assert_language_rules_check('foo.h',
+                                         '#include <gtest/gtest.h> // NOLINT\n'
+                                         '#include <gtest/gtest-spi.h>\n',
                                          '')
 
     def test_check_alphabetical_include_order_errors_reported_for_both_lines(self):

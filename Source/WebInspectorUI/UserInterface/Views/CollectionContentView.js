@@ -51,6 +51,22 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         return [];
     }
 
+    shown()
+    {
+        super.shown();
+
+        for (let contentView of this._contentViewMap.values())
+            contentView.shown();
+    }
+
+    hidden()
+    {
+        for (let contentView of this._contentViewMap.values())
+            contentView.hidden();
+
+        super.hidden();
+    }
+
     get selectionEnabled()
     {
         return this._selectionEnabled;
@@ -115,6 +131,10 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         this.addSubview(contentView);
         this.contentViewAdded(contentView);
 
+        if (!this.visible)
+            return;
+
+        contentView.visible = true;
         contentView.shown();
     }
 
@@ -135,7 +155,10 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         this._contentViewMap.delete(item);
         this.contentViewRemoved(contentView);
 
-        contentView.hidden();
+        if (this.visible) {
+            contentView.visible = false;
+            contentView.hidden();
+        }
 
         contentView.removeEventListener(null, null, this);
 
@@ -163,8 +186,7 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
 
     initialLayout()
     {
-        let items = this.representedObject.items;
-        if (!items.size || !this._contentViewConstructor) {
+        if (!this.representedObject.size || !this._contentViewConstructor) {
             this._showContentPlaceholder();
             return;
         }
@@ -178,7 +200,7 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         this.representedObject.addEventListener(WI.Collection.Event.ItemRemoved, this._handleItemRemoved, this);
 
         for (let item of this._contentViewMap.keys()) {
-            if (this.representedObject.items.has(item))
+            if (this.representedObject.has(item))
                 continue;
 
             this.removeContentViewForItem(item);
@@ -186,7 +208,7 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
                 this._selectItem(null);
         }
 
-        for (let item of this.representedObject.items) {
+        for (let item of this.representedObject) {
             if (!this._contentViewMap.has(item))
                 this.addContentViewForItem(item);
         }

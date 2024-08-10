@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,7 +33,7 @@
 #include <wtf/text/WTFString.h>
 
 #if PLATFORM(COCOA)
-#include <WebCore/MachSendRight.h>
+#include <wtf/MachSendRight.h>
 #endif
 
 namespace WebKit {
@@ -49,6 +49,7 @@ class PluginProcess : public ChildProcess
 
 public:
     static PluginProcess& singleton();
+    static constexpr ProcessType processType = ProcessType::Plugin;
 
     void removeWebProcessConnection(WebProcessConnection*);
 
@@ -60,7 +61,7 @@ public:
     void setModalWindowIsShowing(bool);
     void setFullscreenWindowIsShowing(bool);
 
-    const WebCore::MachSendRight& compositingRenderServerPort() const { return m_compositingRenderServerPort; }
+    const WTF::MachSendRight& compositingRenderServerPort() const { return m_compositingRenderServerPort; }
 
     bool launchProcess(const String& launchPath, const Vector<String>& arguments);
     bool launchApplicationAtURL(const String& urlString, const Vector<String>& arguments);
@@ -73,6 +74,10 @@ public:
 private:
     PluginProcess();
     ~PluginProcess();
+
+#if PLATFORM(MAC)
+    bool shouldOverrideQuarantine() final;
+#endif
 
     // ChildProcess
     void initializeProcess(const ChildProcessInitializationParameters&) override;
@@ -87,7 +92,6 @@ private:
 
     // IPC::Connection::Client
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
-    void didClose(IPC::Connection&) override;
 
     // Message handlers.
     void didReceivePluginProcessMessage(IPC::Connection&, IPC::Decoder&);
@@ -121,7 +125,7 @@ private:
 
 #if PLATFORM(COCOA)
     // The Mach port used for accelerated compositing.
-    WebCore::MachSendRight m_compositingRenderServerPort;
+    WTF::MachSendRight m_compositingRenderServerPort;
 
     String m_nsurlCacheDirectory;
 #endif

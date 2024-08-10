@@ -36,8 +36,11 @@
 
 #include "DeprecatedGlobalSettings.h"
 #include "Logging.h"
+#include "NetworkStorageSession.h"
+#include "ResourceError.h"
 #include "SocketStreamError.h"
 #include "SocketStreamHandleClient.h"
+#include "SoupNetworkSession.h"
 #include "URL.h"
 #include <gio/gio.h>
 #include <glib.h>
@@ -124,7 +127,7 @@ void SocketStreamHandleImpl::connected(GRefPtr<GIOStream>&& stream)
     m_stream = WTFMove(stream);
     m_outputStream = G_POLLABLE_OUTPUT_STREAM(g_io_stream_get_output_stream(m_stream.get()));
     m_inputStream = g_io_stream_get_input_stream(m_stream.get());
-    m_readBuffer = std::make_unique<char[]>(READ_BUFFER_SIZE);
+    m_readBuffer = makeUniqueArray<char>(READ_BUFFER_SIZE);
 
     RefPtr<SocketStreamHandleImpl> protectedThis(this);
     g_input_stream_read_async(m_inputStream.get(), m_readBuffer.get(), READ_BUFFER_SIZE, RunLoopSourcePriority::AsyncIONetwork, m_cancellable.get(),
@@ -212,14 +215,14 @@ void SocketStreamHandleImpl::writeReady()
     sendPendingData();
 }
 
-std::optional<size_t> SocketStreamHandleImpl::platformSendInternal(const char* data, size_t length)
+std::optional<size_t> SocketStreamHandleImpl::platformSendInternal(const uint8_t* data, size_t length)
 {
     LOG(Network, "SocketStreamHandle %p platformSend", this);
     if (!m_outputStream || !data)
         return 0;
 
     GUniqueOutPtr<GError> error;
-    gssize written = g_pollable_output_stream_write_nonblocking(m_outputStream.get(), data, length, m_cancellable.get(), &error.outPtr());
+    gssize written = g_pollable_output_stream_write_nonblocking(m_outputStream.get(), reinterpret_cast<const char*>(data), length, m_cancellable.get(), &error.outPtr());
     if (error) {
         if (g_error_matches(error.get(), G_IO_ERROR, G_IO_ERROR_WOULD_BLOCK))
             beginWaitingForSocketWritability();

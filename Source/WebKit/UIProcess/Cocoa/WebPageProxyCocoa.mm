@@ -30,16 +30,18 @@
 #import "DataDetectionResult.h"
 #import "LoadParameters.h"
 #import "PageClient.h"
+#import "SafeBrowsingResult.h"
+#import "SafeBrowsingSPI.h"
 #import "WebProcessProxy.h"
 #import <WebCore/DragItem.h>
 #import <WebCore/NotImplemented.h>
 #import <WebCore/SearchPopupMenuCocoa.h>
 #import <WebCore/ValidationBubble.h>
+#import <wtf/BlockPtr.h>
 #import <wtf/cf/TypeCastsCF.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 #if ENABLE(DATA_DETECTION)
 void WebPageProxy::setDataDetectionResult(const DataDetectionResult& dataDetectionResult)
@@ -66,6 +68,32 @@ void WebPageProxy::loadRecentSearches(const String& name, Vector<WebCore::Recent
     }
 
     searchItems = WebCore::loadRecentSearches(name);
+}
+
+void WebPageProxy::beginSafeBrowsingCheck(const URL& url, WebFramePolicyListenerProxy& listener)
+{
+#if HAVE(SAFE_BROWSING)
+    SSBLookupContext *context = [SSBLookupContext sharedLookupContext];
+    if (!context)
+        return listener.didReceiveSafeBrowsingResults({ });
+    [context lookUpURL:url completionHandler:BlockPtr<void(SSBLookupResult *, NSError *)>::fromCallable([listener = makeRef(listener)] (SSBLookupResult *result, NSError *error) mutable {
+        RunLoop::main().dispatch([listener = WTFMove(listener), result = retainPtr(result), error = retainPtr(error)] {
+            if (error) {
+                listener->didReceiveSafeBrowsingResults({ });
+                return;
+            }
+
+            NSArray<SSBServiceLookupResult *> *results = [result serviceLookupResults];
+            Vector<SafeBrowsingResult> resultsVector;
+            resultsVector.reserveInitialCapacity([results count]);
+            for (SSBServiceLookupResult *result in results)
+                resultsVector.uncheckedAppend({ result });
+            listener->didReceiveSafeBrowsingResults(WTFMove(resultsVector));
+        });
+    }).get()];
+#else
+    listener.didReceiveSafeBrowsingResults({ });
+#endif
 }
 
 #if ENABLE(CONTENT_FILTERING)
@@ -107,7 +135,7 @@ void WebPageProxy::createSandboxExtensionsIfNeeded(const Vector<String>& files, 
 
 void WebPageProxy::startDrag(const DragItem& dragItem, const ShareableBitmap::Handle& dragImageHandle)
 {
-    m_pageClient.startDrag(dragItem, dragImageHandle);
+    pageClient().startDrag(dragItem, dragImageHandle);
 }
 
 #if PLATFORM(IOS)
@@ -124,7 +152,7 @@ void WebPageProxy::setDragCaretRect(const IntRect& dragCaretRect)
 
     auto previousRect = m_currentDragCaretRect;
     m_currentDragCaretRect = dragCaretRect;
-    m_pageClient.didChangeDataInteractionCaretRect(previousRect, dragCaretRect);
+    pageClient().didChangeDataInteractionCaretRect(previousRect, dragCaretRect);
 }
 
 #endif // PLATFORM(IOS)

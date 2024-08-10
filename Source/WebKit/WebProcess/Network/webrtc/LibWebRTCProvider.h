@@ -27,6 +27,8 @@
 
 #if PLATFORM(COCOA)
 #include <WebCore/LibWebRTCProviderCocoa.h>
+#elif PLATFORM(GTK) || PLATFORM(WPE)
+#include <WebCore/LibWebRTCProviderGlib.h>
 #else
 #include <WebCore/LibWebRTCProvider.h>
 #endif
@@ -37,6 +39,8 @@ namespace WebKit {
 
 #if PLATFORM(COCOA)
 using LibWebRTCProviderBase = WebCore::LibWebRTCProviderCocoa;
+#elif PLATFORM(GTK) || PLATFORM(WPE)
+using LibWebRTCProviderBase = WebCore::LibWebRTCProviderGlib;
 #else
 using LibWebRTCProviderBase = WebCore::LibWebRTCProvider;
 #endif
@@ -47,6 +51,11 @@ public:
 
 private:
     rtc::scoped_refptr<webrtc::PeerConnectionInterface> createPeerConnection(webrtc::PeerConnectionObserver&, webrtc::PeerConnectionInterface::RTCConfiguration&&) final;
+
+    void unregisterMDNSNames(uint64_t documentIdentifier) final;
+    void registerMDNSName(PAL::SessionID, uint64_t documentIdentifier, const String& ipAddress, CompletionHandler<void(MDNSNameOrError&&)>&&) final;
+    void resolveMDNSName(PAL::SessionID, const String& name, CompletionHandler<void(IPAddressOrError&&)>&&) final;
+    void disableNonLocalhostConnections() final;
 };
 #else
 using LibWebRTCProvider = WebCore::LibWebRTCProvider;

@@ -24,7 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/DOMException.h>
 #include <WebCore/Document.h>
-#include <WebCore/JSMainThreadExecState.h>
+#include <WebCore/JSExecState.h>
 #include "WebKitDOMCSSRulePrivate.h"
 #include "WebKitDOMCSSStyleSheetPrivate.h"
 #include "WebKitDOMPrivate.h"
@@ -37,6 +37,8 @@
 typedef struct _WebKitDOMCSSRulePrivate {
     RefPtr<WebCore::CSSRule> coreObject;
 } WebKitDOMCSSRulePrivate;
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
 
 namespace WebKit {
 
@@ -240,3 +242,4 @@ WebKitDOMCSSRule* webkit_dom_css_rule_get_parent_rule(WebKitDOMCSSRule* self)
     return WebKit::kit(gobjectResult.get());
 }
 
+G_GNUC_END_IGNORE_DEPRECATIONS;

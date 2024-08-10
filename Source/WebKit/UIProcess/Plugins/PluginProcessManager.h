@@ -57,12 +57,16 @@ public:
 
     uint64_t pluginProcessToken(const PluginModuleInfo&, PluginProcessType, PluginProcessSandboxPolicy);
 
-    void getPluginProcessConnection(uint64_t pluginProcessToken, Ref<Messages::WebProcessProxy::GetPluginProcessConnection::DelayedReply>&&);
+    void getPluginProcessConnection(uint64_t pluginProcessToken, Messages::WebProcessProxy::GetPluginProcessConnection::DelayedReply&&);
     void removePluginProcessProxy(PluginProcessProxy*);
 
     void fetchWebsiteData(const PluginModuleInfo&, OptionSet<WebsiteDataFetchOption>, WTF::Function<void (Vector<String>)>&& completionHandler);
     void deleteWebsiteData(const PluginModuleInfo&, WallTime modifiedSince, WTF::Function<void ()>&& completionHandler);
     void deleteWebsiteDataForHostNames(const PluginModuleInfo&, const Vector<String>& hostNames, WTF::Function<void ()>&& completionHandler);
+
+#if OS(LINUX)
+    void sendMemoryPressureEvent(bool isCritical);
+#endif
 
 #if PLATFORM(COCOA)
     inline ProcessSuppressionDisabledToken processSuppressionDisabledToken();
@@ -71,6 +75,11 @@ public:
 #endif
 
     const Vector<RefPtr<PluginProcessProxy>>& pluginProcesses() const { return m_pluginProcesses; }
+
+#if PLATFORM(MAC)
+    void setExperimentalPlugInSandboxProfilesEnabled(bool);
+    bool experimentalPlugInSandboxProfilesEnabled() const { return m_experimentalPlugInSandboxProfilesEnabled; }
+#endif
 
 private:
     PluginProcessManager();
@@ -85,6 +94,9 @@ private:
 
 #if PLATFORM(COCOA)
     ProcessSuppressionDisabledCounter m_processSuppressionDisabledForPageCounter;
+#endif
+#if PLATFORM(MAC)
+    bool m_experimentalPlugInSandboxProfilesEnabled { false };
 #endif
 };
 

@@ -79,7 +79,7 @@ template<> JSValue JSTestGenerateIsReachableConstructor::prototypeForStructure(J
 template<> void JSTestGenerateIsReachableConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
     putDirect(vm, vm.propertyNames->prototype, JSTestGenerateIsReachable::prototype(vm, globalObject), JSC::PropertyAttribute::DontDelete | JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
-    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("TestGenerateIsReachable"))), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String("TestGenerateIsReachable"_s)), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
 
@@ -143,14 +143,14 @@ void JSTestGenerateIsReachable::destroy(JSC::JSCell* cell)
 
 template<> inline JSTestGenerateIsReachable* IDLAttribute<JSTestGenerateIsReachable>::cast(ExecState& state, EncodedJSValue thisValue)
 {
-    return jsDynamicDowncast<JSTestGenerateIsReachable*>(state.vm(), JSValue::decode(thisValue));
+    return jsDynamicCast<JSTestGenerateIsReachable*>(state.vm(), JSValue::decode(thisValue));
 }
 
 EncodedJSValue jsTestGenerateIsReachableConstructor(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
     VM& vm = state->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
-    auto* prototype = jsDynamicDowncast<JSTestGenerateIsReachablePrototype*>(vm, JSValue::decode(thisValue));
+    auto* prototype = jsDynamicCast<JSTestGenerateIsReachablePrototype*>(vm, JSValue::decode(thisValue));
     if (UNLIKELY(!prototype))
         return throwVMTypeError(state, throwScope);
     return JSValue::encode(JSTestGenerateIsReachable::getConstructor(state->vm(), prototype->globalObject()));
@@ -160,7 +160,7 @@ bool setJSTestGenerateIsReachableConstructor(ExecState* state, EncodedJSValue th
 {
     VM& vm = state->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
-    auto* prototype = jsDynamicDowncast<JSTestGenerateIsReachablePrototype*>(vm, JSValue::decode(thisValue));
+    auto* prototype = jsDynamicCast<JSTestGenerateIsReachablePrototype*>(vm, JSValue::decode(thisValue));
     if (UNLIKELY(!prototype)) {
         throwVMTypeError(state, throwScope);
         return false;
@@ -237,7 +237,7 @@ JSC::JSValue toJS(JSC::ExecState* state, JSDOMGlobalObject* globalObject, TestGe
 
 TestGenerateIsReachable* JSTestGenerateIsReachable::toWrapped(JSC::VM& vm, JSC::JSValue value)
 {
-    if (auto* wrapper = jsDynamicDowncast<JSTestGenerateIsReachable*>(vm, value))
+    if (auto* wrapper = jsDynamicCast<JSTestGenerateIsReachable*>(vm, value))
         return &wrapper->wrapped();
     return nullptr;
 }

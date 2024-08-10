@@ -369,7 +369,7 @@ private:
     DocumentLoader* m_dataSource;
     
     HashMap<RefPtr<Element>, RetainPtr<NSDictionary>> m_attributesForElements;
-    HashMap<RetainPtr<NSTextTable>, RefPtr<Element>> m_textTableFooters;
+    HashMap<RetainPtr<CFTypeRef>, RefPtr<Element>> m_textTableFooters;
     HashMap<RefPtr<Element>, RetainPtr<NSDictionary>> m_aggregatedAttributesForElements;
 
     NSMutableAttributedString *_attrStr;
@@ -1031,7 +1031,7 @@ static PlatformFont *_font(Element& element)
     auto* renderer = element.renderer();
     if (!renderer)
         return nil;
-    return (PlatformFont *)renderer->style().fontCascade().primaryFont().getCTFont();
+    return (__bridge PlatformFont *)renderer->style().fontCascade().primaryFont().getCTFont();
 }
 
 #define UIFloatIsZero(number) (fabs(number - 0) < FLT_EPSILON)
@@ -1863,7 +1863,7 @@ BOOL HTMLConverter::_processElement(Element& element, NSInteger depth)
             _addTableCellForElement(nil);
         _addTableForElement(tableElement);
     } else if (displayValue == "table-footer-group" && [_textTables count] > 0) {
-        m_textTableFooters.add([_textTables lastObject], &element);
+        m_textTableFooters.add((__bridge CFTypeRef)[_textTables lastObject], &element);
         retval = NO;
     } else if (displayValue == "table-row" && [_textTables count] > 0) {
         PlatformColor *color = _colorForElement(element, CSSPropertyBackgroundColor);
@@ -2095,12 +2095,12 @@ void HTMLConverter::_exitElement(Element& element, NSInteger depth, NSUInteger s
     range = NSMakeRange(startIndex, [_attrStr length] - startIndex);
     if (displayValue == "table" && [_textTables count] > 0) {
         NSTextTable *key = [_textTables lastObject];
-        Element* footer = m_textTableFooters.get(key);
+        Element* footer = m_textTableFooters.get((__bridge CFTypeRef)key);
         while ([_textTables count] < [_textBlocks count] + 1)
             [_textBlocks removeLastObject];
         if (footer) {
             _traverseFooterNode(*footer, depth + 1);
-            m_textTableFooters.remove(key);
+            m_textTableFooters.remove((__bridge CFTypeRef)key);
         }
         [_textTables removeLastObject];
         [_textTableSpacings removeLastObject];
@@ -2447,7 +2447,7 @@ static RetainPtr<NSFileWrapper> fileWrapperForElement(HTMLImageElement& element)
     if (is<RenderImage>(renderer)) {
         auto* image = downcast<RenderImage>(*renderer).cachedImage();
         if (image && !image->errorOccurred()) {
-            RetainPtr<NSFileWrapper> wrapper = adoptNS([[NSFileWrapper alloc] initRegularFileWithContents:(NSData *)image->imageForRenderer(renderer)->tiffRepresentation()]);
+            RetainPtr<NSFileWrapper> wrapper = adoptNS([[NSFileWrapper alloc] initRegularFileWithContents:(__bridge NSData *)image->imageForRenderer(renderer)->tiffRepresentation()]);
             [wrapper setPreferredFilename:@"image.tiff"];
             return wrapper;
         }
@@ -2505,25 +2505,29 @@ NSAttributedString *editingAttributedStringFromRange(Range& range, IncludeImages
         if (!renderer)
             continue;
         const RenderStyle& style = renderer->style();
-        if (style.textDecorationsInEffect() & TextDecorationUnderline)
+        if (style.textDecorationsInEffect() & TextDecoration::Underline)
             [attrs.get() setObject:[NSNumber numberWithInteger:NSUnderlineStyleSingle] forKey:NSUnderlineStyleAttributeName];
-        if (style.textDecorationsInEffect() & TextDecorationLineThrough)
+        if (style.textDecorationsInEffect() & TextDecoration::LineThrough)
             [attrs.get() setObject:[NSNumber numberWithInteger:NSUnderlineStyleSingle] forKey:NSStrikethroughStyleAttributeName];
         if (auto font = style.fontCascade().primaryFont().getCTFont())
             [attrs.get() setObject:toNSFont(font) forKey:NSFontAttributeName];
         else
             [attrs.get() setObject:[fontManager convertFont:WebDefaultFont() toSize:style.fontCascade().primaryFont().platformData().size()] forKey:NSFontAttributeName];
-        if (style.visitedDependentColor(CSSPropertyColor).alpha())
-            [attrs.get() setObject:nsColor(style.visitedDependentColor(CSSPropertyColor)) forKey:NSForegroundColorAttributeName];
+
+        Color foregroundColor = style.visitedDependentColorWithColorFilter(CSSPropertyColor);
+        if (foregroundColor.isVisible())
+            [attrs.get() setObject:nsColor(foregroundColor) forKey:NSForegroundColorAttributeName];
         else
             [attrs.get() removeObjectForKey:NSForegroundColorAttributeName];
-        if (style.visitedDependentColor(CSSPropertyBackgroundColor).alpha())
-            [attrs.get() setObject:nsColor(style.visitedDependentColor(CSSPropertyBackgroundColor)) forKey:NSBackgroundColorAttributeName];
+
+        Color backgroundColor = style.visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor);
+        if (backgroundColor.isVisible())
+            [attrs.get() setObject:nsColor(backgroundColor) forKey:NSBackgroundColorAttributeName];
         else
             [attrs.get() removeObjectForKey:NSBackgroundColorAttributeName];
 
         RetainPtr<NSString> text;
-        if (style.nbspMode() == NBNORMAL)
+        if (style.nbspMode() == NBSPMode::Normal)
             text = it.text().createNSStringWithoutCopying();
         else
             text = it.text().toString().replace(noBreakSpace, ' ');

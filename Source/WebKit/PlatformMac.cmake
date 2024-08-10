@@ -1,4 +1,4 @@
-add_definitions("-ObjC++ -std=c++14")
+add_definitions("-ObjC++ -std=c++17")
 find_library(APPLICATIONSERVICES_LIBRARY ApplicationServices)
 find_library(CARBON_LIBRARY Carbon)
 find_library(QUARTZ_LIBRARY Quartz)
@@ -19,6 +19,8 @@ if (NOT AVFAUDIO_LIBRARY-NOTFOUND)
 endif ()
 
 list(APPEND WebKit_SOURCES
+    NetworkProcess/Cookies/mac/WebCookieManagerMac.mm
+
     NetworkProcess/CustomProtocols/LegacyCustomProtocolManager.cpp
 
     NetworkProcess/CustomProtocols/Cocoa/LegacyCustomProtocolManagerCocoa.mm
@@ -319,8 +321,6 @@ list(APPEND WebKit_SOURCES
     UIProcess/mac/WebProcessProxyMac.mm
     UIProcess/mac/WindowServerConnection.mm
 
-    WebProcess/Cookies/mac/WebCookieManagerMac.mm
-
     WebProcess/InjectedBundle/API/Cocoa/WKWebProcessBundleParameters.mm
     WebProcess/InjectedBundle/API/Cocoa/WKWebProcessPlugInFrame.mm
     WebProcess/InjectedBundle/API/Cocoa/WKWebProcessPlugInHitTestResult.mm
@@ -389,7 +389,6 @@ list(APPEND WebKit_SOURCES
 )
 
 list(APPEND WebKit_INCLUDE_DIRECTORIES
-    "${PAL_DIR}"
     "${WEBKIT_DIR}/NetworkProcess/cocoa"
     "${WEBKIT_DIR}/NetworkProcess/mac"
     "${WEBKIT_DIR}/PluginProcess/mac"

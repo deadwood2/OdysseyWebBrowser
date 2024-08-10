@@ -79,16 +79,6 @@ WI.TabContentView = class TabContentView extends WI.ContentView
         return null;
     }
 
-    get parentTabBrowser()
-    {
-        return this._parentTabBrowser;
-    }
-
-    set parentTabBrowser(tabBrowser)
-    {
-        this._parentTabBrowser = tabBrowser || null;
-    }
-
     get identifier()
     {
         return this._identifier;
@@ -97,6 +87,12 @@ WI.TabContentView = class TabContentView extends WI.ContentView
     get tabBarItem()
     {
         return this._tabBarItem;
+    }
+
+    get managesNavigationSidebarPanel()
+    {
+        // Implemented by subclasses.
+        return false;
     }
 
     get managesDetailsSidebarPanels()

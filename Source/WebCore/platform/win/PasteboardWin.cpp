@@ -315,12 +315,12 @@ struct PasteboardFileCounter final : PasteboardFileReader {
     unsigned count { 0 };
 };
 
-bool Pasteboard::containsFiles()
+Pasteboard::FileContentState Pasteboard::fileContentState()
 {
     // FIXME: This implementation can be slightly more efficient by avoiding calls to DragQueryFileW.
     PasteboardFileCounter reader;
     read(reader);
-    return reader.count;
+    return reader.count ? FileContentState::MayContainFilePaths : FileContentState::NoFileOrImageData;
 }
 
 void Pasteboard::read(PasteboardFileReader& reader)
@@ -369,7 +369,7 @@ static bool writeURL(WCDataObject *data, const URL& url, String title, bool with
     if (title.isEmpty()) {
         title = url.lastPathComponent();
         if (title.isEmpty())
-            title = url.host();
+            title = url.host().toString();
     }
 
     STGMEDIUM medium = {0};
@@ -707,7 +707,7 @@ void Pasteboard::write(const PasteboardURL& pasteboardURL)
     if (title.isEmpty()) {
         title = pasteboardURL.url.lastPathComponent();
         if (title.isEmpty())
-            title = pasteboardURL.url.host();
+            title = pasteboardURL.url.host().toString();
     }
 
     // write to clipboard in format com.apple.safari.bookmarkdata to be able to paste into the bookmarks view with appropriate title
@@ -1073,7 +1073,7 @@ void Pasteboard::write(const PasteboardWebContent&)
 {
 }
 
-void Pasteboard::read(PasteboardWebContentReader&)
+void Pasteboard::read(PasteboardWebContentReader&, WebContentReadingPolicy)
 {
 }
 
