@@ -385,6 +385,7 @@ void Pasteboard::writeImage(Element& element, const URL&, const String& title)
 	m_dataObject->setImage(image->nativeImageForCurrentFrame().get());
 }
 
+#if 0
 void Pasteboard::writePasteboard(const Pasteboard& sourcePasteboard)
 {
 	D(kprintf("Pasteboard::writePasteboard\n"));
@@ -409,6 +410,7 @@ void Pasteboard::writePasteboard(const Pasteboard& sourcePasteboard)
         PasteboardHelper::defaultPasteboardHelper()->writeClipboardContents(m_gtkClipboard);
 	*/
 }
+#endif
 
 void Pasteboard::clear()
 {
@@ -647,6 +649,7 @@ String Pasteboard::readString(const String& type)
     return String();
 }
 
+#if 0
 Vector<String> Pasteboard::readFilenames()
 {
 	D(kprintf("Pasteboard::readFilenames()\n"));
@@ -655,6 +658,7 @@ Vector<String> Pasteboard::readFilenames()
 
     return m_dataObject->filenames();
 }
+#endif
 
 void Pasteboard::writeMarkup(const String& markup)
 {
