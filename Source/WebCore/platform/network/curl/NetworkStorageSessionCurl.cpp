@@ -51,7 +51,9 @@ static String defaultCookieJarPath()
     if (cookieJarPath)
         return cookieJarPath;
 
-    return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), defaultFileName);
+asm("int3");
+
+    return FileSystem::pathByAppendingComponent("" /*FileSystem::localUserSpecificStorageDirectory()*/, defaultFileName);
 }
 
 NetworkStorageSession::NetworkStorageSession(PAL::SessionID sessionID, NetworkingContext* context)

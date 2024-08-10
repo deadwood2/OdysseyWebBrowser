@@ -167,6 +167,13 @@ void ResourceHandle::didReceiveResponse(ResourceResponse&& response, CompletionH
     client()->didReceiveResponseAsync(this, WTFMove(response), WTFMove(completionHandler));
 }
 
+#if PLATFORM(MUI)
+void ResourceHandle::setClientInternal(ResourceHandleClient* client)
+{
+    d->m_client = client;
+}
+#endif
+
 #if !USE(SOUP) && !USE(CURL)
 void ResourceHandle::platformContinueSynchronousDidReceiveResponse()
 {

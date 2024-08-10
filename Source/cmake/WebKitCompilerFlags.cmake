@@ -111,6 +111,10 @@ if (COMPILER_IS_GCC_OR_CLANG)
             message(FATAL_ERROR "Compiler with C++14 support is required")
         endif ()
 
+        if ("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "i386")
+            WEBKIT_APPEND_GLOBAL_COMPILER_FLAGS(-march=i686)
+        endif ()
+
         if (WIN32)
             WEBKIT_APPEND_GLOBAL_COMPILER_FLAGS(-mno-ms-bitfields)
             WEBKIT_PREPEND_GLOBAL_COMPILER_FLAGS(-Wno-unknown-pragmas)
@@ -125,8 +129,7 @@ if (COMPILER_IS_GCC_OR_CLANG)
                                          -Wformat-security
                                          -Wmissing-format-attribute
                                          -Wpointer-arith
-                                         -Wundef
-                                         -Wwrite-strings)
+                                         -Wundef)
 
     # Warnings to be disabled
     # FIXME: We should probably not be disabling -Wno-maybe-uninitialized?
@@ -138,6 +141,12 @@ if (COMPILER_IS_GCC_OR_CLANG)
     # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=80947
     if (${CMAKE_CXX_COMPILER_VERSION} VERSION_LESS "8.0" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         WEBKIT_PREPEND_GLOBAL_CXX_FLAGS(-Wno-attributes)
+    endif ()
+
+    if (${PORT} STREQUAL "MUI")
+    WEBKIT_PREPEND_GLOBAL_COMPILER_FLAGS(-Wno-unused-parameter
+                                         -Wno-write-strings
+                                         -Werror)
     endif ()
 endif ()
 

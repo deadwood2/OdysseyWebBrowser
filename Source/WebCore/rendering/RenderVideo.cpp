@@ -65,8 +65,12 @@ RenderVideo::~RenderVideo()
 void RenderVideo::willBeDestroyed()
 {
     visibleInViewportStateChanged();
-    if (auto player = videoElement().player())
+    if (auto player = videoElement().player()) {
         player->setVisible(false);
+#if PLATFORM(MUI)
+        player->setFrameView(0);
+#endif
+    }
 
     RenderMedia::willBeDestroyed();
 }
@@ -251,6 +255,9 @@ void RenderVideo::updatePlayer()
     contentChanged(VideoChanged);
     
     IntRect videoBounds = videoBox(); 
+#if PLATFORM(MUI)
+    mediaPlayer->setFrameView(&view().frameView());
+#endif
     mediaPlayer->setSize(IntSize(videoBounds.width(), videoBounds.height()));
     mediaPlayer->setVisible(!videoElement().elementIsHidden());
     mediaPlayer->setShouldMaintainAspectRatio(style().objectFit() != ObjectFit::Fill);

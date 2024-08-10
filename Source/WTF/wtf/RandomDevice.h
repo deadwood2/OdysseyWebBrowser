@@ -47,7 +47,7 @@ public:
     void cryptographicallyRandomValues(unsigned char* buffer, size_t length);
 
 private:
-#if OS(DARWIN) || OS(FUCHSIA) || OS(WINDOWS)
+#if OS(DARWIN) || OS(FUCHSIA) || OS(WINDOWS) || OS(AROS)
 #elif OS(UNIX)
     int m_fd { -1 };
 #else

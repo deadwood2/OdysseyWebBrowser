@@ -50,6 +50,8 @@ namespace WebCore {
 class SelectionData;
 }
 typedef WebCore::SelectionData* DragDataRef;
+#elif PLATFORM(MUI)
+#include "BALBase.h"
 #else
 typedef void* DragDataRef;
 #endif

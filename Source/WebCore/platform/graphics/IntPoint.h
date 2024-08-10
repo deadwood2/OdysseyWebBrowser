@@ -56,6 +56,8 @@ typedef D2D_POINT_2U D2D1_POINT_2U;
 
 struct D2D_POINT_2F;
 typedef D2D_POINT_2F D2D1_POINT_2F;
+#elif PLATFORM(MUI)
+#include "BALBase.h"
 #endif
 
 namespace WTF {
@@ -148,6 +150,9 @@ public:
     explicit IntPoint(const D2D1_POINT_2F&); // Don't do this implicitly, since it's lossy.
     operator D2D1_POINT_2F() const;
     operator D2D1_POINT_2U() const;
+#elif PLATFORM(MUI)
+    IntPoint(const BalPoint&);
+    operator BalPoint() const;
 #endif
 
 private:

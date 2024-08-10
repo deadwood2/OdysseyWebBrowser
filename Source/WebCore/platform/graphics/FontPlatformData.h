@@ -40,7 +40,6 @@
 
 #if USE(FREETYPE)
 #include "FcUniquePtr.h"
-#include "HarfBuzzFace.h"
 #include <memory>
 #endif
 
@@ -162,7 +161,6 @@ public:
 #endif
 
 #if USE(FREETYPE)
-    HarfBuzzFace& harfBuzzFace() const;
     bool hasCompatibleCharmap() const;
 #endif
 
@@ -241,7 +239,6 @@ private:
 
 #if USE(FREETYPE)
     RefPtr<FcPattern> m_pattern;
-    mutable std::unique_ptr<HarfBuzzFace> m_harfBuzzFace;
 #endif
 
     // The values below are common to all ports

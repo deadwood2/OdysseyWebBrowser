@@ -34,6 +34,15 @@
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
+#if PLATFORM(MUI)
+typedef enum
+  {
+    NEWPAGE_POLICY_IGNORE,
+    NEWPAGE_POLICY_WINDOW,
+    NEWPAGE_POLICY_TAB
+  } NewPagePolicy;
+#endif
+
 namespace WebCore {
 
 class FloatRect;
@@ -54,6 +63,11 @@ struct WindowFeatures {
     bool fullscreen { false };
     bool dialog { false };
     bool noopener { false };
+
+#if PLATFORM(MUI)
+    bool donotactivate { false };
+    NewPagePolicy newPagePolicy { NEWPAGE_POLICY_IGNORE };
+#endif
 
     Vector<String> additionalFeatures;
 };

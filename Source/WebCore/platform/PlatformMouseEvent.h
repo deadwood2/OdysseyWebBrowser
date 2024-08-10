@@ -35,6 +35,10 @@ typedef struct _GdkEventButton GdkEventButton;
 typedef struct _GdkEventMotion GdkEventMotion;
 #endif
 
+#if PLATFORM(MUI)
+#include "BALBase.h"
+#endif
+
 namespace WebCore {
 
 const double ForceAtClick = 1;
@@ -96,6 +100,10 @@ const double ForceAtForceClick = 2;
         explicit PlatformMouseEvent(GdkEventButton*);
         explicit PlatformMouseEvent(GdkEventMotion*);
         void setClickCount(int count) { m_clickCount = count; }
+#endif
+
+#if PLATFORM(MUI)
+        PlatformMouseEvent(BalEventButton*);
 #endif
 
 #if PLATFORM(MAC)

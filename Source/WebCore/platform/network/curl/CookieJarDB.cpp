@@ -31,6 +31,8 @@
 #include "SQLiteFileSystem.h"
 #include "URL.h"
 
+#include <sys/stat.h>
+
 namespace WebCore {
 
 #define CORRUPT_MARKER_SUFFIX "-corrupted"

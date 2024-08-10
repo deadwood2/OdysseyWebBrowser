@@ -64,6 +64,11 @@
 #define PlatformMediaEngineClassName MediaPlayerPrivateMediaFoundation
 #endif
 
+#if PLATFORM(MUI)
+#include "MediaPlayerPrivateMorphOS.h"
+#define PlatformMediaEngineClassName MediaPlayerPrivate
+#endif
+
 #if PLATFORM(COCOA)
 
 #if USE(AVFOUNDATION)
@@ -349,6 +354,9 @@ MediaPlayer::MediaPlayer(MediaPlayerClient& client)
     : m_client(&client)
     , m_reloadTimer(*this, &MediaPlayer::reloadTimerFired)
     , m_private(std::make_unique<NullMediaPlayerPrivate>(this))
+#if PLATFORM(MUI)
+    , m_frameView(0)
+#endif
 {
 }
 
@@ -1586,6 +1594,13 @@ String convertEnumerationToString(MediaPlayerEnums::Preload enumerationValue)
     ASSERT(static_cast<size_t>(enumerationValue) < WTF_ARRAY_LENGTH(values));
     return values[static_cast<size_t>(enumerationValue)];
 }
+
+#if PLATFORM(MUI)
+void MediaPlayer::setOutputPixelFormat(int pixfmt)
+{
+    m_private->setOutputPixelFormat(pixfmt);
+}
+#endif
 
 }
 

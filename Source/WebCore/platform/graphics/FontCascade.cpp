@@ -279,9 +279,9 @@ void FontCascade::update(RefPtr<FontSelector>&& fontSelector) const
 
 float FontCascade::glyphBufferForTextRun(CodePath codePathToUse, const TextRun& run, unsigned from, unsigned to, GlyphBuffer& glyphBuffer) const
 {
-    if (codePathToUse != Complex)
+//    if (codePathToUse != Complex)
         return getGlyphsAndAdvancesForSimpleText(run, from, to, glyphBuffer);
-    return getGlyphsAndAdvancesForComplexText(run, from, to, glyphBuffer);
+//    return getGlyphsAndAdvancesForComplexText(run, from, to, glyphBuffer);
 }
 
 float FontCascade::drawText(GraphicsContext& context, const TextRun& run, const FloatPoint& point, unsigned from, std::optional<unsigned> to, CustomFontNotReadyAction customFontNotReadyAction) const
@@ -1271,11 +1271,15 @@ GlyphToPathTranslator::GlyphUnderlineType computeUnderlineType(const TextRun& te
     case UBLOCK_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B:
     case UBLOCK_CJK_COMPATIBILITY_IDEOGRAPHS_SUPPLEMENT:
     case UBLOCK_CJK_STROKES:
+#if !OS(AROS)
     case UBLOCK_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_C:
     case UBLOCK_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_D:
+#endif
     case UBLOCK_IDEOGRAPHIC_DESCRIPTION_CHARACTERS:
     case UBLOCK_LINEAR_B_IDEOGRAMS:
+#if !OS(AROS)
     case UBLOCK_ENCLOSED_IDEOGRAPHIC_SUPPLEMENT:
+#endif
     case UBLOCK_HIRAGANA:
     case UBLOCK_KATAKANA:
     case UBLOCK_BOPOMOFO:
@@ -1283,8 +1287,10 @@ GlyphToPathTranslator::GlyphUnderlineType computeUnderlineType(const TextRun& te
     case UBLOCK_HANGUL_JAMO:
     case UBLOCK_HANGUL_COMPATIBILITY_JAMO:
     case UBLOCK_HANGUL_SYLLABLES:
+#if !OS(AROS)
     case UBLOCK_HANGUL_JAMO_EXTENDED_A:
     case UBLOCK_HANGUL_JAMO_EXTENDED_B:
+#endif
         return GlyphToPathTranslator::GlyphUnderlineType::DrawOverGlyph;
     default:
         return GlyphToPathTranslator::GlyphUnderlineType::SkipDescenders;
@@ -1650,7 +1656,8 @@ const Font* FontCascade::fontForCombiningCharacterSequence(const UChar* characte
 void FontCascade::drawEmphasisMarksForComplexText(GraphicsContext& context, const TextRun& run, const AtomicString& mark, const FloatPoint& point, unsigned from, unsigned to) const
 {
     GlyphBuffer glyphBuffer;
-    float initialAdvance = getGlyphsAndAdvancesForComplexText(run, from, to, glyphBuffer, ForTextEmphasis);
+//    float initialAdvance = getGlyphsAndAdvancesForComplexText(run, from, to, glyphBuffer, ForTextEmphasis);
+    float initialAdvance = 0.0f;
 
     if (glyphBuffer.isEmpty())
         return;

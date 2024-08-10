@@ -438,13 +438,13 @@ void ComplexTextController::collectComplexTextRuns()
             unsigned itemLength = index - indexOfFontTransition;
             if (itemLength) {
                 unsigned itemStart = indexOfFontTransition;
-                if (synthesizedFont) {
-                    if (isSmallCaps)
-                        collectComplexTextRunsForCharacters(m_smallCapsBuffer.data() + itemStart, itemLength, itemStart, smallSynthesizedFont);
-                    else
-                        collectComplexTextRunsForCharacters(cp + itemStart, itemLength, itemStart, synthesizedFont);
-                } else
-                    collectComplexTextRunsForCharacters(cp + itemStart, itemLength, itemStart, font);
+//                if (synthesizedFont) {
+//                    if (isSmallCaps)
+//                        collectComplexTextRunsForCharacters(m_smallCapsBuffer.data() + itemStart, itemLength, itemStart, smallSynthesizedFont);
+//                    else
+//                        collectComplexTextRunsForCharacters(cp + itemStart, itemLength, itemStart, synthesizedFont);
+//                } else
+//                    collectComplexTextRunsForCharacters(cp + itemStart, itemLength, itemStart, font);
                 if (nextFont != font) {
                     synthesizedFont = nullptr;
                     smallSynthesizedFont = nullptr;
@@ -459,13 +459,13 @@ void ComplexTextController::collectComplexTextRuns()
     unsigned itemLength = m_end - indexOfFontTransition;
     if (itemLength) {
         unsigned itemStart = indexOfFontTransition;
-        if (synthesizedFont) {
-            if (nextIsSmallCaps)
-                collectComplexTextRunsForCharacters(m_smallCapsBuffer.data() + itemStart, itemLength, itemStart, smallSynthesizedFont);
-            else
-                collectComplexTextRunsForCharacters(cp + itemStart, itemLength, itemStart, synthesizedFont);
-        } else
-            collectComplexTextRunsForCharacters(cp + itemStart, itemLength, itemStart, nextFont);
+//        if (synthesizedFont) {
+//            if (nextIsSmallCaps)
+//                collectComplexTextRunsForCharacters(m_smallCapsBuffer.data() + itemStart, itemLength, itemStart, smallSynthesizedFont);
+//            else
+//                collectComplexTextRunsForCharacters(cp + itemStart, itemLength, itemStart, synthesizedFont);
+//        } else
+//            collectComplexTextRunsForCharacters(cp + itemStart, itemLength, itemStart, nextFont);
     }
 
     if (!m_run.ltr())

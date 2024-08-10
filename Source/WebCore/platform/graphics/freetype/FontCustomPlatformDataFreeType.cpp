@@ -46,9 +46,12 @@ FontCustomPlatformData::FontCustomPlatformData(FT_Face freeTypeFace, SharedBuffe
 
     // Cairo doesn't do FreeType reference counting, so we need to ensure that when
     // this cairo_font_face_t is destroyed, it cleans up the FreeType face as well.
+asm("int3");
+#if 0
     static cairo_user_data_key_t freeTypeFaceKey;
     cairo_font_face_set_user_data(m_fontFace, &freeTypeFaceKey, freeTypeFace,
         reinterpret_cast<cairo_destroy_func_t>(reinterpret_cast<GCallback>(FT_Done_Face)));
+#endif
 }
 
 FontCustomPlatformData::~FontCustomPlatformData()

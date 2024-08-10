@@ -78,6 +78,10 @@ struct Cookie;
 struct GraphicsDeviceAdapter;
 struct MediaPlayerFactory;
 
+#if PLATFORM(MUI)
+class FrameView;
+#endif
+
 struct MediaEngineSupportParameters {
     ContentType type;
     URL url;
@@ -287,6 +291,11 @@ public:
     bool hasVideo() const;
     bool hasAudio() const;
 
+#if PLATFORM(MUI)
+    void setFrameView(FrameView* frameView) { m_frameView = frameView; }
+    FrameView* frameView() { return m_frameView; }
+#endif
+
     bool inMediaDocument() const;
 
     IntSize size() const { return m_size; }
@@ -460,6 +469,10 @@ public:
     GraphicsDeviceAdapter* graphicsDeviceAdapter() const;
 #endif
 
+#if PLATFORM(MUI)
+    void setOutputPixelFormat(int pixfmt);
+#endif
+
     bool hasSingleSecurityOrigin() const;
     bool didPassCORSAccessCheck() const;
     bool wouldTaintOrigin(const SecurityOrigin&) const;
@@ -583,6 +596,9 @@ private:
     URL m_url;
     ContentType m_contentType;
     String m_keySystem;
+#if PLATFORM(MUI)
+    FrameView* m_frameView;
+#endif
     IntSize m_size;
     Preload m_preload { Auto };
     double m_volume { 1 };

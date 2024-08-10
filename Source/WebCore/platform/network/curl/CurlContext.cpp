@@ -936,6 +936,14 @@ std::optional<size_t> CurlSocketHandle::receive(uint8_t* buffer, size_t bufferSi
     return bytesRead;
 }
 
+}
+
+#if PLATFORM(MUI)
+#include <proto/bsdsocket.h>
+#endif
+
+namespace WebCore {
+
 std::optional<CurlSocketHandle::WaitResult> CurlSocketHandle::wait(const Seconds& timeout, bool alsoWaitForWrite)
 {
     curl_socket_t socket;
@@ -974,7 +982,7 @@ std::optional<CurlSocketHandle::WaitResult> CurlSocketHandle::wait(const Seconds
         FD_ZERO(&fderr);
         FD_SET(socket, &fderr);
 
-        rc = ::select(maxfd, &fdread, &fdwrite, &fderr, &selectTimeout);
+        rc = select(maxfd, &fdread, &fdwrite, &fderr, &selectTimeout);
     } while (rc == -1 && errno == EINTR);
 
     if (rc <= 0)

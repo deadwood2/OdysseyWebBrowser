@@ -32,6 +32,10 @@
 
 #include "CurlRequestSchedulerClient.h"
 
+#if PLATFORM(MUI)
+#include <proto/bsdsocket.h>
+#endif
+
 namespace WebCore {
 
 CurlRequestScheduler::CurlRequestScheduler(long maxConnects, long maxTotalConnections, long maxHostConnections)
@@ -162,7 +166,7 @@ void CurlRequestScheduler::workerThread()
             // and bail out, stopping the file download. So make sure we
             // have valid file descriptors before calling select.
             if (maxfd >= 0)
-                rc = ::select(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout);
+                rc = select(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout);
         } while (rc == -1 && errno == EINTR);
 
         int activeCount = 0;
