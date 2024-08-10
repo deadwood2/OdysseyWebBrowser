@@ -357,15 +357,13 @@ DEFTMETHOD(URLPrefsGroup_Load)
 	urlFile->close();
 	delete urlFile;
 
-	Vector<String> urlsettings;
-	fileBuffer.split("\n", true, urlsettings);
+	Vector<String> urlsettings = fileBuffer.split("\n");
 
 	set(data->lv_url, MUIA_List_Quiet, TRUE);
 
 	for(size_t i = 0; i < urlsettings.size(); i++)
 	{
-		Vector<String> urlsettingsAttributes;
-		urlsettings[i].split("\1", true, urlsettingsAttributes);
+		Vector<String> urlsettingsAttributes = urlsettings[i].split("\1");
 
 		if(urlsettingsAttributes.size() >= 5)
 		{

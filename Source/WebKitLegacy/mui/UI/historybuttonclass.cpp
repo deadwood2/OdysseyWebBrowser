@@ -32,7 +32,6 @@
 #include "WebView.h"
 #include <wtf/text/CString.h>
 #include "Page.h"
-#include "HistoryItem.h"
 #include "DOMImplementation.h"
 #include "Editor.h"
 #include "FocusController.h"

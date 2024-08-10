@@ -30,7 +30,6 @@
 #include "config.h"
 #include "PlatformWheelEvent.h"
 
-#include <wtf/CurrentTime.h>
 #include "Scrollbar.h"
 #include <cstdio>
 #include <intuition/intuition.h>

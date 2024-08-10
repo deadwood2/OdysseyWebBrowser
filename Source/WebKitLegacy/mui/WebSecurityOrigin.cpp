@@ -69,15 +69,15 @@ unsigned short WebSecurityOrigin::port()
 
 unsigned long long WebSecurityOrigin::usage()
 {
-    return DatabaseTracker::singleton().usage(SecurityOriginData::fromSecurityOrigin(*m_securityOrigin));
+    return DatabaseTracker::singleton().usage(m_securityOrigin->data());
 }
 
 unsigned long long WebSecurityOrigin::quota()
 {
-    return DatabaseTracker::singleton().quota(SecurityOriginData::fromSecurityOrigin(*m_securityOrigin));
+    return DatabaseTracker::singleton().quota(m_securityOrigin->data());
 }
 
 void WebSecurityOrigin::setQuota(unsigned long long quota) 
 {
-    DatabaseTracker::singleton().setQuota(SecurityOriginData::fromSecurityOrigin(*m_securityOrigin), quota);
+    DatabaseTracker::singleton().setQuota(m_securityOrigin->data(), quota);
 }

@@ -64,7 +64,7 @@
 #include <FrameLoadRequest.h>
 #include <FrameTree.h>
 #include <FrameView.h>
-#include <MainFrame.h>
+#include <WebCore/Frame.h>
 #include <GraphicsContext.h>
 #include <HTMLAppletElement.h>
 #include <HTMLFormElement.h>
@@ -1325,8 +1325,9 @@ bool WebFrame::stringByEvaluatingJavaScriptInScriptWorld(WebScriptWorld* world, 
 
     // The global object is probably a proxy object? - if so, we know how to use this!
     JSC::JSObject* globalObjectObj = toJS(globalObjectRef);
-    if (globalObjectObj->inherits(*globalObjectObj->vm(), JSDOMWindowProxy::info()))
-        anyWorldGlobalObject = static_cast<JSDOMWindowProxy*>(globalObjectObj)->window();
+    auto& vm = *globalObjectObj->vm();
+    if (globalObjectObj->inherits<JSWindowProxy>(vm))
+        anyWorldGlobalObject = JSC::jsDynamicCast<JSDOMWindow*>(vm, static_cast<JSWindowProxy*>(globalObjectObj)->window());
 
     // Get the frame from the global object we've settled on.
     Frame* frame = anyWorldGlobalObject->wrapped().frame();
@@ -1401,7 +1402,7 @@ void WebFrame::dispatchEvent(const char* name)
     if (!coreFrame->document())
         return;
     AtomicString type(name);
-    RefPtr<Event> ev = Event::create(type, false, false);
+    RefPtr<Event> ev = Event::create(type, WebCore::Event::CanBubble::No, WebCore::Event::IsCancelable::No);
     coreFrame->document()->dispatchWindowEvent(*ev.get());
 }
 

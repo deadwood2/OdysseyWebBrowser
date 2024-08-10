@@ -607,21 +607,21 @@ Vector<String> Pasteboard::typesForLegacyUnsafeBindings()
 
     Vector<String> types;
     if (m_dataObject->hasText()) {
-        types.append(ASCIILiteral("text/plain"));
-        types.append(ASCIILiteral("Text"));
-        types.append(ASCIILiteral("text"));
+        types.append(("text/plain"));
+        types.append(("Text"));
+        types.append(("text"));
     }
 
     if (m_dataObject->hasMarkup())
-        types.append(ASCIILiteral("text/html"));
+        types.append(("text/html"));
 
     if (m_dataObject->hasURIList()) {
-        types.append(ASCIILiteral("text/uri-list"));
-        types.append(ASCIILiteral("URL"));
+        types.append(("text/uri-list"));
+        types.append(("URL"));
     }
 
     if (m_dataObject->hasFilenames())
-        types.append(ASCIILiteral("Files"));
+        types.append(("Files"));
 
     return types;
 }
@@ -676,7 +676,7 @@ void Pasteboard::write(const PasteboardWebContent&)
 {
 }
 
-void Pasteboard::read(PasteboardWebContentReader&)
+void Pasteboard::read(PasteboardWebContentReader&, WebContentReadingPolicy)
 {
 }
 
@@ -687,11 +687,6 @@ Pasteboard::Pasteboard()
 String Pasteboard::readOrigin()
 {
     return { };
-}
-
-bool Pasteboard::containsFiles()
-{
-    return false;
 }
 
 void Pasteboard::writeCustomData(const PasteboardCustomData&)
@@ -710,6 +705,11 @@ String Pasteboard::readStringInCustomData(const String&)
 
 void Pasteboard::read(PasteboardFileReader& reader)
 {
+}
+
+Pasteboard::FileContentState Pasteboard::fileContentState()
+{
+    return FileContentState::NoFileOrImageData;
 }
 
 }

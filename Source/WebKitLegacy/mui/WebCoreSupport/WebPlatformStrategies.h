@@ -20,10 +20,10 @@
 #ifndef WebPlatformStrategies_h
 #define WebPlatformStrategies_h
 
-#include "CookiesStrategy.h"
-#include "LoaderStrategy.h"
-#include "PasteboardStrategy.h"
-#include "PlatformStrategies.h"
+#include <WebCore/CookiesStrategy.h>
+#include <WebCore/LoaderStrategy.h>
+#include <WebCore/PlatformStrategies.h>
+#include <wtf/Forward.h>
 
 class WebPlatformStrategies : public WebCore::PlatformStrategies, private WebCore::CookiesStrategy, private WebCore::LoaderStrategy
 {
@@ -39,12 +39,12 @@ private:
     virtual WebCore::BlobRegistry* createBlobRegistry() override;
 
     // WebCore::CookiesStrategy
-    std::pair<String, bool> cookiesForDOM(const WebCore::NetworkStorageSession&, const WebCore::URL& firstParty, const WebCore::URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, WebCore::IncludeSecureCookies) override;
-    virtual void setCookiesFromDOM(const WebCore::NetworkStorageSession&, const WebCore::URL& firstParty, const WebCore::URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, const String&);
+    std::pair<String, bool> cookiesForDOM(const WebCore::NetworkStorageSession&, const WebCore::URL& firstParty, const WebCore::SameSiteInfo&, const WebCore::URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, WebCore::IncludeSecureCookies) override;
+    virtual void setCookiesFromDOM(const WebCore::NetworkStorageSession&, const WebCore::URL& firstParty, const WebCore::SameSiteInfo&, const WebCore::URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, const String&);
     virtual bool cookiesEnabled(const WebCore::NetworkStorageSession&);
-    std::pair<String, bool> cookieRequestHeaderFieldValue(const WebCore::NetworkStorageSession&, const WebCore::URL& firstParty, const WebCore::URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, WebCore::IncludeSecureCookies) override;
-    std::pair<String, bool> cookieRequestHeaderFieldValue(PAL::SessionID, const WebCore::URL& firstParty, const WebCore::URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, WebCore::IncludeSecureCookies) override;
-    virtual bool getRawCookies(const WebCore::NetworkStorageSession&, const WebCore::URL& firstParty, const WebCore::URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, Vector<WebCore::Cookie>&);
+    std::pair<String, bool> cookieRequestHeaderFieldValue(const WebCore::NetworkStorageSession&, const WebCore::URL& firstParty, const WebCore::SameSiteInfo&, const WebCore::URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, WebCore::IncludeSecureCookies) override;
+    std::pair<String, bool> cookieRequestHeaderFieldValue(PAL::SessionID, const WebCore::URL& firstParty, const WebCore::SameSiteInfo&, const WebCore::URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, WebCore::IncludeSecureCookies) override;
+    virtual bool getRawCookies(const WebCore::NetworkStorageSession&, const WebCore::URL& firstParty, const WebCore::SameSiteInfo&, const WebCore::URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, Vector<WebCore::Cookie>&);
     virtual void deleteCookie(const WebCore::NetworkStorageSession&, const WebCore::URL&, const String&);
     virtual void addCookie(const WebCore::NetworkStorageSession&, const WebCore::URL&, const WebCore::Cookie&);
 
@@ -53,10 +53,10 @@ private:
 
     // WebCore::LoaderStrategy
     virtual void loadResource(WebCore::Frame&, WebCore::CachedResource&, WebCore::ResourceRequest&&, const WebCore::ResourceLoaderOptions&, CompletionHandler<void(RefPtr<WebCore::SubresourceLoader>&&)>&&) override;
-    virtual void loadResourceSynchronously(WebCore::NetworkingContext*, unsigned long identifier, const WebCore::ResourceRequest&, WebCore::StoredCredentialsPolicy, WebCore::ClientCredentialPolicy, WebCore::ResourceError&, WebCore::ResourceResponse&, Vector<char>& data) override;
+    virtual void loadResourceSynchronously(WebCore::FrameLoader&, unsigned long identifier, const WebCore::ResourceRequest&, WebCore::ClientCredentialPolicy, const WebCore::FetchOptions&, const WebCore::HTTPHeaderMap&, WebCore::ResourceError&, WebCore::ResourceResponse&, Vector<char>& data) override;
 
     virtual void remove(WebCore::ResourceLoader*) override;
-    virtual void setDefersLoading(WebCore::ResourceLoader*, bool) override;
+    virtual void setDefersLoading(WebCore::ResourceLoader&, bool) override;
     virtual void crossOriginRedirectReceived(WebCore::ResourceLoader*, const WebCore::URL& redirectURL) override;
 
     virtual void servePendingRequests(WebCore::ResourceLoadPriority minimumPriority = WebCore::ResourceLoadPriority::VeryLow) override;
@@ -70,8 +70,11 @@ private:
     virtual void startPingLoad(WebCore::Frame&, WebCore::ResourceRequest&, const WebCore::HTTPHeaderMap& originalRequestHeaders, const WebCore::FetchOptions&, PingLoadCompletionHandler&& = { }) override;
 
     using PreconnectCompletionHandler = WTF::Function<void(const WebCore::ResourceError&)>;
-    virtual void preconnectTo(WebCore::NetworkingContext&, const WebCore::URL&, WebCore::StoredCredentialsPolicy, PreconnectCompletionHandler&&) override;
+    virtual void preconnectTo(WebCore::FrameLoader&, const WebCore::URL&, WebCore::StoredCredentialsPolicy, PreconnectCompletionHandler&&) override;
 
+    virtual void pageLoadCompleted(uint64_t webPageID);
+    virtual bool isOnLine() const;
+    virtual void addOnlineStateChangeListener(Function<void(bool)>&&);
 };
 
 #endif // WebPlatformStrategies_h

@@ -366,12 +366,10 @@ DEFMMETHOD(Import)
 		{
 			ULONG i;
 			String input = val;
-			Vector<String> menuItems;
-			input.split("\n", true, menuItems);
+			Vector<String> menuItems = input.split("\n");
 			for(i = 0; i < menuItems.size(); i++)
 			{
-				Vector<String> menuAttributes;
-				menuItems[i].split("\1", true, menuAttributes);
+				Vector<String> menuAttributes = menuItems[i].split("\1");
 
 				if(menuAttributes.size() == 4)
 				{

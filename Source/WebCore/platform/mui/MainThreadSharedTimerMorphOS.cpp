@@ -30,7 +30,6 @@
 #include "config.h"
 #include "MainThreadSharedTimer.h"
 
-#include <wtf/CurrentTime.h>
 #include <wtf/Assertions.h>
 #include <assert.h>
 #include <sys/time.h>

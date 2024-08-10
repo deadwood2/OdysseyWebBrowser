@@ -92,8 +92,7 @@ static bool parse_script(ScriptEntry *entry)
 		{
 			String fileContent = buffer;
 			delete [] buffer;
-			Vector<String> lines;
-			fileContent.split("\n", true, lines);
+			Vector<String> lines = fileContent.split("\n");
 			bool inMetaData = false;
 
 			for(size_t i = 0; i < lines.size(); i++)
@@ -166,12 +165,10 @@ static void load_scripts(Object *obj, struct Data *data)
 	scriptFile->close();
 	delete scriptFile;
 
-	Vector<String> scripts;
-	fileBuffer.split("\n", true, scripts);
+	Vector<String> scripts = fileBuffer.split("\n");
 	for(size_t i = 0; i < scripts.size(); i++)
 	{
-		Vector<String> scriptAttributes;
-		scripts[i].split("\1", true, scriptAttributes);
+		Vector<String> scriptAttributes = scripts[i].split("\1");
 
 		if(scriptAttributes.size() == 4)
 		{
@@ -186,12 +183,12 @@ static void load_scripts(Object *obj, struct Data *data)
 				{
 					if(scriptAttributes[2].length())
 					{
-						scriptAttributes[2].split("\2", true, script->whitelist);
+						script->whitelist = scriptAttributes[2].split("\2");
 					}
 
 					if(scriptAttributes[3].length())
 					{
-						scriptAttributes[3].split("\2", true, script->blacklist);
+						script->blacklist = scriptAttributes[3].split("\2");
 					}
 
 					scripts_list.append(script);

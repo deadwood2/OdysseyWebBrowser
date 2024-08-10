@@ -111,13 +111,13 @@ public:
 
     void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::FramePolicyFunction&&) override;
     void dispatchDecidePolicyForNewWindowAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, const WTF::String& frameName, WebCore::FramePolicyFunction&&) override;
-    void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, bool didReceiveRedirectResponse, WebCore::FormState*, WebCore::FramePolicyFunction&&) override;
+    void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, const WebCore::ResourceResponse& redirectResponse, WebCore::FormState*, WebCore::PolicyDecisionMode, WebCore::FramePolicyFunction&&) override;
     virtual void cancelPolicyCheck();
 
     virtual void dispatchUnableToImplementPolicy(const WebCore::ResourceError&);
 
     void dispatchWillSendSubmitEvent(Ref<WebCore::FormState>&&) override;
-    void dispatchWillSubmitForm(WebCore::FormState&, WTF::Function<void(void)>&&) override;
+    void dispatchWillSubmitForm(WebCore::FormState&, CompletionHandler<void()>&&) override;
 
     virtual void revertToProvisionalState(WebCore::DocumentLoader*);
     virtual void setMainDocumentError(WebCore::DocumentLoader*, const WebCore::ResourceError&);

@@ -33,7 +33,6 @@
 #include "WebView.h"
 #include "URL.h"
 #include "WebDownload.h"
-#include <wtf/CurrentTime.h>
 
 #include <proto/exec.h>
 #include <proto/intuition.h>

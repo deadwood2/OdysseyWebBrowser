@@ -145,7 +145,7 @@ vector<const char*> WebDatabaseManager::databasesWithOrigin(WebSecurityOrigin* o
     if (!webSecurityOrigin)
         return databaseN;
 
-    Vector<String> databaseNames = DatabaseTracker::singleton().databaseNames(SecurityOriginData::fromSecurityOrigin(*webSecurityOrigin->securityOrigin()));
+    Vector<String> databaseNames = DatabaseTracker::singleton().databaseNames(webSecurityOrigin->securityOrigin()->data());
 
     delete webSecurityOrigin;
 
@@ -186,7 +186,7 @@ void WebDatabaseManager::deleteOrigin(WebSecurityOrigin* origin)
     if (!webSecurityOrigin)
         return;
 
-    DatabaseTracker::singleton().deleteOrigin(SecurityOriginData::fromSecurityOrigin(*webSecurityOrigin->securityOrigin()));
+    DatabaseTracker::singleton().deleteOrigin(webSecurityOrigin->securityOrigin()->data());
 
     delete webSecurityOrigin;
 }
@@ -199,7 +199,7 @@ void WebDatabaseManager::setQuota(const char* origin, unsigned long long quota)
     if (this != s_sharedWebDatabaseManager)
         return;
 
-    DatabaseTracker::singleton().setQuota(SecurityOriginData::fromSecurityOrigin(SecurityOrigin::createFromString(origin)), quota);
+    DatabaseTracker::singleton().setQuota(SecurityOrigin::createFromString(origin).get().data(), quota);
 }
 
 void WebDatabaseManager::deleteDatabase(const char* databaseName, WebSecurityOrigin* origin)
@@ -211,7 +211,7 @@ void WebDatabaseManager::deleteDatabase(const char* databaseName, WebSecurityOri
     if (!webSecurityOrigin)
         return;
 
-    DatabaseTracker::singleton().deleteDatabase(SecurityOriginData::fromSecurityOrigin(*webSecurityOrigin->securityOrigin()), databaseName);
+    DatabaseTracker::singleton().deleteDatabase(webSecurityOrigin->securityOrigin()->data(), databaseName);
 
     delete webSecurityOrigin;
 }
@@ -250,7 +250,7 @@ void WebDatabaseManager::dispatchDidModifyOrigin(WebSecurityOrigin* origin)
        return;
    }
 	*/
-    m_webDatabaseTracker->dispatchDidModifyOrigin(SecurityOriginData::fromSecurityOrigin(*origin->securityOrigin()));
+    m_webDatabaseTracker->dispatchDidModifyOrigin(origin->securityOrigin()->data());
 }
 
 void WebDatabaseManager::dispatchDidModifyDatabase(WebSecurityOrigin* origin, const char* databaseName)
@@ -260,7 +260,7 @@ void WebDatabaseManager::dispatchDidModifyDatabase(WebSecurityOrigin* origin, co
         return;
     }
 	*/
-    m_webDatabaseTracker->dispatchDidModifyDatabase(SecurityOriginData::fromSecurityOrigin(*origin->securityOrigin()), databaseName);
+    m_webDatabaseTracker->dispatchDidModifyDatabase(origin->securityOrigin()->data(), databaseName);
 }
 
 void WebKitInitializeWebDatabasesIfNecessary()

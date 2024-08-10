@@ -765,7 +765,7 @@ void WebFrameLoaderClient::cancelPolicyCheck()
     m_policyFunction = nullptr;
 }
 
-void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, WTF::Function<void(void)>&& function)
+void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, CompletionHandler<void()>&& completionHandler)
 {
     Object * browser = m_webFrame->webView()->viewWindow()->browser;
     if(!getv(browser, MA_OWBBrowser_PrivateBrowsing))
@@ -775,7 +775,7 @@ void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, WTF::Fun
 
     // XXX: save credentials here as well instead of doing it in the defaultpolicydelegate, since it's a bit clumsy
 
-    function();
+    completionHandler();
 }
 
 void WebFrameLoaderClient::dispatchWillSendSubmitEvent(Ref<WebCore::FormState>&& formState)
@@ -991,7 +991,7 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const Navigati
     delete actionInformation;
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, bool didReceiveRedirectResponse, FormState* formState, FramePolicyFunction&& function)
+void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, const ResourceResponse&, FormState* formState, WebCore::PolicyDecisionMode, FramePolicyFunction&& function)
 {
     SharedPtr<WebPolicyDelegate> policyDelegate = m_webFrame->webView()->policyDelegate();
     if (!policyDelegate) {

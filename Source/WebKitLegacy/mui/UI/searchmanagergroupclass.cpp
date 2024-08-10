@@ -88,7 +88,6 @@ struct Data
 
 static void load_searchengines(Object *obj, struct Data *data)
 {
-	Vector<String> lines;
 	OWBFile *searchFile = new OWBFile("PROGDIR:Conf/searchengines.prefs");
 
     if (!searchFile)
@@ -106,14 +105,13 @@ static void load_searchengines(Object *obj, struct Data *data)
     searchFile->close();
 	delete searchFile;
 
-	fileBuffer.split("\n", true, lines);
+	Vector<String> lines = fileBuffer.split("\n");
 
 	set(data->lv_entries, MUIA_List_Quiet, TRUE);
 
 	for(size_t i = 0; i < lines.size(); i++)
 	{
-		Vector<String> searchAttributes;
-		lines[i].split("\1", true, searchAttributes);
+		Vector<String> searchAttributes = lines[i].split("\1");
 
 		if(searchAttributes.size() >= 2) // 1.10 introduced a 3rd field
 		{

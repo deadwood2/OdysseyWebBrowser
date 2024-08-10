@@ -49,7 +49,6 @@
 #include "GCController.h"
 #include "ProgressTracker.h"
 #include "SharedTimer.h"
-#include <wtf/CurrentTime.h>
 #include "SubstituteData.h"
 #include "Timer.h"
 #include <wtf/MainThread.h>
@@ -2976,9 +2975,7 @@ DEFSMETHOD(OWBApp_RequestPolicyForMimeType)
 	/* Search again with family match */
 	if(!matching_mn)
 	{
-		Vector<String> typeparts;
-
-		mimetype.split("/", true, typeparts);
+		Vector<String> typeparts = mimetype.split("/");
 
 		if(typeparts.size() == 2)
 		{
@@ -3025,8 +3022,7 @@ DEFSMETHOD(OWBApp_RequestPolicyForMimeType)
 			{
 				struct mimetypenode *mn = (struct mimetypenode *) n;
 				String extensions = mn->extensions;
-				Vector<String> listExtensions;
-				extensions.split(" ", true, listExtensions);
+				Vector<String> listExtensions = extensions.split(" ");
 
 				for(unsigned int i = 0; i < listExtensions.size(); i++)
 				{
@@ -3290,16 +3286,14 @@ DEFSMETHOD(OWBApp_RestoreSession)
 		{
 			ULONG i;
 			String input = fileContent;
-			Vector<String> entries;
 			static Vector<WindowState> windowstates;
 			windowstates.clear();
 
-			input.split("\n", true, entries);
+			Vector<String> entries = input.split("\n");
 
 			for(i = 0; i < entries.size(); i++)
 			{
-				Vector<String> attributes;
-				entries[i].split(" ", true, attributes);
+				Vector<String> attributes = entries[i].split(" ");
 
 				if(attributes.size() == 4)
 				{

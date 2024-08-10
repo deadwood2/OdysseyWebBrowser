@@ -70,8 +70,7 @@ void DataObjectMorphOS::setURIList(const String& uriListString)
 
     // Line separator is \r\n per RFC 2483 - however, for compatibility
     // reasons we also allow just \n here.
-    Vector<String> uriList;
-    uriListString.split('\n', uriList);
+    Vector<String> uriList = uriListString.split('\n');
 
     // Process the input and copy the first valid URL into the url member.
     // In case no URLs can be found, subsequent calls to getData("URL")

@@ -38,6 +38,15 @@
 #include <clib/debug_protos.h>
 #include "gui.h"
 
+
+#include <type_traits>
+
+template <typename E>
+constexpr auto to_underlying(E e) noexcept
+{
+    return static_cast<std::underlying_type_t<E>>(e);
+}
+
 namespace WebCore {
 
 #define DOCUMENT_TYPE 9
@@ -92,8 +101,7 @@ AdPattern* PatternMatcher::addPattern(const String& pat)
     optpart = pat.substring(delim+1);
     pattern = pat.left(delim);
 
-    Vector<String> opts;
-    optpart.split(",", opts);
+    Vector<String> opts = optpart.split(",");
     int types = -1;
     for (unsigned i = 0; i < opts.size(); i++) {
         const String &opt = opts[i];
@@ -108,11 +116,11 @@ AdPattern* PatternMatcher::addPattern(const String& pat)
             typeOpt = typeOpt.substring(1);
         }
         if (typeOpt == "image") {
-            typeMask = 1<<CachedResource::ImageResource;
+            typeMask = 1<<to_underlying(CachedResource::Type::ImageResource);
         } else if (typeOpt == "stylesheet") {
-            typeMask = 1<<CachedResource::CSSStyleSheet;
+            typeMask = 1<<to_underlying(CachedResource::Type::CSSStyleSheet);
         } else if (typeOpt == "script") {
-            typeMask = 1<<CachedResource::Script;
+            typeMask = 1<<to_underlying(CachedResource::Type::Script);
         } else if (typeOpt == "subdocument") {
             typeMask = 1<<DOCUMENT_TYPE;
         }
@@ -173,8 +181,7 @@ bool PatternMatcher::updatePattern(const String& pat, AdPattern* newpattern)
     optpart = pat.substring(delim+1);
     pattern = pat.left(delim);
 
-    Vector<String> opts;
-    optpart.split(",", opts);
+    Vector<String> opts = optpart.split(",");
     int types = -1;
     for (unsigned i = 0; i < opts.size(); i++) {
         const String &opt = opts[i];
@@ -189,11 +196,11 @@ bool PatternMatcher::updatePattern(const String& pat, AdPattern* newpattern)
             typeOpt = typeOpt.substring(1);
         }
         if (typeOpt == "image") {
-            typeMask = 1<<CachedResource::ImageResource;
+            typeMask = 1<<to_underlying(CachedResource::Type::ImageResource);
         } else if (typeOpt == "stylesheet") {
-            typeMask = 1<<CachedResource::CSSStyleSheet;
+            typeMask = 1<<to_underlying(CachedResource::Type::CSSStyleSheet);
         } else if (typeOpt == "script") {
-            typeMask = 1<<CachedResource::Script;
+            typeMask = 1<<to_underlying(CachedResource::Type::Script);
         } else if (typeOpt == "subdocument") {
             typeMask = 1<<DOCUMENT_TYPE;
         }
@@ -444,15 +451,15 @@ void blockResource(const URL& url, int type, int mode)
 	String typeOpt = "";
 	String pat;
 
-	if(type == 1<<CachedResource::ImageResource)
+	if(type == 1<<to_underlying(CachedResource::Type::ImageResource))
 	{
 		typeOpt = "image";
 	}
-	else if(type == 1<<CachedResource::CSSStyleSheet)
+	else if(type == 1<<to_underlying(CachedResource::Type::CSSStyleSheet))
 	{
 		typeOpt = "stylesheet";
 	}
-	else if (type == 1<<CachedResource::Script)
+	else if (type == 1<<to_underlying(CachedResource::Type::Script))
 	{
 		typeOpt = "script";
 	}
@@ -470,7 +477,7 @@ void blockResource(const URL& url, int type, int mode)
 		case 1:
 			pat = url.protocol().toString();
 			pat.append("://");
-			pat.append(url.host());
+			pat.append(url.host().toString());
 			pat.append("/*");
 			break;
 		case 2:
@@ -479,7 +486,7 @@ void blockResource(const URL& url, int type, int mode)
 			int lastSlashLocation = path.reverseFind('/');
 			pat = url.protocol().toString();
 			pat.append("://");
-			pat.append(url.host());
+			pat.append(url.host().toString());
 
 			if (lastSlashLocation > 0)
 			{

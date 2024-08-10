@@ -2914,7 +2914,7 @@ DEFSMETHOD(OWBBrowser_Autofill_HandleNavigationEvent)
 	if(getv(app, MA_OWBApp_EnableFormAutofill))
 	{
 		KeyboardEvent *event = (KeyboardEvent *) msg->event;
-		const PlatformKeyboardEvent* keyEvent = event->keyEvent();
+		const PlatformKeyboardEvent* keyEvent = event->underlyingPlatformEvent();
 		if (keyEvent)
 		{
 			if (keyEvent->type() == PlatformKeyboardEvent::RawKeyDown)
@@ -3308,7 +3308,6 @@ DEFMMETHOD(CreateDragImage)
 		else
 		{
 			struct TextFont *font = _font(obj);
-			Vector<String> lines;
 			char *converted = NULL;
 			String buffer;
 			size_t maxindex = 0;
@@ -3333,7 +3332,7 @@ DEFMMETHOD(CreateDragImage)
 				buffer = buffer.substring(0, 512);
 			}
 
-			buffer.split("\n", true, lines);
+			Vector<String> lines = buffer.split("\n");
 
 			for(i = 0; i < lines.size(); i++)
 			{

@@ -36,7 +36,6 @@
 #include "FileSystem.h"
 #include "Logging.h"
 #include <stdlib.h>
-#include <wtf/CurrentTime.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/WTFString.h>
@@ -253,7 +252,7 @@ void CookieManager::getRawCookies(Vector<ParsedCookie*> &stackOfCookies, const U
        }
     }
 
-    Vector<String> delimitedHost;
+
 
     // IP addresses are stored in a particular format (due to ipv6). Reduce the ip address so we can match
     // it with the one in memory.
@@ -263,7 +262,7 @@ void CookieManager::getRawCookies(Vector<ParsedCookie*> &stackOfCookies, const U
         delimitedHost.append(String(canonicalIP.c_str()));
 	else
 	*/
-	requestURL.host().convertToLowercaseWithoutLocale().split(".", true, delimitedHost);
+    Vector<String> delimitedHost = requestURL.host().toString().convertToLowercaseWithoutLocale().split(".");
 
     // Go through all the protocol trees that we need to search for
     // and get all cookies that are valid for this domain
@@ -553,7 +552,7 @@ CookieMap* CookieManager::findOrCreateCookieMap(CookieMap* protocolMap, const Pa
     if (candidateCookie.domainIsIPAddress())
         delimitedHost.append(candidateCookie.domain());
     else
-        candidateCookie.domain().split(".", delimitedHost);
+        delimitedHost = candidateCookie.domain().split(".");
 
     CookieMap* curMap = protocolMap;
     size_t hostSize = delimitedHost.size();

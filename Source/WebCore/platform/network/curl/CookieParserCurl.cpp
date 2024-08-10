@@ -30,7 +30,6 @@
 
 #include "Logging.h"
 #include "ParsedCookie.h"
-#include <wtf/CurrentTime.h>
 #include <wtf/text/CString.h>
 #include "gui.h"
 #include <clib/debug_protos.h>
@@ -60,7 +59,7 @@ static inline bool isLightweightSpace(UChar c)
 CookieParser::CookieParser(const URL& defaultCookieURL)
     : m_defaultCookieURL(defaultCookieURL)
 {
-    m_defaultCookieHost = defaultCookieURL.host();
+    m_defaultCookieHost = defaultCookieURL.host().toString();
     m_defaultDomainIsIPAddress = false;
     /*
     string hostDomainCanonical = BlackBerry::Platform::getCanonicalIPFormat(m_defaultCookieHost.utf8().data()).c_str();
@@ -433,7 +432,7 @@ ParsedCookie* CookieParser::parseOneCookie(const String& cookie, unsigned start,
 
     if(policy == CookieStorageAcceptPolicyNever)
     {
-        LOG_AND_DELETE("Cookie %s for host %s is rejected by user-settings.", res->name().latin1().data(), m_defaultCookieURL.host().latin1().data());
+        LOG_AND_DELETE("Cookie %s for host %s is rejected by user-settings.", res->name().latin1().data(), m_defaultCookieURL.host().toString().latin1().data());
     }
  
     return res;

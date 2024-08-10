@@ -452,7 +452,7 @@ DOMCSSStyleDeclaration* DOMDocument::getComputedStyle(DOMElement* elt, const cha
 
     Element* element = elt->element();
 
-    WebCore::DOMWindow* dv = m_document->defaultView();
+    WebCore::DOMWindow* dv = m_document->domWindow();
     
     if (!dv)
         return 0;
@@ -668,7 +668,7 @@ WebFontDescription* DOMElement::font()
     webFontDescription->familyLength = family.length();
     webFontDescription->size = fontDescription.computedSize();
     webFontDescription->weight = isFontWeightBold(fontDescription.weight());
-    webFontDescription->italic = fontDescription.italic();
+    webFontDescription->italic = isItalic(fontDescription.italic());
 
     return webFontDescription;
 }

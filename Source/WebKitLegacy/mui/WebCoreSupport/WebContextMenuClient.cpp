@@ -39,7 +39,7 @@
 
 #include <ContextMenu.h>
 #include <Event.h>
-#include <MainFrame.h>
+#include <WebCore/Frame.h>
 #include <FrameLoader.h>
 #include <FrameLoadRequest.h>
 #include <Page.h>

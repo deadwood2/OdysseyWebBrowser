@@ -153,6 +153,7 @@
 #include <UserContentController.h>
 #include <WindowsKeyboardCodes.h>
 #include <page/DiagnosticLoggingClient.h>
+#include <WebCore/ShouldTreatAsContinuingLoad.h>
 
 #include <JavaScriptCore/JSCell.h>
 #include <JavaScriptCore/JSLock.h>
@@ -884,7 +885,7 @@ bool WebView::defaultActionOnFocusedNode(BalEventKey event)
         // FIXME: We should tweak the parameters instead of hard coding them.
         keyboardEvent.disambiguateKeyDownEvent(PlatformKeyboardEvent::RawKeyDown, false);
     }
-    RefPtr<KeyboardEvent> keyEvent = KeyboardEvent::create(keyboardEvent, frame->document()->defaultView());
+    RefPtr<KeyboardEvent> keyEvent = KeyboardEvent::create(keyboardEvent, frame->document()->windowProxy());
     keyEvent->setTarget(focusedNode);
     focusedNode->defaultEventHandler(*keyEvent.get());
     
@@ -1114,7 +1115,7 @@ bool WebView::handleEditingKeyboardEvent(KeyboardEvent* evt)
     Frame* frame = node->document().frame();
     ASSERT(frame);
 
-    const PlatformKeyboardEvent* keyEvent = evt->keyEvent();
+    const PlatformKeyboardEvent* keyEvent = evt->underlyingPlatformEvent();
     if (!keyEvent)  // do not treat this as text input if it's a system key event
         return false;
 
@@ -1134,7 +1135,7 @@ bool WebView::handleEditingKeyboardEvent(KeyboardEvent* evt)
     if (evt->charCode() < ' ')
         return false;
 
-    return frame->editor().insertText(evt->keyEvent()->text(), evt);
+    return frame->editor().insertText(evt->underlyingPlatformEvent()->text(), evt);
 }
 
 void WebView::setShouldInvertColors(bool shouldInvertColors)
@@ -1477,7 +1478,7 @@ void WebView::goBackOrForward(int steps)
 bool WebView::goToBackForwardItem(WebHistoryItem* item)
 {
     WebHistoryItemPrivate *priv = item->getPrivateItem(); 
-    m_page->goToItem(*priv->m_historyItem, FrameLoadType::IndexedBackForward);
+    m_page->goToItem(*priv->m_historyItem, FrameLoadType::IndexedBackForward, ShouldTreatAsContinuingLoad::No);
     return true;
 }
 
@@ -2818,7 +2819,7 @@ void WebView::loadBackForwardListFromOtherView(WebView* otherView)
     }
     
     ASSERT(newItemToGoTo);
-    m_page->goToItem(*newItemToGoTo, FrameLoadType::IndexedBackForward);
+    m_page->goToItem(*newItemToGoTo, FrameLoadType::IndexedBackForward, ShouldTreatAsContinuingLoad::No);
 }
 
 void WebView::clearUndoRedoOperations()

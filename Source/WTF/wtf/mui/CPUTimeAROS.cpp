@@ -31,4 +31,9 @@ std::optional<CPUTime> CPUTime::get()
     return std::nullopt;
 }
 
+Seconds CPUTime::forCurrentThread()
+{
+    return 0_s;
+}
+
 }

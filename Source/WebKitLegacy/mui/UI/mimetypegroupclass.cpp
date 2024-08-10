@@ -310,9 +310,8 @@ DEFTMETHOD(MimeTypeGroup_Refresh)
 
 	if(mn)
 	{
-		Vector<String> types;
 		String mimetypestr = mn->mimetype;
-		mimetypestr.split("/", true, types);
+		Vector<String> types = mimetypestr.split("/");
 
 		set(data->bt_remove, MUIA_Disabled, mn->builtin);
 		set(data->st_mimefamily, MUIA_Disabled, mn->builtin);
@@ -478,7 +477,7 @@ DEFMMETHOD(Import)
 	char *val;
 	APTR n, m;
 
-	HashSet<String, ASCIICaseInsensitiveHash>* supportedCategories[] =
+	const HashSet<String, ASCIICaseInsensitiveHash>* supportedCategories[] =
 	{
 		&(MIMETypeRegistry::getSupportedImageMIMETypes()),
 		&(MIMETypeRegistry::getSupportedNonImageMIMETypes()),
@@ -486,7 +485,7 @@ DEFMMETHOD(Import)
 		NULL,
 	};
 
-	HashSet<String, ASCIICaseInsensitiveHash>**supportedCategoriesIterator = supportedCategories;
+	const HashSet<String, ASCIICaseInsensitiveHash>**supportedCategoriesIterator = supportedCategories;
 
 	DoMethod(data->lv_mimetypes, MUIM_List_Clear);
 
@@ -500,7 +499,7 @@ DEFMMETHOD(Import)
 	/* Fill builtin types */
 	while(*supportedCategoriesIterator)
 	{
-		HashSet<String, ASCIICaseInsensitiveHash> *supportedMimeTypes = *supportedCategoriesIterator;
+		const HashSet<String, ASCIICaseInsensitiveHash> *supportedMimeTypes = *supportedCategoriesIterator;
 
 		for(HashSet<String, ASCIICaseInsensitiveHash>::iterator it = supportedMimeTypes->begin(); it != supportedMimeTypes->end(); ++it)
 		{
@@ -574,12 +573,10 @@ DEFMMETHOD(Import)
 		{
 			ULONG i;
 			String input = val;
-			Vector<String> mimetypes;
-			input.split("\n", true, mimetypes);
+			Vector<String> mimetypes = input.split("\n");
 			for(i = 0; i < mimetypes.size(); i++)
 			{
-				Vector<String> mimetypeAttributes;
-				mimetypes[i].split("\1", true, mimetypeAttributes);
+				Vector<String> mimetypeAttributes = mimetypes[i].split("\1");
 
 				if(mimetypeAttributes.size() == 6)
 				{

@@ -26,14 +26,15 @@
 #include "config.h"
 
 #include "WebPlatformStrategies.h"
+#include "WebFrameNetworkingContext.h"
 
 #include "NotImplemented.h"
 #include "Page.h"
 #include "PageGroup.h"
-#include "PlatformCookieJar.h"
 #include "PluginDatabase.h"
 #include "PluginPackage.h"
 #include "SubresourceLoader.h"
+#include <WebCore/NetworkStorageSession.h>
 
 #include <wtf/NeverDestroyed.h>
 
@@ -72,48 +73,48 @@ BlobRegistry* WebPlatformStrategies::createBlobRegistry()
 }
 
 // CookiesStrategy
-std::pair<String, bool> WebPlatformStrategies::cookiesForDOM(const WebCore::NetworkStorageSession& session, const WebCore::URL& firstParty, const WebCore::URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, WebCore::IncludeSecureCookies includeSecureCookies)
+std::pair<String, bool> WebPlatformStrategies::cookiesForDOM(const NetworkStorageSession& session, const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, IncludeSecureCookies includeSecureCookies)
 {
-    return WebCore::cookiesForDOM(session, firstParty, url, frameID, pageID, includeSecureCookies);
-}
-
-void WebPlatformStrategies::setCookiesFromDOM(const NetworkStorageSession& session, const URL& firstParty, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, const String& cookieString)
-{
-    WebCore::setCookiesFromDOM(session, firstParty, url, frameID, pageID, cookieString);
+    return session.cookiesForDOM(firstParty, sameSiteInfo, url, frameID, pageID, includeSecureCookies);
 }
 
 bool WebPlatformStrategies::cookiesEnabled(const NetworkStorageSession& session)
 {
-    return WebCore::cookiesEnabled(session);
+    return session.cookiesEnabled();
 }
 
-std::pair<String, bool> WebPlatformStrategies::cookieRequestHeaderFieldValue(const NetworkStorageSession& session, const URL& firstParty, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, WebCore::IncludeSecureCookies includeSecureCookies)
+std::pair<String, bool> WebPlatformStrategies::cookieRequestHeaderFieldValue(const NetworkStorageSession& session, const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, IncludeSecureCookies includeSecureCookies)
 {
-    return WebCore::cookieRequestHeaderFieldValue(session, firstParty, url, frameID, pageID, includeSecureCookies);
+    return session.cookieRequestHeaderFieldValue(firstParty, sameSiteInfo, url, frameID, pageID, includeSecureCookies);
 }
 
-bool WebPlatformStrategies::getRawCookies(const NetworkStorageSession& session, const URL& firstParty, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, Vector<Cookie>& rawCookies)
+bool WebPlatformStrategies::getRawCookies(const NetworkStorageSession& session, const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, Vector<Cookie>& rawCookies)
 {
-    return WebCore::getRawCookies(session, firstParty, url, frameID, pageID, rawCookies);
+    return session.getRawCookies(firstParty, sameSiteInfo, url, frameID, pageID, rawCookies);
 }
 
 void WebPlatformStrategies::deleteCookie(const NetworkStorageSession& session, const URL& url, const String& cookieName)
 {
-    WebCore::deleteCookie(session, url, cookieName);
+    session.deleteCookie(url, cookieName);
+}
+
+void WebPlatformStrategies::setCookiesFromDOM(const NetworkStorageSession& session, const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, const String& cookieString)
+{
+    session.setCookiesFromDOM(firstParty, sameSiteInfo, url, frameID, pageID, cookieString);
 }
 
 void WebPlatformStrategies::loadResource(WebCore::Frame&, WebCore::CachedResource&, WebCore::ResourceRequest&&, const WebCore::ResourceLoaderOptions&, CompletionHandler<void(RefPtr<WebCore::SubresourceLoader>&&)>&&)
 {
 }
 
-void  WebPlatformStrategies::loadResourceSynchronously(WebCore::NetworkingContext*, unsigned long identifier, const WebCore::ResourceRequest&, WebCore::StoredCredentialsPolicy, WebCore::ClientCredentialPolicy, WebCore::ResourceError&, WebCore::ResourceResponse&, Vector<char>& data)
+void  WebPlatformStrategies::loadResourceSynchronously(WebCore::FrameLoader&, unsigned long identifier, const WebCore::ResourceRequest&, WebCore::ClientCredentialPolicy, const WebCore::FetchOptions&, const WebCore::HTTPHeaderMap&, WebCore::ResourceError&, WebCore::ResourceResponse&, Vector<char>& data)
 {
 }
 
 void  WebPlatformStrategies::remove(ResourceLoader*)
 {
 }
-void  WebPlatformStrategies::setDefersLoading(ResourceLoader*, bool)
+void WebPlatformStrategies::setDefersLoading(WebCore::ResourceLoader&, bool)
 {
 }
 void  WebPlatformStrategies::crossOriginRedirectReceived(ResourceLoader*, const URL& redirectURL)
@@ -130,9 +131,13 @@ void  WebPlatformStrategies::resumePendingRequests()
 {
 }
 
-std::pair<String, bool>  WebPlatformStrategies::cookieRequestHeaderFieldValue(PAL::SessionID, const URL& firstParty, const URL&, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, IncludeSecureCookies)
+std::pair<String, bool> WebPlatformStrategies::cookieRequestHeaderFieldValue(PAL::SessionID sessionID, const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, IncludeSecureCookies includeSecureCookies)
 {
-    return std::pair<String, bool>(String(), false);
+#if 0
+    auto& session = sessionID.isEphemeral() ? WebFrameNetworkingContext::ensurePrivateBrowsingSession() : NetworkStorageSession::defaultStorageSession();
+    return session.cookieRequestHeaderFieldValue(firstParty, sameSiteInfo, url, frameID, pageID, includeSecureCookies);
+#endif
+    return std::pair<String, bool> ("", false);
 }
 
 void WebPlatformStrategies::addCookie(const NetworkStorageSession&, const URL&, const Cookie&)
@@ -147,11 +152,22 @@ void WebPlatformStrategies::setCaptureExtraNetworkLoadMetricsEnabled(bool)
 {
 }
 
-void WebPlatformStrategies::preconnectTo(WebCore::NetworkingContext&, const WebCore::URL&, WebCore::StoredCredentialsPolicy, PreconnectCompletionHandler&&)
+void WebPlatformStrategies::preconnectTo(WebCore::FrameLoader&, const WebCore::URL&, WebCore::StoredCredentialsPolicy, PreconnectCompletionHandler&&)
 {
 }
 
 void WebPlatformStrategies::startPingLoad(WebCore::Frame&, WebCore::ResourceRequest&, const WebCore::HTTPHeaderMap& originalRequestHeaders, const WebCore::FetchOptions&, PingLoadCompletionHandler&&)
+{
+}
+
+void WebPlatformStrategies::pageLoadCompleted(uint64_t webPageID)
+{
+}
+bool WebPlatformStrategies::isOnLine() const
+{
+    return true;
+}
+void WebPlatformStrategies::addOnlineStateChangeListener(Function<void(bool)>&&)
 {
 }
 

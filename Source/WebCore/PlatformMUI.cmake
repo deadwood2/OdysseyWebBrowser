@@ -11,6 +11,7 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/network/curl"
     "${WEBCORE_DIR}/platform/mui"
     "${WEBCORE_DIR}/platform/bal"
+    "${WEBCORE_DIR}/platform/mediacapabilities"
     "${WEBKITLEGACY_DIR}/mui/UI"
     "${WEBKITLEGACY_DIR}/mui/UI/AROS/include"
 )
@@ -173,6 +174,7 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     platform/animation
     platform/audio
     platform/graphics
+    platform/mediacapabilities
     platform/mock
     platform/network
     platform/network/curl

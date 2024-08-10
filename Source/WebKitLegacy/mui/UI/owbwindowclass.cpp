@@ -32,7 +32,6 @@
 #include "WebFrame.h"
 #include "WebView.h"
 #include <wtf/text/CString.h>
-#include <wtf/CurrentTime.h>
 #include "DOMImplementation.h"
 #include "Editor.h"
 #include "FileIOLinux.h"

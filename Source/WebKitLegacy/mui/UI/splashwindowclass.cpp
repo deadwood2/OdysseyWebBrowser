@@ -31,7 +31,6 @@
 #include "WebView.h"
 #include "Page.h"
 #include "Frame.h"
-#include <wtf/CurrentTime.h>
 
 extern "C"
 {

@@ -96,7 +96,6 @@ static void cycles_init(void)
 
 void restore_download_state(Object *obj, struct Data *data)
 {
-	Vector<String> downloads;
 	OWBFile *downloadFile = new OWBFile("PROGDIR:Conf/downloads.prefs");
 
     if (!downloadFile)
@@ -114,11 +113,10 @@ void restore_download_state(Object *obj, struct Data *data)
     downloadFile->close();
 	delete downloadFile;
 
-	fileBuffer.split("\n", true, downloads);
+	Vector<String> downloads = fileBuffer.split("\n");
 	for(size_t i = 0; i < downloads.size(); i++)
 	{
-		Vector<String> downloadAttributes;
-		downloads[i].split("\1", true, downloadAttributes);
+		Vector<String> downloadAttributes = downloads[i].split("\1");
 
 		if(downloadAttributes.size() >= 5) // Now 6 for new format
 		{

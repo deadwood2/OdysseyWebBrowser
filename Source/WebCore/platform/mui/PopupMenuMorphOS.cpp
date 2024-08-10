@@ -103,7 +103,7 @@ void PopupMenuMorphOS::calculatePositionAndSize(const IntRect& r, FrameView* v)
         if (client()->itemIsLabel(i)) {
             FontCascadeDescription d = itemFont.fontDescription();
             d.setWeight(d.bolderWeight());
-            itemFont = FontCascade(d, itemFont.letterSpacing(), itemFont.wordSpacing());
+            itemFont = FontCascade(WTFMove(d), itemFont.letterSpacing(), itemFont.wordSpacing());
             itemFont.update(m_popupClient->fontSelector());
         }
 

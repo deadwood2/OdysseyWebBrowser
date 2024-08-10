@@ -22,7 +22,6 @@
 
 #include <wtf/text/Base64.h>
 #include <wtf/text/CString.h>
-#include <wtf/CurrentTime.h>
 #include "BitmapImage.h"
 #include "FileIOLinux.h"
 #include "URL.h"

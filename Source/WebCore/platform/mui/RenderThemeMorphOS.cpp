@@ -139,7 +139,7 @@ float RenderThemeBal::defaultFontSize = 16;
 // sizes (e.g. 15px). So we just use Arial for now.
 const String& RenderThemeBal::defaultGUIFont()
 {
-    static NeverDestroyed<String> fontFace(ASCIILiteral("Arial"));
+    static NeverDestroyed<String> fontFace(("Arial"));
     return fontFace;
 }
 
@@ -886,12 +886,12 @@ void RenderThemeBal::adjustMediaControlStyle(StyleResolver&, RenderStyle& style,
         switch (style.appearance()) {
         case MediaEnterFullscreenButtonPart:
         case MediaExitFullscreenButtonPart:
-            style.setPosition(AbsolutePosition);
+            style.setPosition(PositionType::Absolute);
             style.setBottom(Length(0, Fixed));
             style.setRight(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
             break;
         case MediaMuteButtonPart:
-            style.setPosition(AbsolutePosition);
+            style.setPosition(PositionType::Absolute);
             style.setBottom(Length(0, Fixed));
             style.setRight(Length(0, Fixed));
             break;
@@ -1240,7 +1240,7 @@ bool RenderThemeBal::paintMediaVolumeSliderThumb(const RenderObject& object, con
 #endif
 }
 
-Color RenderThemeBal::platformFocusRingColor() const
+Color RenderThemeBal::platformFocusRingColor(OptionSet<StyleColor::Options>) const
 {
     return focusRingPen;
 }
@@ -1252,60 +1252,60 @@ Color RenderThemeBal::platformTapHighlightColor() const
 }
 #endif
 
-Color RenderThemeBal::platformActiveSelectionBackgroundColor() const
+Color RenderThemeBal::platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
 {
     Color c(0xFF618ECE);
     return c;
 }
 
-Color RenderThemeBal::platformInactiveSelectionBackgroundColor() const
+Color RenderThemeBal::platformInactiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
 {
     Color c(0xFFCFCFCF);
     return c;
 }
 
-Color RenderThemeBal::platformActiveSelectionForegroundColor() const
+Color RenderThemeBal::platformActiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const
 {
     Color c(0xFF000000);
     return c;
 }
 
-Color RenderThemeBal::platformInactiveSelectionForegroundColor() const
+Color RenderThemeBal::platformInactiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const
 {
     Color c(0xFF3F3F3F);
     return c;
 }
 
-Color RenderThemeBal::platformActiveListBoxSelectionBackgroundColor() const
+Color RenderThemeBal::platformActiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
 {
     Color c(0xFF618ECE);
     return c;
 }
 
-Color RenderThemeBal::platformInactiveListBoxSelectionBackgroundColor() const
+Color RenderThemeBal::platformInactiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
 {
     Color c(0xFFCFCFCF);
     return c;
 }
 
-Color RenderThemeBal::platformActiveListBoxSelectionForegroundColor() const
+Color RenderThemeBal::platformActiveListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const
 {
     Color c(0xFF000000);
     return c;
 }
 
-Color RenderThemeBal::platformInactiveListBoxSelectionForegroundColor() const
+Color RenderThemeBal::platformInactiveListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const
 {
     Color c(0xFF3F3F3F);
     return c;
 }
 
-Color RenderThemeBal::platformActiveTextSearchHighlightColor() const
+Color RenderThemeBal::platformActiveTextSearchHighlightColor(OptionSet<StyleColor::Options>) const
 {
     return Color(255, 150, 50); // Orange.
 }
 
-Color RenderThemeBal::platformInactiveTextSearchHighlightColor() const
+Color RenderThemeBal::platformInactiveTextSearchHighlightColor(OptionSet<StyleColor::Options>) const
 {
     return Color(255, 255, 0); // Yellow.
 }

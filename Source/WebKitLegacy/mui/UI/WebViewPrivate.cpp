@@ -32,7 +32,6 @@
 #include "WebViewPrivate.h"
 #include "Chrome.h"
 #include <wtf/text/CString.h>
-#include <wtf/CurrentTime.h>
 #include "InspectorController.h"
 #include "Document.h"
 #include "DownloadDelegateMorphOS.h"

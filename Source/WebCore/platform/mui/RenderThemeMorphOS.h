@@ -67,7 +67,7 @@ public:
     virtual Color platformTapHighlightColor() const override;
 #endif
 
-    virtual Color platformFocusRingColor() const override;
+    virtual Color platformFocusRingColor(OptionSet<StyleColor::Options>) const override;
     virtual bool supportsFocusRing(const RenderStyle& style) const  override;
 
     virtual void adjustButtonStyle(StyleResolver&, RenderStyle&, const Element*) const override;
@@ -99,20 +99,20 @@ public:
     virtual bool paintMediaMuteButton(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
     // The platform selection color.
-    virtual Color platformActiveSelectionBackgroundColor() const override;
-    virtual Color platformInactiveSelectionBackgroundColor() const override;
-    virtual Color platformActiveSelectionForegroundColor() const override;
-    virtual Color platformInactiveSelectionForegroundColor() const override;
+    virtual Color platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
+    virtual Color platformInactiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
+    virtual Color platformActiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const override;
+    virtual Color platformInactiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const override;
 
     // List Box selection color
-    virtual Color platformActiveListBoxSelectionBackgroundColor() const override;
-    virtual Color platformActiveListBoxSelectionForegroundColor() const override;
-    virtual Color platformInactiveListBoxSelectionBackgroundColor() const override;
-    virtual Color platformInactiveListBoxSelectionForegroundColor() const override;
+    virtual Color platformActiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
+    virtual Color platformActiveListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const override;
+    virtual Color platformInactiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const override;
+    virtual Color platformInactiveListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const override;
 
     // Highlighting colors for TextMatches.
-    virtual Color platformActiveTextSearchHighlightColor() const override;
-    virtual Color platformInactiveTextSearchHighlightColor() const override;
+    virtual Color platformActiveTextSearchHighlightColor(OptionSet<StyleColor::Options>) const override;
+    virtual Color platformInactiveTextSearchHighlightColor(OptionSet<StyleColor::Options>) const override;
 
     WTF::String fileListNameForWidth(const Vector<String>&, const WebCore::Font&, int) const;
 
