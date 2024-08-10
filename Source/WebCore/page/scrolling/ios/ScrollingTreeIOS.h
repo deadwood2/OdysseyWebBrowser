@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS)
+#if ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS_FAMILY)
 
 #include "ScrollingStateTree.h"
 #include "ScrollingTree.h"
@@ -45,13 +45,13 @@ private:
     bool isScrollingTreeIOS() const final { return true; }
 
     // No wheel events on iOS
-    void handleWheelEvent(const PlatformWheelEvent&) final { }
-    EventResult tryToHandleWheelEvent(const PlatformWheelEvent&) final { return DidNotHandleEvent; }
+    ScrollingEventResult handleWheelEvent(const PlatformWheelEvent&) final { return ScrollingEventResult::DidNotHandleEvent; }
+    ScrollingEventResult tryToHandleWheelEvent(const PlatformWheelEvent&) final { return ScrollingEventResult::DidNotHandleEvent; }
 
     void invalidate() final;
 
     Ref<ScrollingTreeNode> createScrollingTreeNode(ScrollingNodeType, ScrollingNodeID) final;
-    void scrollingTreeNodeDidScroll(ScrollingNodeID, const FloatPoint& scrollPosition, const std::optional<FloatPoint>& layoutViewportOrigin, ScrollingLayerPositionAction = ScrollingLayerPositionAction::Sync) final;
+    void scrollingTreeNodeDidScroll(ScrollingNodeID, const FloatPoint& scrollPosition, const Optional<FloatPoint>& layoutViewportOrigin, ScrollingLayerPositionAction = ScrollingLayerPositionAction::Sync) final;
     void currentSnapPointIndicesDidChange(WebCore::ScrollingNodeID, unsigned horizontal, unsigned vertical) final;
     FloatRect fixedPositionRect() final;
 
@@ -62,4 +62,4 @@ private:
 
 SPECIALIZE_TYPE_TRAITS_SCROLLING_TREE(WebCore::ScrollingTreeIOS, isScrollingTreeIOS())
 
-#endif // ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS)
+#endif // ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS_FAMILY)

@@ -31,10 +31,10 @@
 #include "PluginModuleInfo.h"
 #include <WebCore/MIMETypeRegistry.h>
 #include <WebCore/SecurityOrigin.h>
-#include <WebCore/URL.h>
 #include <algorithm>
 #include <wtf/ListHashSet.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/URL.h>
 
 namespace WebKit {
 using namespace WebCore;
@@ -229,10 +229,10 @@ bool PluginInfoStore::isSupportedPlugin(const String& mimeType, const URL& plugi
     }) != notFound;
 }
 
-std::optional<Vector<SupportedPluginIdentifier>> PluginInfoStore::supportedPluginIdentifiers()
+Optional<Vector<SupportedPluginIdentifier>> PluginInfoStore::supportedPluginIdentifiers()
 {
     if (!m_supportedPlugins)
-        return std::nullopt;
+        return WTF::nullopt;
 
     return WTF::map(*m_supportedPlugins, [] (auto&& item) {
         return SupportedPluginIdentifier { item.matchingDomain, item.identifier };

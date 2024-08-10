@@ -29,7 +29,12 @@
 
 #import <AppKit/NSDragging.h>
 
+@class DragAndDropSimulator;
+
 @interface TestDraggingInfo : NSObject <NSDraggingInfo>
+
+- (instancetype)initWithDragAndDropSimulator:(DragAndDropSimulator *)simulator NS_DESIGNATED_INITIALIZER;
+- (instancetype)init NS_UNAVAILABLE;
 
 @property (nonatomic) NSPoint draggingLocation;
 @property (nonatomic) NSPoint draggedImageLocation;
@@ -38,6 +43,7 @@
 @property (nonatomic, strong) NSPasteboard *draggingPasteboard;
 @property (nonatomic, strong) NSImage *draggedImage;
 @property (nonatomic, weak) id draggingSource;
+@property (nonatomic, readonly) NSArray<NSFilePromiseReceiver *> *filePromiseReceivers;
 
 @end
 

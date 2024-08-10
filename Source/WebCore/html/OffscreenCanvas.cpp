@@ -26,6 +26,7 @@
 #include "config.h"
 #include "OffscreenCanvas.h"
 
+#include "CanvasRenderingContext.h"
 #include "ImageBitmap.h"
 #include "WebGLRenderingContext.h"
 
@@ -37,12 +38,17 @@ Ref<OffscreenCanvas> OffscreenCanvas::create(ScriptExecutionContext& context, un
 }
 
 OffscreenCanvas::OffscreenCanvas(ScriptExecutionContext& context, unsigned width, unsigned height)
-    : CanvasBase(&context)
+    : ContextDestructionObserver(&context)
     , m_size(width, height)
 {
 }
 
-OffscreenCanvas::~OffscreenCanvas() = default;
+OffscreenCanvas::~OffscreenCanvas()
+{
+    notifyObserversCanvasDestroyed();
+
+    m_context = nullptr;
+}
 
 unsigned OffscreenCanvas::width() const
 {
@@ -128,7 +134,7 @@ RefPtr<ImageBitmap> OffscreenCanvas::transferToImageBitmap()
     gc3d->clear(GraphicsContext3D::COLOR_BUFFER_BIT | GraphicsContext3D::DEPTH_BUFFER_BIT | GraphicsContext3D::STENCIL_BUFFER_BIT);
     gc3d->clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
 
-    return WTFMove(imageBitmap);
+    return imageBitmap;
 #else
     return nullptr;
 #endif

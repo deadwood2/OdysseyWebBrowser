@@ -26,11 +26,16 @@
 #include "WebKitBrowserWindow.h"
 
 #include "MiniBrowserLibResource.h"
+#include "common.h"
+#include <WebKit/WKAuthenticationChallenge.h>
+#include <WebKit/WKAuthenticationDecisionListener.h>
+#include <WebKit/WKCredential.h>
 #include <WebKit/WKInspector.h>
+#include <WebKit/WKProtectionSpace.h>
+#include <WebKit/WKWebsiteDataStoreRefCurl.h>
 #include <vector>
 
-std::wstring
-createString(WKStringRef wkString)
+std::wstring createString(WKStringRef wkString)
 {
     size_t maxSize = WKStringGetLength(wkString);
 
@@ -45,27 +50,35 @@ std::wstring createString(WKURLRef wkURL)
     return createString(url.get());
 }
 
-std::vector<char> toNullTerminatedUTF8(const wchar_t* src, size_t srcLength)
+std::string createUTF8String(const wchar_t* src, size_t srcLength)
 {
-    int utf8Length = WideCharToMultiByte(CP_UTF8, 0, src, srcLength, 0, 0, nullptr, nullptr);
-    std::vector<char> utf8Buffer(utf8Length + 1);
-    WideCharToMultiByte(CP_UTF8, 0, src, srcLength,
-        utf8Buffer.data(), utf8Length, nullptr, nullptr);
-    utf8Buffer[utf8Length] = '\0';
-    return utf8Buffer;
+    int length = WideCharToMultiByte(CP_UTF8, 0, src, srcLength, 0, 0, nullptr, nullptr);
+    std::vector<char> buffer(length);
+    size_t actualLength = WideCharToMultiByte(CP_UTF8, 0, src, srcLength, buffer.data(), length, nullptr, nullptr);
+    return { buffer.data(), actualLength };
 }
 
-WKRetainPtr<WKStringRef>
-createWKString(_bstr_t str)
+WKRetainPtr<WKStringRef> createWKString(_bstr_t str)
 {
-    auto utf8 = toNullTerminatedUTF8(str, str.length());
+    auto utf8 = createUTF8String(str, str.length());
     return adoptWK(WKStringCreateWithUTF8CString(utf8.data()));
 }
 
-WKRetainPtr<WKURLRef>
-createWKURL(_bstr_t str)
+WKRetainPtr<WKStringRef> createWKString(const std::wstring& str)
 {
-    auto utf8 = toNullTerminatedUTF8(str, str.length());
+    auto utf8 = createUTF8String(str.c_str(), str.length());
+    return adoptWK(WKStringCreateWithUTF8CString(utf8.data()));
+}
+
+WKRetainPtr<WKURLRef> createWKURL(_bstr_t str)
+{
+    auto utf8 = createUTF8String(str, str.length());
+    return adoptWK(WKURLCreateWithUTF8CString(utf8.data()));
+}
+
+WKRetainPtr<WKURLRef> createWKURL(const std::wstring& str)
+{
+    auto utf8 = createUTF8String(str.c_str(), str.length());
     return adoptWK(WKURLCreateWithUTF8CString(utf8.data()));
 }
 
@@ -85,16 +98,40 @@ WebKitBrowserWindow::WebKitBrowserWindow(HWND mainWnd, HWND urlBarWnd)
     WKPreferencesSetDeveloperExtrasEnabled(prefs, true);
     WKPageConfigurationSetPreferences(conf.get(), prefs);
 
-    auto context = adoptWK(WKContextCreate());
-    WKPageConfigurationSetContext(conf.get(), context.get());
+    m_context = adoptWK(WKContextCreateWithConfiguration(nullptr));
+    WKPageConfigurationSetContext(conf.get(), m_context.get());
 
     m_view = adoptWK(WKViewCreate(rect, conf.get(), mainWnd));
     auto page = WKViewGetPage(m_view.get());
 
-    WKPageLoaderClientV0 loadClient = {{ 0, this }};
-    loadClient.didReceiveTitleForFrame = didReceiveTitleForFrame;
-    loadClient.didCommitLoadForFrame = didCommitLoadForFrame;
-    WKPageSetPageLoaderClient(page, &loadClient.base);
+    WKPageNavigationClientV0 navigationClient = { };
+    navigationClient.base.version = 0;
+    navigationClient.base.clientInfo = this;
+    navigationClient.didFinishNavigation = didFinishNavigation;
+    navigationClient.didCommitNavigation = didCommitNavigation;
+    navigationClient.didReceiveAuthenticationChallenge = didReceiveAuthenticationChallenge;
+    WKPageSetPageNavigationClient(page, &navigationClient.base);
+
+    updateProxySettings();
+}
+
+void WebKitBrowserWindow::updateProxySettings()
+{
+    auto store = WKContextGetWebsiteDataStore(m_context.get());
+
+    if (!m_proxy.enable) {
+        WKWebsiteDataStoreDisableNetworkProxySettings(store);
+        return;
+    }
+
+    if (!m_proxy.custom) {
+        WKWebsiteDataStoreEnableDefaultNetworkProxySettings(store);
+        return;
+    }
+
+    auto url = createWKURL(m_proxy.url);
+    auto excludeHosts = createWKString(m_proxy.excludeHosts);
+    WKWebsiteDataStoreEnableCustomNetworkProxySettings(store, url.get(), excludeHosts.get());
 }
 
 HRESULT WebKitBrowserWindow::init()
@@ -110,14 +147,14 @@ HWND WebKitBrowserWindow::hwnd()
 HRESULT WebKitBrowserWindow::loadURL(const BSTR& url)
 {
     auto page = WKViewGetPage(m_view.get());
-    WKPageLoadURL(page, createWKURL(url).get());
+    WKPageLoadURL(page, createWKURL(_bstr_t(url)).get());
     return true;
 }
 
 HRESULT WebKitBrowserWindow::loadHTMLString(const BSTR& str)
 {
     auto page = WKViewGetPage(m_view.get());
-    auto url = createWKURL(L"about:");
+    auto url = createWKURL(_bstr_t(L"about:"));
     WKPageLoadHTMLString(page, createWKString(_bstr_t(str)).get(), url.get());
     return true;
 }
@@ -161,6 +198,13 @@ void WebKitBrowserWindow::launchInspector()
     auto page = WKViewGetPage(m_view.get());
     auto inspector = WKPageGetInspector(page);
     WKInspectorShow(inspector);
+}
+
+void WebKitBrowserWindow::openProxySettings()
+{
+    if (askProxySettings(m_hMainWnd, m_proxy))
+        updateProxySettings();
+
 }
 
 void WebKitBrowserWindow::setUserAgent(_bstr_t& customUAString)
@@ -213,22 +257,37 @@ static WebKitBrowserWindow& toWebKitBrowserWindow(const void *clientInfo)
     return *const_cast<WebKitBrowserWindow*>(static_cast<const WebKitBrowserWindow*>(clientInfo));
 }
 
-void WebKitBrowserWindow::didReceiveTitleForFrame(WKPageRef page, WKStringRef title, WKFrameRef frame, WKTypeRef userData, const void *clientInfo)
+void WebKitBrowserWindow::didFinishNavigation(WKPageRef page, WKNavigationRef navigation, WKTypeRef userData, const void* clientInfo)
 {
-    if (!WKFrameIsMainFrame(frame))
-        return;
-    std::wstring titleString = createString(title) + L" [WebKit]";
+    WKRetainPtr<WKStringRef> title = adoptWK(WKPageCopyTitle(page));
+    std::wstring titleString = createString(title.get()) + L" [WebKit]";
     auto& thisWindow = toWebKitBrowserWindow(clientInfo);
     SetWindowText(thisWindow.m_hMainWnd, titleString.c_str());
 }
 
-void WebKitBrowserWindow::didCommitLoadForFrame(WKPageRef page, WKFrameRef frame, WKTypeRef userData, const void *clientInfo)
+void WebKitBrowserWindow::didCommitNavigation(WKPageRef page, WKNavigationRef navigation, WKTypeRef userData, const void* clientInfo)
 {
-    if (!WKFrameIsMainFrame(frame))
-        return;
     auto& thisWindow = toWebKitBrowserWindow(clientInfo);
 
-    WKRetainPtr<WKURLRef> wkurl = adoptWK(WKFrameCopyURL(frame));
+    WKRetainPtr<WKURLRef> wkurl = adoptWK(WKPageCopyCommittedURL(page));
     std::wstring urlString = createString(wkurl.get());
     SetWindowText(thisWindow.m_urlBarWnd, urlString.c_str());
+}
+
+void WebKitBrowserWindow::didReceiveAuthenticationChallenge(WKPageRef page, WKAuthenticationChallengeRef challenge, const void* clientInfo)
+{
+    auto& thisWindow = toWebKitBrowserWindow(clientInfo);
+    auto protectionSpace = WKAuthenticationChallengeGetProtectionSpace(challenge);
+    auto decisionListener = WKAuthenticationChallengeGetDecisionListener(challenge);
+
+    WKRetainPtr<WKStringRef> realm(WKProtectionSpaceCopyRealm(protectionSpace));
+    if (auto credential = askCredential(thisWindow.hwnd(), createString(realm.get()))) {
+        WKRetainPtr<WKStringRef> username = createWKString(credential->username);
+        WKRetainPtr<WKStringRef> password = createWKString(credential->password);
+        WKRetainPtr<WKCredentialRef> wkCredential(AdoptWK, WKCredentialCreate(username.get(), password.get(), kWKCredentialPersistenceForSession));
+        WKAuthenticationDecisionListenerUseCredential(decisionListener, wkCredential.get());
+        return;
+    }
+
+    WKAuthenticationDecisionListenerCancel(decisionListener);
 }

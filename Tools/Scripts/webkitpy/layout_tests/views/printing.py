@@ -81,10 +81,6 @@ class Printer(object):
         if self._options.new_baseline:
             self._print_default("Placing new baselines in %s" % self._port.baseline_path())
 
-        fs = self._port.host.filesystem
-        fallback_path = [fs.relpath(x, self._port.layout_tests_dir()).replace("../", "") for x in self._port.baseline_search_path()]
-        self._print_default("Baseline search path: %s -> generic" % " -> ".join(fallback_path))
-
         self._print_default("Using %s build" % self._options.configuration)
         if self._options.pixel_tests:
             self._print_default("Pixel tests enabled")
@@ -95,6 +91,20 @@ class Printer(object):
                   (self._options.time_out_ms, self._options.slow_time_out_ms))
 
         self._print_default('Command line: ' + ' '.join(self._port.driver_cmd_line_for_logging()))
+        self._print_default('')
+
+    def print_baseline_search_path(self, device_type=None):
+        fs = self._port.host.filesystem
+        full_baseline_search_path = self._port.baseline_search_path(device_type=device_type)
+        normalize_baseline = lambda baseline_search_path: [
+            fs.relpath(x, self._port.layout_tests_dir()).replace("../", "") for x in baseline_search_path]
+
+        self._print_default('Verbose baseline search path: {} -> generic'.format(
+            ' -> '.join(normalize_baseline(full_baseline_search_path))))
+
+        self._print_default('')
+        self._print_default('Baseline search path: {} -> generic'.format(
+            ' -> '.join(normalize_baseline([path for path in full_baseline_search_path if fs.exists(path)]))))
         self._print_default('')
 
     def print_found(self, num_all_test_files, num_to_run, repeat_each, iterations):
@@ -113,12 +123,11 @@ class Printer(object):
     def print_workers_and_shards(self, num_workers, num_shards):
         driver_name = self._port.driver_name()
 
-        device_suffix = ' for device "{}"'.format(self._options.device_class) if self._options.device_class else ''
         if num_workers == 1:
-            self._print_default('Running 1 {}{}.'.format(driver_name, device_suffix))
+            self._print_default('Running 1 {}.'.format(driver_name))
             self._print_debug('({}).'.format(grammar.pluralize(num_shards, "shard")))
         else:
-            self._print_default('Running {} in parallel{}.'.format(grammar.pluralize(num_workers, driver_name), device_suffix))
+            self._print_default('Running {} in parallel.'.format(grammar.pluralize(num_workers, driver_name)))
             self._print_debug('({} shards).'.format(num_shards))
         self._print_default('')
 
@@ -321,7 +330,7 @@ class Printer(object):
     def print_finished_test(self, result, expected, exp_str, got_str):
         test_name = result.test_name
 
-        result_message = self._result_message(result.type, result.failures, expected, self._options.verbose)
+        result_message = self._result_message(result.type, result.failures, expected, exp_str, self._options.verbose)
 
         if self._options.details:
             self._print_test_trace(result, exp_str, got_str)
@@ -340,8 +349,11 @@ class Printer(object):
             self._completed_tests = []
         self._running_tests.remove(test_name)
 
-    def _result_message(self, result_type, failures, expected, verbose):
-        exp_string = ' unexpectedly' if not expected else ''
+    def _result_message(self, result_type, failures, expected, exp_str, verbose):
+        exp_string = ''
+        if not expected:
+            exp_string = ' (leak detection is pending)' if 'LEAK' in exp_str else ' unexpectedly'
+
         if result_type == test_expectations.PASS:
             return ' passed%s' % exp_string
         else:

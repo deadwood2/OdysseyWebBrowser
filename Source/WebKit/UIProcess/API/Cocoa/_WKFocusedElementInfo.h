@@ -53,13 +53,14 @@ typedef NS_ENUM(NSInteger, WKInputType) {
     WKInputTypeWeek,
     WKInputTypeTime,
     WKInputTypeSelect,
-    WKInputTypeColor
+    WKInputTypeColor,
+    WKInputTypeDrawing,
 };
 
 /**
- * The _WKFocusedElementInfo provides basic information about an element
- * that has been focused (either programmatically or through user interaction)
- * but has not yet been assisted.
+ * The _WKFocusedElementInfo provides basic information about an element that
+ * has been focused (either programmatically or through user interaction) but
+ * is not causing any input UI (e.g. keyboard, date picker, etc.) to be shown.
  */
 @protocol _WKFocusedElementInfo <NSObject>
 

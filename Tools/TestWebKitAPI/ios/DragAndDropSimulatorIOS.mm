@@ -26,7 +26,7 @@
 #include "config.h"
 #include "DragAndDropSimulator.h"
 
-#if ENABLE(DRAG_SUPPORT) && PLATFORM(IOS) && WK_API_ENABLED
+#if ENABLE(DRAG_SUPPORT) && PLATFORM(IOS_FAMILY) && WK_API_ENABLED
 
 #import "InstanceMethodSwizzler.h"
 #import "PlatformUtilities.h"
@@ -120,7 +120,7 @@ using namespace TestWebKitAPI;
     return YES;
 }
 
-- (BOOL)canLoadObjectsOfClass:(Class<UIItemProviderReading>)aClass
+- (BOOL)canLoadObjectsOfClass:(Class<NSItemProviderReading>)aClass
 {
     for (UIDragItem *item in self.items) {
         if ([item.itemProvider canLoadObjectOfClass:aClass])
@@ -129,9 +129,9 @@ using namespace TestWebKitAPI;
     return NO;
 }
 
-- (BOOL)canLoadObjectsOfClasses:(NSArray<Class<UIItemProviderReading>> *)classes
+- (BOOL)canLoadObjectsOfClasses:(NSArray<Class<NSItemProviderReading>> *)classes
 {
-    for (Class<UIItemProviderReading> aClass in classes) {
+    for (Class<NSItemProviderReading> aClass in classes) {
         BOOL canLoad = NO;
         for (UIDragItem *item in self.items)
             canLoad |= [item.itemProvider canLoadObjectOfClass:aClass];
@@ -171,10 +171,10 @@ using namespace TestWebKitAPI;
 
 @implementation MockDropSession
 
-- (instancetype)initWithProviders:(NSArray<UIItemProvider *> *)providers location:(CGPoint)locationInWindow window:(UIWindow *)window allowMove:(BOOL)allowMove
+- (instancetype)initWithProviders:(NSArray<NSItemProvider *> *)providers location:(CGPoint)locationInWindow window:(UIWindow *)window allowMove:(BOOL)allowMove
 {
     auto items = adoptNS([[NSMutableArray alloc] init]);
-    for (UIItemProvider *itemProvider in providers)
+    for (NSItemProvider *itemProvider in providers)
         [items addObject:[[[UIDragItem alloc] initWithItemProvider:itemProvider] autorelease]];
 
     return [super initWithItems:items.get() location:locationInWindow window:window allowMove:allowMove];
@@ -215,7 +215,7 @@ using namespace TestWebKitAPI;
     return NO;
 }
 
-- (BOOL)canCreateItemsOfClass:(Class<UIItemProviderReading>)aClass
+- (BOOL)canCreateItemsOfClass:(Class<NSItemProviderReading>)aClass
 {
     ASSERT_NOT_REACHED();
     return NO;
@@ -297,8 +297,8 @@ static NSArray *dragAndDropEventNames()
     RetainPtr<MockDropSession> _dropSession;
     RetainPtr<NSMutableArray> _observedEventNames;
     RetainPtr<NSArray> _externalItemProviders;
-    RetainPtr<NSArray *> _sourceItemProviders;
-    RetainPtr<NSArray *> _finalSelectionRects;
+    RetainPtr<NSArray> _sourceItemProviders;
+    RetainPtr<NSArray> _finalSelectionRects;
     CGPoint _startLocation;
     CGPoint _endLocation;
     CGRect _lastKnownDragCaretRect;
@@ -310,12 +310,19 @@ static NSArray *dragAndDropEventNames()
     RetainPtr<NSMutableArray<_WKAttachment *>> _insertedAttachments;
     RetainPtr<NSMutableArray<_WKAttachment *>> _removedAttachments;
 
-    bool _isDoneWaitingForInputSession;
+    bool _hasStartedInputSession;
     double _currentProgress;
     bool _isDoneWithCurrentRun;
     DragAndDropPhase _phase;
 
-    RetainPtr<UIDropProposal> _currentDropProposal;
+    BOOL _suppressedSelectionCommandsDuringDrop;
+    RetainPtr<UIDropProposal> _lastKnownDropProposal;
+
+    BlockPtr<BOOL(_WKActivatedElementInfo *)> _showCustomActionSheetBlock;
+    BlockPtr<NSArray *(NSItemProvider *, NSArray *, NSDictionary *)> _convertItemProvidersBlock;
+    BlockPtr<NSArray *(id <UIDropSession>)> _overridePerformDropBlock;
+    BlockPtr<UIDropOperation(UIDropOperation, id)> _overrideDragUpdateBlock;
+    BlockPtr<void(BOOL, NSArray *)> _dropCompletionBlock;
 }
 
 - (instancetype)initWithWebViewFrame:(CGRect)frame
@@ -325,6 +332,7 @@ static NSArray *dragAndDropEventNames()
 
 - (instancetype)initWithWebViewFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration
 {
+    self.dragDestinationAction = WKDragDestinationActionAny & ~WKDragDestinationActionLoad;
     if (configuration)
         return [self initWithWebView:[[[TestWKWebView alloc] initWithFrame:frame configuration:configuration] autorelease]];
 
@@ -337,10 +345,8 @@ static NSArray *dragAndDropEventNames()
         _webView = webView;
         _shouldEnsureUIApplication = NO;
         _shouldAllowMoveOperation = YES;
-        _isDoneWaitingForInputSession = true;
         [_webView setUIDelegate:self];
         [_webView _setInputDelegate:self];
-        self.dragDestinationAction = WKDragDestinationActionAny & ~WKDragDestinationActionLoad;
     }
     return self;
 }
@@ -358,6 +364,7 @@ static NSArray *dragAndDropEventNames()
 
 - (void)_resetSimulatedState
 {
+    _suppressedSelectionCommandsDuringDrop = NO;
     _phase = DragAndDropPhaseBeginning;
     _currentProgress = 0;
     _isDoneWithCurrentRun = false;
@@ -367,16 +374,22 @@ static NSArray *dragAndDropEventNames()
     _finalSelectionRects = @[ ];
     _dragSession = nil;
     _dropSession = nil;
-    _currentDropProposal = nil;
+    _lastKnownDropProposal = nil;
     _lastKnownDragCaretRect = CGRectZero;
     _remainingAdditionalItemRequestLocationsByProgress = nil;
     _queuedAdditionalItemRequestLocations = adoptNS([[NSMutableArray alloc] init]);
     _liftPreviews = adoptNS([[NSMutableArray alloc] init]);
+    _hasStartedInputSession = false;
 }
 
 - (NSArray *)observedEventNames
 {
     return _observedEventNames.get();
+}
+
+- (UIDropProposal *)lastKnownDropProposal
+{
+    return _lastKnownDropProposal.get();
 }
 
 - (void)simulateAllTouchesCanceled:(NSNotification *)notification
@@ -447,7 +460,7 @@ static NSArray *dragAndDropEventNames()
 - (void)_concludeDropAndPerformOperationIfNecessary
 {
     _lastKnownDragCaretRect = [_webView _dragCaretRect];
-    auto operation = [_currentDropProposal operation];
+    auto operation = [_lastKnownDropProposal operation];
     if (operation != UIDropOperationCancel && operation != UIDropOperationForbidden) {
         [[_webView dropInteractionDelegate] dropInteraction:[_webView dropInteraction] performDrop:_dropSession.get()];
         _phase = DragAndDropPhasePerformingDrop;
@@ -458,8 +471,13 @@ static NSArray *dragAndDropEventNames()
 
     [[_webView dropInteractionDelegate] dropInteraction:[_webView dropInteraction] sessionDidEnd:_dropSession.get()];
 
-    if (_dragSession)
-        [[_webView dragInteractionDelegate] dragInteraction:[_webView dragInteraction] session:_dragSession.get() didEndWithOperation:operation];
+    if (_dragSession) {
+        auto delegate = [_webView dragInteractionDelegate];
+        [delegate dragInteraction:[_webView dragInteraction] session:_dragSession.get() didEndWithOperation:operation];
+        if ([delegate respondsToSelector:@selector(_clearToken:)])
+            [(id <UITextInputMultiDocument>)delegate _clearToken:nil];
+        [_webView becomeFirstResponder];
+    }
 }
 
 - (void)_enqueuePendingAdditionalItemRequestLocations
@@ -515,7 +533,7 @@ static NSArray *dragAndDropEventNames()
 
     switch (_phase) {
     case DragAndDropPhaseBeginning: {
-        NSMutableArray<UIItemProvider *> *itemProviders = [NSMutableArray array];
+        NSMutableArray<NSItemProvider *> *itemProviders = [NSMutableArray array];
         NSArray *items = [[_webView dragInteractionDelegate] dragInteraction:[_webView dragInteraction] itemsForBeginningSession:_dragSession.get()];
         if (!items.count) {
             _phase = DragAndDropPhaseCancelled;
@@ -542,7 +560,13 @@ static NSArray *dragAndDropEventNames()
             return;
         }
 
-        [[_webView dragInteractionDelegate] dragInteraction:[_webView dragInteraction] sessionWillBegin:_dragSession.get()];
+        auto delegate = [_webView dragInteractionDelegate];
+        if ([delegate respondsToSelector:@selector(_preserveFocusWithToken:destructively:)])
+            [(id <UITextInputMultiDocument>)delegate _preserveFocusWithToken:nil destructively:NO];
+
+        [_webView resignFirstResponder];
+
+        [delegate dragInteraction:[_webView dragInteraction] sessionWillBegin:_dragSession.get()];
 
         RetainPtr<WKWebView> retainedWebView = _webView;
         dispatch_async(dispatch_get_main_queue(), ^() {
@@ -557,9 +581,9 @@ static NSArray *dragAndDropEventNames()
         _phase = DragAndDropPhaseEntered;
         break;
     case DragAndDropPhaseEntered: {
-        _currentDropProposal = [[_webView dropInteractionDelegate] dropInteraction:[_webView dropInteraction] sessionDidUpdate:_dropSession.get()];
-        if (![self shouldAllowMoveOperation] && [_currentDropProposal operation] == UIDropOperationMove)
-            _currentDropProposal = adoptNS([[UIDropProposal alloc] initWithDropOperation:UIDropOperationCancel]);
+        _lastKnownDropProposal = [[_webView dropInteractionDelegate] dropInteraction:[_webView dropInteraction] sessionDidUpdate:_dropSession.get()];
+        if (![self shouldAllowMoveOperation] && [_lastKnownDropProposal operation] == UIDropOperationMove)
+            _lastKnownDropProposal = adoptNS([[UIDropProposal alloc] initWithDropOperation:UIDropOperationCancel]);
         break;
     }
     default:
@@ -567,6 +591,11 @@ static NSArray *dragAndDropEventNames()
     }
 
     [self _scheduleAdvanceProgress];
+}
+
+- (void)clearExternalDragInformation
+{
+    _externalItemProviders = nil;
 }
 
 - (CGPoint)_currentLocation
@@ -612,14 +641,9 @@ static NSArray *dragAndDropEventNames()
     return _lastKnownDragCaretRect;
 }
 
-- (void)waitForInputSession
+- (void)ensureInputSession
 {
-    _isDoneWaitingForInputSession = false;
-
-    // Waiting for an input session implies that we should allow input sessions to begin.
-    self.allowsFocusToStartInputSession = YES;
-
-    Util::run(&_isDoneWaitingForInputSession);
+    Util::run(&_hasStartedInputSession);
 }
 
 - (NSArray<_WKAttachment *> *)insertedAttachments
@@ -642,22 +666,76 @@ static NSArray *dragAndDropEventNames()
     return _webView.get();
 }
 
+- (void)setShowCustomActionSheetBlock:(BOOL(^)(_WKActivatedElementInfo *))showCustomActionSheetBlock
+{
+    _showCustomActionSheetBlock = showCustomActionSheetBlock;
+}
+
+- (BOOL(^)(_WKActivatedElementInfo *))showCustomActionSheetBlock
+{
+    return _showCustomActionSheetBlock.get();
+}
+
+- (void)setConvertItemProvidersBlock:(NSArray *(^)(NSItemProvider *, NSArray *, NSDictionary *))convertItemProvidersBlock
+{
+    _convertItemProvidersBlock = convertItemProvidersBlock;
+}
+
+- (NSArray *(^)(NSItemProvider *, NSArray *, NSDictionary *))convertItemProvidersBlock
+{
+    return _convertItemProvidersBlock.get();
+}
+
+- (void)setOverridePerformDropBlock:(NSArray *(^)(id <UIDropSession>))overridePerformDropBlock
+{
+    _overridePerformDropBlock = overridePerformDropBlock;
+}
+
+- (NSArray *(^)(id <UIDropSession>))overridePerformDropBlock
+{
+    return _overridePerformDropBlock.get();
+}
+
+- (void)setOverrideDragUpdateBlock:(UIDropOperation(^)(UIDropOperation, id <UIDropSession>))overrideDragUpdateBlock
+{
+    _overrideDragUpdateBlock = overrideDragUpdateBlock;
+}
+
+- (UIDropOperation(^)(UIDropOperation, id <UIDropSession>))overrideDragUpdateBlock
+{
+    return _overrideDragUpdateBlock.get();
+}
+
+- (void)setDropCompletionBlock:(void(^)(BOOL, NSArray *))dropCompletionBlock
+{
+    _dropCompletionBlock = dropCompletionBlock;
+}
+
+- (void(^)(BOOL, NSArray *))dropCompletionBlock
+{
+    return _dropCompletionBlock.get();
+}
+
 #pragma mark - WKUIDelegatePrivate
 
-- (void)_webView:(WKWebView *)webView dataInteractionOperationWasHandled:(BOOL)handled forSession:(id)session itemProviders:(NSArray<UIItemProvider *> *)itemProviders
+- (void)_webView:(WKWebView *)webView dataInteractionOperationWasHandled:(BOOL)handled forSession:(id)session itemProviders:(NSArray<NSItemProvider *> *)itemProviders
 {
+    _suppressedSelectionCommandsDuringDrop = [_webView textInputContentView]._shouldSuppressSelectionCommands;
     _isDoneWithCurrentRun = true;
 
     if (self.dropCompletionBlock)
         self.dropCompletionBlock(handled, itemProviders);
 }
 
-- (NSUInteger)_webView:(WKWebView *)webView willUpdateDataInteractionOperationToOperation:(NSUInteger)operation forSession:(id)session
+- (UIDropProposal *)_webView:(WKWebView *)webView willUpdateDropProposalToProposal:(UIDropProposal *)proposal forSession:(id <UIDropSession>)session
 {
-    return self.overrideDragUpdateBlock ? self.overrideDragUpdateBlock(operation, session) : operation;
+    if (!self.overrideDragUpdateBlock)
+        return proposal;
+
+    return [[[UIDropProposal alloc] initWithDropOperation:self.overrideDragUpdateBlock(proposal.operation, session)] autorelease];
 }
 
-- (NSArray *)_webView:(WKWebView *)webView adjustedDataInteractionItemProvidersForItemProvider:(UIItemProvider *)itemProvider representingObjects:(NSArray *)representingObjects additionalData:(NSDictionary *)additionalData
+- (NSArray *)_webView:(WKWebView *)webView adjustedDataInteractionItemProvidersForItemProvider:(NSItemProvider *)itemProvider representingObjects:(NSArray *)representingObjects additionalData:(NSDictionary *)additionalData
 {
     return self.convertItemProvidersBlock ? self.convertItemProvidersBlock(itemProvider, representingObjects, additionalData) : @[ itemProvider ];
 }
@@ -681,7 +759,7 @@ static NSArray *dragAndDropEventNames()
     return self.overridePerformDropBlock ? self.overridePerformDropBlock(session) : session.items;
 }
 
-- (void)_webView:(WKWebView *)webView didInsertAttachment:(_WKAttachment *)attachment
+- (void)_webView:(WKWebView *)webView didInsertAttachment:(_WKAttachment *)attachment withSource:(NSString *)source
 {
     [_insertedAttachments addObject:attachment];
 }
@@ -705,9 +783,9 @@ static NSArray *dragAndDropEventNames()
 
 - (void)_webView:(WKWebView *)webView didStartInputSession:(id <_WKFormInputSession>)inputSession
 {
-    _isDoneWaitingForInputSession = true;
+    _hasStartedInputSession = true;
 }
 
 @end
 
-#endif // ENABLE(DRAG_SUPPORT) && PLATFORM(IOS) && WK_API_ENABLED
+#endif // ENABLE(DRAG_SUPPORT) && PLATFORM(IOS_FAMILY) && WK_API_ENABLED

@@ -25,7 +25,7 @@
 
 #import <config.h>
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 #import "FindController.h"
 #import "FindIndicatorOverlayClientIOS.h"
@@ -48,10 +48,10 @@ namespace WebKit {
 using namespace WebCore;
 
 const int cornerRadius = 3;
-const int totalHorizontalMargin = 2;
+const int totalHorizontalMargin = 1;
 const int totalVerticalMargin = 1;
 
-const TextIndicatorOptions findTextIndicatorOptions = TextIndicatorOptionTightlyFitContent | TextIndicatorOptionIncludeMarginIfRangeMatchesSelection | TextIndicatorOptionDoNotClipToVisibleRect;
+const TextIndicatorOptions findTextIndicatorOptions = TextIndicatorOptionIncludeMarginIfRangeMatchesSelection | TextIndicatorOptionDoNotClipToVisibleRect;
 
 static Color highlightColor()
 {
@@ -94,7 +94,7 @@ bool FindController::updateFindIndicator(Frame& selectedFrame, bool isShowingOve
         m_isShowingFindIndicator = false;
     }
 
-    RefPtr<TextIndicator> textIndicator = TextIndicator::createWithSelectionInFrame(selectedFrame, findTextIndicatorOptions, TextIndicatorPresentationTransition::None, FloatSize(totalHorizontalMargin, totalVerticalMargin));
+    auto textIndicator = TextIndicator::createWithSelectionInFrame(selectedFrame, findTextIndicatorOptions, TextIndicatorPresentationTransition::None, FloatSize(totalHorizontalMargin, totalVerticalMargin));
     if (!textIndicator)
         return false;
 
@@ -105,7 +105,7 @@ bool FindController::updateFindIndicator(Frame& selectedFrame, bool isShowingOve
     m_findIndicatorOverlay->setFrame(enclosingIntRect(textIndicator->textBoundingRectInRootViewCoordinates()));
     m_findIndicatorOverlay->setNeedsDisplay();
 
-    if (isShowingOverlay || shouldAnimate) {
+    if (shouldAnimate) {
         FloatRect visibleContentRect = m_webPage->mainFrameView()->unobscuredContentRectIncludingScrollbars();
 
         bool isReplaced;
@@ -173,6 +173,16 @@ void FindController::didFailToFindString()
 void FindController::didHideFindIndicator()
 {
     setSelectionChangeUpdatesEnabledInAllFrames(*m_webPage, false);
+}
+    
+unsigned FindController::findIndicatorRadius() const
+{
+    return cornerRadius;
+}
+    
+bool FindController::shouldHideFindIndicatorOnScroll() const
+{
+    return false;
 }
 
 } // namespace WebKit

@@ -26,6 +26,7 @@
 #pragma once
 
 #include "DownloadID.h"
+#include "DownloadManager.h"
 #include "MessageSender.h"
 #include "NetworkDataTask.h"
 #include "SandboxExtension.h"
@@ -37,6 +38,7 @@
 #include <wtf/RetainPtr.h>
 
 #if PLATFORM(COCOA)
+OBJC_CLASS NSProgress;
 OBJC_CLASS NSURLSessionDownloadTask;
 #endif
 
@@ -56,7 +58,6 @@ class ResourceResponse;
 
 namespace WebKit {
 
-class DownloadManager;
 class NetworkDataTask;
 class NetworkSession;
 class WebPage;
@@ -73,6 +74,9 @@ public:
 
     void resume(const IPC::DataReference& resumeData, const String& path, SandboxExtension::Handle&&);
     void cancel();
+#if PLATFORM(COCOA)
+    void publishProgress(const URL&, SandboxExtension::Handle&&);
+#endif
 
     DownloadID downloadID() const { return m_downloadID; }
     const String& suggestedName() const { return m_suggestedName; }
@@ -87,15 +91,17 @@ public:
 
 private:
     // IPC::MessageSender
-    IPC::Connection* messageSenderConnection() override;
-    uint64_t messageSenderDestinationID() override;
+    IPC::Connection* messageSenderConnection() const override;
+    uint64_t messageSenderDestinationID() const override;
 
     void platformCancelNetworkLoad();
+    void platformDestroyDownload();
 
     bool isAlwaysOnLoggingAllowed() const;
 
     DownloadManager& m_downloadManager;
     DownloadID m_downloadID;
+    Ref<DownloadManager::Client> m_client;
 
     Vector<RefPtr<WebCore::BlobDataFileReference>> m_blobFileReferences;
     RefPtr<SandboxExtension> m_sandboxExtension;
@@ -103,6 +109,7 @@ private:
     RefPtr<NetworkDataTask> m_download;
 #if PLATFORM(COCOA)
     RetainPtr<NSURLSessionDownloadTask> m_downloadTask;
+    RetainPtr<NSProgress> m_progress;
 #endif
     PAL::SessionID m_sessionID;
     String m_suggestedName;

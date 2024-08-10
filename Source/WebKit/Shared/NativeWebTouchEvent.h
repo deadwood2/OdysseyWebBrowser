@@ -23,32 +23,40 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef NativeWebTouchEvent_h
-#define NativeWebTouchEvent_h
-
-#if ENABLE(TOUCH_EVENTS)
+#pragma once
 
 #include "WebEvent.h"
 
-#if PLATFORM(IOS)
+#if ENABLE(TOUCH_EVENTS)
+
+#if PLATFORM(IOS_FAMILY)
+#if defined(__OBJC__)
+#include <UIKit/UIKit.h>
 struct _UIWebTouchEvent;
+#endif
 #elif PLATFORM(GTK)
 #include <WebCore/GUniquePtrGtk.h>
-#elif PLATFORM(WPE)
+#elif USE(LIBWPE)
 #include <wpe/wpe.h>
 #endif
 
+#endif // ENABLE(TOUCH_EVENTS)
+
 namespace WebKit {
+
+#if ENABLE(TOUCH_EVENTS)
 
 class NativeWebTouchEvent : public WebTouchEvent {
 public:
-#if PLATFORM(IOS)
-    explicit NativeWebTouchEvent(const _UIWebTouchEvent*);
+#if PLATFORM(IOS_FAMILY)
+#if defined(__OBJC__)
+    explicit NativeWebTouchEvent(const _UIWebTouchEvent*, UIKeyModifierFlags);
+#endif
 #elif PLATFORM(GTK)
     NativeWebTouchEvent(GdkEvent*, Vector<WebPlatformTouchPoint>&&);
     NativeWebTouchEvent(const NativeWebTouchEvent&);
     const GdkEvent* nativeEvent() const { return m_nativeEvent.get(); }
-#elif PLATFORM(WPE)
+#elif USE(LIBWPE)
     NativeWebTouchEvent(struct wpe_input_touch_event*, float deviceScaleFactor);
     const struct wpe_input_touch_event_raw* nativeFallbackTouchPoint() const { return &m_fallbackTouchPoint; }
 #elif PLATFORM(WIN)
@@ -56,19 +64,21 @@ public:
 #endif
 
 private:
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY) && defined(__OBJC__)
     Vector<WebPlatformTouchPoint> extractWebTouchPoint(const _UIWebTouchEvent*);
 #endif
 
 #if PLATFORM(GTK)
     GUniquePtr<GdkEvent> m_nativeEvent;
-#elif PLATFORM(WPE)
+#elif USE(LIBWPE)
     struct wpe_input_touch_event_raw m_fallbackTouchPoint;
 #endif
 };
 
-} // namespace WebKit
-
 #endif // ENABLE(TOUCH_EVENTS)
 
-#endif // NativeWebTouchEvent_h
+#if PLATFORM(IOS_FAMILY) && defined(__OBJC__)
+OptionSet<WebEvent::Modifier> webEventModifierFlags(UIKeyModifierFlags);
+#endif
+
+} // namespace WebKit

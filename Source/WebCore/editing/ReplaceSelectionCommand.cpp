@@ -31,6 +31,7 @@
 #include "ApplyStyleCommand.h"
 #include "BeforeTextInsertedEvent.h"
 #include "BreakBlockquoteCommand.h"
+#include "CSSComputedStyleDeclaration.h"
 #include "CSSStyleDeclaration.h"
 #include "DOMWrapperWorld.h"
 #include "DataTransfer.h"
@@ -43,6 +44,7 @@
 #include "FrameSelection.h"
 #include "HTMLBRElement.h"
 #include "HTMLBaseElement.h"
+#include "HTMLBodyElement.h"
 #include "HTMLInputElement.h"
 #include "HTMLLIElement.h"
 #include "HTMLLinkElement.h"
@@ -54,6 +56,7 @@
 #include "NodeRenderStyle.h"
 #include "RenderInline.h"
 #include "RenderText.h"
+#include "ScriptElement.h"
 #include "SimplifyMarkupCommand.h"
 #include "SmartReplace.h"
 #include "StyleProperties.h"
@@ -70,14 +73,13 @@ using namespace HTMLNames;
 
 enum EFragmentType { EmptyFragment, SingleTextNodeFragment, TreeFragment };
 
-static void removeHeadContents(ReplacementFragment&);
-
 // --- ReplacementFragment helper class
 
 class ReplacementFragment {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(ReplacementFragment);
 public:
-    ReplacementFragment(Document&, DocumentFragment*, const VisibleSelection&);
+    ReplacementFragment(DocumentFragment*, const VisibleSelection&);
 
     DocumentFragment* fragment() { return m_fragment.get(); }
 
@@ -93,6 +95,7 @@ public:
     void removeNodePreservingChildren(Node&);
 
 private:
+    void removeContentsWithSideEffects();
     Ref<HTMLElement> insertFragmentForTestRendering(Node* rootEditableNode);
     void removeUnrenderedNodes(Node*);
     void restoreAndRemoveTestRenderingNodesToFragment(StyledElement*);
@@ -100,9 +103,6 @@ private:
     
     void insertNodeBefore(Node&, Node& refNode);
 
-    Document& document() { return *m_document; }
-
-    RefPtr<Document> m_document;
     RefPtr<DocumentFragment> m_fragment;
     bool m_hasInterchangeNewlineAtStart;
     bool m_hasInterchangeNewlineAtEnd;
@@ -150,9 +150,8 @@ static Position positionAvoidingPrecedingNodes(Position position)
     return position;
 }
 
-ReplacementFragment::ReplacementFragment(Document& document, DocumentFragment* fragment, const VisibleSelection& selection)
-    : m_document(&document)
-    , m_fragment(fragment)
+ReplacementFragment::ReplacementFragment(DocumentFragment* fragment, const VisibleSelection& selection)
+    : m_fragment(fragment)
     , m_hasInterchangeNewlineAtStart(false)
     , m_hasInterchangeNewlineAtEnd(false)
 {
@@ -160,22 +159,30 @@ ReplacementFragment::ReplacementFragment(Document& document, DocumentFragment* f
         return;
     if (!m_fragment->firstChild())
         return;
-    
+
+    removeContentsWithSideEffects();
+
     RefPtr<Element> editableRoot = selection.rootEditableElement();
     ASSERT(editableRoot);
     if (!editableRoot)
         return;
-    
-    Node* shadowAncestorNode = editableRoot->deprecatedShadowAncestorNode();
-    
+
+    auto* shadowHost = editableRoot->shadowHost();
     if (!editableRoot->attributeEventListener(eventNames().webkitBeforeTextInsertedEvent, mainThreadNormalWorld())
-        && !(shadowAncestorNode && shadowAncestorNode->renderer() && shadowAncestorNode->renderer()->isTextControl())
+        && !(shadowHost && shadowHost->renderer() && shadowHost->renderer()->isTextControl())
         && editableRoot->hasRichlyEditableStyle()) {
         removeInterchangeNodes(m_fragment.get());
         return;
     }
 
-    RefPtr<StyledElement> holder = insertFragmentForTestRendering(editableRoot.get());
+    auto page = createPageForSanitizingWebContent();
+    Document* stagingDocument = page->mainFrame().document();
+    ASSERT(stagingDocument->body());
+
+    ComputedStyleExtractor computedStyleOfEditableRoot(editableRoot.get());
+    stagingDocument->body()->setAttributeWithoutSynchronization(styleAttr, computedStyleOfEditableRoot.copyProperties()->asText());
+
+    RefPtr<StyledElement> holder = insertFragmentForTestRendering(stagingDocument->body());
     if (!holder) {
         removeInterchangeNodes(m_fragment.get());
         return;
@@ -202,11 +209,42 @@ ReplacementFragment::ReplacementFragment(Document& document, DocumentFragment* f
         if (!m_fragment->firstChild())
             return;
 
-        holder = insertFragmentForTestRendering(editableRoot.get());
+        holder = insertFragmentForTestRendering(stagingDocument->body());
         removeInterchangeNodes(holder.get());
         removeUnrenderedNodes(holder.get());
         restoreAndRemoveTestRenderingNodesToFragment(holder.get());
     }
+}
+
+void ReplacementFragment::removeContentsWithSideEffects()
+{
+    Vector<Ref<Element>> elementsToRemove;
+    Vector<std::pair<Ref<Element>, QualifiedName>> attributesToRemove;
+
+    auto it = descendantsOfType<Element>(*m_fragment).begin();
+    auto end = descendantsOfType<Element>(*m_fragment).end();
+    while (it != end) {
+        auto element = makeRef(*it);
+        if (isScriptElement(element) || (is<HTMLStyleElement>(element) && element->getAttribute(classAttr) != WebKitMSOListQuirksStyle)
+            || is<HTMLBaseElement>(element) || is<HTMLLinkElement>(element) || is<HTMLMetaElement>(element) || is<HTMLTitleElement>(element)) {
+            elementsToRemove.append(WTFMove(element));
+            it.traverseNextSkippingChildren();
+            continue;
+        }
+        if (element->hasAttributes()) {
+            for (auto& attribute : element->attributesIterator()) {
+                if (element->isEventHandlerAttribute(attribute) || element->isJavaScriptURLAttribute(attribute))
+                    attributesToRemove.append({ element.copyRef(), attribute.name() });
+            }
+        }
+        ++it;
+    }
+
+    for (auto& element : elementsToRemove)
+        removeNode(WTFMove(element));
+
+    for (auto& item : attributesToRemove)
+        item.first->removeAttribute(item.second);
 }
 
 bool ReplacementFragment::isEmpty() const
@@ -252,13 +290,14 @@ void ReplacementFragment::insertNodeBefore(Node& node, Node& refNode)
     parent->insertBefore(node, &refNode);
 }
 
-Ref<HTMLElement> ReplacementFragment::insertFragmentForTestRendering(Node* rootEditableElement)
+Ref<HTMLElement> ReplacementFragment::insertFragmentForTestRendering(Node* rootNode)
 {
-    auto holder = createDefaultParagraphElement(document());
+    auto document = makeRef(rootNode->document());
+    auto holder = createDefaultParagraphElement(document.get());
 
     holder->appendChild(*m_fragment);
-    rootEditableElement->appendChild(holder);
-    document().updateLayoutIgnorePendingStylesheets();
+    rootNode->appendChild(holder);
+    document->updateLayoutIgnorePendingStylesheets();
 
     return holder;
 }
@@ -496,7 +535,7 @@ void ReplaceSelectionCommand::removeRedundantStylesAndKeepStyleSpanInline(Insert
         StyledElement* element = downcast<StyledElement>(node.get());
 
         const StyleProperties* inlineStyle = element->inlineStyle();
-        RefPtr<EditingStyle> newInlineStyle = EditingStyle::create(inlineStyle);
+        auto newInlineStyle = EditingStyle::create(inlineStyle);
         if (inlineStyle) {
             if (is<HTMLElement>(*element)) {
                 Vector<QualifiedName> attributes;
@@ -726,29 +765,6 @@ VisiblePosition ReplaceSelectionCommand::positionAtStartOfInsertedContent() cons
     return m_startOfInsertedContent;
 }
 
-static void removeHeadContents(ReplacementFragment& fragment)
-{
-    if (fragment.isEmpty())
-        return;
-
-    Vector<Element*> toRemove;
-
-    auto it = descendantsOfType<Element>(*fragment.fragment()).begin();
-    auto end = descendantsOfType<Element>(*fragment.fragment()).end();
-    while (it != end) {
-        if (is<HTMLBaseElement>(*it) || is<HTMLLinkElement>(*it) || is<HTMLMetaElement>(*it) || is<HTMLTitleElement>(*it)
-            || (is<HTMLStyleElement>(*it) && it->getAttribute(classAttr) != WebKitMSOListQuirksStyle)) {
-            toRemove.append(&*it);
-            it.traverseNextSkippingChildren();
-            continue;
-        }
-        ++it;
-    }
-
-    for (auto& element : toRemove)
-        fragment.removeNode(*element);
-}
-
 // Remove style spans before insertion if they are unnecessary.  It's faster because we'll 
 // avoid doing a layout.
 static bool handleStyleSpansBeforeInsertion(ReplacementFragment& fragment, const Position& insertionPos)
@@ -766,7 +782,7 @@ static bool handleStyleSpansBeforeInsertion(ReplacementFragment& fragment, const
         return false;
 
     Node* wrappingStyleSpan = topNode;
-    RefPtr<EditingStyle> styleAtInsertionPos = EditingStyle::create(insertionPos.parentAnchoredEquivalent());
+    auto styleAtInsertionPos = EditingStyle::create(insertionPos.parentAnchoredEquivalent());
     String styleText = styleAtInsertionPos->style()->asText();
 
     // FIXME: This string comparison is a naive way of comparing two styles.
@@ -804,7 +820,7 @@ void ReplaceSelectionCommand::handleStyleSpans(InsertedNodes& insertedNodes)
     if (!wrappingStyleSpan)
         return;
 
-    RefPtr<EditingStyle> style = EditingStyle::create(wrappingStyleSpan->inlineStyle());
+    auto style = EditingStyle::create(wrappingStyleSpan->inlineStyle());
     ContainerNode* context = wrappingStyleSpan->parentNode();
 
     // If Mail wraps the fragment with a Paste as Quotation blockquote, or if you're pasting into a quoted region,
@@ -919,9 +935,9 @@ inline Node* nodeToSplitToAvoidPastingIntoInlineNodesWithStyle(const Position& i
 
 bool ReplaceSelectionCommand::willApplyCommand()
 {
-    ensureReplacementFragment();
     m_documentFragmentPlainText = m_documentFragment->textContent();
-    m_documentFragmentHTMLMarkup = createMarkup(*m_documentFragment);
+    m_documentFragmentHTMLMarkup = serializeFragment(*m_documentFragment, SerializedNodes::SubtreeIncludingNode);
+    ensureReplacementFragment();
     return CompositeEditCommand::willApplyCommand();
 }
 
@@ -1344,7 +1360,7 @@ void ReplaceSelectionCommand::addSpacesForSmartReplace()
         endOffset = endUpstream.offsetInContainerNode();
     }
 
-    bool needsTrailingSpace = !isEndOfParagraph(endOfInsertedContent) && !isCharacterSmartReplaceExemptConsideringNonBreakingSpace(endOfInsertedContent.characterAfter(), false);
+    bool needsTrailingSpace = !isEndOfParagraph(endOfInsertedContent) && !isStartOfParagraph(endOfInsertedContent) && !isCharacterSmartReplaceExemptConsideringNonBreakingSpace(endOfInsertedContent.characterAfter(), false);
     if (needsTrailingSpace && endNode) {
         bool collapseWhiteSpace = !endNode->renderer() || endNode->renderer()->style().collapseWhiteSpace();
         if (is<Text>(*endNode)) {
@@ -1368,7 +1384,7 @@ void ReplaceSelectionCommand::addSpacesForSmartReplace()
         startOffset = startDownstream.offsetInContainerNode();
     }
 
-    bool needsLeadingSpace = !isStartOfParagraph(startOfInsertedContent) && !isCharacterSmartReplaceExemptConsideringNonBreakingSpace(startOfInsertedContent.previous().characterAfter(), true);
+    bool needsLeadingSpace = !isStartOfParagraph(startOfInsertedContent) && !isEndOfParagraph(startOfInsertedContent) && !isCharacterSmartReplaceExemptConsideringNonBreakingSpace(startOfInsertedContent.previous().characterAfter(), true);
     if (needsLeadingSpace && startNode) {
         bool collapseWhiteSpace = !startNode->renderer() || startNode->renderer()->style().collapseWhiteSpace();
         if (is<Text>(*startNode)) {
@@ -1412,7 +1428,7 @@ void ReplaceSelectionCommand::completeHTMLReplacement(const Position &lastPositi
     else
         return;
 
-    if (AXObjectCache::accessibilityEnabled() && editingAction() == EditActionPaste)
+    if (AXObjectCache::accessibilityEnabled() && editingAction() == EditAction::Paste)
         m_visibleSelectionForInsertedText = VisibleSelection(start, end);
 
     if (m_selectReplacement)
@@ -1544,11 +1560,8 @@ void ReplaceSelectionCommand::updateNodesInserted(Node *node)
 
 ReplacementFragment* ReplaceSelectionCommand::ensureReplacementFragment()
 {
-    if (!m_replacementFragment) {
-        m_replacementFragment = std::make_unique<ReplacementFragment>(document(), m_documentFragment.get(), endingSelection());
-        removeHeadContents(*m_replacementFragment);
-    }
-
+    if (!m_replacementFragment)
+        m_replacementFragment = std::make_unique<ReplacementFragment>(m_documentFragment.get(), endingSelection());
     return m_replacementFragment.get();
 }
 
@@ -1584,7 +1597,7 @@ bool ReplaceSelectionCommand::performTrivialReplace(const ReplacementFragment& f
 
     VisibleSelection selectionAfterReplace(m_selectReplacement ? start : end, end);
 
-    if (AXObjectCache::accessibilityEnabled() && editingAction() == EditActionPaste)
+    if (AXObjectCache::accessibilityEnabled() && editingAction() == EditAction::Paste)
         m_visibleSelectionForInsertedText = VisibleSelection(start, end);
 
     setEndingSelection(selectionAfterReplace);

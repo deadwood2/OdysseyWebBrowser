@@ -23,14 +23,17 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 #import <UIKit/UITextInputTraits.h>
 
 #if USE(APPLE_INTERNAL_SDK)
 
 #import <UIKit/UIApplication_Private.h>
+#import <UIKit/UICalloutBar.h>
+#import <UIKit/UIKeyboard_Private.h>
 #import <UIKit/UIResponder_Private.h>
+#import <UIKit/UITextInputMultiDocument.h>
 #import <UIKit/UITextInputTraits_Private.h>
 #import <UIKit/UITextInput_Private.h>
 #import <UIKit/UIViewController_Private.h>
@@ -39,12 +42,8 @@
 @protocol UIDragSession;
 @class UIDragInteraction;
 @class UIDragItem;
-#import <UIKit/NSString+UIItemProvider.h>
-#import <UIKit/NSURL+UIItemProvider.h>
+#import <UIKit/NSItemProvider+UIKitAdditions_Private.h>
 #import <UIKit/UIDragInteraction_Private.h>
-#import <UIKit/UIImage+UIItemProvider.h>
-#import <UIKit/UIItemProvider.h>
-#import <UIKit/UIItemProvider_Private.h>
 #endif // ENABLE(DRAG_SUPPORT)
 
 #else
@@ -59,6 +58,9 @@ WTF_EXTERN_C_END
 
 @end
 
+@interface UITextInputTraits : NSObject <UITextInputTraits>
+@end
+
 @protocol UIDragInteractionDelegate_ForWebKitOnly <UIDragInteractionDelegate>
 @optional
 - (void)_dragInteraction:(UIDragInteraction *)interaction prepareForSession:(id<UIDragSession>)session completion:(void(^)(void))completion;
@@ -66,50 +68,35 @@ WTF_EXTERN_C_END
 
 @protocol UITextInputTraits_Private <NSObject, UITextInputTraits>
 @property (nonatomic, readonly) UIColor *insertionPointColor;
+@property (nonatomic, readonly) UIColor *selectionBarColor;
 @end
 
 @class WebEvent;
 
 @protocol UITextInputPrivate <UITextInput, UITextInputTraits_Private>
+- (UITextInputTraits *)textInputTraits;
 - (void)insertTextSuggestion:(UITextSuggestion *)textSuggestion;
 - (void)handleKeyWebEvent:(WebEvent *)theEvent withCompletionHandler:(void (^)(WebEvent *, BOOL))completionHandler;
+- (BOOL)_shouldSuppressSelectionCommands;
 @end
 
-#if ENABLE(DRAG_SUPPORT)
+@protocol UITextInputMultiDocument <NSObject>
+@optional
+- (void)_preserveFocusWithToken:(id <NSCopying, NSSecureCoding>)token destructively:(BOOL)destructively;
+- (BOOL)_restoreFocusWithToken:(id <NSCopying, NSSecureCoding>)token;
+- (void)_clearToken:(id <NSCopying, NSSecureCoding>)token;
+@end
 
 @interface NSURL ()
 @property (nonatomic, copy, setter=_setTitle:) NSString *_title;
 @end
 
-#define UIItemProviderRepresentationOptionsVisibilityAll NSItemProviderRepresentationVisibilityAll
-
-@protocol UIItemProviderReading <NSItemProviderReading>
-
-@required
-- (instancetype)initWithItemProviderData:(NSData *)data typeIdentifier:(NSString *)typeIdentifier error:(NSError **)outError;
-
+@interface UIKeyboard : UIView
 @end
 
-@protocol UIItemProviderWriting <NSItemProviderWriting>
-
-@required
-- (NSProgress *)loadDataWithTypeIdentifier:(NSString *)typeIdentifier forItemProviderCompletionHandler:(void (^)(NSData *, NSError *))completionHandler;
-
+@interface UICalloutBar : UIView
++ (UICalloutBar *)sharedCalloutBar;
 @end
-
-@interface NSAttributedString () <UIItemProviderReading, UIItemProviderWriting>
-@end
-@interface NSString () <UIItemProviderReading, UIItemProviderWriting>
-@end
-@interface NSURL () <UIItemProviderReading, UIItemProviderWriting>
-@end
-@interface UIImage () <UIItemProviderReading, UIItemProviderWriting>
-@end
-
-@interface UIItemProvider : NSItemProvider
-@end
-
-#endif
 
 #endif
 
@@ -147,6 +134,11 @@ WTF_EXTERN_C_END
 
 @interface UIResponder (UIKitSPI)
 - (UIResponder *)firstResponder;
+- (void)makeTextWritingDirectionNatural:(id)sender;
 @end
 
-#endif // PLATFORM(IOS)
+@interface UIKeyboard ()
++ (BOOL)isInHardwareKeyboardMode;
+@end
+
+#endif // PLATFORM(IOS_FAMILY)

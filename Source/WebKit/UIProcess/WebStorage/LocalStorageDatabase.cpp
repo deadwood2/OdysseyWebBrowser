@@ -27,24 +27,23 @@
 #include "LocalStorageDatabase.h"
 
 #include "LocalStorageDatabaseTracker.h"
-#include <WebCore/FileSystem.h>
 #include <WebCore/SQLiteStatement.h>
 #include <WebCore/SQLiteTransaction.h>
 #include <WebCore/SecurityOrigin.h>
 #include <WebCore/StorageMap.h>
 #include <WebCore/SuddenTermination.h>
+#include <wtf/FileSystem.h>
 #include <wtf/RefPtr.h>
 #include <wtf/WorkQueue.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
-
-using namespace WebCore;
 
 static const auto databaseUpdateInterval = 1_s;
 
 static const int maximumItemsToUpdate = 100;
 
 namespace WebKit {
+using namespace WebCore;
 
 Ref<LocalStorageDatabase> LocalStorageDatabase::create(Ref<WorkQueue>&& queue, Ref<LocalStorageDatabaseTracker>&& tracker, const SecurityOriginData& securityOrigin)
 {

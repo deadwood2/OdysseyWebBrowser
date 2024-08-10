@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TestController_h
-#define TestController_h
+#pragma once
 
 #include "GeolocationProviderMock.h"
 #include "WebNotificationProvider.h"
@@ -34,9 +33,18 @@
 #include <string>
 #include <vector>
 #include <wtf/HashMap.h>
+#include <wtf/Noncopyable.h>
+#include <wtf/Seconds.h>
 #include <wtf/Vector.h>
 #include <wtf/text/StringHash.h>
 
+#if PLATFORM(COCOA)
+#include "ClassMethodSwizzler.h"
+#include "InstanceMethodSwizzler.h"
+#endif
+
+OBJC_CLASS NSString;
+OBJC_CLASS UIKeyboardInputMode;
 OBJC_CLASS WKWebViewConfiguration;
 
 namespace WTR {
@@ -47,6 +55,33 @@ class PlatformWebView;
 class EventSenderProxy;
 struct TestCommand;
 struct TestOptions;
+
+class AsyncTask {
+public:
+    AsyncTask(WTF::Function<void ()>&& task, WTF::Seconds timeout)
+        : m_task(WTFMove(task))
+        , m_timeout(timeout)
+    {
+        ASSERT(!currentTask());
+    }
+
+    // Returns false on timeout.
+    bool run();
+
+    void taskComplete()
+    {
+        m_taskDone = true;
+    }
+
+    static AsyncTask* currentTask();
+
+private:
+    static AsyncTask* m_currentTask;
+
+    WTF::Function<void ()> m_task;
+    WTF::Seconds m_timeout;
+    bool m_taskDone { false };
+};
 
 // FIXME: Rename this TestRunner?
 class TestController {
@@ -59,8 +94,8 @@ public:
     static const unsigned w3cSVGViewWidth;
     static const unsigned w3cSVGViewHeight;
 
-    static const double defaultShortTimeout;
-    static const double noTimeout;
+    static const WTF::Seconds defaultShortTimeout;
+    static const WTF::Seconds noTimeout;
 
     TestController(int argc, const char* argv[]);
     ~TestController();
@@ -72,6 +107,7 @@ public:
 
     PlatformWebView* mainWebView() { return m_mainWebView.get(); }
     WKContextRef context() { return m_context.get(); }
+    WKUserContentControllerRef userContentController() { return m_userContentController.get(); }
 
     EventSenderProxy* eventSenderProxy() { return m_eventSenderProxy.get(); }
 
@@ -79,7 +115,7 @@ public:
     
     // Runs the run loop until `done` is true or the timeout elapses.
     bool useWaitToDumpWatchdogTimer() { return m_useWaitToDumpWatchdogTimer; }
-    void runUntil(bool& done, double timeoutSeconds);
+    void runUntil(bool& done, WTF::Seconds timeout);
     void notifyDone();
 
     bool shouldShowWebView() const { return m_shouldShowWebView; }
@@ -113,6 +149,10 @@ public:
     unsigned userMediaPermissionRequestCountForOrigin(WKStringRef userMediaDocumentOriginString, WKStringRef topLevelDocumentOriginString);
     void resetUserMediaPermissionRequestCountForOrigin(WKStringRef userMediaDocumentOriginString, WKStringRef topLevelDocumentOriginString);
 
+    // Content Extensions.
+    void configureContentExtensionForTest(const TestInvocation&);
+    void resetContentExtensions();
+
     // Policy delegate.
     void setCustomPolicyDelegate(bool enabled, bool permissive);
 
@@ -121,8 +161,11 @@ public:
 
     unsigned imageCountInGeneralPasteboard() const;
 
-    bool resetStateToConsistentValues(const TestOptions&);
+    enum class ResetStage { BeforeTest, AfterTest };
+    bool resetStateToConsistentValues(const TestOptions&, ResetStage);
     void resetPreferencesToConsistentValues(const TestOptions&);
+
+    void willDestroyWebView();
 
     void terminateWebContentProcess();
     void reattachPageToWebProcess();
@@ -161,8 +204,10 @@ public:
     void setStatisticsLastSeen(WKStringRef hostName, double seconds);
     void setStatisticsPrevalentResource(WKStringRef hostName, bool value);
     void setStatisticsVeryPrevalentResource(WKStringRef hostName, bool value);
+    String dumpResourceLoadStatistics();
     bool isStatisticsPrevalentResource(WKStringRef hostName);
     bool isStatisticsVeryPrevalentResource(WKStringRef hostName);
+    bool isStatisticsRegisteredAsSubresourceUnder(WKStringRef subresourceHost, WKStringRef topFrameHost);
     bool isStatisticsRegisteredAsSubFrameUnder(WKStringRef subFrameHost, WKStringRef topFrameHost);
     bool isStatisticsRegisteredAsRedirectingTo(WKStringRef hostRedirectedFrom, WKStringRef hostRedirectedTo);
     void setStatisticsHasHadUserInteraction(WKStringRef hostName, bool value);
@@ -189,6 +234,7 @@ public:
     void statisticsClearInMemoryAndPersistentStore();
     void statisticsClearInMemoryAndPersistentStoreModifiedSinceHours(unsigned);
     void statisticsClearThroughWebsiteDataRemoval();
+    void setStatisticsCacheMaxAgeCap(double seconds);
     void statisticsResetToConsistentState();
 
     void getAllStorageAccessEntries();
@@ -198,9 +244,10 @@ public:
 
     void terminateNetworkProcess();
     void terminateServiceWorkerProcess();
-    void terminateStorageProcess();
 
     void removeAllSessionCredentials();
+
+    void ClearIndexedDatabases();
 
     void clearServiceWorkerRegistrations();
 
@@ -208,6 +255,9 @@ public:
     void clearDOMCaches();
     bool hasDOMCache(WKStringRef origin);
     uint64_t domCacheSize(WKStringRef origin);
+    void allowCacheStorageQuotaIncrease();
+
+    void setIDBPerOriginQuota(uint64_t);
 
     bool didReceiveServerRedirectForProvisionalNavigation() const { return m_didReceiveServerRedirectForProvisionalNavigation; }
     void clearDidReceiveServerRedirectForProvisionalNavigation() { m_didReceiveServerRedirectForProvisionalNavigation = false; }
@@ -218,16 +268,46 @@ public:
     void resetMockMediaDevices();
 
     void injectUserScript(WKStringRef);
+    
+    void sendDisplayConfigurationChangedMessageForTesting();
+
+    void setWebAuthenticationMockConfiguration(WKDictionaryRef);
+    void addTestKeyToKeychain(const String& privateKeyBase64, const String& attrLabel, const String& applicationTagBase64);
+    void cleanUpKeychain(const String& attrLabel);
+    bool keyExistsInKeychain(const String& attrLabel, const String& applicationTagBase64);
+
+#if PLATFORM(COCOA)
+    RetainPtr<NSString> getOverriddenCalendarIdentifier() const;
+    void setDefaultCalendarType(NSString *identifier);
+#endif // PLATFORM(COCOA)
+
+#if PLATFORM(IOS_FAMILY)
+    void setKeyboardInputModeIdentifier(const String&);
+    UIKeyboardInputMode *overriddenKeyboardInputMode() const { return m_overriddenKeyboardInputMode.get(); }
+#endif
+
+    bool canDoServerTrustEvaluationInNetworkProcess() const;
+    uint64_t serverTrustEvaluationCallbackCallsCount() const { return m_serverTrustEvaluationCallbackCallsCount; }
+
+    void setShouldDismissJavaScriptAlertsAsynchronously(bool);
+    void handleJavaScriptAlert(WKPageRunJavaScriptAlertResultListenerRef);
+
+    bool isDoingMediaCapture() const;
 
 private:
     WKRetainPtr<WKPageConfigurationRef> generatePageConfiguration(WKContextConfigurationRef);
-    WKRetainPtr<WKContextConfigurationRef> generateContextConfiguration() const;
+    WKRetainPtr<WKContextConfigurationRef> generateContextConfiguration(const TestOptions&) const;
     void initialize(int argc, const char* argv[]);
     void createWebViewWithOptions(const TestOptions&);
     void run();
 
     void runTestingServerLoop();
     bool runTest(const char* pathOrURL);
+    
+    // Returns false if timed out.
+    bool waitForCompletion(const WTF::Function<void ()>&, WTF::Seconds timeout);
+
+    bool handleControlCommand(const char* command);
 
     void platformInitialize();
     void platformDestroy();
@@ -237,14 +317,14 @@ private:
     void platformCreateWebView(WKPageConfigurationRef, const TestOptions&);
     static PlatformWebView* platformCreateOtherPage(PlatformWebView* parentView, WKPageConfigurationRef, const TestOptions&);
     void platformResetPreferencesToConsistentValues();
-    void platformResetStateToConsistentValues();
+    void platformResetStateToConsistentValues(const TestOptions&);
 #if PLATFORM(COCOA)
     void cocoaPlatformInitialize();
-    void cocoaResetStateToConsistentValues();
+    void cocoaResetStateToConsistentValues(const TestOptions&);
 #endif
     void platformConfigureViewForTest(const TestInvocation&);
     void platformWillRunTest(const TestInvocation&);
-    void platformRunUntil(bool& done, double timeout);
+    void platformRunUntil(bool& done, WTF::Seconds timeout);
     void platformDidCommitLoadForFrame(WKPageRef, WKFrameRef);
     WKContextRef platformContext();
     WKPreferencesRef platformPreferences();
@@ -257,6 +337,12 @@ private:
 
     void updateWebViewSizeForTest(const TestInvocation&);
     void updateWindowScaleForTest(PlatformWebView*, const TestInvocation&);
+
+    void updateLiveDocumentsAfterTest();
+    void checkForWorldLeaks();
+
+    void didReceiveLiveDocumentsList(WKArrayRef);
+    void findAndDumpWorldLeaks();
 
     void decidePolicyForGeolocationPermissionRequestIfPossible();
     void decidePolicyForUserMediaPermissionRequestIfPossible();
@@ -278,8 +364,6 @@ private:
     // WKContextClient
     static void networkProcessDidCrash(WKContextRef, const void*);
     void networkProcessDidCrash();
-    static void databaseProcessDidCrash(WKContextRef, const void*);
-    void databaseProcessDidCrash();
 
     // WKPageNavigationClient
     static void didCommitNavigation(WKPageRef, WKNavigationRef, WKTypeRef userData, const void*);
@@ -288,7 +372,6 @@ private:
     static void didFinishNavigation(WKPageRef, WKNavigationRef, WKTypeRef userData, const void*);
     void didFinishNavigation(WKPageRef, WKNavigationRef);
 
-    
     // WKContextDownloadClient
     static void downloadDidStart(WKContextRef, WKDownloadRef, const void*);
     void downloadDidStart(WKContextRef, WKDownloadRef);
@@ -353,6 +436,7 @@ private:
     void didUpdateHistoryTitle(WKStringRef title, WKURLRef, WKFrameRef);
 
     static WKPageRef createOtherPage(WKPageRef, WKPageConfigurationRef, WKNavigationActionRef, WKWindowFeaturesRef, const void*);
+    WKPageRef createOtherPage(PlatformWebView* parentView, WKPageConfigurationRef, WKNavigationActionRef, WKWindowFeaturesRef);
 
     static void runModal(WKPageRef, const void* clientInfo);
     static void runModal(PlatformWebView*);
@@ -361,7 +445,10 @@ private:
     static const char* platformLibraryPathForTesting();
 
     std::unique_ptr<TestInvocation> m_currentInvocation;
-
+#if PLATFORM(COCOA)
+    std::unique_ptr<ClassMethodSwizzler> m_calendarSwizzler;
+    RetainPtr<NSString> m_overriddenCalendarIdentifier;
+#endif // PLATFORM(COCOA)
     bool m_verbose { false };
     bool m_printSeparators { false };
     bool m_usingServerMode { false };
@@ -377,6 +464,12 @@ private:
     std::unique_ptr<PlatformWebView> m_mainWebView;
     WKRetainPtr<WKContextRef> m_context;
     WKRetainPtr<WKPageGroupRef> m_pageGroup;
+    WKRetainPtr<WKUserContentControllerRef> m_userContentController;
+
+#if PLATFORM(IOS_FAMILY)
+    Vector<std::unique_ptr<InstanceMethodSwizzler>> m_inputModeSwizzlers;
+    RetainPtr<UIKeyboardInputMode> m_overriddenKeyboardInputMode;
+#endif
 
     enum State {
         Initial,
@@ -429,6 +522,7 @@ private:
     bool m_shouldShowWebView { false };
     
     bool m_shouldShowTouches { false };
+    bool m_checkForWorldLeaks { false };
 
     bool m_allowAnyHTTPSCertificateForAllowedHosts { false };
     
@@ -442,17 +536,30 @@ private:
     std::unique_ptr<EventSenderProxy> m_eventSenderProxy;
 
     WorkQueueManager m_workQueueManager;
+
+    struct AbandonedDocumentInfo {
+        String testURL;
+        String abandonedDocumentURL;
+
+        AbandonedDocumentInfo() = default;
+        AbandonedDocumentInfo(String inTestURL, String inAbandonedDocumentURL)
+            : testURL(inTestURL)
+            , abandonedDocumentURL(inAbandonedDocumentURL)
+        { }
+    };
+    HashMap<uint64_t, AbandonedDocumentInfo> m_abandonedDocumentInfo;
+
+    uint64_t m_serverTrustEvaluationCallbackCallsCount { 0 };
+    bool m_shouldDismissJavaScriptAlertsAsynchronously { false };
 };
 
 struct TestCommand {
     std::string pathOrURL;
     std::string absolutePath;
-    bool shouldDumpPixels { false };
     std::string expectedPixelHash;
-    int timeout { 0 };
+    WTF::Seconds timeout;
+    bool shouldDumpPixels { false };
     bool dumpJSConsoleLogInStdErr { false };
 };
 
 } // namespace WTR
-
-#endif // TestController_h

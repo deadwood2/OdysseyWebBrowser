@@ -29,9 +29,7 @@
 #include "NetworkDataTaskBlob.h"
 #include "NetworkLoadParameters.h"
 #include "NetworkSession.h"
-#include <WebCore/ResourceError.h>
 #include <WebCore/ResourceResponse.h>
-#include <wtf/MainThread.h>
 #include <wtf/RunLoop.h>
 
 #if PLATFORM(COCOA)
@@ -49,9 +47,7 @@ using namespace WebCore;
 
 Ref<NetworkDataTask> NetworkDataTask::create(NetworkSession& session, NetworkDataTaskClient& client, const NetworkLoadParameters& parameters)
 {
-    if (parameters.request.url().protocolIsBlob())
-        return NetworkDataTaskBlob::create(session, client, parameters.request, parameters.contentSniffingPolicy, parameters.blobFileReferences);
-
+    ASSERT(!parameters.request.url().protocolIsBlob());
 #if PLATFORM(COCOA)
     return NetworkDataTaskCocoa::create(session, client, parameters.request, parameters.webFrameID, parameters.webPageID, parameters.storedCredentialsPolicy, parameters.contentSniffingPolicy, parameters.contentEncodingSniffingPolicy, parameters.shouldClearReferrerOnHTTPSToHTTPRedirect, parameters.shouldPreconnectOnly, parameters.isMainFrameNavigation, parameters.networkActivityTracker);
 #endif
@@ -105,20 +101,20 @@ void NetworkDataTask::didReceiveResponse(ResourceResponse&& response, ResponseCo
     ASSERT(m_client);
     if (response.isHTTP09()) {
         auto url = response.url();
-        std::optional<uint16_t> port = url.port();
-        if (port && !isDefaultPortForProtocol(port.value(), url.protocol())) {
+        Optional<uint16_t> port = url.port();
+        if (port && !WTF::isDefaultPortForProtocol(port.value(), url.protocol())) {
             completionHandler(PolicyAction::Ignore);
             cancel();
             m_client->didCompleteWithError({ String(), 0, url, "Cancelled load from '" + url.stringCenterEllipsizedToLength() + "' because it is using HTTP/0.9." });
             return;
         }
     }
-    m_client->didReceiveResponseNetworkSession(WTFMove(response), WTFMove(completionHandler));
+    m_client->didReceiveResponse(WTFMove(response), WTFMove(completionHandler));
 }
 
 bool NetworkDataTask::shouldCaptureExtraNetworkLoadMetrics() const
 {
-    return m_client->shouldCaptureExtraNetworkLoadMetrics();
+    return m_client ? m_client->shouldCaptureExtraNetworkLoadMetrics() : false;
 }
 
 void NetworkDataTask::failureTimerFired()

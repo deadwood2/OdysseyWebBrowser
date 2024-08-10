@@ -2,13 +2,15 @@ set(WebKit_OUTPUT_NAME WebKit2)
 set(WebKit_WebProcess_OUTPUT_NAME WebKitWebProcess)
 set(WebKit_NetworkProcess_OUTPUT_NAME WebKitNetworkProcess)
 set(WebKit_PluginProcess_OUTPUT_NAME WebKitPluginProcess)
-set(WebKit_StorageProcess_OUTPUT_NAME WebKitStorageProcess)
 
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_WEBKIT_DIR})
 
 add_definitions(-DBUILDING_WEBKIT)
 
 list(APPEND WebKit_SOURCES
+    NetworkProcess/Classifier/WebResourceLoadStatisticsStore.cpp
+    NetworkProcess/Classifier/WebResourceLoadStatisticsTelemetry.cpp
+
     NetworkProcess/win/NetworkProcessMainWin.cpp
 
     Platform/IPC/win/AttachmentWin.cpp
@@ -20,36 +22,39 @@ list(APPEND WebKit_SOURCES
     Platform/win/ModuleWin.cpp
     Platform/win/SharedMemoryWin.cpp
 
+    Shared/API/c/curl/WKCertificateInfoCurl.cpp
+
     Shared/Plugins/Netscape/NetscapePluginModuleNone.cpp
 
-    Shared/win/ChildProcessMainWin.cpp
+    Shared/win/AuxiliaryProcessMainWin.cpp
     Shared/win/NativeWebKeyboardEventWin.cpp
     Shared/win/NativeWebMouseEventWin.cpp
     Shared/win/NativeWebTouchEventWin.cpp
     Shared/win/NativeWebWheelEventWin.cpp
     Shared/win/WebEventFactory.cpp
 
-    StorageProcess/win/StorageProcessMainWin.cpp
-
-    UIProcess/AcceleratedDrawingAreaProxy.cpp
     UIProcess/BackingStore.cpp
     UIProcess/DefaultUndoController.cpp
-    UIProcess/DrawingAreaProxyImpl.cpp
     UIProcess/LegacySessionStateCodingNone.cpp
     UIProcess/WebGrammarDetail.cpp
-    UIProcess/WebResourceLoadStatisticsStore.cpp
-    UIProcess/WebResourceLoadStatisticsTelemetry.cpp
     UIProcess/WebViewportAttributes.cpp
 
     UIProcess/API/C/WKViewportAttributes.cpp
+
+    UIProcess/API/C/curl/WKProtectionSpaceCurl.cpp
+    UIProcess/API/C/curl/WKWebsiteDataStoreRefCurl.cpp
 
     UIProcess/API/C/win/WKView.cpp
 
     UIProcess/API/win/APIWebsiteDataStoreWin.cpp
 
+    UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.cpp
+
     UIProcess/Launcher/win/ProcessLauncherWin.cpp
 
     UIProcess/WebStorage/StorageManager.cpp
+
+    UIProcess/WebsiteData/curl/WebsiteDataStoreCurl.cpp
 
     UIProcess/WebsiteData/win/WebsiteDataStoreWin.cpp
 
@@ -73,14 +78,11 @@ list(APPEND WebKit_SOURCES
     WebProcess/WebCoreSupport/win/WebContextMenuClientWin.cpp
     WebProcess/WebCoreSupport/win/WebPopupMenuWin.cpp
 
-    WebProcess/WebPage/AcceleratedDrawingArea.cpp
     WebProcess/WebPage/AcceleratedSurface.cpp
-    WebProcess/WebPage/DrawingAreaImpl.cpp
-    WebProcess/WebPage/LayerTreeHost.cpp
 
     WebProcess/WebPage/CoordinatedGraphics/CompositingCoordinator.cpp
-    WebProcess/WebPage/CoordinatedGraphics/CoordinatedLayerTreeHost.cpp
-    WebProcess/WebPage/CoordinatedGraphics/ThreadedCoordinatedLayerTreeHost.cpp
+    WebProcess/WebPage/CoordinatedGraphics/DrawingAreaCoordinatedGraphics.cpp
+    WebProcess/WebPage/CoordinatedGraphics/LayerTreeHost.cpp
 
     WebProcess/WebPage/win/WebInspectorUIWin.cpp
     WebProcess/WebPage/win/WebPageWin.cpp
@@ -107,11 +109,12 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/Shared/Plugins/win"
     "${WEBKIT_DIR}/Shared/unix"
     "${WEBKIT_DIR}/Shared/win"
-    "${WEBKIT_DIR}/StorageProcess/win"
     "${WEBKIT_DIR}/UIProcess/API/C/cairo"
+    "${WEBKIT_DIR}/UIProcess/API/C/curl"
     "${WEBKIT_DIR}/UIProcess/API/C/win"
     "${WEBKIT_DIR}/UIProcess/API/cpp/win"
     "${WEBKIT_DIR}/UIProcess/API/win"
+    "${WEBKIT_DIR}/UIProcess/CoordinatedGraphics"
     "${WEBKIT_DIR}/UIProcess/Plugins/win"
     "${WEBKIT_DIR}/UIProcess/win"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/win"
@@ -138,10 +141,6 @@ list(APPEND NetworkProcess_SOURCES
     NetworkProcess/EntryPoint/win/NetworkProcessMain.cpp
 )
 
-list(APPEND StorageProcess_SOURCES
-    StorageProcess/EntryPoint/win/StorageProcessMain.cpp
-)
-
 if (${ENABLE_PLUGIN_PROCESS})
     list(APPEND PluginProcess_SOURCES
     )
@@ -153,7 +152,6 @@ if (${WTF_PLATFORM_WIN_CAIRO})
     list(APPEND WebKit_SOURCES
         NetworkProcess/Cookies/curl/WebCookieManagerCurl.cpp
 
-        NetworkProcess/cache/NetworkCacheCodersCurl.cpp
         NetworkProcess/cache/NetworkCacheDataCurl.cpp
         NetworkProcess/cache/NetworkCacheIOChannelCurl.cpp
 
@@ -176,6 +174,7 @@ if (${WTF_PLATFORM_WIN_CAIRO})
     )
 
     list(APPEND WebKit_INCLUDE_DIRECTORIES
+        "${WEBCORE_DIR}/platform/network/curl"
         "${WEBKIT_DIR}/NetworkProcess/curl"
         "${WEBKIT_DIR}/WebProcess/WebCoreSupport/curl"
     )
@@ -197,6 +196,7 @@ WEBKIT_WRAP_SOURCELIST(${WebKit_SOURCES})
 set(WebKit_FORWARDING_HEADERS_DIRECTORIES
     Shared/API/c
 
+    Shared/API/c/cairo
     Shared/API/c/cf
     Shared/API/c/win
 
@@ -207,6 +207,14 @@ set(WebKit_FORWARDING_HEADERS_DIRECTORIES
 
     WebProcess/InjectedBundle/API/c
 )
+
+if (${WTF_PLATFORM_WIN_CAIRO})
+    list(APPEND WebKit_FORWARDING_HEADERS_DIRECTORIES
+        Shared/API/c/curl
+
+        UIProcess/API/C/curl
+    )
+endif ()
 
 WEBKIT_MAKE_FORWARDING_HEADERS(WebKit
     DIRECTORIES ${WebKit_FORWARDING_HEADERS_DIRECTORIES}

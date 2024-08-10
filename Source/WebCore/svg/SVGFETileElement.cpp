@@ -81,7 +81,7 @@ RefPtr<FilterEffect> SVGFETileElement::build(SVGFilterBuilder* filterBuilder, Fi
     if (!input1)
         return nullptr;
 
-    RefPtr<FilterEffect> effect = FETile::create(filter);
+    auto effect = FETile::create(filter);
     effect->inputEffects().append(input1);
     return effect;
 }

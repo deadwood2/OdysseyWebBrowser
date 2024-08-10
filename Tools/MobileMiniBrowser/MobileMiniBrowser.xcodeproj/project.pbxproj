@@ -24,10 +24,6 @@
 		CD498B501D763D7600681FA7 /* AppDelegate.h in Headers */ = {isa = PBXBuildFile; fileRef = CD1DAF981D709E3600017CF0 /* AppDelegate.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		CD498B511D763D7F00681FA7 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CD1DAF9E1D709E3600017CF0 /* Main.storyboard */; };
 		CD498B521D763D8800681FA7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CD1DAFA11D709E3600017CF0 /* Assets.xcassets */; };
-		CD498B531D763D9300681FA7 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = CD498B471D7634C700681FA7 /* Info.plist */; };
-		CD4DEEE51D78C6FF00625986 /* Base.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = CD4DEEE21D78C6FF00625986 /* Base.xcconfig */; };
-		CD4DEEE61D78C6FF00625986 /* DebugRelease.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = CD4DEEE31D78C6FF00625986 /* DebugRelease.xcconfig */; };
-		CD4DEEE71D78C6FF00625986 /* MobileMiniBrowser.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = CD4DEEE41D78C6FF00625986 /* MobileMiniBrowser.xcconfig */; };
 		CDA985191D76483400EBC399 /* test.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = CDA985151D76477900EBC399 /* test.mp4 */; };
 		CDA9851A1D76483400EBC399 /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = CDA985131D76474100EBC399 /* index.html */; };
 		CDA9851B1D76483400EBC399 /* looping.html in Resources */ = {isa = PBXBuildFile; fileRef = CDA985171D7647CD00EBC399 /* looping.html */; };
@@ -66,7 +62,7 @@
 
 /* Begin PBXFileReference section */
 		3F0B439A1D908D0C00D186B5 /* looping2s.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; name = looping2s.html; path = Resources/looping2s.html; sourceTree = "<group>"; };
-		3F0B439C1D908DE700D186B5 /* test2s.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = test2s.mp4; sourceTree = "<group>"; };
+		3F0B439C1D908DE700D186B5 /* test2s.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; name = test2s.mp4; path = Resources/test2s.mp4; sourceTree = "<group>"; };
 		CD1DAF921D709E3600017CF0 /* MobileMiniBrowser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MobileMiniBrowser.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CD1DAF961D709E3600017CF0 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		CD1DAF981D709E3600017CF0 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
@@ -82,7 +78,7 @@
 		CD1DAFBB1D709EF200017CF0 /* TabViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TabViewController.m; sourceTree = "<group>"; };
 		CD1DAFBC1D709EF200017CF0 /* WebViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WebViewController.h; sourceTree = "<group>"; };
 		CD1DAFBD1D709EF200017CF0 /* WebViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = WebViewController.m; sourceTree = "<group>"; };
-		CD1DAFC11D70E12D00017CF0 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = "../../WebKitBuild/Debug-iphonesimulator/WebKit.framework"; sourceTree = "<group>"; };
+		CD1DAFC11D70E12D00017CF0 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = WebKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		CD498B3B1D76348000681FA7 /* MobileMiniBrowser.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MobileMiniBrowser.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		CD498B471D7634C700681FA7 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CD498B481D7634C700681FA7 /* MobileMiniBrowser.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MobileMiniBrowser.h; sourceTree = "<group>"; };
@@ -290,7 +286,7 @@
 		CD1DAF8A1D709E3600017CF0 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastUpgradeCheck = 0800;
+				LastUpgradeCheck = 1000;
 				ORGANIZATIONNAME = WebKit;
 				TargetAttributes = {
 					CD1DAF911D709E3600017CF0 = {
@@ -308,7 +304,7 @@
 			};
 			buildConfigurationList = CD1DAF8D1D709E3600017CF0 /* Build configuration list for PBXProject "MobileMiniBrowser" */;
 			compatibilityVersion = "Xcode 3.2";
-			developmentRegion = English;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
@@ -331,10 +327,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CD4DEEE51D78C6FF00625986 /* Base.xcconfig in Resources */,
-				CD4DEEE61D78C6FF00625986 /* DebugRelease.xcconfig in Resources */,
 				CD1DAFA51D709E3600017CF0 /* LaunchScreen.storyboard in Resources */,
-				CD4DEEE71D78C6FF00625986 /* MobileMiniBrowser.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -351,7 +344,6 @@
 			files = (
 				CD498B521D763D8800681FA7 /* Assets.xcassets in Resources */,
 				CDA9851A1D76483400EBC399 /* index.html in Resources */,
-				CD498B531D763D9300681FA7 /* Info.plist in Resources */,
 				CDA9851B1D76483400EBC399 /* looping.html in Resources */,
 				3F0B439B1D908D0C00D186B5 /* looping2s.html in Resources */,
 				CD498B511D763D7F00681FA7 /* Main.storyboard in Resources */,

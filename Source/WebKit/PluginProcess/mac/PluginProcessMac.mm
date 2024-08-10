@@ -56,8 +56,6 @@
 #import <wtf/HashSet.h>
 #import <wtf/NeverDestroyed.h>
 
-using namespace WebCore;
-
 const CFStringRef kLSPlugInBundleIdentifierKey = CFSTR("LSPlugInBundleIdentifierKey");
 
 // These values were chosen to match default NSURLCache sizes at the time of this writing.
@@ -221,7 +219,7 @@ static bool openCFURLRef(CFURLRef url, int32_t& status, CFURLRef* launchedURL)
         return false;
 
     if (!launchedURLString.isNull() && launchedURL)
-        *launchedURL = URL(ParsedURLString, launchedURLString).createCFURL().leakRef();
+        *launchedURL = URL(URL(), launchedURLString).createCFURL().leakRef();
     return true;
 }
 
@@ -260,13 +258,12 @@ static unsigned modalCount;
 
 static void beginModal()
 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     // Make sure to make ourselves the front process
     ProcessSerialNumber psn;
     GetCurrentProcess(&psn);
     SetFrontProcess(&psn);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     if (!modalCount++)
         setModal(true);
@@ -453,8 +450,8 @@ static void initializeCocoaOverrides()
                                                        usingBlock:^(NSNotification *notification) { fullscreenWindowTracker().windowHidden([notification object]); }];
 
     // Leak the two observers so that they observe notifications for the lifetime of the process.
-    CFRetain(orderOnScreenObserver);
-    CFRetain(orderOffScreenObserver);
+    CFRetain((__bridge CFTypeRef)orderOnScreenObserver);
+    CFRetain((__bridge CFTypeRef)orderOffScreenObserver);
 }
 
 void PluginProcess::setModalWindowIsShowing(bool modalWindowIsShowing)
@@ -528,14 +525,14 @@ void PluginProcess::platformInitializePluginProcess(PluginProcessCreationParamet
 #endif
 }
 
-void PluginProcess::platformInitializeProcess(const ChildProcessInitializationParameters& parameters)
+void PluginProcess::platformInitializeProcess(const AuxiliaryProcessInitializationParameters& parameters)
 {
     initializeShim();
 
     initializeCocoaOverrides();
 
     bool experimentalPlugInSandboxProfilesEnabled = parameters.extraInitializationData.get("experimental-sandbox-plugin") == "1";
-    RuntimeEnabledFeatures::sharedFeatures().setExperimentalPlugInSandboxProfilesEnabled(experimentalPlugInSandboxProfilesEnabled);
+    WebCore::RuntimeEnabledFeatures::sharedFeatures().setExperimentalPlugInSandboxProfilesEnabled(experimentalPlugInSandboxProfilesEnabled);
 
     // FIXME: It would be better to proxy SetCursor calls over to the UI process instead of
     // allowing plug-ins to change the mouse cursor at any time.
@@ -626,7 +623,7 @@ void PluginProcess::platformInitializeProcess(const ChildProcessInitializationPa
     }
 }
 
-void PluginProcess::initializeProcessName(const ChildProcessInitializationParameters& parameters)
+void PluginProcess::initializeProcessName(const AuxiliaryProcessInitializationParameters& parameters)
 {
     NSString *applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ (%@ Internet plug-in)", "visible name of the plug-in host process. The first argument is the plug-in name and the second argument is the application name."), [[(NSString *)m_pluginPath lastPathComponent] stringByDeletingPathExtension], (NSString *)parameters.uiProcessName];
     _LSSetApplicationInformationItem(kLSDefaultSessionID, _LSGetCurrentApplicationASN(), _kLSDisplayNameKey, (CFStringRef)applicationName, nullptr);
@@ -634,7 +631,7 @@ void PluginProcess::initializeProcessName(const ChildProcessInitializationParame
         _LSSetApplicationInformationItem(kLSDefaultSessionID, _LSGetCurrentApplicationASN(), kLSPlugInBundleIdentifierKey, m_pluginBundleIdentifier.createCFString().get(), nullptr);
 }
 
-void PluginProcess::initializeSandbox(const ChildProcessInitializationParameters& parameters, SandboxInitializationParameters& sandboxParameters)
+void PluginProcess::initializeSandbox(const AuxiliaryProcessInitializationParameters& parameters, SandboxInitializationParameters& sandboxParameters)
 {
     // PluginProcess may already be sandboxed if its parent process was sandboxed, and launched a child process instead of an XPC service.
     // This is generally not expected, however we currently always spawn a child process to create a MIME type preferences file.
@@ -698,7 +695,7 @@ void PluginProcess::initializeSandbox(const ChildProcessInitializationParameters
 
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{ @"NSUseRemoteSavePanel" : @YES }];
 
-    ChildProcess::initializeSandbox(parameters, sandboxParameters);
+    AuxiliaryProcess::initializeSandbox(parameters, sandboxParameters);
 }
 
 bool PluginProcess::shouldOverrideQuarantine()
@@ -708,7 +705,7 @@ bool PluginProcess::shouldOverrideQuarantine()
 
 void PluginProcess::stopRunLoop()
 {
-    ChildProcess::stopNSAppRunLoop();
+    AuxiliaryProcess::stopNSAppRunLoop();
 }
 
 } // namespace WebKit

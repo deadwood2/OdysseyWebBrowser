@@ -32,6 +32,7 @@
 #include "WebCookieManagerProxyClient.h"
 #include <pal/SessionID.h>
 #include <wtf/Forward.h>
+#include <wtf/HashMap.h>
 #include <wtf/RefPtr.h>
 
 #if USE(SOUP)
@@ -71,10 +72,10 @@ public:
     void deleteAllCookiesModifiedSince(PAL::SessionID, WallTime, Function<void (CallbackBase::Error)>&&);
 
     void setCookie(PAL::SessionID, const WebCore::Cookie&, Function<void (CallbackBase::Error)>&&);
-    void setCookies(PAL::SessionID, const Vector<WebCore::Cookie>&, const WebCore::URL&, const WebCore::URL& mainDocumentURL, Function<void (CallbackBase::Error)>&&);
+    void setCookies(PAL::SessionID, const Vector<WebCore::Cookie>&, const URL&, const URL& mainDocumentURL, Function<void(CallbackBase::Error)>&&);
 
     void getAllCookies(PAL::SessionID, Function<void (const Vector<WebCore::Cookie>&, CallbackBase::Error)>&& completionHandler);
-    void getCookies(PAL::SessionID, const WebCore::URL&, Function<void (const Vector<WebCore::Cookie>&, CallbackBase::Error)>&& completionHandler);
+    void getCookies(PAL::SessionID, const URL&, Function<void(const Vector<WebCore::Cookie>&, CallbackBase::Error)>&& completionHandler);
 
     void setHTTPCookieAcceptPolicy(PAL::SessionID, HTTPCookieAcceptPolicy, Function<void (CallbackBase::Error)>&&);
     void getHTTPCookieAcceptPolicy(PAL::SessionID, Function<void (HTTPCookieAcceptPolicy, CallbackBase::Error)>&&);
@@ -97,8 +98,8 @@ public:
     void unregisterObserver(PAL::SessionID, Observer&);
 
 #if USE(SOUP)
-    void setCookiePersistentStorage(const String& storagePath, uint32_t storageType);
-    void getCookiePersistentStorage(String& storagePath, uint32_t& storageType) const;
+    void setCookiePersistentStorage(PAL::SessionID, const String& storagePath, SoupCookiePersistentStorageType);
+    void getCookiePersistentStorage(PAL::SessionID, String& storagePath, SoupCookiePersistentStorageType&) const;
 #endif
 
     using API::Object::ref;
@@ -139,8 +140,8 @@ private:
     WebCookieManagerProxyClient m_client;
 
 #if USE(SOUP)
-    String m_cookiePersistentStoragePath;
-    SoupCookiePersistentStorageType m_cookiePersistentStorageType;
+    using CookiePersistentStorageMap = HashMap<PAL::SessionID, std::pair<String, SoupCookiePersistentStorageType>>;
+    CookiePersistentStorageMap m_cookiePersistentStorageMap;
 #endif
 };
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,6 +41,7 @@ namespace WebKit {
 RemoteLayerTreeTransaction::LayerCreationProperties::LayerCreationProperties()
     : layerID(0)
     , type(WebCore::PlatformCALayer::LayerTypeLayer)
+    , embeddedViewID(0)
     , hostingContextID(0)
     , hostingDeviceScaleFactor(1)
 {
@@ -50,24 +51,28 @@ void RemoteLayerTreeTransaction::LayerCreationProperties::encode(IPC::Encoder& e
 {
     encoder << layerID;
     encoder.encodeEnum(type);
+    encoder << embeddedViewID;
     encoder << hostingContextID;
     encoder << hostingDeviceScaleFactor;
 }
 
-auto RemoteLayerTreeTransaction::LayerCreationProperties::decode(IPC::Decoder& decoder) -> std::optional<LayerCreationProperties>
+auto RemoteLayerTreeTransaction::LayerCreationProperties::decode(IPC::Decoder& decoder) -> Optional<LayerCreationProperties>
 {
     LayerCreationProperties result;
     if (!decoder.decode(result.layerID))
-        return std::nullopt;
+        return WTF::nullopt;
 
     if (!decoder.decodeEnum(result.type))
-        return std::nullopt;
+        return WTF::nullopt;
+
+    if (!decoder.decode(result.embeddedViewID))
+        return WTF::nullopt;
 
     if (!decoder.decode(result.hostingContextID))
-        return std::nullopt;
+        return WTF::nullopt;
 
     if (!decoder.decode(result.hostingDeviceScaleFactor))
-        return std::nullopt;
+        return WTF::nullopt;
 
     return WTFMove(result);
 }
@@ -512,7 +517,7 @@ void RemoteLayerTreeTransaction::encode(IPC::Encoder& encoder) const
 
     encoder << static_cast<uint64_t>(m_changedLayers.size());
 
-    for (RefPtr<PlatformCALayerRemote> layer : m_changedLayers) {
+    for (const auto& layer : m_changedLayers) {
         encoder << layer->layerID();
         encoder << layer->properties();
     }
@@ -673,7 +678,7 @@ bool RemoteLayerTreeTransaction::decode(IPC::Decoder& decoder, RemoteLayerTreeTr
     if (!decoder.decode(result.m_isInStableState))
         return false;
 
-    std::optional<Vector<TransactionCallbackID>> callbackIDs;
+    Optional<Vector<TransactionCallbackID>> callbackIDs;
     decoder >> callbackIDs;
     if (!callbackIDs)
         return false;
@@ -915,13 +920,13 @@ CString RemoteLayerTreeTransaction::description() const
             TextStream::GroupScope group(ts);
             ts << createdLayer.type <<" " << createdLayer.layerID;
             switch (createdLayer.type) {
-            case PlatformCALayer::LayerTypeAVPlayerLayer:
+            case WebCore::PlatformCALayer::LayerTypeAVPlayerLayer:
                 ts << " (context-id " << createdLayer.hostingContextID << ")";
                 break;
-            case PlatformCALayer::LayerTypeContentsProvidedLayer:
+            case WebCore::PlatformCALayer::LayerTypeContentsProvidedLayer:
                 ts << " (context-id " << createdLayer.hostingContextID << ")";
                 break;
-            case PlatformCALayer::LayerTypeCustom:
+            case WebCore::PlatformCALayer::LayerTypeCustom:
                 ts << " (context-id " << createdLayer.hostingContextID << ")";
                 break;
             default:
@@ -933,7 +938,7 @@ CString RemoteLayerTreeTransaction::description() const
     dumpChangedLayers(ts, m_changedLayerProperties);
 
     if (!m_destroyedLayerIDs.isEmpty())
-        ts.dumpProperty<Vector<GraphicsLayer::PlatformLayerID>>("destroyed-layers", m_destroyedLayerIDs);
+        ts.dumpProperty<Vector<WebCore::GraphicsLayer::PlatformLayerID>>("destroyed-layers", m_destroyedLayerIDs);
 
     if (m_editorState) {
         TextStream::GroupScope scope(ts);

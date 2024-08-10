@@ -31,7 +31,7 @@
 #include <wtf/RetainPtr.h>
 #include <wtf/WeakPtr.h>
 
-#if ENABLE(LEGACY_ENCRYPTED_MEDIA) && ENABLE(MEDIA_SOURCE)
+#if HAVE(AVSTREAMSESSION) && ENABLE(LEGACY_ENCRYPTED_MEDIA) && ENABLE(MEDIA_SOURCE)
 
 OBJC_CLASS AVStreamSession;
 OBJC_CLASS WebCDMSessionAVStreamSessionObserver;
@@ -41,6 +41,7 @@ namespace WebCore {
 class CDMPrivateMediaSourceAVFObjC;
 
 class CDMSessionAVStreamSession : public CDMSessionMediaSourceAVFObjC, public CanMakeWeakPtr<CDMSessionAVStreamSession> {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     CDMSessionAVStreamSession(const Vector<int>& protocolVersions, CDMPrivateMediaSourceAVFObjC&, LegacyCDMSessionClient*);
     virtual ~CDMSessionAVStreamSession();

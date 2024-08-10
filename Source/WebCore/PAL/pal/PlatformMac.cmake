@@ -3,6 +3,10 @@ list(APPEND PAL_PUBLIC_HEADERS
 
     cf/CoreMediaSoftLink.h
 
+    cocoa/PassKitSoftLink.h
+
+    mac/LookupSoftLink.h
+
     spi/cf/CFLocaleSPI.h
     spi/cf/CFNetworkConnectionCacheSPI.h
     spi/cf/CFNetworkSPI.h
@@ -14,6 +18,7 @@ list(APPEND PAL_PUBLIC_HEADERS
     spi/cg/ImageIOSPI.h
 
     spi/cocoa/AVKitSPI.h
+    spi/cocoa/AudioToolboxSPI.h
     spi/cocoa/CFNSURLConnectionSPI.h
     spi/cocoa/CoreTextSPI.h
     spi/cocoa/DataDetectorsCoreSPI.h
@@ -45,19 +50,24 @@ list(APPEND PAL_PUBLIC_HEADERS
     spi/cocoa/WebFilterEvaluatorSPI.h
     spi/cocoa/pthreadSPI.h
 
+    spi/ios/DataDetectorsUISPI.h
+    spi/ios/GraphicsServicesSPI.h
+
     spi/mac/AVFoundationSPI.h
+    spi/mac/CoreUISPI.h
     spi/mac/DataDetectorsSPI.h
     spi/mac/HIServicesSPI.h
     spi/mac/HIToolboxSPI.h
     spi/mac/LookupSPI.h
     spi/mac/MediaRemoteSPI.h
-    spi/mac/MetadataSPI.h
     spi/mac/NSAccessibilitySPI.h
+    spi/mac/NSAppearanceSPI.h
     spi/mac/NSApplicationSPI.h
     spi/mac/NSCellSPI.h
     spi/mac/NSEventSPI.h
     spi/mac/NSFontSPI.h
     spi/mac/NSGraphicsSPI.h
+    spi/mac/NSImageSPI.h
     spi/mac/NSImmediateActionGestureRecognizerSPI.h
     spi/mac/NSMenuSPI.h
     spi/mac/NSPasteboardSPI.h
@@ -78,7 +88,7 @@ list(APPEND PAL_PUBLIC_HEADERS
     spi/mac/QuickDrawSPI.h
     spi/mac/QuickLookMacSPI.h
     spi/mac/SpeechSynthesisSPI.h
-    spi/mac/TUCallSPI.h
+    spi/mac/TelephonyUtilitiesSPI.h
 
     system/cocoa/SleepDisablerCocoa.h
 
@@ -95,9 +105,11 @@ list(APPEND PAL_SOURCES
     cf/CoreMediaSoftLink.cpp
 
     cocoa/FileSizeFormatterCocoa.mm
-    cocoa/LoggingCocoa.mm
+    cocoa/PassKitSoftLink.mm
 
     crypto/commoncrypto/CryptoDigestCommonCrypto.cpp
+
+    mac/LookupSoftLink.mm
 
     system/cocoa/SleepDisablerCocoa.cpp
 
@@ -112,8 +124,10 @@ list(APPEND PAL_SOURCES
 )
 
 list(APPEND PAL_PRIVATE_INCLUDE_DIRECTORIES
+    "${DERIVED_SOURCES_WTF_DIR}"
     "${PAL_DIR}/pal/avfoundation"
     "${PAL_DIR}/pal/cf"
+    "${PAL_DIR}/pal/cocoa"
     "${PAL_DIR}/pal/spi/cf"
     "${PAL_DIR}/pal/spi/cg"
     "${PAL_DIR}/pal/spi/cocoa"

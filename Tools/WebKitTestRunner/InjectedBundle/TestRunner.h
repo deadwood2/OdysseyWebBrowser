@@ -33,13 +33,14 @@
 #include <WebKit/WKRetainPtr.h>
 #include <string>
 #include <wtf/Ref.h>
+#include <wtf/Seconds.h>
 #include <wtf/text/WTFString.h>
 
 #if PLATFORM(COCOA)
 #include <wtf/RetainPtr.h>
 #include <CoreFoundation/CFRunLoop.h>
 typedef RetainPtr<CFRunLoopTimerRef> PlatformTimerRef;
-#elif PLATFORM(GTK) || PLATFORM(WPE)
+#else
 #include <wtf/RunLoop.h>
 namespace WTR {
 class TestRunner;
@@ -71,7 +72,7 @@ public:
     void waitUntilDone();
     void notifyDone();
     double preciseTime();
-    double timeout() { return m_timeout; }
+    double timeout() { return m_timeout.milliseconds(); }
 
     // Other dumping.
     void dumpBackForwardList() { m_shouldDumpBackForwardListsForAllWindows = true; }
@@ -90,6 +91,7 @@ public:
     void dumpDatabaseCallbacks() { m_dumpDatabaseCallbacks = true; }
     void dumpDOMAsWebArchive() { setWhatToDump(WhatToDump::DOMAsWebArchive); }
     void dumpPolicyDelegateCallbacks() { m_dumpPolicyCallbacks = true; }
+    void dumpResourceLoadStatistics();
 
     void setShouldDumpFrameLoadCallbacks(bool value);
     void setShouldDumpProgressFinishedCallback(bool value) { m_dumpProgressFinishedCallback = value; }
@@ -97,12 +99,12 @@ public:
     // Special options.
     void keepWebHistory();
     void setAcceptsEditing(bool value) { m_shouldAllowEditing = value; }
-    void setCanOpenWindows(bool);
+    void setCanOpenWindows();
     void setCloseRemainingWindowsWhenComplete(bool value) { m_shouldCloseExtraWindows = value; }
     void setXSSAuditorEnabled(bool);
     void setModernMediaControlsEnabled(bool);
     void setWebGL2Enabled(bool);
-    void setWebGPUEnabled(bool);
+    void setWebMetalEnabled(bool);
     void setWritableStreamAPIEnabled(bool);
     void setReadableByteStreamAPIEnabled(bool);
 
@@ -129,9 +131,10 @@ public:
     void setAllowsAnySSLCertificate(bool);
     void setEncryptedMediaAPIEnabled(bool);
     void setMediaDevicesEnabled(bool);
-    void setWebRTCLegacyAPIEnabled(bool);
-    void setMDNSICECandidatesEnabled(bool);
+    void setWebRTCMDNSICECandidatesEnabled(bool);
+    void setWebRTCUnifiedPlanEnabled(bool);
     void setCustomUserAgent(JSStringRef);
+    void setWebAPIStatisticsEnabled(bool);
 
     // Special DOM functions.
     void clearBackForwardList();
@@ -151,6 +154,8 @@ public:
 
     // Text search testing.
     bool findString(JSStringRef, JSValueRef optionsArray);
+    void findStringMatchesInPage(JSStringRef, JSValueRef optionsArray);
+    void replaceFindMatchesAtIndices(JSValueRef matchIndices, JSStringRef replacementText, bool selectionOnly);
 
     // Local storage
     void clearAllDatabases();
@@ -170,6 +175,10 @@ public:
     void clearDOMCaches();
     bool hasDOMCache(JSStringRef origin);
     uint64_t domCacheSize(JSStringRef origin);
+    void allowCacheStorageQuotaIncrease();
+
+    // IndexedDB
+    void setIDBPerOriginQuota(uint64_t);
 
     // Failed load condition testing
     void forceImmediateCompletion();
@@ -254,8 +263,6 @@ public:
 
     void setShouldStayOnPageAfterHandlingBeforeUnload(bool);
 
-    void setDefersLoading(bool);
-
     void setStopProvisionalFrameLoads() { m_shouldStopProvisionalFrameLoads = true; }
     bool shouldStopProvisionalFrameLoads() const { return m_shouldStopProvisionalFrameLoads; }
     
@@ -286,6 +293,7 @@ public:
 
     // Cookies testing
     void setAlwaysAcceptCookies(bool);
+    void setOnlyAcceptFirstPartyCookies(bool);
 
     // Custom full screen behavior.
     void setHasCustomFullScreenBehavior(bool value) { m_customFullScreenBehavior = value; }
@@ -309,13 +317,14 @@ public:
     void setUserMediaPersistentPermissionForOrigin(bool permission, JSStringRef origin, JSStringRef parentOrigin);
     unsigned userMediaPermissionRequestCountForOrigin(JSStringRef origin, JSStringRef parentOrigin) const;
     void resetUserMediaPermissionRequestCountForOrigin(JSStringRef origin, JSStringRef parentOrigin);
+    bool isDoingMediaCapture() const;
 
     void setPageVisibility(JSStringRef state);
     void resetPageVisibility();
 
     bool callShouldCloseOnWebView();
 
-    void setCustomTimeout(int duration) { m_timeout = duration; }
+    void setCustomTimeout(WTF::Seconds duration) { m_timeout = duration; }
 
     // Work queue.
     void queueBackNavigation(unsigned howFarBackward);
@@ -392,6 +401,7 @@ public:
     void statisticsCallDidSetVeryPrevalentResourceCallback();
     bool isStatisticsPrevalentResource(JSStringRef hostName);
     bool isStatisticsVeryPrevalentResource(JSStringRef hostName);
+    bool isStatisticsRegisteredAsSubresourceUnder(JSStringRef subresourceHost, JSStringRef topFrameHost);
     bool isStatisticsRegisteredAsSubFrameUnder(JSStringRef subFrameHost, JSStringRef topFrameHost);
     bool isStatisticsRegisteredAsRedirectingTo(JSStringRef hostRedirectedFrom, JSStringRef hostRedirectedTo);
     void setStatisticsHasHadUserInteraction(JSStringRef hostName, bool value, JSValueRef completionHandler);
@@ -417,6 +427,7 @@ public:
     void statisticsClearInMemoryAndPersistentStoreModifiedSinceHours(unsigned hours, JSValueRef callback);
     void statisticsClearThroughWebsiteDataRemoval(JSValueRef callback);
     void statisticsCallClearThroughWebsiteDataRemovalCallback();
+    void setStatisticsCacheMaxAgeCap(double seconds);
     void statisticsResetToConsistentState(JSValueRef completionHandler);
     void statisticsCallDidResetToConsistentStateCallback();
 
@@ -436,9 +447,11 @@ public:
     // Open panel
     void setOpenPanelFiles(JSValueRef);
 
+    // Modal alerts
+    void setShouldDismissJavaScriptAlertsAsynchronously(bool);
+
     void terminateNetworkProcess();
     void terminateServiceWorkerProcess();
-    void terminateStorageProcess();
 
     void removeAllSessionCredentials(JSValueRef);
     void callDidRemoveAllSessionCredentialsCallback();
@@ -460,6 +473,19 @@ public:
 
     size_t userScriptInjectedCount() const;
     void injectUserScript(JSStringRef);
+
+    void sendDisplayConfigurationChangedMessageForTesting();
+
+    // WebAuthN
+    void setWebAuthenticationMockConfiguration(JSValueRef);
+    // FIXME(189876)
+    void addTestKeyToKeychain(JSStringRef privateKeyBase64, JSStringRef attrLabel, JSStringRef applicationTagBase64);
+    void cleanUpKeychain(JSStringRef attrLabel);
+    bool keyExistsInKeychain(JSStringRef attrLabel, JSStringRef applicationTagBase64);
+
+    void setCanHandleHTTPSServerTrustEvaluation(bool canHandle);
+    bool canDoServerTrustEvaluationInNetworkProcess();
+    unsigned long serverTrustEvaluationCallbackCallsCount();
 
 private:
     TestRunner();
@@ -509,7 +535,7 @@ private:
     bool m_globalFlag;
     bool m_customFullScreenBehavior;
 
-    int m_timeout;
+    WTF::Seconds m_timeout;
 
     double m_databaseDefaultQuota;
     double m_databaseMaxQuota;

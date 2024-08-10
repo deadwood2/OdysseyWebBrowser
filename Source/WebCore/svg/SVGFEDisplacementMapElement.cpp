@@ -127,7 +127,7 @@ RefPtr<FilterEffect> SVGFEDisplacementMapElement::build(SVGFilterBuilder* filter
     if (!input1 || !input2)
         return nullptr;
 
-    RefPtr<FilterEffect> effect = FEDisplacementMap::create(filter, xChannelSelector(), yChannelSelector(), scale());
+    auto effect = FEDisplacementMap::create(filter, xChannelSelector(), yChannelSelector(), scale());
     FilterEffectVector& inputEffects = effect->inputEffects();
     inputEffects.reserveCapacity(2);
     inputEffects.append(input1);

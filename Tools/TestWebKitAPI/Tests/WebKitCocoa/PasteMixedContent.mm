@@ -25,14 +25,20 @@
 
 #include "config.h"
 
-#if PLATFORM(MAC) && WK_API_ENABLED
+#if WK_API_ENABLED
 
 #import "PlatformUtilities.h"
+#import "TestURLSchemeHandler.h"
 #import "TestWKWebView.h"
 #import <WebKit/WKPreferencesRef.h>
 #import <WebKit/WKPreferencesRefPrivate.h>
+#import <WebKit/WKWebViewPrivate.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/text/WTFString.h>
+
+namespace TestWebKitAPI {
+
+#if PLATFORM(MAC)
 
 static NSString *imagePath()
 {
@@ -84,7 +90,7 @@ void writeTypesAndDataToPasteboard(id type, ...)
 static RetainPtr<TestWKWebView> setUpWebView()
 {
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 400, 400)]);
-    WKPreferencesSetCustomPasteboardDataEnabled((WKPreferencesRef)[webView configuration].preferences, true);
+    WKPreferencesSetCustomPasteboardDataEnabled((__bridge WKPreferencesRef)[webView configuration].preferences, true);
     [webView synchronouslyLoadTestPageNamed:@"DataTransfer"];
     return webView;
 }
@@ -95,8 +101,6 @@ static NSString *markupString()
     // sanitization while pasting.
     return @"<script>foo()</script><strong onmouseover='javascript:void(0)'>HELLO WORLD</strong>";
 }
-
-namespace TestWebKitAPI {
 
 TEST(PasteMixedContent, ImageFileAndPlainText)
 {
@@ -251,6 +255,84 @@ TEST(PasteMixedContent, PasteURLWrittenToPasteboardUsingWriteObjects)
     EXPECT_WK_STREQ([webView stringByEvaluatingJavaScript:@"document.querySelector('a').textContent"], urlToCopy);
 }
 
+TEST(PasteMixedContent, PasteOneOrMoreURLs)
+{
+    NSURL *appleURL = [NSURL URLWithString:@"https://www.apple.com/"];
+    NSURL *webKitURL = [NSURL URLWithString:@"https://webkit.org/"];
+
+    auto webView = setUpWebView();
+    auto runTest = [webView] (NSString *description, NSString *expectedURLString, Function<void(NSPasteboard *)>&& writeURLsToPasteboard) {
+        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+
+        [pasteboard clearContents];
+        writeURLsToPasteboard(pasteboard);
+        [webView stringByEvaluatingJavaScript:@"reset(); document.body.focus()"];
+        [webView paste:nil];
+
+        EXPECT_WK_STREQ(expectedURLString, [webView stringByEvaluatingJavaScript:@"urlData.textContent"]);
+        EXPECT_WK_STREQ("(STRING, text/uri-list)", [webView stringByEvaluatingJavaScript:@"items.textContent"]);
+        EXPECT_WK_STREQ("text/uri-list", [webView stringByEvaluatingJavaScript:@"types.textContent"]);
+    };
+
+    runTest(@"Write multiple URLs.", @"https://www.apple.com/\nhttps://webkit.org/", ^(NSPasteboard *pasteboard) {
+        [pasteboard writeObjects:@[appleURL, webKitURL]];
+    });
+
+    runTest(@"Declare legacy URL and write URL to pasteboard.", @"https://www.apple.com/", ^(NSPasteboard *pasteboard) {
+        [pasteboard declareTypes:@[NSURLPboardType] owner:nil];
+        [appleURL writeToPasteboard:pasteboard];
+    });
+
+    runTest(@"Declare legacy URL and set a URL string.", @"https://www.apple.com/", ^(NSPasteboard *pasteboard) {
+        [pasteboard declareTypes:@[NSURLPboardType] owner:nil];
+        [pasteboard setString:appleURL.absoluteString forType:NSURLPboardType];
+    });
+
+    runTest(@"Declare legacy URL and set a property list.", @"https://www.apple.com/", ^(NSPasteboard *pasteboard) {
+        [pasteboard declareTypes:@[NSURLPboardType] owner:nil];
+        [pasteboard setPropertyList:@[@"/", @"https://www.apple.com"] forType:NSURLPboardType];
+    });
+
+    runTest(@"Declare URL UTI and set a URL string.", @"https://www.apple.com/", ^(NSPasteboard *pasteboard) {
+        [pasteboard declareTypes:@[(__bridge NSString *)kUTTypeURL] owner:nil];
+        [pasteboard setString:appleURL.absoluteString forType:(__bridge NSString *)kUTTypeURL];
+    });
+}
+
+#endif // PLATFORM(MAC)
+
+TEST(PasteMixedContent, CopyAndPasteWithCustomPasteboardDataOnly)
+{
+    NSString *markupForSource = @"<body oncopy=\"event.preventDefault(); event.clipboardData.setData('foo', 'bar')\">hello</body>";
+    NSString *markupForDestination = @"<input autofocus onpaste=\"event.preventDefault(); this.value = event.clipboardData.getData('foo')\">";
+
+    auto schemeHandler = adoptNS([[TestURLSchemeHandler alloc] init]);
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [configuration setURLSchemeHandler:schemeHandler.get() forURLScheme:@"same"];
+    [configuration setURLSchemeHandler:schemeHandler.get() forURLScheme:@"different"];
+    WKPreferencesSetCustomPasteboardDataEnabled((__bridge WKPreferencesRef)[configuration preferences], true);
+
+    auto source = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 400, 400) configuration:configuration.get()]);
+    [source synchronouslyLoadHTMLString:markupForSource baseURL:[NSURL URLWithString:@"same://"]];
+    [source selectAll:nil];
+    [source _executeEditCommand:@"copy" argument:nil completion:nil];
+
+    auto destination = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 400, 400) configuration:configuration.get()]);
+    [destination synchronouslyLoadHTMLString:markupForDestination baseURL:[NSURL URLWithString:@"same://"]];
+    [destination paste:nil];
+    EXPECT_WK_STREQ("bar", [destination stringByEvaluatingJavaScript:@"document.querySelector('input').value"]);
+#if PLATFORM(IOS_FAMILY)
+    EXPECT_TRUE([destination canPerformAction:@selector(paste:) withSender:nil]);
+#endif
+
+    [destination synchronouslyLoadHTMLString:markupForDestination baseURL:[NSURL URLWithString:@"different://"]];
+    [destination paste:nil];
+    EXPECT_WK_STREQ("", [destination stringByEvaluatingJavaScript:@"document.querySelector('input').value"]);
+#if PLATFORM(IOS_FAMILY)
+    EXPECT_FALSE([destination canPerformAction:@selector(paste:) withSender:nil]);
+#endif
+}
+
 } // namespace TestWebKitAPI
 
-#endif // PLATFORM(MAC) && WK_API_ENABLED
+#endif // WK_API_ENABLED

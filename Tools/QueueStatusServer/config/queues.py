@@ -39,6 +39,7 @@ all_queue_names = [
     "bindings-ews",
     "jsc-ews",
     "jsc-mips-ews",
+    "jsc-armv7-ews",
     "mac-ews",
     "mac-wk2-ews",
     "mac-debug-ews",
@@ -51,4 +52,4 @@ all_queue_names = [
 
 # If the patch is still active after this much time, then a bot must have frozen or rebooted,
 # and dropped the patch on the floor. We will ignore the lock in this case, and let another bot pick up.
-work_item_lock_timeout = timedelta(minutes=120)
+work_item_lock_timeout = timedelta(minutes=180)

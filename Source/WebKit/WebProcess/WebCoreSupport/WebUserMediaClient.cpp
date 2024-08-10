@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 Igalia S.L.
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -42,7 +42,6 @@ void WebUserMediaClient::pageDestroyed()
 
 void WebUserMediaClient::requestUserMediaAccess(UserMediaRequest& request)
 {
-    m_page.prepareToSendUserMediaPermissionRequest();
     m_page.userMediaPermissionRequestManager().startUserMediaRequest(request);
 }
 
@@ -59,6 +58,16 @@ void WebUserMediaClient::enumerateMediaDevices(MediaDevicesEnumerationRequest& r
 void WebUserMediaClient::cancelMediaDevicesEnumerationRequest(MediaDevicesEnumerationRequest& request)
 {
     m_page.userMediaPermissionRequestManager().cancelMediaDevicesEnumeration(request);
+}
+
+WebUserMediaClient::DeviceChangeObserverToken WebUserMediaClient::addDeviceChangeObserver(WTF::Function<void()>&& observer)
+{
+    return m_page.userMediaPermissionRequestManager().addDeviceChangeObserver(WTFMove(observer));
+}
+
+void WebUserMediaClient::removeDeviceChangeObserver(DeviceChangeObserverToken token)
+{
+    m_page.userMediaPermissionRequestManager().removeDeviceChangeObserver(token);
 }
 
 } // namespace WebKit;

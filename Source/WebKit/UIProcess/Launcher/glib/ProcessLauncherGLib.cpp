@@ -29,10 +29,10 @@
 
 #include "Connection.h"
 #include "ProcessExecutablePath.h"
-#include <WebCore/FileSystem.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <glib.h>
+#include <wtf/FileSystem.h>
 #include <wtf/RunLoop.h>
 #include <wtf/UniStdExtras.h>
 #include <wtf/glib/GLibUtilities.h>
@@ -40,12 +40,7 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
-#if PLATFORM(WPE)
-#include <wpe/wpe.h>
-#endif
-
 namespace WebKit {
-using namespace WebCore;
 
 static void childSetupFunction(gpointer userData)
 {
@@ -55,8 +50,6 @@ static void childSetupFunction(gpointer userData)
 
 void ProcessLauncher::launchProcess()
 {
-    GPid pid = 0;
-
     IPC::Connection::SocketPair socketPair = IPC::Connection::createPlatformConnection(IPC::Connection::ConnectionOptions::SetCloexecOnServer);
 
     String executablePath;
@@ -84,9 +77,6 @@ void ProcessLauncher::launchProcess()
     case ProcessLauncher::ProcessType::Network:
         executablePath = executablePathOfNetworkProcess();
         break;
-    case ProcessLauncher::ProcessType::Storage:
-        executablePath = executablePathOfStorageProcess();
-        break;
     default:
         ASSERT_NOT_REACHED();
         return;
@@ -96,20 +86,6 @@ void ProcessLauncher::launchProcess()
     GUniquePtr<gchar> processIdentifier(g_strdup_printf("%" PRIu64, m_launchOptions.processIdentifier.toUInt64()));
     GUniquePtr<gchar> webkitSocket(g_strdup_printf("%d", socketPair.client));
     unsigned nargs = 5; // size of the argv array for g_spawn_async()
-
-#if PLATFORM(WPE)
-    GUniquePtr<gchar> wpeSocket;
-    CString wpeBackendLibraryParameter;
-    if (m_launchOptions.processType == ProcessLauncher::ProcessType::Web) {
-#if defined(WPE_BACKEND_CHECK_VERSION) && WPE_BACKEND_CHECK_VERSION(0, 2, 0)
-        wpeBackendLibraryParameter = FileSystem::fileSystemRepresentation(wpe_loader_get_loaded_implementation_library_name());
-#endif
-        nargs++;
-
-        wpeSocket = GUniquePtr<gchar>(g_strdup_printf("%d", wpe_renderer_host_create_client()));
-        nargs++;
-    }
-#endif
 
 #if ENABLE(DEVELOPER_MODE)
     Vector<CString> prefixArgs;
@@ -130,12 +106,6 @@ void ProcessLauncher::launchProcess()
     argv[i++] = const_cast<char*>(realExecutablePath.data());
     argv[i++] = processIdentifier.get();
     argv[i++] = webkitSocket.get();
-#if PLATFORM(WPE)
-    if (m_launchOptions.processType == ProcessLauncher::ProcessType::Web) {
-        argv[i++] = const_cast<char*>(wpeBackendLibraryParameter.isNull() ? "-" : wpeBackendLibraryParameter.data());
-        argv[i++] = wpeSocket.get();
-    }
-#endif
 #if ENABLE(NETSCAPE_PLUGIN_API)
     argv[i++] = const_cast<char*>(realPluginPath.data());
 #else
@@ -143,16 +113,24 @@ void ProcessLauncher::launchProcess()
 #endif
     argv[i++] = nullptr;
 
+    GRefPtr<GSubprocessLauncher> launcher = adoptGRef(g_subprocess_launcher_new(G_SUBPROCESS_FLAGS_INHERIT_FDS));
+    g_subprocess_launcher_set_child_setup(launcher.get(), childSetupFunction, GINT_TO_POINTER(socketPair.server), nullptr);
+    g_subprocess_launcher_take_fd(launcher.get(), socketPair.client, socketPair.client);
+
     GUniqueOutPtr<GError> error;
-    if (!g_spawn_async(nullptr, argv, nullptr, G_SPAWN_LEAVE_DESCRIPTORS_OPEN, childSetupFunction, GINT_TO_POINTER(socketPair.server), &pid, &error.outPtr()))
+    GRefPtr<GSubprocess> process;
+    process = adoptGRef(g_subprocess_launcher_spawnv(launcher.get(), argv, &error.outPtr()));
+
+    if (!process.get())
         g_error("Unable to fork a new child process: %s", error->message);
+
+    const char* processIdStr = g_subprocess_get_identifier(process.get());
+    m_processIdentifier = g_ascii_strtoll(processIdStr, nullptr, 0);
+    RELEASE_ASSERT(m_processIdentifier);
 
     // Don't expose the parent socket to potential future children.
     if (!setCloseOnExec(socketPair.client))
         RELEASE_ASSERT_NOT_REACHED();
-
-    close(socketPair.client);
-    m_processIdentifier = pid;
 
     // We've finished launching the process, message back to the main run loop.
     RunLoop::main().dispatch([protectedThis = makeRef(*this), this, serverSocket = socketPair.server] {

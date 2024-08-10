@@ -32,14 +32,14 @@
 #import "APICast.h"
 #import "DFGWorklist.h"
 #import "JSManagedValueInternal.h"
-#import "JSVirtualMachine.h"
 #import "JSVirtualMachineInternal.h"
+#import "JSVirtualMachinePrivate.h"
 #import "JSWrapperMap.h"
 #import "SigillCrashAnalyzer.h"
 #import "SlotVisitorInlines.h"
 #import <mutex>
+#import <wtf/BlockPtr.h>
 #import <wtf/Lock.h>
-#import <wtf/spi/cocoa/NSMapTableSPI.h>
 
 static NSMapTable *globalWrapperCache = 0;
 
@@ -296,6 +296,11 @@ JSContextGroupRef getGroupFromVirtualMachine(JSVirtualMachine *virtualMachine)
 }
 
 #endif // ENABLE(DFG_JIT)
+
+- (JSC::VM&)vm
+{
+    return *toJS(m_group);
+}
 
 @end
 

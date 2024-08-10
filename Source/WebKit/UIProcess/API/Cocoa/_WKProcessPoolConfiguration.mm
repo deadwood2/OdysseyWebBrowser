@@ -74,12 +74,11 @@
 
 - (NSInteger)diskCacheSizeOverride
 {
-    return _processPoolConfiguration->diskCacheSizeOverride();
+    return 0;
 }
 
 - (void)setDiskCacheSizeOverride:(NSInteger)size
 {
-    _processPoolConfiguration->setDiskCacheSizeOverride(size);
 }
 
 - (BOOL)diskCacheSpeculativeValidationEnabled
@@ -139,7 +138,7 @@
     _processPoolConfiguration->setAdditionalReadAccessAllowedPaths(WTFMove(paths));
 }
 
-#if ENABLE(WIFI_ASSERTIONS)
+#if ENABLE(PROXIMITY_NETWORKING)
 - (NSUInteger)wirelessContextIdentifier
 {
     return _processPoolConfiguration->wirelessContextIdentifier();
@@ -202,30 +201,19 @@
 
 - (NSString *)sourceApplicationBundleIdentifier
 {
-    return _processPoolConfiguration->sourceApplicationBundleIdentifier();
+    return nil;
 }
 
 - (void)setSourceApplicationBundleIdentifier:(NSString *)sourceApplicationBundleIdentifier
 {
-    _processPoolConfiguration->setSourceApplicationBundleIdentifier(sourceApplicationBundleIdentifier);
 }
 
 - (NSString *)sourceApplicationSecondaryIdentifier
 {
-    return _processPoolConfiguration->sourceApplicationSecondaryIdentifier();
+    return nil;
 }
 
 - (void)setSourceApplicationSecondaryIdentifier:(NSString *)sourceApplicationSecondaryIdentifier
-{
-    _processPoolConfiguration->setSourceApplicationSecondaryIdentifier(sourceApplicationSecondaryIdentifier);
-}
-
-- (BOOL)allowsCellularAccess
-{
-    return YES;
-}
-
-- (void)setAllowsCellularAccess:(BOOL)allowsCellularAccess
 {
 }
 
@@ -259,14 +247,14 @@
     return _processPoolConfiguration->processSwapsOnNavigation();
 }
 
-- (void)setMaximumPrewarmedProcessCount:(NSUInteger)count
+- (void)setPrewarmsProcessesAutomatically:(BOOL)prewarms
 {
-    _processPoolConfiguration->setMaximumPrewarmedProcessCount(count);
+    _processPoolConfiguration->setIsAutomaticProcessWarmingEnabled(prewarms);
 }
 
-- (NSUInteger)maximumPrewarmedProcessCount
+- (BOOL)prewarmsProcessesAutomatically
 {
-    return _processPoolConfiguration->maximumPrewarmedProcessCount();
+    return _processPoolConfiguration->isAutomaticProcessWarmingEnabled();
 }
 
 - (void)setAlwaysKeepAndReuseSwappedProcesses:(BOOL)swaps
@@ -291,15 +279,15 @@
 
 - (BOOL)pageCacheEnabled
 {
-    return _processPoolConfiguration->cacheModel() != WebKit::CacheModelDocumentViewer;
+    return _processPoolConfiguration->cacheModel() != WebKit::CacheModel::DocumentViewer;
 }
 
 - (void)setPageCacheEnabled:(BOOL)enabled
 {
     if (!enabled)
-        _processPoolConfiguration->setCacheModel(WebKit::CacheModelDocumentViewer);
+        _processPoolConfiguration->setCacheModel(WebKit::CacheModel::DocumentViewer);
     else if (![self pageCacheEnabled])
-        _processPoolConfiguration->setCacheModel(WebKit::CacheModelPrimaryWebBrowser);
+        _processPoolConfiguration->setCacheModel(WebKit::CacheModel::PrimaryWebBrowser);
 }
 
 - (BOOL)suppressesConnectionTerminationOnSystemChange
@@ -307,12 +295,33 @@
     return _processPoolConfiguration->suppressesConnectionTerminationOnSystemChange();
 }
 
+- (BOOL)isJITEnabled
+{
+    return _processPoolConfiguration->isJITEnabled();
+}
+
+- (void)setJITEnabled:(BOOL)enabled
+{
+    _processPoolConfiguration->setJITEnabled(enabled);
+}
+
+- (BOOL)usesNetworkingDaemon
+{
+    return _processPoolConfiguration->usesNetworkingDaemon();
+}
+
+- (void)setUsesNetworkingDaemon:(BOOL)enabled
+{
+    _processPoolConfiguration->setUsesNetworkingDaemon(enabled);
+}
+
+
 - (void)setSuppressesConnectionTerminationOnSystemChange:(BOOL)suppressesConnectionTerminationOnSystemChange
 {
     _processPoolConfiguration->setSuppressesConnectionTerminationOnSystemChange(suppressesConnectionTerminationOnSystemChange);
 }
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 - (NSString *)CTDataConnectionServiceType
 {
     return _processPoolConfiguration->ctDataConnectionServiceType();
@@ -356,7 +365,7 @@
 
 - (id)copyWithZone:(NSZone *)zone
 {
-    return wrapper(_processPoolConfiguration->copy().leakRef());
+    return [wrapper(_processPoolConfiguration->copy()) retain];
 }
 
 - (NSString *)customWebContentServiceBundleIdentifier

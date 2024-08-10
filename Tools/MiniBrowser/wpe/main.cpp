@@ -39,9 +39,11 @@ static gboolean headlessMode;
 static gboolean privateMode;
 static gboolean automationMode;
 static gboolean ignoreTLSErrors;
+static const char* contentFilter;
 static const char* cookiesFile;
 static const char* cookiesPolicy;
 static const char* proxy;
+const char* bgColor;
 
 static const GOptionEntry commandLineOptions[] =
 {
@@ -53,22 +55,40 @@ static const GOptionEntry commandLineOptions[] =
     { "proxy", 0, 0, G_OPTION_ARG_STRING, &proxy, "Set proxy", "PROXY" },
     { "ignore-host", 0, 0, G_OPTION_ARG_STRING_ARRAY, &ignoreHosts, "Set proxy ignore hosts", "HOSTS" },
     { "ignore-tls-errors", 0, 0, G_OPTION_ARG_NONE, &ignoreTLSErrors, "Ignore TLS errors", nullptr },
+    { "content-filter", 0, 0, G_OPTION_ARG_FILENAME, &contentFilter, "JSON with content filtering rules", "FILE" },
+    { "bg-color", 0, 0, G_OPTION_ARG_STRING, &bgColor, "Window background color. Default: white", "COLOR" },
     { G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_FILENAME_ARRAY, &uriArguments, nullptr, "[URL]" },
     { nullptr, 0, 0, G_OPTION_ARG_NONE, nullptr, nullptr, nullptr }
 };
 
 class InputClient final : public WPEToolingBackends::ViewBackend::InputClient {
 public:
-    InputClient(GMainLoop* loop)
+    InputClient(GMainLoop* loop, WebKitWebView* webView)
         : m_loop(loop)
+        , m_webView(webView)
     {
     }
 
     bool dispatchKeyboardEvent(struct wpe_input_keyboard_event* event) override
     {
-        if (event->pressed && event->modifiers & wpe_input_keyboard_modifier_control && event->key_code == WPE_KEY_q) {
+        if (!event->pressed)
+            return false;
+
+        if (event->modifiers & wpe_input_keyboard_modifier_control && event->key_code == WPE_KEY_q) {
             g_main_loop_quit(m_loop);
             return true;
+        }
+
+        if (event->modifiers & wpe_input_keyboard_modifier_alt) {
+            if ((event->key_code == WPE_KEY_Left || event->key_code == WPE_KEY_KP_Left) && webkit_web_view_can_go_back(m_webView)) {
+                webkit_web_view_go_back(m_webView);
+                return true;
+            }
+
+            if ((event->key_code == WPE_KEY_Right || event->key_code == WPE_KEY_KP_Right) && webkit_web_view_can_go_forward(m_webView)) {
+                webkit_web_view_go_forward(m_webView);
+                return true;
+            }
         }
 
         return false;
@@ -76,6 +96,7 @@ public:
 
 private:
     GMainLoop* m_loop { nullptr };
+    WebKitWebView* m_webView { nullptr };
 };
 
 static WebKitWebView* createWebViewForAutomationCallback(WebKitAutomationSession*, WebKitWebView* view)
@@ -93,11 +114,31 @@ static void automationStartedCallback(WebKitWebContext*, WebKitAutomationSession
     g_signal_connect(session, "create-web-view", G_CALLBACK(createWebViewForAutomationCallback), view);
 }
 
+static gboolean decidePermissionRequest(WebKitWebView *, WebKitPermissionRequest *request, gpointer)
+{
+    g_print("Accepting %s request\n", G_OBJECT_TYPE_NAME(request));
+    webkit_permission_request_allow(request);
+
+    return TRUE;
+}
+
 static std::unique_ptr<WPEToolingBackends::ViewBackend> createViewBackend(uint32_t width, uint32_t height)
 {
     if (headlessMode)
         return std::make_unique<WPEToolingBackends::HeadlessViewBackend>(width, height);
     return std::make_unique<WPEToolingBackends::WindowViewBackend>(width, height);
+}
+
+typedef struct {
+    GMainLoop* mainLoop { nullptr };
+    WebKitUserContentFilter* filter { nullptr };
+    GError* error { nullptr };
+} FilterSaveData;
+
+static void filterSavedCallback(WebKitUserContentFilterStore *store, GAsyncResult *result, FilterSaveData *data)
+{
+    data->filter = webkit_user_content_filter_store_save_finish(store, result, &data->error);
+    g_main_loop_quit(data->mainLoop);
 }
 
 int main(int argc, char *argv[])
@@ -132,12 +173,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    backend->setInputClient(std::make_unique<InputClient>(loop));
-
-    auto* viewBackend = webkit_web_view_backend_new(wpeBackend, [](gpointer data) {
-        delete static_cast<WPEToolingBackends::ViewBackend*>(data);
-    }, backend.release());
-
     auto* webContext = (privateMode || automationMode) ? webkit_web_context_new_ephemeral() : webkit_web_context_get_default();
 
     if (cookiesPolicy) {
@@ -165,35 +200,79 @@ int main(int argc, char *argv[])
     webkit_web_context_set_process_model(webContext, (singleprocess && *singleprocess) ?
         WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS : WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES);
 
+    WebKitUserContentManager* userContentManager = nullptr;
+    if (contentFilter) {
+        GFile* contentFilterFile = g_file_new_for_commandline_arg(contentFilter);
+
+        FilterSaveData saveData = { nullptr, };
+        gchar* filtersPath = g_build_filename(g_get_user_cache_dir(), g_get_prgname(), "filters", nullptr);
+        WebKitUserContentFilterStore* store = webkit_user_content_filter_store_new(filtersPath);
+        g_free(filtersPath);
+
+        webkit_user_content_filter_store_save_from_file(store, "WPEMiniBrowserFilter", contentFilterFile, nullptr, (GAsyncReadyCallback)filterSavedCallback, &saveData);
+        saveData.mainLoop = g_main_loop_new(nullptr, FALSE);
+        g_main_loop_run(saveData.mainLoop);
+        g_object_unref(store);
+
+        if (saveData.filter) {
+            userContentManager = webkit_user_content_manager_new();
+            webkit_user_content_manager_add_filter(userContentManager, saveData.filter);
+        } else
+            g_printerr("Cannot save filter '%s': %s\n", contentFilter, saveData.error->message);
+
+        g_clear_pointer(&saveData.error, g_error_free);
+        g_clear_pointer(&saveData.filter, webkit_user_content_filter_unref);
+        g_main_loop_unref(saveData.mainLoop);
+        g_object_unref(contentFilterFile);
+    }
+
     auto* settings = webkit_settings_new_with_settings(
         "enable-developer-extras", TRUE,
         "enable-webgl", TRUE,
         "enable-media-stream", TRUE,
+        "enable-encrypted-media", TRUE,
         nullptr);
+
+    auto* backendPtr = backend.get();
+    auto* viewBackend = webkit_web_view_backend_new(wpeBackend, [](gpointer data) {
+        delete static_cast<WPEToolingBackends::ViewBackend*>(data);
+    }, backend.release());
 
     auto* webView = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
         "backend", viewBackend,
         "web-context", webContext,
         "settings", settings,
+        "user-content-manager", userContentManager,
         "is-controlled-by-automation", automationMode,
         nullptr));
     g_object_unref(settings);
 
+    backendPtr->setInputClient(std::make_unique<InputClient>(loop, webView));
+
     webkit_web_context_set_automation_allowed(webContext, automationMode);
     g_signal_connect(webContext, "automation-started", G_CALLBACK(automationStartedCallback), webView);
+    g_signal_connect(webView, "permission-request", G_CALLBACK(decidePermissionRequest), NULL);
 
     if (ignoreTLSErrors)
         webkit_web_context_set_tls_errors_policy(webContext, WEBKIT_TLS_ERRORS_POLICY_IGNORE);
 
-    if (uriArguments)
-        webkit_web_view_load_uri(webView, uriArguments[0]);
-    else if (!automationMode)
+    WebKitColor color;
+    if (bgColor && webkit_color_parse(&color, bgColor))
+        webkit_web_view_set_background_color(webView, &color);
+
+    if (uriArguments) {
+        GFile* file = g_file_new_for_commandline_arg(uriArguments[0]);
+        char* url = g_file_get_uri(file);
+        g_object_unref(file);
+        webkit_web_view_load_uri(webView, url);
+        g_free(url);
+    } else if (!automationMode)
         webkit_web_view_load_uri(webView, "https://wpewebkit.org");
 
     g_main_loop_run(loop);
 
     g_object_unref(webView);
-    if (privateMode)
+    if (privateMode || automationMode)
         g_object_unref(webContext);
     g_main_loop_unref(loop);
 

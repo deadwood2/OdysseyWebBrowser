@@ -32,12 +32,12 @@
 #import <WebKit/_WKInputDelegate.h>
 #import <wtf/BlockPtr.h>
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #import "UIKitSPI.h"
 #import <UIKit/NSItemProvider+UIKitAdditions.h>
 #endif
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 typedef NS_ENUM(NSInteger, DragAndDropPhase) {
     DragAndDropPhaseCancelled = 0,
@@ -71,7 +71,7 @@ typedef NSDictionary<NSNumber *, NSValue *> *ProgressToCGPointValueMap;
 - (UIDragInteraction *)dragInteraction;
 @end
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)
 
 @interface DragAndDropSimulator : NSObject<WKUIDelegatePrivate, _WKInputDelegate>
 
@@ -79,36 +79,40 @@ typedef NSDictionary<NSNumber *, NSValue *> *ProgressToCGPointValueMap;
 - (instancetype)initWithWebViewFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration;
 // The start location, end location, and locations of additional item requests are all in window coordinates.
 - (void)runFrom:(CGPoint)startLocation to:(CGPoint)endLocation;
+- (void)endDataTransfer;
+- (void)clearExternalDragInformation;
 @property (nonatomic, readonly) NSArray<_WKAttachment *> *insertedAttachments;
 @property (nonatomic, readonly) NSArray<_WKAttachment *> *removedAttachments;
 @property (nonatomic, readonly) TestWKWebView *webView;
 @property (nonatomic) WKDragDestinationAction dragDestinationAction;
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 - (instancetype)initWithWebView:(TestWKWebView *)webView;
 - (void)runFrom:(CGPoint)startLocation to:(CGPoint)endLocation additionalItemRequestLocations:(ProgressToCGPointValueMap)additionalItemRequestLocations;
-- (void)waitForInputSession;
-- (void)endDataTransfer;
+- (void)ensureInputSession;
 
 @property (nonatomic, readonly) DragAndDropPhase phase;
 @property (nonatomic) BOOL allowsFocusToStartInputSession;
 @property (nonatomic) BOOL shouldEnsureUIApplication;
 @property (nonatomic) BOOL shouldAllowMoveOperation;
-@property (nonatomic) BlockPtr<BOOL(_WKActivatedElementInfo *)> showCustomActionSheetBlock;
-@property (nonatomic) BlockPtr<NSArray *(UIItemProvider *, NSArray *, NSDictionary *)> convertItemProvidersBlock;
-@property (nonatomic) BlockPtr<NSArray *(id <UIDropSession>)> overridePerformDropBlock;
 @property (nonatomic, strong) NSArray *externalItemProviders;
-@property (nonatomic) BlockPtr<NSUInteger(NSUInteger, id)> overrideDragUpdateBlock;
-@property (nonatomic) BlockPtr<void(BOOL, NSArray *)> dropCompletionBlock;
+@property (nonatomic, readonly) UIDropProposal *lastKnownDropProposal;
+
+@property (nonatomic, copy) BOOL(^showCustomActionSheetBlock)(_WKActivatedElementInfo *);
+@property (nonatomic, copy) NSArray *(^convertItemProvidersBlock)(NSItemProvider *, NSArray *, NSDictionary *);
+@property (nonatomic, copy) NSArray *(^overridePerformDropBlock)(id <UIDropSession>);
+@property (nonatomic, copy) void(^dropCompletionBlock)(BOOL, NSArray *);
+@property (nonatomic, copy) UIDropOperation(^overrideDragUpdateBlock)(UIDropOperation, id <UIDropSession>);
 
 @property (nonatomic, readonly) NSArray *sourceItemProviders;
 @property (nonatomic, readonly) NSArray *observedEventNames;
 @property (nonatomic, readonly) NSArray *finalSelectionRects;
 @property (nonatomic, readonly) CGRect lastKnownDragCaretRect;
 @property (nonatomic, readonly) NSArray<UITargetedDragPreview *> *liftPreviews;
+@property (nonatomic, readonly) BOOL suppressedSelectionCommandsDuringDrop;
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)
 
 #if PLATFORM(MAC)
 
@@ -117,7 +121,12 @@ typedef NSDictionary<NSNumber *, NSValue *> *ProgressToCGPointValueMap;
 @property (nonatomic, readonly) NSDragOperation currentDragOperation;
 @property (nonatomic, strong) NSPasteboard *externalDragPasteboard;
 @property (nonatomic, strong) NSImage *externalDragImage;
+@property (nonatomic, readonly) NSArray<NSURL *> *externalPromisedFiles;
 @property (nonatomic, copy) dispatch_block_t willEndDraggingHandler;
+
+- (void)writePromisedFiles:(NSArray<NSURL *> *)fileURLs;
+- (void)writeFiles:(NSArray<NSURL *> *)fileURLs;
+- (NSArray<NSURL *> *)receivePromisedFiles;
 
 #endif // PLATFORM(MAC)
 

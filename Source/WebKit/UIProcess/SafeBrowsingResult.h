@@ -25,19 +25,23 @@
 
 #pragma once
 
+#include <wtf/RefCounted.h>
+#include <wtf/URL.h>
 #include <wtf/text/WTFString.h>
 
 OBJC_CLASS SSBServiceLookupResult;
 
 namespace WebKit {
 
-class SafeBrowsingResult {
+class SafeBrowsingResult : public RefCounted<SafeBrowsingResult> {
 public:
 #if HAVE(SAFE_BROWSING)
-    SafeBrowsingResult(SSBServiceLookupResult *);
+    static Ref<SafeBrowsingResult> create(URL&& url, SSBServiceLookupResult *result)
+    {
+        return adoptRef(*new SafeBrowsingResult(WTFMove(url), result));
+    }
 #endif
-    SafeBrowsingResult() = default;
-
+    const URL& url() const { return m_url; }
     const String& provider() const { return m_provider; }
     bool isPhishing() const { return m_isPhishing; }
     bool isMalware() const { return m_isMalware; }
@@ -45,6 +49,10 @@ public:
     bool isKnownToBeUnsafe() const { return m_isKnownToBeUnsafe; }
 
 private:
+#if HAVE(SAFE_BROWSING)
+    SafeBrowsingResult(URL&&, SSBServiceLookupResult *);
+#endif
+    URL m_url;
     String m_provider;
     bool m_isPhishing { false };
     bool m_isMalware { false };

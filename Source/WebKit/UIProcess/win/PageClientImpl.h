@@ -40,7 +40,7 @@ class DrawingAreaProxy;
 class WebPageNamespace;
 class WebView;
 
-enum class UndoOrRedo;
+enum class UndoOrRedo : bool;
 
 class PageClientImpl : public PageClient
 #if ENABLE(FULLSCREEN_API)
@@ -53,7 +53,7 @@ public:
     HWND viewWidget();
 private:
     // PageClient
-    std::unique_ptr<DrawingAreaProxy> createDrawingAreaProxy() override;
+    std::unique_ptr<DrawingAreaProxy> createDrawingAreaProxy(WebProcessProxy&) override;
     void setViewNeedsDisplay(const WebCore::Region&) override;
     void requestScroll(const WebCore::FloatPoint& scrollPosition, const WebCore::IntPoint& scrollOrigin, bool isProgrammaticScroll) override;
     WebCore::FloatPoint viewScrollPosition() override;

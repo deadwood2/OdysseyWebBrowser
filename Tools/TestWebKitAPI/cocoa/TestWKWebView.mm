@@ -28,6 +28,7 @@
 
 #if WK_API_ENABLED
 
+#import "ClassMethodSwizzler.h"
 #import "TestNavigationDelegate.h"
 #import "Utilities.h"
 
@@ -44,13 +45,13 @@
 #import <wtf/mac/AppKitCompatibilityDeclarations.h>
 #endif
 
-#if PLATFORM(IOS)
-#import <UIKit/UIKit.h>
+#if PLATFORM(IOS_FAMILY)
+#import "UIKitSPI.h"
 #import <wtf/SoftLinking.h>
 SOFT_LINK_FRAMEWORK(UIKit)
 SOFT_LINK_CLASS(UIKit, UIWindow)
 
-@implementation WKWebView (WKWebViewTestingQuicks)
+@implementation WKWebView (WKWebViewTestingQuirks)
 
 // TestWebKitAPI is currently not a UIApplication so we are unable to track if it is in
 // the background or not (https://bugs.webkit.org/show_bug.cgi?id=175204). This can
@@ -62,6 +63,88 @@ SOFT_LINK_CLASS(UIKit, UIWindow)
 }
 @end
 #endif
+
+@implementation WKWebView (TestWebKitAPI)
+
+- (BOOL)_synchronouslyExecuteEditCommand:(NSString *)command argument:(NSString *)argument
+{
+    __block bool done = false;
+    __block bool success;
+    [self _executeEditCommand:command argument:argument completion:^(BOOL completionSuccess) {
+        done = true;
+        success = completionSuccess;
+    }];
+    TestWebKitAPI::Util::run(&done);
+    return success;
+}
+
+- (NSArray<NSString *> *)tagsInBody
+{
+    return [self objectByEvaluatingJavaScript:@"Array.from(document.body.getElementsByTagName('*')).map(e => e.tagName)"];
+}
+
+- (void)expectElementTagsInOrder:(NSArray<NSString *> *)tagNames
+{
+    auto remainingTags = adoptNS([tagNames mutableCopy]);
+    NSArray<NSString *> *tagsInBody = self.tagsInBody;
+    for (NSString *tag in tagsInBody.reverseObjectEnumerator) {
+        if ([tag isEqualToString:[remainingTags lastObject]])
+            [remainingTags removeLastObject];
+        if (![remainingTags count])
+            break;
+    }
+    EXPECT_EQ([remainingTags count], 0U);
+    if ([remainingTags count])
+        NSLog(@"Expected to find ordered tags: %@ in: %@", tagNames, tagsInBody);
+}
+
+- (void)expectElementCount:(NSInteger)count querySelector:(NSString *)querySelector
+{
+    NSString *script = [NSString stringWithFormat:@"document.querySelectorAll('%@').length", querySelector];
+    EXPECT_EQ(count, [self stringByEvaluatingJavaScript:script].integerValue);
+}
+
+- (void)expectElementTag:(NSString *)tagName toComeBefore:(NSString *)otherTagName
+{
+    [self expectElementTagsInOrder:@[tagName, otherTagName]];
+}
+
+- (id)objectByEvaluatingJavaScript:(NSString *)script
+{
+    bool isWaitingForJavaScript = false;
+    RetainPtr<id> evalResult;
+    [self _evaluateJavaScriptWithoutUserGesture:script completionHandler:[&] (id result, NSError *error) {
+        evalResult = result;
+        isWaitingForJavaScript = true;
+        EXPECT_TRUE(!error);
+        if (error)
+            NSLog(@"Encountered error: %@ while evaluating script: %@", error, script);
+    }];
+    TestWebKitAPI::Util::run(&isWaitingForJavaScript);
+    return evalResult.autorelease();
+}
+
+- (id)objectByEvaluatingJavaScriptWithUserGesture:(NSString *)script
+{
+    bool isWaitingForJavaScript = false;
+    RetainPtr<id> evalResult;
+    [self evaluateJavaScript:script completionHandler:[&] (id result, NSError *error) {
+        evalResult = result;
+        isWaitingForJavaScript = true;
+        EXPECT_TRUE(!error);
+        if (error)
+            NSLog(@"Encountered error: %@ while evaluating script: %@", error, script);
+    }];
+    TestWebKitAPI::Util::run(&isWaitingForJavaScript);
+    return evalResult.autorelease();
+}
+
+- (NSString *)stringByEvaluatingJavaScript:(NSString *)script
+{
+    return [NSString stringWithFormat:@"%@", [self objectByEvaluatingJavaScript:script]];
+}
+
+@end
 
 @implementation TestMessageHandler {
     NSMutableDictionary<NSString *, dispatch_block_t> *_messageHandlers;
@@ -103,24 +186,18 @@ SOFT_LINK_CLASS(UIKit, UIWindow)
 #if PLATFORM(MAC)
 static int gEventNumber = 1;
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101003
 NSEventMask __simulated_forceClickAssociatedEventsMask(id self, SEL _cmd)
 {
     return NSEventMaskPressure | NSEventMaskLeftMouseDown | NSEventMaskLeftMouseUp | NSEventMaskLeftMouseDragged;
 }
-#endif
 
 - (void)_mouseDownAtPoint:(NSPoint)point simulatePressure:(BOOL)simulatePressure clickCount:(NSUInteger)clickCount
 {
     NSEventType mouseEventType = NSEventTypeLeftMouseDown;
 
     NSEventMask modifierFlags = 0;
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101003
     if (simulatePressure)
         modifierFlags |= NSEventMaskPressure;
-#else
-    simulatePressure = NO;
-#endif
 
     NSEvent *event = [NSEvent mouseEventWithType:mouseEventType location:point modifierFlags:modifierFlags timestamp:GetCurrentEventTime() windowNumber:self.windowNumber context:[NSGraphicsContext currentContext] eventNumber:++gEventNumber clickCount:clickCount pressure:simulatePressure];
     if (!simulatePressure) {
@@ -128,7 +205,6 @@ NSEventMask __simulated_forceClickAssociatedEventsMask(id self, SEL _cmd)
         return;
     }
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101003
     IMP simulatedAssociatedEventsMaskImpl = (IMP)__simulated_forceClickAssociatedEventsMask;
     Method associatedEventsMaskMethod = class_getInstanceMethod([NSEvent class], @selector(associatedEventsMask));
     IMP originalAssociatedEventsMaskImpl = method_setImplementation(associatedEventsMaskMethod, simulatedAssociatedEventsMaskImpl);
@@ -139,7 +215,6 @@ NSEventMask __simulated_forceClickAssociatedEventsMask(id self, SEL _cmd)
         // to prevent subsequent event sending tests from being affected.
         method_setImplementation(associatedEventsMaskMethod, originalAssociatedEventsMaskImpl);
     }
-#endif
 }
 
 - (void)_mouseUpAtPoint:(NSPoint)point clickCount:(NSUInteger)clickCount
@@ -174,9 +249,24 @@ NSEventMask __simulated_forceClickAssociatedEventsMask(id self, SEL _cmd)
 
 @end
 
+#if PLATFORM(IOS_FAMILY)
+
+using InputSessionChangeCount = NSUInteger;
+static InputSessionChangeCount nextInputSessionChangeCount()
+{
+    static InputSessionChangeCount gInputSessionChangeCount = 0;
+    return ++gInputSessionChangeCount;
+}
+
+#endif
+
 @implementation TestWKWebView {
     RetainPtr<TestWKWebViewHostWindow> _hostWindow;
     RetainPtr<TestMessageHandler> _testHandler;
+#if PLATFORM(IOS_FAMILY)
+    std::unique_ptr<ClassMethodSwizzler> _sharedCalloutBarSwizzler;
+    InputSessionChangeCount _inputSessionChangeCount;
+#endif
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -190,6 +280,15 @@ NSEventMask __simulated_forceClickAssociatedEventsMask(id self, SEL _cmd)
     return [self initWithFrame:frame configuration:configuration addToWindow:YES];
 }
 
+#if PLATFORM(IOS_FAMILY)
+
+static UICalloutBar *suppressUICalloutBar()
+{
+    return nil;
+}
+
+#endif
+
 - (instancetype)initWithFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration addToWindow:(BOOL)addToWindow
 {
     self = [super initWithFrame:frame configuration:configuration];
@@ -198,6 +297,12 @@ NSEventMask __simulated_forceClickAssociatedEventsMask(id self, SEL _cmd)
 
     if (addToWindow)
         [self _setUpTestWindow:frame];
+
+#if PLATFORM(IOS_FAMILY)
+    // FIXME: Remove this workaround once <https://webkit.org/b/175204> is fixed.
+    _sharedCalloutBarSwizzler = std::make_unique<ClassMethodSwizzler>([UICalloutBar class], @selector(sharedCalloutBar), reinterpret_cast<IMP>(suppressUICalloutBar));
+    _inputSessionChangeCount = 0;
+#endif
 
     return self;
 }
@@ -246,37 +351,21 @@ NSEventMask __simulated_forceClickAssociatedEventsMask(id self, SEL _cmd)
     [self loadRequest:request];
 }
 
+- (void)synchronouslyLoadHTMLString:(NSString *)html baseURL:(NSURL *)url
+{
+    [self loadHTMLString:html baseURL:url];
+    [self _test_waitForDidFinishNavigation];
+}
+
 - (void)synchronouslyLoadHTMLString:(NSString *)html
 {
-    NSURL *testResourceURL = [[[NSBundle mainBundle] bundleURL] URLByAppendingPathComponent:@"TestWebKitAPI.resources"];
-    [self loadHTMLString:html baseURL:testResourceURL];
-    [self _test_waitForDidFinishNavigation];
+    [self synchronouslyLoadHTMLString:html baseURL:[[[NSBundle mainBundle] bundleURL] URLByAppendingPathComponent:@"TestWebKitAPI.resources"]];
 }
 
 - (void)synchronouslyLoadTestPageNamed:(NSString *)pageName
 {
     [self loadTestPageNamed:pageName];
     [self _test_waitForDidFinishNavigation];
-}
-
-- (id)objectByEvaluatingJavaScript:(NSString *)script
-{
-    bool isWaitingForJavaScript = false;
-    RetainPtr<id> evalResult;
-    [self _evaluateJavaScriptWithoutUserGesture:script completionHandler:[&] (id result, NSError *error) {
-        evalResult = result;
-        isWaitingForJavaScript = true;
-        EXPECT_TRUE(!error);
-        if (error)
-            NSLog(@"Encountered error: %@ while evaluating script: %@", error, script);
-    }];
-    TestWebKitAPI::Util::run(&isWaitingForJavaScript);
-    return evalResult.autorelease();
-}
-
-- (NSString *)stringByEvaluatingJavaScript:(NSString *)script
-{
-    return [NSString stringWithFormat:@"%@", [self objectByEvaluatingJavaScript:script]];
 }
 
 - (void)waitForMessage:(NSString *)message
@@ -311,15 +400,71 @@ NSEventMask __simulated_forceClickAssociatedEventsMask(id self, SEL _cmd)
     TestWebKitAPI::Util::run(&done);
 }
 
+- (NSString *)stylePropertyAtSelectionStart:(NSString *)propertyName
+{
+    NSString *script = [NSString stringWithFormat:@"getComputedStyle(getSelection().getRangeAt(0).startContainer.parentElement)['%@']", propertyName];
+    return [self stringByEvaluatingJavaScript:script];
+}
+
+- (NSString *)stylePropertyAtSelectionEnd:(NSString *)propertyName
+{
+    NSString *script = [NSString stringWithFormat:@"getComputedStyle(getSelection().getRangeAt(0).endContainer.parentElement)['%@']", propertyName];
+    return [self stringByEvaluatingJavaScript:script];
+}
+
+- (void)collapseToStart
+{
+    [self evaluateJavaScript:@"getSelection().collapseToStart()" completionHandler:nil];
+}
+
+- (void)collapseToEnd
+{
+    [self evaluateJavaScript:@"getSelection().collapseToEnd()" completionHandler:nil];
+}
+
+#if PLATFORM(IOS_FAMILY)
+
+- (void)didStartFormControlInteraction
+{
+    _inputSessionChangeCount = nextInputSessionChangeCount();
+}
+
+- (void)didEndFormControlInteraction
+{
+    _inputSessionChangeCount = 0;
+}
+
+#endif // PLATFORM(IOS_FAMILY)
+
 @end
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 @implementation TestWKWebView (IOSOnly)
 
-- (UIView <UITextInput> *)textInputContentView
+- (void)evaluateJavaScriptAndWaitForInputSessionToChange:(NSString *)script
 {
-    return (UIView <UITextInput> *)[self valueForKey:@"_currentContentView"];
+    auto initialChangeCount = _inputSessionChangeCount;
+    BOOL hasEmittedWarning = NO;
+    NSTimeInterval secondsToWaitUntilWarning = 2;
+    NSTimeInterval startTime = [NSDate timeIntervalSinceReferenceDate];
+
+    [self objectByEvaluatingJavaScript:script];
+    while ([[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantPast]]) {
+        if (_inputSessionChangeCount != initialChangeCount)
+            break;
+
+        if (hasEmittedWarning || startTime + secondsToWaitUntilWarning >= [NSDate timeIntervalSinceReferenceDate])
+            continue;
+
+        NSLog(@"Warning: expecting input session change count to differ from %tu", initialChangeCount);
+        hasEmittedWarning = YES;
+    }
+}
+
+- (UIView <UITextInputPrivate, UITextInputMultiDocument> *)textInputContentView
+{
+    return (UIView <UITextInputPrivate, UITextInputMultiDocument> *)[self valueForKey:@"_currentContentView"];
 }
 
 - (RetainPtr<NSArray>)selectionRectsAfterPresentationUpdate

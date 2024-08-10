@@ -434,12 +434,45 @@ const struct zxdg_surface_v6_listener WindowViewBackend::s_xdgSurfaceListener = 
 
 const struct zxdg_toplevel_v6_listener WindowViewBackend::s_xdgToplevelListener = {
     // configure
-    [](void*, struct zxdg_toplevel_v6*, int32_t /*width*/, int32_t /*height*/, struct wl_array*)
+    [](void* data, struct zxdg_toplevel_v6*, int32_t width, int32_t height, struct wl_array* states)
     {
-        // FIXME: dispatch the size against wpe_view_backend.
+        auto& window = *static_cast<WindowViewBackend*>(data);
+        wpe_view_backend_dispatch_set_size(window.backend(), width, height);
+
+        bool isFocused = false;
+        // FIXME: It would be nice if the following loop could use
+        // wl_array_for_each, but at the time of writing it relies on
+        // GCC specific extension to work properly:
+        // https://gitlab.freedesktop.org/wayland/wayland/issues/34
+        uint32_t* pos = static_cast<uint32_t*>(states->data);
+        uint32_t* end = static_cast<uint32_t*>(states->data) + states->size;
+
+        for (; pos < end; pos++) {
+            uint32_t state = *pos;
+
+            switch (state) {
+            case ZXDG_TOPLEVEL_V6_STATE_ACTIVATED:
+                isFocused = true;
+                break;
+            case ZXDG_TOPLEVEL_V6_STATE_FULLSCREEN:
+            case ZXDG_TOPLEVEL_V6_STATE_MAXIMIZED:
+            case ZXDG_TOPLEVEL_V6_STATE_RESIZING:
+            default:
+                break;
+            }
+        }
+
+        if (isFocused)
+            wpe_view_backend_add_activity_state(window.backend(), wpe_view_activity_state_focused);
+        else
+            wpe_view_backend_remove_activity_state(window.backend(), wpe_view_activity_state_focused);
     },
     // close
-    [](void*, struct zxdg_toplevel_v6*) { },
+    [](void* data, struct zxdg_toplevel_v6*)
+    {
+        auto& window = *static_cast<WindowViewBackend*>(data);
+        wpe_view_backend_remove_activity_state(window.backend(), wpe_view_activity_state_visible | wpe_view_activity_state_focused | wpe_view_activity_state_in_window);
+    },
 };
 
 WindowViewBackend::WindowViewBackend(uint32_t width, uint32_t height)
@@ -486,9 +519,10 @@ WindowViewBackend::WindowViewBackend(uint32_t width, uint32_t height)
         zxdg_surface_v6_add_listener(m_xdgSurface, &s_xdgSurfaceListener, nullptr);
         m_xdgToplevel = zxdg_surface_v6_get_toplevel(m_xdgSurface);
         if (m_xdgToplevel) {
-            zxdg_toplevel_v6_add_listener(m_xdgToplevel, &s_xdgToplevelListener, nullptr);
+            zxdg_toplevel_v6_add_listener(m_xdgToplevel, &s_xdgToplevelListener, this);
             zxdg_toplevel_v6_set_title(m_xdgToplevel, "WPE");
             wl_surface_commit(m_surface);
+            wpe_view_backend_add_activity_state(backend(), wpe_view_activity_state_visible | wpe_view_activity_state_in_window);
         }
     }
 

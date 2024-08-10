@@ -653,6 +653,13 @@ void RenderTreeBuilder::childFlowStateChangesAndAffectsParentBlock(RenderElement
             blockBuilder().childBecameNonInline(downcast<RenderBlock>(*parent), child);
         else if (is<RenderInline>(*parent))
             inlineBuilder().childBecameNonInline(downcast<RenderInline>(*parent), child);
+
+        // childBecameNonInline might have re-parented us.
+        if (auto* newParent = child.parent()) {
+            // We need to re-run the grid items placement if it had gained a new item.
+            if (newParent != parent && is<RenderGrid>(*newParent))
+                downcast<RenderGrid>(*newParent).dirtyGrid();
+        }
     } else {
         // An anonymous block must be made to wrap this inline.
         auto newBlock = downcast<RenderBlock>(*parent).createAnonymousBlock();
@@ -676,15 +683,28 @@ void RenderTreeBuilder::removeAnonymousWrappersForInlineChildrenIfNeeded(RenderE
     // otherwise we can proceed to stripping solitary anonymous wrappers from the inlines.
     // FIXME: We should also handle split inlines here - we exclude them at the moment by returning
     // if we find a continuation.
-    auto* current = blockParent.firstChild();
-    while (current && ((current->isAnonymousBlock() && !downcast<RenderBlock>(*current).isContinuation()) || current->style().isFloating() || current->style().hasOutOfFlowPosition()))
-        current = current->nextSibling();
+    Optional<bool> shouldAllChildrenBeInline;
+    for (auto* current = blockParent.firstChild(); current; current = current->nextSibling()) {
+        if (current->style().isFloating() || current->style().hasOutOfFlowPosition())
+            continue;
+        if (!current->isAnonymousBlock() || downcast<RenderBlock>(*current).isContinuation())
+            return;
+        // Anonymous block not in continuation. Check if it holds a set of inline or block children and try not to mix them.
+        auto* firstChild = current->firstChildSlow();
+        if (!firstChild)
+            continue;
+        auto isInlineLevelBox = firstChild->isInline();
+        if (!shouldAllChildrenBeInline.hasValue()) {
+            shouldAllChildrenBeInline = isInlineLevelBox;
+            continue;
+        }
+        // Mixing inline and block level boxes?
+        if (*shouldAllChildrenBeInline != isInlineLevelBox)
+            return;
+    }
 
-    if (current)
-        return;
-
-    RenderObject* next;
-    for (current = blockParent.firstChild(); current; current = next) {
+    RenderObject* next = nullptr;
+    for (auto* current = blockParent.firstChild(); current; current = next) {
         next = current->nextSibling();
         if (current->isAnonymousBlock())
             blockBuilder().dropAnonymousBoxChild(blockParent, downcast<RenderBlock>(*current));

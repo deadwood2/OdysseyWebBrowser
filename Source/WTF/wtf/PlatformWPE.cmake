@@ -14,15 +14,20 @@ list(APPEND WTF_SOURCES
     UniStdExtras.cpp
 
     generic/MainThreadGeneric.cpp
+    generic/MemoryFootprintGeneric.cpp
     generic/WorkQueueGeneric.cpp
 
+    glib/FileSystemGlib.cpp
     glib/GLibUtilities.cpp
     glib/GRefPtr.cpp
     glib/RunLoopGLib.cpp
+    glib/URLGLib.cpp
 
     linux/CurrentProcessMemoryStatus.cpp
-    linux/MemoryFootprintLinux.cpp
     linux/MemoryPressureHandlerLinux.cpp
+
+    posix/OSAllocatorPOSIX.cpp
+    posix/ThreadingPOSIX.cpp
 
     text/unix/TextBreakIteratorInternalICUUnix.cpp
 
@@ -39,5 +44,6 @@ list(APPEND WTF_LIBRARIES
 )
 
 list(APPEND WTF_SYSTEM_INCLUDE_DIRECTORIES
+    ${GIO_UNIX_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
 )

@@ -56,12 +56,12 @@
 #include <wtf/WallTime.h>
 #include <wtf/text/WTFString.h>
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #include <WebCore/WebCoreThreadRun.h>
 #include <wtf/BlockPtr.h>
 #endif
 
-#if PLATFORM(MAC) && !PLATFORM(IOS)
+#if PLATFORM(MAC) && !PLATFORM(IOS_FAMILY)
 #include <Carbon/Carbon.h>
 #endif
 
@@ -289,10 +289,10 @@ static JSValueRef pathToLocalResourceCallback(JSContextRef context, JSObjectRef 
         return JSValueMakeUndefined(context);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
-    JSRetainPtr<JSStringRef> localPath(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto localPath = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
-    JSRetainPtr<JSStringRef> convertedPath(Adopt, controller->pathToLocalResource(context, localPath.get()));
+    auto convertedPath = controller->pathToLocalResource(context, localPath.get());
     if (!convertedPath)
         return JSValueMakeUndefined(context);
 
@@ -383,7 +383,7 @@ static JSValueRef addDisallowedURLCallback(JSContextRef context, JSObjectRef fun
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> url(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto url = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -397,10 +397,10 @@ static JSValueRef addURLToRedirectCallback(JSContextRef context, JSObjectRef fun
     if (argumentCount < 2)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> origin(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto origin = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
-    JSRetainPtr<JSStringRef> destination(Adopt, JSValueToStringCopy(context, arguments[1], exception));
+    auto destination = adopt(JSValueToStringCopy(context, arguments[1], exception));
     ASSERT(!*exception);
 
     size_t maxLength = JSStringGetMaximumUTF8CStringSize(origin.get());
@@ -439,7 +439,7 @@ static JSValueRef clearApplicationCacheForOriginCallback(JSContextRef context, J
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> originURL(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto originURL = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -453,7 +453,7 @@ static JSValueRef applicationCacheDiskUsageForOriginCallback(JSContextRef contex
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> originURL(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto originURL = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
     
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -500,11 +500,11 @@ static JSValueRef decodeHostNameCallback(JSContextRef context, JSObjectRef funct
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> name(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto name = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
-    JSRetainPtr<JSStringRef> decodedHostName(Adopt, controller->copyDecodedHostName(name.get()));
+    auto decodedHostName = controller->copyDecodedHostName(name.get());
     return JSValueMakeString(context, decodedHostName.get());
 }
 
@@ -541,11 +541,11 @@ static JSValueRef encodeHostNameCallback(JSContextRef context, JSObjectRef funct
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> name(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto name = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
-    JSRetainPtr<JSStringRef> encodedHostName(Adopt, controller->copyEncodedHostName(name.get()));
+    auto encodedHostName = controller->copyEncodedHostName(name.get());
     return JSValueMakeString(context, encodedHostName.get());
 }
 
@@ -555,17 +555,17 @@ static JSValueRef execCommandCallback(JSContextRef context, JSObjectRef function
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> name(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto name = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     // Ignoring the second parameter (userInterface), as this command emulates a manual action.
 
     JSRetainPtr<JSStringRef> value;
     if (argumentCount >= 3) {
-        value.adopt(JSValueToStringCopy(context, arguments[2], exception));
+        value = adopt(JSValueToStringCopy(context, arguments[2], exception));
         ASSERT(!*exception);
     } else
-        value.adopt(JSStringCreateWithUTF8CString(""));
+        value = adopt(JSStringCreateWithUTF8CString(""));
 
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -580,7 +580,7 @@ static JSValueRef findStringCallback(JSContextRef context, JSObjectRef function,
     if (argumentCount < 2)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> target(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto target = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     JSObjectRef options = JSValueToObject(context, arguments[1], exception);
@@ -605,7 +605,7 @@ static JSValueRef isCommandEnabledCallback(JSContextRef context, JSObjectRef fun
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> name(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto name = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -618,9 +618,9 @@ static JSValueRef overridePreferenceCallback(JSContextRef context, JSObjectRef f
     if (argumentCount < 2)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> key(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto key = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
-    JSRetainPtr<JSStringRef> value(Adopt, JSValueToStringCopy(context, arguments[1], exception));
+    auto value = adopt(JSValueToStringCopy(context, arguments[1], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -698,15 +698,15 @@ static JSValueRef queueLoadCallback(JSContextRef context, JSObjectRef function, 
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> url(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto url = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     JSRetainPtr<JSStringRef> target;
     if (argumentCount >= 2) {
-        target.adopt(JSValueToStringCopy(context, arguments[1], exception));
+        target = adopt(JSValueToStringCopy(context, arguments[1], exception));
         ASSERT(!*exception);
     } else
-        target.adopt(JSStringCreateWithUTF8CString(""));
+        target = adopt(JSStringCreateWithUTF8CString(""));
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
     controller->queueLoad(url.get(), target.get());
@@ -720,21 +720,20 @@ static JSValueRef queueLoadHTMLStringCallback(JSContextRef context, JSObjectRef 
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> content(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto content = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     JSRetainPtr<JSStringRef> baseURL;
     if (argumentCount >= 2) {
-        baseURL.adopt(JSValueToStringCopy(context, arguments[1], exception));
+        baseURL = adopt(JSValueToStringCopy(context, arguments[1], exception));
         ASSERT(!*exception);
     } else
-        baseURL.adopt(JSStringCreateWithUTF8CString(""));
+        baseURL = adopt(JSStringCreateWithUTF8CString(""));
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
 
     if (argumentCount >= 3) {
-        JSRetainPtr<JSStringRef> unreachableURL;
-        unreachableURL.adopt(JSValueToStringCopy(context, arguments[2], exception));
+        auto unreachableURL = adopt(JSValueToStringCopy(context, arguments[2], exception));
         ASSERT(!*exception);
         controller->queueLoadAlternateHTMLString(content.get(), baseURL.get(), unreachableURL.get());
         return JSValueMakeUndefined(context);
@@ -762,7 +761,7 @@ static JSValueRef queueLoadingScriptCallback(JSContextRef context, JSObjectRef f
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> script(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto script = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -778,7 +777,7 @@ static JSValueRef queueNonLoadingScriptCallback(JSContextRef context, JSObjectRe
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> script(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto script = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -811,6 +810,17 @@ static JSValueRef setAlwaysAcceptCookiesCallback(JSContextRef context, JSObjectR
     return JSValueMakeUndefined(context);
 }
 
+static JSValueRef setOnlyAcceptFirstPartyCookiesCallback(JSContextRef context, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception)
+{
+    if (argumentCount < 1)
+        return JSValueMakeUndefined(context);
+
+    TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
+    controller->setOnlyAcceptFirstPartyCookies(JSValueToBoolean(context, arguments[0]));
+
+    return JSValueMakeUndefined(context);
+}
+
 static JSValueRef setAppCacheMaximumSizeCallback(JSContextRef context, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception)
 {
     // Has mac implementation
@@ -832,7 +842,7 @@ static JSValueRef setAuthenticationPasswordCallback(JSContextRef context, JSObje
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> password(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto password = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     size_t maxLength = JSStringGetMaximumUTF8CStringSize(password.get());
@@ -852,7 +862,7 @@ static JSValueRef setAuthenticationUsernameCallback(JSContextRef context, JSObje
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> username(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto username = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     size_t maxLength = JSStringGetMaximumUTF8CStringSize(username.get());
@@ -924,6 +934,20 @@ static JSValueRef setDatabaseQuotaCallback(JSContextRef context, JSObjectRef fun
     return JSValueMakeUndefined(context);
 }
 
+static JSValueRef setIDBPerOriginQuotaCallback(JSContextRef context, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception)
+{
+    if (argumentCount < 1)
+        return JSValueMakeUndefined(context);
+    
+    auto* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
+    
+    double quota = JSValueToNumber(context, arguments[0], nullptr);
+    if (!std::isnan(quota))
+        controller->setIDBPerOriginQuota(static_cast<uint64_t>(quota));
+    
+    return JSValueMakeUndefined(context);
+}
+
 static JSValueRef setDefersLoadingCallback(JSContextRef context, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception)
 {
     if (argumentCount < 1)
@@ -955,7 +979,7 @@ static JSValueRef setDomainRelaxationForbiddenForURLSchemeCallback(JSContextRef 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
 
     bool forbidden = JSValueToBoolean(context, arguments[0]);
-    JSRetainPtr<JSStringRef> scheme(Adopt, JSValueToStringCopy(context, arguments[1], 0));
+    auto scheme = adopt(JSValueToStringCopy(context, arguments[1], 0));
     controller->setDomainRelaxationForbiddenForURLScheme(forbidden, scheme.get());
 
     return JSValueMakeUndefined(context);
@@ -1037,7 +1061,7 @@ static JSValueRef setMockGeolocationPositionUnavailableErrorCallback(JSContextRe
     if (argumentCount != 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> message(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto message = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = reinterpret_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -1100,7 +1124,7 @@ static JSValueRef setPOSIXLocaleCallback(JSContextRef context, JSObjectRef funct
         return JSValueMakeUndefined(context);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
-    JSRetainPtr<JSStringRef> locale(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto locale = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
     controller->setPOSIXLocale(locale.get());
 
@@ -1137,7 +1161,7 @@ static JSValueRef setPersistentUserStyleSheetLocationCallback(JSContextRef conte
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> path(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto path = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -1259,7 +1283,7 @@ static JSValueRef setTabKeyCyclesThroughElementsCallback(JSContextRef context, J
     return JSValueMakeUndefined(context);
 }
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 static JSValueRef setTelephoneNumberParsingEnabledCallback(JSContextRef context, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception)
 {
     if (argumentCount < 1)
@@ -1313,7 +1337,7 @@ static JSValueRef setUserStyleSheetLocationCallback(JSContextRef context, JSObje
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> path(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto path = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -1328,7 +1352,7 @@ static JSValueRef setValueForUserCallback(JSContextRef context, JSObjectRef func
     if (argumentCount != 2)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> value(Adopt, JSValueToStringCopy(context, arguments[1], exception));
+    auto value = adopt(JSValueToStringCopy(context, arguments[1], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -1343,7 +1367,7 @@ static JSValueRef setWillSendRequestClearHeaderCallback(JSContextRef context, JS
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> header(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto header = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     size_t maxLength = JSStringGetMaximumUTF8CStringSize(header.get());
@@ -1455,7 +1479,7 @@ static JSValueRef setPageVisibilityCallback(JSContextRef context, JSObjectRef fu
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> visibility(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto visibility = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     size_t maxLength = JSStringGetMaximumUTF8CStringSize(visibility.get());
@@ -1510,7 +1534,7 @@ static JSValueRef closeWebInspectorCallback(JSContextRef context, JSObjectRef fu
 static JSValueRef evaluateInWebInspectorCallback(JSContextRef context, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception)
 {
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
-    JSRetainPtr<JSStringRef> script(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto script = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     controller->evaluateInWebInspector(script.get());
@@ -1522,7 +1546,7 @@ static JSValueRef evaluateScriptInIsolatedWorldCallback(JSContextRef context, JS
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
     double worldID = JSValueToNumber(context, arguments[0], exception);
     ASSERT(!*exception);
-    JSRetainPtr<JSStringRef> script(Adopt, JSValueToStringCopy(context, arguments[1], exception));
+    auto script = adopt(JSValueToStringCopy(context, arguments[1], exception));
     ASSERT(!*exception);
 
     controller->evaluateScriptInIsolatedWorld(static_cast<unsigned>(worldID), JSContextGetGlobalObject(context), script.get());
@@ -1534,7 +1558,7 @@ static JSValueRef evaluateScriptInIsolatedWorldAndReturnValueCallback(JSContextR
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
     double worldID = JSValueToNumber(context, arguments[0], exception);
     ASSERT(!*exception);
-    JSRetainPtr<JSStringRef> script(Adopt, JSValueToStringCopy(context, arguments[1], exception));
+    auto script = adopt(JSValueToStringCopy(context, arguments[1], exception));
     ASSERT(!*exception);
 
     controller->evaluateScriptInIsolatedWorldAndReturnValue(static_cast<unsigned>(worldID), JSContextGetGlobalObject(context), script.get());
@@ -1553,11 +1577,11 @@ static JSValueRef addOriginAccessWhitelistEntryCallback(JSContextRef context, JS
     if (argumentCount != 4)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> sourceOrigin(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto sourceOrigin = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
-    JSRetainPtr<JSStringRef> destinationProtocol(Adopt, JSValueToStringCopy(context, arguments[1], exception));
+    auto destinationProtocol = adopt(JSValueToStringCopy(context, arguments[1], exception));
     ASSERT(!*exception);
-    JSRetainPtr<JSStringRef> destinationHost(Adopt, JSValueToStringCopy(context, arguments[2], exception));
+    auto destinationHost = adopt(JSValueToStringCopy(context, arguments[2], exception));
     ASSERT(!*exception);
     bool allowDestinationSubdomains = JSValueToBoolean(context, arguments[3]);
 
@@ -1571,11 +1595,11 @@ static JSValueRef removeOriginAccessWhitelistEntryCallback(JSContextRef context,
     if (argumentCount != 4)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> sourceOrigin(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto sourceOrigin = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
-    JSRetainPtr<JSStringRef> destinationProtocol(Adopt, JSValueToStringCopy(context, arguments[1], exception));
+    auto destinationProtocol = adopt(JSValueToStringCopy(context, arguments[1], exception));
     ASSERT(!*exception);
-    JSRetainPtr<JSStringRef> destinationHost(Adopt, JSValueToStringCopy(context, arguments[2], exception));
+    auto destinationHost = adopt(JSValueToStringCopy(context, arguments[2], exception));
     ASSERT(!*exception);
     bool allowDestinationSubdomains = JSValueToBoolean(context, arguments[3]);
 
@@ -1589,9 +1613,9 @@ static JSValueRef setScrollbarPolicyCallback(JSContextRef context, JSObjectRef, 
     if (argumentCount != 2)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> orientation(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto orientation = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
-    JSRetainPtr<JSStringRef> policy(Adopt, JSValueToStringCopy(context, arguments[1], exception));
+    auto policy = adopt(JSValueToStringCopy(context, arguments[1], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -1604,7 +1628,7 @@ static JSValueRef addUserScriptCallback(JSContextRef context, JSObjectRef, JSObj
     if (argumentCount != 3)
         return JSValueMakeUndefined(context);
     
-    JSRetainPtr<JSStringRef> source(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto source = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
     bool runAtStart = JSValueToBoolean(context, arguments[1]);
     bool allFrames = JSValueToBoolean(context, arguments[2]);
@@ -1619,7 +1643,7 @@ static JSValueRef addUserStyleSheetCallback(JSContextRef context, JSObjectRef, J
     if (argumentCount != 2)
         return JSValueMakeUndefined(context);
     
-    JSRetainPtr<JSStringRef> source(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto source = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
     bool allFrames = JSValueToBoolean(context, arguments[1]);
    
@@ -1645,10 +1669,10 @@ static JSValueRef apiTestNewWindowDataLoadBaseURLCallback(JSContextRef context, 
     if (argumentCount != 2)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> utf8Data(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto utf8Data = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
-    JSRetainPtr<JSStringRef> baseURL(Adopt, JSValueToStringCopy(context, arguments[1], exception));
+    auto baseURL = adopt(JSValueToStringCopy(context, arguments[1], exception));
     ASSERT(!*exception);
         
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -1688,11 +1712,11 @@ static JSValueRef authenticateSessionCallback(JSContextRef context, JSObjectRef,
     if (argumentCount != 3)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> url(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto url = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
-    JSRetainPtr<JSStringRef> username(Adopt, JSValueToStringCopy(context, arguments[1], exception));
+    auto username = adopt(JSValueToStringCopy(context, arguments[1], exception));
     ASSERT(!*exception);
-    JSRetainPtr<JSStringRef> password(Adopt, JSValueToStringCopy(context, arguments[2], exception));
+    auto password = adopt(JSValueToStringCopy(context, arguments[2], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -1845,7 +1869,7 @@ static JSValueRef getWebHistoryItemCountCallback(JSContextRef context, JSObjectR
 
 static JSValueRef getSecureEventInputIsEnabledCallback(JSContextRef context, JSObjectRef thisObject, JSStringRef propertyName, JSValueRef* exception)
 {
-#if PLATFORM(MAC) && !PLATFORM(IOS)
+#if PLATFORM(MAC) && !PLATFORM(IOS_FAMILY)
     return JSValueMakeBoolean(context, IsSecureEventInputEnabled());
 #else
     return JSValueMakeBoolean(context, false);
@@ -1855,14 +1879,14 @@ static JSValueRef getSecureEventInputIsEnabledCallback(JSContextRef context, JSO
 static JSValueRef getTitleTextDirectionCallback(JSContextRef context, JSObjectRef thisObject, JSStringRef propertyName, JSValueRef* exception)
 {
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
-    JSRetainPtr<JSStringRef> titleDirection(Adopt, JSStringCreateWithUTF8CString(controller->titleTextDirection().c_str()));
+    auto titleDirection = adopt(JSStringCreateWithUTF8CString(controller->titleTextDirection().c_str()));
     return JSValueMakeString(context, titleDirection.get());
 }
 
 static JSValueRef getInspectorTestStubURLCallback(JSContextRef context, JSObjectRef thisObject, JSStringRef propertyName, JSValueRef* exception)
 {
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
-    JSRetainPtr<JSStringRef> url(Adopt, controller->inspectorTestStubURL());
+    auto url = controller->inspectorTestStubURL();
     return JSValueMakeString(context, url.get());
 }
 
@@ -1899,7 +1923,7 @@ static JSValueRef ignoreLegacyWebNotificationPermissionRequestsCallback(JSContex
 static JSValueRef simulateLegacyWebNotificationClickCallback(JSContextRef context, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception)
 {
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject)); 
-    JSRetainPtr<JSStringRef> title(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto title = adopt(JSValueToStringCopy(context, arguments[0], exception));
     controller->simulateLegacyWebNotificationClick(title.get());
     return JSValueMakeUndefined(context);
 }
@@ -1907,7 +1931,7 @@ static JSValueRef simulateLegacyWebNotificationClickCallback(JSContextRef contex
 static JSValueRef setTextDirectionCallback(JSContextRef context, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception)
 {
     if (argumentCount == 1) {
-        JSRetainPtr<JSStringRef> direction(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+        auto direction = adopt(JSValueToStringCopy(context, arguments[0], exception));
         TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
         controller->setTextDirection(direction.get());
     }
@@ -1956,7 +1980,7 @@ static JSValueRef grantWebNotificationPermissionCallback(JSContextRef context, J
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
 
-    JSRetainPtr<JSStringRef> origin(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto origin = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
     controller->grantWebNotificationPermission(origin.get());
 
@@ -1971,7 +1995,7 @@ static JSValueRef denyWebNotificationPermissionCallback(JSContextRef context, JS
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
 
-    JSRetainPtr<JSStringRef> origin(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto origin = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
     controller->denyWebNotificationPermission(origin.get());
 
@@ -2035,7 +2059,7 @@ static JSValueRef accummulateLogsForChannel(JSContextRef context, JSObjectRef fu
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> channel(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto channel = adopt(JSValueToStringCopy(context, arguments[0], exception));
     ASSERT(!*exception);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -2049,7 +2073,7 @@ static JSValueRef runUIScriptCallback(JSContextRef context, JSObjectRef, JSObjec
     if (argumentCount < 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> script = argumentCount > 0 ? JSRetainPtr<JSStringRef>(Adopt, JSValueToStringCopy(context, arguments[0], 0)) : JSRetainPtr<JSStringRef>();
+    auto script = argumentCount > 0 ? adopt(JSValueToStringCopy(context, arguments[0], 0)) : JSRetainPtr<JSStringRef>();
     JSValueRef callback = argumentCount > 1 ? arguments[1] : JSValueMakeUndefined(context);
 
     TestRunner* controller = static_cast<TestRunner*>(JSObjectGetPrivate(thisObject));
@@ -2068,7 +2092,7 @@ static void testRunnerObjectFinalize(JSObjectRef object)
 
 void TestRunner::makeWindowObject(JSContextRef context, JSObjectRef windowObject, JSValueRef* exception)
 {
-    JSRetainPtr<JSStringRef> testRunnerStr(Adopt, JSStringCreateWithUTF8CString("testRunner"));
+    auto testRunnerStr = adopt(JSStringCreateWithUTF8CString("testRunner"));
     ref();
 
     JSClassRef classRef = getJSClass();
@@ -2182,6 +2206,7 @@ JSStaticFunction* TestRunner::staticFunctions()
         { "setNeedsStorageAccessFromFileURLsQuirk", setNeedsStorageAccessFromFileURLsQuirkCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setAllowsAnySSLCertificate", setAllowsAnySSLCertificateCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setAlwaysAcceptCookies", setAlwaysAcceptCookiesCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
+        { "setOnlyAcceptFirstPartyCookies", setOnlyAcceptFirstPartyCookiesCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setAppCacheMaximumSize", setAppCacheMaximumSizeCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setAudioResult", setAudioResultCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setAuthenticationPassword", setAuthenticationPasswordCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
@@ -2200,6 +2225,7 @@ JSStaticFunction* TestRunner::staticFunctions()
         { "setRejectsProtectionSpaceAndContinueForAuthenticationChallenges", setRejectsProtectionSpaceAndContinueForAuthenticationChallengesCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setHandlesAuthenticationChallenges", setHandlesAuthenticationChallengesCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setIconDatabaseEnabled", setIconDatabaseEnabledCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
+        { "setIDBPerOriginQuota", setIDBPerOriginQuotaCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setAutomaticLinkDetectionEnabled", setAutomaticLinkDetectionEnabledCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setMainFrameIsFirstResponder", setMainFrameIsFirstResponderCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setMockDeviceOrientation", setMockDeviceOrientationCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
@@ -2217,7 +2243,7 @@ JSStaticFunction* TestRunner::staticFunctions()
         { "setSpatialNavigationEnabled", setSpatialNavigationEnabledCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setStopProvisionalFrameLoads", setStopProvisionalFrameLoadsCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setTabKeyCyclesThroughElements", setTabKeyCyclesThroughElementsCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
         { "setTelephoneNumberParsingEnabled", setTelephoneNumberParsingEnabledCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
         { "setPagePaused", setPagePausedCallback, kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontDelete },
 #endif
@@ -2276,37 +2302,37 @@ JSStaticFunction* TestRunner::staticFunctions()
 
 void TestRunner::queueLoadHTMLString(JSStringRef content, JSStringRef baseURL)
 {
-    WorkQueue::singleton().queue(new LoadHTMLStringItem(content, baseURL));
+    DRT::WorkQueue::singleton().queue(new LoadHTMLStringItem(content, baseURL));
 }
 
 void TestRunner::queueLoadAlternateHTMLString(JSStringRef content, JSStringRef baseURL, JSStringRef unreachableURL)
 {
-    WorkQueue::singleton().queue(new LoadHTMLStringItem(content, baseURL, unreachableURL));
+    DRT::WorkQueue::singleton().queue(new LoadHTMLStringItem(content, baseURL, unreachableURL));
 }
 
 void TestRunner::queueBackNavigation(int howFarBack)
 {
-    WorkQueue::singleton().queue(new BackItem(howFarBack));
+    DRT::WorkQueue::singleton().queue(new BackItem(howFarBack));
 }
 
 void TestRunner::queueForwardNavigation(int howFarForward)
 {
-    WorkQueue::singleton().queue(new ForwardItem(howFarForward));
+    DRT::WorkQueue::singleton().queue(new ForwardItem(howFarForward));
 }
 
 void TestRunner::queueLoadingScript(JSStringRef script)
 {
-    WorkQueue::singleton().queue(new LoadingScriptItem(script));
+    DRT::WorkQueue::singleton().queue(new LoadingScriptItem(script));
 }
 
 void TestRunner::queueNonLoadingScript(JSStringRef script)
 {
-    WorkQueue::singleton().queue(new NonLoadingScriptItem(script));
+    DRT::WorkQueue::singleton().queue(new NonLoadingScriptItem(script));
 }
 
 void TestRunner::queueReload()
 {
-    WorkQueue::singleton().queue(new ReloadItem);
+    DRT::WorkQueue::singleton().queue(new ReloadItem);
 }
 
 void TestRunner::ignoreLegacyWebNotificationPermissionRequests()
@@ -2445,7 +2471,7 @@ void TestRunner::runUIScript(JSContextRef context, JSStringRef script, JSValueRe
 void TestRunner::callUIScriptCallback(unsigned callbackID, JSStringRef result)
 {
     JSRetainPtr<JSStringRef> protectedResult(result);
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     RunLoop::main().dispatch([protectedThis = makeRef(*this), callbackID, protectedResult]() mutable {
         JSContextRef context = protectedThis->mainFrameJSContext();
         JSValueRef resultValue = JSValueMakeString(context, protectedResult.get());
@@ -2453,7 +2479,7 @@ void TestRunner::callUIScriptCallback(unsigned callbackID, JSStringRef result)
     });
 #else
     WebThreadRun(
-        BlockPtr<void()>::fromCallable([protectedThis = makeRef(*this), callbackID, protectedResult] {
+        makeBlockPtr([protectedThis = makeRef(*this), callbackID, protectedResult] {
             JSContextRef context = protectedThis->mainFrameJSContext();
             JSValueRef resultValue = JSValueMakeString(context, protectedResult.get());
             protectedThis->callTestRunnerCallback(callbackID, 1, &resultValue);
@@ -2464,7 +2490,7 @@ void TestRunner::callUIScriptCallback(unsigned callbackID, JSStringRef result)
 
 void TestRunner::uiScriptDidComplete(const String& result, unsigned callbackID)
 {
-    JSRetainPtr<JSStringRef> stringRef(Adopt, JSStringCreateWithUTF8CString(result.utf8().data()));
+    auto stringRef = adopt(JSStringCreateWithUTF8CString(result.utf8().data()));
     callUIScriptCallback(callbackID, stringRef.get());
 }
 
@@ -2479,7 +2505,7 @@ void TestRunner::setOpenPanelFiles(JSContextRef context, JSValueRef filesValue)
         return;
 
     JSObjectRef files = JSValueToObject(context, filesValue, nullptr);
-    static auto lengthProperty = JSRetainPtr<JSStringRef>(Adopt, JSStringCreateWithUTF8CString("length"));
+    static auto lengthProperty = adopt(JSStringCreateWithUTF8CString("length"));
     JSValueRef filesLengthValue = JSObjectGetProperty(context, files, lengthProperty.get(), nullptr);
     if (!JSValueIsNumber(context, filesLengthValue))
         return;
@@ -2491,7 +2517,7 @@ void TestRunner::setOpenPanelFiles(JSContextRef context, JSValueRef filesValue)
         if (!JSValueIsString(context, fileValue))
             continue;
 
-        auto file = JSRetainPtr<JSStringRef>(Adopt, JSValueToStringCopy(context, fileValue, nullptr));
+        auto file = adopt(JSValueToStringCopy(context, fileValue, nullptr));
         size_t fileBufferSize = JSStringGetMaximumUTF8CStringSize(file.get()) + 1;
         auto fileBuffer = std::make_unique<char[]>(fileBufferSize);
         JSStringGetUTF8CString(file.get(), fileBuffer.get(), fileBufferSize);

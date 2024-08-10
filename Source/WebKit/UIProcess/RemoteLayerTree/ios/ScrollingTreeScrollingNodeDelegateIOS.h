@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if PLATFORM(IOS) && ENABLE(ASYNC_SCROLLING)
+#if PLATFORM(IOS_FAMILY) && ENABLE(ASYNC_SCROLLING)
 
 #include <UIKit/UIScrollView.h>
 #include <WebCore/ScrollingCoordinator.h>
@@ -65,6 +65,10 @@ public:
     WebCore::FloatPoint scrollPosition() const;
     void setScrollLayerPosition(const WebCore::FloatPoint&);
     void updateChildNodesAfterScroll(const WebCore::FloatPoint& scrollPosition);
+#if ENABLE(POINTER_EVENTS)
+    Optional<TouchActionData> touchActionData() const;
+    void cancelPointersForGestureRecognizer(UIGestureRecognizer*);
+#endif
 
 private:
     RetainPtr<CALayer> m_scrollLayer;
@@ -85,4 +89,4 @@ private:
 
 @end
 
-#endif // PLATFORM(IOS) && ENABLE(ASYNC_SCROLLING)
+#endif // PLATFORM(IOS_FAMILY) && ENABLE(ASYNC_SCROLLING)

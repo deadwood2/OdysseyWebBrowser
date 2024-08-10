@@ -38,13 +38,13 @@
 #import <WebCore/DictionaryLookup.h>
 #import <WebCore/GeometryUtilities.h>
 #import <WebCore/TextIndicatorWindow.h>
-#import <WebCore/URL.h>
 #import <pal/spi/mac/DataDetectorsSPI.h>
 #import <pal/spi/mac/LookupSPI.h>
 #import <pal/spi/mac/NSMenuSPI.h>
 #import <pal/spi/mac/NSPopoverSPI.h>
 #import <pal/spi/mac/QuickLookMacSPI.h>
 #import <wtf/SoftLinking.h>
+#import <wtf/URL.h>
 
 SOFT_LINK_FRAMEWORK_IN_UMBRELLA(Quartz, QuickLookUI)
 SOFT_LINK_CLASS(QuickLookUI, QLPreviewMenuItem)
@@ -276,17 +276,17 @@ SOFT_LINK_CLASS(QuickLookUI, QLPreviewMenuItem)
 
     String absoluteLinkURL = hitTestResult->absoluteLinkURL();
     if (!absoluteLinkURL.isEmpty()) {
-        if (WebCore::protocolIs(absoluteLinkURL, "mailto")) {
+        if (WTF::protocolIs(absoluteLinkURL, "mailto")) {
             _type = kWKImmediateActionMailtoLink;
             return [self _animationControllerForDataDetectedLink];
         }
 
-        if (WebCore::protocolIs(absoluteLinkURL, "tel")) {
+        if (WTF::protocolIs(absoluteLinkURL, "tel")) {
             _type = kWKImmediateActionTelLink;
             return [self _animationControllerForDataDetectedLink];
         }
 
-        if (WebCore::protocolIsInHTTPFamily(absoluteLinkURL)) {
+        if (WTF::protocolIsInHTTPFamily(absoluteLinkURL)) {
             _type = kWKImmediateActionLinkPreview;
 
             QLPreviewMenuItem *item = [NSMenuItem standardQuickLookMenuItem];
@@ -328,7 +328,7 @@ SOFT_LINK_CLASS(QuickLookUI, QLPreviewMenuItem)
     }
 
     RefPtr<API::HitTestResult> hitTestResult = [self _webHitTestResult];
-    id customClientAnimationController = (id)(_page->immediateActionAnimationControllerForHitTestResult(hitTestResult, _type, _userData));
+    id customClientAnimationController = _page->immediateActionAnimationControllerForHitTestResult(hitTestResult, _type, _userData);
     if (customClientAnimationController == [NSNull null]) {
         [self _cancelImmediateAction];
         return;
@@ -472,6 +472,8 @@ SOFT_LINK_CLASS(QuickLookUI, QLPreviewMenuItem)
 
     return WebCore::DictionaryLookup::animationControllerForPopup(dictionaryPopupInfo, _view, [self](WebCore::TextIndicator& textIndicator) {
         _viewImpl->setTextIndicator(textIndicator, WebCore::TextIndicatorWindowLifetime::Permanent);
+    }, nullptr, [self]() {
+        _viewImpl->clearTextIndicatorWithAnimation(WebCore::TextIndicatorWindowDismissalAnimation::None);
     });
 }
 

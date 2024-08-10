@@ -26,7 +26,7 @@
 #include "config.h"
 #include "DownloadProxyMap.h"
 
-#include "ChildProcessProxy.h"
+#include "AuxiliaryProcessProxy.h"
 #include "DownloadProxy.h"
 #include "DownloadProxyMessages.h"
 #include "MessageReceiverMap.h"
@@ -34,8 +34,8 @@
 
 namespace WebKit {
 
-DownloadProxyMap::DownloadProxyMap(ChildProcessProxy* process)
-    : m_process(process)
+DownloadProxyMap::DownloadProxyMap(NetworkProcessProxy& process)
+    : m_process(&process)
 {
 }
 
@@ -46,12 +46,12 @@ DownloadProxyMap::~DownloadProxyMap()
 
 DownloadProxy* DownloadProxyMap::createDownloadProxy(WebProcessPool& processPool, const WebCore::ResourceRequest& resourceRequest)
 {
-    RefPtr<DownloadProxy> downloadProxy = DownloadProxy::create(*this, processPool, resourceRequest);
-    m_downloads.set(downloadProxy->downloadID(), downloadProxy);
+    auto downloadProxy = DownloadProxy::create(*this, processPool, resourceRequest);
+    m_downloads.set(downloadProxy->downloadID(), downloadProxy.copyRef());
 
-    m_process->addMessageReceiver(Messages::DownloadProxy::messageReceiverName(), downloadProxy->downloadID().downloadID(), *downloadProxy);
+    m_process->addMessageReceiver(Messages::DownloadProxy::messageReceiverName(), downloadProxy->downloadID().downloadID(), downloadProxy.get());
 
-    return downloadProxy.get();
+    return downloadProxy.ptr();
 }
 
 void DownloadProxyMap::downloadFinished(DownloadProxy* downloadProxy)

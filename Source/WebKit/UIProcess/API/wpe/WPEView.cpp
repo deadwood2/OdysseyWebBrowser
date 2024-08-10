@@ -46,7 +46,6 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
     , m_pageClient(std::make_unique<PageClientImpl>(*this))
     , m_size { 800, 600 }
     , m_viewStateFlags { WebCore::ActivityState::WindowIsActive, WebCore::ActivityState::IsFocused, WebCore::ActivityState::IsVisible, WebCore::ActivityState::IsInWindow }
-    , m_compositingManagerProxy(*this)
     , m_backend(backend)
 {
     ASSERT(m_backend);
@@ -73,8 +72,6 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
         pool->startMemorySampler(0);
 #endif
 
-    m_compositingManagerProxy.initialize();
-
     static struct wpe_view_backend_client s_backendClient = {
         // set_size
         [](void* data, uint32_t width, uint32_t height)
@@ -88,8 +85,22 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
             auto& view = *reinterpret_cast<View*>(data);
             view.frameDisplayed();
         },
+        // activity_state_changed
+        [](void* data, uint32_t state)
+        {
+            auto& view = *reinterpret_cast<View*>(data);
+            OptionSet<WebCore::ActivityState::Flag> flags;
+            if (state & wpe_view_activity_state_visible)
+                flags.add(WebCore::ActivityState::IsVisible);
+            if (state & wpe_view_activity_state_focused) {
+                flags.add(WebCore::ActivityState::IsFocused);
+                flags.add(WebCore::ActivityState::WindowIsActive);
+            }
+            if (state & wpe_view_activity_state_in_window)
+                flags.add(WebCore::ActivityState::IsInWindow);
+            view.setViewState(flags);
+        },
         // padding
-        nullptr,
         nullptr,
         nullptr,
         nullptr
@@ -142,11 +153,6 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
     m_pageProxy->initializeWebPage();
 }
 
-View::~View()
-{
-    m_compositingManagerProxy.finalize();
-}
-
 void View::setClient(std::unique_ptr<API::ViewClient>&& client)
 {
     if (!client)
@@ -165,6 +171,11 @@ void View::handleDownloadRequest(DownloadProxy& download)
     m_client->handleDownloadRequest(*this, download);
 }
 
+void View::willStartLoad()
+{
+    m_client->willStartLoad(*this);
+}
+
 void View::setSize(const WebCore::IntSize& size)
 {
     m_size = size;
@@ -174,10 +185,8 @@ void View::setSize(const WebCore::IntSize& size)
 
 void View::setViewState(OptionSet<WebCore::ActivityState::Flag> flags)
 {
-    static const OptionSet<WebCore::ActivityState::Flag> defaultFlags { WebCore::ActivityState::WindowIsActive, WebCore::ActivityState::IsFocused };
-
-    auto changedFlags = m_viewStateFlags ^ (defaultFlags | flags);
-    m_viewStateFlags = defaultFlags | flags;
+    auto changedFlags = m_viewStateFlags ^ flags;
+    m_viewStateFlags = flags;
 
     if (changedFlags)
         m_pageProxy->activityStateDidChange(changedFlags);

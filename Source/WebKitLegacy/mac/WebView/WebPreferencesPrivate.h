@@ -183,9 +183,6 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 - (void)setPeerConnectionEnabled:(BOOL)flag;
 - (BOOL)peerConnectionEnabled;
 
-- (void)setWebRTCLegacyAPIEnabled:(BOOL)flag;
-- (BOOL)webRTCLegacyAPIEnabled;
-
 #if !TARGET_OS_IPHONE
 // zero means do AutoScale
 - (float)PDFScaleFactor;
@@ -277,6 +274,9 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 
 - (BOOL)webGPUEnabled;
 - (void)setWebGPUEnabled:(BOOL)enabled;
+
+- (BOOL)webMetalEnabled;
+- (void)setWebMetalEnabled:(BOOL)enabled;
 
 - (BOOL)accelerated2dCanvasEnabled;
 - (void)setAccelerated2dCanvasEnabled:(BOOL)enabled;
@@ -543,9 +543,6 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 - (BOOL)cacheAPIEnabled;
 - (void)setCacheAPIEnabled:(BOOL)enabled;
 
-- (BOOL)crossOriginWindowPolicySupportEnabled;
-- (void)setCrossOriginWindowPolicySupportEnabled:(BOOL)enabled;
-
 - (void)setFetchAPIEnabled:(BOOL)flag;
 - (BOOL)fetchAPIEnabled;
 
@@ -573,9 +570,6 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 - (void)setWebAnimationsCSSIntegrationEnabled:(BOOL)flag;
 - (BOOL)webAnimationsCSSIntegrationEnabled;
 
-- (void)setWebAuthenticationEnabled:(BOOL)flag;
-- (BOOL)webAuthenticationEnabled;
-
 - (void)setIntersectionObserverEnabled:(BOOL)flag;
 - (BOOL)intersectionObserverEnabled;
 
@@ -585,8 +579,18 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 - (void)setServerTimingEnabled:(BOOL)flag;
 - (BOOL)serverTimingEnabled;
 
+- (void)setSelectionAcrossShadowBoundariesEnabled:(BOOL)flag;
+- (BOOL)selectionAcrossShadowBoundariesEnabled;
+
+- (void)setCSSLogicalEnabled:(BOOL)flag;
+- (BOOL)cssLogicalEnabled;
+
+- (BOOL)adClickAttributionEnabled;
+- (void)setAdClickAttributionEnabled:(BOOL)flag;
+
 @property (nonatomic) BOOL visualViewportEnabled;
 @property (nonatomic) BOOL visualViewportAPIEnabled;
+@property (nonatomic) BOOL CSSOMViewScrollingAPIEnabled;
 @property (nonatomic) BOOL largeImageAsyncDecodingEnabled;
 @property (nonatomic) BOOL animatedImageAsyncDecodingEnabled;
 @property (nonatomic) BOOL javaScriptMarkupEnabled;
@@ -599,7 +603,6 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic) BOOL userTimingEnabled;
 @property (nonatomic) BOOL resourceTimingEnabled;
 @property (nonatomic) BOOL linkPreloadEnabled;
-@property (nonatomic) BOOL webAuthenticationEnabled;
 @property (nonatomic) BOOL mediaUserGestureInheritsFromDocument;
 @property (nonatomic) BOOL isSecureContextAttributeEnabled;
 @property (nonatomic) BOOL legacyEncryptedMediaAPIEnabled;
@@ -613,12 +616,17 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic) BOOL accessibilityObjectModelEnabled;
 @property (nonatomic) BOOL ariaReflectionEnabled;
 @property (nonatomic) BOOL mediaCapabilitiesEnabled;
+@property (nonatomic) BOOL mediaRecorderEnabled;
 @property (nonatomic) BOOL allowCrossOriginSubresourcesToAskForCredentials;
+@property (nonatomic) BOOL sourceBufferChangeTypeEnabled;
 
 #if TARGET_OS_IPHONE
 @property (nonatomic) BOOL quickLookDocumentSavingEnabled;
 #endif
 
 @property (nonatomic) NSString *mediaContentTypesRequiringHardwareSupport;
+
+// additionalSupportedImageTypes is an array of image UTIs.
+@property (nonatomic, retain) NSArray<NSString *> *additionalSupportedImageTypes;
 
 @end

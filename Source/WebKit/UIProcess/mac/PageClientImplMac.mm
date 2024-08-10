@@ -70,7 +70,7 @@
 #import <WebCore/KeyboardEvent.h>
 #import <WebCore/NotImplemented.h>
 #import <WebCore/PlatformScreen.h>
-#import <WebCore/PromisedBlobInfo.h>
+#import <WebCore/PromisedAttachmentInfo.h>
 #import <WebCore/SharedBuffer.h>
 #import <WebCore/TextIndicator.h>
 #import <WebCore/TextIndicatorWindow.h>
@@ -94,7 +94,7 @@
 @end
 
 #if HAVE(OUT_OF_PROCESS_LAYER_HOSTING)
-@interface NSWindow (WebNSWindowDetails)
+@interface NSWindow (WebNSWindowLayerHostingDetails)
 - (BOOL)_hostsLayersInWindowServer;
 @end
 #endif
@@ -118,9 +118,14 @@ PageClientImpl::~PageClientImpl()
 {
 }
 
-std::unique_ptr<DrawingAreaProxy> PageClientImpl::createDrawingAreaProxy()
+void PageClientImpl::setImpl(WebViewImpl& impl)
 {
-    return m_impl->createDrawingAreaProxy();
+    m_impl = makeWeakPtr(impl);
+}
+
+std::unique_ptr<DrawingAreaProxy> PageClientImpl::createDrawingAreaProxy(WebProcessProxy& process)
+{
+    return m_impl->createDrawingAreaProxy(process);
 }
 
 void PageClientImpl::setViewNeedsDisplay(const WebCore::Region&)
@@ -253,9 +258,15 @@ ColorSpaceData PageClientImpl::colorSpace()
     return m_impl->colorSpace();
 }
 
+void PageClientImpl::processWillSwap()
+{
+    m_impl->processWillSwap();
+}
+
 void PageClientImpl::processDidExit()
 {
     m_impl->processDidExit();
+    m_impl->setAcceleratedCompositingRootLayer(nil);
 }
 
 void PageClientImpl::pageClosed()
@@ -373,9 +384,9 @@ void PageClientImpl::startDrag(const WebCore::DragItem& item, const ShareableBit
 
 void PageClientImpl::setPromisedDataForImage(const String& pasteboardName, Ref<SharedBuffer>&& imageBuffer, const String& filename, const String& extension, const String& title, const String& url, const String& visibleURL, RefPtr<SharedBuffer>&& archiveBuffer)
 {
-    RefPtr<Image> image = BitmapImage::create();
+    auto image = BitmapImage::create();
     image->setData(WTFMove(imageBuffer), true);
-    m_impl->setPromisedDataForImage(image.get(), filename, extension, title, url, visibleURL, archiveBuffer.get(), pasteboardName);
+    m_impl->setPromisedDataForImage(image.ptr(), filename, extension, title, url, visibleURL, archiveBuffer.get(), pasteboardName);
 }
 
 void PageClientImpl::updateSecureInputState()
@@ -419,10 +430,9 @@ void PageClientImpl::pinnedStateDidChange()
     
 IntPoint PageClientImpl::screenToRootView(const IntPoint& point)
 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     NSPoint windowCoord = [[m_view window] convertScreenToBase:point];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
     return IntPoint([m_view convertPoint:windowCoord fromView:nil]);
 }
     
@@ -430,10 +440,9 @@ IntRect PageClientImpl::rootViewToScreen(const IntRect& rect)
 {
     NSRect tempRect = rect;
     tempRect = [m_view convertRect:tempRect toView:nil];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     tempRect.origin = [[m_view window] convertBaseToScreen:tempRect.origin];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
     return enclosingIntRect(tempRect);
 }
 
@@ -480,6 +489,30 @@ Ref<ValidationBubble> PageClientImpl::createValidationBubble(const String& messa
     return ValidationBubble::create(m_view, message, settings);
 }
 
+void PageClientImpl::showSafeBrowsingWarning(const SafeBrowsingWarning& warning, CompletionHandler<void(Variant<WebKit::ContinueUnsafeLoad, URL>&&)>&& completionHandler)
+{
+    if (!m_impl)
+        return completionHandler(ContinueUnsafeLoad::Yes);
+    m_impl->showSafeBrowsingWarning(warning, WTFMove(completionHandler));
+}
+
+bool PageClientImpl::hasSafeBrowsingWarning() const
+{
+    if (!m_impl)
+        return false;
+    return !!m_impl->safeBrowsingWarning();
+}
+
+void PageClientImpl::clearSafeBrowsingWarning()
+{
+    m_impl->clearSafeBrowsingWarning();
+}
+
+void PageClientImpl::clearSafeBrowsingWarningIfForMainFrameNavigation()
+{
+    m_impl->clearSafeBrowsingWarningIfForMainFrameNavigation();
+}
+
 void PageClientImpl::setTextIndicator(Ref<TextIndicator> textIndicator, WebCore::TextIndicatorWindowLifetime lifetime)
 {
     m_impl->setTextIndicator(textIndicator.get(), lifetime);
@@ -521,9 +554,9 @@ void PageClientImpl::updateAcceleratedCompositingMode(const LayerTreeContext& la
     m_impl->setAcceleratedCompositingRootLayer(renderLayer);
 }
 
-void PageClientImpl::setAcceleratedCompositingRootLayer(CALayer *rootLayer)
+void PageClientImpl::setRemoteLayerTreeRootNode(RemoteLayerTreeNode* rootNode)
 {
-    m_impl->setAcceleratedCompositingRootLayer(rootLayer);
+    m_impl->setAcceleratedCompositingRootLayer(rootNode ? rootNode->layer() : nil);
 }
 
 CALayer *PageClientImpl::acceleratedCompositingRootLayer() const
@@ -540,6 +573,13 @@ void PageClientImpl::selectionDidChange()
 {
     m_impl->selectionDidChange();
 }
+#if WK_API_ENABLED
+bool PageClientImpl::showShareSheet(const ShareDataWithParsedURL& shareData, WTF::CompletionHandler<void(bool)>&& completionHandler)
+{
+    m_impl->showShareSheet(shareData, WTFMove(completionHandler), m_webView.get().get());
+    return true;
+}
+#endif
 
 void PageClientImpl::wheelEventWasNotHandledByWebCore(const NativeWebWheelEvent& event)
 {
@@ -570,6 +610,8 @@ void PageClientImpl::didPerformDictionaryLookup(const DictionaryPopupInfo& dicti
 
     DictionaryLookup::showPopup(dictionaryPopupInfo, m_view, [this](TextIndicator& textIndicator) {
         m_impl->setTextIndicator(textIndicator, TextIndicatorWindowLifetime::Permanent);
+    }, nullptr, [this]() {
+        m_impl->clearTextIndicatorWithAnimation(WebCore::TextIndicatorWindowDismissalAnimation::None);
     });
 }
 
@@ -723,16 +765,16 @@ void PageClientImpl::navigationGestureDidBegin()
     m_impl->dismissContentRelativeChildWindowsWithAnimation(true);
 
 #if WK_API_ENABLED
-    if (m_webView)
-        NavigationState::fromWebPage(*m_webView->_page).navigationGestureDidBegin();
+    if (auto webView = m_webView.get())
+        NavigationState::fromWebPage(*webView->_page).navigationGestureDidBegin();
 #endif
 }
 
 void PageClientImpl::navigationGestureWillEnd(bool willNavigate, WebBackForwardListItem& item)
 {
 #if WK_API_ENABLED
-    if (m_webView)
-        NavigationState::fromWebPage(*m_webView->_page).navigationGestureWillEnd(willNavigate, item);
+    if (auto webView = m_webView.get())
+        NavigationState::fromWebPage(*webView->_page).navigationGestureWillEnd(willNavigate, item);
 #else
     UNUSED_PARAM(willNavigate);
     UNUSED_PARAM(item);
@@ -742,8 +784,8 @@ void PageClientImpl::navigationGestureWillEnd(bool willNavigate, WebBackForwardL
 void PageClientImpl::navigationGestureDidEnd(bool willNavigate, WebBackForwardListItem& item)
 {
 #if WK_API_ENABLED
-    if (m_webView)
-        NavigationState::fromWebPage(*m_webView->_page).navigationGestureDidEnd(willNavigate, item);
+    if (auto webView = m_webView.get())
+        NavigationState::fromWebPage(*webView->_page).navigationGestureDidEnd(willNavigate, item);
 #else
     UNUSED_PARAM(willNavigate);
     UNUSED_PARAM(item);
@@ -757,8 +799,8 @@ void PageClientImpl::navigationGestureDidEnd()
 void PageClientImpl::willRecordNavigationSnapshot(WebBackForwardListItem& item)
 {
 #if WK_API_ENABLED
-    if (m_webView)
-        NavigationState::fromWebPage(*m_webView->_page).willRecordNavigationSnapshot(item);
+    if (auto webView = m_webView.get())
+        NavigationState::fromWebPage(*webView->_page).willRecordNavigationSnapshot(item);
 #else
     UNUSED_PARAM(item);
 #endif
@@ -767,8 +809,8 @@ void PageClientImpl::willRecordNavigationSnapshot(WebBackForwardListItem& item)
 void PageClientImpl::didRemoveNavigationGestureSnapshot()
 {
 #if WK_API_ENABLED
-    if (m_webView)
-        NavigationState::fromWebPage(*m_webView->_page).navigationGestureSnapshotWasRemoved();
+    if (auto webView = m_webView.get())
+        NavigationState::fromWebPage(*webView->_page).navigationGestureSnapshotWasRemoved();
 #endif
 }
 
@@ -827,7 +869,7 @@ void PageClientImpl::didPerformImmediateActionHitTest(const WebHitTestResultData
     m_impl->didPerformImmediateActionHitTest(result, contentPreventsDefault, userData);
 }
 
-void* PageClientImpl::immediateActionAnimationControllerForHitTestResult(RefPtr<API::HitTestResult> hitTestResult, uint64_t type, RefPtr<API::Object> userData)
+NSObject *PageClientImpl::immediateActionAnimationControllerForHitTestResult(RefPtr<API::HitTestResult> hitTestResult, uint64_t type, RefPtr<API::Object> userData)
 {
     return m_impl->immediateActionAnimationControllerForHitTestResult(hitTestResult.get(), type, userData.get());
 }
@@ -856,12 +898,12 @@ WebCore::WebMediaSessionManager& PageClientImpl::mediaSessionManager()
 
 void PageClientImpl::refView()
 {
-    CFRetain(m_view);
+    CFRetain((__bridge CFTypeRef)m_view);
 }
 
 void PageClientImpl::derefView()
 {
-    CFRelease(m_view);
+    CFRelease((__bridge CFTypeRef)m_view);
 }
 
 void PageClientImpl::startWindowDrag()
@@ -873,6 +915,15 @@ NSWindow *PageClientImpl::platformWindow()
 {
     return m_impl->window();
 }
+
+#if ENABLE(DRAG_SUPPORT)
+
+void PageClientImpl::didPerformDragOperation(bool handled)
+{
+    m_impl->didPerformDragOperation(handled);
+}
+
+#endif
 
 #if WK_API_ENABLED
 NSView *PageClientImpl::inspectorAttachmentView()
@@ -911,6 +962,11 @@ WebCore::UserInterfaceLayoutDirection PageClientImpl::userInterfaceLayoutDirecti
 bool PageClientImpl::effectiveAppearanceIsDark() const
 {
     return m_impl->effectiveAppearanceIsDark();
+}
+
+void PageClientImpl::takeFocus(WebCore::FocusDirection direction)
+{
+    m_impl->takeFocus(direction);
 }
 
 } // namespace WebKit

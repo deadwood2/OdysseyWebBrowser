@@ -112,7 +112,7 @@ RefPtr<FilterEffect> SVGFEBlendElement::build(SVGFilterBuilder* filterBuilder, F
     if (!input1 || !input2)
         return nullptr;
 
-    RefPtr<FilterEffect> effect = FEBlend::create(filter, mode());
+    auto effect = FEBlend::create(filter, mode());
     FilterEffectVector& inputEffects = effect->inputEffects();
     inputEffects.reserveCapacity(2);
     inputEffects.append(input1);

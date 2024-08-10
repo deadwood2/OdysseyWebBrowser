@@ -43,7 +43,6 @@
 #include <wtf/win/GDIObject.h>
 
 #if USE(CG)
-#include <WebKitSystemInterface/WebKitSystemInterface.h>
 #include <pal/spi/cg/CoreGraphicsSPI.h>
 #endif
 
@@ -212,7 +211,7 @@ static HFONT createMLangFont(IMLangFontLinkType* langFontLink, HDC hdc, DWORD co
     return hfont;
 }
 
-RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& description, const Font* originalFontData, bool, const UChar* characters, unsigned length)
+RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& description, const Font* originalFontData, IsForPlatformFont, PreferColoredFont, const UChar* characters, unsigned length)
 {
     UChar character = characters[0];
     RefPtr<Font> fontData;
@@ -351,7 +350,7 @@ Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescripti
     // Search all typical Windows-installed full Unicode fonts.
     // Sorted by most to least glyphs according to http://en.wikipedia.org/wiki/Unicode_typefaces
     // Start with Times New Roman also since it is the default if the user doesn't change prefs.
-    static AtomicString fallbackFonts[] = {
+    static NeverDestroyed<AtomicString> fallbackFonts[] = {
         AtomicString("Times New Roman", AtomicString::ConstructFromLiteral),
         AtomicString("Microsoft Sans Serif", AtomicString::ConstructFromLiteral),
         AtomicString("Tahoma", AtomicString::ConstructFromLiteral),
@@ -375,7 +374,7 @@ Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescripti
     }
 
     // Fall back to Non-client metrics fonts.
-    NONCLIENTMETRICS nonClientMetrics = {0};
+    NONCLIENTMETRICS nonClientMetrics { };
     nonClientMetrics.cbSize = sizeof(nonClientMetrics);
     if (SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(nonClientMetrics), &nonClientMetrics, 0)) {
         if (simpleFont = fontFromDescriptionAndLogFont(fontDescription, nonClientMetrics.lfMessageFont, fallbackFontName))

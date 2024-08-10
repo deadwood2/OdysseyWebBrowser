@@ -32,8 +32,8 @@ interface TestRunner {
     void waitForPolicyDelegate();
     void waitUntilDone();
     void notifyDone();
-    double preciseTime();
-    readonly attribute double timeout;
+    double preciseTime(); // seconds since the epoch
+    readonly attribute double timeout; // milliseconds
 
     // Downloads.
     void waitUntilDownloadFinished();
@@ -56,16 +56,18 @@ interface TestRunner {
     void dumpDatabaseCallbacks();
     void dumpDOMAsWebArchive();
     void dumpPolicyDelegateCallbacks();
+    void dumpResourceLoadStatistics();
 
     void clearDOMCaches();
     void clearDOMCache(DOMString origin);
     boolean hasDOMCache(DOMString origin);
     unsigned long domCacheSize(DOMString origin);
+    void allowCacheStorageQuotaIncrease();
 
     // Special options.
     void keepWebHistory();
     void setAcceptsEditing(boolean value);
-    void setCanOpenWindows(boolean value);
+    void setCanOpenWindows();
     void setCloseRemainingWindowsWhenComplete(boolean value);
     void setXSSAuditorEnabled(boolean value);
     void setAllowUniversalAccessFromFileURLs(boolean value);
@@ -132,6 +134,9 @@ interface TestRunner {
     attribute double databaseDefaultQuota;
     attribute double databaseMaxQuota;
 
+    // IndexedDB API
+    void setIDBPerOriginQuota(unsigned long long quota);
+
     // Application Cache API
     void clearAllApplicationCaches();
     void setAppCacheMaximumSize(unsigned long long size);
@@ -142,6 +147,8 @@ interface TestRunner {
 
     // Text search testing.
     boolean findString(DOMString target, object optionsArray);
+    void findStringMatchesInPage(DOMString target, object optionsArray);
+    void replaceFindMatchesAtIndices(object matchIndicesArray, DOMString replacementText, boolean selectionOnly);
 
     // Evaluating script in a special context.
     [PassContext] void evaluateScriptInIsolatedWorld(unsigned long worldID, DOMString script);
@@ -162,7 +169,6 @@ interface TestRunner {
     
     void setShouldStayOnPageAfterHandlingBeforeUnload(boolean flag);
 
-    void setDefersLoading(boolean flag);
     void setStopProvisionalFrameLoads();
 
     readonly attribute boolean didReceiveServerRedirectForProvisionalNavigation;
@@ -181,6 +187,7 @@ interface TestRunner {
 
     // Cookies testing
     void setAlwaysAcceptCookies(boolean accept);
+    void setOnlyAcceptFirstPartyCookies(boolean accept);
 
     void overridePreference(DOMString preference, DOMString value);
 
@@ -209,6 +216,7 @@ interface TestRunner {
     void setUserMediaPersistentPermissionForOrigin(boolean permission, DOMString origin, DOMString parentOrigin);
     unsigned long userMediaPermissionRequestCountForOrigin(DOMString origin, DOMString parentOrigin);
     void resetUserMediaPermissionRequestCountForOrigin(DOMString origin, DOMString parentOrigin);
+    readonly attribute boolean isDoingMediaCapture;
 
     // Audio testing.
     [PassContext] void setAudioResult(object data);
@@ -278,6 +286,7 @@ interface TestRunner {
     void setStatisticsVeryPrevalentResource(DOMString hostName, boolean value, object completionHandler);
     boolean isStatisticsPrevalentResource(DOMString hostName);
     boolean isStatisticsVeryPrevalentResource(DOMString hostName);
+    boolean isStatisticsRegisteredAsSubresourceUnder(DOMString subresourceHost, DOMString topFrameHost);
     boolean isStatisticsRegisteredAsSubFrameUnder(DOMString subFrameHost, DOMString topFrameHost);
     boolean isStatisticsRegisteredAsRedirectingTo(DOMString hostRedirectedFrom, DOMString hostRedirectedTo);
     void setStatisticsHasHadUserInteraction(DOMString hostName, boolean value, object completionHandler);
@@ -305,6 +314,7 @@ interface TestRunner {
     void statisticsClearInMemoryAndPersistentStore(object callback);
     void statisticsClearInMemoryAndPersistentStoreModifiedSinceHours(unsigned long hours, object callback);
     void statisticsClearThroughWebsiteDataRemoval(object callback);
+    void setStatisticsCacheMaxAgeCap(double seconds);
     void statisticsResetToConsistentState(object completionHandler);
 
     // Injected bundle form client.
@@ -319,13 +329,21 @@ interface TestRunner {
     // Open panel
     void setOpenPanelFiles(object filesArray);
 
-    void setWebRTCLegacyAPIEnabled(boolean value);
-    void setMDNSICECandidatesEnabled(boolean value);
+    // Modal alerts
+    void setShouldDismissJavaScriptAlertsAsynchronously(boolean value);
+
+    void setWebRTCMDNSICECandidatesEnabled(boolean value);
+    void setWebRTCUnifiedPlanEnabled(boolean value);
     void setCustomUserAgent(DOMString userAgent);
+
+    void setWebAPIStatisticsEnabled(boolean value);
 
     void terminateNetworkProcess();
     void terminateServiceWorkerProcess();
-    void terminateStorageProcess();
+
+    void setCanHandleHTTPSServerTrustEvaluation(boolean canHandle);
+    readonly attribute boolean canDoServerTrustEvaluationInNetworkProcess;
+    readonly attribute unsigned long serverTrustEvaluationCallbackCallsCount;
 
     readonly attribute boolean didCancelClientRedirect;
 
@@ -344,4 +362,12 @@ interface TestRunner {
 
     void injectUserScript(DOMString string);
     readonly attribute unsigned long userScriptInjectedCount;
+
+    void sendDisplayConfigurationChangedMessageForTesting();
+
+    // WebAuthN
+    void setWebAuthenticationMockConfiguration(object configuration);
+    void addTestKeyToKeychain(DOMString privateKeyBase64, DOMString attrLabel, DOMString applicationTagBase64);
+    void cleanUpKeychain(DOMString attrLabel);
+    boolean keyExistsInKeychain(DOMString attrLabel, DOMString applicationTagBase64);
 };

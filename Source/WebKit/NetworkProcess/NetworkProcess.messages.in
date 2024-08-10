@@ -1,4 +1,4 @@
-# Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+# Copyright (C) 2012-2019 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -25,12 +25,16 @@ messages -> NetworkProcess LegacyReceiver {
     InitializeNetworkProcess(struct WebKit::NetworkProcessCreationParameters processCreationParameters)
 
     # Creates a connection for communication with a WebProcess
-    CreateNetworkConnectionToWebProcess()
+    CreateNetworkConnectionToWebProcess(bool isServiceWorkerProcess, struct WebCore::SecurityOriginData origin)
 
 #if USE(SOUP)
     SetIgnoreTLSErrors(bool ignoreTLSErrors)
     UserPreferredLanguagesChanged(Vector<String> languages)
     SetNetworkProxySettings(struct WebCore::SoupNetworkProxySettings settings)
+#endif
+
+#if USE(CURL)
+    SetNetworkProxySettings(PAL::SessionID sessionID, WebCore::CurlProxySettings settings)
 #endif
 
     ClearCachedCredentials()
@@ -45,6 +49,9 @@ messages -> NetworkProcess LegacyReceiver {
     DownloadRequest(PAL::SessionID sessionID, WebKit::DownloadID downloadID, WebCore::ResourceRequest request, String suggestedFilename)
     ResumeDownload(PAL::SessionID sessionID, WebKit::DownloadID downloadID, IPC::DataReference resumeData, String path, WebKit::SandboxExtension::Handle sandboxExtensionHandle)
     CancelDownload(WebKit::DownloadID downloadID)
+#if PLATFORM(COCOA)
+    PublishDownloadProgress(WebKit::DownloadID downloadID, URL url, WebKit::SandboxExtension::Handle sandboxExtensionHandle)
+#endif
 
     ContinueWillSendRequest(WebKit::DownloadID downloadID, WebCore::ResourceRequest request)
     ContinueDecidePendingDownloadDestination(WebKit::DownloadID downloadID, String destination, WebKit::SandboxExtension::Handle sandboxExtensionHandle, bool allowOverwrite)
@@ -53,7 +60,7 @@ messages -> NetworkProcess LegacyReceiver {
     SetQOS(int latencyQOS, int throughputQOS)
     SetStorageAccessAPIEnabled(bool enabled)
 #endif
-    SetAllowsAnySSLCertificateForWebSocket(bool enabled) -> ()
+    SetAllowsAnySSLCertificateForWebSocket(bool enabled) -> () Delayed
 
     SyncAllCookies()
 
@@ -63,29 +70,68 @@ messages -> NetworkProcess LegacyReceiver {
     GetNetworkProcessStatistics(uint64_t callbackID)
     
     ClearCacheForAllOrigins(uint32_t cachesToClear)
-    SetCacheModel(uint32_t cacheModel);
+    SetCacheModel(enum:uint8_t WebKit::CacheModel cacheModel);
 
     ProcessDidTransitionToBackground()
     ProcessDidTransitionToForeground()
 
-    ProcessWillSuspendImminently() -> (bool handled)
+    ProcessWillSuspendImminently() -> (bool handled) Delayed
     PrepareToSuspend()
     CancelPrepareToSuspend()
     ProcessDidResume()
 
-    DidGrantSandboxExtensionsToStorageProcessForBlobs(uint64_t requestID)
+    PreconnectTo(URL url, enum:bool WebCore::StoredCredentialsPolicy storedCredentialsPolicy);
 
-    WriteBlobToFilePath(WebCore::URL blobURL, String path, WebKit::SandboxExtension::Handle handle, uint64_t callbackID)
-
-    PreconnectTo(WebCore::URL url, enum WebCore::StoredCredentialsPolicy storedCredentialsPolicy);
-
-#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
-    UpdatePrevalentDomainsToBlockCookiesFor(PAL::SessionID sessionID, Vector<String> domainsToBlock, bool shouldClearFirst, uint64_t contextId)
-    HasStorageAccessForFrame(PAL::SessionID sessionID, String resourceDomain, String firstPartyDomain, uint64_t frameID, uint64_t pageID, uint64_t contextId)
-    GetAllStorageAccessEntries(PAL::SessionID sessionID, uint64_t contextId)
-    GrantStorageAccess(PAL::SessionID sessionID, String resourceDomain, String firstPartyDomain, std::optional<uint64_t> frameID, uint64_t pageID, uint64_t contextId)
-    RemoveAllStorageAccess(PAL::SessionID sessionID, uint64_t contextId)
-    RemovePrevalentDomains(PAL::SessionID sessionID, Vector<String> domainsWithInteraction);
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    ClearPrevalentResource(PAL::SessionID sessionID, String resourceDomain) -> () Async
+    ClearUserInteraction(PAL::SessionID sessionID, String resourceDomain) -> () Async
+    DumpResourceLoadStatistics(PAL::SessionID sessionID) -> (String dumpedStatistics) Async
+    SetResourceLoadStatisticsEnabled(bool enabled)
+    UpdatePrevalentDomainsToBlockCookiesFor(PAL::SessionID sessionID, Vector<String> domainsToBlock) -> () Async
+    IsGrandfathered(PAL::SessionID sessionID, String targetPrimaryDomain) -> (bool isGrandfathered) Async
+    IsPrevalentResource(PAL::SessionID sessionID, String targetPrimaryDomain) -> (bool isPrevalent) Async
+    IsVeryPrevalentResource(PAL::SessionID sessionID, String targetPrimaryDomain) -> (bool isVeryPrevalent) Async
+    SetAgeCapForClientSideCookies(PAL::SessionID sessionID, Optional<Seconds> seconds) -> () Async
+    SetLastSeen(PAL::SessionID sessionID, String resourceDomain, Seconds seconds) -> () Async
+    SetPrevalentResource(PAL::SessionID sessionID, String resourceDomain) -> () Async
+    SetPrevalentResourceForDebugMode(PAL::SessionID sessionID, String resourceDomain) -> () Async
+    HadUserInteraction(PAL::SessionID sessionID, String resourceDomain) -> (bool hadUserInteraction) Async
+    HasStorageAccessForFrame(PAL::SessionID sessionID, String resourceDomain, String firstPartyDomain, uint64_t frameID, uint64_t pageID) -> (bool hasStorageAccess) Async
+    HasStorageAccess(PAL::SessionID sessionID, String resourceDomain, String firstPartyDomain, Optional<uint64_t> frameID, uint64_t pageID) -> (bool hasStorageAccess) Async
+    GetAllStorageAccessEntries(PAL::SessionID sessionID) -> (Vector<String> domains) Async
+    GrantStorageAccess(PAL::SessionID sessionID, String resourceDomain, String firstPartyDomain, Optional<uint64_t> frameID, uint64_t pageID, bool userWasPrompted) -> (bool accessGranted) Async
+    IsRegisteredAsRedirectingTo(PAL::SessionID sessionID, String redirectedFrom, String redirectedTo) -> (bool isRedirectingTo) Async
+    IsRegisteredAsSubFrameUnder(PAL::SessionID sessionID, String subframe, String topFrame) -> (bool isSubframeUnder) Async
+    IsRegisteredAsSubresourceUnder(PAL::SessionID sessionID, String subresource, String topFrame) -> (bool isSubresourceUnder) Async
+    LogFrameNavigation(PAL::SessionID sessionID, String targetPrimaryDomain, String mainFramePrimaryDomain, String sourcePrimaryDomain, String targetHost, String mainFrameHost, bool isRedirect, bool isMainFrame)
+    LogUserInteraction(PAL::SessionID sessionID, String targetPrimaryDomain) -> () Async
+    RemoveAllStorageAccess(PAL::SessionID sessionID) -> () Async
+    RemovePrevalentDomains(PAL::SessionID sessionID, Vector<String> domainsWithInteraction)
+    RequestStorageAccess(PAL::SessionID sessionID, String resourceDomain, String firstPartyDomain, Optional<uint64_t> frameID, uint64_t pageID, bool promptEnabled) -> (enum:uint8_t WebKit::StorageAccessStatus storageAccessStatus) Async
+    ResetParametersToDefaultValues(PAL::SessionID sessionID) -> () Async
+    ScheduleClearInMemoryAndPersistent(PAL::SessionID sessionID, Optional<WallTime> modifiedSince, enum:bool WebKit::ShouldGrandfatherStatistics shouldGrandfather) -> () Async
+    ScheduleCookieBlockingUpdate(PAL::SessionID sessionID) -> () Async
+    ScheduleStatisticsAndDataRecordsProcessing(PAL::SessionID sessionID) -> () Async
+    SubmitTelemetry(PAL::SessionID sessionID) -> () Async
+    SetCacheMaxAgeCapForPrevalentResources(PAL::SessionID sessionID, Seconds seconds) -> () Async
+    SetGrandfathered(PAL::SessionID sessionID, String resourceDomain, bool isGrandfathered) -> () Async
+    SetGrandfatheringTime(PAL::SessionID sessionID, Seconds seconds) -> () Async
+    SetMaxStatisticsEntries(PAL::SessionID sessionID, uint64_t maximumEntryCount) -> () Async
+    SetMinimumTimeBetweenDataRecordsRemoval(PAL::SessionID sessionID, Seconds seconds) -> () Async
+    SetPruneEntriesDownTo(PAL::SessionID sessionID, uint64_t maximumEntryCount) -> () Async
+    SetShouldClassifyResourcesBeforeDataRecordsRemoval(PAL::SessionID sessionID, bool value) -> () Async
+    SetNotifyPagesWhenDataRecordsWereScanned(PAL::SessionID sessionID, bool value) -> () Async
+    SetNotifyPagesWhenTelemetryWasCaptured(PAL::SessionID sessionID, bool value) -> () Async
+    SetResourceLoadStatisticsDebugMode(PAL::SessionID sessionID, bool debugMode) -> () Async
+    SetVeryPrevalentResource(PAL::SessionID sessionID, String resourceDomain) -> () Async
+    SetSubframeUnderTopFrameOrigin(PAL::SessionID sessionID, String subframe, String topFrame) -> () Async
+    SetSubresourceUnderTopFrameOrigin(PAL::SessionID sessionID, String subresource, String topFrame) -> () Async
+    SetSubresourceUniqueRedirectTo(PAL::SessionID sessionID, String subresource, String hostNameRedirectedTo) -> () Async
+    SetSubresourceUniqueRedirectFrom(PAL::SessionID sessionID, String subresource, String hostNameRedirectedFrom) -> () Async
+    SetTimeToLiveUserInteraction(PAL::SessionID sessionID, Seconds seconds) -> () Async
+    SetTopFrameUniqueRedirectTo(PAL::SessionID sessionID, String topFrameHostName, String hostNameRedirectedTo) -> () Async
+    SetTopFrameUniqueRedirectFrom(PAL::SessionID sessionID, String topFrameHostName, String hostNameRedirectedFrom) -> () Async
+    ResetCacheMaxAgeCapForPrevalentResources(PAL::SessionID sessionID) -> () Async
 #endif
 
     SetSessionIsControlledByAutomation(PAL::SessionID sessionID, bool controlled);
@@ -99,4 +145,23 @@ messages -> NetworkProcess LegacyReceiver {
     RegisterURLSchemeAsCanDisplayOnlyIfCanRequest(String scheme)
 
     SetCacheStorageParameters(PAL::SessionID sessionID, uint64_t quota, String cacheStorageDirectory, WebKit::SandboxExtension::Handle handle);
+
+#if ENABLE(SERVICE_WORKER)
+    DidNotHandleFetch(WebCore::SWServerConnectionIdentifier serverConnectionIdentifier, WebCore::FetchIdentifier fetchIdentifier)
+    DidFailFetch(WebCore::SWServerConnectionIdentifier serverConnectionIdentifier, WebCore::FetchIdentifier fetchIdentifier, WebCore::ResourceError error)
+    DidReceiveFetchRedirectResponse(WebCore::SWServerConnectionIdentifier serverConnectionIdentifier, WebCore::FetchIdentifier fetchIdentifier, WebCore::ResourceResponse response)
+    DidReceiveFetchResponse(WebCore::SWServerConnectionIdentifier serverConnectionIdentifier, WebCore::FetchIdentifier fetchIdentifier, WebCore::ResourceResponse response, bool needsContinueDidReceiveResponseMessage)
+    DidReceiveFetchData(WebCore::SWServerConnectionIdentifier serverConnectionIdentifier, WebCore::FetchIdentifier fetchIdentifier, IPC::SharedBufferDataReference data, int64_t encodedDataLength)
+    DidReceiveFetchFormData(WebCore::SWServerConnectionIdentifier serverConnectionIdentifier, WebCore::FetchIdentifier fetchIdentifier, IPC::FormDataReference data)
+    DidFinishFetch(WebCore::SWServerConnectionIdentifier serverConnectionIdentifier, WebCore::FetchIdentifier fetchIdentifier)
+    PostMessageToServiceWorkerClient(struct WebCore::ServiceWorkerClientIdentifier destinationIdentifier, struct WebCore::MessageWithMessagePorts message, WebCore::ServiceWorkerIdentifier sourceIdentifier, String sourceOrigin)
+
+    PostMessageToServiceWorker(WebCore::ServiceWorkerIdentifier destination, struct WebCore::MessageWithMessagePorts message, WebCore::ServiceWorkerOrClientIdentifier source, WebCore::SWServerConnectionIdentifier connectionIdentifier)
+
+    DisableServiceWorkerProcessTerminationDelay()
+#endif
+
+#if ENABLE(INDEXED_DATABASE)
+    SetIDBPerOriginQuota(uint64_t quota)
+#endif
 }

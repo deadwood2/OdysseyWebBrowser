@@ -29,6 +29,7 @@
 #include "stdafx.h"
 #include "Common.h"
 
+#include "DialogHelper.h"
 #include "MiniBrowserLibResource.h"
 #include "MiniBrowserReplace.h"
 #include <dbghelp.h>
@@ -119,50 +120,115 @@ void createCrashReport(EXCEPTION_POINTERS* exceptionPointers)
     }
 }
 
-struct AuthDialogData {
-    std::wstring& username;
-    std::wstring& password;
-};
-
-static INT_PTR CALLBACK authDialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+bool askProxySettings(HWND hwnd, ProxySettings& settings)
 {
-    AuthDialogData& data = *reinterpret_cast<AuthDialogData*>(GetWindowLongPtr(hDlg, DWLP_USER));
-    switch (message) {
-    case WM_INITDIALOG:
-        SetWindowLongPtr(hDlg, DWLP_USER, lParam);
-        return TRUE;
-
-    case WM_COMMAND: {
-        int wmId = LOWORD(wParam);
-        switch (wmId) {
-        case IDOK: {
-            TCHAR str[256];
-            int strLen = GetWindowText(GetDlgItem(hDlg, IDC_AUTH_USER), str, WTF_ARRAY_LENGTH(str)-1);
-            str[strLen] = 0;
-            data.username = str;
-
-            strLen = GetWindowText(GetDlgItem(hDlg, IDC_AUTH_PASSWORD), str, WTF_ARRAY_LENGTH(str)-1);
-            str[strLen] = 0;
-            data.password = str;
-
-            EndDialog(hDlg, true);
-            return TRUE;
+    class ProxyDialog : public Dialog {
+    public:
+        ProxyDialog(ProxySettings& settings)
+            : settings { settings }
+        {
         }
-        case IDCANCEL:
-            EndDialog(hDlg, false);
-            return TRUE;
+
+    protected:
+        ProxySettings& settings;
+
+        void setup() final
+        {
+            auto command = commandForProxyChoice();
+            proxyChoice().set(command);
+            setText(IDC_PROXY_URL, settings.url);
+            setText(IDC_PROXY_EXCLUDE, settings.excludeHosts);
         }
-        break;
-    }
-    }
-    return FALSE;
+
+        void ok() final
+        {
+            settings.url = getText(IDC_PROXY_URL);
+            settings.excludeHosts = getText(IDC_PROXY_EXCLUDE);
+            updateProxyChoice(proxyChoice().get());
+        }
+
+        bool validate() final
+        {
+            bool valid = true;
+
+            if (proxyChoice().get() == IDC_PROXY_CUSTOM) {
+                setEnabled(IDC_PROXY_URL, true);
+                setEnabled(IDC_PROXY_EXCLUDE, true);
+
+                if (!getTextLength(IDC_PROXY_URL))
+                    valid = false;
+            } else {
+                setEnabled(IDC_PROXY_URL, false);
+                setEnabled(IDC_PROXY_EXCLUDE, false);
+            }
+
+            return valid;
+        }
+
+        RadioGroup proxyChoice()
+        {
+            return radioGroup(IDC_PROXY_DEFAULT, IDC_PROXY_DISABLE);
+        }
+
+        int commandForProxyChoice()
+        {
+            if (!settings.enable)
+                return IDC_PROXY_DISABLE;
+            if (settings.custom)
+                return IDC_PROXY_CUSTOM;
+            return IDC_PROXY_DEFAULT;
+        }
+
+        void updateProxyChoice(int command)
+        {
+            switch (command) {
+            case IDC_PROXY_DEFAULT:
+                settings.enable = true;
+                settings.custom = false;
+                break;
+            case IDC_PROXY_CUSTOM:
+                settings.enable = true;
+                settings.custom = true;
+                break;
+            case IDC_PROXY_DISABLE:
+                settings.enable = false;
+                settings.custom = false;
+                break;
+            default:
+                break;
+            }
+        }
+    };
+
+    ProxyDialog dialog { settings };
+    return dialog.run(hInst, hwnd, IDD_PROXY);
 }
 
-HRESULT displayAuthDialog(HWND hwnd, std::wstring& username, std::wstring& password)
+Optional<Credential> askCredential(HWND hwnd, const std::wstring& realm)
 {
-    AuthDialogData data { username, password };
-    auto result = DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_AUTH), hwnd, authDialogProc, reinterpret_cast<LPARAM>(&data));
-    return result > 0 ? S_OK : E_FAIL;
+    struct AuthDialog : public Dialog {
+        std::wstring realm;
+        Credential credential;
+
+    protected:
+        void setup()
+        {
+            setText(IDC_REALM_TEXT, realm);
+        }
+
+        void ok() final
+        {
+            credential.username = getText(IDC_AUTH_USER);
+            credential.password = getText(IDC_AUTH_PASSWORD);
+        }
+    };
+
+    AuthDialog dialog;
+    dialog.realm = realm;
+
+    if (dialog.run(hInst, hwnd, IDD_AUTH))
+        return dialog.credential;
+    return WTF::nullopt;
 }
 
 CommandLineOptions parseCommandLine()

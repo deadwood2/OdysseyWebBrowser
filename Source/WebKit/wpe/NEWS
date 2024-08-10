@@ -1,96 +1,114 @@
 =================
-WPE WebKit 2.22.5
+WPE WebKit 2.24.3
 =================
 
-What's new in WPE WebKit 2.22.5?
+What's new in WPE WebKit 2.24.2?
 
-  - Fix rendering of glyphs in Hebrew (and possibly other languages) when
-    Unicode NFC normalization is used.
-  - Fix several crashes and race conditions.
-
-=================
-WPE WebKit 2.22.4
-=================
-
-What's new in WPE WebKit 2.22.4?
-
-  - Add missing WebKitVersion.h to the set of installed haders.
-  - Fix several crashes, race conditions, and rendering issues.
-
-=================
-WPE WebKit 2.22.3
-=================
-
-What's new in WPE WebKit 2.22.3?
-
-  - Improved the logic to determine for which architectures to enable
-    the JIT compiler support and USE_SYSTEM_MALLOC at build time.
-  - Fix the build with ENABLE_VIDEO=OFF and ENABLE_OPENGL=OFF.
-  - Fix several crashes.
-
-=================
-WPE WebKit 2.22.2
-=================
-
-What's new in WPE WebKit 2.22.2?
-
-  - Fix a crash when using Cairo versions between 1.15 and 1.16.0
-  - Fix the build with -DLOG_DISABLED=0.
+  - Updated the user agent string to make happy certain websites which
+    would claim that the browser being used was unsupported.
+  - Improve loading of multimedia streams to avoid memory exhaustion due
+    to excessive caching.
+  - Fix display of documents with MIME type application/xml in the Web
+    Inspector, when loaded using XmlHttpRequest.
+  - Fix a hang while scrolling certain websites which include HLS video
+    content (Twitter, for example).
+  - Fix rounding artifacts in volume levels for media playback.
   - Fix several crashes and rendering issues.
+  - Fix the build with video track support disabled.
+  - Fix the build with multimedia support completely disabled with
+    ENABLE_VIDEO=OFF and ENABLE_WEB_AUDIO=OFF.
+  - Fix build issue which would cause media controls to disappear when
+    Python 3.x was used during the build process.
 
 =================
-WPE WebKit 2.22.1
+WPE WebKit 2.24.2
 =================
 
-What's new in WPE WebKit 2.22.1?
+What's new in WPE WebKit 2.24.2?
 
-  - Many improvements and fixes for video playback with media source
-    extensions (MSE), which improve the user experience across the board,
-    and in particular for playback of WebM videos.
-  - Expose ENABLE_MEDIA_SOURCE as a public build option.
-  - Fix Resource Timing reporting for <iframe> elements.
-  - Fix the build with ENABLE_VIDEO=OFF and ENABLE_WEB_AUDIO=OFF.
-  - Fix the build with the remote Web Inspector disabled.
+  - Fix space characters not being rendered with some CJK fonts.
+  - Fix adaptive streaming playback with older GStreamer versions.
+  - Fix build issue due to wrongly included X11 headers.
+  - Fix SSE2 detection at compile time, ensuring the right flags are passed to the compiler.
   - Fix several crashes and rendering issues.
+  - Security fixes: CVE-2019-8595, CVE-2019-8607, CVE-2019-8615.
 
 =================
-WPE WebKit 2.22.0
+WPE WebKit 2.24.1
 =================
 
-What's new in WPE WebKit 2.22.0?
+What's new in WPE WebKit 2.24.1?
 
-  - Several fixes for video playback with media source extensions (MSE).
-    This allows using WebM support for YouTube, which no longer works through
-    regular video source. Note that MSE is still disabled by default and
-    webkit_settings_set_enable_mediasource() has to be used to enable the
-    feature.
-  - Add warn_unused_result attribute to some JavaScriptCore GLib APIs.
-  - Fix the build in several platforms: s390x, ppc64le, armv7hl, mips64.
-  - Fix the build with video disabled.
-  - Fix symbols with jsc_ prefix not being exported.
-  - Fix a memory leak during media playback when using playbin3.
+  - Do not allow changes in active URI before provisional load starts for non-API requests.
+  - Stop the threaded compositor when the page is not visible or layer tree state is frozen.
+  - Use WebKit HTTP source element again for adaptive streaming fragments downloading.
+  - Properly handle empty resources in webkit_web_resource_get_data().
+  - Add quirk to ensure outlook.live.com uses the modern UI.
+  - Fix methods returing GObject or boxed types in JavaScriptCore GLib API.
+  - Ensure callback data is passed to functions and constructors with no parameters in JavaScriptCore GLib API.
+  - Fix rendering of complex text when the font uses x,y origins.
+  - Fix sound loop with Google Hangouts and WhatsApp notifications.
+  - Fix the build with GStreamer 1.12.5 and GST GL enabled.
+  - Fix event source priorities to avoid starvation causing the NetworkProcess to be killed in constraned environments.
+  - Detect SSE2 at compile time.
+  - Fix several crashes and rendering issues.
+  - Security fixes: CVE-2019-6251.
+
+=================
+WPE WebKit 2.24.0
+=================
+
+What's new in WPE WebKit 2.24.0?
+
+  - This version does not contain functional changes over the 2.23.91
+    release candidate.
+
+==================
+WPE WebKit 2.23.91
+==================
+
+What's new in WPE WebKit 2.23.90?
+
+  - Add setting to configure the page background color.
+  - Add support for hole-punching using external media players.
+  - Add support for 16bpp rendering in RGB565 format.
+  - Add autocleanup definitions for g_autoptr and friends.
+  - Add WebKitUserContentFilterStore to the API docs.
+  - Change dependencies to use wpe-1.0 and wpe-fdo-1.0.
+  - Fix constructors returning a GObject in JSC GLib API.
+  - Fix build failure with Clang due to usage of wl_array_foreach.
+  - Fix build failure due to missing WebKitUserContentFilterStore.h header.
   - Fix several crashes and rendering issues.
 
 ==================
-WPE WebKit 2.21.92
+WPE WebKit 2.23.90
 ==================
 
-What's new in WPE WebKit 2.21.91?
+What's new in WPE WebKit 2.23.90?
 
-  - New MiniBrowser for WPE, which can be enabled at build time.
-  - Add warn_unused_result attribute to some JavaScriptCore GLib APIs.
-  - Fix the build in mips64.
-  - Add new API to inject/register user content in isolated worlds.
-  - Add more API to JSCException to handle column number, convert exception to string, get the exception backtrace,
-    create exceptions with a custom error name and report exception message with full details.
-  - Fix excessive CPU usage when getting the process memory footprint.
+  - Add a new setting to disable JavaScript elments from documents during parsing.
+  - Add initial support for subprocess sandboxing in Linux.
+  - Add initial support for variation fonts.
+  - Add new API to convert a URI to a format for display.
+  - Add new API to expose JavaScriptCore options.
+  - Add new API to handle user content filters.
+  - Add new permission request type for media device information.
+  - Add support for JPEG2000 images.
+  - Fix a UI process crash while filling selection data during drag and drop.
+  - Fix a web process deadlock when starting the remote inspector.
+  - Fix crashes when closing the WebDriver session.
+  - Fix deadlock on Linux/x64 between SamplingProfiler and VMTraps.
+  - Fix rendering artifacts in some websites with accelerated compositing enabled.
+  - Fix the build with OpenGL disabled.
+  - Remove experimental sandboxing support, it's not yet ready for stable release.
+  - Sleep disabler now inhibits idle when a "System" sleep disabler is requested.
   - Fix several crashes and rendering issues.
 
 ==================
 WPE WebKit 2.21.91
 ==================
 
-What's new in WPE WebKit 2.21.91?
+What' new in WPE WebKit 2.21.2?
 
   - Add API to evaluate code in a new object to JavaScriptCore GLib API.
   - Add API to check for syntax errors in given code to JavaScriptCore GLib API.
@@ -102,6 +120,7 @@ What's new in WPE WebKit 2.21.91?
   - Fix a network process crash when trying to get cookies of about:blank page.
   - Fix some frames being dropped when using requestAnimationFrame() to animate elements.
   - Fix several crashes and rendering issues.
+
 
 =================
 WPE WebKit 2.21.2

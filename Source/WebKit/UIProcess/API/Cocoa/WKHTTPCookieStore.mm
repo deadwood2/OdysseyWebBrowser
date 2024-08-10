@@ -30,10 +30,10 @@
 
 #import "HTTPCookieAcceptPolicy.h"
 #import <WebCore/Cookie.h>
-#import <WebCore/URL.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <wtf/HashMap.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/URL.h>
 #import <wtf/WeakObjCPtr.h>
 
 static NSArray<NSHTTPCookie *> *coreCookiesToNSCookies(const Vector<WebCore::Cookie>& coreCookies)
@@ -47,6 +47,7 @@ static NSArray<NSHTTPCookie *> *coreCookiesToNSCookies(const Vector<WebCore::Coo
 }
 
 class WKHTTPCookieStoreObserver : public API::HTTPCookieStore::Observer {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit WKHTTPCookieStoreObserver(id<WKHTTPCookieStoreObserver> observer)
         : m_observer(observer)
@@ -56,14 +57,14 @@ public:
 private:
     void cookiesDidChange(API::HTTPCookieStore& cookieStore) final
     {
-        [m_observer.get() cookiesDidChangeInCookieStore:WebKit::wrapper(cookieStore)];
+        [m_observer cookiesDidChangeInCookieStore:wrapper(cookieStore)];
     }
 
     WeakObjCPtr<id<WKHTTPCookieStoreObserver>> m_observer;
 };
 
 @implementation WKHTTPCookieStore {
-    HashMap<id<WKHTTPCookieStoreObserver>, std::unique_ptr<WKHTTPCookieStoreObserver>> _observers;
+    HashMap<CFTypeRef, std::unique_ptr<WKHTTPCookieStoreObserver>> _observers;
 }
 
 - (void)dealloc
@@ -105,7 +106,7 @@ private:
 
 - (void)addObserver:(id<WKHTTPCookieStoreObserver>)observer
 {
-    auto result = _observers.add(observer, nullptr);
+    auto result = _observers.add((__bridge CFTypeRef)observer, nullptr);
     if (!result.isNewEntry)
         return;
 
@@ -115,7 +116,7 @@ private:
 
 - (void)removeObserver:(id<WKHTTPCookieStoreObserver>)observer
 {
-    auto result = _observers.take(observer);
+    auto result = _observers.take((__bridge CFTypeRef)observer);
     if (!result)
         return;
 

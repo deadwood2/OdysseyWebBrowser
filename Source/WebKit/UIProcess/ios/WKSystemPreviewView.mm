@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,21 +35,27 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <WebCore/FloatRect.h>
 #import <WebCore/LocalizedStrings.h>
+#import <WebCore/MIMETypeRegistry.h>
+#import <pal/ios/QuickLookSoftLink.h>
 #import <pal/spi/cg/CoreGraphicsSPI.h>
 #import <pal/spi/ios/SystemPreviewSPI.h>
 #import <wtf/RetainPtr.h>
-#import <wtf/SoftLinking.h>
 #import <wtf/Vector.h>
-
-#if USE(APPLE_INTERNAL_SDK)
-#import <WebKitAdditions/SystemPreviewTypes.cpp>
-#endif
-
-SOFT_LINK_FRAMEWORK(QuickLook);
-SOFT_LINK_CLASS(QuickLook, QLItem);
 
 SOFT_LINK_PRIVATE_FRAMEWORK(AssetViewer);
 SOFT_LINK_CLASS(AssetViewer, ASVThumbnailView);
+
+// FIXME: At the moment we only have one supported UTI, but
+// if we start supporting more types, then we'll need a table.
+static NSString *getUTIForSystemPreviewMIMEType(const String& mimeType)
+{
+    static NSString *uti = (__bridge NSString *) UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, CFSTR("usdz"), nil);
+
+    if (!WebCore::MIMETypeRegistry::isSystemPreviewMIMEType(mimeType))
+        return nil;
+
+    return uti;
+}
 
 @interface WKSystemPreviewView () <ASVThumbnailViewDelegate>
 @end
@@ -94,16 +100,9 @@ SOFT_LINK_CLASS(AssetViewer, ASVThumbnailView);
     _suggestedFilename = adoptNS([filename copy]);
     _data = adoptNS([data copy]);
 
-    NSString *contentType;
-#if USE(APPLE_INTERNAL_SDK)
-    contentType = WebKit::getUTIForMIMEType(_mimeType.get());
-#else
-    NSString *extension = [[_suggestedFilename.get() pathExtension] lowercaseString];
-    RetainPtr<CFStringRef> contentTypeCF = adoptCF(UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, (__bridge CFStringRef)extension, nil));
-    contentType = (NSString *)contentTypeCF.get();
-#endif
+    NSString *contentType = getUTIForSystemPreviewMIMEType(_mimeType.get());
 
-    _item = adoptNS([allocQLItemInstance() initWithDataProvider:self contentType:contentType previewTitle:_suggestedFilename.get()]);
+    _item = adoptNS([PAL::allocQLItemInstance() initWithDataProvider:self contentType:contentType previewTitle:_suggestedFilename.get()]);
     [_item setUseLoadingTimeout:NO];
 
     _thumbnailView = adoptNS([allocASVThumbnailViewInstance() init]);

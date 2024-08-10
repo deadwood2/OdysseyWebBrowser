@@ -42,7 +42,7 @@ public:
     static Ref<Caches> create(Engine& engine, WebCore::ClientOrigin&& origin, String&& rootPath, uint64_t quota) { return adoptRef(*new Caches { engine, WTFMove(origin), WTFMove(rootPath), quota }); }
     ~Caches();
 
-    static void retrieveOriginFromDirectory(const String& folderPath, WorkQueue&, WTF::CompletionHandler<void(std::optional<WebCore::ClientOrigin>&&)>&&);
+    static void retrieveOriginFromDirectory(const String& folderPath, WorkQueue&, WTF::CompletionHandler<void(Optional<WebCore::ClientOrigin>&&)>&&);
 
     void initialize(WebCore::DOMCacheEngine::CompletionCallback&&);
     void open(const String& name, WebCore::DOMCacheEngine::CacheIdentifierCallback&&);
@@ -61,6 +61,7 @@ public:
     void readRecord(const NetworkCache::Key&, WTF::Function<void(Expected<WebCore::DOMCacheEngine::Record, WebCore::DOMCacheEngine::Error>&&)>&&);
 
     bool hasEnoughSpace(uint64_t spaceRequired) const { return m_quota >= m_size + spaceRequired; }
+    bool isRequestingSpace() const { return m_isRequestingSpace; }
     void requestSpace(uint64_t spaceRequired, WebCore::DOMCacheEngine::CompletionCallback&&);
     void writeRecord(const Cache&, const RecordInformation&, WebCore::DOMCacheEngine::Record&&, uint64_t previousRecordSize, WebCore::DOMCacheEngine::CompletionCallback&&);
 
@@ -85,7 +86,7 @@ private:
     void writeCachesToDisk(WebCore::DOMCacheEngine::CompletionCallback&&);
 
     void storeOrigin(WebCore::DOMCacheEngine::CompletionCallback&&);
-    static std::optional<WebCore::ClientOrigin> readOrigin(const NetworkCache::Data&);
+    static Optional<WebCore::ClientOrigin> readOrigin(const NetworkCache::Data&);
 
     Cache* find(const String& name);
     void clearPendingWritingCachesToDiskCallbacks();
@@ -93,7 +94,12 @@ private:
     void makeDirty() { ++m_updateCounter; }
     bool isDirty(uint64_t updateCounter) const;
 
+    void notifyCachesOfRequestSpaceEnd();
+
+    bool hasActiveCache() const;
+
     bool m_isInitialized { false };
+    bool m_isRequestingSpace { false };
     Engine* m_engine { nullptr };
     uint64_t m_updateCounter { 0 };
     WebCore::ClientOrigin m_origin;
@@ -104,10 +110,10 @@ private:
     Vector<Cache> m_removedCaches;
     RefPtr<NetworkCache::Storage> m_storage;
     HashMap<NetworkCache::Key, WebCore::DOMCacheEngine::Record> m_volatileStorage;
-    mutable std::optional<NetworkCache::Salt> m_volatileSalt;
+    mutable Optional<NetworkCache::Salt> m_volatileSalt;
     Vector<WebCore::DOMCacheEngine::CompletionCallback> m_pendingInitializationCallbacks;
     bool m_isWritingCachesToDisk { false };
-    Deque<CompletionHandler<void(std::optional<WebCore::DOMCacheEngine::Error>)>> m_pendingWritingCachesToDiskCallbacks;
+    Deque<CompletionHandler<void(Optional<WebCore::DOMCacheEngine::Error>)>> m_pendingWritingCachesToDiskCallbacks;
 };
 
 } // namespace CacheStorage

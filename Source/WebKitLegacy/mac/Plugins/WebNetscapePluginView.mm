@@ -377,10 +377,9 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
             RgnHandle clipRegion = NewRgn();
             qdPortState->clipRegion = clipRegion;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
             CGContextRef currentContext = (CGContextRef)[[NSGraphicsContext currentContext] graphicsPort];
-#pragma clang diagnostic pop
+            ALLOW_DEPRECATED_DECLARATIONS_END
             if (currentContext && CGContextGetType(currentContext) == kCGContextTypeBitmap) {
                 // We check for kCGContextTypeBitmap here, because if we just called CGBitmapContextGetData
                 // on any context, we'd log to the console every time. But even if currentContext is a
@@ -503,10 +502,9 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
             
             ASSERT([NSView focusView] == self);
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
             CGContextRef context = static_cast<CGContextRef>([[NSGraphicsContext currentContext] graphicsPort]);
-#pragma clang diagnostic pop
+            ALLOW_DEPRECATED_DECLARATIONS_END
 
             PortState_CG *cgPortState = (PortState_CG *)malloc(sizeof(PortState_CG));
             portState = (PortState)cgPortState;
@@ -671,7 +669,7 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
     ASSERT(_eventHandler);
     {
         JSC::JSLock::DropAllLocks dropAllLocks(commonVM());
-        UserGestureIndicator gestureIndicator(_eventHandler->currentEventIsUserGesture() ? std::optional<ProcessingUserGestureState>(ProcessingUserGesture) : std::nullopt);
+        UserGestureIndicator gestureIndicator(_eventHandler->currentEventIsUserGesture() ? Optional<ProcessingUserGestureState>(ProcessingUserGesture) : WTF::nullopt);
         acceptedEvent = [_pluginPackage.get() pluginFuncs]->event(plugin, event);
     }
     [self didCallPlugInFunction];
@@ -695,10 +693,9 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
 {
     ASSERT(_eventHandler);
     
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     CGContextRef context = static_cast<CGContextRef>([[NSGraphicsContext currentContext] graphicsPort]);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
     _eventHandler->drawRect(context, rect);
 }
 
@@ -1338,10 +1335,9 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
         if (printedPluginBitmap) {
             // Flip the bitmap before drawing because the QuickDraw port is flipped relative
             // to this view.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
             CGContextRef cgContext = (CGContextRef)[[NSGraphicsContext currentContext] graphicsPort];
-#pragma clang diagnostic pop
+            ALLOW_DEPRECATED_DECLARATIONS_END
             CGContextSaveGState(cgContext);
             NSRect bounds = [self bounds];
             CGContextTranslateCTM(cgContext, 0.0f, NSHeight(bounds));
@@ -1521,7 +1517,7 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
         // Don't call NPP_NewStream and other stream methods if there is no JS result to deliver. This is what Mozilla does.
         NSData *JSData = [result dataUsingEncoding:NSUTF8StringEncoding];
         
-        RefPtr<WebNetscapePluginStream> stream = WebNetscapePluginStream::create([NSURLRequest requestWithURL:URL], plugin, [JSPluginRequest sendNotification], [JSPluginRequest notifyData]);
+        auto stream = WebNetscapePluginStream::create([NSURLRequest requestWithURL:URL], plugin, [JSPluginRequest sendNotification], [JSPluginRequest notifyData]);
         
         RetainPtr<NSURLResponse> response = adoptNS([[NSURLResponse alloc] initWithURL:URL 
                                                                              MIMEType:@"text/plain" 
@@ -1682,9 +1678,9 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
         [self performSelector:@selector(loadPluginRequest:) withObject:pluginRequest afterDelay:0];
         [pluginRequest release];
     } else {
-        RefPtr<WebNetscapePluginStream> stream = WebNetscapePluginStream::create(request, plugin, sendNotification, notifyData);
+        auto stream = WebNetscapePluginStream::create(request, plugin, sendNotification, notifyData);
 
-        streams.add(stream.get());
+        streams.add(stream.copyRef());
         stream->start();
     }
     
@@ -2138,8 +2134,12 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
                 auto* document = frame->document();
                 if (!document)
                     break;
+                
+                auto* page = document->page();
+                if (!page)
+                    break;
 
-                String cookieString = cookies(*document, URL);
+                String cookieString = page->cookieJar().cookies(*document, URL);
                 CString cookieStringUTF8 = cookieString.utf8();
                 if (cookieStringUTF8.isNull())
                     return NPERR_GENERIC_ERROR;
@@ -2189,8 +2189,10 @@ static inline void getNPRect(const NSRect& nr, NPRect& npr)
                 break;
             
             if (Frame* frame = core([self webFrame])) {
-                if (auto* document = frame->document())
-                    setCookies(*document, URL, cookieString);
+                if (auto* document = frame->document()) {
+                    if (auto* page = document->page())
+                        page->cookieJar().setCookies(*document, URL, cookieString);
+                }
                 return NPERR_NO_ERROR;
             }
             

@@ -85,9 +85,9 @@ public:
 
     static GRefPtr<WebKitWebView> adoptView(gpointer view)
     {
-        g_assert(WEBKIT_IS_WEB_VIEW(view));
+        g_assert_true(WEBKIT_IS_WEB_VIEW(view));
 #if PLATFORM(GTK)
-        g_assert(g_object_is_floating(view));
+        g_assert_true(g_object_is_floating(view));
         return GRefPtr<WebKitWebView>(WEBKIT_WEB_VIEW(view));
 #elif PLATFORM(WPE)
         return adoptGRef(WEBKIT_WEB_VIEW(view));
@@ -117,7 +117,7 @@ public:
         g_signal_connect(m_webContext.get(), "initialize-web-extensions", G_CALLBACK(initializeWebExtensionsCallback), this);
     }
 
-    ~Test()
+    virtual ~Test()
     {
         g_signal_handlers_disconnect_matched(m_webContext.get(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
         m_webContext = nullptr;
@@ -130,7 +130,7 @@ public:
             g_print(" %s(%p)", g_type_name_from_instance(reinterpret_cast<GTypeInstance*>(*it)), *it);
         g_print("\n");
 
-        g_assert(m_watchedObjects.isEmpty());
+        g_assert_true(m_watchedObjects.isEmpty());
     }
 
     virtual void initializeWebExtensions()
@@ -143,6 +143,8 @@ public:
     static WebKitWebViewBackend* createWebViewBackend()
     {
         auto* headlessBackend = new WPEToolingBackends::HeadlessViewBackend(800, 600);
+        // Make the view initially hidden for consistency with GTK+ tests.
+        wpe_view_backend_remove_activity_state(headlessBackend->backend(), wpe_view_activity_state_visible | wpe_view_activity_state_focused);
         return webkit_web_view_backend_new(headlessBackend->backend(), [](gpointer userData) {
             delete static_cast<WPEToolingBackends::HeadlessViewBackend*>(userData);
         }, headlessBackend);

@@ -38,12 +38,12 @@ use webkitdirs;
 my @webKitDirectoriesToScan = ("Source/WebCore", "Source/WebKitLegacy/mac", "Source/WebKitLegacy/win", "Source/WebKit", "--skip", "Source/WebCore/icu", "--skip", "Source/WebKitLegacy/mac/icu");
 my @webInspectorUIDirectoriesToScan = ("Source/WebInspectorUI/UserInterface");
 
-my $webCoreFileToUpdate = "Source/WebCore/English.lproj/Localizable.strings";
+my $webCoreFileToUpdate = "Source/WebCore/en.lproj/Localizable.strings";
 my $webInspectorUIFileToUpdate = "Source/WebInspectorUI/Localizations/en.lproj/localizedStrings.js";
 
 @ARGV == 0 or die "Usage: " . basename($0) . "\n";
 
 chdirWebKit();
 
-system "Source/WebCore/extract-localizable-strings.pl", $webCoreFileToUpdate, @webKitDirectoriesToScan;
+system "Source/WebCore/Scripts/extract-localizable-strings.pl", $webCoreFileToUpdate, @webKitDirectoriesToScan;
 system "Tools/Scripts/extract-localizable-js-strings", "--utf8", $webInspectorUIFileToUpdate, @webInspectorUIDirectoriesToScan;

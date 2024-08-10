@@ -46,7 +46,7 @@ static bool shouldForceContentSniffing;
 typedef HashMap<AtomicString, ResourceHandle::BuiltinConstructor> BuiltinResourceHandleConstructorMap;
 static BuiltinResourceHandleConstructorMap& builtinResourceHandleConstructorMap()
 {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     ASSERT(WebThreadIsLockedOrDisabled());
 #else
     ASSERT(isMainThread());
@@ -95,10 +95,10 @@ RefPtr<ResourceHandle> ResourceHandle::create(NetworkingContext* context, const 
     auto newHandle = adoptRef(*new ResourceHandle(context, request, client, defersLoading, shouldContentSniff, shouldContentEncodingSniff));
 
     if (newHandle->d->m_scheduledFailureType != NoFailure)
-        return WTFMove(newHandle);
+        return newHandle;
 
     if (newHandle->start())
-        return WTFMove(newHandle);
+        return newHandle;
 
     return nullptr;
 }
@@ -155,8 +155,8 @@ void ResourceHandle::didReceiveResponse(ResourceResponse&& response, CompletionH
 {
     if (response.isHTTP09()) {
         auto url = response.url();
-        std::optional<uint16_t> port = url.port();
-        if (port && !isDefaultPortForProtocol(port.value(), url.protocol())) {
+        Optional<uint16_t> port = url.port();
+        if (port && !WTF::isDefaultPortForProtocol(port.value(), url.protocol())) {
             cancel();
             String message = "Cancelled load from '" + url.stringCenterEllipsizedToLength() + "' because it is using HTTP/0.9.";
             d->m_client->didFail(this, { String(), 0, url, message });

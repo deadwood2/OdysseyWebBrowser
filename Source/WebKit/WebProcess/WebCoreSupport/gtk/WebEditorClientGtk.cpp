@@ -101,7 +101,7 @@ void WebEditorClient::handleKeyboardEvent(KeyboardEvent* event)
         return;
 
     // Don't insert anything if a modifier is pressed
-    if (platformEvent->ctrlKey() || platformEvent->altKey())
+    if (platformEvent->controlKey() || platformEvent->altKey())
         return;
 
     if (frame->editor().insertText(platformEvent->text(), event))
@@ -126,7 +126,7 @@ void WebEditorClient::updateGlobalSelection(Frame* frame)
     PasteboardWebContent pasteboardContent;
     pasteboardContent.canSmartCopyOrDelete = false;
     pasteboardContent.text = range->text();
-    pasteboardContent.markup = createMarkup(*range, nullptr, AnnotateForInterchange, false, ResolveNonLocalURLs);
+    pasteboardContent.markup = serializePreservingVisualAppearance(frame->selection().selection(), ResolveURLs::YesExcludingLocalFileURLsForPrivacy);
     Pasteboard::createForGlobalSelection()->write(pasteboardContent);
 }
 

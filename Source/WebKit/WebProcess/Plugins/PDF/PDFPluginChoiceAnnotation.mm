@@ -30,7 +30,7 @@
 
 #import "PDFKitImports.h"
 #import "PDFLayerControllerSPI.h"
-#import <PDFKit/PDFKit.h>
+#import <Quartz/Quartz.h>
 #import <WebCore/CSSPrimitiveValue.h>
 #import <WebCore/CSSPropertyNames.h>
 #import <WebCore/ColorMac.h>
@@ -67,10 +67,9 @@ void PDFPluginChoiceAnnotation::commit()
 Ref<Element> PDFPluginChoiceAnnotation::createAnnotationElement()
 {
     Document& document = parent()->document();
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     PDFAnnotationChoiceWidget *choiceAnnotation = this->choiceAnnotation();
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     auto element = document.createElement(selectTag, false);
 

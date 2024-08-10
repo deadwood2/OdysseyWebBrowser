@@ -32,6 +32,7 @@
 #include "DOMCoreClasses.h"
 #include "FullscreenVideoController.h"
 #include "MarshallingHelpers.h"
+#include "PageStorageSessionProvider.h"
 #include "PluginDatabase.h"
 #include "PluginView.h"
 #include "WebApplicationCache.h"
@@ -84,6 +85,7 @@
 #include <WebCore/Chrome.h>
 #include <WebCore/ContextMenu.h>
 #include <WebCore/ContextMenuController.h>
+#include <WebCore/CookieJar.h>
 #include <WebCore/Cursor.h>
 #include <WebCore/DatabaseManager.h>
 #include <WebCore/DeprecatedGlobalSettings.h>
@@ -94,7 +96,6 @@
 #include <WebCore/Editor.h>
 #include <WebCore/EventHandler.h>
 #include <WebCore/EventNames.h>
-#include <WebCore/FileSystem.h>
 #include <WebCore/FloatQuad.h>
 #include <WebCore/FocusController.h>
 #include <WebCore/Font.h>
@@ -169,6 +170,7 @@
 #include <WebCore/WindowsTouch.h>
 #include <comdef.h>
 #include <d2d1.h>
+#include <wtf/FileSystem.h>
 #include <wtf/MainThread.h>
 #include <wtf/ProcessPrivilege.h>
 #include <wtf/RAMSize.h>
@@ -186,7 +188,8 @@
 #if USE(CFURLCONNECTION)
 #include <CFNetwork/CFURLCachePriv.h>
 #include <CFNetwork/CFURLProtocolPriv.h>
-#include <WebKitSystemInterface/WebKitSystemInterface.h>
+#include <pal/spi/cf/CFNetworkSPI.h>
+#include <wtf/cf/CFURLExtras.h>
 #elif USE(CURL)
 #include <WebCore/CurlCacheManager.h>
 #endif
@@ -227,7 +230,6 @@ SOFT_LINK_OPTIONAL(Uxtheme, EndPanningFeedback, BOOL, WINAPI, (HWND, BOOL));
 SOFT_LINK_OPTIONAL(Uxtheme, UpdatePanningFeedback, BOOL, WINAPI, (HWND, LONG, LONG, BOOL));
 
 using namespace WebCore;
-using namespace std;
 using JSC::JSLock;
 
 static String webKitVersionString();
@@ -281,7 +283,7 @@ static String localStorageDatabasePath(WebPreferences* preferences)
     return toString(localStorageDatabasePath);
 }
 
-class PreferencesChangedOrRemovedObserver : public IWebNotificationObserver {
+class PreferencesChangedOrRemovedObserver final : public IWebNotificationObserver {
 public:
     static PreferencesChangedOrRemovedObserver* sharedInstance();
 
@@ -353,7 +355,7 @@ HRESULT PreferencesChangedOrRemovedObserver::notifyPreferencesChanged(WebCacheMo
         hr = WebPreferences::sharedStandardPreferences()->cacheModel(&sharedPreferencesCacheModel);
         if (FAILED(hr))
             return hr;
-        WebView::setCacheModel(max(sharedPreferencesCacheModel, WebView::maxCacheModelInAnyInstance()));
+        WebView::setCacheModel(std::max(sharedPreferencesCacheModel, WebView::maxCacheModelInAnyInstance()));
     }
 
     return hr;
@@ -368,7 +370,7 @@ HRESULT PreferencesChangedOrRemovedObserver::notifyPreferencesRemoved(WebCacheMo
         hr = WebPreferences::sharedStandardPreferences()->cacheModel(&sharedPreferencesCacheModel);
         if (FAILED(hr))
             return hr;
-        WebView::setCacheModel(max(sharedPreferencesCacheModel, WebView::maxCacheModelInAnyInstance()));
+        WebView::setCacheModel(std::max(sharedPreferencesCacheModel, WebView::maxCacheModelInAnyInstance()));
     }
 
     return hr;
@@ -505,13 +507,13 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
 
 #if USE(CFURLCONNECTION)
     RetainPtr<CFURLCacheRef> cfurlCache = adoptCF(CFURLCacheCopySharedURLCache());
-    RetainPtr<CFStringRef> cfurlCacheDirectory = adoptCF(wkCopyFoundationCacheDirectory(0));
+    RetainPtr<CFStringRef> cfurlCacheDirectory = adoptCF(_CFURLCacheCopyCacheDirectory(cfurlCache.get()));
     if (!cfurlCacheDirectory) {
         RetainPtr<CFPropertyListRef> preference = adoptCF(CFPreferencesCopyAppValue(WebKitLocalCacheDefaultsKey, WebPreferences::applicationId()));
         if (preference && (CFStringGetTypeID() == CFGetTypeID(preference.get())))
             cfurlCacheDirectory = adoptCF(static_cast<CFStringRef>(preference.leakRef()));
         else
-            cfurlCacheDirectory = WebCore::FileSystem::localUserSpecificStorageDirectory().createCFString();
+            cfurlCacheDirectory = FileSystem::localUserSpecificStorageDirectory().createCFString();
     }
     cacheDirectory = String(cfurlCacheDirectory.get());
     CFIndex cacheMemoryCapacity = 0;
@@ -641,7 +643,7 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
 
         // This code is here to avoid a PLT regression. We can remove it if we
         // can prove that the overall system gain would justify the regression.
-        cacheMaxDeadCapacity = max(24u, cacheMaxDeadCapacity);
+        cacheMaxDeadCapacity = std::max(24u, cacheMaxDeadCapacity);
 
         deadDecodedDataDeletionInterval = 60_s;
 
@@ -683,7 +685,7 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
 
 #if USE(CFURLCONNECTION)
     // Don't shrink a big disk cache, since that would cause churn.
-    cacheDiskCapacity = max(cacheDiskCapacity, CFURLCacheDiskCapacity(cfurlCache.get()));
+    cacheDiskCapacity = std::max(cacheDiskCapacity, CFURLCacheDiskCapacity(cfurlCache.get()));
 
     CFURLCacheSetMemoryCapacity(cfurlCache.get(), cacheMemoryCapacity);
     CFURLCacheSetDiskCapacity(cfurlCache.get(), cacheDiskCapacity);
@@ -719,7 +721,7 @@ WebCacheModel WebView::maxCacheModelInAnyInstance()
         if (FAILED(pref->cacheModel(&prefCacheModel)))
             continue;
 
-        cacheModel = max(cacheModel, prefCacheModel);
+        cacheModel = std::max(cacheModel, prefCacheModel);
     }
 
     return cacheModel;
@@ -951,6 +953,19 @@ void WebView::addToDirtyRegion(GDIObject<HRGN> newRegion)
 
 void WebView::scrollBackingStore(FrameView* frameView, int logicalDx, int logicalDy, const IntRect& logicalScrollViewRect, const IntRect& logicalClipRect)
 {
+    if (deviceScaleFactor() != static_cast<int>(deviceScaleFactor())) {
+        // Non-integral device scale factors are causing repaint glitches, because the computation of the scroll
+        // delta in pixel coordinates from the scroll delta in logical coordinates will not always be correct.
+        // Instead of blitting the scroll rectangle, repaint the entire region affected by scrolling.
+        // FIXME: This is inefficient, we should be able to blit the scroll rectangle in this case as well,
+        // see https://bugs.webkit.org/show_bug.cgi?id=193542.
+        IntRect repaintRect = logicalScrollViewRect;
+        repaintRect.move(logicalDx, logicalDy);
+        repaintRect.unite(logicalScrollViewRect);
+        repaint(repaintRect, true);
+        return;
+    }
+
     m_needsDisplay = true;
 
     // Dimensions passed to us from WebCore are in logical units. We must convert to pixels:
@@ -1784,7 +1799,7 @@ void WebView::onMenuCommand(WPARAM wParam, LPARAM lParam)
     HMENU hMenu = reinterpret_cast<HMENU>(lParam);
     unsigned index = static_cast<unsigned>(wParam);
 
-    MENUITEMINFO menuItemInfo = { 0 };
+    MENUITEMINFO menuItemInfo { };
     menuItemInfo.cbSize = sizeof(menuItemInfo);
     menuItemInfo.fMask = MIIM_STRING;
     ::GetMenuItemInfo(hMenu, index, true, &menuItemInfo);
@@ -1996,7 +2011,7 @@ bool WebView::gesture(WPARAM wParam, LPARAM lParam)
 
     HGESTUREINFO gestureHandle = reinterpret_cast<HGESTUREINFO>(lParam);
     
-    GESTUREINFO gi = {0};
+    GESTUREINFO gi { };
     gi.cbSize = sizeof(GESTUREINFO);
 
     if (!GetGestureInfoPtr()(gestureHandle, reinterpret_cast<PGESTUREINFO>(&gi)))
@@ -2403,9 +2418,9 @@ bool WebView::keyDown(WPARAM virtualKeyCode, LPARAM keyData, bool systemKeyDown)
     // We need to handle back/forward using either Ctrl+Left/Right Arrow keys.
     // FIXME: This logic should probably be in EventHandler::defaultArrowEventHandler().
     // FIXME: Should check that other modifiers aren't pressed.
-    if (virtualKeyCode == VK_RIGHT && keyEvent.ctrlKey())
+    if (virtualKeyCode == VK_RIGHT && keyEvent.controlKey())
         return m_page->backForward().goForward();
-    if (virtualKeyCode == VK_LEFT && keyEvent.ctrlKey())
+    if (virtualKeyCode == VK_LEFT && keyEvent.controlKey())
         return m_page->backForward().goBack();
 
     // Need to scroll the page if the arrow keys, pgup/dn, or home/end are hit.
@@ -2483,7 +2498,7 @@ void WebView::setShouldInvertColors(bool shouldInvertColors)
         m_layerTreeHost->setShouldInvertColors(shouldInvertColors);
 #endif
 
-    RECT windowRect = {0};
+    RECT windowRect { };
     frameRect(&windowRect);
 
     // repaint expects logical pixels, so rescale here.
@@ -2859,7 +2874,7 @@ static String webKitVersionString()
     if (::LoadStringW(gInstance, BUILD_NUMBER, reinterpret_cast<LPWSTR>(&buildNumberStringPtr), 0) && buildNumberStringPtr)
         return buildNumberStringPtr;
 #endif
-    return String::format("%d.%d", WEBKIT_MAJOR_VERSION, WEBKIT_MINOR_VERSION);
+    return makeString(WEBKIT_MAJOR_VERSION, '.', WEBKIT_MINOR_VERSION);
 }
 
 const String& WebView::userAgentForKURL(const URL&)
@@ -3105,13 +3120,15 @@ HRESULT WebView::initWithFrame(RECT frame, _In_ BSTR frameName, _In_ BSTR groupN
 
     m_inspectorClient = new WebInspectorClient(this);
 
+    auto storageProvider = PageStorageSessionProvider::create();
     PageConfiguration configuration(
         makeUniqueRef<WebEditorClient>(this),
         SocketProvider::create(),
         makeUniqueRef<LibWebRTCProvider>(),
-        WebCore::CacheStorageProvider::create()
+        WebCore::CacheStorageProvider::create(),
+        BackForwardList::create(),
+        CookieJar::create(storageProvider.copyRef())
     );
-    configuration.backForwardClient = BackForwardList::create();
     configuration.chromeClient = new WebChromeClient(this);
     configuration.contextMenuClient = new WebContextMenuClient(this);
     configuration.dragClient = new WebDragClient(this);
@@ -3126,11 +3143,10 @@ HRESULT WebView::initWithFrame(RECT frame, _In_ BSTR frameName, _In_ BSTR groupN
     configuration.pluginInfoProvider = &WebPluginInfoProvider::singleton();
 
     m_page = new Page(WTFMove(configuration));
+    storageProvider->setPage(*m_page);
     provideGeolocationTo(m_page, *new WebGeolocationClient(this));
 
-    unsigned layoutMilestones = DidFirstLayout | DidFirstVisuallyNonEmptyLayout;
-    m_page->addLayoutMilestones(static_cast<LayoutMilestones>(layoutMilestones));
-
+    m_page->addLayoutMilestones({ DidFirstLayout, DidFirstVisuallyNonEmptyLayout });
 
     if (m_uiDelegate) {
         BString path;
@@ -3192,7 +3208,7 @@ void WebView::initializeToolTipWindow()
     if (!m_toolTipHwnd)
         return;
 
-    TOOLINFO info = {0};
+    TOOLINFO info { };
     info.cbSize = sizeof(info);
     info.uFlags = TTF_IDISHWND | TTF_SUBCLASS ;
     info.uId = reinterpret_cast<UINT_PTR>(m_viewWindow);
@@ -3214,7 +3230,7 @@ void WebView::setToolTip(const String& toolTip)
     m_toolTip = toolTip;
 
     if (!m_toolTip.isEmpty()) {
-        TOOLINFO info = {0};
+        TOOLINFO info { };
         info.cbSize = sizeof(info);
         info.uFlags = TTF_IDISHWND;
         info.uId = reinterpret_cast<UINT_PTR>(m_viewWindow);
@@ -3394,7 +3410,7 @@ HRESULT WebView::backForwardList(_COM_Outptr_opt_ IWebBackForwardList** list)
     if (!m_useBackForwardList)
         return E_FAIL;
  
-    *list = WebBackForwardList::createInstance(static_cast<BackForwardList*>(m_page->backForward().client()));
+    *list = WebBackForwardList::createInstance(&static_cast<BackForwardList&>(m_page->backForward().client()));
 
     return S_OK;
 }
@@ -3721,7 +3737,7 @@ static void systemParameterChanged(WPARAM parameter)
 {
 #if USE(CG)
     if (parameter == SPI_SETFONTSMOOTHING || parameter == SPI_SETFONTSMOOTHINGTYPE || parameter == SPI_SETFONTSMOOTHINGCONTRAST || parameter == SPI_SETFONTSMOOTHINGORIENTATION)
-        wkSystemFontSmoothingChanged();
+        FontCascade::systemFontSmoothingChanged();
 #endif
 }
 
@@ -3832,11 +3848,11 @@ HRESULT WebView::searchFor(_In_ BSTR str, BOOL forward, BOOL caseFlag, BOOL wrap
 
     FindOptions options;
     if (!caseFlag)
-        options |= CaseInsensitive;
+        options.add(CaseInsensitive);
     if (!forward)
-        options |= Backwards;
+        options.add(Backwards);
     if (wrapFlag)
-        options |= WrapAround;
+        options.add(WrapAround);
     *found = m_page->findString(toString(str), options);
     return S_OK;
 }
@@ -3901,7 +3917,7 @@ HRESULT WebView::markAllMatchesForText(_In_ BSTR str, BOOL caseSensitive, BOOL h
 
     WebCore::FindOptions options;
     if (!caseSensitive)
-        options |= WebCore::CaseInsensitive;
+        options.add(WebCore::CaseInsensitive);
 
     *matches = m_page->markAllMatchesForText(toString(str), options, highlight, limit);
     return S_OK;
@@ -5279,10 +5295,10 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
         return hr;
     settings.setVisualViewportAPIEnabled(!!enabled);
 
-    hr = prefsPrivate->crossOriginWindowPolicySupportEnabled(&enabled);
+    hr = prefsPrivate->CSSOMViewScrollingAPIEnabled(&enabled);
     if (FAILED(hr))
         return hr;
-    settings.setCrossOriginWindowPolicySupportEnabled(!!enabled);
+    settings.setCSSOMViewScrollingAPIEnabled(!!enabled);
 
     hr = preferences->privateBrowsingEnabled(&enabled);
     if (FAILED(hr))
@@ -5971,7 +5987,7 @@ HRESULT WebView::loadBackForwardListFromOtherView(_In_opt_ IWebView* otherView)
         Ref<HistoryItem> newItem = otherBackForward.itemAtIndex(i)->copy();
         if (!i) 
             newItemToGoTo = newItem.ptr();
-        backForward.client()->addItem(WTFMove(newItem));
+        backForward.client().addItem(WTFMove(newItem));
     }
     
     ASSERT(newItemToGoTo);
@@ -6030,7 +6046,7 @@ HRESULT WebView::setProhibitsMainFrameScrolling(BOOL b)
 
 HRESULT WebView::setShouldApplyMacFontAscentHack(BOOL b)
 {
-    Font::setShouldApplyMacAscentHack(b);
+    WebCore::Font::setShouldApplyMacAscentHack(b);
     return S_OK;
 }
 
@@ -6741,15 +6757,6 @@ HRESULT WebView::globalHistoryItem(_COM_Outptr_opt_ IWebHistoryItem** item)
     if (!item)
         return E_POINTER;
     *item = nullptr;
-    if (!m_page)
-        return E_FAIL;
-
-    if (!m_globalHistoryItem) {
-        *item = nullptr;
-        return S_OK;
-    }
-
-    *item = WebHistoryItem::createInstance(m_globalHistoryItem.copyRef());
     return S_OK;
 }
 
@@ -6922,8 +6929,6 @@ HRESULT WebView::addUserScriptToGroup(_In_ BSTR groupName, _In_opt_ IWebScriptWo
         return E_FAIL;
 
     auto viewGroup = WebViewGroup::getOrCreate(group, String());
-    if (!viewGroup)
-        return E_FAIL;
 
     if (!iWorld)
         return E_POINTER;
@@ -6951,8 +6956,6 @@ HRESULT WebView::addUserStyleSheetToGroup(_In_ BSTR groupName, _In_opt_ IWebScri
         return E_FAIL;
 
     auto viewGroup = WebViewGroup::getOrCreate(group, String());
-    if (!viewGroup)
-        return E_FAIL;
 
     if (!iWorld)
         return E_POINTER;
@@ -7140,7 +7143,12 @@ void WebView::setRootChildLayer(GraphicsLayer* layer)
 #if USE(CA)
     if (!m_backingLayer)
         return;
-    m_backingLayer->addChild(layer);
+
+    if (layer)
+        m_backingLayer->addChild(*layer);
+    else
+        m_backingLayer->removeAllChildren();
+
 #elif USE(TEXTURE_MAPPER_GL)
     if (!m_acceleratedCompositingContext)
         return;
@@ -7367,6 +7375,7 @@ void WebView::paintContents(const GraphicsLayer*, GraphicsContext& context, Grap
     context.restore();
 }
 
+#if USE(CA)
 void WebView::flushPendingGraphicsLayerChanges()
 {
     Frame* coreFrame = core(m_mainFrame);
@@ -7381,19 +7390,15 @@ void WebView::flushPendingGraphicsLayerChanges()
 
     view->updateLayoutAndStyleIfNeededRecursive();
 
-#if USE(CA)
     // Updating layout might have taken us out of compositing mode.
     if (m_backingLayer)
         m_backingLayer->flushCompositingStateForThisLayerOnly();
 
     view->flushCompositingStateIncludingSubframes();
-#elif USE(TEXTURE_MAPPER_GL)
-    if (isAcceleratedCompositing())
-        m_acceleratedCompositingContext->flushPendingLayerChanges();
-#endif
 }
+#endif
 
-class EnumTextMatches : public IEnumTextMatches
+class EnumTextMatches final : public IEnumTextMatches
 {
     long m_ref;
     UINT m_index;
@@ -7511,11 +7516,6 @@ HRESULT WebView::setHTTPPipeliningEnabled(BOOL enabled)
     return S_OK;
 }
 
-void WebView::setGlobalHistoryItem(HistoryItem* historyItem)
-{
-    m_globalHistoryItem = historyItem;
-}
-
 #if ENABLE(FULLSCREEN_API)
 bool WebView::supportsFullScreenForElement(const WebCore::Element*, bool withKeyboard) const
 {
@@ -7564,13 +7564,13 @@ void WebView::fullScreenClientSetParentWindow(HWND hostWindow)
 void WebView::fullScreenClientWillEnterFullScreen()
 {
     ASSERT(m_fullScreenElement);
-    m_fullScreenElement->document().webkitWillEnterFullScreenForElement(m_fullScreenElement.get());
+    m_fullScreenElement->document().webkitWillEnterFullScreen(*m_fullScreenElement);
 }
 
 void WebView::fullScreenClientDidEnterFullScreen()
 {
     ASSERT(m_fullScreenElement);
-    m_fullScreenElement->document().webkitDidEnterFullScreenForElement(m_fullScreenElement.get());
+    m_fullScreenElement->document().webkitDidEnterFullScreen();
 }
 
 void WebView::fullScreenClientWillExitFullScreen()
@@ -7582,14 +7582,14 @@ void WebView::fullScreenClientWillExitFullScreen()
 void WebView::fullScreenClientDidExitFullScreen()
 {
     ASSERT(m_fullScreenElement);
-    m_fullScreenElement->document().webkitDidExitFullScreenForElement(m_fullScreenElement.get());
+    m_fullScreenElement->document().webkitDidExitFullScreen();
     m_fullScreenElement = nullptr;
 }
 
 void WebView::fullScreenClientForceRepaint()
 {
     ASSERT(m_fullscreenController);
-    RECT windowRect = {0};
+    RECT windowRect { };
     frameRect(&windowRect);
     repaint(windowRect, true /*contentChanged*/, true /*immediate*/, false /*contentOnly*/);
     m_fullscreenController->repaintCompleted();
@@ -7835,17 +7835,17 @@ HRESULT WebView::findString(_In_ BSTR string, WebFindOptions options, _Deref_opt
     WebCore::FindOptions coreOptions;
 
     if (options & WebFindOptionsCaseInsensitive)
-        coreOptions |= WebCore::CaseInsensitive;
+        coreOptions.add(WebCore::CaseInsensitive);
     if (options & WebFindOptionsAtWordStarts)
-        coreOptions |= WebCore::AtWordStarts;
+        coreOptions.add(WebCore::AtWordStarts);
     if (options & WebFindOptionsTreatMedialCapitalAsWordStart)
-        coreOptions |= WebCore::TreatMedialCapitalAsWordStart;
+        coreOptions.add(WebCore::TreatMedialCapitalAsWordStart);
     if (options & WebFindOptionsBackwards)
-        coreOptions |= WebCore::Backwards;
+        coreOptions.add(WebCore::Backwards);
     if (options & WebFindOptionsWrapAround)
-        coreOptions |= WebCore::WrapAround;
+        coreOptions.add(WebCore::WrapAround);
     if (options & WebFindOptionsStartInSelection)
-        coreOptions |= WebCore::StartInSelection;
+        coreOptions.add(WebCore::StartInSelection);
 
     *found = m_page->findString(toString(string), coreOptions);
     return S_OK;

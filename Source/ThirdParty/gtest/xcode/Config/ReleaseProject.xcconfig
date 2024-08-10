@@ -5,7 +5,7 @@
 //  and examples. It is set in the "Based On:" dropdown in the "Project" info
 //  dialog.
 //  This file is based on the Xcode Configuration files in:
-//  http://code.google.com/p/google-toolbox-for-mac/
+//  https://github.com/google/google-toolbox-for-mac
 // 
 
 #include "General.xcconfig"
@@ -17,6 +17,12 @@ GCC_OPTIMIZATION_LEVEL = s
 
 // Deploment postprocessing is what triggers Xcode to strip
 DEPLOYMENT_POSTPROCESSING = YES
+
+MACOSX_DEPLOYMENT_TARGET = $(MACOSX_DEPLOYMENT_TARGET_$(TARGET_MAC_OS_X_VERSION_MAJOR));
+MACOSX_DEPLOYMENT_TARGET_101200 = 10.12;
+MACOSX_DEPLOYMENT_TARGET_101300 = 10.13;
+MACOSX_DEPLOYMENT_TARGET_101400 = 10.14;
+MACOSX_DEPLOYMENT_TARGET_101500 = 10.15;
 
 // No symbols
 GCC_GENERATE_DEBUGGING_SYMBOLS = NO
@@ -31,11 +37,14 @@ OTHER_CFLAGS = $(OTHER_CFLAGS) -DNDEBUG=1 -Wno-unused-variable
 // When we strip we want to strip all symbols in release, but save externals.
 STRIP_STYLE = all
 
-// Used by HEADER_SEARCH_PATHS in General.xcconfig
-WEBCORE_PRIVATE_HEADERS_DIR = $(BUILT_PRODUCTS_DIR)/WebCore.framework/PrivateHeaders;
-
 ONLY_ACTIVE_ARCH = YES
 
 SDKROOT = $(SDKROOT_$(USE_INTERNAL_SDK));
 SDKROOT_ = macosx;
 SDKROOT_YES = macosx.internal;
+
+MACOSX_DEPLOYMENT_TARGET = $(MACOSX_DEPLOYMENT_TARGET_$(TARGET_MAC_OS_X_VERSION_MAJOR));
+MACOSX_DEPLOYMENT_TARGET_101200 = 10.12;
+MACOSX_DEPLOYMENT_TARGET_101300 = 10.13;
+MACOSX_DEPLOYMENT_TARGET_101400 = 10.14;
+MACOSX_DEPLOYMENT_TARGET_101500 = 10.15;

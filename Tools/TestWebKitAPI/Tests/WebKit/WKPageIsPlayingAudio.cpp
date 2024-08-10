@@ -30,7 +30,6 @@
 #include "PlatformUtilities.h"
 #include "PlatformWebView.h"
 #include "Test.h"
-#include <JavaScriptCore/JSRetainPtr.h>
 #include <JavaScriptCore/JavaScriptCore.h>
 #include <WebKit/WKSerializedScriptValue.h>
 #include <WebKit/WKPagePrivate.h>
@@ -97,7 +96,7 @@ static void setUpClients(WKPageRef page)
 
 TEST(WebKit, WKPageIsPlayingAudio)
 {
-    WKRetainPtr<WKContextRef> context = adoptWK(WKContextCreate());
+    WKRetainPtr<WKContextRef> context = adoptWK(WKContextCreateWithConfiguration(nullptr));
 
     PlatformWebView webView(context.get());
     setUpClients(webView.page());
@@ -116,7 +115,7 @@ TEST(WebKit, WKPageIsPlayingAudio)
 
 TEST(WebKit, MSEIsPlayingAudio)
 {
-    WKRetainPtr<WKContextRef> context = adoptWK(WKContextCreate());
+    WKRetainPtr<WKContextRef> context = adoptWK(WKContextCreateWithConfiguration(nullptr));
 
     WKRetainPtr<WKPageGroupRef> pageGroup(AdoptWK, WKPageGroupCreateWithIdentifier(Util::toWK("MSEIsPlayingAudioPageGroup").get()));
     WKPreferencesRef preferences = WKPageGroupGetPreferences(pageGroup.get());

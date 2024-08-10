@@ -37,7 +37,7 @@
 #include <wtf/MainThread.h>
 #include <wtf/Vector.h>
 
-#if PLATFORM(IOS) || PLATFORM(MAC)
+#if PLATFORM(IOS_FAMILY) || PLATFORM(MAC)
 #include <wtf/spi/darwin/dyldSPI.h>
 #endif
 
@@ -244,7 +244,7 @@ private:
 
 static bool shouldSuppressThreadSafetyCheck()
 {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     return WebThreadIsEnabled() || applicationSDKVersion() < DYLD_IOS_VERSION_12_0;
 #elif PLATFORM(MAC)
     return !isInWebProcess() && applicationSDKVersion() < DYLD_MACOSX_VERSION_10_14;
@@ -262,7 +262,6 @@ TimerBase::~TimerBase()
 {
     ASSERT(canAccessThreadLocalDataForThread(m_thread.get()));
     RELEASE_ASSERT(canAccessThreadLocalDataForThread(m_thread.get()) || shouldSuppressThreadSafetyCheck());
-    RELEASE_ASSERT_WITH_SECURITY_IMPLICATION(canAccessThreadLocalDataForThread(m_thread.get()));
     stop();
     ASSERT(!inHeap());
     if (m_heapItem) {

@@ -354,18 +354,18 @@ WI.ConsoleMessageView = class ConsoleMessageView extends WI.Object
         if (this._message.parameters && this._message.parameters.length === 1) {
             var parameter = this._createRemoteObjectIfNeeded(this._message.parameters[0]);
 
-            parameter.findFunctionSourceCodeLocation().then(function(result) {
+            parameter.findFunctionSourceCodeLocation().then((result) => {
                 if (result === WI.RemoteObject.SourceCodeLocationPromise.NoSourceFound || result === WI.RemoteObject.SourceCodeLocationPromise.MissingObjectId)
                     return;
 
-                var link = this._linkifyLocation(result.sourceCode.url, result.lineNumber, result.columnNumber);
+                var link = this._linkifyLocation(result.sourceCode.sourceURL || result.sourceCode.url, result.lineNumber, result.columnNumber);
                 link.classList.add("console-message-location");
 
                 if (this._element.hasChildNodes())
                     this._element.insertBefore(link, this._element.firstChild);
                 else
                     this._element.appendChild(link);
-            }.bind(this));
+            });
         }
     }
 

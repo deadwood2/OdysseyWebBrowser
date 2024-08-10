@@ -29,7 +29,7 @@
 #include "APINavigation.h"
 #include "APIWebsiteDataStore.h"
 #include "APIWebsitePolicies.h"
-#include "SafeBrowsingResult.h"
+#include "SafeBrowsingWarning.h"
 #include "WebFrameProxy.h"
 #include "WebsiteDataStore.h"
 #include "WebsitePoliciesData.h"
@@ -45,35 +45,35 @@ WebFramePolicyListenerProxy::WebFramePolicyListenerProxy(Reply&& reply, ShouldEx
 
 WebFramePolicyListenerProxy::~WebFramePolicyListenerProxy() = default;
 
-void WebFramePolicyListenerProxy::didReceiveSafeBrowsingResults(Vector<SafeBrowsingResult>&& safeBrowsingResults)
+void WebFramePolicyListenerProxy::didReceiveSafeBrowsingResults(RefPtr<SafeBrowsingWarning>&& safeBrowsingWarning)
 {
-    ASSERT(!m_safeBrowsingResults);
+    ASSERT(!m_safeBrowsingWarning);
     if (m_policyResult) {
         if (m_reply)
-            m_reply(WebCore::PolicyAction::Use, m_policyResult->first.get(), m_policyResult->second, WTFMove(safeBrowsingResults));
+            m_reply(WebCore::PolicyAction::Use, m_policyResult->first.get(), m_policyResult->second, WTFMove(safeBrowsingWarning));
     } else
-        m_safeBrowsingResults = WTFMove(safeBrowsingResults);
+        m_safeBrowsingWarning = WTFMove(safeBrowsingWarning);
 }
 
-void WebFramePolicyListenerProxy::use(API::WebsitePolicies* policies, ShouldProcessSwapIfPossible swap)
+void WebFramePolicyListenerProxy::use(API::WebsitePolicies* policies, ProcessSwapRequestedByClient processSwapRequestedByClient)
 {
-    if (m_safeBrowsingResults) {
+    if (m_safeBrowsingWarning) {
         if (m_reply)
-            m_reply(WebCore::PolicyAction::Use, policies, swap, WTFMove(*m_safeBrowsingResults));
+            m_reply(WebCore::PolicyAction::Use, policies, processSwapRequestedByClient, WTFMove(*m_safeBrowsingWarning));
     } else if (!m_policyResult)
-        m_policyResult = {{ policies, swap }};
+        m_policyResult = {{ policies, processSwapRequestedByClient }};
 }
 
 void WebFramePolicyListenerProxy::download()
 {
     if (m_reply)
-        m_reply(WebCore::PolicyAction::Download, nullptr, ShouldProcessSwapIfPossible::No, { });
+        m_reply(WebCore::PolicyAction::Download, nullptr, ProcessSwapRequestedByClient::No, { });
 }
 
 void WebFramePolicyListenerProxy::ignore()
 {
     if (m_reply)
-        m_reply(WebCore::PolicyAction::Ignore, nullptr, ShouldProcessSwapIfPossible::No, { });
+        m_reply(WebCore::PolicyAction::Ignore, nullptr, ProcessSwapRequestedByClient::No, { });
 }
 
 } // namespace WebKit

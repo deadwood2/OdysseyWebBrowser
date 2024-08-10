@@ -168,7 +168,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             for (var i = 0; computedPropertiesPayload && i < computedPropertiesPayload.length; ++i) {
                 var propertyPayload = computedPropertiesPayload[i];
 
-                var canonicalName = WI.cssStyleManager.canonicalNameForPropertyName(propertyPayload.name);
+                var canonicalName = WI.cssManager.canonicalNameForPropertyName(propertyPayload.name);
                 propertyPayload.implicit = !this._propertyNameToEffectivePropertyMap[canonicalName];
 
                 var property = this._parseStylePropertyPayload(propertyPayload, NaN, this._computedStyle);
@@ -251,7 +251,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         }
 
         // FIXME: Convert to pushing StyleSheet information to the frontend. <rdar://problem/13213680>
-        WI.cssStyleManager.fetchStyleSheetsIfNeeded();
+        WI.cssManager.fetchStyleSheetsIfNeeded();
 
         CSSAgent.getMatchedStylesForNode.invoke({nodeId: this._node.id, includePseudo: true, includeInherited: true}, wrap.call(this, fetchedMatchedStyles, fetchedMatchedStylesPromise));
         CSSAgent.getInlineStylesForNode.invoke({nodeId: this._node.id}, wrap.call(this, fetchedInlineStyles, fetchedInlineStylesPromise));
@@ -312,9 +312,9 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         }
 
         if (styleSheetId)
-            inspectorStyleSheetAvailable.call(this, WI.cssStyleManager.styleSheetForIdentifier(styleSheetId));
+            inspectorStyleSheetAvailable.call(this, WI.cssManager.styleSheetForIdentifier(styleSheetId));
         else
-            WI.cssStyleManager.preferredInspectorStyleSheetForFrame(this._node.frame, inspectorStyleSheetAvailable.bind(this));
+            WI.cssManager.preferredInspectorStyleSheetForFrame(this._node.frame, inspectorStyleSheetAvailable.bind(this));
     }
 
     rulesForSelector(selector)
@@ -368,13 +368,38 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         return this._orderedStyles;
     }
 
+    get uniqueOrderedStyles()
+    {
+        let uniqueStyles = [];
+
+        for (let style of this._orderedStyles) {
+            let rule = style.ownerRule;
+            if (!rule) {
+                uniqueStyles.push(style);
+                continue;
+            }
+
+            let found = false;
+            for (let existingStyle of uniqueStyles) {
+                if (rule.isEqualTo(existingStyle.ownerRule)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                uniqueStyles.push(style);
+        }
+
+        return uniqueStyles;
+    }
+
     effectivePropertyForName(name)
     {
         let property = this._propertyNameToEffectivePropertyMap[name];
         if (property)
             return property;
 
-        let canonicalName = WI.cssStyleManager.canonicalNameForPropertyName(name);
+        let canonicalName = WI.cssManager.canonicalNameForPropertyName(name);
         return this._propertyNameToEffectivePropertyMap[canonicalName] || null;
     }
 
@@ -394,51 +419,6 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
     attributeDidChange(node, attributeName)
     {
         this._markAsNeedsRefresh();
-    }
-
-    changeRule(rule, selector, text)
-    {
-        if (!rule)
-            return;
-
-        selector = selector || "";
-
-        function changeCompleted()
-        {
-            DOMAgent.markUndoableState();
-            this.refresh();
-        }
-
-        function styleChanged(error, stylePayload)
-        {
-            if (error)
-                return;
-
-            changeCompleted.call(this);
-        }
-
-        function changeText(styleId)
-        {
-            if (!text || !text.length) {
-                changeCompleted.call(this);
-                return;
-            }
-
-            CSSAgent.setStyleText(styleId, text, styleChanged.bind(this));
-        }
-
-        function ruleSelectorChanged(error, rulePayload)
-        {
-            if (error)
-                return;
-
-            changeText.call(this, rulePayload.style.styleId);
-        }
-
-        this._needsRefresh = true;
-        this._ignoreNextContentDidChangeForStyleSheet = rule.ownerStyleSheet;
-
-        CSSAgent.setRuleSelector(rule.id, selector, ruleSelectorChanged.bind(this));
     }
 
     changeRuleSelector(rule, selector)
@@ -469,21 +449,25 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         return result.promise;
     }
 
-    changeStyleText(style, text)
+    changeStyleText(style, text, callback)
     {
-        if (!style.ownerStyleSheet || !style.styleSheetTextRange)
+        if (!style.ownerStyleSheet || !style.styleSheetTextRange) {
+            callback();
             return;
+        }
 
         text = text || "";
 
-        function styleChanged(error, stylePayload)
-        {
-            if (error)
+        let didSetStyleText = (error, stylePayload) => {
+            if (error) {
+                callback(error);
                 return;
-            this.refresh();
-        }
+            }
 
-        CSSAgent.setStyleText(style.id, text, styleChanged.bind(this));
+            this.refresh().then(callback);
+        };
+
+        CSSAgent.setStyleText(style.id, text, didSetStyleText);
     }
 
     // Private
@@ -497,7 +481,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         // Try to use the node to find the frame which has the correct resource first.
         if (this._node.ownerDocument) {
-            var mainResource = WI.frameResourceManager.resourceForURL(this._node.ownerDocument.documentURL);
+            var mainResource = WI.networkManager.resourceForURL(this._node.ownerDocument.documentURL);
             if (mainResource) {
                 var parentFrame = mainResource.parentFrame;
                 sourceCode = parentFrame.resourceForURL(sourceURL);
@@ -506,7 +490,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         // If that didn't find the resource, then search all frames.
         if (!sourceCode)
-            sourceCode = WI.frameResourceManager.resourceForURL(sourceURL);
+            sourceCode = WI.networkManager.resourceForURL(sourceURL);
 
         if (!sourceCode)
             return null;
@@ -528,6 +512,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         var name = payload.name;
         var value = payload.value || "";
         var priority = payload.priority || "";
+        let range = payload.range || null;
 
         var enabled = true;
         var overridden = false;
@@ -552,11 +537,24 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             break;
         }
 
+        if (range) {
+            // Last property of inline style has mismatching range.
+            // The actual text has one line, but the range spans two lines.
+            let rangeLineCount = 1 + range.endLine - range.startLine;
+            if (rangeLineCount > 1) {
+                let textLineCount = text.lineCount;
+                if (textLineCount === rangeLineCount - 1) {
+                    range.endLine = range.startLine + (textLineCount - 1);
+                    range.endColumn = range.startColumn + text.lastLine.length;
+                }
+            }
+        }
+
         var styleSheetTextRange = this._parseSourceRangePayload(payload.range);
 
         if (styleDeclaration) {
             // Use propertyForName when the index is NaN since propertyForName is fast in that case.
-            var property = isNaN(index) ? styleDeclaration.propertyForName(name, true) : styleDeclaration.properties[index];
+            var property = isNaN(index) ? styleDeclaration.propertyForName(name, true) : styleDeclaration.enabledProperties[index];
 
             // Reuse a property if the index and name matches. Otherwise it is a different property
             // and should be created from scratch. This works in the simple cases where only existing
@@ -677,7 +675,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             return styleDeclaration;
         }
 
-        var styleSheet = id ? WI.cssStyleManager.styleSheetForIdentifier(id.styleSheetId) : null;
+        var styleSheet = id ? WI.cssManager.styleSheetForIdentifier(id.styleSheetId) : null;
         if (styleSheet) {
             if (type === WI.CSSStyleDeclaration.Type.Inline)
                 styleSheet.markAsInlineStyleAttributeStyleSheet();
@@ -759,11 +757,11 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         if (!style)
             return null;
 
-        var styleSheet = id ? WI.cssStyleManager.styleSheetForIdentifier(id.styleSheetId) : null;
+        var styleSheet = id ? WI.cssManager.styleSheetForIdentifier(id.styleSheetId) : null;
 
         var selectorText = payload.selectorList.text;
         var selectors = this._parseSelectorListPayload(payload.selectorList);
-        var type = WI.CSSStyleManager.protocolStyleSheetOriginToEnum(payload.origin);
+        var type = WI.CSSManager.protocolStyleSheetOriginToEnum(payload.origin);
 
         var sourceCodeLocation = null;
         var sourceRange = payload.selectorList.range;
@@ -784,7 +782,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         var mediaList = [];
         for (var i = 0; payload.media && i < payload.media.length; ++i) {
             var mediaItem = payload.media[i];
-            var mediaType = WI.CSSStyleManager.protocolMediaSourceToEnum(mediaItem.source);
+            var mediaType = WI.CSSManager.protocolMediaSourceToEnum(mediaItem.source);
             var mediaText = mediaItem.text;
             var mediaSourceCodeLocation = this._createSourceCodeLocation(mediaItem.sourceURL, mediaItem.sourceLine);
             if (styleSheet)
@@ -900,7 +898,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         for (var i = 0; i < styles.length; ++i) {
             var style = styles[i];
-            var properties = style.properties;
+            var properties = style.enabledProperties;
 
             for (var j = 0; j < properties.length; ++j) {
                 var property = properties[j];
@@ -942,7 +940,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
     _associateRelatedProperties(styles, propertyNameToEffectiveProperty)
     {
         for (var i = 0; i < styles.length; ++i) {
-            var properties = styles[i].properties;
+            var properties = styles[i].enabledProperties;
 
             var knownShorthands = {};
 
@@ -999,7 +997,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
     _isPropertyFoundInMatchingRules(propertyName)
     {
         return this._orderedStyles.some((style) => {
-            return style.properties.some((property) => property.name === propertyName);
+            return style.enabledProperties.some((property) => property.name === propertyName);
         });
     }
 };

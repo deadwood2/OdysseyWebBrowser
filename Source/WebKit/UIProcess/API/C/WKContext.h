@@ -31,6 +31,7 @@
 #include <WebKit/WKContextDownloadClient.h>
 #include <WebKit/WKContextHistoryClient.h>
 #include <WebKit/WKContextInjectedBundleClient.h>
+#include <WebKit/WKDeprecated.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,7 +51,6 @@ typedef WKDataRef (*WKContextCopyWebCryptoMasterKeyCallback)(WKContextRef contex
 
 typedef void (*WKContextChildProcessDidCrashCallback)(WKContextRef context, const void *clientInfo);
 typedef WKContextChildProcessDidCrashCallback WKContextNetworkProcessDidCrashCallback;
-typedef WKContextChildProcessDidCrashCallback WKContextDatabaseProcessDidCrashCallback;
 
 typedef struct WKContextClientBase {
     int                                                                 version;
@@ -89,8 +89,6 @@ typedef struct WKContextClientV2 {
     // Version 1.
     void                                                                (*copyWebCryptoMasterKey_unavailable)(void);
 
-    // Version 2.
-    WKContextDatabaseProcessDidCrashCallback                            databaseProcessDidCrash;
 } WKContextClientV2;
 
 // FIXME: Remove these once support for Mavericks has been dropped.
@@ -108,7 +106,7 @@ typedef uint32_t WKStatisticsOptions;
 
 WK_EXPORT WKTypeID WKContextGetTypeID();
 
-WK_EXPORT WKContextRef WKContextCreate();
+WK_EXPORT WKContextRef WKContextCreate() WK_C_API_DEPRECATED_WITH_REPLACEMENT(WKContextCreateWithConfiguration);
 WK_EXPORT WKContextRef WKContextCreateWithInjectedBundlePath(WKStringRef path);
 WK_EXPORT WKContextRef WKContextCreateWithConfiguration(WKContextConfigurationRef configuration);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,17 +33,10 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <QuickLook/QuickLook.h>
 #import <UIKit/UIViewController.h>
+#import <WebCore/MIMETypeRegistry.h>
+#import <pal/ios/QuickLookSoftLink.h>
 #import <pal/spi/ios/QuickLookSPI.h>
-#import <wtf/SoftLinking.h>
 #import <wtf/WeakObjCPtr.h>
-
-#if USE(APPLE_INTERNAL_SDK)
-#import <WebKitAdditions/SystemPreviewTypes.cpp>
-#endif
-
-SOFT_LINK_FRAMEWORK(QuickLook)
-SOFT_LINK_CLASS(QuickLook, QLPreviewController);
-SOFT_LINK_CLASS(QuickLook, QLItem);
 
 @interface _WKPreviewControllerDataSource : NSObject <QLPreviewControllerDataSource> {
     RetainPtr<NSItemProvider> _itemProvider;
@@ -85,13 +78,13 @@ SOFT_LINK_CLASS(QuickLook, QLItem);
         return _item.get();
 
     _itemProvider = adoptNS([[NSItemProvider alloc] init]);
-    NSString *contentType = @"public.content";
-#if USE(APPLE_INTERNAL_SDK)
     // FIXME: We are launching the preview controller before getting a response from the resource, which
-    // means we don't actually know the real MIME type yet. Assume it is one of those that we registered.
-    contentType = WebKit::getUTIForMIMEType(*WebKit::getSystemPreviewMIMETypes().begin());
-#endif
-    _item = adoptNS([allocQLItemInstance() initWithPreviewItemProvider:_itemProvider.get() contentType:contentType previewTitle:@"Preview" fileSize:@(0)]);
+    // means we don't actually know the real MIME type yet.
+    // FIXME: At the moment we only have one supported UTI, but if we start supporting more types,
+    // then we'll need a table.
+    static NSString *contentType = (__bridge NSString *) UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, CFSTR("usdz"), nil);
+
+    _item = adoptNS([PAL::allocQLItemInstance() initWithPreviewItemProvider:_itemProvider.get() contentType:contentType previewTitle:@"Preview" fileSize:@(0)]);
     [_item setUseLoadingTimeout:NO];
 
     WeakObjCPtr<_WKPreviewControllerDataSource> weakSelf { self };
@@ -108,7 +101,7 @@ SOFT_LINK_CLASS(QuickLook, QLItem);
         [_item setPreviewItemProviderProgress:@(progress)];
 }
 
-- (void)finish:(WebCore::URL)url
+- (void)finish:(URL)url
 {
     if (self.completionHandler)
         self.completionHandler((NSURL*)url, nil);
@@ -207,7 +200,7 @@ void SystemPreviewController::start(const String& mimeType, const WebCore::IntRe
     if (!presentingViewController)
         return;
 
-    m_qlPreviewController = adoptNS([allocQLPreviewControllerInstance() init]);
+    m_qlPreviewController = adoptNS([PAL::allocQLPreviewControllerInstance() init]);
 
     m_qlPreviewControllerDelegate = adoptNS([[_WKPreviewControllerDelegate alloc] initWithSystemPreviewController:this fromRect:fromRect]);
     [m_qlPreviewController setDelegate:m_qlPreviewControllerDelegate.get()];
@@ -224,7 +217,7 @@ void SystemPreviewController::updateProgress(float progress)
         [m_qlPreviewControllerDataSource setProgress:progress];
 }
 
-void SystemPreviewController::finish(WebCore::URL url)
+void SystemPreviewController::finish(URL url)
 {
     if (m_qlPreviewControllerDataSource)
         [m_qlPreviewControllerDataSource finish:url];

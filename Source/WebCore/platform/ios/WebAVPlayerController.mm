@@ -27,7 +27,7 @@
 #import "config.h"
 #import "WebAVPlayerController.h"
 
-#if PLATFORM(IOS) && HAVE(AVKIT)
+#if PLATFORM(IOS_FAMILY) && HAVE(AVKIT)
 
 #import "Logging.h"
 #import "PlaybackSessionInterfaceAVKit.h"
@@ -48,6 +48,7 @@ using namespace WebCore;
 
 static void * WebAVPlayerControllerSeekableTimeRangesObserverContext = &WebAVPlayerControllerSeekableTimeRangesObserverContext;
 static void * WebAVPlayerControllerHasLiveStreamingContentObserverContext = &WebAVPlayerControllerHasLiveStreamingContentObserverContext;
+static void * WebAVPlayerControllerIsPlayingOnSecondScreenObserverContext = &WebAVPlayerControllerIsPlayingOnSecondScreenObserverContext;
 
 static double WebAVPlayerControllerLiveStreamSeekableTimeRangeDurationHysteresisDelta = 3.0; // Minimum delta of time required to change the duration of the seekable time range.
 static double WebAVPlayerControllerLiveStreamMinimumTargetDuration = 1.0; // Minimum segment duration to be considered valid.
@@ -55,6 +56,7 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
 
 @implementation WebAVPlayerController {
     BOOL _liveStreamEventModePossible;
+    BOOL _isScrubbing;
 }
 
 - (instancetype)init
@@ -71,7 +73,7 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
 
     [self addObserver:self forKeyPath:@"seekableTimeRanges" options:(NSKeyValueObservingOptionOld | NSKeyValueObservingOptionNew | NSKeyValueObservingOptionInitial) context:WebAVPlayerControllerSeekableTimeRangesObserverContext];
     [self addObserver:self forKeyPath:@"hasLiveStreamingContent" options:NSKeyValueObservingOptionInitial context:WebAVPlayerControllerHasLiveStreamingContentObserverContext];
-
+    [self addObserver:self forKeyPath:@"playingOnSecondScreen" options:NSKeyValueObservingOptionNew context:WebAVPlayerControllerIsPlayingOnSecondScreenObserverContext];
 
     return self;
 }
@@ -80,6 +82,7 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
 {
     [self removeObserver:self forKeyPath:@"seekableTimeRanges" context:WebAVPlayerControllerSeekableTimeRangesObserverContext];
     [self removeObserver:self forKeyPath:@"hasLiveStreamingContent" context:WebAVPlayerControllerHasLiveStreamingContentObserverContext];
+    [self removeObserver:self forKeyPath:@"playingOnSecondScreen" context:WebAVPlayerControllerIsPlayingOnSecondScreenObserverContext];
 
     [_playerControllerProxy release];
     [_loadedTimeRanges release];
@@ -155,6 +158,7 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
 - (void)beginScrubbing:(id)sender
 {
     UNUSED_PARAM(sender);
+    _isScrubbing = YES;
     if (self.delegate)
         self.delegate->beginScrubbing();
 }
@@ -162,6 +166,7 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
 - (void)endScrubbing:(id)sender
 {
     UNUSED_PARAM(sender);
+    _isScrubbing = NO;
     if (self.delegate)
         self.delegate->endScrubbing();
 }
@@ -284,6 +289,11 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
 
     if (!isnan(timeAtEndOfSeekableTimeRanges))
         [self seekToTime:timeAtEndOfSeekableTimeRanges];
+}
+
+- (BOOL)isScrubbing
+{
+    return _isScrubbing;
 }
 
 - (BOOL)canScanForward
@@ -553,6 +563,10 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
         }
     } else if (WebAVPlayerControllerHasLiveStreamingContentObserverContext == context)
         [self updateMinMaxTiming];
+    else if (WebAVPlayerControllerIsPlayingOnSecondScreenObserverContext == context) {
+        if (auto* delegate = self.delegate)
+            delegate->setPlayingOnSecondScreen(_playingOnSecondScreen);
+    }
 }
 
 - (void)updateMinMaxTiming
@@ -619,37 +633,6 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
     return [NSSet setWithObjects:@"hasLiveStreamingContent", @"minTiming", @"maxTiming", @"seekableTimeRangesLastModifiedTime", nil];
 }
 
-- (void)resetMediaState
-{
-    self.contentDuration = 0;
-    self.contentDurationWithinEndTimes = 0;
-    self.loadedTimeRanges = @[];
-
-    self.canPlay = NO;
-    self.canPause = NO;
-    self.canTogglePlayback = NO;
-    self.hasEnabledAudio = NO;
-    self.canSeek = NO;
-    self.status = AVPlayerControllerStatusUnknown;
-
-    self.minTiming = nil;
-    self.maxTiming = nil;
-    self.timing = nil;
-    self.rate = 0;
-    self.volume = 0;
-
-    self.seekableTimeRanges = [NSMutableArray array];
-
-    self.canScanBackward = NO;
-
-    self.audioMediaSelectionOptions = nil;
-    self.currentAudioMediaSelectionOption = nil;
-
-    self.legibleMediaSelectionOptions = nil;
-    self.currentLegibleMediaSelectionOption = nil;
-    _liveStreamEventModePossible = YES;
-}
-
 @end
 
 @implementation WebAVMediaSelectionOption
@@ -662,5 +645,5 @@ static double WebAVPlayerControllerLiveStreamSeekableTimeRangeMinimumDuration = 
 
 @end
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)
 

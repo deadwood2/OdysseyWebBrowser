@@ -130,7 +130,7 @@ static WKEventModifiers parseModifier(JSStringRef modifier)
 
 static unsigned arrayLength(JSContextRef context, JSObjectRef array)
 {
-    JSRetainPtr<JSStringRef> lengthString(Adopt, JSStringCreateWithUTF8CString("length"));
+    auto lengthString = adopt(JSStringCreateWithUTF8CString("length"));
     JSValueRef lengthValue = JSObjectGetProperty(context, array, lengthString.get(), 0);
     if (!lengthValue)
         return 0;
@@ -144,7 +144,7 @@ static WKEventModifiers parseModifierArray(JSContextRef context, JSValueRef arra
 
     // The value may either be a string with a single modifier or an array of modifiers.
     if (JSValueIsString(context, arrayValue)) {
-        JSRetainPtr<JSStringRef> string(Adopt, JSValueToStringCopy(context, arrayValue, 0));
+        auto string = adopt(JSValueToStringCopy(context, arrayValue, 0));
         return parseModifier(string.get());
     }
 
@@ -158,7 +158,7 @@ static WKEventModifiers parseModifierArray(JSContextRef context, JSValueRef arra
         JSValueRef value = JSObjectGetPropertyAtIndex(context, array, i, &exception);
         if (exception)
             continue;
-        JSRetainPtr<JSStringRef> string(Adopt, JSValueToStringCopy(context, value, &exception));
+        auto string = adopt(JSValueToStringCopy(context, value, &exception));
         if (exception)
             continue;
         modifiers |= parseModifier(string.get());
@@ -604,10 +604,10 @@ static void executeCallback(void* context)
     if (!context)
         return;
 
-    std::unique_ptr<ScrollCompletionCallbackData> callBackData(reinterpret_cast<ScrollCompletionCallbackData*>(context));
+    std::unique_ptr<ScrollCompletionCallbackData> callbackData(reinterpret_cast<ScrollCompletionCallbackData*>(context));
 
-    JSObjectCallAsFunction(callBackData->m_context, callBackData->m_function, nullptr, 0, nullptr, nullptr);
-    JSValueUnprotect(callBackData->m_context, callBackData->m_function);
+    JSObjectCallAsFunction(callbackData->m_context, callbackData->m_function, nullptr, 0, nullptr, nullptr);
+    JSValueUnprotect(callbackData->m_context, callbackData->m_function);
 }
 
 void EventSendingController::callAfterScrollingCompletes(JSValueRef functionCallback)
@@ -626,8 +626,12 @@ void EventSendingController::callAfterScrollingCompletes(JSValueRef functionCall
     JSValueProtect(context, functionCallbackObject);
 
     auto scrollCompletionCallbackData = std::make_unique<ScrollCompletionCallbackData>(context, functionCallbackObject);
-
-    WKBundlePageRegisterScrollOperationCompletionCallback(page, executeCallback, scrollCompletionCallbackData.release());
+    auto scrollCompletionCallbackDataPtr = scrollCompletionCallbackData.release();
+    bool callbackWillBeCalled = WKBundlePageRegisterScrollOperationCompletionCallback(page, executeCallback, scrollCompletionCallbackDataPtr);
+    if (!callbackWillBeCalled) {
+        // Reassign raw pointer to std::unique_ptr<> so it will not be leaked.
+        scrollCompletionCallbackData.reset(scrollCompletionCallbackDataPtr);
+    }
 }
 
 #if ENABLE(TOUCH_EVENTS)

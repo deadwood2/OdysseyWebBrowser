@@ -85,11 +85,11 @@ void CurlResourceHandleDelegate::curlDidSendData(CurlRequest& request, unsigned 
     client()->didSendData(&m_handle, bytesSent, totalBytesToBeSent);
 }
 
-static void handleCookieHeaders(const CurlResponse& response)
+static void handleCookieHeaders(ResourceHandleInternal* d, const CurlResponse& response)
 {
     static const auto setCookieHeader = "set-cookie: ";
 
-    const auto& storageSession = NetworkStorageSession::defaultStorageSession();
+    const auto& storageSession = *d->m_context->storageSession();
     const auto& cookieJar = storageSession.cookieStorage();
     for (const auto& header : response.headers) {
         if (header.startsWithIgnoringASCIICase(setCookieHeader)) {
@@ -112,14 +112,14 @@ void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, co
     m_response.setCertificateInfo(request.certificateInfo().isolatedCopy());
     m_response.setDeprecatedNetworkLoadMetrics(request.networkLoadMetrics().isolatedCopy());
 
-    handleCookieHeaders(receivedResponse);
+    handleCookieHeaders(d(), receivedResponse);
 
     if (m_response.shouldRedirect()) {
         m_handle.willSendRequest();
         return;
     }
 
-    if (m_response.isUnauthorized()) {
+    if (m_response.isUnauthorized() && receivedResponse.availableHttpAuth) {
         AuthenticationChallenge challenge(receivedResponse, d()->m_authFailureCount, m_response, &m_handle);
         m_handle.didReceiveAuthenticationChallenge(challenge);
         d()->m_authFailureCount++;

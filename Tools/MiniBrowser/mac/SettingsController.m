@@ -32,6 +32,7 @@
 
 #if WK_API_ENABLED
 #import <WebKit/_WKExperimentalFeature.h>
+#import <WebKit/_WKInternalDebugFeature.h>
 #endif
 
 static NSString * const defaultURL = @"http://www.webkit.org/";
@@ -73,7 +74,6 @@ static NSString * const UseRemoteLayerTreeDrawingAreaPreferenceKey = @"WebKit2Us
 
 static NSString * const PerWindowWebProcessesDisabledKey = @"PerWindowWebProcessesDisabled";
 static NSString * const NetworkCacheSpeculativeRevalidationDisabledKey = @"NetworkCacheSpeculativeRevalidationDisabled";
-static NSString * const ProcessSwapOnNavigationKey = @"ProcessSwapOnNavigation";
 static NSString * const ProcessSwapOnWindowOpenWithOpenerKey = @"ProcessSwapOnWindowOpenWithOpener";
 
 typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
@@ -81,6 +81,7 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
     WheelEventHandlerRegionOverlayTag,
 #if WK_API_ENABLED
     ExperimentalFeatureTag,
+    InternalDebugFeatureTag,
 #endif
 };
 
@@ -186,7 +187,6 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
     [self _addItemWithTitle:@"Load All Site Icons Per-Page" action:@selector(toggleLoadsAllSiteIcons:) indented:YES];
     [self _addItemWithTitle:@"Use GameController.framework on macOS (Restart required)" action:@selector(toggleUsesGameControllerFramework:) indented:YES];
     [self _addItemWithTitle:@"Disable network cache speculative revalidation" action:@selector(toggleNetworkCacheSpeculativeRevalidationDisabled:) indented:YES];
-    [self _addItemWithTitle:@"Enable Process Swap on Navigation" action:@selector(toggleProcessSwapOnNavigation:) indented:YES];
     [self _addItemWithTitle:@"Enable Process Swap on window.open() with an opener" action:@selector(toggleProcessSwapOnWindowOpenWithOpener:) indented:YES];
 
     NSMenuItem *debugOverlaysSubmenuItem = [[NSMenuItem alloc] initWithTitle:@"Debug Overlays" action:nil keyEquivalent:@""];
@@ -212,9 +212,9 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
     NSMenu *experimentalFeaturesMenu = [[NSMenu alloc] initWithTitle:@"Experimental Features"];
     [experimentalFeaturesSubmenuItem setSubmenu:experimentalFeaturesMenu];
 
-    NSArray<_WKExperimentalFeature *> *features = [WKPreferences _experimentalFeatures];
+    NSArray<_WKExperimentalFeature *> *experimentalFeatures = [WKPreferences _experimentalFeatures];
 
-    for (_WKExperimentalFeature *feature in features) {
+    for (_WKExperimentalFeature *feature in experimentalFeatures) {
         NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:feature.name action:@selector(toggleExperimentalFeature:) keyEquivalent:@""];
         item.toolTip = feature.details;
         item.representedObject = feature;
@@ -227,6 +227,26 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
     [_menu addItem:experimentalFeaturesSubmenuItem];
     [experimentalFeaturesSubmenuItem release];
     [experimentalFeaturesMenu release];
+
+    NSMenuItem *internalDebugFeaturesSubmenuItem = [[NSMenuItem alloc] initWithTitle:@"Internal Features" action:nil keyEquivalent:@""];
+    NSMenu *internalDebugFeaturesMenu = [[NSMenu alloc] initWithTitle:@"Internal Features"];
+    [internalDebugFeaturesSubmenuItem setSubmenu:internalDebugFeaturesMenu];
+
+    NSArray<_WKInternalDebugFeature *> *internalDebugFeatures = [WKPreferences _internalDebugFeatures];
+
+    for (_WKInternalDebugFeature *feature in internalDebugFeatures) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:feature.name action:@selector(toggleInternalDebugFeature:) keyEquivalent:@""];
+        item.toolTip = feature.details;
+        item.representedObject = feature;
+
+        [item setTag:InternalDebugFeatureTag];
+        [item setTarget:self];
+        [internalDebugFeaturesMenu addItem:[item autorelease]];
+    }
+
+    [_menu addItem:internalDebugFeaturesSubmenuItem];
+    [internalDebugFeaturesSubmenuItem release];
+    [internalDebugFeaturesMenu release];
 #endif // WK_API_ENABLED
 
     [self _addHeaderWithTitle:@"WebKit1-only Settings"];
@@ -285,8 +305,6 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
         [menuItem setState:[self usesGameControllerFramework] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleNetworkCacheSpeculativeRevalidationDisabled:))
         [menuItem setState:[self networkCacheSpeculativeRevalidationDisabled] ? NSControlStateValueOn : NSControlStateValueOff];
-    else if (action == @selector(toggleProcessSwapOnNavigation:))
-        [menuItem setState:[self processSwapOnNavigationEnabled] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleProcessSwapOnWindowOpenWithOpener:))
         [menuItem setState:[self processSwapOnWindowOpenWithOpenerEnabled] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleUseUISideCompositing:))
@@ -301,7 +319,11 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
 #if WK_API_ENABLED
     if (menuItem.tag == ExperimentalFeatureTag) {
         _WKExperimentalFeature *feature = menuItem.representedObject;
-        [menuItem setState:[defaultPreferences() _isEnabledForFeature:feature] ? NSControlStateValueOn : NSControlStateValueOff];
+        [menuItem setState:[defaultPreferences() _isEnabledForExperimentalFeature:feature] ? NSControlStateValueOn : NSControlStateValueOff];
+    }
+    if (menuItem.tag == InternalDebugFeatureTag) {
+        _WKInternalDebugFeature *feature = menuItem.representedObject;
+        [menuItem setState:[defaultPreferences() _isEnabledForInternalDebugFeature:feature] ? NSControlStateValueOn : NSControlStateValueOff];
     }
 #endif
 
@@ -504,16 +526,6 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
     [self _toggleBooleanDefault:NetworkCacheSpeculativeRevalidationDisabledKey];
 }
 
-- (BOOL)processSwapOnNavigationEnabled
-{
-    return [[NSUserDefaults standardUserDefaults] boolForKey:ProcessSwapOnNavigationKey];
-}
-
-- (void)toggleProcessSwapOnNavigation:(id)sender
-{
-    [self _toggleBooleanDefault:ProcessSwapOnNavigationKey];
-}
-
 - (BOOL)processSwapOnWindowOpenWithOpenerEnabled
 {
     return [[NSUserDefaults standardUserDefaults] boolForKey:ProcessSwapOnWindowOpenWithOpenerKey];
@@ -654,8 +666,19 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
     _WKExperimentalFeature *feature = ((NSMenuItem *)sender).representedObject;
     WKPreferences *preferences = defaultPreferences();
 
-    BOOL currentlyEnabled = [preferences _isEnabledForFeature:feature];
-    [preferences _setEnabled:!currentlyEnabled forFeature:feature];
+    BOOL currentlyEnabled = [preferences _isEnabledForExperimentalFeature:feature];
+    [preferences _setEnabled:!currentlyEnabled forExperimentalFeature:feature];
+
+    [[NSUserDefaults standardUserDefaults] setBool:!currentlyEnabled forKey:feature.key];
+}
+
+- (void)toggleInternalDebugFeature:(id)sender
+{
+    _WKInternalDebugFeature *feature = ((NSMenuItem *)sender).representedObject;
+    WKPreferences *preferences = defaultPreferences();
+
+    BOOL currentlyEnabled = [preferences _isEnabledForInternalDebugFeature:feature];
+    [preferences _setEnabled:!currentlyEnabled forInternalDebugFeature:feature];
 
     [[NSUserDefaults standardUserDefaults] setBool:!currentlyEnabled forKey:feature.key];
 }

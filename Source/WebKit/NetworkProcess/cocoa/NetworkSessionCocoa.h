@@ -44,15 +44,12 @@ class LegacyCustomProtocolManager;
 class NetworkSessionCocoa final : public NetworkSession {
     friend class NetworkDataTaskCocoa;
 public:
-    static Ref<NetworkSession> create(NetworkSessionCreationParameters&&);
+    static Ref<NetworkSession> create(NetworkProcess&, NetworkSessionCreationParameters&&);
     ~NetworkSessionCocoa();
 
     // Must be called before any NetworkSession has been created.
-    // FIXME: Move these to NetworkSessionCreationParameters.
-    static void setSourceApplicationAuditTokenData(RetainPtr<CFDataRef>&&);
-    static void setSourceApplicationBundleIdentifier(const String&);
-    static void setSourceApplicationSecondaryIdentifier(const String&);
-#if PLATFORM(IOS)
+    // FIXME: Move this to NetworkSessionCreationParameters.
+#if PLATFORM(IOS_FAMILY)
     static void setCTDataConnectionServiceType(const String&);
 #endif
 
@@ -65,11 +62,15 @@ public:
 
     static bool allowsSpecificHTTPSCertificateForHost(const WebCore::AuthenticationChallenge&);
 
+    void continueDidReceiveChallenge(const WebCore::AuthenticationChallenge&, NetworkDataTaskCocoa::TaskIdentifier, NetworkDataTaskCocoa*, CompletionHandler<void(WebKit::AuthenticationChallengeDisposition, const WebCore::Credential&)>&&);
+
 private:
-    NetworkSessionCocoa(NetworkSessionCreationParameters&&);
+    NetworkSessionCocoa(NetworkProcess&, NetworkSessionCreationParameters&&);
 
     void invalidateAndCancel() override;
     void clearCredentials() override;
+    bool shouldLogCookieInformation() const override { return m_shouldLogCookieInformation; }
+    Seconds loadThrottleLatency() const override { return m_loadThrottleLatency; }
 
     HashMap<NetworkDataTaskCocoa::TaskIdentifier, NetworkDataTaskCocoa*> m_dataTaskMapWithCredentials;
     HashMap<NetworkDataTaskCocoa::TaskIdentifier, NetworkDataTaskCocoa*> m_dataTaskMapWithoutState;
@@ -82,6 +83,8 @@ private:
 
     String m_boundInterfaceIdentifier;
     RetainPtr<CFDictionaryRef> m_proxyConfiguration;
+    bool m_shouldLogCookieInformation { false };
+    Seconds m_loadThrottleLatency;
 };
 
 } // namespace WebKit

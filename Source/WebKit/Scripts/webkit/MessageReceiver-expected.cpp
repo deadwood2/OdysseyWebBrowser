@@ -180,7 +180,7 @@ void WebPage::didReceiveSyncMessage(IPC::Connection& connection, IPC::Decoder& d
         return;
     }
     if (decoder.messageName() == Messages::WebPage::TestMultipleAttributes::name()) {
-        IPC::handleMessageDelayed<Messages::WebPage::TestMultipleAttributes>(connection, decoder, replyEncoder, this, &WebPage::testMultipleAttributes);
+        IPC::handleMessageDelayedWantsConnection<Messages::WebPage::TestMultipleAttributes>(connection, decoder, replyEncoder, this, &WebPage::testMultipleAttributes);
         return;
     }
 #if PLATFORM(MAC)
@@ -196,5 +196,6 @@ void WebPage::didReceiveSyncMessage(IPC::Connection& connection, IPC::Decoder& d
 }
 
 } // namespace WebKit
+
 
 #endif // (ENABLE(WEBKIT2) && (NESTED_MASTER_CONDITION || MASTER_OR && MASTER_AND))

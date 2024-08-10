@@ -28,7 +28,7 @@
 
 #import "TestController.h"
 #import "TestRunnerWKWebView.h"
-#import "UIKitTestSPI.h"
+#import "UIKitSPI.h"
 #import <WebKit/WKImageCG.h>
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKSnapshotConfiguration.h>
@@ -181,6 +181,7 @@ PlatformWebView::PlatformWebView(WKWebViewConfiguration* configuration, const Te
     m_view = [[TestRunnerWKWebView alloc] initWithFrame:viewRectForWindowRect(rect, WebViewSizingMode::Default) configuration:configuration];
 
     [m_window.rootViewController.view addSubview:m_view];
+    [m_view becomeFirstResponder];
     [m_window makeKeyAndVisible];
 }
 
@@ -285,13 +286,21 @@ void PlatformWebView::removeChromeInputField()
 
 void PlatformWebView::makeWebViewFirstResponder()
 {
-    // FIXME: iOS equivalent?
-    // [m_window makeFirstResponder:m_view];
+    [m_view becomeFirstResponder];
 }
 
 void PlatformWebView::changeWindowScaleIfNeeded(float)
 {
     // Retina only surface.
+}
+
+void PlatformWebView::setEditable(bool editable)
+{
+#if WK_API_ENABLED
+    m_view._editable = editable;
+#else
+    UNUSED_PARAM(editable);
+#endif
 }
 
 bool PlatformWebView::drawsBackground() const
