@@ -28,8 +28,8 @@
 #include "WebProcessPool.h"
 
 #include "WebProcessCreationParameters.h"
-#include <WebCore/FileSystem.h>
 #include <WebCore/NotImplemented.h>
+#include <wtf/FileSystem.h>
 
 namespace WebKit {
 
@@ -51,46 +51,6 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
 void WebProcessPool::platformInvalidateContext()
 {
     notImplemented();
-}
-
-String WebProcessPool::legacyPlatformDefaultApplicationCacheDirectory()
-{
-    return WebCore::FileSystem::pathByAppendingComponent(WebCore::FileSystem::localUserSpecificStorageDirectory(), "ApplicationCache");
-}
-
-String WebProcessPool::legacyPlatformDefaultMediaCacheDirectory()
-{
-    return WebCore::FileSystem::pathByAppendingComponent(WebCore::FileSystem::localUserSpecificStorageDirectory(), "MediaCache");
-}
-
-String WebProcessPool::legacyPlatformDefaultWebSQLDatabaseDirectory()
-{
-    return WebCore::FileSystem::pathByAppendingComponent(WebCore::FileSystem::localUserSpecificStorageDirectory(), "WebSQL");
-}
-
-String WebProcessPool::legacyPlatformDefaultIndexedDBDatabaseDirectory()
-{
-    return WebCore::FileSystem::pathByAppendingComponent(WebCore::FileSystem::localUserSpecificStorageDirectory(), "IndexedDB");
-}
-
-String WebProcessPool::legacyPlatformDefaultLocalStorageDirectory()
-{
-    return WebCore::FileSystem::pathByAppendingComponent(WebCore::FileSystem::localUserSpecificStorageDirectory(), "LocalStorage");
-}
-
-String WebProcessPool::legacyPlatformDefaultMediaKeysStorageDirectory()
-{
-    return WebCore::FileSystem::pathByAppendingComponent(WebCore::FileSystem::localUserSpecificStorageDirectory(), "MediaKeyStorage");
-}
-
-String WebProcessPool::legacyPlatformDefaultNetworkCacheDirectory()
-{
-    return WebCore::FileSystem::pathByAppendingComponent(WebCore::FileSystem::localUserSpecificStorageDirectory(), "NetworkCache");
-}
-
-String WebProcessPool::legacyPlatformDefaultJavaScriptConfigurationDirectory()
-{
-    return WebCore::FileSystem::pathByAppendingComponent(WebCore::FileSystem::localUserSpecificStorageDirectory(), "JavaScriptCoreDebug");
 }
 
 void WebProcessPool::platformResolvePathsForSandboxExtensions()

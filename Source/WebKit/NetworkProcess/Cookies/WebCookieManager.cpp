@@ -26,15 +26,14 @@
 #include "config.h"
 #include "WebCookieManager.h"
 
-#include "ChildProcess.h"
 #include "WebCookieManagerMessages.h"
 #include "WebCookieManagerProxyMessages.h"
 #include "WebCoreArgumentCoders.h"
 #include <WebCore/Cookie.h>
 #include <WebCore/CookieStorage.h>
 #include <WebCore/NetworkStorageSession.h>
-#include <WebCore/URL.h>
 #include <wtf/MainThread.h>
+#include <wtf/URL.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
@@ -46,7 +45,7 @@ const char* WebCookieManager::supplementName()
     return "WebCookieManager";
 }
 
-WebCookieManager::WebCookieManager(ChildProcess& process)
+WebCookieManager::WebCookieManager(NetworkProcess& process)
     : m_process(process)
 {
     m_process.addMessageReceiver(Messages::WebCookieManager::messageReceiverName(), *this);
@@ -57,7 +56,7 @@ WebCookieManager::~WebCookieManager() = default;
 void WebCookieManager::getHostnamesWithCookies(PAL::SessionID sessionID, CallbackID callbackID)
 {
     HashSet<String> hostnames;
-    if (auto* storageSession = NetworkStorageSession::storageSession(sessionID))
+    if (auto* storageSession = m_process.storageSession(sessionID))
         storageSession->getHostnamesWithCookies(hostnames);
 
     m_process.send(Messages::WebCookieManagerProxy::DidGetHostnamesWithCookies(copyToVector(hostnames), callbackID), 0);
@@ -65,20 +64,20 @@ void WebCookieManager::getHostnamesWithCookies(PAL::SessionID sessionID, Callbac
 
 void WebCookieManager::deleteCookiesForHostname(PAL::SessionID sessionID, const String& hostname)
 {
-    if (auto* storageSession = NetworkStorageSession::storageSession(sessionID))
+    if (auto* storageSession = m_process.storageSession(sessionID))
         storageSession->deleteCookiesForHostnames({ hostname });
 }
 
 
 void WebCookieManager::deleteAllCookies(PAL::SessionID sessionID)
 {
-    if (auto* storageSession = NetworkStorageSession::storageSession(sessionID))
+    if (auto* storageSession = m_process.storageSession(sessionID))
         storageSession->deleteAllCookies();
 }
 
 void WebCookieManager::deleteCookie(PAL::SessionID sessionID, const Cookie& cookie, CallbackID callbackID)
 {
-    if (auto* storageSession = NetworkStorageSession::storageSession(sessionID))
+    if (auto* storageSession = m_process.storageSession(sessionID))
         storageSession->deleteCookie(cookie);
 
     m_process.send(Messages::WebCookieManagerProxy::DidDeleteCookies(callbackID), 0);
@@ -86,7 +85,7 @@ void WebCookieManager::deleteCookie(PAL::SessionID sessionID, const Cookie& cook
 
 void WebCookieManager::deleteAllCookiesModifiedSince(PAL::SessionID sessionID, WallTime time, CallbackID callbackID)
 {
-    if (auto* storageSession = NetworkStorageSession::storageSession(sessionID))
+    if (auto* storageSession = m_process.storageSession(sessionID))
         storageSession->deleteAllCookiesModifiedSince(time);
 
     m_process.send(Messages::WebCookieManagerProxy::DidDeleteCookies(callbackID), 0);
@@ -95,7 +94,7 @@ void WebCookieManager::deleteAllCookiesModifiedSince(PAL::SessionID sessionID, W
 void WebCookieManager::getAllCookies(PAL::SessionID sessionID, CallbackID callbackID)
 {
     Vector<Cookie> cookies;
-    if (auto* storageSession = NetworkStorageSession::storageSession(sessionID))
+    if (auto* storageSession = m_process.storageSession(sessionID))
         cookies = storageSession->getAllCookies();
 
     m_process.send(Messages::WebCookieManagerProxy::DidGetCookies(cookies, callbackID), 0);
@@ -104,7 +103,7 @@ void WebCookieManager::getAllCookies(PAL::SessionID sessionID, CallbackID callba
 void WebCookieManager::getCookies(PAL::SessionID sessionID, const URL& url, CallbackID callbackID)
 {
     Vector<Cookie> cookies;
-    if (auto* storageSession = NetworkStorageSession::storageSession(sessionID))
+    if (auto* storageSession = m_process.storageSession(sessionID))
         cookies = storageSession->getCookies(url);
 
     m_process.send(Messages::WebCookieManagerProxy::DidGetCookies(cookies, callbackID), 0);
@@ -112,7 +111,7 @@ void WebCookieManager::getCookies(PAL::SessionID sessionID, const URL& url, Call
 
 void WebCookieManager::setCookie(PAL::SessionID sessionID, const Cookie& cookie, CallbackID callbackID)
 {
-    if (auto* storageSession = NetworkStorageSession::storageSession(sessionID))
+    if (auto* storageSession = m_process.storageSession(sessionID))
         storageSession->setCookie(cookie);
 
     m_process.send(Messages::WebCookieManagerProxy::DidSetCookies(callbackID), 0);
@@ -120,7 +119,7 @@ void WebCookieManager::setCookie(PAL::SessionID sessionID, const Cookie& cookie,
 
 void WebCookieManager::setCookies(PAL::SessionID sessionID, const Vector<Cookie>& cookies, const URL& url, const URL& mainDocumentURL, CallbackID callbackID)
 {
-    if (auto* storageSession = NetworkStorageSession::storageSession(sessionID))
+    if (auto* storageSession = m_process.storageSession(sessionID))
         storageSession->setCookies(cookies, url, mainDocumentURL);
 
     m_process.send(Messages::WebCookieManagerProxy::DidSetCookies(callbackID), 0);
@@ -134,7 +133,7 @@ void WebCookieManager::notifyCookiesDidChange(PAL::SessionID sessionID)
 
 void WebCookieManager::startObservingCookieChanges(PAL::SessionID sessionID)
 {
-    if (auto* storageSession = NetworkStorageSession::storageSession(sessionID)) {
+    if (auto* storageSession = m_process.storageSession(sessionID)) {
         WebCore::startObservingCookieChanges(*storageSession, [this, sessionID] {
             notifyCookiesDidChange(sessionID);
         });
@@ -143,7 +142,7 @@ void WebCookieManager::startObservingCookieChanges(PAL::SessionID sessionID)
 
 void WebCookieManager::stopObservingCookieChanges(PAL::SessionID sessionID)
 {
-    if (auto* storageSession = NetworkStorageSession::storageSession(sessionID))
+    if (auto* storageSession = m_process.storageSession(sessionID))
         WebCore::stopObservingCookieChanges(*storageSession);
 }
 

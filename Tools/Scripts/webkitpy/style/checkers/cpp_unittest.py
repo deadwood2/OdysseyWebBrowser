@@ -2,7 +2,7 @@
 #
 # Copyright (C) 2011 Google Inc. All rights reserved.
 # Copyright (C) 2009 Torch Mobile Inc.
-# Copyright (C) 2009, 2013 Apple Inc. All rights reserved.
+# Copyright (C) 2009-2019 Apple Inc. All rights reserved.
 # Copyright (C) 2010 Chris Jerdonek (cjerdonek@webkit.org)
 #
 # Redistribution and use in source and binary forms, with or without
@@ -1666,6 +1666,118 @@ class CppStyleTest(CppStyleTestBase):
             'Never use dispatch_set_target_queue.  Use dispatch_queue_create_with_target instead.'
             '  [runtime/dispatch_set_target_queue] [5]')
         self.assert_lint('globalQueue = dispatch_queue_create_with_target("My Serial Queue", DISPATCH_QUEUE_SERIAL, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0));', '')
+
+    def test_retainptr_pointer(self):
+        self.assert_lint(
+            '''RetainPtr<CFRunLoopRef*> m_cfRunLoop;''',
+            'RetainPtr<> should never contain a type with \'*\'. Correct: RetainPtr<NSString>, RetainPtr<CFStringRef>.'
+            '  [runtime/retainptr] [5]')
+        self.assert_lint('RetainPtr<CFRunLoopRef> m_cfRunLoop;', '')
+        self.assert_lint(
+            '''RetainPtr<NSRunLoop*> m_nsRunLoop;''',
+            'RetainPtr<> should never contain a type with \'*\'. Correct: RetainPtr<NSString>, RetainPtr<CFStringRef>.'
+            '  [runtime/retainptr] [5]')
+        self.assert_lint('RetainPtr<NSRunLoop> m_nsRunLoop;', '')
+        self.assert_lint(
+            '''RetainPtr<NSMutableArray<NSDictionary *> *> m_editorStateHistory;''',
+            'RetainPtr<> should never contain a type with \'*\'. Correct: RetainPtr<NSString>, RetainPtr<CFStringRef>.'
+            '  [runtime/retainptr] [5]')
+        self.assert_lint(
+            '''RetainPtr<NSDictionary<NSString *, NSArray<NSString *>> *> dictionary;''',
+            'RetainPtr<> should never contain a type with \'*\'. Correct: RetainPtr<NSString>, RetainPtr<CFStringRef>.'
+            '  [runtime/retainptr] [5]')
+        self.assert_lint('''RetainPtr<NSDictionary<NSString *, NSArray<NSString *>>> dictionary;''', '')
+
+    def test_softlink_framework(self):
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK(Foundation)''',
+            '')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_OPTIONAL(Foundation)''',
+            '')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_OPTIONAL_PREFLIGHT(Foundation)''',
+            '')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_FOR_HEADER(Foundation)''',
+            '',
+             file_name='foo.h')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_FOR_SOURCE(Foundation)''',
+            '')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_FOR_SOURCE_WITH_EXPORT(Foundation)''',
+            '')
+        self.assert_lint(
+            '''SOFT_LINK_PRIVATE_FRAMEWORK_FOR_HEADER(Foundation)''',
+            '',
+             file_name='foo.h')
+        self.assert_lint(
+            '''SOFT_LINK_PRIVATE_FRAMEWORK_FOR_SOURCE(Foundation)''',
+            '')
+        self.assert_lint(
+            '''SOFT_LINK_PRIVATE_FRAMEWORK_FOR_SOURCE_WITH_EXPORT(Foundation)''',
+            '')
+
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK(UIKit)''',
+            'Use UIKitSoftLink.{cpp,h,mm} to soft-link to UIKit.framework.'
+            '  [softlink/framework] [5]')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_OPTIONAL(UIKit)''',
+            'Use UIKitSoftLink.{cpp,h,mm} to soft-link to UIKit.framework.'
+            '  [softlink/framework] [5]')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_OPTIONAL_PREFLIGHT(UIKit)''',
+            'Use UIKitSoftLink.{cpp,h,mm} to soft-link to UIKit.framework.'
+            '  [softlink/framework] [5]')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_FOR_HEADER(UIKit)''',
+            '',
+             file_name='foo.h')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_FOR_SOURCE(UIKit)''',
+            '')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_FOR_SOURCE_WITH_EXPORT(UIKit)''',
+            '')
+
+    def test_softlink_header(self):
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK(MyFramework)''',
+            'Never soft-link frameworks in headers. Put the soft-link macros in a source file, or create MyFrameworkSoftLink.{cpp,mm} instead.'
+            '  [softlink/header] [5]',
+            file_name='foo.h')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_OPTIONAL(MyFramework)''',
+            'Never soft-link frameworks in headers. Put the soft-link macros in a source file, or create MyFrameworkSoftLink.{cpp,mm} instead.'
+            '  [softlink/header] [5]',
+            file_name='foo.h')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_OPTIONAL_PREFLIGHT(MyFramework)''',
+            'Never soft-link frameworks in headers. Put the soft-link macros in a source file, or create MyFrameworkSoftLink.{cpp,mm} instead.'
+            '  [softlink/header] [5]',
+            file_name='foo.h')
+        self.assert_lint(
+            '''SOFT_LINK_PRIVATE_FRAMEWORK(MyPrivateFramework)''',
+            'Never soft-link frameworks in headers. Put the soft-link macros in a source file, or create MyPrivateFrameworkSoftLink.{cpp,mm} instead.'
+            '  [softlink/header] [5]',
+            file_name='foo.h')
+
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_FOR_HEADER(MyFramework)''',
+            '',
+            file_name='foo.h')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_FOR_SOURCE(MyFramework)''',
+            'Never soft-link frameworks in headers. Put the soft-link macros in a source file, or create MyFrameworkSoftLink.{cpp,mm} instead.'
+            '  [softlink/header] [5]',
+            file_name='foo.h')
+        self.assert_lint(
+            '''SOFT_LINK_FRAMEWORK_FOR_SOURCE_WITH_EXPORT(MyFramework)''',
+            'Never soft-link frameworks in headers. Put the soft-link macros in a source file, or create MyFrameworkSoftLink.{cpp,mm} instead.'
+            '  [softlink/header] [5]',
+            file_name='foo.h')
 
     # Variable-length arrays are not permitted.
     def test_variable_length_array_detection(self):
@@ -5081,6 +5193,29 @@ class WebKitStyleTest(CppStyleTestBase):
             "  [runtime/wtf_move] [4]",
             'foo.mm')
 
+    def test_wtf_optional(self):
+        self.assert_lint(
+             'Optional<int> a;',
+             '',
+             'foo.cpp')
+
+        self.assert_lint(
+             'WTF::Optional<int> a;',
+             '',
+             'foo.cpp')
+
+        self.assert_lint(
+            'std::optional<int> a;',
+            "Use 'WTF::Optional<>' instead of 'std::optional<>'."
+            "  [runtime/wtf_optional] [4]",
+            'foo.cpp')
+
+        self.assert_lint(
+            'optional<int> a;',
+            "Use 'WTF::Optional<>' instead of 'std::optional<>'."
+            "  [runtime/wtf_optional] [4]",
+            'foo.cpp')
+
     def test_ctype_fucntion(self):
         self.assert_lint(
             'int i = isascii(8);',
@@ -5237,6 +5372,10 @@ class WebKitStyleTest(CppStyleTestBase):
         # There is an exception for GTK+ API.
         self.assert_lint('void webkit_web_view_load(int var1, int var2)', '', 'Source/Webkit/gtk/webkit/foo.cpp')
         self.assert_lint('void webkit_web_view_load(int var1, int var2)', '', 'Source/Webkit2/UIProcess/gtk/foo.cpp')
+        self.assert_lint('void my_function(int variable_1)',
+                         ['my_function' + name_underscore_error_message,
+                          'variable_1' + name_underscore_error_message],
+                         'Source/Webkit2/UIProcess/gtk/foo.cpp')
 
         # Test that this doesn't also apply to files not in a 'gtk' directory.
         self.assert_lint('void webkit_web_view_load(int var1, int var2)',
@@ -5417,26 +5556,31 @@ class WebKitStyleTest(CppStyleTestBase):
         self.assert_lint('explicit MyClass(Document* doc) : MySuperClass() { }',
         'Should be indented on a separate line, with the colon or comma first on that line.'
         '  [whitespace/indent] [4]')
+
         self.assert_lint('MyClass::MyClass(Document* doc) : MySuperClass() { }',
         'Should be indented on a separate line, with the colon or comma first on that line.'
         '  [whitespace/indent] [4]')
+
         self.assert_multi_line_lint((
             'MyClass::MyClass(Document* doc)\n'
             '    : m_myMember(b ? bar() : baz())\n'
             '    , MySuperClass()\n'
             '    , m_doc(0)\n'
             '{ }'), '')
+
         self.assert_multi_line_lint('''\
         MyClass::MyClass(Document* doc) : MySuperClass()
         { }''',
         'Should be indented on a separate line, with the colon or comma first on that line.'
         '  [whitespace/indent] [4]')
+
         self.assert_multi_line_lint('''\
         MyClass::MyClass(Document* doc)
         : MySuperClass()
         { }''',
         'Wrong number of spaces before statement. (expected: 12)'
         '  [whitespace/indent] [4]')
+
         self.assert_multi_line_lint('''\
         MyClass::MyClass(Document* doc) :
             MySuperClass(),
@@ -5446,18 +5590,27 @@ class WebKitStyleTest(CppStyleTestBase):
          '  [whitespace/indent] [4]',
          'Comma should be at the beginning of the line in a member initialization list.'
          '  [whitespace/init] [4]'])
+
+        self.assert_multi_line_lint('''\
+            MyClass::MyClass(Document* doc): MySuperClass()
+            { }''',
+            'Should be indented on a separate line, with the colon or comma first on that line.'
+            '  [whitespace/indent] [4]')
+
         self.assert_multi_line_lint('''\
         MyClass::MyClass(Document* doc) :MySuperClass()
         { }''',
         ['Missing spaces around :  [whitespace/init] [4]',
          'Should be indented on a separate line, with the colon or comma first on that line.'
          '  [whitespace/indent] [4]'])
+
         self.assert_multi_line_lint('''\
         MyClass::MyClass(Document* doc):MySuperClass()
         { }''',
         ['Missing spaces around :  [whitespace/init] [4]',
          'Should be indented on a separate line, with the colon or comma first on that line.'
          '  [whitespace/indent] [4]'])
+
         self.assert_multi_line_lint('''\
         MyClass::MyClass(Document* doc) : MySuperClass()
         ,MySuperClass()
@@ -5496,6 +5649,7 @@ class WebKitStyleTest(CppStyleTestBase):
             :MySuperClass()
         { }''',
         'Missing spaces around :  [whitespace/init] [4]')
+
         self.assert_multi_line_lint('''\
         MyClass::MyClass(Document* doc)
             : MySuperClass() ,
@@ -5503,23 +5657,35 @@ class WebKitStyleTest(CppStyleTestBase):
         { }''',
         'Comma should be at the beginning of the line in a member initialization list.'
         '  [whitespace/init] [4]')
+
         self.assert_multi_line_lint('''\
         class MyClass : public Goo {
         };''',
         '')
+
         self.assert_multi_line_lint('''\
         class MyClass
         : public Goo
         , public foo {
         };''',
         '')
+
         self.assert_multi_line_lint('''\
         MyClass::MyClass(Document* doc)
             : MySuperClass(doc, doc)
         { }''',
         '')
+
+        self.assert_multi_line_lint('''\
+            PreviewConverter::PreviewConverter(NSData *data, const String& uti, const String& password)
+                : m_platformConverter { adoptNS([allocQLPreviewConverterInstance() initWithData:data name:nil uti:uti options:optionsWithPassword(password)]) }
+            { }''',
+            '')
+
         self.assert_lint('::ShowWindow(m_overlay);', '')
+
         self.assert_lint('o = foo(b ? bar() : baz());', '')
+
         self.assert_lint('MYMACRO(a ? b() : c);', '')
 
     def test_min_versions_of_wk_api_available(self):
@@ -5527,6 +5693,16 @@ class WebKitStyleTest(CppStyleTestBase):
         self.assert_lint('WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA))', '')  # WK_MAC_TBA and WK_IOS_TBA are OK.
         self.assert_lint('WK_API_AVAILABLE(macosx(WK_IOS_TBA), ios(3.4.5))', 'WK_IOS_TBA is neither a version number nor WK_MAC_TBA  [build/wk_api_available] [5]')
         self.assert_lint('WK_API_AVAILABLE(macosx(1.2.3), ios(WK_MAC_TBA))', 'WK_MAC_TBA is neither a version number nor WK_IOS_TBA  [build/wk_api_available] [5]')
+
+    def test_os_version_checks(self):
+        self.assert_lint('#if PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED < 110000', 'Misplaced OS version check. Please use a named macro in wtf/Platform.h, wtf/FeatureDefines.h, or an appropriate internal file.  [build/version_check] [5]')
+        self.assert_lint('#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300', 'Misplaced OS version check. Please use a named macro in wtf/Platform.h, wtf/FeatureDefines.h, or an appropriate internal file.  [build/version_check] [5]')
+        self.assert_lint('#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101300', '', 'Source/WTF/wtf/Platform.h')
+        self.assert_lint('#if PLATFORM(MAC) && __IPHONE_OS_VERSION_MIN_REQUIRED > 120000', '', 'Source/WTF/wtf/Platform.h')
+        self.assert_lint('#if PLATFORM(MAC) && __IPHONE_OS_VERSION_MIN_REQUIRED > 120400', 'Incorrect OS version check. VERSION_MIN_REQUIRED values never include a minor version. You may be looking for a combination of VERSION_MIN_REQUIRED for target OS version check and VERSION_MAX_ALLOWED for SDK check.  [build/version_check] [5]', 'Source/WTF/wtf/Platform.h')
+        self.assert_lint('#if !TARGET_OS_SIMULATOR && __WATCH_OS_VERSION_MIN_REQUIRED < 50000', 'Misplaced OS version check. Please use a named macro in wtf/Platform.h, wtf/FeatureDefines.h, or an appropriate internal file.  [build/version_check] [5]')
+        self.assert_lint('#if (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED < 110000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101304)', ['Incorrect OS version check. VERSION_MIN_REQUIRED values never include a minor version. You may be looking for a combination of VERSION_MIN_REQUIRED for target OS version check and VERSION_MAX_ALLOWED for SDK check.  [build/version_check] [5]', 'Misplaced OS version check. Please use a named macro in wtf/Platform.h, wtf/FeatureDefines.h, or an appropriate internal file.  [build/version_check] [5]'])
+        self.assert_lint('#define FOO ((PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101302 && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300))', 'Misplaced OS version check. Please use a named macro in wtf/Platform.h, wtf/FeatureDefines.h, or an appropriate internal file.  [build/version_check] [5]')
 
     def test_other(self):
         # FIXME: Implement this.

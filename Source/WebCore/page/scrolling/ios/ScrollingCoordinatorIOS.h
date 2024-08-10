@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS)
+#if ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS_FAMILY)
 
 #include "AsyncScrollingCoordinator.h"
 
@@ -47,7 +47,7 @@ public:
     void commitTreeStateIfNeeded() override;
 
     // Handle the wheel event on the scrolling thread. Returns whether the event was handled or not.
-    bool handleWheelEvent(FrameView&, const PlatformWheelEvent&) override { return false; }
+    ScrollingEventResult handleWheelEvent(FrameView&, const PlatformWheelEvent&) override { return ScrollingEventResult::DidNotHandleEvent; }
 
 private:
     void scheduleTreeStateCommit() override;
@@ -59,4 +59,4 @@ private:
 
 } // namespace WebCore
 
-#endif // ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS)
+#endif // ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS_FAMILY)

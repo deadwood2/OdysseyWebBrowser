@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017, 2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,14 +26,16 @@
 #import "config.h"
 #import "WebAutomationSession.h"
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 #import "NativeWebKeyboardEvent.h"
 #import "WebAutomationSessionMacros.h"
 #import "WebPageProxy.h"
+#import "_WKTouchEventGenerator.h"
 #import <WebCore/KeyEventCodesIOS.h>
 #import <WebCore/NotImplemented.h>
 #import <WebCore/WebEvent.h>
+#import <wtf/BlockPtr.h>
 
 namespace WebKit {
 using namespace WebCore;
@@ -64,6 +66,7 @@ void WebAutomationSession::sendSynthesizedEventsToPage(WebPageProxy& page, NSArr
 
 #pragma mark Commands for Platform: 'iOS'
 
+#if ENABLE(WEBDRIVER_KEYBOARD_INTERACTIONS)
 void WebAutomationSession::platformSimulateKeyboardInteraction(WebPageProxy& page, KeyboardInteraction interaction, WTF::Variant<VirtualKey, CharKey>&& key)
 {
     // The modifiers changed by the virtual key when it is pressed or released.
@@ -72,8 +75,8 @@ void WebAutomationSession::platformSimulateKeyboardInteraction(WebPageProxy& pag
     // UIKit does not send key codes for virtual keys even for a hardware keyboard.
     // Instead, it sends single unichars and WebCore maps these to "windows" key codes.
     // Synthesize a single unichar such that the correct key code is inferred.
-    std::optional<unichar> charCode;
-    std::optional<unichar> charCodeIgnoringModifiers;
+    Optional<unichar> charCode;
+    Optional<unichar> charCodeIgnoringModifiers;
 
     // Figure out the effects of sticky modifiers.
     WTF::switchOn(key,
@@ -83,19 +86,19 @@ void WebAutomationSession::platformSimulateKeyboardInteraction(WebPageProxy& pag
 
             switch (virtualKey) {
             case VirtualKey::Shift:
-                changedModifiers |= WebEventFlagMaskShift;
+                changedModifiers |= WebEventFlagMaskShiftKey;
                 break;
             case VirtualKey::Control:
-                changedModifiers |= WebEventFlagMaskControl;
+                changedModifiers |= WebEventFlagMaskControlKey;
                 break;
             case VirtualKey::Alternate:
-                changedModifiers |= WebEventFlagMaskAlternate;
+                changedModifiers |= WebEventFlagMaskOptionKey;
                 break;
             case VirtualKey::Meta:
                 // The 'meta' key does not exist on Apple keyboards and is usually
                 // mapped to the Command key when using third-party keyboards.
             case VirtualKey::Command:
-                changedModifiers |= WebEventFlagMaskCommand;
+                changedModifiers |= WebEventFlagMaskCommandKey;
                 break;
             default:
                 break;
@@ -169,7 +172,32 @@ void WebAutomationSession::platformSimulateKeySequence(WebPageProxy& page, const
 
     sendSynthesizedEventsToPage(page, eventsToBeSent.get());
 }
+#endif // ENABLE(WEBDRIVER_KEYBOARD_INTERACTIONS)
+
+#if ENABLE(WEBDRIVER_TOUCH_INTERACTIONS)
+void WebAutomationSession::platformSimulateTouchInteraction(WebPageProxy& page, TouchInteraction interaction, const WebCore::IntPoint& locationInViewport, Optional<Seconds> duration, AutomationCompletionHandler&& completionHandler)
+{
+    WebCore::IntPoint locationOnScreen = page.syncRootViewToScreen(IntRect(locationInViewport, IntSize())).location();
+    _WKTouchEventGenerator *generator = [_WKTouchEventGenerator sharedTouchEventGenerator];
+
+    auto interactionFinished = makeBlockPtr([completionHandler = WTFMove(completionHandler)] () mutable {
+        completionHandler(WTF::nullopt);
+    });
+    
+    switch (interaction) {
+    case TouchInteraction::TouchDown:
+        [generator touchDown:locationOnScreen completionBlock:interactionFinished.get()];
+        break;
+    case TouchInteraction::LiftUp:
+        [generator liftUp:locationOnScreen completionBlock:interactionFinished.get()];
+        break;
+    case TouchInteraction::MoveTo:
+        [generator moveToPoint:locationOnScreen duration:duration.valueOr(0_s).seconds() completionBlock:interactionFinished.get()];
+        break;
+    }
+}
+#endif // ENABLE(WEBDRIVER_TOUCH_INTERACTIONS)
 
 } // namespace WebKit
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)

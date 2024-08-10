@@ -31,10 +31,8 @@
 #import "AppKitCompatibilityDeclarations.h"
 #import "SettingsController.h"
 #import <WebKit/WKFrameInfo.h>
-#import <WebKit/WKInspector.h>
 #import <WebKit/WKNavigationActionPrivate.h>
 #import <WebKit/WKNavigationDelegate.h>
-#import <WebKit/WKPage.h>
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKUIDelegate.h>
 #import <WebKit/WKUIDelegatePrivate.h>
@@ -43,6 +41,7 @@
 #import <WebKit/WKWebsiteDataStorePrivate.h>
 #import <WebKit/WebNSURLExtras.h>
 #import <WebKit/_WKIconLoadingDelegate.h>
+#import <WebKit/_WKInspector.h>
 #import <WebKit/_WKLinkIconParameters.h>
 #import <WebKit/_WKUserInitiatedAction.h>
 
@@ -136,9 +135,9 @@ static const int testFooterBannerHeight = 58;
 
 - (IBAction)fetch:(id)sender
 {
-    [urlText setStringValue:[self addProtocolIfNecessary:[urlText stringValue]]];
-
-    [_webView loadRequest:[NSURLRequest requestWithURL:[NSURL _webkit_URLWithUserTypedString:[urlText stringValue]]]];
+    [urlText setStringValue:[self addProtocolIfNecessary:urlText.stringValue]];
+    NSURL *url = [NSURL _webkit_URLWithUserTypedString:urlText.stringValue];
+    [_webView loadRequest:[NSURLRequest requestWithURL:url]];
 }
 
 - (IBAction)setPageScale:(id)sender
@@ -209,7 +208,7 @@ static BOOL areEssentiallyEqual(double a, double b)
     else if (action == @selector(toggleEditable:))
         [menuItem setState:self.isEditable ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(showHideWebInspector:))
-        [menuItem setTitle:WKInspectorIsVisible(WKPageGetInspector(_webView._pageRefForTransitionToWKWebView)) ? @"Close Web Inspector" : @"Show Web Inspector"];
+        [menuItem setTitle:_webView._inspector.isVisible ? @"Close Web Inspector" : @"Show Web Inspector"];
     else if (action == @selector(toggleAlwaysShowsHorizontalScroller:))
         menuItem.state = _webView._alwaysShowsHorizontalScroller ? NSControlStateValueOn : NSControlStateValueOff;
     else if (action == @selector(toggleAlwaysShowsVerticalScroller:))
@@ -289,11 +288,11 @@ static BOOL areEssentiallyEqual(double a, double b)
 
 - (IBAction)showHideWebInspector:(id)sender
 {
-    WKInspectorRef inspectorRef = WKPageGetInspector(_webView._pageRefForTransitionToWKWebView);
-    if (WKInspectorIsVisible(inspectorRef))
-        WKInspectorHide(inspectorRef);
+    _WKInspector *inspector = _webView._inspector;
+    if (inspector.isVisible)
+        [inspector hide];
     else
-        WKInspectorShow(inspectorRef);
+        [inspector show];
 }
 
 - (IBAction)toggleAlwaysShowsHorizontalScroller:(id)sender
@@ -675,12 +674,6 @@ static NSSet *dataTypes()
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation
 {
     LOG(@"didFinishNavigation: %@", navigation);
-    
-    // Banner heights don't persist across page loads (oddly, since Page stores them), so reset on every page load.
-    if ([[SettingsController shared] isSpaceReservedForBanners]) {
-        [_webView _setHeaderBannerHeight:testHeaderBannerHeight];
-        [_webView _setFooterBannerHeight:testFooterBannerHeight];
-    }
 }
 
 - (void)webView:(WKWebView *)webView didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *__nullable credential))completionHandler
@@ -764,11 +757,8 @@ static NSSet *dataTypes()
 
 - (void)setFindBarView:(NSView *)findBarView
 {
-    if (_textFindBarView)
-        [_textFindBarView removeFromSuperview];
     _textFindBarView = findBarView;
     _findBarVisible = YES;
-    [containerView addSubview:_textFindBarView];
     [_textFindBarView setFrame:NSMakeRect(0, 0, containerView.bounds.size.width, _textFindBarView.frame.size.height)];
 }
 
@@ -793,6 +783,16 @@ static NSSet *dataTypes()
 
 - (void)findBarViewDidChangeHeight
 {
+}
+
+- (void)_webView:(WKWebView *)webView requestMediaCaptureAuthorization: (_WKCaptureDevices)devices decisionHandler:(void (^)(BOOL authorized))decisionHandler
+{
+    decisionHandler(true);
+}
+
+- (void)_webView:(WKWebView *)webView includeSensitiveMediaDeviceDetails:(void (^)(BOOL includeSensitiveDetails))decisionHandler
+{
+    decisionHandler(false);
 }
 
 @end

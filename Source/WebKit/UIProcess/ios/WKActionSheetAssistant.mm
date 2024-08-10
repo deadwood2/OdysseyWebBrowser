@@ -26,7 +26,7 @@
 #import "config.h"
 #import "WKActionSheetAssistant.h"
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 #import "APIUIClient.h"
 #import "TCCSPI.h"
@@ -41,11 +41,12 @@
 #import <WebCore/DataDetection.h>
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/PathUtilities.h>
-#import <WebCore/WebCoreNSURLExtras.h>
 #import <wtf/SoftLinking.h>
 #import <wtf/WeakObjCPtr.h>
 #import <wtf/cocoa/Entitlements.h>
+#import <wtf/cocoa/NSURLExtras.h>
 #import <wtf/text/WTFString.h>
+#import <wtf/threads/BinarySemaphore.h>
 
 #if HAVE(APP_LINKS)
 #import <pal/spi/cocoa/LaunchServicesSPI.h>
@@ -70,14 +71,15 @@ static bool applicationHasAppLinkEntitlements()
 
 static LSAppLink *appLinkForURL(NSURL *url)
 {
+    BinarySemaphore semaphore;
     __block LSAppLink *syncAppLink = nil;
+    __block BinarySemaphore* semaphorePtr = &semaphore;
 
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     [LSAppLink getAppLinkWithURL:url completionHandler:^(LSAppLink *appLink, NSError *error) {
         syncAppLink = [appLink retain];
-        dispatch_semaphore_signal(semaphore);
+        semaphorePtr->signal();
     }];
-    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+    semaphore.wait();
 
     return [syncAppLink autorelease];
 }
@@ -87,7 +89,7 @@ static LSAppLink *appLinkForURL(NSURL *url)
     WeakObjCPtr<id <WKActionSheetAssistantDelegate>> _delegate;
     RetainPtr<WKActionSheet> _interactionSheet;
     RetainPtr<_WKActivatedElementInfo> _elementInfo;
-    std::optional<WebKit::InteractionInformationAtPosition> _positionInformation;
+    Optional<WebKit::InteractionInformationAtPosition> _positionInformation;
     WeakObjCPtr<UIView> _view;
     BOOL _needsLinkIndicator;
     BOOL _isPresentingDDUserInterface;
@@ -246,11 +248,13 @@ static const CGFloat presentationElementRectPadding = 15;
 {
     // Calculate the presentation rect just before showing.
     CGRect presentationRect = CGRectZero;
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     if (UI_USER_INTERFACE_IDIOM() != UIUserInterfaceIdiomPhone) {
         presentationRect = [self initialPresentationRectInHostViewForSheet];
         if (CGRectIsEmpty(presentationRect))
             return NO;
     }
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     return [_interactionSheet presentSheetFromRect:presentationRect];
 }
@@ -302,7 +306,7 @@ static const CGFloat presentationElementRectPadding = 15;
         if (isJavaScriptURL)
             titleString = WEB_UI_STRING_KEY("JavaScript", "JavaScript Action Sheet Title", "Title for action sheet for JavaScript link");
         else {
-            titleString = WebCore::userVisibleString(targetURL);
+            titleString = WTF::userVisibleString(targetURL);
             titleIsURL = YES;
         }
     } else
@@ -372,7 +376,7 @@ static const CGFloat presentationElementRectPadding = 15;
 
         _elementInfo = WTFMove(elementInfo);
 
-        if (![_interactionSheet presentSheet:presentationStyleForView(_view.getAutoreleased(), _positionInformation.value(), _elementInfo.get())])
+        if (![_interactionSheet presentSheet:[self _presentationStyleForPositionInfo:_positionInformation.value() elementInfo:_elementInfo.get()]])
             [self cleanupSheet];
     };
 
@@ -394,24 +398,29 @@ static const CGFloat presentationElementRectPadding = 15;
     showImageSheetWithAlternateURLBlock(nil, nil);
 }
 
-static WKActionSheetPresentationStyle presentationStyleForView(UIView *view, const WebKit::InteractionInformationAtPosition& positionInfo, _WKActivatedElementInfo *elementInfo)
+- (WKActionSheetPresentationStyle)_presentationStyleForPositionInfo:(const WebKit::InteractionInformationAtPosition&)positionInfo elementInfo:(_WKActivatedElementInfo *)elementInfo
 {
-    auto apparentElementRect = [view convertRect:positionInfo.bounds toView:view.window];
+    auto apparentElementRect = [_view convertRect:positionInfo.bounds toView:[_view window]];
     if (CGRectIsEmpty(apparentElementRect))
         return WKActionSheetPresentAtTouchLocation;
 
-    auto windowRect = view.window.bounds;
-    apparentElementRect = CGRectIntersection(apparentElementRect, windowRect);
+    CGRect visibleRect;
+    auto delegate = _delegate.get();
+    if ([delegate respondsToSelector:@selector(unoccludedWindowBoundsForActionSheetAssistant:)])
+        visibleRect = [delegate unoccludedWindowBoundsForActionSheetAssistant:self];
+    else
+        visibleRect = [[_view window] bounds];
 
-    auto leftInset = CGRectGetMinX(apparentElementRect) - CGRectGetMinX(windowRect);
-    auto topInset = CGRectGetMinY(apparentElementRect) - CGRectGetMinY(windowRect);
-    auto rightInset = CGRectGetMaxX(windowRect) - CGRectGetMaxX(apparentElementRect);
-    auto bottomInset = CGRectGetMaxY(windowRect) - CGRectGetMaxY(apparentElementRect);
+    apparentElementRect = CGRectIntersection(apparentElementRect, visibleRect);
+    auto leftInset = CGRectGetMinX(apparentElementRect) - CGRectGetMinX(visibleRect);
+    auto topInset = CGRectGetMinY(apparentElementRect) - CGRectGetMinY(visibleRect);
+    auto rightInset = CGRectGetMaxX(visibleRect) - CGRectGetMaxX(apparentElementRect);
+    auto bottomInset = CGRectGetMaxY(visibleRect) - CGRectGetMaxY(apparentElementRect);
 
     // If at least this much of the window is available for the popover to draw in, then target the element rect when presenting the action menu popover.
     // Otherwise, there is not enough space to position the popover around the element, so revert to using the touch location instead.
     static const CGFloat minimumAvailableWidthOrHeightRatio = 0.4;
-    if (std::max(leftInset, rightInset) <= minimumAvailableWidthOrHeightRatio * CGRectGetWidth(windowRect) && std::max(topInset, bottomInset) <= minimumAvailableWidthOrHeightRatio * CGRectGetHeight(windowRect))
+    if (std::max(leftInset, rightInset) <= minimumAvailableWidthOrHeightRatio * CGRectGetWidth(visibleRect) && std::max(topInset, bottomInset) <= minimumAvailableWidthOrHeightRatio * CGRectGetHeight(visibleRect))
         return WKActionSheetPresentAtTouchLocation;
 
     if (elementInfo.type == _WKActivatedElementTypeLink && positionInfo.linkIndicator.textRectsInBoundingRectCoordinates.size())
@@ -429,7 +438,10 @@ static WKActionSheetPresentationStyle presentationStyleForView(UIView *view, con
         if (appLink) {
             NSString *title = WEB_UI_STRING("Open in Safari", "Title for Open in Safari Link action button");
             _WKElementAction *openInDefaultBrowserAction = [_WKElementAction _elementActionWithType:_WKElementActionTypeOpenInDefaultBrowser title:title actionHandler:^(_WKActivatedElementInfo *) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                 [appLink openInWebBrowser:YES setAppropriateOpenStrategyAndWebBrowserState:nil completionHandler:^(BOOL success, NSError *error) { }];
+#pragma clang diagnostic pop
             }];
             [defaultActions addObject:openInDefaultBrowserAction];
 
@@ -437,7 +449,10 @@ static WKActionSheetPresentationStyle presentationStyleForView(UIView *view, con
             if (externalApplicationName) {
                 NSString *title = [NSString stringWithFormat:WEB_UI_STRING("Open in “%@”", "Title for Open in External Application Link action button"), externalApplicationName];
                 _WKElementAction *openInExternalApplicationAction = [_WKElementAction _elementActionWithType:_WKElementActionTypeOpenInExternalApplication title:title actionHandler:^(_WKActivatedElementInfo *) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                     [appLink openInWebBrowser:NO setAppropriateOpenStrategyAndWebBrowserState:nil completionHandler:^(BOOL success, NSError *error) { }];
+#pragma clang diagnostic pop
                 }];
                 [defaultActions addObject:openInExternalApplicationAction];
             }
@@ -539,7 +554,7 @@ static WKActionSheetPresentationStyle presentationStyleForView(UIView *view, con
 
     _elementInfo = WTFMove(elementInfo);
 
-    if (![_interactionSheet presentSheet:presentationStyleForView(_view.getAutoreleased(), _positionInformation.value(), _elementInfo.get())])
+    if (![_interactionSheet presentSheet:[self _presentationStyleForPositionInfo:_positionInformation.value() elementInfo:_elementInfo.get()]])
         [self cleanupSheet];
 }
 
@@ -619,7 +634,7 @@ static WKActionSheetPresentationStyle presentationStyleForView(UIView *view, con
     [_interactionSheet setSheetDelegate:nil];
     _interactionSheet = nil;
     _elementInfo = nil;
-    _positionInformation = std::nullopt;
+    _positionInformation = WTF::nullopt;
     _needsLinkIndicator = NO;
     _isPresentingDDUserInterface = NO;
     _hasPendingActionSheet = NO;
@@ -627,4 +642,4 @@ static WKActionSheetPresentationStyle presentationStyleForView(UIView *view, con
 
 @end
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)

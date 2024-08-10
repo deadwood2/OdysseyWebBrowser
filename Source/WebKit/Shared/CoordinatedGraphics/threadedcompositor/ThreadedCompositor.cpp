@@ -26,7 +26,7 @@
 #include "config.h"
 #include "ThreadedCompositor.h"
 
-#if USE(COORDINATED_GRAPHICS_THREADED)
+#if USE(COORDINATED_GRAPHICS)
 
 #include "CompositingRunLoop.h"
 #include "ThreadedDisplayRefreshMonitor.h"
@@ -116,6 +116,29 @@ void ThreadedCompositor::invalidate()
     m_compositingRunLoop = nullptr;
 }
 
+void ThreadedCompositor::suspend()
+{
+    if (++m_suspendedCount > 1)
+        return;
+
+    m_compositingRunLoop->suspend();
+    m_compositingRunLoop->performTaskSync([this, protectedThis = makeRef(*this)] {
+        m_scene->setActive(false);
+    });
+}
+
+void ThreadedCompositor::resume()
+{
+    ASSERT(m_suspendedCount > 0);
+    if (--m_suspendedCount > 0)
+        return;
+
+    m_compositingRunLoop->performTaskSync([this, protectedThis = makeRef(*this)] {
+        m_scene->setActive(true);
+    });
+    m_compositingRunLoop->resume();
+}
+
 void ThreadedCompositor::setNativeSurfaceHandleForCompositing(uint64_t handle)
 {
     m_compositingRunLoop->stopUpdates();
@@ -156,13 +179,6 @@ void ThreadedCompositor::setViewportSize(const IntSize& viewportSize, float scal
     m_compositingRunLoop->scheduleUpdate();
 }
 
-void ThreadedCompositor::setDrawsBackground(bool drawsBackground)
-{
-    LockHolder locker(m_attributes.lock);
-    m_attributes.drawsBackground = drawsBackground;
-    m_compositingRunLoop->scheduleUpdate();
-}
-
 void ThreadedCompositor::updateViewport()
 {
     m_compositingRunLoop->scheduleUpdate();
@@ -194,8 +210,8 @@ void ThreadedCompositor::renderLayerTree()
     WebCore::IntSize viewportSize;
     WebCore::IntPoint scrollPosition;
     float scaleFactor;
-    bool drawsBackground;
     bool needsResize;
+
     Vector<WebCore::CoordinatedGraphicsState> states;
 
     {
@@ -203,7 +219,6 @@ void ThreadedCompositor::renderLayerTree()
         viewportSize = m_attributes.viewportSize;
         scrollPosition = m_attributes.scrollPosition;
         scaleFactor = m_attributes.scaleFactor;
-        drawsBackground = m_attributes.drawsBackground;
         needsResize = m_attributes.needsResize;
 
         states = WTFMove(m_attributes.states);
@@ -215,11 +230,21 @@ void ThreadedCompositor::renderLayerTree()
             // Coordinate scene update completion with the client in case of changed or updated platform layers.
             // But do not change coordinateUpdateCompletionWithClient while in force repaint because that
             // demands immediate scene update completion regardless of platform layers.
+            // FIXME: Check whether we still need all this coordinateUpdateCompletionWithClient logic.
+            // https://bugs.webkit.org/show_bug.cgi?id=188839
+            // Relatedly, we should only ever operate with a single Nicosia::Scene object, not with a Vector
+            // of CoordinatedGraphicsState instances (which at this time will all contain RefPtr to the same
+            // Nicosia::State object anyway).
             if (!m_inForceRepaint) {
                 bool coordinateUpdate = false;
-                for (auto& state : states)
-                    coordinateUpdate |= std::any_of(state.layersToUpdate.begin(), state.layersToUpdate.end(),
-                        [](auto& it) { return it.second.platformLayerChanged || it.second.platformLayerUpdated; });
+                for (auto& state : states) {
+                    state.nicosia.scene->accessState(
+                        [&coordinateUpdate](Nicosia::Scene::State& state)
+                        {
+                            coordinateUpdate |= state.platformLayerUpdated;
+                            state.platformLayerUpdated = false;
+                        });
+                }
                 m_attributes.coordinateUpdateCompletionWithClient = coordinateUpdate;
             }
         }
@@ -237,14 +262,11 @@ void ThreadedCompositor::renderLayerTree()
     viewportTransform.scale(scaleFactor);
     viewportTransform.translate(-scrollPosition.x(), -scrollPosition.y());
 
-    if (!drawsBackground) {
-        glClearColor(0, 0, 0, 0);
-        glClear(GL_COLOR_BUFFER_BIT);
-    }
+    glClearColor(0, 0, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     m_scene->applyStateChanges(states);
-    m_scene->paintToCurrentGLContext(viewportTransform, 1, FloatRect { FloatPoint { }, viewportSize },
-        Color::transparent, !drawsBackground, m_paintFlags);
+    m_scene->paintToCurrentGLContext(viewportTransform, FloatRect { FloatPoint { }, viewportSize }, m_paintFlags);
 
     m_context->swapBuffers();
 
@@ -332,4 +354,4 @@ void ThreadedCompositor::frameComplete()
 }
 
 }
-#endif // USE(COORDINATED_GRAPHICS_THREADED)
+#endif // USE(COORDINATED_GRAPHICS)

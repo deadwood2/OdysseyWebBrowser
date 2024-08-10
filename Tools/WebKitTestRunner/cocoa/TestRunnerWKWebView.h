@@ -27,9 +27,13 @@
 
 #if WK_API_ENABLED
 
+@interface WKWebView(SpellChecking)
+- (IBAction)toggleContinuousSpellChecking:(id)sender;
+@end
+
 @interface TestRunnerWKWebView : WKWebView
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 @property (nonatomic, copy) void (^didStartFormControlInteractionCallback)(void);
 @property (nonatomic, copy) void (^didEndFormControlInteractionCallback)(void);
@@ -49,6 +53,7 @@
 
 @property (nonatomic, assign) UIEdgeInsets overrideSafeAreaInsets;
 
+@property (nonatomic, readonly, getter=isShowingKeyboard) BOOL showingKeyboard;
 @property (nonatomic, assign) BOOL usesSafariLikeRotation;
 @property (nonatomic, readonly, getter=isInteractingWithFormControl) BOOL interactingWithFormControl;
 

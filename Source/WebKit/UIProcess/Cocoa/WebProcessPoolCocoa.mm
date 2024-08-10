@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,13 +36,13 @@
 #import "TextChecker.h"
 #import "VersionChecks.h"
 #import "WKBrowsingContextControllerInternal.h"
+#import "WebMemoryPressureHandler.h"
 #import "WebPageGroup.h"
 #import "WebPreferencesKeys.h"
 #import "WebProcessCreationParameters.h"
 #import "WebProcessMessages.h"
 #import "WindowServerConnection.h"
 #import <WebCore/Color.h>
-#import <WebCore/FileSystem.h>
 #import <WebCore/NetworkStorageSession.h>
 #import <WebCore/NotImplemented.h>
 #import <WebCore/PlatformPasteboard.h>
@@ -51,55 +51,34 @@
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <pal/spi/cocoa/NSKeyedArchiverSPI.h>
 #import <sys/param.h>
+#import <wtf/FileSystem.h>
 #import <wtf/ProcessPrivilege.h>
+#import <wtf/cocoa/Entitlements.h>
 #import <wtf/spi/darwin/dyldSPI.h>
 
-#if PLATFORM(IOS)
-#import "WebMemoryPressureHandlerIOS.h"
-#else
+#if PLATFORM(MAC)
 #import <QuartzCore/CARemoteLayerServer.h>
 #endif
 
-using namespace WebCore;
-
-NSString *WebDatabaseDirectoryDefaultsKey = @"WebDatabaseDirectory";
 NSString *WebServiceWorkerRegistrationDirectoryDefaultsKey = @"WebServiceWorkerRegistrationDirectory";
 NSString *WebKitLocalCacheDefaultsKey = @"WebKitLocalCache";
-NSString *WebStorageDirectoryDefaultsKey = @"WebKitLocalStorageDatabasePathPreferenceKey";
 NSString *WebKitJSCJITEnabledDefaultsKey = @"WebKitJSCJITEnabledDefaultsKey";
 NSString *WebKitJSCFTLJITEnabledDefaultsKey = @"WebKitJSCFTLJITEnabledDefaultsKey";
-NSString *WebKitMediaKeysStorageDirectoryDefaultsKey = @"WebKitMediaKeysStorageDirectory";
-NSString *WebKitMediaCacheDirectoryDefaultsKey = @"WebKitMediaCacheDirectory";
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
 static NSString *WebKitApplicationDidChangeAccessibilityEnhancedUserInterfaceNotification = @"NSApplicationDidChangeAccessibilityEnhancedUserInterfaceNotification";
 #endif
 
-// FIXME: <rdar://problem/9138817> - After this "backwards compatibility" radar is removed, this code should be removed to only return an empty String.
-NSString *WebIconDatabaseDirectoryDefaultsKey = @"WebIconDatabaseDirectoryDefaultsKey";
-
-static NSString * const WebKit2HTTPProxyDefaultsKey = @"WebKit2HTTPProxy";
-static NSString * const WebKit2HTTPSProxyDefaultsKey = @"WebKit2HTTPSProxy";
-
-static NSString * const WebKitNetworkCacheEnabledDefaultsKey = @"WebKitNetworkCacheEnabled";
 static NSString * const WebKitNetworkCacheEfficacyLoggingEnabledDefaultsKey = @"WebKitNetworkCacheEfficacyLoggingEnabled";
 
 static NSString * const WebKitSuppressMemoryPressureHandlerDefaultsKey = @"WebKitSuppressMemoryPressureHandler";
-static NSString * const WebKitNetworkLoadThrottleLatencyMillisecondsDefaultsKey = @"WebKitNetworkLoadThrottleLatencyMilliseconds";
 
-#if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
+#if ENABLE(RESOURCE_LOAD_STATISTICS) && !RELEASE_LOG_DISABLED
 static NSString * const WebKitLogCookieInformationDefaultsKey = @"WebKitLogCookieInformation";
 #endif
 
-#if ENABLE(NETWORK_CAPTURE)
-static NSString * const WebKitRecordReplayModeDefaultsKey = @"WebKitRecordReplayMode";
-static NSString * const WebKitRecordReplayCacheLocationDefaultsKey = @"WebKitRecordReplayCacheLocation";
-#endif
-
 namespace WebKit {
-
-NSString *SchemeForCustomProtocolRegisteredNotificationName = @"WebKitSchemeForCustomProtocolRegisteredNotification";
-NSString *SchemeForCustomProtocolUnregisteredNotificationName = @"WebKitSchemeForCustomProtocolUnregisteredNotification";
+using namespace WebCore;
 
 static void registerUserDefaultsIfNeeded()
 {
@@ -113,7 +92,6 @@ static void registerUserDefaultsIfNeeded()
     [registrationDictionary setObject:@YES forKey:WebKitJSCJITEnabledDefaultsKey];
     [registrationDictionary setObject:@YES forKey:WebKitJSCFTLJITEnabledDefaultsKey];
 
-    [registrationDictionary setObject:@YES forKey:WebKitNetworkCacheEnabledDefaultsKey];
     [registrationDictionary setObject:@NO forKey:WebKitNetworkCacheEfficacyLoggingEnabledDefaultsKey];
 
     [[NSUserDefaults standardUserDefaults] registerDefaults:registrationDictionary];
@@ -145,14 +123,17 @@ void WebProcessPool::platformInitialize()
     registerUserDefaultsIfNeeded();
     registerNotificationObservers();
 
-#if PLATFORM(IOS)
-    installMemoryPressureHandler();
-#endif
+    // FIXME: This should be able to share code with WebCore's MemoryPressureHandler (and be platform independent).
+    // Right now it cannot because WebKit1 and WebKit2 need to be able to coexist in the UI process,
+    // and you can only have one WebCore::MemoryPressureHandler.
+
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:@"WebKitSuppressMemoryPressureHandler"])
+        installMemoryPressureHandler();
 
     setLegacyCustomProtocolManagerClient(std::make_unique<LegacyCustomProtocolManagerClient>());
 }
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 String WebProcessPool::cookieStorageDirectory() const
 {
     String path = pathForProcessContainer();
@@ -169,7 +150,7 @@ void WebProcessPool::platformResolvePathsForSandboxExtensions()
 {
     m_resolvedPaths.uiProcessBundleResourcePath = resolvePathForSandboxExtension([[NSBundle mainBundle] resourcePath]);
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     m_resolvedPaths.cookieStorageDirectory = resolveAndCreateReadWriteDirectoryForSandboxExtension(cookieStorageDirectory());
     m_resolvedPaths.containerCachesDirectory = resolveAndCreateReadWriteDirectoryForSandboxExtension(webContentCachesDirectory());
     m_resolvedPaths.containerTemporaryDirectory = resolveAndCreateReadWriteDirectoryForSandboxExtension(containerTemporaryDirectory());
@@ -179,11 +160,10 @@ void WebProcessPool::platformResolvePathsForSandboxExtensions()
 void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& parameters)
 {
 #if PLATFORM(MAC)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     parameters.accessibilityEnhancedUserInterfaceEnabled = [[NSApp accessibilityAttributeValue:@"AXEnhancedUserInterface"] boolValue];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 #else
     parameters.accessibilityEnhancedUserInterfaceEnabled = false;
 #endif
@@ -196,7 +176,7 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
     parameters.shouldSuppressMemoryPressureHandler = [defaults boolForKey:WebKitSuppressMemoryPressureHandlerDefaultsKey];
 
 #if HAVE(HOSTED_CORE_ANIMATION)
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     parameters.acceleratedCompositingPort = MachSendRight::create([CARemoteLayerServer sharedServer].serverPort);
 #endif
 #endif
@@ -208,7 +188,7 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
     parameters.uiProcessBundleIdentifier = String([[NSBundle mainBundle] bundleIdentifier]);
     parameters.uiProcessSDKVersion = dyld_get_program_sdk_version();
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     if (!m_resolvedPaths.cookieStorageDirectory.isEmpty())
         SandboxExtension::createHandleWithoutResolvingPath(m_resolvedPaths.cookieStorageDirectory, SandboxExtension::Type::ReadWrite, parameters.cookieStorageDirectoryExtensionHandle);
 
@@ -222,14 +202,7 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
     parameters.fontWhitelist = m_fontWhitelist;
 
     if (m_bundleParameters) {
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200)
-        auto data = adoptNS([[NSMutableData alloc] init]);
-        auto keyedArchiver = adoptNS([[NSKeyedArchiver alloc] initForWritingWithMutableData:data.get()]);
-
-        [keyedArchiver setRequiresSecureCoding:YES];
-#else
         auto keyedArchiver = secureArchiver();
-#endif
 
         @try {
             [keyedArchiver encodeObject:m_bundleParameters.get() forKey:@"parameters"];
@@ -238,21 +211,12 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
             LOG_ERROR("Failed to encode bundle parameters: %@", exception);
         }
 
-#if (!PLATFORM(MAC) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200)
-        auto data = retainPtr(keyedArchiver.get().encodedData);
-#endif
+        auto data = keyedArchiver.get().encodedData;
 
-        parameters.bundleParameterData = API::Data::createWithoutCopying((const unsigned char*)[data bytes], [data length], [] (unsigned char*, const void* data) {
-            [(NSData *)data release];
-        }, data.leakRef());
+        parameters.bundleParameterData = API::Data::createWithoutCopying(WTFMove(data));
     }
     parameters.networkATSContext = adoptCF(_CFNetworkCopyATSContext());
 
-#if PLATFORM(MAC)
-    ASSERT(parameters.uiProcessCookieStorageIdentifier.isEmpty());
-    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
-    parameters.uiProcessCookieStorageIdentifier = identifyingDataFromCookieStorage([[NSHTTPCookieStorage sharedHTTPCookieStorage] _cookieStorage]);
-#endif
 #if ENABLE(MEDIA_STREAM)
     // Allow microphone access if either preference is set because WebRTC requires microphone access.
     bool mediaDevicesEnabled = m_defaultPageGroup->preferences().mediaDevicesEnabled();
@@ -261,7 +225,7 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
         webRTCEnabled = [defaults boolForKey:@"ExperimentalPeerConnectionEnabled"];
 
     bool isSafari = false;
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     if (WebCore::IOSApplication::isMobileSafari())
         isSafari = true;
 #elif PLATFORM(MAC)
@@ -279,7 +243,7 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
         SandboxExtension::createHandleForGenericExtension("com.apple.webkit.microphone", parameters.audioCaptureExtensionHandle);
 #endif
 
-#if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
+#if ENABLE(RESOURCE_LOAD_STATISTICS) && !RELEASE_LOG_DISABLED
     parameters.shouldLogUserInteraction = [defaults boolForKey:WebKitLogCookieInformationDefaultsKey];
 #endif
     
@@ -297,20 +261,28 @@ void WebProcessPool::platformInitializeNetworkProcess(NetworkProcessCreationPara
 
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
 
-    parameters.httpProxy = [defaults stringForKey:WebKit2HTTPProxyDefaultsKey];
-    parameters.httpsProxy = [defaults stringForKey:WebKit2HTTPSProxyDefaultsKey];
+    {
+        bool isSafari = false;
+#if PLATFORM(IOS_FAMILY)
+        isSafari = WebCore::IOSApplication::isMobileSafari();
+#elif PLATFORM(MAC)
+        isSafari = WebCore::MacApplication::isSafari();
+#endif
+        if (isSafari) {
+            parameters.defaultDataStoreParameters.networkSessionParameters.httpProxy = URL(URL(), [defaults stringForKey:(NSString *)WebKit2HTTPProxyDefaultsKey]);
+            parameters.defaultDataStoreParameters.networkSessionParameters.httpsProxy = URL(URL(), [defaults stringForKey:(NSString *)WebKit2HTTPSProxyDefaultsKey]);
+        }
+    }
+
     parameters.networkATSContext = adoptCF(_CFNetworkCopyATSContext());
 
     parameters.shouldEnableNetworkCacheEfficacyLogging = [defaults boolForKey:WebKitNetworkCacheEfficacyLoggingEnabledDefaultsKey];
 
-    parameters.sourceApplicationBundleIdentifier = m_configuration->sourceApplicationBundleIdentifier();
-    parameters.sourceApplicationSecondaryIdentifier = m_configuration->sourceApplicationSecondaryIdentifier();
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     parameters.ctDataConnectionServiceType = m_configuration->ctDataConnectionServiceType();
 #endif
 
     parameters.shouldSuppressMemoryPressureHandler = [defaults boolForKey:WebKitSuppressMemoryPressureHandlerDefaultsKey];
-    parameters.loadThrottleLatency = Seconds { [defaults integerForKey:WebKitNetworkLoadThrottleLatencyMillisecondsDefaultsKey] / 1000. };
 
 #if PLATFORM(MAC)
     ASSERT(parameters.uiProcessCookieStorageIdentifier.isEmpty());
@@ -321,18 +293,7 @@ void WebProcessPool::platformInitializeNetworkProcess(NetworkProcessCreationPara
     parameters.storageAccessAPIEnabled = storageAccessAPIEnabled();
     parameters.suppressesConnectionTerminationOnSystemChange = m_configuration->suppressesConnectionTerminationOnSystemChange();
 
-#if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
-    parameters.logCookieInformation = [defaults boolForKey:WebKitLogCookieInformationDefaultsKey];
-#endif
-
-#if ENABLE(NETWORK_CAPTURE)
-    parameters.recordReplayMode = [defaults stringForKey:WebKitRecordReplayModeDefaultsKey];
-    parameters.recordReplayCacheLocation = [defaults stringForKey:WebKitRecordReplayCacheLocationDefaultsKey];
-    if (parameters.recordReplayCacheLocation.isEmpty())
-        parameters.recordReplayCacheLocation = parameters.diskCacheDirectory;
-#endif
-
-#if ENABLE(WIFI_ASSERTIONS)
+#if ENABLE(PROXIMITY_NETWORKING)
     parameters.wirelessContextIdentifier = m_configuration->wirelessContextIdentifier();
 #endif
 }
@@ -342,7 +303,7 @@ void WebProcessPool::platformInvalidateContext()
     unregisterNotificationObservers();
 }
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 String WebProcessPool::parentBundleDirectory() const
 {
     return [[[NSBundle mainBundle] bundlePath] stringByStandardizingPath];
@@ -393,122 +354,7 @@ String WebProcessPool::containerTemporaryDirectory() const
 }
 #endif
 
-String WebProcessPool::legacyPlatformDefaultWebSQLDatabaseDirectory()
-{
-    registerUserDefaultsIfNeeded();
-
-    NSString *databasesDirectory = [[NSUserDefaults standardUserDefaults] objectForKey:WebDatabaseDirectoryDefaultsKey];
-    if (!databasesDirectory || ![databasesDirectory isKindOfClass:[NSString class]])
-        databasesDirectory = @"~/Library/WebKit/Databases";
-    return stringByResolvingSymlinksInPath([databasesDirectory stringByStandardizingPath]);
-}
-
-String WebProcessPool::legacyPlatformDefaultIndexedDBDatabaseDirectory()
-{
-    // Indexed databases exist in a subdirectory of the "database directory path."
-    // Currently, the top level of that directory contains entities related to WebSQL databases.
-    // We should fix this, and move WebSQL into a subdirectory (https://bugs.webkit.org/show_bug.cgi?id=124807)
-    // In the meantime, an entity name prefixed with three underscores will not conflict with any WebSQL entities.
-    return FileSystem::pathByAppendingComponent(legacyPlatformDefaultWebSQLDatabaseDirectory(), "___IndexedDB");
-}
-
-String WebProcessPool::legacyPlatformDefaultLocalStorageDirectory()
-{
-    registerUserDefaultsIfNeeded();
-
-    NSString *localStorageDirectory = [[NSUserDefaults standardUserDefaults] objectForKey:WebStorageDirectoryDefaultsKey];
-    if (!localStorageDirectory || ![localStorageDirectory isKindOfClass:[NSString class]])
-        localStorageDirectory = @"~/Library/WebKit/LocalStorage";
-    return stringByResolvingSymlinksInPath([localStorageDirectory stringByStandardizingPath]);
-}
-
-String WebProcessPool::legacyPlatformDefaultMediaCacheDirectory()
-{
-    registerUserDefaultsIfNeeded();
-    
-    NSString *mediaKeysCacheDirectory = [[NSUserDefaults standardUserDefaults] objectForKey:WebKitMediaCacheDirectoryDefaultsKey];
-    if (!mediaKeysCacheDirectory || ![mediaKeysCacheDirectory isKindOfClass:[NSString class]]) {
-        mediaKeysCacheDirectory = NSTemporaryDirectory();
-        
-        if (!WebKit::processHasContainer()) {
-            NSString *bundleIdentifier = [NSBundle mainBundle].bundleIdentifier;
-            if (!bundleIdentifier)
-                bundleIdentifier = [NSProcessInfo processInfo].processName;
-            mediaKeysCacheDirectory = [mediaKeysCacheDirectory stringByAppendingPathComponent:bundleIdentifier];
-        }
-        mediaKeysCacheDirectory = [mediaKeysCacheDirectory stringByAppendingPathComponent:@"WebKit/MediaCache"];
-    }
-    return stringByResolvingSymlinksInPath([mediaKeysCacheDirectory stringByStandardizingPath]);
-}
-
-String WebProcessPool::legacyPlatformDefaultMediaKeysStorageDirectory()
-{
-    registerUserDefaultsIfNeeded();
-
-    NSString *mediaKeysStorageDirectory = [[NSUserDefaults standardUserDefaults] objectForKey:WebKitMediaKeysStorageDirectoryDefaultsKey];
-    if (!mediaKeysStorageDirectory || ![mediaKeysStorageDirectory isKindOfClass:[NSString class]])
-        mediaKeysStorageDirectory = @"~/Library/WebKit/MediaKeys";
-    return stringByResolvingSymlinksInPath([mediaKeysStorageDirectory stringByStandardizingPath]);
-}
-
-String WebProcessPool::legacyPlatformDefaultApplicationCacheDirectory()
-{
-    NSString *appName = [[NSBundle mainBundle] bundleIdentifier];
-    if (!appName)
-        appName = [[NSProcessInfo processInfo] processName];
-#if PLATFORM(IOS)
-    // This quirk used to make these apps share application cache storage, but doesn't accomplish that any more.
-    // Preserving it avoids the need to migrate data when upgrading.
-    if (IOSApplication::isMobileSafari() || IOSApplication::isWebApp())
-        appName = @"com.apple.WebAppCache";
-#endif
-
-    ASSERT(appName);
-
-#if PLATFORM(IOS)
-    NSString *cacheDir = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches"];
-#else
-    char cacheDirectory[MAXPATHLEN];
-    size_t cacheDirectoryLen = confstr(_CS_DARWIN_USER_CACHE_DIR, cacheDirectory, MAXPATHLEN);
-    if (!cacheDirectoryLen)
-        return String();
-
-    NSString *cacheDir = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:cacheDirectory length:cacheDirectoryLen - 1];
-#endif
-    NSString* cachePath = [cacheDir stringByAppendingPathComponent:appName];
-    return stringByResolvingSymlinksInPath([cachePath stringByStandardizingPath]);
-}
-
-String WebProcessPool::legacyPlatformDefaultNetworkCacheDirectory()
-{
-    NSString *cachePath = CFBridgingRelease(_CFURLCacheCopyCacheDirectory([[NSURLCache sharedURLCache] _CFURLCache]));
-    if (!cachePath)
-        cachePath = @"~/Library/Caches/com.apple.WebKit.WebProcess";
-
-    cachePath = [cachePath stringByAppendingPathComponent:@"WebKitCache"];
-
-    return stringByResolvingSymlinksInPath([cachePath stringByStandardizingPath]);
-}
-
-String WebProcessPool::legacyPlatformDefaultJavaScriptConfigurationDirectory()
-{
-#if PLATFORM(IOS)
-    String path = pathForProcessContainer();
-    if (path.isEmpty())
-        path = NSHomeDirectory();
-    
-    path = path + "/Library/WebKit/JavaScriptCoreDebug";
-    path = stringByResolvingSymlinksInPath(path);
-
-    return path;
-#else
-    RetainPtr<NSString> javaScriptConfigPath = @"~/Library/WebKit/JavaScriptCoreDebug";
-    
-    return stringByResolvingSymlinksInPath([javaScriptConfigPath stringByStandardizingPath]);
-#endif
-}
-
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 void WebProcessPool::setJavaScriptConfigurationFileEnabledFromDefaults()
 {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
@@ -528,9 +374,14 @@ bool WebProcessPool::processSuppressionEnabled() const
     return !m_userObservablePageCounter.value() && !m_processSuppressionDisabledForPageCounter.value();
 }
 
+bool WebProcessPool::networkProcessHasEntitlementForTesting(const String& entitlement)
+{
+    return WTF::hasEntitlement(ensureNetworkProcess().connection()->xpcConnection(), entitlement.utf8().data());
+}
+
 void WebProcessPool::registerNotificationObservers()
 {
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     // Listen for enhanced accessibility changes and propagate them to the WebProcess.
     m_enhancedAccessibilityObserver = [[NSNotificationCenter defaultCenter] addObserverForName:WebKitApplicationDidChangeAccessibilityEnhancedUserInterfaceNotification object:nil queue:[NSOperationQueue currentQueue] usingBlock:^(NSNotification *note) {
         setEnhancedAccessibility([[[note userInfo] objectForKey:@"AXEnhancedUserInterface"] boolValue]);
@@ -567,12 +418,12 @@ void WebProcessPool::registerNotificationObservers()
     }];
 #endif
 
-#endif // !PLATFORM(IOS)
+#endif // !PLATFORM(IOS_FAMILY)
 }
 
 void WebProcessPool::unregisterNotificationObservers()
 {
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     [[NSNotificationCenter defaultCenter] removeObserver:m_enhancedAccessibilityObserver.get()];    
     [[NSNotificationCenter defaultCenter] removeObserver:m_automaticTextReplacementNotificationObserver.get()];
     [[NSNotificationCenter defaultCenter] removeObserver:m_automaticSpellingCorrectionNotificationObserver.get()];
@@ -582,7 +433,7 @@ void WebProcessPool::unregisterNotificationObservers()
 #if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
     [[NSNotificationCenter defaultCenter] removeObserver:m_scrollerStyleNotificationObserver.get()];
 #endif
-#endif // !PLATFORM(IOS)
+#endif // !PLATFORM(IOS_FAMILY)
 }
 
 static CFURLStorageSessionRef privateBrowsingSession()
@@ -616,6 +467,37 @@ void WebProcessPool::resetHSTSHostsAddedAfterDate(double startDateIntervalSince1
     _CFNetworkResetHSTSHostsSinceDate(nullptr, (__bridge CFDateRef)startDate);
     _CFNetworkResetHSTSHostsSinceDate(privateBrowsingSession(), (__bridge CFDateRef)startDate);
 }
+
+#if PLATFORM(MAC) && ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
+void WebProcessPool::startDisplayLink(IPC::Connection& connection, unsigned observerID, uint32_t displayID)
+{
+    for (auto& displayLink : m_displayLinks) {
+        if (displayLink->displayID() == displayID) {
+            displayLink->addObserver(connection, observerID);
+            return;
+        }
+    }
+    auto displayLink = std::make_unique<DisplayLink>(displayID);
+    displayLink->addObserver(connection, observerID);
+    m_displayLinks.append(WTFMove(displayLink));
+}
+
+void WebProcessPool::stopDisplayLink(IPC::Connection& connection, unsigned observerID, uint32_t displayID)
+{
+    for (auto& displayLink : m_displayLinks) {
+        if (displayLink->displayID() == displayID) {
+            displayLink->removeObserver(connection, observerID);
+            return;
+        }
+    }
+}
+
+void WebProcessPool::stopDisplayLinks(IPC::Connection& connection)
+{
+    for (auto& displayLink : m_displayLinks)
+        displayLink->removeObservers(connection);
+}
+#endif
 
 // FIXME: Deprecated. Left here until a final decision is made.
 void WebProcessPool::setCookieStoragePartitioningEnabled(bool enabled)

@@ -110,7 +110,7 @@ class WinPort(ApplePort):
         actual_text = delegate_regexp.sub("", actual_text)
         return expected_text != actual_text
 
-    def default_baseline_search_path(self):
+    def default_baseline_search_path(self, **kwargs):
         version_name_map = VersionNameMap.map(self.host.platform)
         if self._os_version < self.VERSION_MIN or self._os_version > self.VERSION_MAX:
             fallback_versions = [self._os_version]
@@ -212,7 +212,12 @@ class WinPort(ApplePort):
 
         return self._build_path('ImageDiff.exe')
 
-    def test_search_path(self):
+    API_TEST_BINARY_NAMES = ['TestWTF.exe', 'TestWebCore.exe', 'TestWebKitLegacy.exe']
+
+    def path_to_api_test_binaries(self):
+        return {binary.split('.')[0]: self._build_path(binary) for binary in self.API_TEST_BINARY_NAMES}
+
+    def test_search_path(self, **kwargs):
         test_fallback_names = [path for path in self.baseline_search_path() if not path.startswith(self._webkit_baseline_path('mac'))]
         return map(self._webkit_baseline_path, test_fallback_names)
 
@@ -390,13 +395,13 @@ class WinPort(ApplePort):
         except:
             _log.warn("Failed to delete preference files.")
 
-    def setup_test_run(self, device_class=None):
+    def setup_test_run(self, device_type=None):
         atexit.register(self.restore_crash_log_saving)
         self.setup_crash_log_saving()
         self.prevent_error_dialogs()
         self.delete_sem_locks()
         self.delete_preference_files()
-        super(WinPort, self).setup_test_run(device_class)
+        super(WinPort, self).setup_test_run(device_type)
 
     def clean_up_test_run(self):
         self.allow_error_dialogs()
@@ -475,7 +480,7 @@ class WinCairoPort(WinPort):
 
     DEFAULT_ARCHITECTURE = 'x86_64'
 
-    def default_baseline_search_path(self):
+    def default_baseline_search_path(self, **kwargs):
         version_name_map = VersionNameMap.map(self.host.platform)
         if self._os_version < self.VERSION_MIN or self._os_version > self.VERSION_MAX:
             fallback_versions = [self._os_version]

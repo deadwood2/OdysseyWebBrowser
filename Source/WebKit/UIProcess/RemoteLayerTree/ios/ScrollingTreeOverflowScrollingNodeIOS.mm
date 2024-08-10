@@ -26,7 +26,7 @@
 #import "config.h"
 #import "ScrollingTreeOverflowScrollingNodeIOS.h"
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #if ENABLE(ASYNC_SCROLLING)
 
 #import "ScrollingTreeScrollingNodeDelegateIOS.h"
@@ -53,7 +53,7 @@ ScrollingTreeOverflowScrollingNodeIOS::~ScrollingTreeOverflowScrollingNodeIOS()
 
 void ScrollingTreeOverflowScrollingNodeIOS::commitStateBeforeChildren(const WebCore::ScrollingStateNode& stateNode)
 {
-    if (stateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollLayer))
+    if (stateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollContainerLayer))
         m_scrollingNodeDelegate->resetScrollViewDelegate();
 
     ScrollingTreeOverflowScrollingNode::commitStateBeforeChildren(stateNode);
@@ -89,4 +89,4 @@ void ScrollingTreeOverflowScrollingNodeIOS::updateLayersAfterDelegatedScroll(con
 } // namespace WebKit
 
 #endif // ENABLE(ASYNC_SCROLLING)
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)

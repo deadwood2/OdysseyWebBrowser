@@ -26,7 +26,7 @@ endif ()
 
 if (USE_COORDINATED_GRAPHICS)
     list(APPEND WebCore_INCLUDE_DIRECTORIES
-        "${WEBCORE_DIR}/page/scrolling/coordinatedgraphics"
+        "${WEBCORE_DIR}/page/scrolling/nicosia"
         "${WEBCORE_DIR}/platform/graphics/texmap/coordinated"
     )
     list(APPEND WebCore_SOURCES
@@ -35,7 +35,6 @@ if (USE_COORDINATED_GRAPHICS)
 
         platform/graphics/texmap/coordinated/CoordinatedBackingStore.cpp
         platform/graphics/texmap/coordinated/CoordinatedGraphicsLayer.cpp
-        platform/graphics/texmap/coordinated/CoordinatedImageBacking.cpp
         platform/graphics/texmap/coordinated/Tile.cpp
         platform/graphics/texmap/coordinated/TiledBackingStore.cpp
     )

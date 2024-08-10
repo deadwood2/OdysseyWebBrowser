@@ -32,13 +32,13 @@
 #include "WebFullScreenManagerProxy.h"
 #include <wtf/RetainPtr.h>
 
-@class WKEditorUndoTargetObjC;
+@class WKEditorUndoTarget;
 @class WKView;
 
 namespace WebCore {
 class AlternativeTextUIController;
 struct DragItem;
-struct PromisedBlobInfo;
+struct PromisedAttachmentInfo;
 }
 
 namespace WebKit {
@@ -55,13 +55,13 @@ public:
     virtual ~PageClientImpl();
 
     // FIXME: Eventually WebViewImpl should become the PageClient.
-    void setImpl(WebViewImpl& impl) { m_impl = &impl; }
+    void setImpl(WebViewImpl&);
 
     void viewWillMoveToAnotherWindow();
 
 private:
     // PageClient
-    std::unique_ptr<DrawingAreaProxy> createDrawingAreaProxy() override;
+    std::unique_ptr<DrawingAreaProxy> createDrawingAreaProxy(WebProcessProxy&) override;
     void setViewNeedsDisplay(const WebCore::Region&) override;
     void requestScroll(const WebCore::FloatPoint& scrollPosition, const WebCore::IntPoint& scrollOrigin, bool isProgrammaticScroll) override;
     WebCore::FloatPoint viewScrollPosition() override;
@@ -75,10 +75,11 @@ private:
     bool isVisuallyIdle() override;
     LayerHostingMode viewLayerHostingMode() override;
     ColorSpaceData colorSpace() override;
-    void setAcceleratedCompositingRootLayer(LayerOrView *) override;
-    LayerOrView *acceleratedCompositingRootLayer() const override;
+    void setRemoteLayerTreeRootNode(RemoteLayerTreeNode*) override;
+    CALayer *acceleratedCompositingRootLayer() const override;
 
     void processDidExit() override;
+    void processWillSwap() override;
     void pageClosed() override;
     void didRelaunchProcess() override;
     void preferencesDidChange() override;
@@ -103,7 +104,15 @@ private:
     void resetSecureInputState() override;
     void notifyInputContextAboutDiscardedComposition() override;
     void selectionDidChange() override;
-
+    void showSafeBrowsingWarning(const SafeBrowsingWarning&, CompletionHandler<void(Variant<WebKit::ContinueUnsafeLoad, URL>&&)>&&) override;
+    void clearSafeBrowsingWarning() override;
+    void clearSafeBrowsingWarningIfForMainFrameNavigation() override;
+    bool hasSafeBrowsingWarning() const override;
+    
+#if WK_API_ENABLED
+    bool showShareSheet(const WebCore::ShareDataWithParsedURL&, WTF::CompletionHandler<void(bool)>&&) override;
+#endif
+        
     WebCore::FloatRect convertToDeviceSpace(const WebCore::FloatRect&) override;
     WebCore::FloatRect convertToUserSpace(const WebCore::FloatRect&) override;
     WebCore::IntPoint screenToRootView(const WebCore::IntPoint&) override;
@@ -111,7 +120,7 @@ private:
 #if PLATFORM(MAC)
     WebCore::IntRect rootViewToWindow(const WebCore::IntRect&) override;
 #endif
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     virtual WebCore::IntPoint accessibilityScreenToRootView(const WebCore::IntPoint&) = 0;
     virtual WebCore::IntRect rootViewToAccessibilityScreen(const WebCore::IntRect&) = 0;
 #endif
@@ -217,7 +226,7 @@ private:
     void handleControlledElementIDResponse(const String&) override;
 
     void didPerformImmediateActionHitTest(const WebHitTestResultData&, bool contentPreventsDefault, API::Object*) override;
-    void* immediateActionAnimationControllerForHitTestResult(RefPtr<API::HitTestResult>, uint64_t, RefPtr<API::Object>) override;
+    NSObject *immediateActionAnimationControllerForHitTestResult(RefPtr<API::HitTestResult>, uint64_t, RefPtr<API::Object>) override;
 
     void didHandleAcceptedCandidate() override;
 
@@ -233,23 +242,16 @@ private:
     WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection() override;
     bool effectiveAppearanceIsDark() const override;
 
+#if ENABLE(DRAG_SUPPORT)
+    void didPerformDragOperation(bool handled) final;
+#endif
+
 #if WK_API_ENABLED
     NSView *inspectorAttachmentView() override;
     _WKRemoteObjectRegistry *remoteObjectRegistry() override;
 #endif
 
     void didFinishProcessingAllPendingMouseEvents() final;
-
-    NSView *m_view;
-    WebViewImpl* m_impl { nullptr };
-#if USE(AUTOCORRECTION_PANEL)
-    CorrectionPanel m_correctionPanel;
-#endif
-#if USE(DICTATION_ALTERNATIVES)
-    std::unique_ptr<WebCore::AlternativeTextUIController> m_alternativeTextUIController;
-#endif
-
-    bool m_shouldSuppressFirstResponderChanges { false };
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     WebCore::WebMediaSessionManager& mediaSessionManager() override;
@@ -260,6 +262,19 @@ private:
 
     void didRestoreScrollPosition() override;
     bool windowIsFrontWindowUnderMouse(const NativeWebMouseEvent&) override;
+
+    void takeFocus(WebCore::FocusDirection) override;
+
+    NSView *m_view;
+    WeakPtr<WebViewImpl> m_impl;
+#if USE(AUTOCORRECTION_PANEL)
+    CorrectionPanel m_correctionPanel;
+#endif
+#if USE(DICTATION_ALTERNATIVES)
+    std::unique_ptr<WebCore::AlternativeTextUIController> m_alternativeTextUIController;
+#endif
+
+    bool m_shouldSuppressFirstResponderChanges { false };
 };
 
 } // namespace WebKit

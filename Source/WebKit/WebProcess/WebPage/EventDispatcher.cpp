@@ -119,16 +119,13 @@ void EventDispatcher::wheelEvent(uint64_t pageID, const WebWheelEvent& wheelEven
         // WebCore should always know the current state and know when it changes so the
         // scrolling tree can be notified.
         // We only need to do this at the beginning of the gesture.
-        if (platformWheelEvent.phase() == PlatformWheelEventPhaseBegan) {
-            ScrollingThread::dispatch([scrollingTree, canRubberBandAtLeft, canRubberBandAtRight, canRubberBandAtTop, canRubberBandAtBottom] {
-                scrollingTree->setCanRubberBandState(canRubberBandAtLeft, canRubberBandAtRight, canRubberBandAtTop, canRubberBandAtBottom);
-            });
-        }
+        if (platformWheelEvent.phase() == PlatformWheelEventPhaseBegan)
+            scrollingTree->setCanRubberBandState(canRubberBandAtLeft, canRubberBandAtRight, canRubberBandAtTop, canRubberBandAtBottom);
 
-        ScrollingTree::EventResult result = scrollingTree->tryToHandleWheelEvent(platformWheelEvent);
+        ScrollingEventResult result = scrollingTree->tryToHandleWheelEvent(platformWheelEvent);
 
-        if (result == ScrollingTree::DidHandleEvent || result == ScrollingTree::DidNotHandleEvent) {
-            sendDidReceiveEvent(pageID, wheelEvent, result == ScrollingTree::DidHandleEvent);
+        if (result == ScrollingEventResult::DidHandleEvent || result == ScrollingEventResult::DidNotHandleEvent) {
+            sendDidReceiveEvent(pageID, wheelEvent, result == ScrollingEventResult::DidHandleEvent);
             return;
         }
     }

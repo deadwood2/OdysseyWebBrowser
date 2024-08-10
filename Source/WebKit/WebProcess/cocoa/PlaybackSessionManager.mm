@@ -26,7 +26,7 @@
 #import "config.h"
 #import "PlaybackSessionManager.h"
 
-#if PLATFORM(IOS) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
+#if PLATFORM(IOS_FAMILY) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
 
 #import "Attachment.h"
 #import "PlaybackSessionManagerMessages.h"
@@ -62,12 +62,6 @@ PlaybackSessionInterfaceContext::PlaybackSessionInterfaceContext(PlaybackSession
 
 PlaybackSessionInterfaceContext::~PlaybackSessionInterfaceContext()
 {
-}
-
-void PlaybackSessionInterfaceContext::resetMediaState()
-{
-    if (m_manager)
-        m_manager->resetMediaState(m_contextId);
 }
 
 void PlaybackSessionInterfaceContext::durationChanged(double duration)
@@ -154,6 +148,12 @@ void PlaybackSessionInterfaceContext::mutedChanged(bool muted)
         m_manager->mutedChanged(m_contextId, muted);
 }
 
+void PlaybackSessionInterfaceContext::isPictureInPictureSupportedChanged(bool supported)
+{
+    if (m_manager)
+        m_manager->isPictureInPictureSupportedChanged(m_contextId, supported);
+}
+
 void PlaybackSessionInterfaceContext::volumeChanged(double volume)
 {
     if (m_manager)
@@ -202,9 +202,9 @@ void PlaybackSessionManager::invalidate()
 
 PlaybackSessionManager::ModelInterfaceTuple PlaybackSessionManager::createModelAndInterface(uint64_t contextId)
 {
-    RefPtr<PlaybackSessionModelMediaElement> model = PlaybackSessionModelMediaElement::create();
-    RefPtr<PlaybackSessionInterfaceContext> interface = PlaybackSessionInterfaceContext::create(*this, contextId);
-    model->addClient(*interface);
+    auto model = PlaybackSessionModelMediaElement::create();
+    auto interface = PlaybackSessionInterfaceContext::create(*this, contextId);
+    model->addClient(interface.get());
 
     return std::make_tuple(WTFMove(model), WTFMove(interface));
 }
@@ -316,11 +316,6 @@ WebCore::HTMLMediaElement* PlaybackSessionManager::currentPlaybackControlsElemen
 
 #pragma mark Interface to PlaybackSessionInterfaceContext:
 
-void PlaybackSessionManager::resetMediaState(uint64_t contextId)
-{
-    m_page->send(Messages::PlaybackSessionManagerProxy::ResetMediaState(contextId), m_page->pageID());
-}
-
 void PlaybackSessionManager::durationChanged(uint64_t contextId, double duration)
 {
     m_page->send(Messages::PlaybackSessionManagerProxy::DurationChanged(contextId, duration), m_page->pageID());
@@ -400,6 +395,11 @@ void PlaybackSessionManager::mutedChanged(uint64_t contextId, bool muted)
 void PlaybackSessionManager::volumeChanged(uint64_t contextId, double volume)
 {
     m_page->send(Messages::PlaybackSessionManagerProxy::VolumeChanged(contextId, volume));
+}
+
+void PlaybackSessionManager::isPictureInPictureSupportedChanged(uint64_t contextId, bool supported)
+{
+    m_page->send(Messages::PlaybackSessionManagerProxy::PictureInPictureSupportedChanged(contextId, supported));
 }
 
 #pragma mark Messages from PlaybackSessionManagerProxy:
@@ -507,6 +507,12 @@ void PlaybackSessionManager::setVolume(uint64_t contextId, double volume)
     ensureModel(contextId).setVolume(volume);
 }
 
+void PlaybackSessionManager::setPlayingOnSecondScreen(uint64_t contextId, bool value)
+{
+    UserGestureIndicator indicator(ProcessingUserGesture);
+    ensureModel(contextId).setPlayingOnSecondScreen(value);
+}
+
 } // namespace WebKit
 
-#endif // PLATFORM(IOS) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
+#endif // PLATFORM(IOS_FAMILY) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))

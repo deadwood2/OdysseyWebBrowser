@@ -7,6 +7,7 @@
 build/
 !/PerformanceTests/Speedometer/**/build/
 /WebKitBuild/
+/test262-results/
 autoinstall.cache.d
 project.xcworkspace
 xcuserdata
@@ -48,3 +49,6 @@ __cmake_systeminformation/
 
 # Ignore YouCompleteMe symlinks
 .ycm_extra_conf.py
+
+# Local overrides configuration files
+LocalOverrides.xcconfig

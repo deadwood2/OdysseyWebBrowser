@@ -71,8 +71,8 @@ private:
     WebResourceLoader(Ref<WebCore::ResourceLoader>&&, const TrackingParameters&);
 
     // IPC::MessageSender
-    IPC::Connection* messageSenderConnection() override;
-    uint64_t messageSenderDestinationID() override;
+    IPC::Connection* messageSenderConnection() const override;
+    uint64_t messageSenderDestinationID() const override;
 
     void willSendRequest(WebCore::ResourceRequest&&, WebCore::ResourceResponse&&);
     void didSendData(uint64_t bytesSent, uint64_t totalBytesToBeSent);
@@ -83,7 +83,7 @@ private:
     void didFailResourceLoad(const WebCore::ResourceError&);
     void didBlockAuthenticationChallenge();
 
-    void stopLoadingAfterXFrameOptionsOrContentSecurityPolicyDenied();
+    void stopLoadingAfterXFrameOptionsOrContentSecurityPolicyDenied(const WebCore::ResourceResponse&);
 
 #if ENABLE(SHAREABLE_RESOURCE)
     void didReceiveResource(const ShareableResource::Handle&);

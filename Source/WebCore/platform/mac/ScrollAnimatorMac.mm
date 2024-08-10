@@ -527,6 +527,20 @@ enum FeatureToAnimate {
     return _scrollbar->supportsUpdateOnSecondaryThread();
 }
 
+#if HAVE(OS_DARK_MODE_SUPPORT)
+- (NSAppearance *)effectiveAppearanceForScrollerImp:(NSScrollerImp *)scrollerImp
+{
+    UNUSED_PARAM(scrollerImp);
+
+    if (!_scrollbar)
+        return [NSAppearance currentAppearance];
+
+    // Keep this in sync with FrameView::paintScrollCorner.
+    bool useDarkAppearance = _scrollbar->scrollableArea().useDarkAppearanceForScrollbars();
+    return [NSAppearance appearanceNamed:useDarkAppearance ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua];
+}
+#endif
+
 - (void)setUpAlphaAnimation:(RetainPtr<WebScrollbarPartAnimation>&)scrollbarPartAnimation scrollerPainter:(NSScrollerImp *)scrollerPainter part:(WebCore::ScrollbarPart)part animateAlphaTo:(CGFloat)newAlpha duration:(NSTimeInterval)duration
 {
     // If the user has scrolled the page, then the scrollbars must be animated here.
@@ -790,8 +804,8 @@ void ScrollAnimatorMac::adjustScrollPositionToBoundsIfNecessary()
     m_scrollableArea.setConstrainsScrollingToContentEdge(true);
 
     ScrollPosition currentScrollPosition = m_scrollableArea.scrollPosition();
-    ScrollPosition constainedPosition = m_scrollableArea.constrainScrollPosition(currentScrollPosition);
-    immediateScrollBy(constainedPosition - currentScrollPosition);
+    ScrollPosition constrainedPosition = m_scrollableArea.constrainScrollPosition(currentScrollPosition);
+    immediateScrollBy(constrainedPosition - currentScrollPosition);
 
     m_scrollableArea.setConstrainsScrollingToContentEdge(currentlyConstrainsToContentEdge);
 }
@@ -1109,9 +1123,6 @@ bool ScrollAnimatorMac::shouldScrollbarParticipateInHitTesting(Scrollbar* scroll
 {
     // Non-overlay scrollbars should always participate in hit testing.
     if (ScrollerStyle::recommendedScrollerStyle() != NSScrollerStyleOverlay)
-        return true;
-
-    if (scrollbar->isAlphaLocked())
         return true;
 
     // Overlay scrollbars should participate in hit testing whenever they are at all visible.

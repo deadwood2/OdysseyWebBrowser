@@ -73,7 +73,7 @@ static void hasCompatibleServicesForItems(dispatch_group_t group, NSArray *items
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
     if ([NSSharingService respondsToSelector:@selector(getSharingServicesForItems:mask:completion:)]) {
         dispatch_group_enter(group);
-        [NSSharingService getSharingServicesForItems:items mask:servicesMask completion:BlockPtr<void(NSArray *)>::fromCallable([completionHandler = WTFMove(completionHandler), group](NSArray *services) {
+        [NSSharingService getSharingServicesForItems:items mask:servicesMask completion:makeBlockPtr([completionHandler = WTFMove(completionHandler), group](NSArray *services) {
             completionHandler(services.count);
             dispatch_group_leave(group);
         }).get()];
@@ -97,33 +97,33 @@ void ServicesController::refreshExistingServices(bool refreshImmediately)
     dispatch_after(refreshTime, m_refreshQueue, ^{
         auto serviceLookupGroup = adoptOSObject(dispatch_group_create());
 
-        static NeverDestroyed<NSImage *> image([[NSImage alloc] init]);
+        static NSImage *image { [[NSImage alloc] init] };
         hasCompatibleServicesForItems(serviceLookupGroup.get(), @[ image ], [this] (bool hasServices) {
             m_hasImageServices = hasServices;
         });
 
-        static NeverDestroyed<NSAttributedString *> attributedString([[NSAttributedString alloc] initWithString:@"a"]);
+        static NSAttributedString *attributedString { [[NSAttributedString alloc] initWithString:@"a"] };
         hasCompatibleServicesForItems(serviceLookupGroup.get(), @[ attributedString ], [this] (bool hasServices) {
             m_hasSelectionServices = hasServices;
         });
 
-        static NSAttributedString *attributedStringWithRichContent;
-        if (!attributedStringWithRichContent) {
-            dispatch_sync(dispatch_get_main_queue(), ^ {
+        static NSAttributedString *attributedStringWithRichContent = [] {
+            NSMutableAttributedString *richString;
+            dispatch_sync(dispatch_get_main_queue(), [&richString] {
                 auto attachment = adoptNS([[NSTextAttachment alloc] init]);
-                auto cell = adoptNS([[NSTextAttachmentCell alloc] initImageCell:image.get()]);
+                auto cell = adoptNS([[NSTextAttachmentCell alloc] initImageCell:image]);
                 [attachment setAttachmentCell:cell.get()];
-                NSMutableAttributedString *richString = (NSMutableAttributedString *)[NSMutableAttributedString attributedStringWithAttachment:attachment.get()];
+                richString = [[NSAttributedString attributedStringWithAttachment:attachment.get()] mutableCopy];
                 [richString appendAttributedString:attributedString];
-                attributedStringWithRichContent = [richString retain];
             });
-        }
+            return richString;
+        }();
 
         hasCompatibleServicesForItems(serviceLookupGroup.get(), @[ attributedStringWithRichContent ], [this] (bool hasServices) {
             m_hasRichContentServices = hasServices;
         });
 
-        dispatch_group_notify(serviceLookupGroup.get(), dispatch_get_main_queue(), BlockPtr<void(void)>::fromCallable([this] {
+        dispatch_group_notify(serviceLookupGroup.get(), dispatch_get_main_queue(), makeBlockPtr([this] {
             bool availableServicesChanged = (m_lastSentHasImageServices != m_hasImageServices) || (m_lastSentHasSelectionServices != m_hasSelectionServices) || (m_lastSentHasRichContentServices != m_hasRichContentServices);
 
             m_lastSentHasSelectionServices = m_hasSelectionServices;

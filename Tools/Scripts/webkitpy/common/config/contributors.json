@@ -159,6 +159,7 @@
    },
    "Aditya Keerthi" : {
       "emails" : [
+         "pxlcoder@gmail.com",
          "akeerthi@apple.com"
       ],
       "nicks" : [
@@ -204,6 +205,14 @@
          "akiss"
       ],
       "status" : "committer"
+   },
+   "Alan Coon" : {
+      "emails" : [
+         "alancoon@apple.com"
+      ],
+      "nicks" : [
+         "alancoon"
+      ]
    },
    "Alan Cutter" : {
       "emails" : [
@@ -617,6 +626,13 @@
       ],
       "status" : "reviewer"
    },
+   "Andy VanWagoner" : {
+      "emails" : [
+         "andy@vanwagoner.family"
+      ],
+      "expertise" : "JavaScriptCore Intl APIs",
+      "status" : "committer"
+   },
    "Andy Wingo" : {
       "emails" : [
          "wingo@igalia.com"
@@ -741,6 +757,11 @@
          "anttik"
       ],
       "status" : "reviewer"
+   },
+   "Apple Bot Watchers" : {
+      "emails" : [
+         "webkit-bot-watchers-bugzilla@group.apple.com"
+      ]
    },
    "Ariya Hidayat" : {
       "emails" : [
@@ -1519,8 +1540,12 @@
       "status" : "committer"
    },
    "David Fenton" : {
+      "aliases" : [
+         "Dawei Fenton"
+      ],
       "emails" : [
-         "david_fenton@apple.com"
+         "david_fenton@apple.com",
+         "realdawei@apple.com"
       ],
       "nicks" : [
          "realdawei"
@@ -1677,7 +1702,7 @@
       "nicks" : [
          "Dewei"
       ],
-      "status" : "committer"
+      "status" : "reviewer"
    },
    "Dhi Aurrahman" : {
       "emails" : [
@@ -1799,6 +1824,15 @@
       ],
       "status" : "committer"
    },
+   "Dominik Infuehr" : {
+      "emails" : [
+         "dinfuehr@igalia.com"
+      ],
+      "nicks" : [
+         "dinfuehr"
+      ],
+      "status" : "committer"
+   },
    "Dominik R\u00f6ttsches" : {
       "emails" : [
          "d-r@roettsches.de",
@@ -1830,7 +1864,7 @@
       "nicks" : [
          "dolmstead"
       ],
-      "status" : "committer"
+      "status" : "reviewer"
    },
    "Dongseong Hwang" : {
       "emails" : [
@@ -3264,6 +3298,13 @@
       ],
       "status" : "committer"
    },
+   "Justin Fan" : {
+      "emails" : [
+         "justin_fan@apple.com"
+      ],
+      "expertise" : "WebGL, Canvas",
+      "status" : "committer"
+   },
    "Justin Garcia" : {
       "emails" : [
          "justin.garcia@apple.com"
@@ -3273,6 +3314,12 @@
          "justing"
       ],
       "status" : "reviewer"
+   },
+   "Justin Michaud" : {
+      "emails" : [
+         "justin_michaud@apple.com"
+      ],
+      "status" : "committer"
    },
    "Justin Novosad" : {
       "emails" : [
@@ -3748,6 +3795,12 @@
          "liachen@blackberry.com",
          "liachen@rim.com"
       ]
+   },
+   "Ling Ho" : {
+      "emails" : [
+         "lingho@apple.com"
+      ],
+      "expertise" : "webkit.org admin"
    },
    "Lorenzo Tilve" : {
       "emails" : [
@@ -4512,6 +4565,11 @@
       ],
       "status" : "committer"
    },
+   "Pablo Saavedra Rodi\u00f1o" : {
+      "emails" : [
+         "psaavedra@igalia.com"
+      ]
+   },
    "Pam Greene" : {
       "emails" : [
          "pam@chromium.org"
@@ -4853,7 +4911,8 @@
          "rwlbuis@webkit.org",
          "rob.buis@samsung.com",
          "rbuis@blackberry.com",
-         "rbuis@rim.com"
+         "rbuis@rim.com",
+         "rbuis@igalia.com"
       ],
       "expertise" : "KDE contributor, The QtWebKit Port, SVG (Scalable Vector Graphics)",
       "nicks" : [
@@ -4930,10 +4989,11 @@
       "emails" : [
          "ross.kirsling@sony.com"
       ],
+      "expertise" : "JavaScript/ECMAScript, PlayStation port, WinCairo port",
       "nicks" : [
          "rkirsling"
       ],
-      "status" : "committer"
+      "status" : "reviewer"
    },
    "Ruth Fong" : {
       "emails" : [
@@ -5441,6 +5501,17 @@
          "thiblahute"
       ],
       "status" : "committer"
+   },
+   "Thomas Denney" : {
+      "emails" : [
+         "tdenney@apple.com",
+         "me@thomasdenney.co.uk"
+      ],
+      "expertise" : "WebGPU",
+      "nicks" : [
+         "ThomasDenney",
+         "thomasdenney3"
+      ]
    },
    "Thomas Sepez" : {
       "emails" : [
@@ -5969,6 +6040,7 @@
    },
    "Yusuke Suzuki" : {
       "emails" : [
+         "ysuzuki@apple.com",
          "yusukesuzuki@slowstart.org",
          "utatane.tea@gmail.com"
       ],

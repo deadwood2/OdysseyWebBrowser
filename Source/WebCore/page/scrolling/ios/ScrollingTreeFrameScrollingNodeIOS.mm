@@ -26,12 +26,13 @@
 #import "config.h"
 #import "ScrollingTreeFrameScrollingNodeIOS.h"
 
-#if ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS)
+#if ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS_FAMILY)
 
 #import "FrameView.h"
 #import "ScrollingCoordinator.h"
-#import "ScrollingTree.h"
+#import "ScrollingStateFrameScrollingNode.h"
 #import "ScrollingStateTree.h"
+#import "ScrollingTree.h"
 #import "TileController.h"
 #import "WebLayer.h"
 #import <QuartzCore/QuartzCore.h>
@@ -58,9 +59,6 @@ void ScrollingTreeFrameScrollingNodeIOS::commitStateBeforeChildren(const Scrolli
     
     const auto& scrollingStateNode = downcast<ScrollingStateFrameScrollingNode>(stateNode);
 
-    if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::ScrollLayer))
-        m_scrollLayer = scrollingStateNode.layer();
-
     if (scrollingStateNode.hasChangedProperty(ScrollingStateFrameScrollingNode::CounterScrollingLayer))
         m_counterScrollingLayer = scrollingStateNode.counterScrollingLayer();
 
@@ -77,7 +75,7 @@ void ScrollingTreeFrameScrollingNodeIOS::commitStateBeforeChildren(const Scrolli
             if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::RequestedScrollPosition))
                 m_probableMainThreadScrollPosition = scrollingStateNode.requestedScrollPosition();
             else {
-                CGPoint scrollLayerPosition = m_scrollLayer.get().position;
+                CGPoint scrollLayerPosition = scrolledContentsLayer().position;
                 m_probableMainThreadScrollPosition = IntPoint(-scrollLayerPosition.x, -scrollLayerPosition.y);
             }
         }
@@ -95,31 +93,41 @@ void ScrollingTreeFrameScrollingNodeIOS::commitStateAfterChildren(const Scrollin
         setScrollPosition(scrollingStateNode.requestedScrollPosition());
 }
 
+ScrollingEventResult ScrollingTreeFrameScrollingNodeIOS::handleWheelEvent(const PlatformWheelEvent&)
+{
+    return ScrollingEventResult::DidNotHandleEvent;
+}
+
 FloatPoint ScrollingTreeFrameScrollingNodeIOS::scrollPosition() const
 {
     if (shouldUpdateScrollLayerPositionSynchronously())
         return m_probableMainThreadScrollPosition;
 
-    return -m_scrollLayer.get().position;
+    return -scrolledContentsLayer().position;
+}
+
+void ScrollingTreeFrameScrollingNodeIOS::setScrollPosition(const FloatPoint& scrollPosition)
+{
+    ScrollingTreeFrameScrollingNode::setScrollPosition(scrollPosition);
 }
 
 void ScrollingTreeFrameScrollingNodeIOS::setScrollPositionWithoutContentEdgeConstraints(const FloatPoint& scrollPosition)
 {
     if (shouldUpdateScrollLayerPositionSynchronously()) {
         m_probableMainThreadScrollPosition = scrollPosition;
-        scrollingTree().scrollingTreeNodeDidScroll(scrollingNodeID(), scrollPosition, std::nullopt, ScrollingLayerPositionAction::Set);
+        scrollingTree().scrollingTreeNodeDidScroll(scrollingNodeID(), scrollPosition, WTF::nullopt, ScrollingLayerPositionAction::Set);
         return;
     }
 
     FloatRect layoutViewport; // FIXME: implement for iOS WK1.
     setScrollLayerPosition(scrollPosition, layoutViewport);
-    scrollingTree().scrollingTreeNodeDidScroll(scrollingNodeID(), scrollPosition, std::nullopt);
+    scrollingTree().scrollingTreeNodeDidScroll(scrollingNodeID(), scrollPosition, WTF::nullopt);
 }
 
 void ScrollingTreeFrameScrollingNodeIOS::setScrollLayerPosition(const FloatPoint& scrollPosition, const FloatRect&)
 {
     ASSERT(!shouldUpdateScrollLayerPositionSynchronously());
-    [m_scrollLayer setPosition:-scrollPosition];
+    [scrolledContentsLayer() setPosition:-scrollPosition];
 
     updateChildNodesAfterScroll(scrollPosition);
 }
@@ -134,6 +142,16 @@ void ScrollingTreeFrameScrollingNodeIOS::updateLayersAfterViewportChange(const F
 
     for (auto& child : *m_children)
         child->updateLayersAfterAncestorChange(*this, fixedPositionRect, FloatSize());
+}
+
+void ScrollingTreeFrameScrollingNodeIOS::updateLayersAfterAncestorChange(const ScrollingTreeNode& changedNode, const FloatRect&, const FloatSize&)
+{
+    if (!m_children)
+        return;
+
+    FloatRect fixedPositionRect(scrollPosition(), scrollableAreaSize());
+    for (auto& child : *m_children)
+        child->updateLayersAfterAncestorChange(changedNode, fixedPositionRect, FloatSize());
 }
 
 void ScrollingTreeFrameScrollingNodeIOS::updateLayersAfterDelegatedScroll(const FloatPoint& scrollPosition)
@@ -201,4 +219,4 @@ FloatPoint ScrollingTreeFrameScrollingNodeIOS::maximumScrollPosition() const
 
 } // namespace WebCore
 
-#endif // ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS)
+#endif // ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS_FAMILY)

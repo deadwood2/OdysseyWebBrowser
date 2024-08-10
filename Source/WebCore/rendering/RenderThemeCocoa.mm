@@ -23,33 +23,30 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "RenderThemeCocoa.h"
+#import "config.h"
+#import "RenderThemeCocoa.h"
+
+#import "GraphicsContextCG.h"
+#import "HTMLInputElement.h"
+#import "RenderText.h"
 
 #if ENABLE(APPLE_PAY)
 
-#include "RenderElement.h"
-#include "RenderStyle.h"
-#include "TranslateTransformOperation.h"
-#include <pal/spi/cocoa/PassKitSPI.h>
-#include <wtf/SoftLinking.h>
-
-#if PLATFORM(MAC)
-SOFT_LINK_PRIVATE_FRAMEWORK(PassKit);
-#else
-SOFT_LINK_FRAMEWORK(PassKit);
-#endif
-
-SOFT_LINK_MAY_FAIL(PassKit, PKDrawApplePayButton, void, (CGContextRef context, CGRect drawRect, CGFloat scale, PKPaymentButtonType type, PKPaymentButtonStyle style, NSString *languageCode), (context, drawRect, scale, type, style, languageCode));
+#import <pal/cocoa/PassKitSoftLink.h>
 
 #endif // ENABLE(APPLE_PAY)
 
 #if ENABLE(VIDEO)
-#include "LocalizedStrings.h"
-#include <wtf/BlockObjCExceptions.h>
+#import "LocalizedStrings.h"
+#import <wtf/BlockObjCExceptions.h>
 #endif
 
 namespace WebCore {
+
+bool RenderThemeCocoa::shouldHaveCapsLockIndicator(const HTMLInputElement& element) const
+{
+    return element.isPasswordField();
+}
 
 #if ENABLE(APPLE_PAY)
 
@@ -88,16 +85,20 @@ static PKPaymentButtonType toPKPaymentButtonType(ApplePayButtonType type)
     case ApplePayButtonType::SetUp:
         return PKPaymentButtonTypeSetUp;
     case ApplePayButtonType::Donate:
-        // FIXME: Use a named constant here.
-        return (PKPaymentButtonType)4;
+        return PKPaymentButtonTypeDonate;
+#if ENABLE(APPLE_PAY_SESSION_V4)
+    case ApplePayButtonType::CheckOut:
+        return PKPaymentButtonTypeCheckout;
+    case ApplePayButtonType::Book:
+        return PKPaymentButtonTypeBook;
+    case ApplePayButtonType::Subscribe:
+        return PKPaymentButtonTypeSubscribe;
+#endif
     }
 }
 
 bool RenderThemeCocoa::paintApplePayButton(const RenderObject& renderer, const PaintInfo& paintInfo, const IntRect& paintRect)
 {
-    if (!canLoadPKDrawApplePayButton())
-        return false;
-
     GraphicsContextStateSaver stateSaver(paintInfo.context());
 
     paintInfo.context().setShouldSmoothFonts(true);

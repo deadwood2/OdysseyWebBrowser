@@ -26,7 +26,7 @@
 #import "config.h"
 #import "SmartMagnificationController.h"
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 #import "SmartMagnificationControllerMessages.h"
 #import "ViewGestureGeometryCollectorMessages.h"
@@ -37,12 +37,11 @@
 #import "WebPageProxy.h"
 #import "WebProcessProxy.h"
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 
 #import "UIKitSPI.h"
 
-#pragma clang diagnostic pop
+ALLOW_DEPRECATED_DECLARATIONS_END
 
 static const float smartMagnificationPanScrollThresholdZoomedOut = 60;
 static const float smartMagnificationPanScrollThresholdIPhone = 100;
@@ -131,4 +130,4 @@ void SmartMagnificationController::magnify(FloatPoint origin, FloatRect targetRe
 
 } // namespace WebKit
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)

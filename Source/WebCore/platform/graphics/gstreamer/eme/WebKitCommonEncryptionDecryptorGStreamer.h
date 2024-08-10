@@ -24,6 +24,7 @@
 
 #if ENABLE(ENCRYPTED_MEDIA) && USE(GSTREAMER)
 
+#include <CDMInstance.h>
 #include <gst/base/gstbasetransform.h>
 #include <gst/gst.h>
 
@@ -53,10 +54,8 @@ struct _WebKitMediaCommonEncryptionDecryptClass {
     GstBaseTransformClass parentClass;
 
     const char* protectionSystemId;
-    gboolean (*handleKeyResponse)(WebKitMediaCommonEncryptionDecrypt*, GstEvent* event);
-    gboolean (*setupCipher)(WebKitMediaCommonEncryptionDecrypt*, GstBuffer*);
-    gboolean (*decrypt)(WebKitMediaCommonEncryptionDecrypt*, GstBuffer* ivBuffer, GstBuffer* buffer, unsigned subSamplesCount, GstBuffer* subSamplesBuffer);
-    void (*releaseCipher)(WebKitMediaCommonEncryptionDecrypt*);
+    bool (*handleKeyResponse)(WebKitMediaCommonEncryptionDecrypt*, RefPtr<WebCore::CDMInstance>);
+    bool (*decrypt)(WebKitMediaCommonEncryptionDecrypt*, GstBuffer* ivBuffer, GstBuffer* keyIDBuffer, GstBuffer* buffer, unsigned subSamplesCount, GstBuffer* subSamplesBuffer);
 };
 
 G_END_DECLS

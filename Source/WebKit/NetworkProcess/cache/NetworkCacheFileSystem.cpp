@@ -27,8 +27,8 @@
 #include "NetworkCacheFileSystem.h"
 
 #include "Logging.h"
-#include <WebCore/FileSystem.h>
 #include <wtf/Assertions.h>
+#include <wtf/FileSystem.h>
 #include <wtf/Function.h>
 #include <wtf/text/CString.h>
 
@@ -38,7 +38,7 @@
 #include <sys/time.h>
 #endif
 
-#if PLATFORM(IOS) && !PLATFORM(IOS_SIMULATOR)
+#if PLATFORM(IOS_FAMILY) && !PLATFORM(IOS_FAMILY_SIMULATOR)
 #include <sys/attr.h>
 #include <unistd.h>
 #endif
@@ -51,9 +51,9 @@
 namespace WebKit {
 namespace NetworkCache {
 
+#if !OS(WINDOWS)
 static DirectoryEntryType directoryEntryType(uint8_t dtype)
 {
-#if !OS(WINDOWS)
     switch (dtype) {
     case DT_DIR:
         return DirectoryEntryType::Directory;
@@ -63,15 +63,14 @@ static DirectoryEntryType directoryEntryType(uint8_t dtype)
         ASSERT_NOT_REACHED();
         return DirectoryEntryType::File;
     }
-#else
     return DirectoryEntryType::File;
-#endif
 }
+#endif
 
 void traverseDirectory(const String& path, const Function<void (const String&, DirectoryEntryType)>& function)
 {
 #if !OS(WINDOWS)
-    DIR* dir = opendir(WebCore::FileSystem::fileSystemRepresentation(path).data());
+    DIR* dir = opendir(FileSystem::fileSystemRepresentation(path).data());
     if (!dir)
         return;
     dirent* dp;
@@ -95,10 +94,10 @@ void traverseDirectory(const String& path, const Function<void (const String&, D
 void deleteDirectoryRecursively(const String& path)
 {
     traverseDirectory(path, [&path](const String& name, DirectoryEntryType type) {
-        String entryPath = WebCore::FileSystem::pathByAppendingComponent(path, name);
+        String entryPath = FileSystem::pathByAppendingComponent(path, name);
         switch (type) {
         case DirectoryEntryType::File:
-            WebCore::FileSystem::deleteFile(entryPath);
+            FileSystem::deleteFile(entryPath);
             break;
         case DirectoryEntryType::Directory:
             deleteDirectoryRecursively(entryPath);
@@ -106,19 +105,19 @@ void deleteDirectoryRecursively(const String& path)
         // This doesn't follow symlinks.
         }
     });
-    WebCore::FileSystem::deleteEmptyDirectory(path);
+    FileSystem::deleteEmptyDirectory(path);
 }
 
 FileTimes fileTimes(const String& path)
 {
 #if HAVE(STAT_BIRTHTIME)
     struct stat fileInfo;
-    if (stat(WebCore::FileSystem::fileSystemRepresentation(path).data(), &fileInfo))
+    if (stat(FileSystem::fileSystemRepresentation(path).data(), &fileInfo))
         return { };
     return { WallTime::fromRawSeconds(fileInfo.st_birthtime), WallTime::fromRawSeconds(fileInfo.st_mtime) };
 #elif USE(SOUP)
     // There's no st_birthtime in some operating systems like Linux, so we use xattrs to set/get the creation time.
-    GRefPtr<GFile> file = adoptGRef(g_file_new_for_path(WebCore::FileSystem::fileSystemRepresentation(path).data()));
+    GRefPtr<GFile> file = adoptGRef(g_file_new_for_path(FileSystem::fileSystemRepresentation(path).data()));
     GRefPtr<GFileInfo> fileInfo = adoptGRef(g_file_query_info(file.get(), "xattr::birthtime,time::modified", G_FILE_QUERY_INFO_NONE, nullptr, nullptr));
     if (!fileInfo)
         return { };
@@ -142,13 +141,13 @@ void updateFileModificationTimeIfNeeded(const String& path)
     }
 #if !OS(WINDOWS)
     // This really updates both the access time and the modification time.
-    utimes(WebCore::FileSystem::fileSystemRepresentation(path).data(), nullptr);
+    utimes(FileSystem::fileSystemRepresentation(path).data(), nullptr);
 #endif
 }
 
 bool isSafeToUseMemoryMapForPath(const String& path)
 {
-#if PLATFORM(IOS) && !PLATFORM(IOS_SIMULATOR)
+#if PLATFORM(IOS_FAMILY) && !PLATFORM(IOS_FAMILY_SIMULATOR)
     struct {
         uint32_t length;
         uint32_t protectionClass;
@@ -157,7 +156,7 @@ bool isSafeToUseMemoryMapForPath(const String& path)
     attrlist attrList = { };
     attrList.bitmapcount = ATTR_BIT_MAP_COUNT;
     attrList.commonattr = ATTR_CMN_DATA_PROTECT_FLAGS;
-    int32_t error = getattrlist(WebCore::FileSystem::fileSystemRepresentation(path).data(), &attrList, &attrBuffer, sizeof(attrBuffer), FSOPT_NOFOLLOW);
+    int32_t error = getattrlist(FileSystem::fileSystemRepresentation(path).data(), &attrList, &attrBuffer, sizeof(attrBuffer), FSOPT_NOFOLLOW);
     if (error) {
         RELEASE_LOG_ERROR(Network, "Unable to get cache directory protection class, disabling use of shared mapped memory");
         return false;

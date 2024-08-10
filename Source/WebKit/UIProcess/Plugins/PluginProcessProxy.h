@@ -23,12 +23,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PluginProcessProxy_h
-#define PluginProcessProxy_h
+#pragma once
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
 
-#include "ChildProcessProxy.h"
+#include "AuxiliaryProcessProxy.h"
 #include "Connection.h"
 #include "PluginModuleInfo.h"
 #include "PluginProcess.h"
@@ -66,7 +65,7 @@ int pluginProcessLatencyQOS();
 int pluginProcessThroughputQOS();
 #endif
 
-class PluginProcessProxy : public ChildProcessProxy {
+class PluginProcessProxy final : public AuxiliaryProcessProxy, public ThreadSafeRefCounted<PluginProcessProxy> {
 public:
     static Ref<PluginProcessProxy> create(PluginProcessManager*, const PluginProcessAttributes&, uint64_t pluginProcessToken);
     ~PluginProcessProxy();
@@ -96,7 +95,7 @@ private:
     PluginProcessProxy(PluginProcessManager*, const PluginProcessAttributes&, uint64_t pluginProcessToken);
 
     void getLaunchOptions(ProcessLauncher::LaunchOptions&) override;
-    void platformGetLaunchOptions(ProcessLauncher::LaunchOptions&, const PluginProcessAttributes&);
+    void platformGetLaunchOptionsWithAttributes(ProcessLauncher::LaunchOptions&, const PluginProcessAttributes&);
     void processWillShutDown(IPC::Connection&) override;
 
     void pluginProcessCrashedOrFailedToLaunch();
@@ -173,7 +172,7 @@ private:
 
 #if PLATFORM(COCOA)
     RetainPtr<NSObject> m_activationObserver;
-    RetainPtr<WKPlaceholderModalWindow *> m_placeholderWindow;
+    RetainPtr<WKPlaceholderModalWindow> m_placeholderWindow;
     bool m_modalWindowIsShowing;
     bool m_fullscreenWindowIsShowing;
     unsigned m_preFullscreenAppPresentationOptions;
@@ -183,5 +182,3 @@ private:
 } // namespace WebKit
 
 #endif // ENABLE(NETSCAPE_PLUGIN_API)
-
-#endif // PluginProcessProxy_h

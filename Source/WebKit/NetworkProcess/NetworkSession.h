@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,37 +29,61 @@
 #include <wtf/HashSet.h>
 #include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
+#include <wtf/Seconds.h>
+#include <wtf/WeakPtr.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
-class AuthenticationChallenge;
 class NetworkStorageSession;
+enum class ShouldSample : bool;
 }
 
 namespace WebKit {
 
 class NetworkDataTask;
+class NetworkProcess;
+class WebResourceLoadStatisticsStore;
 struct NetworkSessionCreationParameters;
 
-class NetworkSession : public RefCounted<NetworkSession> {
+enum class WebsiteDataType;
+    
+class NetworkSession : public RefCounted<NetworkSession>, public CanMakeWeakPtr<NetworkSession> {
 public:
-    static Ref<NetworkSession> create(NetworkSessionCreationParameters&&);
+    static Ref<NetworkSession> create(NetworkProcess&, NetworkSessionCreationParameters&&);
     virtual ~NetworkSession();
 
     virtual void invalidateAndCancel();
     virtual void clearCredentials() { };
+    virtual bool shouldLogCookieInformation() const { return false; }
+    virtual Seconds loadThrottleLatency() const { return { }; }
 
     PAL::SessionID sessionID() const { return m_sessionID; }
+    NetworkProcess& networkProcess() { return m_networkProcess; }
     WebCore::NetworkStorageSession& networkStorageSession() const;
 
     void registerNetworkDataTask(NetworkDataTask& task) { m_dataTaskSet.add(&task); }
     void unregisterNetworkDataTask(NetworkDataTask& task) { m_dataTaskSet.remove(&task); }
 
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    WebResourceLoadStatisticsStore* resourceLoadStatistics() const { return m_resourceLoadStatistics.get(); }
+    void setResourceLoadStatisticsEnabled(bool);
+    void notifyResourceLoadStatisticsProcessed();
+    void deleteWebsiteDataForTopPrivatelyControlledDomainsInAllPersistentDataStores(OptionSet<WebsiteDataType>, Vector<String>&& topPrivatelyControlledDomains, bool shouldNotifyPage, CompletionHandler<void(const HashSet<String>&)>&&);
+    void topPrivatelyControlledDomainsWithWebsiteData(OptionSet<WebsiteDataType>, bool shouldNotifyPage, CompletionHandler<void(HashSet<String>&&)>&&);
+    void logDiagnosticMessageWithValue(const String& message, const String& description, unsigned value, unsigned significantFigures, WebCore::ShouldSample);
+    void notifyPageStatisticsTelemetryFinished(unsigned totalPrevalentResources, unsigned totalPrevalentResourcesWithUserInteraction, unsigned top3SubframeUnderTopFrameOrigins);
+#endif
+
 protected:
-    NetworkSession(PAL::SessionID);
+    NetworkSession(NetworkProcess&, PAL::SessionID);
 
     PAL::SessionID m_sessionID;
-
+    Ref<NetworkProcess> m_networkProcess;
     HashSet<NetworkDataTask*> m_dataTaskSet;
+    String m_resourceLoadStatisticsDirectory;
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    RefPtr<WebResourceLoadStatisticsStore> m_resourceLoadStatistics;
+#endif
 };
 
 } // namespace WebKit

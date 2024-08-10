@@ -26,6 +26,7 @@
 #include "config.h"
 #include "Download.h"
 
+#include "AuthenticationChallengeDisposition.h"
 #include "AuthenticationManager.h"
 #include "Connection.h"
 #include "DataReference.h"
@@ -51,6 +52,7 @@ using namespace WebCore;
 Download::Download(DownloadManager& downloadManager, DownloadID downloadID, NetworkDataTask& download, const PAL::SessionID& sessionID, const String& suggestedName)
     : m_downloadManager(downloadManager)
     , m_downloadID(downloadID)
+    , m_client(downloadManager.client())
     , m_download(&download)
     , m_sessionID(sessionID)
     , m_suggestedName(suggestedName)
@@ -64,6 +66,7 @@ Download::Download(DownloadManager& downloadManager, DownloadID downloadID, Netw
 Download::Download(DownloadManager& downloadManager, DownloadID downloadID, NSURLSessionDownloadTask* download, const PAL::SessionID& sessionID, const String& suggestedName)
     : m_downloadManager(downloadManager)
     , m_downloadID(downloadID)
+    , m_client(downloadManager.client())
     , m_downloadTask(download)
     , m_sessionID(sessionID)
     , m_suggestedName(suggestedName)
@@ -76,6 +79,7 @@ Download::Download(DownloadManager& downloadManager, DownloadID downloadID, NSUR
 
 Download::~Download()
 {
+    platformDestroyDownload();
     m_downloadManager.didDestroyDownload();
 }
 
@@ -96,7 +100,7 @@ void Download::didReceiveChallenge(const WebCore::AuthenticationChallenge& chall
         return;
     }
 
-    NetworkProcess::singleton().authenticationManager().didReceiveAuthenticationChallenge(*this, challenge, WTFMove(completionHandler));
+    m_client->downloadsAuthenticationManager().didReceiveAuthenticationChallenge(*this, challenge, WTFMove(completionHandler));
 }
 
 void Download::didCreateDestination(const String& path)
@@ -155,12 +159,12 @@ void Download::didCancel(const IPC::DataReference& resumeData)
     m_downloadManager.downloadFinished(this);
 }
 
-IPC::Connection* Download::messageSenderConnection()
+IPC::Connection* Download::messageSenderConnection() const
 {
     return m_downloadManager.downloadProxyConnection();
 }
 
-uint64_t Download::messageSenderDestinationID()
+uint64_t Download::messageSenderDestinationID() const
 {
     return m_downloadID.downloadID();
 }
@@ -176,6 +180,10 @@ bool Download::isAlwaysOnLoggingAllowed() const
 
 #if !PLATFORM(COCOA)
 void Download::platformCancelNetworkLoad()
+{
+}
+
+void Download::platformDestroyDownload()
 {
 }
 #endif

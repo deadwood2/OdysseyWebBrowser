@@ -52,7 +52,7 @@ public:
     void load(const String&) override;
     void load(const String&, MediaSourcePrivateClient*) override;
 
-    void setDownloadBuffering() override { };
+    void updateDownloadBufferingFlag() override { };
 
     bool isLiveStream() const override { return false; }
     MediaTime currentMediaTime() const override;
@@ -82,18 +82,12 @@ public:
     void trackDetected(RefPtr<AppendPipeline>, RefPtr<WebCore::TrackPrivateBase>, bool firstTrackDetected);
     void notifySeekNeedsDataForTime(const MediaTime&);
 
-    static bool supportsCodec(String codec);
-    static bool supportsAllCodecs(const Vector<String>& codecs);
-
-#if ENABLE(ENCRYPTED_MEDIA)
-    void attemptToDecryptWithInstance(CDMInstance&) final;
-#endif
+    void blockDurationChanges();
+    void unblockDurationChanges();
 
 private:
     static void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>&);
     static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
-
-    static bool isAvailable();
 
     // FIXME: Reduce code duplication.
     void updateStates() override;
@@ -120,6 +114,8 @@ private:
     RefPtr<MediaSourceClientGStreamerMSE> m_mediaSourceClient;
     MediaTime m_mediaTimeDuration;
     bool m_mseSeekCompleted = true;
+    bool m_areDurationChangesBlocked = false;
+    bool m_shouldReportDurationWhenUnblocking = false;
     RefPtr<PlaybackPipeline> m_playbackPipeline;
 };
 

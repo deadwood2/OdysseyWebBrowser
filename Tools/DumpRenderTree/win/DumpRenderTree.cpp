@@ -46,7 +46,6 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <JavaScriptCore/TestRunnerUtils.h>
-#include <WebCore/FileSystem.h>
 #include <WebKitLegacy/WebKit.h>
 #include <WebKitLegacy/WebKitCOMAPI.h>
 #include <comutil.h>
@@ -60,11 +59,13 @@
 #include <shlwapi.h>
 #include <tchar.h>
 #include <windows.h>
+#include <wtf/FileSystem.h>
 #include <wtf/HashSet.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/Vector.h>
 #include <wtf/text/CString.h>
+#include <wtf/text/StringConcatenateNumbers.h>
 #include <wtf/text/StringHash.h>
 
 #if USE(CFURLCONNECTION)
@@ -222,7 +223,7 @@ static String libraryPathForDumpRenderTree()
         return String (path.data(), path.length());
     }
 
-    return WebCore::FileSystem::localUserSpecificStorageDirectory();
+    return FileSystem::localUserSpecificStorageDirectory();
 }
 #endif
 
@@ -524,8 +525,8 @@ static void dumpHistoryItem(IWebHistoryItem* item, int indent, bool current)
         return;
 
     if (wcsstr(static_cast<wchar_t*>(url), L"file:/") == static_cast<wchar_t*>(url)) {
-        static wchar_t* layoutTestsStringUnixPath = L"/LayoutTests/";
-        static wchar_t* layoutTestsStringDOSPath = L"\\LayoutTests\\";
+        auto layoutTestsStringUnixPath = L"/LayoutTests/";
+        auto layoutTestsStringDOSPath = L"\\LayoutTests\\";
         
         wchar_t* result = wcsstr(static_cast<wchar_t*>(url), layoutTestsStringUnixPath);
         if (!result)
@@ -785,11 +786,11 @@ static void enableExperimentalFeatures(IWebPreferences* preferences)
     // FIXME: InputEvents
     // FIXME: SubtleCrypto
     prefsPrivate->setVisualViewportAPIEnabled(TRUE);
+    prefsPrivate->setCSSOMViewScrollingAPIEnabled(TRUE);
     prefsPrivate->setWebAnimationsEnabled(TRUE);
     prefsPrivate->setServerTimingEnabled(TRUE);
     // FIXME: WebGL2
     // FIXME: WebRTC
-    prefsPrivate->setCrossOriginWindowPolicySupportEnabled(TRUE);
 }
 
 static void resetWebPreferencesToConsistentValues(IWebPreferences* preferences)
@@ -832,7 +833,7 @@ static void resetWebPreferencesToConsistentValues(IWebPreferences* preferences)
     preferences->setDefaultFontSize(16);
     preferences->setDefaultFixedFontSize(13);
     preferences->setMinimumFontSize(0);
-    preferences->setDefaultTextEncodingName(L"ISO-8859-1");
+    preferences->setDefaultTextEncodingName(_bstr_t(L"ISO-8859-1"));
     preferences->setJavaEnabled(FALSE);
     preferences->setJavaScriptEnabled(TRUE);
     preferences->setEditableLinkBehavior(WebKitEditableLinkOnlyLiveWithShiftKey);
@@ -895,6 +896,7 @@ static void setWebPreferencesForTestOptions(IWebPreferences* preferences, const 
 {
     COMPtr<IWebPreferencesPrivate6> prefsPrivate { Query, preferences };
 
+    prefsPrivate->setWebAnimationsCSSIntegrationEnabled(options.enableWebAnimationsCSSIntegration);
     prefsPrivate->setMenuItemElementEnabled(options.enableMenuItemElement);
     prefsPrivate->setModernMediaControlsEnabled(options.enableModernMediaControls);
     prefsPrivate->setIsSecureContextAttributeEnabled(options.enableIsSecureContextAttribute);
@@ -903,8 +905,7 @@ static void setWebPreferencesForTestOptions(IWebPreferences* preferences, const 
 
 static String applicationId()
 {
-    DWORD processId = ::GetCurrentProcessId();
-    return String::format("com.apple.DumpRenderTree.%d", processId);
+    return makeString("com.apple.DumpRenderTree.", ::GetCurrentProcessId());
 }
 
 static void setApplicationId()
@@ -915,17 +916,6 @@ static void setApplicationId()
         ASSERT(prefsPrivate4);
         _bstr_t fileName = applicationId().charactersWithNullTermination().data();
         prefsPrivate4->setApplicationId(fileName);
-    }
-}
-
-static void setCacheFolder()
-{
-    String libraryPath = libraryPathForDumpRenderTree();
-
-    COMPtr<IWebCache> webCache;
-    if (SUCCEEDED(WebKitCreateInstance(CLSID_WebCache, 0, IID_IWebCache, (void**)&webCache))) {
-        _bstr_t cacheFolder = WebCore::FileSystem::pathByAppendingComponent(libraryPath, "LocalCache").utf8().data();
-        webCache->setCacheFolder(cacheFolder);
     }
 }
 
@@ -941,9 +931,9 @@ static void setDefaultsToConsistentValuesForTesting()
     String libraryPath = libraryPathForDumpRenderTree();
 
     // Set up these values before creating the WebView so that the various initializations will see these preferred values.
-    CFPreferencesSetAppValue(WebDatabaseDirectoryDefaultsKey, WebCore::FileSystem::pathByAppendingComponent(libraryPath, "Databases").createCFString().get(), appId.get());
-    CFPreferencesSetAppValue(WebStorageDirectoryDefaultsKey, WebCore::FileSystem::pathByAppendingComponent(libraryPath, "LocalStorage").createCFString().get(), appId.get());
-    CFPreferencesSetAppValue(WebKitLocalCacheDefaultsKey, WebCore::FileSystem::pathByAppendingComponent(libraryPath, "LocalCache").createCFString().get(), appId.get());
+    CFPreferencesSetAppValue(WebDatabaseDirectoryDefaultsKey, FileSystem::pathByAppendingComponent(libraryPath, "Databases").createCFString().get(), appId.get());
+    CFPreferencesSetAppValue(WebStorageDirectoryDefaultsKey, FileSystem::pathByAppendingComponent(libraryPath, "LocalStorage").createCFString().get(), appId.get());
+    CFPreferencesSetAppValue(WebKitLocalCacheDefaultsKey, FileSystem::pathByAppendingComponent(libraryPath, "LocalCache").createCFString().get(), appId.get());
 #endif
 }
 
@@ -1045,7 +1035,7 @@ static void sizeWebViewForCurrentTest()
 
 static String findFontFallback(const char* pathOrUrl)
 {
-    String pathToFontFallback = WebCore::FileSystem::directoryName(pathOrUrl);
+    String pathToFontFallback = FileSystem::directoryName(pathOrUrl);
 
     wchar_t fullPath[_MAX_PATH];
     if (!_wfullpath(fullPath, pathToFontFallback.charactersWithNullTermination().data(), _MAX_PATH))
@@ -1064,20 +1054,20 @@ static String findFontFallback(const char* pathOrUrl)
         return emptyString();
 
     String pathToTest = pathToCheck.substring(location + layoutTests.length() + 1);
-    String possiblePathToLogue = WebCore::FileSystem::pathByAppendingComponent(pathToCheck.substring(0, location + layoutTests.length() + 1), "platform\\win");
+    String possiblePathToLogue = FileSystem::pathByAppendingComponent(pathToCheck.substring(0, location + layoutTests.length() + 1), "platform\\win");
 
     Vector<String> possiblePaths;
-    possiblePaths.append(WebCore::FileSystem::pathByAppendingComponent(possiblePathToLogue, pathToTest));
+    possiblePaths.append(FileSystem::pathByAppendingComponent(possiblePathToLogue, pathToTest));
 
     size_t nextCandidateEnd = pathToTest.reverseFind('\\');
     while (nextCandidateEnd && nextCandidateEnd != WTF::notFound) {
         pathToTest = pathToTest.substring(0, nextCandidateEnd);
-        possiblePaths.append(WebCore::FileSystem::pathByAppendingComponent(possiblePathToLogue, pathToTest));
+        possiblePaths.append(FileSystem::pathByAppendingComponent(possiblePathToLogue, pathToTest));
         nextCandidateEnd = pathToTest.reverseFind('\\');
     }
 
     for (Vector<String>::iterator pos = possiblePaths.begin(); pos != possiblePaths.end(); ++pos) {
-        pathToFontFallback = WebCore::FileSystem::pathByAppendingComponent(*pos, "resources\\");
+        pathToFontFallback = FileSystem::pathByAppendingComponent(*pos, "resources\\");
 
         if (::PathIsDirectoryW(pathToFontFallback.charactersWithNullTermination().data()))
             return pathToFontFallback;
@@ -1091,7 +1081,7 @@ static void addFontFallbackIfPresent(const String& fontFallbackPath)
     if (fontFallbackPath.isEmpty())
         return;
 
-    String fontFallback = WebCore::FileSystem::pathByAppendingComponent(fontFallbackPath, "Mac-compatible-font-fallback.css");
+    String fontFallback = FileSystem::pathByAppendingComponent(fontFallbackPath, "Mac-compatible-font-fallback.css");
 
     if (!::PathFileExistsW(fontFallback.charactersWithNullTermination().data()))
         return;
@@ -1104,7 +1094,7 @@ static void removeFontFallbackIfPresent(const String& fontFallbackPath)
     if (fontFallbackPath.isEmpty())
         return;
 
-    String fontFallback = WebCore::FileSystem::pathByAppendingComponent(fontFallbackPath, "Mac-compatible-font-fallback.css");
+    String fontFallback = FileSystem::pathByAppendingComponent(fontFallbackPath, "Mac-compatible-font-fallback.css");
 
     if (!::PathFileExistsW(fontFallback.charactersWithNullTermination().data()))
         return;
@@ -1112,6 +1102,22 @@ static void removeFontFallbackIfPresent(const String& fontFallbackPath)
     ::setPersistentUserStyleSheetLocation(nullptr);
 }
 
+static bool handleControlCommand(const char* command)
+{
+    if (!strcmp("#CHECK FOR ABANDONED DOCUMENTS", command)) {
+        // DumpRenderTree does not support checking for abandonded documents.
+        String result("\n");
+        printf("Content-Type: text/plain\n");
+        printf("Content-Length: %u\n", result.length());
+        fwrite(result.utf8().data(), 1, result.length(), stdout);
+        printf("#EOF\n");
+        fprintf(stderr, "#EOF\n");
+        fflush(stdout);
+        fflush(stderr);
+        return true;
+    }
+    return false;
+}
 
 static void runTest(const string& inputLine)
 {
@@ -1154,12 +1160,6 @@ static void runTest(const string& inputLine)
 
     _bstr_t urlBStr(reinterpret_cast<wchar_t*>(buffer.data()));
     ASSERT(urlBStr.length() == length);
-
-    // Check that test has not already run
-    static HashSet<String> testUrls;
-    if (testUrls.contains(String(inputLine.c_str())))
-        fprintf(stderr, "Test has already run \"%s\"\n", inputLine.c_str());
-    testUrls.add(String(inputLine.c_str()));
 
     CFIndex maximumURLLengthAsUTF8 = CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8) + 1;
     Vector<char> testURL(maximumURLLengthAsUTF8 + 1, 0);
@@ -1216,11 +1216,11 @@ static void runTest(const string& inputLine)
     if (webView && SUCCEEDED(webView->backForwardList(&bfList)))
         bfList->currentItem(&prevTestBFItem);
 
-    auto& workQueue = WorkQueue::singleton();
+    auto& workQueue = DRT::WorkQueue::singleton();
     workQueue.clear();
     workQueue.setFrozen(false);
 
-    MSG msg = { 0 };
+    MSG msg { };
     HWND hostWindow;
     webView->hostWindow(&hostWindow);
 
@@ -1327,7 +1327,7 @@ IWebView* createWebViewAndOffscreenWindow(HWND* webViewWindow)
     IWebView* webView = nullptr;
     HRESULT hr = WebKitCreateInstance(CLSID_WebView, 0, IID_IWebView, (void**)&webView);
     if (FAILED(hr)) {
-        fprintf(stderr, "Failed to create CLSID_WebView instance, error 0x%x\n", hr);
+        fprintf(stderr, "Failed to create CLSID_WebView instance, error 0x%lx\n", hr);
         return nullptr;
     }
 
@@ -1531,25 +1531,27 @@ int main(int argc, const char* argv[])
     testResult = fdopen(fdStdout, "a+b");
     // Redirect stdout to stderr.
     int result = _dup2(_fileno(stderr), 1);
+    if (result)
+        return -5;
 
     // Tests involving the clipboard are flaky when running with multiple DRTs, since the clipboard is global.
     // We can fix this by assigning each DRT a separate window station (each window station has its own clipboard).
     DWORD processId = ::GetCurrentProcessId();
-    String windowStationName = String::format("windowStation%d", processId);
-    String desktopName = String::format("desktop%d", processId);
+    String windowStationName = makeString("windowStation", processId);
+    String desktopName = makeString("desktop", processId);
     HDESK desktop = nullptr;
 
     auto windowsStation = ::CreateWindowStation(windowStationName.charactersWithNullTermination().data(), CWF_CREATE_ONLY, WINSTA_ALL_ACCESS, nullptr);
     if (windowsStation) {
         if (!::SetProcessWindowStation(windowsStation))
-            fprintf(stderr, "SetProcessWindowStation failed with error %d\n", ::GetLastError());
+            fprintf(stderr, "SetProcessWindowStation failed with error %lu\n", ::GetLastError());
 
         desktop = ::CreateDesktop(desktopName.charactersWithNullTermination().data(), nullptr, nullptr, 0, GENERIC_ALL, nullptr);
         if (!desktop)
-            fprintf(stderr, "Failed to create desktop with error %d\n", ::GetLastError());
+            fprintf(stderr, "Failed to create desktop with error %lu\n", ::GetLastError());
     } else {
         DWORD error = ::GetLastError();
-        fprintf(stderr, "Failed to create window station with error %d\n", error);
+        fprintf(stderr, "Failed to create window station with error %lu\n", error);
         if (error == ERROR_ACCESS_DENIED)
             fprintf(stderr, "DumpRenderTree should be run as Administrator!\n");
     }
@@ -1620,6 +1622,9 @@ int main(int argc, const char* argv[])
                 *newLineCharacter = '\0';
             
             if (strlen(filenameBuffer) == 0)
+                continue;
+
+            if (handleControlCommand(filenameBuffer))
                 continue;
 
             runTest(filenameBuffer);

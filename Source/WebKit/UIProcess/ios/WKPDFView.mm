@@ -31,18 +31,21 @@
 #import "APIUIClient.h"
 #import "FindClient.h"
 #import "PDFKitSPI.h"
+#import "UIKitSPI.h"
 #import "WKActionSheetAssistant.h"
+#import "WKKeyboardScrollingAnimator.h"
 #import "WKUIDelegatePrivate.h"
+#import "WKWebEvent.h"
 #import "WKWebViewInternal.h"
 #import "WebPageProxy.h"
 #import "_WKWebViewPrintFormatterInternal.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <WebCore/DataDetection.h>
-#import <WebCore/WebCoreNSURLExtras.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/MainThread.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/WeakObjCPtr.h>
+#import <wtf/cocoa/NSURLExtras.h>
 
 @interface WKPDFView () <PDFHostViewControllerDelegate, WKActionSheetAssistantDelegate>
 @end
@@ -56,15 +59,16 @@
     NSUInteger _findStringCount;
     NSUInteger _findStringMaxCount;
     RetainPtr<UIView> _fixedOverlayView;
-    std::optional<NSUInteger> _focusedSearchResultIndex;
+    Optional<NSUInteger> _focusedSearchResultIndex;
     NSInteger _focusedSearchResultPendingOffset;
     RetainPtr<PDFHostViewController> _hostViewController;
     CGSize _overlaidAccessoryViewsInset;
     RetainPtr<UIView> _pageNumberIndicator;
-    RetainPtr<NSString> _password;
+    CString _passwordForPrinting;
     WebKit::InteractionInformationAtPosition _positionInformation;
     RetainPtr<NSString> _suggestedFilename;
     WeakObjCPtr<WKWebView> _webView;
+    RetainPtr<WKKeyboardScrollViewAnimator> _keyboardScrollingAnimator;
 }
 
 - (void)dealloc
@@ -72,7 +76,19 @@
     [_actionSheetAssistant cleanupSheet];
     [[_hostViewController view] removeFromSuperview];
     [_pageNumberIndicator removeFromSuperview];
+    [_keyboardScrollingAnimator invalidate];
+    std::memset(_passwordForPrinting.mutableData(), 0, _passwordForPrinting.length());
     [super dealloc];
+}
+
+- (BOOL)web_handleKeyEvent:(::UIEvent *)event
+{
+    auto webEvent = adoptNS([[WKWebEvent alloc] initWithEvent:event]);
+
+    if ([_keyboardScrollingAnimator beginWithEvent:webEvent.get()])
+        return YES;
+    [_keyboardScrollingAnimator handleKeyEvent:webEvent.get()];
+    return NO;
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer
@@ -98,6 +114,8 @@
 
     self.backgroundColor = UIColor.grayColor;
     webView.scrollView.backgroundColor = UIColor.grayColor;
+
+    _keyboardScrollingAnimator = adoptNS([[WKKeyboardScrollViewAnimator alloc] initWithScrollView:webView.scrollView]);
 
     _webView = webView;
     return self;
@@ -232,7 +250,7 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
     _findString = nil;
     _findStringCount = 0;
     _findStringMaxCount = 0;
-    _focusedSearchResultIndex = std::nullopt;
+    _focusedSearchResultIndex = WTF::nullopt;
     _focusedSearchResultPendingOffset = 0;
 }
 
@@ -387,19 +405,23 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
 
 - (void)pdfHostViewController:(PDFHostViewController *)controller documentDidUnlockWithPassword:(NSString *)password
 {
-    _password = adoptNS([password copy]);
+    _passwordForPrinting = [password UTF8String];
 }
 
 - (void)pdfHostViewController:(PDFHostViewController *)controller findStringUpdate:(NSUInteger)numFound done:(BOOL)done
 {
-    // FIXME: We should stop searching once numFound exceeds _findStringMaxCount, but PDFKit doesn't
-    // allow us to stop the search without also clearing the search highlights. See <rdar://problem/39546973>.
+    if (numFound > _findStringMaxCount && !done) {
+        [controller cancelFindStringWithHighlightsCleared:NO];
+        done = YES;
+    }
+    
     if (!done)
         return;
-
-    _findStringCount = numFound;
-    if (auto findCompletion = std::exchange(_findCompletion, nil))
+    
+    if (auto findCompletion = std::exchange(_findCompletion, nil)) {
+        _findStringCount = numFound;
         findCompletion();
+    }
 }
 
 - (NSURL *)_URLWithPageIndex:(NSInteger)pageIndex
@@ -471,7 +493,7 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
 
 #pragma mark WKActionSheetAssistantDelegate
 
-- (std::optional<WebKit::InteractionInformationAtPosition>)positionInformationForActionSheetAssistant:(WKActionSheetAssistant *)assistant
+- (Optional<WebKit::InteractionInformationAtPosition>)positionInformationForActionSheetAssistant:(WKActionSheetAssistant *)assistant
 {
     return _positionInformation;
 }
@@ -497,7 +519,7 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
 - (void)actionSheetAssistant:(WKActionSheetAssistant *)assistant shareElementWithURL:(NSURL *)url rect:(CGRect)boundingRect
 {
     auto selectionAssistant = adoptNS([[UIWKSelectionAssistant alloc] initWithView:[_hostViewController view]]);
-    [selectionAssistant showShareSheetFor:WebCore::userVisibleString(url) fromRect:boundingRect];
+    [selectionAssistant showShareSheetFor:WTF::userVisibleString(url) fromRect:boundingRect];
 }
 
 #if HAVE(APP_LINKS)
@@ -538,8 +560,6 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
 
 #pragma mark _WKWebViewPrintProvider
 
-#if !PLATFORM(IOSMAC)
-
 @interface WKPDFView (_WKWebViewPrintFormatter) <_WKWebViewPrintProvider>
 @end
 
@@ -553,7 +573,7 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
     auto dataProvider = adoptCF(CGDataProviderCreateWithCFData((CFDataRef)_data.get()));
     auto pdfDocument = adoptCF(CGPDFDocumentCreateWithProvider(dataProvider.get()));
     if (!CGPDFDocumentIsUnlocked(pdfDocument.get()))
-        CGPDFDocumentUnlockWithPassword(pdfDocument.get(), [_password UTF8String]);
+        CGPDFDocumentUnlockWithPassword(pdfDocument.get(), _passwordForPrinting.data());
 
     _documentForPrinting = WTFMove(pdfDocument);
     return _documentForPrinting.get();
@@ -577,7 +597,5 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
 }
 
 @end
-
-#endif // !PLATFORM(IOSMAC)
 
 #endif // ENABLE(WKPDFVIEW)

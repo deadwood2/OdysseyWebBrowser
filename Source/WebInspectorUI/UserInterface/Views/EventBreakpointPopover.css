@@ -28,9 +28,16 @@
     padding: 5px;
 }
 
-.popover .event-breakpoint-content > input {
-    width: 100%;
+.popover .event-breakpoint-content > .event-type {
+    display: flex;
     margin-top: 4px;
-    padding: 4px 0 2px 0;
-    outline: none;
+}
+
+.popover .event-breakpoint-content > .event-type > input {
+    font-family: Menlo, monospace;
+    text-align: left;
+}
+
+.popover .event-breakpoint-content > .event-type > input::placeholder {
+    font-family: system-ui;
 }

@@ -25,7 +25,7 @@
 
 #import "config.h"
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 #import "PlatformUtilities.h"
 #import <AVFoundation/AVAudioSession.h>
@@ -46,7 +46,9 @@ static bool didBeginPlaying = false;
 @end
 
 @implementation AudioSessionCategoryUIWebViewDelegate
+IGNORE_WARNINGS_BEGIN("deprecated-implementations")
 - (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType
+IGNORE_WARNINGS_END
 {
     if ([request.URL.scheme isEqualToString:@"callback"] && [request.URL.resourceSpecifier isEqualToString:@"playing"]) {
         didBeginPlaying = true;

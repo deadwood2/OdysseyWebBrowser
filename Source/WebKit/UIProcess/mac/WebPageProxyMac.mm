@@ -40,6 +40,7 @@
 #import "PageClient.h"
 #import "PageClientImplMac.h"
 #import "PluginComplexTextInputState.h"
+#import "RemoteLayerTreeHost.h"
 #import "StringUtilities.h"
 #import "TextChecker.h"
 #import "WKBrowsingContextControllerInternal.h"
@@ -64,9 +65,7 @@
 #import <wtf/text/StringConcatenate.h>
 
 #define MESSAGE_CHECK(assertion) MESSAGE_CHECK_BASE(assertion, process().connection())
-#define MESSAGE_CHECK_URL(url) MESSAGE_CHECK_BASE(m_process->checkURLReceivedFromWebProcess(url), m_process->connection())
-
-using namespace WebCore;
+#define MESSAGE_CHECK_URL(url) MESSAGE_CHECK_BASE(checkURLReceivedFromCurrentOrPreviousWebProcess(m_process, url), m_process->connection())
 
 @interface NSApplication ()
 - (BOOL)isSpeaking;
@@ -106,7 +105,8 @@ using namespace WebCore;
 #endif
 
 namespace WebKit {
-
+using namespace WebCore;
+    
 static inline bool expectsLegacyImplicitRubberBandControl()
 {
     if (MacApplication::isSafari()) {
@@ -322,22 +322,6 @@ void WebPageProxy::setPromisedDataForImage(const String& pasteboardName, const S
 
 #endif
 
-void WebPageProxy::performDictionaryLookupAtLocation(const WebCore::FloatPoint& point)
-{
-    if (!isValid())
-        return;
-
-    process().send(Messages::WebPage::PerformDictionaryLookupAtLocation(point), m_pageID);
-}
-
-void WebPageProxy::performDictionaryLookupOfCurrentSelection()
-{
-    if (!isValid())
-        return;
-
-    process().send(Messages::WebPage::PerformDictionaryLookupOfCurrentSelection(), m_pageID);
-}
-
 // Complex text input support for plug-ins.
 void WebPageProxy::sendComplexTextInputToPlugin(uint64_t pluginComplexTextInputIdentifier, const String& textInput)
 {
@@ -454,12 +438,13 @@ void WebPageProxy::intrinsicContentSizeDidChange(const IntSize& intrinsicContent
     pageClient().intrinsicContentSizeDidChange(intrinsicContentSize);
 }
 
-void WebPageProxy::setAcceleratedCompositingRootLayer(LayerOrView* rootLayer)
+void WebPageProxy::setRemoteLayerTreeRootNode(RemoteLayerTreeNode* rootNode)
 {
-    pageClient().setAcceleratedCompositingRootLayer(rootLayer);
+    pageClient().setRemoteLayerTreeRootNode(rootNode);
+    m_frozenRemoteLayerTreeHost = nullptr;
 }
 
-LayerOrView* WebPageProxy::acceleratedCompositingRootLayer() const
+CALayer *WebPageProxy::acceleratedCompositingRootLayer() const
 {
     return pageClient().acceleratedCompositingRootLayer();
 }
@@ -510,7 +495,7 @@ static NSString *pathToPDFOnDisk(const String& suggestedFilename)
 
 void WebPageProxy::savePDFToTemporaryFolderAndOpenWithNativeApplicationRaw(const String& suggestedFilename, const String& originatingURLString, const uint8_t* data, unsigned long size, const String& pdfUUID)
 {
-    // FIXME: Write originatingURLString to the file's originating URL metadata (perhaps WebCore::FileSystem::setMetadataURL()?).
+    // FIXME: Write originatingURLString to the file's originating URL metadata (perhaps FileSystem::setMetadataURL()?).
     UNUSED_PARAM(originatingURLString);
 
     if (!suggestedFilename.endsWithIgnoringASCIICase(".pdf")) {
@@ -563,7 +548,7 @@ void WebPageProxy::openPDFFromTemporaryFolderWithNativeApplication(const String&
 }
 
 #if ENABLE(PDFKIT_PLUGIN)
-void WebPageProxy::showPDFContextMenu(const WebKit::PDFContextMenu& contextMenu, std::optional<int32_t>& selectedIndex)
+void WebPageProxy::showPDFContextMenu(const WebKit::PDFContextMenu& contextMenu, Optional<int32_t>& selectedIndex)
 {
     if (!contextMenu.m_items.size())
         return;
@@ -625,14 +610,6 @@ bool WebPageProxy::appleMailLinesClampEnabled()
 {
     return MacApplication::isAppleMail();
 }
-    
-void WebPageProxy::setFont(const String& fontFamily, double fontSize, uint64_t fontTraits)
-{
-    if (!isValid())
-        return;
-
-    process().send(Messages::WebPage::SetFont(fontFamily, fontSize, fontTraits), m_pageID);
-}
 
 void WebPageProxy::editorStateChanged(const EditorState& editorState)
 {
@@ -648,6 +625,7 @@ void WebPageProxy::editorStateChanged(const EditorState& editorState)
         return;
     
     pageClient().selectionDidChange();
+    updateFontAttributesAfterEditorStateChange();
 }
 
 void WebPageProxy::startWindowDrag()
@@ -680,28 +658,6 @@ NSView *WebPageProxy::inspectorAttachmentView()
 _WKRemoteObjectRegistry *WebPageProxy::remoteObjectRegistry()
 {
     return pageClient().remoteObjectRegistry();
-}
-#endif
-
-#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
-void WebPageProxy::startDisplayLink(unsigned observerID)
-{
-    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
-    if (!m_displayLink) {
-        uint32_t displayID = [[[[platformWindow() screen] deviceDescription] objectForKey:@"NSScreenNumber"] intValue];
-        m_displayLink = std::make_unique<DisplayLink>(displayID, *this);
-    }
-    m_displayLink->addObserver(observerID);
-}
-
-void WebPageProxy::stopDisplayLink(unsigned observerID)
-{
-    if (!m_displayLink)
-        return;
-    
-    m_displayLink->removeObserver(observerID);
-    if (!m_displayLink->hasObservers())
-        m_displayLink = nullptr;
 }
 #endif
 

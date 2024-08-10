@@ -81,11 +81,6 @@ struct BasicBlock;
 struct StorageAccessData {
     PropertyOffset offset;
     unsigned identifierNumber;
-
-    // This needs to know the inferred type. For puts, this is necessary because we need to remember
-    // what check is needed. For gets, this is necessary because otherwise AI might forget what type is
-    // guaranteed.
-    InferredType::Descriptor inferredType;
 };
 
 struct MultiPutByOffsetData {
@@ -761,6 +756,8 @@ public:
         m_opInfo = structure;
         m_opInfo2 = OpInfoWrapper();
     }
+
+    void convertToNewArrayBuffer(FrozenValue* immutableButterfly);
     
     void convertToDirectCall(FrozenValue*);
 
@@ -862,14 +859,6 @@ public:
         return jsDynamicCast<T>(vm, asCell());
     }
     
-    template<typename T>
-    T castConstant(VM& vm)
-    {
-        T result = dynamicCastConstant<T>(vm);
-        RELEASE_ASSERT(result);
-        return result;
-    }
-
     bool hasLazyJSValue()
     {
         return op() == LazyJSConstant;
@@ -1124,12 +1113,12 @@ public:
     PromotedLocationDescriptor promotedLocationDescriptor();
     
     // This corrects the arithmetic node flags, so that irrelevant bits are
-    // ignored. In particular, anything other than ArithMul does not need
+    // ignored. In particular, anything other than ArithMul or ValueMul does not need
     // to know if it can speculate on negative zero.
     NodeFlags arithNodeFlags()
     {
         NodeFlags result = m_flags & NodeArithFlagsMask;
-        if (op() == ArithMul || op() == ArithDiv || op() == ArithMod || op() == ArithNegate || op() == ArithPow || op() == ArithRound || op() == ArithFloor || op() == ArithCeil || op() == ArithTrunc || op() == DoubleAsInt32 || op() == ValueNegate)
+        if (op() == ArithMul || op() == ArithDiv || op() == ValueDiv || op() == ArithMod || op() == ArithNegate || op() == ArithPow || op() == ArithRound || op() == ArithFloor || op() == ArithCeil || op() == ArithTrunc || op() == DoubleAsInt32 || op() == ValueNegate || op() == ValueMul || op() == ValueDiv)
             return result;
         return result & ~NodeBytecodeNeedsNegZero;
     }
@@ -1144,9 +1133,14 @@ public:
         return m_flags & NodeMayHaveDoubleResult;
     }
     
-    bool mayHaveNonNumberResult()
+    bool mayHaveNonNumericResult()
     {
-        return m_flags & NodeMayHaveNonNumberResult;
+        return m_flags & NodeMayHaveNonNumericResult;
+    }
+
+    bool mayHaveBigIntResult()
+    {
+        return m_flags & NodeMayHaveBigIntResult;
     }
 
     bool hasNewArrayBufferData()
@@ -1356,6 +1350,11 @@ public:
         return !!result();
     }
     
+    bool hasInt32Result()
+    {
+        return result() == NodeResultInt32;
+    }
+
     bool hasInt52Result()
     {
         return result() == NodeResultInt52;
@@ -1365,7 +1364,27 @@ public:
     {
         return result() == NodeResultNumber;
     }
+
+    bool hasNumberOrAnyIntResult()
+    {
+        return hasNumberResult() || hasInt32Result() || hasInt52Result();
+    }
     
+    bool hasNumericResult()
+    {
+        switch (op()) {
+        case ValueSub:
+        case ValueMul:
+        case ValueBitAnd:
+        case ValueBitOr:
+        case ValueBitXor:
+        case ValueNegate:
+            return true;
+        default:
+            return false;
+        }
+    }
+
     bool hasDoubleResult()
     {
         return result() == NodeResultDouble;
@@ -1663,6 +1682,9 @@ public:
         case StringReplaceRegExp:
         case ToNumber:
         case ToObject:
+        case ValueBitAnd:
+        case ValueBitOr:
+        case ValueBitXor:
         case CallObjectConstructor:
         case LoadKeyFromMapBucket:
         case LoadValueFromMapBucket:
@@ -2869,7 +2891,7 @@ private:
 
     unsigned m_index { std::numeric_limits<unsigned>::max() };
     unsigned m_op : 10; // real type is NodeType
-    unsigned m_flags : 20;
+    unsigned m_flags : 21;
     // The virtual register number (spill location) associated with this .
     VirtualRegister m_virtualRegister;
     // The number of uses of the result of this operation (+1 for 'must generate' nodes, which have side-effects).
@@ -2957,7 +2979,7 @@ private:
             return static_cast<T>(u.constPointer);
         }
         template <typename T>
-        ALWAYS_INLINE auto as() const -> typename std::enable_if<(std::is_integral<T>::value || std::is_enum<T>::value) && sizeof(T) == 4, T>::type
+        ALWAYS_INLINE auto as() const -> typename std::enable_if<(std::is_integral<T>::value || std::is_enum<T>::value) && sizeof(T) <= 4, T>::type
         {
             return static_cast<T>(u.int32);
         }

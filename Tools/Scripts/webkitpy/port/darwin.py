@@ -53,8 +53,8 @@ class DarwinPort(ApplePort):
             return 350 * 1000
         return super(DarwinPort, self).default_timeout_ms()
 
-    def _port_specific_expectations_files(self):
-        return list(reversed([self._filesystem.join(self._webkit_baseline_path(p), 'TestExpectations') for p in self.baseline_search_path()]))
+    def _port_specific_expectations_files(self, device_type=None):
+        return list(reversed([self._filesystem.join(self._webkit_baseline_path(p), 'TestExpectations') for p in self.baseline_search_path(device_type=device_type)]))
 
     def check_for_leaks(self, process_name, process_pid):
         if not self.get_option('leaks'):
@@ -104,7 +104,7 @@ class DarwinPort(ApplePort):
                 else:
                     process_name = test.split('-')[0]
                     pid = int(test.split('-')[1])
-            except IndexError:
+            except (IndexError, ValueError):
                 continue
             if not any(entry[1] == process_name and entry[2] == pid for entry in crashed_processes):
                 # if this is a new crash, then append the logs
@@ -113,7 +113,7 @@ class DarwinPort(ApplePort):
 
     def _look_for_all_crash_logs_in_log_dir(self, newer_than):
         crash_log = CrashLogs(self.host, self.path_to_crash_logs(), crash_logs_to_skip=self._crash_logs_to_skip_for_host.get(self.host, []))
-        return crash_log.find_all_logs(include_errors=True, newer_than=newer_than)
+        return crash_log.find_all_logs(newer_than=newer_than)
 
     def _get_crash_log(self, name, pid, stdout, stderr, newer_than, time_fn=None, sleep_fn=None, wait_for_log=True, target_host=None):
         # Note that we do slow-spin here and wait, since it appears the time

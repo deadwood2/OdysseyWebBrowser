@@ -114,7 +114,13 @@ WI.TimelineRecordingContentView = class TimelineRecordingContentView extends WI.
         if (!this._timelineViewMap.has(timeline))
             return;
 
-        this._timelineContentBrowser.showContentView(this._timelineViewMap.get(timeline));
+        let contentView = this._timelineContentBrowser.showContentView(this._timelineViewMap.get(timeline));
+
+        // FIXME: `WI.HeapAllocationsTimelineView` relies on it's `_dataGrid` for determining what
+        // object is currently selected. If that `_dataGrid` hasn't yet called `layout()` when first
+        // shown, we will lose the selection.
+        if (!contentView.didInitialLayout)
+            contentView.updateLayout();
     }
 
     get supportsSplitContentBrowser()
@@ -691,13 +697,17 @@ WI.TimelineRecordingContentView = class TimelineRecordingContentView extends WI.
 
     _recordSelected(event)
     {
-        let {record, timeline} = event.data;
-        let timelineView = this._timelineViewMap.get(timeline);
+        let {record} = event.data;
 
-        if (record && timelineView !== this.currentTimelineView)
-            this.showTimelineViewForTimeline(timeline);
+        for (let timelineView of this._timelineViewMap.values()) {
+            let recordMatchesTimeline = record && timelineView.representedObject.type === record.type;
 
-        timelineView.selectRecord(record);
+            if (recordMatchesTimeline && timelineView !== this.currentTimelineView)
+                this.showTimelineViewForTimeline(timelineView.representedObject);
+
+            if (!record || recordMatchesTimeline)
+                timelineView.selectRecord(record);
+        }
     }
 
     _timelineSelected()
@@ -723,9 +733,16 @@ WI.TimelineRecordingContentView = class TimelineRecordingContentView extends WI.
 
         let displayName;
         if (this._timelineOverview.viewMode === WI.TimelineOverview.ViewMode.Timelines) {
-            let selectionStart = Number.secondsToString(startValue, true);
-            let selectionEnd = Number.secondsToString(endValue, true);
-            displayName = WI.UIString("%s \u2013 %s").format(selectionStart, selectionEnd);
+            const higherResolution = true;
+            let selectionStart = Number.secondsToString(startValue, higherResolution);
+            let selectionEnd = Number.secondsToString(endValue, higherResolution);
+            const epsilon = 0.0001;
+            if (startValue < epsilon)
+                displayName = WI.UIString("%s \u2013 %s").format(selectionStart, selectionEnd);
+            else {
+                let duration = Number.secondsToString(endValue - startValue, higherResolution);
+                displayName = WI.UIString("%s \u2013 %s (%s)").format(selectionStart, selectionEnd, duration);
+            }
         } else {
             startValue += 1; // Convert index to frame number.
             if (startValue === endValue)

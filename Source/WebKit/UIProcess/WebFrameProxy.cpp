@@ -27,6 +27,7 @@
 #include "WebFrameProxy.h"
 
 #include "APINavigation.h"
+#include "ProvisionalPageProxy.h"
 #include "WebCertificateInfo.h"
 #include "WebFramePolicyListenerProxy.h"
 #include "WebPageMessages.h"
@@ -43,8 +44,8 @@
 namespace WebKit {
 using namespace WebCore;
 
-WebFrameProxy::WebFrameProxy(WebPageProxy* page, uint64_t frameID)
-    : m_page(page)
+WebFrameProxy::WebFrameProxy(WebPageProxy& page, uint64_t frameID)
+    : m_page(makeWeakPtr(page))
     , m_isFrameSet(false)
     , m_frameID(frameID)
 {
@@ -74,7 +75,7 @@ bool WebFrameProxy::isMainFrame() const
     if (!m_page)
         return false;
 
-    return this == m_page->mainFrame();
+    return this == m_page->mainFrame() || (m_page->provisionalPageProxy() && this == m_page->provisionalPageProxy()->mainFrame());
 }
 
 void WebFrameProxy::loadURL(const URL& url)
@@ -177,12 +178,12 @@ void WebFrameProxy::didChangeTitle(const String& title)
     m_title = title;
 }
 
-WebFramePolicyListenerProxy& WebFrameProxy::setUpPolicyListenerProxy(CompletionHandler<void(WebCore::PolicyAction, API::WebsitePolicies*, ShouldProcessSwapIfPossible, Vector<SafeBrowsingResult>&&)>&& completionHandler, ShouldExpectSafeBrowsingResult expect)
+WebFramePolicyListenerProxy& WebFrameProxy::setUpPolicyListenerProxy(CompletionHandler<void(PolicyAction, API::WebsitePolicies*, ProcessSwapRequestedByClient, RefPtr<SafeBrowsingWarning>&&)>&& completionHandler, ShouldExpectSafeBrowsingResult expect)
 {
     if (m_activeListener)
         m_activeListener->ignore();
-    m_activeListener = WebFramePolicyListenerProxy::create([this, protectedThis = makeRef(*this), completionHandler = WTFMove(completionHandler)] (WebCore::PolicyAction action, API::WebsitePolicies* policies, ShouldProcessSwapIfPossible swap, Vector<SafeBrowsingResult>&& safeBrowsingResults) mutable {
-        completionHandler(action, policies, swap, WTFMove(safeBrowsingResults));
+    m_activeListener = WebFramePolicyListenerProxy::create([this, protectedThis = makeRef(*this), completionHandler = WTFMove(completionHandler)] (PolicyAction action, API::WebsitePolicies* policies, ProcessSwapRequestedByClient processSwapRequestedByClient, RefPtr<SafeBrowsingWarning>&& safeBrowsingWarning) mutable {
+        completionHandler(action, policies, processSwapRequestedByClient, WTFMove(safeBrowsingWarning));
         m_activeListener = nullptr;
     }, expect);
     return *m_activeListener;
@@ -231,7 +232,7 @@ bool WebFrameProxy::didHandleContentFilterUnblockNavigation(const ResourceReques
         return false;
     }
 
-    RefPtr<WebPageProxy> page { m_page };
+    RefPtr<WebPageProxy> page { m_page.get() };
     ASSERT(page);
     m_contentFilterUnblockHandler.requestUnblockAsync([page](bool unblocked) {
         if (unblocked)

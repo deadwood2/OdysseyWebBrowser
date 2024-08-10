@@ -72,7 +72,7 @@ public:
 
     WebKit::WebPreferencesStore::ValueMap& preferenceValues() { return m_preferenceValues; }
 
-    WebKit::WebPageProxy* relatedPage();
+    WebKit::WebPageProxy* relatedPage() const;
     void setRelatedPage(WebKit::WebPageProxy*);
 
     WebKit::VisitedLinkStore* visitedLinkStore();
@@ -88,14 +88,14 @@ public:
     bool treatsSHA1SignedCertificatesAsInsecure() { return m_treatsSHA1SignedCertificatesAsInsecure; }
     void setTreatsSHA1SignedCertificatesAsInsecure(bool treatsSHA1SignedCertificatesAsInsecure) { m_treatsSHA1SignedCertificatesAsInsecure = treatsSHA1SignedCertificatesAsInsecure; } 
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     bool alwaysRunsAtForegroundPriority() { return m_alwaysRunsAtForegroundPriority; }
     void setAlwaysRunsAtForegroundPriority(bool alwaysRunsAtForegroundPriority) { m_alwaysRunsAtForegroundPriority = alwaysRunsAtForegroundPriority; } 
 #endif
     bool initialCapitalizationEnabled() { return m_initialCapitalizationEnabled; }
     void setInitialCapitalizationEnabled(bool initialCapitalizationEnabled) { m_initialCapitalizationEnabled = initialCapitalizationEnabled; }
 
-    std::optional<double> cpuLimit() const { return m_cpuLimit; }
+    Optional<double> cpuLimit() const { return m_cpuLimit; }
     void setCPULimit(double cpuLimit) { m_cpuLimit = cpuLimit; }
 
     bool waitsForPaintAfterViewDidMoveToWindow() const { return m_waitsForPaintAfterViewDidMoveToWindow; }
@@ -110,8 +110,13 @@ public:
     const WTF::String& overrideContentSecurityPolicy() const { return m_overrideContentSecurityPolicy; }
     void setOverrideContentSecurityPolicy(const WTF::String& overrideContentSecurityPolicy) { m_overrideContentSecurityPolicy = overrideContentSecurityPolicy; }
 
+#if PLATFORM(COCOA)
+    const WTF::Vector<WTF::String>& additionalSupportedImageTypes() const { return m_additionalSupportedImageTypes; }
+    void setAdditionalSupportedImageTypes(WTF::Vector<WTF::String>&& additionalSupportedImageTypes) { m_additionalSupportedImageTypes = WTFMove(additionalSupportedImageTypes); }
+#endif
+
 #if ENABLE(APPLICATION_MANIFEST)
-    const ApplicationManifest* applicationManifest() const;
+    ApplicationManifest* applicationManifest() const;
     void setApplicationManifest(ApplicationManifest*);
 #endif
 
@@ -135,16 +140,20 @@ private:
     PAL::SessionID m_sessionID;
 
     bool m_treatsSHA1SignedCertificatesAsInsecure { true };
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     bool m_alwaysRunsAtForegroundPriority { false };
 #endif
     bool m_initialCapitalizationEnabled { true };
     bool m_waitsForPaintAfterViewDidMoveToWindow { true };
     bool m_drawsBackground { true };
     bool m_controlledByAutomation { false };
-    std::optional<double> m_cpuLimit;
+    Optional<double> m_cpuLimit;
 
     WTF::String m_overrideContentSecurityPolicy;
+
+#if PLATFORM(COCOA)
+    WTF::Vector<WTF::String> m_additionalSupportedImageTypes;
+#endif
 
 #if ENABLE(APPLICATION_MANIFEST)
     RefPtr<ApplicationManifest> m_applicationManifest;

@@ -35,6 +35,7 @@
 #include <WebCore/CARingBuffer.h>
 #include <WebCore/MediaConstraints.h>
 #include <WebCore/RealtimeMediaSourceCenter.h>
+#include <WebCore/RemoteVideoSample.h>
 #include <WebCore/WebAudioBufferList.h>
 #include <wtf/UniqueRef.h>
 
@@ -98,6 +99,17 @@ public:
         m_manager.process().send(Messages::UserMediaCaptureManager::AudioSamplesAvailable(m_id, time, numberOfFrames, startFrame, endFrame), 0);
     }
 
+    void videoSampleAvailable(MediaSample& sample) final
+    {
+#if HAVE(IOSURFACE)
+        auto remoteSample = RemoteVideoSample::create(WTFMove(sample));
+        if (remoteSample)
+            m_manager.process().send(Messages::UserMediaCaptureManager::RemoteVideoSampleAvailable(m_id, WTFMove(*remoteSample)), 0);
+#else
+        ASSERT_NOT_REACHED();
+#endif
+    }
+
     void storageChanged(SharedMemory* storage) final {
         SharedMemory::Handle handle;
         if (storage)
@@ -125,17 +137,21 @@ UserMediaCaptureManagerProxy::~UserMediaCaptureManagerProxy()
     m_process.removeMessageReceiver(Messages::UserMediaCaptureManagerProxy::messageReceiverName());
 }
 
-void UserMediaCaptureManagerProxy::createMediaSourceForCaptureDeviceWithConstraints(uint64_t id, const CaptureDevice& device, WebCore::RealtimeMediaSource::Type type, const MediaConstraints& constraints, bool& succeeded, String& invalidConstraints, WebCore::RealtimeMediaSourceSettings& settings)
+void UserMediaCaptureManagerProxy::createMediaSourceForCaptureDeviceWithConstraints(uint64_t id, const CaptureDevice& device, String&& hashSalt, const MediaConstraints& constraints, bool& succeeded, String& invalidConstraints, WebCore::RealtimeMediaSourceSettings& settings)
 {
     CaptureSourceOrError sourceOrError;
-    switch (type) {
-    case WebCore::RealtimeMediaSource::Type::Audio:
-        sourceOrError = RealtimeMediaSourceCenter::singleton().audioFactory().createAudioCaptureSource(device, &constraints);
+    switch (device.type()) {
+    case WebCore::CaptureDevice::DeviceType::Microphone:
+        sourceOrError = RealtimeMediaSourceCenter::singleton().audioCaptureFactory().createAudioCaptureSource(device, WTFMove(hashSalt), &constraints);
         break;
-    case WebCore::RealtimeMediaSource::Type::Video:
-        sourceOrError = RealtimeMediaSourceCenter::singleton().videoFactory().createVideoCaptureSource(device, &constraints);
+    case WebCore::CaptureDevice::DeviceType::Camera:
+        sourceOrError = RealtimeMediaSourceCenter::singleton().videoCaptureFactory().createVideoCaptureSource(device, WTFMove(hashSalt), &constraints);
         break;
-    case WebCore::RealtimeMediaSource::Type::None:
+    case WebCore::CaptureDevice::DeviceType::Screen:
+    case WebCore::CaptureDevice::DeviceType::Window:
+        sourceOrError = RealtimeMediaSourceCenter::singleton().displayCaptureFactory().createDisplayCaptureSource(device, &constraints);
+        break;
+    case WebCore::CaptureDevice::DeviceType::Unknown:
         ASSERT_NOT_REACHED();
         break;
     }
@@ -143,8 +159,10 @@ void UserMediaCaptureManagerProxy::createMediaSourceForCaptureDeviceWithConstrai
     succeeded = !!sourceOrError;
     if (sourceOrError) {
         auto source = sourceOrError.source();
+        source->setIsRemote(true);
         settings = source->settings();
-        m_proxies.set(id, std::make_unique<SourceProxy>(id, *this, WTFMove(source)));
+        ASSERT(!m_proxies.contains(id));
+        m_proxies.add(id, std::make_unique<SourceProxy>(id, *this, WTFMove(source)));
     } else
         invalidConstraints = WTFMove(sourceOrError.errorMessage);
 }
@@ -161,6 +179,11 @@ void UserMediaCaptureManagerProxy::stopProducingData(uint64_t id)
     auto iter = m_proxies.find(id);
     if (iter != m_proxies.end())
         iter->value->source().stop();
+}
+
+void UserMediaCaptureManagerProxy::end(uint64_t id)
+{
+    m_proxies.remove(id);
 }
 
 void UserMediaCaptureManagerProxy::capabilities(uint64_t id, WebCore::RealtimeMediaSourceCapabilities& capabilities)
@@ -188,7 +211,12 @@ void UserMediaCaptureManagerProxy::applyConstraints(uint64_t id, const WebCore::
     if (!result)
         m_process.send(Messages::UserMediaCaptureManager::ApplyConstraintsSucceeded(id, source.settings()), 0);
     else
-        m_process.send(Messages::UserMediaCaptureManager::ApplyConstraintsFailed(id, result.value().first, result.value().second), 0);
+        m_process.send(Messages::UserMediaCaptureManager::ApplyConstraintsFailed(id, result->badConstraint, result->message), 0);
+}
+
+void UserMediaCaptureManagerProxy::clear()
+{
+    m_proxies.clear();
 }
 
 }

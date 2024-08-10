@@ -26,7 +26,7 @@
 #import "config.h"
 #import "VideoFullscreenManagerProxy.h"
 
-#if PLATFORM(IOS) && HAVE(AVKIT) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
+#if PLATFORM(IOS_FAMILY) && HAVE(AVKIT) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
 
 #import "APIUIClient.h"
 #import "DrawingAreaProxy.h"
@@ -42,7 +42,7 @@
 #import <wtf/MachSendRight.h>
 #import <wtf/WeakObjCPtr.h>
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #import "RemoteLayerTreeDrawingAreaProxy.h"
 #import "UIKitSPI.h"
 #import <pal/spi/cocoa/AVKitSPI.h>
@@ -54,7 +54,7 @@
 
 @implementation WKLayerHostView
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 + (Class)layerClass {
     return [CALayerHost class];
 }
@@ -79,7 +79,7 @@
 
 @end
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 @interface WKVideoFullScreenViewController : UIViewController
 - (instancetype)initWithAVPlayerViewController:(AVPlayerViewController *)viewController NS_DESIGNATED_INITIALIZER;
 - (instancetype)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil NS_UNAVAILABLE;
@@ -124,7 +124,7 @@
 namespace WebKit {
 using namespace WebCore;
 
-#if PLATFORM(IOS) && !HAVE(AVKIT)
+#if PLATFORM(IOS_FAMILY) && !HAVE(AVKIT)
 
 RefPtr<VideoFullscreenManagerProxy> VideoFullscreenManagerProxy::create(WebPageProxy&)
 {
@@ -193,7 +193,7 @@ void VideoFullscreenModelContext::setVideoLayerFrame(WebCore::FloatRect frame)
         m_manager->setVideoLayerFrame(m_contextId, frame);
 }
 
-void VideoFullscreenModelContext::setVideoLayerGravity(WebCore::VideoFullscreenModel::VideoGravity gravity)
+void VideoFullscreenModelContext::setVideoLayerGravity(WebCore::MediaPlayerEnums::VideoGravity gravity)
 {
     if (m_manager)
         m_manager->setVideoLayerGravity(m_contextId, gravity);
@@ -205,12 +205,7 @@ void VideoFullscreenModelContext::fullscreenModeChanged(WebCore::HTMLMediaElemen
         m_manager->fullscreenModeChanged(m_contextId, mode);
 }
 
-bool VideoFullscreenModelContext::isVisible() const
-{
-    return m_manager ? m_manager->isVisible() : false;
-}
-
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 UIViewController *VideoFullscreenModelContext::presentingViewController()
 {
     if (m_manager)
@@ -279,6 +274,14 @@ void VideoFullscreenModelContext::fullscreenMayReturnToInline()
         m_manager->fullscreenMayReturnToInline(m_contextId);
 }
 
+void VideoFullscreenModelContext::requestRouteSharingPolicyAndContextUID(CompletionHandler<void(WebCore::RouteSharingPolicy, String)>&& completionHandler)
+{
+    if (m_manager)
+        m_manager->requestRouteSharingPolicyAndContextUID(m_contextId, WTFMove(completionHandler));
+    else
+        completionHandler(WebCore::RouteSharingPolicy::Default, emptyString());
+}
+
 void VideoFullscreenModelContext::willEnterPictureInPicture()
 {
     for (auto& client : m_clients)
@@ -311,9 +314,9 @@ void VideoFullscreenModelContext::didExitPictureInPicture()
 
 #pragma mark - VideoFullscreenManagerProxy
 
-RefPtr<VideoFullscreenManagerProxy> VideoFullscreenManagerProxy::create(WebPageProxy& page, PlaybackSessionManagerProxy& playbackSessionManagerProxy)
+Ref<VideoFullscreenManagerProxy> VideoFullscreenManagerProxy::create(WebPageProxy& page, PlaybackSessionManagerProxy& playbackSessionManagerProxy)
 {
-    return adoptRef(new VideoFullscreenManagerProxy(page, playbackSessionManagerProxy));
+    return adoptRef(*new VideoFullscreenManagerProxy(page, playbackSessionManagerProxy));
 }
 
 VideoFullscreenManagerProxy::VideoFullscreenManagerProxy(WebPageProxy& page, PlaybackSessionManagerProxy& playbackSessionManagerProxy)
@@ -396,6 +399,11 @@ void VideoFullscreenManagerProxy::applicationDidBecomeActive()
 {
     for (auto& tuple : m_contextMap.values())
         std::get<1>(tuple)->applicationDidBecomeActive();
+}
+
+void VideoFullscreenManagerProxy::requestRouteSharingPolicyAndContextUID(uint64_t contextId, CompletionHandler<void(WebCore::RouteSharingPolicy, String)>&& callback)
+{
+    m_page->sendWithAsyncReply(Messages::VideoFullscreenManager::RequestRouteSharingPolicyAndContextUID(contextId), WTFMove(callback));
 }
 
 VideoFullscreenManagerProxy::ModelInterfaceTuple VideoFullscreenManagerProxy::createModelAndInterface(uint64_t contextId)
@@ -482,8 +490,9 @@ void VideoFullscreenManagerProxy::setupFullscreenWithID(uint64_t contextId, uint
         [[view layer] setSublayerTransform:CATransform3DMakeScale(inverseScale, inverseScale, 1)];
     }
 
-#if PLATFORM(IOS)
-    UIView *parentView = downcast<RemoteLayerTreeDrawingAreaProxy>(*m_page->drawingArea()).remoteLayerTreeHost().rootLayer();
+#if PLATFORM(IOS_FAMILY)
+    auto* rootNode = downcast<RemoteLayerTreeDrawingAreaProxy>(*m_page->drawingArea()).remoteLayerTreeHost().rootNode();
+    UIView *parentView = rootNode ? rootNode->uiView() : nil;
     interface->setupFullscreen(*model->layerHostView(), initialRect, parentView, videoFullscreenMode, allowsPictureInPicture, standby);
 #else
     IntRect initialWindowRect;
@@ -522,7 +531,7 @@ void VideoFullscreenManagerProxy::enterFullscreen(uint64_t contextId)
 
 void VideoFullscreenManagerProxy::exitFullscreen(uint64_t contextId, WebCore::IntRect finalRect)
 {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     ensureInterface(contextId).exitFullscreen(finalRect);
 #else
     IntRect finalWindowRect;
@@ -538,7 +547,7 @@ void VideoFullscreenManagerProxy::exitFullscreenWithoutAnimationToMode(uint64_t 
 }
 #endif
 
-#if PLATFORM(IOS) && ENABLE(FULLSCREEN_API)
+#if PLATFORM(IOS_FAMILY)
 
 void VideoFullscreenManagerProxy::setInlineRect(uint64_t contextId, const WebCore::IntRect& inlineRect, bool visible)
 {
@@ -573,7 +582,7 @@ void VideoFullscreenManagerProxy::preparedToReturnToInline(uint64_t contextId, b
 {
     m_page->fullscreenMayReturnToInline();
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     ensureInterface(contextId).preparedToReturnToInline(visible, inlineRect);
 #else
     IntRect inlineWindowRect;
@@ -650,7 +659,7 @@ void VideoFullscreenManagerProxy::didCleanupFullscreen(uint64_t contextId)
 void VideoFullscreenManagerProxy::setVideoLayerFrame(uint64_t contextId, WebCore::FloatRect frame)
 {
     @autoreleasepool {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
         mach_port_name_t fencePort = [UIWindow _synchronizeDrawingAcrossProcesses];
 #else
         MachSendRight fenceSendRight;
@@ -663,7 +672,7 @@ void VideoFullscreenManagerProxy::setVideoLayerFrame(uint64_t contextId, WebCore
     }
 }
 
-void VideoFullscreenManagerProxy::setVideoLayerGravity(uint64_t contextId, WebCore::VideoFullscreenModel::VideoGravity gravity)
+void VideoFullscreenManagerProxy::setVideoLayerGravity(uint64_t contextId, WebCore::MediaPlayerEnums::VideoGravity gravity)
 {
     m_page->send(Messages::VideoFullscreenManager::SetVideoLayerGravityEnum(contextId, (unsigned)gravity), m_page->pageID());
 }
@@ -672,11 +681,6 @@ void VideoFullscreenManagerProxy::fullscreenModeChanged(uint64_t contextId, WebC
 {
     m_page->uiClient().hasVideoInPictureInPictureDidChange(m_page, mode & MediaPlayerEnums::VideoFullscreenModePictureInPicture);
     m_page->send(Messages::VideoFullscreenManager::FullscreenModeChanged(contextId, mode), m_page->pageID());
-}
-
-bool VideoFullscreenManagerProxy::isVisible() const
-{
-    return m_page->isViewVisible() && m_page->isInWindow();
 }
 
 void VideoFullscreenManagerProxy::fullscreenMayReturnToInline(uint64_t contextId)
@@ -689,4 +693,4 @@ void VideoFullscreenManagerProxy::fullscreenMayReturnToInline(uint64_t contextId
 
 } // namespace WebKit
 
-#endif // PLATFORM(IOS) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
+#endif // PLATFORM(IOS_FAMILY) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))

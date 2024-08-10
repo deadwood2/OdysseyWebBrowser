@@ -34,7 +34,7 @@
 #include "Logging.h"
 #include "PluginInfoStore.h"
 #include "PluginProcessManager.h"
-#include "SuspendedPageProxy.h"
+#include "ProvisionalPageProxy.h"
 #include "TextChecker.h"
 #include "TextCheckerState.h"
 #include "UIMessagePortChannelProvider.h"
@@ -53,12 +53,13 @@
 #include "WebsiteData.h"
 #include "WebsiteDataFetchOption.h"
 #include <WebCore/DiagnosticLoggingKeys.h>
+#include <WebCore/PrewarmInformation.h>
 #include <WebCore/PublicSuffix.h>
 #include <WebCore/SuddenTermination.h>
-#include <WebCore/URL.h>
 #include <stdio.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RunLoop.h>
+#include <wtf/URL.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/WTFString.h>
@@ -68,6 +69,10 @@
 #include "PDFPlugin.h"
 #include "UserMediaCaptureManagerProxy.h"
 #include "VersionChecks.h"
+#endif
+
+#if PLATFORM(MAC)
+#include "HighPerformanceGPUManager.h"
 #endif
 
 #if ENABLE(SEC_ITEM_SHIM)
@@ -82,7 +87,7 @@ using namespace WebCore;
 
 static bool isMainThreadOrCheckDisabled()
 {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     return LIKELY(RunLoop::isMain()) || !linkedOnOrAfter(SDKVersion::FirstWithMainThreadReleaseAssertionInWebPageProxy);
 #elif PLATFORM(MAC)
     return LIKELY(RunLoop::isMain()) || !linkedOnOrAfter(SDKVersion::FirstWithMainThreadReleaseAssertionInWebPageProxy);
@@ -116,18 +121,18 @@ static WebProcessProxy::WebPageProxyMap& globalPageMap()
     return pageMap;
 }
 
-Ref<WebProcessProxy> WebProcessProxy::create(WebProcessPool& processPool, WebsiteDataStore& websiteDataStore, IsInPrewarmedPool isInPrewarmedPool)
+Ref<WebProcessProxy> WebProcessProxy::create(WebProcessPool& processPool, WebsiteDataStore& websiteDataStore, IsPrewarmed isPrewarmed)
 {
-    auto proxy = adoptRef(*new WebProcessProxy(processPool, websiteDataStore, isInPrewarmedPool));
+    auto proxy = adoptRef(*new WebProcessProxy(processPool, websiteDataStore, isPrewarmed));
     proxy->connect();
     return proxy;
 }
 
-WebProcessProxy::WebProcessProxy(WebProcessPool& processPool, WebsiteDataStore& websiteDataStore, IsInPrewarmedPool isInPrewarmedPool)
-    : ChildProcessProxy(processPool.alwaysRunsAtBackgroundPriority())
+WebProcessProxy::WebProcessProxy(WebProcessPool& processPool, WebsiteDataStore& websiteDataStore, IsPrewarmed isPrewarmed)
+    : AuxiliaryProcessProxy(processPool.alwaysRunsAtBackgroundPriority())
     , m_responsivenessTimer(*this)
     , m_backgroundResponsivenessTimer(*this)
-    , m_processPool(processPool, isInPrewarmedPool == IsInPrewarmedPool::Yes ? IsWeak::Yes : IsWeak::No)
+    , m_processPool(processPool, isPrewarmed == IsPrewarmed::Yes ? IsWeak::Yes : IsWeak::No)
     , m_mayHaveUniversalFileReadSandboxExtension(false)
     , m_numberOfTimesSuddenTerminationWasDisabled(0)
     , m_throttler(*this, processPool.shouldTakeUIBackgroundAssertion())
@@ -137,7 +142,7 @@ WebProcessProxy::WebProcessProxy(WebProcessPool& processPool, WebsiteDataStore& 
 #if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
     , m_userMediaCaptureManagerProxy(std::make_unique<UserMediaCaptureManagerProxy>(*this))
 #endif
-    , m_isInPrewarmedPool(isInPrewarmedPool == IsInPrewarmedPool::Yes)
+    , m_isPrewarmed(isPrewarmed == IsPrewarmed::Yes)
 {
     RELEASE_ASSERT(isMainThreadOrCheckDisabled());
 
@@ -157,6 +162,11 @@ WebProcessProxy::~WebProcessProxy()
 
     WebPasteboardProxy::singleton().removeWebProcessProxy(*this);
 
+#if PLATFORM(MAC) && ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
+    if (state() == State::Running)
+        processPool().stopDisplayLinks(*connection());
+#endif
+
     if (m_webConnection)
         m_webConnection->invalidate();
 
@@ -165,13 +175,17 @@ WebProcessProxy::~WebProcessProxy()
 
     for (auto& callback : m_localPortActivityCompletionHandlers.values())
         callback(MessagePortChannelProvider::HasActivity::No);
+
+#if PLATFORM(MAC)
+    HighPerformanceGPUManager::singleton().removeProcessRequiringHighPerformance(this);
+#endif
 }
 
 void WebProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions& launchOptions)
 {
     launchOptions.processType = ProcessLauncher::ProcessType::Web;
 
-    ChildProcessProxy::getLaunchOptions(launchOptions);
+    AuxiliaryProcessProxy::getLaunchOptions(launchOptions);
 
     if (!m_processPool->customWebContentServiceBundleIdentifier().isEmpty())
         launchOptions.customWebContentServiceBundleIdentifier = m_processPool->customWebContentServiceBundleIdentifier().ascii();
@@ -191,11 +205,20 @@ void WebProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions& launchOpt
 
     launchOptions.nonValidInjectedCodeAllowed = shouldAllowNonValidInjectedCode();
 
+    if (isPrewarmed())
+        launchOptions.extraInitializationData.add("is-prewarmed"_s, "1"_s);
+
     if (processPool().shouldMakeNextWebProcessLaunchFailForTesting()) {
         processPool().setShouldMakeNextWebProcessLaunchFailForTesting(false);
         launchOptions.shouldMakeProcessLaunchFailForTesting = true;
     }
 }
+
+#if !PLATFORM(GTK) && !PLATFORM(WPE)
+void WebProcessProxy::platformGetLaunchOptions(ProcessLauncher::LaunchOptions& launchOptions)
+{
+}
+#endif
 
 void WebProcessProxy::connectionWillOpen(IPC::Connection& connection)
 {
@@ -204,6 +227,11 @@ void WebProcessProxy::connectionWillOpen(IPC::Connection& connection)
     // Throttling IPC messages coming from the WebProcesses so that the UIProcess stays responsive, even
     // if one of the WebProcesses misbehaves.
     connection.enableIncomingMessagesThrottling();
+
+    // Use this flag to force synchronous messages to be treated as asynchronous messages in the WebProcess.
+    // Otherwise, the WebProcess would process incoming synchronous IPC while waiting for a synchronous IPC
+    // reply from the UIProcess, which would be unsafe.
+    connection.setOnlySendMessagesAsDispatchWhenWaitingForSyncReplyWhenProcessingSuchAMessage(true);
 
 #if ENABLE(SEC_ITEM_SHIM)
     SecItemShimProxy::singleton().initializeConnection(connection);
@@ -216,6 +244,10 @@ void WebProcessProxy::connectionWillOpen(IPC::Connection& connection)
 void WebProcessProxy::processWillShutDown(IPC::Connection& connection)
 {
     ASSERT_UNUSED(connection, this->connection() == &connection);
+
+#if PLATFORM(MAC) && ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
+    processPool().stopDisplayLinks(connection);
+#endif
 
     for (auto& page : m_pageMap.values())
         page->webProcessWillShutDown();
@@ -261,162 +293,49 @@ WebPageProxy* WebProcessProxy::webPage(uint64_t pageID)
     return globalPageMap().get(pageID);
 }
 
-void WebProcessProxy::deleteWebsiteDataForTopPrivatelyControlledDomainsInAllPersistentDataStores(OptionSet<WebsiteDataType> dataTypes, Vector<String>&& topPrivatelyControlledDomains, bool shouldNotifyPage, CompletionHandler<void (const HashSet<String>&)>&& completionHandler)
-{
-    // We expect this to be called on the main thread so we get the default website data store.
-    ASSERT(isMainThreadOrCheckDisabled());
-    
-    struct CallbackAggregator : ThreadSafeRefCounted<CallbackAggregator> {
-        explicit CallbackAggregator(CompletionHandler<void(HashSet<String>)>&& completionHandler)
-            : completionHandler(WTFMove(completionHandler))
-        {
-        }
-        void addDomainsWithDeletedWebsiteData(const HashSet<String>& domains)
-        {
-            domainsWithDeletedWebsiteData.add(domains.begin(), domains.end());
-        }
-        
-        void addPendingCallback()
-        {
-            ++pendingCallbacks;
-        }
-        
-        void removePendingCallback()
-        {
-            ASSERT(pendingCallbacks);
-            --pendingCallbacks;
-            
-            callIfNeeded();
-        }
-        
-        void callIfNeeded()
-        {
-            if (!pendingCallbacks)
-                completionHandler(domainsWithDeletedWebsiteData);
-        }
-        
-        unsigned pendingCallbacks = 0;
-        CompletionHandler<void(HashSet<String>)> completionHandler;
-        HashSet<String> domainsWithDeletedWebsiteData;
-    };
-    
-    RefPtr<CallbackAggregator> callbackAggregator = adoptRef(new CallbackAggregator(WTFMove(completionHandler)));
-    OptionSet<WebsiteDataFetchOption> fetchOptions = WebsiteDataFetchOption::DoNotCreateProcesses;
-
-    HashSet<PAL::SessionID> visitedSessionIDs;
-    for (auto& page : globalPageMap()) {
-        auto& dataStore = page.value->websiteDataStore();
-        if (!dataStore.isPersistent() || visitedSessionIDs.contains(dataStore.sessionID()))
-            continue;
-        visitedSessionIDs.add(dataStore.sessionID());
-        callbackAggregator->addPendingCallback();
-        dataStore.removeDataForTopPrivatelyControlledDomains(dataTypes, fetchOptions, topPrivatelyControlledDomains, [callbackAggregator, shouldNotifyPage, page](HashSet<String>&& domainsWithDeletedWebsiteData) {
-            // When completing the task, we should be getting called on the main thread.
-            ASSERT(isMainThreadOrCheckDisabled());
-            
-            if (shouldNotifyPage)
-                page.value->postMessageToInjectedBundle("WebsiteDataDeletionForTopPrivatelyOwnedDomainsFinished", nullptr);
-            
-            callbackAggregator->addDomainsWithDeletedWebsiteData(WTFMove(domainsWithDeletedWebsiteData));
-            callbackAggregator->removePendingCallback();
-        });
-    }
-}
-
-void WebProcessProxy::topPrivatelyControlledDomainsWithWebsiteData(OptionSet<WebsiteDataType> dataTypes, bool shouldNotifyPage, CompletionHandler<void(HashSet<String>&&)>&& completionHandler)
-{
-    // We expect this to be called on the main thread so we get the default website data store.
-    ASSERT(isMainThreadOrCheckDisabled());
-    
-    struct CallbackAggregator : ThreadSafeRefCounted<CallbackAggregator> {
-        explicit CallbackAggregator(CompletionHandler<void(HashSet<String>&&)>&& completionHandler)
-            : completionHandler(WTFMove(completionHandler))
-        {
-        }
-        
-        void addDomainsWithDeletedWebsiteData(HashSet<String>&& domains)
-        {
-            domainsWithDeletedWebsiteData.add(domains.begin(), domains.end());
-        }
-        
-        void addPendingCallback()
-        {
-            ++pendingCallbacks;
-        }
-        
-        void removePendingCallback()
-        {
-            ASSERT(pendingCallbacks);
-            --pendingCallbacks;
-            
-            callIfNeeded();
-        }
-        
-        void callIfNeeded()
-        {
-            if (!pendingCallbacks)
-                completionHandler(WTFMove(domainsWithDeletedWebsiteData));
-        }
-        
-        unsigned pendingCallbacks = 0;
-        CompletionHandler<void(HashSet<String>&&)> completionHandler;
-        HashSet<String> domainsWithDeletedWebsiteData;
-    };
-    
-    RefPtr<CallbackAggregator> callbackAggregator = adoptRef(new CallbackAggregator(WTFMove(completionHandler)));
-    
-    HashSet<PAL::SessionID> visitedSessionIDs;
-    for (auto& page : globalPageMap().values()) {
-        auto& dataStore = page->websiteDataStore();
-        if (!dataStore.isPersistent() || visitedSessionIDs.contains(dataStore.sessionID()))
-            continue;
-        visitedSessionIDs.add(dataStore.sessionID());
-        callbackAggregator->addPendingCallback();
-        dataStore.topPrivatelyControlledDomainsWithWebsiteData(dataTypes, { }, [callbackAggregator, shouldNotifyPage, page = makeRef(*page)](HashSet<String>&& domainsWithDataRecords) {
-            // When completing the task, we should be getting called on the main thread.
-            ASSERT(isMainThreadOrCheckDisabled());
-            
-            if (shouldNotifyPage)
-                page->postMessageToInjectedBundle("WebsiteDataScanForTopPrivatelyControlledDomainsFinished", nullptr);
-            
-            callbackAggregator->addDomainsWithDeletedWebsiteData(WTFMove(domainsWithDataRecords));
-            callbackAggregator->removePendingCallback();
-        });
-    }
-
-    // FIXME: It's bizarre that this call is on WebProcessProxy and that it doesn't work if there are no visited pages.
-    // This should actually be a function of WebsiteDataStore and it should work even if there are no WebViews instances.
-    callbackAggregator->callIfNeeded();
-}
-    
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
 void WebProcessProxy::notifyPageStatisticsAndDataRecordsProcessed()
 {
     for (auto& page : globalPageMap())
         page.value->postMessageToInjectedBundle("WebsiteDataScanForTopPrivatelyControlledDomainsFinished", nullptr);
 }
-    
+
+void WebProcessProxy::notifyWebsiteDataScanForTopPrivatelyControlledDomainsFinished()
+{
+    for (auto& page : globalPageMap())
+        page.value->postMessageToInjectedBundle("WebsiteDataScanForTopPrivatelyControlledDomainsFinished", nullptr);
+}
+
+void WebProcessProxy::notifyWebsiteDataDeletionForTopPrivatelyOwnedDomainsFinished()
+{
+    for (auto& page : globalPageMap())
+        page.value->postMessageToInjectedBundle("WebsiteDataDeletionForTopPrivatelyOwnedDomainsFinished", nullptr);
+}
+
 void WebProcessProxy::notifyPageStatisticsTelemetryFinished(API::Object* messageBody)
 {
     for (auto& page : globalPageMap())
         page.value->postMessageToInjectedBundle("ResourceLoadStatisticsTelemetryFinished", messageBody);
 }
-    
+#endif
+
 Ref<WebPageProxy> WebProcessProxy::createWebPage(PageClient& pageClient, Ref<API::PageConfiguration>&& pageConfiguration)
 {
     uint64_t pageID = generatePageID();
     Ref<WebPageProxy> webPage = WebPageProxy::create(pageClient, *this, pageID, WTFMove(pageConfiguration));
 
-    addExistingWebPage(webPage.get(), pageID);
+    addExistingWebPage(webPage.get(), pageID, BeginsUsingDataStore::Yes);
 
     return webPage;
 }
 
-void WebProcessProxy::addExistingWebPage(WebPageProxy& webPage, uint64_t pageID)
+void WebProcessProxy::addExistingWebPage(WebPageProxy& webPage, uint64_t pageID, BeginsUsingDataStore beginsUsingDataStore)
 {
     ASSERT(!m_pageMap.contains(pageID));
     ASSERT(!globalPageMap().contains(pageID));
 
-    m_processPool->pageBeginUsingWebsiteDataStore(webPage);
+    if (beginsUsingDataStore == BeginsUsingDataStore::Yes)
+        m_processPool->pageBeginUsingWebsiteDataStore(webPage);
 
     m_pageMap.set(pageID, &webPage);
     globalPageMap().set(pageID, &webPage);
@@ -424,44 +343,26 @@ void WebProcessProxy::addExistingWebPage(WebPageProxy& webPage, uint64_t pageID)
     updateBackgroundResponsivenessTimer();
 }
 
-void WebProcessProxy::suspendWebPageProxy(WebPageProxy& webPage, API::Navigation& navigation)
-{
-    if (auto* suspendedPage = webPage.maybeCreateSuspendedPage(*this, navigation)) {
-        LOG(ProcessSwapping, "WebProcessProxy pid %i added suspended page %s", processIdentifier(), suspendedPage->loggingString());
-        m_suspendedPageMap.set(webPage.pageID(), suspendedPage);
-    }
-
-    removeWebPage(webPage, webPage.pageID());
-    removeMessageReceiver(Messages::WebPageProxy::messageReceiverName(), webPage.pageID());
-}
-
-void WebProcessProxy::suspendedPageWasDestroyed(SuspendedPageProxy& suspendedPage)
-{
-    LOG(ProcessSwapping, "WebProcessProxy pid %i suspended page %s was destroyed", processIdentifier(), suspendedPage.loggingString());
-
-    ASSERT(m_suspendedPageMap.contains(suspendedPage.page().pageID()));
-    m_suspendedPageMap.remove(suspendedPage.page().pageID());
-
-    maybeShutDown();
-}
-
 void WebProcessProxy::markIsNoLongerInPrewarmedPool()
 {
-    ASSERT(m_isInPrewarmedPool);
+    ASSERT(m_isPrewarmed);
 
-    m_isInPrewarmedPool = false;
+    m_isPrewarmed = false;
     RELEASE_ASSERT(m_processPool);
     m_processPool.setIsWeak(IsWeak::No);
+
+    send(Messages::WebProcess::MarkIsNoLongerPrewarmed(), 0);
 }
 
-void WebProcessProxy::removeWebPage(WebPageProxy& webPage, uint64_t pageID)
+void WebProcessProxy::removeWebPage(WebPageProxy& webPage, uint64_t pageID, EndsUsingDataStore endsUsingDataStore)
 {
     auto* removedPage = m_pageMap.take(pageID);
     ASSERT_UNUSED(removedPage, removedPage == &webPage);
     removedPage = globalPageMap().take(pageID);
     ASSERT_UNUSED(removedPage, removedPage == &webPage);
 
-    m_processPool->pageEndUsingWebsiteDataStore(webPage);
+    if (endsUsingDataStore == EndsUsingDataStore::Yes)
+        m_processPool->pageEndUsingWebsiteDataStore(webPage);
 
     updateBackgroundResponsivenessTimer();
 
@@ -492,7 +393,7 @@ void WebProcessProxy::didDestroyWebUserContentControllerProxy(WebUserContentCont
     m_webUserContentControllerProxies.remove(&proxy);
 }
 
-void WebProcessProxy::assumeReadAccessToBaseURL(const String& urlString)
+void WebProcessProxy::assumeReadAccessToBaseURL(WebPageProxy& page, const String& urlString)
 {
     URL url(URL(), urlString);
     if (!url.isLocalFile())
@@ -508,6 +409,7 @@ void WebProcessProxy::assumeReadAccessToBaseURL(const String& urlString)
     // Client loads an alternate string. This doesn't grant universal file read, but the web process is assumed
     // to have read access to this directory already.
     m_localPathsWithAssumedReadAccess.add(path);
+    page.addPreviouslyVisitedPath(path);
 }
 
 bool WebProcessProxy::hasAssumedReadAccessToURL(const URL& url) const
@@ -580,18 +482,12 @@ bool WebProcessProxy::fullKeyboardAccessEnabled()
 
 void WebProcessProxy::updateBackForwardItem(const BackForwardListItemState& itemState)
 {
-    if (auto* item = WebBackForwardListItem::itemForID(itemState.identifier)) {
-        // This update could be coming from a web process that is not the active process for
-        // the back/forward items page.
-        // e.g. The old web process is navigating to about:blank for suspension.
-        // We ignore these updates.
-        if (m_pageMap.contains(item->pageID()))
-            item->setPageState(itemState.pageState);
-    }
+    if (auto* item = WebBackForwardListItem::itemForID(itemState.identifier))
+        item->setPageState(itemState.pageState);
 }
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
-void WebProcessProxy::getPlugins(bool refresh, Vector<PluginInfo>& plugins, Vector<PluginInfo>& applicationPlugins, std::optional<Vector<WebCore::SupportedPluginIdentifier>>& supportedPluginIdentifiers)
+void WebProcessProxy::getPlugins(bool refresh, Vector<PluginInfo>& plugins, Vector<PluginInfo>& applicationPlugins, Optional<Vector<WebCore::SupportedPluginIdentifier>>& supportedPluginIdentifiers)
 {
     if (refresh)
         m_processPool->pluginInfoStore().refresh();
@@ -623,12 +519,7 @@ void WebProcessProxy::getPluginProcessConnection(uint64_t pluginProcessToken, Me
 
 void WebProcessProxy::getNetworkProcessConnection(Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply&& reply)
 {
-    m_processPool->getNetworkProcessConnection(WTFMove(reply));
-}
-
-void WebProcessProxy::getStorageProcessConnection(PAL::SessionID initialSessionID, Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply&& reply)
-{
-    m_processPool->getStorageProcessConnection(*this, initialSessionID, WTFMove(reply));
+    m_processPool->getNetworkProcessConnection(*this, WTFMove(reply));
 }
 
 #if !PLATFORM(COCOA)
@@ -656,15 +547,6 @@ void WebProcessProxy::didReceiveMessage(IPC::Connection& connection, IPC::Decode
     if (decoder.messageReceiverName() == Messages::WebProcessProxy::messageReceiverName()) {
         didReceiveWebProcessProxyMessage(connection, decoder);
         return;
-    }
-
-    // WebPageProxy messages are normally handled by the normal "dispatchMessage" up above.
-    // If they were not handled there, then they may potentially be handled by SuspendedPageProxy objects.
-    if (decoder.messageReceiverName() == Messages::WebPageProxy::messageReceiverName()) {
-        if (auto* suspendedPage = m_suspendedPageMap.get(decoder.destinationID())) {
-            suspendedPage->didReceiveMessage(connection, decoder);
-            return;
-        }
     }
 
     // FIXME: Add unhandled message logging.
@@ -698,29 +580,34 @@ void WebProcessProxy::processDidTerminateOrFailedToLaunch()
     // to be deleted before we can finish our work.
     Ref<WebProcessProxy> protect(*this);
 
+#if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
+    m_userMediaCaptureManagerProxy->clear();
+#endif
+
     if (auto* webConnection = this->webConnection())
         webConnection->didClose();
 
     auto pages = copyToVectorOf<RefPtr<WebPageProxy>>(m_pageMap.values());
+    auto provisionalPages = WTF::map(m_provisionalPages, [](auto* provisionalPage) { return makeWeakPtr(provisionalPage); });
 
     shutDown();
 
 #if ENABLE(PUBLIC_SUFFIX_LIST)
     if (pages.size() == 1) {
         auto& page = *pages[0];
-        String domain = topPrivatelyControlledDomain(WebCore::URL(WebCore::ParsedURLString, page.currentURL()).host().toString());
+        String domain = topPrivatelyControlledDomain(URL({ }, page.currentURL()).host().toString());
         if (!domain.isEmpty())
             page.logDiagnosticMessageWithEnhancedPrivacy(WebCore::DiagnosticLoggingKeys::domainCausingCrashKey(), domain, WebCore::ShouldSample::No);
     }
 #endif
 
-    for (auto* suspendedPage : copyToVectorOf<SuspendedPageProxy*>(m_suspendedPageMap.values()))
-        suspendedPage->webProcessDidClose(*this);
-
-    m_suspendedPageMap.clear();
-
     for (auto& page : pages)
         page->processDidTerminate(ProcessTerminationReason::Crash);
+
+    for (auto& provisionalPage : provisionalPages) {
+        if (provisionalPage)
+            provisionalPage->processDidTerminate();
+    }
 }
 
 void WebProcessProxy::didReceiveInvalidMessage(IPC::Connection& connection, IPC::StringReference messageReceiverName, IPC::StringReference messageName)
@@ -739,6 +626,8 @@ void WebProcessProxy::didReceiveInvalidMessage(IPC::Connection& connection, IPC:
 
 void WebProcessProxy::didBecomeUnresponsive()
 {
+    auto protectedThis = makeRef(*this);
+
     m_isResponsive = NoOrMaybe::No;
 
     auto isResponsiveCallbacks = WTFMove(m_isResponsiveCallbacks);
@@ -780,7 +669,7 @@ void WebProcessProxy::didFinishLaunching(ProcessLauncher* launcher, IPC::Connect
 {
     RELEASE_ASSERT(isMainThreadOrCheckDisabled());
 
-    ChildProcessProxy::didFinishLaunching(launcher, connectionIdentifier);
+    AuxiliaryProcessProxy::didFinishLaunching(launcher, connectionIdentifier);
 
     if (!IPC::Connection::identifierIsValid(connectionIdentifier)) {
         RELEASE_LOG_IF(m_websiteDataStore->sessionID().isAlwaysOnLoggingAllowed(), Process, "%p - WebProcessProxy didFinishLaunching - invalid connection identifier (web process failed to launch)", this);
@@ -793,12 +682,18 @@ void WebProcessProxy::didFinishLaunching(ProcessLauncher* launcher, IPC::Connect
         page->processDidFinishLaunching();
     }
 
+    for (auto* provisionalPage : m_provisionalPages) {
+        ASSERT(this == &provisionalPage->process());
+        provisionalPage->processDidFinishLaunching();
+    }
+
+
     RELEASE_ASSERT(!m_webConnection);
     m_webConnection = WebConnectionToWebProcess::create(this);
 
     m_processPool->processDidFinishLaunching(this);
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     if (connection()) {
         if (xpc_connection_t xpcConnection = connection()->xpcConnection())
             m_throttler.didConnectToProcess(xpc_connection_get_pid(xpcConnection));
@@ -878,15 +773,15 @@ void WebProcessProxy::didDestroyUserGestureToken(uint64_t identifier)
 
 void WebProcessProxy::maybeShutDown()
 {
-    if (state() == State::Terminated || !canTerminateChildProcess())
+    if (state() == State::Terminated || !canTerminateAuxiliaryProcess())
         return;
 
     shutDown();
 }
 
-bool WebProcessProxy::canTerminateChildProcess()
+bool WebProcessProxy::canTerminateAuxiliaryProcess()
 {
-    if (!m_pageMap.isEmpty() || !m_suspendedPageMap.isEmpty())
+    if (!m_pageMap.isEmpty() || m_processPool->hasSuspendedPageFor(*this) || !m_provisionalPages.isEmpty())
         return false;
 
     if (!m_processPool->shouldTerminate(this))
@@ -897,20 +792,11 @@ bool WebProcessProxy::canTerminateChildProcess()
 
 void WebProcessProxy::shouldTerminate(bool& shouldTerminate)
 {
-    shouldTerminate = canTerminateChildProcess();
+    shouldTerminate = canTerminateAuxiliaryProcess();
     if (shouldTerminate) {
         // We know that the web process is going to terminate so start shutting it down in the UI process.
         shutDown();
     }
-}
-
-void WebProcessProxy::testIncomingSyncIPCMessageWhileWaitingForSyncReply(bool& handled)
-{
-    // Send Synchronous IPC back to the WebProcess while it is waiting for a sync reply from us.
-    // This should time out.
-    bool didSyncIPCsucceed = sendSync(Messages::WebProcess::SyncIPCMessageWhileWaitingForSyncReplyForTesting(), Messages::WebProcess::SyncIPCMessageWhileWaitingForSyncReplyForTesting::Reply(), 0, 100_ms);
-    RELEASE_ASSERT(!didSyncIPCsucceed);
-    handled = true;
 }
 
 void WebProcessProxy::updateTextCheckerState()
@@ -997,9 +883,10 @@ void WebProcessProxy::requestTermination(ProcessTerminationReason reason)
     if (state() == State::Terminated)
         return;
 
+    auto protectedThis = makeRef(*this);
     RELEASE_LOG_IF(m_websiteDataStore->sessionID().isAlwaysOnLoggingAllowed(), Process, "%p - WebProcessProxy::requestTermination - reason %d", this, reason);
 
-    ChildProcessProxy::terminate();
+    AuxiliaryProcessProxy::terminate();
 
     if (webConnection())
         webConnection()->didClose();
@@ -1177,7 +1064,7 @@ void WebProcessProxy::didCancelProcessSuspension()
 
 void WebProcessProxy::didSetAssertionState(AssertionState state)
 {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     if (isServiceWorkerProcess())
         return;
 
@@ -1205,6 +1092,9 @@ void WebProcessProxy::didSetAssertionState(AssertionState state)
         for (auto& page : m_pageMap.values())
             page->processWillBecomeForeground();
         break;
+    
+    case AssertionState::Download:
+        ASSERT_NOT_REACHED();
     }
 
     ASSERT(!m_backgroundToken || !m_foregroundToken);
@@ -1243,6 +1133,24 @@ void WebProcessProxy::isResponsive(WTF::Function<void(bool isWebProcessResponsiv
 
     responsivenessTimer().start();
     send(Messages::WebProcess::MainThreadPing(), 0);
+}
+
+void WebProcessProxy::isResponsiveWithLazyStop()
+{
+    if (m_isResponsive == NoOrMaybe::No)
+        return;
+
+    if (!responsivenessTimer().hasActiveTimer()) {
+        // We do not send a ping if we are already waiting for the WebProcess.
+        // Spamming pings on a slow web process is not helpful.
+        responsivenessTimer().startWithLazyStop();
+        send(Messages::WebProcess::MainThreadPing(), 0);
+    }
+}
+
+bool WebProcessProxy::isJITEnabled() const
+{
+    return processPool().configuration().isJITEnabled();
 }
 
 void WebProcessProxy::didReceiveMainThreadPing()
@@ -1294,6 +1202,8 @@ void WebProcessProxy::didExceedInactiveMemoryLimit()
 
 void WebProcessProxy::didExceedCPULimit()
 {
+    auto protectedThis = makeRef(*this);
+
     for (auto& page : pages()) {
         if (page->isPlayingAudio()) {
             RELEASE_LOG(PerformanceLogging, "%p - WebProcessProxy::didExceedCPULimit() WebProcess with pid %d has exceeded the background CPU limit but we are not terminating it because there is audio playing", this, processIdentifier());
@@ -1426,6 +1336,16 @@ void WebProcessProxy::didCheckProcessLocalPortForActivity(uint64_t callbackIdent
         return;
 
     callback(isLocallyReachable ? MessagePortChannelProvider::HasActivity::Yes : MessagePortChannelProvider::HasActivity::No);
+}
+
+void WebProcessProxy::didCollectPrewarmInformation(const String& domain, const WebCore::PrewarmInformation& prewarmInformation)
+{
+    processPool().didCollectPrewarmInformation(domain, prewarmInformation);
+}
+
+void WebProcessProxy::activePagesDomainsForTesting(CompletionHandler<void(Vector<String>&&)>&& completionHandler)
+{
+    connection()->sendWithAsyncReply(Messages::WebProcess::GetActivePagesOriginsForTesting(), WTFMove(completionHandler));
 }
 
 #if PLATFORM(WATCHOS)

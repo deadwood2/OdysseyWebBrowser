@@ -94,47 +94,60 @@ void RemoteScrollingCoordinatorProxy::commitScrollingTreeState(const RemoteScrol
     m_requestedScrollInfo = nullptr;
 }
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
+
 void RemoteScrollingCoordinatorProxy::connectStateNodeLayers(ScrollingStateTree& stateTree, const RemoteLayerTreeHost& layerTreeHost)
 {
     for (auto& currNode : stateTree.nodeMap().values()) {
-        if (currNode->hasChangedProperty(ScrollingStateNode::ScrollLayer))
-            currNode->setLayer(layerTreeHost.getLayer(currNode->layer()));
+        if (currNode->hasChangedProperty(ScrollingStateNode::Layer))
+            currNode->setLayer(layerTreeHost.layerForID(currNode->layer()));
 
         switch (currNode->nodeType()) {
-        case MainFrameScrollingNode:
-        case SubframeScrollingNode: {
+        case ScrollingNodeType::MainFrame:
+        case ScrollingNodeType::Subframe: {
             ScrollingStateFrameScrollingNode& scrollingStateNode = downcast<ScrollingStateFrameScrollingNode>(*currNode);
             
+            if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollContainerLayer))
+                scrollingStateNode.setScrollContainerLayer(layerTreeHost.layerForID(scrollingStateNode.scrollContainerLayer()));
+
             if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrolledContentsLayer))
-                scrollingStateNode.setScrolledContentsLayer(layerTreeHost.getLayer(scrollingStateNode.scrolledContentsLayer()));
+                scrollingStateNode.setScrolledContentsLayer(layerTreeHost.layerForID(scrollingStateNode.scrolledContentsLayer()));
 
             if (scrollingStateNode.hasChangedProperty(ScrollingStateFrameScrollingNode::CounterScrollingLayer))
-                scrollingStateNode.setCounterScrollingLayer(layerTreeHost.getLayer(scrollingStateNode.counterScrollingLayer()));
+                scrollingStateNode.setCounterScrollingLayer(layerTreeHost.layerForID(scrollingStateNode.counterScrollingLayer()));
 
             if (scrollingStateNode.hasChangedProperty(ScrollingStateFrameScrollingNode::InsetClipLayer))
-                scrollingStateNode.setInsetClipLayer(layerTreeHost.getLayer(scrollingStateNode.insetClipLayer()));
+                scrollingStateNode.setInsetClipLayer(layerTreeHost.layerForID(scrollingStateNode.insetClipLayer()));
 
             if (scrollingStateNode.hasChangedProperty(ScrollingStateFrameScrollingNode::ContentShadowLayer))
-                scrollingStateNode.setContentShadowLayer(layerTreeHost.getLayer(scrollingStateNode.contentShadowLayer()));
+                scrollingStateNode.setContentShadowLayer(layerTreeHost.layerForID(scrollingStateNode.contentShadowLayer()));
 
             // FIXME: we should never have header and footer layers coming from the WebProcess.
             if (scrollingStateNode.hasChangedProperty(ScrollingStateFrameScrollingNode::HeaderLayer))
-                scrollingStateNode.setHeaderLayer(layerTreeHost.getLayer(scrollingStateNode.headerLayer()));
+                scrollingStateNode.setHeaderLayer(layerTreeHost.layerForID(scrollingStateNode.headerLayer()));
 
             if (scrollingStateNode.hasChangedProperty(ScrollingStateFrameScrollingNode::FooterLayer))
-                scrollingStateNode.setFooterLayer(layerTreeHost.getLayer(scrollingStateNode.footerLayer()));
+                scrollingStateNode.setFooterLayer(layerTreeHost.layerForID(scrollingStateNode.footerLayer()));
+
+            if (scrollingStateNode.hasChangedProperty(ScrollingStateFrameScrollingNode::VerticalScrollbarLayer))
+                scrollingStateNode.setVerticalScrollbarLayer(layerTreeHost.layerForID(scrollingStateNode.verticalScrollbarLayer()));
+
+            if (scrollingStateNode.hasChangedProperty(ScrollingStateFrameScrollingNode::HorizontalScrollbarLayer))
+                scrollingStateNode.setHorizontalScrollbarLayer(layerTreeHost.layerForID(scrollingStateNode.horizontalScrollbarLayer()));
             break;
         }
-        case OverflowScrollingNode: {
+        case ScrollingNodeType::Overflow: {
             ScrollingStateOverflowScrollingNode& scrollingStateNode = downcast<ScrollingStateOverflowScrollingNode>(*currNode);
+            if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollContainerLayer))
+                scrollingStateNode.setScrollContainerLayer(layerTreeHost.layerForID(scrollingStateNode.scrollContainerLayer()));
 
             if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrolledContentsLayer))
-                scrollingStateNode.setScrolledContentsLayer(layerTreeHost.getLayer(scrollingStateNode.scrolledContentsLayer()));
+                scrollingStateNode.setScrolledContentsLayer(layerTreeHost.layerForID(scrollingStateNode.scrolledContentsLayer()));
             break;
         }
-        case FixedNode:
-        case StickyNode:
+        case ScrollingNodeType::FrameHosting:
+        case ScrollingNodeType::Fixed:
+        case ScrollingNodeType::Sticky:
             break;
         }
     }
@@ -143,8 +156,13 @@ void RemoteScrollingCoordinatorProxy::connectStateNodeLayers(ScrollingStateTree&
 
 bool RemoteScrollingCoordinatorProxy::handleWheelEvent(const PlatformWheelEvent& event)
 {
-    ScrollingTree::EventResult result = m_scrollingTree->tryToHandleWheelEvent(event);
-    return result == ScrollingTree::DidHandleEvent; // FIXME: handle other values.
+    ScrollingEventResult result = m_scrollingTree->tryToHandleWheelEvent(event);
+    return result == ScrollingEventResult::DidHandleEvent; // FIXME: handle other values.
+}
+
+void RemoteScrollingCoordinatorProxy::handleMouseEvent(const WebCore::PlatformMouseEvent& event)
+{
+    m_scrollingTree->handleMouseEvent(event);
 }
 
 TrackingType RemoteScrollingCoordinatorProxy::eventTrackingTypeForPoint(const AtomicString& eventName, IntPoint p) const
@@ -163,15 +181,15 @@ void RemoteScrollingCoordinatorProxy::currentSnapPointIndicesDidChange(WebCore::
 }
 
 // This comes from the scrolling tree.
-void RemoteScrollingCoordinatorProxy::scrollingTreeNodeDidScroll(ScrollingNodeID scrolledNodeID, const FloatPoint& newScrollPosition, const std::optional<FloatPoint>& layoutViewportOrigin, ScrollingLayerPositionAction scrollingLayerPositionAction)
+void RemoteScrollingCoordinatorProxy::scrollingTreeNodeDidScroll(ScrollingNodeID scrolledNodeID, const FloatPoint& newScrollPosition, const Optional<FloatPoint>& layoutViewportOrigin, ScrollingLayerPositionAction scrollingLayerPositionAction)
 {
     // Scroll updates for the main frame are sent via WebPageProxy::updateVisibleContentRects()
     // so don't send them here.
     if (!m_propagatesMainFrameScrolls && scrolledNodeID == rootScrollingNodeID())
         return;
 
-#if PLATFORM(IOS)
-    m_webPageProxy.overflowScrollViewDidScroll();
+#if PLATFORM(IOS_FAMILY)
+    m_webPageProxy.scrollingNodeScrollViewDidScroll();
 #endif
     m_webPageProxy.send(Messages::RemoteScrollingCoordinator::ScrollPositionChangedForNode(scrolledNodeID, newScrollPosition, scrollingLayerPositionAction == ScrollingLayerPositionAction::Sync));
 }
@@ -192,6 +210,33 @@ String RemoteScrollingCoordinatorProxy::scrollingTreeAsText() const
     
     return emptyString();
 }
+
+#if ENABLE(POINTER_EVENTS)
+Optional<TouchActionData> RemoteScrollingCoordinatorProxy::touchActionDataAtPoint(const IntPoint p) const
+{
+    return m_scrollingTree->touchActionDataAtPoint(p);
+}
+
+Optional<TouchActionData> RemoteScrollingCoordinatorProxy::touchActionDataForScrollNodeID(ScrollingNodeID scrollingNodeID) const
+{
+    for (auto& touchActionData : m_touchActionDataByTouchIdentifier.values()) {
+        if (touchActionData.scrollingNodeID == scrollingNodeID)
+            return touchActionData;
+    }
+    return WTF::nullopt;
+}
+
+void RemoteScrollingCoordinatorProxy::setTouchDataForTouchIdentifier(TouchActionData touchActionData, unsigned touchIdentifier)
+{
+    m_touchActionDataByTouchIdentifier.set(touchIdentifier, touchActionData);
+}
+
+void RemoteScrollingCoordinatorProxy::clearTouchDataForTouchIdentifier(unsigned touchIdentifier)
+{
+    m_touchActionDataByTouchIdentifier.remove(touchIdentifier);
+}
+
+#endif
 
 } // namespace WebKit
 

@@ -40,6 +40,7 @@
 
 #if WK_API_ENABLED
 #import <WebKit/_WKExperimentalFeature.h>
+#import <WebKit/_WKInternalDebugFeature.h>
 #endif
 
 enum {
@@ -93,23 +94,37 @@ static WKWebViewConfiguration *defaultConfiguration()
         configuration = [[WKWebViewConfiguration alloc] init];
         configuration.preferences._fullScreenEnabled = YES;
         configuration.preferences._developerExtrasEnabled = YES;
+        configuration.preferences._mediaDevicesEnabled = YES;
+        configuration.preferences._mockCaptureDevicesEnabled = YES;
 
         _WKProcessPoolConfiguration *processConfiguration = [[[_WKProcessPoolConfiguration alloc] init] autorelease];
         processConfiguration.diskCacheSpeculativeValidationEnabled = ![SettingsController shared].networkCacheSpeculativeRevalidationDisabled;
         if ([SettingsController shared].perWindowWebProcessesDisabled)
             processConfiguration.maximumProcessCount = 1;
-        if ([SettingsController shared].processSwapOnNavigationEnabled)
-            processConfiguration.processSwapsOnNavigation = true;
         if ([SettingsController shared].processSwapOnWindowOpenWithOpenerEnabled)
             processConfiguration.processSwapsOnWindowOpenWithOpener = true;
         
         configuration.processPool = [[[WKProcessPool alloc] _initWithConfiguration:processConfiguration] autorelease];
 
 #if WK_API_ENABLED
-        NSArray<_WKExperimentalFeature *> *features = [WKPreferences _experimentalFeatures];
-        for (_WKExperimentalFeature *feature in features) {
-            BOOL enabled = [[NSUserDefaults standardUserDefaults] boolForKey:feature.key];
-            [configuration.preferences _setEnabled:enabled forFeature:feature];
+        NSArray<_WKExperimentalFeature *> *experimentalFeatures = [WKPreferences _experimentalFeatures];
+        for (_WKExperimentalFeature *feature in experimentalFeatures) {
+            BOOL enabled;
+            if ([[NSUserDefaults standardUserDefaults] objectForKey:feature.key])
+                enabled = [[NSUserDefaults standardUserDefaults] boolForKey:feature.key];
+            else
+                enabled = [feature defaultValue];
+            [configuration.preferences _setEnabled:enabled forExperimentalFeature:feature];
+        }
+
+        NSArray<_WKInternalDebugFeature *> *internalDebugFeatures = [WKPreferences _internalDebugFeatures];
+        for (_WKInternalDebugFeature *feature in internalDebugFeatures) {
+            BOOL enabled;
+            if ([[NSUserDefaults standardUserDefaults] objectForKey:feature.key])
+                enabled = [[NSUserDefaults standardUserDefaults] boolForKey:feature.key];
+            else
+                enabled = [feature defaultValue];
+            [configuration.preferences _setEnabled:enabled forInternalDebugFeature:feature];
         }
 #endif
     }

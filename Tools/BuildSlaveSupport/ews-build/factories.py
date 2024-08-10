@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2019 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -30,10 +30,15 @@ Property = properties.Property
 
 
 class Factory(factory.BuildFactory):
-    def __init__(self, platform, configuration=None, architectures=None, buildOnly=True, additionalArguments=None, **kwargs):
+    def __init__(self, platform, configuration=None, architectures=None, buildOnly=True, additionalArguments=None, checkRelevance=False, **kwargs):
         factory.BuildFactory.__init__(self)
         self.addStep(ConfigureBuild(platform, configuration, architectures, buildOnly, additionalArguments))
+        if checkRelevance:
+            self.addStep(CheckPatchRelevance())
+        self.addStep(ValidatePatch())
+        self.addStep(PrintConfiguration())
         self.addStep(CheckOutSource())
+        self.addStep(ApplyPatch())
 
 
 class StyleFactory(Factory):
@@ -44,8 +49,7 @@ class StyleFactory(Factory):
 
 class BindingsFactory(Factory):
     def __init__(self, platform, configuration=None, architectures=None, additionalArguments=None, **kwargs):
-        Factory.__init__(self, platform, configuration, architectures, False, additionalArguments)
-        self.addStep(CheckPatchRelevance())
+        Factory.__init__(self, platform, configuration, architectures, False, additionalArguments, checkRelevance=True)
         self.addStep(RunBindingsTests())
 
 
@@ -57,8 +61,7 @@ class WebKitPerlFactory(Factory):
 
 class WebKitPyFactory(Factory):
     def __init__(self, platform, configuration=None, architectures=None, additionalArguments=None, **kwargs):
-        Factory.__init__(self, platform, configuration, architectures, False, additionalArguments)
-        self.addStep(CheckPatchRelevance())
+        Factory.__init__(self, platform, configuration, architectures, False, additionalArguments, checkRelevance=True)
         self.addStep(RunWebKitPyTests())
 
 
@@ -77,11 +80,13 @@ class BuildFactory(Factory):
 
     def propertiesToPassToTriggers(self):
         return {
-            "ewspatchid": Property("ewspatchid"),
+            "patch_id": Property("patch_id"),
+            "bug_id": Property("bug_id"),
             "configuration": Property("configuration"),
             "platform": Property("platform"),
             "fullPlatform": Property("fullPlatform"),
             "architecture": Property("architecture"),
+            "owner": Property("owner"),
         }
 
 
@@ -104,8 +109,7 @@ class TestFactory(Factory):
 
 class JSCTestsFactory(Factory):
     def __init__(self, platform, configuration='release', architectures=None, additionalArguments=None, **kwargs):
-        Factory.__init__(self, platform, configuration, architectures, False, additionalArguments)
-        self.addStep(CheckPatchRelevance())
+        Factory.__init__(self, platform, configuration, architectures, False, additionalArguments, checkRelevance=True)
         self.addStep(CompileJSCOnly())
         self.addStep(UnApplyPatchIfRequired())
         self.addStep(CompileJSCOnlyToT())
@@ -131,12 +135,16 @@ class iOSTestsFactory(TestFactory):
     LayoutTestClass = RunWebKitTests
 
 
-class MacWK1Factory(BuildFactory):
+class macOSBuildFactory(BuildFactory):
     pass
 
 
-class MacWK2Factory(BuildFactory):
-    pass
+class macOSWK1Factory(TestFactory):
+    LayoutTestClass = RunWebKit1Tests
+
+
+class macOSWK2Factory(TestFactory):
+    LayoutTestClass = RunWebKitTests
 
 
 class WindowsFactory(Factory):

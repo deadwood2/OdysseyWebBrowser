@@ -26,33 +26,30 @@
 #import "config.h"
 #import "UserAgent.h"
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 #import "Device.h"
 #import "SystemVersion.h"
+#import <pal/ios/UIKitSoftLink.h>
 #import <pal/spi/ios/MobileGestaltSPI.h>
 #import <pal/spi/ios/UIKitSPI.h>
 #import <wtf/RetainPtr.h>
-#import <wtf/SoftLinking.h>
-
-SOFT_LINK_FRAMEWORK(UIKit);
-SOFT_LINK_CLASS(UIKit, UIApplication);
 
 namespace WebCore {
 
 static inline bool isClassic()
 {
-    return [[getUIApplicationClass() sharedApplication] _isClassic];
+    return [[PAL::getUIApplicationClass() sharedApplication] _isClassic];
 }
 
 static inline bool isClassicPad()
 {
-    return [getUIApplicationClass() _classicMode] == UIApplicationSceneClassicModeOriginalPad;
+    return [PAL::getUIApplicationClass() _classicMode] == UIApplicationSceneClassicModeOriginalPad;
 }
 
 static inline bool isClassicPhone()
 {
-    return isClassic() && [getUIApplicationClass() _classicMode] != UIApplicationSceneClassicModeOriginalPad;
+    return isClassic() && [PAL::getUIApplicationClass() _classicMode] != UIApplicationSceneClassicModeOriginalPad;
 }
 
 static inline NSString *osNameForUserAgent()
@@ -71,7 +68,7 @@ static inline NSString *deviceNameForUserAgent()
     }
 
     NSString *name = deviceName();
-#if PLATFORM(IOS_SIMULATOR)
+#if PLATFORM(IOS_FAMILY_SIMULATOR)
     NSUInteger location = [name rangeOfString:@" Simulator" options:NSBackwardsSearch].location;
     if (location != NSNotFound && location > 0)
         return [name substringToIndex:location];
@@ -99,4 +96,4 @@ String standardUserAgentWithApplicationName(const String& applicationName)
 
 } // namespace WebCore.
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)

@@ -9,13 +9,15 @@ if (LOWERCASE_EVENT_LOOP_TYPE STREQUAL "glib")
     include_directories(SYSTEM
         ${GLIB_INCLUDE_DIRS}
     )
+    list(APPEND TestWTF_SOURCES
+        ${TESTWEBKITAPI_DIR}/glib/UtilitiesGLib.cpp
+    )
+else ()
+    list(APPEND TestWTF_SOURCES
+        ${TESTWEBKITAPI_DIR}/generic/UtilitiesGeneric.cpp
+    )
 endif ()
 
 set(test_main_SOURCES
-    ${TESTWEBKITAPI_DIR}/jsconly/main.cpp
-)
-
-list(APPEND TestWTF_SOURCES
-    ${TESTWEBKITAPI_DIR}/jsconly/PlatformUtilitiesJSCOnly.cpp
-    ${TESTWEBKITAPI_DIR}/Tests/WTF/RunLoop.cpp
+    ${TESTWEBKITAPI_DIR}/generic/main.cpp
 )

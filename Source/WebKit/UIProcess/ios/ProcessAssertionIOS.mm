@@ -26,7 +26,7 @@
 #import "config.h"
 #import "ProcessAssertion.h"
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 #import "AssertionServicesSPI.h"
 #import "Logging.h"
@@ -35,7 +35,7 @@
 #import <wtf/RunLoop.h>
 #import <wtf/Vector.h>
 
-#if !PLATFORM(IOS_SIMULATOR)
+#if !PLATFORM(IOS_FAMILY_SIMULATOR)
 
 using WebKit::ProcessAssertionClient;
 
@@ -153,20 +153,38 @@ static BKSProcessAssertionFlags flagsForState(AssertionState assertionState)
     case AssertionState::Suspended:
         return suspendedTabFlags;
     case AssertionState::Background:
+    case AssertionState::Download:
         return backgroundTabFlags;
     case AssertionState::Foreground:
         return foregroundTabFlags;
     }
 }
 
+static BKSProcessAssertionReason reasonForState(AssertionState assertionState)
+{
+    switch (assertionState) {
+    case AssertionState::Download:
+        return BKSProcessAssertionReasonFinishTaskUnbounded;
+    case AssertionState::Suspended:
+    case AssertionState::Background:
+    case AssertionState::Foreground:
+        return BKSProcessAssertionReasonExtension;
+    }
+}
+
 ProcessAssertion::ProcessAssertion(pid_t pid, AssertionState assertionState, Function<void()>&& invalidationCallback)
+    : ProcessAssertion(pid, "Web content visibility"_s, assertionState, WTFMove(invalidationCallback))
+{
+}
+
+ProcessAssertion::ProcessAssertion(pid_t pid, const String& name, AssertionState assertionState, Function<void()>&& invalidationCallback)
     : m_invalidationCallback(WTFMove(invalidationCallback))
     , m_assertionState(assertionState)
 {
     auto weakThis = makeWeakPtr(*this);
     BKSProcessAssertionAcquisitionHandler handler = ^(BOOL acquired) {
         if (!acquired) {
-            RELEASE_LOG_ERROR(ProcessSuspension, " %p - ProcessAssertion() Unable to acquire assertion for process with PID %d", this, pid);
+            RELEASE_LOG_ERROR(ProcessSuspension, " %p - ProcessAssertion() PID %d Unable to acquire assertion for process with PID %d", this, getpid(), pid);
             ASSERT_NOT_REACHED();
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (weakThis)
@@ -174,8 +192,9 @@ ProcessAssertion::ProcessAssertion(pid_t pid, AssertionState assertionState, Fun
             });
         }
     };
-    RELEASE_LOG(ProcessSuspension, "%p - ProcessAssertion() Acquiring assertion for process with PID %d", this, pid);
-    m_assertion = adoptNS([[BKSProcessAssertion alloc] initWithPID:pid flags:flagsForState(assertionState) reason:BKSProcessAssertionReasonExtension name:@"Web content visibility" withHandler:handler]);
+    RELEASE_LOG(ProcessSuspension, "%p - ProcessAssertion() PID %d acquiring assertion for process with PID %d, name '%s'", this, getpid(), pid, name.utf8().data());
+    
+    m_assertion = adoptNS([[BKSProcessAssertion alloc] initWithPID:pid flags:flagsForState(assertionState) reason:reasonForState(assertionState) name:(NSString *)name withHandler:handler]);
     m_assertion.get().invalidationHandler = ^() {
         dispatch_async(dispatch_get_main_queue(), ^{
             RELEASE_LOG(ProcessSuspension, "%p - ProcessAssertion() Process assertion for process with PID %d was invalidated", this, pid);
@@ -258,11 +277,16 @@ void ProcessAndUIAssertion::setClient(ProcessAssertionClient& newClient)
 
 } // namespace WebKit
 
-#else // PLATFORM(IOS_SIMULATOR)
+#else // PLATFORM(IOS_FAMILY_SIMULATOR)
 
 namespace WebKit {
 
 ProcessAssertion::ProcessAssertion(pid_t, AssertionState assertionState, Function<void()>&&)
+    : m_assertionState(assertionState)
+{
+}
+
+ProcessAssertion::ProcessAssertion(pid_t, const String&, AssertionState assertionState, Function<void()>&&)
     : m_assertionState(assertionState)
 {
 }
@@ -297,6 +321,6 @@ void ProcessAndUIAssertion::setClient(ProcessAssertionClient& newClient)
 
 } // namespace WebKit
 
-#endif // PLATFORM(IOS_SIMULATOR)
+#endif // PLATFORM(IOS_FAMILY_SIMULATOR)
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)

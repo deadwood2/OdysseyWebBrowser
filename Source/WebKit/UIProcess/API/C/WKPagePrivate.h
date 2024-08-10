@@ -103,9 +103,6 @@ WK_EXPORT void WKPageGetBytecodeProfile(WKPageRef page, void* context, WKPageGet
 typedef void (*WKPageGetSamplingProfilerOutputFunction)(WKStringRef, WKErrorRef, void*);
 WK_EXPORT void WKPageGetSamplingProfilerOutput(WKPageRef page, void* context, WKPageGetSamplingProfilerOutputFunction function);
 
-typedef void (*WKPageIsWebProcessResponsiveFunction)(bool isWebProcessResponsive, void* context);
-WK_EXPORT void WKPageIsWebProcessResponsive(WKPageRef page, void* context, WKPageIsWebProcessResponsiveFunction function);
-    
 WK_EXPORT WKArrayRef WKPageCopyRelatedPages(WKPageRef page);
 
 WK_EXPORT WKFrameRef WKPageLookUpFrameFromHandle(WKPageRef page, WKFrameHandleRef handle);
@@ -148,6 +145,8 @@ enum {
     kWKMediaHasActiveVideoCaptureDevice = 1 << 3,
     kWKMediaHasMutedAudioCaptureDevice = 1 << 4,
     kWKMediaHasMutedVideoCaptureDevice = 1 << 5,
+    kWKMediaHasActiveDisplayCaptureDevice = 1 << 6,
+    kWKMediaHasMutedDisplayCaptureDevice = 1 << 7,
 };
 typedef uint32_t WKMediaState;
 

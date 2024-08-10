@@ -26,11 +26,16 @@
 #include "config.h"
 #include "ProcessAssertion.h"
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
 
 namespace WebKit {
 
 ProcessAssertion::ProcessAssertion(ProcessID, AssertionState assertionState, Function<void()>&&)
+    : m_assertionState(assertionState)
+{
+}
+
+ProcessAssertion::ProcessAssertion(ProcessID, const String&, AssertionState assertionState, Function<void()>&&)
     : m_assertionState(assertionState)
 {
 }
@@ -68,4 +73,4 @@ void ProcessAndUIAssertion::setClient(ProcessAssertionClient& client)
 
 }
 
-#endif // !PLATFORM(IOS)
+#endif // !PLATFORM(IOS_FAMILY)

@@ -26,9 +26,9 @@
 #include "config.h"
 #include "NetworkCacheData.h"
 
-#include <WebCore/FileSystem.h>
 #include <fcntl.h>
 #include <wtf/CryptographicallyRandomNumber.h>
+#include <wtf/FileSystem.h>
 
 #if !OS(WINDOWS)
 #include <sys/mman.h>
@@ -142,6 +142,7 @@ bool bytesEqual(const Data& a, const Data& b)
     return !memcmp(a.data(), b.data(), a.size());
 }
 
+#if !OS(WINDOWS)
 static Salt makeSalt()
 {
     Salt salt;
@@ -150,11 +151,12 @@ static Salt makeSalt()
     *reinterpret_cast<uint32_t*>(&salt[4]) = cryptographicallyRandomNumber();
     return salt;
 }
+#endif
 
-std::optional<Salt> readOrMakeSalt(const String& path)
+Optional<Salt> readOrMakeSalt(const String& path)
 {
 #if !OS(WINDOWS)
-    auto cpath = WebCore::FileSystem::fileSystemRepresentation(path);
+    auto cpath = FileSystem::fileSystemRepresentation(path);
     auto fd = open(cpath.data(), O_RDONLY, 0);
     Salt salt;
     auto bytesRead = read(fd, salt.data(), salt.size());

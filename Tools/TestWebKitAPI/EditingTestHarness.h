@@ -31,8 +31,8 @@
 #import <WebKit/WKUIDelegatePrivate.h>
 
 @interface EditingTestHarness : NSObject<WKUIDelegatePrivate> {
-    RetainPtr<NSMutableArray<NSDictionary *> *> _editorStateHistory;
-    RetainPtr<TestWKWebView *> _webView;
+    RetainPtr<NSMutableArray<NSDictionary *>> _editorStateHistory;
+    RetainPtr<TestWKWebView> _webView;
 }
 
 - (instancetype)initWithWebView:(TestWKWebView *)webView;
@@ -46,6 +46,8 @@
 - (void)insertHTML:(NSString *)html;
 - (void)selectAll;
 - (void)deleteBackwards;
+- (void)moveBackward;
+- (void)moveForward;
 - (void)insertParagraphAndExpectEditorStateWith:(NSDictionary<NSString *, id> *)entries;
 - (void)insertText:(NSString *)text andExpectEditorStateWith:(NSDictionary<NSString *, id> *)entries;
 - (void)insertHTML:(NSString *)html andExpectEditorStateWith:(NSDictionary<NSString *, id> *)entries;

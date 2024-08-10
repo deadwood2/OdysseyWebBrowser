@@ -1,9 +1,9 @@
 include(InspectorGResources.cmake)
+include(GNUInstallDirs)
 
 set(WebKit_OUTPUT_NAME WPEWebKit-${WPE_API_VERSION})
 set(WebKit_WebProcess_OUTPUT_NAME WPEWebProcess)
 set(WebKit_NetworkProcess_OUTPUT_NAME WPENetworkProcess)
-set(WebKit_StorageProcess_OUTPUT_NAME WPEStorageProcess)
 
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_WPE_API_DIR})
 file(MAKE_DIRECTORY ${FORWARDING_HEADERS_WPE_DIR})
@@ -11,21 +11,19 @@ file(MAKE_DIRECTORY ${FORWARDING_HEADERS_WPE_EXTENSION_DIR})
 file(MAKE_DIRECTORY ${FORWARDING_HEADERS_WPE_DOM_DIR})
 
 configure_file(UIProcess/API/wpe/WebKitVersion.h.in ${DERIVED_SOURCES_WPE_API_DIR}/WebKitVersion.h)
-configure_file(wpe/wpe-webkit.pc.in ${CMAKE_BINARY_DIR}/wpe-webkit-${WPE_API_VERSION}.pc @ONLY)
-configure_file(wpe/wpe-web-extension.pc.in ${CMAKE_BINARY_DIR}/wpe-web-extension-${WPE_API_VERSION}.pc @ONLY)
+configure_file(wpe/wpe-webkit.pc.in ${WPE_PKGCONFIG_FILE} @ONLY)
+configure_file(wpe/wpe-web-extension.pc.in ${WPEWebExtension_PKGCONFIG_FILE} @ONLY)
 
 add_definitions(-DWEBKIT2_COMPILATION)
 
 add_definitions(-DPKGLIBDIR="${LIB_INSTALL_DIR}/wpe-webkit-${WPE_API_VERSION}")
 add_definitions(-DPKGLIBEXECDIR="${LIBEXEC_INSTALL_DIR}")
+add_definitions(-DDATADIR="${CMAKE_INSTALL_FULL_DATADIR}")
 add_definitions(-DLOCALEDIR="${CMAKE_INSTALL_FULL_LOCALEDIR}")
 
 if (NOT DEVELOPER_MODE AND NOT CMAKE_SYSTEM_NAME MATCHES "Darwin")
     WEBKIT_ADD_TARGET_PROPERTIES(WebKit LINK_FLAGS "-Wl,--version-script,${CMAKE_CURRENT_SOURCE_DIR}/webkitglib-symbols.map")
 endif ()
-
-# Temporary workaround to allow the build to succeed.
-file(REMOVE "${FORWARDING_HEADERS_DIR}/WebCore/Settings.h")
 
 set(WebKit_USE_PREFIX_HEADER ON)
 
@@ -72,18 +70,12 @@ list(APPEND NetworkProcess_SOURCES
     NetworkProcess/EntryPoint/unix/NetworkProcessMain.cpp
 )
 
-list(APPEND StorageProcess_SOURCES
-    StorageProcess/EntryPoint/unix/StorageProcessMain.cpp
-)
-
 list(APPEND WebKit_UNIFIED_SOURCE_LIST_FILES
     "SourcesWPE.txt"
 )
 
 list(APPEND WebKit_MESSAGES_IN_FILES
     NetworkProcess/CustomProtocols/LegacyCustomProtocolManager.messages.in
-
-    UIProcess/API/wpe/CompositingManagerProxy.messages.in
 
     UIProcess/Network/CustomProtocols/LegacyCustomProtocolManagerProxy.messages.in
 )
@@ -100,15 +92,18 @@ set(WPE_API_INSTALLED_HEADERS
     ${DERIVED_SOURCES_WPE_API_DIR}/WebKitVersion.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitApplicationInfo.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitAuthenticationRequest.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitAutocleanups.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitAutomationSession.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitBackForwardList.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitBackForwardListItem.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitCredential.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitColor.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitContextMenu.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitContextMenuActions.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitContextMenuItem.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitCookieManager.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitDefines.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitDeviceInfoPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitDownload.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitEditingCommands.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitEditorState.h
@@ -138,7 +133,9 @@ set(WPE_API_INSTALLED_HEADERS
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitURIRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitURIResponse.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitURISchemeRequest.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitURIUtilities.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitUserContent.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitUserContentFilterStore.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitUserContentManager.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitUserMediaPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitWebContext.h
@@ -159,6 +156,7 @@ set(WPE_WEB_EXTENSION_API_INSTALLED_HEADERS
     ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitScriptWorld.h
     ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitWebEditor.h
     ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitWebExtension.h
+    ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitWebExtensionAutocleanups.h
     ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitWebHitTestResult.h
     ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/WebKitWebPage.h
     ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/webkit-web-extension.h
@@ -248,14 +246,14 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/Shared/CoordinatedGraphics"
     "${WEBKIT_DIR}/Shared/CoordinatedGraphics/threadedcompositor"
     "${WEBKIT_DIR}/Shared/glib"
+    "${WEBKIT_DIR}/Shared/libwpe"
     "${WEBKIT_DIR}/Shared/soup"
     "${WEBKIT_DIR}/Shared/unix"
-    "${WEBKIT_DIR}/Shared/wpe"
-    "${WEBKIT_DIR}/StorageProcess/unix"
     "${WEBKIT_DIR}/UIProcess/API/C/cairo"
     "${WEBKIT_DIR}/UIProcess/API/C/wpe"
     "${WEBKIT_DIR}/UIProcess/API/glib"
     "${WEBKIT_DIR}/UIProcess/API/wpe"
+    "${WEBKIT_DIR}/UIProcess/CoordinatedGraphics"
     "${WEBKIT_DIR}/UIProcess/Network/CustomProtocols/soup"
     "${WEBKIT_DIR}/UIProcess/gstreamer"
     "${WEBKIT_DIR}/UIProcess/linux"
@@ -277,7 +275,7 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
 
 list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
     ${CAIRO_INCLUDE_DIRS}
-    ${FREETYPE2_INCLUDE_DIRS}
+    ${FREETYPE_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
     ${GSTREAMER_INCLUDE_DIRS}
     ${HARFBUZZ_INCLUDE_DIRS}
@@ -288,7 +286,7 @@ list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
 list(APPEND WebKit_LIBRARIES
     PRIVATE
         ${CAIRO_LIBRARIES}
-        ${FREETYPE2_LIBRARIES}
+        ${FREETYPE_LIBRARIES}
         ${GLIB_LIBRARIES}
         ${GLIB_GMODULE_LIBRARIES}
         ${GSTREAMER_LIBRARIES}
@@ -322,6 +320,93 @@ target_link_libraries(WPEInjectedBundle WebKit)
 
 target_include_directories(WPEInjectedBundle PRIVATE ${WebKit_INCLUDE_DIRECTORIES})
 target_include_directories(WPEInjectedBundle SYSTEM PRIVATE ${WebKit_SYSTEM_INCLUDE_DIRECTORIES})
+
+file(WRITE ${CMAKE_BINARY_DIR}/gtkdoc-wpe.cfg
+    "[wpe-${WPE_API_VERSION}]\n"
+    "pkgconfig_file=${WPE_PKGCONFIG_FILE}\n"
+    "decorator=WEBKIT_API|WEBKIT_DEPRECATED|WEBKIT_DEPRECATED_FOR\\(.+\\)\n"
+    "deprecation_guard=WEBKIT_DISABLE_DEPRECATED\n"
+    "namespace=webkit\n"
+    "cflags=-I${CMAKE_SOURCE_DIR}/Source\n"
+    "       -I${WEBKIT_DIR}/Shared/API/glib\n"
+    "       -I${WEBKIT_DIR}/UIProcess/API/glib\n"
+    "       -I${WEBKIT_DIR}/UIProcess/API/wpe\n"
+    "       -I${FORWARDING_HEADERS_WPE_DIR}\n"
+    "doc_dir=${WEBKIT_DIR}/UIProcess/API/wpe/docs\n"
+    "source_dirs=${WEBKIT_DIR}/Shared/API/glib\n"
+    "            ${WEBKIT_DIR}/UIProcess/API/glib\n"
+    "            ${WEBKIT_DIR}/UIProcess/API/wpe\n"
+    "            ${DERIVED_SOURCES_WPE_API_DIR}\n"
+    "headers=${WPE_ENUM_GENERATION_HEADERS}\n"
+    "main_sgml_file=wpe-docs.sgml\n"
+)
+
+file(WRITE ${CMAKE_BINARY_DIR}/gtkdoc-webextensions.cfg
+    "[wpe-webextensions-${WPE_API_VERSION}]\n"
+    "pkgconfig_file=${WPEWebExtension_PKGCONFIG_FILE}\n"
+    "decorator=WEBKIT_API|WEBKIT_DEPRECATED|WEBKIT_DEPRECATED_FOR\\(.+\\)\n"
+    "deprecation_guard=WEBKIT_DISABLE_DEPRECATED\n"
+    "namespace=webkit_webextensions\n"
+    "cflags=-I${CMAKE_SOURCE_DIR}/Source\n"
+    "       -I${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe\n"
+    "       -I${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM\n"
+    "       -I${FORWARDING_HEADERS_WPE_DIR}\n"
+    "doc_dir=${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/docs\n"
+    "source_dirs=${WEBKIT_DIR}/WebProcess/InjectedBundle/API/glib\n"
+    "            ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/glib/DOM\n"
+    "            ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe\n"
+    "            ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM\n"
+    "headers=${WPE_WEB_EXTENSION_API_INSTALLED_HEADERS}\n"
+    "main_sgml_file=wpe-webextensions-docs.sgml\n"
+)
+
+if (ENABLE_WPE_QT_API)
+    set(qtwpe_SOURCES
+        ${WEBKIT_DIR}/UIProcess/API/wpe/qt/WPEQtViewBackend.cpp
+        ${WEBKIT_DIR}/UIProcess/API/wpe/qt/WPEQmlExtensionPlugin.cpp
+        ${WEBKIT_DIR}/UIProcess/API/wpe/qt/WPEQtView.cpp
+        ${WEBKIT_DIR}/UIProcess/API/wpe/qt/WPEQtViewLoadRequest.cpp
+    )
+
+    set(qtwpe_LIBRARIES
+        Qt5::Core Qt5::Quick
+        WebKit
+        ${LIBEPOXY_LIBRARIES}
+        ${WPE_BACKEND_FDO_LIBRARIES}
+    )
+
+    set(qtwpe_INCLUDE_DIRECTORIES
+        ${Qt5_INCLUDE_DIRS}
+        ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
+        ${LIBEPOXY_INCLUDE_DIRS}
+        ${WPE_BACKEND_FDO_INCLUDE_DIRS}
+    )
+
+    list(APPEND WPE_API_INSTALLED_HEADERS
+        ${WEBKIT_DIR}/UIProcess/API/wpe/qt/WPEQtView.h
+        ${WEBKIT_DIR}/UIProcess/API/wpe/qt/WPEQtViewLoadRequest.h
+    )
+
+    add_library(qtwpe SHARED ${qtwpe_SOURCES})
+    set_target_properties(qtwpe PROPERTIES
+        OUTPUT_NAME qtwpe
+        AUTOMOC ON
+        CXX_STANDARD 14
+    )
+    target_compile_definitions(qtwpe PUBLIC QT_NO_KEYWORDS=1)
+    target_link_libraries(qtwpe ${qtwpe_LIBRARIES})
+    target_include_directories(qtwpe SYSTEM PRIVATE ${qtwpe_INCLUDE_DIRECTORIES})
+    install(TARGETS qtwpe DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}/qml/org/wpewebkit/qtwpe/")
+    install(FILES ${WEBKIT_DIR}/UIProcess/API/wpe/qt/qmldir DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}/qml/org/wpewebkit/qtwpe/")
+
+    file(MAKE_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/qml/org/wpewebkit/qtwpe)
+    add_custom_command(TARGET qtwpe POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libqtwpe.so
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/qml/org/wpewebkit/qtwpe)
+    add_custom_command(TARGET qtwpe POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy
+        ${WEBKIT_DIR}/UIProcess/API/wpe/qt/qmldir
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/qml/org/wpewebkit/qtwpe)
+endif ()
 
 install(TARGETS WPEInjectedBundle
         DESTINATION "${LIB_INSTALL_DIR}/wpe-webkit-${WPE_API_VERSION}/injected-bundle"

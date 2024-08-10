@@ -28,6 +28,7 @@
 
 #if HAVE(ACCESSIBILITY) && PLATFORM(MAC)
 
+#import "AXIsolatedTreeNode.h"
 #import "AccessibilityObject.h"
 #import "AccessibilityTable.h"
 #import "RenderObject.h"
@@ -35,7 +36,7 @@
 #import <pal/spi/mac/NSAccessibilitySPI.h>
 
 #if USE(APPLE_INTERNAL_SDK)
-#include <HIServices/AccessibilityPriv.h>
+#include <ApplicationServices/ApplicationServicesPriv.h>
 #endif
 
 #ifndef NSAccessibilityLiveRegionChangedNotification
@@ -237,6 +238,14 @@ void AXObjectCache::detachWrapper(AccessibilityObject* obj, AccessibilityDetachm
     obj->setWrapper(nullptr);
 }
 
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+void AXObjectCache::associateIsolatedTreeNode(AccessibilityObject& object, AXIsolatedTreeNode& node, AXIsolatedTreeID treeID)
+{
+    object.wrapper().isolatedTreeIdentifier = treeID;
+    node.setWrapper(object.wrapper());
+}
+#endif
+
 void AXObjectCache::attachWrapper(AccessibilityObject* obj)
 {
     RetainPtr<WebAccessibilityObjectWrapper> wrapper = adoptNS([[WebAccessibilityObjectWrapper alloc] initWithAccessibilityObject:obj]);
@@ -337,6 +346,12 @@ void AXObjectCache::postPlatformNotification(AccessibilityObject* obj, AXNotific
         case AXMenuListItemSelected:
             macNotification = (id)kAXMenuItemSelectedNotification;
             break;
+        case AXPressDidSucceed:
+            macNotification = @"AXPressDidSucceed";
+            break;
+        case AXPressDidFail:
+            macNotification = @"AXPressDidFail";
+            break;
         case AXMenuOpened:
             macNotification = (id)kAXMenuOpenedNotification;
             break;
@@ -346,10 +361,9 @@ void AXObjectCache::postPlatformNotification(AccessibilityObject* obj, AXNotific
     
     // NSAccessibilityPostNotification will call this method, (but not when running DRT), so ASSERT here to make sure it does not crash.
     // https://bugs.webkit.org/show_bug.cgi?id=46662
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     ASSERT([obj->wrapper() accessibilityIsIgnored] || true);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     AXPostNotificationWithUserInfo(obj->wrapper(), macNotification, nil);
 }
@@ -400,9 +414,11 @@ void AXObjectCache::postTextStateChangePlatformNotification(AccessibilityObject*
     if (id wrapper = object->wrapper())
         [userInfo setObject:wrapper forKey:NSAccessibilityTextChangeElement];
 
-    AXPostNotificationWithUserInfo(rootWebArea()->wrapper(), NSAccessibilitySelectedTextChangedNotification, userInfo);
-    if (rootWebArea()->wrapper() != object->wrapper())
-        AXPostNotificationWithUserInfo(object->wrapper(), NSAccessibilitySelectedTextChangedNotification, userInfo);
+    if (auto root = rootWebArea()) {
+        AXPostNotificationWithUserInfo(rootWebArea()->wrapper(), NSAccessibilitySelectedTextChangedNotification, userInfo);
+        if (root->wrapper() != object->wrapper())
+            AXPostNotificationWithUserInfo(object->wrapper(), NSAccessibilitySelectedTextChangedNotification, userInfo);
+    }
 
     [userInfo release];
 }
@@ -516,6 +532,10 @@ void AXObjectCache::platformHandleFocusedUIElementChanged(Node*, Node*)
 }
 
 void AXObjectCache::handleScrolledToAnchor(const Node*)
+{
+}
+
+void AXObjectCache::platformPerformDeferredCacheUpdate()
 {
 }
 

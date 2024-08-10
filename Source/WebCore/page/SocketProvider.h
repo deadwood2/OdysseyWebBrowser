@@ -31,15 +31,15 @@
 
 namespace WebCore {
 
+class StorageSessionProvider;
 class ScriptExecutionContext;
 class SocketStreamHandle;
 class SocketStreamHandleClient;
-class URL;
 
 class WEBCORE_EXPORT SocketProvider : public ThreadSafeRefCounted<SocketProvider> {
 public:
     static Ref<SocketProvider> create() { return adoptRef(*new SocketProvider); }
-    virtual Ref<SocketStreamHandle> createSocketStreamHandle(const URL&, SocketStreamHandleClient&, PAL::SessionID, const String& credentialPartition);
+    virtual Ref<SocketStreamHandle> createSocketStreamHandle(const URL&, SocketStreamHandleClient&, PAL::SessionID, const String& credentialPartition, const StorageSessionProvider*);
     virtual ~SocketProvider() { };
 };
 

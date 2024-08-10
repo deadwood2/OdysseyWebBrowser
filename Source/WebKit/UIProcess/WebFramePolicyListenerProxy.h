@@ -26,6 +26,7 @@
 #pragma once
 
 #include "APIObject.h"
+#include <WebCore/FrameLoaderTypes.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/Vector.h>
 
@@ -33,38 +34,34 @@ namespace API {
 class WebsitePolicies;
 }
 
-namespace WebCore {
-enum class PolicyAction;
-}
-
 namespace WebKit {
 
-class SafeBrowsingResult;
+class SafeBrowsingWarning;
 
-enum class ShouldProcessSwapIfPossible { No, Yes };
+enum class ProcessSwapRequestedByClient { No, Yes };
 enum class ShouldExpectSafeBrowsingResult { No, Yes };
 
 class WebFramePolicyListenerProxy : public API::ObjectImpl<API::Object::Type::FramePolicyListener> {
 public:
 
-    using Reply = CompletionHandler<void(WebCore::PolicyAction, API::WebsitePolicies*, ShouldProcessSwapIfPossible, Vector<SafeBrowsingResult>&&)>;
+    using Reply = CompletionHandler<void(WebCore::PolicyAction, API::WebsitePolicies*, ProcessSwapRequestedByClient, RefPtr<SafeBrowsingWarning>&&)>;
     static Ref<WebFramePolicyListenerProxy> create(Reply&& reply, ShouldExpectSafeBrowsingResult expect)
     {
         return adoptRef(*new WebFramePolicyListenerProxy(WTFMove(reply), expect));
     }
     ~WebFramePolicyListenerProxy();
 
-    void use(API::WebsitePolicies* = nullptr, ShouldProcessSwapIfPossible = ShouldProcessSwapIfPossible::No);
+    void use(API::WebsitePolicies* = nullptr, ProcessSwapRequestedByClient = ProcessSwapRequestedByClient::No);
     void download();
     void ignore();
     
-    void didReceiveSafeBrowsingResults(Vector<SafeBrowsingResult>&&);
+    void didReceiveSafeBrowsingResults(RefPtr<SafeBrowsingWarning>&&);
 
 private:
     WebFramePolicyListenerProxy(Reply&&, ShouldExpectSafeBrowsingResult);
 
-    std::optional<std::pair<RefPtr<API::WebsitePolicies>, ShouldProcessSwapIfPossible>> m_policyResult;
-    std::optional<Vector<SafeBrowsingResult>> m_safeBrowsingResults;
+    Optional<std::pair<RefPtr<API::WebsitePolicies>, ProcessSwapRequestedByClient>> m_policyResult;
+    Optional<RefPtr<SafeBrowsingWarning>> m_safeBrowsingWarning;
     Reply m_reply;
 };
 

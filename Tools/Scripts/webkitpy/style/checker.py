@@ -51,6 +51,7 @@ from checkers.jstest import JSTestChecker
 from checkers.messagesin import MessagesInChecker
 from checkers.png import PNGChecker
 from checkers.python import PythonChecker
+from checkers.sdkvariant import SDKVariantChecker
 from checkers.test_expectations import TestExpectationsChecker
 from checkers.text import TextChecker
 from checkers.watchlist import WatchListChecker
@@ -142,6 +143,9 @@ _PATH_RULES_SPECIFIER = [
       os.path.join('Tools', 'DumpRenderTree', 'TestNetscapePlugIn')],
      ["-build/include",
       "-readability/naming"]),
+    ([  # Ignore use of RetainPtr<NSObject *> for tests that ensure its compatibility with ReteainPtr<NSObject>.
+      os.path.join('Tools', 'TestWebKitAPI', 'Tests', 'WTF', 'ns', 'RetainPtr.mm')],
+     ["-runtime/retainptr"]),
     ([  # There is no clean way to avoid "yy_*" names used by flex.
       os.path.join('Source', 'WebCore', 'css', 'CSSParser.cpp'),
       # TestWebKitAPI uses funny macros like EXPECT_WK_STREQ.
@@ -236,6 +240,19 @@ _PATH_RULES_SPECIFIER = [
      ["-readability/naming/underscores",
       "-whitespace/declaration",
       "-whitespace/indent"]),
+
+    ([  # Files following GStreamer coding style (for a simpler upstreaming process for example)
+      os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'libwebrtc', 'GStreamerVideoEncoder.cpp'),
+      os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'libwebrtc', 'GStreamerVideoEncoder.h'),
+     ],
+     ["-whitespace/indent",
+      "-whitespace/declaration",
+      "-whitespace/parens",
+      "-readability/null",
+      "-whitespace/braces",
+      "-readability/naming/underscores",
+      "-readability/enum_casing",
+     ]),
 
     ([
       # There is no way to avoid the symbols __jit_debug_register_code
@@ -400,6 +417,7 @@ def _all_categories():
     categories = categories.union(ChangeLogChecker.categories)
     categories = categories.union(PNGChecker.categories)
     categories = categories.union(FeatureDefinesChecker.categories)
+    categories = categories.union(SDKVariantChecker.categories)
 
     # FIXME: Consider adding all of the pep8 categories.  Since they
     #        are not too meaningful for documentation purposes, for
@@ -553,6 +571,7 @@ class FileType:
     XCODEPROJ = 10
     CMAKE = 11
     FEATUREDEFINES = 12
+    SDKVARIANT = 13
 
 
 class CheckerDispatcher(object):
@@ -640,6 +659,8 @@ class CheckerDispatcher(object):
             return FileType.TEXT
         elif os.path.basename(file_path) == "FeatureDefines.xcconfig":
             return FileType.FEATUREDEFINES
+        elif os.path.basename(file_path) == "SDKVariant.xcconfig":
+            return FileType.SDKVARIANT
         else:
             return FileType.NONE
 
@@ -704,6 +725,8 @@ class CheckerDispatcher(object):
             checker = WatchListChecker(file_path, handle_style_error)
         elif file_type == FileType.FEATUREDEFINES:
             checker = FeatureDefinesChecker(file_path, handle_style_error)
+        elif file_type == FileType.SDKVARIANT:
+            checker = SDKVariantChecker(file_path, handle_style_error)
         else:
             raise ValueError('Invalid file type "%(file_type)s": the only valid file types '
                              "are %(NONE)s, %(CPP)s, and %(TEXT)s."

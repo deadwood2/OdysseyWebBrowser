@@ -66,6 +66,8 @@ public:
     virtual ~MediaPlayerPrivateGStreamer();
 
     static void registerMediaEngine(MediaEngineRegistrar);
+    static bool isAvailable();
+
     void handleMessage(GstMessage*);
     void handlePluginInstallerResult(GstInstallPluginsReturn);
 
@@ -89,6 +91,7 @@ public:
     bool paused() const override;
     bool seeking() const override;
 
+    MediaTime platformDuration() const;
     MediaTime durationMediaTime() const override;
     MediaTime currentMediaTime() const override;
     void seek(const MediaTime&) override;
@@ -107,13 +110,13 @@ public:
     MediaTime maxTimeLoaded() const override;
 
     bool hasSingleSecurityOrigin() const override;
-    std::optional<bool> wouldTaintOrigin(const SecurityOrigin&) const override;
+    Optional<bool> wouldTaintOrigin(const SecurityOrigin&) const override;
 
     void loadStateChanged();
     void timeChanged();
     void didEnd();
     virtual void durationChanged();
-    void loadingFailed(MediaPlayer::NetworkState);
+    void loadingFailed(MediaPlayer::NetworkState, MediaPlayer::ReadyState = MediaPlayer::HaveNothing, bool forceNotifications = false);
 
     virtual void sourceSetup(GstElement*);
 
@@ -137,8 +140,7 @@ public:
 private:
     static void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>&);
     static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
-
-    static bool isAvailable();
+    void syncOnClock(bool sync);
 
     GstElement* createAudioSink() override;
 
@@ -147,13 +149,16 @@ private:
     virtual void updateStates();
     virtual void asyncStateChangeDone();
 
-    void createGSTPlayBin(const gchar* playbinName, const String& pipelineName);
+    void createGSTPlayBin(const URL&, const String& pipelineName);
 
     bool loadNextLocation();
     void mediaLocationChanged(GstMessage*);
 
-    virtual void setDownloadBuffering();
+    virtual void updateDownloadBufferingFlag();
     void processBufferingStats(GstMessage*);
+    void updateBufferingStatus(GstBufferingMode, double percentage);
+    void updateMaxTimeLoaded(double percentage);
+
 #if ENABLE(VIDEO_TRACK)
 #if USE(GSTREAMER_MPEGTS)
     void processMpegTsSection(GstMpegtsSection*);
@@ -178,7 +183,7 @@ private:
     static void downloadBufferFileCreatedCallback(MediaPlayerPrivateGStreamer*);
 
     void setPlaybinURL(const URL& urlString);
-    void loadFull(const String& url, const gchar* playbinName, const String& pipelineName);
+    void loadFull(const String& url, const String& pipelineName);
 
 #if GST_CHECK_VERSION(1, 10, 0)
     void updateTracks();
@@ -186,18 +191,16 @@ private:
 #endif
 
 protected:
-    void cacheDuration();
-
     bool m_buffering;
     int m_bufferingPercentage;
     mutable MediaTime m_cachedPosition;
+    mutable MediaTime m_cachedDuration;
     bool m_canFallBackToLastFinishedSeekPosition;
     bool m_changingRate;
     bool m_downloadFinished;
     bool m_errorOccured;
     mutable bool m_isEndReached;
     mutable bool m_isStreaming;
-    mutable MediaTime m_durationAtEOS;
     bool m_paused;
     float m_playbackRate;
     GstState m_currentState;
@@ -258,7 +261,7 @@ private:
     mutable unsigned long long m_totalBytes;
     URL m_url;
     bool m_preservesPitch;
-    mutable std::optional<Seconds> m_lastQueryTime;
+    mutable Optional<Seconds> m_lastQueryTime;
     bool m_isLegacyPlaybin;
 #if GST_CHECK_VERSION(1, 10, 0)
     GRefPtr<GstStreamCollection> m_streamCollection;
@@ -287,8 +290,14 @@ private:
 #endif
     virtual bool isMediaSource() const { return false; }
 
-    std::optional<bool> m_hasTaintedOrigin { std::nullopt };
+    uint64_t m_httpResponseTotalSize { 0 };
+    uint64_t m_networkReadPosition { 0 };
+    mutable uint64_t m_readPositionAtLastDidLoadingProgress { 0 };
+
+    HashSet<RefPtr<WebCore::SecurityOrigin>> m_origins;
+    Optional<bool> m_hasTaintedOrigin { WTF::nullopt };
 };
+
 }
 
 #endif // USE(GSTREAMER)

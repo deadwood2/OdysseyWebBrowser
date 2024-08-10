@@ -5,12 +5,15 @@ set_property(DIRECTORY . PROPERTY FOLDER "WebKit")
 set(WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}"
     "${WEBKIT_DIR}/NetworkProcess"
+    "${WEBKIT_DIR}/NetworkProcess/Classifier"
     "${WEBKIT_DIR}/NetworkProcess/Cookies"
     "${WEBKIT_DIR}/NetworkProcess/CustomProtocols"
     "${WEBKIT_DIR}/NetworkProcess/Downloads"
     "${WEBKIT_DIR}/NetworkProcess/FileAPI"
+    "${WEBKIT_DIR}/NetworkProcess/IndexedDB"
+    "${WEBKIT_DIR}/NetworkProcess/ServiceWorker"
     "${WEBKIT_DIR}/NetworkProcess/cache"
-    "${WEBKIT_DIR}/NetworkProcess/capture"
+    "${WEBKIT_DIR}/NetworkProcess/watchos"
     "${WEBKIT_DIR}/NetworkProcess/webrtc"
     "${WEBKIT_DIR}/Platform"
     "${WEBKIT_DIR}/Platform/IPC"
@@ -28,11 +31,7 @@ set(WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/Shared/Plugins/Netscape"
     "${WEBKIT_DIR}/Shared/Plugins/Netscape/x11"
     "${WEBKIT_DIR}/Shared/RemoteLayerTree"
-    "${WEBKIT_DIR}/Shared/Storage"
     "${WEBKIT_DIR}/Shared/WebsiteData"
-    "${WEBKIT_DIR}/StorageProcess"
-    "${WEBKIT_DIR}/StorageProcess/IndexedDB"
-    "${WEBKIT_DIR}/StorageProcess/ServiceWorker"
     "${WEBKIT_DIR}/UIProcess"
     "${WEBKIT_DIR}/UIProcess/API"
     "${WEBKIT_DIR}/UIProcess/API/C"
@@ -48,8 +47,9 @@ set(WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/UIProcess/Notifications"
     "${WEBKIT_DIR}/UIProcess/Plugins"
     "${WEBKIT_DIR}/UIProcess/RemoteLayerTree"
-    "${WEBKIT_DIR}/UIProcess/Storage"
     "${WEBKIT_DIR}/UIProcess/UserContent"
+    "${WEBKIT_DIR}/UIProcess/WebAuthentication"
+    "${WEBKIT_DIR}/UIProcess/WebAuthentication/Mock"
     "${WEBKIT_DIR}/UIProcess/WebStorage"
     "${WEBKIT_DIR}/UIProcess/WebsiteData"
     "${WEBKIT_DIR}/WebProcess"
@@ -103,11 +103,16 @@ list(APPEND WebKit_UNIFIED_SOURCE_LIST_FILES
 set(WebKit_MESSAGES_IN_FILES
     NetworkProcess/Cookies/WebCookieManager.messages.in
 
+    NetworkProcess/IndexedDB/WebIDBConnectionToClient.messages.in
+
     NetworkProcess/NetworkConnectionToWebProcess.messages.in
     NetworkProcess/NetworkContentRuleListManager.messages.in
     NetworkProcess/NetworkProcess.messages.in
     NetworkProcess/NetworkResourceLoader.messages.in
     NetworkProcess/NetworkSocketStream.messages.in
+
+    NetworkProcess/ServiceWorker/WebSWServerConnection.messages.in
+    NetworkProcess/ServiceWorker/WebSWServerToContextConnection.messages.in
 
     NetworkProcess/cache/CacheStorageEngineConnection.messages.in
 
@@ -120,20 +125,12 @@ set(WebKit_MESSAGES_IN_FILES
     PluginProcess/PluginProcess.messages.in
     PluginProcess/WebProcessConnection.messages.in
 
-    Shared/ChildProcess.messages.in
+    Shared/AuxiliaryProcess.messages.in
     Shared/WebConnection.messages.in
 
     Shared/Authentication/AuthenticationManager.messages.in
 
     Shared/Plugins/NPObjectMessageReceiver.messages.in
-
-    StorageProcess/StorageProcess.messages.in
-    StorageProcess/StorageToWebProcessConnection.messages.in
-
-    StorageProcess/IndexedDB/WebIDBConnectionToClient.messages.in
-
-    StorageProcess/ServiceWorker/WebSWServerConnection.messages.in
-    StorageProcess/ServiceWorker/WebSWServerToContextConnection.messages.in
 
     UIProcess/DrawingAreaProxy.messages.in
     UIProcess/RemoteWebInspectorProxy.messages.in
@@ -155,8 +152,6 @@ set(WebKit_MESSAGES_IN_FILES
     UIProcess/Network/NetworkProcessProxy.messages.in
 
     UIProcess/Plugins/PluginProcessProxy.messages.in
-
-    UIProcess/Storage/StorageProcessProxy.messages.in
 
     UIProcess/UserContent/WebUserContentControllerProxy.messages.in
 
@@ -223,10 +218,6 @@ set(WebProcess_LIBRARIES
 )
 
 set(NetworkProcess_LIBRARIES
-    WebKit
-)
-
-set(StorageProcess_LIBRARIES
     WebKit
 )
 
@@ -398,13 +389,14 @@ set(WebKit_WEB_PREFERENCES_TEMPLATES
     ${WEBKIT_DIR}/Scripts/PreferencesTemplates/WebPageUpdatePreferences.cpp.erb
     ${WEBKIT_DIR}/Scripts/PreferencesTemplates/WebPreferencesDefinitions.h.erb
     ${WEBKIT_DIR}/Scripts/PreferencesTemplates/WebPreferencesExperimentalFeatures.cpp.erb
+    ${WEBKIT_DIR}/Scripts/PreferencesTemplates/WebPreferencesInternalDebugFeatures.cpp.erb
     ${WEBKIT_DIR}/Scripts/PreferencesTemplates/WebPreferencesKeys.cpp.erb
     ${WEBKIT_DIR}/Scripts/PreferencesTemplates/WebPreferencesKeys.h.erb
     ${WEBKIT_DIR}/Scripts/PreferencesTemplates/WebPreferencesStoreDefaultsMap.cpp.erb
 )
 
 add_custom_command(
-    OUTPUT ${DERIVED_SOURCES_WEBKIT_DIR}/WebPageUpdatePreferences.cpp ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesDefinitions.h ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesExperimentalFeatures.cpp ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesKeys.cpp ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesKeys.h ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesStoreDefaultsMap.cpp
+    OUTPUT ${DERIVED_SOURCES_WEBKIT_DIR}/WebPageUpdatePreferences.cpp ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesDefinitions.h ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesExperimentalFeatures.cpp ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesInternalDebugFeatures.cpp ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesKeys.cpp ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesKeys.h ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesStoreDefaultsMap.cpp
     MAIN_DEPENDENCY ${WEBKIT_DIR}/Shared/WebPreferences.yaml
     DEPENDS ${WebKit_WEB_PREFERENCES_TEMPLATES}
     COMMAND ${RUBY_EXECUTABLE} ${WEBKIT_DIR}/Scripts/GeneratePreferences.rb --input ${WEBKIT_DIR}/Shared/WebPreferences.yaml --outputDir "${DERIVED_SOURCES_WEBKIT_DIR}"
@@ -418,6 +410,7 @@ list(APPEND WebKit_HEADERS
 list(APPEND WebKit_SOURCES
     ${DERIVED_SOURCES_WEBKIT_DIR}/WebPageUpdatePreferences.cpp
     ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesExperimentalFeatures.cpp
+    ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesInternalDebugFeatures.cpp
     ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesKeys.cpp
     ${DERIVED_SOURCES_WEBKIT_DIR}/WebPreferencesStoreDefaultsMap.cpp
 )
@@ -447,20 +440,10 @@ if (WebKit_NetworkProcess_OUTPUT_NAME)
     set_target_properties(NetworkProcess PROPERTIES OUTPUT_NAME ${WebKit_NetworkProcess_OUTPUT_NAME})
 endif ()
 
-add_executable(StorageProcess ${StorageProcess_SOURCES})
-ADD_WEBKIT_PREFIX_HEADER(StorageProcess)
-target_link_libraries(StorageProcess ${StorageProcess_LIBRARIES})
-install(TARGETS StorageProcess DESTINATION "${LIBEXEC_INSTALL_DIR}")
-
-if (WebKit_StorageProcess_OUTPUT_NAME)
-    set_target_properties(StorageProcess PROPERTIES OUTPUT_NAME ${WebKit_StorageProcess_OUTPUT_NAME})
-endif ()
-
 if (COMPILER_IS_GCC_OR_CLANG)
     WEBKIT_ADD_TARGET_CXX_FLAGS(WebKit -Wno-unused-parameter)
     WEBKIT_ADD_TARGET_CXX_FLAGS(WebProcess -Wno-unused-parameter)
     WEBKIT_ADD_TARGET_CXX_FLAGS(NetworkProcess -Wno-unused-parameter)
-    WEBKIT_ADD_TARGET_CXX_FLAGS(StorageProcess -Wno-unused-parameter)
 endif ()
 
 # FIXME: Mac should build a plugin process.

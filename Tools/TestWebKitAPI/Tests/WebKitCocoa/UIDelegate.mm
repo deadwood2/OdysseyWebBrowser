@@ -173,6 +173,30 @@ TEST(WebKit, GeolocationPermission)
     TestWebKitAPI::Util::run(&done);
 }
 
+@interface InjectedBundleNodeHandleIsSelectElementDelegate : NSObject <WKUIDelegatePrivate>
+@end
+
+@implementation InjectedBundleNodeHandleIsSelectElementDelegate
+
+- (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)())completionHandler
+{
+    completionHandler();
+    done = true;
+    ASSERT_STREQ(message.UTF8String, "isSelectElement success");
+}
+
+@end
+
+TEST(WebKit, InjectedBundleNodeHandleIsSelectElement)
+{
+    WKWebViewConfiguration *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"InjectedBundleNodeHandleIsSelectElement"];
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600) configuration:configuration]);
+    auto delegate = adoptNS([[InjectedBundleNodeHandleIsSelectElementDelegate alloc] init]);
+    [webView setUIDelegate:delegate.get()];
+    TestWebKitAPI::Util::run(&done);
+}
+
 #if PLATFORM(MAC)
 
 @class UITestDelegate;
@@ -224,6 +248,34 @@ TEST(WebKit, ShowWebView)
     TestWebKitAPI::Util::run(&done);
     
     ASSERT_EQ(webViewFromDelegateCallback, createdWebView);
+}
+
+@interface PointerLockDelegate : NSObject <WKUIDelegatePrivate>
+@end
+
+@implementation PointerLockDelegate
+
+- (void)_webViewDidRequestPointerLock:(WKWebView *)webView completionHandler:(void (^)(BOOL))completionHandler
+{
+    completionHandler(YES);
+    done = true;
+}
+
+@end
+
+TEST(WebKit, PointerLock)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600)]);
+    auto delegate = adoptNS([[PointerLockDelegate alloc] init]);
+    [webView setUIDelegate:delegate.get()];
+    [webView synchronouslyLoadHTMLString:
+        @"<canvas width='800' height='600'></canvas><script>"
+        @"var canvas = document.querySelector('canvas');"
+        @"canvas.onclick = ()=>{canvas.requestPointerLock()};"
+        @"</script>"
+    ];
+    [webView sendClicksAtPoint:NSMakePoint(200, 200) numberOfClicks:1];
+    TestWebKitAPI::Util::run(&done);
 }
 
 static bool resizableSet;

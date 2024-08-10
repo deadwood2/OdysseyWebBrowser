@@ -5,6 +5,10 @@ include(platform/GStreamer.cmake)
 include(platform/ImageDecoders.cmake)
 include(platform/TextureMapper.cmake)
 
+if (USE_EXTERNAL_HOLEPUNCH)
+    include(platform/HolePunch.cmake)
+endif ()
+
 list(APPEND WebCore_UNIFIED_SOURCE_LIST_FILES
     "SourcesWPE.txt"
 
@@ -24,7 +28,7 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/graphics/gstreamer"
     "${WEBCORE_DIR}/platform/graphics/opengl"
     "${WEBCORE_DIR}/platform/graphics/opentype"
-    "${WEBCORE_DIR}/platform/graphics/wpe"
+    "${WEBCORE_DIR}/platform/graphics/libwpe"
     "${WEBCORE_DIR}/platform/graphics/wayland"
     "${WEBCORE_DIR}/platform/mock/mediasource"
     "${WEBCORE_DIR}/platform/mediacapabilities"
@@ -38,7 +42,7 @@ list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
 )
 
 set(WebCore_USER_AGENT_SCRIPTS
-    ${WEBCORE_DIR}/English.lproj/mediaControlsLocalizedStrings.js
+    ${WEBCORE_DIR}/en.lproj/mediaControlsLocalizedStrings.js
     ${WEBCORE_DIR}/Modules/mediacontrols/mediaControlsBase.js
 )
 

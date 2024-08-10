@@ -78,7 +78,7 @@ static Expected<Vector<String>, std::error_code> getStringList(ExecState& exec, 
             return makeUnexpected(error);
         strings.append(string);
     }
-    return WTFMove(strings);
+    return strings;
 }
 
 static Expected<Vector<String>, std::error_code> getDomainList(ExecState& exec, const JSObject* arrayObject)
@@ -225,7 +225,7 @@ static Expected<Trigger, std::error_code> loadTrigger(ExecState& exec, const JSO
     } else if (!unlessTopURLValue.isUndefined())
         return makeUnexpected(ContentExtensionError::JSONInvalidConditionList);
 
-    return WTFMove(trigger);
+    return trigger;
 }
 
 bool isValidCSSSelector(const String& selector)
@@ -240,7 +240,7 @@ bool isValidCSSSelector(const String& selector)
     return selectorList.isValid();
 }
 
-static Expected<std::optional<Action>, std::error_code> loadAction(ExecState& exec, const JSObject& ruleObject)
+static Expected<Optional<Action>, std::error_code> loadAction(ExecState& exec, const JSObject& ruleObject)
 {
     VM& vm = exec.vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -269,7 +269,7 @@ static Expected<std::optional<Action>, std::error_code> loadAction(ExecState& ex
         String selectorString = asString(selector)->value(&exec);
         if (!isValidCSSSelector(selectorString)) {
             // Skip rules with invalid selectors to be backwards-compatible.
-            return { std::nullopt };
+            return { WTF::nullopt };
         }
         return { Action(ActionType::CSSDisplayNoneSelector, selectorString) };
     }
@@ -284,7 +284,7 @@ static Expected<std::optional<Action>, std::error_code> loadAction(ExecState& ex
     return makeUnexpected(ContentExtensionError::JSONInvalidActionType);
 }
 
-static Expected<std::optional<ContentExtensionRule>, std::error_code> loadRule(ExecState& exec, const JSObject& ruleObject)
+static Expected<Optional<ContentExtensionRule>, std::error_code> loadRule(ExecState& exec, const JSObject& ruleObject)
 {
     auto trigger = loadTrigger(exec, ruleObject);
     if (!trigger.has_value())
@@ -297,7 +297,7 @@ static Expected<std::optional<ContentExtensionRule>, std::error_code> loadRule(E
     if (action.value())
         return {{{ WTFMove(trigger.value()), WTFMove(action.value().value()) }}};
 
-    return { std::nullopt };
+    return { WTF::nullopt };
 }
 
 static Expected<Vector<ContentExtensionRule>, std::error_code> loadEncodedRules(ExecState& exec, const String& ruleJSON)
@@ -345,7 +345,7 @@ static Expected<Vector<ContentExtensionRule>, std::error_code> loadEncodedRules(
             ruleList.append(*rule.value());
     }
 
-    return WTFMove(ruleList);
+    return ruleList;
 }
 
 Expected<Vector<ContentExtensionRule>, std::error_code> parseRuleList(const String& ruleJSON)
@@ -374,7 +374,7 @@ Expected<Vector<ContentExtensionRule>, std::error_code> parseRuleList(const Stri
     dataLogF("Time spent loading extension %f\n", (loadExtensionEndTime - loadExtensionStartTime).seconds());
 #endif
 
-    return WTFMove(*ruleList);
+    return *ruleList;
 }
 
 } // namespace ContentExtensions

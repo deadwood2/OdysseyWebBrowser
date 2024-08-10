@@ -87,7 +87,7 @@ public:
 
     bool wait(TimeWithDynamicClockType absoluteTime)
     {
-        return m_waitForSyncReplySemaphore.wait(absoluteTime);
+        return m_waitForSyncReplySemaphore.waitUntil(absoluteTime);
     }
 
     // Returns true if this message will be handled on a client thread that is currently
@@ -237,9 +237,15 @@ static HashMap<IPC::Connection::UniqueID, Connection*>& allConnections()
     return map;
 }
 
+static HashMap<uintptr_t, HashMap<uint64_t, CompletionHandler<void(Decoder*)>>>& asyncReplyHandlerMap()
+{
+    static NeverDestroyed<HashMap<uintptr_t, HashMap<uint64_t, CompletionHandler<void(Decoder*)>>>> map;
+    return map.get();
+}
+    
 Connection::Connection(Identifier identifier, bool isServer, Client& client)
     : m_client(client)
-    , m_uniqueID(generateObjectIdentifier<UniqueIDType>())
+    , m_uniqueID(UniqueID::generate())
     , m_isServer(isServer)
     , m_syncRequestID(0)
     , m_onlySendMessagesAsDispatchWhenWaitingForSyncReplyWhenProcessingSuchAMessage(false)
@@ -271,6 +277,12 @@ Connection::~Connection()
     ASSERT(!isValid());
 
     allConnections().remove(m_uniqueID);
+    
+    auto map = asyncReplyHandlerMap().take(reinterpret_cast<uintptr_t>(this));
+    for (auto& handler : map.values()) {
+        if (handler)
+            handler(nullptr);
+    }
 }
 
 Connection* Connection::connection(UniqueID uniqueID)
@@ -400,7 +412,7 @@ bool Connection::sendMessage(std::unique_ptr<Encoder> encoder, OptionSet<SendOpt
     if (!isValid())
         return false;
 
-    if (isMainThread() && m_inDispatchMessageMarkedToUseFullySynchronousModeForTesting && !encoder->isSyncMessage() && !(encoder->messageReceiverName() == "IPC")) {
+    if (isMainThread() && m_inDispatchMessageMarkedToUseFullySynchronousModeForTesting && !encoder->isSyncMessage() && !(encoder->messageReceiverName() == "IPC") && !sendOptions.contains(SendOption::IgnoreFullySynchronousMode)) {
         uint64_t syncRequestID;
         auto wrappedMessage = createSyncMessageEncoder("IPC", "WrappedAsyncMessageForTesting", encoder->destinationID(), syncRequestID);
         wrappedMessage->setFullySynchronousModeForTesting();
@@ -544,11 +556,6 @@ std::unique_ptr<Decoder> Connection::sendSyncMessage(uint64_t syncRequestID, std
 
     ++m_inSendSyncCount;
 
-    // If the caller has set the DoNotProcessIncomingMessagesWhenWaitingForSyncReply then we need to make sure the destination process
-    // dispatches this message even when waiting for a sync reply. It could cause deadlocks otherwise.
-    if (sendSyncOptions.contains(SendSyncOption::DoNotProcessIncomingMessagesWhenWaitingForSyncReply))
-        encoder->setShouldDispatchMessageWhenWaitingForSyncReply(true);
-
     // First send the message.
     sendMessage(WTFMove(encoder), IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply);
 
@@ -582,8 +589,7 @@ std::unique_ptr<Decoder> Connection::waitForSyncReply(uint64_t syncRequestID, Se
     bool timedOut = false;
     while (!timedOut) {
         // First, check if we have any messages that we need to process.
-        if (!sendSyncOptions.contains(SendSyncOption::DoNotProcessIncomingMessagesWhenWaitingForSyncReply))
-            SyncMessageState::singleton().dispatchMessages(nullptr);
+        SyncMessageState::singleton().dispatchMessages(nullptr);
         
         {
             LockHolder locker(m_syncReplyStateMutex);
@@ -954,6 +960,21 @@ void Connection::enqueueIncomingMessage(std::unique_ptr<Decoder> incomingMessage
 void Connection::dispatchMessage(Decoder& decoder)
 {
     RELEASE_ASSERT(isValid());
+    if (decoder.messageReceiverName() == "AsyncReply") {
+        Optional<uint64_t> listenerID;
+        decoder >> listenerID;
+        if (!listenerID) {
+            ASSERT_NOT_REACHED();
+            return;
+        }
+        auto handler = takeAsyncReplyHandler(*this, *listenerID);
+        if (!handler) {
+            ASSERT_NOT_REACHED();
+            return;
+        }
+        handler(&decoder);
+        return;
+    }
     m_client.didReceiveMessage(*this, decoder);
 }
 
@@ -1097,6 +1118,36 @@ void Connection::dispatchIncomingMessages()
         }
         dispatchMessage(WTFMove(message));
     }
+}
+
+uint64_t nextAsyncReplyHandlerID()
+{
+    static uint64_t identifier { 0 };
+    return ++identifier;
+}
+
+void addAsyncReplyHandler(Connection& connection, uint64_t identifier, CompletionHandler<void(Decoder*)>&& completionHandler)
+{
+    auto result = asyncReplyHandlerMap().ensure(reinterpret_cast<uintptr_t>(&connection), [] {
+        return HashMap<uint64_t, CompletionHandler<void(Decoder*)>>();
+    }).iterator->value.add(identifier, WTFMove(completionHandler));
+    ASSERT_UNUSED(result, result.isNewEntry);
+}
+
+CompletionHandler<void(Decoder*)> takeAsyncReplyHandler(Connection& connection, uint64_t identifier)
+{
+    auto iterator = asyncReplyHandlerMap().find(reinterpret_cast<uintptr_t>(&connection));
+    if (iterator != asyncReplyHandlerMap().end()) {
+        if (!iterator->value.isValidKey(identifier)) {
+            ASSERT_NOT_REACHED();
+            connection.markCurrentlyDispatchedMessageAsInvalid();
+            return nullptr;
+        }
+        ASSERT(iterator->value.contains(identifier));
+        return iterator->value.take(identifier);
+    }
+    ASSERT_NOT_REACHED();
+    return nullptr;
 }
 
 void Connection::wakeUpRunLoop()

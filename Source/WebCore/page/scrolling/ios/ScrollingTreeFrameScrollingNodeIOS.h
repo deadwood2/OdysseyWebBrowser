@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS)
+#if ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS_FAMILY)
 
 #include "ScrollingTreeFrameScrollingNode.h"
 #include <wtf/RetainPtr.h>
@@ -34,9 +34,9 @@ OBJC_CLASS CALayer;
 
 namespace WebCore {
 
-class ScrollingTreeFrameScrollingNodeIOS : public ScrollingTreeFrameScrollingNode {
+class WEBCORE_EXPORT ScrollingTreeFrameScrollingNodeIOS : public ScrollingTreeFrameScrollingNode {
 public:
-    WEBCORE_EXPORT static Ref<ScrollingTreeFrameScrollingNodeIOS> create(ScrollingTree&, ScrollingNodeType, ScrollingNodeID);
+    static Ref<ScrollingTreeFrameScrollingNodeIOS> create(ScrollingTree&, ScrollingNodeType, ScrollingNodeID);
     virtual ~ScrollingTreeFrameScrollingNodeIOS();
 
 protected:
@@ -46,14 +46,16 @@ protected:
     void commitStateBeforeChildren(const ScrollingStateNode&) override;
     void commitStateAfterChildren(const ScrollingStateNode&) override;
 
-    void handleWheelEvent(const PlatformWheelEvent&) override { }
+    ScrollingEventResult handleWheelEvent(const PlatformWheelEvent&) override;
 
     FloatPoint scrollPosition() const override;
     void setScrollPositionWithoutContentEdgeConstraints(const FloatPoint&) override;
 
     void updateLayersAfterViewportChange(const FloatRect& fixedPositionRect, double scale) override;
     void updateLayersAfterDelegatedScroll(const FloatPoint&) override;
+    void updateLayersAfterAncestorChange(const ScrollingTreeNode& changedNode, const FloatRect& fixedPositionRect, const FloatSize& cumulativeDelta) override;
 
+    void setScrollPosition(const FloatPoint&) override;
     void setScrollLayerPosition(const FloatPoint&, const FloatRect& layoutViewport) override;
 
     FloatPoint minimumScrollPosition() const override;
@@ -61,9 +63,7 @@ protected:
 
 private:
     void updateChildNodesAfterScroll(const FloatPoint&);
-    CALayer *scrollLayer() const { return m_scrollLayer.get(); }
 
-    RetainPtr<CALayer> m_scrollLayer;
     RetainPtr<CALayer> m_counterScrollingLayer;
     RetainPtr<CALayer> m_headerLayer;
     RetainPtr<CALayer> m_footerLayer;
@@ -72,4 +72,4 @@ private:
 
 } // namespace WebCore
 
-#endif // ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS)
+#endif // ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS_FAMILY)

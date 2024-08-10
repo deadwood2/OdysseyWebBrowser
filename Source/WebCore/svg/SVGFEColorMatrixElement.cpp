@@ -143,7 +143,7 @@ RefPtr<FilterEffect> SVGFEColorMatrixElement::build(SVGFilterBuilder* filterBuil
             return nullptr;
     }
 
-    RefPtr<FilterEffect> effect = FEColorMatrix::create(filter, filterType, filterValues);
+    auto effect = FEColorMatrix::create(filter, filterType, filterValues);
     effect->inputEffects().append(input1);
     return effect;
 }

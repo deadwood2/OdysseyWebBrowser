@@ -38,7 +38,7 @@ namespace WebKit {
 
 class ScrollGestureController;
 
-enum class UndoOrRedo;
+enum class UndoOrRedo : bool;
 
 class PageClientImpl final : public PageClient
 #if ENABLE(FULLSCREEN_API)
@@ -53,7 +53,7 @@ public:
 
 private:
     // PageClient
-    std::unique_ptr<DrawingAreaProxy> createDrawingAreaProxy() override;
+    std::unique_ptr<DrawingAreaProxy> createDrawingAreaProxy(WebProcessProxy&) override;
     void setViewNeedsDisplay(const WebCore::Region&) override;
     void requestScroll(const WebCore::FloatPoint&, const WebCore::IntPoint&, bool) override;
     WebCore::FloatPoint viewScrollPosition() override;
@@ -89,7 +89,9 @@ private:
     WebCore::IntRect rootViewToScreen(const WebCore::IntRect&) override;
 
     void doneWithKeyEvent(const NativeWebKeyboardEvent&, bool) override;
+#if ENABLE(TOUCH_EVENTS)
     void doneWithTouchEvent(const NativeWebTouchEvent&, bool) override;
+#endif
     void wheelEventWasNotHandledByWebCore(const NativeWebWheelEvent&) override;
 
     RefPtr<WebPopupMenuProxy> createPopupMenuProxy(WebPageProxy&) override;
@@ -110,6 +112,7 @@ private:
     void willRecordNavigationSnapshot(WebBackForwardListItem&) override;
     void didRemoveNavigationGestureSnapshot() override;
 
+    void didStartProvisionalLoadForMainFrame() override;
     void didFirstVisuallyNonEmptyLayoutForMainFrame() override;
     void didFinishLoadForMainFrame() override;
     void didFailLoadForMainFrame() override;
@@ -140,6 +143,8 @@ private:
 #endif
 
     void didFinishProcessingAllPendingMouseEvents() final { }
+
+    IPC::Attachment hostFileDescriptor() final;
 
     WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection() override;
 

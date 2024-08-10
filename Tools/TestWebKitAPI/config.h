@@ -35,7 +35,7 @@
 
 #if defined(__APPLE__) && __APPLE__
 #ifdef __OBJC__
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #import <Foundation/Foundation.h>
 #else
 #import <Cocoa/Cocoa.h>
@@ -45,7 +45,7 @@
 
 #include <stdint.h>
 
-#if !PLATFORM(IOS) && !defined(BUILDING_JSCONLY__) && (!PLATFORM(WIN) || PLATFORM(WIN_CAIRO))
+#if !PLATFORM(IOS_FAMILY) && !defined(BUILDING_JSCONLY__) && (!PLATFORM(WIN) || PLATFORM(WIN_CAIRO))
 #include <WebKit/WebKit2_C.h>
 #endif
 
@@ -57,7 +57,13 @@
 
 #ifdef __cplusplus
 #include <gtest/gtest.h>
+#include <wtf/Assertions.h>
+#undef new
+#undef delete
+#include <wtf/FastMalloc.h>
 #endif
+
+#include <wtf/DisallowCType.h>
 
 #ifdef __clang__
 // Finish working around the less strict coding standards of the gtest framework.
@@ -71,6 +77,6 @@
 #endif
 #endif
 
-#if !PLATFORM(IOS) && !defined(BUILDING_JSCONLY__)
+#if !PLATFORM(IOS_FAMILY) && !defined(BUILDING_JSCONLY__)
 #define WK_HAVE_C_SPI 1
 #endif

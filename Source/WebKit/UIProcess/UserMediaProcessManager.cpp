@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -21,10 +21,12 @@
 
 #if ENABLE(MEDIA_STREAM)
 
+#include "Logging.h"
 #include "MediaDeviceSandboxExtensions.h"
 #include "WebPageMessages.h"
 #include "WebPageProxy.h"
 #include "WebProcessProxy.h"
+#include <WebCore/RealtimeMediaSourceCenter.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 
@@ -34,6 +36,8 @@ namespace WebKit {
 static const ASCIILiteral audioExtensionPath { "com.apple.webkit.microphone"_s };
 static const ASCIILiteral videoExtensionPath { "com.apple.webkit.camera"_s };
 #endif
+
+static const Seconds deviceChangeDebounceTimerInterval { 200_ms };
 
 class ProcessState {
 public:
@@ -99,6 +103,11 @@ UserMediaProcessManager& UserMediaProcessManager::singleton()
 {
     static NeverDestroyed<UserMediaProcessManager> manager;
     return manager;
+}
+
+UserMediaProcessManager::UserMediaProcessManager()
+    : m_debounceTimer(RunLoop::main(), this, &UserMediaProcessManager::captureDevicesChanged)
+{
 }
 
 void UserMediaProcessManager::addUserMediaPermissionRequestManagerProxy(UserMediaPermissionRequestManagerProxy& proxy)
@@ -181,6 +190,9 @@ bool UserMediaProcessManager::willCreateMediaStream(UserMediaPermissionRequestMa
             return false;
         }
 
+        for (const auto& id : ids)
+            RELEASE_LOG(WebRTC, "UserMediaProcessManager::willCreateMediaStream - granting extension %s", id.utf8().data());
+
         if (withAudio)
             state.grantAudioExtension();
         if (withVideo)
@@ -212,6 +224,8 @@ void UserMediaProcessManager::endedCaptureSession(UserMediaPermissionRequestMana
     bool hasAudioCapture = false;
     bool hasVideoCapture = false;
     for (auto& manager : state.managers()) {
+        if (manager == &proxy)
+            continue;
         if (manager->page().hasActiveAudioStream())
             hasAudioCapture = true;
         if (manager->page().hasActiveVideoStream())
@@ -234,6 +248,9 @@ void UserMediaProcessManager::endedCaptureSession(UserMediaPermissionRequestMana
     if (params.isEmpty())
         return;
 
+    for (const auto& id : params)
+        RELEASE_LOG(WebRTC, "UserMediaProcessManager::endedCaptureSession - revoking extension %s", id.utf8().data());
+
     proxy.page().process().send(Messages::WebPage::RevokeUserMediaDeviceSandboxExtensions(params), proxy.page().pageID());
 #endif
 }
@@ -252,6 +269,58 @@ void UserMediaProcessManager::setCaptureEnabled(bool enabled)
         for (auto& manager : state.value->managers())
             manager->stopCapture();
     }
+}
+
+void UserMediaProcessManager::captureDevicesChanged()
+{
+    auto& map = stateMap();
+    for (auto& state : map) {
+        auto* process = state.key;
+        for (auto& manager : state.value->managers()) {
+            if (map.find(process) == map.end())
+                break;
+            manager->captureDevicesChanged();
+        }
+    }
+}
+
+void UserMediaProcessManager::beginMonitoringCaptureDevices()
+{
+    static std::once_flag onceFlag;
+
+    std::call_once(onceFlag, [this] {
+        m_captureDevices = WebCore::RealtimeMediaSourceCenter::singleton().getMediaStreamDevices();
+
+        WebCore::RealtimeMediaSourceCenter::singleton().setDevicesChangedObserver([this]() {
+            auto oldDevices = WTFMove(m_captureDevices);
+            m_captureDevices = WebCore::RealtimeMediaSourceCenter::singleton().getMediaStreamDevices();
+
+            if (m_captureDevices.size() == oldDevices.size()) {
+                bool haveChanges = false;
+                for (auto &newDevice : m_captureDevices) {
+                    if (newDevice.type() != WebCore::CaptureDevice::DeviceType::Camera && newDevice.type() != WebCore::CaptureDevice::DeviceType::Microphone)
+                        continue;
+
+                    auto index = oldDevices.findMatching([&newDevice] (auto& oldDevice) {
+                        return newDevice.persistentId() == oldDevice.persistentId() && newDevice.enabled() != oldDevice.enabled();
+                    });
+
+                    if (index == notFound) {
+                        haveChanges = true;
+                        break;
+                    }
+                }
+
+                if (!haveChanges)
+                    return;
+            }
+
+            // When a device with camera and microphone is attached or detached, the CaptureDevice notification for
+            // the different devices won't arrive at the same time so delay a bit so we can coalesce the callbacks.
+            if (!m_debounceTimer.isActive())
+                m_debounceTimer.startOneShot(deviceChangeDebounceTimerInterval);
+        });
+    });
 }
 
 } // namespace WebKit

@@ -43,7 +43,7 @@ _log = logging.getLogger(__name__)
 # FIXME: range() starts with 0 which makes if expectation checks harder
 # as PASS is 0.
 (PASS, FAIL, TEXT, IMAGE, IMAGE_PLUS_TEXT, AUDIO, TIMEOUT, CRASH, SKIP, WONTFIX,
- SLOW, DUMPJSCONSOLELOGINSTDERR, REBASELINE, MISSING, FLAKY, NOW, NONE) = range(17)
+ SLOW, LEAK, DUMPJSCONSOLELOGINSTDERR, REBASELINE, MISSING, FLAKY, NOW, NONE) = range(18)
 
 # FIXME: Perhas these two routines should be part of the Port instead?
 BASELINE_SUFFIX_LIST = ('png', 'wav', 'txt')
@@ -243,6 +243,7 @@ class TestExpectationParser(object):
         'Crash': 'CRASH',
         'Failure': 'FAIL',
         'ImageOnlyFailure': 'IMAGE',
+        'Leak': 'LEAK',
         'Missing': 'MISSING',
         'Pass': 'PASS',
         'Rebaseline': 'REBASELINE',
@@ -401,6 +402,9 @@ class TestExpectationLine(object):
         self.warnings = []
         self.related_files = {}  # Dictionary of files to lines number in that file which may have caused the list of warnings.
         self.not_applicable_to_current_platform = False
+
+    def __str__(self):
+        return self.to_string(None)
 
     def is_invalid(self):
         return self.warnings and self.warnings != [TestExpectationParser.MISSING_BUG_WARNING]
@@ -594,8 +598,22 @@ class TestExpectationsModel(object):
     def get_expectations(self, test):
         return self._test_to_expectations[test]
 
+    def get_expectations_or_pass(self, test):
+        try:
+            return self.get_expectations(test)
+        except:
+            return set([PASS])
+
+    def expectations_to_string(self, expectations):
+        retval = []
+
+        for expectation in expectations:
+            retval.append(self.expectation_to_string(expectation))
+
+        return " ".join(retval)
+
     def get_expectations_string(self, test):
-        """Returns the expectatons for the given test as an uppercase string.
+        """Returns the expectations for the given test as an uppercase string.
         If there are no expectations for the test, then "PASS" is returned."""
         try:
             expectations = self.get_expectations(test)
@@ -794,7 +812,21 @@ class TestExpectations(object):
                     'timeout': TIMEOUT,
                     'crash': CRASH,
                     'missing': MISSING,
+                    'leak': LEAK,
                     'skip': SKIP}
+
+    # Singulars
+    EXPECTATION_DESCRIPTION = {SKIP: 'skipped',
+                                PASS: 'pass',
+                                FAIL: 'failure',
+                                IMAGE: 'image-only failure',
+                                TEXT: 'text-only failure',
+                                IMAGE_PLUS_TEXT: 'image and text failure',
+                                AUDIO: 'audio failure',
+                                CRASH: 'crash',
+                                TIMEOUT: 'timeout',
+                                MISSING: 'missing',
+                                LEAK: 'leak'}
 
     # (aggregated by category, pass/fail/skip, type)
     EXPECTATION_DESCRIPTIONS = {SKIP: 'skipped',
@@ -806,9 +838,10 @@ class TestExpectations(object):
                                 AUDIO: 'audio failures',
                                 CRASH: 'crashes',
                                 TIMEOUT: 'timeouts',
-                                MISSING: 'missing results'}
+                                MISSING: 'missing results',
+                                LEAK: 'leaks'}
 
-    EXPECTATION_ORDER = (PASS, CRASH, TIMEOUT, MISSING, FAIL, IMAGE, SKIP)
+    EXPECTATION_ORDER = (PASS, CRASH, TIMEOUT, MISSING, FAIL, IMAGE, LEAK, SKIP)
 
     BUILD_TYPES = ('debug', 'release')
 
@@ -859,7 +892,20 @@ class TestExpectations(object):
         expected_results = expected_results.copy()
         if IMAGE in expected_results:
             expected_results.remove(IMAGE)
-            expected_results.add(PASS)
+            expected_results.add(PASS) # FIXME: does it always become a pass?
+        return expected_results
+
+    @staticmethod
+    def remove_leak_failures(expected_results):
+        """Returns a copy of the expected results for a test, except that we
+        drop any leak failures and return the remaining expectations. For example,
+        if we're not running with --world-leaks, then tests expected to fail as LEAK
+        will PASS."""
+        expected_results = expected_results.copy()
+        if LEAK in expected_results:
+            expected_results.remove(LEAK)
+            if not expected_results:
+                expected_results.add(PASS)
         return expected_results
 
     @staticmethod
@@ -877,7 +923,7 @@ class TestExpectations(object):
             suffixes.add('wav')
         return set(suffixes)
 
-    def __init__(self, port, tests=None, include_generic=True, include_overrides=True, expectations_to_lint=None, force_expectations_pass=False):
+    def __init__(self, port, tests=None, include_generic=True, include_overrides=True, expectations_to_lint=None, force_expectations_pass=False, device_type=None):
         self._full_test_list = tests
         self._test_config = port.test_configuration()
         self._is_lint_mode = expectations_to_lint is not None
@@ -887,6 +933,7 @@ class TestExpectations(object):
         self._skipped_tests_warnings = []
         self._expectations = []
         self._force_expectations_pass = force_expectations_pass
+        self._device_type = device_type
         self._include_generic = include_generic
         self._include_overrides = include_overrides
         self._expectations_to_lint = expectations_to_lint
@@ -923,7 +970,7 @@ class TestExpectations(object):
             self._expectations_dict_index += 1
 
     def parse_all_expectations(self):
-        self._expectations_dict = self._expectations_to_lint or self._port.expectations_dict()
+        self._expectations_dict = self._expectations_to_lint or self._port.expectations_dict(device_type=self._device_type)
         self._expectations_dict_index = 0
 
         self._has_warnings = False
@@ -933,7 +980,7 @@ class TestExpectations(object):
         self.parse_override_expectations()
 
         # FIXME: move ignore_tests into port.skipped_layout_tests()
-        self.add_skipped_tests(self._port.skipped_layout_tests(self._full_test_list).union(set(self._port.get_option('ignore_tests', []))))
+        self.add_skipped_tests(self._port.skipped_layout_tests(self._full_test_list, device_type=self._device_type).union(set(self._port.get_option('ignore_tests', []))))
 
         self._report_warnings()
         self._process_tests_without_expectations()
@@ -946,10 +993,16 @@ class TestExpectations(object):
     def get_rebaselining_failures(self):
         return self._model.get_test_set(REBASELINE)
 
-    def matches_an_expected_result(self, test, result, pixel_tests_are_enabled):
-        expected_results = self._model.get_expectations(test)
+    def filtered_expectations_for_test(self, test, pixel_tests_are_enabled, world_leaks_are_enabled):
+        expected_results = self._model.get_expectations_or_pass(test)
         if not pixel_tests_are_enabled:
             expected_results = self.remove_pixel_failures(expected_results)
+        if not world_leaks_are_enabled:
+            expected_results = self.remove_leak_failures(expected_results)
+
+        return expected_results
+
+    def matches_an_expected_result(self, test, result, expected_results):
         return self.result_was_expected(result,
                                    expected_results,
                                    self.is_rebaselining(test),

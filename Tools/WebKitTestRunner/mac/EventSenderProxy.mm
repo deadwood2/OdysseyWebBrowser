@@ -85,7 +85,7 @@
     _eventSender_timestamp = time;
     _eventSender_eventNumber = eventNumber;
     _eventSender_window = window;
-#if defined(__LP64__) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101003
+#if defined(__LP64__)
     self->_type = NSEventTypePressure;
     _eventSender_type = NSEventTypePressure;
 #endif
@@ -325,7 +325,7 @@ void EventSenderProxy::mouseUp(unsigned buttonNumber, WKEventModifiers modifiers
     m_clickPosition = m_position;
 }
 
-#if defined(__LP64__) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101003
+#if defined(__LP64__)
 void EventSenderProxy::sendMouseDownToStartPressureEvents()
 {
     updateClickCountForButton(0);
@@ -417,11 +417,10 @@ void EventSenderProxy::mouseForceClick()
     [NSApp sendEvent:mouseUp];
 
     [NSApp _setCurrentEvent:nil];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wnonnull"
     // WKView caches the most recent pressure event, so send it a nil event to clear the cache.
+    IGNORE_NULL_CHECK_WARNINGS_BEGIN
     [targetView pressureChangeWithEvent:nil];
-#pragma clang diagnostic pop
+    IGNORE_NULL_CHECK_WARNINGS_END
 }
 
 void EventSenderProxy::startAndCancelMouseForceClick()
@@ -453,11 +452,10 @@ void EventSenderProxy::startAndCancelMouseForceClick()
     [NSApp sendEvent:mouseUp];
 
     [NSApp _setCurrentEvent:nil];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wnonnull"
     // WKView caches the most recent pressure event, so send it a nil event to clear the cache.
+    IGNORE_NULL_CHECK_WARNINGS_BEGIN
     [targetView pressureChangeWithEvent:nil];
-#pragma clang diagnostic pop
+    IGNORE_NULL_CHECK_WARNINGS_END
 }
 
 void EventSenderProxy::mouseForceDown()
@@ -479,11 +477,10 @@ void EventSenderProxy::mouseForceDown()
     [forceMouseDown _postDelayed];
 
     [NSApp _setCurrentEvent:nil];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wnonnull"
     // WKView caches the most recent pressure event, so send it a nil event to clear the cache.
+    IGNORE_NULL_CHECK_WARNINGS_BEGIN
     [targetView pressureChangeWithEvent:nil];
-#pragma clang diagnostic pop
+    IGNORE_NULL_CHECK_WARNINGS_END
 }
 
 void EventSenderProxy::mouseForceUp()
@@ -503,12 +500,10 @@ void EventSenderProxy::mouseForceUp()
     ASSERT(targetView);
 
     [NSApp _setCurrentEvent:nil];
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wnonnull"
-// WKView caches the most recent pressure event, so send it a nil event to clear the cache.
+    // WKView caches the most recent pressure event, so send it a nil event to clear the cache.
+    IGNORE_NULL_CHECK_WARNINGS_BEGIN
     [targetView pressureChangeWithEvent:nil];
-#pragma clang diagnostic pop
+    IGNORE_NULL_CHECK_WARNINGS_END
 }
 
 void EventSenderProxy::mouseForceChanged(float force)
@@ -525,11 +520,10 @@ void EventSenderProxy::mouseForceChanged(float force)
     [NSApp sendEvent:beginPressure.get()];
     [NSApp sendEvent:pressureChangedEvent.get()];
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wnonnull"
     // WKView caches the most recent pressure event, so send it a nil event to clear the cache.
+    IGNORE_NULL_CHECK_WARNINGS_BEGIN
     [targetView pressureChangeWithEvent:nil];
-#pragma clang diagnostic pop
+    IGNORE_NULL_CHECK_WARNINGS_END
 }
 #else
 
@@ -573,7 +567,7 @@ void EventSenderProxy::mouseForceClick()
 void EventSenderProxy::startAndCancelMouseForceClick()
 {
 }
-#endif // defined(__LP64__) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101003
+#endif // defined(__LP64__)
 
 void EventSenderProxy::mouseMoveTo(double x, double y)
 {

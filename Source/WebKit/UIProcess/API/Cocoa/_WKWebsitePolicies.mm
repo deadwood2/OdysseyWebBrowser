@@ -59,18 +59,31 @@
     return _websitePolicies->contentBlockersEnabled();
 }
 
+- (void)setDeviceOrientationEventEnabled:(BOOL)deviceOrientationEventEnabled
+{
+    _websitePolicies->setDeviceOrientationEventEnabled(deviceOrientationEventEnabled);
+}
+
+- (BOOL)deviceOrientationEventEnabled
+{
+    return _websitePolicies->deviceOrientationEventEnabled();
+}
+
 - (void)setAllowedAutoplayQuirks:(_WKWebsiteAutoplayQuirk)allowedQuirks
 {
     OptionSet<WebKit::WebsiteAutoplayQuirk> quirks;
 
     if (allowedQuirks & _WKWebsiteAutoplayQuirkInheritedUserGestures)
-        quirks |= WebKit::WebsiteAutoplayQuirk::InheritedUserGestures;
+        quirks.add(WebKit::WebsiteAutoplayQuirk::InheritedUserGestures);
 
     if (allowedQuirks & _WKWebsiteAutoplayQuirkSynthesizedPauseEvents)
-        quirks |= WebKit::WebsiteAutoplayQuirk::SynthesizedPauseEvents;
+        quirks.add(WebKit::WebsiteAutoplayQuirk::SynthesizedPauseEvents);
 
     if (allowedQuirks & _WKWebsiteAutoplayQuirkArbitraryUserGestures)
-        quirks |= WebKit::WebsiteAutoplayQuirk::ArbitraryUserGestures;
+        quirks.add(WebKit::WebsiteAutoplayQuirk::ArbitraryUserGestures);
+
+    if (allowedQuirks & _WKWebsiteAutoplayQuirkPerDocumentAutoplayBehavior)
+        quirks.add(WebKit::WebsiteAutoplayQuirk::PerDocumentAutoplayBehavior);
 
     _websitePolicies->setAllowedAutoplayQuirks(quirks);
 }
@@ -88,6 +101,9 @@
 
     if (allowedQuirks.contains(WebKit::WebsiteAutoplayQuirk::ArbitraryUserGestures))
         quirks |= _WKWebsiteAutoplayQuirkArbitraryUserGestures;
+
+    if (allowedQuirks.contains(WebKit::WebsiteAutoplayQuirk::PerDocumentAutoplayBehavior))
+        quirks |= _WKWebsiteAutoplayQuirkPerDocumentAutoplayBehavior;
 
     return quirks;
 }
@@ -175,13 +191,42 @@
 
 - (WKWebsiteDataStore *)websiteDataStore
 {
-    auto* store = _websitePolicies->websiteDataStore();
-    return store ? WebKit::wrapper(*store) : nil;
+    return wrapper(_websitePolicies->websiteDataStore());
 }
 
 - (void)setWebsiteDataStore:(WKWebsiteDataStore *)websiteDataStore
 {
     _websitePolicies->setWebsiteDataStore(websiteDataStore->_websiteDataStore.get());
+}
+
+- (void)setCustomUserAgent:(NSString *)customUserAgent
+{
+    _websitePolicies->setCustomUserAgent(customUserAgent);
+}
+
+- (NSString *)customUserAgent
+{
+    return _websitePolicies->customUserAgent();
+}
+
+- (void)setCustomJavaScriptUserAgentAsSiteSpecificQuirks:(NSString *)customUserAgent
+{
+    _websitePolicies->setCustomJavaScriptUserAgentAsSiteSpecificQuirks(customUserAgent);
+}
+
+- (NSString *)customJavaScriptUserAgentAsSiteSpecificQuirks
+{
+    return _websitePolicies->customJavaScriptUserAgentAsSiteSpecificQuirks();
+}
+
+- (void)setCustomNavigatorPlatform:(NSString *)customNavigatorPlatform
+{
+    _websitePolicies->setCustomNavigatorPlatform(customNavigatorPlatform);
+}
+
+- (NSString *)customNavigatorPlatform
+{
+    return _websitePolicies->customNavigatorPlatform();
 }
 
 - (NSString *)description

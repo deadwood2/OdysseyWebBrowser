@@ -44,7 +44,7 @@
 #import <WebKit/_WKUserContentExtensionStore.h>
 #import <WebKit/_WKUserContentExtensionStorePrivate.h>
 #import <mach-o/dyld.h>
-#import <wtf/ObjcRuntimeExtras.h>
+#import <wtf/ObjCRuntimeExtras.h>
 #import <wtf/mac/AppKitCompatibilityDeclarations.h>
 
 @interface NSSound ()
@@ -102,9 +102,9 @@ void TestController::platformResetPreferencesToConsistentValues()
 {
 }
 
-void TestController::platformResetStateToConsistentValues()
+void TestController::platformResetStateToConsistentValues(const TestOptions& options)
 {
-    cocoaResetStateToConsistentValues();
+    cocoaResetStateToConsistentValues(options);
 
     while ([NSApp nextEventMatchingMask:NSEventMaskGesture | NSEventMaskScrollWheel untilDate:nil inMode:NSDefaultRunLoopMode dequeue:YES]) {
         // Clear out (and ignore) any pending gesture and scroll wheel events.
@@ -118,7 +118,7 @@ void TestController::updatePlatformSpecificTestOptionsForTest(TestOptions& optio
     options.shouldShowWebView = shouldShowWebView();
 }
 
-void TestController::platformConfigureViewForTest(const TestInvocation& test)
+void TestController::configureContentExtensionForTest(const TestInvocation& test)
 {
 #if WK_API_ENABLED
     if (!test.urlContains("contentextensions/"))
@@ -151,6 +151,10 @@ void TestController::platformConfigureViewForTest(const TestInvocation& test)
     }];
     platformRunUntil(doneCompiling, noTimeout);
 #endif
+}
+
+void TestController::platformConfigureViewForTest(const TestInvocation& test)
+{
 }
 
 static NSSet *allowedFontFamilySet()
@@ -222,6 +226,7 @@ static NSSet *allowedFontFamilySet()
         @"Hiragino Maru Gothic ProN",
         @"Hiragino Mincho Pro",
         @"Hiragino Mincho ProN",
+        @"Hiragino Sans",
         @"Hiragino Sans GB",
         @"Hoefler Text",
         @"Impact",
@@ -231,6 +236,7 @@ static NSSet *allowedFontFamilySet()
         @"Kokonor",
         @"Krungthep",
         @"KufiStandardGK",
+        @"Lao Sangam MN",
         @"LastResort",
         @"LiHei Pro",
         @"LiSong Pro",
@@ -248,11 +254,15 @@ static NSSet *allowedFontFamilySet()
         @"Papyrus",
         @"PCMyungjo",
         @"PilGi",
+        @"PingFang HK",
+        @"PingFang SC",
+        @"PingFang TC",
         @"Plantagenet Cherokee",
         @"Raanana",
         @"Sathu",
         @"Silom",
         @"Skia",
+        @"Snell Roundhand",
         @"Songti SC",
         @"Songti TC",
         @"STFangsong",
@@ -293,22 +303,22 @@ static NSSet *systemHiddenFontFamilySet()
 
 static WKRetainPtr<WKArrayRef> generateWhitelist()
 {
-    WKMutableArrayRef result = WKMutableArrayCreate();
+    WKRetainPtr<WKMutableArrayRef> result = adoptWK(WKMutableArrayCreate());
     for (NSString *fontFamily in allowedFontFamilySet()) {
         NSArray *fontsForFamily = [[NSFontManager sharedFontManager] availableMembersOfFontFamily:fontFamily];
         WKRetainPtr<WKStringRef> familyInFont = adoptWK(WKStringCreateWithUTF8CString([fontFamily UTF8String]));
-        WKArrayAppendItem(result, familyInFont.get());
+        WKArrayAppendItem(result.get(), familyInFont.get());
         for (NSArray *fontInfo in fontsForFamily) {
             // Font name is the first entry in the array.
             WKRetainPtr<WKStringRef> fontName = adoptWK(WKStringCreateWithUTF8CString([[fontInfo objectAtIndex:0] UTF8String]));
-            WKArrayAppendItem(result, fontName.get());
+            WKArrayAppendItem(result.get(), fontName.get());
         }
     }
 
     for (NSString *hiddenFontFamily in systemHiddenFontFamilySet())
-        WKArrayAppendItem(result, adoptWK(WKStringCreateWithUTF8CString([hiddenFontFamily UTF8String])).get());
+        WKArrayAppendItem(result.get(), adoptWK(WKStringCreateWithUTF8CString([hiddenFontFamily UTF8String])).get());
 
-    return adoptWK(result);
+    return result;
 }
 
 void TestController::platformInitializeContext()

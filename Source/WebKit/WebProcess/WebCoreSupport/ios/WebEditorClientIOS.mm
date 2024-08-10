@@ -26,7 +26,7 @@
 #import "config.h"
 #import "WebEditorClient.h"
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 #import "WebPage.h"
 #import <WebCore/DocumentFragment.h>
@@ -86,6 +86,11 @@ bool WebEditorClient::performsTwoStepPaste(WebCore::DocumentFragment*)
     return false;
 }
 
+void WebEditorClient::updateStringForFind(const String& findString)
+{
+    m_page->updateStringForFind(findString);
+}
+
 void WebEditorClient::overflowScrollPositionChanged()
 {
     m_page->didChangeSelection();
@@ -93,4 +98,4 @@ void WebEditorClient::overflowScrollPositionChanged()
 
 } // namespace WebKit
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)

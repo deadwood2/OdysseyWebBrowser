@@ -68,7 +68,7 @@ public:
         exists = it != m_map.end();
         if (!exists)
             return nullptr;
-
+        
         return it->value.get();
     }
 

@@ -163,7 +163,7 @@ RetainPtr<DDActionContext> DataDetection::detectItemAroundHitTestResult(const Hi
 }
 #endif // PLATFORM(MAC)
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 bool DataDetection::canBePresentedByDataDetectors(const URL& url)
 {
@@ -323,20 +323,20 @@ static String dataDetectorStringForPath(NSIndexPath *path)
     case 0:
         return { };
     case 1:
-        return String::number((unsigned long)[path indexAtPosition:0]);
+        return String::number([path indexAtPosition:0]);
     case 2: {
         StringBuilder stringBuilder;
-        stringBuilder.appendNumber((unsigned long)[path indexAtPosition:0]);
+        stringBuilder.appendNumber([path indexAtPosition:0]);
         stringBuilder.append('/');
-        stringBuilder.appendNumber((unsigned long)[path indexAtPosition:1]);
+        stringBuilder.appendNumber([path indexAtPosition:1]);
         return stringBuilder.toString();
     }
     default: {
         StringBuilder stringBuilder;
-        stringBuilder.appendNumber((unsigned long)[path indexAtPosition:0]);
+        stringBuilder.appendNumber([path indexAtPosition:0]);
         for (NSUInteger i = 1 ; i < length ; i++) {
             stringBuilder.append('/');
-            stringBuilder.appendNumber((unsigned long)[path indexAtPosition:i]);
+            stringBuilder.appendNumber([path indexAtPosition:i]);
         }
 
         return stringBuilder.toString();
@@ -427,6 +427,16 @@ static inline CFComparisonResult queryOffsetCompare(DDQueryOffset o1, DDQueryOff
     if (o1.offset > o2.offset)
         return kCFCompareGreaterThan;
     return kCFCompareEqualTo;
+}
+
+void DataDetection::removeDataDetectedLinksInDocument(Document& document)
+{
+    Vector<Ref<HTMLAnchorElement>> allAnchorElements;
+    for (auto& anchor : descendantsOfType<HTMLAnchorElement>(document))
+        allAnchorElements.append(anchor);
+
+    for (auto& anchor : allAnchorElements)
+        removeResultLinksFromAnchor(anchor.get());
 }
 
 NSArray *DataDetection::detectContentInRange(RefPtr<Range>& contextRange, DataDetectorTypes types, NSDictionary *context)
@@ -616,7 +626,7 @@ NSArray *DataDetection::detectContentInRange(RefPtr<Range>& contextRange, DataDe
                         auto underlineColor = Color(colorWithOverrideAlpha(textColor.rgb(), overrideAlpha));
 
                         anchorElement->setInlineStyleProperty(CSSPropertyColor, textColor.cssText());
-                        anchorElement->setInlineStyleProperty(CSSPropertyWebkitTextDecorationColor, underlineColor.cssText());
+                        anchorElement->setInlineStyleProperty(CSSPropertyTextDecorationColor, underlineColor.cssText());
                     }
                 }
             } else if (is<StyledElement>(*parentNode)) {
@@ -643,14 +653,20 @@ NSArray *DataDetection::detectContentInRange(RefPtr<Range>& contextRange, DataDe
     if (lastTextNodeToUpdate)
         lastTextNodeToUpdate->setData(lastNodeContent);
     
-    return [get_DataDetectorsCore_DDScannerResultClass() resultsFromCoreResults:scannerResults.get()];
+    return [getDDScannerResultClass() resultsFromCoreResults:scannerResults.get()];
 }
 
 #else
+
 NSArray *DataDetection::detectContentInRange(RefPtr<Range>&, DataDetectorTypes, NSDictionary *)
 {
     return nil;
 }
+
+void DataDetection::removeDataDetectedLinksInDocument(Document&)
+{
+}
+
 #endif
 
 const String& DataDetection::dataDetectorURLProtocol()

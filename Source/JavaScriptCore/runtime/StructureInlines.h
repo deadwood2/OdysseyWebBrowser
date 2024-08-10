@@ -31,6 +31,7 @@
 #include "PropertyMapHashTable.h"
 #include "Structure.h"
 #include "StructureChain.h"
+#include "StructureRareDataInlines.h"
 
 namespace JSC {
 
@@ -38,6 +39,11 @@ inline Structure* Structure::create(VM& vm, JSGlobalObject* globalObject, JSValu
 {
     ASSERT(vm.structureStructure);
     ASSERT(classInfo);
+    if (auto* object = prototype.getObject()) {
+        ASSERT(!object->anyObjectInChainMayInterceptIndexedAccesses(vm) || hasSlowPutArrayStorage(indexingType) || !hasIndexedProperties(indexingType));
+        object->didBecomePrototype();
+    }
+
     Structure* structure = new (NotNull, allocateCell<Structure>(vm.heap)) Structure(vm, globalObject, prototype, typeInfo, classInfo, indexingType, inlineCapacity);
     structure->finishCreation(vm);
     return structure;
@@ -129,17 +135,10 @@ ALWAYS_INLINE Structure* Structure::storedPrototypeStructure(const JSObject* obj
 ALWAYS_INLINE PropertyOffset Structure::get(VM& vm, PropertyName propertyName)
 {
     unsigned attributes;
-    bool hasInferredType;
-    return get(vm, propertyName, attributes, hasInferredType);
+    return get(vm, propertyName, attributes);
 }
     
 ALWAYS_INLINE PropertyOffset Structure::get(VM& vm, PropertyName propertyName, unsigned& attributes)
-{
-    bool hasInferredType;
-    return get(vm, propertyName, attributes, hasInferredType);
-}
-
-ALWAYS_INLINE PropertyOffset Structure::get(VM& vm, PropertyName propertyName, unsigned& attributes, bool& hasInferredType)
 {
     ASSERT(!isCompilationThread());
     ASSERT(structure(vm)->classInfo() == info());
@@ -153,7 +152,6 @@ ALWAYS_INLINE PropertyOffset Structure::get(VM& vm, PropertyName propertyName, u
         return invalidOffset;
 
     attributes = entry->attributes;
-    hasInferredType = entry->hasInferredType;
     return entry->offset;
 }
 
@@ -226,6 +224,36 @@ inline bool Structure::transitivelyTransitionedFrom(Structure* structureToFind)
             return true;
     }
     return false;
+}
+
+inline void Structure::setCachedOwnKeys(VM& vm, JSImmutableButterfly* ownKeys)
+{
+    ensureRareData(vm)->setCachedOwnKeys(vm, ownKeys);
+}
+
+inline JSImmutableButterfly* Structure::cachedOwnKeys() const
+{
+    if (!hasRareData())
+        return nullptr;
+    return rareData()->cachedOwnKeys();
+}
+
+inline JSImmutableButterfly* Structure::cachedOwnKeysIgnoringSentinel() const
+{
+    if (!hasRareData())
+        return nullptr;
+    return rareData()->cachedOwnKeysIgnoringSentinel();
+}
+
+inline bool Structure::canCacheOwnKeys() const
+{
+    if (isDictionary())
+        return false;
+    if (hasIndexedProperties(indexingType()))
+        return false;
+    if (typeInfo().overridesGetPropertyNames())
+        return false;
+    return true;
 }
 
 ALWAYS_INLINE JSValue prototypeForLookupPrimitiveImpl(JSGlobalObject* globalObject, const Structure* structure)
@@ -479,6 +507,7 @@ inline PropertyOffset Structure::removePropertyWithoutTransition(VM&, PropertyNa
 
 ALWAYS_INLINE void Structure::setPrototypeWithoutTransition(VM& vm, JSValue prototype)
 {
+    ASSERT(isValidPrototype(prototype));
     m_prototype.set(vm, this, prototype);
 }
 

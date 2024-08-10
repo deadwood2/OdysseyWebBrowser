@@ -32,6 +32,8 @@ NS_ASSUME_NONNULL_BEGIN
 @class _WKWebsiteDataStoreConfiguration;
 @class WKWebView;
 
+@protocol _WKWebsiteDataStoreDelegate;
+
 typedef NS_OPTIONS(NSUInteger, _WKWebsiteDataStoreFetchOptions) {
     _WKWebsiteDataStoreFetchOptionComputeSizes = 1 << 0,
 } WK_API_AVAILABLE(macosx(10.12), ios(10.0));
@@ -40,26 +42,29 @@ typedef NS_OPTIONS(NSUInteger, _WKWebsiteDataStoreFetchOptions) {
 
 + (NSSet<NSString *> *)_allWebsiteDataTypesIncludingPrivate;
 + (BOOL)_defaultDataStoreExists;
++ (void)_deleteDefaultDataStoreForTesting;
 
 - (instancetype)_initWithConfiguration:(_WKWebsiteDataStoreConfiguration *)configuration WK_API_AVAILABLE(macosx(10.13), ios(11.0));
 
 - (void)_fetchDataRecordsOfTypes:(NSSet<NSString *> *)dataTypes withOptions:(_WKWebsiteDataStoreFetchOptions)options completionHandler:(void (^)(NSArray<WKWebsiteDataRecord *> *))completionHandler;
 
 @property (nonatomic, setter=_setResourceLoadStatisticsEnabled:) BOOL _resourceLoadStatisticsEnabled WK_API_AVAILABLE(macosx(10.12), ios(10.0));
-@property (nonatomic, setter=_setResourceLoadStatisticsDebugMode:) BOOL _resourceLoadStatisticsDebugMode WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+@property (nonatomic, setter=_setResourceLoadStatisticsDebugMode:) BOOL _resourceLoadStatisticsDebugMode WK_API_AVAILABLE(macosx(10.14), ios(12.0));
 @property (nonatomic, setter=_setCacheStoragePerOriginQuota:) NSUInteger _cacheStoragePerOriginQuota WK_API_AVAILABLE(macosx(10.13.4), ios(11.3));
 @property (nonatomic, setter=_setCacheStorageDirectory:) NSString* _cacheStorageDirectory WK_API_AVAILABLE(macosx(10.13.4), ios(11.3));
 @property (nonatomic, setter=_setServiceWorkerRegistrationDirectory:) NSString* _serviceWorkerRegistrationDirectory WK_API_AVAILABLE(macosx(10.13.4), ios(11.3));
 
 @property (nonatomic, setter=_setBoundInterfaceIdentifier:) NSString *_boundInterfaceIdentifier WK_API_AVAILABLE(macosx(10.13.4), ios(11.3));
 @property (nonatomic, setter=_setAllowsCellularAccess:) BOOL _allowsCellularAccess WK_API_AVAILABLE(macosx(10.13.4), ios(11.3));
-@property (nonatomic, setter=_setProxyConfiguration:) NSDictionary *_proxyConfiguration WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+@property (nonatomic, setter=_setProxyConfiguration:) NSDictionary *_proxyConfiguration WK_API_AVAILABLE(macosx(10.14), ios(12.0));
 
 - (void)_resourceLoadStatisticsSetShouldSubmitTelemetry:(BOOL)value WK_API_AVAILABLE(macosx(10.13), ios(11.0));
 - (void)_setResourceLoadStatisticsTestingCallback:(nullable void (^)(WKWebsiteDataStore *, NSString *))callback WK_API_AVAILABLE(macosx(10.13), ios(11.0));
-- (void)_getAllStorageAccessEntriesFor:(WKWebView *)webView completionHandler:(void (^)(NSArray<NSString *> *domains))completionHandler WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (void)_getAllStorageAccessEntriesFor:(WKWebView *)webView completionHandler:(void (^)(NSArray<NSString *> *domains))completionHandler WK_API_AVAILABLE(macosx(10.14), ios(12.0));
 + (void)_allowWebsiteDataRecordsForAllOrigins WK_API_AVAILABLE(macosx(10.13.4), ios(11.3));
-- (bool)_hasRegisteredServiceWorker WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (bool)_hasRegisteredServiceWorker WK_API_AVAILABLE(macosx(10.14), ios(12.0));
+
+@property (nullable, nonatomic, weak) id <_WKWebsiteDataStoreDelegate> _delegate WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
 
 @end
 

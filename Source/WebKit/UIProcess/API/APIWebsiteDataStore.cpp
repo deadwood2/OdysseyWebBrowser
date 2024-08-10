@@ -31,21 +31,32 @@
 
 namespace API {
 
-static WebsiteDataStore* globalDefaultDataStore;
+static RefPtr<WebsiteDataStore>& globalDefaultDataStore()
+{
+    static NeverDestroyed<RefPtr<WebsiteDataStore>> globalDefaultDataStore;
+    return globalDefaultDataStore.get();
+}
+
 
 Ref<WebsiteDataStore> WebsiteDataStore::defaultDataStore()
 {
     WebKit::InitializeWebKit2();
 
-    if (!globalDefaultDataStore)
-        globalDefaultDataStore = adoptRef(new WebsiteDataStore(defaultDataStoreConfiguration(), PAL::SessionID::defaultSessionID())).leakRef();
+    auto& store = globalDefaultDataStore();
+    if (!store)
+        store = adoptRef(new WebsiteDataStore(defaultDataStoreConfiguration(), PAL::SessionID::defaultSessionID()));
 
-    return *globalDefaultDataStore;
+    return *store;
+}
+
+void WebsiteDataStore::deleteDefaultDataStoreForTesting()
+{
+    globalDefaultDataStore() = nullptr;
 }
 
 bool WebsiteDataStore::defaultDataStoreExists()
 {
-    return globalDefaultDataStore;
+    return !!globalDefaultDataStore();
 }
 
 Ref<WebsiteDataStore> WebsiteDataStore::createNonPersistentDataStore()
@@ -53,7 +64,7 @@ Ref<WebsiteDataStore> WebsiteDataStore::createNonPersistentDataStore()
     return adoptRef(*new WebsiteDataStore);
 }
 
-Ref<WebsiteDataStore> WebsiteDataStore::createLegacy(WebKit::WebsiteDataStore::Configuration configuration)
+Ref<WebsiteDataStore> WebsiteDataStore::createLegacy(Ref<WebKit::WebsiteDataStoreConfiguration>&& configuration)
 {
     return adoptRef(*new WebsiteDataStore(WTFMove(configuration), PAL::SessionID::defaultSessionID()));
 }
@@ -63,7 +74,7 @@ WebsiteDataStore::WebsiteDataStore()
 {
 }
 
-WebsiteDataStore::WebsiteDataStore(WebKit::WebsiteDataStore::Configuration configuration, PAL::SessionID sessionID)
+WebsiteDataStore::WebsiteDataStore(Ref<WebKit::WebsiteDataStoreConfiguration>&& configuration, PAL::SessionID sessionID)
     : m_websiteDataStore(WebKit::WebsiteDataStore::create(WTFMove(configuration), sessionID))
 {
 }
@@ -106,17 +117,35 @@ void WebsiteDataStore::setResourceLoadStatisticsDebugMode(bool enabled)
 }
 
 #if !PLATFORM(COCOA)
-String WebsiteDataStore::defaultMediaCacheDirectory()
+WTF::String WebsiteDataStore::defaultMediaCacheDirectory()
 {
     // FIXME: Implement. https://bugs.webkit.org/show_bug.cgi?id=156369 and https://bugs.webkit.org/show_bug.cgi?id=156370
-    return String();
+    return WTF::String();
 }
 
-String WebsiteDataStore::defaultJavaScriptConfigurationDirectory()
+WTF::String WebsiteDataStore::defaultJavaScriptConfigurationDirectory()
 {
     // FIXME: Implement.
-    return String();
+    return WTF::String();
 }
 #endif
 
+Ref<WebKit::WebsiteDataStoreConfiguration> WebsiteDataStore::legacyDefaultDataStoreConfiguration()
+{
+    auto configuration = defaultDataStoreConfiguration();
+
+    configuration->setApplicationCacheDirectory(legacyDefaultApplicationCacheDirectory());
+    configuration->setApplicationCacheFlatFileSubdirectoryName("ApplicationCache");
+    configuration->setNetworkCacheDirectory(legacyDefaultNetworkCacheDirectory());
+    configuration->setMediaCacheDirectory(legacyDefaultMediaCacheDirectory());
+    configuration->setMediaKeysStorageDirectory(legacyDefaultMediaKeysStorageDirectory());
+    configuration->setDeviceIdHashSaltsStorageDirectory(legacyDefaultDeviceIdHashSaltsStorageDirectory());
+    configuration->setIndexedDBDatabaseDirectory(legacyDefaultIndexedDBDatabaseDirectory());
+    configuration->setWebSQLDatabaseDirectory(legacyDefaultWebSQLDatabaseDirectory());
+    configuration->setLocalStorageDirectory(legacyDefaultLocalStorageDirectory());
+    configuration->setJavaScriptConfigurationDirectory(legacyDefaultJavaScriptConfigurationDirectory());
+    
+    return configuration;
 }
+
+} // namespace API

@@ -229,38 +229,44 @@ TEST(WKNavigation, ProcessCrashDuringCallback)
 
     __block WKWebView *view = webView.get();
     [webView _getContentsAsStringWithCompletionHandler:^(NSString *contents, NSError *error) {
-        EXPECT_TRUE(!!error);
+        if (!!error)
+            EXPECT_TRUE(error.code == WKErrorWebContentProcessTerminated || error.code == WKErrorWebViewInvalidated);
         ++callbackCount;
         if (callbackCount == 6)
             calledAllCallbacks = true;
     }];
     [webView _getContentsAsStringWithCompletionHandler:^(NSString *contents, NSError *error) {
-        EXPECT_TRUE(!!error);
+        if (!!error)
+            EXPECT_TRUE(error.code == WKErrorWebContentProcessTerminated || error.code == WKErrorWebViewInvalidated);
         ++callbackCount;
         if (callbackCount == 6)
             calledAllCallbacks = true;
     }];
     [webView _getContentsAsStringWithCompletionHandler:^(NSString *contents, NSError *error) {
-        EXPECT_TRUE(!!error);
+        if (!!error)
+            EXPECT_TRUE(error.code == WKErrorWebContentProcessTerminated || error.code == WKErrorWebViewInvalidated);
         [view _close]; // Calling _close will also invalidate all callbacks.
         ++callbackCount;
         if (callbackCount == 6)
             calledAllCallbacks = true;
     }];
     [webView _getContentsAsStringWithCompletionHandler:^(NSString *contents, NSError *error) {
-        EXPECT_TRUE(!!error);
+        if (!!error)
+            EXPECT_TRUE(error.code == WKErrorWebContentProcessTerminated || error.code == WKErrorWebViewInvalidated);
         ++callbackCount;
         if (callbackCount == 6)
             calledAllCallbacks = true;
     }];
     [webView _getContentsAsStringWithCompletionHandler:^(NSString *contents, NSError *error) {
-        EXPECT_TRUE(!!error);
+        if (!!error)
+            EXPECT_TRUE(error.code == WKErrorWebContentProcessTerminated || error.code == WKErrorWebViewInvalidated);
         ++callbackCount;
         if (callbackCount == 6)
             calledAllCallbacks = true;
     }];
     [webView _getContentsAsStringWithCompletionHandler:^(NSString *contents, NSError *error) {
-        EXPECT_TRUE(!!error);
+        if (!!error)
+            EXPECT_TRUE(error.code == WKErrorWebContentProcessTerminated || error.code == WKErrorWebViewInvalidated);
         ++callbackCount;
         if (callbackCount == 6)
             calledAllCallbacks = true;
@@ -268,8 +274,6 @@ TEST(WKNavigation, ProcessCrashDuringCallback)
 
     // Simulate a crash, which should invalidate all pending callbacks.
     [webView _killWebContentProcess];
-
-    webView = nullptr;
 
     TestWebKitAPI::Util::run(&calledAllCallbacks);
     TestWebKitAPI::Util::sleep(0.5);

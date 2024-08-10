@@ -38,6 +38,7 @@
 #include <wpe/WebKitCookieManager.h>
 #include <wpe/WebKitCredential.h>
 #include <wpe/WebKitDefines.h>
+#include <wpe/WebKitDeviceInfoPermissionRequest.h>
 #include <wpe/WebKitDownload.h>
 #include <wpe/WebKitEditingCommands.h>
 #include <wpe/WebKitEditorState.h>
@@ -66,7 +67,9 @@
 #include <wpe/WebKitURIRequest.h>
 #include <wpe/WebKitURIResponse.h>
 #include <wpe/WebKitURISchemeRequest.h>
+#include <wpe/WebKitURIUtilities.h>
 #include <wpe/WebKitUserContent.h>
+#include <wpe/WebKitUserContentFilterStore.h>
 #include <wpe/WebKitUserContentManager.h>
 #include <wpe/WebKitUserMediaPermissionRequest.h>
 #include <wpe/WebKitVersion.h>
@@ -78,6 +81,8 @@
 #include <wpe/WebKitWebsiteData.h>
 #include <wpe/WebKitWebsiteDataManager.h>
 #include <wpe/WebKitWindowProperties.h>
+
+#include <wpe/WebKitAutocleanups.h>
 
 #undef __WEBKIT_H_INSIDE__
 

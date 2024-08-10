@@ -26,7 +26,7 @@
 #import "config.h"
 #import "ViewGestureController.h"
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 #import "APINavigation.h"
 #import "DrawingAreaProxy.h"
@@ -300,34 +300,42 @@ void ViewGestureController::endSwipeGesture(WebBackForwardListItem* targetItem, 
         return;
     }
 
-    m_provisionalOrSameDocumentLoadCallback = [this] {
-        if (auto drawingArea = m_webPageProxy.drawingArea()) {
-            uint64_t pageID = m_webPageProxy.pageID();
-            GestureID gestureID = m_currentGestureID;
-            drawingArea->dispatchAfterEnsuringDrawing([pageID, gestureID] (CallbackBase::Error error) {
-                if (auto gestureController = controllerForGesture(pageID, gestureID))
-                    gestureController->willCommitPostSwipeTransitionLayerTree(error == CallbackBase::Error::None);
-            });
-            drawingArea->hideContentUntilPendingUpdate();
-        } else {
-            removeSwipeSnapshot();
-            return;
-        }
+    auto* currentItem = m_webPageProxyForBackForwardListForCurrentSwipe->backForwardList().currentItem();
+    // The main frame will not be navigated so hide the snapshot right away.
+    if (currentItem && currentItem->itemIsClone(*targetItem)) {
+        removeSwipeSnapshot();
+        return;
+    }
 
-        // FIXME: Should we wait for VisuallyNonEmptyLayout like we do on Mac?
-        m_snapshotRemovalTracker.start(SnapshotRemovalTracker::RenderTreeSizeThreshold
-            | SnapshotRemovalTracker::RepaintAfterNavigation
-            | SnapshotRemovalTracker::MainFrameLoad
-            | SnapshotRemovalTracker::SubresourceLoads
-            | SnapshotRemovalTracker::ScrollPositionRestoration, [this] {
-                this->removeSwipeSnapshot();
-        });
-    };
+    // FIXME: Should we wait for VisuallyNonEmptyLayout like we do on Mac?
+    m_snapshotRemovalTracker.start(SnapshotRemovalTracker::RenderTreeSizeThreshold
+        | SnapshotRemovalTracker::RepaintAfterNavigation
+        | SnapshotRemovalTracker::MainFrameLoad
+        | SnapshotRemovalTracker::SubresourceLoads
+        | SnapshotRemovalTracker::ScrollPositionRestoration, [this] {
+            this->removeSwipeSnapshot();
+    });
 
     if (ViewSnapshot* snapshot = targetItem->snapshot()) {
         m_backgroundColorForCurrentSnapshot = snapshot->backgroundColor();
         m_webPageProxy.didChangeBackgroundColor();
     }
+
+    uint64_t pageID = m_webPageProxy.pageID();
+    GestureID gestureID = m_currentGestureID;
+    m_loadCallback = [this, pageID, gestureID] {
+        auto drawingArea = m_webPageProxy.provisionalDrawingArea();
+        if (!drawingArea) {
+            removeSwipeSnapshot();
+            return;
+        }
+
+        drawingArea->dispatchAfterEnsuringDrawing([pageID, gestureID] (CallbackBase::Error error) {
+            if (auto gestureController = controllerForGesture(pageID, gestureID))
+                gestureController->willCommitPostSwipeTransitionLayerTree(error == CallbackBase::Error::None);
+        });
+        drawingArea->hideContentUntilPendingUpdate();
+    };
 }
 
 void ViewGestureController::setRenderTreeSize(uint64_t renderTreeSize)
@@ -396,4 +404,4 @@ bool ViewGestureController::completeSimulatedSwipeInDirectionForTesting(SwipeDir
 
 } // namespace WebKit
 
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)

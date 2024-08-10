@@ -40,6 +40,7 @@ set(ALL_PORTS
     GTK
     JSCOnly
     Mac
+    PlayStation
     WPE
     WinCairo
 )
@@ -83,10 +84,10 @@ if (MSVC_CXX_ARCHITECTURE_ID)
 else ()
     string(TOLOWER ${CMAKE_SYSTEM_PROCESSOR} LOWERCASE_CMAKE_SYSTEM_PROCESSOR)
 endif ()
-if (LOWERCASE_CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
-    set(WTF_CPU_ARM 1)
-elseif (LOWERCASE_CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64")
+if (LOWERCASE_CMAKE_SYSTEM_PROCESSOR MATCHES "(^aarch64|^arm64)")
     set(WTF_CPU_ARM64 1)
+elseif (LOWERCASE_CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
+    set(WTF_CPU_ARM 1)
 elseif (LOWERCASE_CMAKE_SYSTEM_PROCESSOR MATCHES "^mips64")
     set(WTF_CPU_MIPS64 1)
 elseif (LOWERCASE_CMAKE_SYSTEM_PROCESSOR MATCHES "^mips")
@@ -111,6 +112,8 @@ endif ()
 if (UNIX)
     if (APPLE)
         set(WTF_OS_MAC_OS_X 1)
+    elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
+        set(WTF_OS_LINUX 1)
     else ()
         set(WTF_OS_UNIX 1)
     endif ()

@@ -42,7 +42,7 @@
 namespace WebCore {
 
 CSSFontFaceSet::CSSFontFaceSet(CSSFontSelector* owningFontSelector)
-    : m_owningFontSelector(owningFontSelector)
+    : m_owningFontSelector(makeWeakPtr(owningFontSelector))
 {
 }
 
@@ -113,7 +113,7 @@ void CSSFontFaceSet::ensureLocalFontFacesForFamilyRegistered(const String& famil
 
     Vector<Ref<CSSFontFace>> faces;
     for (auto item : capabilities) {
-        Ref<CSSFontFace> face = CSSFontFace::create(m_owningFontSelector, nullptr, nullptr, true);
+        Ref<CSSFontFace> face = CSSFontFace::create(m_owningFontSelector.get(), nullptr, nullptr, true);
         
         Ref<CSSValueList> familyList = CSSValueList::createCommaSeparated();
         familyList->append(CSSValuePool::singleton().createFontFamilyValue(familyName));
@@ -386,7 +386,7 @@ ExceptionOr<Vector<std::reference_wrapper<CSSFontFace>>> CSSFontFaceSet::matchin
     result.reserveInitialCapacity(resultConstituents.size());
     for (auto* constituent : resultConstituents)
         result.uncheckedAppend(*constituent);
-    return WTFMove(result);
+    return result;
 }
 
 ExceptionOr<bool> CSSFontFaceSet::check(const String& font, const String& text)

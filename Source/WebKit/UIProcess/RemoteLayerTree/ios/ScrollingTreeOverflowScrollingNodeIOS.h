@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS)
+#if ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS_FAMILY)
 
 #include <WebCore/ScrollingTreeOverflowScrollingNode.h>
 
@@ -53,11 +53,11 @@ private:
 
     void updateLayersAfterAncestorChange(const WebCore::ScrollingTreeNode& changedNode, const WebCore::FloatRect& fixedPositionRect, const WebCore::FloatSize& cumulativeDelta) override;
 
-    void handleWheelEvent(const WebCore::PlatformWheelEvent&) override { }
+    WebCore::ScrollingEventResult handleWheelEvent(const WebCore::PlatformWheelEvent&) override { return ScrollingEventResult::DidNotHandleEvent; }
 
     std::unique_ptr<ScrollingTreeScrollingNodeDelegateIOS> m_scrollingNodeDelegate;
 };
 
 } // namespace WebKit
 
-#endif // ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS)
+#endif // ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS_FAMILY)

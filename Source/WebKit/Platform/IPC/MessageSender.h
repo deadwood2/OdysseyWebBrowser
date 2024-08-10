@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -65,11 +65,17 @@ public:
         return messageSenderConnection()->sendSync(WTFMove(message), WTFMove(reply), destinationID, timeout, sendSyncOptions);
     }
 
+    template<typename T, typename... Args>
+    void sendWithAsyncReply(T&& message, CompletionHandler<void(Args...)>&& completionHandler)
+    {
+        messageSenderConnection()->sendWithAsyncReply(WTFMove(message), WTFMove(completionHandler), messageSenderDestinationID());
+    }
+
     virtual bool sendMessage(std::unique_ptr<Encoder>, OptionSet<SendOption>);
 
 private:
-    virtual Connection* messageSenderConnection() = 0;
-    virtual uint64_t messageSenderDestinationID() = 0;
+    virtual Connection* messageSenderConnection() const = 0;
+    virtual uint64_t messageSenderDestinationID() const = 0;
 };
 
 } // namespace IPC

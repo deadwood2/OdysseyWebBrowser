@@ -69,15 +69,15 @@ public:
         }
 
         if (webEvent.shiftKey())
-            m_modifiers |= Modifier::ShiftKey;
+            m_modifiers.add(Modifier::ShiftKey);
         if (webEvent.controlKey())
-            m_modifiers |= Modifier::CtrlKey;
+            m_modifiers.add(Modifier::ControlKey);
         if (webEvent.altKey())
-            m_modifiers |= Modifier::AltKey;
+            m_modifiers.add(Modifier::AltKey);
         if (webEvent.metaKey())
-            m_modifiers |= Modifier::MetaKey;
+            m_modifiers.add(Modifier::MetaKey);
         if (webEvent.capsLockKey())
-            m_modifiers |= Modifier::CapsLockKey;
+            m_modifiers.add(Modifier::CapsLockKey);
 
         m_timestamp = webEvent.timestamp();
 
@@ -113,13 +113,13 @@ public:
 #endif
         m_modifierFlags = 0;
         if (webEvent.shiftKey())
-            m_modifierFlags |= WebEvent::ShiftKey;
+            m_modifierFlags |= static_cast<unsigned>(WebEvent::Modifier::ShiftKey);
         if (webEvent.controlKey())
-            m_modifierFlags |= WebEvent::ControlKey;
+            m_modifierFlags |= static_cast<unsigned>(WebEvent::Modifier::ControlKey);
         if (webEvent.altKey())
-            m_modifierFlags |= WebEvent::AltKey;
+            m_modifierFlags |= static_cast<unsigned>(WebEvent::Modifier::AltKey);
         if (webEvent.metaKey())
-            m_modifierFlags |= WebEvent::MetaKey;
+            m_modifierFlags |= static_cast<unsigned>(WebEvent::Modifier::MetaKey);
     }
 };
 
@@ -136,15 +136,15 @@ public:
         m_type = PlatformEvent::Wheel;
 
         if (webEvent.shiftKey())
-            m_modifiers |= Modifier::ShiftKey;
+            m_modifiers.add(Modifier::ShiftKey);
         if (webEvent.controlKey())
-            m_modifiers |= Modifier::CtrlKey;
+            m_modifiers.add(Modifier::ControlKey);
         if (webEvent.altKey())
-            m_modifiers |= Modifier::AltKey;
+            m_modifiers.add(Modifier::AltKey);
         if (webEvent.metaKey())
-            m_modifiers |= Modifier::MetaKey;
+            m_modifiers.add(Modifier::MetaKey);
         if (webEvent.capsLockKey())
-            m_modifiers |= Modifier::CapsLockKey;
+            m_modifiers.add(Modifier::CapsLockKey);
 
         m_timestamp = webEvent.timestamp();
 
@@ -198,15 +198,15 @@ public:
         }
 
         if (webEvent.shiftKey())
-            m_modifiers |= Modifier::ShiftKey;
+            m_modifiers.add(Modifier::ShiftKey);
         if (webEvent.controlKey())
-            m_modifiers |= Modifier::CtrlKey;
+            m_modifiers.add(Modifier::ControlKey);
         if (webEvent.altKey())
-            m_modifiers |= Modifier::AltKey;
+            m_modifiers.add(Modifier::AltKey);
         if (webEvent.metaKey())
-            m_modifiers |= Modifier::MetaKey;
+            m_modifiers.add(Modifier::MetaKey);
         if (webEvent.capsLockKey())
-            m_modifiers |= Modifier::CapsLockKey;
+            m_modifiers.add(Modifier::CapsLockKey);
 
         m_timestamp = webEvent.timestamp();
 
@@ -238,7 +238,7 @@ WebCore::PlatformKeyboardEvent platform(const WebKeyboardEvent& webEvent)
 
 #if ENABLE(TOUCH_EVENTS)
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 
 static WebCore::PlatformTouchPoint::TouchPhaseType touchEventType(const WebPlatformTouchPoint& webTouchPoint)
 {
@@ -314,7 +314,7 @@ public:
         m_rotationAngle = webTouchPoint.rotationAngle();
     }
 };
-#endif // PLATFORM(IOS)
+#endif // PLATFORM(IOS_FAMILY)
 
 class WebKit2PlatformTouchEvent : public WebCore::PlatformTouchEvent {
 public:
@@ -339,19 +339,19 @@ public:
         }
 
         if (webEvent.shiftKey())
-            m_modifiers |= Modifier::ShiftKey;
+            m_modifiers.add(Modifier::ShiftKey);
         if (webEvent.controlKey())
-            m_modifiers |= Modifier::CtrlKey;
+            m_modifiers.add(Modifier::ControlKey);
         if (webEvent.altKey())
-            m_modifiers |= Modifier::AltKey;
+            m_modifiers.add(Modifier::AltKey);
         if (webEvent.metaKey())
-            m_modifiers |= Modifier::MetaKey;
+            m_modifiers.add(Modifier::MetaKey);
         if (webEvent.capsLockKey())
-            m_modifiers |= Modifier::CapsLockKey;
+            m_modifiers.add(Modifier::CapsLockKey);
 
         m_timestamp = webEvent.timestamp();
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
         unsigned touchCount = webEvent.touchPoints().size();
         m_touchPoints.reserveInitialCapacity(touchCount);
         for (unsigned i = 0; i < touchCount; ++i)
@@ -368,7 +368,7 @@ public:
         // PlatformTouchEvent
         for (size_t i = 0; i < webEvent.touchPoints().size(); ++i)
             m_touchPoints.append(WebKit2PlatformTouchPoint(webEvent.touchPoints().at(i)));
-#endif //PLATFORM(IOS)
+#endif //PLATFORM(IOS_FAMILY)
     }
 };
 
@@ -398,15 +398,15 @@ public:
         }
 
         if (webEvent.shiftKey())
-            m_modifiers |= Modifier::ShiftKey;
+            m_modifiers.add(Modifier::ShiftKey);
         if (webEvent.controlKey())
-            m_modifiers |= Modifier::CtrlKey;
+            m_modifiers.add(Modifier::ControlKey);
         if (webEvent.altKey())
-            m_modifiers |= Modifier::AltKey;
+            m_modifiers.add(Modifier::AltKey);
         if (webEvent.metaKey())
-            m_modifiers |= Modifier::MetaKey;
+            m_modifiers.add(Modifier::MetaKey);
         if (webEvent.capsLockKey())
-            m_modifiers |= Modifier::CapsLockKey;
+            m_modifiers.add(Modifier::CapsLockKey);
 
         m_timestamp = webEvent.timestamp();
 

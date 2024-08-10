@@ -34,7 +34,7 @@
 #import "PrintInfo.h"
 #import "ShareableBitmap.h"
 #import "WebPageProxy.h"
-#import <PDFKit/PDFKit.h>
+#import <Quartz/Quartz.h>
 #import <WebCore/GraphicsContext.h>
 #import <WebCore/LocalDefaultSystemAppearance.h>
 #import <WebCore/WebCoreObjCExtras.h>
@@ -63,8 +63,10 @@ static BOOL isForcingPreviewUpdate;
 
 - (void)dealloc
 {
-    if (WebCoreObjCScheduleDeallocateOnMainThread([WKPrintingView class], self))
-        return;
+    callOnMainThread([frame = WTFMove(_webFrame), previews = WTFMove(_pagePreviews)] {
+        // Deallocate these on the main thread, not the current thread, since the
+        // reference counting and the destructors aren't threadsafe.
+    });
 
     [super dealloc];
 }
@@ -76,16 +78,14 @@ static BOOL isForcingPreviewUpdate;
 
 - (void)_setAutodisplay:(BOOL)newState
 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     if (!newState && [[_wkView window] isAutodisplay])
-#pragma clang diagnostic pop
         [_wkView displayIfNeeded];
+    ALLOW_DEPRECATED_DECLARATIONS_END
     
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [[_wkView window] setAutodisplay:newState];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     // For some reason, painting doesn't happen for a long time without this call, <rdar://problem/8975229>.
     if (newState)
@@ -431,9 +431,9 @@ static void prepareDataForPrintingOnSecondaryThread(WKPrintingView *view)
     return 0; // Invalid page number.
 }
 
-static CFStringRef linkDestinationName(PDFDocument *document, PDFDestination *destination)
+static NSString *linkDestinationName(PDFDocument *document, PDFDestination *destination)
 {
-    return (CFStringRef)[NSString stringWithFormat:@"%lu-%f-%f", (unsigned long)[document indexForPage:destination.page], destination.point.x, destination.point.y];
+    return [NSString stringWithFormat:@"%lu-%f-%f", (unsigned long)[document indexForPage:destination.page], destination.point.x, destination.point.y];
 }
 
 - (void)_drawPDFDocument:(PDFDocument *)pdfDocument page:(unsigned)page atPoint:(NSPoint)point
@@ -452,35 +452,32 @@ static CFStringRef linkDestinationName(PDFDocument *document, PDFDestination *de
     }
 
     NSGraphicsContext *nsGraphicsContext = [NSGraphicsContext currentContext];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     CGContextRef context = static_cast<CGContextRef>([nsGraphicsContext graphicsPort]);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     CGContextSaveGState(context);
     CGContextTranslateCTM(context, point.x, point.y);
     CGContextScaleCTM(context, _totalScaleFactorForPrinting, -_totalScaleFactorForPrinting);
     CGContextTranslateCTM(context, 0, -[pdfPage boundsForBox:kPDFDisplayBoxMediaBox].size.height);
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [pdfPage drawWithBox:kPDFDisplayBoxMediaBox];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     CGAffineTransform transform = CGContextGetCTM(context);
 
     for (const auto& destination : _linkDestinationsPerPage[page]) {
         CGPoint destinationPoint = CGPointApplyAffineTransform(NSPointToCGPoint([destination point]), transform);
-        CGPDFContextAddDestinationAtPoint(context, linkDestinationName(pdfDocument, destination.get()), destinationPoint);
+        CGPDFContextAddDestinationAtPoint(context, (__bridge CFStringRef)linkDestinationName(pdfDocument, destination.get()), destinationPoint);
     }
 
     for (PDFAnnotation *annotation in [pdfPage annotations]) {
         if (![annotation isKindOfClass:WebKit::pdfAnnotationLinkClass()])
             continue;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         PDFAnnotationLink *linkAnnotation = (PDFAnnotationLink *)annotation;
-#pragma clang diagnostic pop
+        ALLOW_DEPRECATED_DECLARATIONS_END
         NSURL *url = [linkAnnotation URL];
         CGRect transformedRect = CGRectApplyAffineTransform(NSRectToCGRect([linkAnnotation bounds]), transform);
 
@@ -488,8 +485,7 @@ static CFStringRef linkDestinationName(PDFDocument *document, PDFDestination *de
             PDFDestination *destination = [linkAnnotation destination];
             if (!destination)
                 continue;
-            CGPDFContextSetDestinationForRect(context, linkDestinationName(pdfDocument, destination), transformedRect);
-
+            CGPDFContextSetDestinationForRect(context, (__bridge CFStringRef)linkDestinationName(pdfDocument, destination), transformedRect);
             continue;
         }
 
@@ -544,10 +540,9 @@ static CFStringRef linkDestinationName(PDFDocument *document, PDFDestination *de
     }
 
     RefPtr<WebKit::ShareableBitmap> bitmap = pagePreviewIterator->value;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     CGContextRef cgContext = static_cast<CGContextRef>([[NSGraphicsContext currentContext] graphicsPort]);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     WebCore::GraphicsContext context(cgContext);
     WebCore::GraphicsContextStateSaver stateSaver(context);
@@ -561,11 +556,8 @@ static CFStringRef linkDestinationName(PDFDocument *document, PDFDestination *de
 
     ASSERT(_printOperation == [NSPrintOperation currentOperation]);
 
-    auto* page = _webFrame->page();
-    if (!page)
-        return;
-
-    WebCore::LocalDefaultSystemAppearance localAppearance(page->useSystemAppearance(), page->useDarkAppearance());
+    // Always use the light appearance when printing.
+    WebCore::LocalDefaultSystemAppearance localAppearance(false);
 
     if ([self _isPrintingPreview]) {
         [self _drawPreview:nsRect];
@@ -588,10 +580,9 @@ static CFStringRef linkDestinationName(PDFDocument *document, PDFDestination *de
                 if (![annotation isKindOfClass:WebKit::pdfAnnotationLinkClass()])
                     continue;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                ALLOW_DEPRECATED_DECLARATIONS_BEGIN
                 PDFAnnotationLink *linkAnnotation = (PDFAnnotationLink *)annotation;
-#pragma clang diagnostic pop
+                ALLOW_DEPRECATED_DECLARATIONS_END
                 if (linkAnnotation.URL)
                     continue;
 

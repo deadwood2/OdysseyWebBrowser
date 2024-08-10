@@ -73,7 +73,7 @@ inline NodeIterator::NodeIterator(Node& rootNode, unsigned whatToShow, RefPtr<No
     : NodeIteratorBase(rootNode, whatToShow, WTFMove(filter))
     , m_referenceNode(rootNode, true)
 {
-    root().document().attachNodeIterator(this);
+    root().document().attachNodeIterator(*this);
 }
 
 Ref<NodeIterator> NodeIterator::create(Node& rootNode, unsigned whatToShow, RefPtr<NodeFilter>&& filter)
@@ -83,7 +83,7 @@ Ref<NodeIterator> NodeIterator::create(Node& rootNode, unsigned whatToShow, RefP
 
 NodeIterator::~NodeIterator()
 {
-    root().document().detachNodeIterator(this);
+    root().document().detachNodeIterator(*this);
 }
 
 ExceptionOr<RefPtr<Node>> NodeIterator::nextNode()
@@ -112,7 +112,7 @@ ExceptionOr<RefPtr<Node>> NodeIterator::nextNode()
     }
 
     m_candidateNode.clear();
-    return WTFMove(result);
+    return result;
 }
 
 ExceptionOr<RefPtr<Node>> NodeIterator::previousNode()
@@ -141,7 +141,7 @@ ExceptionOr<RefPtr<Node>> NodeIterator::previousNode()
     }
 
     m_candidateNode.clear();
-    return WTFMove(result);
+    return result;
 }
 
 void NodeIterator::nodeWillBeRemoved(Node& removedNode)

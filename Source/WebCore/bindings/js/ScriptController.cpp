@@ -74,7 +74,7 @@ using namespace JSC;
 
 void ScriptController::initializeThreading()
 {
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
     JSC::initializeThreading();
     WTF::initializeMainThread();
 #endif
@@ -125,7 +125,7 @@ JSValue ScriptController::evaluateInWorld(const ScriptSourceCode& sourceCode, DO
 
     Ref<Frame> protector(m_frame);
 
-    InspectorInstrumentationCookie cookie = InspectorInstrumentation::willEvaluateScript(m_frame, sourceURL, sourceCode.startLine());
+    InspectorInstrumentationCookie cookie = InspectorInstrumentation::willEvaluateScript(m_frame, sourceURL, sourceCode.startLine(), sourceCode.startColumn());
 
     NakedPtr<JSC::Exception> evaluationException;
     JSValue returnValue = JSExecState::profiledEvaluate(&exec, JSC::ProfilingReason::Other, jsSourceCode, &proxy, evaluationException);
@@ -218,7 +218,7 @@ JSC::JSValue ScriptController::evaluateModule(const URL& sourceURL, JSModuleReco
 
     Ref<Frame> protector(m_frame);
 
-    auto cookie = InspectorInstrumentation::willEvaluateScript(m_frame, sourceURL, jsSourceCode.firstLine().oneBasedInt());
+    auto cookie = InspectorInstrumentation::willEvaluateScript(m_frame, sourceURL, jsSourceCode.firstLine().oneBasedInt(), jsSourceCode.startColumn().oneBasedInt());
 
     auto returnValue = moduleRecord.evaluate(&state);
     InspectorInstrumentation::didEvaluateScript(cookie, m_frame);
@@ -295,7 +295,7 @@ void ScriptController::setupModuleScriptHandlers(LoadableModuleScript& moduleScr
                 case ModuleFetchFailureKind::WasErrored:
                     moduleScript->notifyLoadFailed(LoadableScript::Error {
                         LoadableScript::ErrorType::CachedScript,
-                        std::nullopt
+                        WTF::nullopt
                     });
                     break;
                 case ModuleFetchFailureKind::WasCanceled:
@@ -378,13 +378,15 @@ void ScriptController::disableWebAssembly(const String& errorMessage)
     jsWindowProxy->window()->setWebAssemblyEnabled(false, errorMessage);
 }
 
-bool ScriptController::canAccessFromCurrentOrigin(Frame* frame)
+bool ScriptController::canAccessFromCurrentOrigin(Frame* frame, Document& accessingDocument)
 {
     auto* state = JSExecState::currentState();
 
-    // If the current state is null we're in a call path where the DOM security check doesn't apply (eg. parser).
-    if (!state)
-        return true;
+    // If the current state is null we should use the accessing document for the security check.
+    if (!state) {
+        auto* targetDocument = frame ? frame->document() : nullptr;
+        return targetDocument && accessingDocument.securityOrigin().canAccess(targetDocument->securityOrigin());
+    }
 
     return BindingSecurity::shouldAllowAccessToFrame(state, frame);
 }
@@ -542,8 +544,8 @@ void ScriptController::clearScriptObjects()
 
 JSValue ScriptController::executeScriptInWorld(DOMWrapperWorld& world, const String& script, bool forceUserGesture, ExceptionDetails* exceptionDetails)
 {
-    UserGestureIndicator gestureIndicator(forceUserGesture ? std::optional<ProcessingUserGestureState>(ProcessingUserGesture) : std::nullopt);
-    ScriptSourceCode sourceCode(script, m_frame.document()->url(), TextPosition(), JSC::SourceProviderSourceType::Program, CachedScriptFetcher::create(m_frame.document()->charset()));
+    UserGestureIndicator gestureIndicator(forceUserGesture ? Optional<ProcessingUserGestureState>(ProcessingUserGesture) : WTF::nullopt);
+    ScriptSourceCode sourceCode(script, URL(m_frame.document()->url()), TextPosition(), JSC::SourceProviderSourceType::Program, CachedScriptFetcher::create(m_frame.document()->charset()));
 
     if (!canExecuteScripts(AboutToExecuteScript) || isPaused())
         return { };
@@ -571,8 +573,8 @@ bool ScriptController::canExecuteScripts(ReasonForCallingCanExecuteScripts reaso
 
 JSValue ScriptController::executeScript(const String& script, bool forceUserGesture, ExceptionDetails* exceptionDetails)
 {
-    UserGestureIndicator gestureIndicator(forceUserGesture ? std::optional<ProcessingUserGestureState>(ProcessingUserGesture) : std::nullopt);
-    return executeScript(ScriptSourceCode(script, m_frame.document()->url(), TextPosition(), JSC::SourceProviderSourceType::Program, CachedScriptFetcher::create(m_frame.document()->charset())), exceptionDetails);
+    UserGestureIndicator gestureIndicator(forceUserGesture ? Optional<ProcessingUserGestureState>(ProcessingUserGesture) : WTF::nullopt);
+    return executeScript(ScriptSourceCode(script, URL(m_frame.document()->url()), TextPosition(), JSC::SourceProviderSourceType::Program, CachedScriptFetcher::create(m_frame.document()->charset())), exceptionDetails);
 }
 
 JSValue ScriptController::executeScript(const ScriptSourceCode& sourceCode, ExceptionDetails* exceptionDetails)
@@ -589,7 +591,7 @@ JSValue ScriptController::executeScript(const ScriptSourceCode& sourceCode, Exce
 
 bool ScriptController::executeIfJavaScriptURL(const URL& url, ShouldReplaceDocumentIfJavaScriptURL shouldReplaceDocumentIfJavaScriptURL)
 {
-    if (!protocolIsJavaScript(url))
+    if (!WTF::protocolIsJavaScript(url))
         return false;
 
     if (!m_frame.page() || !m_frame.document()->contentSecurityPolicy()->allowJavaScriptURLs(m_frame.document()->url(), eventHandlerPosition().m_line))
@@ -620,11 +622,17 @@ bool ScriptController::executeIfJavaScriptURL(const URL& url, ShouldReplaceDocum
     if (shouldReplaceDocumentIfJavaScriptURL == ReplaceDocumentIfJavaScriptURL) {
         // We're still in a frame, so there should be a DocumentLoader.
         ASSERT(m_frame.document()->loader());
-        
-        // DocumentWriter::replaceDocument can cause the DocumentLoader to get deref'ed and possible destroyed,
+
+        // Signal to FrameLoader to disable navigations within this frame while replacing it with the result of executing javascript
+        // FIXME: https://bugs.webkit.org/show_bug.cgi?id=200523
+        // The only reason we do a nestable save/restore of this flag here is because we sometimes nest javascript: url loads as
+        // some will load synchronously. We'd like to remove those synchronous loads and then change this.
+        SetForScope<bool> willBeReplaced(m_willReplaceWithResultOfExecutingJavascriptURL, true);
+
+        // DocumentWriter::replaceDocumentWithResultOfExecutingJavascriptURL can cause the DocumentLoader to get deref'ed and possible destroyed,
         // so protect it with a RefPtr.
         if (RefPtr<DocumentLoader> loader = m_frame.document()->loader())
-            loader->writer().replaceDocument(scriptResult, ownerDocument.get());
+            loader->writer().replaceDocumentWithResultOfExecutingJavascriptURL(scriptResult, ownerDocument.get());
     }
     return true;
 }

@@ -25,7 +25,7 @@
 
 #include "config.h"
 
-#if WK_API_ENABLED && PLATFORM(IOS)
+#if WK_API_ENABLED && PLATFORM(IOS_FAMILY)
 
 #import "PlatformUtilities.h"
 #import "TestInputDelegate.h"
@@ -34,6 +34,61 @@
 #import <WebKit/WKWebViewPrivate.h>
 #import <WebKitLegacy/WebEvent.h>
 #import <cmath>
+
+@interface InputAssistantItemTestingWebView : TestWKWebView
++ (UIBarButtonItemGroup *)leadingItemsForWebView:(WKWebView *)webView;
++ (UIBarButtonItemGroup *)trailingItemsForWebView:(WKWebView *)webView;
+@end
+
+@implementation InputAssistantItemTestingWebView {
+    RetainPtr<UIBarButtonItemGroup> _leadingItems;
+    RetainPtr<UIBarButtonItemGroup> _trailingItems;
+}
+
+- (void)fakeLeadingBarButtonItemAction
+{
+}
+
+- (void)fakeTrailingBarButtonItemAction
+{
+}
+
++ (UIImage *)barButtonIcon
+{
+    return [UIImage imageNamed:@"TestWebKitAPI.resources/icon.png"];
+}
+
++ (UIBarButtonItemGroup *)leadingItemsForWebView:(WKWebView *)webView
+{
+    static dispatch_once_t onceToken;
+    static UIBarButtonItemGroup *sharedItems;
+    dispatch_once(&onceToken, ^{
+        auto leadingItem = adoptNS([[UIBarButtonItem alloc] initWithImage:self.barButtonIcon style:UIBarButtonItemStylePlain target:webView action:@selector(fakeLeadingBarButtonItemAction)]);
+        sharedItems = [[UIBarButtonItemGroup alloc] initWithBarButtonItems:@[ leadingItem.get() ] representativeItem:nil];
+    });
+    return sharedItems;
+}
+
++ (UIBarButtonItemGroup *)trailingItemsForWebView:(WKWebView *)webView
+{
+    static dispatch_once_t onceToken;
+    static UIBarButtonItemGroup *sharedItems;
+    dispatch_once(&onceToken, ^{
+        auto trailingItem = adoptNS([[UIBarButtonItem alloc] initWithImage:self.barButtonIcon style:UIBarButtonItemStylePlain target:webView action:@selector(fakeTrailingBarButtonItemAction)]);
+        sharedItems = [[UIBarButtonItemGroup alloc] initWithBarButtonItems:@[ trailingItem.get() ] representativeItem:nil];
+    });
+    return sharedItems;
+}
+
+- (UITextInputAssistantItem *)inputAssistantItem
+{
+    auto assistantItem = adoptNS([[UITextInputAssistantItem alloc] init]);
+    [assistantItem setLeadingBarButtonGroups:@[[InputAssistantItemTestingWebView leadingItemsForWebView:self]]];
+    [assistantItem setTrailingBarButtonGroups:@[[InputAssistantItemTestingWebView trailingItemsForWebView:self]]];
+    return assistantItem.autorelease();
+}
+
+@end
 
 @implementation TestWKWebView (KeyboardInputTests)
 
@@ -87,10 +142,9 @@ static CGRect rounded(CGRect rect)
 
 @end
 
-static RetainPtr<TestWKWebView> webViewWithAutofocusedInput()
+static RetainPtr<TestWKWebView> webViewWithAutofocusedInput(const RetainPtr<TestInputDelegate>& inputDelegate)
 {
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
-    auto inputDelegate = adoptNS([[TestInputDelegate alloc] init]);
 
     bool doneWaiting = false;
     [inputDelegate setFocusStartsInputSessionPolicyHandler:[&] (WKWebView *, id <_WKFocusedElementInfo>) -> _WKFocusStartsInputSessionPolicy {
@@ -105,7 +159,99 @@ static RetainPtr<TestWKWebView> webViewWithAutofocusedInput()
     return webView;
 }
 
+static RetainPtr<TestWKWebView> webViewWithAutofocusedInput()
+{
+    auto inputDelegate = adoptNS([TestInputDelegate new]);
+    return webViewWithAutofocusedInput(inputDelegate);
+}
+
 namespace TestWebKitAPI {
+
+TEST(KeyboardInputTests, ModifyInputAssistantItemBarButtonGroups)
+{
+    auto inputDelegate = adoptNS([TestInputDelegate new]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    [webView _setInputDelegate:inputDelegate.get()];
+    [webView synchronouslyLoadHTMLString:@"<body contenteditable>"];
+    UITextInputAssistantItem *item = [webView inputAssistantItem];
+    UIBarButtonItemGroup *leadingItems = [InputAssistantItemTestingWebView leadingItemsForWebView:webView.get()];
+    UIBarButtonItemGroup *trailingItems = [InputAssistantItemTestingWebView trailingItemsForWebView:webView.get()];
+    item.leadingBarButtonGroups = @[ leadingItems ];
+    item.trailingBarButtonGroups = @[ trailingItems ];
+
+    bool doneWaitingForInputSession = false;
+    [inputDelegate setFocusStartsInputSessionPolicyHandler:[&] (WKWebView *, id <_WKFocusedElementInfo>) -> _WKFocusStartsInputSessionPolicy {
+        doneWaitingForInputSession = true;
+        return _WKFocusStartsInputSessionPolicyAllow;
+    }];
+    [webView evaluateJavaScript:@"document.body.focus()" completionHandler:nil];
+    TestWebKitAPI::Util::run(&doneWaitingForInputSession);
+
+    EXPECT_EQ([webView firstResponder], [webView textInputContentView]);
+    EXPECT_TRUE([[webView firstResponder].inputAssistantItem.leadingBarButtonGroups containsObject:leadingItems]);
+    EXPECT_TRUE([[webView firstResponder].inputAssistantItem.trailingBarButtonGroups containsObject:trailingItems]);
+
+    // Now blur and refocus the editable area, and check that the same leading and trailing button items are present.
+    [webView resignFirstResponder];
+    [webView waitForNextPresentationUpdate];
+
+    doneWaitingForInputSession = false;
+    [webView evaluateJavaScript:@"document.body.focus()" completionHandler:nil];
+    TestWebKitAPI::Util::run(&doneWaitingForInputSession);
+
+    EXPECT_EQ([webView firstResponder], [webView textInputContentView]);
+    EXPECT_TRUE([[webView firstResponder].inputAssistantItem.leadingBarButtonGroups containsObject:leadingItems]);
+    EXPECT_TRUE([[webView firstResponder].inputAssistantItem.trailingBarButtonGroups containsObject:trailingItems]);
+}
+
+TEST(KeyboardInputTests, OverrideInputAssistantItemBarButtonGroups)
+{
+    auto inputDelegate = adoptNS([TestInputDelegate new]);
+    auto webView = adoptNS([[InputAssistantItemTestingWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    [webView _setInputDelegate:inputDelegate.get()];
+    [webView synchronouslyLoadHTMLString:@"<body contenteditable>"];
+
+    bool doneWaitingForInputSession = false;
+    [inputDelegate setFocusStartsInputSessionPolicyHandler:[&] (WKWebView *, id <_WKFocusedElementInfo>) -> _WKFocusStartsInputSessionPolicy {
+        doneWaitingForInputSession = true;
+        return _WKFocusStartsInputSessionPolicyAllow;
+    }];
+    [webView evaluateJavaScript:@"document.body.focus()" completionHandler:nil];
+    TestWebKitAPI::Util::run(&doneWaitingForInputSession);
+
+    UIBarButtonItemGroup *leadingItems = [InputAssistantItemTestingWebView leadingItemsForWebView:webView.get()];
+    UIBarButtonItemGroup *trailingItems = [InputAssistantItemTestingWebView trailingItemsForWebView:webView.get()];
+    EXPECT_EQ([webView firstResponder], [webView textInputContentView]);
+    EXPECT_TRUE([[webView firstResponder].inputAssistantItem.leadingBarButtonGroups containsObject:leadingItems]);
+    EXPECT_TRUE([[webView firstResponder].inputAssistantItem.trailingBarButtonGroups containsObject:trailingItems]);
+
+    // Now blur and refocus the editable area, and check that the same leading and trailing button items are present.
+    [webView resignFirstResponder];
+    [webView waitForNextPresentationUpdate];
+
+    doneWaitingForInputSession = false;
+    [webView evaluateJavaScript:@"document.body.focus()" completionHandler:nil];
+    TestWebKitAPI::Util::run(&doneWaitingForInputSession);
+
+    EXPECT_EQ([webView firstResponder], [webView textInputContentView]);
+    EXPECT_TRUE([[webView firstResponder].inputAssistantItem.leadingBarButtonGroups containsObject:leadingItems]);
+    EXPECT_TRUE([[webView firstResponder].inputAssistantItem.trailingBarButtonGroups containsObject:trailingItems]);
+}
+
+TEST(KeyboardInputTests, CustomInputViewAndInputAccessoryView)
+{
+    auto inputView = adoptNS([[UIView alloc] init]);
+    auto inputAccessoryView = adoptNS([[UIView alloc] init]);
+    auto inputDelegate = adoptNS([TestInputDelegate new]);
+    [inputDelegate setWillStartInputSessionHandler:[inputView, inputAccessoryView] (WKWebView *, id<_WKFormInputSession> session) {
+        session.customInputView = inputView.get();
+        session.customInputAccessoryView = inputAccessoryView.get();
+    }];
+
+    auto webView = webViewWithAutofocusedInput(inputDelegate);
+    EXPECT_EQ(inputView.get(), [webView firstResponder].inputView);
+    EXPECT_EQ(inputAccessoryView.get(), [webView firstResponder].inputAccessoryView);
+}
 
 TEST(KeyboardInputTests, CanHandleKeyEventInCompletionHandler)
 {
@@ -163,6 +309,82 @@ TEST(KeyboardInputTests, RangedSelectionRectAfterRestoringFirstResponder)
     [webView waitForSelectionViewRectsToBecome:expectedSelectionRects];
 }
 
+TEST(KeyboardInputTests, KeyboardTypeForInput)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    auto inputDelegate = adoptNS([[TestInputDelegate alloc] init]);
+
+    [inputDelegate setFocusStartsInputSessionPolicyHandler:[&] (WKWebView *, id <_WKFocusedElementInfo>) -> _WKFocusStartsInputSessionPolicy {
+        return _WKFocusStartsInputSessionPolicyAllow;
+    }];
+    [webView _setInputDelegate:inputDelegate.get()];
+    [webView synchronouslyLoadHTMLString:@"<input id='input'>"];
+
+    auto runTest = ^(NSString *inputType, NSString *inputMode, NSString *pattern, UIKeyboardType expectedKeyboardType) {
+        [webView stringByEvaluatingJavaScript:@"input.blur()"];
+        [webView stringByEvaluatingJavaScript:[NSString stringWithFormat:@"input.type = '%@'; input.inputMode = '%@'; input.pattern = '%@'", inputType, inputMode, pattern]];
+        [webView stringByEvaluatingJavaScript:@"input.focus()"];
+
+        UIView<UITextInputPrivate> *textInput = (UIView<UITextInputPrivate> *)[webView textInputContentView];
+        UIKeyboardType keyboardType = [textInput textInputTraits].keyboardType;
+
+        bool success = keyboardType == expectedKeyboardType;
+        if (!success)
+            NSLog(@"Displayed %li for <input type='%@' inputmode='%@' pattern='%@'>. Expected %li.", (long)keyboardType, inputType, inputMode, pattern, (long)expectedKeyboardType);
+
+        return success;
+    };
+
+    NSDictionary *expectedKeyboardTypeForInputType = @{
+        @"text": @(UIKeyboardTypeDefault),
+        @"password": @(UIKeyboardTypeDefault),
+        @"search": @(UIKeyboardTypeDefault),
+        @"email": @(UIKeyboardTypeEmailAddress),
+        @"tel": @(UIKeyboardTypePhonePad),
+        @"number": @(UIKeyboardTypeNumbersAndPunctuation),
+        @"url": @(UIKeyboardTypeURL)
+    };
+
+    NSDictionary *expectedKeyboardTypeForInputMode = @{
+        @"": @(-1),
+        @"text": @(UIKeyboardTypeDefault),
+        @"tel": @(UIKeyboardTypePhonePad),
+        @"url": @(UIKeyboardTypeURL),
+        @"email": @(UIKeyboardTypeEmailAddress),
+        @"numeric": @(UIKeyboardTypeNumbersAndPunctuation),
+        @"decimal": @(UIKeyboardTypeDecimalPad),
+        @"search": @(UIKeyboardTypeWebSearch)
+    };
+
+    NSDictionary *expectedKeyboardTypeForPattern = @{
+        @"": @(-1),
+        @"\\\\d*": @(UIKeyboardTypeNumberPad),
+        @"[0-9]*": @(UIKeyboardTypeNumberPad)
+    };
+
+    for (NSString *inputType in [expectedKeyboardTypeForInputType allKeys]) {
+        for (NSString *inputMode in [expectedKeyboardTypeForInputMode allKeys]) {
+            for (NSString *pattern in [expectedKeyboardTypeForPattern allKeys]) {
+                NSNumber *keyboardType;
+                if (inputMode.length) {
+                    // inputmode has the highest priority.
+                    keyboardType = expectedKeyboardTypeForInputMode[inputMode];
+                } else {
+                    if (pattern.length && ([inputType isEqual: @"text"] || [inputType isEqual: @"number"])) {
+                        // Special case for text and number inputs that have a numeric pattern.
+                        keyboardType = expectedKeyboardTypeForPattern[pattern];
+                    } else {
+                        // Otherwise, the input type determines the keyboard type.
+                        keyboardType = expectedKeyboardTypeForInputType[inputType];
+                    }
+                }
+
+                EXPECT_TRUE(runTest(inputType, inputMode, pattern, (UIKeyboardType)keyboardType.intValue));
+            }
+        }
+    }
+}
+
 } // namespace TestWebKitAPI
 
-#endif // WK_API_ENABLED && PLATFORM(IOS)
+#endif // WK_API_ENABLED && PLATFORM(IOS_FAMILY)

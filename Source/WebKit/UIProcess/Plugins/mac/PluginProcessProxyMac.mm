@@ -33,13 +33,13 @@
 #import "PluginProcessMessages.h"
 #import "SandboxUtilities.h"
 #import <QuartzCore/CARemoteLayerServer.h>
-#import <WebCore/FileSystem.h>
-#import <WebCore/URL.h>
 #import <crt_externs.h>
 #import <mach-o/dyld.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <spawn.h>
+#import <wtf/FileSystem.h>
 #import <wtf/ProcessPrivilege.h>
+#import <wtf/URL.h>
 #import <wtf/text/CString.h>
 
 @interface WKPlaceholderModalWindow : NSWindow 
@@ -57,10 +57,8 @@
 @end
 
 namespace WebKit {
-using namespace WebCore;
-
     
-void PluginProcessProxy::platformGetLaunchOptions(ProcessLauncher::LaunchOptions& launchOptions, const PluginProcessAttributes& pluginProcessAttributes)
+void PluginProcessProxy::platformGetLaunchOptionsWithAttributes(ProcessLauncher::LaunchOptions& launchOptions, const PluginProcessAttributes& pluginProcessAttributes)
 {
     if (pluginProcessAttributes.moduleInfo.pluginArchitecture == CPU_TYPE_X86)
         launchOptions.processType = ProcessLauncher::ProcessType::Plugin32;
@@ -94,10 +92,9 @@ void PluginProcessProxy::platformInitializePluginProcess(PluginProcessCreationPa
 bool PluginProcessProxy::getPluginProcessSerialNumber(ProcessSerialNumber& pluginProcessSerialNumber)
 {
     pid_t pluginProcessPID = processIdentifier();
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     return GetProcessForPID(pluginProcessPID, &pluginProcessSerialNumber) == noErr;
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 void PluginProcessProxy::makePluginProcessTheFrontProcess()
@@ -106,20 +103,18 @@ void PluginProcessProxy::makePluginProcessTheFrontProcess()
     if (!getPluginProcessSerialNumber(pluginProcessSerialNumber))
         return;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     SetFrontProcess(&pluginProcessSerialNumber);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 void PluginProcessProxy::makeUIProcessTheFrontProcess()
 {
     ProcessSerialNumber processSerialNumber;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     GetCurrentProcess(&processSerialNumber);
     SetFrontProcess(&processSerialNumber);            
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 void PluginProcessProxy::setFullscreenWindowIsShowing(bool fullscreenWindowIsShowing)
@@ -152,10 +147,9 @@ void PluginProcessProxy::exitFullscreen()
 {
     // If the plug-in host is the current application then we should bring ourselves to the front when it exits full-screen mode.
     ProcessSerialNumber frontProcessSerialNumber;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     GetFrontProcess(&frontProcessSerialNumber);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     // The UI process must be the front process in order to change the presentation mode.
     makeUIProcessTheFrontProcess();
@@ -168,15 +162,13 @@ void PluginProcessProxy::exitFullscreen()
     // If the plug-in process was not the front process, switch back to the previous front process.
     // (Otherwise we'll keep the UI process as the front process).
     Boolean isPluginProcessFrontProcess;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     SameProcess(&frontProcessSerialNumber, &pluginProcessSerialNumber, &isPluginProcessFrontProcess);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
     if (!isPluginProcessFrontProcess) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         SetFrontProcess(&frontProcessSerialNumber);
-#pragma clang diagnostic pop
+        ALLOW_DEPRECATED_DECLARATIONS_END
     }
 }
 
@@ -338,7 +330,7 @@ void PluginProcessProxy::openURL(const String& urlString, bool& result, int32_t&
 
     result = true;
     CFURLRef launchedURL;
-    status = LSOpenCFURLRef(URL(ParsedURLString, urlString).createCFURL().get(), &launchedURL);
+    status = LSOpenCFURLRef(URL({ }, urlString).createCFURL().get(), &launchedURL);
 
     if (launchedURL) {
         launchedURLString = URL(launchedURL).string();

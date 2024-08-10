@@ -29,7 +29,7 @@
 #import "config.h"
 #import "DumpRenderTreeDraggingInfo.h"
 
-#if !PLATFORM(IOS)
+#if !PLATFORM(IOS_FAMILY)
 
 #import "DumpRenderTree.h"
 #import "DumpRenderTreeFileDraggingSource.h"
@@ -277,7 +277,7 @@ static NSMutableArray<NSFilePromiseReceiver *> *allFilePromiseReceivers()
         [receiver setDraggingSource:draggingSource];
         [allFilePromiseReceivers() addObject:receiver.get()];
 
-        auto item = adoptNS([NSDraggingItem new]);
+        auto item = adoptNS([[NSDraggingItem alloc] initWithPasteboardWriter:(id <NSPasteboardWriting>)receiver.get()]); // FIXME: <https://webkit.org/b/194060> Pass an object of the right type.
         [item setItem:receiver.get()];
 
         block(item.get(), 0, &stop);
@@ -297,4 +297,4 @@ static NSMutableArray<NSFilePromiseReceiver *> *allFilePromiseReceivers()
 
 @end
 
-#endif // !PLATFORM(IOS)
+#endif // !PLATFORM(IOS_FAMILY)

@@ -41,13 +41,14 @@ namespace WebKit {
 class DrawingAreaProxy;
 class WebPageNamespace;
 
-enum class UndoOrRedo;
+enum class UndoOrRedo : bool;
 
 class PageClientImpl : public PageClient
 #if ENABLE(FULLSCREEN_API)
     , public WebFullScreenManagerProxyClient
 #endif
 {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit PageClientImpl(GtkWidget*);
 
@@ -55,7 +56,7 @@ public:
 
 private:
     // PageClient
-    std::unique_ptr<DrawingAreaProxy> createDrawingAreaProxy() override;
+    std::unique_ptr<DrawingAreaProxy> createDrawingAreaProxy(WebProcessProxy&) override;
     void setViewNeedsDisplay(const WebCore::Region&) override;
     void requestScroll(const WebCore::FloatPoint& scrollPosition, const WebCore::IntPoint& scrollOrigin, bool isProgrammaticScroll) override;
     WebCore::FloatPoint viewScrollPosition() override;
@@ -87,6 +88,7 @@ private:
     RefPtr<WebColorPicker> createColorPicker(WebPageProxy*, const WebCore::Color& initialColor, const WebCore::IntRect&, Vector<WebCore::Color>&&) override;
 #endif
     void selectionDidChange() override;
+    RefPtr<ViewSnapshot> takeViewSnapshot() override;
 #if ENABLE(DRAG_SUPPORT)
     void startDrag(Ref<WebCore::SelectionData>&&, WebCore::DragOperation, RefPtr<ShareableBitmap>&& dragImage) override;
 #endif
@@ -98,7 +100,7 @@ private:
     void handleDownloadRequest(DownloadProxy*) override;
     void didChangeContentSize(const WebCore::IntSize&) override;
     void didCommitLoadForMainFrame(const String& mimeType, bool useCustomContentProvider) override;
-    void didFailLoadForMainFrame() override { }
+    void didFailLoadForMainFrame() override;
 
     // Auxiliary Client Creation
 #if ENABLE(FULLSCREEN_API)
@@ -124,6 +126,7 @@ private:
     void willRecordNavigationSnapshot(WebBackForwardListItem&) override;
     void didRemoveNavigationGestureSnapshot() override;
 
+    void didStartProvisionalLoadForMainFrame() override;
     void didFirstVisuallyNonEmptyLayoutForMainFrame() override;
     void didFinishLoadForMainFrame() override;
     void didSameDocumentNavigationForMainFrame(SameDocumentNavigationType) override;
@@ -139,7 +142,7 @@ private:
     void refView() override;
     void derefView() override;
 
-    void didRestoreScrollPosition() override { }
+    void didRestoreScrollPosition() override;
     void isPlayingAudioWillChange() final { }
     void isPlayingAudioDidChange() final { }
 
@@ -149,7 +152,7 @@ private:
     bool decidePolicyForInstallMissingMediaPluginsPermissionRequest(InstallMissingMediaPluginsPermissionRequest&) override;
 #endif
 
-    WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection() override { return WebCore::UserInterfaceLayoutDirection::LTR; }
+    WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection() override;
 
     // Members of PageClientImpl class
     GtkWidget* m_viewWidget;

@@ -30,7 +30,7 @@
 #import <CoreText/CTFontManager.h>
 #import <WebKit/WKStringCF.h>
 #import <wtf/NeverDestroyed.h>
-#import <wtf/ObjcRuntimeExtras.h>
+#import <wtf/ObjCRuntimeExtras.h>
 #import <wtf/RetainPtr.h>
 
 #if USE(APPKIT)
@@ -47,7 +47,7 @@ namespace WTR {
 
 static NSURL *resourcesDirectoryURL()
 {
-    static NeverDestroyed<RetainPtr<NSURL *>> resourcesDirectory([[NSBundle bundleForClass:[WKTRFontActivatorDummyClass class]] resourceURL]);
+    static NeverDestroyed<RetainPtr<NSURL>> resourcesDirectory([[NSBundle bundleForClass:[WKTRFontActivatorDummyClass class]] resourceURL]);
     return resourcesDirectory.get().get();
 }
 
@@ -154,8 +154,7 @@ void uninstallFakeHelvetica()
         if ([[url lastPathComponent] hasPrefix:@"FakeHelvetica"])
             [fontsToRemove addObject:url];
     }
-    CFArrayRef errors = nullptr;
-    CTFontManagerUnregisterFontsForURLs(static_cast<CFArrayRef>(fontsToRemove), kCTFontManagerScopeProcess, &errors);
+    CTFontManagerUnregisterFontsForURLs(static_cast<CFArrayRef>(fontsToRemove), kCTFontManagerScopeProcess, nullptr);
 }
 
 }

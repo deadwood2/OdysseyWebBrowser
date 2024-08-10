@@ -23,40 +23,271 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
- WI.AuditTestCase = class AuditTestCase extends WI.Object
+WI.AuditTestCase = class AuditTestCase extends WI.AuditTestBase
 {
-    constructor(suite, name, test, setup, tearDown, errorDetails = {})
+    constructor(name, test, options = {})
     {
-        console.assert(suite instanceof WI.AuditTestSuite);
-        console.assert(typeof(name) === "string");
-        
-        if (setup)
-            console.assert(setup instanceof Function);
+        console.assert(typeof test === "string");
 
-        if (tearDown)
-            console.assert(tearDown instanceof Function);
+        super(name, options);
 
-        if (test[Symbol.toStringTag] !== "AsyncFunction")
-            throw new Error("Test functions must be async functions.");
-
-        super();
-        this._id = Symbol(name);
-        
-        this._suite = suite;
-        this._name = name;
         this._test = test;
-        this._setup = setup;
-        this._tearDown = tearDown;
-        this._errorDetails = errorDetails;
+    }
+
+    // Static
+
+    static async fromPayload(payload)
+    {
+        if (typeof payload !== "object" || payload === null)
+            return null;
+
+        if (payload.type !== WI.AuditTestCase.TypeIdentifier)
+            return null;
+
+        if (typeof payload.name !== "string") {
+            WI.AuditManager.synthesizeError(WI.UIString("\u0022%s\u0022 has a non-string \u0022%s\u0022 value").format(payload.name, WI.unlocalizedString("name")));
+            return null;
+        }
+
+        if (typeof payload.test !== "string") {
+            WI.AuditManager.synthesizeError(WI.UIString("\u0022%s\u0022 has a non-string \u0022%s\u0022 value").format(payload.name, WI.unlocalizedString("test")));
+            return null;
+        }
+
+        let options = {};
+
+        if (typeof payload.description === "string")
+            options.description = payload.description;
+        else if ("description" in payload)
+            WI.AuditManager.synthesizeWarning(WI.UIString("\u0022%s\u0022 has a non-string \u0022%s\u0022 value").format(payload.name, WI.unlocalizedString("description")));
+
+        if (typeof payload.supports === "number")
+            options.supports = payload.supports;
+        else if ("supports" in payload)
+            WI.AuditManager.synthesizeWarning(WI.UIString("\u0022%s\u0022 has a non-number \u0022%s\u0022 value").format(payload.name, WI.unlocalizedString("supports")));
+
+        if (typeof payload.disabled === "boolean")
+            options.disabled = payload.disabled;
+
+        return new WI.AuditTestCase(payload.name, payload.test, options);
     }
 
     // Public
 
-    get id() { return this._id; }
-    get name() { return this._name; }
-    get suite() { return this._suite; }
     get test() { return this._test; }
-    get setup() { return this._setup; }
-    get tearDown() { return this._tearDown; }
-    get errorDetails() { return this._errorDetails; }
-}
+
+    toJSON(key)
+    {
+        let json = super.toJSON(key);
+        json.test = this._test;
+        return json;
+    }
+
+    // Protected
+
+    async run()
+    {
+        const levelStrings = Object.values(WI.AuditTestCaseResult.Level);
+        let level = null;
+        let data = {};
+        let metadata = {
+            url: WI.networkManager.mainFrame.url,
+            startTimestamp: null,
+            endTimestamp: null,
+        };
+        let resolvedDOMNodes = null;
+
+        function setLevel(newLevel) {
+            let newLevelIndex = levelStrings.indexOf(newLevel);
+            if (newLevelIndex < 0) {
+                addError(WI.UIString("Return string must be one of %s").format(JSON.stringify(levelStrings)));
+                return;
+            }
+
+            if (newLevelIndex <= levelStrings.indexOf(level))
+                return;
+
+            level = newLevel;
+        }
+
+        function addError(value) {
+            setLevel(WI.AuditTestCaseResult.Level.Error);
+
+            if (!data.errors)
+                data.errors = [];
+
+            data.errors.push(value);
+        }
+
+        async function parseResponse(response) {
+            let remoteObject = WI.RemoteObject.fromPayload(response.result, WI.mainTarget);
+            if (response.wasThrown || (remoteObject.type === "object" && remoteObject.subtype === "error"))
+                addError(remoteObject.description);
+            else if (remoteObject.type === "boolean")
+                setLevel(remoteObject.value ? WI.AuditTestCaseResult.Level.Pass : WI.AuditTestCaseResult.Level.Fail);
+            else if (remoteObject.type === "string")
+                setLevel(remoteObject.value.trim().toLowerCase());
+            else if (remoteObject.type === "object" && !remoteObject.subtype) {
+                const options = {
+                    ownProperties: true,
+                };
+
+                let properties = await new Promise((resolve, reject) => remoteObject.getPropertyDescriptorsAsObject(resolve, options));
+
+                function checkResultProperty(key, type, subtype) {
+                    if (!(key in properties))
+                        return null;
+
+                    let property = properties[key].value;
+                    if (!property)
+                        return null;
+
+                    function addErrorForValueType(valueType) {
+                        let value = null;
+                        if (valueType === "object" || valueType === "array")
+                            value = WI.UIString("\u0022%s\u0022 must be an %s");
+                        else
+                            value = WI.UIString("\u0022%s\u0022 must be a %s");
+                        addError(value.format(key, valueType));
+                    }
+
+                    if (property.subtype !== subtype) {
+                        addErrorForValueType(subtype);
+                        return null;
+                    }
+
+                    if (property.type !== type) {
+                        addErrorForValueType(type);
+                        return null;
+                    }
+
+                    if (type === "boolean" || type === "string")
+                        return property.value;
+
+                    return property;
+                }
+
+                async function resultArrayForEach(key, callback) {
+                    let array = checkResultProperty(key, "object", "array");
+                    if (!array)
+                        return;
+
+                    // `getPropertyDescriptorsAsObject` returns an object, meaning that if we
+                    // want to iterate over `array` by index, we have to count.
+                    let asObject = await new Promise((resolve, reject) => array.getPropertyDescriptorsAsObject(resolve, options));
+                    for (let i = 0; i < array.size; ++i) {
+                        if (i in asObject)
+                            await callback(asObject[i]);
+                    }
+                }
+
+                let levelString = checkResultProperty("level", "string");
+                if (levelString)
+                    setLevel(levelString.trim().toLowerCase());
+
+                if (checkResultProperty("pass", "boolean"))
+                    setLevel(WI.AuditTestCaseResult.Level.Pass);
+                if (checkResultProperty("warn", "boolean"))
+                    setLevel(WI.AuditTestCaseResult.Level.Warn);
+                if (checkResultProperty("fail", "boolean"))
+                    setLevel(WI.AuditTestCaseResult.Level.Fail);
+                if (checkResultProperty("error", "boolean"))
+                    setLevel(WI.AuditTestCaseResult.Level.Error);
+                if (checkResultProperty("unsupported", "boolean"))
+                    setLevel(WI.AuditTestCaseResult.Level.Unsupported);
+
+                await resultArrayForEach("domNodes", async (item) => {
+                    if (!item || !item.value || item.value.type !== "object" || item.value.subtype !== "node") {
+                        addError(WI.UIString("All items in \u0022%s\u0022 must be valid DOM nodes").format(WI.unlocalizedString("domNodes")));
+                        return;
+                    }
+
+                    let domNodeId = await new Promise((resolve, reject) => item.value.pushNodeToFrontend(resolve));
+                    let domNode = WI.domManager.nodeForId(domNodeId);
+                    if (!domNode)
+                        return;
+
+                    if (!data.domNodes)
+                        data.domNodes = [];
+                    data.domNodes.push(WI.cssPath(domNode, {full: true}));
+
+                    if (!resolvedDOMNodes)
+                        resolvedDOMNodes = [];
+                    resolvedDOMNodes.push(domNode);
+                });
+
+                await resultArrayForEach("domAttributes", (item) => {
+                    if (!item || !item.value || item.value.type !== "string" || !item.value.value.length) {
+                        addError(WI.UIString("All items in \u0022%s\u0022 must be non-empty strings").format(WI.unlocalizedString("domAttributes")));
+                        return;
+                    }
+
+                    if (!data.domAttributes)
+                        data.domAttributes = [];
+                    data.domAttributes.push(item.value.value);
+                });
+
+                await resultArrayForEach("errors", (item) => {
+                    if (!item || !item.value || item.value.type !== "object" || item.value.subtype !== "error") {
+                        addError(WI.UIString("All items in \u0022%s\u0022 must be error objects").format(WI.unlocalizedString("errors")));
+                        return;
+                    }
+
+                    addError(item.value.description);
+                });
+            } else
+                addError(WI.UIString("Return value is not an object, string, or boolean"));
+        }
+
+        let agentCommandFunction = null;
+        let agentCommandArguments = {};
+        if (InspectorBackend.domains.Audit) {
+            agentCommandFunction = AuditAgent.run;
+            agentCommandArguments.test = this._test;
+        } else {
+            agentCommandFunction = RuntimeAgent.evaluate;
+            agentCommandArguments.expression = `(function() { "use strict"; return eval(\`(${this._test.replace(/`/g, "\\`")})\`)(); })()`;
+            agentCommandArguments.objectGroup = "audit";
+            agentCommandArguments.doNotPauseOnExceptionsAndMuteConsole = true;
+        }
+
+        try {
+            metadata.startTimestamp = new Date;
+            let response = await agentCommandFunction.invoke(agentCommandArguments);
+            metadata.endTimestamp = new Date;
+
+            if (response.result.type === "object" && response.result.className === "Promise") {
+                if (WI.RuntimeManager.supportsAwaitPromise()) {
+                    metadata.asyncTimestamp = metadata.endTimestamp;
+                    response = await RuntimeAgent.awaitPromise(response.result.objectId);
+                    metadata.endTimestamp = new Date;
+                } else {
+                    response = null;
+                    addError(WI.UIString("Async audits are not supported."));
+                    setLevel(WI.AuditTestCaseResult.Level.Unsupported);
+                }
+            }
+
+            if (response)
+                await parseResponse(response);
+        } catch (error) {
+            metadata.endTimestamp = new Date;
+            addError(error.message);
+        }
+
+        if (!level)
+            addError(WI.UIString("Missing result level"));
+
+        let options = {
+            description: this.description,
+            metadata,
+        };
+        if (!isEmptyObject(data))
+            options.data = data;
+        if (resolvedDOMNodes)
+            options.resolvedDOMNodes = resolvedDOMNodes;
+        this._result = new WI.AuditTestCaseResult(this.name, level, options);
+    }
+};
+
+WI.AuditTestCase.TypeIdentifier = "test-case";

@@ -26,13 +26,16 @@
 
 #pragma once
 
-#if PLATFORM(IOS) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
+#if PLATFORM(IOS_FAMILY) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
 
+#include "AudioSession.h"
 #include "FloatRect.h"
 #include "HTMLMediaElementEnums.h"
+#include "MediaPlayerEnums.h"
 #include "PlaybackSessionModel.h"
+#include <wtf/CompletionHandler.h>
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 OBJC_CLASS AVPlayerViewController;
 OBJC_CLASS UIViewController;
 #endif
@@ -49,11 +52,9 @@ public:
 
     virtual void requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenMode, bool finishedWithMedia = false) = 0;
     virtual void setVideoLayerFrame(FloatRect) = 0;
-    enum VideoGravity { VideoGravityResize, VideoGravityResizeAspect, VideoGravityResizeAspectFill };
-    virtual void setVideoLayerGravity(VideoGravity) = 0;
+    virtual void setVideoLayerGravity(MediaPlayerEnums::VideoGravity) = 0;
     virtual void fullscreenModeChanged(HTMLMediaElementEnums::VideoFullscreenMode) = 0;
 
-    virtual bool isVisible() const = 0;
     virtual FloatSize videoDimensions() const = 0;
     virtual bool hasVideo() const = 0;
 
@@ -63,7 +64,9 @@ public:
     virtual void willExitPictureInPicture() = 0;
     virtual void didExitPictureInPicture() = 0;
 
-#if PLATFORM(IOS)
+    virtual void requestRouteSharingPolicyAndContextUID(CompletionHandler<void(RouteSharingPolicy, String)>&& completionHandler) { completionHandler(RouteSharingPolicy::Default, emptyString()); }
+
+#if PLATFORM(IOS_FAMILY)
     virtual UIViewController *presentingViewController() { return nullptr; }
     virtual UIViewController *createVideoFullscreenViewController(AVPlayerViewController *) { return nullptr; }
 #endif

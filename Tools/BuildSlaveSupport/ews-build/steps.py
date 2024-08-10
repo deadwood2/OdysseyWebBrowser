@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2019 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -20,16 +20,21 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from buildbot.plugins import steps, util
 from buildbot.process import buildstep, logobserver, properties
 from buildbot.process.results import Results, SUCCESS, FAILURE, WARNINGS, SKIPPED, EXCEPTION, RETRY
-from buildbot.steps import shell, transfer
-from buildbot.steps.source import svn
+from buildbot.steps import master, shell, transfer
+from buildbot.steps.source import git
+from buildbot.steps.worker import CompositeStepMixin
 from twisted.internet import defer
 
 import re
+import requests
 
-EWS_URL = 'http://ews-build.webkit-uat.org/'
+BUG_SERVER_URL = 'https://bugs.webkit.org/'
+EWS_URL = 'https://ews-build.webkit-uat.org/'
 WithProperties = properties.WithProperties
+Interpolate = properties.Interpolate
 
 
 class ConfigureBuild(buildstep.BuildStep):
@@ -61,19 +66,68 @@ class ConfigureBuild(buildstep.BuildStep):
             self.setProperty("buildOnly", self.buildOnly, 'config.json')
         if self.additionalArguments:
             self.setProperty("additionalArguments", self.additionalArguments, 'config.json')
+
+        self.add_patch_id_url()
         self.finished(SUCCESS)
         return defer.succeed(None)
 
+    def add_patch_id_url(self):
+        patch_id = self.getProperty('patch_id', '')
+        if patch_id:
+            self.addURL('Patch {}'.format(patch_id), self.getPatchURL(patch_id))
 
-class CheckOutSource(svn.SVN):
+    def getPatchURL(self, patch_id):
+        if not patch_id:
+            return None
+        return '{}attachment.cgi?id={}'.format(BUG_SERVER_URL, patch_id)
+
+
+class CheckOutSource(git.Git):
+    name = 'clean-and-update-working-directory'
     CHECKOUT_DELAY_AND_MAX_RETRIES_PAIR = (0, 2)
 
     def __init__(self, **kwargs):
-        self.repourl = 'https://svn.webkit.org/repository/webkit/trunk'
+        self.repourl = 'https://git.webkit.org/git/WebKit.git'
         super(CheckOutSource, self).__init__(repourl=self.repourl,
                                                 retry=self.CHECKOUT_DELAY_AND_MAX_RETRIES_PAIR,
-                                                preferLastChangedRev=True,
+                                                timeout=2 * 60 * 60,
+                                                alwaysUseLatest=True,
+                                                progress=True,
                                                 **kwargs)
+
+
+class CleanWorkingDirectory(shell.ShellCommand):
+    name = 'clean-working-directory'
+    description = ['clean-working-directory running']
+    descriptionDone = ['clean-working-directory']
+    flunkOnFailure = True
+    haltOnFailure = True
+    command = ['Tools/Scripts/clean-webkit']
+
+
+class ApplyPatch(shell.ShellCommand, CompositeStepMixin):
+    name = 'apply-patch'
+    description = ['applying-patch']
+    descriptionDone = ['apply-patch']
+    flunkOnFailure = True
+    haltOnFailure = True
+    command = ['Tools/Scripts/svn-apply', '--force', '.buildbot-diff']
+
+    def _get_patch(self):
+        sourcestamp = self.build.getSourceStamp(self.getProperty('codebase', ''))
+        if not sourcestamp or not sourcestamp.patch:
+            return None
+        return sourcestamp.patch[1]
+
+    def start(self):
+        patch = self._get_patch()
+        if not patch:
+            self.finished(FAILURE)
+            return None
+
+        d = self.downloadFileContentToWorker('.buildbot-diff', patch)
+        d.addCallback(lambda _: self.downloadFileContentToWorker('.buildbot-patched', 'patched\n'))
+        d.addCallback(lambda res: shell.ShellCommand.start(self))
 
 
 class CheckPatchRelevance(buildstep.BuildStep):
@@ -162,28 +216,158 @@ class CheckPatchRelevance(buildstep.BuildStep):
 
         self._addToLog('stdio', 'This patch does not have relevant changes.')
         self.finished(FAILURE)
+        self.build.results = SKIPPED
+        self.build.buildFinished(['Patch {} doesn\'t have relevant changes'.format(self.getProperty('patch_id', ''))], SKIPPED)
         return None
 
 
-class UnApplyPatchIfRequired(CheckOutSource):
-    name = 'unapply-patch'
+class ValidatePatch(buildstep.BuildStep):
+    name = 'validate-patch'
+    description = ['validate-patch running']
+    descriptionDone = ['validate-patch']
+    flunkOnFailure = True
+    haltOnFailure = True
+    bug_open_statuses = ["UNCONFIRMED", "NEW", "ASSIGNED", "REOPENED"]
+    bug_closed_statuses = ["RESOLVED", "VERIFIED", "CLOSED"]
 
-    def __init__(self, **kwargs):
-        super(UnApplyPatchIfRequired, self).__init__(alwaysUseLatest=True, **kwargs)
+    @defer.inlineCallbacks
+    def _addToLog(self, logName, message):
+        try:
+            log = self.getLog(logName)
+        except KeyError:
+            log = yield self.addLog(logName)
+        log.addStdout(message)
+
+    def fetch_data_from_url(self, url):
+        response = None
+        try:
+            response = requests.get(url)
+        except Exception as e:
+            if response:
+                self._addToLog('stdio', 'Failed to access {url} with status code {status_code}.\n'.format(url=url, status_code=response.status_code))
+            else:
+                self._addToLog('stdio', 'Failed to access {url} with exception: {exception}\n'.format(url=url, exception=e))
+            return None
+        if response.status_code != 200:
+            self._addToLog('stdio', 'Accessed {url} with unexpected status code {status_code}.\n'.format(url=url, status_code=response.status_code))
+            return None
+        return response
+
+    def get_patch_json(self, patch_id):
+        patch_url = '{}rest/bug/attachment/{}'.format(BUG_SERVER_URL, patch_id)
+        patch = self.fetch_data_from_url(patch_url)
+        if not patch:
+            return None
+        patch_json = patch.json().get('attachments')
+        if not patch_json or len(patch_json) == 0:
+            return None
+        return patch_json.get(str(patch_id))
+
+    def get_bug_json(self, bug_id):
+        bug_url = '{}rest/bug/{}'.format(BUG_SERVER_URL, bug_id)
+        bug = self.fetch_data_from_url(bug_url)
+        if not bug:
+            return None
+        bugs_json = bug.json().get('bugs')
+        if not bugs_json or len(bugs_json) == 0:
+            return None
+        return bugs_json[0]
+
+    def get_bug_id_from_patch(self, patch_id):
+        patch_json = self.get_patch_json(patch_id)
+        if not patch_json:
+            self._addToLog('stdio', 'Unable to fetch patch {}.\n'.format(patch_id))
+            return -1
+        return patch_json.get('bug_id')
+
+    def _is_patch_obsolete(self, patch_id):
+        patch_json = self.get_patch_json(patch_id)
+        if not patch_json:
+            self._addToLog('stdio', 'Unable to fetch patch {}.\n'.format(patch_id))
+            return -1
+
+        if str(patch_json.get('id')) != self.getProperty('patch_id', ''):
+            self._addToLog('stdio', 'Fetched patch id {} does not match with requested patch id {}. Unable to validate.\n'.format(patch_json.get('id'), self.getProperty('patch_id', '')))
+            return -1
+
+        patch_author = patch_json.get('creator')
+        self.addURL('Patch by: {}'.format(patch_author), 'mailto:{}'.format(patch_author))
+        return patch_json.get('is_obsolete')
+
+    def _is_patch_review_denied(self, patch_id):
+        patch_json = self.get_patch_json(patch_id)
+        if not patch_json:
+            self._addToLog('stdio', 'Unable to fetch patch {}.\n'.format(patch_id))
+            return -1
+
+        for flag in patch_json.get('flags', []):
+            if flag.get('name') == 'review' and flag.get('status') == '-':
+                return 1
+        return 0
+
+    def _is_bug_closed(self, bug_id):
+        if not bug_id:
+            self._addToLog('stdio', 'Skipping bug status validation since bug id is None.\n')
+            return -1
+
+        bug_json = self.get_bug_json(bug_id)
+        if not bug_json or not bug_json.get('status'):
+            self._addToLog('stdio', 'Unable to fetch bug {}.\n'.format(bug_id))
+            return -1
+
+        bug_title = bug_json.get('summary')
+        self.addURL('Bug {} {}'.format(bug_id, bug_title), '{}show_bug.cgi?id={}'.format(BUG_SERVER_URL, bug_id))
+        if bug_json.get('status') in self.bug_closed_statuses:
+            return 1
+        return 0
+
+    def skip_build(self, reason):
+        self._addToLog('stdio', reason)
+        self.finished(FAILURE)
+        self.build.results = SKIPPED
+        self.build.buildFinished([reason], SKIPPED)
+
+    def start(self):
+        patch_id = self.getProperty('patch_id', '')
+        if not patch_id:
+            self._addToLog('stdio', 'No patch_id found. Unable to proceed without patch_id.\n')
+            self.finished(FAILURE)
+            return None
+
+        bug_id = self.getProperty('bug_id', '') or self.get_bug_id_from_patch(patch_id)
+
+        bug_closed = self._is_bug_closed(bug_id)
+        if bug_closed == 1:
+            self.skip_build('Bug {} is already closed'.format(bug_id))
+            return None
+
+        obsolete = self._is_patch_obsolete(patch_id)
+        if obsolete == 1:
+            self.skip_build('Patch {} is obsolete'.format(patch_id))
+            return None
+
+        review_denied = self._is_patch_review_denied(patch_id)
+        if review_denied == 1:
+            self.skip_build('Patch {} is marked r-'.format(patch_id))
+            return None
+
+        if obsolete == -1 or review_denied == -1 or bug_closed == -1:
+            self.finished(WARNINGS)
+            return None
+
+        self._addToLog('stdio', 'Bug is open.\nPatch is not obsolete.\nPatch is not marked r-.\n')
+        self.finished(SUCCESS)
+        return None
+
+
+class UnApplyPatchIfRequired(CleanWorkingDirectory):
+    name = 'unapply-patch'
 
     def doStepIf(self, step):
         return self.getProperty('patchFailedToBuild') or self.getProperty('patchFailedJSCTests')
 
     def hideStepIf(self, results, step):
         return not self.doStepIf(step)
-
-
-class CheckStyle(shell.ShellCommand):
-    name = 'check-webkit-style'
-    description = ['check-webkit-style running']
-    descriptionDone = ['check-webkit-style']
-    flunkOnFailure = True
-    command = ['Tools/Scripts/check-webkit-style']
 
 
 class TestWithFailureCount(shell.Test):
@@ -222,6 +406,23 @@ class TestWithFailureCount(shell.Test):
             status += u' ({})'.format(Results[self.results])
 
         return {u'step': status}
+
+
+class CheckStyle(TestWithFailureCount):
+    name = 'check-webkit-style'
+    description = ['check-webkit-style running']
+    descriptionDone = ['check-webkit-style']
+    flunkOnFailure = True
+    failedTestsFormatString = '%d style error%s'
+    command = ['Tools/Scripts/check-webkit-style']
+
+    def countFailures(self, cmd):
+        log_text = self.log_observer.getStdout() + self.log_observer.getStderr()
+
+        match = re.search(r'Total errors found: (?P<errors>\d+) in (?P<files>\d+) files', log_text)
+        if not match:
+            return 0
+        return int(match.group('errors'))
 
 
 class RunBindingsTests(shell.ShellCommand):
@@ -442,7 +643,7 @@ class ArchiveBuiltProduct(shell.ShellCommand):
 class UploadBuiltProduct(transfer.FileUpload):
     name = 'upload-built-product'
     workersrc = WithProperties('WebKitBuild/%(configuration)s.zip')
-    masterdest = WithProperties('public_html/archives/%(fullPlatform)s-%(architecture)s-%(configuration)s/%(ewspatchid)s.zip')
+    masterdest = WithProperties('public_html/archives/%(fullPlatform)s-%(architecture)s-%(configuration)s/%(patch_id)s.zip')
     haltOnFailure = True
 
     def __init__(self, **kwargs):
@@ -456,7 +657,7 @@ class UploadBuiltProduct(transfer.FileUpload):
 class DownloadBuiltProduct(shell.ShellCommand):
     command = ['python', 'Tools/BuildSlaveSupport/download-built-product',
         WithProperties('--platform=%(platform)s'), WithProperties('--%(configuration)s'),
-        WithProperties(EWS_URL + 'archives/%(fullPlatform)s-%(architecture)s-%(configuration)s/%(ewspatchid)s.zip')]
+        WithProperties(EWS_URL + 'archives/%(fullPlatform)s-%(architecture)s-%(configuration)s/%(patch_id)s.zip')]
     name = 'download-built-product'
     description = ['downloading built product']
     descriptionDone = ['downloaded built product']
@@ -478,7 +679,10 @@ class RunAPITests(TestWithFailureCount):
     name = 'run-api-tests'
     description = ['api tests running']
     descriptionDone = ['api-tests']
-    command = ['python', 'Tools/Scripts/run-api-tests', '--no-build', WithProperties('--%(configuration)s'), '--verbose']
+    jsonFileName = 'api_test_results.json'
+    logfiles = {'json': jsonFileName}
+    command = ['python', 'Tools/Scripts/run-api-tests', '--no-build',
+               WithProperties('--%(configuration)s'), '--verbose', '--json-output={0}'.format(jsonFileName)]
     failedTestsFormatString = '%d api test%s failed or timed out'
 
     def start(self):
@@ -492,3 +696,70 @@ class RunAPITests(TestWithFailureCount):
         if not match:
             return 0
         return int(match.group('ran')) - int(match.group('passed'))
+
+
+class ArchiveTestResults(shell.ShellCommand):
+    command = ['python', 'Tools/BuildSlaveSupport/test-result-archive',
+               Interpolate('--platform=%(prop:platform)s'), Interpolate('--%(prop:configuration)s'), 'archive']
+    name = 'archive-test-results'
+    description = ['archiving test results']
+    descriptionDone = ['archived test results']
+    haltOnFailure = True
+
+
+class UploadTestResults(transfer.FileUpload):
+    name = 'upload-test-results'
+    workersrc = 'layout-test-results.zip'
+    masterdest = Interpolate('public_html/results/%(prop:buildername)s/r%(prop:patch_id)s-%(prop:buildnumber)s.zip')
+    haltOnFailure = True
+
+    def __init__(self, **kwargs):
+        kwargs['workersrc'] = self.workersrc
+        kwargs['masterdest'] = self.masterdest
+        kwargs['mode'] = 0644
+        kwargs['blocksize'] = 1024 * 256
+        transfer.FileUpload.__init__(self, **kwargs)
+
+
+class ExtractTestResults(master.MasterShellCommand):
+    name = 'extract-test-results'
+    zipFile = Interpolate('public_html/results/%(prop:buildername)s/r%(prop:patch_id)s-%(prop:buildnumber)s.zip')
+    resultDirectory = Interpolate('public_html/results/%(prop:buildername)s/r%(prop:patch_id)s-%(prop:buildnumber)s')
+
+    descriptionDone = ['uploaded results']
+    command = ['unzip', zipFile, '-d', resultDirectory]
+    renderables = ['resultDirectory']
+
+    def __init__(self):
+        super(ExtractTestResults, self).__init__(self.command)
+
+    def resultDirectoryURL(self):
+        return self.resultDirectory.replace('public_html/', '/') + '/'
+
+    def addCustomURLs(self):
+        self.addURL('view layout test results', self.resultDirectoryURL() + 'results.html')
+
+    def finished(self, result):
+        self.addCustomURLs()
+        return master.MasterShellCommand.finished(self, result)
+
+
+class PrintConfiguration(steps.ShellSequence):
+    name = 'configuration'
+    description = ['configuration']
+    descriptionDone = ['configuration']
+    haltOnFailure = False
+    flunkOnFailure = False
+    warnOnFailure = False
+    command_list = [['hostname'],
+                    ['df', '-hl'],
+                    ['date'],
+                    ['sw_vers'],
+                    ['xcodebuild', '-sdk', '-version']]
+
+    def __init__(self, **kwargs):
+        super(PrintConfiguration, self).__init__(timeout=60, **kwargs)
+        self.commands = []
+        # FIXME: Check platform before running platform specific commands.
+        for command in self.command_list:
+            self.commands.append(util.ShellArg(command=command, logfile=command[0]))

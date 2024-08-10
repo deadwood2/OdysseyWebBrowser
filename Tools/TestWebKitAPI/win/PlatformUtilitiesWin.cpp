@@ -27,8 +27,8 @@
 #include "PlatformUtilities.h"
 
 #include <Shlwapi.h>
-#include <WebCore/FileSystem.h>
-#include <WebCore/URL.h>
+#include <wtf/FileSystem.h>
+#include <wtf/URL.h>
 #include <wtf/text/win/WCharStringExtras.h>
 
 namespace TestWebKitAPI {
@@ -40,19 +40,19 @@ static String moduleDirectory()
     wchar_t filename[bufferLength];
     auto len = GetModuleFileName(nullptr, filename, bufferLength);
     ASSERT(len > 0);
-    return WebCore::FileSystem::directoryName(wcharToString(filename, len));
+    return FileSystem::directoryName(wcharToString(filename, len));
 }
 
 WKStringRef createInjectedBundlePath()
 {
-    auto path = WebCore::FileSystem::pathByAppendingComponent(moduleDirectory(), String(L"TestWebKitAPIInjectedBundle.dll"));
+    auto path = FileSystem::pathByAppendingComponent(moduleDirectory(), String(L"TestWebKitAPIInjectedBundle.dll"));
     return WKStringCreateWithUTF8CString(path.utf8().data());
 }
 
 WKURLRef createURLForResource(const char* resource, const char* extension)
 {
-    String filename = String::format("..\\..\\..\\Tools\\TestWebKitAPI\\Tests\\WebKit\\%s.%s", resource, extension);
-    auto url = WebCore::URL::fileURLWithFileSystemPath(WebCore::FileSystem::pathByAppendingComponent(moduleDirectory(), filename));
+    String filename = makeString("..\\..\\..\\Tools\\TestWebKitAPI\\Tests\\WebKit\\", resource, '.', extension);
+    auto url = URL::fileURLWithFileSystemPath(FileSystem::pathByAppendingComponent(moduleDirectory(), filename));
     return WKURLCreateWithUTF8CString(url.string().utf8().data());
 }
 

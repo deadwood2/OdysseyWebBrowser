@@ -28,7 +28,7 @@
 #if ENABLE(GRAPHICS_CONTEXT_3D)
 #import "GraphicsContext3D.h"
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
 #import "GraphicsContext3DIOS.h"
 #endif
 
@@ -246,7 +246,7 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3DAttributes attrs, HostWind
     : m_attrs(attrs)
     , m_private(std::make_unique<GraphicsContext3DPrivate>(this))
 {
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY)
     if (m_attrs.isWebGL2)
         m_compiler = ANGLEWebKitBridge(SH_ESSL_OUTPUT, SH_WEBGL2_SPEC);
     else
@@ -264,6 +264,9 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3DAttributes attrs, HostWind
     else
         m_contextObj = [[EAGLContext alloc] initWithAPI:api sharegroup:sharedContext->m_contextObj.sharegroup];
     makeContextCurrent();
+
+    if (m_attrs.isWebGL2)
+        ::glEnable(GraphicsContext3D::PRIMITIVE_RESTART_FIXED_INDEX);
 #else
     Vector<CGLPixelFormatAttribute> attribs;
     CGLPixelFormatObj pixelFormatObj = 0;
@@ -286,7 +289,7 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3DAttributes attrs, HostWind
     bool useMultisampling = m_attrs.antialias;
 
 #if HAVE(APPLE_GRAPHICS_CONTROL)
-    m_powerPreferenceUsedForCreation = (hasMuxableGPU() && attrs.powerPreference == GraphicsContext3DPowerPreference::HighPerformance) ? GraphicsContext3DPowerPreference::HighPerformance : GraphicsContext3DPowerPreference::Default;
+    m_powerPreferenceUsedForCreation = (hasLowAndHighPowerGPUs() && attrs.powerPreference == GraphicsContext3DPowerPreference::HighPerformance) ? GraphicsContext3DPowerPreference::HighPerformance : GraphicsContext3DPowerPreference::Default;
 #else
     m_powerPreferenceUsedForCreation = GraphicsContext3DPowerPreference::Default;
 #endif
@@ -332,7 +335,7 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3DAttributes attrs, HostWind
 
 #else
     UNUSED_PARAM(hostWindow);
-#endif // !PLATFORM(MAC)
+#endif
 
     CGLDestroyPixelFormat(pixelFormatObj);
     
@@ -344,8 +347,11 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3DAttributes attrs, HostWind
 
     m_isForWebGL2 = attrs.isWebGL2;
 
-    // Set the current context to the one given to us.
     CGLSetCurrentContext(m_contextObj);
+
+    // WebGL 2 expects ES 3-only PRIMITIVE_RESTART_FIXED_INDEX to be enabled; we must emulate this on non-ES 3 systems.
+    if (m_isForWebGL2)
+        ::glEnable(GraphicsContext3D::PRIMITIVE_RESTART);
 
 #endif // !USE(OPENGL_ES)
     
@@ -559,7 +565,7 @@ bool GraphicsContext3D::texImageIOSurface2D(GC3Denum target, GC3Denum internalFo
 {
 #if USE(OPENGL)
     return kCGLNoError == CGLTexImageIOSurface2D(platformGraphicsContext3D(), target, internalFormat, width, height, format, type, surface, plane);
-#elif USE(OPENGL_ES) && !PLATFORM(IOS_SIMULATOR)
+#elif USE(OPENGL_ES) && !PLATFORM(IOS_FAMILY_SIMULATOR)
     return [platformGraphicsContext3D() texImageIOSurface:surface target:target internalFormat:internalFormat width:width height:height format:format type:type plane:plane];
 #else
     UNUSED_PARAM(target);
@@ -596,6 +602,7 @@ void GraphicsContext3D::updateCGLContext()
 
     makeContextCurrent();
     CGLUpdateContext(m_contextObj);
+    m_hasSwitchedToHighPerformanceGPU = true;
 }
 
 void GraphicsContext3D::setContextVisibility(bool isVisible)
@@ -641,7 +648,7 @@ bool GraphicsContext3D::allowOfflineRenderers() const
 #endif
         
 #if HAVE(APPLE_GRAPHICS_CONTROL)
-    if (hasMuxableGPU())
+    if (hasLowAndHighPowerGPUs())
         return true;
 #endif
     
@@ -654,7 +661,8 @@ void GraphicsContext3D::screenDidChange(PlatformDisplayID displayID)
     if (!m_contextObj)
         return;
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
-    setGPUByRegistryID(m_contextObj, CGLGetPixelFormat(m_contextObj), gpuIDForDisplay(displayID));
+    if (!m_hasSwitchedToHighPerformanceGPU)
+        setGPUByRegistryID(m_contextObj, CGLGetPixelFormat(m_contextObj), gpuIDForDisplay(displayID));
 #else
     setGPUByDisplayMask(m_contextObj, CGLGetPixelFormat(m_contextObj), displayMaskForDisplay(displayID));
 #endif

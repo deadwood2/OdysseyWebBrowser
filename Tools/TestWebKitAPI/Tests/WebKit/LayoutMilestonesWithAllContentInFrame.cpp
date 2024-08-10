@@ -53,7 +53,7 @@ static void didFinishNavigation(WKPageRef page, WKNavigationRef navigation, WKTy
 
 TEST(WebKit, LayoutMilestonesWithAllContentInFrame)
 {
-    WKRetainPtr<WKContextRef> context(AdoptWK, WKContextCreate());
+    WKRetainPtr<WKContextRef> context(AdoptWK, WKContextCreateWithConfiguration(nullptr));
     PlatformWebView webView(context.get());
 
     WKPageNavigationClientV3 loaderClient;
@@ -74,7 +74,7 @@ TEST(WebKit, LayoutMilestonesWithAllContentInFrame)
 
 TEST(WebKit, FirstVisuallyNonEmptyLayoutAfterPageCacheRestore)
 {
-    WKRetainPtr<WKContextRef> context(AdoptWK, WKContextCreate());
+    WKRetainPtr<WKContextRef> context(AdoptWK, WKContextCreateWithConfiguration(nullptr));
 
     WKContextSetCacheModel(context.get(), kWKCacheModelPrimaryWebBrowser); // Enables the Page Cache.
 
@@ -115,6 +115,28 @@ TEST(WebKit, FirstVisuallyNonEmptyLayoutAfterPageCacheRestore)
     Util::run(&didNavigate);
     EXPECT_TRUE(didNavigate);
     didNavigate = false;
+}
+
+TEST(WebKit, FirstVisuallyNonEmptyMilestoneWithLoadComplete)
+{
+    WKRetainPtr<WKContextRef> context(AdoptWK, WKContextCreateWithConfiguration(nullptr));
+    PlatformWebView webView(context.get());
+
+    WKPageNavigationClientV3 loaderClient;
+    memset(&loaderClient, 0, sizeof(loaderClient));
+
+    loaderClient.base.version = 3;
+    loaderClient.base.clientInfo = &webView;
+    loaderClient.renderingProgressDidChange = renderingProgressDidChange;
+
+    WKPageSetPageNavigationClient(webView.page(), &loaderClient.base);
+    didFirstVisuallyNonEmptyLayout = false;
+
+    WKPageListenForLayoutMilestones(webView.page(), WKPageRenderingProgressEventFirstVisuallyNonEmptyLayout);
+    WKPageLoadURL(webView.page(), adoptWK(Util::createURLForResource("async-script-load", "html")).get());
+
+    Util::run(&didFirstVisuallyNonEmptyLayout);
+    EXPECT_TRUE(didFirstVisuallyNonEmptyLayout);
 }
 
 } // namespace TestWebKitAPI

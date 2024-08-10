@@ -59,7 +59,7 @@ private:
 DatabaseManager::ProposedDatabase::ProposedDatabase(DatabaseManager& manager, SecurityOrigin& origin, const String& name, const String& displayName, unsigned long estimatedSize)
     : m_manager(manager)
     , m_origin(origin.isolatedCopy())
-    , m_details(name.isolatedCopy(), displayName.isolatedCopy(), estimatedSize, 0, 0, 0)
+    , m_details(name.isolatedCopy(), displayName.isolatedCopy(), estimatedSize, 0, WTF::nullopt, WTF::nullopt)
 {
     m_manager.addProposedDatabase(*this);
 }
@@ -183,7 +183,7 @@ ExceptionOr<Ref<Database>> DatabaseManager::tryToOpenDatabaseBackend(ScriptExecu
 
     // FIXME: What guarantees backendContext.securityOrigin() is non-null?
     DatabaseTracker::singleton().setDatabaseDetails(backendContext->securityOrigin(), name, displayName, estimatedSize);
-    return WTFMove(database);
+    return database;
 }
 
 void DatabaseManager::addProposedDatabase(ProposedDatabase& database)

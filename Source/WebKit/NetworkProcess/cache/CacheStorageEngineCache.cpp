@@ -160,7 +160,7 @@ static TraversalResult isolatedCopy(TraversalResult&& result)
 void Cache::open(CompletionCallback&& callback)
 {
     if (m_state == State::Open) {
-        callback(std::nullopt);
+        callback(WTF::nullopt);
         return;
     }
     if (m_state == State::Opening) {
@@ -181,7 +181,7 @@ void Cache::open(CompletionCallback&& callback)
                     return;
                 }
                 cache->m_records = WTFMove(traversalResult.records);
-                cache->finishOpening(WTFMove(callback), std::nullopt);
+                cache->finishOpening(WTFMove(callback), WTF::nullopt);
             });
             return;
         }
@@ -203,7 +203,7 @@ void Cache::open(CompletionCallback&& callback)
     });
 }
 
-void Cache::finishOpening(CompletionCallback&& callback, std::optional<Error>&& error)
+void Cache::finishOpening(CompletionCallback&& callback, Optional<Error>&& error)
 {
     Vector<std::reference_wrapper<RecordInformation>> records;
     for (auto& value : m_records.values()) {
@@ -226,10 +226,10 @@ void Cache::finishOpening(CompletionCallback&& callback, std::optional<Error>&& 
     }
     m_state = State::Open;
 
-    callback(std::nullopt);
+    callback(WTF::nullopt);
     auto callbacks = WTFMove(m_pendingOpeningCallbacks);
     for (auto& callback : callbacks)
-        callback(std::nullopt);
+        callback(WTF::nullopt);
 }
 
 class ReadRecordTaskCounter : public RefCounted<ReadRecordTaskCounter> {
@@ -370,7 +370,7 @@ private:
     {
     }
 
-    std::optional<Error> m_error;
+    Optional<Error> m_error;
     RecordIdentifiersCallback m_callback;
     Vector<uint64_t> m_recordIdentifiers;
 };
@@ -400,9 +400,14 @@ void Cache::storeRecords(Vector<Record>&& records, RecordIdentifiersCallback&& c
     }
 }
 
-void Cache::put(Vector<Record>&& records, RecordIdentifiersCallback&& callback)
+void Cache::put(Vector<Record>&& records, RecordIdentifiersCallback&& callback, CanRequestMoreSpace canRequestMoreSpace)
 {
     ASSERT(m_state == State::Open);
+
+    if (m_caches.isRequestingSpace()) {
+        m_pendingPutRequests.append({ WTFMove(records), WTFMove(callback) });
+        return;
+    }
 
     WebCore::CacheQueryOptions options;
     uint64_t spaceRequired = 0;
@@ -423,17 +428,31 @@ void Cache::put(Vector<Record>&& records, RecordIdentifiersCallback&& callback)
         return;
     }
 
-    m_caches.requestSpace(spaceRequired, [caches = makeRef(m_caches), identifier = m_identifier, records = WTFMove(records), callback = WTFMove(callback)](std::optional<DOMCacheEngine::Error>&& error) mutable {
+    if (canRequestMoreSpace == CanRequestMoreSpace::No) {
+        callback(makeUnexpected(DOMCacheEngine::Error::QuotaExceeded));
+        return;
+    }
+
+    m_caches.requestSpace(spaceRequired, [caches = makeRef(m_caches), identifier = m_identifier, records = WTFMove(records), callback = WTFMove(callback)](Optional<DOMCacheEngine::Error>&& error) mutable {
         if (error) {
             callback(makeUnexpected(error.value()));
             return;
         }
         auto* cache = caches->find(identifier);
-        if (!cache)
+        if (!cache) {
+            callback(makeUnexpected(DOMCacheEngine::Error::Internal));
             return;
+        }
 
-        cache->storeRecords(WTFMove(records), WTFMove(callback));
+        cache->put(WTFMove(records), WTFMove(callback), CanRequestMoreSpace::No);
     });
+}
+
+void Cache::retryPuttingPendingRecords()
+{
+    auto pendingPutRequests = WTFMove(m_pendingPutRequests);
+    for (auto& request : pendingPutRequests)
+        put(WTFMove(request.records), WTFMove(request.callback));
 }
 
 void Cache::remove(WebCore::ResourceRequest&& request, WebCore::CacheQueryOptions&& options, RecordIdentifiersCallback&& callback)
@@ -477,7 +496,7 @@ void Cache::removeFromRecordList(const Vector<uint64_t>& recordIdentifiers)
 
 void Cache::writeRecordToDisk(const RecordInformation& recordInformation, Record&& record, Ref<AsynchronousPutTaskCounter>&& taskCounter, uint64_t previousRecordSize)
 {
-    m_caches.writeRecord(*this, recordInformation, WTFMove(record), previousRecordSize, [taskCounter = WTFMove(taskCounter)](std::optional<Error>&& error) {
+    m_caches.writeRecord(*this, recordInformation, WTFMove(record), previousRecordSize, [taskCounter = WTFMove(taskCounter)](Optional<Error>&& error) {
         if (error)
             taskCounter->setError(error.value());
     });
@@ -555,7 +574,7 @@ Storage::Record Cache::encode(const RecordInformation& recordInformation, const 
     return { recordInformation.key, { }, header, body, { } };
 }
 
-std::optional<Cache::DecodedRecord> Cache::decodeRecordHeader(const Storage::Record& storage)
+Optional<Cache::DecodedRecord> Cache::decodeRecordHeader(const Storage::Record& storage)
 {
     WTF::Persistence::Decoder decoder(storage.header.data(), storage.header.size());
 
@@ -563,50 +582,50 @@ std::optional<Cache::DecodedRecord> Cache::decodeRecordHeader(const Storage::Rec
 
     double insertionTime;
     if (!decoder.decode(insertionTime))
-        return std::nullopt;
+        return WTF::nullopt;
 
     uint64_t size;
     if (!decoder.decode(size))
-        return std::nullopt;
+        return WTF::nullopt;
 
     if (!decoder.decode(record.requestHeadersGuard))
-        return std::nullopt;
+        return WTF::nullopt;
 
     if (!record.request.decodeWithoutPlatformData(decoder))
-        return std::nullopt;
+        return WTF::nullopt;
 
     if (!FetchOptions::decodePersistent(decoder, record.options))
-        return std::nullopt;
+        return WTF::nullopt;
 
     if (!decoder.decode(record.referrer))
-        return std::nullopt;
+        return WTF::nullopt;
 
     if (!decoder.decode(record.responseHeadersGuard))
-        return std::nullopt;
+        return WTF::nullopt;
 
     if (!decoder.decode(record.response))
-        return std::nullopt;
+        return WTF::nullopt;
 
     if (!decoder.decode(record.responseBodySize))
-        return std::nullopt;
+        return WTF::nullopt;
 
     if (!decoder.verifyChecksum())
-        return std::nullopt;
+        return WTF::nullopt;
 
     return DecodedRecord { insertionTime, size, WTFMove(record) };
 }
 
-std::optional<Record> Cache::decode(const Storage::Record& storage)
+Optional<Record> Cache::decode(const Storage::Record& storage)
 {
     auto result = decodeRecordHeader(storage);
 
     if (!result)
-        return std::nullopt;
+        return WTF::nullopt;
 
     auto record = WTFMove(result->record);
     record.responseBody = WebCore::SharedBuffer::create(storage.body.data(), storage.body.size());
 
-    return WTFMove(record);
+    return record;
 }
 
 Vector<Key> Cache::keys() const

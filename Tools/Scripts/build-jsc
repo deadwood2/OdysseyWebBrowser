@@ -123,7 +123,7 @@ if ($buildDir && !isCMakeBuild()) {
     exit 1;
 }
 
-if (isJSCOnly() && isWindows()) {
+if (isWinCairo() || (isJSCOnly() && isWindows())) {
     (system("python Tools/Scripts/update-webkit-wincairo-libs.py") == 0) or die;
     system("python Tools/Scripts/update-vswhere.py");
 }
@@ -141,7 +141,10 @@ if ($forceCLoop) {
 }
 
 if (isCMakeBuild()) {
-    push @cmakeArgs, $forceCLoop ? " -DENABLE_JIT=OFF" : " -DENABLE_JIT=ON";
+    if ($forceCLoop) {
+        push @cmakeArgs, " -DENABLE_JIT=OFF";
+        push @cmakeArgs, " -DENABLE_C_LOOP=ON";
+    }
     push @cmakeArgs, $ftlJIT ? " -DENABLE_FTL_JIT=ON" : " -DENABLE_FTL_JIT=OFF";
     if ($buildDir) {
         push @cmakeArgs, " " . sourceDir();
@@ -160,13 +163,14 @@ if (isCMakeBuild()) {
     }
 
     # This call only returns if nothing wrong happened
-    buildCMakeProjectOrExit(0, undef, $buildTarget, (cmakeBasedPortArguments(), @featureArgs, @cmakeArgs));
+    buildCMakeProjectOrExit(0, undef, $buildTarget, @featureArgs, @cmakeArgs);
     writeCongrats();
     exit exitStatus(0);
 }
 
 if (isAppleCocoaWebKit()) {
     push @options, ($forceCLoop ? "ENABLE_JIT=ENABLE_JIT=0" : "ENABLE_JIT=ENABLE_JIT");
+    push @options, ($forceCLoop ? "ENABLE_C_LOOP=ENABLE_C_LOOP" : "ENABLE_C_LOOP=ENABLE_C_LOOP=0");
     push @options, ($ftlJIT ? "ENABLE_FTL_JIT=ENABLE_FTL_JIT" : "ENABLE_FTL_JIT=ENABLE_FTL_JIT=0");
 
     sub option($$$)
@@ -198,11 +202,6 @@ sub buildMyProject
     chdir $projectDirectory or die "Can't find $projectName directory to build from";
     if (isAppleCocoaWebKit()) {
         $result = system "sh", "-c", ('xcodebuild -project ' . $projectName . '.xcodeproj "$@" | grep -v setenv && exit ${PIPESTATUS[0]}'), "xcodebuild",  @options, @ARGV, @additionalSupportOptions;
-    } elsif (isAppleWinWebKit() || isWinCairo()) {
-        # WTF is a part of JavaScriptCore.sln because jsc.exe wouldn't start otherwise.
-        if ($projectName ne "WTF") {
-            $result = buildVisualStudioProject("$projectName.vcxproj/$projectName.sln");
-        }
     } else {
         die "Building not defined for this platform!\n";
     }
@@ -221,9 +220,7 @@ sub writeCongrats()
     print "====================================================================\n";
 }
 
-if (!isAppleWinWebKit() && !isWinCairo()) {
-    buildMyProject("Source/bmalloc", "bmalloc");
-}
+buildMyProject("Source/bmalloc", "bmalloc");
 buildMyProject("Source/WTF", "WTF");
 buildMyProject("Source/JavaScriptCore", "JavaScriptCore");
 if (isAppleCocoaWebKit() && $cli) {
