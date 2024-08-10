@@ -35,7 +35,7 @@
 #include "ContextMenu.h"
 #include "ContextMenuController.h"
 #include <wtf/text/CString.h>
-#include <wtf/CurrentTime.h>
+#include <wtf/MonotonicTime.h>
 #include "SharedBuffer.h"
 #include "DocumentLoader.h"
 #include "EventHandler.h"
@@ -71,6 +71,7 @@
 #include "WebIconDatabase.h"
 #include "AutofillManager.h"
 #include "TopSitesManager.h"
+#include "platform/graphics/cairo/PlatformContextCairo.h"
 
 #if ENABLE(VIDEO)
 #include "HTMLMediaElement.h"
@@ -1575,7 +1576,7 @@ DEFSMETHOD(OWBBrowser_Update)
 {
 	GETDATA;
 
-	//double start = currentTime();
+	//double start = MonotonicTime::now().secondsSinceEpoch().value();
 
 	unsigned int stride;
 	unsigned char *src;
@@ -1628,7 +1629,7 @@ DEFSMETHOD(OWBBrowser_Update)
 		}
 	}
 
-	//kprintf("[update] %f ms\n", (currentTime() - start)*1000);
+	//kprintf("[update] %f ms\n", (MonotonicTime::now().secondsSinceEpoch().value() - start)*1000);
 
 	return 0;
 }
@@ -1637,7 +1638,7 @@ DEFSMETHOD(OWBBrowser_Scroll)
 {
 	GETDATA;
 
-	//double start = currentTime();
+	//double start = MonotonicTime::now().secondsSinceEpoch().value();
 
 	data->scrollrect = *((IntRect *)msg->rect);
 	data->dx = msg->dx;
@@ -1654,7 +1655,7 @@ DEFSMETHOD(OWBBrowser_Scroll)
 
     data->pendingscrollrect = data->scrollrect;
 
-	//kprintf("[scroll] %f ms\n", (currentTime() - start)*1000);
+	//kprintf("[scroll] %f ms\n", (MonotonicTime::now().secondsSinceEpoch().value() - start)*1000);
 
 	return 0;
 }
@@ -1992,13 +1993,13 @@ DEFMMETHOD(HandleEvent)
 						{
 							if(!(Code & IECODE_UP_PREFIX))
 							{
-								double now = currentTime();
+								double now = MonotonicTime::now().secondsSinceEpoch().value();
 								if(DoubleClick((ULONG) data->video_lastclick, (ULONG) ((data->video_lastclick - floor(data->video_lastclick)) * 1000000), (ULONG) now, (ULONG) ((now - floor(now)) * 1000000)))
 								{
 		                            data->video_element->exitFullscreen();
 								}
 
-								data->video_lastclick = currentTime();
+								data->video_lastclick = MonotonicTime::now().secondsSinceEpoch().value();
 							}
 							break;
 						}
@@ -2181,7 +2182,7 @@ DEFMMETHOD(HandleEvent)
 									if(was_scrolling)
 									{
 										// And that we doubleclicked, switch to second scrolling mode
-										if((currentTime() - data->lastMMBClickTime) < 0.5)
+										if((MonotonicTime::now().secondsSinceEpoch().value() - data->lastMMBClickTime) < 0.5)
 										{
                                             autoscroll_add(obj, data, &im);										   
 										}
@@ -2194,7 +2195,7 @@ DEFMMETHOD(HandleEvent)
 									}
 								}
 
-								data->lastMMBClickTime = currentTime();
+								data->lastMMBClickTime = MonotonicTime::now().secondsSinceEpoch().value();
 							}
 							else
 							{
@@ -3157,7 +3158,8 @@ DEFSMETHOD(OWBBrowser_Print)
 			{
 				if (frame->contentRenderer())
 				{
-					GraphicsContext ctx(cr);
+					PlatformGraphicsContext pctx(cr);
+					GraphicsContext ctx(&pctx);
 
 					for(int i = 0; i < printContext.pageCount(); i++)
 					{

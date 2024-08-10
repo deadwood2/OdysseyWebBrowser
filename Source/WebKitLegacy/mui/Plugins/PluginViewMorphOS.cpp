@@ -56,8 +56,8 @@
 #include "ScriptController.h"
 #include "npruntime_impl.h"
 #include "runtime_root.h"
-#include <runtime/JSLock.h>
-#include <runtime/JSCJSValue.h>
+#include <JavaScriptCore/JSLock.h>
+#include <JavaScriptCore/JSCJSValue.h>
 
 #include <sys/stat.h>
 #include <fcntl.h>

@@ -34,6 +34,7 @@
 
 #include "WebFrame.h"
 #include "WebView.h"
+#include "platform/graphics/cairo/PlatformContextCairo.h"
 
 #include <proto/dos.h>
 #include <cairo/cairo-ps.h>
@@ -410,7 +411,8 @@ DEFTMETHOD(PrinterWindow_Start)
 					{
 						if (data->frame->contentRenderer())
 						{
-							GraphicsContext ctx(cr);
+							PlatformGraphicsContext pctx(cr);
+							GraphicsContext ctx(&pctx);
 
 							for(int i = pj->first - 1; i < pj->last; i++)
 							{

@@ -39,7 +39,7 @@
 #include "DownloadDelegateMorphOS.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include <wtf/CurrentTime.h>
+#include <wtf/MonotonicTime.h>
 #include "URL.h"
 
 #include <dos/dos.h>
@@ -206,7 +206,7 @@ void DownloadDelegateMorphOS::didReceiveDataOfLength(WebDownload* download, unsi
 
 	WebDownloadPrivate* priv = download->getWebDownloadPrivate();
 
-	double currenttime = currentTime();
+	double currenttime = MonotonicTime::now().secondsSinceEpoch().value();
 
 	if(priv->dl)
 	{

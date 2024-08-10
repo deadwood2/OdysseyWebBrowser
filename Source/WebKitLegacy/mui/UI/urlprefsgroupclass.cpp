@@ -31,7 +31,7 @@
 #include <wtf/text/CString.h>
 #include "FileIOLinux.h"
 #include "Page.h"
-#include <yarr/RegularExpression.h>
+#include <JavaScriptCore/RegularExpression.h>
 #include "Settings.h"
 #include "CookieManager.h"
 #include "WebView.h"
@@ -497,7 +497,7 @@ DEFSMETHOD(URLPrefsGroup_ApplySettingsForURL)
 		{
 			struct urlsettingnode *un = (struct urlsettingnode *) n;
 
-			JSC::Yarr::RegularExpression re(un->urlpattern, TextCaseInsensitive);
+			JSC::Yarr::RegularExpression re(un->urlpattern, JSC::Yarr::TextCaseInsensitive);
 
 			if(re.match(msg->url) >=0)
 			{
@@ -553,7 +553,7 @@ DEFSMETHOD(URLPrefsGroup_MatchesURL)
 	{
 		struct urlsettingnode *un = (struct urlsettingnode *) n;
 
-		JSC::Yarr::RegularExpression re(un->urlpattern, TextCaseInsensitive);
+		JSC::Yarr::RegularExpression re(un->urlpattern, JSC::Yarr::TextCaseInsensitive);
 
 		if(re.match(msg->url) >=0)
 		{
@@ -573,7 +573,7 @@ DEFSMETHOD(URLPrefsGroup_UserAgentForURL)
 	{
 		struct urlsettingnode *un = (struct urlsettingnode *) n;
 
-		JSC::Yarr::RegularExpression re(un->urlpattern, TextCaseInsensitive);
+		JSC::Yarr::RegularExpression re(un->urlpattern, JSC::Yarr::TextCaseInsensitive);
 
 		if(re.match(msg->url) >=0)
 		{
@@ -604,11 +604,11 @@ DEFSMETHOD(URLPrefsGroup_CookiePolicyForURLAndName)
 	{
 		struct urlsettingnode *un = (struct urlsettingnode *) n;
 
-		JSC::Yarr::RegularExpression re_url(un->urlpattern, TextCaseInsensitive);
+		JSC::Yarr::RegularExpression re_url(un->urlpattern, JSC::Yarr::TextCaseInsensitive);
 
 		if(re_url.match(msg->url) >= 0)
 		{
-			JSC::Yarr::RegularExpression re_name(un->settings.cookiefilter, TextCaseInsensitive);
+			JSC::Yarr::RegularExpression re_name(un->settings.cookiefilter, JSC::Yarr::TextCaseInsensitive);
 
 			if(re_name.match(msg->name) >= 0)
 			{

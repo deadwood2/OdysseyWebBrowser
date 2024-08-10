@@ -58,8 +58,6 @@
 #include "ResourceResponse.h"
 
 #include <wtf/text/CString.h>
-#include <runtime/InitializeThreading.h>
-#include <wtf/CurrentTime.h>
 #include <wtf/MainThread.h>
 #include <wtf/StdLibExtras.h>
 
@@ -1768,7 +1766,7 @@ public:
 	 : m_mediaPlayer(player)
 	{}
 
-	virtual void didReceiveResponse(ResourceHandle*, ResourceResponse&& response) override
+	virtual void didReceiveResponseAsync(ResourceHandle*, ResourceResponse&& response, CompletionHandler<void()>&&) override
 	{
 		D(kprintf("[StreamClient] didReceiveResponse\n"));
 		m_mediaPlayer->didReceiveResponse(response);
@@ -1791,6 +1789,10 @@ public:
 		D(kprintf("[StreamClient] didFail\n"));
 		m_mediaPlayer->didFailLoading(error);
 	}
+
+    void willSendRequestAsync(ResourceHandle*, ResourceRequest&&, ResourceResponse&&, CompletionHandler<void(ResourceRequest&&)>&&) override
+    {
+    }
 
 private:
 	MediaPlayerPrivate* m_mediaPlayer;
@@ -2284,7 +2286,7 @@ bool MediaPlayerPrivate::fetchData(unsigned long long startOffset)
 		}
 
 
-		m_ctx->resource_handle = ResourceHandle::create(context, request,  m_ctx->stream_client, false, false);
+		m_ctx->resource_handle = ResourceHandle::create(context, request,  m_ctx->stream_client, false, false, false);
 
 		if(m_ctx->resource_handle)
 		{
@@ -2470,7 +2472,7 @@ void MediaPlayerPrivate::videoDecoder()
 		else if(pckt)
 		{
             double decodeTime = 0;
-            double decodeStart = WTF::currentTime();
+            double decodeStart = MonotonicTime::now().secondsSinceEpoch().value();
 			bool decoded = false;
 			
 			D(kprintf("[Video Thread] Decoding packet\n"));
@@ -2480,7 +2482,7 @@ void MediaPlayerPrivate::videoDecoder()
 			{
 				double delay = 0.0;
 
-				decodeTime = WTF::currentTime() - decodeStart;
+				decodeTime = MonotonicTime::now().secondsSinceEpoch().value() - decodeStart;
 
 				/* Try to sync on audio timecode (if there is audio) */
 				if(m_ctx->video->timecode >= m_ctx->video_last_timecode && m_ctx->video->timecode <= m_ctx->video_last_timecode + 1)
@@ -2510,7 +2512,7 @@ void MediaPlayerPrivate::videoDecoder()
 
 				m_ctx->video_last_timecode = m_ctx->video->timecode;
 
-				D(kprintf("[Video Thread] [%f] Timecode: %f. Decoding took %f. Waiting for frame schedule %f\n", WTF::currentTime(), m_ctx->video->timecode, decodeTime, delay));
+				D(kprintf("[Video Thread] [%f] Timecode: %f. Decoding took %f. Waiting for frame schedule %f\n", MonotonicTime::now(), m_ctx->video->timecode, decodeTime, delay));
 
 				// Painting must be done in main thread context
 asm("int3");
@@ -2625,7 +2627,7 @@ void MediaPlayerPrivate::audioDecoder()
 		else if(pckt)
 		{
             double decodeTime = 0;
-            double decodeStart = WTF::currentTime();
+            double decodeStart = MonotonicTime::now().secondsSinceEpoch().value();
 			bool decoded = false;
 
 			decoded = ac_decode_package(pckt, m_ctx->audio);
@@ -2633,7 +2635,7 @@ void MediaPlayerPrivate::audioDecoder()
 			if(decoded)
 			{
 				double delay = 0.0;
-				decodeTime = WTF::currentTime() - decodeStart;
+				decodeTime = MonotonicTime::now().secondsSinceEpoch().value() - decodeStart;
 
 				// That buffer should play for that time
 				delay = (double) m_ctx->audio->buffer_size/(m_ctx->sample_rate*(m_ctx->sample_bits/8)*m_ctx->sample_channels);
@@ -2697,7 +2699,7 @@ void MediaPlayerPrivate::audioDecoder()
 							data_to_put = m_ctx->audio->buffer_size;
 						}
 
-						D(kprintf("[Audio Thread] [%f] Writing %ld to offset %ld\n", WTF::currentTime(), data_to_put, stream->buffer_put));
+						D(kprintf("[Audio Thread] [%f] Writing %ld to offset %ld\n", MonotonicTime::now(), data_to_put, stream->buffer_put));
 
 						// XXX: Handle conversions
 						memcpy(stream->buffer + stream->buffer_put, m_ctx->audio->pBuffer, data_to_put);
@@ -2721,7 +2723,7 @@ void MediaPlayerPrivate::audioDecoder()
 
 				m_ctx->audio_output_mutex->unlock();
 
-				D(kprintf("[Audio Thread] [%f] Stream TimeCode %f Real TimeCode %f. Waiting for frame schedule %f\n", WTF::currentTime(), m_ctx->audio->timecode, m_ctx->audio_timecode, delay));
+				D(kprintf("[Audio Thread] [%f] Stream TimeCode %f Real TimeCode %f. Waiting for frame schedule %f\n", MonotonicTime::now(), m_ctx->audio->timecode, m_ctx->audio_timecode, delay));
 
 				if(delay > 0)
 				{
@@ -2800,7 +2802,7 @@ void MediaPlayerPrivate::audioOutput()
 					continue;
 				}
 
-				D(kprintf("[Audio Output Thread] [%f] Reading %ld at offset %ld\n", WTF::currentTime(), stream->sample_len, stream->buffer_get));
+				D(kprintf("[Audio Output Thread] [%f] Reading %ld at offset %ld\n", MonotonicTime::now(), stream->sample_len, stream->buffer_get));
 				memcpy(dst, stream->buffer + stream->buffer_get, stream->sample_len);
 
 				stream->written_len -= stream->sample_len;
@@ -2808,7 +2810,7 @@ void MediaPlayerPrivate::audioOutput()
 				stream->buffer_get  += stream->sample_len;
 				stream->buffer_get  %= stream->buffer_len;
 
-				D(kprintf("[Audio Output Thread] [%f] buffer_put %ld buffer_get %ld written_len %d\n", WTF::currentTime(), stream->buffer_put, stream->buffer_get, stream->written_len));
+				D(kprintf("[Audio Output Thread] [%f] buffer_put %ld buffer_get %ld written_len %d\n", MonotonicTime::now(), stream->buffer_put, stream->buffer_get, stream->written_len));
 
 				ReleaseSemaphore(&stream->sembuffer);
 			}
@@ -3867,7 +3869,7 @@ void MediaPlayerPrivate::paint(GraphicsContext& context, const FloatRect& rect)
 		BENCHMARK_EXPRESSION(kprintf("[MediaPlayer] Idle Cairo blit %f ms\n", diffBenchmark*1000));
 	}
 
-	D(kprintf("[MediaPlayer] Paint %f ms\n", (WTF::currentTime() - startBenchmark)*1000));
+	D(kprintf("[MediaPlayer] Paint %f ms\n", (MonotonicTime::now() - startBenchmark)*1000));
 }
 
 void MediaPlayerPrivate::getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types)

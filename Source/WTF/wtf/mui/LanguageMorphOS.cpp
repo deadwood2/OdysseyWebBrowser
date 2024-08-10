@@ -33,9 +33,9 @@
 #include <wtf/text/WTFString.h>
 
 #include <exec/types.h>
-#include "utils.h"
+STRPTR get_language(STRPTR code, ULONG len);
 
-namespace WebCore {
+namespace WTF {
 
 String platformDefaultLanguage()
 {

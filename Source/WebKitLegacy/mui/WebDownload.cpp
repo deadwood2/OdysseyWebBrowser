@@ -84,7 +84,8 @@ public:
     DownloadClient(WebDownload*);
 
     void didStart();
-    virtual void didReceiveResponse(ResourceHandle*, WebCore::ResourceResponse&&) override;
+    virtual void willSendRequestAsync(ResourceHandle*, ResourceRequest&&, ResourceResponse&&, CompletionHandler<void(ResourceRequest&&)>&&) override;
+    virtual void didReceiveResponseAsync(ResourceHandle*, ResourceResponse&&, CompletionHandler<void()>&&) override;
     virtual void didReceiveData(ResourceHandle*, const char*, unsigned, int) override;
     virtual void didFinishLoading(ResourceHandle*) override;
     virtual void didFail(ResourceHandle*, const ResourceError&) override;
@@ -110,7 +111,11 @@ void DownloadClient::didStart()
     m_download->downloadDelegate()->didBegin(m_download);
 }
 
-void DownloadClient::didReceiveResponse(ResourceHandle*, WebCore::ResourceResponse&& response)
+void DownloadClient::willSendRequestAsync(ResourceHandle*, ResourceRequest&&, ResourceResponse&&, CompletionHandler<void(ResourceRequest&&)>&&)
+{
+}
+
+void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceResponse&& response, CompletionHandler<void()>&&)
 {
     if (!m_download->downloadDelegate())
         return;
@@ -191,7 +196,7 @@ void DownloadClient::didReceiveResponse(ResourceHandle*, WebCore::ResourceRespon
 		if(priv->allowResume)
 		{
 			priv->resourceHandle->cancel();
-			priv->resourceHandle = ResourceHandle::create(NULL, *priv->resourceRequest, priv->downloadClient, false, false);
+			priv->resourceHandle = ResourceHandle::create(NULL, *priv->resourceRequest, priv->downloadClient, false, false, false);
 			priv->resourceHandle->setStartOffset(priv->startOffset);
 			return;
 		}
@@ -465,7 +470,7 @@ void WebDownload::start(bool quiet)
     else
     {
         m_priv->downloadClient->didStart();
-		m_priv->resourceHandle = ResourceHandle::create(NULL, m_request->resourceRequest(), m_priv->downloadClient, false, false);
+		m_priv->resourceHandle = ResourceHandle::create(NULL, m_request->resourceRequest(), m_priv->downloadClient, false, false, false);
 		if(m_priv->resourceHandle)
 		{
 			m_priv->resourceHandle->getInternal()->m_disableEncoding = (m_priv->requestUri.endsWith(".gz") || m_priv->requestUri.endsWith(".tgz")) == true; // HACK to disable on-the-fly gzip decoding

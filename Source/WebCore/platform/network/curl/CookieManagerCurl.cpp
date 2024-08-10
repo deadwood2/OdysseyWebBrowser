@@ -240,7 +240,7 @@ void CookieManager::getRawCookies(Vector<ParsedCookie*> &stackOfCookies, const U
     // Return on invalid schemes. cookies are currently disabled on file and local.
     // We only want to enable them for WebWorks that enabled a special flag.
     if (specialCaseForWebWorks)
-        copyValuesToVector(m_managerMap, protocolsToSearch);
+        protocolsToSearch = copyToVector(m_managerMap.values());
     else if (invalidScheme)
         return;
     else {
@@ -310,14 +310,14 @@ void CookieManager::getRawCookies(Vector<ParsedCookie*> &stackOfCookies, const U
         // we should add a '/' at the end of cookie-path for comparison if the cookie-path is not end with '/'.
         String path = cookie->path();
         CookieLog("CookieManager - comparing cookie path %s (len %d) to request path %s (len %d)", path.utf8().data(), path.length(), requestURL.path().utf8().data(), path.length());
-        if (!equalIgnoringASCIICase(path, requestURL.path()) && !path.endsWith("/", false))
+        if (!equalIgnoringASCIICase(path, requestURL.path()) && !path.endsWith("/"))
             path = path + "/";
 
         // Only secure connections have access to secure cookies. Unless specialCaseForWebWorks is true.
         // Get the cookies filtering out HttpOnly cookies if requested.
-        if (requestURL.path().startsWith(path, false) && (isConnectionSecure || !cookie->isSecure()) && (filter == WithHttpOnlyCookies || !cookie->isHttpOnly())) {
+        if (requestURL.path().startsWith(path) && (isConnectionSecure || !cookie->isSecure()) && (filter == WithHttpOnlyCookies || !cookie->isHttpOnly())) {
             CookieLog("CookieManager - cookie chosen - %s\n", cookie->toString().utf8().data());
-            cookie->setLastAccessed(currentTime());
+            cookie->setLastAccessed(MonotonicTime::now().secondsSinceEpoch().value());
             stackOfCookies.append(cookie);
         }
     }
@@ -592,7 +592,7 @@ void CookieManager::removeCookieWithName(const URL& url, const String& cookieNam
         ParsedCookie* cookie = results[i];
         if (!equalIgnoringASCIICase(cookie->name(), cookieName))
             continue;
-        if (url.path().startsWith(cookie->path(), false)) {
+        if (url.path().startsWith(cookie->path())) {
             cookie->forceExpire();
             checkAndTreatCookie(cookie, RemoveFromBackingStore);
         }
@@ -605,7 +605,7 @@ void CookieManager::removeCookiesFromDomain(const String &protocol, const String
 	String url = protocol;
 	String mdomain = domain;
 	url.append("://");
-	if(mdomain.startsWith(".", false))
+	if(mdomain.startsWith("."))
 		mdomain = mdomain.substring(1);
 	url.append(mdomain);
 	URL kurl(ParsedURLString, url);

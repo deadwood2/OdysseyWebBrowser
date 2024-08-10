@@ -73,6 +73,7 @@
 #include "WebScriptWorld.h"
 #include "WebView.h"
 #include "WindowFeatures.h"
+#include "platform/graphics/cairo/PlatformContextCairo.h"
 
 #include "CommonVM.h"
 
@@ -733,9 +734,10 @@ BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
 		return IntRect();
 
 	volatile double start = 0, layout = 0, paint = 0, blit = 0, inspector = 0; //
-	if(renderBenchmark) start = currentTime(); //
+	if(renderBenchmark) start = MonotonicTime::now().secondsSinceEpoch().value(); //
 
-    GraphicsContext ctx(widget->cr);
+    PlatformGraphicsContext pctx(widget->cr);
+    GraphicsContext ctx(&pctx);
 	IntRect rect(m_webView->dirtyRegion());
 
 	//kprintf("WebViewPrivate::onExpose(%d,%d,%d,%d)\n", rect.x(), rect.y(), rect.width(), rect.height());
@@ -754,18 +756,18 @@ BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
 
 			frame->view()->updateLayoutAndStyleIfNeededRecursive();
 
-			if(renderBenchmark)	{ layout = currentTime() - start; start = currentTime(); kprintf("Painting [%d %d %d %d]\n", rect.x(), rect.y(), rect.width(), rect.height()); } //
+			if(renderBenchmark)	{ layout = MonotonicTime::now().secondsSinceEpoch().value() - start; start = MonotonicTime::now().secondsSinceEpoch().value(); kprintf("Painting [%d %d %d %d]\n", rect.x(), rect.y(), rect.width(), rect.height()); } //
 
 			ctx.save();
 			ctx.clip(rect);
 			frame->view()->paint(ctx, rect);
 			ctx.restore();
 
-			if(renderBenchmark)	{ paint = currentTime() - start; start = currentTime(); kprintf("Painting inspector [%d %d %d %d]\n", rect.x(), rect.y(), rect.width(), rect.height()); } //
+			if(renderBenchmark)	{ paint = MonotonicTime::now().secondsSinceEpoch().value() - start; start = MonotonicTime::now().secondsSinceEpoch().value(); kprintf("Painting inspector [%d %d %d %d]\n", rect.x(), rect.y(), rect.width(), rect.height()); } //
 
 			updateView(widget, rect, false);
 
-			if(renderBenchmark)	{ blit = currentTime() - start; } //
+			if(renderBenchmark)	{ blit = MonotonicTime::now().secondsSinceEpoch().value() - start; } //
 		}
 		else
 		{
@@ -776,7 +778,7 @@ BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
 
 			frame->view()->updateLayoutAndStyleIfNeededRecursive();
 
-			if(renderBenchmark)	{ layout = currentTime() - start; start = currentTime(); } //
+			if(renderBenchmark)	{ layout = MonotonicTime::now().secondsSinceEpoch().value() - start; start = MonotonicTime::now().secondsSinceEpoch().value(); } //
 
 			for(size_t i = 0; i < dirtyRegions.size(); i++)
 			{
@@ -791,17 +793,17 @@ BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
 				frame->page()->inspectorController()->drawHighlight(ctx);
 				ctx.restore();
 */
-				if(renderBenchmark)	{ paint += currentTime() - start; start = currentTime(); kprintf("Blitting [%d %d %d %d]\n", dirtyRegions[i].x(), dirtyRegions[i].y(), dirtyRegions[i].width(), dirtyRegions[i].height()); } //
+				if(renderBenchmark)	{ paint += MonotonicTime::now().secondsSinceEpoch().value() - start; start = MonotonicTime::now().secondsSinceEpoch().value(); kprintf("Blitting [%d %d %d %d]\n", dirtyRegions[i].x(), dirtyRegions[i].y(), dirtyRegions[i].width(), dirtyRegions[i].height()); } //
 
 				updateView(widget, dirtyRegions[i], false);
 
-				if(renderBenchmark)	{ blit += currentTime() - start; start = currentTime(); } //
+				if(renderBenchmark)	{ blit += MonotonicTime::now().secondsSinceEpoch().value() - start; start = MonotonicTime::now().secondsSinceEpoch().value(); } //
 			}
 		}
 
 		updateView(widget, rect, true);
 
-		if(renderBenchmark) blit += currentTime() - start; //
+		if(renderBenchmark) blit += MonotonicTime::now().secondsSinceEpoch().value() - start; //
     }
 
     if(renderBenchmark)
@@ -847,7 +849,8 @@ bool WebViewPrivate::screenshot(int &requested_width, int& requested_height, Vec
 			{
 				if (frame->contentRenderer())
 				{
-					GraphicsContext ctx(cr);
+					PlatformGraphicsContext pctx(cr);
+					GraphicsContext ctx(&pctx);
 
 					IntRect rect(m_rect);
 
@@ -891,7 +894,8 @@ bool WebViewPrivate::screenshot(String& path)
 			{
 				if (frame->contentRenderer())
 				{
-					GraphicsContext ctx(cr);
+					PlatformGraphicsContext pctx(cr);
+					GraphicsContext ctx(&pctx);
 
 					IntRect rect(m_rect);
 
@@ -1500,7 +1504,7 @@ void WebViewPrivate::scrollBackingStore(WebCore::FrameView* view, int dx, int dy
 	double start = 0;
 	if(renderBenchmark)
 	{
-		start = currentTime();
+		start = MonotonicTime::now().secondsSinceEpoch().value();
 		kprintf("WebViewPrivate::scrollBackingStore(%d, %d, scrollViewRect[%d, %d, %d, %d], clipRect[%d, %d, %d, %d])\n", dx, dy,
 								scrollViewRect.x(), scrollViewRect.y(), scrollViewRect.width(), scrollViewRect.height(),
 								clipRect.x(), clipRect.y(), clipRect.width(), clipRect.height());
@@ -1578,7 +1582,7 @@ void WebViewPrivate::scrollBackingStore(WebCore::FrameView* view, int dx, int dy
 	sendExposeEvent(updateRect); // only processed at next expose event, potential lag
 	//onExpose(0);               // immediate, but scrolling sideffect with fixed elements
 
-   if(renderBenchmark) { kprintf("WebViewPrivate::scrollBackingStore()\n  Scroll: %f ms\n", currentTime() - start); } //
+   if(renderBenchmark) { kprintf("WebViewPrivate::scrollBackingStore()\n  Scroll: %f ms\n", MonotonicTime::now().secondsSinceEpoch().value() - start); } //
 }
 
 /* Implement these properly */

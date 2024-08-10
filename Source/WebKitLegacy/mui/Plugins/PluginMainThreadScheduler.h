@@ -39,6 +39,7 @@ namespace WebCore {
 class PluginMainThreadScheduler {
     WTF_MAKE_NONCOPYABLE(PluginMainThreadScheduler); WTF_MAKE_FAST_ALLOCATED;
 public:
+    PluginMainThreadScheduler();
     typedef void MainThreadFunction(void*);
 
     WEBCORE_EXPORT static PluginMainThreadScheduler& scheduler();
@@ -49,7 +50,6 @@ public:
     WEBCORE_EXPORT void unregisterPlugin(NPP);
 
 private:
-    PluginMainThreadScheduler();
     void dispatchCalls();
 
     class Call;

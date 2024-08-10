@@ -127,7 +127,7 @@ PlatformWheelEvent::PlatformWheelEvent(BalEventScroll* event)
 
 	m_type = PlatformEvent::Wheel;
 	
-	m_timestamp = WTF::currentTime();
+	m_timestamp = WallTime::fromRawSeconds(MonotonicTime::now().secondsSinceEpoch().value());
     m_position = IntPoint((int)event->MouseX, (int)event->MouseY);
     m_globalPosition = IntPoint((int)event->MouseX, (int)event->MouseY);
     m_directionInvertedFromDevice = false;}

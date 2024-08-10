@@ -5,8 +5,8 @@ list(APPEND WTF_SOURCES
     ThreadingPthreads.cpp
     generic/WorkQueueGeneric.cpp
     generic/RunLoopGeneric.cpp
-    PlatformUserPreferredLanguagesUnix.cpp
     text/mui/TextBreakIteratorInternalICUMorphOS.cpp
     linux/MemoryFootprintLinux.cpp
     mui/CPUTimeAROS.cpp
+    mui/LanguageMorphOS.cpp
 )

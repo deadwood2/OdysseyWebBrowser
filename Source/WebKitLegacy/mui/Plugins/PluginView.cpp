@@ -71,9 +71,9 @@
 #include "c_instance.h"
 #include "npruntime_impl.h"
 #include "runtime_root.h"
-#include <bindings/ScriptValue.h>
-#include <runtime/JSCJSValue.h>
-#include <runtime/JSLock.h>
+#include <JavaScriptCore/JSCJSValue.h>
+#include <JavaScriptCore/JSLock.h>
+#include <JavaScriptCore/ScriptValue.h>
 #include <wtf/ASCIICType.h>
 #include <wtf/text/WTFString.h>
 
@@ -1078,7 +1078,7 @@ NPError PluginView::handlePost(const char* url, const char* target, uint32_t len
                 String contentLength = headerFields.get(HTTPHeaderName::ContentLength);
 
                 if (!contentLength.isNull())
-                    dataLength = min(contentLength.toInt(), (int)dataLength);
+                    dataLength = std::min(contentLength.toInt(), (int)dataLength);
                 headerFields.remove(HTTPHeaderName::ContentLength);
 
                 postData += location;

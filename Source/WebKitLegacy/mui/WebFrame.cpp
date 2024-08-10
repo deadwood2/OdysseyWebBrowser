@@ -29,8 +29,6 @@
 #include "config.h"
 #include "WebFrame.h"
 #include <HistoryItem.h>
-//#include "BalInstance.h"
-//#include "BALValue.h"
 #include "DefaultPolicyDelegate.h"
 #include "DOMCoreClasses.h"
 #include "FormValuesPropertyBag.h"
@@ -84,7 +82,6 @@
 #include <PluginDatabase.h>
 #include <PluginView.h>
 #include <PrintContext.h>
-#include <PutPropertySlot.h>
 #include <ResourceHandle.h>
 #include <ResourceHandle.h>
 #include <ResourceRequest.h>
@@ -95,7 +92,7 @@
 #include <TextIterator.h>
 #include <JSDOMBinding.h>
 #include <ScriptController.h>
-#include <API/APICast.h>
+#include <JavaScriptCore/APICast.h>
 #include "runtime_object.h"
 #include <wtf/MathExtras.h>
 #include "ObserverServiceBookmarklet.h"
@@ -103,12 +100,10 @@
 #include "ObserverServiceData.h"
 #include "ObserverData.h"
 #include "WebObject.h"
-#include "CallFrame.h"
-#include "JSGlobalObject.h"
-#include "JSLock.h"
-#include "JSObject.h"
-#include "JSDOMWindowBase.h"
-#include "JSDOMWindow.h"
+#include <JavaScriptCore/JSGlobalObject.h>
+#include <JavaScriptCore/JSLock.h>
+#include <JavaScriptCore/JSObject.h>
+#include <WebCore/JSDOMWindowBase.h>
 
 using namespace WebCore;
 using namespace HTMLNames;
@@ -562,7 +557,7 @@ void WebFrame::layout()
     if (!view)
         return ;
 
-    view->layout();
+    view->layoutContext().layout();
 }
 
 bool WebFrame::firstLayoutDone()
@@ -1084,8 +1079,8 @@ const char* WebFrame::toString()
     Frame* coreFrame = core(this);
     if (!coreFrame)
         return "";
-    if (coreFrame->view() && coreFrame->view()->layoutPending())
-        coreFrame->view()->layout();
+    if (coreFrame->view() && coreFrame->view()->layoutContext().isLayoutPending())
+        coreFrame->view()->layoutContext().layout();
 
     Element *documentElement = coreFrame->document()->documentElement();
     String string =  documentElement->innerText();
@@ -1095,8 +1090,8 @@ const char* WebFrame::toString()
 const char* WebFrame::renderTreeDump() const
 {
     Frame* coreFrame = core(this);
-    if (coreFrame->view() && coreFrame->view()->layoutPending())
-        coreFrame->view()->layout();
+    if (coreFrame->view() && coreFrame->view()->layoutContext().isLayoutPending())
+        coreFrame->view()->layoutContext().layout();
 
     String string = externalRepresentation(coreFrame);
     return strdup(string.utf8().data());
@@ -1248,7 +1243,7 @@ bool WebFrame::pauseAnimation(const char* name, double time, const char* element
     Element* coreElement = core(this)->document()->getElementById(AtomicString(element));
     if (!coreElement || !coreElement->renderer())
         return false;
-    return core(this)->animation().pauseAnimationAtTime(coreElement->renderer(), AtomicString(name), time);
+    return core(this)->animation().pauseAnimationAtTime(*coreElement, AtomicString(name), time);
 }
 
 bool WebFrame::pauseTransition(const char* name, double time, const char* element)
@@ -1256,7 +1251,7 @@ bool WebFrame::pauseTransition(const char* name, double time, const char* elemen
     Element* coreElement = core(this)->document()->getElementById(AtomicString(element));
     if (!coreElement || !coreElement->renderer())
         return false;
-    return core(this)->animation().pauseTransitionAtTime(coreElement->renderer(), AtomicString(name), time);
+    return core(this)->animation().pauseTransitionAtTime(*coreElement, AtomicString(name), time);
 }
 
 void WebFrame::setEditable(bool flag)

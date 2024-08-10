@@ -78,7 +78,7 @@ CookieParser::~CookieParser()
 Vector<ParsedCookie*> CookieParser::parse(const String& cookies)
 {
     unsigned cookieStart, cookieEnd = 0;
-    double curTime = currentTime();
+    double curTime = MonotonicTime::now().secondsSinceEpoch().value();
     Vector<ParsedCookie*> parsedCookies;
 
     unsigned cookiesLength = cookies.length();
@@ -111,12 +111,12 @@ Vector<ParsedCookie*> CookieParser::parse(const String& cookies)
 
 ParsedCookie* CookieParser::parseOneCookie(const String& cookie)
 {
-    return parseOneCookie(cookie, 0, cookie.length() - 1, currentTime());
+    return parseOneCookie(cookie, 0, cookie.length() - 1, MonotonicTime::now().secondsSinceEpoch().value());
 }
 
 static inline bool matchName(const String& cookie, const String& name, unsigned start)
 {
-    return start == cookie.find(name, start, false);
+    return start == cookie.find(name, start);
 }
 // The cookie String passed into this method will only contian the name value pairs as well as other related cookie
 // attributes such as max-age and domain. Set-Cookie should never be part of this string.
@@ -304,7 +304,7 @@ ParsedCookie* CookieParser::parseOneCookie(const String& cookie, unsigned start,
                     // and so on.
                     // We also have to make a special case for IP addresses. If a website tries to set
                     // a cookie to 61.97, that domain is not an IP address and will end with the m_defaultCookieHost
-                    if (!m_defaultCookieHost.endsWith(realDomain, false))
+                    if (!m_defaultCookieHost.endsWith(realDomain))
                         LOG_AND_DELETE("Invalid cookie %s (domain): it does not domain match the host", cookie.ascii().data());
                     // We should check for an embedded dot in the portion of string in the host not in the domain
                     // but to match firefox behaviour we do not.
@@ -419,7 +419,7 @@ ParsedCookie* CookieParser::parseOneCookie(const String& cookie, unsigned start,
     //
     // Append an attribute to the cookie-attribute-list with an attribute-
     // name of Path and an attribute-value of cookie-path.
-    if (!res->path() || !res->path().length() || !res->path().startsWith("/", false)) {
+    if (!res->path() || !res->path().length() || !res->path().startsWith("/")) {
         String path = m_defaultCookieURL.string().substring(m_defaultCookieURL.pathStart(), m_defaultCookieURL.pathAfterLastSlash() - m_defaultCookieURL.pathStart() - 1);
         if (path.isEmpty())
             path = "/";

@@ -27,6 +27,7 @@ class AutofillBackingStore {
 public:
     friend AutofillBackingStore& autofillBackingStore();
 
+    AutofillBackingStore();
     ~AutofillBackingStore();
     bool open(const String& dbPath);
     bool add(const String& name, const String& value);
@@ -34,7 +35,6 @@ public:
     bool clear();
 
 private:
-    AutofillBackingStore();
     bool update(const String& name, const String& value);
     bool contains(const String& name, const String& value) const;
 

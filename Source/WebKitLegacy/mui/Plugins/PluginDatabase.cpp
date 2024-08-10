@@ -124,7 +124,7 @@ bool PluginDatabase::refresh()
     HashSet<String>::const_iterator pathsEnd = paths.end();
     for (HashSet<String>::const_iterator it = paths.begin(); it != pathsEnd; ++it) {
         time_t lastModified;
-        if (!getFileModificationTime(*it, lastModified))
+        if (!FileSystem::getFileModificationTime(*it, lastModified))
             continue;
 
         pathsWithTimes.add(*it, lastModified);
@@ -311,10 +311,10 @@ void PluginDatabase::setPreferredPluginForMIMEType(const String& mimeType, Plugi
 bool PluginDatabase::fileExistsAndIsNotDisabled(const String& filePath) const
 {
     // Skip plugin files that are disabled by filename.
-    if (m_disabledPluginFiles.contains(pathGetFileName(filePath)))
+    if (m_disabledPluginFiles.contains(FileSystem::pathGetFileName(filePath)))
         return false;
 
-    return fileExists(filePath);
+    return FileSystem::fileExists(filePath);
 }
 
 void PluginDatabase::getDeletedPlugins(PluginSet& plugins) const

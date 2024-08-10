@@ -30,7 +30,7 @@
 #include "GraphicsContext.h"
 
 #include "WebDownload.h"
-#include <wtf/CurrentTime.h>
+#include <wtf/MonotonicTime.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -340,7 +340,7 @@ DEFMMETHOD(List_Display)
 
 				if(dl->size && dl->done)
 				{
-					dl->remainingtime = (currentTime() - dl->starttime) * (dl->size - dl->done) / dl->done;
+					dl->remainingtime = (MonotonicTime::now().secondsSinceEpoch().value() - dl->starttime) * (dl->size - dl->done) / dl->done;
 					format_time_compact(remainingtext, sizeof(remainingtext), (ULONG) dl->remainingtime);
 					snprintf(buf5, sizeof(buf5), "\033r%s", remainingtext);
 

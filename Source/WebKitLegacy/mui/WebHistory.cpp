@@ -37,7 +37,7 @@
 #include "WebVisitedLinkStore.h"
 #include "SQLiteDatabase.h"
 #include "SQLiteStatement.h"
-#include <wtf/CurrentTime.h>
+#include <wtf/MonotonicTime.h>
 #include "wtf/Vector.h"
 #include "PageGroup.h"
 #include "HistoryItem.h"
@@ -82,7 +82,7 @@ bool WebHistory::loadHistoryFromDatabase(int sortCriterium, bool desc, std::vect
     }
 
 	/* Prune older entries */
-	double minAge = currentTime() - maxAge*24*3600;
+	double minAge = MonotonicTime::now().secondsSinceEpoch().value() - maxAge*24*3600;
 	SQLiteStatement deleteStmt(m_historyDB, String("DELETE FROM history WHERE lastAccessed < ?1;"));
 
 	if(deleteStmt.prepare())
@@ -382,7 +382,7 @@ int WebHistory::historyAgeInDaysLimit()
 
 void WebHistory::visitedURL(const char* url, const char* title, const char* httpMethod, bool wasFailure)
 {
-	double lastAccessed = currentTime();
+	double lastAccessed = MonotonicTime::now().secondsSinceEpoch().value();
 
 	// Don't allow duplicates
 	for(std::vector<WebHistoryItem *>::iterator it = m_historyList.begin(); it != m_historyList.end(); it++)

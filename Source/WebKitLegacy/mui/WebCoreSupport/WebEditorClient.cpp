@@ -38,7 +38,7 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 #include <Document.h>
-#include <HTMLElement.h>
+#include <WebCore/HTMLElement.h>
 #include <HTMLInputElement.h>
 #include <HTMLNames.h>
 #include <KeyboardEvent.h>
@@ -996,10 +996,6 @@ void WebEditorClient::setInputMethodState(bool enabled)
     m_webView->setInputMethodState(enabled);
 }
 
-void WebEditorClient::didChangeSelectionAndUpdateLayout()
-{
-}
-
 void WebEditorClient::getGuessesForWord(const String& word, const String& context, const VisibleSelection& currentSelection, Vector<String>& guesses)
 {
 }
@@ -1011,3 +1007,9 @@ void WebEditorClient::requestCheckingOfString(TextCheckingRequest&, const Visibl
 void WebEditorClient::canceledComposition()
 {
 }
+
+String WebEditorClient::replacementURLForResource(Ref<WebCore::SharedBuffer>&&, const String&)
+{
+    return { };
+}
+

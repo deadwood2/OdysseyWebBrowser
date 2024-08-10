@@ -29,7 +29,7 @@
 #include "CachedResource.h"
 #include <wtf/text/CString.h>
 #include "TextEncoding.h"
-#include <yarr/RegularExpression.h>
+#include <JavaScriptCore/RegularExpression.h>
 #include <wtf/HashMap.h>
 #include <wtf/Vector.h>
 #include <wtf/text/StringView.h>
@@ -47,7 +47,7 @@ namespace WebCore {
 
 class AdPattern {
 public:
-	AdPattern() : m_string(""), m_re(JSC::Yarr::RegularExpression("", TextCaseInsensitive)), m_types(0) { }
+	AdPattern() : m_string(""), m_re(JSC::Yarr::RegularExpression("", JSC::Yarr::TextCaseInsensitive)), m_types(0) { }
 	AdPattern(String str, const JSC::Yarr::RegularExpression& re, int types)
 		: m_string(str), m_re(re), m_types(types) { }
     bool matches(const String& target, int type) {
@@ -131,20 +131,20 @@ AdPattern* PatternMatcher::addPattern(const String& pat)
     }
     if (pattern.startsWith("/") && pattern.endsWith("/")) {
         pattern = pattern.substring(1, pattern.length()-2);
-		ret = new AdPattern(pat, JSC::Yarr::RegularExpression(pattern, TextCaseInsensitive), types);
+		ret = new AdPattern(pat, JSC::Yarr::RegularExpression(pattern, JSC::Yarr::TextCaseInsensitive), types);
 		m_patterns.append(ret);
 		return ret;
     }
     int pos = 0;
-	JSC::Yarr::RegularExpression nonchar("\\W", TextCaseInsensitive);
+	JSC::Yarr::RegularExpression nonchar("\\W", JSC::Yarr::TextCaseInsensitive);
 	while ((pos = nonchar.match(pattern, pos)) >= 0) {
         pattern.insert("\\", pos);
         pos += 2;
     }
 
-	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\*", TextCaseInsensitive), ".*");
-	replace(pattern, JSC::Yarr::RegularExpression("^\\\\\\|", TextCaseInsensitive), "^");
-	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\|$", TextCaseInsensitive), "$");
+	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\*", JSC::Yarr::TextCaseInsensitive), ".*");
+	replace(pattern, JSC::Yarr::RegularExpression("^\\\\\\|", JSC::Yarr::TextCaseInsensitive), "^");
+	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\|$", JSC::Yarr::TextCaseInsensitive), "$");
 
 	/*
     String text = pat.left(delim).lower();
@@ -158,7 +158,7 @@ AdPattern* PatternMatcher::addPattern(const String& pat)
         }
     }
 	*/
-	ret = new AdPattern(pat, JSC::Yarr::RegularExpression(pattern, TextCaseInsensitive), types);
+	ret = new AdPattern(pat, JSC::Yarr::RegularExpression(pattern, JSC::Yarr::TextCaseInsensitive), types);
 	m_patterns.append(ret);
 	return ret;
 }
@@ -212,19 +212,19 @@ bool PatternMatcher::updatePattern(const String& pat, AdPattern* newpattern)
     }
     if (pattern.startsWith("/") && pattern.endsWith("/")) {
         pattern = pattern.substring(1, pattern.length()-2);
-		*newpattern = AdPattern(pat, JSC::Yarr::RegularExpression(pattern, TextCaseInsensitive), types);
+		*newpattern = AdPattern(pat, JSC::Yarr::RegularExpression(pattern, JSC::Yarr::TextCaseInsensitive), types);
 		return true;
     }
     int pos = 0;
-	JSC::Yarr::RegularExpression nonchar("\\W", TextCaseInsensitive);
+	JSC::Yarr::RegularExpression nonchar("\\W", JSC::Yarr::TextCaseInsensitive);
 	while ((pos = nonchar.match(pattern, pos)) >= 0) {
         pattern.insert("\\", pos);
         pos += 2;
     }
 
-	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\*", TextCaseInsensitive), ".*");
-	replace(pattern, JSC::Yarr::RegularExpression("^\\\\\\|", TextCaseInsensitive), "^");
-	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\|$", TextCaseInsensitive), "$");
+	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\*", JSC::Yarr::TextCaseInsensitive), ".*");
+	replace(pattern, JSC::Yarr::RegularExpression("^\\\\\\|", JSC::Yarr::TextCaseInsensitive), "^");
+	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\|$", JSC::Yarr::TextCaseInsensitive), "$");
 
 	/*
     String text = pat.left(delim).lower();
@@ -238,7 +238,7 @@ bool PatternMatcher::updatePattern(const String& pat, AdPattern* newpattern)
         }
     }
 	*/
-	*newpattern = AdPattern(pat, JSC::Yarr::RegularExpression(pattern, TextCaseInsensitive), types);
+	*newpattern = AdPattern(pat, JSC::Yarr::RegularExpression(pattern, JSC::Yarr::TextCaseInsensitive), types);
 	return true;
 }
 

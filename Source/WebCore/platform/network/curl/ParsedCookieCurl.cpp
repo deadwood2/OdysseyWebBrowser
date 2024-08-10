@@ -127,7 +127,7 @@ void ParsedCookie::setMaxAge(const String& maxAge)
 
     // If maxAge value is not positive, let expiry-time be the earliest representable time.
     if (m_expiry > 0)
-        m_expiry += currentTime();
+        m_expiry += MonotonicTime::now().secondsSinceEpoch().value();
     else
         m_expiry = 0;
 }
@@ -135,7 +135,7 @@ void ParsedCookie::setMaxAge(const String& maxAge)
 bool ParsedCookie::hasExpired() const
 {
     // Session cookies do not expire, they will just not be saved to the backing store.
-    return !m_isSession && (m_isForceExpired || m_expiry < currentTime());
+    return !m_isSession && (m_isForceExpired || m_expiry < MonotonicTime::now().secondsSinceEpoch().value());
 }
 
 bool ParsedCookie::isUnderSizeLimit() const
@@ -181,6 +181,6 @@ void ParsedCookie::appendWebCoreCookie(Vector<Cookie>& cookieVector) const
     cookieVector.append(Cookie(String(m_name), String(m_value), String(m_domain),
             // We multiply m_expiry by 1000 to convert from seconds to milliseconds.
             // This value is passed to Web Inspector and used in the JavaScript Date constructor.
-            String(m_path), (m_expiry * 1000), m_isHttpOnly, m_isSecure, m_isSession, comment, commentURL, ports));
+            String(m_path), m_creationTime, (m_expiry * 1000), m_isHttpOnly, m_isSecure, m_isSession, comment, commentURL, ports));
 }
 } // namespace WebCore

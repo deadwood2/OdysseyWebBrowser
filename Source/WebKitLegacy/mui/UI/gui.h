@@ -379,13 +379,13 @@ extern "C"
 /* Benchmark helpers */
 
 #if defined(__cplusplus)
-#define BENCHMARK 1
+#define BENCHMARK 0
 
-#ifdef BENCHMARK
+#if (BENCHMARK)
 #define BENCHMARK_DECLARE static const bool localBenchmark = getenv("OWB_BENCHMARK");
 #define BENCHMARK_INIT double startBenchmark = 0, diffBenchmark = 0;
-#define BENCHMARK_RESET if(localBenchmark) startBenchmark = WTF::currentTime();
-#define BENCHMARK_EVALUATE if(localBenchmark) diffBenchmark = WTF::currentTime() - startBenchmark;
+#define BENCHMARK_RESET if(localBenchmark) startBenchmark = MonotonicTime::now();
+#define BENCHMARK_EVALUATE if(localBenchmark) diffBenchmark = MonotonicTime::now() - startBenchmark;
 #define BENCHMARK_EXPRESSION(x) if(localBenchmark) x
 #else
 #define BENCHMARK_DECLARE

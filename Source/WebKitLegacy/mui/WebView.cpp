@@ -31,7 +31,6 @@
 
 #include <HistoryItem.h>
 #include "BALBase.h"
-#include <wtf/bal/PtrAndFlags.h>
 #include "DefaultPolicyDelegate.h"
 #include "DOMCoreClasses.h"
 #include "JSActionDelegate.h"
@@ -91,6 +90,7 @@
 #include <AXObjectCache.h>
 #endif
 #include <BackForwardController.h>
+#include <WebCore/CacheStorageProvider.h>
 #include <Chrome.h>
 #include <ContextMenu.h>
 #include <ContextMenuController.h>
@@ -154,15 +154,15 @@
 #include <WindowsKeyboardCodes.h>
 #include <page/DiagnosticLoggingClient.h>
 
-#include <JSCell.h>
-#include <JSLock.h>
-#include <JSValue.h>
+#include <JavaScriptCore/JSCell.h>
+#include <JavaScriptCore/JSLock.h>
+#include <JavaScriptCore/API/JSValue.h>
 
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
-#include <InitializeThreading.h>
+#include <JavaScriptCore/InitializeThreading.h>
 
-#include <wtf/unicode/icu/EncodingICU.h>
+#include "WTF/wtf/unicode/icu/EncodingICU.h"
 #include <wtf/HashSet.h>
 #include <wtf/MainThread.h>
 #include <wtf/RAMSize.h>
@@ -308,10 +308,10 @@ static void WebKitEnableDiskCacheIfNecessary()
     if (initialized)
         return;
 
-    WTF::String path = WebCore::pathByAppendingComponent("PROGDIR:conf", "Cache");
+    WTF::String path = WebCore::FileSystem::pathByAppendingComponent("PROGDIR:conf", "Cache");
 
     if (!path.isNull())
-        CurlCacheManager::getInstance().setCacheDirectory(path);
+        CurlCacheManager::singleton().setCacheDirectory(path);
 
     initialized = true;
 }
@@ -392,10 +392,11 @@ WebView::WebView()
     WebFrameLoaderClient * pageWebFrameLoaderClient = new WebFrameLoaderClient();
     WebProgressTrackerClient * pageProgressTrackerClient = new WebProgressTrackerClient();
 
-     PageConfiguration configuration(
+    PageConfiguration configuration(
         makeUniqueRef<WebEditorClient>(this),
         SocketProvider::create(),
-        makeUniqueRef<LibWebRTCProvider>()
+        makeUniqueRef<LibWebRTCProvider>(),
+        WebCore::CacheStorageProvider::create()
     );
     configuration.backForwardClient = BackForwardList::create();
     configuration.chromeClient = new WebChromeClient(this);
@@ -496,7 +497,7 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
 
     String cacheDirectory;
 
-    cacheDirectory = CurlCacheManager::getInstance().cacheDirectory();
+    cacheDirectory = CurlCacheManager::singleton().cacheDirectory();
     long cacheMemoryCapacity = 0;
     long cacheDiskCapacity = 0;
 
@@ -668,7 +669,7 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     PageCache::singleton().setMaxSize(pageCacheSize);
 
     (void)cacheMemoryCapacity;
-    CurlCacheManager::getInstance().setStorageSizeLimit(cacheDiskCapacity);
+    CurlCacheManager::singleton().setStorageSizeLimit(cacheDiskCapacity);
 
     s_didSetCacheModel = true;
     s_cacheModel = cacheModel;
@@ -1108,7 +1109,7 @@ const char* WebView::interpretKeyEvent(const KeyboardEvent* evt)
 
 bool WebView::handleEditingKeyboardEvent(KeyboardEvent* evt)
 {
-    WebCore::Node* node = evt->target()->toNode();
+    WebCore::Node* node = downcast<WebCore::Node>(evt->target());
     ASSERT(node);
     Frame* frame = node->document().frame();
     ASSERT(frame);
@@ -1899,7 +1900,11 @@ unsigned int WebView::markAllMatchesForText(const char* str, bool caseSensitive,
     if (!m_page)
         return 0;
 
-    return m_page->markAllMatchesForText(str, caseSensitive ? TextCaseSensitive : TextCaseInsensitive, highlight, limit);
+    WebCore::FindOptions options;
+    if (!caseSensitive)
+        options |= WebCore::CaseInsensitive;
+
+    return m_page->markAllMatchesForText(str, options, highlight, limit);
 }
 
 void WebView::unmarkAllTextMatches()
@@ -2113,7 +2118,7 @@ void WebView::dragSourceEndedAt(const BalPoint& clientPoint, const BalPoint& scr
     PlatformMouseEvent pme(clientPoint,
                            screenPoint,
                            LeftButton, PlatformEvent::MouseMoved, 0, false, false, false,
-                           false, 0, WebCore::ForceAtClick, WebCore::OneFingerTap);
+                           false, WallTime::fromRawSeconds(0), WebCore::ForceAtClick, WebCore::OneFingerTap);
     m_page->mainFrame().eventHandler().dragSourceEndedAt(pme,
         static_cast<DragOperation>(operation));
 }
@@ -2611,7 +2616,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     settings->setXSSAuditorEnabled(!!enabled);
 
     enabled = preferences->isFrameFlatteningEnabled();
-    settings->setFrameFlattening(enabled ? FrameFlatteningFullyEnabled : FrameFlatteningDisabled);
+    settings->setFrameFlattening(enabled ? FrameFlattening::FullyEnabled : FrameFlattening::Disabled);
     
     enabled = preferences->webGLEnabled();
     settings->setWebGLEnabled(enabled);

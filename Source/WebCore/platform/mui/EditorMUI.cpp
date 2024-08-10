@@ -85,4 +85,12 @@ RefPtr<DocumentFragment> Editor::webContentFromPasteboard(Pasteboard& pasteboard
     return createFragmentFromPasteboardData(pasteboard, m_frame, context, allowPlainText, chosePlainText);
 }
 
+void Editor::writeImageToPasteboard(Pasteboard&, Element&, const URL&, const String&)
+{
+}
+
+void Editor::writeSelectionToPasteboard(Pasteboard& pasteboard)
+{
+}
+
 } // namespace WebCore

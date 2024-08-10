@@ -30,7 +30,7 @@
 #include "config.h"
 #include "PlatformMouseEvent.h"
 
-#include <wtf/CurrentTime.h>
+#include <wtf/MonotonicTime.h>
 #include <wtf/Assertions.h>
 #include <math.h>
 #include <intuition/intuition.h>
@@ -46,7 +46,7 @@ static bool isdouble = false;
 PlatformMouseEvent::PlatformMouseEvent(BalEventButton *event)
 {
     //printf("PlatformMouseEvent eventbutton x=%d y=%d\n", (int)event->x, (int)event->y);
-    m_timestamp = WTF::currentTime();
+    m_timestamp = WallTime::fromRawSeconds(MonotonicTime::now().secondsSinceEpoch().value());
     m_position = IntPoint((int)event->MouseX, (int)event->MouseY);
     m_globalPosition = IntPoint((int)event->MouseX, (int)event->MouseY);
 
@@ -87,7 +87,8 @@ PlatformMouseEvent::PlatformMouseEvent(BalEventButton *event)
 			else
 			{
 				// sucky code :)
-				if(event->Code == IECODE_LBUTTON && DoubleClick((ULONG) lastclick, (ULONG) ((lastclick - floor(lastclick)) * 1000000), (ULONG) m_timestamp, (ULONG) ((m_timestamp - floor(m_timestamp)) * 1000000)))
+				double timestamp = m_timestamp.secondsSinceEpoch().value();
+				if(event->Code == IECODE_LBUTTON && DoubleClick((ULONG) lastclick, (ULONG) ((lastclick - floor(lastclick)) * 1000000), (ULONG) timestamp, (ULONG) ((timestamp - floor(timestamp)) * 1000000)))
 				{
 					if(isdouble)
 						m_clickCount = 3;
@@ -105,7 +106,7 @@ PlatformMouseEvent::PlatformMouseEvent(BalEventButton *event)
 				m_type = PlatformEvent::MousePressed;
 
 				if(event->Code == IECODE_LBUTTON)
-					lastclick = WTF::currentTime();
+					lastclick = MonotonicTime::now().secondsSinceEpoch().value();
             }
         }
     }

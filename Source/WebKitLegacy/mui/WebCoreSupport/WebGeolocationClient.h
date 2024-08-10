@@ -63,7 +63,7 @@ public:
     virtual void startUpdating();
     virtual void stopUpdating();
     virtual void setEnableHighAccuracy(bool);
-    virtual GeolocationPosition* lastPosition();
+    std::optional<WebCore::GeolocationPosition> lastPosition() final;
     virtual void requestPermission(Geolocation*);
     virtual void cancelPermissionRequest(Geolocation*);
 

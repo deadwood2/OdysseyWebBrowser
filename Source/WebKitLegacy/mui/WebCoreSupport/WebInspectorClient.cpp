@@ -43,7 +43,7 @@
 #include "WebUtils.h"
 #include "WebView.h"
 #include "WebFrame.h"
-#include <inspector/InspectorAgentBase.h>
+#include <JavaScriptCore/InspectorAgentBase.h>
 
 #include <stdlib.h>
 #include <string>

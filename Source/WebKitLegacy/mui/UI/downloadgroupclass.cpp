@@ -35,7 +35,7 @@
 #include "FileIOLinux.h"
 #include "WebDownload.h"
 #include "WebDownloadPrivate.h"
-#include <wtf/CurrentTime.h>
+#include <wtf/MonotonicTime.h>
 
 #include <proto/exec.h>
 #include <proto/intuition.h>
@@ -136,7 +136,7 @@ void restore_download_state(Object *obj, struct Data *data)
 				dl->done      = 0;
 				dl->speed     = 0;
 				dl->prevdone  = 0;
-				dl->starttime = dl->lastupdatetime = currentTime();
+				dl->starttime = dl->lastupdatetime = MonotonicTime::now().secondsSinceEpoch().value();
 				dl->gaugeimg  = NULL;
 				dl->gaugeobj  = GaugeObject, GaugeFrame, MUIA_FixWidth, 64, MUIA_Gauge_Horiz, TRUE, MUIA_Gauge_Current, 0, MUIA_Gauge_Max, 100, End;
 				dl->iconimg   = NULL;
@@ -248,7 +248,7 @@ struct downloadnode* download_create(char *url, char *filename, char *path, char
 		dl->done      = 0;
 		dl->speed     = 0;
 		dl->prevdone  = 0;
-		dl->starttime = dl->lastupdatetime = currentTime();
+		dl->starttime = dl->lastupdatetime = MonotonicTime::now().secondsSinceEpoch().value();
 		dl->status[0] = '\0';
 		dl->state     = WEBKIT_WEB_DOWNLOAD_STATE_STARTED;
 		dl->gaugeimg  = NULL;

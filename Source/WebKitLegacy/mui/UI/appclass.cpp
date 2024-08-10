@@ -85,8 +85,8 @@
 #include "WebPasswordFormData.h"
 #include "WebPlatformStrategies.h"
 #include "WindowFeatures.h"
-#include <runtime/InitializeThreading.h>
-#include <runtime/Options.h>
+#include <JavaScriptCore/InitializeThreading.h>
+#include <JavaScriptCore/Options.h>
 
 /* Posix */
 #include <unistd.h>

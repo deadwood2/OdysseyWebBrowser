@@ -2806,7 +2806,9 @@ DEFSMETHOD(Search)
 
 			if(msg->flags & MV_FindText_MarkOnly)
 			{
-				res = widget->webView->page()->markAllMatchesForText(searchString, (msg->flags & MV_FindText_CaseSensitive) ? TextCaseSensitive : TextCaseInsensitive, msg->flags & MV_FindText_ShowAllMatches, 512);
+				FindOptions opts;
+				if (!(msg->flags & MV_FindText_CaseSensitive)) opts |= WebCore::CaseInsensitive;
+				res = widget->webView->page()->markAllMatchesForText(searchString, opts, msg->flags & MV_FindText_ShowAllMatches, 512);
 				
 				if((msg->flags & MV_FindText_ShowAllMatches) == 0)
 				{
@@ -3061,7 +3063,7 @@ static void completion_thread_start(void* p)
 					{
 						String urlToCompare = prefixes[j];
 						urlToCompare.append(url);
-						match = historyURL.startsWith(urlToCompare, false);
+						match = historyURL.startsWith(urlToCompare);
 
 						if(match)
 						{
@@ -3074,7 +3076,7 @@ static void completion_thread_start(void* p)
 				// Otherwise, match anything
 				else if(data->completion_mode_popup)
 				{
-					offset = historyURL.find(url, 0, false);
+					offset = historyURL.find(url, 0);
 					match = offset != -1;
 				}
 

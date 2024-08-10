@@ -75,7 +75,7 @@ namespace WebCore {
         static NPP ownerForStream(NPStream*);
 
         // NetscapePlugInStreamLoaderClient
-        void willSendRequest(NetscapePlugInStreamLoader*, ResourceRequest&&, const ResourceResponse& redirectResponse, WTF::Function<void (ResourceRequest&&)>&&) override;
+        void willSendRequest(NetscapePlugInStreamLoader*, ResourceRequest&&, const ResourceResponse& redirectResponse, CompletionHandler<void(ResourceRequest&&)>&&) override;
         virtual void didReceiveResponse(NetscapePlugInStreamLoader*, const ResourceResponse&);
         virtual void didReceiveData(NetscapePlugInStreamLoader*, const char*, int);
         virtual void didFail(NetscapePlugInStreamLoader*, const ResourceError&);
@@ -105,7 +105,7 @@ namespace WebCore {
 
         std::unique_ptr<Vector<char>> m_deliveryData;
 
-        PlatformFileHandle m_tempFileHandle;
+        FileSystem::PlatformFileHandle m_tempFileHandle;
 
         const NPPluginFuncs* m_pluginFuncs;
         NPP m_instance;

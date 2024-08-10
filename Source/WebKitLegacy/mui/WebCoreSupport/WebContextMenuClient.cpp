@@ -29,7 +29,6 @@
 #include "config.h"
 
 #include <Editor.h>
-#include <wtf/bal/PtrAndFlags.h>
 #include "WebContextMenuClient.h"
 #include "UserGestureIndicator.h"
 #include <wtf/text/CString.h>

@@ -460,7 +460,7 @@ void TopSitesManager::pruneOlderEntries()
 		return;	
 		
 	double maxAge = WebPreferences::sharedStandardPreferences()->historyAgeInDaysLimit();
-	double minAge = currentTime() - maxAge*DAY;
+	double minAge = MonotonicTime::now().secondsSinceEpoch().value() - maxAge*DAY;
 	SQLiteStatement deleteStmt(m_topSitesDB, "DELETE FROM topsites WHERE lastAccessed < ?1;");
 
 	if(deleteStmt.prepare())
@@ -475,7 +475,7 @@ void TopSitesManager::pruneOlderEntries()
 
 bool TopSitesManager::addOrUpdate(WebView *webView, URL &url, String &title)
 {	
-	double timestamp = currentTime();
+	double timestamp = MonotonicTime::now().secondsSinceEpoch().value();
 	int visitCount = 1;
 	double lastAccessed = 0;
 	Vector<char> screenshot;

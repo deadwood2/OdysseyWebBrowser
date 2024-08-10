@@ -108,7 +108,11 @@ public:
 #endif
 	}
 
-	virtual void didReceiveResponse(ResourceHandle*, const ResourceResponse& response)
+	void didReceiveResponseAsync(ResourceHandle*, ResourceResponse&&, CompletionHandler<void()>&&) override
+	{
+	}
+
+	void willSendRequestAsync(ResourceHandle*, ResourceRequest&&, ResourceResponse&&, CompletionHandler<void(ResourceRequest&&)>&&) override
 	{
 	}
 
@@ -541,7 +545,7 @@ DEFTMETHOD(SuggestPopString_Initiate)
 			}
 
 			data->suggest_client = new SuggestClient(obj);
-			data->resource_handle = ResourceHandle::create(context, request, data->suggest_client, false, false);
+			data->resource_handle = ResourceHandle::create(context, request, data->suggest_client, false, false, false);
 		}
 		else if(words.length() == 0)
 		{

@@ -26,8 +26,8 @@
 #ifndef WebVisitedLinkStore_h
 #define WebVisitedLinkStore_h
 
-#include "LinkHash.h"
-#include "VisitedLinkStore.h"
+#include <WebCore/SharedStringHash.h>
+#include <WebCore/VisitedLinkStore.h>
 
 class WebVisitedLinkStore final : public WebCore::VisitedLinkStore {
 public:
@@ -43,14 +43,14 @@ public:
 private:
     WebVisitedLinkStore();
 
-    virtual bool isLinkVisited(WebCore::Page&, WebCore::LinkHash, const WebCore::URL& baseURL, const AtomicString& attributeURL) override;
-    virtual void addVisitedLink(WebCore::Page&, WebCore::LinkHash) override;
+    virtual bool isLinkVisited(WebCore::Page&, WebCore::SharedStringHash, const WebCore::URL& baseURL, const AtomicString& attributeURL) override;
+    virtual void addVisitedLink(WebCore::Page&, WebCore::SharedStringHash) override;
 
     void populateVisitedLinksIfNeeded(WebCore::Page&);
-    void addVisitedLinkHash(WebCore::LinkHash);
+    void addVisitedLinkHash(WebCore::SharedStringHash);
     void removeVisitedLinkHashes();
 
-    HashSet<WebCore::LinkHash, WebCore::LinkHashHash> m_visitedLinkHashes;
+    HashSet<WebCore::SharedStringHash, WebCore::SharedStringHashHash> m_visitedLinkHashes;
     bool m_visitedLinksPopulated;
 };
 

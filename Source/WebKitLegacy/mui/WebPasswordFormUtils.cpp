@@ -62,11 +62,11 @@ void findPasswordFormFields(HTMLFormElement* form, PasswordFormFields* fields)
 
     int firstPasswordIndex = 0;
     // First, find the password fields and activated submit button
-    const Vector<FormAssociatedElement*>& formElements = form->associatedElements();
+    const Vector<Ref<FormAssociatedElement>> formElements = form->copyAssociatedElementsVector();
     for (size_t i = 0; i < formElements.size(); i++) {
         if (!formElements[i]->isFormControlElement())
             continue;
-        HTMLFormControlElement* formElement = static_cast<HTMLFormControlElement*>(formElements[i]);
+        HTMLFormControlElement* formElement = static_cast<HTMLFormControlElement*>(formElements[i].ptr());
         if (formElement->isActivatedSubmit())
             fields->submit = formElement;
 
@@ -91,7 +91,7 @@ void findPasswordFormFields(HTMLFormElement* form, PasswordFormFields* fields)
         for (int i = firstPasswordIndex - 1; i >= 0; i--) {
             if (!formElements[i]->isFormControlElement())
                 continue;
-            HTMLFormControlElement* formElement = static_cast<HTMLFormControlElement*>(formElements[i]);
+            HTMLFormControlElement* formElement = static_cast<HTMLFormControlElement*>(formElements[i].ptr());
             if (!formElement->hasTagName(HTMLNames::inputTag))
                 continue;
 

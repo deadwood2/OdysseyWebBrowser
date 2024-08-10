@@ -421,7 +421,7 @@ DEFTMETHOD(CookieManagerGroup_Remove)
 			String cookieURL = String(entry->protocol);
 			String domain = String(entry->domain);
 			cookieURL.append("://");
-			if(domain.startsWith(".", false))
+			if(domain.startsWith("."))
 				domain = domain.substring(1);
 			cookieURL.append(domain);
 			cookieURL.append(entry->path);

@@ -56,6 +56,10 @@ public:
     void setWebFrame(WebFrame* webFrame) { m_webFrame = webFrame; }
     WebFrame* webFrame() const { return m_webFrame; }
 
+    std::optional<uint64_t> pageID() const final;
+    std::optional<uint64_t> frameID() const final;
+    PAL::SessionID sessionID() const final;
+
     virtual void frameLoaderDestroyed();
     
     virtual bool hasWebView() const;
@@ -86,7 +90,7 @@ public:
     virtual void dispatchDidDispatchOnloadEvents() override;
     virtual void dispatchDidReceiveServerRedirectForProvisionalLoad();
     virtual void dispatchDidCancelClientRedirect();
-    virtual void dispatchWillPerformClientRedirect(const WebCore::URL&, double interval, double fireDate);
+    void dispatchWillPerformClientRedirect(const WebCore::URL&, double interval, WallTime fireDate) override;
     virtual void dispatchDidChangeLocationWithinPage();
     virtual void dispatchDidPushStateWithinPage();
     virtual void dispatchDidReplaceStateWithinPage();
@@ -107,7 +111,7 @@ public:
 
     void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::FramePolicyFunction&&) override;
     void dispatchDecidePolicyForNewWindowAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, const WTF::String& frameName, WebCore::FramePolicyFunction&&) override;
-    void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, WebCore::FramePolicyFunction&&) override;
+    void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, bool didReceiveRedirectResponse, WebCore::FormState*, WebCore::FramePolicyFunction&&) override;
     virtual void cancelPolicyCheck();
 
     virtual void dispatchUnableToImplementPolicy(const WebCore::ResourceError&);
@@ -185,7 +189,7 @@ public:
     virtual void dispatchDidBecomeFrameset(bool);
 
     virtual bool canCachePage() const;
-    virtual void convertMainResourceLoadToDownload(WebCore::DocumentLoader*, WebCore::SessionID, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&) override;
+    virtual void convertMainResourceLoadToDownload(WebCore::DocumentLoader*, PAL::SessionID, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&) override;
 
     RefPtr<WebCore::Frame> createFrame(const WebCore::URL&, const WTF::String& name, WebCore::HTMLFrameOwnerElement&,
         const WTF::String& referrer, bool allowsScrolling, int marginWidth, int marginHeight) override;

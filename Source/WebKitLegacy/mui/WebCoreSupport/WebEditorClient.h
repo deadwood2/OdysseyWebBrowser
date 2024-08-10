@@ -37,6 +37,10 @@ class WebView;
 class WebNotification;
 class WebEditorUndoTarget;
 
+namespace WebCore {
+    class HTMLElement;
+}
+
 class WebEditorClient : public WebCore::EditorClient, public WebCore::TextCheckerClient {
 public:
     WebEditorClient(WebView*);
@@ -63,11 +67,14 @@ public:
     virtual void didWriteSelectionToPasteboard();
     virtual void getClientPasteboardDataForRange(WebCore::Range*, Vector<String>& pasteboardTypes, Vector<RefPtr<WebCore::SharedBuffer> >& pasteboardData);
     virtual void didSetSelectionTypesForPasteboard();
+    String replacementURLForResource(Ref<WebCore::SharedBuffer>&&, const String&) final;
 
+    void didEndUserTriggeredSelectionChanges() final { }
     virtual void respondToChangedContents();
     virtual void respondToChangedSelection(WebCore::Frame*);
     void updateEditorStateAfterLayoutIfEditabilityChanged() final { } 
     void canceledComposition() final;
+    void didUpdateComposition() final { }
 
     bool shouldShowDeleteInterface(WebCore::HTMLElement*);
     bool shouldDeleteRange(WebCore::Range*);
@@ -129,7 +136,6 @@ public:
     virtual void checkGrammarOfString(StringView, Vector<WebCore::GrammarDetail>&, int* badGrammarLocation, int* badGrammarLength) { };
     void overflowScrollPositionChanged() { };
     virtual void discardedComposition(WebCore::Frame *) override;
-    virtual void didChangeSelectionAndUpdateLayout() override;
 
     virtual void getGuessesForWord(const String& word, const String& context, const WebCore::VisibleSelection& currentSelection, Vector<String>& guesses) override;
     virtual void requestCheckingOfString(WebCore::TextCheckingRequest&, const WebCore::VisibleSelection& currentSelection) override;

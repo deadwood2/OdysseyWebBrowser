@@ -73,7 +73,7 @@ void PluginDatabase::getPluginPathsInDirectories(HashSet<String>& paths) const
 
     Vector<String>::const_iterator dirsEnd = m_pluginDirectories.end();
     for (Vector<String>::const_iterator dIt = m_pluginDirectories.begin(); dIt != dirsEnd; ++dIt) {
-        Vector<String> pluginPaths = listDirectory(*dIt, fileNameFilter);
+        Vector<String> pluginPaths = FileSystem::listDirectory(*dIt, fileNameFilter);
         Vector<String>::const_iterator pluginsEnd = pluginPaths.end();
         for (Vector<String>::const_iterator pIt = pluginPaths.begin(); pIt != pluginsEnd; ++pIt) {
             if (!fileExistsAndIsNotDisabled(*pIt))

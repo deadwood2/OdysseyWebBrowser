@@ -26,6 +26,8 @@
 #include "Page.h"
 #include <WebCore/FrameLoader.h>
 
+#include <wtf/NeverDestroyed.h>
+
 using namespace WebCore;
 
 Ref<WebFrameNetworkingContext> WebFrameNetworkingContext::create(Frame* frame, const String& userAgent)
@@ -36,7 +38,7 @@ Ref<WebFrameNetworkingContext> WebFrameNetworkingContext::create(Frame* frame, c
 WebCore::NetworkStorageSession& WebFrameNetworkingContext::storageSession() const
 {
     if (frame() && frame()->page()->usesEphemeralSession())
-        return *NetworkStorageSession::storageSession(SessionID::legacyPrivateSessionID());
+        return *NetworkStorageSession::storageSession(PAL::SessionID::legacyPrivateSessionID());
 
     return NetworkStorageSession::defaultStorageSession();
 }
@@ -54,7 +56,7 @@ String WebFrameNetworkingContext::referrer() const
 static String& privateBrowsingStorageSessionIdentifierBase() 
 {
     ASSERT(isMainThread()); 
-    DEPRECATED_DEFINE_STATIC_LOCAL(String, base, ());
+    static NeverDestroyed<String> base;
     return base; 
 }
 

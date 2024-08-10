@@ -87,7 +87,7 @@
 #include <SubresourceLoader.h>
 #include <ScriptController.h>
 #include <Settings.h>
-#include <APICast.h>
+#include <JavaScriptCore/APICast.h>
 
 #include "AutofillManager.h"
 #include "gui.h"
@@ -321,11 +321,11 @@ void WebFrameLoaderClient::dispatchDidCancelClientRedirect()
         frameLoadDelegate->didCancelClientRedirectForFrame(m_webFrame);
 }
 
-void WebFrameLoaderClient::dispatchWillPerformClientRedirect(const URL& url, double delay, double fireDate)
+void WebFrameLoaderClient::dispatchWillPerformClientRedirect(const URL& url, double delay, WallTime fireDate)
 {
     SharedPtr<WebFrameLoadDelegate> frameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
     if (frameLoadDelegate)
-        frameLoadDelegate->willPerformClientRedirectToURL(m_webFrame, url.string().utf8().data(), delay, fireDate);
+        frameLoadDelegate->willPerformClientRedirectToURL(m_webFrame, url.string().utf8().data(), delay, fireDate.secondsSinceEpoch().seconds());
 }
 
 void WebFrameLoaderClient::dispatchDidChangeLocationWithinPage()
@@ -986,12 +986,12 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const Navigati
 
     //policyDelegate->decidePolicyForNewWindowAction(d->webView, actionInformation, urlRequest, frameName, setUpPolicyListener(function));
 
-    function(PolicyUse);
+    function(PolicyAction::Use);
     delete urlRequest;
     delete actionInformation;
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, FormState* formState, FramePolicyFunction&& function)
+void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, bool didReceiveRedirectResponse, FormState* formState, FramePolicyFunction&& function)
 {
     SharedPtr<WebPolicyDelegate> policyDelegate = m_webFrame->webView()->policyDelegate();
     if (!policyDelegate) {
@@ -1020,7 +1020,7 @@ void WebFrameLoaderClient::dispatchUnableToImplementPolicy(const ResourceError& 
     delete webError;
 }
 
-void WebFrameLoaderClient::convertMainResourceLoadToDownload(DocumentLoader* documentLoader, WebCore::SessionID sessionID,const ResourceRequest& request, const ResourceResponse& response)
+void WebFrameLoaderClient::convertMainResourceLoadToDownload(DocumentLoader* documentLoader, PAL::SessionID sessionID,const ResourceRequest& request, const ResourceResponse& response)
 {
     SharedPtr<WebDownloadDelegate> downloadDelegate;
     WebView* webView = m_webFrame->webView();
@@ -1080,9 +1080,6 @@ RefPtr<Widget> WebFrameLoaderClient::createJavaAppletWidget(const IntSize& plugi
 ObjectContentType WebFrameLoaderClient::objectContentType(const URL& url, const String& mimeTypeIn)
 {
     String mimeType = mimeTypeIn;
-
-    if (mimeType.isEmpty())
-        mimeType = mimeTypeFromURL(url);
 
     if (mimeType.isEmpty()) {
         String decodedPath = decodeURLEscapeSequences(url.path());
@@ -1223,3 +1220,19 @@ void WebFrameLoaderClient::prefetchDNS(const String& hostname)
 void WebFrameLoaderClient::dispatchDidFailToStartPlugin(const WebCore::PluginView*) const
 {
 }
+
+std::optional<uint64_t> WebFrameLoaderClient::pageID() const
+{
+    return std::nullopt;
+}
+
+std::optional<uint64_t> WebFrameLoaderClient::frameID() const
+{
+    return std::nullopt;
+}
+
+PAL::SessionID WebFrameLoaderClient::sessionID() const
+{
+    return PAL::SessionID::defaultSessionID();
+}
+

@@ -154,12 +154,6 @@ std::unique_ptr<Pasteboard> Pasteboard::createForGlobalSelection()
 	return create(0);
 }
 
-std::unique_ptr<Pasteboard> Pasteboard::createPrivate()
-{
-	D(kprintf("Pasteboard::createPrivate\n"));
-	return create(DataObjectMorphOS::create());
-}
-
 std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop()
 {
 	D(kprintf("Pasteboard::createForDragAndDrop\n"));
@@ -553,6 +547,7 @@ static String getPlainText(Frame* )
 
                 if (0 == CollectionChunks(ih, (LONG *)chunks, 2)
                  && 0 == StopOnExit(ih, ID_FTXT, ID_FORM))
+                {
                     while (true)
 						if (IFFERR_EOC == ParseIFF(ih, IFFPARSE_SCAN))
 						{
@@ -571,7 +566,7 @@ static String getPlainText(Frame* )
                         }
                         else
                             break;
-
+                }
                 CloseIFF(ih);
             }
             CloseClipboard(ch);
@@ -602,7 +597,7 @@ bool Pasteboard::hasData()
     return m_dataObject->hasText() || m_dataObject->hasMarkup() || m_dataObject->hasURIList() || m_dataObject->hasImage();
 }
 
-Vector<String> Pasteboard::types()
+Vector<String> Pasteboard::typesForLegacyUnsafeBindings()
 {
 	D(kprintf("Pasteboard::types()\n"));
 
@@ -685,4 +680,33 @@ Pasteboard::Pasteboard()
 {
 }
 
+String Pasteboard::readOrigin()
+{
+    return { };
 }
+
+bool Pasteboard::containsFiles()
+{
+    return false;
+}
+
+void Pasteboard::writeCustomData(const PasteboardCustomData&)
+{
+}
+
+Vector<String> Pasteboard::typesSafeForBindings(const String&)
+{
+    return { };
+}
+
+String Pasteboard::readStringInCustomData(const String&)
+{
+    return { };
+}
+
+void Pasteboard::read(PasteboardFileReader& reader)
+{
+}
+
+}
+

@@ -11,8 +11,8 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/network/curl"
     "${WEBCORE_DIR}/platform/mui"
     "${WEBCORE_DIR}/platform/bal"
-    "${WEBKIT_DIR}/mui/UI"
-    "${WEBKIT_DIR}/mui/UI/AROS/include"
+    "${WEBKITLEGACY_DIR}/mui/UI"
+    "${WEBKITLEGACY_DIR}/mui/UI/AROS/include"
 )
 
 list(APPEND WebCore_SOURCES
@@ -50,7 +50,6 @@ list(APPEND WebCore_SOURCES
     platform/mui/ImageMorphOS.cpp
     platform/mui/IntPointMorphOS.cpp
     platform/mui/IntRectMorphOS.cpp
-    platform/mui/LanguageMorphOS.cpp
     platform/mui/LocalizedStringsMorphOS.cpp
     platform/mui/MainThreadSharedTimerMorphOS.cpp
     platform/mui/MediaPlayerPrivateMorphOS.cpp
@@ -76,7 +75,7 @@ list(APPEND WebCore_SOURCES
     platform/network/curl/CookieParserCurl.cpp
     platform/network/curl/ParsedCookieCurl.cpp
     platform/network/HTTPParsers.cpp
-    platform/network/NetworkStorageSessionStub.cpp
+    platform/network/NetworkStorageSession.cpp
 
     platform/PlatformStrategies.cpp
 

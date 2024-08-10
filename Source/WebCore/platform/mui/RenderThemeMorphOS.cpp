@@ -139,13 +139,13 @@ float RenderThemeBal::defaultFontSize = 16;
 // sizes (e.g. 15px). So we just use Arial for now.
 const String& RenderThemeBal::defaultGUIFont()
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(String, fontFace, (ASCIILiteral("Arial")));
+    static NeverDestroyed<String> fontFace(ASCIILiteral("Arial"));
     return fontFace;
 }
 
 static Ref<Gradient> createLinearGradient(RGBA32 top, RGBA32 bottom, const IntPoint& a, const IntPoint& b)
 {
-    Ref<Gradient> gradient = Gradient::create(a, b);
+    Ref<Gradient> gradient = Gradient::create(Gradient::LinearData { a, b });
     gradient.get().addColorStop(0.0, Color(top));
     gradient.get().addColorStop(1.0, Color(bottom));
     return gradient;
@@ -845,7 +845,7 @@ void RenderThemeBal::adjustMediaControlStyle(StyleResolver&, RenderStyle& style,
 {
 #if ENABLE(VIDEO)
 	float fullScreenMultiplier = determineFullScreenMultiplier(element);
-    HTMLMediaElement* mediaElement = parentMediaElement((Element *)element);
+    HTMLMediaElement* mediaElement = parentMediaElement((Element *)element).get();
     if (!mediaElement)
         return;
 
@@ -933,7 +933,7 @@ static bool paintMediaButton(GraphicsContext& context, const IntRect& rect, Imag
 bool RenderThemeBal::paintMediaPlayButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = parentMediaElement(object);
+    HTMLMediaElement* mediaElement = parentMediaElement(object).get();
 
 	if (!mediaElement)
 		return false;
@@ -962,7 +962,7 @@ bool RenderThemeBal::paintMediaPlayButton(const RenderObject& object, const Pain
 bool RenderThemeBal::paintMediaMuteButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = parentMediaElement(object);
+    HTMLMediaElement* mediaElement = parentMediaElement(object).get();
 
 	if (!mediaElement)
 		return false;
@@ -991,7 +991,7 @@ bool RenderThemeBal::paintMediaMuteButton(const RenderObject& object, const Pain
 bool RenderThemeBal::paintMediaFullscreenButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = parentMediaElement(object);
+    HTMLMediaElement* mediaElement = parentMediaElement(object).get();
 	if (!mediaElement)
 		return false;
 
@@ -1135,7 +1135,7 @@ static Image* getMediaSliderThumb()
 bool RenderThemeBal::paintMediaSliderTrack(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = parentMediaElement(object);
+    HTMLMediaElement* mediaElement = parentMediaElement(object).get();
     if (!mediaElement)
         return false;
 

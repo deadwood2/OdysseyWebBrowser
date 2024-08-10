@@ -11,8 +11,8 @@ set(OdysseyWebBrowser_INCLUDE_DIRECTORIES
 
 set(OdysseyWebBrowser_LIBRARIES
     JavaScriptCore
-    WebKit
-    -Wl,--start-group WebCore WebCoreDerivedSources -Wl,--end-group
+    WebKitLegacy
+    -Wl,--start-group WebCore -Wl,--end-group
     -lz
     -lcairo
     -lpixman
