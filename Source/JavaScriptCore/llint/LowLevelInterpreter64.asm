@@ -2129,8 +2129,10 @@ macro nativeCallTrampoline(executableOffsetToFunction)
             call executableOffsetToFunction[t1]
             addp 32, sp
         else
+            if POISON
             loadp _g_NativeCodePoison, t2
             xorp executableOffsetToFunction[t1], t2
+            end
             call t2
         end
     end
@@ -2172,8 +2174,10 @@ macro internalFunctionCallTrampoline(offsetOfFunction)
             call offsetOfFunction[t1]
             addp 32, sp
         else
+            if POISON
             loadp _g_NativeCodePoison, t2
             xorp offsetOfFunction[t1], t2
+            end
             call t2
         end
     end

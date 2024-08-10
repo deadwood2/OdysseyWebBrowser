@@ -1047,6 +1047,11 @@
 #define ENABLE_POISON 0
 #endif
 
+#if OS(AROS)
+#undef ENABLE_POISON
+#define ENABLE_POISON 0
+#endif
+
 /* CSS Selector JIT Compiler */
 #if !defined(ENABLE_CSS_SELECTOR_JIT)
 #if (CPU(X86_64) || CPU(ARM64) || (CPU(ARM_THUMB2) && PLATFORM(IOS))) && ENABLE(JIT) && (OS(DARWIN) || PLATFORM(GTK) || PLATFORM(WPE))
