@@ -28,6 +28,7 @@
 
 #include "config.h"
 #include "WebView.h"
+#include "WebEditorClient.h"
 
 #include <HistoryItem.h>
 #include "BALBase.h"
@@ -48,13 +49,13 @@
 #include "WebDeviceOrientationClient.h"
 #include "WebDeviceMotionClient.h"
 #endif
+#include "PageStorageSessionProvider.h"
 #include "WebDocumentLoader.h"
 #include "WebDownloadDelegate.h"
 #include "WebDragClient.h"
 #include "WebDragData.h"
 #include "WebDragData_p.h"
 #include "WebEditingDelegate.h"
-#include "WebEditorClient.h"
 #include "WebFrame.h"
 #include "WebFrameLoaderClient.h"
 #include "WebFrameLoadDelegate.h"
@@ -104,7 +105,7 @@
 #include <Editor.h>
 #include <EventHandler.h>
 #include <EventNames.h>
-#include <FileSystem.h>
+#include <wtf/FileSystem.h>
 #include <FocusController.h>
 #include <FrameLoader.h>
 #include <FrameTree.h>
@@ -114,6 +115,7 @@
 #include <GeolocationError.h>
 #include <GraphicsContext.h>
 #include <HistoryController.h>
+#include <WebCore/CookieJar.h>
 
 #include <HitTestResult.h>
 #include <IntPoint.h>
@@ -309,7 +311,7 @@ static void WebKitEnableDiskCacheIfNecessary()
     if (initialized)
         return;
 
-    WTF::String path = WebCore::FileSystem::pathByAppendingComponent("PROGDIR:conf", "Cache");
+    WTF::String path = FileSystem::pathByAppendingComponent("PROGDIR:conf", "Cache");
 
     if (!path.isNull())
         CurlCacheManager::singleton().setCacheDirectory(path);
@@ -393,11 +395,14 @@ WebView::WebView()
     WebFrameLoaderClient * pageWebFrameLoaderClient = new WebFrameLoaderClient();
     WebProgressTrackerClient * pageProgressTrackerClient = new WebProgressTrackerClient();
 
+    auto storageProvider = PageStorageSessionProvider::create();
     PageConfiguration configuration(
         makeUniqueRef<WebEditorClient>(this),
         SocketProvider::create(),
         makeUniqueRef<LibWebRTCProvider>(),
-        WebCore::CacheStorageProvider::create()
+        WebCore::CacheStorageProvider::create(),
+        BackForwardList::create(),
+        CookieJar::create(storageProvider.copyRef())
     );
     configuration.backForwardClient = BackForwardList::create();
     configuration.chromeClient = new WebChromeClient(this);
@@ -1447,7 +1452,7 @@ WebFrame* WebView::focusedFrame()
 }
 WebBackForwardList* WebView::backForwardList()
 {
-    WebBackForwardListPrivate *p = new WebBackForwardListPrivate(static_cast<BackForwardList*>(m_page->backForward().client()));
+    WebBackForwardListPrivate *p = new WebBackForwardListPrivate(&static_cast<BackForwardList&>(m_page->backForward().client()));
     return WebBackForwardList::createInstance(p);
 }
 
@@ -1764,9 +1769,9 @@ bool WebView::searchFor(const char* str, bool forward, bool caseFlag, bool wrapF
     if (!m_page)
         return false;
     FindOptions opts;
-    if (wrapFlag) opts |= WrapAround;
-    if (!caseFlag) opts |= CaseInsensitive;
-    if (!forward)opts |= Backwards;
+    if (wrapFlag) opts.add(WrapAround);
+    if (!caseFlag) opts.add(CaseInsensitive);
+    if (!forward) opts.add(Backwards);
 
 	String searchString = String::fromUTF8(str);
 	return m_page->findString(searchString, opts);
@@ -1903,7 +1908,7 @@ unsigned int WebView::markAllMatchesForText(const char* str, bool caseSensitive,
 
     WebCore::FindOptions options;
     if (!caseSensitive)
-        options |= WebCore::CaseInsensitive;
+        options.add(WebCore::CaseInsensitive);
 
     return m_page->markAllMatchesForText(str, options, highlight, limit);
 }
@@ -2354,7 +2359,7 @@ void WebView::paste()
 
 void WebView::copyURL(const char* url)
 {
-    m_page->focusController().focusedOrMainFrame().editor().copyURL(URL(ParsedURLString, url), "");
+    m_page->focusController().focusedOrMainFrame().editor().copyURL(URL({ }, url), "");
 }
 
 
@@ -2554,7 +2559,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     enabled = preferences->userStyleSheetEnabled();
     if (enabled) {
         str = preferences->userStyleSheetLocation().c_str();
-        settings->setUserStyleSheetLocation(URL(ParsedURLString, str));
+        settings->setUserStyleSheetLocation(URL({ }, str));
     } else {
         settings->setUserStyleSheetLocation(URL());
     }

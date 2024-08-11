@@ -30,7 +30,9 @@
 
 #include "Logging.h"
 #include "ParsedCookie.h"
+#include "TextEncoding.h"
 #include <wtf/text/CString.h>
+#include <wtf/URL.h>
 #include "gui.h"
 #include <clib/debug_protos.h>
 #include <stdio.h>

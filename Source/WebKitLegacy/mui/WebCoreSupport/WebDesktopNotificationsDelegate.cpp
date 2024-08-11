@@ -51,7 +51,7 @@ bool WebDesktopNotificationsDelegate::show(Notification* object)
     if (object->scriptExecutionContext()->isWorkerGlobalScope())
 	return false;
 
-    object->setPendingActivity(object);
+    object->setPendingActivity(*object);
     
     kprintf("show [%s]\n%s\n", object->title().latin1().data(), object->body().latin1().data());
 

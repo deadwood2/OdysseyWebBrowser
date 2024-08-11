@@ -27,6 +27,7 @@
  */
 
 #include "config.h"
+#include "WebEditorClient.h"
 #include "WebFrame.h"
 #include <HistoryItem.h>
 #include "DefaultPolicyDelegate.h"
@@ -40,7 +41,6 @@
 #include "WebError.h"
 #include "WebFrameLoaderClient.h"
 #include "WebMutableURLRequest.h"
-#include "WebEditorClient.h"
 #include "WebFramePolicyListener.h"
 #include "WebHistory.h"
 #include "WebView.h"
@@ -355,7 +355,7 @@ void WebFrame::loadHTMLString(const char* string, const char* baseURL, const cha
     String utf8Encoding("utf-8");
     String mimeType("text/html");
 
-    URL _baseURL(ParsedURLString, baseURL);
+    URL _baseURL({ }, baseURL);
     URL failingURL;
 
     ResourceRequest request(_baseURL);
@@ -453,7 +453,7 @@ WebFrame* WebFrame::findFrameNamed(const char* name)
         return 0;
 
     String nameString = String::fromUTF8(name);
-    Frame* foundFrame = coreFrame->tree().find(AtomicString(nameString));
+    Frame* foundFrame = coreFrame->tree().find(AtomicString(nameString), *coreFrame);
     if (!foundFrame)
         return 0;
 
@@ -1183,13 +1183,18 @@ void WebFrame::unmarkAllBadGrammar()
 
 void WebFrame::updateBackground()
 {
-    Color backgroundColor = webView()->transparent() ? Color::transparent : Color::white;
     Frame* coreFrame = core(this);
 
     if (!coreFrame || !coreFrame->view())
         return;
 
-    coreFrame->view()->updateBackgroundRecursively(backgroundColor, webView()->transparent());
+    Optional<Color> backgroundColor;
+    if (webView()->transparent())
+        backgroundColor = Color(Color::transparent);
+    else
+        backgroundColor = Color(Color::white);
+
+    coreFrame->view()->updateBackgroundRecursively(backgroundColor);
 }
 
 void WebFrame::addHistoryItemForFragmentScroll()

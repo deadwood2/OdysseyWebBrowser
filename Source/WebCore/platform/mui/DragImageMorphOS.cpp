@@ -108,4 +108,9 @@ DragImageRef createDragImageForLink(Element& element, URL& url, const String& in
     return 0;
 }
 
+DragImageRef createDragImageForColor(const Color&, const FloatRect&, float, Path&)
+{
+    return nullptr;
+}
+
 }

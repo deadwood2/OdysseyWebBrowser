@@ -29,6 +29,7 @@
 #include <wtf/RetainPtr.h>
 #include <ApplicationCache.h>
 #include <ApplicationCacheStorage.h>
+#include <wtf/URL.h>
 
 using namespace WebCore;
 

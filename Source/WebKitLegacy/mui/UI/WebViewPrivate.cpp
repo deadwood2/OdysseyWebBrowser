@@ -29,13 +29,13 @@
  */
 
 #include "config.h"
+#include <WebCore/Editor.h>
 #include "WebViewPrivate.h"
 #include "Chrome.h"
 #include <wtf/text/CString.h>
 #include "InspectorController.h"
 #include "Document.h"
 #include "DownloadDelegateMorphOS.h"
-#include "Editor.h"
 #include "EventHandler.h"
 #include "FileIOLinux.h"
 #include "FocusController.h"
@@ -269,7 +269,7 @@ void MorphOSWebFrameDelegate::didStartProvisionalLoad(WebFrame* webFrame)
 	if (widget && widget->browser)
 	{
 		char *url = (char*) webFrame->url();
-		URL u(ParsedURLString, url);
+		URL u({ }, url);
 
 		DoMethod(app, MM_URLPrefsGroup_ApplySettingsForURL, url, widget->webView);
 
@@ -313,7 +313,7 @@ void MorphOSWebFrameDelegate::didCommitLoad(WebFrame* webFrame)
 	if (widget && widget->browser)
 	{
 		char *url = (char*) webFrame->url();
-		URL u(ParsedURLString, url);
+		URL u({ }, url);
 
 		DoMethod(widget->browser, MM_OWBBrowser_DidCommitLoad, webFrame);
 
@@ -353,7 +353,7 @@ void MorphOSWebFrameDelegate::didFinishLoad(WebFrame* webFrame)
 	if (widget && widget->browser)
 	{
 		char *url = (char *) mainFrame->url();
-        URL u(ParsedURLString, url);
+        URL u({ }, url);
 		Frame* coreFrame = core(mainFrame);
 		String title = coreFrame->loader().documentLoader()->title().string;
 
@@ -439,11 +439,11 @@ void MorphOSWebFrameDelegate::didFailLoad(WebFrame* webFrame, WebError* error)
 
 			if(fileContent)
 			{
-				String message = String::format(GSI(MSG_WEBVIEW_ERROR_MSG_HTML),
+				String message = createWithFormatAndArguments(GSI(MSG_WEBVIEW_ERROR_MSG_HTML),
 										   error->code(),
 										   error->resourceError().localizedDescription().utf8().data());
 
-				String content = String::format(fileContent, error->resourceError().failingURL().string().utf8().data(), message.utf8().data());
+				String content = createWithFormatAndArguments(fileContent, error->resourceError().failingURL().string().utf8().data(), message.utf8().data());
 
 				webFrame->loadHTMLString(content.utf8().data(), error->resourceError().failingURL().string().utf8().data());
 
@@ -1085,7 +1085,6 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 					step = total;
 					break;
 				case ScrollByPixel:
-				case ScrollByPrecisePixel:
 					step = 1;
 					break;
 			}
@@ -1161,7 +1160,7 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 			case RAWKEY_F8:
 			{
 				// Testing key
-				//m_webView->page()->settings()->setUserStyleSheetLocation(URL(ParsedURLString, "file:///resource/rss.css"));
+				//m_webView->page()->settings()->setUserStyleSheetLocation(URL({ }, "file:///resource/rss.css"));
 				m_webView->screenshot("ram:owb_screenshot.png");
 
 				break;

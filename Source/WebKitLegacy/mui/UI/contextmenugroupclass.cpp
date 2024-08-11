@@ -404,7 +404,7 @@ DEFMMETHOD(Export)
 		ITERATELIST(n, &contextmenu_list)
 		{
 			struct contextmenunode *cn = (struct contextmenunode *) n;
-			output.append(String::format("%d\1%s\1%d\1%s\n", cn->category, cn->label, cn->commandType, cn->commandString));
+			output.append(createWithFormatAndArguments("%d\1%s\1%d\1%s\n", cn->category, cn->label, cn->commandType, cn->commandString));
 		}
 
 		DoMethod(msg->dataspace, MUIM_Dataspace_Add, output.latin1().data(), output.length()+1, id);

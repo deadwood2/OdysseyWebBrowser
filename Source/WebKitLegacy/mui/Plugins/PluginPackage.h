@@ -27,7 +27,7 @@
 #ifndef PluginPackage_h
 #define PluginPackage_h
 
-#include "FileSystem.h"
+#include <wtf/FileSystem.h>
 #include "PlatformModule.h"
 #include "PluginQuirkSet.h"
 #include "Timer.h"

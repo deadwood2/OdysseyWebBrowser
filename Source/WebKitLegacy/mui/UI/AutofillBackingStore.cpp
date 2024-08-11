@@ -20,7 +20,7 @@
 
 #include "AutofillBackingStore.h"
 
-#include "FileSystem.h"
+#include <wtf/FileSystem.h>
 #include "SQLiteStatement.h"
 
 #define HANDLE_SQL_EXEC_FAILURE(statement, returnValue, ...) \

@@ -81,6 +81,10 @@ class WebViewObserver;
 class WebWidgetEngineDelegate;
 class WebWindow;
 
+namespace WTF {
+    class URL;
+}
+
 namespace WebCore {
     class Application;
 	class Element;
@@ -89,7 +93,6 @@ namespace WebCore {
     class IntPoint;
     class IntRect;
     class KeyboardEvent;
-    class URL;
     class Node;
     class Page;
     class ResourceRequest;

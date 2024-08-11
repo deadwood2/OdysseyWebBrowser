@@ -65,7 +65,7 @@
 #include "ResourceError.h"
 #include "ResourceResponse.h"
 #include "ResourceLoader.h"
-#include "URL.h"
+#include <wtf/URL.h>
 #include "FileIOLinux.h"
 #include "HTMLCollection.h"
 #include "HTMLInputElement.h"
@@ -86,6 +86,7 @@
 #include "WindowFeatures.h"
 #include <JavaScriptCore/InitializeThreading.h>
 #include <JavaScriptCore/Options.h>
+#include <wtf/text/StringConcatenateNumbers.h>
 
 /* Posix */
 #include <unistd.h>
@@ -694,7 +695,7 @@ AROS_UFH3
 
 						    if(downloadDelegate)
 						    {
-								URL u(ParsedURLString, url);
+								URL u({ }, url);
 								WebDownload* download = WebDownload::createInstance(u, downloadDelegate);
 								
 								if(download)
@@ -896,11 +897,11 @@ void WriteConfigFile(const char* url, AppSettings *settings)
 		return;
     }
 
-	configFile->write(String::format("panelweight=%lu\n", (unsigned long)settings->panelweight));
-	configFile->write(String::format("showbookmarkpanel=%lu\n", (unsigned long)settings->showbookmarkpanel));
-	configFile->write(String::format("showhistorypanel=%lu\n", (unsigned long)settings->showhistorypanel));
-	configFile->write(String::format("addbookmarkstomenu=%lu\n", (unsigned long)settings->addbookmarkstomenu));
-	configFile->write(String::format("continuousspellchecking=%lu\n", (unsigned long)settings->continuousspellchecking));
+	configFile->write(makeString("panelweight=", (unsigned long)settings->panelweight,"\n"));
+	configFile->write(makeString("showbookmarkpanel=", (unsigned long)settings->showbookmarkpanel,"\n"));
+	configFile->write(makeString("showhistorypanel=", (unsigned long)settings->showhistorypanel,"\n"));
+	configFile->write(makeString("addbookmarkstomenu=", (unsigned long)settings->addbookmarkstomenu,"\n"));
+	configFile->write(makeString("continuousspellchecking=", (unsigned long)settings->continuousspellchecking,"\n"));
 	//configFile->write(String::format("privatebrowsing=%lu\n", (unsigned long)settings->privatebrowsing));
 	
 	configFile->close();
@@ -2104,7 +2105,7 @@ DEFTMETHOD(OWBApp_WebKitEvents)
 DEFSMETHOD(OWBApp_Download)
 {
 	GETDATA;
-	URL url(ParsedURLString, msg->url);
+	URL url({ }, msg->url);
 	WebDownload * webDownload = (WebDownload *) msg->webdownload;
 	WebDownloadPrivate *priv = NULL;
 	struct downloadnode *dl = NULL;
@@ -2569,7 +2570,7 @@ DEFSMETHOD(OWBApp_SetFormState)
 	GETDATA;
 	String *host = (String *) msg->host;
 	Document *doc = (Document *) msg->doc;
-	String strippedURL = stripURL(URL(ParsedURLString, *host)).string();
+	String strippedURL = stripURL(URL({ }, *host)).string();
 
 	D(kprintf("SetFormState for URL <%s>\nStripped <%s>\n", host->latin1().data(), strippedURL.latin1().data()));
 
@@ -2666,7 +2667,7 @@ DEFSMETHOD(OWBApp_SaveFormState)
 
 						if (!extCredential.isEmpty())
 						{
-							String message = String::format(GSI(MSG_OWBAPP_SAVE_CREDENTIALS), extCredential.user().utf8().data());
+							String message = createWithFormatAndArguments(GSI(MSG_OWBAPP_SAVE_CREDENTIALS), extCredential.user().utf8().data());
 							char *converted_message = utf8_to_local(message.utf8().data());
 
 							if (converted_message)
@@ -2927,7 +2928,7 @@ DEFSMETHOD(OWBApp_RequestPolicyForMimeType)
 	URL url = response->url();
 	String urlstring = url.string();
 	String mimetype = response->mimeType();
-	String generatedpath = String::format("T:OWB_TempFile_%ld", (unsigned long)time(NULL));
+	String generatedpath = createWithFormatAndArguments("T:OWB_TempFile_%ld", (unsigned long)time(NULL));
 	String path;
 
 	APTR n;
@@ -3053,7 +3054,7 @@ DEFSMETHOD(OWBApp_RequestPolicyForMimeType)
 		if(mn->action == MIMETYPE_ACTION_ASK)
 		{
 			String truncatedpath = truncate(path, 64);
-			String message = String::format(GSI(MSG_OWBAPP_MIMETYPE_REQUEST_ACTION), truncatedpath.latin1().data(), matching_mn->mimetype);
+			String message = createWithFormatAndArguments(GSI(MSG_OWBAPP_MIMETYPE_REQUEST_ACTION), truncatedpath.latin1().data(), matching_mn->mimetype);
 			char *cmessage = strdup(message.latin1().data());
 
 			if(cmessage)
@@ -3196,7 +3197,7 @@ DEFSMETHOD(OWBApp_RequestPolicyForMimeType)
 	if(webView->canShowMIMEType(mimetype.utf8().data()) && url.protocolIs("ftp") && name_match(path.latin1().data(), "#?.(zip|gz|bz2|tar|exe|elf|rar|avi|mpg|lha|lzx|pdf)"))
 	{
         String truncatedpath = truncate(path, 64);
-		String message = String::format(GSI(MSG_OWBAPP_MIMETYPE_REQUEST_ACTION), truncatedpath.latin1().data(), mimetype.utf8().data());
+		String message = createWithFormatAndArguments(GSI(MSG_OWBAPP_MIMETYPE_REQUEST_ACTION), truncatedpath.latin1().data(), mimetype.utf8().data());
 		char *cmessage = strdup(message.latin1().data());
 
 		if(cmessage)
@@ -3439,7 +3440,7 @@ DEFSMETHOD(OWBApp_SaveSession)
 					if(!getv(vn->browser, MA_OWBBrowser_PrivateBrowsing))
 					{
 					    // core(vn->webView->mainFrame())->view()->visibleContentRect().y()
-					  output.append(String::format("%lu %s %d %d\n", (unsigned long)i, (char *) getv(vn->browser, MA_OWBBrowser_URL), vn->webView->scrollOffset().x, vn->webView->scrollOffset().y));
+					  output.append(createWithFormatAndArguments("%lu %s %d %d\n", (unsigned long)i, (char *) getv(vn->browser, MA_OWBBrowser_URL), vn->webView->scrollOffset().x, vn->webView->scrollOffset().y));
 					}
 				}
 			}

@@ -32,7 +32,7 @@
 #define WebPasswordFormData_h
 
 #include "HTMLFormElement.h"
-#include "URL.h"
+#include <wtf/URL.h>
 
 namespace WebCore {
 

@@ -479,9 +479,9 @@ DEFMMETHOD(Import)
 
 	const HashSet<String, ASCIICaseInsensitiveHash>* supportedCategories[] =
 	{
-		&(MIMETypeRegistry::getSupportedImageMIMETypes()),
-		&(MIMETypeRegistry::getSupportedNonImageMIMETypes()),
-		&(MIMETypeRegistry::getSupportedMediaMIMETypes()),
+		&(MIMETypeRegistry::supportedImageMIMETypes()),
+		&(MIMETypeRegistry::supportedNonImageMIMETypes()),
+		&(MIMETypeRegistry::supportedMediaMIMETypes()),
 		NULL,
 	};
 
@@ -615,7 +615,7 @@ DEFMMETHOD(Export)
 
 			//if(!mn->builtin)
 			{
-			  output.append(String::format("%s\1%s\1%d\1%s\1%s\1%d\n", mn->mimetype, mn->extensions, mn->action, mn->viewer, mn->parameters, mn->builtin));
+			  output.append(createWithFormatAndArguments("%s\1%s\1%d\1%s\1%s\1%d\n", mn->mimetype, mn->extensions, mn->action, mn->viewer, mn->parameters, mn->builtin));
 			}
 		}
 

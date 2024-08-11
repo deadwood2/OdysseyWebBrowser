@@ -60,6 +60,7 @@
 #include "FrameLoader.h"
 #include "ScriptEntry.h"
 #include "TopSitesManager.h"
+#include "markup.h"
 
 #if ENABLE(VIDEO)
 #include "HTMLMediaElement.h"
@@ -189,7 +190,7 @@ static void copyWebViewSelectionToClipboard(WebView* webView, bool html, bool lo
     if (html) {
        FrameSelection *selection = &frame->selection();
        if (selection)
-           selectedText = selection->toNormalizedRange()->toHTML();
+           selectedText = serializePreservingVisualAppearance(*selection->toNormalizedRange());
     }
     else
 	   selectedText = frame->editor().selectedText();
@@ -1478,7 +1479,7 @@ DEFSMETHOD(OWBWindow_LoadURL)
 	{
 		Object *urlString = (Object *) getv(data->addressbargroup, MUIA_Popstring_String);
 		String url = String((const char *) msg->url).stripWhiteSpace();
-		URL kurl(ParsedURLString, url);
+		URL kurl({ }, url);
 		size_t spacepos = url.find(' ');
 
 		// Handle possible shortcuts
@@ -1577,7 +1578,7 @@ DEFSMETHOD(OWBWindow_LoadURL)
 				searchString.replace("+", "%2B");
 				searchString.replace("%20", "+");
 				searchString.replace("&", "%26");
-				widget->webView->mainFrame()->loadURL(String::format("http://www.google.com/search?ie=UTF-8&oe=UTF-8&sourceid=navclient&gfns=1&q=%s", searchString.utf8().data()).utf8().data());
+				widget->webView->mainFrame()->loadURL(createWithFormatAndArguments("http://www.google.com/search?ie=UTF-8&oe=UTF-8&sourceid=navclient&gfns=1&q=%s", searchString.utf8().data()).utf8().data());
 			}
 		}
 		// Normal URL (at last)
@@ -1727,7 +1728,7 @@ DEFTMETHOD(OWBWindow_SaveAsSource)
 		if(dataSource && !dataSource->isLoading())
 		{
 			char buffer[100];
-			URL url(ParsedURLString, (char *)getv(data->active_browser, MA_OWBBrowser_URL));
+			URL url({ }, (char *)getv(data->active_browser, MA_OWBBrowser_URL));
 			char *name = strdup(decodeURLEscapeSequences(url.lastPathComponent()).latin1().data());
 
 			if(name)
@@ -1784,7 +1785,7 @@ DEFTMETHOD(OWBWindow_SaveAsPDF)
 {
 	GETDATA;
 	char buffer[100];
-	URL url(ParsedURLString, (char *)getv(data->active_browser, MA_OWBBrowser_URL));
+	URL url({ }, (char *)getv(data->active_browser, MA_OWBBrowser_URL));
 	char *name = strdup(decodeURLEscapeSequences(url.lastPathComponent()).latin1().data());
 
 	if(name)
@@ -2806,7 +2807,7 @@ DEFSMETHOD(Search)
 			if(msg->flags & MV_FindText_MarkOnly)
 			{
 				FindOptions opts;
-				if (!(msg->flags & MV_FindText_CaseSensitive)) opts |= WebCore::CaseInsensitive;
+				if (!(msg->flags & MV_FindText_CaseSensitive)) opts.add(WebCore::CaseInsensitive);
 				res = widget->webView->page()->markAllMatchesForText(searchString, opts, msg->flags & MV_FindText_ShowAllMatches, 512);
 				
 				if((msg->flags & MV_FindText_ShowAllMatches) == 0)
@@ -2818,8 +2819,8 @@ DEFSMETHOD(Search)
 			{
 				//widget->webView->page()->markAllMatchesForText(searchString, (msg->flags & MV_FindText_CaseSensitive) ? TextCaseSensitive : TextCaseInsensitive, msg->flags & MV_FindText_ShowAllMatches, 512);
 			    FindOptions opts = WrapAround;
-			    if (!(msg->flags & MV_FindText_CaseSensitive)) opts |= CaseInsensitive;
-			    if (msg->flags & MV_FindText_Previous) opts |= Backwards;
+			    if (!(msg->flags & MV_FindText_CaseSensitive)) opts.add(CaseInsensitive);
+			    if (msg->flags & MV_FindText_Previous) opts.add(Backwards);
 
 				res = widget->webView->page()->findString(searchString, opts);
 			}

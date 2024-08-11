@@ -36,6 +36,8 @@
 #include "TextEncoding.h"
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
+#include <wtf/ASCIICType.h>
+#include <wtf/HexNumber.h>
 
 #include <clib/debug_protos.h>
 #include <proto/keymap.h>
@@ -364,7 +366,7 @@ static String keyIdentifierForAmigaKeyCode(struct IntuiMessage *im)
 					else if(c == 0xA4) // Euro
 						return "U+20AC";
 					else
-						return String::format("U+%04X", u_toupper((UChar) c));
+						return makeString("U+", hex(toASCIIUpper(c), 4));
 				}	 
 			}
         }
@@ -384,19 +386,19 @@ PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
 	m_modifiers = OptionSet<PlatformEvent::Modifier>();
 
 	if (event->Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
-		m_modifiers |= PlatformEvent::Modifier::ShiftKey;
+		m_modifiers.add(PlatformEvent::Modifier::ShiftKey);
 
 	if (event->Qualifier & IEQUALIFIER_CONTROL)
-		m_modifiers |= PlatformEvent::Modifier::CtrlKey;
+		m_modifiers.add(PlatformEvent::Modifier::ControlKey);
 
 	if( event->Qualifier & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
-		m_modifiers |= PlatformEvent::Modifier::AltKey;
+		m_modifiers.add(PlatformEvent::Modifier::AltKey);
 
         if( event->Qualifier & IEQUALIFIER_RALT)
-	        m_modifiers |= PlatformEvent::Modifier::CtrlKey;
+	        m_modifiers.add(PlatformEvent::Modifier::ControlKey);
 
 	if (event->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
-		m_modifiers |= PlatformEvent::Modifier::MetaKey;
+		m_modifiers.add(PlatformEvent::Modifier::MetaKey);
 
 #if OS(MORPHOS)
 	UChar aSrc[2];
@@ -556,7 +558,7 @@ PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
 
 	prev_AltKey   = altKey();
 	prev_ShiftKey = shiftKey();
-	prev_CtrlKey  = ctrlKey();
+	prev_CtrlKey  = controlKey();
 	prev_MetaKey  = metaKey();
 
 	D(kprintf("Qualifier Shift %d Alt %d Ctrl %d Meta %d\n", m_shiftKey, m_altKey, m_ctrlKey, m_metaKey));

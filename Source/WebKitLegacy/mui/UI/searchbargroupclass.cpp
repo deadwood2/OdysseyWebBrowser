@@ -30,7 +30,7 @@
 #include "config.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include "URL.h"
+#include <wtf/URL.h>
 
 #include <string.h>
 
@@ -42,8 +42,6 @@
 #include "utils.h"
 
 #define CY_SEARCH_ID MAKE_ID('C','S','R','H')
-
-using namespace WebCore;
 
 struct Data
 {
@@ -347,7 +345,7 @@ DEFSMETHOD(OWBWindow_LoadURL)
 					encoded.replace("+", "%2B");
 				    encoded.replace("%20", "+");
 					encoded.replace("&", "%26");
-					data->url = String::format(fmt, encoded.utf8().data());
+					data->url = createWithFormatAndArguments(fmt, encoded.utf8().data());
 
 					DoMethod(_win(obj), MM_OWBWindow_LoadURL, data->url.utf8().data(), NULL);
 
@@ -387,7 +385,7 @@ DEFSMETHOD(SearchBarGroup_LoadURLFromShortcut)
 					encoded.replace("+", "%2B");
 				    encoded.replace("%20", "+");
 					encoded.replace("&", "%26");
-					data->url = String::format(fmt, encoded.utf8().data());
+					data->url = createWithFormatAndArguments(fmt, encoded.utf8().data());
 
 					DoMethod(_win(obj), MM_OWBWindow_LoadURL, data->url.utf8().data(), NULL);
 

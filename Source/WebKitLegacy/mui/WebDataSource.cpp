@@ -42,7 +42,7 @@
 #include <Document.h>
 #include <Frame.h>
 #include <FrameLoader.h>
-#include <URL.h>
+#include <wtf/URL.h>
 #include <SharedBuffer.h>
 
 using namespace WebCore;

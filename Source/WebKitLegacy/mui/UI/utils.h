@@ -6,6 +6,7 @@
 #include "gui.h"
 
 WTF::String truncate(const WTF::String& url, unsigned int size);
+WTF::String createWithFormatAndArguments(const char *format, ...);
 ULONG strescape(CONST_STRPTR s, STRPTR out);
 void format_size(STRPTR s, ULONG size, QUAD n);
 void format_time(STRPTR buffer, ULONG size, ULONG seconds);

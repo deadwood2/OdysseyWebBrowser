@@ -24,7 +24,7 @@
 #include <wtf/text/CString.h>
 #include "BitmapImage.h"
 #include "FileIOLinux.h"
-#include "URL.h"
+#include <wtf/URL.h>
 #include "SharedBuffer.h"
 #include "SQLiteDatabase.h"
 #include "SQLiteStatement.h"
@@ -394,7 +394,7 @@ void TopSitesManager::update(WebView *webView, URL &url, String &title)
 				if(query.startsWith("remove="))
 				{
 					String argument = query.substring(String("remove=").length());
-					URL urlToRemove = URL(ParsedURLString, argument);
+					URL urlToRemove = URL({ }, argument);
 					remove(urlToRemove);
 				}
 				else if(query.startsWith("maxEntries="))

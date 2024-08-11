@@ -28,7 +28,7 @@
 
 #include <config.h>
 
-#include "FileSystem.h"
+#include <wtf/FileSystem.h>
 
 #include "utils.h"
 #include "owb_cat.h"
@@ -58,8 +58,6 @@
 #include <magicaction/magicbeacon.h>
 #include <proto/spellchecker.h>
 #endif
-
-using namespace WebCore;
 
 String truncate(const String& url, unsigned int size)
 {
@@ -1043,6 +1041,19 @@ void enable_blanker(struct Screen *screen, ULONG enable)
 bool canAllocateMemory(long long size)
 {
 	return (long long) AvailMem(MEMF_LARGEST|MEMF_ANY) >= (size + 1024*1024);
+}
+
+WTF::String createWithFormatAndArguments(const char *format, ...)
+{
+    char buffer[1024];
+    va_list args;
+    va_start(args, format);
+
+    vsnprintf(buffer, 1024, format, args);
+
+    va_end(args);
+
+    return WTF::String(buffer);
 }
 
 #if OS(MORPHOS)

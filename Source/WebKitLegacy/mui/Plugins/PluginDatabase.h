@@ -34,11 +34,13 @@
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
+namespace WTF {
+    class URL;
+}
 namespace WebCore {
     class Element;
     class Frame;
     class IntSize;
-    class URL;
     class PluginDatabaseClient;
     class PluginPackage;
 

@@ -33,10 +33,13 @@
 #include <wtf/HashMap.h>
 #include <wtf/text/WTFString.h>
 
+namespace WTF {
+class URL;
+}
+
 namespace WebCore {
 
 class CookieDatabaseBackingStore;
-class URL;
 
 enum BackingStoreRemovalPolicy {
     RemoveFromBackingStore,

@@ -40,7 +40,7 @@
 #include "HTMLNames.h"
 #include "HTMLParserIdioms.h"
 #include "Image.h"
-#include "URL.h"
+#include <wtf/URL.h>
 #include "PasteboardHelper.h"
 #include "RenderImage.h"
 #include "markup.h"
@@ -274,7 +274,8 @@ void Pasteboard::writeSelection(Range& selectedRange, bool , Frame& frame, Shoul
 	/* Then store to internal clipboard */
     m_dataObject->clearAll();
 	m_dataObject->setText(text);
-    m_dataObject->setMarkup(createMarkup(selectedRange, 0, AnnotateForInterchange, false, ResolveNonLocalURLs));
+    m_dataObject->setMarkup(serializePreservingVisualAppearance(selectedRange, nullptr, AnnotateForInterchange::Yes,
+        ConvertBlocksToInlines::No, ResolveURLs::YesExcludingLocalFileURLsForPrivacy));
 }
 
 void Pasteboard::writePlainText(const String& text, SmartReplaceOption)
@@ -379,7 +380,7 @@ void Pasteboard::writeImage(Element& element, const URL&, const String& title)
 	D(kprintf("Pasteboard::writeImage url %s %d\n", url.string().utf8().data(), m_morphosClipboard));
     if (!url.isEmpty()) {
         m_dataObject->setURL(url, title);
-        m_dataObject->setMarkup(createMarkup(element, IncludeNode, 0, ResolveAllURLs));
+        m_dataObject->setMarkup(serializeFragment(element, SerializedNodes::SubtreeIncludingNode, nullptr, ResolveURLs::Yes));
     }
 
 	m_dataObject->setImage(image->nativeImageForCurrentFrame().get());
@@ -590,6 +591,10 @@ void Pasteboard::read(PasteboardPlainText& text)
     text.text = m_dataObject->text();
 }
 
+void Pasteboard::read(PasteboardFileReader& reader)
+{
+}
+
 bool Pasteboard::hasData()
 {
 	D(kprintf("Pasteboard::hasData()\n"));
@@ -703,7 +708,7 @@ String Pasteboard::readStringInCustomData(const String&)
     return { };
 }
 
-void Pasteboard::read(PasteboardFileReader& reader)
+void Pasteboard::write(const Color&)
 {
 }
 

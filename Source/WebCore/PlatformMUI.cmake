@@ -2,6 +2,7 @@ include(platform/Cairo.cmake)
 include(platform/Curl.cmake)
 include(platform/ImageDecoders.cmake)
 include(platform/TextureMapper.cmake)
+include(platform/FreeType.cmake)
 
 list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/cairo"
@@ -24,12 +25,6 @@ list(APPEND WebCore_SOURCES
     platform/bal/ObserverServiceData.cpp
 
     platform/Cursor.cpp
-
-    platform/graphics/freetype/FontCacheFreeType.cpp
-    platform/graphics/freetype/FontCustomPlatformDataFreeType.cpp
-    platform/graphics/freetype/FontPlatformDataFreeType.cpp
-    platform/graphics/freetype/GlyphPageTreeNodeFreeType.cpp
-    platform/graphics/freetype/SimpleFontDataFreeType.cpp
 
     platform/graphics/ImageSource.cpp
     platform/graphics/WOFFFileFormat.cpp
@@ -75,12 +70,12 @@ list(APPEND WebCore_SOURCES
     platform/network/curl/CookieMapCurl.cpp
     platform/network/curl/CookieParserCurl.cpp
     platform/network/curl/ParsedCookieCurl.cpp
+    platform/network/mui/CurlSSLHandleMUI.cpp
     platform/network/HTTPParsers.cpp
     platform/network/NetworkStorageSession.cpp
 
     platform/PlatformStrategies.cpp
 
-    platform/posix/FileSystemPOSIX.cpp
     platform/posix/SharedBufferPOSIX.cpp
 
     platform/text/Hyphenation.cpp

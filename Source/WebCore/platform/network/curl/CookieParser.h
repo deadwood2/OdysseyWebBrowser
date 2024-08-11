@@ -27,7 +27,7 @@
 #ifndef CookieParser_h
 #define CookieParser_h
 
-#include "URL.h"
+#include <wtf/URL.h>
 #include <wtf/Vector.h>
 
 namespace WTF {

@@ -39,11 +39,6 @@
 
 namespace WebCore {
 
-String localizedString(const char* key)
-{
-    return String(key);
-}
-
 String submitButtonDefaultLabel()
 {
 	return String::fromUTF8(GSI(MSG_LOCALIZED_SUBMIT));

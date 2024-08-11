@@ -51,16 +51,16 @@ PlatformWheelEvent::PlatformWheelEvent(BalEventScroll* event)
 	m_modifiers = OptionSet<PlatformEvent::Modifier>();
 
 	if (event->Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
-		m_modifiers |= PlatformEvent::Modifier::ShiftKey;
+		m_modifiers.add(PlatformEvent::Modifier::ShiftKey);
 
 	if (event->Qualifier & IEQUALIFIER_CONTROL)
-		m_modifiers |= PlatformEvent::Modifier::CtrlKey;
+		m_modifiers.add(PlatformEvent::Modifier::ControlKey);
 
 	if( event->Qualifier & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
-		m_modifiers |= PlatformEvent::Modifier::AltKey;
+		m_modifiers.add(PlatformEvent::Modifier::AltKey);
 
 	if (event->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
-		m_modifiers |= PlatformEvent::Modifier::MetaKey;
+		m_modifiers.add(PlatformEvent::Modifier::MetaKey);
 
 	switch(event->Code)
 	{
@@ -84,7 +84,7 @@ PlatformWheelEvent::PlatformWheelEvent(BalEventScroll* event)
     m_wheelTicksX = m_deltaX;
     m_wheelTicksY = m_deltaY;
 
-	if (ctrlKey())
+	if (controlKey())
 	{
 		m_granularity = ScrollByPageWheelEvent;
         m_granularity = ScrollByPageWheelEvent;

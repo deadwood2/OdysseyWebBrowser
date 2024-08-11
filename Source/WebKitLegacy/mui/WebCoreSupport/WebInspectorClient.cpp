@@ -264,6 +264,17 @@ void WebInspectorFrontendClient::setToolbarHeight(unsigned)
     notImplemented();
 }
 
+void WebInspectorFrontendClient::showCertificate(const CertificateInfo&)
+{
+    notImplemented();
+}
+
+void WebInspectorFrontendClient::reopen()
+{
+    notImplemented();
+}
+
+
 
 void WebInspectorFrontendClient::inspectedURLChanged(const String& newURL)
 {
@@ -287,7 +298,7 @@ void WebInspectorFrontendClient::destroyInspectorView(bool notifyInspectorContro
 		D(kprintf("disconnectFrontend\n"));
 		if(m_inspectedWebView)
 		{
-			core(m_inspectedWebView)->inspectorController().disconnectFrontend(m_inspectorClient);
+			core(m_inspectedWebView)->inspectorController().disconnectFrontend(*m_inspectorClient);
 		}
 		if(m_inspectorClient)
 		{

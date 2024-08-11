@@ -32,7 +32,7 @@
 #include "WebPreferenceKeysPrivate.h"
 
 #include <wtf/text/CString.h>
-#include <FileSystem.h>
+#include <wtf/FileSystem.h>
 #include <Font.h>
 #include <wtf/text/WTFString.h>
 #include <PluginDatabase.h>
@@ -43,7 +43,7 @@
 #include <map>
 
 #if USE(CURL)
-#include "URL.h"
+#include <wtf/URL.h>
 #include <CookieManager.h>
 #endif
 

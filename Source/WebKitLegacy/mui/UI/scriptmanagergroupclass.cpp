@@ -51,6 +51,7 @@
 
 #include "gui.h"
 #include "asl.h"
+#include "utils.h"
 #include "ScriptEntry.h"
 
 #define D(x)
@@ -236,7 +237,7 @@ void save_scripts()
 			}
 		}
 
-		scriptFile->write(String::format("%s\1%s\1%s\1%s\n", scripts_list[i]->path.latin1().data(), enabled, whitelisthosts.latin1().data(), blacklisthosts.latin1().data()));
+		scriptFile->write(createWithFormatAndArguments("%s\1%s\1%s\1%s\n", scripts_list[i]->path.latin1().data(), enabled, whitelisthosts.latin1().data(), blacklisthosts.latin1().data()));
 	}
 
 	scriptFile->close();
@@ -788,7 +789,7 @@ DEFSMETHOD(ScriptManagerGroup_ScriptsForURL)
 	{
 		if(scripts_list[i]->enabled)
 		{
-			if(UserContentURLPattern::matchesPatterns(URL(ParsedURLString, String(msg->url)), scripts_list[i]->whitelist, scripts_list[i]->blacklist))
+			if(UserContentURLPattern::matchesPatterns(URL({ }, String(msg->url)), scripts_list[i]->whitelist, scripts_list[i]->blacklist))
 			{
 				matchingscripts->append(scripts_list[i]);
 			}

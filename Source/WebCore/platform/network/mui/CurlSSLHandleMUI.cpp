@@ -1,4 +1,6 @@
 /*
+ *
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -22,18 +24,13 @@
  */
 
 #include "config.h"
-#include "CPUTime.h"
+#include "CurlSSLHandle.h"
+#include <wtf/RetainPtr.h>
 
-namespace WTF {
+namespace WebCore {
 
-Optional<CPUTime> CPUTime::get()
+void CurlSSLHandle::platformInitialize()
 {
-    return WTF::nullopt;
-}
-
-Seconds CPUTime::forCurrentThread()
-{
-    return 0_s;
 }
 
 }

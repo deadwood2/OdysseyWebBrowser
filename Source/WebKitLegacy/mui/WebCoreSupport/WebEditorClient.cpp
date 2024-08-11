@@ -523,67 +523,68 @@ void WebEditorClient::textDidChangeInTextArea(Element* e)
 static String undoNameForEditAction(EditAction editAction)
 {
     switch (editAction) {
-        case EditActionUnspecified: 
-        case EditActionInsertReplacement:
+        case EditAction::Unspecified: 
+        case EditAction::InsertReplacement:
             return "";
-        case EditActionSetColor: return "Set Color";
-        case EditActionSetBackgroundColor: return "Set Background Color";
-        case EditActionTurnOffKerning: return "Turn Off Kerning";
-        case EditActionTightenKerning: return "Tighten Kerning";
-        case EditActionLoosenKerning: return "Loosen Kerning";
-        case EditActionUseStandardKerning: return "Use Standard Kerning";
-        case EditActionTurnOffLigatures: return "Turn Off Ligatures";
-        case EditActionUseStandardLigatures: return "Use Standard Ligatures";
-        case EditActionUseAllLigatures: return "Use All Ligatures";
-        case EditActionRaiseBaseline: return "Raise Baseline";
-        case EditActionLowerBaseline: return "Lower Baseline";
-        case EditActionSetTraditionalCharacterShape: return "Set Traditional Character Shape";
-        case EditActionSetFont: return "Set Font";
-        case EditActionChangeAttributes: return "Change Attributes";
-        case EditActionAlignLeft: return "Align Left";
-        case EditActionAlignRight: return "Align Right";
-        case EditActionCenter: return "Center";
-        case EditActionJustify: return "Justify";
-        case EditActionSetWritingDirection: return "Set Writing Direction";
-        case EditActionSubscript: return "Subscript";
-        case EditActionSuperscript: return "Superscript";
-        case EditActionUnderline: return "Underline";
-        case EditActionOutline: return "Outline";
-        case EditActionUnscript: return "Unscript";
-        case EditActionDeleteByDrag: return "Drag";
-        case EditActionCut: return "Cut";
-        case EditActionPaste: return "Paste";
-        case EditActionPasteFont: return "Paste Font";
-        case EditActionPasteRuler: return "Paste Ruler";
-        case EditActionTypingDeleteSelection:
-        case EditActionTypingDeleteBackward:
-        case EditActionTypingDeleteForward:
-        case EditActionTypingDeleteWordBackward:
-        case EditActionTypingDeleteWordForward:
-        case EditActionTypingDeleteLineBackward:
-        case EditActionTypingDeleteLineForward:
-        case EditActionTypingInsertText:
-        case EditActionTypingInsertLineBreak:
-        case EditActionTypingInsertParagraph:
-        case EditActionTypingDeletePendingComposition:
-        case EditActionTypingDeleteFinalComposition:
-        case EditActionTypingInsertPendingComposition:
-        case EditActionTypingInsertFinalComposition:
+        case EditAction::SetColor: return "Set Color";
+        case EditAction::SetBackgroundColor: return "Set Background Color";
+        case EditAction::TurnOffKerning: return "Turn Off Kerning";
+        case EditAction::TightenKerning: return "Tighten Kerning";
+        case EditAction::LoosenKerning: return "Loosen Kerning";
+        case EditAction::UseStandardKerning: return "Use Standard Kerning";
+        case EditAction::TurnOffLigatures: return "Turn Off Ligatures";
+        case EditAction::UseStandardLigatures: return "Use Standard Ligatures";
+        case EditAction::UseAllLigatures: return "Use All Ligatures";
+        case EditAction::RaiseBaseline: return "Raise Baseline";
+        case EditAction::LowerBaseline: return "Lower Baseline";
+        case EditAction::SetTraditionalCharacterShape: return "Set Traditional Character Shape";
+        case EditAction::SetFont: return "Set Font";
+        case EditAction::ChangeAttributes: return "Change Attributes";
+        case EditAction::AlignLeft: return "Align Left";
+        case EditAction::AlignRight: return "Align Right";
+        case EditAction::Center: return "Center";
+        case EditAction::Justify: return "Justify";
+        case EditAction::SetWritingDirection: return "Set Writing Direction";
+        case EditAction::Subscript: return "Subscript";
+        case EditAction::Superscript: return "Superscript";
+        case EditAction::Underline: return "Underline";
+        case EditAction::Outline: return "Outline";
+        case EditAction::Unscript: return "Unscript";
+        case EditAction::DeleteByDrag: return "Drag";
+        case EditAction::Cut: return "Cut";
+        case EditAction::Paste: return "Paste";
+        case EditAction::PasteFont: return "Paste Font";
+        case EditAction::PasteRuler: return "Paste Ruler";
+        case EditAction::TypingDeleteSelection:
+        case EditAction::TypingDeleteBackward:
+        case EditAction::TypingDeleteForward:
+        case EditAction::TypingDeleteWordBackward:
+        case EditAction::TypingDeleteWordForward:
+        case EditAction::TypingDeleteLineBackward:
+        case EditAction::TypingDeleteLineForward:
+        case EditAction::TypingInsertText:
+        case EditAction::TypingInsertLineBreak:
+        case EditAction::TypingInsertParagraph:
+        case EditAction::TypingDeletePendingComposition:
+        case EditAction::TypingDeleteFinalComposition:
+        case EditAction::TypingInsertPendingComposition:
+        case EditAction::TypingInsertFinalComposition:
             return "Typing";
-        case EditActionCreateLink: return "Create Link";
-        case EditActionUnlink: return "Unlink";
-        case EditActionInsertUnorderedList:
-        case EditActionInsertOrderedList:
+        case EditAction::CreateLink: return "Create Link";
+        case EditAction::Unlink: return "Unlink";
+        case EditAction::InsertUnorderedList:
+        case EditAction::InsertOrderedList:
             return "Insert List";
-        case EditActionFormatBlock: return "Formatting";
-        case EditActionIndent: return "Indent";
-        case EditActionOutdent: return "Outdent";
-        case EditActionBold: return "Bold";
-        case EditActionItalics: return "Italics";
-        case EditActionDictation: return "Dictation";
-        case EditActionDelete: return "Delete";
-        case EditActionInsert:
-        case EditActionInsertFromDrop:
+        case EditAction::FormatBlock: return "Formatting";
+#undef Indent
+        case (EditAction::Indent): return "Indent";
+        case EditAction::Outdent: return "Outdent";
+        case EditAction::Bold: return "Bold";
+        case EditAction::Italics: return "Italics";
+        case EditAction::Dictation: return "Dictation";
+        case EditAction::Delete: return "Delete";
+        case EditAction::Insert:
+        case EditAction::InsertFromDrop:
             return "Insert";
     }
     return String();

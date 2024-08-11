@@ -147,8 +147,7 @@ public:
     virtual void setLastSetCursorToCurrentCursor();
 
     void attachRootGraphicsLayer(WebCore::Frame&, WebCore::GraphicsLayer*) final;
-    void attachViewOverlayGraphicsLayer(WebCore::Frame&, WebCore::GraphicsLayer*) final;
-
+    void attachViewOverlayGraphicsLayer(WebCore::GraphicsLayer*) final;
     virtual void formStateDidChange(const WebCore::Node*);
 
     // Pass 0 as the GraphicsLayer to detatch the root layer.

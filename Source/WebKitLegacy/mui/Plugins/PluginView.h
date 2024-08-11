@@ -54,6 +54,9 @@ namespace JSC {
     }
 }
 
+namespace WTF {
+    class URL;
+}
 namespace WebCore {
     class Frame;
     class FrameView;
@@ -61,7 +64,6 @@ namespace WebCore {
     class HTMLPlugInElement;
     class KeyboardEvent;
     class MouseEvent;
-    class URL;
 #if ENABLE(NETSCAPE_PLUGIN_API)
     class PluginMessageThrottlerWin;
 #endif

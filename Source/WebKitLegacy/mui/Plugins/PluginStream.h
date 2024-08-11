@@ -27,8 +27,8 @@
 #ifndef PluginStream_h
 #define PluginStream_h
 
-#include "FileSystem.h"
-#include "URL.h"
+#include <wtf/FileSystem.h>
+#include <wtf/URL.h>
 #include "NetscapePlugInStreamLoader.h"
 #include "PluginQuirkSet.h"
 #include "ResourceRequest.h"

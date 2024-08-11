@@ -40,6 +40,7 @@
 #include <clib/macros.h>
 
 #include "gui.h"
+#include "utils.h"
 
 #define D(x)
 
@@ -159,7 +160,7 @@ void save_searchengines(Object *obj, struct Data *data)
 
 		if (se)
 		{
-			searchFile->write(String::format("%s\1%s\1%s\n", se->label, se->request, se->shortcut));
+			searchFile->write(createWithFormatAndArguments("%s\1%s\1%s\n", se->label, se->request, se->shortcut));
 		}
 
 		i++;

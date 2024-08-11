@@ -31,7 +31,7 @@
 #include "GraphicsContext.h"
 
 #include "WebView.h"
-#include "URL.h"
+#include <wtf/URL.h>
 #include "FileIOLinux.h"
 #include "WebDownload.h"
 #include "WebDownloadPrivate.h"
@@ -221,7 +221,7 @@ void save_download_state()
 			url.replace("\r", "\0");
 			status.replace("\n", "\0");
 			status.replace("\r", "\0");
-			downloadFile->write(String::format("%s\1%s\1%s\1%s\1%s\1%s\n", state, status.latin1().data(), url.latin1().data(), dl->path, dl->filename, dl->originurl));
+			downloadFile->write(createWithFormatAndArguments("%s\1%s\1%s\1%s\1%s\1%s\n", state, status.latin1().data(), url.latin1().data(), dl->path, dl->filename, dl->originurl));
 		}
 	}
 
@@ -771,7 +771,7 @@ DEFSMETHOD(Download_Retry)
 
 			    if(downloadDelegate)
 			    {
-					URL url(ParsedURLString, dl->url);
+					URL url({ }, dl->url);
 					WebDownload* download = WebDownload::createInstance(url, downloadDelegate);
 			        download->start();
 			    }

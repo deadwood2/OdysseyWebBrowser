@@ -27,13 +27,13 @@
 
 namespace WTF {
 class String;
+class URL;
 }
 
 class WebView;
 
 namespace WebCore {
 
-class URL;
 class Image;
 class SharedBuffer;
 

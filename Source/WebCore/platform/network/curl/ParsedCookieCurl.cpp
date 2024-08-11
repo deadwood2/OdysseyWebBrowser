@@ -28,7 +28,7 @@
 #include "ParsedCookie.h"
 
 #include "CookieManager.h"
-#include "URL.h"
+#include <wtf/URL.h>
 #include "Logging.h"
 #include <curl/curl.h>
 #include <wtf/text/CString.h>

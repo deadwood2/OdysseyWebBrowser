@@ -127,7 +127,7 @@ bool WebMutableURLRequest::HTTPShouldHandleCookies()
 
 void WebMutableURLRequest::initWithURL(const char* url, WebURLRequestCachePolicy cachePolicy, double timeoutInterval)
 {
-    m_request->setURL(URL(ParsedURLString, url));
+    m_request->setURL(URL({ }, url));
     m_request->setCachePolicy(core(cachePolicy));
     m_request->setTimeoutInterval(timeoutInterval);
 }
@@ -217,7 +217,7 @@ void WebMutableURLRequest::setTimeoutInterval(double timeoutInterval)
 
 void WebMutableURLRequest::setURL(const char* url)
 {
-    m_request->setURL(URL(ParsedURLString, url));
+    m_request->setURL(URL({ }, url));
 }
 
 void WebMutableURLRequest::setValue(const char* value, const char* field)

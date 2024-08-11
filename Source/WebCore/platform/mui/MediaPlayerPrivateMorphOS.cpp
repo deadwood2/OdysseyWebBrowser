@@ -40,7 +40,7 @@
 #include "HostWindow.h"
 #include "HTMLMediaElement.h"
 #include "IntRect.h"
-#include "URL.h"
+#include <wtf/URL.h>
 #include "MIMETypeRegistry.h"
 #include "MediaPlayer.h"
 #include "NetworkingContext.h"
@@ -60,6 +60,7 @@
 #include <wtf/text/CString.h>
 #include <wtf/MainThread.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/text/StringConcatenateNumbers.h>
 
 /* AHIBase tricks */
 #ifdef AHI_BASE_NAME
@@ -2156,7 +2157,7 @@ void MediaPlayerPrivate::didFailLoading(const ResourceError& error)
 
 	D(kprintf("Network Error %d\n", m_ctx->network_error));
 
-	String errorString = String::format("[MediaPlayer] Network error %d", m_ctx->network_error);
+	String errorString = makeString("[MediaPlayer] Network error", m_ctx->network_error);
 	DoMethod(app, MM_OWBApp_AddConsoleMessage, errorString.latin1().data());
 
 	updateStates(MediaPlayer::NetworkError, m_readyState);
@@ -2176,7 +2177,7 @@ void MediaPlayerPrivate::didReceiveData(const char* data, unsigned length, int l
 	{
 		D(kprintf("[MediaPlayer] No more memory to store stream\n"));
 
-		String errorString = String::format("[MediaPlayer] Not enough memory to store stream, aborting playback\n");
+		String errorString("[MediaPlayer] Not enough memory to store stream, aborting playback\n");
 		DoMethod(app, MM_OWBApp_AddConsoleMessage, errorString.latin1().data());
 		
 		m_ctx->network_error = true;
@@ -2269,7 +2270,7 @@ bool MediaPlayerPrivate::fetchData(unsigned long long startOffset)
 
 		if(startOffset > 0)
 		{
-			request.setHTTPHeaderField(HTTPHeaderName::Range, String::format("bytes=%llu-", startOffset));
+			request.setHTTPHeaderField(HTTPHeaderName::Range, makeString("bytes=", startOffset, "-"));
 		}
 
 		//request.setHTTPHeaderField("icy-metadata", "1"); // Radio mode
@@ -3386,7 +3387,7 @@ void MediaPlayerPrivate::load(const String& url)
 {
 	D(kprintf("[MediaPlayer] Load %s\n", url.utf8().data()));
 
-	String statusString = String::format("[MediaPlayer] Loading %s", url.utf8().data());
+	String statusString = makeString("[MediaPlayer] Loading ", url.utf8().data());
 	DoMethod(app, MM_OWBApp_AddConsoleMessage, statusString.utf8().data());
 
 	// Abort currently loading streams first

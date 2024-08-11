@@ -28,7 +28,7 @@
 #include "PluginDatabase.h"
 
 #include "Frame.h"
-#include "URL.h"
+#include <wtf/URL.h>
 #include "PluginPackage.h"
 #if ENABLE(NETSCAPE_PLUGIN_METADATA_CACHE)
 #include "FileSystem.h"
@@ -123,9 +123,10 @@ bool PluginDatabase::refresh()
 
     HashSet<String>::const_iterator pathsEnd = paths.end();
     for (HashSet<String>::const_iterator it = paths.begin(); it != pathsEnd; ++it) {
-        time_t lastModified;
-        if (!FileSystem::getFileModificationTime(*it, lastModified))
+        auto lastModifiedTime = FileSystem::getFileModificationTime(*it);
+        if (!lastModifiedTime)
             continue;
+        time_t lastModified = lastModifiedTime->secondsSinceEpoch().secondsAs<time_t>();
 
         pathsWithTimes.add(*it, lastModified);
 

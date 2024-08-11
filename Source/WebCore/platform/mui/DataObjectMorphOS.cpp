@@ -44,7 +44,8 @@ String DataObjectMorphOS::text() const
 String DataObjectMorphOS::markup() const
 {
     if (m_range)
-        return createMarkup(*m_range, 0, AnnotateForInterchange, false, ResolveNonLocalURLs);
+        return serializePreservingVisualAppearance(*m_range, nullptr, AnnotateForInterchange::Yes, ConvertBlocksToInlines::No,
+            ResolveURLs::YesExcludingLocalFileURLsForPrivacy);
     return m_markup;
 }
 

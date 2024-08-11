@@ -37,7 +37,7 @@
 #include <DatabaseManager.h>
 #include <DatabaseTracker.h>
 #include <DatabaseManagerClient.h>
-#include <WebCore/FileSystem.h>
+#include <wtf/FileSystem.h>
 #include <SecurityOrigin.h>
 #include "ObserverServiceData.h"
 
@@ -269,7 +269,7 @@ void WebKitInitializeWebDatabasesIfNecessary()
     if (initialized)
         return;
 
-    WTF::String databasesDirectory = WebCore::FileSystem::pathByAppendingComponent(WebCore::FileSystem::homeDirectoryPath(), "Databases");
+    WTF::String databasesDirectory = FileSystem::pathByAppendingComponent(FileSystem::homeDirectoryPath(), "Databases");
     WebCore::DatabaseManager::singleton().initialize(databasesDirectory);
 
     initialized = true;

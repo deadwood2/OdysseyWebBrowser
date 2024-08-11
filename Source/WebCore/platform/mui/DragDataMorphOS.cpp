@@ -31,7 +31,7 @@
 #include "DataObjectMorphOS.h"
 #include "Document.h"
 #include "DocumentFragment.h"
-#include "FileSystem.h"
+#include <wtf/FileSystem.h>
 #include "Frame.h"
 #include "markup.h"
 #include <sys/stat.h>

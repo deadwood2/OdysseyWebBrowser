@@ -40,7 +40,7 @@
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
 #include <wtf/MonotonicTime.h>
-#include "URL.h"
+#include <wtf/URL.h>
 
 #include <dos/dos.h>
 #include <proto/dos.h>
@@ -271,7 +271,7 @@ void DownloadDelegateMorphOS::didFinish(WebDownload* download)
 	stccpy(cpath, ptr, sizeof(cpath));
 	free(ptr);
 
-	URL url = URL(ParsedURLString, priv->requestUri);
+	URL url = URL({ }, priv->requestUri);
 	url.setPass("");
 	ptr = strdup(url.string().utf8().data());
 	stccpy(ccomment, ptr, sizeof(ccomment));
@@ -314,7 +314,7 @@ void DownloadDelegateMorphOS::didFailWithError(WebDownload* download, WebError* 
 		stccpy(cpath, ptr, sizeof(cpath));
 		free(ptr);
 
-		URL url = URL(ParsedURLString, priv->requestUri);
+		URL url = URL({ }, priv->requestUri);
 		url.setPass("");
 		comment = String("FAILED ") + url.string();
 		ptr = strdup(comment.utf8().data());

@@ -30,7 +30,7 @@
 #include "config.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include "URL.h"
+#include <wtf/URL.h>
 #if 0
 #include "IconDatabase.h"
 #endif
@@ -54,8 +54,6 @@
 #include <mui/Listtree_mcc.h>
 #include <proto/dos.h>
 #include <clib/macros.h>
-
-using namespace WebCore;
 
 /* private */
 
@@ -2182,8 +2180,8 @@ static ULONG contains_entry(struct IClass *cl, Object *obj, struct MUIS_Listtree
 				{
 					if(node->address)
 					{
-						URL kurl = URL(ParsedURLString, url);
-						URL kbookmark = URL(ParsedURLString, node->address);
+						URL kurl = URL({ }, url);
+						URL kbookmark = URL({ }, node->address);
 
 						if(kurl == kbookmark)
 						{

@@ -39,7 +39,7 @@ public:
 
     virtual void contextMenuDestroyed();
 
-    virtual void downloadURL(const WebCore::URL& url);
+    virtual void downloadURL(const WTF::URL& url);
     virtual void copyImageToClipboard(const WebCore::HitTestResult&);
     virtual void searchWithGoogle(const WebCore::Frame*);
     virtual void lookUpInDictionary(WebCore::Frame*);

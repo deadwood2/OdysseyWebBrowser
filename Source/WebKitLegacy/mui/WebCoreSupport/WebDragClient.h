@@ -58,7 +58,7 @@ public:
     virtual WebCore::DragSourceAction dragSourceActionMaskForPoint(const WebCore::IntPoint&);
     virtual void willPerformDragSourceAction(WebCore::DragSourceAction, const WebCore::IntPoint&, WebCore::DataTransfer&);
     virtual void startDrag(WebCore::DragItem, WebCore::DataTransfer&, WebCore::Frame&);
-    virtual WebCore::DragImageRef createDragImageForLink(WebCore::URL&, const WTF::String&, WebCore::Frame*);
+    virtual WebCore::DragImageRef createDragImageForLink(WTF::URL&, const WTF::String&, WebCore::Frame*);
 private:
     WebView* m_webView;
 };

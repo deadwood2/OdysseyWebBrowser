@@ -119,12 +119,12 @@ void WebBackForwardList::goForward()
 
 void WebBackForwardList::goToItem(WebHistoryItem* item)
 {
-    d->m_backForwardList->goToItem(item->getPrivateItem()->m_historyItem.get());
+    d->m_backForwardList->goToItem(*item->getPrivateItem()->m_historyItem.get());
 }
 
 WebHistoryItem* WebBackForwardList::backItem()
 {
-    HistoryItem* historyItem = d->m_backForwardList->backItem();
+    HistoryItem* historyItem = d->m_backForwardList->backItem().get();
 
     if (!historyItem)
         return 0;
@@ -135,7 +135,7 @@ WebHistoryItem* WebBackForwardList::backItem()
 
 WebHistoryItem* WebBackForwardList::currentItem()
 {
-    HistoryItem* historyItem = d->m_backForwardList->currentItem();
+    HistoryItem* historyItem = d->m_backForwardList->currentItem().get();
 
     if (!historyItem)
         return 0;
@@ -146,7 +146,7 @@ WebHistoryItem* WebBackForwardList::currentItem()
 
 WebHistoryItem* WebBackForwardList::forwardItem()
 {
-    HistoryItem* historyItem = d->m_backForwardList->forwardItem();
+    HistoryItem* historyItem = d->m_backForwardList->forwardItem().get();
 
     if (!historyItem)
         return 0;
@@ -216,7 +216,7 @@ bool WebBackForwardList::containsItem(WebHistoryItem* item)
 
 WebHistoryItem* WebBackForwardList::itemAtIndex(int index)
 {
-    HistoryItem* historyItem = d->m_backForwardList->itemAtIndex(index);
+    HistoryItem* historyItem = d->m_backForwardList->itemAtIndex(index).get();
 
     if (!historyItem)
         return 0;

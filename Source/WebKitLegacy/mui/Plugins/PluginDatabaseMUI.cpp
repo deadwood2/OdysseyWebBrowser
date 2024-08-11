@@ -28,7 +28,7 @@
 #include "PluginDatabase.h"
 
 #include "Frame.h"
-#include "URL.h"
+#include <wtf/URL.h>
 #include "PluginPackage.h"
 #if ENABLE(NETSCAPE_PLUGIN_METADATA_CACHE)
 #include "FileSystem.h"

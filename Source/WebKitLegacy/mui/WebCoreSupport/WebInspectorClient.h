@@ -103,6 +103,8 @@ public:
     
     virtual void attachWindow(DockSide); 
     virtual void detachWindow();
+    void reopen() override;
+    void showCertificate(const WebCore::CertificateInfo&) override;
     
     virtual void setAttachedWindowHeight(unsigned height);
     virtual void setAttachedWindowWidth(unsigned); 

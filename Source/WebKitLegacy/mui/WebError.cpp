@@ -61,7 +61,7 @@ WebError* WebError::createInstance()
 
 void WebError::init(const char* domain, int code, const char* url)
 {
-    m_error = new ResourceError(domain, code, URL(ParsedURLString, url), String());
+    m_error = new ResourceError(domain, code, URL({ }, url), String());
 }
   
 int WebError::code()

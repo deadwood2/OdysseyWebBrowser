@@ -40,7 +40,7 @@ public:
     static void ensurePrivateBrowsingSession(); 
     static void destroyPrivateBrowsingSession(); 
 
-    virtual WebCore::NetworkStorageSession& storageSession() const override;
+    WebCore::NetworkStorageSession* storageSession() const override;
 
 private:
     explicit WebFrameNetworkingContext(WebCore::Frame* frame, const WTF::String& userAgent)

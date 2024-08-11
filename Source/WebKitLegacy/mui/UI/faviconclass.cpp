@@ -31,7 +31,7 @@
 #include "WebIconDatabase.h"
 #include "BitmapImage.h"
 #include <wtf/text/CString.h>
-#include "URL.h"
+#include <wtf/URL.h>
 
 #include <cairo.h>
 #include <string.h>
@@ -173,15 +173,15 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
 						{
 							icon = (WebCore::BitmapImage *) defaultFolderIcon.get();
 						}
-						else if(URL(ParsedURLString, data->url).protocolIs("javascript"))
+						else if(URL({ }, data->url).protocolIs("javascript"))
 						{
 							icon = (WebCore::BitmapImage *) defaultScriptIcon.get();
 						}
-						else if(URL(ParsedURLString, data->url).string().startsWith("topsites"))
+						else if(URL({ }, data->url).string().startsWith("topsites"))
 						{
 							icon = (WebCore::BitmapImage *) topsitesIcon.get();
 						}
-						else if(URL(ParsedURLString, data->url).protocolIs("about"))
+						else if(URL({ }, data->url).protocolIs("about"))
 						{
 							icon = (WebCore::BitmapImage *) aboutIcon.get();
 						}

@@ -502,8 +502,8 @@ DEFNEW
 				{
 					Object *browser = widget->browser;
 					String mimeType = frame->loader().documentLoader()->responseMIMEType();
-					URL baseURL(ParsedURLString, (char *) getv(browser, MA_OWBBrowser_URL));
-		            URL failingURL(ParsedURLString, "");
+					URL baseURL({ }, (char *) getv(browser, MA_OWBBrowser_URL));
+		            URL failingURL({ }, "");
 		            ResourceRequest request(baseURL);
 					
 					Frame* sourceFrame = core(((WebView *) data->source_view)->mainFrame());

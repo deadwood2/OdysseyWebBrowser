@@ -31,7 +31,7 @@
 #include "GraphicsContext.h"
 
 #include "WebView.h"
-#include "URL.h"
+#include <wtf/URL.h>
 #include "WebDownload.h"
 
 #include <proto/exec.h>

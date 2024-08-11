@@ -38,7 +38,7 @@
 #include "HTMLFormElement.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
-#include "URL.h"
+#include <wtf/URL.h>
 
 #include "DOMUtilitiesPrivate.h"
 #include "WebPasswordFormUtils.h"
@@ -159,7 +159,7 @@ WebPasswordFormData::WebPasswordFormData(HTMLFormElement *form)
     findPasswordFormFields(form, &fields);
 
     // Get the document URL
-    URL fullOrigin(ParsedURLString, form->document().documentURI());
+    URL fullOrigin({ }, form->document().documentURI());
 
     // Calculate the canonical action URL
     String action = form->action();

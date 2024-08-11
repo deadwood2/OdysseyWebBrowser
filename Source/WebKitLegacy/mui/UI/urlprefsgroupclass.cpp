@@ -425,7 +425,7 @@ DEFTMETHOD(URLPrefsGroup_Save)
 
 		if (un)
 		{
-			urlFile->write(String::format("%s\1%lu\1%lu\1%lu\1%lu\1%lu\1%s\1%lu\n",
+			urlFile->write(createWithFormatAndArguments("%s\1%lu\1%lu\1%lu\1%lu\1%lu\1%s\1%lu\n",
 						   un->urlpattern,
 						   (unsigned long)un->settings.javascript,
 						   (unsigned long)un->settings.images,

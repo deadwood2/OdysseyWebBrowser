@@ -51,10 +51,10 @@ void WebGeolocationPosition::initWithTimestamp(double timestamp, double latitude
     m_position = GeolocationPosition { timestamp, latitude, longitude, accuracy };
 }
 
-std::optional<GeolocationPosition> core(WebGeolocationPosition* position)
+Optional<WebCore::GeolocationPosition> core(WebGeolocationPosition* position)
 {
     if (!position)
-        return std::nullopt;
+        return WTF::nullopt;
 
     return position->impl();
 }

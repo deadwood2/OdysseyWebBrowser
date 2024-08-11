@@ -640,9 +640,9 @@ bool WebChromeClient::supportsFullScreenForElement(const WebCore::Element* eleme
 void WebChromeClient::enterFullScreenForElement(WebCore::Element* element)
 {
 	//kprintf("enterFullScreenForElement\n");
-    element->document().webkitWillEnterFullScreenForElement(element);
+    element->document().webkitWillEnterFullScreen(*element);
     m_webView->enterFullScreenForElement(element);
-    element->document().webkitDidEnterFullScreenForElement(element);
+    element->document().webkitDidEnterFullScreen();
     m_fullScreenElement = element;
 }
 
@@ -654,9 +654,9 @@ void WebChromeClient::exitFullScreenForElement(WebCore::Element*)
     // be null. In addition the parameter may be disappearing in the future.
     // So we use the reference to the element we saved above.
     ASSERT(m_fullScreenElement);
-    m_fullScreenElement->document().webkitWillExitFullScreenForElement(m_fullScreenElement.get());
+    m_fullScreenElement->document().webkitWillExitFullScreen();
     m_webView->exitFullScreenForElement(m_fullScreenElement.get());
-    m_fullScreenElement->document().webkitDidExitFullScreenForElement(m_fullScreenElement.get());
+    m_fullScreenElement->document().webkitDidExitFullScreen();
     m_fullScreenElement = nullptr;
 }
 
@@ -704,7 +704,7 @@ void WebChromeClient::attachRootGraphicsLayer(WebCore::Frame&, WebCore::Graphics
 {
 }
 
-void WebChromeClient::attachViewOverlayGraphicsLayer(WebCore::Frame&, WebCore::GraphicsLayer*)
+void WebChromeClient::attachViewOverlayGraphicsLayer(WebCore::GraphicsLayer*)
 {
 }
 

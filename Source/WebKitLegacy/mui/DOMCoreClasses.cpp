@@ -51,6 +51,7 @@
 #include <HTMLTextAreaElement.h>
 #include <NodeList.h>
 #include <RenderElement.h>
+#include <WebCore/ScrollIntoViewOptions.h>
 
 
 using namespace WebCore;

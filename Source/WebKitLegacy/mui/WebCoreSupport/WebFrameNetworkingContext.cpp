@@ -22,7 +22,7 @@
 #include "WebFrameNetworkingContext.h"
 
 #include "FrameLoaderClient.h"
-#include "NetworkStorageSession.h"
+#include "NetworkStorageSessionMap.h"
 #include "Page.h"
 #include <WebCore/FrameLoader.h>
 
@@ -35,12 +35,12 @@ Ref<WebFrameNetworkingContext> WebFrameNetworkingContext::create(Frame* frame, c
     return (*new WebFrameNetworkingContext(frame, userAgent));
 }
 
-WebCore::NetworkStorageSession& WebFrameNetworkingContext::storageSession() const
+NetworkStorageSession* WebFrameNetworkingContext::storageSession() const
 {
     if (frame() && frame()->page()->usesEphemeralSession())
-        return *NetworkStorageSession::storageSession(PAL::SessionID::legacyPrivateSessionID());
+        return NetworkStorageSessionMap::storageSession(PAL::SessionID::legacyPrivateSessionID());
 
-    return NetworkStorageSession::defaultStorageSession();
+    return &NetworkStorageSessionMap::defaultStorageSession();
 }
 
 String WebFrameNetworkingContext::userAgent() const

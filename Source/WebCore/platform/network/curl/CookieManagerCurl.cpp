@@ -33,7 +33,7 @@
 
 #include "CookieDatabaseBackingStore.h"
 #include "CookieParser.h"
-#include "FileSystem.h"
+#include <wtf/FileSystem.h>
 #include "Logging.h"
 #include <stdlib.h>
 #include <wtf/text/CString.h>
@@ -607,7 +607,7 @@ void CookieManager::removeCookiesFromDomain(const String &protocol, const String
 	if(mdomain.startsWith("."))
 		mdomain = mdomain.substring(1);
 	url.append(mdomain);
-	URL kurl(ParsedURLString, url);
+	URL kurl({ }, url);
     Vector<ParsedCookie*> results;
 	getRawCookies(results, kurl, WithHttpOnlyCookies);
 	// Delete the cookies that  match the request domain
