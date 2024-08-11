@@ -535,10 +535,14 @@ void TypingCommand::insertTextAndNotifyAccessibility(const String &text, bool se
 {
     LOG(Editing, "TypingCommand %p insertTextAndNotifyAccessibility (text %s, selectInsertedText %d)", this, text.utf8().data(), selectInsertedText);
 
+#if HAVE(ACCESSIBILITY)
     AccessibilityReplacedText replacedText(frame().selection().selection());
     insertText(text, selectInsertedText);
     replacedText.postTextStateChangeNotification(document().existingAXObjectCache(), AXTextEditTypeTyping, text, frame().selection().selection());
     composition()->setRangeDeletedByUnapply(replacedText.replacedRange());
+#else
+    insertText(text, selectInsertedText);
+#endif
 }
 
 void TypingCommand::insertTextRunWithoutNewlines(const String &text, bool selectInsertedText)
@@ -573,10 +577,14 @@ void TypingCommand::insertLineBreak()
 
 void TypingCommand::insertLineBreakAndNotifyAccessibility()
 {
+#if HAVE(ACCESSIBILITY)
     AccessibilityReplacedText replacedText(frame().selection().selection());
     insertLineBreak();
     replacedText.postTextStateChangeNotification(document().existingAXObjectCache(), AXTextEditTypeTyping, "\n", frame().selection().selection());
     composition()->setRangeDeletedByUnapply(replacedText.replacedRange());
+#else
+    insertLineBreak();
+#endif
 }
 
 void TypingCommand::insertParagraphSeparator()
@@ -596,10 +604,14 @@ void TypingCommand::insertParagraphSeparator()
 
 void TypingCommand::insertParagraphSeparatorAndNotifyAccessibility()
 {
+#if HAVE(ACCESSIBILITY)
     AccessibilityReplacedText replacedText(frame().selection().selection());
     insertParagraphSeparator();
     replacedText.postTextStateChangeNotification(document().existingAXObjectCache(), AXTextEditTypeTyping, "\n", frame().selection().selection());
     composition()->setRangeDeletedByUnapply(replacedText.replacedRange());
+#else
+    insertParagraphSeparator();
+#endif
 }
 
 void TypingCommand::insertParagraphSeparatorInQuotedContent()
@@ -623,10 +635,14 @@ void TypingCommand::insertParagraphSeparatorInQuotedContent()
 
 void TypingCommand::insertParagraphSeparatorInQuotedContentAndNotifyAccessibility()
 {
+#if HAVE(ACCESSIBILITY)
     AccessibilityReplacedText replacedText(frame().selection().selection());
     insertParagraphSeparatorInQuotedContent();
     replacedText.postTextStateChangeNotification(document().existingAXObjectCache(), AXTextEditTypeTyping, "\n", frame().selection().selection());
     composition()->setRangeDeletedByUnapply(replacedText.replacedRange());
+#else
+    insertParagraphSeparatorInQuotedContent();
+#endif
 }
 
 bool TypingCommand::makeEditableRootEmpty()
