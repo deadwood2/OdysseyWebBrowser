@@ -34,6 +34,10 @@
 typedef struct _GdkEventScroll GdkEventScroll;
 #endif
 
+#if PLATFORM(MUI)
+#include "BALBase.h"
+#endif
+
 namespace WebCore {
 
 // The ScrollByPixelWheelEvent is a fine-grained event that specifies the precise number of pixels to scroll.
@@ -126,6 +130,11 @@ public:
 
 #if PLATFORM(GTK)
     explicit PlatformWheelEvent(GdkEventScroll*);
+#endif
+
+#if PLATFORM(MUI)
+    PlatformWheelEvent(BalEventScroll*);
+    bool m_useLatchedEventNode;
 #endif
 
 #if PLATFORM(COCOA)

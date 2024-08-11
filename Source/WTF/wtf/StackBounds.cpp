@@ -33,6 +33,11 @@
 
 #include <windows.h>
 
+#elif PLATFORM(MUI)
+
+#include <exec/exec.h>
+#include <proto/exec.h>
+
 #elif OS(UNIX)
 
 #include <pthread.h>
@@ -99,6 +104,42 @@ StackBounds StackBounds::currentThreadStackBoundsInternal()
         void* bound = static_cast<char*>(origin) - size;
         return StackBounds { origin, bound };
     }
+    return newThreadStackBounds(pthread_self());
+}
+
+#elif OS(MORPHOS)
+
+//void StackBounds::initialize()
+//{
+//    void *ppcspupper = NULL, *ppcsplower = NULL;
+//
+//    NewGetTaskAttrs(FindTask(NULL),
+//                    &ppcspupper,
+//                    sizeof(ppcspupper),
+//                    TASKINFOTYPE_SPUPPER,
+//                    TAG_DONE);
+//
+//    NewGetTaskAttrs(FindTask(NULL),
+//		    &ppcsplower,
+//		    sizeof(ppcsplower),
+//		    TASKINFOTYPE_SPLOWER,
+//		    TAG_DONE);
+//
+//    m_origin = ppcspupper;
+//    m_bound =  ppcsplower;/*estimateStackBound(m_origin);*/
+//}
+
+#elif OS(AROS)
+
+StackBounds StackBounds::newThreadStackBounds(PlatformThreadHandle thread)
+{
+    APTR origin = FindTask(NULL)->tc_SPUpper;
+    APTR bound =  FindTask(NULL)->tc_SPLower;
+    return StackBounds { origin, bound};
+}
+
+StackBounds StackBounds::currentThreadStackBoundsInternal()
+{
     return newThreadStackBounds(pthread_self());
 }
 
@@ -176,7 +217,7 @@ StackBounds StackBounds::currentThreadStackBoundsInternal()
     //         | guardPage         | reserved memory for the stack
     //         |-------------------|    |
     //         | uncommittedMemory |    v
-    //    Low  |-------------------|  ----- <--- stackOrigin.AllocationBase
+    //    Low  |-------------------|  ----- Source/WTF/<--- Source/WTF/stackOrigin.AllocationBase
     //
     // See http://msdn.microsoft.com/en-us/library/ms686774%28VS.85%29.aspx for more information.
 

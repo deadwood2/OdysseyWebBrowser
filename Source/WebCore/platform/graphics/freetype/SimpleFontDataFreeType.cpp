@@ -203,10 +203,10 @@ bool Font::variantCapsSupportsCharacterForSynthesis(FontVariantCaps fontVariantC
 
 bool Font::platformSupportsCodePoint(UChar32 character, Optional<UChar32> variation) const
 {
-    CairoFtFaceLocker cairoFtFaceLocker(m_platformData.scaledFont());
-    if (FT_Face face = cairoFtFaceLocker.ftFace())
-        return variation ? !!FT_Face_GetCharVariantIndex(face, character, variation.value()) : !!FcFreeTypeCharIndex(face, character);
-
+//    CairoFtFaceLocker cairoFtFaceLocker(m_platformData.scaledFont());
+//    if (FT_Face face = cairoFtFaceLocker.ftFace())
+//        return variation ? !!FT_Face_GetCharVariantIndex(face, character, variation.value()) : !!FcFreeTypeCharIndex(face, character);
+//
     return false;
 }
 

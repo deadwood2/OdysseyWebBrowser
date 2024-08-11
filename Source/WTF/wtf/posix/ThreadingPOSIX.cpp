@@ -66,6 +66,10 @@
 
 #endif
 
+#if OS(AROS)
+#include <semaphore.h>
+#endif
+
 namespace WTF {
 
 static Lock globalSuspendLock;
@@ -187,7 +191,7 @@ void Thread::initializePlatformThreading()
 
 void Thread::initializeCurrentThreadEvenIfNonWTFCreated()
 {
-#if !OS(DARWIN)
+#if !OS(DARWIN) && !OS(AROS)
     sigset_t mask;
     sigemptyset(&mask);
     sigaddset(&mask, SigThreadSuspendResume);

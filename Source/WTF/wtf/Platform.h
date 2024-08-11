@@ -436,6 +436,14 @@
 #define WTF_OS_UNIX 1
 #endif
 
+#if defined(__AROS__)
+#define WTF_OS_AROS 1
+#endif
+
+#if defined(__MORPHOS__)
+#define WTF_OS_MORPHOS 1
+#endif
+
 /* Operating environments */
 
 /* CPU(BIG_ENDIAN) or CPU(MIDDLE_ENDIAN) or neither, as appropriate. */
@@ -541,6 +549,8 @@
 #endif
 #elif OS(WINDOWS)
 #define WTF_PLATFORM_WIN 1
+#elif OS(AROS)
+#define WTF_PLATFORM_MUI 1
 #endif
 
 /* PLATFORM(COCOA) */
@@ -595,6 +605,15 @@
 
 #if USE(SOUP)
 #define SOUP_VERSION_MIN_REQUIRED SOUP_VERSION_2_42
+#endif
+
+#if PLATFORM(MUI)
+#define USE_CAIRO 1
+#define USE_FREETYPE 1
+#define USE_CURL 1
+#define USE_CURL_OPENSSL 1
+#define USE_TEXTURE_MAPPER 1
+#define USE_TEXTURE_MAPPER_GL 0
 #endif
 
 /* On Windows, use QueryPerformanceCounter by default */
@@ -739,7 +758,7 @@
 /* Include feature macros */
 #include <wtf/FeatureDefines.h>
 
-#if OS(WINDOWS)
+#if OS(WINDOWS) || OS(AROS) || OS(MORPHOS)
 #define USE_SYSTEM_MALLOC 1
 #endif
 
@@ -818,7 +837,7 @@
 
 #if !defined(ENABLE_DFG_JIT) && ENABLE(JIT)
 /* Enable the DFG JIT on X86 and X86_64. */
-#if (CPU(X86) || CPU(X86_64)) && (OS(DARWIN) || OS(LINUX) || OS(FREEBSD) || OS(HURD) || OS(WINDOWS))
+#if (CPU(X86) || CPU(X86_64)) && (OS(DARWIN) || OS(LINUX) || OS(FREEBSD) || OS(HURD) || OS(WINDOWS) || OS(AROS))
 #define ENABLE_DFG_JIT 1
 #endif
 /* Enable the DFG JIT on ARMv7.  Only tested on iOS, Linux, and FreeBSD. */

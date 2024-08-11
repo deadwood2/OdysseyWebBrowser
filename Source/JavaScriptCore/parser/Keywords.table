@@ -44,7 +44,7 @@ yield	YIELD
 # Reserved for future use.
 enum            RESERVED
 export          EXPORT
-import          IMPORT
+import          IMPORT_IMPORT
 
 # Reserved for future use in strict code.
 implements      RESERVED_IF_STRICT

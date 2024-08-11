@@ -78,7 +78,7 @@ String localizedString(const char* key)
 
 #endif
 
-#if ENABLE(CONTEXT_MENUS)
+#if ENABLE(CONTEXT_MENUS) && !PLATFORM(MUI)
 
 static String truncatedStringForLookupMenuItem(const String& original)
 {
@@ -91,6 +91,8 @@ static String truncatedStringForLookupMenuItem(const String& original)
 }
 
 #endif
+
+#if !PLATFORM(MUI)
 
 String inputElementAltText()
 {
@@ -137,8 +139,9 @@ String defaultDetailsSummaryText()
 {
     return WEB_UI_STRING("Details", "text to display in <details> tag when it has no <summary> child");
 }
+#endif
 
-#if ENABLE(CONTEXT_MENUS)
+#if ENABLE(CONTEXT_MENUS) && !PLATFORM(MUI)
 
 String contextMenuItemTagOpenLinkInNewWindow()
 {
@@ -421,7 +424,7 @@ String contextMenuItemTagSearchWeb()
 
 #endif // ENABLE(CONTEXT_MENUS)
 
-#if !PLATFORM(IOS_FAMILY)
+#if !PLATFORM(IOS_FAMILY) && !PLATFORM(MUI)
 
 String searchMenuNoRecentSearchesText()
 {

@@ -427,6 +427,15 @@ Vector<String> MIMETypeRegistry::getMediaMIMETypesForExtension(const String& ext
     return { };
 }
 
+#if 0
+void MIMETypeRegistry::reinitializeSupportedMediaMIMETypes()
+{
+    if(supportedMediaMIMETypes)
+        delete supportedMediaMIMETypes;
+    initializeSupportedMediaMIMETypes();
+}
+#endif
+
 String MIMETypeRegistry::getMIMETypeForPath(const String& path)
 {
     size_t pos = path.reverseFind('.');

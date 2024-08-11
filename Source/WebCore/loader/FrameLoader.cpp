@@ -600,7 +600,6 @@ void FrameLoader::didExplicitOpen()
     m_frame.navigationScheduler().cancel();
 }
 
-
 void FrameLoader::cancelAndClear()
 {
     m_frame.navigationScheduler().cancel();
@@ -4151,5 +4150,12 @@ bool FrameLoader::shouldSuppressTextInputFromEditing() const
 {
     return m_frame.settings().shouldSuppressTextInputFromEditingDuringProvisionalNavigation() && m_state == FrameStateProvisional;
 }
+
+#if USE(CURL_OPENSSL)
+void FrameLoader::didReceiveSSLSecurityExtension(const ResourceRequest& request, const char* securityExtension)
+{
+    m_client.didReceiveSSLSecurityExtension(request, securityExtension);
+}
+#endif
 
 } // namespace WebCore

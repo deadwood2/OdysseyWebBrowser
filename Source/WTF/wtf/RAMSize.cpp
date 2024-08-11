@@ -31,6 +31,8 @@
 
 #if OS(WINDOWS)
 #include <windows.h>
+#elif PLATFORM(MUI)
+#include <proto/exec.h>
 #elif defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
 #if OS(LINUX)
 #include <sys/sysinfo.h>
@@ -38,6 +40,7 @@
 #else
 #include <bmalloc/bmalloc.h>
 #endif
+
 
 namespace WTF {
 
@@ -54,6 +57,19 @@ static size_t computeRAMSize()
     if (!result)
         return ramSizeGuess;
     return status.ullTotalPhys;
+#elif PLATFORM(MUI)
+    static const char * ramSizeSetting = getenv("OWB_RAM_SIZE");
+    size_t size = 0;
+    if(ramSizeSetting)
+    {
+        size = (size_t) atoi(ramSizeSetting) * MB;
+        if(size > 8 * MB)
+            return size;
+    }
+    size += AvailMem(MEMF_CHIP);
+    size += AvailMem(MEMF_FAST);
+
+    return size;
 #elif defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
 #if OS(LINUX)
     struct sysinfo si;

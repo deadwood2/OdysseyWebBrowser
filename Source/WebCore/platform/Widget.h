@@ -54,6 +54,8 @@ typedef HWND PlatformWidget;
 typedef struct _GtkWidget GtkWidget;
 typedef struct _GtkContainer GtkContainer;
 typedef GtkWidget* PlatformWidget;
+#elif PLATFORM(MUI)
+#include "BALBase.h"
 #else
 typedef void* PlatformWidget;
 #endif

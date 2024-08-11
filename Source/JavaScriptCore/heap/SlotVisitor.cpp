@@ -142,6 +142,8 @@ void SlotVisitor::append(const ConservativeRoots& conservativeRoots)
         appendJSCellOrAuxiliary(roots[i]);
 }
 
+template void SlotVisitor::append<JSCell>(const Weak<JSCell>&);
+
 void SlotVisitor::appendJSCellOrAuxiliary(HeapCell* heapCell)
 {
     if (!heapCell)

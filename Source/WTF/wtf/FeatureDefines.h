@@ -361,6 +361,15 @@ the public iOS SDK. See <https://webkit.org/b/179167>. */
 #endif
 #endif /* PLATFORM(GTK) || PLATFORM(WPE) */
 
+/* --------- MUI port (MorphOS, AROS) --------- */
+#if PLATFORM(MUI)
+
+#if !defined(ENABLE_PLUGIN_PACKAGE_SIMPLE_HASH)
+#define ENABLE_PLUGIN_PACKAGE_SIMPLE_HASH 1
+#endif
+
+#endif
+
 /* ENABLE macro defaults for WebCore */
 /* Do not use PLATFORM() tests in this section ! */
 

@@ -466,7 +466,7 @@ class LabelReference
         # https://bugs.webkit.org/show_bug.cgi?id=175104
         used
         if !isIntelSyntax
-            $asm.puts "movq #{asmLabel}@GOTPCREL(%rip), #{dst.x86Operand(:ptr)}"
+            $asm.puts "lea #{asmLabel}, #{dst.x86Operand(:ptr)}"
         else
             $asm.puts "lea #{dst.x86Operand(:ptr)}, #{asmLabel}"
         end
@@ -590,7 +590,7 @@ class Instruction
         if src.is_a? LabelReference
             src.used
             if !isIntelSyntax
-                $asm.puts "movq #{src.asmLabel}@GOTPCREL(%rip), #{dst.x86Operand(:ptr)}"
+                $asm.puts "lea #{src.asmLabel}, #{dst.x86Operand(:ptr)}"
             else
                 $asm.puts "lea #{dst.x86Operand(:ptr)}, #{src.asmLabel}"
             end
