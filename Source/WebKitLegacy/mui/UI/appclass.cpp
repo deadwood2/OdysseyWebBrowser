@@ -2325,7 +2325,9 @@ void prefs_update(Object *obj, struct Data *data)
 	data->use_flv = getv(data->prefswin, MA_OWBApp_EnableFLV);
 	data->use_ogg = getv(data->prefswin, MA_OWBApp_EnableOgg);
 	data->use_mp4 = getv(data->prefswin, MA_OWBApp_EnableMP4);
+#if 0
 	MIMETypeRegistry::reinitializeSupportedMediaMIMETypes();
+#endif
 	data->use_partial_content = getv(data->prefswin, MA_OWBApp_EnablePartialContent);
 	data->loopfilter_mode = getv(data->prefswin, MA_OWBApp_LoopFilterMode);
 

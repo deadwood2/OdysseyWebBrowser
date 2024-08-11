@@ -166,12 +166,15 @@ void WebFrameLoaderClient::dispatchDidReceiveAuthenticationChallenge(DocumentLoa
 {
     ASSERT(challenge.authenticationClient());
 
+asm("int3");
+#if 0
     Credential storedCredential = CredentialStorage::defaultCredentialStorage().get(emptyString(), challenge.protectionSpace());
     if(!storedCredential.isEmpty())
     {
 	challenge.authenticationClient()->receivedCredential(challenge, storedCredential);
 	return;
     }
+#endif
 
     char *username = NULL, *password = NULL;
     String host = challenge.protectionSpace().host();

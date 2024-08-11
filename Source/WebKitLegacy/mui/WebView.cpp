@@ -2796,6 +2796,8 @@ void WebView::addAdditionalPluginDirectory(const char* directory)
 
 void WebView::loadBackForwardListFromOtherView(WebView* otherView)
 {
+asm("int3");
+#if 0
     if (!m_page)
         return ;
     
@@ -2827,6 +2829,7 @@ void WebView::loadBackForwardListFromOtherView(WebView* otherView)
     
     ASSERT(newItemToGoTo);
     m_page->goToItem(*newItemToGoTo, FrameLoadType::IndexedBackForward, ShouldTreatAsContinuingLoad::No);
+#endif
 }
 
 void WebView::clearUndoRedoOperations()
