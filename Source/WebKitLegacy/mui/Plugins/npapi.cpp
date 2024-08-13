@@ -25,10 +25,12 @@
 
 #include "config.h"
 
-#include "Page.h"
+#if ENABLE(NETSCAPE_PLUGIN_API)
+
 #include "PluginMainThreadScheduler.h"
 #include "PluginView.h"
-#include "npruntime_internal.h"
+#include <WebCore/Page.h>
+#include <WebCore/npruntime_internal.h>
 
 using namespace WebCore;
 
@@ -200,3 +202,5 @@ NPError NPN_PopUpContextMenu(NPP instance, NPMenu* menu)
     UNUSED_PARAM(menu);
     return NPERR_NO_ERROR;
 }
+
+#endif

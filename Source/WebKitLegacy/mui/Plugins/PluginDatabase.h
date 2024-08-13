@@ -34,9 +34,6 @@
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
-namespace WTF {
-    class URL;
-}
 namespace WebCore {
     class Element;
     class Frame;
@@ -109,7 +106,7 @@ namespace WebCore {
         PluginSet m_plugins;
         HashMap<String, RefPtr<PluginPackage> > m_pluginsByPath;
         HashMap<String, time_t> m_pluginPathsWithTimes;
-        HashMap<String, RefPtr<PluginPackage> > m_preferredPlugins;
+        HashMap<String, RefPtr<PluginPackage>, ASCIICaseInsensitiveHash> m_preferredPlugins;
 #if ENABLE(NETSCAPE_PLUGIN_METADATA_CACHE)
         bool m_persistentMetadataCacheIsLoaded;
 #endif

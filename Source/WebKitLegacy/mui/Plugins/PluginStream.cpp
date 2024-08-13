@@ -27,14 +27,15 @@
 #include "config.h"
 #include "PluginStream.h"
 
-#include "DocumentLoader.h"
-#include "Frame.h"
-#include "FrameLoader.h"
-#include "HTTPHeaderNames.h"
 #include "PluginDebug.h"
 #include "WebResourceLoadScheduler.h"
-#include "SharedBuffer.h"
-#include "SubresourceLoader.h"
+#include <WebCore/DocumentLoader.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameLoader.h>
+#include <WebCore/HTTPHeaderNames.h>
+#include <WebCore/SharedBuffer.h>
+#include <WebCore/SubresourceLoader.h>
+#include <wtf/CompletionHandler.h>
 #include <wtf/StringExtras.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
@@ -96,6 +97,7 @@ PluginStream::~PluginStream()
 void PluginStream::start()
 {
     ASSERT(!m_loadManually);
+    ASSERT(m_frame);
     webResourceLoadScheduler().schedulePluginStreamLoad(*m_frame, *this, ResourceRequest(m_resourceRequest), [this, protectedThis = makeRef(*this)] (RefPtr<WebCore::NetscapePlugInStreamLoader>&& loader) {
         m_loader = WTFMove(loader);
     });
@@ -296,7 +298,7 @@ void PluginStream::destroyStream()
         if (m_loader)
             m_loader->setDefersLoading(true);
         if (!newStreamCalled && m_quirks.contains(PluginQuirkFlashURLNotifyBug) &&
-            equalIgnoringASCIICase(m_resourceRequest.httpMethod(), "POST")) {
+            equalLettersIgnoringASCIICase(m_resourceRequest.httpMethod(), "post")) {
             m_transferMode = NP_NORMAL;
             m_stream.url = "";
             m_stream.notifyData = m_notifyData;
@@ -480,11 +482,11 @@ bool PluginStream::wantsAllStreams() const
     if (!m_pluginFuncs->getvalue)
         return false;
 
-    void* result = 0;
+    void* result = nullptr;
     if (m_pluginFuncs->getvalue(m_instance, NPPVpluginWantsAllNetworkStreams, &result) != NPERR_NO_ERROR)
         return false;
 
-    return result != 0;
+    return !!result;
 }
 
 }

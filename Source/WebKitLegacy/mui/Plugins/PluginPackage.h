@@ -27,21 +27,23 @@
 #ifndef PluginPackage_h
 #define PluginPackage_h
 
-#include <wtf/FileSystem.h>
 #include "PlatformModule.h"
 #include "PluginQuirkSet.h"
-#include "Timer.h"
-#if ENABLE(NETSCAPE_PLUGIN_API)
-#include "npruntime_internal.h"
-#endif
+#include <WebCore/Timer.h>
+#include <wtf/FileSystem.h>
 #include <wtf/HashMap.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
+#if ENABLE(NETSCAPE_PLUGIN_API)
+#include <WebCore/npruntime_internal.h>
+#endif
+
 namespace WebCore {
-    typedef HashMap<String, String> MIMEToDescriptionsMap;
-    typedef HashMap<String, Vector<String> > MIMEToExtensionsMap;
+
+    typedef HashMap<String, String, ASCIICaseInsensitiveHash> MIMEToDescriptionsMap;
+    typedef HashMap<String, Vector<String>, ASCIICaseInsensitiveHash> MIMEToExtensionsMap;
 
     class PluginPackage : public RefCounted<PluginPackage> {
     public:

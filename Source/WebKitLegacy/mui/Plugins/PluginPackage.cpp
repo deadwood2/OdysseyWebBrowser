@@ -33,18 +33,17 @@
 #include "PluginView.h"
 #include <JavaScriptCore/CatchScope.h>
 #include <JavaScriptCore/Completion.h>
+#include <JavaScriptCore/HeapInlines.h>
 #include <JavaScriptCore/JSGlobalObject.h>
-#include "IdentifierRep.h"
-#include "MIMETypeRegistry.h"
-#include "NP_jsobject.h"
-#include "Timer.h"
-#include "c_utility.h"
-#include "npruntime_impl.h"
-#include "runtime_root.h"
+#include <WebCore/IdentifierRep.h>
+#include <WebCore/MIMETypeRegistry.h>
+#include <WebCore/NP_jsobject.h>
+#include <WebCore/Timer.h>
+#include <WebCore/c_utility.h>
+#include <WebCore/npruntime_impl.h>
+#include <WebCore/runtime_root.h>
 #include <string.h>
 #include <wtf/text/CString.h>
-
-#include <clib/debug_protos.h>
 
 namespace WebCore {
 
@@ -78,9 +77,8 @@ void PluginPackage::freeLibraryTimerFired()
     ASSERT(m_module);
     // Do nothing if the module got loaded again meanwhile
     if (!m_loadCount) {
-#if 0
-        unloadModule(m_module);
-#endif
+asm("int3");
+//        ::FreeLibrary(m_module);
         m_module = 0;
     }
 }
@@ -159,11 +157,7 @@ void PluginPackage::unloadWithoutShutdown()
     // original window proc. If we free the plugin library from here, we will jump back
     // to code we just freed when we return, so delay calling FreeLibrary at least until
     // the next message loop
-#if !PLATFORM(MUI)
-	freeLibrarySoon();
-#else
-	freeLibraryTimerFired();
-#endif
+    freeLibrarySoon();
 
     m_isLoaded = false;
 }
@@ -184,15 +178,15 @@ RefPtr<PluginPackage> PluginPackage::createPackage(const String& path, const tim
 }
 
 #if ENABLE(NETSCAPE_PLUGIN_METADATA_CACHE)
-PassRefPtr<PluginPackage> PluginPackage::createPackageFromCache(const String& path, const time_t& lastModified, const String& name, const String& description, const String& mimeDescription)
+Ref<PluginPackage> PluginPackage::createPackageFromCache(const String& path, const time_t& lastModified, const String& name, const String& description, const String& mimeDescription)
 {
-    RefPtr<PluginPackage> package = adoptRef(new PluginPackage(path, lastModified));
+    Ref<PluginPackage> package = adoptRef(*new PluginPackage(path, lastModified));
     package->m_name = name;
     package->m_description = description;
     package->determineModuleVersionFromDescription();
     package->setMIMEDescription(mimeDescription);
     package->m_infoIsFromCache = true;
-    return package.release();
+    return package;
 }
 #endif
 
@@ -290,7 +284,6 @@ static bool NPN_Invoke(NPP npp, NPObject* o, NPIdentifier methodName, const NPVa
 
 void PluginPackage::initializeBrowserFuncs()
 {
-#if ENABLE(NETSCAPE_PLUGIN_API)
     memset(&m_browserFuncs, 0, sizeof(m_browserFuncs));
     m_browserFuncs.size = sizeof(m_browserFuncs);
     m_browserFuncs.version = NPVersion();
@@ -343,15 +336,14 @@ void PluginPackage::initializeBrowserFuncs()
     m_browserFuncs.construct = _NPN_Construct;
     m_browserFuncs.getvalueforurl = NPN_GetValueForURL;
     m_browserFuncs.setvalueforurl = NPN_SetValueForURL;
-    m_browserFuncs.getauthenticationinfo = NPN_GetAuthenticationInfo;   
+    m_browserFuncs.getauthenticationinfo = NPN_GetAuthenticationInfo;
 
     m_browserFuncs.popupcontextmenu = NPN_PopUpContextMenu;
-#endif // ENABLE(NETSCAPE_PLUGIN_API)
 }
+#endif // ENABLE(NETSCAPE_PLUGIN_API)
 
 int PluginPackage::compareFileVersion(const PlatformModuleVersion& compareVersion) const
 {
-#if !PLATFORM(MUI)
     // return -1, 0, or 1 if plug-in version is less than, equal to, or greater than
     // the passed version
 
@@ -361,9 +353,6 @@ int PluginPackage::compareFileVersion(const PlatformModuleVersion& compareVersio
         return m_moduleVersion.leastSig > compareVersion.leastSig ? 1 : -1;
 
     return 0;
-#else
-    return 0;
-#endif
 }
 
 #if ENABLE(NETSCAPE_PLUGIN_METADATA_CACHE)
@@ -381,5 +370,5 @@ bool PluginPackage::ensurePluginLoaded()
     return fetchInfo();
 }
 #endif
-#endif
+
 }

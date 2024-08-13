@@ -121,7 +121,7 @@ struct IEvent {
 	LONG height;
 };
 
-void PluginView::paint(GraphicsContext* context, const IntRect& rect)
+void PluginView::paint(GraphicsContext& context, const IntRect& rect, Widget::SecurityOriginPaintPolicy)
 {
     if (!m_isStarted || m_status !=  PluginStatusLoadedSuccessfully) {
         // Draw the "missing plugin" image
@@ -152,7 +152,7 @@ void PluginView::paint(GraphicsContext* context, const IntRect& rect)
 	}
 }
 
-void PluginView::handleKeyboardEvent(KeyboardEvent* event)
+void PluginView::handleKeyboardEvent(KeyboardEvent& event)
 {
 	IEvent npEvent;
 
@@ -160,10 +160,10 @@ void PluginView::handleKeyboardEvent(KeyboardEvent* event)
 
 	JSC::JSLock::DropAllLocks dropAllLocks(commonVM());
 	if (!m_plugin->pluginFuncs()->event || !m_plugin->pluginFuncs()->event(m_instance, (NPEvent) &npEvent))
-        event->setDefaultHandled();
+        event.setDefaultHandled();
 }
 
-void PluginView::handleMouseEvent(MouseEvent* event)
+void PluginView::handleMouseEvent(MouseEvent& event)
 {
 	IEvent npEvent;
 
@@ -171,7 +171,7 @@ void PluginView::handleMouseEvent(MouseEvent* event)
 
 	JSC::JSLock::DropAllLocks dropAllLocks(commonVM());
 	if (!m_plugin->pluginFuncs()->event  || !m_plugin->pluginFuncs()->event(m_instance, (NPEvent) &npEvent))
-        event->setDefaultHandled();
+        event.setDefaultHandled();
 }
 
 void PluginView::setParent(ScrollView* parent)
@@ -356,6 +356,25 @@ bool PluginView::platformStart()
     updatePluginWidget();
 
     return true;
+}
+
+float PluginView::deviceScaleFactor() const
+{
+    float scaleFactor = 1.0f;
+
+    if (!parent() || !parent()->isFrameView())
+        return scaleFactor;
+
+    // For windowless plugins, the device scale factor will be applied as for other page elements.
+    if (!m_isWindowed)
+        return scaleFactor;
+
+    FrameView& frameView = downcast<FrameView>(*parent());
+
+    if (frameView.frame().document())
+        scaleFactor = frameView.frame().document()->deviceScaleFactor();
+
+    return scaleFactor;
 }
 
 void PluginView::platformDestroy()

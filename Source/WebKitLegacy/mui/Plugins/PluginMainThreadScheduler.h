@@ -23,13 +23,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef PluginMainThreadScheduler_h
-#define PluginMainThreadScheduler_h
+#pragma once
 
 #include <wtf/Deque.h>
+#include <wtf/Forward.h>
 #include <wtf/HashMap.h>
+#include <wtf/Lock.h>
 #include <wtf/MainThread.h>
-#include <wtf/Threading.h>
 
 typedef struct _NPP NPP_t;
 typedef NPP_t* NPP;
@@ -39,7 +39,6 @@ namespace WebCore {
 class PluginMainThreadScheduler {
     WTF_MAKE_NONCOPYABLE(PluginMainThreadScheduler); WTF_MAKE_FAST_ALLOCATED;
 public:
-    PluginMainThreadScheduler();
     typedef void MainThreadFunction(void*);
 
     WEBCORE_EXPORT static PluginMainThreadScheduler& scheduler();
@@ -50,14 +49,14 @@ public:
     WEBCORE_EXPORT void unregisterPlugin(NPP);
 
 private:
+    friend NeverDestroyed<PluginMainThreadScheduler>;
+    PluginMainThreadScheduler();
     void dispatchCalls();
 
     class Call;
 
     void dispatchCallsForPlugin(NPP, const Deque<Call>& calls);
     typedef HashMap<NPP, Deque<Call>> CallQueueMap;
-
-    static void mainThreadCallback(void* context);
 
     class Call {
     public:
@@ -79,9 +78,7 @@ private:
 
     bool m_callPending;
     CallQueueMap m_callQueueMap;
-    Mutex m_queueMutex;
+    Lock m_queueMutex;
 };
 
 } // namespace WebCore
-
-#endif // PluginMainThreadScheduler_h

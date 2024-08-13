@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2008, 2009, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
  * Copyright (C) 2008 Collabora Ltd. All rights reserved.
  * Copyright (C) 2010 Girish Ramakrishnan <girish@forwardbias.in>
  *
@@ -28,59 +28,57 @@
 #include "config.h"
 #include "PluginView.h"
 
-#include "WebFrameLoaderClient.h"
 #include "PluginDatabase.h"
 #include "PluginDebug.h"
 #include "PluginPackage.h"
-#include "BridgeJSC.h"
-#include "Chrome.h"
-#include "CookieJar.h"
-#include "Document.h"
-#include "DocumentLoader.h"
-#include "Element.h"
-#include "FocusController.h"
-#include "Frame.h"
-#include "FrameLoadRequest.h"
-#include "FrameLoader.h"
-#include "FrameLoaderClient.h"
-#include "FrameTree.h"
-#include "FrameView.h"
-#include "GraphicsContext.h"
-#include "HTMLNames.h"
-#include "HTMLPlugInElement.h"
-#include "HTTPHeaderNames.h"
-#include "Image.h"
-#include "JSDOMBinding.h"
-#include "CommonVM.h"
-#include "KeyboardEvent.h"
-#include "MIMETypeRegistry.h"
-#include "MouseEvent.h"
-#include "NotImplemented.h"
-#include "Page.h"
-#include "PlatformMouseEvent.h"
-#include "PluginMainThreadScheduler.h"
-#include "ProxyServer.h"
-#include "RenderBox.h"
-#include "RenderObject.h"
-#include "ScriptController.h"
-#include "SecurityOrigin.h"
-#include "Settings.h"
-#include "EventNames.h"
-#include "UserGestureIndicator.h"
-#include "WheelEvent.h"
-#include "c_instance.h"
-#include "npruntime_impl.h"
-#include "runtime_root.h"
+#include "WebFrameLoaderClient.h"
 #include <JavaScriptCore/JSCJSValue.h>
 #include <JavaScriptCore/JSLock.h>
-#include <JavaScriptCore/ScriptValue.h>
+#include <WebCore/BridgeJSC.h>
+#include <WebCore/Chrome.h>
+#include <WebCore/CommonVM.h>
+#include <WebCore/CookieJar.h>
+#include <WebCore/Document.h>
+#include <WebCore/DocumentLoader.h>
+#include <WebCore/Element.h>
+#include <WebCore/EventNames.h>
+#include <WebCore/FocusController.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameLoadRequest.h>
+#include <WebCore/FrameLoader.h>
+#include <WebCore/FrameLoaderClient.h>
+#include <WebCore/FrameTree.h>
+#include <WebCore/FrameView.h>
+#include <WebCore/GraphicsContext.h>
+#include <WebCore/HTMLNames.h>
+#include <WebCore/HTMLPlugInElement.h>
+#include <WebCore/HTTPHeaderNames.h>
+#include <WebCore/Image.h>
+#include <WebCore/JSDOMBinding.h>
+#include <WebCore/JSDOMWindow.h>
+#include <WebCore/KeyboardEvent.h>
+#include <WebCore/MIMETypeRegistry.h>
+#include <WebCore/MouseEvent.h>
+#include <WebCore/NP_jsobject.h>
+#include <WebCore/NotImplemented.h>
+#include <WebCore/Page.h>
+#include <WebCore/PlatformMouseEvent.h>
+#include <WebCore/ProxyServer.h>
+#include <WebCore/RenderBox.h>
+#include <WebCore/RenderObject.h>
+#include <WebCore/ScriptController.h>
+#include <WebCore/SecurityOrigin.h>
+#include <WebCore/Settings.h>
+#include <WebCore/UserGestureIndicator.h>
+#include <WebCore/WheelEvent.h>
+#include <WebCore/c_instance.h>
+#include <WebCore/npruntime_impl.h>
+#include <WebCore/runtime_root.h>
 #include <wtf/ASCIICType.h>
 #include <wtf/text/WTFString.h>
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
-#if PLATFORM(WIN)
-#include "PluginMessageThrottlerWin.h"
-#endif
+#include "PluginMainThreadScheduler.h"
 #endif
 
 using JSC::ExecState;
@@ -89,10 +87,6 @@ using JSC::JSObject;
 using JSC::JSValue;
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
-
-using std::min;
-
-using namespace WTF;
 
 namespace WebCore {
 
@@ -131,7 +125,9 @@ IntRect PluginView::windowClipRect() const
     
     // Take our element and get the clip rect from the enclosing layer and frame view.
     FrameView* parentView = m_element->document().view();
-    clipRect.intersect(parentView->windowClipRectForFrameOwner(m_element, true));
+    IntRect windowClipRect = parentView->windowClipRectForFrameOwner(m_element, true);
+    windowClipRect.scale(deviceScaleFactor());
+    clipRect.intersect(windowClipRect);
 
     return clipRect;
 }
@@ -160,7 +156,7 @@ void PluginView::clipRectChanged()
     updatePluginWidget();
 }
 
-void PluginView::handleEvent(Event* event)
+void PluginView::handleEvent(Event& event)
 {
     if (!m_plugin || m_isWindowed)
         return;
@@ -168,12 +164,12 @@ void PluginView::handleEvent(Event* event)
     // Protect the plug-in from deletion while dispatching the event.
     RefPtr<PluginView> protect(this);
 
-    if (event->isMouseEvent())
-        handleMouseEvent(static_cast<MouseEvent*>(event));
-    else if (event->isKeyboardEvent())
-        handleKeyboardEvent(static_cast<KeyboardEvent*>(event));
-    else if (event->type() == eventNames().contextmenuEvent)
-        event->setDefaultHandled(); // We don't know if the plug-in has handled mousedown event by displaying a context menu, so we never want WebKit to show a default one.
+    if (event.isMouseEvent())
+        handleMouseEvent(downcast<MouseEvent>(event));
+    else if (event.isKeyboardEvent())
+        handleKeyboardEvent(downcast<KeyboardEvent>(event));
+    else if (event.type() == eventNames().contextmenuEvent)
+        event.setDefaultHandled(); // We don't know if the plug-in has handled mousedown event by displaying a context menu, so we never want WebKit to show a default one.
 }
 
 void PluginView::init()
@@ -270,7 +266,7 @@ bool PluginView::start()
     return true;
 }
 
-void PluginView::mediaCanStart(Document& doc)
+void PluginView::mediaCanStart(Document&)
 {
     ASSERT(!m_isStarted);
     if (!start())
@@ -293,6 +289,9 @@ PluginView::~PluginView()
 
     stop();
 
+    if (m_elementNPObject)
+        _NPN_ReleaseObject(m_elementNPObject);
+    
     freeStringArray(m_paramNames, m_paramCount);
     freeStringArray(m_paramValues, m_paramCount);
 
@@ -411,8 +410,8 @@ void PluginView::performRequest(PluginRequest* request)
         // if this is not a targeted request, create a stream for it. otherwise,
         // just pass it off to the loader
         if (targetFrameName.isEmpty()) {
-            RefPtr<PluginStream> stream = PluginStream::create(this, m_parentFrame.get(), request->frameLoadRequest().resourceRequest(), request->sendNotification(), request->notifyData(), plugin()->pluginFuncs(), instance(), m_plugin->quirks());
-            m_streams.add(stream);
+            auto stream = PluginStream::create(this, m_parentFrame.get(), request->frameLoadRequest().resourceRequest(), request->sendNotification(), request->notifyData(), plugin()->pluginFuncs(), instance(), m_plugin->quirks());
+            m_streams.add(stream.copyRef());
             stream->start();
         } else {
             // If the target frame is our frame, we could destroy the
@@ -439,22 +438,24 @@ void PluginView::performRequest(PluginRequest* request)
 
     // Targeted JavaScript requests are only allowed on the frame that contains the JavaScript plugin
     // and this has been made sure in ::load.
-    ASSERT(targetFrameName.isEmpty() || m_parentFrame->tree().find(targetFrameName) == m_parentFrame);
+    ASSERT(targetFrameName.isEmpty() || m_parentFrame->tree().find(targetFrameName, *m_parentFrame) == m_parentFrame);
     
     // Executing a script can cause the plugin view to be destroyed, so we keep a reference to it.
     RefPtr<PluginView> protector(this);
     auto result = m_parentFrame->script().executeScript(jsString, request->shouldAllowPopups());
 
     if (targetFrameName.isNull()) {
-        String resultString;
-
-        JSC::ExecState* scriptState = m_parentFrame->script().globalObject(pluginWorld())->globalExec();
         CString cstr;
-        if (result.getString(scriptState, resultString))
-            cstr = resultString.utf8();
+        {
+            JSC::ExecState& state = *m_parentFrame->script().globalObject(pluginWorld())->globalExec();
+            JSC::JSLockHolder lock(&state);
+            String resultString;
+            if (result && result.getString(&state, resultString))
+                cstr = resultString.utf8();
+        }
 
-        RefPtr<PluginStream> stream = PluginStream::create(this, m_parentFrame.get(), request->frameLoadRequest().resourceRequest(), request->sendNotification(), request->notifyData(), plugin()->pluginFuncs(), instance(), m_plugin->quirks());
-        m_streams.add(stream);
+        auto stream = PluginStream::create(this, m_parentFrame.get(), request->frameLoadRequest().resourceRequest(), request->sendNotification(), request->notifyData(), plugin()->pluginFuncs(), instance(), m_plugin->quirks());
+        m_streams.add(stream.copyRef());
         stream->sendJavaScriptStream(requestURL, cstr);
     }
 }
@@ -531,7 +532,6 @@ NPError PluginView::getURLNotify(const char* url, const char* target, void* noti
 {
     FrameLoadRequest frameLoadRequest { *m_parentFrame->document(), m_parentFrame->document()->securityOrigin(), { }, target, LockHistory::No, LockBackForwardList::No, ShouldSendReferrer::MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Allow, ShouldOpenExternalURLsPolicy::ShouldNotAllow, InitiatedByMainFrame::Unknown };
 
-    frameLoadRequest.setFrameName(target);
     frameLoadRequest.resourceRequest().setHTTPMethod("GET");
     frameLoadRequest.resourceRequest().setURL(makeURL(m_parentFrame->document()->baseURL(), url));
 
@@ -542,7 +542,6 @@ NPError PluginView::getURL(const char* url, const char* target)
 {
     FrameLoadRequest frameLoadRequest { *m_parentFrame->document(), m_parentFrame->document()->securityOrigin(), { }, target, LockHistory::No, LockBackForwardList::No, ShouldSendReferrer::MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Allow, ShouldOpenExternalURLsPolicy::ShouldNotAllow, InitiatedByMainFrame::Unknown };
 
-    frameLoadRequest.setFrameName(target);
     frameLoadRequest.resourceRequest().setHTTPMethod("GET");
     frameLoadRequest.resourceRequest().setURL(makeURL(m_parentFrame->document()->baseURL(), url));
 
@@ -588,7 +587,7 @@ NPError PluginView::destroyStream(NPStream* stream, NPReason reason)
 void PluginView::status(const char* message)
 {
     if (Page* page = m_parentFrame->page())
-        page->chrome().setStatusbarText(*m_parentFrame.get(), String::fromUTF8(message));
+        page->chrome().setStatusbarText(*m_parentFrame, String::fromUTF8(message));
 }
 
 NPError PluginView::setValue(NPPVariable variable, void* value)
@@ -691,11 +690,11 @@ RefPtr<JSC::Bindings::Instance> PluginView::bindingInstance()
     }
 
     auto root = m_parentFrame->script().createRootObject(this);
-    RefPtr<JSC::Bindings::Instance> instance = JSC::Bindings::CInstance::create(object, WTFMove(root));
+    auto instance = JSC::Bindings::CInstance::create(object, WTFMove(root));
 
     _NPN_ReleaseObject(object);
 
-    return instance;
+    return WTFMove(instance);
 #else
     return nullptr;
 #endif
@@ -719,7 +718,7 @@ void PluginView::setParameters(const Vector<String>& paramNames, const Vector<St
     m_paramValues = reinterpret_cast<char**>(fastMalloc(sizeof(char*) * size));
 
     for (unsigned i = 0; i < size; i++) {
-        if (m_plugin->quirks().contains(PluginQuirkRemoveWindowlessVideoParam) && equalIgnoringASCIICase(paramNames[i], "windowlessvideo"))
+        if (m_plugin->quirks().contains(PluginQuirkRemoveWindowlessVideoParam) && equalLettersIgnoringASCIICase(paramNames[i], "windowlessvideo"))
             continue;
 
         if (paramNames[i] == "pluginspage")
@@ -750,6 +749,7 @@ PluginView::PluginView(Frame* parentFrame, const IntSize& size, PluginPackage* p
     , m_paramValues(0)
     , m_mimeType(mimeType)
     , m_instance(0)
+    , m_elementNPObject(nullptr)
     , m_isWindowed(true)
     , m_isTransparent(false)
     , m_haveInitialized(false)
@@ -1025,7 +1025,7 @@ static inline HTTPHeaderMap parseRFC822HeaderFields(const Vector<char>& buffer, 
                         break;
                 }
                 if (colon == eol)
-                    value = "";
+                    value = emptyString();
                 else
                     value = String(colon, eol - colon);
 
@@ -1110,7 +1110,7 @@ void PluginView::invalidateWindowlessPluginRect(const IntRect& rect)
     renderer.repaintRectangle(dirtyRect);
 }
 
-void PluginView::paintMissingPluginIcon(GraphicsContext* context, const IntRect& rect)
+void PluginView::paintMissingPluginIcon(GraphicsContext& context, const IntRect& rect)
 {
     static RefPtr<Image> nullPluginImage;
     if (!nullPluginImage)
@@ -1126,10 +1126,10 @@ void PluginView::paintMissingPluginIcon(GraphicsContext* context, const IntRect&
     if (!rect.intersects(imageRect))
         return;
 
-    context->save();
-    context->clip(windowClipRect());
-    context->drawImage(*nullPluginImage.get(), imageRect.location());
-    context->restore();
+    context.save();
+    context.clip(windowClipRect());
+    context.drawImage(*nullPluginImage, imageRect.location());
+    context.restore();
 }
 
 static const char* MozillaUserAgent = "Mozilla/5.0 ("
@@ -1195,6 +1195,14 @@ NPError PluginView::getValueStatic(NPNVariable variable, void* value)
     return NPERR_GENERIC_ERROR;
 }
 
+static Frame* getFrame(Frame* parentFrame, Element* element)
+{
+    if (parentFrame)
+        return parentFrame;
+    
+    return element->document().frame();
+}
+
 NPError PluginView::getValue(NPNVariable variable, void* value)
 {
     LOG(Plugins, "PluginView::getValue(%s)", prettyNameForNPNVariable(variable).data());
@@ -1227,25 +1235,23 @@ NPError PluginView::getValue(NPNVariable variable, void* value)
         if (m_isJavaScriptPaused)
             return NPERR_GENERIC_ERROR;
 
-        NPObject* pluginScriptObject = 0;
+        if (!m_elementNPObject) {
+            Frame* frame = getFrame(parentFrame(), m_element);
+            if (!frame)
+                return NPERR_GENERIC_ERROR;
 
-#if 0
-//            JSC::JSObject* object = frame->script().jsObjectForPluginElement(m_element);
-//            if (!object)
-//                m_elementNPObject = _NPN_CreateNoScriptObject();
-//            else
-//                m_elementNPObject = _NPN_CreateScriptObject(0, object, frame->script().bindingRootObject());
-        if (m_element->hasTagName(appletTag) || m_element->hasTagName(embedTag) || m_element->hasTagName(objectTag))
-            pluginScriptObject = m_element->getNPObject();
-#endif
+            JSC::JSObject* object = frame->script().jsObjectForPluginElement(m_element);
+            if (!object)
+                m_elementNPObject = _NPN_CreateNoScriptObject();
+            else
+                m_elementNPObject = _NPN_CreateScriptObject(0, object, frame->script().bindingRootObject());
+        }
 
-        // Return value is expected to be retained, as described here: <http://www.mozilla.org/projects/plugin/npruntime.html>
-        if (pluginScriptObject)
-            _NPN_RetainObject(pluginScriptObject);
+        // Return value is expected to be retained, as described here: <http://www.mozilla.org/projects/plugins/npruntime.html#browseraccess>
+        if (m_elementNPObject)
+            _NPN_RetainObject(m_elementNPObject);
 
-        void** v = (void**)value;
-        *v = pluginScriptObject;
-
+        *(void **)value = m_elementNPObject;
         return NPERR_NO_ERROR;
     }
 
@@ -1260,14 +1266,6 @@ NPError PluginView::getValue(NPNVariable variable, void* value)
     default:
         return NPERR_GENERIC_ERROR;
     }
-}
-
-static Frame* getFrame(Frame* parentFrame, Element* element)
-{
-    if (parentFrame)
-        return parentFrame;
-    
-    return element->document().frame();
 }
 
 NPError PluginView::getValueForURL(NPNURLVariable variable, const char* url, char** value, uint32_t* len)

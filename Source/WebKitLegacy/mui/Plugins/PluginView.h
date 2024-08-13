@@ -28,22 +28,21 @@
 #ifndef PluginView_h
 #define PluginView_h
 
-#include "FrameLoadRequest.h"
-#include "IntRect.h"
-#include "MediaCanStartListener.h"
-#include "PluginViewBase.h"
-#include "ResourceRequest.h"
-#include "Timer.h"
+#include <WebCore/FrameLoadRequest.h>
+#include <WebCore/IntRect.h>
+#include <WebCore/MediaCanStartListener.h>
+#include <WebCore/PluginViewBase.h>
+#include <WebCore/ResourceRequest.h>
+#include <WebCore/Timer.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
-#include <wtf/RefPtr.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
 #include <wtf/text/CString.h>
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
 #include "PluginStream.h"
-#include "npruntime_internal.h"
+#include <WebCore/npruntime_internal.h>
 #endif
 
 typedef PlatformWidget PlatformPluginWidget;
@@ -54,9 +53,6 @@ namespace JSC {
     }
 }
 
-namespace WTF {
-    class URL;
-}
 namespace WebCore {
     class Frame;
     class FrameView;
@@ -84,11 +80,13 @@ namespace WebCore {
         WTF_MAKE_NONCOPYABLE(PluginRequest); WTF_MAKE_FAST_ALLOCATED;
     public:
         PluginRequest(FrameLoadRequest&& frameLoadRequest, bool sendNotification, void* notifyData, bool shouldAllowPopups)
-            : m_frameLoadRequest(WTFMove(frameLoadRequest))
-            , m_notifyData(notifyData)
-            , m_sendNotification(sendNotification)
-            , m_shouldAllowPopups(shouldAllowPopups) { }
-    public:
+            : m_frameLoadRequest { WTFMove(frameLoadRequest) }
+            , m_notifyData { notifyData }
+            , m_sendNotification { sendNotification }
+            , m_shouldAllowPopups { shouldAllowPopups }
+        {
+        }
+
         const FrameLoadRequest& frameLoadRequest() const { return m_frameLoadRequest; }
         void* notifyData() const { return m_notifyData; }
         bool sendNotification() const { return m_sendNotification; }
@@ -130,7 +128,7 @@ namespace WebCore {
 #if ENABLE(NETSCAPE_PLUGIN_API)
         NPObject* npObject();
 #endif
-        virtual RefPtr<JSC::Bindings::Instance> bindingInstance() override;
+        RefPtr<JSC::Bindings::Instance> bindingInstance() override;
 
         PluginStatus status() const { return m_status; }
 
@@ -164,36 +162,38 @@ namespace WebCore {
         void pushPopupsEnabledState(bool state);
         void popPopupsEnabledState();
 
-        virtual void invalidateRect(const IntRect&);
+        void invalidateRect(const IntRect&) override;
 
         bool arePopupsAllowed() const;
 
-        void setJavaScriptPaused(bool);
+        void setJavaScriptPaused(bool) override;
 
-        void privateBrowsingStateChanged(bool);
+        void privateBrowsingStateChanged(bool) override;
 
         void disconnectStream(PluginStream*);
-        void streamDidFinishLoading(PluginStream* stream) { disconnectStream(stream); }
+#if ENABLE(NETSCAPE_PLUGIN_API)
+        void streamDidFinishLoading(PluginStream* stream) override { disconnectStream(stream); }
+#endif
 
         // Widget functions
-        virtual void setFrameRect(const IntRect&);
-        virtual void frameRectsChanged();
-        virtual void setFocus(bool);
-        virtual void show();
-        virtual void hide();
-        virtual void paint(GraphicsContext*, const IntRect&);
-        virtual void clipRectChanged() override;
+        void setFrameRect(const IntRect&) override;
+        void frameRectsChanged() override;
+        void setFocus(bool) override;
+        void show() override;
+        void hide() override;
+        void paint(GraphicsContext&, const IntRect&, Widget::SecurityOriginPaintPolicy) override;
+        void clipRectChanged() override;
 
         // This method is used by plugins on all platforms to obtain a clip rect that includes clips set by WebCore,
         // e.g., in overflow:auto sections.  The clip rects coordinates are in the containing window's coordinate space.
         // This clip includes any clips that the widget itself sets up for its children.
         IntRect windowClipRect() const;
 
-        virtual void handleEvent(Event*);
-        virtual void setParent(ScrollView*);
-        virtual void setParentVisible(bool);
+        void handleEvent(Event&) override;
+        void setParent(ScrollView*) override;
+        void setParentVisible(bool) override;
 
-        virtual bool isPluginView() const override { return true; }
+        bool isPluginView() const override { return true; }
 
         Frame* parentFrame() const { return m_parentFrame.get(); }
 
@@ -204,10 +204,10 @@ namespace WebCore {
         const URL& url() const { return m_url; }
 
         // Used for manual loading
-        void didReceiveResponse(const ResourceResponse&);
-        void didReceiveData(const char*, int);
-        void didFinishLoading();
-        void didFail(const ResourceError&);
+        void didReceiveResponse(const ResourceResponse&) override;
+        void didReceiveData(const char*, int) override;
+        void didFinishLoading() override;
+        void didFail(const ResourceError&) override;
 
         static bool isCallingPlugin();
 
@@ -276,12 +276,14 @@ namespace WebCore {
 #endif
 
         void updatePluginWidget();
-        void paintMissingPluginIcon(GraphicsContext*, const IntRect&);
+        void paintMissingPluginIcon(GraphicsContext&, const IntRect&);
 
-        void handleKeyboardEvent(KeyboardEvent*);
-        void handleMouseEvent(MouseEvent*);
+        void handleKeyboardEvent(KeyboardEvent&);
+        void handleMouseEvent(MouseEvent&);
 
         RefPtr<Image> snapshot();
+
+        float deviceScaleFactor() const;
 
         int m_mode;
         int m_paramCount;
@@ -296,11 +298,13 @@ namespace WebCore {
         NPP m_instance;
         NPP_t m_instanceStruct;
         NPWindow m_npWindow;
+
+        NPObject* m_elementNPObject;
 #endif
 
         Vector<bool, 4> m_popupStateStack;
 
-        HashSet<RefPtr<PluginStream> > m_streams;
+        HashSet<RefPtr<PluginStream>> m_streams;
         Vector<std::unique_ptr<PluginRequest>> m_requests;
 
         bool m_isWindowed;
