@@ -70,57 +70,6 @@ WebInspectorClient::WebInspectorClient(WebView *view)
 {
 }
 
-WebInspectorClient::~WebInspectorClient()
-{
-    D(kprintf("WebInspectorClient::~WebInspectorClient\n"));
-}
-
-void WebInspectorClient::inspectorDestroyed()
-{
-    D(kprintf("inspectorDestroyed\n"));
-    closeInspectorFrontend();
-    delete this;
-}
-
-Inspector::FrontendChannel* WebInspectorClient::openInspectorFrontend(InspectorController* inspectorController)
-{
-    const char* inspectorURL = getenv("OWB_INSPECTOR_URL");
-    if (!inspectorURL)
-    {
-	inspectorURL = "PROGDIR:webinspector/inspector.html";
-    }
-
-#if 1
-    string url = "file:///";
-    url.append(inspectorURL);
-    BalWidget *widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, url.c_str(), FALSE, NULL, FALSE, NULL, FALSE);
-#else
-    Object *window = (Object *) getv(app, MA_OWBApp_ActiveWindow);
-    BalWidget *inspectedwidget = m_webView->viewWindow();
-    BalWidget *widget = (BalWidget *) DoMethod(window, MM_OWBWindow_CreateInspector, inspectedwidget->browser);
-#endif
-
-    if(widget)
-    {
-		m_frontendPage = core(widget->webView);
-		if(m_frontendPage)
-		{
-		    WebInspectorFrontendClient * frontendClient = new WebInspectorFrontendClient(m_webView, widget->webView, m_frontendPage, this,
-		            std::make_unique<WebCore::InspectorFrontendClientLocal::Settings>() );
-			m_frontendClient = frontendClient;
-			m_frontendPage->inspectorController().setInspectorFrontendClient(frontendClient);
-			return this;
-		}
-    }
-    return 0;
-}
-
-void WebInspectorClient::closeInspectorFrontend()
-{
-    if (m_frontendClient)
-        m_frontendClient->destroyInspectorView(false);
-}
-
 void WebInspectorClient::bringFrontendToFront()
 {
     m_frontendClient->bringToFront();
@@ -174,15 +123,6 @@ void WebInspectorClient::sendMessageToFrontend(const String& message)
     return true;
     */
 }
-
-void WebInspectorClient::loadSettings()
-{
-}
-
-void WebInspectorClient::saveSettings()
-{
-}
-
 
 WebInspectorFrontendClient::WebInspectorFrontendClient(WebView* inspectedWebView, WebView* frontendWebView, Page* inspectorPage, WebInspectorClient* inspectorClient, std::unique_ptr<Settings> settings)
     : InspectorFrontendClientLocal(&core(inspectedWebView)->inspectorController(), inspectorPage, std::move(settings))
@@ -259,11 +199,6 @@ void WebInspectorFrontendClient::setAttachedWindowWidth(unsigned)
     notImplemented();
 }
 
-void WebInspectorFrontendClient::setToolbarHeight(unsigned) 
-{
-    notImplemented();
-}
-
 void WebInspectorFrontendClient::showCertificate(const CertificateInfo&)
 {
     notImplemented();
@@ -317,3 +252,48 @@ void WebInspectorClient::inspectedPageDestroyed()
 
 }
 
+//Inspector::FrontendChannel* WebInspectorClient::openInspectorFrontend(InspectorController* inspectorController)
+//{
+//    const char* inspectorURL = getenv("OWB_INSPECTOR_URL");
+//    if (!inspectorURL)
+//    {
+//	inspectorURL = "PROGDIR:webinspector/inspector.html";
+//    }
+//
+//#if 1
+//    string url = "file:///";
+//    url.append(inspectorURL);
+//    BalWidget *widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, url.c_str(), FALSE, NULL, FALSE, NULL, FALSE);
+//#else
+//    Object *window = (Object *) getv(app, MA_OWBApp_ActiveWindow);
+//    BalWidget *inspectedwidget = m_webView->viewWindow();
+//    BalWidget *widget = (BalWidget *) DoMethod(window, MM_OWBWindow_CreateInspector, inspectedwidget->browser);
+//#endif
+//
+//    if(widget)
+//    {
+//		m_frontendPage = core(widget->webView);
+//		if(m_frontendPage)
+//		{
+//		    WebInspectorFrontendClient * frontendClient = new WebInspectorFrontendClient(m_webView, widget->webView, m_frontendPage, this,
+//		            std::make_unique<WebCore::InspectorFrontendClientLocal::Settings>() );
+//			m_frontendClient = frontendClient;
+//			m_frontendPage->inspectorController().setInspectorFrontendClient(frontendClient);
+//			return this;
+//		}
+//    }
+//    return 0;
+//}
+//
+//void WebInspectorClient::closeInspectorFrontend()
+//{
+//    if (m_frontendClient)
+//        m_frontendClient->destroyInspectorView(false);
+//}
+//void WebInspectorClient::inspectorDestroyed()
+//{
+//    D(kprintf("inspectorDestroyed\n"));
+//    closeInspectorFrontend();
+//    delete this;
+//}
+//

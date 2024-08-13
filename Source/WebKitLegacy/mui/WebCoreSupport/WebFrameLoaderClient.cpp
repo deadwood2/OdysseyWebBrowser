@@ -133,23 +133,6 @@ bool WebFrameLoaderClient::hasWebView() const
     return m_webFrame->webView();
 }
 
-void WebFrameLoaderClient::forceLayout()
-{
-    Frame* frame = core(m_webFrame);
-    if (!frame)
-        return;
-
-    if (frame->document() && frame->document()->pageCacheState() == Document::InPageCache)
-        return;
-
-    FrameView* view = frame->view();
-    if (!view)
-        return;
-
-    view->layoutContext().setNeedsLayoutAfterViewConfigurationChange();
-    view->forceLayout(true);
-}
-
 void WebFrameLoaderClient::assignIdentifierToInitialRequest(unsigned long identifier, DocumentLoader* loader, const ResourceRequest& request)
 {
     WebView* webView = m_webFrame->webView();
@@ -190,19 +173,6 @@ asm("int3");
     }
     else
 	challenge.authenticationClient()->receivedRequestToContinueWithoutCredential(challenge);
-}
-
-void WebFrameLoaderClient::dispatchDidCancelAuthenticationChallenge(DocumentLoader* loader, unsigned long identifier, const AuthenticationChallenge& challenge)
-{
-	/*
-    SharedPtr<WebResourceLoadDelegate> resourceLoadDelegate = webView->webResourceLoadDelegate();
-    if (!resourceLoadDelegate)
-        return;
-
-    WebURLAuthenticationChallenge* webChallenge = WebURLAuthenticationChallenge::createInstance(challenge);
-    resourceLoadDelegate->didCancelAuthenticationChallenge(webView, identifier, webChallenge, getWebDataSource(loader));
-    delete webChallenge;
-	*/
 }
 
 bool WebFrameLoaderClient::shouldUseCredentialStorage(DocumentLoader* loader, unsigned long identifier)
@@ -284,18 +254,6 @@ void WebFrameLoaderClient::dispatchDidFailLoading(DocumentLoader* loader, unsign
 	*/
 }
 
-bool WebFrameLoaderClient::shouldCacheResponse(DocumentLoader* loader, unsigned long identifier, const ResourceResponse& response, const unsigned char* data, const unsigned long long length)
-{
-    return false;
-}
-
-void WebFrameLoaderClient::dispatchDidHandleOnloadEvents()
-{
-    SharedPtr<WebFrameLoadDelegate> frameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
-    if (frameLoadDelegate)
-        frameLoadDelegate->didHandleOnloadEventsForFrame(m_webFrame);
-}
-
 void WebFrameLoaderClient::dispatchDidReceiveServerRedirectForProvisionalLoad()
 {
     SharedPtr<WebFrameLoadDelegate> frameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
@@ -343,13 +301,6 @@ void WebFrameLoaderClient::dispatchWillClose()
     SharedPtr<WebFrameLoadDelegate> frameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
     if (frameLoadDelegate)
         frameLoadDelegate->willCloseFrame(m_webFrame);
-}
-
-void WebFrameLoaderClient::dispatchDidReceiveIcon()
-{
-#if 0
-    m_webFrame->webView()->dispatchDidReceiveIconFromWebFrame(m_webFrame);
-#endif
 }
 
 void WebFrameLoaderClient::dispatchDidStartProvisionalLoad()
@@ -518,26 +469,6 @@ bool WebFrameLoaderClient::shouldGoToHistoryItem(HistoryItem& item) const
     return true;
 }
 
-bool WebFrameLoaderClient::shouldStopLoadingForHistoryItem(HistoryItem*) const 
-{ 
-    return true;
-}
-
-void WebFrameLoaderClient::dispatchDidAddBackForwardItem(HistoryItem*) const
-{
-    balNotImplemented();
-}
-
-void WebFrameLoaderClient::dispatchDidRemoveBackForwardItem(HistoryItem*) const
-{
-    balNotImplemented();
-}
-
-void WebFrameLoaderClient::dispatchDidChangeBackForwardIndex() const
-{
-    balNotImplemented();
-}
-
 void WebFrameLoaderClient::didDisplayInsecureContent()
 {
     SharedPtr<WebFrameLoadDelegate> webFrameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
@@ -567,10 +498,6 @@ Ref<DocumentLoader> WebFrameLoaderClient::createDocumentLoader(const ResourceReq
     WebDataSource* dataSource = WebDataSource::createInstance(loader.ptr());
     loader->setDataSource(dataSource);
     return WTFMove(loader);
-}
-
-void WebFrameLoaderClient::updateCachedDocumentLoader(WebCore::DocumentLoader&)
-{
 }
 
 void WebFrameLoaderClient::setTitle(const WebCore::StringWithDirection& title, const URL& url)
@@ -860,10 +787,6 @@ String WebFrameLoaderClient::userAgent(const URL& url)
     return m_webFrame->webView()->userAgentForURL(url.string().utf8().data()).c_str();
 }
 
-void WebFrameLoaderClient::transitionToCommittedFromCachedPage(CachedPage*)
-{
-}
-
 void WebFrameLoaderClient::saveViewStateToItem(HistoryItem&)
 {
 }
@@ -1115,24 +1038,6 @@ void WebFrameLoaderClient::dispatchDidClearWindowObjectInWorld(DOMWrapperWorld& 
         webFrameLoadDelegate->windowObjectClearNotification(m_webFrame, (void*)context, (void*)windowObject);
 }
 
-void WebFrameLoaderClient::documentElementAvailable()
-{
-}
-
-void WebFrameLoaderClient::didPerformFirstNavigation() const
-{
-    WebPreferences* preferences = m_webFrame->webView()->preferences();
-    if(!preferences)
-        return;
-
-    bool automaticallyDetectsCacheModel = preferences->automaticallyDetectsCacheModel();
-
-    WebCacheModel cacheModel = preferences->cacheModel();
-
-    if (automaticallyDetectsCacheModel && cacheModel < WebCacheModelDocumentBrowser)
-        preferences->setCacheModel(WebCacheModelDocumentBrowser);
-}
-
 void WebFrameLoaderClient::frameLoaderDestroyed()
 {
     // The FrameLoader going away is equivalent to the Frame going away,
@@ -1141,13 +1046,6 @@ void WebFrameLoaderClient::frameLoaderDestroyed()
 
     delete m_webFrame;
     delete this;
-}
-
-void WebFrameLoaderClient::registerForIconNotification(bool listen)
-{
-#if 0
-	m_webFrame->webView()->registerForIconNotification(listen);
-#endif
 }
 
 void WebFrameLoaderClient::makeRepresentation(DocumentLoader*)
@@ -1169,31 +1067,6 @@ void WebFrameLoaderClient::didReceiveSSLSecurityExtension(const ResourceRequest&
 }
 #endif
 
-bool WebFrameLoaderClient::allowPlugins(bool enabledPerSettings)
-{
-	BalWidget* widget = m_webFrame->webView()->viewWindow();
-
-	if(widget)
-	{
-		ULONG value = getv(widget->browser, MA_OWBBrowser_PluginsEnabled);
-
-		switch(value)
-		{
-			default:
-			case PLUGINS_DEFAULT:
-				return enabledPerSettings;
-
-			case PLUGINS_DISABLED:
-				return false;
-
-			case PLUGINS_ENABLED:
-				return true;
-		}
-	}
-
-	return enabledPerSettings;
-}
-
 Ref<FrameNetworkingContext> WebFrameLoaderClient::createNetworkingContext()
 {
     return WebFrameNetworkingContext::create(core(m_webFrame), userAgent(core(m_webFrame)->document()->url()));
@@ -1204,7 +1077,7 @@ void WebFrameLoaderClient::prefetchDNS(const String& hostname)
     WebCore::prefetchDNS(hostname);
 }
 
-void WebFrameLoaderClient::dispatchDidFailToStartPlugin(const WebCore::PluginView*) const
+void WebFrameLoaderClient::dispatchDidFailToStartPlugin(const WebCore::PluginView&) const
 {
 }
 
@@ -1223,3 +1096,106 @@ PAL::SessionID WebFrameLoaderClient::sessionID() const
     return PAL::SessionID::defaultSessionID();
 }
 
+void WebFrameLoaderClient::progressStarted(WebCore::Frame&)
+{
+asm("int3");
+}
+void WebFrameLoaderClient::progressEstimateChanged(WebCore::Frame&)
+{
+asm("int3");
+}
+void WebFrameLoaderClient::progressFinished(WebCore::Frame&)
+{
+asm("int3");
+}
+void WebFrameLoaderClient::dispatchDidReachLayoutMilestone(OptionSet<WebCore::LayoutMilestone>)
+{
+asm("int3");
+}
+
+
+//bool WebFrameLoaderClient::allowPlugins(bool enabledPerSettings)
+//{
+//	BalWidget* widget = m_webFrame->webView()->viewWindow();
+//
+//	if(widget)
+//	{
+//		ULONG value = getv(widget->browser, MA_OWBBrowser_PluginsEnabled);
+//
+//		switch(value)
+//		{
+//			default:
+//			case PLUGINS_DEFAULT:
+//				return enabledPerSettings;
+//
+//			case PLUGINS_DISABLED:
+//				return false;
+//
+//			case PLUGINS_ENABLED:
+//				return true;
+//		}
+//	}
+//
+//	return enabledPerSettings;
+//}
+//void WebFrameLoaderClient::registerForIconNotification(bool listen)
+//{
+//#if 0
+//	m_webFrame->webView()->registerForIconNotification(listen);
+//#endif
+//}
+//
+//void WebFrameLoaderClient::didPerformFirstNavigation() const
+//{
+//    WebPreferences* preferences = m_webFrame->webView()->preferences();
+//    if(!preferences)
+//        return;
+//
+//    bool automaticallyDetectsCacheModel = preferences->automaticallyDetectsCacheModel();
+//
+//    WebCacheModel cacheModel = preferences->cacheModel();
+//
+//    if (automaticallyDetectsCacheModel && cacheModel < WebCacheModelDocumentBrowser)
+//        preferences->setCacheModel(WebCacheModelDocumentBrowser);
+//}
+//void WebFrameLoaderClient::dispatchDidReceiveIcon()
+//{
+//#if 0
+//    m_webFrame->webView()->dispatchDidReceiveIconFromWebFrame(m_webFrame);
+//#endif
+//}
+//void WebFrameLoaderClient::dispatchDidHandleOnloadEvents()
+//{
+//    SharedPtr<WebFrameLoadDelegate> frameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
+//    if (frameLoadDelegate)
+//        frameLoadDelegate->didHandleOnloadEventsForFrame(m_webFrame);
+//}
+//void WebFrameLoaderClient::dispatchDidCancelAuthenticationChallenge(DocumentLoader* loader, unsigned long identifier, const AuthenticationChallenge& challenge)
+//{
+//	/*
+//    SharedPtr<WebResourceLoadDelegate> resourceLoadDelegate = webView->webResourceLoadDelegate();
+//    if (!resourceLoadDelegate)
+//        return;
+//
+//    WebURLAuthenticationChallenge* webChallenge = WebURLAuthenticationChallenge::createInstance(challenge);
+//    resourceLoadDelegate->didCancelAuthenticationChallenge(webView, identifier, webChallenge, getWebDataSource(loader));
+//    delete webChallenge;
+//	*/
+//}
+//void WebFrameLoaderClient::forceLayout()
+//{
+//    Frame* frame = core(m_webFrame);
+//    if (!frame)
+//        return;
+//
+//    if (frame->document() && frame->document()->pageCacheState() == Document::InPageCache)
+//        return;
+//
+//    FrameView* view = frame->view();
+//    if (!view)
+//        return;
+//
+//    view->layoutContext().setNeedsLayoutAfterViewConfigurationChange();
+//    view->forceLayout(true);
+//}
+//

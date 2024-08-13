@@ -198,11 +198,6 @@ WebEditorClient::~WebEditorClient()
     delete m_undoTarget;
 }
 
-void WebEditorClient::pageDestroyed()
-{
-    delete this;
-}
-
 bool WebEditorClient::isContinuousSpellCheckingEnabled()
 {
     bool enabled = m_webView->isContinuousSpellCheckingEnabled();
@@ -314,11 +309,6 @@ void WebEditorClient::getClientPasteboardDataForRange(WebCore::Range*, Vector<St
     notImplemented();
 }
 
-void WebEditorClient::didSetSelectionTypesForPasteboard()
-{
-    notImplemented();
-}
-
 bool WebEditorClient::shouldDeleteRange(Range* range)
 {
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
@@ -388,44 +378,6 @@ bool WebEditorClient::shouldMoveRangeAfterDelete(Range* /*range*/, Range* /*rang
     notImplemented(); return true; 
 }
 
-bool WebEditorClient::shouldChangeTypingStyle(StyleProperties* currentStyle, StyleProperties* toProposedStyle)
-{
-  /*
-    SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
-    if (editing) {
-        DOMCSSStyleDeclaration* current = DOMCSSStyleDeclaration::createInstance(currentStyle);
-        DOMCSSStyleDeclaration* proposed = DOMCSSStyleDeclaration::createInstance(toProposedStyle);
-        bool result = editing->shouldChangeTypingStyle(m_webView, current, proposed);
-        delete current;
-        delete proposed;
-        return result;
-	}*/
-    return false; 
-}
-
-void WebEditorClient::webViewDidChangeTypingStyle(WebNotification* /*notification*/)
-{
-    SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
-    if (editing)
-        editing->webViewDidChangeTypingStyle();
-}
-
-void WebEditorClient::webViewDidChangeSelection(WebNotification* /*notification*/)
-{
-    SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
-    if (editing)
-        editing->webViewDidChangeSelection();
-}
-
-bool WebEditorClient::shouldShowDeleteInterface(HTMLElement* element)
-{
-    SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
-    if (editing) {
-        DOMHTMLElement* elem = DOMHTMLElement::createInstance(element);
-        return editing->shouldShowDeleteInterface(elem);
-    }
-    return false;
-}
 
 bool WebEditorClient::smartInsertDeleteEnabled(void)
 {
@@ -585,7 +537,11 @@ static String undoNameForEditAction(EditAction editAction)
         case EditAction::Delete: return "Delete";
         case EditAction::Insert:
         case EditAction::InsertFromDrop:
+        case EditAction::InsertEditableImage:
             return "Insert";
+        case EditAction::ConvertToOrderedList:
+        case EditAction::ConvertToUnorderedList:
+            return "Convert";
     }
     return String();
 }
@@ -643,11 +599,6 @@ void WebEditorClient::handleInputMethodKeydown(KeyboardEvent* )
 {
 }
 
-bool WebEditorClient::isEditable()
-{
-    return false;
-}
-
 bool WebEditorClient::shouldEraseMarkersAfterChangeSelection(TextCheckingType) const
 {
     return true;
@@ -702,7 +653,7 @@ void WebEditorClient::learnWord(const String& word)
 #endif
 }
 
-void WebEditorClient::checkSpellingOfString(const UChar* text, int length, int* misspellingLocation, int* misspellingLength)
+void WebEditorClient::checkSpellingOfString(StringView text, int* misspellingLocation, int* misspellingLength)
 {
 	/*
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
@@ -711,85 +662,85 @@ void WebEditorClient::checkSpellingOfString(const UChar* text, int length, int* 
     if (editing)
         editing->checkSpellingOfString(m_webView, strdup(String(text, length).utf8().data()), length, misspellingLocation, misspellingLength);
 	*/
-
-	D(kprintf("checkSpellingOfString(%s)\n", String(text, length).utf8().data()));
-
-	int start = 0, len = 0, i = 0;
-	bool wordReached = false;
-	String word;
-	STRPTR cword;
-	UChar *tmp = (UChar *) text;
-
-	*misspellingLocation = -1;
-	*misspellingLength = 0;
-
-	if(length <= 1)
-		return;
-
-	while(i < length)
-	{
-		if(!wordReached && !u_isalnum(*tmp))
-		{
-			start++;
-		}
-		else if(u_isalnum(*tmp))
-		{
-			wordReached = true;
-			len++;
-		}
-		else if(wordReached && !u_isalnum(*tmp))
-		{
-			break;
-		}
-
-		i++;
-		tmp++;
-	}
-
-	if(start > 0 || len > 0)
-	{
-		word = String(text + start, len);
-	}
-	else
-	{
-		word = String(text, length);
-	}
-
-	word = word.convertToLowercaseWithoutLocale();
-
-	if(word.length() <= 1)
-		return;
-
-	cword = utf8_to_local(word.utf8().data());
-
-	if(cword)
-	{
-		APTR dictionary = get_dictionary();
-		if(!dictionary)
-		{	
-			open_dictionary(NULL);
-		}
-
-		if(dictionary)
-		{
-#if !OS(AROS)
-			D(kprintf("Checking <%s>\n", cword));
-
-			STRPTR *res = (STRPTR *) Suggest(dictionary, (STRPTR) cword, NULL);
-
-			if(res != (STRPTR *) -1)
-			{
-				*misspellingLocation = start;
-				*misspellingLength = len;
-			}
-#endif
-		}
-
-		free(cword);
-	}
+asm("int3");
+//	D(kprintf("checkSpellingOfString(%s)\n", String(text, length).utf8().data()));
+//
+//	int start = 0, len = 0, i = 0;
+//	bool wordReached = false;
+//	String word;
+//	STRPTR cword;
+//	UChar *tmp = (UChar *) text;
+//
+//	*misspellingLocation = -1;
+//	*misspellingLength = 0;
+//
+//	if(length <= 1)
+//		return;
+//
+//	while(i < length)
+//	{
+//		if(!wordReached && !u_isalnum(*tmp))
+//		{
+//			start++;
+//		}
+//		else if(u_isalnum(*tmp))
+//		{
+//			wordReached = true;
+//			len++;
+//		}
+//		else if(wordReached && !u_isalnum(*tmp))
+//		{
+//			break;
+//		}
+//
+//		i++;
+//		tmp++;
+//	}
+//
+//	if(start > 0 || len > 0)
+//	{
+//		word = String(text + start, len);
+//	}
+//	else
+//	{
+//		word = String(text, length);
+//	}
+//
+//	word = word.convertToLowercaseWithoutLocale();
+//
+//	if(word.length() <= 1)
+//		return;
+//
+//	cword = utf8_to_local(word.utf8().data());
+//
+//	if(cword)
+//	{
+//		APTR dictionary = get_dictionary();
+//		if(!dictionary)
+//		{	
+//			open_dictionary(NULL);
+//		}
+//
+//		if(dictionary)
+//		{
+//#if !OS(AROS)
+//			D(kprintf("Checking <%s>\n", cword));
+//
+//			STRPTR *res = (STRPTR *) Suggest(dictionary, (STRPTR) cword, NULL);
+//
+//			if(res != (STRPTR *) -1)
+//			{
+//				*misspellingLocation = start;
+//				*misspellingLength = len;
+//			}
+//#endif
+//		}
+//
+//		free(cword);
+//	}
 }
 
-void WebEditorClient::checkGrammarOfString(const UChar* text, int length, Vector<GrammarDetail>& details, int* badGrammarLocation, int* badGrammarLength)
+void WebEditorClient::checkGrammarOfString(StringView, Vector<GrammarDetail>&, int* badGrammarLocation, int* badGrammarLength)
 {
     /*details.clear();
     *badGrammarLocation = -1;
@@ -884,7 +835,7 @@ bool WebEditorClient::spellingUIIsShowing()
     return false;
 }
 
-void WebEditorClient::getGuessesForWord(const String& word, const String& context, Vector<String>& guesses)
+void WebEditorClient::getGuessesForWord(const String& word, const String& context, const VisibleSelection& currentSelection, Vector<String>& guesses)
 {
 	D(kprintf("getGuessesForWord(%s)\n", word.utf8().data()));
 
@@ -997,14 +948,6 @@ void WebEditorClient::setInputMethodState(bool enabled)
     m_webView->setInputMethodState(enabled);
 }
 
-void WebEditorClient::getGuessesForWord(const String& word, const String& context, const VisibleSelection& currentSelection, Vector<String>& guesses)
-{
-}
-
-void WebEditorClient::requestCheckingOfString(TextCheckingRequest&, const VisibleSelection& currentSelection)
-{
-}
-
 void WebEditorClient::canceledComposition()
 {
 }
@@ -1014,3 +957,45 @@ String WebEditorClient::replacementURLForResource(Ref<WebCore::SharedBuffer>&&, 
     return { };
 }
 
+//bool WebEditorClient::shouldShowDeleteInterface(HTMLElement* element)
+//{
+//    SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
+//    if (editing) {
+//        DOMHTMLElement* elem = DOMHTMLElement::createInstance(element);
+//        return editing->shouldShowDeleteInterface(elem);
+//    }
+//    return false;
+//}
+//void WebEditorClient::webViewDidChangeTypingStyle(WebNotification* /*notification*/)
+//{
+//    SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
+//    if (editing)
+//        editing->webViewDidChangeTypingStyle();
+//}
+//
+//void WebEditorClient::webViewDidChangeSelection(WebNotification* /*notification*/)
+//{
+//    SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
+//    if (editing)
+//        editing->webViewDidChangeSelection();
+//}
+//
+//bool WebEditorClient::shouldChangeTypingStyle(StyleProperties* currentStyle, StyleProperties* toProposedStyle)
+//{
+//  /*
+//    SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
+//    if (editing) {
+//        DOMCSSStyleDeclaration* current = DOMCSSStyleDeclaration::createInstance(currentStyle);
+//        DOMCSSStyleDeclaration* proposed = DOMCSSStyleDeclaration::createInstance(toProposedStyle);
+//        bool result = editing->shouldChangeTypingStyle(m_webView, current, proposed);
+//        delete current;
+//        delete proposed;
+//        return result;
+//	}*/
+//    return false; 
+//}
+//
+//void WebEditorClient::pageDestroyed()
+//{
+//    delete this;
+//}

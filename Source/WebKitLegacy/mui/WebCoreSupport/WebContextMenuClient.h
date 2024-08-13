@@ -26,24 +26,22 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <ContextMenuClient.h>
+#include <WebCore/ContextMenu.h>
+#include <WebCore/ContextMenuClient.h>
 #include <wtf/Forward.h>
-#include <wtf/text/WTFString.h>
 
 class WebView;
 
 class WebContextMenuClient : public WebCore::ContextMenuClient {
 public:
     WebContextMenuClient(WebView*);
-    ~WebContextMenuClient();
 
     virtual void contextMenuDestroyed();
 
-    virtual void downloadURL(const WTF::URL& url);
-    virtual void copyImageToClipboard(const WebCore::HitTestResult&);
+    virtual void downloadURL(const URL&);
     virtual void searchWithGoogle(const WebCore::Frame*);
     virtual void lookUpInDictionary(WebCore::Frame*);
-	virtual void speak(const WTF::String&);
+    virtual void speak(const WTF::String&);
     virtual void stopSpeaking();
     virtual bool isSpeaking();
 

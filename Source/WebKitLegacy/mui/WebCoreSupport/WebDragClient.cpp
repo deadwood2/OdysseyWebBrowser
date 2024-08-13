@@ -60,14 +60,6 @@ WebDragClient::WebDragClient(WebView* webView)
     ASSERT(webView);
 }
 
-WebDragClient::~WebDragClient()
-{
-}
-
-DragDestinationAction WebDragClient::actionMaskForDrag(const DragData& dragData)
-{
-    return DragDestinationActionAny;
-}
 
 void WebDragClient::willPerformDragDestinationAction(DragDestinationAction action, const DragData& dragData)
 {
@@ -139,19 +131,19 @@ asm("int3"); //passing an on-stack object to MUI
     }
 }
 
-DragImageRef WebDragClient::createDragImageForLink(URL& url, const String& inLabel, Frame*)
-{
-	D(kprintf("createDragImageForLink %s %s\n", url.string().latin1().data(), inLabel.latin1().data()));
-
-	BalWidget *widget = m_webView->viewWindow();
-	if(widget)
-	{
-		set(widget->browser, MA_OWBBrowser_DragURL, url.string().latin1().data());
-	}
-	return 0;
-}
-
 void WebDragClient::dragControllerDestroyed()
 {
     delete this;
 }
+
+//DragImageRef WebDragClient::createDragImageForLink(URL& url, const String& inLabel, Frame*)
+//{
+//	D(kprintf("createDragImageForLink %s %s\n", url.string().latin1().data(), inLabel.latin1().data()));
+//
+//	BalWidget *widget = m_webView->viewWindow();
+//	if(widget)
+//	{
+//		set(widget->browser, MA_OWBBrowser_DragURL, url.string().latin1().data());
+//	}
+//	return 0;
+//}

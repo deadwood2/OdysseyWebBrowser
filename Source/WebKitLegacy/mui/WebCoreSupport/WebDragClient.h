@@ -25,40 +25,21 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include <DragClient.h>
+#include <WebCore/DragClient.h>
 #include "BALBase.h"
 
 class WebView;
 
-typedef enum WebDragDestinationAction {
-    WebDragDestinationActionNone    = 0,
-    WebDragDestinationActionDHTML   = 1,
-    WebDragDestinationActionEdit    = 2,
-    WebDragDestinationActionLoad    = 4,
-    WebDragDestinationActionAny     = (unsigned long)-1
-} WebDragDestinationAction;
-
-
-typedef enum WebDragSourceAction {
-    WebDragSourceActionNone         = 0,
-    WebDragSourceActionDHTML        = 1,
-    WebDragSourceActionImage        = 2,
-    WebDragSourceActionLink         = 4,
-    WebDragSourceActionSelection    = 8,
-    WebDragSourceActionAny          = (unsigned long)-1
-} WebDragSourceAction;
-
 class WebDragClient : public WebCore::DragClient {
 public:
     WebDragClient(WebView*);
-    virtual ~WebDragClient();
-    virtual WebCore::DragDestinationAction actionMaskForDrag(const WebCore::DragData&);
-    virtual void willPerformDragDestinationAction(WebCore::DragDestinationAction, const WebCore::DragData&);
-    virtual void dragControllerDestroyed();
-    virtual WebCore::DragSourceAction dragSourceActionMaskForPoint(const WebCore::IntPoint&);
-    virtual void willPerformDragSourceAction(WebCore::DragSourceAction, const WebCore::IntPoint&, WebCore::DataTransfer&);
-    virtual void startDrag(WebCore::DragItem, WebCore::DataTransfer&, WebCore::Frame&);
-    virtual WebCore::DragImageRef createDragImageForLink(WTF::URL&, const WTF::String&, WebCore::Frame*);
+
+    virtual void dragControllerDestroyed() override;
+
+    virtual WebCore::DragSourceAction dragSourceActionMaskForPoint(const WebCore::IntPoint&) override;
+    virtual void willPerformDragDestinationAction(WebCore::DragDestinationAction, const WebCore::DragData&) override;
+    virtual void willPerformDragSourceAction(WebCore::DragSourceAction, const WebCore::IntPoint&, WebCore::DataTransfer&) override;
+    virtual void startDrag(WebCore::DragItem, WebCore::DataTransfer&, WebCore::Frame&) override;
 private:
     WebView* m_webView;
 };

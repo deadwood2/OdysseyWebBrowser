@@ -1,68 +1,44 @@
 /*
-    Copyright (C) 2012 Intel Corporation
+ * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
-    This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Library General Public
-    License as published by the Free Software Foundation; either
-    version 2 of the License, or (at your option) any later version.
-
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Library General Public License for more details.
-
-    You should have received a copy of the GNU Library General Public License
-    along with this library; see the file COPYING.LIB.  If not, write to
-    the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
-    Boston, MA 02110-1301, USA.
-*/
-
-#ifndef WebPlatformStrategies_h
-#define WebPlatformStrategies_h
+#pragma once
 
 #include <WebCore/LoaderStrategy.h>
 #include <WebCore/PlatformStrategies.h>
 #include <wtf/Forward.h>
 
-class WebPlatformStrategies : public WebCore::PlatformStrategies, private WebCore::LoaderStrategy
-{
+class WebPlatformStrategies : public WebCore::PlatformStrategies {
 public:
     static void initialize();
+    
+private:
+    friend NeverDestroyed<WebPlatformStrategies>;
     WebPlatformStrategies();
 
-private:
     // WebCore::PlatformStrategies
-    virtual WebCore::LoaderStrategy* createLoaderStrategy() override;
-    virtual WebCore::PasteboardStrategy* createPasteboardStrategy() override;
-    virtual WebCore::BlobRegistry* createBlobRegistry() override;
-
-    // WebCore::DatabaseStrategy
-    // - Using default implementation.
-
-    // WebCore::LoaderStrategy
-    virtual void loadResource(WebCore::Frame&, WebCore::CachedResource&, WebCore::ResourceRequest&&, const WebCore::ResourceLoaderOptions&, CompletionHandler<void(RefPtr<WebCore::SubresourceLoader>&&)>&&) override;
-    virtual void loadResourceSynchronously(WebCore::FrameLoader&, unsigned long identifier, const WebCore::ResourceRequest&, WebCore::ClientCredentialPolicy, const WebCore::FetchOptions&, const WebCore::HTTPHeaderMap&, WebCore::ResourceError&, WebCore::ResourceResponse&, Vector<char>& data) override;
-
-    virtual void remove(WebCore::ResourceLoader*) override;
-    virtual void setDefersLoading(WebCore::ResourceLoader&, bool) override;
-    virtual void crossOriginRedirectReceived(WebCore::ResourceLoader*, const URL& redirectURL) override;
-
-    virtual void servePendingRequests(WebCore::ResourceLoadPriority minimumPriority = WebCore::ResourceLoadPriority::VeryLow) override;
-    virtual void suspendPendingRequests() override;
-    virtual void resumePendingRequests() override;
-
-    void setCaptureExtraNetworkLoadMetricsEnabled(bool) override;
-
-    using PingLoadCompletionHandler = WTF::Function<void(const WebCore::ResourceError&, const WebCore::ResourceResponse&)>;
-    virtual void startPingLoad(WebCore::Frame&, WebCore::ResourceRequest&, const WebCore::HTTPHeaderMap& originalRequestHeaders, const WebCore::FetchOptions&, WebCore::ContentSecurityPolicyImposition, PingLoadCompletionHandler&& = { }) override;
-
-    using PreconnectCompletionHandler = WTF::Function<void(const WebCore::ResourceError&)>;
-    virtual void preconnectTo(WebCore::FrameLoader&, const URL&, WebCore::StoredCredentialsPolicy, PreconnectCompletionHandler&&) override;
-
-    virtual void pageLoadCompleted(uint64_t webPageID);
-    virtual bool isOnLine() const;
-    virtual void addOnlineStateChangeListener(Function<void(bool)>&&);
+    virtual WebCore::LoaderStrategy* createLoaderStrategy();
+    virtual WebCore::PasteboardStrategy* createPasteboardStrategy();
+    virtual WebCore::BlobRegistry* createBlobRegistry();
 };
-
-#endif // WebPlatformStrategies_h
-

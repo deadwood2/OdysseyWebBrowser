@@ -43,8 +43,8 @@ public:
 private:
     WebVisitedLinkStore();
 
-    virtual bool isLinkVisited(WebCore::Page&, WebCore::SharedStringHash, const URL& baseURL, const AtomicString& attributeURL) override;
-    virtual void addVisitedLink(WebCore::Page&, WebCore::SharedStringHash) override;
+    bool isLinkVisited(WebCore::Page&, WebCore::SharedStringHash, const URL& baseURL, const AtomicString& attributeURL) override;
+    void addVisitedLink(WebCore::Page&, WebCore::SharedStringHash) override;
 
     void populateVisitedLinksIfNeeded(WebCore::Page&);
     void addVisitedLinkHash(WebCore::SharedStringHash);

@@ -29,57 +29,51 @@
 #ifndef InspectorClientBal_h
 #define InspectorClientBal_h
 
-#include "InspectorClient.h"
-#include "InspectorFrontendClientLocal.h"
-
 #include <JavaScriptCore/InspectorFrontendChannel.h>
-#include <wtf/HashMap.h>
-#include <wtf/text/CString.h>
-#include <wtf/text/WTFString.h>
-#include "SharedPtr.h"
+#include <WebCore/InspectorClient.h>
+#include <WebCore/InspectorFrontendClientLocal.h>
 #include <wtf/Forward.h>
+#include <wtf/HashMap.h>
 #include <wtf/text/StringHash.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
-    class Node;
-    class Page;
+class CertificateInfo;
+class Page;
 }
 
-class WebView;
 class WebInspectorFrontendClient;
-class WebInspector;
+class WebNodeHighlight;
+class WebView;
 
-class WebInspectorClient : public WebCore::InspectorClient, public Inspector::FrontendChannel {
+class WebInspectorClient final : public WebCore::InspectorClient, public Inspector::FrontendChannel {
 public:
-    WebInspectorClient(WebView*);
-    virtual ~WebInspectorClient();
-    //WTF::PassOwnPtr<WebCore::InspectorFrontendClientLocal::Settings> createFrontendSettings(); 
- 
-    void disconnectFrontendClient() { m_frontendClient = 0; }
+    explicit WebInspectorClient(WebView*);
 
-    virtual void inspectorDestroyed();
+    // InspectorClient API.
+    void inspectedPageDestroyed() override;
 
-    virtual Inspector::FrontendChannel* openInspectorFrontend(WebCore::InspectorController*);
-    virtual void closeInspectorFrontend();
-    virtual void bringFrontendToFront();
+    Inspector::FrontendChannel* openLocalFrontend(WebCore::InspectorController*) override;
+    void bringFrontendToFront() override;
 
-    virtual void highlight();
-	virtual void hideHighlight();
+    void highlight() override;
+    void hideHighlight() override;
 
-    virtual void sendMessageToFrontend(const WTF::String& message);
+    // FrontendChannel API.
+    ConnectionType connectionType() const override { return ConnectionType::Local; }
+    void sendMessageToFrontend(const WTF::String&) override;
 
-    virtual ConnectionType connectionType() const override { return ConnectionType::Local; }
-    virtual void inspectedPageDestroyed() override;
-    virtual Inspector::FrontendChannel* openLocalFrontend(WebCore::InspectorController*) override;
+    bool inspectorStartsAttached();
+    void setInspectorStartsAttached(bool);
+
+    bool inspectorAttachDisabled();
+    void setInspectorAttachDisabled(bool);
 
     void releaseFrontend();
 
     WebInspectorFrontendClient* frontendClient() { return m_frontendClient; }
 
     void updateHighlight();
-
-    void loadSettings();
-    void saveSettings();
 
 private:
     WebView* m_webView;
@@ -89,32 +83,31 @@ private:
     WTF::HashMap<WTF::String, WTF::String> m_sessionSettings;
 };
 
-class WebInspectorFrontendClient : public WebCore::InspectorFrontendClientLocal {
+class WebInspectorFrontendClient final : public WebCore::InspectorFrontendClientLocal {
 public:
     WebInspectorFrontendClient(WebView* inspectedWebView, WebView* frontendWebView, WebCore::Page* inspectorPage, WebInspectorClient* inspectorClient, std::unique_ptr<Settings>);
     virtual ~WebInspectorFrontendClient();
 
-    virtual void frontendLoaded();
-    
-    virtual WTF::String localizedStringsURL();
-    
-    virtual void bringToFront();
-    virtual void closeWindow();
-    
-    virtual void attachWindow(DockSide); 
-    virtual void detachWindow();
+    // InspectorFrontendClient API.
+    void frontendLoaded() override;
+
+    WTF::String localizedStringsURL() override;
+
+    void bringToFront() override;
+    void closeWindow() override;
     void reopen() override;
+
+    void setAttachedWindowHeight(unsigned) override;
+    void setAttachedWindowWidth(unsigned) override;
+
+    void inspectedURLChanged(const WTF::String& newURL) override;
     void showCertificate(const WebCore::CertificateInfo&) override;
-    
-    virtual void setAttachedWindowHeight(unsigned height);
-    virtual void setAttachedWindowWidth(unsigned); 
-    virtual void setToolbarHeight(unsigned); 
 
-    virtual void inspectedURLChanged(const WTF::String& newURL);
+    // InspectorFrontendClientLocal API.
+    void attachWindow(DockSide) override;
+    void detachWindow() override;
 
-	void destroyInspectorView(bool notifyInspectorController);
-
-    void disconnectInspectorClient() { m_inspectorClient = 0; }
+    void destroyInspectorView(bool notifyInspectorController);
 
 private:
     WebView* m_frontendWebView;

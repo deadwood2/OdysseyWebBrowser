@@ -20,27 +20,25 @@
 #ifndef WebFrameNetworkingContext_h
 #define WebFrameNetworkingContext_h
 
-#include "FrameNetworkingContext.h"
-#include "ResourceError.h"
-#include "Document.h"
+#include <WebCore/FrameNetworkingContext.h>
 
 class WebFrameNetworkingContext : public WebCore::FrameNetworkingContext {
 public:
-    static Ref<WebFrameNetworkingContext> create(WebCore::Frame*, const WTF::String& userAgent);
+    WTF::String url() const
+    {
+        if(frame())
+            return frame()->document()->url();
+        else
+            return WTF::String("");
+    }
+    static Ref<WebFrameNetworkingContext> create(WebCore::Frame* frame, const WTF::String& userAgent)
+    {
+        return adoptRef(*new WebFrameNetworkingContext(frame, userAgent));
+    }
 
-	WTF::String url() const
-	{
-		if(frame())
-			return frame()->document()->url();
-		else
-			return WTF::String("");
-	}
-
-    static void setPrivateBrowsingStorageSessionIdentifierBase(const String&); 
-    static void ensurePrivateBrowsingSession(); 
-    static void destroyPrivateBrowsingSession(); 
-
-    WebCore::NetworkStorageSession* storageSession() const override;
+    static void setPrivateBrowsingStorageSessionIdentifierBase(const String&);
+    static WebCore::NetworkStorageSession& ensurePrivateBrowsingSession();
+    static void destroyPrivateBrowsingSession();
 
 private:
     explicit WebFrameNetworkingContext(WebCore::Frame* frame, const WTF::String& userAgent)
@@ -48,6 +46,8 @@ private:
         , m_userAgent(userAgent)
     {
     }
+
+    WebCore::NetworkStorageSession* storageSession() const override;
 
     virtual WTF::String userAgent() const;
     virtual WTF::String referrer() const;

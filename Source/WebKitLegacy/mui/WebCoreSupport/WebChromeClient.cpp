@@ -86,10 +86,6 @@ WebChromeClient::WebChromeClient(WebView* webView)
 {
 }
 
-WebChromeClient::~WebChromeClient()
-{
-}
-
 void WebChromeClient::chromeDestroyed()
 {
     delete this;
@@ -338,33 +334,12 @@ void WebChromeClient::setStatusbarText(const String& statusText)
 	}
 }
 
-bool WebChromeClient::shouldInterruptJavaScript()
-{
-	BalWidget* widget = m_webView->viewWindow();
-
-	if(widget)
-	{
-		return MUI_RequestA(app, widget->window, 0, GSI(MSG_WEBVIEW_JSACTION_TITLE), GSI(MSG_REQUESTER_YES_NO), GSI(MSG_WEBVIEW_INTERRUPT_SCRIPT), NULL);
-	}
-    return false;
-}
-
 KeyboardUIMode WebChromeClient::keyboardUIMode()
 {
     WebPreferences* preferences = m_webView->preferences();
     return preferences->tabsToLinks() ? KeyboardAccessTabsToLinks : KeyboardAccessDefault;
 }
 
-bool WebChromeClient::tabsToLinks() const
-{
-    WebPreferences* preferences = m_webView->preferences();
-    return preferences->tabsToLinks();
-}
-
-IntRect WebChromeClient::windowResizerRect() const
-{
-    return IntRect();
-}
 
 void WebChromeClient::invalidateRootView(const IntRect& windowRect)
 {
@@ -420,7 +395,7 @@ bool WebChromeClient::shouldUnavailablePluginMessageBeButton(RenderEmbeddedObjec
     return true;
 }
 
-void WebChromeClient::unavailablePluginButtonClicked(Element* element, RenderEmbeddedObject::PluginUnavailabilityReason pluginUnavailabilityReason) const
+void WebChromeClient::unavailablePluginButtonClicked(Element& element, RenderEmbeddedObject::PluginUnavailabilityReason pluginUnavailabilityReason) const
 {
 	BalWidget *widget = m_webView->viewWindow();
 	if(widget)
@@ -476,22 +451,6 @@ std::unique_ptr<ColorChooser> WebChromeClient::createColorChooser(ColorChooserCl
     std::unique_ptr<ColorChooserController> controller = std::unique_ptr<ColorChooserController>(new ColorChooserController(this, &chooserClient));
     controller->openUI();
     return std::move(controller);
-}
-#endif
-
-#if ENABLE(INPUT_TYPE_DATE)
-RefPtr<WebCore::DateTimeChooser> WebChromeClient::openDateTimeChooser(WebCore::DateTimeChooserClient*, const WebCore::DateTimeChooserParameters&)
-{
-    /*
-    kprintf("WebChromeClient::openDateTimeChooser\n");
-
-    RefPtr<DateTimeChooserController> controller = adoptRef(new DateTimeChooserController(this, chooserClient, parameters));
-    controller->openUI();
-    return controller.release();    
-    */
-
-    RefPtr<DateTimeChooser> ret;
-    return ret;
 }
 #endif
 
@@ -574,76 +533,60 @@ void WebChromeClient::setCursorHiddenUntilMouseMoves(bool)
 }
 
 
-void WebChromeClient::setLastSetCursorToCurrentCursor()
-{
-	//m_webView->setLastCursor(::GetCursor());
-}
-
-void WebChromeClient::formStateDidChange(const WebCore::Node* node) 
-{ 
-}
-
 IntPoint WebChromeClient::screenToRootView(const WebCore::IntPoint& p) const 
 {
     return p;
-}
-
-void WebChromeClient::scrollbarsModeDidChange() const
-{
-    //FIXME: implement me!
-    notImplemented();
 }
 
 void WebChromeClient::scheduleCompositingLayerFlush()
 {
 }
 
-void WebChromeClient::attachRootGraphicsLayer(WebCore::Frame* frame, WebCore::GraphicsLayer* layer)
+void WebChromeClient::attachRootGraphicsLayer(WebCore::Frame& frame, WebCore::GraphicsLayer* layer)
 {
 }
 
-void WebChromeClient::setNeedsOneShotDrawingSynchronization()
+bool WebChromeClient::shouldUseTiledBackingForFrameView(const WebCore::FrameView&) const
 {
+asm("int3");
+    return false;
 }
 
 #if ENABLE(VIDEO)
-
-bool WebChromeClient::supportsFullscreenForNode(const WebCore::Node* node)
+bool WebChromeClient::supportsVideoFullscreen(WebCore::HTMLMediaElementEnums::VideoFullscreenMode)
 {
-    return node->hasTagName(HTMLNames::videoTag);
+asm("int3");
+    return true;
 }
-
-void WebChromeClient::enterFullscreenForNode(WebCore::Node* node)
+void WebChromeClient::enterVideoFullscreenForVideoElement(WebCore::HTMLVideoElement&, WebCore::HTMLMediaElementEnums::VideoFullscreenMode, bool)
 {
-    m_webView->enterFullscreenForNode(node);
+asm("int3");
 }
-
-void WebChromeClient::exitFullscreenForNode(WebCore::Node*)
+void WebChromeClient::exitVideoFullscreenForVideoElement(WebCore::HTMLVideoElement&)
 {
-    m_webView->exitFullscreen();
+asm("int3");
 }
-
 #endif
 
 #if ENABLE(FULLSCREEN_API)
 
-bool WebChromeClient::supportsFullScreenForElement(const WebCore::Element* element, bool)
+bool WebChromeClient::supportsFullScreenForElement(const WebCore::Element& element, bool)
 {
 #if ENABLE(VIDEO)
 	//kprintf("supportsFullScreenForElement %d %d\n", element && element->isMediaElement(), element && element->isMediaElement());
-    return element && element->isMediaElement();
+    return element.isMediaElement();
 #else
     return false;
 #endif
 }
 
-void WebChromeClient::enterFullScreenForElement(WebCore::Element* element)
+void WebChromeClient::enterFullScreenForElement(WebCore::Element& element)
 {
 	//kprintf("enterFullScreenForElement\n");
-    element->document().webkitWillEnterFullScreen(*element);
-    m_webView->enterFullScreenForElement(element);
-    element->document().webkitDidEnterFullScreen();
-    m_fullScreenElement = element;
+    element.document().webkitWillEnterFullScreen(element);
+    m_webView->enterFullScreenForElement(&element);
+    element.document().webkitDidEnterFullScreen();
+    m_fullScreenElement = &element;
 }
 
 void WebChromeClient::exitFullScreenForElement(WebCore::Element*)
@@ -660,11 +603,6 @@ void WebChromeClient::exitFullScreenForElement(WebCore::Element*)
     m_fullScreenElement = nullptr;
 }
 
-void WebChromeClient::fullScreenRendererChanged(RenderBox*)
-{
-    //m_webView->adjustFullScreenElementDimensionsIfNeeded();
-}
-
 #endif
 
 bool WebChromeClient::selectItemWritingDirectionIsNatural()
@@ -677,11 +615,6 @@ bool WebChromeClient::selectItemAlignmentFollowsMenuWritingDirection()
     return false;
 }
 
-bool WebChromeClient::hasOpenedPopup() const
-{
-	return false;
-}
-
 RefPtr<PopupMenu> WebChromeClient::createPopupMenu(PopupMenuClient& client) const
 {
     return adoptRef(new PopupMenuMorphOS(&client));
@@ -692,17 +625,6 @@ RefPtr<SearchPopupMenu> WebChromeClient::createSearchPopupMenu(PopupMenuClient& 
     return adoptRef(new SearchPopupMenuMorphOS(&client));
 }
 
-void WebChromeClient::AXStartFrameLoad()
-{
-}
-
-void WebChromeClient::AXFinishFrameLoad()
-{
-}
-
-void WebChromeClient::attachRootGraphicsLayer(WebCore::Frame&, WebCore::GraphicsLayer*)
-{
-}
 
 void WebChromeClient::attachViewOverlayGraphicsLayer(WebCore::GraphicsLayer*)
 {
@@ -712,4 +634,61 @@ RefPtr<WebCore::Icon> WebChromeClient::createIconForFiles(const Vector<String>&)
 {
     return nullptr;
 }
-  
+
+//void WebChromeClient::fullScreenRendererChanged(RenderBox*)
+//{
+//    //m_webView->adjustFullScreenElementDimensionsIfNeeded();
+//}
+//
+//bool WebChromeClient::supportsFullscreenForNode(const WebCore::Node* node)
+//{
+//    return node->hasTagName(HTMLNames::videoTag);
+//}
+//
+//void WebChromeClient::enterFullscreenForNode(WebCore::Node* node)
+//{
+//    m_webView->enterFullscreenForNode(node);
+//}
+//
+//void WebChromeClient::exitFullscreenForNode(WebCore::Node*)
+//{
+//    m_webView->exitFullscreen();
+//}
+//
+//void WebChromeClient::setLastSetCursorToCurrentCursor()
+//{
+//	//m_webView->setLastCursor(::GetCursor());
+//}
+//
+//bool WebChromeClient::tabsToLinks() const
+//{
+//    WebPreferences* preferences = m_webView->preferences();
+//    return preferences->tabsToLinks();
+//}
+//bool WebChromeClient::shouldInterruptJavaScript()
+//{
+//	BalWidget* widget = m_webView->viewWindow();
+//
+//	if(widget)
+//	{
+//		return MUI_RequestA(app, widget->window, 0, GSI(MSG_WEBVIEW_JSACTION_TITLE), GSI(MSG_REQUESTER_YES_NO), GSI(MSG_WEBVIEW_INTERRUPT_SCRIPT), NULL);
+//	}
+//    return false;
+//}
+//
+//#if ENABLE(INPUT_TYPE_DATE)
+//RefPtr<WebCore::DateTimeChooser> WebChromeClient::openDateTimeChooser(WebCore::DateTimeChooserClient*, const WebCore::DateTimeChooserParameters&)
+//{
+//    /*
+//    kprintf("WebChromeClient::openDateTimeChooser\n");
+//
+//    RefPtr<DateTimeChooserController> controller = adoptRef(new DateTimeChooserController(this, chooserClient, parameters));
+//    controller->openUI();
+//    return controller.release();    
+//    */
+//
+//    RefPtr<DateTimeChooser> ret;
+//    return ret;
+//}
+//#endif
+//

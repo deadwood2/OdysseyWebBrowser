@@ -43,23 +43,18 @@ public:
     WebDesktopNotificationsDelegate(WebView* view);
 
     /* WebCore::NotificationClient interface */
-    virtual bool show(WebCore::Notification* object);
-    virtual void cancel(WebCore::Notification* object);
-    virtual void notificationObjectDestroyed(WebCore::Notification*);
-    virtual void notificationControllerDestroyed();
-
-#if ENABLE(LEGACY_NOTIFICATIONS)
-    virtual void requestPermission(WebCore::ScriptExecutionContext*, PassRefPtr<WebCore::VoidCallback>);
-#endif
+    virtual bool show(WebCore::Notification* object) override;
+    virtual void cancel(WebCore::Notification* object) override;
+    virtual void notificationObjectDestroyed(WebCore::Notification* object) override;
+    virtual void notificationControllerDestroyed() override;
 #if ENABLE(NOTIFICATIONS)
-    virtual void requestPermission(WebCore::ScriptExecutionContext*, RefPtr<WebCore::NotificationPermissionCallback>&&);
+    virtual void requestPermission(WebCore::ScriptExecutionContext*, RefPtr<WebCore::NotificationPermissionCallback>&&) override;
 #endif
+    bool hasPendingPermissionRequests(WebCore::ScriptExecutionContext*) const override;
     virtual void cancelRequestsForPermission(WebCore::ScriptExecutionContext*);
-    virtual WebCore::NotificationClient::Permission checkPermission(WebCore::ScriptExecutionContext*);
-    virtual bool hasPendingPermissionRequests(WebCore::ScriptExecutionContext*) const;
+    virtual WebCore::NotificationClient::Permission checkPermission(WebCore::ScriptExecutionContext*) override;
 
 private:
     WebView* m_webView;
 };
-
 #endif

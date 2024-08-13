@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <PluginInfoProvider.h>
+#include <WebCore/PluginInfoProvider.h>
 
 class WebPluginInfoProvider final : public WebCore::PluginInfoProvider {
     friend class NeverDestroyed<WebPluginInfoProvider>;
@@ -35,12 +35,12 @@ public:
     virtual ~WebPluginInfoProvider();
 
 private:
-    void refreshPlugins() override;
+    void refreshPlugins() final;
     Vector<WebCore::PluginInfo> pluginInfo(WebCore::Page&, Optional<Vector<WebCore::SupportedPluginIdentifier>>&) final;
-    Vector<WebCore::PluginInfo> webVisiblePluginInfo(WebCore::Page&i, const WTF::URL&) final;
+    Vector<WebCore::PluginInfo> webVisiblePluginInfo(WebCore::Page&i, const URL&) final;
 #if PLATFORM(MAC)
-    void setPluginLoadClientPolicy(WebCore::PluginLoadClientPolicy, const String& host, const String& bundleIdentifier, const String& versionString) override;
-    void clearPluginClientPolicies() override;
+    void setPluginLoadClientPolicy(WebCore::PluginLoadClientPolicy, const String& host, const String& bundleIdentifier, const String& versionString) final;
+    void clearPluginClientPolicies() final;
 #endif
 
     WebPluginInfoProvider();

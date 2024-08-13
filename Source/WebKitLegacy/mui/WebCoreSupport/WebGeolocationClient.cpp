@@ -87,14 +87,14 @@ int WebGeolocationClient::numberOfPendingPermissionRequests() const
     return m_pendingPermission.size();
 }
 
-void WebGeolocationClient::requestPermission(Geolocation* geolocation)
+void WebGeolocationClient::requestPermission(Geolocation& geolocation)
 {
     m_pendingPermission.add(geolocation);
     if (m_permissionState != PermissionStateUnset)
         asyncUpdatePermission();
 }
 
-void WebGeolocationClient::cancelPermissionRequest(Geolocation* geolocation)
+void WebGeolocationClient::cancelPermissionRequest(Geolocation& geolocation)
 {
     // Called from Geolocation::disconnectFrame() in response to Frame destruction.
     m_pendingPermission.remove(geolocation);

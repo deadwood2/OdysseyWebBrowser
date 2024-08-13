@@ -59,13 +59,14 @@ public:
     int numberOfPendingPermissionRequests() const;
 
     // GeolocationClient
-    virtual void geolocationDestroyed();
-    virtual void startUpdating();
-    virtual void stopUpdating();
-    virtual void setEnableHighAccuracy(bool);
+    void geolocationDestroyed() final;
+    void startUpdating() final;
+    void stopUpdating() final;
+    void setEnableHighAccuracy(bool) final;
     Optional<WebCore::GeolocationPosition> lastPosition() final;
-    virtual void requestPermission(Geolocation*);
-    virtual void cancelPermissionRequest(Geolocation*);
+
+    void requestPermission(Geolocation&) final;
+    void cancelPermissionRequest(Geolocation&) final;
 
 private:
     void asyncUpdateController();

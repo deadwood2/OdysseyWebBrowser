@@ -274,7 +274,7 @@ void PluginView::mediaCanStart(Document& doc)
 {
     ASSERT(!m_isStarted);
     if (!start())
-        static_cast<WebFrameLoaderClient&>(parentFrame()->loader().client()).dispatchDidFailToStartPlugin(this);
+        static_cast<WebFrameLoaderClient&>(parentFrame()->loader().client()).dispatchDidFailToStartPlugin(*this);
 }
 
 PluginView::~PluginView()

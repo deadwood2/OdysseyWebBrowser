@@ -30,11 +30,6 @@
 
 using namespace WebCore;
 
-Ref<WebFrameNetworkingContext> WebFrameNetworkingContext::create(Frame* frame, const String& userAgent)
-{
-    return (*new WebFrameNetworkingContext(frame, userAgent));
-}
-
 NetworkStorageSession* WebFrameNetworkingContext::storageSession() const
 {
     if (frame() && frame()->page()->usesEphemeralSession())
@@ -65,9 +60,12 @@ void WebFrameNetworkingContext::setPrivateBrowsingStorageSessionIdentifierBase(c
     privateBrowsingStorageSessionIdentifierBase() = identifier;
 }
 
-void WebFrameNetworkingContext::ensurePrivateBrowsingSession() 
+WebCore::NetworkStorageSession& WebFrameNetworkingContext::ensurePrivateBrowsingSession()
 {
-    ASSERT(isMainThread()); 
+asm("int3");
+    NetworkStorageSessionMap::ensureSession(PAL::SessionID::legacyPrivateSessionID());
+
+    return *NetworkStorageSessionMap::storageSession(PAL::SessionID::legacyPrivateSessionID());
 }
 
 void WebFrameNetworkingContext::destroyPrivateBrowsingSession()

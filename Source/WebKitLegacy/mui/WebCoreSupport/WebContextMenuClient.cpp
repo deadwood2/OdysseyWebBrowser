@@ -57,10 +57,6 @@ WebContextMenuClient::WebContextMenuClient(WebView* webView)
 {
 }
 
-WebContextMenuClient::~WebContextMenuClient()
-{
-}
-
 void WebContextMenuClient::contextMenuDestroyed()
 {
     delete this;
@@ -90,12 +86,6 @@ void WebContextMenuClient::downloadURL(const URL& url)
         download->start();
     }
 }
-
-void WebContextMenuClient::copyImageToClipboard(const HitTestResult&)
-{
-    notImplemented();
-}
-
 
 void WebContextMenuClient::searchWithGoogle(const Frame* frame)
 {
