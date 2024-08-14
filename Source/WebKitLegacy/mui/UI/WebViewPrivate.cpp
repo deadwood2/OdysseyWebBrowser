@@ -709,12 +709,6 @@ void WebViewPrivate::fireWebKitTimerEvents()
     WebCore::fireTimerIfNeeded();
 }
 
-
-void WebViewPrivate::fireWebKitThreadEvents()
-{
-	WTF::dispatchFunctionsFromMainThread();
-}
-
 BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
 {
     Frame* frame = core(m_webView->mainFrame());

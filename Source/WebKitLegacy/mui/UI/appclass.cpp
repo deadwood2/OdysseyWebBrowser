@@ -72,6 +72,7 @@
 #include "ContextMenu.h"
 #include "ContextMenuController.h"
 #include "PluginDatabase.h"
+#include <wtf/RunLoop.h>
 #if 0
 #if ENABLE(ICONDATABASE)
 #include "IconDatabase.h"
@@ -2080,7 +2081,6 @@ DEFTMETHOD(OWBApp_WebKitEvents)
 			BalWidget *widget = (BalWidget *) getv(browser, MA_OWBBrowser_Widget);
 			if(widget)
 			{
-				widget->webView->fireWebKitThreadEvents();
 				widget->webView->fireWebKitTimerEvents();
 			}
 		}
@@ -2092,11 +2092,13 @@ DEFTMETHOD(OWBApp_WebKitEvents)
 			BalWidget *widget = (BalWidget *) getv(browser, MA_OWBBrowser_Widget);
 			if(widget)
 			{
-				widget->webView->fireWebKitThreadEvents();
 				widget->webView->fireWebKitTimerEvents();
 			}
 		}
 	}
+
+	RunLoop::iterate();
+
 	return 0;
 }
 

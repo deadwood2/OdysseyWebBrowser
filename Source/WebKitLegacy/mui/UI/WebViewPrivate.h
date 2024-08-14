@@ -246,7 +246,6 @@ public:
     void scrollBackingStore(WebCore::FrameView*, int dx, int dy, const WebCore::IntRect& scrollViewRect, const WebCore::IntRect& clipRect);
     
     void fireWebKitTimerEvents();
-    void fireWebKitThreadEvents();
     
     void resize(BalRectangle);
     void move(BalPoint, BalPoint);

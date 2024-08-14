@@ -2963,12 +2963,6 @@ void WebView::fireWebKitTimerEvents()
     d->fireWebKitTimerEvents();
 }
 
-void WebView::fireWebKitThreadEvents()
-{
-    d->fireWebKitThreadEvents();
-}
-
-
 void WebView::setJavaScriptURLsAreAllowed(bool areAllowed)
 {
   //    m_page->setJavaScriptURLsAreAllowed(areAllowed);

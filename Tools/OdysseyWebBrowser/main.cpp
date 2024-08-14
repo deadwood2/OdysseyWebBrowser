@@ -370,11 +370,8 @@ void main_loop(void)
 				running = FALSE;
 		}
 		
-		if(signals & SIGBREAKF_CTRL_E)
-		{
-			/* Run webkit events for each active browser */
-			DoMethod(app, MM_OWBApp_WebKitEvents);
-		}
+		/* Run webkit events for each active browser */
+		DoMethod(app, MM_OWBApp_WebKitEvents);
 		
 		/*
 		if(signals & dosnotifysig )
