@@ -197,7 +197,7 @@ public:
 
     void dispatchDidClearWindowObjectInWorld(WebCore::DOMWrapperWorld&) override;
 
-    WebFramePolicyListener* setUpPolicyListener(WebCore::FramePolicyFunction&& function);
+    WebFramePolicyListener* setUpPolicyListener(WebCore::PolicyCheckIdentifier, WebCore::FramePolicyFunction&&);
     void receivedPolicyDecision(WebCore::PolicyAction);
 
 #if USE(CURL_OPENSSL)
@@ -219,8 +219,8 @@ private:
     bool m_hasSentResponseToPlugin;
     int m_time;
 
-    WebCore::FramePolicyFunction m_policyFunction;
-    WebFramePolicyListener* m_policyListener;
+    class WebFramePolicyListenerPrivate;
+    std::unique_ptr<WebFramePolicyListenerPrivate> m_policyListenerPrivate;
 };
 
 #endif // WebFrameLoaderClient_h

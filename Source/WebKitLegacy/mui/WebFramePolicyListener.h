@@ -40,11 +40,11 @@
  */
 #include "WebKitTypes.h"
 
-typedef enum {
-    WebPolicyUse,
-    WebPolicyDownload,
-    WebPolicyIgnore,
-} WebPolicyAction;
+#include <WebCore/FrameLoaderTypes.h>
+
+namespace WebCore {
+    class Frame;
+}
 
 class WebFrame;
 
@@ -120,7 +120,7 @@ public:
      * @brief called when a policy decision should be made.
      * @param webPolicyAction the WebPolicyAction description the decision to be made.
      */
-    void receivedPolicyDecision(WebPolicyAction webPolicyAction);
+    void receivedPolicyDecision(WebCore::PolicyAction);
 
     /**
      * @brief invalidate a previous decision.

@@ -58,31 +58,29 @@ WebFramePolicyListener* WebFramePolicyListener::createInstance(WebFrame* frame)
 
 void WebFramePolicyListener::use(void)
 {
-    receivedPolicyDecision(WebPolicyUse);
+    receivedPolicyDecision(PolicyAction::Use);
 }
 
 void WebFramePolicyListener::download(void)
 {
-    receivedPolicyDecision(WebPolicyDownload);
+    receivedPolicyDecision(PolicyAction::Download);
 }
 
 void WebFramePolicyListener::ignore(void)
 {
-    receivedPolicyDecision(WebPolicyIgnore);
+    receivedPolicyDecision(PolicyAction::Ignore);
 }
 
 void WebFramePolicyListener::continueSubmit(void)
 {
-    receivedPolicyDecision(WebPolicyUse);
+    receivedPolicyDecision(PolicyAction::Use);
 }
 
-void WebFramePolicyListener::receivedPolicyDecision(WebPolicyAction action)
+void WebFramePolicyListener::receivedPolicyDecision(PolicyAction action)
 {
-#if 0
     Frame* coreFrame = core(m_frame);
     if (coreFrame)
-        static_cast<WebFrameLoaderClient&>(coreFrame->loader().client()).receivedPolicyDecision(static_cast<PolicyAction>(action));
-#endif
+        static_cast<WebFrameLoaderClient&>(coreFrame->loader().client()).receivedPolicyDecision(action);
 }
 
 void WebFramePolicyListener::invalidate()

@@ -355,7 +355,7 @@ void WebFrame::loadHTMLString(const char* string, const char* baseURL, const cha
     String utf8Encoding("utf-8");
     String mimeType("text/html");
 
-    URL _baseURL({ }, baseURL);
+    URL _baseURL(URL(), baseURL);
     URL failingURL;
 
     ResourceRequest request(_baseURL);

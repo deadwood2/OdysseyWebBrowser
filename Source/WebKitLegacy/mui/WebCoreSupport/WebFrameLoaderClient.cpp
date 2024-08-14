@@ -108,12 +108,25 @@ static WebDataSource* getWebDataSource(DocumentLoader* loader)
     return loader ? static_cast<WebDocumentLoader*>(loader)->dataSource() : 0;
 }
 
+class WebFrameLoaderClient::WebFramePolicyListenerPrivate {
+public:
+    WebFramePolicyListenerPrivate()
+        : m_policyFunction(nullptr), m_policyListener(nullptr)
+    {
+    }
+
+    ~WebFramePolicyListenerPrivate() { }
+
+    PolicyCheckIdentifier m_policyCheckIdentifier;
+    FramePolicyFunction m_policyFunction;
+    WebFramePolicyListener* m_policyListener;
+};
+
 WebFrameLoaderClient::WebFrameLoaderClient(WebFrame* webFrame)
     : m_webFrame(webFrame)
     , m_pluginView(0)
     , m_hasSentResponseToPlugin(false)
-    , m_policyFunction(nullptr)
-    , m_policyListener(0)
+    , m_policyListenerPrivate(std::make_unique<WebFramePolicyListenerPrivate>())
 {
     ASSERT_ARG(webFrame, webFrame);
 }
@@ -124,8 +137,7 @@ WebFrameLoaderClient::~WebFrameLoaderClient()
         m_webFrame = 0;
     if (m_pluginView)
         delete m_pluginView;
-    if (m_policyListener)
-        delete m_policyListener;
+    m_policyListenerPrivate = nullptr;
 }
 
 bool WebFrameLoaderClient::hasWebView() const
@@ -669,16 +681,6 @@ void WebFrameLoaderClient::detachedFromParent3()
     notImplemented();
 }
 
-void WebFrameLoaderClient::cancelPolicyCheck()
-{
-    if (m_policyListener) {
-        m_policyListener->invalidate();
-        m_policyListener = 0;
-    }
-
-    m_policyFunction = nullptr;
-}
-
 void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, CompletionHandler<void()>&& completionHandler)
 {
     Object * browser = m_webFrame->webView()->viewWindow()->browser;
@@ -837,39 +839,43 @@ bool WebFrameLoaderClient::shouldFallBack(const ResourceError& error)
     return error.errorCode() != WebURLErrorCancelled;
 }
 
-WebFramePolicyListener* WebFrameLoaderClient::setUpPolicyListener(FramePolicyFunction&& function)
+void WebFrameLoaderClient::cancelPolicyCheck()
+{
+    if (m_policyListenerPrivate->m_policyListener) {
+        m_policyListenerPrivate->m_policyListener->invalidate();
+        delete m_policyListenerPrivate->m_policyListener;
+        m_policyListenerPrivate->m_policyListener = nullptr;
+    }
+
+    m_policyListenerPrivate->m_policyFunction = nullptr;
+}
+
+WebFramePolicyListener* WebFrameLoaderClient::setUpPolicyListener(WebCore::PolicyCheckIdentifier identifier, WebCore::FramePolicyFunction&& function)
 {
     // FIXME: <rdar://5634381> We need to support multiple active policy listeners.
 
-    if (m_policyListener)
-	{
-        m_policyListener->invalidate();
-		/*
-		m_policyListener = 0;
-		delete m_policyListener;
-		*/
-	}
+    if (m_policyListenerPrivate->m_policyListener)
+        m_policyListenerPrivate->m_policyListener->invalidate();
 
-    m_policyListener = WebFramePolicyListener::createInstance(m_webFrame);
-    m_policyFunction = WTFMove(function);
+    m_policyListenerPrivate->m_policyListener = WebFramePolicyListener::createInstance(m_webFrame);
+    m_policyListenerPrivate->m_policyCheckIdentifier = identifier;
+    m_policyListenerPrivate->m_policyFunction = WTFMove(function);
 
-    return m_policyListener;
+    return m_policyListenerPrivate->m_policyListener;
 }
 
-#if 0
 void WebFrameLoaderClient::receivedPolicyDecision(PolicyAction action)
 {
-    ASSERT(m_policyListener);
-    ASSERT(m_policyFunction);
+    ASSERT(m_policyListenerPrivate->m_policyListener);
+    ASSERT(m_policyListenerPrivate->m_policyFunction);
 
-    FramePolicyFunction function = WTFMove(m_policyFunction);
+    FramePolicyFunction function = WTFMove(m_policyListenerPrivate->m_policyFunction);
 
-    m_policyListener = 0;
-    m_policyFunction = 0;
+    delete m_policyListenerPrivate->m_policyListener;
+    m_policyListenerPrivate->m_policyListener = 0;
 
-    function(action);
+    function(action, m_policyListenerPrivate->m_policyCheckIdentifier);
 }
-#endif
 
 void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const ResourceResponse& response, const ResourceRequest& request, WebCore::PolicyCheckIdentifier identifier, FramePolicyFunction&& function)
 {
@@ -879,7 +885,7 @@ void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const ResourceRespons
 
     WebMutableURLRequest* urlRequest = WebMutableURLRequest::createInstance(request);
 
-    if (policyDelegate->decidePolicyForMIMEType(m_webFrame->webView(), response, urlRequest, m_webFrame, setUpPolicyListener(WTFMove(function)))) {
+    if (policyDelegate->decidePolicyForMIMEType(m_webFrame->webView(), response, urlRequest, m_webFrame, setUpPolicyListener(identifier, WTFMove(function)))) {
         delete urlRequest;
         return;
     }
@@ -912,7 +918,7 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const Navigat
     WebMutableURLRequest* urlRequest =  WebMutableURLRequest::createInstance(request);
     WebNavigationAction* actionInformation = WebNavigationAction::createInstance(&action, formState ? &formState->form() : nullptr, m_webFrame);
 
-    policyDelegate->decidePolicyForNavigationAction(m_webFrame->webView(), actionInformation, urlRequest, m_webFrame, setUpPolicyListener(WTFMove(function)));
+    policyDelegate->decidePolicyForNavigationAction(m_webFrame->webView(), actionInformation, urlRequest, m_webFrame, setUpPolicyListener(identifier, WTFMove(function)));
 
     delete urlRequest;
     delete actionInformation;
