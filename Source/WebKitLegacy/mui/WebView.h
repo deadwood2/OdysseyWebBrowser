@@ -1414,11 +1414,6 @@ public:
     void popupMenuShow(void* userData);
 
     /*
-     * send timer and thread events
-     */
-    void fireWebKitTimerEvents();
-
-    /*
      * resize
      */
     void resize(BalRectangle);

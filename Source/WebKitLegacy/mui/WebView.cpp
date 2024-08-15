@@ -2958,11 +2958,6 @@ void WebView::popupMenuShow(void* userData)
     d->popupMenuShow(userData);
 }
 
-void WebView::fireWebKitTimerEvents()
-{
-    d->fireWebKitTimerEvents();
-}
-
 void WebView::setJavaScriptURLsAreAllowed(bool areAllowed)
 {
   //    m_page->setJavaScriptURLsAreAllowed(areAllowed);

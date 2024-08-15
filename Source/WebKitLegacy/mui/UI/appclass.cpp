@@ -2069,34 +2069,6 @@ DEFTMETHOD(OWBApp_Expose)
 /* Run webkit events for each active browser */
 DEFTMETHOD(OWBApp_WebKitEvents)
 {
-	APTR n, m;
-
-	ITERATELISTSAFE(n, m, &window_list)
-	{
-		struct windownode *node = (struct windownode *) n;
-		Object *browser = (Object *) getv(node->window, MA_OWBWindow_ActiveBrowser);
-
-		if(browser && !getv(browser, MA_OWBBrowser_ForbidEvents))
-		{
-			BalWidget *widget = (BalWidget *) getv(browser, MA_OWBBrowser_Widget);
-			if(widget)
-			{
-				widget->webView->fireWebKitTimerEvents();
-			}
-		}
-
-		browser = (Object *) getv(node->window, MA_OWBWindow_ActiveWebInspector);
-
-		if(browser && !getv(browser, MA_OWBBrowser_ForbidEvents))
-		{
-			BalWidget *widget = (BalWidget *) getv(browser, MA_OWBBrowser_Widget);
-			if(widget)
-			{
-				widget->webView->fireWebKitTimerEvents();
-			}
-		}
-	}
-
 	RunLoop::iterate();
 
 	return 0;

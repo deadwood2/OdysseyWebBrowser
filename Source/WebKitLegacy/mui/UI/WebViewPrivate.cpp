@@ -104,11 +104,6 @@ namespace WTF
 }
 #endif
 
-namespace WebCore
-{
-    void fireTimerIfNeeded();
-}
-
 using namespace WebCore;
 
 static const bool renderBenchmark = getenv("OWB_BENCHMARK");
@@ -702,11 +697,6 @@ WebViewPrivate::WebViewPrivate(WebView *webView)
 	webView->setDownloadDelegate(DownloadDelegateMorphOS::createInstance());
 //	  webView->setPolicyDelegate(PolicyDelegateMorphOS::createInstance());
 //	  webView->setWebResourceLoadDelegate(MorphOSResourceLoadDelegate::createInstance());
-}
-
-void WebViewPrivate::fireWebKitTimerEvents()
-{
-    WebCore::fireTimerIfNeeded();
 }
 
 BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
