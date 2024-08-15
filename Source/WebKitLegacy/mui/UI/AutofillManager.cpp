@@ -39,7 +39,7 @@ static bool isAutofillable(HTMLInputElement* element)
 
 RefPtr<AutofillManager> AutofillManager::create(void *browser)
 {
-	return new AutofillManager(browser);
+    return new AutofillManager(browser);
 }
 
 void AutofillManager::didChangeInTextField(HTMLInputElement* element)
@@ -52,7 +52,7 @@ void AutofillManager::didChangeInTextField(HTMLInputElement* element)
 
     IntRect rect = element->screenRect();
     Vector<String> candidates = autofillBackingStore().get(element->getAttribute(HTMLNames::nameAttr).string(), element->value());
-	DoMethod((Object *) m_browser, MM_OWBBrowser_Autofill_ShowPopup, &candidates, &rect);
+    DoMethod((Object *) m_browser, MM_OWBBrowser_Autofill_ShowPopup, &candidates, &rect);
 }
 
 void AutofillManager::autofillTextField(const String& value)
@@ -69,10 +69,12 @@ void AutofillManager::saveTextFields(HTMLFormElement* form)
     RefPtr<HTMLCollection> elements = form->elements();
     size_t itemCount = elements->length();
     for (size_t i = 0; i < itemCount; ++i) {
-        HTMLInputElement* element = downcast<HTMLInputElement>(form->item(i));
-        if (!isAutofillable(element))
-            continue;
-        autofillBackingStore().add(element->getAttribute(HTMLNames::nameAttr).string(), element->value());
+        if (is<HTMLInputElement>(form->item(i))) {
+            HTMLInputElement* element = downcast<HTMLInputElement>(form->item(i));
+            if (!isAutofillable(element))
+                continue;
+            autofillBackingStore().add(element->getAttribute(HTMLNames::nameAttr).string(), element->value());
+        }
     }
 }
 
