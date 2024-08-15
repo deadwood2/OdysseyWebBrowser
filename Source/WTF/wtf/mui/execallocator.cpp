@@ -386,6 +386,9 @@ void * allocator_getmem_aligned(size_t bytes, size_t alignment)
 {
     D(bug("A:getmem_aligned bytes %d, alignment %d \n", bytes, alignment));
 
+    /* Can only allocate full pages */
+    if (alignment < PAGESIZE) alignment = PAGESIZE;
+
     int pagecount = getPageCount(bytes);
     void * ptr = allocator.getPages(pagecount, alignment);
 
