@@ -207,10 +207,10 @@ void WebFrameLoaderClient::dispatchWillSendRequest(DocumentLoader* loader, unsig
 
 void WebFrameLoaderClient::dispatchDidReceiveResponse(DocumentLoader* loader, unsigned long identifier, const ResourceResponse& response)
 {
-	//WebView* webView = m_webFrame->webView();
+	WebView* webView = m_webFrame->webView();
 
 	//kprintf("dispatchDidReceiveResponse:: loader %p webView %p\n", loader, webView);
-	/*
+
     SharedPtr<WebResourceLoadDelegate> resourceLoadDelegate = webView->webResourceLoadDelegate();
     if (!resourceLoadDelegate)
         return;
@@ -218,52 +218,51 @@ void WebFrameLoaderClient::dispatchDidReceiveResponse(DocumentLoader* loader, un
     WebURLResponse* webURLResponse = WebURLResponse::createInstance(response);
     resourceLoadDelegate->didReceiveResponse(webView, identifier, webURLResponse, getWebDataSource(loader));
     delete webURLResponse;
-	*/
+
 }
 
 void WebFrameLoaderClient::dispatchDidReceiveContentLength(DocumentLoader* loader, unsigned long identifier, int length)
 {
-	//WebView* webView = m_webFrame->webView();
+
+	WebView* webView = m_webFrame->webView();
 
 	//kprintf("dispatchDidReceiveContentLength:: loader %p webView %p\n", loader, webView);
-	/*
+
     SharedPtr<WebResourceLoadDelegate> resourceLoadDelegate = webView->webResourceLoadDelegate();
     if (!resourceLoadDelegate)
         return;
 
     resourceLoadDelegate->didReceiveContentLength(webView, identifier, length, getWebDataSource(loader));
-	*/
 }
 
 void WebFrameLoaderClient::dispatchDidFinishLoading(DocumentLoader* loader, unsigned long identifier)
 {
-	//WebView* webView = m_webFrame->webView();
+
+	WebView* webView = m_webFrame->webView();
 
 	//kprintf("dispatchDidFinishLoading:: loader %p webView %p\n", loader, webView);
-	/*
+
     SharedPtr<WebResourceLoadDelegate> resourceLoadDelegate = webView->webResourceLoadDelegate();
     if (!resourceLoadDelegate)
         return;
 
     resourceLoadDelegate->didFinishLoadingFromDataSource(webView, identifier, getWebDataSource(loader));
-	*/
 }
 
 void WebFrameLoaderClient::dispatchDidFailLoading(DocumentLoader* loader, unsigned long identifier, const ResourceError& error)
 {
-	//WebView* webView = m_webFrame->webView();
+	WebView* webView = m_webFrame->webView();
 
 	//kprintf("dispatchDidFailLoading:: loader %p webView %p\n", loader, webView);
-	/*
+
 	SharedPtr<WebResourceLoadDelegate> resourceLoadDelegate = webView->webResourceLoadDelegate();
-	kprintf("dispatchDidFailLoading:: resourceLoadDelegate %p\n", resourceLoadDelegate);
+	//kprintf("dispatchDidFailLoading:: resourceLoadDelegate %p\n", resourceLoadDelegate.get());
     if (!resourceLoadDelegate)
         return;
 
     WebError* webError = WebError::createInstance(error);
     resourceLoadDelegate->didFailLoadingWithError(webView, identifier, webError, getWebDataSource(loader));
     delete webError;
-	*/
 }
 
 void WebFrameLoaderClient::dispatchDidReceiveServerRedirectForProvisionalLoad()
@@ -326,7 +325,7 @@ void WebFrameLoaderClient::dispatchDidReceiveTitle(const WebCore::StringWithDire
 {
     SharedPtr<WebFrameLoadDelegate> webFrameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
     if (webFrameLoadDelegate)
-	webFrameLoadDelegate->titleChange(m_webFrame, title.string.utf8().data());
+        webFrameLoadDelegate->titleChange(m_webFrame, title.string.utf8().data());
 }
 
 void WebFrameLoaderClient::dispatchDidCommitLoad(Optional<HasInsecureContent>)
