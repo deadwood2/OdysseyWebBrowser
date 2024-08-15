@@ -1,8 +1,8 @@
 #ifndef __VERSIONINFO_H__
 #define __VERSIONINFO_H__
 
-#define VERSION  "1.26"
-#define WEBKITVER xstringify(WEBKIT_MAJOR_VERSION) "." xstringify(WEBKIT_MINOR_VERSION)
+#define VERSION  "2.0"
+#define WEBKITVER "605.1.15"
 #define REVISION "WebKit " WEBKITVER " (webkitgtk-2.24.4)"
 
 #endif /* __VERSIONINFO_H__ */
