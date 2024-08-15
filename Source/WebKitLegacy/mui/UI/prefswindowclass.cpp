@@ -266,8 +266,10 @@ STATIC CONST CONST_STRPTR useragents_labels[] =
 	NULL
 };
 
-#if OS(AROS)
-#define OSHEADER "i686; AROS"
+#if OS(AROS) && CPU(X86)
+#define OSHEADER "AROS i686"
+#elif OS(AROS) && CPU(X86_64)
+#define OSHEADER "AROS x86_64"
 #elif OS(MORPHOS)
 #define OSHEADER "Macintosh; PowerPC MorphOS %u.%u"
 #endif
