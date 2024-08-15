@@ -429,8 +429,10 @@ WebView::WebView()
     provideDeviceMotionTo(m_page, new WebDeviceMotionClient());
     provideDeviceOrientationTo(m_page, new WebDeviceOrientationClient());
 #endif
-
-    m_page->settings().setFTPDirectoryTemplatePath("PROGDIR:resource/FTPDirectoryTemplate.html");
+    WebCore::Settings& settings = m_page->settings();
+    /* Defaults */
+    settings.setFTPDirectoryTemplatePath("PROGDIR:resource/FTPDirectoryTemplate.html");
+    settings.setMediaEnabled(true);
 
     WebFrame* webFrame = WebFrame::createInstance(); 
     webFrame->initWithWebView(this, m_page); 
