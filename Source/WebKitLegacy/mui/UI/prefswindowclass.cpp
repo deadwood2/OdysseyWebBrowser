@@ -257,7 +257,7 @@ STATIC CONST CONST_STRPTR useragents_labels[] =
 
 	"Opera 12 (Windows)",
 
-	"Safari 6.0.2 (Mac)",
+	"Safari 13.1 (Mac)",
 	"Chrome 42 (Linux)",
 
 	"IPhone",
@@ -314,7 +314,7 @@ STATIC CONST STRPTR useragents_strings[] =
 
 	"Opera/9.80 (Windows NT 5.1; U; en) Presto/2.12.388 Version/12.14",
 
-	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_2) AppleWebKit/536.26.17 (KHTML, like Gecko) Version/6.0.2 Safari/536.26.17",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1 Safari/605.1.15",
 	"Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.152 Safari/537.36",
 
 	"Mozilla/5.0 (iPhone9,4; U; CPU iPhone OS 10_0_1 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) Version/10.0 Mobile/14A403 Safari/602.1",
