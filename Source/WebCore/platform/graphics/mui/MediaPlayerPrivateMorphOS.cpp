@@ -26,6 +26,7 @@ MediaPlayerMorphOSSettings &MediaPlayerMorphOSSettings::settings()
 	return m_playerSettings;
 }
 
+#if 0
 class MediaPlayerFactoryMediaSourceMorphOS final : public MediaPlayerFactory {
 public:
     MediaPlayerEnums::MediaEngineIdentifier identifier() const final { return MediaPlayerEnums::MediaEngineIdentifier::MorphOS; };
@@ -54,7 +55,7 @@ public:
         }
         return valid;
     }
-
+#endif
     static void s_getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types, bool withHLS)
     {
 		// Audio
@@ -102,10 +103,12 @@ public:
 		}
     }
 
+#if 0
 	void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types) const final
 	{
 		s_getSupportedTypes(types, true);
 	}
+#endif
 
     static MediaPlayer::SupportsType s_supportsTypeAndCodecs(const MediaEngineSupportParameters& parameters)
     {
@@ -144,12 +147,15 @@ public:
     		return MediaPlayer::SupportsType::IsNotSupported;
 		}
 
+#if 0
         if (!isCGXVideoValid())
         {
     		return MediaPlayer::SupportsType::IsNotSupported;
 		}
 
 		bool withHLS = MediaPlayerMorphOSSettings::settings().m_supportHLSForHost ? MediaPlayerMorphOSSettings::settings().m_supportHLSForHost(page, host) : true;
+#endif
+		bool withHLS = false;
 
 		DM(dprintf("%s: url '%s' content '%s' ctype '%s' isource %d istream %d profiles %d hlsOK %d host '%s' page %p\n", __func__,
 			parameters.url.string().utf8().data(), parameters.type.raw().utf8().data(), parameters.type.containerType().utf8().data(),
@@ -240,12 +246,14 @@ public:
 		DM(dprintf("%s: not supported!\n", __func__));
         return MediaPlayer::SupportsType::IsNotSupported;
     }
-	
+
+#if 0
     MediaPlayer::SupportsType supportsTypeAndCodecs(const MediaEngineSupportParameters& parameters) const final
     {
     	return s_supportsTypeAndCodecs(parameters);
 	}
 };
+#endif
 
 MediaPlayerPrivateMorphOS::MediaPlayerPrivateMorphOS(MediaPlayer* player)
 	: m_player(player)
@@ -263,6 +271,7 @@ MediaPlayerPrivateMorphOS::~MediaPlayerPrivateMorphOS()
 		MediaPlayerMorphOSSettings::settings().m_loadCancelled(m_player);
 }
 
+#if 0
 void MediaPlayerPrivateMorphOS::registerMediaEngine(MediaEngineRegistrar registrar)
 {
 	registrar(makeUnique<MediaPlayerFactoryMediaSourceMorphOS>());
@@ -272,6 +281,18 @@ MediaPlayer::SupportsType MediaPlayerPrivateMorphOS::extendedSupportsType(const 
 {
 	(void)type;
 	return MediaPlayerFactoryMediaSourceMorphOS::s_supportsTypeAndCodecs(parameters);
+}
+#endif
+
+static void s_getSupportedTypes2(HashSet<String, ASCIICaseInsensitiveHash>& types)
+{
+    return s_getSupportedTypes(types, false);
+}
+
+void MediaPlayerPrivateMorphOS::registerMediaEngine(MediaEngineRegistrar registrar)
+{
+    registrar([](MediaPlayer* player) { return std::make_unique<MediaPlayerPrivateMorphOS>(player); },
+        s_getSupportedTypes2, s_supportsTypeAndCodecs, 0, 0, 0, 0);
 }
 
 bool MediaPlayerPrivateMorphOS::supportsKeySystem(const String&, const String&)
@@ -642,7 +663,7 @@ bool MediaPlayerPrivateMorphOS::accCodecSupported(const String &codec)
 	ct.append(codec);
 	ct.append("\"");
 	parameters.type = ContentType(ct);
-	return MediaPlayerFactoryMediaSourceMorphOS::s_supportsTypeAndCodecs(parameters) == MediaPlayer::SupportsType::IsSupported;
+	return s_supportsTypeAndCodecs(parameters) == MediaPlayer::SupportsType::IsSupported;
 }
 
 void MediaPlayerPrivateMorphOS::accSetFrameCounts(unsigned decoded, unsigned dropped)
@@ -799,6 +820,11 @@ void MediaPlayerPrivateMorphOS::onTrackEnabled(int index, bool enabled)
 	(void)index;
 	(void)enabled;
 	D(dprintf("%s: %p, track %p enabled %d\n", __func__, this, index, enabled));
+}
+
+void MediaPlayerPrivateMorphOS::setSize(const IntSize& size)
+{
+    (void)size;
 }
 
 }

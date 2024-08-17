@@ -15,6 +15,7 @@
 #include <queue>
 #include "AcinerellaDecoder.h"
 #include "AcinerellaHLS.h"
+#include "CookieJar.h"
 
 #define D(x) 
 
@@ -225,7 +226,7 @@ public:
 		{
 			auto& storageSession = *context->storageSession();
 			auto includeSecureCookies = request.url().protocolIs("https") ? IncludeSecureCookies::Yes : IncludeSecureCookies::No;
-			String cookieHeaderField = storageSession.cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), WTF::nullopt, WTF::nullopt, includeSecureCookies, ShouldAskITP::Yes, ShouldRelaxThirdPartyCookieBlocking::No).first;
+			String cookieHeaderField = storageSession.cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), WTF::nullopt, WTF::nullopt, includeSecureCookies).first;
 			if (!cookieHeaderField.isEmpty())
 				request.addHTTPHeaderField(HTTPHeaderName::Cookie, cookieHeaderField);
 		}
@@ -259,7 +260,7 @@ public:
 		return false;
 	}
 	
-	void curlDidReceiveResponse(CurlRequest& request, CurlResponse&& response) override
+	void curlDidReceiveResponse(CurlRequest& request, const CurlResponse& response) override
 	{
 		D(dprintf("%s(%p): %s\n", __PRETTY_FUNCTION__, this, m_url.utf8().data()));
 		if (m_curlRequest.get() == &request)
@@ -269,7 +270,7 @@ public:
 			
 			// only set on 1st request (or when we're reading from pos=0)
 			if (0 == m_bufferPositionAbs)
-				m_length = reinterpret_cast<int64_t>(m_response.expectedContentLength());
+				m_length = static_cast<int64_t>(m_response.expectedContentLength());
 
 			if (m_response.shouldRedirect())
 			{
@@ -346,7 +347,7 @@ public:
 		}
 	}
 	
-	void curlDidComplete(CurlRequest& request, NetworkLoadMetrics&&) override
+	void curlDidComplete(CurlRequest& request) override
 	{
 		D(dprintf("%s(%p): %s %lld\n", __PRETTY_FUNCTION__, this, m_url.utf8().data(), m_length));
 		if (m_curlRequest.get() == &request)
@@ -358,7 +359,7 @@ public:
 		}
 	}
 	
-	void curlDidFailWithError(CurlRequest& request, ResourceError&&, CertificateInfo&&) override
+	void curlDidFailWithError(CurlRequest& request, const ResourceError&) override
 	{
 		D(dprintf("%s(%p)\n", __PRETTY_FUNCTION__, this));
 		if (m_curlRequest.get() == &request)
@@ -589,7 +590,7 @@ public:
 		{
 			auto& storageSession = *context->storageSession();
 			auto includeSecureCookies = request.url().protocolIs("https") ? IncludeSecureCookies::Yes : IncludeSecureCookies::No;
-			String cookieHeaderField = storageSession.cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), WTF::nullopt, WTF::nullopt, includeSecureCookies, ShouldAskITP::Yes, ShouldRelaxThirdPartyCookieBlocking::No).first;
+			String cookieHeaderField = storageSession.cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), WTF::nullopt, WTF::nullopt, includeSecureCookies).first;
 			if (!cookieHeaderField.isEmpty())
 				request.addHTTPHeaderField(HTTPHeaderName::Cookie, cookieHeaderField);
 		}
@@ -622,7 +623,7 @@ public:
 		return false;
 	}
 	
-	void curlDidReceiveResponse(CurlRequest& request, CurlResponse&& response) override
+	void curlDidReceiveResponse(CurlRequest& request, const CurlResponse& response) override
 	{
 		D(dprintf("%s(%p): %s\n", __PRETTY_FUNCTION__, this, m_url.utf8().data()));
 		if (m_curlRequest.get() == &request)
@@ -698,7 +699,7 @@ public:
 		}
 	}
 	
-	void curlDidComplete(CurlRequest& request, NetworkLoadMetrics&&) override
+	void curlDidComplete(CurlRequest& request) override
 	{
 		D(dprintf("%s(%p): %s %d OK %d onfini %d\n", __PRETTY_FUNCTION__, this, m_url.utf8().data(), m_buffer?m_buffer->size():0, m_curlRequest.get() == &request, !!m_onFinished));
 		if (m_curlRequest.get() == &request)
@@ -709,7 +710,7 @@ public:
 		}
 	}
 	
-	void curlDidFailWithError(CurlRequest& request, ResourceError&&, CertificateInfo&&) override
+	void curlDidFailWithError(CurlRequest& request, const ResourceError&) override
 	{
 		D(dprintf("%s(%p)\n", __PRETTY_FUNCTION__, this));
 		if (m_curlRequest.get() == &request)

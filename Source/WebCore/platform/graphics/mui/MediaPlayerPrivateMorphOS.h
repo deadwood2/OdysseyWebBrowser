@@ -22,7 +22,7 @@ namespace Acinerella {
 template<typename T>
 using deleted_unique_ptr = std::unique_ptr<T,std::function<void(T*)>>;
 
-class MediaPlayerPrivateMorphOS : public MediaPlayerPrivateInterface, public Acinerella::AcinerellaClient, public CanMakeWeakPtr<MediaPlayerPrivateMorphOS, WeakPtrFactoryInitialization::Eager>
+class MediaPlayerPrivateMorphOS : public MediaPlayerPrivateInterface, public Acinerella::AcinerellaClient, public CanMakeWeakPtr<MediaPlayerPrivateMorphOS>
 {
     WTF_MAKE_FAST_ALLOCATED;
 public:
@@ -98,9 +98,9 @@ public:
 	void accFrameUpdateNeeded() override;
 	bool accCodecSupported(const String &codec) override;
 	void accSetFrameCounts(unsigned decoded, unsigned dropped) override;
+	void setSize(const IntSize&) override;
 
 	void setLoadingProgresssed(bool flag) { m_didLoadingProgress = flag; }
-	void onActiveSourceBuffersChanged() { if (m_player) m_player->activeSourceBuffersChanged(); }
 
 	const MediaPlayerMorphOSStreamSettings &streamSettings() { return m_streamSettings; }
 

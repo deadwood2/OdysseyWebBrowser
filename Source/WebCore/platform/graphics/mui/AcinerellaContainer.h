@@ -22,6 +22,18 @@ using deleted_unique_ptr = std::unique_ptr<T,std::function<void(T*)>>;
 
 struct Window;
 
+#if OS(AROS)
+namespace WTF {
+template<class T, class... Args>
+ALWAYS_INLINE decltype(auto) makeUnique(Args&&... args)
+{
+    return std::make_unique<T>(std::forward<Args>(args)...);
+}
+} // namespace WTF
+
+using namespace WTF;
+#endif
+
 namespace WebCore {
 namespace Acinerella {
 
