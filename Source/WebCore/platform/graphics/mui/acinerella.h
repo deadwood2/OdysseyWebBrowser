@@ -32,9 +32,15 @@ extern "C" {
 
 #define AC_BUFSIZE (1024 * 4)
 
+#ifndef INT64_MAX
 #define INT64_MAX 9223372036854775807LL
+#endif
+#ifndef INT64_MIN
 #define INT64_MIN (-INT64_MAX-1)
+#endif
+#ifndef UINT64_MAX
 #define UINT64_MAX 18446744073709551615ULL
+#endif
 
 /**
  * Defines the type of an Acinerella media stream. Currently only video and

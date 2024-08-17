@@ -39,6 +39,9 @@ public:
 	void paint(GraphicsContext&, const FloatRect&) override { }
 
 	void dumpStatus() override;
+#if OS(AROS)
+	static void soundFunc(void *ptr);
+#endif
 
 protected:
 	void startPlaying() override;
@@ -53,7 +56,9 @@ protected:
 	void onCoolDown() override;
 	void ahiCleanup();
 
+#if OS(MORPHOS)
 	static void soundFunc();
+#endif
 	void fillBuffer(int index);
 	void ahiThreadEntryPoint();
 

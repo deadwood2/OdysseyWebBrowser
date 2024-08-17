@@ -8,6 +8,12 @@
 #include <proto/dos.h>
 #include <dos/dos.h>
 
+#if OS(AROS)
+#include <aros/debug.h>
+#undef D
+#define dprintf bug
+#endif
+
 namespace WebCore {
 namespace Acinerella {
 
@@ -88,6 +94,23 @@ bool AcinerellaAudioDecoder::isPlaying() const
 	return m_playing;
 }
 
+#if OS(AROS)
+AROS_UFH3(void, AROS_SoundFunc,
+        AROS_UFHA(struct Hook *, hook, A0),
+        AROS_UFHA(struct AHIAudioCtrl *, actrl, A2),
+        AROS_UFHA(struct AHISoundMessage *, smsg, A1))
+{
+    AROS_USERFUNC_INIT
+
+	AHIAudioCtrl *ahiCtrl = reinterpret_cast<AHIAudioCtrl *>(actrl);
+	AcinerellaAudioDecoder *me = reinterpret_cast<AcinerellaAudioDecoder *>(ahiCtrl->ahiac_UserData);
+	AcinerellaAudioDecoder::soundFunc(me);
+
+    AROS_USERFUNC_EXIT
+}
+#endif
+
+
 bool AcinerellaAudioDecoder::initializeAudio()
 {
 	D(dprintf("[AD]%s:\n", __func__));
@@ -107,6 +130,7 @@ bool AcinerellaAudioDecoder::initializeAudio()
 
 				D(dprintf("[AD]%s: ahiBase %p\n", __func__, m_ahiBase));
 
+#if OS(MORPHOS)
 				static struct EmulLibEntry GATE_SoundFunc = {
 					TRAP_LIB, 0, (void (*)(void))AcinerellaAudioDecoder::soundFunc
 				};
@@ -116,6 +140,14 @@ bool AcinerellaAudioDecoder::initializeAudio()
 					(ULONG (*)()) &GATE_SoundFunc,
 					NULL, NULL,
 				};
+#endif
+#if OS(AROS)
+				static struct Hook __soundHook = {
+					{NULL,NULL},
+					(APTR) AROS_SoundFunc,
+					NULL, NULL,
+				};
+#endif
 
 				if ((m_ahiControl = AHI_AllocAudio(
 					AHIA_UserData, reinterpret_cast<IPTR>(this),
@@ -352,10 +384,17 @@ void AcinerellaAudioDecoder::dumpStatus()
 
 #undef AHI_BASE_NAME
 #define AHI_BASE_NAME me->m_ahiBase
+#if OS(MORPHOS)
 void AcinerellaAudioDecoder::soundFunc()
 {
 	AHIAudioCtrl *ahiCtrl = reinterpret_cast<AHIAudioCtrl *>(REG_A2);
 	AcinerellaAudioDecoder *me = reinterpret_cast<AcinerellaAudioDecoder *>(ahiCtrl->ahiac_UserData);
+#endif
+#if OS(AROS)
+void AcinerellaAudioDecoder::soundFunc(void *ptr)
+{
+	AcinerellaAudioDecoder *me = reinterpret_cast<AcinerellaAudioDecoder *>(ptr);
+#endif
 	
 	me->m_ahiSampleBeingPlayed ++;
 	AHI_SetSound(0, me->m_ahiSampleBeingPlayed % 2, 0, 0, me->m_ahiControl, 0);

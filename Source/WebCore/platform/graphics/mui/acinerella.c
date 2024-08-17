@@ -28,6 +28,9 @@
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 
+#undef LIBAVCODEC_VERSION_MAJOR
+#define LIBAVCODEC_VERSION_MAJOR 56
+
 #include "acinerella.h"
 #if LIBAVCODEC_VERSION_MAJOR < 57
 #define codecpar codec
@@ -1204,6 +1207,7 @@ int CALL_CONVT ac_decode_package(lp_ac_package pPackage,
 	return ac_decode_package_ex(pPackage, pDecoder, NULL);
 }
 
+#if 0
 ac_receive_frame_rc ac_receive_frame(lp_ac_decoder pDecoder, lp_ac_decoder_frame pFrame)
 {
 	if (!pDecoder || !pFrame)
@@ -1355,6 +1359,7 @@ ac_push_package_rc ac_push_package(lp_ac_decoder pDecoder, lp_ac_package pPackag
 	default: return PUSH_PACKAGE_ERROR;
 	}
 }
+#endif
 
 void ac_decoder_fake_seek(lp_ac_decoder pDecoder)
 {
