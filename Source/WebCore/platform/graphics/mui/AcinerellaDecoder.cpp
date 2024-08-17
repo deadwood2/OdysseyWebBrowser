@@ -5,6 +5,11 @@
 #include "AcinerellaContainer.h"
 #include "MediaPlayerMorphOS.h"
 #include <proto/exec.h>
+#if OS(AROS)
+#include <aros/debug.h>
+#define dprintf bug
+#undef D
+#endif
 
 #define D(x)
 #define DNF(x) 
@@ -211,6 +216,24 @@ bool AcinerellaDecoder::decodeNextFrame()
 
 		DNF(dprintf("[%s]%s: package %p ts %f\033[0m\n", isAudio() ? "\033[33mA":"\033[35mV", __func__, buffer->package(), float(ac_get_package_pts(acinerella->instance(), buffer->package()))));
 
+#if OS(AROS)
+		frame = AcinerellaDecodedFrame(acinerella, decoder);
+		int res = ac_decode_package_ex(buffer->package(), decoder, frame.frame());
+		if (res)
+		{
+			auto lock = holdLock(m_lock);
+			onFrameDecoded(frame);
+			DNF(dprintf("[%s]%s: decoded frame @ %d\033[0m\n", isAudio() ? "\033[33mA":"\033[35mV", __func__, int(frame.frame()->timecode)));
+			m_decodedFrames.emplace(WTFMove(frame));
+			return true;
+		}
+		else
+		{
+			m_decoderEOF = true;
+			return false;
+		}
+#endif
+#if OS(MORPHOS)
 		auto rcPush = ac_push_package(decoder, buffer->package());
 		if (rcPush != PUSH_PACKAGE_SUCCESS)
 		{
@@ -253,6 +276,7 @@ bool AcinerellaDecoder::decodeNextFrame()
 				return false;
 			}
 		}
+#endif
 	}
 	else if (m_muxer->isEOS())
 	{
