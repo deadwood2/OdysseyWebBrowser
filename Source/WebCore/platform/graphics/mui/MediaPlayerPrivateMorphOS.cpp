@@ -10,10 +10,16 @@
 
 #include "HTMLMediaElement.h"
 #include "Frame.h"
+#include "FrameLoader.h"
 #include "Page.h"
 #include "CommonVM.h"
 #include <proto/exec.h>
 #include <exec/exec.h>
+#if OS(AROS)
+#include <aros/debug.h>
+#undef D
+#define dprintf bug
+#endif
 
 #define D(x)
 #define DM(x) 
@@ -317,6 +323,15 @@ void MediaPlayerPrivateMorphOS::load(const String& url)
 	m_player->networkStateChanged();
 	m_readyState = MediaPlayer::ReadyState::HaveNothing;
 	m_player->readyStateChanged();
+
+#if OS(AROS)
+MediaPlayerMorphOSSettings::settings().m_networkingContextForRequests =
+m_player->client().mediaPlayerPage()->mainFrame().loader().networkingContext();
+
+MediaPlayerMorphOSSettings::settings().m_load = [this](WebCore::MediaPlayer *player, const String &url, WebCore::MediaPlayerMorphOSInfo& info,
+		MediaPlayerMorphOSStreamSettings &settings, Function<void()> &&yieldFunc) {
+	};
+#endif
 
 	m_acinerella = Acinerella::Acinerella::create(this, url);
 }
@@ -772,8 +787,10 @@ void MediaPlayerPrivateMorphOS::accSetReadyState(WebCore::MediaPlayerEnums::Read
 void MediaPlayerPrivateMorphOS::accSetBufferLength(double buffer)
 {
 	(void)buffer;
+#if 0
 	m_player->bufferedTimeRangesChanged();
 	m_player->seekableTimeRangesChanged();
+#endif
 }
 
 void MediaPlayerPrivateMorphOS::accSetPosition(double pos)
