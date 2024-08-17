@@ -9,6 +9,9 @@ struct VLayerHandle;
 struct Window;
 struct Library;
 
+#define CGX_OVERLAY 0
+#define CAIRO_BLIT  1
+
 namespace WebCore {
 namespace Acinerella {
 
@@ -77,7 +80,9 @@ protected:
 	bool getAudioPresentationTime(double &time);
 
 protected:
+#if (CGX_OVERLAY)
     ::Library      *m_cgxVideo;
+#endif
 	RefPtr<Thread>  m_pullThread;
 	BinarySemaphore m_pullEvent;
 	BinarySemaphore m_frameEvent;
@@ -109,8 +114,10 @@ protected:
 	int             m_visibleWidth, m_visibleHeight;
 	
 	uint32_t               m_overlayFillColor = 0;
+#if (CGX_OVERLAY)
 	struct ::VLayerHandle *m_overlayHandle = nullptr;
 	struct ::Window       *m_overlayWindow = nullptr;
+#endif
 };
 
 }
