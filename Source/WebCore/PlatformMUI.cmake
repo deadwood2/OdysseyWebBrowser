@@ -7,6 +7,7 @@ include(platform/FreeType.cmake)
 list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/cairo"
     "${WEBCORE_DIR}/platform/graphics/cairo"
+    "${WEBCORE_DIR}/platform/graphics/mui"
     "${WEBCORE_DIR}/platform/graphics/freetype"
     "${WEBCORE_DIR}/platform/graphics/texmap"
     "${WEBCORE_DIR}/platform/network/curl"
@@ -29,9 +30,19 @@ list(APPEND WebCore_SOURCES
     platform/graphics/ImageSource.cpp
     platform/graphics/WOFFFileFormat.cpp
 
+    platform/graphics/mui/acinerella.c
+    platform/graphics/mui/AcinerellaAudioDecoder.cpp
+    platform/graphics/mui/AcinerellaBuffer.cpp
+    platform/graphics/mui/AcinerellaContainer.cpp
+    platform/graphics/mui/AcinerellaDecoder.cpp
+    platform/graphics/mui/AcinerellaHLS.cpp
+    platform/graphics/mui/AcinerellaMuxer.cpp
+    platform/graphics/mui/AcinerellaPointer.cpp
+    platform/graphics/mui/AcinerellaVideoDecoder.cpp
+    platform/graphics/mui/MediaPlayerPrivateMorphOS.cpp
+
     platform/linux/FileIOLinux.cpp
 
-    platform/mui/acinerella.c
     platform/mui/ContextMenuMorphOS.cpp
     platform/mui/ContextMenuItemMorphOS.cpp
     platform/mui/CursorMorphOS.cpp
@@ -47,7 +58,7 @@ list(APPEND WebCore_SOURCES
     platform/mui/IntPointMorphOS.cpp
     platform/mui/IntRectMorphOS.cpp
     platform/mui/LocalizedStringsMorphOS.cpp
-    platform/mui/MediaPlayerPrivateMorphOS.cpp
+
     platform/mui/MIMETypeRegistryMorphOS.cpp
     platform/mui/NetworkStateNotifierMUI.cpp
     platform/mui/PasteboardMorphOS.cpp
