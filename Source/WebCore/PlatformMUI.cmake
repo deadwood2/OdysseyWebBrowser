@@ -27,6 +27,9 @@ list(APPEND WebCore_SOURCES
 
     platform/Cursor.cpp
 
+    platform/generic/KeyedDecoderGeneric.cpp
+    platform/generic/KeyedEncoderGeneric.cpp
+
     platform/graphics/ImageSource.cpp
     platform/graphics/WOFFFileFormat.cpp
 

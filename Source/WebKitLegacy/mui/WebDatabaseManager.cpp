@@ -269,7 +269,7 @@ void WebKitInitializeWebDatabasesIfNecessary()
     if (initialized)
         return;
 
-    WTF::String databasesDirectory = FileSystem::pathByAppendingComponent(FileSystem::homeDirectoryPath(), "Databases");
+    WTF::String databasesDirectory = FileSystem::pathByAppendingComponent("PROGDIR:", "Databases");
     WebCore::DatabaseManager::singleton().initialize(databasesDirectory);
 
     initialized = true;

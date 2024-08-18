@@ -182,6 +182,8 @@ list(APPEND WebKitLegacy_SOURCES
 
     mui/Widgets/WebDragDataMorphOS.cpp
 
+    mui/Storage/WebDatabaseProvider.cpp
+
     Storage/StorageAreaImpl.cpp
     Storage/StorageAreaSync.cpp
     Storage/StorageNamespaceImpl.cpp
