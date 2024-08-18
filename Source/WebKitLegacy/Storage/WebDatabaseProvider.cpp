@@ -74,4 +74,12 @@ void WebDatabaseProvider::setIDBPerOriginQuota(uint64_t quota)
         server->idbServer().setPerOriginQuota(quota);
 }
 
+#if PLATFORM(MUI)
+void WebDatabaseProvider::shutdownServers()
+{
+    for (auto& server : m_idbServerMap.values())
+        server->idbServer().shutdown();
+}
+#endif
+
 #endif

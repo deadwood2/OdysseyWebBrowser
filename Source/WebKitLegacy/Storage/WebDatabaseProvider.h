@@ -46,6 +46,9 @@ public:
     void deleteAllDatabases();
 
     void setIDBPerOriginQuota(uint64_t);
+#if PLATFORM(MUI)
+    void shutdownServers();
+#endif
 #endif
 
 private:

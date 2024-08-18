@@ -105,6 +105,13 @@ void CurlRequestScheduler::stopThreadIfNoMoreJobRunning()
     m_runThread = false;
 }
 
+#if PLATFORM(MUI)
+void CurlRequestScheduler::stopCurlThread()
+{
+    stopThread();
+}
+#endif
+
 void CurlRequestScheduler::stopThread()
 {
     m_runThread = false;

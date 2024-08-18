@@ -44,6 +44,9 @@ protected:
 
     WTF_EXPORT_PRIVATE void postTask(CrossThreadTask&&);
     WTF_EXPORT_PRIVATE void postTaskReply(CrossThreadTask&&);
+#if PLATFORM(MUI)
+    WTF_EXPORT_PRIVATE void kill();
+#endif
 
 private:
     void handleTaskRepliesOnMainThread();

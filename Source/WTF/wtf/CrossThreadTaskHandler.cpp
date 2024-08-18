@@ -61,6 +61,14 @@ void CrossThreadTaskHandler::postTaskReply(CrossThreadTask&& task)
     });
 }
 
+#if PLATFORM(MUI)
+void CrossThreadTaskHandler::kill()
+{
+    m_taskQueue.kill();
+    m_taskReplyQueue.kill();
+}
+#endif
+
 void CrossThreadTaskHandler::taskRunLoop()
 {
     ASSERT(!isMainThread());

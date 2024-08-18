@@ -652,6 +652,19 @@ void IDBServer::setPerOriginQuota(uint64_t quota)
         database->setQuota(quota);
 }
 
+#if PLATFORM(MUI)
+void IDBServer::nop()
+{
+}
+
+void IDBServer::shutdown()
+{
+    kill();
+    // post a task to unblock waitForMessage for final iteration (since m_killed is set)
+    postDatabaseTask(createCrossThreadTask(*this, &IDBServer::nop));
+}
+#endif
+
 } // namespace IDBServer
 } // namespace WebCore
 

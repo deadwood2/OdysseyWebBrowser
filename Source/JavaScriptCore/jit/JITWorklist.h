@@ -60,6 +60,9 @@ public:
     static JITWorklist& ensureGlobalWorklist();
     static JITWorklist* existingGlobalWorklistOrNull();
     
+#if PLATFORM(MUI)
+    void shutdown();
+#endif
 private:
     JITWorklist();
     

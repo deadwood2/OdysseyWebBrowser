@@ -119,6 +119,9 @@ protected:
     PollResult poll(const AbstractLocker&) override
     {
         RELEASE_ASSERT(m_worklist.m_numAvailableThreads);
+#if PLATFORM(MUI)
+        if (m_stop) return PollResult::Stop;
+#endif
         
         if (m_worklist.m_queue.isEmpty())
             return PollResult::Wait;
@@ -321,6 +324,22 @@ void JITWorklist::finalizePlans(Plans& myPlans)
         m_planned.remove(plan->codeBlock());
     }
 }
+
+#if PLATFORM(MUI)
+void JITWorklist::shutdown()
+{
+    {
+        LockHolder locker(*m_lock);
+        if (m_thread->tryStop(locker))
+            return;
+
+        m_thread->m_stop = true;
+        m_thread->notify(locker);
+    }
+
+    m_thread->join();
+}
+#endif
 
 static JITWorklist* theGlobalJITWorklist { nullptr };
 

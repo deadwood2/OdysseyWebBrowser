@@ -109,6 +109,11 @@ public:
     uint64_t perOriginQuota() const { return m_perOriginQuota; }
     WEBCORE_EXPORT void setPerOriginQuota(uint64_t);
 
+#if PLATFORM(MUI)
+    WEBCORE_EXPORT void nop();
+    WEBCORE_EXPORT void shutdown();
+#endif
+
 private:
     IDBServer(IDBBackingStoreTemporaryFileHandler&);
     IDBServer(const String& databaseDirectoryPath, IDBBackingStoreTemporaryFileHandler&);
