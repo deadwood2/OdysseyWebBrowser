@@ -489,6 +489,7 @@ DEFSMETHOD(URLPrefsGroup_ApplySettingsForURL)
 
 		enabled = webView->preferences()->localStorageEnabled();
 		webView->page()->settings().setLocalStorageEnabled(enabled);
+		webView->page()->settings().setOfflineWebApplicationCacheEnabled(enabled);
 
 		// Search for URL settings
 		ITERATELISTSAFE(n, m, &urlsetting_list)
@@ -506,6 +507,7 @@ DEFSMETHOD(URLPrefsGroup_ApplySettingsForURL)
 				webView->page()->settings().setLoadsImagesAutomatically(un->settings.images != FALSE);
 				webView->page()->settings().setPluginsEnabled(un->settings.plugins != FALSE);
 				webView->page()->settings().setLocalStorageEnabled(un->settings.localstorage != FALSE);
+				webView->page()->settings().setOfflineWebApplicationCacheEnabled(un->settings.localstorage != FALSE);
 				webView->setCustomUserAgent(get_user_agent_strings()[un->settings.useragent]);
 				break;
 			}

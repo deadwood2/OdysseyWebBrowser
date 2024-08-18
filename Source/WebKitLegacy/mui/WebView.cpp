@@ -116,6 +116,7 @@
 #include <GraphicsContext.h>
 #include <HistoryController.h>
 #include <WebCore/CookieJar.h>
+#include <WebCore/RuntimeEnabledFeatures.h>
 
 #include <HitTestResult.h>
 #include <IntPoint.h>
@@ -432,7 +433,34 @@ WebView::WebView()
     WebCore::Settings& settings = m_page->settings();
     /* Defaults */
     settings.setFTPDirectoryTemplatePath("PROGDIR:resource/FTPDirectoryTemplate.html");
+
+#if ENABLE(VIDEO)
     settings.setMediaEnabled(true);
+    settings.setInvisibleAutoplayNotPermitted(true);
+    settings.setAudioPlaybackRequiresUserGesture(true);
+    settings.setVideoPlaybackRequiresUserGesture(true);
+#endif
+#if ENABLE(WEB_AUDIO)
+    settings.setWebAudioEnabled(true);
+#endif
+
+    settings.setAllowDisplayOfInsecureContent(true);
+    settings.setTextAreasAreResizable(true);
+
+    RuntimeEnabledFeatures::sharedFeatures().setModernMediaControlsEnabled(false);
+
+    RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsEnabled(true);
+    RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsCSSIntegrationEnabled(false);
+
+    RuntimeEnabledFeatures::sharedFeatures().setDataTransferItemsEnabled(true);
+
+    RuntimeEnabledFeatures::sharedFeatures().setCSSPaintingAPIEnabled(true);
+    RuntimeEnabledFeatures::sharedFeatures().setCSSTypedOMEnabled(true);
+    RuntimeEnabledFeatures::sharedFeatures().setLegacyCSSVendorPrefixesEnabled(true);
+
+    RuntimeEnabledFeatures::sharedFeatures().setInputTypeColorEnabled(true);
+
+    RuntimeEnabledFeatures::sharedFeatures().setCSSLogicalEnabled(true);
 
     WebFrame* webFrame = WebFrame::createInstance(); 
     webFrame->initWithWebView(this, m_page); 
@@ -2548,6 +2576,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
 	{
 		enabled = preferences->localStorageEnabled();
 		settings->setLocalStorageEnabled(!!enabled);
+		settings->setOfflineWebApplicationCacheEnabled(!!enabled);
 	}
 
 	/* */
@@ -2640,11 +2669,6 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
 
     str = preferences->localStorageDatabasePath().c_str();
     settings->setLocalStorageDatabasePath(str);
-
-	/*
-    enabled = preferences->localStorageEnabled();
-    settings->setLocalStorageEnabled(enabled);
-	*/
 
     enabled = preferences->DNSPrefetchingEnabled();
     settings->setDNSPrefetchingEnabled(enabled);
