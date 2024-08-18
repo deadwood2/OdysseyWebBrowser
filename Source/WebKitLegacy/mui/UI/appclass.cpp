@@ -88,6 +88,16 @@
 #include <JavaScriptCore/InitializeThreading.h>
 #include <JavaScriptCore/Options.h>
 #include <wtf/text/StringConcatenateNumbers.h>
+/* needed for shutting down */
+#include <WebCore/CurlContext.h>
+#include "NetworkStorageSessionMap.h"
+#include "WebStorageNamespaceProvider.h"
+#include <WebCore/CurlCacheManager.h>
+#include <WebCore/DOMWindow.h>
+#include <WebCore/MemoryCache.h>
+#include <WebCore/MemoryRelease.h>
+#include "JavaScriptCore/jit/JITWorklist.h"
+#include <WebCore/CommonVM.h>
 
 /* Posix */
 #include <unistd.h>
@@ -1143,6 +1153,19 @@ DEFDISP
 	removeClipboardMonitor();
 
 	//kprintf("OWBApp: Ok, calling supermethod\n");
+
+    WebCore::DOMWindow::dispatchAllPendingUnloadEvents();
+    WebCore::CurlContext::singleton().stopThread();
+//    NetworkStorageSessionMap::destroyAllSessions();
+//    WebStorageNamespaceProvider::closeLocalStorage();
+    CurlCacheManager::singleton().setStorageSizeLimit(0);
+
+    GCController::singleton().garbageCollectNow();
+//    FontCache::singleton().invalidate(); // trashes memory like fuck on https://testdrive-archive.azurewebsites.net/Graphics/CanvasPinball/default.html
+    MemoryCache::singleton().setDisabled(true);
+
+    delete &commonVM(); /* This looks weird, but it stops JSC Heap Collector Thread */
+    JSC::JITWorklist::existingGlobalWorklistOrNull()->shutdown();
 
 	return DOSUPER;
 }
