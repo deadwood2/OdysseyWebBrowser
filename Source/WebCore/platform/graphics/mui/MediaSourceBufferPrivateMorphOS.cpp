@@ -17,6 +17,18 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 
+#if OS(AROS)
+namespace WTF {
+template<class T, class... Args>
+ALWAYS_INLINE decltype(auto) makeUnique(Args&&... args)
+{
+    return std::make_unique<T>(std::forward<Args>(args)...);
+}
+} // namespace WTF
+
+using namespace WTF;
+#endif
+
 #define D(x) 
 #define DR(x)
 #define DM(x)
@@ -699,7 +711,7 @@ void MediaSourceBufferPrivateMorphOS::getFrameCounts(unsigned& decoded, unsigned
 	}
 }
 
-void MediaSourceBufferPrivateMorphOS::flush(const AtomString&)
+void MediaSourceBufferPrivateMorphOS::flush(const AtomicString&)
 {
 	D(dprintf("[MS]%s\n", __func__));
 }
@@ -715,7 +727,7 @@ void MediaSourceBufferPrivateMorphOS::becomeReadyForMoreSamples(int index)
 		if (!!m_decoders[index])
 		{
 			WTF::callOnMainThread([this, protect = makeRef(*this), isVideo = m_decoders[index]->isVideo(), index]() {
-				AtomString id;
+				AtomicString id;
 
 				DBR(dprintf("[MS]becomeReadyForMoreSamples %d\n", index));
 
@@ -746,7 +758,7 @@ void MediaSourceBufferPrivateMorphOS::flush()
 	}
 }
 
-void MediaSourceBufferPrivateMorphOS::enqueueSample(Ref<MediaSample>&&sample, const AtomString&)
+void MediaSourceBufferPrivateMorphOS::enqueueSample(Ref<MediaSample>&&sample, const AtomicString&)
 {
 	auto msample = static_cast<MediaSampleMorphOS *>(&sample.get());
 	RefPtr<Acinerella::AcinerellaPackage> package = msample->package();
@@ -788,7 +800,7 @@ void MediaSourceBufferPrivateMorphOS::enqueueSample(Ref<MediaSample>&&sample, co
 	}
 }
 
-void MediaSourceBufferPrivateMorphOS::allSamplesInTrackEnqueued(const AtomString&)
+void MediaSourceBufferPrivateMorphOS::allSamplesInTrackEnqueued(const AtomicString&)
 {
 	D(dprintf("[MS]%s\n", __func__));
 	m_eos = true;
@@ -796,7 +808,7 @@ void MediaSourceBufferPrivateMorphOS::allSamplesInTrackEnqueued(const AtomString
 	m_muxer->push(nothing);
 }
 
-bool MediaSourceBufferPrivateMorphOS::isReadyForMoreSamples(const AtomString&)
+bool MediaSourceBufferPrivateMorphOS::isReadyForMoreSamples(const AtomicString&)
 {
 // 	D(dprintf("[MS]%s %d\n", __func__, m_readyForMoreSamples));
 	return m_readyForMoreSamples;
@@ -812,26 +824,12 @@ void MediaSourceBufferPrivateMorphOS::setActive(bool isActive)
 	}
 }
 
-void MediaSourceBufferPrivateMorphOS::notifyClientWhenReadyForMoreSamples(const AtomString&trackID)
+void MediaSourceBufferPrivateMorphOS::notifyClientWhenReadyForMoreSamples(const AtomicString&trackID)
 {
 	D(dprintf("[MS]%s\n", __func__));
 	(void)trackID;
 //    if (m_client)
 //        m_client->sourceBufferPrivateDidBecomeReadyForMoreSamples(trackID);
-}
-
-bool MediaSourceBufferPrivateMorphOS::canSetMinimumUpcomingPresentationTime(const AtomString&) const
-{
-	DBR(dprintf("[MS]%s\n", __func__));
-	// WARNING: HACK
-	// SourceBuffer calls this after a batch of enqueueSample calls
-	auto *me = const_cast<MediaSourceBufferPrivateMorphOS *>(this);
-    if (m_enqueuedSamples)
-    {
-        me->m_enqueuedSamples = false;
-        me->warmUp();
-    }
-	return false;
 }
 
 MediaPlayer::ReadyState MediaSourceBufferPrivateMorphOS::readyState() const
@@ -1190,7 +1188,7 @@ void MediaSourceBufferPrivateMorphOS::onDecoderRanOutOfFrames(RefPtr<Acinerella:
 		WTF::callOnMainThread([this, protect = makeRef(*this), decoder]() {
 			if (!m_requestedMoreFrames)
 			{
-				AtomString id;
+				AtomicString id;
 
 				dprintf("ODROOF!\n");
 

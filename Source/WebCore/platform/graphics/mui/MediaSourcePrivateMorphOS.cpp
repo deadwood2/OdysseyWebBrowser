@@ -444,8 +444,8 @@ void MediaSourcePrivateMorphOS::onSourceBufferDidChangeActiveState(RefPtr<MediaS
     if (active && !m_activeSourceBuffers.contains(buffer))
     {
         m_activeSourceBuffers.add(buffer);
-        if (m_player)
-			m_player->onActiveSourceBuffersChanged();
+
+
         durationChanged();
         if (!m_paused)
         {
@@ -470,8 +470,8 @@ void MediaSourcePrivateMorphOS::onSourceBufferDidChangeActiveState(RefPtr<MediaS
         buffer->coolDown();
     
 		m_activeSourceBuffers.remove(buffer);
-        if (m_player)
-			m_player->onActiveSourceBuffersChanged();
+
+
     }
 }
 

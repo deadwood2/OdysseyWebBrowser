@@ -139,13 +139,12 @@ private:
     void resetParserState() override;
     void removedFromMediaSource() override;
 
-    void flush(const AtomString&) override;
-    void enqueueSample(Ref<MediaSample>&&, const AtomString&)  override;
-    void allSamplesInTrackEnqueued(const AtomString&)  override;
-    bool isReadyForMoreSamples(const AtomString&)  override;
+    void flush(const AtomicString&) override;
+    void enqueueSample(Ref<MediaSample>&&, const AtomicString&)  override;
+    void allSamplesInTrackEnqueued(const AtomicString&)  override;
+    bool isReadyForMoreSamples(const AtomicString&)  override;
     void setActive(bool) override;
-    void notifyClientWhenReadyForMoreSamples(const AtomString&)  override;
-    bool canSetMinimumUpcomingPresentationTime(const AtomString&) const override;
+    void notifyClientWhenReadyForMoreSamples(const AtomicString&)  override;
 	
 	void flush();
 	void becomeReadyForMoreSamples(int decoderIndex);

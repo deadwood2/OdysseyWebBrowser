@@ -282,13 +282,13 @@ void MediaPlayerPrivateMorphOS::registerMediaEngine(MediaEngineRegistrar registr
 {
 	registrar(makeUnique<MediaPlayerFactoryMediaSourceMorphOS>());
 }
+#endif
 
 MediaPlayer::SupportsType MediaPlayerPrivateMorphOS::extendedSupportsType(const MediaEngineSupportParameters& parameters, MediaPlayer::SupportsType type)
 {
 	(void)type;
-	return MediaPlayerFactoryMediaSourceMorphOS::s_supportsTypeAndCodecs(parameters);
+	return s_supportsTypeAndCodecs(parameters);
 }
-#endif
 
 static void s_getSupportedTypes2(HashSet<String, ASCIICaseInsensitiveHash>& types)
 {

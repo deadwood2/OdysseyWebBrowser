@@ -5,7 +5,7 @@
 #if ENABLE(VIDEO) && ENABLE(MEDIA_SOURCE)
 
 #include "MediaDescription.h"
-#include <wtf/text/AtomString.h>
+#include <wtf/text/AtomicString.h>
 
 namespace WebCore {
 
@@ -15,22 +15,22 @@ class MediaDescriptionMorphOS : public MediaDescription
 		Video, Audio, Text,
 	};
 
-	MediaDescriptionMorphOS(Type type, const AtomString &codec);
+	MediaDescriptionMorphOS(Type type, const AtomicString &codec);
 	
 public:
 	~MediaDescriptionMorphOS() = default;
 
-	static RefPtr<MediaDescription> createVideoWithCodec(const AtomString &codec);
-	static RefPtr<MediaDescription> createAudioWithCodec(const AtomString &codec);
-	static RefPtr<MediaDescription> createTextWithCodec(const AtomString &codec);
+	static RefPtr<MediaDescription> createVideoWithCodec(const AtomicString &codec);
+	static RefPtr<MediaDescription> createAudioWithCodec(const AtomicString &codec);
+	static RefPtr<MediaDescription> createTextWithCodec(const AtomicString &codec);
 
-    AtomString codec() const override { return m_codec; }
+    AtomicString codec() const override { return m_codec; }
     bool isVideo() const override { return m_type == Type::Video; }
     bool isAudio() const override { return m_type == Type::Audio; }
     bool isText() const override { return m_type == Type::Text; }
 
 protected:
-	AtomString m_codec;
+	AtomicString m_codec;
 	Type       m_type;
 };
 
