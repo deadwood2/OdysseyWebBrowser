@@ -32,9 +32,9 @@ MediaPlayerMorphOSSettings &MediaPlayerMorphOSSettings::settings()
 	return m_playerSettings;
 }
 
-#if 0
-class MediaPlayerFactoryMediaSourceMorphOS final : public MediaPlayerFactory {
+class MediaPlayerFactoryMediaSourceMorphOS {
 public:
+#if 0
     MediaPlayerEnums::MediaEngineIdentifier identifier() const final { return MediaPlayerEnums::MediaEngineIdentifier::MorphOS; };
 
     std::unique_ptr<MediaPlayerPrivateInterface> createMediaEnginePlayer(MediaPlayer* player) const final { return makeUnique<MediaPlayerPrivateMorphOS>(player); }
@@ -109,12 +109,10 @@ public:
 		}
     }
 
-#if 0
-	void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types) const final
+	void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types) const
 	{
 		s_getSupportedTypes(types, true);
 	}
-#endif
 
     static MediaPlayer::SupportsType s_supportsTypeAndCodecs(const MediaEngineSupportParameters& parameters)
     {
@@ -253,13 +251,11 @@ public:
         return MediaPlayer::SupportsType::IsNotSupported;
     }
 
-#if 0
-    MediaPlayer::SupportsType supportsTypeAndCodecs(const MediaEngineSupportParameters& parameters) const final
+    MediaPlayer::SupportsType supportsTypeAndCodecs(const MediaEngineSupportParameters& parameters) const
     {
     	return s_supportsTypeAndCodecs(parameters);
 	}
 };
-#endif
 
 MediaPlayerPrivateMorphOS::MediaPlayerPrivateMorphOS(MediaPlayer* player)
 	: m_player(player)
@@ -287,18 +283,18 @@ void MediaPlayerPrivateMorphOS::registerMediaEngine(MediaEngineRegistrar registr
 MediaPlayer::SupportsType MediaPlayerPrivateMorphOS::extendedSupportsType(const MediaEngineSupportParameters& parameters, MediaPlayer::SupportsType type)
 {
 	(void)type;
-	return s_supportsTypeAndCodecs(parameters);
+	return MediaPlayerFactoryMediaSourceMorphOS::s_supportsTypeAndCodecs(parameters);
 }
 
 static void s_getSupportedTypes2(HashSet<String, ASCIICaseInsensitiveHash>& types)
 {
-    return s_getSupportedTypes(types, false);
+    return MediaPlayerFactoryMediaSourceMorphOS::s_getSupportedTypes(types, false);
 }
 
 void MediaPlayerPrivateMorphOS::registerMediaEngine(MediaEngineRegistrar registrar)
 {
     registrar([](MediaPlayer* player) { return std::make_unique<MediaPlayerPrivateMorphOS>(player); },
-        s_getSupportedTypes2, s_supportsTypeAndCodecs, 0, 0, 0, 0);
+        s_getSupportedTypes2, MediaPlayerFactoryMediaSourceMorphOS::s_supportsTypeAndCodecs, 0, 0, 0, 0);
 }
 
 bool MediaPlayerPrivateMorphOS::supportsKeySystem(const String&, const String&)
@@ -678,7 +674,7 @@ bool MediaPlayerPrivateMorphOS::accCodecSupported(const String &codec)
 	ct.append(codec);
 	ct.append("\"");
 	parameters.type = ContentType(ct);
-	return s_supportsTypeAndCodecs(parameters) == MediaPlayer::SupportsType::IsSupported;
+	return MediaPlayerFactoryMediaSourceMorphOS::s_supportsTypeAndCodecs(parameters) == MediaPlayer::SupportsType::IsSupported;
 }
 
 void MediaPlayerPrivateMorphOS::accSetFrameCounts(unsigned decoded, unsigned dropped)
