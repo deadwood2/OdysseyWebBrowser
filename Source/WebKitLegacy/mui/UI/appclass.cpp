@@ -169,6 +169,7 @@ static CONST TEXT credits[] =
 	"\tWebKit\n\n"
 
 	"\033b%T\033n\n"
+	"\tJacek Piszczek\n\t\t\033ifor Wayfarer WebKit codes\033n\n"
 	"\tChristophe Delorme\n\t\t\033ifor his transfer animations\033n\n"
 	"\tIlkka Lehtoranta\n\t\t\033ifor his NetSurf GUI classes\033n\n"
 	"\tFrederic Rignault\n\t\t\033ifor his bookmark class\033n\n"
@@ -943,7 +944,7 @@ DEFNEW
 	obj = (Object *) DoSuperNew(cl, obj,
 			MUIA_Application_Title      , "Odyssey Web Browser",
 			MUIA_Application_Version    , "$VER: Odyssey Web Browser " VERSION " (" OWB_BUILD_DATE ")",
-			MUIA_Application_Copyright  , "©\n2014-2024 Krzysztof Smiechowicz\n2009-2014 Fabien Coeurjoly",
+			MUIA_Application_Copyright  , "©\n2014-2024 Krzysztof Smiechowicz\n2020 Jacek Piszczek\n2009-2014 Fabien Coeurjoly",
 			MUIA_Application_Author     , "Fabien Coeurjoly",
 			MUIA_Application_Description, APPLICATION_DESCRIPTION,
 			MUIA_Application_UsedClasses, classlist,
