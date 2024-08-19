@@ -144,7 +144,6 @@ extern char * _ProgramName;
 namespace WebCore
 {
     extern bool ad_block_enabled;
-    extern void freeLeakedMediaObjects();
 }
 
 Object *app;
@@ -1083,11 +1082,6 @@ void FreeWebKitLeakedObjects()
 	{
 		plugins[i]->unload();
 	}
-
-#if ENABLE(VIDEO)
-	/* Media instances might be leaked as well... */
-	WebCore::freeLeakedMediaObjects();
-#endif
 
 	/* Yup, built as an indestructible singleton, sigh. ;) */
 	cookieManager().destroy();
