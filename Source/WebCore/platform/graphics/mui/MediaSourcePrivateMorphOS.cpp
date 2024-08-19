@@ -6,6 +6,11 @@
 #include "MediaSourcePrivateClient.h"
 #include "MediaPlayerPrivateMorphOS.h"
 
+#if OS(AROS)
+#include <aros/debug.h>
+#undef D
+#define dprintf bug
+#endif
 #define USE_WDG
 
 #define D(x)

@@ -18,6 +18,10 @@
 #include <proto/exec.h>
 
 #if OS(AROS)
+#include <aros/debug.h>
+#undef D
+#define dprintf bug
+
 namespace WTF {
 template<class T, class... Args>
 ALWAYS_INLINE decltype(auto) makeUnique(Args&&... args)

@@ -231,14 +231,6 @@ bool MIMETypeRegistry::isApplicationPluginMIMEType(const String&)
     return false;
 }
 
-
-#if ENABLE(MEDIA_SOURCE)
-bool MIMETypeRegistry::isSupportedMediaSourceMIMEType(const String&, const String&)
-{
-    return false;
-}
-#endif
-
 String MIMETypeRegistry::getPreferredExtensionForMIMEType(const String &)
 {
     return String();

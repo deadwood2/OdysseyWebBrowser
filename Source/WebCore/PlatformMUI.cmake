@@ -42,7 +42,13 @@ list(APPEND WebCore_SOURCES
     platform/graphics/mui/AcinerellaMuxer.cpp
     platform/graphics/mui/AcinerellaPointer.cpp
     platform/graphics/mui/AcinerellaVideoDecoder.cpp
+    platform/graphics/mui/AudioTrackPrivateMorphOS.cpp
+    platform/graphics/mui/MediaDescriptionMorphOS.cpp
     platform/graphics/mui/MediaPlayerPrivateMorphOS.cpp
+    platform/graphics/mui/MediaSampleMorphOS.cpp
+    platform/graphics/mui/MediaSourceBufferPrivateMorphOS.cpp
+    platform/graphics/mui/MediaSourcePrivateMorphOS.cpp
+    platform/graphics/mui/VideoTrackPrivateMorphOS.cpp
 
     platform/linux/FileIOLinux.cpp
 
