@@ -120,33 +120,6 @@ if (ENABLE_SPELLCHECK)
     find_package(Enchant REQUIRED)
 endif ()
 
-# Optimize binary size for release builds by removing dead sections on unix/gcc
-if (CMAKE_COMPILER_IS_GNUCC AND UNIX AND NOT APPLE)
-    set(CMAKE_C_FLAGS_RELEASE "-ffunction-sections -fdata-sections ${CMAKE_C_FLAGS_RELEASE}")
-    set(CMAKE_CXX_FLAGS_RELEASE "-ffunction-sections -fdata-sections ${CMAKE_CXX_FLAGS_RELEASE}")
-    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "-Wl,--gc-sections ${CMAKE_SHARED_LINKER_FLAGS_RELEASE}")
-endif ()
-
-#if (${OPENGL_FOUND} AND (${GLX_FOUND} OR ${EGL_FOUND}))
-#    set(ENABLE_WEBGL 1)
-#    set(ENABLE_TEXTURE_MAPPER 1)
-#    set(WTF_USE_3D_GRAPHICS 1)
-
-#    add_definitions(-DWTF_USE_OPENGL=1)
-#    add_definitions(-DWTF_USE_ACCELERATED_COMPOSITING=1)
-#    add_definitions(-DWTF_USE_3D_GRAPHICS=1)
-#    add_definitions(-DWTF_USE_TEXTURE_MAPPER=1)
-#    add_definitions(-DWTF_USE_TEXTURE_MAPPER_GL=1)
-
-#    if (${EGL_FOUND})
-#        add_definitions(-DWTF_USE_EGL=1)
-#    endif ()
-
-#    if (${GLX_FOUND})
-#        add_definitions(-DWTF_USE_GLX=1)
-#    endif ()
-#endif ()
-
 if (ENABLE_INDEXED_DATABASE)
     set(WTF_USE_LEVELDB 1)
     add_definitions(-DWTF_USE_LEVELDB=1)
