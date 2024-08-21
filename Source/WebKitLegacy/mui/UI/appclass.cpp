@@ -1160,7 +1160,9 @@ DEFDISP
     MemoryCache::singleton().setDisabled(true);
 
     delete &commonVM(); /* This looks weird, but it stops JSC Heap Collector Thread */
+#if ENABLE(JIT)
     JSC::JITWorklist::existingGlobalWorklistOrNull()->shutdown();
+#endif
 
 	return DOSUPER;
 }
