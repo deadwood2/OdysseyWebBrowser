@@ -38,7 +38,7 @@
 namespace WebCore {
 
   SearchPopupMenuMorphOS::SearchPopupMenuMorphOS(PopupMenuClient* client)
-	: m_popup(adoptRef(new PopupMenuMorphOS(client)))
+    : m_popup(adoptRef(new PopupMenuMorphOS(client)))
   {
     fprintf(stderr, "SearchPopupMenu::SearchPopupMenu\n");
   }

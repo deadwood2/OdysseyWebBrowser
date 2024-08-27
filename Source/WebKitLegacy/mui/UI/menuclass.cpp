@@ -39,25 +39,25 @@ struct Data
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        TAG_MORE, INITTAGS
+    );
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 
 DEFDISP
 {
-	char *title = (char *)getv(obj, MUIA_Menu_Title);
+    char *title = (char *)getv(obj, MUIA_Menu_Title);
 
-	free((void *) getv(obj, MUIA_UserData));
-	
-	if(title != (char *)NM_BARLABEL)
-	{
-		free(title);
-	}
-	return (DOSUPER);
+    free((void *) getv(obj, MUIA_UserData));
+    
+    if(title != (char *)NM_BARLABEL)
+    {
+        free(title);
+    }
+    return (DOSUPER);
 }
 
 BEGINMTABLE

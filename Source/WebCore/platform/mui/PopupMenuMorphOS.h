@@ -53,7 +53,7 @@ public:
     virtual void disconnectClient();
     PopupMenuClient* client() const { return m_popupClient; }
 
-	//
+    //
     int itemHeight() const { return m_itemHeight; }
     IntRect clientRect() const;
     const IntRect& windowRect() const { return m_windowRect; }
@@ -61,7 +61,7 @@ public:
 private:
     PopupMenuClient* m_popupClient;
 
-	//
+    //
     void calculatePositionAndSize(const IntRect&, FrameView*);
 
     IntRect m_windowRect;

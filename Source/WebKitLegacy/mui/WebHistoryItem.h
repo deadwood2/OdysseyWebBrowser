@@ -34,7 +34,7 @@
 #undef String
 
 namespace WTF {
-	class String;
+    class String;
 }
 
 /**
@@ -49,7 +49,7 @@ namespace WTF {
 class WebHistoryItemPrivate;
 
 namespace WebCore {
-	class Image;
+    class Image;
 };
 
 
@@ -98,7 +98,7 @@ public:
         the URLString and originalURLString will be the same.
      */
     virtual void initWithURLString(const char* urlString, const char* title, double lastVisited);
-	virtual void initWithURLString(const WTF::String & urlString, const WTF::String & title, double lastVisited);
+    virtual void initWithURLString(const WTF::String & urlString, const WTF::String & title, double lastVisited);
 
     /**
         @method originalURLString
@@ -222,14 +222,14 @@ public:
 
     WebHistoryItemPrivate *getPrivateItem() { return d; }
 
-	virtual void setFragment(char* fragment) { m_fragment = fragment; }
-	virtual char* fragment() { return (char *) m_fragment.c_str(); }
+    virtual void setFragment(char* fragment) { m_fragment = fragment; }
+    virtual char* fragment() { return (char *) m_fragment.c_str(); }
 
 protected:
     WebHistoryItemPrivate *d;
     std::string m_alternateTitle;
 
-	std::string	m_fragment;
+    std::string    m_fragment;
 };
 
 #endif

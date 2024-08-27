@@ -47,83 +47,83 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *bt_use;
-	Object *coloradjust;
-	Object *source;
-	ColorChooserController *controller;
+    Object *bt_use;
+    Object *coloradjust;
+    Object *source;
+    ColorChooserController *controller;
 };
 
 DEFNEW
 {
-	Object *source                     = (Object *) GetTagData(MA_ColorChooserPopup_Source, 0, msg->ops_AttrList);
-	ColorChooserController *controller = (ColorChooserController *) GetTagData(MA_ColorChooserPopup_Controller, 0, msg->ops_AttrList);
-	Color *color                       = (Color *) GetTagData(MA_ColorChooserPopup_InitialColor, 0, msg->ops_AttrList);
+    Object *source                     = (Object *) GetTagData(MA_ColorChooserPopup_Source, 0, msg->ops_AttrList);
+    ColorChooserController *controller = (ColorChooserController *) GetTagData(MA_ColorChooserPopup_Controller, 0, msg->ops_AttrList);
+    Color *color                       = (Color *) GetTagData(MA_ColorChooserPopup_InitialColor, 0, msg->ops_AttrList);
 
-	if(controller)
-	{
-		Object *coloradjust, *bt_use;
-		IntRect rect = controller->elementRectRelativeToRootView();
-		struct Rect32 r = { _mleft(source) + rect.x(), _mtop(source) + rect.y() + rect.height(), _mleft(source) + rect.maxX() + 200, _mtop(source) + rect.y() + rect.height() + 400 };
+    if(controller)
+    {
+        Object *coloradjust, *bt_use;
+        IntRect rect = controller->elementRectRelativeToRootView();
+        struct Rect32 r = { _mleft(source) + rect.x(), _mtop(source) + rect.y() + rect.height(), _mleft(source) + rect.maxX() + 200, _mtop(source) + rect.y() + rect.height() + 400 };
 
-		obj = (Object *) DoSuperNew(cl, obj,
-			MUIA_Window_RootObject,
-				VGroup, //MUIA_FixWidth, rect.width(),
-					Child, coloradjust = ColoradjustObject, End,
-					Child, bt_use = (Object *) MakeButton(GSI(MSG_PREFSWINDOW_USE)),
-					End,
-			MUIA_Calltips_Source, source,
-			MUIA_Calltips_Rectangle, &r,
-			TAG_MORE, INITTAGS
-		);
+        obj = (Object *) DoSuperNew(cl, obj,
+            MUIA_Window_RootObject,
+                VGroup, //MUIA_FixWidth, rect.width(),
+                    Child, coloradjust = ColoradjustObject, End,
+                    Child, bt_use = (Object *) MakeButton(GSI(MSG_PREFSWINDOW_USE)),
+                    End,
+            MUIA_Calltips_Source, source,
+            MUIA_Calltips_Rectangle, &r,
+            TAG_MORE, INITTAGS
+        );
 
-		if (obj)
-		{
-			GETDATA;
-			data->bt_use = bt_use;
-			data->coloradjust = coloradjust;
-			data->controller = controller;
-			data->source = source;
+        if (obj)
+        {
+            GETDATA;
+            data->bt_use = bt_use;
+            data->coloradjust = coloradjust;
+            data->controller = controller;
+            data->source = source;
 
-			SetAttrs(data->coloradjust, MUIA_Coloradjust_Red,   color->red() << 24,
-										MUIA_Coloradjust_Green, color->green() << 24,
-										MUIA_Coloradjust_Blue,  color->blue() << 24,
-										TAG_DONE);
+            SetAttrs(data->coloradjust, MUIA_Coloradjust_Red,   color->red() << 24,
+                                        MUIA_Coloradjust_Green, color->green() << 24,
+                                        MUIA_Coloradjust_Blue,  color->blue() << 24,
+                                        TAG_DONE);
 
-			DoMethod(data->coloradjust, MUIM_Notify, MUIA_Coloradjust_RGB, MUIV_EveryTime, obj, 3, MM_ColorChooserPopup_DidSelect, FALSE);
-			DoMethod(data->bt_use, MUIM_Notify, MUIA_Pressed, FALSE, obj, 3, MM_ColorChooserPopup_DidSelect, TRUE);
-		}
-	}
+            DoMethod(data->coloradjust, MUIM_Notify, MUIA_Coloradjust_RGB, MUIV_EveryTime, obj, 3, MM_ColorChooserPopup_DidSelect, FALSE);
+            DoMethod(data->bt_use, MUIM_Notify, MUIA_Pressed, FALSE, obj, 3, MM_ColorChooserPopup_DidSelect, TRUE);
+        }
+    }
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	GETDATA;
+    GETDATA;
 
-	if(data->controller)
-	{
-		data->controller->didEndChooser();
-		data->controller = NULL;
-	}
+    if(data->controller)
+    {
+        data->controller->didEndChooser();
+        data->controller = NULL;
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFSMETHOD(ColorChooserPopup_DidSelect)
 {
-	GETDATA;
+    GETDATA;
 
-	Color color = Color((char) getv(data->coloradjust, MUIA_Coloradjust_Red), (char) getv(data->coloradjust, MUIA_Coloradjust_Green), (char) getv(data->coloradjust, MUIA_Coloradjust_Blue));
+    Color color = Color((char) getv(data->coloradjust, MUIA_Coloradjust_Red), (char) getv(data->coloradjust, MUIA_Coloradjust_Green), (char) getv(data->coloradjust, MUIA_Coloradjust_Blue));
 
-	data->controller->didChooseColor(color);
+    data->controller->didChooseColor(color);
 
-	if(msg->close)
-	{
-		DoMethod(app, MUIM_Application_PushMethod, data->source, 1, MM_OWBBrowser_ColorChooser_HidePopup);
-	}
+    if(msg->close)
+    {
+        DoMethod(app, MUIM_Application_PushMethod, data->source, 1, MM_OWBBrowser_ColorChooser_HidePopup);
+    }
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

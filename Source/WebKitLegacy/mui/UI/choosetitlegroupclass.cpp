@@ -38,114 +38,114 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *bt_ok;
-	Object *bt_cancel;
-	Object *str;
-	Object *ch_menu;
-	char *url;
-	char *title;
-	ULONG quicklink;
+    Object *bt_ok;
+    Object *bt_cancel;
+    Object *str;
+    Object *ch_menu;
+    char *url;
+    char *title;
+    ULONG quicklink;
 };
 
 DEFNEW
 {
-	Object *bt_ok, *bt_cancel, *str, *ch_menu;
+    Object *bt_ok, *bt_cancel, *str, *ch_menu;
 
-	char *title = (char *) GetTagData(MA_OWB_Title, 0, msg->ops_AttrList);
+    char *title = (char *) GetTagData(MA_OWB_Title, 0, msg->ops_AttrList);
 
-	obj = (Object *) DoSuperNew(cl, obj,
+    obj = (Object *) DoSuperNew(cl, obj,
         MUIA_Background, MUII_RequesterBack,
-		Child, ColGroup(2),
-			Child, MakeLabel(GSI(MSG_CHOOSETITLEGROUP_TITLE)),
-			Child, str = (Object *) MakeString(title ? title : GSI(MSG_CHOOSETITLEGROUP_NO_TITLE), FALSE),
-			Child, HSpace(1),
-			Child, ColGroup(3),
-						Child, ch_menu = (Object *) MakeCheck(GSI(MSG_CHOOSETITLEGROUP_MENU), getv(app, MA_OWBApp_Bookmark_AddToMenu)),
-						Child, LLabel(GSI(MSG_CHOOSETITLEGROUP_MENU)),
-						Child, HSpace(0),
-				   End,
-			End,
-		Child, VSpace(2),
+        Child, ColGroup(2),
+            Child, MakeLabel(GSI(MSG_CHOOSETITLEGROUP_TITLE)),
+            Child, str = (Object *) MakeString(title ? title : GSI(MSG_CHOOSETITLEGROUP_NO_TITLE), FALSE),
+            Child, HSpace(1),
+            Child, ColGroup(3),
+                        Child, ch_menu = (Object *) MakeCheck(GSI(MSG_CHOOSETITLEGROUP_MENU), getv(app, MA_OWBApp_Bookmark_AddToMenu)),
+                        Child, LLabel(GSI(MSG_CHOOSETITLEGROUP_MENU)),
+                        Child, HSpace(0),
+                   End,
+            End,
+        Child, VSpace(2),
 
         Child, HGroup,
-			Child, bt_ok = (Object*) MakeButton(GSI(MSG_CHOOSETITLEGROUP_ADD)),
+            Child, bt_ok = (Object*) MakeButton(GSI(MSG_CHOOSETITLEGROUP_ADD)),
             Child, HSpace(0),
-			Child, bt_cancel = (Object*) MakeButton(GSI(MSG_CHOOSETITLEGROUP_CANCEL)),
+            Child, bt_cancel = (Object*) MakeButton(GSI(MSG_CHOOSETITLEGROUP_CANCEL)),
             End,
-		TAG_MORE, INITTAGS,
-		TAG_DONE
-	);
+        TAG_MORE, INITTAGS,
+        TAG_DONE
+    );
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->bt_ok = bt_ok;
-		data->bt_cancel = bt_cancel;
-		data->str = str;
-		data->ch_menu = ch_menu;
-		data->title = title;
-		data->url = (char *) GetTagData(MA_OWB_URL, 0, msg->ops_AttrList),
-		data->quicklink = (ULONG) GetTagData(MA_ChooseTitleGroup_QuickLink, 0, msg->ops_AttrList),
+        data->bt_ok = bt_ok;
+        data->bt_cancel = bt_cancel;
+        data->str = str;
+        data->ch_menu = ch_menu;
+        data->title = title;
+        data->url = (char *) GetTagData(MA_OWB_URL, 0, msg->ops_AttrList),
+        data->quicklink = (ULONG) GetTagData(MA_ChooseTitleGroup_QuickLink, 0, msg->ops_AttrList),
 
-		set(data->str, MUIA_CycleChain, 1);
+        set(data->str, MUIA_CycleChain, 1);
 
-		DoMethod(data->bt_ok, MUIM_Notify, MUIA_Pressed, FALSE,
-				 obj, 1, MM_ChooseTitleGroup_Add);
+        DoMethod(data->bt_ok, MUIM_Notify, MUIA_Pressed, FALSE,
+                 obj, 1, MM_ChooseTitleGroup_Add);
 
-		DoMethod(data->bt_cancel, MUIM_Notify, MUIA_Pressed, FALSE,
-				 obj, 1, MM_ChooseTitleGroup_Cancel);
+        DoMethod(data->bt_cancel, MUIM_Notify, MUIA_Pressed, FALSE,
+                 obj, 1, MM_ChooseTitleGroup_Cancel);
 
-		DoMethod(data->str, MUIM_Notify, MUIA_String_Acknowledge, MUIV_EveryTime,
-				 obj, 1, MM_ChooseTitleGroup_Add);
-	}
+        DoMethod(data->str, MUIM_Notify, MUIA_String_Acknowledge, MUIV_EveryTime,
+                 obj, 1, MM_ChooseTitleGroup_Add);
+    }
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 DEFDISP
 {
-	GETDATA;
-	free(data->url);
-	free(data->title);
-	return DOSUPER;
+    GETDATA;
+    free(data->url);
+    free(data->title);
+    return DOSUPER;
 }
 
 DEFTMETHOD(ChooseTitleGroup_Add)
 {
-	GETDATA;
+    GETDATA;
 
-	STRPTR title = (STRPTR) getv(data->str, MUIA_String_Contents);
+    STRPTR title = (STRPTR) getv(data->str, MUIA_String_Contents);
 
-	if(title)
-	{
-		IPTR addtomenu = getv(data->ch_menu, MUIA_Selected);
-		set(app, MA_OWBApp_Bookmark_AddToMenu, addtomenu);
+    if(title)
+    {
+        IPTR addtomenu = getv(data->ch_menu, MUIA_Selected);
+        set(app, MA_OWBApp_Bookmark_AddToMenu, addtomenu);
 
-		DoMethod(app, MM_Bookmarkgroup_AddLink, title, NULL, data->url, TRUE, addtomenu, data->quicklink);
-	}
+        DoMethod(app, MM_Bookmarkgroup_AddLink, title, NULL, data->url, TRUE, addtomenu, data->quicklink);
+    }
 
-	DoMethod(app, MUIM_Application_PushMethod, app, 2, MM_OWBApp_DisposeWindow, _win(obj));
+    DoMethod(app, MUIM_Application_PushMethod, app, 2, MM_OWBApp_DisposeWindow, _win(obj));
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(ChooseTitleGroup_Cancel)
 {
-	DoMethod(app, MUIM_Application_PushMethod, app, 2, MM_OWBApp_DisposeWindow, _win(obj));
+    DoMethod(app, MUIM_Application_PushMethod, app, 2, MM_OWBApp_DisposeWindow, _win(obj));
 
-	return 0;
+    return 0;
 }
 
 DEFMMETHOD(Show)
 {
-	GETDATA;
+    GETDATA;
 
-	IPTR rc = DOSUPER;
+    IPTR rc = DOSUPER;
 
-	set(_win(obj), MUIA_Window_ActiveObject, data->str);
+    set(_win(obj), MUIA_Window_ActiveObject, data->str);
 
-	return rc;
+    return rc;
 }
 
 BEGINMTABLE

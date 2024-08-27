@@ -52,423 +52,423 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *findgroup;
-	Object *lt_cookies;
-	Object *txt_domain;
-	Object *txt_name;
-	Object *txt_value;
-	Object *txt_path;
-	Object *txt_expiration;
-	Object *txt_type;
+    Object *findgroup;
+    Object *lt_cookies;
+    Object *txt_domain;
+    Object *txt_name;
+    Object *txt_value;
+    Object *txt_path;
+    Object *txt_expiration;
+    Object *txt_type;
 };
 
 DEFNEW
 {
-	Object *lt_cookies, *bt_remove, *bt_clear, *txt_name, *txt_value, *txt_domain, *txt_path, *txt_expiration, *txt_type, *findgroup;
+    Object *lt_cookies, *bt_remove, *bt_clear, *txt_name, *txt_value, *txt_domain, *txt_path, *txt_expiration, *txt_type, *findgroup;
 
-	obj = (Object *) DoSuperNew(cl, obj,
+    obj = (Object *) DoSuperNew(cl, obj,
 
-		Child, findgroup = (Object *) NewObject(getfindtextclass(), NULL,
-												MUIA_ShowMe, TRUE,
-												MA_FindText_Closable, FALSE,
-												MA_FindText_ShowButtons, FALSE,
-												MA_FindText_ShowCaseSensitive, FALSE,
-												MA_FindText_ShowText, FALSE,
-												TAG_DONE),
+        Child, findgroup = (Object *) NewObject(getfindtextclass(), NULL,
+                                                MUIA_ShowMe, TRUE,
+                                                MA_FindText_Closable, FALSE,
+                                                MA_FindText_ShowButtons, FALSE,
+                                                MA_FindText_ShowCaseSensitive, FALSE,
+                                                MA_FindText_ShowText, FALSE,
+                                                TAG_DONE),
 
-		Child, lt_cookies = (Object *) NewObject(getcookiemanagerlisttreeclass(), NULL, TAG_DONE),
+        Child, lt_cookies = (Object *) NewObject(getcookiemanagerlisttreeclass(), NULL, TAG_DONE),
 
-		Child, ColGroup(2), GroupFrame,
-			MUIA_Background, MUII_GroupBack,
-			Child, Label(GSI(MSG_COOKIEMANAGERGROUP_NAME)),
-			Child, txt_name = TextObject,
-				MUIA_Text_Contents, "",
-				MUIA_Text_SetMin, FALSE,
-			End,
-			Child, Label(GSI(MSG_COOKIEMANAGERGROUP_VALUE)),
-			Child, txt_value = TextObject,
-				MUIA_Text_Contents, "",
-				MUIA_Text_SetMin, FALSE,
-			End,
-			Child, Label(GSI(MSG_COOKIEMANAGERGROUP_DOMAIN)),
-			Child, txt_domain = TextObject,
-				MUIA_Text_Contents, "",
-				MUIA_Text_SetMin, FALSE,
-			End,
-			Child, Label(GSI(MSG_COOKIEMANAGERGROUP_PATH)),
-			Child, txt_path = TextObject,
-				MUIA_Text_Contents, "",
-				MUIA_Text_SetMin, FALSE,
-			End,
-			Child, Label(GSI(MSG_COOKIEMANAGERGROUP_TYPE)),
-			Child, txt_type = TextObject,
-				MUIA_Text_Contents, "",
-				MUIA_Text_SetMin, FALSE,
-			End,
-			Child, Label(GSI(MSG_COOKIEMANAGERGROUP_EXPIRATION)),
-			Child, txt_expiration = TextObject,
-				MUIA_Text_Contents, "",
-				MUIA_Text_SetMin, FALSE,
-			End,
-		End,
+        Child, ColGroup(2), GroupFrame,
+            MUIA_Background, MUII_GroupBack,
+            Child, Label(GSI(MSG_COOKIEMANAGERGROUP_NAME)),
+            Child, txt_name = TextObject,
+                MUIA_Text_Contents, "",
+                MUIA_Text_SetMin, FALSE,
+            End,
+            Child, Label(GSI(MSG_COOKIEMANAGERGROUP_VALUE)),
+            Child, txt_value = TextObject,
+                MUIA_Text_Contents, "",
+                MUIA_Text_SetMin, FALSE,
+            End,
+            Child, Label(GSI(MSG_COOKIEMANAGERGROUP_DOMAIN)),
+            Child, txt_domain = TextObject,
+                MUIA_Text_Contents, "",
+                MUIA_Text_SetMin, FALSE,
+            End,
+            Child, Label(GSI(MSG_COOKIEMANAGERGROUP_PATH)),
+            Child, txt_path = TextObject,
+                MUIA_Text_Contents, "",
+                MUIA_Text_SetMin, FALSE,
+            End,
+            Child, Label(GSI(MSG_COOKIEMANAGERGROUP_TYPE)),
+            Child, txt_type = TextObject,
+                MUIA_Text_Contents, "",
+                MUIA_Text_SetMin, FALSE,
+            End,
+            Child, Label(GSI(MSG_COOKIEMANAGERGROUP_EXPIRATION)),
+            Child, txt_expiration = TextObject,
+                MUIA_Text_Contents, "",
+                MUIA_Text_SetMin, FALSE,
+            End,
+        End,
 
-		Child, HGroup,
-			Child, bt_remove = (Object *) MakeButton(GSI(MSG_COOKIEMANAGERGROUP_REMOVE)),
-			Child, bt_clear  = (Object *) MakeButton(GSI(MSG_COOKIEMANAGERGROUP_REMOVE_ALL)),
-		End,
-		TAG_MORE, INITTAGS
-		);
+        Child, HGroup,
+            Child, bt_remove = (Object *) MakeButton(GSI(MSG_COOKIEMANAGERGROUP_REMOVE)),
+            Child, bt_clear  = (Object *) MakeButton(GSI(MSG_COOKIEMANAGERGROUP_REMOVE_ALL)),
+        End,
+        TAG_MORE, INITTAGS
+        );
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->lt_cookies = lt_cookies;
-		data->txt_domain = txt_domain;
-		data->txt_name = txt_name;
-		data->txt_value = txt_value;
-		data->txt_path = txt_path;
-		data->txt_expiration = txt_expiration;
-		data->txt_type = txt_type;
-		data->findgroup = findgroup;
+        data->lt_cookies = lt_cookies;
+        data->txt_domain = txt_domain;
+        data->txt_name = txt_name;
+        data->txt_value = txt_value;
+        data->txt_path = txt_path;
+        data->txt_expiration = txt_expiration;
+        data->txt_type = txt_type;
+        data->findgroup = findgroup;
 
-		set(data->findgroup, MA_FindText_Target, data->lt_cookies);
+        set(data->findgroup, MA_FindText_Target, data->lt_cookies);
 
-		DoMethod(bt_remove, MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_CookieManagerGroup_Remove);
-		DoMethod(bt_clear, MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_CookieManagerGroup_Clear);
-		DoMethod(lt_cookies, MUIM_Notify, MUIA_Listtree_Active, MUIV_EveryTime, obj, 1, MM_CookieManagerGroup_DisplayProperties);
+        DoMethod(bt_remove, MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_CookieManagerGroup_Remove);
+        DoMethod(bt_clear, MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_CookieManagerGroup_Clear);
+        DoMethod(lt_cookies, MUIM_Notify, MUIA_Listtree_Active, MUIV_EveryTime, obj, 1, MM_CookieManagerGroup_DisplayProperties);
 
-		//DoMethod(obj, MM_CookieManagerGroup_Load);
-	}
+        //DoMethod(obj, MM_CookieManagerGroup_Load);
+    }
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(Setup)
 {
-	IPTR rc = DOSUPER;
+    IPTR rc = DOSUPER;
 
-	if(rc)
-	{
-		DoMethod(obj, MM_CookieManagerGroup_Load);
-	}
-	return rc;
+    if(rc)
+    {
+        DoMethod(obj, MM_CookieManagerGroup_Load);
+    }
+    return rc;
 
 }
 
 DEFMMETHOD(Cleanup)
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFTMETHOD(CookieManagerGroup_Load)
 {
-	GETDATA;
+    GETDATA;
 
-	DoMethod(data->lt_cookies, MUIM_Listtree_Remove, MUIV_Listtree_Remove_ListNode_Root, MUIV_Listtree_Remove_TreeNode_All, 0);
+    DoMethod(data->lt_cookies, MUIM_Listtree_Remove, MUIV_Listtree_Remove_ListNode_Root, MUIV_Listtree_Remove_TreeNode_All, 0);
 
-	D(kprintf("Loading cookies\n"));
+    D(kprintf("Loading cookies\n"));
 
-	HashMap<String, CookieMap*>& manager_map = cookieManager().getCookieMap();
+    HashMap<String, CookieMap*>& manager_map = cookieManager().getCookieMap();
 
-	Vector<ParsedCookie*> cookies;
-	for (HashMap<String, CookieMap*>::iterator it = manager_map.begin(); it != manager_map.end(); ++it)
+    Vector<ParsedCookie*> cookies;
+    for (HashMap<String, CookieMap*>::iterator it = manager_map.begin(); it != manager_map.end(); ++it)
         it->value->getAllChildCookies(&cookies);
 
-	for (size_t i = 0; i < cookies.size(); ++i)
-	{
-		ParsedCookie* cookie = cookies[i];
+    for (size_t i = 0; i < cookies.size(); ++i)
+    {
+        ParsedCookie* cookie = cookies[i];
 
-		struct MUIS_Listtree_TreeNode* group = NULL;
+        struct MUIS_Listtree_TreeNode* group = NULL;
         struct cookie_entry node;
-		char *domain = strdup(cookie->domain().utf8().data());
+        char *domain = strdup(cookie->domain().utf8().data());
 
-		group = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_FindName,
-			MUIV_Listtree_FindName_ListNode_Root,
-			domain, MUIV_Listtree_FindName_Flags_SameLevel
-		);
+        group = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_FindName,
+            MUIV_Listtree_FindName_ListNode_Root,
+            domain, MUIV_Listtree_FindName_Flags_SameLevel
+        );
 
-		// Domain is not inserted yet, do it
-		if(group == NULL)
-		{
-			node.flags = COOKIEFLAG_DOMAIN;
-			node.name = NULL;
-			node.value = NULL;
-			node.domain = strdup(domain);
-			node.protocol = NULL;
-			node.path = NULL;
-			node.expiry = 0;
-			node.secure = FALSE;
-			node.http_only = FALSE;
+        // Domain is not inserted yet, do it
+        if(group == NULL)
+        {
+            node.flags = COOKIEFLAG_DOMAIN;
+            node.name = NULL;
+            node.value = NULL;
+            node.domain = strdup(domain);
+            node.protocol = NULL;
+            node.path = NULL;
+            node.expiry = 0;
+            node.secure = FALSE;
+            node.http_only = FALSE;
 
-			group = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
-					node.domain,
-					&node,
-					MUIV_Listtree_Insert_ListNode_Root,
-					MUIV_Listtree_Insert_PrevNode_Sorted,
-					TNF_LIST
-			);
-		}
+            group = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
+                    node.domain,
+                    &node,
+                    MUIV_Listtree_Insert_ListNode_Root,
+                    MUIV_Listtree_Insert_PrevNode_Sorted,
+                    TNF_LIST
+            );
+        }
 
-		node.flags = COOKIEFLAG_COOKIE;
-		node.name = strdup(cookie->name().utf8().data());
-		node.value = strdup(cookie->value().utf8().data());
-		node.domain = strdup(domain);
-		node.protocol = strdup(cookie->protocol().utf8().data());
-		node.path = strdup(cookie->path().utf8().data());
-		node.expiry = cookie->expiry();
-		node.secure = cookie->isSecure();
-		node.http_only = cookie->isHttpOnly();
-		node.session = cookie->isSession();
+        node.flags = COOKIEFLAG_COOKIE;
+        node.name = strdup(cookie->name().utf8().data());
+        node.value = strdup(cookie->value().utf8().data());
+        node.domain = strdup(domain);
+        node.protocol = strdup(cookie->protocol().utf8().data());
+        node.path = strdup(cookie->path().utf8().data());
+        node.expiry = cookie->expiry();
+        node.secure = cookie->isSecure();
+        node.http_only = cookie->isHttpOnly();
+        node.session = cookie->isSession();
 
-		D(kprintf("protocol <%s>\n", node.protocol));
-		D(kprintf("\tdomain <%s>\n", node.domain));
-		D(kprintf("\tname <%s>\n", node.name));
-		D(kprintf("\tpath <%s>\n", node.path));
+        D(kprintf("protocol <%s>\n", node.protocol));
+        D(kprintf("\tdomain <%s>\n", node.domain));
+        D(kprintf("\tname <%s>\n", node.name));
+        D(kprintf("\tpath <%s>\n", node.path));
 
-		/*
-		newentry = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_FindName,
-			group,
-			node.name, MUIV_Listtree_FindName_Flags_SameLevel
-		);
+        /*
+        newentry = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_FindName,
+            group,
+            node.name, MUIV_Listtree_FindName_Flags_SameLevel
+        );
 
-		if(newentry && !strcmp(node.path, newentry.path) && !strcmp(node.protocol, newentry.protocol))
-		{
-		
-		}
-		*/
+        if(newentry && !strcmp(node.path, newentry.path) && !strcmp(node.protocol, newentry.protocol))
+        {
+        
+        }
+        */
 
-		DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
-			node.name,
-			&node,
-			group,
-			MUIV_Listtree_Insert_PrevNode_Sorted,
-			0
-			);
+        DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
+            node.name,
+            &node,
+            group,
+            MUIV_Listtree_Insert_PrevNode_Sorted,
+            0
+            );
 
-		free(domain);
-	}
+        free(domain);
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(CookieManagerGroup_Clear)
 {
-	GETDATA;
+    GETDATA;
 
-	/* Remove from list */
-	DoMethod(data->lt_cookies, MUIM_Listtree_Remove, MUIV_Listtree_Remove_ListNode_Root, MUIV_Listtree_Remove_TreeNode_All, 0);
+    /* Remove from list */
+    DoMethod(data->lt_cookies, MUIM_Listtree_Remove, MUIV_Listtree_Remove_ListNode_Root, MUIV_Listtree_Remove_TreeNode_All, 0);
 
-	/* Remove from map(s) and database */
-	cookieManager().removeAllCookies(RemoveFromBackingStore);
+    /* Remove from map(s) and database */
+    cookieManager().removeAllCookies(RemoveFromBackingStore);
 
-	return 0;
+    return 0;
 }
 
 DEFSMETHOD(CookieManagerGroup_DidInsert)
 {
 #if 0
-	GETDATA;
-	int pos;
-	struct MUIS_Listtree_TreeNode *tn = NULL;
-	ParsedCookie* cookie = (ParsedCookie *) msg->cookie;
+    GETDATA;
+    int pos;
+    struct MUIS_Listtree_TreeNode *tn = NULL;
+    ParsedCookie* cookie = (ParsedCookie *) msg->cookie;
 
-	D(kprintf("didInsert <%s><%s>\n", cookie->domain().utf8().data(), cookie->name().utf8().data()));
+    D(kprintf("didInsert <%s><%s>\n", cookie->domain().utf8().data(), cookie->name().utf8().data()));
 
-	for(pos=0; ; pos++)
-	{
-		if( (tn=(struct MUIS_Listtree_TreeNode *)DoMethod(data->lt_cookies, MUIM_Listtree_GetEntry, MUIV_Listtree_GetEntry_ListNode_Root, pos, MUIV_Listtree_GetEntry_Flags_SameLevel)) )
-		{
-			struct cookie_entry *node = (struct cookie_entry *)tn->tn_User;
-			if(node && node->flags == COOKIEFLAG_DOMAIN && cookie->domain() == node->domain)
-			{
-				break;
-			}
-		}
-		else
-		{
-			break;
-		}
-	}
+    for(pos=0; ; pos++)
+    {
+        if( (tn=(struct MUIS_Listtree_TreeNode *)DoMethod(data->lt_cookies, MUIM_Listtree_GetEntry, MUIV_Listtree_GetEntry_ListNode_Root, pos, MUIV_Listtree_GetEntry_Flags_SameLevel)) )
+        {
+            struct cookie_entry *node = (struct cookie_entry *)tn->tn_User;
+            if(node && node->flags == COOKIEFLAG_DOMAIN && cookie->domain() == node->domain)
+            {
+                break;
+            }
+        }
+        else
+        {
+            break;
+        }
+    }
 
-	if(!tn)
-	{
-		struct cookie_entry node;
+    if(!tn)
+    {
+        struct cookie_entry node;
 
-		node.flags = COOKIEFLAG_DOMAIN;
-		node.name = NULL;
-		node.value = NULL;
-		node.domain = strdup(cookie->domain().utf8().data());
-		node.path = NULL;
-		node.expiry = 0;
-		node.secure = FALSE;
-		node.http_only = FALSE;
-		node.session = FALSE;
+        node.flags = COOKIEFLAG_DOMAIN;
+        node.name = NULL;
+        node.value = NULL;
+        node.domain = strdup(cookie->domain().utf8().data());
+        node.path = NULL;
+        node.expiry = 0;
+        node.secure = FALSE;
+        node.http_only = FALSE;
+        node.session = FALSE;
 
-		tn = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
-				node.domain,
-				&node,
-				MUIV_Listtree_Insert_ListNode_Root,
-				MUIV_Listtree_Insert_PrevNode_Sorted,
-				TNF_LIST
-			);
-	
-	}
+        tn = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
+                node.domain,
+                &node,
+                MUIV_Listtree_Insert_ListNode_Root,
+                MUIV_Listtree_Insert_PrevNode_Sorted,
+                TNF_LIST
+            );
+    
+    }
 
-	if(tn)
-	{
-		struct MUIS_Listtree_TreeNode *newentry = NULL;
-		struct cookie_entry node;
+    if(tn)
+    {
+        struct MUIS_Listtree_TreeNode *newentry = NULL;
+        struct cookie_entry node;
 
-		node.flags = COOKIEFLAG_COOKIE;
-		node.name = strdup(cookie->name().utf8().data());
-		node.value = strdup(cookie->value().utf8().data());
-		node.domain = strdup(cookie->domain().utf8().data());
-		node.path = strdup(cookie->path().utf8().data());
-		node.expiry = cookie->expiry();
-		node.secure = cookie->isSecure();
-		node.http_only = cookie->isHttpOnly();
-		node.session = cookie->isSession();
+        node.flags = COOKIEFLAG_COOKIE;
+        node.name = strdup(cookie->name().utf8().data());
+        node.value = strdup(cookie->value().utf8().data());
+        node.domain = strdup(cookie->domain().utf8().data());
+        node.path = strdup(cookie->path().utf8().data());
+        node.expiry = cookie->expiry();
+        node.secure = cookie->isSecure();
+        node.http_only = cookie->isHttpOnly();
+        node.session = cookie->isSession();
 
-		newentry = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
-			node.name,
-			&node,
-			tn,
-			MUIV_Listtree_Insert_PrevNode_Sorted,
-			0
-			);
-	}
+        newentry = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
+            node.name,
+            &node,
+            tn,
+            MUIV_Listtree_Insert_PrevNode_Sorted,
+            0
+            );
+    }
 
 #endif
-	return 0;
+    return 0;
 }
 
 DEFSMETHOD(CookieManagerGroup_DidRemove)
 {
 #if 0
-	GETDATA;
-	int pos;
-	struct MUIS_Listtree_TreeNode *tn = NULL, *tn2 = NULL;
-	ParsedCookie *cookie = (ParsedCookie *) msg->cookie;
+    GETDATA;
+    int pos;
+    struct MUIS_Listtree_TreeNode *tn = NULL, *tn2 = NULL;
+    ParsedCookie *cookie = (ParsedCookie *) msg->cookie;
 
-	D(kprintf("didRemove <%s><%s>\n", cookie->domain().utf8().data(), cookie->name().utf8().data()));
+    D(kprintf("didRemove <%s><%s>\n", cookie->domain().utf8().data(), cookie->name().utf8().data()));
 
-	/* find the domain node */
-	for(pos=0; ; pos++)
-	{
-		if( (tn=(struct MUIS_Listtree_TreeNode *)DoMethod(data->lt_cookies, MUIM_Listtree_GetEntry, MUIV_Listtree_GetEntry_ListNode_Root, pos, MUIV_Listtree_GetEntry_Flags_SameLevel)) )
-		{
-			struct cookie_entry *node = (struct cookie_entry *)tn->tn_User;
-			if(node && node->flags == COOKIEFLAG_DOMAIN && cookie->domain() == node->domain)
-			{
-				break;
-			}
-		}
-		else
-		{
-			break;
-		}
-	}
+    /* find the domain node */
+    for(pos=0; ; pos++)
+    {
+        if( (tn=(struct MUIS_Listtree_TreeNode *)DoMethod(data->lt_cookies, MUIM_Listtree_GetEntry, MUIV_Listtree_GetEntry_ListNode_Root, pos, MUIV_Listtree_GetEntry_Flags_SameLevel)) )
+        {
+            struct cookie_entry *node = (struct cookie_entry *)tn->tn_User;
+            if(node && node->flags == COOKIEFLAG_DOMAIN && cookie->domain() == node->domain)
+            {
+                break;
+            }
+        }
+        else
+        {
+            break;
+        }
+    }
 
-	/* find the cookie node */
-	if(tn)
-	{
-		for(pos=0; ; pos++)
-		{
-			if( (tn2=(struct MUIS_Listtree_TreeNode *)DoMethod(data->lt_cookies, MUIM_Listtree_GetEntry, tn, pos, MUIV_Listtree_GetEntry_Flags_SameLevel)) )
-			{
-				struct cookie_entry *node = (struct cookie_entry *)tn2->tn_User;
+    /* find the cookie node */
+    if(tn)
+    {
+        for(pos=0; ; pos++)
+        {
+            if( (tn2=(struct MUIS_Listtree_TreeNode *)DoMethod(data->lt_cookies, MUIM_Listtree_GetEntry, tn, pos, MUIV_Listtree_GetEntry_Flags_SameLevel)) )
+            {
+                struct cookie_entry *node = (struct cookie_entry *)tn2->tn_User;
 
-				if(node && node->flags == COOKIEFLAG_COOKIE && cookie->name() == node->name && cookie->path() == node->path)
-				{
-					break;
-				}
-			}
-			else
-			{
-				break;
-			}
-		}	 
-	}
+                if(node && node->flags == COOKIEFLAG_COOKIE && cookie->name() == node->name && cookie->path() == node->path)
+                {
+                    break;
+                }
+            }
+            else
+            {
+                break;
+            }
+        }     
+    }
 
-	/* remove it */
-	if(tn2)
-	{
-		DoMethod(data->lt_cookies, MUIM_Listtree_Remove, NULL, tn2, 0);
-	}
+    /* remove it */
+    if(tn2)
+    {
+        DoMethod(data->lt_cookies, MUIM_Listtree_Remove, NULL, tn2, 0);
+    }
 #endif
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(CookieManagerGroup_Remove)
 {
-	GETDATA;
-	struct MUIS_Listtree_TreeNode *tn;
+    GETDATA;
+    struct MUIS_Listtree_TreeNode *tn;
 
-	tn = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_GetEntry, NULL, MUIV_Listtree_GetEntry_Position_Active, 0);
-	if(tn)
-	{
-		struct cookie_entry *entry = (struct cookie_entry *) tn->tn_User;
+    tn = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_GetEntry, NULL, MUIV_Listtree_GetEntry_Position_Active, 0);
+    if(tn)
+    {
+        struct cookie_entry *entry = (struct cookie_entry *) tn->tn_User;
 
-		if(entry && entry->flags == COOKIEFLAG_COOKIE)
-		{
-			String cookieURL = String(entry->protocol);
-			String domain = String(entry->domain);
-			cookieURL.append("://");
-			if(domain.startsWith("."))
-				domain = domain.substring(1);
-			cookieURL.append(domain);
-			cookieURL.append(entry->path);
-			URL url({ }, cookieURL);
-			cookieManager().removeCookieWithName(url, entry->name);
-			DoMethod(data->lt_cookies, MUIM_Listtree_Remove, NULL, MUIV_Listtree_Remove_TreeNode_Active, 0);
-		}
-		else if(entry && entry->flags == COOKIEFLAG_DOMAIN)
-		{
-			cookieManager().removeCookiesFromDomain("http", entry->domain);
-			cookieManager().removeCookiesFromDomain("https", entry->domain);
+        if(entry && entry->flags == COOKIEFLAG_COOKIE)
+        {
+            String cookieURL = String(entry->protocol);
+            String domain = String(entry->domain);
+            cookieURL.append("://");
+            if(domain.startsWith("."))
+                domain = domain.substring(1);
+            cookieURL.append(domain);
+            cookieURL.append(entry->path);
+            URL url({ }, cookieURL);
+            cookieManager().removeCookieWithName(url, entry->name);
             DoMethod(data->lt_cookies, MUIM_Listtree_Remove, NULL, MUIV_Listtree_Remove_TreeNode_Active, 0);
-		}
-	}
+        }
+        else if(entry && entry->flags == COOKIEFLAG_DOMAIN)
+        {
+            cookieManager().removeCookiesFromDomain("http", entry->domain);
+            cookieManager().removeCookiesFromDomain("https", entry->domain);
+            DoMethod(data->lt_cookies, MUIM_Listtree_Remove, NULL, MUIV_Listtree_Remove_TreeNode_Active, 0);
+        }
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(CookieManagerGroup_DisplayProperties)
 {
-	GETDATA;
-	struct MUIS_Listtree_TreeNode *tn;
+    GETDATA;
+    struct MUIS_Listtree_TreeNode *tn;
 
-	tn = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_GetEntry, NULL, MUIV_Listtree_GetEntry_Position_Active, 0);
-	if(tn)
-	{
-		struct cookie_entry *entry = (struct cookie_entry *) tn->tn_User;
+    tn = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_GetEntry, NULL, MUIV_Listtree_GetEntry_Position_Active, 0);
+    if(tn)
+    {
+        struct cookie_entry *entry = (struct cookie_entry *) tn->tn_User;
 
-		if(entry && entry->flags == COOKIEFLAG_COOKIE)
-		{
-			char type[256];
-			char expiration[256];
-			time_t expiry = (time_t) entry->expiry;
-			snprintf(type, sizeof(type), "%s%s%s", entry->session ? "Session" : "Permanent", entry->http_only ? " | HTTP Only" : " ", entry->secure ? " | Secure" : "");
-			snprintf(expiration, sizeof(expiration), "%s", asctime(localtime(&expiry)));
-			expiration[strlen(expiration) - 1] = 0;
+        if(entry && entry->flags == COOKIEFLAG_COOKIE)
+        {
+            char type[256];
+            char expiration[256];
+            time_t expiry = (time_t) entry->expiry;
+            snprintf(type, sizeof(type), "%s%s%s", entry->session ? "Session" : "Permanent", entry->http_only ? " | HTTP Only" : " ", entry->secure ? " | Secure" : "");
+            snprintf(expiration, sizeof(expiration), "%s", asctime(localtime(&expiry)));
+            expiration[strlen(expiration) - 1] = 0;
 
-			set(data->txt_name, MUIA_Text_Contents, entry->name);
-			set(data->txt_value, MUIA_Text_Contents, entry->value);
-			set(data->txt_domain, MUIA_Text_Contents, entry->domain);
-			set(data->txt_path, MUIA_Text_Contents, entry->path);
-			set(data->txt_type, MUIA_Text_Contents, type);
-			set(data->txt_expiration, MUIA_Text_Contents, expiration);
-		}
-	}
+            set(data->txt_name, MUIA_Text_Contents, entry->name);
+            set(data->txt_value, MUIA_Text_Contents, entry->value);
+            set(data->txt_domain, MUIA_Text_Contents, entry->domain);
+            set(data->txt_path, MUIA_Text_Contents, entry->path);
+            set(data->txt_type, MUIA_Text_Contents, type);
+            set(data->txt_expiration, MUIA_Text_Contents, expiration);
+        }
+    }
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

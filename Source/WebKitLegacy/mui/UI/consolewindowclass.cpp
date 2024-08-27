@@ -45,88 +45,88 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *lv_messages;
+    Object *lv_messages;
 };
 
 DEFNEW
 {
-	Object *lv_messages;
-	Object *clear;
+    Object *lv_messages;
+    Object *clear;
 
-	obj = (Object *) DoSuperNew(cl, obj,
-			MUIA_Window_ID, MAKE_ID('W','C','O','N'),
-			MUIA_Window_Title, GSI(MSG_CONSOLEWINDOW_MESSAGES),
-			MUIA_Window_NoMenus, TRUE,
-			WindowContents, VGroup,
-				Child, VGroup,
-					Child, lv_messages = (Object *) NewObject(getconsolelistclass(), NULL,TAG_DONE),
-					Child, HGroup,
-						Child, clear = (Object *) MakeButton(GSI(MSG_CONSOLEWINDOW_CLEAR)),
-					End,
-				End,
-			End,
-			TAG_MORE, msg->ops_AttrList);
+    obj = (Object *) DoSuperNew(cl, obj,
+            MUIA_Window_ID, MAKE_ID('W','C','O','N'),
+            MUIA_Window_Title, GSI(MSG_CONSOLEWINDOW_MESSAGES),
+            MUIA_Window_NoMenus, TRUE,
+            WindowContents, VGroup,
+                Child, VGroup,
+                    Child, lv_messages = (Object *) NewObject(getconsolelistclass(), NULL,TAG_DONE),
+                    Child, HGroup,
+                        Child, clear = (Object *) MakeButton(GSI(MSG_CONSOLEWINDOW_CLEAR)),
+                    End,
+                End,
+            End,
+            TAG_MORE, msg->ops_AttrList);
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->lv_messages = lv_messages;
+        data->lv_messages = lv_messages;
 
-		DoMethod(obj,   MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 3, MUIM_Set, MUIA_Window_Open, FALSE);
-		DoMethod(clear, MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_ConsoleWindow_Clear);
-	}
+        DoMethod(obj,   MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 3, MUIM_Set, MUIA_Window_Open, FALSE);
+        DoMethod(clear, MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_ConsoleWindow_Clear);
+    }
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 DEFGET
 {
-	switch (msg->opg_AttrID)
-	{
-		case MA_OWB_WindowType:
-		{
-			*msg->opg_Storage = (IPTR) MV_OWB_Window_Console;
-		}
-		return TRUE;
-	}
+    switch (msg->opg_AttrID)
+    {
+        case MA_OWB_WindowType:
+        {
+            *msg->opg_Storage = (IPTR) MV_OWB_Window_Console;
+        }
+        return TRUE;
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFSMETHOD(ConsoleWindow_Add)
 {
-	struct console_entry *e = (struct console_entry *) malloc(sizeof(*e));
+    struct console_entry *e = (struct console_entry *) malloc(sizeof(*e));
 
-	if(e)
-	{
-		GETDATA;
-		struct timeval timeval;
+    if(e)
+    {
+        GETDATA;
+        struct timeval timeval;
 
-		GetSysTime(&timeval);
-		Amiga2Date(timeval.tv_secs, &e->clockdata);
+        GetSysTime(&timeval);
+        Amiga2Date(timeval.tv_secs, &e->clockdata);
 
-		stccpy(e->message, msg->message, sizeof(e->message));
+        stccpy(e->message, msg->message, sizeof(e->message));
 
-		DoMethod(data->lv_messages, MUIM_List_InsertSingle, e);
-		set(data->lv_messages, MUIA_List_Active, MUIV_List_Active_Bottom);
-	}
+        DoMethod(data->lv_messages, MUIM_List_InsertSingle, e);
+        set(data->lv_messages, MUIA_List_Active, MUIV_List_Active_Bottom);
+    }
 
-	return 0;
+    return 0;
 }
 
 
 DEFTMETHOD(ConsoleWindow_Clear)
 {
-	GETDATA;
+    GETDATA;
 
-	set(data->lv_messages, MUIA_List_Quiet, TRUE);
+    set(data->lv_messages, MUIA_List_Quiet, TRUE);
 
-	DoMethod(data->lv_messages, MUIM_List_Clear);
+    DoMethod(data->lv_messages, MUIM_List_Clear);
 
-	set(data->lv_messages, MUIA_List_Quiet, FALSE);
+    set(data->lv_messages, MUIA_List_Quiet, FALSE);
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

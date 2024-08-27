@@ -38,27 +38,27 @@ class SuggestEntry
 {
 public:
 
-	SuggestEntry()
-		: m_suggestion("")
-		, m_occurrences(0)
-	{}
+    SuggestEntry()
+        : m_suggestion("")
+        , m_occurrences(0)
+    {}
 
-	SuggestEntry(String suggestion, int occurrences)
-		: m_suggestion(suggestion)
-		, m_occurrences(occurrences)
-	{}
+    SuggestEntry(String suggestion, int occurrences)
+        : m_suggestion(suggestion)
+        , m_occurrences(occurrences)
+    {}
 
-	String suggestion() const { return m_suggestion; }
-	void setSuggestion(String suggestion) { m_suggestion = suggestion; }
+    String suggestion() const { return m_suggestion; }
+    void setSuggestion(String suggestion) { m_suggestion = suggestion; }
 
-	int occurrences() const { return m_occurrences; }
-	void setOccurrences(int occurrences) { m_occurrences = occurrences; }
+    int occurrences() const { return m_occurrences; }
+    void setOccurrences(int occurrences) { m_occurrences = occurrences; }
 
-	friend bool operator<(const SuggestEntry &e1, const SuggestEntry &e2);
+    friend bool operator<(const SuggestEntry &e1, const SuggestEntry &e2);
 
 private:
-	String m_suggestion;
-	int    m_occurrences;
+    String m_suggestion;
+    int    m_occurrences;
 };
 
 }

@@ -47,13 +47,13 @@ using namespace WebCore;
 
 namespace WebCore
 {
-	extern bool ad_block_enabled;
-	extern void loadCache();
-	extern void flushCache();
-	extern bool writeCache();
-	extern void *addCacheEntry(String rule, int type);
-	extern void updateCacheEntry(String rule, int type, void *ptr);
-	extern void removeCacheEntry(void *ptr, int type);
+    extern bool ad_block_enabled;
+    extern void loadCache();
+    extern void flushCache();
+    extern bool writeCache();
+    extern void *addCacheEntry(String rule, int type);
+    extern void updateCacheEntry(String rule, int type, void *ptr);
+    extern void removeCacheEntry(void *ptr, int type);
 }
 
 
@@ -61,216 +61,216 @@ namespace WebCore
 
 STATIC CONST CONST_STRPTR filtertypes[] =
 {
-	LABEL(DENY),
-	LABEL(ALLOW),
-	NULL
+    LABEL(DENY),
+    LABEL(ALLOW),
+    NULL
 };
 
 static void cycles_init(void)
 {
-	APTR arrays[] = { (APTR) filtertypes, NULL };
+    APTR arrays[] = { (APTR) filtertypes, NULL };
 
-	APTR *ptr = arrays;
+    APTR *ptr = arrays;
 
-	while(*ptr)
-	{
-		STRPTR *current = (STRPTR *)*ptr;
-		while(*current)
-		{
-			*current = (STRPTR)GSI((IPTR)*current);
-			current++;
-		}
-		ptr++;
-	}
+    while(*ptr)
+    {
+        STRPTR *current = (STRPTR *)*ptr;
+        while(*current)
+        {
+            *current = (STRPTR)GSI((IPTR)*current);
+            current++;
+        }
+        ptr++;
+    }
 }
 
 
 struct Data
 {
-	Object *lv_rules;
-	Object *st_rule;
-	Object *cy_type;
-	Object *bt_remove;
-	ULONG loaded;
+    Object *lv_rules;
+    Object *st_rule;
+    Object *cy_type;
+    Object *bt_remove;
+    ULONG loaded;
 };
 
 DEFNEW
 {
-	Object *lv_rules, *st_rule, *cy_type, *bt_add, *bt_remove;
+    Object *lv_rules, *st_rule, *cy_type, *bt_add, *bt_remove;
 
-	cycles_init();
+    cycles_init();
 
-	obj = (Object *) DoSuperNew(cl, obj,
-		Child, lv_rules = (Object *) NewObject(getblockmanagerlistclass(), NULL, TAG_DONE),
+    obj = (Object *) DoSuperNew(cl, obj,
+        Child, lv_rules = (Object *) NewObject(getblockmanagerlistclass(), NULL, TAG_DONE),
 
-		Child, HGroup,
-			Child, bt_add = (Object *) MakeButton(GSI(MSG_BLOCKMANAGERGROUP_ADD)),
-			Child, bt_remove = (Object *) MakeButton(GSI(MSG_BLOCKMANAGERGROUP_REMOVE)),
-		End,
+        Child, HGroup,
+            Child, bt_add = (Object *) MakeButton(GSI(MSG_BLOCKMANAGERGROUP_ADD)),
+            Child, bt_remove = (Object *) MakeButton(GSI(MSG_BLOCKMANAGERGROUP_REMOVE)),
+        End,
 
-		Child, ColGroup(2), 
-			Child, MakeLabel(GSI(MSG_BLOCKMANAGERGROUP_RULE)),
-			Child, st_rule = (Object *) MakeString("",FALSE),
-			Child, MakeLabel(GSI(MSG_BLOCKMANAGERGROUP_TYPE)),
-			Child, cy_type = (Object *) MakeCycle(GSI(MSG_BLOCKMANAGERGROUP_TYPE), filtertypes),
-		End,
+        Child, ColGroup(2), 
+            Child, MakeLabel(GSI(MSG_BLOCKMANAGERGROUP_RULE)),
+            Child, st_rule = (Object *) MakeString("",FALSE),
+            Child, MakeLabel(GSI(MSG_BLOCKMANAGERGROUP_TYPE)),
+            Child, cy_type = (Object *) MakeCycle(GSI(MSG_BLOCKMANAGERGROUP_TYPE), filtertypes),
+        End,
 
-		TAG_MORE, INITTAGS
-		);
+        TAG_MORE, INITTAGS
+        );
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->bt_remove = bt_remove;
-		data->lv_rules = lv_rules;
-		data->st_rule = st_rule;
-		data->cy_type = cy_type;
+        data->bt_remove = bt_remove;
+        data->lv_rules = lv_rules;
+        data->st_rule = st_rule;
+        data->cy_type = cy_type;
 
-		set(st_rule, MUIA_Disabled, TRUE);
-		set(cy_type, MUIA_Disabled, TRUE);
-		set(bt_remove,  MUIA_Disabled, TRUE);
+        set(st_rule, MUIA_Disabled, TRUE);
+        set(cy_type, MUIA_Disabled, TRUE);
+        set(bt_remove,  MUIA_Disabled, TRUE);
 
-		DoMethod(bt_remove, MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_BlockManagerGroup_Remove);
-		DoMethod(bt_add,    MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_BlockManagerGroup_Add);
-		DoMethod(lv_rules,  MUIM_Notify, MUIA_List_Active, MUIV_EveryTime, obj, 1, MM_BlockManagerGroup_Update);
+        DoMethod(bt_remove, MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_BlockManagerGroup_Remove);
+        DoMethod(bt_add,    MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_BlockManagerGroup_Add);
+        DoMethod(lv_rules,  MUIM_Notify, MUIA_List_Active, MUIV_EveryTime, obj, 1, MM_BlockManagerGroup_Update);
 
-		DoMethod(st_rule, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, obj, 1, MM_BlockManagerGroup_Change);
-		DoMethod(cy_type, MUIM_Notify, MUIA_Cycle_Active, MUIV_EveryTime, obj, 1, MM_BlockManagerGroup_Change);
-	}
+        DoMethod(st_rule, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, obj, 1, MM_BlockManagerGroup_Change);
+        DoMethod(cy_type, MUIM_Notify, MUIA_Cycle_Active, MUIV_EveryTime, obj, 1, MM_BlockManagerGroup_Change);
+    }
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 
 DEFTMETHOD(BlockManagerGroup_Load)
 {
-	GETDATA;
+    GETDATA;
 
-	if(!data->loaded)
-	{
-		data->loaded = TRUE;
-		WebCore::loadCache();
-	}
-	return 0;
+    if(!data->loaded)
+    {
+        data->loaded = TRUE;
+        WebCore::loadCache();
+    }
+    return 0;
 }
 
 DEFSMETHOD(BlockManagerGroup_DidInsert)
 {
-	GETDATA;
-	struct block_entry *entry = (struct block_entry *) malloc(sizeof(*entry));
+    GETDATA;
+    struct block_entry *entry = (struct block_entry *) malloc(sizeof(*entry));
 
-	if(entry)
-	{
-		entry->rule = strdup(msg->rule);
-		entry->type = msg->type;
-		entry->ptr = msg->ptr;
+    if(entry)
+    {
+        entry->rule = strdup(msg->rule);
+        entry->type = msg->type;
+        entry->ptr = msg->ptr;
 
-		DoMethod(data->lv_rules, MUIM_List_InsertSingle, entry, MUIV_List_Insert_Bottom);
-	}
+        DoMethod(data->lv_rules, MUIM_List_InsertSingle, entry, MUIV_List_Insert_Bottom);
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(BlockManagerGroup_Add)
 {
-	GETDATA;
-	struct block_entry *entry = (struct block_entry *) malloc(sizeof(*entry));
+    GETDATA;
+    struct block_entry *entry = (struct block_entry *) malloc(sizeof(*entry));
 
-	if(entry)
-	{
-		entry->rule = strdup("");
-		entry->type = 1;
-		entry->ptr = WebCore::addCacheEntry(entry->rule, entry->type);
-		WebCore::writeCache();
-		WebCore::flushCache();
+    if(entry)
+    {
+        entry->rule = strdup("");
+        entry->type = 1;
+        entry->ptr = WebCore::addCacheEntry(entry->rule, entry->type);
+        WebCore::writeCache();
+        WebCore::flushCache();
 
-		DoMethod(data->lv_rules, MUIM_List_InsertSingle, entry, MUIV_List_Insert_Bottom);
-		set(data->lv_rules, MUIA_List_Active, MUIV_List_Active_Bottom);
-		set(_win(obj), MUIA_Window_ActiveObject, data->st_rule);
-	}
+        DoMethod(data->lv_rules, MUIM_List_InsertSingle, entry, MUIV_List_Insert_Bottom);
+        set(data->lv_rules, MUIA_List_Active, MUIV_List_Active_Bottom);
+        set(_win(obj), MUIA_Window_ActiveObject, data->st_rule);
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(BlockManagerGroup_Remove)
 {
-	GETDATA;
-	struct block_entry *entry;
+    GETDATA;
+    struct block_entry *entry;
 
-	DoMethod(data->lv_rules, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct block_entry *) &entry);
+    DoMethod(data->lv_rules, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct block_entry *) &entry);
 
-	if(entry)
-	{
-		WebCore::removeCacheEntry(entry->ptr, entry->type);
-		WebCore::writeCache();
-		WebCore::flushCache();
-		DoMethod(data->lv_rules, MUIM_List_Remove, MUIV_List_Remove_Active);
-	}
+    if(entry)
+    {
+        WebCore::removeCacheEntry(entry->ptr, entry->type);
+        WebCore::writeCache();
+        WebCore::flushCache();
+        DoMethod(data->lv_rules, MUIM_List_Remove, MUIV_List_Remove_Active);
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(BlockManagerGroup_Update)
 {
-	GETDATA;
-	struct block_entry *entry;
+    GETDATA;
+    struct block_entry *entry;
 
-	DoMethod(data->lv_rules, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct block_entry *) &entry);
+    DoMethod(data->lv_rules, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct block_entry *) &entry);
 
-	if(entry)
-	{
-		set(data->st_rule,   MUIA_Disabled, FALSE);
-		set(data->cy_type,   MUIA_Disabled, FALSE);
-		set(data->bt_remove, MUIA_Disabled, FALSE);
-		nnset(data->cy_type, MUIA_Cycle_Active, entry->type);
-		nnset(data->st_rule, MUIA_String_Contents, entry->rule);
-	}
-	else
-	{
-		set(data->st_rule,   MUIA_Disabled, TRUE);
-		set(data->cy_type,   MUIA_Disabled, TRUE);
-		set(data->bt_remove, MUIA_Disabled, TRUE);
-	}
+    if(entry)
+    {
+        set(data->st_rule,   MUIA_Disabled, FALSE);
+        set(data->cy_type,   MUIA_Disabled, FALSE);
+        set(data->bt_remove, MUIA_Disabled, FALSE);
+        nnset(data->cy_type, MUIA_Cycle_Active, entry->type);
+        nnset(data->st_rule, MUIA_String_Contents, entry->rule);
+    }
+    else
+    {
+        set(data->st_rule,   MUIA_Disabled, TRUE);
+        set(data->cy_type,   MUIA_Disabled, TRUE);
+        set(data->bt_remove, MUIA_Disabled, TRUE);
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(BlockManagerGroup_Change)
 {
-	GETDATA;
-	struct block_entry *entry;
+    GETDATA;
+    struct block_entry *entry;
 
-	DoMethod(data->lv_rules, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct block_entry *) &entry);
+    DoMethod(data->lv_rules, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct block_entry *) &entry);
 
-	if(entry)
-	{
-		free(entry->rule);
-		entry->rule = strdup((char *) getv(data->st_rule, MUIA_String_Contents));
+    if(entry)
+    {
+        free(entry->rule);
+        entry->rule = strdup((char *) getv(data->st_rule, MUIA_String_Contents));
 
-		if(entry->type != (int) getv(data->cy_type, MUIA_Cycle_Active))
-		{
-			WebCore::removeCacheEntry(entry->ptr, entry->type);
-			entry->type = getv(data->cy_type, MUIA_Cycle_Active);
-			entry->ptr = WebCore::addCacheEntry(entry->rule, entry->type);
-		}
-		else
-		{
-			WebCore::updateCacheEntry(entry->rule, entry->type, entry->ptr);
-		}
+        if(entry->type != (int) getv(data->cy_type, MUIA_Cycle_Active))
+        {
+            WebCore::removeCacheEntry(entry->ptr, entry->type);
+            entry->type = getv(data->cy_type, MUIA_Cycle_Active);
+            entry->ptr = WebCore::addCacheEntry(entry->rule, entry->type);
+        }
+        else
+        {
+            WebCore::updateCacheEntry(entry->rule, entry->type, entry->ptr);
+        }
 
-		WebCore::writeCache();
-		WebCore::flushCache();
+        WebCore::writeCache();
+        WebCore::flushCache();
 
-		DoMethod(data->lv_rules,  MUIM_List_Redraw, MUIV_List_Redraw_Entry, entry);
-	}
+        DoMethod(data->lv_rules,  MUIM_List_Redraw, MUIV_List_Redraw_Entry, entry);
+    }
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

@@ -94,7 +94,7 @@ void DataObjectMorphOS::setURIList(const String& uriListString)
                 setURL = true;
             }
 
-			m_filenames.append(line);
+            m_filenames.append(line);
         }
     }
 }
@@ -113,7 +113,7 @@ void DataObjectMorphOS::setURL(const URL& url, const String& label)
     markup.append("<a href=\"");
     markup.append(url.string());
     markup.append("\">");
-	markup.append(actualLabel);
+    markup.append(actualLabel);
     markup.append("</a>");
     setMarkup(markup.toString());
 }
@@ -159,15 +159,15 @@ void DataObjectMorphOS::clearAll()
 
 DataObjectMorphOS* DataObjectMorphOS::forClipboard(int clipboard)
 {
-	static HashMap<int, RefPtr<DataObjectMorphOS> > objectMap;
+    static HashMap<int, RefPtr<DataObjectMorphOS> > objectMap;
 
     if (!objectMap.contains(clipboard)) {
-		RefPtr<DataObjectMorphOS> dataObject = DataObjectMorphOS::create();
+        RefPtr<DataObjectMorphOS> dataObject = DataObjectMorphOS::create();
         objectMap.set(clipboard, dataObject);
         return dataObject.get();
     }
 
-	HashMap<int, RefPtr<DataObjectMorphOS> >::iterator it = objectMap.find(clipboard);
+    HashMap<int, RefPtr<DataObjectMorphOS> >::iterator it = objectMap.find(clipboard);
     return it->value.get();
 }
 

@@ -64,9 +64,9 @@ public:
     virtual bool performImport() { return true; }
     virtual void didRemoveAllIcons() { m_webIconDatabase->didRemoveAllIcons(); }
     virtual void didImportIconURLForPageURL(const WTF::String& pageURL) { m_webIconDatabase->didImportIconURLForPageURL(strdup(pageURL.utf8().data())); }
-	virtual void didImportIconDataForPageURL(const WTF::String& pageURL) { m_webIconDatabase->didImportIconDataForPageURL(strdup(pageURL.utf8().data())); }
-	virtual void didChangeIconForPageURL(const WTF::String& pageURL) { m_webIconDatabase->didChangeIconForPageURL(strdup(pageURL.utf8().data())); }
-	virtual void didFinishURLImport() { m_webIconDatabase->didFinishURLImport(); }
+    virtual void didImportIconDataForPageURL(const WTF::String& pageURL) { m_webIconDatabase->didImportIconDataForPageURL(strdup(pageURL.utf8().data())); }
+    virtual void didChangeIconForPageURL(const WTF::String& pageURL) { m_webIconDatabase->didChangeIconForPageURL(strdup(pageURL.utf8().data())); }
+    virtual void didFinishURLImport() { m_webIconDatabase->didFinishURLImport(); }
     virtual void didFinishURLIconImport() { m_webIconDatabase->didFinishURLIconImport(); }
 
     Mutex m_notificationMutex;
@@ -85,7 +85,7 @@ WebIconDatabase::WebIconDatabase()
 
 WebIconDatabase::~WebIconDatabase()
 {
-	iconDatabase().close();
+    iconDatabase().close();
 }
 
 void WebIconDatabase::init()
@@ -103,7 +103,7 @@ void WebIconDatabase::init()
 void WebIconDatabase::startUpIconDatabase()
 {
     WebPreferences* standardPrefs = WebPreferences::sharedStandardPreferences();
-	iconDatabase().setClient(m_webIconDatabaseClient);
+    iconDatabase().setClient(m_webIconDatabaseClient);
 
     String databasePath = standardPrefs->iconDatabaseLocation().c_str();
 
@@ -144,7 +144,7 @@ WebCore::Image *WebIconDatabase::iconForURL(const char* url, IntSize size, bool 
 {
     IntSize intSize(size);
 
-	WebCore::Image* icon = iconDatabase().synchronousIconForPageURL(url, intSize);
+    WebCore::Image* icon = iconDatabase().synchronousIconForPageURL(url, intSize);
     return icon;
 }
 
@@ -230,12 +230,12 @@ void WebIconDatabase::setEnabled(bool flag)
 
 bool WebIconDatabase::isPrivateBrowsingEnabled()
 {
-	return iconDatabase().isPrivateBrowsingEnabled();
+    return iconDatabase().isPrivateBrowsingEnabled();
 }
 
 void WebIconDatabase::setPrivateBrowsingEnabled(bool flag)
 {
-	iconDatabase().setPrivateBrowsingEnabled(flag);
+    iconDatabase().setPrivateBrowsingEnabled(flag);
 }
 
 bool WebIconDatabase::performImport()
@@ -254,7 +254,7 @@ void WebIconDatabase::didRemoveAllIcons()
 
 void WebIconDatabase::didImportIconURLForPageURL(const char* pageURL)
 {   
-	D(kprintf("WebIconDatabase::didImportIconURLForPageURL(%s)\n", pageURL));
+    D(kprintf("WebIconDatabase::didImportIconURLForPageURL(%s)\n", pageURL));
 
     MutexLocker locker(m_webIconDatabaseClient->m_notificationMutex);
     m_notificationQueue.push_back(String(pageURL));
@@ -265,21 +265,21 @@ void WebIconDatabase::didImportIconURLForPageURL(const char* pageURL)
 
 void WebIconDatabase::didImportIconDataForPageURL(const char* pageURL)
 {
-	D(kprintf("WebIconDatabase::didImportIconDataForPageURL(%s)\n", pageURL));
+    D(kprintf("WebIconDatabase::didImportIconDataForPageURL(%s)\n", pageURL));
     // WebKit1 only has a single "icon did change" notification.
     didImportIconURLForPageURL(pageURL);
 }
 
 void WebIconDatabase::didChangeIconForPageURL(const char* pageURL)
 {
-	D(kprintf("WebIconDatabase::didChangeIconForPageURL(%s)\n", pageURL));
+    D(kprintf("WebIconDatabase::didChangeIconForPageURL(%s)\n", pageURL));
     // WebKit1 only has a single "icon did change" notification.
     didImportIconURLForPageURL(pageURL);
 }
 
 void WebIconDatabase::didFinishURLImport()
 {
-	didFinishURLIconImport();
+    didFinishURLIconImport();
 }  
 
 void WebIconDatabase::scheduleNotificationDelivery()
@@ -318,8 +318,8 @@ static void postDidRemoveAllIconsNotification(WebIconDatabase* iconDB)
 
 static void postDidAddIconNotification(String pageURL, WebIconDatabase* iconDB)
 {
-	SetAttrs(app, MA_OWBApp_DidReceiveFavIcon, pageURL.utf8().data(), TAG_DONE);
-	D(kprintf("postDidAddIconNotification(%s)\n", pageURL.utf8().data()));
+    SetAttrs(app, MA_OWBApp_DidReceiveFavIcon, pageURL.utf8().data(), TAG_DONE);
+    D(kprintf("postDidAddIconNotification(%s)\n", pageURL.utf8().data()));
     WebCore::ObserverServiceData::createObserverService()->notifyObserver(WebIconDatabase::iconDatabaseDidAddIconNotification(), pageURL, iconDB);
 }
 
@@ -331,7 +331,7 @@ void WebIconDatabase::deliverNotifications(void*)
 
     ASSERT(m_sharedWebIconDatabase->m_deliveryRequested);
 
-	vector<WTF::String> queue;
+    vector<WTF::String> queue;
     {
         MutexLocker locker(m_sharedWebIconDatabase->m_webIconDatabaseClient->m_notificationMutex);
         queue.swap(m_sharedWebIconDatabase->m_notificationQueue);
@@ -355,9 +355,9 @@ bool operator<(BalPoint p1, BalPoint p2)
 
 void WebIconDatabase::didFinishURLIconImport()
 {
-	D(kprintf("WebIconDatabase::didFinishURLIconImport()\n"));
-	SetAttrs(app, MA_OWBApp_FavIconImportComplete, TRUE, TAG_DONE);
-	//allowDatabaseCleanup();
+    D(kprintf("WebIconDatabase::didFinishURLIconImport()\n"));
+    SetAttrs(app, MA_OWBApp_FavIconImportComplete, TRUE, TAG_DONE);
+    //allowDatabaseCleanup();
 }
 
 #endif

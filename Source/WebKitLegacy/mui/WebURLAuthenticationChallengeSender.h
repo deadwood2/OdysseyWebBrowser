@@ -44,7 +44,7 @@
 
 namespace WebCore {
     class AuthenticationClient;
-	class ResourceHandle;
+    class ResourceHandle;
 }
 
 class WebURLAuthenticationChallenge;
@@ -57,14 +57,14 @@ protected:
      * create a new instance of WebURLAuthenticationChallengeSender
      */
     static WebURLAuthenticationChallengeSender* createInstance(WebCore::AuthenticationClient*);
-	static WebURLAuthenticationChallengeSender* createInstance(RefPtr<WebCore::ResourceHandle>&&);
+    static WebURLAuthenticationChallengeSender* createInstance(RefPtr<WebCore::ResourceHandle>&&);
 private:
 
     /**
      *  WebURLAuthenticationChallengeSender constructor
      */
     WebURLAuthenticationChallengeSender(WebCore::AuthenticationClient*);
-	WebURLAuthenticationChallengeSender(RefPtr<WebCore::ResourceHandle>&&);
+    WebURLAuthenticationChallengeSender(RefPtr<WebCore::ResourceHandle>&&);
 public:
 
     /**
@@ -101,7 +101,7 @@ protected:
 private:
 
     WebCore::AuthenticationClient* m_authenticationClient;
-	RefPtr<WebCore::ResourceHandle> m_handle;
+    RefPtr<WebCore::ResourceHandle> m_handle;
 };
 
 #endif

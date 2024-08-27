@@ -34,95 +34,95 @@
 
 struct Data
 {
-	Object *bookmarkgroup;
+    Object *bookmarkgroup;
 };
 
 DEFNEW
 {
-	Object *bookmarkgroup;
+    Object *bookmarkgroup;
 
-	obj = (Object *) DoSuperNew(cl, obj,
-			MUIA_Window_ID, MAKE_ID('O','B','M','S'),
-			MUIA_Window_Title, GSI(MSG_BOOKMARKWINDOW_BOOKMARKS),
-			MUIA_Window_NoMenus, TRUE,
-			WindowContents, VGroup,
-				Child, bookmarkgroup = (Object *) NewObject(getbookmarkgroupclass(), NULL, End,
-				End,
-			TAG_MORE, msg->ops_AttrList);
+    obj = (Object *) DoSuperNew(cl, obj,
+            MUIA_Window_ID, MAKE_ID('O','B','M','S'),
+            MUIA_Window_Title, GSI(MSG_BOOKMARKWINDOW_BOOKMARKS),
+            MUIA_Window_NoMenus, TRUE,
+            WindowContents, VGroup,
+                Child, bookmarkgroup = (Object *) NewObject(getbookmarkgroupclass(), NULL, End,
+                End,
+            TAG_MORE, msg->ops_AttrList);
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->bookmarkgroup = bookmarkgroup;
+        data->bookmarkgroup = bookmarkgroup;
 
-		DoMethod(obj, MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 3, MUIM_Set, MUIA_Window_Open, FALSE);
-	}
+        DoMethod(obj, MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 3, MUIM_Set, MUIA_Window_Open, FALSE);
+    }
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 DEFGET
 {
-	switch (msg->opg_AttrID)
-	{
-		case MA_OWB_WindowType:
-		{
-			*msg->opg_Storage = (IPTR) MV_OWB_Window_Bookmarks;
-		}
-		return TRUE;
-	}
+    switch (msg->opg_AttrID)
+    {
+        case MA_OWB_WindowType:
+        {
+            *msg->opg_Storage = (IPTR) MV_OWB_Window_Bookmarks;
+        }
+        return TRUE;
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 /* Forwarders */
 DEFSMETHOD(Bookmarkgroup_AddLink)
 {
-	GETDATA;
-	return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
 }
 
 DEFSMETHOD(Bookmarkgroup_Update)
 {
-	GETDATA;
-	return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
 }
 
 DEFSMETHOD(Bookmarkgroup_LoadHtml)
 {
-	GETDATA;
-	return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
 }
 
 DEFSMETHOD(Bookmarkgroup_BuildMenu)
 {
-	GETDATA;
-	return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
 }
 
 DEFSMETHOD(Bookmarkgroup_RegisterQLGroup)
 {
-	GETDATA;
-	return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
 }
 
 DEFSMETHOD(Bookmarkgroup_UnRegisterQLGroup)
 {
-	GETDATA;
-	return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
 }
 
 DEFSMETHOD(Bookmarkgroup_RemoveQuickLink)
 {
-	GETDATA;
-	return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
 }
 
 DEFSMETHOD(Bookmarkgroup_ContainsURL)
 {
-	GETDATA;
-	return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->bookmarkgroup, (_Msg_*)msg);
 }
 
 BEGINMTABLE

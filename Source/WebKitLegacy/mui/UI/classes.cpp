@@ -34,9 +34,9 @@
 /* Classes management */
 
 struct classdesc {
-	char * name;
-	APTR initfunc;
-	APTR cleanupfunc;
+    char * name;
+    APTR initfunc;
+    APTR cleanupfunc;
 };
 
 #define CLASSENT(s) {#s, (APTR) create_##s##class, (APTR) delete_##s##class}
@@ -44,116 +44,116 @@ struct classdesc {
 /* classes declaration */
 
 static const struct classdesc cd[] = {
-	CLASSENT(owbapp),
-	CLASSENT(owbwindow),
-	CLASSENT(owbgroup),
-	CLASSENT(owbbrowser),
+    CLASSENT(owbapp),
+    CLASSENT(owbwindow),
+    CLASSENT(owbgroup),
+    CLASSENT(owbbrowser),
 
-	CLASSENT(navigationgroup),
-	CLASSENT(addressbargroup),
-	CLASSENT(searchbargroup),
-	CLASSENT(findtext),
-	CLASSENT(downloadwindow),
-	CLASSENT(downloadgroup),
-	CLASSENT(downloadlist),
-	CLASSENT(prefswindow),
-	CLASSENT(toolbutton),
-	CLASSENT(transferanim),
-	CLASSENT(tabtransferanim),
-	CLASSENT(popstring),
-	CLASSENT(historypopstring),
-//	  CLASSENT(fontfamilypopstring),
-	CLASSENT(historylist),
-	CLASSENT(title),
-	CLASSENT(titlelabel),
-	CLASSENT(menu),
-	CLASSENT(menuitem),
-	CLASSENT(bookmarkwindow),
-	CLASSENT(bookmarkgroup),
-	CLASSENT(bookmarklisttree),
-	CLASSENT(linklist),
-	CLASSENT(quicklinkgroup),
-	CLASSENT(quicklinkbuttongroup),
-	CLASSENT(quicklinkparentgroup),
-	CLASSENT(historybutton),
-	CLASSENT(networkwindow),
-	CLASSENT(networklist),
-	CLASSENT(networkledsgroup),
-	CLASSENT(splashwindow),
-	CLASSENT(loginwindow),
-	CLASSENT(consolewindow),
-	CLASSENT(consolelist),
-	CLASSENT(bookmarkpanelgroup),
-	CLASSENT(contextmenugroup),
-	CLASSENT(contextmenulist),
-	CLASSENT(mimetypegroup),
-	CLASSENT(mimetypelist),
-	CLASSENT(choosetitlegroup),
-	CLASSENT(toolbutton_newtab),
-	CLASSENT(toolbutton_addbookmark),
-	CLASSENT(toolbutton_bookmarks),
-	CLASSENT(urlstring),
-	CLASSENT(favicon),
-	CLASSENT(icon),
-//	  CLASSENT(historywindow),
-	CLASSENT(historypanelgroup),
-	CLASSENT(historylisttree),
-	CLASSENT(passwordmanagerwindow),
-	CLASSENT(passwordmanagergroup),
-	CLASSENT(passwordmanagerlist),
-	CLASSENT(cookiemanagerwindow),
-	CLASSENT(cookiemanagergroup),
-	CLASSENT(cookiemanagerlisttree),
-	CLASSENT(blockmanagerwindow),
-	CLASSENT(blockmanagergroup),
-	CLASSENT(blockmanagerlist),
-	CLASSENT(searchmanagerwindow),
-	CLASSENT(searchmanagergroup),
-	CLASSENT(searchmanagerlist),
-	CLASSENT(scriptmanagerwindow),
-	CLASSENT(scriptmanagergroup),
-	CLASSENT(scriptmanagerlist),
-	CLASSENT(scriptmanagerhostlist),
-	CLASSENT(urlprefswindow),
-	CLASSENT(urlprefsgroup),
-	CLASSENT(urlprefslist),
-	CLASSENT(mediacontrolsgroup),
-	CLASSENT(seekslider),
-	CLASSENT(volumeslider),
-	CLASSENT(spacer),
-	CLASSENT(suggestlist),
-	CLASSENT(suggestpopstring),
-	CLASSENT(printerwindow),
-	CLASSENT(autofillpopup),
-	CLASSENT(autofillpopuplist),
-	CLASSENT(colorchooserpopup),
-	CLASSENT(datetimechooserpopup),
+    CLASSENT(navigationgroup),
+    CLASSENT(addressbargroup),
+    CLASSENT(searchbargroup),
+    CLASSENT(findtext),
+    CLASSENT(downloadwindow),
+    CLASSENT(downloadgroup),
+    CLASSENT(downloadlist),
+    CLASSENT(prefswindow),
+    CLASSENT(toolbutton),
+    CLASSENT(transferanim),
+    CLASSENT(tabtransferanim),
+    CLASSENT(popstring),
+    CLASSENT(historypopstring),
+//      CLASSENT(fontfamilypopstring),
+    CLASSENT(historylist),
+    CLASSENT(title),
+    CLASSENT(titlelabel),
+    CLASSENT(menu),
+    CLASSENT(menuitem),
+    CLASSENT(bookmarkwindow),
+    CLASSENT(bookmarkgroup),
+    CLASSENT(bookmarklisttree),
+    CLASSENT(linklist),
+    CLASSENT(quicklinkgroup),
+    CLASSENT(quicklinkbuttongroup),
+    CLASSENT(quicklinkparentgroup),
+    CLASSENT(historybutton),
+    CLASSENT(networkwindow),
+    CLASSENT(networklist),
+    CLASSENT(networkledsgroup),
+    CLASSENT(splashwindow),
+    CLASSENT(loginwindow),
+    CLASSENT(consolewindow),
+    CLASSENT(consolelist),
+    CLASSENT(bookmarkpanelgroup),
+    CLASSENT(contextmenugroup),
+    CLASSENT(contextmenulist),
+    CLASSENT(mimetypegroup),
+    CLASSENT(mimetypelist),
+    CLASSENT(choosetitlegroup),
+    CLASSENT(toolbutton_newtab),
+    CLASSENT(toolbutton_addbookmark),
+    CLASSENT(toolbutton_bookmarks),
+    CLASSENT(urlstring),
+    CLASSENT(favicon),
+    CLASSENT(icon),
+//      CLASSENT(historywindow),
+    CLASSENT(historypanelgroup),
+    CLASSENT(historylisttree),
+    CLASSENT(passwordmanagerwindow),
+    CLASSENT(passwordmanagergroup),
+    CLASSENT(passwordmanagerlist),
+    CLASSENT(cookiemanagerwindow),
+    CLASSENT(cookiemanagergroup),
+    CLASSENT(cookiemanagerlisttree),
+    CLASSENT(blockmanagerwindow),
+    CLASSENT(blockmanagergroup),
+    CLASSENT(blockmanagerlist),
+    CLASSENT(searchmanagerwindow),
+    CLASSENT(searchmanagergroup),
+    CLASSENT(searchmanagerlist),
+    CLASSENT(scriptmanagerwindow),
+    CLASSENT(scriptmanagergroup),
+    CLASSENT(scriptmanagerlist),
+    CLASSENT(scriptmanagerhostlist),
+    CLASSENT(urlprefswindow),
+    CLASSENT(urlprefsgroup),
+    CLASSENT(urlprefslist),
+    CLASSENT(mediacontrolsgroup),
+    CLASSENT(seekslider),
+    CLASSENT(volumeslider),
+    CLASSENT(spacer),
+    CLASSENT(suggestlist),
+    CLASSENT(suggestpopstring),
+    CLASSENT(printerwindow),
+    CLASSENT(autofillpopup),
+    CLASSENT(autofillpopuplist),
+    CLASSENT(colorchooserpopup),
+    CLASSENT(datetimechooserpopup),
 
-	{ 0, 0, 0 }
+    { 0, 0, 0 }
 };
 
 ULONG classes_init(void)
 {
-	ULONG i;
+    ULONG i;
 
-	for (i = 0; cd[i].name; i++)
-	{
-		if (!(*(int(*)(void))cd[i].initfunc)())
-		{
-			fprintf(stderr, "Couldn't create class %s.\n", cd[i].name);
-			return (FALSE);
-		}
-	}
-	return (TRUE);
+    for (i = 0; cd[i].name; i++)
+    {
+        if (!(*(int(*)(void))cd[i].initfunc)())
+        {
+            fprintf(stderr, "Couldn't create class %s.\n", cd[i].name);
+            return (FALSE);
+        }
+    }
+    return (TRUE);
 }
 
 void classes_cleanup(void)
 {
-	LONG i;
+    LONG i;
 
-	for (i = sizeof(cd) / sizeof(struct classdesc) - 2; i >= 0; i--)
-	{
-		(*(void(*)(void))cd[i].cleanupfunc)();
-	}
+    for (i = sizeof(cd) / sizeof(struct classdesc) - 2; i >= 0; i--)
+    {
+        (*(void(*)(void))cd[i].cleanupfunc)();
+    }
 }
 

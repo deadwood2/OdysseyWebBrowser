@@ -49,7 +49,7 @@ namespace WebCore {
     bool enabled();
 
   private:
-	RefPtr<PopupMenuMorphOS> m_popup;
+    RefPtr<PopupMenuMorphOS> m_popup;
 
   };
 

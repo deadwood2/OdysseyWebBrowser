@@ -131,7 +131,7 @@ void WebChromeClient::takeFocus(FocusDirection direction)
 {
     BalWidget *widget = m_webView->viewWindow();
     if(widget) 
-		DoMethod(widget->browser, MM_OWBBrowser_ReturnFocus);
+        DoMethod(widget->browser, MM_OWBBrowser_ReturnFocus);
 }
 
 void WebChromeClient::focusedElementChanged(Element*) 
@@ -144,44 +144,44 @@ void WebChromeClient::focusedFrameChanged(WebCore::Frame*)
 
 Page* WebChromeClient::createWindow(Frame&, const FrameLoadRequest& frameLoadRequest, const WindowFeatures& features, const WebCore::NavigationAction&)
 {
-	if (features.dialog)
-	{
-		kprintf("%s: features.dialog not implemented on MorphOS.\n", __PRETTY_FUNCTION__);
-		return 0;
-	}
+    if (features.dialog)
+    {
+        kprintf("%s: features.dialog not implemented on MorphOS.\n", __PRETTY_FUNCTION__);
+        return 0;
+    }
 
-	//kprintf("WebChromeClient::createWindow(url: <%s> framename: <%s> empty: %d)\n", frameLoadRequest.resourceRequest().url().string().utf8().data(), frameLoadRequest.frameName().utf8().data(),  frameLoadRequest.isEmpty());
+    //kprintf("WebChromeClient::createWindow(url: <%s> framename: <%s> empty: %d)\n", frameLoadRequest.resourceRequest().url().string().utf8().data(), frameLoadRequest.frameName().utf8().data(),  frameLoadRequest.isEmpty());
 
-	ULONG frame = frameLoadRequest.isEmpty();
-	ULONG privatebrowsing = getv(m_webView->viewWindow()->browser, MA_OWBBrowser_PrivateBrowsing);
-	BalWidget *widget = NULL;
+    ULONG frame = frameLoadRequest.isEmpty();
+    ULONG privatebrowsing = getv(m_webView->viewWindow()->browser, MA_OWBBrowser_PrivateBrowsing);
+    BalWidget *widget = NULL;
 
-	if(features.newPagePolicy == NEWPAGE_POLICY_WINDOW)
-	{
-	    widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, frame ? frameLoadRequest.frameName().utf8().data() : frameLoadRequest.resourceRequest().url().string().utf8().data(), frame, NULL, FALSE, &features, privatebrowsing);
-	}
-	else if(features.newPagePolicy == NEWPAGE_POLICY_TAB)
-	{
-	    widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, frame ? frameLoadRequest.frameName().utf8().data() : frameLoadRequest.resourceRequest().url().string().utf8().data(), frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
-	}
-	else /* User settings are considered for new page */
-	{
-		ULONG popuppolicy = getv(app, MA_OWBApp_PopupPolicy);
+    if(features.newPagePolicy == NEWPAGE_POLICY_WINDOW)
+    {
+        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, frame ? frameLoadRequest.frameName().utf8().data() : frameLoadRequest.resourceRequest().url().string().utf8().data(), frame, NULL, FALSE, &features, privatebrowsing);
+    }
+    else if(features.newPagePolicy == NEWPAGE_POLICY_TAB)
+    {
+        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, frame ? frameLoadRequest.frameName().utf8().data() : frameLoadRequest.resourceRequest().url().string().utf8().data(), frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
+    }
+    else /* User settings are considered for new page */
+    {
+        ULONG popuppolicy = getv(app, MA_OWBApp_PopupPolicy);
 
-		if(popuppolicy == MV_OWBApp_NewPagePolicy_Window)
-		{
-		    widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, frame ? frameLoadRequest.frameName().utf8().data() : frameLoadRequest.resourceRequest().url().string().utf8().data(), frame, NULL, FALSE, &features, privatebrowsing);
-		}
-		else if(popuppolicy == MV_OWBApp_NewPagePolicy_Tab)
-		{
-		    widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, frame ? frameLoadRequest.frameName().utf8().data() : frameLoadRequest.resourceRequest().url().string().utf8().data(), frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
-		}
-	}
+        if(popuppolicy == MV_OWBApp_NewPagePolicy_Window)
+        {
+            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, frame ? frameLoadRequest.frameName().utf8().data() : frameLoadRequest.resourceRequest().url().string().utf8().data(), frame, NULL, FALSE, &features, privatebrowsing);
+        }
+        else if(popuppolicy == MV_OWBApp_NewPagePolicy_Tab)
+        {
+            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, frame ? frameLoadRequest.frameName().utf8().data() : frameLoadRequest.resourceRequest().url().string().utf8().data(), frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
+        }
+    }
 
-	if(widget)
-	{
-		return core(widget->webView);
-	}
+    if(widget)
+    {
+        return core(widget->webView);
+    }
 
     return 0;
 }
@@ -309,12 +309,12 @@ bool WebChromeClient::runJavaScriptPrompt(Frame& frame, const String& message, c
     SharedPtr<JSActionDelegate> jsActionDelegate = m_webView->jsActionDelegate();
     if (jsActionDelegate)
     {
-		if(jsActionDelegate->jsPrompt(m_webView->mainFrame(), message.utf8().data(), defaultValue.utf8().data(), &value))
-		{
-			result = value;
-			free(value);
-			return true;
-		}
+        if(jsActionDelegate->jsPrompt(m_webView->mainFrame(), message.utf8().data(), defaultValue.utf8().data(), &value))
+        {
+            result = value;
+            free(value);
+            return true;
+        }
     }
     return false;
 }
@@ -323,15 +323,15 @@ void WebChromeClient::setStatusbarText(const String& statusText)
 {
     BalWidget *widget = m_webView->viewWindow();
 
-	if(widget)
-	{
-		CString statusUT8 = statusText.utf8();
-		char *converted_status = utf8_to_local(statusUT8.data());
+    if(widget)
+    {
+        CString statusUT8 = statusText.utf8();
+        char *converted_status = utf8_to_local(statusUT8.data());
 
-		SetAttrs(widget->browser, MA_OWBBrowser_StatusText, converted_status, TAG_DONE);
+        SetAttrs(widget->browser, MA_OWBBrowser_StatusText, converted_status, TAG_DONE);
 
-		free(converted_status);
-	}
+        free(converted_status);
+    }
 }
 
 KeyboardUIMode WebChromeClient::keyboardUIMode()
@@ -397,9 +397,9 @@ bool WebChromeClient::shouldUnavailablePluginMessageBeButton(RenderEmbeddedObjec
 
 void WebChromeClient::unavailablePluginButtonClicked(Element& element, RenderEmbeddedObject::PluginUnavailabilityReason pluginUnavailabilityReason) const
 {
-	BalWidget *widget = m_webView->viewWindow();
-	if(widget)
-		DoMethod(widget->window, MM_OWBWindow_LoadURL, "http://fabportnawak.free.fr/owb/plugins/"); // Just a test
+    BalWidget *widget = m_webView->viewWindow();
+    if(widget)
+        DoMethod(widget->window, MM_OWBWindow_LoadURL, "http://fabportnawak.free.fr/owb/plugins/"); // Just a test
 }
 
 void WebChromeClient::setToolTip(const String& toolTip, TextDirection)
@@ -409,7 +409,7 @@ void WebChromeClient::setToolTip(const String& toolTip, TextDirection)
 
 void WebChromeClient::print(Frame& frame)
 {
-	DoMethod((Object *) getv(app, MA_OWBApp_PrinterWindow), MM_PrinterWindow_PrintDocument, &frame);
+    DoMethod((Object *) getv(app, MA_OWBApp_PrinterWindow), MM_PrinterWindow_PrintDocument, &frame);
 }
 
 void WebChromeClient::exceededDatabaseQuota(Frame& frame, const String& databaseIdentifier, DatabaseDetails)
@@ -442,7 +442,7 @@ void WebChromeClient::reachedMaxAppCacheSize(int64_t spaceNeeded)
 
 void WebChromeClient::reachedApplicationCacheOriginQuota(SecurityOrigin&, int64_t)
 {
-	notImplemented();
+    notImplemented();
 }
 
 #if ENABLE(INPUT_TYPE_COLOR)
@@ -461,44 +461,44 @@ void WebChromeClient::runOpenPanel(Frame&, FileChooser& prpFileChooser)
 
     if(multiFile)
     {
-		APTR tags[] = { (APTR) ASLFR_TitleText, (APTR) GSI(MSG_WEBVIEW_UPLOAD_FILES),
-						(APTR) ASLFR_InitialPattern, (APTR) "#?",
-						TAG_DONE };
+        APTR tags[] = { (APTR) ASLFR_TitleText, (APTR) GSI(MSG_WEBVIEW_UPLOAD_FILES),
+                        (APTR) ASLFR_InitialPattern, (APTR) "#?",
+                        TAG_DONE };
 
-		ULONG count;
-		char ** files = NULL;
-	    Vector<String> names;
+        ULONG count;
+        char ** files = NULL;
+        Vector<String> names;
 
-		count = asl_run_multiple((char *)getv(app, MA_OWBApp_CurrentDirectory), (struct TagItem *) &tags, &files, TRUE);
+        count = asl_run_multiple((char *)getv(app, MA_OWBApp_CurrentDirectory), (struct TagItem *) &tags, &files, TRUE);
 
-		if(files)
-		{
-			ULONG i;
-			for(i = 0; i < count; i++)
-			{
-				//kprintf("file = %s\n", files[i]);
-				names.append(String(files[i]));
-			}
+        if(files)
+        {
+            ULONG i;
+            for(i = 0; i < count; i++)
+            {
+                //kprintf("file = %s\n", files[i]);
+                names.append(String(files[i]));
+            }
 
-			chooser.chooseFiles(names);
-			asl_free(count, files);
-		}
-	}
-	else
-	{
-		APTR tags[] = { (APTR) ASLFR_TitleText, (APTR) GSI(MSG_WEBVIEW_UPLOAD_FILE),
-						(APTR) ASLFR_InitialPattern, (APTR) "#?",
-						TAG_DONE };
+            chooser.chooseFiles(names);
+            asl_free(count, files);
+        }
+    }
+    else
+    {
+        APTR tags[] = { (APTR) ASLFR_TitleText, (APTR) GSI(MSG_WEBVIEW_UPLOAD_FILE),
+                        (APTR) ASLFR_InitialPattern, (APTR) "#?",
+                        TAG_DONE };
 
-		char *file = asl_run((char *)getv(app, MA_OWBApp_CurrentDirectory), (struct TagItem *) &tags, TRUE);
+        char *file = asl_run((char *)getv(app, MA_OWBApp_CurrentDirectory), (struct TagItem *) &tags, TRUE);
 
-		if(file)
-		{
-			//kprintf("file = %s\n", file);
-			chooser.chooseFile(String(file));
-			FreeVecTaskPooled(file);
-		}
-	}
+        if(file)
+        {
+            //kprintf("file = %s\n", file);
+            chooser.chooseFile(String(file));
+            FreeVecTaskPooled(file);
+        }
+    }
 }
 
 void WebChromeClient::loadIconForFiles(const Vector<WTF::String>& filenames, WebCore::FileIconLoader& loader)   
@@ -508,28 +508,28 @@ void WebChromeClient::loadIconForFiles(const Vector<WTF::String>& filenames, Web
 
 void WebChromeClient::setCursor(const Cursor& cursor)
 {
-	//FIXME: implement me!
-	/*
-	HCURSOR platformCursor = cursor.platformCursor()->nativeCursor();
-	if (!platformCursor)
-		return;
-	if (COMPtr<IWebUIDelegate> delegate = uiDelegate()) {
-		COMPtr<IWebUIDelegatePrivate> delegatePrivate(Query, delegate);
-		if (delegatePrivate) {
-			if (SUCCEEDED(delegatePrivate->webViewSetCursor(m_webView, reinterpret_cast<OLE_HANDLE>(platformCursor))))
-				return;
-		}
-	}
+    //FIXME: implement me!
+    /*
+    HCURSOR platformCursor = cursor.platformCursor()->nativeCursor();
+    if (!platformCursor)
+        return;
+    if (COMPtr<IWebUIDelegate> delegate = uiDelegate()) {
+        COMPtr<IWebUIDelegatePrivate> delegatePrivate(Query, delegate);
+        if (delegatePrivate) {
+            if (SUCCEEDED(delegatePrivate->webViewSetCursor(m_webView, reinterpret_cast<OLE_HANDLE>(platformCursor))))
+                return;
+        }
+    }
 
-	m_webView->setLastCursor(platformCursor);
-	::SetCursor(platformCursor);
-	return;
-	*/
+    m_webView->setLastCursor(platformCursor);
+    ::SetCursor(platformCursor);
+    return;
+    */
 }
 
 void WebChromeClient::setCursorHiddenUntilMouseMoves(bool)
 {
-	notImplemented();
+    notImplemented();
 }
 
 
@@ -573,7 +573,7 @@ asm("int3");
 bool WebChromeClient::supportsFullScreenForElement(const WebCore::Element& element, bool)
 {
 #if ENABLE(VIDEO)
-	//kprintf("supportsFullScreenForElement %d %d\n", element && element->isMediaElement(), element && element->isMediaElement());
+    //kprintf("supportsFullScreenForElement %d %d\n", element && element->isMediaElement(), element && element->isMediaElement());
     return element.isMediaElement();
 #else
     return false;
@@ -582,7 +582,7 @@ bool WebChromeClient::supportsFullScreenForElement(const WebCore::Element& eleme
 
 void WebChromeClient::enterFullScreenForElement(WebCore::Element& element)
 {
-	//kprintf("enterFullScreenForElement\n");
+    //kprintf("enterFullScreenForElement\n");
     element.document().webkitWillEnterFullScreen(element);
     m_webView->enterFullScreenForElement(&element);
     element.document().webkitDidEnterFullScreen();
@@ -591,7 +591,7 @@ void WebChromeClient::enterFullScreenForElement(WebCore::Element& element)
 
 void WebChromeClient::exitFullScreenForElement(WebCore::Element*)
 {
-	//kprintf("exitFullScreenForElement\n");
+    //kprintf("exitFullScreenForElement\n");
 
     // The element passed into this function is not reliable, i.e. it could
     // be null. In addition the parameter may be disappearing in the future.
@@ -657,7 +657,7 @@ RefPtr<WebCore::Icon> WebChromeClient::createIconForFiles(const Vector<String>&)
 //
 //void WebChromeClient::setLastSetCursorToCurrentCursor()
 //{
-//	//m_webView->setLastCursor(::GetCursor());
+//    //m_webView->setLastCursor(::GetCursor());
 //}
 //
 //bool WebChromeClient::tabsToLinks() const
@@ -667,12 +667,12 @@ RefPtr<WebCore::Icon> WebChromeClient::createIconForFiles(const Vector<String>&)
 //}
 //bool WebChromeClient::shouldInterruptJavaScript()
 //{
-//	BalWidget* widget = m_webView->viewWindow();
+//    BalWidget* widget = m_webView->viewWindow();
 //
-//	if(widget)
-//	{
-//		return MUI_RequestA(app, widget->window, 0, GSI(MSG_WEBVIEW_JSACTION_TITLE), GSI(MSG_REQUESTER_YES_NO), GSI(MSG_WEBVIEW_INTERRUPT_SCRIPT), NULL);
-//	}
+//    if(widget)
+//    {
+//        return MUI_RequestA(app, widget->window, 0, GSI(MSG_WEBVIEW_JSACTION_TITLE), GSI(MSG_REQUESTER_YES_NO), GSI(MSG_WEBVIEW_INTERRUPT_SCRIPT), NULL);
+//    }
 //    return false;
 //}
 //

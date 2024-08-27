@@ -123,7 +123,7 @@ public:
     /*
      * dispatch not enought memory
      */
-	virtual void dispatchNotEnoughMemory(WebFrame*) = 0;
+    virtual void dispatchNotEnoughMemory(WebFrame*) = 0;
 
     /*
      * didDisplayInsecureContent

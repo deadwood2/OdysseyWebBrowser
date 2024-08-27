@@ -64,9 +64,9 @@ using namespace WebCore;
 using namespace std;
 
 WebInspectorClient::WebInspectorClient(WebView *view)
-	: m_webView(view)
-	, m_frontendPage(0)
-	, m_frontendClient(0)
+    : m_webView(view)
+    , m_frontendPage(0)
+    , m_frontendClient(0)
 {
 }
 
@@ -84,16 +84,16 @@ void WebInspectorClient::releaseFrontend()
 
 void WebInspectorClient::highlight()
 {
-	//hideHighlight();
+    //hideHighlight();
 }
 
 void WebInspectorClient::hideHighlight()
 {
-	/*
-	IntRect rect(0, 0, core(m_webView->mainFrame())->view()->contentsWidth(), core(m_webView->mainFrame())->view()->contentsHeight());
-	m_webView->addToDirtyRegion(rect);
-	m_webView->sendExposeEvent(rect);
-	*/
+    /*
+    IntRect rect(0, 0, core(m_webView->mainFrame())->view()->contentsWidth(), core(m_webView->mainFrame())->view()->contentsHeight());
+    m_webView->addToDirtyRegion(rect);
+    m_webView->sendExposeEvent(rect);
+    */
 }
 
 void WebInspectorClient::updateHighlight()
@@ -136,8 +136,8 @@ WebInspectorFrontendClient::WebInspectorFrontendClient(WebView* inspectedWebView
 
 WebInspectorFrontendClient::~WebInspectorFrontendClient()
 {
-	D(kprintf("WebInspectorFrontendClient::~WebInspectorFrontendClient\n"));
-	destroyInspectorView(true); 
+    D(kprintf("WebInspectorFrontendClient::~WebInspectorFrontendClient\n"));
+    destroyInspectorView(true); 
 }
 
 void WebInspectorFrontendClient::frontendLoaded()
@@ -166,8 +166,8 @@ void WebInspectorFrontendClient::bringToFront()
 
 void WebInspectorFrontendClient::closeWindow()
 {
-	D(kprintf("closeWindow\n"));
-	destroyInspectorView(true);
+    D(kprintf("closeWindow\n"));
+    destroyInspectorView(true);
 }
 
 void WebInspectorFrontendClient::attachWindow(DockSide)
@@ -228,18 +228,18 @@ void WebInspectorFrontendClient::destroyInspectorView(bool notifyInspectorContro
 
     m_destroyingInspectorView = true;
 
-	if (notifyInspectorController)
-	{
-		D(kprintf("disconnectFrontend\n"));
-		if(m_inspectedWebView)
-		{
-			core(m_inspectedWebView)->inspectorController().disconnectFrontend(*m_inspectorClient);
-		}
-		if(m_inspectorClient)
-		{
-			m_inspectorClient->updateHighlight();
-		}
-	}
+    if (notifyInspectorController)
+    {
+        D(kprintf("disconnectFrontend\n"));
+        if(m_inspectedWebView)
+        {
+            core(m_inspectedWebView)->inspectorController().disconnectFrontend(*m_inspectorClient);
+        }
+        if(m_inspectorClient)
+        {
+            m_inspectorClient->updateHighlight();
+        }
+    }
 }
 
 Inspector::FrontendChannel* WebInspectorClient::openLocalFrontend(WebCore::InspectorController*)
@@ -257,7 +257,7 @@ void WebInspectorClient::inspectedPageDestroyed()
 //    const char* inspectorURL = getenv("OWB_INSPECTOR_URL");
 //    if (!inspectorURL)
 //    {
-//	inspectorURL = "PROGDIR:webinspector/inspector.html";
+//    inspectorURL = "PROGDIR:webinspector/inspector.html";
 //    }
 //
 //#if 1
@@ -272,15 +272,15 @@ void WebInspectorClient::inspectedPageDestroyed()
 //
 //    if(widget)
 //    {
-//		m_frontendPage = core(widget->webView);
-//		if(m_frontendPage)
-//		{
-//		    WebInspectorFrontendClient * frontendClient = new WebInspectorFrontendClient(m_webView, widget->webView, m_frontendPage, this,
-//		            std::make_unique<WebCore::InspectorFrontendClientLocal::Settings>() );
-//			m_frontendClient = frontendClient;
-//			m_frontendPage->inspectorController().setInspectorFrontendClient(frontendClient);
-//			return this;
-//		}
+//        m_frontendPage = core(widget->webView);
+//        if(m_frontendPage)
+//        {
+//            WebInspectorFrontendClient * frontendClient = new WebInspectorFrontendClient(m_webView, widget->webView, m_frontendPage, this,
+//                    std::make_unique<WebCore::InspectorFrontendClientLocal::Settings>() );
+//            m_frontendClient = frontendClient;
+//            m_frontendPage->inspectorController().setInspectorFrontendClient(frontendClient);
+//            return this;
+//        }
 //    }
 //    return 0;
 //}

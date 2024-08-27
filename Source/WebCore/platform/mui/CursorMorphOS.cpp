@@ -43,75 +43,75 @@ namespace WebCore {
 void Cursor::ensurePlatformCursor() const
 {
 #if !OS(AROS)
-	ULONG pointertype;
+    ULONG pointertype;
 
-	switch(m_type)
-	{
-		default:
-		case Pointer:
-			pointertype = POINTERTYPE_NORMAL;
-			break;
-		case Hand:
-			pointertype = POINTERTYPE_SELECTLINK;
-			break;
-		case Cross:
-			pointertype = POINTERTYPE_AIMING;
-			break;
-		case Wait:
-			pointertype = POINTERTYPE_BUSY;
-			break;
-		case Help:
-			pointertype = POINTERTYPE_HELP;
-			break;
-		case IBeam:
-		case VerticalText:
-			pointertype = POINTERTYPE_SELECTTEXT;
-			break;
-		case Move:
-		case Grab:
-		case Grabbing:
-			pointertype = POINTERTYPE_MOVE;
-			break;
-		case EastResize:
-		case WestResize:
-		case EastWestResize:
-		case ColumnResize:
-			pointertype = POINTERTYPE_HORIZONTALRESIZE;
-			break;
-		case NorthResize:
-		case SouthResize:
-		case NorthSouthResize:
-		case RowResize:
-			pointertype = POINTERTYPE_VERTICALRESIZE;
-			break;
-		case NorthEastResize:
-		case SouthWestResize:
-		case NorthEastSouthWestResize:
-			pointertype = POINTERTYPE_DIAGONALRESIZE1;
-			break;
-		case SouthEastResize:
-		case NorthWestResize:
-		case NorthWestSouthEastResize:
-			pointertype = POINTERTYPE_DIAGONALRESIZE2;
-			break;
-		case Progress:
-			pointertype = POINTERTYPE_WORKING;
-			break;
-		case NoDrop:
-		case NotAllowed:
-			pointertype = POINTERTYPE_NOTAVAILABLE;
-			break;
-	}
+    switch(m_type)
+    {
+        default:
+        case Pointer:
+            pointertype = POINTERTYPE_NORMAL;
+            break;
+        case Hand:
+            pointertype = POINTERTYPE_SELECTLINK;
+            break;
+        case Cross:
+            pointertype = POINTERTYPE_AIMING;
+            break;
+        case Wait:
+            pointertype = POINTERTYPE_BUSY;
+            break;
+        case Help:
+            pointertype = POINTERTYPE_HELP;
+            break;
+        case IBeam:
+        case VerticalText:
+            pointertype = POINTERTYPE_SELECTTEXT;
+            break;
+        case Move:
+        case Grab:
+        case Grabbing:
+            pointertype = POINTERTYPE_MOVE;
+            break;
+        case EastResize:
+        case WestResize:
+        case EastWestResize:
+        case ColumnResize:
+            pointertype = POINTERTYPE_HORIZONTALRESIZE;
+            break;
+        case NorthResize:
+        case SouthResize:
+        case NorthSouthResize:
+        case RowResize:
+            pointertype = POINTERTYPE_VERTICALRESIZE;
+            break;
+        case NorthEastResize:
+        case SouthWestResize:
+        case NorthEastSouthWestResize:
+            pointertype = POINTERTYPE_DIAGONALRESIZE1;
+            break;
+        case SouthEastResize:
+        case NorthWestResize:
+        case NorthWestSouthEastResize:
+            pointertype = POINTERTYPE_DIAGONALRESIZE2;
+            break;
+        case Progress:
+            pointertype = POINTERTYPE_WORKING;
+            break;
+        case NoDrop:
+        case NotAllowed:
+            pointertype = POINTERTYPE_NOTAVAILABLE;
+            break;
+    }
 
-	m_platformCursor = (void *) pointertype;
+    m_platformCursor = (void *) pointertype;
 #endif
 }
 
 Cursor& Cursor::operator=(const Cursor& other)
 {
-	//fprintf(stderr, "%s\n", __PRETTY_FUNCTION__);
-	m_platformCursor = other.m_platformCursor;
-	return *this;
+    //fprintf(stderr, "%s\n", __PRETTY_FUNCTION__);
+    m_platformCursor = other.m_platformCursor;
+    return *this;
 }
 
 }

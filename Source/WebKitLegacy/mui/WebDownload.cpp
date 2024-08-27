@@ -63,19 +63,19 @@ using namespace WebCore;
 /*****************************************************************************************************/
 
 WebDownloadPrivate::WebDownloadPrivate()
-		: allowOverwrite(false)
-		, allowResume(false)
-		, quiet(false)
-		, currentSize(0)
-		, totalSize(0)
-		, startOffset(0)
-		, state(WEBKIT_WEB_DOWNLOAD_STATE_ERROR)
-		, outputChannel(0)
-		, downloadClient(0)
-		, resourceHandle(0)
-		, resourceRequest(0)
-		, dl(0)
-		{}
+        : allowOverwrite(false)
+        , allowResume(false)
+        , quiet(false)
+        , currentSize(0)
+        , totalSize(0)
+        , startOffset(0)
+        , state(WEBKIT_WEB_DOWNLOAD_STATE_ERROR)
+        , outputChannel(0)
+        , downloadClient(0)
+        , resourceHandle(0)
+        , resourceRequest(0)
+        , dl(0)
+        {}
 
 class DownloadClient : public ResourceHandleClient
 {
@@ -125,106 +125,106 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
     WebURLResponse *webResponse = WebURLResponse::createInstance(response);
     m_download->downloadDelegate()->didReceiveResponse(m_download, webResponse);
 
-	// Can we resume and do we want to resume?
+    // Can we resume and do we want to resume?
 
-	if(priv->resourceHandle.get()->isResuming())
-	{
-		if(priv->resourceHandle.get()->canResume())
-		{
-			priv->outputChannel = new OWBFile(priv->destinationPath);
+    if(priv->resourceHandle.get()->isResuming())
+    {
+        if(priv->resourceHandle.get()->canResume())
+        {
+            priv->outputChannel = new OWBFile(priv->destinationPath);
 
-		    // Fail if not possible to open destination file to writing
-			if(priv->outputChannel->open('a') == -1)
-		    {
-				ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
-		        didFail(priv->resourceHandle.get(), resourceError);
-		        return;
-		    }
+            // Fail if not possible to open destination file to writing
+            if(priv->outputChannel->open('a') == -1)
+            {
+                ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
+                didFail(priv->resourceHandle.get(), resourceError);
+                return;
+            }
 
-			m_download->downloadDelegate()->didCreateDestination(m_download, priv->destinationPath.latin1().data());
-		}
-		else
-		{
-			ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't resume"));
-	        didFail(priv->resourceHandle.get(), resourceError);
-	        return;
-		}
-	}
-	else
-	{
-	    WTF::String suggestedFilename = webResponse->suggestedFilename();
-	    if(suggestedFilename.length() == 0)
-	    {
-	        suggestedFilename = response.url().string().substring(response.url().pathAfterLastSlash());
+            m_download->downloadDelegate()->didCreateDestination(m_download, priv->destinationPath.latin1().data());
+        }
+        else
+        {
+            ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't resume"));
+            didFail(priv->resourceHandle.get(), resourceError);
+            return;
+        }
+    }
+    else
+    {
+        WTF::String suggestedFilename = webResponse->suggestedFilename();
+        if(suggestedFilename.length() == 0)
+        {
+            suggestedFilename = response.url().string().substring(response.url().pathAfterLastSlash());
 
-			// Strip unwanted parts
-			size_t questionPos = suggestedFilename.find('?');
-			size_t hashPos = suggestedFilename.find('#');
-			unsigned pathEnd;
+            // Strip unwanted parts
+            size_t questionPos = suggestedFilename.find('?');
+            size_t hashPos = suggestedFilename.find('#');
+            unsigned pathEnd;
 
-			if (hashPos != notFound && (questionPos == notFound || questionPos > hashPos))
-				pathEnd = hashPos;
-			else if (questionPos != notFound)
-				pathEnd = questionPos;
-			else
-				pathEnd = suggestedFilename.length();
+            if (hashPos != notFound && (questionPos == notFound || questionPos > hashPos))
+                pathEnd = hashPos;
+            else if (questionPos != notFound)
+                pathEnd = questionPos;
+            else
+                pathEnd = suggestedFilename.length();
 
-			suggestedFilename = suggestedFilename.left(pathEnd);
-	    }
+            suggestedFilename = suggestedFilename.left(pathEnd);
+        }
 
-		m_download->downloadDelegate()->decideDestinationWithSuggestedFilename(m_download, suggestedFilename.utf8().data());
-	    delete webResponse;
+        m_download->downloadDelegate()->decideDestinationWithSuggestedFilename(m_download, suggestedFilename.utf8().data());
+        delete webResponse;
 
-	    // Fail if destination file path is not set
-		if(priv->destinationPath.isEmpty())
-	    {
-			ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
-	        didFail(priv->resourceHandle.get(), resourceError);
-	        return;
-	    }
+        // Fail if destination file path is not set
+        if(priv->destinationPath.isEmpty())
+        {
+            ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
+            didFail(priv->resourceHandle.get(), resourceError);
+            return;
+        }
 
-		/*
-		// If we're here, it means resume wasn't supported after all
-		if(priv->resourceHandle.get()->isResuming()) 
-		{
-			kprintf("Wanted to resume, but can't\n");
-			priv->allowResume = false;
-			priv->allowOverwrite = true; // discuss that
-		}
-		*/
+        /*
+        // If we're here, it means resume wasn't supported after all
+        if(priv->resourceHandle.get()->isResuming()) 
+        {
+            kprintf("Wanted to resume, but can't\n");
+            priv->allowResume = false;
+            priv->allowOverwrite = true; // discuss that
+        }
+        */
 
-		if(priv->allowResume)
-		{
-			priv->resourceHandle->cancel();
-			priv->resourceHandle = ResourceHandle::create(NULL, *priv->resourceRequest, priv->downloadClient, false, false, false);
-			priv->resourceHandle->setStartOffset(priv->startOffset);
-			return;
-		}
-		else
-		{
-			priv->outputChannel = new OWBFile(priv->destinationPath);
+        if(priv->allowResume)
+        {
+            priv->resourceHandle->cancel();
+            priv->resourceHandle = ResourceHandle::create(NULL, *priv->resourceRequest, priv->downloadClient, false, false, false);
+            priv->resourceHandle->setStartOffset(priv->startOffset);
+            return;
+        }
+        else
+        {
+            priv->outputChannel = new OWBFile(priv->destinationPath);
 
-		    // Fail if destination file already exists and can't be overwritten
-		    if(!priv->allowOverwrite && priv->outputChannel->open('r') != -1)
-		    {
-				ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
-		        didFail(priv->resourceHandle.get(), resourceError);
-		        return;
-		    }
-		    else
-		        priv->outputChannel->close();
+            // Fail if destination file already exists and can't be overwritten
+            if(!priv->allowOverwrite && priv->outputChannel->open('r') != -1)
+            {
+                ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
+                didFail(priv->resourceHandle.get(), resourceError);
+                return;
+            }
+            else
+                priv->outputChannel->close();
 
-		    // Fail if not possible to open destination file to writing
-		    if(priv->outputChannel->open('w') == -1)
-		    {
-				ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
-		        didFail(priv->resourceHandle.get(), resourceError);
-		        return;
-		    }
+            // Fail if not possible to open destination file to writing
+            if(priv->outputChannel->open('w') == -1)
+            {
+                ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
+                didFail(priv->resourceHandle.get(), resourceError);
+                return;
+            }
 
-			m_download->downloadDelegate()->didCreateDestination(m_download, priv->destinationPath.latin1().data());
-		}
-	}
+            m_download->downloadDelegate()->didCreateDestination(m_download, priv->destinationPath.latin1().data());
+        }
+    }
 }
 
 void DownloadClient::didReceiveData(ResourceHandle*, const char* data, unsigned length, int lengthReceived)
@@ -236,12 +236,12 @@ void DownloadClient::didReceiveData(ResourceHandle*, const char* data, unsigned 
 
     m_download->downloadDelegate()->didReceiveDataOfLength(m_download, length);
 
-	if(priv->outputChannel)
-	{
-		// FIXME: handle write errors somehow
-		priv->outputChannel->write(data, length);
-		priv->currentSize += length;
-	}
+    if(priv->outputChannel)
+    {
+        // FIXME: handle write errors somehow
+        priv->outputChannel->write(data, length);
+        priv->currentSize += length;
+    }
 }
 
 void DownloadClient::didFinishLoading(ResourceHandle*)
@@ -253,12 +253,12 @@ void DownloadClient::didFinishLoading(ResourceHandle*)
 
     priv->state = WEBKIT_WEB_DOWNLOAD_STATE_FINISHED;
 
-	if(priv->outputChannel)
-	{
-	    priv->outputChannel->close();
-	    delete priv->outputChannel;
-	    priv->outputChannel = NULL;
-	}
+    if(priv->outputChannel)
+    {
+        priv->outputChannel->close();
+        delete priv->outputChannel;
+        priv->outputChannel = NULL;
+    }
 
     m_download->downloadDelegate()->didFinish(m_download);
 }
@@ -274,12 +274,12 @@ void DownloadClient::didFail(ResourceHandle*, const ResourceError& resourceError
     priv->resourceHandle->clearClient();
     priv->resourceHandle->cancel();
 
-	if(priv->outputChannel)
-	{
-	    priv->outputChannel->close();
-	    delete priv->outputChannel;
-	    priv->outputChannel = NULL;
-	}
+    if(priv->outputChannel)
+    {
+        priv->outputChannel->close();
+        delete priv->outputChannel;
+        priv->outputChannel = NULL;
+    }
 
     WebError *error = WebError::createInstance(resourceError);
     m_download->downloadDelegate()->didFailWithError(m_download, error);
@@ -319,7 +319,7 @@ void WebDownload::init(ResourceHandle* handle, const ResourceRequest* request, c
     m_priv->requestUri = String(request->url().string());
 
     if(handle->getInternal()->m_context.get())
-	m_priv->originURL = ((WebFrameNetworkingContext *)handle->getInternal()->m_context.get())->url();
+    m_priv->originURL = ((WebFrameNetworkingContext *)handle->getInternal()->m_context.get())->url();
 }
 
 void WebDownload::init(const URL& url, TransferSharedPtr<WebDownloadDelegate> delegate)
@@ -376,7 +376,7 @@ WebDownload::~WebDownload()
     delete m_priv->downloadClient;
 
     if(m_priv->outputChannel)
-	{
+    {
         m_priv->outputChannel->close();
         delete m_priv->outputChannel;
     }
@@ -414,7 +414,7 @@ WebDownload* WebDownload::createInstance(const URL& url, TransferSharedPtr<WebDo
 WebDownload* WebDownload::createInstance(const URL& url, const String& originURL, TransferSharedPtr<WebDownloadDelegate> delegate)
 {
     WebDownload* instance = new WebDownload();
-	instance->init(url, originURL, delegate);
+    instance->init(url, originURL, delegate);
     return instance;
 }
 
@@ -444,24 +444,24 @@ void WebDownload::start(bool quiet)
     if (m_priv->state != WEBKIT_WEB_DOWNLOAD_STATE_CREATED)
         return;
 
-	// If quiet option is passed explicitely, use it
+    // If quiet option is passed explicitely, use it
     if(quiet)
-	{
-		m_priv->quiet = quiet;
-	}
-	// Else, honor download general setting
-	else
-	{
-		m_priv->quiet = getv(app, MA_OWBApp_DownloadStartAutomatically);
-	}
+    {
+        m_priv->quiet = quiet;
+    }
+    // Else, honor download general setting
+    else
+    {
+        m_priv->quiet = getv(app, MA_OWBApp_DownloadStartAutomatically);
+    }
 
-	//kprintf("quiet %d\n", m_priv->quiet);
+    //kprintf("quiet %d\n", m_priv->quiet);
 
     if (m_priv->resourceHandle)
     {
-		m_priv->resourceHandle->setClientInternal(m_priv->downloadClient);
-		m_priv->resourceHandle->getInternal()->m_disableEncoding = (m_priv->requestUri.endsWith(".gz") || m_priv->requestUri.endsWith(".tgz")) == true; // HACK to disable on-the-fly gzip decoding
-		m_priv->downloadClient->didStart();
+        m_priv->resourceHandle->setClientInternal(m_priv->downloadClient);
+        m_priv->resourceHandle->getInternal()->m_disableEncoding = (m_priv->requestUri.endsWith(".gz") || m_priv->requestUri.endsWith(".tgz")) == true; // HACK to disable on-the-fly gzip decoding
+        m_priv->downloadClient->didStart();
 #if 0
 //how to solve?
         m_priv->downloadClient->didReceiveResponse(m_priv->resourceHandle.get(), m_response->resourceResponse());
@@ -470,11 +470,11 @@ void WebDownload::start(bool quiet)
     else
     {
         m_priv->downloadClient->didStart();
-		m_priv->resourceHandle = ResourceHandle::create(NULL, m_request->resourceRequest(), m_priv->downloadClient, false, false, false);
-		if(m_priv->resourceHandle)
-		{
-			m_priv->resourceHandle->getInternal()->m_disableEncoding = (m_priv->requestUri.endsWith(".gz") || m_priv->requestUri.endsWith(".tgz")) == true; // HACK to disable on-the-fly gzip decoding
-		}
+        m_priv->resourceHandle = ResourceHandle::create(NULL, m_request->resourceRequest(), m_priv->downloadClient, false, false, false);
+        if(m_priv->resourceHandle)
+        {
+            m_priv->resourceHandle->getInternal()->m_disableEncoding = (m_priv->requestUri.endsWith(".gz") || m_priv->requestUri.endsWith(".tgz")) == true; // HACK to disable on-the-fly gzip decoding
+        }
     }
 }
 
@@ -485,15 +485,15 @@ void WebDownload::cancel()
 
     if (m_priv->resourceHandle)
     {
-		m_priv->resourceHandle->clearClient();
-		m_priv->resourceHandle->cancel();
+        m_priv->resourceHandle->clearClient();
+        m_priv->resourceHandle->cancel();
     }
 
     if(m_priv->outputChannel)
     {
         m_priv->outputChannel->close();
         delete m_priv->outputChannel;
-		m_priv->outputChannel = NULL;
+        m_priv->outputChannel = NULL;
     }
 
     m_priv->state = WEBKIT_WEB_DOWNLOAD_STATE_CANCELLED;

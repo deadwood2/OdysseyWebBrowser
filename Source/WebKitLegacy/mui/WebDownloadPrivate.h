@@ -71,25 +71,25 @@ struct download;
 class WebDownloadPrivate
 {
 public:
-	WebDownloadPrivate();
+    WebDownloadPrivate();
 
     WTF::String requestUri;
-	WTF::String originURL;
+    WTF::String originURL;
     WTF::String destinationPath;
-	WTF::String command;
-	WTF::String mimetype;
+    WTF::String command;
+    WTF::String mimetype;
     bool allowOverwrite;
-	bool allowResume;
-	bool quiet;
+    bool allowResume;
+    bool quiet;
     unsigned long long currentSize;
-	unsigned long long totalSize;
-	unsigned long long startOffset;
+    unsigned long long totalSize;
+    unsigned long long startOffset;
     WebDownloadState state;
-	WebCore::OWBFile* outputChannel;
+    WebCore::OWBFile* outputChannel;
     DownloadClient* downloadClient;
     RefPtr<WebCore::ResourceHandle> resourceHandle;
     WebCore::ResourceRequest* resourceRequest;
-	struct downloadnode *dl;
+    struct downloadnode *dl;
 };
 
 #endif

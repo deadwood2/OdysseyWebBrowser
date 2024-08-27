@@ -34,43 +34,43 @@
 
 struct Data
 {
-	ULONG freeuserdata;
+    ULONG freeuserdata;
 };
 
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        TAG_MORE, INITTAGS
+    );
 
-	if(obj)
-	{
-		GETDATA;
-		data->freeuserdata = GetTagData(MA_MenuItem_FreeUserData, TRUE, msg->ops_AttrList);
-	}
+    if(obj)
+    {
+        GETDATA;
+        data->freeuserdata = GetTagData(MA_MenuItem_FreeUserData, TRUE, msg->ops_AttrList);
+    }
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 
 DEFDISP
 {
-	GETDATA;
+    GETDATA;
 
-	char *title = (char *) getv(obj, MUIA_Menuitem_Title);
+    char *title = (char *) getv(obj, MUIA_Menuitem_Title);
 
-	if(title != (char *) NM_BARLABEL)
-	{
-		free(title);
-	}
+    if(title != (char *) NM_BARLABEL)
+    {
+        free(title);
+    }
 
-	if(data->freeuserdata)
-	{
-		free((void *) getv(obj, MUIA_UserData));
-	}
+    if(data->freeuserdata)
+    {
+        free((void *) getv(obj, MUIA_UserData));
+    }
 
-	return (DOSUPER);
+    return (DOSUPER);
 }
 
 BEGINMTABLE

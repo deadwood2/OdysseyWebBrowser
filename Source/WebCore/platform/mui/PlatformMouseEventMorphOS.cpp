@@ -50,68 +50,68 @@ PlatformMouseEvent::PlatformMouseEvent(BalEventButton *event)
     m_position = IntPoint((int)event->MouseX, (int)event->MouseY);
     m_globalPosition = IntPoint((int)event->MouseX, (int)event->MouseY);
 
-	m_modifiers = OptionSet<PlatformEvent::Modifier>();
+    m_modifiers = OptionSet<PlatformEvent::Modifier>();
 
-	if (event->Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
-		m_modifiers.add(PlatformEvent::Modifier::ShiftKey);
+    if (event->Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
+        m_modifiers.add(PlatformEvent::Modifier::ShiftKey);
 
-	if (event->Qualifier & IEQUALIFIER_CONTROL)
-		m_modifiers.add(PlatformEvent::Modifier::ControlKey);
+    if (event->Qualifier & IEQUALIFIER_CONTROL)
+        m_modifiers.add(PlatformEvent::Modifier::ControlKey);
 
-	if( event->Qualifier & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
-		m_modifiers.add(PlatformEvent::Modifier::AltKey);
+    if( event->Qualifier & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
+        m_modifiers.add(PlatformEvent::Modifier::AltKey);
 
-	if (event->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
-		m_modifiers.add(PlatformEvent::Modifier::MetaKey);
+    if (event->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
+        m_modifiers.add(PlatformEvent::Modifier::MetaKey);
 
-	m_type = PlatformEvent::MouseMoved;
+    m_type = PlatformEvent::MouseMoved;
     m_button = NoButton;
     m_clickCount = 0;
 
-	if (IDCMP_MOUSEBUTTONS == event->Class)
-	{
-		if ((event->Code & ~IECODE_UP_PREFIX) == IECODE_LBUTTON)
+    if (IDCMP_MOUSEBUTTONS == event->Class)
+    {
+        if ((event->Code & ~IECODE_UP_PREFIX) == IECODE_LBUTTON)
            m_button = LeftButton;
         else if ((event->Code & ~IECODE_UP_PREFIX) == IECODE_MBUTTON)
             m_button = MiddleButton;
         else if ((event->Code & ~IECODE_UP_PREFIX) == IECODE_RBUTTON)
             m_button = RightButton;
 
-		if (NoButton != m_button)
-		{
-			if (event->Code & IECODE_UP_PREFIX)
-			{
-				m_type = PlatformEvent::MouseReleased;
+        if (NoButton != m_button)
+        {
+            if (event->Code & IECODE_UP_PREFIX)
+            {
+                m_type = PlatformEvent::MouseReleased;
                 m_clickCount = 0;
-			}
-			else
-			{
-				// sucky code :)
-				double timestamp = m_timestamp.secondsSinceEpoch().value();
-				if(event->Code == IECODE_LBUTTON && DoubleClick((ULONG) lastclick, (ULONG) ((lastclick - floor(lastclick)) * 1000000), (ULONG) timestamp, (ULONG) ((timestamp - floor(timestamp)) * 1000000)))
-				{
-					if(isdouble)
-						m_clickCount = 3;
-					else
-						m_clickCount = 2;
-					
-					isdouble = true;
-				}
-				else
-				{
-					m_clickCount = 1;
-					isdouble = false;
-				}
+            }
+            else
+            {
+                // sucky code :)
+                double timestamp = m_timestamp.secondsSinceEpoch().value();
+                if(event->Code == IECODE_LBUTTON && DoubleClick((ULONG) lastclick, (ULONG) ((lastclick - floor(lastclick)) * 1000000), (ULONG) timestamp, (ULONG) ((timestamp - floor(timestamp)) * 1000000)))
+                {
+                    if(isdouble)
+                        m_clickCount = 3;
+                    else
+                        m_clickCount = 2;
+                    
+                    isdouble = true;
+                }
+                else
+                {
+                    m_clickCount = 1;
+                    isdouble = false;
+                }
 
-				m_type = PlatformEvent::MousePressed;
+                m_type = PlatformEvent::MousePressed;
 
-				if(event->Code == IECODE_LBUTTON)
-					lastclick = MonotonicTime::now().secondsSinceEpoch().value();
+                if(event->Code == IECODE_LBUTTON)
+                    lastclick = MonotonicTime::now().secondsSinceEpoch().value();
             }
         }
     }
-	else
-	{ // IDCMP_MOUSEMOVE == event->Class
+    else
+    { // IDCMP_MOUSEMOVE == event->Class
         if (event->Qualifier & IEQUALIFIER_LEFTBUTTON)
             m_button = LeftButton;
         else if (event->Qualifier & IEQUALIFIER_MIDBUTTON)

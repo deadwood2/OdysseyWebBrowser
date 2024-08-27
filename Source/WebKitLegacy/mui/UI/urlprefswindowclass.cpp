@@ -40,75 +40,75 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *group;
+    Object *group;
 };
 
 DEFNEW
 {
-	Object *group;
+    Object *group;
 
-	obj = (Object *) DoSuperNew(cl, obj,
-			MUIA_Window_ID, MAKE_ID('W','U','R','P'),
-			MUIA_Window_Title, GSI(MSG_URLPREFSWINDOW_TITLE),
-			MUIA_Window_NoMenus, TRUE,
-			WindowContents, group = (Object *) NewObject(geturlprefsgroupclass(), NULL, TAG_DONE),
-			TAG_MORE, msg->ops_AttrList);
+    obj = (Object *) DoSuperNew(cl, obj,
+            MUIA_Window_ID, MAKE_ID('W','U','R','P'),
+            MUIA_Window_Title, GSI(MSG_URLPREFSWINDOW_TITLE),
+            MUIA_Window_NoMenus, TRUE,
+            WindowContents, group = (Object *) NewObject(geturlprefsgroupclass(), NULL, TAG_DONE),
+            TAG_MORE, msg->ops_AttrList);
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->group = group;
+        data->group = group;
 
-		DoMethod(obj, MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 3, MUIM_Set, MUIA_Window_Open, FALSE);
-	}
+        DoMethod(obj, MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 3, MUIM_Set, MUIA_Window_Open, FALSE);
+    }
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 DEFGET
 {
-	switch (msg->opg_AttrID)
-	{
-		case MA_OWB_WindowType:
-		{
-			*msg->opg_Storage = (IPTR) MV_OWB_Window_URLPrefs;
-		}
-		return TRUE;
-	}
+    switch (msg->opg_AttrID)
+    {
+        case MA_OWB_WindowType:
+        {
+            *msg->opg_Storage = (IPTR) MV_OWB_Window_URLPrefs;
+        }
+        return TRUE;
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFTMETHOD(URLPrefsGroup_Load)
 {
-	GETDATA;
-	return DoMethod(data->group, MM_URLPrefsGroup_Load);
+    GETDATA;
+    return DoMethod(data->group, MM_URLPrefsGroup_Load);
 }
 
 DEFSMETHOD(URLPrefsGroup_ApplySettingsForURL)
 {
-	GETDATA;
-	DoMethod(data->group, MM_URLPrefsGroup_ApplySettingsForURL, msg->url, msg->webView);
-	return 0;
+    GETDATA;
+    DoMethod(data->group, MM_URLPrefsGroup_ApplySettingsForURL, msg->url, msg->webView);
+    return 0;
 }
 
 DEFSMETHOD(URLPrefsGroup_UserAgentForURL)
 {
-	GETDATA;
-	return DoMethod(data->group, MM_URLPrefsGroup_UserAgentForURL, msg->url, msg->webView);
+    GETDATA;
+    return DoMethod(data->group, MM_URLPrefsGroup_UserAgentForURL, msg->url, msg->webView);
 }
 
 DEFSMETHOD(URLPrefsGroup_MatchesURL)
 {
-	GETDATA;
-	return DoMethod(data->group, MM_URLPrefsGroup_MatchesURL, msg->url);
+    GETDATA;
+    return DoMethod(data->group, MM_URLPrefsGroup_MatchesURL, msg->url);
 }
 
 DEFSMETHOD(URLPrefsGroup_CookiePolicyForURLAndName)
 {
-	GETDATA;
-	return DoMethod(data->group, MM_URLPrefsGroup_CookiePolicyForURLAndName, msg->url, msg->name);
+    GETDATA;
+    return DoMethod(data->group, MM_URLPrefsGroup_CookiePolicyForURLAndName, msg->url, msg->name);
 }
 
 BEGINMTABLE

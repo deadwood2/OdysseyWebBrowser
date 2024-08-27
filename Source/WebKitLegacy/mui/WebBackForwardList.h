@@ -70,7 +70,7 @@ public:
      */
     virtual ~WebBackForwardList();
 
-	//virtual void clear();
+    //virtual void clear();
     /**
      * @param entry The entry to add.
         @discussion The added entry is inserted immediately after the current entry.

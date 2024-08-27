@@ -34,12 +34,12 @@ namespace WebCore {
 class ScriptEntry
 {
 public:
-	String path;
-	String title;
-	String description;
-	bool enabled;
-	Vector<String> whitelist;
-	Vector<String> blacklist;
+    String path;
+    String title;
+    String description;
+    bool enabled;
+    Vector<String> whitelist;
+    Vector<String> blacklist;
 };
     
 };

@@ -43,218 +43,218 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *str;
-	Object *pop;
+    Object *str;
+    Object *pop;
 
-	ULONG opened;
-	ULONG added;
-	struct MUI_EventHandlerNode ehnode;
+    ULONG opened;
+    ULONG added;
+    struct MUI_EventHandlerNode ehnode;
 };
 
 static void doset(Object *obj, struct Data *data, struct TagItem *tags)
 {
-	FORTAG(tags)
-	{
-		case MUIA_Popstring_String:
-			data->str = (Object *) tag->ti_Data;
-			break;
-		case MUIA_Popobject_Object:
-			data->pop = (Object *) tag->ti_Data;
-			break;
-	}
-	NEXTTAG
+    FORTAG(tags)
+    {
+        case MUIA_Popstring_String:
+            data->str = (Object *) tag->ti_Data;
+            break;
+        case MUIA_Popobject_Object:
+            data->pop = (Object *) tag->ti_Data;
+            break;
+    }
+    NEXTTAG
 }
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		InputListFrame,
-		MUIA_List_Format, "",
-		MUIA_List_Title, FALSE,
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        InputListFrame,
+        MUIA_List_Format, "",
+        MUIA_List_Title, FALSE,
+        TAG_MORE, INITTAGS
+    );
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->added = FALSE;
+        data->added = FALSE;
 
-		data->ehnode.ehn_Object   = obj;
-		data->ehnode.ehn_Class    = cl;
-		data->ehnode.ehn_Events   = IDCMP_RAWKEY | IDCMP_MOUSEBUTTONS;
-		data->ehnode.ehn_Priority = 1;
-		data->ehnode.ehn_Flags    = MUI_EHF_GUIMODE;
+        data->ehnode.ehn_Object   = obj;
+        data->ehnode.ehn_Class    = cl;
+        data->ehnode.ehn_Events   = IDCMP_RAWKEY | IDCMP_MOUSEBUTTONS;
+        data->ehnode.ehn_Priority = 1;
+        data->ehnode.ehn_Flags    = MUI_EHF_GUIMODE;
 
-		doset(obj, data, msg->ops_AttrList);
-	}
-	return ((IPTR)obj);
+        doset(obj, data, msg->ops_AttrList);
+    }
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFGET
 {
-	GETDATA;
+    GETDATA;
 
-	switch (msg->opg_AttrID)
-	{
-		case MA_SuggestList_Opened:
-			*msg->opg_Storage = (IPTR) data->opened;
+    switch (msg->opg_AttrID)
+    {
+        case MA_SuggestList_Opened:
+            *msg->opg_Storage = (IPTR) data->opened;
             return TRUE;
-	}
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFSET
 {
-	GETDATA;
-	doset(obj, data, msg->ops_AttrList);
-	return DOSUPER;
+    GETDATA;
+    doset(obj, data, msg->ops_AttrList);
+    return DOSUPER;
 }
 
 DEFMMETHOD(Show)
 {
-	IPTR rc;
-	GETDATA;
+    IPTR rc;
+    GETDATA;
 
-	data->opened = TRUE;
+    data->opened = TRUE;
 
-	if ((rc = DOSUPER))
-	{
-		if(!data->added)
-		{
-			DoMethod( _win(obj), MUIM_Window_AddEventHandler, &data->ehnode);
-			data->added = TRUE;
-		}
-	}
+    if ((rc = DOSUPER))
+    {
+        if(!data->added)
+        {
+            DoMethod( _win(obj), MUIM_Window_AddEventHandler, &data->ehnode);
+            data->added = TRUE;
+        }
+    }
 
-	return rc;
+    return rc;
 }
 
 DEFMMETHOD(Hide)
 {
-	GETDATA;
+    GETDATA;
 
-	data->opened = FALSE;
+    data->opened = FALSE;
 
-	if(data->added)
-	{
-		DoMethod(_win(obj), MUIM_Window_RemEventHandler, &data->ehnode );
-		data->added = FALSE;
-	}
+    if(data->added)
+    {
+        DoMethod(_win(obj), MUIM_Window_RemEventHandler, &data->ehnode );
+        data->added = FALSE;
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(HandleEvent)
 {
-	GETDATA;
-	struct IntuiMessage *imsg;
+    GETDATA;
+    struct IntuiMessage *imsg;
 
-	if((imsg = msg->imsg))
-	{
-		if(imsg->Class == IDCMP_RAWKEY)
-		{
-			switch(imsg->Code & ~IECODE_UP_PREFIX)
-			{
-				case RAWKEY_UP:
-				case RAWKEY_DOWN:
-				case RAWKEY_NM_WHEEL_UP:
-				case RAWKEY_NM_WHEEL_DOWN:
-					//return MUI_EventHandlerRC_Eat;
-					break;
-				default:
-					set(_win(data->str), MUIA_Window_Activate, TRUE);
-					set(_win(data->str), MUIA_Window_ActiveObject, (Object *) data->str);
-					break;
-			}
-		}
-	}
+    if((imsg = msg->imsg))
+    {
+        if(imsg->Class == IDCMP_RAWKEY)
+        {
+            switch(imsg->Code & ~IECODE_UP_PREFIX)
+            {
+                case RAWKEY_UP:
+                case RAWKEY_DOWN:
+                case RAWKEY_NM_WHEEL_UP:
+                case RAWKEY_NM_WHEEL_DOWN:
+                    //return MUI_EventHandlerRC_Eat;
+                    break;
+                default:
+                    set(_win(data->str), MUIA_Window_Activate, TRUE);
+                    set(_win(data->str), MUIA_Window_ActiveObject, (Object *) data->str);
+                    break;
+            }
+        }
+    }
 
-	return 0;
+    return 0;
 
 }
 
 DEFMMETHOD(List_Construct)
 {
-	return (IPTR) msg->entry;
+    return (IPTR) msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
 {
-	SuggestEntry *entry = (SuggestEntry *) msg->entry;
-	delete entry;
-	return TRUE;
+    SuggestEntry *entry = (SuggestEntry *) msg->entry;
+    delete entry;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Display)
 {
-	SuggestEntry *item = (SuggestEntry *) msg->entry;
+    SuggestEntry *item = (SuggestEntry *) msg->entry;
 
-	if(item)
-	{
-		static char label[256];
-//		static char occurrences[32];
-		char *suggestion = utf8_to_local(item->suggestion().utf8().data());
+    if(item)
+    {
+        static char label[256];
+//        static char occurrences[32];
+        char *suggestion = utf8_to_local(item->suggestion().utf8().data());
 
-		if(suggestion)
-		{
-			snprintf(label, sizeof(label), "%s", suggestion);
-//			  snprintf(occurrences, sizeof(occurrences), "  \33P[80------](%d)", item->occurrences());
-			free(suggestion);
-		}
+        if(suggestion)
+        {
+            snprintf(label, sizeof(label), "%s", suggestion);
+//              snprintf(occurrences, sizeof(occurrences), "  \33P[80------](%d)", item->occurrences());
+            free(suggestion);
+        }
 
-		msg->array[0] = (char *) label;
-//		  msg->array[1] = (char *) occurrences;
-	}
+        msg->array[0] = (char *) label;
+//          msg->array[1] = (char *) occurrences;
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Compare)
 {
-	SuggestEntry *e1 = (SuggestEntry *)msg->entry1;
-	SuggestEntry *e2 = (SuggestEntry *)msg->entry2;
+    SuggestEntry *e1 = (SuggestEntry *)msg->entry1;
+    SuggestEntry *e2 = (SuggestEntry *)msg->entry2;
 
 
-	if(e1->occurrences() < e2->occurrences())
-	{
-		return 1;
-	}
-	else if(e1->occurrences() > e2->occurrences())
-	{
-		return -1;
-	}
-	else
-	{
-		return -(WTF::codePointCompare(e1->suggestion(), e2->suggestion()));
-	}
+    if(e1->occurrences() < e2->occurrences())
+    {
+        return 1;
+    }
+    else if(e1->occurrences() > e2->occurrences())
+    {
+        return -1;
+    }
+    else
+    {
+        return -(WTF::codePointCompare(e1->suggestion(), e2->suggestion()));
+    }
 }
 
 DEFTMETHOD(SuggestList_SelectChange)
 {
-	GETDATA;
-	SuggestEntry *item = NULL;
+    GETDATA;
+    SuggestEntry *item = NULL;
 
-	if(muiRenderInfo(obj))
-	{
-		DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, &item);
-		if (item)
-		{
-			char *suggestion = utf8_to_local(item->suggestion().utf8().data());
-			if(suggestion)
-			{
-				nnset(data->str, MUIA_String_Contents, suggestion);
-				free(suggestion);
-			}
-		}
-	}
-	return 0;
+    if(muiRenderInfo(obj))
+    {
+        DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, &item);
+        if (item)
+        {
+            char *suggestion = utf8_to_local(item->suggestion().utf8().data());
+            if(suggestion)
+            {
+                nnset(data->str, MUIA_String_Contents, suggestion);
+                free(suggestion);
+            }
+        }
+    }
+    return 0;
 }
 
 BEGINMTABLE

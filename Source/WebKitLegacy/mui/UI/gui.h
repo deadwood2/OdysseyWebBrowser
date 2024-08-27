@@ -32,118 +32,118 @@
 #define DEFAULT_PAGE_NAME   GSI(MSG_OWBAPP_DEFAULT_PAGE_NAME)
 
 #define BOOKMARK_PATH       "PROGDIR:bookmarks.html"
-#define CONF_DIRECTORY	    "PROGDIR:Conf/"
+#define CONF_DIRECTORY        "PROGDIR:Conf/"
 #define SESSION_DIRECTORY   "PROGDIR:Conf/sessions/"
 #define SESSION_PATH        "PROGDIR:Conf/sessions/session.prefs"
 #define SCRIPT_DIRECTORY    "PROGDIR:Scripts/"
 
 enum
 {
-	MNA_NEW_WINDOW = 1000,
-	MNA_NEW_PAGE,
-	MNA_OPEN_LOCAL_FILE,
-	MNA_OPEN_URL,
-	MNA_OPEN_SESSION,
-	MNA_SAVE_SESSION,
-	MNA_SAVE_AS_TEXT,
-	MNA_SAVE_AS_SOURCE,
-	MNA_SAVE_AS_PDF,
-	MNA_SAVE_AS_PS,
-	MNA_PRINT,
-	MNA_ABOUT,
-	MNA_CLOSE_PAGE,
-	MNA_CLOSE_WINDOW,
-	MNA_COPY,
-	MNA_COPY_LOCAL,
-	MNA_CUT,
-	MNA_PASTE,
-	MNA_PASTE_TO_URL,
-	MNA_SELECT_ALL,
-	MNA_UNDO,
-	MNA_REDO,
-	MNA_FIND,
-	MNA_ZOOM_IN,
-	MNA_ZOOM_OUT,
-	MNA_ZOOM_RESET,
-	MNA_FULLSCREEN,
-	MNA_BACK,
-	MNA_FORWARD,
-	MNA_HOME,
-	MNA_STOP,
-	MNA_RELOAD,
-	MNA_SOURCE,
-	MNA_NAVIGATION,
-	MNA_QUICKLINKS,
-	MNA_LOCATION,
-	MNA_STATUS,
-	MNA_NO_PANEL,
-	MNA_HISTORY_MENU,
-	MNA_HISTORY_PANEL,
-	MNA_HISTORY_RECENTENTRIES,
-	MNA_HISTORY_CLOSEDVIEWS,
-	MNA_BOOKMARK_PANEL,
-	MNA_BOOKMARKS_MENU,
-	MNA_ADD_BOOKMARK,
-	MNA_DOWNLOADS_WINDOW,
-	MNA_BOOKMARKS_WINDOW,
-	MNA_BOOKMARKS_STOP,
-	MNA_NETWORK_WINDOW,
-	MNA_CONSOLE_WINDOW,
-	MNA_PASSWORDMANAGER_WINDOW,
-	MNA_COOKIEMANAGER_WINDOW,
-	MNA_BLOCKMANAGER_WINDOW,
-	MNA_SEARCHMANAGER_WINDOW,
-	MNA_SCRIPTMANAGER_WINDOW,
-	MNA_URLSETTINGS_WINDOW,
-	MNA_OWB_SETTINGS,
-	MNA_PRIVATE_BROWSING,
-	MNA_MUI_SETTINGS,
-	MNA_QUIT,
+    MNA_NEW_WINDOW = 1000,
+    MNA_NEW_PAGE,
+    MNA_OPEN_LOCAL_FILE,
+    MNA_OPEN_URL,
+    MNA_OPEN_SESSION,
+    MNA_SAVE_SESSION,
+    MNA_SAVE_AS_TEXT,
+    MNA_SAVE_AS_SOURCE,
+    MNA_SAVE_AS_PDF,
+    MNA_SAVE_AS_PS,
+    MNA_PRINT,
+    MNA_ABOUT,
+    MNA_CLOSE_PAGE,
+    MNA_CLOSE_WINDOW,
+    MNA_COPY,
+    MNA_COPY_LOCAL,
+    MNA_CUT,
+    MNA_PASTE,
+    MNA_PASTE_TO_URL,
+    MNA_SELECT_ALL,
+    MNA_UNDO,
+    MNA_REDO,
+    MNA_FIND,
+    MNA_ZOOM_IN,
+    MNA_ZOOM_OUT,
+    MNA_ZOOM_RESET,
+    MNA_FULLSCREEN,
+    MNA_BACK,
+    MNA_FORWARD,
+    MNA_HOME,
+    MNA_STOP,
+    MNA_RELOAD,
+    MNA_SOURCE,
+    MNA_NAVIGATION,
+    MNA_QUICKLINKS,
+    MNA_LOCATION,
+    MNA_STATUS,
+    MNA_NO_PANEL,
+    MNA_HISTORY_MENU,
+    MNA_HISTORY_PANEL,
+    MNA_HISTORY_RECENTENTRIES,
+    MNA_HISTORY_CLOSEDVIEWS,
+    MNA_BOOKMARK_PANEL,
+    MNA_BOOKMARKS_MENU,
+    MNA_ADD_BOOKMARK,
+    MNA_DOWNLOADS_WINDOW,
+    MNA_BOOKMARKS_WINDOW,
+    MNA_BOOKMARKS_STOP,
+    MNA_NETWORK_WINDOW,
+    MNA_CONSOLE_WINDOW,
+    MNA_PASSWORDMANAGER_WINDOW,
+    MNA_COOKIEMANAGER_WINDOW,
+    MNA_BLOCKMANAGER_WINDOW,
+    MNA_SEARCHMANAGER_WINDOW,
+    MNA_SCRIPTMANAGER_WINDOW,
+    MNA_URLSETTINGS_WINDOW,
+    MNA_OWB_SETTINGS,
+    MNA_PRIVATE_BROWSING,
+    MNA_MUI_SETTINGS,
+    MNA_QUIT,
 
-	/* Per tab settings */
-	MNA_SETTINGS_ENABLE_JAVASCRIPT,
-	MNA_SETTINGS_JAVASCRIPT_ENABLED,
-	MNA_SETTINGS_JAVASCRIPT_DISABLED,
-	MNA_SETTINGS_JAVASCRIPT_DEFAULT,
+    /* Per tab settings */
+    MNA_SETTINGS_ENABLE_JAVASCRIPT,
+    MNA_SETTINGS_JAVASCRIPT_ENABLED,
+    MNA_SETTINGS_JAVASCRIPT_DISABLED,
+    MNA_SETTINGS_JAVASCRIPT_DEFAULT,
 
-	MNA_SETTINGS_ENABLE_IMAGES,
-	MNA_SETTINGS_IMAGES_ENABLED,
-	MNA_SETTINGS_IMAGES_DISABLED,
-	MNA_SETTINGS_IMAGES_DEFAULT,
+    MNA_SETTINGS_ENABLE_IMAGES,
+    MNA_SETTINGS_IMAGES_ENABLED,
+    MNA_SETTINGS_IMAGES_DISABLED,
+    MNA_SETTINGS_IMAGES_DEFAULT,
 
-	MNA_SETTINGS_ENABLE_ANIMATIONS,
-	MNA_SETTINGS_ANIMATIONS_ENABLED,
-	MNA_SETTINGS_ANIMATIONS_DISABLED,
-	MNA_SETTINGS_ANIMATIONS_DEFAULT,
+    MNA_SETTINGS_ENABLE_ANIMATIONS,
+    MNA_SETTINGS_ANIMATIONS_ENABLED,
+    MNA_SETTINGS_ANIMATIONS_DISABLED,
+    MNA_SETTINGS_ANIMATIONS_DEFAULT,
 
-	MNA_SETTINGS_ENABLE_PLUGINS,
-	MNA_SETTINGS_PLUGINS_ENABLED,
-	MNA_SETTINGS_PLUGINS_DISABLED,
-	MNA_SETTINGS_PLUGINS_DEFAULT,
+    MNA_SETTINGS_ENABLE_PLUGINS,
+    MNA_SETTINGS_PLUGINS_ENABLED,
+    MNA_SETTINGS_PLUGINS_DISABLED,
+    MNA_SETTINGS_PLUGINS_DEFAULT,
 
-	MNA_SETTINGS_SPOOF_AS,
-	MNA_SETTINGS_SPOOF_AS_DEFAULT,
+    MNA_SETTINGS_SPOOF_AS,
+    MNA_SETTINGS_SPOOF_AS_DEFAULT,
 
-	MNA_DUMMY,
+    MNA_DUMMY,
 };
 
 enum
 {
-	ACTION_AMIGADOS,
-	ACTION_REXX,
-	ACTION_INTERNAL,
+    ACTION_AMIGADOS,
+    ACTION_REXX,
+    ACTION_INTERNAL,
 };
 
 typedef enum
 {
-	MIMETYPE_ACTION_INTERNAL,
-	MIMETYPE_ACTION_EXTERNAL,
-	MIMETYPE_ACTION_DOWNLOAD,
-	MIMETYPE_ACTION_ASK,
-	MIMETYPE_ACTION_STREAM,
-	MIMETYPE_ACTION_PIPE,
-	MIMETYPE_ACTION_PLUGIN,
-	MIMETYPE_ACTION_IGNORE
+    MIMETYPE_ACTION_INTERNAL,
+    MIMETYPE_ACTION_EXTERNAL,
+    MIMETYPE_ACTION_DOWNLOAD,
+    MIMETYPE_ACTION_ASK,
+    MIMETYPE_ACTION_STREAM,
+    MIMETYPE_ACTION_PIPE,
+    MIMETYPE_ACTION_PLUGIN,
+    MIMETYPE_ACTION_IGNORE
 } mimetype_action_t;
 
 /* Exported structures */
@@ -167,56 +167,56 @@ struct viewnode
 
 struct windownode
 {
-	struct MinNode node;
-	ULONG num;
-	Object *window;
+    struct MinNode node;
+    ULONG num;
+    Object *window;
 };
 
 struct downloadnode
 {
-	struct MinNode node;
-	APTR  webdownload;
-	char* filename;
-	char* path;
-	char* url;
-	char* originurl;
-	char* mimetype;
-	QUAD size;
-	QUAD done;
-	QUAD prevdone;
-	LONG state;
-	ULONG speed;
-	double starttime;
-	double lastupdatetime;
-	double remainingtime;
-	struct ClockData eta;
-	char status[64];
-	APTR gaugeobj;
-	APTR gaugeimg;
-	APTR iconobj;
-	APTR iconimg;
+    struct MinNode node;
+    APTR  webdownload;
+    char* filename;
+    char* path;
+    char* url;
+    char* originurl;
+    char* mimetype;
+    QUAD size;
+    QUAD done;
+    QUAD prevdone;
+    LONG state;
+    ULONG speed;
+    double starttime;
+    double lastupdatetime;
+    double remainingtime;
+    struct ClockData eta;
+    char status[64];
+    APTR gaugeobj;
+    APTR gaugeimg;
+    APTR iconobj;
+    APTR iconimg;
 };
 
 struct contextmenunode
 {
-	struct MinNode node;
-	int actionId;
-	int category;
-	char *label;
-	int commandType;
-	char *commandString;
+    struct MinNode node;
+    int actionId;
+    int category;
+    char *label;
+    int commandType;
+    char *commandString;
 };
 
 struct mimetypenode
 {
-	struct MinNode node;
-	char *mimetype;
-	char *extensions;
-	mimetype_action_t action;
-	char *viewer;
-	char *parameters;
-	char *description;
-	int	builtin;
+    struct MinNode node;
+    char *mimetype;
+    char *extensions;
+    mimetype_action_t action;
+    char *viewer;
+    char *parameters;
+    char *description;
+    int    builtin;
 };
 
 /* browser settings */
@@ -232,47 +232,47 @@ enum { USERAGENT_DEFAULT = -1 };
 
 struct browsersettings
 {
-	ULONG javascript;
-	ULONG images;
-	ULONG plugins;
-	ULONG animations;
-	LONG useragent;
-	ULONG cookiepolicy;
-	char *cookiefilter;
-	ULONG privatebrowsing;
-	ULONG blocking;
-	ULONG localstorage;
+    ULONG javascript;
+    ULONG images;
+    ULONG plugins;
+    ULONG animations;
+    LONG useragent;
+    ULONG cookiepolicy;
+    char *cookiefilter;
+    ULONG privatebrowsing;
+    ULONG blocking;
+    ULONG localstorage;
 };
 
 struct urlsettingnode
 {
-	struct MinNode node;
-	char  *urlpattern;
-	struct browsersettings settings;
+    struct MinNode node;
+    char  *urlpattern;
+    struct browsersettings settings;
 };
 
 struct familynode
 {
-	struct MinNode node;
-	char family[0];
+    struct MinNode node;
+    char family[0];
 };
 
 struct console_entry
 {
-	struct ClockData clockdata;
-	char message[2048];
+    struct ClockData clockdata;
+    char message[2048];
 };
 
 struct credential_entry
 {
-	char *host;
-	char *realm;
-	char *username;
-	char *password;
-	int  type;
-	int  flags;
-	char *username_field;
-	char *password_field;
+    char *host;
+    char *realm;
+    char *username;
+    char *password;
+    int  type;
+    int  flags;
+    char *username_field;
+    char *password_field;
 };
 
 #define COOKIEFLAG_DOMAIN 1
@@ -280,40 +280,40 @@ struct credential_entry
 
 struct cookie_entry
 {
-	ULONG flags;
-	char *name;
-	char *value;
-	char *domain;
-	char *protocol;
-	char *path;
-	double expiry;
-	ULONG secure;
-	ULONG http_only;
-	ULONG session;
+    ULONG flags;
+    char *name;
+    char *value;
+    char *domain;
+    char *protocol;
+    char *path;
+    double expiry;
+    ULONG secure;
+    ULONG http_only;
+    ULONG session;
 };
 
 struct block_entry
 {
-	char *rule;
-	int type;
-	void *ptr;
+    char *rule;
+    int type;
+    void *ptr;
 };
 
 struct search_entry
 {
-	char *label;
-	char *request;
-	char *shortcut;
+    char *label;
+    char *request;
+    char *shortcut;
 };
 
 struct history_entry
 {
-	APTR webhistoryitem;
-	APTR faviconobj;
-	APTR faviconimg;
-	ULONG isbookmark;
-	APTR bookmarkobj;
-	APTR bookmarkimg;
+    APTR webhistoryitem;
+    APTR faviconobj;
+    APTR faviconimg;
+    ULONG isbookmark;
+    APTR bookmarkobj;
+    APTR bookmarkimg;
 };
 
 /* menu entries */
@@ -321,9 +321,9 @@ enum { MENUTYPE_BOOKMARK, MENUTYPE_CLOSEDVIEW, MENUTYPE_HISTORY, MENUTYPE_SPOOF 
 
 struct menu_entry
 {
-	int type;
-	int index;
-	char data[0];
+    int type;
+    int index;
+    char data[0];
 };
 
 /* exported globals */
@@ -353,7 +353,7 @@ Object *create_historybutton(CONST_STRPTR text, CONST_STRPTR image, ULONG type, 
 struct downloadnode* download_create(char *url, char *filename, char *path, char *originurl);
 void download_delete(struct downloadnode *dl);
 
-struct contextmenunode*	contextmenu_create(int actionId, int category, char *label, int commandType, char *commandString);
+struct contextmenunode*    contextmenu_create(int actionId, int category, char *label, int commandType, char *commandString);
 void contextmenu_delete(struct contextmenunode *cn);
 
 struct mimetypenode* mimetype_create(char *mimetype, char *extensions, mimetype_action_t action, char *viewer, char *parameters, int builtin);
@@ -364,10 +364,10 @@ void mimetype_delete(struct mimetypenode *mn);
 extern "C"
 {
 #endif
-	void setIsQuitting(int);
-	int isQuitting(void);
-	void setIsSafeToQuit(int);
-	int isSafeToQuit(void);
+    void setIsQuitting(int);
+    int isQuitting(void);
+    void setIsSafeToQuit(int);
+    int isSafeToQuit(void);
 #if defined(__cplusplus)
 }
 #endif

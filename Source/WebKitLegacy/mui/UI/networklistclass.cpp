@@ -45,162 +45,162 @@
 using namespace WebCore;
 
 enum {
-	POPMENU_OPEN_COPY = 1,
+    POPMENU_OPEN_COPY = 1,
 };
 
 struct Data
 {
-	Object *cmenu;
+    Object *cmenu;
 };
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		InputListFrame,
+    obj = (Object *) DoSuperNew(cl, obj,
+        InputListFrame,
         MUIA_List_Format, "MIW=-1 MAW=-2 BAR,",
-		MUIA_List_Title, TRUE,
-		MUIA_ContextMenu, TRUE,
-		MUIA_CycleChain, TRUE,
-		TAG_MORE, INITTAGS
-	);
+        MUIA_List_Title, TRUE,
+        MUIA_ContextMenu, TRUE,
+        MUIA_CycleChain, TRUE,
+        TAG_MORE, INITTAGS
+    );
 
-	if (obj)
-	{
-		GETDATA;
-		data->cmenu=NULL;
-	}
-	return ((IPTR)obj);
+    if (obj)
+    {
+        GETDATA;
+        data->cmenu=NULL;
+    }
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	GETDATA;
-	if (data->cmenu)
-	{
-		MUI_DisposeObject(data->cmenu);
-	}
-	return DOSUPER;
+    GETDATA;
+    if (data->cmenu)
+    {
+        MUI_DisposeObject(data->cmenu);
+    }
+    return DOSUPER;
 }
 
 DEFMMETHOD(List_Construct)
 {
-	return (IPTR)msg->entry;
+    return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
 {
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Display)
 {
-	ResourceHandle* job = (ResourceHandle*) msg->entry;
+    ResourceHandle* job = (ResourceHandle*) msg->entry;
 
-	if (job)
-	{
-		STATIC char buf1[2048];
-		STATIC char buf2[256];
-		ResourceHandleInternal* d = job->getInternal();
+    if (job)
+    {
+        STATIC char buf1[2048];
+        STATIC char buf2[256];
+        ResourceHandleInternal* d = job->getInternal();
 
-		snprintf(buf1, sizeof(buf1), "%s", (!job->firstRequest().isNull() && !job->firstRequest().url().isEmpty()) ? job->firstRequest().url().string().utf8().data() : "");
+        snprintf(buf1, sizeof(buf1), "%s", (!job->firstRequest().isNull() && !job->firstRequest().url().isEmpty()) ? job->firstRequest().url().string().utf8().data() : "");
 
-		switch(d->m_state)
-		{
-			case STATUS_CONNECTING:
-			{
-				snprintf(buf2, sizeof(buf2), "%s", GSI(MSG_NETWORKWINDOW_STATUS_CONNECTING));
-				break;
-			}
+        switch(d->m_state)
+        {
+            case STATUS_CONNECTING:
+            {
+                snprintf(buf2, sizeof(buf2), "%s", GSI(MSG_NETWORKWINDOW_STATUS_CONNECTING));
+                break;
+            }
 
-			case STATUS_WAITING_DATA:
-			{
-				snprintf(buf2, sizeof(buf2), "%s", GSI(MSG_NETWORKWINDOW_STATUS_WAITING_FOR_DATA));
-				break;
-			}
+            case STATUS_WAITING_DATA:
+            {
+                snprintf(buf2, sizeof(buf2), "%s", GSI(MSG_NETWORKWINDOW_STATUS_WAITING_FOR_DATA));
+                break;
+            }
 
-			case STATUS_RECEIVING_DATA:
-			{
-				char received[128], total[128];
-				format_size(received, sizeof(received), d->m_received);
-				format_size(total, sizeof(total), d->m_totalSize);
-				snprintf(buf2, sizeof(buf2), GSI(MSG_NETWORKWINDOW_STATUS_RECEIVING_DATA), received, total);
-				break;
-			}
+            case STATUS_RECEIVING_DATA:
+            {
+                char received[128], total[128];
+                format_size(received, sizeof(received), d->m_received);
+                format_size(total, sizeof(total), d->m_totalSize);
+                snprintf(buf2, sizeof(buf2), GSI(MSG_NETWORKWINDOW_STATUS_RECEIVING_DATA), received, total);
+                break;
+            }
 
-			case STATUS_SENDING_DATA:
-			{
-				char sent[128], total[128];
-				format_size(sent, sizeof(sent), d->m_bodyDataSent);
-				format_size(total, sizeof(total), d->m_bodySize);
-				snprintf(buf2, sizeof(buf2), GSI(MSG_NETWORKWINDOW_STATUS_SENDING_DATA), sent, total);
-				break;
-			}
-		}
+            case STATUS_SENDING_DATA:
+            {
+                char sent[128], total[128];
+                format_size(sent, sizeof(sent), d->m_bodyDataSent);
+                format_size(total, sizeof(total), d->m_bodySize);
+                snprintf(buf2, sizeof(buf2), GSI(MSG_NETWORKWINDOW_STATUS_SENDING_DATA), sent, total);
+                break;
+            }
+        }
 
-		msg->array[0] = buf1;
-		msg->array[1] = buf2;
-	}
-	else
-	{
-		msg->array[0] = GSI(MSG_NETWORKWINDOW_URL);
-		msg->array[1] = GSI(MSG_NETWORKWINDOW_STATE);
-	}
+        msg->array[0] = buf1;
+        msg->array[1] = buf2;
+    }
+    else
+    {
+        msg->array[0] = GSI(MSG_NETWORKWINDOW_URL);
+        msg->array[1] = GSI(MSG_NETWORKWINDOW_STATE);
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(ContextMenuBuild)
 {
-	GETDATA;
+    GETDATA;
 
-	struct MUI_List_TestPos_Result res;
-	ResourceHandle* e;
+    struct MUI_List_TestPos_Result res;
+    ResourceHandle* e;
 
-	if (data->cmenu)
-	{
-		MUI_DisposeObject(data->cmenu);
-		data->cmenu = NULL;
-	}
+    if (data->cmenu)
+    {
+        MUI_DisposeObject(data->cmenu);
+        data->cmenu = NULL;
+    }
 
-	if (DoMethod(obj, MUIM_List_TestPos, msg->mx, msg->my, &res) && (res.entry != -1))
-	{
-		DoMethod(obj, MUIM_List_GetEntry, res.entry, (IPTR *)&e);
+    if (DoMethod(obj, MUIM_List_TestPos, msg->mx, msg->my, &res) && (res.entry != -1))
+    {
+        DoMethod(obj, MUIM_List_GetEntry, res.entry, (IPTR *)&e);
 
-		if(e)
-		{
-			data->cmenu = MenustripObject,
-					MUIA_Family_Child, MenuObjectT(GSI(MSG_NETWORKWINDOW_URL)),
-					MUIA_Family_Child, MenuitemObject,
-						MUIA_Menuitem_Title, GSI(MSG_CONSOLELIST_COPY), // XXX: use own msg id
-						MUIA_UserData, POPMENU_OPEN_COPY,
-	                    End,
-	                End,
-	            End;
-		}
-	}
-	return (IPTR)data->cmenu;
+        if(e)
+        {
+            data->cmenu = MenustripObject,
+                    MUIA_Family_Child, MenuObjectT(GSI(MSG_NETWORKWINDOW_URL)),
+                    MUIA_Family_Child, MenuitemObject,
+                        MUIA_Menuitem_Title, GSI(MSG_CONSOLELIST_COPY), // XXX: use own msg id
+                        MUIA_UserData, POPMENU_OPEN_COPY,
+                        End,
+                    End,
+                End;
+        }
+    }
+    return (IPTR)data->cmenu;
 }
 
 DEFMMETHOD(ContextMenuChoice)
 {
-	ResourceHandle *e;
+    ResourceHandle *e;
 
-	DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (IPTR *)&e);
+    DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (IPTR *)&e);
 
-	if(e)
-	{
-		ULONG udata = muiUserData(msg->item);
+    if(e)
+    {
+        ULONG udata = muiUserData(msg->item);
 
-		switch(udata)
-		{
-			case POPMENU_OPEN_COPY:
-			{
-				copyTextToClipboard((char *) ((!e->firstRequest().isNull() && !e->firstRequest().url().isEmpty()) ? e->firstRequest().url().string().utf8().data() : ""), false);
-			}
-			break;
-		}
-	}
-	return 0;
+        switch(udata)
+        {
+            case POPMENU_OPEN_COPY:
+            {
+                copyTextToClipboard((char *) ((!e->firstRequest().isNull() && !e->firstRequest().url().isEmpty()) ? e->firstRequest().url().string().utf8().data() : ""), false);
+            }
+            break;
+        }
+    }
+    return 0;
 }
 
 BEGINMTABLE

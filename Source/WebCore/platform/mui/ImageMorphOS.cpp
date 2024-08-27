@@ -49,13 +49,13 @@ static RefPtr<SharedBuffer> loadResourceSharedBuffer(const char* name)
 
     if(fname.find(':') == notFound || !fname.endsWith(".info"))
     {
-	fullPath = RESOURCE_PATH;
-	fullPath.append(name);
-	fullPath.append(".png");
+    fullPath = RESOURCE_PATH;
+    fullPath.append(name);
+    fullPath.append(".png");
     }
     else
     {
-	fullPath = String(name);
+    fullPath = String(name);
     }
 
     RefPtr<SharedBuffer> buffer = SharedBuffer::createWithContentsOfFile(fullPath);

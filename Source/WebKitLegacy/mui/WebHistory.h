@@ -44,10 +44,10 @@ class WebVisitedLinkStore;
 
 enum
 {
-	HISTORY_SORT_NONE,
-	HISTORY_SORT_BY_URL,
-	HISTORY_SORT_BY_TITLE,
-	HISTORY_SORT_BY_ACCESSTIME,
+    HISTORY_SORT_NONE,
+    HISTORY_SORT_BY_URL,
+    HISTORY_SORT_BY_TITLE,
+    HISTORY_SORT_BY_ACCESSTIME,
 };
 
 class WebHistory {
@@ -194,7 +194,7 @@ protected:
     friend class WebChromeClient;
 
 public:
-	std::vector<WebHistoryItem *> *historyList();
+    std::vector<WebHistoryItem *> *historyList();
 
 private:
     enum NotificationType {
@@ -209,8 +209,8 @@ private:
     WebPreferences *m_preferences;
 
 public:
-	bool loadHistoryFromDatabase(int sortCriterium, bool desc = false, std::vector<WebHistoryItem *> *destList = NULL);
-	bool insertHistoryItemIntoDatabase(WTF::String& url, WTF::String& title, double lastAccessed);
+    bool loadHistoryFromDatabase(int sortCriterium, bool desc = false, std::vector<WebHistoryItem *> *destList = NULL);
+    bool insertHistoryItemIntoDatabase(WTF::String& url, WTF::String& title, double lastAccessed);
 };
 
 #endif

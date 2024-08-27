@@ -44,7 +44,7 @@
 #include <vector>
 
 namespace WTF {
-	class String;
+    class String;
 };
 
 namespace WebCore
@@ -176,14 +176,14 @@ public:
     virtual void setEnabled(bool);
 
     /*
-	 * private browsing is enabled
+     * private browsing is enabled
      */
-	virtual bool isPrivateBrowsingEnabled();
+    virtual bool isPrivateBrowsingEnabled();
 
     /*
-	 * enable private browsing
+     * enable private browsing
      */
-	virtual void setPrivateBrowsingEnabled(bool);
+    virtual void setPrivateBrowsingEnabled(bool);
 
     virtual bool performImport();
     virtual void didRemoveAllIcons();
@@ -193,11 +193,11 @@ public:
     virtual void didFinishURLImport();
 
     /**
-	 *  didFinishURLIconImport signals import completion
+     *  didFinishURLIconImport signals import completion
      * @param[in]:
      * @param[out]:
      */
-	virtual void didFinishURLIconImport();
+    virtual void didFinishURLIconImport();
 
     /**
      *  iconDatabaseDidAddIconNotification notifies of Icon addition
@@ -241,7 +241,7 @@ protected:
     std::map<BalPoint, BalSurface*> m_defaultIconMap;
     std::map<BalPoint, BalSurface*> m_sharedIconMap;
 
-	std::vector<WTF::String> m_notificationQueue;
+    std::vector<WTF::String> m_notificationQueue;
 
     /**
      *  scheduleNotificationDelivery prepare notification

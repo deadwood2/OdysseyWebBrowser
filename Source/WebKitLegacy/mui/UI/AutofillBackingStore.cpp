@@ -36,7 +36,7 @@ AutofillBackingStore& autofillBackingStore()
     static NeverDestroyed<AutofillBackingStore> backingStore;
 
     if (!backingStore.get().m_database.isOpen())
-		backingStore.get().open("PROGDIR:Conf/AutoFill.db");
+        backingStore.get().open("PROGDIR:Conf/AutoFill.db");
     return backingStore;
 }
 

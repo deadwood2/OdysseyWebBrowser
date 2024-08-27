@@ -66,7 +66,7 @@ DownloadDelegateMorphOS::DownloadDelegateMorphOS()
 
 DownloadDelegateMorphOS::~DownloadDelegateMorphOS()
 {
-	D(kprintf("DownloadDelegateMorphOS::~DownloadDelegateMorphOS\n"));
+    D(kprintf("DownloadDelegateMorphOS::~DownloadDelegateMorphOS\n"));
 }
 
 void DownloadDelegateMorphOS::decideDestinationWithSuggestedFilename(WebDownload *download, const char* suggestedFilename)
@@ -77,111 +77,111 @@ void DownloadDelegateMorphOS::decideDestinationWithSuggestedFilename(WebDownload
 
     if(fileName)
     {
-		WebDownloadPrivate* priv = download->getWebDownloadPrivate();
+        WebDownloadPrivate* priv = download->getWebDownloadPrivate();
 
-		priv->dl = (struct downloadnode *) DoMethod(app, MM_OWBApp_Download, priv->requestUri.utf8().data(), fileName, (APTR) download);
+        priv->dl = (struct downloadnode *) DoMethod(app, MM_OWBApp_Download, priv->requestUri.utf8().data(), fileName, (APTR) download);
 
-		if(priv->dl)
-		{
-			priv->dl->size = priv->totalSize;
-			if(!priv->mimetype.isEmpty())
-				priv->dl->mimetype = strdup(priv->mimetype.utf8().data());
-			priv->dl->webdownload = download;
+        if(priv->dl)
+        {
+            priv->dl->size = priv->totalSize;
+            if(!priv->mimetype.isEmpty())
+                priv->dl->mimetype = strdup(priv->mimetype.utf8().data());
+            priv->dl->webdownload = download;
 
-			if(priv->dl->path && priv->dl->filename)
-			{
-				char *localUri;
-				unsigned long size = strlen(priv->dl->path) + strlen(priv->dl->filename) + 2;
-				
-				localUri = (char *) malloc(size);
+            if(priv->dl->path && priv->dl->filename)
+            {
+                char *localUri;
+                unsigned long size = strlen(priv->dl->path) + strlen(priv->dl->filename) + 2;
+                
+                localUri = (char *) malloc(size);
 
-				if(localUri)
-				{
-					BPTR l;
-					bool overwrite = true;
-					bool resume = false;
+                if(localUri)
+                {
+                    BPTR l;
+                    bool overwrite = true;
+                    bool resume = false;
 
-					strcpy(localUri, priv->dl->path);
-					AddPart(localUri, priv->dl->filename, size);
+                    strcpy(localUri, priv->dl->path);
+                    AddPart(localUri, priv->dl->filename, size);
 
-					if(!priv->quiet)
-					{
-						if((l=Lock(localUri, ACCESS_READ)))
-						{
+                    if(!priv->quiet)
+                    {
+                        if((l=Lock(localUri, ACCESS_READ)))
+                        {
                             struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, NULL);
 
-							if(fib)
-							{
-								if(Examine(l, fib))
-								{
-									struct DateTime dt;
-									char message[8192];
-									TEXT tmpdate[50];
-									TEXT tmptime[50];
-									STRPTR strbuttons = GSI(MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME_ACTIONS);
-									String truncatedURI = truncate(String(localUri), 64);
+                            if(fib)
+                            {
+                                if(Examine(l, fib))
+                                {
+                                    struct DateTime dt;
+                                    char message[8192];
+                                    TEXT tmpdate[50];
+                                    TEXT tmptime[50];
+                                    STRPTR strbuttons = GSI(MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME_ACTIONS);
+                                    String truncatedURI = truncate(String(localUri), 64);
 
-									dt.dat_Stamp.ds_Days    = fib->fib_Date.ds_Days;
-									dt.dat_Stamp.ds_Minute  = fib->fib_Date.ds_Minute;
-									dt.dat_Stamp.ds_Tick    = fib->fib_Date.ds_Tick;
-									dt.dat_Format           = FORMAT_DEF;
-									dt.dat_Flags            = 0;
-									dt.dat_StrDay           = NULL;
-									dt.dat_StrDate          = tmpdate;
-									dt.dat_StrTime          = tmptime;
+                                    dt.dat_Stamp.ds_Days    = fib->fib_Date.ds_Days;
+                                    dt.dat_Stamp.ds_Minute  = fib->fib_Date.ds_Minute;
+                                    dt.dat_Stamp.ds_Tick    = fib->fib_Date.ds_Tick;
+                                    dt.dat_Format           = FORMAT_DEF;
+                                    dt.dat_Flags            = 0;
+                                    dt.dat_StrDay           = NULL;
+                                    dt.dat_StrDate          = tmpdate;
+                                    dt.dat_StrTime          = tmptime;
 
-									if(!DateToStr(&dt))
-									{
-										strcpy((char *)tmpdate, "Unknown");
-										strcpy((char *)tmptime, "Unknown");
-									}
+                                    if(!DateToStr(&dt))
+                                    {
+                                        strcpy((char *)tmpdate, "Unknown");
+                                        strcpy((char *)tmptime, "Unknown");
+                                    }
 
-									snprintf(message, sizeof(message), GSI(MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME),
-																	   truncatedURI.latin1().data(),
-																	   priv->totalSize,
-																	   fib->fib_Size, tmpdate, tmptime);
+                                    snprintf(message, sizeof(message), GSI(MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME),
+                                                                       truncatedURI.latin1().data(),
+                                                                       priv->totalSize,
+                                                                       fib->fib_Size, tmpdate, tmptime);
 
-									if ((ULONG)fib->fib_Size == priv->totalSize)
-										strbuttons = "*_Overwrite|_Cancel"; //TODO: localize
+                                    if ((ULONG)fib->fib_Size == priv->totalSize)
+                                        strbuttons = "*_Overwrite|_Cancel"; //TODO: localize
 
-									int ret = MUI_RequestA(app, NULL, 0, GSI(MSG_REQUESTER_NORMAL_TITLE), strbuttons, message, NULL);
+                                    int ret = MUI_RequestA(app, NULL, 0, GSI(MSG_REQUESTER_NORMAL_TITLE), strbuttons, message, NULL);
 
-									switch(ret)
-									{
-										case 1:
-											resume = false;
-											overwrite = true;
-									 		break;
-										case 2:
-											resume = true;
-											overwrite = false;
-											priv->startOffset = (unsigned long long) fib->fib_Size;
-											priv->currentSize = priv->startOffset;
-											break;
-										default:
-										case 0:
-											resume = false;
-											overwrite = false;
-											break;
-									}
-								}
+                                    switch(ret)
+                                    {
+                                        case 1:
+                                            resume = false;
+                                            overwrite = true;
+                                             break;
+                                        case 2:
+                                            resume = true;
+                                            overwrite = false;
+                                            priv->startOffset = (unsigned long long) fib->fib_Size;
+                                            priv->currentSize = priv->startOffset;
+                                            break;
+                                        default:
+                                        case 0:
+                                            resume = false;
+                                            overwrite = false;
+                                            break;
+                                    }
+                                }
 
-								FreeDosObject(DOS_FIB, fib);
-							}
+                                FreeDosObject(DOS_FIB, fib);
+                            }
 
-							UnLock(l);
-						}
-					}
+                            UnLock(l);
+                        }
+                    }
 
-					D(kprintf("destination %s overwrite %d resume %d\n", localUri, overwrite, resume));
+                    D(kprintf("destination %s overwrite %d resume %d\n", localUri, overwrite, resume));
 
-					download->setDestination(localUri, overwrite, resume);
+                    download->setDestination(localUri, overwrite, resume);
 
-					free(localUri);
-				}
-			}
-		}
-		free(fileName);
+                    free(localUri);
+                }
+            }
+        }
+        free(fileName);
     }
 }
 
@@ -204,30 +204,30 @@ void DownloadDelegateMorphOS::didReceiveDataOfLength(WebDownload* download, unsi
 {
     D(kprintf("DownloadDelegateMorphOS %p - didReceiveDataOfLength %p %d\n", download, length));
 
-	WebDownloadPrivate* priv = download->getWebDownloadPrivate();
+    WebDownloadPrivate* priv = download->getWebDownloadPrivate();
 
-	double currenttime = MonotonicTime::now().secondsSinceEpoch().value();
+    double currenttime = MonotonicTime::now().secondsSinceEpoch().value();
 
-	if(priv->dl)
-	{
-		priv->dl->done = priv->currentSize + length;
+    if(priv->dl)
+    {
+        priv->dl->done = priv->currentSize + length;
 
-		if(currenttime > priv->dl->lastupdatetime + 0.1)
-		{
-			priv->dl->lastupdatetime = currenttime;
-			DoMethod(app, MM_OWBApp_DownloadUpdate, priv->dl);
-		}
-	}
+        if(currenttime > priv->dl->lastupdatetime + 0.1)
+        {
+            priv->dl->lastupdatetime = currenttime;
+            DoMethod(app, MM_OWBApp_DownloadUpdate, priv->dl);
+        }
+    }
 }
 
 void DownloadDelegateMorphOS::didReceiveResponse(WebDownload* download, WebURLResponse* response)
 {
     D(kprintf("DownloadDelegateMorphOS %p - didReceiveResponse %p\n", download, response));
 
-	WebDownloadPrivate* priv = download->getWebDownloadPrivate();
+    WebDownloadPrivate* priv = download->getWebDownloadPrivate();
 
-	priv->totalSize = response->expectedContentLength();
-	priv->mimetype = response->resourceResponse().mimeType();
+    priv->totalSize = response->expectedContentLength();
+    priv->mimetype = response->resourceResponse().mimeType();
 }
 
 void DownloadDelegateMorphOS::willResumeWithResponse(WebDownload* download, WebURLResponse* response, long long fromByte)
@@ -250,11 +250,11 @@ void DownloadDelegateMorphOS::didBegin(WebDownload* download)
 {
     D(kprintf("DownloadDelegateMorphOS %p - didBegin\n", download));
     registerDownload(download);
-	
-	DoMethod(app, MM_OWBApp_OpenWindow, MV_OWB_Window_Downloads, FALSE);
+    
+    DoMethod(app, MM_OWBApp_OpenWindow, MV_OWB_Window_Downloads, FALSE);
 /*
     if(delegate)
-		DoMethod(delegate, MUIM_DownloadDelegate_DidBeginDownload, download);
+        DoMethod(delegate, MUIM_DownloadDelegate_DidBeginDownload, download);
 */
 }
 
@@ -262,73 +262,73 @@ void DownloadDelegateMorphOS::didFinish(WebDownload* download)
 {
     D(kprintf("DownloadDelegateMorphOS %p - didFinish\n", download));
 
-	WebDownloadPrivate* priv = download->getWebDownloadPrivate();
-	char cpath[1024];
-	char ccomment[80];
-	char *ptr;
-	
-	ptr = strdup(priv->destinationPath.latin1().data());
-	stccpy(cpath, ptr, sizeof(cpath));
-	free(ptr);
+    WebDownloadPrivate* priv = download->getWebDownloadPrivate();
+    char cpath[1024];
+    char ccomment[80];
+    char *ptr;
+    
+    ptr = strdup(priv->destinationPath.latin1().data());
+    stccpy(cpath, ptr, sizeof(cpath));
+    free(ptr);
 
-	URL url = URL({ }, priv->requestUri);
-	url.setPass("");
-	ptr = strdup(url.string().utf8().data());
-	stccpy(ccomment, ptr, sizeof(ccomment));
-	free(ptr);
+    URL url = URL({ }, priv->requestUri);
+    url.setPass("");
+    ptr = strdup(url.string().utf8().data());
+    stccpy(ccomment, ptr, sizeof(ccomment));
+    free(ptr);
 
-	DoMethod(app, MM_OWBApp_DownloadDone, priv->dl);
+    DoMethod(app, MM_OWBApp_DownloadDone, priv->dl);
 
-	D(kprintf("DownloadDelegateMorphOS %p - SetComment(%s, %s)\n", download, (STRPTR) priv->destinationPath.latin1().data(), (STRPTR) priv->requestUri.utf8().data()));
+    D(kprintf("DownloadDelegateMorphOS %p - SetComment(%s, %s)\n", download, (STRPTR) priv->destinationPath.latin1().data(), (STRPTR) priv->requestUri.utf8().data()));
 
-	SetComment((STRPTR) cpath, (STRPTR) ccomment);
+    SetComment((STRPTR) cpath, (STRPTR) ccomment);
 
-	if(!priv->command.isEmpty())
-	{
-		D(kprintf("Check DownloadDelegateMorphOS %p - Command (%s)\n", download, (STRPTR) priv->command.latin1().data()));
+    if(!priv->command.isEmpty())
+    {
+        D(kprintf("Check DownloadDelegateMorphOS %p - Command (%s)\n", download, (STRPTR) priv->command.latin1().data()));
 
-		OWBCommand cmd(priv->command, ACTION_AMIGADOS);
-		cmd.execute();
-	}
+        OWBCommand cmd(priv->command, ACTION_AMIGADOS);
+        cmd.execute();
+    }
     unregisterDownload(download);
 
-	delete download;
+    delete download;
 }
 
 void DownloadDelegateMorphOS::didFailWithError(WebDownload* download, WebError* error)
 {
-	char *errormsg = (char *) error->localizedDescription();
+    char *errormsg = (char *) error->localizedDescription();
 
-	D(kprintf("DownloadDelegateMorphOS %p - didFailWithError(%s)\n", download, errormsg));
+    D(kprintf("DownloadDelegateMorphOS %p - didFailWithError(%s)\n", download, errormsg));
 
-	WebDownloadPrivate* priv = download->getWebDownloadPrivate();
+    WebDownloadPrivate* priv = download->getWebDownloadPrivate();
 
-	if(!priv->destinationPath.isEmpty())
-	{
-		char cpath[1024];
-		char ccomment[80];
-		String comment = String("FAILED ") + priv->requestUri ;
-		char *ptr;
+    if(!priv->destinationPath.isEmpty())
+    {
+        char cpath[1024];
+        char ccomment[80];
+        String comment = String("FAILED ") + priv->requestUri ;
+        char *ptr;
 
-		ptr = strdup(priv->destinationPath.latin1().data());
-		stccpy(cpath, ptr, sizeof(cpath));
-		free(ptr);
+        ptr = strdup(priv->destinationPath.latin1().data());
+        stccpy(cpath, ptr, sizeof(cpath));
+        free(ptr);
 
-		URL url = URL({ }, priv->requestUri);
-		url.setPass("");
-		comment = String("FAILED ") + url.string();
-		ptr = strdup(comment.utf8().data());
-		stccpy(ccomment, ptr, sizeof(ccomment));
-		free(ptr);
+        URL url = URL({ }, priv->requestUri);
+        url.setPass("");
+        comment = String("FAILED ") + url.string();
+        ptr = strdup(comment.utf8().data());
+        stccpy(ccomment, ptr, sizeof(ccomment));
+        free(ptr);
 
-		SetComment((STRPTR) cpath, (STRPTR) ccomment);
-	}
+        SetComment((STRPTR) cpath, (STRPTR) ccomment);
+    }
 
-	DoMethod(app, MM_OWBApp_DownloadError, priv->dl, errormsg);
+    DoMethod(app, MM_OWBApp_DownloadError, priv->dl, errormsg);
 
-	free(errormsg);
+    free(errormsg);
 
     unregisterDownload(download);
 
-	delete download;
+    delete download;
 }

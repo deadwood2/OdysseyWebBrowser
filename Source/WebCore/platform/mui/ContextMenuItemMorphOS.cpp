@@ -53,19 +53,19 @@ namespace WebCore {
 ContextMenuItem::ContextMenuItem(BalMenuItem* item)
     : m_platformDescription()
 {
-	PlatformMenuItemDescription *description = NULL;
+    PlatformMenuItemDescription *description = NULL;
 
-	GetAttr(MUIA_UserData, (Object *)item, (IPTR *)&description);
+    GetAttr(MUIA_UserData, (Object *)item, (IPTR *)&description);
 
-	if(description)
-	{
-	        m_platformDescription.title   = (char *) getv(item, MUIA_Menuitem_Title);
-		m_platformDescription.type    = description->type;
-		m_platformDescription.checked = description->checked;
-		m_platformDescription.action  = description->action;
-		m_platformDescription.subMenu = description->subMenu;
-		m_platformDescription.enabled = description->enabled;
-	}
+    if(description)
+    {
+            m_platformDescription.title   = (char *) getv(item, MUIA_Menuitem_Title);
+        m_platformDescription.type    = description->type;
+        m_platformDescription.checked = description->checked;
+        m_platformDescription.action  = description->action;
+        m_platformDescription.subMenu = description->subMenu;
+        m_platformDescription.enabled = description->enabled;
+    }
 }
 
 ContextMenuItem::ContextMenuItem(ContextMenu*)
@@ -91,47 +91,47 @@ ContextMenuItem::~ContextMenuItem()
 
 BalMenuItem* ContextMenuItem::createNativeMenuItem(const PlatformMenuItemDescription& menu)
 {
-	Object *item = NULL;
+    Object *item = NULL;
 
-	PlatformMenuItemDescription *description = static_cast<PlatformMenuItemDescription*>(malloc(sizeof(PlatformMenuItemDescription)));
-	
-	if(description)
-	{
-		description->type    = menu.type;
-		description->checked = menu.checked;
-		description->action  = menu.action;
-		description->subMenu = menu.subMenu;
-		description->enabled = menu.enabled;
+    PlatformMenuItemDescription *description = static_cast<PlatformMenuItemDescription*>(malloc(sizeof(PlatformMenuItemDescription)));
+    
+    if(description)
+    {
+        description->type    = menu.type;
+        description->checked = menu.checked;
+        description->action  = menu.action;
+        description->subMenu = menu.subMenu;
+        description->enabled = menu.enabled;
 
-		CString label = menu.title.latin1();
-		const char *title = label.data() ? strdup(label.data()) : NULL;
+        CString label = menu.title.latin1();
+        const char *title = label.data() ? strdup(label.data()) : NULL;
 
-		// title and userdata are freed in menu/menuitem class dispose method
+        // title and userdata are freed in menu/menuitem class dispose method
 
-		if(menu.subMenu)
-		{
-			SetAttrs((Object *) menu.subMenu,
-						MUIA_Menu_Enabled, menu.enabled,
-						MUIA_UserData, (IPTR) description,
-						MUIA_Menu_Title, (menu.type == SeparatorType || title == NULL) ? NM_BARLABEL : title,
-						TAG_DONE);
+        if(menu.subMenu)
+        {
+            SetAttrs((Object *) menu.subMenu,
+                        MUIA_Menu_Enabled, menu.enabled,
+                        MUIA_UserData, (IPTR) description,
+                        MUIA_Menu_Title, (menu.type == SeparatorType || title == NULL) ? NM_BARLABEL : title,
+                        TAG_DONE);
 
-			item = (Object *) menu.subMenu;
-		}
-		else
-		{
-			item = (Object *) NewObject(getmenuitemclass(), NULL,
-						MUIA_UserData, (IPTR) description,
-						MUIA_Menuitem_Title, (menu.type == SeparatorType || title == NULL) ? NM_BARLABEL : title,
-						MUIA_Menuitem_Enabled, (ULONG) menu.enabled,
-						MUIA_Menuitem_Checkit, menu.type == CheckableActionType,
-						menu.type == CheckableActionType ? MUIA_Menuitem_Checked : TAG_IGNORE, (ULONG) menu.checked,
-					 End;
-		}
+            item = (Object *) menu.subMenu;
+        }
+        else
+        {
+            item = (Object *) NewObject(getmenuitemclass(), NULL,
+                        MUIA_UserData, (IPTR) description,
+                        MUIA_Menuitem_Title, (menu.type == SeparatorType || title == NULL) ? NM_BARLABEL : title,
+                        MUIA_Menuitem_Enabled, (ULONG) menu.enabled,
+                        MUIA_Menuitem_Checkit, menu.type == CheckableActionType,
+                        menu.type == CheckableActionType ? MUIA_Menuitem_Checked : TAG_IGNORE, (ULONG) menu.checked,
+                     End;
+        }
 
-	}
+    }
 
-	return item;
+    return item;
 }
 
 PlatformMenuItemDescription ContextMenuItem::releasePlatformDescription()
@@ -163,12 +163,12 @@ void ContextMenuItem::setAction(ContextMenuAction action)
 
 String ContextMenuItem::title() const
 {
-	return m_platformDescription.title;
+    return m_platformDescription.title;
 }
 
 void ContextMenuItem::setTitle(const String& title)
 {
-	m_platformDescription.title = title;
+    m_platformDescription.title = title;
 }
 
 PlatformMenuDescription ContextMenuItem::platformSubMenu() const
@@ -179,10 +179,10 @@ PlatformMenuDescription ContextMenuItem::platformSubMenu() const
 void ContextMenuItem::setSubMenu(ContextMenu* menu)
 {
     if (m_platformDescription.subMenu)
-	{
-		MUI_DisposeObject((Object *) m_platformDescription.subMenu);
-		m_platformDescription.subMenu = NULL;
-	}
+    {
+        MUI_DisposeObject((Object *) m_platformDescription.subMenu);
+        m_platformDescription.subMenu = NULL;
+    }
 
     if (!menu)
         return;

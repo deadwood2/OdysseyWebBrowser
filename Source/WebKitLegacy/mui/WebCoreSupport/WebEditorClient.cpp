@@ -70,7 +70,7 @@ public:
     bool isUndo() { return m_isUndo; }
 
 private:
-	Ref<UndoStep> m_step;
+    Ref<UndoStep> m_step;
     bool m_isUndo;
 };
 
@@ -85,7 +85,7 @@ void WebEditorUndoCommand::execute()
     if (m_isUndo)
         m_step->unapply();
     else
-		m_step->reapply();
+        m_step->reapply();
 }
 
 class WebEditorUndoTarget
@@ -206,7 +206,7 @@ bool WebEditorClient::isContinuousSpellCheckingEnabled()
 
 void WebEditorClient::toggleContinuousSpellChecking()
 {
-	m_webView->setContinuousSpellCheckingEnabled(isContinuousSpellCheckingEnabled() ? false : true);
+    m_webView->setContinuousSpellCheckingEnabled(isContinuousSpellCheckingEnabled() ? false : true);
 }
 
 bool WebEditorClient::isGrammarCheckingEnabled()
@@ -217,7 +217,7 @@ bool WebEditorClient::isGrammarCheckingEnabled()
 
 void WebEditorClient::toggleGrammarChecking()
 {
-	m_webView->setGrammarCheckingEnabled(isGrammarCheckingEnabled() ? false : true);
+    m_webView->setGrammarCheckingEnabled(isGrammarCheckingEnabled() ? false : true);
 }
 
 /*static void initViewSpecificSpelling(WebView* view)
@@ -364,7 +364,7 @@ bool WebEditorClient::shouldApplyStyle(StyleProperties* style, Range* toElements
         delete domRange;
         delete css;
         return result;
-	}*/
+    }*/
     return true;
 }
 
@@ -417,21 +417,21 @@ void WebEditorClient::textFieldDidBeginEditing(Element* e)
 
 void WebEditorClient::textFieldDidEndEditing(Element* element)
 {
-	DoMethod(m_webView->viewWindow()->browser, MM_OWBBrowser_Autofill_HidePopup);
+    DoMethod(m_webView->viewWindow()->browser, MM_OWBBrowser_Autofill_HidePopup);
 }
 
 void WebEditorClient::textDidChangeInTextField(Element* element)
 {
     if (HTMLInputElement* inputElement = downcast<HTMLInputElement>(element))
-	{
-		DoMethod(m_webView->viewWindow()->browser, MM_OWBBrowser_Autofill_DidChangeInTextField, inputElement);
-	}
+    {
+        DoMethod(m_webView->viewWindow()->browser, MM_OWBBrowser_Autofill_DidChangeInTextField, inputElement);
+    }
 }
 
 bool WebEditorClient::doTextFieldCommandFromEvent(Element* e, KeyboardEvent* ke)
 {
-	// XXX: any better place to catch the event?
-	return DoMethod(m_webView->viewWindow()->browser, MM_OWBBrowser_Autofill_HandleNavigationEvent, ke);
+    // XXX: any better place to catch the event?
+    return DoMethod(m_webView->viewWindow()->browser, MM_OWBBrowser_Autofill_HandleNavigationEvent, ke);
 }
 
 void WebEditorClient::textWillBeDeletedInTextField(Element* e)
@@ -613,131 +613,131 @@ void WebEditorClient::ignoreWordInSpellDocument(const String& word)
 
 void WebEditorClient::learnWord(const String& word)
 {
-	/*
+    /*
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
     if (editing)
         editing->learnWord(strdup(word.utf8().data()));
-	*/
+    */
 
 #if OS(MORPHOS)
-	D(kprintf("learnWord(%s)\n", word.utf8().data()));
+    D(kprintf("learnWord(%s)\n", word.utf8().data()));
 
-	String wordToLearn = word.convertToLowercaseWithoutLocale();
-	STRPTR cword;
+    String wordToLearn = word.convertToLowercaseWithoutLocale();
+    STRPTR cword;
 
-	if(wordToLearn.length() <= 1)
-		return;
+    if(wordToLearn.length() <= 1)
+        return;
 
-	cword = utf8_to_local(wordToLearn.utf8().data());
+    cword = utf8_to_local(wordToLearn.utf8().data());
 
-	if(cword)
-	{
-		APTR dictionary = get_dictionary();
-		if(!dictionary)
-		{
-			open_dictionary(NULL);
-		}
+    if(cword)
+    {
+        APTR dictionary = get_dictionary();
+        if(!dictionary)
+        {
+            open_dictionary(NULL);
+        }
 
-		if(dictionary)
-		{
-			D(kprintf("Learning <%s>\n", cword));
+        if(dictionary)
+        {
+            D(kprintf("Learning <%s>\n", cword));
 
-			if(dictionary_can_learn())
-			{
-				Learn(dictionary, (STRPTR) cword);
-			}
-		}
+            if(dictionary_can_learn())
+            {
+                Learn(dictionary, (STRPTR) cword);
+            }
+        }
 
-		free(cword);
-	}
+        free(cword);
+    }
 #endif
 }
 
 void WebEditorClient::checkSpellingOfString(StringView text, int* misspellingLocation, int* misspellingLength)
 {
-	/*
+    /*
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
     *misspellingLocation = -1;
     *misspellingLength = 0;
     if (editing)
         editing->checkSpellingOfString(m_webView, strdup(String(text, length).utf8().data()), length, misspellingLocation, misspellingLength);
-	*/
+    */
 asm("int3");
-//	D(kprintf("checkSpellingOfString(%s)\n", String(text, length).utf8().data()));
+//    D(kprintf("checkSpellingOfString(%s)\n", String(text, length).utf8().data()));
 //
-//	int start = 0, len = 0, i = 0;
-//	bool wordReached = false;
-//	String word;
-//	STRPTR cword;
-//	UChar *tmp = (UChar *) text;
+//    int start = 0, len = 0, i = 0;
+//    bool wordReached = false;
+//    String word;
+//    STRPTR cword;
+//    UChar *tmp = (UChar *) text;
 //
-//	*misspellingLocation = -1;
-//	*misspellingLength = 0;
+//    *misspellingLocation = -1;
+//    *misspellingLength = 0;
 //
-//	if(length <= 1)
-//		return;
+//    if(length <= 1)
+//        return;
 //
-//	while(i < length)
-//	{
-//		if(!wordReached && !u_isalnum(*tmp))
-//		{
-//			start++;
-//		}
-//		else if(u_isalnum(*tmp))
-//		{
-//			wordReached = true;
-//			len++;
-//		}
-//		else if(wordReached && !u_isalnum(*tmp))
-//		{
-//			break;
-//		}
+//    while(i < length)
+//    {
+//        if(!wordReached && !u_isalnum(*tmp))
+//        {
+//            start++;
+//        }
+//        else if(u_isalnum(*tmp))
+//        {
+//            wordReached = true;
+//            len++;
+//        }
+//        else if(wordReached && !u_isalnum(*tmp))
+//        {
+//            break;
+//        }
 //
-//		i++;
-//		tmp++;
-//	}
+//        i++;
+//        tmp++;
+//    }
 //
-//	if(start > 0 || len > 0)
-//	{
-//		word = String(text + start, len);
-//	}
-//	else
-//	{
-//		word = String(text, length);
-//	}
+//    if(start > 0 || len > 0)
+//    {
+//        word = String(text + start, len);
+//    }
+//    else
+//    {
+//        word = String(text, length);
+//    }
 //
-//	word = word.convertToLowercaseWithoutLocale();
+//    word = word.convertToLowercaseWithoutLocale();
 //
-//	if(word.length() <= 1)
-//		return;
+//    if(word.length() <= 1)
+//        return;
 //
-//	cword = utf8_to_local(word.utf8().data());
+//    cword = utf8_to_local(word.utf8().data());
 //
-//	if(cword)
-//	{
-//		APTR dictionary = get_dictionary();
-//		if(!dictionary)
-//		{	
-//			open_dictionary(NULL);
-//		}
+//    if(cword)
+//    {
+//        APTR dictionary = get_dictionary();
+//        if(!dictionary)
+//        {    
+//            open_dictionary(NULL);
+//        }
 //
-//		if(dictionary)
-//		{
+//        if(dictionary)
+//        {
 //#if !OS(AROS)
-//			D(kprintf("Checking <%s>\n", cword));
+//            D(kprintf("Checking <%s>\n", cword));
 //
-//			STRPTR *res = (STRPTR *) Suggest(dictionary, (STRPTR) cword, NULL);
+//            STRPTR *res = (STRPTR *) Suggest(dictionary, (STRPTR) cword, NULL);
 //
-//			if(res != (STRPTR *) -1)
-//			{
-//				*misspellingLocation = start;
-//				*misspellingLength = len;
-//			}
+//            if(res != (STRPTR *) -1)
+//            {
+//                *misspellingLocation = start;
+//                *misspellingLength = len;
+//            }
 //#endif
-//		}
+//        }
 //
-//		free(cword);
-//	}
+//        free(cword);
+//    }
 }
 
 void WebEditorClient::checkGrammarOfString(StringView, Vector<GrammarDetail>&, int* badGrammarLocation, int* badGrammarLength)
@@ -786,9 +786,9 @@ void WebEditorClient::checkGrammarOfString(StringView, Vector<GrammarDetail>&, i
         details.append(detail);
     }*/
 
-	//kprintf("checkGrammarOfString(%s)\n", String(text, length).utf8().data());
-	*badGrammarLocation = -1;
-	*badGrammarLength = 0;
+    //kprintf("checkGrammarOfString(%s)\n", String(text, length).utf8().data());
+    *badGrammarLocation = -1;
+    *badGrammarLength = 0;
 }
 
 String WebEditorClient::getAutoCorrectSuggestionForMisspelledWord(const String& inputWord)
@@ -837,87 +837,87 @@ bool WebEditorClient::spellingUIIsShowing()
 
 void WebEditorClient::getGuessesForWord(const String& word, const String& context, const VisibleSelection& currentSelection, Vector<String>& guesses)
 {
-	D(kprintf("getGuessesForWord(%s)\n", word.utf8().data()));
+    D(kprintf("getGuessesForWord(%s)\n", word.utf8().data()));
 
-	String isolatedWord;
-	auto upconvertedCharacters = StringView(word).upconvertedCharacters();
-	const UChar *text = upconvertedCharacters;
-	const UChar *tmp = text;
-	STRPTR cword;
-	bool wordReached = false;
-	int start = 0, len = 0;
-	unsigned i = 0;
+    String isolatedWord;
+    auto upconvertedCharacters = StringView(word).upconvertedCharacters();
+    const UChar *text = upconvertedCharacters;
+    const UChar *tmp = text;
+    STRPTR cword;
+    bool wordReached = false;
+    int start = 0, len = 0;
+    unsigned i = 0;
 
-	guesses.clear();
+    guesses.clear();
 
-	while(i < word.length())
-	{
-		if(!wordReached && !u_isalnum(*tmp))
-		{
-			start++;
-		}
-		else if(u_isalnum(*tmp))
-		{
-			wordReached = true;
-			len++;
-		}
-		else if(wordReached && !u_isalnum(*tmp))
-		{
-			break;
-		}
+    while(i < word.length())
+    {
+        if(!wordReached && !u_isalnum(*tmp))
+        {
+            start++;
+        }
+        else if(u_isalnum(*tmp))
+        {
+            wordReached = true;
+            len++;
+        }
+        else if(wordReached && !u_isalnum(*tmp))
+        {
+            break;
+        }
 
-		i++;
-		tmp++;
-	}
+        i++;
+        tmp++;
+    }
 
-	if(start > 0 || len > 0)
-	{
-		isolatedWord = String(text + start, len);
-	}
-	else
-	{
-		isolatedWord = word;
-	}
+    if(start > 0 || len > 0)
+    {
+        isolatedWord = String(text + start, len);
+    }
+    else
+    {
+        isolatedWord = word;
+    }
 
-	isolatedWord = isolatedWord.convertToLowercaseWithoutLocale();
+    isolatedWord = isolatedWord.convertToLowercaseWithoutLocale();
 
-	cword = utf8_to_local(isolatedWord.utf8().data());
+    cword = utf8_to_local(isolatedWord.utf8().data());
 
-	if(cword)
-	{
-		APTR dictionary = get_dictionary();
-		if(!dictionary)
-		{
-			open_dictionary(NULL);
-		}
+    if(cword)
+    {
+        APTR dictionary = get_dictionary();
+        if(!dictionary)
+        {
+            open_dictionary(NULL);
+        }
 
-		if(dictionary)
-		{
+        if(dictionary)
+        {
 #if !OS(AROS)
-			D(kprintf("Checking <%s>\n", cword));
+            D(kprintf("Checking <%s>\n", cword));
 
-			STRPTR *res = (STRPTR *) Suggest(dictionary, (STRPTR) cword, NULL);
+            STRPTR *res = (STRPTR *) Suggest(dictionary, (STRPTR) cword, NULL);
 
-			if(res && res != (STRPTR *) -1)
-			{
-				while(*res)
-				{
-					D(kprintf("Suggested: <%s>\n", *res));
-					STRPTR suggestedWord = local_to_utf8(*res);
-					if(suggestedWord && suggestedWord[0] != '\0')
-					{
-						guesses.append(String::fromUTF8(suggestedWord));
-						free(suggestedWord);
-					}
+            if(res && res != (STRPTR *) -1)
+            {
+                while(*res)
+                {
+                    D(kprintf("Suggested: <%s>\n", *res));
+                    STRPTR suggestedWord = local_to_utf8(*res);
+                    if(suggestedWord && suggestedWord[0] != '\0')
+                    {
+                        guesses.append(String::fromUTF8(suggestedWord));
+                        free(suggestedWord);
+                    }
 
-					res++;
-				}
-			}
+                    res++;
+                }
+            }
 #endif
-		}
+        }
 
-		free(cword);
-	}
+        free(cword);
+    }
 
     /*guesses.clear();
 
@@ -991,7 +991,7 @@ String WebEditorClient::replacementURLForResource(Ref<WebCore::SharedBuffer>&&, 
 //        delete current;
 //        delete proposed;
 //        return result;
-//	}*/
+//    }*/
 //    return false; 
 //}
 //

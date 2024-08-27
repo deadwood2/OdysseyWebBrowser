@@ -62,12 +62,12 @@ class MorphOSJSActionDelegate : public JSActionDelegate
 public:
     static TransferSharedPtr<MorphOSJSActionDelegate> createInstance()
     {
-	return new MorphOSJSActionDelegate();
+    return new MorphOSJSActionDelegate();
     }
 
     MorphOSJSActionDelegate();
     ~MorphOSJSActionDelegate();
-	
+    
     virtual void windowObjectClearNotification(WebFrame*, void*, void*);
     virtual void consoleMessage(WebFrame*, int, int, const char*);
     virtual bool jsAlert(WebFrame*, const char*);
@@ -81,7 +81,7 @@ class MorphOSWebFrameDelegate : public WebFrameLoadDelegate
 public:
     static TransferSharedPtr<MorphOSWebFrameDelegate> createInstance()
     {
-	return new MorphOSWebFrameDelegate();
+    return new MorphOSWebFrameDelegate();
     }
 
     MorphOSWebFrameDelegate();
@@ -107,7 +107,7 @@ public:
     virtual void didDisplayInsecureContent(WebFrame*);
     virtual void didRunInsecureContent(WebFrame*, WebSecurityOrigin*);
     virtual void didChangeIcons(WebFrame*);
-	
+    
 private:
     void updateURL(void *browser, char *url);
     void updateTitle(void *browser, char *title, bool isUTF8 = true);
@@ -119,7 +119,7 @@ class MorphOSResourceLoadDelegate : public WebResourceLoadDelegate
 public:
     static TransferSharedPtr<MorphOSResourceLoadDelegate> createInstance()
     {
-	return new MorphOSResourceLoadDelegate();
+    return new MorphOSResourceLoadDelegate();
     }
     
     MorphOSResourceLoadDelegate();
@@ -177,29 +177,29 @@ public:
 
     bool shouldCoalesce(WebCore::IntRect rect)
     {
-	const size_t cRectThreshold = 10;
-	const float cWastedSpaceThreshold = 0.75f;
-	size_t count = m_dirtyRegions.size();
-	bool useUnionedRect = (count <= 1) || (count > cRectThreshold);
-	if (!useUnionedRect)
-	{
-	    // Attempt to guess whether or not we should use the unioned rect or the individual rects.
-	    // We do this by computing the percentage of "wasted space" in the union.  If that wasted space
-	    // is too large, then we will do individual rect painting instead.
-	    float unionPixels = (rect.width() * rect.height());
-	    float singlePixels = 0;
-	    for (size_t i = 0; i < count; ++i)
-		singlePixels += m_dirtyRegions[i].width() * m_dirtyRegions[i].height();
-	    float wastedSpace = 1 - (singlePixels / unionPixels);
-	    if (wastedSpace <= cWastedSpaceThreshold)
-		useUnionedRect = true;
-	}
-	return useUnionedRect;
+    const size_t cRectThreshold = 10;
+    const float cWastedSpaceThreshold = 0.75f;
+    size_t count = m_dirtyRegions.size();
+    bool useUnionedRect = (count <= 1) || (count > cRectThreshold);
+    if (!useUnionedRect)
+    {
+        // Attempt to guess whether or not we should use the unioned rect or the individual rects.
+        // We do this by computing the percentage of "wasted space" in the union.  If that wasted space
+        // is too large, then we will do individual rect painting instead.
+        float unionPixels = (rect.width() * rect.height());
+        float singlePixels = 0;
+        for (size_t i = 0; i < count; ++i)
+        singlePixels += m_dirtyRegions[i].width() * m_dirtyRegions[i].height();
+        float wastedSpace = 1 - (singlePixels / unionPixels);
+        if (wastedSpace <= cWastedSpaceThreshold)
+        useUnionedRect = true;
+    }
+    return useUnionedRect;
     }
     
     void clearDirtyRegion()
     {
-	m_dirtyRegions.clear();
+    m_dirtyRegions.clear();
         m_backingStoreDirtyRegion.setX(0);
         m_backingStoreDirtyRegion.setY(0);
         m_backingStoreDirtyRegion.setWidth(0);
@@ -215,15 +215,15 @@ public:
     void addToDirtyRegion(const BalRectangle& dirtyRect)
     {
         m_backingStoreDirtyRegion.unite(dirtyRect);
-	if(m_dirtyRegions.size() > 10)
-	{
-	    m_dirtyRegions.clear();
-	    m_dirtyRegions.append(m_backingStoreDirtyRegion);
-	}
-	else
-	{
-	    m_dirtyRegions.append(dirtyRect);
-	}
+    if(m_dirtyRegions.size() > 10)
+    {
+        m_dirtyRegions.clear();
+        m_dirtyRegions.append(m_backingStoreDirtyRegion);
+    }
+    else
+    {
+        m_dirtyRegions.append(dirtyRect);
+    }
     }
 
     BalRectangle onExpose(BalEventExpose event);

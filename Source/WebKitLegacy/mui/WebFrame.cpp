@@ -288,7 +288,7 @@ WebView* WebFrame::webView()
 
 void WebFrame::setWebView(WebView* webView)
 {
-	d->webView = webView;
+    d->webView = webView;
 }
 
 DOMDocument* WebFrame::domDocument()
@@ -302,7 +302,7 @@ DOMDocument* WebFrame::domDocument()
 DOMElement* WebFrame::currentForm()
 {
     if (Frame* coreFrame = core(this)) {
-	if (HTMLFormElement* formElement = coreFrame->selection().currentForm())
+    if (HTMLFormElement* formElement = coreFrame->selection().currentForm())
             return DOMElement::createInstance(formElement);
     }
     return 0;
@@ -414,18 +414,18 @@ const char* WebFrame::url() const
     switch(coreFrame->loader().state())
       {
       case FrameStateProvisional:
-	if(coreFrame->loader().provisionalDocumentLoader())
-	  url = coreFrame->loader().provisionalDocumentLoader()->request().url().string();
-	break;
+    if(coreFrame->loader().provisionalDocumentLoader())
+      url = coreFrame->loader().provisionalDocumentLoader()->request().url().string();
+    break;
       case FrameStateCommittedPage:
-	if(coreFrame->loader().documentLoader())
-	  url = coreFrame->loader().documentLoader()->request().url().string();
-	break;
+    if(coreFrame->loader().documentLoader())
+      url = coreFrame->loader().documentLoader()->request().url().string();
+    break;
       case FrameStateComplete:
-	url = coreFrame->document()->url().string();
-	break;
+    url = coreFrame->document()->url().string();
+    break;
       default:
-	url = coreFrame->document()->url();
+    url = coreFrame->document()->url();
       }
 
     return strdup(url.utf8().data());
@@ -729,7 +729,7 @@ HRESULT WebFrame::elementIsPassword(IDOMElement *element, bool *result)
 {
     HTMLInputElement *inputElement = inputElementFromDOMElement(element);
     *result = inputElement != 0
-		&& inputElement && inputElement->isPasswordField();
+        && inputElement && inputElement->isPasswordField();
     return S_OK;
 }
 
@@ -1039,7 +1039,7 @@ void* WebFrame::spoolPages(HDC printDC, UINT startPage, UINT endPage)
         CGContextTranslateCTM(pctx, CGFloat(-pageRect.x()), CGFloat(-pageRect.y()+headerHeight));   // reserves space for header
         CGContextSetBaseCTM(pctx, ctm);
 
-	coreFrame->view()->paintContents(&spoolCtx, pageRect);
+    coreFrame->view()->paintContents(&spoolCtx, pageRect);
 
         if (ui2) {
             CGContextTranslateCTM(pctx, CGFloat(pageRect.x()), CGFloat(pageRect.y())-headerHeight);
@@ -1165,7 +1165,7 @@ void WebFrame::unmarkAllMisspellings()
         if (!doc)
             return;
 
-		doc->markers().removeMarkers(DocumentMarker::Spelling);
+        doc->markers().removeMarkers(DocumentMarker::Spelling);
     }
 }
 
@@ -1177,7 +1177,7 @@ void WebFrame::unmarkAllBadGrammar()
         if (!doc)
             return;
 
-		doc->markers().removeMarkers(DocumentMarker::Grammar);
+        doc->markers().removeMarkers(DocumentMarker::Grammar);
     }
 }
 
@@ -1240,7 +1240,7 @@ bool WebFrame::elementDoesAutoComplete(DOMElement *element)
     if (!inputElement)
         return false;
     else
-	return inputElement->isTextField() && !inputElement->isPasswordField() && inputElement->shouldAutocomplete();
+    return inputElement->isTextField() && !inputElement->isPasswordField() && inputElement->shouldAutocomplete();
 }
 
 bool WebFrame::pauseAnimation(const char* name, double time, const char* element)
@@ -1303,7 +1303,7 @@ void WebFrame::addToJSWindowObject(BALObject* object)
     JSC::JSGlobalObject* global = frame->script()->globalObject(mainThreadNormalWorld());
     // The root object must be valid! If not, create it.
     if (!root)
-   	    root = JSC::Bindings::RootObject::create(frame, global);
+           root = JSC::Bindings::RootObject::create(frame, global);
     JSC::ExecState* exec = global->globalExec();
     JSC::PropertySlot pr;
 

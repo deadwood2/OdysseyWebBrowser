@@ -50,8 +50,8 @@ namespace WebCore {
 }
 
 namespace WTF {
-	class String;
-	class URL;
+    class String;
+    class URL;
 }
 
 class WebURLAuthenticationChallenge;
@@ -83,10 +83,10 @@ public:
     /**
      * create new instance of WebDownload
      * @param[in]: url
-	 * @param[in]: originURL
+     * @param[in]: originURL
      * @param[in]: WebDownloadDelegate
      */
-	static WebDownload* createInstance(const WTF::URL&, const WTF::String&, TransferSharedPtr<WebDownloadDelegate>);
+    static WebDownload* createInstance(const WTF::URL&, const WTF::String&, TransferSharedPtr<WebDownloadDelegate>);
 
     /**
      * create new instance of WebDownload
@@ -125,10 +125,10 @@ private:
     /**
      * initialise WebDownload
      * @param[in]: url
-	 * @param[in]: orginURL
+     * @param[in]: orginURL
      * @param[in]: WebDownloadDelegate
      */
-	void init(const WTF::URL&, const WTF::String&, TransferSharedPtr<WebDownloadDelegate>);
+    void init(const WTF::URL&, const WTF::String&, TransferSharedPtr<WebDownloadDelegate>);
 public:
 
     /**
@@ -164,7 +164,7 @@ public:
      * start
      * Not Implemented
      */
-	virtual void start(bool quiet = false);
+    virtual void start(bool quiet = false);
 
     /**
      * cancel
@@ -213,7 +213,7 @@ public:
      * @param[in]: path
      * @param[in]: allow overwrite
      */
-	virtual void setDestination(const char* path, bool allowOverwrite, bool allowResume);
+    virtual void setDestination(const char* path, bool allowOverwrite, bool allowResume);
 
     /**
      * cancel authentication challenge
@@ -237,7 +237,7 @@ public:
      */
     virtual void useCredential(WebURLCredential* credential, WebURLAuthenticationChallenge* challenge);
 
-	virtual void setCommandUponCompletion(const char* command);
+    virtual void setCommandUponCompletion(const char* command);
 
     WebDownloadPrivate* getWebDownloadPrivate() { return m_priv; }
 

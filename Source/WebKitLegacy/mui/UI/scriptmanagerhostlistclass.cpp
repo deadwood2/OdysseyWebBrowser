@@ -47,45 +47,45 @@ struct Data
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		InputListFrame,
-		MUIA_CycleChain, TRUE,
-		MUIA_List_Format, "",
-		MUIA_List_Title, FALSE,
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        InputListFrame,
+        MUIA_CycleChain, TRUE,
+        MUIA_List_Format, "",
+        MUIA_List_Title, FALSE,
+        TAG_MORE, INITTAGS
+    );
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(List_Construct)
 {
-	return (IPTR)msg->entry;
+    return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
 {
-	delete (String *) msg->entry;
-	return TRUE;
+    delete (String *) msg->entry;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Display)
 {
-	String *e = (String *) msg->entry;
+    String *e = (String *) msg->entry;
 
-	if (e)
-	{
-		static char buf[256];
-		stccpy(buf, e->latin1().data(), sizeof(buf));
-		msg->array[0] = buf;
-	}
+    if (e)
+    {
+        static char buf[256];
+        stccpy(buf, e->latin1().data(), sizeof(buf));
+        msg->array[0] = buf;
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 BEGINMTABLE

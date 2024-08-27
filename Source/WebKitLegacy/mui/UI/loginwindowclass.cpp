@@ -43,168 +43,168 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *txt_realm;
-	Object *st_user;
-	Object *st_password;
-	Object *ch_save;
-	ULONG done;
-	ULONG validate;
+    Object *txt_realm;
+    Object *st_user;
+    Object *st_password;
+    Object *ch_save;
+    ULONG done;
+    ULONG validate;
 };
 
 DEFNEW
 {
-	Object *st_user, *st_password;
-	Object *bt_login, *bt_cancel;
-	Object *ch_save;
-	STRPTR realm, host, suggested_login, suggested_password;
-	char message[1024];
+    Object *st_user, *st_password;
+    Object *bt_login, *bt_cancel;
+    Object *ch_save;
+    STRPTR realm, host, suggested_login, suggested_password;
+    char message[1024];
 
-	host  = (STRPTR) GetTagData(MA_LoginWindow_Host, 0, msg->ops_AttrList);
-	realm = (STRPTR) GetTagData(MA_LoginWindow_Realm, 0, msg->ops_AttrList);
-	suggested_login    = (STRPTR) GetTagData(MA_LoginWindow_Username, 0, msg->ops_AttrList);
-	suggested_password = (STRPTR) GetTagData(MA_LoginWindow_Password, 0, msg->ops_AttrList);
+    host  = (STRPTR) GetTagData(MA_LoginWindow_Host, 0, msg->ops_AttrList);
+    realm = (STRPTR) GetTagData(MA_LoginWindow_Realm, 0, msg->ops_AttrList);
+    suggested_login    = (STRPTR) GetTagData(MA_LoginWindow_Username, 0, msg->ops_AttrList);
+    suggested_password = (STRPTR) GetTagData(MA_LoginWindow_Password, 0, msg->ops_AttrList);
 
-	snprintf(message, sizeof(message), GSI(MSG_LOGINWINDOW_MESSAGE), realm, host);
+    snprintf(message, sizeof(message), GSI(MSG_LOGINWINDOW_MESSAGE), realm, host);
 
-	obj = (Object *) DoSuperNew(cl, obj,
-			MUIA_Window_ID, MAKE_ID('W','A','U','T'),
-			MUIA_Window_TopEdge , MUIV_Window_TopEdge_Centered,
-			MUIA_Window_LeftEdge, MUIV_Window_LeftEdge_Centered,
-			MUIA_Window_Title, GSI(MSG_LOGINWINDOW_TITLE),
-			MUIA_Window_NoMenus, TRUE,
-			WindowContents, VGroup,
-				MUIA_Background, MUII_RequesterBack,
-				Child, VGroup,
+    obj = (Object *) DoSuperNew(cl, obj,
+            MUIA_Window_ID, MAKE_ID('W','A','U','T'),
+            MUIA_Window_TopEdge , MUIV_Window_TopEdge_Centered,
+            MUIA_Window_LeftEdge, MUIV_Window_LeftEdge_Centered,
+            MUIA_Window_Title, GSI(MSG_LOGINWINDOW_TITLE),
+            MUIA_Window_NoMenus, TRUE,
+            WindowContents, VGroup,
+                MUIA_Background, MUII_RequesterBack,
+                Child, VGroup,
 
                     Child, TextObject,
-		                    TextFrame,
-		                    MUIA_InnerBottom, 8,
-		                    MUIA_InnerLeft, 8,
-		                    MUIA_InnerRight, 8,
-		                    MUIA_InnerTop, 8,
-		                    MUIA_Background, MUII_TextBack,
-		                    MUIA_Text_SetMax, TRUE,
-							MUIA_Text_Contents, message,
-		                    End,
+                            TextFrame,
+                            MUIA_InnerBottom, 8,
+                            MUIA_InnerLeft, 8,
+                            MUIA_InnerRight, 8,
+                            MUIA_InnerTop, 8,
+                            MUIA_Background, MUII_TextBack,
+                            MUIA_Text_SetMax, TRUE,
+                            MUIA_Text_Contents, message,
+                            End,
 
                     Child, VSpace(2),
 
-					Child, ColGroup(2),
-						Child, MakeLabel(GSI(MSG_LOGINWINDOW_USERNAME)),
-						Child, st_user = (Object *) MakeString(suggested_login ? suggested_login : "", FALSE),
-						Child, MakeLabel(GSI(MSG_LOGINWINDOW_PASSWORD)),
-						Child, st_password = (Object *) MakeString(suggested_password ? suggested_password : "", TRUE),
-						Child, HSpace(0),
-						Child, ColGroup(3),
-									Child, ch_save = (Object *) MakeCheck(GSI(MSG_LOGINWINDOW_SAVE_CREDENTIALS), FALSE),
-									Child, LLabel(GSI(MSG_LOGINWINDOW_SAVE_CREDENTIALS)),
-									Child, HSpace(0),
-								End,
-						End,
-					//Child, MakeHBar(),
-					Child, VSpace(2),
+                    Child, ColGroup(2),
+                        Child, MakeLabel(GSI(MSG_LOGINWINDOW_USERNAME)),
+                        Child, st_user = (Object *) MakeString(suggested_login ? suggested_login : "", FALSE),
+                        Child, MakeLabel(GSI(MSG_LOGINWINDOW_PASSWORD)),
+                        Child, st_password = (Object *) MakeString(suggested_password ? suggested_password : "", TRUE),
+                        Child, HSpace(0),
+                        Child, ColGroup(3),
+                                    Child, ch_save = (Object *) MakeCheck(GSI(MSG_LOGINWINDOW_SAVE_CREDENTIALS), FALSE),
+                                    Child, LLabel(GSI(MSG_LOGINWINDOW_SAVE_CREDENTIALS)),
+                                    Child, HSpace(0),
+                                End,
+                        End,
+                    //Child, MakeHBar(),
+                    Child, VSpace(2),
 
-					Child, HGroup,
-						Child, bt_login = (Object *) MakeButton(GSI(MSG_LOGINWINDOW_LOGIN)),
-						Child, RectangleObject, End,
-						Child, bt_cancel = (Object *) MakeButton(GSI(MSG_LOGINWINDOW_CANCEL)),
-					End,
-				End,
-			End,
-			TAG_MORE, msg->ops_AttrList);
+                    Child, HGroup,
+                        Child, bt_login = (Object *) MakeButton(GSI(MSG_LOGINWINDOW_LOGIN)),
+                        Child, RectangleObject, End,
+                        Child, bt_cancel = (Object *) MakeButton(GSI(MSG_LOGINWINDOW_CANCEL)),
+                    End,
+                End,
+            End,
+            TAG_MORE, msg->ops_AttrList);
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->st_user     = st_user;
-		data->st_password = st_password;
-		data->ch_save     = ch_save;
-		data->done     = FALSE;
-		data->validate = FALSE;
+        data->st_user     = st_user;
+        data->st_password = st_password;
+        data->ch_save     = ch_save;
+        data->done     = FALSE;
+        data->validate = FALSE;
 
-		set(obj, MUIA_Window_ActiveObject, data->st_user);
+        set(obj, MUIA_Window_ActiveObject, data->st_user);
 
-		if(suggested_login && *suggested_login)
-		{
-			set(ch_save, MUIA_Selected, TRUE);
-		}
+        if(suggested_login && *suggested_login)
+        {
+            set(ch_save, MUIA_Selected, TRUE);
+        }
 
-		DoMethod(obj,       MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 2, MM_LoginWindow_Login, FALSE);
-		DoMethod(bt_cancel, MUIM_Notify, MUIA_Pressed, FALSE, obj, 2, MM_LoginWindow_Login, FALSE);
-		DoMethod(bt_login,  MUIM_Notify, MUIA_Pressed, FALSE, obj, 2, MM_LoginWindow_Login, TRUE);
-	}
+        DoMethod(obj,       MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 2, MM_LoginWindow_Login, FALSE);
+        DoMethod(bt_cancel, MUIM_Notify, MUIA_Pressed, FALSE, obj, 2, MM_LoginWindow_Login, FALSE);
+        DoMethod(bt_login,  MUIM_Notify, MUIA_Pressed, FALSE, obj, 2, MM_LoginWindow_Login, TRUE);
+    }
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 DEFGET
 {
-	GETDATA;
+    GETDATA;
 
-	switch (msg->opg_AttrID)
-	{
-		case MA_OWB_WindowType:
-		{
-			*msg->opg_Storage = (IPTR) MV_OWB_Window_Auth;
-		}
-		return TRUE;
+    switch (msg->opg_AttrID)
+    {
+        case MA_OWB_WindowType:
+        {
+            *msg->opg_Storage = (IPTR) MV_OWB_Window_Auth;
+        }
+        return TRUE;
 
-		case MA_LoginWindow_Username:
-		{
-			*msg->opg_Storage = (IPTR) getv(data->st_user, MUIA_String_Contents);
-		}
-		return TRUE;
+        case MA_LoginWindow_Username:
+        {
+            *msg->opg_Storage = (IPTR) getv(data->st_user, MUIA_String_Contents);
+        }
+        return TRUE;
 
-		case MA_LoginWindow_Password:
-		{
-			*msg->opg_Storage = (IPTR) getv(data->st_password, MUIA_String_Contents);
-		}
-		return TRUE;
+        case MA_LoginWindow_Password:
+        {
+            *msg->opg_Storage = (IPTR) getv(data->st_password, MUIA_String_Contents);
+        }
+        return TRUE;
 
-		case MA_LoginWindow_SaveAuthentication:
-		{
-			*msg->opg_Storage = (IPTR) getv(data->ch_save, MUIA_Selected);
-		}
-		return TRUE;
-	}
+        case MA_LoginWindow_SaveAuthentication:
+        {
+            *msg->opg_Storage = (IPTR) getv(data->ch_save, MUIA_Selected);
+        }
+        return TRUE;
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 /* FIXME: As the caller (webkit) expects answer, it's blocking
-		  -> make the main loop complete to handle webkit events
+          -> make the main loop complete to handle webkit events
 */
 DEFTMETHOD(LoginWindow_Open)
 {
-	GETDATA;
-	ULONG sigs;
+    GETDATA;
+    ULONG sigs;
 
-	while(!data->done)
-	{
-		DoMethod(app, MUIM_Application_NewInput, &sigs);
-		if (sigs)
-		{
-			sigs=Wait(sigs|SIGBREAKF_CTRL_C);
-			if (sigs & SIGBREAKF_CTRL_C)
-			{
-				break;
-			}
-		}
-	}
+    while(!data->done)
+    {
+        DoMethod(app, MUIM_Application_NewInput, &sigs);
+        if (sigs)
+        {
+            sigs=Wait(sigs|SIGBREAKF_CTRL_C);
+            if (sigs & SIGBREAKF_CTRL_C)
+            {
+                break;
+            }
+        }
+    }
 
-	return data->validate;
+    return data->validate;
 }
 
 
 DEFSMETHOD(LoginWindow_Login)
 {
-	GETDATA;
+    GETDATA;
 
-	data->done = TRUE;
-	data->validate = msg->validate;
+    data->done = TRUE;
+    data->validate = msg->validate;
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

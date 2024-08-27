@@ -45,297 +45,297 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *str;
-	Object *pop;
-	Object *lv_entries;
+    Object *str;
+    Object *pop;
+    Object *lv_entries;
 
-	ULONG added;
-	struct MUI_EventHandlerNode ehnode;
+    ULONG added;
+    struct MUI_EventHandlerNode ehnode;
 };
 
 MUI_HOOK(history_popclose, APTR list, APTR str)
 {
-	struct history_entry *s = NULL;
+    struct history_entry *s = NULL;
 
-	DoMethod((Object *) list, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, &s);
-	if(s)
-	{
-		WebHistoryItem *witem = (WebHistoryItem *) s->webhistoryitem;
-		char *wurl = (char *) witem->URLString();
-		nnset((Object *) str, MUIA_String_Contents, wurl);
-		set(_win((Object *) str), MUIA_Window_ActiveObject, (Object *) str);
-		DoMethod(_win((Object *) str), MM_OWBWindow_LoadURL, wurl, NULL);
-		free(wurl);
-	}
+    DoMethod((Object *) list, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, &s);
+    if(s)
+    {
+        WebHistoryItem *witem = (WebHistoryItem *) s->webhistoryitem;
+        char *wurl = (char *) witem->URLString();
+        nnset((Object *) str, MUIA_String_Contents, wurl);
+        set(_win((Object *) str), MUIA_Window_ActiveObject, (Object *) str);
+        DoMethod(_win((Object *) str), MM_OWBWindow_LoadURL, wurl, NULL);
+        free(wurl);
+    }
 
-	return 0;
+    return 0;
 }
 
 MUI_HOOK(history_popopen, APTR pop, APTR win)
 {
-	Object *list = (Object *)getv((Object *)pop, MUIA_Listview_List);
+    Object *list = (Object *)getv((Object *)pop, MUIA_Listview_List);
 
-	SetAttrs((Object *) win, MUIA_Window_DefaultObject, list, MUIA_Window_ActiveObject, list, TAG_DONE);
-	set(list, MUIA_List_Active, MUIV_List_Active_Off/*0*/);
+    SetAttrs((Object *) win, MUIA_Window_DefaultObject, list, MUIA_Window_ActiveObject, list, TAG_DONE);
+    set(list, MUIA_List_Active, MUIV_List_Active_Off/*0*/);
 
-	return (TRUE);
+    return (TRUE);
 }
 
 STATIC VOID doset(APTR obj, struct Data *data, struct TagItem *tags)
 {
-	struct TagItem *tag, *tstate;
+    struct TagItem *tag, *tstate;
 
-	tstate = tags;
+    tstate = tags;
 
-	while ((tag = NextTagItem(&tstate)) != NULL)
-	{
-		switch (tag->ti_Tag)
-		{
-			case MA_PopString_ActivateString:
-				if(tag->ti_Data)
-				{
-					set((Object *) _win(obj), MUIA_Window_ActiveObject, data->str);
-				}
-				break;
-		}
-	}
+    while ((tag = NextTagItem(&tstate)) != NULL)
+    {
+        switch (tag->ti_Tag)
+        {
+            case MA_PopString_ActivateString:
+                if(tag->ti_Data)
+                {
+                    set((Object *) _win(obj), MUIA_Window_ActiveObject, data->str);
+                }
+                break;
+        }
+    }
 }
 
 DEFNEW
 {
-	Object *str, *pop, *bt_pop, *lv_entries;
+    Object *str, *pop, *bt_pop, *lv_entries;
 
-	obj = (Object *) DoSuperNew(cl, obj,
-		MUIA_Group_Horiz, TRUE,
-		Child, pop = PopobjectObject,
-			MUIA_Popstring_String, str = (Object *) NewObject(geturlstringclass(), NULL, TAG_DONE),
-			MUIA_Popstring_Button, bt_pop = PopButton(MUII_PopUp),
-			MUIA_Popobject_Object, lv_entries =  (Object *) NewObject(gethistorylistclass(), NULL, TAG_DONE),
-			MUIA_Popobject_ObjStrHook, &history_popclose_hook,
-			MUIA_Popobject_WindowHook, &history_popopen_hook,
-		End,
-		TAG_MORE, msg->ops_AttrList);
+    obj = (Object *) DoSuperNew(cl, obj,
+        MUIA_Group_Horiz, TRUE,
+        Child, pop = PopobjectObject,
+            MUIA_Popstring_String, str = (Object *) NewObject(geturlstringclass(), NULL, TAG_DONE),
+            MUIA_Popstring_Button, bt_pop = PopButton(MUII_PopUp),
+            MUIA_Popobject_Object, lv_entries =  (Object *) NewObject(gethistorylistclass(), NULL, TAG_DONE),
+            MUIA_Popobject_ObjStrHook, &history_popclose_hook,
+            MUIA_Popobject_WindowHook, &history_popopen_hook,
+        End,
+        TAG_MORE, msg->ops_AttrList);
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->added = FALSE;
+        data->added = FALSE;
 
-		data->str = str;
-		data->pop = pop;
-		data->lv_entries = lv_entries;
+        data->str = str;
+        data->pop = pop;
+        data->lv_entries = lv_entries;
 
-		data->ehnode.ehn_Object   = obj;
-		data->ehnode.ehn_Class    = cl;
-		data->ehnode.ehn_Events   = IDCMP_RAWKEY;
-		data->ehnode.ehn_Priority = 5;
-		data->ehnode.ehn_Flags    = MUI_EHF_GUIMODE;
+        data->ehnode.ehn_Object   = obj;
+        data->ehnode.ehn_Class    = cl;
+        data->ehnode.ehn_Events   = IDCMP_RAWKEY;
+        data->ehnode.ehn_Priority = 5;
+        data->ehnode.ehn_Flags    = MUI_EHF_GUIMODE;
 
-		set(bt_pop, MUIA_CycleChain, 1);
+        set(bt_pop, MUIA_CycleChain, 1);
 
-		set(lv_entries, MUIA_Popstring_String, str);
-		set(lv_entries, MUIA_Popobject_Object, obj);
+        set(lv_entries, MUIA_Popstring_String, str);
+        set(lv_entries, MUIA_Popobject_Object, obj);
 
-		DoMethod(lv_entries, MUIM_Notify, MUIA_List_Active, MUIV_EveryTime, data->lv_entries, 1, MM_HistoryList_SelectChange);
-		DoMethod(lv_entries, MUIM_Notify, MUIA_Listview_DoubleClick, TRUE, obj, 2, MUIM_Popstring_Close, TRUE);
-	}
+        DoMethod(lv_entries, MUIM_Notify, MUIA_List_Active, MUIV_EveryTime, data->lv_entries, 1, MM_HistoryList_SelectChange);
+        DoMethod(lv_entries, MUIM_Notify, MUIA_Listview_DoubleClick, TRUE, obj, 2, MUIM_Popstring_Close, TRUE);
+    }
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 DEFSET
 {
-	GETDATA;
-	doset(obj, data, msg->ops_AttrList);
-	return DOSUPER;
+    GETDATA;
+    doset(obj, data, msg->ops_AttrList);
+    return DOSUPER;
 }
 
 DEFGET
 {
-	GETDATA;
+    GETDATA;
 
-	switch (msg->opg_AttrID)
-	{
-		case MA_OWB_ObjectType:
-			*msg->opg_Storage = MV_OWB_ObjectType_URL;
-			return TRUE;
+    switch (msg->opg_AttrID)
+    {
+        case MA_OWB_ObjectType:
+            *msg->opg_Storage = MV_OWB_ObjectType_URL;
+            return TRUE;
 
-		case MUIA_Popobject_Object:
+        case MUIA_Popobject_Object:
             *msg->opg_Storage = (IPTR) data->lv_entries;
             return TRUE;
 
-		case MUIA_Popstring_String:
-			*msg->opg_Storage = (IPTR) data->str;
-			return TRUE;
+        case MUIA_Popstring_String:
+            *msg->opg_Storage = (IPTR) data->str;
+            return TRUE;
 
-		case MA_OWB_URL:
-		case MUIA_String_Contents:
-			return GetAttr(MUIA_String_Contents, data->str, (IPTR *)msg->opg_Storage);
-	}
+        case MA_OWB_URL:
+        case MUIA_String_Contents:
+            return GetAttr(MUIA_String_Contents, data->str, (IPTR *)msg->opg_Storage);
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(Show)
 {
-	IPTR rc;
-	GETDATA;
+    IPTR rc;
+    GETDATA;
 
-	if ((rc = DOSUPER))
-	{
-		if(!data->added)
-		{
-			DoMethod( _win(obj), MUIM_Window_AddEventHandler, &data->ehnode);
-			data->added = TRUE;
-		}
-	}
+    if ((rc = DOSUPER))
+    {
+        if(!data->added)
+        {
+            DoMethod( _win(obj), MUIM_Window_AddEventHandler, &data->ehnode);
+            data->added = TRUE;
+        }
+    }
 
-	return rc;
+    return rc;
 }
 
 DEFMMETHOD(Hide)
 {
-	GETDATA;
+    GETDATA;
 
-	if(data->added)
-	{
-		DoMethod(_win(obj), MUIM_Window_RemEventHandler, &data->ehnode);
-		data->added = FALSE;
-	}
-	return DOSUPER;
+    if(data->added)
+    {
+        DoMethod(_win(obj), MUIM_Window_RemEventHandler, &data->ehnode);
+        data->added = FALSE;
+    }
+    return DOSUPER;
 }
 
 DEFMMETHOD(Setup)
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(Cleanup)
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(HandleEvent)
 {
-	GETDATA;
-	IPTR rc = 0;
-	struct IntuiMessage *imsg;
+    GETDATA;
+    IPTR rc = 0;
+    struct IntuiMessage *imsg;
 
-	if(msg->muikey > MUIKEY_NONE)
-	{
-		switch(msg->muikey)
-		{
-			case MUIKEY_WINDOW_CLOSE:
-			{
-				Object *active = (Object *) getv(_win(obj), MUIA_Window_ActiveObject);
+    if(msg->muikey > MUIKEY_NONE)
+    {
+        switch(msg->muikey)
+        {
+            case MUIKEY_WINDOW_CLOSE:
+            {
+                Object *active = (Object *) getv(_win(obj), MUIA_Window_ActiveObject);
 
-				if(active == data->str)
-				{
-					DoMethod(obj, MUIM_Popstring_Close, FALSE);
-					rc = MUI_EventHandlerRC_Eat;
-				}
-				break;
-			}
-		}
-	}
-	else if((imsg = msg->imsg))
-	{
-		if(imsg->Class == IDCMP_RAWKEY)
-		{
-			Object *active = (Object *) getv(_win(obj), MUIA_Window_ActiveObject);
+                if(active == data->str)
+                {
+                    DoMethod(obj, MUIM_Popstring_Close, FALSE);
+                    rc = MUI_EventHandlerRC_Eat;
+                }
+                break;
+            }
+        }
+    }
+    else if((imsg = msg->imsg))
+    {
+        if(imsg->Class == IDCMP_RAWKEY)
+        {
+            Object *active = (Object *) getv(_win(obj), MUIA_Window_ActiveObject);
 
-			if(active == data->str && !(imsg->Code & IECODE_UP_PREFIX))
-			{
-				switch(imsg->Code & ~IECODE_UP_PREFIX)
-				{
-					case RAWKEY_ESCAPE:
-						DoMethod(obj, MUIM_Popstring_Close, FALSE);
-	                    rc = MUI_EventHandlerRC_Eat;
-						break;
+            if(active == data->str && !(imsg->Code & IECODE_UP_PREFIX))
+            {
+                switch(imsg->Code & ~IECODE_UP_PREFIX)
+                {
+                    case RAWKEY_ESCAPE:
+                        DoMethod(obj, MUIM_Popstring_Close, FALSE);
+                        rc = MUI_EventHandlerRC_Eat;
+                        break;
 
-					case RAWKEY_RETURN:
-						DoMethod(obj, MUIM_Popstring_Close, TRUE);
-	                    rc = MUI_EventHandlerRC_Eat;
-						break;
+                    case RAWKEY_RETURN:
+                        DoMethod(obj, MUIM_Popstring_Close, TRUE);
+                        rc = MUI_EventHandlerRC_Eat;
+                        break;
 
-					case RAWKEY_UP:
-					//case RAWKEY_NM_WHEEL_UP:
-						set(data->lv_entries, MUIA_List_Active, MUIV_List_Active_Up);
-						rc = MUI_EventHandlerRC_Eat;
-						break;
+                    case RAWKEY_UP:
+                    //case RAWKEY_NM_WHEEL_UP:
+                        set(data->lv_entries, MUIA_List_Active, MUIV_List_Active_Up);
+                        rc = MUI_EventHandlerRC_Eat;
+                        break;
 
-					case RAWKEY_DOWN:
-					//case RAWKEY_NM_WHEEL_DOWN:
-						DoMethod(obj, MUIM_Popstring_Open);
-						set(_win(obj), MUIA_Window_Activate, TRUE);
-						set(_win(obj), MUIA_Window_ActiveObject, data->str);
-						set(data->lv_entries, MUIA_List_Active, MUIV_List_Active_Down);
-	                    rc = MUI_EventHandlerRC_Eat;
-						break;
-				}
-			}
-		}
-	}
+                    case RAWKEY_DOWN:
+                    //case RAWKEY_NM_WHEEL_DOWN:
+                        DoMethod(obj, MUIM_Popstring_Open);
+                        set(_win(obj), MUIA_Window_Activate, TRUE);
+                        set(_win(obj), MUIA_Window_ActiveObject, data->str);
+                        set(data->lv_entries, MUIA_List_Active, MUIV_List_Active_Down);
+                        rc = MUI_EventHandlerRC_Eat;
+                        break;
+                }
+            }
+        }
+    }
 
-	return rc;
+    return rc;
 
 }
 
 DEFSMETHOD(History_Insert)
 {
-	GETDATA;
-	// Allocated by list constructor
-	DoMethod(data->lv_entries, MUIM_List_InsertSingle, msg->item, MUIV_List_Insert_Top);
+    GETDATA;
+    // Allocated by list constructor
+    DoMethod(data->lv_entries, MUIM_List_InsertSingle, msg->item, MUIV_List_Insert_Top);
 
-	return 0;
+    return 0;
 }
 
 DEFSMETHOD(History_Remove)
 {
-	GETDATA;
-	WebHistoryItem *s;
-	struct history_entry *x;
-	ULONG i;
+    GETDATA;
+    WebHistoryItem *s;
+    struct history_entry *x;
+    ULONG i;
 
-	s = (WebHistoryItem *) msg->item;
+    s = (WebHistoryItem *) msg->item;
 
-	for (i = 0; ; i++)
-	{
-		DoMethod(data->lv_entries, MUIM_List_GetEntry, i, &x);
+    for (i = 0; ; i++)
+    {
+        DoMethod(data->lv_entries, MUIM_List_GetEntry, i, &x);
 
-		if (!x)
-			break;
+        if (!x)
+            break;
 
-		if (s == x->webhistoryitem)
-		{
-			DoMethod(data->lv_entries, MUIM_List_Remove, i);
-			// Freed by list destructor
-			break;
-		}
-	}
+        if (s == x->webhistoryitem)
+        {
+            DoMethod(data->lv_entries, MUIM_List_Remove, i);
+            // Freed by list destructor
+            break;
+        }
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFMMETHOD(Popstring_Open)
 {
-	GETDATA;
+    GETDATA;
 
-	// Avoid closing popup when it's told to be opened again. :)
-	if(!getv(data->lv_entries, MA_HistoryList_Opened))
-	{
-		return DOSUPER;
-	}
-	else
-	{	
-		return 0;
-	}
+    // Avoid closing popup when it's told to be opened again. :)
+    if(!getv(data->lv_entries, MA_HistoryList_Opened))
+    {
+        return DOSUPER;
+    }
+    else
+    {    
+        return 0;
+    }
 }
 
 DEFMMETHOD(Popstring_Close)
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 BEGINMTABLE

@@ -44,7 +44,7 @@ static const char imageJpeg[] = "image/jpeg";
 static const char octetStream[] = "application/octet-stream";
 
 static const ExtensionMap extensionMap [] = {
-	{ textPlain, "txt" },
+    { textPlain, "txt" },
     { textPlain, "text" },
     { textHtml, "html" },
     { textHtml, "htm" },
@@ -75,10 +75,10 @@ static const ExtensionMap extensionMap [] = {
     { "image/svg+xml", "svg" },
     { "application/rss+xml", "rss" },
     { "application/rdf+xml", "rdf" },
-	{ "application/x-shockwave-flash", "swf" },
-	{ "application/x-futuresplash", "spl" },
+    { "application/x-shockwave-flash", "swf" },
+    { "application/x-futuresplash", "spl" },
 
-	// Media types
+    // Media types
 
     // Ogg
     { "application/ogg", "ogx" },
@@ -121,8 +121,8 @@ static const ExtensionMap extensionMap [] = {
     { "audio/x-mpegurl", "m3u" },
 
     // MPEG-4
-	{ "video/x-mp4", "mp4" },
-	{ "video/mp4",   "mp4" },
+    { "video/x-mp4", "mp4" },
+    { "video/mp4",   "mp4" },
     { "video/x-m4v", "m4v" },
     { "audio/x-m4a", "m4a" },
     { "audio/x-m4b", "m4b" },
@@ -157,7 +157,7 @@ static const ExtensionMap extensionMap [] = {
     { "audio/x-gsm", "gsm" },
 
     // ADPCM
-	{ "audio/x-wav", "wav" },
+    { "audio/x-wav", "wav" },
 
     { 0, 0 }
 };
@@ -174,21 +174,21 @@ String MIMETypeRegistry::getMIMETypeForExtension(const String &ext)
 
     if(ext != "")
     {
-		APTR n;
-		ITERATELIST(n, &mimetype_list)
-		{
-		    struct mimetypenode *mn = (struct mimetypenode *) n;
-		    String extensions = mn->extensions;
-		    Vector<String> listExtensions = extensions.split(" ");
+        APTR n;
+        ITERATELIST(n, &mimetype_list)
+        {
+            struct mimetypenode *mn = (struct mimetypenode *) n;
+            String extensions = mn->extensions;
+            Vector<String> listExtensions = extensions.split(" ");
 
-		    for(size_t i = 0; i < listExtensions.size(); i++)
-		    {
-				if(listExtensions[i] == s)
-				{
-				    return String(mn->mimetype);
-				}
-		    }
-		}
+            for(size_t i = 0; i < listExtensions.size(); i++)
+            {
+                if(listExtensions[i] == s)
+                {
+                    return String(mn->mimetype);
+                }
+            }
+        }
     }
 
     return String();
@@ -200,27 +200,27 @@ Vector<String> MIMETypeRegistry::getExtensionsForMIMEType(const String& type)
     String s = type.convertToLowercaseWithoutLocale();
     const ExtensionMap *e = extensionMap;
     while (e->extension) {
-	if (s == e->mimeType)
-	    extensions.append(e->extension);
+    if (s == e->mimeType)
+        extensions.append(e->extension);
         ++e;
     }
 
     APTR n;
     ITERATELIST(n, &mimetype_list)
     {
-		struct mimetypenode *mn = (struct mimetypenode *) n;
-		
-		if(s == mn->mimetype)
-		{
-		    Vector<String> newExtensions;
-		    String strExtensions = mn->extensions;
-		    newExtensions = strExtensions.split(" ");
-		    
-		    if(newExtensions.size())
-				extensions = newExtensions;
-		    
-		    break;
-		}
+        struct mimetypenode *mn = (struct mimetypenode *) n;
+        
+        if(s == mn->mimetype)
+        {
+            Vector<String> newExtensions;
+            String strExtensions = mn->extensions;
+            newExtensions = strExtensions.split(" ");
+            
+            if(newExtensions.size())
+                extensions = newExtensions;
+            
+            break;
+        }
     }
     
     return extensions;

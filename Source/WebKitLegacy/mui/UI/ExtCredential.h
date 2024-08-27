@@ -39,66 +39,66 @@ enum { CREDENTIAL_FLAG_BLACKLISTED = 0x10000 };
 class ExtCredential {
 
 public:
-	ExtCredential()
+    ExtCredential()
     : m_user("")
     , m_password("")
-	, m_realm("")
-	, m_userFieldName("")
-	, m_passwordFieldName("")
-	, m_type(CREDENTIAL_TYPE_AUTH)
-	, m_flags(0)
-	{
-	}
+    , m_realm("")
+    , m_userFieldName("")
+    , m_passwordFieldName("")
+    , m_type(CREDENTIAL_TYPE_AUTH)
+    , m_flags(0)
+    {
+    }
 
-	ExtCredential(const String& user, const String& password, CredentialPersistence persistence, const String& realm, int flags)
-	: m_user(user.length() ? user : "")
+    ExtCredential(const String& user, const String& password, CredentialPersistence persistence, const String& realm, int flags)
+    : m_user(user.length() ? user : "")
     , m_password(password.length() ? password : "")
     , m_persistence(persistence)
-	, m_realm(realm.length() ? realm : "")
-	, m_userFieldName("")
-	, m_passwordFieldName("")
-	, m_type(CREDENTIAL_TYPE_AUTH)
-	, m_flags(flags)
-	{	 
-	}
+    , m_realm(realm.length() ? realm : "")
+    , m_userFieldName("")
+    , m_passwordFieldName("")
+    , m_type(CREDENTIAL_TYPE_AUTH)
+    , m_flags(flags)
+    {     
+    }
 
-	ExtCredential(const String& user, const String& password, CredentialPersistence persistence, const String& userFieldName, const String &passwordFieldName, int flags)
-	: m_user(user.length() ? user : "")
+    ExtCredential(const String& user, const String& password, CredentialPersistence persistence, const String& userFieldName, const String &passwordFieldName, int flags)
+    : m_user(user.length() ? user : "")
     , m_password(password.length() ? password : "")
     , m_persistence(persistence)
-	, m_realm("")
-	, m_userFieldName(userFieldName.length() ? userFieldName : "")
-	, m_passwordFieldName(passwordFieldName.length() ? passwordFieldName : "")
-	, m_type(CREDENTIAL_TYPE_FORM)
-	, m_flags(flags)
-	{
-	}
+    , m_realm("")
+    , m_userFieldName(userFieldName.length() ? userFieldName : "")
+    , m_passwordFieldName(passwordFieldName.length() ? passwordFieldName : "")
+    , m_type(CREDENTIAL_TYPE_FORM)
+    , m_flags(flags)
+    {
+    }
 
-	bool isEmpty() { return m_user.isEmpty() && m_password.isEmpty(); }
+    bool isEmpty() { return m_user.isEmpty() && m_password.isEmpty(); }
 
-	const String& user() const { return m_user; }
-	const String& password() const { return m_password; }
+    const String& user() const { return m_user; }
+    const String& password() const { return m_password; }
 
-	bool hasPassword() const { return !m_password.isEmpty(); }
-	CredentialPersistence persistence() const { return m_persistence; }
-	const String& realm() const { return m_realm; }
-	const String& userFieldName() const { return m_userFieldName; }
-	const String& passwordFieldName() const { return m_passwordFieldName; }
-	const int& type() const { return m_type; }
-	const int& flags() const { return m_flags; }
+    bool hasPassword() const { return !m_password.isEmpty(); }
+    CredentialPersistence persistence() const { return m_persistence; }
+    const String& realm() const { return m_realm; }
+    const String& userFieldName() const { return m_userFieldName; }
+    const String& passwordFieldName() const { return m_passwordFieldName; }
+    const int& type() const { return m_type; }
+    const int& flags() const { return m_flags; }
 
-	void clear() { m_user = ""; m_password = ""; m_realm = ""; m_userFieldName = ""; m_passwordFieldName = ""; }
-	void setFlags(int flags) { m_flags = flags; };
+    void clear() { m_user = ""; m_password = ""; m_realm = ""; m_userFieldName = ""; m_passwordFieldName = ""; }
+    void setFlags(int flags) { m_flags = flags; };
     
 private:
-	String m_user;
-	String m_password;
+    String m_user;
+    String m_password;
     CredentialPersistence m_persistence;
-	String m_realm;
-	String m_userFieldName;
-	String m_passwordFieldName;
-	int    m_type;
-	int    m_flags;
+    String m_realm;
+    String m_userFieldName;
+    String m_passwordFieldName;
+    int    m_type;
+    int    m_flags;
 };
 
 inline bool operator==(const ExtCredential& a, const ExtCredential& b)
@@ -118,7 +118,7 @@ inline bool operator==(const ExtCredential& a, const ExtCredential& b)
     if (a.type() != b.type())
         return false;
     if (a.flags() != b.flags())
-		return false;
+        return false;
 
     return true;
 }

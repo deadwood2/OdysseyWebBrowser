@@ -53,7 +53,7 @@ namespace WebCore {
 #if 0
 ContextMenu::ContextMenu()
 {
-	m_platformDescription = (void *) NewObject(getmenuclass(), NULL, MUIA_Menu_Title, strdup(GSI(MSG_CONTEXTMENU_TITLE)), End;
+    m_platformDescription = (void *) NewObject(getmenuclass(), NULL, MUIA_Menu_Title, strdup(GSI(MSG_CONTEXTMENU_TITLE)), End;
 }
 
 ContextMenu::~ContextMenu()
@@ -63,22 +63,22 @@ ContextMenu::~ContextMenu()
 void ContextMenu::appendItem(ContextMenuItem& item)
 {
         m_items.append(item);
-	BalMenuItem* platformItem = ContextMenuItem::createNativeMenuItem(item.releasePlatformDescription());
+    BalMenuItem* platformItem = ContextMenuItem::createNativeMenuItem(item.releasePlatformDescription());
 
 
-	if(platformItem && m_platformDescription)
-	{
-		DoMethod((Object *) m_platformDescription, OM_ADDMEMBER, platformItem);
-	}
+    if(platformItem && m_platformDescription)
+    {
+        DoMethod((Object *) m_platformDescription, OM_ADDMEMBER, platformItem);
+    }
 }
 
 void ContextMenu::setPlatformDescription(PlatformMenuDescription menu)
 {
     if (m_platformDescription)
-	{
-		MUI_DisposeObject((Object *) m_platformDescription);
-		m_platformDescription = NULL;
-	}
+    {
+        MUI_DisposeObject((Object *) m_platformDescription);
+        m_platformDescription = NULL;
+    }
 
     m_platformDescription = menu;
 }
@@ -98,7 +98,7 @@ PlatformMenuDescription ContextMenu::releasePlatformDescription()
 
 unsigned ContextMenu::itemCount() const 
 { 
-	return getv((Object*) m_platformDescription, MUIA_Family_ChildCount);
+    return getv((Object*) m_platformDescription, MUIA_Family_ChildCount);
 }
 
 Vector<ContextMenuItem> contextMenuItemVector(const PlatformMenuDescription menu)

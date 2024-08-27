@@ -47,56 +47,56 @@ struct Data
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		InputListFrame,
-		MUIA_List_Format, "BAR,",
-		MUIA_List_Title, TRUE,
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        InputListFrame,
+        MUIA_List_Format, "BAR,",
+        MUIA_List_Title, TRUE,
+        TAG_MORE, INITTAGS
+    );
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(List_Construct)
 {
-	// Built by caller
-	return (IPTR)msg->entry;
+    // Built by caller
+    return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
 {
-	struct block_entry *entry = (struct block_entry *) msg->entry;
+    struct block_entry *entry = (struct block_entry *) msg->entry;
 
-	if(entry)
-	{
-		free(entry->rule);
-		free(entry);
-	}
+    if(entry)
+    {
+        free(entry->rule);
+        free(entry);
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Display)
 {
-	struct block_entry *e = (struct block_entry *) msg->entry;
+    struct block_entry *e = (struct block_entry *) msg->entry;
 
-	if (e)
-	{
-		msg->array[0] = e->type == 0 ? (char *) GSI(MSG_BLOCKMANAGERLIST_DENY) : (char *) GSI(MSG_BLOCKMANAGERLIST_ALLOW);
-		msg->array[1] = e->rule;
-	}
-	else
-	{
-		msg->array[0] = GSI(MSG_BLOCKMANAGERLIST_TYPE);
-		msg->array[1] = GSI(MSG_BLOCKMANAGERLIST_RULE);
-	}
+    if (e)
+    {
+        msg->array[0] = e->type == 0 ? (char *) GSI(MSG_BLOCKMANAGERLIST_DENY) : (char *) GSI(MSG_BLOCKMANAGERLIST_ALLOW);
+        msg->array[1] = e->rule;
+    }
+    else
+    {
+        msg->array[0] = GSI(MSG_BLOCKMANAGERLIST_TYPE);
+        msg->array[1] = GSI(MSG_BLOCKMANAGERLIST_RULE);
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 BEGINMTABLE

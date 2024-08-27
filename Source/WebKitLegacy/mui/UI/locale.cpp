@@ -50,31 +50,31 @@ LONG   locale_timezone_offset;
 
 ULONG locale_init(void)
 {
-	locale = OpenLocale(NULL);
+    locale = OpenLocale(NULL);
 
-	locale_timezone_offset = -locale->loc_GMTOffset * 60;
+    locale_timezone_offset = -locale->loc_GMTOffset * 60;
 
-	catalog = OpenCatalog(
-		NULL, "OWB.catalog",
-		OC_BuiltInLanguage, "english",
-		OC_Version, 1,  /* required catalog version */
-		TAG_DONE
-	);
+    catalog = OpenCatalog(
+        NULL, "OWB.catalog",
+        OC_BuiltInLanguage, "english",
+        OC_Version, 1,  /* required catalog version */
+        TAG_DONE
+    );
 
-	if (catalog)
-	{
-		int c;
+    if (catalog)
+    {
+        int c;
 
-		for (c = 0; c < NUMCATSTRING; c++)
-		{
-			((char**)__stringtable)[ c ] = (char *)GetCatalogStr(catalog, c, (char*)__stringtable[c]);
-		}
-	}
-	return (TRUE);
+        for (c = 0; c < NUMCATSTRING; c++)
+        {
+            ((char**)__stringtable)[ c ] = (char *)GetCatalogStr(catalog, c, (char*)__stringtable[c]);
+        }
+    }
+    return (TRUE);
 }
 
 void locale_cleanup(void)
 {
-	CloseLocale(locale);
-	CloseCatalog(catalog);
+    CloseLocale(locale);
+    CloseCatalog(catalog);
 }

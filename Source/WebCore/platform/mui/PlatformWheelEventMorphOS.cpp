@@ -48,35 +48,35 @@ PlatformWheelEvent::PlatformWheelEvent(BalEventScroll* event)
     m_deltaY = 0;
     m_useLatchedEventNode = false;
 
-	m_modifiers = OptionSet<PlatformEvent::Modifier>();
+    m_modifiers = OptionSet<PlatformEvent::Modifier>();
 
-	if (event->Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
-		m_modifiers.add(PlatformEvent::Modifier::ShiftKey);
+    if (event->Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
+        m_modifiers.add(PlatformEvent::Modifier::ShiftKey);
 
-	if (event->Qualifier & IEQUALIFIER_CONTROL)
-		m_modifiers.add(PlatformEvent::Modifier::ControlKey);
+    if (event->Qualifier & IEQUALIFIER_CONTROL)
+        m_modifiers.add(PlatformEvent::Modifier::ControlKey);
 
-	if( event->Qualifier & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
-		m_modifiers.add(PlatformEvent::Modifier::AltKey);
+    if( event->Qualifier & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
+        m_modifiers.add(PlatformEvent::Modifier::AltKey);
 
-	if (event->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
-		m_modifiers.add(PlatformEvent::Modifier::MetaKey);
+    if (event->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
+        m_modifiers.add(PlatformEvent::Modifier::MetaKey);
 
-	switch(event->Code)
-	{
-		case RAWKEY_NM_WHEEL_UP:
-			deltay = +1;
-			break;
-		case RAWKEY_NM_WHEEL_DOWN:
-			deltay = -1;
-			break;
-		case RAWKEY_NM_WHEEL_LEFT:
-			deltax = +1;
-			break;
-		case RAWKEY_NM_WHEEL_RIGHT:
-			deltax = -1;
-			break;
-	}
+    switch(event->Code)
+    {
+        case RAWKEY_NM_WHEEL_UP:
+            deltay = +1;
+            break;
+        case RAWKEY_NM_WHEEL_DOWN:
+            deltay = -1;
+            break;
+        case RAWKEY_NM_WHEEL_LEFT:
+            deltax = +1;
+            break;
+        case RAWKEY_NM_WHEEL_RIGHT:
+            deltax = -1;
+            break;
+    }
 
     m_deltaX = deltax;
     m_deltaY = deltay;
@@ -84,49 +84,49 @@ PlatformWheelEvent::PlatformWheelEvent(BalEventScroll* event)
     m_wheelTicksX = m_deltaX;
     m_wheelTicksY = m_deltaY;
 
-	if (controlKey())
-	{
-		m_granularity = ScrollByPageWheelEvent;
+    if (controlKey())
+    {
         m_granularity = ScrollByPageWheelEvent;
-		/*
-		deltax = deltax * 10000;
-		deltay = deltay * 10000;
-		*/
-		deltax = deltay = 0; // Keep ctrl for zoom
-	}
-	else if (shiftKey())
-	{
-		// kprintf("window (%d, %d)\n", event->IDCMPWindow->Width, event->IDCMPWindow->Height);
         m_granularity = ScrollByPageWheelEvent;
-		deltax = (int)deltax * event->IDCMPWindow->Width / 50;
-		deltay = (int)deltay * event->IDCMPWindow->Height / 50;
-	}
-	else
-	{
-		m_granularity = ScrollByPixelWheelEvent;
+        /*
+        deltax = deltax * 10000;
+        deltay = deltay * 10000;
+        */
+        deltax = deltay = 0; // Keep ctrl for zoom
+    }
+    else if (shiftKey())
+    {
+        // kprintf("window (%d, %d)\n", event->IDCMPWindow->Width, event->IDCMPWindow->Height);
+        m_granularity = ScrollByPageWheelEvent;
+        deltax = (int)deltax * event->IDCMPWindow->Width / 50;
+        deltay = (int)deltay * event->IDCMPWindow->Height / 50;
+    }
+    else
+    {
+        m_granularity = ScrollByPixelWheelEvent;
 
-		deltax *= static_cast<float>(Scrollbar::pixelsPerLineStep());
-		deltay *= static_cast<float>(Scrollbar::pixelsPerLineStep());
+        deltax *= static_cast<float>(Scrollbar::pixelsPerLineStep());
+        deltay *= static_cast<float>(Scrollbar::pixelsPerLineStep());
     }
 
-	if (altKey())
+    if (altKey())
     {
         double temp;
         temp   = deltax;
         deltax = deltay;
         deltay = temp;
 
-		temp = m_wheelTicksX;
-		m_wheelTicksY = m_wheelTicksX;
-		m_wheelTicksX = temp;
+        temp = m_wheelTicksX;
+        m_wheelTicksY = m_wheelTicksX;
+        m_wheelTicksX = temp;
     }
 
     m_deltaX = deltax;
     m_deltaY = deltay;
 
-	m_type = PlatformEvent::Wheel;
-	
-	m_timestamp = WallTime::fromRawSeconds(MonotonicTime::now().secondsSinceEpoch().value());
+    m_type = PlatformEvent::Wheel;
+    
+    m_timestamp = WallTime::fromRawSeconds(MonotonicTime::now().secondsSinceEpoch().value());
     m_position = IntPoint((int)event->MouseX, (int)event->MouseY);
     m_globalPosition = IntPoint((int)event->MouseX, (int)event->MouseY);
     m_directionInvertedFromDevice = false;}

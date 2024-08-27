@@ -91,61 +91,61 @@ TransferSharedPtr<DefaultPolicyDelegate> DefaultPolicyDelegate::createInstance()
 void DefaultPolicyDelegate::decidePolicyForNavigationAction(WebView* webView, 
     /*[in]*/ WebNavigationAction* actionInformation, 
     /*[in]*/ WebMutableURLRequest* request, 
-	/*[in]*/ WebFrame* frame,
+    /*[in]*/ WebFrame* frame,
     /*[in]*/ WebFramePolicyListener* listener)
 {
     int navType = actionInformation->type();
 
     bool canHandleRequest = webView->canHandleRequest(request);
 
-	navType = actionInformation->type();
+    navType = actionInformation->type();
 
-	// XXX: move that to webframeloaderlient event directly to use form
-	if (navType == WebNavigationTypeFormSubmitted)
-	{
-		DoMethod(app, MM_OWBApp_SaveFormState, webView, frame);
-	}
+    // XXX: move that to webframeloaderlient event directly to use form
+    if (navType == WebNavigationTypeFormSubmitted)
+    {
+        DoMethod(app, MM_OWBApp_SaveFormState, webView, frame);
+    }
 
-	if (navType == WebNavigationTypeFormResubmitted)
-	{
-		// XXX: move that to an app method
-		ULONG ret = MUI_RequestA(app, NULL, 0, GSI(MSG_REQUESTER_NORMAL_TITLE), GSI(MSG_REQUESTER_YES_NO), GSI(MSG_DEFAULTPOLICYDELEGATE_MESSAGE), NULL);
+    if (navType == WebNavigationTypeFormResubmitted)
+    {
+        // XXX: move that to an app method
+        ULONG ret = MUI_RequestA(app, NULL, 0, GSI(MSG_REQUESTER_NORMAL_TITLE), GSI(MSG_REQUESTER_YES_NO), GSI(MSG_DEFAULTPOLICYDELEGATE_MESSAGE), NULL);
 
-		switch(ret)
-		{
-			case 1:
-				listener->use();
-				break;
+        switch(ret)
+        {
+            case 1:
+                listener->use();
+                break;
 
-			default:
-			case 0:
-				listener->ignore();
-				break;
-		}
-	}
-	else
-	{
-		if (canHandleRequest)
-	        listener->use();
-		else if (navType == WebNavigationTypePlugInRequest)
-	        listener->use();
-		else
-		{
-			char *url = (char *) request->_URL();
-			if(url)
-			{
-		        // A file URL shouldn't fall through to here, but if it did,
-		        // it would be a security risk to open it.
-				if (!String(url).startsWith("file:"))
-				{
-		            // FIXME: Open the URL not by means of a webframe, but by handing it over to the system and letting it determine how to open that particular URL scheme.  See documentation for [NSWorkspace openURL]
-		            ;
-		        }
-		        listener->ignore();
-				free(url);
-			}
-	    }
-	}
+            default:
+            case 0:
+                listener->ignore();
+                break;
+        }
+    }
+    else
+    {
+        if (canHandleRequest)
+            listener->use();
+        else if (navType == WebNavigationTypePlugInRequest)
+            listener->use();
+        else
+        {
+            char *url = (char *) request->_URL();
+            if(url)
+            {
+                // A file URL shouldn't fall through to here, but if it did,
+                // it would be a security risk to open it.
+                if (!String(url).startsWith("file:"))
+                {
+                    // FIXME: Open the URL not by means of a webframe, but by handing it over to the system and letting it determine how to open that particular URL scheme.  See documentation for [NSWorkspace openURL]
+                    ;
+                }
+                listener->ignore();
+                free(url);
+            }
+        }
+    }
 }
 
 void DefaultPolicyDelegate::decidePolicyForNewWindowAction(
@@ -173,14 +173,14 @@ void DefaultPolicyDelegate::unableToImplementPolicyWithError(
     /*[in]*/ WebError* error, 
     /*[in]*/ WebFrame* frame)
 {
-	char *frameNameStr = (char *) frame->name();
+    char *frameNameStr = (char *) frame->name();
     String errorStr;
     errorStr = error->localizedDescription();
 
     String frameName;
-	frameName = frameNameStr;
+    frameName = frameNameStr;
 
-	free(frameNameStr);
+    free(frameNameStr);
 
     //LOG_ERROR("called unableToImplementPolicyWithError:%S inFrame:%S", errorStr ? errorStr : TEXT(""), frameName ? frameName : TEXT(""));
 }

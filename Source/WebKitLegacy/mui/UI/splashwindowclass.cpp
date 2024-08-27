@@ -34,8 +34,8 @@
 
 extern "C"
 {
-	#include <fontconfig/fontconfig.h>
-	#include <cairo.h>
+    #include <fontconfig/fontconfig.h>
+    #include <cairo.h>
 }
 
 #if !OS(AROS)
@@ -71,12 +71,12 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *proc;
-	Object *gauge;
-	char infotext[256];
-	struct Task *maintask;
-	LONG StartupBit;
-	ULONG running;
+    Object *proc;
+    Object *gauge;
+    char infotext[256];
+    struct Task *maintask;
+    LONG StartupBit;
+    ULONG running;
 };
 
 static ULONG indexation_needed = TRUE;
@@ -87,19 +87,19 @@ extern void (*fontconfig_progress_callback)(int current, int total, char *curren
 
 void myfontconfig_progress_callback(int current, int total, char *currentfile)
 {
-	if(indexation_needed)
-	{
-		DoMethod(app, MUIM_Application_PushMethod, g_splash, 3, MUIM_Set, MUIA_Window_Open, TRUE);
-		indexation_needed = FALSE;
-	}
+    if(indexation_needed)
+    {
+        DoMethod(app, MUIM_Application_PushMethod, g_splash, 3, MUIM_Set, MUIA_Window_Open, TRUE);
+        indexation_needed = FALSE;
+    }
 
-	DoMethod(app, MUIM_Application_PushMethod, g_splash, 4, MM_SplashWindow_Update, current+1, total, currentfile);
+    DoMethod(app, MUIM_Application_PushMethod, g_splash, 4, MM_SplashWindow_Update, current+1, total, currentfile);
 }
 
 void fontconfig_testcache(void)
 {
     FcObjectSet *os = 0;
-    FcFontSet	*fs;
+    FcFontSet    *fs;
     FcPattern   *pat;
 
 #if !OS(AROS)
@@ -120,7 +120,7 @@ void fontconfig_testcache(void)
 
     if (!FcInit ())
     {
-		return;
+        return;
     }
 
     //kprintf("[fontcache thread] still doing stuff\n");
@@ -130,222 +130,222 @@ void fontconfig_testcache(void)
     fs = FcFontList (0, pat, os);
     FcObjectSetDestroy (os);
     if (pat)
-		FcPatternDestroy (pat);
+        FcPatternDestroy (pat);
 
-	if(!fs || !fs->nfont)
-	{
-		// We should fail here
-	}
+    if(!fs || !fs->nfont)
+    {
+        // We should fail here
+    }
 
-	//kprintf("[fontcache thread] always doing stuff\n");
+    //kprintf("[fontcache thread] always doing stuff\n");
 
     if (fs)
     {
-		int	j;
+        int    j;
 
-		//kprintf("[fontcache thread] fs->nfont %d\n", fs->nfont);
+        //kprintf("[fontcache thread] fs->nfont %d\n", fs->nfont);
 
-		for (j = 0; j < fs->nfont; j++)
-		{
-			ULONG found = FALSE;
-		    FcChar8 *file;
-			if (FcPatternGetString (fs->fonts[j], FC_FAMILY, 0, &file) == FcResultMatch)
-			{
-				APTR n;
+        for (j = 0; j < fs->nfont; j++)
+        {
+            ULONG found = FALSE;
+            FcChar8 *file;
+            if (FcPatternGetString (fs->fonts[j], FC_FAMILY, 0, &file) == FcResultMatch)
+            {
+                APTR n;
 
-				//kprintf("[fontcache thread] font file <%s>\n", file);
+                //kprintf("[fontcache thread] font file <%s>\n", file);
 
-				ITERATELIST(n, &family_list)
-				{
-					struct familynode *fn = (struct familynode *)n;
-					if(!strcmp(fn->family, (char *)file))
-					{
-						found = TRUE;
-						break;
-					}
-				}
+                ITERATELIST(n, &family_list)
+                {
+                    struct familynode *fn = (struct familynode *)n;
+                    if(!strcmp(fn->family, (char *)file))
+                    {
+                        found = TRUE;
+                        break;
+                    }
+                }
 
-				if(!found)
-				{
-					int size = sizeof(struct familynode) + strlen((char *) file) + 1;
-					struct familynode *fn = (struct familynode *) malloc(size);
+                if(!found)
+                {
+                    int size = sizeof(struct familynode) + strlen((char *) file) + 1;
+                    struct familynode *fn = (struct familynode *) malloc(size);
 
-					if(n)
-					{
-						strcpy(fn->family, (char *) file);
-						ADDTAIL(&family_list, (APTR) fn);
-					}
-				}
-			}
-		}
-		FcFontSetDestroy (fs);
+                    if(n)
+                    {
+                        strcpy(fn->family, (char *) file);
+                        ADDTAIL(&family_list, (APTR) fn);
+                    }
+                }
+            }
+        }
+        FcFontSetDestroy (fs);
     }
 
 #if USE_SHARED_FONTCONFIG
-	FcExtRemoveProgressCallback((FcExtProgressCallback)myfontconfig_progress_callback);
+    FcExtRemoveProgressCallback((FcExtProgressCallback)myfontconfig_progress_callback);
 #endif
 
-	//kprintf("[fontcache thread] done\n");
+    //kprintf("[fontcache thread] done\n");
 }
 
 DEFNEW
 {
-	Object *gauge;
+    Object *gauge;
 
-	obj = (Object *) DoSuperNew(cl, obj,
-			MUIA_Window_ID, MAKE_ID('W','S','P','L'),
-			MUIA_Window_NoMenus, TRUE,
-		    MUIA_Window_Title,       NULL,
-		    MUIA_Window_DepthGadget, FALSE,
-		    MUIA_Window_DragBar,     FALSE,
-		    MUIA_Window_CloseGadget, FALSE,
-		    MUIA_Window_SizeGadget,  FALSE,
-		    MUIA_Window_ID,          0,
+    obj = (Object *) DoSuperNew(cl, obj,
+            MUIA_Window_ID, MAKE_ID('W','S','P','L'),
+            MUIA_Window_NoMenus, TRUE,
+            MUIA_Window_Title,       NULL,
+            MUIA_Window_DepthGadget, FALSE,
+            MUIA_Window_DragBar,     FALSE,
+            MUIA_Window_CloseGadget, FALSE,
+            MUIA_Window_SizeGadget,  FALSE,
+            MUIA_Window_ID,          0,
 
-			WindowContents, VGroup,
-					Child, HGroup,
-						Child, HSpace(50),
-						Child, MUI_NewObject(MUIC_Dtpic, MUIA_Dtpic_Name, "PROGDIR:resource/about.png"),
-						Child, HSpace(50),
-						End,
+            WindowContents, VGroup,
+                    Child, HGroup,
+                        Child, HSpace(50),
+                        Child, MUI_NewObject(MUIC_Dtpic, MUIA_Dtpic_Name, "PROGDIR:resource/about.png"),
+                        Child, HSpace(50),
+                        End,
 
-					Child, MUI_MakeObject(MUIO_BarTitle, GSI(MSG_SPLASHWINDOW_INITIALIZING)),
+                    Child, MUI_MakeObject(MUIO_BarTitle, GSI(MSG_SPLASHWINDOW_INITIALIZING)),
 
-					Child, gauge = GaugeObject,
-									GaugeFrame,
-									MUIA_Gauge_Max, 100,
-									MUIA_Gauge_Horiz, TRUE,
-									MUIA_FixHeightTxt, "/",
-									MUIA_Gauge_InfoText, GSI(MSG_SPLASHWINDOW_LOADING),
-									End,
-					End,
-			TAG_MORE, msg->ops_AttrList);
+                    Child, gauge = GaugeObject,
+                                    GaugeFrame,
+                                    MUIA_Gauge_Max, 100,
+                                    MUIA_Gauge_Horiz, TRUE,
+                                    MUIA_FixHeightTxt, "/",
+                                    MUIA_Gauge_InfoText, GSI(MSG_SPLASHWINDOW_LOADING),
+                                    End,
+                    End,
+            TAG_MORE, msg->ops_AttrList);
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		//kprintf("[splashwindow] OM_NEW\n");
+        //kprintf("[splashwindow] OM_NEW\n");
 
-		g_splash = obj;
-		data->maintask = FindTask(NULL);
-		data->gauge = gauge;
-		data->proc = MUI_NewObject(MUIC_Process,
-					MUIA_Process_SourceClass , cl,
-					MUIA_Process_SourceObject, obj,
-					MUIA_Process_Name        , "[OWB] FontConfig Cache",
-					MUIA_Process_Priority    , 0,
-					MUIA_Process_AutoLaunch  , FALSE,
-					TAG_DONE);
+        g_splash = obj;
+        data->maintask = FindTask(NULL);
+        data->gauge = gauge;
+        data->proc = MUI_NewObject(MUIC_Process,
+                    MUIA_Process_SourceClass , cl,
+                    MUIA_Process_SourceObject, obj,
+                    MUIA_Process_Name        , "[OWB] FontConfig Cache",
+                    MUIA_Process_Priority    , 0,
+                    MUIA_Process_AutoLaunch  , FALSE,
+                    TAG_DONE);
 
-		//kprintf("[splashwindow] proc = %p\n", data->proc);
-	}
+        //kprintf("[splashwindow] proc = %p\n", data->proc);
+    }
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 DEFDISP
 {
-	GETDATA;
+    GETDATA;
 
-	MUI_DisposeObject(data->proc);
+    MUI_DisposeObject(data->proc);
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFTMETHOD(SplashWindow_Open)
 {
-	GETDATA;
-	ULONG sigs;
-	
-	data->running = FALSE;
+    GETDATA;
+    ULONG sigs;
+    
+    data->running = FALSE;
 
-	if(data->proc == NULL)
-	{
-		return 0;
-	}
+    if(data->proc == NULL)
+    {
+        return 0;
+    }
 
-	//kprintf("[splashwindow] running fontcache thread %p\n", data->proc);
+    //kprintf("[splashwindow] running fontcache thread %p\n", data->proc);
 
-	if((data->StartupBit = AllocSignal(-1)) != -1)
-	{
-		if(DoMethod(data->proc, MUIM_Process_Launch))
-		{
-			Wait(1L<<data->StartupBit);
+    if((data->StartupBit = AllocSignal(-1)) != -1)
+    {
+        if(DoMethod(data->proc, MUIM_Process_Launch))
+        {
+            Wait(1L<<data->StartupBit);
 
-			//kprintf("[splashwindow] splashwindow loop\n");
+            //kprintf("[splashwindow] splashwindow loop\n");
 
-			for(;data->running;)
-			{
-				DoMethod(app, MUIM_Application_NewInput, &sigs);
+            for(;data->running;)
+            {
+                DoMethod(app, MUIM_Application_NewInput, &sigs);
 
-				if(sigs)
-				{
-					sigs = Wait(sigs|SIGBREAKF_CTRL_C|SIGBREAKF_CTRL_D);
-					if (sigs & SIGBREAKF_CTRL_C)
-					{
-						//DoMethod(data->proc, MUIM_Process_Signal, SIGBREAKF_CTRL_C);
-					}
-					if (sigs & SIGBREAKF_CTRL_D)
-					{
-						break;
-					}
-				}
-			}
-		}
+                if(sigs)
+                {
+                    sigs = Wait(sigs|SIGBREAKF_CTRL_C|SIGBREAKF_CTRL_D);
+                    if (sigs & SIGBREAKF_CTRL_C)
+                    {
+                        //DoMethod(data->proc, MUIM_Process_Signal, SIGBREAKF_CTRL_C);
+                    }
+                    if (sigs & SIGBREAKF_CTRL_D)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
 
-		FreeSignal(data->StartupBit);
-	}
+        FreeSignal(data->StartupBit);
+    }
 
-	set(obj, MUIA_Window_Open, FALSE);
+    set(obj, MUIA_Window_Open, FALSE);
 
-	//kprintf("[splashwindow] quitting loop\n");
+    //kprintf("[splashwindow] quitting loop\n");
 
-	return 0;
+    return 0;
 }
 
 DEFSMETHOD(SplashWindow_Update)
 {
-	GETDATA;
+    GETDATA;
 
-	stccpy(data->infotext, (char *) FilePart((STRPTR)msg->file), sizeof(data->infotext));
+    stccpy(data->infotext, (char *) FilePart((STRPTR)msg->file), sizeof(data->infotext));
 
-	set(data->gauge, MUIA_Gauge_Max, msg->total);
-	set(data->gauge, MUIA_Gauge_Current, msg->current);
-	set(data->gauge, MUIA_Gauge_InfoText, data->infotext);
+    set(data->gauge, MUIA_Gauge_Max, msg->total);
+    set(data->gauge, MUIA_Gauge_Current, msg->current);
+    set(data->gauge, MUIA_Gauge_InfoText, data->infotext);
 
-	return 0;
+    return 0;
 }
 
 DEFMMETHOD(Process_Process)
 {
-	GETDATA;
+    GETDATA;
 
-	//kprintf("[fontcache thread] running indexation\n");
+    //kprintf("[fontcache thread] running indexation\n");
 
-	struct Process *myproc = (struct Process *)FindTask(NULL);
-	APTR oldwindowptr = myproc->pr_WindowPtr;
+    struct Process *myproc = (struct Process *)FindTask(NULL);
+    APTR oldwindowptr = myproc->pr_WindowPtr;
 
-	myproc->pr_WindowPtr = (APTR)-1;
+    myproc->pr_WindowPtr = (APTR)-1;
 
-	data->running = TRUE;
-	Signal(data->maintask, 1L<<data->StartupBit);
+    data->running = TRUE;
+    Signal(data->maintask, 1L<<data->StartupBit);
 
-	/* XXX: Seriously, it sucks, but needed with dynamicache, else thread finishes too early,
-	 * and it somehow causes a race in main thread, even though i don't see how.
-	 */
-	Delay(5);
+    /* XXX: Seriously, it sucks, but needed with dynamicache, else thread finishes too early,
+     * and it somehow causes a race in main thread, even though i don't see how.
+     */
+    Delay(5);
 
-	fontconfig_testcache();
+    fontconfig_testcache();
 
-	//kprintf("[fontcache thread] signaling thread end to main task\n");
+    //kprintf("[fontcache thread] signaling thread end to main task\n");
 
-	myproc->pr_WindowPtr = oldwindowptr;
+    myproc->pr_WindowPtr = oldwindowptr;
 
-	data->running = FALSE;
-	Signal(data->maintask, SIGBREAKF_CTRL_D);
+    data->running = FALSE;
+    Signal(data->maintask, SIGBREAKF_CTRL_D);
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

@@ -40,21 +40,21 @@ struct Data
 
 DEFNEW
 {
-	ULONG type       = getv(app, MA_OWBApp_ToolButtonType) == MV_ToolButton_Type_Text ? MV_ToolButton_Type_Text : MV_ToolButton_Type_Icon;
-	ULONG frame      = type == MV_ToolButton_Type_Text ? MV_ToolButton_Frame_Button : (getv(app, MA_OWBApp_ShowButtonFrame) ? MV_ToolButton_Frame_Button : MV_ToolButton_Frame_None);
-	ULONG background = type == MV_ToolButton_Type_Text ? MV_ToolButton_Background_Button : (getv(app, MA_OWBApp_ShowButtonFrame) ? MV_ToolButton_Background_Button : MV_ToolButton_Background_Parent);
+    ULONG type       = getv(app, MA_OWBApp_ToolButtonType) == MV_ToolButton_Type_Text ? MV_ToolButton_Type_Text : MV_ToolButton_Type_Icon;
+    ULONG frame      = type == MV_ToolButton_Type_Text ? MV_ToolButton_Frame_Button : (getv(app, MA_OWBApp_ShowButtonFrame) ? MV_ToolButton_Frame_Button : MV_ToolButton_Frame_None);
+    ULONG background = type == MV_ToolButton_Type_Text ? MV_ToolButton_Background_Button : (getv(app, MA_OWBApp_ShowButtonFrame) ? MV_ToolButton_Background_Button : MV_ToolButton_Background_Parent);
 
-	obj = (Object *) DoSuperNew(cl, obj,
-			MA_ToolButton_Text, GSI(MSG_BOOKMARKWINDOW_BOOKMARKS),
-			MA_ToolButton_Image, "PROGDIR:resource/bookmarks.png",
-			MA_ToolButton_Type,       type,
-			MA_ToolButton_Frame,      frame,
-			MA_ToolButton_Background, background,
+    obj = (Object *) DoSuperNew(cl, obj,
+            MA_ToolButton_Text, GSI(MSG_BOOKMARKWINDOW_BOOKMARKS),
+            MA_ToolButton_Image, "PROGDIR:resource/bookmarks.png",
+            MA_ToolButton_Type,       type,
+            MA_ToolButton_Frame,      frame,
+            MA_ToolButton_Background, background,
             MUIA_CycleChain, 1,
-			TAG_MORE, INITTAGS,
-			TAG_DONE);
+            TAG_MORE, INITTAGS,
+            TAG_DONE);
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 BEGINMTABLE

@@ -55,16 +55,16 @@ public:
     /**
      *  WebDownloadDelegate default constructor
      */
-	WebDownloadDelegate()
-	{
-	};
+    WebDownloadDelegate()
+    {
+    };
 public:
 
     /**
      * WebDownloadDelegate destructor
      */
-	virtual ~WebDownloadDelegate()
-	{
+    virtual ~WebDownloadDelegate()
+    {
         m_downloads.clear();
         /*std::set<WebDownload*>::iterator i = m_downloads.begin();
         for (;i != m_downloads.end(); ++i)

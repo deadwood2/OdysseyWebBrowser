@@ -218,7 +218,7 @@ void WebViewObserver::observe(const WTF::String &topic, const WTF::String &data,
 {
 #if 0
     if (topic == WebIconDatabase::iconDatabaseDidAddIconNotification())
-	m_webView->notifyDidAddIcon();
+    m_webView->notifyDidAddIcon();
 #endif
     if (topic == WebPreferences::webPreferencesChangedNotification())
         m_webView->notifyPreferencesChanged(static_cast<WebPreferences*>(userData));
@@ -321,9 +321,9 @@ static void WebKitEnableDiskCacheIfNecessary()
 }
 
 WebView::WebView()
-	: m_viewWindow(0)
+    : m_viewWindow(0)
     , m_mainFrame(0)
-	, m_page(0)
+    , m_page(0)
     , m_inspectorClient(0)
     , m_policyDelegate(0)
     , m_downloadDelegate(0)
@@ -374,7 +374,7 @@ WebView::WebView()
 
     d->clearDirtyRegion();
 
-	globalUserAgent = getenv("OWB_USER_AGENT");
+    globalUserAgent = getenv("OWB_USER_AGENT");
     setScheduledScrollOffset(IntPoint(0, 0));
 
     initializeStaticObservers();
@@ -943,34 +943,34 @@ BalRectangle WebView::frameRect()
 
 void WebView::closeWindowSoon()
 {
-	//closeWindow();
-	d->closeWindowSoon();
+    //closeWindow();
+    d->closeWindowSoon();
 }
 
 void WebView::closeWindow()
 {
     BalWidget *widget = m_viewWindow;
-	if(widget)
-	{
-		DoMethod(app, MUIM_Application_PushMethod, app, 2, MM_OWBApp_RemoveBrowser, widget->browser);
-	}
+    if(widget)
+    {
+        DoMethod(app, MUIM_Application_PushMethod, app, 2, MM_OWBApp_RemoveBrowser, widget->browser);
+    }
 }
 
 bool WebView::canHandleRequest(const WebCore::ResourceRequest& request)
 {
-	if (request.url().protocolIs("about"))
-	{
-	    return true;
-	}
-	else if (request.url().protocolIs("topsites"))
-	{
-	    return true;
-	}
-	else if (request.url().protocolIs("mailto"))
-	{
-	    DoMethod(app, MM_OWBApp_MailTo, request.url().string().latin1().data());
-	    return false;
-	}
+    if (request.url().protocolIs("about"))
+    {
+        return true;
+    }
+    else if (request.url().protocolIs("topsites"))
+    {
+        return true;
+    }
+    else if (request.url().protocolIs("mailto"))
+    {
+        DoMethod(app, MM_OWBApp_MailTo, request.url().string().latin1().data());
+        return false;
+    }
 
     return true;
 }
@@ -1050,11 +1050,11 @@ static const KeyDownEntry keyDownEntries[] = {
     { VK_END,    CtrlKey | ShiftKey, "MoveToEndOfDocumentAndModifySelection"       },
 
     { VK_BACK,   0,                  "DeleteBackward"                              },
-	{ VK_BACK,   ShiftKey,           /*"DeleteBackward"*/"DeleteToBeginningOfLine" },
+    { VK_BACK,   ShiftKey,           /*"DeleteBackward"*/"DeleteToBeginningOfLine" },
     { VK_DELETE, 0,                  "DeleteForward"                               },
     { VK_BACK,   CtrlKey,            "DeleteWordBackward"                          },
     { VK_DELETE, CtrlKey,            "DeleteWordForward"                           },
-	{ VK_DELETE, ShiftKey,           "DeleteToEndOfLine"                           },
+    { VK_DELETE, ShiftKey,           "DeleteToEndOfLine"                           },
     
     { 'B',       CtrlKey,            "ToggleBold"                                  },
     { 'I',       CtrlKey,            "ToggleItalic"                                },
@@ -1188,19 +1188,19 @@ bool WebView::developerExtrasEnabled() const
 const string& WebView::userAgentForURL(const string& url)
 {
     if (m_userAgentOverridden)
-	{
+    {
         return m_userAgentCustom;
-	}
-	else
-	{
-	    // Env var overrides everything (is it right?)
-		if (globalUserAgent)
-			m_userAgentStandard = globalUserAgent;
-	    else
-			m_userAgentStandard = (char *) getv(app, MA_OWBApp_UserAgent);
-	 
-	    return m_userAgentStandard;
-	}
+    }
+    else
+    {
+        // Env var overrides everything (is it right?)
+        if (globalUserAgent)
+            m_userAgentStandard = globalUserAgent;
+        else
+            m_userAgentStandard = (char *) getv(app, MA_OWBApp_UserAgent);
+     
+        return m_userAgentStandard;
+    }
 }
 
 bool WebView::canShowMIMEType(const char* mimeType)
@@ -1209,14 +1209,14 @@ bool WebView::canShowMIMEType(const char* mimeType)
     Frame* coreFrame = core(m_mainFrame);
     bool allowPlugins = coreFrame && coreFrame->loader().subframeLoader().allowPlugins();
     
-	bool canShow = type.isEmpty()
-	|| MIMETypeRegistry::isSupportedImageMIMEType(type)
-	|| MIMETypeRegistry::isSupportedNonImageMIMEType(type)
-	|| MIMETypeRegistry::isSupportedMediaMIMEType(type);
+    bool canShow = type.isEmpty()
+    || MIMETypeRegistry::isSupportedImageMIMEType(type)
+    || MIMETypeRegistry::isSupportedNonImageMIMEType(type)
+    || MIMETypeRegistry::isSupportedMediaMIMEType(type);
     
     if (!canShow && m_page) {
-	canShow = (m_page->pluginData().supportsWebVisibleMimeType(type, PluginData::AllPlugins) && allowPlugins)
-	|| m_page->pluginData().supportsWebVisibleMimeType(type, PluginData::OnlyApplicationPlugins);
+    canShow = (m_page->pluginData().supportsWebVisibleMimeType(type, PluginData::AllPlugins) && allowPlugins)
+    || m_page->pluginData().supportsWebVisibleMimeType(type, PluginData::OnlyApplicationPlugins);
     }     
     
     //kprintf("WebView::canShowMIMEType(%s): %s\n", type.utf8().data(), canShow ? "yes" : "no");
@@ -1300,16 +1300,16 @@ void WebView::setToolTip(const char* toolTip)
 
     BalWidget *widget = m_viewWindow;
 
-	if(widget)
-	{
-		char *converted = utf8_to_local(toolTip);
+    if(widget)
+    {
+        char *converted = utf8_to_local(toolTip);
 
-		if(converted)
-		{
-			SetAttrs(widget->browser, MA_OWBBrowser_ToolTipText, converted, TAG_DONE);
-			free(converted);
-		}
-	}
+        if(converted)
+        {
+            SetAttrs(widget->browser, MA_OWBBrowser_ToolTipText, converted, TAG_DONE);
+            free(converted);
+        }
+    }
 }
 
 #if 0
@@ -1321,9 +1321,9 @@ void WebView::notifyDidAddIcon()
 void WebView::registerForIconNotification(bool listen)
 {
     if (listen)
-		WebCore::ObserverServiceData::createObserverService()->registerObserver(WebIconDatabase::iconDatabaseDidAddIconNotification(), m_webViewObserver);
+        WebCore::ObserverServiceData::createObserverService()->registerObserver(WebIconDatabase::iconDatabaseDidAddIconNotification(), m_webViewObserver);
     else
-		WebCore::ObserverServiceData::createObserverService()->removeObserver(WebIconDatabase::iconDatabaseDidAddIconNotification(), m_webViewObserver);
+        WebCore::ObserverServiceData::createObserverService()->removeObserver(WebIconDatabase::iconDatabaseDidAddIconNotification(), m_webViewObserver);
 }
 
 void WebView::dispatchDidReceiveIconFromWebFrame(WebFrame* frame)
@@ -1331,13 +1331,13 @@ void WebView::dispatchDidReceiveIconFromWebFrame(WebFrame* frame)
     registerForIconNotification(false);
 
     if(getv(app, MA_OWBApp_ShowFavIcons))
-	{
-		BalWidget *widget = m_viewWindow;
-		if(widget)
-		{
-			SetAttrs(widget->browser, MA_FavIcon_PageURL, frame->url(), TAG_DONE);
-		}
-	}
+    {
+        BalWidget *widget = m_viewWindow;
+        if(widget)
+        {
+            SetAttrs(widget->browser, MA_FavIcon_PageURL, frame->url(), TAG_DONE);
+        }
+    }
 }
 #endif
 
@@ -1463,7 +1463,7 @@ void WebView::geolocationDidFailWithError(WebError* error)
 
 void WebView::registerURLSchemeAsSecure(const char* scheme)
 {
-	SchemeRegistry::registerURLSchemeAsSecure(toString(scheme));
+    SchemeRegistry::registerURLSchemeAsSecure(toString(scheme));
 }*/
 
 WebFrame* WebView::mainFrame()
@@ -1542,12 +1542,12 @@ bool WebView::setZoomMultiplier(float multiplier, bool isTextOnly)
     m_zoomMultiplier = multiplier;
     m_zoomsTextOnly = isTextOnly;
     Frame* coreFrame = core(m_mainFrame);
-	if (coreFrame && coreFrame->document()) {
+    if (coreFrame && coreFrame->document()) {
         if (m_zoomsTextOnly)
             coreFrame->setPageAndTextZoomFactors(1, multiplier);
-		else
-			coreFrame->setPageAndTextZoomFactors(multiplier, 1);
-	}
+        else
+            coreFrame->setPageAndTextZoomFactors(multiplier, 1);
+    }
 
     return !hasRounded;
 }
@@ -1564,7 +1564,7 @@ float WebView::pageSizeMultiplier()
 
 float WebView::zoomMultiplier(bool isTextOnly)
 {
-	if (isTextOnly != m_zoomsTextOnly)
+    if (isTextOnly != m_zoomsTextOnly)
         return 1.0f;
     return m_zoomMultiplier;
 }
@@ -1803,21 +1803,21 @@ bool WebView::searchFor(const char* str, bool forward, bool caseFlag, bool wrapF
     if (!caseFlag) opts.add(CaseInsensitive);
     if (!forward) opts.add(Backwards);
 
-	String searchString = String::fromUTF8(str);
-	return m_page->findString(searchString, opts);
+    String searchString = String::fromUTF8(str);
+    return m_page->findString(searchString, opts);
 }
 
 bool WebView::active()
 {
     BalWidget *widget = m_viewWindow;
-	if(widget)
-	{
-		return (bool) getv(widget->browser, MA_OWBBrowser_Active);
-	}
-	else
-	{
-		return true;
-	}
+    if(widget)
+    {
+        return (bool) getv(widget->browser, MA_OWBBrowser_Active);
+    }
+    else
+    {
+        return true;
+    }
 }
 
 void WebView::setFocus()
@@ -1853,18 +1853,18 @@ void WebView::updateFocusedAndActiveState()
 
     if(active)
     {
-	FocusController *focusController = &(m_page->focusController());
-	Frame *frame = focusController->focusedFrame();
-	Frame* mainFrame = &(m_page->mainFrame());
-	if (frame)
-	    focusController->setFocused(true);
-	else if(mainFrame)
-	    focusController->setFocusedFrame(mainFrame);
+    FocusController *focusController = &(m_page->focusController());
+    Frame *frame = focusController->focusedFrame();
+    Frame* mainFrame = &(m_page->mainFrame());
+    if (frame)
+        focusController->setFocused(true);
+    else if(mainFrame)
+        focusController->setFocusedFrame(mainFrame);
     }
     else
     {
-	FocusController *focusController = &(m_page->focusController());
-	focusController->setFocused(false);
+    FocusController *focusController = &(m_page->focusController());
+    focusController->setFocused(false);
     }
 }
 
@@ -1896,8 +1896,8 @@ void WebView::parseConfigFile(const char* url)
     int width = 0, height = 0;
     String fileBuffer = buffer(url);
     while (!fileBuffer.isEmpty()) {
-		size_t eol = fileBuffer.find("\n");
-		size_t delimiter = fileBuffer.find("=");
+        size_t eol = fileBuffer.find("\n");
+        size_t delimiter = fileBuffer.find("=");
 
         String keyword = fileBuffer.substring(0, delimiter).stripWhiteSpace();
         String key = fileBuffer.substring(delimiter +  1, eol - delimiter).stripWhiteSpace();
@@ -1956,7 +1956,7 @@ BalRectangle WebView::selectionRect()
     WebCore::Frame* frame = &(m_page->focusController().focusedOrMainFrame());
 
     if (frame) {
-	IntRect ir = enclosingIntRect(frame->selection().selectionBounds());
+    IntRect ir = enclosingIntRect(frame->selection().selectionBounds());
         ir = frame->view()->convertToContainingWindow(ir);
         ir.moveBy(-frame->view()->scrollPosition());
         return ir;
@@ -2068,7 +2068,7 @@ WebDragOperation WebView::dragOver(const BalPoint& clientPoint, const BalPoint& 
 
     m_operationsAllowed = operationsAllowed;
     DragData dragData(
-	m_currentDragData->platformDragData()->m_dragDataRef,
+    m_currentDragData->platformDragData()->m_dragDataRef,
         clientPoint,
         screenPoint,
         static_cast<DragOperation>(operationsAllowed));
@@ -2247,7 +2247,7 @@ void WebView::setContinuousSpellCheckingEnabled(bool flag)
         WebPreferences* prefs = preferences();
         if (prefs)
             prefs->setContinuousSpellCheckingEnabled(flag);
-		SetAttrs(app, MA_OWBApp_ContinuousSpellChecking, flag ? 1 : 0, TAG_DONE);
+        SetAttrs(app, MA_OWBApp_ContinuousSpellChecking, flag ? 1 : 0, TAG_DONE);
     }
     
     bool spellCheckingEnabled = isContinuousSpellCheckingEnabled();
@@ -2537,55 +2537,55 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     str = preferences->standardFontFamily().c_str();
     settings->setStandardFontFamily(str);
 
-	/* Following ones need special care because they can be overridden by URLPrefs or temporary menu settings. */
-	applyDefault = widget == NULL || (DoMethod(app, MM_URLPrefsGroup_MatchesURL, getv(widget->browser, MA_OWBBrowser_URL)) == 0 && getv(widget->browser, MA_OWBBrowser_JavaScriptEnabled) == JAVASCRIPT_DEFAULT);
+    /* Following ones need special care because they can be overridden by URLPrefs or temporary menu settings. */
+    applyDefault = widget == NULL || (DoMethod(app, MM_URLPrefsGroup_MatchesURL, getv(widget->browser, MA_OWBBrowser_URL)) == 0 && getv(widget->browser, MA_OWBBrowser_JavaScriptEnabled) == JAVASCRIPT_DEFAULT);
 
-	if(applyDefault)
-	{
-	    enabled = preferences->isJavaScriptEnabled();
-		settings->setScriptEnabled(enabled);
-	}
+    if(applyDefault)
+    {
+        enabled = preferences->isJavaScriptEnabled();
+        settings->setScriptEnabled(enabled);
+    }
 
-//	applyDefault = widget == NULL || getv(widget->browser, MA_OWBBrowser_PrivateBrowsing) == FALSE;
+//    applyDefault = widget == NULL || getv(widget->browser, MA_OWBBrowser_PrivateBrowsing) == FALSE;
 //
-//	if(applyDefault)
-//	{
-//	    enabled = preferences->privateBrowsingEnabled();
-//	    settings->setPrivateBrowsingEnabled(!!enabled);
-//	}
+//    if(applyDefault)
+//    {
+//        enabled = preferences->privateBrowsingEnabled();
+//        settings->setPrivateBrowsingEnabled(!!enabled);
+//    }
 
-	applyDefault = widget == NULL || (DoMethod(app, MM_URLPrefsGroup_MatchesURL, getv(widget->browser, MA_OWBBrowser_URL)) == 0 && getv(widget->browser, MA_OWBBrowser_LoadImagesAutomatically) == IMAGES_DEFAULT);
+    applyDefault = widget == NULL || (DoMethod(app, MM_URLPrefsGroup_MatchesURL, getv(widget->browser, MA_OWBBrowser_URL)) == 0 && getv(widget->browser, MA_OWBBrowser_LoadImagesAutomatically) == IMAGES_DEFAULT);
 
-	if(applyDefault)
-	{
-	    enabled = preferences->loadsImagesAutomatically();
-	    settings->setLoadsImagesAutomatically(!!enabled);
-	}
+    if(applyDefault)
+    {
+        enabled = preferences->loadsImagesAutomatically();
+        settings->setLoadsImagesAutomatically(!!enabled);
+    }
 
-	applyDefault = widget == NULL || (DoMethod(app, MM_URLPrefsGroup_MatchesURL, getv(widget->browser, MA_OWBBrowser_URL)) == 0 && getv(widget->browser, MA_OWBBrowser_PluginsEnabled) == PLUGINS_DEFAULT);
+    applyDefault = widget == NULL || (DoMethod(app, MM_URLPrefsGroup_MatchesURL, getv(widget->browser, MA_OWBBrowser_URL)) == 0 && getv(widget->browser, MA_OWBBrowser_PluginsEnabled) == PLUGINS_DEFAULT);
 
-	if(applyDefault)
-	{
-	    enabled = preferences->arePlugInsEnabled();
-		settings->setPluginsEnabled(!!enabled);
-	}
+    if(applyDefault)
+    {
+        enabled = preferences->arePlugInsEnabled();
+        settings->setPluginsEnabled(!!enabled);
+    }
 
-	applyDefault = widget == NULL || (DoMethod(app, MM_URLPrefsGroup_MatchesURL, getv(widget->browser, MA_OWBBrowser_URL)) == 0);
+    applyDefault = widget == NULL || (DoMethod(app, MM_URLPrefsGroup_MatchesURL, getv(widget->browser, MA_OWBBrowser_URL)) == 0);
 
-	if(applyDefault)
-	{
-		enabled = preferences->localStorageEnabled();
-		settings->setLocalStorageEnabled(!!enabled);
-		settings->setOfflineWebApplicationCacheEnabled(!!enabled);
-	}
+    if(applyDefault)
+    {
+        enabled = preferences->localStorageEnabled();
+        settings->setLocalStorageEnabled(!!enabled);
+        settings->setOfflineWebApplicationCacheEnabled(!!enabled);
+    }
 
-	/* */
+    /* */
 
-	enabled = preferences->areImagesEnabled();
-	settings->setImagesEnabled(!!enabled);
+    enabled = preferences->areImagesEnabled();
+    settings->setImagesEnabled(!!enabled);
 
-	//    enabled = preferences->isCSSRegionsEnabled();
-	//    settings->setCSSRegionsEnabled(!!enabled);
+    //    enabled = preferences->isCSSRegionsEnabled();
+    //    settings->setCSSRegionsEnabled(!!enabled);
 
     enabled = preferences->userStyleSheetEnabled();
     if (enabled) {
@@ -2693,7 +2693,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     settings->setSpatialNavigationEnabled(preferences->spatialNavigationEnabled());
 
 #if ENABLE(FULLSCREEN_API)
-	settings->setFullScreenEnabled(false);
+    settings->setFullScreenEnabled(false);
 #endif
 
     updateSharedSettingsFromPreferencesIfNeeded(preferences);
@@ -2742,12 +2742,12 @@ void WebView::scrollBy(BalPoint offset)
 
 BalPoint WebView::scheduledScrollOffset()
 {
-	return m_scheduledScrollOffset;
+    return m_scheduledScrollOffset;
 }
 
 void WebView::setScheduledScrollOffset(BalPoint offset)
 {
-	m_scheduledScrollOffset = offset;
+    m_scheduledScrollOffset = offset;
 }
 
 void WebView::scrollWithDirection(::ScrollDirection direction)
@@ -2830,10 +2830,10 @@ asm("int3");
     // It turns out the right combination of behavior is done with the back/forward load
     // type.  (See behavior matrix at the top of WebFramePrivate.)  So we copy all the items
     // in the back forward list, and go to the current one.
-	BackForwardList* backForwardList = static_cast<BackForwardList*>(m_page->backForward().client());
+    BackForwardList* backForwardList = static_cast<BackForwardList*>(m_page->backForward().client());
     ASSERT(!backForwardList->currentItem()); // destination list should be empty
 
-	BackForwardClient* otherBackForwardList = static_cast<BackForwardList*>(otherView->m_page->backForward().client());
+    BackForwardClient* otherBackForwardList = static_cast<BackForwardList*>(otherView->m_page->backForward().client());
     if (!otherView->m_page->backForward().currentItem())
         return ; // empty back forward list, bail
     
@@ -2861,13 +2861,13 @@ asm("int3");
 void WebView::clearUndoRedoOperations()
 {
     if (m_page)
-	m_page->focusController().focusedOrMainFrame().editor().clearUndoRedoOperations();
+    m_page->focusController().focusedOrMainFrame().editor().clearUndoRedoOperations();
 }
 
 bool WebView::shouldClose()
 {
     if (m_page)
-	return m_page->mainFrame().loader().shouldClose() ? true : false;
+    return m_page->mainFrame().loader().shouldClose() ? true : false;
     return true;
 }
 
@@ -3014,8 +3014,8 @@ void WebView::allowLocalLoadsForAll()
 }
 
 WebInspector* WebView::inspector() {
-	if (!m_webInspector)
-		m_webInspector = WebInspector::createInstance(this, m_inspectorClient);
+    if (!m_webInspector)
+        m_webInspector = WebInspector::createInstance(this, m_inspectorClient);
     return m_webInspector;
 }
 
@@ -3082,20 +3082,20 @@ void WebView::enterFullscreenForNode(WebCore::Node* element)
 {
     BalWidget *widget = m_viewWindow;
 
-	if(widget)
-	{
-		DoMethod(widget->browser, MM_OWBBrowser_VideoEnterFullPage, element, TRUE);
-	}
+    if(widget)
+    {
+        DoMethod(widget->browser, MM_OWBBrowser_VideoEnterFullPage, element, TRUE);
+    }
 }
 
 void WebView::exitFullscreen()
 {
     BalWidget *widget = m_viewWindow;
 
-	if(widget)
-	{
-		DoMethod(widget->browser, MM_OWBBrowser_VideoEnterFullPage, NULL, FALSE);
-	}
+    if(widget)
+    {
+        DoMethod(widget->browser, MM_OWBBrowser_VideoEnterFullPage, NULL, FALSE);
+    }
 }
 
 #if ENABLE(FULLSCREEN_API)
@@ -3104,9 +3104,9 @@ void WebView::enterFullScreenForElement(WebCore::Element* element)
     BalWidget *widget = m_viewWindow;
 
     if(widget)
-	{
-	    DoMethod(widget->browser, MM_OWBBrowser_VideoEnterFullPage, element, TRUE);
-	}
+    {
+        DoMethod(widget->browser, MM_OWBBrowser_VideoEnterFullPage, element, TRUE);
+    }
 }
 
 void WebView::exitFullScreenForElement(WebCore::Element* element)
@@ -3114,9 +3114,9 @@ void WebView::exitFullScreenForElement(WebCore::Element* element)
     BalWidget *widget = m_viewWindow;
 
     if(widget)
-	{
-	    DoMethod(widget->browser, MM_OWBBrowser_VideoEnterFullPage, NULL, FALSE);
-	}
+    {
+        DoMethod(widget->browser, MM_OWBBrowser_VideoEnterFullPage, NULL, FALSE);
+    }
 }
 #endif
 
@@ -3138,7 +3138,7 @@ const char* WebView::encodeHostName(const char* source)
     String src = String::fromUTF8(source);
     int length = src.length();
 
-	if (src.find("%") != notFound)
+    if (src.find("%") != notFound)
         src = decodeURLEscapeSequences(src);
 
     auto upconvertedCharacters = StringView(src).upconvertedCharacters();
@@ -3216,11 +3216,11 @@ void WebView::sendExposeEvent(BalRectangle rect)
 
 bool WebView::screenshot(int &requested_width, int& requested_height, void *imageData)
 {
-	return d->screenshot(requested_width, requested_height, (Vector<char> *) imageData);
+    return d->screenshot(requested_width, requested_height, (Vector<char> *) imageData);
 }
 
 bool WebView::screenshot(char* path)
 {
-	String p = String(path);
-	return d->screenshot(p);
+    String p = String(path);
+    return d->screenshot(p);
 }

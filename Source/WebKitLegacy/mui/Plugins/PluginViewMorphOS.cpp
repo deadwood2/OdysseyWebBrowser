@@ -91,10 +91,10 @@ void PluginView::updatePluginWidget()
     m_clipRect = windowClipRect();
     m_clipRect.move(-m_windowRect.x(), -m_windowRect.y());
 
-	//kprintf("PluginView::updatePluginWidget %p [%d %d %d %d]\n", platformPluginWidget(), m_windowRect.x(), m_windowRect.y(), m_windowRect.width(), m_windowRect.height());
+    //kprintf("PluginView::updatePluginWidget %p [%d %d %d %d]\n", platformPluginWidget(), m_windowRect.x(), m_windowRect.y(), m_windowRect.width(), m_windowRect.height());
 
     if (platformPluginWidget() && (m_windowRect != oldWindowRect || m_clipRect != oldClipRect))
-		setNPWindowRect(m_windowRect);
+        setNPWindowRect(m_windowRect);
 }
 
 void PluginView::setFocus(bool /*focused*/)
@@ -110,15 +110,15 @@ void PluginView::hide()
 }
 
 struct IEvent {
-	LONG type;
-	LONG Class;
-	LONG Code;
-	LONG Qualifier;
-	APTR drawable;
-	LONG x;
-	LONG y;
-	LONG width;
-	LONG height;
+    LONG type;
+    LONG Class;
+    LONG Code;
+    LONG Qualifier;
+    APTR drawable;
+    LONG x;
+    LONG y;
+    LONG width;
+    LONG height;
 };
 
 void PluginView::paint(GraphicsContext& context, const IntRect& rect, Widget::SecurityOriginPaintPolicy)
@@ -129,48 +129,48 @@ void PluginView::paint(GraphicsContext& context, const IntRect& rect, Widget::Se
         return;
     }
 
-	setNPWindowRect(rect);
+    setNPWindowRect(rect);
 
-	if(!m_isWindowed)
-	{
-		IEvent npEvent;
-	    IntRect exposedRect(rect);
-	    exposedRect.intersect(frameRect());
-	    exposedRect.move(-frameRect().x(), -frameRect().y());
+    if(!m_isWindowed)
+    {
+        IEvent npEvent;
+        IntRect exposedRect(rect);
+        exposedRect.intersect(frameRect());
+        exposedRect.move(-frameRect().x(), -frameRect().y());
 
-		npEvent.type = 0;
-		npEvent.drawable = (void*) platformPluginWidget() ? platformPluginWidget()->browser : 0;
-	    npEvent.x = exposedRect.x();
-	    npEvent.y = exposedRect.y();
-	    npEvent.width = exposedRect.x() + exposedRect.width(); // flash bug? it thinks width is the right in transparent mode
-	    npEvent.height = exposedRect.y() + exposedRect.height(); // flash bug? it thinks height is the bottom in transparent mode
+        npEvent.type = 0;
+        npEvent.drawable = (void*) platformPluginWidget() ? platformPluginWidget()->browser : 0;
+        npEvent.x = exposedRect.x();
+        npEvent.y = exposedRect.y();
+        npEvent.width = exposedRect.x() + exposedRect.width(); // flash bug? it thinks width is the right in transparent mode
+        npEvent.height = exposedRect.y() + exposedRect.height(); // flash bug? it thinks height is the bottom in transparent mode
 
-		if (m_plugin->pluginFuncs()->event)
-		{
-			m_plugin->pluginFuncs()->event(m_instance, (NPEvent) &npEvent);
-		}
-	}
+        if (m_plugin->pluginFuncs()->event)
+        {
+            m_plugin->pluginFuncs()->event(m_instance, (NPEvent) &npEvent);
+        }
+    }
 }
 
 void PluginView::handleKeyboardEvent(KeyboardEvent& event)
 {
-	IEvent npEvent;
+    IEvent npEvent;
 
-	npEvent.type = 1;
+    npEvent.type = 1;
 
-	JSC::JSLock::DropAllLocks dropAllLocks(commonVM());
-	if (!m_plugin->pluginFuncs()->event || !m_plugin->pluginFuncs()->event(m_instance, (NPEvent) &npEvent))
+    JSC::JSLock::DropAllLocks dropAllLocks(commonVM());
+    if (!m_plugin->pluginFuncs()->event || !m_plugin->pluginFuncs()->event(m_instance, (NPEvent) &npEvent))
         event.setDefaultHandled();
 }
 
 void PluginView::handleMouseEvent(MouseEvent& event)
 {
-	IEvent npEvent;
+    IEvent npEvent;
 
-	npEvent.type = 1;
+    npEvent.type = 1;
 
-	JSC::JSLock::DropAllLocks dropAllLocks(commonVM());
-	if (!m_plugin->pluginFuncs()->event  || !m_plugin->pluginFuncs()->event(m_instance, (NPEvent) &npEvent))
+    JSC::JSLock::DropAllLocks dropAllLocks(commonVM());
+    if (!m_plugin->pluginFuncs()->event  || !m_plugin->pluginFuncs()->event(m_instance, (NPEvent) &npEvent))
         event.setDefaultHandled();
 }
 
@@ -196,13 +196,13 @@ void PluginView::setNPWindowRect(const IntRect& rect)
     m_npWindow.clipRect.top = m_clipRect.y();
     m_npWindow.clipRect.right = m_clipRect.width();
     m_npWindow.clipRect.bottom = m_clipRect.height();
-	/*
+    /*
     if (m_npWindow.x < 0 || m_npWindow.y < 0 ||
         m_npWindow.width <= 0 || m_npWindow.height <= 0)
         return;
-	*/
+    */
 
-	//kprintf("PluginView::setNPWindowRect(%d %d %d %d)\n", m_npWindow.x, m_npWindow.y, m_npWindow.width, m_npWindow.height);
+    //kprintf("PluginView::setNPWindowRect(%d %d %d %d)\n", m_npWindow.x, m_npWindow.y, m_npWindow.width, m_npWindow.height);
 
     PluginView::setCurrentPluginView(this);
     JSC::JSLock::DropAllLocks dropAllLocks(commonVM());
@@ -224,7 +224,7 @@ NPError PluginView::handlePostReadFile(Vector<char>& buffer, uint32_t len, const
         filename = filename.substring(8);
 
     //FIXME - read the file data into buffer
-	FILE* fileHandle = fopen((filename.latin1()).data(), "r");
+    FILE* fileHandle = fopen((filename.latin1()).data(), "r");
 
     if (fileHandle == 0)
         return NPERR_FILE_NOT_FOUND;
@@ -245,7 +245,7 @@ bool PluginView::platformGetValueStatic(NPNVariable variable, void* value, NPErr
 {
     switch (variable) {
     case NPNVToolkit:
-		*static_cast<uint32_t*>(value) = 0;
+        *static_cast<uint32_t*>(value) = 0;
         *result = NPERR_NO_ERROR;
         return true;
 
@@ -288,12 +288,12 @@ bool PluginView::platformGetValue(NPNVariable variable, void* value, NPError* re
 
 void PluginView::invalidateRegion(NPRegion)
 {
-	//kprintf("PluginView::invalidateRegion\n");
+    //kprintf("PluginView::invalidateRegion\n");
 }
 
 void PluginView::invalidateRect(NPRect* rect)
 {
-	//kprintf("PluginView::invalidateRect [%d %d %d %d]\n", rect->left, rect->top, rect->right - rect->left, rect->bottom - rect->top);
+    //kprintf("PluginView::invalidateRect [%d %d %d %d]\n", rect->left, rect->top, rect->right - rect->left, rect->bottom - rect->top);
 
     if (!rect) {
         invalidate();
@@ -306,14 +306,14 @@ void PluginView::invalidateRect(NPRect* rect)
 
 void PluginView::invalidateRect(const IntRect& rect)
 {
-	//kprintf("PluginView::invalidateRect2 [%d %d %d %d]\n", rect.x(), rect.y(), rect.width(), rect.height());
-	Widget::invalidateRect(rect);
+    //kprintf("PluginView::invalidateRect2 [%d %d %d %d]\n", rect.x(), rect.y(), rect.width(), rect.height());
+    Widget::invalidateRect(rect);
 }
 
 void PluginView::forceRedraw()
 {
-	//kprintf("PluginView::forceRedraw\n");
-	invalidate();
+    //kprintf("PluginView::forceRedraw\n");
+    invalidate();
 }
 
 bool PluginView::platformStart()
@@ -332,20 +332,20 @@ bool PluginView::platformStart()
     }
 */
 
-	setPlatformPluginWidget(m_parentFrame.get()->view()->hostWindow()->platformPageClient());
+    setPlatformPluginWidget(m_parentFrame.get()->view()->hostWindow()->platformPageClient());
 
-	//kprintf("platformStart() widget %p\n", m_parentFrame.get()->view()->hostWindow()->platformPageClient());
+    //kprintf("platformStart() widget %p\n", m_parentFrame.get()->view()->hostWindow()->platformPageClient());
 
     show();
 
     if (m_isWindowed)
-	{
+    {
         m_npWindow.type = NPWindowTypeWindow;
-		m_npWindow.window = (void*) platformPluginWidget() ? platformPluginWidget()->browser : 0;
-	}
+        m_npWindow.window = (void*) platformPluginWidget() ? platformPluginWidget()->browser : 0;
+    }
     else {
         m_npWindow.type = NPWindowTypeDrawable;
-		m_npWindow.window = 0;
+        m_npWindow.window = 0;
     }
 
     // TODO remove in favor of null events, like mac port?

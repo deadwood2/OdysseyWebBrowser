@@ -46,83 +46,83 @@ struct Data
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		InputListFrame,
-		MUIA_List_Format, "BAR, BAR, BAR H,",
-		MUIA_List_Title, TRUE,
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        InputListFrame,
+        MUIA_List_Format, "BAR, BAR, BAR H,",
+        MUIA_List_Title, TRUE,
+        TAG_MORE, INITTAGS
+    );
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFMMETHOD(List_Construct)
 {
-	return (IPTR)msg->entry;
+    return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
 {
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Display)
 {
-	struct contextmenunode *cn = (struct contextmenunode *) msg->entry;
+    struct contextmenunode *cn = (struct contextmenunode *) msg->entry;
 
-	if (cn)
-	{
-		char *category = NULL;
-		char *commandType = NULL;
+    if (cn)
+    {
+        char *category = NULL;
+        char *commandType = NULL;
 
-		switch(cn->category)
-		{
-			case MV_OWBApp_BuildUserMenu_Link:
-				category = GSI(MSG_CONTEXTMENULIST_LINK);
-				break;
-			case MV_OWBApp_BuildUserMenu_Image:
-				category = GSI(MSG_CONTEXTMENULIST_IMAGE);
-				break;
-			case MV_OWBApp_BuildUserMenu_Page:
-				category = GSI(MSG_CONTEXTMENULIST_PAGE);
-				break;
-		}
+        switch(cn->category)
+        {
+            case MV_OWBApp_BuildUserMenu_Link:
+                category = GSI(MSG_CONTEXTMENULIST_LINK);
+                break;
+            case MV_OWBApp_BuildUserMenu_Image:
+                category = GSI(MSG_CONTEXTMENULIST_IMAGE);
+                break;
+            case MV_OWBApp_BuildUserMenu_Page:
+                category = GSI(MSG_CONTEXTMENULIST_PAGE);
+                break;
+        }
 
-		switch(cn->commandType)
-		{
-			case ACTION_AMIGADOS:
-				commandType	= "AmigaDOS";
-				break;
-			case ACTION_REXX:
-				commandType	= "ARexx";
-				break;
-			case ACTION_INTERNAL:
-				commandType	= GSI(MSG_CONTEXTMENULIST_INTERNAL);
-				break;
-		}
+        switch(cn->commandType)
+        {
+            case ACTION_AMIGADOS:
+                commandType    = "AmigaDOS";
+                break;
+            case ACTION_REXX:
+                commandType    = "ARexx";
+                break;
+            case ACTION_INTERNAL:
+                commandType    = GSI(MSG_CONTEXTMENULIST_INTERNAL);
+                break;
+        }
 
-		msg->array[0] = category;
-		msg->array[1] = cn->label;
-		msg->array[2] = commandType;
-		msg->array[3] = cn->commandString;
+        msg->array[0] = category;
+        msg->array[1] = cn->label;
+        msg->array[2] = commandType;
+        msg->array[3] = cn->commandString;
 
-		if( (IPTR)msg->array[-1] % 2 )
-		{
+        if( (IPTR)msg->array[-1] % 2 )
+        {
 #if !OS(AROS)
-			/* This code overrides internal data structures and causes a crash on AROS */
-			msg->array[-9] = (STRPTR) 10;
+            /* This code overrides internal data structures and causes a crash on AROS */
+            msg->array[-9] = (STRPTR) 10;
 #endif
-		}
-	}
-	else
-	{
-		msg->array[0] = GSI(MSG_CONTEXTMENULIST_CATEGORY);
-		msg->array[1] = GSI(MSG_CONTEXTMENULIST_LABEL);
-		msg->array[2] = GSI(MSG_CONTEXTMENULIST_TYPE);
-		msg->array[3] = GSI(MSG_CONTEXTMENULIST_ACTION);
-	}
+        }
+    }
+    else
+    {
+        msg->array[0] = GSI(MSG_CONTEXTMENULIST_CATEGORY);
+        msg->array[1] = GSI(MSG_CONTEXTMENULIST_LABEL);
+        msg->array[2] = GSI(MSG_CONTEXTMENULIST_TYPE);
+        msg->array[3] = GSI(MSG_CONTEXTMENULIST_ACTION);
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 BEGINMTABLE

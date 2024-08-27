@@ -49,7 +49,7 @@ WebDesktopNotificationsDelegate::WebDesktopNotificationsDelegate(WebView* webVie
 bool WebDesktopNotificationsDelegate::show(Notification* object)
 {
     if (object->scriptExecutionContext()->isWorkerGlobalScope())
-	return false;
+    return false;
 
     object->setPendingActivity(*object);
     
@@ -78,12 +78,12 @@ void WebDesktopNotificationsDelegate::requestPermission(WebCore::ScriptExecution
 {
   D(kprintf("requestPermission (legacy)\n"));
 
-	NotificationClient::Permission permission = checkPermission(context);
-	if (permission != NotificationClient::PermissionNotAllowed) {
-		if (callback)
-			callback->handleEvent();
-		return;
-	}
+    NotificationClient::Permission permission = checkPermission(context);
+    if (permission != NotificationClient::PermissionNotAllowed) {
+        if (callback)
+            callback->handleEvent();
+        return;
+    }
 }
 #endif
 
@@ -95,8 +95,8 @@ void WebDesktopNotificationsDelegate::requestPermission(WebCore::ScriptExecution
     if (permission != NotificationClient::Permission::Default) {
         if (callback)
             callback->handleEvent(permission);
-		return;
-	}
+        return;
+    }
 }
 
 void WebDesktopNotificationsDelegate::cancelRequestsForPermission(ScriptExecutionContext*)
@@ -111,8 +111,8 @@ NotificationClient::Permission WebDesktopNotificationsDelegate::checkPermission(
     int out = 0;
     if (hasNotificationDelegate())
       notificationDelegate()->checkNotificationPermission(SecurityOrigin::create(url)->toString(), &out);*/
-	//return NotificationClient::PermissionNotAllowed; // (NotificationClient::Permission) out;
-	return NotificationClient::Permission::Granted;
+    //return NotificationClient::PermissionNotAllowed; // (NotificationClient::Permission) out;
+    return NotificationClient::Permission::Granted;
 }
 
 bool WebDesktopNotificationsDelegate::hasPendingPermissionRequests(WebCore::ScriptExecutionContext*) const

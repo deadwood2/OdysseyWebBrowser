@@ -32,7 +32,7 @@ class HTMLInputElement;
 
 class AutofillManager : public RefCounted<AutofillManager> {
 public:
-	static RefPtr<AutofillManager> create(void *browser);
+    static RefPtr<AutofillManager> create(void *browser);
 
     void didChangeInTextField(HTMLInputElement*);
     void autofillTextField(const WTF::String&);
@@ -40,10 +40,10 @@ public:
 
     static void clear();
 
-	AutofillManager(void *browser) : m_browser(browser), m_element(0) { }
+    AutofillManager(void *browser) : m_browser(browser), m_element(0) { }
 
 private:
-	void *m_browser;
+    void *m_browser;
     HTMLInputElement* m_element;
 };
 

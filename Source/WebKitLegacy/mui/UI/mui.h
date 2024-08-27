@@ -89,13 +89,13 @@ struct  MUIP_TextDim                        { ULONG MethodID; STRPTR text;LONG l
 #if 0
 struct MUI_DragImage
 {
-	struct BitMap *bm;
-	WORD width;  /* exact width and height of bitmap */
-	WORD height;
-	WORD touchx; /* position of pointer click relative to bitmap */
-	WORD touchy;
-	ULONG flags; /* see flags below, all other flags reserved for future use */
-	PLANEPTR mask;
+    struct BitMap *bm;
+    WORD width;  /* exact width and height of bitmap */
+    WORD height;
+    WORD touchx; /* position of pointer click relative to bitmap */
+    WORD touchy;
+    ULONG flags; /* see flags below, all other flags reserved for future use */
+    PLANEPTR mask;
 };
 #endif
 
@@ -192,61 +192,61 @@ struct  MUIP_GoInactive                     { ULONG MethodID; ULONG flags; }; /*
 #define _between(_a,_x,_b) ((_x)>=(_a) && (_x)<=(_b))
 #define _isinobject(_o,_x,_y) (_between(_left(_o),(_x),_right(_o)) && _between(_top(_o),(_y),_bottom(_o)))
 #define _isinwinborder(_x,_y) \
-	((_between(0, (_x), _window(obj)->Width) && _between(0, (_y), _window(obj)->BorderTop)) || \
-	 (_between(_window(obj)->Width - _window(obj)->BorderRight, (_x), _window(obj)->Width) && _between(0, (_y), _window(obj)->Height)) || \
-	 (_between(0, (_x), _window(obj)->Width) && _between(_window(obj)->Height - _window(obj)->BorderBottom, (_y), _window(obj)->Height)) || \
-	 (_between(0, (_x), _window(obj)->BorderLeft) && _between(0, (_y), _window(obj)->Height)))
+    ((_between(0, (_x), _window(obj)->Width) && _between(0, (_y), _window(obj)->BorderTop)) || \
+     (_between(_window(obj)->Width - _window(obj)->BorderRight, (_x), _window(obj)->Width) && _between(0, (_y), _window(obj)->Height)) || \
+     (_between(0, (_x), _window(obj)->Width) && _between(_window(obj)->Height - _window(obj)->BorderBottom, (_y), _window(obj)->Height)) || \
+     (_between(0, (_x), _window(obj)->BorderLeft) && _between(0, (_y), _window(obj)->Height)))
 
 #define INITTAGS (((struct opSet *)msg)->ops_AttrList)
 
 #define FORTAG(_tagp) \
-	{ \
-		struct TagItem *tag, *_tags = (struct TagItem *)(_tagp); \
-		while ((tag = NextTagItem(&_tags))) switch ((int)tag->ti_Tag)
+    { \
+        struct TagItem *tag, *_tags = (struct TagItem *)(_tagp); \
+        while ((tag = NextTagItem(&_tags))) switch ((int)tag->ti_Tag)
 #define NEXTTAG }
 
 #define FORCHILD(_o, _a) \
-	{ \
-		APTR child, _cstate = (APTR)((struct MinList *)getv(_o, _a))->mlh_Head; \
-		while ((child = NextObject(&_cstate)))
+    { \
+        APTR child, _cstate = (APTR)((struct MinList *)getv(_o, _a))->mlh_Head; \
+        while ((child = NextObject(&_cstate)))
 
 #define NEXTCHILD }
 
 #undef KeyCheckMark
 #define KeyCheckMark(selected,control)\
-	ImageObject,\
-		ImageButtonFrame,\
-		MUIA_InputMode        , MUIV_InputMode_Toggle,\
-		MUIA_Image_Spec       , MUII_CheckMark,\
-		MUIA_Image_FreeVert   , TRUE,\
-		MUIA_Selected         , selected,\
-		MUIA_Background       , MUII_ButtonBack,\
-		MUIA_ShowSelState     , FALSE,\
-		MUIA_ControlChar      , control,\
-		MUIA_CycleChain       , 1,\
-		End
+    ImageObject,\
+        ImageButtonFrame,\
+        MUIA_InputMode        , MUIV_InputMode_Toggle,\
+        MUIA_Image_Spec       , MUII_CheckMark,\
+        MUIA_Image_FreeVert   , TRUE,\
+        MUIA_Selected         , selected,\
+        MUIA_Background       , MUII_ButtonBack,\
+        MUIA_ShowSelState     , FALSE,\
+        MUIA_ControlChar      , control,\
+        MUIA_CycleChain       , 1,\
+        End
 
 #undef KeyButton
 #define KeyButton(name,key)\
-	TextObject,\
-		ButtonFrame,\
-		MUIA_Font, MUIV_Font_Button,\
-		MUIA_Text_Contents, name,\
-		MUIA_Text_PreParse, "\33c",\
-		MUIA_Text_HiChar  , key,\
-		MUIA_ControlChar  , key,\
-		MUIA_InputMode    , MUIV_InputMode_RelVerify,\
-		MUIA_Background   , MUII_ButtonBack,\
-		MUIA_CycleChain   , 1,\
-		End
+    TextObject,\
+        ButtonFrame,\
+        MUIA_Font, MUIV_Font_Button,\
+        MUIA_Text_Contents, name,\
+        MUIA_Text_PreParse, "\33c",\
+        MUIA_Text_HiChar  , key,\
+        MUIA_ControlChar  , key,\
+        MUIA_InputMode    , MUIV_InputMode_RelVerify,\
+        MUIA_Background   , MUII_ButtonBack,\
+        MUIA_CycleChain   , 1,\
+        End
 
 #define PictureButton(name, imagepath)\
-		NewObject(getpicturebuttonclass(), NULL,\
-				MA_PictureButton_Name, name,\
-				MA_PictureButton_Path, imagepath,\
-				MA_PictureButton_UserData, NULL,\
-				MUIA_ShortHelp, name,\
-				TAG_DONE)
+        NewObject(getpicturebuttonclass(), NULL,\
+                MA_PictureButton_Name, name,\
+                MA_PictureButton_Path, imagepath,\
+                MA_PictureButton_UserData, NULL,\
+                MUIA_ShortHelp, name,\
+                TAG_DONE)
 
 APTR MakeCheck(CONST_STRPTR str, ULONG checked);
 APTR MakeRect(void);

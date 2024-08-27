@@ -94,20 +94,20 @@ void WebInspector::detach()
 
 bool WebInspector::isDebuggingJavaScript()
 {
-	if (!frontendClient())
+    if (!frontendClient())
         return false;
 
-	return frontendClient()->isDebuggingEnabled();
+    return frontendClient()->isDebuggingEnabled();
 }
 
 void WebInspector::toggleDebuggingJavaScript()
 {
-	show();
+    show();
 
-	if (!frontendClient())
+    if (!frontendClient())
         return;
 
-	if (frontendClient()->isDebuggingEnabled())
+    if (frontendClient()->isDebuggingEnabled())
         frontendClient()->setDebuggingEnabled(false);
     else
         frontendClient()->setDebuggingEnabled(true);
@@ -115,39 +115,39 @@ void WebInspector::toggleDebuggingJavaScript()
 
 bool WebInspector::isProfilingJavaScript()
 {
-	if (!frontendClient())
+    if (!frontendClient())
         return false;
 
-	return frontendClient()->isProfilingJavaScript();
+    return frontendClient()->isProfilingJavaScript();
 }
 
 void WebInspector::toggleProfilingJavaScript()
 {
-	show();
+    show();
 
-	if (!frontendClient())
+    if (!frontendClient())
         return ;
 
     if (frontendClient()->isProfilingJavaScript())
         frontendClient()->stopProfilingJavaScript();
-	else
+    else
         frontendClient()->startProfilingJavaScript();
 }
 
 bool WebInspector::isTimelineProfilingEnabled()
 {
-	if(!frontendClient())
-		return false;
+    if(!frontendClient())
+        return false;
 
-	return frontendClient()->isTimelineProfilingEnabled();
+    return frontendClient()->isTimelineProfilingEnabled();
 }
 
 void WebInspector::setTimelineProfilingEnabled(bool enabled)
 {
-	show();
+    show();
 
-	if (!frontendClient())
+    if (!frontendClient())
         return;
 
-	frontendClient()->setTimelineProfilingEnabled(enabled);
+    frontendClient()->setTimelineProfilingEnabled(enabled);
 }

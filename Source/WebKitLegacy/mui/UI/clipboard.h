@@ -11,7 +11,7 @@
 #endif
 
 #ifndef ID_UTF8
-	#define ID_UTF8 MAKE_ID('U','T','F','8')
+    #define ID_UTF8 MAKE_ID('U','T','F','8')
 #endif
 
 #ifndef CODESET_LATIN1
@@ -32,20 +32,20 @@ typedef unsigned int uint32;
 struct IFFCodeSet
 {
     uint32 CodeSet;
-	uint32 Reserved[5];
+    uint32 Reserved[5];
 };
 
-typedef	struct chkimage
+typedef    struct chkimage
 {
-	int	width,height;
+    int    width,height;
     union
-	{
-		unsigned char	*b;
-		unsigned int	*l;
-		unsigned short	*w;
-		void			*p;
-	}data ;
-	int	pixfmt;					/*	image format (CHK_PIXFMTXXX) */
+    {
+        unsigned char    *b;
+        unsigned int    *l;
+        unsigned short    *w;
+        void            *p;
+    }data ;
+    int    pixfmt;                    /*    image format (CHK_PIXFMTXXX) */
 } ChkImage;
 
 WTF::String pasteFromClipboard(void);

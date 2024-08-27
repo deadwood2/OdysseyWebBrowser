@@ -41,7 +41,7 @@ public:
     WebDragDataPrivate() : m_dragDataRef(0) {}
     ~WebDragDataPrivate() { }
 
-	WebCore::DragDataRef m_dragDataRef;
+    WebCore::DragDataRef m_dragDataRef;
 };
 
 #endif

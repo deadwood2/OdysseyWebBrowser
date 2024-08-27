@@ -34,9 +34,9 @@
 
 class WebBackForwardListPrivate {
 public:
-	WebBackForwardListPrivate(BackForwardList* backForwardList) : m_backForwardList(backForwardList) {}
+    WebBackForwardListPrivate(BackForwardList* backForwardList) : m_backForwardList(backForwardList) {}
 
-	BackForwardList* m_backForwardList;
+    BackForwardList* m_backForwardList;
 };
 
 #endif

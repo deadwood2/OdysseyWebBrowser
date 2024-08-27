@@ -75,14 +75,14 @@ void WebContextMenuClient::downloadURL(const URL& url)
 
     if(downloadDelegate)
     {
-		String originURL;
-		char *tmp = (char *) m_webView->mainFrameURL();
-		if(tmp)
-		{
-			originURL = tmp;
-			free(tmp);
-		}
-		WebDownload* download = WebDownload::createInstance(url, originURL, downloadDelegate);
+        String originURL;
+        char *tmp = (char *) m_webView->mainFrameURL();
+        if(tmp)
+        {
+            originURL = tmp;
+            free(tmp);
+        }
+        WebDownload* download = WebDownload::createInstance(url, originURL, downloadDelegate);
         download->start();
     }
 }

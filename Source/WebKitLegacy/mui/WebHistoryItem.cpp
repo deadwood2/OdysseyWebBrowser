@@ -151,17 +151,17 @@ void WebHistoryItem::initWithURLString(const String & urlString, const String & 
 
 const char* WebHistoryItem::originalURLString()
 {
-	return strdup(d->m_historyItem->originalURLString().utf8().data());
+    return strdup(d->m_historyItem->originalURLString().utf8().data());
 }
 
 const char* WebHistoryItem::URLString()
 {
-	return strdup(d->m_historyItem->urlString().utf8().data());
+    return strdup(d->m_historyItem->urlString().utf8().data());
 }
 
 const char* WebHistoryItem::title()
 {
-	return strdup(d->m_historyItem->title().utf8().data());
+    return strdup(d->m_historyItem->title().utf8().data());
 }
 
 void WebHistoryItem::setAlternateTitle(const char* title)

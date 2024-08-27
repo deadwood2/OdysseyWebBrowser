@@ -84,432 +84,432 @@ static bool prev_MetaKey;
 
 static int ConvertAmigaKeyToVirtualKey(struct IntuiMessage *im)
 {
-	if (IDCMP_RAWKEY == im->Class)
-	{
-		switch (im->Code & ~IECODE_UP_PREFIX)
-		{
-	        case RAWKEY_TAB:       return VK_TAB;     break;
-	        case RAWKEY_INSERT:    return VK_INSERT;  break;
-	        case RAWKEY_PAGEUP:    return VK_PRIOR;   break;
-	        case RAWKEY_PAGEDOWN:  return VK_NEXT;    break;
-	        case RAWKEY_F11:       return VK_F11;     break;
-	        case RAWKEY_UP:        return VK_UP;      break;
-	        case RAWKEY_DOWN:      return VK_DOWN;    break;
-	        case RAWKEY_RIGHT:     return VK_RIGHT;   break;
-	        case RAWKEY_LEFT:      return VK_LEFT;    break;
-	        case RAWKEY_F1:        return VK_F1;      break;
-	        case RAWKEY_F2:        return VK_F2;      break;
-	        case RAWKEY_F3:        return VK_F3;      break;
-	        case RAWKEY_F4:        return VK_F4;      break;
-	        case RAWKEY_F5:        return VK_F5;      break;
-	        case RAWKEY_F6:        return VK_F6;      break;
-	        case RAWKEY_F7:        return VK_F7;      break;
-	        case RAWKEY_F8:        return VK_F8;      break;
-	        case RAWKEY_F9:        return VK_F9;      break;
-	        case RAWKEY_F10:       return VK_F10;     break;
-	        case RAWKEY_HELP:      return VK_HELP;    break;
-	        case RAWKEY_LSHIFT:    return VK_SHIFT;   break;
-	        case RAWKEY_RSHIFT:    return VK_SHIFT;   break;
-	        case RAWKEY_CAPSLOCK:  return VK_CAPITAL; break;
-	        case RAWKEY_LCONTROL:  return VK_CONTROL; break;
-	        case RAWKEY_LALT:      return VK_MENU;    break;
-	        case RAWKEY_RALT:      return (im->Code & IECODE_UP_PREFIX )? VK_MENU : VK_CONTROL; break;
-			case RAWKEY_LAMIGA:    return VK_LWIN;    break;
-			case RAWKEY_RAMIGA:    return VK_RWIN;    break;
-	        case RAWKEY_PRTSCREEN: return VK_PRINT;   break;
-	        case RAWKEY_PAUSE:     return VK_PAUSE;   break;
-	        case RAWKEY_F12:       return VK_F12;     break;
-	        case RAWKEY_HOME:      return VK_HOME;    break;
-	        case RAWKEY_END:       return VK_END;     break;
-			case RAWKEY_NUMLOCK:   return VK_NUMLOCK; break;
-			case RAWKEY_SCRLOCK:   return VK_SCROLL;  break;
-			case RAWKEY_BACKSPACE: return VK_BACK;    break;
-			case RAWKEY_RETURN:    return VK_RETURN;  break;
-			case RAWKEY_ESCAPE:    return VK_ESCAPE;  break;
-			case RAWKEY_SPACE:     return VK_SPACE;   break;
-			case RAWKEY_DELETE:    return VK_DELETE;  break;
+    if (IDCMP_RAWKEY == im->Class)
+    {
+        switch (im->Code & ~IECODE_UP_PREFIX)
+        {
+            case RAWKEY_TAB:       return VK_TAB;     break;
+            case RAWKEY_INSERT:    return VK_INSERT;  break;
+            case RAWKEY_PAGEUP:    return VK_PRIOR;   break;
+            case RAWKEY_PAGEDOWN:  return VK_NEXT;    break;
+            case RAWKEY_F11:       return VK_F11;     break;
+            case RAWKEY_UP:        return VK_UP;      break;
+            case RAWKEY_DOWN:      return VK_DOWN;    break;
+            case RAWKEY_RIGHT:     return VK_RIGHT;   break;
+            case RAWKEY_LEFT:      return VK_LEFT;    break;
+            case RAWKEY_F1:        return VK_F1;      break;
+            case RAWKEY_F2:        return VK_F2;      break;
+            case RAWKEY_F3:        return VK_F3;      break;
+            case RAWKEY_F4:        return VK_F4;      break;
+            case RAWKEY_F5:        return VK_F5;      break;
+            case RAWKEY_F6:        return VK_F6;      break;
+            case RAWKEY_F7:        return VK_F7;      break;
+            case RAWKEY_F8:        return VK_F8;      break;
+            case RAWKEY_F9:        return VK_F9;      break;
+            case RAWKEY_F10:       return VK_F10;     break;
+            case RAWKEY_HELP:      return VK_HELP;    break;
+            case RAWKEY_LSHIFT:    return VK_SHIFT;   break;
+            case RAWKEY_RSHIFT:    return VK_SHIFT;   break;
+            case RAWKEY_CAPSLOCK:  return VK_CAPITAL; break;
+            case RAWKEY_LCONTROL:  return VK_CONTROL; break;
+            case RAWKEY_LALT:      return VK_MENU;    break;
+            case RAWKEY_RALT:      return (im->Code & IECODE_UP_PREFIX )? VK_MENU : VK_CONTROL; break;
+            case RAWKEY_LAMIGA:    return VK_LWIN;    break;
+            case RAWKEY_RAMIGA:    return VK_RWIN;    break;
+            case RAWKEY_PRTSCREEN: return VK_PRINT;   break;
+            case RAWKEY_PAUSE:     return VK_PAUSE;   break;
+            case RAWKEY_F12:       return VK_F12;     break;
+            case RAWKEY_HOME:      return VK_HOME;    break;
+            case RAWKEY_END:       return VK_END;     break;
+            case RAWKEY_NUMLOCK:   return VK_NUMLOCK; break;
+            case RAWKEY_SCRLOCK:   return VK_SCROLL;  break;
+            case RAWKEY_BACKSPACE: return VK_BACK;    break;
+            case RAWKEY_RETURN:    return VK_RETURN;  break;
+            case RAWKEY_ESCAPE:    return VK_ESCAPE;  break;
+            case RAWKEY_SPACE:     return VK_SPACE;   break;
+            case RAWKEY_DELETE:    return VK_DELETE;  break;
 
-	        default:
-			{
-				struct InputEvent ie;
-				char c = '?';
+            default:
+            {
+                struct InputEvent ie;
+                char c = '?';
 
-				ie.ie_NextEvent = NULL;
-				ie.ie_Class = IECLASS_RAWKEY;
-				ie.ie_SubClass = 0;
-				ie.ie_Code = im->Code & ~IECODE_UP_PREFIX;
-				ie.ie_Qualifier = 0x8000; //im->Qualifier & ~(IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND);
-				//ie.ie_Qualifier = im->Qualifier & ~(IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND);
-				ie.ie_EventAddress = (APTR *) *((ULONG *)im->IAddress);
+                ie.ie_NextEvent = NULL;
+                ie.ie_Class = IECLASS_RAWKEY;
+                ie.ie_SubClass = 0;
+                ie.ie_Code = im->Code & ~IECODE_UP_PREFIX;
+                ie.ie_Qualifier = 0x8000; //im->Qualifier & ~(IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND);
+                //ie.ie_Qualifier = im->Qualifier & ~(IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND);
+                ie.ie_EventAddress = (APTR *) *((ULONG *)im->IAddress);
 
-				if (MapRawKey(&ie, (STRPTR)&c, 1, NULL) == 1)
-				{
-					switch(c)
-					{
-						case 'a':
-						case 'A':
-							return VK_A;
-						case 'b':
-						case 'B':
-							return VK_B;
-						case 'c':
-						case 'C':
-							return VK_C;
-						case 'd':
-						case 'D':
-							return VK_D;
-						case 'e':
-						case 'E':
-							return VK_E;
-						case 'f':
-						case 'F':
-							return VK_F;
-						case 'g':
-						case 'G':
-							return VK_G;
-						case 'h':
-						case 'H':
-							return VK_H;
-						case 'i':
-						case 'I':
-							return VK_I;
-						case 'j':
-						case 'J':
-							return VK_J;
-						case 'k':
-						case 'K':
-							return VK_K;
-						case 'l':
-						case 'L':
-							return VK_L;
-						case 'm':
-						case 'M':
-							return VK_M;
-						case 'n':
-						case 'N':
-							return VK_N;
-						case 'o':
-						case 'O':
-							return VK_O;
-						case 'p':
-						case 'P':
-							return VK_P;
-						case 'q':
-						case 'Q':
-							return VK_Q;
-						case 'r':
-						case 'R':
-							return VK_R;
-						case 's':
-						case 'S':
-							return VK_S;
-						case 't':
-						case 'T':
-							return VK_T;
-						case 'u':
-						case 'U':
-							return VK_U;
-						case 'v':
-						case 'V':
-							return VK_V;
-						case 'w':
-						case 'W':
-							return VK_W;
-						case 'x':
-						case 'X':
-							return VK_X;
-						case 'y':
-						case 'Y':
-							return VK_Y;
-						case 'z':
-						case 'Z':
-							return VK_Z;
-						case ')':
-						case '0':
-							return VK_0;
-						case '!':
-						case '1':
-							return VK_1;
-						case '@':
-						case '2':
-							return VK_2;
-						case '#':
-						case '3':
-							return VK_3;
-						case '$':
-						case '4':
-							return VK_4;
-						case '%':
-						case '5':
-							return VK_5;
-						case '^':
-						case '6':
-							return VK_6;
-						case '&':
-						case '7':
-							return VK_7;
-						case '*':
-						case '8':
-							return VK_8;
-						case '(':
-						case '9':
-							return VK_9;
+                if (MapRawKey(&ie, (STRPTR)&c, 1, NULL) == 1)
+                {
+                    switch(c)
+                    {
+                        case 'a':
+                        case 'A':
+                            return VK_A;
+                        case 'b':
+                        case 'B':
+                            return VK_B;
+                        case 'c':
+                        case 'C':
+                            return VK_C;
+                        case 'd':
+                        case 'D':
+                            return VK_D;
+                        case 'e':
+                        case 'E':
+                            return VK_E;
+                        case 'f':
+                        case 'F':
+                            return VK_F;
+                        case 'g':
+                        case 'G':
+                            return VK_G;
+                        case 'h':
+                        case 'H':
+                            return VK_H;
+                        case 'i':
+                        case 'I':
+                            return VK_I;
+                        case 'j':
+                        case 'J':
+                            return VK_J;
+                        case 'k':
+                        case 'K':
+                            return VK_K;
+                        case 'l':
+                        case 'L':
+                            return VK_L;
+                        case 'm':
+                        case 'M':
+                            return VK_M;
+                        case 'n':
+                        case 'N':
+                            return VK_N;
+                        case 'o':
+                        case 'O':
+                            return VK_O;
+                        case 'p':
+                        case 'P':
+                            return VK_P;
+                        case 'q':
+                        case 'Q':
+                            return VK_Q;
+                        case 'r':
+                        case 'R':
+                            return VK_R;
+                        case 's':
+                        case 'S':
+                            return VK_S;
+                        case 't':
+                        case 'T':
+                            return VK_T;
+                        case 'u':
+                        case 'U':
+                            return VK_U;
+                        case 'v':
+                        case 'V':
+                            return VK_V;
+                        case 'w':
+                        case 'W':
+                            return VK_W;
+                        case 'x':
+                        case 'X':
+                            return VK_X;
+                        case 'y':
+                        case 'Y':
+                            return VK_Y;
+                        case 'z':
+                        case 'Z':
+                            return VK_Z;
+                        case ')':
+                        case '0':
+                            return VK_0;
+                        case '!':
+                        case '1':
+                            return VK_1;
+                        case '@':
+                        case '2':
+                            return VK_2;
+                        case '#':
+                        case '3':
+                            return VK_3;
+                        case '$':
+                        case '4':
+                            return VK_4;
+                        case '%':
+                        case '5':
+                            return VK_5;
+                        case '^':
+                        case '6':
+                            return VK_6;
+                        case '&':
+                        case '7':
+                            return VK_7;
+                        case '*':
+                        case '8':
+                            return VK_8;
+                        case '(':
+                        case '9':
+                            return VK_9;
 
-						case ':':
-						case ';':
-							return VK_OEM_1;
-						case '=':
-						case '+':
-							return VK_OEM_PLUS;
-						case ',':
-						case '<':
-							return VK_OEM_COMMA;
-						case '-':
-						case '_':
-							return VK_OEM_MINUS;
-						case '.':
-						case '>':
-							return VK_OEM_PERIOD;
-						case '/':
-						case '?':
-							return VK_OEM_2;
-						case '`':
-						case '~':
-							return VK_OEM_3;
-						case '[':
-						case '{':
-							return VK_OEM_4;
-						case '\\':
-						case '|':
-							return VK_OEM_5;
-						case ']':
-						case '}':
-							return VK_OEM_6;
-						case '\'':
-						case '"':
-							return VK_OEM_7;
-						default:
-							return 0;
-					}
-				}
-			}
-	        break;
+                        case ':':
+                        case ';':
+                            return VK_OEM_1;
+                        case '=':
+                        case '+':
+                            return VK_OEM_PLUS;
+                        case ',':
+                        case '<':
+                            return VK_OEM_COMMA;
+                        case '-':
+                        case '_':
+                            return VK_OEM_MINUS;
+                        case '.':
+                        case '>':
+                            return VK_OEM_PERIOD;
+                        case '/':
+                        case '?':
+                            return VK_OEM_2;
+                        case '`':
+                        case '~':
+                            return VK_OEM_3;
+                        case '[':
+                        case '{':
+                            return VK_OEM_4;
+                        case '\\':
+                        case '|':
+                            return VK_OEM_5;
+                        case ']':
+                        case '}':
+                            return VK_OEM_6;
+                        case '\'':
+                        case '"':
+                            return VK_OEM_7;
+                        default:
+                            return 0;
+                    }
+                }
+            }
+            break;
         }
-	}
-	return 0;
+    }
+    return 0;
 }
 
 static String keyIdentifierForAmigaKeyCode(struct IntuiMessage *im)
 {
-	if (IDCMP_RAWKEY == im->Class)
-	{
-		switch (im->Code & ~IECODE_UP_PREFIX)
-		{
-	        case RAWKEY_INSERT:    return "Insert";   break;
-	        case RAWKEY_PAGEUP:    return "PageUp";   break;
-	        case RAWKEY_PAGEDOWN:  return "PageDown"; break;
-	        case RAWKEY_F11:       return "F11";      break;
-	        case RAWKEY_UP:        return "Up";       break;
-	        case RAWKEY_DOWN:      return "Down";     break;
-	        case RAWKEY_RIGHT:     return "Right";    break;
-	        case RAWKEY_LEFT:      return "Left";     break;
-	        case RAWKEY_F1:        return "F1";       break;
-	        case RAWKEY_F2:        return "F2";       break;
-	        case RAWKEY_F3:        return "F3";       break;
-	        case RAWKEY_F4:        return "F4";       break;
-	        case RAWKEY_F5:        return "F5";       break;
-	        case RAWKEY_F6:        return "F6";       break;
-	        case RAWKEY_F7:        return "F7";       break;
-	        case RAWKEY_F8:        return "F8";       break;
-	        case RAWKEY_F9:        return "F9";       break;
-	        case RAWKEY_F10:       return "F10";      break;
-	        case RAWKEY_HELP:      return "Help";     break;
-	        case RAWKEY_LALT:      return "Alt";      break;
-	        case RAWKEY_RALT:      return "AltGr";    break;
-	        case RAWKEY_PAUSE:     return "Pause";    break;
-	        case RAWKEY_F12:       return "F12";      break;
-	        case RAWKEY_HOME:      return "Home";     break;
-	        case RAWKEY_END:       return "End";      break;
-			case RAWKEY_PRTSCREEN: return "PrintScreen"; break;
-			case RAWKEY_KP_ENTER:
-			case RAWKEY_RETURN:    return "Enter";    break;
-			case RAWKEY_DELETE:    return "U+007F";   break;
-			case RAWKEY_BACKSPACE: return "U+0008";   break;
-			case RAWKEY_TAB:       return "U+0009";   break;
-			case RAWKEY_SPACE:     return "U+0020";   break;
+    if (IDCMP_RAWKEY == im->Class)
+    {
+        switch (im->Code & ~IECODE_UP_PREFIX)
+        {
+            case RAWKEY_INSERT:    return "Insert";   break;
+            case RAWKEY_PAGEUP:    return "PageUp";   break;
+            case RAWKEY_PAGEDOWN:  return "PageDown"; break;
+            case RAWKEY_F11:       return "F11";      break;
+            case RAWKEY_UP:        return "Up";       break;
+            case RAWKEY_DOWN:      return "Down";     break;
+            case RAWKEY_RIGHT:     return "Right";    break;
+            case RAWKEY_LEFT:      return "Left";     break;
+            case RAWKEY_F1:        return "F1";       break;
+            case RAWKEY_F2:        return "F2";       break;
+            case RAWKEY_F3:        return "F3";       break;
+            case RAWKEY_F4:        return "F4";       break;
+            case RAWKEY_F5:        return "F5";       break;
+            case RAWKEY_F6:        return "F6";       break;
+            case RAWKEY_F7:        return "F7";       break;
+            case RAWKEY_F8:        return "F8";       break;
+            case RAWKEY_F9:        return "F9";       break;
+            case RAWKEY_F10:       return "F10";      break;
+            case RAWKEY_HELP:      return "Help";     break;
+            case RAWKEY_LALT:      return "Alt";      break;
+            case RAWKEY_RALT:      return "AltGr";    break;
+            case RAWKEY_PAUSE:     return "Pause";    break;
+            case RAWKEY_F12:       return "F12";      break;
+            case RAWKEY_HOME:      return "Home";     break;
+            case RAWKEY_END:       return "End";      break;
+            case RAWKEY_PRTSCREEN: return "PrintScreen"; break;
+            case RAWKEY_KP_ENTER:
+            case RAWKEY_RETURN:    return "Enter";    break;
+            case RAWKEY_DELETE:    return "U+007F";   break;
+            case RAWKEY_BACKSPACE: return "U+0008";   break;
+            case RAWKEY_TAB:       return "U+0009";   break;
+            case RAWKEY_SPACE:     return "U+0020";   break;
 
-		default:
-			{
-				struct InputEvent ie;
-				TEXT c = '?';
+        default:
+            {
+                struct InputEvent ie;
+                TEXT c = '?';
 
-				ie.ie_NextEvent = NULL;
-				ie.ie_Class = IECLASS_RAWKEY;
-				ie.ie_SubClass = 0;
-				ie.ie_Code = im->Code & ~IECODE_UP_PREFIX;
-				ie.ie_Qualifier = 0x8000; //im->Qualifier & ~(IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND);
-				//ie.ie_Qualifier = im->Qualifier & ~(IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND);
-				ie.ie_EventAddress = (APTR *) *((ULONG *)im->IAddress);
+                ie.ie_NextEvent = NULL;
+                ie.ie_Class = IECLASS_RAWKEY;
+                ie.ie_SubClass = 0;
+                ie.ie_Code = im->Code & ~IECODE_UP_PREFIX;
+                ie.ie_Qualifier = 0x8000; //im->Qualifier & ~(IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND);
+                //ie.ie_Qualifier = im->Qualifier & ~(IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND);
+                ie.ie_EventAddress = (APTR *) *((ULONG *)im->IAddress);
 
-				if (MapRawKey(&ie, (STRPTR)&c, 1, NULL) == 1)
-				{
-					bool bMeta = im->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND);
+                if (MapRawKey(&ie, (STRPTR)&c, 1, NULL) == 1)
+                {
+                    bool bMeta = im->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND);
 
-					if(bMeta && c == 'a')
-						return "U+0001";
-					else if(bMeta && c == 'c')
-						return "U+0003";
-					else if(bMeta && c == 'v')
-						return "U+0016";
-					else if(bMeta && c == 'x')
-						return "U+0018";
-					else if(c == 0xA4) // Euro
-						return "U+20AC";
-					else
-						return makeString("U+", hex(toASCIIUpper(c), 4));
-				}	 
-			}
+                    if(bMeta && c == 'a')
+                        return "U+0001";
+                    else if(bMeta && c == 'c')
+                        return "U+0003";
+                    else if(bMeta && c == 'v')
+                        return "U+0016";
+                    else if(bMeta && c == 'x')
+                        return "U+0018";
+                    else if(c == 0xA4) // Euro
+                        return "U+20AC";
+                    else
+                        return makeString("U+", hex(toASCIIUpper(c), 4));
+                }     
+            }
         }
-	}
+    }
 
-	return "U+0000";
+    return "U+0000";
 }
 
 PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
-	: m_windowsVirtualKeyCode(ConvertAmigaKeyToVirtualKey(event))
-	, m_autoRepeat(false)
+    : m_windowsVirtualKeyCode(ConvertAmigaKeyToVirtualKey(event))
+    , m_autoRepeat(false)
     , m_isKeypad(event->Qualifier & IEQUALIFIER_NUMERICPAD)
     , m_balEventKey(event)
 {
-	m_type = PlatformEvent::KeyDown;
+    m_type = PlatformEvent::KeyDown;
 
-	m_modifiers = OptionSet<PlatformEvent::Modifier>();
+    m_modifiers = OptionSet<PlatformEvent::Modifier>();
 
-	if (event->Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
-		m_modifiers.add(PlatformEvent::Modifier::ShiftKey);
+    if (event->Qualifier & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT))
+        m_modifiers.add(PlatformEvent::Modifier::ShiftKey);
 
-	if (event->Qualifier & IEQUALIFIER_CONTROL)
-		m_modifiers.add(PlatformEvent::Modifier::ControlKey);
+    if (event->Qualifier & IEQUALIFIER_CONTROL)
+        m_modifiers.add(PlatformEvent::Modifier::ControlKey);
 
-	if( event->Qualifier & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
-		m_modifiers.add(PlatformEvent::Modifier::AltKey);
+    if( event->Qualifier & (IEQUALIFIER_LALT | IEQUALIFIER_RALT))
+        m_modifiers.add(PlatformEvent::Modifier::AltKey);
 
         if( event->Qualifier & IEQUALIFIER_RALT)
-	        m_modifiers.add(PlatformEvent::Modifier::ControlKey);
+            m_modifiers.add(PlatformEvent::Modifier::ControlKey);
 
-	if (event->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
-		m_modifiers.add(PlatformEvent::Modifier::MetaKey);
+    if (event->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
+        m_modifiers.add(PlatformEvent::Modifier::MetaKey);
 
 #if OS(MORPHOS)
-	UChar aSrc[2];
-	if (IDCMP_RAWKEY == event->Class)
-	{
+    UChar aSrc[2];
+    if (IDCMP_RAWKEY == event->Class)
+    {
         if (event->Code & IECODE_UP_PREFIX)
             m_type = PlatformEvent::KeyUp;
 
-		switch (event->Code & ~IECODE_UP_PREFIX)
-		{
-	        case RAWKEY_TAB:
-	        case RAWKEY_INSERT:
-	        case RAWKEY_PAGEUP:
-	        case RAWKEY_PAGEDOWN:
-	        case RAWKEY_F11:
-	        case RAWKEY_UP:
-	        case RAWKEY_DOWN:
-	        case RAWKEY_RIGHT:
-	        case RAWKEY_LEFT:
-	        case RAWKEY_F1:
-	        case RAWKEY_F2:
-	        case RAWKEY_F3:
-	        case RAWKEY_F4:
-	        case RAWKEY_F5:
-	        case RAWKEY_F6:
-	        case RAWKEY_F7:
-	        case RAWKEY_F8:
-	        case RAWKEY_F9:
-	        case RAWKEY_F10:
-	        case RAWKEY_HELP:
-	        case RAWKEY_LALT:
-	        case RAWKEY_RALT:
-	        case RAWKEY_PAUSE:
-	        case RAWKEY_F12:
-	        case RAWKEY_HOME:
-		case RAWKEY_END:
-			aSrc[0] = 0; break;
+        switch (event->Code & ~IECODE_UP_PREFIX)
+        {
+            case RAWKEY_TAB:
+            case RAWKEY_INSERT:
+            case RAWKEY_PAGEUP:
+            case RAWKEY_PAGEDOWN:
+            case RAWKEY_F11:
+            case RAWKEY_UP:
+            case RAWKEY_DOWN:
+            case RAWKEY_RIGHT:
+            case RAWKEY_LEFT:
+            case RAWKEY_F1:
+            case RAWKEY_F2:
+            case RAWKEY_F3:
+            case RAWKEY_F4:
+            case RAWKEY_F5:
+            case RAWKEY_F6:
+            case RAWKEY_F7:
+            case RAWKEY_F8:
+            case RAWKEY_F9:
+            case RAWKEY_F10:
+            case RAWKEY_HELP:
+            case RAWKEY_LALT:
+            case RAWKEY_RALT:
+            case RAWKEY_PAUSE:
+            case RAWKEY_F12:
+            case RAWKEY_HOME:
+        case RAWKEY_END:
+            aSrc[0] = 0; break;
 
-			default:
-			{
-				if(is_morphos2())
-				{
-					struct InputEvent ie;
-					WCHAR c = (WCHAR)'?';
+            default:
+            {
+                if(is_morphos2())
+                {
+                    struct InputEvent ie;
+                    WCHAR c = (WCHAR)'?';
 
-					ie.ie_NextEvent = NULL;
-					ie.ie_Class = IECLASS_RAWKEY;
-					ie.ie_SubClass = 0;
-					ie.ie_Code = event->Code & ~IECODE_UP_PREFIX;
-					ie.ie_Qualifier = event->Qualifier;
-					ie.ie_EventAddress = (APTR *) *((ULONG *)event->IAddress);
+                    ie.ie_NextEvent = NULL;
+                    ie.ie_Class = IECLASS_RAWKEY;
+                    ie.ie_SubClass = 0;
+                    ie.ie_Code = event->Code & ~IECODE_UP_PREFIX;
+                    ie.ie_Qualifier = event->Qualifier;
+                    ie.ie_EventAddress = (APTR *) *((ULONG *)event->IAddress);
 
-					if (MapRawKeyUCS4(&ie, (WSTRPTR *)&c, 1, NULL) == 1)
-					{
-						if(metaKey())
-						{
-							if(c == L'a')
-								c = 1;
-							else if(c == L'c')
-								c = 3;
-							else if(c == L'v')
-								c = 16;
-							else if(c == L'x')
-								c = 18;
-						}
+                    if (MapRawKeyUCS4(&ie, (WSTRPTR *)&c, 1, NULL) == 1)
+                    {
+                        if(metaKey())
+                        {
+                            if(c == L'a')
+                                c = 1;
+                            else if(c == L'c')
+                                c = 3;
+                            else if(c == L'v')
+                                c = 16;
+                            else if(c == L'x')
+                                c = 18;
+                        }
 
-						if(c == 0xA4) c = 0x20AC; // Euro
+                        if(c == 0xA4) c = 0x20AC; // Euro
 
-						aSrc[0] = (UChar) c;
-					}
-					else
-					{
-	                    aSrc[0] = 0;
-					}				 
-				}
-				else
-				{
-					struct InputEvent ie;
-					char c = '?';
+                        aSrc[0] = (UChar) c;
+                    }
+                    else
+                    {
+                        aSrc[0] = 0;
+                    }                 
+                }
+                else
+                {
+                    struct InputEvent ie;
+                    char c = '?';
 
-					ie.ie_NextEvent = NULL;
-					ie.ie_Class = IECLASS_RAWKEY;
-					ie.ie_SubClass = 0;
-					ie.ie_Code = event->Code & ~IECODE_UP_PREFIX;
-					ie.ie_Qualifier = event->Qualifier;
-					ie.ie_EventAddress = (APTR *) *((ULONG *)event->IAddress);
+                    ie.ie_NextEvent = NULL;
+                    ie.ie_Class = IECLASS_RAWKEY;
+                    ie.ie_SubClass = 0;
+                    ie.ie_Code = event->Code & ~IECODE_UP_PREFIX;
+                    ie.ie_Qualifier = event->Qualifier;
+                    ie.ie_EventAddress = (APTR *) *((ULONG *)event->IAddress);
 
-					if (MapRawKey(&ie, (STRPTR)&c, 1, NULL) == 1)
-					{
-						if(metaKey())
-						{
-							if(c == 'a')
-								c = 1;
-							else if(c == 'c')
-								c = 3;
-							else if(c == 'v')
-								c = 16;
-							else if(c == 'x')
-								c = 18;
-						}
+                    if (MapRawKey(&ie, (STRPTR)&c, 1, NULL) == 1)
+                    {
+                        if(metaKey())
+                        {
+                            if(c == 'a')
+                                c = 1;
+                            else if(c == 'c')
+                                c = 3;
+                            else if(c == 'v')
+                                c = 16;
+                            else if(c == 'x')
+                                c = 18;
+                        }
 
-						aSrc[0] = (UChar) c;
-					}
-					else
-					{
-	                    aSrc[0] = 0;		
-					}
-				}
-			}
-		}
-	}
+                        aSrc[0] = (UChar) c;
+                    }
+                    else
+                    {
+                        aSrc[0] = 0;        
+                    }
+                }
+            }
+        }
+    }
     aSrc[1] = 0;
 
     String aText(aSrc);
@@ -518,7 +518,7 @@ PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
 
     m_text = aText;
     m_unmodifiedText = aUnmodifiedText;
-	m_keyIdentifier  = aKeyIdentifier;
+    m_keyIdentifier  = aKeyIdentifier;
 #endif
 
 #if OS(AROS)
@@ -556,18 +556,18 @@ PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
     m_keyIdentifier = keyIdentifierForAmigaKeyCode(event);
 #endif
 
-	prev_AltKey   = altKey();
-	prev_ShiftKey = shiftKey();
-	prev_CtrlKey  = controlKey();
-	prev_MetaKey  = metaKey();
+    prev_AltKey   = altKey();
+    prev_ShiftKey = shiftKey();
+    prev_CtrlKey  = controlKey();
+    prev_MetaKey  = metaKey();
 
-	D(kprintf("Qualifier Shift %d Alt %d Ctrl %d Meta %d\n", m_shiftKey, m_altKey, m_ctrlKey, m_metaKey));
-	D(kprintf("RawKey %x Qualifier %x\n", m_balEventKey->Code, m_balEventKey->Qualifier));
-	D(kprintf("Text <%s>\n", m_text.latin1().data()));
-	D(kprintf("Unmodified Text <%s>\n", m_unmodifiedText.latin1().data()));
-	D(kprintf("VirtualKey %x\n", m_windowsVirtualKeyCode));
-	D(kprintf("KeyIdentifier <%s>\n", m_keyIdentifier.latin1().data()));
-	D(kprintf("\n\n\n"));
+    D(kprintf("Qualifier Shift %d Alt %d Ctrl %d Meta %d\n", m_shiftKey, m_altKey, m_ctrlKey, m_metaKey));
+    D(kprintf("RawKey %x Qualifier %x\n", m_balEventKey->Code, m_balEventKey->Qualifier));
+    D(kprintf("Text <%s>\n", m_text.latin1().data()));
+    D(kprintf("Unmodified Text <%s>\n", m_unmodifiedText.latin1().data()));
+    D(kprintf("VirtualKey %x\n", m_windowsVirtualKeyCode));
+    D(kprintf("KeyIdentifier <%s>\n", m_keyIdentifier.latin1().data()));
+    D(kprintf("\n\n\n"));
 
 }
 
@@ -580,17 +580,17 @@ void PlatformKeyboardEvent::disambiguateKeyDownEvent(Type type, bool backwardCom
     if (backwardCompatibilityMode)
         return;
 
-	if (type == PlatformEvent::RawKeyDown)
-	{
+    if (type == PlatformEvent::RawKeyDown)
+    {
         m_text = String();
         m_unmodifiedText = String();
-	}
-	else
-	{
-		if (m_text.isEmpty() && m_windowsVirtualKeyCode && m_balEventKey->Code < RAWKEY_ESCAPE)
+    }
+    else
+    {
+        if (m_text.isEmpty() && m_windowsVirtualKeyCode && m_balEventKey->Code < RAWKEY_ESCAPE)
             m_text.append(UChar(m_windowsVirtualKeyCode));
 
-		D(kprintf("DisambiguateKeyDownEvent <%s>\n", m_text.latin1().data()));
+        D(kprintf("DisambiguateKeyDownEvent <%s>\n", m_text.latin1().data()));
         m_keyIdentifier = String();
         m_windowsVirtualKeyCode = 0;
     }
@@ -598,7 +598,7 @@ void PlatformKeyboardEvent::disambiguateKeyDownEvent(Type type, bool backwardCom
 
 bool PlatformKeyboardEvent::currentCapsLockState()
 {
-	D(kprintf("currentCapsLockState\n"));
+    D(kprintf("currentCapsLockState\n"));
     return false;
 }
 
@@ -609,12 +609,12 @@ BalEventKey* PlatformKeyboardEvent::balEventKey() const
 
 void PlatformKeyboardEvent::getCurrentModifierState(bool& shiftKey, bool& ctrlKey, bool& altKey, bool& metaKey)
 {
-	shiftKey = prev_ShiftKey;
-	ctrlKey  = prev_CtrlKey;
-	altKey   = prev_AltKey;
-	metaKey  = prev_MetaKey;
+    shiftKey = prev_ShiftKey;
+    ctrlKey  = prev_CtrlKey;
+    altKey   = prev_AltKey;
+    metaKey  = prev_MetaKey;
 
-	D(kprintf("getCurrentModifierState Shift %d Alt %d Ctrl %d Meta %d\n", shiftKey, altKey, ctrlKey, metaKey));
+    D(kprintf("getCurrentModifierState Shift %d Alt %d Ctrl %d Meta %d\n", shiftKey, altKey, ctrlKey, metaKey));
 }
 
 }

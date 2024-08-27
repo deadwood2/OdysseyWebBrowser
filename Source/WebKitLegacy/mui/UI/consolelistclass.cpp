@@ -47,128 +47,128 @@
 using namespace WebCore;
 
 enum {
-	POPMENU_OPEN_COPY = 1,
+    POPMENU_OPEN_COPY = 1,
 };
 
 struct Data
 {
-	Object *cmenu;
+    Object *cmenu;
 };
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		InputListFrame,
-		MUIA_List_Format,      "BAR, MIW=-1 MAW=-2",
+    obj = (Object *) DoSuperNew(cl, obj,
+        InputListFrame,
+        MUIA_List_Format,      "BAR, MIW=-1 MAW=-2",
         MUIA_List_AutoVisible, TRUE,
-		MUIA_List_Title,       TRUE,
-		MUIA_ContextMenu,      TRUE,
-		TAG_MORE,              INITTAGS
-	);
+        MUIA_List_Title,       TRUE,
+        MUIA_ContextMenu,      TRUE,
+        TAG_MORE,              INITTAGS
+    );
 
-	if (obj)
-	{
-		GETDATA;
-		data->cmenu=NULL;
-	}
-	return ((IPTR)obj);
+    if (obj)
+    {
+        GETDATA;
+        data->cmenu=NULL;
+    }
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	GETDATA;
-	if (data->cmenu)
-	{
-		MUI_DisposeObject(data->cmenu);
-	}
-	return DOSUPER;
+    GETDATA;
+    if (data->cmenu)
+    {
+        MUI_DisposeObject(data->cmenu);
+    }
+    return DOSUPER;
 }
 
 DEFMMETHOD(List_Construct)
 {
-	return (IPTR)msg->entry;
+    return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
 {
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Display)
 {
-	struct console_entry *e = (struct console_entry *) msg->entry;
+    struct console_entry *e = (struct console_entry *) msg->entry;
 
-	if (e)
-	{
-		STATIC char buf1[10];
-		STATIC char buf2[2048];
-		snprintf(buf1, sizeof(buf1), "%.2d:%.2d:%.2d", e->clockdata.hour, e->clockdata.min, e->clockdata.sec);
-		snprintf(buf2, sizeof(buf2), "%s", e->message);
+    if (e)
+    {
+        STATIC char buf1[10];
+        STATIC char buf2[2048];
+        snprintf(buf1, sizeof(buf1), "%.2d:%.2d:%.2d", e->clockdata.hour, e->clockdata.min, e->clockdata.sec);
+        snprintf(buf2, sizeof(buf2), "%s", e->message);
 
-		msg->array[0] = buf1;
-		msg->array[1] = buf2;
-	}
-	else
-	{
-		msg->array[0] = GSI(MSG_CONSOLELIST_TIME);
-		msg->array[1] = GSI(MSG_CONSOLELIST_MESSAGE);
-	}
+        msg->array[0] = buf1;
+        msg->array[1] = buf2;
+    }
+    else
+    {
+        msg->array[0] = GSI(MSG_CONSOLELIST_TIME);
+        msg->array[1] = GSI(MSG_CONSOLELIST_MESSAGE);
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(ContextMenuBuild)
 {
-	GETDATA;
+    GETDATA;
 
-	struct MUI_List_TestPos_Result res;
-	struct console_entry *ce;
+    struct MUI_List_TestPos_Result res;
+    struct console_entry *ce;
 
-	if (data->cmenu)
-	{
-		MUI_DisposeObject(data->cmenu);
-		data->cmenu = NULL;
-	}
+    if (data->cmenu)
+    {
+        MUI_DisposeObject(data->cmenu);
+        data->cmenu = NULL;
+    }
 
-	if (DoMethod(obj, MUIM_List_TestPos, msg->mx, msg->my, &res) && (res.entry != -1))
-	{
-		DoMethod(obj, MUIM_List_GetEntry, res.entry, (IPTR *)&ce);
+    if (DoMethod(obj, MUIM_List_TestPos, msg->mx, msg->my, &res) && (res.entry != -1))
+    {
+        DoMethod(obj, MUIM_List_GetEntry, res.entry, (IPTR *)&ce);
 
-		if(ce)
-		{
-			data->cmenu = MenustripObject,
-					MUIA_Family_Child, MenuObjectT(GSI(MSG_CONSOLELIST_MESSAGE)),
-					MUIA_Family_Child, MenuitemObject,
-						MUIA_Menuitem_Title, GSI(MSG_CONSOLELIST_COPY),
-						MUIA_UserData, POPMENU_OPEN_COPY,
-	                    End,
-	                End,
-	            End;
-		}
-	}
-	return (IPTR)data->cmenu;
+        if(ce)
+        {
+            data->cmenu = MenustripObject,
+                    MUIA_Family_Child, MenuObjectT(GSI(MSG_CONSOLELIST_MESSAGE)),
+                    MUIA_Family_Child, MenuitemObject,
+                        MUIA_Menuitem_Title, GSI(MSG_CONSOLELIST_COPY),
+                        MUIA_UserData, POPMENU_OPEN_COPY,
+                        End,
+                    End,
+                End;
+        }
+    }
+    return (IPTR)data->cmenu;
 }
 
 DEFMMETHOD(ContextMenuChoice)
 {
-	struct console_entry *ce;
+    struct console_entry *ce;
 
-	DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (IPTR *)&ce);
+    DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (IPTR *)&ce);
 
-	if(ce)
-	{
-		ULONG udata = muiUserData(msg->item);
+    if(ce)
+    {
+        ULONG udata = muiUserData(msg->item);
 
-		switch(udata)
-		{
-			case POPMENU_OPEN_COPY:
-			{
-				copyTextToClipboard(ce->message, false);
-			}
-			break;
-		}
-	}
-	return 0;
+        switch(udata)
+        {
+            case POPMENU_OPEN_COPY:
+            {
+                copyTextToClipboard(ce->message, false);
+            }
+            break;
+        }
+    }
+    return 0;
 }
 
 BEGINMTABLE

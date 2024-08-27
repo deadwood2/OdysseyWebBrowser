@@ -41,7 +41,7 @@ URL stripURL(const URL& url);
 struct WebPasswordFormData {
     // If the provided form is suitable for password completion, isValid() will
     // return true;
-	WebPasswordFormData(HTMLFormElement *);
+    WebPasswordFormData(HTMLFormElement *);
 
     // If creation failed, return false.
     bool isValid() const { return action.isValid(); }
@@ -56,19 +56,19 @@ struct WebPasswordFormData {
     // PasswordManager.
     //
     // When parsing an HTML form, this must always be set.
-	URL action;
+    URL action;
 
     // The "Realm" for the sign-on (scheme, host, port for SCHEME_HTML, and
     // contains the HTTP realm for dialog-based forms).
     // The signon_realm is effectively the primary key used for retrieving
     // data from the database, so it must not be empty.
-	String signonRealm;
+    String signonRealm;
 
     // The URL (minus query parameters) containing the form. This is the primary
     // data used by the PasswordManager to decide (in longest matching prefix
     // fashion) whether or not a given PasswordForm result from the database is a
     // good fit for a particular form on a page, so it must not be empty.
-	URL origin;
+    URL origin;
 
     // The name of the submit button used. Optional; only used in scoring
     // of PasswordForm results from the database to make matches as tight as

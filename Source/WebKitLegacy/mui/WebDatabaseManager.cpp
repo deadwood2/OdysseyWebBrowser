@@ -113,7 +113,7 @@ WebDatabaseManager* WebDatabaseManager::sharedWebDatabaseManager()
 {
     if (!s_sharedWebDatabaseManager) {
         s_sharedWebDatabaseManager = WebDatabaseManager::createInstance();
-	DatabaseManager::singleton().setClient(s_sharedWebDatabaseManager->webDatabaseTracker());
+    DatabaseManager::singleton().setClient(s_sharedWebDatabaseManager->webDatabaseTracker());
     }
 
     return s_sharedWebDatabaseManager;
@@ -249,7 +249,7 @@ void WebDatabaseManager::dispatchDidModifyOrigin(WebSecurityOrigin* origin)
        DidModifyOriginData::dispatchToMainThread(this, origin);
        return;
    }
-	*/
+    */
     m_webDatabaseTracker->dispatchDidModifyOrigin(origin->securityOrigin()->data());
 }
 
@@ -259,7 +259,7 @@ void WebDatabaseManager::dispatchDidModifyDatabase(WebSecurityOrigin* origin, co
         DidModifyOriginData::dispatchToMainThread(this, origin);
         return;
     }
-	*/
+    */
     m_webDatabaseTracker->dispatchDidModifyDatabase(origin->securityOrigin()->data(), databaseName);
 }
 

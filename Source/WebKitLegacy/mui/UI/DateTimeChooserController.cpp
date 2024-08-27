@@ -86,8 +86,8 @@ void DateTimeChooserController::openDateTimeChooser()
 
     if(widget)
     {
-	//m_parameters
-	DoMethod((Object *) widget->browser, MM_OWBBrowser_DateTimeChooser_ShowPopup, this);
+    //m_parameters
+    DoMethod((Object *) widget->browser, MM_OWBBrowser_DateTimeChooser_ShowPopup, this);
     }
 }
 

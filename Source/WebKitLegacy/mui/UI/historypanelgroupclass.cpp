@@ -45,175 +45,175 @@
 
 struct Data
 {
-	Object *lv_history;
-	Object *findgroup;
+    Object *lv_history;
+    Object *findgroup;
 };
 
 DEFNEW
 {
-	Object *lv_history;
-	Object *closebutton, *findgroup;
+    Object *lv_history;
+    Object *closebutton, *findgroup;
 
-	obj = (Object *) DoSuperNew(cl, obj,
-		Child, HGroup,
-				Child, closebutton = ImageObject,
+    obj = (Object *) DoSuperNew(cl, obj,
+        Child, HGroup,
+                Child, closebutton = ImageObject,
                         MUIA_Frame, MUIV_Frame_ImageButton,
-						MUIA_CustomBackfill, TRUE,
-						MUIA_InputMode, MUIV_InputMode_RelVerify,
-						MUIA_Image_Spec, MUII_Close,
-						End,
-				Child, TextObject,
-						MUIA_Text_SetMax, FALSE,
-						MUIA_Text_SetMin, FALSE,
-						MUIA_Text_Contents, GSI(MSG_HISTORYPANELGROUP_HISTORY),
-						End,
-				End,
-		Child, lv_history = (Object *) NewObject(gethistorylisttreeclass(), NULL, TAG_DONE),
-		Child, findgroup  = (Object *) NewObject(getfindtextclass(), NULL,
-												 MUIA_ShowMe, TRUE,
-												 MA_FindText_Closable, TRUE,
-												 MA_FindText_ShowButtons, FALSE,
-											 	 MA_FindText_ShowCaseSensitive, FALSE,
-												 MA_FindText_ShowText, FALSE,
-											 	 TAG_DONE),
-		TAG_MORE, INITTAGS
-		);
+                        MUIA_CustomBackfill, TRUE,
+                        MUIA_InputMode, MUIV_InputMode_RelVerify,
+                        MUIA_Image_Spec, MUII_Close,
+                        End,
+                Child, TextObject,
+                        MUIA_Text_SetMax, FALSE,
+                        MUIA_Text_SetMin, FALSE,
+                        MUIA_Text_Contents, GSI(MSG_HISTORYPANELGROUP_HISTORY),
+                        End,
+                End,
+        Child, lv_history = (Object *) NewObject(gethistorylisttreeclass(), NULL, TAG_DONE),
+        Child, findgroup  = (Object *) NewObject(getfindtextclass(), NULL,
+                                                 MUIA_ShowMe, TRUE,
+                                                 MA_FindText_Closable, TRUE,
+                                                 MA_FindText_ShowButtons, FALSE,
+                                                  MA_FindText_ShowCaseSensitive, FALSE,
+                                                 MA_FindText_ShowText, FALSE,
+                                                  TAG_DONE),
+        TAG_MORE, INITTAGS
+        );
 
-	if (obj)
-	{
-		GETDATA;
-		data->lv_history = lv_history;
-		data->findgroup  = findgroup;
+    if (obj)
+    {
+        GETDATA;
+        data->lv_history = lv_history;
+        data->findgroup  = findgroup;
 
-		set(data->findgroup, MA_FindText_Target, data->lv_history);
+        set(data->findgroup, MA_FindText_Target, data->lv_history);
 
-		DoMethod(closebutton, MUIM_Notify, MUIA_Pressed, FALSE, MUIV_Notify_Window, 1, MM_OWBWindow_RemoveHistoryPanel);
-	}
+        DoMethod(closebutton, MUIM_Notify, MUIA_Pressed, FALSE, MUIV_Notify_Window, 1, MM_OWBWindow_RemoveHistoryPanel);
+    }
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(Setup)
 {
-	IPTR rc = DOSUPER;
+    IPTR rc = DOSUPER;
 
-	if(rc)
-	{
-		DoMethod(obj, MM_History_Load);
-	}
-	return rc;
+    if(rc)
+    {
+        DoMethod(obj, MM_History_Load);
+    }
+    return rc;
 
 }
 
 DEFMMETHOD(Cleanup)
 {
-	DoMethod(obj, MM_History_Clear);
-	return DOSUPER;
+    DoMethod(obj, MM_History_Clear);
+    return DOSUPER;
 }
 
 DEFTMETHOD(History_Load)
 {
-	GETDATA;
-	WebHistory* history = WebHistory::sharedHistory();
-	std::vector<WebHistoryItem *> historyList = *(history->historyList());
+    GETDATA;
+    WebHistory* history = WebHistory::sharedHistory();
+    std::vector<WebHistoryItem *> historyList = *(history->historyList());
 
-	set(data->lv_history, MUIA_List_Quiet, TRUE);
+    set(data->lv_history, MUIA_List_Quiet, TRUE);
 
-	DoMethod(data->lv_history, MUIM_List_Clear);
+    DoMethod(data->lv_history, MUIM_List_Clear);
 
-	for(unsigned int i = 0; i < historyList.size(); i++)
-	{
-		WebHistoryItem *webHistoryItem = historyList[i];
+    for(unsigned int i = 0; i < historyList.size(); i++)
+    {
+        WebHistoryItem *webHistoryItem = historyList[i];
 
-		if(webHistoryItem)
-		{
-			DoMethod(obj, MM_History_Insert, webHistoryItem);
-		}
-	}
+        if(webHistoryItem)
+        {
+            DoMethod(obj, MM_History_Insert, webHistoryItem);
+        }
+    }
 
-	set(data->lv_history, MUIA_List_Quiet, FALSE);
+    set(data->lv_history, MUIA_List_Quiet, FALSE);
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(History_Clear)
 {
-	GETDATA;
-	WebHistory* history = WebHistory::sharedHistory();
-	std::vector<WebHistoryItem *> historyList = *(history->historyList());
+    GETDATA;
+    WebHistory* history = WebHistory::sharedHistory();
+    std::vector<WebHistoryItem *> historyList = *(history->historyList());
 
-	set(data->lv_history, MUIA_List_Quiet, TRUE);
+    set(data->lv_history, MUIA_List_Quiet, TRUE);
 
-	for(unsigned int i = 0; i < historyList.size(); i++)
-	{
-		WebHistoryItem *webHistoryItem = historyList[i];
+    for(unsigned int i = 0; i < historyList.size(); i++)
+    {
+        WebHistoryItem *webHistoryItem = historyList[i];
 
-		if(webHistoryItem)
-		{
-			DoMethod(obj, MM_History_Remove, webHistoryItem);
-		}
-	}
+        if(webHistoryItem)
+        {
+            DoMethod(obj, MM_History_Remove, webHistoryItem);
+        }
+    }
 
-	set(data->lv_history, MUIA_List_Quiet, FALSE);
+    set(data->lv_history, MUIA_List_Quiet, FALSE);
 
-	return 0;
+    return 0;
 }
 
 DEFSMETHOD(History_Insert)
 {
-	GETDATA;
-	WebHistoryItem *s = (WebHistoryItem *) msg->item;
-	struct history_entry *hitem = (struct history_entry *) malloc(sizeof(*hitem));
+    GETDATA;
+    WebHistoryItem *s = (WebHistoryItem *) msg->item;
+    struct history_entry *hitem = (struct history_entry *) malloc(sizeof(*hitem));
 
-	if(hitem)
-	{
-		hitem->webhistoryitem = s;
+    if(hitem)
+    {
+        hitem->webhistoryitem = s;
 
-		hitem->faviconobj = NULL;
-		hitem->faviconimg = NULL;
+        hitem->faviconobj = NULL;
+        hitem->faviconimg = NULL;
 
-		DoMethod(data->lv_history, MUIM_List_InsertSingle, hitem, MUIV_List_Insert_Top);
-	}
+        DoMethod(data->lv_history, MUIM_List_InsertSingle, hitem, MUIV_List_Insert_Top);
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFSMETHOD(History_Remove)
 {
-	GETDATA;
-	WebHistoryItem *s;
-	struct history_entry *x;
-	ULONG i;
+    GETDATA;
+    WebHistoryItem *s;
+    struct history_entry *x;
+    ULONG i;
 
-	s = (WebHistoryItem *) msg->item;
+    s = (WebHistoryItem *) msg->item;
 
-	for (i = 0; ; i++)
-	{
-		DoMethod(data->lv_history, MUIM_List_GetEntry, i, &x);
+    for (i = 0; ; i++)
+    {
+        DoMethod(data->lv_history, MUIM_List_GetEntry, i, &x);
 
-		if (!x)
-			break;
+        if (!x)
+            break;
 
-		if (s == x->webhistoryitem)
-		{
-			DoMethod(data->lv_history, MUIM_List_Remove, i);
+        if (s == x->webhistoryitem)
+        {
+            DoMethod(data->lv_history, MUIM_List_Remove, i);
 
-			if(x->faviconobj)
-			{
-				MUI_DisposeObject((Object *) x->faviconobj);
-			}
-			free(x);
+            if(x->faviconobj)
+            {
+                MUI_DisposeObject((Object *) x->faviconobj);
+            }
+            free(x);
 
-			break;
-		}
-	}
+            break;
+        }
+    }
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

@@ -166,8 +166,8 @@ asm("int3");
     Credential storedCredential = CredentialStorage::defaultCredentialStorage().get(emptyString(), challenge.protectionSpace());
     if(!storedCredential.isEmpty())
     {
-	challenge.authenticationClient()->receivedCredential(challenge, storedCredential);
-	return;
+    challenge.authenticationClient()->receivedCredential(challenge, storedCredential);
+    return;
     }
 #endif
 
@@ -178,13 +178,13 @@ asm("int3");
     
     if(DoMethod(app, MM_OWBApp_Login, host.utf8().data(), realm.utf8().data(), &username, &password, &persistence))
     {
-	Credential credential = Credential(username, password, persistence);
-	free(username);
-	free(password);
-	challenge.authenticationClient()->receivedCredential(challenge, credential);
+    Credential credential = Credential(username, password, persistence);
+    free(username);
+    free(password);
+    challenge.authenticationClient()->receivedCredential(challenge, credential);
     }
     else
-	challenge.authenticationClient()->receivedRequestToContinueWithoutCredential(challenge);
+    challenge.authenticationClient()->receivedRequestToContinueWithoutCredential(challenge);
 }
 
 bool WebFrameLoaderClient::shouldUseCredentialStorage(DocumentLoader* loader, unsigned long identifier)
@@ -207,9 +207,9 @@ void WebFrameLoaderClient::dispatchWillSendRequest(DocumentLoader* loader, unsig
 
 void WebFrameLoaderClient::dispatchDidReceiveResponse(DocumentLoader* loader, unsigned long identifier, const ResourceResponse& response)
 {
-	WebView* webView = m_webFrame->webView();
+    WebView* webView = m_webFrame->webView();
 
-	//kprintf("dispatchDidReceiveResponse:: loader %p webView %p\n", loader, webView);
+    //kprintf("dispatchDidReceiveResponse:: loader %p webView %p\n", loader, webView);
 
     SharedPtr<WebResourceLoadDelegate> resourceLoadDelegate = webView->webResourceLoadDelegate();
     if (!resourceLoadDelegate)
@@ -224,9 +224,9 @@ void WebFrameLoaderClient::dispatchDidReceiveResponse(DocumentLoader* loader, un
 void WebFrameLoaderClient::dispatchDidReceiveContentLength(DocumentLoader* loader, unsigned long identifier, int length)
 {
 
-	WebView* webView = m_webFrame->webView();
+    WebView* webView = m_webFrame->webView();
 
-	//kprintf("dispatchDidReceiveContentLength:: loader %p webView %p\n", loader, webView);
+    //kprintf("dispatchDidReceiveContentLength:: loader %p webView %p\n", loader, webView);
 
     SharedPtr<WebResourceLoadDelegate> resourceLoadDelegate = webView->webResourceLoadDelegate();
     if (!resourceLoadDelegate)
@@ -238,9 +238,9 @@ void WebFrameLoaderClient::dispatchDidReceiveContentLength(DocumentLoader* loade
 void WebFrameLoaderClient::dispatchDidFinishLoading(DocumentLoader* loader, unsigned long identifier)
 {
 
-	WebView* webView = m_webFrame->webView();
+    WebView* webView = m_webFrame->webView();
 
-	//kprintf("dispatchDidFinishLoading:: loader %p webView %p\n", loader, webView);
+    //kprintf("dispatchDidFinishLoading:: loader %p webView %p\n", loader, webView);
 
     SharedPtr<WebResourceLoadDelegate> resourceLoadDelegate = webView->webResourceLoadDelegate();
     if (!resourceLoadDelegate)
@@ -251,12 +251,12 @@ void WebFrameLoaderClient::dispatchDidFinishLoading(DocumentLoader* loader, unsi
 
 void WebFrameLoaderClient::dispatchDidFailLoading(DocumentLoader* loader, unsigned long identifier, const ResourceError& error)
 {
-	WebView* webView = m_webFrame->webView();
+    WebView* webView = m_webFrame->webView();
 
-	//kprintf("dispatchDidFailLoading:: loader %p webView %p\n", loader, webView);
+    //kprintf("dispatchDidFailLoading:: loader %p webView %p\n", loader, webView);
 
-	SharedPtr<WebResourceLoadDelegate> resourceLoadDelegate = webView->webResourceLoadDelegate();
-	//kprintf("dispatchDidFailLoading:: resourceLoadDelegate %p\n", resourceLoadDelegate.get());
+    SharedPtr<WebResourceLoadDelegate> resourceLoadDelegate = webView->webResourceLoadDelegate();
+    //kprintf("dispatchDidFailLoading:: resourceLoadDelegate %p\n", resourceLoadDelegate.get());
     if (!resourceLoadDelegate)
         return;
 
@@ -384,22 +384,22 @@ void WebFrameLoaderClient::setMainDocumentError(DocumentLoader*, const ResourceE
 
 void WebFrameLoaderClient::committedLoad(DocumentLoader* loader, const char* data, int length)
 {
-    //	  const String& textEncoding = loader->response().textEncodingName();
+    //      const String& textEncoding = loader->response().textEncodingName();
 
     if (!m_pluginView)
-	loader->commitData(data, length);
+    loader->commitData(data, length);
 
     // If the document is a stand-alone media document, now is the right time to cancel the WebKit load.
     // FIXME: This code should be shared across all ports. <http://webkit.org/b/48762>.
     Frame* coreFrame = core(m_webFrame);
     if (coreFrame->document()->isMediaDocument())
-	loader->cancelMainResourceLoad(pluginWillHandleLoadError(loader->response()));
+    loader->cancelMainResourceLoad(pluginWillHandleLoadError(loader->response()));
     
     if (!m_pluginView || m_pluginView->status() != PluginStatusLoadedSuccessfully) //
         return;
 
     if (!m_hasSentResponseToPlugin) {
-	m_pluginView->didReceiveResponse(loader->response());
+    m_pluginView->didReceiveResponse(loader->response());
         // didReceiveResponse sets up a new stream to the plug-in. on a full-page plug-in, a failure in
         // setting up this stream can cause the main document load to be cancelled, setting m_pluginView
         // to null
@@ -413,7 +413,7 @@ void WebFrameLoaderClient::committedLoad(DocumentLoader* loader, const char* dat
 void WebFrameLoaderClient::finishedLoading(DocumentLoader*)
 {
     //committedLoad(loader, 0, 0);
-	
+    
     if (!m_pluginView) {
         return;
     }
@@ -524,8 +524,8 @@ void WebFrameLoaderClient::setTitle(const WebCore::StringWithDirection& title, c
     BalWidget* widget = m_webFrame->webView()->viewWindow();
     if(widget)
     {
-	// We don't use the global preference private setting
-	privateBrowsingEnabled = getv(widget->browser, MA_OWBBrowser_PrivateBrowsing) != FALSE;
+    // We don't use the global preference private setting
+    privateBrowsingEnabled = getv(widget->browser, MA_OWBBrowser_PrivateBrowsing) != FALSE;
     }
 
     if (privateBrowsingEnabled)
@@ -729,22 +729,22 @@ bool WebFrameLoaderClient::canHandleRequest(const ResourceRequest& request) cons
 
 bool WebFrameLoaderClient::canShowMIMEType(const String& type) const
 {
-	String ltype = type.convertToLowercaseWithoutLocale();
-	bool show =	ltype.isEmpty() ||
-	  MIMETypeRegistry::isSupportedImageMIMEType(ltype) || 
-	  MIMETypeRegistry::isSupportedNonImageMIMEType(ltype) ||
-	  MIMETypeRegistry::isSupportedMediaMIMEType(ltype) ||
-	  PluginDatabase::installedPlugins()->isMIMETypeRegistered(ltype);
+    String ltype = type.convertToLowercaseWithoutLocale();
+    bool show =    ltype.isEmpty() ||
+      MIMETypeRegistry::isSupportedImageMIMEType(ltype) || 
+      MIMETypeRegistry::isSupportedNonImageMIMEType(ltype) ||
+      MIMETypeRegistry::isSupportedMediaMIMEType(ltype) ||
+      PluginDatabase::installedPlugins()->isMIMETypeRegistered(ltype);
 
-	//kprintf("WebView::canShowMIMEType(%s): %s\n", ltype.utf8().data(), show ? "yes" : "no");
+    //kprintf("WebView::canShowMIMEType(%s): %s\n", ltype.utf8().data(), show ? "yes" : "no");
 
-	return show;
+    return show;
 }
 
 bool WebFrameLoaderClient::canShowMIMETypeAsHTML(const WTF::String& MIMEType) const
 {
-	//kprintf("canShowMIMETypeAsHTML(%s)\n", MIMEType.latin1().data());
-	return true;
+    //kprintf("canShowMIMETypeAsHTML(%s)\n", MIMEType.latin1().data());
+    return true;
 }
 
 bool WebFrameLoaderClient::representationExistsForURLScheme(const String& /*URLScheme*/) const
@@ -1121,32 +1121,32 @@ asm("int3");
 
 //bool WebFrameLoaderClient::allowPlugins(bool enabledPerSettings)
 //{
-//	BalWidget* widget = m_webFrame->webView()->viewWindow();
+//    BalWidget* widget = m_webFrame->webView()->viewWindow();
 //
-//	if(widget)
-//	{
-//		ULONG value = getv(widget->browser, MA_OWBBrowser_PluginsEnabled);
+//    if(widget)
+//    {
+//        ULONG value = getv(widget->browser, MA_OWBBrowser_PluginsEnabled);
 //
-//		switch(value)
-//		{
-//			default:
-//			case PLUGINS_DEFAULT:
-//				return enabledPerSettings;
+//        switch(value)
+//        {
+//            default:
+//            case PLUGINS_DEFAULT:
+//                return enabledPerSettings;
 //
-//			case PLUGINS_DISABLED:
-//				return false;
+//            case PLUGINS_DISABLED:
+//                return false;
 //
-//			case PLUGINS_ENABLED:
-//				return true;
-//		}
-//	}
+//            case PLUGINS_ENABLED:
+//                return true;
+//        }
+//    }
 //
-//	return enabledPerSettings;
+//    return enabledPerSettings;
 //}
 //void WebFrameLoaderClient::registerForIconNotification(bool listen)
 //{
 //#if 0
-//	m_webFrame->webView()->registerForIconNotification(listen);
+//    m_webFrame->webView()->registerForIconNotification(listen);
 //#endif
 //}
 //
@@ -1177,7 +1177,7 @@ asm("int3");
 //}
 //void WebFrameLoaderClient::dispatchDidCancelAuthenticationChallenge(DocumentLoader* loader, unsigned long identifier, const AuthenticationChallenge& challenge)
 //{
-//	/*
+//    /*
 //    SharedPtr<WebResourceLoadDelegate> resourceLoadDelegate = webView->webResourceLoadDelegate();
 //    if (!resourceLoadDelegate)
 //        return;
@@ -1185,7 +1185,7 @@ asm("int3");
 //    WebURLAuthenticationChallenge* webChallenge = WebURLAuthenticationChallenge::createInstance(challenge);
 //    resourceLoadDelegate->didCancelAuthenticationChallenge(webView, identifier, webChallenge, getWebDataSource(loader));
 //    delete webChallenge;
-//	*/
+//    */
 //}
 //void WebFrameLoaderClient::forceLayout()
 //{

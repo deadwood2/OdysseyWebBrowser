@@ -81,7 +81,7 @@ WebBackForwardList* WebBackForwardList::createInstance(WebBackForwardListPrivate
 void WebBackForwardList::clear()
 {
     //shortcut to private BackForwardList
-	RefPtr<WebCore::BackForwardListImpl> lst = d->m_backForwardList;
+    RefPtr<WebCore::BackForwardListImpl> lst = d->m_backForwardList;
 
     //clear visited links
     WebCore::Page* page = lst->page();

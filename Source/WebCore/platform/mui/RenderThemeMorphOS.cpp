@@ -226,13 +226,13 @@ RenderThemeBal::~RenderThemeBal()
 
 String RenderThemeBal::extraDefaultStyleSheet()
 {
-	return String("");
+    return String("");
 }
 
 #if ENABLE(VIDEO)
 String RenderThemeBal::extraMediaControlsStyleSheet()
 {
-	return String("");
+    return String("");
 }
 
 String RenderThemeBal::formatMediaControlsRemainingTime(float, float duration) const
@@ -245,7 +245,7 @@ String RenderThemeBal::formatMediaControlsRemainingTime(float, float duration) c
 
 Seconds RenderThemeBal::caretBlinkInterval() const
 {
-	return Seconds(1.0);
+    return Seconds(1.0);
 }
 
 void RenderThemeBal::setButtonStyle(RenderStyle& style) const
@@ -353,8 +353,8 @@ bool RenderThemeBal::paintSearchFieldCancelButton(const RenderBox& object, const
     // to the bottom of the field. This would look better with the text.
     bounds.setY(parentBox.y() + (parentBox.height() - bounds.height() + 1) / 2);
 
-	static Image& cancelImage = Image::loadPlatformResource("SearchCancel").leakRef();
-	static Image& cancelPressedImage = Image::loadPlatformResource("SearchCancelPressed").leakRef();
+    static Image& cancelImage = Image::loadPlatformResource("SearchCancel").leakRef();
+    static Image& cancelPressedImage = Image::loadPlatformResource("SearchCancelPressed").leakRef();
     paintInfo.context().drawImage(isPressed(object) ? cancelPressedImage : cancelImage, bounds);
     return false;
 }
@@ -472,7 +472,7 @@ bool RenderThemeBal::paintButton(const RenderObject& object, const PaintInfo& in
         }
         break;
     }
-	case RadioPart: {
+    case RadioPart: {
         Path path;
         path.addEllipse(rect);
         info.context().fillPath(path);
@@ -486,7 +486,7 @@ bool RenderThemeBal::paintButton(const RenderObject& object, const PaintInfo& in
             info.context().drawEllipse(rect2);
         }
         break;
-	}
+    }
     case ButtonPart:
     case PushButtonPart: {
         FloatSize largeCorner(largeRadius, largeRadius);
@@ -841,7 +841,7 @@ bool RenderThemeBal::supportsDataListUI(const AtomicString& type) const
 void RenderThemeBal::adjustMediaControlStyle(StyleResolver&, RenderStyle& style, const Element* element) const
 {
 #if ENABLE(VIDEO)
-	float fullScreenMultiplier = determineFullScreenMultiplier(element);
+    float fullScreenMultiplier = determineFullScreenMultiplier(element);
     HTMLMediaElement* mediaElement = parentMediaElement((Element *)element).get();
     if (!mediaElement)
         return;
@@ -932,22 +932,22 @@ bool RenderThemeBal::paintMediaPlayButton(const RenderObject& object, const Pain
 #if ENABLE(VIDEO)
     HTMLMediaElement* mediaElement = parentMediaElement(object).get();
 
-	if (!mediaElement)
-		return false;
+    if (!mediaElement)
+        return false;
 
-	static Image& mediaPlay = Image::loadPlatformResource("MediaTheme/Play").leakRef();
-	static Image& mediaPause = Image::loadPlatformResource("MediaTheme/Pause").leakRef();
-	static Image& mediaPlayHovered = Image::loadPlatformResource("MediaTheme/PlayHovered").leakRef();
-	static Image& mediaPauseHovered = Image::loadPlatformResource("MediaTheme/PauseHovered").leakRef();
-	static Image& mediaPlayPressed = Image::loadPlatformResource("MediaTheme/PlayPressed").leakRef();
-	static Image& mediaPausePressed = Image::loadPlatformResource("MediaTheme/PausePressed").leakRef();
+    static Image& mediaPlay = Image::loadPlatformResource("MediaTheme/Play").leakRef();
+    static Image& mediaPause = Image::loadPlatformResource("MediaTheme/Pause").leakRef();
+    static Image& mediaPlayHovered = Image::loadPlatformResource("MediaTheme/PlayHovered").leakRef();
+    static Image& mediaPauseHovered = Image::loadPlatformResource("MediaTheme/PauseHovered").leakRef();
+    static Image& mediaPlayPressed = Image::loadPlatformResource("MediaTheme/PlayPressed").leakRef();
+    static Image& mediaPausePressed = Image::loadPlatformResource("MediaTheme/PausePressed").leakRef();
 
-	if (isPressed(object))
-		return paintMediaButton(paintInfo.context(), rect, mediaElement->canPlay() ? &mediaPlayPressed : &mediaPausePressed);
-	else if(isHovered(object))
-		return paintMediaButton(paintInfo.context(), rect, mediaElement->canPlay() ? &mediaPlayHovered : &mediaPauseHovered);
-	else
-		return paintMediaButton(paintInfo.context(), rect, mediaElement->canPlay() ? &mediaPlay : &mediaPause);
+    if (isPressed(object))
+        return paintMediaButton(paintInfo.context(), rect, mediaElement->canPlay() ? &mediaPlayPressed : &mediaPausePressed);
+    else if(isHovered(object))
+        return paintMediaButton(paintInfo.context(), rect, mediaElement->canPlay() ? &mediaPlayHovered : &mediaPauseHovered);
+    else
+        return paintMediaButton(paintInfo.context(), rect, mediaElement->canPlay() ? &mediaPlay : &mediaPause);
 #else
     UNUSED_PARAM(object);
     UNUSED_PARAM(paintInfo);
@@ -961,22 +961,22 @@ bool RenderThemeBal::paintMediaMuteButton(const RenderObject& object, const Pain
 #if ENABLE(VIDEO)
     HTMLMediaElement* mediaElement = parentMediaElement(object).get();
 
-	if (!mediaElement)
-		return false;
+    if (!mediaElement)
+        return false;
 
-	static Image& mediaMute = Image::loadPlatformResource("MediaTheme/SoundMute").leakRef();
-	static Image& mediaUnmute = Image::loadPlatformResource("MediaTheme/SoundUnmute").leakRef();
-	static Image& mediaMuteHovered = Image::loadPlatformResource("MediaTheme/SoundMuteHovered").leakRef();
-	static Image& mediaUnmuteHovered = Image::loadPlatformResource("MediaTheme/SoundUnmuteHovered").leakRef();
-	static Image& mediaMutePressed = Image::loadPlatformResource("MediaTheme/SoundMutePressed").leakRef();
-	static Image& mediaUnmutePressed = Image::loadPlatformResource("MediaTheme/SoundUnmutePressed").leakRef();
+    static Image& mediaMute = Image::loadPlatformResource("MediaTheme/SoundMute").leakRef();
+    static Image& mediaUnmute = Image::loadPlatformResource("MediaTheme/SoundUnmute").leakRef();
+    static Image& mediaMuteHovered = Image::loadPlatformResource("MediaTheme/SoundMuteHovered").leakRef();
+    static Image& mediaUnmuteHovered = Image::loadPlatformResource("MediaTheme/SoundUnmuteHovered").leakRef();
+    static Image& mediaMutePressed = Image::loadPlatformResource("MediaTheme/SoundMutePressed").leakRef();
+    static Image& mediaUnmutePressed = Image::loadPlatformResource("MediaTheme/SoundUnmutePressed").leakRef();
 
-	if (isPressed(object))
-		return paintMediaButton(paintInfo.context(), rect, mediaElement->muted() || !mediaElement->volume() ? &mediaUnmutePressed : &mediaMutePressed);
-	else if(isHovered(object))
-		return paintMediaButton(paintInfo.context(), rect, mediaElement->muted() || !mediaElement->volume() ? &mediaUnmuteHovered : &mediaMuteHovered);
-	else
-		return paintMediaButton(paintInfo.context(), rect, mediaElement->muted() || !mediaElement->volume() ? &mediaUnmute : &mediaMute);
+    if (isPressed(object))
+        return paintMediaButton(paintInfo.context(), rect, mediaElement->muted() || !mediaElement->volume() ? &mediaUnmutePressed : &mediaMutePressed);
+    else if(isHovered(object))
+        return paintMediaButton(paintInfo.context(), rect, mediaElement->muted() || !mediaElement->volume() ? &mediaUnmuteHovered : &mediaMuteHovered);
+    else
+        return paintMediaButton(paintInfo.context(), rect, mediaElement->muted() || !mediaElement->volume() ? &mediaUnmute : &mediaMute);
 #else
     UNUSED_PARAM(object);
     UNUSED_PARAM(paintInfo);
@@ -989,27 +989,27 @@ bool RenderThemeBal::paintMediaFullscreenButton(const RenderObject& object, cons
 {
 #if ENABLE(VIDEO)
     HTMLMediaElement* mediaElement = parentMediaElement(object).get();
-	if (!mediaElement)
-		return false;
+    if (!mediaElement)
+        return false;
 
-	static Image& mediaEnterFullscreen = Image::loadPlatformResource("MediaTheme/FullScreen").leakRef();
-	static Image& mediaEnterFullscreenHovered = Image::loadPlatformResource("MediaTheme/FullScreenHovered").leakRef();
-	static Image& mediaEnterFullscreenPressed = Image::loadPlatformResource("MediaTheme/FullScreenPressed").leakRef();
+    static Image& mediaEnterFullscreen = Image::loadPlatformResource("MediaTheme/FullScreen").leakRef();
+    static Image& mediaEnterFullscreenHovered = Image::loadPlatformResource("MediaTheme/FullScreenHovered").leakRef();
+    static Image& mediaEnterFullscreenPressed = Image::loadPlatformResource("MediaTheme/FullScreenPressed").leakRef();
 
-	Image* buttonImage;
-	if (isPressed(object))
-		buttonImage = &mediaEnterFullscreenPressed;
-	else if(isHovered(object))
-		buttonImage = &mediaEnterFullscreenHovered;
-	else
-		buttonImage = &mediaEnterFullscreen;
+    Image* buttonImage;
+    if (isPressed(object))
+        buttonImage = &mediaEnterFullscreenPressed;
+    else if(isHovered(object))
+        buttonImage = &mediaEnterFullscreenHovered;
+    else
+        buttonImage = &mediaEnterFullscreen;
 #if 0//ENABLE(FULLSCREEN_API)
     static Image* mediaExitFullscreen = Image::loadPlatformResource("MediaTheme/FullScreen").leakRef();
 
     if (mediaElement->document()->webkitIsFullScreen() && mediaElement->document()->webkitCurrentFullScreenElement() == mediaElement)
         buttonImage = mediaExitFullscreen;
 #endif
-	return paintMediaButton(paintInfo.context(), rect, buttonImage);
+    return paintMediaButton(paintInfo.context(), rect, buttonImage);
 #else
     UNUSED_PARAM(object);
     UNUSED_PARAM(paintInfo);
@@ -1030,15 +1030,15 @@ bool RenderThemeBal::paintMediaSliderTrack(RenderObject* object, const PaintInfo
     float loaded = 0;
     // FIXME: replace loaded with commented out one when buffer bug is fixed (see comment in
     // MediaPlayerPrivateMMrenderer::percentLoaded).
-	loaded = mediaElement->percentLoaded();
-	//if (mediaElement->player() && mediaElement->player()->implementation())
-	//	  loaded = static_cast<MediaPlayerPrivate *>(mediaElement->player()->implementation())->percentLoaded();
+    loaded = mediaElement->percentLoaded();
+    //if (mediaElement->player() && mediaElement->player()->implementation())
+    //      loaded = static_cast<MediaPlayerPrivate *>(mediaElement->player()->implementation())->percentLoaded();
     float position = mediaElement->duration() > 0 ? (mediaElement->currentTime() / mediaElement->duration()) : 0;
 
     int x = ceil(rect.x() + 2 * fullScreenMultiplier - fullScreenMultiplier / 2);
-	int y = ceil(rect.y() + 14 * fullScreenMultiplier + fullScreenMultiplier / 2);
+    int y = ceil(rect.y() + 14 * fullScreenMultiplier + fullScreenMultiplier / 2);
     int w = ceil(rect.width() - 4 * fullScreenMultiplier + fullScreenMultiplier / 2);
-	int h = ceil(2 * fullScreenMultiplier);
+    int h = ceil(2 * fullScreenMultiplier);
     IntRect rect2(x, y, w, h);
 
     int wPlayed = ceil(w * position);
@@ -1124,7 +1124,7 @@ static Image* platformResource(const char* name)
 #if ENABLE(VIDEO)
 static Image* getMediaSliderThumb()
 {
-	static Image* mediaSliderThumb = platformResource("Mediatheme/SliderThumb");
+    static Image* mediaSliderThumb = platformResource("Mediatheme/SliderThumb");
     return mediaSliderThumb;
 }
 #endif
@@ -1198,8 +1198,8 @@ bool RenderThemeBal::paintMediaSliderThumb(const RenderObject& object, const Pai
 {
     UNUSED_PARAM(object);
 
-	static Image& mediaSliderThumb = Image::loadPlatformResource("MediaTheme/SliderThumb").leakRef();
-	return paintMediaButton(paintInfo.context(), rect, &mediaSliderThumb);
+    static Image& mediaSliderThumb = Image::loadPlatformResource("MediaTheme/SliderThumb").leakRef();
+    return paintMediaButton(paintInfo.context(), rect, &mediaSliderThumb);
 }
 
 bool RenderThemeBal::paintMediaVolumeSliderTrack(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
@@ -1225,7 +1225,7 @@ bool RenderThemeBal::paintMediaVolumeSliderTrack(const RenderObject& object, con
 bool RenderThemeBal::paintMediaVolumeSliderThumb(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-	static Image& mediaVolumeThumb = Image::loadPlatformResource("MediaTheme/VolumeSliderThumb").leakRef();
+    static Image& mediaVolumeThumb = Image::loadPlatformResource("MediaTheme/VolumeSliderThumb").leakRef();
     UNUSED_PARAM(object);
 
     return paintMediaButton(paintInfo.context(), rect, &mediaVolumeThumb);
@@ -1342,12 +1342,12 @@ double RenderThemeBal::animationDurationForProgressBar(RenderProgress* renderPro
 bool RenderThemeBal::paintProgressBar(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
 {
 #if 1// ENABLE(PROGRESS_ELEMENT)
-	return true;
+    return true;
 #else
     if (!object->isProgress())
         return true;
 
-	RenderProgress* renderProgress = toRenderProgress(object);
+    RenderProgress* renderProgress = toRenderProgress(object);
 
     FloatSize smallCorner(smallRadius, smallRadius);
 
@@ -1371,9 +1371,9 @@ bool RenderThemeBal::paintProgressBar(const RenderObject& object, const PaintInf
     if (renderProgress->isDeterminate()) {
         rect2.setWidth(rect2.width() * renderProgress->position() - 2);
         info.context().setFillGradient(createLinearGradient(progressRegularTop, progressRegularBottom, rect2.maxXMinYCorner(), rect2.maxXMaxYCorner()));
-	}
-	else
-	{
+    }
+    else
+    {
         // Animating
         rect2.setWidth(rect2.width() - 2);
         RefPtr<Gradient> gradient = Gradient::create(rect2.minXMaxYCorner(), rect2.maxXMaxYCorner());

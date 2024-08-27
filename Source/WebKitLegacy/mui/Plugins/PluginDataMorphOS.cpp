@@ -33,21 +33,21 @@ void PluginData::initPlugins()
     const Vector<PluginPackage*> &plugins = db->plugins();
 
     for (unsigned int i = 0; i < plugins.size(); ++i) {
-		PluginInfo info;
+        PluginInfo info;
         PluginPackage* package = plugins[i];
 
-		info.name = package->name();
-		info.file = package->fileName();
-		info.desc = package->description();
+        info.name = package->name();
+        info.file = package->fileName();
+        info.desc = package->description();
 
         const MIMEToDescriptionsMap& mimeToDescriptions = package->mimeToDescriptions();
         MIMEToDescriptionsMap::const_iterator end = mimeToDescriptions.end();
         for (MIMEToDescriptionsMap::const_iterator it = mimeToDescriptions.begin(); it != end; ++it) {
-			MimeClassInfo mime;
+            MimeClassInfo mime;
 
-			mime.type = it->key;
-			mime.desc = it->value;
-			mime.extensions = package->mimeToExtensions().get(mime.type);
+            mime.type = it->key;
+            mime.desc = it->value;
+            mime.extensions = package->mimeToExtensions().get(mime.type);
 
             info.mimes.append(mime);
         }

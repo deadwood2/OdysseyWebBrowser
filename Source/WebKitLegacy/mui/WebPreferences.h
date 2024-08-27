@@ -176,12 +176,12 @@ public:
     /**
      *  fantasyFontFamily
      */
-	virtual std::string pictographFontFamily();
+    virtual std::string pictographFontFamily();
 
     /**
      *  setFantasyFontFamily
      */
-	virtual void setPictographFontFamily(const char* family);
+    virtual void setPictographFontFamily(const char* family);
     /**
      *  defaultFontSize 
      */
@@ -345,14 +345,14 @@ public:
     virtual bool loadsImagesAutomatically();
 
     /**
-	 *  setImageEnabled
+     *  setImageEnabled
      */
-	virtual void setImagesEnabled(bool enabled);
+    virtual void setImagesEnabled(bool enabled);
 
     /**
-	 *  areImagesEnabled
+     *  areImagesEnabled
      */
-	virtual bool areImagesEnabled();
+    virtual bool areImagesEnabled();
 
     /**
      *  setAutosaves
@@ -704,14 +704,14 @@ public:
     virtual void setShouldInvertColors(bool);
     virtual bool shouldInvertColors();
 
-	virtual void setShouldDisplaySubtitles(bool enabled);
-	virtual bool shouldDisplaySubtitles();
+    virtual void setShouldDisplaySubtitles(bool enabled);
+    virtual bool shouldDisplaySubtitles();
 
-	virtual void setShouldDisplayCaptions(bool enabled);
-	virtual bool shouldDisplayCaptions();
+    virtual void setShouldDisplayCaptions(bool enabled);
+    virtual bool shouldDisplayCaptions();
 
-	virtual void setShouldDisplayTextDescriptions(bool enabled);
-	virtual bool shouldDisplayTextDescriptions();
+    virtual void setShouldDisplayTextDescriptions(bool enabled);
+    virtual bool shouldDisplayTextDescriptions();
 
     /*
      * Enable or disable WebGL
@@ -744,11 +744,11 @@ public:
     bool developerExtrasDisabledByOverride();
 
 
-	virtual bool mediaPlaybackRequiresUserGesture();
-	virtual void setMediaPlaybackRequiresUserGesture(bool);
+    virtual bool mediaPlaybackRequiresUserGesture();
+    virtual void setMediaPlaybackRequiresUserGesture(bool);
 
-	virtual bool mediaPlaybackAllowsInline();
-	virtual void setMediaPlaybackAllowsInline(bool);
+    virtual bool mediaPlaybackAllowsInline();
+    virtual void setMediaPlaybackAllowsInline(bool);
 
     /**
      * get the topic to notify a change on webPreference

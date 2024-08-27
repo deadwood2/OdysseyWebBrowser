@@ -37,8 +37,8 @@ class WebChromeClient;
 
 class ColorChooserController : public WebCore::ColorChooser {
 public:
-	ColorChooserController(WebChromeClient*, WebCore::ColorChooserClient*);
-	virtual ~ColorChooserController();
+    ColorChooserController(WebChromeClient*, WebCore::ColorChooserClient*);
+    virtual ~ColorChooserController();
 
     virtual void openUI();
 
@@ -53,11 +53,11 @@ public:
 
 protected:
     void openColorChooser();
-	std::unique_ptr<ColorChooser> m_chooser;
+    std::unique_ptr<ColorChooser> m_chooser;
 
 private:
 
-	WebChromeClient* m_chromeClient;
+    WebChromeClient* m_chromeClient;
     WebCore::ColorChooserClient* m_client;
 };
 

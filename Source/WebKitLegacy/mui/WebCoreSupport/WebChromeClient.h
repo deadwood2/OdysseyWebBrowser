@@ -39,7 +39,7 @@ class WebView;
 
 namespace WebCore {
     class Geolocation;
-	class NotificationClient;
+    class NotificationClient;
     class GraphicsLayer;
     class Frame;
 }

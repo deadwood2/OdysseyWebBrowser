@@ -47,98 +47,98 @@ struct Data
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		InputListFrame,
-		MUIA_List_Title, TRUE,
-		MUIA_List_Format, "BAR, BAR, BAR,",
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        InputListFrame,
+        MUIA_List_Title, TRUE,
+        MUIA_List_Format, "BAR, BAR, BAR,",
+        TAG_MORE, INITTAGS
+    );
 
-	if (obj)
-	{
-	}
-	return ((IPTR)obj);
+    if (obj)
+    {
+    }
+    return ((IPTR)obj);
 }
 
 DEFMMETHOD(List_Construct)
 {
-	return (IPTR)msg->entry;
+    return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
 {
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Display)
 {
-	struct mimetypenode *mimetype = (struct mimetypenode *) msg->entry;
+    struct mimetypenode *mimetype = (struct mimetypenode *) msg->entry;
 
-	if (mimetype)
-	{
-		char *action = NULL;
-		STATIC char buf[512];
+    if (mimetype)
+    {
+        char *action = NULL;
+        STATIC char buf[512];
 
-		switch(mimetype->action)
-		{
-			case MIMETYPE_ACTION_INTERNAL:
-				action = GSI(MSG_MIMETYPELIST_INTERNAL_VIEWER);
-				break;
-			case MIMETYPE_ACTION_EXTERNAL:
-				action = GSI(MSG_MIMETYPELIST_EXTERNAL_VIEWER);
-				break;
-			case MIMETYPE_ACTION_DOWNLOAD:
-				action = GSI(MSG_MIMETYPELIST_SAVE_TO_DISK);
-				break;
-			case MIMETYPE_ACTION_ASK:
-				action = GSI(MSG_MIMETYPELIST_ASK);
-				break;
-			case MIMETYPE_ACTION_STREAM:
-				action = GSI(MSG_MIMETYPELIST_STREAM);
-				break;
-			case MIMETYPE_ACTION_PIPE:
-				action = GSI(MSG_MIMETYPELIST_PIPE);
-				break;
-			case MIMETYPE_ACTION_IGNORE:
-				action = GSI(MSG_MIMETYPELIST_IGNORE);
-				break;
-			case MIMETYPE_ACTION_PLUGIN:
-				action = GSI(MSG_MIMETYPELIST_PLUGIN);
-				break;
-		}
+        switch(mimetype->action)
+        {
+            case MIMETYPE_ACTION_INTERNAL:
+                action = GSI(MSG_MIMETYPELIST_INTERNAL_VIEWER);
+                break;
+            case MIMETYPE_ACTION_EXTERNAL:
+                action = GSI(MSG_MIMETYPELIST_EXTERNAL_VIEWER);
+                break;
+            case MIMETYPE_ACTION_DOWNLOAD:
+                action = GSI(MSG_MIMETYPELIST_SAVE_TO_DISK);
+                break;
+            case MIMETYPE_ACTION_ASK:
+                action = GSI(MSG_MIMETYPELIST_ASK);
+                break;
+            case MIMETYPE_ACTION_STREAM:
+                action = GSI(MSG_MIMETYPELIST_STREAM);
+                break;
+            case MIMETYPE_ACTION_PIPE:
+                action = GSI(MSG_MIMETYPELIST_PIPE);
+                break;
+            case MIMETYPE_ACTION_IGNORE:
+                action = GSI(MSG_MIMETYPELIST_IGNORE);
+                break;
+            case MIMETYPE_ACTION_PLUGIN:
+                action = GSI(MSG_MIMETYPELIST_PLUGIN);
+                break;
+        }
 
-		snprintf(buf, sizeof(buf), "%s %s", mimetype->viewer, mimetype->parameters);
+        snprintf(buf, sizeof(buf), "%s %s", mimetype->viewer, mimetype->parameters);
 
-		msg->array[0] = mimetype->mimetype;
-		msg->array[1] = mimetype->extensions;
-		msg->array[2] = action;
-		msg->array[3] = buf;
+        msg->array[0] = mimetype->mimetype;
+        msg->array[1] = mimetype->extensions;
+        msg->array[2] = action;
+        msg->array[3] = buf;
 
-		if( (IPTR)msg->array[-1] % 2 )
-		{
+        if( (IPTR)msg->array[-1] % 2 )
+        {
 #if !OS(AROS)
-			/* This code overrides internal data structures and causes a crash on AROS */
-			msg->array[-9] = (STRPTR) 10;
+            /* This code overrides internal data structures and causes a crash on AROS */
+            msg->array[-9] = (STRPTR) 10;
 #endif
-		}
-	}
-	else
-	{
-		msg->array[0] = GSI(MSG_MIMETYPELIST_MIMETYPE);
-		msg->array[1] = GSI(MSG_MIMETYPELIST_EXTENSION);
-		msg->array[2] = GSI(MSG_MIMETYPELIST_ACTION);
-		msg->array[3] = GSI(MSG_MIMETYPELIST_VIEWER);
-	}
+        }
+    }
+    else
+    {
+        msg->array[0] = GSI(MSG_MIMETYPELIST_MIMETYPE);
+        msg->array[1] = GSI(MSG_MIMETYPELIST_EXTENSION);
+        msg->array[2] = GSI(MSG_MIMETYPELIST_ACTION);
+        msg->array[3] = GSI(MSG_MIMETYPELIST_VIEWER);
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Compare)
 {
-	struct mimetypenode *m1 = (struct mimetypenode *) msg->entry1;
-	struct mimetypenode *m2 = (struct mimetypenode *) msg->entry2;
+    struct mimetypenode *m1 = (struct mimetypenode *) msg->entry1;
+    struct mimetypenode *m2 = (struct mimetypenode *) msg->entry2;
 
-	return stricmp(m1->mimetype, m2->mimetype);
+    return stricmp(m1->mimetype, m2->mimetype);
 }
 
 BEGINMTABLE

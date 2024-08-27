@@ -46,80 +46,80 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *group;
+    Object *group;
 };
 
 DEFNEW
 {
-	Object *group;
+    Object *group;
 
-	obj = (Object *) DoSuperNew(cl, obj,
-			MUIA_Window_ID, MAKE_ID('W','D','L','S'),
-			MUIA_Window_Title, GSI(MSG_DOWNLOADWINDOW_DOWNLOADS),
-			MUIA_Window_NoMenus, TRUE,
-			WindowContents, group = (Object *) NewObject(getdownloadgroupclass(), NULL, TAG_DONE),
-			TAG_MORE, msg->ops_AttrList);
+    obj = (Object *) DoSuperNew(cl, obj,
+            MUIA_Window_ID, MAKE_ID('W','D','L','S'),
+            MUIA_Window_Title, GSI(MSG_DOWNLOADWINDOW_DOWNLOADS),
+            MUIA_Window_NoMenus, TRUE,
+            WindowContents, group = (Object *) NewObject(getdownloadgroupclass(), NULL, TAG_DONE),
+            TAG_MORE, msg->ops_AttrList);
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->group = group;
+        data->group = group;
 
-		DoMethod(obj, MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 3, MUIM_Set, MUIA_Window_Open, FALSE);
-	}
+        DoMethod(obj, MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 3, MUIM_Set, MUIA_Window_Open, FALSE);
+    }
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 DEFGET
 {
-	switch (msg->opg_AttrID)
-	{
-		case MA_OWB_WindowType:
-		{
-			*msg->opg_Storage = (IPTR) MV_OWB_Window_Downloads;
-		}
-		return TRUE;
-	}
+    switch (msg->opg_AttrID)
+    {
+        case MA_OWB_WindowType:
+        {
+            *msg->opg_Storage = (IPTR) MV_OWB_Window_Downloads;
+        }
+        return TRUE;
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(List_InsertSingle)
 {
-	GETDATA;
-	return DoMethodA(data->group, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->group, (_Msg_*)msg);
 }
 
 DEFMMETHOD(List_Redraw)
 {
-	GETDATA;
-	return DoMethodA(data->group, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->group, (_Msg_*)msg);
 }
 
 DEFSMETHOD(Download_Done)
 {
-	GETDATA;
-	return DoMethodA(data->group, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->group, (_Msg_*)msg);
 }
 
 DEFSMETHOD(Download_Cancelled)
 {
-	GETDATA;
-	return DoMethodA(data->group, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->group, (_Msg_*)msg);
 }
 
 DEFSMETHOD(Download_Error)
 {
-	GETDATA;
-	return DoMethodA(data->group, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->group, (_Msg_*)msg);
 }
 
 DEFSMETHOD(Download_Cancel)
 {
-	GETDATA;
-	return DoMethodA(data->group, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->group, (_Msg_*)msg);
 }
 
 BEGINMTABLE

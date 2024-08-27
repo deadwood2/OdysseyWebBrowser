@@ -53,7 +53,7 @@ URL stripURL(const URL& url)
     strippedURL.setPass(String());
     strippedURL.setQuery(String());
     strippedURL.setFragmentIdentifier(String());
-	strippedURL.removeFragmentIdentifier();
+    strippedURL.removeFragmentIdentifier();
     return strippedURL;
 }
 
@@ -137,17 +137,17 @@ void assemblePasswordFormResult(const URL& fullOrigin,
     if (userName) {
         result->userNameElement = userName->name();
         result->userNameValue = userName->value();
-	result->userNameElementElement = userName;
+    result->userNameElementElement = userName;
     }
     if (password) {
         result->passwordElement = password->name();
         result->passwordValue = password->value();
-	result->passwordElementElement = password;
+    result->passwordElementElement = password;
     }
     if (oldPassword) {
         result->oldPasswordElement = oldPassword->name();
         result->oldPasswordValue = oldPassword->value();
-	result->oldPasswordElementElement = oldPassword;
+    result->oldPasswordElementElement = oldPassword;
     }
 }
 

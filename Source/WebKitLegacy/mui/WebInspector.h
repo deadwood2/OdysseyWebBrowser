@@ -110,7 +110,7 @@ public:
     /*
      * setTimelineProfilingEnabled
      */
-	virtual bool isTimelineProfilingEnabled();
+    virtual bool isTimelineProfilingEnabled();
     virtual void setTimelineProfilingEnabled(bool);
 private:
 

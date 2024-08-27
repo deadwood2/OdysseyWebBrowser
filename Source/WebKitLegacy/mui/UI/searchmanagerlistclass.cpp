@@ -47,60 +47,60 @@ struct Data
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		InputListFrame,
-		MUIA_List_Format, "BAR,BAR,",
-		MUIA_List_Title, TRUE,
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        InputListFrame,
+        MUIA_List_Format, "BAR,BAR,",
+        MUIA_List_Title, TRUE,
+        TAG_MORE, INITTAGS
+    );
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(List_Construct)
 {
-	// Built by caller
-	return (IPTR)msg->entry;
+    // Built by caller
+    return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
 {
-	struct search_entry *entry = (struct search_entry *) msg->entry;
+    struct search_entry *entry = (struct search_entry *) msg->entry;
 
-	if(entry)
-	{
-		free(entry->label);
-		free(entry->request);
-		free(entry->shortcut);
-		free(entry);
-	}
+    if(entry)
+    {
+        free(entry->label);
+        free(entry->request);
+        free(entry->shortcut);
+        free(entry);
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Display)
 {
-	struct search_entry *e = (struct search_entry *) msg->entry;
+    struct search_entry *e = (struct search_entry *) msg->entry;
 
-	if (e)
-	{
-		msg->array[0] = e->label;
-		msg->array[1] = e->request;
-		msg->array[2] = e->shortcut;
-	}
-	else
-	{
-		msg->array[0] = GSI(MSG_SEARCHMANAGERLIST_TITLE);
-		msg->array[1] = GSI(MSG_SEARCHMANAGERLIST_LINK);
-		msg->array[2] = GSI(MSG_SEARCHMANAGERLIST_SHORTCUT);
-	}
+    if (e)
+    {
+        msg->array[0] = e->label;
+        msg->array[1] = e->request;
+        msg->array[2] = e->shortcut;
+    }
+    else
+    {
+        msg->array[0] = GSI(MSG_SEARCHMANAGERLIST_TITLE);
+        msg->array[1] = GSI(MSG_SEARCHMANAGERLIST_LINK);
+        msg->array[2] = GSI(MSG_SEARCHMANAGERLIST_SHORTCUT);
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 BEGINMTABLE

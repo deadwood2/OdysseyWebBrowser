@@ -41,15 +41,15 @@ namespace WebCore {
 
 // Simple class to override some of PrintContext behavior.
 class OWBPrintContext : public PrintContext {
-	WTF_MAKE_NONCOPYABLE(OWBPrintContext);
+    WTF_MAKE_NONCOPYABLE(OWBPrintContext);
 public:
-	OWBPrintContext(Frame* frame)
+    OWBPrintContext(Frame* frame)
         : PrintContext(frame)
         , m_printedPageWidth(0)
     {
     }
 
-	virtual ~OWBPrintContext() { }
+    virtual ~OWBPrintContext() { }
 
     virtual void begin(float width, float height)
     {
@@ -77,7 +77,7 @@ public:
     virtual float spoolPage(GraphicsContext& ctx, int pageNumber, float scale = 1.0)
     {
         IntRect pageRect = m_pageRects[pageNumber];
-	//kprintf("spoolPage %d pageRect [%d %d %d %d] m_printedPageWidth %f scale %f\n", pageNumber, pageRect.x(), pageRect.y(), pageRect.width(), pageRect.height(), m_printedPageWidth, scale);
+    //kprintf("spoolPage %d pageRect [%d %d %d %d] m_printedPageWidth %f scale %f\n", pageNumber, pageRect.x(), pageRect.y(), pageRect.width(), pageRect.height(), m_printedPageWidth, scale);
 
         ctx.save();
 

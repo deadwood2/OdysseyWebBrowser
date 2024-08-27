@@ -87,7 +87,7 @@ namespace WTF {
 
 namespace WebCore {
     class Application;
-	class Element;
+    class Element;
     class FrameView;
     class Image;
     class IntPoint;
@@ -417,7 +417,7 @@ public:
         for best results rendering web pages.
         @param userAgentString The user agent description
      */
-	virtual void setCustomUserAgent(const string& userAgentString);
+    virtual void setCustomUserAgent(const string& userAgentString);
 
     /**
      *  customUserAgent 
@@ -1317,18 +1317,18 @@ public:
     /**
      *  registerForIconNotification 
      */
-	void registerForIconNotification(bool listen);
+    void registerForIconNotification(bool listen);
 
     /**
      *  dispatchDidReceiveIconFromWebFrame 
      */
-	void dispatchDidReceiveIconFromWebFrame(WebFrame*);
+    void dispatchDidReceiveIconFromWebFrame(WebFrame*);
 
 
     /**
      *  notifyDidAddIcon 
      */
-	void notifyDidAddIcon();
+    void notifyDidAddIcon();
 #endif
 
     /**
@@ -1508,8 +1508,8 @@ void exitFullScreenForElement(WebCore::Element* element);
 
     void sendExposeEvent(BalRectangle rect);
 
-	bool screenshot(int &requested_width, int& requested_height, void *imageData);
-	bool screenshot(char* path);
+    bool screenshot(int &requested_width, int& requested_height, void *imageData);
+    bool screenshot(char* path);
 
 private:
 
@@ -1671,7 +1671,7 @@ protected:
     /**
      *  closeWindowTimerFired 
      */
-	//void closeWindowTimerFired();
+    //void closeWindowTimerFired();
 
     /**
      *  prepareCandidateWindow 
@@ -1693,7 +1693,7 @@ protected:
      */
     //LRESULT WebView::onIMERequestReconvertString(Frame* targetFrame, RECONVERTSTRING* reconvertString);
 
-	void setShouldInvertColors(bool shouldInvertColors);
+    void setShouldInvertColors(bool shouldInvertColors);
 
     /**
      * developerExtrasEnabled 
@@ -1741,7 +1741,7 @@ protected:
     unsigned m_paintCount;
     bool m_hasSpellCheckerDocumentTag;
     bool m_smartInsertDeleteEnabled;
-	bool m_selectTrailingWhitespaceEnabled;
+    bool m_selectTrailingWhitespaceEnabled;
     bool m_didClose;
     bool m_hasCustomDropTarget;
     unsigned m_inIMEComposition;
@@ -1798,12 +1798,12 @@ protected:
     std::vector<WebWindow *> m_children; 
 
     BalPoint m_scheduledScrollOffset;
-	WebInspectorFrontendClient* m_inspectorFrontendClient;
+    WebInspectorFrontendClient* m_inspectorFrontendClient;
     RefPtr<WebViewGroup> m_webViewGroup;
  public:
     BalPoint scheduledScrollOffset();
     void setScheduledScrollOffset(BalPoint offset);
-	void setInspectorFrontendClient(WebInspectorFrontendClient *client) { m_inspectorFrontendClient = client; }
+    void setInspectorFrontendClient(WebInspectorFrontendClient *client) { m_inspectorFrontendClient = client; }
 };
 
 #endif

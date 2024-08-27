@@ -38,125 +38,125 @@ STATIC int is_safe_to_quit = TRUE;
 
 struct pushedmethod
 {
-	struct MinNode n;
-	struct Message msg;
-	ULONG size;
-	APTR obj;
-	ULONG sync;
-	ULONG result;
-	IPTR m[0];
+    struct MinNode n;
+    struct Message msg;
+    ULONG size;
+    APTR obj;
+    ULONG sync;
+    ULONG result;
+    IPTR m[0];
 };
 
 void WakeTimer(void)
 {
-	Signal(mstask, SIGBREAKF_CTRL_E);
+    Signal(mstask, SIGBREAKF_CTRL_E);
 }
 
 void setIsQuitting(int value)
 {
-	is_quitting = value;
+    is_quitting = value;
 }
 
 int isQuitting(void)
 {
-	return is_quitting;
+    return is_quitting;
 }
 
 void setIsSafeToQuit(int value)
 {
-	is_safe_to_quit = value;
+    is_safe_to_quit = value;
 }
 
 int isSafeToQuit(void)
 {
-	return is_safe_to_quit;
+    return is_safe_to_quit;
 }
 
 void methodstack_init(void)
 {
-	InitSemaphore(&semaphore);
+    InitSemaphore(&semaphore);
     mstask = FindTask(NULL);
 }
 
 void *getMainTask(void)
 {
-	return mstask;
+    return mstask;
 }
 
 void methodstack_cleanup(void)
 {
-	struct pushedmethod *pm, *next;
+    struct pushedmethod *pm, *next;
 
-	methodstack_cleanup_flush();
+    methodstack_cleanup_flush();
 
-	ITERATELISTSAFE(pm, next, &methodlist)
-	{
-		FreeMem(pm, pm->size);
-	}
+    ITERATELISTSAFE(pm, next, &methodlist)
+    {
+        FreeMem(pm, pm->size);
+    }
 
-	mstask = NULL;
+    mstask = NULL;
 }
 
 void methodstack_cleanup_flush(void)
 {
-	struct pushedmethod *pm;
+    struct pushedmethod *pm;
 
-	ObtainSemaphore(&semaphore);
+    ObtainSemaphore(&semaphore);
 
-	while ((pm = REMHEAD(&methodlist)))
-	{
-		if (pm->sync)
-		{
-			pm->result = -1;
-			ReplyMsg(&pm->msg);
-		}
-		else
-		{
-			FreeMem(pm, pm->size);
-		}
-	}
+    while ((pm = REMHEAD(&methodlist)))
+    {
+        if (pm->sync)
+        {
+            pm->result = -1;
+            ReplyMsg(&pm->msg);
+        }
+        else
+        {
+            FreeMem(pm, pm->size);
+        }
+    }
 
-	ReleaseSemaphore(&semaphore);
+    ReleaseSemaphore(&semaphore);
 }
 
 void methodstack_check(void)
 {
-	ULONG not_empty = TRUE;
+    ULONG not_empty = TRUE;
 
-	//D(kprintf("[MethodStack] methodstack_check()\n"));
+    //D(kprintf("[MethodStack] methodstack_check()\n"));
 
-	do
-	{
-		struct pushedmethod *pm;
+    do
+    {
+        struct pushedmethod *pm;
 
-		ObtainSemaphore(&semaphore);
-		pm = REMHEAD(&methodlist);
-		not_empty = !ISLISTEMPTY(&methodlist);
-		ReleaseSemaphore(&semaphore);
+        ObtainSemaphore(&semaphore);
+        pm = REMHEAD(&methodlist);
+        not_empty = !ISLISTEMPTY(&methodlist);
+        ReleaseSemaphore(&semaphore);
 
-		if (!pm)
-			break;
+        if (!pm)
+            break;
 
-		if (pm->sync)
-		{
-			if (pm->obj)
-			{
-				pm->result = DoMethodA(pm->obj, (Msg)&pm->m[0]);
-			}
-			else
-			{
-				pm->result = -1;
-			}
+        if (pm->sync)
+        {
+            if (pm->obj)
+            {
+                pm->result = DoMethodA(pm->obj, (Msg)&pm->m[0]);
+            }
+            else
+            {
+                pm->result = -1;
+            }
 
-			ReplyMsg(&pm->msg);
-		}
-		else
-		{
-			DoMethodA(pm->obj, (Msg)&pm->m[0]);
-			FreeMem(pm, pm->size);
-		}
-	}
-	while (not_empty);
+            ReplyMsg(&pm->msg);
+        }
+        else
+        {
+            DoMethodA(pm->obj, (Msg)&pm->m[0]);
+            FreeMem(pm, pm->size);
+        }
+    }
+    while (not_empty);
 }
 
 /*
@@ -165,39 +165,39 @@ void methodstack_check(void)
  */
 void methodstack_push_A(APTR obj, ULONG cnt, IPTR *args)
 {
-	struct pushedmethod *pm;
-	ULONG size;
+    struct pushedmethod *pm;
+    ULONG size;
 
-	size = sizeof(*pm) + cnt * sizeof(IPTR);
+    size = sizeof(*pm) + cnt * sizeof(IPTR);
 
-	if ((pm = AllocMem(size, MEMF_ANY)))
-	{
-		ULONG i = 0;
-		pm->obj = obj;
-		pm->size = size;
-		pm->sync = 0;
+    if ((pm = AllocMem(size, MEMF_ANY)))
+    {
+        ULONG i = 0;
+        pm->obj = obj;
+        pm->size = size;
+        pm->sync = 0;
 
-		while (cnt--)
-		{
-			pm->m[i] = args[i];
-			i++;
-		}
+        while (cnt--)
+        {
+            pm->m[i] = args[i];
+            i++;
+        }
 
         struct Task *thisTask = FindTask(NULL);
 
-		if (thisTask == (APTR)mstask)
-		{
-			methodstack_check();
-			DoMethodA(obj, (Msg)&pm->m[0]);
-			FreeMem(pm, size);
-		}
-		else
-		{
-			ObtainSemaphore(&semaphore);
-			AddTail((struct List *)&methodlist, (struct Node *)pm);
-			ReleaseSemaphore(&semaphore);
-		}
-	}
+        if (thisTask == (APTR)mstask)
+        {
+            methodstack_check();
+            DoMethodA(obj, (Msg)&pm->m[0]);
+            FreeMem(pm, size);
+        }
+        else
+        {
+            ObtainSemaphore(&semaphore);
+            AddTail((struct List *)&methodlist, (struct Node *)pm);
+            ReleaseSemaphore(&semaphore);
+        }
+    }
 }
 
 /*
@@ -210,52 +210,52 @@ void methodstack_push_A(APTR obj, ULONG cnt, IPTR *args)
 
 ULONG methodstack_push_sync_A(APTR obj, ULONG cnt, IPTR *args)
 {
-	struct pushedmethod *pm;
-	ULONG res, size;
+    struct pushedmethod *pm;
+    ULONG res, size;
 
-	size = sizeof(*pm) + cnt * sizeof(IPTR);
-	res = 0;
+    size = sizeof(*pm) + cnt * sizeof(IPTR);
+    res = 0;
 
-	if ((pm = AllocMem(size, MEMF_ANY)))
-	{
-		struct Process *thisproc = (struct Process *)FindTask(NULL);
-		struct MsgPort *replyport = NULL;
-		ULONG i = 0;
+    if ((pm = AllocMem(size, MEMF_ANY)))
+    {
+        struct Process *thisproc = (struct Process *)FindTask(NULL);
+        struct MsgPort *replyport = NULL;
+        ULONG i = 0;
 
-		while (cnt--)
-		{
-			pm->m[i] = args[i];
-			i++;
-		}
+        while (cnt--)
+        {
+            pm->m[i] = args[i];
+            i++;
+        }
 
-		if (thisproc == (APTR)mstask)
-		{
-			methodstack_check();
-			res = DoMethodA(obj, (Msg)&pm->m[0]);
+        if (thisproc == (APTR)mstask)
+        {
+            methodstack_check();
+            res = DoMethodA(obj, (Msg)&pm->m[0]);
 
-			FreeMem(pm, size);
+            FreeMem(pm, size);
 
-			return res;
-		}
+            return res;
+        }
 
-		replyport = CreateMsgPort();
+        replyport = CreateMsgPort();
 
-		pm->size = size;
-		pm->obj = obj;
-		pm->sync = TRUE;
-		pm->msg.mn_ReplyPort = replyport;
+        pm->size = size;
+        pm->obj = obj;
+        pm->sync = TRUE;
+        pm->msg.mn_ReplyPort = replyport;
 
-		ObtainSemaphore(&semaphore);
-		AddTail((struct List *)&methodlist, (struct Node *)pm);
-		ReleaseSemaphore(&semaphore);
+        ObtainSemaphore(&semaphore);
+        AddTail((struct List *)&methodlist, (struct Node *)pm);
+        ReleaseSemaphore(&semaphore);
 
-		Signal(mstask, SIGBREAKF_CTRL_F);
-		WaitPort(replyport);
-		GetMsg(replyport);
+        Signal(mstask, SIGBREAKF_CTRL_F);
+        WaitPort(replyport);
+        GetMsg(replyport);
 
-		res = pm->result;
-		FreeMem(pm, pm->size);
-	}
+        res = pm->result;
+        FreeMem(pm, pm->size);
+    }
 
-	return res;
+    return res;
 }

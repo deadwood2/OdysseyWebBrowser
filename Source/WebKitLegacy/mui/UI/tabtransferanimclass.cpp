@@ -43,250 +43,250 @@
 
 struct Data
 {
-	cairo_surface_t *surface;
+    cairo_surface_t *surface;
 #if OS(AROS)
-	APTR bgra;
+    APTR bgra;
 #endif
-	ULONG imagecount;
-	ULONG imagewidth;
-	ULONG imageheight;
-	UWORD imagenum;
-	UBYTE animate;
-	UBYTE is_shown;
-	UBYTE added;
-	struct MUI_InputHandlerNode ihnode;
+    ULONG imagecount;
+    ULONG imagewidth;
+    ULONG imageheight;
+    UWORD imagenum;
+    UBYTE animate;
+    UBYTE is_shown;
+    UBYTE added;
+    struct MUI_InputHandlerNode ihnode;
 };
 
 STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
 {
-	struct TagItem *tag, *tstate;
+    struct TagItem *tag, *tstate;
 
-	tstate = taglist;
+    tstate = taglist;
 
-	while ((tag = NextTagItem(&tstate)) != NULL)
-	{
-		ULONG tag_data = tag->ti_Data;
+    while ((tag = NextTagItem(&tstate)) != NULL)
+    {
+        ULONG tag_data = tag->ti_Data;
 
-		switch (tag->ti_Tag)
-		{
-			case MA_TransferAnim_Animate:
-				if (tag_data && data->animate == 0)
-				{
-					if(getv(app, MA_OWBApp_EnableTabTransferAnim))
-					{
-						data->animate = 1;
+        switch (tag->ti_Tag)
+        {
+            case MA_TransferAnim_Animate:
+                if (tag_data && data->animate == 0)
+                {
+                    if(getv(app, MA_OWBApp_EnableTabTransferAnim))
+                    {
+                        data->animate = 1;
 
-						if (data->is_shown && !data->added)
-						{
-							DoMethod(_app(obj), MUIM_Application_AddInputHandler, (IPTR)&data->ihnode);
-							data->added = TRUE;
-						}
-					}
-				}
-				else if (!tag_data && data->animate)
-				{
-					data->animate = 0;
+                        if (data->is_shown && !data->added)
+                        {
+                            DoMethod(_app(obj), MUIM_Application_AddInputHandler, (IPTR)&data->ihnode);
+                            data->added = TRUE;
+                        }
+                    }
+                }
+                else if (!tag_data && data->animate)
+                {
+                    data->animate = 0;
 
-					if (data->is_shown && data->added)
-					{
-						DoMethod(_app(obj), MUIM_Application_RemInputHandler, (IPTR)&data->ihnode);
-						data->added = FALSE;
-					}
+                    if (data->is_shown && data->added)
+                    {
+                        DoMethod(_app(obj), MUIM_Application_RemInputHandler, (IPTR)&data->ihnode);
+                        data->added = FALSE;
+                    }
 
-					data->imagenum = 0;
-					MUI_Redraw((Object *)obj, MADF_DRAWUPDATE);
-				}
-				break;
-		}
-	}
+                    data->imagenum = 0;
+                    MUI_Redraw((Object *)obj, MADF_DRAWUPDATE);
+                }
+                break;
+        }
+    }
 }
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		MUIA_FillArea, FALSE,
-		MUIA_Weight  , 0,
-		MUIA_DoubleBuffer, TRUE,
-		InnerSpacing(0, 0),
-		TAG_MORE     , (IPTR)msg->ops_AttrList);
+    obj = (Object *) DoSuperNew(cl, obj,
+        MUIA_FillArea, FALSE,
+        MUIA_Weight  , 0,
+        MUIA_DoubleBuffer, TRUE,
+        InnerSpacing(0, 0),
+        TAG_MORE     , (IPTR)msg->ops_AttrList);
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->ihnode.ihn_Object = obj;
-		data->ihnode.ihn_Flags = MUIIHNF_TIMER;
-		data->ihnode.ihn_Millis = 30;
-		data->ihnode.ihn_Method = MM_TransferAnim_Run;
+        data->ihnode.ihn_Object = obj;
+        data->ihnode.ihn_Flags = MUIIHNF_TIMER;
+        data->ihnode.ihn_Millis = 30;
+        data->ihnode.ihn_Method = MM_TransferAnim_Run;
 
-		data->surface = cairo_image_surface_create_from_png ("PROGDIR:resource/transferanim_tab.png");
+        data->surface = cairo_image_surface_create_from_png ("PROGDIR:resource/transferanim_tab.png");
 
-		if(cairo_surface_status(data->surface) == CAIRO_STATUS_SUCCESS)
-		{
-			if(cairo_image_surface_get_width(data->surface) > 0 && cairo_image_surface_get_height(data->surface) > 0)
-			{
-				data->imagecount  = cairo_image_surface_get_width(data->surface) / cairo_image_surface_get_height(data->surface);
-				data->imageheight = cairo_image_surface_get_height(data->surface);
-				data->imagewidth  = data->imageheight;
+        if(cairo_surface_status(data->surface) == CAIRO_STATUS_SUCCESS)
+        {
+            if(cairo_image_surface_get_width(data->surface) > 0 && cairo_image_surface_get_height(data->surface) > 0)
+            {
+                data->imagecount  = cairo_image_surface_get_width(data->surface) / cairo_image_surface_get_height(data->surface);
+                data->imageheight = cairo_image_surface_get_height(data->surface);
+                data->imagewidth  = data->imageheight;
 #if OS(AROS)
-				data->bgra = ARGB2BGRA(cairo_image_surface_get_data(data->surface),
-				        cairo_image_surface_get_stride(data->surface),data->imageheight);
+                data->bgra = ARGB2BGRA(cairo_image_surface_get_data(data->surface),
+                        cairo_image_surface_get_stride(data->surface),data->imageheight);
 #endif
-			}
-			else
-			{
-				cairo_surface_destroy (data->surface);
-				data->surface = NULL;
-			}
-		}
-		else
-		{
-			cairo_surface_destroy (data->surface);
+            }
+            else
+            {
+                cairo_surface_destroy (data->surface);
+                data->surface = NULL;
+            }
+        }
+        else
+        {
+            cairo_surface_destroy (data->surface);
             data->surface = NULL;
-		}
+        }
 
-		if(!data->surface)
-		{
-			data->imagecount  = TABTHROBBER_IMAGES;
-			data->imageheight = TABTHROBBER_HEIGHT;
-			data->imagewidth  =	TABTHROBBER_WIDTH / TABTHROBBER_IMAGES;
-		}
+        if(!data->surface)
+        {
+            data->imagecount  = TABTHROBBER_IMAGES;
+            data->imageheight = TABTHROBBER_HEIGHT;
+            data->imagewidth  =    TABTHROBBER_WIDTH / TABTHROBBER_IMAGES;
+        }
 
-		doset(data, obj, msg->ops_AttrList);
-	}
+        doset(data, obj, msg->ops_AttrList);
+    }
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 DEFDISP
 {
-	GETDATA;
+    GETDATA;
 
-	if(data->surface)
-	{
-		cairo_surface_destroy (data->surface);
-	}
+    if(data->surface)
+    {
+        cairo_surface_destroy (data->surface);
+    }
 
 #if OS(AROS)
-	if(data->bgra)
-	{
-	    ARGB2BGRAFREE(data->bgra);
-	}
+    if(data->bgra)
+    {
+        ARGB2BGRAFREE(data->bgra);
+    }
 #endif
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(AskMinMax)
 {
-	GETDATA;
+    GETDATA;
 
-	DOSUPER;
+    DOSUPER;
 
-	msg->MinMaxInfo->MinWidth  += data->imagewidth;
-	msg->MinMaxInfo->MinHeight += data->imageheight;
-	msg->MinMaxInfo->MaxWidth  += MUI_MAXMAX;
-	msg->MinMaxInfo->MaxHeight += MUI_MAXMAX;
-	msg->MinMaxInfo->DefWidth  += data->imagewidth;
-	msg->MinMaxInfo->DefHeight += data->imageheight;
+    msg->MinMaxInfo->MinWidth  += data->imagewidth;
+    msg->MinMaxInfo->MinHeight += data->imageheight;
+    msg->MinMaxInfo->MaxWidth  += MUI_MAXMAX;
+    msg->MinMaxInfo->MaxHeight += MUI_MAXMAX;
+    msg->MinMaxInfo->DefWidth  += data->imagewidth;
+    msg->MinMaxInfo->DefHeight += data->imageheight;
 
-	return 0;
+    return 0;
 }
 
 DEFMMETHOD(Show)
 {
-	BOOL rc = DOSUPER;
+    BOOL rc = DOSUPER;
 
-	if (rc)
-	{
-		GETDATA;
+    if (rc)
+    {
+        GETDATA;
 
-		data->is_shown = 1;
+        data->is_shown = 1;
 
-		if (data->animate && !data->added)
-		{
-			DoMethod(_app(obj), MUIM_Application_AddInputHandler, (IPTR)&data->ihnode);
-			data->added = TRUE;
-		}
-	}
+        if (data->animate && !data->added)
+        {
+            DoMethod(_app(obj), MUIM_Application_AddInputHandler, (IPTR)&data->ihnode);
+            data->added = TRUE;
+        }
+    }
 
-	return rc;
+    return rc;
 }
 
 DEFMMETHOD(Hide)
 {
-	GETDATA;
+    GETDATA;
 
-	data->is_shown = 0;
+    data->is_shown = 0;
 
-	if (data->animate && data->added)
-	{
-		DoMethod(_app(obj), MUIM_Application_RemInputHandler, (IPTR)&data->ihnode);
-		data->added = FALSE;
-	}
+    if (data->animate && data->added)
+    {
+        DoMethod(_app(obj), MUIM_Application_RemInputHandler, (IPTR)&data->ihnode);
+        data->added = FALSE;
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFSET
 {
-	GETDATA;
-	doset(data, obj, msg->ops_AttrList);
-	return DOSUPER;
+    GETDATA;
+    doset(data, obj, msg->ops_AttrList);
+    return DOSUPER;
 }
 
 DEFTMETHOD(TransferAnim_Run)
 {
-	GETDATA;
+    GETDATA;
 
-	data->imagenum++;
+    data->imagenum++;
 
-	if (data->imagenum >= data->imagecount)
-		data->imagenum = 0;
+    if (data->imagenum >= data->imagecount)
+        data->imagenum = 0;
 
-	MUI_Redraw(obj, MADF_DRAWUPDATE);
-	return 0;
+    MUI_Redraw(obj, MADF_DRAWUPDATE);
+    return 0;
 }
 
 DEFMMETHOD(Draw)
 {
-	DOSUPER;
+    DOSUPER;
 
-	if (msg->flags & (MADF_DRAWOBJECT | MADF_DRAWUPDATE))
-	{
-		GETDATA;
-		ULONG mleft, mtop, mwidth, mheight;
-		ULONG stride = 0;
-		char *src = NULL;
+    if (msg->flags & (MADF_DRAWOBJECT | MADF_DRAWUPDATE))
+    {
+        GETDATA;
+        ULONG mleft, mtop, mwidth, mheight;
+        ULONG stride = 0;
+        char *src = NULL;
 
-		mleft   = _mleft(obj);
-		mtop    = _mtop(obj);
-		mwidth  = _mwidth(obj);
-		mheight = _mheight(obj);
+        mleft   = _mleft(obj);
+        mtop    = _mtop(obj);
+        mwidth  = _mwidth(obj);
+        mheight = _mheight(obj);
 
-		DoMethod(obj, MUIM_DrawBackground, mleft, mtop, mwidth, mheight, 0, 0, 0);
+        DoMethod(obj, MUIM_DrawBackground, mleft, mtop, mwidth, mheight, 0, 0, 0);
 
-		if(data->surface)
-		{
+        if(data->surface)
+        {
 #if OS(AROS)
-		    src = (char *) data->bgra;
+            src = (char *) data->bgra;
 #else
-			src = (char *) cairo_image_surface_get_data(data->surface);
+            src = (char *) cairo_image_surface_get_data(data->surface);
 #endif
-			stride = cairo_image_surface_get_stride(data->surface);
-		}
+            stride = cairo_image_surface_get_stride(data->surface);
+        }
 
-		// Fall back to builtin animation
-		if(!src || !stride)
-		{
-			src = (char *) &TabThrobber;
-			stride = TABTHROBBER_WIDTH * sizeof(ULONG);
-		}
+        // Fall back to builtin animation
+        if(!src || !stride)
+        {
+            src = (char *) &TabThrobber;
+            stride = TABTHROBBER_WIDTH * sizeof(ULONG);
+        }
 
-		WritePixelArrayAlpha((APTR)src, data->imagenum * data->imagewidth, 0, stride, _rp(obj), mleft + (mwidth - data->imagewidth) / 2, mtop + (mheight - data->imageheight) / 2, data->imagewidth, data->imageheight, data->animate ? 0xffffffff : 0x00000000); //data->animate ? 0xffffffff : 0x4fffffff);
-	}
+        WritePixelArrayAlpha((APTR)src, data->imagenum * data->imagewidth, 0, stride, _rp(obj), mleft + (mwidth - data->imagewidth) / 2, mtop + (mheight - data->imageheight) / 2, data->imagewidth, data->imageheight, data->animate ? 0xffffffff : 0x00000000); //data->animate ? 0xffffffff : 0x4fffffff);
+    }
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

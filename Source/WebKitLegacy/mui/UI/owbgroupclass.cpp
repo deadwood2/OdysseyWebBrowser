@@ -34,83 +34,83 @@
 
 struct Data
 {
-	Object *browser;
-	Object *mediacontrolsgroup;
-	Object *inspectorgroup;
+    Object *browser;
+    Object *mediacontrolsgroup;
+    Object *inspectorgroup;
 };
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		InnerSpacing(0, 0),
+    obj = (Object *) DoSuperNew(cl, obj,
+        InnerSpacing(0, 0),
         GroupSpacing(0),
-		TAG_MORE, INITTAGS,
-		TAG_DONE
-	);
+        TAG_MORE, INITTAGS,
+        TAG_DONE
+    );
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 static void doset(APTR obj, struct Data *data, struct TagItem *tags)
 {
-	FORTAG(tags)
-	{
-		case MA_OWBGroup_Browser:
-		{
-			data->browser = (Object *) tag->ti_Data;
-		}
-		break;
+    FORTAG(tags)
+    {
+        case MA_OWBGroup_Browser:
+        {
+            data->browser = (Object *) tag->ti_Data;
+        }
+        break;
 
-		case MA_OWBGroup_MediaControlsGroup:
-		{
-			data->mediacontrolsgroup = (Object *) tag->ti_Data;
-		}
-		break;
+        case MA_OWBGroup_MediaControlsGroup:
+        {
+            data->mediacontrolsgroup = (Object *) tag->ti_Data;
+        }
+        break;
 
-		case MA_OWBGroup_InspectorGroup:
-		{
-			data->inspectorgroup = (Object *) tag->ti_Data;
-		}
-		break;
-	}
-	NEXTTAG
+        case MA_OWBGroup_InspectorGroup:
+        {
+            data->inspectorgroup = (Object *) tag->ti_Data;
+        }
+        break;
+    }
+    NEXTTAG
 }
 
 DEFSET
 {
-	GETDATA;
+    GETDATA;
 
-	doset(obj, data, INITTAGS);
+    doset(obj, data, INITTAGS);
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFGET
 {
-	GETDATA;
+    GETDATA;
 
-	switch (msg->opg_AttrID)
-	{
-		case MA_OWBGroup_Browser:
-		{
-			*msg->opg_Storage = (IPTR) data->browser;
-		}
-		return TRUE; 
+    switch (msg->opg_AttrID)
+    {
+        case MA_OWBGroup_Browser:
+        {
+            *msg->opg_Storage = (IPTR) data->browser;
+        }
+        return TRUE; 
 
-		case MA_OWBGroup_MediaControlsGroup:
-		{
-			*msg->opg_Storage = (IPTR) data->mediacontrolsgroup;
-		}
-		return TRUE;
+        case MA_OWBGroup_MediaControlsGroup:
+        {
+            *msg->opg_Storage = (IPTR) data->mediacontrolsgroup;
+        }
+        return TRUE;
 
-		case MA_OWBGroup_InspectorGroup:
-		{
-			*msg->opg_Storage = (IPTR) data->inspectorgroup;
-		}
-		return TRUE;
-	}
+        case MA_OWBGroup_InspectorGroup:
+        {
+            *msg->opg_Storage = (IPTR) data->inspectorgroup;
+        }
+        return TRUE;
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 BEGINMTABLE

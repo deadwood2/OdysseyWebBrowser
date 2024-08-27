@@ -46,40 +46,40 @@ struct Data
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		InputListFrame,
-		/*
-		MUIA_List_ShowDropMarks, TRUE,
-		MUIA_List_DragSortable, TRUE,
-		MUIA_List_DragType, 1,
-		*/
-		MUIA_CycleChain, TRUE,
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        InputListFrame,
+        /*
+        MUIA_List_ShowDropMarks, TRUE,
+        MUIA_List_DragSortable, TRUE,
+        MUIA_List_DragType, 1,
+        */
+        MUIA_CycleChain, TRUE,
+        TAG_MORE, INITTAGS
+    );
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFMMETHOD(List_Construct)
 {
-	return (IPTR)msg->entry;
+    return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
 {
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Display)
 {
-	struct urlsettingnode *un = (struct urlsettingnode *) msg->entry;
+    struct urlsettingnode *un = (struct urlsettingnode *) msg->entry;
 
-	if (un)
-	{
-		msg->array[0] = un->urlpattern;
-	}
+    if (un)
+    {
+        msg->array[0] = un->urlpattern;
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 BEGINMTABLE

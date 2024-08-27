@@ -19,21 +19,21 @@ using namespace WebCore;
 class OWBCommand
 {
 public:
-	OWBCommand(String &commandString, int actionType)
-		: m_commandString(commandString), m_actionType(actionType)
-	{}
+    OWBCommand(String &commandString, int actionType)
+        : m_commandString(commandString), m_actionType(actionType)
+    {}
 
-	void execute()
-	{
-		switch(m_actionType)
-		{
-			case ACTION_AMIGADOS:
+    void execute()
+    {
+        switch(m_actionType)
+        {
+            case ACTION_AMIGADOS:
 #if OS(AROS)
-			{
-			{
-			    /* Special hack for MPlayer - don't show console */
-			    CString command = m_commandString.latin1();
-			    if ((strstr(command.data(), "mplayer") != NULL) || (strstr(command.data(), "MPlayer") != NULL))
+            {
+            {
+                /* Special hack for MPlayer - don't show console */
+                CString command = m_commandString.latin1();
+                if ((strstr(command.data(), "mplayer") != NULL) || (strstr(command.data(), "MPlayer") != NULL))
                 {
                     SystemTags((STRPTR)m_commandString.latin1().data(),
                         SYS_Asynch, TRUE,
@@ -44,67 +44,67 @@ public:
                         TAG_DONE);
                     break;
                 }
-			}
+            }
 #endif
-			{
-				BPTR output = NULL;
-				char *cli_device = (char *) getv(app, MA_OWBApp_CLIDevice);
+            {
+                BPTR output = NULL;
+                char *cli_device = (char *) getv(app, MA_OWBApp_CLIDevice);
 
-				if (!cli_device || !cli_device[0] || !(output = Open(cli_device, MODE_NEWFILE)))
-				{
-					output = Open("NIL:", MODE_NEWFILE); /* XXX: erk, close input and output if we fail later.. */
-				}
+                if (!cli_device || !cli_device[0] || !(output = Open(cli_device, MODE_NEWFILE)))
+                {
+                    output = Open("NIL:", MODE_NEWFILE); /* XXX: erk, close input and output if we fail later.. */
+                }
 
-				if(output)
-				{
-					BPTR input;
-					struct MsgPort *old;
+                if(output)
+                {
+                    BPTR input;
+                    struct MsgPort *old;
 
-					old = SetConsoleTask(((struct FileHandle *)BADDR(output))->fh_Type);
-					input = Open("*", MODE_OLDFILE); /* XXX: check retcode.. */
-					SetConsoleTask(old);
+                    old = SetConsoleTask(((struct FileHandle *)BADDR(output))->fh_Type);
+                    input = Open("*", MODE_OLDFILE); /* XXX: check retcode.. */
+                    SetConsoleTask(old);
 
-					if(SystemTags((STRPTR)m_commandString.latin1().data(),
-							  SYS_Asynch, TRUE,
-							  SYS_Input, input,
-							  SYS_Output, output,
-							  NP_Priority, 0,
-							  TAG_DONE))
-					{
-					}
-					else
-					{
-						/*
-						if(input)
-							Close(input);
-						Close(output);
-						*/
-					}
-				}
+                    if(SystemTags((STRPTR)m_commandString.latin1().data(),
+                              SYS_Asynch, TRUE,
+                              SYS_Input, input,
+                              SYS_Output, output,
+                              NP_Priority, 0,
+                              TAG_DONE))
+                    {
+                    }
+                    else
+                    {
+                        /*
+                        if(input)
+                            Close(input);
+                        Close(output);
+                        */
+                    }
+                }
 
-				break;
-			}
+                break;
+            }
 #if OS(AROS)
-			}
+            }
 #endif
 
-			case ACTION_REXX:
-			{
-				// XXX: implement
-				break;
-			}
+            case ACTION_REXX:
+            {
+                // XXX: implement
+                break;
+            }
 
-			case ACTION_INTERNAL:
-			{
-				// XXX: implement
-				break;
-			}
-		}
-	}
+            case ACTION_INTERNAL:
+            {
+                // XXX: implement
+                break;
+            }
+        }
+    }
 
 private:
-	String m_commandString;
-	int m_actionType;
+    String m_commandString;
+    int m_actionType;
 };
 
 #endif

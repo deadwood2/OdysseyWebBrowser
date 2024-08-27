@@ -51,7 +51,7 @@ public:
     /**
      * WebWorkersPrivate destructor
      */
-	virtual ~WebWorkersPrivate();
+    virtual ~WebWorkersPrivate();
 
     /**
      * get worker thread number

@@ -39,48 +39,48 @@ class SharedBuffer;
 
 class TopSitesManager {
 public:
-	typedef enum { SHOW_ALL, SHOW_BOOKMARKS, SHOW_ALL_BUT_BOOKMARKS, SHOW_CUSTOM } filtermode_t;
-	typedef enum { TEMPLATE_GRID, TEMPLATE_3D } displaymode_t;
+    typedef enum { SHOW_ALL, SHOW_BOOKMARKS, SHOW_ALL_BUT_BOOKMARKS, SHOW_CUSTOM } filtermode_t;
+    typedef enum { TEMPLATE_GRID, TEMPLATE_3D } displaymode_t;
 
-	static TopSitesManager& getInstance();
+    static TopSitesManager& getInstance();
 
-	TopSitesManager();   
+    TopSitesManager();   
     virtual ~TopSitesManager();
     
-	void generateTemplate(WebView *webView, WTF::String originurl);
-	void update(WebView *webView, URL &url, WTF::String &title);
-	void setDisplayMode(displaymode_t mode);
-	void setFilterMode(filtermode_t mode);
-	void setMaxEntries(int maxEntries);
-	void setScreenshotSize(int width);
+    void generateTemplate(WebView *webView, WTF::String originurl);
+    void update(WebView *webView, URL &url, WTF::String &title);
+    void setDisplayMode(displaymode_t mode);
+    void setFilterMode(filtermode_t mode);
+    void setMaxEntries(int maxEntries);
+    void setScreenshotSize(int width);
 
-protected:	
-	int maxEntries() { return m_maxEntries; }	
-	int entries();
-	bool contains(URL &url);
-	bool hasScreenshot(URL &url);
-	bool shouldAppear(URL &url);
-	int requiredVisitCount();
+protected:    
+    int maxEntries() { return m_maxEntries; }    
+    int entries();
+    bool contains(URL &url);
+    bool hasScreenshot(URL &url);
+    bool shouldAppear(URL &url);
+    int requiredVisitCount();
 
-	// Attributes
-	WTF::String title(URL &url);
-	WTF::RefPtr<Image> screenshot(URL &url);
-	int visitCount(URL &url);
-	double lastAccessed(URL &url);
-	
-	// Modifications
-	bool shouldAdd(URL &url);
-	bool addOrUpdate(WebView *webView, URL &url, WTF::String &title);
-	void remove(URL &url);
-	void pruneOlderEntries();
+    // Attributes
+    WTF::String title(URL &url);
+    WTF::RefPtr<Image> screenshot(URL &url);
+    int visitCount(URL &url);
+    double lastAccessed(URL &url);
+    
+    // Modifications
+    bool shouldAdd(URL &url);
+    bool addOrUpdate(WebView *webView, URL &url, WTF::String &title);
+    void remove(URL &url);
+    void pruneOlderEntries();
 
-	int	m_maxEntries;
-	filtermode_t m_filterMode;	
-	displaymode_t m_displayMode;
-	int m_screenshotSize;
-	WTF::RefPtr<SharedBuffer> m_placeholderImage;
-	WTF::RefPtr<SharedBuffer> m_closeImage;
-	
+    int    m_maxEntries;
+    filtermode_t m_filterMode;    
+    displaymode_t m_displayMode;
+    int m_screenshotSize;
+    WTF::RefPtr<SharedBuffer> m_placeholderImage;
+    WTF::RefPtr<SharedBuffer> m_closeImage;
+    
 };
 
 } // WebCore

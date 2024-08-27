@@ -562,10 +562,10 @@ public:
      */
     WebView* webView() const;
 
-	/**
-	 * set webview
-	 */	   
-	void setWebView(WebView*);
+    /**
+     * set webview
+     */       
+    void setWebView(WebView*);
 
     /**
      * add to JSWindow object
@@ -613,12 +613,12 @@ protected:
      */
     virtual JSGlobalContextRef globalContext();
 
-	
-	/**
+    
+    /**
      *  init WebFrame
      */
-	WTF::Ref<WebCore::Frame> createSubframeWithOwnerElement(WebView*, WebCore::Page*, WebCore::HTMLFrameOwnerElement*); 
- 	void initWithWebView(WebView*, WebCore::Page*); 
+    WTF::Ref<WebCore::Frame> createSubframeWithOwnerElement(WebView*, WebCore::Page*, WebCore::HTMLFrameOwnerElement*); 
+     void initWithWebView(WebView*, WebCore::Page*); 
 
     /**
      * get frame

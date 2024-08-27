@@ -421,12 +421,12 @@ void WebPreferences::setFantasyFontFamily(const char* family)
 
 string WebPreferences::pictographFontFamily()
 {
-	return stringValueForKey(WebKitPictographFontPreferenceKey);
+    return stringValueForKey(WebKitPictographFontPreferenceKey);
 }
 
 void WebPreferences::setPictographFontFamily(const char* family)
 {
-	setStringValue(WebKitPictographFontPreferenceKey, family);
+    setStringValue(WebKitPictographFontPreferenceKey, family);
 }
 
 int WebPreferences::defaultFontSize()
@@ -660,12 +660,12 @@ void WebPreferences::setCSSRegionsEnabled(bool enabled)
 
 bool WebPreferences::areImagesEnabled()
 {
-	return boolValueForKey(WebKitDisplayImagesKey);
+    return boolValueForKey(WebKitDisplayImagesKey);
 }
 
 void WebPreferences::setImagesEnabled(bool enabled)
 {
-	setBoolValue(WebKitDisplayImagesKey, enabled);
+    setBoolValue(WebKitDisplayImagesKey, enabled);
 }
 
 bool WebPreferences::allowsAnimatedImages()
@@ -690,12 +690,12 @@ void WebPreferences::setAllowAnimatedImageLooping(bool enabled)
 
 void WebPreferences::setLoadsImagesAutomatically(bool enabled)
 {
-	setBoolValue(WebKitLoadImagesKey, enabled);
+    setBoolValue(WebKitLoadImagesKey, enabled);
 }
 
 bool WebPreferences::loadsImagesAutomatically()
 {
-	return boolValueForKey(WebKitLoadImagesKey);
+    return boolValueForKey(WebKitLoadImagesKey);
 }
 
 void WebPreferences::setAutosaves(bool enabled)
@@ -1158,51 +1158,51 @@ void WebPreferences::setSpatialNavigationEnabled(bool enabled)
 
 void WebPreferences::setMediaPlaybackRequiresUserGesture(bool enabled)
 {
-	setBoolValue(WebKitMediaPlaybackRequiresUserGesturePreferenceKey, enabled);
+    setBoolValue(WebKitMediaPlaybackRequiresUserGesturePreferenceKey, enabled);
 }
 
 bool WebPreferences::mediaPlaybackRequiresUserGesture()
 {
-	return boolValueForKey(WebKitMediaPlaybackRequiresUserGesturePreferenceKey);
+    return boolValueForKey(WebKitMediaPlaybackRequiresUserGesturePreferenceKey);
 }
 
 void WebPreferences::setMediaPlaybackAllowsInline(bool enabled)
 {
-	setBoolValue(WebKitMediaPlaybackAllowsInlinePreferenceKey, enabled);
+    setBoolValue(WebKitMediaPlaybackAllowsInlinePreferenceKey, enabled);
 }
 
 bool WebPreferences::mediaPlaybackAllowsInline()
 {
-	return boolValueForKey(WebKitMediaPlaybackAllowsInlinePreferenceKey);
+    return boolValueForKey(WebKitMediaPlaybackAllowsInlinePreferenceKey);
 }
 
 
 void WebPreferences::setShouldDisplaySubtitles(bool enabled)
 {
-	setBoolValue(WebKitShouldDisplaySubtitlesPreferenceKey, enabled);
+    setBoolValue(WebKitShouldDisplaySubtitlesPreferenceKey, enabled);
 }
 
 bool WebPreferences::shouldDisplaySubtitles()
 {
-	return boolValueForKey(WebKitShouldDisplaySubtitlesPreferenceKey);
+    return boolValueForKey(WebKitShouldDisplaySubtitlesPreferenceKey);
 }
 
 void WebPreferences::setShouldDisplayCaptions(bool enabled)
 {
-	setBoolValue(WebKitShouldDisplayCaptionsPreferenceKey, enabled);
+    setBoolValue(WebKitShouldDisplayCaptionsPreferenceKey, enabled);
 }
 
 bool WebPreferences::shouldDisplayCaptions()
 {
-	return boolValueForKey(WebKitShouldDisplayCaptionsPreferenceKey);
+    return boolValueForKey(WebKitShouldDisplayCaptionsPreferenceKey);
 }
 
 void WebPreferences::setShouldDisplayTextDescriptions(bool enabled)
 {
-	setBoolValue(WebKitShouldDisplayTextDescriptionsPreferenceKey, enabled);
+    setBoolValue(WebKitShouldDisplayTextDescriptionsPreferenceKey, enabled);
 }
 
 bool WebPreferences::shouldDisplayTextDescriptions()
 {
-	return boolValueForKey(WebKitShouldDisplayTextDescriptionsPreferenceKey);
+    return boolValueForKey(WebKitShouldDisplayTextDescriptionsPreferenceKey);
 }

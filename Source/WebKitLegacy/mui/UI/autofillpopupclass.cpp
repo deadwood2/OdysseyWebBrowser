@@ -45,124 +45,124 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *lv_suggestions;
-	Object *source;
+    Object *lv_suggestions;
+    Object *source;
 };
 
 DEFNEW
 {
-	Object *lv_suggestions;
-	Object *source              = (Object *) GetTagData(MA_AutofillPopup_Source, 0, msg->ops_AttrList);
-	IntRect *rect               = (IntRect *) GetTagData(MA_AutofillPopup_Rect, 0, msg->ops_AttrList);
-	Vector<String> *suggestions = (Vector<String> *) GetTagData(MA_AutofillPopup_Suggestions, 0, msg->ops_AttrList);
-	struct Rect32 r = { _mleft(source) + rect->x(), _mtop(source) + rect->y() + rect->height(), _mleft(source) + rect->maxX(), _mtop(source) + rect->y() + rect->height() + 100 };
+    Object *lv_suggestions;
+    Object *source              = (Object *) GetTagData(MA_AutofillPopup_Source, 0, msg->ops_AttrList);
+    IntRect *rect               = (IntRect *) GetTagData(MA_AutofillPopup_Rect, 0, msg->ops_AttrList);
+    Vector<String> *suggestions = (Vector<String> *) GetTagData(MA_AutofillPopup_Suggestions, 0, msg->ops_AttrList);
+    struct Rect32 r = { _mleft(source) + rect->x(), _mtop(source) + rect->y() + rect->height(), _mleft(source) + rect->maxX(), _mtop(source) + rect->y() + rect->height() + 100 };
 
-	obj = (Object *) DoSuperNew(cl, obj,
-		MUIA_Window_RootObject,
-			VGroup, MUIA_FixWidth, rect->width(),
-				Child, lv_suggestions = (Object *) NewObject(getautofillpopuplistclass(), NULL, TAG_DONE),
-				End,
-		MUIA_Calltips_Source, source,
-		MUIA_Calltips_Rectangle, &r,
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        MUIA_Window_RootObject,
+            VGroup, MUIA_FixWidth, rect->width(),
+                Child, lv_suggestions = (Object *) NewObject(getautofillpopuplistclass(), NULL, TAG_DONE),
+                End,
+        MUIA_Calltips_Source, source,
+        MUIA_Calltips_Rectangle, &r,
+        TAG_MORE, INITTAGS
+    );
 
-	if (obj)
-	{
-		GETDATA;
-		data->lv_suggestions = lv_suggestions;
-		data->source = source;
+    if (obj)
+    {
+        GETDATA;
+        data->lv_suggestions = lv_suggestions;
+        data->source = source;
 
-		for(size_t i = 0; i < suggestions->size(); i++)
-		{
-			DoMethod(data->lv_suggestions, MUIM_List_InsertSingle, &((*suggestions)[i]), MUIV_List_Insert_Bottom);
-		}
+        for(size_t i = 0; i < suggestions->size(); i++)
+        {
+            DoMethod(data->lv_suggestions, MUIM_List_InsertSingle, &((*suggestions)[i]), MUIV_List_Insert_Bottom);
+        }
 
-		DoMethod(data->lv_suggestions, MUIM_Notify, MUIA_List_Active, MUIV_EveryTime, obj, 3, MM_AutofillPopup_DidSelect, MUIV_TriggerValue, FALSE);
-		DoMethod(data->lv_suggestions, MUIM_Notify, MUIA_List_DoubleClick, MUIV_EveryTime, obj, 3, MM_AutofillPopup_DidSelect, -1, TRUE);
-	}
-	return ((IPTR)obj);
+        DoMethod(data->lv_suggestions, MUIM_Notify, MUIA_List_Active, MUIV_EveryTime, obj, 3, MM_AutofillPopup_DidSelect, MUIV_TriggerValue, FALSE);
+        DoMethod(data->lv_suggestions, MUIM_Notify, MUIA_List_DoubleClick, MUIV_EveryTime, obj, 3, MM_AutofillPopup_DidSelect, -1, TRUE);
+    }
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFSMETHOD(AutofillPopup_Update)
 {
-	GETDATA;
+    GETDATA;
 
-	Vector<String> *suggestions = (Vector<String> *) msg->suggestions;
+    Vector<String> *suggestions = (Vector<String> *) msg->suggestions;
 
-	DoMethod(data->lv_suggestions, MUIM_List_Clear);
+    DoMethod(data->lv_suggestions, MUIM_List_Clear);
 
-	for(size_t i = 0; i < suggestions->size(); i++)
-	{
-		DoMethod(data->lv_suggestions, MUIM_List_InsertSingle, &((*suggestions)[i]), MUIV_List_Insert_Bottom);
-	}
+    for(size_t i = 0; i < suggestions->size(); i++)
+    {
+        DoMethod(data->lv_suggestions, MUIM_List_InsertSingle, &((*suggestions)[i]), MUIV_List_Insert_Bottom);
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFSMETHOD(AutofillPopup_DidSelect)
 {
-	GETDATA;
+    GETDATA;
 
-	String *value;
+    String *value;
 
-	if(msg->idx == -1)
-	{
-		msg->idx = getv(data->lv_suggestions, MUIA_List_Active);
-	}
+    if(msg->idx == -1)
+    {
+        msg->idx = getv(data->lv_suggestions, MUIA_List_Active);
+    }
 
-	DoMethod(data->lv_suggestions, MUIM_List_GetEntry, msg->idx, &value);
+    DoMethod(data->lv_suggestions, MUIM_List_GetEntry, msg->idx, &value);
 
-	if(value)
-	{
-		DoMethod(data->source, MM_OWBBrowser_Autofill_DidSelect, value);
-	}
+    if(value)
+    {
+        DoMethod(data->source, MM_OWBBrowser_Autofill_DidSelect, value);
+    }
 
-	if(msg->close)
-	{
-		DoMethod(app, MUIM_Application_PushMethod, data->source, 1, MM_OWBBrowser_Autofill_HidePopup);
-	}
+    if(msg->close)
+    {
+        DoMethod(app, MUIM_Application_PushMethod, data->source, 1, MM_OWBBrowser_Autofill_HidePopup);
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFSMETHOD(AutofillPopup_HandleNavigationEvent)
 {
-	GETDATA;
-	IPTR handled = FALSE;
+    GETDATA;
+    IPTR handled = FALSE;
 
-	if(getv(obj, MUIA_Window_Open))
-	{
-		switch(msg->event)
-		{
-			case MV_AutofillPopup_HandleNavigationEvent_Down:
-				set(data->lv_suggestions, MUIA_List_Active, MUIV_List_Active_Down);
-				handled = true;
-				break;
+    if(getv(obj, MUIA_Window_Open))
+    {
+        switch(msg->event)
+        {
+            case MV_AutofillPopup_HandleNavigationEvent_Down:
+                set(data->lv_suggestions, MUIA_List_Active, MUIV_List_Active_Down);
+                handled = true;
+                break;
 
-			case MV_AutofillPopup_HandleNavigationEvent_Up:
-				set(data->lv_suggestions, MUIA_List_Active, MUIV_List_Active_Up);
-				handled = true;
-				break;
+            case MV_AutofillPopup_HandleNavigationEvent_Up:
+                set(data->lv_suggestions, MUIA_List_Active, MUIV_List_Active_Up);
+                handled = true;
+                break;
 
-			case MV_AutofillPopup_HandleNavigationEvent_Accept:
-				DoMethod(obj, MM_AutofillPopup_DidSelect, -1, TRUE);
-				handled = true;
-				break;
+            case MV_AutofillPopup_HandleNavigationEvent_Accept:
+                DoMethod(obj, MM_AutofillPopup_DidSelect, -1, TRUE);
+                handled = true;
+                break;
 
-			case MV_AutofillPopup_HandleNavigationEvent_Close:
-				DoMethod(app, MUIM_Application_PushMethod, data->source, 1, MM_OWBBrowser_Autofill_HidePopup);
-				handled = true;
-				break;
-		}
-	}
+            case MV_AutofillPopup_HandleNavigationEvent_Close:
+                DoMethod(app, MUIM_Application_PushMethod, data->source, 1, MM_OWBBrowser_Autofill_HidePopup);
+                handled = true;
+                break;
+        }
+    }
 
-	return handled;
+    return handled;
 }
 
 BEGINMTABLE

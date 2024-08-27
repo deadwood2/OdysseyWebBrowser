@@ -56,18 +56,18 @@
 #else
 #ifdef __MORPHOS__
 #define BEGINMTABLE static ULONG dispatch(void); \
-	static struct EmulLibEntry GATE_dispatch = \
-	{ \
-		TRAP_LIB, 0, (void (*)(void)) dispatch \
-	}; \
-	static ULONG dispatch(void) \
-	{ \
-		struct IClass *cl = (struct IClass *)REG_A0; \
-		Msg msg = (Msg)REG_A1; \
-		Object *obj = (Object *)REG_A2; \
-		MAINTASK; \
-		switch (msg->MethodID) \
-		{
+    static struct EmulLibEntry GATE_dispatch = \
+    { \
+        TRAP_LIB, 0, (void (*)(void)) dispatch \
+    }; \
+    static ULONG dispatch(void) \
+    { \
+        struct IClass *cl = (struct IClass *)REG_A0; \
+        Msg msg = (Msg)REG_A1; \
+        Object *obj = (Object *)REG_A2; \
+        MAINTASK; \
+        switch (msg->MethodID) \
+        {
 
 #else
 #define BEGINMTABLE static ULONG dispatch( __reg(a0, struct IClass *cl), __reg(a2, Object *obj), __reg(a1, Msg msg)){switch(msg->MethodID){
@@ -178,78 +178,78 @@
  * Creates a subclass (constructor type)
  */
 #define DECSUBCLASS(super,name,pri) struct MUI_CustomClass *classp##name;\
-	CONSTRUCTOR_P(init##name,pri){\
-		classp##name=MUI_CreateCustomClass(NULL,super,NULL,sizeof(struct Data),(APTR)DISPATCHERREF);\
-		if(classp##name&&MUIMasterBase->lib_Version>=20)classp##name->mcc_Class->cl_ID=#name;\
-		return(classp##name?0:-1);\
-	}\
-	DESTRUCTOR_P(init##name,pri){if(classp##name)MUI_DeleteCustomClass(classp##name);}\
-	APTR get##name(void){return(classp##name->mcc_Class);}
+    CONSTRUCTOR_P(init##name,pri){\
+        classp##name=MUI_CreateCustomClass(NULL,super,NULL,sizeof(struct Data),(APTR)DISPATCHERREF);\
+        if(classp##name&&MUIMasterBase->lib_Version>=20)classp##name->mcc_Class->cl_ID=#name;\
+        return(classp##name?0:-1);\
+    }\
+    DESTRUCTOR_P(init##name,pri){if(classp##name)MUI_DeleteCustomClass(classp##name);}\
+    APTR get##name(void){return(classp##name->mcc_Class);}
 
 /*
  * Creates a subclass of one of your own subclass (constructor type)
  */
 #define DECSUBCLASSPTR(super,name,pri) struct MUI_CustomClass *classp##name;\
-	CONSTRUCTOR_P(init##name,pri){\
-		extern struct MUI_CustomClass *classp##super;\
-		classp##name=MUI_CreateCustomClass(NULL,NULL,classp##super,sizeof(struct Data),(APTR)DISPATCHERREF);\
-		if(classp##name&&MUIMasterBase->lib_Version>=20)classp##name->mcc_Class->cl_ID=#name;\
-		return(classp##name?0:-1);\
-	}\
-	DESTRUCTOR_P(init##name,pri){if(classp##name)MUI_DeleteCustomClass(classp##name);}\
-	IClass *get##name(void){return(classp##name->mcc_Class);}
+    CONSTRUCTOR_P(init##name,pri){\
+        extern struct MUI_CustomClass *classp##super;\
+        classp##name=MUI_CreateCustomClass(NULL,NULL,classp##super,sizeof(struct Data),(APTR)DISPATCHERREF);\
+        if(classp##name&&MUIMasterBase->lib_Version>=20)classp##name->mcc_Class->cl_ID=#name;\
+        return(classp##name?0:-1);\
+    }\
+    DESTRUCTOR_P(init##name,pri){if(classp##name)MUI_DeleteCustomClass(classp##name);}\
+    IClass *get##name(void){return(classp##name->mcc_Class);}
 
 /*
  * Creates a subclass (no constructor)
  */
 #define DECSUBCLASS_NC(super,name) static struct MUI_CustomClass *mcc##name; \
-	ULONG create_##name(void) \
-	{ \
-		if (!(mcc##name = (struct MUI_CustomClass *)MUI_CreateCustomClass(NULL, super, NULL, sizeof(struct Data), (APTR)DISPATCHERREF))) \
-			return (FALSE); \
-			if (MUIMasterBase->lib_Version >= 20) \
-				mcc##name->mcc_Class->cl_ID = (CONST_STRPTR) #name; \
-		return (TRUE); \
-	} \
-	void delete_##name(void) \
-	{ \
-		if (mcc##name) \
-			MUI_DeleteCustomClass(mcc##name); \
-	} \
-	IClass *get##name(void) \
-	{ \
-		return (mcc##name->mcc_Class); \
-	} \
-	APTR get##name##root(void) \
-	{ \
-		return (mcc##name); \
-	}
+    ULONG create_##name(void) \
+    { \
+        if (!(mcc##name = (struct MUI_CustomClass *)MUI_CreateCustomClass(NULL, super, NULL, sizeof(struct Data), (APTR)DISPATCHERREF))) \
+            return (FALSE); \
+            if (MUIMasterBase->lib_Version >= 20) \
+                mcc##name->mcc_Class->cl_ID = (CONST_STRPTR) #name; \
+        return (TRUE); \
+    } \
+    void delete_##name(void) \
+    { \
+        if (mcc##name) \
+            MUI_DeleteCustomClass(mcc##name); \
+    } \
+    IClass *get##name(void) \
+    { \
+        return (mcc##name->mcc_Class); \
+    } \
+    APTR get##name##root(void) \
+    { \
+        return (mcc##name); \
+    }
 
 /*
  * Creates a subclass of one of your own subclass (no constructor)
  */
 #define DECSUBCLASSPTR_NC(super,name) static struct MUI_CustomClass *mcc##name; \
-	ULONG create_##name(void) \
-	{ \
-		if (!(mcc##name = (struct MUI_CustomClass *)MUI_CreateCustomClass(NULL, NULL, (struct MUI_CustomClass *) get##super##root(), sizeof(struct Data), (APTR)DISPATCHERREF))) \
-			return (FALSE); \
-			if (MUIMasterBase->lib_Version >= 20) \
-				mcc##name->mcc_Class->cl_ID = (CONST_STRPTR) #name; \
-		return (TRUE); \
-	} \
-	void delete_##name(void) \
-	{ \
-		if (mcc##name) \
-			MUI_DeleteCustomClass(mcc##name); \
-	} \
-	IClass *get##name(void) \
-	{ \
-		return (mcc##name->mcc_Class); \
-	} \
-	APTR get##name##root(void) \
-	{ \
-		return (mcc##name); \
-	}
+    ULONG create_##name(void) \
+    { \
+        if (!(mcc##name = (struct MUI_CustomClass *)MUI_CreateCustomClass(NULL, NULL, (struct MUI_CustomClass *) get##super##root(), sizeof(struct Data), (APTR)DISPATCHERREF))) \
+            return (FALSE); \
+            if (MUIMasterBase->lib_Version >= 20) \
+                mcc##name->mcc_Class->cl_ID = (CONST_STRPTR) #name; \
+        return (TRUE); \
+    } \
+    void delete_##name(void) \
+    { \
+        if (mcc##name) \
+            MUI_DeleteCustomClass(mcc##name); \
+    } \
+    IClass *get##name(void) \
+    { \
+        return (mcc##name->mcc_Class); \
+    } \
+    APTR get##name##root(void) \
+    { \
+        return (mcc##name); \
+    }
 
 
 /* get()/set() */
@@ -284,21 +284,21 @@
  * return type is LONG
  */
 #define MUI_HOOK(n, y, z) \
-	static LONG n##_GATE(void); \
-	static LONG n##_GATE2(struct Hook *h, y, z); \
-	struct EmulLibEntry n = { \
-	TRAP_LIB, 0, (void (*)(void))n##_GATE }; \
-	static LONG n##_GATE(void) { \
-	return (n##_GATE2((struct Hook *)REG_A0, (void *)REG_A2, (void *)REG_A1)); } \
-	static struct Hook n##_hook = { { 0, 0}, (ULONG (*)(void))&n, (ULONG (*)(void))&n##_GATE2 , NULL }; \
-	static LONG n##_GATE2(struct Hook *h, y, z)
+    static LONG n##_GATE(void); \
+    static LONG n##_GATE2(struct Hook *h, y, z); \
+    struct EmulLibEntry n = { \
+    TRAP_LIB, 0, (void (*)(void))n##_GATE }; \
+    static LONG n##_GATE(void) { \
+    return (n##_GATE2((struct Hook *)REG_A0, (void *)REG_A2, (void *)REG_A1)); } \
+    static struct Hook n##_hook = { { 0, 0}, (ULONG (*)(void))&n, (ULONG (*)(void))&n##_GATE2 , NULL }; \
+    static LONG n##_GATE2(struct Hook *h, y, z)
 #else
 #define DEFHOOK(n) static struct Hook n##_hook={0,0,(HOOKFUNC)n##_func}
 
 #define MUI_HOOK(n, y, z) \
-	static LONG ASM SAVEDS n##_func(__reg(a0, struct Hook *h), __reg(a2, y), __reg(a1, z)); \
-	static struct Hook n##_hook = { 0, 0, (HOOKFUNC)n##_func }; \
-	static LONG ASM SAVEDS n##_func(__reg(a0, struct Hook *h), __reg(a2, y), __reg(a1, z))
+    static LONG ASM SAVEDS n##_func(__reg(a0, struct Hook *h), __reg(a2, y), __reg(a1, z)); \
+    static struct Hook n##_hook = { 0, 0, (HOOKFUNC)n##_func }; \
+    static LONG ASM SAVEDS n##_func(__reg(a0, struct Hook *h), __reg(a2, y), __reg(a1, z))
 
 #define __callback __asm __saveds
 #endif /* !_MORPHOS__ */

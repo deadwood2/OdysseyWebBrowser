@@ -18,84 +18,84 @@ VOID ProcessPixelArray(struct RastPort *, ULONG, ULONG, ULONG, ULONG, ULONG, LON
 
 struct Data
 {
-	ULONG brightness_threshold;
-	ULONG brightness_checked;
+    ULONG brightness_threshold;
+    ULONG brightness_checked;
 };
 
 DEFNEW
 {
-	FORTAG( INITTAGS )
-	{
-		case MUIA_Background:
-			((struct TagItem *)tag)->ti_Tag = TAG_IGNORE;
-			break;
+    FORTAG( INITTAGS )
+    {
+        case MUIA_Background:
+            ((struct TagItem *)tag)->ti_Tag = TAG_IGNORE;
+            break;
 
-		case MUIA_Frame:
-			((struct TagItem *)tag)->ti_Tag = TAG_IGNORE;
-			break;
-	}
-	NEXTTAG
+        case MUIA_Frame:
+            ((struct TagItem *)tag)->ti_Tag = TAG_IGNORE;
+            break;
+    }
+    NEXTTAG
 
-	obj = (Object *) DoSuperNew(cl, obj,
-		MUIA_CycleChain,   FALSE,
-		InnerSpacing(0,0),
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        MUIA_CycleChain,   FALSE,
+        InnerSpacing(0,0),
+        TAG_MORE, INITTAGS
+    );
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->brightness_checked   = FALSE;
-		data->brightness_threshold = 255;
-	}
+        data->brightness_checked   = FALSE;
+        data->brightness_threshold = 255;
+    }
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 #define SPACE_WIDTH  10
 
 DEFMMETHOD(AskMinMax)
 {
-	ULONG maxwidth, defwidth, minwidth;
+    ULONG maxwidth, defwidth, minwidth;
 
-	DOSUPER;
+    DOSUPER;
 
-	maxwidth = SPACE_WIDTH;
-	defwidth = SPACE_WIDTH;
-	minwidth = SPACE_WIDTH;
+    maxwidth = SPACE_WIDTH;
+    defwidth = SPACE_WIDTH;
+    minwidth = SPACE_WIDTH;
 
-	msg->MinMaxInfo->MinWidth  += minwidth;
-	msg->MinMaxInfo->DefWidth  += defwidth;
-	msg->MinMaxInfo->MaxWidth  += maxwidth;
+    msg->MinMaxInfo->MinWidth  += minwidth;
+    msg->MinMaxInfo->DefWidth  += defwidth;
+    msg->MinMaxInfo->MaxWidth  += maxwidth;
 
-	msg->MinMaxInfo->MinHeight += 22;
-	msg->MinMaxInfo->MaxHeight += 48;
-	msg->MinMaxInfo->DefHeight += 22;
+    msg->MinMaxInfo->MinHeight += 22;
+    msg->MinMaxInfo->MaxHeight += 48;
+    msg->MinMaxInfo->DefHeight += 22;
 
-	return 0;
+    return 0;
 }
 
 DEFMMETHOD(Draw)
 {
-	DOSUPER;
+    DOSUPER;
 
-	if (msg->flags & MADF_DRAWOBJECT)
-	{
-		struct RastPort *rp = _rp(obj);
+    if (msg->flags & MADF_DRAWOBJECT)
+    {
+        struct RastPort *rp = _rp(obj);
 
-		ULONG mleft         = _mleft(obj);
-		ULONG mtop          = _mtop(obj);
-		ULONG mwidth        = _mwidth(obj);
-		ULONG mheight       = _mheight(obj);
+        ULONG mleft         = _mleft(obj);
+        ULONG mtop          = _mtop(obj);
+        ULONG mwidth        = _mwidth(obj);
+        ULONG mheight       = _mheight(obj);
 
-		ULONG vertoffs   = mleft + (mwidth / 2);
+        ULONG vertoffs   = mleft + (mwidth / 2);
 
-		ProcessPixelArray( rp, vertoffs,     mtop + 1, 1, mheight - 2, POP_BRIGHTEN, 70, NULL);
-		ProcessPixelArray( rp, vertoffs - 1, mtop + 1, 1, mheight - 2, POP_DARKEN,   70, NULL);
-	}
+        ProcessPixelArray( rp, vertoffs,     mtop + 1, 1, mheight - 2, POP_BRIGHTEN, 70, NULL);
+        ProcessPixelArray( rp, vertoffs - 1, mtop + 1, 1, mheight - 2, POP_DARKEN,   70, NULL);
+    }
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

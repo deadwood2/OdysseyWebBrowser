@@ -789,7 +789,7 @@ void DOMHTMLInputElement::setAutofilled(bool filled)
 
 bool DOMHTMLInputElement::isAutofilled()
 {
-	ASSERT(m_element);
+    ASSERT(m_element);
     ASSERT(m_element->hasTagName(inputTag));
     HTMLInputElement* inputElement = static_cast<HTMLInputElement*>(m_element);
     return inputElement->isAutoFilled();

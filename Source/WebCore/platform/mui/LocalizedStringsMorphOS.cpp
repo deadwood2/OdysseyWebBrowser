@@ -41,7 +41,7 @@ namespace WebCore {
 
 String submitButtonDefaultLabel()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_SUBMIT));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_SUBMIT));
 }
 
 String inputElementAltText()
@@ -51,17 +51,17 @@ String inputElementAltText()
 
 String resetButtonDefaultLabel()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_RESET));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_RESET));
 }
 
 String searchableIndexIntroduction()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_SEARCHABLE_INDEX));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_SEARCHABLE_INDEX));
 }
 
 String fileButtonChooseFileLabel()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_CHOOSE_FILE));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_CHOOSE_FILE));
 }
 
 String fileButtonChooseMultipleFilesLabel()
@@ -71,7 +71,7 @@ String fileButtonChooseMultipleFilesLabel()
 
 String fileButtonNoFileSelectedLabel()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_NO_FILE));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_NO_FILE));
 }
 
 String fileButtonNoFilesSelectedLabel()
@@ -86,7 +86,7 @@ String defaultDetailsSummaryText()
 
 String contextMenuItemTagOpenLinkInNewWindow()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_IN_NEW_WINDOW));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_IN_NEW_WINDOW));
 }
 
 String contextMenuItemTagOpenLinkInNewTab()
@@ -101,27 +101,27 @@ String contextMenuItemTagOpenLinkInNewBackgroundTab()
 
 String contextMenuItemTagDownloadLinkToDisk()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_DOWNLOAD_LINK));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_DOWNLOAD_LINK));
 }
 
 String contextMenuItemTagCopyLinkToClipboard()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_COPY_LINK_LOCATION));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_COPY_LINK_LOCATION));
 }
 
 String contextMenuItemTagOpenImageInNewWindow()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_WINDOW));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_WINDOW));
 }
 
 String contextMenuItemTagDownloadImageToDisk()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_SAVE_IMAGE_AS));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_SAVE_IMAGE_AS));
 }
 
 String contextMenuItemTagCopyImageToClipboard()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_COPY_IMAGE));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_COPY_IMAGE));
 }
 
 String contextMenuItemTagCopyImageUrlToClipboard()
@@ -141,7 +141,7 @@ String contextMenuItemTagBlockImage()
 
 String contextMenuItemTagOpenFrameInNewWindow()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_FRAME_IN_NEW_WINDOW));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_FRAME_IN_NEW_WINDOW));
 }
 
 String contextMenuItemTagOpenFrameInNewTab()
@@ -151,125 +151,125 @@ String contextMenuItemTagOpenFrameInNewTab()
 
 String contextMenuItemTagCopy()
 {
-	static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_COPY));
+    static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_COPY));
     return stockLabel;
 }
 
 String contextMenuItemTagDelete()
 {
-	static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_DELETE));
+    static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_DELETE));
     return stockLabel;
 }
 
 String contextMenuItemTagSelectAll()
 {
-	static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_SELECT_ALL));
+    static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_SELECT_ALL));
     return stockLabel;
 }
 
 String contextMenuItemTagUnicode()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_INSERT_UNICODE));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_INSERT_UNICODE));
 }
 
 String contextMenuItemTagInputMethods()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_INPUT_METHODS));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_INPUT_METHODS));
 }
 
 String contextMenuItemTagGoBack()
 {
-	static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_BACK));
+    static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_BACK));
     return stockLabel;
 }
 
 String contextMenuItemTagGoForward()
 {
-	static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_FORWARD));
+    static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_FORWARD));
     return stockLabel;
 }
 
 String contextMenuItemTagStop()
 {
-	static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_STOP));
+    static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_STOP));
     return stockLabel;
 }
 
 String contextMenuItemTagReload()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_RELOAD));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_RELOAD));
 }
 
 String contextMenuItemTagCut()
 {
-	static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_CUT));
+    static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_CUT));
     return stockLabel;
 }
 
 String contextMenuItemTagPaste()
 {
-	static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_PASTE));
+    static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_PASTE));
     return stockLabel;
 }
 
 String contextMenuItemTagNoGuessesFound()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_NO_GUESSES));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_NO_GUESSES));
 }
 
 String contextMenuItemTagIgnoreSpelling()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_IGNORE_SPELLING));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_IGNORE_SPELLING));
 }
 
 String contextMenuItemTagLearnSpelling()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_LEARN_SPELLING));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_LEARN_SPELLING));
 }
 
 String contextMenuItemTagSearchWeb()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_SEARCH));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_SEARCH));
 }
 
 String contextMenuItemTagLookUpInDictionary()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_LOOKUP_IN_DICTIONARY));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_LOOKUP_IN_DICTIONARY));
 }
 
 String contextMenuItemTagOpenLink()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_LINK));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_LINK));
 }
 
 String contextMenuItemTagIgnoreGrammar()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_IGNORE_GRAMMAR));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_IGNORE_GRAMMAR));
 }
 
 String contextMenuItemTagSpellingMenu()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_SPELLING_AND_GRAMMAR));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_SPELLING_AND_GRAMMAR));
 }
 
 String contextMenuItemTagShowSpellingPanel(bool show)
 {
-	return String::fromUTF8(show ? GSI(MSG_LOCALIZED_SHOW_SPELLING_AND_GRAMMAR) : GSI(MSG_LOCALIZED_HIDE_SPELLING_AND_GRAMMAR));
+    return String::fromUTF8(show ? GSI(MSG_LOCALIZED_SHOW_SPELLING_AND_GRAMMAR) : GSI(MSG_LOCALIZED_HIDE_SPELLING_AND_GRAMMAR));
 }
 
 String contextMenuItemTagCheckSpelling()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_CHECK_DOCUMENT));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_CHECK_DOCUMENT));
 }
 
 String contextMenuItemTagCheckSpellingWhileTyping()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_CHECK_SPELLING_WHILE_TYPING));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_CHECK_SPELLING_WHILE_TYPING));
 }
 
 String contextMenuItemTagCheckGrammarWithSpelling()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_CHECK_GRAMMAR_WITH_SPELLING));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_CHECK_GRAMMAR_WITH_SPELLING));
 }
 
 String contextMenuItemTagDictionaryMenu()
@@ -279,7 +279,7 @@ String contextMenuItemTagDictionaryMenu()
 
 String contextMenuItemTagFontMenu()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_FONT));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_FONT));
 }
 
 String contextMenuItemTagBold()
@@ -290,87 +290,87 @@ String contextMenuItemTagBold()
 
 String contextMenuItemTagItalic()
 {
-	static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_ITALIC));
+    static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_ITALIC));
     return stockLabel;
 }
 
 String contextMenuItemTagUnderline()
 {
-	static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_UNDERLINE));
+    static String stockLabel = String::fromUTF8(GSI(MSG_LOCALIZED_UNDERLINE));
     return stockLabel;
 }
 
 String contextMenuItemTagOutline()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_OUTLINE));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_OUTLINE));
 }
 
 String contextMenuItemTagInspectElement()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_INSPECT_ELEMENT));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_INSPECT_ELEMENT));
 }
 
 String searchMenuNoRecentSearchesText()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_NO_RECENT_SEARCHES));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_NO_RECENT_SEARCHES));
 }
 
 String searchMenuRecentSearchesText()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_RECENT_SEARCHES));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_RECENT_SEARCHES));
 }
 
 String searchMenuClearRecentSearchesText()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_CLEAR_RECENT_SEARCHES));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_CLEAR_RECENT_SEARCHES));
 }
 
 String AXDefinitionListTermText()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_TERM));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_TERM));
 }
 
 String AXDefinitionListDefinitionText()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_DEFINITION));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_DEFINITION));
 }
 
 String contextMenuItemTagLeftToRight()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_LEFT_TO_RIGHT));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_LEFT_TO_RIGHT));
 }
 
 String contextMenuItemTagDefaultDirection()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_DEFAULT_DIRECTION));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_DEFAULT_DIRECTION));
 }
 
 String contextMenuItemTagRightToLeft()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_RIGHT_TO_LEFT));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_RIGHT_TO_LEFT));
 }
 
 String contextMenuItemTagWritingDirectionMenu()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_WRITING_DIRECTION));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_WRITING_DIRECTION));
 }
 
 String contextMenuItemTagTextDirectionMenu()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_TEXT_DIRECTION));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_TEXT_DIRECTION));
 }
 
 String contextMenuItemTagOpenVideoInNewWindow()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_MEDIA_IN_NEW_WINDOW));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_MEDIA_IN_NEW_WINDOW));
 }
 String contextMenuItemTagOpenAudioInNewWindow()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_MEDIA_IN_NEW_WINDOW));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_MEDIA_IN_NEW_WINDOW));
 }
 String contextMenuItemTagCopyVideoLinkToClipboard()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_COPYMEDIAURL));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_COPYMEDIAURL));
 }
 String contextMenuItemTagCopyAudioLinkToClipboard()
 {
@@ -378,19 +378,19 @@ String contextMenuItemTagCopyAudioLinkToClipboard()
 }
 String contextMenuItemTagToggleMediaControls()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_MEDIACONTROLS));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_MEDIACONTROLS));
 }
 String contextMenuItemTagToggleMediaLoop()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_MEDIALOOP));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_MEDIALOOP));
 }
 String contextMenuItemTagEnterVideoFullscreen()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_SWITCH_TO_FULLSCREEN));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_SWITCH_TO_FULLSCREEN));
 }
 String contextMenuItemTagMediaPlay()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_PLAY));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_PLAY));
 }
 String contextMenuItemTagMediaPause()
 {
@@ -398,11 +398,11 @@ String contextMenuItemTagMediaPause()
 }
 String contextMenuItemTagMediaMute()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_MUTE));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_MUTE));
 }
 String contextMenuItemTagDownloadMedia()
 {
-	return String::fromUTF8(GSI(MSG_LOCALIZED_DOWNLOADMEDIA));
+    return String::fromUTF8(GSI(MSG_LOCALIZED_DOWNLOADMEDIA));
 }
 
 String contextMenuItemTagDownloadVideoToDisk()

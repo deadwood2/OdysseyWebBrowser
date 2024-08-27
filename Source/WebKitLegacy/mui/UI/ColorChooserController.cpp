@@ -53,7 +53,7 @@ void ColorChooserController::openUI()
 void ColorChooserController::setSelectedColor(const Color& color)
 {
     ASSERT(m_chooser);
-	m_chooser->setSelectedColor(color);
+    m_chooser->setSelectedColor(color);
 }
 
 void ColorChooserController::endChooser()
@@ -65,33 +65,33 @@ void ColorChooserController::endChooser()
 void ColorChooserController::didChooseColor(const Color& color)
 {
     ASSERT(m_client);
-	m_client->didChooseColor(color);
+    m_client->didChooseColor(color);
 }
 
 void ColorChooserController::didEndChooser()
 {
     ASSERT(m_client);
-	m_chooser.reset();
+    m_chooser.reset();
     m_client->didEndChooser();
 }
 
 IntRect ColorChooserController::elementRectRelativeToRootView() const
 {
     ASSERT(m_client);
-	return m_client->elementRectRelativeToRootView();
+    return m_client->elementRectRelativeToRootView();
 }
 
 void ColorChooserController::openColorChooser()
 {
     ASSERT(!m_chooser);
-	m_chooser = std::make_unique<ColorChooser>();
+    m_chooser = std::make_unique<ColorChooser>();
 
-	BalWidget *widget = m_chromeClient->webView()->viewWindow();
+    BalWidget *widget = m_chromeClient->webView()->viewWindow();
 
-	if(widget)
-	{
-		Color color = m_client->currentColor();
-		DoMethod((Object *) widget->browser, MM_OWBBrowser_ColorChooser_ShowPopup, this, &color);
-	}
+    if(widget)
+    {
+        Color color = m_client->currentColor();
+        DoMethod((Object *) widget->browser, MM_OWBBrowser_ColorChooser_ShowPopup, this, &color);
+    }
 }
 

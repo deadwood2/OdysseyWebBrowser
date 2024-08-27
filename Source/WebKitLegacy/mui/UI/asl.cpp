@@ -43,226 +43,226 @@
 
 ULONG asl_run_multiple(STRPTR p, struct TagItem *tags, char *** files, ULONG remember_path)
 {
-	ULONG count = 0;
-	STRPTR dir, file;
+    ULONG count = 0;
+    STRPTR dir, file;
 
-	*files = NULL;
-	file = NULL;
-	dir = NULL;
+    *files = NULL;
+    file = NULL;
+    dir = NULL;
 
-	if (p)
-	{
-		dir = (STRPTR) AllocVecTaskPooled(strlen(p) + 1);
+    if (p)
+    {
+        dir = (STRPTR) AllocVecTaskPooled(strlen(p) + 1);
 
-		if (dir)
-		{
-			ULONG len;
-			BPTR l;
+        if (dir)
+        {
+            ULONG len;
+            BPTR l;
 
-			memset(dir, 0, strlen(p) + 1);
+            memset(dir, 0, strlen(p) + 1);
 
-			l = Lock(p, ACCESS_READ);
+            l = Lock(p, ACCESS_READ);
 
-			if(l)
-			{
-				struct FileInfoBlock fi;
+            if(l)
+            {
+                struct FileInfoBlock fi;
 
-				if(Examine(l, &fi))
-				{
+                if(Examine(l, &fi))
+                {
 
-					if(fi.fib_DirEntryType > 0)
-					{
-						len = strlen(p) + 1;
+                    if(fi.fib_DirEntryType > 0)
+                    {
+                        len = strlen(p) + 1;
                         stccpy(dir, p, len);
-						file = NULL;
-					}
-					else
-					{
-						file = FilePart(p);
-						len = file - p + 1;
-						stccpy(dir, p, len);
-					}
-				}
-				UnLock(l);
-			}
-			else
-			{
-				file = FilePart(p);
-				len = file - p + 1;
-				stccpy(dir, p, len);
-			}
-		}
-	}
+                        file = NULL;
+                    }
+                    else
+                    {
+                        file = FilePart(p);
+                        len = file - p + 1;
+                        stccpy(dir, p, len);
+                    }
+                }
+                UnLock(l);
+            }
+            else
+            {
+                file = FilePart(p);
+                len = file - p + 1;
+                stccpy(dir, p, len);
+            }
+        }
+    }
 
-	if (dir || !p)
-	{
-		struct FileRequester *req;
+    if (dir || !p)
+    {
+        struct FileRequester *req;
 
-		req = (struct FileRequester *)MUI_AllocAslRequestTags(ASL_FileRequest,
-			ASLFR_DoPatterns, TRUE,
-			ASLFR_DoMultiSelect, TRUE,
-			file == dir ? TAG_IGNORE : ASLFR_InitialDrawer, dir,
-			file ? ASLFR_InitialFile : TAG_IGNORE, file,
-			TAG_MORE, tags
-		);
+        req = (struct FileRequester *)MUI_AllocAslRequestTags(ASL_FileRequest,
+            ASLFR_DoPatterns, TRUE,
+            ASLFR_DoMultiSelect, TRUE,
+            file == dir ? TAG_IGNORE : ASLFR_InitialDrawer, dir,
+            file ? ASLFR_InitialFile : TAG_IGNORE, file,
+            TAG_MORE, tags
+        );
 
-		if (req)
-		{
-			set(app, MUIA_Application_Sleep, TRUE);
+        if (req)
+        {
+            set(app, MUIA_Application_Sleep, TRUE);
 
-			if (MUI_AslRequestTags(req, TAG_DONE))
-			{
-				count = req->fr_NumArgs;
+            if (MUI_AslRequestTags(req, TAG_DONE))
+            {
+                count = req->fr_NumArgs;
 
-				*files = (char **) AllocVecTaskPooled(count*sizeof(char *));
+                *files = (char **) AllocVecTaskPooled(count*sizeof(char *));
 
-				if(*files)
-				{
-					int i;
-					struct WBArg *ap;
-					char buf[256];
+                if(*files)
+                {
+                    int i;
+                    struct WBArg *ap;
+                    char buf[256];
 
-					for (ap=req->fr_ArgList,i=0;i<req->fr_NumArgs;i++,ap++)
-					{
-						if(NameFromLock(ap->wa_Lock, buf, sizeof(buf)))
-						{
-							if(remember_path)
-								set(app, MA_OWBApp_CurrentDirectory, buf);
+                    for (ap=req->fr_ArgList,i=0;i<req->fr_NumArgs;i++,ap++)
+                    {
+                        if(NameFromLock(ap->wa_Lock, buf, sizeof(buf)))
+                        {
+                            if(remember_path)
+                                set(app, MA_OWBApp_CurrentDirectory, buf);
 
-							AddPart((STRPTR) buf, (STRPTR) ap->wa_Name, sizeof(buf));
+                            AddPart((STRPTR) buf, (STRPTR) ap->wa_Name, sizeof(buf));
 
-							(*files)[i] = (char *) AllocVecTaskPooled(strlen(buf)+1);
+                            (*files)[i] = (char *) AllocVecTaskPooled(strlen(buf)+1);
 
-							if((*files)[i])
-							{
-								strcpy((*files)[i], buf);
-								//kprintf("selected file %d <%s>\n", i, (*files)[i]);
-							}
-						}
-					}
-				}
-			}
+                            if((*files)[i])
+                            {
+                                strcpy((*files)[i], buf);
+                                //kprintf("selected file %d <%s>\n", i, (*files)[i]);
+                            }
+                        }
+                    }
+                }
+            }
 
-			set(app, MUIA_Application_Sleep, FALSE);
+            set(app, MUIA_Application_Sleep, FALSE);
 
-			MUI_FreeAslRequest(req);
-		}
+            MUI_FreeAslRequest(req);
+        }
 
-		if (dir)
-		{
-			FreeVecTaskPooled(dir);
-		}
-	}
+        if (dir)
+        {
+            FreeVecTaskPooled(dir);
+        }
+    }
 
-	return count;
+    return count;
 }
 
 void asl_free(ULONG count, char ** files)
 {
-	ULONG i;
-	for(i = 0; i < count; i++)
-	{
-		FreeVecTaskPooled(files[i]);
-	}
-	FreeVecTaskPooled(files);
+    ULONG i;
+    for(i = 0; i < count; i++)
+    {
+        FreeVecTaskPooled(files[i]);
+    }
+    FreeVecTaskPooled(files);
 }
 
 char * asl_run(STRPTR p, struct TagItem *tags, ULONG remember_path)
 {
-	STRPTR result, dir, file;
+    STRPTR result, dir, file;
 
-	file = NULL;
-	dir = NULL;
+    file = NULL;
+    dir = NULL;
 
-	if (p)
-	{
-		dir = (STRPTR) AllocVecTaskPooled(strlen(p) + 1);
+    if (p)
+    {
+        dir = (STRPTR) AllocVecTaskPooled(strlen(p) + 1);
 
-		if (dir)
-		{
-			ULONG len;
-			BPTR l;
+        if (dir)
+        {
+            ULONG len;
+            BPTR l;
 
-			memset(dir, 0, strlen(p) + 1);
+            memset(dir, 0, strlen(p) + 1);
 
-			l = Lock(p, ACCESS_READ);
+            l = Lock(p, ACCESS_READ);
 
-			if(l)
-			{
-				struct FileInfoBlock fi;
+            if(l)
+            {
+                struct FileInfoBlock fi;
 
-				if(Examine(l, &fi))
-				{
+                if(Examine(l, &fi))
+                {
 
-					if(fi.fib_DirEntryType > 0)
-					{
-						len = strlen(p) + 1;
+                    if(fi.fib_DirEntryType > 0)
+                    {
+                        len = strlen(p) + 1;
                         stccpy(dir, p, len);
-						file = NULL;
-					}
-					else
-					{
-						file = FilePart(p);
-						len = file - p + 1;
-						stccpy(dir, p, len);
-					}
-				}
-				UnLock(l);
-			}
-			else
-			{
-				file = FilePart(p);
-				len = file - p + 1;
-				stccpy(dir, p, len);
-			}
-		}
-	}
+                        file = NULL;
+                    }
+                    else
+                    {
+                        file = FilePart(p);
+                        len = file - p + 1;
+                        stccpy(dir, p, len);
+                    }
+                }
+                UnLock(l);
+            }
+            else
+            {
+                file = FilePart(p);
+                len = file - p + 1;
+                stccpy(dir, p, len);
+            }
+        }
+    }
 
-	result = NULL;
+    result = NULL;
 
-	if (dir || !p)
-	{
-		struct FileRequester *req;
+    if (dir || !p)
+    {
+        struct FileRequester *req;
 
-		req = (struct FileRequester *)MUI_AllocAslRequestTags(ASL_FileRequest,
-			ASLFR_DoPatterns, TRUE,
-			file == dir ? TAG_IGNORE : ASLFR_InitialDrawer, dir,
-			file ? ASLFR_InitialFile : TAG_IGNORE, file,
-			TAG_MORE, tags
-		);
+        req = (struct FileRequester *)MUI_AllocAslRequestTags(ASL_FileRequest,
+            ASLFR_DoPatterns, TRUE,
+            file == dir ? TAG_IGNORE : ASLFR_InitialDrawer, dir,
+            file ? ASLFR_InitialFile : TAG_IGNORE, file,
+            TAG_MORE, tags
+        );
 
-		if (req)
-		{
-			set(app, MUIA_Application_Sleep, TRUE);
+        if (req)
+        {
+            set(app, MUIA_Application_Sleep, TRUE);
 
-			if (MUI_AslRequestTags(req, TAG_DONE))
-			{
-				ULONG tlen;
+            if (MUI_AslRequestTags(req, TAG_DONE))
+            {
+                ULONG tlen;
 
-				tlen = strlen(req->fr_Drawer) + strlen(req->fr_File) + 8;
+                tlen = strlen(req->fr_Drawer) + strlen(req->fr_File) + 8;
 
-				result = (STRPTR) AllocVecTaskPooled(tlen);
+                result = (STRPTR) AllocVecTaskPooled(tlen);
 
-				if (result)
-				{
-					strcpy(result, req->fr_Drawer);
-					AddPart(result, req->fr_File, tlen);
+                if (result)
+                {
+                    strcpy(result, req->fr_Drawer);
+                    AddPart(result, req->fr_File, tlen);
 
-					if(remember_path)
-						set(app, MA_OWBApp_CurrentDirectory, req->fr_Drawer);
-				}
-			}
+                    if(remember_path)
+                        set(app, MA_OWBApp_CurrentDirectory, req->fr_Drawer);
+                }
+            }
 
-			set(app, MUIA_Application_Sleep, FALSE);
+            set(app, MUIA_Application_Sleep, FALSE);
 
-			MUI_FreeAslRequest(req);
-		}
+            MUI_FreeAslRequest(req);
+        }
 
-		if (dir)
-		{
-			FreeVecTaskPooled(dir);
-		}
-	}
+        if (dir)
+        {
+            FreeVecTaskPooled(dir);
+        }
+    }
 
-	return result;
+    return result;
 }

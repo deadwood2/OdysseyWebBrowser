@@ -46,43 +46,43 @@ struct Data
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		InputListFrame,
-		MUIA_CycleChain, TRUE,
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        InputListFrame,
+        MUIA_CycleChain, TRUE,
+        TAG_MORE, INITTAGS
+    );
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFMMETHOD(List_Construct)
 {
-	String *entry = (String *) msg->entry;
-	return (IPTR) (new String(*entry));
+    String *entry = (String *) msg->entry;
+    return (IPTR) (new String(*entry));
 }
 
 DEFMMETHOD(List_Destruct)
 {
-	String *entry = (String *) msg->entry;
+    String *entry = (String *) msg->entry;
 
-	delete entry;
+    delete entry;
 
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Display)
 {
-	String *entry = (String *) msg->entry;
+    String *entry = (String *) msg->entry;
 
-	if (entry)
-	{
-		static char buffer[1024];
+    if (entry)
+    {
+        static char buffer[1024];
 
-		stccpy(buffer, utf8_to_local(entry->utf8().data()), sizeof(buffer));
-		msg->array[0] = buffer;
-	}
+        stccpy(buffer, utf8_to_local(entry->utf8().data()), sizeof(buffer));
+        msg->array[0] = buffer;
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 BEGINMTABLE

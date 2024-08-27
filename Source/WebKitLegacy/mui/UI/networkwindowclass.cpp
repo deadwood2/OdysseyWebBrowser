@@ -45,139 +45,139 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *lv_transfers;
+    Object *lv_transfers;
 };
 
 DEFNEW
 {
-	Object *lv_transfers;
-	Object *cancel, *cancel_all;
+    Object *lv_transfers;
+    Object *cancel, *cancel_all;
 
-	obj = (Object *) DoSuperNew(cl, obj,
-			MUIA_Window_ID, MAKE_ID('W','T','R','A'),
-			MUIA_Window_Title, GSI(MSG_NETWORKWINDOW_TITLE),
-			MUIA_Window_NoMenus, TRUE,
-			WindowContents, VGroup,
-				Child, VGroup,
-					Child, lv_transfers = (Object *) NewObject(getnetworklistclass(), NULL,TAG_DONE),
-					Child, HGroup,
-						Child, cancel = (Object *) MakeButton(GSI(MSG_NETWORKWINDOW_ABORT)),
-						Child, cancel_all = (Object *) MakeButton(GSI(MSG_NETWORKWINDOW_ABORT_ALL)),
-					End,
-				End,
-			End,
-			TAG_MORE, msg->ops_AttrList);
+    obj = (Object *) DoSuperNew(cl, obj,
+            MUIA_Window_ID, MAKE_ID('W','T','R','A'),
+            MUIA_Window_Title, GSI(MSG_NETWORKWINDOW_TITLE),
+            MUIA_Window_NoMenus, TRUE,
+            WindowContents, VGroup,
+                Child, VGroup,
+                    Child, lv_transfers = (Object *) NewObject(getnetworklistclass(), NULL,TAG_DONE),
+                    Child, HGroup,
+                        Child, cancel = (Object *) MakeButton(GSI(MSG_NETWORKWINDOW_ABORT)),
+                        Child, cancel_all = (Object *) MakeButton(GSI(MSG_NETWORKWINDOW_ABORT_ALL)),
+                    End,
+                End,
+            End,
+            TAG_MORE, msg->ops_AttrList);
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->lv_transfers = lv_transfers;
+        data->lv_transfers = lv_transfers;
 
-		DoMethod(obj,        MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 3, MUIM_Set, MUIA_Window_Open, FALSE);
-		DoMethod(cancel,     MUIM_Notify, MUIA_Pressed, FALSE, obj, 3, MM_NetworkWindow_Cancel, 0);
-		DoMethod(cancel_all, MUIM_Notify, MUIA_Pressed, FALSE, obj, 3, MM_NetworkWindow_Cancel, 1);
-	}
+        DoMethod(obj,        MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 3, MUIM_Set, MUIA_Window_Open, FALSE);
+        DoMethod(cancel,     MUIM_Notify, MUIA_Pressed, FALSE, obj, 3, MM_NetworkWindow_Cancel, 0);
+        DoMethod(cancel_all, MUIM_Notify, MUIA_Pressed, FALSE, obj, 3, MM_NetworkWindow_Cancel, 1);
+    }
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 DEFGET
 {
-	switch (msg->opg_AttrID)
-	{
-		case MA_OWB_WindowType:
-		{
-			*msg->opg_Storage = (IPTR) MV_OWB_Window_Network;
-		}
-		return TRUE;
-	}
+    switch (msg->opg_AttrID)
+    {
+        case MA_OWB_WindowType:
+        {
+            *msg->opg_Storage = (IPTR) MV_OWB_Window_Network;
+        }
+        return TRUE;
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(List_Redraw)
 {
-	GETDATA;
-	return DoMethodA(data->lv_transfers, (_Msg_*)msg);
+    GETDATA;
+    return DoMethodA(data->lv_transfers, (_Msg_*)msg);
 }
 
 DEFSMETHOD(Network_AddJob)
 {
-	GETDATA;
-	DoMethod(data->lv_transfers, MUIM_List_InsertSingle, msg->job);
-	return 0;
+    GETDATA;
+    DoMethod(data->lv_transfers, MUIM_List_InsertSingle, msg->job);
+    return 0;
 }
 
 DEFSMETHOD(Network_RemoveJob)
 {
-	GETDATA;
-	ResourceHandle *job = NULL;
-	ULONG i = 0;
+    GETDATA;
+    ResourceHandle *job = NULL;
+    ULONG i = 0;
 
-	do
-	{
-		DoMethod(data->lv_transfers, MUIM_List_GetEntry, i, (ResourceHandle **) &job);
+    do
+    {
+        DoMethod(data->lv_transfers, MUIM_List_GetEntry, i, (ResourceHandle **) &job);
 
-		if ((APTR) job == msg->job)
-		{
-			DoMethod(data->lv_transfers, MUIM_List_Remove, i);
-			break;
-		}
+        if ((APTR) job == msg->job)
+        {
+            DoMethod(data->lv_transfers, MUIM_List_Remove, i);
+            break;
+        }
 
-		i++;
-	}
-	while (job);
+        i++;
+    }
+    while (job);
 
-	return 0;
+    return 0;
 }
 
 DEFSMETHOD(Network_UpdateJob)
 {
-	GETDATA;
+    GETDATA;
    
-	DoMethod(data->lv_transfers, MUIM_List_Redraw, MUIV_List_Redraw_Entry, msg->job);
+    DoMethod(data->lv_transfers, MUIM_List_Redraw, MUIV_List_Redraw_Entry, msg->job);
 
-	return 0;
+    return 0;
 }
 
 DEFSMETHOD(NetworkWindow_Cancel)
 {
-	GETDATA;
+    GETDATA;
 
 #if 0
-	ResourceHandleManager *sharedResourceHandleManager = ResourceHandleManager::sharedInstance();
-	
-	if (msg->all)
-	{
-		ResourceHandle *job = NULL;
+    ResourceHandleManager *sharedResourceHandleManager = ResourceHandleManager::sharedInstance();
+    
+    if (msg->all)
+    {
+        ResourceHandle *job = NULL;
 
-		do
-		{
-			DoMethod(data->lv_transfers, MUIM_List_GetEntry, 0, (ResourceHandle **) &job);
+        do
+        {
+            DoMethod(data->lv_transfers, MUIM_List_GetEntry, 0, (ResourceHandle **) &job);
 
-			if (job)
-			{
-				DoMethod(data->lv_transfers, MUIM_List_Remove, MUIV_List_Remove_First);
-				sharedResourceHandleManager->cancel(job);
-			}
-		}
-		while (job);
-	}
-	else
-	{
-		ResourceHandle *job = NULL;
-		DoMethod(data->lv_transfers, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (ResourceHandle **) &job);
+            if (job)
+            {
+                DoMethod(data->lv_transfers, MUIM_List_Remove, MUIV_List_Remove_First);
+                sharedResourceHandleManager->cancel(job);
+            }
+        }
+        while (job);
+    }
+    else
+    {
+        ResourceHandle *job = NULL;
+        DoMethod(data->lv_transfers, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (ResourceHandle **) &job);
 
-		if(job)
-		{
-			DoMethod(data->lv_transfers, MUIM_List_Remove, MUIV_List_Remove_Active);
-			sharedResourceHandleManager->cancel(job);
-		}
-	}
+        if(job)
+        {
+            DoMethod(data->lv_transfers, MUIM_List_Remove, MUIV_List_Remove_Active);
+            sharedResourceHandleManager->cancel(job);
+        }
+    }
 #endif
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

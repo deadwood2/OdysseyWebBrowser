@@ -48,463 +48,463 @@ using namespace WebCore;
 
 STATIC CONST CONST_STRPTR labels[] =
 {
-	"Google",
-	"Aminet",
-	"MorphOS",
-	"YouTube",
-	NULL
+    "Google",
+    "Aminet",
+    "MorphOS",
+    "YouTube",
+    NULL
 };
 
 STATIC CONST CONST_STRPTR shortcuts[] =
 {
-	"g",
-	"a",
-	"m",
-	"y",
-	NULL
+    "g",
+    "a",
+    "m",
+    "y",
+    NULL
 };
 
 STATIC CONST CONST_STRPTR requests[] =
 {
-	"http://www.google.com/search?q=%s&ie=UTF-8&oe=UTF-8",
-	"http://www.aminet.net/search.php?query=%s",
-	"http://morphos-files.net/find.php?find=%s",
-	"http://www.youtube.com/results?search_query=%s",
-	NULL
+    "http://www.google.com/search?q=%s&ie=UTF-8&oe=UTF-8",
+    "http://www.aminet.net/search.php?query=%s",
+    "http://morphos-files.net/find.php?find=%s",
+    "http://www.youtube.com/results?search_query=%s",
+    NULL
 };
 
 struct Data
 {
-	ULONG changed;
-	Vector<String> labels;
-	Vector<String> requests;
-	Vector<String> shortcuts;
+    ULONG changed;
+    Vector<String> labels;
+    Vector<String> requests;
+    Vector<String> shortcuts;
 
-	Object *bt_remove;
-	Object *lv_entries;
-	Object *st_label;
-	Object *st_request;
-	Object *st_shortcut;
+    Object *bt_remove;
+    Object *lv_entries;
+    Object *st_label;
+    Object *st_request;
+    Object *st_shortcut;
 };
 
 static void load_searchengines(Object *obj, struct Data *data)
 {
-	OWBFile *searchFile = new OWBFile("PROGDIR:Conf/searchengines.prefs");
+    OWBFile *searchFile = new OWBFile("PROGDIR:Conf/searchengines.prefs");
 
     if (!searchFile)
-		return;
+        return;
 
-	if (searchFile->open('r') == -1)
-	{
-		delete searchFile;
-		return;
+    if (searchFile->open('r') == -1)
+    {
+        delete searchFile;
+        return;
     }
 
-	char *buffer = searchFile->read(searchFile->getSize());
-	String fileBuffer = buffer;
-	delete [] buffer;
+    char *buffer = searchFile->read(searchFile->getSize());
+    String fileBuffer = buffer;
+    delete [] buffer;
     searchFile->close();
-	delete searchFile;
+    delete searchFile;
 
-	Vector<String> lines = fileBuffer.split("\n");
+    Vector<String> lines = fileBuffer.split("\n");
 
-	set(data->lv_entries, MUIA_List_Quiet, TRUE);
+    set(data->lv_entries, MUIA_List_Quiet, TRUE);
 
-	for(size_t i = 0; i < lines.size(); i++)
-	{
-		Vector<String> searchAttributes = lines[i].split("\1");
+    for(size_t i = 0; i < lines.size(); i++)
+    {
+        Vector<String> searchAttributes = lines[i].split("\1");
 
-		if(searchAttributes.size() >= 2) // 1.10 introduced a 3rd field
-		{
-			struct search_entry *se = (struct search_entry *) malloc(sizeof(*se));
+        if(searchAttributes.size() >= 2) // 1.10 introduced a 3rd field
+        {
+            struct search_entry *se = (struct search_entry *) malloc(sizeof(*se));
 
-			if (se)
-			{
-				se->label   = strdup(searchAttributes[0].latin1().data());
-				se->request = strdup(searchAttributes[1].latin1().data());
+            if (se)
+            {
+                se->label   = strdup(searchAttributes[0].latin1().data());
+                se->request = strdup(searchAttributes[1].latin1().data());
 
-				if(searchAttributes.size() == 3)
-				{
-					se->shortcut = strdup(searchAttributes[2].latin1().data());
-				}
-				else
-				{
-					se->shortcut = strdup("");
-				}
+                if(searchAttributes.size() == 3)
+                {
+                    se->shortcut = strdup(searchAttributes[2].latin1().data());
+                }
+                else
+                {
+                    se->shortcut = strdup("");
+                }
 
-				DoMethod(data->lv_entries, MUIM_List_InsertSingle, se, MUIV_List_Insert_Bottom);
-			}
-		}
-	}
+                DoMethod(data->lv_entries, MUIM_List_InsertSingle, se, MUIV_List_Insert_Bottom);
+            }
+        }
+    }
 
-	set(data->lv_entries, MUIA_List_Quiet, FALSE);
+    set(data->lv_entries, MUIA_List_Quiet, FALSE);
 }
 
 void save_searchengines(Object *obj, struct Data *data)
 {
-	struct search_entry *se;
-	ULONG i = 0;
-	OWBFile *searchFile = new OWBFile("PROGDIR:Conf/searchengines.prefs");
-	if(!searchFile)
-		return;
+    struct search_entry *se;
+    ULONG i = 0;
+    OWBFile *searchFile = new OWBFile("PROGDIR:Conf/searchengines.prefs");
+    if(!searchFile)
+        return;
 
-	if (searchFile->open('w') == -1)
-	{
-		delete searchFile;
-		return;
+    if (searchFile->open('w') == -1)
+    {
+        delete searchFile;
+        return;
     }
 
-	do
-	{
-		DoMethod(data->lv_entries, MUIM_List_GetEntry, i, (struct search_entry *) &se);
+    do
+    {
+        DoMethod(data->lv_entries, MUIM_List_GetEntry, i, (struct search_entry *) &se);
 
-		if (se)
-		{
-			searchFile->write(createWithFormatAndArguments("%s\1%s\1%s\n", se->label, se->request, se->shortcut));
-		}
+        if (se)
+        {
+            searchFile->write(createWithFormatAndArguments("%s\1%s\1%s\n", se->label, se->request, se->shortcut));
+        }
 
-		i++;
-	}
-	while (se);
+        i++;
+    }
+    while (se);
 
-	searchFile->close();
-	delete searchFile;
+    searchFile->close();
+    delete searchFile;
 }
 
-static void	doset(APTR obj, struct Data *data, struct TagItem *tags)
+static void    doset(APTR obj, struct Data *data, struct TagItem *tags)
 {
-	struct TagItem *tag, *tstate;
+    struct TagItem *tag, *tstate;
 
-	tstate = tags;
+    tstate = tags;
 
-	while ((tag = NextTagItem(&tstate)) != NULL)
-	{
-		switch (tag->ti_Tag)
-		{
-			case MA_SearchManagerGroup_Changed:
-			{
-				data->changed = (ULONG) tag->ti_Data;
-				break;
-			}
-		}
-	}
+    while ((tag = NextTagItem(&tstate)) != NULL)
+    {
+        switch (tag->ti_Tag)
+        {
+            case MA_SearchManagerGroup_Changed:
+            {
+                data->changed = (ULONG) tag->ti_Data;
+                break;
+            }
+        }
+    }
 }
 
 DEFNEW
 {
-	Object *lv_entries, *st_label, *st_request, *st_shortcut, *bt_add, *bt_remove;
+    Object *lv_entries, *st_label, *st_request, *st_shortcut, *bt_add, *bt_remove;
 
-	obj = (Object *) DoSuperNew(cl, obj,
-		Child, lv_entries = (Object *) NewObject(getsearchmanagerlistclass(), NULL, TAG_DONE),
+    obj = (Object *) DoSuperNew(cl, obj,
+        Child, lv_entries = (Object *) NewObject(getsearchmanagerlistclass(), NULL, TAG_DONE),
 
-		Child, HGroup,
-			Child, bt_add = (Object *) MakeButton(GSI(MSG_SEARCHMANAGERGROUP_ADD)),
-			Child, bt_remove = (Object *) MakeButton(GSI(MSG_SEARCHMANAGERGROUP_REMOVE)),
-		End,
+        Child, HGroup,
+            Child, bt_add = (Object *) MakeButton(GSI(MSG_SEARCHMANAGERGROUP_ADD)),
+            Child, bt_remove = (Object *) MakeButton(GSI(MSG_SEARCHMANAGERGROUP_REMOVE)),
+        End,
 
-		Child, ColGroup(2), 
-			Child, MakeLabel(GSI(MSG_SEARCHMANAGERGROUP_TITLE)),
-			Child, st_label = (Object *) MakeString("", FALSE),
-			Child, MakeLabel(GSI(MSG_SEARCHMANAGERGROUP_LINK)),
-			Child, st_request = (Object *) MakeString("", FALSE),
-			Child, MakeLabel(GSI(MSG_SEARCHMANAGERGROUP_SHORTCUT)),
-			Child, st_shortcut = (Object *) MakeString("", FALSE),
-		End,
+        Child, ColGroup(2), 
+            Child, MakeLabel(GSI(MSG_SEARCHMANAGERGROUP_TITLE)),
+            Child, st_label = (Object *) MakeString("", FALSE),
+            Child, MakeLabel(GSI(MSG_SEARCHMANAGERGROUP_LINK)),
+            Child, st_request = (Object *) MakeString("", FALSE),
+            Child, MakeLabel(GSI(MSG_SEARCHMANAGERGROUP_SHORTCUT)),
+            Child, st_shortcut = (Object *) MakeString("", FALSE),
+        End,
 
-		TAG_MORE, INITTAGS
-		);
+        TAG_MORE, INITTAGS
+        );
 
-	if (obj)
-	{
-		GETDATA;
+    if (obj)
+    {
+        GETDATA;
 
-		data->lv_entries  = lv_entries;
-		data->st_request  = st_request;
-		data->st_label    = st_label;
-		data->st_shortcut = st_shortcut;
-		data->bt_remove   = bt_remove;
+        data->lv_entries  = lv_entries;
+        data->st_request  = st_request;
+        data->st_label    = st_label;
+        data->st_shortcut = st_shortcut;
+        data->bt_remove   = bt_remove;
 
-		set(st_label,    MUIA_Disabled, TRUE);
-		set(st_request,  MUIA_Disabled, TRUE);
-		set(st_shortcut, MUIA_Disabled, TRUE);
-		set(bt_remove,   MUIA_Disabled, TRUE);
+        set(st_label,    MUIA_Disabled, TRUE);
+        set(st_request,  MUIA_Disabled, TRUE);
+        set(st_shortcut, MUIA_Disabled, TRUE);
+        set(bt_remove,   MUIA_Disabled, TRUE);
 
-		DoMethod(bt_remove, MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_SearchManagerGroup_Remove);
-		DoMethod(bt_add,    MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_SearchManagerGroup_Add);
-		DoMethod(lv_entries,  MUIM_Notify, MUIA_List_Active, MUIV_EveryTime, obj, 1, MM_SearchManagerGroup_Update);
+        DoMethod(bt_remove, MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_SearchManagerGroup_Remove);
+        DoMethod(bt_add,    MUIM_Notify, MUIA_Pressed, FALSE, obj, 1, MM_SearchManagerGroup_Add);
+        DoMethod(lv_entries,  MUIM_Notify, MUIA_List_Active, MUIV_EveryTime, obj, 1, MM_SearchManagerGroup_Update);
 
-		DoMethod(st_request,  MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, obj, 1, MM_SearchManagerGroup_Change);
-		DoMethod(st_label,    MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, obj, 1, MM_SearchManagerGroup_Change);
-		DoMethod(st_shortcut, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, obj, 1, MM_SearchManagerGroup_Change);
-	}
+        DoMethod(st_request,  MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, obj, 1, MM_SearchManagerGroup_Change);
+        DoMethod(st_label,    MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, obj, 1, MM_SearchManagerGroup_Change);
+        DoMethod(st_shortcut, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, obj, 1, MM_SearchManagerGroup_Change);
+    }
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFSET
 {
-	GETDATA;
-	doset(obj, data, msg->ops_AttrList);
-	return DOSUPER;
+    GETDATA;
+    doset(obj, data, msg->ops_AttrList);
+    return DOSUPER;
 }
 
 DEFGET
 {
-	GETDATA;
+    GETDATA;
 
-	switch (msg->opg_AttrID)
-	{
-		case MA_SearchManagerGroup_Changed:
-			*msg->opg_Storage = data->changed;
-			return TRUE;
+    switch (msg->opg_AttrID)
+    {
+        case MA_SearchManagerGroup_Changed:
+            *msg->opg_Storage = data->changed;
+            return TRUE;
 
-		// XXX: what about using some structure/class for all of them? :)
-		case MA_SearchManagerGroup_Labels:
-		{
-			struct search_entry *se;
-			ULONG i = 0;
-			ULONG count = getv(data->lv_entries, MUIA_List_Entries);
+        // XXX: what about using some structure/class for all of them? :)
+        case MA_SearchManagerGroup_Labels:
+        {
+            struct search_entry *se;
+            ULONG i = 0;
+            ULONG count = getv(data->lv_entries, MUIA_List_Entries);
 
-			data->labels.clear();
+            data->labels.clear();
 
-			if(count > 0)
-			{
-				do
-				{
-					DoMethod(data->lv_entries, MUIM_List_GetEntry, i, (struct search_entry *) &se);
+            if(count > 0)
+            {
+                do
+                {
+                    DoMethod(data->lv_entries, MUIM_List_GetEntry, i, (struct search_entry *) &se);
 
-					if (se)
-					{
-						data->labels.append(String(se->label));
-						i++;
-					}
-				}
-				while(se);
-			}
-			else
-			{
-				for(i = 0; labels[i]; i++)
-				{
-					data->labels.append(String(labels[i]));
-				}
-			}
+                    if (se)
+                    {
+                        data->labels.append(String(se->label));
+                        i++;
+                    }
+                }
+                while(se);
+            }
+            else
+            {
+                for(i = 0; labels[i]; i++)
+                {
+                    data->labels.append(String(labels[i]));
+                }
+            }
 
-			*msg->opg_Storage = (IPTR)&data->labels;
-			return TRUE;
-		}
+            *msg->opg_Storage = (IPTR)&data->labels;
+            return TRUE;
+        }
 
-		case MA_SearchManagerGroup_Requests:
-		{
-			struct search_entry *se;
-			ULONG i = 0;
-			ULONG count = getv(data->lv_entries, MUIA_List_Entries);
+        case MA_SearchManagerGroup_Requests:
+        {
+            struct search_entry *se;
+            ULONG i = 0;
+            ULONG count = getv(data->lv_entries, MUIA_List_Entries);
 
-			data->requests.clear();
+            data->requests.clear();
 
-			if(count > 0)
-			{
-				do
-				{
-					DoMethod(data->lv_entries, MUIM_List_GetEntry, i, (struct search_entry *) &se);
+            if(count > 0)
+            {
+                do
+                {
+                    DoMethod(data->lv_entries, MUIM_List_GetEntry, i, (struct search_entry *) &se);
 
-					if (se)
-					{
-						data->requests.append(String(se->request));
-						i++;
-					}
-				}
-				while(se);
-			}
-			else
-			{
-				for(i = 0; requests[i]; i++)
-				{
-					data->requests.append(String(requests[i]));
-				}
-			}
+                    if (se)
+                    {
+                        data->requests.append(String(se->request));
+                        i++;
+                    }
+                }
+                while(se);
+            }
+            else
+            {
+                for(i = 0; requests[i]; i++)
+                {
+                    data->requests.append(String(requests[i]));
+                }
+            }
 
-			*msg->opg_Storage = (IPTR)&data->requests;
-			return TRUE;
-		}
+            *msg->opg_Storage = (IPTR)&data->requests;
+            return TRUE;
+        }
 
-		case MA_SearchManagerGroup_Shortcuts:
-		{
-			struct search_entry *se;
-			ULONG i = 0;
-			ULONG count = getv(data->lv_entries, MUIA_List_Entries);
+        case MA_SearchManagerGroup_Shortcuts:
+        {
+            struct search_entry *se;
+            ULONG i = 0;
+            ULONG count = getv(data->lv_entries, MUIA_List_Entries);
 
-			data->shortcuts.clear();
+            data->shortcuts.clear();
 
-			if(count > 0)
-			{
-				do
-				{
-					DoMethod(data->lv_entries, MUIM_List_GetEntry, i, (struct search_entry *) &se);
+            if(count > 0)
+            {
+                do
+                {
+                    DoMethod(data->lv_entries, MUIM_List_GetEntry, i, (struct search_entry *) &se);
 
-					if (se)
-					{
-						data->shortcuts.append(String(se->shortcut));
-						i++;
-					}
-				}
-				while(se);
-			}
-			else
-			{
-				for(i = 0; shortcuts[i]; i++)
-				{
-					data->shortcuts.append(String(shortcuts[i]));
-				}
-			}
+                    if (se)
+                    {
+                        data->shortcuts.append(String(se->shortcut));
+                        i++;
+                    }
+                }
+                while(se);
+            }
+            else
+            {
+                for(i = 0; shortcuts[i]; i++)
+                {
+                    data->shortcuts.append(String(shortcuts[i]));
+                }
+            }
 
-			*msg->opg_Storage = (IPTR)&data->shortcuts;
-			return TRUE;
-		}
-	}
+            *msg->opg_Storage = (IPTR)&data->shortcuts;
+            return TRUE;
+        }
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFTMETHOD(SearchManagerGroup_Load)
 {
-	GETDATA;
+    GETDATA;
 
-	load_searchengines(obj, data);
+    load_searchengines(obj, data);
 
-	// Use defaults if there's nothing in prefs
-	if(getv(data->lv_entries, MUIA_List_Entries) == 0)
-	{
-		ULONG i = 0;
-		char **ptr = (char **) labels;
+    // Use defaults if there's nothing in prefs
+    if(getv(data->lv_entries, MUIA_List_Entries) == 0)
+    {
+        ULONG i = 0;
+        char **ptr = (char **) labels;
 
-		while(*ptr)
-		{
-			struct search_entry *se = (struct search_entry *) malloc(sizeof(*se));
+        while(*ptr)
+        {
+            struct search_entry *se = (struct search_entry *) malloc(sizeof(*se));
 
-			if (se)
-			{
-				se->label    = strdup(labels[i]);
-				se->request  = strdup(requests[i]);
-				se->shortcut = strdup(shortcuts[i]);
+            if (se)
+            {
+                se->label    = strdup(labels[i]);
+                se->request  = strdup(requests[i]);
+                se->shortcut = strdup(shortcuts[i]);
 
-				DoMethod(data->lv_entries, MUIM_List_InsertSingle, se, MUIV_List_Insert_Bottom);
-			}		 
+                DoMethod(data->lv_entries, MUIM_List_InsertSingle, se, MUIV_List_Insert_Bottom);
+            }         
 
-			i++;
-			ptr++;
-		} 
-	}
+            i++;
+            ptr++;
+        } 
+    }
 
-	set(obj, MA_SearchManagerGroup_Changed, TRUE);
+    set(obj, MA_SearchManagerGroup_Changed, TRUE);
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(SearchManagerGroup_Add)
 {
-	GETDATA;
-	struct search_entry *entry = (struct search_entry *) malloc(sizeof(*entry));
+    GETDATA;
+    struct search_entry *entry = (struct search_entry *) malloc(sizeof(*entry));
 
-	if(entry)
-	{
-		entry->label    = strdup("");
-		entry->request  = strdup("");
-		entry->shortcut = strdup("");
+    if(entry)
+    {
+        entry->label    = strdup("");
+        entry->request  = strdup("");
+        entry->shortcut = strdup("");
 
-		DoMethod(data->lv_entries, MUIM_List_InsertSingle, entry, MUIV_List_Insert_Bottom);
-		set(data->lv_entries, MUIA_List_Active, MUIV_List_Active_Bottom);
-		set(_win(obj), MUIA_Window_ActiveObject, data->st_label);
+        DoMethod(data->lv_entries, MUIM_List_InsertSingle, entry, MUIV_List_Insert_Bottom);
+        set(data->lv_entries, MUIA_List_Active, MUIV_List_Active_Bottom);
+        set(_win(obj), MUIA_Window_ActiveObject, data->st_label);
 
-		save_searchengines(obj, data);
+        save_searchengines(obj, data);
 
-		set(obj, MA_SearchManagerGroup_Changed, TRUE);
-	}
+        set(obj, MA_SearchManagerGroup_Changed, TRUE);
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(SearchManagerGroup_Remove)
 {
-	GETDATA;
-	struct search_entry *entry;
+    GETDATA;
+    struct search_entry *entry;
 
-	DoMethod(data->lv_entries, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct search_entry *) &entry);
+    DoMethod(data->lv_entries, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct search_entry *) &entry);
 
-	if(entry)
-	{
-		DoMethod(data->lv_entries, MUIM_List_Remove, MUIV_List_Remove_Active);
+    if(entry)
+    {
+        DoMethod(data->lv_entries, MUIM_List_Remove, MUIV_List_Remove_Active);
 
-		save_searchengines(obj, data);
+        save_searchengines(obj, data);
 
-		// Don't allow empty list
-		if(getv(data->lv_entries, MUIA_List_Entries) == 0)
-		{
-			DoMethod(obj, MM_SearchManagerGroup_Load);
-			save_searchengines(obj, data);
-		}
+        // Don't allow empty list
+        if(getv(data->lv_entries, MUIA_List_Entries) == 0)
+        {
+            DoMethod(obj, MM_SearchManagerGroup_Load);
+            save_searchengines(obj, data);
+        }
 
-		set(obj, MA_SearchManagerGroup_Changed, TRUE);
-	}
+        set(obj, MA_SearchManagerGroup_Changed, TRUE);
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(SearchManagerGroup_Update)
 {
-	GETDATA;
-	struct search_entry *entry;
+    GETDATA;
+    struct search_entry *entry;
 
-	DoMethod(data->lv_entries, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct search_entry *) &entry);
+    DoMethod(data->lv_entries, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct search_entry *) &entry);
 
-	if(entry)
-	{
-		set(data->bt_remove,   MUIA_Disabled, FALSE);
-		set(data->st_label,    MUIA_Disabled, FALSE);
-		set(data->st_request,  MUIA_Disabled, FALSE);
-		set(data->st_shortcut, MUIA_Disabled, FALSE);
-		nnset(data->st_label,    MUIA_String_Contents, entry->label);
-		nnset(data->st_request,  MUIA_String_Contents, entry->request);
-		nnset(data->st_shortcut, MUIA_String_Contents, entry->shortcut);
-	}
-	else
-	{
-		set(data->bt_remove,   MUIA_Disabled, TRUE);
-		set(data->st_label,    MUIA_Disabled, TRUE);
-		set(data->st_request,  MUIA_Disabled, TRUE);
-		set(data->st_shortcut, MUIA_Disabled, TRUE);
-	}
+    if(entry)
+    {
+        set(data->bt_remove,   MUIA_Disabled, FALSE);
+        set(data->st_label,    MUIA_Disabled, FALSE);
+        set(data->st_request,  MUIA_Disabled, FALSE);
+        set(data->st_shortcut, MUIA_Disabled, FALSE);
+        nnset(data->st_label,    MUIA_String_Contents, entry->label);
+        nnset(data->st_request,  MUIA_String_Contents, entry->request);
+        nnset(data->st_shortcut, MUIA_String_Contents, entry->shortcut);
+    }
+    else
+    {
+        set(data->bt_remove,   MUIA_Disabled, TRUE);
+        set(data->st_label,    MUIA_Disabled, TRUE);
+        set(data->st_request,  MUIA_Disabled, TRUE);
+        set(data->st_shortcut, MUIA_Disabled, TRUE);
+    }
 
-	return 0;
+    return 0;
 }
 
 DEFTMETHOD(SearchManagerGroup_Change)
 {
-	GETDATA;
-	struct search_entry *entry;
+    GETDATA;
+    struct search_entry *entry;
 
-	DoMethod(data->lv_entries, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct search_entry *) &entry);
+    DoMethod(data->lv_entries, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct search_entry *) &entry);
 
-	if(entry)
-	{
-		free(entry->label);
-		free(entry->request);
-		entry->label    = strdup((char *) getv(data->st_label,    MUIA_String_Contents));
-		entry->request  = strdup((char *) getv(data->st_request,  MUIA_String_Contents));
-		entry->shortcut = strdup((char *) getv(data->st_shortcut, MUIA_String_Contents));
+    if(entry)
+    {
+        free(entry->label);
+        free(entry->request);
+        entry->label    = strdup((char *) getv(data->st_label,    MUIA_String_Contents));
+        entry->request  = strdup((char *) getv(data->st_request,  MUIA_String_Contents));
+        entry->shortcut = strdup((char *) getv(data->st_shortcut, MUIA_String_Contents));
 
-		DoMethod(data->lv_entries,  MUIM_List_Redraw, MUIV_List_Redraw_Entry, entry);
+        DoMethod(data->lv_entries,  MUIM_List_Redraw, MUIV_List_Redraw_Entry, entry);
 
-		save_searchengines(obj, data);
+        save_searchengines(obj, data);
 
-		set(obj, MA_SearchManagerGroup_Changed, TRUE);
-	}
+        set(obj, MA_SearchManagerGroup_Changed, TRUE);
+    }
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

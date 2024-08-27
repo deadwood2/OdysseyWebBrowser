@@ -39,40 +39,40 @@ struct Data
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-			MA_ToolButton_Text,  GSI(MSG_TOOLBUTTON_NEWTAB_LABEL),
-			MA_ToolButton_Image, "PROGDIR:resource/newtab.png",
-			MA_ToolButton_Type,  MV_ToolButton_Type_Icon,
-			MA_ToolButton_Frame, getv(app, MA_OWBApp_ShowButtonFrame) ? MV_ToolButton_Frame_Button : MV_ToolButton_Frame_None,
-			MA_ToolButton_Background, getv(app, MA_OWBApp_ShowButtonFrame) ? MV_ToolButton_Background_Button :MV_ToolButton_Background_Parent,
-			TAG_MORE, INITTAGS,
-			TAG_DONE);
+    obj = (Object *) DoSuperNew(cl, obj,
+            MA_ToolButton_Text,  GSI(MSG_TOOLBUTTON_NEWTAB_LABEL),
+            MA_ToolButton_Image, "PROGDIR:resource/newtab.png",
+            MA_ToolButton_Type,  MV_ToolButton_Type_Icon,
+            MA_ToolButton_Frame, getv(app, MA_OWBApp_ShowButtonFrame) ? MV_ToolButton_Frame_Button : MV_ToolButton_Frame_None,
+            MA_ToolButton_Background, getv(app, MA_OWBApp_ShowButtonFrame) ? MV_ToolButton_Background_Button :MV_ToolButton_Background_Parent,
+            TAG_MORE, INITTAGS,
+            TAG_DONE);
 
-	return (IPTR)obj;
+    return (IPTR)obj;
 }
 
 DEFMMETHOD(DragQuery)
 {
-	LONG type = getv(msg->obj, MA_OWB_ObjectType);
+    LONG type = getv(msg->obj, MA_OWB_ObjectType);
 
-	if (type == MV_OWB_ObjectType_Browser || type == MV_OWB_ObjectType_Tab ||
-		type == MV_OWB_ObjectType_Bookmark || type == MV_OWB_ObjectType_QuickLink || type == MV_OWB_ObjectType_URL)
-	{
-		return (MUIV_DragQuery_Accept);
-	}
-	return (MUIV_DragQuery_Refuse);
+    if (type == MV_OWB_ObjectType_Browser || type == MV_OWB_ObjectType_Tab ||
+        type == MV_OWB_ObjectType_Bookmark || type == MV_OWB_ObjectType_QuickLink || type == MV_OWB_ObjectType_URL)
+    {
+        return (MUIV_DragQuery_Accept);
+    }
+    return (MUIV_DragQuery_Refuse);
 }
 
 DEFMMETHOD(DragDrop)
 {
-	char *url = (char *) getv(msg->obj, MA_OWB_URL);
+    char *url = (char *) getv(msg->obj, MA_OWB_URL);
 
-	if(url)
-	{
-		DoMethod(app, MM_OWBApp_AddPage, url, FALSE, TRUE, NULL, _win(obj), FALSE, TRUE);
-	}
+    if(url)
+    {
+        DoMethod(app, MM_OWBApp_AddPage, url, FALSE, TRUE, NULL, _win(obj), FALSE, TRUE);
+    }
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

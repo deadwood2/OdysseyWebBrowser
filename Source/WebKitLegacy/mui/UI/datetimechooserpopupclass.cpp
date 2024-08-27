@@ -49,78 +49,78 @@ using namespace WebCore;
 
 struct Data
 {
-	Object *bt_use;
-	Object *str_date;
-	Object *source;
-	DateTimeChooserController *controller;
+    Object *bt_use;
+    Object *str_date;
+    Object *source;
+    DateTimeChooserController *controller;
 };
 
 DEFNEW
 {
-	Object *source                        = (Object *) GetTagData(MA_DateTimeChooserPopup_Source, 0, msg->ops_AttrList);
-	DateTimeChooserController *controller = (DateTimeChooserController *) GetTagData(MA_DateTimeChooserPopup_Controller, 0, msg->ops_AttrList);
+    Object *source                        = (Object *) GetTagData(MA_DateTimeChooserPopup_Source, 0, msg->ops_AttrList);
+    DateTimeChooserController *controller = (DateTimeChooserController *) GetTagData(MA_DateTimeChooserPopup_Controller, 0, msg->ops_AttrList);
 
-	if(controller)
-	{
-		Object *str_date, *bt_use;
-		IntRect rect = controller->parameters().anchorRectInRootView;
-		struct Rect32 r = { _mleft(source) + rect.x(), _mtop(source) + rect.y() + rect.height(), _mleft(source) + rect.maxX() + 200, _mtop(source) + rect.y() + rect.height() + 400 };
+    if(controller)
+    {
+        Object *str_date, *bt_use;
+        IntRect rect = controller->parameters().anchorRectInRootView;
+        struct Rect32 r = { _mleft(source) + rect.x(), _mtop(source) + rect.y() + rect.height(), _mleft(source) + rect.maxX() + 200, _mtop(source) + rect.y() + rect.height() + 400 };
 
-		obj = (Object *) DoSuperNew(cl, obj,
-			MUIA_Window_RootObject,
-				VGroup, //MUIA_FixWidth, rect.width(),
-					Child, str_date = (Object *) MakeString("", FALSE),
-					Child, bt_use = (Object *) MakeButton(GSI(MSG_PREFSWINDOW_USE)),
-					End,
-			MUIA_Calltips_Source, source,
-			MUIA_Calltips_Rectangle, &r,
-			TAG_MORE, INITTAGS
-		);
+        obj = (Object *) DoSuperNew(cl, obj,
+            MUIA_Window_RootObject,
+                VGroup, //MUIA_FixWidth, rect.width(),
+                    Child, str_date = (Object *) MakeString("", FALSE),
+                    Child, bt_use = (Object *) MakeButton(GSI(MSG_PREFSWINDOW_USE)),
+                    End,
+            MUIA_Calltips_Source, source,
+            MUIA_Calltips_Rectangle, &r,
+            TAG_MORE, INITTAGS
+        );
 
-		if (obj)
-		{
-			GETDATA;
-			data->bt_use = bt_use;
-			data->str_date = str_date;
-			data->controller = controller;
-			data->source = source;
+        if (obj)
+        {
+            GETDATA;
+            data->bt_use = bt_use;
+            data->str_date = str_date;
+            data->controller = controller;
+            data->source = source;
 
-			set(data->str_date, MUIA_String_Contents, controller->parameters().currentValue.utf8().data());
-			DoMethod(data->bt_use, MUIM_Notify, MUIA_Pressed, FALSE, obj, 3, MM_DateTimeChooserPopup_DidSelect, TRUE);
-		}
-	}
+            set(data->str_date, MUIA_String_Contents, controller->parameters().currentValue.utf8().data());
+            DoMethod(data->bt_use, MUIM_Notify, MUIA_Pressed, FALSE, obj, 3, MM_DateTimeChooserPopup_DidSelect, TRUE);
+        }
+    }
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	GETDATA;
+    GETDATA;
 
-	if(data->controller)
-	{
-		data->controller->didEndChooser();
-		data->controller = NULL;
-	}
+    if(data->controller)
+    {
+        data->controller->didEndChooser();
+        data->controller = NULL;
+    }
 
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFSMETHOD(DateTimeChooserPopup_DidSelect)
 {
-	GETDATA;
+    GETDATA;
 
-	char * value = (char *) getv(data->str_date, MUIA_String_Contents);
-	value = "08/05/2014";
+    char * value = (char *) getv(data->str_date, MUIA_String_Contents);
+    value = "08/05/2014";
 
-	data->controller->didChooseValue(String(value));
+    data->controller->didChooseValue(String(value));
 
-	if(msg->close)
-	{
-		DoMethod(app, MUIM_Application_PushMethod, data->source, 1, MM_OWBBrowser_DateTimeChooser_HidePopup);
-	}
+    if(msg->close)
+    {
+        DoMethod(app, MUIM_Application_PushMethod, data->source, 1, MM_OWBBrowser_DateTimeChooser_HidePopup);
+    }
 
-	return 0;
+    return 0;
 }
 
 BEGINMTABLE

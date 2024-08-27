@@ -2344,24 +2344,24 @@ NULL
 
 ULONG icu_check(void)
 {
-	ULONG passed = TRUE;
-	const char **ptr = icufiles;
+    ULONG passed = TRUE;
+    const char **ptr = icufiles;
 
-	for(ptr = icufiles; *ptr; ptr++)
-	{
-		BPTR lock = Lock(*ptr, ACCESS_READ);
+    for(ptr = icufiles; *ptr; ptr++)
+    {
+        BPTR lock = Lock(*ptr, ACCESS_READ);
 
-		if(lock)
-		{
-			UnLock(lock);
-		}
-		else
-		{
-			MUI_RequestA(NULL, NULL, 0, "Error", "Ok", "ICU files are missing. Please update properly.", NULL);
-			passed = FALSE;
-			break;
-		}
-	}
+        if(lock)
+        {
+            UnLock(lock);
+        }
+        else
+        {
+            MUI_RequestA(NULL, NULL, 0, "Error", "Ok", "ICU files are missing. Please update properly.", NULL);
+            passed = FALSE;
+            break;
+        }
+    }
 
-	return passed;
+    return passed;
 }

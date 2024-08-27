@@ -69,17 +69,17 @@ int screenDepth(Widget* widget)
     #warning "screenDepth disabled"
 #if 0
     if (widget->root()->hostWindow()->platformPageClient()) {
-		Object *window = widget->root()->hostWindow()->platformPageClient()->window;
+        Object *window = widget->root()->hostWindow()->platformPageClient()->window;
         if (window)
          {
-	   struct Window* win;
-	   GetAttr(MUIA_Window_Window, window, (IPTR *)&win);  
-	   
-	   if(win)
-	     {
-	       depth = GetCyberMapAttr(win->WScreen->RastPort.BitMap, CYBRMATTR_DEPTH);
-	     }
-	 }
+       struct Window* win;
+       GetAttr(MUIA_Window_Window, window, (IPTR *)&win);  
+       
+       if(win)
+         {
+           depth = GetCyberMapAttr(win->WScreen->RastPort.BitMap, CYBRMATTR_DEPTH);
+         }
+     }
     }
 #endif
     return depth;
@@ -97,15 +97,15 @@ int screenDepthPerComponent(Widget* widget)
 
         Object *window = widget->root()->hostWindow()->platformPageClient()->window;
         if (window)
-	  {
-	    struct Window* win;
-	    GetAttr(MUIA_Window_Window, window, (IPTR *)&win);
+      {
+        struct Window* win;
+        GetAttr(MUIA_Window_Window, window, (IPTR *)&win);
 
-	    if(win)
-	      {
-		GetAttr((Object *)win->WScreen, SA_DisplayID, &id);
-	      }
-	  }
+        if(win)
+          {
+        GetAttr((Object *)win->WScreen, SA_DisplayID, &id);
+          }
+      }
         if (INVALID_ID != id
          && GetDisplayInfoData(NULL, &displayInfo, sizeof(displayInfo), DTAG_DISP, id) >= 48)
             depth = (displayInfo.RedBits + displayInfo.GreenBits + displayInfo.BlueBits) / 3;
@@ -123,22 +123,22 @@ FloatRect screenRect(Widget* widget)
 {
     int x = 0, y = 0, width = 800, height = 600;
 
-	if (widget->root()->hostWindow()->platformPageClient())
-	{
-		Object* window = widget->root()->hostWindow()->platformPageClient()->window;
+    if (widget->root()->hostWindow()->platformPageClient())
+    {
+        Object* window = widget->root()->hostWindow()->platformPageClient()->window;
         if (window)
-		{
-		    struct Window* win;
-		    GetAttr(MUIA_Window_Window, window, (IPTR *)&win);
+        {
+            struct Window* win;
+            GetAttr(MUIA_Window_Window, window, (IPTR *)&win);
 
-			if(win)
-			{
-				x = win->WScreen->LeftEdge;
-				y = win->WScreen->TopEdge;
-				width = win->WScreen->Width;
-				height = win->WScreen->Height;
-			}
-		}
+            if(win)
+            {
+                x = win->WScreen->LeftEdge;
+                y = win->WScreen->TopEdge;
+                width = win->WScreen->Width;
+                height = win->WScreen->Height;
+            }
+        }
     }
 
     return FloatRect(x, y, width, height);

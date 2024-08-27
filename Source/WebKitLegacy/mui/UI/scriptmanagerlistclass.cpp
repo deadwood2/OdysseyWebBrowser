@@ -49,44 +49,44 @@ struct Data
 
 DEFNEW
 {
-	obj = (Object *) DoSuperNew(cl, obj,
-		InputListFrame,
-		MUIA_CycleChain, TRUE,
-		MUIA_List_Format, "",
-		MUIA_List_Title, FALSE,
-		TAG_MORE, INITTAGS
-	);
+    obj = (Object *) DoSuperNew(cl, obj,
+        InputListFrame,
+        MUIA_CycleChain, TRUE,
+        MUIA_List_Format, "",
+        MUIA_List_Title, FALSE,
+        TAG_MORE, INITTAGS
+    );
 
-	return ((IPTR)obj);
+    return ((IPTR)obj);
 }
 
 DEFDISP
 {
-	return DOSUPER;
+    return DOSUPER;
 }
 
 DEFMMETHOD(List_Construct)
 {
-	return (IPTR)msg->entry;
+    return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
 {
-	return TRUE;
+    return TRUE;
 }
 
 DEFMMETHOD(List_Display)
 {
-	ScriptEntry *e = (ScriptEntry *) msg->entry;
+    ScriptEntry *e = (ScriptEntry *) msg->entry;
 
-	if (e)
-	{
-		static char buffer[256];
-		snprintf(buffer, sizeof(buffer), "%s%s", e->enabled ? "\033b": "", e->title.latin1().data());
-		msg->array[0] = buffer;
-	}
+    if (e)
+    {
+        static char buffer[256];
+        snprintf(buffer, sizeof(buffer), "%s%s", e->enabled ? "\033b": "", e->title.latin1().data());
+        msg->array[0] = buffer;
+    }
 
-	return TRUE;
+    return TRUE;
 }
 
 BEGINMTABLE

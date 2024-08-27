@@ -38,7 +38,7 @@ namespace WebCore {
 IntSize dragImageSize(DragImageRef image)
 {
     if (image)
-		return IntSize(cairo_image_surface_get_width((cairo_surface_t*)image.get()), cairo_image_surface_get_height((cairo_surface_t *)image.get()));
+        return IntSize(cairo_image_surface_get_width((cairo_surface_t*)image.get()), cairo_image_surface_get_height((cairo_surface_t *)image.get()));
 
     return IntSize(0, 0);
 }

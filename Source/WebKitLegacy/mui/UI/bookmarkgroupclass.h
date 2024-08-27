@@ -10,30 +10,30 @@
 
 struct treedata
 {
-	ULONG  flags;   // flags for show in menu, bar & groups
-	STRPTR title;
-	STRPTR alias;
-	STRPTR address;
-	STRPTR buffer1;
-	STRPTR buffer2;
-	ULONG  ql_order;
-	APTR   icon;
-	APTR   iconimg;
-	ULONG  showalias;
-	APTR   tree;
-	APTR   treenode;
+    ULONG  flags;   // flags for show in menu, bar & groups
+    STRPTR title;
+    STRPTR alias;
+    STRPTR address;
+    STRPTR buffer1;
+    STRPTR buffer2;
+    ULONG  ql_order;
+    APTR   icon;
+    APTR   iconimg;
+    ULONG  showalias;
+    APTR   tree;
+    APTR   treenode;
 };
 
 enum
 {
-	POPMENU_OPEN_CURRENT = 1,
-	POPMENU_OPEN_NEWTAB,
-	POPMENU_OPEN_NEWWIN,
-	POPMENU_OPEN,
-	POPMENU_OPEN_ALL,
-	POPMENU_CLOSE,
-	POPMENU_CLOSE_ALL,
-	POPMENU_REMOVE
+    POPMENU_OPEN_CURRENT = 1,
+    POPMENU_OPEN_NEWTAB,
+    POPMENU_OPEN_NEWWIN,
+    POPMENU_OPEN,
+    POPMENU_OPEN_ALL,
+    POPMENU_CLOSE,
+    POPMENU_CLOSE_ALL,
+    POPMENU_REMOVE
 };
 
 
