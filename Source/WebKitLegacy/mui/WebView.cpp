@@ -420,6 +420,7 @@ WebView::WebView()
     configuration.pluginInfoProvider = &WebPluginInfoProvider::singleton();
 
     m_page = new Page(WTFMove(configuration));
+    storageProvider->setPage(*m_page);
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
     provideNotification(m_page, new WebDesktopNotificationsDelegate(this));
 #endif
@@ -470,6 +471,8 @@ WebView::WebView()
     pageWebFrameLoaderClient->setWebFrame(webFrame);
 
     pageProgressTrackerClient->setWebFrame(webFrame);
+
+    m_page->mainFrame().init();
 }
 
 WebView::~WebView()
