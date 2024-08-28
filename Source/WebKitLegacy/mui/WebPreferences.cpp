@@ -44,7 +44,7 @@
 
 #if USE(CURL)
 #include <wtf/URL.h>
-#include <CookieManager.h>
+#include <WebCore/CookieJarDB.h>
 #endif
 
 using namespace WebCore;
@@ -848,7 +848,8 @@ void WebPreferences::setCookieStorageAcceptPolicy(WebKitCookieStorageAcceptPolic
 {
     setIntegerValue(WebKitCookieStorageAcceptPolicyPreferenceKey, acceptPolicy);
 #if USE(CURL)
-    cookieManager().setCookiePolicy((WebCore::CookieStorageAcceptPolicy)acceptPolicy);
+// requires 2.30 base
+//    storageSession.cookieDatabase().setAcceptPolicy((WebCore::CookieAcceptPolicy)acceptPolicy);
 #endif
 }
 

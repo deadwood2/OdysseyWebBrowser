@@ -84,14 +84,7 @@ list(APPEND WebCore_SOURCES
 
     platform/image-decoders/cairo/ImageBackingStoreCairo.cpp
 
-    platform/network/curl/CookieDatabaseBackingStoreCurl.cpp
-    platform/network/curl/CookieManagerCurl.cpp
-    platform/network/curl/CookieMapCurl.cpp
-    platform/network/curl/CookieParserCurl.cpp
-    platform/network/curl/ParsedCookieCurl.cpp
     platform/network/mui/CurlSSLHandleMUI.cpp
-    platform/network/HTTPParsers.cpp
-    platform/network/NetworkStorageSession.cpp
 
     platform/PlatformStrategies.cpp
 

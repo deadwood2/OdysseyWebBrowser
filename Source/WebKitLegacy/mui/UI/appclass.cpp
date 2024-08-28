@@ -60,7 +60,6 @@
 #include "WebDownloadPrivate.h"
 #include "WebFramePolicyListener.h"
 #include "DownloadDelegateMorphOS.h"
-#include "CookieManager.h"
 #include "ResourceHandle.h"
 #include "ResourceError.h"
 #include "ResourceResponse.h"
@@ -1083,9 +1082,6 @@ void FreeWebKitLeakedObjects()
     {
         plugins[i]->unload();
     }
-
-    /* Yup, built as an indestructible singleton, sigh. ;) */
-    cookieManager().destroy();
 
     /* More to come? :) */
     freed = TRUE;

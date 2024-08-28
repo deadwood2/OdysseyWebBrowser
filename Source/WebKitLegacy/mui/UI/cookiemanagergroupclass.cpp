@@ -29,10 +29,11 @@
 #include "config.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include "CookieManager.h"
-#include "CookieMap.h"
-#include "ParsedCookie.h"
 #include <wtf/URL.h>
+#include <WebCore/NetworkStorageSession.h>
+#include <WebCore/SameSiteInfo.h>
+
+#include "NetworkStorageSessionMap.h"
 
 #include <proto/intuition.h>
 #include <proto/utility.h>
@@ -174,84 +175,89 @@ DEFTMETHOD(CookieManagerGroup_Load)
 
     D(kprintf("Loading cookies\n"));
 
-    HashMap<String, CookieMap*>& manager_map = cookieManager().getCookieMap();
+    NetworkStorageSession& storageSession = NetworkStorageSessionMap::defaultStorageSession();
 
-    Vector<ParsedCookie*> cookies;
-    for (HashMap<String, CookieMap*>::iterator it = manager_map.begin(); it != manager_map.end(); ++it)
-        it->value->getAllChildCookies(&cookies);
+    HashSet<String> hosts;
+    storageSession.cookieStorage().getHostnamesWithCookies(storageSession, hosts);
+    Vector<Cookie> cookies = storageSession.cookieDatabase().getAllCookies();
 
-    for (size_t i = 0; i < cookies.size(); ++i)
+    for (HashSet<String>::iterator it = hosts.begin(); it != hosts.end(); ++it)
     {
-        ParsedCookie* cookie = cookies[i];
-
-        struct MUIS_Listtree_TreeNode* group = NULL;
-        struct cookie_entry node;
-        char *domain = strdup(cookie->domain().utf8().data());
-
-        group = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_FindName,
-            MUIV_Listtree_FindName_ListNode_Root,
-            domain, MUIV_Listtree_FindName_Flags_SameLevel
-        );
-
-        // Domain is not inserted yet, do it
-        if(group == NULL)
+        for (size_t i = 0; i < cookies.size(); ++i)
         {
-            node.flags = COOKIEFLAG_DOMAIN;
-            node.name = NULL;
-            node.value = NULL;
-            node.domain = strdup(domain);
-            node.protocol = NULL;
-            node.path = NULL;
-            node.expiry = 0;
-            node.secure = FALSE;
-            node.http_only = FALSE;
+            Cookie cookie = cookies[i];
+            if (cookie.domain == *it)
+            {
+                struct MUIS_Listtree_TreeNode* group = NULL;
+                struct cookie_entry node;
+                char *domain = strdup(cookie.domain.utf8().data());
 
-            group = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
-                    node.domain,
+                group = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_FindName,
+                    MUIV_Listtree_FindName_ListNode_Root,
+                    domain, MUIV_Listtree_FindName_Flags_SameLevel
+                );
+
+                // Domain is not inserted yet, do it
+                if(group == NULL)
+                {
+                    node.flags = COOKIEFLAG_DOMAIN;
+                    node.name = NULL;
+                    node.value = NULL;
+                    node.domain = strdup(domain);
+                    node.protocol = NULL;
+                    node.path = NULL;
+                    node.expiry = 0;
+                    node.secure = FALSE;
+                    node.http_only = FALSE;
+
+                    group = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
+                            node.domain,
+                            &node,
+                            MUIV_Listtree_Insert_ListNode_Root,
+                            MUIV_Listtree_Insert_PrevNode_Sorted,
+                            TNF_LIST
+                    );
+                }
+
+                node.flags = COOKIEFLAG_COOKIE;
+                node.name = strdup(cookie.name.utf8().data());
+                node.value = strdup(cookie.value.utf8().data());
+                node.domain = strdup(domain);
+                node.protocol = cookie.secure ? strdup("https") : strdup("http");
+                node.path = strdup(cookie.path.utf8().data());
+                node.expiry = cookie.expires;
+                node.secure = cookie.secure;
+                node.http_only = cookie.httpOnly;
+                node.session = cookie.session;
+
+                D(kprintf("protocol <%s>\n", node.protocol));
+                D(kprintf("\tdomain <%s>\n", node.domain));
+                D(kprintf("\tname <%s>\n", node.name));
+                D(kprintf("\tpath <%s>\n", node.path));
+
+                /*
+                newentry = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_FindName,
+                    group,
+                    node.name, MUIV_Listtree_FindName_Flags_SameLevel
+                );
+
+                if(newentry && !strcmp(node.path, newentry.path) && !strcmp(node.protocol, newentry.protocol))
+                {
+
+                }
+                */
+
+                DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
+                    node.name,
                     &node,
-                    MUIV_Listtree_Insert_ListNode_Root,
+                    group,
                     MUIV_Listtree_Insert_PrevNode_Sorted,
-                    TNF_LIST
-            );
+                    0
+                    );
+
+                free(domain);
+            }
         }
-
-        node.flags = COOKIEFLAG_COOKIE;
-        node.name = strdup(cookie->name().utf8().data());
-        node.value = strdup(cookie->value().utf8().data());
-        node.domain = strdup(domain);
-        node.protocol = strdup(cookie->protocol().utf8().data());
-        node.path = strdup(cookie->path().utf8().data());
-        node.expiry = cookie->expiry();
-        node.secure = cookie->isSecure();
-        node.http_only = cookie->isHttpOnly();
-        node.session = cookie->isSession();
-
-        D(kprintf("protocol <%s>\n", node.protocol));
-        D(kprintf("\tdomain <%s>\n", node.domain));
-        D(kprintf("\tname <%s>\n", node.name));
-        D(kprintf("\tpath <%s>\n", node.path));
-
-        /*
-        newentry = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_FindName,
-            group,
-            node.name, MUIV_Listtree_FindName_Flags_SameLevel
-        );
-
-        if(newentry && !strcmp(node.path, newentry.path) && !strcmp(node.protocol, newentry.protocol))
-        {
-        
-        }
-        */
-
-        DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
-            node.name,
-            &node,
-            group,
-            MUIV_Listtree_Insert_PrevNode_Sorted,
-            0
-            );
-
-        free(domain);
     }
 
     return 0;
@@ -264,8 +270,9 @@ DEFTMETHOD(CookieManagerGroup_Clear)
     /* Remove from list */
     DoMethod(data->lt_cookies, MUIM_Listtree_Remove, MUIV_Listtree_Remove_ListNode_Root, MUIV_Listtree_Remove_TreeNode_All, 0);
 
-    /* Remove from map(s) and database */
-    cookieManager().removeAllCookies(RemoveFromBackingStore);
+    /* Remove from database */
+    NetworkStorageSession& storageSession = NetworkStorageSessionMap::defaultStorageSession();
+    storageSession.cookieStorage().deleteAllCookies(storageSession);
 
     return 0;
 }
@@ -415,6 +422,7 @@ DEFTMETHOD(CookieManagerGroup_Remove)
     if(tn)
     {
         struct cookie_entry *entry = (struct cookie_entry *) tn->tn_User;
+        NetworkStorageSession& storageSession = NetworkStorageSessionMap::defaultStorageSession();
 
         if(entry && entry->flags == COOKIEFLAG_COOKIE)
         {
@@ -426,13 +434,12 @@ DEFTMETHOD(CookieManagerGroup_Remove)
             cookieURL.append(domain);
             cookieURL.append(entry->path);
             URL url({ }, cookieURL);
-            cookieManager().removeCookieWithName(url, entry->name);
+            storageSession.cookieStorage().deleteCookie(storageSession, url, entry->name);
             DoMethod(data->lt_cookies, MUIM_Listtree_Remove, NULL, MUIV_Listtree_Remove_TreeNode_Active, 0);
         }
         else if(entry && entry->flags == COOKIEFLAG_DOMAIN)
         {
-            cookieManager().removeCookiesFromDomain("http", entry->domain);
-            cookieManager().removeCookiesFromDomain("https", entry->domain);
+            storageSession.cookieDatabase().deleteCookiesForHostname(entry->domain, IncludeHttpOnlyCookies::Yes);
             DoMethod(data->lt_cookies, MUIM_Listtree_Remove, NULL, MUIV_Listtree_Remove_TreeNode_Active, 0);
         }
     }

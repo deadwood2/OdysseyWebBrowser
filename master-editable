@@ -81,16 +81,6 @@ Source/WebCore/platform/mui/WidgetMorphOS.cpp
 Source/WebCore/platform/mui/acinerella.c
 Source/WebCore/platform/mui/acinerella.h
 Source/WebCore/platform/mui/owb-config.h
-Source/WebCore/platform/network/curl/CookieDatabaseBackingStore.h
-Source/WebCore/platform/network/curl/CookieDatabaseBackingStoreCurl.cpp
-Source/WebCore/platform/network/curl/CookieManager.h
-Source/WebCore/platform/network/curl/CookieManagerCurl.cpp
-Source/WebCore/platform/network/curl/CookieMap.h
-Source/WebCore/platform/network/curl/CookieMapCurl.cpp
-Source/WebCore/platform/network/curl/CookieParser.h
-Source/WebCore/platform/network/curl/CookieParserCurl.cpp
-Source/WebCore/platform/network/curl/ParsedCookie.h
-Source/WebCore/platform/network/curl/ParsedCookieCurl.cpp
 
 Source/cmake/AROS.cmake
 Source/cmake/OptionsMUI.cmake

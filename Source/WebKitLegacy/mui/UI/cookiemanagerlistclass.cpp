@@ -30,7 +30,6 @@
 #include "BALBase.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include "ParsedCookie.h"
 
 #include <proto/exec.h>
 #include <proto/dos.h>

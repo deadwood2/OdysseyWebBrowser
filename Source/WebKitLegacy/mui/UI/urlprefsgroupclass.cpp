@@ -29,11 +29,11 @@
 #include "config.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
+#include <WebCore/CookieJarDB.h>
 #include "FileIOLinux.h"
 #include "Page.h"
 #include <JavaScriptCore/RegularExpression.h>
 #include "Settings.h"
-#include "CookieManager.h"
 #include "WebView.h"
 #include "WebPreferences.h"
 
@@ -587,16 +587,16 @@ DEFSMETHOD(URLPrefsGroup_UserAgentForURL)
 DEFSMETHOD(URLPrefsGroup_CookiePolicyForURLAndName)
 {
     APTR n, m;
-    CookieStorageAcceptPolicy policy = CookieStorageAcceptPolicyAlways;
+    CookieAcceptPolicy policy = CookieAcceptPolicy::Always;
 
     switch(getv(app, MA_OWBApp_CookiesPolicy))
     {
         default:
         case 0:
-            policy = CookieStorageAcceptPolicyAlways;
+            policy = CookieAcceptPolicy::Always;
             break;
         case 1:
-            policy = CookieStorageAcceptPolicyNever;
+            policy = CookieAcceptPolicy::Never;
             break;
     }
 
@@ -616,10 +616,10 @@ DEFSMETHOD(URLPrefsGroup_CookiePolicyForURLAndName)
                 {
                     default:
                     case 0:
-                        policy = CookieStorageAcceptPolicyAlways;
+                        policy = CookieAcceptPolicy::Always;
                         break;
                     case 1:
-                        policy = CookieStorageAcceptPolicyNever;
+                        policy = CookieAcceptPolicy::Never;
                         break;
                 }
             }
