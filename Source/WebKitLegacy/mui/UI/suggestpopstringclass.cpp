@@ -27,10 +27,12 @@
  */
 
 #include "config.h"
+#include <WebCore/NetworkingContext.h>
 #include "ResourceHandle.h"
 #include "ResourceRequest.h"
 #include "ResourceHandleClient.h"
 #include "SuggestEntry.h"
+#include "NetworkStorageSessionMap.h"
 
 #include <expat.h>
 #include <devices/rawkeycodes.h>
@@ -161,6 +163,19 @@ private:
     Object *m_obj;
     XML_Parser m_parser;
     SuggestEntry *m_currentEntry;
+};
+
+class SuggestNetworkingContext : public NetworkingContext
+{
+    NetworkStorageSession* storageSession() const final
+    {
+        return &NetworkStorageSessionMap::defaultStorageSession();
+    }
+
+    bool shouldClearReferrerOnHTTPSToHTTPRedirect() const final
+    {
+        return true;
+    }
 };
 
 #if !OS(AROS)
@@ -528,7 +543,7 @@ DEFTMETHOD(SuggestPopString_Initiate)
 
             DoMethod(data->lv_entries, MUIM_List_Clear);
 
-            NetworkingContext* context = 0;
+            NetworkingContext* context = new SuggestNetworkingContext();
             ResourceRequest request(URL(URL(), "http://google.com/complete/search?output=toolbar&ie=UTF-8&oe=UTF-8&q=" + encoded));
 
             if(data->resource_handle)
