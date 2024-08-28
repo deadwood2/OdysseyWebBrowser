@@ -70,6 +70,7 @@ struct CookieRequestHeaderFieldProxy;
 struct SameSiteInfo;
 
 enum class IncludeSecureCookies : bool;
+enum class IncludeHttpOnlyCookies : bool;
 
 class NetworkStorageSession {
     WTF_MAKE_NONCOPYABLE(NetworkStorageSession); WTF_MAKE_FAST_ALLOCATED;

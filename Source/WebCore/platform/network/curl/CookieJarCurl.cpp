@@ -122,9 +122,11 @@ void CookieJarCurl::deleteCookie(const NetworkStorageSession& session, const URL
     cookieJarDB.deleteCookie(url, name);
 }
 
-void CookieJarCurl::getHostnamesWithCookies(const NetworkStorageSession&, HashSet<String>&) const
+void CookieJarCurl::getHostnamesWithCookies(const NetworkStorageSession& session, HashSet<String>& hosts) const
 {
-    // FIXME: Not yet implemented
+    CookieJarDB& cookieJarDB = session.cookieDatabase();
+    HashSet<String> domains = cookieJarDB.allDomains();
+    hosts = domains;
 }
 
 void CookieJarCurl::deleteCookiesForHostnames(const NetworkStorageSession&, const Vector<String>&) const

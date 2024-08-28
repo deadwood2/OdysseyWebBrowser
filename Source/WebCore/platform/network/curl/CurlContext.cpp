@@ -164,7 +164,13 @@ bool CurlContext::isHttp2Enabled() const
 CurlShareHandle::CurlShareHandle()
 {
     m_shareHandle = curl_share_init();
+#if !PLATFORM(MUI)
+    /* This enables internal curl cookie engine which will cause cookies to be
+       sent twice (from WebCore and from curl), possibly in different order and
+       not synchronized (WebCore ones can be deleted from UI) causing some web
+       pages to malfunction */
     curl_share_setopt(m_shareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
+#endif
     curl_share_setopt(m_shareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
     curl_share_setopt(m_shareHandle, CURLSHOPT_LOCKFUNC, lockCallback);
     curl_share_setopt(m_shareHandle, CURLSHOPT_UNLOCKFUNC, unlockCallback);

@@ -38,6 +38,7 @@
 #endif
 
 #include <sys/stat.h>
+#include <aros/debug.h>
 
 namespace WebCore {
 
@@ -63,6 +64,8 @@ namespace WebCore {
     "CREATE INDEX IF NOT EXISTS domain_index ON Cookie(domain);"
 #define CREATE_PATH_INDEX_SQL \
     "CREATE INDEX IF NOT EXISTS path_index ON Cookie(path);"
+#define SELECT_ALL_DOMAINS_SQL \
+    "SELECT DISTINCT domain FROM Cookie;"
 #define CHECK_EXISTS_HTTPONLY_COOKIE_SQL \
     "SELECT name FROM Cookie WHERE (name = ?) AND (domain = ?) AND (path = ?) AND (httponly = 1);"
 #define SET_COOKIE_SQL \
@@ -74,6 +77,10 @@ namespace WebCore {
     "DELETE FROM Cookie WHERE name = ? AND domain = ?;"
 #define DELETE_ALL_SESSION_COOKIE_SQL \
     "DELETE FROM Cookie WHERE session = 1;"
+#define DELETE_COOKIES_BY_DOMAIN_SQL \
+    "DELETE FROM Cookie WHERE domain = ? ;"
+#define DELETE_COOKIES_BY_DOMAIN_EXCEPT_HTTP_ONLY_SQL \
+    "DELETE FROM Cookie WHERE (domain = ?) AND (httponly = 0);"
 #define DELETE_ALL_COOKIE_SQL \
     "DELETE FROM Cookie;"
 
@@ -167,6 +174,8 @@ bool CookieJarDB::openDatabase()
     createPrepareStatement(CHECK_EXISTS_HTTPONLY_COOKIE_SQL);
     createPrepareStatement(DELETE_COOKIE_BY_NAME_DOMAIN_PATH_SQL);
     createPrepareStatement(DELETE_COOKIE_BY_NAME_DOMAIN_SQL);
+    createPrepareStatement(DELETE_COOKIES_BY_DOMAIN_SQL);
+    createPrepareStatement(DELETE_COOKIES_BY_DOMAIN_EXCEPT_HTTP_ONLY_SQL);
 
     return true;
 }
@@ -415,6 +424,34 @@ Optional<Vector<Cookie>> CookieJarDB::searchCookies(const String& requestUrl, co
     return results;
 }
 
+Vector<Cookie> CookieJarDB::getAllCookies()
+{
+    Vector<Cookie> result;
+    if (!isEnabled() || !m_database.isOpen())
+        return result;
+    const String sql = "SELECT name, value, domain, path, expires, httponly, secure, session FROM Cookie"_s;
+    auto pstmt = std::make_unique<SQLiteStatement>(m_database, sql);
+    if (!pstmt)
+        return result;
+    pstmt->prepare();
+    while (pstmt->step() == SQLITE_ROW) {
+        Cookie cookie;
+        cookie.name = pstmt->getColumnText(0);
+        cookie.value = pstmt->getColumnText(1);
+        cookie.domain = pstmt->getColumnText(2).convertToASCIILowercase();
+        cookie.path = pstmt->getColumnText(3);
+        double cookieExpires = (double)pstmt->getColumnInt64(4);
+        if (cookieExpires)
+            cookie.expires = cookieExpires;
+        cookie.httpOnly = (pstmt->getColumnInt(5) == 1);
+        cookie.secure = (pstmt->getColumnInt(6) == 1);
+        cookie.session = (pstmt->getColumnInt(7) == 1);
+        result.append(WTFMove(cookie));
+    }
+    pstmt->finalize();
+    return result;
+}
+
 bool CookieJarDB::hasHttpOnlyCookie(const String& name, const String& domain, const String& path)
 {
     auto& statement = preparedStatement(CHECK_EXISTS_HTTPONLY_COOKIE_SQL);
@@ -480,7 +517,7 @@ bool CookieJarDB::setCookie(const String& url, const String& body, CookieJarDB::
         return false;
 
     if (cookie->domain.isEmpty())
-        cookie->domain = String(host);
+        cookie->domain = "." + String(host); // Original Odyssey logic
 
     if (cookie->path.isEmpty())
         cookie->path = CookieUtil::defaultPathForURL(urlObj);
@@ -489,6 +526,21 @@ bool CookieJarDB::setCookie(const String& url, const String& body, CookieJarDB::
         return false;
 
     return setCookie(*cookie);
+}
+
+HashSet<String> CookieJarDB::allDomains()
+{
+    SQLiteStatement statement(m_database, SELECT_ALL_DOMAINS_SQL);
+    statement.prepare();
+
+    HashSet<String> domains;
+    while (statement.step() == SQLITE_ROW) {
+        auto domain = statement.getColumnText(0);
+        domains.add(domain);
+    }
+
+    statement.finalize();
+    return domains;
 }
 
 bool CookieJarDB::deleteCookie(const String& url, const String& name)
@@ -525,6 +577,13 @@ bool CookieJarDB::deleteCookies(const String&)
     // NOT IMPLEMENTED
     // TODO: this function will be called if application calls WKCookieManagerDeleteCookiesForHostname() in WKCookieManager.h.
     return false;
+}
+
+bool CookieJarDB::deleteCookiesForHostname(const String& hostname, IncludeHttpOnlyCookies includeHttpOnlyCookies)
+{
+    auto& statement = preparedStatement(includeHttpOnlyCookies == IncludeHttpOnlyCookies::Yes ? DELETE_COOKIES_BY_DOMAIN_SQL : DELETE_COOKIES_BY_DOMAIN_EXCEPT_HTTP_ONLY_SQL);
+    statement.bindText(1, hostname);
+    return checkSQLiteReturnCode(statement.step());
 }
 
 bool CookieJarDB::deleteAllCookies()

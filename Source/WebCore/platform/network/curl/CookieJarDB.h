@@ -25,6 +25,7 @@
 #pragma once
 
 #include "Cookie.h"
+#include "CookieJar.h"
 #include "SQLiteDatabase.h"
 #include "SQLiteStatement.h"
 #include <wtf/HashMap.h>
@@ -35,6 +36,13 @@
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
+
+enum class CookieAcceptPolicy {
+    Always,
+    Never,
+    OnlyFromMainDocumentDomain,
+    ExclusivelyFromMainDocumentDomain
+};
 
 class CookieJarDB {
     WTF_MAKE_NONCOPYABLE(CookieJarDB);
@@ -48,12 +56,15 @@ public:
     bool isEnabled() const;
     void setEnabled(bool);
 
+    HashSet<String> allDomains();
     Optional<Vector<Cookie>> searchCookies(const String& requestUrl, const Optional<bool>& httpOnly, const Optional<bool>& secure, const Optional<bool>& session);
+    Vector<Cookie> getAllCookies();
     bool setCookie(const String& url, const String& cookie, Source);
     bool setCookie(const Cookie&);
 
     bool deleteCookie(const String& url, const String& name);
     bool deleteCookies(const String& url);
+    bool deleteCookiesForHostname(const String& hostname, IncludeHttpOnlyCookies);
     bool deleteAllCookies();
 
     WEBCORE_EXPORT CookieJarDB(const String& databasePath);
