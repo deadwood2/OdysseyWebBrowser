@@ -2794,7 +2794,8 @@ DEFMMETHOD(ContextMenuBuild)
     ContextMenu* coreMenu = page->contextMenuController().contextMenu();
     if (!coreMenu)
         return 0;
-asm("int3");
+bug("ContextMenuBuild STILL BROKEN\n");
+return 0;
 #if 0
     data->contextmenu = (Object *) MenustripObject,
                                     Child, (Object *) coreMenu->platformDescription(),
