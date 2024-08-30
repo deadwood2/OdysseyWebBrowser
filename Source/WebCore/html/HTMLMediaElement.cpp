@@ -699,6 +699,13 @@ RefPtr<HTMLMediaElement> HTMLMediaElement::bestMediaElementForShowingPlaybackCon
     return &strongestSessionCandidate.session->element();
 }
 
+#if PLATFORM(MUI)
+WebCore::Page* HTMLMediaElement::mediaPlayerPage()
+{
+    return document().page();
+}
+#endif
+
 void HTMLMediaElement::registerWithDocument(Document& document)
 {
     m_mediaSession->registerWithDocument(document);

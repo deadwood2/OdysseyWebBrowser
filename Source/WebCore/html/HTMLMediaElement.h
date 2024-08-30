@@ -284,6 +284,10 @@ public:
 
     bool elementIsHidden() const { return m_elementIsHidden; }
 
+#if PLATFORM(MUI)
+    Page* mediaPlayerPage() final;
+#endif
+
 #if ENABLE(MEDIA_STATISTICS)
 // Statistics
     unsigned webkitAudioDecodedByteCount() const;
