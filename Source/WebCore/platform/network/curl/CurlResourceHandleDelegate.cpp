@@ -182,6 +182,14 @@ void CurlResourceHandleDelegate::curlDidFailWithError(CurlRequest& request, cons
     client()->didFail(&m_handle, resourceError);
 }
 
+#if PLATFORM(MUI)
+void CurlResourceHandleDelegate::curlDidCancel(CurlRequest& request)
+{
+    ASSERT(isMainThread());
+
+    CurlCacheManager::singleton().didCancel(m_handle);
+}
+#endif
 
 } // namespace WebCore
 

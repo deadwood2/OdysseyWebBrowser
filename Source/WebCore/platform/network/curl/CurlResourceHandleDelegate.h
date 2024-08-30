@@ -56,6 +56,9 @@ public:
     void curlDidReceiveBuffer(CurlRequest&, Ref<SharedBuffer>&&) final;
     void curlDidComplete(CurlRequest&) final;
     void curlDidFailWithError(CurlRequest&, const ResourceError&) final;
+#if PLATFORM(MUI)
+    void curlDidCancel(CurlRequest&) final;
+#endif
 
 private:
     ResourceHandle& m_handle;

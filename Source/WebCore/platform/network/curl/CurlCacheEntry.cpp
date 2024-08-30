@@ -445,11 +445,19 @@ size_t CurlCacheEntry::entrySize()
         long long headerFileSize;
         long long contentFileSize;
 
+#if PLATFORM(MUI)
+        if (!getFileSize(m_headerFilename, headerFileSize)) {
+#else
         if (!FileSystem::getFileSize(m_headerFilename, headerFileSize)) {
+#endif
             LOG(Network, "Cache Error: Could not get file size of %s\n", m_headerFilename.latin1().data());
             return m_entrySize;
         }
+#if PLATFORM(MUI)
+        if (!getFileSize(m_contentFilename, contentFileSize)) {
+#else
         if (!FileSystem::getFileSize(m_contentFilename, contentFileSize)) {
+#endif
             LOG(Network, "Cache Error: Could not get file size of %s\n", m_contentFilename.latin1().data());
             return m_entrySize;
         }
