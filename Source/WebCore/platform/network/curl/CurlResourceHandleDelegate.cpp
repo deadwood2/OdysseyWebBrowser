@@ -138,9 +138,18 @@ void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, co
         }
     }
 
+#if !PLATFORM(MUI)
     CurlCacheManager::singleton().didReceiveResponse(m_handle, m_response);
+#endif
 
     m_handle.didReceiveResponse(ResourceResponse(m_response), [this, protectedHandle = makeRef(m_handle)] {
+#if PLATFORM(MUI)
+        // moved to avoid reverting the events order (must be header, then data)
+        if (!cancelledOrClientless())
+        {
+            CurlCacheManager::singleton().didReceiveResponse(m_handle, m_response);
+        }
+#endif
         m_handle.continueAfterDidReceiveResponse();
     });
 }

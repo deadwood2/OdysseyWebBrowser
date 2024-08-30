@@ -37,6 +37,8 @@
 #include "PublicSuffix.h"
 #endif
 
+#include <sys/stat.h>
+
 namespace WebCore {
 
 #define CORRUPT_MARKER_SUFFIX "-corrupted"

@@ -291,6 +291,9 @@ CurlHandle::CurlHandle()
     enableVerboseIfUsed();
     enableStdErrIfUsed();
 #endif
+#if PLATFORM(MUI)
+    curl_easy_setopt(m_handle, CURLOPT_BUFFERSIZE, 64 * 1024);
+#endif
 }
 
 CurlHandle::~CurlHandle()
@@ -388,6 +391,11 @@ void CurlHandle::setUrl(const URL& url)
 
     if (url.protocolIs("https"))
         enableSSLForHost(m_url.host().toString());
+#if PLATFORM(MUI)
+/* From curl 7.66.0 */
+/*    else
+        curl_easy_setopt(m_handle, CURLOPT_HTTP09_ALLOWED, 1L);  // HTTP only*/
+#endif
 }
 
 void CurlHandle::appendRequestHeaders(const HTTPHeaderMap& headers)
@@ -442,6 +450,13 @@ void CurlHandle::enableRequestHeaders()
     const struct curl_slist* headers = m_requestHeaders.head();
     curl_easy_setopt(m_handle, CURLOPT_HTTPHEADER, headers);
 }
+
+#if PLATFORM(MUI)
+void CurlHandle::disableAcceptEncoding()
+{
+    curl_easy_setopt(m_handle, CURLOPT_ENCODING, NULL);
+}
+#endif
 
 void CurlHandle::enableHttp()
 {
@@ -507,6 +522,13 @@ void CurlHandle::setHttpCustomRequest(const String& method)
     enableHttp();
     curl_easy_setopt(m_handle, CURLOPT_CUSTOMREQUEST, method.ascii().data());
 }
+
+#if PLATFORM(MUI)
+void CurlHandle::setResumeOffset(long long offset)
+{
+	curl_easy_setopt(m_handle, CURLOPT_RESUME_FROM_LARGE, curl_off_t(offset));
+}
+#endif
 
 void CurlHandle::enableAcceptEncoding()
 {
@@ -943,6 +965,14 @@ Optional<size_t> CurlSocketHandle::receive(uint8_t* buffer, size_t bufferSize)
     return bytesRead;
 }
 
+}
+
+#if PLATFORM(MUI)
+#include <proto/bsdsocket.h>
+#endif
+
+namespace WebCore {
+
 Optional<CurlSocketHandle::WaitResult> CurlSocketHandle::wait(const Seconds& timeout, bool alsoWaitForWrite)
 {
     curl_socket_t socket;
@@ -981,8 +1011,14 @@ Optional<CurlSocketHandle::WaitResult> CurlSocketHandle::wait(const Seconds& tim
         FD_ZERO(&fderr);
         FD_SET(socket, &fderr);
 
+#if PLATFORM(MUI)
+        rc = WaitSelect(maxfd, &fdread, &fdwrite, &fderr, &selectTimeout, nullptr);
+    } while (0);
+#else
         rc = ::select(maxfd, &fdread, &fdwrite, &fderr, &selectTimeout);
     } while (rc == -1 && errno == EINTR);
+#endif
+
 
     if (rc <= 0)
         return WTF::nullopt;
