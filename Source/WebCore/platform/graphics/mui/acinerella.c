@@ -1262,7 +1262,7 @@ ac_receive_frame_rc ac_receive_frame(lp_ac_decoder pDecoder, lp_ac_decoder_frame
 			}
 		}
 		else if (pDecoder->type == AC_DECODER_TYPE_VIDEO) {
-#if 0
+#if 1
 			lp_ac_video_decoder vDecoder = (lp_ac_video_decoder)pDecoder;
 
 			if (NULL == (vDecoder->pSwsCtx = sws_getCachedContext(
@@ -1276,8 +1276,8 @@ ac_receive_frame_rc ac_receive_frame(lp_ac_decoder pDecoder, lp_ac_decoder_frame
 			}
 
 			if (sws_scale(vDecoder->pSwsCtx,
-				 (const uint8_t *const *)(vDecoder->pFrame->data),
-				 vDecoder->pFrame->linesize,
+				 (const uint8_t *const *)(frame->pFrame->data),
+				 frame->pFrame->linesize,
 				 0,  //?
 				 vDecoder->pCodecCtx->height, vDecoder->pFrameRGB->data,
 				 vDecoder->pFrameRGB->linesize) < 0)

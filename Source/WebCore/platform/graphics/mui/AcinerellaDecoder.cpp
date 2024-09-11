@@ -225,7 +225,7 @@ bool AcinerellaDecoder::decodeNextFrame()
 
 		for (;;)
 		{
-			AcinerellaDecodedFrame frame = AcinerellaDecodedFrame(acinerella, decoder);
+			frame = AcinerellaDecodedFrame(acinerella, decoder);
 			auto rcFrame = ac_receive_frame(decoder, frame.frame());
 			
 			switch (rcFrame)
