@@ -102,7 +102,12 @@ AcinerellaVideoDecoder::~AcinerellaVideoDecoder()
 void AcinerellaVideoDecoder::onDecoderChanged(RefPtr<AcinerellaPointer> acinerella)
 {
 	auto decoder = acinerella->decoder(m_index);
+#if (CGX_OVERLAY)
 	ac_set_output_format(decoder, AC_OUTPUT_YUV420P);
+#endif
+#if (CAIRO_BLIT)
+	ac_set_output_format(decoder, AC_OUTPUT_RGBA32);
+#endif
     ac_decoder_set_loopfilter(decoder, int(m_client->streamSettings().m_loopFilter));
 }
 
@@ -497,6 +502,7 @@ void AcinerellaVideoDecoder::paint(GraphicsContext& gc, const FloatRect& rect)
 	{
 		WebCore::PlatformContextCairo *context = gc.platformContext();
 		cairo_t* cr = context->cr();
+		ac_scale_to_rgb_decoder_frame(m_decodedFrames.front().frame(), m_decodedFrames.front().pointer()->decoder(m_index));
 		auto *avFrame = ac_get_frame(m_decodedFrames.front().pointer()->decoder(m_index));
 		// CAIRO_FORMAT_RGB24 is actually 00RRGGBB on BigEndian
 

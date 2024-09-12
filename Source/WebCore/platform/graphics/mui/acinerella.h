@@ -547,6 +547,8 @@ EXTERN AVFrame * CALL_CONVT ac_get_frame_real(lp_ac_decoder_frame pFrame);
 EXTERN lp_ac_decoder_frame ac_alloc_decoder_frame(lp_ac_decoder decoder);
 EXTERN void ac_free_decoder_frame(lp_ac_decoder_frame pFrame);
 
+EXTERN void ac_scale_to_rgb_decoder_frame(lp_ac_decoder_frame pFrame, lp_ac_decoder decoder);
+
 EXTERN int CALL_CONVT ac_get_audio_rate(lp_ac_decoder pDecoder);
 
 EXTERN double ac_get_package_pts(lp_ac_instance pacInstance, lp_ac_package pPackage);

@@ -1204,6 +1204,32 @@ int CALL_CONVT ac_decode_package(lp_ac_package pPackage,
 	return ac_decode_package_ex(pPackage, pDecoder, NULL);
 }
 
+void ac_scale_to_rgb_decoder_frame(lp_ac_decoder_frame pFrame, lp_ac_decoder pDecoder)
+{
+    struct _ac_decoder_frame_internal *frame = (struct _ac_decoder_frame_internal *)pFrame;
+	lp_ac_video_decoder vDecoder = (lp_ac_video_decoder)pDecoder;
+
+	if (NULL == (vDecoder->pSwsCtx = sws_getCachedContext(
+		vDecoder->pSwsCtx, vDecoder->pCodecCtx->width,
+		vDecoder->pCodecCtx->height, vDecoder->pCodecCtx->pix_fmt,
+		vDecoder->pCodecCtx->width, vDecoder->pCodecCtx->height,
+		convert_pix_format(vDecoder->decoder.pacInstance->output_format),
+		/*SWS_BICUBIC*/SWS_FAST_BILINEAR, NULL, NULL, NULL)))
+	{
+		return;
+	}
+
+	if (sws_scale(vDecoder->pSwsCtx,
+		 (const uint8_t *const *)(frame->pFrame->data),
+		 frame->pFrame->linesize,
+		 0,  //?
+		 vDecoder->pCodecCtx->height, vDecoder->pFrameRGB->data,
+		 vDecoder->pFrameRGB->linesize) < 0)
+	{
+		return;
+	}
+}
+
 ac_receive_frame_rc ac_receive_frame(lp_ac_decoder pDecoder, lp_ac_decoder_frame pFrame)
 {
 	if (!pDecoder || !pFrame)
@@ -1262,7 +1288,7 @@ ac_receive_frame_rc ac_receive_frame(lp_ac_decoder pDecoder, lp_ac_decoder_frame
 			}
 		}
 		else if (pDecoder->type == AC_DECODER_TYPE_VIDEO) {
-#if 1
+#if 0
 			lp_ac_video_decoder vDecoder = (lp_ac_video_decoder)pDecoder;
 
 			if (NULL == (vDecoder->pSwsCtx = sws_getCachedContext(
