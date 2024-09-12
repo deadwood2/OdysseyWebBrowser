@@ -537,10 +537,10 @@ void AcinerellaVideoDecoder::paint(GraphicsContext& gc, const FloatRect& rect)
 					cairo_matrix_t matrix;
 					cairo_matrix_init_scale(&matrix, double(m_frameWidth) / rect.width(), double(m_frameHeight) / rect.height());
 					cairo_pattern_set_matrix(pattern, &matrix);
-					cairo_pattern_set_filter(pattern, CAIRO_FILTER_FAST);
+					cairo_pattern_set_filter(pattern, CAIRO_FILTER_GOOD);
 					cairo_set_source(cr, pattern);
 					cairo_clip(cr);
-					cairo_set_antialias(cr, CAIRO_ANTIALIAS_NONE);
+					cairo_set_antialias(cr, CAIRO_ANTIALIAS_DEFAULT);
 					cairo_paint(cr);
 					cairo_pattern_destroy(pattern);
 				}
