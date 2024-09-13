@@ -369,9 +369,12 @@ void main_loop(void)
 			if(isSafeToQuit())
 				running = FALSE;
 		}
-		
-		/* Run webkit events for each active browser */
-		DoMethod(app, MM_OWBApp_WebKitEvents);
+
+		if(signals & SIGBREAKF_CTRL_E)
+		{
+			/* Run webkit events for each active browser */
+			DoMethod(app, MM_OWBApp_WebKitEvents);
+		}
 		
 		/*
 		if(signals & dosnotifysig )

@@ -154,6 +154,9 @@ struct MinList contextmenu_list;
 struct MinList mimetype_list;
 struct MinList urlsetting_list;
 struct MinList family_list;
+RefPtr<Thread> ctrl_e_thread;
+int ctrl_e_should_exit = 0;
+struct Task *mainTask = NULL;
 
 static const CONST_STRPTR classlist[] = {
     "Lamp.mcc",
@@ -940,6 +943,21 @@ DEFNEW
     WTF::initializeMainThread();
     WebPlatformStrategies::initialize();
 
+    /* Task that is used to signal main loop for processing of RunLoop based work */
+    ctrl_e_should_exit = 0;
+    mainTask = FindTask(0);
+    ctrl_e_thread = Thread::create("OWB_CTRL_E_TASK", [] {
+        while (true) {
+            if (ctrl_e_should_exit == 0) {
+                Signal(mainTask, SIGBREAKF_CTRL_E);
+                usleep(20 * 1000);
+            }
+            else
+                break;
+        }
+        ctrl_e_should_exit = 2;
+    });
+
     obj = (Object *) DoSuperNew(cl, obj,
             MUIA_Application_Title      , "Odyssey Web Browser",
             MUIA_Application_Version    , "$VER: Odyssey Web Browser " VERSION " (" OWB_BUILD_DATE ")",
@@ -1092,6 +1110,8 @@ DEFDISP
 {
     GETDATA;
     APTR n, m;
+
+    ctrl_e_should_exit = 1;
 
     ITERATELISTSAFE(n, m, &window_list)
     {
