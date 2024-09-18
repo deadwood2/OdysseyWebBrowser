@@ -91,12 +91,14 @@
 #include <WebCore/CurlContext.h>
 #include "NetworkStorageSessionMap.h"
 #include "WebStorageNamespaceProvider.h"
+#include "WebDatabaseProvider.h"
 #include <WebCore/CurlCacheManager.h>
 #include <WebCore/DOMWindow.h>
 #include <WebCore/MemoryCache.h>
 #include <WebCore/MemoryRelease.h>
 #include "JavaScriptCore/jit/JITWorklist.h"
 #include <WebCore/CommonVM.h>
+#include <WebCore/DataURLDecoder.h>
 
 /* Posix */
 #include <unistd.h>
@@ -1167,9 +1169,10 @@ DEFDISP
 
     WebCore::DOMWindow::dispatchAllPendingUnloadEvents();
     WebCore::CurlContext::singleton().stopThread();
-//    NetworkStorageSessionMap::destroyAllSessions();
-//    WebStorageNamespaceProvider::closeLocalStorage();
+    WebDatabaseProvider::singleton().shutdownServers();
+    WebKit::WebStorageNamespaceProvider::closeLocalStorage();
     CurlCacheManager::singleton().setStorageSizeLimit(0);
+    DataURLDecoder::shutdown();
 
     GCController::singleton().garbageCollectNow();
 //    FontCache::singleton().invalidate(); // trashes memory like fuck on https://testdrive-archive.azurewebsites.net/Graphics/CanvasPinball/default.html
