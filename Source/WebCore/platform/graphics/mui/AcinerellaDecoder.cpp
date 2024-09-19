@@ -50,6 +50,8 @@ AcinerellaDecoder::~AcinerellaDecoder()
 
 void AcinerellaDecoder::warmUp()
 {
+	auto lock = holdLock(m_lock);
+
 	if (!m_terminating && !m_thread)
 	{
 		DI(dprintf("%s: %p starting thread\033[0m\n", __func__, this));
