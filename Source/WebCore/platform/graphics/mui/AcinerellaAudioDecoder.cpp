@@ -214,18 +214,18 @@ bool AcinerellaAudioDecoder::initializeAudio()
 										AHIP_EndChannel, 0,
 										TAG_DONE);
 									m_playing = false;
+									return true;
 								}
 								else
 								{
 									D(dprintf("[AD]%s: AHI_ControlAudio failed\n", __func__));
 								}
 							}
-							
-							return true;
 						}
 						
 						for (int i = 0; i < 2; i++)
 						{
+							AHI_UnloadSound(i, m_ahiControl);
 							free(m_ahiSample[i].ahisi_Address);
 							m_ahiSample[i].ahisi_Address = nullptr;
 						}
