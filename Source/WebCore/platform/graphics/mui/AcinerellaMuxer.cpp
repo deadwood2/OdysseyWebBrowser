@@ -10,8 +10,15 @@
 #include "AcinerellaDecoder.h"
 #include "AcinerellaHLS.h"
 
+#if OS(AROS)
+#include <aros/debug.h>
+#define dprintf bug
+#undef D
+#endif
+
 #define D(x) 
 #define DF(x) 
+#define DPUSH(x)
 
 namespace WebCore {
 namespace Acinerella {
@@ -73,6 +80,34 @@ void AcinerellaMuxedBuffer::push(RefPtr<AcinerellaPackage> &package)
 		forValidDecoders([](AcinerellaPackageQueue&, BinarySemaphore& event) {
 			event.signal();
 		});
+	}
+}
+
+void AcinerellaMuxedBuffer::push(RefPtr<AcinerellaPackage> &package, int index)
+{
+	EP_SCOPE(push);
+	DPUSH(dprintf("%s: %p package index %lu isFlush %d mask %lx\n", __PRETTY_FUNCTION__, this, package ? package->index() : -1, package ? package->isFlushPackage() : 0, m_decoderMask));
+
+	// is this a valid package?
+	if (package && package->isValid())
+	{
+		{
+			auto lock = holdLock(m_lock);
+
+			if (isDecoderValid(index))
+			{
+				m_packages[index].emplace(package);
+//				m_bytes[index] += package->isFlushPackage() ? 0 : ac_get_package_size(package->package());
+				DPUSH(dprintf("%s: pushing into packages queue @ index %d, size %d type %s\n", __PRETTY_FUNCTION__, index, m_packages[index].size(), (m_audioDecoderMask & (1UL << index)) ? "audio" : "video"));
+			}
+			else
+			{
+				DPUSH(dprintf("%s: no valid decoder at index %d, mask %lx\n", __PRETTY_FUNCTION__, m_decoderMask));
+			}
+		}
+		
+		if (isDecoderValid(index))
+			m_events[index].signal();
 	}
 }
 

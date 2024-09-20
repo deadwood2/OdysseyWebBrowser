@@ -724,9 +724,16 @@ void MediaSourceBufferPrivateMorphOS::getFrameCounts(unsigned& decoded, unsigned
 	}
 }
 
-void MediaSourceBufferPrivateMorphOS::flush(const AtomicString&)
+void MediaSourceBufferPrivateMorphOS::flush(const AtomicString& trackID)
 {
-	D(dprintf("[MS]%s\n", __func__));
+	int trackNo = atoi(trackID.string().ascii().data() + 1);
+	D(dprintf("[MS]%s(as): %s -> %d\n", __func__, trackID.string().utf8().data(), trackNo));
+	if (trackNo >= 0 && trackNo < Acinerella::AcinerellaMuxedBuffer::maxDecoders)
+	{
+		m_muxer->flush(trackNo);
+		RefPtr<Acinerella::AcinerellaPackage> package = Acinerella::AcinerellaPackage::create(m_reader->acinerella(), ac_flush_packet());
+		m_muxer->push(package, trackNo);
+	}
 }
 
 void MediaSourceBufferPrivateMorphOS::becomeReadyForMoreSamples(int index)

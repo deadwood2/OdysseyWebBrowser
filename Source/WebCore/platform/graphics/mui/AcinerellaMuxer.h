@@ -64,6 +64,7 @@ public:
 
 	// To be called on Acinerella thread
 	void push(RefPtr<AcinerellaPackage> &package);
+	void push(RefPtr<AcinerellaPackage> &package, int decoderIndex);
 	void flush();
 	void flush(int decoderIndex);
 	void terminate();
