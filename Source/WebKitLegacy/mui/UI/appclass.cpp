@@ -2110,6 +2110,34 @@ DEFTMETHOD(OWBApp_WebKitEvents)
 {
     RunLoop::iterate();
 
+#if 0
+    {
+        static MonotonicTime last = MonotonicTime::now();
+        MonotonicTime _now = MonotonicTime::now();
+        Seconds itTime = _now - last;
+        last = _now;
+        static int millis[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+        static int count = 0;
+        count++;
+
+        for (int i = 0; i < 9; i++)
+        {
+            millis[i] = millis[i+1];
+        }
+        millis[9] = itTime.milliseconds();
+
+
+
+        if (count % 16 == 0)
+        {
+            int summillis = 0;
+            for (int i = 0; i < 10; i++) summillis += millis[i];
+
+            bug("runloop::iterate avg %d\n", (int)summillis/10);
+        }
+    }
+#endif
     return 0;
 }
 
