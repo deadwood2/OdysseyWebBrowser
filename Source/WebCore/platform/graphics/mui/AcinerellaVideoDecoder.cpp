@@ -21,7 +21,9 @@
 #include <proto/cybergraphics.h>
 #include <cybergraphx/cybergraphics.h>
 #define __NOLIBBASE__
+#if (CGX_OVERLAY)
 #include <proto/cgxvideo.h>
+#endif
 #undef __NOLIBBASE__
 #include <cybergraphx/cgxvideo.h>
 #include <graphics/rpattr.h>
