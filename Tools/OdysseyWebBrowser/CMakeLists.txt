@@ -42,6 +42,7 @@ set(OdysseyWebBrowser_LIBRARIES
     -lswresample
     -lswscale
     -lpsl
+    -latomic
     ${ZLIB_LIBRARIES}
 )
 
