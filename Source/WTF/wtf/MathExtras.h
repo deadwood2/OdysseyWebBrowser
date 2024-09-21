@@ -70,6 +70,12 @@ const double sqrtOfTwoDouble = M_SQRT2;
 const float sqrtOfTwoFloat = static_cast<float>(M_SQRT2);
 #endif
 
+#if OS(AROS) // temp for 32-bit SDK
+#ifndef UINT16_MAX
+#define UINT16_MAX (65535)
+#endif
+#endif
+
 #if COMPILER(MSVC)
 
 // Work around a bug in Win, where atan2(+-infinity, +-infinity) yields NaN instead of specific values.
