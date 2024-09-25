@@ -56,4 +56,21 @@ bool Quirks::hasBrokenEncryptedMediaAPISupportQuirk() const
     return m_hasBrokenEncryptedMediaAPISupportQuirk.value();
 }
 
+inline bool Quirks::needsQuirks() const
+{
+    return m_document && m_document->settings().needsSiteSpecificQuirks();
+}
+
+bool Quirks::needsVP9FullRangeFlagQuirk() const
+{
+    if (!needsQuirks())
+        return false;
+
+    if (!m_needsVP9FullRangeFlagQuirk)
+        m_needsVP9FullRangeFlagQuirk = equalLettersIgnoringASCIICase(m_document->url().host(), "www.youtube.com");
+
+    return *m_needsVP9FullRangeFlagQuirk;
+}
+
+
 }

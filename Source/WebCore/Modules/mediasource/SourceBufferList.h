@@ -29,7 +29,7 @@
  */
 
 #pragma once
-
+//morphos_2.30.0
 #if ENABLE(MEDIA_SOURCE)
 
 #include "ActiveDOMObject.h"
@@ -43,6 +43,7 @@ namespace WebCore {
 class SourceBuffer;
 
 class SourceBufferList final : public RefCounted<SourceBufferList>, public EventTargetWithInlineData, public ActiveDOMObject {
+    WTF_MAKE_ISO_ALLOCATED(SourceBufferList);
 public:
     static Ref<SourceBufferList> create(ScriptExecutionContext* context)
     {
@@ -77,13 +78,17 @@ private:
     void refEventTarget() override { ref(); }
     void derefEventTarget() override { deref(); }
 
+#if defined(morphos_2_30_0)
+#else
     bool canSuspendForDocumentSuspension() const final;
-    void suspend(ReasonForSuspension) final;
-    void resume() final;
-    void stop() final;
+#endif
     const char* activeDOMObjectName() const final;
 
+#if defined(morphos_2_30_0)
+    UniqueRef<MainThreadGenericEventQueue> m_asyncEventQueue;
+#else
     GenericEventQueue m_asyncEventQueue;
+#endif
 
     Vector<RefPtr<SourceBuffer>> m_list;
 };

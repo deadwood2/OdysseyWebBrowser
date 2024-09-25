@@ -25,7 +25,7 @@
 
 #include "config.h"
 #include "SampleMap.h"
-
+//morphos_2.30.0
 #include "MediaSample.h"
 
 namespace WebCore {
@@ -186,6 +186,11 @@ PresentationOrderSampleMap::iterator PresentationOrderSampleMap::findSampleStart
 DecodeOrderSampleMap::iterator DecodeOrderSampleMap::findSampleWithDecodeKey(const KeyType& key)
 {
     return m_samples.find(key);
+}
+
+DecodeOrderSampleMap::iterator DecodeOrderSampleMap::findSampleAfterDecodeKey(const KeyType& key)
+{
+    return m_samples.upper_bound(key);
 }
 
 PresentationOrderSampleMap::reverse_iterator PresentationOrderSampleMap::reverseFindSampleContainingPresentationTime(const MediaTime& time)

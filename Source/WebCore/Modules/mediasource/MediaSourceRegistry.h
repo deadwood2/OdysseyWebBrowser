@@ -29,7 +29,7 @@
  */
 
 #pragma once
-
+//morphos_2.30.0
 #if ENABLE(MEDIA_SOURCE)
 
 #include "URLRegistry.h"
@@ -47,9 +47,13 @@ public:
     static MediaSourceRegistry& registry();
 
     // Registers a blob URL referring to the specified media source.
-    void registerURL(SecurityOrigin*, const URL&, URLRegistrable&) override;
-    void unregisterURL(const URL&) override;
-    URLRegistrable* lookup(const String&) const override;
+#if defined(morphos_2_30_0)
+    void registerURL(ScriptExecutionContext&, const URL&, URLRegistrable&)final;
+#else
+    void registerURL(SecurityOrigin*, const URL&, URLRegistrable&) final;
+#endif
+    void unregisterURL(const URL&) final;
+    URLRegistrable* lookup(const String&) const final;
 
 private:
     MediaSourceRegistry();

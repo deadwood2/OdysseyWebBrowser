@@ -30,7 +30,7 @@
  */
 
 #pragma once
-
+//morphos_2.30.0
 #if ENABLE(MEDIA_SOURCE)
 
 #include "ActiveDOMObject.h"
@@ -67,6 +67,7 @@ class SourceBuffer final
     , private LoggerHelper
 #endif
 {
+    WTF_MAKE_ISO_ALLOCATED(SourceBuffer);
 public:
     static Ref<SourceBuffer> create(Ref<SourceBufferPrivate>&&, MediaSource*);
     virtual ~SourceBuffer();
@@ -76,11 +77,12 @@ public:
     double timestampOffset() const;
     ExceptionOr<void> setTimestampOffset(double);
 
-#if ENABLE(VIDEO_TRACK)
     VideoTrackList& videoTracks();
+    VideoTrackList* videoTracksIfExists() const { return m_videoTracks.get(); }
     AudioTrackList& audioTracks();
+    AudioTrackList* audioTracksIfExists() const { return m_audioTracks.get(); }
     TextTrackList& textTracks();
-#endif
+    TextTrackList* textTracksIfExists() const { return m_textTracks.get(); }
 
     double appendWindowStart() const;
     ExceptionOr<void> setAppendWindowStart(double);
@@ -126,7 +128,10 @@ public:
     MediaTime highestPresentationTimestamp() const;
     void readyStateChanged();
 
+#if defined(morphos_2_30_0)
+#else
     bool hasPendingActivity() const final;
+#endif
 
     void trySignalAllSamplesEnqueued();
 
@@ -143,11 +148,14 @@ private:
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
 
-    void suspend(ReasonForSuspension) final;
-    void resume() final;
+    // ActiveDOMObject.
     void stop() final;
     const char* activeDOMObjectName() const final;
+#if defined(morphos_2_30_0)
+    bool virtualHasPendingActivity() const final;
+#else
     bool canSuspendForDocumentSuspension() const final;
+#endif
 
     void sourceBufferPrivateDidReceiveInitializationSegment(const InitializationSegment&) final;
     void sourceBufferPrivateDidReceiveSample(MediaSample&) final;
@@ -197,6 +205,8 @@ private:
     void reportExtraMemoryAllocated();
 
     void updateBufferedFromTrackBuffers();
+    void updateMinimumUpcomingPresentationTime(TrackBuffer&, const AtomicString& trackID);
+    void resetMinimumUpcomingPresentationTime(TrackBuffer&, const AtomicString& trackID);
 
     void appendError(bool);
 
@@ -209,10 +219,16 @@ private:
     friend class Internals;
     WEBCORE_EXPORT Vector<String> bufferedSamplesForTrackID(const AtomicString&);
     WEBCORE_EXPORT Vector<String> enqueuedSamplesForTrackID(const AtomicString&);
+    WEBCORE_EXPORT MediaTime minimumUpcomingPresentationTimeForTrackID(const AtomicString&);
+    WEBCORE_EXPORT void setMaximumQueueDepthForTrackID(const AtomicString&, size_t);
 
     Ref<SourceBufferPrivate> m_private;
     MediaSource* m_source;
+#if defined(morphos_2_30_0)
+    UniqueRef<MainThreadGenericEventQueue> m_asyncEventQueue;
+#else
     GenericEventQueue m_asyncEventQueue;
+#endif
     AppendMode m_mode { AppendMode::Segments };
 
     Vector<unsigned char> m_pendingAppendData;

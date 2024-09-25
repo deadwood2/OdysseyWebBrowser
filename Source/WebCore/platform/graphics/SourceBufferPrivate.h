@@ -30,7 +30,7 @@
  */
 
 #pragma once
-
+//morphos_2.30.0
 #if ENABLE(MEDIA_SOURCE)
 
 #include "MediaPlayer.h"
@@ -62,9 +62,15 @@ public:
     virtual void setActive(bool) { }
     virtual void notifyClientWhenReadyForMoreSamples(const AtomicString&) { }
 
-    virtual Vector<String> enqueuedSamplesForTrackID(const AtomicString&) { return { }; }
-
+    virtual bool canSetMinimumUpcomingPresentationTime(const AtomicString&) const { return false; }
+    virtual void setMinimumUpcomingPresentationTime(const AtomicString&, const MediaTime&) { }
+    virtual void clearMinimumUpcomingPresentationTime(const AtomicString&) { }
     virtual bool canSwitchToType(const ContentType&) { return false; }
+
+    // Internals Utility methods:
+    virtual Vector<String> enqueuedSamplesForTrackID(const AtomicString&) { return { }; }
+    virtual MediaTime minimumUpcomingPresentationTimeForTrackID(const AtomicString&) { return MediaTime::invalidTime(); }
+    virtual void setMaximumQueueDepthForTrackID(const AtomicString&, size_t) { }
 
 #if !RELEASE_LOG_DISABLED
     virtual const Logger& sourceBufferLogger() const = 0;

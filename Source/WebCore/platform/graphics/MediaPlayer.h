@@ -594,6 +594,8 @@ public:
 
     bool shouldIgnoreIntrinsicSize();
 
+    void activeSourceBuffersChanged() { client().mediaPlayerActiveSourceBuffersChanged(this); }
+
 private:
     MediaPlayer(MediaPlayerClient&);
 

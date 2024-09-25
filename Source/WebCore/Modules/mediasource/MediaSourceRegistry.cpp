@@ -31,7 +31,7 @@
 
 #include "config.h"
 #include "MediaSourceRegistry.h"
-
+//morphos_2.30.0
 #if ENABLE(MEDIA_SOURCE)
 
 #include "MediaSource.h"
@@ -48,7 +48,11 @@ MediaSourceRegistry& MediaSourceRegistry::registry()
     return instance;
 }
 
+#if defined(morphos_2_30_0)
+void MediaSourceRegistry::registerURL(ScriptExecutionContext&, const URL& url, URLRegistrable& registrable)
+#else
 void MediaSourceRegistry::registerURL(SecurityOrigin*, const URL& url, URLRegistrable& registrable)
+#endif
 {
     ASSERT(&registrable.registry() == this);
     ASSERT(isMainThread());

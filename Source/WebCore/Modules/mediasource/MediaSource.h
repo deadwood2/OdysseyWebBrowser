@@ -29,21 +29,22 @@
  */
 
 #pragma once
-
+//morphos_2.30.0
 #if ENABLE(MEDIA_SOURCE)
 
 #include "ActiveDOMObject.h"
 #include "EventTarget.h"
 #include "ExceptionOr.h"
 #include "GenericEventQueue.h"
+#include "HTMLMediaElement.h"
 #include "MediaSourcePrivateClient.h"
 #include "URLRegistry.h"
 #include <wtf/LoggerHelper.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
 class ContentType;
-class HTMLMediaElement;
 class SourceBuffer;
 class SourceBufferList;
 class SourceBufferPrivate;
@@ -58,6 +59,7 @@ class MediaSource final
     , private LoggerHelper
 #endif
 {
+    WTF_MAKE_ISO_ALLOCATED(MediaSource);
 public:
     static void setRegistry(URLRegistry*);
     static MediaSource* lookup(const String& url) { return s_registry ? static_cast<MediaSource*>(s_registry->lookup(url)) : nullptr; }
@@ -77,7 +79,6 @@ public:
     void streamEndedWithError(Optional<EndOfStreamError>);
 
     MediaTime duration() const final;
-    void durationChanged(const MediaTime&) final;
     std::unique_ptr<PlatformTimeRanges> buffered() const final;
 
     bool attachToElement(HTMLMediaElement&);
@@ -96,20 +97,23 @@ public:
     ReadyState readyState() const { return m_readyState; }
     ExceptionOr<void> endOfStream(Optional<EndOfStreamError>);
 
-    HTMLMediaElement* mediaElement() const { return m_mediaElement; }
+    HTMLMediaElement* mediaElement() const { return m_mediaElement.get(); }
 
     SourceBufferList* sourceBuffers() { return m_sourceBuffers.get(); }
     SourceBufferList* activeSourceBuffers() { return m_activeSourceBuffers.get(); }
     ExceptionOr<Ref<SourceBuffer>> addSourceBuffer(const String& type);
     ExceptionOr<void> removeSourceBuffer(SourceBuffer&);
-    static bool isTypeSupported(const String& type);
+    static bool isTypeSupported(ScriptExecutionContext&, const String& type);
 
     ScriptExecutionContext* scriptExecutionContext() const final;
 
     using RefCounted::ref;
     using RefCounted::deref;
 
+#if defined(morphos_2_30_0)
+#else
     bool hasPendingActivity() const final;
+#endif
 
     static const MediaTime& currentTimeFudgeFactor();
     static bool contentTypeShouldGenerateTimestamps(const ContentType&);
@@ -122,14 +126,20 @@ public:
     void setLogIdentifier(const void*) final;
 #endif
 
+    void failedToCreateRenderer(RendererType) final;
+
 private:
     explicit MediaSource(ScriptExecutionContext&);
 
-    void suspend(ReasonForSuspension) final;
-    void resume() final;
+    // ActiveDOMObject.
     void stop() final;
+#if defined(morphos_2_30_0)
+    bool virtualHasPendingActivity() const final;
+#else
     bool canSuspendForDocumentSuspension() const final;
+#endif
     const char* activeDOMObjectName() const final;
+    static bool isTypeSupported(ScriptExecutionContext&, const String& type, Vector<ContentType>&& contentTypesRequiringHardwareSupport);
 
     void setPrivateAndOpen(Ref<MediaSourcePrivate>&&) final;
     void seekToTime(const MediaTime&) final;
@@ -163,11 +173,15 @@ private:
     RefPtr<SourceBufferList> m_activeSourceBuffers;
     mutable std::unique_ptr<PlatformTimeRanges> m_buffered;
     std::unique_ptr<PlatformTimeRanges> m_liveSeekable;
-    HTMLMediaElement* m_mediaElement { nullptr };
+    WeakPtr<HTMLMediaElement> m_mediaElement;
     MediaTime m_duration;
     MediaTime m_pendingSeekTime;
     ReadyState m_readyState { ReadyState::Closed };
+#if defined(morphos_2_30_0)
+    UniqueRef<MainThreadGenericEventQueue> m_asyncEventQueue;
+#else
     GenericEventQueue m_asyncEventQueue;
+#endif
 #if !RELEASE_LOG_DISABLED
     Ref<const Logger> m_logger;
     const void* m_logIdentifier { nullptr };

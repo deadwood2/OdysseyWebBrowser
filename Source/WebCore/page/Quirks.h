@@ -39,10 +39,15 @@ public:
 
     bool hasBrokenEncryptedMediaAPISupportQuirk() const;
 
+    bool needsVP9FullRangeFlagQuirk() const;
+
 private:
+    bool needsQuirks() const;
+
     WeakPtr<Document> m_document;
 
     mutable Optional<bool> m_hasBrokenEncryptedMediaAPISupportQuirk;
+    mutable Optional<bool> m_needsVP9FullRangeFlagQuirk;
 };
 
 }
