@@ -272,7 +272,8 @@ void AcinerellaAudioDecoder::ahiCleanup()
 	if (m_ahiThread)
 	{
 		m_ahiThreadShuttingDown = true;
-		m_ahiSampleConsumed.signal();
+		if (m_pumpTask)
+			Signal(m_pumpTask, SIGF_SINGLE);
 	}
 
 	if (m_ahiControl)
@@ -401,7 +402,7 @@ void AcinerellaAudioDecoder::soundFunc(void *ptr)
 
 	// D(dprintf("[AD]%s: setSound %d (%d)\n", __func__, me->m_ahiSampleBeingPlayed % 2, me->m_ahiSampleBeingPlayed));
 
-	me->m_ahiSampleConsumed.signal();
+	Signal(me->m_pumpTask, SIGF_SINGLE);
 }
 
 void AcinerellaAudioDecoder::fillBuffer(int index)
@@ -532,10 +533,11 @@ void AcinerellaAudioDecoder::fillBuffer(int index)
 
 void AcinerellaAudioDecoder::ahiThreadEntryPoint()
 {
-	SetTaskPri(FindTask(0), 50);
+	m_pumpTask = FindTask(0);
+	SetTaskPri(m_pumpTask, 50);
 	while (!m_ahiThreadShuttingDown)
 	{
-		m_ahiSampleConsumed.wait();
+		Wait(SIGF_SINGLE);
 		uint32_t index = m_ahiSampleBeingPlayed % 2; // this sample will play next
 		fillBuffer(index);
 	}
