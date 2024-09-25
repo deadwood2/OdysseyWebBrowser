@@ -852,6 +852,20 @@ void MediaSourceBufferPrivateMorphOS::notifyClientWhenReadyForMoreSamples(const 
 //        m_client->sourceBufferPrivateDidBecomeReadyForMoreSamples(trackID);
 }
 
+bool MediaSourceBufferPrivateMorphOS::canSetMinimumUpcomingPresentationTime(const AtomicString&) const
+{
+	DBR(dprintf("[MS]%s\n", __func__));
+	// WARNING: HACK
+	// SourceBuffer calls this after a batch of enqueueSample calls
+	auto *me = const_cast<MediaSourceBufferPrivateMorphOS *>(this);
+    if (m_enqueuedSamples)
+    {
+        me->m_enqueuedSamples = false;
+        me->warmUp();
+    }
+	return false;
+}
+
 MediaPlayer::ReadyState MediaSourceBufferPrivateMorphOS::readyState() const
 {
 	D(dprintf("[MS]%s\n", __func__));

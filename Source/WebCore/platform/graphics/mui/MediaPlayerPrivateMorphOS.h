@@ -101,6 +101,7 @@ public:
 	void setSize(const IntSize&) override;
 
 	void setLoadingProgresssed(bool flag) { m_didLoadingProgress = flag; }
+	void onActiveSourceBuffersChanged() { if (m_player) m_player->activeSourceBuffersChanged(); }
 
 	const MediaPlayerMorphOSStreamSettings &streamSettings() { return m_streamSettings; }
 

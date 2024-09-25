@@ -145,6 +145,7 @@ private:
     bool isReadyForMoreSamples(const AtomicString&)  override;
     void setActive(bool) override;
     void notifyClientWhenReadyForMoreSamples(const AtomicString&)  override;
+    bool canSetMinimumUpcomingPresentationTime(const AtomicString&) const override;
 	
 	void flush();
 	void becomeReadyForMoreSamples(int decoderIndex);
