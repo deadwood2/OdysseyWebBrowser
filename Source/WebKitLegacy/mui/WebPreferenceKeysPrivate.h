@@ -156,3 +156,4 @@
 #define WebKitShouldInvertColorsPreferenceKey "WebKitShouldInvertColors"
 #define WebKitMediaPlaybackRequiresUserGesturePreferenceKey "WebKitMediaPlaybackRequiresUserGesture"
 #define WebKitMediaPlaybackAllowsInlinePreferenceKey "WebKitMediaPlaybackAllowsInline"
+#define WebKitMediaSourceEnabledPreferenceKey "WebKitMediaSourceEnabled"

@@ -750,6 +750,9 @@ public:
     virtual bool mediaPlaybackAllowsInline();
     virtual void setMediaPlaybackAllowsInline(bool);
 
+    virtual bool mediaSourceEnabled();
+    virtual void setMediaSourceEnabled(bool);
+
     /**
      * get the topic to notify a change on webPreference
      */

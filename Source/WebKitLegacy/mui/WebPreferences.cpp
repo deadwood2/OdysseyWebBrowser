@@ -1177,6 +1177,15 @@ bool WebPreferences::mediaPlaybackAllowsInline()
     return boolValueForKey(WebKitMediaPlaybackAllowsInlinePreferenceKey);
 }
 
+void WebPreferences::setMediaSourceEnabled(bool enabled)
+{
+    setBoolValue(WebKitMediaSourceEnabledPreferenceKey, enabled);
+}
+
+bool WebPreferences::mediaSourceEnabled()
+{
+    return boolValueForKey(WebKitMediaSourceEnabledPreferenceKey);
+}
 
 void WebPreferences::setShouldDisplaySubtitles(bool enabled)
 {

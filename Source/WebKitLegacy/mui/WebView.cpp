@@ -437,7 +437,7 @@ WebView::WebView()
 
 #if ENABLE(VIDEO)
     settings.setMediaEnabled(true);
-    settings.setMediaSourceEnabled(false);
+    settings.setMediaSourceEnabled(sharedPreferences->mediaSourceEnabled());
     settings.setInvisibleAutoplayNotPermitted(true);
     settings.setAudioPlaybackRequiresUserGesture(true);
     settings.setVideoPlaybackRequiresUserGesture(true);

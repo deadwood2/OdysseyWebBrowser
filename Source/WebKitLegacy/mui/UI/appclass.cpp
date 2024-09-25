@@ -2435,12 +2435,9 @@ void prefs_update(Object *obj, struct Data *data)
     /* security */
     sharedPreferences->setLocalStorageEnabled((bool) getv(data->prefswin, MA_OWBApp_EnableLocalStorage));
 
-    sharedPreferences->postPreferencesChangesNotification();
-
     /* JavaScript JIT */
     if (FindToolType(data->diskobject->do_ToolTypes, "NO_JSC_JIT"))
     {
-
         JSC::Options::useJIT() = false;
         JSC::Options::useDFGJIT() = false;
         JSC::Options::useFTLJIT() = false;
@@ -2449,6 +2446,13 @@ void prefs_update(Object *obj, struct Data *data)
 
     /* Force full collection */
     JSC::Options::useGenerationalGC() = true;
+
+    if (FindToolType(data->diskobject->do_ToolTypes, "MSE"))
+        sharedPreferences->setMediaSourceEnabled(true);
+    else
+        sharedPreferences->setMediaSourceEnabled(false);
+
+    sharedPreferences->postPreferencesChangesNotification();
 }
 
 DEFSMETHOD(OWBApp_PrefsLoad)
