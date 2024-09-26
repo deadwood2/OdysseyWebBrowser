@@ -769,10 +769,20 @@ void MediaPlayerPrivateMorphOS::accInitialized(MediaPlayerMorphOSInfo info)
 
 void MediaPlayerPrivateMorphOS::accUpdated(MediaPlayerMorphOSInfo info)
 {
+#if OS(AROS)
+	if (info.m_width)
+	{
+		m_width = info.m_width;
+		m_height = info.m_height;
+	}
+
+	accSetVideoSize(m_width, m_height);
+#else
 	if (MediaPlayerMorphOSSettings::settings().m_update)
 	{
 		MediaPlayerMorphOSSettings::settings().m_update(m_player, info);
 	}
+#endif
 }
 
 void MediaPlayerPrivateMorphOS::accSetNetworkState(WebCore::MediaPlayerEnums::NetworkState state)
