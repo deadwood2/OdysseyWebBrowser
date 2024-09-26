@@ -324,9 +324,10 @@ void MediaPlayerPrivateMorphOS::load(const String& url)
 MediaPlayerMorphOSSettings::settings().m_networkingContextForRequests =
 m_player->client().mediaPlayerPage()->mainFrame().loader().networkingContext();
 
-MediaPlayerMorphOSSettings::settings().m_load = [this](WebCore::MediaPlayer *player, const String &url, WebCore::MediaPlayerMorphOSInfo& info,
+MediaPlayerMorphOSSettings::settings().m_load = [](WebCore::MediaPlayer *player, const String &url, WebCore::MediaPlayerMorphOSInfo& info,
 		MediaPlayerMorphOSStreamSettings &settings, Function<void()> &&yieldFunc) {
 	};
+
 #endif
 
 	m_acinerella = Acinerella::Acinerella::create(this, url);
@@ -434,8 +435,25 @@ bool MediaPlayerPrivateMorphOS::canSaveMediaData() const
 
 void MediaPlayerPrivateMorphOS::play()
 {
+#if OS(AROS)
 	if (MediaPlayerMorphOSSettings::settings().m_willPlay)
 		MediaPlayerMorphOSSettings::settings().m_willPlay(m_player);
+#else
+	// yield from accInitialize which is called via m_willPlay callback in OBJC codes
+	if (m_acinerella) {
+		m_acinerella->pause();
+		m_acinerella->coolDown();
+	}
+#if ENABLE(MEDIA_SOURCE)
+	else if (m_mediaSourcePrivate) {
+		m_mediaSourcePrivate->pause();
+		m_mediaSourcePrivate->coolDown();
+	}
+#endif
+	m_didDrawFrame = false;
+	m_player->playbackStateChanged();
+
+#endif
 
 	if (m_acinerella)
 		m_acinerella->play();
