@@ -84,6 +84,8 @@ void WebDragClient::startDrag(DragItem item, DataTransfer& dataTransfer, Frame& 
     D(kprintf("startDrag image %p islink %d imageOrigin (%d %d) dragPoint (%d %d) clipboard %p\n", image, isLink, imageOrigin.x(), imageOrigin.y(), dragPoint.x(), dragPoint.y(), clipboard));
 
     BalWidget *widget = m_webView->viewWindow();
+    // Freed only when next drag images comes or when client is destroyed
+    m_dragImage = WTFMove(item.image);
 
     if(widget)
     {
@@ -111,10 +113,7 @@ void WebDragClient::startDrag(DragItem item, DataTransfer& dataTransfer, Frame& 
         set(widget->browser, MA_OWBBrowser_DragURL, data);
         free(data);
     }
-asm("int3"); //passing an on-stack object to MUI
-#if 0
-    set(widget->browser, MA_OWBBrowser_DragImage, image);
-#endif
+        set(widget->browser, MA_OWBBrowser_DragImage, m_dragImage.get().get());
     set(widget->browser, MA_OWBBrowser_DragData, dataObject.get());
     set(widget->browser, MA_OWBBrowser_DragOperation, dataTransfer.sourceOperation());
 

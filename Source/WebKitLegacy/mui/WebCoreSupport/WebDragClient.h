@@ -42,5 +42,6 @@ public:
     virtual void startDrag(WebCore::DragItem, WebCore::DataTransfer&, WebCore::Frame&) override;
 private:
     WebView* m_webView;
+    WebCore::DragImage m_dragImage;
 };
 
