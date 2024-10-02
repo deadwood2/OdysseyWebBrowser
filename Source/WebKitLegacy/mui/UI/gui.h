@@ -346,7 +346,7 @@ void dosnotify_stop(struct NotifyRequest *nr);
 
 Object *create_application(char *url);
 Object *create_window(char *url, ULONG isframe, APTR sourceview, APTR windowfeatures, ULONG privatebrowsing);
-Object *create_browser(char *url, ULONG isframe, Object *title, APTR sourceview, Object *window, ULONG privatebrowsing);
+Object *create_browser(ULONG isframe, Object *title, APTR sourceview, Object *window, ULONG privatebrowsing);
 Object *create_toolbutton(CONST_STRPTR text, CONST_STRPTR image, ULONG type);
 Object *create_historybutton(CONST_STRPTR text, CONST_STRPTR image, ULONG type, ULONG buttontype);
 

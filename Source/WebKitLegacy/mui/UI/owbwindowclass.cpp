@@ -1952,7 +1952,7 @@ DEFSMETHOD(OWBWindow_AddBrowser)
     {
         Object *hbar, *vbar, *hbargroup, *vbargroup, *mediacontrolsgroup, *inspectorgroup = 0;
         Object *group;
-        Object *browser = create_browser((char *)msg->url, msg->isframe, title, msg->sourceview, obj, msg->privatebrowsing);
+        Object *browser = create_browser(msg->isframe, title, msg->sourceview, obj, msg->privatebrowsing);
 
         group = (Object *) NewObject(getowbgroupclass(), NULL,
                     Child,
@@ -2020,6 +2020,8 @@ DEFSMETHOD(OWBWindow_AddBrowser)
                 // TODO: activate the idx resulting from the insertion
                 set(data->pagegroup, MUIA_Group_ActivePage, add_after_active ? get_tab_position(data, browser) : MUIV_Group_ActivePage_Last);
             }
+
+            if (msg->url) DoMethod(obj, MM_OWBWindow_LoadURL, msg->url, browser);
 
             widget = (BalWidget *) getv(browser, MA_OWBBrowser_Widget);
         }
@@ -2246,7 +2248,7 @@ DEFSMETHOD(OWBWindow_CreateInspector)
 
     Object *hbar, *vbar, *hbargroup, *vbargroup;
     Object *group;
-    Object *browser = create_browser((char *)"file:///PROGDIR:webinspector/inspector.html", FALSE, NULL, NULL, obj, FALSE);
+    Object *browser = create_browser(FALSE, NULL, NULL, obj, FALSE);
 
     if(browser)
     {
@@ -2282,14 +2284,13 @@ DEFSMETHOD(OWBWindow_CreateInspector)
             DoMethod(inspectorgroup, MUIM_Group_AddTail, group);
             DoMethod(inspectorgroup, MUIM_Group_ExitChange);
 
+            DoMethod(obj, MM_OWBWindow_LoadURL, "file:///PROGDIR:webinspector/inspector.html", browser);
 
             widget = (BalWidget *) getv(browser, MA_OWBBrowser_Widget);
         }
     }
 
     return (IPTR) widget;
-    
-    //return 0;
 }
 
 DEFSMETHOD(OWBWindow_ActivePage)
