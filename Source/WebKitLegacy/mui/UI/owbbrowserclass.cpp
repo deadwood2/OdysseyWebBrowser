@@ -3526,6 +3526,10 @@ DEFMMETHOD(DragReport)
 
 DEFMMETHOD(DragFinish)
 {
+#if !OS(AROS)
+    GETDATA;
+#endif
+
     D(kprintf("DragFinish (%d %d) dropfollows %d\n", data->last_drag_position.x(), data->last_drag_position.y(), msg->dropfollows));
 
     if(dataObject)
@@ -3578,9 +3582,16 @@ DEFMMETHOD(DragDrop)
         DragData dragData((DataObjectMorphOS *) dataObject, position, position, (DragOperation) data->dragoperation);
         D(kprintf("performDrag\n"));
         core(data->view->webView)->dragController().performDragOperation(dragData);
-        //D(kprintf("dragEnded\n"));
-        //core(data->view->webView)->dragController()->dragEnded();
-        //dataObject = 0;
+#if OS(AROS) // AROS has asynchronous drag & drop by default
+        D(kprintf("dragEnded\n"));
+        core(data->view->webView)->dragController().dragEnded();
+
+        D(kprintf("after MUIM_DoDrag, resetting drag data\n"));
+        set(obj, MA_OWBBrowser_DragURL, "");
+        set(obj, MA_OWBBrowser_DragImage, 0);
+        set(obj, MA_OWBBrowser_DragData, 0);
+        set(obj, MA_OWBBrowser_DragOperation, DragOperationNone);
+#endif
     }
     else /* Drop from other elements */
     {
