@@ -192,10 +192,9 @@ static __inline IPTR _CALLFUNC2(void (*func)(void), IPTR arg1, IPTR arg2)
 
 /**/
 
-Object *create_browser(char * url, ULONG is_frame, Object *title, APTR sourceview, Object *window, ULONG privatebrowsing)
+Object *create_browser(ULONG is_frame, Object *title, APTR sourceview, Object *window, ULONG privatebrowsing)
 {
     return (Object *) NewObject(getowbbrowserclass(), NULL,
-                        MA_OWBBrowser_URL, (IPTR) url,
                         MA_OWBBrowser_IsFrame, (ULONG) is_frame,
                         MA_OWBBrowser_TitleObj, (IPTR) title,
                         MA_OWBBrowser_SourceView, (IPTR) sourceview,
@@ -397,7 +396,6 @@ DEFNEW
 
     if(obj)
     {
-        char *url = (char *) GetTagData(MA_OWBBrowser_URL, 0, msg->ops_AttrList);
         GETDATA;
 
         data->added = FALSE;
@@ -449,14 +447,7 @@ DEFNEW
             free(data->url);
         }
 
-        if(url)
-        {
-            data->url = strdup(url);
-        }
-        else
-        {
-            data->url = strdup(""); // not really needed, but whatever
-        }
+        data->url = strdup("");
 
         data->editedurl = strdup(data->url);
 
@@ -526,46 +517,6 @@ DEFNEW
                         set(obj, MA_OWBBrowser_Title, (char *) getv(browser, MA_OWBBrowser_Title));
                     }
                 }
-            }
-        }
-        else
-        {
-            if(!data->is_frame)
-            {
-#if 0            
-                if(data->view->window)
-                    DoMethod(app, MUIM_Application_PushMethod, data->view->window, 3, MM_OWBWindow_LoadURL, data->url, obj);
-#else
-                // XXX: we should reuse OWBWindow_LoadURL method (but we can't at that point, since it's not attached to window yet)
-                if(!strcmp("about:", data->url))
-                {
-                    OWBFile f("PROGDIR:resource/about.html");
-
-                    if(f.open('r') != -1)
-                    {
-                        char *fileContent = f.read(f.getSize());
-
-                        if(fileContent)
-                        {
-                            String content = fileContent;
-
-                            data->view->webView->mainFrame()->loadHTMLString(content.utf8().data(), data->url);
-
-                            delete [] fileContent;
-                        }
-
-                        f.close();
-                    }
-                }
-                else if(!strcmp("topsites://", data->url))
-                {
-                    TopSitesManager::getInstance().generateTemplate(data->view->webView, data->url);
-                }
-                else if(data->url[0])
-                {
-                    data->view->webView->mainFrame()->loadURL(data->url);
-                }
-#endif
             }
         }
 
