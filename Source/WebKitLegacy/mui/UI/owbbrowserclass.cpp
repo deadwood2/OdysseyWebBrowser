@@ -3226,16 +3226,21 @@ DEFMMETHOD(CreateDragImage)
         // If we have a real dragimage, use it
         if(data->dragimage)
         {
-#if 0
+
             unsigned int stride = cairo_image_surface_get_stride((cairo_surface_t *)data->dragimage);
             unsigned char *src  = cairo_image_surface_get_data((cairo_surface_t *)data->dragimage);
-            IntSize size = dragImageSize(data->dragimage);
-            width  = size.width();
-            height = size.height();
+            width  = cairo_image_surface_get_width((cairo_surface_t *)data->dragimage);
+            height = cairo_image_surface_get_height((cairo_surface_t *)data->dragimage);
 
             if (GetBitMapAttr(_rp(obj)->BitMap, BMA_DEPTH) >= 24)
             {
+#if OS(AROS)
+                // Passing 24-bit friend bitmap causes the resulting bitmap to be 24-bit (at least on hosted)
+                // In effect alpha channel is not written / read and end up being 0
+                di->bm = AllocBitMap(width, height, 32, BMF_MINPLANES | BMF_CLEAR, NULL);
+#else
                 di->bm = AllocBitMap(width, height, 32, BMF_DISPLAYABLE | BMF_MINPLANES | BMF_CLEAR, _rp(obj)->BitMap);
+#endif
             }
             else
             {
@@ -3253,6 +3258,9 @@ DEFMMETHOD(CreateDragImage)
 
             InitRastPort(&rp);
             rp.BitMap = di->bm;
+#if OS(AROS)
+            WritePixelArray(src, 0,0, stride, &rp, 0, 0, width, height, RECTFMT_BGRA32);
+#else
             WritePixelArray(src, 0,0, stride, &rp, 0, 0, width, height, RECTFMT_ARGB);
 #endif
         }
@@ -3357,7 +3365,13 @@ DEFMMETHOD(CreateDragImage)
 
                 if (GetBitMapAttr(_rp(obj)->BitMap, BMA_DEPTH) >= 24)
                 {
+#if OS(AROS)
+                    // Passing 24-bit friend bitmap causes the resulting bitmap to be 24-bit (at least on hosted)
+                    // In effect alpha channel is not written / read and end up being 0
+                    di->bm = AllocBitMap(width, height, 32, BMF_MINPLANES | BMF_CLEAR, NULL);
+#else
                     di->bm = AllocBitMap(width, height, 32, BMF_DISPLAYABLE | BMF_MINPLANES | BMF_CLEAR, _rp(obj)->BitMap);
+#endif
                 }
                 else
                 {
