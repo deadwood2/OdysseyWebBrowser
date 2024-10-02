@@ -89,44 +89,44 @@ void WebDragClient::startDrag(DragItem item, DataTransfer& dataTransfer, Frame& 
 
     if(widget)
     {
-    RefPtr<DataObjectMorphOS> dataObject = dataTransfer.pasteboard().dataObject();
-    D(kprintf("dataObject %p\n", dataObject.get()));
+        RefPtr<DataObjectMorphOS> dataObject = dataTransfer.pasteboard().dataObject();
+        D(kprintf("dataObject %p\n", dataObject.get()));
 
-    if (item.sourceAction != DragSourceActionLink)
-    {
-        DragData dragData(dataObject.get(), IntPoint(0, 0), IntPoint(0,0), dataTransfer.sourceOperation());
-        char *data = NULL;
-            
-        if(dragData.containsURL())
+        if (item.sourceAction != DragSourceActionLink)
         {
-        data = utf8_to_local(dragData.asURL().utf8().data());
-        }
-        else if(dragData.containsPlainText())
-        {    
-        data = utf8_to_local(dragData.asPlainText().utf8().data());
-        }
-        else
-        {
-        data = strdup("<object>");
-        }
+            DragData dragData(dataObject.get(), IntPoint(0, 0), IntPoint(0,0), dataTransfer.sourceOperation());
+            char *data = NULL;
 
-        set(widget->browser, MA_OWBBrowser_DragURL, data);
-        free(data);
-    }
+            if(dragData.containsURL())
+            {
+                data = utf8_to_local(dragData.asURL().utf8().data());
+            }
+            else if(dragData.containsPlainText())
+            {
+                data = utf8_to_local(dragData.asPlainText().utf8().data());
+            }
+            else
+            {
+                data = strdup("<object>");
+            }
+
+            set(widget->browser, MA_OWBBrowser_DragURL, data);
+            free(data);
+        }
         set(widget->browser, MA_OWBBrowser_DragImage, m_dragImage.get().get());
-    set(widget->browser, MA_OWBBrowser_DragData, dataObject.get());
-    set(widget->browser, MA_OWBBrowser_DragOperation, dataTransfer.sourceOperation());
+        set(widget->browser, MA_OWBBrowser_DragData, dataObject.get());
+        set(widget->browser, MA_OWBBrowser_DragOperation, dataTransfer.sourceOperation());
 
         DoMethod(widget->browser, MUIM_DoDrag, 0x80000000,0x80000000, 0);
 
-    D(kprintf("dragEnded\n"));
-    core(m_webView)->dragController().dragEnded();
+        D(kprintf("dragEnded\n"));
+        core(m_webView)->dragController().dragEnded();
 
-    D(kprintf("after MUIM_DoDrag, resetting drag data\n"));
+        D(kprintf("after MUIM_DoDrag, resetting drag data\n"));
         set(widget->browser, MA_OWBBrowser_DragURL, "");
-    set(widget->browser, MA_OWBBrowser_DragImage, 0);
-    set(widget->browser, MA_OWBBrowser_DragData, 0);
-    set(widget->browser, MA_OWBBrowser_DragOperation, DragOperationNone);
+        set(widget->browser, MA_OWBBrowser_DragImage, 0);
+        set(widget->browser, MA_OWBBrowser_DragData, 0);
+        set(widget->browser, MA_OWBBrowser_DragOperation, DragOperationNone);
     }
 }
 
@@ -134,15 +134,3 @@ void WebDragClient::dragControllerDestroyed()
 {
     delete this;
 }
-
-//DragImageRef WebDragClient::createDragImageForLink(URL& url, const String& inLabel, Frame*)
-//{
-//    D(kprintf("createDragImageForLink %s %s\n", url.string().latin1().data(), inLabel.latin1().data()));
-//
-//    BalWidget *widget = m_webView->viewWindow();
-//    if(widget)
-//    {
-//        set(widget->browser, MA_OWBBrowser_DragURL, url.string().latin1().data());
-//    }
-//    return 0;
-//}
