@@ -119,6 +119,7 @@ void WebDragClient::startDrag(DragItem item, DataTransfer& dataTransfer, Frame& 
 
         DoMethod(widget->browser, MUIM_DoDrag, 0x80000000,0x80000000, 0);
 
+#if !OS(AROS) // AROS has asynchronous drag & drop by default
         D(kprintf("dragEnded\n"));
         core(m_webView)->dragController().dragEnded();
 
@@ -127,6 +128,7 @@ void WebDragClient::startDrag(DragItem item, DataTransfer& dataTransfer, Frame& 
         set(widget->browser, MA_OWBBrowser_DragImage, 0);
         set(widget->browser, MA_OWBBrowser_DragData, 0);
         set(widget->browser, MA_OWBBrowser_DragOperation, DragOperationNone);
+#endif
     }
 }
 
