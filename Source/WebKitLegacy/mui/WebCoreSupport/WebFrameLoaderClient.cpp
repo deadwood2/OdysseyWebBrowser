@@ -34,6 +34,7 @@
 #include "DOMCoreClasses.h"
 #include "FileIOLinux.h"
 #include "NotImplemented.h"
+#include "NetworkStorageSessionMap.h"
 #include "WebNavigationAction.h"
 #include "WebCachedFramePlatformData.h"
 #include "WebChromeClient.h"
@@ -88,6 +89,7 @@
 #include <ScriptController.h>
 #include <Settings.h>
 #include <JavaScriptCore/APICast.h>
+#include <WebCore/NetworkStorageSession.h>
 
 #include "AutofillManager.h"
 #include "gui.h"
@@ -161,15 +163,12 @@ void WebFrameLoaderClient::dispatchDidReceiveAuthenticationChallenge(DocumentLoa
 {
     ASSERT(challenge.authenticationClient());
 
-asm("int3");
-#if 0
-    Credential storedCredential = CredentialStorage::defaultCredentialStorage().get(emptyString(), challenge.protectionSpace());
+    Credential storedCredential = NetworkStorageSessionMap::defaultStorageSession().credentialStorage().get(emptyString(), challenge.protectionSpace());
     if(!storedCredential.isEmpty())
     {
     challenge.authenticationClient()->receivedCredential(challenge, storedCredential);
     return;
     }
-#endif
 
     char *username = NULL, *password = NULL;
     String host = challenge.protectionSpace().host();
