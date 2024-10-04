@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2009 Brent Fulgham.  All rights reserved.
  * Copyright (C) 2009 Google Inc.  All rights reserved.
- * Copyright (C) 2018 Sony Interactive Entertainment Inc.
+ * Copyright (C) 2020 Sony Interactive Entertainment Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -35,168 +35,103 @@
 
 #if USE(CURL)
 
+#include "CurlStreamScheduler.h"
 #include "DeprecatedGlobalSettings.h"
-#include "Logging.h"
 #include "SocketStreamError.h"
 #include "SocketStreamHandleClient.h"
 #include "StorageSessionProvider.h"
-#include <wtf/Lock.h>
-#include <wtf/MainThread.h>
-#include <wtf/URL.h>
-#include <wtf/text/CString.h>
 
 namespace WebCore {
 
 SocketStreamHandleImpl::SocketStreamHandleImpl(const URL& url, SocketStreamHandleClient& client, const StorageSessionProvider* provider)
     : SocketStreamHandle(url, client)
     , m_storageSessionProvider(provider)
+    , m_scheduler(CurlContext::singleton().streamScheduler())
 {
-    LOG(Network, "SocketStreamHandle %p new client %p", this, &m_client);
-    ASSERT(isMainThread());
-
     // FIXME: Using DeprecatedGlobalSettings from here is a layering violation.
     if (m_url.protocolIs("wss") && DeprecatedGlobalSettings::allowsAnySSLCertificate())
         CurlContext::singleton().sslHandle().setIgnoreSSLErrors(true);
 
-    m_workerThread = Thread::create("WebSocket thread", [this, protectedThis = makeRef(*this)] {
-        threadEntryPoint();
-    });
+    m_streamID = m_scheduler.createStream(m_url, *this);
 }
 
 SocketStreamHandleImpl::~SocketStreamHandleImpl()
 {
-    LOG(Network, "SocketStreamHandle %p delete", this);
-    stopThread();
+    destructStream();
 }
 
 Optional<size_t> SocketStreamHandleImpl::platformSendInternal(const uint8_t* data, size_t length)
 {
-    LOG(Network, "SocketStreamHandle %p platformSend", this);
-    ASSERT(isMainThread());
+    if (isStreamInvalidated())
+        return WTF::nullopt;
 
-    // If there's data waiting, return zero to indicate whole data should be put in a m_buffer.
-    // This is thread-safe because state is read in atomic. Also even if the state is cleared by
-    // worker thread between load() and evaluation of size, it is okay because invocation of
-    // sendPendingData() is serialized in the main thread, so that another call will be happen
-    // immediately.
-    if (m_writeBufferSize.load())
+    if (m_totalSendDataSize + length > maxBufferSize)
         return 0;
+    m_totalSendDataSize += length;
 
-    if (length > kWriteBufferSize)
-        length = kWriteBufferSize;
+    auto buffer = makeUniqueArray<uint8_t>(length);
+    memcpy(buffer.get(), data, length);
 
-    // We copy the buffer and then set the state atomically to say there are bytes available.
-    // The worker thread will skip reading the buffer if no bytes are available, so it won't
-    // access the buffer prematurely
-    m_writeBuffer = makeUniqueArray<uint8_t>(length);
-    memcpy(m_writeBuffer.get(), data, length);
-    m_writeBufferOffset = 0;
-    m_writeBufferSize.store(length);
-
+    m_scheduler.send(m_streamID, WTFMove(buffer), length);
     return length;
 }
 
 void SocketStreamHandleImpl::platformClose()
 {
-    LOG(Network, "SocketStreamHandle %p platformClose", this);
-    ASSERT(isMainThread());
+    destructStream();
+
+    if (m_state == Closed)
+        return;
+    m_state = Closed;
+
+    m_client.didCloseSocketStream(*this);
+}
+
+void SocketStreamHandleImpl::didOpen(CurlStreamID)
+{
+    if (m_state != Connecting)
+        return;
+    m_state = Open;
+
+    m_client.didOpenSocketStream(*this);
+}
+
+void SocketStreamHandleImpl::didSendData(CurlStreamID, size_t length)
+{
+    ASSERT(m_totalSendDataSize - length >= 0);
+
+    m_totalSendDataSize -= length;
+    sendPendingData();
+}
+
+void SocketStreamHandleImpl::didReceiveData(CurlStreamID, const char* data, size_t length)
+{
+    if (m_state != Open)
+        return;
+
+    m_client.didReceiveSocketStreamData(*this, data, length);
+}
+
+void SocketStreamHandleImpl::didFail(CurlStreamID, CURLcode errorCode)
+{
+    destructStream();
 
     if (m_state == Closed)
         return;
 
-    stopThread();
-    m_client.didCloseSocketStream(*this);
+    if (errorCode == CURLE_RECV_ERROR)
+        m_client.didFailToReceiveSocketStreamData(*this);
+    else
+        m_client.didFailSocketStream(*this, SocketStreamError(errorCode, m_url.string(), CurlHandle::errorDescription(errorCode)));
 }
 
-void SocketStreamHandleImpl::threadEntryPoint()
+void SocketStreamHandleImpl::destructStream()
 {
-    ASSERT(!isMainThread());
-
-    CurlSocketHandle socket { m_url, [this](CURLcode errorCode) {
-        handleError(errorCode);
-    }};
-
-    // Connect to host
-    if (!socket.connect())
+    if (isStreamInvalidated())
         return;
 
-    callOnMainThread([this, protectedThis = makeRef(*this)] {
-        if (m_state == Connecting) {
-            m_state = Open;
-            m_client.didOpenSocketStream(*this);
-        }
-    });
-
-    while (m_running) {
-        auto writeBufferSize = m_writeBufferSize.load();
-        auto result = socket.wait(20_ms, writeBufferSize > 0);
-        if (!result)
-            continue;
-
-        // These logic only run when there's data waiting. In that case, m_writeBufferSize won't
-        // updated by `platformSendInternal()` running in main thread.
-        if (result->writable && m_running) {
-            auto offset = m_writeBufferOffset;
-            auto bytesSent = socket.send(m_writeBuffer.get() + offset, writeBufferSize - offset);
-            offset += bytesSent;
-
-            if (writeBufferSize > offset)
-                m_writeBufferOffset = offset;
-            else {
-                m_writeBuffer = nullptr;
-                m_writeBufferOffset = 0;
-                m_writeBufferSize.store(0);
-                callOnMainThread([this, protectedThis = makeRef(*this)] {
-                    sendPendingData();
-                });
-            }
-        }
-
-        if (result->readable && m_running) {
-            auto readBuffer = makeUniqueArray<uint8_t>(kReadBufferSize);
-            auto bytesRead = socket.receive(readBuffer.get(), kReadBufferSize);
-            // `nullopt` result means nothing to handle at this moment.
-            if (!bytesRead)
-                continue;
-
-            // 0 bytes indicates a closed connection.
-            if (!*bytesRead) {
-                m_running = false;
-                callOnMainThread([this, protectedThis = makeRef(*this)] {
-                    close();
-                });
-                break;
-            }
-
-            callOnMainThread([this, protectedThis = makeRef(*this), buffer = WTFMove(readBuffer), size = *bytesRead ] {
-                if (m_state == Open)
-                    m_client.didReceiveSocketStreamData(*this, reinterpret_cast<const char*>(buffer.get()), size);
-            });
-        }
-    }
-}
-
-void SocketStreamHandleImpl::handleError(CURLcode errorCode)
-{
-    m_running = false;
-    callOnMainThread([this, protectedThis = makeRef(*this), errorCode, localizedDescription = CurlHandle::errorDescription(errorCode)] {
-        if (errorCode == CURLE_RECV_ERROR)
-            m_client.didFailToReceiveSocketStreamData(*this);
-        else
-            m_client.didFailSocketStream(*this, SocketStreamError(static_cast<int>(errorCode), { }, localizedDescription));
-    });
-}
-
-void SocketStreamHandleImpl::stopThread()
-{
-    ASSERT(isMainThread());
-
-    m_running = false;
-
-    if (m_workerThread) {
-        m_workerThread->waitForCompletion();
-        m_workerThread = nullptr;
-    }
+    m_scheduler.destroyStream(m_streamID);
+    m_streamID = invalidCurlStreamID;
 }
 
 } // namespace WebCore
