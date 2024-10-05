@@ -312,7 +312,7 @@ static void WebKitEnableDiskCacheIfNecessary()
     if (initialized)
         return;
 
-    WTF::String path = FileSystem::pathByAppendingComponent("PROGDIR:conf", "Cache");
+    WTF::String path = FileSystem::pathByAppendingComponent("PROGDIR:Conf", "Cache");
 
     if (!path.isNull())
         CurlCacheManager::singleton().setCacheDirectory(path);

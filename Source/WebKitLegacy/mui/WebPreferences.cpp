@@ -170,7 +170,7 @@ void WebPreferences::initializeDefaultSettings()
     m_privatePrefs[WebKitRequestAnimationFrameEnabledPreferenceKey] = "1";
     m_privatePrefs[WebKitHistoryItemLimitKey] = "10";
     m_privatePrefs[WebKitHistoryAgeInDaysLimitKey] = "7";
-    m_privatePrefs[WebKitIconDatabaseLocationKey] = "PROGDIR:conf";
+    m_privatePrefs[WebKitIconDatabaseLocationKey] = "PROGDIR:Conf";
     m_privatePrefs[WebKitIconDatabaseEnabledPreferenceKey] = "1";
     m_privatePrefs[WebKitFontSmoothingTypePreferenceKey] = "2";
     m_privatePrefs[WebKitFontSmoothingContrastPreferenceKey] = "2";
