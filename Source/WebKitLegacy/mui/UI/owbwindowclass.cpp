@@ -1593,7 +1593,7 @@ DEFSMETHOD(OWBWindow_LoadURL)
                 searchString.replace("+", "%2B");
                 searchString.replace("%20", "+");
                 searchString.replace("&", "%26");
-                widget->webView->mainFrame()->loadURL(createWithFormatAndArguments("http://www.google.com/search?ie=UTF-8&oe=UTF-8&sourceid=navclient&gfns=1&q=%s", searchString.utf8().data()).utf8().data());
+                widget->webView->mainFrame()->loadURL(createWithFormatAndArguments("https://www.google.com/search?ie=UTF-8&oe=UTF-8&sourceid=navclient&gfns=1&q=%s", searchString.utf8().data()).utf8().data());
             }
         }
         // Normal URL (at last)
@@ -1602,7 +1602,7 @@ DEFSMETHOD(OWBWindow_LoadURL)
             size_t pos = kurl.string().find(':');
             if(pos == notFound || pos > 5)
             {
-                widget->webView->mainFrame()->loadURL(String("http://" + url).utf8().data());
+                widget->webView->mainFrame()->loadURL(String("https://" + url).utf8().data());
             }
             else
             {

@@ -66,10 +66,10 @@ STATIC CONST CONST_STRPTR shortcuts[] =
 
 STATIC CONST CONST_STRPTR requests[] =
 {
-    "http://www.google.com/search?q=%s&ie=UTF-8&oe=UTF-8",
-    "http://www.aminet.net/search.php?query=%s",
-    "http://morphos-files.net/find.php?find=%s",
-    "http://www.youtube.com/results?search_query=%s",
+    "https://www.google.com/search?q=%s&ie=UTF-8&oe=UTF-8",
+    "https://www.aminet.net/search.php?query=%s",
+    "https://www.morphos-storage.net/?find=%s",
+    "https://www.youtube.com/results?search_query=%s",
     NULL
 };
 
