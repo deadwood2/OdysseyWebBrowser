@@ -310,7 +310,7 @@ enum {
     MA_OWBWindow_AddressBarGroup,
     MA_OWBWindow_FastLinkGroup,
     MA_OWBWindow_FastLinkParentGroup,
-    MA_OWBWindow_NetworkLedsGroup,
+    MA_OWBWindow_NetworkLedsGroupBROKEN,
     MA_OWBWindow_SearchGroup,
     MA_OWBWindow_NavigationGroup,
     MA_OWBWindow_BookmarkPanelGroup,
