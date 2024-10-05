@@ -2325,7 +2325,10 @@ void prefs_update(Object *obj, struct Data *data)
     /* Needed in ResourceHandleManager::sharedInstance() */
     stccpy(data->certificate_path, (char *) getv(data->prefswin, MA_OWBApp_CertificatePath), sizeof(data->certificate_path));
 
+#if 0
+// broken 2.24
     int activeconnections = (int) getv(data->prefswin, MA_OWBApp_ActiveConnections);
+#endif
 #if 0
     ResourceHandleManager::setMaxConnections(activeconnections);
 #endif
@@ -2386,7 +2389,10 @@ void prefs_update(Object *obj, struct Data *data)
 
             set((Object *) getv(child, MA_OWBWindow_SearchGroup), MA_SearchBarGroup_SearchButton, data->showvalidationbuttons);
             set((Object *) getv(child, MA_OWBWindow_AddressBarGroup), MA_AddressBarGroup_GoButton, data->showvalidationbuttons);
+#if 0
+// broken 2.24
             set((Object *) getv(child, MA_OWBWindow_NetworkLedsGroup), MA_NetworkLedsGroup_Count, activeconnections);
+#endif
             SetAttrs((Object *) getv(child, MA_OWBWindow_FastLinkGroup),
                        MA_QuickLinkGroup_Mode, data->quicklinklook | data->quicklinklayout,
                        MA_QuickLinkGroup_Row, data->quicklinkrows,
@@ -2513,7 +2519,10 @@ DEFSMETHOD(Network_AddJob)
     {
         if(getv(child, MA_OWB_WindowType) == MV_OWB_Window_Browser)
         {
+#if 0
+// broken 2.24
             DoMethod((Object *)getv(child, MA_OWBWindow_NetworkLedsGroup), MM_Network_AddJob, msg->job);
+#endif
         }
     }
     NEXTCHILD
@@ -2531,7 +2540,10 @@ DEFSMETHOD(Network_RemoveJob)
     {
         if(getv(child, MA_OWB_WindowType) == MV_OWB_Window_Browser)
         {
+#if 0
+// broken 2.24
             DoMethod((Object *) getv(child, MA_OWBWindow_NetworkLedsGroup), MM_Network_RemoveJob, msg->job);
+#endif
         }
     }
     NEXTCHILD
@@ -2549,7 +2561,10 @@ DEFSMETHOD(Network_UpdateJob)
     {
         if(getv(child, MA_OWB_WindowType) == MV_OWB_Window_Browser)
         {
+#if 0
+// broken 2.24
             DoMethod((Object *)getv(child, MA_OWBWindow_NetworkLedsGroup), MM_Network_UpdateJob, msg->job);
+#endif
         }
     }
     NEXTCHILD

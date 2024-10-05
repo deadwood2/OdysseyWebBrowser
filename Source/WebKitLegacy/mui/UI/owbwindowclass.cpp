@@ -133,7 +133,10 @@ struct Data
     Object *statusbar;
     Object *progressgauge;
     Object *progressgroup;
+#if 0
+// broken 2.24
     Object *networkledsgroup;
+#endif
     Object *inspectorbutton;
     Object *panelgroup;
     Object *panelbalance;
@@ -330,7 +333,10 @@ DEFNEW
     Object *panelgroup, *panelbalance;
     Object *pagegroup, *pagetitles;
     Object *zoneimage, *secureimage, *privatebrowsingimage, *userscriptimage;
+#if 0
+//broken 2.24
     Object *networkledsgroup;
+#endif
     Object *menustrip;
     //APTR n, m;
     char id = 'W'; // Sigh, let's stay compatible with previous release, now the mistake is made :)
@@ -447,7 +453,10 @@ DEFNEW
                             End,
                         End,
 
+#if 0
+// broken 2.24
                     Child, networkledsgroup = (Object *) NewObject(getnetworkledsgroupclass(), NULL, TAG_DONE),
+#endif
 
                     End,
             End,
@@ -483,7 +492,10 @@ DEFNEW
         data->userscriptimage = userscriptimage;
         data->progressgauge   = progressgauge;
         data->progressgroup   = progressgroup;
+#if 0
+// broken 2.24
         data->networkledsgroup = networkledsgroup;
+#endif
         data->panelgroup       = panelgroup;
         data->panelbalance     = panelbalance;
 
@@ -866,11 +878,14 @@ DEFGET
         }
         return TRUE;
 
+#if 0
+// broken 2.24
         case MA_OWBWindow_NetworkLedsGroup:
         {
             *msg->opg_Storage = (IPTR) data->networkledsgroup;
         }
         return TRUE;
+#endif
 
         case MA_OWBWindow_SearchGroup:
         {
