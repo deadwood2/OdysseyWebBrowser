@@ -100,6 +100,7 @@
 #include <WebCore/CommonVM.h>
 #include <WebCore/DataURLDecoder.h>
 #include <WebCore/AsyncFileStream.h>
+#include <WebCore/BlobRegistryImpl.h>
 
 /* Posix */
 #include <unistd.h>
@@ -1175,6 +1176,7 @@ DEFDISP
     CurlCacheManager::singleton().setStorageSizeLimit(0);
     DataURLDecoder::shutdown();
     WebCore::AsyncFileStream::shutdown();
+    WebCore::shutdownBlobRegistryImpl();
 
     GCController::singleton().garbageCollectNow();
 //    FontCache::singleton().invalidate(); // trashes memory like fuck on https://testdrive-archive.azurewebsites.net/Graphics/CanvasPinball/default.html
