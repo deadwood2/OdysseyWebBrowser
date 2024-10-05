@@ -81,4 +81,8 @@ private:
     HashMap<String, RefPtr<BlobData>> m_blobs;
 };
 
+#if PLATFORM(MUI)
+void shutdownBlobRegistryImpl();
+#endif
+
 } // namespace WebCore

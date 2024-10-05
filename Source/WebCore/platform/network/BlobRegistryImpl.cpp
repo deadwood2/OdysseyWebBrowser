@@ -47,6 +47,9 @@
 #include <wtf/Scope.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/WorkQueue.h>
+#if PLATFORM(MUI)
+#include <proto/exec.h>
+#endif
 
 namespace WebCore {
 
@@ -342,5 +345,13 @@ void BlobRegistryImpl::writeBlobToFilePath(const URL& blobURL, const String& pat
         });
     });
 }
+
+#if PLATFORM(MUI)
+void shutdownBlobRegistryImpl()
+{
+    if (FindTask("org.webkit.BlobUtility") != NULL)
+        delete &blobUtilityQueue();
+}
+#endif
 
 } // namespace WebCore
