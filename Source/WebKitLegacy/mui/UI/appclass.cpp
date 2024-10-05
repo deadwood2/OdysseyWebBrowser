@@ -2452,6 +2452,12 @@ void prefs_update(Object *obj, struct Data *data)
     else
         sharedPreferences->setMediaSourceEnabled(false);
 
+    if (data->ignoreSSLErrors)
+        CurlContext::singleton().sslHandle().setIgnoreSSLErrors(true);
+    else
+        CurlContext::singleton().sslHandle().setIgnoreSSLErrors(false);
+    CurlContext::singleton().sslHandle().setCACertPath(String(data->certificate_path));
+
     sharedPreferences->postPreferencesChangesNotification();
 }
 
