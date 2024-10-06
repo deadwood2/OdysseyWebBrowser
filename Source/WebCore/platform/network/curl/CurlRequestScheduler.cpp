@@ -43,13 +43,10 @@ struct Library *SocketBase;
 void init_SocketBase()
 {
     SocketBase = OpenLibrary("bsdsocket.library", 4L);
-    if(SocketBaseTags(
+    SocketBaseTags(
         SBTM_SETVAL(SBTC_ERRNOPTR(sizeof(errno))), (IPTR) &errno,
         SBTM_SETVAL(SBTC_LOGTAGPTR),       (IPTR) "cURL",
-        TAG_DONE))
-    {
-        asm("int3");
-    }
+        TAG_DONE);
 }
 void close_SocketBase()
 {
