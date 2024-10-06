@@ -28,6 +28,7 @@
 #include "config.h"
 
 #if 0
+// broken 2.18
 #include "WebIconDatabase.h"
 
 #include "WebPreferences.h"

@@ -1145,6 +1145,7 @@ asm("int3");
 //void WebFrameLoaderClient::registerForIconNotification(bool listen)
 //{
 //#if 0
+//// broken 2.18
 //    m_webFrame->webView()->registerForIconNotification(listen);
 //#endif
 //}
@@ -1165,6 +1166,7 @@ asm("int3");
 //void WebFrameLoaderClient::dispatchDidReceiveIcon()
 //{
 //#if 0
+//// broken 2.18
 //    m_webFrame->webView()->dispatchDidReceiveIconFromWebFrame(m_webFrame);
 //#endif
 //}

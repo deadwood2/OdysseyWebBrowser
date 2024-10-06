@@ -662,6 +662,7 @@ void WebEditorClient::checkSpellingOfString(StringView text, int* misspellingLoc
     if (editing)
         editing->checkSpellingOfString(m_webView, strdup(String(text, length).utf8().data()), length, misspellingLocation, misspellingLength);
     */
+// broken 2.24
 asm("int3");
 //    D(kprintf("checkSpellingOfString(%s)\n", String(text, length).utf8().data()));
 //

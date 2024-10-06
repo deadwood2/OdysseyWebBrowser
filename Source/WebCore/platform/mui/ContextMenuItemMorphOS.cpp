@@ -49,6 +49,7 @@ IPTR getv(APTR obj, ULONG attr);
 namespace WebCore {
 
 #if 0
+// broken 2.12
 // Extract the ActionType from the menu item
 ContextMenuItem::ContextMenuItem(BalMenuItem* item)
     : m_platformDescription()

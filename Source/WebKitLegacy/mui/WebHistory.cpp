@@ -42,6 +42,7 @@
 #include "PageGroup.h"
 #include "HistoryItem.h"
 #if 0
+// broken 2.18
 #include "IconDatabase.h"
 #endif
 
@@ -171,6 +172,7 @@ bool WebHistory::loadHistoryFromDatabase(int sortCriterium, bool desc, std::vect
             destList->push_back(item);
 
 #if 0
+// broken 2.18
             // Retain it for icondatabase
             iconDatabase().retainIconForPageURL(select.getColumnText(0));
 #endif

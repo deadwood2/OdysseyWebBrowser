@@ -764,6 +764,7 @@ DEFSMETHOD(ScriptManagerGroup_InjectScripts)
                                                             InjectAtDocumentEnd,
                                                             InjectInAllFrames);
 #if 0
+// broken 2.14
 WebView.configuration.m_userContentController
                             page->userContentController()->addUserScript(mainThreadNormalWorld(), std::move(userScript));
 #endif

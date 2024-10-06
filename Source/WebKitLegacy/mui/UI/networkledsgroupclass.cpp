@@ -128,6 +128,7 @@ DEFNEW
     if (obj)
     {
 #if 0
+// broken 2.18
         set(obj, MA_NetworkLedsGroup_Count, ResourceHandleManager::maxConnections());
 #endif
 

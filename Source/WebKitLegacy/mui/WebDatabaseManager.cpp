@@ -54,6 +54,7 @@ public:
     {
 asm("int3");
 #if 0
+// broken 2.16
         WebSecurityOrigin* securityOrigin = WebSecurityOrigin::createInstance(origin);
         WebCore::ObserverServiceData::createObserverService()->notifyObserver(WebDatabaseDidModifyOriginNotification, "", securityOrigin);
 
@@ -65,6 +66,7 @@ asm("int3");
     {
 asm("int3");
 #if 0
+// broken 2.16
         WebSecurityOrigin* securityOrigin = WebSecurityOrigin::createInstance(origin);
 
         WebCore::ObserverServiceData::createObserverService()->notifyObserver(WebDatabaseDidModifyDatabaseNotification, "", securityOrigin);

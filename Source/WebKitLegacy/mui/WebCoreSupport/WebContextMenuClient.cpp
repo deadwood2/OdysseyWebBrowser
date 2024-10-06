@@ -63,6 +63,7 @@ void WebContextMenuClient::contextMenuDestroyed()
 }
 
 #if 0
+// broken 2.18
 void WebContextMenuClient::contextMenuItemSelected(ContextMenuItem* item, const ContextMenu* parentMenu)
 {
     DoMethod(app, MM_OWBApp_SelectUserMenu, (APTR) item, (APTR) &(m_webView->page()->contextMenuController()));
@@ -126,6 +127,7 @@ bool WebContextMenuClient::isSpeaking()
 }
 
 #if 0
+// broken 2.18
 WebCore::ContextMenuItem WebContextMenuClient::shareMenuItem(const WebCore::HitTestResult&)
 {
     return WebCore::ContextMenuItem();

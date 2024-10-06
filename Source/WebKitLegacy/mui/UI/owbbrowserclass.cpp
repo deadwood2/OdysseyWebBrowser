@@ -788,6 +788,7 @@ static void doset(APTR obj, struct Data *data, struct TagItem *tags)
             set(app, MA_OWBApp_PrivateBrowsingClients, enable ? ++clientcount : --clientcount);
 
 #if 0
+// broken 2.18
             // Only restore icondatabase normal behaviour if private browsing is not used anymore (privatebrowsing unfortunately global to icondatabase)
             WebIconDatabase::sharedWebIconDatabase()->setPrivateBrowsingEnabled(getv(app, MA_OWBApp_PrivateBrowsingClients) > 0);
 #endif
@@ -2745,12 +2746,14 @@ DEFMMETHOD(ContextMenuBuild)
     ContextMenu* coreMenu = page->contextMenuController().contextMenu();
     if (!coreMenu)
         return 0;
-bug("ContextMenuBuild STILL BROKEN\n");
-return 0;
+
 #if 0
+// broken 2.12
     data->contextmenu = (Object *) MenustripObject,
                                     Child, (Object *) coreMenu->platformDescription(),
                                     End;
+#else
+    return 0;
 #endif
 
     data->menucontroller = &page->contextMenuController();
@@ -2766,6 +2769,7 @@ DEFMMETHOD(ContextMenuChoice)
     {
 asm("int3");
 #if 0
+// broken 2.12
         ContextMenuItem contextItem(msg->item);
         data->menucontroller->contextMenuItemSelected(&contextItem);
 #endif

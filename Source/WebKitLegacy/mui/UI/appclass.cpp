@@ -73,6 +73,7 @@
 #include "PluginDatabase.h"
 #include <wtf/RunLoop.h>
 #if 0
+// broken 2.18
 #if ENABLE(ICONDATABASE)
 #include "IconDatabase.h"
 #include "WebIconDatabase.h"
@@ -1148,6 +1149,7 @@ DEFDISP
     /* Free shared instances that really need to be freed */
     
 #if 0
+// broken 2.18
     WebIconDatabase *sharedWebIconDatabase = WebIconDatabase::sharedWebIconDatabase();
     if(sharedWebIconDatabase)
     {
@@ -2334,10 +2336,12 @@ void prefs_update(Object *obj, struct Data *data)
     int activeconnections = (int) getv(data->prefswin, MA_OWBApp_ActiveConnections);
 #endif
 #if 0
+// broken 2.18
     ResourceHandleManager::setMaxConnections(activeconnections);
 #endif
     stccpy(data->useragent, (char *) getv(data->prefswin, MA_OWBApp_UserAgent), sizeof(data->useragent));
 #if 0
+// broken 2.18
     ResourceHandleManager *sharedResourceHandleManager = ResourceHandleManager::sharedInstance();
     if(getv(data->prefswin, MA_OWBApp_ProxyEnabled))
         sharedResourceHandleManager->setProxyInfo(
@@ -2374,6 +2378,7 @@ void prefs_update(Object *obj, struct Data *data)
     data->use_ogg = getv(data->prefswin, MA_OWBApp_EnableOgg);
     data->use_mp4 = getv(data->prefswin, MA_OWBApp_EnableMP4);
 #if 0
+// broken 2.24
     MIMETypeRegistry::reinitializeSupportedMediaMIMETypes();
 #endif
     data->use_partial_content = getv(data->prefswin, MA_OWBApp_EnablePartialContent);
@@ -2418,6 +2423,7 @@ void prefs_update(Object *obj, struct Data *data)
     sharedPreferences->setPlugInsEnabled((bool) getv(data->prefswin, MA_OWBApp_EnablePlugins));
     sharedPreferences->setIconDatabaseEnabled(data->showfavicons);
 #if 0
+// broken 2.18
     iconDatabase().setEnabled(data->showfavicons);
 #endif
     
@@ -3566,6 +3572,7 @@ DEFSMETHOD(BlockManagerGroup_DidInsert)
 DEFTMETHOD(OWBApp_EraseFavicons)
 {
 #if 0
+// broken 2.18
     WebIconDatabase *sharedWebIconDatabase = WebIconDatabase::sharedWebIconDatabase();
     if(sharedWebIconDatabase)
     {

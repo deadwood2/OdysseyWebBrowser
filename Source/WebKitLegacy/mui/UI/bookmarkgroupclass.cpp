@@ -32,6 +32,7 @@
 #include <wtf/text/CString.h>
 #include <wtf/URL.h>
 #if 0
+// broken 2.18
 #include "IconDatabase.h"
 #endif
 
@@ -1223,6 +1224,7 @@ DEFSMETHOD(Bookmarkgroup_LoadHtml)
                 if(newnode.address)
                 {
 #if 0
+// broken 2.18
                     iconDatabase().retainIconForPageURL(String(newnode.address));
 #endif
                 }
