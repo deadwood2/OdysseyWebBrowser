@@ -55,6 +55,8 @@
 #include <ResourceResponse.h>
 #include <FileIOLinux.h>
 
+#include "NetworkStorageSessionMap.h"
+
 #include "gui.h"
 #include <clib/debug_protos.h>
 
@@ -76,6 +78,23 @@ WebDownloadPrivate::WebDownloadPrivate()
         , resourceRequest(0)
         , dl(0)
         {}
+
+/*****************************************************************************************************/
+
+class WebDownloadNetworkingContext : public NetworkingContext
+{
+    NetworkStorageSession* storageSession() const final
+    {
+        return &NetworkStorageSessionMap::defaultStorageSession();
+    }
+
+    bool shouldClearReferrerOnHTTPSToHTTPRedirect() const final
+    {
+        return true;
+    }
+};
+
+/*****************************************************************************************************/
 
 class DownloadClient : public ResourceHandleClient
 {
@@ -115,10 +134,13 @@ void DownloadClient::willSendRequestAsync(ResourceHandle*, ResourceRequest&&, Re
 {
 }
 
-void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceResponse&& response, CompletionHandler<void()>&&)
+void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceResponse&& response, CompletionHandler<void()>&& completionHandler)
 {
     if (!m_download->downloadDelegate())
+    {
+        completionHandler();
         return;
+    }
     
     WebDownloadPrivate* priv = m_download->getWebDownloadPrivate();
 
@@ -127,9 +149,9 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
 
     // Can we resume and do we want to resume?
 
-    if(priv->resourceHandle.get()->isResuming())
+    if(priv->resourceHandle->getInternal()->m_curlRequest->resumeOffset() != 0) /* isResuming */
     {
-        if(priv->resourceHandle.get()->canResume())
+        if (1) /* canResume */
         {
             priv->outputChannel = new OWBFile(priv->destinationPath);
 
@@ -138,6 +160,7 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
             {
                 ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
                 didFail(priv->resourceHandle.get(), resourceError);
+                completionHandler();
                 return;
             }
 
@@ -147,6 +170,7 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
         {
             ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't resume"));
             didFail(priv->resourceHandle.get(), resourceError);
+            completionHandler();
             return;
         }
     }
@@ -180,6 +204,7 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
         {
             ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
             didFail(priv->resourceHandle.get(), resourceError);
+            completionHandler();
             return;
         }
 
@@ -196,8 +221,13 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
         if(priv->allowResume)
         {
             priv->resourceHandle->cancel();
-            priv->resourceHandle = ResourceHandle::create(NULL, *priv->resourceRequest, priv->downloadClient, false, false, false);
-            priv->resourceHandle->setStartOffset(priv->startOffset);
+            priv->resourceHandle = ResourceHandle::create2(new WebDownloadNetworkingContext(), *priv->resourceRequest, priv->downloadClient, false, false, false);
+            // HACK to disable on-the-fly gzip decoding
+            if (priv->requestUri.endsWith(".gz") || priv->requestUri.endsWith(".tgz"))
+                priv->resourceHandle->getInternal()->m_curlRequest->setDisableEncoding(true);
+            priv->resourceHandle->getInternal()->m_curlRequest->setResumeOffset(priv->startOffset);
+            priv->resourceHandle->getInternal()->m_curlRequest->start();
+            completionHandler();
             return;
         }
         else
@@ -209,6 +239,7 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
             {
                 ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
                 didFail(priv->resourceHandle.get(), resourceError);
+                completionHandler();
                 return;
             }
             else
@@ -219,12 +250,15 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
             {
                 ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
                 didFail(priv->resourceHandle.get(), resourceError);
+                completionHandler();
                 return;
             }
 
             m_download->downloadDelegate()->didCreateDestination(m_download, priv->destinationPath.latin1().data());
         }
     }
+
+    completionHandler();
 }
 
 void DownloadClient::didReceiveData(ResourceHandle*, const char* data, unsigned length, int lengthReceived)
@@ -459,21 +493,24 @@ void WebDownload::start(bool quiet)
 
     if (m_priv->resourceHandle)
     {
+        ResourceResponse response(m_response->resourceResponse());
         m_priv->resourceHandle->setClientInternal(m_priv->downloadClient);
-        m_priv->resourceHandle->getInternal()->m_disableEncoding = (m_priv->requestUri.endsWith(".gz") || m_priv->requestUri.endsWith(".tgz")) == true; // HACK to disable on-the-fly gzip decoding
+        // HACK to disable on-the-fly gzip decoding
+        if (m_priv->requestUri.endsWith(".gz") || m_priv->requestUri.endsWith(".tgz"))
+            m_priv->resourceHandle->getInternal()->m_curlRequest->setDisableEncoding(true);
         m_priv->downloadClient->didStart();
-#if 0
-//how to solve?
-        m_priv->downloadClient->didReceiveResponse(m_priv->resourceHandle.get(), m_response->resourceResponse());
-#endif
+        m_priv->downloadClient->didReceiveResponseAsync(m_priv->resourceHandle.get(), WTFMove(response) , [] { });
     }
     else
     {
         m_priv->downloadClient->didStart();
-        m_priv->resourceHandle = ResourceHandle::create(NULL, m_request->resourceRequest(), m_priv->downloadClient, false, false, false);
+        m_priv->resourceHandle = ResourceHandle::create2(new WebDownloadNetworkingContext(), m_request->resourceRequest(), m_priv->downloadClient, false, false, false);
         if(m_priv->resourceHandle)
         {
-            m_priv->resourceHandle->getInternal()->m_disableEncoding = (m_priv->requestUri.endsWith(".gz") || m_priv->requestUri.endsWith(".tgz")) == true; // HACK to disable on-the-fly gzip decoding
+            // HACK to disable on-the-fly gzip decoding
+            if (m_priv->requestUri.endsWith(".gz") || m_priv->requestUri.endsWith(".tgz"))
+                m_priv->resourceHandle->getInternal()->m_curlRequest->setDisableEncoding(true);
+            m_priv->resourceHandle->getInternal()->m_curlRequest->start();
         }
     }
 }
