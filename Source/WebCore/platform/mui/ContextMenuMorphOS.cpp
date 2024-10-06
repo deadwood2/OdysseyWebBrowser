@@ -51,6 +51,7 @@ namespace WebCore {
 // See http://bugs.webkit.org/show_bug.cgi?id=16115
 
 #if 0
+// broken 2.12
 ContextMenu::ContextMenu()
 {
     m_platformDescription = (void *) NewObject(getmenuclass(), NULL, MUIA_Menu_Title, strdup(GSI(MSG_CONTEXTMENU_TITLE)), End;

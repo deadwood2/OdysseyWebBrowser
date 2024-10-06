@@ -146,6 +146,7 @@ DEFSMETHOD(NetworkWindow_Cancel)
     GETDATA;
 
 #if 0
+// broken 2.18
     ResourceHandleManager *sharedResourceHandleManager = ResourceHandleManager::sharedInstance();
     
     if (msg->all)

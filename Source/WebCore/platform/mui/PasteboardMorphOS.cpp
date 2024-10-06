@@ -387,6 +387,7 @@ void Pasteboard::writeImage(Element& element, const URL&, const String& title)
 }
 
 #if 0
+// broken 2.20
 void Pasteboard::writePasteboard(const Pasteboard& sourcePasteboard)
 {
     D(kprintf("Pasteboard::writePasteboard\n"));
@@ -655,6 +656,7 @@ String Pasteboard::readString(const String& type)
 }
 
 #if 0
+// broken 2.20
 Vector<String> Pasteboard::readFilenames()
 {
     D(kprintf("Pasteboard::readFilenames()\n"));

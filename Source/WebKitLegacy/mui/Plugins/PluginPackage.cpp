@@ -78,7 +78,10 @@ void PluginPackage::freeLibraryTimerFired()
     // Do nothing if the module got loaded again meanwhile
     if (!m_loadCount) {
 asm("int3");
-//        ::FreeLibrary(m_module);
+#if 0
+// broken 2.24
+        ::FreeLibrary(m_module);
+#endif
         m_module = 0;
     }
 }

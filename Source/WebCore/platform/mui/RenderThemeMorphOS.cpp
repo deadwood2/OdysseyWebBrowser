@@ -195,6 +195,7 @@ static float determineFullScreenMultiplier(const Element* element)
 }
 
 #if 0
+// broken 2.18
 Ref<RenderTheme> RenderTheme::themeForPage(Page* page)
 {
     UNUSED_PARAM(page);
@@ -204,6 +205,7 @@ Ref<RenderTheme> RenderTheme::themeForPage(Page* page)
 #endif
 
 #if 0
+// broken 2.18
 Ref<RenderTheme> RenderThemeBal::create()
 {
     return adoptRef(*new RenderThemeBal());
@@ -619,7 +621,7 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
     paintMenuListBackground(paintInfo.context(), menuListRoundedRectangle, Color::white);
 
 #if 0
-// not working since 2.14.5
+// broken 2.14
     EBorderStyle v = INSET;
     o.style().setBorderTopStyle(v);
     o.style().setBorderLeftStyle(v);

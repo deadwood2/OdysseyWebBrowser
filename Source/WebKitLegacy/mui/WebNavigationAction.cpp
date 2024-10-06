@@ -88,6 +88,7 @@ static const MouseEvent* findMouseEvent(const Event* event)
 WebHitTestResults* WebNavigationAction::webHitTestResults()
 {
 #if 0
+// broken 2.22
     if (const MouseEvent* mouseEvent = findMouseEvent(m_action->event()))
         return WebHitTestResults::createInstance(core(m_frame)->eventHandler().hitTestResultAtPoint(mouseEvent->absoluteLocation(), false));
 #endif
@@ -97,6 +98,7 @@ WebHitTestResults* WebNavigationAction::webHitTestResults()
 unsigned short WebNavigationAction::button()
 {
 #if 0
+// broken 2.22
     if (const MouseEvent* mouseEvent = findMouseEvent(m_action->event()))
         return mouseEvent->button();
 #endif
@@ -106,6 +108,7 @@ unsigned short WebNavigationAction::button()
 int WebNavigationAction::modifiers()
 {
 #if 0
+// broken 2.22
     if (const UIEventWithKeyState* keyEvent = findEventWithKeyState(const_cast<Event*>(m_action->event()))) {
         int mod = 0;
 
