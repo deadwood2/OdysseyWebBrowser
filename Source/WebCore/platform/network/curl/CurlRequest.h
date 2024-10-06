@@ -85,6 +85,7 @@ public:
 #if PLATFORM(MUI)
     long long resumeOffset() { return m_downloadResumeOffset; }
     void setResumeOffset(long long offset) { m_downloadResumeOffset = offset; }
+    void setDisableEncoding(bool val) { m_disableEncoding = val; }
 #endif
 
     const ResourceRequest& resourceRequest() const { return m_request; }
@@ -212,6 +213,7 @@ private:
     FileSystem::PlatformFileHandle m_downloadFileHandle { FileSystem::invalidPlatformFileHandle };
 #if PLATFORM(MUI)
     long long m_downloadResumeOffset { 0 };
+    bool m_disableEncoding { false };
 #endif
 
     CertificateInfo m_certificateInfo;

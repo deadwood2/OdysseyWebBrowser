@@ -258,6 +258,9 @@ public:
     void enableConnectionOnly();
 
     void enableAcceptEncoding();
+#if PLATFORM(MUI)
+    void disableAcceptEncoding();
+#endif
     void enableAllowedProtocols();
 
     void setHttpAuthUserPass(const String&, const String&, long authType = CURLAUTH_ANY);

@@ -237,6 +237,10 @@ CURL* CurlRequest::setupTransfer()
 #if PLATFORM(MUI)
     if (m_downloadResumeOffset > 0)
         m_curlHandle->setResumeOffset(m_downloadResumeOffset);
+
+    // Disable automatic decompression when downloading to a file
+    if (m_disableEncoding)
+        m_curlHandle->disableAcceptEncoding();
 #endif
 
     if (m_shouldSuspend)

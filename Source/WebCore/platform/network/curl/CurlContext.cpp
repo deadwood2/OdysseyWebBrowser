@@ -462,6 +462,13 @@ void CurlHandle::enableRequestHeaders()
     curl_easy_setopt(m_handle, CURLOPT_HTTPHEADER, headers);
 }
 
+#if PLATFORM(MUI)
+void CurlHandle::disableAcceptEncoding()
+{
+    curl_easy_setopt(m_handle, CURLOPT_ENCODING, NULL);
+}
+#endif
+
 void CurlHandle::enableHttp()
 {
     if (m_url.protocolIs("https") && CurlContext::singleton().isHttp2Enabled()) {

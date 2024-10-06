@@ -99,6 +99,9 @@ public:
     WEBCORE_EXPORT static RefPtr<ResourceHandle> create(NetworkingContext*, const ResourceRequest&, ResourceHandleClient*, bool defersLoading, bool shouldContentSniff, bool shouldContentEncodingSniff);
     WEBCORE_EXPORT static void loadResourceSynchronously(NetworkingContext*, const ResourceRequest&, StoredCredentialsPolicy, ResourceError&, ResourceResponse&, Vector<char>& data);
     WEBCORE_EXPORT virtual ~ResourceHandle();
+#if PLATFORM(MUI)
+    WEBCORE_EXPORT static RefPtr<ResourceHandle> create2(NetworkingContext*, const ResourceRequest&, ResourceHandleClient*, bool defersLoading, bool shouldContentSniff, bool shouldContentEncodingSniff);
+#endif
 
 #if PLATFORM(COCOA) || USE(CFURLCONNECTION)
     void willSendRequest(ResourceRequest&&, ResourceResponse&&, CompletionHandler<void(ResourceRequest&&)>&&);
@@ -178,14 +181,6 @@ public:
     void continueAfterDidReceiveResponse();
     void willSendRequest();
     void continueAfterWillSendRequest(ResourceRequest&&);
-#endif
-
-#if PLATFORM(MUI)
-    bool canResume();
-    bool isResuming();
-    void setCanResume(bool value);
-    void setStartOffset(unsigned long long offset);
-    unsigned long long startOffset();
 #endif
 
     bool hasAuthenticationChallenge() const;

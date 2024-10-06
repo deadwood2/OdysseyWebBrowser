@@ -110,7 +110,8 @@ bool ResourceHandle::start()
     }
 
     d->m_curlRequest->setStartTime(d->m_startTime);
-    d->m_curlRequest->start();
+    if (d->m_startCurlRequestAtStart)
+        d->m_curlRequest->start();
 
     return true;
 }
@@ -232,38 +233,6 @@ void ResourceHandle::platformSetDefersLoading(bool defers)
     else
         d->m_curlRequest->resume();
 }
-
-#if PLATFORM(MUI)
-void ResourceHandle::setStartOffset(unsigned long long offset)
-{
-    ResourceHandleInternal* d = getInternal();
-    d->m_startOffset = offset;
-}
-
-unsigned long long ResourceHandle::startOffset()
-{
-    ResourceHandleInternal* d = getInternal();
-    return d->m_startOffset;
-}
-
-void ResourceHandle::setCanResume(bool value)
-{
-    ResourceHandleInternal* d = getInternal();
-    d->m_canResume = value;
-}
-
-bool ResourceHandle::canResume()
-{
-    ResourceHandleInternal* d = getInternal();
-    return d->m_canResume;
-}
-
-bool ResourceHandle::isResuming()
-{
-    ResourceHandleInternal* d = getInternal();
-    return d->m_startOffset != 0;
-}
-#endif
 
 bool ResourceHandle::shouldUseCredentialStorage()
 {
