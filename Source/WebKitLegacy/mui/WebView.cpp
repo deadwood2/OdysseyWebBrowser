@@ -2830,7 +2830,6 @@ void WebView::addAdditionalPluginDirectory(const char* directory)
 
 void WebView::loadBackForwardListFromOtherView(WebView* otherView)
 {
-asm("int3");
 #if 0
 // broken 2.24
     if (!m_page)

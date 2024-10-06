@@ -548,23 +548,19 @@ void WebChromeClient::attachRootGraphicsLayer(WebCore::Frame& frame, WebCore::Gr
 
 bool WebChromeClient::shouldUseTiledBackingForFrameView(const WebCore::FrameView&) const
 {
-asm("int3");
     return false;
 }
 
 #if ENABLE(VIDEO)
 bool WebChromeClient::supportsVideoFullscreen(WebCore::HTMLMediaElementEnums::VideoFullscreenMode)
 {
-asm("int3");
     return true;
 }
 void WebChromeClient::enterVideoFullscreenForVideoElement(WebCore::HTMLVideoElement&, WebCore::HTMLMediaElementEnums::VideoFullscreenMode, bool)
 {
-asm("int3");
 }
 void WebChromeClient::exitVideoFullscreenForVideoElement(WebCore::HTMLVideoElement&)
 {
-asm("int3");
 }
 #endif
 

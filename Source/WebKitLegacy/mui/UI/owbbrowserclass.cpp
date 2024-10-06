@@ -2767,7 +2767,6 @@ DEFMMETHOD(ContextMenuChoice)
 
     if (msg->item && data->menucontroller)
     {
-asm("int3");
 #if 0
 // broken 2.12
         ContextMenuItem contextItem(msg->item);

@@ -62,7 +62,6 @@ void WebFrameNetworkingContext::setPrivateBrowsingStorageSessionIdentifierBase(c
 
 WebCore::NetworkStorageSession& WebFrameNetworkingContext::ensurePrivateBrowsingSession()
 {
-asm("int3");
     NetworkStorageSessionMap::ensureSession(PAL::SessionID::legacyPrivateSessionID());
 
     return *NetworkStorageSessionMap::storageSession(PAL::SessionID::legacyPrivateSessionID());
