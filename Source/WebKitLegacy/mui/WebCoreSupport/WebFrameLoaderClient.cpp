@@ -1102,19 +1102,15 @@ PAL::SessionID WebFrameLoaderClient::sessionID() const
 
 void WebFrameLoaderClient::progressStarted(WebCore::Frame&)
 {
-asm("int3");
 }
 void WebFrameLoaderClient::progressEstimateChanged(WebCore::Frame&)
 {
-asm("int3");
 }
 void WebFrameLoaderClient::progressFinished(WebCore::Frame&)
 {
-asm("int3");
 }
 void WebFrameLoaderClient::dispatchDidReachLayoutMilestone(OptionSet<WebCore::LayoutMilestone>)
 {
-asm("int3");
 }
 
 

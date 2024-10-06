@@ -52,7 +52,6 @@ public:
 
     void dispatchDidModifyOrigin(const SecurityOriginData& origin)
     {
-asm("int3");
 #if 0
 // broken 2.16
         WebSecurityOrigin* securityOrigin = WebSecurityOrigin::createInstance(origin);
@@ -64,7 +63,6 @@ asm("int3");
 
     void dispatchDidModifyDatabase(const SecurityOriginData& origin, const String& databaseName)
     {
-asm("int3");
 #if 0
 // broken 2.16
         WebSecurityOrigin* securityOrigin = WebSecurityOrigin::createInstance(origin);
