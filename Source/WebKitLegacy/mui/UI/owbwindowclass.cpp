@@ -397,6 +397,7 @@ DEFNEW
             Child, findgroup = (Object *) NewObject(getfindtextclass(), NULL,
                                                     MUIA_ShowMe, FALSE,
                                                     MA_FindText_ShowAllMatches, TRUE,
+                                                    MA_FindText_Closable, TRUE,
                                                     TAG_DONE),
 
             Child, statusgroup = HGroup,
