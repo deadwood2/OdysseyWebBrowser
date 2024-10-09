@@ -397,7 +397,10 @@ struct NewMenu MenuData[] =
 /* Windows */
     { NM_TITLE, MENU(WINDOWS)         , 0, 0, 0, NULL },
     { NM_ITEM , MENU(DOWNLOADS)       , (STRPTR) "D", 0, 0, (APTR)MNA_DOWNLOADS_WINDOW },
+#if 0
+// broken 2.24
     { NM_ITEM , MENU(NETWORK)         , 0, 0, 0, (APTR)MNA_NETWORK_WINDOW },
+#endif
     { NM_ITEM , MENU(PASSWORDS)       , 0, 0, 0, (APTR)MNA_PASSWORDMANAGER_WINDOW },
     { NM_ITEM , MENU(COOKIES)         , 0, 0, 0, (APTR)MNA_COOKIEMANAGER_WINDOW },
     { NM_ITEM , MENU(BLOCK)           , 0, 0, 0, (APTR)MNA_BLOCKMANAGER_WINDOW },
