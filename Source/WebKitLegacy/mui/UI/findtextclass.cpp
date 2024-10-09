@@ -27,6 +27,8 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
 #include <proto/intuition.h>
 #include <proto/utility.h>
 
@@ -97,6 +99,9 @@ DEFNEW
         if(closable)
         {
             bt_close = ImageObject,
+#if OS(AROS)
+                       MUIA_Frame, MUIV_Frame_ImageButton,
+#endif
                        MUIA_InputMode, MUIV_InputMode_RelVerify,
                        MUIA_Image_Spec, MUII_Close,
                        MUIA_CycleChain, 1,
