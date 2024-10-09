@@ -57,7 +57,9 @@ DEFNEW
     obj = (Object *) DoSuperNew(cl, obj,
         Child, HGroup,
                 Child, closebutton = ImageObject,
+#if OS(AROS)
                         MUIA_Frame, MUIV_Frame_ImageButton,
+#endif
                         MUIA_CustomBackfill, TRUE,
                         MUIA_InputMode, MUIV_InputMode_RelVerify,
                         MUIA_Image_Spec, MUII_Close,
