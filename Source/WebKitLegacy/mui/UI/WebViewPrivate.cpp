@@ -575,6 +575,66 @@ void MorphOSWebFrameDelegate::didChangeIcons(WebFrame* webFrame)
     D(kprintf("didChangeIcons\n"));
 }
 
+void MorphOSWebFrameDelegate::didPushStateWithinPage(WebFrame* webFrame)
+{
+    WebView* webView = webFrame->webView();
+
+    D(kprintf("didPushStateWithinPage\n"));
+
+    if (webView->mainFrame() != webFrame)
+        return;
+
+    BalWidget* widget = webView->viewWindow();
+
+    if (widget && widget->browser)
+    {
+        char *url = (char*) webFrame->url();
+
+        updateURL(widget->browser, url);
+        free(url);
+    }
+}
+
+void MorphOSWebFrameDelegate::didReplaceStateWithinPage(WebFrame* webFrame)
+{
+    WebView* webView = webFrame->webView();
+
+    D(kprintf("didReplaceStateWithinPage\n"));
+
+    if (webView->mainFrame() != webFrame)
+        return;
+
+    BalWidget* widget = webView->viewWindow();
+
+    if (widget && widget->browser)
+    {
+        char *url = (char*) webFrame->url();
+
+        updateURL(widget->browser, url);
+        free(url);
+    }
+}
+
+void MorphOSWebFrameDelegate::didPopStateWithinPage(WebFrame* webFrame)
+{
+    WebView* webView = webFrame->webView();
+
+    D(kprintf("didPopStateWithinPage\n"));
+
+    if (webView->mainFrame() != webFrame)
+        return;
+
+    BalWidget* widget = webView->viewWindow();
+
+    if (widget && widget->browser)
+    {
+        char *url = (char*) webFrame->url();
+
+        updateURL(widget->browser, url);
+        free(url);
+    }
+}
+
 void MorphOSWebFrameDelegate::updateURL(void *browser, char *url)
 {
     updateNavigation(browser);

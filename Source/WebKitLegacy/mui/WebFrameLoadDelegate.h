@@ -139,6 +139,10 @@ public:
      * didChangeIcons
      */
     virtual void didChangeIcons(WebFrame*) {}
+
+    virtual void didPushStateWithinPage(WebFrame*) = 0;
+    virtual void didReplaceStateWithinPage(WebFrame*) = 0;
+    virtual void didPopStateWithinPage(WebFrame*) = 0;
 };
 
 #endif // WebFrameLoadDelegate_h

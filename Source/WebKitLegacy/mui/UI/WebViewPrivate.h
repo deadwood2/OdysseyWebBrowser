@@ -107,6 +107,9 @@ public:
     virtual void didDisplayInsecureContent(WebFrame*);
     virtual void didRunInsecureContent(WebFrame*, WebSecurityOrigin*);
     virtual void didChangeIcons(WebFrame*);
+    virtual void didPushStateWithinPage(WebFrame*);
+    virtual void didReplaceStateWithinPage(WebFrame*);
+    virtual void didPopStateWithinPage(WebFrame*);
     
 private:
     void updateURL(void *browser, char *url);

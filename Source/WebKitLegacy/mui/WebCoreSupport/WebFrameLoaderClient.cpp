@@ -293,17 +293,23 @@ void WebFrameLoaderClient::dispatchDidChangeLocationWithinPage()
 }
 void WebFrameLoaderClient::dispatchDidPushStateWithinPage()
 {
-    balNotImplemented();
+    SharedPtr<WebFrameLoadDelegate> frameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
+    if (frameLoadDelegate)
+        frameLoadDelegate->didPushStateWithinPage(m_webFrame);
 }
 
 void WebFrameLoaderClient::dispatchDidReplaceStateWithinPage()
 {
-    balNotImplemented();
+    SharedPtr<WebFrameLoadDelegate> frameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
+    if (frameLoadDelegate)
+        frameLoadDelegate->didReplaceStateWithinPage(m_webFrame);
 }
 
 void WebFrameLoaderClient::dispatchDidPopStateWithinPage()
 {
-    balNotImplemented();
+    SharedPtr<WebFrameLoadDelegate> frameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
+    if (frameLoadDelegate)
+        frameLoadDelegate->didPopStateWithinPage(m_webFrame);
 }
 
 void WebFrameLoaderClient::dispatchWillClose()
