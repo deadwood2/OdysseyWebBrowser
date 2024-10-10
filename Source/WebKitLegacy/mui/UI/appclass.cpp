@@ -2457,11 +2457,25 @@ void prefs_update(Object *obj, struct Data *data)
     /* JavaScript JIT */
     if (FindToolType(data->diskobject->do_ToolTypes, "NO_JSC_JIT"))
     {
-        JSC::Options::useJIT() = false;
-        JSC::Options::useDFGJIT() = false;
-        JSC::Options::useFTLJIT() = false;
-        JSC::Options::useRegExpJIT() = false;
+        JSC::Options::useJIT()              = false;
+        JSC::Options::useBaselineJIT()      = false;
+        JSC::Options::useDFGJIT()           = false;
+        JSC::Options::useFTLJIT()           = false;
+        JSC::Options::useRegExpJIT()        = false;
     }
+    else
+    {
+        JSC::Options::useJIT()              = true;
+        JSC::Options::useBaselineJIT()      = true;
+        JSC::Options::useDFGJIT()           = true;
+        /* On 2.24 code base, not using FTL give slight better results in benchmars */
+        JSC::Options::useFTLJIT()           = false;
+        JSC::Options::useRegExpJIT()        = true;
+    }
+
+    /* Concurrent JS slows down DFG by 20% and FTL by 50%. Due to single core under AROS? */
+    JSC::Options::useConcurrentJIT()    = false;
+
 
     /* Force full collection */
     JSC::Options::useGenerationalGC() = true;
