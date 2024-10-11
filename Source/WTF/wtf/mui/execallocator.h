@@ -28,7 +28,7 @@
 
 #include <cstring>
 
-void * allocator_getmem_page_aligned(size_t bytes);
+void * allocator_getmem_page_aligned(size_t bytes, bool executable);
 void * allocator_getmem_aligned(size_t bytes, size_t alignment);
 void   allocator_freemem(void * address, size_t bytes);
 void   allocator_freemem(void * address);

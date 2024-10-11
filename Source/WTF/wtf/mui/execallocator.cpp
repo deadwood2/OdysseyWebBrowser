@@ -39,6 +39,15 @@ static const ULONG BLOCKSIZESCOUNT = sizeof(BLOCKSIZES)/sizeof(BLOCKSIZES[0]);
 
 class PageAllocator
 {
+public:
+    PageAllocator();
+    ~PageAllocator();
+    void * getPages(size_t count, bool executable);
+    void * getPages(size_t count, size_t alignment, bool executable);
+    void freePages(void * address, size_t count);
+    void freePages(void * address);
+    int getAllocatedPagesCount();
+
 private:
     struct List blocks;
     struct SignalSemaphore lock;
@@ -50,23 +59,16 @@ private:
         IPTR        pb_StartAddress;
         IPTR        pb_EndAddress;
         ULONG       pb_Alignment;
+        ULONG       pb_Flags;
         WORD        *pb_PagesBitMap; /* 0 - free, -1 allocated, > 0 allocation size (only first page) */
         ULONG       pb_FreePages;
         ULONG       pb_TotalPages;
     };
 
     void * allocatePagesFromBlock(PageAllocator::PageBlock * block, size_t count, size_t alignment);
-    PageAllocator::PageBlock * allocateNewBlock(size_t count);
+    PageAllocator::PageBlock * allocateNewBlock(size_t count, ULONG flags);
     void freeBlock(PageAllocator::PageBlock * block);
     void reportBlockUsage();
-public:
-    PageAllocator();
-    ~PageAllocator();
-    void * getPages(size_t count);
-    void * getPages(size_t count, size_t alignment);
-    void freePages(void * address, size_t count);
-    void freePages(void * address);
-    int getAllocatedPagesCount();
 };
 
 PageAllocator::PageAllocator()
@@ -106,11 +108,12 @@ void PageAllocator::reportBlockUsage()
     bug("-------------------------\n");
 }
 
-PageAllocator::PageBlock * PageAllocator::allocateNewBlock(size_t count)
+PageAllocator::PageBlock * PageAllocator::allocateNewBlock(size_t count, ULONG flags)
 {
     PageAllocator::PageBlock * block = (PageAllocator::PageBlock *)AllocMem(sizeof(PageAllocator::PageBlock), MEMF_ANY);
 
     block->pb_Alignment = PAGESIZE;
+    block->pb_Flags = flags;
 
     void * memoryblock = NULL;
     IPTR allocationsize = 0;
@@ -121,7 +124,7 @@ retry:
     while (memoryblock == NULL && i < BLOCKSIZESCOUNT)
     {
         allocationsize = (BLOCKSIZES[i] > count ? BLOCKSIZES[i] : count) * PAGESIZE;
-        memoryblock = AllocMem(allocationsize + block->pb_Alignment, MEMF_ANY);
+        memoryblock = AllocMem(allocationsize + block->pb_Alignment, block->pb_Flags);
         i++;
     }
 
@@ -231,20 +234,26 @@ void * PageAllocator::allocatePagesFromBlock(PageAllocator::PageBlock * block,
     return NULL;
 }
 
-void * PageAllocator::getPages(size_t count)
+void * PageAllocator::getPages(size_t count, bool executable)
 {
-    return getPages(count, PAGESIZE);
+    return getPages(count, PAGESIZE, executable);
 }
 
-void * PageAllocator::getPages(size_t count, size_t alignment)
+void * PageAllocator::getPages(size_t count, size_t alignment, bool executable)
 {
     void * n; void * _return = NULL;
+    ULONG flags = MEMF_ANY;
+
+    if (executable) flags = MEMF_EXECUTABLE;
 
     ObtainSemaphore(&lock);
 
     ForeachNode(&blocks, n)
     {
         PageAllocator::PageBlock * block = (PageAllocator::PageBlock *)n;
+
+        if (block->pb_Flags != flags)
+            continue;
 
         if (block->pb_FreePages < count)
             continue;
@@ -259,7 +268,7 @@ void * PageAllocator::getPages(size_t count, size_t alignment)
     }
 
     /* If we are here, it means none of the blocks was big enough */
-    PageAllocator::PageBlock * block = allocateNewBlock(count);
+    PageAllocator::PageBlock * block = allocateNewBlock(count, flags);
     if (block)
         _return = allocatePagesFromBlock(block, count, alignment);
     ReleaseSemaphore(&lock);
@@ -366,10 +375,10 @@ static inline int getPageCount(size_t bytes)
     return (int)((bytes + PAGESIZE - 1) / PAGESIZE);
 }
 
-void * allocator_getmem_page_aligned(size_t bytes)
+void * allocator_getmem_page_aligned(size_t bytes, bool executable)
 {
     int pagecount = getPageCount(bytes);
-    void * ptr = allocator.getPages(pagecount);
+    void * ptr = allocator.getPages(pagecount, executable);
 
     D(bug("A:getmem_page_aligned 0x%x -> pagecount %d \n", ptr, pagecount));
 
@@ -390,7 +399,7 @@ void * allocator_getmem_aligned(size_t bytes, size_t alignment)
     if (alignment < PAGESIZE) alignment = PAGESIZE;
 
     int pagecount = getPageCount(bytes);
-    void * ptr = allocator.getPages(pagecount, alignment);
+    void * ptr = allocator.getPages(pagecount, alignment, false);
 
     if(ptr)
         memset(ptr, 0, bytes);
