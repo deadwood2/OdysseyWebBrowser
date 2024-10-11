@@ -2476,6 +2476,12 @@ void prefs_update(Object *obj, struct Data *data)
     /* Concurrent JS slows down DFG by 20% and FTL by 50%. Due to single core under AROS? */
     JSC::Options::useConcurrentJIT()    = false;
 
+    if (FindToolType(data->diskobject->do_ToolTypes, "FTL"))
+        JSC::Options::useFTLJIT() = true;
+    if (FindToolType(data->diskobject->do_ToolTypes, "CONCURRENT_JIT"))
+        JSC::Options::useConcurrentJIT() = true;
+
+
 
     /* Force full collection */
     JSC::Options::useGenerationalGC() = true;
