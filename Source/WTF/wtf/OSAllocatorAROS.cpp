@@ -26,10 +26,6 @@
 #include "config.h"
 #include "OSAllocator.h"
 
-#include <exec/lists.h>
-#include <string.h>
-#include <aros/debug.h>
-
 #if OS(AROS)
 
 #include "mui/execallocator.h"
@@ -37,9 +33,9 @@
 
 namespace WTF {
 
-static void* allocateWithCheck(size_t bytes)
+static void* allocateWithCheck(size_t bytes, bool executable)
 {
-    void * ptr = allocator_getmem_page_aligned(bytes);
+    void * ptr = allocator_getmem_page_aligned(bytes, executable);
     if (likely(ptr))
         return ptr;
 
@@ -49,14 +45,14 @@ static void* allocateWithCheck(size_t bytes)
     return nullptr;
 }
 
-void* OSAllocator::reserveUncommitted(size_t bytes, Usage, bool, bool, bool)
+void* OSAllocator::reserveUncommitted(size_t bytes, Usage, bool, bool executable, bool)
 {
-    return allocateWithCheck(bytes);
+    return allocateWithCheck(bytes, executable);
 }
 
-void* OSAllocator::reserveAndCommit(size_t bytes, Usage, bool, bool, bool)
+void* OSAllocator::reserveAndCommit(size_t bytes, Usage, bool, bool executable, bool)
 {
-    return allocateWithCheck(bytes);
+    return allocateWithCheck(bytes, executable);
 }
 
 void OSAllocator::commit(void* address, size_t bytes, bool, bool)
