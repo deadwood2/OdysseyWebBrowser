@@ -73,6 +73,7 @@
 #include "WebView.h"
 #include "WindowFeatures.h"
 #include "platform/graphics/cairo/PlatformContextCairo.h"
+#include <WebCore/HTMLTextFormControlElement.h>
 
 #include "CommonVM.h"
 
@@ -971,6 +972,15 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
         return false;
     PlatformKeyboardEvent keyboardEvent(&event);
 
+    if ((keyboardEvent.metaKey() || keyboardEvent.controlKey()) &&
+        (keyboardEvent.windowsVirtualKeyCode() == 0x43 /* VK_C */) &&
+        (enclosingTextFormControl(frame->selection().selection().start()) == nullptr))
+    {
+        /* Hack: If CTRL+C/Amiga+C and not in editor, don't pass the even through normal
+           processing which will anyhow reach default editor handle which will reject action
+           (beause not in editor) */
+    } else
+
     if (frame->eventHandler().keyEvent(keyboardEvent))
         return true;
 
@@ -1279,13 +1289,13 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
                         switch(c)
                         {
                             case 'c':
-                                frame->editor().command("Copy").execute();
+                                m_webView->copy();
                                 break;
                             case 'x':
-                                frame->editor().command("Cut").execute();
+                                m_webView->cut();
                                 break;
                             case 'v':
-                                frame->editor().command("Paste").execute();
+                                m_webView->paste();
                                 break;
                             case 'r':
                                 DoMethod(m_webView->viewWindow()->window, MM_OWBWindow_Reload, NULL);

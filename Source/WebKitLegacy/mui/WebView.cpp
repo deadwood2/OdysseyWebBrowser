@@ -157,6 +157,7 @@
 #include <WindowsKeyboardCodes.h>
 #include <page/DiagnosticLoggingClient.h>
 #include <WebCore/ShouldTreatAsContinuingLoad.h>
+#include <WebCore/Pasteboard.h>
 
 #include <JavaScriptCore/JSCell.h>
 #include <JavaScriptCore/JSLock.h>
@@ -2381,7 +2382,14 @@ void WebView::clearMainFrameName()
 
 void WebView::copy()
 {
-    m_page->focusController().focusedOrMainFrame().editor().command("Copy").execute();
+    Frame &frame = m_page->focusController().focusedOrMainFrame();
+    if (enclosingTextFormControl(frame.selection().selection().start()))
+        frame.editor().command("Copy").execute();
+    else
+    {
+        /* Copying from HTML text, not from input/editor */
+        Pasteboard::createForCopyAndPaste()->writePlainText(frame.editor().selectedText(), Pasteboard::CannotSmartReplace);
+    }
 }
 
 void WebView::cut()
