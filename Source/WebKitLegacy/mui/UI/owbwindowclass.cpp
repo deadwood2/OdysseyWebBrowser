@@ -183,35 +183,6 @@ Object *create_window(char * url, ULONG isframe, APTR sourceview, APTR features,
                         TAG_DONE);
 }
 
-static void copyWebViewSelectionToClipboard(WebView* webView, bool html, bool local)
-{
-    Frame* frame = &(core(webView)->focusController().focusedOrMainFrame());
-    if (!frame)
-        return;
-
-    String selectedText;
-    if (html) {
-       FrameSelection *selection = &frame->selection();
-       if (selection)
-           selectedText = serializePreservingVisualAppearance(*selection->toNormalizedRange());
-    }
-    else
-       selectedText = frame->editor().selectedText();
-
-    CString text = selectedText.utf8();
-    const char *data = text.data();
-    size_t len = text.length();
-    char *converted_data = local ? utf8_to_local(data) : strdup(data);
-    size_t converted_len = local ? strlen(converted_data) : len;
-
-    if(converted_data && converted_len)
-    {
-        copyTextToClipboard(converted_data, local ? false : true);
-
-        free(converted_data);
-    }
-}
-
 static  void setup_browser_notifications(Object *obj, struct Data *data, Object *browser)
 {
     //kprintf("OWBWindow: setup notifications for browser %p\n", browser);
@@ -1065,14 +1036,7 @@ DEFSMETHOD(OWBWindow_MenuAction)
         case MNA_COPY:
         {
             BalWidget *widget = (BalWidget *) getv(data->active_browser, MA_OWBBrowser_Widget);
-            copyWebViewSelectionToClipboard(widget->webView, false, false);
-        }
-        break;
-
-        case MNA_COPY_LOCAL:
-        {
-            BalWidget *widget = (BalWidget *) getv(data->active_browser, MA_OWBBrowser_Widget);
-            copyWebViewSelectionToClipboard(widget->webView, false, true);
+            widget->webView->copy();
         }
         break;
 
