@@ -103,6 +103,13 @@
 #include <WebCore/AsyncFileStream.h>
 #include <WebCore/BlobRegistryImpl.h>
 
+namespace JSC {
+namespace DFG {
+extern void shutdownGlobalDFGWorklist();
+extern void shutdownGlobalFTLWorklist();
+} }
+
+
 /* Posix */
 #include <unistd.h>
 #include <cstdio>
@@ -1189,7 +1196,14 @@ DEFDISP
 
     delete &commonVM(); /* This looks weird, but it stops JSC Heap Collector Thread */
 #if ENABLE(JIT)
-    JSC::JITWorklist::existingGlobalWorklistOrNull()->shutdown();
+    if (JSC::JITWorklist::existingGlobalWorklistOrNull())
+        JSC::JITWorklist::existingGlobalWorklistOrNull()->shutdown();
+#endif
+#if ENABLE(DFG_JIT)
+    JSC::DFG::shutdownGlobalDFGWorklist();
+#endif
+#if ENABLE(FTL_JIT)
+    JSC::DFG::shutdownGlobalFTLWorklist();
 #endif
 
     return DOSUPER;
