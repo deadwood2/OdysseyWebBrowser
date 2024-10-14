@@ -118,13 +118,15 @@ void CurlRequestScheduler::startThreadIfNeeded()
     m_thread = Thread::create("curlThread", [this] {
 #if PLATFORM(MUI)
         init_SocketBase();
+        /* Increase priority so that network data is transported immediatelly */
+        SetTaskPri(FindTask(NULL), 1);
 #endif
         workerThread();
 
         auto locker = holdLock(m_mutex);
         m_runThread = false;
 #if PLATFORM(MUI)
-            close_SocketBase();
+        close_SocketBase();
 #endif
     });
 }
@@ -133,11 +135,14 @@ void CurlRequestScheduler::stopThreadIfNoMoreJobRunning()
 {
     ASSERT(!isMainThread());
 
+#if !PLATFORM(MUI)
+    /* Keep the original curlThread running until browser quits */
     auto locker = holdLock(m_mutex);
     if (m_activeJobs.size() || m_taskQueue.size())
         return;
 
     m_runThread = false;
+#endif
 }
 
 #if PLATFORM(MUI)
