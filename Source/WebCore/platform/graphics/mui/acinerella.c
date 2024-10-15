@@ -108,6 +108,7 @@ struct _ac_audio_decoder {
 	AVFrame *pFrame;
 	SwrContext *pSwrCtx;
 	size_t own_buffer_size;
+	int channels_at_create;
 };
 
 struct _ac_decoder_frame_internal {
@@ -846,7 +847,7 @@ static void *ac_create_audio_decoder(lp_ac_instance pacInstance,
 	    pCodecCtx->channel_layout
 	        ? pCodecCtx->channel_layout
 	        : av_get_default_channel_layout(pCodecCtx->channels);
-
+	pDecoder->channels_at_create = pCodecCtx->channels;
 #if 1
 	// Always output AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16, maximum 48kHz
 	if (layout != AV_CH_LAYOUT_STEREO || fmt != AV_SAMPLE_FMT_S16 || rate > 44100) {
@@ -1271,6 +1272,19 @@ ac_receive_frame_rc ac_receive_frame(lp_ac_decoder pDecoder, lp_ac_decoder_frame
 						return RECEIVE_FRAME_ERROR;
 					frame->own_buffer_size = buffer_size;
 				}
+
+
+
+// Workaround, to be revisited after update to morphos_2.34
+// Trigger: https://www.youtube.com/watch?v=u3xHPIuX3s4&list=PLuprJ3W2ahOXgaIkH_Pf4De4JSFz6wo9l&index=2
+// Let it play to after 2:30, there will be a lag and then stereo changes to mono
+if (
+	aDecoder->channels_at_create != pCodecCtx->channels &&
+	(((const uint8_t **)frame->pFrame->data)[1] == NULL))
+{
+	return RECEIVE_FRAME_ERROR;
+}
+
 				int rc = swr_convert(aDecoder->pSwrCtx, &(frame->frame.pBuffer),
 									 dst_nb_samples, (const uint8_t **)(frame->pFrame->data),
 									 sample_count);
