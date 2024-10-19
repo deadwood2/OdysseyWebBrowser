@@ -343,14 +343,6 @@ DEFMMETHOD(List_Display)
                     dl->remainingtime = (MonotonicTime::now().secondsSinceEpoch().value() - dl->starttime) * (dl->size - dl->done) / dl->done;
                     format_time_compact(remainingtext, sizeof(remainingtext), (ULONG) dl->remainingtime);
                     snprintf(buf5, sizeof(buf5), "\033r%s", remainingtext);
-
-                    /*
-                    struct timeval timeval;
-                    GetSysTime(&timeval);
-                    timeval.tv_secs += (ULONG) ((currentTime() - dl->starttime) * dl->size / dl->done);
-                    Amiga2Date(timeval.tv_secs, &dl->eta);
-                    snprintf(buf5, sizeof(buf5), "%.2d:%.2d:%.2d", dl->eta.hour, dl->eta.min, dl->eta.sec);
-                    */
                 }
                 else
                 {
