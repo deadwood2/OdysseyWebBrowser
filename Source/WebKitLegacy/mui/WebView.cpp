@@ -537,167 +537,140 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     if (s_didSetCacheModel && cacheModel == s_cacheModel)
         return;
 
-    String cacheDirectory;
-
-    cacheDirectory = CurlCacheManager::singleton().cacheDirectory();
-    long cacheMemoryCapacity = 0;
-    long cacheDiskCapacity = 0;
-
-    unsigned long long memSize = ramSize() / 1024 / 1024;
-
-    // As a fudge factor, use 1000 instead of 1024, in case the reported byte
-    // count doesn't align exactly to a megabyte boundary.
-    unsigned long long diskFreeSize = WebVolumeFreeSize(cacheDirectory) / 1024 / 1000;
-
     unsigned cacheTotalCapacity = 0;
     unsigned cacheMinDeadCapacity = 0;
     unsigned cacheMaxDeadCapacity = 0;
-    auto deadDecodedDataDeletionInterval = Seconds(0);
+    auto deadDecodedDataDeletionInterval = 0_s;
+    unsigned pageCacheCapacity = 0;
 
-    unsigned pageCacheSize = 0;
-
+    uint64_t memorySize = ramSize() / MB;
 
     switch (cacheModel) {
     case WebCacheModelDocumentViewer: {
         // Page cache capacity (in pages)
-        pageCacheSize = 0;
+        pageCacheCapacity = 0;
 
         // Object cache capacities (in bytes)
-        if (memSize >= 2048)
-            cacheTotalCapacity = 96 * 1024 * 1024;
-        else if (memSize >= 1536)
-            cacheTotalCapacity = 64 * 1024 * 1024;
-        else if (memSize >= 1024)
-            cacheTotalCapacity = 32 * 1024 * 1024;
-        else if (memSize >= 512)
-            cacheTotalCapacity = 16 * 1024 * 1024;
-        else if (memSize >= 256)
-            cacheTotalCapacity = 8 * 1024 * 1024;
-        else if (memSize >= 128)
-            cacheTotalCapacity = 4 * 1024 * 1024;
+        if (memorySize >= 2048)
+            cacheTotalCapacity = 96 * MB;
+        else if (memorySize >= 1536)
+            cacheTotalCapacity = 64 * MB;
+        else if (memorySize >= 1024)
+            cacheTotalCapacity = 32 * MB;
+        else if (memorySize >= 512)
+            cacheTotalCapacity = 16 * MB;
+        else
+            cacheTotalCapacity = 8 * MB;
 
         cacheMinDeadCapacity = 0;
         cacheMaxDeadCapacity = 0;
-
-        // Memory cache capacity (in bytes)
-        cacheMemoryCapacity = 0;
 
         break;
     }
     case WebCacheModelDocumentBrowser: {
         // Page cache capacity (in pages)
-        if (memSize >= 1024)
-            pageCacheSize = 3;
-        else if (memSize >= 512)
-            pageCacheSize = 2;
-        else if (memSize >= 256)
-            pageCacheSize = 1;
+        if (memorySize >= 512)
+            pageCacheCapacity = 2;
+        else if (memorySize >= 256)
+            pageCacheCapacity = 1;
         else
-            pageCacheSize = 0;
+            pageCacheCapacity = 0;
 
         // Object cache capacities (in bytes)
-        if (memSize >= 2048)
-            cacheTotalCapacity = 96 * 1024 * 1024;
-        else if (memSize >= 1536)
-            cacheTotalCapacity = 64 * 1024 * 1024;
-        else if (memSize >= 1024)
-            cacheTotalCapacity = 32 * 1024 * 1024;
-        else if (memSize >= 512)
-            cacheTotalCapacity = 16 * 1024 * 1024;
-        else if (memSize >= 256)
-            cacheTotalCapacity = 8 * 1024 * 1024;
-        else if (memSize >= 128)
-            cacheTotalCapacity = 4 * 1024 * 1024;
+        if (memorySize >= 2048)
+            cacheTotalCapacity = 96 * MB;
+        else if (memorySize >= 1536)
+            cacheTotalCapacity = 64 * MB;
+        else if (memorySize >= 1024)
+            cacheTotalCapacity = 32 * MB;
+        else if (memorySize >= 512)
+            cacheTotalCapacity = 16 * MB;
+        else
+            cacheTotalCapacity = 8 * MB;
 
         cacheMinDeadCapacity = cacheTotalCapacity / 8;
         cacheMaxDeadCapacity = cacheTotalCapacity / 4;
-
-        // Memory cache capacity (in bytes)
-        if (memSize >= 2048)
-            cacheMemoryCapacity = 4 * 1024 * 1024;
-        else if (memSize >= 1024)
-            cacheMemoryCapacity = 2 * 1024 * 1024;
-        else if (memSize >= 512)
-            cacheMemoryCapacity = 1 * 1024 * 1024;
-        else
-            cacheMemoryCapacity =      512 * 1024;
-
-        // Disk cache capacity (in bytes)
-        if (diskFreeSize >= 16384)
-            cacheDiskCapacity = 50 * 1024 * 1024;
-        else if (diskFreeSize >= 8192)
-            cacheDiskCapacity = 40 * 1024 * 1024;
-        else if (diskFreeSize >= 4096)
-            cacheDiskCapacity = 30 * 1024 * 1024;
-        else
-            cacheDiskCapacity = 20 * 1024 * 1024;
 
         break;
     }
     case WebCacheModelPrimaryWebBrowser: {
         // Page cache capacity (in pages)
-        // (Research indicates that value / page drops substantially after 3 pages.)
-        if (memSize >= 2048)
-            pageCacheSize = 5;
-        else if (memSize >= 1024)
-            pageCacheSize = 4;
-        else if (memSize >= 512)
-            pageCacheSize = 3;
-        else if (memSize >= 256)
-            pageCacheSize = 2;
+        if (memorySize >= 512)
+            pageCacheCapacity = 2;
+        else if (memorySize >= 256)
+            pageCacheCapacity = 1;
         else
-            pageCacheSize = 1;
+            pageCacheCapacity = 0;
 
         // Object cache capacities (in bytes)
         // (Testing indicates that value / MB depends heavily on content and
-        // browsing pattern. Even growth above 128MB can have substantial 
+        // browsing pattern. Even growth above 128MB can have substantial
         // value / MB for some content / browsing patterns.)
-        if (memSize >= 2048)
-            cacheTotalCapacity = 128 * 1024 * 1024;
-        else if (memSize >= 1536)
-            cacheTotalCapacity = 96 * 1024 * 1024;
-        else if (memSize >= 1024)
-            cacheTotalCapacity = 64 * 1024 * 1024;
-        else if (memSize >= 512)
-            cacheTotalCapacity = 32 * 1024 * 1024;
-        else if (memSize >= 256)
-            cacheTotalCapacity = 16 * 1024 * 1024;
-        else if (memSize >= 128)
-            cacheTotalCapacity = 8 * 1024 * 1024;
+        if (memorySize >= 2048)
+            cacheTotalCapacity = 128 * MB;
+        else if (memorySize >= 1536)
+            cacheTotalCapacity = 96 * MB;
+        else if (memorySize >= 1024)
+            cacheTotalCapacity = 64 * MB;
+        else if (memorySize >= 512)
+            cacheTotalCapacity = 32 * MB;
+        else
+            cacheTotalCapacity = 16 * MB;
 
         cacheMinDeadCapacity = cacheTotalCapacity / 4;
         cacheMaxDeadCapacity = cacheTotalCapacity / 2;
 
         // This code is here to avoid a PLT regression. We can remove it if we
         // can prove that the overall system gain would justify the regression.
-        cacheMaxDeadCapacity = max(24u, cacheMaxDeadCapacity);
+        cacheMaxDeadCapacity = std::max(24u, cacheMaxDeadCapacity);
 
-        deadDecodedDataDeletionInterval = Seconds(60);
+        deadDecodedDataDeletionInterval = 60_s;
 
-        // Memory cache capacity (in bytes)
-        // (These values are small because WebCore does most caching itself.)
-        if (memSize >= 1024)
-            cacheMemoryCapacity = 4 * 1024 * 1024;
-        else if (memSize >= 512)
-            cacheMemoryCapacity = 2 * 1024 * 1024;
-        else if (memSize >= 256)
-            cacheMemoryCapacity = 1 * 1024 * 1024;
-        else
-            cacheMemoryCapacity =      512 * 1024;
+        break;
+    }
+    default:
+        ASSERT_NOT_REACHED();
+    };
 
+
+    // As a fudge factor, use 1000 instead of 1024, in case the reported byte
+    // count doesn't align exactly to a megabyte boundary.
+    String cacheDirectory = CurlCacheManager::singleton().cacheDirectory();
+    uint64_t diskFreeSize = WebVolumeFreeSize(cacheDirectory) / 1024 / 1000;
+    uint64_t cacheDiskCapacity = 0;
+
+    switch (cacheModel) {
+    case WebCacheModelDocumentViewer: {
+        cacheDiskCapacity = 0;
+        break;
+    }
+    case WebCacheModelDocumentBrowser: {
         // Disk cache capacity (in bytes)
         if (diskFreeSize >= 16384)
-            cacheDiskCapacity = 175 * 1024 * 1024;
+            cacheDiskCapacity = 75 * MB;
         else if (diskFreeSize >= 8192)
-            cacheDiskCapacity = 150 * 1024 * 1024;
+            cacheDiskCapacity = 40 * MB;
         else if (diskFreeSize >= 4096)
-            cacheDiskCapacity = 125 * 1024 * 1024;
-        else if (diskFreeSize >= 2048)
-            cacheDiskCapacity = 100 * 1024 * 1024;
-        else if (diskFreeSize >= 1024)
-            cacheDiskCapacity = 75 * 1024 * 1024;
+            cacheDiskCapacity = 30 * MB;
         else
-            cacheDiskCapacity = 50 * 1024 * 1024;
+            cacheDiskCapacity = 20 * MB;
+
+        break;
+    }
+    case WebCacheModelPrimaryWebBrowser: {
+        // Disk cache capacity (in bytes)
+        if (diskFreeSize >= 16384)
+            cacheDiskCapacity = 500 * MB;
+        else if (diskFreeSize >= 8192)
+            cacheDiskCapacity = 250 * MB;
+        else if (diskFreeSize >= 4096)
+            cacheDiskCapacity = 125 * MB;
+        else if (diskFreeSize >= 2048)
+            cacheDiskCapacity = 100 * MB;
+        else if (diskFreeSize >= 1024)
+            cacheDiskCapacity = 75 * MB;
+        else
+            cacheDiskCapacity = 50 * MB;
 
         break;
     }
@@ -708,9 +681,8 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     auto& memoryCache = MemoryCache::singleton();
     memoryCache.setCapacities(cacheMinDeadCapacity, cacheMaxDeadCapacity, cacheTotalCapacity);
     memoryCache.setDeadDecodedDataDeletionInterval(deadDecodedDataDeletionInterval);
-    PageCache::singleton().setMaxSize(pageCacheSize);
+    PageCache::singleton().setMaxSize(pageCacheCapacity);
 
-    (void)cacheMemoryCapacity;
     CurlCacheManager::singleton().setStorageSizeLimit(cacheDiskCapacity);
 
     s_didSetCacheModel = true;
