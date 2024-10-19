@@ -166,9 +166,6 @@ struct MinList contextmenu_list;
 struct MinList mimetype_list;
 struct MinList urlsetting_list;
 struct MinList family_list;
-RefPtr<Thread> ctrl_e_thread;
-int ctrl_e_should_exit = 0;
-struct Task *mainTask = NULL;
 
 static const CONST_STRPTR classlist[] = {
     "Lamp.mcc",
@@ -936,6 +933,57 @@ void WriteConfigFile(const char* url, AppSettings *settings)
     delete configFile;
 }
 
+RefPtr<Thread> owbTimer;
+int owb_timer_should_exit = 0;
+struct Task *mainTask = NULL;
+
+static void TimerFunc(void)
+{
+    struct MsgPort * TimerMP;
+    struct timerequest TimerIO;
+    const int Interval = 14000;
+
+    TimerMP = CreateMsgPort();
+
+    D(kprintf("[OWB Timer] Entering Timer thread\n"));
+
+    if(TimerMP)
+    {
+        TimerIO.tr_node.io_Message.mn_Node.ln_Type = NT_REPLYMSG;
+        TimerIO.tr_node.io_Message.mn_ReplyPort    = TimerMP;
+        TimerIO.tr_node.io_Message.mn_Length       = sizeof(struct timerequest);
+
+        if (!OpenDevice("timer.device", UNIT_MICROHZ, &TimerIO.tr_node, 0))
+        {
+            D(kprintf("[OWB Timer Thread] Received start signal\n"));
+
+            D(kprintf("[OWB Timer Thread] Adding timerequest for %d µs\n", Interval));
+
+            while(1)
+            {
+                if (owb_timer_should_exit == 1)
+                {
+                    D(kprintf("[OWB Timer Thread] Termination signal received\n"));
+                    break;
+                }
+
+                TimerIO.tr_node.io_Command = TR_ADDREQUEST;
+                TimerIO.tr_time.tv_secs    = 0;
+                TimerIO.tr_time.tv_micro   = Interval;
+
+                DoIO(&TimerIO.tr_node);
+                Signal(mainTask, SIGBREAKF_CTRL_E);
+            }
+
+            CloseDevice(&TimerIO.tr_node);
+        }
+
+        DeleteMsgPort(TimerMP);
+    }
+
+    owb_timer_should_exit = 2;
+}
+
 DEFNEW
 {
     Object *prefswin, *menustrip;
@@ -959,18 +1007,10 @@ DEFNEW
     WebPlatformStrategies::initialize();
 
     /* Task that is used to signal main loop for processing of RunLoop based work */
-    ctrl_e_should_exit = 0;
+    owb_timer_should_exit = 0;
     mainTask = FindTask(0);
-    ctrl_e_thread = Thread::create("OWB_CTRL_E_TASK", [] {
-        while (true) {
-            if (ctrl_e_should_exit == 0) {
-                Signal(mainTask, SIGBREAKF_CTRL_E);
-                usleep(20 * 1000);
-            }
-            else
-                break;
-        }
-        ctrl_e_should_exit = 2;
+    owbTimer = Thread::create("[OWB] Timer", [] {
+        TimerFunc();
     });
 
     obj = (Object *) DoSuperNew(cl, obj,
@@ -1126,7 +1166,7 @@ DEFDISP
     GETDATA;
     APTR n, m;
 
-    ctrl_e_should_exit = 1;
+    owb_timer_should_exit = 1;
 
     ITERATELISTSAFE(n, m, &window_list)
     {
