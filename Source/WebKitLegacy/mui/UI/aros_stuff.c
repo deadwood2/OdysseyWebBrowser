@@ -206,6 +206,7 @@ int aros_memory_allocation_error(size_t size, size_t alignment)
 static struct MsgPort * timerMP = NULL;
 static struct IORequest * timerIO = NULL;
 struct Library * TimerBase = NULL;
+/* Initialize TimerBase so that GetSysTime() calls are working */
 int aros_timer_open()
 {
     timerMP = CreateMsgPort();
