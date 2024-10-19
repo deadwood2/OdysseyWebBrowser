@@ -526,10 +526,10 @@ void initializeStaticObservers()
 
 }
 
-unsigned long long WebVolumeFreeSize(const String& path)
+uint64_t WebVolumeFreeSize(const String& path)
 {
-    // TODO: Implement, assume 8GB for now
-    return (unsigned long long)8192 * 1024 * 1024;
+    // TODO: Implement, assume 16GB for now
+    return (uint64_t)16384 * MB;
 }
 
 void WebView::setCacheModel(WebCacheModel cacheModel)
