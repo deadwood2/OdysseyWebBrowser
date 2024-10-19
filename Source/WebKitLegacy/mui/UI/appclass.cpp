@@ -1185,10 +1185,11 @@ DEFDISP
     WebCore::CurlContext::singleton().stopThread();
     WebDatabaseProvider::singleton().shutdownServers();
     WebKit::WebStorageNamespaceProvider::closeLocalStorage();
-    CurlCacheManager::singleton().setStorageSizeLimit(0);
     DataURLDecoder::shutdown();
     WebCore::AsyncFileStream::shutdown();
     WebCore::shutdownBlobRegistryImpl();
+    /* !!! Manually call save as destructors for static objects are not getting called (where saveIndex is called) !!! */
+    CurlCacheManager::singleton().saveIndex();
 
     GCController::singleton().garbageCollectNow();
 //    FontCache::singleton().invalidate(); // trashes memory like fuck on https://testdrive-archive.azurewebsites.net/Graphics/CanvasPinball/default.html
