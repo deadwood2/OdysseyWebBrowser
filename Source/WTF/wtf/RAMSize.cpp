@@ -59,13 +59,17 @@ static size_t computeRAMSize()
     return status.ullTotalPhys;
 #elif PLATFORM(MUI)
     static const char * ramSizeSetting = getenv("OWB_RAM_SIZE");
+    size_t size = 0;
     if(ramSizeSetting)
     {
-	size_t size = (size_t) atoi(ramSizeSetting) * MB;
-	if(size > 8 * MB)
-	    return size;
+        size = (size_t) atoi(ramSizeSetting) * MB;
+        if(size > 8 * MB)
+            return size;
     }
-    return AvailMem(MEMF_FAST);
+    size += AvailMem(MEMF_CHIP);
+    size += AvailMem(MEMF_FAST);
+
+    return size;
 #elif defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
 #if OS(LINUX)
     struct sysinfo si;
