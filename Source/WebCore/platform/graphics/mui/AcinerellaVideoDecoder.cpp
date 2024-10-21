@@ -504,10 +504,42 @@ void AcinerellaVideoDecoder::paint(GraphicsContext& gc, const FloatRect& rect)
 	{
 		WebCore::PlatformContextCairo *context = gc.platformContext();
 		cairo_t* cr = context->cr();
-		ac_scale_to_rgb_decoder_frame(m_decodedFrames.front().frame(), m_decodedFrames.front().pointer()->decoder(m_index));
-		auto *avFrame = ac_get_frame(m_decodedFrames.front().pointer()->decoder(m_index));
-		// CAIRO_FORMAT_RGB24 is actually 00RRGGBB on BigEndian
 
+		// measurements of 360p video displayed inline 711x400 / 853x480 theather mode
+#if 1
+		// 1.6Ghz -> 1100 us / 1400 us
+		// optimization: ffmpeg is 3x faster when scaling to even width
+		int corrwidth = rect.width(); if (corrwidth & 1) corrwidth++;
+		ac_scale_to_scaled_rgb_decoder_frame(m_decodedFrames.front().frame(), m_decodedFrames.front().pointer()->decoder(m_index), corrwidth, rect.height());
+		AVFrame *avFrame = ac_get_frame_scaled(m_decodedFrames.front().pointer()->decoder(m_index));
+#else
+		// 1.6Ghz ->  200 us /  200 us
+		ac_scale_to_rgb_decoder_frame(m_decodedFrames.front().frame(), m_decodedFrames.front().pointer()->decoder(m_index));
+		AVFrame *avFrame = ac_get_frame(m_decodedFrames.front().pointer()->decoder(m_index));
+#endif
+
+#if 1
+		// 1.6Ghz ->  300 us /  450 us
+		{
+			auto surface = cairo_image_surface_create_for_data(avFrame->data[0], CAIRO_FORMAT_RGB24, corrwidth, rect.height(), avFrame->linesize[0]);
+			if (surface)
+			{
+				cairo_save(cr);
+				cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+				// optimizaton: operate on integer coords to allow for plain blit instead of re-scaling (300 us us vs 3000 us)
+				cairo_translate(cr, (int)rect.x(), (int)rect.y());
+				cairo_rectangle(cr, 0, 0, (int)rect.width(), (int)rect.height());
+				// optimization: remove rounded-edge clip, saves ~3500 us, as blit is done to rectangle, not polygon
+				cairo_reset_clip(cr);
+				cairo_set_antialias(cr, CAIRO_ANTIALIAS_NONE);
+				cairo_set_source_surface(cr, surface, 0, 0);
+				cairo_fill(cr);
+				cairo_restore(cr);
+				cairo_surface_destroy(surface);
+			}
+		}
+#else
+		// 1.6Ghz -> 5800 us / 8100 us
 		if (rect.width() == m_frameWidth && rect.height() == m_frameHeight)
 		{
 			auto surface = cairo_image_surface_create_for_data(avFrame->data[0], CAIRO_FORMAT_RGB24, m_frameWidth, m_frameHeight, avFrame->linesize[0]);
@@ -550,6 +582,8 @@ void AcinerellaVideoDecoder::paint(GraphicsContext& gc, const FloatRect& rect)
 				cairo_surface_destroy(surface);
 			}
 		}
+#endif
+
 	}
 #endif
 }
