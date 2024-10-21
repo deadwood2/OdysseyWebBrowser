@@ -32,6 +32,11 @@
 #include <aros/debug.h>
 #undef D
 #define dprintf bug
+extern "C"
+{
+    void getSysTime(struct timeval *tv);
+}
+#define MEASURE 0
 #endif
 
 #define D(x) 
@@ -505,6 +510,18 @@ void AcinerellaVideoDecoder::paint(GraphicsContext& gc, const FloatRect& rect)
 		WebCore::PlatformContextCairo *context = gc.platformContext();
 		cairo_t* cr = context->cr();
 
+#if MEASURE
+static long microSecs1 = 0;
+static long microSecs2 = 0;
+static long iters = 0;
+struct timeval t1;
+struct timeval t2;
+if (iters % 256 == 0) iters = 0;
+iters++;
+getSysTime(&t1);
+#endif
+
+
 		// measurements of 360p video displayed inline 711x400 / 853x480 theather mode
 #if 1
 		// 1.6Ghz -> 1100 us / 1400 us
@@ -517,6 +534,20 @@ void AcinerellaVideoDecoder::paint(GraphicsContext& gc, const FloatRect& rect)
 		ac_scale_to_rgb_decoder_frame(m_decodedFrames.front().frame(), m_decodedFrames.front().pointer()->decoder(m_index));
 		AVFrame *avFrame = ac_get_frame(m_decodedFrames.front().pointer()->decoder(m_index));
 #endif
+
+
+#if MEASURE
+getSysTime(&t2);
+long val1 = ((long)(t2.tv_secs - t1.tv_secs) * 1000000L) + (long)t2.tv_micro - (long)t1.tv_micro;
+microSecs1 += val1;
+if (iters % 256 == 0)
+{
+bug ("scale %ld us\n", (microSecs1 / iters));
+microSecs1 = 0;
+}
+getSysTime(&t1);
+#endif
+
 
 #if 1
 		// 1.6Ghz ->  300 us /  450 us
@@ -582,6 +613,16 @@ void AcinerellaVideoDecoder::paint(GraphicsContext& gc, const FloatRect& rect)
 				cairo_surface_destroy(surface);
 			}
 		}
+#endif
+
+#if MEASURE
+getSysTime(&t2);
+microSecs2 += ((long)(t2.tv_secs - t1.tv_secs) * 1000000L) + (long)t2.tv_micro - (long)t1.tv_micro;
+if (iters % 256 == 0)
+{
+bug ("paint %ld us\n", (microSecs2 / iters));
+microSecs2 = 0;
+}
 #endif
 
 	}
