@@ -1,5 +1,4 @@
-OWB 1.24 - MorphOS
-OWB 1.26 - AROS
+OWB 2.0
 
 ***********************************************************************************
 *                                                                                 *
@@ -20,6 +19,7 @@ License
 -------
 
 Copyright (C) 2014-2024 Krzysztof Smiechowicz
+Copyright (C) 2020 Jacek Piszczek
 Copyright (C) 2009-2014 Fabien Coeurjoly
 Copyright (C) 2009-2010 Pleyo. All rights reserved.
 
@@ -47,16 +47,16 @@ OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-MorphOS/AROS Port
+Odyssey Web Browser
 ------------
 
 Here are the key features:
 
-- Based on r161078 WebKit (January 2014) (1.24) / r187682 WebKit (July 2015) (1.26)
+- Based on WebKit GTK 2.24.4 (February 2019)
 - Javascript, CSS, DOM, SVG, Unicode, SSL, ...
-- HTML5 Video/Audio support (Ogg/Theora, WEBM, MPEG4/H264, MP3, AAC, WAV and a couple others formats/codecs)
-- Antialiased fonts and kerning, font families and support for international
-  charsets
+- HTML5 Video/Audio support (Ogg/Theora, WEBM, MPEG4/H264, MP3, AAC, WAV and a couple others
+  formats/codecs)
+- Antialiased fonts and kerning, font families and support for international charsets
 - MUI Interface
 - Cairo technology
 - Multiple tabs and windows
@@ -64,7 +64,6 @@ Here are the key features:
 - Password manager
 - Cookie manager
 - Messages console
-- Network connections manager
 - Proxy support
 - Session support
 - Form filling completion
@@ -72,12 +71,9 @@ Here are the key features:
 - Fastlinks
 - Configurable MIME types
 - History
-- Content blocking
 - URL Completion
-- Favicon support
 - Private Browsing
 - Per URL settings
-- Configurable contextual menus
 - Configurable search engines
 - Contextual cursors
 - Drag and Drop support
@@ -88,17 +84,13 @@ Here are the key features:
 - PDF export
 - Printing support
 - Plugin support
-- WebInspector (FireBug-like)
-- User scripting (GreaseMonkey-like)
-
 
 Requirements
 ------------
 
-MorphOS 3.x is required.
-AROS ABIv0 20220318-1 is required
+AROS ABIv0 20220318-1 Update 2 is required
 
-Full version requires at least 100MB of free memory and potentially much more depending on visited
+Full version requires at least 200MB of free memory and potentially much more depending on visited
 sites.
 
 Note: if you want to reduce the binary size on MorphOS, you can use lzmaloader from Harry "Piru"
@@ -224,6 +216,9 @@ Usage
 
 - Tool Types
   NO_JSC_JIT                     Disable usage of JIT for Java Script engine
+  MSE                            Enable Media Source Extensions player
+  FTL                            Enable second-level JIT (64-bit only)
+  CONCURRENT_JIT                 Enable concurrent execution and compilation (64-bit only)
 
 
 
@@ -279,11 +274,32 @@ What's missing and might be supported in next versions
 - History with nicer sorting options
 - Certificate (SSL) manager
 - More configurable UI elements
+- Network connections manager
+- Content blocking
+- Favicon support
+- Configurable contextual menus
+- WebInspector (FireBug-like)
+- User scripting (GreaseMonkey-like)
 ... and probably more...
 
 
 History
 -------
+
+- 22.10.2024: Odyssey Web Browser 2.0
+
+  - Updated WebKit engine from July 2015 to February 2019 (more that 50000 changes included)
+  - Ported media player from Wayfarer 1.21 enabling watching videos on youtube.com
+  - Enabled MMX/SSE optimizations for decoding and displaying (now 2ms/frame for 360p videos)
+  - Enabled second-level JIT and concurrent JIT (64-bit only)
+  - Updated to ffmpeg 4.4.5
+  - Fixed memory corruption in bookmarks and downloads window
+  - Fixed memory corruption when using quick links
+  - Enabled processing of ARexx commands
+  - Implemented copying text from HTML to clipboard
+  - Speed up starting browser when there is large amount of files in disk-cache
+
+##############################################################################
 
 - 29.01.2024: Odyssey Web Browser 1.26
 
@@ -1157,11 +1173,9 @@ Contact
 -------
 
 If you have a bug to report, please use the Odyssey issue tracker:
-https://github.com/deadwood-pl/OdysseyWebBrowser/issues
+https://github.com/deadwood2/OdysseyWebBrowser/issues
 
 If you have any suggestion please contact me at: deadwood@wp.pl
-But please, don't flood me. I'm quite aware of what's missing already. :)
-
 
 Donations
 ---------
@@ -1170,20 +1184,9 @@ If you like this software please consider donating!
 
 You can donate directly to me:
 
-via Paypay to: deadwood@onet.pl
-via Bitcoin to: 15XQRQVcKBHq3berD68dTTLFTupgX41pL6
+https://www.paypal.com/paypalme/4deadwood
 
-or
+You can also donate to Jacek to keep Wayfarer development:
 
-You can dodate do any of the open bounties at:
-https://power2people.org/projects/overview/
-
-
-
-
-
-
-
-
-
+https://www.paypal.com/paypalme/wayfarerbrowser
 
