@@ -287,11 +287,15 @@ void CurlRequestScheduler::workerThread()
             FD_ZERO(&fdread);
             FD_ZERO(&fdwrite);
             FD_ZERO(&fdexcep);
+            int maxfd = 0;
+
+            struct timeval timeout;
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 500; // shorter timeouts give better outgoing performance
 #else
             fd_set fdread;
             fd_set fdwrite;
             fd_set fdexcep;
-#endif
             int maxfd = 0;
 
             const int selectTimeoutMS = 5;
@@ -299,6 +303,7 @@ void CurlRequestScheduler::workerThread()
             struct timeval timeout;
             timeout.tv_sec = 0;
             timeout.tv_usec = selectTimeoutMS * 1000; // select waits microseconds
+#endif
 
             m_curlMultiHandle->getFdSet(fdread, fdwrite, fdexcep, maxfd);
 #if PLATFORM(MUI)
