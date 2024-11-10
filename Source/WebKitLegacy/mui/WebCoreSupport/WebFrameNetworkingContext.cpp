@@ -32,7 +32,7 @@ using namespace WebCore;
 
 NetworkStorageSession* WebFrameNetworkingContext::storageSession() const
 {
-    if (frame() && frame()->page()->usesEphemeralSession())
+    if (frame() && frame()->page() && frame()->page()->usesEphemeralSession())
         return NetworkStorageSessionMap::storageSession(PAL::SessionID::legacyPrivateSessionID());
 
     return &NetworkStorageSessionMap::defaultStorageSession();
