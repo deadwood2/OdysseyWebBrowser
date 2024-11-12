@@ -1,4 +1,4 @@
-OWB 2.0
+OWB 2.1
 
 ***********************************************************************************
 *                                                                                 *
@@ -88,14 +88,11 @@ Here are the key features:
 Requirements
 ------------
 
-AROS ABIv0 20220318-1 Update 2 is required
+AROS ABIv0 20220318-1 Update 2 is required (32-bit version)
+AROS ABIv11 20241102-1 is required (64-bit version)
 
 Full version requires at least 200MB of free memory and potentially much more depending on visited
-sites.
-
-Note: if you want to reduce the binary size on MorphOS, you can use lzmaloader from Harry "Piru"
-      Sintonen. It's available at: http://www.sintonen.fi/lzmaloader/ .
-
+sites. Safe levels of free memory are 1GB for 32-bit version and 2GB for 64-bit version.
 
 Usage
 -----
@@ -285,6 +282,13 @@ What's missing and might be supported in next versions
 
 History
 -------
+
+- 12.11.2024: Odyssey Web Browser 2.1
+
+  - First public release of 64-bit version
+  - Solved crash with Google captch (Web Workers)
+
+##############################################################################
 
 - 22.10.2024: Odyssey Web Browser 2.0
 
