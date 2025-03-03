@@ -1,0 +1,24 @@
+Odyssey Web Browser was open-sourced by Fabien Coeurjoly in version 1.23 as
+result of delivering a bounty: https://power2people.org/projects/odyssey/
+
+Following requirements were part of this bounty:
+
+* The source code for a version of Odyssey that is based on a WebKit revision
+from October 2013 (r155188) or later shall be released as a tarball (including
+everything from the MorphOS version, and in particular the HTML5 video/audio
+player).
+
+* All parts of the source code that have not already been published using a
+different open source license will be licensed under the LGPL.
+
+===============================================================================
+
+WebKit is open source software with portions licensed under the LGPL and BSD
+licenses.
+
+https://webkit.org/licensing-webkit/
+https://docs.webkit.org/Other/Licensing.html
+
+Odyssey Web Browser source codes are licensed under LGPL unless states
+otherwise is a given source file.
+
