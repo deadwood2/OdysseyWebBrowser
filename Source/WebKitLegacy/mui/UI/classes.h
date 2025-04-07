@@ -118,7 +118,7 @@ DEFCLASS(datetimechooserpopup);
 
 /* Attributes */
 enum {
-    MA_dummy = (int)(MTAGBASE),
+    MA_dummy = (MTAGBASE),
 
     /* Generic (forwarded to right object) */
     MA_OWB_WindowType,
