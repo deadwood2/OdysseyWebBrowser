@@ -50,6 +50,10 @@
 #include <WebCore/CurlProxySettings.h>
 #endif
 
+#if USE(APPLE_INTERNAL_SDK)
+#include <WebKitAdditions/WebCoreArgumentCodersAdditions.h>
+#endif
+
 #if PLATFORM(COCOA)
 namespace WTF {
 class MachSendRight;
@@ -57,6 +61,7 @@ class MachSendRight;
 #endif
 
 namespace WebCore {
+class AbsolutePositionConstraints;
 class AffineTransform;
 class AuthenticationChallenge;
 class BlobPart;
@@ -124,6 +129,7 @@ struct TextIndicatorData;
 #if ENABLE(POINTER_EVENTS)
 struct TouchActionData;
 #endif
+struct VelocityData;
 struct ViewportAttributes;
 struct WindowFeatures;
     
@@ -323,12 +329,6 @@ template<> struct ArgumentCoder<WebCore::Path> {
     static Optional<WebCore::Path> decode(Decoder&);
 };
 
-template<> struct ArgumentCoder<WebCore::Region> {
-    static void encode(Encoder&, const WebCore::Region&);
-    static bool decode(Decoder&, WebCore::Region&);
-    static Optional<WebCore::Region> decode(Decoder&);
-};
-
 template<> struct ArgumentCoder<WebCore::Length> {
     static void encode(Encoder&, const WebCore::Length&);
     static bool decode(Decoder&, WebCore::Length&);
@@ -337,6 +337,11 @@ template<> struct ArgumentCoder<WebCore::Length> {
 template<> struct ArgumentCoder<WebCore::ViewportAttributes> {
     static void encode(Encoder&, const WebCore::ViewportAttributes&);
     static bool decode(Decoder&, WebCore::ViewportAttributes&);
+};
+
+template<> struct ArgumentCoder<WebCore::VelocityData> {
+    static void encode(Encoder&, const WebCore::VelocityData&);
+    static bool decode(Decoder&, WebCore::VelocityData&);
 };
 
 template<> struct ArgumentCoder<WebCore::MimeClassInfo> {
@@ -543,6 +548,11 @@ template<> struct ArgumentCoder<WebCore::StickyPositionViewportConstraints> {
     static bool decode(Decoder&, WebCore::StickyPositionViewportConstraints&);
 };
 
+template<> struct ArgumentCoder<WebCore::AbsolutePositionConstraints> {
+    static void encode(Encoder&, const WebCore::AbsolutePositionConstraints&);
+    static bool decode(Decoder&, WebCore::AbsolutePositionConstraints&);
+};
+
 #if !USE(COORDINATED_GRAPHICS)
 template<> struct ArgumentCoder<WebCore::FilterOperations> {
     static void encode(Encoder&, const WebCore::FilterOperations&);
@@ -582,6 +592,8 @@ template<> struct ArgumentCoder<WebCore::TextIndicatorData> {
 template<> struct ArgumentCoder<WebCore::DictionaryPopupInfo> {
     static void encode(Encoder&, const WebCore::DictionaryPopupInfo&);
     static bool decode(Decoder&, WebCore::DictionaryPopupInfo&);
+    static void encodePlatformData(Encoder&, const WebCore::DictionaryPopupInfo&);
+    static bool decodePlatformData(Decoder&, WebCore::DictionaryPopupInfo&);
 };
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
@@ -744,6 +756,8 @@ template<> struct ArgumentCoder<Vector<RefPtr<WebCore::SecurityOrigin>>> {
 template<> struct ArgumentCoder<WebCore::FontAttributes> {
     static void encode(Encoder&, const WebCore::FontAttributes&);
     static Optional<WebCore::FontAttributes> decode(Decoder&);
+    static void encodePlatformData(Encoder&, const WebCore::FontAttributes&);
+    static Optional<WebCore::FontAttributes> decodePlatformData(Decoder&, WebCore::FontAttributes&);
 };
 
 #if ENABLE(ATTACHMENT_ELEMENT)
@@ -850,6 +864,15 @@ template <> struct EnumTraits<WebCore::WorkerType> {
     >;
 };
 
+template<> struct EnumTraits<WebCore::StoredCredentialsPolicy> {
+    using values = EnumValues<
+        WebCore::StoredCredentialsPolicy,
+        WebCore::StoredCredentialsPolicy::DoNotUse,
+        WebCore::StoredCredentialsPolicy::Use,
+        WebCore::StoredCredentialsPolicy::EphemeralStatelessCookieless
+    >;
+};
+
 #if USE(CURL)
 template <> struct EnumTraits<WebCore::CurlProxySettings::Mode> {
     using values = EnumValues<
@@ -860,5 +883,26 @@ template <> struct EnumTraits<WebCore::CurlProxySettings::Mode> {
     >;
 };
 #endif
+
+template<> struct EnumTraits<WTFLogChannelState> {
+    using values = EnumValues<
+    WTFLogChannelState,
+    WTFLogChannelState::Off,
+    WTFLogChannelState::On,
+    WTFLogChannelState::OnWithAccumulation
+    >;
+};
+
+#undef Always
+template<> struct EnumTraits<WTFLogLevel> {
+    using values = EnumValues<
+    WTFLogLevel,
+    WTFLogLevel::Always,
+    WTFLogLevel::Error,
+    WTFLogLevel::Warning,
+    WTFLogLevel::Info,
+    WTFLogLevel::Debug
+    >;
+};
 
 } // namespace WTF

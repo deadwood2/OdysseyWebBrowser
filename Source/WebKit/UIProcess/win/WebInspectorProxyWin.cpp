@@ -44,7 +44,10 @@
 #include <WebCore/WebCoreInstanceHandle.h>
 #include <WebCore/WindowMessageBroadcaster.h>
 #include <WebKit/WKPage.h>
+
+#if USE(CF)
 #include <wtf/cf/CFURLExtras.h>
+#endif
 
 namespace WebKit {
 
@@ -265,20 +268,32 @@ void WebInspectorProxy::platformCloseFrontendPageAndWindow()
 
 String WebInspectorProxy::inspectorPageURL()
 {
+#if USE(CF)
     RetainPtr<CFURLRef> htmlURLRef = adoptCF(CFBundleCopyResourceURL(WebCore::webKitBundle(), CFSTR("Main"), CFSTR("html"), CFSTR("WebInspectorUI")));
     return CFURLGetString(htmlURLRef.get());
+#else
+    return { };
+#endif
 }
 
 String WebInspectorProxy::inspectorTestPageURL()
 {
+#if USE(CF)
     RetainPtr<CFURLRef> htmlURLRef = adoptCF(CFBundleCopyResourceURL(WebCore::webKitBundle(), CFSTR("Test"), CFSTR("html"), CFSTR("WebInspectorUI")));
     return CFURLGetString(htmlURLRef.get());
+#else
+    return { };
+#endif
 }
 
 String WebInspectorProxy::inspectorBaseURL()
 {
+#if USE(CF)
     RetainPtr<CFURLRef> baseURLRef = adoptCF(CFBundleCopyResourceURL(WebCore::webKitBundle(), CFSTR("WebInspectorUI"), nullptr, nullptr));
     return CFURLGetString(baseURLRef.get());
+#else
+    return { };
+#endif
 }
 
 unsigned WebInspectorProxy::platformInspectedWindowHeight()
@@ -320,7 +335,7 @@ void WebInspectorProxy::platformAttach()
 
 void WebInspectorProxy::platformDetach()
 {
-    if (!inspectedPage()->isValid())
+    if (!inspectedPage()->hasRunningProcess())
         return;
 
     if (!m_inspectorDetachWindow) {
@@ -358,6 +373,11 @@ void WebInspectorProxy::platformSetAttachedWindowWidth(unsigned width)
     ::SetWindowPos(m_inspectedViewWindow, 0, windowInfo.left, windowInfo.top, windowInfo.parentWidth - windowInfo.left, windowInfo.parentHeight - windowInfo.top, SWP_NOZORDER);
 }
 
+void WebInspectorProxy::platformSetSheetRect(const WebCore::FloatRect&)
+{
+    notImplemented();
+}
+
 bool WebInspectorProxy::platformIsFront()
 {
     notImplemented();
@@ -365,6 +385,11 @@ bool WebInspectorProxy::platformIsFront()
 }
 
 void WebInspectorProxy::platformHide()
+{
+    notImplemented();
+}
+
+void WebInspectorProxy::platformResetState()
 {
     notImplemented();
 }

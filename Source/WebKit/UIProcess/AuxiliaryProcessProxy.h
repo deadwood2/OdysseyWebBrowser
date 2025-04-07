@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -51,6 +51,18 @@ public:
     template<typename T> bool send(T&& message, uint64_t destinationID, OptionSet<IPC::SendOption> sendOptions = { });
     template<typename T> bool sendSync(T&& message, typename T::Reply&&, uint64_t destinationID, Seconds timeout = 1_s, OptionSet<IPC::SendSyncOption> sendSyncOptions = { });
     template<typename T, typename... Args> void sendWithAsyncReply(T&&, CompletionHandler<void(Args...)>&&);
+    
+    template<typename T, typename U>
+    bool send(T&& message, ObjectIdentifier<U> destinationID, OptionSet<IPC::SendOption> sendOptions = { })
+    {
+        return send<T>(WTFMove(message), destinationID.toUInt64(), sendOptions);
+    }
+    
+    template<typename T, typename U>
+    bool sendSync(T&& message, typename T::Reply&& reply, ObjectIdentifier<U> destinationID, Seconds timeout = 1_s, OptionSet<IPC::SendSyncOption> sendSyncOptions = { })
+    {
+        return sendSync<T>(WTFMove(message), WTFMove(reply), destinationID.toUInt64(), timeout, sendSyncOptions);
+    }
 
     IPC::Connection* connection() const
     {
@@ -67,6 +79,18 @@ public:
     void addMessageReceiver(IPC::StringReference messageReceiverName, uint64_t destinationID, IPC::MessageReceiver&);
     void removeMessageReceiver(IPC::StringReference messageReceiverName, uint64_t destinationID);
     void removeMessageReceiver(IPC::StringReference messageReceiverName);
+    
+    template <typename T>
+    void addMessageReceiver(IPC::StringReference messageReceiverName, ObjectIdentifier<T> destinationID, IPC::MessageReceiver& receiver)
+    {
+        addMessageReceiver(messageReceiverName, destinationID.toUInt64(), receiver);
+    }
+    
+    template <typename T>
+    void removeMessageReceiver(IPC::StringReference messageReceiverName, ObjectIdentifier<T> destinationID)
+    {
+        removeMessageReceiver(messageReceiverName, destinationID.toUInt64());
+    }
 
     enum class State {
         Launching,
@@ -113,7 +137,7 @@ bool AuxiliaryProcessProxy::send(T&& message, uint64_t destinationID, OptionSet<
 {
     COMPILE_ASSERT(!T::isSync, AsyncMessageExpected);
 
-    auto encoder = std::make_unique<IPC::Encoder>(T::receiverName(), T::name(), destinationID);
+    auto encoder = makeUnique<IPC::Encoder>(T::receiverName(), T::name(), destinationID);
     encoder->encode(message.arguments());
 
     return sendMessage(WTFMove(encoder), sendOptions);

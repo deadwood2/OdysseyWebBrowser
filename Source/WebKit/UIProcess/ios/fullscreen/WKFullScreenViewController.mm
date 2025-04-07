@@ -43,7 +43,6 @@
 static const NSTimeInterval showHideAnimationDuration = 0.1;
 static const NSTimeInterval pipHideAnimationDuration = 0.2;
 static const NSTimeInterval autoHideDelay = 4.0;
-static const double requiredScore = 0.1;
 
 @class WKFullscreenStackView;
 
@@ -89,6 +88,7 @@ private:
 };
 
 class WKFullScreenViewControllerVideoFullscreenModelClient : WebCore::VideoFullscreenModelClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     void setParent(WKFullScreenViewController *parent) { m_parent = parent; }
 
@@ -179,13 +179,11 @@ private:
     if (!self)
         return nil;
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     _nonZeroStatusBarHeight = UIApplication.sharedApplication.statusBarFrame.size.height;
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_statusBarFrameDidChange:) name:UIApplicationDidChangeStatusBarFrameNotification object:nil];
-    _secheuristic.setRampUpSpeed(Seconds(0.25));
-    _secheuristic.setRampDownSpeed(Seconds(1.));
-    _secheuristic.setXWeight(0);
-    _secheuristic.setGamma(0.1);
-    _secheuristic.setGammaCutoff(0.08);
+ALLOW_DEPRECATED_DECLARATIONS_END
+    _secheuristic.setParameters(WebKit::FullscreenTouchSecheuristicParameters::iosParameters());
 
     self._webView = webView;
 
@@ -445,7 +443,9 @@ private:
         [self._webView _beginAnimatedResizeWithUpdates:^{
             [self._webView _overrideLayoutParametersWithMinimumLayoutSize:size maximumUnobscuredSizeOverride:size];
         }];
+ ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         [self._webView _setInterfaceOrientationOverride:[UIApp statusBarOrientation]];
+ ALLOW_DEPRECATED_DECLARATIONS_END
     } completion:^(id <UIViewControllerTransitionCoordinatorContext>context) {
         [self._webView _endAnimatedResize];
     }];
@@ -525,9 +525,9 @@ private:
 
 - (void)_touchDetected:(id)sender
 {
-    if ([_touchGestureRecognizer state] == UIGestureRecognizerStateBegan || [_touchGestureRecognizer state] == UIGestureRecognizerStateEnded) {
+    if ([_touchGestureRecognizer state] == UIGestureRecognizerStateEnded) {
         double score = _secheuristic.scoreOfNextTouch([_touchGestureRecognizer locationInView:self.view]);
-        if (score > requiredScore)
+        if (score > _secheuristic.requiredScore())
             [self _showPhishingAlert];
     }
     if (!self.animating)
@@ -536,7 +536,9 @@ private:
 
 - (void)_statusBarFrameDidChange:(NSNotificationCenter *)notification
 {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     CGFloat height = UIApplication.sharedApplication.statusBarFrame.size.height;
+ALLOW_DEPRECATED_DECLARATIONS_END
     if (!height || height == _nonZeroStatusBarHeight)
         return;
 
@@ -570,8 +572,10 @@ private:
     }];
 
     UIAlertAction* stayAction = [UIAlertAction actionWithTitle:WEB_UI_STRING_KEY("Stay in Full Screen", "Stay in Full Screen (Element Full Screen)", "Full Screen Deceptive Website Stay Action") style:UIAlertActionStyleDefault handler:^(UIAlertAction * action) {
-        if (auto* page = [self._webView _page])
+        if (auto* page = [self._webView _page]) {
             page->resumeActiveDOMObjectsAndAnimations();
+            page->resumeAllMediaPlayback();
+        }
         _secheuristic.reset();
     }];
 

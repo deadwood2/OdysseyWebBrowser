@@ -33,12 +33,13 @@
 #include <wtf/CompletionHandler.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RunLoop.h>
-#include <wtf/WorkQueue.h>
 
 #define RELEASE_LOG_IF_ALLOWED(sessionID, fmt, ...) RELEASE_LOG_IF(sessionID.isAlwaysOnLoggingAllowed(), Network, "%p - NetworkHTTPSUpgradeChecker::" fmt, this, ##__VA_ARGS__)
 #define RELEASE_LOG_ERROR_IF_ALLOWED(sessionID, fmt, ...) RELEASE_LOG_ERROR_IF(sessionID.isAlwaysOnLoggingAllowed(), Network, "%p - NetworkHTTPSUpgradeChecker::" fmt, this, ##__VA_ARGS__)
 
 namespace WebKit {
+
+constexpr auto httpsUpgradeCheckerQuery = "SELECT host FROM hosts WHERE host = ?"_s;
 
 static const String& networkHTTPSUpgradeCheckerDatabasePath()
 {
@@ -56,8 +57,6 @@ static const String& networkHTTPSUpgradeCheckerDatabasePath()
 
 NetworkHTTPSUpgradeChecker::NetworkHTTPSUpgradeChecker()
     : m_workQueue(WorkQueue::create("HTTPS Upgrade Checker Thread"))
-    , m_database(makeUniqueRef<WebCore::SQLiteDatabase>())
-    , m_statement(makeUniqueRef<WebCore::SQLiteStatement>(m_database.get(), "SELECT host FROM hosts WHERE host = ?;"_s))
 {
     ASSERT(RunLoop::isMain());
 
@@ -68,7 +67,8 @@ NetworkHTTPSUpgradeChecker::NetworkHTTPSUpgradeChecker()
             return;
         }
 
-        bool isDatabaseOpen = m_database->open(path);
+        m_database = makeUnique<WebCore::SQLiteDatabase>();
+        bool isDatabaseOpen = m_database->open(path, WebCore::SQLiteDatabase::OpenMode::ReadOnly);
         if (!isDatabaseOpen) {
 #if PLATFORM(COCOA)
             RELEASE_LOG_ERROR(Network, "%p - NetworkHTTPSUpgradeChecker::open failed, error message: %{public}s, database path: %{public}s", this, m_database->lastErrorMsg(), path.utf8().data());
@@ -80,6 +80,7 @@ NetworkHTTPSUpgradeChecker::NetworkHTTPSUpgradeChecker()
         // Since we are using a workerQueue, the sequential dispatch blocks may be called by different threads.
         m_database->disableThreadingChecks();
 
+        m_statement = makeUnique<WebCore::SQLiteStatement>(*m_database, httpsUpgradeCheckerQuery);
         int isStatementPrepared = (m_statement->prepare() == SQLITE_OK);
         ASSERT(isStatementPrepared);
         if (!isStatementPrepared)
@@ -91,8 +92,8 @@ NetworkHTTPSUpgradeChecker::NetworkHTTPSUpgradeChecker()
 
 NetworkHTTPSUpgradeChecker::~NetworkHTTPSUpgradeChecker()
 {
-    // This object should be owned by a singleton object.
-    ASSERT_NOT_REACHED();
+    if (m_database)
+        m_workQueue->dispatch([database = WTFMove(m_database), statement = WTFMove(m_statement)] { });
 }
 
 void NetworkHTTPSUpgradeChecker::query(String&& host, PAL::SessionID sessionID, CompletionHandler<void(bool)>&& callback)

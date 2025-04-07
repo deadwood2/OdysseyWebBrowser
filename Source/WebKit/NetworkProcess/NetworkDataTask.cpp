@@ -29,6 +29,7 @@
 #include "NetworkDataTaskBlob.h"
 #include "NetworkLoadParameters.h"
 #include "NetworkSession.h"
+#include <WebCore/ResourceError.h>
 #include <WebCore/ResourceResponse.h>
 #include <wtf/RunLoop.h>
 
@@ -49,7 +50,7 @@ Ref<NetworkDataTask> NetworkDataTask::create(NetworkSession& session, NetworkDat
 {
     ASSERT(!parameters.request.url().protocolIsBlob());
 #if PLATFORM(COCOA)
-    return NetworkDataTaskCocoa::create(session, client, parameters.request, parameters.webFrameID, parameters.webPageID, parameters.storedCredentialsPolicy, parameters.contentSniffingPolicy, parameters.contentEncodingSniffingPolicy, parameters.shouldClearReferrerOnHTTPSToHTTPRedirect, parameters.shouldPreconnectOnly, parameters.isMainFrameNavigation, parameters.networkActivityTracker);
+    return NetworkDataTaskCocoa::create(session, client, parameters.request, parameters.webFrameID, parameters.webPageID, parameters.storedCredentialsPolicy, parameters.contentSniffingPolicy, parameters.contentEncodingSniffingPolicy, parameters.shouldClearReferrerOnHTTPSToHTTPRedirect, parameters.shouldPreconnectOnly, parameters.isMainFrameNavigation, parameters.isMainResourceNavigationForAnyFrame, parameters.networkActivityTracker);
 #endif
 #if USE(SOUP)
     return NetworkDataTaskSoup::create(session, client, parameters.request, parameters.storedCredentialsPolicy, parameters.contentSniffingPolicy, parameters.contentEncodingSniffingPolicy, parameters.shouldClearReferrerOnHTTPSToHTTPRedirect, parameters.isMainFrameNavigation);
@@ -61,7 +62,7 @@ Ref<NetworkDataTask> NetworkDataTask::create(NetworkSession& session, NetworkDat
 
 NetworkDataTask::NetworkDataTask(NetworkSession& session, NetworkDataTaskClient& client, const ResourceRequest& requestWithCredentials, StoredCredentialsPolicy storedCredentialsPolicy, bool shouldClearReferrerOnHTTPSToHTTPRedirect, bool dataTaskIsForMainFrameNavigation)
     : m_failureTimer(*this, &NetworkDataTask::failureTimerFired)
-    , m_session(session)
+    , m_session(makeWeakPtr(session))
     , m_client(&client)
     , m_partition(requestWithCredentials.cachePartition())
     , m_storedCredentialsPolicy(storedCredentialsPolicy)
@@ -132,6 +133,11 @@ void NetworkDataTask::failureTimerFired()
         if (m_client)
             m_client->cannotShowURL();
         return;
+    case RestrictedURLFailure:
+        m_scheduledFailureType = NoFailure;
+        if (m_client)
+            m_client->wasBlockedByRestrictions();
+        return;
     case NoFailure:
         ASSERT_NOT_REACHED();
         break;
@@ -142,6 +148,11 @@ void NetworkDataTask::failureTimerFired()
 String NetworkDataTask::description() const
 {
     return emptyString();
+}
+
+PAL::SessionID NetworkDataTask::sessionID() const
+{
+    return m_session->sessionID();
 }
 
 } // namespace WebKit

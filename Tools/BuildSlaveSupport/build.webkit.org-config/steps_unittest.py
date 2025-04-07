@@ -122,6 +122,18 @@ class RunJavaScriptCoreTestsTest(unittest.TestCase):
         self.assertResults(FAILURE, ["5 JSC tests failed"], 1,  """Results for JSC stress tests:
     5 failures found.""")
 
+    def test_jsc_stress_failures_with_binary_results_output(self):
+        self.assertResults(FAILURE, ["8 JSC tests failed"], 1,  """Results for JSC stress tests:
+    5 failures found.
+Results for JSC test binaries:
+    3 failures found.""")
+
+    def test_jsc_stress_failures_with_binary_result_output(self):
+        self.assertResults(FAILURE, ["6 JSC tests failed"], 1,  """Results for JSC stress tests:
+    5 failures found.
+Results for JSC test binaries:
+    1 failure found.""")
+
 
 class RunTest262TestsTest(unittest.TestCase):
     def assertResults(self, expected_result, expected_text, rc, stdio):
@@ -529,7 +541,6 @@ expected_build_steps = {
     'Apple High Sierra Debug WK1 (Tests)': ['configure build', 'svn', 'kill old processes', 'delete WebKitBuild directory', 'delete stale build files', 'download-built-product', 'extract-built-product', 'layout-test', 'run-api-tests', 'webkitpy-test', 'webkitperl-test', 'bindings-generation-tests', 'builtins-generator-tests', 'dashboard-tests', 'archive-test-results', 'upload', 'MasterShellCommand'],
     'Apple High Sierra Debug WK2 (Tests)': ['configure build', 'svn', 'kill old processes', 'delete WebKitBuild directory', 'delete stale build files', 'download-built-product', 'extract-built-product', 'layout-test', 'run-api-tests', 'webkitpy-test', 'webkitperl-test', 'bindings-generation-tests', 'builtins-generator-tests', 'dashboard-tests', 'archive-test-results', 'upload', 'MasterShellCommand'],
     'Apple High Sierra LLINT CLoop (BuildAndTest)': ['configure build', 'svn', 'kill old processes', 'delete WebKitBuild directory', 'delete stale build files', 'compile-webkit', 'webkit-jsc-cloop-test'],
-    'Apple High Sierra Release (32-bit Build)': ['configure build', 'svn', 'kill old processes', 'delete WebKitBuild directory', 'delete stale build files', 'compile-webkit'],
     'Apple High Sierra Release (Build)': ['configure build', 'svn', 'kill old processes', 'delete WebKitBuild directory', 'delete stale build files', 'compile-webkit', 'archive-built-product', 'upload', 'archive-built-product', 'upload', 'transfer-to-s3', 'trigger'],
     'Apple High Sierra Release JSC (Tests)': ['configure build', 'svn', 'kill old processes', 'delete WebKitBuild directory', 'delete stale build files', 'download-built-product', 'extract-built-product', 'jscore-test'],
     'Apple High Sierra Release Test262 (Tests)': ['configure build', 'svn', 'kill old processes', 'delete WebKitBuild directory', 'delete stale build files', 'download-built-product', 'extract-built-product', 'test262-test'],
@@ -546,7 +557,6 @@ expected_build_steps = {
 
     'JSCOnly Linux ARMv7 Thumb2 Release': ['configure build', 'svn', 'delete WebKitBuild directory', 'delete stale build files', 'compile-webkit', 'jscore-test'],
     'JSCOnly Linux ARMv7 Thumb2 SoftFP Release': ['configure build', 'svn', 'delete WebKitBuild directory', 'delete stale build files', 'compile-webkit', 'jscore-test'],
-    'JSCOnly Linux ARMv7 Traditional Release': ['configure build', 'svn', 'delete WebKitBuild directory', 'delete stale build files', 'compile-webkit', 'jscore-test'],
     'JSCOnly Linux AArch64 Release': ['configure build', 'svn', 'delete WebKitBuild directory', 'delete stale build files', 'compile-webkit', 'jscore-test'],
     'JSCOnly Linux MIPS32el Release': ['configure build', 'svn', 'delete WebKitBuild directory', 'delete stale build files', 'compile-webkit', 'jscore-test'],
 

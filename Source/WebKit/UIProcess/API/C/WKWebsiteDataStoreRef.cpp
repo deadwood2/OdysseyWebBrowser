@@ -36,6 +36,7 @@
 #include "WKRetainPtr.h"
 #include "WKSecurityOriginRef.h"
 #include "WKString.h"
+#include "WebDeviceOrientationAndMotionAccessController.h"
 #include "WebResourceLoadStatisticsStore.h"
 #include "WebsiteData.h"
 #include "WebsiteDataFetchOption.h"
@@ -258,14 +259,14 @@ void WKWebsiteDataStoreIsStatisticsGrandfathered(WKWebsiteDataStoreRef dataStore
 void WKWebsiteDataStoreSetStatisticsSubframeUnderTopFrameOrigin(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, WKStringRef topFrameHost)
 {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->websiteDataStore().setSubframeUnderTopFrameOrigin(URL(URL(), WebKit::toImpl(host)->string()), URL(URL(), WebKit::toImpl(topFrameHost)->string()), [] { });
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().setSubframeUnderTopFrameDomain(URL(URL(), WebKit::toImpl(host)->string()), URL(URL(), WebKit::toImpl(topFrameHost)->string()), [] { });
 #endif
 }
 
 void WKWebsiteDataStoreSetStatisticsSubresourceUnderTopFrameOrigin(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, WKStringRef topFrameHost)
 {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->websiteDataStore().setSubresourceUnderTopFrameOrigin(URL(URL(), WebKit::toImpl(host)->string()), URL(URL(), WebKit::toImpl(topFrameHost)->string()), [] { });
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().setSubresourceUnderTopFrameDomain(URL(URL(), WebKit::toImpl(host)->string()), URL(URL(), WebKit::toImpl(topFrameHost)->string()), [] { });
 #endif
 }
 
@@ -297,17 +298,36 @@ void WKWebsiteDataStoreSetStatisticsTopFrameUniqueRedirectFrom(WKWebsiteDataStor
 #endif
 }
 
-void WKWebsiteDataStoreSetStatisticsTimeToLiveUserInteraction(WKWebsiteDataStoreRef dataStoreRef, double seconds)
+void WKWebsiteDataStoreSetStatisticsCrossSiteLoadWithLinkDecoration(WKWebsiteDataStoreRef dataStoreRef, WKStringRef fromHost, WKStringRef toHost, void* context, WKWebsiteDataStoreSetStatisticsCrossSiteLoadWithLinkDecorationFunction callback)
 {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->websiteDataStore().setTimeToLiveUserInteraction(Seconds { seconds }, [] { });
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().setCrossSiteLoadWithLinkDecorationForTesting(URL(URL(), WebKit::toImpl(fromHost)->string()), URL(URL(), WebKit::toImpl(toHost)->string()), [context, callback] {
+        callback(context);
+    });
+#else
+    callback(context);
 #endif
 }
 
-void WKWebsiteDataStoreStatisticsProcessStatisticsAndDataRecords(WKWebsiteDataStoreRef dataStoreRef)
+void WKWebsiteDataStoreSetStatisticsTimeToLiveUserInteraction(WKWebsiteDataStoreRef dataStoreRef, double seconds, void* context, WKWebsiteDataStoreSetStatisticsTimeToLiveUserInteractionFunction callback)
 {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->websiteDataStore().scheduleStatisticsAndDataRecordsProcessing([] { });
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().setTimeToLiveUserInteraction(Seconds { seconds }, [context, callback] {
+        callback(context);
+    });
+#else
+    callback(context);
+#endif
+}
+
+void WKWebsiteDataStoreStatisticsProcessStatisticsAndDataRecords(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreStatisticsProcessStatisticsAndDataRecordsFunction callback)
+{
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().scheduleStatisticsAndDataRecordsProcessing([context, callback] {
+        callback(context);
+    });
+#else
+    callback(context);
 #endif
 }
 
@@ -333,6 +353,17 @@ void WKWebsiteDataStoreSetStatisticsNotifyPagesWhenDataRecordsWereScanned(WKWebs
 {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
     WebKit::toImpl(dataStoreRef)->websiteDataStore().setNotifyPagesWhenDataRecordsWereScanned(value, [] { });
+#endif
+}
+
+void WKWebsiteDataStoreSetStatisticsIsRunningTest(WKWebsiteDataStoreRef dataStoreRef, bool value, void* context, WKWebsiteDataStoreSetStatisticsIsRunningTestFunction callback)
+{
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().setIsRunningResourceLoadStatisticsTest(value, [context, callback] {
+        callback(context);
+    });
+#else
+    callback(context);
 #endif
 }
 
@@ -381,7 +412,7 @@ void WKWebsiteDataStoreSetStatisticsPruneEntriesDownTo(WKWebsiteDataStoreRef dat
 void WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStore(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStoreFunction callback)
 {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->websiteDataStore().scheduleClearInMemoryAndPersistent(ShouldGrandfatherStatistics::Yes, [context, callback]() {
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().scheduleClearInMemoryAndPersistent(WebKit::ShouldGrandfatherStatistics::Yes, [context, callback]() {
         callback(context);
     });
 #else
@@ -392,7 +423,7 @@ void WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStore(WKWebsiteDataSt
 void WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStoreModifiedSinceHours(WKWebsiteDataStoreRef dataStoreRef, unsigned hours, void* context, WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStoreModifiedSinceHoursFunction callback)
 {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
-    WebKit::toImpl(dataStoreRef)->websiteDataStore().scheduleClearInMemoryAndPersistent(WallTime::now() - Seconds::fromHours(hours), ShouldGrandfatherStatistics::Yes, [context, callback]() {
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().scheduleClearInMemoryAndPersistent(WallTime::now() - Seconds::fromHours(hours), WebKit::ShouldGrandfatherStatistics::Yes, [context, callback]() {
         callback(context);
     });
 #else
@@ -408,6 +439,28 @@ void WKWebsiteDataStoreStatisticsClearThroughWebsiteDataRemoval(WKWebsiteDataSto
     });
 }
 
+void WKWebsiteDataStoreStatisticsDeleteCookiesForTesting(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, bool includeHttpOnlyCookies, void* context, WKWebsiteDataStoreStatisticsDeleteCookiesForTestingFunction callback)
+{
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().deleteCookiesForTesting(URL(URL(), WebKit::toImpl(host)->string()), includeHttpOnlyCookies, [context, callback] {
+        callback(context);
+    });
+#else
+    callback(context);
+#endif
+}
+
+void WKWebsiteDataStoreStatisticsHasLocalStorage(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, void* context, WKWebsiteDataStoreStatisticsHasLocalStorageFunction callback)
+{
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().hasLocalStorageForTesting(URL(URL(), WebKit::toImpl(host)->string()), [context, callback](bool hasLocalStorage) {
+        callback(hasLocalStorage, context);
+    });
+#else
+    callback(false, context);
+#endif
+}
+
 void WKWebsiteDataStoreSetStatisticsCacheMaxAgeCap(WKWebsiteDataStoreRef dataStoreRef, double seconds, void* context, WKWebsiteDataStoreSetStatisticsCacheMaxAgeCapFunction callback)
 {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
@@ -416,6 +469,17 @@ void WKWebsiteDataStoreSetStatisticsCacheMaxAgeCap(WKWebsiteDataStoreRef dataSto
     });
 #else
     callback(context);
+#endif
+}
+
+void WKWebsiteDataStoreStatisticsHasIsolatedSession(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, void* context, WKWebsiteDataStoreStatisticsHasIsolatedSessionFunction callback)
+{
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().hasIsolatedSessionForTesting(URL(URL(), WebKit::toImpl(host)->string()), [context, callback](bool hasIsolatedSession) {
+        callback(hasIsolatedSession, context);
+    });
+#else
+    callback(false, context);
 #endif
 }
 
@@ -429,8 +493,9 @@ void WKWebsiteDataStoreStatisticsResetToConsistentState(WKWebsiteDataStoreRef da
     auto& store = WebKit::toImpl(dataStoreRef)->websiteDataStore();
     store.clearResourceLoadStatisticsInWebProcesses([callbackAggregator = callbackAggregator.copyRef()] { });
     store.resetCacheMaxAgeCapForPrevalentResources([callbackAggregator = callbackAggregator.copyRef()] { });
+    store.resetCrossSiteLoadsWithLinkDecorationForTesting([callbackAggregator = callbackAggregator.copyRef()] { });
     store.resetParametersToDefaultValues([callbackAggregator = callbackAggregator.copyRef()] { });
-    store.scheduleClearInMemoryAndPersistent(ShouldGrandfatherStatistics::No, [callbackAggregator = callbackAggregator.copyRef()] { });
+    store.scheduleClearInMemoryAndPersistent(WebKit::ShouldGrandfatherStatistics::No, [callbackAggregator = callbackAggregator.copyRef()] { });
 #else
     UNUSED_PARAM(dataStoreRef);
     completionHandler(context);
@@ -463,6 +528,15 @@ void WKWebsiteDataStoreRemoveAllIndexedDatabases(WKWebsiteDataStoreRef dataStore
     WebKit::toImpl(dataStoreRef)->websiteDataStore().removeData(dataTypes, -WallTime::infinity(), [context, callback] {
     if (callback)
         callback(context);
+    });
+}
+
+void WKWebsiteDataStoreRemoveLocalStorage(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreRemoveLocalStorageCallback callback)
+{
+    OptionSet<WebKit::WebsiteDataType> dataTypes = WebKit::WebsiteDataType::LocalStorage;
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().removeData(dataTypes, -WallTime::infinity(), [context, callback] {
+        if (callback)
+            callback(context);
     });
 }
 
@@ -520,9 +594,16 @@ void WKWebsiteDataStoreSetServiceWorkerRegistrationDirectory(WKWebsiteDataStoreR
     WebKit::toImpl(dataStoreRef)->websiteDataStore().setServiceWorkerRegistrationDirectory(WebKit::toImpl(serviceWorkerRegistrationDirectory)->string());
 }
 
-void WKWebsiteDataStoreSetCacheStoragePerOriginQuota(WKWebsiteDataStoreRef dataStoreRef, uint64_t quota)
+void WKWebsiteDataStoreSetPerOriginStorageQuota(WKWebsiteDataStoreRef dataStoreRef, uint64_t quota)
 {
-    WebKit::toImpl(dataStoreRef)->websiteDataStore().setCacheStoragePerOriginQuota(quota); 
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().setPerOriginStorageQuota(quota);
+}
+
+void WKWebsiteDataStoreClearAllDeviceOrientationPermissions(WKWebsiteDataStoreRef dataStoreRef)
+{
+#if ENABLE(DEVICE_ORIENTATION)
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().deviceOrientationAndMotionAccessController().clearPermissions();
+#endif
 }
 
 void WKWebsiteDataStoreSetWebAuthenticationMockConfiguration(WKWebsiteDataStoreRef dataStoreRef, WKDictionaryRef configurationRef)
@@ -551,29 +632,29 @@ void WKWebsiteDataStoreSetWebAuthenticationMockConfiguration(WKWebsiteDataStoreR
         auto stage = WebKit::toImpl(static_cast<WKStringRef>(WKDictionaryGetItemForKey(hidRef, adoptWK(WKStringCreateWithUTF8CString("Stage")).get())))->string();
         if (stage == "info")
             hid.stage = WebKit::MockWebAuthenticationConfiguration::Hid::Stage::Info;
-        if (stage == "request")
+        else if (stage == "request")
             hid.stage = WebKit::MockWebAuthenticationConfiguration::Hid::Stage::Request;
 
         auto subStage = WebKit::toImpl(static_cast<WKStringRef>(WKDictionaryGetItemForKey(hidRef, adoptWK(WKStringCreateWithUTF8CString("SubStage")).get())))->string();
         if (subStage == "init")
             hid.subStage = WebKit::MockWebAuthenticationConfiguration::Hid::SubStage::Init;
-        if (subStage == "msg")
+        else if (subStage == "msg")
             hid.subStage = WebKit::MockWebAuthenticationConfiguration::Hid::SubStage::Msg;
 
         auto error = WebKit::toImpl(static_cast<WKStringRef>(WKDictionaryGetItemForKey(hidRef, adoptWK(WKStringCreateWithUTF8CString("Error")).get())))->string();
         if (error == "success")
             hid.error = WebKit::MockWebAuthenticationConfiguration::Hid::Error::Success;
-        if (error == "data-not-sent")
+        else if (error == "data-not-sent")
             hid.error = WebKit::MockWebAuthenticationConfiguration::Hid::Error::DataNotSent;
-        if (error == "empty-report")
+        else if (error == "empty-report")
             hid.error = WebKit::MockWebAuthenticationConfiguration::Hid::Error::EmptyReport;
-        if (error == "wrong-channel-id")
+        else if (error == "wrong-channel-id")
             hid.error = WebKit::MockWebAuthenticationConfiguration::Hid::Error::WrongChannelId;
-        if (error == "malicious-payload")
+        else if (error == "malicious-payload")
             hid.error = WebKit::MockWebAuthenticationConfiguration::Hid::Error::MaliciousPayload;
-        if (error == "unsupported-options")
+        else if (error == "unsupported-options")
             hid.error = WebKit::MockWebAuthenticationConfiguration::Hid::Error::UnsupportedOptions;
-        if (error == "wrong-nonce")
+        else if (error == "wrong-nonce")
             hid.error = WebKit::MockWebAuthenticationConfiguration::Hid::Error::WrongNonce;
 
         if (auto payloadBase64 = static_cast<WKArrayRef>(WKDictionaryGetItemForKey(hidRef, adoptWK(WKStringCreateWithUTF8CString("PayloadBase64")).get())))
@@ -591,9 +672,45 @@ void WKWebsiteDataStoreSetWebAuthenticationMockConfiguration(WKWebsiteDataStoreR
         if (auto continueAfterErrorData = static_cast<WKBooleanRef>(WKDictionaryGetItemForKey(hidRef, adoptWK(WKStringCreateWithUTF8CString("ContinueAfterErrorData")).get())))
             hid.continueAfterErrorData = WKBooleanGetValue(continueAfterErrorData);
 
+        if (auto canDowngrade = static_cast<WKBooleanRef>(WKDictionaryGetItemForKey(hidRef, adoptWK(WKStringCreateWithUTF8CString("CanDowngrade")).get())))
+            hid.canDowngrade = WKBooleanGetValue(canDowngrade);
+
         configuration.hid = WTFMove(hid);
+    }
+
+    if (auto nfcRef = static_cast<WKDictionaryRef>(WKDictionaryGetItemForKey(configurationRef, adoptWK(WKStringCreateWithUTF8CString("Nfc")).get()))) {
+        WebKit::MockWebAuthenticationConfiguration::Nfc nfc;
+
+        auto error = WebKit::toImpl(static_cast<WKStringRef>(WKDictionaryGetItemForKey(nfcRef, adoptWK(WKStringCreateWithUTF8CString("Error")).get())))->string();
+        if (error == "success")
+            nfc.error = WebKit::MockWebAuthenticationConfiguration::Nfc::Error::Success;
+        else if (error == "no-tags")
+            nfc.error = WebKit::MockWebAuthenticationConfiguration::Nfc::Error::NoTags;
+        else if (error == "wrong-tag-type")
+            nfc.error = WebKit::MockWebAuthenticationConfiguration::Nfc::Error::WrongTagType;
+        else if (error == "no-connections")
+            nfc.error = WebKit::MockWebAuthenticationConfiguration::Nfc::Error::NoConnections;
+        else if (error == "malicious-payload")
+            nfc.error = WebKit::MockWebAuthenticationConfiguration::Nfc::Error::MaliciousPayload;
+
+        if (auto payloadBase64 = static_cast<WKArrayRef>(WKDictionaryGetItemForKey(nfcRef, adoptWK(WKStringCreateWithUTF8CString("PayloadBase64")).get())))
+            nfc.payloadBase64 = WebKit::toImpl(payloadBase64)->toStringVector();
+
+        if (auto multipleTags = static_cast<WKBooleanRef>(WKDictionaryGetItemForKey(nfcRef, adoptWK(WKStringCreateWithUTF8CString("MultipleTags")).get())))
+            nfc.multipleTags = WKBooleanGetValue(multipleTags);
+
+        configuration.nfc = WTFMove(nfc);
     }
 
     WebKit::toImpl(dataStoreRef)->websiteDataStore().setMockWebAuthenticationConfiguration(WTFMove(configuration));
 #endif
 }
+
+void WKWebsiteDataStoreClearAdClickAttributionsThroughWebsiteDataRemoval(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreClearAdClickAttributionsThroughWebsiteDataRemovalFunction callback)
+{
+    OptionSet<WebKit::WebsiteDataType> dataTypes = WebKit::WebsiteDataType::AdClickAttributions;
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().removeData(dataTypes, WallTime::fromRawSeconds(0), [context, callback] {
+        callback(context);
+    });
+}
+

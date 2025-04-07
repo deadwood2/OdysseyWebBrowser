@@ -25,7 +25,7 @@
 
 #import "config.h"
 
-#if PLATFORM(MAC) || PLATFORM(IOSMAC)
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
 #import "AuxiliaryProcess.h"
 
 #import "CodeSigning.h"
@@ -60,13 +60,13 @@
 #import <rootless.h>
 #endif
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+#if PLATFORM(MAC)
 #define USE_CACHE_COMPILED_SANDBOX 1
 #else
 #define USE_CACHE_COMPILED_SANDBOX 0
 #endif
 
-#if PLATFORM(IOSMAC) && USE(APPLE_INTERNAL_SDK)
+#if PLATFORM(MACCATALYST) && USE(APPLE_INTERNAL_SDK)
 enum LSSessionID {
     kLSDefaultSessionID = -2,
 };
@@ -163,7 +163,7 @@ void AuxiliaryProcess::platformInitialize()
 
 static OSStatus enableSandboxStyleFileQuarantine()
 {
-#if !PLATFORM(IOSMAC)
+#if !PLATFORM(MACCATALYST)
     qtn_proc_t quarantineProperties = qtn_proc_alloc();
     auto quarantinePropertiesDeleter = makeScopeExit([quarantineProperties]() {
         qtn_proc_free(quarantineProperties);
@@ -234,16 +234,13 @@ static Optional<CString> setAndSerializeSandboxParameters(const SandboxInitializ
             WTFLogAlways("%s: Could not set sandbox parameter: %s\n", getprogname(), strerror(errno));
             CRASH();
         }
-        builder.append(name, strlen(name));
-        builder.append(':');
-        builder.append(value, strlen(value));
-        builder.append(':');
+        builder.append(name, ':', value, ':');
     }
     if (isProfilePath) {
         auto contents = fileContents(profileOrProfilePath);
         if (!contents)
             return WTF::nullopt;
-        builder.append(contents->data(), contents->size());
+        builder.appendCharacters(contents->data(), contents->size());
     } else
         builder.append(profileOrProfilePath);
     return builder.toString().ascii();
@@ -491,12 +488,7 @@ static bool tryApplyCachedSandbox(const SandboxInfo& info)
 
 static inline const NSBundle *webKit2Bundle()
 {
-#if WK_API_ENABLED
     const static NSBundle *bundle = [NSBundle bundleForClass:NSClassFromString(@"WKWebView")];
-#else
-    const static NSBundle *bundle = [NSBundle bundleForClass:NSClassFromString(@"WKView")];
-#endif
-
     return bundle;
 }
 
@@ -690,20 +682,13 @@ void AuxiliaryProcess::stopNSAppRunLoop()
 }
 #endif
 
-#if !PLATFORM(IOSMAC) && ENABLE(WEBPROCESS_NSRUNLOOP)
+#if !PLATFORM(MACCATALYST) && ENABLE(WEBPROCESS_NSRUNLOOP)
 void AuxiliaryProcess::stopNSRunLoop()
 {
     ASSERT([NSRunLoop mainRunLoop]);
     [[NSRunLoop mainRunLoop] performBlock:^{
         exit(0);
     }];
-}
-#endif
-
-#if PLATFORM(IOSMAC)
-void AuxiliaryProcess::platformStopRunLoop()
-{
-    XPCServiceExit(WTFMove(m_priorityBoostMessage));
 }
 #endif
 
@@ -723,7 +708,11 @@ void AuxiliaryProcess::setQOS(int latencyQOS, int throughputQOS)
 #if PLATFORM(MAC)
 bool AuxiliaryProcess::isSystemWebKit()
 {
-    static bool isSystemWebKit = [] {
+    static bool isSystemWebKit = []() -> bool {
+#if HAVE(ALTERNATE_SYSTEM_LAYOUT)
+        if ([[webKit2Bundle() bundlePath] hasPrefix:@"/Library/Apple/System/"])
+            return true;
+#endif
         return [[webKit2Bundle() bundlePath] hasPrefix:@"/System/"];
     }();
     return isSystemWebKit;

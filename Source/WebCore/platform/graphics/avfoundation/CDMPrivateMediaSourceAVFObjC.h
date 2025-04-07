@@ -37,6 +37,7 @@ class LegacyCDM;
 class CDMSessionMediaSourceAVFObjC;
 
 class CDMPrivateMediaSourceAVFObjC : public CDMPrivateInterface {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit CDMPrivateMediaSourceAVFObjC(LegacyCDM* cdm)
         : m_cdm(cdm)
@@ -52,8 +53,13 @@ public:
     LegacyCDM* cdm() const { return m_cdm; }
 
     void invalidateSession(CDMSessionMediaSourceAVFObjC*);
-
 protected:
+    struct KeySystemParameters {
+        int version;
+        Vector<int> protocols;
+    };
+    static Optional<KeySystemParameters> parseKeySystem(const String& keySystem);
+    
     LegacyCDM* m_cdm;
     Vector<CDMSessionMediaSourceAVFObjC*> m_sessions;
 };

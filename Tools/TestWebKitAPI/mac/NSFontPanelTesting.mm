@@ -26,14 +26,9 @@
 #include "config.h"
 #include "NSFontPanelTesting.h"
 
-#if PLATFORM(MAC) && WK_API_ENABLED
+#if PLATFORM(MAC)
 
 #import <objc/runtime.h>
-
-#if __MAC_OS_X_VERSION_MAX_ALLOWED < 101300
-static const NSCellStateValue NSControlStateValueOff = NSOffState;
-static const NSCellStateValue NSControlStateValueOn = NSOnState;
-#endif
 
 @interface NSBox (NSFontEffectsBox)
 // Invoked after a font effect (e.g. single strike-through) is chosen.
@@ -150,4 +145,4 @@ static NSMenuItem *findMenuItemWithTitle(NSPopUpButton *button, NSString *title)
 
 @end
 
-#endif // PLATFORM(MAC) && WK_API_ENABLED
+#endif // PLATFORM(MAC)

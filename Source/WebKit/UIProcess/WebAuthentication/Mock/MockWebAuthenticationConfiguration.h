@@ -69,11 +69,27 @@ struct MockWebAuthenticationConfiguration {
         bool keepAlive { false };
         bool fastDataArrival { false };
         bool continueAfterErrorData { false };
+        bool canDowngrade { false };
+    };
+
+    struct Nfc {
+        enum class Error : uint8_t {
+            Success,
+            NoTags,
+            WrongTagType,
+            NoConnections,
+            MaliciousPayload
+        };
+
+        Error error { Error::Success };
+        Vector<String> payloadBase64;
+        bool multipleTags { false };
     };
 
     bool silentFailure { false };
     Optional<Local> local;
     Optional<Hid> hid;
+    Optional<Nfc> nfc;
 };
 
 } // namespace WebKit

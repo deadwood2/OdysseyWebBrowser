@@ -26,6 +26,7 @@
 #include "config.h"
 #include "WebCookieManager.h"
 
+#include "NetworkProcess.h"
 #include "WebCookieManagerMessages.h"
 #include "WebCookieManagerProxyMessages.h"
 #include "WebCoreArgumentCoders.h"
@@ -62,12 +63,11 @@ void WebCookieManager::getHostnamesWithCookies(PAL::SessionID sessionID, Callbac
     m_process.send(Messages::WebCookieManagerProxy::DidGetHostnamesWithCookies(copyToVector(hostnames), callbackID), 0);
 }
 
-void WebCookieManager::deleteCookiesForHostname(PAL::SessionID sessionID, const String& hostname)
+void WebCookieManager::deleteCookiesForHostnames(PAL::SessionID sessionID, const Vector<String>& hostnames)
 {
     if (auto* storageSession = m_process.storageSession(sessionID))
-        storageSession->deleteCookiesForHostnames({ hostname });
+        storageSession->deleteCookiesForHostnames(hostnames);
 }
-
 
 void WebCookieManager::deleteAllCookies(PAL::SessionID sessionID)
 {
@@ -109,10 +109,12 @@ void WebCookieManager::getCookies(PAL::SessionID sessionID, const URL& url, Call
     m_process.send(Messages::WebCookieManagerProxy::DidGetCookies(cookies, callbackID), 0);
 }
 
-void WebCookieManager::setCookie(PAL::SessionID sessionID, const Cookie& cookie, CallbackID callbackID)
+void WebCookieManager::setCookie(PAL::SessionID sessionID, const Vector<Cookie>& cookies, CallbackID callbackID)
 {
-    if (auto* storageSession = m_process.storageSession(sessionID))
-        storageSession->setCookie(cookie);
+    if (auto* storageSession = m_process.storageSession(sessionID)) {
+        for (auto& cookie : cookies)
+            storageSession->setCookie(cookie);
+    }
 
     m_process.send(Messages::WebCookieManagerProxy::DidSetCookies(callbackID), 0);
 }

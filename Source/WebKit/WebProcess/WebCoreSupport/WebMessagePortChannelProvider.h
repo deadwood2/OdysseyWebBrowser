@@ -32,6 +32,7 @@
 namespace WebKit {
 
 class WebMessagePortChannelProvider : public WebCore::MessagePortChannelProvider {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     static WebMessagePortChannelProvider& singleton();
 
@@ -52,12 +53,12 @@ private:
     void checkProcessLocalPortForActivity(const WebCore::MessagePortIdentifier&, WebCore::ProcessIdentifier, CompletionHandler<void(HasActivity)>&&) final;
 
     // To be called only in the UI process
-    void checkRemotePortForActivity(const WebCore::MessagePortIdentifier& remoteTarget, CompletionHandler<void(HasActivity)>&& callback) final;
+    void checkRemotePortForActivity(const WebCore::MessagePortIdentifier& remoteTarget, Function<void(HasActivity)>&& callback) final;
 
     Lock m_takeAllMessagesCallbackLock;
-    HashMap<uint64_t, CompletionHandler<void(Vector<WebCore::MessageWithMessagePorts>&&, Function<void()>&&)>> m_takeAllMessagesCallbacks;
+    HashMap<uint64_t, Function<void(Vector<WebCore::MessageWithMessagePorts>&&, Function<void()>&&)>> m_takeAllMessagesCallbacks;
     Lock m_remoteActivityCallbackLock;
-    HashMap<uint64_t, CompletionHandler<void(HasActivity)>> m_remoteActivityCallbacks;
+    HashMap<uint64_t, Function<void(HasActivity)>> m_remoteActivityCallbacks;
 };
 
 } // namespace WebKit

@@ -33,12 +33,16 @@ NetworkProcess/CustomProtocols/soup/LegacyCustomProtocolManagerSoup.cpp
 NetworkProcess/cache/NetworkCacheDataSoup.cpp
 NetworkProcess/cache/NetworkCacheIOChannelSoup.cpp
 
+NetworkProcess/glib/DNSCache.cpp
+NetworkProcess/glib/WebKitCachedResolver.cpp
+
 NetworkProcess/soup/NetworkDataTaskSoup.cpp
 NetworkProcess/soup/NetworkProcessMainSoup.cpp
 NetworkProcess/soup/NetworkProcessSoup.cpp
 NetworkProcess/soup/NetworkSessionSoup.cpp
 NetworkProcess/soup/RemoteNetworkingContextSoup.cpp
 NetworkProcess/soup/WebKitSoupRequestInputStream.cpp
+NetworkProcess/soup/WebSocketTaskSoup.cpp
 
 NetworkProcess/webrtc/LibWebRTCSocketClient.cpp
 NetworkProcess/webrtc/NetworkRTCMonitor.cpp
@@ -131,8 +135,8 @@ UIProcess/API/glib/WebKitFileChooserRequest.cpp @no-unify
 UIProcess/API/glib/WebKitFindController.cpp @no-unify
 UIProcess/API/glib/WebKitFormClient.cpp @no-unify
 UIProcess/API/glib/WebKitFormSubmissionRequest.cpp @no-unify
+UIProcess/API/glib/WebKitGeolocationManager.cpp @no-unify
 UIProcess/API/glib/WebKitGeolocationPermissionRequest.cpp @no-unify
-UIProcess/API/glib/WebKitGeolocationProvider.cpp @no-unify
 UIProcess/API/glib/WebKitInjectedBundleClient.cpp @no-unify
 UIProcess/API/glib/WebKitInstallMissingMediaPluginsPermissionRequest.cpp @no-unify
 UIProcess/API/glib/WebKitJavascriptResult.cpp @no-unify
@@ -164,6 +168,7 @@ UIProcess/API/glib/WebKitVersion.cpp @no-unify
 UIProcess/API/glib/WebKitWebContext.cpp @no-unify
 UIProcess/API/glib/WebKitWebResource.cpp @no-unify
 UIProcess/API/glib/WebKitWebView.cpp @no-unify
+UIProcess/API/glib/WebKitWebViewAccessible.cpp @no-unify
 UIProcess/API/glib/WebKitWebViewSessionState.cpp @no-unify
 UIProcess/API/glib/WebKitWebsiteData.cpp @no-unify
 UIProcess/API/glib/WebKitWebsiteDataManager.cpp @no-unify
@@ -183,17 +188,18 @@ UIProcess/Automation/wpe/WebAutomationSessionWPE.cpp
 
 UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.cpp
 
+UIProcess/geoclue/GeoclueGeolocationProvider.cpp
+
 UIProcess/glib/WebProcessPoolGLib.cpp
 UIProcess/glib/WebProcessProxyGLib.cpp
 
 UIProcess/Launcher/glib/ProcessLauncherGLib.cpp
+UIProcess/Launcher/glib/BubblewrapLauncher.cpp
 
 UIProcess/Network/CustomProtocols/LegacyCustomProtocolManagerProxy.cpp
 
 UIProcess/Plugins/unix/PluginInfoStoreUnix.cpp
 UIProcess/Plugins/unix/PluginProcessProxyUnix.cpp
-
-UIProcess/WebStorage/StorageManager.cpp
 
 UIProcess/WebsiteData/soup/WebsiteDataStoreSoup.cpp
 UIProcess/WebsiteData/unix/WebsiteDataStoreUnix.cpp
@@ -246,9 +252,12 @@ WebProcess/WebPage/CoordinatedGraphics/CompositingCoordinator.cpp
 WebProcess/WebPage/CoordinatedGraphics/DrawingAreaCoordinatedGraphics.cpp
 WebProcess/WebPage/CoordinatedGraphics/LayerTreeHost.cpp
 
+WebProcess/WebPage/atk/WebKitWebPageAccessibilityObject.cpp
+
 WebProcess/WebPage/gstreamer/WebPageGStreamer.cpp
 
-WebProcess/WebPage/wpe/AcceleratedSurfaceWPE.cpp @no-unify
+WebProcess/WebPage/libwpe/AcceleratedSurfaceLibWPE.cpp @no-unify
+
 WebProcess/WebPage/wpe/WebInspectorUIWPE.cpp
 WebProcess/WebPage/wpe/WebPageWPE.cpp
 

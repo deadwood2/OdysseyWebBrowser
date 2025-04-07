@@ -54,6 +54,8 @@ public:
     WebKit::WebsiteDataStore& websiteDataStore() { return m_websiteDataStore.get(); }
     HTTPCookieStore& httpCookieStore();
 
+    WTF::String indexedDBDatabaseDirectory();
+
     static WTF::String defaultApplicationCacheDirectory();
     static WTF::String defaultCacheStorageDirectory();
     static WTF::String defaultNetworkCacheDirectory();
@@ -64,6 +66,9 @@ public:
     static WTF::String defaultMediaKeysStorageDirectory();
     static WTF::String defaultDeviceIdHashSaltsStorageDirectory();
     static WTF::String defaultWebSQLDatabaseDirectory();
+#if USE(GLIB)
+    static WTF::String defaultHSTSDirectory();
+#endif
     static WTF::String defaultResourceLoadStatisticsDirectory();
     static WTF::String defaultJavaScriptConfigurationDirectory();
 
@@ -91,7 +96,6 @@ private:
     static WTF::String websiteDataDirectoryFileSystemRepresentation(const WTF::String& directoryName);
 
     Ref<WebKit::WebsiteDataStore> m_websiteDataStore;
-    RefPtr<HTTPCookieStore> m_apiHTTPCookieStore;
 };
 
 }

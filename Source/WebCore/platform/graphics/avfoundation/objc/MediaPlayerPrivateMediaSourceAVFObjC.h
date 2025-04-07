@@ -49,6 +49,7 @@ typedef struct __CVBuffer *CVOpenGLTextureRef;
 namespace WebCore {
 
 class CDMSessionMediaSourceAVFObjC;
+class EffectiveRateChangedListener;
 class MediaSourcePrivateAVFObjC;
 class PixelBufferConformerCV;
 class PlatformClockCM;
@@ -59,7 +60,8 @@ class WebCoreDecompressionSession;
 
 
 class MediaPlayerPrivateMediaSourceAVFObjC
-    : public MediaPlayerPrivateInterface
+    : public CanMakeWeakPtr<MediaPlayerPrivateMediaSourceAVFObjC>
+    , public MediaPlayerPrivateInterface
 #if !RELEASE_LOG_DISABLED
     , private LoggerHelper
 #endif
@@ -115,11 +117,13 @@ public:
     void setTextTrackRepresentation(TextTrackRepresentation*) override;
     void syncTextTrackBounds() override;
     
-#if HAVE(AVSTREAMSESSION) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
+#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
+#if HAVE(AVSTREAMSESSION)
     bool hasStreamSession() { return m_streamSession; }
     AVStreamSession *streamSession();
+#endif
     void setCDMSession(LegacyCDMSession*) override;
-    CDMSessionMediaSourceAVFObjC* cdmSession() const { return m_session.get(); }
+    CDMSessionMediaSourceAVFObjC* cdmSession() const;
 #endif
 
 #if ENABLE(ENCRYPTED_MEDIA)
@@ -144,8 +148,6 @@ public:
 
     const Vector<ContentType>& mediaContentTypesRequiringHardwareSupport() const;
     bool shouldCheckHardwareSupport() const;
-
-    WeakPtr<MediaPlayerPrivateMediaSourceAVFObjC> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(*this); }
 
 #if !RELEASE_LOG_DISABLED
     const Logger& logger() const final { return m_logger.get(); }
@@ -187,7 +189,6 @@ private:
     bool paused() const override;
 
     void setVolume(float volume) override;
-    bool supportsMuting() const override { return true; }
     void setMuted(bool) override;
 
     bool supportsScanning() const override;
@@ -267,6 +268,7 @@ private:
     friend class MediaSourcePrivateAVFObjC;
 
     struct PendingSeek {
+        WTF_MAKE_STRUCT_FAST_ALLOCATED;
         PendingSeek(const MediaTime& targetTime, const MediaTime& negativeThreshold, const MediaTime& positiveThreshold)
             : targetTime(targetTime)
             , negativeThreshold(negativeThreshold)
@@ -280,7 +282,6 @@ private:
     std::unique_ptr<PendingSeek> m_pendingSeek;
 
     MediaPlayer* m_player;
-    WeakPtrFactory<MediaPlayerPrivateMediaSourceAVFObjC> m_weakPtrFactory;
     WeakPtrFactory<MediaPlayerPrivateMediaSourceAVFObjC> m_sizeChangeObserverWeakPtrFactory;
     RefPtr<MediaSourcePrivateAVFObjC> m_mediaSourcePrivate;
     RetainPtr<AVAsset> m_asset;
@@ -328,6 +329,8 @@ private:
     bool m_shouldPlayToTarget { false };
 #endif
     std::unique_ptr<VideoFullscreenLayerManagerObjC> m_videoFullscreenLayerManager;
+
+    Ref<EffectiveRateChangedListener> m_effectiveRateChangedListener;
 
 #if !RELEASE_LOG_DISABLED
     Ref<const Logger> m_logger;

@@ -38,7 +38,7 @@
 
 #if ENABLE(VIDEO_TRACK)
 #include "TrackPrivateBaseGStreamer.h"
-#include <wtf/text/AtomicStringHash.h>
+#include <wtf/text/AtomStringHash.h>
 #endif
 
 typedef struct _GstMpegtsSection GstMpegtsSection;
@@ -185,10 +185,8 @@ private:
     void setPlaybinURL(const URL& urlString);
     void loadFull(const String& url, const String& pipelineName);
 
-#if GST_CHECK_VERSION(1, 10, 0)
     void updateTracks();
     void clearTracks();
-#endif
 
 protected:
     bool m_buffering;
@@ -263,13 +261,11 @@ private:
     bool m_preservesPitch;
     mutable Optional<Seconds> m_lastQueryTime;
     bool m_isLegacyPlaybin;
-#if GST_CHECK_VERSION(1, 10, 0)
     GRefPtr<GstStreamCollection> m_streamCollection;
     FloatSize naturalSize() const final;
 #if ENABLE(MEDIA_STREAM)
     RefPtr<MediaStreamPrivate> m_streamPrivate;
-#endif // ENABLE(MEDIA_STREAM)
-#endif // GST_CHECK_VERSION(1, 10, 0)
+#endif
     String m_currentAudioStreamId;
     String m_currentVideoStreamId;
     String m_currentTextStreamId;
@@ -280,14 +276,14 @@ private:
     GRefPtr<GstElement> m_downloadBuffer;
     Vector<RefPtr<MediaPlayerRequestInstallMissingPluginsCallback>> m_missingPluginCallbacks;
 #if ENABLE(VIDEO_TRACK)
-    HashMap<AtomicString, RefPtr<AudioTrackPrivateGStreamer>> m_audioTracks;
-    HashMap<AtomicString, RefPtr<InbandTextTrackPrivateGStreamer>> m_textTracks;
-    HashMap<AtomicString, RefPtr<VideoTrackPrivateGStreamer>> m_videoTracks;
+    HashMap<AtomString, RefPtr<AudioTrackPrivateGStreamer>> m_audioTracks;
+    HashMap<AtomString, RefPtr<InbandTextTrackPrivateGStreamer>> m_textTracks;
+    HashMap<AtomString, RefPtr<VideoTrackPrivateGStreamer>> m_videoTracks;
     RefPtr<InbandMetadataTextTrackPrivateGStreamer> m_chaptersTrack;
 #if USE(GSTREAMER_MPEGTS)
-    HashMap<AtomicString, RefPtr<InbandMetadataTextTrackPrivateGStreamer>> m_metadataTracks;
+    HashMap<AtomString, RefPtr<InbandMetadataTextTrackPrivateGStreamer>> m_metadataTracks;
 #endif
-#endif
+#endif // ENABLE(VIDEO_TRACK)
     virtual bool isMediaSource() const { return false; }
 
     uint64_t m_httpResponseTotalSize { 0 };

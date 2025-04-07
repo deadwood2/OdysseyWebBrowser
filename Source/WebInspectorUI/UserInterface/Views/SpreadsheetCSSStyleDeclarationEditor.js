@@ -69,6 +69,8 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
         }, true);
 
         this.element.addEventListener("keydown", this._handleKeyDown.bind(this));
+        this.element.addEventListener("cut", this._handleCut.bind(this));
+        this.element.addEventListener("copy", this._handleCopy.bind(this));
     }
 
     layout()
@@ -82,8 +84,10 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
 
         this.element.removeChildren();
 
+        if (this._style)
+            this._style.updatePropertiesModifiedState();
+
         let properties = this.propertiesToRender;
-        this.element.classList.toggle("no-properties", !properties.length);
 
         // FIXME: Only re-layout properties that have been modified and preserve focus whenever possible.
         this._propertyViews = [];
@@ -357,12 +361,23 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
 
     deselectProperties()
     {
-        for (let propertyView  of this._propertyViews)
+        for (let propertyView of this._propertyViews)
             propertyView.selected = false;
 
         this._focused = false;
         this._anchorIndex = NaN;
         this._focusIndex = NaN;
+    }
+
+    placeTextCaretInFocusedProperty()
+    {
+        if (isNaN(this._focusIndex))
+            return;
+
+        let focusedProperty = this._propertyViews[this._focusIndex];
+        let selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.setBaseAndExtent(focusedProperty.element, 0, focusedProperty.element, 0);
     }
 
     applyFilter(filterText)
@@ -450,6 +465,17 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
         }
     }
 
+    spreadsheetStylePropertySelect(index)
+    {
+        this.selectProperties(index, index);
+    }
+
+    spreadsheetStylePropertySelectByProperty(property)
+    {
+        if (this._delegate && this._delegate.spreadsheetCSSStyleDeclarationEditorSelectProperty)
+            this._delegate.spreadsheetCSSStyleDeclarationEditorSelectProperty(property);
+    }
+
     spreadsheetStylePropertyAddBlankPropertySoon(propertyView, {index})
     {
         if (isNaN(index))
@@ -457,30 +483,16 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
         this._pendingAddBlankPropertyIndexOffset = this._propertyViews.length - index;
     }
 
-    spreadsheetStylePropertyCopy(event)
-    {
-        if (!this.hasSelectedProperties())
-            return;
-
-        let formattedProperties = [];
-        let [startIndex, endIndex] = this.selectionRange;
-        for (let i = startIndex; i <= endIndex; ++i) {
-            let propertyView = this._propertyViews[i];
-            formattedProperties.push(propertyView.property.formattedText);
-        }
-
-        event.clipboardData.setData("text/plain", formattedProperties.join("\n"));
-        event.stop();
-    }
-
-    spreadsheetStylePropertyRemoved(propertyView)
+    spreadsheetStylePropertyWillRemove(propertyView)
     {
         this._propertyViews.remove(propertyView);
 
         for (let index = 0; index < this._propertyViews.length; index++)
             this._propertyViews[index].index = index;
 
-        this.focused = false;
+        let wasFocused = document.activeElement && propertyView.element.contains(document.activeElement);
+        if (wasFocused)
+            this.focused = false;
     }
 
     spreadsheetStylePropertyShowProperty(propertyView, property)
@@ -534,27 +546,13 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
                 property.startEditingName();
             }
         } else if (event.key === "Backspace" || event.key === "Delete") {
-            if (!this.style.editable)
+            if (!this.style.editable) {
+                InspectorFrontendHost.beep();
                 return;
+            }
 
-            let [startIndex, endIndex] = this.selectionRange;
-
-            let propertyIndexToSelect = NaN;
-            if (endIndex + 1 !== this._propertyViews.length)
-                propertyIndexToSelect = startIndex;
-            else if (startIndex > 0)
-                propertyIndexToSelect = startIndex - 1;
-
-            this.deselectProperties();
-
-            for (let i = endIndex; i >= startIndex; i--)
-                this._propertyViews[i].remove();
-
-            if (!isNaN(propertyIndexToSelect))
-                this.selectProperties(propertyIndexToSelect, propertyIndexToSelect);
-
+            this._removeSelectedProperties();
             event.stop();
-
         } else if ((event.code === "Space" && !event.shiftKey && !event.metaKey && !event.ctrlKey) || (event.key === "/" && event.commandOrControlKey && !event.shiftKey)) {
             if (!this.style.editable)
                 return;
@@ -579,6 +577,56 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
 
         } else if (event.key === "Esc")
             this.deselectProperties();
+    }
+
+    _handleCopy(event)
+    {
+        if (!this.hasSelectedProperties())
+            return;
+
+        this._copySelectedProperties(event);
+    }
+
+    _handleCut(event)
+    {
+        if (!this.style.editable) {
+            InspectorFrontendHost.beep();
+            return;
+        }
+
+        if (!this.hasSelectedProperties())
+            return;
+
+        this._copySelectedProperties(event);
+        this._removeSelectedProperties();
+    }
+
+    _copySelectedProperties(event)
+    {
+        let [startIndex, endIndex] = this.selectionRange;
+        let formattedProperties = this._propertyViews.slice(startIndex, endIndex + 1).map((propertyView) => propertyView.property.formattedText);
+        event.clipboardData.setData("text/plain", formattedProperties.join("\n"));
+        event.stop();
+    }
+
+    _removeSelectedProperties()
+    {
+        console.assert(this.style.editable);
+        let [startIndex, endIndex] = this.selectionRange;
+
+        let propertyIndexToSelect = NaN;
+        if (endIndex + 1 !== this._propertyViews.length)
+            propertyIndexToSelect = startIndex;
+        else if (startIndex > 0)
+            propertyIndexToSelect = startIndex - 1;
+
+        this.deselectProperties();
+
+        for (let i = endIndex; i >= startIndex; i--)
+            this._propertyViews[i].remove();
+
+        if (!isNaN(propertyIndexToSelect))
+            this.selectProperties(propertyIndexToSelect, propertyIndexToSelect);
     }
 
     _editablePropertyAfter(propertyIndex)
@@ -628,7 +676,7 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
 
     _updateDebugLockStatus()
     {
-        if (!this._style || !WI.settings.enableStyleEditingDebugMode.value)
+        if (!this._style || !WI.isDebugUIEnabled() || !WI.settings.debugEnableStyleEditingDebugMode.value)
             return;
 
         this.element.classList.toggle("debug-style-locked", this._style.locked);

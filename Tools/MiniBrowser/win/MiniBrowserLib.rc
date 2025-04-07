@@ -46,9 +46,11 @@ BEGIN
         MENUITEM "E&xit",                       IDM_EXIT
         MENUITEM "New WebKit Window",           IDM_NEW_WEBKIT_WINDOW
         MENUITEM "New WebKitLegacy Window",     IDM_NEW_WEBKITLEGACY_WINDOW
+        MENUITEM "Close\tCtrl-W",               IDM_CLOSE_WINDOW
     END
     POPUP "&View"
     BEGIN
+        MENUITEM "Reload\tCtrl-R",              IDM_RELOAD
         MENUITEM "Actual Size",                 IDM_ACTUAL_SIZE
         MENUITEM "Zoom In\tCtrl++",             IDM_ZOOM_IN
         MENUITEM "Zoom Out\tCtrl+-",            IDM_ZOOM_OUT
@@ -130,6 +132,8 @@ BEGIN
     "?",            IDM_ABOUT,              ASCII,  ALT, NOINVERT
     VK_ADD,         IDM_ZOOM_IN,            VIRTKEY, CONTROL, NOINVERT
     VK_SUBTRACT,    IDM_ZOOM_OUT,           VIRTKEY, CONTROL, NOINVERT
+    "W",            IDM_CLOSE_WINDOW,       VIRTKEY, CONTROL, NOINVERT
+    "R",            IDM_RELOAD,             VIRTKEY, CONTROL, NOINVERT
 END
 
 
@@ -138,15 +142,15 @@ END
 // Dialog
 //
 
-IDD_ABOUTBOX DIALOGEX 22, 17, 230, 75
+IDD_ABOUTBOX DIALOGEX 22, 17, 230, 41
 STYLE DS_SETFONT | DS_MODALFRAME | WS_CAPTION | WS_SYSMENU
 CAPTION "About"
-FONT 8, "System", 0, 0, 0x0
+FONT 8, "MS Shell Dlg", 0, 0, 0x0
 BEGIN
     ICON            IDI_MINIBROWSER,IDC_MYICON,14,9,20,20
-    LTEXT           "MiniBrowser Version 1.0",IDC_STATIC,49,10,119,8,SS_NOPREFIX
-    LTEXT           "Copyright (C) 2015",IDC_STATIC,49,20,119,8
-    DEFPUSHBUTTON   "OK",IDOK,195,6,30,11,WS_GROUP
+    LTEXT           "MiniBrowser Version 1.1",IDC_STATIC,49,10,119,8
+    LTEXT           "Copyright (C) 2015-2019",IDC_STATIC,49,20,119,8
+    DEFPUSHBUTTON   "OK",IDOK,186,10,30,11,WS_GROUP
 END
 
 IDD_CACHES DIALOGEX 0, 0, 401, 456
@@ -280,6 +284,17 @@ BEGIN
     LTEXT           "Comma separated hostnames.",IDC_STATIC,80,101,194,8
 END
 
+IDD_SERVER_TRUST DIALOGEX 0, 0, 319, 184
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Server Trust Evaluation Request"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "Yes",IDOK,197,163,50,14
+    PUSHBUTTON      "No",IDCANCEL,262,163,50,14
+    LTEXT           "Certificate information",IDC_STATIC,7,7,294,17
+    EDITTEXT        IDC_SERVER_TRUST_TEXT,7,24,305,130,ES_MULTILINE | ES_READONLY | WS_VSCROLL | WS_HSCROLL | NOT WS_TABSTOP
+END
+
 
 #ifdef APSTUDIO_INVOKED
 /////////////////////////////////////////////////////////////////////////////
@@ -356,6 +371,14 @@ BEGIN
         VERTGUIDE, 22
         TOPMARGIN, 7
         BOTTOMMARGIN, 169
+    END
+
+    IDD_SERVER_TRUST, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 312
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 177
     END
 END
 #endif    // APSTUDIO_INVOKED

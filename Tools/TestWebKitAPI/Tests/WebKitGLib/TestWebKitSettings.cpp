@@ -96,10 +96,10 @@ static void testWebKitSettings(Test*, gconstpointer)
     webkit_settings_set_javascript_can_open_windows_automatically(settings, TRUE);
     g_assert_true(webkit_settings_get_javascript_can_open_windows_automatically(settings));
 
-    // By default hyper link auditing is disabled.
-    g_assert_false(webkit_settings_get_enable_hyperlink_auditing(settings));
-    webkit_settings_set_enable_hyperlink_auditing(settings, TRUE);
+    // By default hyper link auditing is enabled.
     g_assert_true(webkit_settings_get_enable_hyperlink_auditing(settings));
+    webkit_settings_set_enable_hyperlink_auditing(settings, FALSE);
+    g_assert_false(webkit_settings_get_enable_hyperlink_auditing(settings));
 
     // Default font family is "sans-serif".
     g_assert_cmpstr(webkit_settings_get_default_font_family(settings), ==, "sans-serif");
@@ -339,6 +339,11 @@ static void testWebKitSettings(Test*, gconstpointer)
     webkit_settings_set_allow_universal_access_from_file_urls(settings, TRUE);
     g_assert_true(webkit_settings_get_allow_universal_access_from_file_urls(settings));
 
+    // Media is enabled by default.
+    g_assert_true(webkit_settings_get_enable_media(settings));
+    webkit_settings_set_enable_media(settings, FALSE);
+    g_assert_false(webkit_settings_get_enable_media(settings));
+
 #if PLATFORM(GTK)
     // Ondemand is the default hardware acceleration policy.
     g_assert_cmpuint(webkit_settings_get_hardware_acceleration_policy(settings), ==, WEBKIT_HARDWARE_ACCELERATION_POLICY_ON_DEMAND);
@@ -412,12 +417,12 @@ static void testWebKitSettingsUserAgent(WebViewTest* test, gconstpointer)
     g_assert_cmpstr(funkyUserAgent, ==, webkit_settings_get_user_agent(settings.get()));
     assertThatUserAgentIsSentInHeaders(test, funkyUserAgent);
 
-    webkit_settings_set_user_agent_with_application_details(settings.get(), "WebKitGTK+", 0);
+    webkit_settings_set_user_agent_with_application_details(settings.get(), "WebKitGTK", 0);
     const char* userAgentWithNullVersion = webkit_settings_get_user_agent(settings.get());
     g_assert_cmpstr(g_strstr_len(userAgentWithNullVersion, -1, defaultUserAgent.data()), ==, userAgentWithNullVersion);
-    g_assert_nonnull(g_strstr_len(userAgentWithNullVersion, -1, "WebKitGTK+"));
+    g_assert_nonnull(g_strstr_len(userAgentWithNullVersion, -1, "WebKitGTK"));
 
-    webkit_settings_set_user_agent_with_application_details(settings.get(), "WebKitGTK+", "");
+    webkit_settings_set_user_agent_with_application_details(settings.get(), "WebKitGTK", "");
     g_assert_cmpstr(webkit_settings_get_user_agent(settings.get()), ==, userAgentWithNullVersion);
 
     webkit_settings_set_user_agent_with_application_details(settings.get(), "WebCatGTK+", "3.4.5");

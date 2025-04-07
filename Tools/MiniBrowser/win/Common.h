@@ -29,18 +29,22 @@
 #include "MainWindow.h"
 #include "WebKitLegacyBrowserWindow.h"
 
+enum class BrowserWindowType {
+    WebKit,
+    WebKitLegacy
+};
+
 struct CommandLineOptions {
     bool usesLayeredWebView { };
     bool useFullDesktop { };
-    bool pageLoadTesting { };
-    MainWindow::BrowserWindowType windowType;
+    BrowserWindowType windowType;
     _bstr_t requestedURL;
 
     CommandLineOptions()
 #if ENABLE(WEBKIT)
-        : windowType(MainWindow::BrowserWindowType::WebKit)
+        : windowType(BrowserWindowType::WebKit)
 #else
-        : windowType(MainWindow::BrowserWindowType::WebKitLegacy)
+        : windowType(BrowserWindowType::WebKitLegacy)
 #endif
     {
     }
@@ -64,6 +68,9 @@ CommandLineOptions parseCommandLine();
 void createCrashReport(EXCEPTION_POINTERS*);
 Optional<Credential> askCredential(HWND, const std::wstring& realm);
 bool askProxySettings(HWND, ProxySettings&);
+
+bool askServerTrustEvaluation(HWND, const std::wstring& pems);
+std::wstring replaceString(std::wstring src, const std::wstring& oldValue, const std::wstring& newValue);
 
 extern HINSTANCE hInst;
 extern POINT s_windowPosition;

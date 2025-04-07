@@ -27,13 +27,13 @@
 
 #if ENABLE(ASYNC_SCROLLING) && PLATFORM(IOS_FAMILY)
 
-#include <WebCore/ScrollingTreeFrameScrollingNodeIOS.h>
+#include <WebCore/ScrollingTreeFrameScrollingNode.h>
 
 namespace WebKit {
 
 class ScrollingTreeScrollingNodeDelegateIOS;
 
-class ScrollingTreeFrameScrollingNodeRemoteIOS : public WebCore::ScrollingTreeFrameScrollingNodeIOS {
+class ScrollingTreeFrameScrollingNodeRemoteIOS : public WebCore::ScrollingTreeFrameScrollingNode {
 public:
     static Ref<ScrollingTreeFrameScrollingNodeRemoteIOS> create(WebCore::ScrollingTree&, WebCore::ScrollingNodeType, WebCore::ScrollingNodeID);
     virtual ~ScrollingTreeFrameScrollingNodeRemoteIOS();
@@ -44,13 +44,17 @@ private:
     void commitStateBeforeChildren(const WebCore::ScrollingStateNode&) override;
     void commitStateAfterChildren(const WebCore::ScrollingStateNode&) override;
 
-    WebCore::FloatPoint scrollPosition() const override;
-    void setScrollLayerPosition(const WebCore::FloatPoint&, const WebCore::FloatRect& layoutViewport) override;
+    WebCore::FloatPoint minimumScrollPosition() const override;
+    WebCore::FloatPoint maximumScrollPosition() const override;
 
-    void updateLayersAfterDelegatedScroll(const WebCore::FloatPoint& scrollPosition) override;
-    void updateLayersAfterAncestorChange(const WebCore::ScrollingTreeNode& changedNode, const WebCore::FloatRect& fixedPositionRect, const WebCore::FloatSize& cumulativeDelta) override;
+    void repositionScrollingLayers() override;
+    void repositionRelatedLayers() override;
 
     std::unique_ptr<ScrollingTreeScrollingNodeDelegateIOS> m_scrollingNodeDelegate;
+
+    RetainPtr<CALayer> m_counterScrollingLayer;
+    RetainPtr<CALayer> m_headerLayer;
+    RetainPtr<CALayer> m_footerLayer;
 };
 
 } // namespace WebKit

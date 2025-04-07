@@ -32,12 +32,12 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         console.assert(node);
         this._node = node || null;
 
-        this._rulesMap = {};
-        this._styleDeclarationsMap = {};
+        this._rulesMap = new Map;
+        this._stylesMap = new Multimap;
 
         this._matchedRules = [];
         this._inheritedRules = [];
-        this._pseudoElements = {};
+        this._pseudoElements = new Map;
         this._inlineStyle = null;
         this._attributesStyle = null;
         this._computedStyle = null;
@@ -49,16 +49,97 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         this.refresh();
     }
 
+    // Static
+
+    static parseSelectorListPayload(selectorList)
+    {
+        let selectors = selectorList.selectors;
+        if (!selectors.length)
+            return [];
+
+        // COMPATIBILITY (iOS 8): The selectorList payload was an array of selector text strings.
+        // Now they are CSSSelector objects with multiple properties.
+        if (typeof selectors[0] === "string") {
+            return selectors.map(function(selectorText) {
+                return new WI.CSSSelector(selectorText);
+            });
+        }
+
+        return selectors.map(function(selectorPayload) {
+            return new WI.CSSSelector(selectorPayload.text, selectorPayload.specificity, selectorPayload.dynamic);
+        });
+    }
+
+    static createSourceCodeLocation(sourceURL, {line, column, documentNode} = {})
+    {
+        if (!sourceURL)
+            return null;
+
+        let sourceCode = null;
+
+        // Try to use the node to find the frame which has the correct resource first.
+        if (documentNode) {
+            let mainResource = WI.networkManager.resourceForURL(documentNode.documentURL);
+            if (mainResource) {
+                let parentFrame = mainResource.parentFrame;
+                sourceCode = parentFrame.resourceForURL(sourceURL);
+            }
+        }
+
+        // If that didn't find the resource, then search all frames.
+        if (!sourceCode)
+            sourceCode = WI.networkManager.resourceForURL(sourceURL);
+
+        if (!sourceCode)
+            return null;
+
+        return sourceCode.createSourceCodeLocation(line || 0, column || 0);
+    }
+
+    static uniqueOrderedStyles(orderedStyles)
+    {
+        let uniqueOrderedStyles = [];
+
+        for (let style of orderedStyles) {
+            let rule = style.ownerRule;
+            if (!rule) {
+                uniqueOrderedStyles.push(style);
+                continue;
+            }
+
+            let found = false;
+            for (let existingStyle of uniqueOrderedStyles) {
+                if (rule.isEqualTo(existingStyle.ownerRule)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                uniqueOrderedStyles.push(style);
+        }
+
+        return uniqueOrderedStyles;
+    }
+
     // Public
 
-    get node()
-    {
-        return this._node;
-    }
+    get node() { return this._node; }
+    get matchedRules() { return this._matchedRules; }
+    get inheritedRules() { return this._inheritedRules; }
+    get inlineStyle() { return this._inlineStyle; }
+    get attributesStyle() { return this._attributesStyle; }
+    get pseudoElements() { return this._pseudoElements; }
+    get computedStyle() { return this._computedStyle; }
+    get orderedStyles() { return this._orderedStyles; }
 
     get needsRefresh()
     {
         return this._pendingRefreshTask || this._needsRefresh;
+    }
+
+    get uniqueOrderedStyles()
+    {
+        return WI.DOMNodeStyles.uniqueOrderedStyles(this._orderedStyles);
     }
 
     refreshIfNeeded()
@@ -77,6 +158,8 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         this._needsRefresh = false;
 
+        let previousStylesMap = this._stylesMap.copy();
+
         let fetchedMatchedStylesPromise = new WI.WrappedPromise;
         let fetchedInlineStylesPromise = new WI.WrappedPromise;
         let fetchedComputedStylesPromise = new WI.WrappedPromise;
@@ -93,21 +176,20 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             };
         }
 
-        function parseRuleMatchArrayPayload(matchArray, node, inherited)
-        {
+        let parseRuleMatchArrayPayload = (matchArray, node, inherited, pseudoId) => {
             var result = [];
 
             // Iterate in reverse order to match the cascade order.
             var ruleOccurrences = {};
             for (var i = matchArray.length - 1; i >= 0; --i) {
-                var rule = this._parseRulePayload(matchArray[i].rule, matchArray[i].matchingSelectors, node, inherited, ruleOccurrences);
+                var rule = this._parseRulePayload(matchArray[i].rule, matchArray[i].matchingSelectors, node, inherited, pseudoId, ruleOccurrences);
                 if (!rule)
                     continue;
                 result.push(rule);
             }
 
             return result;
-        }
+        };
 
         function fetchedMatchedStyles(error, matchedRulesPayload, pseudoElementRulesPayload, inheritedRulesPayload)
         {
@@ -115,20 +197,12 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             pseudoElementRulesPayload = pseudoElementRulesPayload || [];
             inheritedRulesPayload = inheritedRulesPayload || [];
 
-            // Move the current maps to previous.
-            this._previousRulesMap = this._rulesMap;
-            this._previousStyleDeclarationsMap = this._styleDeclarationsMap;
+            this._matchedRules = parseRuleMatchArrayPayload(matchedRulesPayload, this._node);
 
-            // Clear the current maps.
-            this._rulesMap = {};
-            this._styleDeclarationsMap = {};
-
-            this._matchedRules = parseRuleMatchArrayPayload.call(this, matchedRulesPayload, this._node);
-
-            this._pseudoElements = {};
-            for (var pseudoElementRulePayload of pseudoElementRulesPayload) {
-                var pseudoElementRules = parseRuleMatchArrayPayload.call(this, pseudoElementRulePayload.matches, this._node);
-                this._pseudoElements[pseudoElementRulePayload.pseudoId] = {matchedRules: pseudoElementRules};
+            this._pseudoElements.clear();
+            for (let {pseudoId, matches} of pseudoElementRulesPayload) {
+                let pseudoElementRules = parseRuleMatchArrayPayload(matches, this._node, false, pseudoId);
+                this._pseudoElements.set(pseudoId, {matchedRules: pseudoElementRules});
             }
 
             this._inheritedRules = [];
@@ -139,8 +213,8 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
                 var inheritedRulePayload = inheritedRulesPayload[i];
 
                 var inheritedRuleInfo = {node: currentNode};
-                inheritedRuleInfo.inlineStyle = inheritedRulePayload.inlineStyle ? this._parseStyleDeclarationPayload(inheritedRulePayload.inlineStyle, currentNode, true, WI.CSSStyleDeclaration.Type.Inline) : null;
-                inheritedRuleInfo.matchedRules = inheritedRulePayload.matchedCSSRules ? parseRuleMatchArrayPayload.call(this, inheritedRulePayload.matchedCSSRules, currentNode, true) : [];
+                inheritedRuleInfo.inlineStyle = inheritedRulePayload.inlineStyle ? this._parseStyleDeclarationPayload(inheritedRulePayload.inlineStyle, currentNode, true, null, WI.CSSStyleDeclaration.Type.Inline) : null;
+                inheritedRuleInfo.matchedRules = inheritedRulePayload.matchedCSSRules ? parseRuleMatchArrayPayload(inheritedRulePayload.matchedCSSRules, currentNode, true) : [];
 
                 if (inheritedRuleInfo.inlineStyle || inheritedRuleInfo.matchedRules.length)
                     this._inheritedRules.push(inheritedRuleInfo);
@@ -154,8 +228,8 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         function fetchedInlineStyles(error, inlineStylePayload, attributesStylePayload)
         {
-            this._inlineStyle = inlineStylePayload ? this._parseStyleDeclarationPayload(inlineStylePayload, this._node, false, WI.CSSStyleDeclaration.Type.Inline) : null;
-            this._attributesStyle = attributesStylePayload ? this._parseStyleDeclarationPayload(attributesStylePayload, this._node, false, WI.CSSStyleDeclaration.Type.Attribute) : null;
+            this._inlineStyle = inlineStylePayload ? this._parseStyleDeclarationPayload(inlineStylePayload, this._node, false, null, WI.CSSStyleDeclaration.Type.Inline) : null;
+            this._attributesStyle = attributesStylePayload ? this._parseStyleDeclarationPayload(attributesStylePayload, this._node, false, null, WI.CSSStyleDeclaration.Type.Attribute) : null;
 
             this._updateStyleCascade();
 
@@ -183,18 +257,15 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
                 this._computedStyle = new WI.CSSStyleDeclaration(this, null, null, WI.CSSStyleDeclaration.Type.Computed, this._node, false, null, properties);
 
             let significantChange = false;
-            for (let key in this._styleDeclarationsMap) {
-                // Check if the same key exists in the previous map and has the same style objects.
-                if (key in this._previousStyleDeclarationsMap) {
-                    if (Array.shallowEqual(this._styleDeclarationsMap[key], this._previousStyleDeclarationsMap[key]))
-                        continue;
-
+            for (let [key, styles] of this._stylesMap.sets()) {
+                let previousStyles = previousStylesMap.get(key);
+                if (previousStyles) {
                     // Some styles have selectors such that they will match with the DOM node twice (for example "::before, ::after").
                     // In this case a second style for a second matching may be generated and added which will cause the shallowEqual
                     // to not return true, so in this case we just want to ensure that all the current styles existed previously.
                     let styleFound = false;
-                    for (let style of this._styleDeclarationsMap[key]) {
-                        if (this._previousStyleDeclarationsMap[key].includes(style)) {
+                    for (let style of styles) {
+                        if (previousStyles.has(style)) {
                             styleFound = true;
                             break;
                         }
@@ -206,7 +277,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
                 if (!this._includeUserAgentRulesOnNextRefresh) {
                     // We can assume all the styles with the same key are from the same stylesheet and rule, so we only check the first.
-                    let firstStyle = this._styleDeclarationsMap[key][0];
+                    let firstStyle = styles.firstValue;
                     if (firstStyle && firstStyle.ownerRule && firstStyle.ownerRule.type === WI.CSSStyleSheet.Type.UserAgent) {
                         // User Agent styles get different identifiers after some edits. This would cause us to fire a significant refreshed
                         // event more than it is helpful. And since the user agent stylesheet is static it shouldn't match differently
@@ -221,14 +292,14 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             }
 
             if (!significantChange) {
-                for (var key in this._previousStyleDeclarationsMap) {
+                for (let [key, previousStyles] of previousStylesMap.sets()) {
                     // Check if the same key exists in current map. If it does exist it was already checked for equality above.
-                    if (key in this._styleDeclarationsMap)
+                    if (this._stylesMap.has(key))
                         continue;
 
                     if (!this._includeUserAgentRulesOnNextRefresh) {
                         // See above for why we skip user agent style rules.
-                        var firstStyle = this._previousStyleDeclarationsMap[key][0];
+                        let firstStyle = previousStyles.firstValue;
                         if (firstStyle && firstStyle.ownerRule && firstStyle.ownerRule.type === WI.CSSStyleSheet.Type.UserAgent)
                             continue;
                     }
@@ -239,11 +310,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
                 }
             }
 
-            delete this._includeUserAgentRulesOnNextRefresh;
-
-            // Delete the previous maps now that any reused rules and style have been moved over.
-            delete this._previousRulesMap;
-            delete this._previousStyleDeclarationsMap;
+            this._includeUserAgentRulesOnNextRefresh = false;
 
             this.dispatchEventToListeners(WI.DOMNodeStyles.Event.Refreshed, {significantChange});
 
@@ -317,82 +384,6 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             WI.cssManager.preferredInspectorStyleSheetForFrame(this._node.frame, inspectorStyleSheetAvailable.bind(this));
     }
 
-    rulesForSelector(selector)
-    {
-        selector = selector || this._node.appropriateSelectorFor(true);
-
-        function ruleHasSelector(rule) {
-            return !rule.mediaList.length && rule.selectorText === selector;
-        }
-
-        let rules = this._matchedRules.filter(ruleHasSelector);
-
-        for (let id in this._pseudoElements)
-            rules = rules.concat(this._pseudoElements[id].matchedRules.filter(ruleHasSelector));
-
-        return rules;
-    }
-
-    get matchedRules()
-    {
-        return this._matchedRules;
-    }
-
-    get inheritedRules()
-    {
-        return this._inheritedRules;
-    }
-
-    get inlineStyle()
-    {
-        return this._inlineStyle;
-    }
-
-    get attributesStyle()
-    {
-        return this._attributesStyle;
-    }
-
-    get pseudoElements()
-    {
-        return this._pseudoElements;
-    }
-
-    get computedStyle()
-    {
-        return this._computedStyle;
-    }
-
-    get orderedStyles()
-    {
-        return this._orderedStyles;
-    }
-
-    get uniqueOrderedStyles()
-    {
-        let uniqueStyles = [];
-
-        for (let style of this._orderedStyles) {
-            let rule = style.ownerRule;
-            if (!rule) {
-                uniqueStyles.push(style);
-                continue;
-            }
-
-            let found = false;
-            for (let existingStyle of uniqueStyles) {
-                if (rule.isEqualTo(existingStyle.ownerRule)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found)
-                uniqueStyles.push(style);
-        }
-
-        return uniqueStyles;
-    }
-
     effectivePropertyForName(name)
     {
         let property = this._propertyNameToEffectivePropertyMap[name];
@@ -464,39 +455,14 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
                 return;
             }
 
-            this.refresh().then(callback);
+            callback();
+            this.refresh();
         };
 
         CSSAgent.setStyleText(style.id, text, didSetStyleText);
     }
 
     // Private
-
-    _createSourceCodeLocation(sourceURL, sourceLine, sourceColumn)
-    {
-        if (!sourceURL)
-            return null;
-
-        var sourceCode;
-
-        // Try to use the node to find the frame which has the correct resource first.
-        if (this._node.ownerDocument) {
-            var mainResource = WI.networkManager.resourceForURL(this._node.ownerDocument.documentURL);
-            if (mainResource) {
-                var parentFrame = mainResource.parentFrame;
-                sourceCode = parentFrame.resourceForURL(sourceURL);
-            }
-        }
-
-        // If that didn't find the resource, then search all frames.
-        if (!sourceCode)
-            sourceCode = WI.networkManager.resourceForURL(sourceURL);
-
-        if (!sourceCode)
-            return null;
-
-        return sourceCode.createSourceCodeLocation(sourceLine || 0, sourceColumn || 0);
-    }
 
     _parseSourceRangePayload(payload)
     {
@@ -506,7 +472,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         return new WI.TextRange(payload.startLine, payload.startColumn, payload.endLine, payload.endColumn);
     }
 
-    _parseStylePropertyPayload(payload, index, styleDeclaration, styleText)
+    _parseStylePropertyPayload(payload, index, styleDeclaration)
     {
         var text = payload.text || "";
         var name = payload.name;
@@ -582,7 +548,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         return new WI.CSSProperty(index, text, name, value, priority, enabled, overridden, implicit, anonymous, valid, styleSheetTextRange);
     }
 
-    _parseStyleDeclarationPayload(payload, node, inherited, type, rule, updateAllStyles)
+    _parseStyleDeclarationPayload(payload, node, inherited, pseudoId, type, rule)
     {
         if (!payload)
             return null;
@@ -592,68 +558,31 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         var id = payload.styleId;
         var mapKey = id ? id.styleSheetId + ":" + id.ordinal : null;
-
+        if (pseudoId)
+            mapKey += ":" + pseudoId;
         if (type === WI.CSSStyleDeclaration.Type.Attribute)
-            mapKey = node.id + ":attribute";
+            mapKey += ":" + node.id + ":attribute";
 
-        var styleDeclaration = rule ? rule.style : null;
-        var styleDeclarations = [];
+        let style = rule ? rule.style : null;
 
-        // Look for existing styles in the previous map if there is one, otherwise use the current map.
-        var previousStyleDeclarationsMap = this._previousStyleDeclarationsMap || this._styleDeclarationsMap;
-        if (mapKey && mapKey in previousStyleDeclarationsMap) {
-            styleDeclarations = previousStyleDeclarationsMap[mapKey];
-
-            // If we need to update all styles, then stop here and call _parseStyleDeclarationPayload for each style.
-            // We need to parse multiple times so we reuse the right properties from each style.
-            if (updateAllStyles && styleDeclarations.length) {
-                for (var i = 0; i < styleDeclarations.length; ++i) {
-                    var styleDeclaration = styleDeclarations[i];
-                    this._parseStyleDeclarationPayload(payload, styleDeclaration.node, styleDeclaration.inherited, styleDeclaration.type, styleDeclaration.ownerRule);
+        let existingStyles = this._stylesMap.get(mapKey);
+        if (existingStyles && !style) {
+            for (let existingStyle of existingStyles) {
+                if (existingStyle.node === node && existingStyle.inherited === inherited) {
+                    style = existingStyle;
+                    break;
                 }
-
-                return null;
-            }
-
-            if (!styleDeclaration) {
-                var filteredStyleDeclarations = styleDeclarations.filter(function(styleDeclaration) {
-                    // This case only applies for styles that are not part of a rule.
-                    if (styleDeclaration.ownerRule) {
-                        console.assert(!rule);
-                        return false;
-                    }
-
-                    if (styleDeclaration.node !== node)
-                        return false;
-
-                    if (styleDeclaration.inherited !== inherited)
-                        return false;
-
-                    return true;
-                });
-
-                console.assert(filteredStyleDeclarations.length <= 1);
-                styleDeclaration = filteredStyleDeclarations[0] || null;
             }
         }
 
-        if (previousStyleDeclarationsMap !== this._styleDeclarationsMap) {
-            // If the previous and current maps differ then make sure the found styleDeclaration is added to the current map.
-            styleDeclarations = mapKey && mapKey in this._styleDeclarationsMap ? this._styleDeclarationsMap[mapKey] : [];
-
-            if (styleDeclaration && !styleDeclarations.includes(styleDeclaration)) {
-                styleDeclarations.push(styleDeclaration);
-                this._styleDeclarationsMap[mapKey] = styleDeclarations;
-            }
-        }
+        if (style)
+            this._stylesMap.add(mapKey, style);
 
         var shorthands = {};
         for (var i = 0; payload.shorthandEntries && i < payload.shorthandEntries.length; ++i) {
             var shorthand = payload.shorthandEntries[i];
             shorthands[shorthand.name] = shorthand.value;
         }
-
-        var text = payload.cssText;
 
         var inheritedPropertyCount = 0;
 
@@ -664,15 +593,16 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             if (inherited && WI.CSSProperty.isInheritedPropertyName(propertyPayload.name))
                 ++inheritedPropertyCount;
 
-            var property = this._parseStylePropertyPayload(propertyPayload, i, styleDeclaration, text);
+            let property = this._parseStylePropertyPayload(propertyPayload, i, style);
             properties.push(property);
         }
 
+        let text = payload.cssText;
         var styleSheetTextRange = this._parseSourceRangePayload(payload.range);
 
-        if (styleDeclaration) {
-            styleDeclaration.update(text, properties, styleSheetTextRange);
-            return styleDeclaration;
+        if (style) {
+            style.update(text, properties, styleSheetTextRange);
+            return style;
         }
 
         var styleSheet = id ? WI.cssManager.styleSheetForIdentifier(id.styleSheetId) : null;
@@ -685,36 +615,15 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         if (inherited && !inheritedPropertyCount)
             return null;
 
-        styleDeclaration = new WI.CSSStyleDeclaration(this, styleSheet, id, type, node, inherited, text, properties, styleSheetTextRange);
+        style = new WI.CSSStyleDeclaration(this, styleSheet, id, type, node, inherited, text, properties, styleSheetTextRange);
 
-        if (mapKey) {
-            styleDeclarations.push(styleDeclaration);
-            this._styleDeclarationsMap[mapKey] = styleDeclarations;
-        }
+        if (mapKey)
+            this._stylesMap.add(mapKey, style);
 
-        return styleDeclaration;
+        return style;
     }
 
-    _parseSelectorListPayload(selectorList)
-    {
-        var selectors = selectorList.selectors;
-        if (!selectors.length)
-            return [];
-
-        // COMPATIBILITY (iOS 8): The selectorList payload was an array of selector text strings.
-        // Now they are CSSSelector objects with multiple properties.
-        if (typeof selectors[0] === "string") {
-            return selectors.map(function(selectorText) {
-                return new WI.CSSSelector(selectorText);
-            });
-        }
-
-        return selectors.map(function(selectorPayload) {
-            return new WI.CSSSelector(selectorPayload.text, selectorPayload.specificity, selectorPayload.dynamic);
-        });
-    }
-
-    _parseRulePayload(payload, matchedSelectorIndices, node, inherited, ruleOccurrences)
+    _parseRulePayload(payload, matchedSelectorIndices, node, inherited, pseudoId, ruleOccurrences)
     {
         if (!payload)
             return null;
@@ -725,7 +634,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         // editability solely based on the existence of the id like the open source front-end does.
         var id = payload.ruleId || payload.style.styleId;
 
-        var mapKey = id ? id.styleSheetId + ":" + id.ordinal + ":" + (inherited ? "I" : "N") + ":" + node.id : null;
+        var mapKey = id ? id.styleSheetId + ":" + id.ordinal + ":" + (inherited ? "I" : "N") + ":" + (pseudoId ? pseudoId + ":" : "") + node.id : null;
 
         // Rules can match multiple times if they have multiple selectors or because of inheritance. We keep a count
         // of occurrences so we have unique rules per occurrence, that way properties will be correctly marked as overridden.
@@ -740,36 +649,32 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             mapKey += ":" + occurrence;
         }
 
-        var rule = null;
+        let rule = this._rulesMap.get(mapKey);
 
-        // Look for existing rules in the previous map if there is one, otherwise use the current map.
-        var previousRulesMap = this._previousRulesMap || this._rulesMap;
-        if (mapKey && mapKey in previousRulesMap) {
-            rule = previousRulesMap[mapKey];
-
-            if (previousRulesMap !== this._rulesMap) {
-                // If the previous and current maps differ then make sure the found rule is added to the current map.
-                this._rulesMap[mapKey] = rule;
-            }
-        }
-
-        var style = this._parseStyleDeclarationPayload(payload.style, node, inherited, WI.CSSStyleDeclaration.Type.Rule, rule);
+        var style = this._parseStyleDeclarationPayload(payload.style, node, inherited, pseudoId, WI.CSSStyleDeclaration.Type.Rule, rule);
         if (!style)
             return null;
 
         var styleSheet = id ? WI.cssManager.styleSheetForIdentifier(id.styleSheetId) : null;
 
         var selectorText = payload.selectorList.text;
-        var selectors = this._parseSelectorListPayload(payload.selectorList);
+        let selectors = DOMNodeStyles.parseSelectorListPayload(payload.selectorList);
         var type = WI.CSSManager.protocolStyleSheetOriginToEnum(payload.origin);
 
         var sourceCodeLocation = null;
         var sourceRange = payload.selectorList.range;
-        if (sourceRange)
-            sourceCodeLocation = this._createSourceCodeLocation(payload.sourceURL, sourceRange.startLine, sourceRange.startColumn);
-        else {
+        if (sourceRange) {
+            sourceCodeLocation = DOMNodeStyles.createSourceCodeLocation(payload.sourceURL, {
+                line: sourceRange.startLine,
+                column: sourceRange.startColumn,
+                documentNode: this._node.ownerDocument,
+            });
+        } else {
             // FIXME: Is it possible for a CSSRule to have a sourceLine without its selectorList having a sourceRange? Fall back just in case.
-            sourceCodeLocation = this._createSourceCodeLocation(payload.sourceURL, payload.sourceLine);
+            sourceCodeLocation = DOMNodeStyles.createSourceCodeLocation(payload.sourceURL, {
+                line: payload.sourceLine,
+                documentNode: this._node.ownerDocument,
+            });
         }
 
         if (styleSheet) {
@@ -779,30 +684,27 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             sourceCodeLocation = styleSheet.offsetSourceCodeLocation(sourceCodeLocation);
         }
 
-        var mediaList = [];
-        for (var i = 0; payload.media && i < payload.media.length; ++i) {
-            var mediaItem = payload.media[i];
-            var mediaType = WI.CSSManager.protocolMediaSourceToEnum(mediaItem.source);
-            var mediaText = mediaItem.text;
-            var mediaSourceCodeLocation = this._createSourceCodeLocation(mediaItem.sourceURL, mediaItem.sourceLine);
+        // COMPATIBILITY (iOS 13): CSS.CSSRule.groupings did not exist yet.
+        let groupings = (payload.groupings || payload.media || []).map((grouping) => {
+            let groupingType = WI.CSSManager.protocolGroupingTypeToEnum(grouping.type || grouping.source);
+            let groupingSourceCodeLocation = DOMNodeStyles.createSourceCodeLocation(grouping.sourceURL);
             if (styleSheet)
-                mediaSourceCodeLocation = styleSheet.offsetSourceCodeLocation(mediaSourceCodeLocation);
-
-            mediaList.push(new WI.CSSMedia(mediaType, mediaText, mediaSourceCodeLocation));
-        }
+                groupingSourceCodeLocation = styleSheet.offsetSourceCodeLocation(groupingSourceCodeLocation);
+            return new WI.CSSGrouping(groupingType, grouping.text, groupingSourceCodeLocation);
+        });
 
         if (rule) {
-            rule.update(sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, mediaList);
+            rule.update(sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, groupings);
             return rule;
         }
 
         if (styleSheet)
             styleSheet.addEventListener(WI.CSSStyleSheet.Event.ContentDidChange, this._styleSheetContentDidChange, this);
 
-        rule = new WI.CSSRule(this, styleSheet, id, type, sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, mediaList);
+        rule = new WI.CSSRule(this, styleSheet, id, type, sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, groupings);
 
         if (mapKey)
-            this._rulesMap[mapKey] = rule;
+            this._rulesMap.set(mapKey, rule);
 
         return rule;
     }
@@ -822,7 +724,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         // Ignore the stylesheet we know we just changed and handled above.
         if (styleSheet === this._ignoreNextContentDidChangeForStyleSheet) {
-            delete this._ignoreNextContentDidChangeForStyleSheet;
+            this._ignoreNextContentDidChangeForStyleSheet = null;
             return;
         }
 
@@ -836,21 +738,20 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         for (var i = 0; i < this._inheritedRules.length; ++i) {
             var inheritedStyleInfo = this._inheritedRules[i];
             var inheritedCascadeOrder = this._collectStylesInCascadeOrder(inheritedStyleInfo.matchedRules, inheritedStyleInfo.inlineStyle, null);
-            cascadeOrderedStyleDeclarations = cascadeOrderedStyleDeclarations.concat(inheritedCascadeOrder);
+            cascadeOrderedStyleDeclarations.pushAll(inheritedCascadeOrder);
         }
 
         this._orderedStyles = cascadeOrderedStyleDeclarations;
 
         this._propertyNameToEffectivePropertyMap = {};
 
-        this._markOverriddenProperties(cascadeOrderedStyleDeclarations, this._propertyNameToEffectivePropertyMap);
         this._associateRelatedProperties(cascadeOrderedStyleDeclarations, this._propertyNameToEffectivePropertyMap);
+        this._markOverriddenProperties(cascadeOrderedStyleDeclarations, this._propertyNameToEffectivePropertyMap);
 
-        for (var pseudoIdentifier in this._pseudoElements) {
-            var pseudoElementInfo = this._pseudoElements[pseudoIdentifier];
+        for (let pseudoElementInfo of this._pseudoElements.values()) {
             pseudoElementInfo.orderedStyles = this._collectStylesInCascadeOrder(pseudoElementInfo.matchedRules, null, null);
-            this._markOverriddenProperties(pseudoElementInfo.orderedStyles);
             this._associateRelatedProperties(pseudoElementInfo.orderedStyles);
+            this._markOverriddenProperties(pseudoElementInfo.orderedStyles);
         }
     }
 
@@ -887,7 +788,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             result.push(attributesStyle);
 
         // Finally add the user and user stylesheet's matched style rules we collected earlier.
-        result = result.concat(userAndUserAgentStyles);
+        result.pushAll(userAndUserAgentStyles);
 
         return result;
     }
@@ -895,6 +796,25 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
     _markOverriddenProperties(styles, propertyNameToEffectiveProperty)
     {
         propertyNameToEffectiveProperty = propertyNameToEffectiveProperty || {};
+
+        function isOverriddenByRelatedShorthand(property) {
+            let shorthand = property.relatedShorthandProperty;
+            if (!shorthand)
+                return false;
+
+            if (property.important && !shorthand.important)
+                return false;
+
+            if (!property.important && shorthand.important)
+                return true;
+
+            if (property.ownerStyle === shorthand.ownerStyle)
+                return shorthand.index > property.index;
+
+            let propertyStyleIndex = styles.indexOf(property.ownerStyle);
+            let shorthandStyleIndex = styles.indexOf(shorthand.ownerStyle);
+            return shorthandStyleIndex > propertyStyleIndex;
+        }
 
         for (var i = 0; i < styles.length; ++i) {
             var style = styles[i];
@@ -919,18 +839,26 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
                     if (effectiveProperty.ownerStyle === property.ownerStyle) {
                         if (effectiveProperty.important && !property.important) {
                             property.overridden = true;
+                            property.overridingProperty = effectiveProperty;
                             continue;
                         }
                     } else if (effectiveProperty.important || !property.important || effectiveProperty.ownerStyle.node !== property.ownerStyle.node) {
                         property.overridden = true;
+                        property.overridingProperty = effectiveProperty;
                         continue;
                     }
 
-                    if (!property.anonymous)
+                    if (!property.anonymous) {
                         effectiveProperty.overridden = true;
+                        effectiveProperty.overridingProperty = property;
+                    }
                 }
 
-                property.overridden = false;
+                if (isOverriddenByRelatedShorthand(property)) {
+                    property.overridden = true;
+                    property.overridingProperty = property.relatedShorthandProperty;
+                } else
+                    property.overridden = false;
 
                 propertyNameToEffectiveProperty[canonicalName] = property;
             }

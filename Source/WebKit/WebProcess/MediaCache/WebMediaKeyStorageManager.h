@@ -39,6 +39,7 @@ namespace WebKit {
 class WebProcess;
 
 class WebMediaKeyStorageManager : public WebProcessSupplement {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(WebMediaKeyStorageManager);
 public:
     explicit WebMediaKeyStorageManager(WebProcess&) { }
@@ -55,7 +56,7 @@ public:
     void deleteAllMediaKeyEntries();
 
 private:
-    void initialize(const WebProcessCreationParameters&) override;
+    void setWebsiteDataStore(const WebProcessDataStoreParameters&) override;
 
     String m_mediaKeyStorageDirectory;
 };

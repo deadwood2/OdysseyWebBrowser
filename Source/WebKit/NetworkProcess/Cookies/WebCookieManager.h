@@ -48,6 +48,7 @@ namespace WebKit {
 class NetworkProcess;
 
 class WebCookieManager : public NetworkProcessSupplement, public IPC::MessageReceiver {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(WebCookieManager);
 public:
     WebCookieManager(NetworkProcess&);
@@ -70,11 +71,11 @@ private:
     void getHostnamesWithCookies(PAL::SessionID, CallbackID);
 
     void deleteCookie(PAL::SessionID, const WebCore::Cookie&, CallbackID);
-    void deleteCookiesForHostname(PAL::SessionID, const String&);
+    void deleteCookiesForHostnames(PAL::SessionID, const Vector<String>&);
     void deleteAllCookies(PAL::SessionID);
     void deleteAllCookiesModifiedSince(PAL::SessionID, WallTime, CallbackID);
 
-    void setCookie(PAL::SessionID, const WebCore::Cookie&, CallbackID);
+    void setCookie(PAL::SessionID, const Vector<WebCore::Cookie>&, CallbackID);
     void setCookies(PAL::SessionID, const Vector<WebCore::Cookie>&, const URL&, const URL& mainDocumentURL, CallbackID);
     void getAllCookies(PAL::SessionID, CallbackID);
     void getCookies(PAL::SessionID, const URL&, CallbackID);

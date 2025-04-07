@@ -26,14 +26,12 @@
 #import <Foundation/Foundation.h>
 #import <WebKit/WKFoundation.h>
 
-#if WK_API_ENABLED
-
 @class WKWebView;
 @class _WKFrameHandle;
 
 NS_ASSUME_NONNULL_BEGIN
 
-WK_CLASS_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA))
+WK_CLASS_AVAILABLE(macos(10.14.4), ios(12.2))
 @interface _WKInspector : NSObject
 
 - (instancetype)init NS_UNAVAILABLE;
@@ -54,7 +52,6 @@ WK_CLASS_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA))
 - (void)showMainResourceForFrame:(_WKFrameHandle *)frame;
 - (void)attach;
 - (void)detach;
-- (void)showTimelines;
 - (void)togglePageProfiling;
 - (void)toggleElementSelection;
 - (void)printErrorToConsole:(NSString *)error;
@@ -62,5 +59,3 @@ WK_CLASS_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA))
 @end
 
 NS_ASSUME_NONNULL_END
-
-#endif

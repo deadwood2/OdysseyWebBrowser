@@ -28,19 +28,21 @@
 #include "Common.h"
 #include <WebKit/WKRetainPtr.h>
 #include <WebKit/WebKit2_C.h>
+#include <unordered_map>
+#include <wtf/Ref.h>
 
 class WebKitBrowserWindow : public BrowserWindow {
 public:
-    static Ref<BrowserWindow> create(HWND mainWnd, HWND urlBarWnd, bool useLayeredWebView = false, bool pageLoadTesting = false);
+    static Ref<BrowserWindow> create(BrowserWindowClient&, HWND mainWnd, bool useLayeredWebView = false);
 
 private:
-    WebKitBrowserWindow(HWND mainWnd, HWND urlBarWnd);
+    WebKitBrowserWindow(BrowserWindowClient&, WKPageConfigurationRef, HWND mainWnd);
 
     HRESULT init() override;
     HWND hwnd() override;
 
-    HRESULT loadHTMLString(const BSTR&) override;
     HRESULT loadURL(const BSTR& url) override;
+    void reload() override;
     void navigateForwardOrBackward(UINT menuID) override;
     void navigateToHistory(UINT menuID) override;
     void setPreference(UINT menuID, bool enable) override;
@@ -61,13 +63,19 @@ private:
 
     void updateProxySettings();
 
-    static void didFinishNavigation(WKPageRef, WKNavigationRef, WKTypeRef, const void*);
-    static void didCommitNavigation(WKPageRef, WKNavigationRef, WKTypeRef, const void*);
-    static void didReceiveAuthenticationChallenge(WKPageRef, WKAuthenticationChallengeRef, const void*);
+    bool canTrustServerCertificate(WKProtectionSpaceRef);
 
-    WKRetainPtr<WKContextRef> m_context;
+    static void didChangeTitle(const void*);
+    static void didChangeIsLoading(const void*);
+    static void didChangeEstimatedProgress(const void*);
+    static void didChangeActiveURL(const void*);
+    static void didReceiveAuthenticationChallenge(WKPageRef, WKAuthenticationChallengeRef, const void*);
+    static WKPageRef createNewPage(WKPageRef, WKPageConfigurationRef, WKNavigationActionRef, WKWindowFeaturesRef, const void *);
+    static void didNotHandleKeyEvent(WKPageRef, WKNativeEventPtr, const void*);
+
+    BrowserWindowClient& m_client;
     WKRetainPtr<WKViewRef> m_view;
     HWND m_hMainWnd { nullptr };
-    HWND m_urlBarWnd { nullptr };
     ProxySettings m_proxy { };
+    std::unordered_map<std::wstring, std::wstring> m_acceptedServerTrustCerts;
 };

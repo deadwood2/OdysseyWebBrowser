@@ -29,7 +29,9 @@
 #if PLATFORM(IOS_FAMILY) && ENABLE(ASYNC_SCROLLING)
 
 #import "ScrollingTreeScrollingNodeDelegateIOS.h"
+#import <WebCore/ScrollingStateFrameScrollingNode.h>
 #import <WebCore/ScrollingStateScrollingNode.h>
+#import <WebCore/ScrollingTree.h>
 
 namespace WebKit {
 using namespace WebCore;
@@ -40,7 +42,7 @@ Ref<ScrollingTreeFrameScrollingNodeRemoteIOS> ScrollingTreeFrameScrollingNodeRem
 }
 
 ScrollingTreeFrameScrollingNodeRemoteIOS::ScrollingTreeFrameScrollingNodeRemoteIOS(ScrollingTree& scrollingTree, ScrollingNodeType nodeType, ScrollingNodeID nodeID)
-    : ScrollingTreeFrameScrollingNodeIOS(scrollingTree, nodeType, nodeID)
+    : ScrollingTreeFrameScrollingNode(scrollingTree, nodeType, nodeID)
 {
 }
 
@@ -50,11 +52,22 @@ ScrollingTreeFrameScrollingNodeRemoteIOS::~ScrollingTreeFrameScrollingNodeRemote
 
 void ScrollingTreeFrameScrollingNodeRemoteIOS::commitStateBeforeChildren(const ScrollingStateNode& stateNode)
 {
-    ScrollingTreeFrameScrollingNodeIOS::commitStateBeforeChildren(stateNode);
+    ScrollingTreeFrameScrollingNode::commitStateBeforeChildren(stateNode);
+    
+    const auto& scrollingStateNode = downcast<ScrollingStateFrameScrollingNode>(stateNode);
+
+    if (scrollingStateNode.hasChangedProperty(ScrollingStateFrameScrollingNode::CounterScrollingLayer))
+        m_counterScrollingLayer = scrollingStateNode.counterScrollingLayer();
+
+    if (scrollingStateNode.hasChangedProperty(ScrollingStateFrameScrollingNode::HeaderLayer))
+        m_headerLayer = scrollingStateNode.headerLayer();
+
+    if (scrollingStateNode.hasChangedProperty(ScrollingStateFrameScrollingNode::FooterLayer))
+        m_footerLayer = scrollingStateNode.footerLayer();
 
     if (stateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollContainerLayer)) {
         if (scrollContainerLayer())
-            m_scrollingNodeDelegate = std::make_unique<ScrollingTreeScrollingNodeDelegateIOS>(*this);
+            m_scrollingNodeDelegate = makeUnique<ScrollingTreeScrollingNodeDelegateIOS>(*this);
         else
             m_scrollingNodeDelegate = nullptr;
     }
@@ -65,47 +78,71 @@ void ScrollingTreeFrameScrollingNodeRemoteIOS::commitStateBeforeChildren(const S
 
 void ScrollingTreeFrameScrollingNodeRemoteIOS::commitStateAfterChildren(const ScrollingStateNode& stateNode)
 {
-    ScrollingTreeFrameScrollingNodeIOS::commitStateAfterChildren(stateNode);
+    ScrollingTreeFrameScrollingNode::commitStateAfterChildren(stateNode);
 
-    if (m_scrollingNodeDelegate)
-        m_scrollingNodeDelegate->commitStateAfterChildren(downcast<ScrollingStateScrollingNode>(stateNode));
-}
+    const auto& scrollingStateNode = downcast<ScrollingStateFrameScrollingNode>(stateNode);
 
-void ScrollingTreeFrameScrollingNodeRemoteIOS::updateLayersAfterAncestorChange(const ScrollingTreeNode& changedNode, const FloatRect& fixedPositionRect, const FloatSize& cumulativeDelta)
-{
     if (m_scrollingNodeDelegate) {
-        m_scrollingNodeDelegate->updateLayersAfterAncestorChange(changedNode, fixedPositionRect, cumulativeDelta);
+        m_scrollingNodeDelegate->commitStateAfterChildren(scrollingStateNode);
         return;
     }
-    ScrollingTreeFrameScrollingNodeIOS::updateLayersAfterAncestorChange(changedNode, fixedPositionRect, cumulativeDelta);
+
+    // Update the scroll position after child nodes have been updated, because they need to have updated their constraints before any scrolling happens.
+    if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::RequestedScrollPosition)) {
+        auto scrollType = scrollingStateNode.requestedScrollPositionRepresentsProgrammaticScroll() ? ScrollType::Programmatic : ScrollType::User;
+        scrollTo(scrollingStateNode.requestedScrollPosition(), scrollType);
+    }
 }
 
-FloatPoint ScrollingTreeFrameScrollingNodeRemoteIOS::scrollPosition() const
+FloatPoint ScrollingTreeFrameScrollingNodeRemoteIOS::minimumScrollPosition() const
 {
-    if (m_scrollingNodeDelegate)
-        return m_scrollingNodeDelegate->scrollPosition();
+    FloatPoint position = ScrollableArea::scrollPositionFromOffset(FloatPoint(), toFloatSize(scrollOrigin()));
+    
+    if (isRootNode() && scrollingTree().scrollPinningBehavior() == PinToBottom)
+        position.setY(maximumScrollPosition().y());
 
-    return ScrollingTreeFrameScrollingNodeIOS::scrollPosition();
+    return position;
 }
 
-void ScrollingTreeFrameScrollingNodeRemoteIOS::setScrollLayerPosition(const FloatPoint& scrollPosition, const FloatRect& layoutViewport)
+FloatPoint ScrollingTreeFrameScrollingNodeRemoteIOS::maximumScrollPosition() const
+{
+    FloatPoint position = ScrollableArea::scrollPositionFromOffset(FloatPoint(totalContentsSizeForRubberBand() - scrollableAreaSize()), toFloatSize(scrollOrigin()));
+    position = position.expandedTo(FloatPoint());
+
+    if (isRootNode() && scrollingTree().scrollPinningBehavior() == PinToTop)
+        position.setY(minimumScrollPosition().y());
+
+    return position;
+}
+
+void ScrollingTreeFrameScrollingNodeRemoteIOS::repositionScrollingLayers()
 {
     if (m_scrollingNodeDelegate) {
-        m_scrollingNodeDelegate->setScrollLayerPosition(scrollPosition);
+        m_scrollingNodeDelegate->repositionScrollingLayers();
         return;
     }
-    ScrollingTreeFrameScrollingNodeIOS::setScrollLayerPosition(scrollPosition, layoutViewport);
+
+    // Main frame scrolling is handled by the main UIScrollView.
 }
 
-void ScrollingTreeFrameScrollingNodeRemoteIOS::updateLayersAfterDelegatedScroll(const FloatPoint& scrollPosition)
+void ScrollingTreeFrameScrollingNodeRemoteIOS::repositionRelatedLayers()
 {
-    if (m_scrollingNodeDelegate) {
-        m_scrollingNodeDelegate->updateChildNodesAfterScroll(scrollPosition);
-        return;
+    auto layoutViewport = this->layoutViewport();
+
+    [m_counterScrollingLayer setPosition:layoutViewport.location()];
+
+    // FIXME: I don' think we never have headers and footers on iOS.
+    if (m_headerLayer || m_footerLayer) {
+        // Generally the banners should have the same horizontal-position computation as a fixed element. However,
+        // the banners are not affected by the frameScaleFactor(), so if there is currently a non-1 frameScaleFactor()
+        // then we should recompute scrollPositionForFixedChildren for the banner with a scale factor of 1.
+        if (m_headerLayer)
+            [m_headerLayer setPosition:FloatPoint(layoutViewport.x(), 0)];
+
+        if (m_footerLayer)
+            [m_footerLayer setPosition:FloatPoint(layoutViewport.x(), totalContentsSize().height() - footerHeight())];
     }
-    ScrollingTreeFrameScrollingNodeIOS::updateLayersAfterDelegatedScroll(scrollPosition);
 }
 
 }
-
 #endif

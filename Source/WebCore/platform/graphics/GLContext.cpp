@@ -29,7 +29,6 @@
 #if USE(LIBEPOXY)
 #include <epoxy/gl.h>
 #elif USE(OPENGL_ES)
-#define GL_GLEXT_PROTOTYPES 1
 #include <GLES2/gl2.h>
 #endif
 
@@ -91,8 +90,10 @@ std::unique_ptr<GLContext> GLContext::createContextForWindow(GLNativeWindowType 
 #endif
 
 #if USE(GLX)
-    if (auto glxContext = GLContextGLX::createContext(windowHandle, display))
-        return glxContext;
+    if (display.type() == PlatformDisplay::Type::X11) {
+        if (auto glxContext = GLContextGLX::createContext(windowHandle, display))
+            return glxContext;
+    }
 #endif
 #if USE(EGL)
     if (auto eglContext = GLContextEGL::createContext(windowHandle, display))

@@ -31,6 +31,7 @@
 #include "Connection.h"
 #include "DataReference.h"
 #include "DownloadManager.h"
+#include "DownloadMonitor.h"
 #include "DownloadProxyMessages.h"
 #include "Logging.h"
 #include "NetworkDataTask.h"
@@ -85,6 +86,12 @@ Download::~Download()
 
 void Download::cancel()
 {
+    RELEASE_ASSERT(isMainThread());
+
+    if (m_wasCanceled)
+        return;
+    m_wasCanceled = true;
+
     if (m_download) {
         m_download->cancel();
         didCancel({ });
@@ -114,6 +121,8 @@ void Download::didReceiveData(uint64_t length)
         RELEASE_LOG_IF_ALLOWED("didReceiveData: Started receiving data (id = %" PRIu64 ")", downloadID().downloadID());
         m_hasReceivedData = true;
     }
+    
+    m_monitor.downloadReceivedBytes(length);
 
     send(Messages::DownloadProxy::DidReceiveData(length));
 }
@@ -129,7 +138,7 @@ void Download::didFinish()
         m_sandboxExtension = nullptr;
     }
 
-    m_downloadManager.downloadFinished(this);
+    m_downloadManager.downloadFinished(*this);
 }
 
 void Download::didFail(const ResourceError& error, const IPC::DataReference& resumeData)
@@ -143,7 +152,7 @@ void Download::didFail(const ResourceError& error, const IPC::DataReference& res
         m_sandboxExtension->revoke();
         m_sandboxExtension = nullptr;
     }
-    m_downloadManager.downloadFinished(this);
+    m_downloadManager.downloadFinished(*this);
 }
 
 void Download::didCancel(const IPC::DataReference& resumeData)
@@ -156,7 +165,7 @@ void Download::didCancel(const IPC::DataReference& resumeData)
         m_sandboxExtension->revoke();
         m_sandboxExtension = nullptr;
     }
-    m_downloadManager.downloadFinished(this);
+    m_downloadManager.downloadFinished(*this);
 }
 
 IPC::Connection* Download::messageSenderConnection() const

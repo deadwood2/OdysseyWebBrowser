@@ -134,6 +134,8 @@ void ViewGestureController::gestureEventWasNotHandledByWebCore(NSEvent *event, F
 
 void ViewGestureController::handleMagnificationGestureEvent(NSEvent *event, FloatPoint origin)
 {
+    origin.setY(origin.y() - m_webPageProxy.topContentInset());
+
     ASSERT(m_activeGestureType == ViewGestureType::None || m_activeGestureType == ViewGestureType::Magnification);
 
     if (m_activeGestureType == ViewGestureType::None) {
@@ -544,10 +546,10 @@ void ViewGestureController::handleSwipeGesture(WebBackForwardListItem* targetIte
 {
     ASSERT(m_activeGestureType == ViewGestureType::Swipe);
 
-    bool swipingLeft = isPhysicallySwipingLeft(direction);
-
     if (!m_webPageProxy.drawingArea())
         return;
+
+    bool swipingLeft = isPhysicallySwipingLeft(direction);
 
     double width;
     if (!m_customSwipeViews.isEmpty())

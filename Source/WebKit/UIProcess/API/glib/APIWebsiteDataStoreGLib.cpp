@@ -42,7 +42,7 @@ WTF::String WebsiteDataStore::defaultApplicationCacheDirectory()
     return cacheDirectoryFileSystemRepresentation(BASE_DIRECTORY G_DIR_SEPARATOR_S "applications");
 }
 
-// FIXME: The other directories in this file are shared between all applications using WebKitGTK+.
+// FIXME: The other directories in this file are shared between all applications using WebKitGTK.
 // Why is only this directory namespaced to a particular application?
 WTF::String WebsiteDataStore::defaultNetworkCacheDirectory()
 {
@@ -82,6 +82,11 @@ String WebsiteDataStore::defaultDeviceIdHashSaltsStorageDirectory()
 WTF::String WebsiteDataStore::defaultWebSQLDatabaseDirectory()
 {
     return websiteDataDirectoryFileSystemRepresentation(BASE_DIRECTORY G_DIR_SEPARATOR_S "databases");
+}
+
+WTF::String WebsiteDataStore::defaultHSTSDirectory()
+{
+    return websiteDataDirectoryFileSystemRepresentation(BASE_DIRECTORY G_DIR_SEPARATOR_S);
 }
 
 WTF::String WebsiteDataStore::defaultResourceLoadStatisticsDirectory()
@@ -177,23 +182,4 @@ WTF::String WebsiteDataStore::legacyDefaultJavaScriptConfigurationDirectory()
     return FileSystem::stringFromFileSystemRepresentation(javaScriptCoreConfigDirectory.get());
 }
 
-Ref<WebKit::WebsiteDataStoreConfiguration> WebsiteDataStore::defaultDataStoreConfiguration()
-{
-    auto configuration = WebKit::WebsiteDataStoreConfiguration::create();
-
-    configuration->setApplicationCacheDirectory(defaultApplicationCacheDirectory());
-    configuration->setNetworkCacheDirectory(defaultNetworkCacheDirectory());
-
-    configuration->setIndexedDBDatabaseDirectory(defaultIndexedDBDatabaseDirectory());
-    configuration->setServiceWorkerRegistrationDirectory(defaultServiceWorkerRegistrationDirectory());
-    configuration->setWebSQLDatabaseDirectory(defaultWebSQLDatabaseDirectory());
-    configuration->setLocalStorageDirectory(defaultLocalStorageDirectory());
-    configuration->setMediaKeysStorageDirectory(defaultMediaKeysStorageDirectory());
-    configuration->setResourceLoadStatisticsDirectory(defaultResourceLoadStatisticsDirectory());
-    configuration->setDeviceIdHashSaltsStorageDirectory(defaultDeviceIdHashSaltsStorageDirectory());
-
-    return configuration;
-}
-
 } // namespace API
-

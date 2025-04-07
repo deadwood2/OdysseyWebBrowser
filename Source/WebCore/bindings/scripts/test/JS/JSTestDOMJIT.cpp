@@ -42,7 +42,7 @@
 #include "JSNodeList.h"
 #include "ScriptExecutionContext.h"
 #include <JavaScriptCore/FrameTracers.h>
-#include <JavaScriptCore/HeapSnapshotBuilder.h>
+#include <JavaScriptCore/HeapAnalyzer.h>
 #include <JavaScriptCore/JSCInlines.h>
 #include <wtf/GetPtr.h>
 #include <wtf/PointerPreparations.h>
@@ -55,15 +55,15 @@ using namespace JSC;
 // Functions
 
 JSC::EncodedJSValue JSC_HOST_CALL jsTestDOMJITPrototypeFunctionGetAttribute(JSC::ExecState*);
-JSC::EncodedJSValue JIT_OPERATION unsafeJsTestDOMJITPrototypeFunctionGetAttribute(JSC::ExecState*, JSTestDOMJIT*, DOMJIT::IDLJSArgumentType<IDLDOMString>);
+JSC::EncodedJSValue JIT_OPERATION jsTestDOMJITPrototypeFunctionGetAttributeWithoutTypeCheck(JSC::ExecState*, JSTestDOMJIT*, DOMJIT::IDLJSArgumentType<IDLDOMString>);
 JSC::EncodedJSValue JSC_HOST_CALL jsTestDOMJITPrototypeFunctionItem(JSC::ExecState*);
-JSC::EncodedJSValue JIT_OPERATION unsafeJsTestDOMJITPrototypeFunctionItem(JSC::ExecState*, JSTestDOMJIT*, DOMJIT::IDLJSArgumentType<IDLUnsignedShort>, DOMJIT::IDLJSArgumentType<IDLUnsignedShort>);
+JSC::EncodedJSValue JIT_OPERATION jsTestDOMJITPrototypeFunctionItemWithoutTypeCheck(JSC::ExecState*, JSTestDOMJIT*, DOMJIT::IDLJSArgumentType<IDLUnsignedShort>, DOMJIT::IDLJSArgumentType<IDLUnsignedShort>);
 JSC::EncodedJSValue JSC_HOST_CALL jsTestDOMJITPrototypeFunctionHasAttribute(JSC::ExecState*);
-JSC::EncodedJSValue JIT_OPERATION unsafeJsTestDOMJITPrototypeFunctionHasAttribute(JSC::ExecState*, JSTestDOMJIT*);
+JSC::EncodedJSValue JIT_OPERATION jsTestDOMJITPrototypeFunctionHasAttributeWithoutTypeCheck(JSC::ExecState*, JSTestDOMJIT*);
 JSC::EncodedJSValue JSC_HOST_CALL jsTestDOMJITPrototypeFunctionGetElementById(JSC::ExecState*);
-JSC::EncodedJSValue JIT_OPERATION unsafeJsTestDOMJITPrototypeFunctionGetElementById(JSC::ExecState*, JSTestDOMJIT*, DOMJIT::IDLJSArgumentType<IDLRequiresExistingAtomicStringAdaptor<IDLDOMString>>);
+JSC::EncodedJSValue JIT_OPERATION jsTestDOMJITPrototypeFunctionGetElementByIdWithoutTypeCheck(JSC::ExecState*, JSTestDOMJIT*, DOMJIT::IDLJSArgumentType<IDLRequiresExistingAtomStringAdaptor<IDLDOMString>>);
 JSC::EncodedJSValue JSC_HOST_CALL jsTestDOMJITPrototypeFunctionGetElementsByName(JSC::ExecState*);
-JSC::EncodedJSValue JIT_OPERATION unsafeJsTestDOMJITPrototypeFunctionGetElementsByName(JSC::ExecState*, JSTestDOMJIT*, DOMJIT::IDLJSArgumentType<IDLAtomicStringAdaptor<IDLDOMString>>);
+JSC::EncodedJSValue JIT_OPERATION jsTestDOMJITPrototypeFunctionGetElementsByNameWithoutTypeCheck(JSC::ExecState*, JSTestDOMJIT*, DOMJIT::IDLJSArgumentType<IDLAtomStringAdaptor<IDLDOMString>>);
 
 // Attributes
 
@@ -105,15 +105,15 @@ JSC::EncodedJSValue jsTestDOMJITByteStringNullableAttr(JSC::ExecState*, JSC::Enc
 JSC::EncodedJSValue jsTestDOMJITUsvStringNullableAttr(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
 JSC::EncodedJSValue jsTestDOMJITNodeNullableAttr(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
 
-static const JSC::DOMJIT::Signature DOMJITSignatureForTestDOMJITGetAttribute((uintptr_t)unsafeJsTestDOMJITPrototypeFunctionGetAttribute, JSTestDOMJIT::info(), JSC::DOMJIT::Effect::forRead(DOMJIT::AbstractHeapRepository::DOM), DOMJIT::IDLResultTypeFilter<IDLNullable<IDLDOMString>>::value, DOMJIT::IDLArgumentTypeFilter<IDLDOMString>::value);
+static const JSC::DOMJIT::Signature DOMJITSignatureForTestDOMJITGetAttribute(jsTestDOMJITPrototypeFunctionGetAttributeWithoutTypeCheck, JSTestDOMJIT::info(), JSC::DOMJIT::Effect::forRead(DOMJIT::AbstractHeapRepository::DOM), DOMJIT::IDLResultTypeFilter<IDLNullable<IDLDOMString>>::value, DOMJIT::IDLArgumentTypeFilter<IDLDOMString>::value);
 
-static const JSC::DOMJIT::Signature DOMJITSignatureForTestDOMJITItem((uintptr_t)unsafeJsTestDOMJITPrototypeFunctionItem, JSTestDOMJIT::info(), JSC::DOMJIT::Effect::forRead(DOMJIT::AbstractHeapRepository::DOM), DOMJIT::IDLResultTypeFilter<IDLDOMString>::value, DOMJIT::IDLArgumentTypeFilter<IDLUnsignedShort>::value, DOMJIT::IDLArgumentTypeFilter<IDLUnsignedShort>::value);
+static const JSC::DOMJIT::Signature DOMJITSignatureForTestDOMJITItem(jsTestDOMJITPrototypeFunctionItemWithoutTypeCheck, JSTestDOMJIT::info(), JSC::DOMJIT::Effect::forRead(DOMJIT::AbstractHeapRepository::DOM), DOMJIT::IDLResultTypeFilter<IDLDOMString>::value, DOMJIT::IDLArgumentTypeFilter<IDLUnsignedShort>::value, DOMJIT::IDLArgumentTypeFilter<IDLUnsignedShort>::value);
 
-static const JSC::DOMJIT::Signature DOMJITSignatureForTestDOMJITHasAttribute((uintptr_t)unsafeJsTestDOMJITPrototypeFunctionHasAttribute, JSTestDOMJIT::info(), JSC::DOMJIT::Effect::forRead(DOMJIT::AbstractHeapRepository::DOM), DOMJIT::IDLResultTypeFilter<IDLBoolean>::value);
+static const JSC::DOMJIT::Signature DOMJITSignatureForTestDOMJITHasAttribute(jsTestDOMJITPrototypeFunctionHasAttributeWithoutTypeCheck, JSTestDOMJIT::info(), JSC::DOMJIT::Effect::forRead(DOMJIT::AbstractHeapRepository::DOM), DOMJIT::IDLResultTypeFilter<IDLBoolean>::value);
 
-static const JSC::DOMJIT::Signature DOMJITSignatureForTestDOMJITGetElementById((uintptr_t)unsafeJsTestDOMJITPrototypeFunctionGetElementById, JSTestDOMJIT::info(), JSC::DOMJIT::Effect::forRead(DOMJIT::AbstractHeapRepository::DOM), DOMJIT::IDLResultTypeFilter<IDLInterface<Element>>::value, DOMJIT::IDLArgumentTypeFilter<IDLRequiresExistingAtomicStringAdaptor<IDLDOMString>>::value);
+static const JSC::DOMJIT::Signature DOMJITSignatureForTestDOMJITGetElementById(jsTestDOMJITPrototypeFunctionGetElementByIdWithoutTypeCheck, JSTestDOMJIT::info(), JSC::DOMJIT::Effect::forRead(DOMJIT::AbstractHeapRepository::DOM), DOMJIT::IDLResultTypeFilter<IDLInterface<Element>>::value, DOMJIT::IDLArgumentTypeFilter<IDLRequiresExistingAtomStringAdaptor<IDLDOMString>>::value);
 
-static const JSC::DOMJIT::Signature DOMJITSignatureForTestDOMJITGetElementsByName((uintptr_t)unsafeJsTestDOMJITPrototypeFunctionGetElementsByName, JSTestDOMJIT::info(), JSC::DOMJIT::Effect::forRead(DOMJIT::AbstractHeapRepository::DOM), DOMJIT::IDLResultTypeFilter<IDLInterface<NodeList>>::value, DOMJIT::IDLArgumentTypeFilter<IDLAtomicStringAdaptor<IDLDOMString>>::value);
+static const JSC::DOMJIT::Signature DOMJITSignatureForTestDOMJITGetElementsByName(jsTestDOMJITPrototypeFunctionGetElementsByNameWithoutTypeCheck, JSTestDOMJIT::info(), JSC::DOMJIT::Effect::forRead(DOMJIT::AbstractHeapRepository::DOM), DOMJIT::IDLResultTypeFilter<IDLInterface<NodeList>>::value, DOMJIT::IDLArgumentTypeFilter<IDLAtomStringAdaptor<IDLDOMString>>::value);
 
 static const JSC::DOMJIT::GetterSetter DOMJITAttributeForTestDOMJITAnyAttr {
     jsTestDOMJITAnyAttr,
@@ -500,7 +500,7 @@ template<> JSValue JSTestDOMJITConstructor::prototypeForStructure(JSC::VM& vm, c
 template<> void JSTestDOMJITConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
     putDirect(vm, vm.propertyNames->prototype, JSTestDOMJIT::prototype(vm, globalObject), JSC::PropertyAttribute::DontDelete | JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
-    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String("TestDOMJIT"_s)), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, String("TestDOMJIT"_s)), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
 
@@ -1130,11 +1130,11 @@ EncodedJSValue JSC_HOST_CALL jsTestDOMJITPrototypeFunctionGetAttribute(ExecState
     return IDLOperation<JSTestDOMJIT>::call<jsTestDOMJITPrototypeFunctionGetAttributeBody>(*state, "getAttribute");
 }
 
-JSC::EncodedJSValue JIT_OPERATION unsafeJsTestDOMJITPrototypeFunctionGetAttribute(JSC::ExecState* state, JSTestDOMJIT* castedThis, DOMJIT::IDLJSArgumentType<IDLDOMString> encodedName)
+JSC::EncodedJSValue JIT_OPERATION jsTestDOMJITPrototypeFunctionGetAttributeWithoutTypeCheck(JSC::ExecState* state, JSTestDOMJIT* castedThis, DOMJIT::IDLJSArgumentType<IDLDOMString> encodedName)
 {
     UNUSED_PARAM(state);
     VM& vm = state->vm();
-    JSC::NativeCallFrameTracer tracer(&vm, state);
+    JSC::NativeCallFrameTracer tracer(vm, state);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     auto& impl = castedThis->wrapped();
@@ -1162,11 +1162,11 @@ EncodedJSValue JSC_HOST_CALL jsTestDOMJITPrototypeFunctionItem(ExecState* state)
     return IDLOperation<JSTestDOMJIT>::call<jsTestDOMJITPrototypeFunctionItemBody>(*state, "item");
 }
 
-JSC::EncodedJSValue JIT_OPERATION unsafeJsTestDOMJITPrototypeFunctionItem(JSC::ExecState* state, JSTestDOMJIT* castedThis, DOMJIT::IDLJSArgumentType<IDLUnsignedShort> encodedX, DOMJIT::IDLJSArgumentType<IDLUnsignedShort> encodedY)
+JSC::EncodedJSValue JIT_OPERATION jsTestDOMJITPrototypeFunctionItemWithoutTypeCheck(JSC::ExecState* state, JSTestDOMJIT* castedThis, DOMJIT::IDLJSArgumentType<IDLUnsignedShort> encodedX, DOMJIT::IDLJSArgumentType<IDLUnsignedShort> encodedY)
 {
     UNUSED_PARAM(state);
     VM& vm = state->vm();
-    JSC::NativeCallFrameTracer tracer(&vm, state);
+    JSC::NativeCallFrameTracer tracer(vm, state);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     auto& impl = castedThis->wrapped();
@@ -1190,11 +1190,11 @@ EncodedJSValue JSC_HOST_CALL jsTestDOMJITPrototypeFunctionHasAttribute(ExecState
     return IDLOperation<JSTestDOMJIT>::call<jsTestDOMJITPrototypeFunctionHasAttributeBody>(*state, "hasAttribute");
 }
 
-JSC::EncodedJSValue JIT_OPERATION unsafeJsTestDOMJITPrototypeFunctionHasAttribute(JSC::ExecState* state, JSTestDOMJIT* castedThis)
+JSC::EncodedJSValue JIT_OPERATION jsTestDOMJITPrototypeFunctionHasAttributeWithoutTypeCheck(JSC::ExecState* state, JSTestDOMJIT* castedThis)
 {
     UNUSED_PARAM(state);
     VM& vm = state->vm();
-    JSC::NativeCallFrameTracer tracer(&vm, state);
+    JSC::NativeCallFrameTracer tracer(vm, state);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     auto& impl = castedThis->wrapped();
@@ -1208,7 +1208,7 @@ static inline JSC::EncodedJSValue jsTestDOMJITPrototypeFunctionGetElementByIdBod
     auto& impl = castedThis->wrapped();
     if (UNLIKELY(state->argumentCount() < 1))
         return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
-    auto elementId = convert<IDLRequiresExistingAtomicStringAdaptor<IDLDOMString>>(*state, state->uncheckedArgument(0));
+    auto elementId = convert<IDLRequiresExistingAtomStringAdaptor<IDLDOMString>>(*state, state->uncheckedArgument(0));
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
     return JSValue::encode(toJS<IDLInterface<Element>>(*state, *castedThis->globalObject(), impl.getElementById(WTFMove(elementId))));
 }
@@ -1218,15 +1218,15 @@ EncodedJSValue JSC_HOST_CALL jsTestDOMJITPrototypeFunctionGetElementById(ExecSta
     return IDLOperation<JSTestDOMJIT>::call<jsTestDOMJITPrototypeFunctionGetElementByIdBody>(*state, "getElementById");
 }
 
-JSC::EncodedJSValue JIT_OPERATION unsafeJsTestDOMJITPrototypeFunctionGetElementById(JSC::ExecState* state, JSTestDOMJIT* castedThis, DOMJIT::IDLJSArgumentType<IDLRequiresExistingAtomicStringAdaptor<IDLDOMString>> encodedElementId)
+JSC::EncodedJSValue JIT_OPERATION jsTestDOMJITPrototypeFunctionGetElementByIdWithoutTypeCheck(JSC::ExecState* state, JSTestDOMJIT* castedThis, DOMJIT::IDLJSArgumentType<IDLRequiresExistingAtomStringAdaptor<IDLDOMString>> encodedElementId)
 {
     UNUSED_PARAM(state);
     VM& vm = state->vm();
-    JSC::NativeCallFrameTracer tracer(&vm, state);
+    JSC::NativeCallFrameTracer tracer(vm, state);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     auto& impl = castedThis->wrapped();
-    auto elementId = DOMJIT::DirectConverter<IDLRequiresExistingAtomicStringAdaptor<IDLDOMString>>::directConvert(*state, encodedElementId);
+    auto elementId = DOMJIT::DirectConverter<IDLRequiresExistingAtomStringAdaptor<IDLDOMString>>::directConvert(*state, encodedElementId);
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
     return JSValue::encode(toJS<IDLInterface<Element>>(*state, *castedThis->globalObject(), impl.getElementById(WTFMove(elementId))));
 }
@@ -1238,7 +1238,7 @@ static inline JSC::EncodedJSValue jsTestDOMJITPrototypeFunctionGetElementsByName
     auto& impl = castedThis->wrapped();
     if (UNLIKELY(state->argumentCount() < 1))
         return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
-    auto elementName = convert<IDLAtomicStringAdaptor<IDLDOMString>>(*state, state->uncheckedArgument(0));
+    auto elementName = convert<IDLAtomStringAdaptor<IDLDOMString>>(*state, state->uncheckedArgument(0));
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
     return JSValue::encode(toJS<IDLInterface<NodeList>>(*state, *castedThis->globalObject(), impl.getElementsByName(WTFMove(elementName))));
 }
@@ -1248,26 +1248,26 @@ EncodedJSValue JSC_HOST_CALL jsTestDOMJITPrototypeFunctionGetElementsByName(Exec
     return IDLOperation<JSTestDOMJIT>::call<jsTestDOMJITPrototypeFunctionGetElementsByNameBody>(*state, "getElementsByName");
 }
 
-JSC::EncodedJSValue JIT_OPERATION unsafeJsTestDOMJITPrototypeFunctionGetElementsByName(JSC::ExecState* state, JSTestDOMJIT* castedThis, DOMJIT::IDLJSArgumentType<IDLAtomicStringAdaptor<IDLDOMString>> encodedElementName)
+JSC::EncodedJSValue JIT_OPERATION jsTestDOMJITPrototypeFunctionGetElementsByNameWithoutTypeCheck(JSC::ExecState* state, JSTestDOMJIT* castedThis, DOMJIT::IDLJSArgumentType<IDLAtomStringAdaptor<IDLDOMString>> encodedElementName)
 {
     UNUSED_PARAM(state);
     VM& vm = state->vm();
-    JSC::NativeCallFrameTracer tracer(&vm, state);
+    JSC::NativeCallFrameTracer tracer(vm, state);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     auto& impl = castedThis->wrapped();
-    auto elementName = DOMJIT::DirectConverter<IDLAtomicStringAdaptor<IDLDOMString>>::directConvert(*state, encodedElementName);
+    auto elementName = DOMJIT::DirectConverter<IDLAtomStringAdaptor<IDLDOMString>>::directConvert(*state, encodedElementName);
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
     return JSValue::encode(toJS<IDLInterface<NodeList>>(*state, *castedThis->globalObject(), impl.getElementsByName(WTFMove(elementName))));
 }
 
-void JSTestDOMJIT::heapSnapshot(JSCell* cell, HeapSnapshotBuilder& builder)
+void JSTestDOMJIT::analyzeHeap(JSCell* cell, HeapAnalyzer& analyzer)
 {
     auto* thisObject = jsCast<JSTestDOMJIT*>(cell);
-    builder.setWrappedObjectForCell(cell, &thisObject->wrapped());
+    analyzer.setWrappedObjectForCell(cell, &thisObject->wrapped());
     if (thisObject->scriptExecutionContext())
-        builder.setLabelForCell(cell, "url " + thisObject->scriptExecutionContext()->url().string());
-    Base::heapSnapshot(cell, builder);
+        analyzer.setLabelForCell(cell, "url " + thisObject->scriptExecutionContext()->url().string());
+    Base::analyzeHeap(cell, analyzer);
 }
 
 

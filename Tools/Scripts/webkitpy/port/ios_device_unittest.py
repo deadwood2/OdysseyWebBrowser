@@ -25,6 +25,7 @@ import time
 from webkitpy.common.system.outputcapture import OutputCapture
 from webkitpy.common.system.executive_mock import MockExecutive2, ScriptError
 from webkitpy.common.version import Version
+from webkitpy.port.config import clear_cached_configuration
 from webkitpy.port.ios_device import IOSDevicePort
 from webkitpy.port import ios_testcase
 from webkitpy.port import port_testcase
@@ -45,21 +46,25 @@ class IOSDeviceTest(ios_testcase.IOSTest):
         with self.assertRaises(RuntimeError):
             port.path_to_crash_logs()
 
-    def test_spindump(self):
+    def test_tailspin(self):
         def logging_run_command(args):
             print(args)
 
         port = self.make_port()
-        port.host.filesystem.files['/__im_tmp/tmp_0_/test-42-spindump.txt'] = 'Spindump file'
+        port.host.filesystem.files['/__im_tmp/tmp_0_/test-42-tailspin-temp.txt'] = 'Temporary tailspin output file'
+        port.host.filesystem.files['/__im_tmp/tmp_0_/test-42-tailspin.txt'] = 'Symbolocated tailspin file'
         port.host.executive = MockExecutive2(run_command_fn=logging_run_command)
-        expected_stdout = "['/usr/sbin/spindump', 42, 10, 10, '-file', '/__im_tmp/tmp_0_/test-42-spindump.txt']\n"
+        expected_stdout = """['/usr/bin/tailspin', 'save', '-n', '/__im_tmp/tmp_0_/test-42-tailspin-temp.txt']
+['/usr/sbin/spindump', '-i', '/__im_tmp/tmp_0_/test-42-tailspin-temp.txt', '-file', '/__im_tmp/tmp_0_/test-42-tailspin.txt', '-noBulkSymbolication']
+"""
         OutputCapture().assert_outputs(self, port.sample_process, args=['test', 42], expected_stdout=expected_stdout)
-        self.assertEqual(port.host.filesystem.files['/mock-build/layout-test-results/test-42-spindump.txt'], 'Spindump file')
-        self.assertIsNone(port.host.filesystem.files['/__im_tmp/tmp_0_/test-42-spindump.txt'])
+        self.assertEqual(port.host.filesystem.files['/mock-build/layout-test-results/test-42-tailspin.txt'], 'Symbolocated tailspin file')
+        self.assertIsNone(port.host.filesystem.files['/__im_tmp/tmp_0_/test-42-tailspin-temp.txt'])
+        self.assertIsNone(port.host.filesystem.files['/__im_tmp/tmp_0_/test-42-tailspin.txt'])
 
     def test_sample_process(self):
         def logging_run_command(args):
-            if args[0] == '/usr/sbin/spindump':
+            if args[0] == '/usr/bin/tailspin':
                 return 1
             print(args)
             return 0
@@ -74,7 +79,7 @@ class IOSDeviceTest(ios_testcase.IOSTest):
 
     def test_sample_process_exception(self):
         def throwing_run_command(args):
-            if args[0] == '/usr/sbin/spindump':
+            if args[0] == '/usr/bin/tailspin':
                 return 1
             raise ScriptError('MOCK script error')
 
@@ -91,18 +96,18 @@ class IOSDeviceTest(ios_testcase.IOSTest):
             search_path = self.make_port().default_baseline_search_path()
 
         self.assertEqual(search_path, [
-            '/additional_testing_path/ios-device-add-ios11-wk1',
-            '/mock-checkout/LayoutTests/platform/ios-device-11-wk1',
-            '/additional_testing_path/ios-device-add-ios11',
-            '/mock-checkout/LayoutTests/platform/ios-device-11',
+            '/additional_testing_path/ios-device-add-ios13-wk1',
+            '/mock-checkout/LayoutTests/platform/ios-device-13-wk1',
+            '/additional_testing_path/ios-device-add-ios13',
+            '/mock-checkout/LayoutTests/platform/ios-device-13',
             '/additional_testing_path/ios-device-wk1',
             '/mock-checkout/LayoutTests/platform/ios-device-wk1',
             '/additional_testing_path/ios-device',
             '/mock-checkout/LayoutTests/platform/ios-device',
-            '/additional_testing_path/ios-add-ios11-wk1',
-            '/mock-checkout/LayoutTests/platform/ios-11-wk1',
-            '/additional_testing_path/ios-add-ios11',
-            '/mock-checkout/LayoutTests/platform/ios-11',
+            '/additional_testing_path/ios-add-ios13-wk1',
+            '/mock-checkout/LayoutTests/platform/ios-13-wk1',
+            '/additional_testing_path/ios-add-ios13',
+            '/mock-checkout/LayoutTests/platform/ios-13',
             '/additional_testing_path/ios-wk1',
             '/mock-checkout/LayoutTests/platform/ios-wk1',
             '/additional_testing_path/ios',
@@ -110,46 +115,46 @@ class IOSDeviceTest(ios_testcase.IOSTest):
         ])
 
     def test_layout_test_searchpath_without_apple_additions(self):
-        search_path = self.make_port(port_name='ios-device-wk2', os_version=Version(12)).default_baseline_search_path()
+        search_path = self.make_port(port_name='ios-device-wk2', os_version=Version(13)).default_baseline_search_path()
 
         self.assertEqual(search_path, [
-            '/mock-checkout/LayoutTests/platform/ios-device-12-wk2',
-            '/mock-checkout/LayoutTests/platform/ios-device-12',
+            '/mock-checkout/LayoutTests/platform/ios-device-13-wk2',
+            '/mock-checkout/LayoutTests/platform/ios-device-13',
             '/mock-checkout/LayoutTests/platform/ios-device-wk2',
             '/mock-checkout/LayoutTests/platform/ios-device',
-            '/mock-checkout/LayoutTests/platform/ios-12-wk2',
-            '/mock-checkout/LayoutTests/platform/ios-12',
+            '/mock-checkout/LayoutTests/platform/ios-13-wk2',
+            '/mock-checkout/LayoutTests/platform/ios-13',
             '/mock-checkout/LayoutTests/platform/ios-wk2',
             '/mock-checkout/LayoutTests/platform/ios',
             '/mock-checkout/LayoutTests/platform/wk2',
         ])
 
     def test_layout_searchpath_wih_device_type(self):
-        search_path = self.make_port(port_name='ios-device-wk2', os_version=Version(12)).default_baseline_search_path(DeviceType.from_string('iPhone SE'))
+        search_path = self.make_port(port_name='ios-device-wk2', os_version=Version(13)).default_baseline_search_path(DeviceType.from_string('iPhone SE'))
 
         self.assertEqual(search_path, [
-            '/mock-checkout/LayoutTests/platform/iphone-se-device-12-wk2',
-            '/mock-checkout/LayoutTests/platform/iphone-se-device-12',
+            '/mock-checkout/LayoutTests/platform/iphone-se-device-13-wk2',
+            '/mock-checkout/LayoutTests/platform/iphone-se-device-13',
             '/mock-checkout/LayoutTests/platform/iphone-se-device-wk2',
             '/mock-checkout/LayoutTests/platform/iphone-se-device',
-            '/mock-checkout/LayoutTests/platform/iphone-device-12-wk2',
-            '/mock-checkout/LayoutTests/platform/iphone-device-12',
+            '/mock-checkout/LayoutTests/platform/iphone-device-13-wk2',
+            '/mock-checkout/LayoutTests/platform/iphone-device-13',
             '/mock-checkout/LayoutTests/platform/iphone-device-wk2',
             '/mock-checkout/LayoutTests/platform/iphone-device',
-            '/mock-checkout/LayoutTests/platform/ios-device-12-wk2',
-            '/mock-checkout/LayoutTests/platform/ios-device-12',
+            '/mock-checkout/LayoutTests/platform/ios-device-13-wk2',
+            '/mock-checkout/LayoutTests/platform/ios-device-13',
             '/mock-checkout/LayoutTests/platform/ios-device-wk2',
             '/mock-checkout/LayoutTests/platform/ios-device',
-            '/mock-checkout/LayoutTests/platform/iphone-se-12-wk2',
-            '/mock-checkout/LayoutTests/platform/iphone-se-12',
+            '/mock-checkout/LayoutTests/platform/iphone-se-13-wk2',
+            '/mock-checkout/LayoutTests/platform/iphone-se-13',
             '/mock-checkout/LayoutTests/platform/iphone-se-wk2',
             '/mock-checkout/LayoutTests/platform/iphone-se',
-            '/mock-checkout/LayoutTests/platform/iphone-12-wk2',
-            '/mock-checkout/LayoutTests/platform/iphone-12',
+            '/mock-checkout/LayoutTests/platform/iphone-13-wk2',
+            '/mock-checkout/LayoutTests/platform/iphone-13',
             '/mock-checkout/LayoutTests/platform/iphone-wk2',
             '/mock-checkout/LayoutTests/platform/iphone',
-            '/mock-checkout/LayoutTests/platform/ios-12-wk2',
-            '/mock-checkout/LayoutTests/platform/ios-12',
+            '/mock-checkout/LayoutTests/platform/ios-13-wk2',
+            '/mock-checkout/LayoutTests/platform/ios-13',
             '/mock-checkout/LayoutTests/platform/ios-wk2',
             '/mock-checkout/LayoutTests/platform/ios',
             '/mock-checkout/LayoutTests/platform/wk2',
@@ -157,3 +162,13 @@ class IOSDeviceTest(ios_testcase.IOSTest):
 
     def test_max_child_processes(self):
         pass
+
+    def test_default_upload_configuration(self):
+        clear_cached_configuration()
+        port = self.make_port()
+        configuration = port.configuration_for_upload()
+        self.assertEqual(configuration['architecture'], port.architecture())
+        self.assertEqual(configuration['is_simulator'], False)
+        self.assertEqual(configuration['platform'], port.host.platform.os_name)
+        self.assertEqual(configuration['style'], 'release')
+        self.assertEqual(configuration['version_name'], 'iOS {}'.format(port.device_version()))

@@ -302,6 +302,16 @@ JSContextGroupRef getGroupFromVirtualMachine(JSVirtualMachine *virtualMachine)
     return *toJS(m_group);
 }
 
+- (BOOL)isWebThreadAware
+{
+    return [self vm].apiLock().isWebThreadAware();
+}
+
++ (void)setCrashOnVMCreation:(BOOL)shouldCrash
+{
+    JSC::VM::setCrashOnVMCreation(shouldCrash);
+}
+
 @end
 
 static void scanExternalObjectGraph(JSC::VM& vm, JSC::SlotVisitor& visitor, void* root, bool lockAcquired)

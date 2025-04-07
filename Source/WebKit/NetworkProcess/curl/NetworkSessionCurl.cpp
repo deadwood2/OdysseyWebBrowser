@@ -38,11 +38,11 @@ namespace WebKit {
 using namespace WebCore;
 
 NetworkSessionCurl::NetworkSessionCurl(NetworkProcess& networkProcess, NetworkSessionCreationParameters&& parameters)
-    : NetworkSession(networkProcess, parameters.sessionID)
+    : NetworkSession(networkProcess, parameters)
 {
     if (!parameters.cookiePersistentStorageFile.isEmpty())
-        networkStorageSession().setCookieDatabase(makeUniqueRef<CookieJarDB>(parameters.cookiePersistentStorageFile));
-    networkStorageSession().setProxySettings(WTFMove(parameters.proxySettings));
+        networkStorageSession()->setCookieDatabase(makeUniqueRef<CookieJarDB>(parameters.cookiePersistentStorageFile));
+    networkStorageSession()->setProxySettings(WTFMove(parameters.proxySettings));
 }
 
 NetworkSessionCurl::~NetworkSessionCurl()

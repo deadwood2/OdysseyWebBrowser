@@ -42,6 +42,7 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
 
         this._initialState = null;
         this._updatesInProgressCount = 0;
+        this._pendingPropertiesChanged = false;
         this._locked = false;
         this._pendingProperties = [];
         this._propertyNameMap = {};
@@ -60,6 +61,14 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
     get id()
     {
         return this._id;
+    }
+
+    get stringId()
+    {
+        if (this._id)
+            return this._id.styleSheetId + "/" + this._id.ordinal;
+        else
+            return "";
     }
 
     get ownerStyleSheet()
@@ -115,7 +124,7 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
         //                                  ^
         //                                  update only happens here
         if (this._updatesInProgressCount > 0 && !options.forceUpdate) {
-            if (WI.settings.enableStyleEditingDebugMode.value && text !== this._text)
+            if (WI.isDebugUIEnabled() && WI.settings.debugEnableStyleEditingDebugMode.value && text !== this._text)
                 console.warn("Style modified while editing:", text);
 
             return;
@@ -175,8 +184,10 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
 
         // Don't fire the event if text hasn't changed. However, it should still fire for Computed style declarations
         // because it never has text.
-        if (oldText === this._text && this._type !== WI.CSSStyleDeclaration.Type.Computed)
+        if (oldText === this._text && !this._pendingPropertiesChanged && this._type !== WI.CSSStyleDeclaration.Type.Computed)
             return;
+
+        this._pendingPropertiesChanged = false;
 
         function delayed()
         {
@@ -229,6 +240,7 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
             clearTimeout(timeoutId);
             timeoutId = null;
             this._updatesInProgressCount = Math.max(0, this._updatesInProgressCount - 1);
+            this._pendingPropertiesChanged = true;
         };
 
         this._nodeStyles.changeStyleText(this, text, styleTextDidChange);
@@ -275,10 +287,10 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
         return this._styleSheetTextRange;
     }
 
-    get mediaList()
+    get groupings()
     {
         if (this._ownerRule)
-            return this._ownerRule.mediaList;
+            return this._ownerRule.groupings;
         return [];
     }
 
@@ -336,6 +348,62 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
         return newProperty;
     }
 
+    resolveVariableValue(text)
+    {
+        const invalid = Symbol("invalid");
+
+        let checkTokens = (tokens) => {
+            let startIndex = NaN;
+            let openParenthesis = 0;
+            for (let i = 0; i < tokens.length; i++) {
+                let token = tokens[i];
+                if (token.value === "var" && token.type && token.type.includes("atom")) {
+                    if (isNaN(startIndex)) {
+                        startIndex = i;
+                        openParenthesis = 0;
+                    }
+                    continue;
+                }
+
+                if (isNaN(startIndex))
+                    continue;
+
+                if (token.value === "(") {
+                    ++openParenthesis;
+                    continue;
+                }
+
+                if (token.value === ")") {
+                    --openParenthesis;
+                    if (openParenthesis > 0)
+                        continue;
+
+                    let variableTokens = tokens.slice(startIndex, i + 1);
+                    startIndex = NaN;
+
+                    let variableNameIndex = variableTokens.findIndex((token) => token.value.startsWith("--") && /\bvariable-2\b/.test(token.type));
+                    if (variableNameIndex === -1)
+                        continue;
+
+                    let variableProperty = this.propertyForName(variableTokens[variableNameIndex].value, true);
+                    if (variableProperty)
+                        return variableProperty.value.trim();
+
+                    let fallbackStartIndex = variableTokens.findIndex((value, j) => j > variableNameIndex + 1 && /\bm-css\b/.test(value.type));
+                    if (fallbackStartIndex === -1)
+                        return invalid;
+
+                    let fallbackTokens = variableTokens.slice(fallbackStartIndex, i);
+                    return checkTokens(fallbackTokens) || fallbackTokens.reduce((accumulator, token) => accumulator + token.value, "").trim();
+                }
+            }
+            return null;
+        };
+
+        let resolved = checkTokens(WI.tokenizeCSSValue(text));
+        return resolved === invalid ? null : resolved;
+    }
+
     newBlankProperty(propertyIndex)
     {
         let text, name, value, priority, overridden, implicit, anonymous;
@@ -357,25 +425,24 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
 
     markModified()
     {
-        let properties = this._initialState ? this._initialState.properties : this._properties;
-
         if (!this._initialState) {
+            let visibleProperties = this.visibleProperties.map((property) => {
+                return property.clone();
+            });
+
             this._initialState = new WI.CSSStyleDeclaration(
-                    this._nodeStyles,
-                    this._ownerStyleSheet,
-                    this._id,
-                    this._type,
-                    this._node,
-                    this._inherited,
-                    this._text,
-                    [], // Passing CSS properties here would change their ownerStyle.
-                    this._styleSheetTextRange);
+                this._nodeStyles,
+                this._ownerStyleSheet,
+                this._id,
+                this._type,
+                this._node,
+                this._inherited,
+                this._text,
+                visibleProperties,
+                this._styleSheetTextRange);
         }
 
-        this._initialState.properties = properties.map((property) => { return property.initialState || property });
-
-        if (this._ownerRule)
-            this._ownerRule.markModified();
+        WI.cssManager.addModifiedStyle(this);
     }
 
     shiftPropertiesAfter(cssProperty, lineDelta, columnDelta, propertyWasRemoved)
@@ -406,7 +473,60 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
             this._properties.splice(realIndex, 1);
 
         // Invalidate cached properties.
+        this._enabledProperties = null;
         this._visibleProperties = null;
+    }
+
+    updatePropertiesModifiedState()
+    {
+        if (!this._initialState)
+            return;
+
+        if (this._type === WI.CSSStyleDeclaration.Type.Computed)
+            return;
+
+        let initialCSSProperties = this._initialState.visibleProperties;
+        let cssProperties = this.visibleProperties;
+
+        let hasModified = false;
+
+        function onEach(cssProperty, action) {
+            if (action !== 0)
+                hasModified = true;
+
+            cssProperty.modified = action === 1;
+        }
+
+        function comparator(a, b) {
+            return a.equals(b);
+        }
+
+        Array.diffArrays(initialCSSProperties, cssProperties, onEach, comparator);
+
+        if (!hasModified)
+            WI.cssManager.removeModifiedStyle(this);
+    }
+
+    generateCSSRuleString()
+    {
+        let indentString = WI.indentString();
+        let styleText = "";
+        let groupings = this.groupings.filter((grouping) => grouping.text !== "all");
+        let groupingsCount = groupings.length;
+        for (let i = groupingsCount - 1; i >= 0; --i)
+            styleText += indentString.repeat(groupingsCount - i - 1) + groupings[i].prefix + " " + groupings[i].text + " {\n";
+
+        styleText += indentString.repeat(groupingsCount) + this.selectorText + " {\n";
+
+        for (let property of (this._styleSheetTextRange ? this.visibleProperties : this._properties))
+            styleText += indentString.repeat(groupingsCount + 1) + property.formattedText + "\n";
+
+        for (let i = groupingsCount; i > 0; --i)
+            styleText += indentString.repeat(i) + "}\n";
+
+        styleText += "}";
+
+        return styleText;
     }
 
     // Protected

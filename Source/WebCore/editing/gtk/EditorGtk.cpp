@@ -66,10 +66,10 @@ static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pas
             return CAIRO_STATUS_SUCCESS;
         }, &buffer);
         if (status == CAIRO_STATUS_SUCCESS) {
-            auto blob = Blob::create(WTFMove(buffer), "image/png");
+            auto blob = Blob::create(frame.document()->sessionID(), WTFMove(buffer), "image/png");
             if (!frame.document())
                 return nullptr;
-            return createFragmentForImageAndURL(*frame.document(), DOMURL::createObjectURL(*frame.document(), blob));
+            return createFragmentForImageAndURL(*frame.document(), DOMURL::createObjectURL(*frame.document(), blob), { });
         }
     }
 
@@ -103,7 +103,7 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> 
         pasteAsFragment(fragment.releaseNonNull(), canSmartReplaceWithPasteboard(*pasteboard), chosePlainText, options.contains(PasteOption::IgnoreMailBlockquote) ? MailBlockquoteHandling::IgnoreBlockquote : MailBlockquoteHandling::RespectBlockquote);
 }
 
-static const AtomicString& elementURL(Element& element)
+static const AtomString& elementURL(Element& element)
 {
     if (is<HTMLImageElement>(element) || is<HTMLInputElement>(element))
         return element.attributeWithoutSynchronization(HTMLNames::srcAttr);

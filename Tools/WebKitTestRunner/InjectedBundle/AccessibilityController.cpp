@@ -26,6 +26,8 @@
 #include "config.h"
 #include "AccessibilityController.h"
 
+#if ENABLE(ACCESSIBILITY)
+
 #include "AccessibilityUIElement.h"
 #include "InjectedBundle.h"
 #include "InjectedBundlePage.h"
@@ -90,13 +92,10 @@ Ref<AccessibilityUIElement> AccessibilityController::focusedElement()
 
 RefPtr<AccessibilityUIElement> AccessibilityController::elementAtPoint(int x, int y)
 {
-    Ref<AccessibilityUIElement> uiElement = rootElement();
+    auto uiElement = rootElement();
     return uiElement->elementAtPoint(x, y);
 }
 
-#if !HAVE(ACCESSIBILITY) && PLATFORM(GTK)
-RefPtr<AccessibilityUIElement> AccessibilityController::rootElement() { return nullptr; }
-RefPtr<AccessibilityUIElement> AccessibilityController::focusedElement() { return nullptr; }
-#endif
-
 } // namespace WTR
+#endif // ENABLE(ACCESSIBILITY)
+

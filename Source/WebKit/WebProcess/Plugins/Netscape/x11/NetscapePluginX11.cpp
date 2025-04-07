@@ -39,11 +39,7 @@
 
 #if PLATFORM(GTK)
 #include <gtk/gtk.h>
-#ifndef GTK_API_VERSION_2
 #include <gtk/gtkx.h>
-#endif
-#include <gdk/gdkx.h>
-#include <WebCore/GtkVersioning.h>
 #endif
 
 #if USE(CAIRO)
@@ -140,10 +136,10 @@ std::unique_ptr<NetscapePluginX11> NetscapePluginX11::create(NetscapePlugin& plu
 
 #if PLATFORM(GTK)
     if (plugin.isWindowed())
-        return std::make_unique<NetscapePluginX11>(plugin, display, windowID);
+        return makeUnique<NetscapePluginX11>(plugin, display, windowID);
 #endif
 
-    return std::make_unique<NetscapePluginX11>(plugin, display);
+    return makeUnique<NetscapePluginX11>(plugin, display);
 }
 
 NetscapePluginX11::NetscapePluginX11(NetscapePlugin& plugin, Display* display)

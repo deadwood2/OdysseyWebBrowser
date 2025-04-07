@@ -60,12 +60,12 @@ NetworkRTCProvider::NetworkRTCProvider(NetworkConnectionToWebProcess& connection
     : m_connection(&connection)
     , m_rtcMonitor(*this)
     , m_rtcNetworkThread(createThread())
-    , m_packetSocketFactory(makeUniqueRef<rtc::BasicPacketSocketFactory>(m_rtcNetworkThread.get()))
+    , m_packetSocketFactory(makeUniqueRefWithoutFastMallocCheck<rtc::BasicPacketSocketFactory>(m_rtcNetworkThread.get()))
 {
 #if defined(NDEBUG)
     rtc::LogMessage::LogToDebug(rtc::LS_NONE);
 #else
-    if (WebKit2LogWebRTC.state != WTFLogChannelOn)
+    if (WebKit2LogWebRTC.state != WTFLogChannelState::On)
         rtc::LogMessage::LogToDebug(rtc::LS_WARNING);
 #endif
 }
@@ -98,12 +98,13 @@ void NetworkRTCProvider::close()
 void NetworkRTCProvider::createSocket(uint64_t identifier, std::unique_ptr<rtc::AsyncPacketSocket>&& socket, LibWebRTCSocketClient::Type type)
 {
     if (!socket) {
-        sendFromMainThread([identifier](IPC::Connection& connection) {
+        sendFromMainThread([identifier, size = m_sockets.size()](IPC::Connection& connection) {
+            RELEASE_LOG_ERROR(WebRTC, "NetworkRTCProvider with %u sockets is unable to create a new socket", size);
             connection.send(Messages::WebRTCSocket::SignalClose(1), identifier);
         });
         return;
     }
-    addSocket(identifier, std::make_unique<LibWebRTCSocketClient>(identifier, *this, WTFMove(socket), type));
+    addSocket(identifier, makeUnique<LibWebRTCSocketClient>(identifier, *this, WTFMove(socket), type));
 }
 
 void NetworkRTCProvider::createUDPSocket(uint64_t identifier, const RTCNetwork::SocketAddress& address, uint16_t minPort, uint16_t maxPort)
@@ -128,10 +129,22 @@ void NetworkRTCProvider::createServerTCPSocket(uint64_t identifier, const RTCNet
     });
 }
 
-void NetworkRTCProvider::createClientTCPSocket(uint64_t identifier, const RTCNetwork::SocketAddress& localAddress, const RTCNetwork::SocketAddress& remoteAddress, int options)
+#if !PLATFORM(COCOA)
+rtc::ProxyInfo NetworkRTCProvider::proxyInfoFromSession(const RTCNetwork::SocketAddress&, NetworkSession&)
 {
-    callOnRTCNetworkThread([this, identifier, localAddress = RTCNetwork::isolatedCopy(localAddress.value), remoteAddress = RTCNetwork::isolatedCopy(remoteAddress.value), options]() {
-        std::unique_ptr<rtc::AsyncPacketSocket> socket(m_packetSocketFactory->CreateClientTcpSocket(localAddress, remoteAddress, { }, { }, options));
+    return { };
+}
+#endif
+
+void NetworkRTCProvider::createClientTCPSocket(uint64_t identifier, const RTCNetwork::SocketAddress& localAddress, const RTCNetwork::SocketAddress& remoteAddress, PAL::SessionID sessionID, String&& userAgent, int options)
+{
+    auto* session = m_connection->networkProcess().networkSession(sessionID);
+    if (!session) {
+        m_connection->connection().send(Messages::WebRTCSocket::SignalClose(1), identifier);
+        return;
+    }
+    callOnRTCNetworkThread([this, identifier, localAddress = RTCNetwork::isolatedCopy(localAddress.value), remoteAddress = RTCNetwork::isolatedCopy(remoteAddress.value), proxyInfo = proxyInfoFromSession(remoteAddress, *session), userAgent = WTFMove(userAgent).isolatedCopy(), options]() {
+        std::unique_ptr<rtc::AsyncPacketSocket> socket(m_packetSocketFactory->CreateClientTcpSocket(localAddress, remoteAddress, proxyInfo, userAgent.utf8().data(), options));
         createSocket(identifier, WTFMove(socket), LibWebRTCSocketClient::Type::ClientTCP);
     });
 }
@@ -140,7 +153,7 @@ void NetworkRTCProvider::wrapNewTCPConnection(uint64_t identifier, uint64_t newC
 {
     callOnRTCNetworkThread([this, identifier, newConnectionSocketIdentifier]() {
         std::unique_ptr<rtc::AsyncPacketSocket> socket = m_pendingIncomingSockets.take(newConnectionSocketIdentifier);
-        addSocket(identifier, std::make_unique<LibWebRTCSocketClient>(identifier, *this, WTFMove(socket), LibWebRTCSocketClient::Type::ServerConnectionTCP));
+        addSocket(identifier, makeUnique<LibWebRTCSocketClient>(identifier, *this, WTFMove(socket), LibWebRTCSocketClient::Type::ServerConnectionTCP));
     });
 }
 

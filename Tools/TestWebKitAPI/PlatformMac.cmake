@@ -1,8 +1,6 @@
 set(TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
-set(TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY_WTF "${TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY}")
 
 include_directories(
-    "${DERIVED_SOURCES_WTF_DIR}"
     "${FORWARDING_HEADERS_DIR}"
 )
 
@@ -19,7 +17,6 @@ list(APPEND test_wtf_LIBRARIES
     ${CARBON_LIBRARY}
     ${COCOA_LIBRARY}
     ${COREFOUNDATION_LIBRARY}
-    libicucore.dylib
 )
 
 list(APPEND TestWebKitAPI_LIBRARIES
@@ -34,4 +31,8 @@ set(bundle_harness_SOURCES
     ${TESTWEBKITAPI_DIR}/mac/PlatformWebViewMac.mm
     ${TESTWEBKITAPI_DIR}/mac/SyntheticBackingScaleFactorWindow.m
     ${TESTWEBKITAPI_DIR}/mac/TestBrowsingContextLoadDelegate.mm
+)
+
+list(APPEND TestWebKitLegacy_SOURCES
+    ${test_main_SOURCES}
 )

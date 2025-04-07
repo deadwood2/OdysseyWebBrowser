@@ -43,12 +43,17 @@ Ref<ScrollingTreeOverflowScrollingNodeIOS> ScrollingTreeOverflowScrollingNodeIOS
 
 ScrollingTreeOverflowScrollingNodeIOS::ScrollingTreeOverflowScrollingNodeIOS(WebCore::ScrollingTree& scrollingTree, WebCore::ScrollingNodeID nodeID)
     : ScrollingTreeOverflowScrollingNode(scrollingTree, nodeID)
-    , m_scrollingNodeDelegate(std::make_unique<ScrollingTreeScrollingNodeDelegateIOS>(*this))
+    , m_scrollingNodeDelegate(makeUnique<ScrollingTreeScrollingNodeDelegateIOS>(*this))
 {
 }
 
 ScrollingTreeOverflowScrollingNodeIOS::~ScrollingTreeOverflowScrollingNodeIOS()
 {
+}
+
+UIScrollView* ScrollingTreeOverflowScrollingNodeIOS::scrollView() const
+{
+    return m_scrollingNodeDelegate->scrollView();
 }
 
 void ScrollingTreeOverflowScrollingNodeIOS::commitStateBeforeChildren(const WebCore::ScrollingStateNode& stateNode)
@@ -63,27 +68,14 @@ void ScrollingTreeOverflowScrollingNodeIOS::commitStateBeforeChildren(const WebC
 void ScrollingTreeOverflowScrollingNodeIOS::commitStateAfterChildren(const ScrollingStateNode& stateNode)
 {
     ScrollingTreeOverflowScrollingNode::commitStateAfterChildren(stateNode);
-    m_scrollingNodeDelegate->commitStateAfterChildren(downcast<ScrollingStateScrollingNode>(stateNode));
+
+    const auto& scrollingStateNode = downcast<ScrollingStateScrollingNode>(stateNode);
+    m_scrollingNodeDelegate->commitStateAfterChildren(scrollingStateNode);
 }
 
-void ScrollingTreeOverflowScrollingNodeIOS::updateLayersAfterAncestorChange(const ScrollingTreeNode& changedNode, const FloatRect& fixedPositionRect, const FloatSize& cumulativeDelta)
+void ScrollingTreeOverflowScrollingNodeIOS::repositionScrollingLayers()
 {
-    m_scrollingNodeDelegate->updateLayersAfterAncestorChange(changedNode, fixedPositionRect, cumulativeDelta);
-}
-
-FloatPoint ScrollingTreeOverflowScrollingNodeIOS::scrollPosition() const
-{
-    return m_scrollingNodeDelegate->scrollPosition();
-}
-
-void ScrollingTreeOverflowScrollingNodeIOS::setScrollLayerPosition(const FloatPoint& scrollPosition, const FloatRect&)
-{
-    m_scrollingNodeDelegate->setScrollLayerPosition(scrollPosition);
-}
-
-void ScrollingTreeOverflowScrollingNodeIOS::updateLayersAfterDelegatedScroll(const FloatPoint& scrollPosition)
-{
-    m_scrollingNodeDelegate->updateChildNodesAfterScroll(scrollPosition);
+    m_scrollingNodeDelegate->repositionScrollingLayers();
 }
 
 } // namespace WebKit

@@ -27,13 +27,23 @@
 
 #include "AuxiliaryProcess.h"
 #include "CacheModel.h"
+#if ENABLE(MEDIA_STREAM)
+#include "MediaDeviceSandboxExtensions.h"
+#endif
 #include "PluginProcessConnectionManager.h"
 #include "ResourceCachesToClear.h"
 #include "SandboxExtension.h"
+#include "StorageAreaIdentifier.h"
 #include "TextCheckerState.h"
 #include "ViewUpdateDispatcher.h"
 #include "WebInspectorInterruptDispatcher.h"
+#include "WebProcessCreationParameters.h"
+#include "WebSQLiteDatabaseTracker.h"
+#include "WebSocketChannelManager.h"
 #include <WebCore/ActivityState.h>
+#include <WebCore/FrameIdentifier.h>
+#include <WebCore/PageIdentifier.h>
+#include <WebCore/RegistrableDomain.h>
 #if PLATFORM(MAC)
 #include <WebCore/ScreenProperties.h>
 #endif
@@ -44,12 +54,20 @@
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
 #include <wtf/RefCounter.h>
-#include <wtf/text/AtomicString.h>
-#include <wtf/text/AtomicStringHash.h>
+#include <wtf/text/AtomString.h>
+#include <wtf/text/AtomStringHash.h>
 
 #if PLATFORM(COCOA)
 #include <dispatch/dispatch.h>
 #include <wtf/MachSendRight.h>
+#endif
+
+#if PLATFORM(IOS_FAMILY)
+#include "ProcessTaskStateObserver.h"
+#endif
+
+#if PLATFORM(WAYLAND) && USE(WPE_RENDERER)
+#include <WebCore/PlatformDisplayLibWPE.h>
 #endif
 
 namespace API {
@@ -87,6 +105,7 @@ class InjectedBundle;
 class LibWebRTCNetwork;
 class NetworkProcessConnection;
 class ObjCObjectGraph;
+class StorageAreaMap;
 class UserData;
 class WaylandCompositorDisplay;
 class WebAutomationSessionProxy;
@@ -96,16 +115,27 @@ class WebFrame;
 class WebLoaderStrategy;
 class WebPage;
 class WebPageGroupProxy;
+struct WebProcessCreationParameters;
+struct WebProcessDataStoreParameters;
 class WebProcessSupplement;
 enum class WebsiteDataType;
 struct WebPageCreationParameters;
 struct WebPageGroupData;
 struct WebPreferencesStore;
-struct WebProcessCreationParameters;
 struct WebsiteData;
 struct WebsiteDataStoreParameters;
 
-class WebProcess : public AuxiliaryProcess {
+#if PLATFORM(IOS_FAMILY)
+class LayerHostingContext;
+#endif
+
+class WebProcess
+    : public AuxiliaryProcess
+#if PLATFORM(IOS_FAMILY)
+    , ProcessTaskStateObserver::Client
+#endif
+{
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     static WebProcess& singleton();
     static constexpr ProcessType processType = ProcessType::WebContent;
@@ -119,14 +149,14 @@ public:
     template <typename T>
     void addSupplement()
     {
-        m_supplements.add(T::supplementName(), std::make_unique<T>(*this));
+        m_supplements.add(T::supplementName(), makeUnique<T>(*this));
     }
 
     WebConnectionToUIProcess* webConnectionToUIProcess() const { return m_webConnection.get(); }
 
-    WebPage* webPage(uint64_t pageID) const;
-    void createWebPage(uint64_t pageID, WebPageCreationParameters&&);
-    void removeWebPage(uint64_t pageID);
+    WebPage* webPage(WebCore::PageIdentifier) const;
+    void createWebPage(WebCore::PageIdentifier, WebPageCreationParameters&&);
+    void removeWebPage(PAL::SessionID, WebCore::PageIdentifier);
     WebPage* focusedWebPage() const;
 
     InjectedBundle* injectedBundle() const { return m_injectedBundle.get(); }
@@ -145,9 +175,9 @@ public:
 
     bool fullKeyboardAccessEnabled() const { return m_fullKeyboardAccessEnabled; }
 
-    WebFrame* webFrame(uint64_t) const;
-    void addWebFrame(uint64_t, WebFrame*);
-    void removeWebFrame(uint64_t);
+    WebFrame* webFrame(WebCore::FrameIdentifier) const;
+    void addWebFrame(WebCore::FrameIdentifier, WebFrame*);
+    void removeWebFrame(WebCore::FrameIdentifier);
 
     WebPageGroupProxy* webPageGroup(WebCore::PageGroup*);
     WebPageGroupProxy* webPageGroup(uint64_t pageGroupID);
@@ -178,10 +208,14 @@ public:
 
     void ensureLegacyPrivateBrowsingSessionInNetworkProcess();
 
-    void pageDidEnterWindow(uint64_t pageID);
-    void pageWillLeaveWindow(uint64_t pageID);
+    void pageDidEnterWindow(WebCore::PageIdentifier);
+    void pageWillLeaveWindow(WebCore::PageIdentifier);
 
     void nonVisibleProcessCleanupTimerFired();
+
+    void registerStorageAreaMap(StorageAreaMap&);
+    void unregisterStorageAreaMap(StorageAreaMap&);
+    StorageAreaMap* storageAreaMap(StorageAreaIdentifier) const;
 
 #if PLATFORM(COCOA)
     RetainPtr<CFDataRef> sourceApplicationAuditData() const;
@@ -192,11 +226,11 @@ public:
 
     void updateActivePages();
     void getActivePagesOriginsForTesting(CompletionHandler<void(Vector<String>&&)>&&);
-    void pageActivityStateDidChange(uint64_t pageID, OptionSet<WebCore::ActivityState::Flag> changed);
+    void pageActivityStateDidChange(WebCore::PageIdentifier, OptionSet<WebCore::ActivityState::Flag> changed);
 
     void setHiddenPageDOMTimerThrottlingIncreaseLimit(int milliseconds);
 
-    void processWillSuspendImminently(bool& handled);
+    void processWillSuspendImminently();
     void prepareToSuspend();
     void cancelPrepareToSuspend();
     void processDidResume();
@@ -234,21 +268,32 @@ public:
     WebAutomationSessionProxy* automationSessionProxy() { return m_automationSessionProxy.get(); }
 
     WebCacheStorageProvider& cacheStorageProvider() { return m_cacheStorageProvider.get(); }
+    WebSocketChannelManager& webSocketChannelManager() { return m_webSocketChannelManager; }
 
 #if PLATFORM(IOS_FAMILY)
     void accessibilityProcessSuspendedNotification(bool);
+    
+    void unblockAccessibilityServer(const SandboxExtension::Handle&);
+#endif
+
+#if PLATFORM(IOS)
+    float backlightLevel() const { return m_backlightLevel; }
 #endif
 
 #if PLATFORM(COCOA)
     void setMediaMIMETypes(const Vector<String>);
 #endif
 
+    bool areAllPagesThrottleable() const;
+
 private:
     WebProcess();
     ~WebProcess();
 
     void initializeWebProcess(WebProcessCreationParameters&&);
-    void platformInitializeWebProcess(WebProcessCreationParameters&&);
+    void platformInitializeWebProcess(WebProcessCreationParameters&);
+    void setWebsiteDataStoreParameters(WebProcessDataStoreParameters&&);
+    void platformSetWebsiteDataStoreParameters(WebProcessDataStoreParameters&&);
 
     void prewarmGlobally();
     void prewarmWithDomainInformation(const WebCore::PrewarmInformation&);
@@ -267,6 +312,8 @@ private:
 
     void platformTerminate();
 
+    void setHasSuspendedPageProxy(bool);
+    void setIsInProcessCache(bool);
     void markIsNoLongerPrewarmed();
 
     void registerURLSchemeAsEmptyDocument(const String&);
@@ -320,15 +367,15 @@ private:
 #endif
 
 #if ENABLE(SERVICE_WORKER)
-    void establishWorkerContextConnectionToNetworkProcess(uint64_t pageGroupID, uint64_t pageID, const WebPreferencesStore&, PAL::SessionID);
+    void establishWorkerContextConnectionToNetworkProcess(uint64_t pageGroupID, WebCore::PageIdentifier, const WebPreferencesStore&, PAL::SessionID);
     void registerServiceWorkerClients();
 #endif
 
     void releasePageCache();
 
-    void fetchWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, WebsiteData&);
-    void deleteWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, WallTime modifiedSince);
-    void deleteWebsiteDataForOrigins(PAL::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>& origins);
+    void fetchWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, CompletionHandler<void(WebsiteData&&)>&&);
+    void deleteWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, WallTime modifiedSince, CompletionHandler<void()>&&);
+    void deleteWebsiteDataForOrigins(PAL::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>& origins, CompletionHandler<void()>&&);
 
     void setMemoryCacheDisabled(bool);
 
@@ -344,6 +391,7 @@ private:
     void actualPrepareToSuspend(ShouldAcknowledgeWhenReadyToSuspend);
 
     bool hasPageRequiringPageCacheWhileSuspended() const;
+    bool areAllPagesSuspended() const;
 
     void ensureAutomationSessionProxy(const String& sessionIdentifier);
     void destroyAutomationSessionProxy();
@@ -371,6 +419,11 @@ private:
     void clearMockMediaDevices();
     void removeMockMediaDevice(const String& persistentId);
     void resetMockMediaDevices();
+#if ENABLE(SANDBOX_EXTENSIONS)
+    void grantUserMediaDeviceSandboxExtensions(MediaDeviceSandboxExtensions&&);
+    void revokeUserMediaDeviceSandboxExtensions(const Vector<String>&);
+#endif
+
 #endif
 
     void platformInitializeProcess(const AuxiliaryProcessInitializationParameters&);
@@ -382,10 +435,8 @@ private:
 
     // Implemented in generated WebProcessMessageReceiver.cpp
     void didReceiveWebProcessMessage(IPC::Connection&, IPC::Decoder&);
-    void didReceiveSyncWebProcessMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&);
 
 #if PLATFORM(MAC)
-    void updateProcessName();
     void setScreenProperties(const WebCore::ScreenProperties&);
 #if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
     void scrollerStylePreferenceChanged(bool useOverlayScrollbars);
@@ -394,11 +445,30 @@ private:
 #endif
 #endif
 
+#if PLATFORM(COCOA)
+    void updateProcessName();
+#endif
+
+#if PLATFORM(IOS)
+    void backlightLevelDidChange(float backlightLevel);
+#endif
+
+#if PLATFORM(IOS_FAMILY)
+    void processTaskStateDidChange(ProcessTaskStateObserver::TaskState) final;
+    bool shouldFreezeOnSuspension() const;
+    void updateFreezerStatus();
+#endif
+
+#if ENABLE(VIDEO)
+    void suspendAllMediaBuffering();
+    void resumeAllMediaBuffering();
+#endif
+
     void clearCurrentModifierStateForTesting();
 
     RefPtr<WebConnectionToUIProcess> m_webConnection;
 
-    HashMap<uint64_t, RefPtr<WebPage>> m_pageMap;
+    HashMap<WebCore::PageIdentifier, RefPtr<WebPage>> m_pageMap;
     HashMap<uint64_t, RefPtr<WebPageGroupProxy>> m_pageGroupMap;
     RefPtr<InjectedBundle> m_injectedBundle;
 
@@ -420,7 +490,7 @@ private:
 
     bool m_fullKeyboardAccessEnabled { false };
 
-    HashMap<uint64_t, WebFrame*> m_frameMap;
+    HashMap<WebCore::FrameIdentifier, WebFrame*> m_frameMap;
 
     typedef HashMap<const char*, std::unique_ptr<WebProcessSupplement>, PtrHash<const char*>> WebProcessSupplementMap;
     WebProcessSupplementMap m_supplements;
@@ -432,6 +502,7 @@ private:
     WebLoaderStrategy& m_webLoaderStrategy;
 
     Ref<WebCacheStorageProvider> m_cacheStorageProvider;
+    WebSocketChannelManager m_webSocketChannelManager;
 
     std::unique_ptr<LibWebRTCNetwork> m_libWebRTCNetwork;
 
@@ -450,10 +521,17 @@ private:
     bool m_hasRichContentServices { false };
 #endif
 
-    HashSet<uint64_t> m_pagesInWindows;
+    bool m_processIsSuspended { false };
+
+    HashSet<WebCore::PageIdentifier> m_pagesInWindows;
     WebCore::Timer m_nonVisibleProcessCleanupTimer;
 
     RefPtr<WebCore::ApplicationCacheStorage> m_applicationCacheStorage;
+
+#if PLATFORM(IOS_FAMILY)
+    WebSQLiteDatabaseTracker m_webSQLiteDatabaseTracker;
+    ProcessTaskStateObserver m_taskStateObserver { *this };
+#endif
 
     enum PageMarkingLayersAsVolatileCounterType { };
     using PageMarkingLayersAsVolatileCounter = RefCounter<PageMarkingLayersAsVolatileCounterType>;
@@ -465,10 +543,13 @@ private:
     std::unique_ptr<WebCore::CPUMonitor> m_cpuMonitor;
     Optional<double> m_cpuLimit;
 
-    enum class ProcessType { Inspector, ServiceWorker, PrewarmedWebContent, WebContent };
-    ProcessType m_processType { ProcessType::WebContent };
     String m_uiProcessName;
-    String m_securityOrigin;
+    WebCore::RegistrableDomain m_registrableDomain;
+#endif
+
+#if PLATFORM(COCOA)
+    enum class ProcessType { Inspector, ServiceWorker, PrewarmedWebContent, CachedWebContent, WebContent };
+    ProcessType m_processType { ProcessType::WebContent };
 #endif
 
     HashMap<WebCore::UserGestureToken *, uint64_t> m_userGestureTokens;
@@ -476,7 +557,23 @@ private:
 #if PLATFORM(WAYLAND)
     std::unique_ptr<WaylandCompositorDisplay> m_waylandCompositorDisplay;
 #endif
+
+#if PLATFORM(WAYLAND) && USE(WPE_RENDERER)
+    std::unique_ptr<WebCore::PlatformDisplayLibWPE> m_wpeDisplay;
+#endif
+
+    bool m_hasSuspendedPageProxy { false };
     bool m_isSuspending { false };
+
+#if ENABLE(MEDIA_STREAM) && ENABLE(SANDBOX_EXTENSIONS)
+    HashMap<String, RefPtr<SandboxExtension>> m_mediaCaptureSandboxExtensions;
+#endif
+
+#if PLATFORM(IOS)
+    float m_backlightLevel { 0 };
+#endif
+
+    HashMap<StorageAreaIdentifier, StorageAreaMap*> m_storageAreaMaps;
 };
 
 } // namespace WebKit

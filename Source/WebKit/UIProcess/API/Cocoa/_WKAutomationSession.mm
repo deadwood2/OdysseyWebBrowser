@@ -26,8 +26,6 @@
 #import "config.h"
 #import "_WKAutomationSessionInternal.h"
 
-#if WK_API_ENABLED
-
 #import "AutomationSessionClient.h"
 #import "WKAPICast.h"
 #import "WKProcessPool.h"
@@ -74,7 +72,7 @@
 - (void)setDelegate:(id <_WKAutomationSessionDelegate>)delegate
 {
     _delegate = delegate;
-    _session->setClient(delegate ? std::make_unique<WebKit::AutomationSessionClient>(delegate) : nullptr);
+    _session->setClient(delegate ? makeUnique<WebKit::AutomationSessionClient>(delegate) : nullptr);
 }
 
 - (NSString *)sessionIdentifier
@@ -127,5 +125,3 @@
 }
 
 @end
-
-#endif // WK_API_ENABLED

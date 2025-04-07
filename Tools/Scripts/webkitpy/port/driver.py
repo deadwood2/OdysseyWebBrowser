@@ -1,5 +1,5 @@
 # Copyright (C) 2011 Google Inc. All rights reserved.
-# Copyright (c) 2015, 2016 Apple Inc. All rights reserved.
+# Copyright (c) 2015-2019 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -251,20 +251,40 @@ class Driver(object):
             crashed_pid=self._crashed_pid, crash_log=crash_log, pid=pid)
 
     def do_post_tests_work(self):
-        if not self._port.get_option('world_leaks'):
-            return None
-
         if not self._server_process:
             return None
 
-        _log.debug('Checking for world leaks...')
-        self._server_process.write('#CHECK FOR WORLD LEAKS\n')
-        deadline = time.time() + 20
-        block = self._read_block(deadline, '', wait_for_stderr_eof=True)
+        if self._port.get_option('leaks'):
+            _log.debug('Gathering child processes...')
+            self._server_process.write('#LIST CHILD PROCESSES\n')
+            deadline = time.time() + 20
+            block = self._read_block(deadline, '', wait_for_stderr_eof=True)
+            self._server_process.set_child_processes(self._parse_child_processes_output(block.decoded_content))
 
-        _log.debug('World leak result: %s' % (block.decoded_content))
+        if self._port.get_option('world_leaks'):
+            _log.debug('Checking for world leaks...')
+            self._server_process.write('#CHECK FOR WORLD LEAKS\n')
+            deadline = time.time() + 20
+            block = self._read_block(deadline, '', wait_for_stderr_eof=True)
 
-        return self._parse_world_leaks_output(block.decoded_content)
+            _log.debug('World leak result: %s' % (block.decoded_content))
+
+            return self._parse_world_leaks_output(block.decoded_content)
+
+        return None
+
+    @staticmethod
+    def _parse_child_processes_output(output):
+        child_processes = defaultdict(list)
+
+        for line in output.splitlines():
+            m = re.match('^([^:]+): ([0-9]+)$', line)
+            if m:
+                process_name = m.group(1)
+                process_id = m.group(2)
+                child_processes[process_name].append(process_id)
+
+        return child_processes
 
     def _parse_world_leaks_output(self, output):
         tests_with_world_leaks = defaultdict(list)
@@ -367,7 +387,7 @@ class Driver(object):
             return True
         if self._server_process.has_crashed():
             self._crashed_process_name = self._server_process.process_name()
-            self._crashed_pid = self._server_process.pid()
+            self._crashed_pid = self._server_process.system_pid()
             return True
         return False
 
@@ -390,6 +410,8 @@ class Driver(object):
             environment[variable] = path
 
     def _setup_environ_for_driver(self, environment):
+        self._port._clear_global_caches_and_temporary_files()
+        self._create_temporal_directories()
         build_root_path = str(self._port._build_path())
         self._append_environment_variable_path(environment, 'DYLD_LIBRARY_PATH', build_root_path)
         self._append_environment_variable_path(environment, '__XPC_DYLD_LIBRARY_PATH', build_root_path)
@@ -412,6 +434,16 @@ class Driver(object):
         environment['SQLITE_EXEMPT_PATH_FROM_VNODE_GUARDS'] = os.path.realpath(environment['DUMPRENDERTREE_TEMP'])
         environment['__XPC_SQLITE_EXEMPT_PATH_FROM_VNODE_GUARDS'] = environment['SQLITE_EXEMPT_PATH_FROM_VNODE_GUARDS']
 
+        if sys.platform.startswith('linux'):
+            # Currently on WebKit2, there is no API for setting the application cache directory.
+            # Each worker should have it's own and it should be cleaned afterwards.
+            # Set it to inside the temporary folder by prepending XDG_CACHE_HOME with DRIVER_TEMPDIR.
+            environment['XDG_CACHE_HOME'] = self._port.host.filesystem.join(str(self._driver_tempdir), 'appcache')
+            # Use an empty/volatile home inside DRIVER_TEMPDIR to ensure that the test results
+            # are not affected by the user settings of any library.
+            environment['HOME'] = self._port.host.filesystem.join(str(self._driver_tempdir), 'home')
+            self._target_host.filesystem.maybe_make_directory(environment['HOME'])
+
         if self._profiler:
             environment = self._profiler.adjusted_environment(environment)
         return environment
@@ -421,17 +453,19 @@ class Driver(object):
         environment = self._setup_environ_for_driver(environment)
         return environment
 
-    def _start(self, pixel_tests, per_test_args):
-        self.stop()
+    def _create_temporal_directories(self):
         # Each driver process should be using individual directories under _driver_tempdir (which is deleted when stopping),
         # however some subsystems on some platforms could end up using process default ones.
-        self._port._clear_global_caches_and_temporary_files()
-        self._driver_tempdir = self._port._driver_tempdir(self._target_host)
-        self._driver_user_directory_suffix = os.path.basename(str(self._driver_tempdir))
-        user_cache_directory = self._port._path_to_user_cache_directory(self._driver_user_directory_suffix)
-        if user_cache_directory:
-            self._target_host.filesystem.maybe_make_directory(user_cache_directory)
-            self._driver_user_cache_directory = user_cache_directory
+        if self._driver_tempdir is None:
+            self._driver_tempdir = self._port._driver_tempdir(self._target_host)
+            self._driver_user_directory_suffix = os.path.basename(str(self._driver_tempdir))
+            user_cache_directory = self._port._path_to_user_cache_directory(self._driver_user_directory_suffix)
+            if user_cache_directory:
+                self._target_host.filesystem.maybe_make_directory(user_cache_directory)
+                self._driver_user_cache_directory = user_cache_directory
+
+    def _start(self, pixel_tests, per_test_args):
+        self.stop()
         environment = self._setup_environ_for_test()
         self._crashed_process_name = None
         self._crashed_pid = None
@@ -447,19 +481,21 @@ class Driver(object):
         # Remote drivers will override this method to return the pid on the device.
         return self._server_process.pid()
 
-    def stop(self):
-        if self._server_process:
-            self._server_process.stop(self._port.driver_stop_timeout())
-            self._server_process = None
-            if self._profiler:
-                self._profiler.profile_after_exit()
-
+    def _delete_temporal_directories(self):
         if self._driver_tempdir:
             self._target_host.filesystem.rmtree(str(self._driver_tempdir))
             self._driver_tempdir = None
         if self._driver_user_cache_directory:
             self._target_host.filesystem.rmtree(self._driver_user_cache_directory)
             self._driver_user_cache_directory = None
+
+    def stop(self):
+        if self._server_process:
+            self._server_process.stop(self._port.driver_stop_timeout())
+            self._server_process = None
+            if self._profiler:
+                self._profiler.profile_after_exit()
+        self._delete_temporal_directories()
 
     def cmd_line(self, pixel_tests, per_test_args):
         cmd = self._command_wrapper()
@@ -515,7 +551,7 @@ class Driver(object):
         crashed_check = error_line.rstrip('\r\n')
         if crashed_check == "#CRASHED":
             self._crashed_process_name = self._server_process.process_name()
-            self._crashed_pid = self._server_process.pid()
+            self._crashed_pid = self._server_process.system_pid()
             return True
         elif error_line.startswith("#CRASHED - "):
             match = re.match('#CRASHED - (\S+)', error_line)
@@ -545,7 +581,10 @@ class Driver(object):
         elif self.is_web_platform_test(driver_input.test_name) or self.is_webkit_specific_web_platform_test(driver_input.test_name) or self.is_http_test(driver_input.test_name):
             command = self.test_to_uri(driver_input.test_name)
             command += "'--absolutePath'"
-            command += self._port.abspath_for_test(driver_input.test_name, self._target_host)
+            absPath = self._port.abspath_for_test(driver_input.test_name, self._target_host)
+            if sys.platform == 'cygwin':
+                absPath = path.cygpath(absPath)
+            command += absPath
         else:
             command = self._port.abspath_for_test(driver_input.test_name, self._target_host)
             if sys.platform == 'cygwin':
@@ -670,7 +709,7 @@ class Driver(object):
 
         if asan_violation_detected and not self._crashed_process_name:
             self._crashed_process_name = self._server_process.process_name()
-            self._crashed_pid = self._server_process.pid()
+            self._crashed_pid = self._server_process.system_pid()
 
         block.decode_content()
         return block

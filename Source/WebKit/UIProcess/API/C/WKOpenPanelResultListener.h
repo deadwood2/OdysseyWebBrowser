@@ -32,8 +32,9 @@
 extern "C" {
 #endif
 
-WK_EXPORT WKTypeID WKOpenPanelResultListenerGetTypeID();
+WK_EXPORT WKTypeID WKOpenPanelResultListenerGetTypeID(void);
 
+WK_EXPORT void WKOpenPanelResultListenerChooseMediaFiles(WKOpenPanelResultListenerRef listenerRef, WKArrayRef fileURLsRef, WKStringRef displayString, WKDataRef iconImageDataRef);
 WK_EXPORT void WKOpenPanelResultListenerChooseFiles(WKOpenPanelResultListenerRef listener, WKArrayRef fileURLs);
 WK_EXPORT void WKOpenPanelResultListenerCancel(WKOpenPanelResultListenerRef listener);
 

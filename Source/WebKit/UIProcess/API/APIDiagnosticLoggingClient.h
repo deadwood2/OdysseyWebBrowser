@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef APIDiagnosticLoggingClient_h
-#define APIDiagnosticLoggingClient_h
+#pragma once
 
 #include <WebCore/DiagnosticLoggingResultType.h>
 #include <wtf/text/WTFString.h>
@@ -35,7 +34,10 @@ class WebPageProxy;
 
 namespace API {
 
+class Dictionary;
+
 class DiagnosticLoggingClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     virtual ~DiagnosticLoggingClient() { }
 
@@ -43,9 +45,8 @@ public:
     virtual void logDiagnosticMessageWithResult(WebKit::WebPageProxy*, const WTF::String& message, const WTF::String& description, WebCore::DiagnosticLoggingResultType) = 0;
     virtual void logDiagnosticMessageWithValue(WebKit::WebPageProxy*, const WTF::String& message, const WTF::String& description, const WTF::String& value) = 0;
     virtual void logDiagnosticMessageWithEnhancedPrivacy(WebKit::WebPageProxy*, const WTF::String& message, const WTF::String& description) = 0;
+
+    virtual void logDiagnosticMessageWithValueDictionary(WebKit::WebPageProxy*, const WTF::String& message, const WTF::String& description, Ref<API::Dictionary>&&) = 0;
 };
 
 } // namespace API
-
-#endif // APIDiagnosticLoggingClient_h
-

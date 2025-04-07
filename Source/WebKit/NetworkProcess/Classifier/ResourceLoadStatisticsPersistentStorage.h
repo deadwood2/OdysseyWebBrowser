@@ -45,6 +45,7 @@ class ResourceLoadStatisticsMemoryStore;
 
 // Can only be constructed / destroyed / used from the WebResourceLoadStatisticsStore's statistic queue.
 class ResourceLoadStatisticsPersistentStorage : public CanMakeWeakPtr<ResourceLoadStatisticsPersistentStorage> {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     ResourceLoadStatisticsPersistentStorage(ResourceLoadStatisticsMemoryStore&, WorkQueue&, const String& storageDirectoryPath);
     ~ResourceLoadStatisticsPersistentStorage();
@@ -55,7 +56,7 @@ public:
     void scheduleOrWriteMemoryStore(ForceImmediateWrite);
 
 private:
-    String storageDirectoryPath() const;
+    String storageDirectoryPathIsolatedCopy() const;
     String resourceLogFilePath() const;
 
     void startMonitoringDisk();

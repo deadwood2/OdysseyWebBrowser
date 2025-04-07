@@ -52,15 +52,14 @@ SpeculativeLoad::SpeculativeLoad(Cache& cache, const GlobalFrameID& globalFrameI
 {
     ASSERT(!m_cacheEntry || m_cacheEntry->needsValidation());
 
-    NetworkLoadParameters parameters;
+    NetworkLoadParameters parameters { cache.sessionID() };
     parameters.webPageID = globalFrameID.first;
     parameters.webFrameID = globalFrameID.second;
-    parameters.sessionID = PAL::SessionID::defaultSessionID();
     parameters.storedCredentialsPolicy = StoredCredentialsPolicy::Use;
     parameters.contentSniffingPolicy = ContentSniffingPolicy::DoNotSniffContent;
     parameters.contentEncodingSniffingPolicy = ContentEncodingSniffingPolicy::Sniff;
     parameters.request = m_originalRequest;
-    m_networkLoad = std::make_unique<NetworkLoad>(*this, nullptr, WTFMove(parameters), *cache.networkProcess().networkSession(PAL::SessionID::defaultSessionID()));
+    m_networkLoad = makeUnique<NetworkLoad>(*this, nullptr, WTFMove(parameters), *cache.networkProcess().networkSession(cache.sessionID()));
 }
 
 SpeculativeLoad::~SpeculativeLoad()
@@ -74,7 +73,7 @@ void SpeculativeLoad::willSendRedirectedRequest(ResourceRequest&& request, Resou
 
     Optional<Seconds> maxAgeCap;
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
-    if (auto* networkStorageSession = m_cache->networkProcess().storageSession(PAL::SessionID::defaultSessionID()))
+    if (auto* networkStorageSession = m_cache->networkProcess().storageSession(m_cache->sessionID()))
         maxAgeCap = networkStorageSession->maxAgeCacheCap(request);
 #endif
     m_cacheEntry = m_cache->storeRedirect(request, redirectResponse, redirectRequest, maxAgeCap);

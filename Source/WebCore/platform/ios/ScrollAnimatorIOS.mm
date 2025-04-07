@@ -40,7 +40,7 @@ namespace WebCore {
 
 std::unique_ptr<ScrollAnimator> ScrollAnimator::create(ScrollableArea& scrollableArea)
 {
-    return std::make_unique<ScrollAnimatorIOS>(scrollableArea);
+    return makeUnique<ScrollAnimatorIOS>(scrollableArea);
 }
 
 ScrollAnimatorIOS::ScrollAnimatorIOS(ScrollableArea& scrollableArea)
@@ -103,8 +103,9 @@ bool ScrollAnimatorIOS::handleTouchEvent(const PlatformTouchEvent& touchEvent)
         determineScrollableAreaForTouchSequence(touchDelta);
 
     if (!m_committedToScrollAxis) {
-        bool horizontallyScrollable = m_scrollableArea.scrollSize(HorizontalScrollbar);
-        bool verticallyScrollable = m_scrollableArea.scrollSize(VerticalScrollbar);
+        auto scrollSize = m_scrollableArea.maximumScrollPosition() - m_scrollableArea.minimumScrollPosition();
+        bool horizontallyScrollable = scrollSize.width();
+        bool verticallyScrollable = scrollSize.height();
 
         if (!horizontallyScrollable && !verticallyScrollable)
             return false;

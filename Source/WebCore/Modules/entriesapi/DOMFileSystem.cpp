@@ -33,10 +33,13 @@
 #include <wtf/CrossThreadCopier.h>
 #include <wtf/FileMetadata.h>
 #include <wtf/FileSystem.h>
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/UUID.h>
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(DOMFileSystem);
 
 struct ListedChild {
     String filename;
@@ -340,7 +343,7 @@ void DOMFileSystem::getFile(ScriptExecutionContext& context, FileSystemFileEntry
             if (validatedVirtualPath.hasException())
                 completionCallback(validatedVirtualPath.releaseException());
             else
-                completionCallback(File::create(fullPath));
+                completionCallback(File::create(context->sessionID(), fullPath));
         });
     });
 }

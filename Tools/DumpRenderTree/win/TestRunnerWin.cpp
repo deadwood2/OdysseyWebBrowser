@@ -172,22 +172,6 @@ void TestRunner::clearAllDatabases()
     databaseManager2->deleteAllIndexedDatabases();
 }
 
-void TestRunner::setIDBPerOriginQuota(uint64_t quota)
-{
-    COMPtr<IWebDatabaseManager> databaseManager;
-    COMPtr<IWebDatabaseManager> tmpDatabaseManager;
-    if (FAILED(WebKitCreateInstance(CLSID_WebDatabaseManager, 0, IID_IWebDatabaseManager, (void**)&tmpDatabaseManager)))
-        return;
-    if (FAILED(tmpDatabaseManager->sharedWebDatabaseManager(&databaseManager)))
-        return;
-
-    COMPtr<IWebDatabaseManager2> databaseManager2;
-    if (FAILED(databaseManager->QueryInterface(&databaseManager2)))
-        return;
-
-    databaseManager2->setIDBPerOriginQuota(quota);
-}
-
 void TestRunner::setStorageDatabaseIdleInterval(double)
 {
     // FIXME: Implement. Requires non-existant (on Windows) WebStorageManager
@@ -304,17 +288,23 @@ size_t TestRunner::webHistoryItemCount()
 void TestRunner::notifyDone()
 {
     // Same as on mac.  This can be shared.
-    if (m_waitToDump && !topLoadingFrame && !DRT::WorkQueue::singleton().count())
-        dump();
-    m_waitToDump = false;
+    if (m_waitToDump) {
+        m_waitToDump = false;
+        if (!topLoadingFrame && !DRT::WorkQueue::singleton().count())
+            dump();
+    } else
+        fprintf(stderr, "TestRunner::notifyDone() called unexpectedly.");
 }
 
 void TestRunner::forceImmediateCompletion()
 {
     // Same as on mac. This can be shared.
-    if (m_waitToDump && !DRT::WorkQueue::singleton().count())
-        dump();
-    m_waitToDump = false;
+    if (m_waitToDump) {
+        m_waitToDump = false;
+        if (!DRT::WorkQueue::singleton().count())
+            dump();
+    } else
+        fprintf(stderr, "TestRunner::forceImmediateCompletion() called unexpectedly.");
 }
 
 static wstring jsStringRefToWString(JSStringRef jsStr)
@@ -684,11 +674,6 @@ void TestRunner::setTabKeyCyclesThroughElements(bool shouldCycle)
         return;
 
     viewPrivate->setTabKeyCyclesThroughElements(shouldCycle ? TRUE : FALSE);
-}
-
-void TestRunner::setUseDashboardCompatibilityMode(bool flag)
-{
-    // Not implemented on Windows.
 }
 
 void TestRunner::setUserStyleSheetEnabled(bool flag)

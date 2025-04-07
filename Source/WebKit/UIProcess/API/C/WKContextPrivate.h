@@ -116,9 +116,13 @@ WK_EXPORT WKProcessID WKContextGetNetworkProcessIdentifier(WKContextRef context)
 WK_EXPORT void WKContextAddSupportedPlugin(WKContextRef context, WKStringRef domain, WKStringRef name, WKArrayRef mimeTypes, WKArrayRef extensions);
 WK_EXPORT void WKContextClearSupportedPlugins(WKContextRef context);
 
-WK_EXPORT void WKContextSetIDBPerOriginQuota(WKContextRef context, uint64_t quota);
-
 WK_EXPORT void WKContextClearCurrentModifierStateForTesting(WKContextRef context);
+
+typedef void (*WKContextSyncLocalStorageCallback)(void* functionContext);
+WK_EXPORT void WKContextSyncLocalStorage(WKContextRef contextRef, void* context, WKContextSyncLocalStorageCallback callback);
+
+typedef void (*WKContextClearLegacyPrivateBrowsingLocalStorageCallback)(void* functionContext);
+WK_EXPORT void WKContextClearLegacyPrivateBrowsingLocalStorage(WKContextRef contextRef, void* context, WKContextClearLegacyPrivateBrowsingLocalStorageCallback callback);
 
 #ifdef __cplusplus
 }

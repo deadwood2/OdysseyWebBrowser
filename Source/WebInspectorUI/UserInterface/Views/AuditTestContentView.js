@@ -31,6 +31,9 @@ WI.AuditTestContentView = class AuditTestContentView extends WI.ContentView
 
         super(representedObject);
 
+        // This class should not be instantiated directly. Create a concrete subclass instead.
+        console.assert(this.constructor !== WI.AuditTestContentView && this instanceof WI.AuditTestContentView);
+
         this.element.classList.add("audit-test");
 
         this._exportButtonNavigationItem = new WI.ButtonNavigationItem("audit-export", WI.UIString("Export"), "Images/Export.svg", 15, 15);
@@ -99,7 +102,7 @@ WI.AuditTestContentView = class AuditTestContentView extends WI.ContentView
         if (this.representedObject instanceof WI.AuditTestBase) {
             this.representedObject.addEventListener(WI.AuditTestBase.Event.Completed, this._handleTestChanged, this);
             this.representedObject.addEventListener(WI.AuditTestBase.Event.Progress, this._handleTestChanged, this);
-            this.representedObject.addEventListener(WI.AuditTestBase.Event.ResultCleared, this._handleTestChanged, this);
+            this.representedObject.addEventListener(WI.AuditTestBase.Event.ResultChanged, this.handleResultChanged, this);
             this.representedObject.addEventListener(WI.AuditTestBase.Event.Scheduled, this._handleTestChanged, this);
             this.representedObject.addEventListener(WI.AuditTestBase.Event.Stopping, this._handleTestChanged, this);
         }
@@ -111,6 +114,13 @@ WI.AuditTestContentView = class AuditTestContentView extends WI.ContentView
             this.representedObject.removeEventListener(null, null, this);
 
         super.hidden();
+    }
+
+    handleResultChanged(event)
+    {
+        // Overridden by sub-classes.
+
+        this.needsLayout();
     }
 
     get placeholderElement()

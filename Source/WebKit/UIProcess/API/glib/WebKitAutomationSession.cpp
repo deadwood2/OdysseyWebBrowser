@@ -70,6 +70,7 @@ static guint signals[LAST_SIGNAL] = { 0, };
 WEBKIT_DEFINE_TYPE(WebKitAutomationSession, webkit_automation_session, G_TYPE_OBJECT)
 
 class AutomationSessionClient final : public API::AutomationSessionClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit AutomationSessionClient(WebKitAutomationSession* session)
         : m_session(session)
@@ -223,7 +224,7 @@ static void webkitAutomationSessionConstructed(GObject* object)
 
     session->priv->session = adoptRef(new WebAutomationSession());
     session->priv->session->setSessionIdentifier(String::fromUTF8(session->priv->id.data()));
-    session->priv->session->setClient(std::make_unique<AutomationSessionClient>(session));
+    session->priv->session->setClient(makeUnique<AutomationSessionClient>(session));
 }
 
 static void webkitAutomationSessionDispose(GObject* object)

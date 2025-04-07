@@ -28,12 +28,20 @@
 
 #include <WebCore/ChromeClient.h>
 
+namespace WebCore {
+class HTMLImageElement;
+class RegistrableDomain;
+enum class StorageAccessPromptWasShown : bool;
+enum class StorageAccessWasGranted : bool;
+}
+
 namespace WebKit {
 
 class WebFrame;
 class WebPage;
 
 class WebChromeClient final : public WebCore::ChromeClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WebChromeClient(WebPage&);
 
@@ -112,13 +120,14 @@ private:
     WebCore::IntPoint screenToRootView(const WebCore::IntPoint&) const final;
     WebCore::IntRect rootViewToScreen(const WebCore::IntRect&) const final;
 
-#if PLATFORM(IOS_FAMILY)
     WebCore::IntPoint accessibilityScreenToRootView(const WebCore::IntPoint&) const final;
     WebCore::IntRect rootViewToAccessibilityScreen(const WebCore::IntRect&) const final;
-#endif
+
+    void didFinishLoadingImageForElement(WebCore::HTMLImageElement&) final;
 
     PlatformPageClient platformPageClient() const final;
     void contentsSizeChanged(WebCore::Frame&, const WebCore::IntSize&) const final;
+    void intrinsicContentsSizeChanged(const WebCore::IntSize&) const final;
     void scrollRectIntoView(const WebCore::IntRect&) const final; // Currently only Mac has a non empty implementation.
 
     bool shouldUnavailablePluginMessageBeButton(WebCore::RenderEmbeddedObject::PluginUnavailabilityReason) const final;
@@ -134,13 +143,6 @@ private:
 
     void reachedMaxAppCacheSize(int64_t spaceNeeded) final;
     void reachedApplicationCacheOriginQuota(WebCore::SecurityOrigin&, int64_t spaceNeeded) final;
-
-#if ENABLE(DASHBOARD_SUPPORT)
-    void annotatedRegionsChanged() final;
-#endif
-
-    bool shouldReplaceWithGeneratedFileForUpload(const String& path, String& generatedFilename) final;
-    String generateReplacementFile(const String& path) final;
     
 #if ENABLE(INPUT_TYPE_COLOR)
     std::unique_ptr<WebCore::ColorChooser> createColorChooser(WebCore::ColorChooserClient&, const WebCore::Color&) final;
@@ -157,8 +159,7 @@ private:
 #if PLATFORM(IOS_FAMILY)
     void didReceiveMobileDocType(bool) final;
     void setNeedsScrollNotifications(WebCore::Frame&, bool) final;
-    void observedContentChange(WebCore::Frame&) final;
-    void clearContentChangeObservers(WebCore::Frame&) final;
+    void didFinishContentChangeObserving(WebCore::Frame&, WKContentChange) final;
     void notifyRevealedSelectionByScrollingFrame(WebCore::Frame&) final;
     bool isStopping() final;
 
@@ -202,7 +203,7 @@ private:
     void requestPointerUnlock() final;
 #endif
 
-    void didAssociateFormControls(const Vector<RefPtr<WebCore::Element>>&) final;
+    void didAssociateFormControls(const Vector<RefPtr<WebCore::Element>>&, WebCore::Frame&) final;
     bool shouldNotifyOnFormChanges() final;
 
     bool selectItemWritingDirectionIsNatural() final;
@@ -217,7 +218,9 @@ private:
     void scheduleCompositingLayerFlush() final;
     bool adjustLayerFlushThrottling(WebCore::LayerFlushThrottleState::Flags) final;
 
-    void contentRuleListNotification(const URL&, const HashSet<std::pair<String, String>>&) final;
+    void contentRuleListNotification(const URL&, const WebCore::ContentRuleListResults&) final;
+
+    bool testProcessIncomingSyncMessagesWhenWaitingForSyncReply() final;
 
 #if PLATFORM(WIN)
     void setLastSetCursorToCurrentCursor() final { }
@@ -365,9 +368,18 @@ private:
     void didInvalidateDocumentMarkerRects() final;
 
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
-    void hasStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void (bool)>&&) final;
-    void requestStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void (bool)>&&) final;
+    void hasStorageAccess(WebCore::RegistrableDomain&& subFrameDomain, WebCore::RegistrableDomain&& topFrameDomain, WebCore::FrameIdentifier, WebCore::PageIdentifier, WTF::CompletionHandler<void(bool)>&&) final;
+    void requestStorageAccess(WebCore::RegistrableDomain&& subFrameDomain, WebCore::RegistrableDomain&& topFrameDomain, WebCore::FrameIdentifier, WebCore::PageIdentifier, WTF::CompletionHandler<void(WebCore::StorageAccessWasGranted, WebCore::StorageAccessPromptWasShown)>&&) final;
 #endif
+
+#if ENABLE(DEVICE_ORIENTATION)
+    void shouldAllowDeviceOrientationAndMotionAccess(WebCore::Frame&, bool mayPrompt, CompletionHandler<void(WebCore::DeviceOrientationOrMotionPermissionState)>&&) final;
+#endif
+
+    void configureLoggingChannel(const String&, WTFLogChannelState, WTFLogLevel) final;
+
+    bool userIsInteracting() const final;
+    void setUserIsInteracting(bool) final;
 
     String m_cachedToolTip;
     mutable RefPtr<WebFrame> m_cachedFrameSetLargestFrame;

@@ -34,9 +34,69 @@ WI.ResourceCollectionContentView = class ResourceCollectionContentView extends W
             contentViewConstructor = WI.ImageResourceContentView;
 
         super(collection, contentViewConstructor);
+
+        if (collection.resourceType === WI.Resource.Type.Image) {
+            this._showGridButtonNavigationItem = new WI.ActivateButtonNavigationItem("show-grid", WI.UIString("Show Grid"), WI.UIString("Hide Grid"), "Images/NavigationItemCheckers.svg", 13, 13);
+            this._showGridButtonNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._handleShowGridButtonClicked, this);
+            this._showGridButtonNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
+            this._showGridButtonNavigationItem.activated = !!WI.settings.showImageGrid.value;
+
+            let allItem = new WI.ScopeBarItem("all", WI.UIString("All"));
+
+            let items = [allItem];
+            this._scopeBarItemTypeMap = {};
+
+            let addItem = (key, label) => {
+                let item = new WI.ScopeBarItem(key, label);
+                items.push(item);
+                this._scopeBarItemTypeMap[key] = item;
+            };
+            addItem("bmp", WI.UIString("BMP"));
+            addItem("gif", WI.UIString("GIF"));
+            addItem("ico", WI.UIString("ICO"));
+            addItem("jp2", WI.UIString("JP2"));
+            addItem("jpg", WI.UIString("JPEG"));
+            addItem("pdf", WI.UIString("PDF"));
+            addItem("png", WI.UIString("PNG"));
+            addItem("svg", WI.UIString("SVG"));
+            addItem("tiff", WI.UIString("TIFF"));
+            addItem("webp", WI.UIString("WebP"));
+            addItem("xbm", WI.UIString("XBM"));
+
+            const shouldGroupNonExclusiveItems = true;
+            this._imageTypeScopeBar = new WI.ScopeBar("resource-collection-image-type-scope-bar", items, allItem, shouldGroupNonExclusiveItems);
+            this._imageTypeScopeBar.addEventListener(WI.ScopeBar.Event.SelectionChanged, this._handleImageTypeSelectionChanged, this);
+        }
+    }
+
+    // Public
+
+    get navigationItems()
+    {
+        let navigationItems = [];
+        if (this._imageTypeScopeBar)
+            navigationItems.push(this._imageTypeScopeBar);
+        if (this._showGridButtonNavigationItem)
+            navigationItems.push(this._showGridButtonNavigationItem);
+        navigationItems.pushAll(super.navigationItems);
+        return navigationItems;
     }
 
     // Protected
+
+    attached()
+    {
+        super.attached();
+
+        WI.settings.showImageGrid.addEventListener(WI.Setting.Event.Changed, this._handleShowImageGridSettingChanged, this);
+    }
+
+    detached()
+    {
+        WI.settings.showImageGrid.removeEventListener(null, null, this);
+
+        super.detached();
+    }
 
     contentViewAdded(contentView)
     {
@@ -45,11 +105,63 @@ WI.ResourceCollectionContentView = class ResourceCollectionContentView extends W
         let resource = contentView.representedObject;
         console.assert(resource instanceof WI.Resource);
 
+        this._updateImageTypeScopeBar();
+
         contentView.addEventListener(WI.ResourceContentView.Event.ContentError, this._handleContentError, this);
         contentView.element.title = WI.displayNameForURL(resource.url, resource.urlComponents);
     }
 
+    contentViewRemoved(contentView)
+    {
+        this._updateImageTypeScopeBar();
+    }
+
     // Private
+
+    _updateImageTypeScopeBar()
+    {
+        let extensions = new Set;
+        let visibleExtensions = 0;
+
+        for (let resource of this.representedObject)
+            extensions.add(WI.fileExtensionForMIMEType(resource.mimeType));
+
+        for (let [key, item] of Object.entries(this._scopeBarItemTypeMap)) {
+            let hidden = !extensions.has(key);
+            item.hidden = hidden;
+            if (hidden && item.selected)
+                item.selected = false;
+
+            if (!item.hidden)
+                ++visibleExtensions;
+        }
+
+        this._imageTypeScopeBar.hidden = visibleExtensions <= 1;
+        this.dispatchEventToListeners(WI.ContentView.Event.NavigationItemsDidChange);
+    }
+
+    _handleShowGridButtonClicked(event)
+    {
+        WI.settings.showImageGrid.value = !this._showGridButtonNavigationItem.activated;
+    }
+
+    _handleImageTypeSelectionChanged()
+    {
+        let selectedTypes = this._imageTypeScopeBar.selectedItems.map((item) => item.id);
+        let allTypesAllowed = selectedTypes.length === 1 && selectedTypes[0] === "all";
+        for (let view of this.subviews) {
+            let hidden = !allTypesAllowed;
+            if (hidden && view instanceof WI.ResourceContentView)
+                hidden = !selectedTypes.includes(WI.fileExtensionForMIMEType(view.representedObject.mimeType));
+            view.element.hidden = hidden;
+        }
+    }
+
+    _handleShowImageGridSettingChanged(event)
+    {
+        let activated = WI.settings.showImageGrid.value;
+        this._showGridButtonNavigationItem.activated = activated;
+    }
 
     _handleContentError(event)
     {

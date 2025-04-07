@@ -46,6 +46,7 @@
 #include "WebProcessCreationParameters.h"
 #include "WebProcessMessages.h"
 #include "WebProcessPoolMessages.h"
+#include "WebStorageNamespaceProvider.h"
 #include "WebUserContentController.h"
 #include "WebsiteDataStoreParameters.h"
 #include <JavaScriptCore/APICast.h>
@@ -61,7 +62,7 @@
 #include <WebCore/GCController.h>
 #include <WebCore/GeolocationClient.h>
 #include <WebCore/GeolocationController.h>
-#include <WebCore/GeolocationPosition.h>
+#include <WebCore/GeolocationPositionData.h>
 #include <WebCore/JSDOMConvertBufferSource.h>
 #include <WebCore/JSDOMExceptionHandling.h>
 #include <WebCore/JSDOMWindow.h>
@@ -103,7 +104,7 @@ RefPtr<InjectedBundle> InjectedBundle::create(WebProcessCreationParameters& para
 InjectedBundle::InjectedBundle(const WebProcessCreationParameters& parameters)
     : m_path(parameters.injectedBundlePath)
     , m_platformBundle(0)
-    , m_client(std::make_unique<API::InjectedBundle::Client>())
+    , m_client(makeUnique<API::InjectedBundle::Client>())
 {
 }
 
@@ -114,7 +115,7 @@ InjectedBundle::~InjectedBundle()
 void InjectedBundle::setClient(std::unique_ptr<API::InjectedBundle::Client>&& client)
 {
     if (!client)
-        m_client = std::make_unique<API::InjectedBundle::Client>();
+        m_client = makeUnique<API::InjectedBundle::Client>();
     else
         m_client = WTFMove(client);
 }
@@ -215,11 +216,6 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
         RuntimeEnabledFeatures::sharedFeatures().setWebGPUEnabled(enabled);
 #endif
 
-#if ENABLE(WEBMETAL)
-    if (preference == "WebKitWebMetalEnabled")
-        RuntimeEnabledFeatures::sharedFeatures().setWebMetalEnabled(enabled);
-#endif
-
     if (preference == "WebKitModernMediaControlsEnabled")
         RuntimeEnabledFeatures::sharedFeatures().setModernMediaControlsEnabled(enabled);
 
@@ -281,7 +277,6 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
     macro(WebKitXSSAuditorEnabled, XSSAuditorEnabled, xssAuditorEnabled) \
     macro(WebKitShouldRespectImageOrientation, ShouldRespectImageOrientation, shouldRespectImageOrientation) \
     macro(WebKitDisplayImagesKey, LoadsImagesAutomatically, loadsImagesAutomatically) \
-    macro(WebKitVisualViewportEnabled, VisualViewportEnabled, visualViewportEnabled) \
     macro(WebKitLargeImageAsyncDecodingEnabled, LargeImageAsyncDecodingEnabled, largeImageAsyncDecodingEnabled) \
     macro(WebKitAnimatedImageAsyncDecodingEnabled, AnimatedImageAsyncDecodingEnabled, animatedImageAsyncDecodingEnabled) \
     \
@@ -357,17 +352,10 @@ void InjectedBundle::setPrivateBrowsingEnabled(WebPageGroupProxy* pageGroup, boo
     if (enabled)
         WebProcess::singleton().ensureLegacyPrivateBrowsingSessionInNetworkProcess();
 
-    const HashSet<Page*>& pages = PageGroup::pageGroup(pageGroup->identifier())->pages();
-    for (HashSet<Page*>::iterator iter = pages.begin(); iter != pages.end(); ++iter)
-        (*iter)->enableLegacyPrivateBrowsing(enabled);
-}
+    PageGroup::pageGroup(pageGroup->identifier())->enableLegacyPrivateBrowsingForTesting(enabled);
 
-void InjectedBundle::setUseDashboardCompatibilityMode(WebPageGroupProxy* pageGroup, bool enabled)
-{
-#if ENABLE(DASHBOARD_SUPPORT)
-    for (auto& page : PageGroup::pageGroup(pageGroup->identifier())->pages())
-        page->settings().setUsesDashboardBackwardCompatibilityMode(enabled);
-#endif
+    auto webStorageNameSpaceProvider = WebStorageNamespaceProvider::getOrCreate(*pageGroup);
+    webStorageNameSpaceProvider->enableLegacyPrivateBrowsingForTesting(enabled);
 }
 
 void InjectedBundle::setPopupBlockingEnabled(WebPageGroupProxy* pageGroup, bool enabled)

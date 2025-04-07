@@ -26,6 +26,7 @@
 #include <wtf/glib/GUniquePtr.h>
 
 struct AsyncReadData {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     AsyncReadData(GRefPtr<GTask>&& task, void* buffer, gsize count)
         : task(WTFMove(task))
         , buffer(buffer)
@@ -39,6 +40,7 @@ struct AsyncReadData {
 };
 
 struct _WebKitSoupRequestInputStreamPrivate {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     uint64_t contentLength;
     uint64_t bytesReceived;
     uint64_t bytesRead;
@@ -99,7 +101,7 @@ static void webkitSoupRequestInputStreamReadAsync(GInputStream* inputStream, voi
         return;
     }
 
-    stream->priv->pendingAsyncRead = std::make_unique<AsyncReadData>(WTFMove(task), buffer, count);
+    stream->priv->pendingAsyncRead = makeUnique<AsyncReadData>(WTFMove(task), buffer, count);
 }
 
 static gssize webkitSoupRequestInputStreamReadFinish(GInputStream* inputStream, GAsyncResult* result, GError** error)

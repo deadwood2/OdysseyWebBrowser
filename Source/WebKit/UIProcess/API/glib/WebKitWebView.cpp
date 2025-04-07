@@ -201,6 +201,7 @@ class PageLoadStateObserver;
 #if PLATFORM(WPE)
 static unsigned frameDisplayCallbackID;
 struct FrameDisplayedCallback {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     FrameDisplayedCallback(WebKitFrameDisplayedCallback callback, gpointer userData = nullptr, GDestroyNotify destroyNotifyFunction = nullptr)
         : id(++frameDisplayCallbackID)
         , callback(callback)
@@ -227,6 +228,7 @@ struct FrameDisplayedCallback {
 #endif // PLATFORM(WPE)
 
 struct _WebKitWebViewPrivate {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     ~_WebKitWebViewPrivate()
     {
         // For modal dialogs, make sure the main loop is stopped when finalizing the webView.
@@ -326,6 +328,7 @@ void webkitWebViewIsPlayingAudioChanged(WebKitWebView* webView)
 }
 
 class PageLoadStateObserver final : public PageLoadState::Observer {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     PageLoadStateObserver(WebKitWebView* webView)
         : m_webView(webView)
@@ -399,6 +402,7 @@ private:
 
 #if PLATFORM(WPE)
 class WebViewClient final : public API::ViewClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit WebViewClient(WebKitWebView* webView)
         : m_webView(webView)
@@ -514,11 +518,7 @@ static void userAgentChanged(WebKitSettings* settings, GParamSpec*, WebKitWebVie
 static void enableBackForwardNavigationGesturesChanged(WebKitSettings* settings, GParamSpec*, WebKitWebView* webView)
 {
     gboolean enable = webkit_settings_get_enable_back_forward_navigation_gestures(settings);
-
-    ViewGestureController& controller = webkitWebViewBaseViewGestureController(WEBKIT_WEB_VIEW_BASE(webView));
-    controller.setSwipeGestureEnabled(enable);
-
-    getPage(webView).setShouldRecordNavigationSnapshots(enable);
+    webkitWebViewBaseSetEnableBackForwardNavigationGesture(WEBKIT_WEB_VIEW_BASE(webView), enable);
 }
 
 static void webkitWebViewUpdateFavicon(WebKitWebView* webView, cairo_surface_t* favicon)
@@ -729,7 +729,7 @@ static void webkitWebViewConstructed(GObject* object)
 
     webkitWebContextCreatePageForWebView(priv->context.get(), webView, priv->userContentManager.get(), priv->relatedView);
 
-    priv->loadObserver = std::make_unique<PageLoadStateObserver>(webView);
+    priv->loadObserver = makeUnique<PageLoadStateObserver>(webView);
     getPage(webView).pageLoadState().addObserver(*priv->loadObserver);
 
     // The related view is only valid during the construction.
@@ -745,7 +745,7 @@ static void webkitWebViewConstructed(GObject* object)
 #endif
 
 #if PLATFORM(WPE)
-    priv->view->setClient(std::make_unique<WebViewClient>(webView));
+    priv->view->setClient(makeUnique<WebViewClient>(webView));
 #endif
 
     // This needs to be after attachUIClientToView() because WebPageProxy::setUIClient() calls setCanRunModal() with true.
@@ -2098,7 +2098,8 @@ void webkitWebViewWillStartLoad(WebKitWebView* webView)
 
     GUniquePtr<GError> error(g_error_new_literal(WEBKIT_NETWORK_ERROR, WEBKIT_NETWORK_ERROR_CANCELLED, _("Load request cancelled")));
     webkitWebViewLoadFailed(webView, pageLoadState.isProvisional() ? WEBKIT_LOAD_STARTED : WEBKIT_LOAD_COMMITTED,
-        webView->priv->activeURI.data(), error.get());
+        pageLoadState.isProvisional() ? pageLoadState.provisionalURL().utf8().data() : pageLoadState.url().utf8().data(),
+        error.get());
 }
 
 void webkitWebViewLoadChanged(WebKitWebView* webView, WebKitLoadEvent loadEvent)
@@ -2822,7 +2823,7 @@ guint64 webkit_web_view_get_page_id(WebKitWebView* webView)
 {
     g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), 0);
 
-    return getPage(webView).pageID();
+    return getPage(webView).pageID().toUInt64();
 }
 
 /**
@@ -3705,6 +3706,7 @@ gboolean webkit_web_view_can_show_mime_type(WebKitWebView* webView, const char* 
 }
 
 struct ViewSaveAsyncData {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     RefPtr<API::Data> webData;
     GRefPtr<GFile> file;
 };

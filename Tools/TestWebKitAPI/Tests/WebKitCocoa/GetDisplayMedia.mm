@@ -25,8 +25,6 @@
 
 #import "config.h"
 
-#if WK_API_ENABLED
-
 #if ENABLE(MEDIA_STREAM) && PLATFORM(MAC)
 
 #import "PlatformUtilities.h"
@@ -95,6 +93,8 @@ public:
     virtual void SetUp()
     {
         m_configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+        auto context = adoptWK(TestWebKitAPI::Util::createContextForInjectedBundleTest("InternalsInjectedBundleTest"));
+        m_configuration.get().processPool = (WKProcessPool *)context.get();
 
         auto handler = adoptNS([[GetDisplayMediaMessageHandler alloc] init]);
         [[m_configuration userContentController] addScriptMessageHandler:handler.get() name:@"testHandler"];
@@ -187,5 +187,3 @@ TEST_F(GetDisplayMediaTest, PromptOnceAfterDenial)
 } // namespace TestWebKitAPI
 
 #endif // ENABLE(MEDIA_STREAM) && PLATFORM(MAC)
-
-#endif // WK_API_ENABLED

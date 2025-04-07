@@ -38,6 +38,7 @@
 #include "ChildListMutationScope.h"
 #include "Comment.h"
 #include "ComposedTreeIterator.h"
+#include "CustomHeaderFields.h"
 #include "DocumentFragment.h"
 #include "DocumentLoader.h"
 #include "DocumentType.h"
@@ -66,6 +67,7 @@
 #include "NodeList.h"
 #include "Page.h"
 #include "PageConfiguration.h"
+#include "PasteboardItemInfo.h"
 #include "Range.h"
 #include "RenderBlock.h"
 #include "RuntimeEnabledFeatures.h"
@@ -129,7 +131,7 @@ static void completeURLs(DocumentFragment* fragment, const String& baseURL)
         change.apply();
 }
 
-void replaceSubresourceURLs(Ref<DocumentFragment>&& fragment, HashMap<AtomicString, AtomicString>&& replacementMap)
+void replaceSubresourceURLs(Ref<DocumentFragment>&& fragment, HashMap<AtomString, AtomString>&& replacementMap)
 {
     Vector<AttributeChange> changes;
     for (auto& element : descendantsOfType<Element>(fragment)) {
@@ -176,14 +178,15 @@ std::unique_ptr<Page> createPageForSanitizingWebContent()
 {
     auto pageConfiguration = pageConfigurationWithEmptyClients();
     
-    auto page = std::make_unique<Page>(WTFMove(pageConfiguration));
+    auto page = makeUnique<Page>(WTFMove(pageConfiguration));
+    page->setIsForSanitizingWebContent();
     page->settings().setMediaEnabled(false);
     page->settings().setScriptEnabled(false);
     page->settings().setPluginsEnabled(false);
     page->settings().setAcceleratedCompositingEnabled(false);
 
     Frame& frame = page->mainFrame();
-    frame.setView(FrameView::create(frame));
+    frame.setView(FrameView::create(frame, IntSize { 800, 600 }));
     frame.init();
 
     FrameLoader& loader = frame.loader();
@@ -980,9 +983,9 @@ static void restoreAttachmentElementsInFragment(DocumentFragment& fragment)
         auto attachmentPath = attachment->attachmentPath();
         auto blobURL = attachment->blobURL();
         if (!attachmentPath.isEmpty())
-            attachment->setFile(File::create(attachmentPath));
+            attachment->setFile(File::create(fragment.document().sessionID(), attachmentPath));
         else if (!blobURL.isEmpty())
-            attachment->setFile(File::deserialize({ }, blobURL, attachment->attachmentType(), attachment->attachmentTitle()));
+            attachment->setFile(File::deserialize(fragment.document().sessionID(), { }, blobURL, attachment->attachmentType(), attachment->attachmentTitle()));
 
         // Remove temporary attributes that were previously added in StyledMarkupAccumulator::appendCustomAttributes.
         attachment->removeAttribute(webkitattachmentidAttr);
@@ -1235,11 +1238,14 @@ RefPtr<DocumentFragment> createFragmentForTransformToFragment(Document& outputDo
     return fragment;
 }
 
-Ref<DocumentFragment> createFragmentForImageAndURL(Document& document, const String& url)
+Ref<DocumentFragment> createFragmentForImageAndURL(Document& document, const String& url, PresentationSize preferredSize)
 {
     auto imageElement = HTMLImageElement::create(document);
     imageElement->setAttributeWithoutSynchronization(HTMLNames::srcAttr, url);
-
+    if (preferredSize.width)
+        imageElement->setAttributeWithoutSynchronization(HTMLNames::widthAttr, AtomString::number(*preferredSize.width));
+    if (preferredSize.height)
+        imageElement->setAttributeWithoutSynchronization(HTMLNames::heightAttr, AtomString::number(*preferredSize.height));
     auto fragment = document.createDocumentFragment();
     fragment->appendChild(imageElement);
 

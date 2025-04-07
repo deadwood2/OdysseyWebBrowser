@@ -49,6 +49,7 @@
 #include <WebCore/SharedBuffer.h>
 #include <WebCore/UserAgent.h>
 #include <WebCore/WindowsKeyboardCodes.h>
+#include <gtk/gtk.h>
 #include <wtf/glib/GUniquePtr.h>
 
 namespace WebKit {
@@ -56,7 +57,7 @@ using namespace WebCore;
 
 void WebPage::platformInitialize()
 {
-#if HAVE(ACCESSIBILITY)
+#if ENABLE(ACCESSIBILITY)
     // Create the accessible object (the plug) that will serve as the
     // entry point to the Web process, and send a message to the UI
     // process to connect the two worlds through the accessibility
@@ -65,6 +66,10 @@ void WebPage::platformInitialize()
     GUniquePtr<gchar> plugID(atk_plug_get_id(ATK_PLUG(m_accessibilityObject.get())));
     send(Messages::WebPageProxy::BindAccessibilityTree(String(plugID.get())));
 #endif
+}
+
+void WebPage::platformReinitialize()
+{
 }
 
 void WebPage::platformDetach()
@@ -161,14 +166,13 @@ String WebPage::platformUserAgent(const URL& url) const
     return WebCore::standardUserAgentForURL(url);
 }
 
-#if HAVE(GTK_GESTURES)
-void WebPage::getCenterForZoomGesture(const IntPoint& centerInViewCoordinates, IntPoint& result)
+void WebPage::getCenterForZoomGesture(const IntPoint& centerInViewCoordinates, CompletionHandler<void(WebCore::IntPoint&&)>&& completionHandler)
 {
-    result = mainFrameView()->rootViewToContents(centerInViewCoordinates);
+    IntPoint result = mainFrameView()->rootViewToContents(centerInViewCoordinates);
     double scale = m_page->pageScaleFactor();
     result.scale(1 / scale, 1 / scale);
+    completionHandler(WTFMove(result));
 }
-#endif
 
 void WebPage::setInputMethodState(bool enabled)
 {
@@ -179,7 +183,7 @@ void WebPage::setInputMethodState(bool enabled)
     send(Messages::WebPageProxy::SetInputMethodState(enabled));
 }
 
-void WebPage::collapseSelectionInFrame(uint64_t frameID)
+void WebPage::collapseSelectionInFrame(FrameIdentifier frameID)
 {
     WebFrame* frame = WebProcess::singleton().webFrame(frameID);
     if (!frame || !frame->coreFrame())
@@ -188,6 +192,25 @@ void WebPage::collapseSelectionInFrame(uint64_t frameID)
     // Collapse the selection without clearing it.
     const VisibleSelection& selection = frame->coreFrame()->selection().selection();
     frame->coreFrame()->selection().setBase(selection.extent(), selection.affinity());
+}
+
+void WebPage::showEmojiPicker(Frame& frame)
+{
+    CompletionHandler<void(String)> completionHandler = [frame = makeRef(frame)](String result) {
+        if (!result.isEmpty())
+            frame->editor().insertText(result, nullptr);
+    };
+    sendWithAsyncReply(Messages::WebPageProxy::ShowEmojiPicker(frame.view()->contentsToRootView(frame.selection().absoluteCaretBounds())), WTFMove(completionHandler));
+}
+
+void WebPage::themeDidChange(String&& themeName)
+{
+    if (m_themeName == themeName)
+        return;
+
+    m_themeName = WTFMove(themeName);
+    g_object_set(gtk_settings_get_default(), "gtk-theme-name", m_themeName.utf8().data(), nullptr);
+    Page::updateStyleForAllPagesAfterGlobalChangeInEnvironment();
 }
 
 } // namespace WebKit

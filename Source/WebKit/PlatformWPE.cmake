@@ -16,6 +16,7 @@ configure_file(wpe/wpe-web-extension.pc.in ${WPEWebExtension_PKGCONFIG_FILE} @ON
 
 add_definitions(-DWEBKIT2_COMPILATION)
 
+add_definitions(-DLIBDIR="${LIB_INSTALL_DIR}")
 add_definitions(-DPKGLIBDIR="${LIB_INSTALL_DIR}/wpe-webkit-${WPE_API_VERSION}")
 add_definitions(-DPKGLIBEXECDIR="${LIBEXEC_INSTALL_DIR}")
 add_definitions(-DDATADIR="${CMAKE_INSTALL_FULL_DATADIR}")
@@ -81,7 +82,7 @@ list(APPEND WebKit_MESSAGES_IN_FILES
 )
 
 list(APPEND WebKit_DERIVED_SOURCES
-    ${DERIVED_SOURCES_WEBKIT_DIR}/WebKitResourcesGResourceBundle.c
+    ${WebKit_DERIVED_SOURCES_DIR}/WebKitResourcesGResourceBundle.c
 
     ${DERIVED_SOURCES_WPE_API_DIR}/WebKitEnumTypes.cpp
     ${DERIVED_SOURCES_WPE_API_DIR}/WebKitWebProcessEnumTypes.cpp
@@ -112,6 +113,7 @@ set(WPE_API_INSTALLED_HEADERS
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitFileChooserRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitFindController.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitFormSubmissionRequest.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitGeolocationManager.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitGeolocationPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitHitTestResult.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitInstallMissingMediaPluginsPermissionRequest.h
@@ -204,7 +206,7 @@ if (ENABLE_WEB_AUDIO)
     )
 endif ()
 
-file(WRITE ${DERIVED_SOURCES_WEBKIT_DIR}/WebKitResourcesGResourceBundle.xml
+file(WRITE ${WebKit_DERIVED_SOURCES_DIR}/WebKitResourcesGResourceBundle.xml
     "<?xml version=1.0 encoding=UTF-8?>\n"
     "<gresources>\n"
     "    <gresource prefix=\"/org/webkitwpe/resources\">\n"
@@ -214,9 +216,9 @@ file(WRITE ${DERIVED_SOURCES_WEBKIT_DIR}/WebKitResourcesGResourceBundle.xml
 )
 
 add_custom_command(
-    OUTPUT ${DERIVED_SOURCES_WEBKIT_DIR}/WebKitResourcesGResourceBundle.c
-    DEPENDS ${DERIVED_SOURCES_WEBKIT_DIR}/WebKitResourcesGResourceBundle.xml
-    COMMAND glib-compile-resources --generate --sourcedir=${CMAKE_SOURCE_DIR}/Source/WebCore/Resources --sourcedir=${CMAKE_SOURCE_DIR}/Source/WebCore/platform/audio/resources --target=${DERIVED_SOURCES_WEBKIT_DIR}/WebKitResourcesGResourceBundle.c ${DERIVED_SOURCES_WEBKIT_DIR}/WebKitResourcesGResourceBundle.xml
+    OUTPUT ${WebKit_DERIVED_SOURCES_DIR}/WebKitResourcesGResourceBundle.c
+    DEPENDS ${WebKit_DERIVED_SOURCES_DIR}/WebKitResourcesGResourceBundle.xml
+    COMMAND glib-compile-resources --generate --sourcedir=${CMAKE_SOURCE_DIR}/Source/WebCore/Resources --sourcedir=${CMAKE_SOURCE_DIR}/Source/WebCore/platform/audio/resources --target=${WebKit_DERIVED_SOURCES_DIR}/WebKitResourcesGResourceBundle.c ${WebKit_DERIVED_SOURCES_DIR}/WebKitResourcesGResourceBundle.xml
     VERBATIM
 )
 
@@ -230,12 +232,8 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${FORWARDING_HEADERS_WPE_DOM_DIR}"
     "${DERIVED_SOURCES_DIR}"
     "${DERIVED_SOURCES_WPE_API_DIR}"
-    "${WEBCORE_DIR}/platform/graphics/cairo"
-    "${WEBCORE_DIR}/platform/graphics/freetype"
-    "${WEBCORE_DIR}/platform/graphics/opentype"
-    "${WEBCORE_DIR}/platform/graphics/texmap/coordinated"
-    "${WEBCORE_DIR}/platform/network/soup"
     "${WEBKIT_DIR}/NetworkProcess/CustomProtocols/soup"
+    "${WEBKIT_DIR}/NetworkProcess/glib"
     "${WEBKIT_DIR}/NetworkProcess/soup"
     "${WEBKIT_DIR}/NetworkProcess/unix"
     "${WEBKIT_DIR}/Platform/IPC/glib"
@@ -255,6 +253,7 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/UIProcess/API/wpe"
     "${WEBKIT_DIR}/UIProcess/CoordinatedGraphics"
     "${WEBKIT_DIR}/UIProcess/Network/CustomProtocols/soup"
+    "${WEBKIT_DIR}/UIProcess/geoclue"
     "${WEBKIT_DIR}/UIProcess/gstreamer"
     "${WEBKIT_DIR}/UIProcess/linux"
     "${WEBKIT_DIR}/UIProcess/soup"
@@ -267,6 +266,8 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/WebProcess/unix"
     "${WEBKIT_DIR}/WebProcess/WebCoreSupport/soup"
     "${WEBKIT_DIR}/WebProcess/WebPage/CoordinatedGraphics"
+    "${WEBKIT_DIR}/WebProcess/WebPage/atk"
+    "${WEBKIT_DIR}/WebProcess/WebPage/libwpe"
     "${WEBKIT_DIR}/WebProcess/WebPage/wpe"
     "${WTF_DIR}/wtf/gtk/"
     "${WTF_DIR}/wtf/gobject"
@@ -274,25 +275,30 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
+    ${ATK_INCLUDE_DIRS}
+    ${ATK_BRIDGE_INCLUDE_DIRS}
     ${CAIRO_INCLUDE_DIRS}
     ${FREETYPE_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
     ${GSTREAMER_INCLUDE_DIRS}
     ${HARFBUZZ_INCLUDE_DIRS}
+    ${LIBSECCOMP_INCLUDE_DIRS}
     ${LIBSOUP_INCLUDE_DIRS}
     ${WPE_INCLUDE_DIRS}
 )
 
 list(APPEND WebKit_LIBRARIES
-    PRIVATE
-        ${CAIRO_LIBRARIES}
-        ${FREETYPE_LIBRARIES}
-        ${GLIB_LIBRARIES}
-        ${GLIB_GMODULE_LIBRARIES}
-        ${GSTREAMER_LIBRARIES}
-        ${HARFBUZZ_LIBRARIES}
-        ${LIBSOUP_LIBRARIES}
-        ${WPE_LIBRARIES}
+    ${ATK_LIBRARIES}
+    ${ATK_BRIDGE_LIBRARIES}
+    ${CAIRO_LIBRARIES}
+    ${FREETYPE_LIBRARIES}
+    ${GLIB_LIBRARIES}
+    ${GLIB_GMODULE_LIBRARIES}
+    ${GSTREAMER_LIBRARIES}
+    ${HARFBUZZ_LIBRARIES}
+    ${LIBSECCOMP_LIBRARIES}
+    ${LIBSOUP_LIBRARIES}
+    ${WPE_LIBRARIES}
 )
 
 WEBKIT_BUILD_INSPECTOR_GRESOURCES(${DERIVED_SOURCES_WEBINSPECTORUI_DIR})
@@ -372,14 +378,14 @@ if (ENABLE_WPE_QT_API)
         Qt5::Core Qt5::Quick
         WebKit
         ${LIBEPOXY_LIBRARIES}
-        ${WPE_BACKEND_FDO_LIBRARIES}
+        ${WPEBACKEND_FDO_LIBRARIES}
     )
 
     set(qtwpe_INCLUDE_DIRECTORIES
         ${Qt5_INCLUDE_DIRS}
         ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
         ${LIBEPOXY_INCLUDE_DIRS}
-        ${WPE_BACKEND_FDO_INCLUDE_DIRS}
+        ${WPEBACKEND_FDO_INCLUDE_DIRS}
     )
 
     list(APPEND WPE_API_INSTALLED_HEADERS
@@ -391,7 +397,6 @@ if (ENABLE_WPE_QT_API)
     set_target_properties(qtwpe PROPERTIES
         OUTPUT_NAME qtwpe
         AUTOMOC ON
-        CXX_STANDARD 14
     )
     target_compile_definitions(qtwpe PUBLIC QT_NO_KEYWORDS=1)
     target_link_libraries(qtwpe ${qtwpe_LIBRARIES})

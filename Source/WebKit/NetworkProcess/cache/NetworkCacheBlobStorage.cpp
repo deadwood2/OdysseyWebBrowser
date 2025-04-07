@@ -34,9 +34,7 @@
 #include <wtf/SHA1.h>
 
 #if !OS(WINDOWS)
-#include <sys/mman.h>
 #include <sys/stat.h>
-#include <unistd.h>
 #endif
 
 namespace WebKit {
@@ -48,7 +46,7 @@ BlobStorage::BlobStorage(const String& blobDirectoryPath, Salt salt)
 {
 }
 
-String BlobStorage::blobDirectoryPath() const
+String BlobStorage::blobDirectoryPathIsolatedCopy() const
 {
     return m_blobDirectoryPath.isolatedCopy();
 }
@@ -57,10 +55,11 @@ void BlobStorage::synchronize()
 {
     ASSERT(!RunLoop::isMain());
 
-    FileSystem::makeAllDirectories(blobDirectoryPath());
+    auto blobDirectoryPath = blobDirectoryPathIsolatedCopy();
+    FileSystem::makeAllDirectories(blobDirectoryPath);
 
     m_approximateSize = 0;
-    auto blobDirectory = blobDirectoryPath();
+    auto blobDirectory = blobDirectoryPath;
     traverseDirectory(blobDirectory, [this, &blobDirectory](const String& name, DirectoryEntryType type) {
         if (type != DirectoryEntryType::File)
             return;
@@ -81,46 +80,43 @@ void BlobStorage::synchronize()
 String BlobStorage::blobPathForHash(const SHA1::Digest& hash) const
 {
     auto hashAsString = SHA1::hexDigest(hash);
-    return FileSystem::pathByAppendingComponent(blobDirectoryPath(), String::fromUTF8(hashAsString));
+    return FileSystem::pathByAppendingComponent(blobDirectoryPathIsolatedCopy(), String::fromUTF8(hashAsString));
 }
 
 BlobStorage::Blob BlobStorage::add(const String& path, const Data& data)
 {
-#if !OS(WINDOWS)
     ASSERT(!RunLoop::isMain());
 
     auto hash = computeSHA1(data, m_salt);
     if (data.isEmpty())
         return { data, hash };
 
-    auto blobPath = FileSystem::fileSystemRepresentation(blobPathForHash(hash));
-    auto linkPath = FileSystem::fileSystemRepresentation(path);
-    unlink(linkPath.data());
+    String blobPath = blobPathForHash(hash);
+    
+    FileSystem::deleteFile(path);
 
-    bool blobExists = access(blobPath.data(), F_OK) != -1;
+    bool blobExists = FileSystem::fileExists(blobPath);
     if (blobExists) {
-        auto existingData = mapFile(blobPath.data());
+        FileSystem::makeSafeToUseMemoryMapForPath(blobPath);
+        auto existingData = mapFile(blobPath);
         if (bytesEqual(existingData, data)) {
-            if (link(blobPath.data(), linkPath.data()) == -1)
-                WTFLogAlways("Failed to create hard link from %s to %s", blobPath.data(), linkPath.data());
+            if (!FileSystem::hardLink(blobPath, path))
+                WTFLogAlways("Failed to create hard link from %s to %s", blobPath.utf8().data(), path.utf8().data());
             return { existingData, hash };
         }
-        unlink(blobPath.data());
+        FileSystem::deleteFile(blobPath);
     }
 
-    auto mappedData = data.mapToFile(blobPath.data());
+    auto mappedData = data.mapToFile(blobPath);
     if (mappedData.isNull())
         return { };
 
-    if (link(blobPath.data(), linkPath.data()) == -1)
-        WTFLogAlways("Failed to create hard link from %s to %s", blobPath.data(), linkPath.data());
+    if (!FileSystem::hardLink(blobPath, path))
+        WTFLogAlways("Failed to create hard link from %s to %s", blobPath.utf8().data(), path.utf8().data());
 
     m_approximateSize += mappedData.size();
 
     return { mappedData, hash };
-#else
-    return { Data(), computeSHA1(data, m_salt) };
-#endif
 }
 
 BlobStorage::Blob BlobStorage::get(const String& path)
@@ -137,8 +133,7 @@ void BlobStorage::remove(const String& path)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto linkPath = FileSystem::fileSystemRepresentation(path);
-    unlink(linkPath.data());
+    FileSystem::deleteFile(path);
 }
 
 unsigned BlobStorage::shareCount(const String& path)

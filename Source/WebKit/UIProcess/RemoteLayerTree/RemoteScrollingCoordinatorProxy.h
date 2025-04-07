@@ -30,8 +30,11 @@
 #include "MessageReceiver.h"
 #include "RemoteScrollingCoordinator.h"
 #include "RemoteScrollingTree.h"
+#include <WebCore/GraphicsLayer.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/RefPtr.h>
+
+OBJC_CLASS UIScrollView;
 
 namespace WebCore {
 class FloatPoint;
@@ -46,21 +49,22 @@ class RemoteScrollingTree;
 class WebPageProxy;
 
 class RemoteScrollingCoordinatorProxy {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(RemoteScrollingCoordinatorProxy);
 public:
     explicit RemoteScrollingCoordinatorProxy(WebPageProxy&);
     virtual ~RemoteScrollingCoordinatorProxy();
 
-    bool visualViewportEnabled() const { return m_scrollingTree && m_scrollingTree->visualViewportEnabled(); }
-
     // Inform the web process that the scroll position changed (called from the scrolling tree)
     void scrollingTreeNodeDidScroll(WebCore::ScrollingNodeID, const WebCore::FloatPoint& newScrollPosition, const Optional<WebCore::FloatPoint>& layoutViewportOrigin, WebCore::ScrollingLayerPositionAction);
     void scrollingTreeNodeRequestsScroll(WebCore::ScrollingNodeID, const WebCore::FloatPoint& scrollPosition, bool representsProgrammaticScroll);
 
-    WebCore::TrackingType eventTrackingTypeForPoint(const AtomicString& eventName, WebCore::IntPoint) const;
+    WebCore::TrackingType eventTrackingTypeForPoint(const AtomString& eventName, WebCore::IntPoint) const;
 
     // Called externally when native views move around.
-    void viewportChangedViaDelegatedScrolling(WebCore::ScrollingNodeID, const WebCore::FloatRect& fixedPositionRect, double scale);
+    void viewportChangedViaDelegatedScrolling(const WebCore::FloatPoint& scrollPosition, const WebCore::FloatRect& layoutViewport, double scale);
+
+    void applyScrollingTreeLayerPositionsAfterCommit();
 
     void currentSnapPointIndicesDidChange(WebCore::ScrollingNodeID, unsigned horizontal, unsigned vertical);
 
@@ -83,9 +87,12 @@ public:
     void setPropagatesMainFrameScrolls(bool propagatesMainFrameScrolls) { m_propagatesMainFrameScrolls = propagatesMainFrameScrolls; }
     bool propagatesMainFrameScrolls() const { return m_propagatesMainFrameScrolls; }
     bool hasFixedOrSticky() const { return m_scrollingTree->hasFixedOrSticky(); }
+    bool hasScrollableMainFrame() const;
 
 #if PLATFORM(IOS_FAMILY)
-    WebCore::FloatRect customFixedPositionRect() const;
+    UIScrollView *scrollViewForScrollingNodeID(WebCore::ScrollingNodeID) const;
+
+    WebCore::FloatRect currentLayoutViewport() const;
     void scrollingTreeNodeWillStartPanGesture();
     void scrollingTreeNodeWillStartScroll();
     void scrollingTreeNodeDidEndScroll();
@@ -100,14 +107,15 @@ public:
     String scrollingTreeAsText() const;
 
 #if ENABLE(POINTER_EVENTS)
-    Optional<WebCore::TouchActionData> touchActionDataAtPoint(const WebCore::IntPoint) const;
-    Optional<WebCore::TouchActionData> touchActionDataForScrollNodeID(WebCore::ScrollingNodeID) const;
-    void setTouchDataForTouchIdentifier(WebCore::TouchActionData, unsigned);
-    void clearTouchDataForTouchIdentifier(unsigned);
+    OptionSet<WebCore::TouchAction> activeTouchActionsForTouchIdentifier(unsigned touchIdentifier) const;
+    void setTouchActionsForTouchIdentifier(OptionSet<WebCore::TouchAction>, unsigned);
+    void clearTouchActionsForTouchIdentifier(unsigned);
 #endif
 
 private:
     void connectStateNodeLayers(WebCore::ScrollingStateTree&, const RemoteLayerTreeHost&);
+    void establishLayerTreeScrollingRelations(const RemoteLayerTreeHost&);
+
 #if ENABLE(CSS_SCROLL_SNAP)
     bool shouldSnapForMainFrameScrolling(WebCore::ScrollEventAxis) const;
     float closestSnapOffsetForMainFrameScrolling(WebCore::ScrollEventAxis, float scrollDestination, float velocity, unsigned& closestIndex) const;
@@ -116,7 +124,7 @@ private:
     WebPageProxy& m_webPageProxy;
     RefPtr<RemoteScrollingTree> m_scrollingTree;
 #if ENABLE(POINTER_EVENTS)
-    HashMap<unsigned, WebCore::TouchActionData> m_touchActionDataByTouchIdentifier;
+    HashMap<unsigned, OptionSet<WebCore::TouchAction>> m_touchActionsByTouchIdentifier;
 #endif
     RequestedScrollInfo* m_requestedScrollInfo;
 #if ENABLE(CSS_SCROLL_SNAP)
@@ -124,6 +132,7 @@ private:
     unsigned m_currentVerticalSnapPointIndex { 0 };
 #endif
     bool m_propagatesMainFrameScrolls;
+    HashSet<WebCore::GraphicsLayer::PlatformLayerID> m_layersWithScrollingRelations;
 };
 
 } // namespace WebKit

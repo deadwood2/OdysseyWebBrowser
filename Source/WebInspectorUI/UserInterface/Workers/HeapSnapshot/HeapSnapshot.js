@@ -30,13 +30,17 @@
  */
 
 // nodes
-// [<0:id>, <1:size>, <2:classNameTableIndex>, <3:internal>]
+// [<0:id>, <1:size>, <2:classNameTableIndex>, <3:flags>]
 const nodeFieldCount = 4;
 const nodeIdOffset = 0;
 const nodeSizeOffset = 1;
 const nodeClassNameOffset = 2;
-const nodeInternalOffset = 3;
+const nodeFlagsOffset = 3;
 const gcDebuggingNodeFieldCount = 7;
+
+// node flags
+const internalFlagsMask = (1 << 0);
+const objectTypeMask = (1 << 1);
 
 // edges
 // [<0:fromId>, <1:toId>, <2:typeTableIndex>, <3:edgeDataIndexOrEdgeNameIndex>]
@@ -51,6 +55,10 @@ const rootNodeIndex = 0;
 const rootNodeOrdinal = 0;
 const rootNodeIdentifier = 0;
 
+// Version Differences:
+//   - In Version 1, node[3] now named <flags> was the value 0 or 1 indicating not-internal or internal.
+//   - In Version 2, this became a bitmask so multiple flags could be included without modifying the size.
+//
 // Terminology:
 //   - `nodeIndex` is an index into the `nodes` list.
 //   - `nodeOrdinal` is the order of the node in the `nodes` list. (nodeIndex / nodeFieldCount).
@@ -85,7 +93,7 @@ HeapSnapshot = class HeapSnapshot
         snapshotDataString = null;
 
         let {version, type, nodes, nodeClassNames, edges, edgeTypes, edgeNames} = json;
-        console.assert(version === 1, "Expect JavaScriptCore Heap Snapshot version 1");
+        console.assert(version === 1 || version === 2, "Expect JavaScriptCore Heap Snapshot version 1 or 2");
         console.assert(!type || (type === "Inspector" || type === "GCDebugging"), "Expect an Inspector / GCDebugging Heap Snapshot");
 
         this._nodeFieldCount = type === "GCDebugging" ? gcDebuggingNodeFieldCount : nodeFieldCount;
@@ -165,18 +173,20 @@ HeapSnapshot = class HeapSnapshot
             let className = nodeClassNamesTable[classNameTableIndex];
             let size = nodes[nodeIndex + nodeSizeOffset];
             let retainedSize = nodeOrdinalToRetainedSizes[nodeOrdinal];
-            let internal = nodes[nodeIndex + nodeInternalOffset] ? true : false;
+            let flags = nodes[nodeIndex + nodeFlagsOffset];
             let dead = nodeOrdinalIsDead[nodeOrdinal] ? true : false;
 
             let category = categories[className];
             if (!category)
-                category = categories[className] = {className, size: 0, retainedSize: 0, count: 0, internalCount: 0, deadCount: 0};
+                category = categories[className] = {className, size: 0, retainedSize: 0, count: 0, internalCount: 0, deadCount: 0, objectCount: 0};
 
             category.size += size;
             category.retainedSize += retainedSize;
             category.count += 1;
-            if (internal)
+            if (flags & internalFlagsMask)
                 category.internalCount += 1;
+            if (flags & objectTypeMask)
+                category.objectCount += 1;
             if (dead)
                 category.deadCount += 1;
             else
@@ -268,7 +278,7 @@ HeapSnapshot = class HeapSnapshot
         // Internal nodes are avoided, so if the path is empty this
         // node is either a gcRoot or only reachable via Internal nodes.
 
-        let paths = this._gcRootPathes(nodeIdentifier);
+        let paths = this._determineGCRootPaths(nodeIdentifier);
         if (!paths.length)
             return [];
 
@@ -422,6 +432,7 @@ HeapSnapshot = class HeapSnapshot
         let nodeOrdinal = nodeIndex / this._nodeFieldCount;
         let edgeIndex = this._nodeOrdinalToFirstOutgoingEdge[nodeOrdinal];
         let hasChildren = this._edges[edgeIndex + edgeFromIdOffset] === nodeIdentifier;
+        let nodeFlags = this._nodes[nodeIndex + nodeFlagsOffset];
 
         let dominatorNodeOrdinal = this._nodeOrdinalToDominatorNodeOrdinal[nodeOrdinal];
         let dominatorNodeIndex = dominatorNodeOrdinal * this._nodeFieldCount;
@@ -432,7 +443,8 @@ HeapSnapshot = class HeapSnapshot
             className: this._nodeClassNamesTable[this._nodes[nodeIndex + nodeClassNameOffset]],
             size: this._nodes[nodeIndex + nodeSizeOffset],
             retainedSize: this._nodeOrdinalToRetainedSizes[nodeOrdinal],
-            internal: this._nodes[nodeIndex + nodeInternalOffset] ? true : false,
+            internal: nodeFlags & internalFlagsMask ? true : false,
+            isObjectType: nodeFlags & objectTypeMask ? true : false,
             gcRoot: this._nodeOrdinalIsGCRoot[nodeOrdinal] ? true : false,
             dead: this._nodeOrdinalIsDead[nodeOrdinal] ? true : false,
             dominatorNodeIdentifier,
@@ -722,7 +734,7 @@ HeapSnapshot = class HeapSnapshot
             || className === "GlobalObject";
     }
 
-    _gcRootPathes(nodeIdentifier)
+    _determineGCRootPaths(nodeIdentifier)
     {
         let targetNodeOrdinal = this._nodeIdentifierToOrdinal.get(nodeIdentifier);
 
@@ -731,22 +743,34 @@ HeapSnapshot = class HeapSnapshot
 
         // FIXME: Array push/pop can affect performance here, but in practice it hasn't been an issue.
 
-        let paths = [];
-        let currentPath = [];
+        let gcRootPaths = [];
         let visited = new Uint8Array(this._nodeCount);
 
-        function visitNode(nodeOrdinal)
-        {
+        let pathsBeingProcessed = [
+            {
+                currentPath: [],
+                nodeOrdinal: targetNodeOrdinal,
+            },
+        ];
+        for (let i = 0; i < pathsBeingProcessed.length; ++i) {
+            let {currentPath, nodeOrdinal} = pathsBeingProcessed[i];
+
+            // Rather than use `Array.prototype.unshift`, which may be very expensive, keep track of
+            // the "current" position as `i` and "delete" the values already processed by clearing
+            // the value at that index.
+            pathsBeingProcessed[i] = undefined;
+
             if (this._nodeOrdinalIsGCRoot[nodeOrdinal]) {
                 let fullPath = currentPath.slice();
                 let nodeIndex = nodeOrdinal * this._nodeFieldCount;
                 fullPath.push({node: nodeIndex});
-                paths.push(fullPath);
-                return;
+                gcRootPaths.push(fullPath);
+                continue;
             }
 
             if (visited[nodeOrdinal])
-                return;
+                continue;
+
             visited[nodeOrdinal] = 1;
 
             let nodeIndex = nodeOrdinal * this._nodeFieldCount;
@@ -759,22 +783,17 @@ HeapSnapshot = class HeapSnapshot
             for (let incomingEdgeIndex = incomingEdgeIndexEnd - 1; incomingEdgeIndex >= incomingEdgeIndexStart; --incomingEdgeIndex) {
                 let fromNodeOrdinal = this._incomingNodes[incomingEdgeIndex];
                 let fromNodeIndex = fromNodeOrdinal * this._nodeFieldCount;
-                let fromNodeIsInternal = this._nodes[fromNodeIndex + nodeInternalOffset];
+                let fromNodeIsInternal = this._nodes[fromNodeIndex + nodeFlagsOffset] & internalFlagsMask;
                 if (fromNodeIsInternal)
                     continue;
 
-                let edgeIndex = this._incomingEdges[incomingEdgeIndex];
-                currentPath.push({edge: edgeIndex});
-                visitNode.call(this, fromNodeOrdinal);
-                currentPath.pop();
+                let newPath = currentPath.slice();
+                newPath.push({edge: this._incomingEdges[incomingEdgeIndex]});
+                pathsBeingProcessed.push({currentPath: newPath, nodeOrdinal: fromNodeOrdinal});
             }
-
-            currentPath.pop();
         }
 
-        visitNode.call(this, targetNodeOrdinal);
-
-        return paths;
+        return gcRootPaths;
     }
 };
 

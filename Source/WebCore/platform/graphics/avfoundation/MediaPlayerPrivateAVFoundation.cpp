@@ -29,6 +29,7 @@
 
 #include "MediaPlayerPrivateAVFoundation.h"
 
+#include "CustomHeaderFields.h"
 #include "DeprecatedGlobalSettings.h"
 #include "DocumentLoader.h"
 #include "FloatConversion.h"
@@ -382,7 +383,7 @@ std::unique_ptr<PlatformTimeRanges> MediaPlayerPrivateAVFoundation::buffered() c
     if (!m_cachedLoadedTimeRanges)
         m_cachedLoadedTimeRanges = platformBufferedTimeRanges();
 
-    return std::make_unique<PlatformTimeRanges>(*m_cachedLoadedTimeRanges);
+    return makeUnique<PlatformTimeRanges>(*m_cachedLoadedTimeRanges);
 }
 
 MediaTime MediaPlayerPrivateAVFoundation::maxMediaTimeSeekable() const

@@ -68,7 +68,7 @@ static uint64_t appendEncodedBlobItemToSoupMessageBody(SoupMessage* soupMessage,
     return 0;
 }
 
-void ResourceRequest::updateSoupMessageBody(SoupMessage* soupMessage) const
+void ResourceRequest::updateSoupMessageBody(SoupMessage* soupMessage, BlobRegistryImpl& blobRegistry) const
 {
     auto* formData = httpBody();
     if (!formData || formData->isEmpty())
@@ -92,7 +92,7 @@ void ResourceRequest::updateSoupMessageBody(SoupMessage* soupMessage) const
                         soup_message_body_append_buffer(soupMessage->request_body, soupBuffer.get());
                 }
             }, [&] (const FormDataElement::EncodedBlobData& blob) {
-                if (auto* blobData = static_cast<BlobRegistryImpl&>(blobRegistry()).getBlobDataFromURL(blob.url)) {
+                if (auto* blobData = blobRegistry.getBlobDataFromURL(blob.url)) {
                     for (const auto& item : blobData->items())
                         bodySize += appendEncodedBlobItemToSoupMessageBody(soupMessage, item);
                 }
@@ -140,7 +140,7 @@ void ResourceRequest::updateFromSoupMessageHeaders(SoupMessageHeaders* soupHeade
         m_httpHeaderFields.set(String(headerName), String(headerValue));
 }
 
-void ResourceRequest::updateSoupMessage(SoupMessage* soupMessage) const
+void ResourceRequest::updateSoupMessage(SoupMessage* soupMessage, BlobRegistryImpl& blobRegistry) const
 {
     g_object_set(soupMessage, SOUP_MESSAGE_METHOD, httpMethod().ascii().data(), NULL);
 
@@ -148,7 +148,7 @@ void ResourceRequest::updateSoupMessage(SoupMessage* soupMessage) const
     soup_message_set_uri(soupMessage, uri.get());
 
     updateSoupMessageMembers(soupMessage);
-    updateSoupMessageBody(soupMessage);
+    updateSoupMessageBody(soupMessage, blobRegistry);
 }
 
 void ResourceRequest::updateFromSoupMessage(SoupMessage* soupMessage)
@@ -183,7 +183,7 @@ void ResourceRequest::updateSoupRequest(SoupRequest* soupRequest) const
 {
     if (m_initiatingPageID) {
         uint64_t* initiatingPageIDPtr = static_cast<uint64_t*>(fastMalloc(sizeof(uint64_t)));
-        *initiatingPageIDPtr = m_initiatingPageID;
+        *initiatingPageIDPtr = m_initiatingPageID->toUInt64();
         g_object_set_data_full(G_OBJECT(soupRequest), g_intern_static_string(gSoupRequestInitiatingPageIDKey), initiatingPageIDPtr, fastFree);
     }
 
@@ -194,7 +194,7 @@ void ResourceRequest::updateSoupRequest(SoupRequest* soupRequest) const
 void ResourceRequest::updateFromSoupRequest(SoupRequest* soupRequest)
 {
     uint64_t* initiatingPageIDPtr = static_cast<uint64_t*>(g_object_get_data(G_OBJECT(soupRequest), gSoupRequestInitiatingPageIDKey));
-    m_initiatingPageID = initiatingPageIDPtr ? *initiatingPageIDPtr : 0;
+    m_initiatingPageID = makeObjectIdentifier<PageIdentifierType>(initiatingPageIDPtr ? *initiatingPageIDPtr : 0);
 }
 
 unsigned initializeMaximumHTTPConnectionCountPerHost()

@@ -3,6 +3,7 @@ list(APPEND PAL_PUBLIC_HEADERS
 
     cf/CoreMediaSoftLink.h
 
+    cocoa/AVFoundationSoftLink.h
     cocoa/PassKitSoftLink.h
 
     mac/LookupSoftLink.h
@@ -20,6 +21,7 @@ list(APPEND PAL_PUBLIC_HEADERS
     spi/cocoa/AVKitSPI.h
     spi/cocoa/AudioToolboxSPI.h
     spi/cocoa/CFNSURLConnectionSPI.h
+    spi/cocoa/CommonCryptoSPI.h
     spi/cocoa/CoreTextSPI.h
     spi/cocoa/DataDetectorsCoreSPI.h
     spi/cocoa/IOPMLibSPI.h
@@ -28,7 +30,6 @@ list(APPEND PAL_PUBLIC_HEADERS
     spi/cocoa/IOSurfaceSPI.h
     spi/cocoa/IOTypesSPI.h
     spi/cocoa/LaunchServicesSPI.h
-    spi/cocoa/MachVMSPI.h
     spi/cocoa/NEFilterSourceSPI.h
     spi/cocoa/NSAttributedStringSPI.h
     spi/cocoa/NSButtonCellSPI.h
@@ -85,7 +86,6 @@ list(APPEND PAL_PUBLIC_HEADERS
     spi/mac/NSWindowSPI.h
     spi/mac/PIPSPI.h
     spi/mac/QTKitSPI.h
-    spi/mac/QuickDrawSPI.h
     spi/mac/QuickLookMacSPI.h
     spi/mac/SpeechSynthesisSPI.h
     spi/mac/TelephonyUtilitiesSPI.h
@@ -104,6 +104,7 @@ list(APPEND PAL_SOURCES
 
     cf/CoreMediaSoftLink.cpp
 
+    cocoa/AVFoundationSoftLink.mm
     cocoa/FileSizeFormatterCocoa.mm
     cocoa/PassKitSoftLink.mm
 
@@ -124,7 +125,6 @@ list(APPEND PAL_SOURCES
 )
 
 list(APPEND PAL_PRIVATE_INCLUDE_DIRECTORIES
-    "${DERIVED_SOURCES_WTF_DIR}"
     "${PAL_DIR}/pal/avfoundation"
     "${PAL_DIR}/pal/cf"
     "${PAL_DIR}/pal/cocoa"

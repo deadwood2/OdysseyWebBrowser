@@ -1,5 +1,5 @@
 # Copyright (C) 2010 Google Inc. All rights reserved.
-# Copyright (C) 2013 Apple Inc. All rights reserved.
+# Copyright (C) 2013-2019 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -31,11 +31,9 @@
 test infrastructure (the Port and Driver classes)."""
 
 import difflib
-import itertools
 import json
 import logging
 import os
-import operator
 import optparse
 import re
 import sys
@@ -45,6 +43,7 @@ from functools import partial
 
 from webkitpy.common import find_files
 from webkitpy.common import read_checksum_from_png
+from webkitpy.common.checkout.scm.detection import SCMDetector
 from webkitpy.common.memoized import memoized
 from webkitpy.common.prettypatch import PrettyPatch
 from webkitpy.common.system import path, pemfile
@@ -371,7 +370,7 @@ class Port(object):
                 result += '\n\ No newline at end of file\n'
         return result
 
-    def check_for_leaks(self, process_name, process_pid):
+    def check_for_leaks(self, process_name, process_id):
         # Subclasses should check for leaks in the running process
         # and print any necessary warnings if leaks are found.
         # FIXME: We should consider moving much of this logic into
@@ -1157,7 +1156,10 @@ class Port(object):
     def uses_test_expectations_file(self):
         # This is different from checking test_expectations() is None, because
         # some ports have Skipped files which are returned as part of test_expectations().
-        return self._filesystem.exists(self.path_to_test_expectations_file())
+        for path in self.default_baseline_search_path():
+            if self._filesystem.exists(self._filesystem.join(path, 'TestExpectations')):
+                return True
+        return False
 
     def warn_if_bug_missing_in_test_expectations(self):
         return False
@@ -1269,7 +1271,7 @@ class Port(object):
         return self._filesystem.exists('/etc/arch-release')
 
     def _is_flatpak(self):
-        return self._filesystem.exists('/usr/manifest.json')
+        return self._filesystem.exists('/.flatpak-info')
 
     def _apache_version(self):
         config = self._executive.run_command([self._path_to_apache(), '-v'])
@@ -1463,7 +1465,7 @@ class Port(object):
         return self._filesystem.exists(self.path_from_webkit_base('WebKitBuild', suffix, "FlatpakTree"))
 
     def _in_flatpak_sandbox(self):
-        return os.path.exists("/usr/manifest.json")
+        return os.path.exists("/.flatpak-info")
 
     def _should_use_jhbuild(self):
         if self._in_flatpak_sandbox():
@@ -1553,64 +1555,7 @@ class Port(object):
                 dirs_to_skip.append('platform/%s' % basename)
         return dirs_to_skip
 
-    def _runtime_feature_list(self):
-        """If a port makes certain features available only through runtime flags, it can override this routine to indicate which ones are available."""
-        return None
-
-    def nm_command(self):
-        return 'nm'
-
-    def _modules_to_search_for_symbols(self):
-        path = self._path_to_webcore_library()
-        if path:
-            return [path]
-        return []
-
-    def _symbols_string(self):
-        symbols = ''
-        for path_to_module in self._modules_to_search_for_symbols():
-            try:
-                symbols += self._executive.run_command([self.nm_command(), path_to_module], ignore_errors=True)
-            except OSError as e:
-                _log.warn("Failed to run nm: %s.  Can't determine supported features correctly." % e)
-        return symbols
-
-    # Ports which use run-time feature detection should define this method and return
-    # a dictionary mapping from Feature Names to skipped directoires.  NRWT will
-    # run DumpRenderTree --print-supported-features and parse the output.
-    # If the Feature Names are not found in the output, the corresponding directories
-    # will be skipped.
-    def _missing_feature_to_skipped_tests(self):
-        """Return the supported feature dictionary. Keys are feature names and values
-        are the lists of directories to skip if the feature name is not matched."""
-        # FIXME: This list matches WebKitWin and should be moved onto the Win port.
-        return {
-            "Accelerated Compositing": ["compositing"],
-            "3D Rendering": ["animations/3d", "transforms/3d"],
-        }
-
-    def _has_test_in_directories(self, directory_lists, test_list):
-        if not test_list:
-            return False
-
-        directories = itertools.chain.from_iterable(directory_lists)
-        for directory, test in itertools.product(directories, test_list):
-            if test.startswith(directory):
-                return True
-        return False
-
     def _skipped_tests_for_unsupported_features(self, test_list):
-        # Only check the runtime feature list of there are tests in the test_list that might get skipped.
-        # This is a performance optimization to avoid the subprocess call to DRT.
-        # If the port supports runtime feature detection, disable any tests
-        # for features missing from the runtime feature list.
-        # If _runtime_feature_list returns a non-None value, then prefer
-        # runtime feature detection over static feature detection.
-        if self._has_test_in_directories(self._missing_feature_to_skipped_tests().values(), test_list):
-            supported_feature_list = self._runtime_feature_list()
-            if supported_feature_list is not None:
-                return reduce(operator.add, [directories for feature, directories in self._missing_feature_to_skipped_tests().items() if feature not in supported_feature_list])
-
         return []
 
     def _wk2_port_name(self):
@@ -1631,3 +1576,49 @@ class Port(object):
         # This is overridden by ports that need to do work in the parent process after a worker subprocess is spawned,
         # such as closing file descriptors that were implicitly cloned to the worker.
         pass
+
+    def configuration_for_upload(self, host=None):
+        from webkitpy.results.upload import Upload
+
+        configuration = self.test_configuration()
+        host = self.host or host
+
+        if self.get_option('guard_malloc'):
+            style = 'guard-malloc'
+        elif self._config.asan:
+            style = 'asan'
+        else:
+            style = configuration.build_type
+
+        return Upload.create_configuration(
+            platform=host.platform.os_name,
+            version=str(host.platform.os_version),
+            version_name=host.platform.os_version_name(INTERNAL_TABLE) or host.platform.os_version_name(),
+            architecture=configuration.architecture,
+            style=style,
+            sdk=host.platform.build_version(),
+            flavor=self.get_option('result_report_flavor'),
+        )
+
+    @memoized
+    def commits_for_upload(self):
+        from webkitpy.results.upload import Upload
+
+        self.host.initialize_scm()
+
+        repos = {}
+        if port_config.apple_additions() and getattr(port_config.apple_additions(), 'repos', False):
+            repos = port_config.apple_additions().repos()
+
+        up = os.path.dirname
+        repos['webkit'] = up(up(up(up(up(os.path.abspath(__file__))))))
+
+        commits = []
+        for repo_id, path in repos.iteritems():
+            scm = SCMDetector(self._filesystem, self._executive).detect_scm_system(path)
+            commits.append(Upload.create_commit(
+                repository_id=repo_id,
+                id=scm.native_revision(path),
+                branch=scm.native_branch(path),
+            ))
+        return commits

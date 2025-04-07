@@ -83,15 +83,14 @@ void SettingsBase::initializeDefaultFontFamilies()
 
 bool SettingsBase::defaultTextAutosizingEnabled()
 {
-    return !deviceHasIPadCapability() || [[PAL::getUIApplicationClass() sharedApplication] _isClassic];
+    return true;
 }
 
 #endif
 
 const String& SettingsBase::defaultMediaContentTypesRequiringHardwareSupport()
 {
-    static NeverDestroyed<String> defaultMediaContentTypes { "video/mp4;codecs=hvc1:video/mp4;codecs=hev1" };
-    return defaultMediaContentTypes;
+    return emptyString();
 }
 
 } // namespace WebCore

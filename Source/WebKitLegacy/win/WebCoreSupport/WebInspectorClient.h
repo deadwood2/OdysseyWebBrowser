@@ -50,6 +50,7 @@ class WebNodeHighlight;
 class WebView;
 
 class WebInspectorClient final : public WebCore::InspectorClient, public Inspector::FrontendChannel {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit WebInspectorClient(WebView*);
 
@@ -68,9 +69,11 @@ public:
 
     bool inspectorStartsAttached();
     void setInspectorStartsAttached(bool);
+    void deleteInspectorStartsAttached();
 
     bool inspectorAttachDisabled();
     void setInspectorAttachDisabled(bool);
+    void deleteInspectorAttachDisabled();
 
     void releaseFrontend();
 
@@ -92,6 +95,7 @@ private:
 };
 
 class WebInspectorFrontendClient final : public WebCore::InspectorFrontendClientLocal, WebCore::WindowMessageListener {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WebInspectorFrontendClient(WebView* inspectedWebView, HWND inspectedWebViewHwnd, HWND frontendHwnd, const COMPtr<WebView>& frotnendWebView, HWND frontendWebViewHwnd, WebInspectorClient*, std::unique_ptr<Settings>);
     virtual ~WebInspectorFrontendClient();
@@ -104,9 +108,12 @@ public:
     void bringToFront() override;
     void closeWindow() override;
     void reopen() override;
+    void resetState() override;
 
     void setAttachedWindowHeight(unsigned) override;
     void setAttachedWindowWidth(unsigned) override;
+
+    void setSheetRect(const WebCore::FloatRect&) override;
 
     void inspectedURLChanged(const WTF::String& newURL) override;
     void showCertificate(const WebCore::CertificateInfo&) override;
@@ -128,7 +135,7 @@ private:
     LRESULT onClose(WPARAM, LPARAM);
     LRESULT onSetFocus();
 
-    virtual void windowReceivedMessage(HWND, UINT message, WPARAM, LPARAM);
+    void windowReceivedMessage(HWND, UINT message, WPARAM, LPARAM) override;
 
     void onWebViewWindowPosChanging(WPARAM, LPARAM);
 

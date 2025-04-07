@@ -44,6 +44,7 @@ namespace WTF {
     
 template<typename CharacterType>
 class CodePointIterator {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     ALWAYS_INLINE CodePointIterator() { }
     ALWAYS_INLINE CodePointIterator(const CharacterType* begin, const CharacterType* end)
@@ -2294,7 +2295,7 @@ Expected<URLParser::IPv4Address, URLParser::IPv4ParsingError> URLParser::parseIP
         if (!iterator.atEnd() && *iterator == '.') {
             ++iterator;
             if (iterator.atEnd())
-                syntaxViolation(iteratorForSyntaxViolationPosition);
+                didSeeSyntaxViolation = true;
             else if (*iterator == '.')
                 return makeUnexpected(IPv4ParsingError::NotIPv4);
         }
@@ -2401,6 +2402,8 @@ Optional<URLParser::IPv6Address> URLParser::parseIPv6Host(CodePointIterator<Char
     IPv6Address address = {{0, 0, 0, 0, 0, 0, 0, 0}};
     size_t piecePointer = 0;
     Optional<size_t> compressPointer;
+    bool previousValueWasZero = false;
+    bool immediatelyAfterCompress = false;
 
     if (*c == ':') {
         advance(c, hostBegin);
@@ -2411,6 +2414,7 @@ Optional<URLParser::IPv6Address> URLParser::parseIPv6Host(CodePointIterator<Char
         advance(c, hostBegin);
         ++piecePointer;
         compressPointer = piecePointer;
+        immediatelyAfterCompress = true;
     }
     
     while (!c.atEnd()) {
@@ -2422,6 +2426,9 @@ Optional<URLParser::IPv6Address> URLParser::parseIPv6Host(CodePointIterator<Char
             advance(c, hostBegin);
             ++piecePointer;
             compressPointer = piecePointer;
+            immediatelyAfterCompress = true;
+            if (previousValueWasZero)
+                syntaxViolation(hostBegin);
             continue;
         }
         if (piecePointer == 6 || (compressPointer && piecePointer < 6)) {
@@ -2451,7 +2458,8 @@ Optional<URLParser::IPv6Address> URLParser::parseIPv6Host(CodePointIterator<Char
             advance(c, hostBegin);
         }
         
-        if (UNLIKELY((value && leadingZeros) || (!value && length > 1)))
+        previousValueWasZero = !value;
+        if (UNLIKELY((value && leadingZeros) || (previousValueWasZero && (length > 1 || immediatelyAfterCompress))))
             syntaxViolation(hostBegin);
 
         address[piecePointer++] = value;
@@ -2460,6 +2468,10 @@ Optional<URLParser::IPv6Address> URLParser::parseIPv6Host(CodePointIterator<Char
         if (piecePointer == 8 || *c != ':')
             return WTF::nullopt;
         advance(c, hostBegin);
+        if (c.atEnd())
+            syntaxViolation(hostBegin);
+
+        immediatelyAfterCompress = false;
     }
     
     if (!c.atEnd())
@@ -2556,13 +2568,16 @@ template<typename CharacterType> Optional<URLParser::LCharBuffer> URLParser::dom
     UErrorCode error = U_ZERO_ERROR;
     UIDNAInfo processingDetails = UIDNA_INFO_INITIALIZER;
     int32_t numCharactersConverted = uidna_nameToASCII(&internationalDomainNameTranscoder(), StringView(domain).upconvertedCharacters(), domain.length(), hostnameBuffer, maxDomainLength, &processingDetails, &error);
-    ASSERT(numCharactersConverted <= static_cast<int32_t>(maxDomainLength));
 
     if (U_SUCCESS(error) && !processingDetails.errors) {
+#if ASSERT_DISABLED
+        UNUSED_PARAM(numCharactersConverted);
+#else
         for (int32_t i = 0; i < numCharactersConverted; ++i) {
             ASSERT(isASCII(hostnameBuffer[i]));
             ASSERT(!isASCIIUpper(hostnameBuffer[i]));
         }
+#endif
         ascii.append(hostnameBuffer, numCharactersConverted);
         if (domain != StringView(ascii.data(), ascii.size()))
             syntaxViolation(iteratorForSyntaxViolationPosition);
@@ -2650,13 +2665,11 @@ bool URLParser::parseHostAndPort(CodePointIterator<CharacterType> iterator)
             serializeIPv6(address.value());
             if (!ipv6End.atEnd()) {
                 advance(ipv6End);
-                if (!ipv6End.atEnd() && *ipv6End == ':') {
-                    m_url.m_hostEnd = currentPosition(ipv6End);
-                    return parsePort(ipv6End);
-                }
                 m_url.m_hostEnd = currentPosition(ipv6End);
+                if (!ipv6End.atEnd() && *ipv6End == ':')
+                    return parsePort(ipv6End);
                 m_url.m_portLength = 0;
-                return true;
+                return ipv6End.atEnd();
             }
             m_url.m_hostEnd = currentPosition(ipv6End);
             return true;
@@ -2849,8 +2862,6 @@ const UIDNA& URLParser::internationalDomainNameTranscoder()
     static std::once_flag onceFlag;
     std::call_once(onceFlag, [] {
         UErrorCode error = U_ZERO_ERROR;
-        // Warning: Please contact a WebKitGTK+ developer if changing these flags.
-        // They should be synced with ephy_uri_decode() in ephy-uri-helpers.c.
         encoder = uidna_openUTS46(UIDNA_CHECK_BIDI | UIDNA_CHECK_CONTEXTJ | UIDNA_NONTRANSITIONAL_TO_UNICODE | UIDNA_NONTRANSITIONAL_TO_ASCII, &error);
         RELEASE_ASSERT(U_SUCCESS(error));
         RELEASE_ASSERT(encoder);

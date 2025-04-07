@@ -83,6 +83,7 @@ WI.ResourceDetailsSidebarPanel = class ResourceDetailsSidebarPanel extends WI.De
 
         if (this._resource && this._needsToRemoveResourceEventListeners) {
             this._resource.removeEventListener(null, null, this);
+            this._refreshRelatedResourcesSectionThrottler.cancel();
 
             this._needsToRemoveResourceEventListeners = false;
         }
@@ -211,7 +212,7 @@ WI.ResourceDetailsSidebarPanel = class ResourceDetailsSidebarPanel extends WI.De
         this._refreshRequestHeaders();
         this._refreshImageSizeSection();
         this._refreshRequestDataSection();
-        this._refreshRelatedResourcesSection();
+        this._refreshRelatedResourcesSectionThrottler.force();
     }
 
     sizeDidChange()
@@ -263,8 +264,6 @@ WI.ResourceDetailsSidebarPanel = class ResourceDetailsSidebarPanel extends WI.De
 
     _refreshRelatedResourcesSection()
     {
-        this._refreshRelatedResourcesSection.cancelThrottle();
-
         // Hide the section if we don't have anything to show.
         let groups = this._locationSection.groups;
         let isSectionVisible = groups.includes(this._relatedResourcesGroup);
@@ -607,8 +606,11 @@ WI.ResourceDetailsSidebarPanel = class ResourceDetailsSidebarPanel extends WI.De
 
     _applyResourceEventListeners()
     {
-        if (!this._throttler)
-            this._throttler = this.throttle(250);
+        if (!this._refreshRelatedResourcesSectionThrottler) {
+            this._refreshRelatedResourcesSectionThrottler = new Throttler(() => {
+                this._refreshRelatedResourcesSection();
+            }, 250);
+        }
 
         this._resource.addEventListener(WI.Resource.Event.URLDidChange, this._refreshURL, this);
         this._resource.addEventListener(WI.Resource.Event.MIMETypeDidChange, this._refreshMIMEType, this);
@@ -620,7 +622,9 @@ WI.ResourceDetailsSidebarPanel = class ResourceDetailsSidebarPanel extends WI.De
         this._resource.addEventListener(WI.Resource.Event.MetricsDidChange, this._refreshRequestAndResponse, this);
         this._resource.addEventListener(WI.Resource.Event.SizeDidChange, this._refreshDecodedSize, this);
         this._resource.addEventListener(WI.Resource.Event.TransferSizeDidChange, this._refreshTransferSize, this);
-        this._resource.addEventListener(WI.Resource.Event.InitiatedResourcesDidChange, this._throttler._refreshRelatedResourcesSection, this);
+        this._resource.addEventListener(WI.Resource.Event.InitiatedResourcesDidChange, () => {
+            this._refreshRelatedResourcesSectionThrottler.fire();
+        }, this);
 
         this._needsToRemoveResourceEventListeners = true;
     }

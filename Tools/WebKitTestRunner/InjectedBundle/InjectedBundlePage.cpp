@@ -199,7 +199,7 @@ static WTF::String securityOriginToStr(WKSecurityOriginRef origin)
 
 static WTF::String frameToStr(WKBundleFrameRef frame)
 {
-    WKRetainPtr<WKStringRef> name(AdoptWK, WKBundleFrameCopyName(frame));
+    WKRetainPtr<WKStringRef> name = adoptWK(WKBundleFrameCopyName(frame));
     StringBuilder stringBuilder;
     if (WKBundleFrameIsMainFrame(frame)) {
         if (!WKStringIsEmpty(name.get())) {
@@ -267,7 +267,7 @@ static inline void dumpResourceURL(uint64_t identifier, StringBuilder& stringBui
 
 InjectedBundlePage::InjectedBundlePage(WKBundlePageRef page)
     : m_page(page)
-    , m_world(AdoptWK, WKBundleScriptWorldCreateWorld())
+    , m_world(adoptWK(WKBundleScriptWorldCreateWorld()))
 {
     WKBundlePageLoaderClientV9 loaderClient = {
         { 9, this },
@@ -358,8 +358,8 @@ InjectedBundlePage::InjectedBundlePage(WKBundlePageRef page)
     };
     WKBundlePageSetUIClient(m_page, &uiClient.base);
 
-    WKBundlePageEditorClientV2 editorClient = {
-        { 2, this },
+    WKBundlePageEditorClientV1 editorClient = {
+        { 1, this },
         shouldBeginEditing,
         shouldEndEditing,
         shouldInsertNode,
@@ -375,7 +375,6 @@ InjectedBundlePage::InjectedBundlePage(WKBundlePageRef page)
         0, /* getPasteboardDataForRange */
         0, /* didWriteToPasteboard */
         0, /* performTwoStepDrop */
-        0, /* replacementURLForResource */
     };
     WKBundlePageSetEditorClient(m_page, &editorClient.base);
 
@@ -421,10 +420,6 @@ void InjectedBundlePage::prepare()
     // Force consistent "responsive" behavior for WebPage::eventThrottlingDelay() for testing. Tests can override via internals.
     WKEventThrottlingBehavior behavior = kWKEventThrottlingBehaviorResponsive;
     WKBundlePageSetEventThrottlingBehaviorOverride(m_page, &behavior);
-    
-    // Force consistent compositing behavior, even if the test runner is under memory pressure. Tests can override via internals.
-    WKCompositingPolicy policy = kWKCompositingPolicyNormal;
-    WKBundlePageSetCompositingPolicyOverride(m_page, &policy);
 }
 
 void InjectedBundlePage::resetAfterTest()
@@ -452,7 +447,7 @@ void InjectedBundlePage::resetAfterTest()
 // String output must be identical to -[WebFrame _drt_descriptionSuitableForTestResult].
 static void dumpFrameDescriptionSuitableForTestResult(WKBundleFrameRef frame, StringBuilder& stringBuilder)
 {
-    WKRetainPtr<WKStringRef> name(AdoptWK, WKBundleFrameCopyName(frame));
+    WKRetainPtr<WKStringRef> name = adoptWK(WKBundleFrameCopyName(frame));
     if (WKBundleFrameIsMainFrame(frame)) {
         if (WKStringIsEmpty(name.get())) {
             stringBuilder.appendLiteral("main frame");
@@ -781,21 +776,21 @@ static void dumpFrameScrollPosition(WKBundleFrameRef frame, StringBuilder& strin
         return;
 
     if (shouldIncludeFrameName) {
-        WKRetainPtr<WKStringRef> name(AdoptWK, WKBundleFrameCopyName(frame));
+        WKRetainPtr<WKStringRef> name = adoptWK(WKBundleFrameCopyName(frame));
         stringBuilder.appendLiteral("frame '");
         stringBuilder.append(toWTFString(name));
         stringBuilder.appendLiteral("' ");
     }
     stringBuilder.appendLiteral("scrolled to ");
-    stringBuilder.appendECMAScriptNumber(x);
+    stringBuilder.appendNumber(x);
     stringBuilder.append(',');
-    stringBuilder.appendECMAScriptNumber(y);
+    stringBuilder.appendNumber(y);
     stringBuilder.append('\n');
 }
 
 static void dumpDescendantFrameScrollPositions(WKBundleFrameRef frame, StringBuilder& stringBuilder)
 {
-    WKRetainPtr<WKArrayRef> childFrames(AdoptWK, WKBundleFrameCopyChildFrames(frame));
+    WKRetainPtr<WKArrayRef> childFrames = adoptWK(WKBundleFrameCopyChildFrames(frame));
     size_t size = WKArrayGetSize(childFrames.get());
     for (size_t i = 0; i < size; ++i) {
         WKBundleFrameRef subframe = static_cast<WKBundleFrameRef>(WKArrayGetItemAtIndex(childFrames.get(), i));
@@ -843,18 +838,18 @@ static void dumpFrameText(WKBundleFrameRef frame, StringBuilder& stringBuilder)
     if (!hasDocumentElement(frame))
         return;
 
-    WKRetainPtr<WKStringRef> text(AdoptWK, WKBundleFrameCopyInnerText(frame));
+    WKRetainPtr<WKStringRef> text = adoptWK(WKBundleFrameCopyInnerText(frame));
     stringBuilder.append(toWTFString(text));
     stringBuilder.append('\n');
 }
 
 static void dumpDescendantFramesText(WKBundleFrameRef frame, StringBuilder& stringBuilder)
 {
-    WKRetainPtr<WKArrayRef> childFrames(AdoptWK, WKBundleFrameCopyChildFrames(frame));
+    WKRetainPtr<WKArrayRef> childFrames = adoptWK(WKBundleFrameCopyChildFrames(frame));
     size_t size = WKArrayGetSize(childFrames.get());
     for (size_t i = 0; i < size; ++i) {
         WKBundleFrameRef subframe = static_cast<WKBundleFrameRef>(WKArrayGetItemAtIndex(childFrames.get(), i));
-        WKRetainPtr<WKStringRef> subframeName(AdoptWK, WKBundleFrameCopyName(subframe));
+        WKRetainPtr<WKStringRef> subframeName = adoptWK(WKBundleFrameCopyName(subframe));
 
         // DumpRenderTree ignores empty frames, so do the same thing here.
         if (!hasDocumentElement(subframe))
@@ -910,7 +905,7 @@ void InjectedBundlePage::dump()
         if (injectedBundle.testRunner()->isPrinting())
             stringBuilder.append(toWTFString(adoptWK(WKBundlePageCopyRenderTreeExternalRepresentationForPrinting(m_page)).get()));
         else
-            stringBuilder.append(toWTFString(adoptWK(WKBundlePageCopyRenderTreeExternalRepresentation(m_page)).get()));
+            stringBuilder.append(toWTFString(adoptWK(WKBundlePageCopyRenderTreeExternalRepresentation(m_page, injectedBundle.testRunner()->renderTreeDumpOptions())).get()));
         break;
     }
     case WhatToDump::MainFrameText:

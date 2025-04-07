@@ -116,7 +116,7 @@ WI.AuditManager = class AuditManager extends WI.Object
                 if (test.__default)
                     saveDisabledDefaultTest(test);
                 else
-                    WI.objectStores.audits.addObject(test);
+                    WI.objectStores.audits.putObject(test);
             }
 
             this._disabledDefaultTestsSetting.value = disabledDefaultTests;
@@ -127,7 +127,7 @@ WI.AuditManager = class AuditManager extends WI.Object
     {
         console.assert(this._runningState === WI.AuditManager.RunningState.Inactive);
         if (this._runningState !== WI.AuditManager.RunningState.Inactive)
-            return;
+            return null;
 
         if (tests && tests.length)
             tests = tests.filter((test) => typeof test === "object" && test instanceof WI.AuditTestBase);
@@ -136,7 +136,7 @@ WI.AuditManager = class AuditManager extends WI.Object
 
         console.assert(tests.length);
         if (!tests.length)
-            return;
+            return null;
 
         let mainResource = WI.networkManager.mainFrame.mainResource;
 
@@ -153,6 +153,11 @@ WI.AuditManager = class AuditManager extends WI.Object
 
             if (InspectorBackend.domains.Audit)
                 await AuditAgent.setup();
+
+            let topLevelTest = this._topLevelTestForTest(test);
+            console.assert(topLevelTest || window.InspectorTest, "No matching top-level test found", test);
+            if (topLevelTest)
+                await topLevelTest.setup();
 
             await test.start();
 
@@ -172,6 +177,8 @@ WI.AuditManager = class AuditManager extends WI.Object
             for (let test of this._tests)
                 test.clearResult();
         }
+
+        return this._results.lastValue === result ? result : null;
     }
 
     stop()
@@ -210,7 +217,7 @@ WI.AuditManager = class AuditManager extends WI.Object
 
         if (object instanceof WI.AuditTestBase) {
             this._addTest(object);
-            WI.objectStores.audits.addObject(object);
+            WI.objectStores.audits.putObject(object);
         } else if (object instanceof WI.AuditTestResultBase)
             this._addResult(object);
 
@@ -225,10 +232,8 @@ WI.AuditManager = class AuditManager extends WI.Object
         if (object instanceof WI.AuditTestResultBase)
             filename = WI.UIString("%s Result").format(filename);
 
-        let url = "web-inspector:///" + encodeURI(filename) + ".json";
-
         WI.FileUtilities.save({
-            url,
+            url: WI.FileUtilities.inspectorURLForFilename(filename + ".json"),
             content: JSON.stringify(object),
             forceSaveAs: true,
         });
@@ -238,6 +243,8 @@ WI.AuditManager = class AuditManager extends WI.Object
     {
         if (this._tests.length)
             return;
+
+        this._addDefaultTests();
 
         WI.objectStores.audits.getAll().then(async (tests) => {
             for (let payload of tests) {
@@ -250,19 +257,31 @@ WI.AuditManager = class AuditManager extends WI.Object
 
                 this._addTest(test);
             }
-
-            this.addDefaultTestsIfNeeded();
         });
     }
 
     removeTest(test)
     {
+        if (test.__default) {
+            if (test.disabled) {
+                InspectorFrontendHost.beep();
+                return;
+            }
+
+            test.disabled = true;
+
+            let disabledTests = this._disabledDefaultTestsSetting.value.slice();
+            disabledTests.push(test.name);
+            this._disabledDefaultTestsSetting.value = disabledTests;
+
+            return;
+        }
+
         this._tests.remove(test);
 
         this.dispatchEventToListeners(WI.AuditManager.Event.TestRemoved, {test});
 
-        if (!test.__default)
-            WI.objectStores.audits.deleteObject(test);
+        WI.objectStores.audits.deleteObject(test);
     }
 
     // Private
@@ -287,6 +306,28 @@ WI.AuditManager = class AuditManager extends WI.Object
         });
     }
 
+    _topLevelTestForTest(test)
+    {
+        function walk(group) {
+            if (group === test)
+                return true;
+            if (group instanceof WI.AuditTestGroup) {
+                for (let subtest of group.tests) {
+                    if (walk(subtest))
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        for (let topLevelTest of this._tests) {
+            if (walk(topLevelTest))
+                return topLevelTest;
+        }
+
+        return null;
+    }
+
     _handleFrameMainResourceDidChange(event)
     {
         if (!event.target.isMainFrame())
@@ -300,46 +341,726 @@ WI.AuditManager = class AuditManager extends WI.Object
         }
     }
 
-    addDefaultTestsIfNeeded()
+    _addDefaultTests()
     {
-        if (this._tests.length)
-            return;
+        const levelPass = function() {
+            return {level: "pass"};
+        };
+
+        const levelWarn = function() {
+            return {level: "warn"};
+        };
+
+        const levelFail = function() {
+            return {level: "fail"};
+        };
+
+        const levelError = function() {
+            return {level: "error"};
+        };
+
+        const levelUnsupported = function() {
+            return {level: "unsupported"};
+        };
+
+        const dataDOMNodes = function() {
+            return {level: "pass", domNodes: [document.body]};
+        };
+
+        const dataDOMAttributes = function() {
+            return {level: "pass", domNodes: Array.from(document.querySelectorAll("[id]")), domAttributes: ["id"]};
+        };
+
+        const dataErrors = function() {
+            throw Error("this error was thrown from inside the audit test code.");
+        };
+
+        const dataCustom = function() {
+            return {level: "pass", a: 1, b: [2], c: {key: 3}};
+        };
+
+        const getElementsByComputedRole = function() {
+            return {level: "pass", domNodes: WebInspectorAudit.Accessibility.getElementsByComputedRole("link"), domAttributes: ["role"]};
+        };
+
+        const getActiveDescendant = function() {
+            let result = {level: "pass"};
+            let activeDescendant = WebInspectorAudit.Accessibility.getActiveDescendant(document.body);
+            if (activeDescendant)
+                result.domNodes = [activeDescendant];
+            return result;
+        };
+
+        const getChildNodes = function() {
+            let childNodes = WebInspectorAudit.Accessibility.getChildNodes(document.body);
+            return {level: "pass", domNodes: childNodes || []};
+        };
+
+        const getComputedProperties = function() {
+            let domAttributes = ["alt", "aria-atomic", "aria-busy", "aria-checked", "aria-current", "aria-disabled", "aria-expanded", "aria-haspopup", "aria-hidden", "aria-invalid", "aria-label", "aria-labelledby", "aria-level", "aria-live", "aria-pressed", "aria-readonly", "aria-relevant", "aria-required", "aria-selected", "role", "title"].filter((attribute) => document.body.hasAttribute(attribute));
+            let computedProperties = WebInspectorAudit.Accessibility.getComputedProperties(document.body);
+            return {level: "pass", domNodes: [document.body], domAttributes, ...(computedProperties || {})};
+        };
+
+        const getControlledNodes = function() {
+            let controlledNodes = WebInspectorAudit.Accessibility.getControlledNodes(document.body);
+            return {level: "pass", domNodes: controlledNodes || []};
+        };
+
+        const getFlowedNodes = function() {
+            let flowedNodes = WebInspectorAudit.Accessibility.getFlowedNodes(document.body);
+            return {level: "pass", domNodes: flowedNodes || []};
+        };
+
+        const getMouseEventNode = function() {
+            let result = {level: "pass"};
+            let mouseEventNode = WebInspectorAudit.Accessibility.getMouseEventNode(document.body);
+            if (mouseEventNode)
+                result.domNodes = [mouseEventNode];
+            return result;
+        };
+
+        const getOwnedNodes = function() {
+            let ownedNodes = WebInspectorAudit.Accessibility.getOwnedNodes(document.body);
+            return {level: "pass", domNodes: ownedNodes || []};
+        };
+
+        const getParentNode = function() {
+            let result = {level: "pass"};
+            let parentNode = WebInspectorAudit.Accessibility.getParentNode(document.body);
+            if (parentNode)
+                result.domNodes = [parentNode];
+            return result;
+        };
+
+        const getSelectedChildNodes = function() {
+            let selectedChildNodes = WebInspectorAudit.Accessibility.getSelectedChildNodes(document.body);
+            return {level: "pass", domNodes: selectedChildNodes || []};
+        };
+
+        const hasEventListeners = function() {
+            let domAttributes = Array.from(document.body.attributes).filter((attribute) => attribute.name.startsWith("on"));
+            return {level: "pass", domNodes: [document.body], domAttributes, hasEventListeners: WebInspectorAudit.DOM.hasEventListeners(document.body)};
+        };
+
+        const hasEventListenersClick = function() {
+            let domAttributes = ["onclick"].filter((attribute) => document.body.hasAttribute(attribute));
+            return {level: "pass", domNodes: [document.body], domAttributes, hasClickEventListener: WebInspectorAudit.DOM.hasEventListeners(document.body, "click")};
+        };
+
+        const getResources = function() {
+            return {level: "pass", resources: WebInspectorAudit.Resources.getResources()};
+        };
+
+        const getResourceContent = function() {
+            let resources = WebInspectorAudit.Resources.getResources();
+            let mainResource = resources.find((resource) => resource.url === window.location.href);
+            return {level: "pass", mainResource, resourceContent: WebInspectorAudit.Resources.getResourceContent(mainResource.id)};
+        };
+
+        const testMenuRoleForRequiredChildren = function() {
+            const relationships = {
+                menu: ["menuitem", "menuitemcheckbox", "menuitemradio"],
+                menubar: ["menuitem", "menuitemcheckbox", "menuitemradio"],
+            };
+            let domNodes = [];
+            let visitedParents = new Set;
+            function hasChildWithRole(node, expectedRoles) {
+                let childNode = node;
+                if (!childNode)
+                    return false;
+
+                if (childNode.parentNode)
+                    visitedParents.add(childNode.parentNode);
+
+                while (childNode) {
+                    let properties = WebInspectorAudit.Accessibility.getComputedProperties(childNode);
+                    if (childNode.nodeType === Node.ELEMENT_NODE && properties) {
+                        if (expectedRoles.includes(properties.role))
+                            return true;
+
+                        if (childNode.hasChildNodes() && hasChildWithRole(childNode.firstChild, expectedRoles))
+                            return true;
+                    }
+                    childNode = childNode.nextSibling;
+                }
+                return false;
+            }
+            for (let role in relationships) {
+                for (let parentNode of WebInspectorAudit.Accessibility.getElementsByComputedRole(role)) {
+                    if (visitedParents.has(parentNode))
+                        continue;
+
+                    if (!hasChildWithRole(parentNode.firstChild, relationships[role]))
+                        domNodes.push(parentNode);
+                }
+            }
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testGridRoleForRequiredChildren = function() {
+            const relationships = {
+                grid: ["row", "rowgroup"],
+            };
+            let domNodes = [];
+            let visitedParents = new Set;
+            function hasChildWithRole(node, expectedRoles) {
+                let childNode = node;
+                if (!childNode)
+                    return false;
+
+                if (childNode.parentNode)
+                    visitedParents.add(childNode.parentNode);
+
+                while (childNode) {
+                    let properties = WebInspectorAudit.Accessibility.getComputedProperties(childNode);
+                    if (childNode.nodeType === Node.ELEMENT_NODE && properties) {
+                        if (expectedRoles.includes(properties.role))
+                            return true;
+
+                        if (childNode.hasChildNodes() && hasChildWithRole(childNode.firstChild, expectedRoles))
+                            return true;
+                    }
+                    childNode = childNode.nextSibling;
+                }
+                return false;
+            }
+            for (let role in relationships) {
+                for (let parentNode of WebInspectorAudit.Accessibility.getElementsByComputedRole(role)) {
+                    if (visitedParents.has(parentNode))
+                        continue;
+
+                    if (!hasChildWithRole(parentNode.firstChild, relationships[role]))
+                        domNodes.push(parentNode);
+                }
+            }
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testForAriaLabelledBySpelling = function() {
+            let domNodes = Array.from(document.querySelectorAll("[aria-labeledby]"));
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["aria-labeledby"]};
+        };
+
+        const testForMultipleBanners = function() {
+            let domNodes = [];
+            let banners = WebInspectorAudit.Accessibility.getElementsByComputedRole("banner");
+            if (banners.length > 1)
+                domNodes = banners;
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testForLinkLabels = function() {
+            let links = WebInspectorAudit.Accessibility.getElementsByComputedRole("link");
+            let domNodes = links.filter((link) => !WebInspectorAudit.Accessibility.getComputedProperties(link).label);
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["aria-label", "aria-labelledby", "title"]};
+        };
+
+        const testRowGroupRoleForRequiredChildren = function() {
+            const relationships = {
+                rowgroup: ["row"],
+            };
+            let domNodes = [];
+            let visitedParents = new Set;
+            function hasChildWithRole(node, expectedRoles) {
+                let childNode = node;
+                if (!childNode)
+                    return false;
+
+                if (childNode.parentNode)
+                    visitedParents.add(childNode.parentNode);
+
+                while (childNode) {
+                    let properties = WebInspectorAudit.Accessibility.getComputedProperties(childNode);
+                    if (childNode.nodeType === Node.ELEMENT_NODE && properties) {
+                        if (expectedRoles.includes(properties.role))
+                            return true;
+
+                        if (childNode.hasChildNodes() && hasChildWithRole(childNode.firstChild, expectedRoles))
+                            return true;
+                    }
+                    childNode = childNode.nextSibling;
+                }
+                return false;
+            }
+            for (let role in relationships) {
+                for (let parentNode of WebInspectorAudit.Accessibility.getElementsByComputedRole(role)) {
+                    if (visitedParents.has(parentNode))
+                        continue;
+
+                    if (!hasChildWithRole(parentNode.firstChild, relationships[role]))
+                        domNodes.push(parentNode);
+                }
+            }
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testTableRoleForRequiredChildren = function() {
+            const relationships = {
+                table: ["row", "rowgroup"],
+            };
+            let domNodes = [];
+            let visitedParents = new Set;
+            function hasChildWithRole(node, expectedRoles) {
+                let childNode = node;
+                if (!childNode)
+                    return false;
+
+                if (childNode.parentNode)
+                    visitedParents.add(childNode.parentNode);
+
+                while (childNode) {
+                    let properties = WebInspectorAudit.Accessibility.getComputedProperties(childNode);
+                    if (childNode.nodeType === Node.ELEMENT_NODE && properties) {
+                        if (expectedRoles.includes(properties.role))
+                            return true;
+
+                        if (childNode.hasChildNodes() && hasChildWithRole(childNode.firstChild, expectedRoles))
+                            return true;
+                    }
+                    childNode = childNode.nextSibling;
+                }
+                return false;
+            }
+            for (let role in relationships) {
+                for (let parentNode of WebInspectorAudit.Accessibility.getElementsByComputedRole(role)) {
+                    if (visitedParents.has(parentNode))
+                        continue;
+
+                    if (!hasChildWithRole(parentNode.firstChild, relationships[role]))
+                        domNodes.push(parentNode);
+                }
+            }
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testForMultipleLiveRegions = function() {
+            const liveRegionRoles = ["alert", "log", "status", "marquee", "timer"];
+            let domNodes = [];
+            let liveRegions = liveRegionRoles.reduce((a, b) => {
+                return a.concat(WebInspectorAudit.Accessibility.getElementsByComputedRole(b));
+            }, []);
+            liveRegions = liveRegions.concat(Array.from(document.querySelectorAll(`[aria-live="polite"], [aria-live="assertive"]`)));
+            if (liveRegions.length > 1)
+                domNodes = liveRegions;
+            return {level: domNodes.length ? "warn" : "pass", domNodes, domAttributes: ["aria-live"]};
+        };
+
+        const testListBoxRoleForRequiredChildren = function() {
+            const relationships = {
+                listbox: ["option"],
+            };
+            let domNodes = [];
+            let visitedParents = new Set;
+            function hasChildWithRole(node, expectedRoles) {
+                let childNode = node;
+                if (!childNode)
+                    return false;
+
+                if (childNode.parentNode)
+                    visitedParents.add(childNode.parentNode);
+
+                while (childNode) {
+                    let properties = WebInspectorAudit.Accessibility.getComputedProperties(childNode);
+                    if (childNode.nodeType === Node.ELEMENT_NODE && properties) {
+                        if (expectedRoles.includes(properties.role))
+                            return true;
+
+                        if (childNode.hasChildNodes() && hasChildWithRole(childNode.firstChild, expectedRoles))
+                            return true;
+                    }
+                    childNode = childNode.nextSibling;
+                }
+                return false;
+            }
+            for (let role in relationships) {
+                for (let parentNode of WebInspectorAudit.Accessibility.getElementsByComputedRole(role)) {
+                    if (visitedParents.has(parentNode))
+                        continue;
+
+                    if (!hasChildWithRole(parentNode.firstChild, relationships[role]))
+                        domNodes.push(parentNode);
+                }
+            }
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testImageLabels = function() {
+            let images = WebInspectorAudit.Accessibility.getElementsByComputedRole("img");
+            let domNodes = images.filter((image) => !WebInspectorAudit.Accessibility.getComputedProperties(image).label);
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["aria-label", "aria-labelledby", "title", "alt"]};
+        };
+
+        const testForAriaHiddenFalse = function() {
+            let domNodes = Array.from(document.querySelectorAll(`[aria-hidden="false"]`));
+            return {level: domNodes.length ? "warn" : "pass", domNodes, domAttributes: ["aria-hidden"]};
+        };
+
+        const testTreeRoleForRequiredChildren = function() {
+            const relationships = {
+                tree: ["treeitem", "group"],
+            };
+            let domNodes = [];
+            let visitedParents = new Set;
+            function hasChildWithRole(node, expectedRoles) {
+                let childNode = node;
+                if (!childNode)
+                    return false;
+
+                if (childNode.parentNode)
+                    visitedParents.add(childNode.parentNode);
+
+                while (childNode) {
+                    let properties = WebInspectorAudit.Accessibility.getComputedProperties(childNode);
+                    if (childNode.nodeType === Node.ELEMENT_NODE && properties) {
+                        if (expectedRoles.includes(properties.role))
+                            return true;
+
+                        if (childNode.hasChildNodes() && hasChildWithRole(childNode.firstChild, expectedRoles))
+                            return true;
+                    }
+                    childNode = childNode.nextSibling;
+                }
+                return false;
+            }
+            for (let role in relationships) {
+                for (let parentNode of WebInspectorAudit.Accessibility.getElementsByComputedRole(role)) {
+                    if (visitedParents.has(parentNode))
+                        continue;
+
+                    if (!hasChildWithRole(parentNode.firstChild, relationships[role]))
+                        domNodes.push(parentNode);
+                }
+            }
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testRadioGroupRoleForRequiredChildren = function() {
+            const relationships = {
+                radiogroup: ["radio"],
+            };
+            let domNodes = [];
+            let visitedParents = new Set;
+            function hasChildWithRole(node, expectedRoles) {
+                let childNode = node;
+                if (!childNode)
+                    return false;
+
+                if (childNode.parentNode)
+                    visitedParents.add(childNode.parentNode);
+
+                while (childNode) {
+                    let properties = WebInspectorAudit.Accessibility.getComputedProperties(childNode);
+                    if (childNode.nodeType === Node.ELEMENT_NODE && properties) {
+                        if (expectedRoles.includes(properties.role))
+                            return true;
+
+                        if (childNode.hasChildNodes() && hasChildWithRole(childNode.firstChild, expectedRoles))
+                            return true;
+                    }
+                    childNode = childNode.nextSibling;
+                }
+                return false;
+            }
+            for (let role in relationships) {
+                for (let parentNode of WebInspectorAudit.Accessibility.getElementsByComputedRole(role)) {
+                    if (visitedParents.has(parentNode))
+                        continue;
+
+                    if (!hasChildWithRole(parentNode.firstChild, relationships[role]))
+                        domNodes.push(parentNode);
+                }
+            }
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testFeedRoleForRequiredChildren = function() {
+            const relationships = {
+                feed: ["article"],
+            };
+            let domNodes = [];
+            let visitedParents = new Set;
+            function hasChildWithRole(node, expectedRoles) {
+                let childNode = node;
+                if (!childNode)
+                    return false;
+
+                if (childNode.parentNode)
+                    visitedParents.add(childNode.parentNode);
+
+                while (childNode) {
+                    let properties = WebInspectorAudit.Accessibility.getComputedProperties(childNode);
+                    if (childNode.nodeType === Node.ELEMENT_NODE && properties) {
+                        if (expectedRoles.includes(properties.role))
+                            return true;
+
+                        if (childNode.hasChildNodes() && hasChildWithRole(childNode.firstChild, expectedRoles))
+                            return true;
+                    }
+                    childNode = childNode.nextSibling;
+                }
+                return false;
+            }
+            for (let role in relationships) {
+                for (let parentNode of WebInspectorAudit.Accessibility.getElementsByComputedRole(role)) {
+                    if (visitedParents.has(parentNode))
+                        continue;
+
+                    if (!hasChildWithRole(parentNode.firstChild, relationships[role]))
+                        domNodes.push(parentNode);
+                }
+            }
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testTabListRoleForRequiredChildren = function() {
+            const relationships = {
+                tablist: ["tab"],
+            };
+            let domNodes = [];
+            let visitedParents = new Set;
+            function hasChildWithRole(node, expectedRoles) {
+                let childNode = node;
+                if (!childNode)
+                    return false;
+
+                if (childNode.parentNode)
+                    visitedParents.add(childNode.parentNode);
+
+                while (childNode) {
+                    let properties = WebInspectorAudit.Accessibility.getComputedProperties(childNode);
+                    if (childNode.nodeType === Node.ELEMENT_NODE && properties) {
+                        if (expectedRoles.includes(properties.role))
+                            return true;
+
+                        if (childNode.hasChildNodes() && hasChildWithRole(childNode.firstChild, expectedRoles))
+                            return true;
+                    }
+                    childNode = childNode.nextSibling;
+                }
+                return false;
+            }
+            for (let role in relationships) {
+                for (let parentNode of WebInspectorAudit.Accessibility.getElementsByComputedRole(role)) {
+                    if (visitedParents.has(parentNode))
+                        continue;
+
+                    if (!hasChildWithRole(parentNode.firstChild, relationships[role]))
+                        domNodes.push(parentNode);
+                }
+            }
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testButtonLabels = function() {
+            let buttons = WebInspectorAudit.Accessibility.getElementsByComputedRole("button");
+            let domNodes = buttons.filter((button) => !WebInspectorAudit.Accessibility.getComputedProperties(button).label);
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["aria-label", "aria-labelledby", "title"]};
+        };
+
+        const testRowRoleForRequiredChildren = function() {
+            const relationships = {
+                row: ["cell", "gridcell", "columnheader", "rowheader"],
+            };
+            let domNodes = [];
+            let visitedParents = new Set;
+            function hasChildWithRole(node, expectedRoles) {
+                let childNode = node;
+                if (!childNode)
+                    return false;
+
+                if (childNode.parentNode)
+                    visitedParents.add(childNode.parentNode);
+
+                while (childNode) {
+                    let properties = WebInspectorAudit.Accessibility.getComputedProperties(childNode);
+                    if (childNode.nodeType === Node.ELEMENT_NODE && properties) {
+                        if (expectedRoles.includes(properties.role))
+                            return true;
+
+                        if (childNode.hasChildNodes() && hasChildWithRole(childNode.firstChild, expectedRoles))
+                            return true;
+                    }
+                    childNode = childNode.nextSibling;
+                }
+                return false;
+            }
+            for (let role in relationships) {
+                for (let parentNode of WebInspectorAudit.Accessibility.getElementsByComputedRole(role)) {
+                    if (visitedParents.has(parentNode))
+                        continue;
+
+                    if (!hasChildWithRole(parentNode.firstChild, relationships[role]))
+                        domNodes.push(parentNode);
+                }
+            }
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testListRoleForRequiredChildren = function() {
+            const relationships = {
+                list: ["listitem", "group"],
+            };
+            let domNodes = [];
+            let visitedParents = new Set;
+            function hasChildWithRole(node, expectedRoles) {
+                let childNode = node;
+                if (!childNode)
+                    return false;
+
+                if (childNode.parentNode)
+                    visitedParents.add(childNode.parentNode);
+
+                while (childNode) {
+                    let properties = WebInspectorAudit.Accessibility.getComputedProperties(childNode);
+                    if (childNode.nodeType === Node.ELEMENT_NODE && properties) {
+                        if (expectedRoles.includes(properties.role))
+                            return true;
+
+                        if (childNode.hasChildNodes() && hasChildWithRole(childNode.firstChild, expectedRoles))
+                            return true;
+                    }
+                    childNode = childNode.nextSibling;
+                }
+                return false;
+            }
+            for (let role in relationships) {
+                for (let parentNode of WebInspectorAudit.Accessibility.getElementsByComputedRole(role)) {
+                    if (visitedParents.has(parentNode))
+                        continue;
+
+                    if (!hasChildWithRole(parentNode.firstChild, relationships[role]))
+                        domNodes.push(parentNode);
+                }
+            }
+            return {level: domNodes.length ? "warn" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testComboBoxRoleForRequiredChildren = function() {
+            const relationships = {
+                combobox: ["textbox", "listbox", "tree", "grid", "dialog"],
+            };
+            let domNodes = [];
+            let visitedParents = new Set;
+            function hasChildWithRole(node, expectedRoles) {
+                let childNode = node;
+                if (!childNode)
+                    return false;
+
+                if (childNode.parentNode)
+                    visitedParents.add(childNode.parentNode);
+
+                while (childNode) {
+                    let properties = WebInspectorAudit.Accessibility.getComputedProperties(childNode);
+                    if (childNode.nodeType === Node.ELEMENT_NODE && properties) {
+                        if (expectedRoles.includes(properties.role))
+                            return true;
+
+                        if (childNode.hasChildNodes() && hasChildWithRole(childNode.firstChild, expectedRoles))
+                            return true;
+                    }
+                    childNode = childNode.nextSibling;
+                }
+                return false;
+            }
+            for (let role in relationships) {
+                for (let parentNode of WebInspectorAudit.Accessibility.getElementsByComputedRole(role)) {
+                    if (visitedParents.has(parentNode))
+                        continue;
+
+                    if (!hasChildWithRole(parentNode.firstChild, relationships[role]))
+                        domNodes.push(parentNode);
+                }
+            }
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testForMultipleMainContentSections = function() {
+            let domNodes = [];
+            let mainContentElements = WebInspectorAudit.Accessibility.getElementsByComputedRole("main");
+            if (mainContentElements.length > 1) {
+                domNodes = mainContentElements;
+            }
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["role"]};
+        };
+
+        const testDialogsForLabels = function() {
+          let dialogs = WebInspectorAudit.Accessibility.getElementsByComputedRole("dialog");
+          let domNodes = dialogs.filter((dialog) => !WebInspectorAudit.Accessibility.getComputedProperties(dialog).label);
+          return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["aria-label", "aria-labelledby", "title"]};
+        };
+
+        const testForInvalidAriaHiddenValue = function() {
+            let domNodes = Array.from(document.querySelectorAll(`[aria-hidden]:not([aria-hidden="true"], [aria-hidden="false"])`));
+            return {level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["aria-hidden"]};
+        };
+
+        function removeWhitespace(func) {
+            return func.toString().replace(/\s+/g, " ");
+        }
 
         const defaultTests = [
             new WI.AuditTestGroup(WI.UIString("Demo Audit"), [
                 new WI.AuditTestGroup(WI.UIString("Result Levels"), [
-                    new WI.AuditTestCase(`level-pass`, `function() { return {level: "pass"}; }`, {description: WI.UIString("This is what the result of a passing test with no data looks like.")}),
-                    new WI.AuditTestCase(`level-warn`, `function() { return {level: "warn"}; }`, {description: WI.UIString("This is what the result of a warning test with no data looks like.")}),
-                    new WI.AuditTestCase(`level-fail`, `function() { return {level: "fail"}; }`, {description: WI.UIString("This is what the result of a failing test with no data looks like.")}),
-                    new WI.AuditTestCase(`level-error`, `function() { return {level: "error"}; }`, {description: WI.UIString("This is what the result of a test that threw an error with no data looks like.")}),
-                    new WI.AuditTestCase(`level-unsupported`, `function() { return {level: "unsupported"}; }`, {description: WI.UIString("This is what the result of an unsupported test with no data looks like.")}),
+                    new WI.AuditTestCase("level-pass", removeWhitespace(levelPass), {description: WI.UIString("This is what the result of a passing test with no data looks like.")}),
+                    new WI.AuditTestCase("level-warn", removeWhitespace(levelWarn), {description: WI.UIString("This is what the result of a warning test with no data looks like.")}),
+                    new WI.AuditTestCase("level-fail", removeWhitespace(levelFail), {description: WI.UIString("This is what the result of a failing test with no data looks like.")}),
+                    new WI.AuditTestCase("level-error", removeWhitespace(levelError), {description: WI.UIString("This is what the result of a test that threw an error with no data looks like.")}),
+                    new WI.AuditTestCase("level-unsupported", removeWhitespace(levelUnsupported), {description: WI.UIString("This is what the result of an unsupported test with no data looks like.")}),
                 ], {description: WI.UIString("These are all of the different test result levels.")}),
                 new WI.AuditTestGroup(WI.UIString("Result Data"), [
-                    new WI.AuditTestCase(`data-domNodes`, `function() { return {domNodes: [document.body], level: "pass"}; }`, {description: WI.UIString("This is an example of how result DOM nodes are shown. It will pass with the <body> element.")}),
-                    new WI.AuditTestCase(`data-domAttributes`, `function() { return {domNodes: Array.from(document.querySelectorAll("[id]")), domAttributes: ["id"], level: "pass"}; }`, {description: WI.UIString("This is an example of how result DOM nodes are shown. It will pass with all elements with an id attribute.")}),
-                    new WI.AuditTestCase(`data-errors`, `function() { throw Error("this error was thrown from inside the audit test code."); }`, {description: WI.UIString("This is an example of how errors are shown. The error was thrown manually, but execution errors will appear in the same way.")}),
+                    new WI.AuditTestCase("data-domNodes", removeWhitespace(dataDOMNodes), {description: WI.UIString("This is an example of how result DOM nodes are shown. It will pass with the <body> element.")}),
+                    new WI.AuditTestCase("data-domAttributes", removeWhitespace(dataDOMAttributes), {description: WI.UIString("This is an example of how result DOM attributes are highlighted on any returned DOM nodes. It will pass with all elements with an id attribute.")}),
+                    new WI.AuditTestCase("data-errors", removeWhitespace(dataErrors), {description: WI.UIString("This is an example of how errors are shown. The error was thrown manually, but execution errors will appear in the same way.")}),
+                    new WI.AuditTestCase("data-custom", removeWhitespace(dataCustom), {description: WI.UIString("This is an example of how custom result data is shown."), supports: 3}),
                 ], {description: WI.UIString("These are all of the different types of data that can be returned with the test result.")}),
+                new WI.AuditTestGroup(WI.UIString("Specially Exposed Data"), [
+                    new WI.AuditTestGroup(WI.UIString("Accessibility"), [
+                        new WI.AuditTestCase("getElementsByComputedRole", removeWhitespace(getElementsByComputedRole), {description: WI.UIString("This test will pass with all DOM nodes that have a computed role of \u0022link\u0022."), supports: 1}),
+                        new WI.AuditTestCase("getActiveDescendant", removeWhitespace(getActiveDescendant), {description: WI.UIString("This test will pass with the active descendant (\u0022%s\u0022) of the <body> element, if it exists.").format(WI.unlocalizedString("aria-activedescendant")), supports: 1}),
+                        new WI.AuditTestCase("getChildNodes", removeWhitespace(getChildNodes), {description: WI.UIString("This test will pass with all of the child nodes of the <body> element in the accessibility tree."), supports: 1}),
+                        new WI.AuditTestCase("getComputedProperties", removeWhitespace(getComputedProperties), {description: WI.UIString("This test will pass with a variety of accessibility information about the <body> element."), supports: 3}),
+                        new WI.AuditTestCase("getControlledNodes", removeWhitespace(getControlledNodes), {description: WI.UIString("This test will pass with all nodes controlled (\u0022%s\u0022) by the <body> element, if any exist.").format(WI.unlocalizedString("aria-controls")), supports: 1}),
+                        new WI.AuditTestCase("getFlowedNodes", removeWhitespace(getFlowedNodes), {description: WI.UIString("This test will pass with all nodes flowed to (\u0022%s\u0022) from the <body> element, if any exist.").format(WI.unlocalizedString("aria-flowto")), supports: 1}),
+                        new WI.AuditTestCase("getMouseEventNode", removeWhitespace(getMouseEventNode), {description: WI.UIString("This test will pass with the node that would handle mouse events for the <body> element, if applicable."), supports: 1}),
+                        new WI.AuditTestCase("getOwnedNodes", removeWhitespace(getOwnedNodes), {description: WI.UIString("This test will pass with all nodes owned (\u0022%s\u0022) by the <body> element, if any exist.").format(WI.unlocalizedString("aria-owns")), supports: 1}),
+                        new WI.AuditTestCase("getParentNode", removeWhitespace(getParentNode), {description: WI.UIString("This test will pass with the parent node of the <body> element in the accessibility tree."), supports: 1}),
+                        new WI.AuditTestCase("getSelectedChildNodes", removeWhitespace(getSelectedChildNodes), {description: WI.UIString("This test will pass with all child nodes that are selected (\u0022%s\u0022) of the <body> element in the accessibility tree.").format(WI.unlocalizedString("aria-selected")), supports: 1}),
+                    ], {description: WI.UIString("These tests demonstrate how to use %s to get information about the accessibility tree.").format(WI.unlocalizedString("WebInspectorAudit.Accessibility")), supports: 1}),
+                    new WI.AuditTestGroup(WI.UIString("DOM"), [
+                        new WI.AuditTestCase("hasEventListeners", removeWhitespace(hasEventListeners), {description: WI.UIString("This test will pass with data indicating whether the <body> element has any event listeners."), supports: 3}),
+                        new WI.AuditTestCase("hasEventListeners-click", removeWhitespace(hasEventListenersClick), {description: WI.UIString("This test will pass with data indicating whether the <body> element has any click event listeners."), supports: 3}),
+                    ], {description: WI.UIString("These tests demonstrate how to use %s to get information about DOM nodes.").format(WI.unlocalizedString("WebInspectorAudit.DOM")), supports: 1}),
+                    new WI.AuditTestGroup(WI.UIString("Resources"), [
+                        new WI.AuditTestCase("getResources", removeWhitespace(getResources), {description: WI.UIString("This test will pass with some basic information about each resource."), supports: 3}),
+                        new WI.AuditTestCase("getResourceContent", removeWhitespace(getResourceContent), {description: WI.UIString("This test will pass with the contents of the main resource."), supports: 3}),
+                    ], {description: WI.UIString("These tests demonstrate how to use %s to get information about loaded resources.").format(WI.unlocalizedString("WebInspectorAudit.Resources")), supports: 2}),
+                ], {description: WI.UIString("These tests demonstrate how to use %s to access information not normally available to JavaScript.").format(WI.unlocalizedString("WebInspectorAudit")), supports: 1}),
             ], {description: WI.UIString("These tests serve as a demonstration of the functionality and structure of audits.")}),
             new WI.AuditTestGroup(WI.UIString("Accessibility"), [
-                new WI.AuditTestGroup(WI.UIString("Attributes"), [
-                    new WI.AuditTestCase(`img-alt`, `function() { let domNodes = Array.from(document.getElementsByTagName("img")).filter((img) => !img.alt || !img.alt.length); return { level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["alt"] }; }`, {description: WI.UIString("Ensure <img> elements have alternate text.")}),
-                    new WI.AuditTestCase(`area-alt`, `function() { let domNodes = Array.from(document.getElementsByTagName("area")).filter((area) => !area.alt || !area.alt.length); return { level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["alt"] }; }`, {description: WI.UIString("Ensure <area> elements have alternate text.")}),
-                    new WI.AuditTestCase(`valid-tabindex`, `function() { let domNodes = Array.from(document.querySelectorAll("*[tabindex]")) .filter((node) => { let tabindex = node.getAttribute("tabindex"); if (!tabindex) return false; tabindex = parseInt(tabindex); return isNaN(tabindex) || (tabindex !== 0 && tabindex !== -1); }); return { level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["tabindex"] }; }`, {description: WI.UIString("Ensure tabindex is a number.")}),
-                    new WI.AuditTestCase(`frame-title`, `function() { let domNodes = Array.from(document.querySelectorAll("iframe, frame")) .filter((node) => { let title = node.getAttribute("title"); return !title || !title.trim().length; }); return { level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["title"] }; }`, {description: WI.UIString("Ensure <frame> elements have a title.")}),
-                    new WI.AuditTestCase(`hidden-body`, `function() { let domNodes = Array.from(document.querySelectorAll("body[hidden]")).filter((body) => body.hidden); return { level: domNodes.length ? "fail" : "pass", domNodes, domAttributes: ["hidden"] }; }`, {description: WI.UIString("Ensure hidden=true is not present on the <body>.")}),
-                    new WI.AuditTestCase(`meta-refresh`, `function() { let domNodes = Array.from(document.querySelectorAll("meta[http-equiv=refresh]")); return { level: domNodes.length ? "warn" : "pass", domNodes, domAttributes: ["http-equiv"] }; }`, {description: WI.UIString("Ensure <meta http-equiv=refresh> is not used.")}),
-                ], {description: WI.UIString("Tests for element attribute accessibility issues.")}),
-                new WI.AuditTestGroup(WI.UIString("Elements"), [
-                    new WI.AuditTestCase(`blink`, `function() { let domNodes = Array.from(document.getElementsByTagName("blink")); return { level: domNodes.length ? "warn" : "pass", domNodes }; }`, {description: WI.UIString("Ensure <blink> is not used.")}),
-                    new WI.AuditTestCase(`marquee`, `function() { let domNodes = Array.from(document.getElementsByTagName("marquee")); return { level: domNodes.length ? "warn" : "pass", domNodes }; }`, {description: WI.UIString("Ensure <marquee> is not used.")}),
-                    new WI.AuditTestCase(`dlitem`, `function() { function check(node) { if (!node) { return false; } if (node.nodeName === "DD") { return true; } return check(node.parentNode); } let domNodes = Array.from(document.querySelectorAll("dt, dd")).filter(check); return { level: domNodes.length ? "warn" : "pass", domNodes }; }`, {description: WI.UIString("Ensure <dt> and <dd> elements are contained by a <dl>.")}),
-                ], {description: WI.UIString("Tests for element accessibility issues.")}),
-                new WI.AuditTestGroup(WI.UIString("Forms"), [
-                    new WI.AuditTestCase(`one-legend`, `function() { let formLegendsMap = Array.from(document.querySelectorAll("form legend")).reduce((accumulator, node) => { let existing = accumulator.get(node.form); if (!existing) { existing = []; accumulator.set(node.form, existing); } existing.push(node); return accumulator; }, new Map); let domNodes = Array.from(formLegendsMap.values()).reduce((accumulator, legends) => accumulator.concat(legends), []); return { level: domNodes.length ? "warn" : "pass", domNodes }; }`, {description: WI.UIString("Ensure exactly one <legend> exists per <form>.")}),
-                    new WI.AuditTestCase(`legend-first-child`, `function() { let domNodes = Array.from(document.querySelectorAll("form > legend:not(:first-child)")); return { level: domNodes.length ? "warn" : "pass", domNodes }; }`, {description: WI.UIString("Ensure that the <legend> is the first child in the <form>.")}),
-                    new WI.AuditTestCase(`form-input`, `function() { let domNodes = Array.from(document.getElementsByTagName("form")) .filter(node => !node.elements.length); return { level: domNodes.length ? "warn" : "pass", domNodes }; }`, {description: WI.UIString("Ensure <form>s have at least one input.")}),
-                ], {description: WI.UIString("Tests the accessibility of form elements.")}),
-            ], {description: WI.UIString("Tests for ways to improve accessibility.")}),
+                new WI.AuditTestCase("testMenuRoleForRequiredChildren", removeWhitespace(testMenuRoleForRequiredChildren), {description: WI.UIString("Ensure that element of role \u0022%s\u0022 and \u0022%s\u0022 have required owned elements in accordance with WAI-ARIA.").format(WI.unlocalizedString("menu"), WI.unlocalizedString("menubar")), supports: 1}),
+                new WI.AuditTestCase("testGridRoleForRequiredChildren", removeWhitespace(testGridRoleForRequiredChildren), {description: WI.UIString("Ensure that elements of role \u0022%s\u0022 have required owned elements in accordance with WAI-ARIA.").format(WI.unlocalizedString("grid")), supports: 1}),
+                new WI.AuditTestCase("testForAriaLabelledBySpelling", removeWhitespace(testForAriaLabelledBySpelling), {description: WI.UIString("Ensure that \u0022%s\u0022 is spelled correctly.").format(WI.unlocalizedString("aria-labelledby")), supports: 1}),
+                new WI.AuditTestCase("testForMultipleBanners", removeWhitespace(testForMultipleBanners), {description: WI.UIString("Ensure that only one banner is used on the page."), supports: 1}),
+                new WI.AuditTestCase("testForLinkLabels", removeWhitespace(testForLinkLabels), {description: WI.UIString("Ensure that links have accessible labels for assistive technology."), supports: 1}),
+                new WI.AuditTestCase("testRowGroupRoleForRequiredChildren", removeWhitespace(testRowGroupRoleForRequiredChildren), {description: WI.UIString("Ensure that element of role \u0022%s\u0022 have required owned elements in accordance with WAI-ARIA.").format(WI.unlocalizedString("rowgroup")), supports: 1}),
+                new WI.AuditTestCase("testTableRoleForRequiredChildren", removeWhitespace(testTableRoleForRequiredChildren), {description: WI.UIString("Ensure that elements of role \u0022%s\u0022 have required owned elements in accordance with WAI-ARIA.").format(WI.unlocalizedString("table")), supports: 1}),
+                new WI.AuditTestCase("testForMultipleLiveRegions", removeWhitespace(testForMultipleLiveRegions), {description: WI.UIString("Ensure that only one live region is used on the page."), supports: 1}),
+                new WI.AuditTestCase("testListBoxRoleForRequiredChildren", removeWhitespace(testListBoxRoleForRequiredChildren), {description: WI.UIString("Ensure that elements of role \u0022%s\u0022 have required owned elements in accordance with WAI-ARIA.").format(WI.unlocalizedString("listbox")), supports: 1}),
+                new WI.AuditTestCase("testImageLabels", removeWhitespace(testImageLabels), {description: WI.UIString("Ensure that elements of role \u0022%s\u0022 have accessible labels for assistive technology.").format(WI.unlocalizedString("img")), supports: 1}),
+                new WI.AuditTestCase("testForAriaHiddenFalse", removeWhitespace(testForAriaHiddenFalse), {description: WI.UIString("Ensure aria-hidden=\u0022%s\u0022 is not used.").format(WI.unlocalizedString("false")), supports: 1}),
+                new WI.AuditTestCase("testTreeRoleForRequiredChildren", removeWhitespace(testTreeRoleForRequiredChildren), {description: WI.UIString("Ensure that element of role \u0022%s\u0022 have required owned elements in accordance with WAI-ARIA.").format(WI.unlocalizedString("tree")), supports: 1}),
+                new WI.AuditTestCase("testRadioGroupRoleForRequiredChildren", removeWhitespace(testRadioGroupRoleForRequiredChildren), {description: WI.UIString("Ensure that element of role \u0022%s\u0022 have required owned elements in accordance with WAI-ARIA.").format(WI.unlocalizedString("radiogroup")), supports: 1}),
+                new WI.AuditTestCase("testFeedRoleForRequiredChildren", removeWhitespace(testFeedRoleForRequiredChildren), {description: WI.UIString("Ensure that elements of role \u0022%s\u0022 have required owned elements in accordance with WAI-ARIA.").format(WI.unlocalizedString("feed")), supports: 1}),
+                new WI.AuditTestCase("testTabListRoleForRequiredChildren", removeWhitespace(testTabListRoleForRequiredChildren), {description: WI.UIString("Ensure that element of role \u0022%s\u0022 have required owned elements in accordance with WAI-ARIA.").format(WI.unlocalizedString("tablist")), supports: 1}),
+                new WI.AuditTestCase("testButtonLabels", removeWhitespace(testButtonLabels), {description: WI.UIString("Ensure that buttons have accessible labels for assistive technology."), supports: 1}),
+                new WI.AuditTestCase("testRowRoleForRequiredChildren", removeWhitespace(testRowRoleForRequiredChildren), {description: WI.UIString("Ensure that elements of role \u0022%s\u0022 have required owned elements in accordance with WAI-ARIA.").format(WI.unlocalizedString("row")), supports: 1}),
+                new WI.AuditTestCase("testListRoleForRequiredChildren", removeWhitespace(testListRoleForRequiredChildren), {description: WI.UIString("Ensure that elements of role \u0022%s\u0022 have required owned elements in accordance with WAI-ARIA.").format(WI.unlocalizedString("list")), supports: 1}),
+                new WI.AuditTestCase("testComboBoxRoleForRequiredChildren", removeWhitespace(testComboBoxRoleForRequiredChildren), {description: WI.UIString("Ensure that elements of role \u0022%s\u0022 have required owned elements in accordance with WAI-ARIA.").format(WI.unlocalizedString("combobox")), supports: 1}),
+                new WI.AuditTestCase("testForMultipleMainContentSections", removeWhitespace(testForMultipleMainContentSections), {description: WI.UIString("Ensure that only one main content section is used on the page."), supports: 1}),
+                new WI.AuditTestCase("testDialogsForLabels", removeWhitespace(testDialogsForLabels), {description: WI.UIString("Ensure that dialogs have accessible labels for assistive technology."), supports: 1}),
+                new WI.AuditTestCase("testForInvalidAriaHiddenValue", removeWhitespace(testForInvalidAriaHiddenValue), {description: WI.UIString("Ensure that values for \u0022%s\u0022 are valid.").format(WI.unlocalizedString("aria-hidden")), supports: 1})
+            ], {description: WI.UIString("Diagnoses common accessibility problems affecting screen readers and other assistive technology.")}),
         ];
 
         let checkDisabledDefaultTest = (test) => {

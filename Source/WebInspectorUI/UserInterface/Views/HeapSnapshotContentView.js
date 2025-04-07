@@ -34,7 +34,7 @@ WI.HeapSnapshotContentView = class HeapSnapshotContentView extends WI.ContentVie
         this.element.classList.add("heap-snapshot");
 
         this._exportButtonNavigationItem = new WI.ButtonNavigationItem("export", WI.UIString("Export"), "Images/Export.svg", 15, 15);
-        this._exportButtonNavigationItem.toolTip = WI.UIString("Export (%s)").format(WI.saveKeyboardShortcut.displayName);
+        this._exportButtonNavigationItem.tooltip = WI.UIString("Export (%s)").format(WI.saveKeyboardShortcut.displayName);
         this._exportButtonNavigationItem.buttonStyle = WI.ButtonNavigationItem.Style.ImageAndText;
         this._exportButtonNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
         this._exportButtonNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, () => { this._exportSnapshot(); });
@@ -42,6 +42,7 @@ WI.HeapSnapshotContentView = class HeapSnapshotContentView extends WI.ContentVie
         this._dataGrid = new WI.DataGrid(columns);
         this._dataGrid.sortColumnIdentifier = "retainedSize";
         this._dataGrid.sortOrder = WI.DataGrid.SortOrder.Descending;
+        this._dataGrid.filterDelegate = this;
         this._dataGrid.createSettings(identifier);
         this._dataGrid.addEventListener(WI.DataGrid.Event.SortChanged, this._sortDataGrid, this);
 
@@ -56,6 +57,28 @@ WI.HeapSnapshotContentView = class HeapSnapshotContentView extends WI.ContentVie
         this._dataGrid.updateLayout();
     }
 
+    // Public
+
+    updateFilter(filters)
+    {
+        this._dataGrid.filterText = filters ? filters.text : "";
+    }
+
+    // DataGrid filter delegate
+
+    dataGridMatchNodeAgainstCustomFilters(node)
+    {
+        console.assert(node);
+        if (node instanceof WI.HeapSnapshotInstanceFetchMoreDataGridNode)
+            return false;
+        return true;
+    }
+
+    dataGridMatchShouldPopulateWhenFilteringNode(node)
+    {
+        return true;
+    }
+
     // Protected
 
     get navigationItems()
@@ -63,16 +86,6 @@ WI.HeapSnapshotContentView = class HeapSnapshotContentView extends WI.ContentVie
         if (this.representedObject instanceof WI.HeapSnapshotProxy)
             return [this._exportButtonNavigationItem];
         return [];
-    }
-
-    get supportsSave()
-    {
-        return this.representedObject instanceof WI.HeapSnapshotProxy;
-    }
-
-    get saveData()
-    {
-        return {customSaveHandler: () => { this._exportSnapshot(); }};
     }
 
     shown()
@@ -113,9 +126,8 @@ WI.HeapSnapshotContentView = class HeapSnapshotContentView extends WI.ContentVie
             Number.zeroPad(date.getSeconds(), 2),
         ];
         let filename = WI.UIString("Heap Snapshot %s-%s-%s at %s.%s.%s").format(...values);
-        let url = "web-inspector:///" + encodeURI(filename) + ".json";
         WI.FileUtilities.save({
-            url,
+            url: WI.FileUtilities.inspectorURLForFilename(filename + ".json"),
             content: this.representedObject.snapshotStringData,
             forceSaveAs: true,
         });

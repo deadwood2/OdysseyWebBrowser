@@ -301,7 +301,7 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
             for (let resource of currentFrame.resourceCollection)
                 this._addResource(resource, suppressFilterUpdate);
 
-            frames.push(...currentFrame.childFrameCollection);
+            frames.pushAll(currentFrame.childFrameCollection);
         }
     }
 
@@ -327,7 +327,9 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
                 continue;
             if (script.dynamicallyAddedScriptElement)
                 continue;
-            if (!script.sourceURL || isWebKitInternalScript(script.sourceURL) || isWebInspectorConsoleEvaluationScript(script.sourceURL))
+            if ((!WI.isDebugUIEnabled() || !WI.settings.debugShowConsoleEvaluations.value) || isWebInspectorConsoleEvaluationScript(script.sourceURL))
+                continue;
+            if ((!WI.isEngineeringBuild || !WI.settings.engineeringShowInternalScripts.value) && isWebKitInternalScript(script.sourceURL))
                 continue;
             this._addResource(script, suppressFilterUpdate);
         }

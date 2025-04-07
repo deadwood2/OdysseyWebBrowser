@@ -428,6 +428,12 @@ public:
         bool match = testCharacterClass(characterClass, input.readChecked(negativeInputOffset));
         return invert ? !match : match;
     }
+    
+    bool checkCharacterClassDontAdvanceInputForNonBMP(CharacterClass* characterClass, unsigned negativeInputOffset)
+    {
+        int readCharacter = characterClass->hasOnlyNonBMPCharacters() ? input.readSurrogatePairChecked(negativeInputOffset) :  input.readChecked(negativeInputOffset);
+        return testCharacterClass(characterClass, readCharacter);
+    }
 
     bool tryConsumeBackReference(int matchBegin, int matchEnd, unsigned negativeInputOffset)
     {
@@ -558,12 +564,21 @@ public:
         switch (term.atom.quantityType) {
         case QuantifierFixedCount: {
             if (unicode) {
+                CharacterClass* charClass = term.atom.characterClass;
                 backTrack->begin = input.getPos();
                 unsigned matchAmount = 0;
                 for (matchAmount = 0; matchAmount < term.atom.quantityMaxCount; ++matchAmount) {
-                    if (!checkCharacterClass(term.atom.characterClass, term.invert(), term.inputPosition - matchAmount)) {
-                        input.setPos(backTrack->begin);
-                        return false;
+                    if (term.invert()) {
+                        if (!checkCharacterClass(charClass, term.invert(), term.inputPosition - matchAmount)) {
+                            input.setPos(backTrack->begin);
+                            return false;
+                        }
+                    } else {
+                        unsigned matchOffset = matchAmount * (charClass->hasOnlyNonBMPCharacters() ? 2 : 1);
+                        if (!checkCharacterClassDontAdvanceInputForNonBMP(charClass, term.inputPosition - matchOffset)) {
+                            input.setPos(backTrack->begin);
+                            return false;
+                        }
                     }
                 }
 
@@ -1691,7 +1706,7 @@ public:
             dumpDisjunction(m_bodyDisjunction.get());
 #endif
 
-        return std::make_unique<BytecodePattern>(WTFMove(m_bodyDisjunction), m_allParenthesesInfo, m_pattern, allocator, lock);
+        return makeUnique<BytecodePattern>(WTFMove(m_bodyDisjunction), m_allParenthesesInfo, m_pattern, allocator, lock);
     }
 
     void checkInput(unsigned count)
@@ -1911,7 +1926,7 @@ public:
         unsigned subpatternId = parenthesesBegin.atom.subpatternId;
 
         unsigned numSubpatterns = lastSubpatternId - subpatternId + 1;
-        auto parenthesesDisjunction = std::make_unique<ByteDisjunction>(numSubpatterns, callFrameSize);
+        auto parenthesesDisjunction = makeUnique<ByteDisjunction>(numSubpatterns, callFrameSize);
 
         unsigned firstTermInParentheses = beginTerm + 1;
         parenthesesDisjunction->terms.reserveInitialCapacity(endTerm - firstTermInParentheses + 2);
@@ -1982,7 +1997,7 @@ public:
 
     void regexBegin(unsigned numSubpatterns, unsigned callFrameSize, bool onceThrough)
     {
-        m_bodyDisjunction = std::make_unique<ByteDisjunction>(numSubpatterns, callFrameSize);
+        m_bodyDisjunction = makeUnique<ByteDisjunction>(numSubpatterns, callFrameSize);
         m_bodyDisjunction->terms.append(ByteTerm::BodyAlternativeBegin(onceThrough));
         m_bodyDisjunction->terms[0].frameLocation = 0;
         m_currentAlternativeIndex = 0;

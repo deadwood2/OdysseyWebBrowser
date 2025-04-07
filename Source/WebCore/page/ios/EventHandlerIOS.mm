@@ -32,6 +32,7 @@
 #import "AutoscrollController.h"
 #import "Chrome.h"
 #import "ChromeClient.h"
+#import "ContentChangeObserver.h"
 #import "DataTransfer.h"
 #import "DragState.h"
 #import "FocusController.h"
@@ -486,22 +487,25 @@ void EventHandler::mouseMoved(WebEvent *event)
 {
     // Reject a mouse moved if the button is down - screws up tracking during autoscroll
     // These happen because WebKit sometimes has to fake up moved events.
-    if (!m_frame.view() || m_mousePressed || m_sendingEventToSubview)
+    if (!m_frame.document() || !m_frame.view() || m_mousePressed || m_sendingEventToSubview)
         return;
 
     BEGIN_BLOCK_OBJC_EXCEPTIONS;
-
-    m_frame.document()->updateStyleIfNeeded();
-
-    WKStartObservingContentChanges();
-    WKStartObservingDOMTimerScheduling();
+    auto& document = *m_frame.document();
+    // Ensure we start mouse move event dispatching on a clear tree.
+    document.updateStyleIfNeeded();
     CurrentEventScope scope(event);
-    event.wasHandled = mouseMoved(currentPlatformMouseEvent());
-    
-    // FIXME: Why is this here?
-    m_frame.document()->updateStyleIfNeeded();
-    WKStopObservingDOMTimerScheduling();
-    WKStopObservingContentChanges();
+    {
+        ContentChangeObserver::MouseMovedScope observingScope(document);
+        event.wasHandled = mouseMoved(currentPlatformMouseEvent());
+        // Run style recalc to be able to capture content changes as the result of the mouse move event.
+        document.updateStyleIfNeeded();
+        callOnMainThread([protectedFrame = makeRef(m_frame)] {
+            // This is called by WebKitLegacy only.
+            if (auto* document = protectedFrame->document())
+                document->page()->chrome().client().didFinishContentChangeObserving(*document->frame(), document->contentChangeObserver().observedContentChange());
+        });
+    }
 
     END_BLOCK_OBJC_EXCEPTIONS;
 }
@@ -514,6 +518,16 @@ static bool frameHasPlatformWidget(const Frame& frame)
     }
 
     return false;
+}
+
+void EventHandler::dispatchSyntheticMouseOut(const PlatformMouseEvent& platformMouseEvent)
+{
+    updateMouseEventTargetNode(nullptr, platformMouseEvent, FireMouseOverOut::Yes);
+}
+
+void EventHandler::dispatchSyntheticMouseMove(const PlatformMouseEvent& platformMouseEvent)
+{
+    mouseMoved(platformMouseEvent);
 }
 
 bool EventHandler::passMousePressEventToSubframe(MouseEventWithHitTestResults& mev, Frame* subframe)
@@ -658,6 +672,8 @@ bool EventHandler::tryToBeginDragAtPoint(const IntPoint& clientPosition, const I
     if (!document)
         return false;
 
+    SetForScope<bool> shouldAllowMouseDownToStartDrag { m_shouldAllowMouseDownToStartDrag, true };
+
     document->updateLayoutIgnorePendingStylesheets();
 
     FloatPoint adjustedClientPositionAsFloatPoint(clientPosition);
@@ -683,10 +699,23 @@ bool EventHandler::tryToBeginDragAtPoint(const IntPoint& clientPosition, const I
     bool handledDrag = m_mouseDownMayStartDrag && handleMouseDraggedEvent(hitTestedMouseEvent, DontCheckDragHysteresis);
     // Reset this bit to prevent autoscrolling from updating the selection with the last mouse location.
     m_mouseDownMayStartSelect = false;
+    // Reset this bit to ensure that WebChromeClientIOS::observedContentChange() is called by EventHandler::mousePressed()
+    // when we would process the next tap after a drag interaction.
+    m_mousePressed = false;
     return handledDrag;
 }
 
-#endif
+bool EventHandler::supportsSelectionUpdatesOnMouseDrag() const
+{
+    return false;
+}
+
+bool EventHandler::shouldAllowMouseDownToStartDrag() const
+{
+    return m_shouldAllowMouseDownToStartDrag;
+}
+
+#endif // ENABLE(DRAG_SUPPORT)
 
 }
 

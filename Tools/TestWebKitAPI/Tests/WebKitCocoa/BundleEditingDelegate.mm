@@ -26,8 +26,6 @@
 #import "config.h"
 #import <WebKit/WKFoundation.h>
 
-#if WK_API_ENABLED
-
 #if PLATFORM(MAC) // FIXME: https://bugs.webkit.org/show_bug.cgi?id=165384 REGRESSION: [ios-simulator] API test WebKit2.WKWebProcessPlugInEditingDelegate crashing
 
 #import "BundleEditingDelegateProtocol.h"
@@ -74,7 +72,7 @@ static bool didWriteToPasteboard;
 TEST(WebKit, WKWebProcessPlugInEditingDelegate)
 {
     RetainPtr<WKWebViewConfiguration> configuration = retainPtr([WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"BundleEditingDelegatePlugIn"]);
-    [[configuration processPool] _setObject:[NSNumber numberWithBool:NO] forBundleParameter:@"EditingDelegateShouldInsertText"];
+    [[configuration processPool] _setObject:@NO forBundleParameter:@"EditingDelegateShouldInsertText"];
     
     RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
 
@@ -117,6 +115,21 @@ TEST(WebKit, WKWebProcessPlugInEditingDelegate)
     TestWebKitAPI::Util::run(&doneEvaluatingJavaScript);
 }
 
-#endif
+TEST(WebKit, WKWebProcessPlugInDoNotCrashWhenCopyingEmptyClientData)
+{
+    auto configuration = retainPtr([WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"BundleEditingDelegatePlugIn"]);
+    [[configuration processPool] _setObject:@YES forBundleParameter:@"EditingDelegateShouldWriteEmptyData"];
 
-#endif
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    [webView loadHTMLString:@"<body style='-webkit-user-modify: read-write-plaintext-only'>Just something to copy <script> var textNode = document.body.firstChild; document.getSelection().setBaseAndExtent(textNode, 5, textNode, 14) </script>" baseURL:nil];
+    [webView _test_waitForDidFinishNavigation];
+
+    auto object = adoptNS([[BundleEditingDelegateRemoteObject alloc] init]);
+    _WKRemoteObjectInterface *interface = [_WKRemoteObjectInterface remoteObjectInterfaceWithProtocol:@protocol(BundleEditingDelegateProtocol)];
+    [[webView _remoteObjectRegistry] registerExportedObject:object.get() interface:interface];
+
+    [webView performSelector:@selector(copy:) withObject:nil];
+    TestWebKitAPI::Util::run(&didWriteToPasteboard);
+}
+
+#endif // PLATFORM(MAC)

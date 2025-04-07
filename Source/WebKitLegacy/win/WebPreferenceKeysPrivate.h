@@ -180,6 +180,8 @@
 
 #define WebKitMenuItemElementEnabledPreferenceKey "WebKitMenuItemElementEnabled"
 
+#define WebKitKeygenElementEnabledPreferenceKey "WebKitKeygenElementEnabled"
+
 #define WebKitModernMediaControlsEnabledPreferenceKey "WebKitModernMediaControlsEnabled"
 
 #define WebKitWebAnimationsEnabledPreferenceKey "WebKitWebAnimationsEnabled"
@@ -206,3 +208,8 @@
 
 #define WebKitCSSOMViewScrollingAPIEnabledPreferenceKey "WebKitCSSOMViewScrollingAPIEnabled"
 
+#define WebKitResizeObserverEnabledPreferenceKey "WebKitResizeObserverEnabled"
+
+#define WebKitCoreMathMLEnabledPreferenceKey "WebKitCoreMathMLEnabled"
+
+#define WebKitLazyImageLoadingEnabledPreferenceKey "WebKitLazyImageLoadingEnabled"

@@ -39,10 +39,10 @@
 namespace WebKit {
 namespace NetworkCache {
 
-Data Data::mapToFile(const char* path) const
-{
 #if !OS(WINDOWS)
-    int fd = open(path, O_CREAT | O_EXCL | O_RDWR , S_IRUSR | S_IWUSR);
+Data Data::mapToFile(const String& path) const
+{
+    int fd = open(FileSystem::fileSystemRepresentation(path).data(), O_CREAT | O_EXCL | O_RDWR , S_IRUSR | S_IWUSR);
     if (fd < 0)
         return { };
 
@@ -50,6 +50,8 @@ Data Data::mapToFile(const char* path) const
         close(fd);
         return { };
     }
+    
+    FileSystem::makeSafeToUseMemoryMapForPath(path);
 
     void* map = mmap(nullptr, m_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (map == MAP_FAILED) {
@@ -71,14 +73,22 @@ Data Data::mapToFile(const char* path) const
     msync(map, m_size, MS_ASYNC);
 
     return Data::adoptMap(map, m_size, fd);
-#else
-    return Data();
-#endif
 }
+#else
+Data Data::mapToFile(const String& path) const
+{
+    auto file = FileSystem::openFile(path, FileSystem::FileOpenMode::Write);
+    if (!FileSystem::isHandleValid(file))
+        return { };
+    if (FileSystem::writeToFile(file, reinterpret_cast<const char*>(data()), size()) < 0)
+        return { };
+    return Data(Vector<uint8_t>(m_buffer));
+}
+#endif
 
+#if !OS(WINDOWS)
 Data mapFile(const char* path)
 {
-#if !OS(WINDOWS)
     int fd = open(path, O_RDONLY, 0);
     if (fd < 0)
         return { };
@@ -94,14 +104,27 @@ Data mapFile(const char* path)
     }
 
     return adoptAndMapFile(fd, 0, size);
+}
+#endif
+
+Data mapFile(const String& path)
+{
+#if !OS(WINDOWS)
+    return mapFile(FileSystem::fileSystemRepresentation(path).data());
 #else
-    return Data();
+    auto file = FileSystem::openFile(path, FileSystem::FileOpenMode::Read);
+    if (!FileSystem::isHandleValid(file))
+        return { };
+    long long size;
+    if (!FileSystem::getFileSize(file, size))
+        return { };
+    return adoptAndMapFile(file, 0, size);
 #endif
 }
 
+#if !OS(WINDOWS)
 Data adoptAndMapFile(int fd, size_t offset, size_t size)
 {
-#if !OS(WINDOWS)
     if (!size) {
         close(fd);
         return Data::empty();
@@ -114,10 +137,13 @@ Data adoptAndMapFile(int fd, size_t offset, size_t size)
     }
 
     return Data::adoptMap(map, size, fd);
-#else
-    return Data();
-#endif
 }
+#else
+Data adoptAndMapFile(FileSystem::PlatformFileHandle file, size_t offset, size_t size)
+{
+    return Data(file, offset, size);
+}
+#endif
 
 SHA1::Digest computeSHA1(const Data& data, const Salt& salt)
 {
@@ -142,7 +168,6 @@ bool bytesEqual(const Data& a, const Data& b)
     return !memcmp(a.data(), b.data(), a.size());
 }
 
-#if !OS(WINDOWS)
 static Salt makeSalt()
 {
     Salt salt;
@@ -151,7 +176,6 @@ static Salt makeSalt()
     *reinterpret_cast<uint32_t*>(&salt[4]) = cryptographicallyRandomNumber();
     return salt;
 }
-#endif
 
 Optional<Salt> readOrMakeSalt(const String& path)
 {
@@ -161,19 +185,33 @@ Optional<Salt> readOrMakeSalt(const String& path)
     Salt salt;
     auto bytesRead = read(fd, salt.data(), salt.size());
     close(fd);
-    if (bytesRead != salt.size()) {
+    if (bytesRead != static_cast<ssize_t>(salt.size())) {
         salt = makeSalt();
 
         unlink(cpath.data());
         fd = open(cpath.data(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-        bool success = write(fd, salt.data(), salt.size()) == salt.size();
+        bool success = write(fd, salt.data(), salt.size()) == static_cast<ssize_t>(salt.size());
         close(fd);
         if (!success)
             return { };
     }
     return salt;
 #else
-    return Salt();
+    auto file = FileSystem::openFile(path, FileSystem::FileOpenMode::Read);
+    Salt salt;
+    auto bytesRead = FileSystem::readFromFile(file, reinterpret_cast<char*>(salt.data()), salt.size());
+    FileSystem::closeFile(file);
+    if (bytesRead != salt.size()) {
+        salt = makeSalt();
+
+        FileSystem::deleteFile(path);
+        file = FileSystem::openFile(path, FileSystem::FileOpenMode::Write);
+        bool success = FileSystem::writeToFile(file, reinterpret_cast<char*>(salt.data()), salt.size()) == salt.size();
+        FileSystem::closeFile(file);
+        if (!success)
+            return { };
+    }
+    return salt;
 #endif
 }
 

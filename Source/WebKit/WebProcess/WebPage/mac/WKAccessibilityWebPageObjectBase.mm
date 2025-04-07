@@ -44,8 +44,6 @@
 #import <WebCore/Scrollbar.h>
 #import <wtf/ObjCRuntimeExtras.h>
 
-using namespace WebKit;
-
 @implementation WKAccessibilityWebPageObjectBase
 
 - (WebCore::AXObjectCache*)axObjectCache
@@ -86,59 +84,78 @@ using namespace WebKit;
     return retrieveBlock();
 }
 
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+- (BOOL)clientSupportsIsolatedTree
+{
+    AXClientType type = _AXGetClientForCurrentRequestUntrusted();
+    // FIXME: Remove unknown client before enabling ACCESSIBILITY_ISOLATED_TREE.
+    return type == kAXClientTypeVoiceOver || type == kAXClientTypeUnknown;
+}
+
+- (id)isolatedTreeRootObject
+{
+    if (isMainThread()) {
+        if (auto cache = [self axObjectCache]) {
+            auto tree = AXIsolatedTree::initializeTreeForPageId(m_pageID, *cache);
+
+            // Now that we have created our tree, initialize the secondary thread,
+            // so future requests come in on the other thread.
+            _AXUIElementUseSecondaryAXThread(true);
+            if (auto rootNode = tree->rootNode())
+                return rootNode->wrapper();
+        }
+    } else {
+        auto tree = AXIsolatedTree::treeForPageID(m_pageID);
+        tree->applyPendingChanges();
+        if (auto rootNode = tree->rootNode())
+            return rootNode->wrapper();
+    }
+
+    return nil;
+}
+#endif
+
 - (id)accessibilityRootObjectWrapper
 {
     if (!WebCore::AXObjectCache::accessibilityEnabled())
         WebCore::AXObjectCache::enableAccessibility();
 
-    if (m_hasPlugin)
+    if (m_hasMainFramePlugin)
         return self.accessibilityPluginObject;
 
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    auto generateBlock = [&] {
-        auto dispatchBlock = [&self] {
-            if (auto cache = [self axObjectCache])
-                cache->generateIsolatedAccessibilityTree();
-        };
+    // If VoiceOver is on, ensure subsequent requests are now handled on the secondary AX thread.
+    bool clientSupportsIsolatedTree = [self clientSupportsIsolatedTree];
+    if (clientSupportsIsolatedTree)
+        return [self isolatedTreeRootObject];
+#endif
 
-        if (isMainThread())
-            dispatchBlock();
-        else {
-            callOnMainThreadAndWait([&dispatchBlock] {
-                dispatchBlock();
-            });
-        }
-    };
-
-    auto tree = AXIsolatedTree::treeForPageID(m_pageID);
-    if (!tree)
-        generateBlock();
-
-    if ((tree = AXIsolatedTree::treeForPageID(m_pageID))) {
-        ASSERT(!isMainThread());
-        tree->applyPendingChanges();
-        return tree->rootNode()->wrapper();
-    }
-#else
-    if (AXObjectCache* cache = [self axObjectCache]) {
+    if (auto cache = [self axObjectCache]) {
         if (WebCore::AccessibilityObject* root = cache->rootObject())
             return root->wrapper();
     }
-#endif
+
     return nil;
 }
 
-- (void)setWebPage:(WebPage*)page
+- (void)setWebPage:(WebKit::WebPage*)page
 {
     m_page = page;
-    
+
     if (page) {
         m_pageID = page->pageID();
-        m_hasPlugin = page->accessibilityObjectForMainFramePlugin();
+
+        auto* frame = page->mainFrame();
+        m_hasMainFramePlugin = frame && frame->document() ? frame->document()->isPluginDocument() : false;
     } else {
-        m_pageID = 0;
-        m_hasPlugin = false;
+        m_pageID = { };
+        m_hasMainFramePlugin = false;
     }
+}
+
+- (void)setHasMainFramePlugin:(bool)hasPlugin
+{
+    m_hasMainFramePlugin = hasPlugin;
 }
 
 - (void)setRemoteParent:(id)parent

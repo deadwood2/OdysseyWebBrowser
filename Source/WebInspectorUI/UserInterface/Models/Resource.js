@@ -26,7 +26,7 @@
 
 WI.Resource = class Resource extends WI.SourceCode
 {
-    constructor(url, {mimeType, type, loaderIdentifier, targetId, requestIdentifier, requestMethod, requestHeaders, requestData, requestSentTimestamp, requestSentWalltime, initiatorSourceCodeLocation, initiatorNode, originalRequestWillBeSentTimestamp} = {})
+    constructor(url, {mimeType, type, loaderIdentifier, targetId, requestIdentifier, requestMethod, requestHeaders, requestData, requestSentTimestamp, requestSentWalltime, initiatorCallFrames, initiatorSourceCodeLocation, initiatorNode, originalRequestWillBeSentTimestamp} = {})
     {
         super();
 
@@ -52,6 +52,7 @@ WI.Resource = class Resource extends WI.SourceCode
         this._responseCookies = null;
         this._serverTimingEntries = null;
         this._parentFrame = null;
+        this._initiatorCallFrames = initiatorCallFrames || null;
         this._initiatorSourceCodeLocation = initiatorSourceCodeLocation || null;
         this._initiatorNode = initiatorNode || null;
         this._initiatedResources = [];
@@ -66,6 +67,7 @@ WI.Resource = class Resource extends WI.SourceCode
         this._statusText = null;
         this._cached = false;
         this._canceled = false;
+        this._finished = false;
         this._failed = false;
         this._failureReasonText = null;
         this._receivedNetworkLoadMetrics = false;
@@ -132,10 +134,10 @@ WI.Resource = class Resource extends WI.SourceCode
             if (plural)
                 return WI.UIString("Documents");
             return WI.UIString("Document");
-        case WI.Resource.Type.Stylesheet:
+        case WI.Resource.Type.StyleSheet:
             if (plural)
-                return WI.UIString("Stylesheets");
-            return WI.UIString("Stylesheet");
+                return WI.UIString("Style Sheets");
+            return WI.UIString("Style Sheet");
         case WI.Resource.Type.Image:
             if (plural)
                 return WI.UIString("Images");
@@ -154,8 +156,8 @@ WI.Resource = class Resource extends WI.SourceCode
             return WI.UIString("XHR");
         case WI.Resource.Type.Fetch:
             if (plural)
-                return WI.UIString("Fetches");
-            return WI.UIString("Fetch");
+                return WI.UIString("Fetches", "Resources loaded via 'fetch' method");
+            return WI.repeatedUIString.fetch();
         case WI.Resource.Type.Ping:
             if (plural)
                 return WI.UIString("Pings");
@@ -300,6 +302,7 @@ WI.Resource = class Resource extends WI.SourceCode
     get requestIdentifier() { return this._requestIdentifier; }
     get requestMethod() { return this._requestMethod; }
     get requestData() { return this._requestData; }
+    get initiatorCallFrames() { return this._initiatorCallFrames; }
     get initiatorSourceCodeLocation() { return this._initiatorSourceCodeLocation; }
     get initiatorNode() { return this._initiatorNode; }
     get initiatedResources() { return this._initiatedResources; }
@@ -381,7 +384,7 @@ WI.Resource = class Resource extends WI.SourceCode
         // Return the default MIME-types for the Resource.Type, since the current MIME-type
         // does not match what is expected for the Resource.Type.
         switch (this._type) {
-        case WI.Resource.Type.Stylesheet:
+        case WI.Resource.Type.StyleSheet:
             return "text/css";
         case WI.Resource.Type.Script:
             return "text/javascript";
@@ -589,7 +592,7 @@ WI.Resource = class Resource extends WI.SourceCode
     get compressed()
     {
         let contentEncoding = this._responseHeaders.valueForCaseInsensitiveKey("Content-Encoding");
-        return !!(contentEncoding && /\b(?:gzip|deflate)\b/.test(contentEncoding));
+        return !!(contentEncoding && /\b(?:gzip|deflate|br)\b/.test(contentEncoding));
     }
 
     get requestedByteRange()
@@ -788,6 +791,10 @@ WI.Resource = class Resource extends WI.SourceCode
             console.assert(this._responseBodyTransferSize >= 0);
             console.assert(this._responseBodySize >= 0);
 
+            // There may have been no size updates received during load if Content-Length was 0.
+            if (isNaN(this._estimatedSize))
+                this._estimatedSize = 0;
+
             this.dispatchEventToListeners(WI.Resource.Event.SizeDidChange, {previousSize: this._estimatedSize});
             this.dispatchEventToListeners(WI.Resource.Event.TransferSizeDidChange);
         }
@@ -812,6 +819,10 @@ WI.Resource = class Resource extends WI.SourceCode
 
     requestContentFromBackend()
     {
+        let specialContentPromise = WI.SourceCode.generateSpecialContentForURL(this._url);
+        if (specialContentPromise)
+            return specialContentPromise;
+
         // If we have the requestIdentifier we can get the actual response for this specific resource.
         // Otherwise the content will be cached resource data, which might not exist anymore.
         if (this._requestIdentifier)
@@ -1153,7 +1164,7 @@ WI.Resource.Event = {
 // Keep these in sync with the "ResourceType" enum defined by the "Page" domain.
 WI.Resource.Type = {
     Document: "resource-type-document",
-    Stylesheet: "resource-type-stylesheet",
+    StyleSheet: "resource-type-style-sheet",
     Image: "resource-type-image",
     Font: "resource-type-font",
     Script: "resource-type-script",
@@ -1163,6 +1174,9 @@ WI.Resource.Type = {
     Beacon: "resource-type-beacon",
     WebSocket: "resource-type-websocket",
     Other: "resource-type-other",
+
+    // COMPATIBILITY (iOS 13): Page.ResourceType.Stylesheet was renamed to Page.ResourceType.StyleSheet.
+    Stylesheet: "resource-type-style-sheet",
 };
 
 WI.Resource.ResponseSource = {
@@ -1180,6 +1194,12 @@ WI.Resource.NetworkPriority = {
     High: Symbol("high"),
 };
 
+WI.Resource.GroupingMode = {
+    Path: "group-resource-by-path",
+    Type: "group-resource-by-type",
+};
+WI.settings.resourceGroupingMode = new WI.Setting("resource-grouping-mode", WI.Resource.GroupingMode.Type);
+
 // This MIME Type map is private, use WI.Resource.typeFromMIMEType().
 WI.Resource._mimeTypeMap = {
     "text/html": WI.Resource.Type.Document,
@@ -1187,11 +1207,11 @@ WI.Resource._mimeTypeMap = {
     "text/plain": WI.Resource.Type.Document,
     "application/xhtml+xml": WI.Resource.Type.Document,
 
-    "text/css": WI.Resource.Type.Stylesheet,
-    "text/xsl": WI.Resource.Type.Stylesheet,
-    "text/x-less": WI.Resource.Type.Stylesheet,
-    "text/x-sass": WI.Resource.Type.Stylesheet,
-    "text/x-scss": WI.Resource.Type.Stylesheet,
+    "text/css": WI.Resource.Type.StyleSheet,
+    "text/xsl": WI.Resource.Type.StyleSheet,
+    "text/x-less": WI.Resource.Type.StyleSheet,
+    "text/x-sass": WI.Resource.Type.StyleSheet,
+    "text/x-scss": WI.Resource.Type.StyleSheet,
 
     "application/pdf": WI.Resource.Type.Image,
     "image/svg+xml": WI.Resource.Type.Image,

@@ -77,16 +77,6 @@ public:
 
     // Computes an affine transform from the given coordinate space to the screen coordinate space.
     bool getScreenTransform(NPCoordinateSpace sourceSpace, WebCore::AffineTransform&);
-
-#ifndef NP_NO_CARBON
-    WindowRef windowRef() const;
-    bool isWindowActive() const { return m_windowHasFocus; }
-    void updateFakeWindowBounds();
-
-    static NetscapePlugin* netscapePluginFromWindow(WindowRef);
-    static unsigned buttonState();
-#endif
-
 #endif
 
 #if PLUGIN_ARCHITECTURE(UNIX)
@@ -318,6 +308,7 @@ private:
     Vector<bool, 8> m_popupEnabledStates;
 
     class Timer {
+        WTF_MAKE_FAST_ALLOCATED;
         WTF_MAKE_NONCOPYABLE(Timer);
 
     public:
@@ -379,15 +370,6 @@ private:
 
     WebCore::IntRect m_windowFrameInScreenCoordinates;
     WebCore::IntRect m_viewFrameInWindowCoordinates;
-
-#ifndef NP_NO_CARBON
-    void nullEventTimerFired();
-
-    // FIXME: It's a bit wasteful to have one null event timer per plug-in.
-    // We should investigate having one per window.
-    RunLoop::Timer<NetscapePlugin> m_nullEventTimer;
-    NP_CGContext m_npCGContext;
-#endif
 #elif PLUGIN_ARCHITECTURE(UNIX)
     std::unique_ptr<NetscapePluginUnix> m_impl;
 #endif

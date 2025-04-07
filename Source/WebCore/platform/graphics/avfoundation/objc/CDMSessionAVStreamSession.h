@@ -40,10 +40,10 @@ namespace WebCore {
 
 class CDMPrivateMediaSourceAVFObjC;
 
-class CDMSessionAVStreamSession : public CDMSessionMediaSourceAVFObjC, public CanMakeWeakPtr<CDMSessionAVStreamSession> {
+class CDMSessionAVStreamSession : public CDMSessionMediaSourceAVFObjC {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    CDMSessionAVStreamSession(const Vector<int>& protocolVersions, CDMPrivateMediaSourceAVFObjC&, LegacyCDMSessionClient*);
+    CDMSessionAVStreamSession(Vector<int>&& protocolVersions, CDMPrivateMediaSourceAVFObjC&, LegacyCDMSessionClient*);
     virtual ~CDMSessionAVStreamSession();
 
     // LegacyCDMSession

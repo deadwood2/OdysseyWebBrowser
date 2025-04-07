@@ -119,7 +119,7 @@ void CSSFontFaceSet::ensureLocalFontFacesForFamilyRegistered(const String& famil
         familyList->append(CSSValuePool::singleton().createFontFamilyValue(familyName));
         face->setFamilies(familyList.get());
         face->setFontSelectionCapabilities(item);
-        face->adoptSource(std::make_unique<CSSFontFaceSource>(face.get(), familyName));
+        face->adoptSource(makeUnique<CSSFontFaceSource>(face.get(), familyName));
         ASSERT(!face->computeFailureState());
         faces.append(WTFMove(face));
     }
@@ -300,7 +300,7 @@ CSSFontFace& CSSFontFaceSet::operator[](size_t i)
     return m_faces[i];
 }
 
-static FontSelectionRequest computeFontSelectionRequest(MutableStyleProperties& style)
+static ExceptionOr<FontSelectionRequest> computeFontSelectionRequest(MutableStyleProperties& style)
 {
     RefPtr<CSSValue> weightValue = style.getPropertyCSSValue(CSSPropertyFontWeight).get();
     if (!weightValue)
@@ -314,11 +314,14 @@ static FontSelectionRequest computeFontSelectionRequest(MutableStyleProperties& 
     if (!styleValue)
         styleValue = CSSFontStyleValue::create(CSSValuePool::singleton().createIdentifierValue(CSSValueNormal));
 
+    if (weightValue->isGlobalKeyword() || stretchValue->isGlobalKeyword() || styleValue->isGlobalKeyword())
+        return Exception { SyntaxError };
+
     auto weightSelectionValue = StyleBuilderConverter::convertFontWeightFromValue(*weightValue);
     auto stretchSelectionValue = StyleBuilderConverter::convertFontStretchFromValue(*stretchValue);
     auto styleSelectionValue = StyleBuilderConverter::convertFontStyleFromValue(*styleValue);
 
-    return { weightSelectionValue, stretchSelectionValue, styleSelectionValue };
+    return {{ weightSelectionValue, stretchSelectionValue, styleSelectionValue }};
 }
 
 static HashSet<UChar32> codePointsFromString(StringView stringView)
@@ -344,15 +347,18 @@ ExceptionOr<Vector<std::reference_wrapper<CSSFontFace>>> CSSFontFaceSet::matchin
     if (parseResult == CSSParser::ParseResult::Error)
         return Exception { SyntaxError };
 
-    FontSelectionRequest request = computeFontSelectionRequest(style.get());
+    auto requestOrException = computeFontSelectionRequest(style.get());
+    if (requestOrException.hasException())
+        return requestOrException.releaseException();
+    auto request = requestOrException.releaseReturnValue();
 
     auto family = style->getPropertyCSSValue(CSSPropertyFontFamily);
     if (!is<CSSValueList>(family))
         return Exception { SyntaxError };
     CSSValueList& familyList = downcast<CSSValueList>(*family);
 
-    HashSet<AtomicString> uniqueFamilies;
-    Vector<AtomicString> familyOrder;
+    HashSet<AtomString> uniqueFamilies;
+    Vector<AtomString> familyOrder;
     for (auto& family : familyList) {
         auto& primitive = downcast<CSSPrimitiveValue>(family.get());
         if (!primitive.isFontFamily())
@@ -402,7 +408,7 @@ ExceptionOr<bool> CSSFontFaceSet::check(const String& font, const String& text)
     return true;
 }
 
-CSSSegmentedFontFace* CSSFontFaceSet::fontFace(FontSelectionRequest request, const AtomicString& family)
+CSSSegmentedFontFace* CSSFontFaceSet::fontFace(FontSelectionRequest request, const AtomString& family)
 {
     auto iterator = m_facesLookupTable.find(family);
     if (iterator == m_facesLookupTable.end())

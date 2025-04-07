@@ -52,6 +52,7 @@
 #import "HTMLSelectElement.h"
 #import "IOSurface.h"
 #import "Icon.h"
+#import "LocalCurrentTraitCollection.h"
 #import "LocalizedDateCache.h"
 #import "NodeRenderStyle.h"
 #import "Page.h"
@@ -75,6 +76,7 @@
 #import <pal/spi/cocoa/CoreTextSPI.h>
 #import <pal/spi/ios/UIKitSPI.h>
 #import <wtf/NeverDestroyed.h>
+#import <wtf/ObjCRuntimeExtras.h>
 #import <wtf/RefPtr.h>
 #import <wtf/StdLibExtras.h>
 
@@ -377,68 +379,62 @@ static void drawJoinedLines(CGContextRef context, const Vector<CGPoint>& points,
 
 bool RenderThemeIOS::paintCheckboxDecorations(const RenderObject& box, const PaintInfo& paintInfo, const IntRect& rect)
 {
-    GraphicsContextStateSaver stateSaver(paintInfo.context());
-    FloatRect clip = addRoundedBorderClip(box, paintInfo.context(), rect);
-
-    float width = clip.width();
-    float height = clip.height();
-
     bool checked = isChecked(box);
     bool indeterminate = isIndeterminate(box);
-
     CGContextRef cgContext = paintInfo.context().platformContext();
-    if (!checked && !indeterminate) {
-        FloatPoint bottomCenter(clip.x() + clip.width() / 2.0f, clip.maxY());
-        drawAxialGradient(cgContext, gradientWithName(ShadeGradient), clip.location(), FloatPoint(clip.x(), clip.maxY()), LinearInterpolation);
+    GraphicsContextStateSaver stateSaver { paintInfo.context() };
+
+    if (checked || indeterminate) {
+        auto border = box.style().getRoundedBorderFor(rect);
+        paintInfo.context().fillRoundedRect(border.pixelSnappedRoundedRectForPainting(box.document().deviceScaleFactor()), Color(0.0f, 0.0f, 0.0f, 0.8f));
+
+        auto clip = addRoundedBorderClip(box, paintInfo.context(), rect);
+        auto width = clip.width();
+        auto height = clip.height();
+        drawAxialGradient(cgContext, gradientWithName(ConcaveGradient), clip.location(), FloatPoint { clip.x(), clip.maxY() }, LinearInterpolation);
+
+        constexpr float thicknessRatio = 2 / 14.0;
+        float lineWidth = std::min(width, height) * 2.0f * thicknessRatio;
+
+        Vector<CGPoint, 3> line;
+        Vector<CGPoint, 3> shadow;
+        if (checked) {
+            constexpr CGSize size { 14.0f, 14.0f };
+            constexpr CGPoint pathRatios[] = {
+                { 2.5f / size.width, 7.5f / size.height },
+                { 5.5f / size.width, 10.5f / size.height },
+                { 11.5f / size.width, 2.5f / size.height }
+            };
+
+            line.uncheckedAppend(CGPointMake(clip.x() + width * pathRatios[0].x, clip.y() + height * pathRatios[0].y));
+            line.uncheckedAppend(CGPointMake(clip.x() + width * pathRatios[1].x, clip.y() + height * pathRatios[1].y));
+            line.uncheckedAppend(CGPointMake(clip.x() + width * pathRatios[2].x, clip.y() + height * pathRatios[2].y));
+
+            shadow.uncheckedAppend(shortened(line[0], line[1], lineWidth / 4.0f));
+            shadow.uncheckedAppend(line[1]);
+            shadow.uncheckedAppend(shortened(line[2], line[1], lineWidth / 4.0f));
+        } else {
+            line.uncheckedAppend(CGPointMake(clip.x() + 3.5, clip.center().y()));
+            line.uncheckedAppend(CGPointMake(clip.maxX() - 3.5, clip.center().y()));
+
+            shadow.uncheckedAppend(shortened(line[0], line[1], lineWidth / 4.0f));
+            shadow.uncheckedAppend(shortened(line[1], line[0], lineWidth / 4.0f));
+        }
+
+        lineWidth = std::max<float>(lineWidth, 1);
+        drawJoinedLines(cgContext, Vector<CGPoint> { WTFMove(shadow) }, kCGLineCapSquare, lineWidth, Color { 0.0f, 0.0f, 0.0f, 0.7f });
+
+        lineWidth = std::max<float>(std::min(width, height) * thicknessRatio, 1);
+        drawJoinedLines(cgContext, Vector<CGPoint> { WTFMove(line) }, kCGLineCapButt, lineWidth, Color { 1.0f, 1.0f, 1.0f, 240 / 255.0f });
+    } else {
+        auto clip = addRoundedBorderClip(box, paintInfo.context(), rect);
+        auto width = clip.width();
+        auto height = clip.height();
+        FloatPoint bottomCenter { clip.x() + width / 2.0f, clip.maxY() };
+
+        drawAxialGradient(cgContext, gradientWithName(ShadeGradient), clip.location(), FloatPoint { clip.x(), clip.maxY() }, LinearInterpolation);
         drawRadialGradient(cgContext, gradientWithName(ShineGradient), bottomCenter, 0, bottomCenter, sqrtf((width * width) / 4.0f + height * height), ExponentialInterpolation);
-        return false;
     }
-
-    drawAxialGradient(cgContext, gradientWithName(ConcaveGradient), clip.location(), FloatPoint(clip.x(), clip.maxY()), LinearInterpolation);
-
-    static const float thicknessRatio = 2 / 14.0;
-    static const CGSize size = { 14.0f, 14.0f };
-    float lineWidth = std::min(width, height) * 2.0f * thicknessRatio;
-
-    Vector<CGPoint> line;
-    Vector<CGPoint> shadow;
-
-    if (checked) {
-        static const CGPoint pathRatios[3] = {
-            { 2.5f / size.width, 7.5f / size.height },
-            { 5.5f / size.width, 10.5f / size.height },
-            { 11.5f / size.width, 2.5f / size.height }
-        };
-
-        line = {
-            CGPointMake(clip.x() + width * pathRatios[0].x, clip.y() + height * pathRatios[0].y),
-            CGPointMake(clip.x() + width * pathRatios[1].x, clip.y() + height * pathRatios[1].y),
-            CGPointMake(clip.x() + width * pathRatios[2].x, clip.y() + height * pathRatios[2].y)
-        };
-
-        shadow = {
-            shortened(line[0], line[1], lineWidth / 4.0f),
-            line[1],
-            shortened(line[2], line[1], lineWidth / 4.0f)
-        };
-    } else if (indeterminate) {
-        line = {
-            CGPointMake(clip.x() + 3.5, clip.center().y()),
-            CGPointMake(clip.maxX() - 3.5, clip.center().y())
-        };
-
-        shadow = {
-            shortened(line[0], line[1], lineWidth / 4.0f),
-            shortened(line[1], line[0], lineWidth / 4.0f)
-        };
-    }
-
-    lineWidth = std::max<float>(lineWidth, 1);
-    drawJoinedLines(cgContext, shadow, kCGLineCapSquare, lineWidth, Color(0.0f, 0.0f, 0.0f, 0.7f));
-
-    lineWidth = std::max<float>(std::min(clip.width(), clip.height()) * thicknessRatio, 1);
-    drawJoinedLines(cgContext, line, kCGLineCapButt, lineWidth, Color(1.0f, 1.0f, 1.0f, 240 / 255.0f));
-
     return false;
 }
 
@@ -477,10 +473,19 @@ void RenderThemeIOS::adjustRadioStyle(StyleResolver&, RenderStyle& style, const 
 bool RenderThemeIOS::paintRadioDecorations(const RenderObject& box, const PaintInfo& paintInfo, const IntRect& rect)
 {
     GraphicsContextStateSaver stateSaver(paintInfo.context());
-    FloatRect clip = addRoundedBorderClip(box, paintInfo.context(), rect);
-
     CGContextRef cgContext = paintInfo.context().platformContext();
+
+    auto drawShadeAndShineGradients = [&](auto clip) {
+        FloatPoint bottomCenter(clip.x() + clip.width() / 2.0, clip.maxY());
+        drawAxialGradient(cgContext, gradientWithName(ShadeGradient), clip.location(), FloatPoint(clip.x(), clip.maxY()), LinearInterpolation);
+        drawRadialGradient(cgContext, gradientWithName(ShineGradient), bottomCenter, 0, bottomCenter, std::max(clip.width(), clip.height()), ExponentialInterpolation);
+    };
+
     if (isChecked(box)) {
+        auto border = box.style().getRoundedBorderFor(rect);
+        paintInfo.context().fillRoundedRect(border.pixelSnappedRoundedRectForPainting(box.document().deviceScaleFactor()), Color(0.0f, 0.0f, 0.0f, 0.8f));
+
+        auto clip = addRoundedBorderClip(box, paintInfo.context(), rect);
         drawAxialGradient(cgContext, gradientWithName(ConcaveGradient), clip.location(), FloatPoint(clip.x(), clip.maxY()), LinearInterpolation);
 
         // The inner circle is 6 / 14 the size of the surrounding circle, 
@@ -495,10 +500,11 @@ bool RenderThemeIOS::paintRadioDecorations(const RenderObject& box, const PaintI
 
         FloatSize radius(clip.width() / 2.0f, clip.height() / 2.0f);
         paintInfo.context().clipRoundedRect(FloatRoundedRect(clip, radius, radius, radius, radius));
+        drawShadeAndShineGradients(clip);
+    } else {
+        auto clip = addRoundedBorderClip(box, paintInfo.context(), rect);
+        drawShadeAndShineGradients(clip);
     }
-    FloatPoint bottomCenter(clip.x() + clip.width() / 2.0, clip.maxY());
-    drawAxialGradient(cgContext, gradientWithName(ShadeGradient), clip.location(), FloatPoint(clip.x(), clip.maxY()), LinearInterpolation);
-    drawRadialGradient(cgContext, gradientWithName(ShineGradient), bottomCenter, 0, bottomCenter, std::max(clip.width(), clip.height()), ExponentialInterpolation);
     return false;
 }
 
@@ -1126,7 +1132,8 @@ Color RenderThemeIOS::platformInactiveSelectionBackgroundColor(OptionSet<StyleCo
 #if ENABLE(FULL_KEYBOARD_ACCESS)
 Color RenderThemeIOS::platformFocusRingColor(OptionSet<StyleColor::Options>) const
 {
-    return colorFromUIColor([PAL::getUIColorClass() keyboardFocusIndicatorColor]);
+    // FIXME: Should be using -keyboardFocusIndicatorColor. For now, work around <rdar://problem/50838886>.
+    return colorFromUIColor([PAL::getUIColorClass() systemBlueColor]);
 }
 #endif
 
@@ -1383,6 +1390,7 @@ String RenderThemeIOS::mediaControlsScript()
             NSBundle *bundle = [NSBundle bundleForClass:[WebCoreRenderThemeBundle class]];
 
             StringBuilder scriptBuilder;
+            scriptBuilder.append("window.isIOSFamily = true;");
             scriptBuilder.append([NSString stringWithContentsOfFile:[bundle pathForResource:@"modern-media-controls-localized-strings" ofType:@"js"] encoding:NSUTF8StringEncoding error:nil]);
             scriptBuilder.append([NSString stringWithContentsOfFile:[bundle pathForResource:@"modern-media-controls" ofType:@"js" inDirectory:@"modern-media-controls"] encoding:NSUTF8StringEncoding error:nil]);
             m_mediaControlsScript = scriptBuilder.toString();
@@ -1434,46 +1442,85 @@ Color RenderThemeIOS::systemColor(CSSValueID cssValueID, OptionSet<StyleColor::O
 
     ASSERT(!forVisitedLink);
 
-    auto addResult = m_systemColorCache.add(cssValueID, Color());
-    if (!addResult.isNewEntry)
-        return addResult.iterator->value;
+    auto& cache = colorCache(options);
+    return cache.systemStyleColors.ensure(cssValueID, [this, cssValueID, options] () -> Color {
+        const bool useDarkAppearance = options.contains(StyleColor::Options::UseDarkAppearance);
+        const bool useElevatedUserInterfaceLevel = options.contains(StyleColor::Options::UseElevatedUserInterfaceLevel);
+        LocalCurrentTraitCollection localTraitCollection(useDarkAppearance, useElevatedUserInterfaceLevel);
 
-    Color color;
-    switch (cssValueID) {
-    case CSSValueAppleWirelessPlaybackTargetActive:
-        color = [PAL::getUIColorClass() systemBlueColor].CGColor;
-        break;
-    case CSSValueAppleSystemBlue:
-        color = [PAL::getUIColorClass() systemBlueColor].CGColor;
-        break;
-    case CSSValueAppleSystemGray:
-        color = [PAL::getUIColorClass() systemGrayColor].CGColor;
-        break;
-    case CSSValueAppleSystemGreen:
-        color = [PAL::getUIColorClass() systemGreenColor].CGColor;
-        break;
-    case CSSValueAppleSystemOrange:
-        color = [PAL::getUIColorClass() systemOrangeColor].CGColor;
-        break;
-    case CSSValueAppleSystemPink:
-        color = [PAL::getUIColorClass() systemPinkColor].CGColor;
-        break;
-    case CSSValueAppleSystemRed:
-        color = [PAL::getUIColorClass() systemRedColor].CGColor;
-        break;
-    case CSSValueAppleSystemYellow:
-        color = [PAL::getUIColorClass() systemYellowColor].CGColor;
-        break;
-    default:
-        break;
-    }
+        auto cssColorToSelector = [cssValueID] () -> SEL {
+            switch (cssValueID) {
+#if HAVE(OS_DARK_MODE_SUPPORT)
+            case CSSValueText:
+            case CSSValueAppleSystemLabel:
+            case CSSValueAppleSystemHeaderText:
+                return @selector(labelColor);
+            case CSSValueAppleSystemSecondaryLabel:
+                return @selector(secondaryLabelColor);
+            case CSSValueAppleSystemTertiaryLabel:
+                return @selector(tertiaryLabelColor);
+            case CSSValueAppleSystemQuaternaryLabel:
+                return @selector(quaternaryLabelColor);
+            case CSSValueAppleSystemPlaceholderText:
+                return @selector(placeholderTextColor);
+            case CSSValueWebkitControlBackground:
+            case CSSValueAppleSystemControlBackground:
+            case CSSValueAppleSystemTextBackground:
+            case CSSValueAppleSystemBackground:
+                return @selector(systemBackgroundColor);
+            case CSSValueAppleSystemSecondaryBackground:
+                return @selector(secondarySystemBackgroundColor);
+            case CSSValueAppleSystemTertiaryBackground:
+                return @selector(tertiarySystemBackgroundColor);
+            case CSSValueAppleSystemGroupedBackground:
+                return @selector(systemGroupedBackgroundColor);
+            case CSSValueAppleSystemSecondaryGroupedBackground:
+                return @selector(secondarySystemGroupedBackgroundColor);
+            case CSSValueAppleSystemTertiaryGroupedBackground:
+                return @selector(tertiarySystemGroupedBackgroundColor);
+            case CSSValueAppleSystemGrid:
+            case CSSValueAppleSystemSeparator:
+            case CSSValueAppleSystemContainerBorder:
+                return @selector(separatorColor);
+            case CSSValueAppleSystemSelectedContentBackground:
+            case CSSValueAppleSystemUnemphasizedSelectedContentBackground:
+                return @selector(tableCellDefaultSelectionTintColor);
+            case CSSValueAppleSystemBrown:
+                return @selector(systemBrownColor);
+            case CSSValueAppleSystemIndigo:
+                return @selector(systemIndigoColor);
+#endif
+            case CSSValueAppleSystemTeal:
+                return @selector(systemTealColor);
+            case CSSValueAppleWirelessPlaybackTargetActive:
+            case CSSValueAppleSystemBlue:
+                return @selector(systemBlueColor);
+            case CSSValueAppleSystemGray:
+                return @selector(systemGrayColor);
+            case CSSValueAppleSystemGreen:
+                return @selector(systemGreenColor);
+            case CSSValueAppleSystemOrange:
+                return @selector(systemOrangeColor);
+            case CSSValueAppleSystemPink:
+                return @selector(systemPinkColor);
+            case CSSValueAppleSystemPurple:
+                return @selector(systemPurpleColor);
+            case CSSValueAppleSystemRed:
+                return @selector(systemRedColor);
+            case CSSValueAppleSystemYellow:
+                return @selector(systemYellowColor);
+            default:
+                return nullptr;
+            }
+        };
 
-    if (!color.isValid())
-        color = RenderTheme::systemColor(cssValueID, options);
+        if (auto selector = cssColorToSelector()) {
+            if (auto color = wtfObjCMsgSend<UIColor *>(PAL::getUIColorClass(), selector))
+                return Color(color.CGColor, Color::Semantic);
+        }
 
-    addResult.iterator->value = color;
-
-    return addResult.iterator->value;
+        return RenderTheme::systemColor(cssValueID, options);
+    }).iterator->value;
 }
 
 #if ENABLE(ATTACHMENT_ELEMENT)
@@ -1660,13 +1707,13 @@ static RetainPtr<UIImage> iconForAttachment(const RenderAttachment& attachment, 
         else
             UTI = UTIFromMIMEType(attachmentType);
 
-#if !PLATFORM(WATCHOS)
+#if PLATFORM(IOS)
         [documentInteractionController setUTI:static_cast<NSString *>(UTI)];
 #endif
     }
 
     RetainPtr<UIImage> result;
-#if !PLATFORM(WATCHOS)
+#if PLATFORM(IOS)
     NSArray *icons = [documentInteractionController icons];
     if (!icons.count)
         return nil;

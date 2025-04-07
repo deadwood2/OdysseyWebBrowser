@@ -1,108 +1,101 @@
 =================
-WPE WebKit 2.24.3
+WPE WebKit 2.26.4
 =================
 
-What's new in WPE WebKit 2.24.2?
+What's new in WPE WebKit 2.26.4?
 
-  - Updated the user agent string to make happy certain websites which
-    would claim that the browser being used was unsupported.
-  - Improve loading of multimedia streams to avoid memory exhaustion due
-    to excessive caching.
-  - Fix display of documents with MIME type application/xml in the Web
-    Inspector, when loaded using XmlHttpRequest.
-  - Fix a hang while scrolling certain websites which include HLS video
-    content (Twitter, for example).
-  - Fix rounding artifacts in volume levels for media playback.
-  - Fix several crashes and rendering issues.
-  - Fix the build with video track support disabled.
-  - Fix the build with multimedia support completely disabled with
-    ENABLE_VIDEO=OFF and ENABLE_WEB_AUDIO=OFF.
-  - Fix build issue which would cause media controls to disappear when
-    Python 3.x was used during the build process.
-
-=================
-WPE WebKit 2.24.2
-=================
-
-What's new in WPE WebKit 2.24.2?
-
-  - Fix space characters not being rendered with some CJK fonts.
-  - Fix adaptive streaming playback with older GStreamer versions.
-  - Fix build issue due to wrongly included X11 headers.
-  - Fix SSE2 detection at compile time, ensuring the right flags are passed to the compiler.
-  - Fix several crashes and rendering issues.
-  - Security fixes: CVE-2019-8595, CVE-2019-8607, CVE-2019-8615.
-
-=================
-WPE WebKit 2.24.1
-=================
-
-What's new in WPE WebKit 2.24.1?
-
-  - Do not allow changes in active URI before provisional load starts for non-API requests.
-  - Stop the threaded compositor when the page is not visible or layer tree state is frozen.
-  - Use WebKit HTTP source element again for adaptive streaming fragments downloading.
-  - Properly handle empty resources in webkit_web_resource_get_data().
-  - Add quirk to ensure outlook.live.com uses the modern UI.
-  - Fix methods returing GObject or boxed types in JavaScriptCore GLib API.
-  - Ensure callback data is passed to functions and constructors with no parameters in JavaScriptCore GLib API.
-  - Fix rendering of complex text when the font uses x,y origins.
-  - Fix sound loop with Google Hangouts and WhatsApp notifications.
-  - Fix the build with GStreamer 1.12.5 and GST GL enabled.
-  - Fix event source priorities to avoid starvation causing the NetworkProcess to be killed in constraned environments.
-  - Detect SSE2 at compile time.
-  - Fix several crashes and rendering issues.
-  - Security fixes: CVE-2019-6251.
-
-=================
-WPE WebKit 2.24.0
-=================
-
-What's new in WPE WebKit 2.24.0?
-
-  - This version does not contain functional changes over the 2.23.91
-    release candidate.
-
-==================
-WPE WebKit 2.23.91
-==================
-
-What's new in WPE WebKit 2.23.90?
-
-  - Add setting to configure the page background color.
-  - Add support for hole-punching using external media players.
-  - Add support for 16bpp rendering in RGB565 format.
-  - Add autocleanup definitions for g_autoptr and friends.
-  - Add WebKitUserContentFilterStore to the API docs.
-  - Change dependencies to use wpe-1.0 and wpe-fdo-1.0.
-  - Fix constructors returning a GObject in JSC GLib API.
-  - Fix build failure with Clang due to usage of wl_array_foreach.
-  - Fix build failure due to missing WebKitUserContentFilterStore.h header.
-  - Fix several crashes and rendering issues.
-
-==================
-WPE WebKit 2.23.90
-==================
-
-What's new in WPE WebKit 2.23.90?
-
-  - Add a new setting to disable JavaScript elments from documents during parsing.
-  - Add initial support for subprocess sandboxing in Linux.
-  - Add initial support for variation fonts.
-  - Add new API to convert a URI to a format for display.
-  - Add new API to expose JavaScriptCore options.
-  - Add new API to handle user content filters.
-  - Add new permission request type for media device information.
-  - Add support for JPEG2000 images.
-  - Fix a UI process crash while filling selection data during drag and drop.
-  - Fix a web process deadlock when starting the remote inspector.
-  - Fix crashes when closing the WebDriver session.
-  - Fix deadlock on Linux/x64 between SamplingProfiler and VMTraps.
-  - Fix rendering artifacts in some websites with accelerated compositing enabled.
   - Fix the build with OpenGL disabled.
-  - Remove experimental sandboxing support, it's not yet ready for stable release.
-  - Sleep disabler now inhibits idle when a "System" sleep disabler is requested.
+  - Fix the build with GCC 10.
   - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.26.3
+=================
+
+What's new in WPE WebKit 2.26.3?
+
+  - Fix issues while trying to play a video on NextCloud.
+  - Make sure the GL video sink uses a valid WebKit shared GL context.
+  - Fix vertical alignment of text containing arabic diacritics.
+  - Fix build with icu 65.1.
+  - Fix page loading errors with websites using HSTS.
+  - Fix web process crash when displaying a KaTeX formula.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.26.2
+=================
+
+What's new in WPE WebKit 2.26.2?
+
+  - Improve performance of querying system fallback fonts.
+  - Don't use prgname in dbus-proxy socket path.
+  - Fix thread-safety issues in image decoders.
+  - Fix the build with WebDriver disabled.
+  - Disable accelerated compositing when we fail to initialize the EGL dispaly under Wayland.
+  - Fill the objects category in emoji picker.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.26.1
+=================
+
+What's new in WPE WebKit 2.26.1?
+
+  - Fix MSE media player with GStreamer 1.14.
+  - Fix HTML alternate loads never finishing.
+  - Fix web view initialization delay on fisrt load.
+  - Validate user agent string set via API.
+  - Fix EGL initialization with newer versions of Mesa.
+  - Do not enable the sandbox inside docker.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.26.0
+=================
+
+  - This version contains no changes over the 2.25.91 release candidate.
+
+==================
+WPE WebKit 2.25.91
+==================
+
+  - Do not enable the sandbox in Snap.
+  - Fix sandbox parsing DISPLAY on X11.
+  - Add WEBKIT_USE_SINGLE_WEB_PROCESS environment variable to force single process model in all WebKitWebContext.
+    This is a temporary solution for applications still depending on the single process mode behavior. It will be
+    only available in 2.26 series.
+  - Add new API to remove a filter from an user content manager given its identifier.
+  - Add support for HSTS.
+  - Several improvements and bug fixes in MSE media player.
+  - Switch to use libsoup WebSockets API.
+  - Add support for permessage-deflate WebSocket extension.
+  - Add user agent quirk to make github work in FreeBSD.
+  - Fix content disappearing when using CSS transforms.
+  - Fix building without unified sources.
+  - Fix web process deadlock when scrolling twitter timeline which contains HLS videos.
+  - Fix a crash with empty video source.
+  - Fix some radio streams that could not be played.
+  - Fix video pause that sometimes caused to skip to finish.
+  - Fix volume level changes when playing a video.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.25.1
+=================
+
+  - Enable process switch on cross site navigation.
+  - Fix rendering artifacts in youtube volume button.
+  - Fix trapezoid artifact in github comment box.
+  - Enable hyperlink auditing setting by default.
+  - Fix HLS streams being slow to start.
+  - Add support for subprocess sandboxing.
+  - Add API to get the web process unique identifier of a WebKitFrame.
+  - Add WebKitWebPage::did-associate-form-controls-for-frame signal and deprecate did-associate-form-controls.
+  - Implement AtkComponentIface scroll_to methods.
+  - Fix touch capabilities detection for websites checking touch events properties present in window or pointer media queries.
+  - Fix several crashes and rendering issues.
+
 
 ==================
 WPE WebKit 2.21.91

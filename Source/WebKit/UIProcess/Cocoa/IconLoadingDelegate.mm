@@ -26,8 +26,6 @@
 #import "config.h"
 #import "IconLoadingDelegate.h"
 
-#if WK_API_ENABLED
-
 #include "WKNSData.h"
 #include "_WKIconLoadingDelegate.h"
 #include "_WKLinkIconParametersInternal.h"
@@ -46,7 +44,7 @@ IconLoadingDelegate::~IconLoadingDelegate()
 
 std::unique_ptr<API::IconLoadingClient> IconLoadingDelegate::createIconLoadingClient()
 {
-    return std::make_unique<IconLoadingClient>(*this);
+    return makeUnique<IconLoadingClient>(*this);
 }
 
 RetainPtr<id <_WKIconLoadingDelegate> > IconLoadingDelegate::delegate()
@@ -102,5 +100,3 @@ void IconLoadingDelegate::IconLoadingClient::getLoadDecisionForIcon(const WebCor
 }
 
 } // namespace WebKit
-
-#endif // WK_API_ENABLED

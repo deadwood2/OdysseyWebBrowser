@@ -37,12 +37,15 @@
 
 namespace WebCore {
 
-RefPtr<GPUShaderModule> GPUShaderModule::create(const GPUDevice& device, GPUShaderModuleDescriptor&& descriptor)
+RefPtr<GPUShaderModule> GPUShaderModule::tryCreate(const GPUDevice& device, const GPUShaderModuleDescriptor& descriptor)
 {
     if (!device.platformDevice()) {
         LOG(WebGPU, "GPUShaderModule::create(): Invalid GPUDevice!");
         return nullptr;
     }
+    
+    if (GPUDevice::useWHLSL)
+        return adoptRef(new GPUShaderModule(WHLSL::createShaderModule(descriptor.code)));
 
     PlatformShaderModuleSmartPtr module;
 
@@ -60,6 +63,11 @@ RefPtr<GPUShaderModule> GPUShaderModule::create(const GPUDevice& device, GPUShad
 
 GPUShaderModule::GPUShaderModule(PlatformShaderModuleSmartPtr&& module)
     : m_platformShaderModule(WTFMove(module))
+{
+}
+
+GPUShaderModule::GPUShaderModule(UniqueRef<WHLSL::ShaderModule>&& whlslModule)
+    : m_whlslModule(whlslModule.moveToUniquePtr())
 {
 }
 

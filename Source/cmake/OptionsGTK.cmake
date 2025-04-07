@@ -1,11 +1,11 @@
 include(GNUInstallDirs)
 include(VersioningUtils)
 
-SET_PROJECT_VERSION(2 24 4)
+SET_PROJECT_VERSION(2 26 4)
 set(WEBKITGTK_API_VERSION 4.0)
 
-CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(WEBKIT 74 6 37)
-CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(JAVASCRIPTCORE 31 7 13)
+CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(WEBKIT 76 5 39)
+CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(JAVASCRIPTCORE 32 9 14)
 
 # These are shared variables, but we special case their definition so that we can use the
 # CMAKE_INSTALL_* variables that are populated by the GNUInstallDirs macro.
@@ -17,22 +17,23 @@ set(WEBKITGTK_HEADER_INSTALL_DIR "${CMAKE_INSTALL_INCLUDEDIR}/webkitgtk-${WEBKIT
 set(INTROSPECTION_INSTALL_GIRDIR "${CMAKE_INSTALL_FULL_DATADIR}/gir-1.0")
 set(INTROSPECTION_INSTALL_TYPELIBDIR "${LIB_INSTALL_DIR}/girepository-1.0")
 
-find_package(Cairo 1.10.2 REQUIRED)
+find_package(Cairo 1.14.0 REQUIRED)
 find_package(Fontconfig 2.8.0 REQUIRED)
 find_package(Freetype 2.4.2 REQUIRED)
 find_package(LibGcrypt 1.6.0 REQUIRED)
-find_package(GTK3 3.6.0 REQUIRED)
-find_package(GDK3 3.6.0 REQUIRED)
+find_package(GLIB 2.44.0 REQUIRED COMPONENTS gio gio-unix gobject gthread gmodule)
+find_package(GTK3 3.22.0 REQUIRED)
+find_package(GDK3 3.22.0 REQUIRED)
 find_package(HarfBuzz 0.9.2 REQUIRED)
-find_package(ICU REQUIRED)
+find_package(ICU REQUIRED COMPONENTS data i18n uc)
 find_package(JPEG REQUIRED)
-find_package(LibSoup 2.42.0 REQUIRED)
+find_package(LibSoup 2.54.0 REQUIRED)
 find_package(LibXml2 2.8.0 REQUIRED)
 find_package(PNG REQUIRED)
 find_package(Sqlite REQUIRED)
 find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
-find_package(ATK REQUIRED)
+find_package(ATK 2.16.0 REQUIRED)
 find_package(WebP REQUIRED)
 find_package(ATSPI 2.5.3)
 find_package(EGL)
@@ -44,6 +45,7 @@ WEBKIT_OPTION_BEGIN()
 
 include(GStreamerDefinitions)
 
+SET_AND_EXPOSE_TO_BUILD(USE_ATK TRUE)
 SET_AND_EXPOSE_TO_BUILD(USE_CAIRO TRUE)
 SET_AND_EXPOSE_TO_BUILD(USE_XDGMIME TRUE)
 SET_AND_EXPOSE_TO_BUILD(USE_GCRYPT TRUE)
@@ -69,14 +71,13 @@ if (NOT OPENGL_FOUND AND OPENGLES2_FOUND)
     set(ENABLE_GLES2_DEFAULT ON)
 endif ()
 
-# Public options specific to the GTK+ port. Do not add any options here unless
+# Public options specific to the GTK port. Do not add any options here unless
 # there is a strong reason we should support changing the value of the option,
 # and the option is not relevant to any other WebKit ports.
 WEBKIT_OPTION_DEFINE(ENABLE_GLES2 "Whether to enable OpenGL ES 2.0." PUBLIC ${ENABLE_GLES2_DEFAULT})
 WEBKIT_OPTION_DEFINE(ENABLE_GTKDOC "Whether or not to use generate gtkdoc." PUBLIC OFF)
 WEBKIT_OPTION_DEFINE(ENABLE_INTROSPECTION "Whether to enable GObject introspection." PUBLIC ON)
 WEBKIT_OPTION_DEFINE(ENABLE_OPENGL "Whether to use OpenGL." PUBLIC ON)
-WEBKIT_OPTION_DEFINE(ENABLE_PLUGIN_PROCESS_GTK2 "Whether to build WebKitPluginProcess2 to load GTK2 based plugins." PUBLIC ON)
 WEBKIT_OPTION_DEFINE(ENABLE_QUARTZ_TARGET "Whether to enable support for the Quartz windowing target." PUBLIC ${GTK3_SUPPORTS_QUARTZ})
 WEBKIT_OPTION_DEFINE(ENABLE_X11_TARGET "Whether to enable support for the X11 windowing target." PUBLIC ${GTK3_SUPPORTS_X11})
 WEBKIT_OPTION_DEFINE(ENABLE_WAYLAND_TARGET "Whether to enable support for the Wayland windowing target." PUBLIC ${GTK3_SUPPORTS_WAYLAND})
@@ -85,11 +86,11 @@ WEBKIT_OPTION_DEFINE(USE_LIBHYPHEN "Whether to enable the default automatic hyph
 WEBKIT_OPTION_DEFINE(USE_LIBSECRET "Whether to enable the persistent credential storage using libsecret." PUBLIC ON)
 WEBKIT_OPTION_DEFINE(USE_OPENJPEG "Whether to enable support for JPEG2000 images." PUBLIC ON)
 WEBKIT_OPTION_DEFINE(USE_WOFF2 "Whether to enable support for WOFF2 Web Fonts." PUBLIC ON)
+WEBKIT_OPTION_DEFINE(USE_WPE_RENDERER "Whether to enable WPE rendering" PUBLIC ON)
 
-# Private options specific to the GTK+ port. Changing these options is
+# Private options specific to the GTK port. Changing these options is
 # completely unsupported. They are intended for use only by WebKit developers.
-WEBKIT_OPTION_DEFINE(USE_REDIRECTED_XCOMPOSITE_WINDOW "Whether to use a Redirected XComposite Window for accelerated compositing in X11." PRIVATE ON)
-WEBKIT_OPTION_DEFINE(USE_OPENVR "Whether to use OpenVR as WebVR backend." PRIVATE ${ENABLE_EXPERIMENTAL_FEATURES})
+WEBKIT_OPTION_DEFINE(USE_OPENVR "Whether to use OpenVR as WebVR backend." PRIVATE OFF)
 
 # FIXME: Can we use cairo-glesv2 to avoid this conflict?
 WEBKIT_OPTION_CONFLICT(ENABLE_ACCELERATED_2D_CANVAS ENABLE_GLES2)
@@ -98,10 +99,9 @@ WEBKIT_OPTION_DEPEND(ENABLE_3D_TRANSFORMS ENABLE_OPENGL)
 WEBKIT_OPTION_DEPEND(ENABLE_ACCELERATED_2D_CANVAS ENABLE_OPENGL)
 WEBKIT_OPTION_DEPEND(ENABLE_ASYNC_SCROLLING ENABLE_OPENGL)
 WEBKIT_OPTION_DEPEND(ENABLE_GLES2 ENABLE_OPENGL)
-WEBKIT_OPTION_DEPEND(ENABLE_PLUGIN_PROCESS_GTK2 ENABLE_X11_TARGET)
 WEBKIT_OPTION_DEPEND(ENABLE_WEBGL ENABLE_OPENGL)
-WEBKIT_OPTION_DEPEND(USE_REDIRECTED_XCOMPOSITE_WINDOW ENABLE_OPENGL)
-WEBKIT_OPTION_DEPEND(USE_REDIRECTED_XCOMPOSITE_WINDOW ENABLE_X11_TARGET)
+WEBKIT_OPTION_DEPEND(USE_WPE_RENDERER ENABLE_OPENGL)
+WEBKIT_OPTION_DEPEND(USE_WPE_RENDERER ENABLE_WAYLAND_TARGET)
 
 SET_AND_EXPOSE_TO_BUILD(ENABLE_DEVELOPER_MODE ${DEVELOPER_MODE})
 if (DEVELOPER_MODE)
@@ -120,6 +120,12 @@ else ()
     WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_RESOURCE_USAGE PRIVATE OFF)
 endif ()
 
+if (CMAKE_SYSTEM_NAME MATCHES "Linux" AND NOT EXISTS "/.flatpak-info")
+    WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_BUBBLEWRAP_SANDBOX PUBLIC ON)
+else ()
+    WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_BUBBLEWRAP_SANDBOX PUBLIC OFF)
+endif ()
+
 # Enable variation fonts when cairo >= 1.16, fontconfig >= 2.13.0, freetype >= 2.9.0 and harfbuzz >= 1.4.2.
 if (("${PC_CAIRO_VERSION}" VERSION_GREATER "1.16.0" OR "${PC_CAIRO_VERSION}" STREQUAL "1.16.0")
     AND ("${PC_FONTCONFIG_VERSION}" VERSION_GREATER "2.13.0" OR "${PC_FONTCONFIG_VERSION}" STREQUAL "2.13.0")
@@ -129,13 +135,11 @@ if (("${PC_CAIRO_VERSION}" VERSION_GREATER "1.16.0" OR "${PC_CAIRO_VERSION}" STR
 endif ()
 
 # Public options shared with other WebKit ports. Do not add any options here
-# without approval from a GTK+ reviewer. There must be strong reason to support
+# without approval from a GTK reviewer. There must be strong reason to support
 # changing the value of the option.
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ACCELERATED_2D_CANVAS PUBLIC OFF)
-WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ASYNC_SCROLLING PRIVATE ON)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ASYNC_SCROLLING PRIVATE OFF)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_DRAG_SUPPORT PUBLIC ON)
-WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_GEOLOCATION PUBLIC ON)
-WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ICONDATABASE PUBLIC ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_SPELLCHECK PUBLIC ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_TOUCH_EVENTS PUBLIC ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEB_CRYPTO PUBLIC ON)
@@ -145,13 +149,18 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBDRIVER PUBLIC ON)
 # we need a value different from the default defined in WebKitFeatures.cmake.
 # Changing these options is completely unsupported.
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_CONTENT_EXTENSIONS PRIVATE ON)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_DARK_MODE_CSS PRIVATE ON)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_DATALIST_ELEMENT PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_DOWNLOAD_ATTRIBUTE PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ENCRYPTED_MEDIA PRIVATE ${ENABLE_EXPERIMENTAL_FEATURES})
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_FTPDIR PRIVATE OFF)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_INPUT_TYPE_COLOR PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_MEDIA_STREAM PRIVATE ${ENABLE_EXPERIMENTAL_FEATURES})
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_MHTML PRIVATE ON)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_MOUSE_CURSOR_SCALE PRIVATE ON)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_NETWORK_CACHE_SPECULATIVE_REVALIDATION PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_SERVICE_WORKER PRIVATE ${ENABLE_EXPERIMENTAL_FEATURES})
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_SHAREABLE_RESOURCE PUBLIC ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEB_RTC PRIVATE ${ENABLE_EXPERIMENTAL_FEATURES})
 
 include(GStreamerDependencies)
@@ -185,11 +194,19 @@ set(GTK_INCLUDE_DIRS ${GTK3_INCLUDE_DIRS})
 set(GDK_LIBRARIES ${GDK3_LIBRARIES})
 set(GDK_INCLUDE_DIRS ${GDK3_INCLUDE_DIRS})
 
-SET_AND_EXPOSE_TO_BUILD(HAVE_GTK_GESTURES ${GTK3_SUPPORTS_GESTURES})
 SET_AND_EXPOSE_TO_BUILD(HAVE_GTK_UNIX_PRINTING ${GTKUnixPrint_FOUND})
 
-set(glib_components gio gio-unix gobject gthread gmodule)
-find_package(GLIB 2.36 REQUIRED COMPONENTS ${glib_components})
+if (USE_WPE_RENDERER)
+    find_package(WPE 1.3.0)
+    if (NOT WPE_FOUND)
+        message(FATAL_ERROR "libwpe is required for USE_WPE_RENDERER")
+    endif ()
+
+    find_package(WPEBackend-fdo 1.3.1)
+    if (NOT WPEBACKEND_FDO_FOUND)
+        message(FATAL_ERROR "WPEBackend-fdo is required for USE_WPE_RENDERER")
+    endif ()
+endif ()
 
 if (ENABLE_XSLT)
     find_package(LibXslt 1.1.7 REQUIRED)
@@ -216,13 +233,6 @@ if (USE_LIBSECRET)
     endif ()
 endif ()
 
-if (ENABLE_GEOLOCATION)
-    find_package(GeoClue2 2.1.5)
-    if (NOT GEOCLUE2_FOUND)
-        message(FATAL_ERROR "Geoclue is needed for ENABLE_GEOLOCATION.")
-    endif ()
-endif ()
-
 if (ENABLE_INTROSPECTION)
     find_package(GObjectIntrospection)
     if (NOT INTROSPECTION_FOUND)
@@ -241,13 +251,9 @@ if (ENABLE_WEB_CRYPTO)
 endif ()
 
 if (ENABLE_WEBDRIVER)
-    # WebDriver requires newer versions of GLib and Soup.
-    if (PC_GLIB_VERSION VERSION_LESS "2.40")
-        message(FATAL_ERROR "GLib 2.40 is required to enable WebDriver support.")
-    endif ()
-    if (PC_LIBSOUP_VERSION VERSION_LESS "2.48")
-        message(FATAL_ERROR "libsoup 2.48 is required to enable WebDriver support.")
-    endif ()
+    SET_AND_EXPOSE_TO_BUILD(ENABLE_WEBDRIVER_KEYBOARD_INTERACTIONS ON)
+    SET_AND_EXPOSE_TO_BUILD(ENABLE_WEBDRIVER_MOUSE_INTERACTIONS ON)
+    SET_AND_EXPOSE_TO_BUILD(ENABLE_WEBDRIVER_TOUCH_INTERACTIONS OFF)
 endif ()
 
 SET_AND_EXPOSE_TO_BUILD(USE_TEXTURE_MAPPER TRUE)
@@ -287,11 +293,6 @@ if (ENABLE_OPENGL)
     SET_AND_EXPOSE_TO_BUILD(USE_NICOSIA TRUE)
 endif ()
 
-if (ENABLE_PLUGIN_PROCESS_GTK2)
-    find_package(GTK2 2.24.10 REQUIRED)
-    find_package(GDK2 2.24.10 REQUIRED)
-endif ()
-
 if (ENABLE_SPELLCHECK)
     find_package(Enchant)
     if (NOT PC_ENCHANT_FOUND)
@@ -301,13 +302,13 @@ endif ()
 
 if (ENABLE_QUARTZ_TARGET)
     if (NOT GTK3_SUPPORTS_QUARTZ)
-        message(FATAL_ERROR "Recompile GTK+ with Quartz backend to use ENABLE_QUARTZ_TARGET")
+        message(FATAL_ERROR "Recompile GTK with Quartz backend to use ENABLE_QUARTZ_TARGET")
     endif ()
 endif ()
 
 if (ENABLE_X11_TARGET)
     if (NOT GTK3_SUPPORTS_X11)
-        message(FATAL_ERROR "Recompile GTK+ with X11 backend to use ENABLE_X11_TARGET")
+        message(FATAL_ERROR "Recompile GTK with X11 backend to use ENABLE_X11_TARGET")
     endif ()
 
     find_package(X11 REQUIRED)
@@ -324,11 +325,7 @@ endif ()
 
 if (ENABLE_WAYLAND_TARGET)
     if (NOT GTK3_SUPPORTS_WAYLAND)
-        message(FATAL_ERROR "Recompile GTK+ with Wayland backend to use ENABLE_WAYLAND_TARGET")
-    endif ()
-
-    if (GTK3_VERSION VERSION_LESS 3.12)
-        message(FATAL_ERROR "GTK+ 3.12 is required to use ENABLE_WAYLAND_TARGET")
+        message(FATAL_ERROR "Recompile GTK with Wayland backend to use ENABLE_WAYLAND_TARGET")
     endif ()
 
     if (NOT EGL_FOUND)
@@ -432,4 +429,5 @@ macro(ADD_WHOLE_ARCHIVE_TO_LIBRARIES _list_name)
     endif ()
 endmacro()
 
+include(BubblewrapSandboxChecks)
 include(GStreamerChecks)

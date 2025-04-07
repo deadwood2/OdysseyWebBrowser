@@ -54,14 +54,14 @@
 #import <AVFoundation/AVPlayerItem.h>
 #import <AVFoundation/AVPlayerLayer.h>
 
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300) || PLATFORM(IOS_FAMILY)
+#if PLATFORM(MAC) || PLATFORM(IOS_FAMILY)
 NS_ASSUME_NONNULL_BEGIN
 @interface AVPlayerItem ()
 @property (nonatomic, readonly) NSTimeInterval seekableTimeRangesLastModifiedTime NS_AVAILABLE(10_13, 11_0);
 @property (nonatomic, readonly) NSTimeInterval liveUpdateInterval;
 @end
 NS_ASSUME_NONNULL_END
-#endif // (PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300) || PLATFORM(IOS_FAMILY)
+#endif // PLATFORM(MAC) || PLATFORM(IOS_FAMILY)
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) || PLATFORM(IOS_FAMILY)
 
@@ -69,12 +69,17 @@ NS_ASSUME_NONNULL_BEGIN
 
 @class AVOutputContext;
 @class AVOutputDevice;
+
 @interface AVOutputContext : NSObject <NSSecureCoding>
 @property (nonatomic, readonly) NSString *deviceName;
 + (instancetype)outputContext;
 + (nullable AVOutputContext *)sharedAudioPresentationOutputContext;
 @property (readonly) BOOL supportsMultipleOutputDevices;
 @property (readonly) NSArray<AVOutputDevice *> *outputDevices;
+@end
+
+@interface AVOutputDevice : NSObject
+@property (nonatomic, readonly) NSString *name;
 @end
 
 #if !PLATFORM(IOS_FAMILY)
@@ -235,15 +240,7 @@ NS_ASSUME_NONNULL_END
 
 #endif // __has_include(<AVFoundation/AVSampleBufferRenderSynchronizer.h>)
 
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED < 101300) && __has_include(<AVFoundation/AVQueuedSampleBufferRendering.h>)
-#import <AVFoundation/AVQueuedSampleBufferRendering.h>
-@class AVVideoPerformanceMetrics;
-NS_ASSUME_NONNULL_BEGIN
-@interface AVSampleBufferDisplayLayer (VideoPerformanceMetrics)
-- (AVVideoPerformanceMetrics *)videoPerformanceMetrics;
-@end
-NS_ASSUME_NONNULL_END
-#elif __has_include(<AVFoundation/AVSampleBufferDisplayLayer_Private.h>)
+#if __has_include(<AVFoundation/AVSampleBufferDisplayLayer_Private.h>)
 #import <AVFoundation/AVSampleBufferDisplayLayer_Private.h>
 #elif __has_include(<AVFoundation/AVSampleBufferDisplayLayer.h>)
 #import <AVFoundation/AVSampleBufferDisplayLayer.h>
@@ -273,9 +270,7 @@ NS_ASSUME_NONNULL_BEGIN
 NS_ASSUME_NONNULL_END
 #endif // __has_include(<AVFoundation/AVSampleBufferDisplayLayer.h>)
 
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED < 101300) && __has_include(<AVFoundation/AVQueuedSampleBufferRendering.h>)
-// Nothing to do, AVfoundation/AVQueuedSampleBufferRendering.h was imported above.
-#elif __has_include(<AVFoundation/AVSampleBufferAudioRenderer.h>)
+#if __has_include(<AVFoundation/AVSampleBufferAudioRenderer.h>)
 #import <AVFoundation/AVSampleBufferAudioRenderer.h>
 #else
 
@@ -298,7 +293,7 @@ NS_ASSUME_NONNULL_END
 
 #endif // __has_include(<AVFoundation/AVSampleBufferAudioRenderer.h>)
 
-#if !USE(APPLE_INTERNAL_SDK) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED < 101300)
+#if !USE(APPLE_INTERNAL_SDK)
 @interface AVVideoPerformanceMetrics : NSObject
 @property (nonatomic, readonly) unsigned long totalNumberOfVideoFrames;
 @property (nonatomic, readonly) unsigned long numberOfDroppedVideoFrames;
@@ -312,7 +307,13 @@ NS_ASSUME_NONNULL_END
 @end
 #endif
 
-#if !USE(APPLE_INTERNAL_SDK) && PLATFORM(IOS_FAMILY) && !PLATFORM(IOS_FAMILY_SIMULATOR) && !PLATFORM(IOSMAC)
+#if !USE(APPLE_INTERNAL_SDK) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED < 101500) || (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MAX_ALLOWED < 130000)
+@interface AVSampleBufferDisplayLayer (WebCorePrivate)
+@property (assign, nonatomic) BOOL preventsDisplaySleepDuringVideoPlayback;
+@end
+#endif
+
+#if !USE(APPLE_INTERNAL_SDK) && PLATFORM(IOS_FAMILY) && !PLATFORM(IOS_FAMILY_SIMULATOR) && !PLATFORM(MACCATALYST)
 #import <AVFoundation/AVAudioSession.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -324,3 +325,17 @@ NS_ASSUME_NONNULL_BEGIN
 NS_ASSUME_NONNULL_END
 #endif
 
+#if !USE(APPLE_INTERNAL_SDK) && HAVE(AVPLAYER_RESOURCE_CONSERVATION_LEVEL)
+@interface AVPlayer (AVPlayerPrivate)
+
+typedef NS_ENUM(NSInteger, AVPlayerResourceConservationLevel) {
+    AVPlayerResourceConservationLevelNone                                 = 0,
+    AVPlayerResourceConservationLevelReduceReadAhead                      = 1,
+    AVPlayerResourceConservationLevelReuseActivePlayerResources           = 2,
+    AVPlayerResourceConservationLevelRecycleBuffer                        = 3,
+};
+
+@property (nonatomic) AVPlayerResourceConservationLevel resourceConservationLevelWhilePaused;
+
+@end
+#endif

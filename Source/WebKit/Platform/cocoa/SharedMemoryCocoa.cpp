@@ -34,9 +34,9 @@
 #include <mach/mach_error.h>
 #include <mach/mach_port.h>
 #include <mach/vm_map.h>
-#include <pal/spi/cocoa/MachVMSPI.h>
 #include <wtf/MachSendRight.h>
 #include <wtf/RefPtr.h>
+#include <wtf/spi/cocoa/MachVMSPI.h>
 
 namespace WebKit {
 
@@ -44,6 +44,19 @@ SharedMemory::Handle::Handle()
     : m_port(MACH_PORT_NULL)
     , m_size(0)
 {
+}
+
+SharedMemory::Handle::Handle(Handle&& other)
+{
+    m_port = std::exchange(other.m_port, MACH_PORT_NULL);
+    m_size = std::exchange(other.m_size, 0);
+}
+
+auto SharedMemory::Handle::operator=(Handle&& other) -> Handle&
+{
+    m_port = std::exchange(other.m_port, MACH_PORT_NULL);
+    m_size = std::exchange(other.m_size, 0);
+    return *this;
 }
 
 SharedMemory::Handle::~Handle()

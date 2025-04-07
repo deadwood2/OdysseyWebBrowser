@@ -34,7 +34,9 @@
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/StoredCredentialsPolicy.h>
 #include <WebCore/Timer.h>
+#include <pal/SessionID.h>
 #include <wtf/CompletionHandler.h>
+#include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -65,6 +67,7 @@ public:
     virtual void didSendData(uint64_t totalBytesSent, uint64_t totalBytesExpectedToSend) = 0;
     virtual void wasBlocked() = 0;
     virtual void cannotShowURL() = 0;
+    virtual void wasBlockedByRestrictions() = 0;
 
     virtual bool shouldCaptureExtraNetworkLoadMetrics() const { return false; }
 
@@ -77,7 +80,7 @@ public:
     virtual ~NetworkDataTaskClient() { }
 };
 
-class NetworkDataTask : public RefCounted<NetworkDataTask> {
+class NetworkDataTask : public ThreadSafeRefCounted<NetworkDataTask, WTF::DestructionThread::Main>, public CanMakeWeakPtr<NetworkDataTask> {
 public:
     static Ref<NetworkDataTask> create(NetworkSession&, NetworkDataTaskClient&, const NetworkLoadParameters&);
 
@@ -128,20 +131,23 @@ public:
 
     virtual String description() const;
 
+    PAL::SessionID sessionID() const;
+
 protected:
     NetworkDataTask(NetworkSession&, NetworkDataTaskClient&, const WebCore::ResourceRequest&, WebCore::StoredCredentialsPolicy, bool shouldClearReferrerOnHTTPSToHTTPRedirect, bool dataTaskIsForMainFrameNavigation);
 
     enum FailureType {
         NoFailure,
         BlockedFailure,
-        InvalidURLFailure
+        InvalidURLFailure,
+        RestrictedURLFailure
     };
     void failureTimerFired();
     void scheduleFailure(FailureType);
 
     FailureType m_scheduledFailureType { NoFailure };
     WebCore::Timer m_failureTimer;
-    Ref<NetworkSession> m_session;
+    WeakPtr<NetworkSession> m_session;
     NetworkDataTaskClient* m_client { nullptr };
     PendingDownload* m_pendingDownload { nullptr };
     DownloadID m_pendingDownloadID;

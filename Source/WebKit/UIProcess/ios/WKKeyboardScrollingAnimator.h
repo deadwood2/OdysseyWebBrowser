@@ -37,6 +37,13 @@ enum class ScrollingIncrement : uint8_t {
     Line
 };
 
+enum class ScrollingDirection : uint8_t {
+    Up,
+    Down,
+    Left,
+    Right
+};
+
 }
 
 @class UIScrollView;
@@ -55,6 +62,8 @@ enum class ScrollingIncrement : uint8_t {
 - (BOOL)beginWithEvent:(::WebEvent *)event;
 - (void)handleKeyEvent:(::WebEvent *)event;
 
+- (BOOL)scrollTriggeringKeyIsPressed;
+
 @property (nonatomic, weak) id <WKKeyboardScrollViewAnimatorDelegate> delegate;
 
 @end
@@ -62,7 +71,7 @@ enum class ScrollingIncrement : uint8_t {
 @protocol WKKeyboardScrollViewAnimatorDelegate <NSObject>
 @optional
 - (BOOL)isScrollableForKeyboardScrollViewAnimator:(WKKeyboardScrollViewAnimator *)animator;
-- (CGFloat)keyboardScrollViewAnimator:(WKKeyboardScrollViewAnimator *)animator distanceForIncrement:(WebKit::ScrollingIncrement)increment;
+- (CGFloat)keyboardScrollViewAnimator:(WKKeyboardScrollViewAnimator *)animator distanceForIncrement:(WebKit::ScrollingIncrement)increment inDirection:(WebKit::ScrollingDirection)direction;
 - (void)keyboardScrollViewAnimatorWillScroll:(WKKeyboardScrollViewAnimator *)animator;
 - (void)keyboardScrollViewAnimatorDidFinishScrolling:(WKKeyboardScrollViewAnimator *)animator;
 

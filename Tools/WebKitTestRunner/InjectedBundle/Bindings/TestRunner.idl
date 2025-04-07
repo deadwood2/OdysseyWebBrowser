@@ -25,6 +25,7 @@
 
 interface TestRunner {
     readonly attribute boolean isWebKit2;
+    readonly attribute boolean isIOSFamily;
 
     // The basics.
     void dumpAsText(boolean dumpPixels);
@@ -38,6 +39,14 @@ interface TestRunner {
     // Downloads.
     void waitUntilDownloadFinished();
     void setShouldLogDownloadCallbacks(boolean value);
+
+    const unsigned short RENDER_TREE_SHOW_ALL_LAYERS            = 1;
+    const unsigned short RENDER_TREE_SHOW_LAYER_NESTING         = 2;
+    const unsigned short RENDER_TREE_SHOW_COMPOSITED_LAYERS     = 4;
+    const unsigned short RENDER_TREE_SHOW_OVERFLOW              = 8;
+    const unsigned short RENDER_TREE_SHOW_SVG_GEOMETRY          = 16;
+    const unsigned short RENDER_TREE_SHOW_LAYER_FRAGMENTS       = 32;
+    void setRenderTreeDumpOptions(unsigned short options);
 
     // Other dumping.
     void dumpBackForwardList();
@@ -57,12 +66,13 @@ interface TestRunner {
     void dumpDOMAsWebArchive();
     void dumpPolicyDelegateCallbacks();
     void dumpResourceLoadStatistics();
+    void dumpAdClickAttribution();
 
     void clearDOMCaches();
     void clearDOMCache(DOMString origin);
     boolean hasDOMCache(DOMString origin);
     unsigned long domCacheSize(DOMString origin);
-    void allowCacheStorageQuotaIncrease();
+    void setAllowStorageQuotaIncrease(boolean value);
 
     // Special options.
     void keepWebHistory();
@@ -76,7 +86,6 @@ interface TestRunner {
     void setPluginsEnabled(boolean value);
     void setJavaScriptCanAccessClipboard(boolean value);
     void setPrivateBrowsingEnabled(boolean value);
-    void setUseDashboardCompatibilityMode(boolean value);
     void setPopupBlockingEnabled(boolean value);
     void setAuthorAndUserStylesEnabled(boolean value);
     void setCustomPolicyDelegate(boolean enabled, boolean permissive);
@@ -102,6 +111,9 @@ interface TestRunner {
     void execCommand(DOMString name, DOMString showUI, DOMString value);
     boolean isCommandEnabled(DOMString name);
     unsigned long windowCount();
+
+    // Device Orientation Motion.
+    void setShouldAllowDeviceOrientationAndMotionAccess(boolean value);
 
     // Special DOM variables.
     attribute boolean globalFlag;
@@ -130,12 +142,10 @@ interface TestRunner {
     void clearAllDatabases();
     void setDatabaseQuota(unsigned long long quota);
     DOMString pathToLocalResource(DOMString url);
+    void syncLocalStorage();
 
     attribute double databaseDefaultQuota;
     attribute double databaseMaxQuota;
-
-    // IndexedDB API
-    void setIDBPerOriginQuota(unsigned long long quota);
 
     // Application Cache API
     void clearAllApplicationCaches();
@@ -268,6 +278,10 @@ interface TestRunner {
 
     void accummulateLogsForChannel(DOMString channel);
 
+    // Contextual menu actions
+    void setAllowedMenuActions(object actions);
+    void installCustomMenuAction(DOMString name, boolean dismissesAutomatically, object callback);
+
     // Gamepad
     void setMockGamepadDetails(unsigned long index, DOMString id, unsigned long axisCount, unsigned long buttonCount);
     void setMockGamepadAxisValue(unsigned long index, unsigned long axisIndex, double value);
@@ -299,12 +313,14 @@ interface TestRunner {
     void setStatisticsSubresourceUniqueRedirectFrom(DOMString hostName, DOMString hostNameRedirectedTo);
     void setStatisticsTopFrameUniqueRedirectTo(DOMString hostName, DOMString hostNameRedirectedTo);
     void setStatisticsTopFrameUniqueRedirectFrom(DOMString hostName, DOMString hostNameRedirectedTo);
+    void setStatisticsCrossSiteLoadWithLinkDecoration(DOMString fromHost, DOMString toHost);
     void setStatisticsTimeToLiveUserInteraction(double seconds);
     void statisticsNotifyObserver();
     void statisticsProcessStatisticsAndDataRecords();
     void statisticsUpdateCookieBlocking(object completionHandler);
     void statisticsSubmitTelemetry();
     void setStatisticsNotifyPagesWhenDataRecordsWereScanned(boolean value);
+    void setStatisticsIsRunningTest(boolean value);
     void setStatisticsShouldClassifyResourcesBeforeDataRecordsRemoval(boolean value);
     void setStatisticsNotifyPagesWhenTelemetryWasCaptured(boolean value);
     void setStatisticsMinimumTimeBetweenDataRecordsRemoval(double seconds);
@@ -314,8 +330,11 @@ interface TestRunner {
     void statisticsClearInMemoryAndPersistentStore(object callback);
     void statisticsClearInMemoryAndPersistentStoreModifiedSinceHours(unsigned long hours, object callback);
     void statisticsClearThroughWebsiteDataRemoval(object callback);
+    void statisticsDeleteCookiesForHost(DOMString hostName, boolean includeHttpOnlyCookies);
+    boolean isStatisticsHasLocalStorage(DOMString hostName);
     void setStatisticsCacheMaxAgeCap(double seconds);
     void statisticsResetToConsistentState(object completionHandler);
+    boolean hasStatisticsIsolatedSession(DOMString hostName);
 
     // Injected bundle form client.
     void installTextDidChangeInTextFieldCallback(object callback);
@@ -328,9 +347,11 @@ interface TestRunner {
 
     // Open panel
     void setOpenPanelFiles(object filesArray);
+    void setOpenPanelFilesMediaIcon(object mediaIcon);
 
     // Modal alerts
     void setShouldDismissJavaScriptAlertsAsynchronously(boolean value);
+    void abortModal();
 
     void setWebRTCMDNSICECandidatesEnabled(boolean value);
     void setWebRTCUnifiedPlanEnabled(boolean value);
@@ -370,4 +391,11 @@ interface TestRunner {
     void addTestKeyToKeychain(DOMString privateKeyBase64, DOMString attrLabel, DOMString applicationTagBase64);
     void cleanUpKeychain(DOMString attrLabel);
     boolean keyExistsInKeychain(DOMString attrLabel, DOMString applicationTagBase64);
+
+    // Ad Click Attribution
+    void clearAdClickAttribution();
+    void clearAdClickAttributionsThroughWebsiteDataRemoval();
+    void setAdClickAttributionOverrideTimerForTesting(boolean value);
+    void setAdClickAttributionConversionURLForTesting(DOMString url);
+    void markAdClickAttributionsAsExpiredForTesting();
 };

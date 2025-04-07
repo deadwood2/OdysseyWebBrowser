@@ -88,7 +88,7 @@ bool RemoteLayerTreeHost::updateLayerTree(const RemoteLayerTreeTransaction& tran
     };
     Vector<LayerAndClone> clonesToUpdate;
 
-#if PLATFORM(MAC) || PLATFORM(IOSMAC)
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
     // Can't use the iOS code on macOS yet: rdar://problem/31247730
     auto layerContentsType = RemoteLayerBackingStore::LayerContentsType::IOSurface;
 #else
@@ -101,6 +101,12 @@ bool RemoteLayerTreeHost::updateLayerTree(const RemoteLayerTreeTransaction& tran
 
         auto* node = nodeForID(layerID);
         ASSERT(node);
+
+        if (!node) {
+            // We have evidence that this can still happen, but don't know how (see r241899 for one already-fixed cause).
+            RELEASE_LOG_IF_ALLOWED("%p RemoteLayerTreeHost::updateLayerTree - failed to find layer with ID %llu", this, layerID);
+            continue;
+        }
 
         if (properties.changedProperties.contains(RemoteLayerTreeTransaction::ClonedContentsChanged) && properties.clonedLayerID)
             clonesToUpdate.append({ layerID, properties.clonedLayerID });
@@ -246,7 +252,7 @@ void RemoteLayerTreeHost::createLayer(const RemoteLayerTreeTransaction::LayerCre
 std::unique_ptr<RemoteLayerTreeNode> RemoteLayerTreeHost::makeNode(const RemoteLayerTreeTransaction::LayerCreationProperties& properties)
 {
     auto makeWithLayer = [&] (RetainPtr<CALayer> layer) {
-        return std::make_unique<RemoteLayerTreeNode>(properties.layerID, WTFMove(layer));
+        return makeUnique<RemoteLayerTreeNode>(properties.layerID, WTFMove(layer));
     };
     auto makeAdoptingLayer = [&] (CALayer* layer) {
         return makeWithLayer(adoptNS(layer));

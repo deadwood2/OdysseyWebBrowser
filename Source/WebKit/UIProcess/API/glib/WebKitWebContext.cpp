@@ -31,13 +31,12 @@
 #include "TextCheckerState.h"
 #include "WebAutomationSession.h"
 #include "WebCertificateInfo.h"
-#include "WebGeolocationManagerProxy.h"
 #include "WebKitAutomationSessionPrivate.h"
 #include "WebKitCustomProtocolManagerClient.h"
 #include "WebKitDownloadClient.h"
 #include "WebKitDownloadPrivate.h"
 #include "WebKitFaviconDatabasePrivate.h"
-#include "WebKitGeolocationProvider.h"
+#include "WebKitGeolocationManagerPrivate.h"
 #include "WebKitInjectedBundleClient.h"
 #include "WebKitNetworkProxySettingsPrivate.h"
 #include "WebKitNotificationProvider.h"
@@ -170,16 +169,13 @@ struct _WebKitWebContextPrivate {
     GRefPtr<WebKitSecurityManager> securityManager;
     URISchemeHandlerMap uriSchemeHandlers;
     URISchemeRequestMap uriSchemeRequests;
-#if ENABLE(GEOLOCATION)
-    std::unique_ptr<WebKitGeolocationProvider> geolocationProvider;
-#endif
+    GRefPtr<WebKitGeolocationManager> geolocationManager;
     std::unique_ptr<WebKitNotificationProvider> notificationProvider;
     GRefPtr<WebKitWebsiteDataManager> websiteDataManager;
 
     CString faviconDatabaseDirectory;
     WebKitTLSErrorsPolicy tlsErrorsPolicy;
     WebKitProcessModel processModel;
-    unsigned processCountLimit;
 
     HashMap<uint64_t, WebKitWebView*> webViews;
     unsigned ephemeralPageCount;
@@ -201,6 +197,7 @@ static guint signals[LAST_SIGNAL] = { 0, };
 
 #if ENABLE(REMOTE_INSPECTOR)
 class WebKitAutomationClient final : Inspector::RemoteInspector::Client {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit WebKitAutomationClient(WebKitWebContext* context)
         : m_webContext(context)
@@ -334,7 +331,6 @@ static void webkitWebContextConstructed(GObject* object)
 
     API::ProcessPoolConfiguration configuration;
     configuration.setInjectedBundlePath(FileSystem::stringFromFileSystemRepresentation(bundleFilename.get()));
-    configuration.setMaximumProcessCount(1);
     configuration.setDiskCacheSpeculativeValidationEnabled(true);
 
     WebKitWebContext* webContext = WEBKIT_WEB_CONTEXT(object);
@@ -344,12 +340,16 @@ static void webkitWebContextConstructed(GObject* object)
         configuration.setDiskCacheDirectory(FileSystem::pathByAppendingComponent(FileSystem::stringFromFileSystemRepresentation(webkit_website_data_manager_get_disk_cache_directory(priv->websiteDataManager.get())), networkCacheSubdirectory));
         configuration.setApplicationCacheDirectory(FileSystem::stringFromFileSystemRepresentation(webkit_website_data_manager_get_offline_application_cache_directory(priv->websiteDataManager.get())));
         configuration.setIndexedDBDatabaseDirectory(FileSystem::stringFromFileSystemRepresentation(webkit_website_data_manager_get_indexeddb_directory(priv->websiteDataManager.get())));
+        configuration.setHSTSStorageDirectory(FileSystem::stringFromFileSystemRepresentation(webkit_website_data_manager_get_hsts_cache_directory(priv->websiteDataManager.get())));
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         configuration.setWebSQLDatabaseDirectory(FileSystem::stringFromFileSystemRepresentation(webkit_website_data_manager_get_websql_directory(priv->websiteDataManager.get())));
 ALLOW_DEPRECATED_DECLARATIONS_END
     } else if (!priv->localStorageDirectory.isNull())
         configuration.setLocalStorageDirectory(FileSystem::stringFromFileSystemRepresentation(priv->localStorageDirectory.data()));
 
+    const char* useSingleWebProcess = getenv("WEBKIT_USE_SINGLE_WEB_PROCESS");
+    if (useSingleWebProcess && strcmp(useSingleWebProcess, "0"))
+        configuration.setUsesSingleWebProcess(true);
     priv->processPool = WebProcessPool::create(configuration);
 
     if (!priv->websiteDataManager)
@@ -361,6 +361,8 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     priv->tlsErrorsPolicy = WEBKIT_TLS_ERRORS_POLICY_FAIL;
     priv->processPool->setIgnoreTLSErrors(false);
 
+    priv->processModel = WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES;
+
 #if ENABLE(MEMORY_SAMPLER)
     if (getenv("WEBKIT_SAMPLE_MEMORY"))
         priv->processPool->startMemorySampler(0);
@@ -370,12 +372,10 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     attachDownloadClientToContext(webContext);
     attachCustomProtocolManagerClientToContext(webContext);
 
-#if ENABLE(GEOLOCATION)
-    priv->geolocationProvider = std::make_unique<WebKitGeolocationProvider>(priv->processPool->supplement<WebGeolocationManagerProxy>());
-#endif
-    priv->notificationProvider = std::make_unique<WebKitNotificationProvider>(priv->processPool->supplement<WebNotificationManagerProxy>(), webContext);
+    priv->geolocationManager = adoptGRef(webkitGeolocationManagerCreate(priv->processPool->supplement<WebGeolocationManagerProxy>()));
+    priv->notificationProvider = makeUnique<WebKitNotificationProvider>(priv->processPool->supplement<WebNotificationManagerProxy>(), webContext);
 #if PLATFORM(GTK) && ENABLE(REMOTE_INSPECTOR)
-    priv->remoteInspectorProtocolHandler = std::make_unique<RemoteInspectorProtocolHandler>(webContext);
+    priv->remoteInspectorProtocolHandler = makeUnique<RemoteInspectorProtocolHandler>(webContext);
 #endif
 }
 
@@ -684,7 +684,7 @@ void webkit_web_context_set_automation_allowed(WebKitWebContext* context, gboole
             g_warning("Not enabling automation on WebKitWebContext because there's another context with automation enabled, only one is allowed");
             return;
         }
-        context->priv->automationClient = std::make_unique<WebKitAutomationClient>(context);
+        context->priv->automationClient = makeUnique<WebKitAutomationClient>(context);
     } else
         context->priv->automationClient = nullptr;
 #endif
@@ -868,6 +868,23 @@ WebKitCookieManager* webkit_web_context_get_cookie_manager(WebKitWebContext* con
     g_return_val_if_fail(WEBKIT_IS_WEB_CONTEXT(context), nullptr);
 
     return webkit_website_data_manager_get_cookie_manager(context->priv->websiteDataManager.get());
+}
+
+/**
+ * webkit_web_context_get_geolocation_manager:
+ * @context: a #WebKitWebContext
+ *
+ * Get the #WebKitGeolocationManager of @context.
+ *
+ * Returns: (transfer none): the #WebKitGeolocationManager of @context.
+ *
+ * Since: 2.26
+ */
+WebKitGeolocationManager* webkit_web_context_get_geolocation_manager(WebKitWebContext* context)
+{
+    g_return_val_if_fail(WEBKIT_IS_WEB_CONTEXT(context), nullptr);
+
+    return context->priv->geolocationManager.get();
 }
 
 static void ensureFaviconDatabase(WebKitWebContext* context)
@@ -1151,6 +1168,95 @@ void webkit_web_context_register_uri_scheme(WebKitWebContext* context, const cha
 }
 
 /**
+ * webkit_web_context_set_sandbox_enabled:
+ * @context: a #WebKitWebContext
+ * @enabled: if %TRUE enable sandboxing
+ *
+ * Set whether WebKit subprocesses will be sandboxed, limiting access to the system.
+ *
+ * This method **must be called before any web process has been created**,
+ * as early as possible in your application. Calling it later is a fatal error.
+ *
+ * This is only implemented on Linux and is a no-op otherwise.
+ *
+ * Since: 2.26
+ */
+void webkit_web_context_set_sandbox_enabled(WebKitWebContext* context, gboolean enabled)
+{
+    g_return_if_fail(WEBKIT_IS_WEB_CONTEXT(context));
+
+    if (context->priv->processPool->processes().size())
+        g_error("Sandboxing cannot be changed after subprocesses were spawned.");
+
+    context->priv->processPool->setSandboxEnabled(enabled);
+}
+
+static bool pathIsBlacklisted(const char* path)
+{
+    static const Vector<CString, 4> blacklistedPrefixes = {
+        // These are recreated by bwrap and it doesn't make sense to try and rebind them.
+        "sys", "proc", "dev",
+        "", // All of `/` isn't acceptable.
+    };
+
+    if (!g_path_is_absolute(path))
+        return true;
+
+    GUniquePtr<char*> splitPath(g_strsplit(path, G_DIR_SEPARATOR_S, 3));
+    return blacklistedPrefixes.contains(splitPath.get()[1]);
+}
+
+/**
+ * webkit_web_context_add_path_to_sandbox:
+ * @context: a #WebKitWebContext
+ * @path: (type filename): an absolute path to mount in the sandbox
+ * @read_only: if %TRUE the path will be read-only
+ *
+ * Adds a path to be mounted in the sandbox. @path must exist before any web process
+ * has been created otherwise it will be silently ignored. It is a fatal error to
+ * add paths after a web process has been spawned.
+ *
+ * Paths in directories such as `/sys`, `/proc`, and `/dev` or all of `/`
+ * are not valid.
+ *
+ * See also webkit_web_context_set_sandbox_enabled()
+ *
+ * Since: 2.26
+ */
+void webkit_web_context_add_path_to_sandbox(WebKitWebContext* context, const char* path, gboolean readOnly)
+{
+    g_return_if_fail(WEBKIT_IS_WEB_CONTEXT(context));
+
+    if (pathIsBlacklisted(path)) {
+        g_critical("Attempted to add disallowed path to sandbox: %s", path);
+        return;
+    }
+
+    if (context->priv->processPool->processes().size())
+        g_error("Sandbox paths cannot be changed after subprocesses were spawned.");
+
+    auto permission = readOnly ? SandboxPermission::ReadOnly : SandboxPermission::ReadWrite;
+    context->priv->processPool->addSandboxPath(path, permission);
+}
+
+/**
+ * webkit_web_context_get_sandbox_enabled:
+ * @context: a #WebKitWebContext
+ *
+ * Get whether sandboxing is currently enabled.
+ *
+ * Returns: %TRUE if sandboxing is enabled, or %FALSE otherwise.
+ *
+ * Since: 2.26
+ */
+gboolean webkit_web_context_get_sandbox_enabled(WebKitWebContext* context)
+{
+    g_return_val_if_fail(WEBKIT_IS_WEB_CONTEXT(context), FALSE);
+
+    return context->priv->processPool->sandboxEnabled();
+}
+
+/**
  * webkit_web_context_get_spell_checking_enabled:
  * @context: a #WebKitWebContext
  *
@@ -1329,6 +1435,7 @@ void webkit_web_context_set_web_extensions_directory(WebKitWebContext* context, 
     g_return_if_fail(directory);
 
     context->priv->webExtensionsDirectory = directory;
+    context->priv->processPool->addSandboxPath(directory, SandboxPermission::ReadOnly);
 }
 
 /**
@@ -1423,20 +1530,18 @@ void webkit_web_context_allow_tls_certificate_for_host(WebKitWebContext* context
  * @process_model: a #WebKitProcessModel
  *
  * Specifies a process model for WebViews, which WebKit will use to
- * determine how auxiliary processes are handled. The default setting
- * (%WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS) is suitable for most
- * applications which embed a small amount of WebViews, or are used to
- * display documents which are considered safe — like local files.
+ * determine how auxiliary processes are handled.
  *
- * Applications which may potentially use a large amount of WebViews
- * —for example a multi-tabbed web browser— may want to use
- * %WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES, which will use
+ * %WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES will use
  * one process per view most of the time, while still allowing for web
  * views to share a process when needed (for example when different
  * views interact with each other). Using this model, when a process
  * hangs or crashes, only the WebViews using it stop working, while
  * the rest of the WebViews in the application will still function
  * normally.
+ *
+ * %WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS is deprecated since 2.26,
+ * using it has no effect for security reasons.
  *
  * This method **must be called before any web process has been created**,
  * as early as possible in your application. Calling it later will make
@@ -1448,18 +1553,15 @@ void webkit_web_context_set_process_model(WebKitWebContext* context, WebKitProce
 {
     g_return_if_fail(WEBKIT_IS_WEB_CONTEXT(context));
 
+    if (processModel == WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS) {
+        g_warning("WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS is deprecated and has no effect");
+        return;
+    }
+
     if (processModel == context->priv->processModel)
         return;
 
     context->priv->processModel = processModel;
-    switch (context->priv->processModel) {
-    case WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS:
-        context->priv->processPool->setMaximumNumberOfProcesses(1);
-        break;
-    case WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES:
-        context->priv->processPool->setMaximumNumberOfProcesses(context->priv->processCountLimit);
-        break;
-    }
 }
 
 /**
@@ -1475,7 +1577,7 @@ void webkit_web_context_set_process_model(WebKitWebContext* context, WebKitProce
  */
 WebKitProcessModel webkit_web_context_get_process_model(WebKitWebContext* context)
 {
-    g_return_val_if_fail(WEBKIT_IS_WEB_CONTEXT(context), WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS);
+    g_return_val_if_fail(WEBKIT_IS_WEB_CONTEXT(context), WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES);
 
     return context->priv->processModel;
 }
@@ -1488,22 +1590,17 @@ WebKitProcessModel webkit_web_context_get_process_model(WebKitWebContext* contex
  * Sets the maximum number of web processes that can be created at the same time for the @context.
  * The default value is 0 and means no limit.
  *
- * This method **must be called before any web process has been created**,
- * as early as possible in your application. Calling it later will make
- * your application crash.
+ * This function is now deprecated and does nothing for security reasons.
  *
  * Since: 2.10
+ *
+ * Deprecated: 2.26
  */
 void webkit_web_context_set_web_process_count_limit(WebKitWebContext* context, guint limit)
 {
     g_return_if_fail(WEBKIT_IS_WEB_CONTEXT(context));
 
-    if (context->priv->processCountLimit == limit)
-        return;
-
-    context->priv->processCountLimit = limit;
-    if (context->priv->processModel != WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS)
-        context->priv->processPool->setMaximumNumberOfProcesses(limit);
+    g_warning("webkit_web_context_set_web_process_count_limit is deprecated and does nothing. Limiting the number of web processes is no longer possible for security reasons");
 }
 
 /**
@@ -1512,15 +1609,19 @@ void webkit_web_context_set_web_process_count_limit(WebKitWebContext* context, g
  *
  * Gets the maximum number of web processes that can be created at the same time for the @context.
  *
+ * This function is now deprecated and always returns 0 (no limit). See also webkit_web_context_set_web_process_count_limit().
+ *
  * Returns: the maximum limit of web processes, or 0 if there isn't a limit.
  *
  * Since: 2.10
+ *
+ * Deprecated: 2.26
  */
 guint webkit_web_context_get_web_process_count_limit(WebKitWebContext* context)
 {
     g_return_val_if_fail(WEBKIT_IS_WEB_CONTEXT(context), 0);
 
-    return context->priv->processCountLimit;
+    return 0;
 }
 
 static void addOriginToMap(WebKitSecurityOrigin* origin, HashMap<String, bool>* map, bool allowed)
@@ -1585,7 +1686,7 @@ WebKitDownload* webkitWebContextGetOrCreateDownload(DownloadProxy* downloadProxy
 WebKitDownload* webkitWebContextStartDownload(WebKitWebContext* context, const char* uri, WebPageProxy* initiatingPage)
 {
     WebCore::ResourceRequest request(String::fromUTF8(uri));
-    return webkitWebContextGetOrCreateDownload(context->priv->processPool->download(initiatingPage, request));
+    return webkitWebContextGetOrCreateDownload(&context->priv->processPool->download(initiatingPage, request));
 }
 
 void webkitWebContextRemoveDownload(DownloadProxy* downloadProxy)
@@ -1669,7 +1770,6 @@ void webkitWebContextCreatePageForWebView(WebKitWebContext* context, WebKitWebVi
     if (!manager)
         manager = context->priv->websiteDataManager.get();
     pageConfiguration->setWebsiteDataStore(&webkitWebsiteDataManagerGetDataStore(manager));
-    pageConfiguration->setSessionID(pageConfiguration->websiteDataStore()->websiteDataStore().sessionID());
     webkitWebViewCreatePage(webView, WTFMove(pageConfiguration));
 
     context->priv->webViews.set(webkit_web_view_get_page_id(webView), webView);
@@ -1683,5 +1783,5 @@ void webkitWebContextWebViewDestroyed(WebKitWebContext* context, WebKitWebView* 
 
 WebKitWebView* webkitWebContextGetWebViewForPage(WebKitWebContext* context, WebPageProxy* page)
 {
-    return page ? context->priv->webViews.get(page->pageID()) : 0;
+    return page ? context->priv->webViews.get(page->pageID().toUInt64()) : nullptr;
 }

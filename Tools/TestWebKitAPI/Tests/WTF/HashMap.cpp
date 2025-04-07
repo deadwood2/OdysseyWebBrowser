@@ -34,6 +34,7 @@
 #include <string>
 #include <wtf/HashMap.h>
 #include <wtf/Ref.h>
+#include <wtf/text/StringConcatenateNumbers.h>
 #include <wtf/text/StringHash.h>
 
 namespace TestWebKitAPI {
@@ -190,7 +191,7 @@ TEST(WTF_HashMap, UniquePtrKey)
 
     HashMap<std::unique_ptr<ConstructorDestructorCounter>, int> map;
 
-    auto uniquePtr = std::make_unique<ConstructorDestructorCounter>();
+    auto uniquePtr = makeUnique<ConstructorDestructorCounter>();
     map.add(WTFMove(uniquePtr), 2);
 
     EXPECT_EQ(1u, ConstructorDestructorCounter::constructionCount);
@@ -229,7 +230,7 @@ TEST(WTF_HashMap, UniquePtrKey_FindUsingRawPointer)
 {
     HashMap<std::unique_ptr<int>, int> map;
 
-    auto uniquePtr = std::make_unique<int>(5);
+    auto uniquePtr = makeUniqueWithoutFastMallocCheck<int>(5);
     int* ptr = uniquePtr.get();
     map.add(WTFMove(uniquePtr), 2);
 
@@ -243,7 +244,7 @@ TEST(WTF_HashMap, UniquePtrKey_ContainsUsingRawPointer)
 {
     HashMap<std::unique_ptr<int>, int> map;
 
-    auto uniquePtr = std::make_unique<int>(5);
+    auto uniquePtr = makeUniqueWithoutFastMallocCheck<int>(5);
     int* ptr = uniquePtr.get();
     map.add(WTFMove(uniquePtr), 2);
 
@@ -254,7 +255,7 @@ TEST(WTF_HashMap, UniquePtrKey_GetUsingRawPointer)
 {
     HashMap<std::unique_ptr<int>, int> map;
 
-    auto uniquePtr = std::make_unique<int>(5);
+    auto uniquePtr = makeUniqueWithoutFastMallocCheck<int>(5);
     int* ptr = uniquePtr.get();
     map.add(WTFMove(uniquePtr), 2);
 
@@ -268,7 +269,7 @@ TEST(WTF_HashMap, UniquePtrKey_RemoveUsingRawPointer)
 
     HashMap<std::unique_ptr<ConstructorDestructorCounter>, int> map;
 
-    auto uniquePtr = std::make_unique<ConstructorDestructorCounter>();
+    auto uniquePtr = makeUnique<ConstructorDestructorCounter>();
     ConstructorDestructorCounter* ptr = uniquePtr.get();
     map.add(WTFMove(uniquePtr), 2);
 
@@ -288,7 +289,7 @@ TEST(WTF_HashMap, UniquePtrKey_TakeUsingRawPointer)
 
     HashMap<std::unique_ptr<ConstructorDestructorCounter>, int> map;
 
-    auto uniquePtr = std::make_unique<ConstructorDestructorCounter>();
+    auto uniquePtr = makeUnique<ConstructorDestructorCounter>();
     ConstructorDestructorCounter* ptr = uniquePtr.get();
     map.add(WTFMove(uniquePtr), 2);
 
@@ -562,12 +563,12 @@ TEST(WTF_HashMap, Ensure_UniquePointer)
 {
     HashMap<unsigned, std::unique_ptr<unsigned>> map;
     {
-        auto addResult = map.ensure(1, [] { return std::make_unique<unsigned>(1); });
+        auto addResult = map.ensure(1, [] { return makeUniqueWithoutFastMallocCheck<unsigned>(1); });
         EXPECT_EQ(1u, *map.get(1));
         EXPECT_EQ(1u, *addResult.iterator->value.get());
         EXPECT_EQ(1u, addResult.iterator->key);
         EXPECT_TRUE(addResult.isNewEntry);
-        auto addResult2 = map.ensure(1, [] { return std::make_unique<unsigned>(2); });
+        auto addResult2 = map.ensure(1, [] { return makeUniqueWithoutFastMallocCheck<unsigned>(2); });
         EXPECT_EQ(1u, *map.get(1));
         EXPECT_EQ(1u, *addResult2.iterator->value.get());
         EXPECT_EQ(1u, addResult2.iterator->key);
@@ -589,6 +590,7 @@ TEST(WTF_HashMap, Ensure_RefPtr)
 }
 
 class ObjectWithRefLogger {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     ObjectWithRefLogger(Ref<RefLogger>&& logger)
         : m_logger(WTFMove(logger))
@@ -603,7 +605,7 @@ void testMovingUsingEnsure(Ref<RefLogger>&& logger)
 {
     HashMap<unsigned, std::unique_ptr<ObjectWithRefLogger>> map;
     
-    map.ensure(1, [&] { return std::make_unique<ObjectWithRefLogger>(WTFMove(logger)); });
+    map.ensure(1, [&] { return makeUnique<ObjectWithRefLogger>(WTFMove(logger)); });
 }
 
 void testMovingUsingAdd(Ref<RefLogger>&& logger)
@@ -611,7 +613,7 @@ void testMovingUsingAdd(Ref<RefLogger>&& logger)
     HashMap<unsigned, std::unique_ptr<ObjectWithRefLogger>> map;
 
     auto& slot = map.add(1, nullptr).iterator->value;
-    slot = std::make_unique<ObjectWithRefLogger>(WTFMove(logger));
+    slot = makeUnique<ObjectWithRefLogger>(WTFMove(logger));
 }
 
 TEST(WTF_HashMap, Ensure_LambdasCapturingByReference)
@@ -679,24 +681,25 @@ TEST(WTF_HashMap, ValueIsDestructedOnRemove)
     EXPECT_TRUE(destructed);
 }
 
+struct DerefObserver {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    NEVER_INLINE void ref()
+    {
+        ++count;
+    }
+    NEVER_INLINE void deref()
+    {
+        --count;
+        observedBucket = bucketAddress->get();
+    }
+    unsigned count { 1 };
+    const RefPtr<DerefObserver>* bucketAddress { nullptr };
+    const DerefObserver* observedBucket { nullptr };
+};
+
 TEST(WTF_HashMap, RefPtrNotZeroedBeforeDeref)
 {
-    struct DerefObserver {
-        NEVER_INLINE void ref()
-        {
-            ++count;
-        }
-        NEVER_INLINE void deref()
-        {
-            --count;
-            observedBucket = bucketAddress->get();
-        }
-        unsigned count { 1 };
-        const RefPtr<DerefObserver>* bucketAddress { nullptr };
-        const DerefObserver* observedBucket { nullptr };
-    };
-
-    auto observer = std::make_unique<DerefObserver>();
+    auto observer = makeUnique<DerefObserver>();
 
     HashMap<RefPtr<DerefObserver>, int> map;
     map.add(adoptRef(observer.get()), 5);
@@ -1035,6 +1038,39 @@ TEST(WTF_HashMap, Random_IsEvenlyDistributed)
     ASSERT_EQ(zeros + ones, 1000u);
     ASSERT_LE(zeros, 600u);
     ASSERT_LE(ones, 600u);
+}
+
+TEST(WTF_HashMap, ReserveInitialCapacity)
+{
+    HashMap<String, String> map;
+    EXPECT_EQ(0u, map.size());
+    map.reserveInitialCapacity(9999);
+    EXPECT_EQ(0u, map.size());
+    for (int i = 0; i < 9999; ++i)
+        map.add(makeString("foo", i), makeString("bar", i));
+    EXPECT_EQ(9999u, map.size());
+    EXPECT_TRUE(map.contains("foo3"_str));
+    EXPECT_STREQ("bar3", map.get("foo3"_str).utf8().data());
+    for (int i = 0; i < 9999; ++i)
+        map.add(makeString("excess", i), makeString("baz", i));
+    EXPECT_EQ(9999u + 9999u, map.size());
+    for (int i = 0; i < 9999; ++i)
+        EXPECT_TRUE(map.remove(makeString("foo", i)));
+    EXPECT_EQ(9999u, map.size());
+    EXPECT_STREQ("baz3", map.get("excess3"_str).utf8().data());
+    for (int i = 0; i < 9999; ++i)
+        EXPECT_TRUE(map.remove(makeString("excess", i)));
+    EXPECT_EQ(0u, map.size());
+    
+    HashMap<String, String> map2;
+    map2.reserveInitialCapacity(9999);
+    EXPECT_FALSE(map2.remove("foo1"_s));
+    for (int i = 0; i < 2000; ++i)
+        map2.add(makeString("foo", i), makeString("bar", i));
+    EXPECT_EQ(2000u, map2.size());
+    for (int i = 0; i < 2000; ++i)
+        EXPECT_TRUE(map2.remove(makeString("foo", i)));
+    EXPECT_EQ(0u, map2.size());
 }
 
 TEST(WTF_HashMap, Random_IsEvenlyDistributedAfterRemove)

@@ -39,8 +39,6 @@
 #import <wtf/RetainPtr.h>
 #import <wtf/Vector.h>
 
-#if WK_API_ENABLED
-
 static bool isDoneWithNavigation;
 
 @interface SimpleNavigationDelegate : NSObject <WKNavigationDelegate>
@@ -237,7 +235,6 @@ TEST(WKUserContentController, ScriptMessageHandlerMultipleHandlerRemoval)
 {
     RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     RetainPtr<_WKProcessPoolConfiguration> processPoolConfiguration = adoptNS([[_WKProcessPoolConfiguration alloc] init]);
-    [processPoolConfiguration setMaximumProcessCount:1];
     [configuration setProcessPool:[[[WKProcessPool alloc] _initWithConfiguration:processPoolConfiguration.get()] autorelease]];
 
     RetainPtr<WKWebView> webView = webViewForScriptMessageHandlerMultipleHandlerRemovalTest(configuration.get());
@@ -637,5 +634,3 @@ TEST(WKUserContentController, InjectUserScriptImmediately)
     waitForMessages(6);
     compareMessages({"start all", "start all", "end main", "start all", "end main", "start all"});
 }
-
-#endif

@@ -25,16 +25,28 @@
 
 #include "config.h"
 
+#import "InstanceMethodSwizzler.h"
 #import "TestWKWebView.h"
+#import "UIKitSPI.h"
 #import <WebKit/WKPreferencesPrivate.h>
+#import <WebKit/WKPreferencesRef.h>
 
-#if WK_API_ENABLED && PLATFORM(IOS_FAMILY)
+#if PLATFORM(IOS_FAMILY)
+
+static CGRect mainScreenReferenceBoundsOverride(id, SEL)
+{
+    return CGRectMake(0, 0, 320, 568);
+}
 
 TEST(TextAutosizingBoost, ChangeAutosizingBoostAtRuntime)
 {
     static NSString *testMarkup = @"<meta name='viewport' content='width=device-width'><body style='margin: 0'><span id='top'>Hello world</span><br><span id='bottom'>Goodbye world</span></body>";
 
+    InstanceMethodSwizzler screenSizeSwizzler(UIScreen.class, @selector(_referenceBounds), reinterpret_cast<IMP>(mainScreenReferenceBoundsOverride));
+
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 960, 360)]);
+    WKPreferencesSetTextAutosizingEnabled((__bridge WKPreferencesRef)[webView configuration].preferences, true);
+    WKPreferencesSetTextAutosizingUsesIdempotentMode((__bridge WKPreferencesRef)[webView configuration].preferences, false);
     [webView synchronouslyLoadHTMLString:testMarkup];
     CGSize regularSize {
         roundf([[webView objectByEvaluatingJavaScript:@"document.getElementById('top').getBoundingClientRect().width"] floatValue]),
@@ -54,4 +66,4 @@ TEST(TextAutosizingBoost, ChangeAutosizingBoostAtRuntime)
     EXPECT_EQ(38, boostedSize.height);
 }
 
-#endif // WK_API_ENABLED && PLATFORM(IOS_FAMILY)
+#endif // PLATFORM(IOS_FAMILY)

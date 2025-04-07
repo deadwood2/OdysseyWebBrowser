@@ -78,7 +78,7 @@ private:
     void computeIntrinsicDimensions(Length& intrinsicWidth, Length& intrinsicHeight, FloatSize& intrinsicRatio) override;
     FloatSize size() const override;
 
-    ImageDrawResult draw(GraphicsContext&, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator, BlendMode, DecodingMode, ImageOrientationDescription) override;
+    ImageDrawResult draw(GraphicsContext&, const FloatRect& dstRect, const FloatRect& srcRect, const ImagePaintingOptions& = { }) override;
 
     // FIXME: Implement this to be less conservative.
     bool currentFrameKnownToBeOpaque() const override { return false; }

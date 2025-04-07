@@ -41,7 +41,6 @@ Ref<ProcessPoolConfiguration> ProcessPoolConfiguration::createWithLegacyOptions(
     auto configuration = ProcessPoolConfiguration::createWithWebsiteDataStoreConfiguration(WebsiteDataStore::legacyDefaultDataStoreConfiguration());
 
     configuration->m_shouldHaveLegacyDataStore = true;
-    configuration->m_maximumProcessCount = 1;
     configuration->m_cacheModel = WebKit::CacheModel::DocumentViewer;
 
     return configuration;
@@ -55,13 +54,12 @@ Ref<ProcessPoolConfiguration> ProcessPoolConfiguration::createWithWebsiteDataSto
     configuration->m_applicationCacheFlatFileSubdirectoryName = legacyConfiguration.applicationCacheFlatFileSubdirectoryName();
     configuration->m_diskCacheDirectory = legacyConfiguration.networkCacheDirectory();
     configuration->m_mediaCacheDirectory = legacyConfiguration.mediaCacheDirectory();
-    configuration->m_indexedDBDatabaseDirectory = WebsiteDataStore::legacyDefaultIndexedDBDatabaseDirectory();
+    configuration->m_indexedDBDatabaseDirectory = legacyConfiguration.indexedDBDatabaseDirectory();
     configuration->m_localStorageDirectory = legacyConfiguration.localStorageDirectory();
     configuration->m_deviceIdHashSaltsStorageDirectory = legacyConfiguration.deviceIdHashSaltsStorageDirectory();
     configuration->m_mediaKeysStorageDirectory = legacyConfiguration.mediaKeysStorageDirectory();
     configuration->m_resourceLoadStatisticsDirectory = legacyConfiguration.resourceLoadStatisticsDirectory();
     configuration->m_webSQLDatabaseDirectory = legacyConfiguration.webSQLDatabaseDirectory();
-    configuration->m_javaScriptConfigurationDirectory = legacyConfiguration.javaScriptConfigurationDirectory();
 
     return configuration;
 }
@@ -77,7 +75,6 @@ ProcessPoolConfiguration::ProcessPoolConfiguration()
     , m_webSQLDatabaseDirectory(WebsiteDataStore::defaultWebSQLDatabaseDirectory())
     , m_mediaKeysStorageDirectory(WebsiteDataStore::defaultMediaKeysStorageDirectory())
     , m_resourceLoadStatisticsDirectory(WebsiteDataStore::defaultResourceLoadStatisticsDirectory())
-    , m_javaScriptConfigurationDirectory(WebsiteDataStore::defaultJavaScriptConfigurationDirectory())
 {
 }
 
@@ -90,7 +87,6 @@ Ref<ProcessPoolConfiguration> ProcessPoolConfiguration::copy()
     auto copy = this->create();
 
     copy->m_shouldHaveLegacyDataStore = this->m_shouldHaveLegacyDataStore;
-    copy->m_maximumProcessCount = this->m_maximumProcessCount;
     copy->m_cacheModel = this->m_cacheModel;
     copy->m_diskCacheDirectory = this->m_diskCacheDirectory;
     copy->m_diskCacheSpeculativeValidationEnabled = this->m_diskCacheSpeculativeValidationEnabled;
@@ -103,7 +99,6 @@ Ref<ProcessPoolConfiguration> ProcessPoolConfiguration::copy()
     copy->m_deviceIdHashSaltsStorageDirectory = this->m_deviceIdHashSaltsStorageDirectory;
     copy->m_mediaKeysStorageDirectory = this->m_mediaKeysStorageDirectory;
     copy->m_resourceLoadStatisticsDirectory = this->m_resourceLoadStatisticsDirectory;
-    copy->m_javaScriptConfigurationDirectory = this->m_javaScriptConfigurationDirectory;
     copy->m_webSQLDatabaseDirectory = this->m_webSQLDatabaseDirectory;
     copy->m_cachePartitionedURLSchemes = this->m_cachePartitionedURLSchemes;
     copy->m_alwaysRevalidatedURLSchemes = this->m_alwaysRevalidatedURLSchemes;
@@ -117,6 +112,7 @@ Ref<ProcessPoolConfiguration> ProcessPoolConfiguration::copy()
     copy->m_shouldCaptureAudioInUIProcess = this->m_shouldCaptureAudioInUIProcess;
     copy->m_shouldCaptureDisplayInUIProcess = this->m_shouldCaptureDisplayInUIProcess;
     copy->m_isJITEnabled = this->m_isJITEnabled;
+    copy->m_downloadMonitorSpeedMultiplier = this->m_downloadMonitorSpeedMultiplier;
 #if PLATFORM(IOS_FAMILY)
     copy->m_ctDataConnectionServiceType = this->m_ctDataConnectionServiceType;
 #endif
@@ -126,13 +122,13 @@ Ref<ProcessPoolConfiguration> ProcessPoolConfiguration::copy()
     copy->m_alwaysKeepAndReuseSwappedProcesses = this->m_alwaysKeepAndReuseSwappedProcesses;
     copy->m_processSwapsOnWindowOpenWithOpener = this->m_processSwapsOnWindowOpenWithOpener;
     copy->m_isAutomaticProcessWarmingEnabledByClient = this->m_isAutomaticProcessWarmingEnabledByClient;
-#if ENABLE(PROXIMITY_NETWORKING)
-    copy->m_wirelessContextIdentifier = this->m_wirelessContextIdentifier;
-#endif
+    copy->m_usesWebProcessCache = this->m_usesWebProcessCache;
 #if PLATFORM(COCOA)
     copy->m_suppressesConnectionTerminationOnSystemChange = this->m_suppressesConnectionTerminationOnSystemChange;
 #endif
     copy->m_customWebContentServiceBundleIdentifier = this->m_customWebContentServiceBundleIdentifier;
+    copy->m_usesSingleWebProcess = m_usesSingleWebProcess;
+    copy->m_hstsStorageDirectory = m_hstsStorageDirectory;
 
     return copy;
 }

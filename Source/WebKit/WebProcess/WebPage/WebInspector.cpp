@@ -167,7 +167,7 @@ void WebInspector::openInNewTab(const String& urlString)
         return;
 
     Frame& inspectedMainFrame = inspectedPage->mainFrame();
-    FrameLoadRequest frameLoadRequest { *inspectedMainFrame.document(), inspectedMainFrame.document()->securityOrigin(), { urlString }, "_blank"_s, LockHistory::No, LockBackForwardList::No, MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Allow, ShouldOpenExternalURLsPolicy::ShouldNotAllow, InitiatedByMainFrame::Unknown };
+    FrameLoadRequest frameLoadRequest { *inspectedMainFrame.document(), inspectedMainFrame.document()->securityOrigin(), ResourceRequest { urlString }, "_blank"_s, LockHistory::No, LockBackForwardList::No, MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Allow, ShouldOpenExternalURLsPolicy::ShouldNotAllow, InitiatedByMainFrame::Unknown };
 
     NavigationAction action { *inspectedMainFrame.document(), frameLoadRequest.resourceRequest(), frameLoadRequest.initiatedByMainFrame(), NavigationType::LinkClicked };
     Page* newPage = inspectedPage->chrome().createWindow(inspectedMainFrame, frameLoadRequest, { }, action);
@@ -209,19 +209,7 @@ void WebInspector::showResources()
     });
 }
 
-void WebInspector::showTimelines()
-{
-    if (!m_page->corePage())
-        return;
-
-    m_page->corePage()->inspectorController().show();
-
-    whenFrontendConnectionEstablished([=] {
-        m_frontendConnection->send(Messages::WebInspectorUI::ShowTimelines(), 0);
-    });
-}
-
-void WebInspector::showMainResourceForFrame(uint64_t frameIdentifier)
+void WebInspector::showMainResourceForFrame(WebCore::FrameIdentifier frameIdentifier)
 {
     WebFrame* frame = WebProcess::singleton().webFrame(frameIdentifier);
     if (!frame)
@@ -232,7 +220,7 @@ void WebInspector::showMainResourceForFrame(uint64_t frameIdentifier)
 
     m_page->corePage()->inspectorController().show();
 
-    String inspectorFrameIdentifier = m_page->corePage()->inspectorController().pageAgent()->frameId(frame->coreFrame());
+    String inspectorFrameIdentifier = m_page->corePage()->inspectorController().ensurePageAgent().frameId(frame->coreFrame());
 
     whenFrontendConnectionEstablished([=] {
         m_frontendConnection->send(Messages::WebInspectorUI::ShowMainResourceForFrame(inspectorFrameIdentifier), 0);
@@ -244,6 +232,8 @@ void WebInspector::startPageProfiling()
     if (!m_page->corePage())
         return;
 
+    m_page->corePage()->inspectorController().show();
+
     whenFrontendConnectionEstablished([=] {
         m_frontendConnection->send(Messages::WebInspectorUI::StartPageProfiling(), 0);
     });
@@ -253,6 +243,8 @@ void WebInspector::stopPageProfiling()
 {
     if (!m_page->corePage())
         return;
+
+    m_page->corePage()->inspectorController().show();
 
     whenFrontendConnectionEstablished([=] {
         m_frontendConnection->send(Messages::WebInspectorUI::StopPageProfiling(), 0);
@@ -282,6 +274,16 @@ void WebInspector::stopElementSelection()
 void WebInspector::elementSelectionChanged(bool active)
 {
     WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorProxy::ElementSelectionChanged(active), m_page->pageID());
+}
+
+void WebInspector::timelineRecordingChanged(bool active)
+{
+    WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorProxy::TimelineRecordingChanged(active), m_page->pageID());
+}
+
+void WebInspector::setMockCaptureDevicesEnabledOverride(Optional<bool> enabled)
+{
+    WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorProxy::SetMockCaptureDevicesEnabledOverride(enabled), m_page->pageID());
 }
 
 bool WebInspector::canAttachWindow()

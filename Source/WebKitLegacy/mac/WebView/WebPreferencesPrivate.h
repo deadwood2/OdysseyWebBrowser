@@ -62,6 +62,15 @@ typedef enum {
     WebKitFrameFlatteningFullyEnabled
 } WebKitFrameFlattening;
 
+typedef enum : unsigned {
+    WebKitAudioSessionCategoryAmbientSound = 'ambi',
+    WebKitAudioSessionCategorySoloAmbientSound = 'solo',
+    WebKitAudioSessionCategoryMediaPlayback = 'medi',
+    WebKitAudioSessionCategoryRecordAudio = 'reca',
+    WebKitAudioSessionCategoryPlayAndRecord = 'plar',
+    WebKitAudioSessionCategoryAudioProcessing = 'proc',
+} WebKitAudioSessionCategory;
+
 extern NSString *WebPreferencesChangedNotification WEBKIT_DEPRECATED_MAC(10_3, 10_14);
 extern NSString *WebPreferencesRemovedNotification WEBKIT_DEPRECATED_MAC(10_3, 10_14);
 extern NSString *WebPreferencesChangedInternalNotification WEBKIT_DEPRECATED_MAC(10_3, 10_14);
@@ -266,17 +275,11 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 - (BOOL)webGL2Enabled;
 - (void)setWebGL2Enabled:(BOOL)enabled;
 
-- (BOOL)forceSoftwareWebGLRendering;
-- (void)setForceSoftwareWebGLRendering:(BOOL)forced;
-
 - (BOOL)forceLowPowerGPUForWebGL;
 - (void)setForceWebGLUsesLowPower:(BOOL)forceLowPower;
 
 - (BOOL)webGPUEnabled;
 - (void)setWebGPUEnabled:(BOOL)enabled;
-
-- (BOOL)webMetalEnabled;
-- (void)setWebMetalEnabled:(BOOL)enabled;
 
 - (BOOL)accelerated2dCanvasEnabled;
 - (void)setAccelerated2dCanvasEnabled:(BOOL)enabled;
@@ -354,6 +357,9 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 
 - (void)setMediaPlaybackAllowsAirPlay:(BOOL)flag;
 - (BOOL)mediaPlaybackAllowsAirPlay;
+
+- (BOOL)contentChangeObserverEnabled;
+- (void)setContentChangeObserverEnabled:(BOOL)enabled;
 #endif
 
 - (void)_setTextAutosizingEnabled:(BOOL)enabled;
@@ -361,6 +367,9 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 
 - (BOOL)isInheritURIQueryComponentEnabled;
 - (void)setEnableInheritURIQueryComponent:(BOOL)flag;
+
+- (BOOL)_mediaRecorderEnabled;
+- (void)_setMediaRecorderEnabled:(BOOL)flag;
 
 // Other private methods
 #if TARGET_OS_IPHONE
@@ -540,6 +549,9 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 - (void)setCustomPasteboardDataEnabled:(BOOL)flag;
 - (BOOL)customPasteboardDataEnabled;
 
+- (void)setDialogElementEnabled:(BOOL)enabled;
+- (BOOL)dialogElementEnabled;
+
 - (BOOL)cacheAPIEnabled;
 - (void)setCacheAPIEnabled:(BOOL)enabled;
 
@@ -560,6 +572,12 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 
 - (void)setWebAnimationsEnabled:(BOOL)flag;
 - (BOOL)webAnimationsEnabled;
+
+- (void)setPointerEventsEnabled:(BOOL)flag;
+- (BOOL)pointerEventsEnabled;
+
+- (void)setSyntheticEditingCommandsEnabled:(BOOL)flag;
+- (BOOL)syntheticEditingCommandsEnabled;
 
 - (void)setFetchAPIKeepAliveEnabled:(BOOL)flag;
 - (BOOL)fetchAPIKeepAliveEnabled;
@@ -588,7 +606,15 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 - (BOOL)adClickAttributionEnabled;
 - (void)setAdClickAttributionEnabled:(BOOL)flag;
 
-@property (nonatomic) BOOL visualViewportEnabled;
+- (void)setReferrerPolicyAttributeEnabled:(BOOL)flag;
+- (BOOL)referrerPolicyAttributeEnabled;
+
+- (void)setCoreMathMLEnabled:(BOOL)flag;
+- (BOOL)coreMathMLEnabled;
+
+- (void)setLinkPreloadResponsiveImagesEnabled:(BOOL)flag;
+- (BOOL)linkPreloadResponsiveImagesEnabled;
+
 @property (nonatomic) BOOL visualViewportAPIEnabled;
 @property (nonatomic) BOOL CSSOMViewScrollingAPIEnabled;
 @property (nonatomic) BOOL largeImageAsyncDecodingEnabled;
@@ -599,6 +625,7 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic) BOOL allowsInlineMediaPlaybackAfterFullscreen;
 @property (nonatomic) BOOL intersectionObserverEnabled;
 @property (nonatomic) BOOL menuItemElementEnabled;
+@property (nonatomic) BOOL keygenElementEnabled;
 @property (nonatomic) BOOL displayContentsEnabled;
 @property (nonatomic) BOOL userTimingEnabled;
 @property (nonatomic) BOOL resourceTimingEnabled;
@@ -619,6 +646,11 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic) BOOL mediaRecorderEnabled;
 @property (nonatomic) BOOL allowCrossOriginSubresourcesToAskForCredentials;
 @property (nonatomic) BOOL sourceBufferChangeTypeEnabled;
+@property (nonatomic) BOOL referrerPolicyAttributeEnabled;
+@property (nonatomic) BOOL resizeObserverEnabled;
+@property (nonatomic) BOOL coreMathMLEnabled;
+@property (nonatomic) BOOL linkPreloadResponsiveImagesEnabled;
+@property (nonatomic) BOOL lazyImageLoadingEnabled;
 
 #if TARGET_OS_IPHONE
 @property (nonatomic) BOOL quickLookDocumentSavingEnabled;

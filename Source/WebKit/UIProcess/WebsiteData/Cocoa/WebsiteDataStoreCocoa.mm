@@ -30,12 +30,16 @@
 #import "StorageManager.h"
 #import "WebResourceLoadStatisticsStore.h"
 #import "WebsiteDataStoreParameters.h"
+#import <WebCore/RegistrableDomain.h>
 #import <WebCore/RuntimeApplicationChecks.h>
+#import <WebCore/RuntimeEnabledFeatures.h>
 #import <WebCore/SearchPopupMenuCocoa.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <wtf/FileSystem.h>
 #import <wtf/NeverDestroyed.h>
 #import <wtf/ProcessPrivilege.h>
+#import <wtf/URL.h>
+#import <wtf/text/StringBuilder.h>
 
 #if PLATFORM(IOS_FAMILY)
 #import <UIKit/UIApplication.h>
@@ -45,11 +49,11 @@ namespace WebKit {
 
 static id terminationObserver;
 
-static Vector<WebsiteDataStore*>& dataStoresWithStorageManagers()
+static HashSet<WebsiteDataStore*>& dataStores()
 {
-    static NeverDestroyed<Vector<WebsiteDataStore*>> dataStoresWithStorageManagers;
+    static NeverDestroyed<HashSet<WebsiteDataStore*>> dataStores;
 
-    return dataStoresWithStorageManagers;
+    return dataStores;
 }
 
 static NSString * const WebKitNetworkLoadThrottleLatencyMillisecondsDefaultsKey = @"WebKitNetworkLoadThrottleLatencyMilliseconds";
@@ -61,12 +65,30 @@ WebsiteDataStoreParameters WebsiteDataStore::parameters()
     resolveDirectoriesIfNecessary();
 
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-#if ENABLE(RESOURCE_LOAD_STATISTICS) && !RELEASE_LOG_DISABLED
-    static NSString * const WebKitLogCookieInformationDefaultsKey = @"WebKitLogCookieInformation";
-    bool shouldLogCookieInformation = [defaults boolForKey:WebKitLogCookieInformationDefaultsKey];
-#else
     bool shouldLogCookieInformation = false;
+    bool enableResourceLoadStatisticsDebugMode = false;
+    bool enableResourceLoadStatisticsNSURLSessionSwitching = WebCore::RuntimeEnabledFeatures::sharedFeatures().isITPSessionSwitchingEnabled();
+    WebCore::RegistrableDomain resourceLoadStatisticsManualPrevalentResource { };
+    bool enableLegacyTLS = [defaults boolForKey:@"WebKitEnableLegacyTLS"];
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    enableResourceLoadStatisticsDebugMode = [defaults boolForKey:@"ITPDebugMode"];
+    auto* manualPrevalentResource = [defaults stringForKey:@"ITPManualPrevalentResource"];
+    if (manualPrevalentResource) {
+        URL url { URL(), manualPrevalentResource };
+        if (!url.isValid()) {
+            StringBuilder builder;
+            builder.appendLiteral("http://");
+            builder.append(manualPrevalentResource);
+            url = { URL(), builder.toString() };
+        }
+        if (url.isValid())
+            resourceLoadStatisticsManualPrevalentResource = WebCore::RegistrableDomain { url };
+    }
+#if !RELEASE_LOG_DISABLED
+    static NSString * const WebKitLogCookieInformationDefaultsKey = @"WebKitLogCookieInformation";
+    shouldLogCookieInformation = [defaults boolForKey:WebKitLogCookieInformationDefaultsKey];
 #endif
+#endif // ENABLE(RESOURCE_LOAD_STATISTICS)
 
     URL httpProxy = m_configuration->httpProxy();
     URL httpsProxy = m_configuration->httpsProxy();
@@ -88,22 +110,40 @@ WebsiteDataStoreParameters WebsiteDataStore::parameters()
     if (!resourceLoadStatisticsDirectory.isEmpty())
         SandboxExtension::createHandleForReadWriteDirectory(resourceLoadStatisticsDirectory, resourceLoadStatisticsDirectoryHandle);
 
+    auto networkCacheDirectory = resolvedNetworkCacheDirectory();
+    SandboxExtension::Handle networkCacheDirectoryExtensionHandle;
+    if (!networkCacheDirectory.isEmpty())
+        SandboxExtension::createHandleForReadWriteDirectory(networkCacheDirectory, networkCacheDirectoryExtensionHandle);
+
+    bool shouldIncludeLocalhostInResourceLoadStatistics = isSafari;
     WebsiteDataStoreParameters parameters;
     parameters.networkSessionParameters = {
         m_sessionID,
         m_boundInterfaceIdentifier,
         m_allowsCellularAccess,
         m_proxyConfiguration,
-        m_configuration->sourceApplicationBundleIdentifier(),
-        m_configuration->sourceApplicationSecondaryIdentifier(),
+        m_sourceApplicationBundleIdentifier,
+        m_sourceApplicationSecondaryIdentifier,
+        m_allowsTLSFallback ? AllowsTLSFallback::Yes : AllowsTLSFallback::No,
         shouldLogCookieInformation,
         Seconds { [defaults integerForKey:WebKitNetworkLoadThrottleLatencyMillisecondsDefaultsKey] / 1000. },
         WTFMove(httpProxy),
         WTFMove(httpsProxy),
+        enableLegacyTLS,
         WTFMove(resourceLoadStatisticsDirectory),
         WTFMove(resourceLoadStatisticsDirectoryHandle),
-        false
+        false,
+        false,
+        shouldIncludeLocalhostInResourceLoadStatistics,
+        enableResourceLoadStatisticsDebugMode,
+        enableResourceLoadStatisticsNSURLSessionSwitching,
+        m_configuration->deviceManagementRestrictionsEnabled(),
+        m_configuration->allLoadsBlockedByDeviceManagementRestrictionsForTesting(),
+        WTFMove(resourceLoadStatisticsManualPrevalentResource),
+        WTFMove(networkCacheDirectory),
+        WTFMove(networkCacheDirectoryExtensionHandle),
     };
+    networkingHasBegun();
 
     auto cookieFile = resolvedCookieStorageFile();
 
@@ -115,8 +155,8 @@ WebsiteDataStoreParameters WebsiteDataStore::parameters()
     }
 
     parameters.uiProcessCookieStorageIdentifier = m_uiProcessCookieStorageIdentifier;
-    parameters.networkSessionParameters.sourceApplicationBundleIdentifier = m_configuration->sourceApplicationBundleIdentifier();
-    parameters.networkSessionParameters.sourceApplicationSecondaryIdentifier = m_configuration->sourceApplicationSecondaryIdentifier();
+    parameters.networkSessionParameters.sourceApplicationBundleIdentifier = m_sourceApplicationBundleIdentifier;
+    parameters.networkSessionParameters.sourceApplicationSecondaryIdentifier = m_sourceApplicationSecondaryIdentifier;
 
     parameters.pendingCookies = copyToVector(m_pendingCookies);
 
@@ -135,16 +175,20 @@ WebsiteDataStoreParameters WebsiteDataStore::parameters()
         SandboxExtension::createHandleForReadWriteDirectory(parameters.serviceWorkerRegistrationDirectory, parameters.serviceWorkerRegistrationDirectoryExtensionHandle);
 #endif
 
+    parameters.localStorageDirectory = resolvedLocalStorageDirectory();
+    if (!parameters.localStorageDirectory.isEmpty())
+        SandboxExtension::createHandleForReadWriteDirectory(parameters.localStorageDirectory, parameters.localStorageDirectoryExtensionHandle);
+
+    parameters.perOriginStorageQuota = perOriginStorageQuota();
+    parameters.perThirdPartyOriginStorageQuota = perThirdPartyOriginStorageQuota();
+
     return parameters;
 }
 
 void WebsiteDataStore::platformInitialize()
 {
-    if (!m_storageManager)
-        return;
-
     if (!terminationObserver) {
-        ASSERT(dataStoresWithStorageManagers().isEmpty());
+        ASSERT(dataStores().isEmpty());
 
 #if PLATFORM(MAC)
         NSString *notificationName = NSApplicationWillTerminateNotification;
@@ -152,8 +196,7 @@ void WebsiteDataStore::platformInitialize()
         NSString *notificationName = UIApplicationWillTerminateNotification;
 #endif
         terminationObserver = [[NSNotificationCenter defaultCenter] addObserverForName:notificationName object:nil queue:nil usingBlock:^(NSNotification *note) {
-            for (auto& dataStore : dataStoresWithStorageManagers()) {
-                dataStore->m_storageManager->applicationWillTerminate();
+            for (auto& dataStore : dataStores()) {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
                 if (dataStore->m_resourceLoadStatistics)
                     dataStore->m_resourceLoadStatistics->applicationWillTerminate();
@@ -162,8 +205,8 @@ void WebsiteDataStore::platformInitialize()
         }];
     }
 
-    ASSERT(!dataStoresWithStorageManagers().contains(this));
-    dataStoresWithStorageManagers().append(this);
+    ASSERT(!dataStores().contains(this));
+    dataStores().add(this);
 }
 
 void WebsiteDataStore::platformDestroy()
@@ -173,16 +216,10 @@ void WebsiteDataStore::platformDestroy()
         m_resourceLoadStatistics->applicationWillTerminate();
 #endif
 
-    if (!m_storageManager)
-        return;
+    ASSERT(dataStores().contains(this));
+    dataStores().remove(this);
 
-    // FIXME: Rename applicationWillTerminate to something that better indicates what StorageManager does (waits for pending writes to finish).
-    m_storageManager->applicationWillTerminate();
-
-    ASSERT(dataStoresWithStorageManagers().contains(this));
-    dataStoresWithStorageManagers().removeFirst(this);
-
-    if (dataStoresWithStorageManagers().isEmpty()) {
+    if (dataStores().isEmpty()) {
         [[NSNotificationCenter defaultCenter] removeObserver:terminationObserver];
         terminationObserver = nil;
     }

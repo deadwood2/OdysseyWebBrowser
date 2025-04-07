@@ -77,10 +77,10 @@ void CSSFontFace::appendSources(CSSFontFace& fontFace, CSSValueList& srcList, Do
             bool allowDownloading = foundSVGFont || (settings && settings->downloadableBinaryFontsEnabled());
             if (allowDownloading && item.isSupportedFormat() && document) {
                 if (CachedFont* cachedFont = item.cachedFont(document, foundSVGFont, isInitiatingElementInUserAgentShadowTree))
-                    source = std::make_unique<CSSFontFaceSource>(fontFace, item.resource(), cachedFont);
+                    source = makeUnique<CSSFontFaceSource>(fontFace, item.resource(), cachedFont);
             }
         } else
-            source = std::make_unique<CSSFontFaceSource>(fontFace, item.resource(), nullptr, fontFaceElement);
+            source = makeUnique<CSSFontFaceSource>(fontFace, item.resource(), nullptr, fontFaceElement);
 
         if (source)
             fontFace.adoptSource(WTFMove(source));
@@ -120,6 +120,11 @@ bool CSSFontFace::setFamilies(CSSValue& family)
     });
 
     return true;
+}
+
+FontFace* CSSFontFace::existingWrapper()
+{
+    return m_wrapper.get();
 }
 
 static FontSelectionRange calculateWeightRange(CSSValue& value)
@@ -587,6 +592,13 @@ AllowUserInstalledFonts CSSFontFace::allowUserInstalledFonts() const
     if (m_fontSelector && m_fontSelector->document())
         return m_fontSelector->document()->settings().shouldAllowUserInstalledFonts() ? AllowUserInstalledFonts::Yes : AllowUserInstalledFonts::No;
     return AllowUserInstalledFonts::Yes;
+}
+
+bool CSSFontFace::shouldAllowDesignSystemUIFonts() const
+{
+    if (m_fontSelector && m_fontSelector->document())
+        return m_fontSelector->document()->settings().shouldAllowDesignSystemUIFonts();
+    return false;
 }
 
 static Settings::FontLoadTimingOverride fontLoadTimingOverride(CSSFontSelector* fontSelector)

@@ -54,6 +54,7 @@
 #import "WebEditCommandProxy.h"
 #import "WebProcessProxy.h"
 #import "_WKDownloadInternal.h"
+#import <WebCore/DOMPasteAccess.h>
 #import <WebCore/DictionaryLookup.h>
 #import <WebCore/NotImplemented.h>
 #import <WebCore/PlatformScreen.h>
@@ -91,9 +92,8 @@ void PageClientImpl::setViewNeedsDisplay(const Region&)
     ASSERT_NOT_REACHED();
 }
 
-void PageClientImpl::requestScroll(const FloatPoint& scrollPosition, const IntPoint& scrollOrigin, bool isProgrammaticScroll)
+void PageClientImpl::requestScroll(const FloatPoint& scrollPosition, const IntPoint& scrollOrigin)
 {
-    UNUSED_PARAM(isProgrammaticScroll);
     [m_webView _scrollToContentScrollPosition:scrollPosition scrollOrigin:scrollOrigin];
 }
 
@@ -175,6 +175,13 @@ void PageClientImpl::didRelaunchProcess()
     [m_webView _didRelaunchProcess];
 }
 
+#if HAVE(VISIBILITY_PROPAGATION_VIEW)
+void PageClientImpl::didCreateContextForVisibilityPropagation(LayerHostingContextID)
+{
+    [m_contentView _processDidCreateContextForVisibilityPropagation];
+}
+#endif
+
 void PageClientImpl::pageClosed()
 {
     notImplemented();
@@ -208,6 +215,7 @@ void PageClientImpl::decidePolicyForGeolocationPermissionRequest(WebFrameProxy& 
 void PageClientImpl::didStartProvisionalLoadForMainFrame()
 {
     [m_webView _didStartProvisionalLoadForMainFrame];
+    [m_contentView _didStartProvisionalLoadForMainFrame];
     [m_webView _hidePasswordView];
 }
 
@@ -223,7 +231,7 @@ void PageClientImpl::didCommitLoadForMainFrame(const String& mimeType, bool useC
     [m_contentView _didCommitLoadForMainFrame];
 }
 
-void PageClientImpl::handleDownloadRequest(DownloadProxy*)
+void PageClientImpl::handleDownloadRequest(DownloadProxy&)
 {
 }
 
@@ -235,6 +243,11 @@ void PageClientImpl::didChangeContentSize(const WebCore::IntSize&)
 void PageClientImpl::disableDoubleTapGesturesDuringTapIfNecessary(uint64_t requestID)
 {
     [m_contentView _disableDoubleTapGesturesDuringTapIfNecessary:requestID];
+}
+
+void PageClientImpl::handleSmartMagnificationInformationForPotentialTap(uint64_t requestID, const WebCore::FloatRect& renderRect, bool fitEntireRect, double viewportMinimumScale, double viewportMaximumScale)
+{
+    [m_contentView _handleSmartMagnificationInformationForPotentialTap:requestID renderRect:renderRect fitEntireRect:fitEntireRect viewportMinimumScale:viewportMinimumScale viewportMaximumScale:viewportMaximumScale];
 }
 
 double PageClientImpl::minimumZoomScale() const
@@ -358,14 +371,12 @@ void PageClientImpl::makeFirstResponder()
 
 FloatRect PageClientImpl::convertToDeviceSpace(const FloatRect& rect)
 {
-    notImplemented();
-    return FloatRect();
+    return rect;
 }
 
 FloatRect PageClientImpl::convertToUserSpace(const FloatRect& rect)
 {
-    notImplemented();
-    return FloatRect();
+    return rect;
 }
 
 IntPoint PageClientImpl::screenToRootView(const IntPoint& point)
@@ -463,9 +474,15 @@ void PageClientImpl::didPerformDictionaryLookup(const DictionaryPopupInfo& dicti
 #endif // ENABLE(REVEAL)
 }
 
-#if USE(APPLE_INTERNAL_SDK)
-#include <WebKitAdditions/PageClientImplIOSAdditions.mm>
-#endif
+bool PageClientImpl::effectiveAppearanceIsDark() const
+{
+    return [m_webView _effectiveAppearanceIsDark];
+}
+
+bool PageClientImpl::effectiveUserInterfaceLevelIsElevated() const
+{
+    return [m_webView _effectiveUserInterfaceLevelIsElevated];
+}
 
 void PageClientImpl::setRemoteLayerTreeRootNode(RemoteLayerTreeNode* rootNode)
 {
@@ -523,7 +540,7 @@ void PageClientImpl::restorePageCenterAndScale(Optional<WebCore::FloatPoint> cen
     [m_webView _restorePageStateToUnobscuredCenter:center scale:scale];
 }
 
-void PageClientImpl::elementDidFocus(const FocusedElementInformation& nodeInformation, bool userIsInteracting, bool blurPreviousNode, bool changingActivityState, API::Object* userData)
+void PageClientImpl::elementDidFocus(const FocusedElementInformation& nodeInformation, bool userIsInteracting, bool blurPreviousNode, OptionSet<WebCore::ActivityState::Flag> activityStateChanges, API::Object* userData)
 {
     MESSAGE_CHECK(!userData || userData->type() == API::Object::Type::Data);
 
@@ -538,7 +555,12 @@ void PageClientImpl::elementDidFocus(const FocusedElementInformation& nodeInform
         }
     }
 
-    [m_contentView _elementDidFocus:nodeInformation userIsInteracting:userIsInteracting blurPreviousNode:blurPreviousNode changingActivityState:changingActivityState userObject:userObject];
+    [m_contentView _elementDidFocus:nodeInformation userIsInteracting:userIsInteracting blurPreviousNode:blurPreviousNode activityStateChanges:activityStateChanges userObject:userObject];
+}
+
+void PageClientImpl::updateInputContextAfterBlurringAndRefocusingElement()
+{
+    [m_contentView _updateInputContextAfterBlurringAndRefocusingElement];
 }
 
 bool PageClientImpl::isFocusingElement()
@@ -574,7 +596,7 @@ bool PageClientImpl::handleRunOpenPanel(WebPageProxy*, WebFrameProxy*, API::Open
 
 bool PageClientImpl::showShareSheet(const ShareDataWithParsedURL& shareData, WTF::CompletionHandler<void(bool)>&& completionHandler)
 {
-    [m_contentView _showShareSheet:shareData completionHandler:WTFMove(completionHandler)];
+    [m_contentView _showShareSheet:shareData inRect:WTF::nullopt completionHandler:WTFMove(completionHandler)];
     return true;
 }
 
@@ -807,9 +829,14 @@ void PageClientImpl::startDrag(const DragItem& item, const ShareableBitmap::Hand
     [m_contentView _startDrag:ShareableBitmap::create(image)->makeCGImageCopy() item:item];
 }
 
-void PageClientImpl::didConcludeEditDrag(Optional<TextIndicatorData> data)
+void PageClientImpl::willReceiveEditDragSnapshot()
 {
-    [m_contentView _didConcludeEditDrag:data];
+    [m_contentView _willReceiveEditDragSnapshot];
+}
+
+void PageClientImpl::didReceiveEditDragSnapshot(Optional<TextIndicatorData> data)
+{
+    [m_contentView _didReceiveEditDragSnapshot:data];
 }
 
 void PageClientImpl::didChangeDragCaretRect(const IntRect& previousCaretRect, const IntRect& caretRect)
@@ -837,6 +864,11 @@ void PageClientImpl::requestPasswordForQuickLookDocument(const String& fileName,
 }
 #endif
 
+void PageClientImpl::requestDOMPasteAccess(const WebCore::IntRect& elementRect, const String& originIdentifier, CompletionHandler<void(WebCore::DOMPasteAccessResponse)>&& completionHandler)
+{
+    [m_contentView _requestDOMPasteAccessWithElementRect:elementRect originIdentifier:originIdentifier completionHandler:WTFMove(completionHandler)];
+}
+
 #if HAVE(PENCILKIT)
 RetainPtr<WKDrawingView> PageClientImpl::createDrawingView(WebCore::GraphicsLayer::EmbeddedViewID embeddedViewID)
 {
@@ -849,7 +881,17 @@ void PageClientImpl::cancelPointersForGestureRecognizer(UIGestureRecognizer* ges
 {
     [m_contentView cancelPointersForGestureRecognizer:gestureRecognizer];
 }
+
+WTF::Optional<unsigned> PageClientImpl::activeTouchIdentifierForGestureRecognizer(UIGestureRecognizer* gestureRecognizer)
+{
+    return [m_contentView activeTouchIdentifierForGestureRecognizer:gestureRecognizer];
+}
 #endif
+
+void PageClientImpl::handleAutocorrectionContext(const WebAutocorrectionContext& context)
+{
+    [m_contentView _handleAutocorrectionContext:context];
+}
 
 } // namespace WebKit
 

@@ -95,12 +95,6 @@ using namespace WebCore;
 
 DEFINE_DEBUG_ONLY_GLOBAL(WTF::RefCountedLeakCounter, webFrameCounter, ("WebFrame"));
 
-static uint64_t generateFrameID()
-{
-    static uint64_t uniqueFrameID = 1;
-    return uniqueFrameID++;
-}
-
 static uint64_t generateListenerID()
 {
     static uint64_t uniqueListenerID = 1;
@@ -110,7 +104,7 @@ static uint64_t generateListenerID()
 Ref<WebFrame> WebFrame::createWithCoreMainFrame(WebPage* page, WebCore::Frame* coreFrame)
 {
     auto frame = create(std::unique_ptr<WebFrameLoaderClient>(static_cast<WebFrameLoaderClient*>(&coreFrame->loader().client())));
-    page->send(Messages::WebPageProxy::DidCreateMainFrame(frame->frameID()), page->pageID());
+    page->send(Messages::WebPageProxy::DidCreateMainFrame(frame->frameID()));
 
     frame->m_coreFrame = coreFrame;
     frame->m_coreFrame->tree().setName(String());
@@ -120,8 +114,8 @@ Ref<WebFrame> WebFrame::createWithCoreMainFrame(WebPage* page, WebCore::Frame* c
 
 Ref<WebFrame> WebFrame::createSubframe(WebPage* page, const String& frameName, HTMLFrameOwnerElement* ownerElement)
 {
-    auto frame = create(std::make_unique<WebFrameLoaderClient>());
-    page->send(Messages::WebPageProxy::DidCreateSubframe(frame->frameID()), page->pageID());
+    auto frame = create(makeUnique<WebFrameLoaderClient>());
+    page->send(Messages::WebPageProxy::DidCreateSubframe(frame->frameID()));
 
     auto coreFrame = Frame::create(page->corePage(), ownerElement, frame->m_frameLoaderClient.get());
     frame->m_coreFrame = coreFrame.ptr();
@@ -148,7 +142,7 @@ Ref<WebFrame> WebFrame::create(std::unique_ptr<WebFrameLoaderClient> frameLoader
 
 WebFrame::WebFrame(std::unique_ptr<WebFrameLoaderClient> frameLoaderClient)
     : m_frameLoaderClient(WTFMove(frameLoaderClient))
-    , m_frameID(generateFrameID())
+    , m_frameID(FrameIdentifier::generate())
 {
     m_frameLoaderClient->setWebFrame(this);
     WebProcess::singleton().addWebFrame(m_frameID, this);
@@ -520,11 +514,17 @@ bool WebFrame::allowsFollowingLink(const URL& url) const
 
 JSGlobalContextRef WebFrame::jsContext()
 {
+    if (!m_coreFrame)
+        return nullptr;
+
     return toGlobalRef(m_coreFrame->script().globalObject(mainThreadNormalWorld())->globalExec());
 }
 
 JSGlobalContextRef WebFrame::jsContextForWorld(InjectedBundleScriptWorld* world)
 {
+    if (!m_coreFrame)
+        return nullptr;
+
     return toGlobalRef(m_coreFrame->script().globalObject(world->coreWorld())->globalExec());
 }
 
@@ -638,7 +638,7 @@ RefPtr<InjectedBundleHitTestResult> WebFrame::hitTest(const IntPoint point) cons
     if (!m_coreFrame)
         return nullptr;
 
-    return InjectedBundleHitTestResult::create(m_coreFrame->eventHandler().hitTestResultAtPoint(point, HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::IgnoreClipping | HitTestRequest::DisallowUserAgentShadowContent));
+    return InjectedBundleHitTestResult::create(m_coreFrame->eventHandler().hitTestResultAtPoint(point, HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::IgnoreClipping | HitTestRequest::DisallowUserAgentShadowContent | HitTestRequest::AllowChildFrameContent));
 }
 
 bool WebFrame::getDocumentBackgroundColor(double* red, double* green, double* blue, double* alpha)
@@ -738,7 +738,7 @@ JSValueRef WebFrame::jsWrapperForWorld(InjectedBundleRangeHandle* rangeHandle, I
 
 String WebFrame::counterValue(JSObjectRef element)
 {
-    if (!toJS(element)->inherits<JSElement>(*toJS(element)->vm()))
+    if (!toJS(element)->inherits<JSElement>(toJS(element)->vm()))
         return String();
 
     return counterValueForElement(&jsCast<JSElement*>(toJS(element))->wrapped());
@@ -813,7 +813,7 @@ void WebFrame::setTextDirection(const String& direction)
 
 void WebFrame::documentLoaderDetached(uint64_t navigationID)
 {
-    if (auto * page = this->page())
+    if (auto* page = this->page())
         page->send(Messages::WebPageProxy::DidDestroyNavigation(navigationID));
 }
 
@@ -850,6 +850,9 @@ RefPtr<ShareableBitmap> WebFrame::createSelectionSnapshot() const
     // FIXME: We should consider providing a way to use subpixel antialiasing for the snapshot
     // if we're compositing this image onto a solid color (e.g. the modern find indicator style).
     auto graphicsContext = sharedSnapshot->createGraphicsContext();
+    if (!graphicsContext)
+        return nullptr;
+
     float deviceScaleFactor = coreFrame()->page()->deviceScaleFactor();
     graphicsContext->scale(deviceScaleFactor);
     graphicsContext->drawConsumingImageBuffer(WTFMove(snapshot), FloatPoint());

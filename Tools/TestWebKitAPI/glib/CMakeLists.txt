@@ -22,7 +22,7 @@ set(WebKitGLibAPITests_SYSTEM_INCLUDE_DIRECTORIES
 )
 
 set(WebKitAPITest_LIBRARIES
-    JavaScriptCore
+    WebKit::JavaScriptCore
     WebKit
 )
 
@@ -34,7 +34,7 @@ set(WebKitGLibAPITest_LIBRARIES
 )
 
 set(WebKitGLibAPITestExtension_LIBRARIES
-    JavaScriptCore
+    WebKit::JavaScriptCore
     WebKit
     ${GLIB_LIBRARIES}
 )
@@ -146,6 +146,7 @@ ADD_WK2_TEST(TestWebKitUserContentManager ${TOOLS_DIR}/TestWebKitAPI/Tests/WebKi
 ADD_WK2_TEST(TestWebsiteData ${TOOLS_DIR}/TestWebKitAPI/Tests/WebKitGLib/TestWebsiteData.cpp)
 ADD_WK2_TEST(TestConsoleMessage ${TOOLS_DIR}/TestWebKitAPI/Tests/WebKitGLib/TestConsoleMessage.cpp)
 ADD_WK2_TEST(TestDOMElement ${TOOLS_DIR}/TestWebKitAPI/Tests/WebKitGLib/TestDOMElement.cpp)
+ADD_WK2_TEST(TestGeolocationManager ${TOOLS_DIR}/TestWebKitAPI/Tests/WebKitGLib/TestGeolocationManager.cpp)
 
 # FIXME: Enable for WPE
 if (PORT STREQUAL "GTK")
@@ -157,7 +158,7 @@ macro(ADD_WPE_QT_TEST test_name)
     set_target_properties(${test_name} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/TestWebKitAPI/WPEQt
         AUTOMOC ON
-        CXX_STANDARD 14
+        CXX_STANDARD 17
     )
     target_compile_definitions(${test_name} PUBLIC QT_NO_KEYWORDS=1)
     target_link_libraries(${test_name} ${WPEQtAPITest_LIBRARIES})

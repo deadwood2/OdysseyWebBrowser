@@ -54,10 +54,6 @@
 #import "WebGPULayer.h"
 #endif
 
-#if ENABLE(WEBMETAL)
-#import "WebMetalLayer.h"
-#endif
-
 #if PLATFORM(IOS_FAMILY)
 #import "FontAntialiasingStateSaver.h"
 #import "WAKWindow.h"
@@ -67,9 +63,7 @@
 #import "ThemeMac.h"
 #endif
 
-SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
-
-SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVPlayerLayer)
+#import <pal/cocoa/AVFoundationSoftLink.h>
 
 namespace WebCore {
 
@@ -202,7 +196,12 @@ static NSString *toCAFilterType(PlatformCALayer::FilterType type)
 
 PlatformCALayer::LayerType PlatformCALayerCocoa::layerTypeForPlatformLayer(PlatformLayer* layer)
 {
-    if ([layer isKindOfClass:getAVPlayerLayerClass()] || [layer isKindOfClass:objc_getClass("WebVideoContainerLayer")])
+    if ([layer isKindOfClass:PAL::getAVPlayerLayerClass()])
+        return LayerTypeAVPlayerLayer;
+
+    if ([layer isKindOfClass:objc_getClass("WebVideoContainerLayer")]
+        && layer.sublayers.count == 1
+        && [layer.sublayers[0] isKindOfClass:PAL::getAVPlayerLayerClass()])
         return LayerTypeAVPlayerLayer;
 
     if ([layer isKindOfClass:[WebGLLayer class]])
@@ -210,11 +209,6 @@ PlatformCALayer::LayerType PlatformCALayerCocoa::layerTypeForPlatformLayer(Platf
 
 #if ENABLE(WEBGPU)
     if ([layer isKindOfClass:[WebGPULayer class]])
-        return LayerTypeContentsProvidedLayer;
-#endif
-
-#if ENABLE(WEBMETAL)
-    if ([layer isKindOfClass:[WebMetalLayer class]])
         return LayerTypeContentsProvidedLayer;
 #endif
 
@@ -267,10 +261,10 @@ PlatformCALayerCocoa::PlatformCALayerCocoa(LayerType layerType, PlatformCALayerC
         layerClass = [WebTiledBackingLayer class];
         break;
     case LayerTypeAVPlayerLayer:
-        layerClass = getAVPlayerLayerClass();
+        layerClass = PAL::getAVPlayerLayerClass();
         break;
     case LayerTypeContentsProvidedLayer:
-        // We don't create PlatformCALayerCocoas wrapped around WebGLLayers, WebGPULayers or WebMetalLayers.
+        // We don't create PlatformCALayerCocoas wrapped around WebGLLayers or WebGPULayers.
         ASSERT_NOT_REACHED();
         break;
     case LayerTypeShapeLayer:
@@ -319,7 +313,7 @@ void PlatformCALayerCocoa::commonInit()
         WebTiledBackingLayer* tiledBackingLayer = static_cast<WebTiledBackingLayer*>(m_layer.get());
         TileController* tileController = [tiledBackingLayer createTileController:this];
 
-        m_customSublayers = std::make_unique<PlatformCALayerList>(tileController->containerLayers());
+        m_customSublayers = makeUnique<PlatformCALayerList>(tileController->containerLayers());
     }
 
     END_BLOCK_OBJC_EXCEPTIONS
@@ -364,7 +358,7 @@ Ref<PlatformCALayer> PlatformCALayerCocoa::clone(PlatformCALayerClient* owner) c
     newLayer->updateCustomAppearance(customAppearance());
 
     if (type == LayerTypeAVPlayerLayer) {
-        ASSERT([newLayer->platformLayer() isKindOfClass:getAVPlayerLayerClass()]);
+        ASSERT([newLayer->platformLayer() isKindOfClass:PAL::getAVPlayerLayerClass()]);
 
         AVPlayerLayer *destinationPlayerLayer = static_cast<PlatformCALayerCocoa&>(newLayer.get()).avPlayerLayer();
         AVPlayerLayer *sourcePlayerLayer = avPlayerLayer();
@@ -953,7 +947,7 @@ FloatRoundedRect PlatformCALayerCocoa::shapeRoundedRect() const
 void PlatformCALayerCocoa::setShapeRoundedRect(const FloatRoundedRect& roundedRect)
 {
     ASSERT(m_layerType == LayerTypeShapeLayer);
-    m_shapeRoundedRect = std::make_unique<FloatRoundedRect>(roundedRect);
+    m_shapeRoundedRect = makeUnique<FloatRoundedRect>(roundedRect);
 
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     Path shapePath;
@@ -1275,12 +1269,12 @@ AVPlayerLayer *PlatformCALayerCocoa::avPlayerLayer() const
     if (layerType() != LayerTypeAVPlayerLayer)
         return nil;
 
-    if ([platformLayer() isKindOfClass:getAVPlayerLayerClass()])
+    if ([platformLayer() isKindOfClass:PAL::getAVPlayerLayerClass()])
         return static_cast<AVPlayerLayer *>(platformLayer());
 
     if ([platformLayer() isKindOfClass:objc_getClass("WebVideoContainerLayer")]) {
         ASSERT([platformLayer() sublayers].count == 1);
-        ASSERT([[platformLayer() sublayers][0] isKindOfClass:getAVPlayerLayerClass()]);
+        ASSERT([[platformLayer() sublayers][0] isKindOfClass:PAL::getAVPlayerLayerClass()]);
         return static_cast<AVPlayerLayer *>([platformLayer() sublayers][0]);
     }
 

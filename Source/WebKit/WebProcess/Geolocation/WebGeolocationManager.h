@@ -35,7 +35,7 @@
 
 namespace WebCore {
 class Geolocation;
-class GeolocationPosition;
+class GeolocationPositionData;
 }
 
 namespace WebKit {
@@ -44,6 +44,7 @@ class WebProcess;
 class WebPage;
 
 class WebGeolocationManager : public WebProcessSupplement, public IPC::MessageReceiver {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(WebGeolocationManager);
 public:
     explicit WebGeolocationManager(WebProcess&);
@@ -63,7 +64,7 @@ private:
     bool isUpdating() const { return !m_pageSet.isEmpty(); }
     bool isHighAccuracyEnabled() const { return !m_highAccuracyPageSet.isEmpty(); }
 
-    void didChangePosition(const WebCore::GeolocationPosition&);
+    void didChangePosition(const WebCore::GeolocationPositionData&);
     void didFailToDeterminePosition(const String& errorMessage);
 #if PLATFORM(IOS_FAMILY)
     void resetPermissions();

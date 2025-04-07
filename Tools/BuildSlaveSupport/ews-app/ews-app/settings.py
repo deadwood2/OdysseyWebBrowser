@@ -33,6 +33,8 @@ https://docs.djangoproject.com/en/1.11/ref/settings/
 
 import os
 
+is_test_mode_enabled = os.getenv('EWS_PRODUCTION') is None
+
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -43,8 +45,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('EWS_SECRET_KEY', 'secret')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
+if is_test_mode_enabled:
+    # SECURITY WARNING: don't run with debug turned on in production!
+    DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
@@ -95,12 +99,23 @@ WSGI_APPLICATION = 'ews-app.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/1.11/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+if is_test_mode_enabled:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql_psycopg2',
+            'NAME': os.environ.get('DB_NAME', None),
+            'USER': os.environ.get('DB_USERNAME', None),
+            'PASSWORD': os.environ.get('DB_PASSWORD', None),
+            'HOST': os.environ.get('DB_URL', None),
+        }
+    }
 
 
 # Password validation

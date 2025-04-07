@@ -45,7 +45,6 @@ void NetworkProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << canHandleHTTPSServerTrustEvaluation;
     encoder << diskCacheDirectory;
     encoder << diskCacheDirectoryExtensionHandle;
-    encoder << shouldEnableNetworkCacheEfficacyLogging;
 #if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
     encoder << shouldEnableNetworkCacheSpeculativeRevalidation;
 #endif
@@ -86,13 +85,14 @@ void NetworkProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << urlSchemesRegisteredAsCORSEnabled;
     encoder << urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest;
 
-#if ENABLE(PROXIMITY_NETWORKING)
-    encoder << wirelessContextIdentifier;
-#endif
-
 #if ENABLE(SERVICE_WORKER)
     encoder << serviceWorkerRegistrationDirectory << serviceWorkerRegistrationDirectoryExtensionHandle << urlSchemesServiceWorkersCanHandle << shouldDisableServiceWorkerProcessTerminationDelay;
 #endif
+    encoder << shouldEnableITPDatabase;
+    encoder << downloadMonitorSpeedMultiplier;
+    encoder << enableAdClickAttributionDebugMode;
+    encoder << hstsStorageDirectory;
+    encoder << hstsStorageDirectoryExtensionHandle;
 }
 
 bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProcessCreationParameters& result)
@@ -111,8 +111,6 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
         return false;
     result.diskCacheDirectoryExtensionHandle = WTFMove(*diskCacheDirectoryExtensionHandle);
 
-    if (!decoder.decode(result.shouldEnableNetworkCacheEfficacyLogging))
-        return false;
 #if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
     if (!decoder.decode(result.shouldEnableNetworkCacheSpeculativeRevalidation))
         return false;
@@ -195,11 +193,6 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
     if (!decoder.decode(result.urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest))
         return false;
 
-#if ENABLE(PROXIMITY_NETWORKING)
-    if (!decoder.decode(result.wirelessContextIdentifier))
-        return false;
-#endif
-
 #if ENABLE(SERVICE_WORKER)
     if (!decoder.decode(result.serviceWorkerRegistrationDirectory))
         return false;
@@ -217,6 +210,24 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
         return false;
 #endif
 
+    if (!decoder.decode(result.shouldEnableITPDatabase))
+        return false;
+
+    Optional<uint32_t> downloadMonitorSpeedMultiplier;
+    decoder >> downloadMonitorSpeedMultiplier;
+    if (!downloadMonitorSpeedMultiplier)
+        return false;
+    result.downloadMonitorSpeedMultiplier = *downloadMonitorSpeedMultiplier;
+
+    if (!decoder.decode(result.enableAdClickAttributionDebugMode))
+        return false;
+
+    if (!decoder.decode(result.hstsStorageDirectory))
+        return false;
+
+    if (!decoder.decode(result.hstsStorageDirectoryExtensionHandle))
+        return false;
+    
     return true;
 }
 

@@ -32,6 +32,7 @@
 #include "NetworkLoadParameters.h"
 #include "NetworkProcess.h"
 #include <WebCore/CrossOriginAccessControl.h>
+#include <WebCore/SecurityOrigin.h>
 
 #define RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(m_parameters.sessionID.isAlwaysOnLoggingAllowed(), Network, "%p - NetworkCORSPreflightChecker::" fmt, this, ##__VA_ARGS__)
 
@@ -62,8 +63,7 @@ void NetworkCORSPreflightChecker::startPreflight()
 {
     RELEASE_LOG_IF_ALLOWED("startPreflight");
 
-    NetworkLoadParameters loadParameters;
-    loadParameters.sessionID = m_parameters.sessionID;
+    NetworkLoadParameters loadParameters { m_parameters.sessionID };
     loadParameters.request = createAccessControlPreflightRequest(m_parameters.originalRequest, m_parameters.sourceOrigin, m_parameters.referrer);
     if (!m_parameters.userAgent.isNull())
         loadParameters.request.setHTTPHeaderField(HTTPHeaderName::UserAgent, m_parameters.userAgent);
@@ -101,7 +101,7 @@ void NetworkCORSPreflightChecker::didReceiveChallenge(WebCore::AuthenticationCha
         return;
     }
 
-    m_networkProcess->authenticationManager().didReceiveAuthenticationChallenge(m_parameters.pageID, m_parameters.frameID, challenge, WTFMove(completionHandler));
+    m_networkProcess->authenticationManager().didReceiveAuthenticationChallenge(m_parameters.sessionID, m_parameters.pageID, m_parameters.frameID, challenge, WTFMove(completionHandler));
 }
 
 void NetworkCORSPreflightChecker::didReceiveResponse(WebCore::ResourceResponse&& response, ResponseCompletionHandler&& completionHandler)
@@ -159,6 +159,12 @@ void NetworkCORSPreflightChecker::wasBlocked()
 void NetworkCORSPreflightChecker::cannotShowURL()
 {
     RELEASE_LOG_IF_ALLOWED("cannotShowURL");
+    m_completionCallback(ResourceError { errorDomainWebKitInternal, 0, m_parameters.originalRequest.url(), "Preflight response was blocked"_s, ResourceError::Type::AccessControl });
+}
+
+void NetworkCORSPreflightChecker::wasBlockedByRestrictions()
+{
+    RELEASE_LOG_IF_ALLOWED("wasBlockedByRestrictions");
     m_completionCallback(ResourceError { errorDomainWebKitInternal, 0, m_parameters.originalRequest.url(), "Preflight response was blocked"_s, ResourceError::Type::AccessControl });
 }
 

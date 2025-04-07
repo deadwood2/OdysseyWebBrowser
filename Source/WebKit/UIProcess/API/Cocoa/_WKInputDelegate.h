@@ -25,8 +25,6 @@
 
 #import <WebKit/WKFoundation.h>
 
-#if WK_API_ENABLED
-
 #import <Foundation/Foundation.h>
 
 @class UITextSuggestion;
@@ -57,11 +55,11 @@ typedef NS_ENUM(NSInteger, _WKFocusStartsInputSessionPolicy) {
 - (void)_webView:(WKWebView *)webView willStartInputSession:(id <_WKFormInputSession>)inputSession WK_API_AVAILABLE(ios(12.0));
 - (BOOL)_webView:(WKWebView *)webView focusRequiresStrongPasswordAssistance:(id <_WKFocusedElementInfo>)info WK_API_AVAILABLE(ios(12.0));
 
+- (NSDictionary<id, NSString *> *)_webViewAdditionalContextForStrongPasswordAssistance:(WKWebView *)webView WK_API_AVAILABLE(ios(WK_IOS_TBA));
+
 - (BOOL)_webView:(WKWebView *)webView shouldRevealFocusOverlayForInputSession:(id <_WKFormInputSession>)inputSession WK_API_AVAILABLE(ios(12.0));
 - (CGFloat)_webView:(WKWebView *)webView focusedElementContextViewHeightForFittingSize:(CGSize)fittingSize inputSession:(id <_WKFormInputSession>)inputSession WK_API_AVAILABLE(ios(12.0));
 - (UIView *)_webView:(WKWebView *)webView focusedElementContextViewForInputSession:(id <_WKFormInputSession>)inputSession WK_API_AVAILABLE(ios(12.0));
 #endif
 
 @end
-
-#endif // WK_API_ENABLED

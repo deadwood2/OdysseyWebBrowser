@@ -27,14 +27,12 @@
 
 #include <WebKit/_WKWebsiteDataStoreDelegate.h>
 
-#if WK_API_ENABLED
-
 @interface TestWebsiteDataStoreDelegate: NSObject <_WKWebsiteDataStoreDelegate> {
 @private
     BOOL _shouldAllowRaisingQuota;
+    BOOL _shouldAllowAnySSLCertificate;
 }
 - (instancetype)init;
 - (void)setAllowRaisingQuota:(BOOL)shouldAllowRaisingQuota;
+- (void)setAllowAnySSLCertificate:(BOOL)shouldAllowAnySSLCertificate;
 @end
-
-#endif

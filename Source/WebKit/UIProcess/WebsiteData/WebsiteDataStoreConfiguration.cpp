@@ -39,16 +39,20 @@ Ref<WebsiteDataStoreConfiguration> WebsiteDataStoreConfiguration::copy()
 {
     auto copy = WebsiteDataStoreConfiguration::create();
 
+    copy->m_isPersistent = this->m_isPersistent;
+
     copy->m_cacheStorageDirectory = this->m_cacheStorageDirectory;
-    copy->m_cacheStoragePerOriginQuota = this->m_cacheStoragePerOriginQuota;
+    copy->m_perOriginStorageQuota = this->m_perOriginStorageQuota;
     copy->m_networkCacheDirectory = this->m_networkCacheDirectory;
     copy->m_applicationCacheDirectory = this->m_applicationCacheDirectory;
     copy->m_applicationCacheFlatFileSubdirectoryName = this->m_applicationCacheFlatFileSubdirectoryName;
-    copy->m_webStorageDirectory = this->m_webStorageDirectory;
     copy->m_mediaCacheDirectory = this->m_mediaCacheDirectory;
     copy->m_indexedDBDatabaseDirectory = this->m_indexedDBDatabaseDirectory;
     copy->m_serviceWorkerRegistrationDirectory = this->m_serviceWorkerRegistrationDirectory;
     copy->m_webSQLDatabaseDirectory = this->m_webSQLDatabaseDirectory;
+#if USE(GLIB)
+    copy->m_hstsStorageDirectory = this->m_hstsStorageDirectory;
+#endif
     copy->m_localStorageDirectory = this->m_localStorageDirectory;
     copy->m_mediaKeysStorageDirectory = this->m_mediaKeysStorageDirectory;
     copy->m_deviceIdHashSaltsStorageDirectory = this->m_deviceIdHashSaltsStorageDirectory;
@@ -59,6 +63,8 @@ Ref<WebsiteDataStoreConfiguration> WebsiteDataStoreConfiguration::copy()
     copy->m_sourceApplicationSecondaryIdentifier = this->m_sourceApplicationSecondaryIdentifier;
     copy->m_httpProxy = this->m_httpProxy;
     copy->m_httpsProxy = this->m_httpsProxy;
+    copy->m_deviceManagementRestrictionsEnabled = this->m_deviceManagementRestrictionsEnabled;
+    copy->m_allLoadsBlockedByDeviceManagementRestrictionsForTesting = this->m_allLoadsBlockedByDeviceManagementRestrictionsForTesting;
 
     return copy;
 }

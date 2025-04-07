@@ -26,9 +26,10 @@
 #include "config.h"
 #include "StorageAreaMap.h"
 
+#include "NetworkProcessConnection.h"
 #include "StorageAreaImpl.h"
 #include "StorageAreaMapMessages.h"
-#include "StorageManagerMessages.h"
+#include "StorageManagerSetMessages.h"
 #include "StorageNamespaceImpl.h"
 #include "WebPage.h"
 #include "WebPageGroupProxy.h"
@@ -47,58 +48,25 @@
 namespace WebKit {
 using namespace WebCore;
 
-static uint64_t generateStorageMapID()
-{
-    static uint64_t storageMapID;
-    return ++storageMapID;
-}
-
 Ref<StorageAreaMap> StorageAreaMap::create(StorageNamespaceImpl* storageNamespace, Ref<WebCore::SecurityOrigin>&& securityOrigin)
 {
     return adoptRef(*new StorageAreaMap(storageNamespace, WTFMove(securityOrigin)));
 }
 
 StorageAreaMap::StorageAreaMap(StorageNamespaceImpl* storageNamespace, Ref<WebCore::SecurityOrigin>&& securityOrigin)
-    : m_storageNamespace(*storageNamespace)
-    , m_storageMapID(generateStorageMapID())
+    : m_storageNamespace(storageNamespace)
     , m_storageType(storageNamespace->storageType())
-    , m_storageNamespaceID(storageNamespace->storageNamespaceID())
     , m_quotaInBytes(storageNamespace->quotaInBytes())
     , m_securityOrigin(WTFMove(securityOrigin))
     , m_currentSeed(0)
     , m_hasPendingClear(false)
-    , m_hasPendingGetValues(false)
 {
-    switch (m_storageType) {
-    case StorageType::Local:
-    case StorageType::TransientLocal:
-        if (SecurityOrigin* topLevelOrigin = storageNamespace->topLevelOrigin())
-            WebProcess::singleton().parentProcessConnection()->send(Messages::StorageManager::CreateTransientLocalStorageMap(m_storageMapID, storageNamespace->storageNamespaceID(), topLevelOrigin->data(), m_securityOrigin->data()), 0);
-        else
-            WebProcess::singleton().parentProcessConnection()->send(Messages::StorageManager::CreateLocalStorageMap(m_storageMapID, storageNamespace->storageNamespaceID(), m_securityOrigin->data()), 0);
-
-        break;
-
-    case StorageType::Session:
-        WebProcess::singleton().parentProcessConnection()->send(Messages::StorageManager::CreateSessionStorageMap(m_storageMapID, storageNamespace->storageNamespaceID(), m_securityOrigin->data()), 0);
-        break;
-
-    case StorageType::EphemeralLocal:
-        // The UI process is not involved for EphemeralLocal storages.
-        return;
-    }
-
-    WebProcess::singleton().addMessageReceiver(Messages::StorageAreaMap::messageReceiverName(), m_storageMapID, *this);
+    connect();
 }
 
 StorageAreaMap::~StorageAreaMap()
 {
-    if (m_storageType != StorageType::EphemeralLocal) {
-        WebProcess::singleton().parentProcessConnection()->send(Messages::StorageManager::DestroyStorageMap(m_storageMapID), 0);
-        WebProcess::singleton().removeMessageReceiver(Messages::StorageAreaMap::messageReceiverName(), m_storageMapID);
-    }
-
-    m_storageNamespace->didDestroyStorageAreaMap(*this);
+    disconnect();
 }
 
 unsigned StorageAreaMap::length()
@@ -139,7 +107,7 @@ void StorageAreaMap::setItem(Frame* sourceFrame, StorageAreaImpl* sourceArea, co
 
     m_pendingValueChanges.add(key);
 
-    WebProcess::singleton().parentProcessConnection()->send(Messages::StorageManager::SetItem(m_storageMapID, sourceArea->storageAreaID(), m_currentSeed, key, value, sourceFrame->document()->url()), 0);
+    WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::StorageManagerSet::SetItem(*m_storageMapID, sourceArea->identifier(), m_currentSeed, key, value, sourceFrame->document()->url()), 0);
 }
 
 void StorageAreaMap::removeItem(WebCore::Frame* sourceFrame, StorageAreaImpl* sourceArea, const String& key)
@@ -155,16 +123,18 @@ void StorageAreaMap::removeItem(WebCore::Frame* sourceFrame, StorageAreaImpl* so
 
     m_pendingValueChanges.add(key);
 
-    WebProcess::singleton().parentProcessConnection()->send(Messages::StorageManager::RemoveItem(m_storageMapID, sourceArea->storageAreaID(), m_currentSeed, key, sourceFrame->document()->url()), 0);
+    WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::StorageManagerSet::RemoveItem(*m_storageMapID, sourceArea->identifier(), m_currentSeed, key, sourceFrame->document()->url()), 0);
 }
 
 void StorageAreaMap::clear(WebCore::Frame* sourceFrame, StorageAreaImpl* sourceArea)
 {
+    connect();
+
     resetValues();
 
     m_hasPendingClear = true;
     m_storageMap = StorageMap::create(m_quotaInBytes);
-    WebProcess::singleton().parentProcessConnection()->send(Messages::StorageManager::Clear(m_storageMapID, sourceArea->storageAreaID(), m_currentSeed, sourceFrame->document()->url()), 0);
+    WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::StorageManagerSet::Clear(*m_storageMapID, sourceArea->identifier(), m_currentSeed, sourceFrame->document()->url()), 0);
 }
 
 bool StorageAreaMap::contains(const String& key)
@@ -180,12 +150,13 @@ void StorageAreaMap::resetValues()
 
     m_pendingValueChanges.clear();
     m_hasPendingClear = false;
-    m_hasPendingGetValues = false;
     m_currentSeed++;
 }
 
 void StorageAreaMap::loadValuesIfNeeded()
 {
+    connect();
+
     if (m_storageMap)
         return;
 
@@ -193,22 +164,10 @@ void StorageAreaMap::loadValuesIfNeeded()
     // FIXME: This should use a special sendSync flag to indicate that we don't want to process incoming messages while waiting for a reply.
     // (This flag does not yet exist). Since loadValuesIfNeeded() ends up being called from within JavaScript code, processing incoming synchronous messages
     // could lead to weird reentrency bugs otherwise.
-    WebProcess::singleton().parentProcessConnection()->sendSync(Messages::StorageManager::GetValues(m_storageMapID, m_currentSeed), Messages::StorageManager::GetValues::Reply(values), 0);
+    WebProcess::singleton().ensureNetworkProcessConnection().connection().sendSync(Messages::StorageManagerSet::GetValues(*m_storageMapID), Messages::StorageManagerSet::GetValues::Reply(values), 0);
 
     m_storageMap = StorageMap::create(m_quotaInBytes);
-    m_storageMap->importItems(values);
-
-    // We want to ignore all changes until we get the DidGetValues message.
-    m_hasPendingGetValues = true;
-}
-
-void StorageAreaMap::didGetValues(uint64_t storageMapSeed)
-{
-    if (m_currentSeed != storageMapSeed)
-        return;
-
-    ASSERT(m_hasPendingGetValues);
-    m_hasPendingGetValues = false;
+    m_storageMap->importItems(WTFMove(values));
 }
 
 void StorageAreaMap::didSetItem(uint64_t storageMapSeed, const String& key, bool quotaError)
@@ -263,8 +222,8 @@ void StorageAreaMap::applyChange(const String& key, const String& newValue)
 {
     ASSERT(!m_storageMap || m_storageMap->hasOneRef());
 
-    // There's a clear pending or getValues pending we don't want to apply any changes until we get the corresponding DidClear/DidGetValues messages.
-    if (m_hasPendingClear || m_hasPendingGetValues)
+    // There is at least one clear pending we don't want to apply any changes until we get the corresponding DidClear messages.
+    if (m_hasPendingClear)
         return;
 
     if (!key) {
@@ -302,17 +261,17 @@ void StorageAreaMap::applyChange(const String& key, const String& newValue)
     m_storageMap->setItemIgnoringQuota(key, newValue);
 }
 
-void StorageAreaMap::dispatchStorageEvent(uint64_t sourceStorageAreaID, const String& key, const String& oldValue, const String& newValue, const String& urlString)
+void StorageAreaMap::dispatchStorageEvent(const Optional<StorageAreaImplIdentifier>& storageAreaImplID, const String& key, const String& oldValue, const String& newValue, const String& urlString)
 {
-    if (!sourceStorageAreaID) {
+    if (!storageAreaImplID) {
         // This storage event originates from another process so we need to apply the change to our storage area map.
         applyChange(key, newValue);
     }
 
     if (storageType() == StorageType::Session)
-        dispatchSessionStorageEvent(sourceStorageAreaID, key, oldValue, newValue, urlString);
+        dispatchSessionStorageEvent(storageAreaImplID, key, oldValue, newValue, urlString);
     else
-        dispatchLocalStorageEvent(sourceStorageAreaID, key, oldValue, newValue, urlString);
+        dispatchLocalStorageEvent(storageAreaImplID, key, oldValue, newValue, urlString);
 }
 
 void StorageAreaMap::clearCache()
@@ -320,13 +279,11 @@ void StorageAreaMap::clearCache()
     resetValues();
 }
 
-void StorageAreaMap::dispatchSessionStorageEvent(uint64_t sourceStorageAreaID, const String& key, const String& oldValue, const String& newValue, const String& urlString)
+void StorageAreaMap::dispatchSessionStorageEvent(const Optional<StorageAreaImplIdentifier>& storageAreaImplID, const String& key, const String& oldValue, const String& newValue, const String& urlString)
 {
-    ASSERT(storageType() == StorageType::Session);
-
     // Namespace IDs for session storage namespaces are equivalent to web page IDs
     // so we can get the right page here.
-    WebPage* webPage = WebProcess::singleton().webPage(m_storageNamespaceID);
+    WebPage* webPage = WebProcess::singleton().webPage(m_storageNamespace->sessionStoragePageID());
     if (!webPage)
         return;
 
@@ -343,7 +300,7 @@ void StorageAreaMap::dispatchSessionStorageEvent(uint64_t sourceStorageAreaID, c
             continue;
 
         StorageAreaImpl& storageArea = static_cast<StorageAreaImpl&>(storage->area());
-        if (storageArea.storageAreaID() == sourceStorageAreaID) {
+        if (storageArea.identifier() == storageAreaImplID) {
             // This is the storage area that caused the event to be dispatched.
             continue;
         }
@@ -354,13 +311,14 @@ void StorageAreaMap::dispatchSessionStorageEvent(uint64_t sourceStorageAreaID, c
     StorageEventDispatcher::dispatchSessionStorageEventsToFrames(*page, frames, key, oldValue, newValue, urlString, m_securityOrigin->data());
 }
 
-void StorageAreaMap::dispatchLocalStorageEvent(uint64_t sourceStorageAreaID, const String& key, const String& oldValue, const String& newValue, const String& urlString)
+void StorageAreaMap::dispatchLocalStorageEvent(const Optional<StorageAreaImplIdentifier>& storageAreaImplID, const String& key, const String& oldValue, const String& newValue, const String& urlString)
 {
     ASSERT(isLocalStorage(storageType()));
 
     Vector<RefPtr<Frame>> frames;
 
-    PageGroup& pageGroup = *WebProcess::singleton().webPageGroup(m_storageNamespaceID)->corePageGroup();
+    // Namespace IDs for local storage namespaces are equivalent to web page group IDs.
+    PageGroup& pageGroup = *WebProcess::singleton().webPageGroup(m_storageNamespace->pageGroupID())->corePageGroup();
     const HashSet<Page*>& pages = pageGroup.pages();
     for (HashSet<Page*>::const_iterator it = pages.begin(), end = pages.end(); it != end; ++it) {
         for (Frame* frame = &(*it)->mainFrame(); frame; frame = frame->tree().traverseNext()) {
@@ -373,7 +331,7 @@ void StorageAreaMap::dispatchLocalStorageEvent(uint64_t sourceStorageAreaID, con
                 continue;
 
             StorageAreaImpl& storageArea = static_cast<StorageAreaImpl&>(storage->area());
-            if (storageArea.storageAreaID() == sourceStorageAreaID) {
+            if (storageArea.identifier() == storageAreaImplID) {
                 // This is the storage area that caused the event to be dispatched.
                 continue;
             }
@@ -383,6 +341,41 @@ void StorageAreaMap::dispatchLocalStorageEvent(uint64_t sourceStorageAreaID, con
     }
 
     StorageEventDispatcher::dispatchLocalStorageEventsToFrames(pageGroup, frames, key, oldValue, newValue, urlString, m_securityOrigin->data());
+}
+
+void StorageAreaMap::connect()
+{
+    if (m_storageMapID)
+        return;
+
+    switch (m_storageType) {
+    case StorageType::Local:
+    case StorageType::TransientLocal:
+        if (SecurityOrigin* topLevelOrigin = m_storageNamespace->topLevelOrigin())
+            WebProcess::singleton().ensureNetworkProcessConnection().connection().sendSync(Messages::StorageManagerSet::ConnectToTransientLocalStorageArea(m_storageNamespace->sessionID(), m_storageNamespace->storageNamespaceID(), topLevelOrigin->data(), m_securityOrigin->data()), Messages::StorageManagerSet::ConnectToTransientLocalStorageArea::Reply(m_storageMapID), 0);
+        else
+            WebProcess::singleton().ensureNetworkProcessConnection().connection().sendSync(Messages::StorageManagerSet::ConnectToLocalStorageArea(m_storageNamespace->sessionID(), m_storageNamespace->storageNamespaceID(), m_securityOrigin->data()), Messages::StorageManagerSet::ConnectToLocalStorageArea::Reply(m_storageMapID), 0);
+        break;
+    case StorageType::Session:
+        WebProcess::singleton().ensureNetworkProcessConnection().connection().sendSync(Messages::StorageManagerSet::ConnectToSessionStorageArea(m_storageNamespace->sessionID(), m_storageNamespace->storageNamespaceID(), m_securityOrigin->data()), Messages::StorageManagerSet::ConnectToSessionStorageArea::Reply(m_storageMapID), 0);
+    }
+
+    if (m_storageMapID)
+        WebProcess::singleton().registerStorageAreaMap(*this);
+}
+
+void StorageAreaMap::disconnect()
+{
+    if (!m_storageMapID)
+        return;
+
+    resetValues();
+    WebProcess::singleton().unregisterStorageAreaMap(*this);
+
+    if (auto networkProcessConnection = WebProcess::singleton().existingNetworkProcessConnection())
+        networkProcessConnection->connection().send(Messages::StorageManagerSet::DisconnectFromStorageArea(*m_storageMapID), 0);
+
+    m_storageMapID = { };
 }
 
 } // namespace WebKit

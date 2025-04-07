@@ -25,11 +25,12 @@
 
 WI.AuditTestBase = class AuditTestBase extends WI.Object
 {
-    constructor(name, {description, supports, disabled} = {})
+    constructor(name, {description, supports, setup, disabled} = {})
     {
         console.assert(typeof name === "string");
         console.assert(!description || typeof description === "string");
         console.assert(supports === undefined || typeof supports === "number");
+        console.assert(!setup || typeof setup === "string");
         console.assert(disabled === undefined || typeof disabled === "boolean");
 
         super();
@@ -40,6 +41,7 @@ WI.AuditTestBase = class AuditTestBase extends WI.Object
         this._name = name;
         this._description = description || null;
         this._supports = supports;
+        this._setup = setup || null;
 
         this._supported = true;
         if (typeof this._supports === "number") {
@@ -101,6 +103,45 @@ WI.AuditTestBase = class AuditTestBase extends WI.Object
         this.dispatchEventToListeners(WI.AuditTestBase.Event.DisabledChanged);
     }
 
+    async setup()
+    {
+        if (!this._setup)
+            return;
+
+        let agentCommandFunction = null;
+        let agentCommandArguments = {};
+        if (InspectorBackend.domains.Audit) {
+            agentCommandFunction = AuditAgent.run;
+            agentCommandArguments.test = this._setup;
+        } else {
+            agentCommandFunction = RuntimeAgent.evaluate;
+            agentCommandArguments.expression = `(function() { "use strict"; return eval(\`(${this._setup.replace(/`/g, "\\`")})\`)(); })()`;
+            agentCommandArguments.objectGroup = AuditTestBase.ObjectGroup;
+            agentCommandArguments.doNotPauseOnExceptionsAndMuteConsole = true;
+        }
+
+        try {
+            let response = await agentCommandFunction.invoke(agentCommandArguments);
+
+            if (response.result.type === "object" && response.result.className === "Promise") {
+                if (WI.RuntimeManager.supportsAwaitPromise())
+                    response = await RuntimeAgent.awaitPromise(response.result.objectId);
+                else {
+                    response = null;
+                    WI.AuditManager.synthesizeError(WI.UIString("Async audits are not supported."));
+                }
+            }
+
+            if (response) {
+                let remoteObject = WI.RemoteObject.fromPayload(response.result, WI.mainTarget);
+                if (response.wasThrown || (remoteObject.type === "object" && remoteObject.subtype === "error"))
+                    WI.AuditManager.synthesizeError(remoteObject.description);
+            }
+        } catch (error) {
+            WI.AuditManager.synthesizeError(error.message);
+        }
+    }
+
     async start()
     {
         // Called from WI.AuditManager.
@@ -150,8 +191,8 @@ WI.AuditTestBase = class AuditTestBase extends WI.Object
 
         this._result = null;
 
-        if (!options.suppressResultClearedEvent)
-            this.dispatchEventToListeners(WI.AuditTestBase.Event.ResultCleared);
+        if (!options.suppressResultChangedEvent)
+            this.dispatchEventToListeners(WI.AuditTestBase.Event.ResultChanged);
 
         return true;
     }
@@ -171,6 +212,8 @@ WI.AuditTestBase = class AuditTestBase extends WI.Object
             json.description = this._description;
         if (typeof this._supports === "number")
             json.supports = this._supports;
+        if (this._setup)
+            json.setup = this._setup;
         if (key === WI.ObjectStore.toJSONSymbol)
             json.disabled = this.disabled;
         return json;
@@ -185,13 +228,15 @@ WI.AuditTestBase = class AuditTestBase extends WI.Object
 };
 
 // Keep this in sync with Inspector::Protocol::Audit::VERSION.
-WI.AuditTestBase.Version = 1;
+WI.AuditTestBase.Version = 3;
+
+WI.AuditTestBase.ObjectGroup = "audit";
 
 WI.AuditTestBase.Event = {
     Completed: "audit-test-base-completed",
     DisabledChanged: "audit-test-base-disabled-changed",
     Progress: "audit-test-base-progress",
-    ResultCleared: "audit-test-base-result-cleared",
+    ResultChanged: "audit-test-base-result-changed",
     Scheduled: "audit-test-base-scheduled",
     Stopping: "audit-test-base-stopping",
 };

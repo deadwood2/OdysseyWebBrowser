@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -57,18 +57,14 @@
 #import <wtf/text/Base64.h>
 
 #import <pal/cf/CoreMediaSoftLink.h>
-
-typedef AVMetadataItem AVMetadataItemType;
-SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
-SOFT_LINK_CLASS(AVFoundation, AVMetadataItem)
-#define AVMetadataItem getAVMetadataItemClass()
+#import <pal/cocoa/AVFoundationSoftLink.h>
 
 namespace WebCore {
 using namespace PAL;
 
 #if PLATFORM(IOS_FAMILY)
 static JSValue *jsValueWithValueInContext(id, JSContext *);
-static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItemType *, JSContext *);
+static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItem *, JSContext *);
 #endif
 
 static String quickTimePluginReplacementScript()
@@ -158,7 +154,7 @@ bool QuickTimePluginReplacement::ensureReplacementScriptInjected()
     auto scope = DECLARE_CATCH_SCOPE(vm);
     JSC::ExecState* exec = globalObject->globalExec();
     
-    JSC::JSValue replacementFunction = globalObject->get(exec, JSC::Identifier::fromString(exec, "createPluginReplacement"));
+    JSC::JSValue replacementFunction = globalObject->get(exec, JSC::Identifier::fromString(vm, "createPluginReplacement"));
     if (replacementFunction.isFunction(vm))
         return true;
     
@@ -189,7 +185,7 @@ bool QuickTimePluginReplacement::installReplacement(ShadowRoot& root)
     JSC::ExecState* exec = globalObject->globalExec();
 
     // Lookup the "createPluginReplacement" function.
-    JSC::JSValue replacementFunction = globalObject->get(exec, JSC::Identifier::fromString(exec, "createPluginReplacement"));
+    JSC::JSValue replacementFunction = globalObject->get(exec, JSC::Identifier::fromString(vm, "createPluginReplacement"));
     if (replacementFunction.isUndefinedOrNull())
         return false;
     JSC::JSObject* replacementObject = replacementFunction.toObject(exec);
@@ -213,7 +209,7 @@ bool QuickTimePluginReplacement::installReplacement(ShadowRoot& root)
     }
 
     // Get the <video> created to replace the plug-in.
-    JSC::JSValue value = replacement.get(exec, JSC::Identifier::fromString(exec, "video"));
+    JSC::JSValue value = replacement.get(exec, JSC::Identifier::fromString(vm, "video"));
     if (!scope.exception() && !value.isUndefinedOrNull())
         m_mediaElement = JSHTMLVideoElement::toWrapped(vm, value);
 
@@ -224,7 +220,7 @@ bool QuickTimePluginReplacement::installReplacement(ShadowRoot& root)
     }
 
     // Get the scripting interface.
-    value = replacement.get(exec, JSC::Identifier::fromString(exec, "scriptObject"));
+    value = replacement.get(exec, JSC::Identifier::fromString(vm, "scriptObject"));
     if (!scope.exception() && !value.isUndefinedOrNull()) {
         m_scriptObject = value.toObject(exec);
         scope.assertNoException();
@@ -329,13 +325,13 @@ static JSValue *jsValueWithValueInContext(id value, JSContext *context)
         return jsValueWithArrayInContext(value, context);
     else if ([value isKindOfClass:[NSData class]])
         return jsValueWithDataInContext(value, emptyString(), context);
-    else if ([value isKindOfClass:[AVMetadataItem class]])
+    else if ([value isKindOfClass:PAL::getAVMetadataItemClass()])
         return jsValueWithAVMetadataItemInContext(value, context);
 
     return nil;
 }
 
-static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItemType *item, JSContext *context)
+static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItem *item, JSContext *context)
 {
     NSMutableDictionary* dictionary = [NSMutableDictionary dictionaryWithDictionary:[item extraAttributes]];
 

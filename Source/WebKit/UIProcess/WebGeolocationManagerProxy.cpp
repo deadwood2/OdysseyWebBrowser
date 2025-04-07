@@ -46,7 +46,7 @@ Ref<WebGeolocationManagerProxy> WebGeolocationManagerProxy::create(WebProcessPoo
 
 WebGeolocationManagerProxy::WebGeolocationManagerProxy(WebProcessPool* processPool)
     : WebContextSupplement(processPool)
-    , m_provider(std::make_unique<API::GeolocationProvider>())
+    , m_provider(makeUnique<API::GeolocationProvider>())
 {
     WebContextSupplement::processPool()->addMessageReceiver(Messages::WebGeolocationManagerProxy::messageReceiverName(), *this);
 }
@@ -54,7 +54,7 @@ WebGeolocationManagerProxy::WebGeolocationManagerProxy(WebProcessPool* processPo
 void WebGeolocationManagerProxy::setProvider(std::unique_ptr<API::GeolocationProvider>&& provider)
 {
     if (!provider)
-        m_provider = std::make_unique<API::GeolocationProvider>();
+        m_provider = makeUnique<API::GeolocationProvider>();
     else
         m_provider = WTFMove(provider);
 }
@@ -88,10 +88,12 @@ void WebGeolocationManagerProxy::derefWebContextSupplement()
 
 void WebGeolocationManagerProxy::providerDidChangePosition(WebGeolocationPosition* position)
 {
+    m_lastPosition = position->corePosition();
+
     if (!processPool())
         return;
 
-    processPool()->sendToAllProcesses(Messages::WebGeolocationManager::DidChangePosition(position->corePosition()));
+    processPool()->sendToAllProcesses(Messages::WebGeolocationManager::DidChangePosition(m_lastPosition.value()));
 }
 
 void WebGeolocationManagerProxy::providerDidFailToDeterminePosition(const String& errorMessage)
@@ -116,7 +118,8 @@ void WebGeolocationManagerProxy::startUpdating(IPC::Connection& connection)
     if (!wasUpdating) {
         m_provider->setEnableHighAccuracy(*this, isHighAccuracyEnabled());
         m_provider->startUpdating(*this);
-    }
+    } else if (m_lastPosition)
+        connection.send(Messages::WebGeolocationManager::DidChangePosition(m_lastPosition.value()), 0);
 }
 
 void WebGeolocationManagerProxy::stopUpdating(IPC::Connection& connection)

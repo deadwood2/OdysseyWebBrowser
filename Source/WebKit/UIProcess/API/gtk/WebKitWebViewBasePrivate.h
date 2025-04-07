@@ -71,6 +71,8 @@ void webkitWebViewBaseEnterAcceleratedCompositingMode(WebKitWebViewBase*, const 
 void webkitWebViewBaseUpdateAcceleratedCompositingMode(WebKitWebViewBase*, const WebKit::LayerTreeContext&);
 void webkitWebViewBaseExitAcceleratedCompositingMode(WebKitWebViewBase*);
 bool webkitWebViewBaseMakeGLContextCurrent(WebKitWebViewBase*);
+void webkitWebViewBaseWillSwapWebProcess(WebKitWebViewBase*);
+void webkitWebViewBaseDidExitWebProcess(WebKitWebViewBase*);
 void webkitWebViewBaseDidRelaunchWebProcess(WebKitWebViewBase*);
 void webkitWebViewBasePageClosed(WebKitWebViewBase*);
 
@@ -78,13 +80,15 @@ void webkitWebViewBasePageClosed(WebKitWebViewBase*);
 WebKit::DragAndDropHandler& webkitWebViewBaseDragAndDropHandler(WebKitWebViewBase*);
 #endif
 
-#if HAVE(GTK_GESTURES)
 WebKit::GestureController& webkitWebViewBaseGestureController(WebKitWebViewBase*);
-#endif
 
 RefPtr<WebKit::ViewSnapshot> webkitWebViewBaseTakeViewSnapshot(WebKitWebViewBase*);
 
-WebKit::ViewGestureController& webkitWebViewBaseViewGestureController(WebKitWebViewBase*);
+void webkitWebViewBaseSetEnableBackForwardNavigationGesture(WebKitWebViewBase*, bool enabled);
+WebKit::ViewGestureController* webkitWebViewBaseViewGestureController(WebKitWebViewBase*);
+
+bool webkitWebViewBaseBeginBackSwipeForTesting(WebKitWebViewBase*);
+bool webkitWebViewBaseCompleteBackSwipeForTesting(WebKitWebViewBase*);
 
 void webkitWebViewBaseDidStartProvisionalLoadForMainFrame(WebKitWebViewBase*);
 void webkitWebViewBaseDidFirstVisuallyNonEmptyLayoutForMainFrame(WebKitWebViewBase*);
@@ -92,3 +96,9 @@ void webkitWebViewBaseDidFinishLoadForMainFrame(WebKitWebViewBase*);
 void webkitWebViewBaseDidFailLoadForMainFrame(WebKitWebViewBase*);
 void webkitWebViewBaseDidSameDocumentNavigationForMainFrame(WebKitWebViewBase*, WebKit::SameDocumentNavigationType);
 void webkitWebViewBaseDidRestoreScrollPosition(WebKitWebViewBase*);
+
+void webkitWebViewBaseShowEmojiChooser(WebKitWebViewBase*, const WebCore::IntRect&, CompletionHandler<void(String)>&&);
+
+#if USE(WPE_RENDERER)
+int webkitWebViewBaseRenderHostFileDescriptor(WebKitWebViewBase*);
+#endif

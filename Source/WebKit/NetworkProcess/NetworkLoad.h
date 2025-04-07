@@ -52,6 +52,7 @@ public:
     bool isAllowedToAskUserForCredentials() const;
 
     const WebCore::ResourceRequest& currentRequest() const { return m_currentRequest; }
+    void updateRequestAfterRedirection(WebCore::ResourceRequest&) const;
 
     const NetworkLoadParameters& parameters() const { return m_parameters; }
 
@@ -79,6 +80,7 @@ private:
     void didSendData(uint64_t totalBytesSent, uint64_t totalBytesExpectedToSend) final;
     void wasBlocked() final;
     void cannotShowURL() final;
+    void wasBlockedByRestrictions() final;
 
     void notifyDidReceiveResponse(WebCore::ResourceResponse&&, ResponseCompletionHandler&&);
     void throttleDelayCompleted();

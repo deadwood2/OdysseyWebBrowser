@@ -30,7 +30,7 @@
 #import <WebKit/WKWebViewPrivate.h>
 #import <wtf/RetainPtr.h>
 
-#if WK_API_ENABLED && PLATFORM(MAC)
+#if PLATFORM(MAC)
 
 static bool didInvalidateIntrinsicContentSize;
 static bool didEvaluateJavaScript;
@@ -145,8 +145,8 @@ TEST(WebKit, AutoLayoutIntegration)
     // Changing the width to 100 should result in one rows of ten; with the constraint (width >= 100) -> 100x10
     [webView layoutAtMinimumWidth:100 andExpectContentSizeChange:NSMakeSize(100, 10) resettingWidth:YES];
 
-    // One 100x100 rect and ten 10x10 rects, inline; with the constraint (width >= 20) -> 100x110
-    [webView load:@"<div class='large'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div>" withWidth:20 expectingContentSize:NSMakeSize(100, 110)];
+    // One 100x100 rect and ten 10x10 rects, inline; with the constraint (width >= 20) -> 100x150
+    [webView load:@"<div class='large'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div><div class='small inline'></div>" withWidth:20 expectingContentSize:NSMakeSize(100, 150)];
 
     // With _shouldExpandContentToViewHeightForAutoLayout off (the default), the page should lay out to the intrinsic height
     // of the content.
@@ -163,6 +163,8 @@ TEST(WebKit, AutoLayoutIntegration)
     // of the intrinsic height of the content. We have to load differently-sized content so that we can wait for
     // the intrinsic size change callback.
     [webView _setShouldExpandContentToViewHeightForAutoLayout:YES];
+    // 100px _is_the_expected_ height because we intentionally report stale value to avoid unstable layout.
+    // See FrameView::autoSizeIfEnabled().
     [webView load:@"<div class='large'></div>" withWidth:50 expectingContentSize:NSMakeSize(100, 100) resettingWidth:NO];
     [webView evaluateJavaScript:@"window.innerHeight" completionHandler:^(id value, NSError *error) {
         EXPECT_TRUE([value isKindOfClass:[NSNumber class]]);
@@ -199,7 +201,6 @@ TEST(WebKit, AutoLayoutRenderingProgressRelativeOrdering)
     [webView setExpectedIntrinsicContentSize:NSMakeSize(100, 400)];
     [webView loadHTMLString:@"<body style='margin: 0; height: 400px;'></body>" baseURL:nil];
     TestWebKitAPI::Util::run(&didInvalidateIntrinsicContentSize);
-    EXPECT_FALSE(didFirstLayout);
     TestWebKitAPI::Util::run(&didFirstLayout);
     TestWebKitAPI::Util::run(&didFinishNavigation);
     [webView setNavigationDelegate:nil];

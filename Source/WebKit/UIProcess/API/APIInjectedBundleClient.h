@@ -26,7 +26,9 @@
 #pragma once
 
 #include "APIObject.h"
+#include <wtf/CompletionHandler.h>
 #include <wtf/Forward.h>
+#include <wtf/RefPtr.h>
 
 namespace WebKit {
 class WebProcessPool;
@@ -35,11 +37,12 @@ class WebProcessPool;
 namespace API {
 
 class InjectedBundleClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     virtual ~InjectedBundleClient() = default;
 
     virtual void didReceiveMessageFromInjectedBundle(WebKit::WebProcessPool&, const WTF::String&, API::Object*) { }
-    virtual void didReceiveSynchronousMessageFromInjectedBundle(WebKit::WebProcessPool&, const WTF::String&, API::Object*, RefPtr<API::Object>&) { }
+    virtual void didReceiveSynchronousMessageFromInjectedBundle(WebKit::WebProcessPool&, const WTF::String&, API::Object*, CompletionHandler<void(RefPtr<API::Object>)>&& completionHandler) { completionHandler(nullptr); }
     virtual RefPtr<API::Object> getInjectedBundleInitializationUserData(WebKit::WebProcessPool&) { return nullptr; }
 };
 

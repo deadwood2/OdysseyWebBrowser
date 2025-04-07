@@ -35,14 +35,15 @@
 namespace WebKit {
 using namespace WebCore;
 
-Ref<WebBackForwardListItem> WebBackForwardListItem::create(BackForwardListItemState&& backForwardListItemState, uint64_t pageID)
+Ref<WebBackForwardListItem> WebBackForwardListItem::create(BackForwardListItemState&& backForwardListItemState, PageIdentifier pageID)
 {
     return adoptRef(*new WebBackForwardListItem(WTFMove(backForwardListItemState), pageID));
 }
 
-WebBackForwardListItem::WebBackForwardListItem(BackForwardListItemState&& backForwardListItemState, uint64_t pageID)
+WebBackForwardListItem::WebBackForwardListItem(BackForwardListItemState&& backForwardListItemState, PageIdentifier pageID)
     : m_itemState(WTFMove(backForwardListItemState))
     , m_pageID(pageID)
+    , m_lastProcessIdentifier(m_itemState.identifier.processIdentifier)
 {
     auto result = allItems().add(m_itemState.identifier, this);
     ASSERT_UNUSED(result, result.isNewEntry);
@@ -165,6 +166,11 @@ void WebBackForwardListItem::setSuspendedPage(SuspendedPageProxy* page)
 
     removeSuspendedPageFromProcessPool();
     m_suspendedPage = makeWeakPtr(page);
+}
+
+SuspendedPageProxy* WebBackForwardListItem::suspendedPage() const
+{
+    return m_suspendedPage.get();
 }
 
 void WebBackForwardListItem::removeSuspendedPageFromProcessPool()

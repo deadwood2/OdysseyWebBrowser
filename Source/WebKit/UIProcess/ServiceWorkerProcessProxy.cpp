@@ -43,17 +43,17 @@
 namespace WebKit {
 using namespace WebCore;
 
-Ref<ServiceWorkerProcessProxy> ServiceWorkerProcessProxy::create(WebProcessPool& pool, const SecurityOriginData& securityOrigin, WebsiteDataStore& store)
+Ref<ServiceWorkerProcessProxy> ServiceWorkerProcessProxy::create(WebProcessPool& pool, const RegistrableDomain& registrableDomain, WebsiteDataStore& store)
 {
-    auto proxy = adoptRef(*new ServiceWorkerProcessProxy { pool, securityOrigin, store });
+    auto proxy = adoptRef(*new ServiceWorkerProcessProxy { pool, registrableDomain, store });
     proxy->connect();
     return proxy;
 }
 
-ServiceWorkerProcessProxy::ServiceWorkerProcessProxy(WebProcessPool& pool, const SecurityOriginData& securityOrigin, WebsiteDataStore& store)
-    : WebProcessProxy { pool, store, IsPrewarmed::No }
-    , m_securityOrigin(securityOrigin)
-    , m_serviceWorkerPageID(generatePageID())
+ServiceWorkerProcessProxy::ServiceWorkerProcessProxy(WebProcessPool& pool, const RegistrableDomain& registrableDomain, WebsiteDataStore& store)
+    : WebProcessProxy { pool, &store, IsPrewarmed::No }
+    , m_registrableDomain(registrableDomain)
+    , m_serviceWorkerPageID(PageIdentifier::generate())
 {
 }
 
@@ -72,7 +72,7 @@ void ServiceWorkerProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions&
     WebProcessProxy::getLaunchOptions(launchOptions);
 
     launchOptions.extraInitializationData.add("service-worker-process"_s, "1"_s);
-    launchOptions.extraInitializationData.add("security-origin"_s, securityOrigin().toString());
+    launchOptions.extraInitializationData.add("registrable-domain"_s, registrableDomain().string());
 }
 
 void ServiceWorkerProcessProxy::start(const WebPreferencesStore& store, Optional<PAL::SessionID> initialSessionID)
@@ -88,31 +88,6 @@ void ServiceWorkerProcessProxy::setUserAgent(const String& userAgent)
 void ServiceWorkerProcessProxy::updatePreferencesStore(const WebPreferencesStore& store)
 {
     send(Messages::WebSWContextManagerConnection::UpdatePreferencesStore { store }, 0);
-}
-
-void ServiceWorkerProcessProxy::didReceiveAuthenticationChallenge(uint64_t pageID, uint64_t frameID, Ref<AuthenticationChallengeProxy>&& challenge)
-{
-    UNUSED_PARAM(pageID);
-    UNUSED_PARAM(frameID);
-
-    // FIXME: Expose an API to delegate the actual decision to the application layer.
-    auto& protectionSpace = challenge->core().protectionSpace();
-    if (protectionSpace.authenticationScheme() == WebCore::ProtectionSpaceAuthenticationSchemeServerTrustEvaluationRequested && processPool().allowsAnySSLCertificateForServiceWorker()) {
-        auto credential = WebCore::Credential("accept server trust"_s, emptyString(), WebCore::CredentialPersistenceNone);
-        challenge->listener().completeChallenge(AuthenticationChallengeDisposition::UseCredential, credential);
-        return;
-    }
-    notImplemented();
-    challenge->listener().completeChallenge(AuthenticationChallengeDisposition::PerformDefaultHandling);
-}
-
-void ServiceWorkerProcessProxy::didFinishLaunching(ProcessLauncher* launcher, IPC::Connection::Identifier connectionIdentifier)
-{
-    WebProcessProxy::didFinishLaunching(launcher, connectionIdentifier);
-
-    // Prevent App Nap for Service Worker processes.
-    // FIXME: Ideally, the Service Worker process would app nap when all its clients app nap (http://webkit.org/b/185626).
-    setProcessSuppressionEnabled(false);
 }
 
 } // namespace WebKit

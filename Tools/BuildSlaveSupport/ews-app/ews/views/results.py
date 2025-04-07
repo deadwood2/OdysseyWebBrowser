@@ -24,6 +24,7 @@ from __future__ import unicode_literals
 
 import json
 import logging
+import os
 
 from django.http import HttpResponse
 from django.shortcuts import render
@@ -42,6 +43,10 @@ class Results(View):
     def post(self, request):
         data = json.loads(request.body)
 
+        if data.get('EWS_API_KEY') != os.getenv('EWS_API_KEY', None):
+            _log.error('Incorrect API Key {}. Host: {}. Ignoring data.'.format(data.get('EWS_API_KEY'), data.get('hostname')))
+            return HttpResponse('Incorrect API Key received')
+
         if data.get('type') == u'ews-build':
             return self.build_event(data)
 
@@ -59,7 +64,8 @@ class Results(View):
         if not patch_id or patch_id < 1:
             return HttpResponse("Invalid patch id: {}.".format(patch_id))
 
-        Build.save_build(patch_id=int(patch_id), build_id=data['build_id'], builder_id=data['builder_id'], number=data['number'], result=data['result'],
+        Build.save_build(patch_id=int(patch_id), hostname=data['hostname'], build_id=data['build_id'], builder_id=data['builder_id'], builder_name=data['builder_name'],
+                   builder_display_name=data['builder_display_name'], number=data['number'], result=data['result'],
                    state_string=data['state_string'], started_at=data['started_at'], complete_at=data['complete_at'])
         return HttpResponse("Saved data for patch: {}.\n".format(patch_id))
 
@@ -67,7 +73,7 @@ class Results(View):
         if not self.is_valid_result(data):
             return HttpResponse("Incomplete data.")
 
-        Step.save_step(step_id=data['step_id'], build_id=data['build_id'], result=data['result'],
+        Step.save_step(hostname=data['hostname'], step_id=data['step_id'], build_id=data['build_id'], result=data['result'],
                    state_string=data['state_string'], started_at=data['started_at'], complete_at=data['complete_at'])
         return HttpResponse("Saved data for step: {}.\n".format(data['step_id']))
 
@@ -76,8 +82,9 @@ class Results(View):
             _log.error("Invalid data type: {}".format(data['type']))
             return False
 
-        required_keys = {u'ews-build': ['patch_id', 'build_id', 'builder_id', 'number', 'result', 'state_string', 'started_at', 'complete_at'],
-                         u'ews-step': ['step_id', 'build_id', 'result', 'state_string', 'started_at', 'complete_at']}
+        required_keys = {u'ews-build': ['hostname', 'patch_id', 'build_id', 'builder_id', 'builder_name', 'builder_display_name',
+                                           'number', 'result', 'state_string', 'started_at', 'complete_at'],
+                         u'ews-step': ['hostname', 'step_id', 'build_id', 'result', 'state_string', 'started_at', 'complete_at']}
 
         for key in required_keys.get(data.get('type')):
             if key not in data:

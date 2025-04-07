@@ -27,12 +27,13 @@
 
 namespace WebCore {
 class Geolocation;
-class GeolocationPosition;
+class GeolocationPositionData;
 }
 
 @class WebView;
 
 class WebGeolocationClient : public WebCore::GeolocationClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WebGeolocationClient(WebView *);
     WebView *webView() { return m_webView; }
@@ -47,7 +48,7 @@ public:
     void setEnableHighAccuracy(bool) override { }
 #endif
 
-    Optional<WebCore::GeolocationPosition> lastPosition() override;
+    Optional<WebCore::GeolocationPositionData> lastPosition() override;
 
     void requestPermission(WebCore::Geolocation&) override;
     void cancelPermissionRequest(WebCore::Geolocation&) override { };

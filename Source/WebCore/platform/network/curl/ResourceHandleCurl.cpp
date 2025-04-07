@@ -154,7 +154,8 @@ Ref<CurlRequest> ResourceHandle::createCurlRequest(ResourceRequest&& request, Re
     }
 
     CurlRequest::ShouldSuspend shouldSuspend = d->m_defersLoading ? CurlRequest::ShouldSuspend::Yes : CurlRequest::ShouldSuspend::No;
-    auto curlRequest = CurlRequest::create(request, *delegate(), shouldSuspend, CurlRequest::EnableMultipart::Yes, CurlRequest::CaptureNetworkLoadMetrics::Basic, d->m_messageQueue);
+    // FIXME: Use a correct sessionID.
+    auto curlRequest = CurlRequest::create(request, *delegate(), PAL::SessionID::defaultSessionID(), shouldSuspend, CurlRequest::EnableMultipart::Yes, CurlRequest::CaptureNetworkLoadMetrics::Basic, d->m_messageQueue);
     
     return curlRequest;
 }
@@ -162,7 +163,7 @@ Ref<CurlRequest> ResourceHandle::createCurlRequest(ResourceRequest&& request, Re
 CurlResourceHandleDelegate* ResourceHandle::delegate()
 {
     if (!d->m_delegate)
-        d->m_delegate = std::make_unique<CurlResourceHandleDelegate>(*this);
+        d->m_delegate = makeUnique<CurlResourceHandleDelegate>(*this);
 
     return d->m_delegate.get();
 }

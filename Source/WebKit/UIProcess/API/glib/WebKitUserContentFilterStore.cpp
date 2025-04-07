@@ -28,10 +28,10 @@
 
 #include "APIContentRuleList.h"
 #include "APIContentRuleListStore.h"
-#include "ContentExtensionError.h"
 #include "WebKitError.h"
 #include "WebKitUserContent.h"
 #include "WebKitUserContentPrivate.h"
+#include <WebCore/ContentExtensionError.h>
 #include <glib/gi18n-lib.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/FileSystem.h>
@@ -307,7 +307,7 @@ void webkit_user_content_filter_store_save_from_file(WebKitUserContentFilterStor
             SaveTaskData* data = static_cast<SaveTaskData*>(g_task_get_task_data(task.get()));
             webkitUserContentFilterStoreSaveBytes(WTFMove(task), WTFMove(data->identifier), GRefPtr<GBytes>(g_bytes_new_take(sourceData, sourceSize)));
         } else
-            g_task_return_error(task.get(), error.release().release());
+            g_task_return_error(task.get(), error.release());
     }, task.leakRef());
 }
 

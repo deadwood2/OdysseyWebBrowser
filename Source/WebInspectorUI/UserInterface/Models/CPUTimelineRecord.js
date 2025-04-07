@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,20 +25,88 @@
 
 WI.CPUTimelineRecord = class CPUTimelineRecord extends WI.TimelineRecord
 {
-    constructor(timestamp, usage)
+    constructor({timestamp, usage, threads})
     {
-        super(WI.TimelineRecord.Type.CPU, timestamp, timestamp);
+        super(WI.TimelineRecord.Type.CPU, timestamp - CPUTimelineRecord.samplingRatePerSecond, timestamp);
 
         console.assert(typeof timestamp === "number");
         console.assert(typeof usage === "number");
         console.assert(usage >= 0);
+        console.assert(threads === undefined || Array.isArray(threads));
 
         this._timestamp = timestamp;
         this._usage = usage;
+        this._threads = threads || [];
+
+        this._mainThreadUsage = 0;
+        this._webkitThreadUsage = 0;
+        this._workerThreadUsage = 0;
+        this._unknownThreadUsage = 0;
+        this._workersData = null;
+
+        for (let thread of this._threads) {
+            if (thread.type === InspectorBackend.domains.CPUProfiler.ThreadInfoType.Main) {
+                console.assert(!this._mainThreadUsage, "There should only be one main thread.");
+                this._mainThreadUsage += thread.usage;
+                continue;
+            }
+
+            if (thread.type === InspectorBackend.domains.CPUProfiler.ThreadInfoType.WebKit) {
+                if (thread.targetId) {
+                    if (!this._workersData)
+                        this._workersData = [];
+                    this._workersData.push(thread);
+                    this._workerThreadUsage += thread.usage;
+                    continue;
+                }
+
+                this._webkitThreadUsage += thread.usage;
+                continue;
+            }
+
+            this._unknownThreadUsage += thread.usage;
+        }
+    }
+
+    // Static
+
+    static get samplingRatePerSecond()
+    {
+        // 500ms. This matches the ResourceUsageThread sampling frequency in the backend.
+        return 0.5;
+    }
+
+    // Import / Export
+
+    static fromJSON(json)
+    {
+        return new WI.CPUTimelineRecord(json);
+    }
+
+    toJSON()
+    {
+        return {
+            type: this.type,
+            timestamp: this._timestamp,
+            usage: this._usage,
+            threads: this._threads,
+        };
     }
 
     // Public
 
     get timestamp() { return this._timestamp; }
     get usage() { return this._usage; }
+
+    get mainThreadUsage() { return this._mainThreadUsage; }
+    get webkitThreadUsage() { return this._webkitThreadUsage; }
+    get workerThreadUsage() { return this._workerThreadUsage; }
+    get unknownThreadUsage() { return this._unknownThreadUsage; }
+    get workersData() { return this._workersData; }
+
+    adjustStartTime(startTime)
+    {
+        console.assert(startTime < this._endTime);
+        this._startTime = startTime;
+    }
 };

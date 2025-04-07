@@ -30,10 +30,12 @@
 #import "TestNavigationDelegate.h"
 #import "TestWKWebView.h"
 #import <WebKit/WKWebView.h>
+#import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/_WKActivatedElementInfo.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/Vector.h>
 
-#if WK_API_ENABLED && PLATFORM(IOS_FAMILY)
+#if PLATFORM(IOS_FAMILY)
 
 namespace TestWebKitAPI {
 
@@ -72,6 +74,87 @@ TEST(WebKit, RequestActivatedElementInfoForLink)
     TestWebKitAPI::Util::run(&finished);
 }
     
+TEST(WebKit, RequestActivatedElementInfoForImage)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 215, 174)]);
+    NSURLRequest *request = [NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"icon" withExtension:@"png" subdirectory:@"TestWebKitAPI.resources"]];
+    [webView loadRequest:request];
+    [webView _test_waitForDidFinishNavigation];
+    
+    __block bool finished = false;
+    [webView _requestActivatedElementAtPosition:CGPointMake(50, 50) completionBlock: ^(_WKActivatedElementInfo *elementInfo) {
+        
+        EXPECT_TRUE(elementInfo.type == _WKActivatedElementTypeImage);
+        EXPECT_WK_STREQ(elementInfo.imageURL.lastPathComponent, "icon.png");
+        EXPECT_NOT_NULL(elementInfo.image);
+        EXPECT_EQ(elementInfo.boundingRect.size.width, 215);
+        EXPECT_EQ(elementInfo.boundingRect.size.height, 174);
+        EXPECT_EQ(elementInfo.image.size.width, 215);
+        EXPECT_EQ(elementInfo.image.size.height, 174);
+        
+        finished = true;
+    }];
+    
+    TestWebKitAPI::Util::run(&finished);
+}
+
+TEST(WebKit, RequestActivatedElementInfoForRotatedImage)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    NSURLRequest *request = [NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"img-with-rotated-image" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]];
+
+    [webView loadRequest:request];
+    [webView _test_waitForDidFinishNavigation];
+
+    __block bool finished = false;
+    [webView _requestActivatedElementAtPosition:CGPointMake(50, 50) completionBlock: ^(_WKActivatedElementInfo *elementInfo) {
+        static const unsigned yellow = 0xFFFFFF00;
+        static const unsigned red = 0xFFF51900;
+        static const unsigned green = 0xFF278000;
+        static const unsigned blue = 0xFF0000FF;
+
+        auto imagePixels = [](CGImageRef image) -> Vector<unsigned> {
+            static const size_t bytesPerPixel = 4;
+            static const size_t bitsPerComponent = 8;
+            size_t width = CGImageGetWidth(image);
+            size_t height = CGImageGetHeight(image);
+            size_t bytesPerRow = bytesPerPixel * width;
+
+            static_assert(bytesPerPixel == sizeof(unsigned));
+            Vector<unsigned> pixels(height * width);
+
+            RetainPtr<CGColorSpaceRef> colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
+            RetainPtr<CGContextRef> context = adoptCF(CGBitmapContextCreate(pixels.data(), width, height, bitsPerComponent, bytesPerRow, colorSpace.get(), kCGImageAlphaPremultipliedFirst | kCGImageByteOrder32Little));
+
+            CGContextDrawImage(context.get(), CGRectMake(0, 0, width, height), image);
+            return pixels;
+        };
+
+        auto indexOf = [&](unsigned x, unsigned y) -> unsigned {
+            return y * elementInfo.image.size.width + x;
+        };
+
+        auto pixels = imagePixels(elementInfo.image.CGImage);
+
+        EXPECT_TRUE(elementInfo.type == _WKActivatedElementTypeImage);
+        EXPECT_WK_STREQ(elementInfo.imageURL.lastPathComponent, "exif-orientation-8-llo.jpg");
+        EXPECT_NOT_NULL(elementInfo.image);
+        EXPECT_EQ(elementInfo.boundingRect.size.width, 50);
+        EXPECT_EQ(elementInfo.boundingRect.size.height, 100);
+        EXPECT_EQ(elementInfo.image.size.width, 50);
+        EXPECT_EQ(elementInfo.image.size.height, 100);
+
+        EXPECT_EQ(pixels[indexOf(0, 0)], yellow);
+        EXPECT_EQ(pixels[indexOf(elementInfo.image.size.width - 1, 0)], red);
+        EXPECT_EQ(pixels[indexOf(0, elementInfo.image.size.height - 1)], green);
+        EXPECT_EQ(pixels[indexOf(elementInfo.image.size.width - 1, elementInfo.image.size.height - 1)], blue);
+
+        finished = true;
+    }];
+
+    TestWebKitAPI::Util::run(&finished);
+}
+
 TEST(WebKit, RequestActivatedElementInfoForBlank)
 {
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
@@ -90,7 +173,45 @@ TEST(WebKit, RequestActivatedElementInfoForBlank)
     
     TestWebKitAPI::Util::run(&finished);
 }
+
+TEST(WebKit, RequestActivatedElementInfoForBrokenImage)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    [webView loadHTMLString:@"<html><head><meta name='viewport' content='initial-scale=1'></head><body style = 'margin: 0px;'><img  src='missing.gif' height='100' width='100'></body></html>" baseURL:nil];
+    [webView _test_waitForDidFinishNavigation];
     
+    __block bool finished = false;
+    [webView _requestActivatedElementAtPosition:CGPointMake(50, 50) completionBlock: ^(_WKActivatedElementInfo *elementInfo) {
+        
+        EXPECT_TRUE(elementInfo.type == _WKActivatedElementTypeUnspecified);
+        EXPECT_EQ(elementInfo.boundingRect.size.width, 100);
+        EXPECT_EQ(elementInfo.boundingRect.size.height, 100);
+        
+        finished = true;
+    }];
+    
+    TestWebKitAPI::Util::run(&finished);
+}
+
+TEST(WebKit, RequestActivatedElementInfoForAttachment)
+{
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [configuration _setAttachmentElementEnabled:YES];
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500) configuration:configuration.get()]);
+    [webView loadHTMLString:@"<html><head><meta name='viewport' content='initial-scale=1'></head><body style='margin: 0px;'><attachment  /></body></html>" baseURL:nil];
+    [webView _test_waitForDidFinishNavigation];
+
+    __block bool finished = false;
+    [webView _requestActivatedElementAtPosition:CGPointMake(20, 20) completionBlock:^(_WKActivatedElementInfo *elementInfo) {
+        EXPECT_TRUE(elementInfo.type == _WKActivatedElementTypeAttachment);
+
+        finished = true;
+    }];
+
+    TestWebKitAPI::Util::run(&finished);
+}
+
 TEST(WebKit, RequestActivatedElementInfoWithNestedSynchronousUpdates)
 {
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);

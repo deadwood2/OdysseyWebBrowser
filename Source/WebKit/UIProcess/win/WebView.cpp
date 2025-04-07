@@ -52,13 +52,25 @@
 #include <WebCore/WebCoreInstanceHandle.h>
 #include <WebCore/WindowMessageBroadcaster.h>
 #include <WebCore/WindowsTouch.h>
-#include <cairo-win32.h>
-#include <cairo.h>
 #include <wtf/FileSystem.h>
 #include <wtf/SoftLinking.h>
 #include <wtf/text/StringBuffer.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/WTFString.h>
+
+#if ENABLE(REMOTE_INSPECTOR)
+#include "RemoteInspectorProtocolHandler.h"
+#endif
+
+#if USE(CAIRO)
+#include <cairo-win32.h>
+#include <cairo.h>
+#endif 
+
+#if USE(DIRECT2D)
+#include <WebCore/Direct2DUtilities.h>
+#endif
+
 
 namespace WebKit {
 using namespace WebCore;
@@ -206,7 +218,7 @@ bool WebView::registerWebViewWindowClass()
 }
 
 WebView::WebView(RECT rect, const API::PageConfiguration& configuration, HWND parentWindow)
-    : m_pageClient(std::make_unique<PageClientImpl>(*this))
+    : m_pageClient(makeUnique<PageClientImpl>(*this))
 {
     registerWebViewWindowClass();
 
@@ -235,6 +247,10 @@ WebView::WebView(RECT rect, const API::PageConfiguration& configuration, HWND pa
 
     if (m_page->drawingArea())
         m_page->drawingArea()->setSize(IntSize(rect.right - rect.left, rect.bottom - rect.top));
+
+#if ENABLE(REMOTE_INSPECTOR)
+    m_page->setURLSchemeHandlerForScheme(RemoteInspectorProtocolHandler::create(*m_page), "inspector");
+#endif
 
     // FIXME: Initializing the tooltip window here matches WebKit win, but seems like something
     // we could do on demand to save resources.
@@ -466,6 +482,7 @@ void WebView::paint(HDC hdc, const IntRect& dirtyRect)
     if (auto* drawingArea = static_cast<DrawingAreaProxyCoordinatedGraphics*>(m_page->drawingArea())) {
         // FIXME: We should port WebKit1's rect coalescing logic here.
         Region unpaintedRegion;
+#if USE(CAIRO)
         cairo_surface_t* surface = cairo_win32_surface_create(hdc);
         cairo_t* context = cairo_create(surface);
 
@@ -473,8 +490,12 @@ void WebView::paint(HDC hdc, const IntRect& dirtyRect)
 
         cairo_destroy(context);
         cairo_surface_destroy(surface);
+#else
+        BackingStore::GdiConnections context { ::WindowFromDC(hdc), hdc };
+        drawingArea->paint(context, dirtyRect, unpaintedRegion);
+#endif
 
-        Vector<IntRect> unpaintedRects = unpaintedRegion.rects();
+        auto unpaintedRects = unpaintedRegion.rects();
         for (auto& rect : unpaintedRects)
             drawPageBackground(hdc, m_page.get(), rect);
     } else
@@ -508,7 +529,7 @@ LRESULT WebView::onPrintClientEvent(HWND hWnd, UINT, WPARAM wParam, LPARAM, bool
     return 0;
 }
 
-LRESULT WebView::onSizeEvent(HWND, UINT, WPARAM, LPARAM lParam, bool& handled)
+LRESULT WebView::onSizeEvent(HWND hwnd, UINT, WPARAM, LPARAM lParam, bool& handled)
 {
     int width = LOWORD(lParam);
     int height = HIWORD(lParam);
@@ -737,7 +758,7 @@ void WebView::close()
 
 HCURSOR WebView::cursorToShow() const
 {
-    if (!m_page->isValid())
+    if (!m_page->hasRunningProcess())
         return 0;
 
     // We only show the override cursor if the default (arrow) cursor is showing.
@@ -864,6 +885,20 @@ void WebView::windowReceivedMessage(HWND, UINT message, WPARAM wParam, LPARAM)
     }
 }
 
+static Vector<wchar_t> truncatedString(const String& string)
+{
+    // Truncate tooltip texts because multiline mode of tooltip control does word-wrapping very slowly
+    auto maxLength = 1024;
+    auto buffer = string.wideCharacters();
+    if (buffer.size() > maxLength) {
+        buffer[maxLength - 4] = L'.';
+        buffer[maxLength - 3] = L'.';
+        buffer[maxLength - 2] = L'.';
+        buffer[maxLength - 1] = L'\0';
+    }
+    return buffer;
+}
+
 void WebView::setToolTip(const String& toolTip)
 {
     if (!m_toolTipWindow)
@@ -874,8 +909,8 @@ void WebView::setToolTip(const String& toolTip)
         info.cbSize = sizeof(info);
         info.uFlags = TTF_IDISHWND;
         info.uId = reinterpret_cast<UINT_PTR>(nativeWindow());
-        Vector<UChar> toolTipCharacters = toolTip.charactersWithNullTermination(); // Retain buffer long enough to make the SendMessage call
-        info.lpszText = const_cast<UChar*>(toolTipCharacters.data());
+        auto toolTipCharacters = truncatedString(toolTip); // Retain buffer long enough to make the SendMessage call
+        info.lpszText = toolTipCharacters.data();
         ::SendMessage(m_toolTipWindow, TTM_UPDATETIPTEXT, 0, reinterpret_cast<LPARAM>(&info));
     }
 

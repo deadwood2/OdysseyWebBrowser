@@ -28,9 +28,7 @@ WI.TimelineTabContentView = class TimelineTabContentView extends WI.ContentBrows
     constructor(identifier)
     {
         let tabBarItem = WI.GeneralTabBarItem.fromTabInfo(WI.TimelineTabContentView.tabInfo());
-        let detailsSidebarPanelConstructors = [WI.ResourceDetailsSidebarPanel, WI.ProbeDetailsSidebarPanel];
-
-        super(identifier || "timeline", "timeline", tabBarItem, null, detailsSidebarPanelConstructors);
+        super(identifier || "timeline", "timeline", tabBarItem);
 
         // Maintain an invisible tree outline containing tree elements for all recordings.
         // The visible recording's tree element is selected when the content view changes.
@@ -52,7 +50,13 @@ WI.TimelineTabContentView = class TimelineTabContentView extends WI.ContentBrows
         this._recordButton.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
         this._recordButton.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._recordButtonClicked, this);
 
+        this._continueButton = new WI.ButtonNavigationItem("record-continue", WI.UIString("Continue without automatically stopping"), "Images/Resume.svg", 13, 13);
+        this._continueButton.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
+        this._continueButton.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._continueButtonClicked, this);
+        this._continueButton.hidden = true;
+
         this.contentBrowser.navigationBar.insertNavigationItem(this._recordButton, 0);
+        this.contentBrowser.navigationBar.insertNavigationItem(this._continueButton, 1);
 
         if (WI.FPSInstrument.supported()) {
             let timelinesNavigationItem = new WI.RadioButtonNavigationItem(WI.TimelineOverview.ViewMode.Timelines, WI.UIString("Events"));
@@ -61,17 +65,16 @@ WI.TimelineTabContentView = class TimelineTabContentView extends WI.ContentBrows
             let viewModeGroup = new WI.GroupNavigationItem([timelinesNavigationItem, renderingFramesNavigationItem]);
             viewModeGroup.visibilityPriority = WI.NavigationItem.VisibilityPriority.High;
 
-            this.contentBrowser.navigationBar.insertNavigationItem(viewModeGroup, 1);
+            this.contentBrowser.navigationBar.insertNavigationItem(viewModeGroup, 2);
             this.contentBrowser.navigationBar.addEventListener(WI.NavigationBar.Event.NavigationItemSelected, this._viewModeSelected, this);
         }
 
+        WI.timelineManager.addEventListener(WI.TimelineManager.Event.CapturingStateChanged, this._handleTimelineCapturingStateChanged, this);
         WI.timelineManager.addEventListener(WI.TimelineManager.Event.RecordingCreated, this._recordingCreated, this);
         WI.timelineManager.addEventListener(WI.TimelineManager.Event.RecordingLoaded, this._recordingLoaded, this);
 
-        WI.timelineManager.addEventListener(WI.TimelineManager.Event.CapturingStarted, this._capturingStartedOrStopped, this);
-        WI.timelineManager.addEventListener(WI.TimelineManager.Event.CapturingStopped, this._capturingStartedOrStopped, this);
-
         WI.notifications.addEventListener(WI.Notification.VisibilityStateDidChange, this._inspectorVisibilityChanged, this);
+        WI.notifications.addEventListener(WI.Notification.GlobalModifierKeysDidChange, this._globalModifierKeysDidChange, this);
 
         this._displayedRecording = null;
         this._displayedContentView = null;
@@ -88,6 +91,10 @@ WI.TimelineTabContentView = class TimelineTabContentView extends WI.ContentBrows
 
         // Explicitly update the path for the navigation bar to prevent it from showing up as blank.
         this.contentBrowser.updateHierarchicalPathForCurrentContentView();
+
+        WI.heapManager.enable();
+        WI.memoryManager.enable();
+        WI.timelineManager.enable();
     }
 
     // Static
@@ -246,8 +253,8 @@ WI.TimelineTabContentView = class TimelineTabContentView extends WI.ContentBrows
             switch (timelineRecord.eventType) {
             case WI.MediaTimelineRecord.EventType.DOMEvent:
                 return "dom-event-record";
-            case WI.MediaTimelineRecord.EventType.LowPower:
-                return "low-power-record";
+            case WI.MediaTimelineRecord.EventType.PowerEfficientPlaybackStateChanged:
+                return "power-efficient-playback-state-changed-record";
             default:
                 console.error("Unknown MediaTimelineRecord eventType: " + timelineRecord.eventType, timelineRecord);
             }
@@ -324,18 +331,39 @@ WI.TimelineTabContentView = class TimelineTabContentView extends WI.ContentBrows
 
     closed()
     {
-        super.closed();
+        WI.timelineManager.disable();
+        WI.memoryManager.disable();
+        WI.heapManager.disable();
 
         if (WI.FPSInstrument.supported())
             this.contentBrowser.navigationBar.removeEventListener(null, null, this);
 
         WI.timelineManager.removeEventListener(null, null, this);
         WI.notifications.removeEventListener(null, null, this);
+
+        super.closed();
     }
 
     canShowRepresentedObject(representedObject)
     {
         return representedObject instanceof WI.TimelineRecording;
+    }
+
+    get canHandleFindEvent()
+    {
+        console.assert(this._displayedContentView);
+        return this._displayedContentView.canFocusFilterBar;
+    }
+
+    handleFindEvent(event)
+    {
+        console.assert(this._displayedContentView);
+        this._displayedContentView.focusFilterBar();
+    }
+
+    async handleFileDrop(files)
+    {
+        await WI.FileUtilities.readJSON(files, (result) => WI.timelineManager.processJSON(result));
     }
 
     // Protected
@@ -398,10 +426,37 @@ WI.TimelineTabContentView = class TimelineTabContentView extends WI.ContentBrows
 
     // Private
 
-    _capturingStartedOrStopped(event)
+    _showRecordButton()
     {
-        let isCapturing = WI.timelineManager.isCapturing();
-        this._recordButton.toggled = isCapturing;
+        this._recordButton.hidden = false;
+        this._continueButton.hidden = true;
+    }
+
+    _showContinueButton()
+    {
+        this._recordButton.hidden = true;
+        this._continueButton.hidden = false;
+    }
+
+    _updateNavigationBarButtons()
+    {
+        if (!WI.modifierKeys.altKey || !WI.timelineManager.willAutoStop())
+            this._showRecordButton();
+        else
+            this._showContinueButton();
+    }
+
+    _handleTimelineCapturingStateChanged(event)
+    {
+        let enabled = WI.timelineManager.capturingState === WI.TimelineManager.CapturingState.Active || WI.timelineManager.capturingState === WI.TimelineManager.CapturingState.Inactive;
+
+        this._toggleRecordingShortcut.disabled = !enabled;
+        this._toggleNewRecordingShortcut.disabled = !enabled;
+
+        this._recordButton.toggled = WI.timelineManager.isCapturing();
+        this._recordButton.enabled = enabled;
+
+        this._updateNavigationBarButtons();
     }
 
     _inspectorVisibilityChanged(event)
@@ -409,8 +464,16 @@ WI.TimelineTabContentView = class TimelineTabContentView extends WI.ContentBrows
         WI.timelineManager.autoCaptureOnPageLoad = !!this.visible && !!WI.visible;
     }
 
+    _globalModifierKeysDidChange(event)
+    {
+        this._updateNavigationBarButtons();
+    }
+
     _toggleRecordingOnSpacebar(event)
     {
+        if (WI.timelineManager.activeRecording.readonly)
+            return;
+
         if (WI.isEventTargetAnEditableField(event))
             return;
 
@@ -446,8 +509,20 @@ WI.TimelineTabContentView = class TimelineTabContentView extends WI.ContentBrows
     _recordButtonClicked(event)
     {
         let shouldCreateNewRecording = window.event ? window.event.shiftKey : false;
+        if (WI.timelineManager.activeRecording.readonly)
+            shouldCreateNewRecording = true;
+
         this._recordButton.toggled = !WI.timelineManager.isCapturing();
         this._toggleRecording(shouldCreateNewRecording);
+    }
+
+    _continueButtonClicked(event)
+    {
+        console.assert(WI.timelineManager.willAutoStop());
+
+        WI.timelineManager.relaxAutoStop();
+
+        this._updateNavigationBarButtons();
     }
 
     _recordingsTreeSelectionDidChange(event)

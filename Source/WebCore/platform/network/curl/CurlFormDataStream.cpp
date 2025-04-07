@@ -41,7 +41,8 @@
 
 namespace WebCore {
 
-CurlFormDataStream::CurlFormDataStream(const FormData* formData)
+CurlFormDataStream::CurlFormDataStream(const FormData* formData, PAL::SessionID sessionID)
+    : m_sessionID(sessionID)
 {
     ASSERT(isMainThread());
 
@@ -51,7 +52,7 @@ CurlFormDataStream::CurlFormDataStream(const FormData* formData)
     m_formData = formData->isolatedCopy();
 
     // Resolve the blob elements so the formData can correctly report it's size.
-    m_formData = m_formData->resolveBlobReferences(blobRegistry());
+    m_formData = m_formData->resolveBlobReferences(blobRegistry().blobRegistryImpl());
 }
 
 CurlFormDataStream::~CurlFormDataStream()
@@ -76,7 +77,7 @@ const Vector<char>* CurlFormDataStream::getPostData()
         return nullptr;
 
     if (!m_postData)
-        m_postData = std::make_unique<Vector<char>>(m_formData->flatten());
+        m_postData = makeUnique<Vector<char>>(m_formData->flatten());
 
     return m_postData.get();
 }
@@ -97,15 +98,13 @@ unsigned long long CurlFormDataStream::totalSize()
 
 void CurlFormDataStream::computeContentLength()
 {
-    static auto maxCurlOffT = CurlHandle::maxCurlOffT();
-
     if (!m_formData || m_isContentLengthUpdated)
         return;
 
     m_isContentLengthUpdated = true;
 
     for (const auto& element : m_formData->elements())
-        m_totalSize += element.lengthInBytes();
+        m_totalSize += element.lengthInBytes(m_sessionID);
 }
 
 Optional<size_t> CurlFormDataStream::read(char* buffer, size_t size)

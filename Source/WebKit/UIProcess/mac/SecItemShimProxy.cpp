@@ -56,22 +56,18 @@ void SecItemShimProxy::initializeConnection(IPC::Connection& connection)
     connection.addWorkQueueMessageReceiver(Messages::SecItemShimProxy::messageReceiverName(), m_queue.get(), this);
 }
 
-void SecItemShimProxy::didReceiveMessage(IPC::Connection&, IPC::Decoder&)
-{
-}
-
-void SecItemShimProxy::secItemRequest(const SecItemRequestData& request, CompletionHandler<void(SecItemResponseData&&)>&& response)
+void SecItemShimProxy::secItemRequest(const SecItemRequestData& request, CompletionHandler<void(Optional<SecItemResponseData>&&)>&& response)
 {
     switch (request.type()) {
     case SecItemRequestData::Invalid:
         LOG_ERROR("SecItemShimProxy::secItemRequest received an invalid data request. Please file a bug if you know how you caused this.");
-        response(SecItemResponseData(errSecParam, nullptr));
+        response(SecItemResponseData { errSecParam, nullptr });
         break;
 
     case SecItemRequestData::CopyMatching: {
-        CFTypeRef resultObject = 0;
+        CFTypeRef resultObject = nullptr;
         OSStatus resultCode = SecItemCopyMatching(request.query(), &resultObject);
-        response(SecItemResponseData(resultCode, adoptCF(resultObject).get()));
+        response(SecItemResponseData { resultCode, adoptCF(resultObject) });
         break;
     }
 
@@ -79,22 +75,27 @@ void SecItemShimProxy::secItemRequest(const SecItemRequestData& request, Complet
         // Return value of SecItemAdd is often ignored. Even if it isn't, we don't have the ability to
         // serialize SecKeychainItemRef.
         OSStatus resultCode = SecItemAdd(request.query(), nullptr);
-        response(SecItemResponseData(resultCode, nullptr));
+        response(SecItemResponseData { resultCode, nullptr });
         break;
     }
 
     case SecItemRequestData::Update: {
         OSStatus resultCode = SecItemUpdate(request.query(), request.attributesToMatch());
-        response(SecItemResponseData(resultCode, 0));
+        response(SecItemResponseData { resultCode, nullptr });
         break;
     }
 
     case SecItemRequestData::Delete: {
         OSStatus resultCode = SecItemDelete(request.query());
-        response(SecItemResponseData(resultCode, 0));
+        response(SecItemResponseData { resultCode, nullptr });
         break;
     }
     }
+}
+
+void SecItemShimProxy::secItemRequestSync(const SecItemRequestData& data, CompletionHandler<void(Optional<SecItemResponseData>&&)>&& completionHandler)
+{
+    secItemRequest(data, WTFMove(completionHandler));
 }
 
 } // namespace WebKit

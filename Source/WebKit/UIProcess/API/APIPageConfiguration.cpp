@@ -27,6 +27,7 @@
 #include "APIPageConfiguration.h"
 
 #include "APIProcessPoolConfiguration.h"
+#include "APIWebsitePolicies.h"
 #include "WebPageGroup.h"
 #include "WebPageProxy.h"
 #include "WebPreferences.h"
@@ -67,10 +68,11 @@ Ref<PageConfiguration> PageConfiguration::copy() const
     copy->m_relatedPage = this->m_relatedPage;
     copy->m_visitedLinkStore = this->m_visitedLinkStore;
     copy->m_websiteDataStore = this->m_websiteDataStore;
-    copy->m_sessionID = this->m_sessionID;
     copy->m_treatsSHA1SignedCertificatesAsInsecure = this->m_treatsSHA1SignedCertificatesAsInsecure;
 #if PLATFORM(IOS_FAMILY)
     copy->m_alwaysRunsAtForegroundPriority = this->m_alwaysRunsAtForegroundPriority;
+    copy->m_canShowWhileLocked = this->m_canShowWhileLocked;
+    copy->m_clickInteractionDriverForTesting = this->m_clickInteractionDriverForTesting;
 #endif
     copy->m_initialCapitalizationEnabled = this->m_initialCapitalizationEnabled;
     copy->m_waitsForPaintAfterViewDidMoveToWindow = this->m_waitsForPaintAfterViewDidMoveToWindow;
@@ -157,23 +159,16 @@ API::WebsiteDataStore* PageConfiguration::websiteDataStore()
 void PageConfiguration::setWebsiteDataStore(API::WebsiteDataStore* websiteDataStore)
 {
     m_websiteDataStore = websiteDataStore;
-
-    if (m_websiteDataStore)
-        m_sessionID = m_websiteDataStore->websiteDataStore().sessionID();
-    else
-        m_sessionID = PAL::SessionID();
 }
 
-PAL::SessionID PageConfiguration::sessionID()
+WebsitePolicies* PageConfiguration::defaultWebsitePolicies() const
 {
-    ASSERT(!m_websiteDataStore || m_websiteDataStore->websiteDataStore().sessionID() == m_sessionID || m_sessionID == PAL::SessionID::legacyPrivateSessionID());
-
-    return m_sessionID;
+    return m_defaultWebsitePolicies.get();
 }
 
-void PageConfiguration::setSessionID(PAL::SessionID sessionID)
+void PageConfiguration::setDefaultWebsitePolicies(WebsitePolicies* policies)
 {
-    m_sessionID = sessionID;
+    m_defaultWebsitePolicies = policies;
 }
 
 RefPtr<WebKit::WebURLSchemeHandler> PageConfiguration::urlSchemeHandlerForURLScheme(const WTF::String& scheme)

@@ -1,7 +1,7 @@
 # Copyright (C) 2009 Google Inc. All rights reserved.
 # Copyright (C) 2010 Chris Jerdonek (chris.jerdonek@gmail.com)
 # Copyright (C) 2010 ProFUSION embedded systems
-# Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+# Copyright (C) 2013-2017, 2019 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -50,7 +50,7 @@ from checkers.jsonchecker import JSONCSSPropertiesChecker
 from checkers.jstest import JSTestChecker
 from checkers.messagesin import MessagesInChecker
 from checkers.png import PNGChecker
-from checkers.python import PythonChecker
+from checkers.python import PythonChecker, Python3Checker
 from checkers.sdkvariant import SDKVariantChecker
 from checkers.test_expectations import TestExpectationsChecker
 from checkers.text import TextChecker
@@ -117,6 +117,7 @@ _BASE_FILTER_RULES = [
     #        with the 79 character limit, or some higher limit that is
     #        agreeable to the WebKit project.
     '-pep8/E501',
+    '-pycodestyle/E501',
 
     # FIXME: Move the pylint rules from the pylintrc to here. This will
     # also require us to re-work lint-webkitpy to produce the equivalent output.
@@ -151,6 +152,14 @@ _PATH_RULES_SPECIFIER = [
       # TestWebKitAPI uses funny macros like EXPECT_WK_STREQ.
       os.path.join('Tools', 'TestWebKitAPI')],
      ["-readability/naming"]),
+
+    ([
+      # The WPEQtView class can't rely on the readability/parameter_name rule,
+      # because omitting parameter names for QML signals leads to runtime
+      # errors.
+      os.path.join('Source', 'WebKit', 'UIProcess', 'API', 'wpe', 'qt', 'WPEQtView.h'),
+    ],
+    ["-readability/parameter_name"]),
 
     ([
       # The GTK+ and WPE APIs use upper case, underscore separated, words in
@@ -252,6 +261,12 @@ _PATH_RULES_SPECIFIER = [
       "-whitespace/braces",
       "-readability/naming/underscores",
       "-readability/enum_casing",
+     ]),
+
+    ([  # Files following using WebRTC optionnal type
+      os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'libwebrtc', 'GStreamerVideoDecoderFactory.cpp'),
+     ],
+     ["-runtime/wtf_optional",
      ]),
 
     ([
@@ -424,7 +439,7 @@ def _all_categories():
     #        now we add only the categories needed for the unit tests
     #        (which validate the consistency of the configuration
     #        settings against the known categories, etc).
-    categories = categories.union(["pep8/W191", "pep8/W291", "pep8/E501"])
+    categories = categories.union(["pep8/W191", "pep8/W291", "pep8/E501", "pycodestyle/E501"])
 
     if apple_additions():
         categories = categories.union(apple_additions().all_categories())
@@ -701,6 +716,10 @@ class CheckerDispatcher(object):
             else:
                 checker = JSONChecker(file_path, handle_style_error)
         elif file_type == FileType.PYTHON:
+            python3_paths = ['Tools/resultsdbpy']
+            for partial in python3_paths:
+                if file_path.startswith(partial):
+                    return Python3Checker(file_path, handle_style_error)
             if apple_additions():
                 checker = apple_additions().python_checker(file_path, handle_style_error)
             else:

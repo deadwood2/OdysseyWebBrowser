@@ -26,7 +26,7 @@
 #import "config.h"
 #import "TestFontOptions.h"
 
-#if PLATFORM(MAC) && WK_API_ENABLED
+#if PLATFORM(MAC)
 
 #import "AppKitSPI.h"
 #import "ClassMethodSwizzler.h"
@@ -84,7 +84,7 @@ static TestFontOptions *sharedFontOptionsForTesting()
 
     _shadowOffset = CGSizeZero;
     _shadowBlurRadius = 0;
-    _replaceFontOptionsSwizzler = std::make_unique<ClassMethodSwizzler>(NSClassFromString(@"NSFontOptions"), @selector(sharedFontOptions), reinterpret_cast<IMP>(sharedFontOptionsForTesting));
+    _replaceFontOptionsSwizzler = makeUnique<ClassMethodSwizzler>(NSClassFromString(@"NSFontOptions"), @selector(sharedFontOptions), reinterpret_cast<IMP>(sharedFontOptionsForTesting));
     _hasPendingShadowChanges = NO;
     _hasMultipleFonts = NO;
 
@@ -227,4 +227,4 @@ static TestFontOptions *sharedFontOptionsForTesting()
 
 @end
 
-#endif // PLATFORM(MAC) && WK_API_ENABLED
+#endif // PLATFORM(MAC)

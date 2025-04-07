@@ -36,6 +36,10 @@
 #include <gtk/gtk.h>
 #include <memory>
 
+namespace WebCore {
+enum class DOMPasteAccessPolicy : uint8_t;
+}
+
 namespace WebKit {
 
 class DrawingAreaProxy;
@@ -58,13 +62,14 @@ private:
     // PageClient
     std::unique_ptr<DrawingAreaProxy> createDrawingAreaProxy(WebProcessProxy&) override;
     void setViewNeedsDisplay(const WebCore::Region&) override;
-    void requestScroll(const WebCore::FloatPoint& scrollPosition, const WebCore::IntPoint& scrollOrigin, bool isProgrammaticScroll) override;
+    void requestScroll(const WebCore::FloatPoint& scrollPosition, const WebCore::IntPoint& scrollOrigin) override;
     WebCore::FloatPoint viewScrollPosition() override;
     WebCore::IntSize viewSize() override;
     bool isViewWindowActive() override;
     bool isViewFocused() override;
     bool isViewVisible() override;
     bool isViewInWindow() override;
+    void processWillSwap() override;
     void processDidExit() override;
     void didRelaunchProcess() override;
     void pageClosed() override;
@@ -81,11 +86,16 @@ private:
     WebCore::FloatRect convertToUserSpace(const WebCore::FloatRect&) override;
     WebCore::IntPoint screenToRootView(const WebCore::IntPoint&) override;
     WebCore::IntRect rootViewToScreen(const WebCore::IntRect&) override;
+    WebCore::IntPoint accessibilityScreenToRootView(const WebCore::IntPoint&) override;
+    WebCore::IntRect rootViewToAccessibilityScreen(const WebCore::IntRect&) override;
     void doneWithKeyEvent(const NativeWebKeyboardEvent&, bool wasEventHandled) override;
     RefPtr<WebPopupMenuProxy> createPopupMenuProxy(WebPageProxy&) override;
     Ref<WebContextMenuProxy> createContextMenuProxy(WebPageProxy&, ContextMenuContextData&&, const UserData&) override;
 #if ENABLE(INPUT_TYPE_COLOR)
     RefPtr<WebColorPicker> createColorPicker(WebPageProxy*, const WebCore::Color& initialColor, const WebCore::IntRect&, Vector<WebCore::Color>&&) override;
+#endif
+#if ENABLE(DATALIST_ELEMENT)
+    RefPtr<WebDataListSuggestionsDropdown> createDataListSuggestionsDropdown(WebPageProxy&) override;
 #endif
     void selectionDidChange() override;
     RefPtr<ViewSnapshot> takeViewSnapshot() override;
@@ -97,7 +107,7 @@ private:
     void exitAcceleratedCompositingMode() override;
     void updateAcceleratedCompositingMode(const LayerTreeContext&) override;
 
-    void handleDownloadRequest(DownloadProxy*) override;
+    void handleDownloadRequest(DownloadProxy&) override;
     void didChangeContentSize(const WebCore::IntSize&) override;
     void didCommitLoadForMainFrame(const String& mimeType, bool useCustomContentProvider) override;
     void didFailLoadForMainFrame() override;
@@ -148,11 +158,21 @@ private:
 
     void didFinishProcessingAllPendingMouseEvents() final { }
 
+    void requestDOMPasteAccess(const WebCore::IntRect&, const String&, CompletionHandler<void(WebCore::DOMPasteAccessResponse)>&&) final;
+
 #if ENABLE(VIDEO) && USE(GSTREAMER)
     bool decidePolicyForInstallMissingMediaPluginsPermissionRequest(InstallMissingMediaPluginsPermissionRequest&) override;
 #endif
 
     WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection() override;
+
+    bool effectiveAppearanceIsDark() const override;
+
+#if USE(WPE_RENDERER)
+    IPC::Attachment hostFileDescriptor() override;
+#endif
+
+    String themeName() const override;
 
     // Members of PageClientImpl class
     GtkWidget* m_viewWidget;

@@ -39,6 +39,7 @@
 #include "PlatformCAFilters.h"
 #include "PlatformCALayer.h"
 #include "PlatformScreen.h"
+#include "Region.h"
 #include "RotateTransformOperation.h"
 #include "ScaleTransformOperation.h"
 #include "TiledBacking.h"
@@ -51,6 +52,7 @@
 #include <wtf/HexNumber.h>
 #include <wtf/MathExtras.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/PointerComparison.h>
 #include <wtf/SetForScope.h>
 #include <wtf/SystemTracing.h>
 #include <wtf/text/StringConcatenateNumbers.h>
@@ -302,6 +304,7 @@ bool GraphicsLayer::supportsLayerType(Type type)
     case Type::Normal:
     case Type::PageTiledBacking:
     case Type::ScrollContainer:
+    case Type::ScrolledContents:
         return true;
     case Type::Shape:
 #if PLATFORM(COCOA)
@@ -400,7 +403,7 @@ GraphicsLayerCA::GraphicsLayerCA(Type layerType, GraphicsLayerClient& client)
     : GraphicsLayer(layerType, client)
     , m_needsFullRepaint(false)
     , m_usingBackdropLayerType(false)
-    , m_isViewportConstrained(false)
+    , m_allowsBackingStoreDetaching(true)
     , m_intersectsCoverageRect(false)
     , m_hasEverPainted(false)
     , m_hasDescendantsWithRunningTransformAnimations(false)
@@ -413,6 +416,7 @@ void GraphicsLayerCA::initialize(Type layerType)
     PlatformCALayer::LayerType platformLayerType;
     switch (layerType) {
     case Type::Normal:
+    case Type::ScrolledContents:
         platformLayerType = PlatformCALayer::LayerType::LayerTypeWebLayer;
         break;
     case Type::PageTiledBacking:
@@ -982,6 +986,15 @@ void GraphicsLayerCA::setShapeLayerWindRule(WindRule windRule)
     noteLayerPropertyChanged(WindRuleChanged);
 }
 
+void GraphicsLayerCA::setEventRegion(EventRegion&& eventRegion)
+{
+    if (eventRegion == m_eventRegion)
+        return;
+
+    GraphicsLayer::setEventRegion(WTFMove(eventRegion));
+    noteLayerPropertyChanged(EventRegionChanged, m_isCommittingChanges ? DontScheduleFlush : ScheduleFlush);
+}
+
 bool GraphicsLayerCA::shouldRepaintOnSizeChange() const
 {
     return drawsContent() && !tiledBacking();
@@ -1299,8 +1312,7 @@ bool GraphicsLayerCA::recursiveVisibleRectChangeRequiresFlush(const CommitState&
 
     auto bounds = FloatRect(m_boundsOrigin, size());
 
-    bool isViewportConstrained = m_isViewportConstrained || commitState.ancestorIsViewportConstrained;
-    bool intersectsCoverageRect = isViewportConstrained || rects.coverageRect.intersects(bounds);
+    bool intersectsCoverageRect = rects.coverageRect.intersects(bounds);
     if (intersectsCoverageRect != m_intersectsCoverageRect)
         return true;
 
@@ -1310,8 +1322,6 @@ bool GraphicsLayerCA::recursiveVisibleRectChangeRequiresFlush(const CommitState&
                 return true;
         }
     }
-
-    childCommitState.ancestorIsViewportConstrained |= m_isViewportConstrained;
 
     if (m_maskLayer) {
         auto& maskLayerCA = downcast<GraphicsLayerCA>(*m_maskLayer);
@@ -1430,15 +1440,21 @@ bool GraphicsLayerCA::adjustCoverageRect(VisibleAndCoverageRects& rects, const F
 {
     FloatRect coverageRect = rects.coverageRect;
 
-    // FIXME: TileController's computeTileCoverageRect() code should move here, and we should unify these different
-    // ways of computing coverage.
     switch (type()) {
     case Type::PageTiledBacking:
-        tiledBacking()->adjustTileCoverageRect(coverageRect, size(), oldVisibleRect, rects.visibleRect, pageScaleFactor() * deviceScaleFactor());
+        coverageRect = tiledBacking()->adjustTileCoverageRectForScrolling(coverageRect, size(), oldVisibleRect, rects.visibleRect, pageScaleFactor() * deviceScaleFactor());
+        break;
+    case Type::ScrolledContents:
+        if (m_layer->usesTiledBackingLayer())
+            coverageRect = tiledBacking()->adjustTileCoverageRectForScrolling(coverageRect, size(), oldVisibleRect, rects.visibleRect, pageScaleFactor() * deviceScaleFactor());
+        else {
+            // Even if we don't have tiled backing, we want to expand coverage so that contained layers get attached backing store.
+            coverageRect = adjustCoverageRectForMovement(coverageRect, oldVisibleRect, rects.visibleRect);
+        }
         break;
     case Type::Normal:
-        if (m_layer->layerType() == PlatformCALayer::LayerTypeTiledBackingLayer)
-            coverageRect.unite(adjustTiledLayerVisibleRect(tiledBacking(), oldVisibleRect, rects.visibleRect, m_sizeAtLastCoverageRectUpdate, m_size));
+        if (m_layer->usesTiledBackingLayer())
+            coverageRect = tiledBacking()->adjustTileCoverageRect(coverageRect, oldVisibleRect, rects.visibleRect, size() != m_sizeAtLastCoverageRectUpdate);
         break;
     default:
         break;
@@ -1451,7 +1467,7 @@ bool GraphicsLayerCA::adjustCoverageRect(VisibleAndCoverageRects& rects, const F
     return true;
 }
 
-void GraphicsLayerCA::setVisibleAndCoverageRects(const VisibleAndCoverageRects& rects, bool isViewportConstrained)
+void GraphicsLayerCA::setVisibleAndCoverageRects(const VisibleAndCoverageRects& rects)
 {
     bool visibleRectChanged = rects.visibleRect != m_visibleRect;
     bool coverageRectChanged = rects.coverageRect != m_coverageRect;
@@ -1465,7 +1481,7 @@ void GraphicsLayerCA::setVisibleAndCoverageRects(const VisibleAndCoverageRects& 
     }
 
     // FIXME: we need to take reflections into account when determining whether this layer intersects the coverage rect.
-    bool intersectsCoverageRect = isViewportConstrained || rects.coverageRect.intersects(bounds);
+    bool intersectsCoverageRect = rects.coverageRect.intersects(bounds);
     if (intersectsCoverageRect != m_intersectsCoverageRect) {
         addUncommittedChanges(CoverageRectChanged);
         m_intersectsCoverageRect = intersectsCoverageRect;
@@ -1519,7 +1535,7 @@ void GraphicsLayerCA::recursiveCommitChanges(CommitState& commitState, const Tra
             localState.setLastPlanarSecondaryQuad(&secondaryQuad);
         }
     }
-    setVisibleAndCoverageRects(rects, m_isViewportConstrained || commitState.ancestorIsViewportConstrained);
+    setVisibleAndCoverageRects(rects);
 
     if (commitState.ancestorStartedOrEndedTransformAnimation)
         addUncommittedChanges(CoverageRectChanged);
@@ -1582,10 +1598,8 @@ void GraphicsLayerCA::recursiveCommitChanges(CommitState& commitState, const Tra
         affectedByTransformAnimation = true;
     }
     
-    childCommitState.ancestorIsViewportConstrained |= m_isViewportConstrained;
-
     if (GraphicsLayerCA* maskLayer = downcast<GraphicsLayerCA>(m_maskLayer.get())) {
-        maskLayer->setVisibleAndCoverageRects(rects, m_isViewportConstrained || commitState.ancestorIsViewportConstrained);
+        maskLayer->setVisibleAndCoverageRects(rects);
         maskLayer->commitLayerChangesBeforeSublayers(childCommitState, pageScaleFactor, baseRelativePosition, layerTypeChanged);
     }
 
@@ -1622,12 +1636,12 @@ void GraphicsLayerCA::recursiveCommitChanges(CommitState& commitState, const Tra
     if (usesDisplayListDrawing() && m_drawsContent && (!m_hasEverPainted || hadDirtyRects)) {
         TraceScope tracingScope(DisplayListRecordStart, DisplayListRecordEnd);
 
-        m_displayList = std::make_unique<DisplayList::DisplayList>();
+        m_displayList = makeUnique<DisplayList::DisplayList>();
         
         FloatRect initialClip(boundsOrigin(), size());
 
         GraphicsContext context([&](GraphicsContext& context) {
-            return std::make_unique<DisplayList::Recorder>(context, *m_displayList, GraphicsContextState(), initialClip, AffineTransform());
+            return makeUnique<DisplayList::Recorder>(context, *m_displayList, GraphicsContextState(), initialClip, AffineTransform());
         });
         paintGraphicsLayerContents(context, FloatRect(FloatPoint(), size()));
     }
@@ -1844,6 +1858,9 @@ void GraphicsLayerCA::commitLayerChangesBeforeSublayers(CommitState& commitState
     if (m_uncommittedChanges & MasksToBoundsRectChanged) // Needs to happen before ChildrenChanged
         updateMasksToBoundsRect();
 
+    if (m_uncommittedChanges & EventRegionChanged)
+        updateEventRegion();
+
     if (m_uncommittedChanges & MaskLayerChanged) {
         updateMaskLayer();
         // If the mask layer becomes tiled it can set this flag again. Clear the flag so that
@@ -1853,7 +1870,7 @@ void GraphicsLayerCA::commitLayerChangesBeforeSublayers(CommitState& commitState
 
     if (m_uncommittedChanges & ContentsNeedsDisplay)
         updateContentsNeedsDisplay();
-    
+
     if (m_uncommittedChanges & SupportsSubpixelAntialiasedTextChanged)
         updateSupportsSubpixelAntialiasedText();
 
@@ -2393,32 +2410,34 @@ void GraphicsLayerCA::updateCoverage(const CommitState& commitState)
         backing->setCoverageRect(m_coverageRect);
     }
 
-    if (canDetachBackingStore()) {
-        bool requiresBacking = m_intersectsCoverageRect
-            || commitState.ancestorWithTransformAnimationIntersectsCoverageRect // FIXME: Compute backing exactly for descendants of animating layers.
-            || (isRunningTransformAnimation() && !animationExtent()); // Create backing if we don't know the animation extent.
+    bool requiresBacking = m_intersectsCoverageRect
+        || !allowsBackingStoreDetaching()
+        || commitState.ancestorWithTransformAnimationIntersectsCoverageRect // FIXME: Compute backing exactly for descendants of animating layers.
+        || (isRunningTransformAnimation() && !animationExtent()); // Create backing if we don't know the animation extent.
 
 #if !LOG_DISABLED
-        if (requiresBacking) {
-            auto reasonForBacking = [&]() -> const char* {
-                if (m_intersectsCoverageRect)
-                    return "intersectsCoverageRect";
-                
-                if (commitState.ancestorWithTransformAnimationIntersectsCoverageRect)
-                    return "ancestor with transform";
-                
-                return "has transform animation with unknown extent";
-            };
-            LOG_WITH_STREAM(Compositing, stream << "GraphicsLayerCA " << this << " id " << primaryLayerID() << " setBackingStoreAttached: " << requiresBacking << " (" << reasonForBacking() << ")");
-        } else
-            LOG_WITH_STREAM(Compositing, stream << "GraphicsLayerCA " << this << " id " << primaryLayerID() << " setBackingStoreAttached: " << requiresBacking);
+    if (requiresBacking) {
+        auto reasonForBacking = [&]() -> const char* {
+            if (m_intersectsCoverageRect)
+                return "intersectsCoverageRect";
+            
+            if (!allowsBackingStoreDetaching())
+                return "backing detachment disallowed";
+
+            if (commitState.ancestorWithTransformAnimationIntersectsCoverageRect)
+                return "ancestor with transform";
+            
+            return "has transform animation with unknown extent";
+        };
+        LOG_WITH_STREAM(Layers, stream << "GraphicsLayerCA " << this << " id " << primaryLayerID() << " setBackingStoreAttached: " << requiresBacking << " (" << reasonForBacking() << ")");
+    } else
+        LOG_WITH_STREAM(Layers, stream << "GraphicsLayerCA " << this << " id " << primaryLayerID() << " setBackingStoreAttached: " << requiresBacking);
 #endif
 
-        m_layer->setBackingStoreAttached(requiresBacking);
-        if (m_layerClones) {
-            for (auto& layer : m_layerClones->primaryLayerClones.values())
-                layer->setBackingStoreAttached(requiresBacking);
-        }
+    m_layer->setBackingStoreAttached(requiresBacking);
+    if (m_layerClones) {
+        for (auto& layer : m_layerClones->primaryLayerClones.values())
+            layer->setBackingStoreAttached(requiresBacking);
     }
 
     m_sizeAtLastCoverageRectUpdate = m_size;
@@ -2480,70 +2499,6 @@ void GraphicsLayerCA::updateDebugIndicators()
         for (auto& layer : m_layerClones->contentsLayerClones.values())
             setLayerDebugBorder(*layer, contentsLayerBorderColor, contentsLayerBorderWidth);
     }
-}
-
-FloatRect GraphicsLayerCA::adjustTiledLayerVisibleRect(TiledBacking* tiledBacking, const FloatRect& oldVisibleRect, const FloatRect& newVisibleRect, const FloatSize& oldSize, const FloatSize& newSize)
-{
-    // If the old visible rect is empty, we have no information about how the visible area is changing
-    // (maybe the layer was just created), so don't attempt to expand. Also don't attempt to expand
-    // if the size changed or the rects don't overlap.
-    if (oldVisibleRect.isEmpty() || newSize != oldSize || !newVisibleRect.intersects(oldVisibleRect))
-        return newVisibleRect;
-
-    if (MemoryPressureHandler::singleton().isUnderMemoryPressure())
-        return newVisibleRect;
-
-    const float paddingMultiplier = 2;
-
-    float leftEdgeDelta = paddingMultiplier * (newVisibleRect.x() - oldVisibleRect.x());
-    float rightEdgeDelta = paddingMultiplier * (newVisibleRect.maxX() - oldVisibleRect.maxX());
-
-    float topEdgeDelta = paddingMultiplier * (newVisibleRect.y() - oldVisibleRect.y());
-    float bottomEdgeDelta = paddingMultiplier * (newVisibleRect.maxY() - oldVisibleRect.maxY());
-    
-    FloatRect existingTileBackingRect = tiledBacking->visibleRect();
-    FloatRect expandedRect = newVisibleRect;
-
-    // More exposed on left side.
-    if (leftEdgeDelta < 0) {
-        float newLeft = expandedRect.x() + leftEdgeDelta;
-        // Pad to the left, but don't reduce padding that's already in the backing store (since we're still exposing to the left).
-        if (newLeft < existingTileBackingRect.x())
-            expandedRect.shiftXEdgeTo(newLeft);
-        else
-            expandedRect.shiftXEdgeTo(existingTileBackingRect.x());
-    }
-
-    // More exposed on right.
-    if (rightEdgeDelta > 0) {
-        float newRight = expandedRect.maxX() + rightEdgeDelta;
-        // Pad to the right, but don't reduce padding that's already in the backing store (since we're still exposing to the right).
-        if (newRight > existingTileBackingRect.maxX())
-            expandedRect.setWidth(newRight - expandedRect.x());
-        else
-            expandedRect.setWidth(existingTileBackingRect.maxX() - expandedRect.x());
-    }
-
-    // More exposed at top.
-    if (topEdgeDelta < 0) {
-        float newTop = expandedRect.y() + topEdgeDelta;
-        if (newTop < existingTileBackingRect.y())
-            expandedRect.shiftYEdgeTo(newTop);
-        else
-            expandedRect.shiftYEdgeTo(existingTileBackingRect.y());
-    }
-
-    // More exposed on bottom.
-    if (bottomEdgeDelta > 0) {
-        float newBottom = expandedRect.maxY() + bottomEdgeDelta;
-        if (newBottom > existingTileBackingRect.maxY())
-            expandedRect.setHeight(newBottom - expandedRect.y());
-        else
-            expandedRect.setHeight(existingTileBackingRect.maxY() - expandedRect.y());
-    }
-    
-    expandedRect.intersect(tiledBacking->boundsWithoutMargin());
-    return expandedRect;
 }
 
 void GraphicsLayerCA::updateTiles()
@@ -2640,18 +2595,18 @@ void GraphicsLayerCA::updateClippingStrategy(PlatformCALayer& clippingLayer, Ref
 
     if (!shapeMaskLayer) {
         shapeMaskLayer = createPlatformCALayer(PlatformCALayer::LayerTypeShapeLayer, this);
-        shapeMaskLayer->setAnchorPoint(FloatPoint3D());
+        shapeMaskLayer->setAnchorPoint({ });
         shapeMaskLayer->setName("shape mask");
     }
     
-    shapeMaskLayer->setPosition(FloatPoint());
-    shapeMaskLayer->setBounds(clippingLayer.bounds());
+    shapeMaskLayer->setPosition(roundedRect.rect().location());
+    FloatRect shapeBounds({ }, roundedRect.rect().size());
+    shapeMaskLayer->setBounds(shapeBounds);
+    FloatRoundedRect offsetRoundedRect(shapeBounds, roundedRect.radii());
+    shapeMaskLayer->setShapeRoundedRect(offsetRoundedRect);
 
     clippingLayer.setCornerRadius(0);
     clippingLayer.setMask(shapeMaskLayer.get());
-    
-    FloatRoundedRect offsetRoundedRect(clippingLayer.bounds(), roundedRect.radii());
-    shapeMaskLayer->setShapeRoundedRect(offsetRoundedRect);
 }
 
 void GraphicsLayerCA::updateContentsRects()
@@ -2753,6 +2708,11 @@ void GraphicsLayerCA::updateMasksToBoundsRect()
                 m_layerClones->shapeMaskLayerClones.add(cloneID, shapeMaskLayerClone);
         }
     }
+}
+
+void GraphicsLayerCA::updateEventRegion()
+{
+    m_layer->setEventRegion(eventRegion());
 }
 
 void GraphicsLayerCA::updateMaskLayer()
@@ -2907,7 +2867,7 @@ bool GraphicsLayerCA::isRunningTransformAnimation() const
 void GraphicsLayerCA::ensureLayerAnimations()
 {
     if (!m_animations)
-        m_animations = std::make_unique<LayerAnimations>();
+        m_animations = makeUnique<LayerAnimations>();
 }
 
 void GraphicsLayerCA::setAnimationOnLayer(PlatformCAAnimation& caAnim, AnimatedPropertyID property, const String& animationName, int index, int subIndex, Seconds timeOffset)
@@ -3086,7 +3046,12 @@ bool GraphicsLayerCA::createAnimationFromKeyframes(const KeyframeValueList& valu
 bool GraphicsLayerCA::appendToUncommittedAnimations(const KeyframeValueList& valueList, const TransformOperations* operations, const Animation* animation, const String& animationName, const FloatSize& boxSize, int animationIndex, Seconds timeOffset, bool isMatrixAnimation)
 {
     TransformOperation::OperationType transformOp = isMatrixAnimation ? TransformOperation::MATRIX_3D : operations->operations().at(animationIndex)->type();
+#if !PLATFORM(WIN) && !HAVE(CA_WHERE_ADDITIVE_TRANSFORMS_ARE_REVERSED)
     bool additive = animationIndex > 0;
+#else
+    int numAnimations = isMatrixAnimation ? 1 : operations->size();
+    bool additive = animationIndex < numAnimations - 1;
+#endif
     bool isKeyframe = valueList.size() > 2;
 
     RefPtr<PlatformCAAnimation> caAnimation;
@@ -3123,10 +3088,10 @@ bool GraphicsLayerCA::createTransformAnimationsFromKeyframes(const KeyframeValue
     bool isMatrixAnimation = listIndex < 0;
     int numAnimations = isMatrixAnimation ? 1 : operations->size();
 
-#if !PLATFORM(WIN)
+#if !PLATFORM(WIN) && !HAVE(CA_WHERE_ADDITIVE_TRANSFORMS_ARE_REVERSED)
     for (int animationIndex = 0; animationIndex < numAnimations; ++animationIndex) {
 #else
-    // QuartzCore on Windows expects animation lists to be applied in reverse order (<rdar://problem/9112233>).
+    // Some versions of CA require animation lists to be applied in reverse order (<rdar://problem/43908047> and <rdar://problem/9112233>).
     for (int animationIndex = numAnimations - 1; animationIndex >= 0; --animationIndex) {
 #endif
         if (!appendToUncommittedAnimations(valueList, operations, animation, animationName, boxSize, animationIndex, timeOffset, isMatrixAnimation)) {
@@ -3671,6 +3636,15 @@ String GraphicsLayerCA::displayListAsText(DisplayList::AsTextFlags flags) const
     return m_displayList->asText(flags);
 }
 
+void GraphicsLayerCA::setAllowsBackingStoreDetaching(bool allowDetaching)
+{
+    if (allowDetaching == m_allowsBackingStoreDetaching)
+        return;
+
+    m_allowsBackingStoreDetaching = allowDetaching;
+    noteLayerPropertyChanged(CoverageRectChanged);
+}
+
 void GraphicsLayerCA::setIsTrackingDisplayListReplay(bool isTracking)
 {
     if (isTracking == m_isTrackingDisplayListReplay)
@@ -3758,10 +3732,9 @@ void GraphicsLayerCA::dumpAdditionalProperties(TextStream& textStream, LayerTree
 
         textStream << indent << "(in window " << tiledBacking()->isInWindow() << ")\n";
     }
-    
+
     if (m_layer->wantsDeepColorBackingStore())
         textStream << indent << "(deep color 1)\n";
-
 
     if (behavior & LayerTreeAsTextIncludeContentLayers) {
         dumpInnerLayer(textStream, "structural layer", m_structuralLayer.get(), behavior);
@@ -3774,8 +3747,8 @@ void GraphicsLayerCA::dumpAdditionalProperties(TextStream& textStream, LayerTree
     }
 
     if (behavior & LayerTreeAsTextDebug) {
-        textStream << indent << "(accelerates drawing " << m_acceleratesDrawing << ")\n";
-        textStream << indent << "(uses display-list drawing " << m_usesDisplayListDrawing << ")\n";
+        if (m_usesDisplayListDrawing)
+            textStream << indent << "(uses display-list drawing " << m_usesDisplayListDrawing << ")\n";
     }
 }
 
@@ -3930,7 +3903,7 @@ void GraphicsLayerCA::ensureCloneLayers(CloneID cloneID, RefPtr<PlatformCALayer>
     contentsLayer = nullptr;
 
     if (!m_layerClones)
-        m_layerClones = std::make_unique<LayerClones>();
+        m_layerClones = makeUnique<LayerClones>();
 
     primaryLayer = findOrMakeClone(cloneID, m_layer.get(), m_layerClones->primaryLayerClones, cloneLevel);
     structuralLayer = findOrMakeClone(cloneID, m_structuralLayer.get(), m_layerClones->structuralLayerClones, cloneLevel);
@@ -4149,15 +4122,6 @@ void GraphicsLayerCA::updateOpacityOnLayer()
             clone.value->setOpacity(m_opacity);
         }
     }
-}
-
-void GraphicsLayerCA::setIsViewportConstrained(bool isViewportConstrained)
-{
-    if (isViewportConstrained == m_isViewportConstrained)
-        return;
-
-    m_isViewportConstrained = isViewportConstrained;
-    noteLayerPropertyChanged(CoverageRectChanged);
 }
 
 void GraphicsLayerCA::deviceOrPageScaleFactorChanged()

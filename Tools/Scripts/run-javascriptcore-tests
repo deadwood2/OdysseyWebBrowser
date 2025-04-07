@@ -71,6 +71,7 @@ use constant {
 my $runTestMasm = RUN_IF_NO_TESTS_SPECIFIED;
 my $runTestAir = RUN_IF_NO_TESTS_SPECIFIED;
 my $runTestB3 = RUN_IF_NO_TESTS_SPECIFIED;
+my $runTestDFG = RUN_IF_NO_TESTS_SPECIFIED;
 my $runTestAPI = RUN_IF_NO_TESTS_SPECIFIED;
 my $runJSCStress = RUN_IF_NO_TESTS_SPECIFIED;
 my $runMozillaTests = RUN_IF_NO_TESTS_SPECIFIED;
@@ -91,6 +92,8 @@ my $createTarball = 0;
 my $remoteHost = 0;
 my $failFast = 1;
 my %jsonData = ();
+my @testResults = ();
+my $isTestFailed = 0;
 my $remoteConfigFile;
 my $jsonFileName;
 my $verbose = 0;
@@ -125,6 +128,17 @@ if ($ENV{RUN_JAVASCRIPTCORE_TESTS_TESTB3}) {
     } else {
         print "Don't recognize value for RUN_JAVASCRIPTCORE_TESTS_TESTB3 environment variable: '"
             . $ENV{RUN_JAVASCRIPTCORE_TESTS_TESTB3} . "'. Should be set to 'true' or 'false'.\n";
+    }
+}
+
+if ($ENV{RUN_JAVASCRIPTCORE_TESTS_TESTDFG}) {
+    if ($ENV{RUN_JAVASCRIPTCORE_TESTS_TESTDFG} eq "true") {
+        $runTestDFG = ENV_VAR_SAYS_DO_RUN;
+    } elsif ($ENV{RUN_JAVASCRIPTCORE_TESTS_TESTDFG} eq "false") {
+        $runTestDFG = ENV_VAR_SAYS_DONT_RUN;
+    } else {
+        print "Don't recognize value for RUN_JAVASCRIPTCORE_TESTS_TESTDFG environment variable: '"
+            . $ENV{RUN_JAVASCRIPTCORE_TESTS_TESTDFG} . "'. Should be set to 'true' or 'false'.\n";
     }
 }
 
@@ -181,6 +195,7 @@ my $buildJSCDefault = $buildJSC ? "will check" : "will not check";
 my $testmasmDefault = defaultStringForTestState($runTestMasm);
 my $testairDefault = defaultStringForTestState($runTestAir);
 my $testb3Default = defaultStringForTestState($runTestB3);
+my $testDFGDefault = defaultStringForTestState($runTestDFG);
 my $testapiDefault = defaultStringForTestState($runTestAPI);
 my $jscStressDefault = defaultStringForTestState($runJSCStress);
 my $mozillaTestsDefault = defaultStringForTestState($runMozillaTests);
@@ -198,6 +213,7 @@ Usage: $programName [options] [options to pass to build system]
   --[no-]testmasm               Only run (or don't run) testmasm (default: $testmasmDefault)
   --[no-]testair                Only run (or don't run) testair (default: $testairDefault)
   --[no-]testb3                 Only run (or don't run) testb3 (default: $testb3Default)
+  --[no-]testdfg                Only run (or don't run) testdfg (default: $testDFGDefault)
   --[no-]testapi                Only run (or don't run) testapi (default: $testapiDefault)
   --[no-]jsc-stress             Only run (or don't run) the JSC stress tests (default: $jscStressDefault)
   --[no-]mozilla-tests          Only run (or don't run) the Mozilla tests (default: $mozillaTestsDefault)
@@ -219,7 +235,7 @@ Usage: $programName [options] [options to pass to build system]
                                 In general the shell runner is slower than the make runner.
   --make-runner                 Uses the faster make-based runner.
   --ruby-runner                 Uses the ruby runner for machines without unix shell or make.
- 
+
   --test-writer [writer]        Specifies the test script format."
                                 default is to use shell scripts to run the tests"
                                 \"ruby\" to use ruby scripts for systems without a unix shell.
@@ -238,6 +254,7 @@ Environment Variables:
   - set RUN_JAVASCRIPTCORE_TESTS_TESTMASM to "true" or "false" (no quotes) to determine if we run testmasm by default.
   - set RUN_JAVASCRIPTCORE_TESTS_TESTAIR to "true" or "false" (no quotes) to determine if we run testair by default.
   - set RUN_JAVASCRIPTCORE_TESTS_TESTB3 to "true" or "false" (no quotes) to determine if we run testb3 by default.
+  - set RUN_JAVASCRIPTCORE_TESTS_TESTDFG to "true" or "false" (no quotes) to determine if we run testdfg by default.
   - set RUN_JAVASCRIPTCORE_TESTS_TESTAPI to "true" or "false" (no quotes) to determine if we run testapi by default.
   - set RUN_JAVASCRIPTCORE_TESTS_BUILD to "true" or "false" (no quotes) to set the should-we-build-before-running-tests setting.
   - set RUN_JAVASCRIPTCORE_TESTS_EXTRA_TESTS to the path of a yaml file or a directory of JS files to be run as part of run-javascriptcore-tests.
@@ -257,6 +274,7 @@ GetOptions(
     'testmasm!' => \$runTestMasm,
     'testair!' => \$runTestAir,
     'testb3!' => \$runTestB3,
+    'testdfg!' => \$runTestDFG,
     'testapi!' => \$runTestAPI,
     'jsc-stress!' => \$runJSCStress,
     'mozilla-tests!' => \$runMozillaTests,
@@ -287,6 +305,7 @@ my $specificTestsSpecified = 0;
 if ($runTestMasm == DO_RUN
    || $runTestAir == DO_RUN
    || $runTestB3 == DO_RUN
+   || $runTestDFG == DO_RUN
    || $runTestAPI == DO_RUN
    || $runJSCStress == DO_RUN
    || $runMozillaTests == DO_RUN) {
@@ -306,6 +325,7 @@ sub enableTestOrNot {
 $runTestMasm = enableTestOrNot($runTestMasm);
 $runTestAir = enableTestOrNot($runTestAir);
 $runTestB3 = enableTestOrNot($runTestB3);
+$runTestDFG = enableTestOrNot($runTestDFG);
 $runTestAPI = enableTestOrNot($runTestAPI);
 $runJSCStress = enableTestOrNot($runJSCStress);
 $runMozillaTests = enableTestOrNot($runMozillaTests);
@@ -380,20 +400,43 @@ sub runTest {
     my $exitStatus = exitStatus($testResult);
     print "$testName completed with rc=$testResult ($exitStatus)\n\n";
 
+    if ($testResult) {
+        $isTestFailed = 1;
+        push @testResults, $testName;
+    }
     if (defined($jsonFileName)) {
         my $testStatus = ($exitStatus == 0)? JSON::PP::true: JSON::PP::false;
         $jsonData{$jsonTestStatusName} = $testStatus;
     }
 
     if ($testResult && $failFast) {
+        reportTestFailures();
         writeJsonDataIfApplicable();
         exit exitStatus($testResult);
     }
 }
 
+sub reportTestFailures {
+  my $numJSCtestFailures = @testResults;
+  if ($numJSCtestFailures) {
+      print "\n** The following JSC test binaries failures have been introduced:\n";
+      foreach my $testFailure (@testResults) {
+          print "\t$testFailure\n";
+      }
+  }
+  print "\n";
+
+  print "Results for JSC test binaries:\n";
+  printThingsFound($numJSCtestFailures, "failure", "failures", "found");
+  print "    OK.\n" if $numJSCtestFailures == 0;
+
+  print "\n";
+}
+
 if ($runTestMasm) { runTest("testmasm", "allMasmTestsPassed") }
 if ($runTestAir) { runTest("testair", "allAirTestsPassed") }
 if ($runTestB3) { runTest("testb3", "allB3TestsPassed") }
+if ($runTestDFG) { runTest("testdfg", "allDFGTestsPassed") }
 if ($runTestAPI) { runTest("testapi", "allApiTestsPassed") }
 
 
@@ -401,6 +444,11 @@ if ($runTestAPI) { runTest("testapi", "allApiTestsPassed") }
 chdirWebKit();
 
 runJSCStressTests();
+reportTestFailures();
+
+if ($isTestFailed) {
+  exit(1);
+}
 
 sub runJSCStressTests
 {
@@ -428,6 +476,7 @@ sub runJSCStressTests
             "JSTests/controlFlowProfiler.yaml",
             "JSTests/es6.yaml",
             "JSTests/modules.yaml",
+            "JSTests/complex.yaml",
             "JSTests/ChakraCore.yaml",
             "JSTests/wasm.yaml");
         $hasTestsToRun = 1;
@@ -453,7 +502,7 @@ sub runJSCStressTests
     if (configuration() eq "Debug") {
         push(@jscStressDriverCmd, "--debug");
     }
-    
+
     if (!$copyJSC) {
         push(@jscStressDriverCmd, "--no-copy");
     }
@@ -521,6 +570,11 @@ sub runJSCStressTests
 
     push(@jscStressDriverCmd, ("--verbose") x $verbose) if ($verbose > 0);
 
+    if (isPlayStation()) {
+        push(@jscStressDriverCmd, "--os=playstation");
+        push(@jscStressDriverCmd, "--no-copy");
+    }
+
     unshift @jscStressDriverCmd, wrapperPrefixIfNeeded() if shouldUseJhbuild();
 
     # End option processing, the rest of the arguments are tests
@@ -548,6 +602,7 @@ sub runJSCStressTests
     my $numJSCStressFailures = @jscStressFailList;
 
     if ($numJSCStressFailures) {
+        $isTestFailed = 1;
         print "\n** The following JSC stress test failures have been introduced:\n";
         foreach my $testFailure (@jscStressFailList) {
             print "\t$testFailure\n";
@@ -566,7 +621,6 @@ sub runJSCStressTests
     }
 
     writeJsonDataIfApplicable();
-    exit(1) if $numJSCStressFailures;
 }
 
 sub readAllLines

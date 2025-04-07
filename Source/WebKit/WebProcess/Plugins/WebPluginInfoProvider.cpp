@@ -78,7 +78,7 @@ void WebPluginInfoProvider::setPluginLoadClientPolicy(WebCore::PluginLoadClientP
         versionsToPolicies = policiesByIdentifier.get(bundleIdentifierToSet);
 
     versionsToPolicies.set(versionStringToSet, clientPolicy);
-    policiesByIdentifier.set(bundleIdentifierToSet, versionsToPolicies);
+    policiesByIdentifier.set(bundleIdentifierToSet, WTFMove(versionsToPolicies));
     m_hostsToPluginIdentifierData.set(hostToSet, policiesByIdentifier);
 
     clearPagesPluginData();
@@ -147,7 +147,13 @@ Vector<WebCore::PluginInfo> WebPluginInfoProvider::webVisiblePluginInfo(Page& pa
 void WebPluginInfoProvider::populatePluginCache(const WebCore::Page& page)
 {
     if (!m_pluginCacheIsPopulated) {
-        if (page.settings().arePluginsEnabled()) {
+#if PLATFORM(COCOA)
+        // Application plugins are not affected by enablePlugins setting, so we always need to scan plugins to get them.
+        bool shouldScanPlugins = true;
+#else
+        bool shouldScanPlugins = page.mainFrame().loader().subframeLoader().allowPlugins();
+#endif
+        if (shouldScanPlugins) {
             HangDetectionDisabler hangDetectionDisabler;
             if (!WebProcess::singleton().parentProcessConnection()->sendSync(Messages::WebProcessProxy::GetPlugins(m_shouldRefreshPlugins),
                 Messages::WebProcessProxy::GetPlugins::Reply(m_cachedPlugins, m_cachedApplicationPlugins, m_cachedSupportedPluginIdentifiers), 0))

@@ -175,7 +175,7 @@ static void processPendingIconsForPageURL(WebKitFaviconDatabase* database, const
     for (size_t i = 0; i < pendingIconRequests->size(); ++i) {
         GTask* task = pendingIconRequests->at(i).get();
         if (error)
-            g_task_return_error(task, error.release().release());
+            g_task_return_error(task, error.release());
         else {
             GetFaviconSurfaceAsyncData* data = static_cast<GetFaviconSurfaceAsyncData*>(g_task_get_task_data(task));
             data->icon = icon;
@@ -267,8 +267,8 @@ void webkitFaviconDatabaseOpen(WebKitFaviconDatabase* database, const String& pa
         return;
 
     WebKitFaviconDatabasePrivate* priv = database->priv;
-    priv->iconDatabase = std::make_unique<IconDatabase>();
-    priv->iconDatabase->setClient(std::make_unique<WebKitIconDatabaseClient>(database));
+    priv->iconDatabase = makeUnique<IconDatabase>();
+    priv->iconDatabase->setClient(makeUnique<WebKitIconDatabaseClient>(database));
     IconDatabase::delayDatabaseCleanup();
     priv->iconDatabase->setEnabled(true);
     priv->iconDatabase->setPrivateBrowsingEnabled(WebPreferences::anyPagesAreUsingPrivateBrowsing());
@@ -413,7 +413,7 @@ void webkit_favicon_database_get_favicon(WebKitFaviconDatabase* database, const 
     data->shouldReleaseIconForPageURL = true;
 
     if (g_error_matches(error.get(), WEBKIT_FAVICON_DATABASE_ERROR, WEBKIT_FAVICON_DATABASE_ERROR_FAVICON_NOT_FOUND)) {
-        g_task_return_error(task.get(), error.release().release());
+        g_task_return_error(task.get(), error.release());
         return;
     }
 

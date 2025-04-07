@@ -89,10 +89,6 @@ NetscapePlugin::NetscapePlugin(Ref<NetscapePluginModule>&& pluginModule)
     , m_isComplexTextInputEnabled(false)
     , m_hasHandledAKeyDownEvent(false)
     , m_ignoreNextKeyUpEventCounter(0)
-#ifndef NP_NO_CARBON
-    , m_nullEventTimer(RunLoop::main(), this, &NetscapePlugin::nullEventTimerFired)
-    , m_npCGContext()
-#endif
 #endif
 {
     m_npp.ndata = this;
@@ -354,7 +350,7 @@ uint32_t NetscapePlugin::scheduleTimer(unsigned interval, bool repeat, void (*ti
     // FIXME: Handle wrapping around.
     unsigned timerID = ++m_nextTimerID;
 
-    auto timer = std::make_unique<Timer>(this, timerID, interval, repeat, timerFunc);
+    auto timer = makeUnique<Timer>(this, timerID, interval, repeat, timerFunc);
     
     // FIXME: Based on the plug-in visibility, figure out if we should throttle the timer, or if we should start it at all.
     timer->start();
@@ -753,6 +749,8 @@ RefPtr<ShareableBitmap> NetscapePlugin::snapshot()
 
     auto bitmap = ShareableBitmap::createShareable(backingStoreSize, { });
     auto context = bitmap->createGraphicsContext();
+    if (!context)
+        return nullptr;
 
     // FIXME: We should really call applyDeviceScaleFactor instead of scale, but that ends up calling into WKSI
     // which we currently don't have initiated in the plug-in process.

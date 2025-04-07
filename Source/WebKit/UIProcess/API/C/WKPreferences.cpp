@@ -208,16 +208,6 @@ bool WKPreferencesGetJavaScriptCanOpenWindowsAutomatically(WKPreferencesRef pref
     return toImpl(preferencesRef)->javaScriptCanOpenWindowsAutomatically();
 }
 
-void WKPreferencesSetStorageAccessPromptsEnabled(WKPreferencesRef preferencesRef, bool enabled)
-{
-    toImpl(preferencesRef)->setStorageAccessPromptsEnabled(enabled);
-}
-
-bool WKPreferencesGetStorageAccessPromptsEnabled(WKPreferencesRef preferencesRef)
-{
-    return toImpl(preferencesRef)->storageAccessPromptsEnabled();
-}
-
 void WKPreferencesSetHyperlinkAuditingEnabled(WKPreferencesRef preferencesRef, bool hyperlinkAuditingEnabled)
 {
     toImpl(preferencesRef)->setHyperlinkAuditingEnabled(hyperlinkAuditingEnabled);
@@ -477,16 +467,6 @@ void WKPreferencesSetWebGLEnabled(WKPreferencesRef preferencesRef, bool flag)
 bool WKPreferencesGetWebGLEnabled(WKPreferencesRef preferencesRef)
 {
     return toImpl(preferencesRef)->webGLEnabled();
-}
-
-void WKPreferencesSetForceSoftwareWebGLRendering(WKPreferencesRef preferencesRef, bool flag)
-{
-    toImpl(preferencesRef)->setForceSoftwareWebGLRendering(flag);
-}
-
-bool WKPreferencesGetForceSoftwareWebGLRendering(WKPreferencesRef preferencesRef)
-{
-    return toImpl(preferencesRef)->forceSoftwareWebGLRendering();
 }
 
 void WKPreferencesSetAccelerated2DCanvasEnabled(WKPreferencesRef preferencesRef, bool flag)
@@ -1220,6 +1200,16 @@ bool WKPreferencesGetTextAutosizingEnabled(WKPreferencesRef preferencesRef)
     return toImpl(preferencesRef)->textAutosizingEnabled();
 }
 
+void WKPreferencesSetTextAutosizingUsesIdempotentMode(WKPreferencesRef preferencesRef, bool textAutosizingUsesIdempotentModeEnabled)
+{
+    toImpl(preferencesRef)->setTextAutosizingUsesIdempotentMode(textAutosizingUsesIdempotentModeEnabled);
+}
+
+bool WKPreferencesGetTextAutosizingUsesIdempotentMode(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->textAutosizingUsesIdempotentMode();
+}
+
 void WKPreferencesSetAggressiveTileRetentionEnabled(WKPreferencesRef preferencesRef, bool enabled)
 {
     toImpl(preferencesRef)->setAggressiveTileRetentionEnabled(enabled);
@@ -1317,7 +1307,7 @@ void WKPreferencesSetIncrementalRenderingSuppressionTimeout(WKPreferencesRef pre
 
 double WKPreferencesGetIncrementalRenderingSuppressionTimeout(WKPreferencesRef preferencesRef)
 {
-    return toAPI(toImpl(preferencesRef)->incrementalRenderingSuppressionTimeout());
+    return toImpl(preferencesRef)->incrementalRenderingSuppressionTimeout();
 }
 
 void WKPreferencesSetThreadedScrollingEnabled(WKPreferencesRef preferencesRef, bool enabled)
@@ -1348,6 +1338,16 @@ void WKPreferencesSetSimpleLineLayoutDebugBordersEnabled(WKPreferencesRef prefer
 bool WKPreferencesGetSimpleLineLayoutDebugBordersEnabled(WKPreferencesRef preferencesRef)
 {
     return toImpl(preferencesRef)->simpleLineLayoutDebugBordersEnabled();
+}
+
+void WKPreferencesSetContentChangeObserverEnabled(WKPreferencesRef preferencesRef, bool flag)
+{
+    toImpl(preferencesRef)->setContentChangeObserverEnabled(flag);
+}
+
+bool WKPreferencesGetContentChangeObserverEnabled(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->contentChangeObserverEnabled();
 }
 
 void WKPreferencesSetNewBlockInsideInlineModelEnabled(WKPreferencesRef, bool)
@@ -1730,6 +1730,26 @@ bool WKPreferencesGetCustomPasteboardDataEnabled(WKPreferencesRef preferencesRef
     return toImpl(preferencesRef)->customPasteboardDataEnabled();
 }
 
+void WKPreferencesSetDialogElementEnabled(WKPreferencesRef preferencesRef, bool flag)
+{
+    toImpl(preferencesRef)->setDialogElementEnabled(flag);
+}
+
+bool WKPreferencesGetDialogElementEnabled(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->dialogElementEnabled();
+}
+
+void WKPreferencesSetKeygenElementEnabled(WKPreferencesRef preferencesRef, bool flag)
+{
+    toImpl(preferencesRef)->setKeygenElementEnabled(flag);
+}
+
+bool WKPreferencesGetKeygenElementEnabled(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->keygenElementEnabled();
+}
+
 void WKPreferencesSetWebShareEnabled(WKPreferencesRef preferencesRef, bool flag)
 {
     toImpl(preferencesRef)->setWebShareEnabled(flag);
@@ -1980,6 +2000,16 @@ bool WKPreferencesGetAriaReflectionEnabled(WKPreferencesRef preferencesRef)
     return toImpl(preferencesRef)->ariaReflectionEnabled();
 }
 
+void WKPreferencesSetSyntheticEditingCommandsEnabled(WKPreferencesRef preferencesRef, bool flag)
+{
+    toImpl(preferencesRef)->setSyntheticEditingCommandsEnabled(flag);
+}
+
+bool WKPreferencesGetSyntheticEditingCommandsEnabled(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->syntheticEditingCommandsEnabled();
+}
+
 void WKPreferencesSetCSSOMViewScrollingAPIEnabled(WKPreferencesRef preferencesRef, bool flag)
 {
     toImpl(preferencesRef)->setCSSOMViewScrollingAPIEnabled(flag);
@@ -2108,4 +2138,24 @@ void WKPreferencesSetCaptureVideoInUIProcessEnabled(WKPreferencesRef preferences
 bool WKPreferencesGetCaptureVideoInUIProcessEnabled(WKPreferencesRef preferencesRef)
 {
     return toImpl(preferencesRef)->captureVideoInUIProcessEnabled();
+}
+
+void WKPreferencesSetReferrerPolicyAttributeEnabled(WKPreferencesRef preferencesRef, bool flag)
+{
+    toImpl(preferencesRef)->setReferrerPolicyAttributeEnabled(flag);
+}
+
+bool WKPreferencesGetReferrerPolicyAttributeEnabled(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->referrerPolicyAttributeEnabled();
+}
+
+void WKPreferencesSetLazyImageLoadingEnabled(WKPreferencesRef preferencesRef, bool flag)
+{
+    toImpl(preferencesRef)->setLazyImageLoadingEnabled(flag);
+}
+
+bool WKPreferencesGetLazyImageLoadingEnabled(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->lazyImageLoadingEnabled();
 }

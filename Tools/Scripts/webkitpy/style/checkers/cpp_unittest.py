@@ -3129,8 +3129,10 @@ class OrderOfIncludesTest(CppStyleTestBase):
                                          '\n'
                                          '#include "bar.h"\n',
                                          '')
+
         # Pretend that header files exist.
         os.path.isfile = lambda filename: True
+
         # Missing include for existing primary header -> error.
         self.assert_language_rules_check('foo.cpp',
                                          '#include "config.h"\n'
@@ -3139,12 +3141,14 @@ class OrderOfIncludesTest(CppStyleTestBase):
                                          'Found other header before a header this file implements. '
                                          'Should be: config.h, primary header, blank line, and then '
                                          'alphabetically sorted.  [build/include_order] [4]')
+
         # *SoftLink.cpp files should not include their headers -> no error.
         self.assert_language_rules_check('FooSoftLink.cpp',
                                          '#include "config.h"\n'
                                          '\n'
                                          '#include <wtf/SoftLinking.h>\n',
                                          '')
+
         # Having include for existing primary header -> no error.
         self.assert_language_rules_check('foo.cpp',
                                          '#include "config.h"\n'
@@ -3152,6 +3156,27 @@ class OrderOfIncludesTest(CppStyleTestBase):
                                          '\n'
                                          '#include "bar.h"\n',
                                          '')
+
+        # Having include for existing WTF primary header -> no error.
+        self.assert_language_rules_check('foo.cpp',
+                                         '#include "config.h"\n'
+                                         '#include <wtf/foo.h>\n'
+                                         '\n'
+                                         '#include <wtf/bar.h>\n',
+                                         '')
+
+        # WTF primary header included out of order -> error.
+        self.assert_language_rules_check('foo.cpp',
+                                         '#include "config.h"\n'
+                                         '#include <wtf/bar.h>\n'
+                                         '\n'
+                                         '#include <wtf/foo.h>\n',
+                                         ['Found other header before a header this file implements. '
+                                          'Should be: config.h, primary header, blank line, and then '
+                                          'alphabetically sorted.  [build/include_order] [4]',
+                                          'Found header this file implements after other header. '
+                                          'Should be: config.h, primary header, blank line, and then '
+                                          'alphabetically sorted.  [build/include_order] [4]'])
 
         os.path.isfile = self.os_path_isfile_orig
 
@@ -4891,6 +4916,23 @@ class WebKitStyleTest(CppStyleTestBase):
             '        reallyLongParam5);\n'
             '    }\n',
             '')
+        # 6. An open brace on its own line for a nested code block should be allowed.
+        self.assert_multi_line_lint(
+            '    if (condition) {\n'
+            '        {\n'
+            '            j = 1;\n'
+            '        }\n'
+            '    }\n',
+            '')
+        self.assert_multi_line_lint(
+            '    if (condition1\n'
+            '        || condition2\n'
+            '        && condition3) {\n'
+            '        {\n'
+            '            j = 1;\n'
+            '        }\n'
+            '    }\n',
+            '')
 
     def test_null_false_zero(self):
         # 1. In C++, the null pointer value should be written as nullptr. In C,
@@ -5689,10 +5731,19 @@ class WebKitStyleTest(CppStyleTestBase):
         self.assert_lint('MYMACRO(a ? b() : c);', '')
 
     def test_min_versions_of_wk_api_available(self):
-        self.assert_lint('WK_API_AVAILABLE(macosx(1.2.3), ios(3.4.5))', '')  # version numbers are OK.
-        self.assert_lint('WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA))', '')  # WK_MAC_TBA and WK_IOS_TBA are OK.
-        self.assert_lint('WK_API_AVAILABLE(macosx(WK_IOS_TBA), ios(3.4.5))', 'WK_IOS_TBA is neither a version number nor WK_MAC_TBA  [build/wk_api_available] [5]')
-        self.assert_lint('WK_API_AVAILABLE(macosx(1.2.3), ios(WK_MAC_TBA))', 'WK_MAC_TBA is neither a version number nor WK_IOS_TBA  [build/wk_api_available] [5]')
+        self.assert_lint('WK_API_AVAILABLE(macosx(1.2.3))', 'macosx() is deprecated; use macos() instead  [build/wk_api_available] [5]')
+        self.assert_lint('WK_API_AVAILABLE(macosx(WK_MAC_TBA))', 'macosx() is deprecated; use macos() instead  [build/wk_api_available] [5]')
+        self.assert_lint('WK_API_AVAILABLE(macos(1.2.3), ios(3.4.5))', '')  # version numbers are OK.
+        self.assert_lint('WK_API_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA))', '')  # WK_MAC_TBA and WK_IOS_TBA are OK.
+        self.assert_lint('WK_API_AVAILABLE(macos(WK_IOS_TBA), ios(3.4.5))', 'macos(WK_IOS_TBA) is invalid; expected WK_MAC_TBA or a number  [build/wk_api_available] [5]')
+        self.assert_lint('WK_API_AVAILABLE(macos(1.2.3), ios(WK_MAC_TBA))', 'ios(WK_MAC_TBA) is invalid; expected WK_IOS_TBA or a number  [build/wk_api_available] [5]')
+        self.assert_lint('WK_API_AVAILABLE(macos(1.2.3))', '')  # version numbers are OK.
+        self.assert_lint('WK_API_AVAILABLE(macos(WK_MAC_TBA))', '')  # WK_MAC_TBA is OK.
+        self.assert_lint('WK_API_AVAILABLE(ios(3.4.5))', '')  # version numbers are OK.
+        self.assert_lint('WK_API_AVAILABLE(ios(WK_IOS_TBA))', '')  # WK_IOS_TBA is OK.
+        self.assert_lint('WK_API_AVAILABLE(macos(WK_IOS_TBA))', 'macos(WK_IOS_TBA) is invalid; expected WK_MAC_TBA or a number  [build/wk_api_available] [5]')
+        self.assert_lint('WK_API_AVAILABLE(macos(WK_IOS_TBA))', 'macos(WK_IOS_TBA) is invalid; expected WK_MAC_TBA or a number  [build/wk_api_available] [5]')
+        self.assert_lint('WK_API_AVAILABLE(ios(WK_MAC_TBA))', 'ios(WK_MAC_TBA) is invalid; expected WK_IOS_TBA or a number  [build/wk_api_available] [5]')
 
     def test_os_version_checks(self):
         self.assert_lint('#if PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED < 110000', 'Misplaced OS version check. Please use a named macro in wtf/Platform.h, wtf/FeatureDefines.h, or an appropriate internal file.  [build/version_check] [5]')

@@ -27,8 +27,6 @@
 
 #import "WKFoundation.h"
 
-#if WK_API_ENABLED
-
 #import "APIIconLoadingClient.h"
 #import <wtf/RetainPtr.h>
 #import <wtf/WeakObjCPtr.h>
@@ -39,6 +37,7 @@
 namespace WebKit {
 
 class IconLoadingDelegate {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit IconLoadingDelegate(WKWebView *);
     ~IconLoadingDelegate();
@@ -50,6 +49,7 @@ public:
 
 private:
     class IconLoadingClient : public API::IconLoadingClient {
+        WTF_MAKE_FAST_ALLOCATED;
     public:
         explicit IconLoadingClient(IconLoadingDelegate&);
         ~IconLoadingClient();
@@ -69,5 +69,3 @@ private:
 };
 
 } // namespace WebKit
-
-#endif // WK_API_ENABLED

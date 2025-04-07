@@ -96,7 +96,7 @@ LayerFlushController::LayerFlushController(WebView* webView)
 WebViewLayerFlushScheduler::WebViewLayerFlushScheduler(LayerFlushController* flushController)
     : m_flushController(flushController)
 {
-    m_runLoopObserver = std::make_unique<WebCore::RunLoopObserver>(static_cast<CFIndex>(WebCore::RunLoopObserver::WellKnownRunLoopOrders::LayerFlush), [this]() {
+    m_runLoopObserver = makeUnique<WebCore::RunLoopObserver>(static_cast<CFIndex>(WebCore::RunLoopObserver::WellKnownRunLoopOrders::LayerFlush), [this]() {
         this->layerFlushCallback();
     });
 }
@@ -198,10 +198,6 @@ void WebViewLayerFlushScheduler::layerFlushCallback()
     // The default value should be synchronized with WebCore/page/Settings.cpp.
     validationMessageTimerMagnification = 50;
 
-#if ENABLE(DASHBOARD_SUPPORT)
-    dashboardBehaviorAllowWheelScrolling = YES;
-#endif
-
 #if PLATFORM(IOS_FAMILY)
     isStopping = NO;
     _geolocationProvider = [WebGeolocationProviderIOS sharedGeolocationProvider];
@@ -212,7 +208,7 @@ void WebViewLayerFlushScheduler::layerFlushCallback()
     pluginDatabaseClientCount++;
 
 #if USE(DICTATION_ALTERNATIVES)
-    m_alternativeTextUIController = std::make_unique<WebCore::AlternativeTextUIController>();
+    m_alternativeTextUIController = makeUnique<WebCore::AlternativeTextUIController>();
 #endif
 
     return self;

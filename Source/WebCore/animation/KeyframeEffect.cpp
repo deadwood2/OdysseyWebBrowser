@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -208,7 +208,7 @@ static inline ExceptionOr<KeyframeEffect::KeyframeLikeObject> processKeyframeLik
     //       name to IDL attribute name algorithm.
 
     // 3. Let input properties be the result of calling the EnumerableOwnNames operation with keyframe input as the object.
-    PropertyNameArray inputProperties(&vm, PropertyNameMode::Strings, PrivateSymbolMode::Exclude);
+    PropertyNameArray inputProperties(vm, PropertyNameMode::Strings, PrivateSymbolMode::Exclude);
     JSObject::getOwnPropertyNames(keyframesInput.get(), &state, inputProperties, EnumerationMode());
 
     // 4. Make up a new list animation properties that consists of all of the properties that are in both input properties and animatable
@@ -601,13 +601,13 @@ Vector<Strong<JSObject>> KeyframeEffect::getKeyframes(ExecState& state)
                 auto propertyName = CSSPropertyIDToIDLAttributeName(cssPropertyId);
                 // 2. Let IDL value be the result of serializing the property value of declaration by passing declaration to the algorithm to serialize a CSS value.
                 String idlValue = "";
-                if (auto cssValue = computedStyleExtractor.valueForPropertyinStyle(style, cssPropertyId))
+                if (auto cssValue = computedStyleExtractor.valueForPropertyInStyle(style, cssPropertyId))
                     idlValue = cssValue->cssText();
                 // 3. Let value be the result of converting IDL value to an ECMAScript String value.
                 auto value = toJS<IDLDOMString>(state, idlValue);
                 // 4. Call the [[DefineOwnProperty]] internal method on output keyframe with property name property name,
                 //    Property Descriptor { [[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: true, [[Value]]: value } and Boolean flag false.
-                JSObject::defineOwnProperty(outputKeyframe, &state, AtomicString(propertyName).impl(), PropertyDescriptor(value, 0), false);
+                JSObject::defineOwnProperty(outputKeyframe, &state, AtomString(propertyName).impl(), PropertyDescriptor(value, 0), false);
             }
 
             // 5. Append output keyframe to result.
@@ -645,7 +645,7 @@ Vector<Strong<JSObject>> KeyframeEffect::getKeyframes(ExecState& state)
                 auto value = toJS<IDLDOMString>(state, it->value);
                 // 4. Call the [[DefineOwnProperty]] internal method on output keyframe with property name property name,
                 //    Property Descriptor { [[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: true, [[Value]]: value } and Boolean flag false.
-                JSObject::defineOwnProperty(outputKeyframe, &state, AtomicString(propertyName).impl(), PropertyDescriptor(value, 0), false);
+                JSObject::defineOwnProperty(outputKeyframe, &state, AtomString(propertyName).impl(), PropertyDescriptor(value, 0), false);
             }
 
             // 4. Append output keyframe to result.
@@ -1319,7 +1319,7 @@ void KeyframeEffect::applyPendingAcceleratedActions()
     for (const auto& action : pendingAcceleratedActions) {
         switch (action) {
         case AcceleratedAction::Play:
-            if (!compositedRenderer->startAnimation(timeOffset, backingAnimationForCompositedRenderer().ptr(), m_blendingKeyframes)) {
+            if (!compositedRenderer->startAnimation(timeOffset, backingAnimationForCompositedRenderer(), m_blendingKeyframes)) {
                 m_shouldRunAccelerated = false;
                 m_lastRecordedAcceleratedAction = AcceleratedAction::Stop;
                 animation()->acceleratedStateDidChange();

@@ -33,6 +33,7 @@
 
 namespace WebCore {
 class CertificateInfo;
+class FloatRect;
 }
 
 namespace WebKit {
@@ -55,6 +56,7 @@ public:
     // WebCore::InspectorFrontendClient
     void windowObjectCleared() override;
     void frontendLoaded() override;
+    void changeSheetRect(const WebCore::FloatRect&) override;
     void startWindowDrag() override;
     void moveWindowBy(float x, float y) override;
 
@@ -68,6 +70,7 @@ public:
     void bringToFront() override;
     void closeWindow() override;
     void reopen() override;
+    void resetState() override;
 
     void openInNewTab(const String& url) override;
     void save(const String& url, const String& content, bool base64Encoded, bool forceSaveAs) override;

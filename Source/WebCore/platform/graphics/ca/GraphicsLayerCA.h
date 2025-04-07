@@ -124,6 +124,8 @@ public:
     WEBCORE_EXPORT void setShapeLayerPath(const Path&) override;
     WEBCORE_EXPORT void setShapeLayerWindRule(WindRule) override;
 
+    WEBCORE_EXPORT void setEventRegion(EventRegion&&) override;
+
     WEBCORE_EXPORT void suspendAnimations(MonotonicTime) override;
     WEBCORE_EXPORT void resumeAnimations() override;
 
@@ -155,13 +157,13 @@ public:
     FloatSize pixelAlignmentOffset() const override { return m_pixelAlignmentOffset; }
 
     struct CommitState {
+        WTF_MAKE_STRUCT_FAST_ALLOCATED;
         unsigned treeDepth { 0 };
         unsigned totalBackdropFilterArea { 0 };
         bool ancestorHadChanges { false };
         bool ancestorHasTransformAnimation { false };
         bool ancestorStartedOrEndedTransformAnimation { false };
         bool ancestorWithTransformAnimationIntersectsCoverageRect { false };
-        bool ancestorIsViewportConstrained { false };
     };
     bool needsCommit(const CommitState&);
     void recursiveCommitChanges(CommitState&, const TransformState&, float pageScaleFactor = 1, const FloatPoint& positionRelativeToBase = FloatPoint(), bool affectedByPageScale = false);
@@ -213,8 +215,8 @@ private:
     bool isCommittingChanges() const override { return m_isCommittingChanges; }
     bool isUsingDisplayListDrawing(PlatformCALayer*) const override { return m_usesDisplayListDrawing; }
 
-    WEBCORE_EXPORT void setIsViewportConstrained(bool) override;
-    bool isViewportConstrained() const override { return m_isViewportConstrained; }
+    WEBCORE_EXPORT void setAllowsBackingStoreDetaching(bool) override;
+    bool allowsBackingStoreDetaching() const override { return m_allowsBackingStoreDetaching; }
 
     WEBCORE_EXPORT String displayListAsText(DisplayList::AsTextFlags) const override;
 
@@ -308,6 +310,7 @@ private:
     typedef unsigned ComputeVisibleRectFlags;
     
     struct VisibleAndCoverageRects {
+        WTF_MAKE_STRUCT_FAST_ALLOCATED;
         FloatRect visibleRect;
         FloatRect coverageRect;
         TransformationMatrix animatingTransform;
@@ -319,16 +322,15 @@ private:
     const FloatRect& visibleRect() const { return m_visibleRect; }
     const FloatRect& coverageRect() const { return m_coverageRect; }
 
-    void setVisibleAndCoverageRects(const VisibleAndCoverageRects&, bool isViewportConstrained);
+    void setVisibleAndCoverageRects(const VisibleAndCoverageRects&);
     
-    static FloatRect adjustTiledLayerVisibleRect(TiledBacking*, const FloatRect& oldVisibleRect, const FloatRect& newVisibleRect, const FloatSize& oldSize, const FloatSize& newSize);
-
     bool recursiveVisibleRectChangeRequiresFlush(const CommitState&, const TransformState&) const;
     
     bool isPageTiledBackingLayer() const { return type() == Type::PageTiledBacking; }
 
     // Used to track the path down the tree for replica layers.
     struct ReplicaState {
+        WTF_MAKE_STRUCT_FAST_ALLOCATED;
         static const size_t maxReplicaDepth = 16;
         enum ReplicaBranchType { ChildBranch = 0, ReplicaBranch = 1 };
         ReplicaState(ReplicaBranchType firstBranch)
@@ -413,6 +415,7 @@ private:
     void updateContentsColorLayer();
     void updateContentsRects();
     void updateMasksToBoundsRect();
+    void updateEventRegion();
     void updateMaskLayer();
     void updateReplicatedLayers();
 
@@ -531,6 +534,7 @@ private:
         WindRuleChanged                         = 1LLU << 37,
         UserInteractionEnabledChanged           = 1LLU << 38,
         NeedsComputeVisibleAndCoverageRect      = 1LLU << 39,
+        EventRegionChanged                      = 1LLU << 40,
     };
     typedef uint64_t LayerChangeFlags;
     void addUncommittedChanges(LayerChangeFlags);
@@ -578,6 +582,7 @@ private:
 
     // References to clones of our layers, for replicated layers.
     struct LayerClones {
+        WTF_MAKE_STRUCT_FAST_ALLOCATED;
         LayerMap primaryLayerClones;
         LayerMap structuralLayerClones;
         LayerMap contentsLayerClones;
@@ -607,6 +612,7 @@ private:
     typedef HashMap<String, Vector<AnimationProcessingAction>> AnimationsToProcessMap;
     typedef HashMap<String, Vector<LayerPropertyAnimation>> AnimationsMap;
     struct LayerAnimations {
+        WTF_MAKE_STRUCT_FAST_ALLOCATED;
         Vector<LayerPropertyAnimation> uncomittedAnimations;
         AnimationsToProcessMap animationsToProcess;
         AnimationsMap runningAnimations;
@@ -623,7 +629,7 @@ private:
 
     bool m_needsFullRepaint : 1;
     bool m_usingBackdropLayerType : 1;
-    bool m_isViewportConstrained : 1;
+    bool m_allowsBackingStoreDetaching : 1;
     bool m_intersectsCoverageRect : 1;
     bool m_hasEverPainted : 1;
     bool m_hasDescendantsWithRunningTransformAnimations : 1;

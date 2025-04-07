@@ -29,7 +29,7 @@
 #include "config.h"
 #include "PlatformWebView.h"
 
-#include <HWndDC.h>
+#include <WebCore/HWndDC.h>
 #include <cairo.h>
 #include <cstdio>
 #include <windows.h>
@@ -212,7 +212,6 @@ cairo_surface_t* PlatformWebView::windowSnapshotImage()
     auto memoryDC = adoptGDIObject(::CreateCompatibleDC(windowDC));
 
     BITMAPINFO bitmapInfo { };
-    WKRect wkFrame = windowFrame();
     bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bitmapInfo.bmiHeader.biWidth = width;
     bitmapInfo.bmiHeader.biHeight = -height;
@@ -226,17 +225,8 @@ cairo_surface_t* PlatformWebView::windowSnapshotImage()
     if (!bitmap)
         return nullptr;
 
-    ::InvalidateRect(m_window, nullptr, true);
     ::SelectObject(memoryDC.get(), bitmap.get());
-    ::BitBlt(memoryDC.get(),
-        0,
-        0,
-        width,
-        height,
-        windowDC,
-        0,
-        0,
-        SRCCOPY);
+    ::SendMessage(m_window, WM_PRINT, reinterpret_cast<WPARAM>(memoryDC.get()), PRF_CLIENT | PRF_CHILDREN | PRF_OWNED);
 
     BITMAP bitmapTag { };
     GetObject(bitmap.get(), sizeof(bitmapTag), &bitmapTag);

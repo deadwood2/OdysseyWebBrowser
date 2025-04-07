@@ -29,7 +29,9 @@
 #include <WebCore/ContentExtensionActions.h>
 #include <WebCore/ContentSecurityPolicyResponseHeaders.h>
 #include <WebCore/FetchOptions.h>
+#include <WebCore/FrameIdentifier.h>
 #include <WebCore/NetworkLoadInformation.h>
+#include <WebCore/PageIdentifier.h>
 #include <WebCore/ResourceError.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/Expected.h>
@@ -41,7 +43,7 @@ class ContentSecurityPolicy;
 struct ContentSecurityPolicyClient;
 class SecurityOrigin;
 enum class PreflightPolicy : uint8_t;
-enum class StoredCredentialsPolicy : bool;
+enum class StoredCredentialsPolicy : uint8_t;
 }
 
 namespace WebKit {
@@ -54,7 +56,7 @@ class NetworkLoadChecker : public CanMakeWeakPtr<NetworkLoadChecker> {
 public:
     enum class LoadType : bool { MainFrame, Other };
 
-    NetworkLoadChecker(NetworkProcess&, WebCore::FetchOptions&&, PAL::SessionID, uint64_t pageID, uint64_t frameID, WebCore::HTTPHeaderMap&&, URL&&, RefPtr<WebCore::SecurityOrigin>&&, WebCore::PreflightPolicy, String&& referrer, bool isHTTPSUpgradeEnabled = false, bool shouldCaptureExtraNetworkLoadMetrics = false, LoadType requestLoadType = LoadType::Other);
+    NetworkLoadChecker(NetworkProcess&, WebCore::FetchOptions&&, PAL::SessionID, WebCore::PageIdentifier, WebCore::FrameIdentifier, WebCore::HTTPHeaderMap&&, URL&&, RefPtr<WebCore::SecurityOrigin>&&, WebCore::PreflightPolicy, String&& referrer, bool isHTTPSUpgradeEnabled = false, bool shouldCaptureExtraNetworkLoadMetrics = false, LoadType requestLoadType = LoadType::Other);
     ~NetworkLoadChecker();
 
     struct RedirectionTriplet {
@@ -81,6 +83,8 @@ public:
         m_userContentControllerIdentifier = identifier;
     }
 #endif
+
+    NetworkProcess& networkProcess() { return m_networkProcess; }
 
     const URL& url() const { return m_url; }
     WebCore::StoredCredentialsPolicy storedCredentialsPolicy() const { return m_storedCredentialsPolicy; }
@@ -112,11 +116,11 @@ private:
 #if ENABLE(CONTENT_EXTENSIONS)
     struct ContentExtensionResult {
         WebCore::ResourceRequest request;
-        const WebCore::ContentExtensions::BlockedStatus& status;
+        const WebCore::ContentRuleListResults& results;
     };
     using ContentExtensionResultOrError = Expected<ContentExtensionResult, WebCore::ResourceError>;
     using ContentExtensionCallback = CompletionHandler<void(ContentExtensionResultOrError)>;
-    void processContentExtensionRulesForLoad(WebCore::ResourceRequest&&, ContentExtensionCallback&&);
+    void processContentRuleListsForLoad(WebCore::ResourceRequest&&, ContentExtensionCallback&&);
 #endif
 
     void applyHTTPSUpgradeIfNeeded(WebCore::ResourceRequest&&, CompletionHandler<void(WebCore::ResourceRequest&&)>&&) const;
@@ -125,8 +129,8 @@ private:
     WebCore::StoredCredentialsPolicy m_storedCredentialsPolicy;
     PAL::SessionID m_sessionID;
     Ref<NetworkProcess> m_networkProcess;
-    uint64_t m_pageID;
-    uint64_t m_frameID;
+    WebCore::PageIdentifier m_pageID;
+    WebCore::FrameIdentifier m_frameID;
     WebCore::HTTPHeaderMap m_originalRequestHeaders; // Needed for CORS checks.
     WebCore::HTTPHeaderMap m_firstRequestHeaders; // Needed for CORS checks.
     URL m_url;

@@ -52,6 +52,8 @@ FLATPAK_REQ = [
     ("flatpak-builder", "0.10.0"),
 ]
 
+FLATPAK_VERSION = {}
+
 WPE_MANIFEST_MAP = {
     "qt": "org.webkit.WPEQT.yaml",
 }
@@ -110,7 +112,9 @@ def check_flatpak(verbose=True):
             return tuple(map(int, (version.split("."))))
 
         version = output.decode("utf-8").split(" ")[1].strip("\n")
-        if comparable_version(version) < comparable_version(required_version):
+        current = comparable_version(version)
+        FLATPAK_VERSION[app] = current
+        if current < comparable_version(required_version):
             Console.message("\n%s%s %s required but %s found."
                             " Please update and try again%s\n", Colors.FAIL,
                             app, required_version, version, Colors.ENDC)
@@ -151,14 +155,37 @@ def load_manifest(manifest_path, port_name=None, command=None):
         contents = contents % {"COMMAND": command, "PORTNAME": port_name}
         if is_yaml:
             import yaml
-
-            manifest = yaml.load(contents)
+            yaml_load = getattr(yaml, "safe_load", yaml.load)
+            manifest = yaml_load(contents)
         else:
             contents = remove_comments(contents)
             manifest = json.loads(contents)
 
     return manifest
 
+
+def expand_submodules_recurse(modules, manifest_path, port_name, command):
+    all_modules = []
+    if type(modules) is str:
+        submanifest_path = os.path.join(os.path.dirname(manifest_path), modules)
+        submanifest = load_manifest(submanifest_path, port_name=port_name, command=command)
+        all_modules.extend(expand_submodules_recurse(submanifest, submanifest_path, port_name, command))
+        return all_modules
+
+    # The last recurse manifest expand iteration might lead to a single module.
+    if not isinstance(modules, list):
+        all_modules.append(modules)
+        return all_modules
+
+    for module in modules:
+        if type(module) is str:
+            submanifest_path = os.path.join(os.path.dirname(manifest_path), module)
+            submanifest = load_manifest(submanifest_path, port_name=port_name, command=command)
+            all_modules.extend(expand_submodules_recurse(submanifest, submanifest_path, port_name, command))
+        else:
+            all_modules.append(module)
+
+    return all_modules
 
 def expand_manifest(manifest_path, outfile, port_name, source_root, command):
     """Creates the manifest file."""
@@ -184,10 +211,7 @@ def expand_manifest(manifest_path, outfile, port_name, source_root, command):
         if not overriden_modules:
             overriden_modules = []
     for modules in manifest["modules"]:
-        submanifest_path = None
-        if type(modules) is str:
-            submanifest_path = os.path.join(os.path.dirname(manifest_path), modules)
-            modules = load_manifest(submanifest_path, port_name=port_name, command=command)
+        modules = expand_submodules_recurse(modules, manifest_path, port_name, command)
 
         if not isinstance(modules, list):
             modules = [modules]
@@ -232,7 +256,7 @@ class FlatpakObject:
 
     def flatpak(self, command, *args, **kwargs):
         show_output = kwargs.pop("show_output", False)
-        comment = kwargs.pop("commend", None)
+        comment = kwargs.pop("comment", None)
         if comment:
             Console.message(comment)
 
@@ -260,22 +284,34 @@ class FlatpakPackages(FlatpakObject):
         self.apps = self.__detect_apps()
         self.packages = self.runtimes + self.apps
 
+
     def __detect_packages(self, *args):
         packs = []
-        package_defs = [rd
-                        for rd in self.flatpak("list", "-d", "--all", *args).split("\n")
-                        if rd]
-        for package_def in package_defs:
-            splited_packaged_def = package_def.split()
-            name, arch, branch = splited_packaged_def[0].split("/")
+        if FLATPAK_VERSION["flatpak"] < (1, 1, 2):
+            out = self.flatpak("list", "-d", *args)
+            package_defs = [line for line in out.split("\n") if line]
+            for package_def in package_defs:
+                splited_packaged_def = package_def.split()
+                name, arch, branch = splited_packaged_def[0].split("/")
 
-            # If installed from a file, the package is in no repo
-            repo_name = splited_packaged_def[1]
-            repo = self.repos.repos.get(repo_name)
+                # If installed from a file, the package is in no repo
+                repo_name = splited_packaged_def[1]
+                repo = self.repos.repos.get(repo_name)
 
-            packs.append(FlatpakPackage(name, branch, repo, arch))
+                packs.append(FlatpakPackage(name, branch, repo, arch))
+        else:
+            out = self.flatpak("list", "--columns=application,arch,branch,origin", *args)
+            package_defs = [line for line in out.split("\n") if line]
+            for package_def in package_defs:
+                name, arch, branch, origin = package_def.split("\t")
+
+                # If installed from a file, the package is in no repo
+                repo = self.repos.repos.get(origin)
+
+                packs.append(FlatpakPackage(name, branch, repo, arch))
 
         return packs
+
 
     def __detect_runtimes(self):
         return self.__detect_packages("--runtime")
@@ -297,36 +333,47 @@ class FlatpakRepos(FlatpakObject):
 
     def update(self):
         self.repos = {}
-        remotes = [row
-                   for row in self.flatpak("remote-list", "-d").split("\n")
-                   if row]
-        for repo in remotes:
-            for components in [repo.split(" "), repo.split("\t")]:
-                if len(components) == 1:
-                    components = repo.split("\t")
-                name = components[0]
-                desc = ""
-                url = None
-                for elem in components[1:]:
-                    if not elem:
-                        continue
-                    parsed_url = urlparse(elem)
-                    if parsed_url.scheme:
-                        url = elem
+        if FLATPAK_VERSION["flatpak"] < (1, 1, 2):
+            out = self.flatpak("remote-list", "-d")
+            remotes = [line for line in out.split("\n") if line]
+            for repo in remotes:
+                for components in [repo.split(" "), repo.split("\t")]:
+                    if len(components) == 1:
+                        components = repo.split("\t")
+                    name = components[0]
+                    desc = ""
+                    url = None
+                    for elem in components[1:]:
+                        if not elem:
+                            continue
+                        parsed_url = urlparse(elem)
+                        if parsed_url.scheme:
+                            url = elem
+                            break
+
+                        if desc:
+                            desc += " "
+                        desc += elem
+
+                    if url:
                         break
 
-                    if desc:
-                        desc += " "
-                    desc += elem
+                if not url:
+                    Console.message("No valid URI found for: %s", repo)
+                    continue
 
-                if url:
-                    break
+                self.repos[name] = FlatpakRepo(name, url, desc, repos=self)
+        else:
+            out = self.flatpak("remote-list", "--columns=name,title,url")
+            remotes = [line for line in out.split("\n") if line]
+            for remote in remotes:
+                name, title, url = remote.split("\t")
+                parsed_url = urlparse(url)
+                if not parsed_url.scheme:
+                    Console.message("No valid URI found for: %s", remote)
+                    continue
 
-            if not url:
-                Console.message("No valid URI found for: %s", repo)
-                continue
-
-            self.repos[name] = FlatpakRepo(name, url, desc, repos=self)
+                self.repos[name] = FlatpakRepo(name, url, title, repos=self)
 
         self.packages = FlatpakPackages(self)
 
@@ -424,10 +471,12 @@ class FlatpakPackage(FlatpakObject):
             return False
 
         args = ["install", self.repo.name, self.name, "--reinstall", self.branch, "--assumeyes"]
-
-        self.flatpak(*args, show_output=True,
-                     comment="Installing from " + self.repo.name + " " +
-                             self.name + " " + self.arch + " " + self.branch)
+        comment = "Installing from " + self.repo.name + " " + self.name + " " + self.arch + " " + self.branch
+        self.flatpak(*args, show_output=True, comment=comment)
+        if self.hash:
+            args = ["update", "--commit", self.hash, self.name]
+            comment = "Updating to %s" % self.hash
+            self.flatpak(*args, show_output=True, comment=comment)
 
     def update(self):
         if not self.is_installed(self.branch):
@@ -688,7 +737,6 @@ class WebkitFlatpak:
                 "--bind-mount=/run/shm=/dev/shm",
                 # Workaround for https://webkit.org/b/187384 to have our own perl modules usable inside the sandbox
                 # as setting the PERL5LIB envvar won't work inside apache (and for scripts using `perl -T``).
-                "--bind-mount=/etc/perl=%s" % os.path.join(self.flatpak_build_path, "files/lib/perl"),
                 "--bind-mount=/run/host/%s=%s" % (tempfile.gettempdir(), tempfile.gettempdir()),
                 "--bind-mount=%s=%s" % (self.sandbox_source_root, self.source_root),
                 "--talk-name=org.a11y.Bus",
@@ -719,6 +767,7 @@ class WebkitFlatpak:
                 "JavaScriptCoreUseJIT",
                 "Malloc",
                 "WAYLAND_DISPLAY",
+                "WAYLAND_SOCKET",
                 "DISPLAY",
                 "LANG",
                 "NUMBER_OF_PROCESSORS",
@@ -907,7 +956,7 @@ class WebkitFlatpak:
 
 
 def is_sandboxed():
-    return os.path.exists("/usr/manifest.json")
+    return os.path.exists("/.flatpak-info")
 
 
 def run_in_sandbox_if_available(args):

@@ -28,25 +28,31 @@
 #include <WebCore/SQLiteDatabaseTrackerClient.h>
 #include <pal/HysteresisActivity.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebKit {
 
-class NetworkProcess;
-
-class WebSQLiteDatabaseTracker : public WebCore::SQLiteDatabaseTrackerClient {
+// Use eager initialization for the WeakPtrFactory since we call makeWeakPtr() from a non-main thread.
+class WebSQLiteDatabaseTracker final : public WebCore::SQLiteDatabaseTrackerClient, public CanMakeWeakPtr<WebSQLiteDatabaseTracker, WeakPtrFactoryInitialization::Eager> {
     WTF_MAKE_NONCOPYABLE(WebSQLiteDatabaseTracker)
 public:
-    explicit WebSQLiteDatabaseTracker(NetworkProcess&);
+    using IsHoldingLockedFilesHandler = Function<void(bool)>;
+    explicit WebSQLiteDatabaseTracker(IsHoldingLockedFilesHandler&&);
 
-    // WebCore::SQLiteDatabaseTrackerClient
-    void willBeginFirstTransaction() override;
-    void didFinishLastTransaction() override;
+    ~WebSQLiteDatabaseTracker();
+
+    void setIsSuspended(bool);
 
 private:
-    void hysteresisUpdated(PAL::HysteresisState);
+    void setIsHoldingLockedFiles(bool);
 
-    NetworkProcess& m_process;
+    // WebCore::SQLiteDatabaseTrackerClient.
+    void willBeginFirstTransaction() final;
+    void didFinishLastTransaction() final;
+
+    IsHoldingLockedFilesHandler m_isHoldingLockedFilesHandler;
     PAL::HysteresisActivity m_hysteresis;
+    bool m_isSuspended { false };
 };
 
 } // namespace WebKit

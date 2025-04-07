@@ -30,7 +30,6 @@
 #import "Logging.h"
 #import "NetworkCache.h"
 #import "NetworkProcessCreationParameters.h"
-#import "NetworkProximityManager.h"
 #import "NetworkResourceLoader.h"
 #import "NetworkSessionCocoa.h"
 #import "SandboxExtension.h"
@@ -73,6 +72,13 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
     WebCore::setApplicationBundleIdentifier(parameters.uiProcessBundleIdentifier);
     WebCore::setApplicationSDKVersion(parameters.uiProcessSDKVersion);
 
+#if HAVE(HSTS_STORAGE_PATH)
+    if (!parameters.hstsStorageDirectory.isNull()) {
+        SandboxExtension::consumePermanently(parameters.hstsStorageDirectoryExtensionHandle);
+        _CFNetworkSetHSTSStoragePath(parameters.hstsStorageDirectory.createCFString().get());
+    }
+#endif
+
 #if PLATFORM(IOS_FAMILY)
     SandboxExtension::consumePermanently(parameters.cookieStorageDirectoryExtensionHandle);
     SandboxExtension::consumePermanently(parameters.containerCachesDirectoryExtensionHandle);
@@ -111,19 +117,13 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
         return;
 
     SandboxExtension::consumePermanently(parameters.diskCacheDirectoryExtensionHandle);
-    OptionSet<NetworkCache::Cache::Option> cacheOptions { NetworkCache::Cache::Option::RegisterNotify };
-    if (parameters.shouldEnableNetworkCacheEfficacyLogging)
-        cacheOptions.add(NetworkCache::Cache::Option::EfficacyLogging);
+    m_cacheOptions = { NetworkCache::CacheOption::RegisterNotify };
     if (parameters.shouldUseTestingNetworkSession)
-        cacheOptions.add(NetworkCache::Cache::Option::TestingMode);
+        m_cacheOptions.add(NetworkCache::CacheOption::TestingMode);
 #if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
     if (parameters.shouldEnableNetworkCacheSpeculativeRevalidation)
-        cacheOptions.add(NetworkCache::Cache::Option::SpeculativeRevalidation);
+        m_cacheOptions.add(NetworkCache::CacheOption::SpeculativeRevalidation);
 #endif
-
-    m_cache = NetworkCache::Cache::open(*this, m_diskCacheDirectory, cacheOptions);
-    if (!m_cache)
-        RELEASE_LOG_ERROR(NetworkCache, "Failed to initialize the WebKit network disk cache");
 
     // Disable NSURLCache.
     auto urlCache(adoptNS([[NSURLCache alloc] initWithMemoryCapacity:0 diskCapacity:0 diskPath:nil]));
@@ -132,7 +132,7 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
 
 std::unique_ptr<WebCore::NetworkStorageSession> NetworkProcess::platformCreateDefaultStorageSession() const
 {
-    return std::make_unique<WebCore::NetworkStorageSession>(PAL::SessionID::defaultSessionID());
+    return makeUnique<WebCore::NetworkStorageSession>(PAL::SessionID::defaultSessionID());
 }
 
 RetainPtr<CFDataRef> NetworkProcess::sourceApplicationAuditData() const
@@ -152,7 +152,18 @@ RetainPtr<CFDataRef> NetworkProcess::sourceApplicationAuditData() const
 
 static void filterPreloadHSTSEntry(const void* key, const void* value, void* context)
 {
-    HashSet<String>* hostnames = static_cast<HashSet<String>*>(context);
+    RELEASE_ASSERT(context);
+
+    ASSERT(key);
+    ASSERT(value);
+    if (!key || !value)
+        return;
+
+    ASSERT(key != kCFNull);
+    if (key == kCFNull)
+        return;
+    
+    auto* hostnames = static_cast<HashSet<String>*>(context);
     auto val = static_cast<CFDictionaryRef>(value);
     if (CFDictionaryGetValue(val, _kCFNetworkHSTSPreloaded) != kCFBooleanTrue)
         hostnames->add((CFStringRef)key);
@@ -160,8 +171,8 @@ static void filterPreloadHSTSEntry(const void* key, const void* value, void* con
 
 void NetworkProcess::getHostNamesWithHSTSCache(WebCore::NetworkStorageSession& session, HashSet<String>& hostNames)
 {
-    auto HSTSPolicies = adoptCF(_CFNetworkCopyHSTSPolicies(session.platformSession()));
-    CFDictionaryApplyFunction(HSTSPolicies.get(), filterPreloadHSTSEntry, &hostNames);
+    if (auto HSTSPolicies = adoptCF(_CFNetworkCopyHSTSPolicies(session.platformSession())))
+        CFDictionaryApplyFunction(HSTSPolicies.get(), filterPreloadHSTSEntry, &hostNames);
 }
 
 void NetworkProcess::deleteHSTSCacheForHostNames(WebCore::NetworkStorageSession& session, const Vector<String>& hostNames)
@@ -185,15 +196,13 @@ void NetworkProcess::clearDiskCache(WallTime modifiedSince, CompletionHandler<vo
     if (!m_clearCacheDispatchGroup)
         m_clearCacheDispatchGroup = dispatch_group_create();
 
-    auto* cache = this->cache();
-    if (!cache) {
-        completionHandler();
-        return;
-    }
-
     auto group = m_clearCacheDispatchGroup;
-    dispatch_group_async(group, dispatch_get_main_queue(), makeBlockPtr([cache, modifiedSince, completionHandler = WTFMove(completionHandler)] () mutable {
-        cache->clear(modifiedSince, WTFMove(completionHandler));
+    dispatch_group_async(group, dispatch_get_main_queue(), makeBlockPtr([this, protectedThis = makeRef(*this), modifiedSince, completionHandler = WTFMove(completionHandler)] () mutable {
+        auto aggregator = CallbackAggregator::create(WTFMove(completionHandler));
+        forEachNetworkSession([modifiedSince, &aggregator](NetworkSession& session) {
+            if (auto* cache = session.cache())
+                cache->clear(modifiedSince, [aggregator = aggregator.copyRef()] () { });
+        });
     }).get());
 }
 
@@ -249,32 +258,26 @@ void NetworkProcess::platformSyncAllCookies(CompletionHandler<void()>&& completi
 
 void NetworkProcess::platformPrepareToSuspend(CompletionHandler<void()>&& completionHandler)
 {
-#if ENABLE(PROXIMITY_NETWORKING)
-    proximityManager().suspend(SuspensionReason::ProcessSuspending, WTFMove(completionHandler));
-#else
     completionHandler();
-#endif
 }
 
 void NetworkProcess::platformProcessDidResume()
 {
-#if ENABLE(PROXIMITY_NETWORKING)
-    proximityManager().resume(ResumptionReason::ProcessResuming);
-#endif
 }
 
 void NetworkProcess::platformProcessDidTransitionToBackground()
 {
-#if ENABLE(PROXIMITY_NETWORKING)
-    proximityManager().suspend(SuspensionReason::ProcessBackgrounding, [] { });
-#endif
 }
 
 void NetworkProcess::platformProcessDidTransitionToForeground()
 {
-#if ENABLE(PROXIMITY_NETWORKING)
-    proximityManager().resume(ResumptionReason::ProcessForegrounding);
-#endif
+}
+
+NetworkHTTPSUpgradeChecker& NetworkProcess::networkHTTPSUpgradeChecker()
+{
+    if (!m_networkHTTPSUpgradeChecker)
+        m_networkHTTPSUpgradeChecker = makeUnique<NetworkHTTPSUpgradeChecker>();
+    return *m_networkHTTPSUpgradeChecker;
 }
 
 } // namespace WebKit

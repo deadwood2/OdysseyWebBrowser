@@ -28,8 +28,6 @@
 
 #import "WKFoundation.h"
 
-#if WK_API_ENABLED
-
 #import "APIAutomationSessionClient.h"
 #import <wtf/WeakObjCPtr.h>
 
@@ -38,6 +36,7 @@
 namespace WebKit {
 
 class AutomationSessionClient final : public API::AutomationSessionClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit AutomationSessionClient(id <_WKAutomationSessionDelegate>);
 
@@ -80,7 +79,5 @@ private:
 };
 
 } // namespace WebKit
-
-#endif
 
 #endif // AutomationSessionClient_h

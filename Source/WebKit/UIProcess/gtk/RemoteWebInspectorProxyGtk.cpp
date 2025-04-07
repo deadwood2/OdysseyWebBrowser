@@ -44,7 +44,7 @@ void RemoteWebInspectorProxy::updateWindowTitle(const CString& targetName)
     webkitInspectorWindowSetSubtitle(WEBKIT_INSPECTOR_WINDOW(m_window), !targetName.isNull() ? targetName.data() : nullptr);
 }
 
-static void inspectorViewDestroyed(RemoteWebInspectorProxy* inspectorProxy)
+static void remoteInspectorViewDestroyed(RemoteWebInspectorProxy* inspectorProxy)
 {
     inspectorProxy->closeFromCrash();
 }
@@ -66,7 +66,7 @@ WebPageProxy* RemoteWebInspectorProxy::platformCreateFrontendPageAndWindow()
     pageConfiguration->setPreferences(preferences.ptr());
     pageConfiguration->setPageGroup(pageGroup.ptr());
     m_webView = GTK_WIDGET(webkitWebViewBaseCreate(*pageConfiguration.ptr()));
-    g_signal_connect_swapped(m_webView, "destroy", G_CALLBACK(inspectorViewDestroyed), this);
+    g_signal_connect_swapped(m_webView, "destroy", G_CALLBACK(remoteInspectorViewDestroyed), this);
     g_object_add_weak_pointer(G_OBJECT(m_webView), reinterpret_cast<void**>(&m_webView));
 
     m_window = webkitInspectorWindowNew(nullptr);
@@ -89,6 +89,10 @@ void RemoteWebInspectorProxy::platformCloseFrontendPageAndWindow()
         gtk_widget_destroy(m_window);
 }
 
+void RemoteWebInspectorProxy::platformResetState()
+{
+}
+
 void RemoteWebInspectorProxy::platformBringToFront()
 {
     if (m_window)
@@ -100,6 +104,10 @@ void RemoteWebInspectorProxy::platformSave(const String&, const String&, bool, b
 }
 
 void RemoteWebInspectorProxy::platformAppend(const String&, const String&)
+{
+}
+
+void RemoteWebInspectorProxy::platformSetSheetRect(const FloatRect&)
 {
 }
 

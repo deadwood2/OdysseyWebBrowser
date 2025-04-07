@@ -30,6 +30,7 @@
 #include <webkit2/WebKitDefines.h>
 #include <webkit2/WebKitDownload.h>
 #include <webkit2/WebKitFaviconDatabase.h>
+#include <webkit2/WebKitGeolocationManager.h>
 #include <webkit2/WebKitNetworkProxySettings.h>
 #include <webkit2/WebKitSecurityManager.h>
 #include <webkit2/WebKitURISchemeRequest.h>
@@ -66,11 +67,7 @@ typedef enum {
 
 /**
  * WebKitProcessModel:
- * @WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS: Use a single process to
- *   perform content rendering. The process is shared among all the
- *   #WebKitWebView instances created by the application: if the process
- *   hangs or crashes all the web views in the application will be affected.
- *   This is the default process model, and it should suffice for most cases.
+ * @WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS: Deprecated 2.26.
  * @WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES: Use one process
  *   for each #WebKitWebView, while still allowing for some of them to
  *   share a process in certain situations. The main advantage
@@ -192,11 +189,11 @@ webkit_web_context_set_cache_model                  (WebKitWebContext           
 WEBKIT_API WebKitCacheModel
 webkit_web_context_get_cache_model                  (WebKitWebContext              *context);
 
-WEBKIT_API void
+WEBKIT_DEPRECATED void
 webkit_web_context_set_web_process_count_limit      (WebKitWebContext              *context,
                                                      guint                          limit);
 
-WEBKIT_API guint
+WEBKIT_DEPRECATED guint
 webkit_web_context_get_web_process_count_limit      (WebKitWebContext              *context);
 
 WEBKIT_API void
@@ -213,6 +210,9 @@ webkit_web_context_download_uri                     (WebKitWebContext           
 
 WEBKIT_API WebKitCookieManager *
 webkit_web_context_get_cookie_manager               (WebKitWebContext              *context);
+
+WEBKIT_API WebKitGeolocationManager *
+webkit_web_context_get_geolocation_manager          (WebKitWebContext              *context);
 
 WEBKIT_API WebKitFaviconDatabase *
 webkit_web_context_get_favicon_database             (WebKitWebContext              *context);
@@ -246,6 +246,18 @@ webkit_web_context_register_uri_scheme              (WebKitWebContext           
                                                      WebKitURISchemeRequestCallback callback,
                                                      gpointer                       user_data,
                                                      GDestroyNotify                 user_data_destroy_func);
+
+WEBKIT_API void
+webkit_web_context_set_sandbox_enabled              (WebKitWebContext              *context,
+                                                     gboolean                       enabled);
+
+WEBKIT_API gboolean
+webkit_web_context_get_sandbox_enabled              (WebKitWebContext              *context);
+
+WEBKIT_API void
+webkit_web_context_add_path_to_sandbox              (WebKitWebContext              *context,
+                                                     const char                    *path,
+                                                     gboolean                       read_only);
 
 WEBKIT_API gboolean
 webkit_web_context_get_spell_checking_enabled       (WebKitWebContext              *context);

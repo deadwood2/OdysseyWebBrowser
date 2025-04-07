@@ -758,6 +758,12 @@ bool AccessibilityUIElement::hasPopup() const
     return false;
 }
 
+JSRetainPtr<JSStringRef> AccessibilityUIElement::popupValue() const
+{
+    notImplemented();
+    return nullptr;
+}
+
 void AccessibilityUIElement::takeFocus()
 {
     notImplemented();
@@ -977,6 +983,18 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::sentenceAtOffset(int)
 {
     notImplemented();
     return nullptr;
+}
+
+bool AccessibilityUIElement::replaceTextInRange(JSStringRef, int, int)
+{
+    notImplemented();
+    return false;
+}
+
+bool AccessibilityUIElement::insertText(JSStringRef)
+{
+    notImplemented();
+    return false;
 }
 
 } // namespace  WTF

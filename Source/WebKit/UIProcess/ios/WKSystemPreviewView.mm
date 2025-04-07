@@ -36,6 +36,7 @@
 #import <WebCore/FloatRect.h>
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/MIMETypeRegistry.h>
+#import <WebCore/UTIUtilities.h>
 #import <pal/ios/QuickLookSoftLink.h>
 #import <pal/spi/cg/CoreGraphicsSPI.h>
 #import <pal/spi/ios/SystemPreviewSPI.h>
@@ -45,16 +46,12 @@
 SOFT_LINK_PRIVATE_FRAMEWORK(AssetViewer);
 SOFT_LINK_CLASS(AssetViewer, ASVThumbnailView);
 
-// FIXME: At the moment we only have one supported UTI, but
-// if we start supporting more types, then we'll need a table.
 static NSString *getUTIForSystemPreviewMIMEType(const String& mimeType)
 {
-    static NSString *uti = (__bridge NSString *) UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, CFSTR("usdz"), nil);
-
     if (!WebCore::MIMETypeRegistry::isSystemPreviewMIMEType(mimeType))
         return nil;
 
-    return uti;
+    return WebCore::UTIFromMIMEType(mimeType);
 }
 
 @interface WKSystemPreviewView () <ASVThumbnailViewDelegate>
@@ -72,7 +69,7 @@ static NSString *getUTIForSystemPreviewMIMEType(const String& mimeType)
 
 - (instancetype)web_initWithFrame:(CGRect)frame webView:(WKWebView *)webView mimeType:(NSString *)mimeType
 {
-    if (!(self = [super initWithFrame:frame]))
+    if (!(self = [super initWithFrame:frame webView:webView]))
         return nil;
 
     UIColor *backgroundColor = [UIColor colorWithRed:(38. / 255) green:(38. / 255) blue:(38. / 255) alpha:1];
@@ -91,12 +88,6 @@ static NSString *getUTIForSystemPreviewMIMEType(const String& mimeType)
 
 - (void)web_setContentProviderData:(NSData *)data suggestedFilename:(NSString *)filename
 {
-    RefPtr<WebKit::WebPageProxy> page = _webView->_page;
-    UIViewController *presentingViewController = page->uiClient().presentingViewController();
-
-    if (!presentingViewController)
-        return;
-
     _suggestedFilename = adoptNS([filename copy]);
     _data = adoptNS([data copy]);
 
@@ -153,6 +144,11 @@ static NSString *getUTIForSystemPreviewMIMEType(const String& mimeType)
     return self;
 }
 
++ (BOOL)web_requiresCustomSnapshotting
+{
+    return false;
+}
+
 - (void)web_setMinimumSize:(CGSize)size
 {
 }
@@ -172,6 +168,11 @@ static NSString *getUTIForSystemPreviewMIMEType(const String& mimeType)
 
 - (void)web_didSameDocumentNavigation:(WKSameDocumentNavigationType)navigationType
 {
+}
+
+- (BOOL)web_isBackground
+{
+    return self.isBackground;
 }
 
 #pragma mark Find-in-Page

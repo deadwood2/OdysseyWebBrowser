@@ -1,3 +1,915 @@
+2019-08-26  Jiewen Tan  <jiewen_tan@apple.com>
+
+        [WebAuthn] Support HID authenticators on iOS
+        https://bugs.webkit.org/show_bug.cgi?id=201084
+        <rdar://problem/51908390>
+
+        Reviewed by Youenn Fablet.
+
+        * pal/spi/cocoa/IOKitSPI.h:
+        Move IOHIDDevice.h and IOHIDManager.h to IOKitSPI.h given they are in iOS.
+
+2019-08-22  Andy Estes  <aestes@apple.com>
+
+        [watchOS] Disable Content Filtering in the simulator build
+        https://bugs.webkit.org/show_bug.cgi?id=201047
+
+        Reviewed by Tim Horton.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-08-22  Keith Rollin  <krollin@apple.com>
+
+        Remove support for tvOS < 13.0
+        https://bugs.webkit.org/show_bug.cgi?id=200963
+        <rdar://problem/54541355>
+
+        Reviewed by Tim Horton.
+
+        Update conditionals that reference __TV_OS_VERSION_MIN_REQUIRED and
+        __TV_OS_VERSION_MAX_ALLOWED, assuming that they both have values >=
+        130000. This means that expressions like "__TV_OS_VERSION_MIN_REQUIRED
+        < 130000" are always False and "__TV_OS_VERSION_MIN_REQUIRED >=
+        130000" are always True.
+
+        * pal/spi/cocoa/NSKeyedArchiverSPI.h:
+        * pal/spi/cocoa/NSProgressSPI.h:
+
+2019-08-21  Keith Rollin  <krollin@apple.com>
+
+        Remove support for watchOS < 6.0
+        https://bugs.webkit.org/show_bug.cgi?id=200937
+        <rdar://problem/54524009>
+
+        Reviewed by Darin Adler.
+
+        Update conditionals that reference __WATCH_OS_VERSION_MIN_REQUIRED and
+        __WATCH_OS_VERSION_MAX_ALLOWED, assuming that they both have values >=
+        60000. This means that expressions like
+        "__WATCH_OS_VERSION_MIN_REQUIRED < 60000" are always False and
+        "__WATCH_OS_VERSION_MIN_REQUIRED >= 60000" are always True.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+        * pal/spi/cocoa/NSKeyedArchiverSPI.h:
+        * pal/spi/cocoa/NSProgressSPI.h:
+
+2019-08-19  Jer Noble  <jer.noble@apple.com>
+
+        [Cocoa] Adopt -preventDisplaySleepForVideoPlayback
+        https://bugs.webkit.org/show_bug.cgi?id=200774
+        <rdar://problem/54321071>
+
+        Reviewed by Eric Carlson.
+
+        * pal/spi/mac/AVFoundationSPI.h:
+
+2019-08-19  Youenn Fablet  <youenn@apple.com>
+
+        Remove SessionID::emptySessionID()
+        https://bugs.webkit.org/show_bug.cgi?id=200811
+
+        Reviewed by Alex Christensen.
+
+        Remove SessionID::emptySessionID and make it closer to a regular ObjectIdentifier.
+
+        * pal/SessionID.cpp:
+        * pal/SessionID.h:
+        (PAL::SessionID::SessionID):
+        (PAL::SessionID::isValid const):
+        (PAL::SessionID::isEphemeral const):
+        (PAL::SessionID::isHashTableDeletedValue const):
+        (PAL::SessionID::toUInt64 const):
+        (PAL::SessionID::operator== const):
+        (PAL::SessionID::operator!= const):
+        (PAL::SessionID::isolatedCopy const):
+        (PAL::SessionID::operator bool const):
+        (PAL::SessionID::isValidSessionIDValue):
+        (PAL::SessionID::encode const):
+        (PAL::SessionID::decode):
+        (WTF::SessionIDHash::hash):
+        (WTF::HashTraits<PAL::SessionID>::emptyValue):
+        (WTF::HashTraits<PAL::SessionID>::constructDeletedValue):
+        (WTF::HashTraits<PAL::SessionID>::isDeletedValue):
+
+2019-08-18  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [WTF] Add makeUnique<T>, which ensures T is fast-allocated, makeUnique / makeUniqueWithoutFastMallocCheck part
+        https://bugs.webkit.org/show_bug.cgi?id=200620
+
+        Reviewed by Geoffrey Garen.
+
+        * pal/crypto/openssl/CryptoDigestOpenSSL.cpp:
+        (PAL::CryptoDigestContextImpl::create):
+        * pal/system/ClockGeneric.cpp:
+        (PAL::Clock::create):
+        * pal/system/mac/ClockCM.mm:
+        (Clock::create):
+
+2019-08-14  Keith Rollin  <krollin@apple.com>
+
+        Remove support for macOS < 10.13
+        https://bugs.webkit.org/show_bug.cgi?id=200694
+        <rdar://problem/54278851>
+
+        Reviewed by Youenn Fablet.
+
+        Update conditionals that reference __MAC_OS_X_VERSION_MIN_REQUIRED and
+        __MAC_OS_X_VERSION_MAX_ALLOWED, assuming that they both have values >=
+        101300. This means that expressions like
+        "__MAC_OS_X_VERSION_MIN_REQUIRED < 101300" are always False and
+        "__MAC_OS_X_VERSION_MIN_REQUIRED >= 101300" are always True.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+        * pal/spi/cocoa/AVKitSPI.h:
+        * pal/spi/cocoa/CommonCryptoSPI.h:
+        * pal/spi/cocoa/IOSurfaceSPI.h:
+        * pal/spi/cocoa/NEFilterSourceSPI.h:
+        * pal/spi/cocoa/NSAttributedStringSPI.h:
+        * pal/spi/cocoa/NSKeyedArchiverSPI.h:
+        * pal/spi/cocoa/NSTouchBarSPI.h:
+        * pal/spi/cocoa/PassKitSPI.h:
+        * pal/spi/mac/AVFoundationSPI.h:
+
+2019-08-14  Youenn Fablet  <youenn@apple.com>
+
+        Remove SessionID default constructor
+        https://bugs.webkit.org/show_bug.cgi?id=200669
+
+        Reviewed by Alex Christensen.
+
+        * pal/SessionID.h:
+
+2019-08-14  Youenn Fablet  <youenn@apple.com>
+
+        Fail decoding an invalid SessionID
+        https://bugs.webkit.org/show_bug.cgi?id=200663
+
+        Reviewed by Alex Christensen.
+
+        * pal/SessionID.h:
+        (PAL::SessionID::isValid const):
+        (PAL::SessionID::isValidSessionIDValue):
+        (PAL::SessionID::encode const):
+        Add a release assert to catch bad sessionID senders.
+        (PAL::SessionID::decode):
+        Fail decoding if session ID is not a valid value.
+
+2019-08-09  Tim Horton  <timothy_horton@apple.com>
+
+        Tapping buttons in Data Detectors lookup previews doesn't work
+        https://bugs.webkit.org/show_bug.cgi?id=200579
+        <rdar://problem/54056519>
+
+        Reviewed by Megan Gardner.
+
+        * pal/spi/ios/DataDetectorsUISPI.h:
+
+2019-08-07  Dean Jackson  <dino@apple.com>
+
+        Context menu on a universal link produces a blank preview
+        https://bugs.webkit.org/show_bug.cgi?id=200485
+        <rdar://problem/53699620>
+
+        Reviewed by Tim Horton.
+
+        Use the umbrella #import.
+
+        * pal/spi/cocoa/LaunchServicesSPI.h:
+
+2019-08-06  Dean Jackson  <dino@apple.com>
+
+        Context menu on a universal link produces a blank preview
+        https://bugs.webkit.org/show_bug.cgi?id=200485
+        <rdar://problem/53699620>
+
+        Reviewed by Tim Horton.
+
+        Define iTunesStoreURL from CoreServices.
+
+        * pal/spi/cocoa/LaunchServicesSPI.h:
+
+2019-08-07  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, rolling out r248330.
+
+        Breaks internal builds.
+
+        Reverted changeset:
+
+        "Context menu on a universal link produces a blank preview"
+        https://bugs.webkit.org/show_bug.cgi?id=200485
+        https://trac.webkit.org/changeset/248330
+
+2019-08-07  Youenn Fablet  <youenn@apple.com>
+
+        ASSERT that a sessionID is valid when encoding it
+        https://bugs.webkit.org/show_bug.cgi?id=199302
+
+        Reviewed by Darin Adler.
+
+        ASSERT that a sessionID is valid at encoding/decoding time.
+
+        * pal/SessionID.h:
+        (PAL::SessionID::encode const):
+        (PAL::SessionID::decode):
+
+2019-08-06  Dean Jackson  <dino@apple.com>
+
+        Context menu on a universal link produces a blank preview
+        https://bugs.webkit.org/show_bug.cgi?id=200485
+        <rdar://problem/53699620>
+
+        Reviewed by Dean Jackson.
+
+        Define iTunesStoreURL from CoreServices.
+
+        * pal/spi/cocoa/LaunchServicesSPI.h:
+
+2019-07-31  Youenn Fablet  <youenn@apple.com>
+
+        Use CTFontCreateForCharactersWithLanguageAndOption if available instead of CTFontCreateForCharactersWithLanguage
+        https://bugs.webkit.org/show_bug.cgi?id=200241
+        <rdar://problem/53495386>
+
+        Build fix for older MacOS for which CTFontFallbackOption is not defined.
+        Unreviewed.
+
+        * pal/spi/cocoa/CoreTextSPI.h:
+
+2019-07-31  Youenn Fablet  <youenn@apple.com>
+
+        Use CTFontCreateForCharactersWithLanguageAndOption if available instead of CTFontCreateForCharactersWithLanguage
+        https://bugs.webkit.org/show_bug.cgi?id=200241
+
+        Reviewed by Myles C. Maxfield.
+
+        Add new SPI.
+
+        * pal/spi/cocoa/CoreTextSPI.h:
+
+2019-07-25  Brent Fulgham  <bfulgham@apple.com>
+
+        Use IWICBitmap (rather than ID2D1Bitmap) for NativeImagePtr on FTW
+        https://bugs.webkit.org/show_bug.cgi?id=200093
+
+        Reviewed by Dean Jackson.
+
+        * pal/PlatformFTW.cmake:
+
+2019-07-24  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [bmalloc] Add IsoHeap test to ensure that IsoHeap pages are not allocating too large VA
+        https://bugs.webkit.org/show_bug.cgi?id=200103
+
+        Reviewed by Mark Lam.
+
+        Move VMTag page memory investigation code from PAL to WTF to reuse it in TestWTF.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+
+2019-07-22  Simon Fraser  <simon.fraser@apple.com>
+
+        Make some constructors explicit
+        https://bugs.webkit.org/show_bug.cgi?id=199981
+
+        Reviewed by Daniel Bates.
+
+        Make explicit public constructors of objects that take POD or String& arguments,
+        to reduce the changes of the compiler doing implicit conversions.
+
+        * pal/system/cocoa/SleepDisablerCocoa.cpp:
+        (PAL::SleepDisablerCocoa::SleepDisablerCocoa):
+        * pal/system/cocoa/SleepDisablerCocoa.h:
+
+2019-07-21  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [iOS] Fast and complex text codepaths disagree about how to lay out bopomofo with tone marks
+        https://bugs.webkit.org/show_bug.cgi?id=199912
+        <rdar://problem/52182454>
+
+        Reviewed by Simon Fraser.
+
+        * pal/spi/cocoa/CoreTextSPI.h:
+
+2019-07-17  Antoine Quint  <graouts@apple.com>
+
+        Disable Pointer Events prior to watchOS 6
+        https://bugs.webkit.org/show_bug.cgi?id=199890
+        <rdar://problem/53206113>
+
+        Reviewed by Dean Jackson.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-07-11  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        New York font erroneously gets synthetic bold
+        https://bugs.webkit.org/show_bug.cgi?id=199653
+        <rdar://problem/51692592>
+
+        Reviewed by Simon Fraser.
+
+        * pal/spi/cocoa/CoreTextSPI.h:
+
+2019-07-11  Jonathan Bedard  <jbedard@apple.com>
+
+        [iOS 13] Enable WebKit build
+        https://bugs.webkit.org/show_bug.cgi?id=199481
+        <rdar://problem/52619048>
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/cocoa/NSProgressSPI.h: We need the NSProgress SPI in public builds because NSProgress API
+        is marked unavailable on iOS, watchOS and tvOS.
+        * pal/spi/ios/CoreUISPI.h: Add CUIStyleEffectConfiguration.appearanceName SPI.
+        * pal/spi/ios/DataDetectorsUISPI.h: Add UIContextMenuConfiguration.contextMenuConfigurationForURL SPI.
+        * pal/spi/ios/SystemPreviewSPI.h: Add ARQuickLookWebKitItem.initWithPreviewItemProvider SPI.
+        * pal/spi/ios/UIKitSPI.h: Add systemBrownColor, UIColor.tableCellDefaultSelectionTintColor should be marked nullable.
+        * pal/spi/mac/AVFoundationSPI.h: Add AVOutputDevice.name SPI.
+
+2019-07-10  Alex Christensen  <achristensen@webkit.org>
+
+        Allow CMake to build WebCore on Mac
+        https://bugs.webkit.org/show_bug.cgi?id=198979
+
+        Reviewed by Don Olmstead.
+
+        * pal/PlatformMac.cmake:
+
+2019-07-08  Antoine Quint  <graouts@apple.com>
+
+        [Pointer Events] Enable only on the most recent version of the supported iOS family
+        https://bugs.webkit.org/show_bug.cgi?id=199562
+        <rdar://problem/52766511>
+
+        Reviewed by Dean Jackson.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-07-05  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, rolling out r247159.
+
+        IndexedDB layout tests are failing the new assert.
+
+        Reverted changeset:
+
+        "ASSERT that a sessionID is valid when encoding it"
+        https://bugs.webkit.org/show_bug.cgi?id=199302
+        https://trac.webkit.org/changeset/247159
+
+2019-07-05  Youenn Fablet  <youenn@apple.com>
+
+        ASSERT that a sessionID is valid when encoding it
+        https://bugs.webkit.org/show_bug.cgi?id=199302
+
+        Reviewed by Darin Adler.
+
+        ASSERT that a sessionID is valid at encoding/decoding time.
+
+        * pal/SessionID.h:
+        (PAL::SessionID::encode const):
+        (PAL::SessionID::decode):
+
+2019-07-03  Jonathan Bedard  <jbedard@apple.com>
+
+        [Catalina] Enable WebKit build
+        https://bugs.webkit.org/show_bug.cgi?id=199209
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/cf/CFNetworkSPI.h: Add new NSURLSessionConfiguration SPI.
+        * pal/spi/mac/AVFoundationSPI.h: resourceConservationLevelWhilePaused should
+        be defined after AVPlayerResourceConservationLevel.
+        * pal/spi/mac/NSViewSPI.h: Add subviewsIvar.
+
+2019-07-03  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, rolling out r246616.
+
+        Caused http/tests/inspector/network/har/har-page.html to fail
+        on Catalina.
+
+        Reverted changeset:
+
+        "Web Inspector: Network: replace CFNetwork SPI with new API
+        where able"
+        https://bugs.webkit.org/show_bug.cgi?id=198762
+        https://trac.webkit.org/changeset/246616
+
+2019-06-28  Brent Fulgham  <bfulgham@apple.com>
+
+        [FTW] Build WebCore
+        https://bugs.webkit.org/show_bug.cgi?id=199199
+
+        Reviewed by Don Olmstead.
+
+        * pal/PlatformFTW.cmake: Added.
+
+2019-06-28  Konstantin Tokarev  <annulen@yandex.ru>
+
+        Remove traces of ENABLE_ICONDATABASE remaining after its removal in 219733
+        https://bugs.webkit.org/show_bug.cgi?id=199317
+
+        Reviewed by Michael Catanzaro.
+
+        While IconDatabase and all code using it was removed,
+        ENABLE_ICONDATABASE still exists as build option and C++ macro.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-06-27  Beth Dakin  <bdakin@apple.com>
+
+        Upstream use of MACCATALYST
+        https://bugs.webkit.org/show_bug.cgi?id=199245
+        rdar://problem/51687723
+
+        Reviewed by Tim Horton.
+
+        * Configurations/Base.xcconfig:
+        * Configurations/FeatureDefines.xcconfig:
+        * Configurations/SDKVariant.xcconfig:
+        * pal/spi/mac/AVFoundationSPI.h:
+
+2019-06-27  Saam Barati  <sbarati@apple.com>
+
+        Make WEBGPU enabled only on Mojave and later.
+
+        Rubber-stamped by Myles C. Maxfield.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-06-25  Alex Christensen  <achristensen@webkit.org>
+
+        Make HTTPCookieAcceptPolicy an enum class
+        https://bugs.webkit.org/show_bug.cgi?id=199081
+
+        Reviewed by Michael Catanzaro
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2019-06-19  Devin Rousso  <drousso@apple.com>
+
+        Web Inspector: Network: replace CFNetwork SPI with new API where able
+        https://bugs.webkit.org/show_bug.cgi?id=198762
+
+        Reviewed by Timothy Hatcher.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2019-06-18  Dean Jackson  <dino@apple.com>
+
+        UIContextMenuInteraction implementation for WKContentView
+        https://bugs.webkit.org/show_bug.cgi?id=198986
+        <rdar://problem/51875189>
+
+        Reviewed by Andy Estes.
+
+        Include + soft link DDContextMenuAction.
+
+        * pal/spi/ios/DataDetectorsUISPI.h:
+
+2019-06-18  Jiewen Tan  <jiewen_tan@apple.com>
+
+        Link to the new AppSSO private framework
+        https://bugs.webkit.org/show_bug.cgi?id=198949
+        <rdar://problem/51281897>
+
+        Reviewed by Brent Fulgham.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/cocoa/AppSSOSoftLink.h:
+        * pal/cocoa/AppSSOSoftLink.mm:
+        * pal/spi/cocoa/AppSSOSPI.h: Added.
+
+2019-06-18  Truitt Savell  <tsavell@apple.com>
+
+        Unreviewed, rolling out r246534.
+
+        Caused 45 webgpu/ tests to crash.
+
+        Reverted changeset:
+
+        "Link to the new AppSSO private framework"
+        https://bugs.webkit.org/show_bug.cgi?id=198949
+        https://trac.webkit.org/changeset/246534
+
+2019-06-18  Jiewen Tan  <jiewen_tan@apple.com>
+
+        Link to the new AppSSO private framework
+        https://bugs.webkit.org/show_bug.cgi?id=198949
+        <rdar://problem/51281897>
+
+        Reviewed by Brent Fulgham.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/cocoa/AppSSOSoftLink.h:
+        * pal/cocoa/AppSSOSoftLink.mm:
+        * pal/spi/cocoa/AppSSOSPI.h: Added.
+
+2019-06-17  Jiewen Tan  <jiewen_tan@apple.com>
+
+        Move SOAuthorization from WebKitAdditions to WebKit
+        https://bugs.webkit.org/show_bug.cgi?id=198874
+        <rdar://problem/47573431>
+
+        Reviewed by Brent Fulgham.
+
+        This patch moves AppSSOSoftLink from WebKitAdditions to WebKit, and introduces
+        AuthKitSPI.h.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/cocoa/AppSSOSoftLink.h: Copied from Tools/TestWebKitAPI/Tests/WebKitCocoa/TestLoadOptimizer.mm.
+        * pal/cocoa/AppSSOSoftLink.mm: Copied from Tools/TestWebKitAPI/Tests/WebKitCocoa/TestLoadOptimizer.mm.
+        * pal/spi/cf/CFNetworkSPI.h:
+        * pal/spi/cocoa/AuthKitSPI.h: Copied from Tools/TestWebKitAPI/Tests/WebKitCocoa/TestLoadOptimizer.mm.
+
+2019-06-14  Jiewen Tan  <jiewen_tan@apple.com>
+
+        Disable AppSSO for web processes and plugin processes
+        https://bugs.webkit.org/show_bug.cgi?id=198843
+        <rdar://problem/51642920>
+
+        Reviewed by Sam Weinig.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+        Adds a SPI to disable AppSSO for CFNetwork.
+
+2019-06-12  Antoine Quint  <graouts@apple.com>
+
+        Show the web page URL when sharing an AR model
+        https://bugs.webkit.org/show_bug.cgi?id=198812
+        <rdar://problem/48689498>
+
+        Reviewed by Dean Jackson.
+
+        * pal/spi/ios/SystemPreviewSPI.h:
+
+2019-06-10  Sam Weinig  <weinig@apple.com>
+
+        Remove Dashboard support
+        https://bugs.webkit.org/show_bug.cgi?id=198615
+
+        Reviewed by Ryosuke Niwa.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-06-10  Timothy Hatcher  <timothy@apple.com>
+
+        Integrate dark mode support for iOS.
+        https://bugs.webkit.org/show_bug.cgi?id=198687
+        rdar://problem/51545643
+
+        Reviewed by Tim Horton.
+
+        * Configurations/FeatureDefines.xcconfig:
+        * pal/spi/ios/UIKitSPI.h:
+
+2019-06-08  Andy Estes  <aestes@apple.com>
+
+        [Apple Pay] If we have a bound interface identifier, set it on new PKPaymentRequests
+        https://bugs.webkit.org/show_bug.cgi?id=198690
+        <rdar://problem/48041803>
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/cocoa/PassKitSPI.h: Included PKPaymentRequest_WebKit.h to declare some
+        WebKit-specific PKPaymentRequest SPIs for internal SDKs, and re-declared these SPIs - now
+        including the boundInterfaceIdentifier property - for public SDKs.
+
+2019-06-05  Alex Christensen  <achristensen@webkit.org>
+
+        Progress towards resurrecting Mac CMake build
+        https://bugs.webkit.org/show_bug.cgi?id=197132
+
+        Reviewed by Don Olmstead.
+
+        * pal/PlatformMac.cmake:
+
+2019-06-05  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        Upstream content mode support into open source from WebKitAdditions
+        https://bugs.webkit.org/show_bug.cgi?id=198484
+        <rdar://problem/51355671>
+
+        Reviewed by Andy Estes.
+
+        Add some new constants to MobileGestaltSPI.h.
+
+        * pal/spi/ios/MobileGestaltSPI.h:
+
+2019-06-03  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] Add WebKit::JavaScriptCore target
+        https://bugs.webkit.org/show_bug.cgi?id=198403
+
+        Reviewed by Konstantin Tokarev.
+
+        Use the WebKit::JavaScriptCore target.
+
+        * pal/CMakeLists.txt:
+
+2019-05-29  Don Olmstead  <don.olmstead@sony.com>
+
+        Remove ENABLE definitions from WebKit config files
+        https://bugs.webkit.org/show_bug.cgi?id=197858
+
+        Reviewed by Simon Fraser.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-05-17  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] Use builtin FindICU
+        https://bugs.webkit.org/show_bug.cgi?id=197934
+
+        Reviewed by Michael Catanzaro.
+
+        Remove uses of ICU_INCLUDE_DIRS and ICU_LIBRARIES.
+
+        * pal/CMakeLists.txt:
+
+2019-05-15  Simon Fraser  <simon.fraser@apple.com>
+
+        Make LOG_WITH_STREAM more efficient
+        https://bugs.webkit.org/show_bug.cgi?id=197905
+
+        Reviewed by Alex Christensen.
+        
+        Make the LOG_WITH_STREAM macro check that the log channel is enabled before
+        building the stream.
+
+        * pal/LogMacros.h:
+
+2019-05-10  Chris Dumez  <cdumez@apple.com>
+
+        Add WKWebViewConfiguration._canShowWhileLocked SPI
+        https://bugs.webkit.org/show_bug.cgi?id=197777
+        <rdar://problem/50065100>
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/cocoa/QuartzCoreSPI.h:
+
+2019-05-09  Daniel Bates  <dabates@apple.com>
+
+        [iOS] Numpad comma key has incorrect keyIdentifier property
+        https://bugs.webkit.org/show_bug.cgi?id=197753
+        <rdar://problem/50636274>
+
+        Reviewed by Brent Fulgham.
+
+        Expose enumerator for Numpad Comma.
+
+        * pal/spi/cocoa/IOKitSPI.h:
+
+2019-05-08  Alex Christensen  <achristensen@webkit.org>
+
+        Add SPI to set HSTS storage directory
+        https://bugs.webkit.org/show_bug.cgi?id=197259
+
+        Reviewed by Brady Eidson.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2019-05-07  Eric Carlson  <eric.carlson@apple.com>
+
+        Define media buffering policy
+        https://bugs.webkit.org/show_bug.cgi?id=196979
+        <rdar://problem/28383861>
+
+        Reviewed by Jer Noble.
+
+        * pal/spi/mac/AVFoundationSPI.h:
+
+2019-05-04  Alex Christensen  <achristensen@webkit.org>
+
+        Revert r244953 and r244954 because they broke internal builds.
+        https://bugs.webkit.org/show_bug.cgi?id=197534
+
+        * pal/spi/ios/UIKitSPI.h:
+        (currentUserInterfaceIdiomIsPad): Deleted.
+
+2019-05-04  Alex Christensen  <achristensen@webkit.org>
+
+        Fix internal build.
+        https://bugs.webkit.org/show_bug.cgi?id=197534
+
+        * pal/spi/ios/UIKitSPI.h:
+
+2019-05-04  Alex Christensen  <achristensen@webkit.org>
+
+        Merge the three UIKitSPI.h files into a single one in PAL
+        https://bugs.webkit.org/show_bug.cgi?id=197534
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/ios/UIKitSPI.h:
+        (currentUserInterfaceIdiomIsPad):
+
+2019-05-03  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r244881.
+        https://bugs.webkit.org/show_bug.cgi?id=197559
+
+        Breaks compilation of jsconly on linux, breaking compilation
+        for jsc-i386-ews, jsc-mips-ews and jsc-armv7-ews (Requested by
+        guijemont on #webkit).
+
+        Reverted changeset:
+
+        "[CMake] Refactor WEBKIT_MAKE_FORWARDING_HEADERS into
+        WEBKIT_COPY_FILES"
+        https://bugs.webkit.org/show_bug.cgi?id=197174
+        https://trac.webkit.org/changeset/244881
+
+2019-05-02  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] Refactor WEBKIT_MAKE_FORWARDING_HEADERS into WEBKIT_COPY_FILES
+        https://bugs.webkit.org/show_bug.cgi?id=197174
+
+        Reviewed by Alex Christensen.
+
+        Replace WEBKIT_MAKE_FORWARDING_HEADERS with WEBKIT_COPY_FILES.
+
+        * pal/CMakeLists.txt:
+
+2019-04-29  Alex Christensen  <achristensen@webkit.org>
+
+        <rdar://problem/50299396> Fix internal High Sierra build
+        https://bugs.webkit.org/show_bug.cgi?id=197388
+
+        * Configurations/Base.xcconfig:
+
+2019-04-26  Jessie Berlin  <jberlin@webkit.org>
+
+        Add new mac target numbers
+        https://bugs.webkit.org/show_bug.cgi?id=197313
+
+        Reviewed by Alex Christensen.
+
+        * Configurations/Version.xcconfig:
+        * Configurations/WebKitTargetConditionals.xcconfig:
+
+2019-04-26  Eric Carlson  <eric.carlson@apple.com>
+
+        Create AVFoundationSoftLink.{h,mm} to reduce duplicate code
+        https://bugs.webkit.org/show_bug.cgi?id=197171
+        <rdar://problem/47454979>
+
+        Reviewed by Youenn Fablet.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/cocoa/AVFoundationSoftLink.h: Added.
+        * pal/cocoa/AVFoundationSoftLink.mm: Added.
+
+2019-04-25  Timothy Hatcher  <timothy@apple.com>
+
+        Disable date and time inputs on iOSMac.
+        https://bugs.webkit.org/show_bug.cgi?id=197287
+        rdar://problem/46794376
+
+        Reviewed by Wenson Hsieh.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-04-25  Alex Christensen  <achristensen@webkit.org>
+
+        Start using C++17
+        https://bugs.webkit.org/show_bug.cgi?id=197131
+
+        Reviewed by Darin Adler.
+
+        * Configurations/Base.xcconfig:
+
+2019-04-25  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r244627.
+        https://bugs.webkit.org/show_bug.cgi?id=197282
+
+        Causing internal build failures (Requested by ShawnRoberts on
+        #webkit).
+
+        Reverted changeset:
+
+        "Create AVFoundationSoftLink.{h,mm} to reduce duplicate code"
+        https://bugs.webkit.org/show_bug.cgi?id=197171
+        https://trac.webkit.org/changeset/244627
+
+2019-04-24  Eric Carlson  <eric.carlson@apple.com>
+
+        Create AVFoundationSoftLink.{h,mm} to reduce duplicate code
+        https://bugs.webkit.org/show_bug.cgi?id=197171
+        <rdar://problem/47454979>
+
+        Reviewed by Youenn Fablet.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/cocoa/AVFoundationSoftLink.h: Added.
+        * pal/cocoa/AVFoundationSoftLink.mm: Added.
+
+2019-04-24  Tim Horton  <timothy_horton@apple.com>
+
+        Clean up WKActionSheetAssistant's use of LaunchServices
+        https://bugs.webkit.org/show_bug.cgi?id=194645
+        <rdar://problem/47707952>
+
+        Reviewed by Andy Estes.
+
+        * pal/spi/cocoa/LaunchServicesSPI.h:
+
+2019-04-23  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r244556.
+        https://bugs.webkit.org/show_bug.cgi?id=197212
+
+        Causing build failures on multiple builders (Requested by
+        ShawnRoberts on #webkit).
+
+        Reverted changeset:
+
+        "Create AVFoundationSoftLink.{h,mm} to reduce duplicate code"
+        https://bugs.webkit.org/show_bug.cgi?id=197171
+        https://trac.webkit.org/changeset/244556
+
+2019-04-23  Eric Carlson  <eric.carlson@apple.com>
+
+        Create AVFoundationSoftLink.{h,mm} to reduce duplicate code
+        https://bugs.webkit.org/show_bug.cgi?id=197171
+        <rdar://problem/47454979>
+
+        Reviewed by Youenn Fablet.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/cocoa/AVFoundationSoftLink.h: Added.
+        * pal/cocoa/AVFoundationSoftLink.mm: Added.
+
+2019-04-15  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] WebCore derived sources should only be referenced inside WebCore
+        https://bugs.webkit.org/show_bug.cgi?id=196904
+
+        Reviewed by Konstantin Tokarev.
+
+        Specify PAL_DERIVED_SOURCES_DIR as a private include directory.
+
+        * pal/CMakeLists.txt:
+        * pal/PlatformWin.cmake:
+
+2019-04-12  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        [iOS] Software keyboard is shown too frequently on some websites
+        https://bugs.webkit.org/show_bug.cgi?id=195856
+        <rdar://problem/49191395>
+
+        Reviewed by Darin Adler.
+
+        Declare new GraphicsServices SPI.
+
+        * pal/spi/ios/GraphicsServicesSPI.h:
+
+2019-04-10  Antoine Quint  <graouts@apple.com>
+
+        Enable Pointer Events on watchOS
+        https://bugs.webkit.org/show_bug.cgi?id=196771
+        <rdar://problem/49040909>
+
+        Reviewed by Dean Jackson.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-04-09  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] Apple builds should use ICU_INCLUDE_DIRS
+        https://bugs.webkit.org/show_bug.cgi?id=196720
+
+        Reviewed by Konstantin Tokarev.
+
+        * pal/PlatformMac.cmake:
+
+2019-04-08  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake][WinCairo] Separate copied headers into different directories
+        https://bugs.webkit.org/show_bug.cgi?id=196655
+
+        Reviewed by Michael Catanzaro.
+
+        * pal/CMakeLists.txt:
+
+2019-04-08  Justin Fan  <justin_fan@apple.com>
+
+        [Web GPU] Fix Web GPU experimental feature on iOS
+        https://bugs.webkit.org/show_bug.cgi?id=196632
+
+        Reviewed by Myles C. Maxfield.
+
+        Add feature conditionals for iOS 11.
+        Properly make Web GPU available on iOS 11+.
+
+        * Configurations/FeatureDefines.xcconfig:
+        * Configurations/WebKitTargetConditionals.xcconfig:
+
 2019-04-03  Myles C. Maxfield  <mmaxfield@apple.com>
 
         -apple-trailing-word is needed for browser detection
@@ -6,6 +918,25 @@
         Unreviewed.
 
         * Configurations/FeatureDefines.xcconfig:
+
+2019-04-03  Ryosuke Niwa  <rniwa@webkit.org>
+
+        Avoid the use of WTF_EXTERN_C_BEGIN in NSMenuSPI.h
+        https://bugs.webkit.org/show_bug.cgi?id=196566
+
+        Reviewed by Timothy Hatcher.
+
+        * pal/spi/mac/NSMenuSPI.h:
+
+2019-04-03  Alex Christensen  <achristensen@webkit.org>
+
+        Add SPI to disable legacy TLS fallback
+        https://bugs.webkit.org/show_bug.cgi?id=196549
+        <rdar://44979744>
+
+        Reviewed by Geoffrey Garen.
+
+        * pal/spi/cf/CFNetworkSPI.h:
 
 2019-04-03  Myles C. Maxfield  <mmaxfield@apple.com>
 
@@ -18,6 +949,394 @@
 
         * Configurations/FeatureDefines.xcconfig:
 
+2019-03-31  Sam Weinig  <weinig@apple.com>
+
+        Remove more i386 specific configurations
+        https://bugs.webkit.org/show_bug.cgi?id=196430
+
+        Reviewed by Alexey Proskuryakov.
+
+        * Configurations/FeatureDefines.xcconfig:
+        ENABLE_WEB_AUTHN_macosx can now be enabled unconditionally on macOS.
+
+2019-03-29  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        Delete WebMetal implementation in favor of WebGPU
+        https://bugs.webkit.org/show_bug.cgi?id=195418
+
+        Reviewed by Dean Jackson.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-03-29  Cathie Chen  <cathiechen@igalia.com>
+
+        Implement ResizeObserver.
+        https://bugs.webkit.org/show_bug.cgi?id=157743
+
+        Reviewed by Simon Fraser.
+
+        Add ENABLE_RESIZE_OBSERVER.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-03-25  Gyuyoung Kim  <gyuyoung.kim@webkit.org>
+
+        Remove NavigatorContentUtils in WebCore/Modules
+        https://bugs.webkit.org/show_bug.cgi?id=196070
+
+        Reviewed by Alex Christensen.
+
+        NavigatorContentUtils was to support the custom scheme spec [1].
+        However, in WebKit side, no port has supported the feature in
+        WebKit layer after EFL port was removed. So there has been the
+        only IDL implementation of the NavigatorContentUtils in WebCore.
+        So we don't need to keep the implementation in WebCore anymore.
+
+        [1] https://html.spec.whatwg.org/multipage/system-state.html#custom-handlers
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-03-23  Andy Estes  <aestes@apple.com>
+
+        [Apple Pay] Stop calling PKPaymentAuthorizationViewController class methods on iOS
+        https://bugs.webkit.org/show_bug.cgi?id=196163
+        <rdar://problem/48787564>
+
+        Reviewed by Anders Carlsson.
+
+        * pal/spi/cocoa/PassKitSPI.h:
+
+2019-03-22  Keith Rollin  <krollin@apple.com>
+
+        Enable ThinLTO support in Production builds
+        https://bugs.webkit.org/show_bug.cgi?id=190758
+        <rdar://problem/45413233>
+
+        Reviewed by Daniel Bates.
+
+        Enable building with Thin LTO in Production when using Xcode 10.2 or
+        later. This change results in a 1.45% progression in PLT5. Full
+        Production build times increase about 2-3%. Incremental build times
+        are more severely affected, and so LTO is not enabled for local
+        engineering builds.
+
+        LTO is enabled only on macOS for now, until rdar://problem/49013399,
+        which affects ARM builds, is fixed.
+
+        Removed the conditionals that disabled LTO on 32-bit systems since we
+        no longer build for those.
+
+        To change the LTO setting when building locally:
+
+        - If building with `make`, specify WK_LTO_MODE={none,thin,full} on the
+          command line.
+        - If building with `build-webkit`, specify --lto-mode={none,thin,full}
+          on the command line.
+        - If building with `build-root`, specify --lto={none,thin,full} on the
+          command line.
+        - If building with Xcode, create a LocalOverrides.xcconfig file at the
+          top level of your repository directory (if needed) and define
+          WK_LTO_MODE to full, thin, or none.
+
+        * Configurations/Base.xcconfig:
+
+2019-03-22  Timothy Hatcher  <timothy@apple.com>
+
+        Change macosx() to macos() in WK_API... and JSC_API... macros.
+        https://bugs.webkit.org/show_bug.cgi?id=196106
+
+        Reviewed by Brian Burg.
+
+        * pal/spi/cocoa/NSTouchBarSPI.h:
+
+2019-03-20  Simon Fraser  <simon.fraser@apple.com>
+
+        Rename ENABLE_ACCELERATED_OVERFLOW_SCROLLING macro to ENABLE_OVERFLOW_SCROLLING_TOUCH
+        https://bugs.webkit.org/show_bug.cgi?id=196049
+
+        Reviewed by Tim Horton.
+
+        This macro is about the -webkit-overflow-scrolling CSS property, not accelerated
+        overflow scrolling in general, so rename it.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-03-19  Ross Kirsling  <ross.kirsling@sony.com>
+
+        Unreviewed adjustment to r242842 per Darin's request.
+
+        * pal/win/LoggingWin.cpp:
+        (PAL::logLevelString):
+
+2019-03-14  Brent Fulgham  <bfulgham@apple.com>
+
+        Move CoreCrypto SPI declarations to an appropriate PAL/spi header
+        https://bugs.webkit.org/show_bug.cgi?id=195754
+        <rdar://problem/48591957>
+
+        Reviewed by Jiewen Tan.
+
+        Move the forward declarations of various CoreCrypto SPI to an appropriate PAL/spi header.
+        Update the const correctness of one function call to match new SDK declaration.
+
+        No tests because there are no changes in behavior.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/spi/cocoa/CommonCryptoSPI.h: Copied from Source/WebCore/crypto/CommonCryptoUtilities.h.
+
+2019-03-14  Shawn Roberts  <sroberts@apple.com>
+
+        Unreviewed, rolling out r242981.
+
+        Causing internal build failures on watch/tv OS
+
+        Reverted changeset:
+
+        "Move CoreCrypto SPI declarations to an appropriate PAL/spi
+        header"
+        https://bugs.webkit.org/show_bug.cgi?id=195754
+        https://trac.webkit.org/changeset/242981
+
+2019-03-14  Brent Fulgham  <bfulgham@apple.com>
+
+        Move CoreCrypto SPI declarations to an appropriate PAL/spi header
+        https://bugs.webkit.org/show_bug.cgi?id=195754
+        <rdar://problem/48591957>
+
+        Reviewed by Jiewen Tan.
+
+        Move the forward declarations of various CoreCrypto SPI to an appropriate PAL/spi header.
+        Update the const correctness of one function call to match new SDK declaration.
+
+        No tests because there are no changes in behavior.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/spi/cocoa/CommonCryptoSPI.h: Copied from Source/WebCore/crypto/CommonCryptoUtilities.h.
+
+2019-03-14  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, rolling out r242963.
+
+        Breaks watchOS build.
+
+        Reverted changeset:
+
+        "Move CommonCrypto SPI declarations to an appropriate PAL/spi
+        header"
+        https://bugs.webkit.org/show_bug.cgi?id=195754
+        https://trac.webkit.org/changeset/242963
+
+2019-03-14  Brent Fulgham  <bfulgham@apple.com>
+
+        Move CommonCrypto SPI declarations to an appropriate PAL/spi header
+        https://bugs.webkit.org/show_bug.cgi?id=195754
+        <rdar://problem/48591957>
+
+        Reviewed by Jiewen Tan.
+
+        Move the forward declarations of various CommonCrypto SPI to an appropriate PAL/spi header.
+        Update the const correctness of one function call to match new SDK declaration.
+
+        No tests because there are no changes in behavior.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/spi/cocoa/CommonCryptoSPI.h: Copied from Source/WebCore/crypto/CommonCryptoUtilities.h.
+
+2019-03-13  Keith Rollin  <krollin@apple.com>
+
+        Add support for new StagedFrameworks layout
+        https://bugs.webkit.org/show_bug.cgi?id=195543
+
+        Reviewed by Alexey Proskuryakov.
+
+        When creating the WebKit layout for out-of-band Safari/WebKit updates,
+        use an optional path prefix when called for.
+
+        * Configurations/PAL.xcconfig:
+
+2019-03-12  Ross Kirsling  <ross.kirsling@sony.com>
+
+        [Win] Fix a slew of simple clang-cl warnings.
+        https://bugs.webkit.org/show_bug.cgi?id=195652
+
+        Reviewed by Don Olmstead.
+
+        * pal/win/LoggingWin.cpp:
+        (PAL::logLevelString): -Wwritable-strings
+
+2019-03-12  Timothy Hatcher  <timothy@apple.com>
+
+        Expose document attributes and body background color through HTMLConverter.
+        https://bugs.webkit.org/show_bug.cgi?id=195636
+        rdar://problem/45055697
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/cocoa/NSAttributedStringSPI.h:
+        (NSBackgroundColorDocumentAttribute): Added.
+
+2019-03-12  Jennifer Moore  <jennifer.moore@apple.com>
+
+        Check whether to launch a default action instead of action sheet
+        https://bugs.webkit.org/show_bug.cgi?id=195225
+        <rdar://problem/47715544>
+
+        Reviewed by Daniel Bates.
+
+        Add new SPI declarations.
+
+        * pal/spi/ios/DataDetectorsUISPI.h:
+
+2019-03-11  Ross Kirsling  <ross.kirsling@sony.com>
+
+        Add Optional to Forward.h.
+        https://bugs.webkit.org/show_bug.cgi?id=195586
+
+        Reviewed by Darin Adler.
+
+        * pal/crypto/tasn1/Utilities.cpp:
+        * pal/crypto/tasn1/Utilities.h:
+        Remove unnecessary includes from headers.
+
+2019-03-11  Andy Estes  <aestes@apple.com>
+
+        [Apple Pay] Use PKPaymentAuthorizationController to present the Apple Pay UI remotely from the Networking service on iOS
+        https://bugs.webkit.org/show_bug.cgi?id=195530
+        <rdar://problem/48747164>
+
+        Reviewed by Alex Christensen.
+
+        * pal/cocoa/PassKitSoftLink.h: Soft-linked PKPaymentAuthorizationController on iOS.
+        * pal/cocoa/PassKitSoftLink.mm: Ditto.
+        * pal/spi/cocoa/PassKitSPI.h: Declared PKPaymentAuthorizationControllerPrivateDelegate and
+        related SPI.
+
+2019-03-11  Alex Christensen  <achristensen@webkit.org>
+
+        Soft linking to Reveal framework should be optional
+        https://bugs.webkit.org/show_bug.cgi?id=195576
+        <rdar://problem/46822452>
+
+        Reviewed by Megan Gardner.
+
+        * pal/spi/cocoa/RevealSPI.h:
+
+2019-03-07  Andy Estes  <aestes@apple.com>
+
+        [Apple Pay] Untangle PKPaymentAuthorizationViewController from WebPaymentCoordinatorProxy
+        https://bugs.webkit.org/show_bug.cgi?id=195349
+        <rdar://problem/48625510>
+
+        Reviewed by Alex Christensen.
+
+        Moved soft-linking of PKPaymentErrorDomain from WebPaymentCoordinatorProxy to here and used
+        a more descriptive platform macro.
+
+        * pal/cocoa/PassKitSoftLink.h:
+        * pal/cocoa/PassKitSoftLink.mm:
+
+2019-03-01  Conrad Shultz  <conrad_shultz@apple.com>
+
+        Improper use of PLATFORM(TVOS) in PAL
+        https://bugs.webkit.org/show_bug.cgi?id=195215
+
+        Reviewed by Darin Adler.
+
+        There are a couple stray uses of PLATFORM(TVOS) in PAL. The correct usage is
+        PLATFORM(APPLETV).
+
+        * pal/spi/cocoa/NSKeyedArchiverSPI.h:
+        * pal/spi/cocoa/NSProgressSPI.h:
+
+2019-03-03  Tim Horton  <timothy_horton@apple.com>
+
+        Remove some more unused 32-bit code
+        https://bugs.webkit.org/show_bug.cgi?id=195255
+
+        Reviewed by Darin Adler.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+        * pal/spi/cocoa/IOKitSPI.h:
+        * pal/spi/mac/QuickDrawSPI.h: Removed.
+
+2019-03-01  Justin Fan  <justin_fan@apple.com>
+
+        [Web GPU] 32-bit builds broken by attempt to disable WebGPU on 32-bit
+        https://bugs.webkit.org/show_bug.cgi?id=195191
+
+        Rubber-stamped by Dean Jackson.
+
+        Dropping support for 32-bit entirely, so I'm intentionally leaving 32-bit broken.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-02-28  Justin Fan  <justin_fan@apple.com>
+
+        [Web GPU] Enable Web GPU only on 64-bit
+        https://bugs.webkit.org/show_bug.cgi?id=195139
+
+        Because Metal is only supported on 64 bit apps.
+
+        Unreviewed build fix.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-02-27  Antoine Quint  <graouts@apple.com>
+
+        Support Pointer Events on macOS
+        https://bugs.webkit.org/show_bug.cgi?id=195008
+        <rdar://problem/47454419>
+
+        Reviewed by Dean Jackson.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-02-23  Keith Miller  <keith_miller@apple.com>
+
+        Add new mac target numbers
+        https://bugs.webkit.org/show_bug.cgi?id=194955
+
+        Reviewed by Tim Horton.
+
+        * Configurations/Base.xcconfig:
+        * Configurations/DebugRelease.xcconfig:
+
+2019-02-20  Daniel Bates  <dabates@apple.com>
+
+        Attempt to fix the Apple Internal build following r241828
+        (https://trac.webkit.org/changeset/241828/webkit)
+
+        Conditionally include a private header.
+
+        * pal/spi/ios/UIKitSPI.h:
+
+2019-02-20  Daniel Bates  <dabates@apple.com>
+
+        [iOS] Tweak UI for focus rings
+        https://bugs.webkit.org/show_bug.cgi?id=194864
+        <rdar://problem/47831886>
+
+        Reviewed by Brent Fulgham.
+
+        Expose more SPI.
+
+        * pal/ios/UIKitSoftLink.h:
+        * pal/ios/UIKitSoftLink.mm:
+        * pal/spi/ios/UIKitSPI.h:
+
+2019-02-20  Timothy Hatcher  <timothy@apple.com>
+
+        RenderThemeIOS should use RenderTheme's color cache instead of its own.
+        https://bugs.webkit.org/show_bug.cgi?id=194822
+        rdar://problem/48208296
+
+        Reviewed by Tim Horton.
+
+        * pal/ios/UIKitSoftLink.h:
+        * pal/ios/UIKitSoftLink.mm:
+        * pal/spi/ios/UIKitSPI.h:
+
 2019-02-16  Darin Adler  <darin@apple.com>
 
         Continue reducing use of String::format, now focusing on hex: "%p", "%x", etc.
@@ -27,6 +1346,100 @@
 
         * pal/FileSizeFormatter.cpp:
         (fileSizeDescription): Use makeString instead of String::format.
+
+2019-02-18  Daniel Bates  <dabates@apple.com>
+
+        [iOS] Keyups for non-modifier keys identified as "Dead" when not focused in a content-editable element
+        https://bugs.webkit.org/show_bug.cgi?id=192824
+        <rdar://problem/47100332>
+
+        Reviewed by Wenson Hsieh.
+
+        Expose more enumerators.
+
+        * pal/spi/cocoa/IOKitSPI.h:
+
+2019-02-17  David Kilzer  <ddkilzer@apple.com>
+
+        Unreviewed, rolling out r241620.
+
+        "Causes use-after-free crashes running layout tests with ASan and GuardMalloc."
+        (Requested by ddkilzer on #webkit.)
+
+        Reverted changeset:
+
+        "[WTF] Add environment variable helpers"
+        https://bugs.webkit.org/show_bug.cgi?id=192405
+        https://trac.webkit.org/changeset/241620
+
+2019-02-15  Ross Kirsling  <ross.kirsling@sony.com>
+
+        [WTF] Add environment variable helpers
+        https://bugs.webkit.org/show_bug.cgi?id=192405
+
+        Reviewed by Michael Catanzaro.
+
+        * pal/unix/LoggingUnix.cpp:
+        (PAL::logLevelString):
+        * pal/win/LoggingWin.cpp:
+        (PAL::logLevelString):
+        Utilize WTF::Environment where possible.
+
+2019-02-15  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r241559 and r241566.
+        https://bugs.webkit.org/show_bug.cgi?id=194710
+
+        Causes layout test crashes under GuardMalloc (Requested by
+        ryanhaddad on #webkit).
+
+        Reverted changesets:
+
+        "[WTF] Add environment variable helpers"
+        https://bugs.webkit.org/show_bug.cgi?id=192405
+        https://trac.webkit.org/changeset/241559
+
+        "Unreviewed build fix for WinCairo Debug after r241559."
+        https://trac.webkit.org/changeset/241566
+
+2019-02-14  Ross Kirsling  <ross.kirsling@sony.com>
+
+        [WTF] Add environment variable helpers
+        https://bugs.webkit.org/show_bug.cgi?id=192405
+
+        Reviewed by Michael Catanzaro.
+
+        * pal/unix/LoggingUnix.cpp:
+        (PAL::logLevelString):
+        * pal/win/LoggingWin.cpp:
+        (PAL::logLevelString):
+        Utilize WTF::Environment where possible.
+
+2019-02-12  Chris Fleizach  <cfleizach@apple.com>
+
+        AX: IsolatedTree: Implement more attributes
+        https://bugs.webkit.org/show_bug.cgi?id=193911
+        <rdar://problem/47599217>
+
+        Reviewed by Daniel Bates.
+
+        * pal/spi/mac/HIServicesSPI.h:
+
+2019-02-12  Andy Estes  <aestes@apple.com>
+
+        [iOSMac] Enable Parental Controls Content Filtering
+        https://bugs.webkit.org/show_bug.cgi?id=194521
+        <rdar://39732376>
+
+        Reviewed by Tim Horton.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2019-02-11  Jer Noble  <jer.noble@apple.com>
+
+        Unreviewed build fix; add a HAVE_CELESTIAL guard around the CelestialSPI.h contents.
+
+        * pal/spi/ios/CelestialSPI.h:
 
 2019-02-12  Michael Catanzaro  <mcatanzaro@igalia.com>
 

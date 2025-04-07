@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,16 +26,34 @@
 #import "config.h"
 #import "WebCoreArgumentCoders.h"
 
-#if ENABLE(APPLE_PAY)
-
 #import "ArgumentCodersCocoa.h"
+#import <WebCore/DictionaryPopupInfo.h>
+#import <WebCore/FontAttributes.h>
+
+#if ENABLE(APPLE_PAY)
 #import "DataReference.h"
 #import <WebCore/PaymentAuthorizationStatus.h>
 #import <pal/cocoa/PassKitSoftLink.h>
 #import <pal/spi/cocoa/NSKeyedArchiverSPI.h>
+#endif
+
+#if PLATFORM(IOS_FAMILY)
+#import <UIKit/UIFont.h>
+#endif
+
+#if USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/WebCoreArgumentCodersCocoaAdditions.mm>
+#elif ENABLE(APPLE_PAY)
+namespace IPC {
+static bool finishDecoding(Decoder&, WebCore::ApplePaySessionPaymentRequest&) { return true; }
+static void finishEncoding(Encoder&, const WebCore::ApplePaySessionPaymentRequest&) { }
+}
+#endif
 
 namespace IPC {
 using namespace WebCore;
+
+#if ENABLE(APPLE_PAY)
 
 void ArgumentCoder<WebCore::Payment>::encode(Encoder& encoder, const WebCore::Payment& payment)
 {
@@ -172,6 +190,7 @@ void ArgumentCoder<ApplePaySessionPaymentRequest>::encode(Encoder& encoder, cons
     encoder << request.applicationData();
     encoder << request.supportedCountries();
     encoder.encodeEnum(request.requester());
+    finishEncoding(encoder, request);
 }
 
 bool ArgumentCoder<ApplePaySessionPaymentRequest>::decode(Decoder& decoder, ApplePaySessionPaymentRequest& request)
@@ -253,6 +272,9 @@ bool ArgumentCoder<ApplePaySessionPaymentRequest>::decode(Decoder& decoder, Appl
     if (!decoder.decodeEnum(requester))
         return false;
     request.setRequester(requester);
+
+    if (!finishDecoding(decoder, request))
+        return false;
 
     return true;
 }
@@ -408,5 +430,32 @@ Optional<WebCore::ShippingMethodUpdate> ArgumentCoder<WebCore::ShippingMethodUpd
     return {{ WTFMove(*newTotalAndLineItems) }};
 }
 
+#endif // ENABLE(APPLEPAY)
+
+void ArgumentCoder<WebCore::DictionaryPopupInfo>::encodePlatformData(Encoder& encoder, const WebCore::DictionaryPopupInfo& info)
+{
+    encoder << info.options << info.attributedString;
 }
-#endif
+
+bool ArgumentCoder<WebCore::DictionaryPopupInfo>::decodePlatformData(Decoder& decoder, WebCore::DictionaryPopupInfo& result)
+{
+    if (!IPC::decode(decoder, result.options))
+        return false;
+    if (!IPC::decode(decoder, result.attributedString))
+        return false;
+    return true;
+}
+
+void ArgumentCoder<WebCore::FontAttributes>::encodePlatformData(Encoder& encoder, const WebCore::FontAttributes& attributes)
+{
+    encoder << attributes.font;
+}
+
+Optional<FontAttributes> ArgumentCoder<WebCore::FontAttributes>::decodePlatformData(Decoder& decoder, WebCore::FontAttributes& attributes)
+{
+    if (!IPC::decode(decoder, attributes.font))
+        return WTF::nullopt;
+    return attributes;
+}
+
+} // namespace IPC

@@ -38,7 +38,7 @@
 #include "JSNode.h"
 #include "ScriptExecutionContext.h"
 #include <JavaScriptCore/FunctionPrototype.h>
-#include <JavaScriptCore/HeapSnapshotBuilder.h>
+#include <JavaScriptCore/HeapAnalyzer.h>
 #include <JavaScriptCore/JSCInlines.h>
 #include <wtf/GetPtr.h>
 #include <wtf/PointerPreparations.h>
@@ -117,7 +117,7 @@ template<> JSValue JSTestCallTracerConstructor::prototypeForStructure(JSC::VM& v
 template<> void JSTestCallTracerConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
     putDirect(vm, vm.propertyNames->prototype, JSTestCallTracer::prototype(vm, globalObject), JSC::PropertyAttribute::DontDelete | JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
-    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String("TestCallTracer"_s)), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, String("TestCallTracer"_s)), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     reifyStaticProperties(vm, JSTestCallTracer::info(), JSTestCallTracerConstructorTableValues, *this);
 }
@@ -238,15 +238,13 @@ EncodedJSValue jsTestCallTracerTestAttributeInterface(ExecState* state, EncodedJ
 
 static inline bool setJSTestCallTracerTestAttributeInterfaceSetter(ExecState& state, JSTestCallTracer& thisObject, JSValue value, ThrowScope& throwScope)
 {
+    UNUSED_PARAM(state);
     UNUSED_PARAM(throwScope);
     auto& impl = thisObject.wrapped();
     auto nativeValue = convert<IDLBoolean>(state, value);
     RETURN_IF_EXCEPTION(throwScope, false);
-    if (UNLIKELY(impl.callTracingActive())) {
-        Vector<TestCallTracerInterfaceVariant> callTracerParameters;
-        callTracerParameters.append(nativeValue);
-        CallTracer::testCallTracerInterface(impl, "testAttributeInterface"_s, WTFMove(callTracerParameters));
-    }
+    if (UNLIKELY(impl.callTracingActive()))
+        CallTracer::testCallTracerInterface(impl, "testAttributeInterface"_s, { nativeValue });
     AttributeSetter::call(state, throwScope, [&] {
         return impl.setTestAttributeInterface(WTFMove(nativeValue));
     });
@@ -276,15 +274,13 @@ EncodedJSValue jsTestCallTracerTestAttributeSpecified(ExecState* state, EncodedJ
 
 static inline bool setJSTestCallTracerTestAttributeSpecifiedSetter(ExecState& state, JSTestCallTracer& thisObject, JSValue value, ThrowScope& throwScope)
 {
+    UNUSED_PARAM(state);
     UNUSED_PARAM(throwScope);
     auto& impl = thisObject.wrapped();
     auto nativeValue = convert<IDLBoolean>(state, value);
     RETURN_IF_EXCEPTION(throwScope, false);
-    if (UNLIKELY(impl.callTracingActive())) {
-        Vector<TestCallTracerAttributeVariant> callTracerParameters;
-        callTracerParameters.append(nativeValue);
-        CallTracer::testCallTracerAttribute(impl, "testAttributeSpecified"_s, WTFMove(callTracerParameters));
-    }
+    if (UNLIKELY(impl.callTracingActive()))
+        CallTracer::testCallTracerAttribute(impl, "testAttributeSpecified"_s, { nativeValue });
     AttributeSetter::call(state, throwScope, [&] {
         return impl.setTestAttributeSpecified(WTFMove(nativeValue));
     });
@@ -314,15 +310,13 @@ EncodedJSValue jsTestCallTracerTestAttributeWithVariant(ExecState* state, Encode
 
 static inline bool setJSTestCallTracerTestAttributeWithVariantSetter(ExecState& state, JSTestCallTracer& thisObject, JSValue value, ThrowScope& throwScope)
 {
+    UNUSED_PARAM(state);
     UNUSED_PARAM(throwScope);
     auto& impl = thisObject.wrapped();
     auto nativeValue = convert<IDLUnion<IDLBoolean, IDLFloat, IDLDOMString>>(state, value);
     RETURN_IF_EXCEPTION(throwScope, false);
-    if (UNLIKELY(impl.callTracingActive())) {
-        Vector<TestCallTracerInterfaceVariant> callTracerParameters;
-        WTF::visit([&] (auto& value) { callTracerParameters.append(value); }, nativeValue);
-        CallTracer::testCallTracerInterface(impl, "testAttributeWithVariant"_s, WTFMove(callTracerParameters));
-    }
+    if (UNLIKELY(impl.callTracingActive()))
+        CallTracer::testCallTracerInterface(impl, "testAttributeWithVariant"_s, { nativeValue });
     AttributeSetter::call(state, throwScope, [&] {
         return impl.setTestAttributeWithVariant(WTFMove(nativeValue));
     });
@@ -393,13 +387,8 @@ static inline JSC::EncodedJSValue jsTestCallTracerPrototypeFunctionTestOperation
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
     auto c = convert<IDLDOMString>(*state, state->uncheckedArgument(2));
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    if (UNLIKELY(impl.callTracingActive())) {
-        Vector<TestCallTracerInterfaceVariant> callTracerParameters;
-        callTracerParameters.append(a);
-        callTracerParameters.append(b);
-        callTracerParameters.append(c);
-        CallTracer::testCallTracerInterface(impl, "testOperationWithArguments"_s, WTFMove(callTracerParameters));
-    }
+    if (UNLIKELY(impl.callTracingActive()))
+        CallTracer::testCallTracerInterface(impl, "testOperationWithArguments"_s, { a, b, c });
     impl.testOperationWithArguments(WTFMove(a), WTFMove(b), WTFMove(c));
     return JSValue::encode(jsUndefined());
 }
@@ -418,12 +407,8 @@ static inline JSC::EncodedJSValue jsTestCallTracerPrototypeFunctionTestOperation
         return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
     auto nodeNullableArg = convert<IDLNullable<IDLInterface<Node>>>(*state, state->uncheckedArgument(0), [](JSC::ExecState& state, JSC::ThrowScope& scope) { throwArgumentTypeError(state, scope, 0, "nodeNullableArg", "TestCallTracer", "testOperationWithNullableArgument", "Node"); });
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    if (UNLIKELY(impl.callTracingActive())) {
-        Vector<TestCallTracerInterfaceVariant> callTracerParameters;
-        if (nodeNullableArg)
-            callTracerParameters.append(nodeNullableArg);
-        CallTracer::testCallTracerInterface(impl, "testOperationWithNullableArgument"_s, WTFMove(callTracerParameters));
-    }
+    if (UNLIKELY(impl.callTracingActive()))
+        CallTracer::testCallTracerInterface(impl, "testOperationWithNullableArgument"_s, { nodeNullableArg });
     impl.testOperationWithNullableArgument(WTFMove(nodeNullableArg));
     return JSValue::encode(jsUndefined());
 }
@@ -442,11 +427,8 @@ static inline JSC::EncodedJSValue jsTestCallTracerPrototypeFunctionTestOperation
         return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
     auto variantArg = convert<IDLUnion<IDLBoolean, IDLFloat, IDLDOMString>>(*state, state->uncheckedArgument(0));
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    if (UNLIKELY(impl.callTracingActive())) {
-        Vector<TestCallTracerInterfaceVariant> callTracerParameters;
-        WTF::visit([&] (auto& value) { callTracerParameters.append(value); }, variantArg);
-        CallTracer::testCallTracerInterface(impl, "testOperationWithVariantArgument"_s, WTFMove(callTracerParameters));
-    }
+    if (UNLIKELY(impl.callTracingActive()))
+        CallTracer::testCallTracerInterface(impl, "testOperationWithVariantArgument"_s, { variantArg });
     impl.testOperationWithVariantArgument(WTFMove(variantArg));
     return JSValue::encode(jsUndefined());
 }
@@ -465,12 +447,8 @@ static inline JSC::EncodedJSValue jsTestCallTracerPrototypeFunctionTestOperation
         return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
     auto variantNullableArg = convert<IDLNullable<IDLUnion<IDLBoolean, IDLFloat, IDLDOMString>>>(*state, state->uncheckedArgument(0));
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    if (UNLIKELY(impl.callTracingActive())) {
-        Vector<TestCallTracerInterfaceVariant> callTracerParameters;
-        if (variantNullableArg)
-            WTF::visit([&] (auto& value) { callTracerParameters.append(value); }, *variantNullableArg);
-        CallTracer::testCallTracerInterface(impl, "testOperationWithNullableVariantArgument"_s, WTFMove(callTracerParameters));
-    }
+    if (UNLIKELY(impl.callTracingActive()))
+        CallTracer::testCallTracerInterface(impl, "testOperationWithNullableVariantArgument"_s, { variantNullableArg });
     impl.testOperationWithNullableVariantArgument(WTFMove(variantNullableArg));
     return JSValue::encode(jsUndefined());
 }
@@ -487,12 +465,8 @@ static inline JSC::EncodedJSValue jsTestCallTracerPrototypeFunctionTestOperation
     auto& impl = castedThis->wrapped();
     auto variantOptionalArg = state->argument(0).isUndefined() ? Optional<Converter<IDLUnion<IDLBoolean, IDLFloat, IDLDOMString>>::ReturnType>() : Optional<Converter<IDLUnion<IDLBoolean, IDLFloat, IDLDOMString>>::ReturnType>(convert<IDLUnion<IDLBoolean, IDLFloat, IDLDOMString>>(*state, state->uncheckedArgument(0)));
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    if (UNLIKELY(impl.callTracingActive())) {
-        Vector<TestCallTracerInterfaceVariant> callTracerParameters;
-        if (variantOptionalArg)
-            WTF::visit([&] (auto& value) { callTracerParameters.append(value); }, *variantOptionalArg);
-        CallTracer::testCallTracerInterface(impl, "testOperationWithOptionalVariantArgument"_s, WTFMove(callTracerParameters));
-    }
+    if (UNLIKELY(impl.callTracingActive()))
+        CallTracer::testCallTracerInterface(impl, "testOperationWithOptionalVariantArgument"_s, { variantOptionalArg });
     impl.testOperationWithOptionalVariantArgument(WTFMove(variantOptionalArg));
     return JSValue::encode(jsUndefined());
 }
@@ -509,11 +483,8 @@ static inline JSC::EncodedJSValue jsTestCallTracerPrototypeFunctionTestOperation
     auto& impl = castedThis->wrapped();
     auto variantDefaultArg = state->argument(0).isUndefined() ? "" : convert<IDLUnion<IDLBoolean, IDLFloat, IDLDOMString>>(*state, state->uncheckedArgument(0));
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    if (UNLIKELY(impl.callTracingActive())) {
-        Vector<TestCallTracerInterfaceVariant> callTracerParameters;
-        WTF::visit([&] (auto& value) { callTracerParameters.append(value); }, variantDefaultArg);
-        CallTracer::testCallTracerInterface(impl, "testOperationWithDefaultVariantArgument"_s, WTFMove(callTracerParameters));
-    }
+    if (UNLIKELY(impl.callTracingActive()))
+        CallTracer::testCallTracerInterface(impl, "testOperationWithDefaultVariantArgument"_s, { variantDefaultArg });
     impl.testOperationWithDefaultVariantArgument(WTFMove(variantDefaultArg));
     return JSValue::encode(jsUndefined());
 }
@@ -523,13 +494,13 @@ EncodedJSValue JSC_HOST_CALL jsTestCallTracerPrototypeFunctionTestOperationWithD
     return IDLOperation<JSTestCallTracer>::call<jsTestCallTracerPrototypeFunctionTestOperationWithDefaultVariantArgumentBody>(*state, "testOperationWithDefaultVariantArgument");
 }
 
-void JSTestCallTracer::heapSnapshot(JSCell* cell, HeapSnapshotBuilder& builder)
+void JSTestCallTracer::analyzeHeap(JSCell* cell, HeapAnalyzer& analyzer)
 {
     auto* thisObject = jsCast<JSTestCallTracer*>(cell);
-    builder.setWrappedObjectForCell(cell, &thisObject->wrapped());
+    analyzer.setWrappedObjectForCell(cell, &thisObject->wrapped());
     if (thisObject->scriptExecutionContext())
-        builder.setLabelForCell(cell, "url " + thisObject->scriptExecutionContext()->url().string());
-    Base::heapSnapshot(cell, builder);
+        analyzer.setLabelForCell(cell, "url " + thisObject->scriptExecutionContext()->url().string());
+    Base::analyzeHeap(cell, analyzer);
 }
 
 bool JSTestCallTracerOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, SlotVisitor& visitor, const char** reason)

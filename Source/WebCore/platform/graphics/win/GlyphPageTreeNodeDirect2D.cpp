@@ -28,9 +28,10 @@
 
 #if USE(DIRECT2D)
 
+#include "DirectWriteUtilities.h"
 #include "Font.h"
 #include "TextAnalyzerHelper.h"
-#include <dwrite.h>
+#include <dwrite_3.h>
 
 namespace WebCore {
 
@@ -43,7 +44,7 @@ bool GlyphPage::fill(UChar* buffer, unsigned bufferLength)
     bool haveGlyphs = false;
 
     COMPtr<IDWriteTextAnalyzer> analyzer;
-    HRESULT hr = Font::systemDWriteFactory()->CreateTextAnalyzer(&analyzer);
+    HRESULT hr = DirectWrite::factory()->CreateTextAnalyzer(&analyzer);
     RELEASE_ASSERT(SUCCEEDED(hr));
 
     auto& fontPlatformData = font.platformData();
@@ -53,7 +54,7 @@ bool GlyphPage::fill(UChar* buffer, unsigned bufferLength)
     RELEASE_ASSERT(localeLength <= LOCALE_NAME_MAX_LENGTH);
     localeName[localeLength] = '\0';
 
-    TextAnalyzerHelper helper(localeName, buffer, bufferLength);
+    TextAnalyzerHelper helper(reinterpret_cast<LPWSTR>(&localeName), reinterpret_cast<LPWSTR>(buffer), bufferLength);
 
     hr = analyzer->AnalyzeScript(&helper, 0, bufferLength, &helper);
     RELEASE_ASSERT(SUCCEEDED(hr));
@@ -64,7 +65,7 @@ bool GlyphPage::fill(UChar* buffer, unsigned bufferLength)
     Vector<DWRITE_SHAPING_TEXT_PROPERTIES> textProperties(GlyphPage::size);
     Vector<DWRITE_SHAPING_GLYPH_PROPERTIES> glyphProperties(GlyphPage::size);
 
-    hr = analyzer->GetGlyphs(buffer, bufferLength, fontPlatformData.dwFontFace(), fontPlatformData.orientation() == FontOrientation::Vertical, false,
+    hr = analyzer->GetGlyphs(reinterpret_cast<LPCWSTR>(buffer), bufferLength, fontPlatformData.dwFontFace(), fontPlatformData.orientation() == FontOrientation::Vertical, false,
         &helper.m_analysis, nullptr, nullptr, nullptr, nullptr, 0, GlyphPage::size, clusterMap, textProperties.data(),
         localGlyphBuffer, glyphProperties.data(), &returnedCount);
     if (!SUCCEEDED(hr))

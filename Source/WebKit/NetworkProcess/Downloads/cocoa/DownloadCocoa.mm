@@ -80,11 +80,13 @@ void Download::resume(const IPC::DataReference& resumeData, const String& path, 
 void Download::platformCancelNetworkLoad()
 {
     ASSERT(m_downloadTask);
+
+    // The download's resume data is accessed in the network session delegate
+    // method -URLSession:task:didCompleteWithError: instead of inside this block,
+    // to avoid race conditions between the two. Calling -cancel is not sufficient
+    // here because CFNetwork won't provide the resume data unless we ask for it.
     [m_downloadTask cancelByProducingResumeData:^(NSData *resumeData) {
-        if (resumeData && resumeData.bytes && resumeData.length)
-            didCancel(IPC::DataReference(reinterpret_cast<const uint8_t*>(resumeData.bytes), resumeData.length));
-        else
-            didCancel({ });
+        UNUSED_PARAM(resumeData);
     }];
 }
 
@@ -100,24 +102,21 @@ void Download::platformDestroyDownload()
 
 void Download::publishProgress(const URL& url, SandboxExtension::Handle&& sandboxExtensionHandle)
 {
-#if WK_API_ENABLED
     ASSERT(!m_progress);
     ASSERT(url.isValid());
 
     auto sandboxExtension = SandboxExtension::create(WTFMove(sandboxExtensionHandle));
 
     ASSERT(sandboxExtension);
+    if (!sandboxExtension)
+        return;
 
-    m_progress = adoptNS([[WKDownloadProgress alloc] initWithDownloadTask:m_downloadTask.get() download:this URL:(NSURL *)url sandboxExtension:sandboxExtension]);
+    m_progress = adoptNS([[WKDownloadProgress alloc] initWithDownloadTask:m_downloadTask.get() download:*this URL:(NSURL *)url sandboxExtension:sandboxExtension]);
 #if USE(NSPROGRESS_PUBLISHING_SPI)
     [m_progress _publish];
 #else
     [m_progress publish];
 #endif
-#else
-    UNUSED_PARAM(url);
-    UNUSED_PARAM(sandboxExtensionHandle);
-#endif // not WK_API_ENABLED
 }
 
 }

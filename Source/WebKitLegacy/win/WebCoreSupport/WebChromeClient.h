@@ -38,6 +38,7 @@ class WebDesktopNotificationsDelegate;
 interface IWebUIDelegate;
 
 class WebChromeClient final : public WebCore::ChromeClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WebChromeClient(WebView*);
 
@@ -98,8 +99,11 @@ public:
 
     WebCore::IntPoint screenToRootView(const WebCore::IntPoint&) const final;
     WebCore::IntRect rootViewToScreen(const WebCore::IntRect&) const final;
+    WebCore::IntPoint accessibilityScreenToRootView(const WebCore::IntPoint&) const final;
+    WebCore::IntRect rootViewToAccessibilityScreen(const WebCore::IntRect&) const final;
     PlatformPageClient platformPageClient() const final;
     void contentsSizeChanged(WebCore::Frame&, const WebCore::IntSize&) const final;
+    void intrinsicContentsSizeChanged(const WebCore::IntSize&) const final;
 
     void mouseDidMoveOverElement(const WebCore::HitTestResult&, unsigned modifierFlags) final;
     bool shouldUnavailablePluginMessageBeButton(WebCore::RenderEmbeddedObject::PluginUnavailabilityReason) const final;
@@ -168,6 +172,8 @@ public:
     bool shouldUseTiledBackingForFrameView(const WebCore::FrameView&) const final;
 
     RefPtr<WebCore::Icon> createIconForFiles(const Vector<String>&) final;
+
+    void didFinishLoadingImageForElement(WebCore::HTMLImageElement&) final;
 
 private:
     COMPtr<IWebUIDelegate> uiDelegate();

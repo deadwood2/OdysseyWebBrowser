@@ -38,6 +38,7 @@
 #include "Document.h"
 #include "DocumentFragment.h"
 #include "Editing.h"
+#include "EditingBehavior.h"
 #include "ElementIterator.h"
 #include "EventNames.h"
 #include "Frame.h"
@@ -610,7 +611,7 @@ void ReplaceSelectionCommand::removeRedundantStylesAndKeepStyleSpanInline(Insert
     }
 }
 
-static bool isProhibitedParagraphChild(const AtomicString& name)
+static bool isProhibitedParagraphChild(const AtomString& name)
 {
     // https://dvcs.w3.org/hg/editing/raw-file/57abe6d3cb60/editing.html#prohibited-paragraph-child
     static const auto localNames = makeNeverDestroyed([] {
@@ -664,7 +665,7 @@ static bool isProhibitedParagraphChild(const AtomicString& name)
             &ulTag.get(),
             &xmpTag.get(),
         };
-        HashSet<AtomicString> set;
+        HashSet<AtomString> set;
         for (auto& tag : tags)
             set.add(tag->localName());
         return set;
@@ -703,6 +704,11 @@ void ReplaceSelectionCommand::makeInsertedContentRoundTrippableWithHTMLTreeBuild
     }
 }
 
+static inline bool hasRenderedText(const Text& text)
+{
+    return text.renderer() && text.renderer()->hasRenderedText();
+}
+
 void ReplaceSelectionCommand::moveNodeOutOfAncestor(Node& node, Node& ancestor, InsertedNodes& insertedNodes)
 {
     Ref<Node> protectedNode = node;
@@ -721,15 +727,26 @@ void ReplaceSelectionCommand::moveNodeOutOfAncestor(Node& node, Node& ancestor, 
         removeNode(node);
         insertNodeBefore(WTFMove(protectedNode), *nodeToSplitTo);
     }
-    if (!ancestor.firstChild()) {
+
+    document().updateLayoutIgnorePendingStylesheets();
+
+    bool safeToRemoveAncestor = true;
+    for (auto* child = ancestor.firstChild(); child; child = child->nextSibling()) {
+        if (is<Text>(child) && hasRenderedText(downcast<Text>(*child))) {
+            safeToRemoveAncestor = false;
+            break;
+        }
+
+        if (is<Element>(child)) {
+            safeToRemoveAncestor = false;
+            break;
+        }
+    }
+
+    if (safeToRemoveAncestor) {
         insertedNodes.willRemoveNode(&ancestor);
         removeNode(ancestor);
     }
-}
-
-static inline bool hasRenderedText(const Text& text)
-{
-    return text.renderer() && text.renderer()->hasRenderedText();
 }
 
 void ReplaceSelectionCommand::removeUnrenderedTextNodesAtEnds(InsertedNodes& insertedNodes)
@@ -918,7 +935,7 @@ static bool isInlineNodeWithStyle(const Node* node)
     // We can skip over elements whose class attribute is
     // one of our internal classes.
     const HTMLElement* element = static_cast<const HTMLElement*>(node);
-    const AtomicString& classAttributeValue = element->attributeWithoutSynchronization(classAttr);
+    const AtomString& classAttributeValue = element->attributeWithoutSynchronization(classAttr);
     if (classAttributeValue == AppleTabSpanClass
         || classAttributeValue == AppleConvertedSpace
         || classAttributeValue == ApplePasteAsQuotation)
@@ -939,6 +956,18 @@ bool ReplaceSelectionCommand::willApplyCommand()
     m_documentFragmentHTMLMarkup = serializeFragment(*m_documentFragment, SerializedNodes::SubtreeIncludingNode);
     ensureReplacementFragment();
     return CompositeEditCommand::willApplyCommand();
+}
+    
+static bool hasBlankLineBetweenParagraphs(Position& position)
+{
+    bool reachedBoundaryStart = false;
+    bool reachedBoundaryEnd = false;
+    VisiblePosition visiblePosition(position);
+    VisiblePosition previousPosition = visiblePosition.previous(CannotCrossEditingBoundary, &reachedBoundaryStart);
+    VisiblePosition nextPosition = visiblePosition.next(CannotCrossEditingBoundary, &reachedBoundaryStart);
+    bool hasLineBeforePosition = isEndOfLine(previousPosition);
+    
+    return !reachedBoundaryStart && !reachedBoundaryEnd && isBlankParagraph(visiblePosition) && hasLineBeforePosition && isStartOfLine(nextPosition);
 }
 
 void ReplaceSelectionCommand::doApply()
@@ -1085,6 +1114,8 @@ void ReplaceSelectionCommand::doApply()
     // Paste into run of tabs splits the tab span.
     insertionPos = positionOutsideTabSpan(insertionPos);
 
+    bool hasBlankLinesBetweenParagraphs = hasBlankLineBetweenParagraphs(insertionPos);
+    
     bool handledStyleSpans = handleStyleSpansBeforeInsertion(fragment, insertionPos);
 
     // We're finished if there is nothing to add.
@@ -1136,8 +1167,9 @@ void ReplaceSelectionCommand::doApply()
         fragment.removeNode(*refNode);
 
     Node* blockStart = enclosingBlock(insertionPos.deprecatedNode());
-    if ((isListHTMLElement(refNode.get()) || (isLegacyAppleStyleSpan(refNode.get()) && isListHTMLElement(refNode->firstChild())))
-        && blockStart && blockStart->renderer()->isListItem())
+    bool isInsertingIntoList = (isListHTMLElement(refNode.get()) || (isLegacyAppleStyleSpan(refNode.get()) && isListHTMLElement(refNode->firstChild())))
+    && blockStart && blockStart->renderer()->isListItem();
+    if (isInsertingIntoList)
         refNode = insertAsListItems(downcast<HTMLElement>(*refNode), blockStart, insertionPos, insertedNodes);
     else {
         insertNodeAt(*refNode, insertionPos);
@@ -1286,6 +1318,9 @@ void ReplaceSelectionCommand::doApply()
     if (shouldPerformSmartReplace())
         addSpacesForSmartReplace();
 
+    if (!isInsertingIntoList && hasBlankLinesBetweenParagraphs && shouldPerformSmartParagraphReplace())
+        addNewLinesForSmartReplace();
+
     // If we are dealing with a fragment created from plain text
     // no style matching is necessary.
     if (plainTextFragment)
@@ -1307,7 +1342,7 @@ RefPtr<DataTransfer> ReplaceSelectionCommand::inputEventDataTransfer() const
     if (isEditingTextAreaOrTextInput())
         return CompositeEditCommand::inputEventDataTransfer();
 
-    return DataTransfer::createForInputEvent(m_documentFragmentPlainText, m_documentFragmentHTMLMarkup);
+    return DataTransfer::createForInputEvent(document(), m_documentFragmentPlainText, m_documentFragmentHTMLMarkup);
 }
 
 bool ReplaceSelectionCommand::shouldRemoveEndBR(Node* endBR, const VisiblePosition& originalVisPosBeforeEndBR)
@@ -1341,10 +1376,61 @@ bool ReplaceSelectionCommand::shouldPerformSmartReplace() const
 
     return true;
 }
+    
+bool ReplaceSelectionCommand::shouldPerformSmartParagraphReplace() const
+{
+    if (!m_smartReplace)
+        return false;
+
+    if (!document().editingBehavior().shouldSmartInsertDeleteParagraphs())
+        return false;
+
+    return true;
+}
 
 static bool isCharacterSmartReplaceExemptConsideringNonBreakingSpace(UChar32 character, bool previousCharacter)
 {
     return isCharacterSmartReplaceExempt(character == noBreakSpace ? ' ' : character, previousCharacter);
+}
+
+void ReplaceSelectionCommand::addNewLinesForSmartReplace()
+{
+    VisiblePosition startOfInsertedContent = positionAtStartOfInsertedContent();
+    VisiblePosition endOfInsertedContent = positionAtEndOfInsertedContent();
+
+    bool isPastedContentEntireParagraphs = isStartOfParagraph(startOfInsertedContent) && isEndOfParagraph(endOfInsertedContent);
+
+    // If we aren't pasting a paragraph, no need to attempt to insert newlines.
+    if (!isPastedContentEntireParagraphs)
+        return;
+
+    bool reachedBoundaryStart = false;
+    bool reachedBoundaryEnd = false;
+    VisiblePosition positionBeforeStart = startOfInsertedContent.previous(CannotCrossEditingBoundary, &reachedBoundaryStart);
+    VisiblePosition positionAfterEnd = endOfInsertedContent.next(CannotCrossEditingBoundary, &reachedBoundaryEnd);
+
+    if (!reachedBoundaryStart && !reachedBoundaryEnd) {
+        if (!isBlankParagraph(positionBeforeStart) && !isBlankParagraph(startOfInsertedContent) && isEndOfLine(positionBeforeStart) && !isEndOfEditableOrNonEditableContent(positionAfterEnd) && !isEndOfEditableOrNonEditableContent(endOfInsertedContent)) {
+            setEndingSelection(startOfInsertedContent);
+            insertParagraphSeparator();
+            auto newStart = endingSelection().visibleStart().previous(CannotCrossEditingBoundary, &reachedBoundaryStart);
+            if (!reachedBoundaryStart)
+                m_startOfInsertedContent = newStart.deepEquivalent();
+        }
+    }
+
+    reachedBoundaryStart = false;
+    reachedBoundaryEnd = false;
+    positionAfterEnd = endOfInsertedContent.next(CannotCrossEditingBoundary, &reachedBoundaryEnd);
+    positionBeforeStart = startOfInsertedContent.previous(CannotCrossEditingBoundary, &reachedBoundaryStart);
+
+    if (!reachedBoundaryEnd && !reachedBoundaryStart) {
+        if (!isBlankParagraph(positionAfterEnd) && !isBlankParagraph(endOfInsertedContent) && isStartOfLine(positionAfterEnd) && !isEndOfLine(positionAfterEnd) && !isEndOfEditableOrNonEditableContent(positionAfterEnd)) {
+            setEndingSelection(endOfInsertedContent);
+            insertParagraphSeparator();
+            m_endOfInsertedContent = endingSelection().start();
+        }
+    }
 }
 
 void ReplaceSelectionCommand::addSpacesForSmartReplace()
@@ -1561,7 +1647,7 @@ void ReplaceSelectionCommand::updateNodesInserted(Node *node)
 ReplacementFragment* ReplaceSelectionCommand::ensureReplacementFragment()
 {
     if (!m_replacementFragment)
-        m_replacementFragment = std::make_unique<ReplacementFragment>(m_documentFragment.get(), endingSelection());
+        m_replacementFragment = makeUnique<ReplacementFragment>(m_documentFragment.get(), endingSelection());
     return m_replacementFragment.get();
 }
 

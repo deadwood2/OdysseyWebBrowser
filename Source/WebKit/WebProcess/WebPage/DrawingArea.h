@@ -29,6 +29,7 @@
 #include "DrawingAreaInfo.h"
 #include "LayerTreeContext.h"
 #include "MessageReceiver.h"
+#include "WebPage.h"
 #include <WebCore/ActivityState.h>
 #include <WebCore/FloatRect.h>
 #include <WebCore/IntRect.h>
@@ -61,7 +62,6 @@ namespace WebKit {
 
 struct ColorSpaceData;
 class LayerTreeHost;
-class WebPage;
 struct WebPageCreationParameters;
 struct WebPreferencesStore;
 
@@ -74,6 +74,7 @@ public:
     virtual ~DrawingArea();
     
     DrawingAreaType type() const { return m_type; }
+    DrawingAreaIdentifier identifier() const { return m_identifier; }
 
     virtual void setNeedsDisplay() = 0;
     virtual void setNeedsDisplayInRect(const WebCore::IntRect&) = 0;
@@ -86,8 +87,8 @@ public:
     virtual bool layerTreeStateIsFrozen() const { return false; }
     virtual bool layerFlushThrottlingIsActive() const { return false; }
 
-    virtual void setPaintingEnabled(bool) { }
     virtual void updatePreferences(const WebPreferencesStore&) { }
+    virtual void enablePainting() { }
     virtual void mainFrameContentSizeChanged(const WebCore::IntSize&) { }
 
 #if PLATFORM(COCOA)
@@ -131,34 +132,39 @@ public:
 
     virtual void setShouldScaleViewToFitDocument(bool) { }
 
-    virtual bool dispatchDidReachLayoutMilestone(OptionSet<WebCore::LayoutMilestone>) { return false; }
+    virtual bool addMilestonesToDispatch(OptionSet<WebCore::LayoutMilestone>) { return false; }
 
 #if PLATFORM(COCOA)
     // Used by TiledCoreAnimationDrawingArea.
     virtual void updateGeometry(const WebCore::IntSize& viewSize, bool flushSynchronously, const WTF::MachSendRight& fencePort) { }
 #endif
 
-    virtual void layerHostDidFlushLayers() { };
+    virtual void layerHostDidFlushLayers() { }
 
 #if USE(COORDINATED_GRAPHICS) || USE(TEXTURE_MAPPER)
     virtual void didChangeViewportAttributes(WebCore::ViewportAttributes&&) = 0;
     virtual void deviceOrPageScaleFactorChanged() = 0;
 #endif
 
+    virtual void adoptLayersFromDrawingArea(DrawingArea&) { }
+
+    void removeMessageReceiverIfNeeded();
+
 protected:
-    DrawingArea(DrawingAreaType, WebPage&);
+    DrawingArea(DrawingAreaType, DrawingAreaIdentifier, WebPage&);
+
+    template<typename U> bool send(const U& message)
+    {
+        return m_webPage.send(message, m_identifier.toUInt64(), { });
+    }
 
     DrawingAreaType m_type;
+    DrawingAreaIdentifier m_identifier;
     WebPage& m_webPage;
-
-#if USE(TEXTURE_MAPPER_GL) && PLATFORM(GTK) && PLATFORM(X11) && !USE(REDIRECTED_XCOMPOSITE_WINDOW)
-    uint64_t m_nativeSurfaceHandleForCompositing { 0 };
-#endif
 
 private:
     // IPC::MessageReceiver.
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
-    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) override;
 
     // Message handlers.
     // FIXME: These should be pure virtual.
@@ -177,10 +183,7 @@ private:
     virtual void addTransactionCallbackID(WebKit::CallbackID) { ASSERT_NOT_REACHED(); }
 #endif
 
-#if USE(TEXTURE_MAPPER_GL) && PLATFORM(GTK) && PLATFORM(X11) && !USE(REDIRECTED_XCOMPOSITE_WINDOW)
-    virtual void setNativeSurfaceHandleForCompositing(uint64_t) = 0;
-    virtual void destroyNativeSurfaceHandleForCompositing(bool&) = 0;
-#endif
+    bool m_hasRemovedMessageReceiver { false };
 };
 
 } // namespace WebKit

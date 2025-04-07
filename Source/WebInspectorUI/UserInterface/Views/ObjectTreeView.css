@@ -49,10 +49,6 @@
     content: "";
 }
 
-body[dir=rtl] .object-tree > :matches(.title, .object-preview)::before {
-    transform: scaleX(-1);
-}
-
 .object-tree:not(.lossless-preview) > :matches(.title, .object-preview) {
     margin-left: 0;
 }
@@ -105,6 +101,10 @@ body[dir=rtl] .object-tree > :matches(.title, .object-preview)::before {
 
 .object-tree.properties-only .object-tree-property .property-name {
     opacity: 1;
+}
+
+.object-tree.properties-only.json-only .object-tree-property.prototype-property {
+    display: none;
 }
 
 .tree-outline.object li {

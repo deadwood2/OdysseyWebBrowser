@@ -98,7 +98,8 @@ bool FindController::updateFindIndicator(Frame& selectedFrame, bool isShowingOve
     if (!textIndicator)
         return false;
 
-    m_findIndicatorOverlayClient = std::make_unique<FindIndicatorOverlayClientIOS>(selectedFrame, textIndicator.get());
+    m_findIndicatorOverlayClient = makeUnique<FindIndicatorOverlayClientIOS>(selectedFrame, textIndicator.get());
+    m_findIndicatorRect = enclosingIntRect(textIndicator->selectionRectInRootViewCoordinates());
     m_findIndicatorOverlay = PageOverlay::create(*m_findIndicatorOverlayClient, PageOverlay::OverlayType::Document);
     m_webPage->corePage()->pageOverlayController().installPageOverlay(*m_findIndicatorOverlay, PageOverlay::FadeMode::DoNotFade);
 
@@ -106,15 +107,12 @@ bool FindController::updateFindIndicator(Frame& selectedFrame, bool isShowingOve
     m_findIndicatorOverlay->setNeedsDisplay();
 
     if (shouldAnimate) {
-        FloatRect visibleContentRect = m_webPage->mainFrameView()->unobscuredContentRectIncludingScrollbars();
-
         bool isReplaced;
         const VisibleSelection& visibleSelection = selectedFrame.selection().selection();
         FloatRect renderRect = visibleSelection.start().containerNode()->renderRect(&isReplaced);
-
         IntRect startRect = visibleSelection.visibleStart().absoluteCaretBounds();
 
-        m_webPage->send(Messages::SmartMagnificationController::Magnify(startRect.center(), renderRect, visibleContentRect, m_webPage->minimumPageScaleFactor(), m_webPage->maximumPageScaleFactor()));
+        m_webPage->send(Messages::SmartMagnificationController::ScrollToRect(startRect.center(), renderRect));
     }
 
     m_isShowingFindIndicator = true;

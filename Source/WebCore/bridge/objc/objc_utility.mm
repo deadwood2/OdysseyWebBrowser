@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2018 Apple Inc.  All rights reserved.
+ * Copyright (C) 2004-2019 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -152,8 +152,9 @@ ObjcValue convertValueToObjcValue(ExecState* exec, JSValue value, ObjcValueType 
 
 JSValue convertNSStringToString(ExecState* exec, NSString *nsstring)
 {
-    JSLockHolder lock(exec);
-    JSValue aValue = jsString(exec, String(nsstring));
+    VM& vm = exec->vm();
+    JSLockHolder lock(vm);
+    JSValue aValue = jsString(vm, String(nsstring));
     return aValue;
 }
 
@@ -313,11 +314,10 @@ ObjcValueType objcValueTypeForType(const char *type)
     return objcValueType;
 }
 
-JSObject *throwError(ExecState *exec, ThrowScope& scope, NSString *message)
+Exception *throwError(ExecState *exec, ThrowScope& scope, NSString *message)
 {
     ASSERT(message);
-    JSObject *error = throwException(exec, scope, JSC::createError(exec, String(message)));
-    return error;
+    return throwException(exec, scope, JSC::createError(exec, String(message)));
 }
 
 }

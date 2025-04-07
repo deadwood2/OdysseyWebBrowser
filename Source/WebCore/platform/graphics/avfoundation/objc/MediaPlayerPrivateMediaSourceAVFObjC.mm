@@ -28,8 +28,9 @@
 
 #if ENABLE(MEDIA_SOURCE) && USE(AVFOUNDATION)
 
+#import "AVAssetMIMETypeCache.h"
 #import "AVAssetTrackUtilities.h"
-#import "AVFoundationMIMETypeCache.h"
+#import "AVStreamDataParserMIMETypeCache.h"
 #import "CDMSessionAVStreamSession.h"
 #import "GraphicsContextCG.h"
 #import "Logging.h"
@@ -51,32 +52,11 @@
 #import <wtf/FileSystem.h>
 #import <wtf/MainThread.h>
 #import <wtf/NeverDestroyed.h>
+#import <wtf/WeakPtr.h>
 
-#pragma mark - Soft Linking
-
-#import <pal/cf/CoreMediaSoftLink.h>
 #import "CoreVideoSoftLink.h"
-
-SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
-
-SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVAsset)
-SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVURLAsset)
-ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
-SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVSampleBufferAudioRenderer)
-ALLOW_NEW_API_WITHOUT_GUARDS_END
-SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVSampleBufferDisplayLayer)
-ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
-SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVSampleBufferRenderSynchronizer)
-ALLOW_NEW_API_WITHOUT_GUARDS_END
-SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVStreamDataParser)
-SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVStreamSession);
-SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVVideoPerformanceMetrics)
-
-SOFT_LINK_CONSTANT(AVFoundation, AVAudioTimePitchAlgorithmSpectral, NSString*)
-SOFT_LINK_CONSTANT(AVFoundation, AVAudioTimePitchAlgorithmVarispeed, NSString*)
-
-#define AVAudioTimePitchAlgorithmSpectral getAVAudioTimePitchAlgorithmSpectral()
-#define AVAudioTimePitchAlgorithmVarispeed getAVAudioTimePitchAlgorithmVarispeed()
+#import <pal/cf/CoreMediaSoftLink.h>
+#import <pal/cocoa/AVFoundationSoftLink.h>
 
 #pragma mark -
 #pragma mark AVStreamSession
@@ -105,19 +85,51 @@ String convertEnumerationToString(MediaPlayerPrivateMediaSourceAVFObjC::SeekStat
 #pragma mark -
 #pragma mark MediaPlayerPrivateMediaSourceAVFObjC
 
+class EffectiveRateChangedListener : public ThreadSafeRefCounted<EffectiveRateChangedListener> {
+public:
+    static Ref<EffectiveRateChangedListener> create(MediaPlayerPrivateMediaSourceAVFObjC& client, CMTimebaseRef timebase)
+    {
+        return adoptRef(*new EffectiveRateChangedListener(client, timebase));
+    }
+
+    void effectiveRateChanged()
+    {
+        callOnMainThread([this, protectedThis = makeRef(*this)] {
+            if (m_client)
+                m_client->effectiveRateChanged();
+        });
+    }
+
+    void stop(CMTimebaseRef);
+
+private:
+    EffectiveRateChangedListener(MediaPlayerPrivateMediaSourceAVFObjC&, CMTimebaseRef);
+
+    WeakPtr<MediaPlayerPrivateMediaSourceAVFObjC> m_client;
+};
+
 static void CMTimebaseEffectiveRateChangedCallback(CMNotificationCenterRef, const void *listener, CFStringRef, const void *, CFTypeRef)
 {
-    MediaPlayerPrivateMediaSourceAVFObjC* player = (MediaPlayerPrivateMediaSourceAVFObjC*)const_cast<void*>(listener);
-    callOnMainThread([weakThis = player->createWeakPtr()] {
-        if (!weakThis)
-            return;
-        weakThis.get()->effectiveRateChanged();
-    });
+    auto* effectiveRateChangedListener = (EffectiveRateChangedListener*)const_cast<void*>(listener);
+    effectiveRateChangedListener->effectiveRateChanged();
+}
+
+void EffectiveRateChangedListener::stop(CMTimebaseRef timebase)
+{
+    CMNotificationCenterRef nc = CMNotificationCenterGetDefaultLocalCenter();
+    CMNotificationCenterRemoveListener(nc, this, CMTimebaseEffectiveRateChangedCallback, kCMTimebaseNotification_EffectiveRateChanged, timebase);
+}
+
+EffectiveRateChangedListener::EffectiveRateChangedListener(MediaPlayerPrivateMediaSourceAVFObjC& client, CMTimebaseRef timebase)
+    : m_client(makeWeakPtr(client))
+{
+    CMNotificationCenterRef nc = CMNotificationCenterGetDefaultLocalCenter();
+    CMNotificationCenterAddListener(nc, this, CMTimebaseEffectiveRateChangedCallback, kCMTimebaseNotification_EffectiveRateChanged, timebase, 0);
 }
 
 MediaPlayerPrivateMediaSourceAVFObjC::MediaPlayerPrivateMediaSourceAVFObjC(MediaPlayer* player)
     : m_player(player)
-    , m_synchronizer(adoptNS([allocAVSampleBufferRenderSynchronizerInstance() init]))
+    , m_synchronizer(adoptNS([PAL::allocAVSampleBufferRenderSynchronizerInstance() init]))
     , m_seekTimer(*this, &MediaPlayerPrivateMediaSourceAVFObjC::seekInternal)
     , m_networkState(MediaPlayer::Empty)
     , m_readyState(MediaPlayer::HaveNothing)
@@ -125,23 +137,20 @@ MediaPlayerPrivateMediaSourceAVFObjC::MediaPlayerPrivateMediaSourceAVFObjC(Media
     , m_playing(0)
     , m_seeking(false)
     , m_loadingProgressed(false)
-    , m_videoFullscreenLayerManager(std::make_unique<VideoFullscreenLayerManagerObjC>())
+    , m_videoFullscreenLayerManager(makeUnique<VideoFullscreenLayerManagerObjC>())
+    , m_effectiveRateChangedListener(EffectiveRateChangedListener::create(*this, [m_synchronizer timebase]))
 #if !RELEASE_LOG_DISABLED
     , m_logger(player->mediaPlayerLogger())
     , m_logIdentifier(player->mediaPlayerLogIdentifier())
 #endif
 {
-    CMTimebaseRef timebase = [m_synchronizer timebase];
-    CMNotificationCenterRef nc = CMNotificationCenterGetDefaultLocalCenter();
-    CMNotificationCenterAddListener(nc, this, CMTimebaseEffectiveRateChangedCallback, kCMTimebaseNotification_EffectiveRateChanged, timebase, 0);
-
     auto logSiteIdentifier = LOGIDENTIFIER;
     ALWAYS_LOG(logSiteIdentifier);
     UNUSED_PARAM(logSiteIdentifier);
 
     // addPeriodicTimeObserverForInterval: throws an exception if you pass a non-numeric CMTime, so just use
     // an arbitrarily large time value of once an hour:
-    __block auto weakThis = createWeakPtr();
+    __block auto weakThis = makeWeakPtr(*this);
     m_timeJumpedObserver = [m_synchronizer addPeriodicTimeObserverForInterval:PAL::toCMTime(MediaTime::createWithDouble(3600)) queue:dispatch_get_main_queue() usingBlock:^(CMTime time) {
 #if LOG_DISABLED
         UNUSED_PARAM(time);
@@ -170,9 +179,7 @@ MediaPlayerPrivateMediaSourceAVFObjC::~MediaPlayerPrivateMediaSourceAVFObjC()
 {
     ALWAYS_LOG(LOGIDENTIFIER);
 
-    CMTimebaseRef timebase = [m_synchronizer timebase];
-    CMNotificationCenterRef nc = CMNotificationCenterGetDefaultLocalCenter();
-    CMNotificationCenterRemoveListener(nc, this, CMTimebaseEffectiveRateChangedCallback, kCMTimebaseNotification_EffectiveRateChanged, timebase);
+    m_effectiveRateChangedListener->stop([m_synchronizer timebase]);
 
     if (m_timeJumpedObserver)
         [m_synchronizer removeTimeObserver:m_timeJumpedObserver.get()];
@@ -194,14 +201,14 @@ void MediaPlayerPrivateMediaSourceAVFObjC::registerMediaEngine(MediaEngineRegist
     if (!isAvailable())
         return;
 
-    registrar([](MediaPlayer* player) { return std::make_unique<MediaPlayerPrivateMediaSourceAVFObjC>(player); },
+    registrar([](MediaPlayer* player) { return makeUnique<MediaPlayerPrivateMediaSourceAVFObjC>(player); },
         getSupportedTypes, supportsType, 0, 0, 0, 0);
-    ASSERT(AVFoundationMIMETypeCache::singleton().isAvailable());
+    ASSERT(AVAssetMIMETypeCache::singleton().isAvailable());
 }
 
 bool MediaPlayerPrivateMediaSourceAVFObjC::isAvailable()
 {
-    return AVFoundationLibrary()
+    return PAL::isAVFoundationFrameworkAvailable()
         && isCoreMediaFrameworkAvailable()
         && getAVStreamDataParserClass()
         && getAVSampleBufferAudioRendererClass()
@@ -211,7 +218,15 @@ bool MediaPlayerPrivateMediaSourceAVFObjC::isAvailable()
 
 void MediaPlayerPrivateMediaSourceAVFObjC::getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types)
 {
-    types = AVFoundationMIMETypeCache::singleton().types();
+    auto& streamDataParserCache = AVStreamDataParserMIMETypeCache::singleton();
+    if (streamDataParserCache.isAvailable()) {
+        types = streamDataParserCache.types();
+        return;
+    }
+
+    auto& assetCache = AVAssetMIMETypeCache::singleton();
+    if (assetCache.isAvailable())
+        types = assetCache.types();
 }
 
 MediaPlayer::SupportsType MediaPlayerPrivateMediaSourceAVFObjC::supportsType(const MediaEngineSupportParameters& parameters)
@@ -224,7 +239,16 @@ MediaPlayer::SupportsType MediaPlayerPrivateMediaSourceAVFObjC::supportsType(con
         return MediaPlayer::IsNotSupported;
 #endif
 
-    if (parameters.type.isEmpty() || !AVFoundationMIMETypeCache::singleton().canDecodeType(parameters.type.containerType()))
+    if (parameters.type.isEmpty())
+        return MediaPlayer::IsNotSupported;
+
+    if (AVStreamDataParserMIMETypeCache::singleton().isAvailable()) {
+        if (!AVStreamDataParserMIMETypeCache::singleton().supportsContentType(parameters.type))
+            return MediaPlayer::IsNotSupported;
+    } else if (AVAssetMIMETypeCache::singleton().isAvailable()) {
+        if (!AVAssetMIMETypeCache::singleton().supportsContentType(parameters.type))
+            return MediaPlayer::IsNotSupported;
+    } else
         return MediaPlayer::IsNotSupported;
 
     // The spec says:
@@ -233,15 +257,17 @@ MediaPlayer::SupportsType MediaPlayerPrivateMediaSourceAVFObjC::supportsType(con
     if (codecs.isEmpty())
         return MediaPlayer::MayBeSupported;
 
-    NSString *outputCodecs = codecs;
-    if ([getAVStreamDataParserClass() respondsToSelector:@selector(outputMIMECodecParameterForInputMIMECodecParameter:)])
-        outputCodecs = [getAVStreamDataParserClass() outputMIMECodecParameterForInputMIMECodecParameter:outputCodecs];
+    String outputCodecs = codecs;
+    if ([PAL::getAVStreamDataParserClass() respondsToSelector:@selector(outputMIMECodecParameterForInputMIMECodecParameter:)])
+        outputCodecs = [PAL::getAVStreamDataParserClass() outputMIMECodecParameterForInputMIMECodecParameter:outputCodecs];
 
     if (!contentTypeMeetsHardwareDecodeRequirements(parameters.type, parameters.contentTypesRequiringHardwareSupport))
         return MediaPlayer::IsNotSupported;
 
-    NSString *typeString = [NSString stringWithFormat:@"%@; codecs=\"%@\"", (NSString *)parameters.type.containerType(), (NSString *)outputCodecs];
-    return [getAVURLAssetClass() isPlayableExtendedMIMEType:typeString] ? MediaPlayer::IsSupported : MediaPlayer::MayBeSupported;;
+    String type = makeString(parameters.type.containerType(), "; codecs=\"", outputCodecs, "\"");
+    if (AVStreamDataParserMIMETypeCache::singleton().isAvailable())
+        return AVStreamDataParserMIMETypeCache::singleton().canDecodeType(type) ? MediaPlayer::IsSupported : MediaPlayer::MayBeSupported;
+    return AVAssetMIMETypeCache::singleton().canDecodeType(type) ? MediaPlayer::IsSupported : MediaPlayer::MayBeSupported;
 }
 
 #pragma mark -
@@ -288,7 +314,7 @@ PlatformLayer* MediaPlayerPrivateMediaSourceAVFObjC::platformLayer() const
 void MediaPlayerPrivateMediaSourceAVFObjC::play()
 {
     ALWAYS_LOG(LOGIDENTIFIER);
-    callOnMainThread([weakThis = createWeakPtr()] {
+    callOnMainThread([weakThis = makeWeakPtr(*this)] {
         if (!weakThis)
             return;
         weakThis.get()->playInternal();
@@ -297,8 +323,10 @@ void MediaPlayerPrivateMediaSourceAVFObjC::play()
 
 void MediaPlayerPrivateMediaSourceAVFObjC::playInternal()
 {
-    if (currentMediaTime() >= m_mediaSourcePrivate->duration())
+    if (currentMediaTime() >= m_mediaSourcePrivate->duration()) {
+        ALWAYS_LOG(LOGIDENTIFIER, "bailing, current time: ", currentMediaTime(), " greater than duration ", m_mediaSourcePrivate->duration());
         return;
+    }
 
     ALWAYS_LOG(LOGIDENTIFIER);
     m_playing = true;
@@ -309,7 +337,7 @@ void MediaPlayerPrivateMediaSourceAVFObjC::playInternal()
 void MediaPlayerPrivateMediaSourceAVFObjC::pause()
 {
     ALWAYS_LOG(LOGIDENTIFIER);
-    callOnMainThread([weakThis = createWeakPtr()] {
+    callOnMainThread([weakThis = makeWeakPtr(*this)] {
         if (!weakThis)
             return;
         weakThis.get()->pauseInternal();
@@ -406,11 +434,10 @@ MediaTime MediaPlayerPrivateMediaSourceAVFObjC::initialTime() const
 
 void MediaPlayerPrivateMediaSourceAVFObjC::seekWithTolerance(const MediaTime& time, const MediaTime& negativeThreshold, const MediaTime& positiveThreshold)
 {
-    DEBUG_LOG(LOGIDENTIFIER, "time = ", time, ", negativeThreshold = ", negativeThreshold, ", positiveThreshold = ", positiveThreshold);
+    INFO_LOG(LOGIDENTIFIER, "time = ", time, ", negativeThreshold = ", negativeThreshold, ", positiveThreshold = ", positiveThreshold);
 
     m_seeking = true;
-    auto weakThis = createWeakPtr();
-    m_pendingSeek = std::make_unique<PendingSeek>(time, negativeThreshold, positiveThreshold);
+    m_pendingSeek = makeUnique<PendingSeek>(time, negativeThreshold, positiveThreshold);
 
     if (m_seekTimer.isActive())
         m_seekTimer.stop();
@@ -437,7 +464,7 @@ void MediaPlayerPrivateMediaSourceAVFObjC::seekInternal()
         m_lastSeekTime = MediaTime::createWithDouble(m_lastSeekTime.toDouble(), MediaTime::DefaultTimeScale);
 
     MediaTime synchronizerTime = PAL::toMediaTime(CMTimebaseGetTime([m_synchronizer timebase]));
-    DEBUG_LOG(LOGIDENTIFIER, "seekTime = ", m_lastSeekTime, ", synchronizerTime = ", synchronizerTime);
+    INFO_LOG(LOGIDENTIFIER, "seekTime = ", m_lastSeekTime, ", synchronizerTime = ", synchronizerTime);
 
     bool doesNotRequireSeek = synchronizerTime == m_lastSeekTime;
 
@@ -516,7 +543,7 @@ MediaPlayer::ReadyState MediaPlayerPrivateMediaSourceAVFObjC::readyState() const
 
 std::unique_ptr<PlatformTimeRanges> MediaPlayerPrivateMediaSourceAVFObjC::seekable() const
 {
-    return std::make_unique<PlatformTimeRanges>(minMediaTimeSeekable(), maxMediaTimeSeekable());
+    return makeUnique<PlatformTimeRanges>(minMediaTimeSeekable(), maxMediaTimeSeekable());
 }
 
 MediaTime MediaPlayerPrivateMediaSourceAVFObjC::maxMediaTimeSeekable() const
@@ -531,7 +558,7 @@ MediaTime MediaPlayerPrivateMediaSourceAVFObjC::minMediaTimeSeekable() const
 
 std::unique_ptr<PlatformTimeRanges> MediaPlayerPrivateMediaSourceAVFObjC::buffered() const
 {
-    return m_mediaSourcePrivate ? m_mediaSourcePrivate->buffered() : std::make_unique<PlatformTimeRanges>();
+    return m_mediaSourcePrivate ? m_mediaSourcePrivate->buffered() : makeUnique<PlatformTimeRanges>();
 }
 
 bool MediaPlayerPrivateMediaSourceAVFObjC::didLoadingProgress() const
@@ -575,7 +602,7 @@ bool MediaPlayerPrivateMediaSourceAVFObjC::updateLastImage()
 
     if (!m_rgbConformer) {
         auto attributes = @{ (__bridge NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA) };
-        m_rgbConformer = std::make_unique<PixelBufferConformerCV>((__bridge CFDictionaryRef)attributes);
+        m_rgbConformer = makeUnique<PixelBufferConformerCV>((__bridge CFDictionaryRef)attributes);
     }
 
     m_lastImage = m_rgbConformer->createImageFromPixelBuffer(m_lastPixelBuffer.get());
@@ -622,7 +649,7 @@ bool MediaPlayerPrivateMediaSourceAVFObjC::copyVideoTextureToPlatformTexture(Gra
     size_t height = CVPixelBufferGetHeight(m_lastPixelBuffer.get());
 
     if (!m_videoTextureCopier)
-        m_videoTextureCopier = std::make_unique<VideoTextureCopierCV>(*context);
+        m_videoTextureCopier = makeUnique<VideoTextureCopierCV>(*context);
 
     return m_videoTextureCopier->copyImageToPlatformTexture(m_lastPixelBuffer.get(), width, height, outputTexture, outputTarget, level, internalFormat, format, type, premultiplyAlpha, flipY);
 }
@@ -719,10 +746,20 @@ void MediaPlayerPrivateMediaSourceAVFObjC::ensureLayer()
     if (m_sampleBufferDisplayLayer)
         return;
 
-    m_sampleBufferDisplayLayer = adoptNS([allocAVSampleBufferDisplayLayerInstance() init]);
+    m_sampleBufferDisplayLayer = adoptNS([PAL::allocAVSampleBufferDisplayLayerInstance() init]);
 #ifndef NDEBUG
     [m_sampleBufferDisplayLayer setName:@"MediaPlayerPrivateMediaSource AVSampleBufferDisplayLayer"];
 #endif
+
+    ASSERT(m_sampleBufferDisplayLayer);
+    if (!m_sampleBufferDisplayLayer) {
+        ERROR_LOG(LOGIDENTIFIER, "Failed to create AVSampleBufferDisplayLayer");
+        setNetworkState(MediaPlayer::DecodeError);
+        return;
+    }
+
+    if ([m_sampleBufferDisplayLayer respondsToSelector:@selector(setPreventsDisplaySleepDuringVideoPlayback:)])
+        m_sampleBufferDisplayLayer.get().preventsDisplaySleepDuringVideoPlayback = NO;
 
     [m_synchronizer addRenderer:m_sampleBufferDisplayLayer.get()];
     if (m_mediaSourcePrivate)
@@ -860,14 +897,13 @@ void MediaPlayerPrivateMediaSourceAVFObjC::durationChanged()
         return;
 
     MediaTime duration = m_mediaSourcePrivate->duration();
-    auto weakThis = createWeakPtr();
     NSArray* times = @[[NSValue valueWithCMTime:PAL::toCMTime(duration)]];
 
     auto logSiteIdentifier = LOGIDENTIFIER;
     DEBUG_LOG(logSiteIdentifier, duration);
     UNUSED_PARAM(logSiteIdentifier);
 
-    m_durationObserver = [m_synchronizer addBoundaryTimeObserverForTimes:times queue:dispatch_get_main_queue() usingBlock:[weakThis, duration, logSiteIdentifier, this] {
+    m_durationObserver = [m_synchronizer addBoundaryTimeObserverForTimes:times queue:dispatch_get_main_queue() usingBlock:[weakThis = makeWeakPtr(*this), duration, logSiteIdentifier, this] {
         if (!weakThis)
             return;
 
@@ -933,10 +969,11 @@ void MediaPlayerPrivateMediaSourceAVFObjC::flushPendingSizeChanges()
     m_sizeChangeObserverWeakPtrFactory.revokeAll();
 }
 
-#if HAVE(AVSTREAMSESSION) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
+#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
+#if HAVE(AVSTREAMSESSION)
 AVStreamSession* MediaPlayerPrivateMediaSourceAVFObjC::streamSession()
 {
-    if (!getAVStreamSessionClass() || ![getAVStreamSessionClass() instancesRespondToSelector:@selector(initWithStorageDirectoryAtURL:)])
+    if (!getAVStreamSessionClass() || ![PAL::getAVStreamSessionClass() instancesRespondToSelector:@selector(initWithStorageDirectoryAtURL:)])
         return nil;
 
     if (!m_streamSession) {
@@ -950,9 +987,15 @@ AVStreamSession* MediaPlayerPrivateMediaSourceAVFObjC::streamSession()
         }
 
         String storagePath = FileSystem::pathByAppendingComponent(storageDirectory, "SecureStop.plist");
-        m_streamSession = adoptNS([allocAVStreamSessionInstance() initWithStorageDirectoryAtURL:[NSURL fileURLWithPath:storagePath]]);
+        m_streamSession = adoptNS([PAL::allocAVStreamSessionInstance() initWithStorageDirectoryAtURL:[NSURL fileURLWithPath:storagePath]]);
     }
     return m_streamSession.get();
+}
+#endif
+
+CDMSessionMediaSourceAVFObjC* MediaPlayerPrivateMediaSourceAVFObjC::cdmSession() const
+{
+    return m_session.get();
 }
 
 void MediaPlayerPrivateMediaSourceAVFObjC::setCDMSession(LegacyCDMSession* session)
@@ -964,12 +1007,15 @@ void MediaPlayerPrivateMediaSourceAVFObjC::setCDMSession(LegacyCDMSession* sessi
 
     m_session = makeWeakPtr(toCDMSessionMediaSourceAVFObjC(session));
 
+#if HAVE(AVSTREAMSESSION)
     if (CDMSessionAVStreamSession* cdmStreamSession = toCDMSessionAVStreamSession(m_session.get()))
         cdmStreamSession->setStreamSession(streamSession());
+#endif
+
     for (auto& sourceBuffer : m_mediaSourcePrivate->sourceBuffers())
         sourceBuffer->setCDMSession(m_session.get());
 }
-#endif // HAVE(AVSTREAMSESSION) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
+#endif // ENABLE(LEGACY_ENCRYPTED_MEDIA)
 
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA) || ENABLE(ENCRYPTED_MEDIA)
 void MediaPlayerPrivateMediaSourceAVFObjC::keyNeeded(Uint8Array* initData)
@@ -1158,7 +1204,7 @@ bool MediaPlayerPrivateMediaSourceAVFObjC::isCurrentPlaybackTargetWireless() con
         return false;
 
     auto hasTarget = m_shouldPlayToTarget && m_playbackTarget->hasActiveRoute();
-    DEBUG_LOG(LOGIDENTIFIER, hasTarget);
+    INFO_LOG(LOGIDENTIFIER, hasTarget);
     return hasTarget;
 }
 #endif
