@@ -202,7 +202,7 @@ struct  MUIP_GoInactive                     { ULONG MethodID; ULONG flags; }; /*
 #define FORTAG(_tagp) \
     { \
         struct TagItem *tag, *_tags = (struct TagItem *)(_tagp); \
-        while ((tag = NextTagItem(&_tags))) switch ((int)tag->ti_Tag)
+        while ((tag = NextTagItem(&_tags))) switch (tag->ti_Tag)
 #define NEXTTAG }
 
 #define FORCHILD(_o, _a) \
