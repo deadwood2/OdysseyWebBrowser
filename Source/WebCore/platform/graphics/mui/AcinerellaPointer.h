@@ -4,6 +4,8 @@
 
 #if ENABLE(VIDEO)
 
+#include <functional>
+
 #include <wtf/ThreadSafeRefCounted.h>
 #include "acinerella.h"
 
