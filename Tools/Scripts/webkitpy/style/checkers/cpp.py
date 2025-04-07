@@ -2398,6 +2398,26 @@ def check_wtf_optional(clean_lines, line_number, file_state, error):
     error(line_number, 'runtime/wtf_optional', 4, "Use 'WTF::Optional<>' instead of 'std::optional<>'.")
 
 
+def check_wtf_make_unique(clean_lines, line_number, file_state, error):
+    """Looks for use of 'std::make_unique<>' which should be replaced with 'WTF::makeUnique<>'.
+
+    Args:
+      clean_lines: A CleansedLines instance containing the file.
+      line_number: The number of the line to check.
+      file_state: A _FileState instance which maintains information about
+                  the state of things in the file.
+      error: The function to call with any errors found.
+    """
+
+    line = clean_lines.elided[line_number]  # Get rid of comments and strings.
+
+    using_std_make_unique = search(r'\bstd::make_unique\s*\<', line)
+    if not using_std_make_unique:
+        return
+
+    error(line_number, 'runtime/wtf_make_unique', 4, "Use 'WTF::makeUnique<>' instead of 'std::make_unique<>'.")
+
+
 def check_ctype_functions(clean_lines, line_number, file_state, error):
     """Looks for use of the standard functions in ctype.h and suggest they be replaced
        by use of equivilent ones in <wtf/ASCIICType.h>?.
@@ -2513,13 +2533,17 @@ def check_braces(clean_lines, line_number, file_state, error):
         # ')', or ') const' and doesn't begin with 'if|for|while|switch|else'.
         # We also allow '#' for #endif and '=' for array initialization,
         # and '- (' and '+ (' for Objective-C methods.
+        # Also we don't complain if the last non-whitespace character
+        # on the previous non-blank line is '{' because it's likely to
+        # indicate the begining of a nested code block.
         previous_line = get_previous_non_blank_line(clean_lines, line_number)[0]
         if ((not search(r'[;:}{)=]\s*$|\)\s*((const|override|const override|final|const final)\s*)?(->\s*\S+)?\s*$', previous_line)
              or search(r'\b(if|for|while|switch|else|CF_OPTIONS|NS_ENUM|NS_ERROR_ENUM|NS_OPTIONS)\b', previous_line)
              or regex_for_lambdas_and_blocks(previous_line, line_number, file_state, error))
             and previous_line.find('#') < 0
             and previous_line.find('- (') != 0
-            and previous_line.find('+ (') != 0):
+            and previous_line.find('+ (') != 0
+            and not search(r'{\s*$', previous_line)):
             error(line_number, 'whitespace/braces', 4,
                   'This { should be at the end of the previous line')
     elif (search(r'\)\s*(((const|override|final)\s*)*\s*)?{\s*$', line)
@@ -2862,15 +2886,32 @@ def check_min_versions_of_wk_api_available(clean_lines, line_number, error):
 
     line = clean_lines.elided[line_number]  # Get rid of comments and strings.
 
-    wk_api_available = search(r'WK_API_AVAILABLE\(macosx\(([^\)]+)\), ios\(([^\)]+)\)\)', line)
+    wk_api_available = search(r'WK_API_AVAILABLE\(macosx\(', line)
     if wk_api_available:
-        macosxMinVersion = wk_api_available.group(1)
-        if not match(r'^([\d\.]+|WK_MAC_TBA)$', macosxMinVersion):
-            error(line_number, 'build/wk_api_available', 5, '%s is neither a version number nor WK_MAC_TBA' % macosxMinVersion)
+        error(line_number, 'build/wk_api_available', 5, 'macosx() is deprecated; use macos() instead')
+
+    # FIXME: This should support any order.
+    wk_api_available = search(r'WK_API_AVAILABLE\(macos\(([^\)]+)\), ios\(([^\)]+)\)\)', line)
+    if wk_api_available:
+        macosMinVersion = wk_api_available.group(1)
+        if not match(r'^([\d\.]+|WK_MAC_TBA)$', macosMinVersion):
+            error(line_number, 'build/wk_api_available', 5, 'macos(%s) is invalid; expected WK_MAC_TBA or a number' % macosMinVersion)
 
         iosMinVersion = wk_api_available.group(2)
         if not match(r'^([\d\.]+|WK_IOS_TBA)$', iosMinVersion):
-            error(line_number, 'build/wk_api_available', 5, '%s is neither a version number nor WK_IOS_TBA' % iosMinVersion)
+            error(line_number, 'build/wk_api_available', 5, 'ios(%s) is invalid; expected WK_IOS_TBA or a number' % iosMinVersion)
+
+    wk_api_available = search(r'WK_API_AVAILABLE\(macos\(([^\)]+)\)\)', line)
+    if wk_api_available:
+        macosMinVersion = wk_api_available.group(1)
+        if not match(r'^([\d\.]+|WK_MAC_TBA)$', macosMinVersion):
+            error(line_number, 'build/wk_api_available', 5, 'macos(%s) is invalid; expected WK_MAC_TBA or a number' % macosMinVersion)
+
+    wk_api_available = search(r'WK_API_AVAILABLE\(ios\(([^\)]+)\)\)', line)
+    if wk_api_available:
+        iosMinVersion = wk_api_available.group(1)
+        if not match(r'^([\d\.]+|WK_IOS_TBA)$', iosMinVersion):
+            error(line_number, 'build/wk_api_available', 5, 'ios(%s) is invalid; expected WK_IOS_TBA or a number' % iosMinVersion)
 
 def check_style(clean_lines, line_number, file_extension, class_state, file_state, enum_state, error):
     """Checks rules from the 'C++ style rules' section of cppguide.html.
@@ -2936,6 +2977,7 @@ def check_style(clean_lines, line_number, file_extension, class_state, file_stat
     check_max_min_macros(clean_lines, line_number, file_state, error)
     check_wtf_move(clean_lines, line_number, file_state, error)
     check_wtf_optional(clean_lines, line_number, file_state, error)
+    check_wtf_make_unique(clean_lines, line_number, file_state, error)
     check_ctype_functions(clean_lines, line_number, file_state, error)
     check_switch_indentation(clean_lines, line_number, error)
     check_braces(clean_lines, line_number, file_state, error)
@@ -3010,7 +3052,7 @@ def _classify_include(filename, include, is_system, include_state):
     """
 
     # If it is a system header we know it is classified as _OTHER_HEADER.
-    if is_system and not include.startswith('public/'):
+    if is_system and not include.startswith('public/') and not include.startswith('wtf/'):
         return _OTHER_HEADER
 
     # If the include is named config.h then this is WebCore/config.h.
@@ -4092,6 +4134,7 @@ class CppChecker(object):
         'runtime/unsigned',
         'runtime/virtual',
         'runtime/wtf_optional',
+        'runtime/wtf_make_unique',
         'runtime/wtf_move',
         'security/assertion',
         'security/printf',

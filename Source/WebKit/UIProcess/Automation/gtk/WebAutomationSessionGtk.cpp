@@ -34,6 +34,7 @@
 namespace WebKit {
 using namespace WebCore;
 
+#if ENABLE(WEBDRIVER_MOUSE_INTERACTIONS)
 static unsigned modifiersToEventState(OptionSet<WebEvent::Modifier> modifiers)
 {
     unsigned state = 0;
@@ -48,15 +49,15 @@ static unsigned modifiersToEventState(OptionSet<WebEvent::Modifier> modifiers)
     return state;
 }
 
-static unsigned mouseButtonToGdkButton(WebMouseEvent::Button button)
+static unsigned mouseButtonToGdkButton(MouseButton button)
 {
     switch (button) {
-    case WebMouseEvent::NoButton:
-    case WebMouseEvent::LeftButton:
+    case MouseButton::None:
+    case MouseButton::Left:
         return GDK_BUTTON_PRIMARY;
-    case WebMouseEvent::MiddleButton:
+    case MouseButton::Middle:
         return GDK_BUTTON_MIDDLE;
-    case WebMouseEvent::RightButton:
+    case MouseButton::Right:
         return GDK_BUTTON_SECONDARY;
     }
     return GDK_BUTTON_PRIMARY;
@@ -75,7 +76,7 @@ static void doMouseEvent(GdkEventType type, GtkWidget* widget, const WebCore::In
     event->button.axes = 0;
     event->button.state = state;
     event->button.button = button;
-    event->button.device = gdk_device_manager_get_client_pointer(gdk_display_get_device_manager(gtk_widget_get_display(widget)));
+    event->button.device = gdk_seat_get_pointer(gdk_display_get_default_seat(gtk_widget_get_display(widget)));
     int xRoot, yRoot;
     gdk_window_get_root_coords(gtk_widget_get_window(widget), location.x(), location.y(), &xRoot, &yRoot);
     event->button.x_root = xRoot;
@@ -93,7 +94,7 @@ static void doMotionEvent(GtkWidget* widget, const WebCore::IntPoint& location, 
     event->motion.y = location.y();
     event->motion.axes = 0;
     event->motion.state = state;
-    event->motion.device = gdk_device_manager_get_client_pointer(gdk_display_get_device_manager(gtk_widget_get_display(widget)));
+    event->motion.device = gdk_seat_get_pointer(gdk_display_get_default_seat(gtk_widget_get_display(widget)));
     int xRoot, yRoot;
     gdk_window_get_root_coords(gtk_widget_get_window(widget), location.x(), location.y(), &xRoot, &yRoot);
     event->motion.x_root = xRoot;
@@ -101,7 +102,7 @@ static void doMotionEvent(GtkWidget* widget, const WebCore::IntPoint& location, 
     gtk_main_do_event(event.get());
 }
 
-void WebAutomationSession::platformSimulateMouseInteraction(WebPageProxy& page, MouseInteraction interaction, WebMouseEvent::Button button, const WebCore::IntPoint& locationInView, OptionSet<WebEvent::Modifier> keyModifiers)
+void WebAutomationSession::platformSimulateMouseInteraction(WebPageProxy& page, MouseInteraction interaction, MouseButton button, const WebCore::IntPoint& locationInView, OptionSet<WebEvent::Modifier> keyModifiers)
 {
     unsigned gdkButton = mouseButtonToGdkButton(button);
     auto modifier = stateModifierForGdkButton(gdkButton);
@@ -131,7 +132,9 @@ void WebAutomationSession::platformSimulateMouseInteraction(WebPageProxy& page, 
         break;
     }
 }
+#endif // ENABLE(WEBDRIVER_MOUSE_INTERACTIONS)
 
+#if ENABLE(WEBDRIVER_KEYBOARD_INTERACTIONS)
 static void doKeyStrokeEvent(GdkEventType type, GtkWidget* widget, unsigned keyVal, unsigned state, bool doReleaseAfterPress = false)
 {
     ASSERT(type == GDK_KEY_PRESS || type == GDK_KEY_RELEASE);
@@ -142,7 +145,8 @@ static void doKeyStrokeEvent(GdkEventType type, GtkWidget* widget, unsigned keyV
     event->key.time = GDK_CURRENT_TIME;
     event->key.window = gtk_widget_get_window(widget);
     g_object_ref(event->key.window);
-    gdk_event_set_device(event.get(), gdk_device_manager_get_client_pointer(gdk_display_get_device_manager(gtk_widget_get_display(widget))));
+
+    gdk_event_set_device(event.get(), gdk_seat_get_pointer(gdk_display_get_default_seat(gtk_widget_get_display(widget))));
     event->key.state = state;
 
     // When synthesizing an event, an invalid hardware_keycode value can cause it to be badly processed by GTK+.
@@ -330,6 +334,6 @@ void WebAutomationSession::platformSimulateKeySequence(WebPageProxy& page, const
         p = g_utf8_next_char(p);
     } while (*p);
 }
+#endif // ENABLE(WEBDRIVER_KEYBOARD_INTERACTIONS)
 
 } // namespace WebKit
-

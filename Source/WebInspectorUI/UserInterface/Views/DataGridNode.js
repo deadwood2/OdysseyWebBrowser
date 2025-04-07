@@ -175,7 +175,7 @@ WI.DataGridNode = class DataGridNode extends WI.Object
             if (!value.length)
                 continue;
 
-            this._cachedFilterableData = this._cachedFilterableData.concat(value);
+            this._cachedFilterableData.pushAll(value);
         }
 
         return this._cachedFilterableData;
@@ -650,7 +650,7 @@ WI.DataGridNode = class DataGridNode extends WI.Object
         if (!this.hasChildren)
             return false;
 
-        let cell = event.target.enclosingNodeOrSelfWithNodeName("td");
+        let cell = event.target.closest("td");
         if (!cell || !cell.classList.contains("disclosure"))
             return false;
 

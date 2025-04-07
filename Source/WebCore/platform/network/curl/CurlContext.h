@@ -147,6 +147,7 @@ private:
 // CurlMultiHandle --------------------------------------------
 
 class CurlMultiHandle {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(CurlMultiHandle);
 
 public:
@@ -202,6 +203,7 @@ class HTTPHeaderMap;
 class NetworkLoadMetrics;
 
 class CurlHandle {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(CurlHandle);
 
 public:
@@ -253,6 +255,7 @@ public:
 
     void setHttpAuthUserPass(const String&, const String&, long authType = CURLAUTH_ANY);
 
+    void disableServerTrustEvaluation();
     void setCACertPath(const char*);
     void setSslVerifyPeer(VerifyPeer);
     void setSslVerifyHost(VerifyHost);
@@ -272,6 +275,7 @@ public:
     void setWriteCallbackFunction(curl_write_callback, void*);
     void setReadCallbackFunction(curl_read_callback, void*);
     void setSslCtxCallbackFunction(curl_ssl_ctx_callback, void*);
+    void setDebugCallbackFunction(curl_debug_callback, void*);
 
     // Status
     Optional<String> getProxyUrl();

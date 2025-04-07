@@ -30,6 +30,7 @@
 #include "NetworkCacheCoders.h"
 #include "NetworkCacheIOChannel.h"
 #include <WebCore/SecurityOrigin.h>
+#include <WebCore/StorageQuotaManager.h>
 #include <wtf/RunLoop.h>
 #include <wtf/UUID.h>
 #include <wtf/text/StringBuilder.h>
@@ -50,9 +51,36 @@ static inline String cachesOriginFilename(const String& cachesRootPath)
     return FileSystem::pathByAppendingComponent(cachesRootPath, "origin"_s);
 }
 
+Ref<Caches> Caches::create(Engine& engine, WebCore::ClientOrigin&& origin, String&& rootPath, WebCore::StorageQuotaManager& quotaManager)
+{
+    auto caches = adoptRef(*new Caches { engine, WTFMove(origin), WTFMove(rootPath), quotaManager });
+    quotaManager.addUser(caches.get());
+    return caches;
+}
+
+Caches::Caches(Engine& engine, WebCore::ClientOrigin&& origin, String&& rootPath, WebCore::StorageQuotaManager& quotaManager)
+    : m_engine(&engine)
+    , m_origin(WTFMove(origin))
+    , m_rootPath(WTFMove(rootPath))
+    , m_quotaManager(makeWeakPtr(quotaManager))
+{
+}
+
 Caches::~Caches()
 {
     ASSERT(m_pendingWritingCachesToDiskCallbacks.isEmpty());
+
+    if (m_quotaManager)
+        m_quotaManager->removeUser(*this);
+}
+
+void Caches::whenInitialized(CompletionHandler<void()>&& callback)
+{
+    initialize([callback = WTFMove(callback)](auto&& error) mutable {
+        if (error)
+            RELEASE_LOG_ERROR(CacheStorage, "Caches::initialize failed, reported space used will be zero");
+        callback();
+    });
 }
 
 void Caches::retrieveOriginFromDirectory(const String& folderPath, WorkQueue& queue, WTF::CompletionHandler<void(Optional<WebCore::ClientOrigin>&&)>&& completionHandler)
@@ -76,14 +104,6 @@ void Caches::retrieveOriginFromDirectory(const String& folderPath, WorkQueue& qu
             completionHandler(readOrigin(data));
         });
     });
-}
-
-Caches::Caches(Engine& engine, WebCore::ClientOrigin&& origin, String&& rootPath, uint64_t quota)
-    : m_engine(&engine)
-    , m_origin(WTFMove(origin))
-    , m_rootPath(WTFMove(rootPath))
-    , m_quota(quota)
-{
 }
 
 void Caches::storeOrigin(CompletionCallback&& completionHandler)
@@ -240,11 +260,13 @@ void Caches::clear(CompletionHandler<void()>&& completionHandler)
         m_storage->clear(String { }, -WallTime::infinity(), [protectedThis = makeRef(*this), completionHandler = WTFMove(completionHandler)]() mutable {
             ASSERT(RunLoop::isMain());
             protectedThis->clearMemoryRepresentation();
+            protectedThis->resetSpaceUsed();
             completionHandler();
         });
         return;
     }
     clearMemoryRepresentation();
+    resetSpaceUsed();
     clearPendingWritingCachesToDiskCallbacks();
     completionHandler();
 }
@@ -389,7 +411,9 @@ static inline Expected<Vector<std::pair<String, String>>, Error> decodeCachesNam
         return makeUnexpected(Error::ReadDisk);
 
     Vector<std::pair<String, String>> names;
-    names.reserveInitialCapacity(count);
+    if (!names.tryReserveCapacity(count))
+        return makeUnexpected(Error::ReadDisk);
+
     for (size_t index = 0; index < count; ++index) {
         String name;
         if (!decoder.decode(name))
@@ -488,35 +512,20 @@ void Caches::readRecordsList(Cache& cache, NetworkCache::Storage::TraverseHandle
 
 void Caches::requestSpace(uint64_t spaceRequired, WebCore::DOMCacheEngine::CompletionCallback&& callback)
 {
-    ASSERT(!m_isRequestingSpace);
-
-    ASSERT(m_quota < m_size + spaceRequired);
-
-    if (!m_engine) {
+    if (!m_quotaManager) {
         callback(Error::QuotaExceeded);
         return;
     }
 
-    m_isRequestingSpace = true;
-    m_engine->requestSpace(m_origin, m_quota, m_size, spaceRequired, [this, protectedThis = makeRef(*this), callback = WTFMove(callback)] (Optional<uint64_t> newQuota) {
-        m_isRequestingSpace = false;
-        if (!newQuota) {
+    m_quotaManager->requestSpace(spaceRequired, [callback = WTFMove(callback)](auto decision) mutable {
+        switch (decision) {
+        case WebCore::StorageQuotaManager::Decision::Deny:
             callback(Error::QuotaExceeded);
-            notifyCachesOfRequestSpaceEnd();
             return;
-        }
-        m_quota = *newQuota;
-        callback({ });
-        notifyCachesOfRequestSpaceEnd();
+        case WebCore::StorageQuotaManager::Decision::Grant:
+            callback({ });
+        };
     });
-}
-
-void Caches::notifyCachesOfRequestSpaceEnd()
-{
-    for (auto& cache : m_caches)
-        cache.retryPuttingPendingRecords();
-    for (auto& cache : m_removedCaches)
-        cache.retryPuttingPendingRecords();
 }
 
 void Caches::writeRecord(const Cache& cache, const RecordInformation& recordInformation, Record&& record, uint64_t previousRecordSize, CompletionCallback&& callback)
@@ -527,15 +536,13 @@ void Caches::writeRecord(const Cache& cache, const RecordInformation& recordInfo
     m_size += recordInformation.size;
     m_size -= previousRecordSize;
 
-    ASSERT(m_size <= m_quota);
-
     if (!shouldPersist()) {
         m_volatileStorage.set(recordInformation.key, WTFMove(record));
         callback(WTF::nullopt);
         return;
     }
 
-    m_storage->store(Cache::encode(recordInformation, record), { }, [protectedStorage = makeRef(*m_storage), callback = WTFMove(callback)](int error) {
+    m_storage->store(Cache::encode(recordInformation, record), { }, [protectedStorage = makeRef(*m_storage), callback = WTFMove(callback)](int error) mutable {
         if (error) {
             RELEASE_LOG_ERROR(CacheStorage, "Caches::writeRecord failed with error %d", error);
             callback(Error::WriteDisk);
@@ -596,6 +603,15 @@ void Caches::removeCacheEntry(const NetworkCache::Key& key)
         return;
     }
     m_storage->remove(key);
+}
+
+void Caches::resetSpaceUsed()
+{
+    m_size = 0;
+    if (m_quotaManager) {
+        m_quotaManager->removeUser(*this);
+        m_quotaManager->addUser(*this);
+    }
 }
 
 void Caches::clearMemoryRepresentation()

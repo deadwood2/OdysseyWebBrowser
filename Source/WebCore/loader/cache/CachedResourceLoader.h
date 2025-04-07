@@ -87,6 +87,7 @@ public:
     ResourceErrorOr<CachedResourceHandle<CachedRawResource>> requestMedia(CachedResourceRequest&&);
     ResourceErrorOr<CachedResourceHandle<CachedRawResource>> requestIcon(CachedResourceRequest&&);
     ResourceErrorOr<CachedResourceHandle<CachedRawResource>> requestBeaconResource(CachedResourceRequest&&);
+    ResourceErrorOr<CachedResourceHandle<CachedRawResource>> requestPingResource(CachedResourceRequest&&);
     ResourceErrorOr<CachedResourceHandle<CachedRawResource>> requestMainResource(CachedResourceRequest&&);
     ResourceErrorOr<CachedResourceHandle<CachedSVGDocument>> requestSVGDocument(CachedResourceRequest&&);
 #if ENABLE(XSLT)
@@ -125,8 +126,8 @@ public:
     CachePolicy cachePolicy(CachedResource::Type, const URL&) const;
     
     Frame* frame() const; // Can be null
-    Document* document() const { return m_document; } // Can be null
-    void setDocument(Document* document) { m_document = document; }
+    Document* document() const { return m_document.get(); } // Can be null
+    void setDocument(Document* document) { m_document = makeWeakPtr(document); }
     void clearDocumentLoader() { m_documentLoader = nullptr; }
     PAL::SessionID sessionID() const;
 
@@ -193,7 +194,7 @@ private:
 
     HashSet<String> m_validatedURLs;
     mutable DocumentResourceMap m_documentResources;
-    Document* m_document;
+    WeakPtr<Document> m_document;
     DocumentLoader* m_documentLoader;
 
     int m_requestCount;

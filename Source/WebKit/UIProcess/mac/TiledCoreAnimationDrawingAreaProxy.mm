@@ -55,12 +55,12 @@ TiledCoreAnimationDrawingAreaProxy::~TiledCoreAnimationDrawingAreaProxy()
 
 void TiledCoreAnimationDrawingAreaProxy::deviceScaleFactorDidChange()
 {
-    process().send(Messages::DrawingArea::SetDeviceScaleFactor(m_webPageProxy.deviceScaleFactor()), m_webPageProxy.pageID());
+    send(Messages::DrawingArea::SetDeviceScaleFactor(m_webPageProxy.deviceScaleFactor()));
 }
 
 void TiledCoreAnimationDrawingAreaProxy::sizeDidChange()
 {
-    if (!m_webPageProxy.isValid())
+    if (!m_webPageProxy.hasRunningProcess())
         return;
 
     // We only want one UpdateGeometry message in flight at once, so if we've already sent one but
@@ -73,12 +73,12 @@ void TiledCoreAnimationDrawingAreaProxy::sizeDidChange()
 
 void TiledCoreAnimationDrawingAreaProxy::colorSpaceDidChange()
 {
-    process().send(Messages::DrawingArea::SetColorSpace(m_webPageProxy.colorSpace()), m_webPageProxy.pageID());
+    send(Messages::DrawingArea::SetColorSpace(m_webPageProxy.colorSpace()));
 }
 
-void TiledCoreAnimationDrawingAreaProxy::viewLayoutSizeDidChange()
+void TiledCoreAnimationDrawingAreaProxy::minimumSizeForAutoLayoutDidChange()
 {
-    if (!m_webPageProxy.isValid())
+    if (!m_webPageProxy.hasRunningProcess())
         return;
 
     // We only want one UpdateGeometry message in flight at once, so if we've already sent one but
@@ -111,11 +111,11 @@ void TiledCoreAnimationDrawingAreaProxy::didUpdateGeometry()
 
     m_isWaitingForDidUpdateGeometry = false;
 
-    IntSize viewLayoutSize = m_webPageProxy.viewLayoutSize();
+    IntSize minimumSizeForAutoLayout = m_webPageProxy.minimumSizeForAutoLayout();
 
     // If the WKView was resized while we were waiting for a DidUpdateGeometry reply from the web process,
     // we need to resend the new size here.
-    if (m_lastSentSize != m_size || m_lastSentViewLayoutSize != viewLayoutSize)
+    if (m_lastSentSize != m_size || m_lastSentMinimumSizeForAutoLayout != minimumSizeForAutoLayout)
         sendUpdateGeometry();
 }
 
@@ -125,22 +125,16 @@ void TiledCoreAnimationDrawingAreaProxy::waitForDidUpdateActivityState(ActivityS
     process().connection()->waitForAndDispatchImmediately<Messages::WebPageProxy::DidUpdateActivityState>(m_webPageProxy.pageID(), activityStateUpdateTimeout, IPC::WaitForOption::InterruptWaitingIfSyncMessageArrives);
 }
 
-void TiledCoreAnimationDrawingAreaProxy::intrinsicContentSizeDidChange(const IntSize& newIntrinsicContentSize)
-{
-    if (m_webPageProxy.viewLayoutSize().width() > 0)
-        m_webPageProxy.intrinsicContentSizeDidChange(newIntrinsicContentSize);
-}
-
 void TiledCoreAnimationDrawingAreaProxy::willSendUpdateGeometry()
 {
-    m_lastSentViewLayoutSize = m_webPageProxy.viewLayoutSize();
+    m_lastSentMinimumSizeForAutoLayout = m_webPageProxy.minimumSizeForAutoLayout();
     m_lastSentSize = m_size;
     m_isWaitingForDidUpdateGeometry = true;
 }
 
 MachSendRight TiledCoreAnimationDrawingAreaProxy::createFence()
 {
-    if (!m_webPageProxy.isValid())
+    if (!m_webPageProxy.hasRunningProcess())
         return MachSendRight();
 
     RetainPtr<CAContext> rootLayerContext = [m_webPageProxy.acceleratedCompositingRootLayer() context];
@@ -168,7 +162,7 @@ MachSendRight TiledCoreAnimationDrawingAreaProxy::createFence()
     });
     RefPtr<WebPageProxy> retainedPage = &m_webPageProxy;
     [CATransaction addCommitHandler:[callbackID, retainedPage] {
-        if (!retainedPage->isValid())
+        if (!retainedPage->hasRunningProcess())
             return;
         if (Connection* connection = retainedPage->process().connection())
             connection->uninstallIncomingSyncMessageCallback(callbackID);
@@ -182,27 +176,27 @@ void TiledCoreAnimationDrawingAreaProxy::sendUpdateGeometry()
     ASSERT(!m_isWaitingForDidUpdateGeometry);
 
     willSendUpdateGeometry();
-    process().send(Messages::DrawingArea::UpdateGeometry(m_size, true /* flushSynchronously */, createFence()), m_webPageProxy.pageID());
+    send(Messages::DrawingArea::UpdateGeometry(m_size, true /* flushSynchronously */, createFence()));
 }
 
 void TiledCoreAnimationDrawingAreaProxy::adjustTransientZoom(double scale, FloatPoint origin)
 {
-    process().send(Messages::DrawingArea::AdjustTransientZoom(scale, origin), m_webPageProxy.pageID());
+    send(Messages::DrawingArea::AdjustTransientZoom(scale, origin));
 }
 
 void TiledCoreAnimationDrawingAreaProxy::commitTransientZoom(double scale, FloatPoint origin)
 {
-    process().send(Messages::DrawingArea::CommitTransientZoom(scale, origin), m_webPageProxy.pageID());
+    send(Messages::DrawingArea::CommitTransientZoom(scale, origin));
 }
 
 void TiledCoreAnimationDrawingAreaProxy::dispatchAfterEnsuringDrawing(WTF::Function<void (CallbackBase::Error)>&& callback)
 {
-    if (!m_webPageProxy.isValid()) {
+    if (!m_webPageProxy.hasRunningProcess()) {
         callback(CallbackBase::Error::OwnerWasInvalidated);
         return;
     }
 
-    process().send(Messages::DrawingArea::AddTransactionCallbackID(m_callbacks.put(WTFMove(callback), nullptr)), m_webPageProxy.pageID());
+    send(Messages::DrawingArea::AddTransactionCallbackID(m_callbacks.put(WTFMove(callback), nullptr)));
 }
 
 void TiledCoreAnimationDrawingAreaProxy::dispatchPresentationCallbacksAfterFlushingLayers(const Vector<CallbackID>& callbackIDs)

@@ -28,7 +28,6 @@
 
 #include "Logging.h"
 #include "NetworkCacheSpeculativeLoadManager.h"
-#include "NetworkCacheStatistics.h"
 #include "NetworkCacheStorage.h"
 #include "NetworkProcess.h"
 #include <WebCore/CacheValidation.h>
@@ -53,56 +52,54 @@ namespace NetworkCache {
 
 using namespace FileSystem;
 
-static const AtomicString& resourceType()
+static const AtomString& resourceType()
 {
     ASSERT(WTF::RunLoop::isMain());
-    static NeverDestroyed<const AtomicString> resource("Resource", AtomicString::ConstructFromLiteral);
+    static NeverDestroyed<const AtomString> resource("Resource", AtomString::ConstructFromLiteral);
     return resource;
 }
 
-RefPtr<Cache> Cache::open(NetworkProcess& networkProcess, const String& cachePath, OptionSet<Option> options)
+RefPtr<Cache> Cache::open(NetworkProcess& networkProcess, const String& cachePath, OptionSet<CacheOption> options, PAL::SessionID sessionID)
 {
-    auto storage = Storage::open(cachePath, options.contains(Option::TestingMode) ? Storage::Mode::AvoidRandomness : Storage::Mode::Normal);
+    auto storage = Storage::open(cachePath, options.contains(CacheOption::TestingMode) ? Storage::Mode::AvoidRandomness : Storage::Mode::Normal);
 
     LOG(NetworkCache, "(NetworkProcess) opened cache storage, success %d", !!storage);
 
     if (!storage)
         return nullptr;
 
-    return adoptRef(*new Cache(networkProcess, storage.releaseNonNull(), options));
+    return adoptRef(*new Cache(networkProcess, storage.releaseNonNull(), options, sessionID));
 }
 
-#if PLATFORM(GTK)
+#if PLATFORM(GTK) || PLATFORM(WPE)
 static void dumpFileChanged(Cache* cache)
 {
     cache->dumpContentsToFile();
 }
 #endif
 
-Cache::Cache(NetworkProcess& networkProcess, Ref<Storage>&& storage, OptionSet<Option> options)
+Cache::Cache(NetworkProcess& networkProcess, Ref<Storage>&& storage, OptionSet<CacheOption> options, PAL::SessionID sessionID)
     : m_storage(WTFMove(storage))
     , m_networkProcess(networkProcess)
+    , m_sessionID(sessionID)
 {
 #if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
-    if (options.contains(Option::SpeculativeRevalidation)) {
-        m_lowPowerModeNotifier = std::make_unique<WebCore::LowPowerModeNotifier>([this](bool isLowPowerModeEnabled) {
+    if (options.contains(CacheOption::SpeculativeRevalidation)) {
+        m_lowPowerModeNotifier = makeUnique<WebCore::LowPowerModeNotifier>([this](bool isLowPowerModeEnabled) {
             ASSERT(WTF::RunLoop::isMain());
             if (isLowPowerModeEnabled)
                 m_speculativeLoadManager = nullptr;
             else {
                 ASSERT(!m_speculativeLoadManager);
-                m_speculativeLoadManager = std::make_unique<SpeculativeLoadManager>(*this, m_storage.get());
+                m_speculativeLoadManager = makeUnique<SpeculativeLoadManager>(*this, m_storage.get());
             }
         });
         if (!m_lowPowerModeNotifier->isLowPowerModeEnabled())
-            m_speculativeLoadManager = std::make_unique<SpeculativeLoadManager>(*this, m_storage.get());
+            m_speculativeLoadManager = makeUnique<SpeculativeLoadManager>(*this, m_storage.get());
     }
 #endif
 
-    if (options.contains(Option::EfficacyLogging))
-        m_statistics = Statistics::open(*this, m_storage->basePath());
-
-    if (options.contains(Option::RegisterNotify)) {
+    if (options.contains(CacheOption::RegisterNotify)) {
 #if PLATFORM(COCOA)
         // Triggers with "notifyutil -p com.apple.WebKit.Cache.dump".
         int token;
@@ -110,9 +107,9 @@ Cache::Cache(NetworkProcess& networkProcess, Ref<Storage>&& storage, OptionSet<O
             dumpContentsToFile();
         });
 #endif
-#if PLATFORM(GTK)
+#if PLATFORM(GTK) || PLATFORM(WPE)
         // Triggers with "touch $cachePath/dump".
-        CString dumpFilePath = fileSystemRepresentation(pathByAppendingComponent(m_storage->basePath(), "dump"));
+        CString dumpFilePath = fileSystemRepresentation(pathByAppendingComponent(m_storage->basePathIsolatedCopy(), "dump"));
         GRefPtr<GFile> dumpFile = adoptGRef(g_file_new_for_path(dumpFilePath.data()));
         GFileMonitor* monitor = g_file_monitor_file(dumpFile.get(), G_FILE_MONITOR_NONE, nullptr, nullptr);
         g_signal_connect_swapped(monitor, "changed", G_CALLBACK(dumpFileChanged), this);
@@ -273,14 +270,36 @@ static StoreDecision makeStoreDecision(const WebCore::ResourceRequest& originalR
     return StoreDecision::Yes;
 }
 
+#if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
+static bool inline canRequestUseSpeculativeRevalidation(const WebCore::ResourceRequest& request)
+{
+    if (request.isConditional())
+        return false;
+
+    if (request.requester() == WebCore::ResourceRequest::Requester::XHR || request.requester() == WebCore::ResourceRequest::Requester::Fetch)
+        return false;
+
+    switch (request.cachePolicy()) {
+    case WebCore::ResourceRequestCachePolicy::ReturnCacheDataElseLoad:
+    case WebCore::ResourceRequestCachePolicy::ReturnCacheDataDontLoad:
+    case WebCore::ResourceRequestCachePolicy::ReloadIgnoringCacheData:
+        return false;
+    case WebCore::ResourceRequestCachePolicy::UseProtocolCachePolicy:
+    case WebCore::ResourceRequestCachePolicy::RefreshAnyCacheData:
+        return true;
+    case WebCore::ResourceRequestCachePolicy::DoNotUseAnyCache:
+        ASSERT_NOT_REACHED();
+        return false;
+    }
+    return false;
+}
+#endif
+
 void Cache::retrieve(const WebCore::ResourceRequest& request, const GlobalFrameID& frameID, RetrieveCompletionHandler&& completionHandler)
 {
     ASSERT(request.url().protocolIsInHTTPFamily());
 
     LOG(NetworkCache, "(NetworkProcess) retrieving %s priority %d", request.url().string().ascii().data(), static_cast<int>(request.priority()));
-
-    if (m_statistics)
-        m_statistics->recordRetrievalRequest(frameID.first);
 
     Key storageKey = makeCacheKey(request);
     auto priority = static_cast<unsigned>(request.priority());
@@ -290,16 +309,13 @@ void Cache::retrieve(const WebCore::ResourceRequest& request, const GlobalFrameI
     info.priority = priority;
 
 #if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
-    bool canUseSpeculativeRevalidation = m_speculativeLoadManager && !request.isConditional() && !cachePolicyAllowsExpired(request.cachePolicy());
+    bool canUseSpeculativeRevalidation = m_speculativeLoadManager && canRequestUseSpeculativeRevalidation(request);
     if (canUseSpeculativeRevalidation)
         m_speculativeLoadManager->registerLoad(frameID, request, storageKey);
 #endif
 
     auto retrieveDecision = makeRetrieveDecision(request);
     if (retrieveDecision != RetrieveDecision::Yes) {
-        if (m_statistics)
-            m_statistics->recordNotUsingCacheForRequest(frameID.first, storageKey, request, retrieveDecision);
-
         completeRetrieve(WTFMove(completionHandler), nullptr, info);
         return;
     }
@@ -317,14 +333,11 @@ void Cache::retrieve(const WebCore::ResourceRequest& request, const GlobalFrameI
     }
 #endif
 
-    m_storage->retrieve(storageKey, priority, [this, protectedThis = makeRef(*this), request, completionHandler = WTFMove(completionHandler), info = WTFMove(info), storageKey, frameID, networkProcess = makeRef(networkProcess())](auto record, auto timings) mutable {
+    m_storage->retrieve(storageKey, priority, [request, completionHandler = WTFMove(completionHandler), info = WTFMove(info), storageKey, networkProcess = makeRef(networkProcess())](auto record, auto timings) mutable {
         info.storageTimings = timings;
 
         if (!record) {
             LOG(NetworkCache, "(NetworkProcess) not found in storage");
-
-            if (m_statistics)
-                m_statistics->recordRetrievalFailure(frameID.first, storageKey, request);
 
             completeRetrieve(WTFMove(completionHandler), nullptr, info);
             return false;
@@ -351,8 +364,6 @@ void Cache::retrieve(const WebCore::ResourceRequest& request, const GlobalFrameI
 #endif
         completeRetrieve(WTFMove(completionHandler), WTFMove(entry), info);
 
-        if (m_statistics)
-            m_statistics->recordRetrievedCachedEntry(frameID.first, storageKey, request, useDecision);
         return useDecision != UseDecision::NoDueToDecodeFailure;
     });
 }
@@ -365,12 +376,12 @@ void Cache::completeRetrieve(RetrieveCompletionHandler&& handler, std::unique_pt
     
 std::unique_ptr<Entry> Cache::makeEntry(const WebCore::ResourceRequest& request, const WebCore::ResourceResponse& response, RefPtr<WebCore::SharedBuffer>&& responseData)
 {
-    return std::make_unique<Entry>(makeCacheKey(request), response, WTFMove(responseData), WebCore::collectVaryingRequestHeaders(networkProcess().defaultStorageSession(), request, response));
+    return makeUnique<Entry>(makeCacheKey(request), response, WTFMove(responseData), WebCore::collectVaryingRequestHeaders(networkProcess().defaultStorageSession(), request, response));
 }
 
 std::unique_ptr<Entry> Cache::makeRedirectEntry(const WebCore::ResourceRequest& request, const WebCore::ResourceResponse& response, const WebCore::ResourceRequest& redirectRequest)
 {
-    return std::make_unique<Entry>(makeCacheKey(request), response, redirectRequest, WebCore::collectVaryingRequestHeaders(networkProcess().defaultStorageSession(), request, response));
+    return makeUnique<Entry>(makeCacheKey(request), response, redirectRequest, WebCore::collectVaryingRequestHeaders(networkProcess().defaultStorageSession(), request, response));
 }
 
 std::unique_ptr<Entry> Cache::store(const WebCore::ResourceRequest& request, const WebCore::ResourceResponse& response, RefPtr<WebCore::SharedBuffer>&& responseData, Function<void(MappedBody&)>&& completionHandler)
@@ -390,9 +401,6 @@ std::unique_ptr<Entry> Cache::store(const WebCore::ResourceRequest& request, con
             remove(key);
         }
 
-        if (m_statistics)
-            m_statistics->recordNotCachingResponse(key, storeDecision);
-
         return nullptr;
     }
 
@@ -408,7 +416,8 @@ std::unique_ptr<Entry> Cache::store(const WebCore::ResourceRequest& request, con
             mappedBody.shareableResource->createHandle(mappedBody.shareableResourceHandle);
         }
 #endif
-        completionHandler(mappedBody);
+        if (completionHandler)
+            completionHandler(mappedBody);
         LOG(NetworkCache, "(NetworkProcess) stored");
     });
 
@@ -422,10 +431,6 @@ std::unique_ptr<Entry> Cache::storeRedirect(const WebCore::ResourceRequest& requ
     StoreDecision storeDecision = makeStoreDecision(request, response, 0);
     if (storeDecision != StoreDecision::Yes) {
         LOG(NetworkCache, "(NetworkProcess) didn't store redirect, storeDecision=%d", static_cast<int>(storeDecision));
-        auto key = makeCacheKey(request);
-        if (m_statistics)
-            m_statistics->recordNotCachingResponse(key, storeDecision);
-
         return nullptr;
     }
 
@@ -454,13 +459,10 @@ std::unique_ptr<Entry> Cache::update(const WebCore::ResourceRequest& originalReq
     WebCore::ResourceResponse response = existingEntry.response();
     WebCore::updateResponseHeadersAfterRevalidation(response, validatingResponse);
 
-    auto updateEntry = std::make_unique<Entry>(existingEntry.key(), response, existingEntry.buffer(), WebCore::collectVaryingRequestHeaders(networkProcess().defaultStorageSession(), originalRequest, response));
+    auto updateEntry = makeUnique<Entry>(existingEntry.key(), response, existingEntry.buffer(), WebCore::collectVaryingRequestHeaders(networkProcess().defaultStorageSession(), originalRequest, response));
     auto updateRecord = updateEntry->encodeAsStorageRecord();
 
     m_storage->store(updateRecord, { });
-
-    if (m_statistics)
-        m_statistics->recordRevalidationSuccess(frameID.first, existingEntry.key(), originalRequest);
 
     return updateEntry;
 }
@@ -503,10 +505,8 @@ void Cache::traverse(Function<void(const TraversalEntry*)>&& traverseHandler)
         }
 
         auto entry = Entry::decodeStorageRecord(*record);
-        if (!entry) {
-            traverseHandler(nullptr);
+        if (!entry)
             return;
-        }
 
         TraversalEntry traversalEntry { *entry, recordInfo };
         traverseHandler(&traversalEntry);
@@ -549,7 +549,7 @@ void Cache::dumpContentsToFile()
             epilogue.appendNumber(totals.bodySize);
             epilogue.appendLiteral(",\n");
             epilogue.appendLiteral("\"averageWorth\": ");
-            epilogue.appendNumber(totals.count ? totals.worth / totals.count : 0);
+            epilogue.appendFixedPrecisionNumber(totals.count ? totals.worth / totals.count : 0);
             epilogue.appendLiteral("\n");
             epilogue.appendLiteral("}\n}\n");
             auto writeData = epilogue.toString().utf8();
@@ -583,9 +583,6 @@ void Cache::clear(WallTime modifiedSince, Function<void()>&& completionHandler)
 {
     LOG(NetworkCache, "(NetworkProcess) clearing cache");
 
-    if (m_statistics)
-        m_statistics->clear();
-
     String anyType;
     m_storage->clear(anyType, modifiedSince, WTFMove(completionHandler));
 
@@ -597,9 +594,9 @@ void Cache::clear()
     clear(-WallTime::infinity(), nullptr);
 }
 
-String Cache::recordsPath() const
+String Cache::recordsPathIsolatedCopy() const
 {
-    return m_storage->recordsPath();
+    return m_storage->recordsPathIsolatedCopy();
 }
 
 void Cache::retrieveData(const DataKey& dataKey, Function<void(const uint8_t*, size_t)> completionHandler)

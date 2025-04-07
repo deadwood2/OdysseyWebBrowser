@@ -64,6 +64,7 @@ void NetworkMDNSRegister::unregisterMDNSNames(WebCore::DocumentIdentifier docume
 }
 
 struct PendingRegistrationRequest {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     PendingRegistrationRequest(Ref<IPC::Connection> connection, uint64_t requestIdentifier, String&& name, PAL::SessionID sessionID)
         : connection(WTFMove(connection))
         , requestIdentifier(requestIdentifier)
@@ -135,11 +136,15 @@ void NetworkMDNSRegister::registerMDNSName(uint64_t requestIdentifier, PAL::Sess
         return;
     }
 
-    auto pendingRequest = std::make_unique<PendingRegistrationRequest>(makeRef(m_connection.connection()), requestIdentifier, WTFMove(name), sessionID);
+    auto pendingRequest = makeUnique<PendingRegistrationRequest>(makeRef(m_connection.connection()), requestIdentifier, WTFMove(name), sessionID);
     auto* record = &pendingRequest->record;
     auto error = DNSServiceRegisterRecord(service,
         record,
+#if HAVE(MDNS_FAST_REGISTRATION)
+        kDNSServiceFlagsKnownUnique,
+#else
         kDNSServiceFlagsUnique,
+#endif
         0,
         pendingRequest->name.utf8().data(),
         kDNSServiceType_A,

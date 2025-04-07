@@ -25,7 +25,7 @@
 
 #include "config.h"
 
-#if ENABLE(DRAG_SUPPORT) && PLATFORM(IOS_FAMILY) && WK_API_ENABLED
+#if ENABLE(DRAG_SUPPORT) && PLATFORM(IOS_FAMILY)
 
 #import "ClassMethodSwizzler.h"
 #import "DragAndDropSimulator.h"
@@ -117,24 +117,12 @@ static void loadTestPageAndEnsureInputSession(DragAndDropSimulator *simulator, N
     [simulator ensureInputSession];
 }
 
-static NSValue *makeCGRectValue(CGFloat x, CGFloat y, CGFloat width, CGFloat height)
-{
-    return [NSValue valueWithCGRect:CGRectMake(x, y, width, height)];
-}
-
 static void checkCGRectIsEqualToCGRectWithLogging(CGRect expected, CGRect observed)
 {
     BOOL isEqual = CGRectEqualToRect(expected, observed);
     EXPECT_TRUE(isEqual);
     if (!isEqual)
         NSLog(@"Expected: %@ but observed: %@", NSStringFromCGRect(expected), NSStringFromCGRect(observed));
-}
-
-static void checkSelectionRectsWithLogging(NSArray *expected, NSArray *observed)
-{
-    if (![expected isEqualToArray:observed])
-        NSLog(@"Expected selection rects: %@ but observed: %@", expected, observed);
-    EXPECT_TRUE([expected isEqualToArray:observed]);
 }
 
 static void checkRichTextTypePrecedesPlainTextType(DragAndDropSimulator *simulator)
@@ -275,7 +263,7 @@ TEST(DragAndDropTests, ImageToContentEditable)
     EXPECT_TRUE([observedEventNames containsObject:@"dragenter"]);
     EXPECT_TRUE([observedEventNames containsObject:@"dragover"]);
     EXPECT_TRUE([observedEventNames containsObject:@"drop"]);
-    checkSelectionRectsWithLogging(@[ makeCGRectValue(1, 201, 215, 174) ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(214, 201, 2, 174), [simulator finalSelectionStartRect]);
     checkFirstTypeIsPresentAndSecondTypeIsMissing(simulator.get(), kUTTypePNG, kUTTypeFileURL);
     checkEstimatedSize(simulator.get(), { 215, 174 });
     EXPECT_TRUE([simulator lastKnownDropProposal].precise);
@@ -320,7 +308,7 @@ TEST(DragAndDropTests, ImageInLinkToInput)
     [simulator runFrom:CGPointMake(100, 50) to:CGPointMake(100, 300)];
 
     EXPECT_WK_STREQ("https://www.apple.com/", [webView editorValue].UTF8String);
-    checkSelectionRectsWithLogging(@[ makeCGRectValue(101, 241, 2057, 232) ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(2156, 241, 2, 232), [simulator finalSelectionStartRect]);
     checkSuggestedNameAndEstimatedSize(simulator.get(), @"icon.png", { 215, 174 });
     checkTypeIdentifierIsRegisteredAtIndex(simulator.get(), (__bridge NSString *)kUTTypePNG, 0);
     EXPECT_TRUE([simulator lastKnownDropProposal].precise);
@@ -382,7 +370,6 @@ TEST(DragAndDropTests, ContentEditableToContentEditable)
     loadTestPageAndEnsureInputSession(simulator.get(), @"autofocus-contenteditable");
     [simulator runFrom:CGPointMake(100, 50) to:CGPointMake(100, 300)];
 
-    EXPECT_TRUE([simulator suppressedSelectionCommandsDuringDrop]);
     EXPECT_EQ([webView stringByEvaluatingJavaScript:@"source.textContent"].length, 0UL);
     EXPECT_WK_STREQ("Hello world", [webView stringByEvaluatingJavaScript:@"editor.textContent"].UTF8String);
 
@@ -390,7 +377,7 @@ TEST(DragAndDropTests, ContentEditableToContentEditable)
     EXPECT_TRUE([observedEventNames containsObject:@"dragenter"]);
     EXPECT_TRUE([observedEventNames containsObject:@"dragover"]);
     EXPECT_TRUE([observedEventNames containsObject:@"drop"]);
-    checkSelectionRectsWithLogging(@[ makeCGRectValue(1, 201, 961, 227) ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(960, 201, 2, 227), [simulator finalSelectionStartRect]);
     checkRichTextTypePrecedesPlainTextType(simulator.get());
     EXPECT_TRUE([simulator lastKnownDropProposal].precise);
 
@@ -406,7 +393,6 @@ TEST(DragAndDropTests, ContentEditableToTextarea)
     loadTestPageAndEnsureInputSession(simulator.get(), @"contenteditable-and-textarea");
     [simulator runFrom:CGPointMake(100, 50) to:CGPointMake(100, 300)];
 
-    EXPECT_TRUE([simulator suppressedSelectionCommandsDuringDrop]);
     EXPECT_EQ([webView stringByEvaluatingJavaScript:@"source.textContent"].length, 0UL);
     EXPECT_WK_STREQ("Hello world", [webView editorValue].UTF8String);
 
@@ -414,7 +400,7 @@ TEST(DragAndDropTests, ContentEditableToTextarea)
     EXPECT_TRUE([observedEventNames containsObject:@"dragenter"]);
     EXPECT_TRUE([observedEventNames containsObject:@"dragover"]);
     EXPECT_TRUE([observedEventNames containsObject:@"drop"]);
-    checkSelectionRectsWithLogging(@[ makeCGRectValue(6, 203, 990, 232) ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(1089, 203, 2, 232), [simulator finalSelectionStartRect]);
     checkRichTextTypePrecedesPlainTextType(simulator.get());
     EXPECT_TRUE([simulator lastKnownDropProposal].precise);
 }
@@ -430,6 +416,31 @@ TEST(DragAndDropTests, NonEditableTextSelectionToTextarea)
     EXPECT_WK_STREQ("Hello world", [webView stringByEvaluatingJavaScript:@"destination.value"]);
 }
 
+TEST(DragAndDropTests, DoNotPerformSelectionDragWhenNotFirstResponder)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    auto simulator = adoptNS([[DragAndDropSimulator alloc] initWithWebView:webView.get()]);
+    [simulator setShouldBecomeFirstResponder:NO];
+
+    [webView synchronouslyLoadTestPageNamed:@"selected-text-and-textarea"];
+    [simulator runFrom:CGPointMake(160, 100) to:CGPointMake(160, 300)];
+
+    EXPECT_WK_STREQ("", [webView stringByEvaluatingJavaScript:@"destination.value"]);
+}
+
+TEST(DragAndDropTests, CanDragImageWhenNotFirstResponder)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    auto simulator = adoptNS([[DragAndDropSimulator alloc] initWithWebView:webView.get()]);
+    [simulator setShouldBecomeFirstResponder:NO];
+
+    [webView synchronouslyLoadTestPageNamed:@"image-and-contenteditable"];
+    [simulator runFrom:CGPointMake(100, 50) to:CGPointMake(100, 250)];
+
+    NSURL *droppedImageURL = [NSURL URLWithString:[webView stringByEvaluatingJavaScript:@"editor.querySelector('img').src"]];
+    EXPECT_WK_STREQ("blob", droppedImageURL.scheme);
+}
+
 TEST(DragAndDropTests, ContentEditableMoveParagraphs)
 {
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
@@ -442,11 +453,10 @@ TEST(DragAndDropTests, ContentEditableMoveParagraphs)
     NSUInteger firstParagraphOffset = [finalTextContent rangeOfString:@"This is the first paragraph"].location;
     NSUInteger secondParagraphOffset = [finalTextContent rangeOfString:@"This is the second paragraph"].location;
 
-    EXPECT_TRUE([simulator suppressedSelectionCommandsDuringDrop]);
     EXPECT_FALSE(firstParagraphOffset == NSNotFound);
     EXPECT_FALSE(secondParagraphOffset == NSNotFound);
     EXPECT_GT(firstParagraphOffset, secondParagraphOffset);
-    checkSelectionRectsWithLogging(@[ makeCGRectValue(190, 100, 130, 20), makeCGRectValue(0, 120, 320, 100), makeCGRectValue(0, 220, 252, 20) ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(251, 220, 2, 20), [simulator finalSelectionStartRect]);
     EXPECT_TRUE([simulator lastKnownDropProposal].precise);
 }
 
@@ -469,10 +479,9 @@ TEST(DragAndDropTests, TextAreaToInput)
     loadTestPageAndEnsureInputSession(simulator.get(), @"textarea-to-input");
     [simulator runFrom:CGPointMake(100, 50) to:CGPointMake(100, 300)];
 
-    EXPECT_TRUE([simulator suppressedSelectionCommandsDuringDrop]);
     EXPECT_EQ([webView stringByEvaluatingJavaScript:@"source.value"].length, 0UL);
     EXPECT_WK_STREQ("Hello world", [webView editorValue].UTF8String);
-    checkSelectionRectsWithLogging(@[ makeCGRectValue(101, 241, 990, 232) ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(1089, 241, 2, 232), [simulator finalSelectionStartRect]);
 }
 
 TEST(DragAndDropTests, SinglePlainTextWordTypeIdentifiers)
@@ -485,8 +494,6 @@ TEST(DragAndDropTests, SinglePlainTextWordTypeIdentifiers)
     [webView stringByEvaluatingJavaScript:@"source.selectionStart = 0"];
     [webView stringByEvaluatingJavaScript:@"source.selectionEnd = source.value.length"];
     [simulator runFrom:CGPointMake(100, 50) to:CGPointMake(100, 300)];
-
-    EXPECT_TRUE([simulator suppressedSelectionCommandsDuringDrop]);
 
     NSItemProvider *itemProvider = [simulator sourceItemProviders].firstObject;
     NSArray *registeredTypes = [itemProvider registeredTypeIdentifiers];
@@ -507,8 +514,6 @@ TEST(DragAndDropTests, SinglePlainTextURLTypeIdentifiers)
     [webView stringByEvaluatingJavaScript:@"source.selectionStart = 0"];
     [webView stringByEvaluatingJavaScript:@"source.selectionEnd = source.value.length"];
     [simulator runFrom:CGPointMake(100, 50) to:CGPointMake(100, 300)];
-
-    EXPECT_TRUE([simulator suppressedSelectionCommandsDuringDrop]);
 
     NSItemProvider *itemProvider = [simulator sourceItemProviders].firstObject;
     NSArray *registeredTypes = [itemProvider registeredTypeIdentifiers];
@@ -543,7 +548,7 @@ TEST(DragAndDropTests, LinkToInput)
     EXPECT_TRUE([observedEventNames containsObject:@"dragenter"]);
     EXPECT_TRUE([observedEventNames containsObject:@"dragover"]);
     EXPECT_TRUE([observedEventNames containsObject:@"drop"]);
-    checkSelectionRectsWithLogging(@[ makeCGRectValue(101, 273, 2057, 232) ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(2156, 273, 2, 232), [simulator finalSelectionStartRect]);
     checkTypeIdentifierIsRegisteredAtIndex(simulator.get(), (__bridge NSString *)kUTTypeURL, 0);
 }
 
@@ -561,7 +566,7 @@ TEST(DragAndDropTests, BackgroundImageLinkToInput)
     EXPECT_TRUE([observedEventNames containsObject:@"dragenter"]);
     EXPECT_TRUE([observedEventNames containsObject:@"dragover"]);
     EXPECT_TRUE([observedEventNames containsObject:@"drop"]);
-    checkSelectionRectsWithLogging(@[ makeCGRectValue(101, 241, 2057, 232) ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(2156, 241, 2, 232), [simulator finalSelectionStartRect]);
     checkTypeIdentifierIsRegisteredAtIndex(simulator.get(), (__bridge NSString *)kUTTypeURL, 0);
 }
 
@@ -579,7 +584,7 @@ TEST(DragAndDropTests, CanPreventStart)
     NSArray *observedEventNames = [simulator observedEventNames];
     EXPECT_FALSE([observedEventNames containsObject:@"dragenter"]);
     EXPECT_FALSE([observedEventNames containsObject:@"dragover"]);
-    checkSelectionRectsWithLogging(@[ ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(0, 0, 0, 0), [simulator finalSelectionStartRect]);
 }
 
 TEST(DragAndDropTests, CanPreventOperation)
@@ -595,7 +600,7 @@ TEST(DragAndDropTests, CanPreventOperation)
     NSArray *observedEventNames = [simulator observedEventNames];
     EXPECT_TRUE([observedEventNames containsObject:@"dragenter"]);
     EXPECT_TRUE([observedEventNames containsObject:@"dragover"]);
-    checkSelectionRectsWithLogging(@[ ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(0, 0, 0, 0), [simulator finalSelectionStartRect]);
 }
 
 TEST(DragAndDropTests, EnterAndLeaveEvents)
@@ -613,7 +618,7 @@ TEST(DragAndDropTests, EnterAndLeaveEvents)
     EXPECT_TRUE([observedEventNames containsObject:@"dragover"]);
     EXPECT_TRUE([observedEventNames containsObject:@"dragleave"]);
     EXPECT_FALSE([observedEventNames containsObject:@"drop"]);
-    checkSelectionRectsWithLogging(@[ ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(0, 0, 0, 0), [simulator finalSelectionStartRect]);
 }
 
 TEST(DragAndDropTests, CanStartDragOnDivWithDraggableAttribute)
@@ -1000,7 +1005,7 @@ TEST(DragAndDropTests, ExternalSourceUTF8PlainTextOnly)
     [simulator setExternalItemProviders:@[ simulatedItemProvider.get() ]];
     [simulator runFrom:CGPointMake(300, 400) to:CGPointMake(100, 300)];
     EXPECT_WK_STREQ(textPayload.UTF8String, [webView stringByEvaluatingJavaScript:@"editor.textContent"].UTF8String);
-    checkSelectionRectsWithLogging(@[ makeCGRectValue(1, 201, 1936, 227) ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(1935, 201, 2, 227), [simulator finalSelectionStartRect]);
 }
 
 TEST(DragAndDropTests, ExternalSourceJPEGOnly)
@@ -1020,7 +1025,7 @@ TEST(DragAndDropTests, ExternalSourceJPEGOnly)
     [simulator setExternalItemProviders:@[ simulatedItemProvider.get() ]];
     [simulator runFrom:CGPointMake(300, 400) to:CGPointMake(100, 300)];
     EXPECT_TRUE([webView editorContainsImageElement]);
-    checkSelectionRectsWithLogging(@[ makeCGRectValue(1, 201, 215, 174) ], [simulator finalSelectionRects]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(214, 201, 2, 223), [simulator finalSelectionStartRect]);
 }
 
 TEST(DragAndDropTests, ExternalSourceTitledNSURL)
@@ -1438,6 +1443,30 @@ TEST(DragAndDropTests, CancelledLiftDoesNotCauseSubsequentDragsToFail)
     EXPECT_WK_STREQ("PASS", [webView stringByEvaluatingJavaScript:@"target.textContent"]);
     [webView stringByEvaluatingJavaScript:@"output.textContent"];
     checkStringArraysAreEqual(@[@"dragstart", @"dragend"], [outputText componentsSeparatedByString:@" "]);
+}
+
+TEST(DragAndDropTests, WebProcessTerminationDuringDrag)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    [webView synchronouslyLoadTestPageNamed:@"link-and-target-div"];
+    auto simulator = adoptNS([[DragAndDropSimulator alloc] initWithWebView:webView.get()]);
+    [simulator setSessionWillBeginBlock:^{
+        [webView _killWebContentProcessAndResetState];
+    }];
+    [simulator runFrom:CGPointMake(100, 50) to:CGPointMake(300, 50)];
+}
+
+TEST(DragAndDropTests, WebViewRemovedFromViewHierarchyDuringDrag)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    [webView synchronouslyLoadTestPageNamed:@"link-and-target-div"];
+    auto simulator = adoptNS([[DragAndDropSimulator alloc] initWithWebView:webView.get()]);
+    [simulator setConvertItemProvidersBlock:[webView] (NSItemProvider *item, NSArray *, NSDictionary *) -> NSArray * {
+        [webView removeFromSuperview];
+        return @[ item ];
+    }];
+    [simulator runFrom:CGPointMake(100, 50) to:CGPointMake(300, 50)];
+    EXPECT_EQ([simulator cancellationPreviews].firstObject, nil);
 }
 
 static void testDragAndDropOntoTargetElements(TestWKWebView *webView)
@@ -1916,7 +1945,10 @@ TEST(DragAndDropTests, DataTransferExposePlainTextWithFileURLAsFile)
     EXPECT_WK_STREQ("", [webView stringByEvaluatingJavaScript:@"urlData.textContent"]);
     EXPECT_WK_STREQ("", [webView stringByEvaluatingJavaScript:@"htmlData.textContent"]);
     EXPECT_WK_STREQ("(FILE, text/plain)", [webView stringByEvaluatingJavaScript:@"items.textContent"]);
-    EXPECT_WK_STREQ("('text.txt', text/plain)", [webView stringByEvaluatingJavaScript:@"files.textContent"]);
+
+    NSString *filesOutput = [webView stringByEvaluatingJavaScript:@"files.textContent"];
+    EXPECT_TRUE([filesOutput containsString:@"text/plain)"]);
+    EXPECT_TRUE([filesOutput containsString:@".txt', "]);
 }
 
 TEST(DragAndDropTests, DataTransferGetDataCannotReadPrivateArbitraryTypes)
@@ -2082,6 +2114,44 @@ TEST(DragAndDropTests, DataTransferSanitizeHTML)
     TestWebKitAPI::Util::run(&done);
 }
 
+static BOOL isCompletelyWhite(UIImage *image)
+{
+    auto data = adoptCF(CGDataProviderCopyData(CGImageGetDataProvider(image.CGImage)));
+    auto* dataPtr = CFDataGetBytePtr(data.get());
+    int imageWidth = image.size.width;
+    for (int row = 0; row < image.size.height; ++row) {
+        for (int column = 0; column < imageWidth; ++column) {
+            int pixelOffset = ((imageWidth * row) + column) * 4;
+            if (dataPtr[pixelOffset] != 0xFF || dataPtr[pixelOffset + 1] != 0xFF || dataPtr[pixelOffset + 2] != 0xFF)
+                return NO;
+        }
+    }
+    return YES;
+}
+
+TEST(DragAndDropTests, DropPreviewForImageInEditableArea)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    [webView synchronouslyLoadTestPageNamed:@"image-and-contenteditable"];
+
+    // Ensure that the resulting snapshot on drop contains only the dragged image.
+    [webView stringByEvaluatingJavaScript:@"editor.style.border = 'none'; editor.style.outline = 'none'"];
+
+    auto simulator = adoptNS([[DragAndDropSimulator alloc] initWithWebView:webView.get()]);
+    [simulator runFrom:CGPointMake(100, 50) to:CGPointMake(100, 300)];
+
+    NSArray *dropPreviews = [simulator dropPreviews];
+    NSArray *delayedDropPreviews = [simulator delayedDropPreviews];
+    EXPECT_EQ(1U, dropPreviews.count);
+    EXPECT_EQ(1U, delayedDropPreviews.count);
+    EXPECT_EQ(UITargetedDragPreview.class, [dropPreviews.firstObject class]);
+    EXPECT_EQ(UITargetedDragPreview.class, [delayedDropPreviews.firstObject class]);
+
+    UITargetedDragPreview *finalPreview = (UITargetedDragPreview *)delayedDropPreviews.firstObject;
+    EXPECT_EQ(UIImageView.class, finalPreview.view.class);
+    EXPECT_FALSE(isCompletelyWhite([(UIImageView *)finalPreview.view image]));
+}
+
 } // namespace TestWebKitAPI
 
-#endif // ENABLE(DRAG_SUPPORT) && PLATFORM(IOS_FAMILY) && WK_API_ENABLED
+#endif // ENABLE(DRAG_SUPPORT) && PLATFORM(IOS_FAMILY)

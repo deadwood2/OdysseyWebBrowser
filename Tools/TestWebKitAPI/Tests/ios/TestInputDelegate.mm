@@ -26,13 +26,16 @@
 #include "config.h"
 #include "TestInputDelegate.h"
 
-#if WK_API_ENABLED && PLATFORM(IOS_FAMILY)
+#if PLATFORM(IOS_FAMILY)
 
 #import <wtf/BlockPtr.h>
 
 @implementation TestInputDelegate {
     BlockPtr<_WKFocusStartsInputSessionPolicy(WKWebView *, id <_WKFocusedElementInfo>)> _focusStartsInputSessionPolicyHandler;
     BlockPtr<void(WKWebView *, id <_WKFormInputSession>)> _willStartInputSessionHandler;
+    BlockPtr<void(WKWebView *, id <_WKFormInputSession>)> _didStartInputSessionHandler;
+    BlockPtr<NSDictionary<id, NSString *> *(WKWebView *)> _webViewAdditionalContextForStrongPasswordAssistanceHandler;
+    BlockPtr<BOOL(WKWebView *, id <_WKFocusedElementInfo>)> _focusRequiresStrongPasswordAssistanceHandler;
 }
 
 - (void)setFocusStartsInputSessionPolicyHandler:(_WKFocusStartsInputSessionPolicy (^)(WKWebView *, id <_WKFocusedElementInfo>))handler
@@ -45,12 +48,22 @@
     return _focusStartsInputSessionPolicyHandler.get();
 }
 
-- (void)setWillStartInputSessionHandler:(void (^)(WKWebView *, id<_WKFormInputSession>))willStartInputSessionHandler
+- (void)setDidStartInputSessionHandler:(void (^)(WKWebView *, id <_WKFormInputSession>))handler
+{
+    _didStartInputSessionHandler = makeBlockPtr(handler);
+}
+
+- (void (^)(WKWebView *, id <_WKFormInputSession>))didStartInputSessionHandler
+{
+    return _didStartInputSessionHandler.get();
+}
+
+- (void)setWillStartInputSessionHandler:(void (^)(WKWebView *, id <_WKFormInputSession>))willStartInputSessionHandler
 {
     _willStartInputSessionHandler = makeBlockPtr(willStartInputSessionHandler);
 }
 
-- (void (^)(WKWebView *, id<_WKFormInputSession>))willStartInputSessionHandler
+- (void (^)(WKWebView *, id <_WKFormInputSession>))willStartInputSessionHandler
 {
     return _willStartInputSessionHandler.get();
 }
@@ -60,12 +73,52 @@
     return self.focusStartsInputSessionPolicyHandler ? self.focusStartsInputSessionPolicyHandler(webView, info) : _WKFocusStartsInputSessionPolicyAuto;
 }
 
-- (void)_webView:(WKWebView *)webView willStartInputSession:(id<_WKFormInputSession>)inputSession
+- (void)_webView:(WKWebView *)webView willStartInputSession:(id <_WKFormInputSession>)inputSession
 {
     if (_willStartInputSessionHandler)
         _willStartInputSessionHandler(webView, inputSession);
 }
 
+- (void)_webView:(WKWebView *)webView didStartInputSession:(id <_WKFormInputSession>)inputSession
+{
+    if (_didStartInputSessionHandler)
+        _didStartInputSessionHandler(webView, inputSession);
+}
+
+- (void)setWebViewAdditionalContextForStrongPasswordAssistanceHandler:(NSDictionary<id, NSString *> * (^)(WKWebView *))webViewAdditionalContextForStrongPasswordAssistanceHandler
+{
+    _webViewAdditionalContextForStrongPasswordAssistanceHandler = makeBlockPtr(webViewAdditionalContextForStrongPasswordAssistanceHandler);
+}
+
+- (NSDictionary<id, NSString *> * (^)(WKWebView *))webViewAdditionalContextForStrongPasswordAssistanceHandler
+{
+    return _webViewAdditionalContextForStrongPasswordAssistanceHandler.get();
+}
+
+- (NSDictionary<id, NSString *> *)_webViewAdditionalContextForStrongPasswordAssistance:(WKWebView *)webView
+{
+    if (_webViewAdditionalContextForStrongPasswordAssistanceHandler)
+        return _webViewAdditionalContextForStrongPasswordAssistanceHandler(webView);
+    return @{ };
+}
+
+- (void)setFocusRequiresStrongPasswordAssistanceHandler:(BOOL (^)(WKWebView *, id <_WKFocusedElementInfo>))handler
+{
+    _focusRequiresStrongPasswordAssistanceHandler = makeBlockPtr(handler);
+}
+
+- (BOOL (^)(WKWebView *, id <_WKFocusedElementInfo>))focusRequiresStrongPasswordAssistanceHandler
+{
+    return _focusRequiresStrongPasswordAssistanceHandler.get();
+}
+
+- (BOOL)_webView:(WKWebView *)webView focusRequiresStrongPasswordAssistance:(id <_WKFocusedElementInfo>)info
+{
+    if (_focusRequiresStrongPasswordAssistanceHandler)
+        return _focusRequiresStrongPasswordAssistanceHandler(webView, info);
+    return NO;
+}
+
 @end
 
-#endif // WK_API_ENABLED && PLATFORM(IOS_FAMILY)
+#endif // PLATFORM(IOS_FAMILY)

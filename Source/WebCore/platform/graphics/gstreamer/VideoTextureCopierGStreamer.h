@@ -30,19 +30,21 @@
 namespace WebCore {
 
 class TextureMapperShaderProgram;
-class ImageOrientation;
+struct ImageOrientation;
 
 class VideoTextureCopierGStreamer {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     enum class ColorConversion {
         ConvertBGRAToRGBA,
-        ConvertARGBToRGBA
+        ConvertARGBToRGBA,
+        NoConvert,
     };
 
     VideoTextureCopierGStreamer(ColorConversion);
     ~VideoTextureCopierGStreamer();
 
-    bool copyVideoTextureToPlatformTexture(GLuint inputTexture, IntSize& frameSize, GLuint outputTexture, GLenum outputTarget, GLint level, GLenum internalFormat, GLenum format, GLenum type, bool flipY, ImageOrientation& sourceOrientation);
+    bool copyVideoTextureToPlatformTexture(GLuint inputTexture, IntSize& frameSize, GLuint outputTexture, GLenum outputTarget, GLint level, GLenum internalFormat, GLenum format, GLenum type, bool flipY, ImageOrientation sourceOrientation);
     void updateColorConversionMatrix(ColorConversion);
     void updateTextureSpaceMatrix();
     void updateTransformationMatrix();

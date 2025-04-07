@@ -27,6 +27,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#import <WebCore/DOMPasteAccess.h>
 #import <WebCore/EditorClient.h>
 #import <WebCore/TextCheckerClient.h>
 #import <WebCore/VisibleSelection.h>
@@ -44,6 +45,7 @@
 @class WebEditorUndoTarget;
 
 class WebEditorClient final : public WebCore::EditorClient, public WebCore::TextCheckerClient, public CanMakeWeakPtr<WebEditorClient> {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WebEditorClient(WebView *);
     virtual ~WebEditorClient();
@@ -78,9 +80,9 @@ private:
     void willWriteSelectionToPasteboard(WebCore::Range*) final;
     void didWriteSelectionToPasteboard() final;
     void getClientPasteboardDataForRange(WebCore::Range*, Vector<String>& pasteboardTypes, Vector<RefPtr<WebCore::SharedBuffer>>& pasteboardData) final;
-    String replacementURLForResource(Ref<WebCore::SharedBuffer>&& resourceData, const String& mimeType) final;
 
     void setInsertionPasteboard(const String&) final;
+    WebCore::DOMPasteAccessResponse requestDOMPasteAccess(const String&) final { return WebCore::DOMPasteAccessResponse::DeniedForGesture; }
 
 #if USE(APPKIT)
     void uppercaseWord() final;
@@ -126,8 +128,8 @@ private:
     void undo() final;
     void redo() final;
     
-    void handleKeyboardEvent(WebCore::KeyboardEvent*) final;
-    void handleInputMethodKeydown(WebCore::KeyboardEvent*) final;
+    void handleKeyboardEvent(WebCore::KeyboardEvent&) final;
+    void handleInputMethodKeydown(WebCore::KeyboardEvent&) final;
 
     void textFieldDidBeginEditing(WebCore::Element*) final;
     void textFieldDidEndEditing(WebCore::Element*) final;
@@ -173,6 +175,19 @@ private:
 #endif
 
     void registerUndoOrRedoStep(WebCore::UndoStep&, bool isRedo);
+
+#if PLATFORM(IOS_FAMILY)
+    bool shouldAllowSingleClickToChangeSelection(WebCore::Node& targetNode, const WebCore::VisibleSelection& newSelection) const;
+#endif
+
+    bool canShowFontPanel() const final
+    {
+#if PLATFORM(MAC)
+        return true;
+#else
+        return false;
+#endif
+    }
 
     WebView *m_webView;
     RetainPtr<WebEditorUndoTarget> m_undoTarget;

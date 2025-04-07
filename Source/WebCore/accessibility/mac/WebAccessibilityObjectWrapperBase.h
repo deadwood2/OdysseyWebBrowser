@@ -30,6 +30,7 @@
 #define WebAccessibilityObjectWrapperBase_h
 
 #include "AXIsolatedTree.h"
+#include "AXIsolatedTreeNode.h"
 #include "AccessibilityObject.h"
 #include <CoreGraphics/CoreGraphics.h>
 #include <wtf/RefPtr.h>
@@ -52,6 +53,9 @@ class VisiblePosition;
 @interface WebAccessibilityObjectWrapperBase : NSObject {
     WebCore::AccessibilityObject* m_object;
     WebCore::AXID _identifier;
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+    RefPtr<WebCore::AXIsolatedTreeNode> m_isolatedTreeNode;
+#endif
 }
  
 - (id)initWithAccessibilityObject:(WebCore::AccessibilityObject*)axObject;
@@ -77,6 +81,7 @@ class VisiblePosition;
 - (NSString *)baseAccessibilityHelpText;
 - (NSArray<NSString *> *)baseAccessibilitySpeechHint;
 
+- (void)baseAccessibilitySetFocus:(BOOL)focus;
 - (NSString *)ariaLandmarkRoleDescription;
 
 - (id)attachmentView;
@@ -86,14 +91,17 @@ class VisiblePosition;
 
 - (CGPathRef)convertPathToScreenSpace:(WebCore::Path &)path;
 
-enum ConversionSpace { ScreenSpace, PageSpace };
-- (CGRect)convertRectToSpace:(WebCore::FloatRect &)rect space:(ConversionSpace)space;
+- (CGRect)convertRectToSpace:(WebCore::FloatRect &)rect space:(WebCore::AccessibilityConversionSpace)space;
 
 // Math related functions
 - (NSArray *)accessibilityMathPostscriptPairs;
 - (NSArray *)accessibilityMathPrescriptPairs;
 
 extern WebCore::AccessibilitySearchCriteria accessibilitySearchCriteriaForSearchPredicateParameterizedAttribute(const NSDictionary *);
+
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+extern NSArray *convertToNSArray(const Vector<RefPtr<WebCore::AXIsolatedTreeNode>>&);
+#endif
 extern NSArray *convertToNSArray(const WebCore::AccessibilityObject::AccessibilityChildrenVector&);
 
 #if PLATFORM(IOS_FAMILY)

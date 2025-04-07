@@ -30,6 +30,7 @@
 #include "Logging.h"
 #include "NetworkCORSPreflightChecker.h"
 #include "NetworkProcess.h"
+#include <WebCore/ContentRuleListResults.h>
 #include <WebCore/ContentSecurityPolicy.h>
 #include <WebCore/CrossOriginAccessControl.h>
 #include <WebCore/CrossOriginPreflightResultCache.h>
@@ -47,7 +48,7 @@ static inline bool isSameOrigin(const URL& url, const SecurityOrigin* origin)
     return url.protocolIsData() || url.protocolIsBlob() || !origin || origin->canRequest(url);
 }
 
-NetworkLoadChecker::NetworkLoadChecker(NetworkProcess& networkProcess, FetchOptions&& options, PAL::SessionID sessionID, uint64_t pageID, uint64_t frameID, HTTPHeaderMap&& originalRequestHeaders, URL&& url, RefPtr<SecurityOrigin>&& sourceOrigin, PreflightPolicy preflightPolicy, String&& referrer, bool isHTTPSUpgradeEnabled, bool shouldCaptureExtraNetworkLoadMetrics, LoadType requestLoadType)
+NetworkLoadChecker::NetworkLoadChecker(NetworkProcess& networkProcess, FetchOptions&& options, PAL::SessionID sessionID, PageIdentifier pageID, FrameIdentifier frameID, HTTPHeaderMap&& originalRequestHeaders, URL&& url, RefPtr<SecurityOrigin>&& sourceOrigin, PreflightPolicy preflightPolicy, String&& referrer, bool isHTTPSUpgradeEnabled, bool shouldCaptureExtraNetworkLoadMetrics, LoadType requestLoadType)
     : m_options(WTFMove(options))
     , m_sessionID(sessionID)
     , m_networkProcess(networkProcess)
@@ -224,7 +225,9 @@ void NetworkLoadChecker::checkRequest(ResourceRequest&& request, ContentSecurity
 {
     ResourceRequest originalRequest = request;
 
-    applyHTTPSUpgradeIfNeeded(WTFMove(request), [this, client, handler = WTFMove(handler), originalRequest = WTFMove(originalRequest)](auto request) mutable {
+    applyHTTPSUpgradeIfNeeded(WTFMove(request), [this, weakThis = makeWeakPtr(*this), client, handler = WTFMove(handler), originalRequest = WTFMove(originalRequest)](auto request) mutable {
+        if (!weakThis)
+            return handler({ ResourceError { ResourceError::Type::Cancellation }});
 
         if (auto* contentSecurityPolicy = this->contentSecurityPolicy()) {
             if (this->isRedirected()) {
@@ -238,17 +241,19 @@ void NetworkLoadChecker::checkRequest(ResourceRequest&& request, ContentSecurity
         }
 
 #if ENABLE(CONTENT_EXTENSIONS)
-        this->processContentExtensionRulesForLoad(WTFMove(request), [this, handler = WTFMove(handler), originalRequest = WTFMove(originalRequest)](auto result) mutable {
+        this->processContentRuleListsForLoad(WTFMove(request), [this, weakThis = WTFMove(weakThis), handler = WTFMove(handler), originalRequest = WTFMove(originalRequest)](auto result) mutable {
             if (!result.has_value()) {
                 ASSERT(result.error().isCancellation());
                 handler(WTFMove(result.error()));
                 return;
             }
-            if (result.value().status.blockedLoad) {
+            if (result.value().results.summary.blockedLoad) {
                 handler(this->accessControlErrorForValidationHandler("Blocked by content extension"_s));
                 return;
             }
 
+            if (!weakThis)
+                return handler({ ResourceError { ResourceError::Type::Cancellation }});
             this->continueCheckingRequestOrDoSyntheticRedirect(WTFMove(originalRequest), WTFMove(result.value().request), WTFMove(handler));
         });
 #else
@@ -408,7 +413,7 @@ void NetworkLoadChecker::checkCORSRequestWithPreflight(ResourceRequest&& request
         m_frameID,
         m_storedCredentialsPolicy
     };
-    m_corsPreflightChecker = std::make_unique<NetworkCORSPreflightChecker>(m_networkProcess.get(), WTFMove(parameters), m_shouldCaptureExtraNetworkLoadMetrics, [this, request = WTFMove(request), handler = WTFMove(handler), isRedirected = isRedirected()](auto&& error) mutable {
+    m_corsPreflightChecker = makeUnique<NetworkCORSPreflightChecker>(m_networkProcess.get(), WTFMove(parameters), m_shouldCaptureExtraNetworkLoadMetrics, [this, request = WTFMove(request), handler = WTFMove(handler), isRedirected = isRedirected()](auto&& error) mutable {
         RELEASE_LOG_IF_ALLOWED("checkCORSRequestWithPreflight - makeCrossOriginAccessRequestWithPreflight preflight complete, success: %d forRedirect? %d", error.isNull(), isRedirected);
 
         if (!error.isNull()) {
@@ -441,19 +446,19 @@ ContentSecurityPolicy* NetworkLoadChecker::contentSecurityPolicy()
 {
     if (!m_contentSecurityPolicy && m_cspResponseHeaders) {
         // FIXME: Pass the URL of the protected resource instead of its origin.
-        m_contentSecurityPolicy = std::make_unique<ContentSecurityPolicy>(URL { URL { }, m_origin->toString() });
+        m_contentSecurityPolicy = makeUnique<ContentSecurityPolicy>(URL { URL { }, m_origin->toString() });
         m_contentSecurityPolicy->didReceiveHeaders(*m_cspResponseHeaders, String { m_referrer }, ContentSecurityPolicy::ReportParsingErrors::No);
     }
     return m_contentSecurityPolicy.get();
 }
 
 #if ENABLE(CONTENT_EXTENSIONS)
-void NetworkLoadChecker::processContentExtensionRulesForLoad(ResourceRequest&& request, ContentExtensionCallback&& callback)
+void NetworkLoadChecker::processContentRuleListsForLoad(ResourceRequest&& request, ContentExtensionCallback&& callback)
 {
     // FIXME: Enable content blockers for navigation loads.
     if (!m_checkContentExtensions || !m_userContentControllerIdentifier || m_options.mode == FetchOptions::Mode::Navigate) {
-        ContentExtensions::BlockedStatus status;
-        callback(ContentExtensionResult { WTFMove(request), status });
+        ContentRuleListResults results;
+        callback(ContentExtensionResult { WTFMove(request), results });
         return;
     }
 
@@ -463,9 +468,9 @@ void NetworkLoadChecker::processContentExtensionRulesForLoad(ResourceRequest&& r
             return;
         }
 
-        auto status = backend.processContentExtensionRulesForPingLoad(request.url(), m_mainDocumentURL);
-        applyBlockedStatusToRequest(status, nullptr, request);
-        callback(ContentExtensionResult { WTFMove(request), status });
+        auto results = backend.processContentRuleListsForPingLoad(request.url(), m_mainDocumentURL);
+        WebCore::ContentExtensions::applyResultsToRequest(ContentRuleListResults { results }, nullptr, request);
+        callback(ContentExtensionResult { WTFMove(request), results });
     });
 }
 #endif // ENABLE(CONTENT_EXTENSIONS)

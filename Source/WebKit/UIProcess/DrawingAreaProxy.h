@@ -29,6 +29,7 @@
 #include "DrawingAreaInfo.h"
 #include "GenericCallback.h"
 #include "MessageReceiver.h"
+#include "MessageSender.h"
 #include <WebCore/FloatRect.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/IntSize.h>
@@ -50,13 +51,15 @@ class UpdateInfo;
 class WebPageProxy;
 class WebProcessProxy;
 
-class DrawingAreaProxy : public IPC::MessageReceiver {
+class DrawingAreaProxy : public IPC::MessageReceiver, protected IPC::MessageSender {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(DrawingAreaProxy);
 
 public:
     virtual ~DrawingAreaProxy();
 
     DrawingAreaType type() const { return m_type; }
+    DrawingAreaIdentifier identifier() const { return m_identifier; }
 
     virtual void deviceScaleFactorDidChange() = 0;
 
@@ -72,7 +75,7 @@ public:
     static constexpr Seconds didUpdateBackingStoreStateTimeout() { return Seconds::fromMilliseconds(500); }
 
     virtual void colorSpaceDidChange() { }
-    virtual void viewLayoutSizeDidChange() { }
+    virtual void minimumSizeForAutoLayoutDidChange() { }
 
     virtual void adjustTransientZoom(double, WebCore::FloatPoint) { }
     virtual void commitTransientZoom(double, WebCore::FloatPoint) { }
@@ -109,11 +112,13 @@ public:
 
     WebPageProxy& page() const { return m_webPageProxy; }
     WebProcessProxy& process() { return m_process.get(); }
+    const WebProcessProxy& process() const { return m_process.get(); }
 
 protected:
     DrawingAreaProxy(DrawingAreaType, WebPageProxy&, WebProcessProxy&);
 
     DrawingAreaType m_type;
+    DrawingAreaIdentifier m_identifier;
     WebPageProxy& m_webPageProxy;
     Ref<WebProcessProxy> m_process;
 
@@ -126,6 +131,10 @@ protected:
 private:
     virtual void sizeDidChange() = 0;
 
+    IPC::Connection* messageSenderConnection() const final;
+    uint64_t messageSenderDestinationID() const final { return m_identifier.toUInt64(); }
+    bool sendMessage(std::unique_ptr<IPC::Encoder>, OptionSet<IPC::SendOption>) final;
+
     // Message handlers.
     // FIXME: These should be pure virtual.
     virtual void update(uint64_t /* backingStoreStateID */, const UpdateInfo&) { }
@@ -135,7 +144,6 @@ private:
     virtual void updateAcceleratedCompositingMode(uint64_t /* backingStoreStateID */, const LayerTreeContext&) { }
 #if PLATFORM(COCOA)
     virtual void didUpdateGeometry() { }
-    virtual void intrinsicContentSizeDidChange(const WebCore::IntSize&) { }
 
 #if PLATFORM(MAC)
     RunLoop::Timer<DrawingAreaProxy> m_viewExposedRectChangedTimer;

@@ -27,6 +27,10 @@
 
 #include "WebLocalizableStrings.h"
 
+#if USE(CF)
+
+#include <CoreFoundation/CoreFoundation.h>
+
 #include <wtf/text/CString.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
@@ -37,7 +41,6 @@
 #include <wtf/RetainPtr.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/ThreadingPrimitives.h>
-#include <CoreFoundation/CoreFoundation.h>
 
 class LocalizedString;
 
@@ -81,7 +84,7 @@ private:
 LocalizedString::operator LPCTSTR() const
 {
     if (!m_string.isEmpty())
-        return m_string.charactersWithNullTermination().data();
+        return m_string.wideCharacters().data();
 
     m_string = m_cfString;
 
@@ -89,7 +92,7 @@ LocalizedString::operator LPCTSTR() const
         if (m_string[i] == '@' && (m_string[i - 1] == '%' || (i > 2 && m_string[i - 1] == '$' && m_string[i - 2] >= '1' && m_string[i - 2] <= '9' && m_string[i - 3] == '%')))
             m_string.replace(i, 1, "s");
 
-    return m_string.charactersWithNullTermination().data();
+    return m_string.wideCharacters().data();
 }
 
 static CFBundleRef createWebKitBundle()
@@ -241,3 +244,4 @@ LPCTSTR WebLocalizedLPCTSTR(WebLocalizableStringsBundle* stringsBundle, LPCTSTR 
 void SetWebLocalizedStringMainBundle(CFBundleRef)
 {
 }
+#endif

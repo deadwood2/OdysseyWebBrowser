@@ -84,7 +84,7 @@ DragImageRef scaleDragImage(DragImageRef, FloatSize scale);
 DragImageRef platformAdjustDragImageForDeviceScaleFactor(DragImageRef, float deviceScaleFactor);
 DragImageRef dissolveDragImageToFraction(DragImageRef, float delta);
 
-DragImageRef createDragImageFromImage(Image*, ImageOrientationDescription);
+DragImageRef createDragImageFromImage(Image*, ImageOrientation);
 DragImageRef createDragImageIconForCachedImageFilename(const String&);
 
 WEBCORE_EXPORT DragImageRef createDragImageForNode(Frame&, Node&);
@@ -102,10 +102,10 @@ class DragImage final {
 public:
     WEBCORE_EXPORT DragImage();
     explicit DragImage(DragImageRef);
-    DragImage(DragImage&&);
+    WEBCORE_EXPORT DragImage(DragImage&&);
     WEBCORE_EXPORT ~DragImage();
 
-    DragImage& operator=(DragImage&&);
+    WEBCORE_EXPORT DragImage& operator=(DragImage&&);
 
     void setIndicatorData(const TextIndicatorData& data) { m_indicatorData = data; }
     bool hasIndicatorData() const { return !!m_indicatorData; }

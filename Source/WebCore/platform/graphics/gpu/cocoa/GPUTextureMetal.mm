@@ -54,46 +54,46 @@ static MTLTextureType mtlTextureTypeForGPUTextureDescriptor(const GPUTextureDesc
     }
 }
 
-static Optional<MTLTextureUsage> mtlTextureUsageForGPUTextureUsageFlags(GPUTextureUsageFlags flags)
-{
-    MTLTextureUsage usage = MTLTextureUsageUnknown;
-
-    if (flags & GPUTextureUsage::Storage)
-        usage |= MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead | MTLTextureUsagePixelFormatView;
-
-    if (flags & GPUTextureUsage::Sampled) {
-        // SAMPLED is a read-only usage.
-        if (flags & GPUTextureUsage::Storage)
-            return WTF::nullopt;
-
-        usage |= MTLTextureUsageShaderRead | MTLTextureUsagePixelFormatView;
-    }
-
-    if (flags & GPUTextureUsage::OutputAttachment)
-        usage |= MTLTextureUsageRenderTarget;
-
-    return usage;
-}
-
-static MTLStorageMode storageModeForPixelFormatAndSampleCount(MTLPixelFormat format, unsigned long samples)
-{
-    // Depth, Stencil, DepthStencil, and Multisample textures must be allocated with the MTLStorageModePrivate resource option.
-    if (format == MTLPixelFormatDepth32Float_Stencil8 || samples > 1)
-        return MTLStorageModePrivate;
-
-#if PLATFORM(MAC)
-    return MTLStorageModeManaged;
-#else
-    return MTLStorageModeShared;
-#endif
-}
-
-static RetainPtr<MTLTextureDescriptor> tryCreateMtlTextureDescriptor(const char* const functionName, const GPUTextureDescriptor&& descriptor)
+static Optional<MTLTextureUsage> mtlTextureUsageForGPUTextureUsageFlags(OptionSet<GPUTextureUsage::Flags> flags, const char* const functionName)
 {
 #if LOG_DISABLED
     UNUSED_PARAM(functionName);
 #endif
 
+    if (flags.containsAny({ GPUTextureUsage::Flags::TransferSource, GPUTextureUsage::Flags::Sampled }) && (flags & GPUTextureUsage::Flags::Storage)) {
+        LOG(WebGPU, "%s: Texture cannot have both STORAGE and a read-only usage!", functionName);
+        return WTF::nullopt;
+    }
+
+    if (flags & GPUTextureUsage::Flags::OutputAttachment && flags.containsAny({ GPUTextureUsage::Flags::Storage, GPUTextureUsage::Flags::Sampled })) {
+        LOG(WebGPU, "%s: Texture cannot have OUTPUT_ATTACHMENT usage with STORAGE or SAMPLED usages!", functionName);
+        return WTF::nullopt;
+    }
+
+    MTLTextureUsage result = MTLTextureUsagePixelFormatView;
+    if (flags.contains(GPUTextureUsage::Flags::OutputAttachment))
+        result |= MTLTextureUsageRenderTarget;
+    if (flags.containsAny({ GPUTextureUsage::Flags::Storage, GPUTextureUsage::Flags::Sampled }))
+        result |= MTLTextureUsageShaderRead;
+    if (flags.contains(GPUTextureUsage::Flags::Storage))
+        result |= MTLTextureUsageShaderWrite;
+
+    return result;
+}
+
+#if !PLATFORM(MAC)
+static MTLStorageMode storageModeForPixelFormatAndSampleCount(MTLPixelFormat format, unsigned samples)
+{
+    // Depth, Stencil, DepthStencil, and Multisample textures must be allocated with the MTLStorageModePrivate resource option.
+    if (format == MTLPixelFormatDepth32Float_Stencil8 || samples > 1)
+        return MTLStorageModePrivate;
+
+    return MTLStorageModeShared;
+}
+#endif
+
+static RetainPtr<MTLTextureDescriptor> tryCreateMtlTextureDescriptor(const char* const functionName, const GPUTextureDescriptor& descriptor, OptionSet<GPUTextureUsage::Flags> usage)
+{
     RetainPtr<MTLTextureDescriptor> mtlDescriptor;
 
     BEGIN_BLOCK_OBJC_EXCEPTIONS;
@@ -110,13 +110,15 @@ static RetainPtr<MTLTextureDescriptor> tryCreateMtlTextureDescriptor(const char*
     // FIXME: Add more validation as constraints are added to spec.
     auto pixelFormat = static_cast<MTLPixelFormat>(platformTextureFormatForGPUTextureFormat(descriptor.format));
 
-    auto usage = mtlTextureUsageForGPUTextureUsageFlags(descriptor.usage);
-    if (!usage) {
-        LOG(WebGPU, "%s: Invalid GPUTextureUsageFlags!", functionName);
+    auto mtlUsage = mtlTextureUsageForGPUTextureUsageFlags(usage, functionName);
+    if (!mtlUsage)
         return nullptr;
-    }
 
+#if PLATFORM(MAC)
+    auto storageMode = MTLStorageModePrivate;
+#else
     auto storageMode = storageModeForPixelFormatAndSampleCount(pixelFormat, descriptor.sampleCount);
+#endif
 
     BEGIN_BLOCK_OBJC_EXCEPTIONS;
 
@@ -128,7 +130,7 @@ static RetainPtr<MTLTextureDescriptor> tryCreateMtlTextureDescriptor(const char*
     [mtlDescriptor setSampleCount:descriptor.sampleCount];
     [mtlDescriptor setTextureType:mtlTextureTypeForGPUTextureDescriptor(descriptor)];
     [mtlDescriptor setPixelFormat:pixelFormat];
-    [mtlDescriptor setUsage:*usage];
+    [mtlDescriptor setUsage:*mtlUsage];
 
     [mtlDescriptor setStorageMode:storageMode];
 
@@ -137,7 +139,7 @@ static RetainPtr<MTLTextureDescriptor> tryCreateMtlTextureDescriptor(const char*
     return mtlDescriptor;
 }
 
-RefPtr<GPUTexture> GPUTexture::tryCreate(const GPUDevice& device, GPUTextureDescriptor&& descriptor)
+RefPtr<GPUTexture> GPUTexture::tryCreate(const GPUDevice& device, const GPUTextureDescriptor& descriptor)
 {
     const char* const functionName = "GPUTexture::tryCreate()";
 
@@ -146,7 +148,8 @@ RefPtr<GPUTexture> GPUTexture::tryCreate(const GPUDevice& device, GPUTextureDesc
         return nullptr;
     }
 
-    auto mtlDescriptor = tryCreateMtlTextureDescriptor(functionName, WTFMove(descriptor));
+    auto usage = OptionSet<GPUTextureUsage::Flags>::fromRaw(descriptor.usage);
+    auto mtlDescriptor = tryCreateMtlTextureDescriptor(functionName, descriptor, usage);
     if (!mtlDescriptor)
         return nullptr;
 
@@ -163,20 +166,26 @@ RefPtr<GPUTexture> GPUTexture::tryCreate(const GPUDevice& device, GPUTextureDesc
         return nullptr;
     }
 
-    return adoptRef(new GPUTexture(WTFMove(mtlTexture)));
+    return adoptRef(new GPUTexture(WTFMove(mtlTexture), usage));
 }
 
-Ref<GPUTexture> GPUTexture::create(PlatformTextureSmartPtr&& texture)
+Ref<GPUTexture> GPUTexture::create(RetainPtr<MTLTexture>&& texture, OptionSet<GPUTextureUsage::Flags> usage)
 {
-    return adoptRef(*new GPUTexture(WTFMove(texture)));
+    return adoptRef(*new GPUTexture(WTFMove(texture), usage));
 }
 
-GPUTexture::GPUTexture(PlatformTextureSmartPtr&& texture)
+GPUTexture::GPUTexture(RetainPtr<MTLTexture>&& texture, OptionSet<GPUTextureUsage::Flags> usage)
     : m_platformTexture(WTFMove(texture))
+    , m_usage(usage)
 {
+    m_platformUsage = MTLResourceUsageRead;
+    if (isSampled())
+        m_platformUsage |= MTLResourceUsageSample;
+    else if (isStorage())
+        m_platformUsage |= MTLResourceUsageWrite;
 }
 
-RefPtr<GPUTexture> GPUTexture::createDefaultTextureView()
+RefPtr<GPUTexture> GPUTexture::tryCreateDefaultTextureView()
 {
     RetainPtr<MTLTexture> texture;
 
@@ -191,7 +200,7 @@ RefPtr<GPUTexture> GPUTexture::createDefaultTextureView()
         return nullptr;
     }
 
-    return GPUTexture::create(WTFMove(texture));
+    return GPUTexture::create(WTFMove(texture), m_usage);
 }
 
 } // namespace WebCore

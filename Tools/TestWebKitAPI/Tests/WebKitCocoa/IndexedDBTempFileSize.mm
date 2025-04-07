@@ -27,6 +27,7 @@
 
 #import "PlatformUtilities.h"
 #import "Test.h"
+#import <WebCore/SQLiteFileSystem.h>
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKUserContentControllerPrivate.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
@@ -37,8 +38,6 @@
 #import <WebKit/_WKUserStyleSheet.h>
 #import <WebKit/_WKWebsiteDataStoreConfiguration.h>
 #import <wtf/RetainPtr.h>
-
-#if WK_API_ENABLED
 
 static bool readyToContinue;
 static bool receivedScriptMessage;
@@ -63,8 +62,11 @@ TEST(IndexedDB, IndexedDBTempFileSize)
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     [[configuration userContentController] addScriptMessageHandler:handler.get() name:@"testHandler"];
 
-    RetainPtr<NSURL> idbPath = [NSURL fileURLWithPath:[@"~/Library/WebKit/TestWebKitAPI/CustomWebsiteData/IndexedDB/" stringByExpandingTildeInPath] isDirectory:YES];
-    RetainPtr<NSURL> walFilePath = [NSURL fileURLWithPath:[@"~/Library/WebKit/TestWebKitAPI/CustomWebsiteData/IndexedDB/file__0/IndexedDBTempFileSize/IndexedDB.sqlite3-wal" stringByExpandingTildeInPath] isDirectory:NO];
+    NSString *hash = WebCore::SQLiteFileSystem::computeHashForFileName("IndexedDBTempFileSize");
+    NSString *databaseRootDirectory = [@"~/Library/WebKit/TestWebKitAPI/CustomWebsiteData/IndexedDB/" stringByExpandingTildeInPath];
+    NSString *databaseDirectory = [[[databaseRootDirectory stringByAppendingPathComponent:@"v1"] stringByAppendingPathComponent:@"file__0"] stringByAppendingPathComponent:hash];
+    RetainPtr<NSURL> idbPath = [NSURL fileURLWithPath:databaseRootDirectory isDirectory:YES];
+    RetainPtr<NSURL> walFilePath = [NSURL fileURLWithPath:[databaseDirectory stringByAppendingPathComponent:@"IndexedDB.sqlite3-wal"] isDirectory:NO];
 
     auto websiteDataStoreConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] init]);
     websiteDataStoreConfiguration.get()._indexedDBDatabaseDirectory = idbPath.get();
@@ -116,5 +118,3 @@ TEST(IndexedDB, IndexedDBTempFileSize)
     EXPECT_WK_STREQ(@"Success", string2.get());
     EXPECT_WK_STREQ(@"Success", string3.get()); 
 }
-
-#endif

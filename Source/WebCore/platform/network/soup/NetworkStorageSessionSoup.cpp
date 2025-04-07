@@ -53,34 +53,17 @@
 
 namespace WebCore {
 
-NetworkStorageSession::NetworkStorageSession(PAL::SessionID sessionID, std::unique_ptr<SoupNetworkSession>&& session)
+NetworkStorageSession::NetworkStorageSession(PAL::SessionID sessionID)
     : m_sessionID(sessionID)
-    , m_session(WTFMove(session))
+    , m_cookieStorage(adoptGRef(soup_cookie_jar_new()))
 {
-    ASSERT(m_session->cookieJar());
-    g_signal_connect_swapped(m_session->cookieJar(), "changed", G_CALLBACK(cookiesDidChange), this);
+    soup_cookie_jar_set_accept_policy(m_cookieStorage.get(), SOUP_COOKIE_JAR_ACCEPT_NO_THIRD_PARTY);
+    g_signal_connect_swapped(m_cookieStorage.get(), "changed", G_CALLBACK(cookiesDidChange), this);
 }
 
 NetworkStorageSession::~NetworkStorageSession()
 {
-    clearSoupNetworkSession();
-}
-
-SoupNetworkSession& NetworkStorageSession::soupNetworkSession() const
-{
-    ASSERT(m_session);
-    return *m_session.get();
-};
-
-void NetworkStorageSession::clearSoupNetworkSession()
-{
-    if (m_session) {
-        ASSERT(m_session->cookieJar());
-        g_signal_handlers_disconnect_matched(m_session->cookieJar(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
-    }
-
-    m_session = nullptr;
-    m_cookieObserverHandler = nullptr;
+    g_signal_handlers_disconnect_matched(m_cookieStorage.get(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
 }
 
 void NetworkStorageSession::cookiesDidChange(NetworkStorageSession* session)
@@ -89,25 +72,11 @@ void NetworkStorageSession::cookiesDidChange(NetworkStorageSession* session)
         session->m_cookieObserverHandler();
 }
 
-SoupCookieJar* NetworkStorageSession::cookieStorage() const
+void NetworkStorageSession::setCookieStorage(GRefPtr<SoupCookieJar>&& jar)
 {
-    ASSERT(m_session);
-    ASSERT(m_session->cookieJar());
-    return m_session->cookieJar();
-}
-
-void NetworkStorageSession::setCookieStorage(SoupCookieJar* jar)
-{
-    ASSERT(jar);
-    ASSERT(m_session);
-    ASSERT(m_session->cookieJar());
-
-    if (m_session->cookieJar() == jar)
-        return;
-
-    g_signal_handlers_disconnect_matched(m_session->cookieJar(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
-    m_session->setCookieJar(jar);
-    g_signal_connect_swapped(m_session->cookieJar(), "changed", G_CALLBACK(cookiesDidChange), this);
+    g_signal_handlers_disconnect_matched(m_cookieStorage.get(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
+    m_cookieStorage = WTFMove(jar);
+    g_signal_connect_swapped(m_cookieStorage.get(), "changed", G_CALLBACK(cookiesDidChange), this);
 }
 
 void NetworkStorageSession::setCookieObserverHandler(Function<void ()>&& handler)
@@ -165,6 +134,7 @@ static const char* authTypeFromProtectionSpaceAuthenticationScheme(ProtectionSpa
 }
 
 struct SecretServiceSearchData {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     SecretServiceSearchData(GCancellable* cancellable, Function<void (Credential&&)>&& completionHandler)
         : cancellable(cancellable)
         , completionHandler(WTFMove(completionHandler))
@@ -204,7 +174,7 @@ void NetworkStorageSession::getCredentialFromPersistentStorage(const ProtectionS
         return;
     }
 
-    auto data = std::make_unique<SecretServiceSearchData>(cancellable, WTFMove(completionHandler));
+    auto data = makeUnique<SecretServiceSearchData>(cancellable, WTFMove(completionHandler));
     secret_service_search(nullptr, SECRET_SCHEMA_COMPAT_NETWORK, attributes.get(),
         static_cast<SecretSearchFlags>(SECRET_SEARCH_UNLOCK | SECRET_SEARCH_LOAD_SECRETS), cancellable,
         [](GObject* source, GAsyncResult* result, gpointer userData) {
@@ -263,7 +233,7 @@ void NetworkStorageSession::saveCredentialToPersistentStorage(const ProtectionSp
     g_hash_table_insert(attributes.get(), g_strdup("user"), g_strdup(credential.user().utf8().data()));
     CString utf8Password = credential.password().utf8();
     GRefPtr<SecretValue> newSecretValue = adoptGRef(secret_value_new(utf8Password.data(), utf8Password.length(), "text/plain"));
-    secret_service_store(nullptr, SECRET_SCHEMA_COMPAT_NETWORK, attributes.get(), SECRET_COLLECTION_DEFAULT, _("WebKitGTK+ password"),
+    secret_service_store(nullptr, SECRET_SCHEMA_COMPAT_NETWORK, attributes.get(), SECRET_COLLECTION_DEFAULT, _("WebKitGTK password"),
         newSecretValue.get(), nullptr, nullptr, nullptr);
 #else
     UNUSED_PARAM(protectionSpace);
@@ -291,7 +261,7 @@ static inline bool httpOnlyCookieExists(const GSList* cookies, const gchar* name
     return false;
 }
 
-void NetworkStorageSession::setCookiesFromDOM(const URL& firstParty, const SameSiteInfo&, const URL& url, Optional<uint64_t> frameID, Optional<uint64_t> pageID, const String& value) const
+void NetworkStorageSession::setCookiesFromDOM(const URL& firstParty, const SameSiteInfo&, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, const String& value) const
 {
     UNUSED_PARAM(frameID);
     UNUSED_PARAM(pageID);
@@ -387,6 +357,13 @@ void NetworkStorageSession::deleteAllCookiesModifiedSince(WallTime timestamp)
         g_warning("Deleting cookies modified since a given time span is not supported yet");
 }
 
+void NetworkStorageSession::deleteCookiesForHostnames(const Vector<String>& hostnames, IncludeHttpOnlyCookies includeHttpOnlyCookies)
+{
+    // FIXME: Not yet implemented.
+    UNUSED_PARAM(includeHttpOnlyCookies);
+    deleteCookiesForHostnames(hostnames);
+}
+
 void NetworkStorageSession::deleteCookiesForHostnames(const Vector<String>& hostnames)
 {
     SoupCookieJar* cookieJar = cookieStorage();
@@ -437,7 +414,7 @@ Vector<Cookie> NetworkStorageSession::getCookies(const URL& url)
     return cookies;
 }
 
-bool NetworkStorageSession::getRawCookies(const URL& firstParty, const SameSiteInfo&, const URL& url, Optional<uint64_t> frameID, Optional<uint64_t> pageID, Vector<Cookie>& rawCookies) const
+bool NetworkStorageSession::getRawCookies(const URL& firstParty, const SameSiteInfo&, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, Vector<Cookie>& rawCookies) const
 {
     UNUSED_PARAM(firstParty);
     UNUSED_PARAM(frameID);
@@ -507,7 +484,7 @@ static std::pair<String, bool> cookiesForSession(const NetworkStorageSession& se
     return { String::fromUTF8(cookieHeader.get()), didAccessSecureCookies };
 }
 
-std::pair<String, bool> NetworkStorageSession::cookiesForDOM(const URL& firstParty, const SameSiteInfo&, const URL& url, Optional<uint64_t> frameID, Optional<uint64_t> pageID, IncludeSecureCookies includeSecureCookies) const
+std::pair<String, bool> NetworkStorageSession::cookiesForDOM(const URL& firstParty, const SameSiteInfo&, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, IncludeSecureCookies includeSecureCookies) const
 {
     UNUSED_PARAM(firstParty);
     UNUSED_PARAM(frameID);
@@ -515,7 +492,7 @@ std::pair<String, bool> NetworkStorageSession::cookiesForDOM(const URL& firstPar
     return cookiesForSession(*this, url, false, includeSecureCookies);
 }
 
-std::pair<String, bool> NetworkStorageSession::cookieRequestHeaderFieldValue(const URL& firstParty, const SameSiteInfo&, const URL& url, Optional<uint64_t> frameID, Optional<uint64_t> pageID, IncludeSecureCookies includeSecureCookies) const
+std::pair<String, bool> NetworkStorageSession::cookieRequestHeaderFieldValue(const URL& firstParty, const SameSiteInfo&, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, IncludeSecureCookies includeSecureCookies) const
 {
     UNUSED_PARAM(firstParty);
     UNUSED_PARAM(frameID);

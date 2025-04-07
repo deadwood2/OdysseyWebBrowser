@@ -126,15 +126,15 @@ DisplayCaptureFactory& GStreamerVideoCaptureSource::displayFactory()
 }
 
 GStreamerVideoCaptureSource::GStreamerVideoCaptureSource(String&& deviceID, String&& name, String&& hashSalt, const gchar *source_factory)
-    : RealtimeVideoSource(WTFMove(deviceID), WTFMove(name), WTFMove(hashSalt))
-    , m_capturer(std::make_unique<GStreamerVideoCapturer>(source_factory))
+    : RealtimeVideoCaptureSource(WTFMove(deviceID), WTFMove(name), WTFMove(hashSalt))
+    , m_capturer(makeUnique<GStreamerVideoCapturer>(source_factory))
 {
     initializeGStreamerDebug();
 }
 
 GStreamerVideoCaptureSource::GStreamerVideoCaptureSource(GStreamerCaptureDevice device, String&& hashSalt)
-    : RealtimeVideoSource(String { device.persistentId() }, String { device.label() }, WTFMove(hashSalt))
-    , m_capturer(std::make_unique<GStreamerVideoCapturer>(device))
+    : RealtimeVideoCaptureSource(String { device.persistentId() }, String { device.label() }, WTFMove(hashSalt))
+    , m_capturer(makeUnique<GStreamerVideoCapturer>(device))
 {
     initializeGStreamerDebug();
 }
@@ -160,14 +160,21 @@ void GStreamerVideoCaptureSource::startProducingData()
     m_capturer->play();
 }
 
+void GStreamerVideoCaptureSource::processNewFrame(Ref<MediaSample>&& sample)
+{
+    if (!isProducingData() || muted())
+        return;
+
+    dispatchMediaSampleToObservers(WTFMove(sample));
+}
+
 GstFlowReturn GStreamerVideoCaptureSource::newSampleCallback(GstElement* sink, GStreamerVideoCaptureSource* source)
 {
     auto gstSample = adoptGRef(gst_app_sink_pull_sample(GST_APP_SINK(sink)));
     auto mediaSample = MediaSampleGStreamer::create(WTFMove(gstSample), WebCore::FloatSize(), String());
 
-    // FIXME - Check how presentationSize is supposed to be used here.
-    callOnMainThread([protectedThis = makeRef(*source), mediaSample = WTFMove(mediaSample)] {
-        protectedThis->videoSampleAvailable(mediaSample.get());
+    source->scheduleDeferredTask([source, sample = WTFMove(mediaSample)] () mutable {
+        source->processNewFrame(WTFMove(sample));
     });
 
     return GST_FLOW_OK;

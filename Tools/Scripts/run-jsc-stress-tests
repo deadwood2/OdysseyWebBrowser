@@ -425,6 +425,8 @@ def determineArchitecture
         determineArchitectureFromELFBinary
     when "windows"
         determineArchitectureFromPEBinary
+    when "playstation"
+        "x86-64"
     else
         $stderr.puts "Warning: unable to determine architecture on this platform."
         nil
@@ -447,10 +449,10 @@ end
 
 $hostOS = determineOS unless $hostOS
 $architecture = determineArchitecture unless $architecture
-$isFTLPlatform = !($architecture == "x86" || $architecture == "arm" || $architecture == "mips" || $hostOS == "windows")
+$isFTLPlatform = !($architecture == "x86" || $architecture == "arm" || $architecture == "mips" || $hostOS == "windows" || $hostOS == "playstation")
 
-if ["mips", "x86"].include?($architecture)
-    # The JIT is temporarily disabled on these platforms since
+if $architecture == "x86"
+    # The JIT is temporarily disabled on this platform since
     # https://trac.webkit.org/changeset/237547
     $jitTests = false
 end
@@ -471,6 +473,10 @@ if $remoteHosts.length > 1 and $testRunnerType != :make
     raise "Multiple remote hosts only supported with make runner"
 end
 
+if $hostOS == "playstation" && $testWriter == "default"
+    $testWriter = "playstation"
+end
+
 if $testWriter
     if /[^-a-zA-Z0-9_]/.match($testWriter)
         raise "Invalid test writer #{$testWriter} given"
@@ -482,11 +488,11 @@ $numPasses = 0
 
 # We force all tests to use a smaller (1.5M) stack so that stack overflow tests can run faster.
 BASE_OPTIONS = ["--useFTLJIT=false", "--useFunctionDotArguments=true", "--validateExceptionChecks=true", "--useDollarVM=true", "--maxPerThreadStackUsage=1572864"]
-EAGER_OPTIONS = ["--thresholdForJITAfterWarmUp=10", "--thresholdForJITSoon=10", "--thresholdForOptimizeAfterWarmUp=20", "--thresholdForOptimizeAfterLongWarmUp=20", "--thresholdForOptimizeSoon=20", "--thresholdForFTLOptimizeAfterWarmUp=20", "--thresholdForFTLOptimizeSoon=20", "--maximumEvalCacheableSourceLength=150000", "--useEagerCodeBlockJettisonTiming=true"]
+EAGER_OPTIONS = ["--thresholdForJITAfterWarmUp=10", "--thresholdForJITSoon=10", "--thresholdForOptimizeAfterWarmUp=20", "--thresholdForOptimizeAfterLongWarmUp=20", "--thresholdForOptimizeSoon=20", "--thresholdForFTLOptimizeAfterWarmUp=20", "--thresholdForFTLOptimizeSoon=20", "--thresholdForOMGOptimizeAfterWarmUp=20", "--thresholdForOMGOptimizeSoon=20", "--maximumEvalCacheableSourceLength=150000", "--useEagerCodeBlockJettisonTiming=true"]
 # NOTE: Tests rely on this using scribbleFreeCells.
 NO_CJIT_OPTIONS = ["--useConcurrentJIT=false", "--thresholdForJITAfterWarmUp=100", "--scribbleFreeCells=true"]
 B3O1_OPTIONS = ["--defaultB3OptLevel=1"]
-B3O0_OPTIONS = ["--defaultB3OptLevel=0"]
+B3O0_OPTIONS = ["--maxDFGNodesInBasicBlockForPreciseAnalysis=100", "--defaultB3OptLevel=0"]
 FTL_OPTIONS = ["--useFTLJIT=true"]
 PROBE_OSR_EXIT_OPTION = ["--useProbeOSRExit=true"]
 
@@ -504,6 +510,8 @@ def frameworkFromJSCPath(jscPath)
     parentDirectory = jscPath.dirname
     if parentDirectory.basename.to_s == "Resources" and parentDirectory.dirname.basename.to_s == "JavaScriptCore.framework"
         parentDirectory.dirname
+    elsif $hostOS == "playstation"
+        jscPath.dirname
     elsif parentDirectory.basename.to_s =~ /^Debug/ or parentDirectory.basename.to_s =~ /^Release/
         jscPath.dirname + "JavaScriptCore.framework"
     else
@@ -608,8 +616,16 @@ def runWithOutputHandler(kind, outputHandler, *options)
     addRunCommand(kind, [pathToVM.to_s] + BASE_OPTIONS + $testSpecificRequiredOptions + options + [$benchmark.to_s], outputHandler, simpleErrorHandler)
 end
 
+def runWithOutputHandlerWithoutBaseOption(kind, outputHandler, *options)
+    addRunCommand(kind, [pathToVM.to_s] + $testSpecificRequiredOptions + options + [$benchmark.to_s], outputHandler, simpleErrorHandler)
+end
+
 def run(kind, *options)
     runWithOutputHandler(kind, silentOutputHandler, *options)
+end
+
+def runWithoutBaseOption(kind, *options)
+    runWithOutputHandlerWithoutBaseOption(kind, silentOutputHandler, *options)
 end
 
 def runNoFTL(*optionalTestSpecificOptions)
@@ -656,13 +672,21 @@ def runDefault(*optionalTestSpecificOptions)
     run("default", *(FTL_OPTIONS + optionalTestSpecificOptions))
 end
 
-def runBytecodeCache(*optionalTestSpecificOptions)
+def runBytecodeCacheImpl(optionalTestSpecificOptions, *additionalEnv)
     unless $hostOS == "darwin"
         skip
         return
     end
     options = BASE_OPTIONS + $testSpecificRequiredOptions + FTL_OPTIONS + optionalTestSpecificOptions
-    addRunCommand("bytecode-cache", ["sh", (pathToHelpers + "bytecode-cache-test-helper.sh").to_s, pathToVM.to_s, $benchmark.to_s] + options, silentOutputHandler, simpleErrorHandler)
+    addRunCommand("bytecode-cache", ["sh", (pathToHelpers + "bytecode-cache-test-helper.sh").to_s, pathToVM.to_s, $benchmark.to_s] + options, silentOutputHandler, simpleErrorHandler, *additionalEnv)
+end
+
+def runBytecodeCache(*optionalTestSpecificOptions)
+    runBytecodeCacheImpl(optionalTestSpecificOptions)
+end
+
+def runBytecodeCacheNoAssertion(*optionalTestSpecificOptions)
+    runBytecodeCacheImpl(optionalTestSpecificOptions, "JSC_forceDiskCache=false")
 end
 
 def runBigIntEnabled(*optionalTestSpecificOptions)
@@ -673,6 +697,10 @@ def runBigIntEnabled(*optionalTestSpecificOptions)
     end
 
     run("big-int-enabled", "--useBigInt=true" , *(FTL_OPTIONS + optionalTestSpecificOptions))
+end
+
+def runNullishAwareOperatorsEnabled(*optionalTestSpecificOptions)
+    run("nullish-aware-operators-enabled", "--useNullishAwareOperators=true" , *(FTL_OPTIONS + optionalTestSpecificOptions))
 end
 
 def runFTLNoCJIT(*optionalTestSpecificOptions)
@@ -748,12 +776,16 @@ def runNoCJIT(*optionalTestSpecificOptions)
     run("no-cjit", *(NO_CJIT_OPTIONS + optionalTestSpecificOptions))
 end
 
-def runDFGMaximalFlushPhase(*optionalTestSpecificOptions)
-    run("dfg-maximal-flush-validate-no-cjit", "--forceCodeBlockToJettisonDueToOldAge=true", "--validateGraph=true", "--useMaximalFlushInsertionPhase=true", *(NO_CJIT_OPTIONS + optionalTestSpecificOptions))
+def runEagerJettisonNoCJIT(*optionalTestSpecificOptions)
+    run("eager-jettison-no-cjit", "--forceCodeBlockToJettisonDueToOldAge=true", *(NO_CJIT_OPTIONS + optionalTestSpecificOptions))
 end
 
 def runShadowChicken(*optionalTestSpecificOptions)
     run("shadow-chicken", "--useDFGJIT=false", "--alwaysUseShadowChicken=true", *optionalTestSpecificOptions)
+end
+
+def runMiniMode(*optionalTestSpecificOptions)
+    run("mini-mode", "--forceMiniVMMode=true", *optionalTestSpecificOptions)
 end
 
 def defaultRun
@@ -762,6 +794,7 @@ def defaultRun
     else
         runDefault
         runBytecodeCache
+        runMiniMode
         if $jitTests
             runNoLLInt
             runNoCJITValidatePhases
@@ -769,7 +802,7 @@ def defaultRun
             runDFGEager
             if $mode != "basic"
                 runDFGEagerNoCJITValidate
-                runDFGMaximalFlushPhase
+                runEagerJettisonNoCJIT
             end
 
             return if !$isFTLPlatform
@@ -801,7 +834,7 @@ def defaultNoNoLLIntRun
             runDFGEager
             if $mode != "basic"
                 runDFGEagerNoCJITValidate
-                runDFGMaximalFlushPhase
+                runEagerJettisonNoCJIT
             end
 
             return if !$isFTLPlatform
@@ -846,28 +879,28 @@ end
 
 def defaultSpotCheck
     defaultSpotCheckNoMaximalFlush
-    runDFGMaximalFlushPhase
+    runEagerJettisonNoCJIT
 end
 
 # This is expected to not do eager runs because eager runs can have a lot of recompilations
 # for reasons that don't arise in the real world. It's used for tests that assert convergence
 # by counting recompilations.
-def defaultNoEagerRun
-    runDefault
+def defaultNoEagerRun(*optionalTestSpecificOptions)
+    runDefault(*optionalTestSpecificOptions)
     if $jitTests
-        runNoLLInt
-        runNoCJITValidatePhases
-        runNoCJITCollectContinuously if shouldCollectContinuously?
+        runNoLLInt(*optionalTestSpecificOptions)
+        runNoCJITValidatePhases(*optionalTestSpecificOptions)
+        runNoCJITCollectContinuously(*optionalTestSpecificOptions) if shouldCollectContinuously?
 
         return if !$isFTLPlatform
 
-        runNoFTL
-        runFTLNoCJITValidate
+        runNoFTL(*optionalTestSpecificOptions)
+        runFTLNoCJITValidate(*optionalTestSpecificOptions)
 
         return if $mode == "basic"
 
-        runFTLNoCJITNoInlineValidate
-        runFTLNoCJITB3O0
+        runFTLNoCJITNoInlineValidate(*optionalTestSpecificOptions)
+        runFTLNoCJITB3O0(*optionalTestSpecificOptions)
     end
 end
 
@@ -879,7 +912,7 @@ def defaultNoSamplingProfilerRun
         runNoCJITCollectContinuously if shouldCollectContinuously?
         runDFGEager
         runDFGEagerNoCJITValidate
-        runDFGMaximalFlushPhase
+        runEagerJettisonNoCJIT
 
         return if !$isFTLPlatform
 
@@ -893,7 +926,7 @@ def defaultNoSamplingProfilerRun
 end
 
 def runProfiler
-    if $remote or ($architecture !~ /x86/i and $hostOS == "darwin") or ($hostOS == "windows")
+    if $remote or ($architecture !~ /x86/i and $hostOS == "darwin") or ($hostOS == "windows") or ($hostOS == "playstation")
         skip
         return
     end
@@ -1052,26 +1085,32 @@ def runWebAssembly
     run("default-wasm", "-m", *FTL_OPTIONS)
     if $mode != "quick"
         run("wasm-no-cjit-yes-tls-context", "-m", "--useFastTLSForWasmContext=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS))
+        run("wasm-eager", "-m", *(FTL_OPTIONS + EAGER_OPTIONS))
         run("wasm-eager-jettison", "-m", "--forceCodeBlockToJettisonDueToOldAge=true", *FTL_OPTIONS)
         run("wasm-no-call-ic", "-m", "--useCallICsForWebAssemblyToJSCalls=false", *FTL_OPTIONS)
         run("wasm-no-tls-context", "-m", "--useFastTLSForWasmContext=false", *FTL_OPTIONS)
         run("wasm-slow-memory", "-m", "--useWebAssemblyFastMemory=false", *FTL_OPTIONS)
+        run("wasm-no-air", "-m", "--wasmBBQUsesAir=false", *FTL_OPTIONS)
+        run("wasm-collect-continuously", "-m", "--collectContinuously=true", *FTL_OPTIONS) if shouldCollectContinuously?
     end
 end
 
-def runWebAssemblySuite
+def runWebAssemblySuite(*optionalTestSpecificOptions)
     return if !$jitTests
     return if !$isFTLPlatform
     modules = Dir[WASMTESTS_PATH + "*.js"].map { |f| File.basename(f) }
     prepareExtraAbsoluteFiles(WASMTESTS_PATH, ["wasm.json"])
     prepareExtraRelativeFiles(modules.map { |f| "../" + f }, $collection)
-    run("default-wasm", "-m", *FTL_OPTIONS)
+    run("default-wasm", "-m", *(FTL_OPTIONS + optionalTestSpecificOptions))
     if $mode != "quick"
-        run("wasm-no-cjit-yes-tls-context", "-m", "--useFastTLSForWasmContext=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS))
-        run("wasm-eager-jettison", "-m", "--forceCodeBlockToJettisonDueToOldAge=true", *FTL_OPTIONS)
-        run("wasm-no-call-ic", "-m", "--useCallICsForWebAssemblyToJSCalls=false", *FTL_OPTIONS)
-        run("wasm-no-tls-context", "-m", "--useFastTLSForWasmContext=false", *FTL_OPTIONS)
-        run("wasm-slow-memory", "-m", "--useWebAssemblyFastMemory=false", *FTL_OPTIONS)
+        run("wasm-no-cjit-yes-tls-context", "-m", "--useFastTLSForWasmContext=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS + optionalTestSpecificOptions))
+        run("wasm-eager", "-m", *(FTL_OPTIONS + EAGER_OPTIONS + optionalTestSpecificOptions))
+        run("wasm-eager-jettison", "-m", "--forceCodeBlockToJettisonDueToOldAge=true", *(FTL_OPTIONS + optionalTestSpecificOptions))
+        run("wasm-no-call-ic", "-m", "--useCallICsForWebAssemblyToJSCalls=false", *(FTL_OPTIONS + optionalTestSpecificOptions))
+        run("wasm-no-tls-context", "-m", "--useFastTLSForWasmContext=false", *(FTL_OPTIONS + optionalTestSpecificOptions))
+        run("wasm-slow-memory", "-m", "--useWebAssemblyFastMemory=false", *(FTL_OPTIONS + optionalTestSpecificOptions))
+        run("wasm-no-air", "-m", "--wasmBBQUsesAir=false", *(FTL_OPTIONS + optionalTestSpecificOptions))
+        run("wasm-collect-continuously", "-m", "--collectContinuously=true", *(FTL_OPTIONS + optionalTestSpecificOptions)) if shouldCollectContinuously?
     end
 end
 
@@ -1090,6 +1129,8 @@ def runWebAssemblyEmscripten(mode)
         run("wasm-eager-jettison", "--forceCodeBlockToJettisonDueToOldAge=true", *FTL_OPTIONS)
         run("wasm-no-call-ic", "--useCallICsForWebAssemblyToJSCalls=false", *FTL_OPTIONS)
         run("wasm-no-tls-context", "--useFastTLSForWasmContext=false", *FTL_OPTIONS)
+        run("wasm-no-air", "--wasmBBQUsesAir=false", *FTL_OPTIONS)
+        run("wasm-collect-continuously", "--collectContinuously=true", *FTL_OPTIONS) if shouldCollectContinuously?
     end
 end
 
@@ -1114,6 +1155,8 @@ def runWebAssemblySpecTest(mode)
       runWithOutputHandler("wasm-eager-jettison", noisyOutputHandler, "../spec-harness.js", "--forceCodeBlockToJettisonDueToOldAge=true", *FTL_OPTIONS)
       runWithOutputHandler("wasm-no-call-ic", noisyOutputHandler, "../spec-harness.js", "--useCallICsForWebAssemblyToJSCalls=false", *FTL_OPTIONS)
       runWithOutputHandler("wasm-no-tls-context", noisyOutputHandler, "../spec-harness.js", "--useFastTLSForWasmContext=false", *FTL_OPTIONS)
+      runWithOutputHandler("wasm-no-air", noisyOutputHandler, "../spec-harness.js", "--wasmBBQUsesAir=false", *FTL_OPTIONS)
+      runWithOutputHandler("wasm-collect-continuously", noisyOutputHandler, "../spec-harness.js", "--collectContinuously=true", *FTL_OPTIONS) if shouldCollectContinuously?
     end
 end
 
@@ -1307,6 +1350,13 @@ def prepareExtraAbsoluteFiles(absoluteBase, extraFiles)
             FileUtils.cp absoluteBase + file, destination
         }
     }
+end
+
+def runComplexTest(before, after, *options)
+    prepareExtraRelativeFiles(before.map{|v| (Pathname("..") + v).to_s}, $collection)
+    prepareExtraRelativeFiles(after.map{|v| (Pathname("..") + v).to_s}, $collection)
+    args = [pathToVM.to_s] + BASE_OPTIONS + $testSpecificRequiredOptions + options + before.map{|v| v.to_s} + [$benchmark.to_s] + after.map{|v| v.to_s}
+    addRunCommand("complex", args, silentOutputHandler, simpleErrorHandler)
 end
 
 def runMozillaTest(kind, mode, extraFiles, *options)

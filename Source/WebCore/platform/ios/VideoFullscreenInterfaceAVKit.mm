@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -43,8 +43,8 @@
 #import <UIKit/UIWindow.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
-#import <pal/ios/UIKitSoftLink.h>
 #import <pal/spi/cocoa/AVKitSPI.h>
+#import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <pal/spi/ios/UIKitSPI.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/text/CString.h>
@@ -52,14 +52,9 @@
 
 using namespace WebCore;
 
-// Soft-linking headers must be included last since they #define functions, constants, etc.
 #import <pal/cf/CoreMediaSoftLink.h>
-
-SOFT_LINK_FRAMEWORK(AVFoundation)
-SOFT_LINK_CLASS(AVFoundation, AVPlayerLayer)
-SOFT_LINK_CONSTANT(AVFoundation, AVLayerVideoGravityResize, NSString *)
-SOFT_LINK_CONSTANT(AVFoundation, AVLayerVideoGravityResizeAspect, NSString *)
-SOFT_LINK_CONSTANT(AVFoundation, AVLayerVideoGravityResizeAspectFill, NSString *)
+#import <pal/cocoa/AVFoundationSoftLink.h>
+#import <pal/ios/UIKitSoftLink.h>
 
 SOFTLINK_AVKIT_FRAMEWORK()
 SOFT_LINK_CLASS_OPTIONAL(AVKit, AVPictureInPictureController)
@@ -209,8 +204,9 @@ static VideoFullscreenInterfaceAVKit::ExitFullScreenReason convertToExitFullScre
 {
     self = [super init];
     if (self) {
-        [self setMasksToBounds:YES];
-        _videoGravity = getAVLayerVideoGravityResizeAspect();
+        self.masksToBounds = YES;
+        self.allowsHitTesting = NO;
+        _videoGravity = AVLayerVideoGravityResizeAspect;
     }
     return self;
 }
@@ -270,13 +266,13 @@ static VideoFullscreenInterfaceAVKit::ExitFullScreenReason convertToExitFullScre
     FloatRect targetVideoFrame;
     float videoAspectRatio = self.videoDimensions.width / self.videoDimensions.height;
     
-    if ([getAVLayerVideoGravityResize() isEqualToString:self.videoGravity]) {
+    if ([AVLayerVideoGravityResize isEqualToString:self.videoGravity]) {
         sourceVideoFrame = self.modelVideoLayerFrame;
         targetVideoFrame = self.bounds;
-    } else if ([getAVLayerVideoGravityResizeAspect() isEqualToString:self.videoGravity]) {
+    } else if ([AVLayerVideoGravityResizeAspect isEqualToString:self.videoGravity]) {
         sourceVideoFrame = largestRectWithAspectRatioInsideRect(videoAspectRatio, self.modelVideoLayerFrame);
         targetVideoFrame = largestRectWithAspectRatioInsideRect(videoAspectRatio, self.bounds);
-    } else if ([getAVLayerVideoGravityResizeAspectFill() isEqualToString:self.videoGravity]) {
+    } else if ([AVLayerVideoGravityResizeAspectFill isEqualToString:self.videoGravity]) {
         sourceVideoFrame = smallestRectWithAspectRatioAroundRect(videoAspectRatio, self.modelVideoLayerFrame);
         self.modelVideoLayerFrame = CGRectMake(0, 0, sourceVideoFrame.width(), sourceVideoFrame.height());
         if (auto* model = _fullscreenInterface->videoFullscreenModel())
@@ -325,10 +321,10 @@ static VideoFullscreenInterfaceAVKit::ExitFullScreenReason convertToExitFullScre
 
 - (void)setVideoGravity:(NSString *)videoGravity
 {
-#if PLATFORM(IOSMAC)
+#if PLATFORM(MACCATALYST)
     // FIXME<rdar://46011230>: remove this #if once this radar lands.
     if (!videoGravity)
-        videoGravity = getAVLayerVideoGravityResizeAspect();
+        videoGravity = AVLayerVideoGravityResizeAspect;
 #endif
 
     _videoGravity = videoGravity;
@@ -337,11 +333,11 @@ static VideoFullscreenInterfaceAVKit::ExitFullScreenReason convertToExitFullScre
         return;
 
     WebCore::MediaPlayerEnums::VideoGravity gravity = WebCore::MediaPlayerEnums::VideoGravityResizeAspect;
-    if (videoGravity == getAVLayerVideoGravityResize())
+    if (videoGravity == AVLayerVideoGravityResize)
         gravity = WebCore::MediaPlayerEnums::VideoGravityResize;
-    if (videoGravity == getAVLayerVideoGravityResizeAspect())
+    if (videoGravity == AVLayerVideoGravityResizeAspect)
         gravity = WebCore::MediaPlayerEnums::VideoGravityResizeAspect;
-    else if (videoGravity == getAVLayerVideoGravityResizeAspectFill())
+    else if (videoGravity == AVLayerVideoGravityResizeAspectFill)
         gravity = WebCore::MediaPlayerEnums::VideoGravityResizeAspectFill;
     else
         ASSERT_NOT_REACHED();
@@ -362,9 +358,9 @@ static VideoFullscreenInterfaceAVKit::ExitFullScreenReason convertToExitFullScre
     
     float videoAspectRatio = self.videoDimensions.width / self.videoDimensions.height;
 
-    if ([getAVLayerVideoGravityResizeAspect() isEqualToString:self.videoGravity])
+    if ([AVLayerVideoGravityResizeAspect isEqualToString:self.videoGravity])
         return largestRectWithAspectRatioInsideRect(videoAspectRatio, self.bounds);
-    if ([getAVLayerVideoGravityResizeAspectFill() isEqualToString:self.videoGravity])
+    if ([AVLayerVideoGravityResizeAspectFill isEqualToString:self.videoGravity])
         return smallestRectWithAspectRatioAroundRect(videoAspectRatio, self.bounds);
 
     return self.bounds;
@@ -460,7 +456,7 @@ static void WebAVPlayerLayerView_startRoutingVideoToPictureInPicturePlayerLayerV
 
     WebAVPlayerLayer *playerLayer = (WebAVPlayerLayer *)[playerLayerView playerLayer];
     WebAVPlayerLayer *pipPlayerLayer = (WebAVPlayerLayer *)[pipView layer];
-    [playerLayer setVideoGravity:getAVLayerVideoGravityResizeAspect()];
+    [playerLayer setVideoGravity:AVLayerVideoGravityResizeAspect];
     [pipPlayerLayer setVideoSublayer:playerLayer.videoSublayer];
     [pipPlayerLayer setVideoDimensions:playerLayer.videoDimensions];
     [pipPlayerLayer setVideoGravity:playerLayer.videoGravity];
@@ -557,6 +553,7 @@ NS_ASSUME_NONNULL_END
 
     _fullscreenInterface = interface;
     _avPlayerViewController = adoptNS([allocAVPlayerViewControllerInstance() initWithPlayerLayerView:interface->playerLayerView()]);
+    _avPlayerViewController.get().modalPresentationStyle = UIModalPresentationOverFullScreen;
 #if PLATFORM(WATCHOS)
     _avPlayerViewController.get().delegate = self;
 #endif
@@ -833,7 +830,7 @@ static UIViewController *fallbackViewController(UIView *view)
 
 UIViewController *VideoFullscreenInterfaceAVKit::presentingViewController()
 {
-    auto *controller = videoFullscreenModel()->presentingViewController();
+    auto *controller = videoFullscreenModel() ? videoFullscreenModel()->presentingViewController() : nil;
     if (!controller)
         controller = fallbackViewController(m_parentView.get());
 
@@ -927,10 +924,16 @@ void VideoFullscreenInterfaceAVKit::cleanupFullscreen()
 
 void VideoFullscreenInterfaceAVKit::invalidate()
 {
-    m_videoFullscreenModel = nil;
-    m_fullscreenChangeObserver = nil;
+    m_videoFullscreenModel = nullptr;
+    m_fullscreenChangeObserver = nullptr;
     
     cleanupFullscreen();
+}
+
+void VideoFullscreenInterfaceAVKit::modelDestroyed()
+{
+    ASSERT(isUIThread());
+    invalidate();
 }
 
 void VideoFullscreenInterfaceAVKit::requestHideAndExitFullscreen()
@@ -966,7 +969,9 @@ void VideoFullscreenInterfaceAVKit::preparedToExitFullscreen()
         return;
 
     m_waitingForPreparedToExit = false;
-    m_videoFullscreenModel->requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenModeNone, true);
+    ASSERT(m_videoFullscreenModel);
+    if (m_videoFullscreenModel)
+        m_videoFullscreenModel->requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenModeNone, true);
 #endif
 }
 
@@ -1135,7 +1140,9 @@ bool VideoFullscreenInterfaceAVKit::shouldExitFullscreenWithReason(VideoFullscre
 #endif
     
     BOOL finished = reason == ExitFullScreenReason::DoneButtonTapped || reason == ExitFullScreenReason::PinchGestureHandled;
-    m_videoFullscreenModel->requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenModeNone, finished);
+    ASSERT(m_videoFullscreenModel);
+    if (m_videoFullscreenModel)
+        m_videoFullscreenModel->requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenModeNone, finished);
 
     return false;
 }
@@ -1176,6 +1183,17 @@ void VideoFullscreenInterfaceAVKit::setInlineRect(const IntRect& inlineRect, boo
         doExitFullscreen();
 }
 
+#if !PLATFORM(WATCHOS)
+#if USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/VideoFullscreenInterfaceAVKitAdditions.mm>
+#else
+static RetainPtr<UIWindow> makeWindowFromView(UIView *)
+{
+    return adoptNS([PAL::allocUIWindowInstance() initWithFrame:[[PAL::getUIScreenClass() mainScreen] bounds]]);
+}
+#endif
+#endif
+
 void VideoFullscreenInterfaceAVKit::doSetup()
 {
     Mode changes { m_currentMode.mode() ^ m_targetMode.mode() };
@@ -1198,8 +1216,7 @@ void VideoFullscreenInterfaceAVKit::doSetup()
 
 #if !PLATFORM(WATCHOS)
     if (![[m_parentView window] _isHostedInAnotherProcess] && !m_window) {
-        if (!m_window)
-            m_window = adoptNS([PAL::allocUIWindowInstance() initWithFrame:[[PAL::getUIScreenClass() mainScreen] bounds]]);
+        m_window = makeWindowFromView(m_parentView.get());
         [m_window setBackgroundColor:clearUIColor()];
         if (!m_viewController)
             m_viewController = adoptNS([PAL::allocUIViewControllerInstance() init]);
@@ -1242,7 +1259,7 @@ void VideoFullscreenInterfaceAVKit::doSetup()
         [m_playerViewController setWebKitOverrideRouteSharingPolicy:(NSUInteger)m_routeSharingPolicy routingContextUID:m_routingContextUID];
 
 #if PLATFORM(WATCHOS)
-    m_viewController = videoFullscreenModel()->createVideoFullscreenViewController(m_playerViewController.get().avPlayerViewController);
+    m_viewController = videoFullscreenModel() ? videoFullscreenModel()->createVideoFullscreenViewController(m_playerViewController.get().avPlayerViewController) : nil;
 #endif
 
     if (m_viewController) {

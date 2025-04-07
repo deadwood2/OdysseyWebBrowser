@@ -43,6 +43,7 @@
 #include <WebKit/WKPageLoaderClient.h>
 #include <WebKit/WKPageNavigationClient.h>
 #include <WebKit/WKPagePolicyClient.h>
+#include <WebKit/WKPageStateClient.h>
 #include <WebKit/WKPageUIClient.h>
 #include <WebKit/WKPageVisibilityTypes.h>
 
@@ -54,7 +55,7 @@
 extern "C" {
 #endif
 
-WK_EXPORT WKTypeID WKPageGetTypeID();
+WK_EXPORT WKTypeID WKPageGetTypeID(void);
 
 WK_EXPORT WKContextRef WKPageGetContext(WKPageRef page);
 WK_EXPORT WKPageGroupRef WKPageGetPageGroup(WKPageRef page);
@@ -225,9 +226,11 @@ WK_EXPORT void WKPageSetPageUIClient(WKPageRef page, const WKPageUIClientBase* c
 WK_EXPORT void WKPageSetPageInjectedBundleClient(WKPageRef page, const WKPageInjectedBundleClientBase* client);
 
 // A client can implement either a navigation client or loader and policy clients, but never both.
-WK_EXPORT void WKPageSetPageLoaderClient(WKPageRef page, const WKPageLoaderClientBase* client) WK_C_API_DEPRECATED_WITH_REPLACEMENT(WKPageSetPageNavigationClient, macosx(WK_MAC_TBA));
-WK_EXPORT void WKPageSetPagePolicyClient(WKPageRef page, const WKPagePolicyClientBase* client) WK_C_API_DEPRECATED_WITH_REPLACEMENT(WKPageSetPageNavigationClient, macosx(WK_MAC_TBA));
+WK_EXPORT void WKPageSetPageLoaderClient(WKPageRef page, const WKPageLoaderClientBase* client) WK_C_API_DEPRECATED_WITH_REPLACEMENT(WKPageSetPageNavigationClient, macos(10.14.4));
+WK_EXPORT void WKPageSetPagePolicyClient(WKPageRef page, const WKPagePolicyClientBase* client) WK_C_API_DEPRECATED_WITH_REPLACEMENT(WKPageSetPageNavigationClient, macos(10.14.4));
 WK_EXPORT void WKPageSetPageNavigationClient(WKPageRef page, const WKPageNavigationClientBase* client);
+
+WK_EXPORT void WKPageSetPageStateClient(WKPageRef page, WKPageStateClientBase* client);
 
 typedef void (*WKPageRunJavaScriptFunction)(WKSerializedScriptValueRef, WKErrorRef, void*);
 WK_EXPORT void WKPageRunJavaScriptInMainFrame(WKPageRef page, WKStringRef script, void* context, WKPageRunJavaScriptFunction function);

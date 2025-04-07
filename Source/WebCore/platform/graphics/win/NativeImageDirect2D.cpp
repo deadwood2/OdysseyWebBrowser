@@ -32,13 +32,31 @@
 #include "GraphicsContext.h"
 #include "IntSize.h"
 #include "NotImplemented.h"
+#include "PlatformContextDirect2D.h"
 #include <d2d1.h>
+#include <wincodec.h>
 
 namespace WebCore {
 
+static IWICImagingFactory* imagingFactory()
+{
+    static IWICImagingFactory* imagingFactory = nullptr;
+    if (!imagingFactory) {
+        HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&imagingFactory));
+        RELEASE_ASSERT(SUCCEEDED(hr));
+    }
+
+    return imagingFactory;
+}
+
 IntSize nativeImageSize(const NativeImagePtr& image)
 {
-    return image ? IntSize(image->GetSize()) : IntSize();
+    UINT width = 0;
+    UINT height = 0;
+    if (!image)
+        return { };
+
+    return image->GetPixelSize();
 }
 
 bool nativeImageHasAlpha(const NativeImagePtr& image)
@@ -46,8 +64,8 @@ bool nativeImageHasAlpha(const NativeImagePtr& image)
     if (!image)
         return false;
 
-    auto alphaMode = image->GetPixelFormat().alphaMode;
-    return (alphaMode >= D2D1_ALPHA_MODE_PREMULTIPLIED) && (alphaMode <= D2D1_ALPHA_MODE_STRAIGHT);
+    D2D1_PIXEL_FORMAT pixelFormat = image->GetPixelFormat();
+    return pixelFormat.alphaMode != D2D1_ALPHA_MODE_IGNORE;
 }
 
 Color nativeImageSinglePixelSolidColor(const NativeImagePtr& image)
@@ -60,7 +78,7 @@ Color nativeImageSinglePixelSolidColor(const NativeImagePtr& image)
     return Color();
 }
 
-void drawNativeImage(const NativeImagePtr& image, GraphicsContext& context, const FloatRect& destRect, const FloatRect& srcRect, const IntSize& srcSize, CompositeOperator compositeOp, BlendMode blendMode, const ImageOrientation& orientation)
+void drawNativeImage(const NativeImagePtr& image, GraphicsContext& context, const FloatRect& destRect, const FloatRect& srcRect, const IntSize& srcSize, const ImagePaintingOptions&)
 {
     auto platformContext = context.platformContext();
 
@@ -74,8 +92,7 @@ void drawNativeImage(const NativeImagePtr& image, GraphicsContext& context, cons
 
     float opacity = 1.0f;
 
-    platformContext->DrawBitmap(image.get(), destRect, opacity, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, adjustedSrcRect);
-    context.flush();
+    platformContext->renderTarget()->DrawBitmap(image.get(), destRect, opacity, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, adjustedSrcRect);
 }
 
 void clearNativeImageSubimages(const NativeImagePtr& image)

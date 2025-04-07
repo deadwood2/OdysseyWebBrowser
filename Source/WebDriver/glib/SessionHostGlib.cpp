@@ -113,6 +113,7 @@ bool SessionHost::isConnected() const
 }
 
 struct ConnectToBrowserAsyncData {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     ConnectToBrowserAsyncData(SessionHost* sessionHost, GUniquePtr<char>&& dbusAddress, GCancellable* cancellable, Function<void (Optional<String> error)>&& completionHandler)
         : sessionHost(sessionHost)
         , dbusAddress(WTFMove(dbusAddress))
@@ -173,7 +174,7 @@ void SessionHost::launchBrowser(Function<void (Optional<String> error)>&& comple
     }, this);
 
     GUniquePtr<char> dbusAddress(g_strdup_printf("tcp:host=%s,port=%u", "127.0.0.1", port));
-    connectToBrowser(std::make_unique<ConnectToBrowserAsyncData>(this, WTFMove(dbusAddress), m_cancellable.get(), WTFMove(completionHandler)));
+    connectToBrowser(makeUnique<ConnectToBrowserAsyncData>(this, WTFMove(dbusAddress), m_cancellable.get(), WTFMove(completionHandler)));
 }
 
 void SessionHost::connectToBrowser(std::unique_ptr<ConnectToBrowserAsyncData>&& data)
@@ -371,6 +372,7 @@ void SessionHost::sendMessageToFrontend(uint64_t connectionID, uint64_t targetID
 }
 
 struct MessageContext {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     long messageID;
     SessionHost* host;
 };
@@ -381,7 +383,7 @@ void SessionHost::sendMessageToBackend(long messageID, const String& message)
     ASSERT(m_connectionID);
     ASSERT(m_target.id);
 
-    auto messageContext = std::make_unique<MessageContext>(MessageContext { messageID, this });
+    auto messageContext = makeUnique<MessageContext>(MessageContext { messageID, this });
     g_dbus_connection_call(m_dbusConnection.get(), nullptr,
         INSPECTOR_DBUS_OBJECT_PATH,
         INSPECTOR_DBUS_INTERFACE,

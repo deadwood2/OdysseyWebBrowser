@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -378,7 +378,7 @@ static NSURL *createUniqueWebDataURL();
         return;
     }
 
-    _private->scriptDebugger = std::make_unique<WebScriptDebugger>(globalObject);
+    _private->scriptDebugger = makeUnique<WebScriptDebugger>(globalObject);
 }
 
 - (void)_detachScriptDebugger
@@ -1339,7 +1339,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
     WebCore::Frame *frame = core(self);
     FloatPoint viewportLocation(*aViewportLocation);
     FloatPoint adjustedLocation;
-    WebCore::Node *node = frame->nodeRespondingToClickEvents(viewportLocation, adjustedLocation);
+    WebCore::Node *node = frame->approximateNodeAtViewportLocationLegacy(viewportLocation, adjustedLocation);
     *aViewportLocation = adjustedLocation;
     return kit(node);
 }
@@ -2051,20 +2051,20 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
         [result setObject:(NSError *)documentLoader->mainDocumentError() forKey:WebFrameMainDocumentError];
         
     if (frameLoader.subframeLoader().containsPlugins())
-        [result setObject:[NSNumber numberWithBool:YES] forKey:WebFrameHasPlugins];
+        [result setObject:@YES forKey:WebFrameHasPlugins];
     
     if (DOMWindow* domWindow = _private->coreFrame->document()->domWindow()) {
         if (domWindow->hasEventListeners(eventNames().unloadEvent))
-            [result setObject:[NSNumber numberWithBool:YES] forKey:WebFrameHasUnloadListener];
+            [result setObject:@YES forKey:WebFrameHasUnloadListener];
         if (domWindow->optionalApplicationCache())
-            [result setObject:[NSNumber numberWithBool:YES] forKey:WebFrameUsesApplicationCache];
+            [result setObject:@YES forKey:WebFrameUsesApplicationCache];
     }
     
     if (Document* document = _private->coreFrame->document()) {
         if (DatabaseManager::singleton().hasOpenDatabases(*document))
-            [result setObject:[NSNumber numberWithBool:YES] forKey:WebFrameUsesDatabases];
+            [result setObject:@YES forKey:WebFrameUsesDatabases];
         if (!document->canSuspendActiveDOMObjectsForDocumentSuspension())
-            [result setObject:[NSNumber numberWithBool:YES] forKey:WebFrameCanSuspendActiveDOMObjects];
+            [result setObject:@YES forKey:WebFrameCanSuspendActiveDOMObjects];
     }
     
     return result;
@@ -2090,7 +2090,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
 
     // The global object is probably a proxy object? - if so, we know how to use this!
     JSC::JSObject* globalObjectObj = toJS(globalObjectRef);
-    JSC::VM& vm = *globalObjectObj->vm();
+    JSC::VM& vm = globalObjectObj->vm();
     if (!strcmp(globalObjectObj->classInfo(vm)->className, "JSWindowProxy"))
         anyWorldGlobalObject = JSC::jsDynamicCast<JSDOMWindow*>(vm, static_cast<JSWindowProxy*>(globalObjectObj)->window());
 
@@ -2102,7 +2102,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
     ASSERT(frame->document());
     RetainPtr<WebFrame> webFrame(kit(frame)); // Running arbitrary JavaScript can destroy the frame.
 
-    JSC::JSValue result = frame->script().executeScriptInWorld(*core(world), string, true);
+    JSC::JSValue result = frame->script().executeUserAgentScriptInWorld(*core(world), string, true);
 
     if (!webFrame->_private->coreFrame) // In case the script removed our frame from the page.
         return @"";
@@ -2160,7 +2160,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
 
 - (void)setAccessibleName:(NSString *)name
 {
-#if HAVE(ACCESSIBILITY)
+#if ENABLE(ACCESSIBILITY)
     if (!AXObjectCache::accessibilityEnabled())
         return;
     
@@ -2177,7 +2177,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
 
 - (BOOL)enhancedAccessibilityEnabled
 {
-#if HAVE(ACCESSIBILITY)
+#if ENABLE(ACCESSIBILITY)
     return AXObjectCache::accessibilityEnhancedUserInterfaceEnabled();
 #else
     return NO;
@@ -2186,7 +2186,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
 
 - (void)setEnhancedAccessibility:(BOOL)enable
 {
-#if HAVE(ACCESSIBILITY)
+#if ENABLE(ACCESSIBILITY)
     AXObjectCache::setEnhancedUserInterfaceAccessibility(enable);
 #endif
 }
@@ -2202,7 +2202,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
 
 - (id)accessibilityRoot
 {
-#if HAVE(ACCESSIBILITY)
+#if ENABLE(ACCESSIBILITY)
     if (!AXObjectCache::accessibilityEnabled()) {
         AXObjectCache::enableAccessibility();
 #if !PLATFORM(IOS_FAMILY)
@@ -2361,7 +2361,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
     Frame* coreFrame = _private->coreFrame;
     if (!coreFrame)
         return nil;
-    return [[[WebElementDictionary alloc] initWithHitTestResult:coreFrame->eventHandler().hitTestResultAtPoint(IntPoint(point), HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::IgnoreClipping | HitTestRequest::DisallowUserAgentShadowContent)] autorelease];
+    return [[[WebElementDictionary alloc] initWithHitTestResult:coreFrame->eventHandler().hitTestResultAtPoint(IntPoint(point), HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::IgnoreClipping | HitTestRequest::DisallowUserAgentShadowContent | HitTestRequest::AllowChildFrameContent)] autorelease];
 }
 
 - (NSURL *)_unreachableURL

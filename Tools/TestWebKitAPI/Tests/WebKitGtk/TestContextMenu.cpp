@@ -18,9 +18,13 @@
  */
 
 #include "config.h"
+
+#include "WebKitTestServer.h"
 #include "WebViewTest.h"
 #include <wtf/Vector.h>
 #include <wtf/glib/GRefPtr.h>
+
+static WebKitTestServer* kServer;
 
 class ContextMenuTest: public WebViewTest {
 public:
@@ -295,6 +299,7 @@ public:
         LinkImage,
         Video,
         Audio,
+        VideoLive,
         Editable,
         Selection
     };
@@ -390,6 +395,18 @@ public:
             iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_OPEN_AUDIO_IN_NEW_WINDOW, Visible | Enabled);
             iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_DOWNLOAD_AUDIO_TO_DISK, Visible | Enabled);
             break;
+        case VideoLive:
+            g_assert_false(webkit_hit_test_result_context_is_link(hitTestResult));
+            g_assert_false(webkit_hit_test_result_context_is_image(hitTestResult));
+            g_assert_true(webkit_hit_test_result_context_is_media(hitTestResult));
+            g_assert_false(webkit_hit_test_result_context_is_editable(hitTestResult));
+            g_assert_false(webkit_hit_test_result_context_is_selection(hitTestResult));
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_MEDIA_PLAY, Visible | Enabled);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_MEDIA_MUTE, Visible | Enabled);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_TOGGLE_MEDIA_CONTROLS, Visible | Enabled);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_TOGGLE_MEDIA_LOOP, Visible | Enabled);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_ENTER_VIDEO_FULLSCREEN, Visible | Enabled);
+            break;
         case Editable:
             g_assert_false(webkit_hit_test_result_context_is_link(hitTestResult));
             g_assert_false(webkit_hit_test_result_context_is_image(hitTestResult));
@@ -402,6 +419,7 @@ public:
             iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_DELETE, Visible);
             iter = checkCurrentItemIsSeparatorAndGetNext(iter);
             iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_SELECT_ALL, Visible | Enabled);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_INSERT_EMOJI, Visible | Enabled);
             iter = checkCurrentItemIsSeparatorAndGetNext(iter);
             iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_UNICODE, Visible | Enabled);
             break;
@@ -436,9 +454,9 @@ static void prepareContextMenuTestView(ContextMenuDefaultTest* test)
     GUniquePtr<char> baseDir(g_strdup_printf("file://%s/", Test::getResourcesDir().data()));
     const char* linksHTML =
         "<html><body>"
-        " <a style='position:absolute; left:1; top:1' href='http://www.webkitgtk.org' title='WebKitGTK+ Title'>WebKitGTK+ Website</a>"
+        " <a style='position:absolute; left:1; top:1' href='http://www.webkitgtk.org' title='WebKitGTK Title'>WebKitGTK Website</a>"
         " <img style='position:absolute; left:1; top:10' src='blank.ico' width=5 height=5></img>"
-        " <a style='position:absolute; left:1; top:20' href='http://www.webkitgtk.org/logo' title='WebKitGTK+ Logo'><img src='blank.ico' width=5 height=5></img></a>"
+        " <a style='position:absolute; left:1; top:20' href='http://www.webkitgtk.org/logo' title='WebKitGTK Logo'><img src='blank.ico' width=5 height=5></img></a>"
         " <input style='position:absolute; left:1; top:30' size='10'></input>"
         " <video style='position:absolute; left:1; top:50' width='300' height='300' controls='controls' preload='none'><source src='silence.webm' type='video/webm' /></video>"
         " <audio style='position:absolute; left:1; top:60' width='50' height='20' controls='controls' preload='none'><source src='track.ogg' type='audio/ogg' /></audio>"
@@ -634,11 +652,11 @@ static void testContextMenuPopulateMenu(ContextMenuCustomTest* test, gconstpoint
 {
     test->showInWindowAndWaitUntilMapped();
 
-    test->loadHtml("<html><body>WebKitGTK+ Context menu tests</body></html>", "file:///");
+    test->loadHtml("<html><body>WebKitGTK Context menu tests</body></html>", "file:///");
     test->waitUntilLoadFinished();
 
     // Create a custom menu item.
-    GRefPtr<GtkAction> action = adoptGRef(gtk_action_new("WebKitGTK+CustomAction", "Custom _Action", nullptr, nullptr));
+    GRefPtr<GtkAction> action = adoptGRef(gtk_action_new("WebKitGTKCustomAction", "Custom _Action", nullptr, nullptr));
     test->setAction(action.get());
     test->showContextMenuAndWaitUntilFinished();
     test->activateCustomMenuItemAndWaitUntilActivated(gtk_action_get_label(action.get()));
@@ -646,7 +664,7 @@ static void testContextMenuPopulateMenu(ContextMenuCustomTest* test, gconstpoint
     g_assert_false(test->m_toggled);
 
     // Create a custom toggle menu item.
-    GRefPtr<GtkAction> toggleAction = adoptGRef(GTK_ACTION(gtk_toggle_action_new("WebKitGTK+CustomToggleAction", "Custom _Toggle Action", nullptr, nullptr)));
+    GRefPtr<GtkAction> toggleAction = adoptGRef(GTK_ACTION(gtk_toggle_action_new("WebKitGTKCustomToggleAction", "Custom _Toggle Action", nullptr, nullptr)));
     test->setAction(toggleAction.get());
     test->showContextMenuAndWaitUntilFinished();
     test->toggleCustomMenuItemAndWaitUntilToggled(gtk_action_get_label(toggleAction.get()));
@@ -654,7 +672,7 @@ static void testContextMenuPopulateMenu(ContextMenuCustomTest* test, gconstpoint
     g_assert_true(test->m_toggled);
 
     // Create a custom menu item using GAction.
-    GRefPtr<GAction> gAction = adoptGRef(G_ACTION(g_simple_action_new("WebKitGTK+CustomGAction", nullptr)));
+    GRefPtr<GAction> gAction = adoptGRef(G_ACTION(g_simple_action_new("WebKitGTKCustomGAction", nullptr)));
     test->setAction(gAction.get(), "Custom _GAction");
     test->showContextMenuAndWaitUntilFinished();
     test->activateCustomMenuItemAndWaitUntilActivated("Custom _GAction");
@@ -662,7 +680,7 @@ static void testContextMenuPopulateMenu(ContextMenuCustomTest* test, gconstpoint
     g_assert_false(test->m_toggled);
 
     // Create a custom toggle menu item using GAction.
-    GRefPtr<GAction> toggleGAction = adoptGRef(G_ACTION(g_simple_action_new_stateful("WebKitGTK+CustomToggleGAction", nullptr, g_variant_new_boolean(FALSE))));
+    GRefPtr<GAction> toggleGAction = adoptGRef(G_ACTION(g_simple_action_new_stateful("WebKitGTKCustomToggleGAction", nullptr, g_variant_new_boolean(FALSE))));
     test->setAction(toggleGAction.get(), "Custom _Toggle GAction");
     test->showContextMenuAndWaitUntilFinished();
     test->toggleCustomMenuItemAndWaitUntilToggled("Custom _Toggle GAction");
@@ -670,8 +688,8 @@ static void testContextMenuPopulateMenu(ContextMenuCustomTest* test, gconstpoint
     g_assert_true(test->m_toggled);
 
     // Create a custom menu item using GAction with a target.
-    gAction = adoptGRef(G_ACTION(g_simple_action_new("WebKitGTK+CustomGActionWithTarget", G_VARIANT_TYPE_STRING)));
-    test->setAction(gAction.get(), "Custom _GAction With Target", g_variant_new_string("WebKitGTK+CustomGActionTarget"));
+    gAction = adoptGRef(G_ACTION(g_simple_action_new("WebKitGTKCustomGActionWithTarget", G_VARIANT_TYPE_STRING)));
+    test->setAction(gAction.get(), "Custom _GAction With Target", g_variant_new_string("WebKitGTKCustomGActionTarget"));
     test->showContextMenuAndWaitUntilFinished();
     test->activateCustomMenuItemAndWaitUntilActivated("Custom _GAction With Target");
     g_assert_true(test->m_activated);
@@ -694,17 +712,17 @@ public:
 
         // Add custom actions.
         G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
-        GRefPtr<GtkAction> action = adoptGRef(gtk_action_new("WebKitGTK+CustomAction", "Custom _Action", nullptr, nullptr));
+        GRefPtr<GtkAction> action = adoptGRef(gtk_action_new("WebKitGTKCustomAction", "Custom _Action", nullptr, nullptr));
         gtk_action_set_sensitive(action.get(), FALSE);
         webkit_context_menu_insert(contextMenu, webkit_context_menu_item_new(action.get()), -1);
-        GRefPtr<GtkAction> toggleAction = adoptGRef(GTK_ACTION(gtk_toggle_action_new("WebKitGTK+CustomToggleAction", "Custom _Toggle Action", nullptr, nullptr)));
+        GRefPtr<GtkAction> toggleAction = adoptGRef(GTK_ACTION(gtk_toggle_action_new("WebKitGTKCustomToggleAction", "Custom _Toggle Action", nullptr, nullptr)));
         gtk_toggle_action_set_active(GTK_TOGGLE_ACTION(toggleAction.get()), TRUE);
         webkit_context_menu_append(contextMenu, webkit_context_menu_item_new(toggleAction.get()));
         webkit_context_menu_append(contextMenu, webkit_context_menu_item_new_separator());
-        GRefPtr<GAction> gAction = adoptGRef(G_ACTION(g_simple_action_new("WebKitGTK+CustomGAction", nullptr)));
+        GRefPtr<GAction> gAction = adoptGRef(G_ACTION(g_simple_action_new("WebKitGTKCustomGAction", nullptr)));
         g_simple_action_set_enabled(G_SIMPLE_ACTION(gAction.get()), FALSE);
         webkit_context_menu_insert(contextMenu, webkit_context_menu_item_new_from_gaction(gAction.get(), "Custom _GAction", nullptr), -1);
-        GRefPtr<GAction> toggleGAction = adoptGRef(G_ACTION(g_simple_action_new_stateful("WebKitGTK+CustomToggleGAction", nullptr, g_variant_new_boolean(TRUE))));
+        GRefPtr<GAction> toggleGAction = adoptGRef(G_ACTION(g_simple_action_new_stateful("WebKitGTKCustomToggleGAction", nullptr, g_variant_new_boolean(TRUE))));
         webkit_context_menu_append(contextMenu, webkit_context_menu_item_new_from_gaction(toggleGAction.get(), "Custom T_oggle GAction", nullptr));
         webkit_context_menu_append(contextMenu, webkit_context_menu_item_new_separator());
         G_GNUC_END_IGNORE_DEPRECATIONS;
@@ -755,7 +773,7 @@ static void testContextMenuCustomMenu(ContextMenuCustomFullTest* test, gconstpoi
 {
     test->showInWindowAndWaitUntilMapped();
 
-    test->loadHtml("<html><body>WebKitGTK+ Context menu tests</body></html>", "file:///");
+    test->loadHtml("<html><body>WebKitGTK Context menu tests</body></html>", "file:///");
     test->waitUntilLoadFinished();
 
     test->showContextMenuAndWaitUntilFinished();
@@ -809,7 +827,7 @@ static void testContextMenuDisableMenu(ContextMenuDisabledTest* test, gconstpoin
 {
     test->showInWindowAndWaitUntilMapped();
 
-    test->loadHtml("<html><body>WebKitGTK+ Context menu tests</body></html>", "file:///");
+    test->loadHtml("<html><body>WebKitGTK Context menu tests</body></html>", "file:///");
     test->waitUntilLoadFinished();
 
     test->m_disableMode = ContextMenuDisabledTest::IgnoreDefaultMenu;
@@ -862,7 +880,7 @@ static void testContextMenuSubMenu(ContextMenuSubmenuTest* test, gconstpointer)
 {
     test->showInWindowAndWaitUntilMapped();
 
-    test->loadHtml("<html><body>WebKitGTK+ Context menu tests</body></html>", "file:///");
+    test->loadHtml("<html><body>WebKitGTK Context menu tests</body></html>", "file:///");
     test->waitUntilLoadFinished();
 
     test->showContextMenuAndWaitUntilFinished();
@@ -903,7 +921,7 @@ static void testContextMenuDismissed(ContextMenuDismissedTest* test, gconstpoint
 {
     test->showInWindowAndWaitUntilMapped();
 
-    test->loadHtml("<html><body>WebKitGTK+ Context menu tests</body></html>", "file:///");
+    test->loadHtml("<html><body>WebKitGTK Context menu tests</body></html>", "file:///");
     test->waitUntilLoadFinished();
 
     test->showContextMenuAndWaitUntilDismissed();
@@ -952,8 +970,8 @@ public:
 static void testContextMenuWebExtensionMenu(ContextMenuWebExtensionTest* test, gconstpointer)
 {
     test->showInWindowAndWaitUntilMapped();
-    test->loadHtml("<html><body>WebKitGTK+ Context menu tests<br>"
-        "<a style='position:absolute; left:1; top:10' href='http://www.webkitgtk.org'>WebKitGTK+ Website</a></body></html>",
+    test->loadHtml("<html><body>WebKitGTK Context menu tests<br>"
+        "<a style='position:absolute; left:1; top:10' href='http://www.webkitgtk.org'>WebKitGTK Website</a></body></html>",
         "ContextMenuTestDefault");
     test->waitUntilLoadFinished();
 
@@ -1042,36 +1060,93 @@ public:
 static void testContextMenuWebExtensionNode(ContextMenuWebExtensionNodeTest* test, gconstpointer)
 {
     test->showInWindowAndWaitUntilMapped();
-    test->loadHtml("<html><body><p style='position:absolute; left:1; top:1'>WebKitGTK+ Context menu tests</p><br>"
-        "<a style='position:absolute; left:1; top:100' href='http://www.webkitgtk.org'>WebKitGTK+ Website</a></body></html>",
+    test->loadHtml("<html><body><p style='position:absolute; left:1; top:1'>WebKitGTK Context menu tests</p><br>"
+        "<a style='position:absolute; left:1; top:100' href='http://www.webkitgtk.org'>WebKitGTK Website</a></body></html>",
         "ContextMenuTestNode");
     test->waitUntilLoadFinished();
 
     test->showContextMenuAtPositionAndWaitUntilFinished(0, 0);
     g_assert_cmpstr(test->m_node.name.data(), ==, "HTML");
     g_assert_cmpuint(test->m_node.type, ==, ContextMenuWebExtensionNodeTest::Node::NodeElement);
-    g_assert_cmpstr(test->m_node.contents.data(), ==, "WebKitGTK+ Context menu testsWebKitGTK+ Website");
+    g_assert_cmpstr(test->m_node.contents.data(), ==, "WebKitGTK Context menu testsWebKitGTK Website");
     g_assert_cmpstr(test->m_node.parentName.data(), ==, "#document");
 
     test->showContextMenuAtPositionAndWaitUntilFinished(1, 20);
     g_assert_cmpstr(test->m_node.name.data(), ==, "#text");
     g_assert_cmpuint(test->m_node.type, ==, ContextMenuWebExtensionNodeTest::Node::NodeText);
-    g_assert_cmpstr(test->m_node.contents.data(), ==, "WebKitGTK+ Context menu tests");
+    g_assert_cmpstr(test->m_node.contents.data(), ==, "WebKitGTK Context menu tests");
     g_assert_cmpstr(test->m_node.parentName.data(), ==, "P");
 
     // Link menu.
     test->showContextMenuAtPositionAndWaitUntilFinished(1, 101);
     g_assert_cmpstr(test->m_node.name.data(), ==, "#text");
     g_assert_cmpuint(test->m_node.type, ==, ContextMenuWebExtensionNodeTest::Node::NodeText);
-    g_assert_cmpstr(test->m_node.contents.data(), ==, "WebKitGTK+ Website");
+    g_assert_cmpstr(test->m_node.contents.data(), ==, "WebKitGTK Website");
     g_assert_cmpstr(test->m_node.parentName.data(), ==, "A");
+}
+
+static void writeNextChunk(SoupMessage* message)
+{
+    GUniquePtr<char> filePath(g_build_filename(Test::getResourcesDir().data(), "silence.webm", nullptr));
+    char* contents;
+    gsize contentsLength;
+    if (!g_file_get_contents(filePath.get(), &contents, &contentsLength, nullptr)) {
+        soup_message_set_status(message, SOUP_STATUS_NOT_FOUND);
+        soup_message_body_complete(message->response_body);
+        return;
+    }
+
+    soup_message_body_append(message->response_body, SOUP_MEMORY_TAKE, contents, contentsLength);
+    soup_message_body_complete(message->response_body);
+}
+
+static void serverCallback(SoupServer* server, SoupMessage* message, const char* path, GHashTable*, SoupClientContext*, gpointer)
+{
+    if (message->method != SOUP_METHOD_GET) {
+        soup_message_set_status(message, SOUP_STATUS_NOT_IMPLEMENTED);
+        return;
+    }
+
+    soup_message_set_status(message, SOUP_STATUS_OK);
+
+    if (g_str_equal(path, "/live-stream")) {
+        static const char* html =
+            "<html><body>"
+            " <video style='position:absolute; left:1; top:1' width='300' height='300'>"
+            "  <source src='/live-stream.webm' type='video/webm' />"
+            " </video>"
+            "</body></html>";
+        soup_message_body_append(message->response_body, SOUP_MEMORY_STATIC, html, strlen(html));
+    } else if (g_str_equal(path, "/live-stream.webm")) {
+        soup_message_headers_set_encoding(message->response_headers, SOUP_ENCODING_CHUNKED);
+        g_signal_connect(message, "wrote_headers", G_CALLBACK(writeNextChunk), nullptr);
+        g_signal_connect(message, "wrote_chunk", G_CALLBACK(writeNextChunk), nullptr);
+        return;
+    }
+
+    soup_message_body_complete(message->response_body);
+}
+
+static void testContextMenuLiveStream(ContextMenuDefaultTest* test, gconstpointer)
+{
+    test->showInWindowAndWaitUntilMapped();
+
+    test->loadURI(kServer->getURIForPath("/live-stream").data());
+    test->waitUntilLoadFinished();
+
+    test->m_expectedMenuType = ContextMenuDefaultTest::VideoLive;
+    test->showContextMenuAtPositionAndWaitUntilFinished(1, 1);
 }
 
 void beforeAll()
 {
+    kServer = new WebKitTestServer();
+    kServer->run(serverCallback);
+
     ContextMenuDefaultTest::add("WebKitWebView", "default-menu", testContextMenuDefaultMenu);
     ContextMenuDefaultTest::add("WebKitWebView", "context-menu-key", testContextMenuKey);
     ContextMenuDefaultTest::add("WebKitWebView", "popup-event-signal", testPopupEventSignal);
+    ContextMenuDefaultTest::add("WebKitWebView", "live-stream", testContextMenuLiveStream);
     ContextMenuCustomTest::add("WebKitWebView", "populate-menu", testContextMenuPopulateMenu);
     ContextMenuCustomFullTest::add("WebKitWebView", "custom-menu", testContextMenuCustomMenu);
     ContextMenuDisabledTest::add("WebKitWebView", "disable-menu", testContextMenuDisableMenu);
@@ -1083,4 +1158,5 @@ void beforeAll()
 
 void afterAll()
 {
+    delete kServer;
 }

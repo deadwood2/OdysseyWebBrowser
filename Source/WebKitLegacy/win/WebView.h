@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2016 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2019 Apple Inc.  All rights reserved.
  * Copyright (C) 2009, 2010, 2011 Appcelerator, Inc. All rights reserved.
  * Copyright (C) 2011 Brent Fulgham. All rights reserved.
  *
@@ -473,9 +473,7 @@ public:
     bool isBeingDestroyed() const { return m_isBeingDestroyed; }
 
     const char* interpretKeyEvent(const WebCore::KeyboardEvent*);
-    bool handleEditingKeyboardEvent(WebCore::KeyboardEvent*);
-
-    bool isPainting() const { return m_paintCount > 0; }
+    bool handleEditingKeyboardEvent(WebCore::KeyboardEvent&);
 
     void setToolTip(const WTF::String&);
 
@@ -568,7 +566,7 @@ private:
     // GraphicsLayerClient
     void notifyAnimationStarted(const WebCore::GraphicsLayer*, const String&, MonotonicTime) override;
     void notifyFlushRequired(const WebCore::GraphicsLayer*) override;
-    void paintContents(const WebCore::GraphicsLayer*, WebCore::GraphicsContext&, WebCore::GraphicsLayerPaintingPhase, const WebCore::FloatRect& inClip, WebCore::GraphicsLayerPaintBehavior) override;
+    void paintContents(const WebCore::GraphicsLayer*, WebCore::GraphicsContext&, OptionSet<WebCore::GraphicsLayerPaintingPhase>, const WebCore::FloatRect& inClip, WebCore::GraphicsLayerPaintBehavior) override;
 
 #if USE(CA)
     // CACFLayerTreeHostClient
@@ -670,7 +668,6 @@ protected:
     COMPtr<IDropTargetHelper> m_dropTargetHelper;
     UChar m_currentCharacterCode { 0 };
     bool m_isBeingDestroyed { false };
-    unsigned m_paintCount { 0 };
     bool m_hasSpellCheckerDocumentTag { false };
     bool m_didClose { false };
     bool m_hasCustomDropTarget { false };

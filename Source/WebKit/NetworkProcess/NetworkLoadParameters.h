@@ -27,6 +27,8 @@
 
 #include "NetworkActivityTracker.h"
 #include <WebCore/BlobDataFileReference.h>
+#include <WebCore/FrameIdentifier.h>
+#include <WebCore/PageIdentifier.h>
 #include <WebCore/ResourceLoaderOptions.h>
 #include <WebCore/ResourceRequest.h>
 #include <pal/SessionID.h>
@@ -38,10 +40,15 @@ enum class PreconnectOnly { No, Yes };
 
 class NetworkLoadParameters {
 public:
-    uint64_t webPageID { 0 };
-    uint64_t webFrameID { 0 };
+    explicit NetworkLoadParameters(PAL::SessionID sessionID)
+        : sessionID(sessionID)
+    {
+    }
+
+    PAL::SessionID sessionID;
+    WebCore::PageIdentifier webPageID;
+    WebCore::FrameIdentifier webFrameID;
     WTF::ProcessID parentPID { 0 };
-    PAL::SessionID sessionID { PAL::SessionID::emptySessionID() };
     WebCore::ResourceRequest request;
     WebCore::ContentSniffingPolicy contentSniffingPolicy { WebCore::ContentSniffingPolicy::SniffContent };
     WebCore::ContentEncodingSniffingPolicy contentEncodingSniffingPolicy { WebCore::ContentEncodingSniffingPolicy::Sniff };
@@ -50,6 +57,7 @@ public:
     bool shouldClearReferrerOnHTTPSToHTTPRedirect { true };
     bool needsCertificateInfo { false };
     bool isMainFrameNavigation { false };
+    bool isMainResourceNavigationForAnyFrame { false };
     Vector<RefPtr<WebCore::BlobDataFileReference>> blobFileReferences;
     PreconnectOnly shouldPreconnectOnly { PreconnectOnly::No };
     Optional<NetworkActivityTracker> networkActivityTracker;

@@ -109,6 +109,8 @@ public:
         return adoptRef(*new VideoFullscreenControllerContext);
     }
 
+    ~VideoFullscreenControllerContext();
+
     void setController(WebVideoFullscreenController* controller) { m_controller = controller; }
     void setUpFullscreen(HTMLVideoElement&, UIView *, HTMLMediaElementEnums::VideoFullscreenMode);
     void exitFullscreen();
@@ -215,6 +217,23 @@ private:
     RetainPtr<UIView> m_videoFullscreenView;
     RetainPtr<WebVideoFullscreenController> m_controller;
 };
+
+VideoFullscreenControllerContext::~VideoFullscreenControllerContext()
+{
+    auto notifyClientsModelWasDestroyed = [this] {
+        while (!m_playbackClients.isEmpty())
+            (*m_playbackClients.begin())->modelDestroyed();
+        while (!m_fullscreenClients.isEmpty())
+            (*m_fullscreenClients.begin())->modelDestroyed();
+    };
+    if (isUIThread()) {
+        WebThreadLock();
+        notifyClientsModelWasDestroyed();
+        m_playbackModel = nullptr;
+        m_fullscreenModel = nullptr;
+    } else
+        dispatch_sync(dispatch_get_main_queue(), WTFMove(notifyClientsModelWasDestroyed));
+}
 
 #pragma mark VideoFullscreenChangeObserver
 
@@ -543,12 +562,14 @@ void VideoFullscreenControllerContext::volumeChanged(double volume)
 
 void VideoFullscreenControllerContext::addClient(VideoFullscreenModelClient& client)
 {
+    ASSERT(isUIThread());
     ASSERT(!m_fullscreenClients.contains(&client));
     m_fullscreenClients.add(&client);
 }
 
 void VideoFullscreenControllerContext::removeClient(VideoFullscreenModelClient& client)
 {
+    ASSERT(isUIThread());
     ASSERT(m_fullscreenClients.contains(&client));
     m_fullscreenClients.remove(&client);
 }
@@ -959,6 +980,7 @@ void VideoFullscreenControllerContext::setUpFullscreen(HTMLVideoElement& videoEl
 
     dispatch_async(dispatch_get_main_queue(), [protectedThis = makeRefPtr(this), this, videoElementClientRect, viewRef, mode, allowsPictureInPicture] {
         ASSERT(isUIThread());
+        WebThreadLock();
 
         Ref<PlaybackSessionInterfaceAVKit> sessionInterface = PlaybackSessionInterfaceAVKit::create(*this);
         m_interface = VideoFullscreenInterfaceAVKit::create(sessionInterface.get());

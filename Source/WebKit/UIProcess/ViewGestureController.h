@@ -29,6 +29,7 @@
 #include "SameDocumentNavigationType.h"
 #include <WebCore/Color.h>
 #include <WebCore/FloatRect.h>
+#include <WebCore/PageIdentifier.h>
 #include <wtf/MonotonicTime.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/RunLoop.h>
@@ -164,6 +165,7 @@ public:
     bool isSwipeGestureEnabled() { return m_swipeGestureEnabled; }
 
 #if PLATFORM(GTK)
+    void cancelSwipe();
     void draw(cairo_t*, cairo_pattern_t*);
 #endif
 
@@ -175,7 +177,7 @@ private:
     // IPC::MessageReceiver.
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
 
-    static ViewGestureController* controllerForGesture(uint64_t pageID, GestureID);
+    static ViewGestureController* controllerForGesture(WebCore::PageIdentifier, GestureID);
 
     static GestureID takeNextGestureID();
     void willBeginGesture(ViewGestureType);
@@ -386,7 +388,7 @@ private:
 
         State m_state { State::None };
 
-        SwipeDirection m_direction;
+        SwipeDirection m_direction { SwipeDirection::Back };
         RefPtr<WebBackForwardListItem> m_targetItem;
         unsigned m_tickCallbackID { 0 };
 
@@ -408,6 +410,8 @@ private:
     SwipeProgressTracker m_swipeProgressTracker;
 
     RefPtr<cairo_pattern_t> m_currentSwipeSnapshotPattern;
+
+    bool m_isSimulatedSwipe { false };
 #endif
 
     bool m_isConnectedToProcess { false };

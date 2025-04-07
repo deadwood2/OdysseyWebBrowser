@@ -348,7 +348,7 @@ WebHistoryItem *kit(HistoryItem* item)
         core(_private)->setLastVisitWasFailure(true);
     
     if (NSArray *redirectURLs = [dict _webkit_arrayForKey:redirectURLsKey]) {
-        auto redirectURLsVector = std::make_unique<Vector<String>>();
+        auto redirectURLsVector = makeUnique<Vector<String>>();
         redirectURLsVector->reserveInitialCapacity([redirectURLs count]);
 
         for (id redirectURL in redirectURLs) {
@@ -436,7 +436,7 @@ WebHistoryItem *kit(HistoryItem* item)
                  forKey:lastVisitedTimeIntervalKey];
     }
     if (coreItem->lastVisitWasFailure())
-        [dict setObject:[NSNumber numberWithBool:YES] forKey:lastVisitWasFailureKey];
+        [dict setObject:@YES forKey:lastVisitWasFailureKey];
     if (Vector<String>* redirectURLs = _private->_redirectURLs.get()) {
         size_t size = redirectURLs->size();
         ASSERT(size);

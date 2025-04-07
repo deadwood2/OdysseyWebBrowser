@@ -27,6 +27,7 @@
 #include "WebPreferences.h"
 
 #include "WebPageGroup.h"
+#include "WebPageProxy.h"
 #include "WebPreferencesKeys.h"
 #include "WebProcessPool.h"
 #include <WebCore/LibWebRTCProvider.h>
@@ -178,6 +179,13 @@ void WebPreferences::updateFloatValueForKey(const String& key, float value)
     update(); // FIXME: Only send over the changed key and value.
 }
 
+void WebPreferences::deleteKey(const String& key)
+{
+    m_store.deleteKey(key);
+    platformDeleteKey(key);
+    update(); // FIXME: Only send over the changed key and value.
+}
+
 void WebPreferences::updatePrivateBrowsingValue(bool value)
 {
     platformUpdateBoolValueForKey(WebPreferencesKey::privateBrowsingEnabledKey(), value);
@@ -208,7 +216,11 @@ void WebPreferences::updatePrivateBrowsingValue(bool value)
         if (!m_store.set##TypeName##ValueForKey(WebPreferencesKey::KeyLower##Key(), value)) \
             return; \
         update##TypeName##ValueForKey(WebPreferencesKey::KeyLower##Key(), value); \
-        \
+    } \
+    \
+    void WebPreferences::delete##KeyUpper() \
+    { \
+        deleteKey(WebPreferencesKey::KeyLower##Key()); \
     } \
     \
     Type WebPreferences::KeyLower() const \

@@ -712,7 +712,21 @@ static InterpolationType interpolationFromString(NSString *string)
     [self sendMarkerHIDEventWithCompletionBlock:completionBlock];
 }
 
-- (void)sendTaps:(int)tapCount location:(CGPoint)location withNumberOfTouches:(int)touchCount completionBlock:(void (^)(void))completionBlock
+- (void)_waitFor:(NSTimeInterval)delay
+{
+    if (delay <= 0)
+        return;
+
+    bool doneWaitingForDelay = false;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), [&doneWaitingForDelay] {
+        doneWaitingForDelay = true;
+    });
+
+    while (!doneWaitingForDelay)
+        [NSRunLoop.currentRunLoop runMode:NSDefaultRunLoopMode beforeDate:NSDate.distantFuture];
+}
+
+- (void)sendTaps:(int)tapCount location:(CGPoint)location withNumberOfTouches:(int)touchCount delay:(NSTimeInterval)delay completionBlock:(void (^)(void))completionBlock
 {
     struct timespec doubleDelay = { 0, static_cast<long>(multiTapInterval * nanosecondsPerSecond) };
     struct timespec pressDelay = { 0, static_cast<long>(fingerLiftDelay * nanosecondsPerSecond) };
@@ -723,6 +737,8 @@ static InterpolationType interpolationFromString(NSString *string)
         [self liftUp:location touchCount:touchCount];
         if (i + 1 != tapCount) 
             nanosleep(&doubleDelay, 0);
+
+        [self _waitFor:delay];
     }
     
     [self sendMarkerHIDEventWithCompletionBlock:completionBlock];
@@ -730,17 +746,17 @@ static InterpolationType interpolationFromString(NSString *string)
 
 - (void)tap:(CGPoint)location completionBlock:(void (^)(void))completionBlock
 {
-    [self sendTaps:1 location:location withNumberOfTouches:1 completionBlock:completionBlock];
+    [self sendTaps:1 location:location withNumberOfTouches:1 delay:0 completionBlock:completionBlock];
 }
 
-- (void)doubleTap:(CGPoint)location completionBlock:(void (^)(void))completionBlock
+- (void)doubleTap:(CGPoint)location delay:(NSTimeInterval)delay completionBlock:(void (^)(void))completionBlock
 {
-    [self sendTaps:2 location:location withNumberOfTouches:1 completionBlock:completionBlock];
+    [self sendTaps:2 location:location withNumberOfTouches:1 delay:delay completionBlock:completionBlock];
 }
 
 - (void)twoFingerTap:(CGPoint)location completionBlock:(void (^)(void))completionBlock
 {
-    [self sendTaps:1 location:location withNumberOfTouches:2 completionBlock:completionBlock];
+    [self sendTaps:1 location:location withNumberOfTouches:2 delay:0 completionBlock:completionBlock];
 }
 
 - (void)longPress:(CGPoint)location completionBlock:(void (^)(void))completionBlock
@@ -834,7 +850,7 @@ static Optional<uint32_t> keyCodeForDOMFunctionKey(NSString *key)
     }
     for (int i = 13; i <= 24; ++i) {
         if ([key isEqualToString:[NSString stringWithFormat:@"F%d", i]])
-            return kHIDUsage_KeyboardF13 + i - 1;
+            return kHIDUsage_KeyboardF13 + i - 13;
     }
     return WTF::nullopt;
 }
@@ -973,6 +989,8 @@ static inline uint32_t hidUsageCodeForCharacter(NSString *key)
         return kHIDUsage_KeyboardLeftAlt;
     if ([key isEqualToString:@"rightAlt"])
         return kHIDUsage_KeyboardRightAlt;
+    if ([key isEqualToString:@"numpadComma"])
+        return kHIDUsage_KeypadComma;
 
     return 0;
 }
@@ -1138,7 +1156,7 @@ RetainPtr<IOHIDEventRef> createHIDKeyEvent(NSString *character, uint64_t timesta
     }
     
     NSDictionary* threadData = @{
-        @"eventInfo": [eventInfo copy],
+        @"eventInfo": [[eventInfo copy] autorelease],
         @"completionBlock": [[completionBlock copy] autorelease]
     };
     

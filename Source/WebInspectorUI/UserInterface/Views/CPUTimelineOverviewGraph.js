@@ -38,21 +38,29 @@ WI.CPUTimelineOverviewGraph = class CPUTimelineOverviewGraph extends WI.Timeline
         this._cpuTimeline.addEventListener(WI.Timeline.Event.RecordAdded, this._cpuTimelineRecordAdded, this);
 
         let size = new WI.Size(0, this.height);
-        this._chart = new WI.ColumnChart(size);
+        this._chart = new WI.StackedColumnChart(size);
+        this._chart.initializeSections(["main-thread-usage", "worker-thread-usage", "total-usage"]);
         this.addSubview(this._chart);
         this.element.appendChild(this._chart.element);
+
+        this._chart.element.addEventListener("click", this._handleChartClick.bind(this));
 
         this._legendElement = this.element.appendChild(document.createElement("div"));
         this._legendElement.classList.add("legend");
 
+        this._lastSelectedRecordInLayout = null;
+
         this.reset();
+
+        for (let record of this._cpuTimeline.records)
+            this._processRecord(record);
     }
 
     // Protected
 
     get height()
     {
-        return 72;
+        return 60;
     }
 
     reset()
@@ -61,6 +69,7 @@ WI.CPUTimelineOverviewGraph = class CPUTimelineOverviewGraph extends WI.Timeline
 
         this._maxUsage = 0;
         this._cachedMaxUsage = undefined;
+        this._lastSelectedRecordInLayout = null;
 
         this._updateLegend();
         this._chart.clear();
@@ -79,6 +88,8 @@ WI.CPUTimelineOverviewGraph = class CPUTimelineOverviewGraph extends WI.Timeline
         if (isNaN(graphWidth))
             return;
 
+        this._lastSelectedRecordInLayout = this.selectedRecord;
+
         if (this._chart.size.width !== graphWidth || this._chart.size.height !== this.height)
             this._chart.size = new WI.Size(graphWidth, this.height);
 
@@ -86,9 +97,6 @@ WI.CPUTimelineOverviewGraph = class CPUTimelineOverviewGraph extends WI.Timeline
         let visibleEndTime = Math.min(this.endTime, this.currentTime);
         let secondsPerPixel = this.timelineOverview.secondsPerPixel;
         let maxCapacity = Math.max(20, this._maxUsage * 1.05); // Add 5% for padding.
-
-        // 500ms. This matches the ResourceUsageThread sampling frequency in the backend.
-        const samplingRatePerSecond = 0.5;
 
         function xScale(time) {
             return (time - graphStartTime) / secondsPerPixel;
@@ -99,28 +107,35 @@ WI.CPUTimelineOverviewGraph = class CPUTimelineOverviewGraph extends WI.Timeline
             return (size / maxCapacity) * height;
         }
 
-        const includeRecordBeforeStart = true;
-        let visibleRecords = this._cpuTimeline.recordsInTimeRange(graphStartTime, visibleEndTime + (samplingRatePerSecond / 2), includeRecordBeforeStart);
+        let visibleRecords = this._cpuTimeline.recordsInTimeRange(graphStartTime, visibleEndTime, {
+            includeRecordBeforeStart: true,
+        });
         if (!visibleRecords.length)
             return;
 
-        function yScaleForRecord(record) {
-            return yScale(record.usage);
-        }
+        const minimumDisplayHeight = 4;
 
-        let intervalWidth = (samplingRatePerSecond / secondsPerPixel);
-        const minimumDisplayHeight = 2;
-
-        // Bars for each record.
         for (let record of visibleRecords) {
-            let w = intervalWidth;
-            let h = Math.max(minimumDisplayHeight, yScale(record.usage));
-            let x = xScale(record.startTime - (samplingRatePerSecond / 2));
-            let y = height - h;
-            this._chart.addColumn(x, y, w, h);
+            let additionalClass = record === this.selectedRecord ? "selected" : undefined;
+            let w = (record.endTime - record.startTime) / secondsPerPixel;
+            let x = xScale(record.startTime);
+            let h1 = Math.max(minimumDisplayHeight, yScale(record.mainThreadUsage));
+            let h2 = Math.max(minimumDisplayHeight, yScale(record.mainThreadUsage + record.workerThreadUsage));
+            let h3 = Math.max(minimumDisplayHeight, yScale(record.usage));
+            this._chart.addColumnSet(x, height, w, [h1, h2, h3], additionalClass);
         }
+    }
 
-        this._chart.updateLayout();
+    updateSelectedRecord()
+    {
+        super.updateSelectedRecord();
+
+        if (this._lastSelectedRecordInLayout !== this.selectedRecord) {
+            // Since we don't have the exact element to re-style with a selected appearance
+            // we trigger another layout to re-layout the graph and provide additional
+            // styles for the column for the selected record.
+            this.needsLayout();
+        }
     }
 
     // Private
@@ -141,12 +156,59 @@ WI.CPUTimelineOverviewGraph = class CPUTimelineOverviewGraph extends WI.Timeline
         }
     }
 
+    _graphPositionForMouseEvent(event)
+    {
+        // Only trigger if clicking on a rect, not anywhere in the graph.
+        let elements = document.elementsFromPoint(event.pageX, event.pageY);
+        let rectElement = elements.find((x) => x.localName === "rect");
+        if (!rectElement)
+            return NaN;
+
+        let chartElement = rectElement.closest(".stacked-column-chart");
+        if (!chartElement)
+            return NaN;
+
+        let rect = chartElement.getBoundingClientRect();
+        let position = event.pageX - rect.left;
+
+        if (WI.resolvedLayoutDirection() === WI.LayoutDirection.RTL)
+            return rect.width - position;
+        return position;
+    }
+
+    _handleChartClick(event)
+    {
+        let position = this._graphPositionForMouseEvent(event);
+        if (isNaN(position))
+            return;
+
+        let secondsPerPixel = this.timelineOverview.secondsPerPixel;
+        let graphClickTime = position * secondsPerPixel;
+        let graphStartTime = this.startTime;
+
+        let clickTime = graphStartTime + graphClickTime;
+        let record = this._cpuTimeline.closestRecordTo(clickTime);
+        if (!record)
+            return;
+
+        // Ensure that the container "click" listener added by `WI.TimelineOverview` isn't called.
+        event.__timelineRecordClickEventHandled = true;
+
+        this.selectedRecord = record;
+        this.needsLayout();
+    }
+
     _cpuTimelineRecordAdded(event)
     {
         let cpuTimelineRecord = event.data.record;
 
-        this._maxUsage = Math.max(this._maxUsage, cpuTimelineRecord.usage);
+        this._processRecord(cpuTimelineRecord);
 
         this.needsLayout();
+    }
+
+    _processRecord(cpuTimelineRecord)
+    {
+        this._maxUsage = Math.max(this._maxUsage, cpuTimelineRecord.usage);
     }
 };

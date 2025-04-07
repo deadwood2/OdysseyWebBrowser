@@ -25,8 +25,6 @@
 
 #import <WebKit/WKFoundation.h>
 
-#if WK_API_ENABLED
-
 #import <Foundation/Foundation.h>
 
 /**
@@ -83,8 +81,6 @@ typedef NS_ENUM(NSInteger, WKInputType) {
  */
 @property (nonatomic, readonly, getter=isUserInitiated) BOOL userInitiated;
 
-@property (nonatomic, readonly) NSObject <NSSecureCoding> *userObject WK_API_AVAILABLE(macosx(10.13.4), ios(11.3));
+@property (nonatomic, readonly) NSObject <NSSecureCoding> *userObject WK_API_AVAILABLE(macos(10.13.4), ios(11.3));
 
 @end
-
-#endif // WK_API_ENABLED

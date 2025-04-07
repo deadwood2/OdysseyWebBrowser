@@ -146,6 +146,7 @@
 #import <wtf/ObjCRuntimeExtras.h>
 #import <wtf/RunLoop.h>
 #import <wtf/SystemTracing.h>
+#import <wtf/WeakObjCPtr.h>
 
 #if PLATFORM(MAC)
 #import "WebNSEventExtras.h"
@@ -212,12 +213,28 @@ using namespace WTF;
 @end
 
 @interface NSWindow ()
+@property (readonly) __kindof NSView *_borderView;
+
 - (id)_newFirstResponderAfterResigning;
 @end
 
-@interface NSWindow (WebBorderViewAccess)
-- (NSView *)_web_borderView;
+#if !HAVE(SUBVIEWS_IVAR_SPI)
+@implementation NSView (SubviewsIvar)
+
+- (void)_setSubviewsIvar:(NSMutableArray<__kindof NSView *> *)subviews {
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    _subviews = subviews;
+    ALLOW_DEPRECATED_DECLARATIONS_END
+}
+
+- (NSMutableArray<__kindof NSView *> *)_subviewsIvar {
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    return (NSMutableArray *)_subviews;
+    ALLOW_DEPRECATED_DECLARATIONS_END
+}
+
 @end
+#endif
 
 using WebEvent = NSEvent;
 const auto WebEventMouseDown = NSEventTypeLeftMouseDown;
@@ -625,17 +642,6 @@ static Optional<NSInteger> toTag(ContextMenuAction action)
 
 @end
 
-@implementation NSWindow (WebBorderViewAccess)
-
-- (NSView *)_web_borderView
-{
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    return _borderView;
-    ALLOW_DEPRECATED_DECLARATIONS_END
-}
-
-@end
-
 @interface WebResponderChainSink : NSResponder {
     NSResponder* _lastResponderInChain;
     BOOL _receivedUnhandledCommand;
@@ -684,7 +690,7 @@ static WebHTMLView *lastHitView;
 static bool needsCursorRectsSupportAtPoint(NSWindow* window, NSPoint point)
 {
     forceNSViewHitTest = YES;
-    NSView* view = [[window _web_borderView] hitTest:point];
+    NSView* view = [window._borderView hitTest:point];
     forceNSViewHitTest = NO;
 
     // WebHTMLView doesn't use cursor rects.
@@ -719,14 +725,13 @@ extern "C" NSString *NSTextInputReplacementRangeAttributeName;
 - (void)_recursiveDisplayRectIfNeededIgnoringOpacity:(NSRect)rect isVisibleRect:(BOOL)isVisibleRect rectIsVisibleRectForView:(NSView *)visibleView topView:(BOOL)topView;
 - (void)_recursiveDisplayAllDirtyWithLockFocus:(BOOL)needsLockFocus visRect:(NSRect)visRect;
 #if PLATFORM(MAC)
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
+- (void)_recursive:(BOOL)recursive displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)graphicsContext stopAtLayerBackedViews:(BOOL)stopAtLayerBackedViews;
+#elif __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
 - (void)_recursive:(BOOL)recursive displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)graphicsContext shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor stopAtLayerBackedViews:(BOOL)stopAtLayerBackedViews;
-#elif __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+#else
 - (void)_recursive:(BOOL)recurse displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)context shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor;
 - (void)_recursive:(BOOL)recurseX displayRectIgnoringOpacity:(NSRect)displayRect inGraphicsContext:(NSGraphicsContext *)graphicsContext shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor;
-#else
-- (void)_recursive:(BOOL)recurse displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)context topView:(BOOL)topView;
-- (void)_recursive:(BOOL)recurseX displayRectIgnoringOpacity:(NSRect)displayRect inGraphicsContext:(NSGraphicsContext *)graphicsContext CGContext:(CGContextRef)ctx topView:(BOOL)isTopView shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor;
 #endif
 #endif
 - (void)_setDrawsOwnDescendants:(BOOL)drawsOwnDescendants;
@@ -820,10 +825,12 @@ static NSString * const WebMarkedTextUpdatedNotification = @"WebMarkedTextUpdate
 static void hardwareKeyboardAvailabilityChangedCallback(CFNotificationCenterRef, void* observer, CFStringRef, const void*, CFDictionaryRef)
 {
     ASSERT(observer);
+    auto weakWebView = WeakObjCPtr<WebHTMLView>((__bridge WebHTMLView *)observer);
     WebThreadRun(^{
-        WebHTMLView *webView = (__bridge WebHTMLView *)observer;
-        if (Frame* coreFrame = core([webView _frame]))
-            coreFrame->eventHandler().capsLockStateMayHaveChanged();
+        if (auto webView = weakWebView.get()) {
+            if (auto* coreFrame = core([webView _frame]))
+                coreFrame->eventHandler().capsLockStateMayHaveChanged();
+        }
     });
 }
 #endif
@@ -843,7 +850,6 @@ static void hardwareKeyboardAvailabilityChangedCallback(CFNotificationCenterRef,
 - (BOOL)_shouldReplaceSelectionWithText:(NSString *)text givenAction:(WebViewInsertAction)action;
 - (DOMRange *)_selectedRange;
 #if PLATFORM(MAC)
-- (NSView *)_hitViewForEvent:(NSEvent *)event;
 - (void)_writeSelectionWithPasteboardTypes:(NSArray *)types toPasteboard:(NSPasteboard *)pasteboard cachedAttributedString:(NSAttributedString *)attributedString;
 #endif
 - (DOMRange *)_documentRange;
@@ -1334,16 +1340,6 @@ static NSControlStateValue kit(TriState state)
 
 #if PLATFORM(MAC)
 
-- (NSView *)_hitViewForEvent:(NSEvent *)event
-{
-    // Usually, we hack AK's hitTest method to catch all events at the topmost WebHTMLView.  
-    // Callers of this method, however, want to query the deepest view instead.
-    forceNSViewHitTest = YES;
-    NSView *hitView = [(NSView *)[[self window] contentView] hitTest:[event locationInWindow]];
-    forceNSViewHitTest = NO;    
-    return hitView;
-}
-
 - (void)_writeSelectionWithPasteboardTypes:(NSArray *)types toPasteboard:(NSPasteboard *)pasteboard cachedAttributedString:(NSAttributedString *)attributedString
 {
     // Put HTML on the pasteboard.
@@ -1552,17 +1548,13 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 #if PLATFORM(MAC)
     ASSERT(!_private->subviewsSetAside);
     ASSERT(_private->savedSubviews == nil);
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    _private->savedSubviews = _subviews;
-    ALLOW_DEPRECATED_DECLARATIONS_END
+    _private->savedSubviews = self._subviewsIvar;
     // We need to keep the layer-hosting view in the subviews, otherwise the layers flash.
     if (_private->layerHostingView) {
-        NSArray* newSubviews = [[NSArray alloc] initWithObjects:_private->layerHostingView, nil];
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-        _subviews = newSubviews;
+        NSMutableArray* newSubviews = [[NSMutableArray alloc] initWithObjects:_private->layerHostingView, nil];
+        self._subviewsIvar = newSubviews;
     } else
-        _subviews = nil;
-    ALLOW_DEPRECATED_DECLARATIONS_END
+        self._subviewsIvar = nil;
     _private->subviewsSetAside = YES;
 #endif
  }
@@ -1572,13 +1564,11 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 #if PLATFORM(MAC)
     ASSERT(_private->subviewsSetAside);
     if (_private->layerHostingView) {
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-        [_subviews release];
-        _subviews = _private->savedSubviews;
+        [self._subviewsIvar release];
+        self._subviewsIvar = _private->savedSubviews;
     } else {
-        ASSERT(_subviews == nil);
-        _subviews = _private->savedSubviews;
-        ALLOW_DEPRECATED_DECLARATIONS_END
+        ASSERT(self._subviewsIvar == nil);
+        self._subviewsIvar = _private->savedSubviews;
     }
     _private->savedSubviews = nil;
     _private->subviewsSetAside = NO;
@@ -1679,32 +1669,28 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 // Don't let AppKit even draw subviews. We take care of that.
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
+- (void)_recursive:(BOOL)recursive displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)graphicsContext stopAtLayerBackedViews:(BOOL)stopAtLayerBackedViews
+#elif __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
 - (void)_recursive:(BOOL)recursive displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)graphicsContext shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor stopAtLayerBackedViews:(BOOL)stopAtLayerBackedViews
-#elif __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
-- (void)_recursive:(BOOL)recurse displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)context shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor
 #else
-- (void)_recursive:(BOOL)recurse displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)context topView:(BOOL)topView
+- (void)_recursive:(BOOL)recurse displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)context shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor
 #endif
 {
     [self _setAsideSubviews];
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
+    [super _recursive:recursive displayRectIgnoringOpacity:displayRect inContext:graphicsContext stopAtLayerBackedViews:stopAtLayerBackedViews];
+#elif __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
     [super _recursive:recursive displayRectIgnoringOpacity:displayRect inContext:graphicsContext shouldChangeFontReferenceColor:shouldChangeFontReferenceColor stopAtLayerBackedViews:stopAtLayerBackedViews];
-#elif __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
-    [super _recursive:recurse displayRectIgnoringOpacity:displayRect inContext:context shouldChangeFontReferenceColor:shouldChangeFontReferenceColor];
 #else
-    [super _recursive:recurse displayRectIgnoringOpacity:displayRect inContext:context topView:topView];
+    [super _recursive:recurse displayRectIgnoringOpacity:displayRect inContext:context shouldChangeFontReferenceColor:shouldChangeFontReferenceColor];
 #endif
     [self _restoreSubviews];
 }
 
 #if __MAC_OS_X_VERSION_MIN_REQUIRED < 101400
 // Don't let AppKit even draw subviews. We take care of that.
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
 - (void)_recursive:(BOOL)recurseX displayRectIgnoringOpacity:(NSRect)displayRect inGraphicsContext:(NSGraphicsContext *)graphicsContext shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor
-#else
-- (void)_recursive:(BOOL)recurseX displayRectIgnoringOpacity:(NSRect)displayRect inGraphicsContext:(NSGraphicsContext *)graphicsContext CGContext:(CGContextRef)ctx topView:(BOOL)isTopView shouldChangeFontReferenceColor:(BOOL)shouldChangeFontReferenceColor
-#endif
 {
     BOOL didSetAsideSubviews = NO;
 
@@ -1713,11 +1699,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
         didSetAsideSubviews = YES;
     }
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
     [super _recursive:recurseX displayRectIgnoringOpacity:displayRect inGraphicsContext:graphicsContext shouldChangeFontReferenceColor:shouldChangeFontReferenceColor];
-#else
-    [super _recursive:recurseX displayRectIgnoringOpacity:displayRect inGraphicsContext:graphicsContext CGContext:ctx topView:isTopView shouldChangeFontReferenceColor:shouldChangeFontReferenceColor];
-#endif
 
     if (didSetAsideSubviews)
         [self _restoreSubviews];
@@ -1980,14 +1962,9 @@ static bool mouseEventIsPartOfClickOrDrag(NSEvent *event)
             // If it is one of those cases where the page is not active and the mouse is not pressed, then we can
             // fire a much more restricted and efficient scrollbars-only version of the event.
 
-            if ([[self window] isKeyWindow] 
-                || mouseEventIsPartOfClickOrDrag(event)
-#if ENABLE(DASHBOARD_SUPPORT)
-                || [[self _webView] _dashboardBehavior:WebDashboardBehaviorAlwaysSendMouseEventsToAllWindows]
-#endif
-                ) {
+            if ([[self window] isKeyWindow] || mouseEventIsPartOfClickOrDrag(event))
                 coreFrame->eventHandler().mouseMoved(event, [[self _webView] _pressureEvent]);
-            } else {
+            else {
                 [self removeAllToolTips];
                 coreFrame->eventHandler().passMouseMovedEventToScrollbars(event, [[self _webView] _pressureEvent]);
             }
@@ -2554,14 +2531,11 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     float newBottom;
     view->adjustPageHeightDeprecated(&newBottom, top, bottom, bottomLimit);
 
-#ifdef __LP64__
     // If the new bottom is equal to the old bottom (when both are treated as floats), we just return the original
     // bottom. This prevents rounding errors that can occur when converting newBottom to a double.
     if (WTF::areEssentiallyEqual(static_cast<float>(bottom), newBottom))
         return bottom;
-    else
-#endif
-        return newBottom;
+    return newBottom;
 }
 
 #if PLATFORM(IOS_FAMILY)
@@ -2569,6 +2543,20 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 - (id)accessibilityRootElement
 {
     return [[self _frame] accessibilityRoot];
+}
+
+#endif
+
+#if PLATFORM(MAC)
+
+- (NSView *)_hitViewForEvent:(NSEvent *)event
+{
+    // Usually, we hack AK's hitTest method to catch all events at the topmost WebHTMLView.
+    // Callers of this method, however, want to query the deepest view instead.
+    forceNSViewHitTest = YES;
+    NSView *hitView = [(NSView *)[[self window] contentView] hitTest:[event locationInWindow]];
+    forceNSViewHitTest = NO;
+    return hitView;
 }
 
 #endif
@@ -4144,12 +4132,7 @@ static BOOL currentScrollIsBlit(NSView *clipView)
 
     NSView *hitView = [self _hitViewForEvent:event];
     WebHTMLView *hitHTMLView = [hitView isKindOfClass:[self class]] ? (WebHTMLView *)hitView : nil;
-    
-#if ENABLE(DASHBOARD_SUPPORT)
-    if ([[self _webView] _dashboardBehavior:WebDashboardBehaviorAlwaysAcceptsFirstMouse])
-        return YES;
-#endif
-    
+
     if (hitHTMLView) {
         bool result = false;
         if (Frame* coreFrame = core([hitHTMLView _frame])) {
@@ -4271,7 +4254,7 @@ static BOOL currentScrollIsBlit(NSView *clipView)
 #endif
 
 #if ENABLE(DRAG_SUPPORT) && PLATFORM(MAC)
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (void)dragImage:(NSImage *)dragImage
                at:(NSPoint)at
            offset:(NSSize)offset
@@ -4312,9 +4295,9 @@ IGNORE_WARNINGS_END
     [self release];
 }
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (NSDragOperation)draggingSourceOperationMaskForLocal:(BOOL)isLocal
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     ASSERT(![self _webView] || [self _isTopHTMLView]);
     
@@ -4325,9 +4308,9 @@ IGNORE_WARNINGS_END
     return (NSDragOperation)page->dragController().sourceDragOperation();
 }
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (void)draggedImage:(NSImage *)anImage endedAt:(NSPoint)aPoint operation:(NSDragOperation)operation
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     ASSERT(![self _webView] || [self _isTopHTMLView]);
     
@@ -4364,9 +4347,9 @@ static bool matchesExtensionOrEquivalent(NSString *filename, NSString *extension
         && [filename _webkit_hasCaseInsensitiveSuffix:@".jpg"]);
 }
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (NSArray *)namesOfPromisedFilesDroppedAtDestination:(NSURL *)dropDestination
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     NSFileWrapper *wrapper = nil;
     NSURL *draggingElementURL = nil;
@@ -4507,7 +4490,7 @@ IGNORE_WARNINGS_END
 
 - (void)pressureChangeWithEvent:(NSEvent *)event
 {
-#if PLATFORM(MAC) && defined(__LP64__)
+#if PLATFORM(MAC)
     NSEvent *lastPressureEvent = [[self _webView] _pressureEvent];
     if (event.phase != NSEventPhaseChanged && event.phase != NSEventPhaseBegan && event.phase != NSEventPhaseEnded)
         return;
@@ -4684,11 +4667,7 @@ static RefPtr<KeyboardEvent> currentKeyboardEvent(Frame* coreFrame)
 #if PLATFORM(MAC)
     if (!_private->installedTrackingArea) {
         NSTrackingAreaOptions options = NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited | NSTrackingInVisibleRect | NSTrackingCursorUpdate;
-        if (_NSRecommendedScrollerStyle() == NSScrollerStyleLegacy
-#if ENABLE(DASHBOARD_SUPPORT)
-            || [[self _webView] _dashboardBehavior:WebDashboardBehaviorAlwaysSendMouseEventsToAllWindows]
-#endif
-            )
+        if (_NSRecommendedScrollerStyle() == NSScrollerStyleLegacy)
             options |= NSTrackingActiveAlways;
         else
             options |= NSTrackingActiveInKeyWindow;
@@ -5027,9 +5006,9 @@ static RefPtr<KeyboardEvent> currentKeyboardEvent(Frame* coreFrame)
     [super flagsChanged:event];
 }
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (id)accessibilityAttributeValue:(NSString*)attributeName
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     if ([attributeName isEqualToString: NSAccessibilityChildrenAttribute]) {
         id accTree = [[self _frame] accessibilityRoot];
@@ -6071,11 +6050,6 @@ static BOOL writingDirectionKeyBindingsEnabled()
 
 #if PLATFORM(IOS_FAMILY)
     
-#define kWebEnterKey         0x0003
-#define kWebBackspaceKey     0x0008
-#define kWebReturnKey        0x000d
-#define kWebDeleteKey        0x007F
-    
 - (BOOL)_handleEditingKeyEvent:(KeyboardEvent *)wcEvent
 {
     // Use the isEditable state to determine whether or not to process tab key events.
@@ -6107,12 +6081,12 @@ static BOOL writingDirectionKeyBindingsEnabled()
         if (!s.length)
             return NO;
         switch ([s characterAtIndex:0]) {
-        case kWebBackspaceKey:
-        case kWebDeleteKey:
+        case NSBackspaceCharacter:
+        case NSDeleteCharacter:
             [[webView _UIKitDelegateForwarder] deleteFromInputWithFlags:event.keyboardFlags];
             return YES;
-        case kWebEnterKey:
-        case kWebReturnKey:
+        case NSEnterCharacter:
+        case NSCarriageReturnCharacter:
             if (isCharEvent) {
                 // Map \r from HW keyboard to \n to match the behavior of the soft keyboard.
                 [[webView _UIKitDelegateForwarder] addInputString:@"\n" withFlags:0];
@@ -6294,9 +6268,9 @@ static BOOL writingDirectionKeyBindingsEnabled()
 
 #if PLATFORM(MAC)
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (NSArray *)validAttributesForMarkedText
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     static NSArray *validAttributes = [[NSArray alloc] initWithObjects:
         NSUnderlineStyleAttributeName,
@@ -6337,9 +6311,9 @@ IGNORE_WARNINGS_END
 
 #endif // PLATFORM(MAC)
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (NSUInteger)characterIndexForPoint:(NSPoint)thePoint
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     [self _executeSavedKeypressCommands];
 
@@ -6363,9 +6337,9 @@ IGNORE_WARNINGS_END
     return result;
 }
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (NSRect)firstRectForCharacterRange:(NSRange)theRange
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     [self _executeSavedKeypressCommands];
 
@@ -6397,9 +6371,9 @@ IGNORE_WARNINGS_END
     return resultRect;
 }
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (NSRange)selectedRange
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     [self _executeSavedKeypressCommands];
 
@@ -6413,9 +6387,9 @@ IGNORE_WARNINGS_END
     return result;
 }
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (NSRange)markedRange
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     [self _executeSavedKeypressCommands];
 
@@ -6431,9 +6405,9 @@ IGNORE_WARNINGS_END
 
 #if PLATFORM(MAC)
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (NSAttributedString *)attributedSubstringFromRange:(NSRange)nsRange
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     [self _executeSavedKeypressCommands];
 
@@ -6465,9 +6439,9 @@ IGNORE_WARNINGS_END
 
 #endif
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (NSInteger)conversationIdentifier
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     return (NSInteger)self;
 }
@@ -6487,9 +6461,9 @@ IGNORE_WARNINGS_END
     return result;
 }
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (void)unmarkText
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     [self _executeSavedKeypressCommands];
 
@@ -6534,9 +6508,9 @@ static void extractUnderlines(NSAttributedString *string, Vector<CompositionUnde
 
 #endif
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (void)setMarkedText:(id)string selectedRange:(NSRange)newSelRange
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     [self _executeSavedKeypressCommands];
 
@@ -6592,9 +6566,9 @@ IGNORE_WARNINGS_END
     coreFrame->editor().setComposition(text, underlines, newSelRange.location, NSMaxRange(newSelRange));
 }
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (void)doCommandBySelector:(SEL)selector
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     LOG(TextInput, "doCommandBySelector:\"%s\"", sel_getName(selector));
 
@@ -6652,9 +6626,9 @@ IGNORE_WARNINGS_END
     }
 }
 
-IGNORE_WARNINGS_BEGIN("deprecated-implementations")
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (void)insertText:(id)string
-IGNORE_WARNINGS_END
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
 #if PLATFORM(MAC)
     BOOL isAttributedString = [string isKindOfClass:[NSAttributedString class]];
@@ -7103,7 +7077,7 @@ static CGImageRef selectionImage(Frame* frame, bool forceBlackText)
     Frame* coreFrame = core([self _frame]);
     if (!coreFrame)
         return nil;
-    HitTestRequest::HitTestRequestType hitType = HitTestRequest::ReadOnly | HitTestRequest::Active
+    HitTestRequest::HitTestRequestType hitType = HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::AllowChildFrameContent
         | (allow ? 0 : HitTestRequest::DisallowUserAgentShadowContent);
     return [[[WebElementDictionary alloc] initWithHitTestResult:coreFrame->eventHandler().hitTestResultAtPoint(IntPoint(point), hitType)] autorelease];
 }

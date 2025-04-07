@@ -80,6 +80,8 @@ public:
     static void clearAllCaches(NetworkProcess&, PAL::SessionID, CompletionHandler<void()>&&);
     static void clearCachesForOrigin(NetworkProcess&, PAL::SessionID, WebCore::SecurityOriginData&&, CompletionHandler<void()>&&);
 
+    static void initializeQuotaUser(NetworkProcess&, PAL::SessionID, const WebCore::ClientOrigin&, CompletionHandler<void()>&&);
+
     bool shouldPersist() const { return !!m_ioQueue;}
 
     void writeFile(const String& filename, NetworkCache::Data&&, WebCore::DOMCacheEngine::CompletionCallback&&);
@@ -90,11 +92,8 @@ public:
     const NetworkCache::Salt& salt() const { return m_salt.value(); }
     uint64_t nextCacheIdentifier() { return ++m_nextCacheIdentifier; }
 
-    using RequestSpaceCallback = CompletionHandler<void(Optional<uint64_t>)>;
-    void requestSpace(const WebCore::ClientOrigin&, uint64_t quota, uint64_t currentSize, uint64_t spaceRequired, RequestSpaceCallback&&);
-
 private:
-    Engine(PAL::SessionID, NetworkProcess&, String&& rootPath, uint64_t quota);
+    Engine(PAL::SessionID, NetworkProcess&, String&& rootPath);
 
     void open(const WebCore::ClientOrigin&, const String& cacheName, WebCore::DOMCacheEngine::CacheIdentifierCallback&&);
     void remove(uint64_t cacheIdentifier, WebCore::DOMCacheEngine::CacheIdentifierCallback&&);
@@ -120,6 +119,10 @@ private:
 
     void fetchEntries(bool /* shouldComputeSize */, CompletionHandler<void(Vector<WebsiteData::Entry>)>&&);
 
+    void getDirectories(CompletionHandler<void(const Vector<String>&)>&&);
+    void fetchDirectoryEntries(bool shouldComputeSize, const Vector<String>& folderPaths, CompletionHandler<void(Vector<WebsiteData::Entry>)>&&);
+    void clearCachesForOriginFromDirectories(const Vector<String>&, const WebCore::SecurityOriginData&, CompletionHandler<void()>&&);
+
     void initialize(WebCore::DOMCacheEngine::CompletionCallback&&);
 
     using CachesOrError = Expected<std::reference_wrapper<Caches>, WebCore::DOMCacheEngine::Error>;
@@ -137,7 +140,6 @@ private:
     HashMap<WebCore::ClientOrigin, RefPtr<Caches>> m_caches;
     uint64_t m_nextCacheIdentifier { 0 };
     String m_rootPath;
-    uint64_t m_quota { 0 };
     RefPtr<WorkQueue> m_ioQueue;
     Optional<NetworkCache::Salt> m_salt;
     HashMap<CacheIdentifier, LockCount> m_cacheLocks;

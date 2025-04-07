@@ -48,6 +48,7 @@ FORMATETC* cfUrlWFormat()
 }
 
 class WCEnumFormatEtc final : public IEnumFORMATETC {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit WCEnumFormatEtc(const Vector<FORMATETC>& formats);
     explicit WCEnumFormatEtc(const Vector<std::unique_ptr<FORMATETC>>& formats);
@@ -249,7 +250,7 @@ STDMETHODIMP DRTDataObject::SetData(_In_ FORMATETC* pformatetc, _In_ STGMEDIUM* 
     if (!pformatetc || !pmedium)
         return E_POINTER;
 
-    auto formatetc = std::make_unique<FORMATETC>();
+    auto formatetc = makeUniqueWithoutFastMallocCheck<FORMATETC>();
     std::unique_ptr<STGMEDIUM, StgMediumDeleter> pStgMed(new STGMEDIUM);
 
     ZeroMemory(formatetc.get(), sizeof(FORMATETC));

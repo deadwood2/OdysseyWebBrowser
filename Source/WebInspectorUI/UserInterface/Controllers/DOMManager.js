@@ -50,6 +50,8 @@ WI.DOMManager = class DOMManager extends WI.Object
         this._hasRequestedDocument = false;
         this._pendingDocumentRequestCallbacks = null;
 
+        WI.EventBreakpoint.addEventListener(WI.EventBreakpoint.Event.DisabledStateChanged, this._handleEventBreakpointDisabledStateChanged, this);
+
         WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
     }
 
@@ -73,7 +75,21 @@ WI.DOMManager = class DOMManager extends WI.Object
         this._documentUpdated();
     }
 
+    // Static
+
+    static supportsDisablingEventListeners()
+    {
+        return !!(InspectorBackend.domains.DOM && InspectorBackend.domains.DOM.setEventListenerDisabled);
+    }
+
+    static supportsEventListenerBreakpoints()
+    {
+        return !!(InspectorBackend.domains.DOM && InspectorBackend.domains.DOM.setBreakpointForEventListener && InspectorBackend.domains.DOM.removeBreakpointForEventListener);
+    }
+
     // Public
+
+    get inspectedNode() { return this._inspectedNode; }
 
     get eventListenerBreakpoints()
     {
@@ -129,10 +145,10 @@ WI.DOMManager = class DOMManager extends WI.Object
         this._dispatchWhenDocumentAvailable(DOMAgent.pushNodeByPathToFrontend.bind(DOMAgent, path), callback);
     }
 
+    // DOMObserver
+
     didAddEventListener(nodeId)
     {
-        // Called from WI.DOMObserver.
-
         let node = this._idToDOMNode[nodeId];
         if (!node)
             return;
@@ -142,8 +158,6 @@ WI.DOMManager = class DOMManager extends WI.Object
 
     willRemoveEventListener(nodeId)
     {
-        // Called from WI.DOMObserver.
-
         let node = this._idToDOMNode[nodeId];
         if (!node)
             return;
@@ -153,8 +167,6 @@ WI.DOMManager = class DOMManager extends WI.Object
 
     didFireEvent(nodeId, eventName, timestamp, data)
     {
-        // Called from WI.DOMObserver.
-
         let node = this._idToDOMNode[nodeId];
         if (!node)
             return;
@@ -162,15 +174,13 @@ WI.DOMManager = class DOMManager extends WI.Object
         node.didFireEvent(eventName, timestamp, data);
     }
 
-    videoLowPowerChanged(nodeId, timestamp, isLowPower)
+    powerEfficientPlaybackStateChanged(nodeId, timestamp, isPowerEfficient)
     {
-        // Called from WI.DOMObserver.
-
         let node = this._idToDOMNode[nodeId];
         if (!node)
             return;
 
-        node.videoLowPowerChanged(timestamp, isLowPower);
+        node.powerEfficientPlaybackStateChanged(timestamp, isPowerEfficient);
     }
 
     // Private
@@ -438,47 +448,6 @@ WI.DOMManager = class DOMManager extends WI.Object
         remoteObject.pushNodeToFrontend(nodeAvailable.bind(this));
     }
 
-    performSearch(query, searchCallback)
-    {
-        this.cancelSearch();
-
-        function callback(error, searchId, resultsCount)
-        {
-            this._searchId = searchId;
-            searchCallback(resultsCount);
-        }
-        DOMAgent.performSearch(query, callback.bind(this));
-    }
-
-    searchResult(index, callback)
-    {
-        function mycallback(error, nodeIds)
-        {
-            if (error) {
-                console.error(error);
-                callback(null);
-                return;
-            }
-            if (nodeIds.length !== 1)
-                return;
-
-            callback(this._idToDOMNode[nodeIds[0]]);
-        }
-
-        if (this._searchId)
-            DOMAgent.getSearchResults(this._searchId, index, index + 1, mycallback.bind(this));
-        else
-            callback(null);
-    }
-
-    cancelSearch()
-    {
-        if (this._searchId) {
-            DOMAgent.discardSearchResults(this._searchId);
-            this._searchId = undefined;
-        }
-    }
-
     querySelector(nodeOrNodeId, selector, callback)
     {
         let nodeId = nodeOrNodeId instanceof WI.DOMNode ? nodeOrNodeId.id : nodeOrNodeId;
@@ -577,7 +546,12 @@ WI.DOMManager = class DOMManager extends WI.Object
         if (enabled === this._inspectModeEnabled)
             return;
 
-        DOMAgent.setInspectModeEnabled(enabled, this._buildHighlightConfig(), (error) => {
+        let commandArguments = {
+            enabled,
+            highlightConfig: this._buildHighlightConfig(),
+            showRulers: WI.settings.showRulersDuringElementSelection.value,
+        };
+        DOMAgent.setInspectModeEnabled.invoke(commandArguments, (error) => {
             this._inspectModeEnabled = error ? false : enabled;
             this.dispatchEventToListeners(WI.DOMManager.Event.InspectModeStateChanged);
         });
@@ -595,6 +569,8 @@ WI.DOMManager = class DOMManager extends WI.Object
                 return;
 
             this._inspectedNode = node;
+
+            this.dispatchEventToListeners(WI.DOMManager.Event.InspectedNodeChanged);
         };
 
         // COMPATIBILITY (iOS 11): DOM.setInspectedNode did not exist.
@@ -629,40 +605,54 @@ WI.DOMManager = class DOMManager extends WI.Object
 
     setBreakpointForEventListener(eventListener)
     {
-        let breakpoint = new WI.EventBreakpoint(WI.EventBreakpoint.Type.Listener, eventListener.type, {eventListener});
+        let breakpoint = this._breakpointsForEventListeners.get(eventListener.eventListenerId);
+        if (breakpoint) {
+            console.assert(breakpoint.disabled);
+            breakpoint.disabled = false;
+            return;
+        }
+
+        breakpoint = new WI.EventBreakpoint(WI.EventBreakpoint.Type.Listener, {eventName: eventListener.type, eventListener});
+        console.assert(!breakpoint.disabled);
+
         this._breakpointsForEventListeners.set(eventListener.eventListenerId, breakpoint);
 
-        DOMAgent.setBreakpointForEventListener(eventListener.eventListenerId, (error) => {
-            if (error) {
-                console.error(error);
-                return;
-            }
+        for (let target of WI.targets) {
+            if (target.DOMAgent)
+                this._updateEventBreakpoint(breakpoint, target);
+        }
 
-            WI.domDebuggerManager.dispatchEventToListeners(WI.DOMDebuggerManager.Event.EventBreakpointAdded, {breakpoint});
-        });
+        WI.domDebuggerManager.dispatchEventToListeners(WI.DOMDebuggerManager.Event.EventBreakpointAdded, {breakpoint});
     }
 
     removeBreakpointForEventListener(eventListener)
     {
-        let breakpoint = this._breakpointsForEventListeners.get(eventListener.eventListenerId);
+        let breakpoint = this._breakpointsForEventListeners.take(eventListener.eventListenerId);
         console.assert(breakpoint);
 
-        this._breakpointsForEventListeners.delete(eventListener.eventListenerId);
+        for (let target of WI.targets) {
+            if (target.DOMAgent)
+                target.DOMAgent.removeBreakpointForEventListener(eventListener.eventListenerId);
+        }
 
-        DOMAgent.removeBreakpointForEventListener(eventListener.eventListenerId, (error) => {
-            if (error) {
-                console.error(error);
-                return;
-            }
+        WI.domDebuggerManager.dispatchEventToListeners(WI.DOMDebuggerManager.Event.EventBreakpointRemoved, {breakpoint});
+    }
 
-            WI.domDebuggerManager.dispatchEventToListeners(WI.DOMDebuggerManager.Event.EventBreakpointRemoved, {breakpoint});
-        });
+    removeEventListenerBreakpointsForNode(domNode)
+    {
+        for (let breakpoint of Array.from(this._breakpointsForEventListeners.values())) {
+            let eventListener = breakpoint.eventListener;
+            if (eventListener.nodeId === domNode.id)
+                this.removeBreakpointForEventListener(eventListener);
+        }
     }
 
     breakpointForEventListenerId(eventListenerId)
     {
         return this._breakpointsForEventListeners.get(eventListenerId) || null;
     }
+
+    // Private
 
     _buildHighlightConfig(mode = "all")
     {
@@ -683,7 +673,34 @@ WI.DOMManager = class DOMManager extends WI.Object
         return highlightConfig;
     }
 
-    // Private
+    _updateEventBreakpoint(breakpoint, target)
+    {
+        let eventListener = breakpoint.eventListener;
+        console.assert(eventListener);
+
+        if (breakpoint.disabled)
+            target.DOMAgent.removeBreakpointForEventListener(eventListener.eventListenerId);
+        else {
+            if (!WI.debuggerManager.breakpointsDisabledTemporarily)
+                WI.debuggerManager.breakpointsEnabled = true;
+
+            target.DOMAgent.setBreakpointForEventListener(eventListener.eventListenerId);
+        }
+    }
+
+    _handleEventBreakpointDisabledStateChanged(event)
+    {
+        let breakpoint = event.target;
+
+        // Non-specific event listener breakpoints are handled by `DOMDebuggerManager`.
+        if (!breakpoint.eventListener)
+            return;
+
+        for (let target of WI.targets) {
+            if (target.DOMAgent)
+                this._updateEventBreakpoint(breakpoint, target);
+        }
+    }
 
     _mainResourceDidChange(event)
     {
@@ -707,4 +724,5 @@ WI.DOMManager.Event = {
     ChildNodeCountUpdated: "dom-manager-child-node-count-updated",
     DOMNodeWasInspected: "dom-manager-dom-node-was-inspected",
     InspectModeStateChanged: "dom-manager-inspect-mode-state-changed",
+    InspectedNodeChanged: "dom-manager-inspected-node-changed",
 };

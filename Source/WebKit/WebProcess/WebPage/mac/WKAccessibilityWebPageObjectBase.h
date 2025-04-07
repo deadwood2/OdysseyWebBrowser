@@ -26,22 +26,29 @@
 #ifndef WKAccessibilityWebPageObjectBase_h
 #define WKAccessibilityWebPageObjectBase_h
 
+#include <WebCore/PageIdentifier.h>
+
 namespace WebKit {
 class WebPage;
 }
 
 @interface WKAccessibilityWebPageObjectBase : NSObject {
     WebKit::WebPage* m_page;
-    uint64_t m_pageID;
+    WebCore::PageIdentifier m_pageID;
     id m_parent;
-    bool m_hasPlugin;
+    bool m_hasMainFramePlugin;
 }
 
 - (void)setWebPage:(WebKit::WebPage*)page;
 - (void)setRemoteParent:(id)parent;
+- (void)setHasMainFramePlugin:(bool)hasPlugin;
 
 - (id)accessibilityRootObjectWrapper;
 - (id)accessibilityFocusedUIElement;
+
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+- (BOOL)clientSupportsIsolatedTree;
+#endif
 
 @end
 

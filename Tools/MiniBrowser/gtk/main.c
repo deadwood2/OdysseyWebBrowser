@@ -52,6 +52,8 @@ static const char *contentFilter;
 static const char *cookiesFile;
 static const char *cookiesPolicy;
 static const char *proxy;
+static gboolean darkMode;
+static gboolean printVersion;
 
 typedef enum {
     MINI_BROWSER_ERROR_INVALID_ABOUT_PATH
@@ -103,6 +105,7 @@ static const GOptionEntry commandLineOptions[] =
 {
     { "bg-color", 0, 0, G_OPTION_ARG_CALLBACK, parseBackgroundColor, "Background color", NULL },
     { "editor-mode", 'e', 0, G_OPTION_ARG_NONE, &editorMode, "Run in editor mode", NULL },
+    { "dark-mode", 'd', 0, G_OPTION_ARG_NONE, &darkMode, "Run in dark mode", NULL },
     { "session-file", 's', 0, G_OPTION_ARG_FILENAME, &sessionFile, "Session file", "FILE" },
     { "geometry", 'g', 0, G_OPTION_ARG_STRING, &geometry, "Set the size and position of the window (WIDTHxHEIGHT+X+Y)", "GEOMETRY" },
     { "full-screen", 'f', 0, G_OPTION_ARG_NONE, &fullScreen, "Set the window to full-screen mode", NULL },
@@ -114,6 +117,7 @@ static const GOptionEntry commandLineOptions[] =
     { "ignore-host", 0, 0, G_OPTION_ARG_STRING_ARRAY, &ignoreHosts, "Set proxy ignore hosts", "HOSTS" },
     { "ignore-tls-errors", 0, 0, G_OPTION_ARG_NONE, &ignoreTLSErrors, "Ignore TLS errors", NULL },
     { "content-filter", 0, 0, G_OPTION_ARG_FILENAME, &contentFilter, "JSON with content filtering rules", "FILE" },
+    { "version", 'v', 0, G_OPTION_ARG_NONE, &printVersion, "Print the WebKitGTK version", NULL },
     { G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_FILENAME_ARRAY, &uriArguments, 0, "[URL…]" },
     { 0, 0, 0, 0, 0, 0, 0 }
 };
@@ -414,6 +418,7 @@ static void gotWebsiteDataCallback(WebKitWebsiteDataManager *manager, GAsyncResu
     aboutDataFillTable(result, dataRequest, dataList, "IndexedDB Databases", WEBKIT_WEBSITE_DATA_INDEXEDDB_DATABASES, webkit_website_data_manager_get_indexeddb_directory(manager), pageID);
     aboutDataFillTable(result, dataRequest, dataList, "Plugins Data", WEBKIT_WEBSITE_DATA_PLUGIN_DATA, NULL, pageID);
     aboutDataFillTable(result, dataRequest, dataList, "Offline Web Applications Cache", WEBKIT_WEBSITE_DATA_OFFLINE_APPLICATION_CACHE, webkit_website_data_manager_get_offline_application_cache_directory(manager), pageID);
+    aboutDataFillTable(result, dataRequest, dataList, "HSTS Cache", WEBKIT_WEBSITE_DATA_HSTS_CACHE, webkit_website_data_manager_get_hsts_cache_directory(manager), pageID);
 
     result = g_string_append(result, "</body></html>");
     gsize streamLength = result->len;
@@ -439,7 +444,7 @@ static void aboutURISchemeRequestCallback(WebKitURISchemeRequest *request, WebKi
 
     path = webkit_uri_scheme_request_get_path(request);
     if (!g_strcmp0(path, "minibrowser")) {
-        contents = g_strdup_printf("<html><body><h1>WebKitGTK+ MiniBrowser</h1><p>The WebKit2 test browser of the GTK+ port.</p><p>WebKit version: %d.%d.%d</p></body></html>",
+        contents = g_strdup_printf("<html><body><h1>WebKitGTK MiniBrowser</h1><p>The test browser of WebKitGTK</p><p>WebKit version: %d.%d.%d</p></body></html>",
             webkit_get_major_version(),
             webkit_get_minor_version(),
             webkit_get_micro_version());
@@ -516,6 +521,14 @@ int main(int argc, char *argv[])
     }
     g_option_context_free (context);
 
+    if (printVersion) {
+        g_print("WebKitGTK %u.%u.%u\n",
+            webkit_get_major_version(),
+            webkit_get_minor_version(),
+            webkit_get_micro_version());
+        return 0;
+    }
+
     WebKitWebContext *webContext = (privateMode || automationMode) ? webkit_web_context_new_ephemeral() : webkit_web_context_get_default();
 
     if (cookiesPolicy) {
@@ -538,10 +551,6 @@ int main(int argc, char *argv[])
         webkit_web_context_set_network_proxy_settings(webContext, WEBKIT_NETWORK_PROXY_MODE_CUSTOM, webkitProxySettings);
         webkit_network_proxy_settings_free(webkitProxySettings);
     }
-
-    const gchar *singleprocess = g_getenv("MINIBROWSER_SINGLEPROCESS");
-    webkit_web_context_set_process_model(webContext, (singleprocess && *singleprocess) ?
-        WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS : WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES);
 
     // Enable the favicon database, by specifying the default directory.
     webkit_web_context_set_favicon_database_directory(webContext, NULL);
@@ -583,6 +592,8 @@ int main(int argc, char *argv[])
         webkit_web_context_set_tls_errors_policy(webContext, WEBKIT_TLS_ERRORS_POLICY_IGNORE);
 
     BrowserWindow *mainWindow = BROWSER_WINDOW(browser_window_new(NULL, webContext));
+    if (darkMode)
+        g_object_set(gtk_widget_get_settings(GTK_WIDGET(mainWindow)), "gtk-application-prefer-dark-theme", TRUE, NULL);
     if (fullScreen)
         gtk_window_fullscreen(GTK_WINDOW(mainWindow));
     else if (geometry)

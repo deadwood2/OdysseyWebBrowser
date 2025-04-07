@@ -33,12 +33,14 @@
 #include <WebKit/WKRetainPtr.h>
 #include <string>
 #include <wtf/Noncopyable.h>
+#include <wtf/RunLoop.h>
 #include <wtf/Seconds.h>
 #include <wtf/text/StringBuilder.h>
 
 namespace WTR {
 
 class TestInvocation final : public UIScriptContextDelegate {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(TestInvocation);
 public:
     explicit TestInvocation(WKURLRef, const TestOptions&);
@@ -86,9 +88,21 @@ public:
     void dumpResourceLoadStatistics();
 
     bool canOpenWindows() const { return m_canOpenWindows; }
-    
+
+    void dumpAdClickAttribution();
+    void performCustomMenuAction();
+
+    void willCreateNewPage();
+
 private:
     WKRetainPtr<WKMutableDictionaryRef> createTestSettingsDictionary();
+
+    void waitToDumpWatchdogTimerFired();
+    void initializeWaitToDumpWatchdogTimerIfNeeded();
+    void invalidateWaitToDumpWatchdogTimer();
+
+    void done();
+    void setWaitUntilDone(bool);
 
     void dumpResults();
     static void dump(const char* textToStdout, const char* textToStderr = 0, bool seenError = false);
@@ -116,6 +130,7 @@ private:
     
     WKRetainPtr<WKURLRef> m_url;
     WTF::String m_urlString;
+    RunLoop::Timer<TestInvocation> m_waitToDumpWatchdogTimer;
 
     std::string m_expectedPixelHash;
 
@@ -135,6 +150,7 @@ private:
     bool m_pixelResultIsPending { false };
     bool m_shouldDumpResourceLoadStatistics { false };
     bool m_canOpenWindows { false };
+    bool m_shouldDumpAdClickAttribution { false };
     WhatToDump m_whatToDump { WhatToDump::RenderTree };
 
     StringBuilder m_textOutput;

@@ -37,26 +37,22 @@ using namespace WebCore;
 
 namespace AuthenticatorManagerInternal {
 
-#if PLATFORM(MAC)
-const size_t maxTransportNumber = 2;
-#else
-const size_t maxTransportNumber = 1;
-#endif
+const size_t maxTransportNumber = 3;
 
 // Suggested by WebAuthN spec as of 7 August 2018.
 const unsigned maxTimeOutValue = 120000;
 
-// FIXME(188624, 188625): Support NFC and BLE authenticators.
+// FIXME(188625): Support BLE authenticators.
 static AuthenticatorManager::TransportSet collectTransports(const Optional<PublicKeyCredentialCreationOptions::AuthenticatorSelectionCriteria>& authenticatorSelection)
 {
     AuthenticatorManager::TransportSet result;
     if (!authenticatorSelection || !authenticatorSelection->authenticatorAttachment) {
         auto addResult = result.add(AuthenticatorTransport::Internal);
         ASSERT_UNUSED(addResult, addResult.isNewEntry);
-#if PLATFORM(MAC)
         addResult = result.add(AuthenticatorTransport::Usb);
         ASSERT_UNUSED(addResult, addResult.isNewEntry);
-#endif
+        addResult = result.add(AuthenticatorTransport::Nfc);
+        ASSERT_UNUSED(addResult, addResult.isNewEntry);
         return result;
     }
 
@@ -66,10 +62,10 @@ static AuthenticatorManager::TransportSet collectTransports(const Optional<Publi
         return result;
     }
     if (authenticatorSelection->authenticatorAttachment == PublicKeyCredentialCreationOptions::AuthenticatorAttachment::CrossPlatform) {
-#if PLATFORM(MAC)
         auto addResult = result.add(AuthenticatorTransport::Usb);
         ASSERT_UNUSED(addResult, addResult.isNewEntry);
-#endif
+        addResult = result.add(AuthenticatorTransport::Nfc);
+        ASSERT_UNUSED(addResult, addResult.isNewEntry);
         return result;
     }
 
@@ -88,27 +84,26 @@ static AuthenticatorManager::TransportSet collectTransports(const Vector<PublicK
     if (allowCredentials.isEmpty()) {
         auto addResult = result.add(AuthenticatorTransport::Internal);
         ASSERT_UNUSED(addResult, addResult.isNewEntry);
-#if PLATFORM(MAC)
         addResult = result.add(AuthenticatorTransport::Usb);
         ASSERT_UNUSED(addResult, addResult.isNewEntry);
-#endif
+        addResult = result.add(AuthenticatorTransport::Nfc);
+        ASSERT_UNUSED(addResult, addResult.isNewEntry);
         return result;
     }
 
     for (auto& allowCredential : allowCredentials) {
         if (allowCredential.transports.isEmpty()) {
             result.add(AuthenticatorTransport::Internal);
-#if PLATFORM(MAC)
             result.add(AuthenticatorTransport::Usb);
+            result.add(AuthenticatorTransport::Nfc);
             return result;
-#endif
         }
         if (!result.contains(AuthenticatorTransport::Internal) && allowCredential.transports.contains(AuthenticatorTransport::Internal))
             result.add(AuthenticatorTransport::Internal);
-#if PLATFORM(MAC)
         if (!result.contains(AuthenticatorTransport::Usb) && allowCredential.transports.contains(AuthenticatorTransport::Usb))
             result.add(AuthenticatorTransport::Usb);
-#endif
+        if (!result.contains(AuthenticatorTransport::Nfc) && allowCredential.transports.contains(AuthenticatorTransport::Nfc))
+            result.add(AuthenticatorTransport::Nfc);
         if (result.size() >= maxTransportNumber)
             return result;
     }
@@ -129,9 +124,10 @@ void AuthenticatorManager::makeCredential(const Vector<uint8_t>& hash, const Pub
     using namespace AuthenticatorManagerInternal;
 
     if (m_pendingCompletionHandler) {
-        callback(ExceptionData { NotAllowedError, "A request is pending."_s });
-        return;
+        m_pendingCompletionHandler(ExceptionData { NotAllowedError, "This request has been cancelled by a new request."_s });
+        m_requestTimeOutTimer.stop();
     }
+    clearState();
 
     // 1. Save request for async operations.
     m_pendingRequestData = { hash, true, options, { } };
@@ -147,9 +143,10 @@ void AuthenticatorManager::getAssertion(const Vector<uint8_t>& hash, const Publi
     using namespace AuthenticatorManagerInternal;
 
     if (m_pendingCompletionHandler) {
-        callback(ExceptionData { NotAllowedError, "A request is pending."_s });
-        return;
+        m_pendingCompletionHandler(ExceptionData { NotAllowedError, "This request has been cancelled by a new request."_s });
+        m_requestTimeOutTimer.stop();
     }
+    clearState();
 
     // 1. Save request for async operations.
     m_pendingRequestData = { hash, false, { }, options };
@@ -166,11 +163,17 @@ void AuthenticatorManager::clearStateAsync()
     RunLoop::main().dispatch([weakThis = makeWeakPtr(*this)] {
         if (!weakThis)
             return;
-        weakThis->m_pendingRequestData = { };
-        ASSERT(!weakThis->m_pendingCompletionHandler);
-        weakThis->m_services.clear();
-        weakThis->m_authenticators.clear();
+        weakThis->clearState();
     });
+}
+
+void AuthenticatorManager::clearState()
+{
+    if (m_pendingCompletionHandler)
+        return;
+    m_pendingRequestData = { };
+    m_services.clear();
+    m_authenticators.clear();
 }
 
 void AuthenticatorManager::authenticatorAdded(Ref<Authenticator>&& authenticator)
@@ -187,15 +190,29 @@ void AuthenticatorManager::respondReceived(Respond&& respond)
     ASSERT(RunLoop::isMain());
     if (!m_requestTimeOutTimer.isActive())
         return;
-
     ASSERT(m_pendingCompletionHandler);
-    if (WTF::holds_alternative<PublicKeyCredentialData>(respond)) {
+
+    auto shouldComplete = WTF::holds_alternative<PublicKeyCredentialData>(respond);
+    if (!shouldComplete)
+        shouldComplete = WTF::get<ExceptionData>(respond).code == InvalidStateError;
+    if (shouldComplete) {
         m_pendingCompletionHandler(WTFMove(respond));
         clearStateAsync();
         m_requestTimeOutTimer.stop();
         return;
     }
     respondReceivedInternal(WTFMove(respond));
+}
+
+void AuthenticatorManager::downgrade(Authenticator* id, Ref<Authenticator>&& downgradedAuthenticator)
+{
+    RunLoop::main().dispatch([weakThis = makeWeakPtr(*this), id] {
+        if (!weakThis)
+            return;
+        auto removed = weakThis->m_authenticators.remove(id);
+        ASSERT_UNUSED(removed, removed);
+    });
+    authenticatorAdded(WTFMove(downgradedAuthenticator));
 }
 
 UniqueRef<AuthenticatorTransportService> AuthenticatorManager::createService(WebCore::AuthenticatorTransport transport, AuthenticatorTransportService::Observer& observer) const
@@ -231,7 +248,7 @@ void AuthenticatorManager::timeOutTimerFired()
 {
     ASSERT(m_requestTimeOutTimer.isActive());
     m_pendingCompletionHandler((ExceptionData { NotAllowedError, "Operation timed out."_s }));
-    clearStateAsync();
+    clearState();
 }
 
 } // namespace WebKit

@@ -27,20 +27,18 @@
 
 #if USE(APPLE_INTERNAL_SDK)
 
+#import <IOKit/hid/IOHIDDevice.h>
 #import <IOKit/hid/IOHIDEvent.h>
 #import <IOKit/hid/IOHIDEventData.h>
 #import <IOKit/hid/IOHIDEventSystemClient.h>
+#import <IOKit/hid/IOHIDManager.h>
 #import <IOKit/hid/IOHIDUsageTables.h>
 
 #else
 
 WTF_EXTERN_C_BEGIN
 
-#ifdef __LP64__
 typedef double IOHIDFloat;
-#else
-typedef float IOHIDFloat;
-#endif
 
 enum {
     kIOHIDEventOptionNone = 0,
@@ -185,6 +183,7 @@ enum {
     kHIDUsage_KeyboardSlash = 0x38,
     kHIDUsage_KeyboardCapsLock = 0x39,
     kHIDUsage_KeyboardF1 = 0x3A,
+    kHIDUsage_KeyboardF12 = 0x45,
     kHIDUsage_KeyboardPrintScreen = 0x46,
     kHIDUsage_KeyboardInsert = 0x49,
     kHIDUsage_KeyboardHome = 0x4A,
@@ -198,7 +197,9 @@ enum {
     kHIDUsage_KeyboardUpArrow = 0x52,
     kHIDUsage_KeypadNumLock = 0x53,
     kHIDUsage_KeyboardF13 = 0x68,
+    kHIDUsage_KeyboardF24 = 0x73,
     kHIDUsage_KeyboardMenu = 0x76,
+    kHIDUsage_KeypadComma = 0x85,
     kHIDUsage_KeyboardLeftControl = 0xE0,
     kHIDUsage_KeyboardLeftShift = 0xE1,
     kHIDUsage_KeyboardLeftAlt = 0xE2,
@@ -208,6 +209,47 @@ enum {
     kHIDUsage_KeyboardRightAlt = 0xE6,
     kHIDUsage_KeyboardRightGUI = 0xE7,
 };
+
+typedef struct CF_BRIDGED_TYPE(id) __IOHIDDevice * IOHIDDeviceRef;
+
+typedef kern_return_t IOReturn;
+
+enum IOHIDReportType {
+    kIOHIDReportTypeInput = 0,
+    kIOHIDReportTypeOutput,
+};
+
+enum {
+    kIOHIDOptionsTypeNone     = 0x00,
+};
+typedef uint32_t IOHIDOptionsType;
+
+typedef UInt32 IOOptionBits;
+
+typedef void (*IOHIDReportCallback) (void*, IOReturn, void*, IOHIDReportType, uint32_t, uint8_t*, CFIndex);
+
+IOReturn IOHIDDeviceOpen(IOHIDDeviceRef, IOOptionBits);
+void IOHIDDeviceScheduleWithRunLoop(IOHIDDeviceRef, CFRunLoopRef, CFStringRef);
+void IOHIDDeviceRegisterInputReportCallback(IOHIDDeviceRef, uint8_t*, CFIndex, IOHIDReportCallback, void*);
+void IOHIDDeviceUnscheduleFromRunLoop(IOHIDDeviceRef, CFRunLoopRef, CFStringRef);
+IOReturn IOHIDDeviceClose(IOHIDDeviceRef, IOOptionBits);
+IOReturn IOHIDDeviceSetReport(IOHIDDeviceRef, IOHIDReportType, CFIndex, const uint8_t*, CFIndex);
+
+typedef struct CF_BRIDGED_TYPE(id) __IOHIDManager * IOHIDManagerRef;
+
+#define kIOHIDPrimaryUsagePageKey "PrimaryUsagePage"
+#define kIOHIDPrimaryUsageKey "PrimaryUsage"
+
+typedef void (*IOHIDDeviceCallback) (void*, IOReturn, void*, IOHIDDeviceRef);
+
+IOHIDManagerRef IOHIDManagerCreate(CFAllocatorRef, IOOptionBits);
+void IOHIDManagerSetDeviceMatching(IOHIDManagerRef, CFDictionaryRef);
+void IOHIDManagerRegisterDeviceMatchingCallback(IOHIDManagerRef, IOHIDDeviceCallback, void*);
+void IOHIDManagerRegisterDeviceRemovalCallback(IOHIDManagerRef, IOHIDDeviceCallback, void*);
+void IOHIDManagerUnscheduleFromRunLoop(IOHIDManagerRef, CFRunLoopRef, CFStringRef);
+IOReturn IOHIDManagerClose(IOHIDManagerRef, IOOptionBits);
+void IOHIDManagerScheduleWithRunLoop(IOHIDManagerRef, CFRunLoopRef, CFStringRef);
+IOReturn IOHIDManagerOpen(IOHIDManagerRef, IOOptionBits);
 
 WTF_EXTERN_C_END
 

@@ -1,6 +1,6 @@
 # Copyright (C) 2012 Google, Inc.
 # Copyright (C) 2010 Chris Jerdonek (cjerdonek@webkit.org)
-# Copyright (C) 2018 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2019 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -38,17 +38,19 @@ import traceback
 import unittest
 
 from webkitpy.common.system.logutils import configure_logging
-from webkitpy.common.system.executive import Executive, ScriptError
+from webkitpy.common.system.executive import ScriptError
 from webkitpy.common.system.filesystem import FileSystem
-from webkitpy.common.system.systemhost import SystemHost
+from webkitpy.common.host import Host
 from webkitpy.port.config import Config
 from webkitpy.test.finder import Finder
 from webkitpy.test.printer import Printer
 from webkitpy.test.runner import Runner, unit_test_name
+from webkitpy.results.upload import Upload
+from webkitpy.results.options import upload_options
 
 _log = logging.getLogger(__name__)
 
-_host = SystemHost()
+_host = Host()
 _webkit_root = None
 
 
@@ -67,14 +69,17 @@ def main():
         tester.add_tree(os.path.join(_webkit_root, 'Source', 'WebKit', 'Scripts'), 'webkit')
 
     lldb_python_directory = _host.path_to_lldb_python_directory()
-    if os.path.isdir(lldb_python_directory):
+    if not _supports_building_and_running_lldb_tests():
+        _log.info("Skipping lldb_webkit tests; not yet supported on macOS Catalina.")
+        will_run_lldb_webkit_tests = False
+    elif not os.path.isdir(lldb_python_directory):
+        _log.info("Skipping lldb_webkit tests; could not find path to lldb.py '{}'.".format(lldb_python_directory))
+        will_run_lldb_webkit_tests = False
+    else:
         if lldb_python_directory not in sys.path:
             sys.path.append(lldb_python_directory)
         tester.add_tree(os.path.join(_webkit_root, 'Tools', 'lldb'))
         will_run_lldb_webkit_tests = True
-    else:
-        _log.info("Skipping lldb_webkit tests; could not find path to lldb.py '{}'.".format(lldb_python_directory))
-        will_run_lldb_webkit_tests = False
 
     tester.skip(('webkitpy.common.checkout.scm.scm_unittest',), 'are really, really, slow', 31818)
     if sys.platform.startswith('win'):
@@ -94,6 +99,15 @@ def main():
         _log.info('Skipping QueueStatusServer tests; the Google AppEngine Python SDK is not installed.')
 
     return not tester.run(will_run_lldb_webkit_tests=will_run_lldb_webkit_tests)
+
+
+def _supports_building_and_running_lldb_tests():
+    # FIXME: Remove when test-lldb is in its own script
+    # https://bugs.webkit.org/show_bug.cgi?id=187916
+    build_version = _host.platform.build_version()
+    if build_version is None:
+        return False
+    return True
 
 
 def _print_results_as_json(stream, all_test_names, failures, errors):
@@ -130,6 +144,10 @@ class Tester(object):
         configuration_group.add_option('--release', action='store_const', const='Release', dest="configuration",
             help='Set the configuration to Release')
         parser.add_option_group(configuration_group)
+
+        upload_group = optparse.OptionGroup(parser, 'Upload Options')
+        upload_group.add_options(upload_options())
+        parser.add_option_group(upload_group)
 
         parser.add_option('-a', '--all', action='store_true', default=False,
                           help='run all the tests')
@@ -181,11 +199,13 @@ class Tester(object):
         from webkitpy.thirdparty import autoinstall_everything
         autoinstall_everything()
 
+        start_time = time.time()
+        config = Config(_host.executive, self.finder.filesystem)
+        configuration_to_use = self._options.configuration or config.default_configuration()
+
         if will_run_lldb_webkit_tests:
             self.printer.write_update('Building lldbWebKitTester ...')
             build_lldbwebkittester = self.finder.filesystem.join(_webkit_root, 'Tools', 'Scripts', 'build-lldbwebkittester')
-            config = Config(_host.executive, self.finder.filesystem)
-            configuration_to_use = self._options.configuration or config.default_configuration()
             try:
                 _host.executive.run_and_throw_if_fail([build_lldbwebkittester, config.flag_for_configuration(configuration_to_use)], quiet=(not bool(self._options.verbose)))
             except ScriptError as e:
@@ -218,6 +238,7 @@ class Tester(object):
         test_runner = Runner(self.printer, loader)
         test_runner.run(parallel_tests, self._options.child_processes)
         test_runner.run(serial_tests, 1)
+        end_time = time.time()
 
         self.printer.print_result(time.time() - start)
 
@@ -232,9 +253,52 @@ class Tester(object):
         if self._options.coverage:
             cov.stop()
             cov.save()
+
+        failed_uploads = 0
+        if self._options.report_urls:
+            self.printer.meter.writeln('\n')
+            self.printer.write_update('Preparing upload data ...')
+
+            # Empty test results indicate a PASS.
+            results = {test: {} for test in test_runner.tests_run}
+            for test, errors in test_runner.errors:
+                results[test] = Upload.create_test_result(actual=Upload.Expectations.ERROR, log='/n'.join(errors))
+            for test, failures in test_runner.failures:
+                results[test] = Upload.create_test_result(actual=Upload.Expectations.FAIL, log='/n'.join(failures))
+
+            _host.initialize_scm()
+            upload = Upload(
+                suite='webkitpy-tests',
+                configuration=Upload.create_configuration(
+                    platform=_host.platform.os_name,
+                    version=str(_host.platform.os_version),
+                    version_name=_host.platform.os_version_name(),
+                    style='asan' if config.asan else configuration_to_use.lower(),
+                    sdk=_host.platform.build_version(),
+                    flavor=self._options.result_report_flavor,
+                ),
+                details=Upload.create_details(options=self._options),
+                commits=[Upload.create_commit(
+                    repository_id='webkit',
+                    id=_host.scm().native_revision(_webkit_root),
+                    branch=_host.scm().native_branch(_webkit_root),
+                )],
+                run_stats=Upload.create_run_stats(
+                    start_time=start_time,
+                    end_time=end_time,
+                    tests_skipped=len(test_runner.tests_run) - len(parallel_tests) - len(serial_tests),
+                ),
+                results=results,
+            )
+            for url in self._options.report_urls:
+                self.printer.write_update('Uploading to {} ...'.format(url))
+                failed_uploads = failed_uploads if upload.upload(url, log_line_func=self.printer.meter.writeln) else (failed_uploads + 1)
+            self.printer.meter.writeln('Uploads completed!')
+
+        if self._options.coverage:
             cov.report(show_missing=False)
 
-        return not self.printer.num_errors and not self.printer.num_failures
+        return not self.printer.num_errors and not self.printer.num_failures and not failed_uploads
 
     def _check_imports(self, names):
         for name in names:

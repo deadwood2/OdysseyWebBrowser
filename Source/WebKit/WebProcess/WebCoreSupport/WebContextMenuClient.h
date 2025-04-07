@@ -35,6 +35,7 @@ namespace WebKit {
 class WebPage;
 
 class WebContextMenuClient : public WebCore::ContextMenuClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     WebContextMenuClient(WebPage* page)
         : m_page(page)
@@ -53,6 +54,10 @@ private:
 
 #if PLATFORM(COCOA)
     void searchWithSpotlight() override;
+#endif
+
+#if PLATFORM(GTK)
+    void insertEmoji(WebCore::Frame&) override;
 #endif
 
 #if USE(ACCESSIBILITY_CONTEXT_MENUS)

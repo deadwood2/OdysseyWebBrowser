@@ -6,6 +6,8 @@
 
 // SystemInfo_mac.cpp: implementation of the Mac-specific parts of SystemInfo.h
 
+#if __has_include(<Cocoa/Cocoa.h>)
+
 #include "gpu_info_util/SystemInfo_internal.h"
 
 #import <Cocoa/Cocoa.h>
@@ -70,22 +72,6 @@ bool GetEntryProperty(io_registry_entry_t entry, CFStringRef name, uint32_t *val
     return true;
 }
 
-// CGDisplayIOServicePort is deprecated as of macOS 10.9, but has no replacement, see
-// https://crbug.com/650837
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-
-// Find the info of the current GPU.
-bool GetActiveGPU(VendorID *vendorId, DeviceID *deviceId)
-{
-    io_registry_entry_t port = CGDisplayIOServicePort(kCGDirectMainDisplay);
-
-    return GetEntryProperty(port, CFSTR("vendor-id"), vendorId) &&
-           GetEntryProperty(port, CFSTR("device-id"), deviceId);
-}
-
-#pragma clang diagnostic pop
-
 // Gathers the vendor and device IDs for the PCI GPUs
 bool GetPCIDevices(std::vector<GPUDeviceInfo> *devices)
 {
@@ -143,28 +129,24 @@ bool GetSystemInfo(SystemInfo *info)
         return false;
     }
 
-    // Find the active GPU
+    FindActiveGPU(info);
+
+    // Figure out whether this is a dual-GPU system.
+    //
+    // TODO(kbr): this code was ported over from Chromium, and its correctness
+    // could be improved - need to use Mac-specific APIs to determine whether
+    // offline renderers are allowed, and whether these two GPUs are really the
+    // integrated/discrete GPUs in a laptop.
+    if (info->gpus.size() == 2 &&
+        ((IsIntel(info->gpus[0].vendorId) && !IsIntel(info->gpus[1].vendorId)) ||
+         (!IsIntel(info->gpus[0].vendorId) && IsIntel(info->gpus[1].vendorId))))
     {
-        VendorID activeVendor;
-        DeviceID activeDevice;
-        if (!GetActiveGPU(&activeVendor, &activeDevice))
-        {
-            return false;
-        }
-
-        for (size_t i = 0; i < info->gpus.size(); ++i)
-        {
-            if (info->gpus[i].vendorId == activeVendor && info->gpus[i].deviceId == activeDevice)
-            {
-                info->activeGPUIndex = i;
-                break;
-            }
-        }
+        info->isMacSwitchable = true;
     }
-
-    FindPrimaryGPU(info);
 
     return true;
 }
 
 }  // namespace angle
+
+#endif // __has_include(<Cocoa/Cocoa.h>)

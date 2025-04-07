@@ -51,8 +51,8 @@ public:
 
     void applyToDocumentLoader(WebsitePoliciesData&&);
 
-    Optional<uint64_t> pageID() const final;
-    Optional<uint64_t> frameID() const final;
+    Optional<WebCore::PageIdentifier> pageID() const final;
+    Optional<WebCore::FrameIdentifier> frameID() const final;
     PAL::SessionID sessionID() const final;
 
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
@@ -112,10 +112,11 @@ private:
     void dispatchDidStartProvisionalLoad() final;
     void dispatchDidReceiveTitle(const WebCore::StringWithDirection&) final;
     void dispatchDidCommitLoad(Optional<WebCore::HasInsecureContent>) final;
-    void dispatchDidFailProvisionalLoad(const WebCore::ResourceError&) final;
+    void dispatchDidFailProvisionalLoad(const WebCore::ResourceError&, WebCore::WillContinueLoading) final;
     void dispatchDidFailLoad(const WebCore::ResourceError&) final;
     void dispatchDidFinishDocumentLoad() final;
     void dispatchDidFinishLoad() final;
+    void dispatchDidExplicitOpen(const URL&) final;
 
     void dispatchDidReachLayoutMilestone(OptionSet<WebCore::LayoutMilestone>) final;
     void dispatchDidLayout() final;
@@ -123,7 +124,7 @@ private:
     WebCore::Frame* dispatchCreatePage(const WebCore::NavigationAction&) final;
     void dispatchShow() final;
     
-    void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::PolicyCheckIdentifier, WebCore::FramePolicyFunction&&) final;
+    void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::PolicyCheckIdentifier, const String&, WebCore::FramePolicyFunction&&) final;
     void dispatchDecidePolicyForNewWindowAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, const String& frameName, WebCore::PolicyCheckIdentifier, WebCore::FramePolicyFunction&&) final;
     void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, const WebCore::ResourceResponse& redirectResponse, WebCore::FormState*, WebCore::PolicyDecisionMode, WebCore::PolicyCheckIdentifier, WebCore::FramePolicyFunction&&) final;
     void cancelPolicyCheck() final;
@@ -213,7 +214,6 @@ private:
     RefPtr<WebCore::Frame> createFrame(const URL&, const String& name, WebCore::HTMLFrameOwnerElement&, const String& referrer) final;
 
     RefPtr<WebCore::Widget> createPlugin(const WebCore::IntSize&, WebCore::HTMLPlugInElement&, const URL&, const Vector<String>&, const Vector<String>&, const String&, bool loadManually) final;
-    void recreatePlugin(WebCore::Widget*) final;
     void redirectDataToPlugin(WebCore::Widget&) final;
     
 #if ENABLE(WEBGL)

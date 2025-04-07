@@ -433,4 +433,152 @@ TEST(WTF, roundUpToPowerOfTwo)
     EXPECT_EQ(WTF::roundUpToPowerOfTwo((1U << 31) + 1), 0U);
 }
 
+TEST(WTF, clz)
+{
+    EXPECT_EQ(WTF::clz<int32_t>(1), 31U);
+    EXPECT_EQ(WTF::clz<int32_t>(42), 26U);
+    EXPECT_EQ(WTF::clz<uint32_t>(static_cast<uint32_t>(-1)), 0U);
+    EXPECT_EQ(WTF::clz<uint32_t>(static_cast<uint32_t>(std::numeric_limits<int32_t>::min()) >> 1), 1U);
+    EXPECT_EQ(WTF::clz<uint32_t>(0), 32U);
+
+    EXPECT_EQ(WTF::clz<int8_t>(42), 2U);
+    EXPECT_EQ(WTF::clz<int8_t>(3), 6U);
+    EXPECT_EQ(WTF::clz<uint8_t>(static_cast<uint8_t>(-1)), 0U);
+    EXPECT_EQ(WTF::clz<uint8_t>(0), 8U);
+
+    EXPECT_EQ(WTF::clz<int64_t>(-1), 0U);
+    EXPECT_EQ(WTF::clz<int64_t>(1), 63U);
+    EXPECT_EQ(WTF::clz<int64_t>(3), 62U);
+    EXPECT_EQ(WTF::clz<uint64_t>(42), 58U);
+    EXPECT_EQ(WTF::clz<uint64_t>(0), 64U);
+}
+
+TEST(WTF, ctz)
+{
+    EXPECT_EQ(WTF::ctz<int32_t>(1), 0U);
+    EXPECT_EQ(WTF::ctz<int32_t>(42), 1U);
+    EXPECT_EQ(WTF::ctz<uint32_t>(static_cast<uint32_t>(-1)), 0U);
+    EXPECT_EQ(WTF::ctz<uint32_t>(static_cast<uint32_t>(std::numeric_limits<int32_t>::min()) >> 1), 30U);
+    EXPECT_EQ(WTF::ctz<uint32_t>(0), 32U);
+
+    EXPECT_EQ(WTF::ctz<int8_t>(42), 1U);
+    EXPECT_EQ(WTF::ctz<int8_t>(3), 0U);
+    EXPECT_EQ(WTF::ctz<uint8_t>(static_cast<uint8_t>(-1)), 0U);
+    EXPECT_EQ(WTF::ctz<uint8_t>(0), 8U);
+
+    EXPECT_EQ(WTF::ctz<int64_t>(static_cast<uint32_t>(-1)), 0U);
+    EXPECT_EQ(WTF::ctz<int64_t>(1), 0U);
+    EXPECT_EQ(WTF::ctz<int64_t>(3), 0U);
+    EXPECT_EQ(WTF::ctz<uint64_t>(42), 1U);
+    EXPECT_EQ(WTF::ctz<uint64_t>(0), 64U);
+}
+
+TEST(WTF, getLSBSet)
+{
+    EXPECT_EQ(WTF::getLSBSet<int32_t>(1), 0U);
+    EXPECT_EQ(WTF::getLSBSet<int32_t>(42), 1U);
+    EXPECT_EQ(WTF::getLSBSet<uint32_t>(static_cast<uint32_t>(-1)), 0U);
+    EXPECT_EQ(WTF::getLSBSet<uint32_t>(static_cast<uint32_t>(std::numeric_limits<int32_t>::min()) >> 1), 30U);
+
+    EXPECT_EQ(WTF::getLSBSet<int8_t>(42), 1U);
+    EXPECT_EQ(WTF::getLSBSet<int8_t>(3), 0U);
+    EXPECT_EQ(WTF::getLSBSet<uint8_t>(static_cast<uint8_t>(-1)), 0U);
+
+    EXPECT_EQ(WTF::getLSBSet<int64_t>(-1), 0U);
+    EXPECT_EQ(WTF::getLSBSet<int64_t>(1), 0U);
+    EXPECT_EQ(WTF::getLSBSet<int64_t>(3), 0U);
+    EXPECT_EQ(WTF::getLSBSet<uint64_t>(42), 1U);
+}
+
+TEST(WTF, getMSBSet)
+{
+    EXPECT_EQ(WTF::getMSBSet<int32_t>(1), 0U);
+    EXPECT_EQ(WTF::getMSBSet<int32_t>(42), 5U);
+    EXPECT_EQ(WTF::getMSBSet<uint32_t>(static_cast<uint32_t>(-1)), 31U);
+    EXPECT_EQ(WTF::getMSBSet<uint32_t>(static_cast<uint32_t>(std::numeric_limits<int32_t>::min()) >> 1), 30U);
+
+    EXPECT_EQ(WTF::getMSBSet<int8_t>(42), 5U);
+    EXPECT_EQ(WTF::getMSBSet<int8_t>(3), 1U);
+    EXPECT_EQ(WTF::getMSBSet<uint8_t>(static_cast<uint8_t>(-1)), 7U);
+
+    EXPECT_EQ(WTF::getMSBSet<int64_t>(-1), 63U);
+    EXPECT_EQ(WTF::getMSBSet<int64_t>(1), 0U);
+    EXPECT_EQ(WTF::getMSBSet<int64_t>(3), 1U);
+    EXPECT_EQ(WTF::getMSBSet<uint64_t>(42), 5U);
+}
+
+TEST(WTF, clzConstexpr)
+{
+    EXPECT_EQ(WTF::clzConstexpr<int32_t>(1), 31U);
+    EXPECT_EQ(WTF::clzConstexpr<int32_t>(42), 26U);
+    EXPECT_EQ(WTF::clzConstexpr<uint32_t>(static_cast<uint32_t>(-1)), 0U);
+    EXPECT_EQ(WTF::clzConstexpr<uint32_t>(static_cast<uint32_t>(std::numeric_limits<int32_t>::min()) >> 1), 1U);
+    EXPECT_EQ(WTF::clzConstexpr<uint32_t>(0), 32U);
+
+    EXPECT_EQ(WTF::clzConstexpr<int8_t>(42), 2U);
+    EXPECT_EQ(WTF::clzConstexpr<int8_t>(3), 6U);
+    EXPECT_EQ(WTF::clzConstexpr<uint8_t>(static_cast<uint8_t>(-1)), 0U);
+    EXPECT_EQ(WTF::clzConstexpr<uint8_t>(0), 8U);
+
+    EXPECT_EQ(WTF::clzConstexpr<int64_t>(-1), 0U);
+    EXPECT_EQ(WTF::clzConstexpr<int64_t>(1), 63U);
+    EXPECT_EQ(WTF::clzConstexpr<int64_t>(3), 62U);
+    EXPECT_EQ(WTF::clzConstexpr<uint64_t>(42), 58U);
+    EXPECT_EQ(WTF::clzConstexpr<uint64_t>(0), 64U);
+}
+
+TEST(WTF, ctzConstexpr)
+{
+    EXPECT_EQ(WTF::ctzConstexpr<int32_t>(1), 0U);
+    EXPECT_EQ(WTF::ctzConstexpr<int32_t>(42), 1U);
+    EXPECT_EQ(WTF::ctzConstexpr<uint32_t>(static_cast<uint32_t>(-1)), 0U);
+    EXPECT_EQ(WTF::ctzConstexpr<uint32_t>(static_cast<uint32_t>(std::numeric_limits<int32_t>::min()) >> 1), 30U);
+    EXPECT_EQ(WTF::ctzConstexpr<uint32_t>(0), 32U);
+
+    EXPECT_EQ(WTF::ctzConstexpr<int8_t>(42), 1U);
+    EXPECT_EQ(WTF::ctzConstexpr<int8_t>(3), 0U);
+    EXPECT_EQ(WTF::ctzConstexpr<uint8_t>(static_cast<uint8_t>(-1)), 0U);
+    EXPECT_EQ(WTF::ctzConstexpr<uint8_t>(0), 8U);
+
+    EXPECT_EQ(WTF::ctzConstexpr<int64_t>(static_cast<uint32_t>(-1)), 0U);
+    EXPECT_EQ(WTF::ctzConstexpr<int64_t>(1), 0U);
+    EXPECT_EQ(WTF::ctzConstexpr<int64_t>(3), 0U);
+    EXPECT_EQ(WTF::ctzConstexpr<uint64_t>(42), 1U);
+    EXPECT_EQ(WTF::ctzConstexpr<uint64_t>(0), 64U);
+}
+
+TEST(WTF, getLSBSetConstexpr)
+{
+    EXPECT_EQ(WTF::getLSBSetConstexpr<int32_t>(1), 0U);
+    EXPECT_EQ(WTF::getLSBSetConstexpr<int32_t>(42), 1U);
+    EXPECT_EQ(WTF::getLSBSetConstexpr<uint32_t>(static_cast<uint32_t>(-1)), 0U);
+    EXPECT_EQ(WTF::getLSBSetConstexpr<uint32_t>(static_cast<uint32_t>(std::numeric_limits<int32_t>::min()) >> 1), 30U);
+
+    EXPECT_EQ(WTF::getLSBSetConstexpr<int8_t>(42), 1U);
+    EXPECT_EQ(WTF::getLSBSetConstexpr<int8_t>(3), 0U);
+    EXPECT_EQ(WTF::getLSBSetConstexpr<uint8_t>(static_cast<uint8_t>(-1)), 0U);
+
+    EXPECT_EQ(WTF::getLSBSetConstexpr<int64_t>(-1), 0U);
+    EXPECT_EQ(WTF::getLSBSetConstexpr<int64_t>(1), 0U);
+    EXPECT_EQ(WTF::getLSBSetConstexpr<int64_t>(3), 0U);
+    EXPECT_EQ(WTF::getLSBSetConstexpr<uint64_t>(42), 1U);
+}
+
+TEST(WTF, getMSBSetConstexpr)
+{
+    EXPECT_EQ(WTF::getMSBSetConstexpr<int32_t>(1), 0U);
+    EXPECT_EQ(WTF::getMSBSetConstexpr<int32_t>(42), 5U);
+    EXPECT_EQ(WTF::getMSBSetConstexpr<uint32_t>(static_cast<uint32_t>(-1)), 31U);
+    EXPECT_EQ(WTF::getMSBSetConstexpr<uint32_t>(static_cast<uint32_t>(std::numeric_limits<int32_t>::min()) >> 1), 30U);
+
+    EXPECT_EQ(WTF::getMSBSetConstexpr<int8_t>(42), 5U);
+    EXPECT_EQ(WTF::getMSBSetConstexpr<int8_t>(3), 1U);
+    EXPECT_EQ(WTF::getMSBSetConstexpr<uint8_t>(static_cast<uint8_t>(-1)), 7U);
+
+    EXPECT_EQ(WTF::getMSBSetConstexpr<int64_t>(-1), 63U);
+    EXPECT_EQ(WTF::getMSBSetConstexpr<int64_t>(1), 0U);
+    EXPECT_EQ(WTF::getMSBSetConstexpr<int64_t>(3), 1U);
+    EXPECT_EQ(WTF::getMSBSetConstexpr<uint64_t>(42), 5U);
+}
+
 } // namespace TestWebKitAPI

@@ -44,6 +44,8 @@ InspectorFrontendAPI = {
 
     setTimelineProfilingEnabled: function(enabled)
     {
+        WI.showTimelineTab();
+
         if (WI.timelineManager.isCapturing() === enabled)
             return;
 
@@ -99,9 +101,14 @@ InspectorFrontendAPI = {
 
     showResources: function()
     {
-        WI.showResourcesTab();
+        if (WI.settings.experimentalEnableSourcesTab.value)
+            WI.showSourcesTab();
+        else
+            WI.showResourcesTab();
+
     },
 
+    // COMPATIBILITY (iOS 13): merged into InspectorFrontendAPI.setTimelineProfilingEnabled.
     showTimelines: function()
     {
         WI.showTimelineTab();
@@ -118,11 +125,7 @@ InspectorFrontendAPI = {
 
     contextMenuItemSelected: function(id)
     {
-        try {
-            WI.ContextMenu.contextMenuItemSelected(id);
-        } catch (e) {
-            console.error("Uncaught exception in inspector page under contextMenuItemSelected", e);
-        }
+        WI.ContextMenu.contextMenuItemSelected(id);
     },
 
     contextMenuCleared: function()

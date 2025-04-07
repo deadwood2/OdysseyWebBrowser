@@ -47,6 +47,7 @@
 using std::wstring;
 
 class DRTUndoObject {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     DRTUndoObject(IWebUndoTarget* target, BSTR actionName, IUnknown* obj)
         : m_target(target)
@@ -71,6 +72,7 @@ private:
 };
 
 class DRTUndoStack {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     bool isEmpty() const { return m_undoVector.isEmpty(); }
     void clear() { m_undoVector.clear(); }
@@ -83,6 +85,7 @@ private:
 };
 
 class DRTUndoManager {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     DRTUndoManager();
 
@@ -101,8 +104,8 @@ private:
 };
 
 DRTUndoManager::DRTUndoManager()
-    : m_redoStack(std::make_unique<DRTUndoStack>())
-    , m_undoStack(std::make_unique<DRTUndoStack>())
+    : m_redoStack(makeUnique<DRTUndoStack>())
+    , m_undoStack(makeUnique<DRTUndoStack>())
 {
 }
 
@@ -146,7 +149,7 @@ void DRTUndoManager::undo()
 }
 
 UIDelegate::UIDelegate()
-    : m_undoManager(std::make_unique<DRTUndoManager>())
+    : m_undoManager(makeUnique<DRTUndoManager>())
     , m_desktopNotifications(new DRTDesktopNotificationPresenter)
 {
     m_frame.bottom = 0;
@@ -157,7 +160,7 @@ UIDelegate::UIDelegate()
 
 void UIDelegate::resetUndoManager()
 {
-    m_undoManager = std::make_unique<DRTUndoManager>();
+    m_undoManager = makeUnique<DRTUndoManager>();
 }
 
 HRESULT UIDelegate::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)

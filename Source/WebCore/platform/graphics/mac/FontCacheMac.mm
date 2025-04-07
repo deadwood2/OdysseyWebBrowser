@@ -33,6 +33,7 @@
 #import "Font.h"
 #import "FontCascade.h"
 #import "FontPlatformData.h"
+#import "SystemFontDatabaseCoreText.h"
 #import <pal/spi/cg/CoreGraphicsSPI.h>
 #import <pal/spi/cocoa/CoreTextSPI.h>
 
@@ -43,7 +44,7 @@
 #import <wtf/NeverDestroyed.h>
 #import <wtf/StdLibExtras.h>
 #import <wtf/Threading.h>
-#import <wtf/text/AtomicStringHash.h>
+#import <wtf/text/AtomStringHash.h>
 #endif
 
 #import <wtf/SoftLinking.h>
@@ -73,9 +74,12 @@ static CGFloat toNSFontWeight(FontSelectionValue fontWeight)
     return NSFontWeightBlack;
 }
 
-RetainPtr<CTFontRef> platformFontWithFamilySpecialCase(const AtomicString& family, FontSelectionRequest request, float size, AllowUserInstalledFonts allowUserInstalledFonts)
+RetainPtr<CTFontRef> platformFontWithFamilySpecialCase(const AtomString& family, const FontDescription& fontDescription, float size, AllowUserInstalledFonts allowUserInstalledFonts)
 {
     // FIXME: See comment in FontCascadeDescription::effectiveFamilyAt() in FontDescriptionCocoa.cpp
+    const auto& request = fontDescription.fontSelectionRequest();
+
+    // FIXME: Migrate this to use SystemFontDatabaseCoreText like the design system-ui block below.
     if (equalLettersIgnoringASCIICase(family, "-webkit-system-font") || equalLettersIgnoringASCIICase(family, "-apple-system") || equalLettersIgnoringASCIICase(family, "-apple-system-font") || equalLettersIgnoringASCIICase(family, "system-ui")) {
         RetainPtr<CTFontRef> result = toCTFont([NSFont systemFontOfSize:size weight:toNSFontWeight(request.weight)]);
         if (isItalic(request.slope)) {
@@ -117,14 +121,8 @@ RetainPtr<CTFontRef> platformFontWithFamilySpecialCase(const AtomicString& famil
     }
 
     if (equalLettersIgnoringASCIICase(family, "lastresort")) {
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
         static const CTFontDescriptorRef lastResort = CTFontDescriptorCreateLastResort();
         return adoptCF(CTFontCreateWithFontDescriptor(lastResort, size, nullptr));
-#else
-        // LastResort is special, so it's important to look this exact string up, and not some case-folded version.
-        // We handle this here so any caching and case folding we do in our general text codepath is bypassed.
-        return adoptCF(CTFontCreateWithName(CFSTR("LastResort"), size, nullptr));
-#endif
     }
 
     return nullptr;

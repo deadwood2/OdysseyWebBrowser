@@ -26,8 +26,6 @@
 #import "config.h"
 #import "WKWebProcessPlugInFrameInternal.h"
 
-#if WK_API_ENABLED
-
 #import "WKNSArray.h"
 #import "WKNSURLExtras.h"
 #import "WKWebProcessPlugInBrowserContextControllerInternal.h"
@@ -50,7 +48,7 @@
 
 + (instancetype)lookUpFrameFromHandle:(_WKFrameHandle *)handle
 {
-    return wrapper(WebKit::WebProcess::singleton().webFrame(handle._frameID));
+    return wrapper(WebKit::WebProcess::singleton().webFrame(WebCore::frameIdentifierFromID(handle._frameID)));
 }
 
 - (void)dealloc
@@ -170,5 +168,3 @@ static RetainPtr<NSArray> collectIcons(WebCore::Frame* frame, OptionSet<WebCore:
 }
 
 @end
-
-#endif // WK_API_ENABLED

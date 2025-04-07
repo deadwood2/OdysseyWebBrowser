@@ -75,6 +75,7 @@ AccessibilityUIElement::~AccessibilityUIElement()
 - (NSAttributedString *)attributedStringForElement;
 - (NSArray *)elementsForRange:(NSRange)range;
 - (NSString *)selectionRangeString;
+- (BOOL)_accessibilityInsertText:(NSString *)text;
 - (CGPoint)accessibilityClickPoint;
 - (void)accessibilityModifySelection:(WebCore::TextGranularity)granularity increase:(BOOL)increase;
 - (void)accessibilitySetPostedNotificationCallback:(AXPostedNotificationCallback)function withContext:(void*)context;
@@ -103,6 +104,8 @@ AccessibilityUIElement::~AccessibilityUIElement()
 - (NSArray *)accessibilitySpeechHint;
 - (BOOL)_accessibilityIsStrongPasswordField;
 - (NSString *)accessibilityTextualContext;
+- (BOOL)accessibilityHasPopup;
+- (NSString *)accessibilityPopupValue;
 
 // TextMarker related
 - (NSArray *)textMarkerRange;
@@ -475,6 +478,16 @@ AccessibilityTextMarkerRange AccessibilityUIElement::textMarkerRangeForElement(A
 AccessibilityTextMarkerRange AccessibilityUIElement::selectedTextMarkerRange()
 {
     return nullptr;
+}
+
+bool AccessibilityUIElement::replaceTextInRange(JSStringRef, int, int)
+{
+    return false;
+}
+
+bool AccessibilityUIElement::insertText(JSStringRef text)
+{
+    return [m_element _accessibilityInsertText:[NSString stringWithJSStringRef:text]];
 }
 
 void AccessibilityUIElement::resetSelectedTextMarkerRange()
@@ -1131,8 +1144,12 @@ bool AccessibilityUIElement::isMultiLine() const
 
 bool AccessibilityUIElement::hasPopup() const
 {
-    // FIXME: implement
-    return false;
+    return [m_element accessibilityHasPopup];
+}
+
+JSRetainPtr<JSStringRef> AccessibilityUIElement::popupValue() const
+{
+    return [[m_element accessibilityPopupValue] createJSStringRef];
 }
 
 void AccessibilityUIElement::takeFocus()

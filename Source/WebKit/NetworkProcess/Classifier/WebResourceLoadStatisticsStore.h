@@ -30,6 +30,9 @@
 #include "Connection.h"
 #include "StorageAccessStatus.h"
 #include "WebsiteDataType.h"
+#include <WebCore/FrameIdentifier.h>
+#include <WebCore/PageIdentifier.h>
+#include <WebCore/RegistrableDomain.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/RunLoop.h>
 #include <wtf/ThreadSafeRefCounted.h>
@@ -46,25 +49,58 @@ namespace WebCore {
 class ResourceRequest;
 struct ResourceLoadStatistics;
 enum class ShouldSample : bool;
+enum class IncludeHttpOnlyCookies : bool;
+enum class StorageAccessPromptWasShown : bool;
+enum class StorageAccessWasGranted : bool;
 }
 
 namespace WebKit {
 
 class NetworkSession;
-class ResourceLoadStatisticsMemoryStore;
+class ResourceLoadStatisticsStore;
 class ResourceLoadStatisticsPersistentStorage;
 class WebFrameProxy;
 class WebProcessProxy;
 enum class ShouldGrandfatherStatistics : bool;
+enum class ShouldIncludeLocalhost : bool { No, Yes };
+enum class EnableResourceLoadStatisticsDebugMode : bool { No, Yes };
+enum class EnableResourceLoadStatisticsNSURLSessionSwitching : bool { No, Yes };
+enum class WebsiteDataToRemove : uint8_t {
+    All,
+    AllButHttpOnlyCookies,
+    AllButCookies
+};
+struct RegistrableDomainsToBlockCookiesFor {
+    Vector<WebCore::RegistrableDomain> domainsToBlockAndDeleteCookiesFor;
+    Vector<WebCore::RegistrableDomain> domainsToBlockButKeepCookiesFor;
+    RegistrableDomainsToBlockCookiesFor isolatedCopy() const { return { domainsToBlockAndDeleteCookiesFor.isolatedCopy(), domainsToBlockButKeepCookiesFor.isolatedCopy() }; }
+};
 
-class WebResourceLoadStatisticsStore final : public ThreadSafeRefCounted<WebResourceLoadStatisticsStore, WTF::DestructionThread::Main>, public IPC::MessageReceiver {
+class WebResourceLoadStatisticsStore final : public ThreadSafeRefCounted<WebResourceLoadStatisticsStore, WTF::DestructionThread::Main> {
 public:
-    static Ref<WebResourceLoadStatisticsStore> create(NetworkSession& networkSession, const String& resourceLoadStatisticsDirectory)
+    using ResourceLoadStatistics = WebCore::ResourceLoadStatistics;
+    using RegistrableDomain = WebCore::RegistrableDomain;
+    using TopFrameDomain = WebCore::RegistrableDomain;
+    using SubFrameDomain = WebCore::RegistrableDomain;
+    using SubResourceDomain = WebCore::RegistrableDomain;
+    using RedirectDomain = WebCore::RegistrableDomain;
+    using RedirectedFromDomain = WebCore::RegistrableDomain;
+    using RedirectedToDomain = WebCore::RegistrableDomain;
+    using NavigatedFromDomain = WebCore::RegistrableDomain;
+    using NavigatedToDomain = WebCore::RegistrableDomain;
+    using DomainInNeedOfStorageAccess = WebCore::RegistrableDomain;
+    using OpenerDomain = WebCore::RegistrableDomain;
+    using StorageAccessWasGranted = WebCore::StorageAccessWasGranted;
+    using StorageAccessPromptWasShown = WebCore::StorageAccessPromptWasShown;
+
+    static Ref<WebResourceLoadStatisticsStore> create(NetworkSession& networkSession, const String& resourceLoadStatisticsDirectory, ShouldIncludeLocalhost shouldIncludeLocalhost)
     {
-        return adoptRef(*new WebResourceLoadStatisticsStore(networkSession, resourceLoadStatisticsDirectory));
+        return adoptRef(*new WebResourceLoadStatisticsStore(networkSession, resourceLoadStatisticsDirectory, shouldIncludeLocalhost));
     }
 
     ~WebResourceLoadStatisticsStore();
+
+    void didDestroyNetworkSession();
 
     static const OptionSet<WebsiteDataType>& monitoredDataTypes();
 
@@ -75,49 +111,46 @@ public:
     void setShouldClassifyResourcesBeforeDataRecordsRemoval(bool, CompletionHandler<void()>&&);
     void setShouldSubmitTelemetry(bool);
 
-    void grantStorageAccess(const String& subFrameHost, const String& topFrameHost, uint64_t frameID, uint64_t pageID, bool userWasPromptedNow, CompletionHandler<void(bool)>&&);
+    void grantStorageAccess(const SubFrameDomain&, const TopFrameDomain&, WebCore::FrameIdentifier, WebCore::PageIdentifier, StorageAccessPromptWasShown, CompletionHandler<void(StorageAccessWasGranted, StorageAccessPromptWasShown)>&&);
 
     void applicationWillTerminate();
 
     void logFrameNavigation(const WebFrameProxy&, const URL& pageURL, const WebCore::ResourceRequest&, const URL& redirectURL);
-    void logFrameNavigation(const String& targetPrimaryDomain, const String& mainFramePrimaryDomain, const String& sourcePrimaryDomain, const String& targetHost, const String& mainFrameHost, bool isRedirect, bool isMainFrame);
-    void logUserInteraction(const String& targetPrimaryDomain, CompletionHandler<void()>&&);
-    void logWebSocketLoading(const String& targetPrimaryDomain, const String& mainFramePrimaryDomain, WallTime lastSeen, CompletionHandler<void()>&&);
-    void logSubresourceLoading(const String& targetPrimaryDomain, const String& mainFramePrimaryDomain, WallTime lastSeen, CompletionHandler<void()>&&);
-    void logSubresourceRedirect(const String& sourcePrimaryDomain, const String& targetPrimaryDomain, CompletionHandler<void()>&&);
-    void clearUserInteraction(const String& targetPrimaryDomain, CompletionHandler<void()>&&);
-    void deleteWebsiteDataForTopPrivatelyControlledDomainsInAllPersistentDataStores(OptionSet<WebsiteDataType>, Vector<String>&& topPrivatelyControlledDomains, bool shouldNotifyPage, CompletionHandler<void(const HashSet<String>&)>&&);
-    void topPrivatelyControlledDomainsWithWebsiteData(OptionSet<WebsiteDataType>, bool shouldNotifyPage, CompletionHandler<void(HashSet<String>&&)>&&);
-    bool grantStorageAccess(const String& resourceDomain, const String& firstPartyDomain, Optional<uint64_t> frameID, uint64_t pageID);
-    void hasHadUserInteraction(const String& resourceDomain, CompletionHandler<void(bool)>&&);
-    void hasStorageAccess(const String& subFrameHost, const String& topFrameHost, Optional<uint64_t> frameID, uint64_t pageID, CompletionHandler<void(bool)>&& callback);
-    bool hasStorageAccessForFrame(const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID);
-    void requestStorageAccess(const String& resourceDomain, const String& firstPartyDomain, Optional<uint64_t> frameID, uint64_t pageID, bool promptEnabled, CompletionHandler<void(StorageAccessStatus)>&&);
-    void requestStorageAccessGranted(const String& subFrameHost, const String& topFrameHost, uint64_t frameID, uint64_t pageID, bool promptEnabled, CompletionHandler<void(bool)>&&);
-    void requestUpdate();
-    void setLastSeen(const String& resourceDomain, Seconds, CompletionHandler<void()>&&);
-    void setPrevalentResource(const String& resourceDomain, CompletionHandler<void()>&&);
-    void setVeryPrevalentResource(const String& resourceDomain, CompletionHandler<void()>&&);
+    void logFrameNavigation(const NavigatedToDomain&, const TopFrameDomain&, const NavigatedFromDomain&, bool isRedirect, bool isMainFrame);
+    void logUserInteraction(const TopFrameDomain&, CompletionHandler<void()>&&);
+    void logCrossSiteLoadWithLinkDecoration(const NavigatedFromDomain&, const NavigatedToDomain&, CompletionHandler<void()>&&);
+    void clearUserInteraction(const TopFrameDomain&, CompletionHandler<void()>&&);
+    void deleteWebsiteDataForRegistrableDomains(OptionSet<WebsiteDataType>, Vector<std::pair<RegistrableDomain, WebsiteDataToRemove>>&&, bool shouldNotifyPage, CompletionHandler<void(const HashSet<RegistrableDomain>&)>&&);
+    void registrableDomainsWithWebsiteData(OptionSet<WebsiteDataType>, bool shouldNotifyPage, CompletionHandler<void(HashSet<RegistrableDomain>&&)>&&);
+    StorageAccessWasGranted grantStorageAccess(const SubFrameDomain&, const TopFrameDomain&, Optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier);
+    void hasHadUserInteraction(const RegistrableDomain&, CompletionHandler<void(bool)>&&);
+    void hasStorageAccess(const SubFrameDomain&, const TopFrameDomain&, Optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, CompletionHandler<void(bool)>&&);
+    bool hasStorageAccessForFrame(const SubFrameDomain&, const TopFrameDomain&, WebCore::FrameIdentifier, WebCore::PageIdentifier);
+    void requestStorageAccess(const SubFrameDomain&, const TopFrameDomain&, WebCore::FrameIdentifier, WebCore::PageIdentifier, CompletionHandler<void(StorageAccessWasGranted, StorageAccessPromptWasShown)>&&);
+    void setLastSeen(const RegistrableDomain&, Seconds, CompletionHandler<void()>&&);
+    void setPrevalentResource(const RegistrableDomain&, CompletionHandler<void()>&&);
+    void setVeryPrevalentResource(const RegistrableDomain&, CompletionHandler<void()>&&);
     void dumpResourceLoadStatistics(CompletionHandler<void(String)>&&);
-    void isPrevalentResource(const String&, CompletionHandler<void(bool)>&&);
-    void isVeryPrevalentResource(const String&, CompletionHandler<void(bool)>&&);
-    void isRegisteredAsSubresourceUnder(const String& subresource, const String& topFrame, CompletionHandler<void(bool)>&&);
-    void isRegisteredAsSubFrameUnder(const String& subFrame, const String& topFrame, CompletionHandler<void(bool)>&&);
-    void isRegisteredAsRedirectingTo(const String& hostRedirectedFrom, const String& hostRedirectedTo, CompletionHandler<void(bool)>&&);
-    void clearPrevalentResource(const String&, CompletionHandler<void()>&&);
-    void setGrandfathered(const String&, bool, CompletionHandler<void()>&&);
-    void isGrandfathered(const String&, CompletionHandler<void(bool)>&&);
-    void removePrevalentDomains(const Vector<String>& domainsToBlock);
+    void isPrevalentResource(const RegistrableDomain&, CompletionHandler<void(bool)>&&);
+    void isVeryPrevalentResource(const RegistrableDomain&, CompletionHandler<void(bool)>&&);
+    void isRegisteredAsSubresourceUnder(const SubResourceDomain&, const TopFrameDomain&, CompletionHandler<void(bool)>&&);
+    void isRegisteredAsSubFrameUnder(const SubFrameDomain&, const TopFrameDomain&, CompletionHandler<void(bool)>&&);
+    void isRegisteredAsRedirectingTo(const RedirectedFromDomain&, const RedirectedToDomain&, CompletionHandler<void(bool)>&&);
+    void clearPrevalentResource(const RegistrableDomain&, CompletionHandler<void()>&&);
+    void setGrandfathered(const RegistrableDomain&, bool, CompletionHandler<void()>&&);
+    void isGrandfathered(const RegistrableDomain&, CompletionHandler<void(bool)>&&);
+    void removePrevalentDomains(const Vector<RegistrableDomain>&);
     void setNotifyPagesWhenDataRecordsWereScanned(bool, CompletionHandler<void()>&&);
-    void setSubframeUnderTopFrameOrigin(const String& subframe, const String& topFrame, CompletionHandler<void()>&&);
-    void setSubresourceUnderTopFrameOrigin(const String& subresource, const String& topFrame, CompletionHandler<void()>&&);
-    void setSubresourceUniqueRedirectTo(const String& subresource, const String& hostNameRedirectedTo, CompletionHandler<void()>&&);
-    void setSubresourceUniqueRedirectFrom(const String& subresource, const String& hostNameRedirectedFrom, CompletionHandler<void()>&&);
-    void setTopFrameUniqueRedirectTo(const String& topFrameHostName, const String& hostNameRedirectedTo, CompletionHandler<void()>&&);
-    void setTopFrameUniqueRedirectFrom(const String& topFrameHostName, const String& hostNameRedirectedFrom, CompletionHandler<void()>&&);
+    void setIsRunningTest(bool, CompletionHandler<void()>&&);
+    void setSubframeUnderTopFrameDomain(const SubFrameDomain&, const TopFrameDomain&, CompletionHandler<void()>&&);
+    void setSubresourceUnderTopFrameDomain(const SubResourceDomain&, const TopFrameDomain&, CompletionHandler<void()>&&);
+    void setSubresourceUniqueRedirectTo(const SubResourceDomain&, const RedirectedToDomain&, CompletionHandler<void()>&&);
+    void setSubresourceUniqueRedirectFrom(const SubResourceDomain&, const RedirectedFromDomain&, CompletionHandler<void()>&&);
+    void setTopFrameUniqueRedirectTo(const TopFrameDomain&, const RedirectedToDomain&, CompletionHandler<void()>&&);
+    void setTopFrameUniqueRedirectFrom(const TopFrameDomain&, const RedirectedFromDomain&, CompletionHandler<void()>&&);
     void scheduleCookieBlockingUpdate(CompletionHandler<void()>&&);
-    void scheduleCookieBlockingUpdateForDomains(const Vector<String>& domainsToBlock, CompletionHandler<void()>&&);
-    void scheduleClearBlockingStateForDomains(const Vector<String>& domains, CompletionHandler<void()>&&);
+    void scheduleCookieBlockingUpdateForDomains(const Vector<RegistrableDomain>&, CompletionHandler<void()>&&);
+    void scheduleClearBlockingStateForDomains(const Vector<RegistrableDomain>&, CompletionHandler<void()>&&);
     void scheduleStatisticsAndDataRecordsProcessing(CompletionHandler<void()>&&);
     void submitTelemetry(CompletionHandler<void()>&&);
     void scheduleClearInMemoryAndPersistent(ShouldGrandfatherStatistics, CompletionHandler<void()>&&);
@@ -133,36 +166,33 @@ public:
     void resetParametersToDefaultValues(CompletionHandler<void()>&&);
 
     void setResourceLoadStatisticsDebugMode(bool, CompletionHandler<void()>&&);
-    void setPrevalentResourceForDebugMode(const String& resourceDomain, CompletionHandler<void()>&&);
+    void setPrevalentResourceForDebugMode(const RegistrableDomain&, CompletionHandler<void()>&&);
 
     void logTestingEvent(const String&);
-    void callGrantStorageAccessHandler(const String& subFramePrimaryDomain, const String& topFramePrimaryDomain, Optional<uint64_t> frameID, uint64_t pageID, CompletionHandler<void(bool)>&&);
+    void callGrantStorageAccessHandler(const SubFrameDomain&, const TopFrameDomain&, Optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, CompletionHandler<void(StorageAccessWasGranted)>&&);
     void removeAllStorageAccess(CompletionHandler<void()>&&);
-    void callUpdatePrevalentDomainsToBlockCookiesForHandler(const Vector<String>& domainsToBlock, CompletionHandler<void()>&&);
-    void callRemoveDomainsHandler(const Vector<String>& domains);
-    void callHasStorageAccessForFrameHandler(const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, CompletionHandler<void(bool)>&&);
+    void callUpdatePrevalentDomainsToBlockCookiesForHandler(const RegistrableDomainsToBlockCookiesFor&, CompletionHandler<void()>&&);
+    void callRemoveDomainsHandler(const Vector<RegistrableDomain>&);
+    void callHasStorageAccessForFrameHandler(const SubFrameDomain&, const TopFrameDomain&, WebCore::FrameIdentifier, WebCore::PageIdentifier, CompletionHandler<void(bool)>&&);
 
     void didCreateNetworkProcess();
 
     void notifyResourceLoadStatisticsProcessed();
 
-    NetworkSession* networkSession() { return m_networkSession.get(); }
+    NetworkSession* networkSession();
+    void invalidateAndCancel();
 
     void sendDiagnosticMessageWithValue(const String& message, const String& description, unsigned value, unsigned sigDigits, WebCore::ShouldSample) const;
     void notifyPageStatisticsTelemetryFinished(unsigned totalPrevalentResources, unsigned totalPrevalentResourcesWithUserInteraction, unsigned top3SubframeUnderTopFrameOrigins) const;
 
+    void resourceLoadStatisticsUpdated(Vector<ResourceLoadStatistics>&&);
+    void requestStorageAccessUnderOpener(DomainInNeedOfStorageAccess&&, WebCore::PageIdentifier openerID, OpenerDomain&&);
+
 private:
-    explicit WebResourceLoadStatisticsStore(NetworkSession&, const String&);
+    explicit WebResourceLoadStatisticsStore(NetworkSession&, const String&, ShouldIncludeLocalhost);
 
     void postTask(WTF::Function<void()>&&);
     static void postTaskReply(WTF::Function<void()>&&);
-
-    // IPC::MessageReceiver.
-    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
-
-    // IPC message handlers.
-    void resourceLoadStatisticsUpdated(Vector<WebCore::ResourceLoadStatistics>&& origins);
-    void requestStorageAccessUnderOpener(String&& primaryDomainInNeedOfStorageAccess, uint64_t openerPageID, String&& openerPrimaryDomain);
 
     void performDailyTasks();
 
@@ -172,7 +202,7 @@ private:
 
     WeakPtr<NetworkSession> m_networkSession;
     Ref<WorkQueue> m_statisticsQueue;
-    std::unique_ptr<ResourceLoadStatisticsMemoryStore> m_memoryStore;
+    std::unique_ptr<ResourceLoadStatisticsStore> m_statisticsStore;
     std::unique_ptr<ResourceLoadStatisticsPersistentStorage> m_persistentStorage;
 
     RunLoop::Timer<WebResourceLoadStatisticsStore> m_dailyTasksTimer;

@@ -46,6 +46,7 @@ class CrossProcessRealtimeAudioSource;
 class WebProcess;
 
 class UserMediaCaptureManager : public WebProcessSupplement, public IPC::MessageReceiver, public WebCore::AudioCaptureFactory, public WebCore::VideoCaptureFactory, public WebCore::DisplayCaptureFactory {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit UserMediaCaptureManager(WebProcess&);
     ~UserMediaCaptureManager();
@@ -78,6 +79,11 @@ private:
     WebCore::CaptureDeviceManager& audioCaptureDeviceManager() final { return m_noOpCaptureDeviceManager; }
     WebCore::CaptureDeviceManager& videoCaptureDeviceManager() final { return m_noOpCaptureDeviceManager; }
     WebCore::CaptureDeviceManager& displayCaptureDeviceManager() final { return m_noOpCaptureDeviceManager; }
+
+#if PLATFORM(IOS_FAMILY)
+    void setAudioCapturePageState(bool interrupted, bool pageMuted) final;
+    void setVideoCapturePageState(bool interrupted, bool pageMuted) final;
+#endif
 
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;

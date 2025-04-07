@@ -103,7 +103,7 @@ WI.Canvas = class Canvas extends WI.Object
         case WI.Canvas.ContextType.WebGL2:
             return WI.unlocalizedString("WebGL2");
         case WI.Canvas.ContextType.WebGPU:
-            return WI.unlocalizedString("WebGPU");
+            return WI.unlocalizedString("Web GPU");
         case WI.Canvas.ContextType.WebMetal:
             return WI.unlocalizedString("WebMetal");
         default:
@@ -362,7 +362,7 @@ WI.Canvas = class Canvas extends WI.Object
     {
         // Called from WI.CanvasManager.
 
-        this._recordingFrames.push(...framesPayload.map(WI.RecordingFrame.fromPayload));
+        this._recordingFrames.pushAll(framesPayload.map(WI.RecordingFrame.fromPayload));
 
         this._recordingBufferUsed = bufferUsed;
 

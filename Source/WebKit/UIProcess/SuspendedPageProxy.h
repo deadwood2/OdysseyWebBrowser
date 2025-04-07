@@ -28,7 +28,8 @@
 #include "Connection.h"
 #include "ProcessThrottler.h"
 #include "WebBackForwardListItem.h"
-#include <WebCore/SecurityOriginData.h>
+#include "WebPageProxyMessages.h"
+#include <WebCore/FrameIdentifier.h>
 #include <wtf/RefCounted.h>
 #include <wtf/WeakPtr.h>
 
@@ -37,22 +38,25 @@ namespace WebKit {
 class WebPageProxy;
 class WebProcessProxy;
 
+enum class ShouldDelayClosingUntilEnteringAcceleratedCompositingMode : bool { No, Yes };
+
 class SuspendedPageProxy final: public IPC::MessageReceiver, public CanMakeWeakPtr<SuspendedPageProxy> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    SuspendedPageProxy(WebPageProxy&, Ref<WebProcessProxy>&&, WebBackForwardListItem&, uint64_t mainFrameID);
+    SuspendedPageProxy(WebPageProxy&, Ref<WebProcessProxy>&&, WebCore::FrameIdentifier mainFrameID, ShouldDelayClosingUntilEnteringAcceleratedCompositingMode);
     ~SuspendedPageProxy();
 
     WebPageProxy& page() const { return m_page; }
     WebProcessProxy& process() { return m_process.get(); }
-    uint64_t mainFrameID() const { return m_mainFrameID; }
-    const String& registrableDomain() const { return m_registrableDomain; }
+    WebCore::FrameIdentifier mainFrameID() const { return m_mainFrameID; }
 
-    bool failedToSuspend() const { return m_suspensionState == SuspensionState::FailedToSuspend; }
+    bool pageIsClosedOrClosing() const;
 
     void waitUntilReadyToUnsuspend(CompletionHandler<void(SuspendedPageProxy*)>&&);
     void unsuspend();
-    void close();
+
+    void pageEnteredAcceleratedCompositingMode();
+    void closeWithoutFlashing();
 
 #if !LOG_DISABLED
     const char* loggingString() const;
@@ -61,6 +65,9 @@ public:
 private:
     enum class SuspensionState : uint8_t { Suspending, FailedToSuspend, Suspended, Resumed };
     void didProcessRequestToSuspend(SuspensionState);
+    void suspensionTimedOut();
+
+    void close();
 
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
@@ -68,12 +75,14 @@ private:
 
     WebPageProxy& m_page;
     Ref<WebProcessProxy> m_process;
-    uint64_t m_mainFrameID;
-    String m_registrableDomain;
+    WebCore::FrameIdentifier m_mainFrameID;
     bool m_isClosed { false };
+    ShouldDelayClosingUntilEnteringAcceleratedCompositingMode m_shouldDelayClosingUntilEnteringAcceleratedCompositingMode { ShouldDelayClosingUntilEnteringAcceleratedCompositingMode::No };
+    bool m_shouldCloseWhenEnteringAcceleratedCompositingMode { false };
 
     SuspensionState m_suspensionState { SuspensionState::Suspending };
     CompletionHandler<void(SuspendedPageProxy*)> m_readyToUnsuspendHandler;
+    RunLoop::Timer<SuspendedPageProxy> m_suspensionTimeoutTimer;
 #if PLATFORM(IOS_FAMILY)
     ProcessThrottler::BackgroundActivityToken m_suspensionToken;
 #endif

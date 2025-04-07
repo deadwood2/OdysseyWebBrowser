@@ -31,7 +31,9 @@ WI.CSSProperty = class CSSProperty extends WI.Object
 
         this._ownerStyle = null;
         this._index = index;
+        this._overridingProperty = null;
         this._initialState = null;
+        this._modified = false;
 
         this.update(text, name, value, priority, enabled, overridden, implicit, anonymous, valid, styleSheetTextRange, true);
     }
@@ -100,9 +102,13 @@ WI.CSSProperty = class CSSProperty extends WI.Object
         else
             this._overridden = overridden;
 
+        if (!overridden)
+            this._overridingProperty = null;
+
         this._text = text;
         this._name = name;
         this._rawValue = value;
+        this._value = undefined;
         this._priority = priority;
         this._enabled = enabled;
         this._implicit = implicit;
@@ -143,7 +149,7 @@ WI.CSSProperty = class CSSProperty extends WI.Object
 
     commentOut(disabled)
     {
-        console.assert(this._enabled === disabled, "CSS property is already " + (disabled ? "disabled" : "enabled"));
+        console.assert(this.editable);
         if (this._enabled === !disabled)
             return;
 
@@ -176,12 +182,24 @@ WI.CSSProperty = class CSSProperty extends WI.Object
         if (!this._name)
             return "";
 
-        return `${this._name}: ${this._rawValue};`;
+        let text = `${this._name}: ${this._rawValue};`;
+        if (!this._enabled)
+            text = "/* " + text + " */";
+        return text;
     }
 
     get modified()
     {
-        return !!this._initialState;
+        return this._modified;
+    }
+
+    set modified(value)
+    {
+        if (this._modified === value)
+            return;
+
+        this._modified = value;
+        this.dispatchEventToListeners(WI.CSSProperty.Event.ModifiedChanged);
     }
 
     get name()
@@ -262,6 +280,9 @@ WI.CSSProperty = class CSSProperty extends WI.Object
         if (this._overridden === overridden)
             return;
 
+        if (!overridden)
+            this._overridingProperty = null;
+
         var previousOverridden = this._overridden;
 
         this._overridden = overridden;
@@ -280,6 +301,21 @@ WI.CSSProperty = class CSSProperty extends WI.Object
         }
 
         this._overriddenStatusChangedTimeout = setTimeout(delayed.bind(this), 0);
+    }
+
+    get overridingProperty()
+    {
+        console.assert(this._overridden);
+        return this._overridingProperty;
+    }
+
+    set overridingProperty(effectiveProperty)
+    {
+        if (!WI.settings.experimentalEnableStylesJumpToEffective.value)
+            return;
+
+        console.assert(this !== effectiveProperty, `Property "${this.formattedText}" can't override itself.`, this);
+        this._overridingProperty = effectiveProperty || null;
     }
 
     get implicit() { return this._implicit; }
@@ -357,6 +393,37 @@ WI.CSSProperty = class CSSProperty extends WI.Object
         return this._hasOtherVendorNameOrKeyword;
     }
 
+    equals(property)
+    {
+        if (property === this)
+            return true;
+
+        if (!property)
+            return false;
+
+        return this._name === property.name && this._rawValue === property.rawValue && this._enabled === property.enabled;
+    }
+
+    clone()
+    {
+        let cssProperty = new WI.CSSProperty(
+            this._index,
+            this._text,
+            this._name,
+            this._rawValue,
+            this._priority,
+            this._enabled,
+            this._overridden,
+            this._implicit,
+            this._anonymous,
+            this._valid,
+            this._styleSheetTextRange);
+
+        cssProperty.ownerStyle = this._ownerStyle;
+
+        return cssProperty;
+    }
+
     // Private
 
     _updateStyleText(forceRemove = false)
@@ -373,13 +440,12 @@ WI.CSSProperty = class CSSProperty extends WI.Object
 
     _updateOwnerStyleText(oldText, newText, forceRemove = false)
     {
-        console.assert(this.modified, "CSSProperty was modified without saving initial state.");
-
         if (oldText === newText) {
             if (forceRemove) {
                 const lineDelta = 0;
                 const columnDelta = 0;
                 this._ownerStyle.shiftPropertiesAfter(this, lineDelta, columnDelta, forceRemove);
+                this._ownerStyle.updatePropertiesModifiedState();
             }
             return;
         }
@@ -401,7 +467,7 @@ WI.CSSProperty = class CSSProperty extends WI.Object
 
         console.assert(oldText === styleText.slice(range.startOffset, range.endOffset), "_styleSheetTextRange data is invalid.");
 
-        if (WI.settings.enableStyleEditingDebugMode.value) {
+        if (WI.isDebugUIEnabled() && WI.settings.debugEnableStyleEditingDebugMode.value) {
             let prefix = styleText.slice(0, range.startOffset);
             let postfix = styleText.slice(range.endOffset);
             console.info(`${prefix}%c${oldText}%c${newText}%c${postfix}`, `background: hsl(356, 100%, 90%); color: black`, `background: hsl(100, 100%, 91%); color: black`, `background: transparent`);
@@ -417,6 +483,7 @@ WI.CSSProperty = class CSSProperty extends WI.Object
 
         let propertyWasRemoved = !newText;
         this._ownerStyle.shiftPropertiesAfter(this, lineDelta, columnDelta, propertyWasRemoved);
+        this._ownerStyle.updatePropertiesModifiedState();
     }
 
     _prependSemicolonIfNeeded()
@@ -436,30 +503,13 @@ WI.CSSProperty = class CSSProperty extends WI.Object
 
     _markModified()
     {
-        if (this.modified)
-            return;
-
-        this._initialState = new WI.CSSProperty(
-            this._index,
-            this._text,
-            this._name,
-            this._rawValue,
-            this._priority,
-            this._enabled,
-            this._overridden,
-            this._implicit,
-            this._anonymous,
-            this._valid,
-            this._styleSheetTextRange);
-
-        if (this._ownerStyle) {
+        if (this._ownerStyle)
             this._ownerStyle.markModified();
-            this._initialState.ownerStyle = this._ownerStyle.initialState;
-        }
     }
 };
 
 WI.CSSProperty.Event = {
     Changed: "css-property-changed",
+    ModifiedChanged: "css-property-modified-changed",
     OverriddenStatusChanged: "css-property-overridden-status-changed"
 };

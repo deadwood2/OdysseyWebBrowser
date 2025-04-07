@@ -33,6 +33,10 @@
 #include <memory>
 #include <wpe/webkit.h>
 
+#if defined(HAVE_ACCESSIBILITY) && HAVE_ACCESSIBILITY
+#include <atk/atk.h>
+#endif
+
 static const char** uriArguments;
 static const char** ignoreHosts;
 static gboolean headlessMode;
@@ -44,6 +48,7 @@ static const char* cookiesFile;
 static const char* cookiesPolicy;
 static const char* proxy;
 const char* bgColor;
+static gboolean printVersion;
 
 static const GOptionEntry commandLineOptions[] =
 {
@@ -57,6 +62,7 @@ static const GOptionEntry commandLineOptions[] =
     { "ignore-tls-errors", 0, 0, G_OPTION_ARG_NONE, &ignoreTLSErrors, "Ignore TLS errors", nullptr },
     { "content-filter", 0, 0, G_OPTION_ARG_FILENAME, &contentFilter, "JSON with content filtering rules", "FILE" },
     { "bg-color", 0, 0, G_OPTION_ARG_STRING, &bgColor, "Window background color. Default: white", "COLOR" },
+    { "version", 'v', 0, G_OPTION_ARG_NONE, &printVersion, "Print the WPE version", nullptr },
     { G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_FILENAME_ARRAY, &uriArguments, nullptr, "[URL]" },
     { nullptr, 0, 0, G_OPTION_ARG_NONE, nullptr, nullptr, nullptr }
 };
@@ -163,6 +169,14 @@ int main(int argc, char *argv[])
     }
     g_option_context_free(context);
 
+    if (printVersion) {
+        g_print("WPE WebKit %u.%u.%u\n",
+            webkit_get_major_version(),
+            webkit_get_minor_version(),
+            webkit_get_micro_version());
+        return 0;
+    }
+
     auto* loop = g_main_loop_new(nullptr, FALSE);
 
     auto backend = createViewBackend(1280, 720);
@@ -248,6 +262,11 @@ int main(int argc, char *argv[])
     g_object_unref(settings);
 
     backendPtr->setInputClient(std::make_unique<InputClient>(loop, webView));
+#if defined(HAVE_ACCESSIBILITY) && HAVE_ACCESSIBILITY
+    auto* accessible = wpe_view_backend_dispatch_get_accessible(wpeBackend);
+    if (ATK_IS_OBJECT(accessible))
+        backendPtr->setAccessibleChild(ATK_OBJECT(accessible));
+#endif
 
     webkit_web_context_set_automation_allowed(webContext, automationMode);
     g_signal_connect(webContext, "automation-started", G_CALLBACK(automationStartedCallback), webView);
@@ -266,7 +285,9 @@ int main(int argc, char *argv[])
         g_object_unref(file);
         webkit_web_view_load_uri(webView, url);
         g_free(url);
-    } else if (!automationMode)
+    } else if (automationMode)
+        webkit_web_view_load_uri(webView, "about:blank");
+    else
         webkit_web_view_load_uri(webView, "https://wpewebkit.org");
 
     g_main_loop_run(loop);

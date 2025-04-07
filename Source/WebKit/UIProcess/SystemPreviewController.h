@@ -43,12 +43,13 @@ namespace WebKit {
 class WebPageProxy;
 
 class SystemPreviewController {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit SystemPreviewController(WebPageProxy&);
 
     bool canPreview(const String& mimeType) const;
 
-    void start(const String& mimeType, const WebCore::IntRect&);
+    void start(URL originatingPageURL, const String& mimeType, const WebCore::IntRect&);
     void updateProgress(float);
     void finish(URL);
     void cancel();

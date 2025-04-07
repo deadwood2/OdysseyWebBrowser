@@ -26,18 +26,18 @@
 #import "config.h"
 #import "_WKRemoteObjectRegistryInternal.h"
 
-#if WK_API_ENABLED
-
 #import "APIDictionary.h"
 #import "BlockSPI.h"
 #import "Connection.h"
 #import "RemoteObjectInvocation.h"
-#import "RemoteObjectRegistry.h"
+#import "UIRemoteObjectRegistry.h"
 #import "UserData.h"
 #import "WKConnectionRef.h"
 #import "WKRemoteObject.h"
 #import "WKRemoteObjectCoder.h"
 #import "WKSharedAPICast.h"
+#import "WebPage.h"
+#import "WebRemoteObjectRegistry.h"
 #import "_WKRemoteObjectInterface.h"
 #import <objc/runtime.h>
 
@@ -47,6 +47,7 @@ static const void* replyBlockKey = &replyBlockKey;
 
 @interface NSMethodSignature ()
 - (NSString *)_typeString;
+- (NSMethodSignature *)_signatureForBlockAtArgumentIndex:(NSInteger)idx;
 @end
 
 NSString * const invocationKey = @"invocation";
@@ -109,7 +110,7 @@ struct PendingReply {
     if (!(self = [super init]))
         return nil;
 
-    _remoteObjectRegistry = std::make_unique<WebKit::RemoteObjectRegistry>(self, page);
+    _remoteObjectRegistry = makeUnique<WebKit::WebRemoteObjectRegistry>(self, page);
 
     return self;
 }
@@ -119,7 +120,7 @@ struct PendingReply {
     if (!(self = [super init]))
         return nil;
 
-    _remoteObjectRegistry = std::make_unique<WebKit::RemoteObjectRegistry>(self, page);
+    _remoteObjectRegistry = makeUnique<WebKit::UIRemoteObjectRegistry>(self, page);
 
     return self;
 }
@@ -160,7 +161,7 @@ static uint64_t generateReplyIdentifier()
         if (strcmp([NSMethodSignature signatureWithObjCTypes:replyBlockSignature].methodReturnType, "v"))
             [NSException raise:NSInvalidArgumentException format:@"Return value of block argument must be 'void'. (%s)", sel_getName(invocation.selector)];
 
-        replyInfo = std::make_unique<WebKit::RemoteObjectInvocation::ReplyInfo>(generateReplyIdentifier(), replyBlockSignature);
+        replyInfo = makeUnique<WebKit::RemoteObjectInvocation::ReplyInfo>(generateReplyIdentifier(), replyBlockSignature);
 
         // Replace the block object so we won't try to encode it.
         id null = nullptr;
@@ -183,6 +184,28 @@ static uint64_t generateReplyIdentifier()
 - (WebKit::RemoteObjectRegistry&)remoteObjectRegistry
 {
     return *_remoteObjectRegistry;
+}
+
+static bool validateReplyBlockSignature(NSMethodSignature *wireBlockSignature, Protocol *protocol, SEL selector, NSUInteger blockIndex)
+{
+    // Required, non-inherited method:
+    const char* methodTypeEncoding = _protocol_getMethodTypeEncoding(protocol, selector, true, true);
+    // @optional, non-inherited method:
+    if (!methodTypeEncoding)
+        methodTypeEncoding = _protocol_getMethodTypeEncoding(protocol, selector, false, true);
+
+    ASSERT(methodTypeEncoding);
+    if (!methodTypeEncoding)
+        return false;
+
+    NSMethodSignature *targetMethodSignature = [NSMethodSignature signatureWithObjCTypes:methodTypeEncoding];
+    ASSERT(targetMethodSignature);
+    if (!targetMethodSignature)
+        return false;
+    NSMethodSignature *expectedBlockSignature = [targetMethodSignature _signatureForBlockAtArgumentIndex:blockIndex];
+    ASSERT(expectedBlockSignature);
+
+    return [wireBlockSignature isEqual:expectedBlockSignature];
 }
 
 - (void)_invokeMethod:(const WebKit::RemoteObjectInvocation&)remoteObjectInvocation
@@ -219,8 +242,13 @@ static uint64_t generateReplyIdentifier()
                 continue;
 
             // We found the block.
-            // FIXME: Validate the signature.
             NSMethodSignature *wireBlockSignature = [NSMethodSignature signatureWithObjCTypes:replyInfo->blockSignature.utf8().data()];
+
+            if (!validateReplyBlockSignature(wireBlockSignature, [interface protocol], invocation.selector, i)) {
+                NSLog(@"_invokeMethod: Failed to validate reply block signature: %@", wireBlockSignature._typeString);
+                ASSERT_NOT_REACHED();
+                continue;
+            }
 
             RetainPtr<_WKRemoteObjectRegistry> remoteObjectRegistry = self;
             uint64_t replyID = replyInfo->replyID;
@@ -319,5 +347,3 @@ static uint64_t generateReplyIdentifier()
 }
 
 @end
-
-#endif // WK_API_ENABLED

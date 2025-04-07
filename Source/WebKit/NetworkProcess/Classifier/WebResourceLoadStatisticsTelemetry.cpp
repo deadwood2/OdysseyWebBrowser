@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,7 +37,7 @@
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RunLoop.h>
-#include <wtf/text/StringBuilder.h>
+#include <wtf/text/StringConcatenateNumbers.h>
 
 namespace WebKit {
 using namespace WebCore;
@@ -70,8 +70,8 @@ static Vector<PrevalentResourceTelemetry> sortedPrevalentResourceTelemetry(const
             statistic.dataRecordsRemoved,
             statistic.hadUserInteraction,
             daysSinceUserInteraction,
-            statistic.subframeUnderTopFrameOrigins.size(),
-            statistic.subresourceUnderTopFrameOrigins.size(),
+            statistic.subframeUnderTopFrameDomains.size(),
+            statistic.subresourceUnderTopFrameDomains.size(),
             statistic.subresourceUniqueRedirectsTo.size(),
             statistic.timesAccessedAsFirstPartyDueToUserInteraction,
             statistic.timesAccessedAsFirstPartyDueToStorageAccessAPI
@@ -159,11 +159,8 @@ static void submitTopList(unsigned numberOfResourcesFromTheTop, const Vector<Pre
     unsigned topNumberOfTimesAccessedAsFirstPartyDueToUserInteraction = median(sortedPrevalentResourcesWithoutUserInteraction, 0, numberOfResourcesFromTheTop - 1, numberOfTimesAccessedAsFirstPartyDueToUserInteractionGetter);
     unsigned topNumberOfTimesAccessedAsFirstPartyDueToStorageAccessAPI = median(sortedPrevalentResourcesWithoutUserInteraction, 0, numberOfResourcesFromTheTop - 1, numberOfTimesAccessedAsFirstPartyDueToStorageAccessAPIGetter);
 
-    StringBuilder preambleBuilder;
-    preambleBuilder.appendLiteral("top");
-    preambleBuilder.appendNumber(numberOfResourcesFromTheTop);
-    String descriptionPreamble = preambleBuilder.toString();
-    
+    String descriptionPreamble = makeString("top", numberOfResourcesFromTheTop);
+
     store.sendDiagnosticMessageWithValue(DiagnosticLoggingKeys::resourceLoadStatisticsTelemetryKey(), descriptionPreamble + "PrevalentResourcesWithUserInteraction",
         topPrevalentResourcesWithUserInteraction, significantFiguresForLoggedValues, ShouldSample::No);
     store.sendDiagnosticMessageWithValue(DiagnosticLoggingKeys::resourceLoadStatisticsTelemetryKey(), descriptionPreamble + "SubframeUnderTopFrameOrigins",
@@ -241,19 +238,16 @@ void WebResourceLoadStatisticsTelemetry::calculateAndSubmit(const ResourceLoadSt
     }
     
     // Dispatch on the main thread to make sure the WebPageProxy we're using doesn't go away.
-    RunLoop::main().dispatch([sortedPrevalentResources = WTFMove(sortedPrevalentResources), sortedPrevalentResourcesWithoutUserInteraction = WTFMove(sortedPrevalentResourcesWithoutUserInteraction), prevalentResourcesDaysSinceUserInteraction = WTFMove(prevalentResourcesDaysSinceUserInteraction), resourceLoadStatisticsStore = makeWeakPtr(resourceLoadStatisticsStore)] () {
-        if (!resourceLoadStatisticsStore)
-            return;
-
+    RunLoop::main().dispatch([sortedPrevalentResources = WTFMove(sortedPrevalentResources), sortedPrevalentResourcesWithoutUserInteraction = WTFMove(sortedPrevalentResourcesWithoutUserInteraction), prevalentResourcesDaysSinceUserInteraction = WTFMove(prevalentResourcesDaysSinceUserInteraction), store = makeRef(resourceLoadStatisticsStore.store())] () {
         auto webPageProxy = WebPageProxy::nonEphemeralWebPageProxy();
         if (!webPageProxy) {
             if (notifyPagesWhenTelemetryWasCaptured)
-                notifyPages(0, 0, 0, resourceLoadStatisticsStore->store());
+                notifyPages(0, 0, 0, store);
             return;
         }
         
         if (notifyPagesWhenTelemetryWasCaptured) {
-            notifyPages(sortedPrevalentResources, sortedPrevalentResourcesWithoutUserInteraction, prevalentResourcesDaysSinceUserInteraction.size(), resourceLoadStatisticsStore->store());
+            notifyPages(sortedPrevalentResources, sortedPrevalentResourcesWithoutUserInteraction, prevalentResourcesDaysSinceUserInteraction.size(), store);
             // The notify pages function is for testing so we don't need to do an actual submission.
             return;
         }
@@ -266,7 +260,7 @@ void WebResourceLoadStatisticsTelemetry::calculateAndSubmit(const ResourceLoadSt
         if (prevalentResourcesDaysSinceUserInteraction.size() > 1)
             webPageProxy->logDiagnosticMessageWithValue(DiagnosticLoggingKeys::resourceLoadStatisticsTelemetryKey(), "medianPrevalentResourcesWithUserInteractionDaysSinceUserInteraction"_s, median(prevalentResourcesDaysSinceUserInteraction), significantFiguresForLoggedValues, ShouldSample::No);
         
-        submitTopLists(sortedPrevalentResources, sortedPrevalentResourcesWithoutUserInteraction, resourceLoadStatisticsStore->store());
+        submitTopLists(sortedPrevalentResources, sortedPrevalentResourcesWithoutUserInteraction, store);
     });
 }
     

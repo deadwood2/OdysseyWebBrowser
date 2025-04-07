@@ -37,6 +37,7 @@
 #import "WebPage.h"
 #import "WebPageProxyMessages.h"
 #import <WebCore/AudioSession.h>
+#import <WebCore/ContentChangeObserver.h>
 #import <WebCore/Icon.h>
 #import <WebCore/NotImplemented.h>
 #import <wtf/RefPtr.h>
@@ -48,7 +49,9 @@ using namespace WebCore;
 
 void WebChromeClient::didPreventDefaultForEvent()
 {
-    notImplemented();
+    if (!m_page.mainFrame())
+        return;
+    ContentChangeObserver::didPreventDefaultForEvent(*m_page.mainFrame());
 }
 
 #endif
@@ -63,14 +66,9 @@ void WebChromeClient::setNeedsScrollNotifications(WebCore::Frame&, bool)
     notImplemented();
 }
 
-void WebChromeClient::observedContentChange(WebCore::Frame&)
+void WebChromeClient::didFinishContentChangeObserving(WebCore::Frame&, WKContentChange observedContentChange)
 {
-    m_page.completePendingSyntheticClickForContentChangeObserver();
-}
-
-void WebChromeClient::clearContentChangeObservers(WebCore::Frame&)
-{
-    notImplemented();
+    m_page.didFinishContentChangeObserving(observedContentChange);
 }
 
 void WebChromeClient::notifyRevealedSelectionByScrollingFrame(WebCore::Frame&)

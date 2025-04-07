@@ -76,6 +76,8 @@ find(\&wanted, "Source/WTF");
 find(\&wanted, "Source/WebCore");
 find(\&wanted, "Source/WebKitLegacy");
 find(\&wanted, "Source/WebKit");
+find(\&wanted, "Tools/gdb");
+find(\&wanted, "Tools/lldb");
 find(\&wanted, "Tools/DumpRenderTree");
 find(\&wanted, "Tools/TestWebKitAPI");
 
@@ -100,21 +102,10 @@ sub wanted
 my $isDOMTypeRename = 0;
 my %renames = (
     # Renames go here in the form of:
-    "ConstructorRaisesException" => "ConstructorMayThrowLegacyException",
-    "GetterRaisesException" => "GetterMayThrowLegacyException",
-    "GetterRaisesExceptionWithMessage" => "GetterMayThrowLegacyExceptionWithMessage",
-    "RaisesException" => "MayThrowLegacyException",
-    "RaisesExceptionWithMessage" => "MayThrowLegacyExceptionWithMessage",
-    "SetterRaisesException" => "SetterMayThrowLegacyException",
-    "SetterRaisesExceptionWithMessage" => "SetterMayThrowLegacyExceptionWithMessage",
+    "flagIsAtomic" => "flagIsAtom",
 );
 
 my %renamesContemplatedForTheFuture = (
-    "setDOMException" => "propagateException",
-    "setDOMExceptionSlow" => "propagateExceptionSlowPath",
-
-    "PassRefPtr" => "DeprecatedPassRefPtr",
-
     "HTMLPlugInImageElement" => "HTMLEmbeddedObjectElement",
     "isPlugInImageElement" => "isEmbeddedObjectElement",
     "isHTMLPlugInImageElement" => "isHTMLEmbeddedObjectElement",
@@ -124,8 +115,6 @@ my %renamesContemplatedForTheFuture = (
 
     "DateInstance" => "JSDate",
     "ErrorInstance" => "JSError",
-
-    "TreeShared" => "TreeRefCounted",
 
     "StringImpl" => "SharedString",
 
@@ -138,10 +127,6 @@ my %renamesContemplatedForTheFuture = (
     "runtime_method" => "BridgedFunction",
     "runtime_object" => "BridgedObject",
     "objc_runtime" => "ObjCBridge",
-
-    "WTF_UNICODE_H" => "Unicode_h",
-    "WTF_UNICODE_ICU_H" => "UnicodeICU_h",
-    "UnicodeIcu" => "UnicodeICU",
 
     "LegacyWebArchive" => "WebArchive",
     "LegacyWebArchive_h" => "WebArchive_h",
@@ -219,16 +204,9 @@ for my $file (sort @paths) {
         }
     } else {
         for my $from (@sortedRenameKeys) {
-            $newContents =~ s/\b$from(?!["\w])/$renames{$from}/g; # this " unconfuses Xcode syntax highlighting
+            $newContents =~ s/\b$from\b/$renames{$from}/g; # this " unconfuses Xcode syntax highlighting
         }
     }
-
-    # Remove the "virtual" keyword from virtual/override lines.
-    # Should be a no-op but also OK to remove this any time, now that we have done it once.
-    $newContents =~ s/^(\s*(\w+EXPORT\w*\s+)?)virtual ([^{;]+ override\b)/$1$3/mg;
-    $newContents =~ s/^(\s*(\w+EXPORT\w*\s+)?)virtual ([^{;]+ final\b)/$1$3/mg;
-    $newContents =~ s/\boverride\s+final\b/final/g;
-    $newContents =~ s/\bfinal\s+override\b/final/g;
 
     if ($newContents ne $contents) {
         open FILE, ">", $file or die "Failed to open $file";

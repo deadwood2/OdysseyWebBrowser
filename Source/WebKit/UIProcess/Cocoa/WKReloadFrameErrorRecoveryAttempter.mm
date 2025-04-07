@@ -26,14 +26,13 @@
 #import "config.h"
 #import "WKReloadFrameErrorRecoveryAttempter.h"
 
-#if WK_API_ENABLED
-
 #import "_WKErrorRecoveryAttempting.h"
 #import "_WKFrameHandleInternal.h"
 #import "WKWebViewInternal.h"
 #import "WebFrameProxy.h"
 #import "WebPageProxy.h"
 #import "WebProcessProxy.h"
+#import <WebCore/FrameIdentifier.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/WeakObjCPtr.h>
 
@@ -64,8 +63,7 @@
     if (!webView)
         return NO;
 
-    uint64_t frameID = [_frameHandle _frameID];
-    WebKit::WebFrameProxy* webFrameProxy = webView->_page->process().webFrame(frameID);
+    WebKit::WebFrameProxy* webFrameProxy = webView->_page->process().webFrame(WebCore::frameIdentifierFromID([_frameHandle _frameID]));
     if (!webFrameProxy)
         return NO;
 
@@ -74,5 +72,3 @@
 }
 
 @end
-
-#endif

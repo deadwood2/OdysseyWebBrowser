@@ -25,27 +25,25 @@
 
 WI.EventBreakpoint = class EventBreakpoint extends WI.Object
 {
-    constructor(type, eventName, {disabled, eventListener} = {})
+    constructor(type, {eventName, eventListener, disabled} = {})
     {
         super();
 
-        console.assert(typeof type === "string");
-        console.assert(Object.values(WI.EventBreakpoint.Type).includes(type));
-        console.assert(typeof eventName === "string");
+        console.assert(Object.values(WI.EventBreakpoint.Type).includes(type), type);
 
         this._type = type;
-        this._eventName = eventName;
-
-        this._disabled = disabled || false;
+        this._eventName = eventName || null;
         this._eventListener = eventListener || null;
+        this._disabled = disabled || false;
     }
 
     // Static
 
-    static fromPayload(payload)
+    static deserialize(serializedInfo)
     {
-        return new WI.EventBreakpoint(payload.type, payload.eventName, {
-            disabled: !!payload.disabled,
+        return new WI.EventBreakpoint(serializedInfo.type, {
+            eventName: serializedInfo.eventName,
+            disabled: !!serializedInfo.disabled,
         });
     }
 
@@ -67,38 +65,45 @@ WI.EventBreakpoint = class EventBreakpoint extends WI.Object
 
         this._disabled = disabled;
 
-        this.dispatchEventToListeners(WI.EventBreakpoint.Event.DisabledStateDidChange);
-    }
-
-    get serializableInfo()
-    {
-        let info = {
-            type: this._type,
-            eventName: this._eventName,
-        };
-        if (this._disabled)
-            info.disabled = true;
-
-        return info;
+        this.dispatchEventToListeners(WI.EventBreakpoint.Event.DisabledStateChanged);
     }
 
     saveIdentityToCookie(cookie)
     {
-        cookie[WI.EventBreakpoint.TypeCookieKey] = this._type;
-        cookie[WI.EventBreakpoint.EventNameCookieKey] = this._eventName;
+        cookie["event-breakpoint-type"] = this._type;
+        if (this._eventName)
+            cookie["event-breakpoint-event-name"] = this._eventName;
+        if (this._eventListener)
+            cookie["event-breakpoint-event-listener"] = this._eventListener.eventListenerId;
+        if (this._disabled)
+            cookie["event-breakpoint-disabled"] = this._disabled;
+    }
+
+    toJSON(key)
+    {
+        let json = {
+            type: this._type,
+        };
+        if (this._eventName)
+            json.eventName = this._eventName;
+        if (this._disabled)
+            json.disabled = true;
+        if (key === WI.ObjectStore.toJSONSymbol)
+            json[WI.objectStores.eventBreakpoints.keyPath] = this._type + (this._eventName ? ":" + this._eventName : "");
+        return json;
     }
 };
 
 WI.EventBreakpoint.Type = {
     AnimationFrame: "animation-frame",
+    Interval: "interval",
     Listener: "listener",
+    Timeout: "timeout",
+
+    // COMPATIBILITY (iOS 13): DOMDebugger.EventBreakpointTypes.Timer was removed.
     Timer: "timer",
 };
 
-WI.EventBreakpoint.TypeCookieKey = "event-breakpoint-type";
-WI.EventBreakpoint.EventNameCookieKey = "event-breakpoint-event-name";
-
 WI.EventBreakpoint.Event = {
-    DisabledStateDidChange: "event-breakpoint-disabled-state-did-change",
-    ResolvedStateDidChange: "event-breakpoint-resolved-state-did-change",
+    DisabledStateChanged: "event-breakpoint-disabled-state-changed",
 };

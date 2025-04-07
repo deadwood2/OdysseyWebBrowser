@@ -26,6 +26,7 @@
 #pragma once
 
 #include "SandboxExtension.h"
+#include <WebCore/RegistrableDomain.h>
 #include <pal/SessionID.h>
 #include <wtf/Seconds.h>
 #include <wtf/URL.h>
@@ -52,6 +53,7 @@ extern "C" CFStringRef const WebKit2HTTPSProxyDefaultsKey;
 namespace WebKit {
 
 enum class AllowsCellularAccess : bool { No, Yes };
+enum class AllowsTLSFallback : bool { No, Yes };
 
 struct NetworkSessionCreationParameters {
     void encode(IPC::Encoder&) const;
@@ -65,10 +67,12 @@ struct NetworkSessionCreationParameters {
     RetainPtr<CFDictionaryRef> proxyConfiguration;
     String sourceApplicationBundleIdentifier;
     String sourceApplicationSecondaryIdentifier;
+    AllowsTLSFallback allowsTLSFallback { AllowsTLSFallback::Yes };
     bool shouldLogCookieInformation { false };
     Seconds loadThrottleLatency;
     URL httpProxy;
     URL httpsProxy;
+    bool enableLegacyTLS { false };
 #endif
 #if USE(SOUP)
     String cookiePersistentStoragePath;
@@ -81,6 +85,16 @@ struct NetworkSessionCreationParameters {
     String resourceLoadStatisticsDirectory;
     SandboxExtension::Handle resourceLoadStatisticsDirectoryExtensionHandle;
     bool enableResourceLoadStatistics { false };
+    bool enableResourceLoadStatisticsLogTestingEvent { false };
+    bool shouldIncludeLocalhostInResourceLoadStatistics { true };
+    bool enableResourceLoadStatisticsDebugMode { false };
+    bool enableResourceLoadStatisticsNSURLSessionSwitching { true };
+    bool deviceManagementRestrictionsEnabled { false };
+    bool allLoadsBlockedByDeviceManagementRestrictionsForTesting { false };
+    WebCore::RegistrableDomain resourceLoadStatisticsManualPrevalentResource { };
+
+    String networkCacheDirectory;
+    SandboxExtension::Handle networkCacheDirectoryExtensionHandle;
 };
 
 } // namespace WebKit

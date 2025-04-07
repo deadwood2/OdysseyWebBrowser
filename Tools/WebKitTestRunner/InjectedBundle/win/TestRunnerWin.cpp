@@ -27,6 +27,8 @@
 #include "TestRunner.h"
 
 #include "ActivateFonts.h"
+#include <shlwapi.h>
+#include <wininet.h>
 
 namespace WTR {
 
@@ -37,22 +39,29 @@ JSRetainPtr<JSStringRef> TestRunner::pathToLocalResource(JSStringRef)
 
 JSRetainPtr<JSStringRef> TestRunner::inspectorTestStubURL()
 {
-    return JSStringCreateWithUTF8CString("");
-}
+    wchar_t exePath[MAX_PATH];
+    if (::GetModuleFileName(nullptr, exePath, MAX_PATH)) {
+        wchar_t drive[_MAX_DRIVE];
+        wchar_t dir[_MAX_DIR];
+        _wsplitpath(exePath, drive, dir, nullptr, nullptr);
 
-void TestRunner::invalidateWaitToDumpWatchdogTimer()
-{
-    m_waitToDumpWatchdogTimer.stop();
+        wchar_t stubPath[MAX_PATH];
+        wcsncpy(stubPath, drive, MAX_PATH);
+        wcsncat(stubPath, dir, MAX_PATH - wcslen(stubPath));
+        wcsncat(stubPath, L"\\WebKit.resources\\WebInspectorUI\\TestStub.html", MAX_PATH - wcslen(stubPath));
+
+        wchar_t fileURI[INTERNET_MAX_PATH_LENGTH];
+        DWORD fileURILength = INTERNET_MAX_PATH_LENGTH;
+        UrlCreateFromPathW(stubPath, fileURI, &fileURILength, 0);
+
+        return JSStringCreateWithCharacters(fileURI, fileURILength);
+    }
+
+    return nullptr;
 }
 
 void TestRunner::platformInitialize()
 {
-}
-
-void TestRunner::initializeWaitToDumpWatchdogTimerIfNeeded()
-{
-    if (!m_waitToDumpWatchdogTimer.isActive())
-        m_waitToDumpWatchdogTimer.startOneShot(m_timeout);
 }
 
 void TestRunner::installFakeHelvetica(JSStringRef configuration)

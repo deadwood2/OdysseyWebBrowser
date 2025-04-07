@@ -202,10 +202,8 @@ private:
     void invalidateScrollbarRect(WebCore::Scrollbar&, const WebCore::IntRect&) final;
     void invalidateScrollCornerRect(const WebCore::IntRect&) final;
     WebCore::IntPoint lastKnownMousePosition() const final { return m_lastMousePositionInPluginCoordinates; }
-    int scrollSize(WebCore::ScrollbarOrientation) const final;
     bool isActive() const final;
     bool isScrollCornerVisible() const final { return false; }
-    int scrollOffset(WebCore::ScrollbarOrientation) const final;
     WebCore::ScrollPosition scrollPosition() const final;
     WebCore::ScrollPosition minimumScrollPosition() const final;
     WebCore::ScrollPosition maximumScrollPosition() const final;
@@ -256,11 +254,6 @@ private:
 
     WebFrame* webFrame() const { return m_frame; }
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED < 101300
-    enum UpdateCursorMode { UpdateIfNeeded, ForceUpdate };
-    void updateCursor(const WebMouseEvent&, UpdateCursorMode = UpdateIfNeeded);
-#endif
-
     JSObjectRef makeJSPDFDoc(JSContextRef);
     static JSValueRef jsPDFDocPrint(JSContextRef, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception);
 
@@ -296,11 +289,6 @@ private:
     String m_temporaryPDFUUID;
 
     String m_lastFoundString;
-
-#if __MAC_OS_X_VERSION_MIN_REQUIRED < 101300
-    enum HitTestResult { None, Text };
-    HitTestResult m_lastHitTestResult { None };
-#endif
 
     RetainPtr<WKPDFLayerControllerDelegate> m_pdfLayerControllerDelegate;
 

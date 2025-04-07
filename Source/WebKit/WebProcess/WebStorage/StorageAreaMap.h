@@ -26,12 +26,15 @@
 #pragma once
 
 #include "MessageReceiver.h"
+#include "StorageAreaIdentifier.h"
+#include "StorageAreaImplIdentifier.h"
 #include <WebCore/SecurityOrigin.h>
 #include <WebCore/StorageArea.h>
 #include <wtf/Forward.h>
 #include <wtf/HashCountedSet.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 class SecurityOrigin;
@@ -43,7 +46,7 @@ namespace WebKit {
 class StorageAreaImpl;
 class StorageNamespaceImpl;
 
-class StorageAreaMap : public RefCounted<StorageAreaMap>, private IPC::MessageReceiver {
+class StorageAreaMap : public RefCounted<StorageAreaMap>, private IPC::MessageReceiver, public CanMakeWeakPtr<StorageAreaMap> {
 public:
     static Ref<StorageAreaMap> create(StorageNamespaceImpl*, Ref<WebCore::SecurityOrigin>&&);
     ~StorageAreaMap();
@@ -58,20 +61,23 @@ public:
     void clear(WebCore::Frame* sourceFrame, StorageAreaImpl* sourceArea);
     bool contains(const String& key);
 
+    // IPC::MessageReceiver
+    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
+
     const WebCore::SecurityOrigin& securityOrigin() const { return m_securityOrigin.get(); }
+
+    void connect();
+    void disconnect();
+    const Optional<StorageAreaIdentifier>& identifier() const { return m_storageMapID; }
 
 private:
     StorageAreaMap(StorageNamespaceImpl*, Ref<WebCore::SecurityOrigin>&&);
 
-    // IPC::MessageReceiver
-    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
-
-    void didGetValues(uint64_t storageMapSeed);
     void didSetItem(uint64_t storageMapSeed, const String& key, bool quotaError);
     void didRemoveItem(uint64_t storageMapSeed, const String& key);
     void didClear(uint64_t storageMapSeed);
 
-    void dispatchStorageEvent(uint64_t sourceStorageAreaID, const String& key, const String& oldValue, const String& newValue, const String& urlString);
+    void dispatchStorageEvent(const Optional<StorageAreaImplIdentifier>& sourceStorageAreaID, const String& key, const String& oldValue, const String& newValue, const String& urlString);
     void clearCache();
 
     void resetValues();
@@ -80,15 +86,14 @@ private:
     bool shouldApplyChangeForKey(const String& key) const;
     void applyChange(const String& key, const String& newValue);
 
-    void dispatchSessionStorageEvent(uint64_t sourceStorageAreaID, const String& key, const String& oldValue, const String& newValue, const String& urlString);
-    void dispatchLocalStorageEvent(uint64_t sourceStorageAreaID, const String& key, const String& oldValue, const String& newValue, const String& urlString);
+    void dispatchSessionStorageEvent(const Optional<StorageAreaImplIdentifier>&, const String& key, const String& oldValue, const String& newValue, const String& urlString);
+    void dispatchLocalStorageEvent(const Optional<StorageAreaImplIdentifier>&, const String& key, const String& oldValue, const String& newValue, const String& urlString);
 
-    Ref<StorageNamespaceImpl> m_storageNamespace;
+    StorageNamespaceImpl* m_storageNamespace;
 
-    uint64_t m_storageMapID;
+    Optional<StorageAreaIdentifier> m_storageMapID;
 
     WebCore::StorageType m_storageType;
-    uint64_t m_storageNamespaceID;
     unsigned m_quotaInBytes;
     Ref<WebCore::SecurityOrigin> m_securityOrigin;
 
@@ -96,7 +101,6 @@ private:
 
     uint64_t m_currentSeed;
     bool m_hasPendingClear;
-    bool m_hasPendingGetValues;
     HashCountedSet<String> m_pendingValueChanges;
 };
 

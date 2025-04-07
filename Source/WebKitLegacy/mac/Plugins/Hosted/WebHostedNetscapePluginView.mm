@@ -60,6 +60,7 @@ using namespace WebKit;
 namespace WebKit {
     
 class SoftwareCARenderer {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit SoftwareCARenderer(uint32_t contextID)
         : m_context { [CAContext localContext] }
@@ -168,7 +169,7 @@ extern "C" {
         return NO;
 
     if (_proxy->rendererType() == UseSoftwareRenderer)
-        _softwareRenderer = std::make_unique<SoftwareCARenderer>(_proxy->renderContextID());
+        _softwareRenderer = makeUnique<SoftwareCARenderer>(_proxy->renderContextID());
     else
         [self createPluginLayer];
     

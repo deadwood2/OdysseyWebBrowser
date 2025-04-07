@@ -45,8 +45,8 @@ InspectorBackendClass = class InspectorBackendClass
         for (let debuggableType of Object.values(WI.DebuggableType))
             this._supportedDomainsForDebuggableType.set(debuggableType, []);
 
-        WI.settings.autoLogProtocolMessages.addEventListener(WI.Setting.Event.Changed, this._startOrStopAutomaticTracing, this);
-        WI.settings.autoLogTimeStats.addEventListener(WI.Setting.Event.Changed, this._startOrStopAutomaticTracing, this);
+        WI.settings.protocolAutoLogMessages.addEventListener(WI.Setting.Event.Changed, this._startOrStopAutomaticTracing, this);
+        WI.settings.protocolAutoLogTimeStats.addEventListener(WI.Setting.Event.Changed, this._startOrStopAutomaticTracing, this);
         this._startOrStopAutomaticTracing();
 
         this.currentDispatchState = {
@@ -71,19 +71,19 @@ InspectorBackendClass = class InspectorBackendClass
     set dumpInspectorProtocolMessages(value)
     {
         // Implicitly cause automatic logging to start if it's allowed.
-        WI.settings.autoLogProtocolMessages.value = value;
+        WI.settings.protocolAutoLogMessages.value = value;
 
         this._defaultTracer.dumpMessagesToConsole = value;
     }
 
     get dumpInspectorProtocolMessages()
     {
-        return WI.settings.autoLogProtocolMessages.value;
+        return WI.settings.protocolAutoLogMessages.value;
     }
 
     set dumpInspectorTimeStats(value)
     {
-        WI.settings.autoLogTimeStats.value = value;
+        WI.settings.protocolAutoLogTimeStats.value = value;
 
         if (!this.dumpInspectorProtocolMessages)
             this.dumpInspectorProtocolMessages = true;
@@ -93,19 +93,19 @@ InspectorBackendClass = class InspectorBackendClass
 
     get dumpInspectorTimeStats()
     {
-        return WI.settings.autoLogTimeStats.value;
+        return WI.settings.protocolAutoLogTimeStats.value;
     }
 
     set filterMultiplexingBackendInspectorProtocolMessages(value)
     {
-        WI.settings.filterMultiplexingBackendInspectorProtocolMessages.value = value;
+        WI.settings.protocolFilterMultiplexingBackendMessages.value = value;
 
         this._defaultTracer.filterMultiplexingBackend = value;
     }
 
     get filterMultiplexingBackendInspectorProtocolMessages()
     {
-        return WI.settings.filterMultiplexingBackendInspectorProtocolMessages.value;
+        return WI.settings.protocolFilterMultiplexingBackendMessages.value;
     }
 
     set customTracer(tracer)
@@ -406,12 +406,39 @@ InspectorBackend.Command.prototype = {
     {
         "use strict";
 
-        agent = agent || this._instance._agent;
+        let instance = this._instance;
 
+        function deliverFailure(message) {
+            console.error(`Protocol Error: ${message}`);
+            if (callback)
+                setTimeout(callback.bind(null, message), 0);
+            else
+                return Promise.reject(new Error(message));
+        }
+
+        if (typeof commandArguments !== "object")
+            return deliverFailure(`invoke expects an object for command arguments but its type is '${typeof commandArguments}'.`);
+
+        let parameters = {};
+        for (let {name, type, optional} of instance.callSignature) {
+            if (!(name in commandArguments) && !optional)
+                return deliverFailure(`Missing argument '${name}' for command '${instance.qualifiedName}'.`);
+
+            let value = commandArguments[name];
+            if (optional && value === undefined)
+                continue;
+
+            if (typeof value !== type)
+                return deliverFailure(`Invalid type of argument '${name}' for command '${instance.qualifiedName}' call. It must be '${type}' but it is '${typeof value}'.`);
+
+            parameters[name] = value;
+        }
+
+        agent = agent || instance._agent;
         if (typeof callback === "function")
-            agent._connection._sendCommandToBackendWithCallback(this._instance, commandArguments, callback);
+            agent._connection._sendCommandToBackendWithCallback(instance, parameters, callback);
         else
-            return agent._connection._sendCommandToBackendExpectingPromise(this._instance, commandArguments);
+            return agent._connection._sendCommandToBackendExpectingPromise(instance, parameters);
     },
 
     supports(parameterName)
@@ -439,22 +466,18 @@ InspectorBackend.Command.prototype = {
         }
 
         let parameters = {};
-        for (let parameter of instance.callSignature) {
-            let parameterName = parameter["name"];
-            let typeName = parameter["type"];
-            let optionalFlag = parameter["optional"];
-
-            if (!commandArguments.length && !optionalFlag)
+        for (let {name, type, optional} of instance.callSignature) {
+            if (!commandArguments.length && !optional)
                 return deliverFailure(`Invalid number of arguments for command '${instance.qualifiedName}'.`);
 
             let value = commandArguments.shift();
-            if (optionalFlag && value === undefined)
+            if (optional && value === undefined)
                 continue;
 
-            if (typeof value !== typeName)
-                return deliverFailure(`Invalid type of argument '${parameterName}' for command '${instance.qualifiedName}' call. It must be '${typeName}' but it is '${typeof value}'.`);
+            if (typeof value !== type)
+                return deliverFailure(`Invalid type of argument '${name}' for command '${instance.qualifiedName}' call. It must be '${type}' but it is '${typeof value}'.`);
 
-            parameters[parameterName] = value;
+            parameters[name] = value;
         }
 
         if (!callback && commandArguments.length === 1 && commandArguments[0] !== undefined)

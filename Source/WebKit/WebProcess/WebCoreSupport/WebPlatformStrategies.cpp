@@ -202,7 +202,7 @@ long WebPlatformStrategies::setTypes(const Vector<String>& pasteboardTypes, cons
 long WebPlatformStrategies::setBufferForType(SharedBuffer* buffer, const String& pasteboardType, const String& pasteboardName)
 {
     SharedMemory::Handle handle;
-    if (buffer) {
+    if (buffer && buffer->size()) {
         RefPtr<SharedMemory> sharedMemoryBuffer = SharedMemory::allocate(buffer->size());
         // FIXME: Null check prevents crashing, but it is not great that we will have empty pasteboard content for this type,
         // because we've already set the types.
@@ -245,10 +245,6 @@ int WebPlatformStrategies::getNumberOfFiles(const String& pasteboardName)
 }
 
 #if PLATFORM(IOS_FAMILY)
-void WebPlatformStrategies::getTypesByFidelityForItemAtIndex(Vector<String>& types, uint64_t index, const String& pasteboardName)
-{
-    WebProcess::singleton().parentProcessConnection()->sendSync(Messages::WebPasteboardProxy::GetPasteboardTypesByFidelityForItemAtIndex(index, pasteboardName), Messages::WebPasteboardProxy::GetPasteboardTypesByFidelityForItemAtIndex::Reply(types), 0);
-}
 
 void WebPlatformStrategies::writeToPasteboard(const PasteboardURL& url, const String& pasteboardName)
 {

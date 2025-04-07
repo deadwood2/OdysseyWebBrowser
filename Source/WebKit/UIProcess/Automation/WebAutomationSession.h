@@ -29,9 +29,13 @@
 #include "AutomationBackendDispatchers.h"
 #include "AutomationFrontendDispatchers.h"
 #include "Connection.h"
+#include "MessageReceiver.h"
+#include "MessageSender.h"
 #include "ShareableBitmap.h"
 #include "SimulatedInputDispatcher.h"
 #include "WebEvent.h"
+#include <WebCore/FrameIdentifier.h>
+#include <WebCore/PageIdentifier.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/Forward.h>
 #include <wtf/RunLoop.h>
@@ -141,7 +145,7 @@ public:
 
     // SimulatedInputDispatcher::Client API
 #if ENABLE(WEBDRIVER_MOUSE_INTERACTIONS)
-    void simulateMouseInteraction(WebPageProxy&, MouseInteraction, WebMouseEvent::Button, const WebCore::IntPoint& locationInView, AutomationCompletionHandler&&) final;
+    void simulateMouseInteraction(WebPageProxy&, MouseInteraction, MouseButton, const WebCore::IntPoint& locationInView, AutomationCompletionHandler&&) final;
 #endif
 #if ENABLE(WEBDRIVER_TOUCH_INTERACTIONS)
     void simulateTouchInteraction(WebPageProxy&, TouchInteraction, const WebCore::IntPoint& locationInView, Optional<Seconds> duration, AutomationCompletionHandler&&) final;
@@ -149,7 +153,7 @@ public:
 #if ENABLE(WEBDRIVER_KEYBOARD_INTERACTIONS)
     void simulateKeyboardInteraction(WebPageProxy&, KeyboardInteraction, WTF::Variant<VirtualKey, CharKey>&&, AutomationCompletionHandler&&) final;
 #endif
-    void viewportInViewCenterPointOfElement(WebPageProxy&, uint64_t frameID, const String& nodeHandle, Function<void (Optional<WebCore::IntPoint>, Optional<AutomationCommandError>)>&&) final;
+    void viewportInViewCenterPointOfElement(WebPageProxy&, Optional<WebCore::FrameIdentifier>, const String& nodeHandle, Function<void (Optional<WebCore::IntPoint>, Optional<AutomationCommandError>)>&&) final;
 
 #endif // ENABLE(WEBDRIVER_ACTIONS_API)
 
@@ -186,7 +190,7 @@ public:
     void acceptCurrentJavaScriptDialog(Inspector::ErrorString&, const String& browsingContextHandle) override;
     void messageOfCurrentJavaScriptDialog(Inspector::ErrorString&, const String& browsingContextHandle, String* text) override;
     void setUserInputForCurrentJavaScriptPrompt(Inspector::ErrorString&, const String& browsingContextHandle, const String& text) override;
-    void setFilesToSelectForFileUpload(Inspector::ErrorString&, const String& browsingContextHandle, const JSON::Array& filenames) override;
+    void setFilesToSelectForFileUpload(Inspector::ErrorString&, const String& browsingContextHandle, const JSON::Array& filenames, const JSON::Array* optionalFileContents) override;
     void getAllCookies(const String& browsingContextHandle, Ref<GetAllCookiesCallback>&&) override;
     void deleteSingleCookie(const String& browsingContextHandle, const String& cookieName, Ref<DeleteSingleCookieCallback>&&) override;
     void addSingleCookie(const String& browsingContextHandle, const JSON::Object& cookie, Ref<AddSingleCookieCallback>&&) override;
@@ -217,14 +221,14 @@ private:
     Ref<Inspector::Protocol::Automation::BrowsingContext> buildBrowsingContextForPage(WebPageProxy&, WebCore::FloatRect windowFrame);
     void getNextContext(Ref<WebAutomationSession>&&, Vector<Ref<WebPageProxy>>&&, Ref<JSON::ArrayOf<Inspector::Protocol::Automation::BrowsingContext>>, Ref<WebAutomationSession::GetBrowsingContextsCallback>&&);
 
-    Optional<uint64_t> webFrameIDForHandle(const String&);
-    String handleForWebFrameID(uint64_t frameID);
+    Optional<WebCore::FrameIdentifier> webFrameIDForHandle(const String&, bool& frameNotFound);
+    String handleForWebFrameID(Optional<WebCore::FrameIdentifier>);
     String handleForWebFrameProxy(const WebFrameProxy&);
 
     void waitForNavigationToCompleteOnPage(WebPageProxy&, Inspector::Protocol::Automation::PageLoadStrategy, Seconds, Ref<Inspector::BackendDispatcher::CallbackBase>&&);
     void waitForNavigationToCompleteOnFrame(WebFrameProxy&, Inspector::Protocol::Automation::PageLoadStrategy, Seconds, Ref<Inspector::BackendDispatcher::CallbackBase>&&);
-    void respondToPendingPageNavigationCallbacksWithTimeout(HashMap<uint64_t, RefPtr<Inspector::BackendDispatcher::CallbackBase>>&);
-    void respondToPendingFrameNavigationCallbacksWithTimeout(HashMap<uint64_t, RefPtr<Inspector::BackendDispatcher::CallbackBase>>&);
+    void respondToPendingPageNavigationCallbacksWithTimeout(HashMap<WebCore::PageIdentifier, RefPtr<Inspector::BackendDispatcher::CallbackBase>>&);
+    void respondToPendingFrameNavigationCallbacksWithTimeout(HashMap<WebCore::FrameIdentifier, RefPtr<Inspector::BackendDispatcher::CallbackBase>>&);
     void loadTimerFired();
 
     void exitFullscreenWindowForPage(WebPageProxy&, WTF::CompletionHandler<void()>&&);
@@ -232,22 +236,16 @@ private:
     void maximizeWindowForPage(WebPageProxy&, WTF::CompletionHandler<void()>&&);
     void hideWindowForPage(WebPageProxy&, WTF::CompletionHandler<void()>&&);
 
-    // Implemented in generated WebAutomationSessionMessageReceiver.cpp.
+    // IPC::MessageReceiver (Implemented by generated code in WebAutomationSessionMessageReceiver.cpp).
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
 
     // Called by WebAutomationSession messages.
     void didEvaluateJavaScriptFunction(uint64_t callbackID, const String& result, const String& errorType);
-    void didResolveChildFrame(uint64_t callbackID, uint64_t frameID, const String& errorType);
-    void didResolveParentFrame(uint64_t callbackID, uint64_t frameID, const String& errorType);
-    void didComputeElementLayout(uint64_t callbackID, WebCore::IntRect, Optional<WebCore::IntPoint>, bool isObscured, const String& errorType);
-    void didSelectOptionElement(uint64_t callbackID, const String& errorType);
     void didTakeScreenshot(uint64_t callbackID, const ShareableBitmap::Handle&, const String& errorType);
-    void didGetCookiesForFrame(uint64_t callbackID, Vector<WebCore::Cookie>, const String& errorType);
-    void didDeleteCookie(uint64_t callbackID, const String& errorType);
 
     // Platform-dependent implementations.
 #if ENABLE(WEBDRIVER_MOUSE_INTERACTIONS)
-    void platformSimulateMouseInteraction(WebPageProxy&, MouseInteraction, WebMouseEvent::Button, const WebCore::IntPoint& locationInView, OptionSet<WebEvent::Modifier>);
+    void platformSimulateMouseInteraction(WebPageProxy&, MouseInteraction, MouseButton, const WebCore::IntPoint& locationInViewport, OptionSet<WebEvent::Modifier>);
 #endif
 #if ENABLE(WEBDRIVER_TOUCH_INTERACTIONS)
     // Simulates a single touch point being pressed, moved, and released.
@@ -260,8 +258,12 @@ private:
     void platformSimulateKeySequence(WebPageProxy&, const String&);
 #endif // ENABLE(WEBDRIVER_KEYBOARD_INTERACTIONS)
 
-    // Get base64 encoded PNG data from a bitmap.
+    // Get base64-encoded PNG data from a bitmap.
     Optional<String> platformGetBase64EncodedPNGData(const ShareableBitmap::Handle&);
+
+    // Save base64-encoded file contents to a local file path and return the path.
+    // This reuses the basename of the remote file path so that the filename exposed to DOM API remains the same.
+    Optional<String> platformGenerateLocalFilePathForRemoteFile(const String& remoteFilePath, const String& base64EncodedFileContents);
 
 #if PLATFORM(COCOA)
     // The type parameter of the NSArray argument is platform-dependent.
@@ -280,52 +282,29 @@ private:
     Ref<Inspector::AutomationBackendDispatcher> m_domainDispatcher;
     std::unique_ptr<Inspector::AutomationFrontendDispatcher> m_domainNotifier;
 
-    HashMap<uint64_t, String> m_webPageHandleMap;
-    HashMap<String, uint64_t> m_handleWebPageMap;
+    HashMap<WebCore::PageIdentifier, String> m_webPageHandleMap;
+    HashMap<String, WebCore::PageIdentifier> m_handleWebPageMap;
 
-    HashMap<uint64_t, String> m_webFrameHandleMap;
-    HashMap<String, uint64_t> m_handleWebFrameMap;
+    HashMap<WebCore::FrameIdentifier, String> m_webFrameHandleMap;
+    HashMap<String, WebCore::FrameIdentifier> m_handleWebFrameMap;
 
-    HashMap<uint64_t, RefPtr<Inspector::BackendDispatcher::CallbackBase>> m_pendingNormalNavigationInBrowsingContextCallbacksPerPage;
-    HashMap<uint64_t, RefPtr<Inspector::BackendDispatcher::CallbackBase>> m_pendingEagerNavigationInBrowsingContextCallbacksPerPage;
-    HashMap<uint64_t, RefPtr<Inspector::BackendDispatcher::CallbackBase>> m_pendingNormalNavigationInBrowsingContextCallbacksPerFrame;
-    HashMap<uint64_t, RefPtr<Inspector::BackendDispatcher::CallbackBase>> m_pendingEagerNavigationInBrowsingContextCallbacksPerFrame;
-    HashMap<uint64_t, RefPtr<Inspector::BackendDispatcher::CallbackBase>> m_pendingInspectorCallbacksPerPage;
+    HashMap<WebCore::PageIdentifier, RefPtr<Inspector::BackendDispatcher::CallbackBase>> m_pendingNormalNavigationInBrowsingContextCallbacksPerPage;
+    HashMap<WebCore::PageIdentifier, RefPtr<Inspector::BackendDispatcher::CallbackBase>> m_pendingEagerNavigationInBrowsingContextCallbacksPerPage;
+    HashMap<WebCore::FrameIdentifier, RefPtr<Inspector::BackendDispatcher::CallbackBase>> m_pendingNormalNavigationInBrowsingContextCallbacksPerFrame;
+    HashMap<WebCore::FrameIdentifier, RefPtr<Inspector::BackendDispatcher::CallbackBase>> m_pendingEagerNavigationInBrowsingContextCallbacksPerFrame;
+    HashMap<WebCore::PageIdentifier, RefPtr<Inspector::BackendDispatcher::CallbackBase>> m_pendingInspectorCallbacksPerPage;
 #if ENABLE(WEBDRIVER_KEYBOARD_INTERACTIONS)
-    HashMap<uint64_t, Function<void(Optional<AutomationCommandError>)>> m_pendingKeyboardEventsFlushedCallbacksPerPage;
+    HashMap<WebCore::PageIdentifier, Function<void(Optional<AutomationCommandError>)>> m_pendingKeyboardEventsFlushedCallbacksPerPage;
 #endif
 #if ENABLE(WEBDRIVER_MOUSE_INTERACTIONS)
-    HashMap<uint64_t, Function<void(Optional<AutomationCommandError>)>> m_pendingMouseEventsFlushedCallbacksPerPage;
+    HashMap<WebCore::PageIdentifier, Function<void(Optional<AutomationCommandError>)>> m_pendingMouseEventsFlushedCallbacksPerPage;
 #endif
 
     uint64_t m_nextEvaluateJavaScriptCallbackID { 1 };
     HashMap<uint64_t, RefPtr<Inspector::AutomationBackendDispatcherHandler::EvaluateJavaScriptFunctionCallback>> m_evaluateJavaScriptFunctionCallbacks;
 
-    uint64_t m_nextResolveFrameCallbackID { 1 };
-    HashMap<uint64_t, RefPtr<Inspector::AutomationBackendDispatcherHandler::ResolveChildFrameHandleCallback>> m_resolveChildFrameHandleCallbacks;
-
-    uint64_t m_nextResolveParentFrameCallbackID { 1 };
-    HashMap<uint64_t, RefPtr<Inspector::AutomationBackendDispatcherHandler::ResolveParentFrameHandleCallback>> m_resolveParentFrameHandleCallbacks;
-
-    // Start at 2 and use only even numbers to not conflict with m_nextViewportInViewCenterPointOfElementCallbackID.
-    uint64_t m_nextComputeElementLayoutCallbackID { 2 };
-    HashMap<uint64_t, RefPtr<Inspector::AutomationBackendDispatcherHandler::ComputeElementLayoutCallback>> m_computeElementLayoutCallbacks;
-
-    // Start at 3 and use only odd numbers to not conflict with m_nextComputeElementLayoutCallbackID.
-    uint64_t m_nextViewportInViewCenterPointOfElementCallbackID { 3 };
-    HashMap<uint64_t, Function<void(Optional<WebCore::IntPoint>, Optional<AutomationCommandError>)>> m_viewportInViewCenterPointOfElementCallbacks;
-
     uint64_t m_nextScreenshotCallbackID { 1 };
     HashMap<uint64_t, RefPtr<Inspector::AutomationBackendDispatcherHandler::TakeScreenshotCallback>> m_screenshotCallbacks;
-
-    uint64_t m_nextGetCookiesCallbackID { 1 };
-    HashMap<uint64_t, RefPtr<Inspector::AutomationBackendDispatcherHandler::GetAllCookiesCallback>> m_getCookieCallbacks;
-
-    uint64_t m_nextDeleteCookieCallbackID { 1 };
-    HashMap<uint64_t, RefPtr<Inspector::AutomationBackendDispatcherHandler::DeleteSingleCookieCallback>> m_deleteCookieCallbacks;
-
-    uint64_t m_nextSelectOptionElementCallbackID { 1 };
-    HashMap<uint64_t, RefPtr<Inspector::AutomationBackendDispatcherHandler::SelectOptionElementCallback>> m_selectOptionElementCallbacks;
 
     enum class WindowTransitionedToState {
         Fullscreen,
@@ -342,7 +321,7 @@ private:
     // SimulatedInputDispatcher APIs take a set of input sources. We also intern these
     // so that previous input source state is used as initial state for later commands.
     HashSet<Ref<SimulatedInputSource>> m_inputSources;
-    HashMap<uint64_t, Ref<SimulatedInputDispatcher>> m_inputDispatchersByPage;
+    HashMap<WebCore::PageIdentifier, Ref<SimulatedInputDispatcher>> m_inputDispatchersByPage;
 #endif
 #if ENABLE(WEBDRIVER_KEYBOARD_INTERACTIONS)
     // Keep track of currently active modifiers across multiple keystrokes.

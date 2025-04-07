@@ -74,7 +74,7 @@ TEST(WTF, StringASCII)
 static inline const char* testStringNumberFixedPrecision(double number)
 {
     static char testBuffer[100] = { };
-    std::strncpy(testBuffer, String::number(number).utf8().data(), 99);
+    std::strncpy(testBuffer, String::numberToStringFixedPrecision(number).utf8().data(), 99);
     return testBuffer;
 }
 
@@ -172,7 +172,7 @@ TEST(WTF, StringNumberFixedWidth)
 static inline const char* testStringNumber(double number)
 {
     static char testBuffer[100] = { };
-    std::strncpy(testBuffer, String::numberToStringECMAScript(number).utf8().data(), 99);
+    std::strncpy(testBuffer, String::number(number).utf8().data(), 99);
     return testBuffer;
 }
 

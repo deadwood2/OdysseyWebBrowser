@@ -104,10 +104,10 @@ enum {
 };
 typedef uint32_t WKStatisticsOptions;
 
-WK_EXPORT WKTypeID WKContextGetTypeID();
+WK_EXPORT WKTypeID WKContextGetTypeID(void);
 
-WK_EXPORT WKContextRef WKContextCreate() WK_C_API_DEPRECATED_WITH_REPLACEMENT(WKContextCreateWithConfiguration);
-WK_EXPORT WKContextRef WKContextCreateWithInjectedBundlePath(WKStringRef path);
+WK_EXPORT WKContextRef WKContextCreate(void) WK_C_API_DEPRECATED_WITH_REPLACEMENT(WKContextCreateWithConfiguration);
+WK_EXPORT WKContextRef WKContextCreateWithInjectedBundlePath(WKStringRef path) WK_C_API_DEPRECATED_WITH_REPLACEMENT(WKContextCreateWithConfiguration);
 WK_EXPORT WKContextRef WKContextCreateWithConfiguration(WKContextConfigurationRef configuration);
 
 WK_EXPORT void WKContextSetClient(WKContextRef context, const WKContextClientBase* client);
@@ -131,8 +131,11 @@ WK_EXPORT WKCacheModel WKContextGetCacheModel(WKContextRef context);
 // FIXME: Move these to WKDeprecatedFunctions.cpp once support for Mavericks has been dropped.
 WK_EXPORT void WKContextSetProcessModel(WKContextRef, WKProcessModel);
 
-WK_EXPORT void WKContextSetMaximumNumberOfProcesses(WKContextRef context, unsigned numberOfProcesses);
-WK_EXPORT unsigned WKContextGetMaximumNumberOfProcesses(WKContextRef context);
+WK_EXPORT void WKContextSetMaximumNumberOfProcesses(WKContextRef context, unsigned numberOfProcesses) WK_C_API_DEPRECATED;
+WK_EXPORT unsigned WKContextGetMaximumNumberOfProcesses(WKContextRef context) WK_C_API_DEPRECATED;
+
+WK_EXPORT void WKContextSetUsesSingleWebProcess(WKContextRef, bool);
+WK_EXPORT bool WKContextGetUsesSingleWebProcess(WKContextRef);
 
 WK_EXPORT void WKContextStartMemorySampler(WKContextRef context, WKDoubleRef interval);
 WK_EXPORT void WKContextStopMemorySampler(WKContextRef context);

@@ -46,23 +46,9 @@
 #import <wtf/MainThread.h>
 #import <wtf/NeverDestroyed.h>
 
-
-#pragma mark - Soft Linking
-
-#import <pal/cf/CoreMediaSoftLink.h>
 #import "CoreVideoSoftLink.h"
-
-SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
-
-SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVSampleBufferDisplayLayer)
-
-SOFT_LINK_CONSTANT(AVFoundation, AVLayerVideoGravityResizeAspect, NSString *)
-SOFT_LINK_CONSTANT(AVFoundation, AVLayerVideoGravityResizeAspectFill, NSString *)
-SOFT_LINK_CONSTANT(AVFoundation, AVLayerVideoGravityResize, NSString *)
-
-#define AVLayerVideoGravityResizeAspect getAVLayerVideoGravityResizeAspect()
-#define AVLayerVideoGravityResizeAspectFill getAVLayerVideoGravityResizeAspectFill()
-#define AVLayerVideoGravityResize getAVLayerVideoGravityResize()
+#import <pal/cf/CoreMediaSoftLink.h>
+#import <pal/cocoa/AVFoundationSoftLink.h>
 
 using namespace WebCore;
 
@@ -133,7 +119,7 @@ using namespace WebCore;
     if (!_parent)
         return;
 
-    if ([object isKindOfClass:getAVSampleBufferDisplayLayerClass()]) {
+    if ([object isKindOfClass:PAL::getAVSampleBufferDisplayLayerClass()]) {
         RetainPtr<AVSampleBufferDisplayLayer> layer = (AVSampleBufferDisplayLayer *)object;
         ASSERT(layer.get() == _parent->displayLayer());
 
@@ -197,7 +183,7 @@ MediaPlayerPrivateMediaStreamAVFObjC::MediaPlayerPrivateMediaStreamAVFObjC(Media
     : m_player(player)
     , m_statusChangeListener(adoptNS([[WebAVSampleBufferStatusChangeListener alloc] initWithParent:this]))
     , m_clock(PAL::Clock::create())
-    , m_videoFullscreenLayerManager(std::make_unique<VideoFullscreenLayerManagerObjC>())
+    , m_videoFullscreenLayerManager(makeUnique<VideoFullscreenLayerManagerObjC>())
 #if !RELEASE_LOG_DISABLED
     , m_logger(player->mediaPlayerLogger())
     , m_logIdentifier(player->mediaPlayerLogIdentifier())
@@ -234,13 +220,13 @@ MediaPlayerPrivateMediaStreamAVFObjC::~MediaPlayerPrivateMediaStreamAVFObjC()
 void MediaPlayerPrivateMediaStreamAVFObjC::registerMediaEngine(MediaEngineRegistrar registrar)
 {
     if (isAvailable())
-        registrar([](MediaPlayer* player) { return std::make_unique<MediaPlayerPrivateMediaStreamAVFObjC>(player); }, getSupportedTypes,
+        registrar([](MediaPlayer* player) { return makeUnique<MediaPlayerPrivateMediaStreamAVFObjC>(player); }, getSupportedTypes,
             supportsType, 0, 0, 0, 0);
 }
 
 bool MediaPlayerPrivateMediaStreamAVFObjC::isAvailable()
 {
-    return AVFoundationLibrary() && isCoreMediaFrameworkAvailable() && getAVSampleBufferDisplayLayerClass();
+    return isAVFoundationFrameworkAvailable() && isCoreMediaFrameworkAvailable() && getAVSampleBufferDisplayLayerClass();
 }
 
 void MediaPlayerPrivateMediaStreamAVFObjC::getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types)
@@ -385,7 +371,7 @@ void MediaPlayerPrivateMediaStreamAVFObjC::enqueueVideoSample(MediaStreamTrackPr
     sample.offsetTimestampsBy(timelineOffset);
     DEBUG_LOG(LOGIDENTIFIER, "updated sample = ", sample);
 
-    if (WILL_LOG(WTFLogLevelDebug)) {
+    if (WILL_LOG(WTFLogLevel::Debug)) {
         MediaTime now = streamTime();
         double delta = (sample.presentationTime() - now).toDouble();
         if (delta < 0)
@@ -471,11 +457,6 @@ void MediaPlayerPrivateMediaStreamAVFObjC::flushRenderers()
         [m_sampleBufferDisplayLayer flush];
 }
 
-void MediaPlayerPrivateMediaStreamAVFObjC::flushAndRemoveVideoSampleBuffers()
-{
-    [m_sampleBufferDisplayLayer flushAndRemoveImage];
-}
-
 void MediaPlayerPrivateMediaStreamAVFObjC::ensureLayers()
 {
     if (m_sampleBufferDisplayLayer)
@@ -484,7 +465,7 @@ void MediaPlayerPrivateMediaStreamAVFObjC::ensureLayers()
     if (!m_mediaStreamPrivate || !m_mediaStreamPrivate->activeVideoTrack() || !m_mediaStreamPrivate->activeVideoTrack()->enabled())
         return;
 
-    m_sampleBufferDisplayLayer = adoptNS([allocAVSampleBufferDisplayLayerInstance() init]);
+    m_sampleBufferDisplayLayer = adoptNS([PAL::allocAVSampleBufferDisplayLayerInstance() init]);
     if (!m_sampleBufferDisplayLayer) {
         ERROR_LOG(LOGIDENTIFIER, "+[AVSampleBufferDisplayLayer alloc] failed.");
         return;
@@ -1073,12 +1054,12 @@ void MediaPlayerPrivateMediaStreamAVFObjC::updateTracks()
 
 std::unique_ptr<PlatformTimeRanges> MediaPlayerPrivateMediaStreamAVFObjC::seekable() const
 {
-    return std::make_unique<PlatformTimeRanges>();
+    return makeUnique<PlatformTimeRanges>();
 }
 
 std::unique_ptr<PlatformTimeRanges> MediaPlayerPrivateMediaStreamAVFObjC::buffered() const
 {
-    return std::make_unique<PlatformTimeRanges>();
+    return makeUnique<PlatformTimeRanges>();
 }
 
 void MediaPlayerPrivateMediaStreamAVFObjC::paint(GraphicsContext& context, const FloatRect& rect)
@@ -1092,7 +1073,7 @@ void MediaPlayerPrivateMediaStreamAVFObjC::updateCurrentFrameImage()
         return;
 
     if (!m_imagePainter.pixelBufferConformer)
-        m_imagePainter.pixelBufferConformer = std::make_unique<PixelBufferConformerCV>((__bridge CFDictionaryRef)@{ (__bridge NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA) });
+        m_imagePainter.pixelBufferConformer = makeUnique<PixelBufferConformerCV>((__bridge CFDictionaryRef)@{ (__bridge NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA) });
 
     ASSERT(m_imagePainter.pixelBufferConformer);
     if (!m_imagePainter.pixelBufferConformer)
@@ -1163,10 +1144,10 @@ void MediaPlayerPrivateMediaStreamAVFObjC::setNetworkState(MediaPlayer::NetworkS
     m_player->networkStateChanged();
 }
 
-void MediaPlayerPrivateMediaStreamAVFObjC::setShouldBufferData(bool shouldBuffer)
+void MediaPlayerPrivateMediaStreamAVFObjC::setBufferingPolicy(MediaPlayer::BufferingPolicy policy)
 {
-    if (!shouldBuffer)
-        flushAndRemoveVideoSampleBuffers();
+    if (policy != MediaPlayer::BufferingPolicy::Default)
+        [m_sampleBufferDisplayLayer flushAndRemoveImage];
 }
 
 void MediaPlayerPrivateMediaStreamAVFObjC::scheduleDeferredTask(Function<void ()>&& function)

@@ -49,6 +49,7 @@ namespace WebKit {
 class WebPage;
 
 class FindController : private WebCore::PageOverlay::Client {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(FindController);
 
 public:
@@ -59,6 +60,7 @@ public:
     void findStringMatches(const String&, FindOptions, unsigned maxMatchCount);
     void getImageForFindMatch(uint32_t matchIndex);
     void selectFindMatch(uint32_t matchIndex);
+    void indicateFindMatch(uint32_t matchIndex);
     void hideFindUI();
     void countStringMatches(const String&, FindOptions, unsigned maxMatchCount);
     uint32_t replaceMatches(const Vector<uint32_t>& matchIndices, const String& replacementText, bool selectionOnly);
@@ -83,7 +85,8 @@ private:
     Vector<WebCore::FloatRect> rectsForTextMatchesInRect(WebCore::IntRect clipRect);
     bool updateFindIndicator(WebCore::Frame& selectedFrame, bool isShowingOverlay, bool shouldAnimate = true);
 
-    void updateFindUIAfterPageScroll(bool found, const String&, FindOptions, unsigned maxMatchCount, WebCore::DidWrap);
+    enum class FindUIOriginator : uint8_t { FindString, FindStringMatches };
+    void updateFindUIAfterPageScroll(bool found, const String&, FindOptions, unsigned maxMatchCount, WebCore::DidWrap, FindUIOriginator);
 
     void willFindString();
     void didFindString();
@@ -92,6 +95,7 @@ private:
     
     unsigned findIndicatorRadius() const;
     bool shouldHideFindIndicatorOnScroll() const;
+    void didScrollAffectingFindIndicatorPosition();
 
     WebPage* m_webPage;
     WebCore::PageOverlay* m_findPageOverlay { nullptr };

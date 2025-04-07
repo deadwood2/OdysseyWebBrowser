@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2019 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -23,9 +23,11 @@
 import logging
 import traceback
 
+from webkitpy.common.version_name_map import VersionNameMap, PUBLIC_TABLE, INTERNAL_TABLE
 from webkitpy.layout_tests.models.test_configuration import TestConfiguration
 from webkitpy.port.darwin import DarwinPort
 from webkitpy.port.simulator_process import SimulatorProcess
+from webkitpy.results.upload import Upload
 from webkitpy.xcode.device_type import DeviceType
 from webkitpy.xcode.simulated_device import DeviceRequest, SimulatedDeviceManager
 
@@ -95,7 +97,7 @@ class DevicePort(DarwinPort):
 
         for i in xrange(self.child_processes()):
             device = self.target_host(i)
-            _log.debug('Installing to {}'.format(device))
+            _log.debug(u'Installing to {}'.format(device))
             # Without passing DYLD_LIBRARY_PATH, libWebCoreTestSupport cannot be loaded and DRT/WKTR will crash pre-launch,
             # leaving a crash log which will be picked up in results. DYLD_FRAMEWORK_PATH is needed to prevent an early crash.
             if not device.install_app(self._path_to_driver(), {'DYLD_LIBRARY_PATH': self._build_path(), 'DYLD_FRAMEWORK_PATH': self._build_path()}):
@@ -160,7 +162,7 @@ class DevicePort(DarwinPort):
             raise RuntimeError(self.NO_DEVICE_MANAGER)
 
         device_type = self._device_type_with_version(device_type)
-        _log.debug('\nCreating devices for {}'.format(device_type))
+        _log.debug(u'\nCreating devices for {}'.format(device_type))
 
         request = DeviceRequest(
             device_type,
@@ -210,7 +212,7 @@ class DevicePort(DarwinPort):
                 if isinstance(e, Exception):
                     exception_list.append([e, trace])
                 else:
-                    exception_list.append([Exception('Exception while tearing down {}'.format(device)), trace])
+                    exception_list.append([Exception(u'Exception while tearing down {}'.format(device)), trace])
 
         if len(exception_list) == 1:
             raise
@@ -238,3 +240,36 @@ class DevicePort(DarwinPort):
 
     def device_version(self):
         raise NotImplementedError
+
+    def configuration_for_upload(self, host=None):
+        configuration = self.test_configuration()
+
+        device_type = host.device_type if host else self.DEVICE_TYPE
+        model = device_type.hardware_family
+        if model and device_type.hardware_type:
+            model += u' {}'.format(device_type.hardware_type)
+
+        version = self.device_version()
+        version_name = None
+        for table in [INTERNAL_TABLE, PUBLIC_TABLE]:
+            version_name = VersionNameMap.map(self.host.platform).to_name(version, platform=device_type.software_variant.lower(), table=table)
+            if version_name:
+                break
+
+        if self.get_option('guard_malloc'):
+            style = 'guard-malloc'
+        elif self._config.asan:
+            style = 'asan'
+        else:
+            style = configuration.build_type
+
+        return Upload.create_configuration(
+            platform=device_type.software_variant.lower(),
+            is_simulator=self.DEVICE_MANAGER == SimulatedDeviceManager,
+            version=str(version),
+            version_name=version_name,
+            architecture=configuration.architecture,
+            style=style,
+            model=model,
+            sdk=host.build_version if host else None,
+        )

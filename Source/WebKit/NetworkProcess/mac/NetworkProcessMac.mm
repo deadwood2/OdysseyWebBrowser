@@ -26,7 +26,7 @@
 #import "config.h"
 #import "NetworkProcess.h"
 
-#if PLATFORM(MAC) || PLATFORM(IOSMAC)
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
 
 #import "NetworkCache.h"
 #import "NetworkProcessCreationParameters.h"
@@ -53,7 +53,7 @@ using namespace WebCore;
 
 void NetworkProcess::initializeProcess(const AuxiliaryProcessInitializationParameters&)
 {
-#if PLATFORM(MAC) && !PLATFORM(IOSMAC)
+#if PLATFORM(MAC) && !PLATFORM(MACCATALYST)
     // Having a window server connection in this process would result in spin logs (<rdar://problem/13239119>).
     OSStatus error = SetApplicationIsDaemon(true);
     ASSERT_UNUSED(error, error == noErr);
@@ -64,7 +64,7 @@ void NetworkProcess::initializeProcess(const AuxiliaryProcessInitializationParam
 
 void NetworkProcess::initializeProcessName(const AuxiliaryProcessInitializationParameters& parameters)
 {
-#if !PLATFORM(IOSMAC)
+#if !PLATFORM(MACCATALYST)
     NSString *applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Networking", "visible name of the network process. The argument is the application name."), (NSString *)parameters.uiProcessName];
     _LSSetApplicationInformationItem(kLSDefaultSessionID, _LSGetCurrentApplicationASN(), _kLSDisplayNameKey, (CFStringRef)applicationName, nullptr);
 #endif
@@ -88,11 +88,7 @@ void NetworkProcess::allowSpecificHTTPSCertificateForHost(const CertificateInfo&
 void NetworkProcess::initializeSandbox(const AuxiliaryProcessInitializationParameters& parameters, SandboxInitializationParameters& sandboxParameters)
 {
     // Need to overide the default, because service has a different bundle ID.
-#if WK_API_ENABLED
     NSBundle *webKit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKWebView")];
-#else
-    NSBundle *webKit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKView")];
-#endif
 
     sandboxParameters.setOverrideSandboxProfilePath([webKit2Bundle pathForResource:@"com.apple.WebKit.NetworkProcess" ofType:@"sb"]);
 
@@ -117,7 +113,7 @@ void NetworkProcess::platformTerminate()
     }
 }
 
-#if PLATFORM(IOSMAC)
+#if PLATFORM(MACCATALYST)
 bool NetworkProcess::parentProcessHasServiceWorkerEntitlement() const
 {
     return true;

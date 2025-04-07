@@ -30,7 +30,7 @@
 #import <CoreLocation/CLLocation.h>
 #import <CoreLocation/CLLocationManagerDelegate.h>
 #import <CoreLocation/CoreLocation.h>
-#import <WebCore/GeolocationPosition.h>
+#import <WebCore/GeolocationPositionData.h>
 #import <WebKitLogging.h>
 #import <objc/objc-runtime.h>
 #import <wtf/RefPtr.h>
@@ -89,7 +89,7 @@ using namespace WebCore;
 
 - (void)requestGeolocationAuthorization
 {
-#if PLATFORM(IOSMAC)
+#if PLATFORM(MACCATALYST)
     [_positionListener geolocationAuthorizationDenied];
     return;
 #else
@@ -170,7 +170,7 @@ static bool isAuthorizationGranted(CLAuthorizationStatus authorizationStatus)
 
 - (void)sendLocation:(CLLocation *)newLocation
 {
-    [_positionListener positionChanged:GeolocationPosition { newLocation }];
+    [_positionListener positionChanged:GeolocationPositionData { newLocation }];
 }
 
 - (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations

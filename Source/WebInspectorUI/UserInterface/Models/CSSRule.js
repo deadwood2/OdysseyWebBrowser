@@ -25,7 +25,7 @@
 
 WI.CSSRule = class CSSRule extends WI.Object
 {
-    constructor(nodeStyles, ownerStyleSheet, id, type, sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, mediaList)
+    constructor(nodeStyles, ownerStyleSheet, id, type, sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, groupings)
     {
         super();
 
@@ -37,72 +37,24 @@ WI.CSSRule = class CSSRule extends WI.Object
         this._type = type || null;
         this._initialState = null;
 
-        this.update(sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, mediaList, true);
+        this.update(sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, groupings, true);
     }
 
     // Public
 
+    get ownerStyleSheet() { return this._ownerStyleSheet; }
     get id() { return this._id; }
+    get type() { return this._type; }
     get initialState() { return this._initialState; }
-
-    get stringId()
-    {
-        if (this._id)
-            return this._id.styleSheetId + "/" + this._id.ordinal;
-    }
-
-    get ownerStyleSheet()
-    {
-        return this._ownerStyleSheet;
-    }
+    get sourceCodeLocation() { return this._sourceCodeLocation; }
+    get selectors() { return this._selectors; }
+    get matchedSelectorIndices() { return this._matchedSelectorIndices; }
+    get style() { return this._style; }
+    get groupings() { return this._groupings; }
 
     get editable()
     {
         return !!this._id && (this._type === WI.CSSStyleSheet.Type.Author || this._type === WI.CSSStyleSheet.Type.Inspector);
-    }
-
-    update(sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, mediaList, dontFireEvents)
-    {
-        sourceCodeLocation = sourceCodeLocation || null;
-        selectorText = selectorText || "";
-        selectors = selectors || [];
-        matchedSelectorIndices = matchedSelectorIndices || [];
-        style = style || null;
-        mediaList = mediaList || [];
-
-        var changed = false;
-        if (!dontFireEvents) {
-            changed = this._selectorText !== selectorText || !Array.shallowEqual(this._selectors, selectors) ||
-                !Array.shallowEqual(this._matchedSelectorIndices, matchedSelectorIndices) || this._style !== style ||
-                !!this._sourceCodeLocation !== !!sourceCodeLocation || this._mediaList.length !== mediaList.length;
-            // FIXME: Look for differences in the media list arrays.
-        }
-
-        if (this._style)
-            this._style.ownerRule = null;
-
-        this._sourceCodeLocation = sourceCodeLocation;
-        this._selectorText = selectorText;
-        this._selectors = selectors;
-        this._matchedSelectorIndices = matchedSelectorIndices;
-        this._style = style;
-        this._mediaList = mediaList;
-
-        if (this._style)
-            this._style.ownerRule = this;
-
-        if (changed)
-            this.dispatchEventToListeners(WI.CSSRule.Event.Changed);
-    }
-
-    get type()
-    {
-        return this._type;
-    }
-
-    get sourceCodeLocation()
-    {
-        return this._sourceCodeLocation;
     }
 
     get selectorText()
@@ -124,24 +76,27 @@ WI.CSSRule = class CSSRule extends WI.Object
         this._nodeStyles.changeRuleSelector(this, selectorText).then(this._selectorResolved.bind(this), this._selectorRejected.bind(this));
     }
 
-    get selectors()
+    update(sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, groupings)
     {
-        return this._selectors;
-    }
+        sourceCodeLocation = sourceCodeLocation || null;
+        selectorText = selectorText || "";
+        selectors = selectors || [];
+        matchedSelectorIndices = matchedSelectorIndices || [];
+        style = style || null;
+        groupings = groupings || [];
 
-    get matchedSelectorIndices()
-    {
-        return this._matchedSelectorIndices;
-    }
+        if (this._style)
+            this._style.ownerRule = null;
 
-    get style()
-    {
-        return this._style;
-    }
+        this._sourceCodeLocation = sourceCodeLocation;
+        this._selectorText = selectorText;
+        this._selectors = selectors;
+        this._matchedSelectorIndices = matchedSelectorIndices;
+        this._style = style;
+        this._groupings = groupings;
 
-    get mediaList()
-    {
-        return this._mediaList;
+        if (this._style)
+            this._style.ownerRule = this;
     }
 
     isEqualTo(rule)
@@ -150,27 +105,6 @@ WI.CSSRule = class CSSRule extends WI.Object
             return false;
 
         return Object.shallowEqual(this._id, rule.id);
-    }
-
-    markModified()
-    {
-        if (this._initialState)
-            return;
-
-        let initialStyle = this._style.initialState || this._style;
-        this._initialState = new WI.CSSRule(
-            this._nodeStyles,
-            this._ownerStyleSheet,
-            this._id,
-            this._type,
-            this._sourceCodeLocation,
-            this._selectorText,
-            this._selectors,
-            this._matchedSelectorIndices,
-            initialStyle,
-            this._mediaList);
-
-        WI.cssManager.addModifiedCSSRule(this);
     }
 
     // Protected
@@ -189,11 +123,36 @@ WI.CSSRule = class CSSRule extends WI.Object
 
     _selectorResolved(rulePayload)
     {
+        if (rulePayload) {
+            let selectorText = rulePayload.selectorList.text;
+            if (selectorText !== this._selectorText) {
+                let selectors = WI.DOMNodeStyles.parseSelectorListPayload(rulePayload.selectorList);
+
+                let sourceCodeLocation = null;
+                let sourceRange = rulePayload.selectorList.range;
+                if (sourceRange) {
+                    sourceCodeLocation = WI.DOMNodeStyles.createSourceCodeLocation(rulePayload.sourceURL, {
+                        line: sourceRange.startLine,
+                        column: sourceRange.startColumn,
+                        documentNode: this._nodeStyles.node.ownerDocument,
+                    });
+                }
+
+                if (this._ownerStyleSheet) {
+                    if (!sourceCodeLocation && this._ownerStyleSheet.isInspectorStyleSheet())
+                        sourceCodeLocation = this._ownerStyleSheet.createSourceCodeLocation(sourceRange.startLine, sourceRange.startColumn);
+
+                    sourceCodeLocation = this._ownerStyleSheet.offsetSourceCodeLocation(sourceCodeLocation);
+                }
+
+                this.update(sourceCodeLocation, selectorText, selectors, [], this._style, this._groupings);
+            }
+        }
+
         this.dispatchEventToListeners(WI.CSSRule.Event.SelectorChanged, {valid: !!rulePayload});
     }
 };
 
 WI.CSSRule.Event = {
-    Changed: "css-rule-changed",
     SelectorChanged: "css-rule-invalid-selector"
 };

@@ -509,12 +509,12 @@ void AppendPipeline::didReceiveInitializationSegment()
     m_sourceBufferPrivate->didReceiveInitializationSegment(initializationSegment);
 }
 
-AtomicString AppendPipeline::trackId()
+AtomString AppendPipeline::trackId()
 {
     ASSERT(isMainThread());
 
     if (!m_track)
-        return AtomicString();
+        return AtomString();
 
     return m_track->id();
 }
@@ -644,12 +644,6 @@ createOptionalParserForFormat(GstPad* demuxerSrcPad)
         ASSERT(opusparse);
         g_return_val_if_fail(opusparse, nullptr);
         return GRefPtr<GstElement>(opusparse);
-    }
-    if (!g_strcmp0(mediaType, "audio/x-vorbis")) {
-        GstElement* vorbisparse = gst_element_factory_make("vorbisparse", parserName.get());
-        ASSERT(vorbisparse);
-        g_return_val_if_fail(vorbisparse, nullptr);
-        return GRefPtr<GstElement>(vorbisparse);
     }
     if (!g_strcmp0(mediaType, "video/x-h264")) {
         GstElement* h264parse = gst_element_factory_make("h264parse", parserName.get());

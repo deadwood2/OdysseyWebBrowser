@@ -23,7 +23,9 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-interface AccessibilityUIElement {
+[
+    Conditional=ACCESSIBILITY,
+] interface AccessibilityUIElement {
     boolean isEqual(AccessibilityUIElement otherElement);
 
     // Document information
@@ -91,6 +93,7 @@ interface AccessibilityUIElement {
     readonly attribute boolean isVisible;
     readonly attribute boolean isCollapsed;
     readonly attribute boolean hasPopup;
+    readonly attribute DOMString popupValue;
     readonly attribute boolean isIgnored;
     readonly attribute boolean isSingleLine;
     readonly attribute boolean isMultiLine;
@@ -147,6 +150,7 @@ interface AccessibilityUIElement {
     AccessibilityUIElement disclosedByRow();
     AccessibilityUIElement disclosedRowAtIndex(unsigned long index);
     AccessibilityUIElement rowAtIndex(unsigned long index);
+    boolean isInTableCell();
     long indexInTable();
     DOMString rowIndexRange();
     DOMString columnIndexRange();
@@ -183,6 +187,7 @@ interface AccessibilityUIElement {
     [PassContext] unsigned long uiElementCountForSearchPredicate(AccessibilityUIElement startElement, boolean isDirectionNext, object searchKey, DOMString searchText, boolean visibleOnly, boolean immediateDescendantsOnly);
     [PassContext] AccessibilityUIElement uiElementForSearchPredicate(AccessibilityUIElement startElement, boolean isDirectionNext, object searchKey, DOMString searchText, boolean visibleOnly, boolean immediateDescendantsOnly);
     [PassContext] DOMString selectTextWithCriteria(DOMString ambiguityResolution, object searchStrings, DOMString replacementString, DOMString activity);
+    [PassContext] object searchTextWithCriteria(object searchStrings, DOMString startFrom, DOMString direction);
     boolean setSelectedTextRange(unsigned long location, unsigned long length);
 
     // Scroll area attributes.
@@ -205,6 +210,8 @@ interface AccessibilityUIElement {
     AccessibilityTextMarkerRange textMarkerRangeForMarkers(AccessibilityTextMarker startMarker, AccessibilityTextMarker endMarker);
     AccessibilityTextMarkerRange selectedTextMarkerRange();
     void resetSelectedTextMarkerRange();
+    boolean replaceTextInRange(DOMString string, long position, long length);
+    boolean insertText(DOMString text);
     AccessibilityTextMarker startTextMarkerForTextMarkerRange(AccessibilityTextMarkerRange range);
     AccessibilityTextMarker endTextMarkerForTextMarkerRange(AccessibilityTextMarkerRange range);
     AccessibilityTextMarker endTextMarkerForBounds(long x, long y, long width, long height);

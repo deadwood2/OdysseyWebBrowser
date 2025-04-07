@@ -78,7 +78,6 @@ class TestExpectationWarning(object):
 class TestExpectationParser(object):
     """Provides parsing facilities for lines in the test_expectation.txt file."""
 
-    DUMMY_BUG_MODIFIER = "bug_dummy"
     BUG_MODIFIER_PREFIX = 'bug'
     BUG_MODIFIER_REGEX = 'bug\d+'
     REBASELINE_MODIFIER = 'rebaseline'
@@ -117,7 +116,7 @@ class TestExpectationParser(object):
             _log.warning('The following test %s from the Skipped list doesn\'t exist' % test_name)
         expectation_line = TestExpectationLine()
         expectation_line.original_string = test_name
-        expectation_line.modifiers = [TestExpectationParser.DUMMY_BUG_MODIFIER, TestExpectationParser.SKIP_MODIFIER]
+        expectation_line.modifiers = [TestExpectationParser.SKIP_MODIFIER]
         # FIXME: It's not clear what the expectations for a skipped test should be; the expectations
         # might be different for different entries in a Skipped file, or from the command line, or from
         # only running parts of the tests. It's also not clear if it matters much.
@@ -227,7 +226,7 @@ class TestExpectationParser(object):
     # FIXME: Update the original modifiers and remove this once the old syntax is gone.
     _configuration_tokens_list = [
         'SnowLeopard', 'Lion', 'MountainLion', 'Mavericks', 'Yosemite', 'ElCapitan', # Legacy macOS
-        'Mac', 'Sierra', 'HighSierra', 'Mojave',
+        'Mac', 'Sierra', 'HighSierra', 'Mojave', 'Catalina',
         'Win', 'XP', 'Vista', 'Win7',
         'Linux',
         'Android',

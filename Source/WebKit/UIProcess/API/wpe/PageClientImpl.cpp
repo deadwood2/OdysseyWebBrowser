@@ -34,13 +34,18 @@
 #include "WebContextMenuProxy.h"
 #include "WebContextMenuProxyWPE.h"
 #include <WebCore/ActivityState.h>
+#include <WebCore/DOMPasteAccess.h>
 #include <WebCore/NotImplemented.h>
+
+#if ENABLE(ACCESSIBILITY)
+#include <atk/atk.h>
+#endif
 
 namespace WebKit {
 
 PageClientImpl::PageClientImpl(WKWPE::View& view)
     : m_view(view)
-    , m_scrollGestureController(std::make_unique<ScrollGestureController>())
+    , m_scrollGestureController(makeUnique<ScrollGestureController>())
 {
 }
 
@@ -58,14 +63,14 @@ IPC::Attachment PageClientImpl::hostFileDescriptor()
 
 std::unique_ptr<DrawingAreaProxy> PageClientImpl::createDrawingAreaProxy(WebProcessProxy& process)
 {
-    return std::make_unique<DrawingAreaProxyCoordinatedGraphics>(m_view.page(), process);
+    return makeUnique<DrawingAreaProxyCoordinatedGraphics>(m_view.page(), process);
 }
 
 void PageClientImpl::setViewNeedsDisplay(const WebCore::Region&)
 {
 }
 
-void PageClientImpl::requestScroll(const WebCore::FloatPoint&, const WebCore::IntPoint&, bool)
+void PageClientImpl::requestScroll(const WebCore::FloatPoint&, const WebCore::IntPoint&)
 {
 }
 
@@ -123,10 +128,9 @@ void PageClientImpl::didCommitLoadForMainFrame(const String&, bool)
 {
 }
 
-void PageClientImpl::handleDownloadRequest(DownloadProxy* download)
+void PageClientImpl::handleDownloadRequest(DownloadProxy& download)
 {
-    ASSERT(download);
-    m_view.handleDownloadRequest(*download);
+    m_view.handleDownloadRequest(download);
 }
 
 void PageClientImpl::didChangeContentSize(const WebCore::IntSize&)
@@ -180,6 +184,16 @@ WebCore::IntPoint PageClientImpl::screenToRootView(const WebCore::IntPoint& poin
 WebCore::IntRect PageClientImpl::rootViewToScreen(const WebCore::IntRect& rect)
 {
     return rect;
+}
+
+WebCore::IntPoint PageClientImpl::accessibilityScreenToRootView(const WebCore::IntPoint& point)
+{
+    return screenToRootView(point);
+}
+
+WebCore::IntRect PageClientImpl::rootViewToAccessibilityScreen(const WebCore::IntRect& rect)
+{
+    return rootViewToScreen(rect);    
 }
 
 void PageClientImpl::doneWithKeyEvent(const NativeWebKeyboardEvent&, bool)
@@ -324,7 +338,7 @@ void PageClientImpl::derefView()
 {
 }
 
-#if ENABLE(VIDEO)
+#if ENABLE(VIDEO) && USE(GSTREAMER)
 bool PageClientImpl::decidePolicyForInstallMissingMediaPluginsPermissionRequest(InstallMissingMediaPluginsPermissionRequest&)
 {
     return false;
@@ -393,5 +407,17 @@ void PageClientImpl::beganExitFullScreen(const WebCore::IntRect& /* initialFrame
 }
 
 #endif // ENABLE(FULLSCREEN_API)
+
+void PageClientImpl::requestDOMPasteAccess(const WebCore::IntRect&, const String&, CompletionHandler<void(WebCore::DOMPasteAccessResponse)>&& completionHandler)
+{
+    completionHandler(WebCore::DOMPasteAccessResponse::DeniedForGesture);
+}
+
+#if ENABLE(ACCESSIBILITY)
+AtkObject* PageClientImpl::accessible()
+{
+    return ATK_OBJECT(m_view.accessible());
+}
+#endif
 
 } // namespace WebKit

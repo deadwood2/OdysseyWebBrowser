@@ -26,7 +26,7 @@
 #include "config.h"
 #include "WaylandCompositor.h"
 
-#if PLATFORM(WAYLAND) && USE(EGL)
+#if PLATFORM(WAYLAND) && USE(EGL) && !USE(WPE_RENDERER)
 
 #include "WebKitWaylandServerProtocol.h"
 #include <EGL/egl.h>
@@ -56,6 +56,10 @@ typedef EGLBoolean (*PFNEGLBINDWAYLANDDISPLAYWL) (EGLDisplay, struct wl_display*
 
 #if !defined(PFNEGLUNBINDWAYLANDDISPLAYWL)
 typedef EGLBoolean (*PFNEGLUNBINDWAYLANDDISPLAYWL) (EGLDisplay, struct wl_display*);
+#endif
+
+#if !defined(EGL_WAYLAND_BUFFER_WL)
+#define EGL_WAYLAND_BUFFER_WL 0x31D5
 #endif
 
 #if !defined(PFNEGLQUERYWAYLANDBUFFERWL)
@@ -167,6 +171,9 @@ WaylandCompositor::Surface::~Surface()
 
 void WaylandCompositor::Surface::setWebPage(WebPageProxy* webPage)
 {
+    if (m_webPage == webPage)
+        return;
+
     if (m_webPage) {
         flushPendingFrameCallbacks();
         flushFrameCallbacks();
@@ -380,7 +387,7 @@ static const struct wl_webkitgtk_interface webkitgtkInterface = {
             return;
 
         auto* compositor = static_cast<WaylandCompositor*>(wl_resource_get_user_data(resource));
-        compositor->bindSurfaceToWebPage(surface, pageID);
+        compositor->bindSurfaceToWebPage(surface, makeObjectIdentifier<PageIdentifierType>(pageID));
     }
 };
 
@@ -420,9 +427,9 @@ bool WaylandCompositor::initializeEGL()
         return false;
 
 #if USE(OPENGL_ES)
-    std::unique_ptr<Extensions3DOpenGLES> glExtensions = std::make_unique<Extensions3DOpenGLES>(nullptr,  false);
+    std::unique_ptr<Extensions3DOpenGLES> glExtensions = makeUnique<Extensions3DOpenGLES>(nullptr,  false);
 #else
-    std::unique_ptr<Extensions3DOpenGL> glExtensions = std::make_unique<Extensions3DOpenGL>(nullptr, GLContext::current()->version() >= 320);
+    std::unique_ptr<Extensions3DOpenGL> glExtensions = makeUnique<Extensions3DOpenGL>(nullptr, GLContext::current()->version() >= 320);
 #endif
     if (glExtensions->supports("GL_OES_EGL_image") || glExtensions->supports("GL_OES_EGL_image_external"))
         glImageTargetTexture2D = reinterpret_cast<PFNGLEGLIMAGETARGETTEXTURE2DOESPROC>(eglGetProcAddress("glEGLImageTargetTexture2DOES"));
@@ -547,7 +554,7 @@ bool WaylandCompositor::getTexture(WebPageProxy& webPage, unsigned& texture, Int
     return false;
 }
 
-void WaylandCompositor::bindSurfaceToWebPage(WaylandCompositor::Surface* surface, uint64_t pageID)
+void WaylandCompositor::bindSurfaceToWebPage(WaylandCompositor::Surface* surface, WebCore::PageIdentifier pageID)
 {
     WebPageProxy* webPage = nullptr;
     for (auto* page : m_pageMap.keys()) {
@@ -563,6 +570,18 @@ void WaylandCompositor::bindSurfaceToWebPage(WaylandCompositor::Surface* surface
     m_pageMap.set(webPage, makeWeakPtr(*surface));
 }
 
+void WaylandCompositor::bindWebPage(WebPageProxy& webPage)
+{
+    if (WeakPtr<Surface> surface = m_pageMap.get(&webPage))
+        surface->setWebPage(&webPage);
+}
+
+void WaylandCompositor::unbindWebPage(WebPageProxy& webPage)
+{
+    if (WeakPtr<Surface> surface = m_pageMap.get(&webPage))
+        surface->setWebPage(nullptr);
+}
+
 void WaylandCompositor::registerWebPage(WebPageProxy& webPage)
 {
     m_pageMap.add(&webPage, nullptr);
@@ -576,4 +595,4 @@ void WaylandCompositor::unregisterWebPage(WebPageProxy& webPage)
 
 } // namespace WebKit
 
-#endif // PLATFORM(WAYLAND) && USE(EGL)
+#endif // PLATFORM(WAYLAND) && USE(EGL) && !USE(WPE_RENDERER)

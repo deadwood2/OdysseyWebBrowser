@@ -26,14 +26,16 @@
 #include "config.h"
 
 #import "PlatformUtilities.h"
+#import "TestNavigationDelegate.h"
+#import "TestWKWebView.h"
 #import <WebKit/WKFoundation.h>
+#import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebsiteDataRecordPrivate.h>
 #import <WebKit/WKWebsiteDataStorePrivate.h>
+#import <WebKit/_WKWebsiteDataStoreConfiguration.h>
 #import <wtf/RetainPtr.h>
-
-#if WK_API_ENABLED
 
 static bool finishedNavigation = false;
 
@@ -76,6 +78,7 @@ TEST(ResourceLoadStatistics, GrandfatherCallback)
     // We need an active NetworkProcess to perform ResourceLoadStatistics operations.
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
     [dataStore _setResourceLoadStatisticsEnabled:YES];
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
 
     TestWebKitAPI::Util::run(&grandfatheredFlag);
 
@@ -141,6 +144,7 @@ TEST(ResourceLoadStatistics, ShouldNotGrandfatherOnStartup)
     // We need an active NetworkProcess to perform ResourceLoadStatistics operations.
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
     [dataStore _setResourceLoadStatisticsEnabled:YES];
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
 
     TestWebKitAPI::Util::run(&callbackFlag);
 }
@@ -172,6 +176,7 @@ TEST(ResourceLoadStatistics, ChildProcessesNotLaunched)
     // We need an active NetworkProcess to perform ResourceLoadStatistics operations.
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
     [dataStore _setResourceLoadStatisticsEnabled:YES];
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
 
     TestWebKitAPI::Util::run(&doneFlag);
 
@@ -190,7 +195,7 @@ TEST(ResourceLoadStatistics, IPCAfterStoreDestruction)
 
     // Test page requires window.internals.
 #if WK_HAVE_C_SPI
-    WKRetainPtr<WKContextRef> context(AdoptWK, TestWebKitAPI::Util::createContextForInjectedBundleTest("InternalsInjectedBundleTest"));
+    WKRetainPtr<WKContextRef> context = adoptWK(TestWebKitAPI::Util::createContextForInjectedBundleTest("InternalsInjectedBundleTest"));
     configuration.get().processPool = (WKProcessPool *)context.get();
 #endif
 
@@ -204,5 +209,278 @@ TEST(ResourceLoadStatistics, IPCAfterStoreDestruction)
     TestWebKitAPI::Util::run(&finishedNavigation);
 }
 
-#endif
+static void cleanupITPDatabase(WKWebsiteDataStore *dataStore)
+{
+    [dataStore _setResourceLoadStatisticsEnabled:YES];
 
+    // Make sure 'evil.com' is not in our data set.
+    static bool doneFlag;
+    static bool dataSyncCompleted;
+    [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+        if (![message isEqualToString:@"Storage Synced"])
+            return;
+
+        dataSyncCompleted = true;
+    }];
+    [dataStore _clearPrevalentDomain:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(void) {
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Trigger ITP to process its data to force a sync to persistent storage.
+    [dataStore _processStatisticsAndDataRecords: ^(void) {
+        doneFlag = true;
+    }];
+    
+    TestWebKitAPI::Util::run(&doneFlag);
+    TestWebKitAPI::Util::run(&dataSyncCompleted);
+    
+    TestWebKitAPI::Util::spinRunLoop(1);
+
+    [dataStore _setResourceLoadStatisticsEnabled:NO];
+}
+
+TEST(ResourceLoadStatistics, EnableDisableITP)
+{
+    // Ensure the shared process pool exists so the data store operations we're about to do work with it.
+    auto *sharedProcessPool = [WKProcessPool _sharedProcessPool];
+    auto *dataStore = [WKWebsiteDataStore defaultDataStore];
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [configuration setProcessPool: sharedProcessPool];
+    configuration.get().websiteDataStore = dataStore;
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    
+    [webView loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView _test_waitForDidFinishNavigation];
+
+    cleanupITPDatabase(dataStore);
+
+    // ITP should be off, no URLs are prevalent.
+    static bool doneFlag;
+    [dataStore _getIsPrevalentDomain:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(BOOL prevalent) {
+        EXPECT_FALSE(prevalent);
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Turn it on
+    [dataStore _setResourceLoadStatisticsEnabled:YES];
+
+    [webView loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView _test_waitForDidFinishNavigation];
+    
+    // ITP should be on, but nothing was registered as prevalent yet.
+    doneFlag = false;
+    [dataStore _getIsPrevalentDomain:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(BOOL prevalent) {
+        EXPECT_FALSE(prevalent);
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Teach ITP about a bad origin:
+    doneFlag = false;
+    [dataStore _setPrevalentDomain:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(void) {
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    [webView loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView _test_waitForDidFinishNavigation];
+
+    // ITP should be on, and know about 'evil.com'
+    doneFlag = false;
+    [dataStore _getIsPrevalentDomain:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(BOOL prevalent) {
+        EXPECT_TRUE(prevalent);
+        doneFlag = true;
+    }];
+    
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Turn it off
+    [dataStore _setResourceLoadStatisticsEnabled:NO];
+
+    [webView loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView _test_waitForDidFinishNavigation];
+
+    // ITP should be off, no URLs are prevalent.
+    doneFlag = false;
+    [dataStore _getIsPrevalentDomain:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(BOOL prevalent) {
+        EXPECT_FALSE(prevalent);
+        doneFlag = true;
+    }];
+    
+    TestWebKitAPI::Util::run(&doneFlag);
+}
+
+TEST(ResourceLoadStatistics, RemoveSessionID)
+{
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto websiteDataStoreConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] init]);
+    configuration.get().websiteDataStore = [[[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfiguration.get()] autorelease];
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    // We load a resource so that the NetworkSession stays alive a little bit longer after the session is removed.
+
+    [webView loadHTMLString:@"<a id='link' href='http://webkit.org' download>Click me!</a>" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView _test_waitForDidFinishNavigation];
+
+    static bool doneFlag = false;
+    [webView evaluateJavaScript:@"document.getElementById('link').click();" completionHandler: ^(id, NSError*) {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    [configuration.get().websiteDataStore _setResourceLoadStatisticsEnabled:YES];
+    [configuration.get().websiteDataStore _setResourceLoadStatisticsDebugMode:YES];
+
+    // Trigger ITP tasks.
+    [configuration.get().websiteDataStore _scheduleCookieBlockingUpdate: ^(void) { }];
+    // Trigger removing of the sessionID.
+    TestWebKitAPI::Util::spinRunLoop(2);
+    [webView _close];
+    webView = nullptr;
+    configuration = nullptr;
+
+    auto webView2 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    [webView2 loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView2 _test_waitForDidFinishNavigation];
+}
+
+TEST(ResourceLoadStatistics, NetworkProcessRestart)
+{
+    // Ensure the shared process pool exists so the data store operations we're about to do work with it.
+    auto *sharedProcessPool = [WKProcessPool _sharedProcessPool];
+    auto *dataStore = [WKWebsiteDataStore defaultDataStore];
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [configuration setProcessPool: sharedProcessPool];
+    configuration.get().websiteDataStore = dataStore;
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    [webView loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView _test_waitForDidFinishNavigation];
+
+    cleanupITPDatabase(dataStore);
+
+    // Turn it on
+    [dataStore _setResourceLoadStatisticsEnabled:YES];
+
+    [webView loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView _test_waitForDidFinishNavigation];
+
+    // ITP should be on, but nothing was registered as prevalent yet.
+    static bool doneFlag;
+    [dataStore _getIsPrevalentDomain:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(BOOL prevalent) {
+        EXPECT_FALSE(prevalent);
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Teach ITP about a bad origin:
+    doneFlag = false;
+    [dataStore _setPrevalentDomain:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(void) {
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    [webView loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView _test_waitForDidFinishNavigation];
+
+    // ITP should be on, and know about 'evil.com'
+    doneFlag = false;
+    [dataStore _getIsPrevalentDomain:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(BOOL prevalent) {
+        EXPECT_TRUE(prevalent);
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    static bool dataSyncCompleted;
+    [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+        if (![message isEqualToString:@"Storage Synced"])
+            return;
+        dataSyncCompleted = true;
+    }];
+
+    // Tell ITP to process data so it will sync the new 'bad guy' to persistent storage:
+    [dataStore _processStatisticsAndDataRecords: ^(void) {
+        doneFlag = true;
+     }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+    TestWebKitAPI::Util::run(&dataSyncCompleted);
+
+    TestWebKitAPI::Util::spinRunLoop(1);
+
+    [configuration.get().processPool _terminateNetworkProcess];
+
+    auto webView2 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    [webView2 loadHTMLString:@"WebKit Test 2" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView2 _test_waitForDidFinishNavigation];
+
+    // ITP should be on, and know about 'evil.com'
+    doneFlag = false;
+    [dataStore _getIsPrevalentDomain:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(BOOL prevalent) {
+        EXPECT_TRUE(prevalent);
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Turn it off
+    [dataStore _setResourceLoadStatisticsEnabled:NO];
+
+    [webView loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView _test_waitForDidFinishNavigation];
+
+    // ITP should be off, no URLs are prevalent.
+    doneFlag = false;
+    [dataStore _getIsPrevalentDomain:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(BOOL prevalent) {
+        EXPECT_FALSE(prevalent);
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    TestWebKitAPI::Util::spinRunLoop(1);
+
+    [configuration.get().processPool _terminateNetworkProcess];
+
+    auto webView3 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    [webView3 loadHTMLString:@"WebKit Test 3" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView3 _test_waitForDidFinishNavigation];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // ITP should still be off, and should not know about 'evil.com'
+    doneFlag = false;
+    [dataStore _getIsPrevalentDomain:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(BOOL prevalent) {
+        EXPECT_FALSE(prevalent);
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+}
+
+TEST(ResourceLoadStatistics, NoMessagesWhenNotTesting)
+{
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    WKWebsiteDataStore *dataStore = [[[WKWebsiteDataStore alloc] _initWithConfiguration:[[[_WKWebsiteDataStoreConfiguration alloc] init] autorelease]] autorelease];
+    [configuration setWebsiteDataStore:dataStore];
+    [dataStore _setResourceLoadStatisticsEnabled:YES];
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) configuration:configuration.get()]);
+    [webView synchronouslyLoadTestPageNamed:@"simple"];
+    EXPECT_FALSE([WKWebsiteDataStore _defaultDataStoreExists]);
+}

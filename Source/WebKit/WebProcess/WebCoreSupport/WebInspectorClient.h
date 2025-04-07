@@ -42,6 +42,7 @@ class WebPage;
 class RepaintIndicatorLayerClient;
 
 class WebInspectorClient : public WebCore::InspectorClient, private WebCore::PageOverlay::Client {
+    WTF_MAKE_FAST_ALLOCATED;
 friend class RepaintIndicatorLayerClient;
 public:
     WebInspectorClient(WebPage*);
@@ -67,9 +68,12 @@ private:
 #endif
 
     void elementSelectionChanged(bool) override;
+    void timelineRecordingChanged(bool) override;
 
     bool overridesShowPaintRects() const override { return true; }
     void showPaintRect(const WebCore::FloatRect&) override;
+
+    void setMockCaptureDevicesEnabledOverride(Optional<bool>) final;
 
     // PageOverlay::Client
     void willMoveToPage(WebCore::PageOverlay&, WebCore::Page*) override;

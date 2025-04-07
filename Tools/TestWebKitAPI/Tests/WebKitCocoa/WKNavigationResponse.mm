@@ -25,9 +25,10 @@
 
 #import "config.h"
 
-#if WK_API_ENABLED
-
+#import "TCPServer.h"
+#import "Test.h"
 #import "Utilities.h"
+#import <WebKit/WKNavigationResponsePrivate.h>
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WebKit.h>
 #import <wtf/RetainPtr.h>
@@ -145,4 +146,96 @@ TEST(WebKit, WKNavigationResponsePDFType)
     TestWebKitAPI::Util::run(&isDone);
 }
 
-#endif // WK_API_ENABLED
+@interface NavigationResponseTestDelegate : NSObject <WKNavigationDelegate>
+
+@property (nonatomic, readonly) WKNavigationResponse *navigationResponse;
+@property (nonatomic) WKNavigationResponsePolicy navigationPolicy;
+
+@end
+
+@implementation NavigationResponseTestDelegate {
+    RetainPtr<WKNavigationResponse> _navigationResponse;
+    bool _hasReceivedResponseCallback;
+    bool _hasReceivedNavigationFinishedCallback;
+}
+
+- (WKNavigationResponse *)navigationResponse
+{
+    return _navigationResponse.get();
+}
+
+- (void)waitForNavigationResponseCallback
+{
+    _hasReceivedResponseCallback = false;
+    TestWebKitAPI::Util::run(&_hasReceivedResponseCallback);
+}
+
+- (void)waitForNavigationFinishedCallback
+{
+    _hasReceivedNavigationFinishedCallback = false;
+    TestWebKitAPI::Util::run(&_hasReceivedNavigationFinishedCallback);
+}
+
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler
+{
+    decisionHandler(WKNavigationActionPolicyAllow);
+}
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(null_unspecified WKNavigation *)navigation
+{
+    _hasReceivedNavigationFinishedCallback = true;
+}
+
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler
+{
+    decisionHandler(WKNavigationResponsePolicyAllow);
+    _navigationResponse = navigationResponse;
+    _hasReceivedResponseCallback = true;
+}
+
+@end
+
+TEST(WebKit, WKNavigationResponseDownloadAttribute)
+{
+    auto getDownloadResponse = [] (RetainPtr<NSString> body) -> RetainPtr<WKNavigationResponse> {
+        using namespace TestWebKitAPI;
+        TCPServer server([body](int socket) {
+            unsigned bodyLength = [body length];
+            NSString *firstResponse = [NSString stringWithFormat:
+                @"HTTP/1.1 200 OK\r\n"
+                "Content-Length: %d\r\n\r\n"
+                "%@",
+                bodyLength,
+                body.get()
+            ];
+            NSString *secondResponse = @"HTTP/1.1 200 OK\r\n"
+                "Content-Length: 6\r\n"
+                "Content-Disposition: attachment; filename=fromHeader.txt;\r\n\r\n"
+                "Hello!";
+
+            TCPServer::read(socket);
+            TCPServer::write(socket, firstResponse.UTF8String, firstResponse.length);
+            TCPServer::read(socket);
+            TCPServer::write(socket, secondResponse.UTF8String, secondResponse.length);
+        });
+        auto delegate = adoptNS([NavigationResponseTestDelegate new]);
+        auto webView = adoptNS([WKWebView new]);
+        [webView setNavigationDelegate:delegate.get()];
+
+        [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%d/", server.port()]]]];
+        [delegate waitForNavigationFinishedCallback];
+
+        [webView evaluateJavaScript:@"document.getElementById('link').click();" completionHandler:nil];
+        [delegate waitForNavigationResponseCallback];
+        EXPECT_STREQ([delegate navigationResponse].response.suggestedFilename.UTF8String, "fromHeader.txt");
+        return [delegate navigationResponse];
+    };
+    auto shouldBeFromDownloadAttribute = getDownloadResponse(@"<a id='link' href='/fromHref.txt' download='fromDownloadAttribute.txt'>Click Me!</a>");
+    auto shouldBeNull = getDownloadResponse(@"<a id='link' href='/fromHref.txt'>Click Me!</a>");
+    auto shouldBeEmpty = getDownloadResponse(@"<a id='link' href='/fromHref.txt' download=''>Click Me!</a>");
+    
+    EXPECT_STREQ([shouldBeFromDownloadAttribute _downloadAttribute].UTF8String, "fromDownloadAttribute.txt");
+    EXPECT_STREQ([shouldBeEmpty _downloadAttribute].UTF8String, "");
+    EXPECT_NOT_NULL([shouldBeEmpty _downloadAttribute]);
+    EXPECT_NULL([shouldBeNull _downloadAttribute]);
+}

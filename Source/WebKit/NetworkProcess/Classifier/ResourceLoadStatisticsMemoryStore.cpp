@@ -37,9 +37,11 @@
 #include "WebProcessProxy.h"
 #include "WebResourceLoadStatisticsTelemetry.h"
 #include "WebsiteDataStore.h"
+#include <WebCore/DocumentStorageAccess.h>
 #include <WebCore/KeyedCoding.h>
 #include <WebCore/NetworkStorageSession.h>
 #include <WebCore/ResourceLoadStatistics.h>
+#include <WebCore/UserGestureIndicator.h>
 #include <wtf/CallbackAggregator.h>
 #include <wtf/DateMath.h>
 #include <wtf/MathExtras.h>
@@ -48,103 +50,14 @@
 namespace WebKit {
 using namespace WebCore;
 
-constexpr unsigned statisticsModelVersion { 14 };
-constexpr unsigned maxNumberOfRecursiveCallsInRedirectTraceBack { 50 };
-constexpr Seconds minimumStatisticsProcessingInterval { 5_s };
-constexpr unsigned operatingDatesWindow { 30 };
-constexpr unsigned maxImportance { 3 };
-static const char* debugStaticPrevalentResource { "3rdpartytestwebkit.org" };
-
-#if !RELEASE_LOG_DISABLED
-static String domainsToString(const Vector<String>& domains)
-{
-    StringBuilder builder;
-    for (auto& domain : domains) {
-        if (!builder.isEmpty())
-            builder.appendLiteral(", ");
-        builder.append(domain);
-    }
-    return builder.toString();
-}
-#endif
-
-class OperatingDate {
-public:
-    OperatingDate() = default;
-
-    static OperatingDate fromWallTime(WallTime time)
-    {
-        double ms = time.secondsSinceEpoch().milliseconds();
-        int year = msToYear(ms);
-        int yearDay = dayInYear(ms, year);
-        int month = monthFromDayInYear(yearDay, isLeapYear(year));
-        int monthDay = dayInMonthFromDayInYear(yearDay, isLeapYear(year));
-
-        return OperatingDate { year, month, monthDay };
-    }
-
-    static OperatingDate today()
-    {
-        return OperatingDate::fromWallTime(WallTime::now());
-    }
-
-    Seconds secondsSinceEpoch() const
-    {
-        return Seconds { dateToDaysFrom1970(m_year, m_month, m_monthDay) * secondsPerDay };
-    }
-
-    bool operator==(const OperatingDate& other) const
-    {
-        return m_monthDay == other.m_monthDay && m_month == other.m_month && m_year == other.m_year;
-    }
-
-    bool operator<(const OperatingDate& other) const
-    {
-        return secondsSinceEpoch() < other.secondsSinceEpoch();
-    }
-
-    bool operator<=(const OperatingDate& other) const
-    {
-        return secondsSinceEpoch() <= other.secondsSinceEpoch();
-    }
-
-private:
-    OperatingDate(int year, int month, int monthDay)
-        : m_year(year)
-        , m_month(month)
-        , m_monthDay(monthDay)
-    { }
-
-    int m_year { 0 };
-    int m_month { 0 }; // [0, 11].
-    int m_monthDay { 0 }; // [1, 31].
-};
-
-static Vector<OperatingDate> mergeOperatingDates(const Vector<OperatingDate>& existingDates, Vector<OperatingDate>&& newDates)
-{
-    if (existingDates.isEmpty())
-        return WTFMove(newDates);
-
-    Vector<OperatingDate> mergedDates(existingDates.size() + newDates.size());
-
-    // Merge the two sorted vectors of dates.
-    std::merge(existingDates.begin(), existingDates.end(), newDates.begin(), newDates.end(), mergedDates.begin());
-    // Remove duplicate dates.
-    removeRepeatedElements(mergedDates);
-
-    // Drop old dates until the Vector size reaches operatingDatesWindow.
-    while (mergedDates.size() > operatingDatesWindow)
-        mergedDates.remove(0);
-
-    return mergedDates;
-}
+constexpr unsigned statisticsModelVersion { 16 };
 
 struct StatisticsLastSeen {
-    String topPrivatelyOwnedDomain;
+    RegistrableDomain domain;
     WallTime lastSeen;
 };
 
-static void pruneResources(HashMap<String, WebCore::ResourceLoadStatistics>& statisticsMap, Vector<StatisticsLastSeen>& statisticsToPrune, size_t& numberOfEntriesToPrune)
+static void pruneResources(HashMap<RegistrableDomain, ResourceLoadStatistics>& statisticsMap, Vector<StatisticsLastSeen>& statisticsToPrune, size_t& numberOfEntriesToPrune)
 {
     if (statisticsToPrune.size() > numberOfEntriesToPrune) {
         std::sort(statisticsToPrune.begin(), statisticsToPrune.end(), [](const StatisticsLastSeen& a, const StatisticsLastSeen& b) {
@@ -153,43 +66,31 @@ static void pruneResources(HashMap<String, WebCore::ResourceLoadStatistics>& sta
     }
 
     for (size_t i = 0, end = std::min(numberOfEntriesToPrune, statisticsToPrune.size()); i != end; ++i, --numberOfEntriesToPrune)
-        statisticsMap.remove(statisticsToPrune[i].topPrivatelyOwnedDomain);
+        statisticsMap.remove(statisticsToPrune[i].domain);
 }
 
-static unsigned computeImportance(const ResourceLoadStatistics& resourceStatistic)
+ResourceLoadStatisticsMemoryStore::ResourceLoadStatisticsMemoryStore(WebResourceLoadStatisticsStore& store, WorkQueue& workQueue, ShouldIncludeLocalhost shouldIncludeLocalhost)
+    : ResourceLoadStatisticsStore(store, workQueue, shouldIncludeLocalhost)
 {
-    unsigned importance = maxImportance;
-    if (!resourceStatistic.isPrevalentResource)
-        importance -= 1;
-    if (!resourceStatistic.hadUserInteraction)
-        importance -= 2;
-    return importance;
-}
+    RELEASE_ASSERT(!RunLoop::isMain());
 
-ResourceLoadStatisticsMemoryStore::ResourceLoadStatisticsMemoryStore(WebResourceLoadStatisticsStore& store, WorkQueue& workQueue)
-    : m_store(store)
-    , m_workQueue(workQueue)
-{
-    ASSERT(!RunLoop::isMain());
-
-#if PLATFORM(COCOA)
-    registerUserDefaultsIfNeeded();
-#endif
-    includeTodayAsOperatingDateIfNecessary();
-
-    m_workQueue->dispatchAfter(5_s, [weakThis = makeWeakPtr(*this)] {
+    workQueue.dispatchAfter(5_s, [weakThis = makeWeakPtr(*this)] {
         if (weakThis)
             weakThis->calculateAndSubmitTelemetry();
     });
 }
 
-ResourceLoadStatisticsMemoryStore::~ResourceLoadStatisticsMemoryStore()
+bool ResourceLoadStatisticsMemoryStore::isEmpty() const
 {
-    ASSERT(!RunLoop::isMain());
+    RELEASE_ASSERT(!RunLoop::isMain());
+
+    return m_resourceStatisticsMap.isEmpty();
 }
 
 void ResourceLoadStatisticsMemoryStore::setPersistentStorage(ResourceLoadStatisticsPersistentStorage& persistentStorage)
 {
+    ASSERT(!RunLoop::isMain());
+
     m_persistentStorage = makeWeakPtr(persistentStorage);
 }
 
@@ -197,82 +98,21 @@ void ResourceLoadStatisticsMemoryStore::calculateAndSubmitTelemetry() const
 {
     ASSERT(!RunLoop::isMain());
 
-    if (m_parameters.shouldSubmitTelemetry)
+    if (parameters().shouldSubmitTelemetry)
         WebResourceLoadStatisticsTelemetry::calculateAndSubmit(*this);
 }
 
-void ResourceLoadStatisticsMemoryStore::setNotifyPagesWhenDataRecordsWereScanned(bool value)
-{
-    ASSERT(!RunLoop::isMain());
-    m_parameters.shouldNotifyPagesWhenDataRecordsWereScanned = value;
-}
-
-void ResourceLoadStatisticsMemoryStore::setShouldClassifyResourcesBeforeDataRecordsRemoval(bool value)
-{
-    ASSERT(!RunLoop::isMain());
-    m_parameters.shouldClassifyResourcesBeforeDataRecordsRemoval = value;
-}
-
-void ResourceLoadStatisticsMemoryStore::setShouldSubmitTelemetry(bool value)
-{
-    ASSERT(!RunLoop::isMain());
-    m_parameters.shouldSubmitTelemetry = value;
-}
-
-void ResourceLoadStatisticsMemoryStore::removeDataRecords(CompletionHandler<void()>&& callback)
+void ResourceLoadStatisticsMemoryStore::incrementRecordsDeletedCountForDomains(HashSet<RegistrableDomain>&& domainsWithDeletedWebsiteData)
 {
     ASSERT(!RunLoop::isMain());
 
-    if (!shouldRemoveDataRecords()) {
-        callback();
-        return;
+    for (auto& domain : domainsWithDeletedWebsiteData) {
+        auto& statistic = ensureResourceStatisticsForRegistrableDomain(domain);
+        ++statistic.dataRecordsRemoved;
     }
-
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    m_activePluginTokens.clear();
-    for (const auto& plugin : PluginProcessManager::singleton().pluginProcesses())
-        m_activePluginTokens.add(plugin->pluginProcessToken());
-#endif
-
-    auto prevalentResourceDomains = topPrivatelyControlledDomainsToRemoveWebsiteDataFor();
-    if (prevalentResourceDomains.isEmpty()) {
-        callback();
-        return;
-    }
-
-#if !RELEASE_LOG_DISABLED
-    RELEASE_LOG_INFO_IF(m_debugLoggingEnabled, ResourceLoadStatisticsDebug, "About to remove data records for %{public}s.", domainsToString(prevalentResourceDomains).utf8().data());
-#endif
-
-    setDataRecordsBeingRemoved(true);
-
-    RunLoop::main().dispatch([prevalentResourceDomains = crossThreadCopy(prevalentResourceDomains), callback = WTFMove(callback), weakThis = makeWeakPtr(*this), shouldNotifyPagesWhenDataRecordsWereScanned = m_parameters.shouldNotifyPagesWhenDataRecordsWereScanned, workQueue = m_workQueue.copyRef()] () mutable {
-        if (!weakThis) {
-            callback();
-            return;
-        }
-
-        weakThis->m_store.deleteWebsiteDataForTopPrivatelyControlledDomainsInAllPersistentDataStores(WebResourceLoadStatisticsStore::monitoredDataTypes(), WTFMove(prevalentResourceDomains), shouldNotifyPagesWhenDataRecordsWereScanned, [callback = WTFMove(callback), weakThis = WTFMove(weakThis), workQueue = workQueue.copyRef()](const HashSet<String>& domainsWithDeletedWebsiteData) mutable {
-            workQueue->dispatch([topDomains = crossThreadCopy(domainsWithDeletedWebsiteData), callback = WTFMove(callback), weakThis = WTFMove(weakThis)] () mutable {
-                if (!weakThis) {
-                    callback();
-                    return;
-                }
-                for (auto& prevalentResourceDomain : topDomains) {
-                    auto& statistic = weakThis->ensureResourceStatisticsForPrimaryDomain(prevalentResourceDomain);
-                    ++statistic.dataRecordsRemoved;
-                }
-                weakThis->setDataRecordsBeingRemoved(false);
-                callback();
-#if !RELEASE_LOG_DISABLED
-                RELEASE_LOG_INFO_IF(weakThis->m_debugLoggingEnabled, ResourceLoadStatisticsDebug, "Done removing data records.");
-#endif
-            });
-        });
-    });
 }
 
-unsigned ResourceLoadStatisticsMemoryStore::recursivelyGetAllDomainsThatHaveRedirectedToThisDomain(const WebCore::ResourceLoadStatistics& resourceStatistic, HashSet<String>& domainsThatHaveRedirectedTo, unsigned numberOfRecursiveCalls) const
+unsigned ResourceLoadStatisticsMemoryStore::recursivelyGetAllDomainsThatHaveRedirectedToThisDomain(const ResourceLoadStatistics& resourceStatistic, HashSet<RegistrableDomain>& domainsThatHaveRedirectedTo, unsigned numberOfRecursiveCalls) const
 {
     ASSERT(!RunLoop::isMain());
 
@@ -286,41 +126,41 @@ unsigned ResourceLoadStatisticsMemoryStore::recursivelyGetAllDomainsThatHaveRedi
 
     numberOfRecursiveCalls++;
 
-    for (auto& subresourceUniqueRedirectFromDomain : resourceStatistic.subresourceUniqueRedirectsFrom.values()) {
-        auto mapEntry = m_resourceStatisticsMap.find(subresourceUniqueRedirectFromDomain);
+    for (auto& subresourceUniqueRedirectFromDomain : resourceStatistic.subresourceUniqueRedirectsFrom) {
+        auto mapEntry = m_resourceStatisticsMap.find(RegistrableDomain { subresourceUniqueRedirectFromDomain });
         if (mapEntry == m_resourceStatisticsMap.end() || mapEntry->value.isPrevalentResource)
             continue;
-        if (domainsThatHaveRedirectedTo.add(mapEntry->value.highLevelDomain).isNewEntry)
+        if (domainsThatHaveRedirectedTo.add(mapEntry->value.registrableDomain).isNewEntry)
             numberOfRecursiveCalls = recursivelyGetAllDomainsThatHaveRedirectedToThisDomain(mapEntry->value, domainsThatHaveRedirectedTo, numberOfRecursiveCalls);
     }
-    for (auto& topFrameUniqueRedirectFromDomain : resourceStatistic.topFrameUniqueRedirectsFrom.values()) {
-        auto mapEntry = m_resourceStatisticsMap.find(topFrameUniqueRedirectFromDomain);
+    for (auto& topFrameUniqueRedirectFromDomain : resourceStatistic.topFrameUniqueRedirectsFrom) {
+        auto mapEntry = m_resourceStatisticsMap.find(RegistrableDomain { topFrameUniqueRedirectFromDomain });
         if (mapEntry == m_resourceStatisticsMap.end() || mapEntry->value.isPrevalentResource)
             continue;
-        if (domainsThatHaveRedirectedTo.add(mapEntry->value.highLevelDomain).isNewEntry)
+        if (domainsThatHaveRedirectedTo.add(mapEntry->value.registrableDomain).isNewEntry)
             numberOfRecursiveCalls = recursivelyGetAllDomainsThatHaveRedirectedToThisDomain(mapEntry->value, domainsThatHaveRedirectedTo, numberOfRecursiveCalls);
     }
 
     return numberOfRecursiveCalls;
 }
 
-void ResourceLoadStatisticsMemoryStore::markAsPrevalentIfHasRedirectedToPrevalent(WebCore::ResourceLoadStatistics& resourceStatistic)
+void ResourceLoadStatisticsMemoryStore::markAsPrevalentIfHasRedirectedToPrevalent(ResourceLoadStatistics& resourceStatistic)
 {
     ASSERT(!RunLoop::isMain());
 
     if (resourceStatistic.isPrevalentResource)
         return;
 
-    for (auto& subresourceDomainRedirectedTo : resourceStatistic.subresourceUniqueRedirectsTo.values()) {
-        auto mapEntry = m_resourceStatisticsMap.find(subresourceDomainRedirectedTo);
+    for (auto& subresourceDomainRedirectedTo : resourceStatistic.subresourceUniqueRedirectsTo) {
+        auto mapEntry = m_resourceStatisticsMap.find(RegistrableDomain { subresourceDomainRedirectedTo });
         if (mapEntry != m_resourceStatisticsMap.end() && mapEntry->value.isPrevalentResource) {
             setPrevalentResource(resourceStatistic, ResourceLoadPrevalence::High);
             return;
         }
     }
 
-    for (auto& topFrameDomainRedirectedTo : resourceStatistic.topFrameUniqueRedirectsTo.values()) {
-        auto mapEntry = m_resourceStatisticsMap.find(topFrameDomainRedirectedTo);
+    for (auto& topFrameDomainRedirectedTo : resourceStatistic.topFrameUniqueRedirectsTo) {
+        auto mapEntry = m_resourceStatisticsMap.find(RegistrableDomain { topFrameDomainRedirectedTo });
         if (mapEntry != m_resourceStatisticsMap.end() && mapEntry->value.isPrevalentResource) {
             setPrevalentResource(resourceStatistic, ResourceLoadPrevalence::High);
             return;
@@ -330,57 +170,52 @@ void ResourceLoadStatisticsMemoryStore::markAsPrevalentIfHasRedirectedToPrevalen
 
 bool ResourceLoadStatisticsMemoryStore::isPrevalentDueToDebugMode(ResourceLoadStatistics& resourceStatistic)
 {
-    if (!m_debugModeEnabled)
+    if (!debugModeEnabled())
         return false;
 
-    return resourceStatistic.highLevelDomain == debugStaticPrevalentResource || resourceStatistic.highLevelDomain == m_debugManualPrevalentResource;
+    return resourceStatistic.registrableDomain == debugStaticPrevalentResource() || resourceStatistic.registrableDomain == debugManualPrevalentResource();
 }
 
-void ResourceLoadStatisticsMemoryStore::processStatisticsAndDataRecords()
+void ResourceLoadStatisticsMemoryStore::classifyPrevalentResources()
 {
     ASSERT(!RunLoop::isMain());
 
-    if (m_parameters.shouldClassifyResourcesBeforeDataRecordsRemoval) {
-        for (auto& resourceStatistic : m_resourceStatisticsMap.values()) {
-            if (isPrevalentDueToDebugMode(resourceStatistic))
-                setPrevalentResource(resourceStatistic, ResourceLoadPrevalence::High);
-            else if (!resourceStatistic.isVeryPrevalentResource) {
-                markAsPrevalentIfHasRedirectedToPrevalent(resourceStatistic);
-                auto currentPrevalence = resourceStatistic.isPrevalentResource ? ResourceLoadPrevalence::High : ResourceLoadPrevalence::Low;
-                auto newPrevalence = m_resourceLoadStatisticsClassifier.calculateResourcePrevalence(resourceStatistic, currentPrevalence);
-                if (newPrevalence != currentPrevalence)
-                    setPrevalentResource(resourceStatistic, newPrevalence);
-            }
+    for (auto& resourceStatistic : m_resourceStatisticsMap.values()) {
+        if (shouldSkip(resourceStatistic.registrableDomain))
+            continue;
+        if (isPrevalentDueToDebugMode(resourceStatistic))
+            setPrevalentResource(resourceStatistic, ResourceLoadPrevalence::High);
+        else if (!resourceStatistic.isVeryPrevalentResource) {
+            markAsPrevalentIfHasRedirectedToPrevalent(resourceStatistic);
+            auto currentPrevalence = resourceStatistic.isPrevalentResource ? ResourceLoadPrevalence::High : ResourceLoadPrevalence::Low;
+            auto newPrevalence = classifier().calculateResourcePrevalence(resourceStatistic, currentPrevalence);
+            if (newPrevalence != currentPrevalence)
+                setPrevalentResource(resourceStatistic, newPrevalence);
         }
     }
-
-    removeDataRecords([this, weakThis = makeWeakPtr(*this)] {
-        ASSERT(!RunLoop::isMain());
-        if (!weakThis)
-            return;
-
-        pruneStatisticsIfNeeded();
-        if (m_persistentStorage)
-            m_persistentStorage->scheduleOrWriteMemoryStore(ResourceLoadStatisticsPersistentStorage::ForceImmediateWrite::No);
-
-        if (!m_parameters.shouldNotifyPagesWhenDataRecordsWereScanned)
-            return;
-
-        RunLoop::main().dispatch([this, weakThis = makeWeakPtr(*this)] {
-            ASSERT(RunLoop::isMain());
-            if (!weakThis)
-                return;
-
-            m_store.notifyResourceLoadStatisticsProcessed();
-        });
-    });
 }
 
-void ResourceLoadStatisticsMemoryStore::hasStorageAccess(const String& subFramePrimaryDomain, const String& topFramePrimaryDomain, Optional<uint64_t> frameID, uint64_t pageID, CompletionHandler<void(bool)>&& completionHandler)
+void ResourceLoadStatisticsMemoryStore::syncStorageIfNeeded()
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& subFrameStatistic = ensureResourceStatisticsForPrimaryDomain(subFramePrimaryDomain);
+    if (m_persistentStorage)
+        m_persistentStorage->scheduleOrWriteMemoryStore(ResourceLoadStatisticsPersistentStorage::ForceImmediateWrite::No);
+}
+
+void ResourceLoadStatisticsMemoryStore::syncStorageImmediately()
+{
+    ASSERT(!RunLoop::isMain());
+
+    if (m_persistentStorage)
+        m_persistentStorage->scheduleOrWriteMemoryStore(ResourceLoadStatisticsPersistentStorage::ForceImmediateWrite::Yes);
+}
+
+void ResourceLoadStatisticsMemoryStore::hasStorageAccess(const SubFrameDomain& subFrameDomain, const TopFrameDomain& topFrameDomain, Optional<FrameIdentifier> frameID, PageIdentifier pageID, CompletionHandler<void(bool)>&& completionHandler)
+{
+    ASSERT(!RunLoop::isMain());
+
+    auto& subFrameStatistic = ensureResourceStatisticsForRegistrableDomain(subFrameDomain);
     if (shouldBlockAndPurgeCookies(subFrameStatistic)) {
         completionHandler(false);
         return;
@@ -391,8 +226,8 @@ void ResourceLoadStatisticsMemoryStore::hasStorageAccess(const String& subFrameP
         return;
     }
 
-    RunLoop::main().dispatch([store = makeRef(m_store), subFramePrimaryDomain = subFramePrimaryDomain.isolatedCopy(), topFramePrimaryDomain = topFramePrimaryDomain.isolatedCopy(), frameID, pageID, completionHandler = WTFMove(completionHandler)]() mutable {
-        store->callHasStorageAccessForFrameHandler(subFramePrimaryDomain, topFramePrimaryDomain, frameID.value(), pageID, [store = store.copyRef(), completionHandler = WTFMove(completionHandler)](bool result) mutable {
+    RunLoop::main().dispatch([store = makeRef(store()), subFrameDomain = subFrameDomain.isolatedCopy(), topFrameDomain = topFrameDomain.isolatedCopy(), frameID, pageID, completionHandler = WTFMove(completionHandler)]() mutable {
+        store->callHasStorageAccessForFrameHandler(subFrameDomain, topFrameDomain, frameID.value(), pageID, [store = store.copyRef(), completionHandler = WTFMove(completionHandler)](bool result) mutable {
             store->statisticsQueue().dispatch([completionHandler = WTFMove(completionHandler), result] () mutable {
                 completionHandler(result);
             });
@@ -400,236 +235,159 @@ void ResourceLoadStatisticsMemoryStore::hasStorageAccess(const String& subFrameP
     });
 }
 
-void ResourceLoadStatisticsMemoryStore::requestStorageAccess(String&& subFramePrimaryDomain, String&& topFramePrimaryDomain, uint64_t frameID, uint64_t pageID, bool promptEnabled, CompletionHandler<void(StorageAccessStatus)>&& completionHandler)
+void ResourceLoadStatisticsMemoryStore::requestStorageAccess(SubFrameDomain&& subFrameDomain, TopFrameDomain&& topFrameDomain, FrameIdentifier frameID, PageIdentifier pageID, CompletionHandler<void(StorageAccessStatus)>&& completionHandler)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& subFrameStatistic = ensureResourceStatisticsForPrimaryDomain(subFramePrimaryDomain);
+    auto& subFrameStatistic = ensureResourceStatisticsForRegistrableDomain(subFrameDomain);
     if (shouldBlockAndPurgeCookies(subFrameStatistic)) {
-#if !RELEASE_LOG_DISABLED
-        RELEASE_LOG_INFO_IF(m_debugLoggingEnabled, ResourceLoadStatisticsDebug, "Cannot grant storage access to %{public}s since its cookies are blocked in third-party contexts and it has not received user interaction as first-party.", subFramePrimaryDomain.utf8().data());
-#endif
+        RELEASE_LOG_INFO_IF(debugLoggingEnabled(), ITPDebug, "Cannot grant storage access to %{public}s since its cookies are blocked in third-party contexts and it has not received user interaction as first-party.", subFrameDomain.string().utf8().data());
         completionHandler(StorageAccessStatus::CannotRequestAccess);
         return;
     }
 
     if (!shouldBlockAndKeepCookies(subFrameStatistic)) {
-#if !RELEASE_LOG_DISABLED
-        RELEASE_LOG_INFO_IF(m_debugLoggingEnabled, ResourceLoadStatisticsDebug, "No need to grant storage access to %{public}s since its cookies are not blocked in third-party contexts.", subFramePrimaryDomain.utf8().data());
-#endif
+        RELEASE_LOG_INFO_IF(debugLoggingEnabled(), ITPDebug, "No need to grant storage access to %{public}s since its cookies are not blocked in third-party contexts.", subFrameDomain.string().utf8().data());
         completionHandler(StorageAccessStatus::HasAccess);
         return;
     }
 
-    auto userWasPromptedEarlier = promptEnabled && hasUserGrantedStorageAccessThroughPrompt(subFrameStatistic, topFramePrimaryDomain);
-    if (promptEnabled && !userWasPromptedEarlier) {
-#if !RELEASE_LOG_DISABLED
-        RELEASE_LOG_INFO_IF(m_debugLoggingEnabled, ResourceLoadStatisticsDebug, "About to ask the user whether they want to grant storage access to %{public}s under %{public}s or not.", subFramePrimaryDomain.utf8().data(), topFramePrimaryDomain.utf8().data());
-#endif
+    auto userWasPromptedEarlier = hasUserGrantedStorageAccessThroughPrompt(subFrameStatistic, topFrameDomain);
+    if (userWasPromptedEarlier == StorageAccessPromptWasShown::No) {
+        RELEASE_LOG_INFO_IF(debugLoggingEnabled(), ITPDebug, "About to ask the user whether they want to grant storage access to %{public}s under %{public}s or not.", subFrameDomain.string().utf8().data(), topFrameDomain.string().utf8().data());
         completionHandler(StorageAccessStatus::RequiresUserPrompt);
         return;
-    } else if (userWasPromptedEarlier) {
-#if !RELEASE_LOG_DISABLED
-        RELEASE_LOG_INFO_IF(m_debugLoggingEnabled, ResourceLoadStatisticsDebug, "Storage access was granted to %{public}s under %{public}s.", subFramePrimaryDomain.utf8().data(), topFramePrimaryDomain.utf8().data());
-#endif
     }
+
+    if (userWasPromptedEarlier == StorageAccessPromptWasShown::Yes)
+        RELEASE_LOG_INFO_IF(debugLoggingEnabled(), ITPDebug, "Storage access was granted to %{public}s under %{public}s.", subFrameDomain.string().utf8().data(), topFrameDomain.string().utf8().data());
 
     subFrameStatistic.timesAccessedAsFirstPartyDueToStorageAccessAPI++;
 
-    grantStorageAccessInternal(WTFMove(subFramePrimaryDomain), WTFMove(topFramePrimaryDomain), frameID, pageID, userWasPromptedEarlier, [completionHandler = WTFMove(completionHandler)] (bool wasGrantedAccess) mutable {
-        completionHandler(wasGrantedAccess ? StorageAccessStatus::HasAccess : StorageAccessStatus::CannotRequestAccess);
+    grantStorageAccessInternal(WTFMove(subFrameDomain), WTFMove(topFrameDomain), frameID, pageID, userWasPromptedEarlier, [completionHandler = WTFMove(completionHandler)] (StorageAccessWasGranted wasGranted) mutable {
+        completionHandler(wasGranted == StorageAccessWasGranted::Yes ? StorageAccessStatus::HasAccess : StorageAccessStatus::CannotRequestAccess);
     });
 }
 
-void ResourceLoadStatisticsMemoryStore::requestStorageAccessUnderOpener(String&& primaryDomainInNeedOfStorageAccess, uint64_t openerPageID, String&& openerPrimaryDomain)
+void ResourceLoadStatisticsMemoryStore::requestStorageAccessUnderOpener(DomainInNeedOfStorageAccess&& domainInNeedOfStorageAccess, PageIdentifier openerPageID, OpenerDomain&& openerDomain)
 {
-    ASSERT(primaryDomainInNeedOfStorageAccess != openerPrimaryDomain);
+    ASSERT(domainInNeedOfStorageAccess != openerDomain);
     ASSERT(!RunLoop::isMain());
 
-    if (primaryDomainInNeedOfStorageAccess == openerPrimaryDomain)
+    if (domainInNeedOfStorageAccess == openerDomain)
         return;
 
-    auto& domainInNeedOfStorageAccessStatistic = ensureResourceStatisticsForPrimaryDomain(primaryDomainInNeedOfStorageAccess);
+    auto& domainInNeedOfStorageAccessStatistic = ensureResourceStatisticsForRegistrableDomain(domainInNeedOfStorageAccess);
     auto cookiesBlockedAndPurged = shouldBlockAndPurgeCookies(domainInNeedOfStorageAccessStatistic);
 
     // The domain already has access if its cookies are not blocked.
     if (!cookiesBlockedAndPurged && !shouldBlockAndKeepCookies(domainInNeedOfStorageAccessStatistic))
         return;
 
-#if !RELEASE_LOG_DISABLED
-    RELEASE_LOG_INFO_IF(m_debugLoggingEnabled, ResourceLoadStatisticsDebug, "[Temporary combatibility fix] Storage access was granted for %{public}s under opener page from %{public}s, with user interaction in the opened window.", primaryDomainInNeedOfStorageAccess.utf8().data(), openerPrimaryDomain.utf8().data());
-#endif
-    grantStorageAccessInternal(WTFMove(primaryDomainInNeedOfStorageAccess), WTFMove(openerPrimaryDomain), WTF::nullopt, openerPageID, false, [](bool) { });
+    RELEASE_LOG_INFO_IF(debugLoggingEnabled(), ITPDebug, "[Temporary combatibility fix] Storage access was granted for %{public}s under opener page from %{public}s, with user interaction in the opened window.", domainInNeedOfStorageAccess.string().utf8().data(), openerDomain.string().utf8().data());
+    grantStorageAccessInternal(WTFMove(domainInNeedOfStorageAccess), WTFMove(openerDomain), WTF::nullopt, openerPageID, StorageAccessPromptWasShown::No, [](StorageAccessWasGranted) { });
 }
 
-void ResourceLoadStatisticsMemoryStore::grantStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, bool userWasPromptedNow, CompletionHandler<void(bool)>&& completionHandler)
+void ResourceLoadStatisticsMemoryStore::grantStorageAccess(SubFrameDomain&& subFrameDomain, TopFrameDomain&& topFrameDomain, FrameIdentifier frameID, PageIdentifier pageID, StorageAccessPromptWasShown promptWasShown, CompletionHandler<void(StorageAccessWasGranted)>&& completionHandler)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto subFramePrimaryDomain = ResourceLoadStatistics::primaryDomain(subFrameHost);
-    auto topFramePrimaryDomain = ResourceLoadStatistics::primaryDomain(topFrameHost);
-    if (userWasPromptedNow) {
-        auto& subFrameStatistic = ensureResourceStatisticsForPrimaryDomain(subFramePrimaryDomain);
+    if (promptWasShown == StorageAccessPromptWasShown::Yes) {
+        auto& subFrameStatistic = ensureResourceStatisticsForRegistrableDomain(subFrameDomain);
         ASSERT(subFrameStatistic.hadUserInteraction);
-        subFrameStatistic.storageAccessUnderTopFrameOrigins.add(topFramePrimaryDomain);
+        subFrameStatistic.storageAccessUnderTopFrameDomains.add(topFrameDomain);
     }
-    grantStorageAccessInternal(WTFMove(subFramePrimaryDomain), WTFMove(topFramePrimaryDomain), frameID, pageID, userWasPromptedNow, WTFMove(completionHandler));
+    grantStorageAccessInternal(WTFMove(subFrameDomain), WTFMove(topFrameDomain), frameID, pageID, promptWasShown, WTFMove(completionHandler));
 }
 
-void ResourceLoadStatisticsMemoryStore::grantStorageAccessInternal(String&& subFramePrimaryDomain, String&& topFramePrimaryDomain, Optional<uint64_t> frameID, uint64_t pageID, bool userWasPromptedNowOrEarlier, CompletionHandler<void(bool)>&& callback)
+void ResourceLoadStatisticsMemoryStore::grantStorageAccessInternal(SubFrameDomain&& subFrameDomain, TopFrameDomain&& topFrameDomain, Optional<FrameIdentifier> frameID, PageIdentifier pageID, StorageAccessPromptWasShown promptWasShownNowOrEarlier, CompletionHandler<void(StorageAccessWasGranted)>&& completionHandler)
 {
     ASSERT(!RunLoop::isMain());
 
-    if (subFramePrimaryDomain == topFramePrimaryDomain) {
-        callback(true);
+    if (subFrameDomain == topFrameDomain) {
+        completionHandler(StorageAccessWasGranted::Yes);
         return;
     }
 
-    // FIXME: Remove m_storageAccessPromptsEnabled check if prompting is no longer experimental.
-    if (userWasPromptedNowOrEarlier && m_storageAccessPromptsEnabled) {
-        auto& subFrameStatistic = ensureResourceStatisticsForPrimaryDomain(subFramePrimaryDomain);
+    if (promptWasShownNowOrEarlier == StorageAccessPromptWasShown::Yes) {
+        auto& subFrameStatistic = ensureResourceStatisticsForRegistrableDomain(subFrameDomain);
         ASSERT(subFrameStatistic.hadUserInteraction);
-        ASSERT(subFrameStatistic.storageAccessUnderTopFrameOrigins.contains(topFramePrimaryDomain));
+        ASSERT(subFrameStatistic.storageAccessUnderTopFrameDomains.contains(topFrameDomain));
         subFrameStatistic.mostRecentUserInteractionTime = WallTime::now();
     }
 
-    RunLoop::main().dispatch([subFramePrimaryDomain = subFramePrimaryDomain.isolatedCopy(), topFramePrimaryDomain = topFramePrimaryDomain.isolatedCopy(), frameID, pageID, store = makeRef(m_store), callback = WTFMove(callback)]() mutable {
-        store->callGrantStorageAccessHandler(subFramePrimaryDomain, topFramePrimaryDomain, frameID, pageID, [callback = WTFMove(callback), store = store.copyRef()](bool value) mutable {
-            store->statisticsQueue().dispatch([callback = WTFMove(callback), value] () mutable {
-                callback(value);
+    RunLoop::main().dispatch([subFrameDomain = subFrameDomain.isolatedCopy(), topFrameDomain = topFrameDomain.isolatedCopy(), frameID, pageID, store = makeRef(store()), completionHandler = WTFMove(completionHandler)]() mutable {
+        store->callGrantStorageAccessHandler(subFrameDomain, topFrameDomain, frameID, pageID, [completionHandler = WTFMove(completionHandler), store = store.copyRef()](StorageAccessWasGranted wasGranted) mutable {
+            store->statisticsQueue().dispatch([wasGranted, completionHandler = WTFMove(completionHandler)] () mutable {
+                completionHandler(wasGranted);
             });
         });
     });
 }
 
-void ResourceLoadStatisticsMemoryStore::grandfatherExistingWebsiteData(CompletionHandler<void()>&& callback)
+void ResourceLoadStatisticsMemoryStore::grandfatherDataForDomains(const HashSet<RegistrableDomain>& domains)
 {
     ASSERT(!RunLoop::isMain());
 
-    RunLoop::main().dispatch([weakThis = makeWeakPtr(*this), callback = WTFMove(callback), shouldNotifyPagesWhenDataRecordsWereScanned = m_parameters.shouldNotifyPagesWhenDataRecordsWereScanned, workQueue = m_workQueue.copyRef(), store = makeRef(m_store)] () mutable {
-        store->topPrivatelyControlledDomainsWithWebsiteData(WebResourceLoadStatisticsStore::monitoredDataTypes(), shouldNotifyPagesWhenDataRecordsWereScanned, [weakThis = WTFMove(weakThis), callback = WTFMove(callback), workQueue = workQueue.copyRef()] (HashSet<String>&& topDomainsWithWebsiteData) mutable {
-            workQueue->dispatch([weakThis = WTFMove(weakThis), topDomains = crossThreadCopy(topDomainsWithWebsiteData), callback = WTFMove(callback)] () mutable {
-                if (!weakThis) {
-                    callback();
-                    return;
-                }
-
-                for (auto& topPrivatelyControlledDomain : topDomains) {
-                    auto& statistic = weakThis->ensureResourceStatisticsForPrimaryDomain(topPrivatelyControlledDomain);
-                    statistic.grandfathered = true;
-                }
-                weakThis->m_endOfGrandfatheringTimestamp = WallTime::now() + weakThis->m_parameters.grandfatheringTime;
-                if (weakThis->m_persistentStorage)
-                    weakThis->m_persistentStorage->scheduleOrWriteMemoryStore(ResourceLoadStatisticsPersistentStorage::ForceImmediateWrite::Yes);
-                callback();
-                weakThis->logTestingEvent("Grandfathered"_s);
-            });
-        });
-    });
+    for (auto& domain : domains) {
+        auto& statistic = ensureResourceStatisticsForRegistrableDomain(domain);
+        statistic.grandfathered = true;
+    }
 }
 
-Vector<String> ResourceLoadStatisticsMemoryStore::ensurePrevalentResourcesForDebugMode()
+Vector<RegistrableDomain> ResourceLoadStatisticsMemoryStore::ensurePrevalentResourcesForDebugMode()
 {
-    if (!m_debugModeEnabled)
+    ASSERT(!RunLoop::isMain());
+
+    if (!debugModeEnabled())
         return { };
 
-    Vector<String> primaryDomainsToBlock;
-    primaryDomainsToBlock.reserveInitialCapacity(2);
+    Vector<RegistrableDomain> domainsToBlock;
+    domainsToBlock.reserveInitialCapacity(2);
 
-    auto& staticSesourceStatistic = ensureResourceStatisticsForPrimaryDomain(debugStaticPrevalentResource);
+    auto& staticSesourceStatistic = ensureResourceStatisticsForRegistrableDomain(debugStaticPrevalentResource());
     setPrevalentResource(staticSesourceStatistic, ResourceLoadPrevalence::High);
-    primaryDomainsToBlock.uncheckedAppend(debugStaticPrevalentResource);
+    domainsToBlock.uncheckedAppend(debugStaticPrevalentResource());
 
-    if (!m_debugManualPrevalentResource.isEmpty()) {
-        auto& manualResourceStatistic = ensureResourceStatisticsForPrimaryDomain(m_debugManualPrevalentResource);
+    if (!debugManualPrevalentResource().isEmpty()) {
+        auto& manualResourceStatistic = ensureResourceStatisticsForRegistrableDomain(debugManualPrevalentResource());
         setPrevalentResource(manualResourceStatistic, ResourceLoadPrevalence::High);
-        primaryDomainsToBlock.uncheckedAppend(m_debugManualPrevalentResource);
-#if !RELEASE_LOG_DISABLED
-        RELEASE_LOG_INFO(ResourceLoadStatisticsDebug, "Did set %{public}s as prevalent resource for the purposes of ITP Debug Mode.", m_debugManualPrevalentResource.utf8().data());
-#endif
+        domainsToBlock.uncheckedAppend(debugManualPrevalentResource());
+        RELEASE_LOG_INFO(ITPDebug, "Did set %{public}s as prevalent resource for the purposes of ITP Debug Mode.", debugManualPrevalentResource().string().utf8().data());
     }
     
-    return primaryDomainsToBlock;
+    return domainsToBlock;
 }
 
-void ResourceLoadStatisticsMemoryStore::setResourceLoadStatisticsDebugMode(bool enable)
+void ResourceLoadStatisticsMemoryStore::logFrameNavigation(const RegistrableDomain& targetDomain, const RegistrableDomain& topFrameDomain, const RegistrableDomain& sourceDomain, bool isRedirect, bool isMainFrame)
 {
     ASSERT(!RunLoop::isMain());
 
-#if !RELEASE_LOG_DISABLED
-    if (enable)
-        RELEASE_LOG_INFO(ResourceLoadStatisticsDebug, "Turned ITP Debug Mode on.");
-#endif
-
-    m_debugModeEnabled = enable;
-    m_debugLoggingEnabled = enable;
-
-    ensurePrevalentResourcesForDebugMode();
-    // This will log the current cookie blocking state.
-    if (enable)
-        updateCookieBlocking([]() { });
-}
-
-void ResourceLoadStatisticsMemoryStore::setPrevalentResourceForDebugMode(const String& domain)
-{
-    m_debugManualPrevalentResource = domain;
-}
-
-void ResourceLoadStatisticsMemoryStore::scheduleStatisticsProcessingRequestIfNecessary()
-{
-    ASSERT(!RunLoop::isMain());
-
-    m_pendingStatisticsProcessingRequestIdentifier = ++m_lastStatisticsProcessingRequestIdentifier;
-    m_workQueue->dispatchAfter(minimumStatisticsProcessingInterval, [this, weakThis = makeWeakPtr(*this), statisticsProcessingRequestIdentifier = *m_pendingStatisticsProcessingRequestIdentifier] {
-        if (!weakThis)
-            return;
-
-        if (!m_pendingStatisticsProcessingRequestIdentifier || *m_pendingStatisticsProcessingRequestIdentifier != statisticsProcessingRequestIdentifier) {
-            // This request has been canceled.
-            return;
-        }
-
-        updateCookieBlocking([]() { });
-        processStatisticsAndDataRecords();
-    });
-}
-
-void ResourceLoadStatisticsMemoryStore::cancelPendingStatisticsProcessingRequest()
-{
-    ASSERT(!RunLoop::isMain());
-
-    m_pendingStatisticsProcessingRequestIdentifier = WTF::nullopt;
-}
-
-void ResourceLoadStatisticsMemoryStore::logFrameNavigation(const String& targetPrimaryDomain, const String& mainFramePrimaryDomain, const String& sourcePrimaryDomain, const String& targetHost, const String& mainFrameHost, bool isRedirect, bool isMainFrame)
-{
-    ASSERT(!RunLoop::isMain());
-
-    bool areTargetAndMainFrameDomainsAssociated = targetPrimaryDomain == mainFramePrimaryDomain;
-    bool areTargetAndSourceDomainsAssociated = targetPrimaryDomain == sourcePrimaryDomain;
+    bool areTargetAndTopFrameDomainsSameSite = targetDomain == topFrameDomain;
+    bool areTargetAndSourceDomainsSameSite = targetDomain == sourceDomain;
 
     bool statisticsWereUpdated = false;
-    if (!isMainFrame && targetHost != mainFrameHost && !(areTargetAndMainFrameDomainsAssociated || areTargetAndSourceDomainsAssociated)) {
-        auto& targetStatistics = ensureResourceStatisticsForPrimaryDomain(targetPrimaryDomain);
+    if (!isMainFrame && !(areTargetAndTopFrameDomainsSameSite || areTargetAndSourceDomainsSameSite)) {
+        auto& targetStatistics = ensureResourceStatisticsForRegistrableDomain(targetDomain);
         targetStatistics.lastSeen = ResourceLoadStatistics::reduceTimeResolution(WallTime::now());
-        if (targetStatistics.subframeUnderTopFrameOrigins.add(mainFramePrimaryDomain).isNewEntry)
+        if (targetStatistics.subframeUnderTopFrameDomains.add(topFrameDomain).isNewEntry)
             statisticsWereUpdated = true;
     }
 
-    if (isRedirect && !areTargetAndSourceDomainsAssociated) {
+    if (isRedirect && !areTargetAndSourceDomainsSameSite) {
         if (isMainFrame) {
-            auto& redirectingOriginStatistics = ensureResourceStatisticsForPrimaryDomain(sourcePrimaryDomain);
-            if (redirectingOriginStatistics.topFrameUniqueRedirectsTo.add(targetPrimaryDomain).isNewEntry)
+            auto& redirectingDomainStatistics = ensureResourceStatisticsForRegistrableDomain(sourceDomain);
+            if (redirectingDomainStatistics.topFrameUniqueRedirectsTo.add(targetDomain).isNewEntry)
                 statisticsWereUpdated = true;
-            auto& targetStatistics = ensureResourceStatisticsForPrimaryDomain(targetPrimaryDomain);
-            if (targetStatistics.topFrameUniqueRedirectsFrom.add(sourcePrimaryDomain).isNewEntry)
+            auto& targetStatistics = ensureResourceStatisticsForRegistrableDomain(targetDomain);
+            if (targetStatistics.topFrameUniqueRedirectsFrom.add(sourceDomain).isNewEntry)
                 statisticsWereUpdated = true;
         } else {
-            auto& redirectingOriginStatistics = ensureResourceStatisticsForPrimaryDomain(sourcePrimaryDomain);
-            if (redirectingOriginStatistics.subresourceUniqueRedirectsTo.add(targetPrimaryDomain).isNewEntry)
+            auto& redirectingDomainStatistics = ensureResourceStatisticsForRegistrableDomain(sourceDomain);
+            if (redirectingDomainStatistics.subresourceUniqueRedirectsTo.add(targetDomain).isNewEntry)
                 statisticsWereUpdated = true;
-            auto& targetStatistics = ensureResourceStatisticsForPrimaryDomain(targetPrimaryDomain);
-            if (targetStatistics.subresourceUniqueRedirectsFrom.add(sourcePrimaryDomain).isNewEntry)
+            auto& targetStatistics = ensureResourceStatisticsForRegistrableDomain(targetDomain);
+            if (targetStatistics.subresourceUniqueRedirectsFrom.add(sourceDomain).isNewEntry)
                 statisticsWereUpdated = true;
         }
     }
@@ -638,62 +396,55 @@ void ResourceLoadStatisticsMemoryStore::logFrameNavigation(const String& targetP
         scheduleStatisticsProcessingRequestIfNecessary();
 }
 
-void ResourceLoadStatisticsMemoryStore::logSubresourceLoading(const String& targetPrimaryDomain, const String& mainFramePrimaryDomain, WallTime lastSeen)
+void ResourceLoadStatisticsMemoryStore::logUserInteraction(const TopFrameDomain& domain)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& targetStatistics = ensureResourceStatisticsForPrimaryDomain(targetPrimaryDomain);
-    targetStatistics.lastSeen = lastSeen;
-    if (targetStatistics.subresourceUnderTopFrameOrigins.add(mainFramePrimaryDomain).isNewEntry)
-        scheduleStatisticsProcessingRequestIfNecessary();
-}
-
-void ResourceLoadStatisticsMemoryStore::logSubresourceRedirect(const String& sourcePrimaryDomain, const String& targetPrimaryDomain)
-{
-    ASSERT(!RunLoop::isMain());
-
-    auto& redirectingOriginStatistics = ensureResourceStatisticsForPrimaryDomain(sourcePrimaryDomain);
-    bool isNewRedirectToEntry = redirectingOriginStatistics.subresourceUniqueRedirectsTo.add(targetPrimaryDomain).isNewEntry;
-    auto& targetStatistics = ensureResourceStatisticsForPrimaryDomain(targetPrimaryDomain);
-    bool isNewRedirectFromEntry = targetStatistics.subresourceUniqueRedirectsFrom.add(sourcePrimaryDomain).isNewEntry;
-    
-    if (isNewRedirectToEntry || isNewRedirectFromEntry)
-        scheduleStatisticsProcessingRequestIfNecessary();
-}
-
-void ResourceLoadStatisticsMemoryStore::logUserInteraction(const String& primaryDomain)
-{
-    ASSERT(!RunLoop::isMain());
-
-    auto& statistics = ensureResourceStatisticsForPrimaryDomain(primaryDomain);
+    auto& statistics = ensureResourceStatisticsForRegistrableDomain(domain);
     statistics.hadUserInteraction = true;
     statistics.mostRecentUserInteractionTime = WallTime::now();
 }
 
-void ResourceLoadStatisticsMemoryStore::clearUserInteraction(const String& primaryDomain)
+void ResourceLoadStatisticsMemoryStore::logCrossSiteLoadWithLinkDecoration(const NavigatedFromDomain& fromDomain, const NavigatedToDomain& toDomain)
+{
+    ASSERT(!RunLoop::isMain());
+    ASSERT(fromDomain != toDomain);
+
+    auto& toStatistics = ensureResourceStatisticsForRegistrableDomain(toDomain);
+    toStatistics.topFrameLinkDecorationsFrom.add(fromDomain);
+    
+    auto& fromStatistics = ensureResourceStatisticsForRegistrableDomain(fromDomain);
+    if (fromStatistics.isPrevalentResource)
+        toStatistics.gotLinkDecorationFromPrevalentResource = true;
+}
+
+void ResourceLoadStatisticsMemoryStore::clearUserInteraction(const RegistrableDomain& domain)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& statistics = ensureResourceStatisticsForPrimaryDomain(primaryDomain);
+    auto& statistics = ensureResourceStatisticsForRegistrableDomain(domain);
     statistics.hadUserInteraction = false;
     statistics.mostRecentUserInteractionTime = { };
 }
 
-bool ResourceLoadStatisticsMemoryStore::hasHadUserInteraction(const String& primaryDomain)
+bool ResourceLoadStatisticsMemoryStore::hasHadUserInteraction(const RegistrableDomain& domain, OperatingDatesWindow operatingDatesWindow)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto mapEntry = m_resourceStatisticsMap.find(primaryDomain);
-    return mapEntry == m_resourceStatisticsMap.end() ? false: hasHadUnexpiredRecentUserInteraction(mapEntry->value);
+    auto mapEntry = m_resourceStatisticsMap.find(domain);
+    return mapEntry == m_resourceStatisticsMap.end() ? false: hasHadUnexpiredRecentUserInteraction(mapEntry->value, operatingDatesWindow);
 }
 
-void ResourceLoadStatisticsMemoryStore::setPrevalentResource(WebCore::ResourceLoadStatistics& resourceStatistic, ResourceLoadPrevalence newPrevalence)
+void ResourceLoadStatisticsMemoryStore::setPrevalentResource(ResourceLoadStatistics& resourceStatistic, ResourceLoadPrevalence newPrevalence)
 {
     ASSERT(!RunLoop::isMain());
+
+    if (shouldSkip(resourceStatistic.registrableDomain))
+        return;
 
     resourceStatistic.isPrevalentResource = true;
     resourceStatistic.isVeryPrevalentResource = newPrevalence == ResourceLoadPrevalence::VeryHigh;
-    HashSet<String> domainsThatHaveRedirectedTo;
+    HashSet<RegistrableDomain> domainsThatHaveRedirectedTo;
     recursivelyGetAllDomainsThatHaveRedirectedToThisDomain(resourceStatistic, domainsThatHaveRedirectedTo, 0);
     for (auto& domain : domainsThatHaveRedirectedTo) {
         auto mapEntry = m_resourceStatisticsMap.find(domain);
@@ -704,237 +455,160 @@ void ResourceLoadStatisticsMemoryStore::setPrevalentResource(WebCore::ResourceLo
     }
 }
     
-String ResourceLoadStatisticsMemoryStore::dumpResourceLoadStatistics() const
+void ResourceLoadStatisticsMemoryStore::dumpResourceLoadStatistics(CompletionHandler<void(const String&)>&& completionHandler)
 {
     ASSERT(!RunLoop::isMain());
+    if (dataRecordsBeingRemoved()) {
+        m_dataRecordRemovalCompletionHandlers.append([this, completionHandler = WTFMove(completionHandler)]() mutable {
+            dumpResourceLoadStatistics(WTFMove(completionHandler));
+        });
+        return;
+    }
 
     StringBuilder result;
     result.appendLiteral("Resource load statistics:\n\n");
     for (auto& mapEntry : m_resourceStatisticsMap.values())
         result.append(mapEntry.toString());
-    return result.toString();
+    completionHandler(result.toString());
 }
 
-bool ResourceLoadStatisticsMemoryStore::isPrevalentResource(const String& primaryDomain) const
+bool ResourceLoadStatisticsMemoryStore::isPrevalentResource(const RegistrableDomain& domain) const
 {
     ASSERT(!RunLoop::isMain());
 
-    auto mapEntry = m_resourceStatisticsMap.find(primaryDomain);
+    if (shouldSkip(domain))
+        return false;
+
+    auto mapEntry = m_resourceStatisticsMap.find(domain);
     return mapEntry == m_resourceStatisticsMap.end() ? false : mapEntry->value.isPrevalentResource;
 }
 
-bool ResourceLoadStatisticsMemoryStore::isVeryPrevalentResource(const String& primaryDomain) const
+bool ResourceLoadStatisticsMemoryStore::isVeryPrevalentResource(const RegistrableDomain& domain) const
 {
     ASSERT(!RunLoop::isMain());
 
-    auto mapEntry = m_resourceStatisticsMap.find(primaryDomain);
+    if (shouldSkip(domain))
+        return false;
+    
+    auto mapEntry = m_resourceStatisticsMap.find(domain);
     return mapEntry == m_resourceStatisticsMap.end() ? false : mapEntry->value.isPrevalentResource && mapEntry->value.isVeryPrevalentResource;
 }
 
-bool ResourceLoadStatisticsMemoryStore::isRegisteredAsSubresourceUnder(const String& subresourcePrimaryDomain, const String& topFramePrimaryDomain) const
+bool ResourceLoadStatisticsMemoryStore::isRegisteredAsSubresourceUnder(const SubResourceDomain& subresourceDomain, const TopFrameDomain& topFrameDomain) const
 {
     ASSERT(!RunLoop::isMain());
 
-    auto mapEntry = m_resourceStatisticsMap.find(subresourcePrimaryDomain);
-    return mapEntry == m_resourceStatisticsMap.end() ? false : mapEntry->value.subresourceUnderTopFrameOrigins.contains(topFramePrimaryDomain);
+    auto mapEntry = m_resourceStatisticsMap.find(subresourceDomain);
+    return mapEntry == m_resourceStatisticsMap.end() ? false : mapEntry->value.subresourceUnderTopFrameDomains.contains(topFrameDomain);
 }
 
-bool ResourceLoadStatisticsMemoryStore::isRegisteredAsSubFrameUnder(const String& subFramePrimaryDomain, const String& topFramePrimaryDomain) const
+bool ResourceLoadStatisticsMemoryStore::isRegisteredAsSubFrameUnder(const SubFrameDomain& subFrameDomain, const TopFrameDomain& topFrameDomain) const
 {
     ASSERT(!RunLoop::isMain());
 
-    auto mapEntry = m_resourceStatisticsMap.find(subFramePrimaryDomain);
-    return mapEntry == m_resourceStatisticsMap.end() ? false : mapEntry->value.subframeUnderTopFrameOrigins.contains(topFramePrimaryDomain);
+    auto mapEntry = m_resourceStatisticsMap.find(subFrameDomain);
+    return mapEntry == m_resourceStatisticsMap.end() ? false : mapEntry->value.subframeUnderTopFrameDomains.contains(topFrameDomain);
 }
 
-bool ResourceLoadStatisticsMemoryStore::isRegisteredAsRedirectingTo(const String& hostRedirectedFromPrimaryDomain, const String& hostRedirectedToPrimaryDomain) const
+bool ResourceLoadStatisticsMemoryStore::isRegisteredAsRedirectingTo(const RedirectedFromDomain& redirectedFromDomain, const RedirectedToDomain& redirectedToDomain) const
 {
     ASSERT(!RunLoop::isMain());
 
-    auto mapEntry = m_resourceStatisticsMap.find(hostRedirectedFromPrimaryDomain);
-    return mapEntry == m_resourceStatisticsMap.end() ? false : mapEntry->value.subresourceUniqueRedirectsTo.contains(hostRedirectedToPrimaryDomain);
+    auto mapEntry = m_resourceStatisticsMap.find(redirectedFromDomain);
+    return mapEntry == m_resourceStatisticsMap.end() ? false : mapEntry->value.subresourceUniqueRedirectsTo.contains(redirectedToDomain);
 }
 
-void ResourceLoadStatisticsMemoryStore::clearPrevalentResource(const String& primaryDomain)
+void ResourceLoadStatisticsMemoryStore::clearPrevalentResource(const RegistrableDomain& domain)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& statistics = ensureResourceStatisticsForPrimaryDomain(primaryDomain);
+    auto& statistics = ensureResourceStatisticsForRegistrableDomain(domain);
     statistics.isPrevalentResource = false;
     statistics.isVeryPrevalentResource = false;
 }
 
-void ResourceLoadStatisticsMemoryStore::setGrandfathered(const String& primaryDomain, bool value)
+void ResourceLoadStatisticsMemoryStore::setGrandfathered(const RegistrableDomain& domain, bool value)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& statistics = ensureResourceStatisticsForPrimaryDomain(primaryDomain);
+    auto& statistics = ensureResourceStatisticsForRegistrableDomain(domain);
     statistics.grandfathered = value;
 }
 
-bool ResourceLoadStatisticsMemoryStore::isGrandfathered(const String& primaryDomain) const
+bool ResourceLoadStatisticsMemoryStore::isGrandfathered(const RegistrableDomain& domain) const
 {
     ASSERT(!RunLoop::isMain());
 
-    auto mapEntry = m_resourceStatisticsMap.find(primaryDomain);
+    auto mapEntry = m_resourceStatisticsMap.find(domain);
     return mapEntry == m_resourceStatisticsMap.end() ? false : mapEntry->value.grandfathered;
 }
 
-void ResourceLoadStatisticsMemoryStore::setSubframeUnderTopFrameOrigin(const String& primarySubFrameDomain, const String& primaryTopFrameDomain)
+void ResourceLoadStatisticsMemoryStore::setSubframeUnderTopFrameDomain(const SubFrameDomain& subFrameDomain, const TopFrameDomain& topFrameDomain)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& statistics = ensureResourceStatisticsForPrimaryDomain(primarySubFrameDomain);
-    statistics.subframeUnderTopFrameOrigins.add(primaryTopFrameDomain);
+    auto& statistics = ensureResourceStatisticsForRegistrableDomain(subFrameDomain);
+    statistics.subframeUnderTopFrameDomains.add(topFrameDomain);
     // For consistency, make sure we also have a statistics entry for the top frame domain.
-    ensureResourceStatisticsForPrimaryDomain(primaryTopFrameDomain);
+    ensureResourceStatisticsForRegistrableDomain(topFrameDomain);
 }
 
-void ResourceLoadStatisticsMemoryStore::setSubresourceUnderTopFrameOrigin(const String& primarySubresourceDomain, const String& primaryTopFrameDomain)
+void ResourceLoadStatisticsMemoryStore::setSubresourceUnderTopFrameDomain(const SubResourceDomain& subresourceDomain, const RegistrableDomain& topFrameDomain)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& statistics = ensureResourceStatisticsForPrimaryDomain(primarySubresourceDomain);
-    statistics.subresourceUnderTopFrameOrigins.add(primaryTopFrameDomain);
+    auto& statistics = ensureResourceStatisticsForRegistrableDomain(subresourceDomain);
+    statistics.subresourceUnderTopFrameDomains.add(topFrameDomain);
     // For consistency, make sure we also have a statistics entry for the top frame domain.
-    ensureResourceStatisticsForPrimaryDomain(primaryTopFrameDomain);
+    ensureResourceStatisticsForRegistrableDomain(topFrameDomain);
 }
 
-void ResourceLoadStatisticsMemoryStore::setSubresourceUniqueRedirectTo(const String& primarySubresourceDomain, const String& primaryRedirectDomain)
+void ResourceLoadStatisticsMemoryStore::setSubresourceUniqueRedirectTo(const SubResourceDomain& subresourceDomain, const RedirectDomain& redirectDomain)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& statistics = ensureResourceStatisticsForPrimaryDomain(primarySubresourceDomain);
-    statistics.subresourceUniqueRedirectsTo.add(primaryRedirectDomain);
+    auto& statistics = ensureResourceStatisticsForRegistrableDomain(subresourceDomain);
+    statistics.subresourceUniqueRedirectsTo.add(redirectDomain);
     // For consistency, make sure we also have a statistics entry for the redirect domain.
-    ensureResourceStatisticsForPrimaryDomain(primaryRedirectDomain);
+    ensureResourceStatisticsForRegistrableDomain(redirectDomain);
 }
 
-void ResourceLoadStatisticsMemoryStore::setSubresourceUniqueRedirectFrom(const String& primarySubresourceDomain, const String& primaryRedirectDomain)
+void ResourceLoadStatisticsMemoryStore::setSubresourceUniqueRedirectFrom(const SubResourceDomain& subresourceDomain, const RedirectDomain& redirectDomain)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& statistics = ensureResourceStatisticsForPrimaryDomain(primarySubresourceDomain);
-    statistics.subresourceUniqueRedirectsFrom.add(primaryRedirectDomain);
+    auto& statistics = ensureResourceStatisticsForRegistrableDomain(subresourceDomain);
+    statistics.subresourceUniqueRedirectsFrom.add(redirectDomain);
     // For consistency, make sure we also have a statistics entry for the redirect domain.
-    ensureResourceStatisticsForPrimaryDomain(primaryRedirectDomain);
+    ensureResourceStatisticsForRegistrableDomain(redirectDomain);
 }
 
-void ResourceLoadStatisticsMemoryStore::setTopFrameUniqueRedirectTo(const String& topFramePrimaryDomain, const String& primaryRedirectDomain)
+void ResourceLoadStatisticsMemoryStore::setTopFrameUniqueRedirectTo(const TopFrameDomain& topFrameDomain, const RedirectDomain& redirectDomain)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& statistics = ensureResourceStatisticsForPrimaryDomain(topFramePrimaryDomain);
-    statistics.topFrameUniqueRedirectsTo.add(primaryRedirectDomain);
+    auto& statistics = ensureResourceStatisticsForRegistrableDomain(topFrameDomain);
+    statistics.topFrameUniqueRedirectsTo.add(redirectDomain);
     // For consistency, make sure we also have a statistics entry for the redirect domain.
-    ensureResourceStatisticsForPrimaryDomain(primaryRedirectDomain);
+    ensureResourceStatisticsForRegistrableDomain(redirectDomain);
 }
 
-void ResourceLoadStatisticsMemoryStore::setTopFrameUniqueRedirectFrom(const String& topFramePrimaryDomain, const String& primaryRedirectDomain)
+void ResourceLoadStatisticsMemoryStore::setTopFrameUniqueRedirectFrom(const TopFrameDomain& topFrameDomain, const RedirectDomain& redirectDomain)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& statistics = ensureResourceStatisticsForPrimaryDomain(topFramePrimaryDomain);
-    statistics.topFrameUniqueRedirectsFrom.add(primaryRedirectDomain);
+    auto& statistics = ensureResourceStatisticsForRegistrableDomain(topFrameDomain);
+    statistics.topFrameUniqueRedirectsFrom.add(redirectDomain);
     // For consistency, make sure we also have a statistics entry for the redirect domain.
-    ensureResourceStatisticsForPrimaryDomain(primaryRedirectDomain);
+    ensureResourceStatisticsForRegistrableDomain(redirectDomain);
 }
 
-void ResourceLoadStatisticsMemoryStore::setTimeToLiveUserInteraction(Seconds seconds)
-{
-    ASSERT(!RunLoop::isMain());
-    ASSERT(seconds >= 0_s);
-
-    m_parameters.timeToLiveUserInteraction = seconds;
-}
-
-void ResourceLoadStatisticsMemoryStore::setMinimumTimeBetweenDataRecordsRemoval(Seconds seconds)
-{
-    ASSERT(!RunLoop::isMain());
-    ASSERT(seconds >= 0_s);
-
-    m_parameters.minimumTimeBetweenDataRecordsRemoval = seconds;
-}
-
-void ResourceLoadStatisticsMemoryStore::setGrandfatheringTime(Seconds seconds)
-{
-    ASSERT(!RunLoop::isMain());
-    ASSERT(seconds >= 0_s);
-
-    m_parameters.grandfatheringTime = seconds;
-}
-
-void ResourceLoadStatisticsMemoryStore::setCacheMaxAgeCap(Seconds seconds)
-{
-    ASSERT(!RunLoop::isMain());
-    ASSERT(seconds >= 0_s);
-
-    m_parameters.cacheMaxAgeCapTime = seconds;
-    updateCacheMaxAgeCap();
-}
-
-void ResourceLoadStatisticsMemoryStore::updateCacheMaxAgeCap()
-{
-    ASSERT(!RunLoop::isMain());
-    
-    RunLoop::main().dispatch([store = makeRef(m_store), seconds = m_parameters.cacheMaxAgeCapTime] () {
-        store->setCacheMaxAgeCap(seconds, [] { });
-    });
-}
-
-void ResourceLoadStatisticsMemoryStore::setAgeCapForClientSideCookies(Seconds seconds)
-{
-    ASSERT(!RunLoop::isMain());
-    ASSERT(seconds >= 0_s);
-    
-    m_parameters.clientSideCookiesAgeCapTime = seconds;
-    updateClientSideCookiesAgeCap();
-}
-
-void ResourceLoadStatisticsMemoryStore::updateClientSideCookiesAgeCap()
+ResourceLoadStatistics& ResourceLoadStatisticsMemoryStore::ensureResourceStatisticsForRegistrableDomain(const RegistrableDomain& domain)
 {
     ASSERT(!RunLoop::isMain());
 
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    RunLoop::main().dispatch([store = makeRef(m_store), seconds = m_parameters.clientSideCookiesAgeCapTime] () {
-        if (auto* networkSession = store->networkSession())
-            networkSession->networkStorageSession().setAgeCapForClientSideCookies(seconds);
-    });
-#endif
-}
-
-bool ResourceLoadStatisticsMemoryStore::shouldRemoveDataRecords() const
-{
-    ASSERT(!RunLoop::isMain());
-
-    if (m_dataRecordsBeingRemoved)
-        return false;
-
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    for (const auto& plugin : PluginProcessManager::singleton().pluginProcesses()) {
-        if (!m_activePluginTokens.contains(plugin->pluginProcessToken()))
-            return true;
-    }
-#endif
-
-    return !m_lastTimeDataRecordsWereRemoved || MonotonicTime::now() >= (m_lastTimeDataRecordsWereRemoved + m_parameters.minimumTimeBetweenDataRecordsRemoval);
-}
-
-void ResourceLoadStatisticsMemoryStore::setDataRecordsBeingRemoved(bool value)
-{
-    ASSERT(!RunLoop::isMain());
-
-    m_dataRecordsBeingRemoved = value;
-    if (m_dataRecordsBeingRemoved)
-        m_lastTimeDataRecordsWereRemoved = MonotonicTime::now();
-}
-
-ResourceLoadStatistics& ResourceLoadStatisticsMemoryStore::ensureResourceStatisticsForPrimaryDomain(const String& primaryDomain)
-{
-    ASSERT(!RunLoop::isMain());
-
-    return m_resourceStatisticsMap.ensure(primaryDomain, [&primaryDomain] {
-        return ResourceLoadStatistics(primaryDomain);
+    return m_resourceStatisticsMap.ensure(domain, [&domain] {
+        return ResourceLoadStatistics(domain);
     }).iterator->value;
 }
 
@@ -944,13 +618,14 @@ std::unique_ptr<KeyedEncoder> ResourceLoadStatisticsMemoryStore::createEncoderFr
 
     auto encoder = KeyedEncoder::encoder();
     encoder->encodeUInt32("version", statisticsModelVersion);
-    encoder->encodeDouble("endOfGrandfatheringTimestamp", m_endOfGrandfatheringTimestamp.secondsSinceEpoch().value());
+    encoder->encodeDouble("endOfGrandfatheringTimestamp", endOfGrandfatheringTimestamp().secondsSinceEpoch().value());
 
-    encoder->encodeObjects("browsingStatistics", m_resourceStatisticsMap.begin(), m_resourceStatisticsMap.end(), [](KeyedEncoder& encoderInner, const auto& origin) {
-        origin.value.encode(encoderInner);
+    encoder->encodeObjects("browsingStatistics", m_resourceStatisticsMap.begin(), m_resourceStatisticsMap.end(), [](KeyedEncoder& encoderInner, const auto& domain) {
+        domain.value.encode(encoderInner);
     });
 
-    encoder->encodeObjects("operatingDates", m_operatingDates.begin(), m_operatingDates.end(), [](KeyedEncoder& encoderInner, OperatingDate date) {
+    auto& operatingDates = this->operatingDates();
+    encoder->encodeObjects("operatingDates", operatingDates.begin(), operatingDates.end(), [](KeyedEncoder& encoderInner, OperatingDate date) {
         encoderInner.encodeDouble("date", date.secondsSinceEpoch().value());
     });
 
@@ -972,9 +647,9 @@ void ResourceLoadStatisticsMemoryStore::mergeWithDataFromDecoder(KeyedDecoder& d
 
     double endOfGrandfatheringTimestamp;
     if (decoder.decodeDouble("endOfGrandfatheringTimestamp", endOfGrandfatheringTimestamp))
-        m_endOfGrandfatheringTimestamp = WallTime::fromRawSeconds(endOfGrandfatheringTimestamp);
+        setEndOfGrandfatheringTimestamp(WallTime::fromRawSeconds(endOfGrandfatheringTimestamp));
     else
-        m_endOfGrandfatheringTimestamp = { };
+        clearEndOfGrandfatheringTimeStamp();
 
     Vector<ResourceLoadStatistics> loadedStatistics;
     bool succeeded = decoder.decodeObjects("browsingStatistics", loadedStatistics, [versionOnDisk](KeyedDecoder& decoderInner, ResourceLoadStatistics& statistics) {
@@ -1000,7 +675,7 @@ void ResourceLoadStatisticsMemoryStore::mergeWithDataFromDecoder(KeyedDecoder& d
     if (!succeeded)
         return;
 
-    m_operatingDates = mergeOperatingDates(m_operatingDates, WTFMove(operatingDates));
+    mergeOperatingDates(WTFMove(operatingDates));
 }
 
 void ResourceLoadStatisticsMemoryStore::clear(CompletionHandler<void()>&& completionHandler)
@@ -1008,14 +683,15 @@ void ResourceLoadStatisticsMemoryStore::clear(CompletionHandler<void()>&& comple
     ASSERT(!RunLoop::isMain());
 
     m_resourceStatisticsMap.clear();
-    m_operatingDates.clear();
+    clearOperatingDates();
 
     auto callbackAggregator = CallbackAggregator::create(WTFMove(completionHandler));
 
     removeAllStorageAccess([callbackAggregator = callbackAggregator.copyRef()] { });
 
-    auto primaryDomainsToBlock = ensurePrevalentResourcesForDebugMode();
-    updateCookieBlockingForDomains(primaryDomainsToBlock, [callbackAggregator = callbackAggregator.copyRef()] { });
+    auto registrableDomainsToBlockAndDeleteCookiesFor = ensurePrevalentResourcesForDebugMode();
+    RegistrableDomainsToBlockCookiesFor domainsToBlock { registrableDomainsToBlockAndDeleteCookiesFor, { } };
+    updateCookieBlockingForDomains(domainsToBlock, [callbackAggregator = callbackAggregator.copyRef()] { });
 }
 
 bool ResourceLoadStatisticsMemoryStore::wasAccessedAsFirstPartyDueToUserInteraction(const ResourceLoadStatistics& current, const ResourceLoadStatistics& updated) const
@@ -1033,7 +709,7 @@ void ResourceLoadStatisticsMemoryStore::mergeStatistics(Vector<ResourceLoadStati
     ASSERT(!RunLoop::isMain());
 
     for (auto& statistic : statistics) {
-        auto result = m_resourceStatisticsMap.ensure(statistic.highLevelDomain, [&statistic] {
+        auto result = m_resourceStatisticsMap.ensure(statistic.registrableDomain, [&statistic] {
             return WTFMove(statistic);
         });
         if (!result.isNewEntry) {
@@ -1054,103 +730,46 @@ bool ResourceLoadStatisticsMemoryStore::shouldBlockAndPurgeCookies(const Resourc
     return statistic.isPrevalentResource && !statistic.hadUserInteraction;
 }
 
-bool ResourceLoadStatisticsMemoryStore::hasUserGrantedStorageAccessThroughPrompt(const ResourceLoadStatistics& statistic, const String& firstPartyPrimaryDomain)
+StorageAccessPromptWasShown ResourceLoadStatisticsMemoryStore::hasUserGrantedStorageAccessThroughPrompt(const ResourceLoadStatistics& statistic, const RegistrableDomain& firstPartyDomain)
 {
-    return statistic.storageAccessUnderTopFrameOrigins.contains(firstPartyPrimaryDomain);
-}
-
-static void debugLogDomainsInBatches(const char* action, const Vector<String>& domains)
-{
-#if !RELEASE_LOG_DISABLED
-    static const auto maxNumberOfDomainsInOneLogStatement = 50;
-    if (domains.isEmpty())
-        return;
-
-    if (domains.size() <= maxNumberOfDomainsInOneLogStatement) {
-        RELEASE_LOG_INFO(ResourceLoadStatisticsDebug, "About to %{public}s cookies in third-party contexts for: %{public}s.", action, domainsToString(domains).utf8().data());
-        return;
-    }
-    
-    Vector<String> batch;
-    batch.reserveInitialCapacity(maxNumberOfDomainsInOneLogStatement);
-    auto batchNumber = 1;
-    unsigned numberOfBatches = std::ceil(domains.size() / static_cast<float>(maxNumberOfDomainsInOneLogStatement));
-
-    for (auto& domain : domains) {
-        if (batch.size() == maxNumberOfDomainsInOneLogStatement) {
-            RELEASE_LOG_INFO(ResourceLoadStatisticsDebug, "About to %{public}s cookies in third-party contexts for (%{public}d of %u): %{public}s.", action, batchNumber, numberOfBatches, domainsToString(batch).utf8().data());
-            batch.shrink(0);
-            ++batchNumber;
-        }
-        batch.append(domain);
-    }
-    if (!batch.isEmpty())
-        RELEASE_LOG_INFO(ResourceLoadStatisticsDebug, "About to %{public}s cookies in third-party contexts for (%{public}d of %u): %{public}s.", action, batchNumber, numberOfBatches, domainsToString(batch).utf8().data());
-#else
-    UNUSED_PARAM(action);
-    UNUSED_PARAM(domains);
-#endif
+    return statistic.storageAccessUnderTopFrameDomains.contains(firstPartyDomain) ? StorageAccessPromptWasShown::Yes : StorageAccessPromptWasShown::No;
 }
 
 void ResourceLoadStatisticsMemoryStore::updateCookieBlocking(CompletionHandler<void()>&& completionHandler)
 {
     ASSERT(!RunLoop::isMain());
 
-    Vector<String> domainsToBlock;
+    Vector<RegistrableDomain> domainsToBlockAndDeleteCookiesFor;
+    Vector<RegistrableDomain> domainsToBlockButKeepCookiesFor;
     for (auto& resourceStatistic : m_resourceStatisticsMap.values()) {
-        if (resourceStatistic.isPrevalentResource)
-            domainsToBlock.append(resourceStatistic.highLevelDomain);
+        if (resourceStatistic.isPrevalentResource) {
+            if (hasHadUnexpiredRecentUserInteraction(resourceStatistic, OperatingDatesWindow::Long))
+                domainsToBlockButKeepCookiesFor.append(resourceStatistic.registrableDomain);
+            else
+                domainsToBlockAndDeleteCookiesFor.append(resourceStatistic.registrableDomain);
+        }
     }
 
-    if (domainsToBlock.isEmpty()) {
+    if (domainsToBlockAndDeleteCookiesFor.isEmpty() && domainsToBlockButKeepCookiesFor.isEmpty() && !debugModeEnabled()) {
         completionHandler();
         return;
     }
 
-    if (m_debugLoggingEnabled && !domainsToBlock.isEmpty())
+    RegistrableDomainsToBlockCookiesFor domainsToBlock { domainsToBlockAndDeleteCookiesFor, domainsToBlockButKeepCookiesFor };
+
+    if (debugLoggingEnabled() && !domainsToBlockAndDeleteCookiesFor.isEmpty() && !domainsToBlockButKeepCookiesFor.isEmpty())
         debugLogDomainsInBatches("block", domainsToBlock);
 
-    RunLoop::main().dispatch([weakThis = makeWeakPtr(*this), store = makeRef(m_store), domainsToBlock = crossThreadCopy(domainsToBlock), completionHandler = WTFMove(completionHandler)] () mutable {
+    RunLoop::main().dispatch([weakThis = makeWeakPtr(*this), store = makeRef(store()), domainsToBlock = crossThreadCopy(domainsToBlock), completionHandler = WTFMove(completionHandler)] () mutable {
         store->callUpdatePrevalentDomainsToBlockCookiesForHandler(domainsToBlock, [weakThis = WTFMove(weakThis), store = store.copyRef(), completionHandler = WTFMove(completionHandler)]() mutable {
             store->statisticsQueue().dispatch([weakThis = WTFMove(weakThis), completionHandler = WTFMove(completionHandler)]() mutable {
                 completionHandler();
                 if (!weakThis)
                     return;
-#if !RELEASE_LOG_DISABLED
-                RELEASE_LOG_INFO_IF(weakThis->m_debugLoggingEnabled, ResourceLoadStatisticsDebug, "Done updating cookie blocking.");
-#endif
+                RELEASE_LOG_INFO_IF(weakThis->debugLoggingEnabled(), ITPDebug, "Done updating cookie blocking.");
             });
         });
     });
-}
-
-void ResourceLoadStatisticsMemoryStore::updateCookieBlockingForDomains(const Vector<String>& domainsToBlock, CompletionHandler<void()>&& completionHandler)
-{
-    ASSERT(!RunLoop::isMain());
-
-    RunLoop::main().dispatch([store = makeRef(m_store), domainsToBlock = crossThreadCopy(domainsToBlock), completionHandler = WTFMove(completionHandler)] () mutable {
-        store->callUpdatePrevalentDomainsToBlockCookiesForHandler(domainsToBlock, [store = store.copyRef(), completionHandler = WTFMove(completionHandler)]() mutable {
-            store->statisticsQueue().dispatch([completionHandler = WTFMove(completionHandler)]() mutable {
-                completionHandler();
-            });
-        });
-    });
-}
-
-void ResourceLoadStatisticsMemoryStore::clearBlockingStateForDomains(const Vector<String>& domains, CompletionHandler<void()>&& completionHandler)
-{
-    ASSERT(!RunLoop::isMain());
-
-    if (domains.isEmpty()) {
-        completionHandler();
-        return;
-    }
-
-    RunLoop::main().dispatch([store = makeRef(m_store), domains = crossThreadCopy(domains)] {
-        store->callRemoveDomainsHandler(domains);
-    });
-
-    completionHandler();
 }
 
 void ResourceLoadStatisticsMemoryStore::processStatistics(const Function<void(const ResourceLoadStatistics&)>& processFunction) const
@@ -1161,105 +780,73 @@ void ResourceLoadStatisticsMemoryStore::processStatistics(const Function<void(co
         processFunction(resourceStatistic);
 }
 
-bool ResourceLoadStatisticsMemoryStore::hasHadUnexpiredRecentUserInteraction(ResourceLoadStatistics& resourceStatistic) const
+bool ResourceLoadStatisticsMemoryStore::hasHadUnexpiredRecentUserInteraction(ResourceLoadStatistics& resourceStatistic, OperatingDatesWindow operatingDatesWindow) const
 {
     ASSERT(!RunLoop::isMain());
 
-    if (resourceStatistic.hadUserInteraction && hasStatisticsExpired(resourceStatistic)) {
+    if (resourceStatistic.hadUserInteraction && hasStatisticsExpired(resourceStatistic, operatingDatesWindow)) {
         // Drop privacy sensitive data because we no longer need it.
         // Set timestamp to 0 so that statistics merge will know
         // it has been reset as opposed to its default -1.
         resourceStatistic.mostRecentUserInteractionTime = { };
-        resourceStatistic.storageAccessUnderTopFrameOrigins.clear();
+        resourceStatistic.storageAccessUnderTopFrameDomains.clear();
         resourceStatistic.hadUserInteraction = false;
     }
 
     return resourceStatistic.hadUserInteraction;
 }
 
-Vector<String> ResourceLoadStatisticsMemoryStore::topPrivatelyControlledDomainsToRemoveWebsiteDataFor()
+bool ResourceLoadStatisticsMemoryStore::shouldRemoveAllWebsiteDataFor(ResourceLoadStatistics& resourceStatistic, bool shouldCheckForGrandfathering) const
+{
+    return resourceStatistic.isPrevalentResource && !hasHadUnexpiredRecentUserInteraction(resourceStatistic, OperatingDatesWindow::Long) && (!shouldCheckForGrandfathering || !resourceStatistic.grandfathered);
+}
+
+bool ResourceLoadStatisticsMemoryStore::shouldRemoveAllButCookiesFor(ResourceLoadStatistics& resourceStatistic, bool shouldCheckForGrandfathering) const
+{
+    return resourceStatistic.gotLinkDecorationFromPrevalentResource && !hasHadUnexpiredRecentUserInteraction(resourceStatistic, OperatingDatesWindow::Short) && (!shouldCheckForGrandfathering || !resourceStatistic.grandfathered);
+}
+
+Vector<std::pair<RegistrableDomain, WebsiteDataToRemove>> ResourceLoadStatisticsMemoryStore::registrableDomainsToRemoveWebsiteDataFor()
 {
     ASSERT(!RunLoop::isMain());
 
-    bool shouldCheckForGrandfathering = m_endOfGrandfatheringTimestamp > WallTime::now();
-    bool shouldClearGrandfathering = !shouldCheckForGrandfathering && m_endOfGrandfatheringTimestamp;
+    bool shouldCheckForGrandfathering = endOfGrandfatheringTimestamp() > WallTime::now();
+    bool shouldClearGrandfathering = !shouldCheckForGrandfathering && endOfGrandfatheringTimestamp();
 
     if (shouldClearGrandfathering)
-        m_endOfGrandfatheringTimestamp = { };
+        clearEndOfGrandfatheringTimeStamp();
 
-    Vector<String> prevalentResources;
+    Vector<std::pair<RegistrableDomain, WebsiteDataToRemove>> domainsToRemoveWebsiteDataFor;
     for (auto& statistic : m_resourceStatisticsMap.values()) {
-        if (statistic.isPrevalentResource && !hasHadUnexpiredRecentUserInteraction(statistic) && (!shouldCheckForGrandfathering || !statistic.grandfathered))
-            prevalentResources.append(statistic.highLevelDomain);
+        if (shouldRemoveAllWebsiteDataFor(statistic, shouldCheckForGrandfathering))
+            domainsToRemoveWebsiteDataFor.append(std::make_pair(statistic.registrableDomain, WebsiteDataToRemove::All));
+        else if (shouldRemoveAllButCookiesFor(statistic, shouldCheckForGrandfathering)) {
+            domainsToRemoveWebsiteDataFor.append(std::make_pair(statistic.registrableDomain, WebsiteDataToRemove::AllButCookies));
+            statistic.gotLinkDecorationFromPrevalentResource = false;
+        }
 
         if (shouldClearGrandfathering && statistic.grandfathered)
             statistic.grandfathered = false;
     }
 
-    return prevalentResources;
-}
-
-void ResourceLoadStatisticsMemoryStore::includeTodayAsOperatingDateIfNecessary()
-{
-    ASSERT(!RunLoop::isMain());
-
-    auto today = OperatingDate::today();
-    if (!m_operatingDates.isEmpty() && today <= m_operatingDates.last())
-        return;
-
-    while (m_operatingDates.size() >= operatingDatesWindow)
-        m_operatingDates.remove(0);
-
-    m_operatingDates.append(today);
-}
-
-bool ResourceLoadStatisticsMemoryStore::hasStatisticsExpired(const ResourceLoadStatistics& resourceStatistic) const
-{
-    ASSERT(!RunLoop::isMain());
-
-    if (m_operatingDates.size() >= operatingDatesWindow) {
-        if (OperatingDate::fromWallTime(resourceStatistic.mostRecentUserInteractionTime) < m_operatingDates.first())
-            return true;
-    }
-
-    // If we don't meet the real criteria for an expired statistic, check the user setting for a tighter restriction (mainly for testing).
-    if (m_parameters.timeToLiveUserInteraction) {
-        if (WallTime::now() > resourceStatistic.mostRecentUserInteractionTime + m_parameters.timeToLiveUserInteraction.value())
-            return true;
-    }
-
-    return false;
-}
-
-void ResourceLoadStatisticsMemoryStore::setMaxStatisticsEntries(size_t maximumEntryCount)
-{
-    ASSERT(!RunLoop::isMain());
-
-    m_parameters.maxStatisticsEntries = maximumEntryCount;
-}
-
-void ResourceLoadStatisticsMemoryStore::setPruneEntriesDownTo(size_t pruneTargetCount)
-{
-    ASSERT(!RunLoop::isMain());
-
-    m_parameters.pruneEntriesDownTo = pruneTargetCount;
+    return domainsToRemoveWebsiteDataFor;
 }
 
 void ResourceLoadStatisticsMemoryStore::pruneStatisticsIfNeeded()
 {
     ASSERT(!RunLoop::isMain());
 
-    if (m_resourceStatisticsMap.size() <= m_parameters.maxStatisticsEntries)
+    if (m_resourceStatisticsMap.size() <= parameters().maxStatisticsEntries)
         return;
 
-    ASSERT(m_parameters.pruneEntriesDownTo <= m_parameters.maxStatisticsEntries);
+    ASSERT(parameters().pruneEntriesDownTo <= parameters().maxStatisticsEntries);
 
-    size_t numberOfEntriesLeftToPrune = m_resourceStatisticsMap.size() - m_parameters.pruneEntriesDownTo;
+    size_t numberOfEntriesLeftToPrune = m_resourceStatisticsMap.size() - parameters().pruneEntriesDownTo;
     ASSERT(numberOfEntriesLeftToPrune);
 
     Vector<StatisticsLastSeen> resourcesToPrunePerImportance[maxImportance + 1];
     for (auto& resourceStatistic : m_resourceStatisticsMap.values())
-        resourcesToPrunePerImportance[computeImportance(resourceStatistic)].append({ resourceStatistic.highLevelDomain, resourceStatistic.lastSeen });
+        resourcesToPrunePerImportance[computeImportance(resourceStatistic)].append({ resourceStatistic.registrableDomain, resourceStatistic.lastSeen });
 
     for (unsigned importance = 0; numberOfEntriesLeftToPrune && importance <= maxImportance; ++importance)
         pruneResources(m_resourceStatisticsMap, resourcesToPrunePerImportance[importance], numberOfEntriesLeftToPrune);
@@ -1267,65 +854,34 @@ void ResourceLoadStatisticsMemoryStore::pruneStatisticsIfNeeded()
     ASSERT(!numberOfEntriesLeftToPrune);
 }
 
-void ResourceLoadStatisticsMemoryStore::resetParametersToDefaultValues()
+void ResourceLoadStatisticsMemoryStore::setLastSeen(const RegistrableDomain& domain, Seconds seconds)
 {
     ASSERT(!RunLoop::isMain());
 
-    m_parameters = { };
-}
-
-void ResourceLoadStatisticsMemoryStore::logTestingEvent(const String& event)
-{
-    ASSERT(!RunLoop::isMain());
-
-    RunLoop::main().dispatch([store = makeRef(m_store), event = event.isolatedCopy()] {
-        store->logTestingEvent(event);
-    });
-}
-
-void ResourceLoadStatisticsMemoryStore::setLastSeen(const String& primaryDomain, Seconds seconds)
-{
-    ASSERT(!RunLoop::isMain());
-
-    auto& statistics = ensureResourceStatisticsForPrimaryDomain(primaryDomain);
+    auto& statistics = ensureResourceStatisticsForRegistrableDomain(domain);
     statistics.lastSeen = WallTime::fromRawSeconds(seconds.seconds());
 }
 
-void ResourceLoadStatisticsMemoryStore::setPrevalentResource(const String& primaryDomain)
+void ResourceLoadStatisticsMemoryStore::setPrevalentResource(const RegistrableDomain& domain)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& resourceStatistic = ensureResourceStatisticsForPrimaryDomain(primaryDomain);
+    if (shouldSkip(domain))
+        return;
+    
+    auto& resourceStatistic = ensureResourceStatisticsForRegistrableDomain(domain);
     setPrevalentResource(resourceStatistic, ResourceLoadPrevalence::High);
 }
 
-void ResourceLoadStatisticsMemoryStore::setVeryPrevalentResource(const String& primaryDomain)
+void ResourceLoadStatisticsMemoryStore::setVeryPrevalentResource(const RegistrableDomain& domain)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto& resourceStatistic = ensureResourceStatisticsForPrimaryDomain(primaryDomain);
+    if (shouldSkip(domain))
+        return;
+    
+    auto& resourceStatistic = ensureResourceStatisticsForRegistrableDomain(domain);
     setPrevalentResource(resourceStatistic, ResourceLoadPrevalence::VeryHigh);
-}
-
-void ResourceLoadStatisticsMemoryStore::removeAllStorageAccess(CompletionHandler<void()>&& completionHandler)
-{
-    ASSERT(!RunLoop::isMain());
-    RunLoop::main().dispatch([store = makeRef(m_store), completionHandler = WTFMove(completionHandler)]() mutable {
-        store->removeAllStorageAccess([store = store.copyRef(), completionHandler = WTFMove(completionHandler)]() mutable {
-            store->statisticsQueue().dispatch([completionHandler = WTFMove(completionHandler)]() mutable {
-                completionHandler();
-            });
-        });
-    });
-}
-
-void ResourceLoadStatisticsMemoryStore::didCreateNetworkProcess()
-{
-    ASSERT(!RunLoop::isMain());
-
-    updateCookieBlocking([]() { });
-    updateCacheMaxAgeCap();
-    updateClientSideCookiesAgeCap();
 }
 
 } // namespace WebKit

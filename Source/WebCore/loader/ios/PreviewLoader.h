@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,12 +39,13 @@ class ResourceResponse;
 class SharedBuffer;
 
 class PreviewLoader {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(PreviewLoader);
 public:
-    WEBCORE_EXPORT static bool shouldCreateForMIMEType(const String&);
     static std::unique_ptr<PreviewLoader> create(ResourceLoader&, const ResourceResponse&);
     ~PreviewLoader();
 
+    bool didReceiveResponse(const ResourceResponse&);
     bool didReceiveData(const char* data, unsigned length);
     bool didReceiveBuffer(const SharedBuffer&);
     bool didFinishLoading();

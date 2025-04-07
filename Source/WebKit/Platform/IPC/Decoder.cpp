@@ -88,9 +88,13 @@ bool Decoder::isSyncMessage() const
     return m_messageFlags & SyncMessage;
 }
 
-bool Decoder::shouldDispatchMessageWhenWaitingForSyncReply() const
+ShouldDispatchWhenWaitingForSyncReply Decoder::shouldDispatchMessageWhenWaitingForSyncReply() const
 {
-    return m_messageFlags & DispatchMessageWhenWaitingForSyncReply;
+    if (m_messageFlags & DispatchMessageWhenWaitingForSyncReply)
+        return ShouldDispatchWhenWaitingForSyncReply::Yes;
+    if (m_messageFlags & DispatchMessageWhenWaitingForUnboundedSyncReply)
+        return ShouldDispatchWhenWaitingForSyncReply::YesDuringUnboundedIPC;
+    return ShouldDispatchWhenWaitingForSyncReply::No;
 }
 
 bool Decoder::shouldUseFullySynchronousModeForTesting() const
@@ -119,7 +123,7 @@ std::unique_ptr<Decoder> Decoder::unwrapForTesting(Decoder& decoder)
     if (!decoder.decode(wrappedMessage))
         return nullptr;
 
-    return std::make_unique<Decoder>(wrappedMessage.data(), wrappedMessage.size(), nullptr, WTFMove(attachments));
+    return makeUnique<Decoder>(wrappedMessage.data(), wrappedMessage.size(), nullptr, WTFMove(attachments));
 }
 
 static inline const uint8_t* roundUpToAlignment(const uint8_t* ptr, unsigned alignment)

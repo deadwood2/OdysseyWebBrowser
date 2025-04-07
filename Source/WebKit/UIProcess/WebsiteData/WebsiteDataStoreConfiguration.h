@@ -26,6 +26,7 @@
 #pragma once
 
 #include "APIObject.h"
+#include <WebCore/StorageQuotaManager.h>
 #include <wtf/URL.h>
 #include <wtf/text/WTFString.h>
 
@@ -37,8 +38,11 @@ public:
 
     Ref<WebsiteDataStoreConfiguration> copy();
 
-    uint64_t cacheStoragePerOriginQuota() { return m_cacheStoragePerOriginQuota; }
-    void setCacheStoragePerOriginQuota(uint64_t quota) { m_cacheStoragePerOriginQuota = quota; }
+    bool isPersistent() const { return m_isPersistent; }
+    void setPersistent(bool isPersistent) { m_isPersistent = isPersistent; }
+
+    uint64_t perOriginStorageQuota() const { return m_perOriginStorageQuota; }
+    void setPerOriginStorageQuota(uint64_t quota) { m_perOriginStorageQuota = quota; }
 
     const String& applicationCacheDirectory() const { return m_applicationCacheDirectory; }
     void setApplicationCacheDirectory(String&& directory) { m_applicationCacheDirectory = WTFMove(directory); }
@@ -52,15 +56,15 @@ public:
     const String& javaScriptConfigurationDirectory() const { return m_javaScriptConfigurationDirectory; }
     void setJavaScriptConfigurationDirectory(String&& directory) { m_javaScriptConfigurationDirectory = WTFMove(directory); }
     
-    const String& webStorageDirectory() const { return m_webStorageDirectory; }
-    void setWebStorageDirectory(String&& directory) { m_webStorageDirectory = WTFMove(directory); }
-
     const String& indexedDBDatabaseDirectory() const { return m_indexedDBDatabaseDirectory; }
     void setIndexedDBDatabaseDirectory(String&& directory) { m_indexedDBDatabaseDirectory = WTFMove(directory); }
 
     const String& webSQLDatabaseDirectory() const { return m_webSQLDatabaseDirectory; }
     void setWebSQLDatabaseDirectory(String&& directory) { m_webSQLDatabaseDirectory = WTFMove(directory); }
-
+#if USE(GLIB) // According to r245075 this will eventually move here.
+    const String& hstsStorageDirectory() const { return m_hstsStorageDirectory; }
+    void setHSTSStorageDirectory(String&& directory) { m_hstsStorageDirectory = WTFMove(directory); }
+#endif
     const String& localStorageDirectory() const { return m_localStorageDirectory; }
     void setLocalStorageDirectory(String&& directory) { m_localStorageDirectory = WTFMove(directory); }
 
@@ -97,21 +101,29 @@ public:
     const URL& httpsProxy() const { return m_httpsProxy; }
     void setHTTPSProxy(URL&& proxy) { m_httpsProxy = WTFMove(proxy); }
 
-    constexpr static uint64_t defaultCacheStoragePerOriginQuota = 50 * 1024 * 1024;
+    bool deviceManagementRestrictionsEnabled() const { return m_deviceManagementRestrictionsEnabled; }
+    void setDeviceManagementRestrictionsEnabled(bool enabled) { m_deviceManagementRestrictionsEnabled = enabled; }
+
+    bool allLoadsBlockedByDeviceManagementRestrictionsForTesting() const { return m_allLoadsBlockedByDeviceManagementRestrictionsForTesting; }
+    void setAllLoadsBlockedByDeviceManagementRestrictionsForTesting(bool blocked) { m_allLoadsBlockedByDeviceManagementRestrictionsForTesting = blocked; }
 
 private:
     WebsiteDataStoreConfiguration();
 
+    bool m_isPersistent { false };
+
     String m_cacheStorageDirectory;
-    uint64_t m_cacheStoragePerOriginQuota { defaultCacheStoragePerOriginQuota };
+    uint64_t m_perOriginStorageQuota { WebCore::StorageQuotaManager::defaultQuota() };
     String m_networkCacheDirectory;
     String m_applicationCacheDirectory;
     String m_applicationCacheFlatFileSubdirectoryName;
-    String m_webStorageDirectory;
     String m_mediaCacheDirectory;
     String m_indexedDBDatabaseDirectory;
     String m_serviceWorkerRegistrationDirectory;
     String m_webSQLDatabaseDirectory;
+#if USE(GLIB)
+    String m_hstsStorageDirectory;
+#endif
     String m_localStorageDirectory;
     String m_mediaKeysStorageDirectory;
     String m_deviceIdHashSaltsStorageDirectory;
@@ -122,6 +134,8 @@ private:
     String m_sourceApplicationSecondaryIdentifier;
     URL m_httpProxy;
     URL m_httpsProxy;
+    bool m_deviceManagementRestrictionsEnabled { false };
+    bool m_allLoadsBlockedByDeviceManagementRestrictionsForTesting { false };
 };
 
 }

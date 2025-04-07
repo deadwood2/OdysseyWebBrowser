@@ -32,8 +32,6 @@
 #import <WebCore/IntRect.h>
 #import <WebKit/WebImage.h>
 
-#if WK_API_ENABLED
-
 @implementation WKWebProcessPlugInNodeHandle {
     API::ObjectStorage<WebKit::InjectedBundleNodeHandle> _nodeHandle;
 }
@@ -106,9 +104,19 @@
     return _nodeHandle->isHTMLInputElementAutoFilled();
 }
 
+- (BOOL)HTMLInputElementIsAutoFilledAndViewable
+{
+    return _nodeHandle->isHTMLInputElementAutoFilledAndViewable();
+}
+
 - (void)setHTMLInputElementIsAutoFilled:(BOOL)isAutoFilled
 {
     _nodeHandle->setHTMLInputElementAutoFilled(isAutoFilled);
+}
+
+- (void)setHTMLInputElementIsAutoFilledAndViewable:(BOOL)isAutoFilledAndViewable
+{
+    _nodeHandle->setHTMLInputElementAutoFilledAndViewable(isAutoFilledAndViewable);
 }
 
 - (BOOL)isHTMLInputElementAutoFillButtonEnabled
@@ -211,5 +219,3 @@ static _WKAutoFillButtonType toWKAutoFillButtonType(WebCore::AutoFillButtonType 
 }
 
 @end
-
-#endif // WK_API_ENABLED

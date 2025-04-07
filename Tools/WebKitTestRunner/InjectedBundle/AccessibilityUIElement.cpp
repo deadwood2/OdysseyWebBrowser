@@ -24,6 +24,9 @@
  */
 
 #include "config.h"
+
+#if ENABLE(ACCESSIBILITY)
+
 #include "AccessibilityUIElement.h"
 
 #include "JSAccessibilityUIElement.h"
@@ -76,6 +79,7 @@ bool AccessibilityUIElement::isTextArea() const { return false; }
 RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::textMarkerRangeMatchesTextNearMarkers(JSStringRef, AccessibilityTextMarker*, AccessibilityTextMarker*) { return nullptr; }
 bool AccessibilityUIElement::dismiss() { return false; }
 JSRetainPtr<JSStringRef> AccessibilityUIElement::attributedStringForElement() { return nullptr; }
+bool AccessibilityUIElement::isInTableCell() const { return false; }
 #endif
     
 // Unsupported methods on various platforms. As they're implemented on other platforms this list should be modified.
@@ -91,6 +95,7 @@ RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::selectedTextMarkerR
 void AccessibilityUIElement::resetSelectedTextMarkerRange() { }
 void AccessibilityUIElement::setBoolAttributeValue(JSStringRef, bool) { }
 void AccessibilityUIElement::setValue(JSStringRef) { }
+JSValueRef AccessibilityUIElement::searchTextWithCriteria(JSContextRef, JSValueRef, JSStringRef, JSStringRef) { return nullptr; }
 #endif
 
 #if !PLATFORM(COCOA) || !HAVE(ACCESSIBILITY)
@@ -107,3 +112,4 @@ RefPtr<AccessibilityTextMarker> AccessibilityUIElement::previousSentenceStartTex
 #endif
 
 } // namespace WTR
+#endif // ENABLE(ACCESSIBILITY)

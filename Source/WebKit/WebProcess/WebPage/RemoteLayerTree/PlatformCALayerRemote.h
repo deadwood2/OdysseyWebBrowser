@@ -174,6 +174,8 @@ public:
     WebCore::GraphicsLayer::CustomAppearance customAppearance() const override;
     void updateCustomAppearance(WebCore::GraphicsLayer::CustomAppearance) override;
 
+    void setEventRegion(const WebCore::EventRegion&) override;
+
     WebCore::GraphicsLayer::EmbeddedViewID embeddedViewID() const override;
 
     WebCore::TiledBacking* tiledBacking() override { return nullptr; }
@@ -195,6 +197,7 @@ public:
 
     void didCommit();
 
+    void moveToContext(RemoteLayerTreeContext&);
     void clearContext() { m_context = nullptr; }
     RemoteLayerTreeContext* context() const { return m_context; }
 

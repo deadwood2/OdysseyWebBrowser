@@ -29,6 +29,7 @@
 #import "PlatformCAAnimationRemote.h"
 #import "PlatformCALayerRemote.h"
 #import "RemoteLayerTreeHost.h"
+#import "RemoteLayerTreeViews.h"
 #import <QuartzCore/QuartzCore.h>
 #import <WebCore/PlatformCAFilters.h>
 #import <WebCore/ScrollbarThemeMac.h>
@@ -67,11 +68,25 @@
     }
 
     // Remove views at the end.
-    NSUInteger remainingSubviews = self.subviews.count;
-    for (NSUInteger i = currIndex; i < remainingSubviews; ++i)
-        [[self.subviews objectAtIndex:currIndex] removeFromSuperview];
+    NSMutableArray *viewsToRemove = nil;
+    auto appendViewToRemove = [&viewsToRemove](UIView *view) {
+        if (!viewsToRemove)
+            viewsToRemove = [[NSMutableArray alloc] init];
 
-    ASSERT([self.subviews isEqualToArray:newSubviews]);
+        [viewsToRemove addObject:view];
+    };
+
+    NSUInteger remainingSubviews = self.subviews.count;
+    for (NSUInteger i = currIndex; i < remainingSubviews; ++i) {
+        UIView *subview = [self.subviews objectAtIndex:i];
+        if ([subview conformsToProtocol:@protocol(WKContentControlled)])
+            appendViewToRemove(subview);
+    }
+
+    if (viewsToRemove) {
+        [viewsToRemove makeObjectsPerformSelector:@selector(removeFromSuperview)];
+        [viewsToRemove release];
+    }
 }
 
 @end
@@ -260,6 +275,9 @@ void RemoteLayerTreePropertyApplier::applyProperties(RemoteLayerTreeNode& node, 
     applyPropertiesToLayer(node.layer(), layerTreeHost, properties, layerContentsType);
     updateChildren(node, properties, relatedLayers);
     updateMask(node, properties, relatedLayers);
+
+    if (properties.changedProperties & RemoteLayerTreeTransaction::EventRegionChanged)
+        node.setEventRegion(properties.eventRegion);
 
 #if PLATFORM(IOS_FAMILY)
     applyPropertiesToUIView(node.uiView(), properties, relatedLayers);

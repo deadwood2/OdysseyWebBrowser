@@ -157,7 +157,7 @@ public:
         m_wheelTicksY = webEvent.wheelTicks().height();
         m_granularity = (webEvent.granularity() == WebWheelEvent::ScrollByPageWheelEvent) ? WebCore::ScrollByPageWheelEvent : WebCore::ScrollByPixelWheelEvent;
         m_directionInvertedFromDevice = webEvent.directionInvertedFromDevice();
-#if (PLATFORM(COCOA) || PLATFORM(GTK)) && ENABLE(ASYNC_SCROLLING)
+#if ENABLE(KINETIC_SCROLLING)
         m_phase = static_cast<WebCore::PlatformWheelEventPhase>(webEvent.phase());
         m_momentumPhase = static_cast<WebCore::PlatformWheelEventPhase>(webEvent.momentumPhase());
 #endif
@@ -221,8 +221,10 @@ public:
 #endif
         m_keyIdentifier = webEvent.keyIdentifier();
         m_windowsVirtualKeyCode = webEvent.windowsVirtualKeyCode();
-#if USE(APPKIT) || PLATFORM(GTK)
+#if USE(APPKIT) || USE(UIKIT_KEYBOARD_ADDITIONS) || PLATFORM(GTK)
         m_handledByInputMethod = webEvent.handledByInputMethod();
+#endif
+#if USE(APPKIT) || PLATFORM(GTK)
         m_commands = webEvent.commands();
 #endif
         m_autoRepeat = webEvent.isAutoRepeat();

@@ -53,10 +53,6 @@
 
 using namespace WebCore;
 
-#if HAVE(AUDIO_TOOLBOX_AUDIO_SESSION)
-#import <AudioToolbox/AudioSession.h>
-#endif
-
 #if PLATFORM(IOS_FAMILY)
 #import <WebCore/Device.h>
 #import <WebCore/GraphicsContext.h>
@@ -119,7 +115,6 @@ static WebCacheModel cacheModelForMainBundle(void)
         static const char* const documentBrowserIDs[] = {
             "com.apple.Dictionary",
             "com.apple.Xcode",
-            "com.apple.dashboard.client", 
             "com.apple.helpviewer",
             "com.culturedcode.xyle",
             "com.macrabbit.CSSEdit",
@@ -403,163 +398,160 @@ public:
 #endif
 
     NSDictionary *dict = [NSDictionary dictionaryWithObjectsAndKeys:
-        @"Times",                       WebKitStandardFontPreferenceKey,
-        @"Courier",                     WebKitFixedFontPreferenceKey,
-        @"Times",                       WebKitSerifFontPreferenceKey,
-        @"Helvetica",                   WebKitSansSerifFontPreferenceKey,
+        @"Times", WebKitStandardFontPreferenceKey,
+        @"Courier", WebKitFixedFontPreferenceKey,
+        @"Times", WebKitSerifFontPreferenceKey,
+        @"Helvetica", WebKitSansSerifFontPreferenceKey,
 #if !PLATFORM(IOS_FAMILY)
-        @"Apple Chancery",              WebKitCursiveFontPreferenceKey,
+        @"Apple Chancery", WebKitCursiveFontPreferenceKey,
 #else
-        @"Snell Roundhand",             WebKitCursiveFontPreferenceKey,
+        @"Snell Roundhand", WebKitCursiveFontPreferenceKey,
 #endif
-        @"Papyrus",                     WebKitFantasyFontPreferenceKey,
+        @"Papyrus", WebKitFantasyFontPreferenceKey,
 #if PLATFORM(IOS_FAMILY)
-        @"AppleColorEmoji",             WebKitPictographFontPreferenceKey,
+        @"AppleColorEmoji", WebKitPictographFontPreferenceKey,
 #else
-        @"Apple Color Emoji",           WebKitPictographFontPreferenceKey,
+        @"Apple Color Emoji", WebKitPictographFontPreferenceKey,
 #endif
-        @"0",                           WebKitMinimumFontSizePreferenceKey,
-        @"9",                           WebKitMinimumLogicalFontSizePreferenceKey, 
-        @"16",                          WebKitDefaultFontSizePreferenceKey,
-        @"13",                          WebKitDefaultFixedFontSizePreferenceKey,
-        @"ISO-8859-1",                  WebKitDefaultTextEncodingNamePreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitUsesEncodingDetectorPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitUserStyleSheetEnabledPreferenceKey,
-        @"",                            WebKitUserStyleSheetLocationPreferenceKey,
+        @"0", WebKitMinimumFontSizePreferenceKey,
+        @"9", WebKitMinimumLogicalFontSizePreferenceKey,
+        @"16", WebKitDefaultFontSizePreferenceKey,
+        @"13", WebKitDefaultFixedFontSizePreferenceKey,
+        @"ISO-8859-1", WebKitDefaultTextEncodingNamePreferenceKey,
+        @NO, WebKitUsesEncodingDetectorPreferenceKey,
+        @NO, WebKitUserStyleSheetEnabledPreferenceKey,
+        @"", WebKitUserStyleSheetLocationPreferenceKey,
 #if !PLATFORM(IOS_FAMILY)
-        [NSNumber numberWithBool:NO],   WebKitShouldPrintBackgroundsPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitTextAreasAreResizablePreferenceKey,
+        @NO, WebKitShouldPrintBackgroundsPreferenceKey,
+        @NO, WebKitTextAreasAreResizablePreferenceKey,
 #endif
-        [NSNumber numberWithBool:NO],   WebKitShrinksStandaloneImagesToFitPreferenceKey,
+        @NO, WebKitShrinksStandaloneImagesToFitPreferenceKey,
 #if !PLATFORM(IOS_FAMILY)
-        [NSNumber numberWithBool:YES],  WebKitJavaEnabledPreferenceKey,
+        @YES, WebKitJavaEnabledPreferenceKey,
 #endif
-        [NSNumber numberWithBool:YES],  WebKitJavaScriptEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitJavaScriptMarkupEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitWebSecurityEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitAllowUniversalAccessFromFileURLsPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitAllowFileAccessFromFileURLsPreferenceKey,
+        @YES, WebKitJavaScriptEnabledPreferenceKey,
+        @YES, WebKitJavaScriptMarkupEnabledPreferenceKey,
+        @YES, WebKitWebSecurityEnabledPreferenceKey,
+        @YES, WebKitAllowUniversalAccessFromFileURLsPreferenceKey,
+        @YES, WebKitAllowFileAccessFromFileURLsPreferenceKey,
 #if PLATFORM(IOS_FAMILY)
-        [NSNumber numberWithBool:NO],   WebKitJavaScriptCanOpenWindowsAutomaticallyPreferenceKey,
+        @NO, WebKitJavaScriptCanOpenWindowsAutomaticallyPreferenceKey,
 #else
-        [NSNumber numberWithBool:YES],  WebKitJavaScriptCanOpenWindowsAutomaticallyPreferenceKey,
+        @YES, WebKitJavaScriptCanOpenWindowsAutomaticallyPreferenceKey,
 #endif
-        [NSNumber numberWithBool:YES],  WebKitPluginsEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitDatabasesEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitHTTPEquivEnabledPreferenceKey,
+        @YES, WebKitPluginsEnabledPreferenceKey,
+        @YES, WebKitDatabasesEnabledPreferenceKey,
+        @YES, WebKitHTTPEquivEnabledPreferenceKey,
 
 #if PLATFORM(IOS_FAMILY)
-        [NSNumber numberWithBool:NO],   WebKitStorageTrackerEnabledPreferenceKey,
+        @NO, WebKitStorageTrackerEnabledPreferenceKey,
 #endif
-        [NSNumber numberWithBool:YES],  WebKitLocalStorageEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitExperimentalNotificationsEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitAllowAnimatedImagesPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitAllowAnimatedImageLoopingPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitDisplayImagesKey,
-        [NSNumber numberWithBool:NO],   WebKitLoadSiteIconsKey,
-        @"1800",                        WebKitBackForwardCacheExpirationIntervalKey,
+        @YES, WebKitLocalStorageEnabledPreferenceKey,
+        @NO, WebKitExperimentalNotificationsEnabledPreferenceKey,
+        @YES, WebKitAllowAnimatedImagesPreferenceKey,
+        @YES, WebKitAllowAnimatedImageLoopingPreferenceKey,
+        @YES, WebKitDisplayImagesKey,
+        @NO, WebKitLoadSiteIconsKey,
+        @"1800", WebKitBackForwardCacheExpirationIntervalKey,
 #if !PLATFORM(IOS_FAMILY)
-        [NSNumber numberWithBool:NO],   WebKitTabToLinksPreferenceKey,
+        @NO, WebKitTabToLinksPreferenceKey,
 #endif
-        [NSNumber numberWithBool:NO],   WebKitPrivateBrowsingEnabledPreferenceKey,
+        @NO, WebKitPrivateBrowsingEnabledPreferenceKey,
 #if !PLATFORM(IOS_FAMILY)
-        [NSNumber numberWithBool:NO],   WebKitRespectStandardStyleKeyEquivalentsPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitShowsURLsInToolTipsPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitShowsToolTipOverTruncatedTextPreferenceKey,
-        @"1",                           WebKitPDFDisplayModePreferenceKey,
-        @"0",                           WebKitPDFScaleFactorPreferenceKey,
+        @NO, WebKitRespectStandardStyleKeyEquivalentsPreferenceKey,
+        @NO, WebKitShowsURLsInToolTipsPreferenceKey,
+        @NO, WebKitShowsToolTipOverTruncatedTextPreferenceKey,
+        @"1", WebKitPDFDisplayModePreferenceKey,
+        @"0", WebKitPDFScaleFactorPreferenceKey,
 #endif
-        @"0",                           WebKitUseSiteSpecificSpoofingPreferenceKey,
+        @"0", WebKitUseSiteSpecificSpoofingPreferenceKey,
         [NSNumber numberWithInt:WebKitEditableLinkDefaultBehavior], WebKitEditableLinkBehaviorPreferenceKey,
 #if !PLATFORM(IOS_FAMILY)
         [NSNumber numberWithInt:WebTextDirectionSubmenuAutomaticallyIncluded],
                                         WebKitTextDirectionSubmenuInclusionBehaviorPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitDOMPasteAllowedPreferenceKey,
+        @NO, WebKitDOMPasteAllowedPreferenceKey,
 #endif
-        [NSNumber numberWithBool:YES],  WebKitUsesPageCachePreferenceKey,
+        @YES, WebKitUsesPageCachePreferenceKey,
         [NSNumber numberWithInt:cacheModelForMainBundle()], WebKitCacheModelPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitPageCacheSupportsPluginsPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitDeveloperExtrasEnabledPreferenceKey,
+        @YES, WebKitPageCacheSupportsPluginsPreferenceKey,
+        @NO, WebKitDeveloperExtrasEnabledPreferenceKey,
         [NSNumber numberWithUnsignedInt:0], WebKitJavaScriptRuntimeFlagsPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitAuthorAndUserStylesEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitDOMTimersThrottlingEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitWebArchiveDebugModeEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitLocalFileContentSniffingEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitOfflineWebApplicationCacheEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitZoomsTextOnlyPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitJavaScriptCanAccessClipboardPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitXSSAuditorEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitAcceleratedCompositingEnabledPreferenceKey,
-
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+        @YES, WebKitAuthorAndUserStylesEnabledPreferenceKey,
+        @YES, WebKitDOMTimersThrottlingEnabledPreferenceKey,
+        @NO, WebKitWebArchiveDebugModeEnabledPreferenceKey,
+        @NO, WebKitLocalFileContentSniffingEnabledPreferenceKey,
+        @NO, WebKitOfflineWebApplicationCacheEnabledPreferenceKey,
+        @YES, WebKitZoomsTextOnlyPreferenceKey,
+        @NO, WebKitJavaScriptCanAccessClipboardPreferenceKey,
+        @YES, WebKitXSSAuditorEnabledPreferenceKey,
+        @YES, WebKitAcceleratedCompositingEnabledPreferenceKey,
+#if PLATFORM(MAC)
 #define DEFAULT_SUBPIXEL_ANTIALIASED_LAYER_TEXT_ENABLED YES
 #else
 #define DEFAULT_SUBPIXEL_ANTIALIASED_LAYER_TEXT_ENABLED NO
 #endif
         [NSNumber numberWithBool:DEFAULT_SUBPIXEL_ANTIALIASED_LAYER_TEXT_ENABLED], WebKitSubpixelAntialiasedLayerTextEnabledPreferenceKey,
-
-        [NSNumber numberWithBool:NO],   WebKitDisplayListDrawingEnabledPreferenceKey,
+        @NO, WebKitDisplayListDrawingEnabledPreferenceKey,
 #if PLATFORM(IOS_FAMILY) && !PLATFORM(IOS_FAMILY_SIMULATOR)
-        [NSNumber numberWithBool:YES],  WebKitAcceleratedDrawingEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitCanvasUsesAcceleratedDrawingPreferenceKey,
+        @YES, WebKitAcceleratedDrawingEnabledPreferenceKey,
+        @YES, WebKitCanvasUsesAcceleratedDrawingPreferenceKey,
 #else
-        [NSNumber numberWithBool:NO],  WebKitAcceleratedDrawingEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],  WebKitCanvasUsesAcceleratedDrawingPreferenceKey,
+        @NO, WebKitAcceleratedDrawingEnabledPreferenceKey,
+        @NO, WebKitCanvasUsesAcceleratedDrawingPreferenceKey,
 #endif
-        [NSNumber numberWithBool:NO],   WebKitShowDebugBordersPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitSimpleLineLayoutEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitSimpleLineLayoutDebugBordersEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitShowRepaintCounterPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitWebGLEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],  WebKitForceSoftwareWebGLRenderingPreferenceKey,
-        [NSNumber numberWithBool:YES],   WebKitForceWebGLUsesLowPowerPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitAccelerated2dCanvasEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],  WebKitSubpixelCSSOMElementMetricsEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],  WebKitResourceLoadStatisticsEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitLargeImageAsyncDecodingEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitAnimatedImageAsyncDecodingEnabledPreferenceKey,
+        @NO, WebKitShowDebugBordersPreferenceKey,
+        @YES, WebKitSimpleLineLayoutEnabledPreferenceKey,
+        @NO, WebKitSimpleLineLayoutDebugBordersEnabledPreferenceKey,
+        @NO, WebKitShowRepaintCounterPreferenceKey,
+        @YES, WebKitWebGLEnabledPreferenceKey,
+        @YES, WebKitForceWebGLUsesLowPowerPreferenceKey,
+        @NO, WebKitAccelerated2dCanvasEnabledPreferenceKey,
+        @NO, WebKitSubpixelCSSOMElementMetricsEnabledPreferenceKey,
+        @NO, WebKitResourceLoadStatisticsEnabledPreferenceKey,
+        @YES, WebKitLargeImageAsyncDecodingEnabledPreferenceKey,
+        @YES, WebKitAnimatedImageAsyncDecodingEnabledPreferenceKey,
 #if PLATFORM(IOS_FAMILY)
         [NSNumber numberWithUnsignedInt:static_cast<uint32_t>(FrameFlattening::FullyEnabled)], WebKitFrameFlatteningPreferenceKey,
 #else
         [NSNumber numberWithUnsignedInt:static_cast<uint32_t>(FrameFlattening::Disabled)], WebKitFrameFlatteningPreferenceKey,
 #endif
-        [NSNumber numberWithBool:NO], WebKitAsyncFrameScrollingEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitSpatialNavigationEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],  WebKitDNSPrefetchingEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitFullScreenEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitAsynchronousSpellCheckingEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitHyperlinkAuditingEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitUsePreHTML5ParserQuirksKey,
-        [NSNumber numberWithBool:YES],  WebKitAVFoundationEnabledKey,
-        [NSNumber numberWithBool:YES],  WebKitAVFoundationNSURLSessionEnabledKey,
-        [NSNumber numberWithBool:NO],   WebKitSuppressesIncrementalRenderingKey,
+        @NO, WebKitAsyncFrameScrollingEnabledPreferenceKey,
+        @NO, WebKitSpatialNavigationEnabledPreferenceKey,
+        @NO, WebKitDNSPrefetchingEnabledPreferenceKey,
+        @NO, WebKitFullScreenEnabledPreferenceKey,
+        @NO, WebKitAsynchronousSpellCheckingEnabledPreferenceKey,
+        @YES, WebKitHyperlinkAuditingEnabledPreferenceKey,
+        @NO, WebKitUsePreHTML5ParserQuirksKey,
+        @YES, WebKitAVFoundationEnabledKey,
+        @YES, WebKitAVFoundationNSURLSessionEnabledKey,
+        @NO, WebKitSuppressesIncrementalRenderingKey,
         [NSNumber numberWithBool:attachmentElementEnabled], WebKitAttachmentElementEnabledPreferenceKey,
 #if !PLATFORM(IOS_FAMILY)
-        [NSNumber numberWithBool:YES],  WebKitAllowsInlineMediaPlaybackPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitAllowsInlineMediaPlaybackAfterFullscreenPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitInlineMediaPlaybackRequiresPlaysInlineAttributeKey,
-        [NSNumber numberWithBool:YES],  WebKitMediaControlsScaleWithPageZoomPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitWebAudioEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitBackspaceKeyNavigationEnabledKey,
-        [NSNumber numberWithBool:NO],   WebKitShouldDisplaySubtitlesPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitShouldDisplayCaptionsPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitShouldDisplayTextDescriptionsPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitNotificationsEnabledKey,
-        [NSNumber numberWithBool:NO],   WebKitShouldRespectImageOrientationKey,
-        [NSNumber numberWithBool:YES],  WebKitMediaDataLoadsAutomaticallyPreferenceKey,
+        @YES, WebKitAllowsInlineMediaPlaybackPreferenceKey,
+        @NO, WebKitAllowsInlineMediaPlaybackAfterFullscreenPreferenceKey,
+        @NO, WebKitInlineMediaPlaybackRequiresPlaysInlineAttributeKey,
+        @YES, WebKitMediaControlsScaleWithPageZoomPreferenceKey,
+        @NO, WebKitWebAudioEnabledPreferenceKey,
+        @YES, WebKitBackspaceKeyNavigationEnabledKey,
+        @NO, WebKitShouldDisplaySubtitlesPreferenceKey,
+        @NO, WebKitShouldDisplayCaptionsPreferenceKey,
+        @NO, WebKitShouldDisplayTextDescriptionsPreferenceKey,
+        @YES, WebKitNotificationsEnabledKey,
+        @NO, WebKitShouldRespectImageOrientationKey,
+        @YES, WebKitMediaDataLoadsAutomaticallyPreferenceKey,
 #else
-        [NSNumber numberWithBool:allowsInlineMediaPlayback],   WebKitAllowsInlineMediaPlaybackPreferenceKey,
-        [NSNumber numberWithBool:allowsInlineMediaPlaybackAfterFullscreen],   WebKitAllowsInlineMediaPlaybackAfterFullscreenPreferenceKey,
+        [NSNumber numberWithBool:allowsInlineMediaPlayback], WebKitAllowsInlineMediaPlaybackPreferenceKey,
+        [NSNumber numberWithBool:allowsInlineMediaPlaybackAfterFullscreen], WebKitAllowsInlineMediaPlaybackAfterFullscreenPreferenceKey,
         [NSNumber numberWithBool:requiresPlaysInlineAttribute], WebKitInlineMediaPlaybackRequiresPlaysInlineAttributeKey,
-        [NSNumber numberWithBool:NO],   WebKitMediaControlsScaleWithPageZoomPreferenceKey,
-        [NSNumber numberWithUnsignedInt:AudioSession::None],  WebKitAudioSessionCategoryOverride,
-        [NSNumber numberWithBool:NO],   WebKitMediaDataLoadsAutomaticallyPreferenceKey,
+        @NO, WebKitMediaControlsScaleWithPageZoomPreferenceKey,
+        [NSNumber numberWithUnsignedInt:AudioSession::None], WebKitAudioSessionCategoryOverride,
+        @NO, WebKitMediaDataLoadsAutomaticallyPreferenceKey,
 #if HAVE(AVKIT)
-        [NSNumber numberWithBool:YES],  WebKitAVKitEnabled,
+        @YES, WebKitAVKitEnabled,
 #endif
-        [NSNumber numberWithBool:YES],  WebKitRequiresUserGestureForMediaPlaybackPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitRequiresUserGestureForVideoPlaybackPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitRequiresUserGestureForAudioPlaybackPreferenceKey,
+        @YES, WebKitRequiresUserGestureForMediaPlaybackPreferenceKey,
+        @NO, WebKitRequiresUserGestureForVideoPlaybackPreferenceKey,
+        @NO, WebKitRequiresUserGestureForAudioPlaybackPreferenceKey,
         [NSNumber numberWithLongLong:WebCore::ApplicationCacheStorage::noQuota()], WebKitApplicationCacheTotalQuota,
 
         // Per-Origin Quota on iOS is 25MB. When the quota is reached for a particular origin
@@ -567,31 +559,32 @@ public:
         [NSNumber numberWithLongLong:(25 * 1024 * 1024)], WebKitApplicationCacheDefaultOriginQuota,
 
         // Enable WebAudio by default in all iOS UIWebViews
-        [NSNumber numberWithBool:YES],   WebKitWebAudioEnabledPreferenceKey,
+        @YES, WebKitWebAudioEnabledPreferenceKey,
 
-        [NSNumber numberWithBool:YES],   WebKitShouldRespectImageOrientationKey,
+        @YES, WebKitShouldRespectImageOrientationKey,
 #endif // PLATFORM(IOS_FAMILY)
 #if ENABLE(WIRELESS_TARGET_PLAYBACK)
-        [NSNumber numberWithBool:YES],  WebKitAllowsAirPlayForMediaPlaybackPreferenceKey,
+        @YES, WebKitAllowsAirPlayForMediaPlaybackPreferenceKey,
 #endif
-        [NSNumber numberWithBool:YES],  WebKitAllowsPictureInPictureMediaPlaybackPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitRequestAnimationFrameEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO],   WebKitWantsBalancedSetDefersLoadingBehaviorKey,
-        [NSNumber numberWithBool:NO],   WebKitDiagnosticLoggingEnabledKey,
+        @YES, WebKitAllowsPictureInPictureMediaPlaybackPreferenceKey,
+        @YES, WebKitRequestAnimationFrameEnabledPreferenceKey,
+        @NO, WebKitWantsBalancedSetDefersLoadingBehaviorKey,
+        @NO, WebKitDiagnosticLoggingEnabledKey,
         [NSNumber numberWithInt:WebAllowAllStorage], WebKitStorageBlockingPolicyKey,
-        [NSNumber numberWithBool:NO],   WebKitPlugInSnapshottingEnabledPreferenceKey,
+        @NO, WebKitPlugInSnapshottingEnabledPreferenceKey,
 
 #if PLATFORM(IOS_FAMILY)
-        [NSNumber numberWithBool:NO],   WebKitTelephoneParsingEnabledPreferenceKey,
-        [NSNumber numberWithInt:-1],      WebKitLayoutIntervalPreferenceKey,
+        @YES, WebKitContentChangeObserverEnabledPreferenceKey,
+        @NO, WebKitTelephoneParsingEnabledPreferenceKey,
+        [NSNumber numberWithInt:-1], WebKitLayoutIntervalPreferenceKey,
         [NSNumber numberWithFloat:-1.0f], WebKitMaxParseDurationPreferenceKey,
-        [NSNumber numberWithBool:NO],     WebKitAllowMultiElementImplicitFormSubmissionPreferenceKey,
-        [NSNumber numberWithBool:NO],     WebKitAlwaysRequestGeolocationPermissionPreferenceKey,
+        @NO, WebKitAllowMultiElementImplicitFormSubmissionPreferenceKey,
+        @NO, WebKitAlwaysRequestGeolocationPermissionPreferenceKey,
         [NSNumber numberWithInt:InterpolationLow], WebKitInterpolationQualityPreferenceKey,
-        [NSNumber numberWithBool:YES],    WebKitPasswordEchoEnabledPreferenceKey,
-        [NSNumber numberWithFloat:2.0f],  WebKitPasswordEchoDurationPreferenceKey,
-        [NSNumber numberWithBool:NO],     WebKitNetworkDataUsageTrackingEnabledPreferenceKey,
-        @"",                              WebKitNetworkInterfaceNamePreferenceKey,
+        @YES, WebKitPasswordEchoEnabledPreferenceKey,
+        [NSNumber numberWithFloat:2.0f], WebKitPasswordEchoDurationPreferenceKey,
+        @NO, WebKitNetworkDataUsageTrackingEnabledPreferenceKey,
+        @"", WebKitNetworkInterfaceNamePreferenceKey,
 #endif
 #if ENABLE(TEXT_AUTOSIZING)
         [NSNumber numberWithFloat:Settings::defaultMinimumZoomFontSize()], WebKitMinimumZoomFontSizePreferenceKey,
@@ -599,78 +592,77 @@ public:
 #endif
         [NSNumber numberWithLongLong:ApplicationCacheStorage::noQuota()], WebKitApplicationCacheTotalQuota,
         [NSNumber numberWithLongLong:ApplicationCacheStorage::noQuota()], WebKitApplicationCacheDefaultOriginQuota,
-        [NSNumber numberWithBool:NO], WebKitHiddenPageDOMTimerThrottlingEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO], WebKitHiddenPageCSSAnimationSuspensionEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO], WebKitLowPowerVideoAudioBufferSizeEnabledPreferenceKey,
+        @NO, WebKitHiddenPageDOMTimerThrottlingEnabledPreferenceKey,
+        @NO, WebKitHiddenPageCSSAnimationSuspensionEnabledPreferenceKey,
+        @NO, WebKitLowPowerVideoAudioBufferSizeEnabledPreferenceKey,
         
-        [NSNumber numberWithBool:NO], WebKitUseLegacyTextAlignPositionedElementBehaviorPreferenceKey,
+        @NO, WebKitUseLegacyTextAlignPositionedElementBehaviorPreferenceKey,
 #if ENABLE(MEDIA_SOURCE)
-        [NSNumber numberWithBool:YES], WebKitMediaSourceEnabledPreferenceKey,
+        @YES, WebKitMediaSourceEnabledPreferenceKey,
         @YES, WebKitSourceBufferChangeTypeEnabledPreferenceKey,
 #endif
 #if ENABLE(SERVICE_CONTROLS)
-        [NSNumber numberWithBool:NO], WebKitImageControlsEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO], WebKitServiceControlsEnabledPreferenceKey,
+        @NO, WebKitImageControlsEnabledPreferenceKey,
+        @NO, WebKitServiceControlsEnabledPreferenceKey,
 #endif
-        [NSNumber numberWithBool:NO], WebKitEnableInheritURIQueryComponentPreferenceKey,
+        @NO, WebKitEnableInheritURIQueryComponentPreferenceKey,
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
         @"~/Library/WebKit/MediaKeys", WebKitMediaKeysStorageDirectoryKey,
 #endif
 #if ENABLE(MEDIA_STREAM)
-        [NSNumber numberWithBool:NO], WebKitMockCaptureDevicesEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES], WebKitMockCaptureDevicesPromptEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES], WebKitMediaCaptureRequiresSecureConnectionPreferenceKey,
+        @NO, WebKitMockCaptureDevicesEnabledPreferenceKey,
+        @YES, WebKitMockCaptureDevicesPromptEnabledPreferenceKey,
+        @YES, WebKitMediaCaptureRequiresSecureConnectionPreferenceKey,
 #endif
-        [NSNumber numberWithBool:YES], WebKitShadowDOMEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES], WebKitCustomElementsEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES], WebKitDataTransferItemsEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO], WebKitCustomPasteboardDataEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES], WebKitModernMediaControlsEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO], WebKitWebAnimationsCSSIntegrationEnabledPreferenceKey,
+        @YES, WebKitShadowDOMEnabledPreferenceKey,
+        @YES, WebKitCustomElementsEnabledPreferenceKey,
+        @YES, WebKitDataTransferItemsEnabledPreferenceKey,
+        @NO, WebKitCustomPasteboardDataEnabledPreferenceKey,
+        @NO, WebKitDialogElementEnabledPreferenceKey,
+        @YES, WebKitModernMediaControlsEnabledPreferenceKey,
+        @NO, WebKitWebAnimationsCSSIntegrationEnabledPreferenceKey,
 
 #if ENABLE(WEBGL2)
-        [NSNumber numberWithBool:NO], WebKitWebGL2EnabledPreferenceKey,
+        @NO, WebKitWebGL2EnabledPreferenceKey,
 #endif
 #if ENABLE(WEBGPU)
-        [NSNumber numberWithBool:NO], WebKitWebGPUEnabledPreferenceKey,
+        @NO, WebKitWebGPUEnabledPreferenceKey,
 #endif
-#if ENABLE(WEBMETAL)
-        [NSNumber numberWithBool:NO], WebKitWebMetalEnabledPreferenceKey,
-#endif
-        [NSNumber numberWithBool:NO], WebKitCacheAPIEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES], WebKitFetchAPIEnabledPreferenceKey,
+        @NO, WebKitCacheAPIEnabledPreferenceKey,
+        @YES, WebKitFetchAPIEnabledPreferenceKey,
 
 #if ENABLE(STREAMS_API)
-        [NSNumber numberWithBool:NO], WebKitReadableByteStreamAPIEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO], WebKitWritableStreamAPIEnabledPreferenceKey,
+        @NO, WebKitReadableByteStreamAPIEnabledPreferenceKey,
+        @NO, WebKitWritableStreamAPIEnabledPreferenceKey,
 #endif
 #if ENABLE(DOWNLOAD_ATTRIBUTE)
-        [NSNumber numberWithBool:NO], WebKitDownloadAttributeEnabledPreferenceKey,
+        @NO, WebKitDownloadAttributeEnabledPreferenceKey,
 #endif
-        [NSNumber numberWithBool:NO], WebKitDirectoryUploadEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES], WebKitWebAnimationsEnabledPreferenceKey,
+        @NO, WebKitDirectoryUploadEnabledPreferenceKey,
+        @YES, WebKitWebAnimationsEnabledPreferenceKey,
+        @YES, WebKitPointerEventsEnabledPreferenceKey,
+        @YES, WebKitSyntheticEditingCommandsEnabledPreferenceKey,
 
 #if PLATFORM(IOS_FAMILY)
-        [NSNumber numberWithBool:NO], WebKitVisualViewportEnabledPreferenceKey,
+        @NO, WebKitVisualViewportAPIEnabledPreferenceKey,
 #else
-        [NSNumber numberWithBool:YES], WebKitVisualViewportEnabledPreferenceKey,
+        @YES, WebKitVisualViewportAPIEnabledPreferenceKey,
 #endif
-        [NSNumber numberWithBool:YES], WebKitVisualViewportAPIEnabledPreferenceKey,
 
-        [NSNumber numberWithBool:NO], WebKitCSSOMViewScrollingAPIEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES], WebKitNeedsStorageAccessFromFileURLsQuirkKey,
-        [NSNumber numberWithBool:NO], WebKitAllowCrossOriginSubresourcesToAskForCredentialsKey,
+        @YES, WebKitCSSOMViewScrollingAPIEnabledPreferenceKey,
+        @YES, WebKitNeedsStorageAccessFromFileURLsQuirkKey,
+        @NO, WebKitAllowCrossOriginSubresourcesToAskForCredentialsKey,
 #if ENABLE(MEDIA_STREAM)
-        [NSNumber numberWithBool:NO], WebKitMediaDevicesEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES], WebKitMediaStreamEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES], WebKitMediaRecorderEnabledPreferenceKey,
+        @NO, WebKitMediaDevicesEnabledPreferenceKey,
+        @YES, WebKitMediaStreamEnabledPreferenceKey,
+        @NO, WebKitMediaRecorderEnabledPreferenceKey,
 #endif
 #if ENABLE(WEB_RTC)
-        [NSNumber numberWithBool:YES], WebKitPeerConnectionEnabledPreferenceKey,
+        @YES, WebKitPeerConnectionEnabledPreferenceKey,
 #endif
-        [NSNumber numberWithBool:YES], WebKitSelectionAcrossShadowBoundariesEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO], WebKitCSSLogicalEnabledPreferenceKey,
-        [NSNumber numberWithBool:NO], WebKitAdClickAttributionEnabledPreferenceKey,
+        @YES, WebKitSelectionAcrossShadowBoundariesEnabledPreferenceKey,
+        @NO, WebKitCSSLogicalEnabledPreferenceKey,
+        @NO, WebKitAdClickAttributionEnabledPreferenceKey,
 #if ENABLE(INTERSECTION_OBSERVER)
         @NO, WebKitIntersectionObserverEnabledPreferenceKey,
 #endif
@@ -693,6 +685,13 @@ public:
         @NO, WebKitMediaCapabilitiesEnabledPreferenceKey,
         @NO, WebKitFetchAPIKeepAliveEnabledPreferenceKey,
         @NO, WebKitServerTimingEnabledPreferenceKey,
+        @NO, WebKitReferrerPolicyAttributeEnabledPreferenceKey,
+#if ENABLE(RESIZE_OBSERVER)
+        @NO, WebKitResizeObserverEnabledPreferenceKey,
+#endif
+        @NO, WebKitLazyImageLoadingEnabledPreferenceKey,
+        @NO, WebKitCoreMathMLEnabledPreferenceKey,
+        @NO, WebKitLinkPreloadResponsiveImagesEnabledPreferenceKey,
         nil];
 
 #if !PLATFORM(IOS_FAMILY)
@@ -1576,6 +1575,16 @@ public:
     return (NSTimeInterval)[self _floatValueForKey:WebKitBackForwardCacheExpirationIntervalKey];
 }
 
+- (BOOL)_mediaRecorderEnabled
+{
+    return [self _boolValueForKey:WebKitMediaRecorderEnabledPreferenceKey];
+}
+
+- (void)_setMediaRecorderEnabled:(BOOL)flag
+{
+    [self _setBoolValue:flag forKey:WebKitMediaRecorderEnabledPreferenceKey];
+}
+
 #if PLATFORM(IOS_FAMILY)
 - (BOOL)_standalone
 {
@@ -1595,6 +1604,16 @@ public:
 - (BOOL)_telephoneNumberParsingEnabled
 {
     return [self _boolValueForKey:WebKitTelephoneParsingEnabledPreferenceKey];
+}
+
+- (BOOL)contentChangeObserverEnabled
+{
+    return [self _boolValueForKey:WebKitContentChangeObserverEnabledPreferenceKey];
+}
+
+- (void)setContentChangeObserverEnabled:(BOOL)enabled
+{
+    [self _setBoolValue:enabled forKey:WebKitContentChangeObserverEnabledPreferenceKey];
 }
 #endif
 
@@ -2134,16 +2153,6 @@ static NSString *classIBCreatorID = nil;
     [self _setBoolValue:enabled forKey:WebKitWebGL2EnabledPreferenceKey];
 }
 
-- (BOOL)forceSoftwareWebGLRendering
-{
-    return [self _boolValueForKey:WebKitForceSoftwareWebGLRenderingPreferenceKey];
-}
-
-- (void)setForceSoftwareWebGLRendering:(BOOL)forced
-{
-    [self _setBoolValue:forced forKey:WebKitForceSoftwareWebGLRenderingPreferenceKey];
-}
-
 - (BOOL)forceLowPowerGPUForWebGL
 {
     return [self _boolValueForKey:WebKitForceWebGLUsesLowPowerPreferenceKey];
@@ -2162,16 +2171,6 @@ static NSString *classIBCreatorID = nil;
 - (void)setWebGPUEnabled:(BOOL)enabled
 {
     [self _setBoolValue:enabled forKey:WebKitWebGPUEnabledPreferenceKey];
-}
-
-- (BOOL)webMetalEnabled
-{
-    return [self _boolValueForKey:WebKitWebMetalEnabledPreferenceKey];
-}
-
-- (void)setWebMetalEnabled:(BOOL)enabled
-{
-    [self _setBoolValue:enabled forKey:WebKitWebMetalEnabledPreferenceKey];
 }
 
 - (BOOL)accelerated2dCanvasEnabled
@@ -2382,27 +2381,26 @@ static NSString *classIBCreatorID = nil;
 
 - (void)setAudioSessionCategoryOverride:(unsigned)override
 {
-#if HAVE(AUDIO_TOOLBOX_AUDIO_SESSION)
     if (override > AudioSession::AudioProcessing) {
         // Clients are passing us OSTypes values from AudioToolbox/AudioSession.h,
         // which need to be translated into AudioSession::CategoryType:
         switch (override) {
-        case kAudioSessionCategory_AmbientSound:
+        case WebKitAudioSessionCategoryAmbientSound:
             override = AudioSession::AmbientSound;
             break;
-        case kAudioSessionCategory_SoloAmbientSound:
+        case WebKitAudioSessionCategorySoloAmbientSound:
             override = AudioSession::SoloAmbientSound;
             break;
-        case kAudioSessionCategory_MediaPlayback:
+        case WebKitAudioSessionCategoryMediaPlayback:
             override = AudioSession::MediaPlayback;
             break;
-        case kAudioSessionCategory_RecordAudio:
+        case WebKitAudioSessionCategoryRecordAudio:
             override = AudioSession::RecordAudio;
             break;
-        case kAudioSessionCategory_PlayAndRecord:
+        case WebKitAudioSessionCategoryPlayAndRecord:
             override = AudioSession::PlayAndRecord;
             break;
-        case kAudioSessionCategory_AudioProcessing:
+        case WebKitAudioSessionCategoryAudioProcessing:
             override = AudioSession::AudioProcessing;
             break;
         default:
@@ -2410,7 +2408,6 @@ static NSString *classIBCreatorID = nil;
             break;
         }
     }
-#endif
 
     [self _setUnsignedIntValue:override forKey:WebKitAudioSessionCategoryOverride];
 }
@@ -3059,6 +3056,26 @@ static NSString *classIBCreatorID = nil;
     [self _setBoolValue:flag forKey:WebKitCustomPasteboardDataEnabledPreferenceKey];
 }
 
+- (BOOL)dialogElementEnabled
+{
+    return [self _boolValueForKey:WebKitDialogElementEnabledPreferenceKey];
+}
+
+- (void)setDialogElementEnabled:(BOOL)flag
+{
+    [self _setBoolValue:flag forKey:WebKitDialogElementEnabledPreferenceKey];
+}
+
+- (BOOL)keygenElementEnabled
+{
+    return [self _boolValueForKey:WebKitKeygenElementEnabledPreferenceKey];
+}
+
+- (void)setKeygenElementEnabled:(BOOL)flag
+{
+    [self _setBoolValue:flag forKey:WebKitKeygenElementEnabledPreferenceKey];
+}
+
 - (BOOL)cacheAPIEnabled
 {
     return [self _boolValueForKey:WebKitCacheAPIEnabledPreferenceKey];
@@ -3119,16 +3136,6 @@ static NSString *classIBCreatorID = nil;
     return [self _boolValueForKey:WebKitDirectoryUploadEnabledPreferenceKey];
 }
 
-- (BOOL)visualViewportEnabled
-{
-    return [self _boolValueForKey:WebKitVisualViewportEnabledPreferenceKey];
-}
-
-- (void)setVisualViewportEnabled:(BOOL)flag
-{
-    [self _setBoolValue:flag forKey:WebKitVisualViewportEnabledPreferenceKey];
-}
-
 - (BOOL)visualViewportAPIEnabled
 {
     return [self _boolValueForKey:WebKitVisualViewportAPIEnabledPreferenceKey];
@@ -3157,6 +3164,26 @@ static NSString *classIBCreatorID = nil;
 - (void)setWebAnimationsEnabled:(BOOL)flag
 {
     [self _setBoolValue:flag forKey:WebKitWebAnimationsEnabledPreferenceKey];
+}
+
+- (BOOL)pointerEventsEnabled
+{
+    return [self _boolValueForKey:WebKitPointerEventsEnabledPreferenceKey];
+}
+
+- (void)setPointerEventsEnabled:(BOOL)flag
+{
+    [self _setBoolValue:flag forKey:WebKitPointerEventsEnabledPreferenceKey];
+}
+
+- (BOOL)syntheticEditingCommandsEnabled
+{
+    return [self _boolValueForKey:WebKitPointerEventsEnabledPreferenceKey];
+}
+
+- (void)setSyntheticEditingCommandsEnabled:(BOOL)flag
+{
+    [self _setBoolValue:flag forKey:WebKitPointerEventsEnabledPreferenceKey];
 }
 
 - (BOOL)fetchAPIKeepAliveEnabled
@@ -3439,6 +3466,56 @@ static NSString *classIBCreatorID = nil;
 - (void)setAdClickAttributionEnabled:(BOOL)flag
 {
     [self _setBoolValue:flag forKey:WebKitAdClickAttributionEnabledPreferenceKey];
+}
+
+- (BOOL)referrerPolicyAttributeEnabled
+{
+    return [self _boolValueForKey:WebKitReferrerPolicyAttributeEnabledPreferenceKey];
+}
+
+- (void)setReferrerPolicyAttributeEnabled:(BOOL)flag
+{
+    [self _setBoolValue:flag forKey:WebKitReferrerPolicyAttributeEnabledPreferenceKey];
+}
+
+- (BOOL)resizeObserverEnabled
+{
+    return [self _boolValueForKey:WebKitResizeObserverEnabledPreferenceKey];
+}
+
+- (void)setResizeObserverEnabled:(BOOL)flag
+{
+    [self _setBoolValue:flag forKey:WebKitResizeObserverEnabledPreferenceKey];
+}
+
+- (BOOL)coreMathMLEnabled
+{
+    return [self _boolValueForKey:WebKitCoreMathMLEnabledPreferenceKey];
+}
+
+- (void)setCoreMathMLEnabled:(BOOL)flag
+{
+    [self _setBoolValue:flag forKey:WebKitCoreMathMLEnabledPreferenceKey];
+}
+
+- (BOOL)linkPreloadResponsiveImagesEnabled
+{
+    return [self _boolValueForKey:WebKitLinkPreloadResponsiveImagesEnabledPreferenceKey];
+}
+
+- (void)setLinkPreloadResponsiveImagesEnabled:(BOOL)flag
+{
+    [self _setBoolValue:flag forKey:WebKitLinkPreloadResponsiveImagesEnabledPreferenceKey];
+}
+
+- (BOOL)lazyImageLoadingEnabled
+{
+    return [self _boolValueForKey:WebKitLazyImageLoadingEnabledPreferenceKey];
+}
+
+- (void)setLazyImageLoadingEnabled:(BOOL)flag
+{
+    [self _setBoolValue:flag forKey:WebKitLazyImageLoadingEnabledPreferenceKey];
 }
 
 @end

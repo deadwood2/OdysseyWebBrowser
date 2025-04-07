@@ -28,6 +28,11 @@
 
 #if PLATFORM(IOS_FAMILY) && ENABLE(ASYNC_SCROLLING)
 
+#import "RemoteLayerTreeViews.h"
+#import "RemoteScrollingCoordinatorProxy.h"
+#import "RemoteScrollingTree.h"
+#import "UIKitSPI.h"
+#import "WebPageProxy.h"
 #import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIPanGestureRecognizer.h>
 #import <UIKit/UIScrollView.h>
@@ -57,6 +62,12 @@
     return self;
 }
 
+- (UIScrollView *)_actingParentScrollViewForScrollView:(UIScrollView *)scrollView
+{
+    // An "acting parent" is a non-ancestor scrolling parent. We tell this to UIKit so it can propagate scrolls correctly.
+    return _scrollingTreeNodeDelegate->findActingScrollParent(scrollView);
+}
+
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
     _scrollingTreeNodeDelegate->scrollViewDidScroll(scrollView.contentOffset, _inUserInteraction);
@@ -75,19 +86,19 @@
 {
 #if ENABLE(POINTER_EVENTS)
     if (![scrollView isZooming]) {
-        if (auto touchActionData = _scrollingTreeNodeDelegate->touchActionData()) {
-            auto touchActions = touchActionData->touchActions;
-            if (touchActions != WebCore::TouchAction::Auto && touchActions != WebCore::TouchAction::Manipulation) {
-                bool canPanX = true;
-                bool canPanY = true;
-                if (!touchActions.contains(WebCore::TouchAction::PanX)) {
-                    canPanX = false;
-                    targetContentOffset->x = scrollView.contentOffset.x;
-                }
-                if (!touchActions.contains(WebCore::TouchAction::PanY)) {
-                    canPanY = false;
-                    targetContentOffset->y = scrollView.contentOffset.y;
-                }
+        auto touchActions = _scrollingTreeNodeDelegate->activeTouchActions();
+        _scrollingTreeNodeDelegate->clearActiveTouchActions();
+        
+        if (touchActions && !touchActions.containsAny({ WebCore::TouchAction::Auto, WebCore::TouchAction::Manipulation })) {
+            bool canPanX = true;
+            bool canPanY = true;
+            if (!touchActions.contains(WebCore::TouchAction::PanX)) {
+                canPanX = false;
+                targetContentOffset->x = scrollView.contentOffset.x;
+            }
+            if (!touchActions.contains(WebCore::TouchAction::PanY)) {
+                canPanY = false;
+                targetContentOffset->y = scrollView.contentOffset.y;
             }
         }
     }
@@ -144,14 +155,16 @@
 #if ENABLE(POINTER_EVENTS)
 - (CGPoint)_scrollView:(UIScrollView *)scrollView adjustedOffsetForOffset:(CGPoint)offset translation:(CGPoint)translation startPoint:(CGPoint)start locationInView:(CGPoint)locationInView horizontalVelocity:(inout double *)hv verticalVelocity:(inout double *)vv
 {
-    auto touchActionData = _scrollingTreeNodeDelegate->touchActionData();
-    if (!touchActionData) {
-        [self cancelPointersForGestureRecognizer:scrollView.panGestureRecognizer];
+    auto* panGestureRecognizer = scrollView.panGestureRecognizer;
+    _scrollingTreeNodeDelegate->computeActiveTouchActionsForGestureRecognizer(panGestureRecognizer);
+    auto touchActions = _scrollingTreeNodeDelegate->activeTouchActions();
+
+    if (!touchActions) {
+        [self cancelPointersForGestureRecognizer:panGestureRecognizer];
         return offset;
     }
 
-    auto touchActions = touchActionData->touchActions;
-    if (touchActions == WebCore::TouchAction::Auto || touchActions == WebCore::TouchAction::Manipulation)
+    if (touchActions.containsAny({ WebCore::TouchAction::Auto, WebCore::TouchAction::Manipulation }))
         return offset;
 
     CGPoint adjustedContentOffset = CGPointMake(offset.x, offset.y);
@@ -187,7 +200,6 @@ using namespace WebCore;
 
 ScrollingTreeScrollingNodeDelegateIOS::ScrollingTreeScrollingNodeDelegateIOS(ScrollingTreeScrollingNode& scrollingNode)
     : ScrollingTreeScrollingNodeDelegate(scrollingNode)
-    , m_updatingFromStateNode(false)
 {
 }
 
@@ -222,23 +234,25 @@ void ScrollingTreeScrollingNodeDelegateIOS::commitStateBeforeChildren(const Scro
 void ScrollingTreeScrollingNodeDelegateIOS::commitStateAfterChildren(const ScrollingStateScrollingNode& scrollingStateNode)
 {
     SetForScope<bool> updatingChange(m_updatingFromStateNode, true);
+
     if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollContainerLayer)
-        || scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrolledContentsLayer)
         || scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::TotalContentsSize)
         || scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ReachableContentsSize)
         || scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollPosition)
         || scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollOrigin)) {
         BEGIN_BLOCK_OBJC_EXCEPTIONS
-        UIScrollView *scrollView = (UIScrollView *)[scrollLayer() delegate];
-        ASSERT([scrollView isKindOfClass:[UIScrollView self]]);
-
-        if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollContainerLayer)
-            || scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrolledContentsLayer)) {
+        UIScrollView *scrollView = this->scrollView();
+        if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollContainerLayer)) {
             if (!m_scrollViewDelegate)
                 m_scrollViewDelegate = adoptNS([[WKScrollingNodeScrollViewDelegate alloc] initWithScrollingTreeNodeDelegate:this]);
 
             scrollView.scrollsToTop = NO;
             scrollView.delegate = m_scrollViewDelegate.get();
+
+            if ([scrollView respondsToSelector:@selector(_setAvoidsJumpOnInterruptedBounce:)]) {
+                scrollView.tracksImmediatelyWhileDecelerating = NO;
+                scrollView._avoidsJumpOnInterruptedBounce = YES;
+            }
         }
 
         bool recomputeInsets = scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::TotalContentsSize);
@@ -247,12 +261,8 @@ void ScrollingTreeScrollingNodeDelegateIOS::commitStateAfterChildren(const Scrol
             recomputeInsets = true;
         }
 
-        if ((scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollPosition)
-            || scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollOrigin))
-            && ![m_scrollViewDelegate _isInUserInteraction]) {
-            scrollView.contentOffset = scrollingStateNode.scrollPosition() + scrollOrigin();
+        if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollOrigin))
             recomputeInsets = true;
-        }
 
         if (recomputeInsets) {
             UIEdgeInsets insets = UIEdgeInsetsMake(0, 0, 0, 0);
@@ -265,57 +275,40 @@ void ScrollingTreeScrollingNodeDelegateIOS::commitStateAfterChildren(const Scrol
 
             scrollView.contentInset = insets;
         }
+        END_BLOCK_OBJC_EXCEPTIONS
+    }
 
 #if ENABLE(CSS_SCROLL_SNAP)
-        // FIXME: If only one axis snaps in 2D scrolling, the other axis will decelerate fast as well. Is this what we want?
-        if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::HorizontalSnapOffsets) || scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::VerticalSnapOffsets))
-            scrollView.decelerationRate = scrollingNode().horizontalSnapOffsets().size() || scrollingNode().verticalSnapOffsets().size() ? UIScrollViewDecelerationRateFast : UIScrollViewDecelerationRateNormal;
-#endif
+    // FIXME: If only one axis snaps in 2D scrolling, the other axis will decelerate fast as well. Is this what we want?
+    if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::HorizontalSnapOffsets) || scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::VerticalSnapOffsets)) {
+        BEGIN_BLOCK_OBJC_EXCEPTIONS
+        scrollView().decelerationRate = scrollingNode().horizontalSnapOffsets().size() || scrollingNode().verticalSnapOffsets().size() ? UIScrollViewDecelerationRateFast : UIScrollViewDecelerationRateNormal;
         END_BLOCK_OBJC_EXCEPTIONS
+    }
+#endif
+
+    if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::ScrollableAreaParams)) {
+        BEGIN_BLOCK_OBJC_EXCEPTIONS
+        UIScrollView *scrollView = this->scrollView();
+
+        [scrollView setShowsHorizontalScrollIndicator:!scrollingNode().horizontalScrollbarHiddenByStyle()];
+        [scrollView setShowsVerticalScrollIndicator:!scrollingNode().verticalScrollbarHiddenByStyle()];
+        [scrollView setScrollEnabled:scrollingNode().canHaveScrollbars()];
+
+        END_BLOCK_OBJC_EXCEPTIONS
+    }
+
+    if (scrollingStateNode.hasChangedProperty(ScrollingStateScrollingNode::RequestedScrollPosition)) {
+        auto scrollType = scrollingStateNode.requestedScrollPositionRepresentsProgrammaticScroll() ? ScrollType::Programmatic : ScrollType::User;
+        scrollingNode().scrollTo(scrollingStateNode.requestedScrollPosition(), scrollType);
     }
 }
 
-void ScrollingTreeScrollingNodeDelegateIOS::updateLayersAfterAncestorChange(const ScrollingTreeNode& changedNode, const FloatRect& fixedPositionRect, const FloatSize& cumulativeDelta)
-{
-    if (!scrollingNode().children())
-        return;
-
-    FloatSize scrollDelta = lastCommittedScrollPosition() - scrollingNode().scrollPosition();
-
-    for (auto& child : *scrollingNode().children())
-        child->updateLayersAfterAncestorChange(changedNode, fixedPositionRect, cumulativeDelta + scrollDelta);
-}
-
-FloatPoint ScrollingTreeScrollingNodeDelegateIOS::scrollPosition() const
+void ScrollingTreeScrollingNodeDelegateIOS::repositionScrollingLayers()
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
-    UIScrollView *scrollView = (UIScrollView *)[scrollLayer() delegate];
-    ASSERT([scrollView isKindOfClass:[UIScrollView self]]);
-    return [scrollView contentOffset];
+    [scrollView() setContentOffset:scrollingNode().currentScrollOffset()];
     END_BLOCK_OBJC_EXCEPTIONS
-}
-
-void ScrollingTreeScrollingNodeDelegateIOS::setScrollLayerPosition(const FloatPoint& scrollPosition)
-{
-    [m_scrollLayer setPosition:CGPointMake(scrollPosition.x() + scrollOrigin().x(), scrollPosition.y() + scrollOrigin().y())];
-    updateChildNodesAfterScroll(scrollPosition);
-}
-
-void ScrollingTreeScrollingNodeDelegateIOS::updateChildNodesAfterScroll(const FloatPoint& scrollPosition)
-{
-    if (!scrollingNode().children())
-        return;
-
-    FloatRect fixedPositionRect;
-    auto* frameNode = scrollingNode().enclosingFrameNodeIncludingSelf();
-    if (frameNode && frameNode->nodeType() == ScrollingNodeType::Subframe)
-        fixedPositionRect = frameNode->fixedPositionRect();
-    else
-        fixedPositionRect = scrollingTree().fixedPositionRect();
-    FloatSize scrollDelta = lastCommittedScrollPosition() - scrollPosition;
-
-    for (auto& child : *scrollingNode().children())
-        child->updateLayersAfterAncestorChange(scrollingNode(), fixedPositionRect, scrollDelta);
 }
 
 void ScrollingTreeScrollingNodeDelegateIOS::scrollWillStart() const
@@ -333,12 +326,13 @@ void ScrollingTreeScrollingNodeDelegateIOS::scrollViewWillStartPanGesture() cons
     scrollingTree().scrollingTreeNodeWillStartPanGesture();
 }
 
-void ScrollingTreeScrollingNodeDelegateIOS::scrollViewDidScroll(const FloatPoint& scrollPosition, bool inUserInteraction) const
+void ScrollingTreeScrollingNodeDelegateIOS::scrollViewDidScroll(const FloatPoint& scrollOffset, bool inUserInteraction)
 {
     if (m_updatingFromStateNode)
         return;
 
-    scrollingTree().scrollPositionChangedViaDelegatedScrolling(scrollingNode().scrollingNodeID(), scrollPosition, inUserInteraction);
+    auto scrollPosition = ScrollableArea::scrollPositionFromOffset(scrollOffset, toFloatSize(scrollOrigin()));
+    scrollingNode().wasScrolledByDelegatedScrolling(scrollPosition, { }, inUserInteraction ? ScrollingLayerPositionAction::Sync : ScrollingLayerPositionAction::Set);
 }
 
 void ScrollingTreeScrollingNodeDelegateIOS::currentSnapPointIndicesDidChange(unsigned horizontal, unsigned vertical) const
@@ -349,10 +343,27 @@ void ScrollingTreeScrollingNodeDelegateIOS::currentSnapPointIndicesDidChange(uns
     scrollingTree().currentSnapPointIndicesDidChange(scrollingNode().scrollingNodeID(), horizontal, vertical);
 }
 
-#if ENABLE(POINTER_EVENTS)
-Optional<TouchActionData> ScrollingTreeScrollingNodeDelegateIOS::touchActionData() const
+UIScrollView *ScrollingTreeScrollingNodeDelegateIOS::scrollView() const
 {
-    return downcast<RemoteScrollingTree>(scrollingTree()).scrollingCoordinatorProxy().touchActionDataForScrollNodeID(scrollingNode().scrollingNodeID());
+    UIScrollView *scrollView = (UIScrollView *)[scrollLayer() delegate];
+    ASSERT([scrollView isKindOfClass:[UIScrollView self]]);
+    return scrollView;
+}
+
+UIScrollView *ScrollingTreeScrollingNodeDelegateIOS::findActingScrollParent(UIScrollView *scrollView)
+{
+    ASSERT(scrollView == this->scrollView());
+
+    auto& scrollingCoordinatorProxy = downcast<RemoteScrollingTree>(scrollingTree()).scrollingCoordinatorProxy();
+    return WebKit::findActingScrollParent(scrollView, *scrollingCoordinatorProxy.layerTreeHost());
+}
+
+#if ENABLE(POINTER_EVENTS)
+void ScrollingTreeScrollingNodeDelegateIOS::computeActiveTouchActionsForGestureRecognizer(UIGestureRecognizer* gestureRecognizer)
+{
+    auto& scrollingCoordinatorProxy = downcast<RemoteScrollingTree>(scrollingTree()).scrollingCoordinatorProxy();
+    if (auto touchIdentifier = scrollingCoordinatorProxy.webPageProxy().pageClient().activeTouchIdentifierForGestureRecognizer(gestureRecognizer))
+        m_activeTouchActions = scrollingCoordinatorProxy.activeTouchActionsForTouchIdentifier(*touchIdentifier);
 }
 
 void ScrollingTreeScrollingNodeDelegateIOS::cancelPointersForGestureRecognizer(UIGestureRecognizer* gestureRecognizer)

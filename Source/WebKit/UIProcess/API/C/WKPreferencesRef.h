@@ -55,9 +55,9 @@ enum _WKUserInterfaceDirectionPolicy {
 };
 typedef enum _WKUserInterfaceDirectionPolicy _WKUserInterfaceDirectionPolicy;
 
-WK_EXPORT WKTypeID WKPreferencesGetTypeID();
+WK_EXPORT WKTypeID WKPreferencesGetTypeID(void);
 
-WK_EXPORT WKPreferencesRef WKPreferencesCreate();
+WK_EXPORT WKPreferencesRef WKPreferencesCreate(void);
 WK_EXPORT WKPreferencesRef WKPreferencesCreateWithIdentifier(WKStringRef identifier);
 
 // Defaults to true.
@@ -107,10 +107,6 @@ WK_EXPORT bool WKPreferencesGetJavaEnabled(WKPreferencesRef preferences);
 // Defaults to true.
 WK_EXPORT void WKPreferencesSetJavaScriptCanOpenWindowsAutomatically(WKPreferencesRef preferences, bool javaScriptCanOpenWindowsAutomatically);
 WK_EXPORT bool WKPreferencesGetJavaScriptCanOpenWindowsAutomatically(WKPreferencesRef preferences);
-
-// Defaults to false.
-WK_EXPORT void WKPreferencesSetStorageAccessPromptsEnabled(WKPreferencesRef preferencesRef, bool enabled);
-WK_EXPORT bool WKPreferencesGetStorageAccessPromptsEnabled(WKPreferencesRef preferencesRef);
 
 // Defaults to true.
 WK_EXPORT void WKPreferencesSetHyperlinkAuditingEnabled(WKPreferencesRef preferences, bool hyperlinkAuditingEnabled);
@@ -247,6 +243,10 @@ WK_EXPORT bool WKPreferencesGetEncodingDetectorEnabled(WKPreferencesRef preferen
 // Defaults to false.
 WK_EXPORT void WKPreferencesSetTextAutosizingEnabled(WKPreferencesRef preferences, bool textAutosizingEnabled);
 WK_EXPORT bool WKPreferencesGetTextAutosizingEnabled(WKPreferencesRef preferences);
+
+// Defaults to false.
+WK_EXPORT void WKPreferencesSetTextAutosizingUsesIdempotentMode(WKPreferencesRef preferences, bool textAutosizingUsesIdempotentModeEnabled);
+WK_EXPORT bool WKPreferencesGetTextAutosizingUsesIdempotentMode(WKPreferencesRef preferences);
 
 // Defaults to true.
 WK_EXPORT void WKPreferencesSetQTKitEnabled(WKPreferencesRef preferencesRef, bool enabled);

@@ -8,6 +8,7 @@ list(APPEND WTF_PUBLIC_HEADERS
 )
 
 list(APPEND WTF_SOURCES
+    text/win/StringWin.cpp
     text/win/TextBreakIteratorInternalICUWin.cpp
 
     win/CPUTimeWin.cpp
@@ -43,7 +44,7 @@ if (USE_CF)
         cf/FileSystemCF.cpp
         cf/URLCF.cpp
 
-        text/cf/AtomicStringImplCF.cpp
+        text/cf/AtomStringImplCF.cpp
         text/cf/StringCF.cpp
         text/cf/StringImplCF.cpp
         text/cf/StringViewCF.cpp

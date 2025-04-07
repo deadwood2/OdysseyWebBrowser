@@ -28,28 +28,23 @@
 }
 
 .sidebar > .panel.navigation.search > .search-bar {
+    display: flex;
+    align-items: center;
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
-
-    display: flex;
-
     height: calc(var(--navigation-bar-height) - 1px);
-
     white-space: nowrap;
     overflow: hidden;
 }
 
 .sidebar > .panel.navigation.search > .search-bar > input[type="search"] {
-    display: flex;
-    flex: 1;
-
-    margin: 3px 6px;
+    width: 100%;
 }
 
-.sidebar > .panel.navigation.search > .search-bar > input[type="search"]::-webkit-search-results-button {
-    margin-right: 4px;
+.sidebar > .panel.navigation.search > .search-bar > .search-settings {
+    -webkit-margin-end: 6px;
 }
 
 body[dir=rtl] .sidebar > .panel.navigation.search .item.source-code-match {

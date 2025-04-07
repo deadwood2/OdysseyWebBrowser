@@ -41,7 +41,7 @@
 #import "WorkQueueItem.h"
 #import <Foundation/Foundation.h>
 #import <JavaScriptCore/JSStringRefCF.h>
-#import <WebCore/GeolocationPosition.h>
+#import <WebCore/GeolocationPositionData.h>
 #import <WebKit/DOMDocument.h>
 #import <WebKit/DOMElement.h>
 #import <WebKit/DOMHTMLInputElementPrivate.h>
@@ -77,10 +77,6 @@
 #import <wtf/RetainPtr.h>
 #import <wtf/WallTime.h>
 
-#if !PLATFORM(IOS_FAMILY)
-#import <wtf/SoftLinking.h>
-#endif
-
 #if PLATFORM(IOS_FAMILY)
 #import "UIKitSPI.h"
 #import <WebKit/WebCoreThread.h>
@@ -89,7 +85,6 @@
 #endif
 
 #if !PLATFORM(IOS_FAMILY)
-SOFT_LINK_STAGED_FRAMEWORK(WebInspectorUI, PrivateFrameworks, A)
 
 @interface CommandValidationTarget : NSObject <NSValidatedUserInterfaceItem>
 {
@@ -124,7 +119,7 @@ SOFT_LINK_STAGED_FRAMEWORK(WebInspectorUI, PrivateFrameworks, A)
 #endif
 
 @interface WebGeolocationPosition (Internal)
-- (id)initWithGeolocationPosition:(WebCore::GeolocationPosition&&)coreGeolocationPosition;
+- (id)initWithGeolocationPosition:(WebCore::GeolocationPositionData&&)coreGeolocationPosition;
 @end
 
 TestRunner::~TestRunner()
@@ -298,16 +293,22 @@ size_t TestRunner::webHistoryItemCount()
 
 void TestRunner::notifyDone()
 {
-    if (m_waitToDump && !topLoadingFrame && !DRT::WorkQueue::singleton().count())
-        dump();
-    m_waitToDump = false;
+    if (m_waitToDump) {
+        m_waitToDump = false;
+        if (!topLoadingFrame && !DRT::WorkQueue::singleton().count())
+            dump();
+    } else
+        fprintf(stderr, "TestRunner::notifyDone() called unexpectedly.");
 }
 
 void TestRunner::forceImmediateCompletion()
 {
-    if (m_waitToDump && !DRT::WorkQueue::singleton().count())
-        dump();
-    m_waitToDump = false;
+    if (m_waitToDump) {
+        m_waitToDump = false;
+        if (!DRT::WorkQueue::singleton().count())
+            dump();
+    } else
+        fprintf(stderr, "TestRunner::forceImmediateCompletion() called unexpectedly.");
 }
 
 static inline std::string stringFromJSString(JSStringRef jsString)
@@ -438,11 +439,6 @@ void TestRunner::setDatabaseQuota(unsigned long long quota)
     [origin release];
 }
 
-void TestRunner::setIDBPerOriginQuota(uint64_t quota)
-{
-    [[WebDatabaseManager sharedWebDatabaseManager] setIDBPerOriginQuota:quota];
-}
-
 void TestRunner::goBack()
 {
     [[mainFrame webView] goBack];
@@ -476,7 +472,7 @@ void TestRunner::setMockGeolocationPosition(double latitude, double longitude, d
         // Test the exposed API.
         position = [[WebGeolocationPosition alloc] initWithTimestamp:WallTime::now().secondsSinceEpoch().seconds() latitude:latitude longitude:longitude accuracy:accuracy];
     } else {
-        WebCore::GeolocationPosition geolocationPosition { WallTime::now().secondsSinceEpoch().seconds(), latitude, longitude, accuracy };
+        WebCore::GeolocationPositionData geolocationPosition { WallTime::now().secondsSinceEpoch().seconds(), latitude, longitude, accuracy };
         if (providesAltitude)
             geolocationPosition.altitude = altitude;
         if (providesAltitudeAccuracy)
@@ -589,13 +585,6 @@ void TestRunner::setPagePaused(bool paused)
     [gWebBrowserView setPaused:paused];
 }
 #endif
-
-void TestRunner::setUseDashboardCompatibilityMode(bool flag)
-{
-#if !PLATFORM(IOS_FAMILY)
-    [[mainFrame webView] _setDashboardBehavior:WebDashboardBehaviorUseBackwardCompatibilityMode to:flag];
-#endif
-}
 
 void TestRunner::setUserStyleSheetEnabled(bool flag)
 {
@@ -834,9 +823,6 @@ JSRetainPtr<JSStringRef> TestRunner::inspectorTestStubURL()
 #if PLATFORM(IOS_FAMILY)
     return nullptr;
 #else
-    // Call the soft link framework function to dlopen it, then CFBundleGetBundleWithIdentifier will work.
-    WebInspectorUILibrary();
-
     CFBundleRef inspectorBundle = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.WebInspectorUI"));
     if (!inspectorBundle)
         return nullptr;

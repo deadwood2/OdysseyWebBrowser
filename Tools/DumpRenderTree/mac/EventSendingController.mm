@@ -32,6 +32,7 @@
 #import "config.h"
 #import "EventSendingController.h"
 
+#import "ClassMethodSwizzler.h"
 #import "DumpRenderTree.h"
 #import "DumpRenderTreeDraggingInfo.h"
 #import "DumpRenderTreeFileDraggingSource.h"
@@ -46,6 +47,7 @@
 #if !PLATFORM(IOS_FAMILY)
 #import <Carbon/Carbon.h> // for GetCurrentEventTime()
 #import <WebKit/WebHTMLView.h>
+#import <WebKit/WebHTMLViewPrivate.h>
 #import <objc/runtime.h>
 #import <wtf/mac/AppKitCompatibilityDeclarations.h>
 #endif
@@ -77,7 +79,7 @@ enum MouseButton {
     LeftMouseButton = 0,
     MiddleMouseButton = 1,
     RightMouseButton = 2,
-    NoMouseButton = -1
+    NoMouseButton = -2
 };
 
 struct KeyMappingEntry {
@@ -93,7 +95,7 @@ int lastClickButton = NoMouseButton;
 NSArray *webkitDomEventNames;
 NSMutableArray *savedMouseEvents; // mouse events sent between mouseDown and mouseUp are stored here, and then executed at once.
 BOOL replayingSavedEvents;
-
+unsigned mouseButtonsCurrentlyDown = 0;
 
 #if PLATFORM(IOS_FAMILY)
 @interface SyntheticTouch : NSObject {
@@ -561,8 +563,24 @@ static int buildModifierFlags(const WebScriptObject* modifiers)
     return flags;
 }
 
+#if !PLATFORM(IOS_FAMILY)
+static std::unique_ptr<ClassMethodSwizzler> eventPressedMouseButtonsSwizzlerForViewAndEvent(NSView* view, NSEvent* event)
+{
+    if ([view isKindOfClass:[WebHTMLView class]])
+        view = [(WebHTMLView *)view _hitViewForEvent:event];
+    return ![view isKindOfClass:[NSScroller class]] ? makeUnique<ClassMethodSwizzler>([NSEvent class], @selector(pressedMouseButtons), reinterpret_cast<IMP>(swizzledEventPressedMouseButtons)) : NULL;
+}
+
+static NSUInteger swizzledEventPressedMouseButtons()
+{
+    return mouseButtonsCurrentlyDown;
+}
+#endif
+
 - (void)mouseDown:(int)buttonNumber withModifiers:(WebScriptObject*)modifiers
 {
+    mouseButtonsCurrentlyDown |= (1 << buttonNumber);
+
     [[[mainFrame frameView] documentView] layout];
     [self updateClickCountForButton:buttonNumber];
     
@@ -588,7 +606,12 @@ static int buildModifierFlags(const WebScriptObject* modifiers)
 #if !PLATFORM(IOS_FAMILY)
         [NSApp _setCurrentEvent:event];
 #endif
-        [subView mouseDown:event];
+        {
+#if !PLATFORM(IOS_FAMILY)
+            auto eventPressedMouseButtonsSwizzler = eventPressedMouseButtonsSwizzlerForViewAndEvent(subView, event);
+#endif
+            [subView mouseDown:event];
+        }
 #if !PLATFORM(IOS_FAMILY)
         [NSApp _setCurrentEvent:nil];
 #endif
@@ -637,6 +660,8 @@ static int buildModifierFlags(const WebScriptObject* modifiers)
 
 - (void)mouseUp:(int)buttonNumber withModifiers:(WebScriptObject*)modifiers
 {
+    mouseButtonsCurrentlyDown &= ~(1 << buttonNumber);
+
     if (dragMode && !replayingSavedEvents) {
         NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:[EventSendingController instanceMethodSignatureForSelector:@selector(mouseUp:withModifiers:)]];
         [invocation setTarget:self];
@@ -677,7 +702,12 @@ static int buildModifierFlags(const WebScriptObject* modifiers)
 #if !PLATFORM(IOS_FAMILY)
     [NSApp _setCurrentEvent:event];
 #endif
-    [targetView mouseUp:event];
+    {
+#if !PLATFORM(IOS_FAMILY)
+        auto eventPressedMouseButtonsSwizzler = eventPressedMouseButtonsSwizzlerForViewAndEvent(targetView, event);
+#endif
+        [targetView mouseUp:event];
+    }
 #if !PLATFORM(IOS_FAMILY)
     [NSApp _setCurrentEvent:nil];
 #endif
@@ -762,11 +792,19 @@ static int buildModifierFlags(const WebScriptObject* modifiers)
                 if ([[draggingInfo draggingSource] respondsToSelector:@selector(draggedImage:movedTo:)])
                     [[draggingInfo draggingSource] draggedImage:[draggingInfo draggedImage] movedTo:lastMousePosition];
                 [[mainFrame webView] draggingUpdated:draggingInfo];
-            } else
-                [subView mouseDragged:event];
+            } else {
+#if !PLATFORM(IOS_FAMILY)
+                auto eventPressedMouseButtonsSwizzler = eventPressedMouseButtonsSwizzlerForViewAndEvent(subView, event);
 #endif
-        } else
+                [subView mouseDragged:event];
+            }
+#endif
+        } else {
+#if !PLATFORM(IOS_FAMILY)
+            auto eventPressedMouseButtonsSwizzler = eventPressedMouseButtonsSwizzlerForViewAndEvent(subView, event);
+#endif
             [subView mouseMoved:event];
+        }
 #if !PLATFORM(IOS_FAMILY)
         [NSApp _setCurrentEvent:nil];
 #endif

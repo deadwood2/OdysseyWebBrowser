@@ -23,16 +23,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef COMPropertyBag_h
-#define COMPropertyBag_h
-
-#include <ocidl.h>
-#include <unknwn.h>
-
-#include <wtf/Noncopyable.h>
-#include <wtf/HashMap.h>
+#pragma once
 
 #include "COMVariantSetter.h"
+#include <ocidl.h>
+#include <unknwn.h>
+#include <wtf/Noncopyable.h>
+#include <wtf/HashMap.h>
 
 template<typename ValueType, typename KeyType = typename WTF::String, typename HashType = typename WTF::StringHash>
 class COMPropertyBag final : public IPropertyBag, public IPropertyBag2 {
@@ -142,12 +139,16 @@ HRESULT STDMETHODCALLTYPE COMPropertyBag<ValueType, KeyType, HashType>::Read(LPC
     if (it == end)
         return E_INVALIDARG;
 
+#if USE(CF)
     VARTYPE requestedType = V_VT(pVar);
     V_VT(pVar) = VT_EMPTY;
     COMVariantSetter<ValueType>::setVariant(pVar, it->value);
 
     if (requestedType != COMVariantSetter<ValueType>::variantType(it->value) && requestedType != VT_EMPTY)
         return ::VariantChangeType(pVar, pVar, VARIANT_NOUSEROVERRIDE | VARIANT_ALPHABOOL, requestedType);
+#else
+    ASSERT(0);
+#endif
 
     return S_OK;
 }
@@ -204,6 +205,7 @@ HRESULT STDMETHODCALLTYPE COMPropertyBag<ValueType, KeyType, HashType>::GetPrope
     if (m_hashMap.size() <= iProperty)
         return E_INVALIDARG;
 
+#if USE(CF)
     *pcProperties = 0;
     auto current = m_hashMap.begin();
     auto end = m_hashMap.end();
@@ -220,9 +222,10 @@ HRESULT STDMETHODCALLTYPE COMPropertyBag<ValueType, KeyType, HashType>::GetPrope
         pPropBag[j].pstrName = (LPOLESTR)CoTaskMemAlloc(sizeof(wchar_t)*(current->key.length()+1));
         if (!pPropBag[j].pstrName)
             return E_OUTOFMEMORY;
-        wcscpy_s(pPropBag[j].pstrName, current->key.length()+1, static_cast<String>(current->key).charactersWithNullTermination().data());
+        wcscpy_s(pPropBag[j].pstrName, current->key.length()+1, current->key.wideCharacters().data());
         ++*pcProperties;
     }
+#endif
     return S_OK;
 }
 
@@ -231,5 +234,3 @@ HRESULT STDMETHODCALLTYPE COMPropertyBag<ValueType, KeyType, HashType>::LoadObje
 {
     return E_NOTIMPL;
 }
-
-#endif // COMPropertyBag_h

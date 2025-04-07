@@ -43,13 +43,11 @@ public:
 
     Ref<WebCore::CacheStorageConnection> createCacheStorageConnection(PAL::SessionID) final;
 
-    void process(IPC::Connection&, IPC::Decoder&);
-
 private:
     WebCacheStorageProvider() = default;
 
     RefPtr<WebCacheStorageConnection> m_defaultConnection;
-    HashMap<uint64_t, Ref<WebCacheStorageConnection>> m_connections;
+    HashMap<PAL::SessionID, Ref<WebCacheStorageConnection>> m_connections;
 };
 
 }

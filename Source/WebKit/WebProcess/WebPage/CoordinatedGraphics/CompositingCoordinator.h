@@ -24,11 +24,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CompositingCoordinator_h
-#define CompositingCoordinator_h
+#pragma once
 
 #if USE(COORDINATED_GRAPHICS)
 
+#include "WebPage.h"
 #include <WebCore/CoordinatedGraphicsLayer.h>
 #include <WebCore/CoordinatedGraphicsState.h>
 #include <WebCore/FloatPoint.h>
@@ -40,12 +40,12 @@
 
 namespace Nicosia {
 class PaintingEngine;
+class SceneIntegration;
 }
 
 namespace WebCore {
 class GraphicsContext;
 class GraphicsLayer;
-class Page;
 }
 
 namespace WebKit {
@@ -60,9 +60,10 @@ public:
         virtual void didFlushRootLayer(const WebCore::FloatRect& visibleContentRect) = 0;
         virtual void notifyFlushRequired() = 0;
         virtual void commitSceneState(const WebCore::CoordinatedGraphicsState&) = 0;
+        virtual RefPtr<Nicosia::SceneIntegration> sceneIntegration() = 0;
     };
 
-    CompositingCoordinator(WebCore::Page*, CompositingCoordinator::Client&);
+    CompositingCoordinator(WebPage&, CompositingCoordinator::Client&);
     virtual ~CompositingCoordinator();
 
     void invalidate();
@@ -75,7 +76,6 @@ public:
     void setVisibleContentsRect(const WebCore::FloatRect&);
     void renderNextFrame();
 
-    void createRootLayer(const WebCore::IntSize&);
     WebCore::GraphicsLayer* rootLayer() const { return m_rootLayer.get(); }
     WebCore::GraphicsLayer* rootCompositingLayer() const { return m_rootCompositingLayer; }
 
@@ -111,7 +111,7 @@ private:
 
     double timestamp() const;
 
-    WebCore::Page* m_page;
+    WebPage& m_page;
     CompositingCoordinator::Client& m_client;
 
     RefPtr<WebCore::GraphicsLayer> m_rootLayer;
@@ -129,7 +129,6 @@ private:
     std::unique_ptr<Nicosia::PaintingEngine> m_paintingEngine;
 
     // We don't send the messages related to releasing resources to renderer during purging, because renderer already had removed all resources.
-    bool m_isDestructing { false };
     bool m_isPurging { false };
     bool m_isFlushingLayerChanges { false };
     bool m_shouldSyncFrame { false };
@@ -143,5 +142,3 @@ private:
 }
 
 #endif // namespace WebKit
-
-#endif // CompositingCoordinator_h

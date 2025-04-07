@@ -47,12 +47,6 @@ SOFT_LINK_CLASS(CoreUI, CUICatalog)
 SOFT_LINK_CLASS(CoreUI, CUIStyleEffectConfiguration)
 #endif
 
-#ifdef __LP64__
-#define URefCon void*
-#else
-#define URefCon UInt32
-#endif
-
 namespace WebCore {
 
 // Confusingly, even when CGFontRenderingGetFontSmoothingDisabled() returns true, CGContextSetShouldSmoothFonts() still impacts text
@@ -104,7 +98,7 @@ static inline bool shouldUseLetterpressEffect(const GraphicsContext& context)
 #endif
 }
 
-static void showLetterpressedGlyphsWithAdvances(const FloatPoint& point, const Font& font, CGContextRef context, const CGGlyph* glyphs, const CGSize* advances, unsigned count)
+static void showLetterpressedGlyphsWithAdvances(const FloatPoint& point, const Font& font, GraphicsContext& coreContext, const CGGlyph* glyphs, const CGSize* advances, unsigned count)
 {
 #if ENABLE(LETTERPRESS)
     if (!count)
@@ -115,6 +109,8 @@ static void showLetterpressedGlyphsWithAdvances(const FloatPoint& point, const F
         // FIXME: Implement support for vertical text. See <rdar://problem/13737298>.
         return;
     }
+
+    CGContextRef context = coreContext.platformContext();
 
     CGContextSetTextPosition(context, point.x(), point.y());
     Vector<CGPoint, 256> positions(count);
@@ -133,6 +129,10 @@ static void showLetterpressedGlyphsWithAdvances(const FloatPoint& point, const F
         styleConfiguration.useSimplifiedEffect = YES;
     }
 
+#if HAVE(OS_DARK_MODE_SUPPORT)
+    styleConfiguration.appearanceName = coreContext.useDarkAppearance() ? @"UIAppearanceDark" : @"UIAppearanceLight";
+#endif
+
     CGContextSetFont(context, adoptCF(CTFontCopyGraphicsFont(ctFont, nullptr)).get());
     CGContextSetFontSize(context, platformData.size());
 
@@ -143,7 +143,7 @@ static void showLetterpressedGlyphsWithAdvances(const FloatPoint& point, const F
 #else
     UNUSED_PARAM(point);
     UNUSED_PARAM(font);
-    UNUSED_PARAM(context);
+    UNUSED_PARAM(coreContext);
     UNUSED_PARAM(glyphs);
     UNUSED_PARAM(advances);
     UNUSED_PARAM(count);
@@ -282,8 +282,10 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
     if (syntheticBoldOffset && !contextCTM.isIdentityOrTranslationOrFlipped()) {
         FloatSize horizontalUnitSizeInDevicePixels = contextCTM.mapSize(FloatSize(1, 0));
         float horizontalUnitLengthInDevicePixels = sqrtf(horizontalUnitSizeInDevicePixels.width() * horizontalUnitSizeInDevicePixels.width() + horizontalUnitSizeInDevicePixels.height() * horizontalUnitSizeInDevicePixels.height());
-        if (horizontalUnitLengthInDevicePixels)
-            syntheticBoldOffset /= horizontalUnitLengthInDevicePixels;
+        if (horizontalUnitLengthInDevicePixels) {
+            // Make sure that a scaled down context won't blow up the gap between the glyphs. 
+            syntheticBoldOffset = std::min(syntheticBoldOffset, syntheticBoldOffset / horizontalUnitLengthInDevicePixels);
+        }
     };
 
     bool hasSimpleShadow = context.textDrawingMode() == TextModeFill && shadowColor.isValid() && !shadowBlur && !platformData.isColorBitmapFont() && (!context.shadowsIgnoreTransforms() || contextCTM.isIdentityOrTranslationOrFlipped()) && !context.isInTransparencyLayer();
@@ -303,7 +305,7 @@ void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const G
     }
 
     if (useLetterpressEffect)
-        showLetterpressedGlyphsWithAdvances(point, font, cgContext, glyphBuffer.glyphs(from), static_cast<const CGSize*>(glyphBuffer.advances(from)), numGlyphs);
+        showLetterpressedGlyphsWithAdvances(point, font, context, glyphBuffer.glyphs(from), static_cast<const CGSize*>(glyphBuffer.advances(from)), numGlyphs);
     else
         showGlyphsWithAdvances(point, font, cgContext, glyphBuffer.glyphs(from), static_cast<const CGSize*>(glyphBuffer.advances(from)), numGlyphs);
     if (syntheticBoldOffset)

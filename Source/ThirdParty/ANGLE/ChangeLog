@@ -1,3 +1,430 @@
+2020-02-12  Michael Catanzaro  <mcatanzaro@gnome.org>
+
+        Multiple GCC 10 build failures in ANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=207365
+
+        Reviewed by Carlos Alberto Lopez Perez.
+
+        * changes.diff: Updated.
+        * include/platform/Platform.h: Add missing #include to get size_t.
+        * src/common/PackedEnums.h: Remove problematic const_casts.
+
+2019-09-24  Adrian Perez de Castro  <aperez@igalia.com>
+
+        [GTK] ANGLE's eglplatform.h is build broken with -DENABLE_X11_PLATFORM=OFF
+        https://bugs.webkit.org/show_bug.cgi?id=198621
+
+        Reviewed by Carlos Garcia Campos.
+
+        * PlatformGTK.cmake: Define WL_EGL_PLATFORM to prefer Wayland type
+        definitions with ENABLE_WAYLAND_TARGET=ON and ENABLE_X11_TARGET=OFF
+        to avoid ANGLE's eglplatform.h from trying to include the X11 headers.
+
+2019-08-26  James Darpinian  <jdarpinian@google.com>
+
+        Add a script to update ANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=201109
+
+        Reviewed by Alex Christensen.
+
+        * update-angle.sh: Added.
+
+2019-08-16  Keith Rollin  <krollin@apple.com>
+
+        Add XCBuild support to ANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=200836
+        <rdar://problem/54410420>
+
+        Reviewed by Alex Christensen.
+
+        The ANGLE Xcode project contains two Build Phases: one that copies
+        some headers, and another that modifies those headers. This
+        combination does not work with XCBuild, which gets confused when it
+        finds that headers that it's copied have been changed. When it detects
+        this, XCBuild thinks that it should recopy those headers on the next
+        build, causing their modification dates to change and for all
+        dependent files to be rebuilt. This essentially turns an incremental
+        rebuild into a full rebuild.
+
+        Address this problem by using a new facility in Xcode 11. This
+        facility supports the copying and modifying headers files in a single
+        step. It is achieved by first enabling the facility by setting
+        APPLY_RULES_IN_COPY_HEADERS to YES. Next, we add a new Build Rule that
+        invokes a custom script when the header files are copied. Third, we
+        provide this script, which can essentially be a stripped down version
+        of the one already used to modify the exported headers files. Finally,
+        we disable the use of that old script when we are using Xcode 11. In
+        this way, the old script that modifies the exported headers is used in
+        Xcode 10, and the new facility is used in Xcode 11.
+
+        See also Bug 197340 for where this process was also applied to
+        JavaScriptCore, WebKit, and WebKitLegacy.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * Configurations/ANGLE.xcconfig:
+        * adjust-angle-include-paths-rule: Added.
+
+2019-08-08  Brent Fulgham  <bfulgham@apple.com>
+
+        [FTW] Get WebKit, WebKit2, and MiniBrowser building and executing
+        https://bugs.webkit.org/show_bug.cgi?id=200539
+
+        Reviewed by Dean Jackson.
+
+        * PlatformFTW.cmake: Added.
+
+2019-07-17  Kenneth Russell  <kbr@chromium.org>
+
+        Make ANGLE work inside WebKit2's sandbox
+        https://bugs.webkit.org/show_bug.cgi?id=199844
+
+        Reviewed by Alex Christensen.
+
+        Cherry-pick fix for crbug.com/angleproject/3383 to eliminate use
+        of deprecated API in SystemInfo_mac.mm.
+
+        * BUILD.gn:
+        * src/gpu_info_util/SystemInfo.cpp:
+        (angle::FindActiveGPU):
+        (angle::PrintSystemInfo):
+        (angle::FindPrimaryGPU): Deleted.
+        * src/gpu_info_util/SystemInfo.h:
+        * src/gpu_info_util/SystemInfo_internal.h:
+        * src/gpu_info_util/SystemInfo_linux.cpp:
+        (angle::GetSystemInfo):
+        * src/gpu_info_util/SystemInfo_mac.mm:
+        (angle::GetSystemInfo):
+        * src/gpu_info_util/SystemInfo_win.cpp:
+        (angle::GetSystemInfo):
+        * src/tests/BUILD.gn:
+        * src/tests/test_expectations/GPUTestConfig.cpp:
+        * src/tests/test_utils/angle_test_instantiate.cpp:
+        (angle::IsConfigWhitelisted):
+
+2019-07-10  Alex Christensen  <achristensen@webkit.org>
+
+        Allow CMake to build WebCore on Mac
+        https://bugs.webkit.org/show_bug.cgi?id=198979
+
+        Reviewed by Don Olmstead.
+
+        * include/GLSLANG/ShaderLang.h:
+
+2019-07-10  Kenneth Russell  <kbr@chromium.org>
+
+        Hook up WebGL's back buffer in ANGLE backend on macOS
+        https://bugs.webkit.org/show_bug.cgi?id=198982
+
+        Reviewed by Alex Christensen.
+
+        Add source files needed to implement and call ANGLE extensions, and
+        export headers necessary for those extensions. Update the script which
+        adjusts include paths to handle the new headers.
+
+        Cherry-pick fix for ANGLE bug crbug.com/angleproject/3669 to support
+        antialias:true for ANGLE-backed WebGL contexts.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * adjust-angle-include-paths.sh:
+        * src/libANGLE/FramebufferAttachment.cpp:
+        (gl::FramebufferAttachment::getTextureImageIndex const): Deleted.
+        * src/libANGLE/FramebufferAttachment.h:
+        (gl::FramebufferAttachment::getTextureImageIndex const):
+        * src/libANGLE/validationES2.cpp:
+        (gl::ValidateBlitFramebufferANGLE):
+
+2019-06-27  Beth Dakin  <bdakin@apple.com>
+
+        Upstream use of MACCATALYST
+        https://bugs.webkit.org/show_bug.cgi?id=199245
+        rdar://problem/51687723
+
+        Reviewed by Tim Horton.
+
+        * Configurations/SDKVariant.xcconfig:
+
+2019-06-25  Kenneth Russell  <kbr@chromium.org>
+
+        Script which adjusts include paths in ANGLE's copied headers breaks incremental builds
+        https://bugs.webkit.org/show_bug.cgi?id=199212
+
+        Reviewed by Darin Adler.
+
+        Maintain and test a timestamp in adjust-angle-include-paths.sh
+        in order to avoid touching the headers during each build.
+
+        * adjust-angle-include-paths.sh:
+
+2019-06-25  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, rolling out r246825.
+
+        Breaks internal builds.
+
+        Reverted changeset:
+
+        "Script which adjusts include paths in ANGLE's copied headers
+        breaks incremental builds"
+        https://bugs.webkit.org/show_bug.cgi?id=199212
+        https://trac.webkit.org/changeset/246825
+
+2019-06-25  Kenneth Russell  <kbr@chromium.org>
+
+        Script which adjusts include paths in ANGLE's copied headers breaks incremental builds
+        https://bugs.webkit.org/show_bug.cgi?id=199212
+
+        Reviewed by Darin Adler.
+
+        Maintain and test a timestamp in adjust-angle-include-paths.sh
+        in order to avoid touching the headers during each build.
+
+        * adjust-angle-include-paths.sh:
+
+2019-06-18  Kenneth Russell  <kbr@chromium.org>
+
+        Add preliminary ANGLE backend to WebCore
+        https://bugs.webkit.org/show_bug.cgi?id=197755
+
+        Reviewed by Dean Jackson.
+
+        Add a build step which processes ANGLE's copied public headers so they
+        can all be referred to under the <ANGLE/xyz.h> prefix. This avoids
+        touching ANGLE's headers and allows WebCore to include them with no
+        additional include path modifications.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * adjust-angle-include-paths.sh: Added.
+
+2019-06-17  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, rolling out r246501.
+
+        Breaks Apple internal builds.
+
+        Reverted changeset:
+
+        "Support using ANGLE as the backend for the WebGL
+        implementation"
+        https://bugs.webkit.org/show_bug.cgi?id=197755
+        https://trac.webkit.org/changeset/246501
+
+2019-06-17  Kenneth Russell  <kbr@chromium.org>
+
+        Support using ANGLE as the backend for the WebGL implementation
+        https://bugs.webkit.org/show_bug.cgi?id=197755
+
+        Reviewed by Dean Jackson.
+
+        Add a build step which processes ANGLE's copied public headers so they
+        can all be referred to under the <ANGLE/xyz.h> prefix. This avoids
+        touching ANGLE's headers and allows WebCore to include them with no
+        additional include path modifications.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * adjust-angle-include-paths.sh: Added.
+
+2019-06-12  Justin Fan  <justin_fan@apple.com>
+
+        [WebGL] ANGLE Extension directive location incorrectly enforced for webgl 1.0
+        https://bugs.webkit.org/show_bug.cgi?id=198811
+
+        Reviewed by Dean Jackson.
+
+        Apply ANGLE change from https://chromium-review.googlesource.com/c/angle/angle/+/1648661 to
+        prevent enforcing ESSL late extension rule on WebGL 1.0 shaders.
+
+        * src/compiler/preprocessor/DiagnosticsBase.cpp:
+        (angle::pp::Diagnostics::message):
+        * src/compiler/preprocessor/DiagnosticsBase.h:
+        * src/compiler/preprocessor/DirectiveParser.cpp:
+        (angle::pp::DirectiveParser::parseExtension):
+
+2019-05-23  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] Use target oriented design for bmalloc
+        https://bugs.webkit.org/show_bug.cgi?id=198046
+
+        Reviewed by Konstantin Tokarev.
+
+        Remove WEBKIT_COPY_FILES from CMakelists.txt now that it is in WebKitMacros.
+
+        * CMakeLists.txt:
+
+2019-05-14  Miguel Gomez  <magomez@igalia.com>
+
+        REGRESSION(r245088): [GTK] Several WebGL tests failing
+        https://bugs.webkit.org/show_bug.cgi?id=197880
+
+        Reviewed by Carlos Garcia Campos.
+
+        Enable GLSL compiler output for WebKitGTK.
+
+        * PlatformGTK.cmake: Added.
+
+2019-05-13  Alex Christensen  <achristensen@webkit.org>
+
+        Build more ANGLE files
+        https://bugs.webkit.org/show_bug.cgi?id=197787
+
+        Reviewed by Simon Fraser.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * src/gpu_info_util/SystemInfo.cpp:
+        (angle::ParseMacMachineModel):
+        * src/gpu_info_util/SystemInfo_mac.mm:
+        (angle::GetSystemInfo):
+        * src/libANGLE/renderer/gl/cgl/DisplayCGL.mm:
+        * src/libANGLE/renderer/gl/cgl/IOSurfaceSurfaceCGL.mm:
+        (rx::IOSurfaceSurfaceCGL::IOSurfaceSurfaceCGL):
+        (rx::IOSurfaceSurfaceCGL::validateAttributes):
+        * src/libANGLE/renderer/gl/cgl/WindowSurfaceCGL.h:
+        * src/libANGLE/renderer/gl/cgl/WindowSurfaceCGL.mm:
+        (rx::WindowSurfaceCGL::initialize):
+        (-[SwapLayer initWithSharedState:withContext:withFunctions:]): Deleted.
+
+2019-05-10  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        Fix a bunch of compiler warnings
+        https://bugs.webkit.org/show_bug.cgi?id=197785
+
+        Reviewed by Don Olmstead.
+
+        Add compiler flags to suppress various warnings triggered by the new version of ANGLE.
+
+        * CMakeLists.txt:
+
+2019-05-09  Don Olmstead  <don.olmstead@sony.com>
+
+        [ANGLE] Update ANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=197676
+        <rdar://problem/50609501>
+
+        Reviewed by Alex Christensen.
+
+        * changes.diff:
+        Updated with all the previous fixes.
+        * include/EGL/eglplatform.h:
+        Use the more generic name USE_SYSTEM_EGL not USE_WPE.
+        * src/common/debug.h:
+        Fix a stray COMPILER_GCC to be __GNUC__.
+
+2019-05-08  Alex Christensen  <achristensen@webkit.org>
+
+        Fix internal and Windows builds.
+
+        * ANGLE.txt: Added.
+        Restore this file.  It was deleted, but it's needed.
+        * GLESv2.cmake:
+        It turns out CompositorNativeWindow11.cpp and Renderer11.cpp are needed, but the bot doesn't seem to have the right SDK.
+
+2019-05-08  Alex Christensen  <achristensen@webkit.org>
+
+        Fix High Sierra and Windows builds.
+
+        * GLESv2.cmake:
+        CompositorNativeWindow11.cpp was also having a hard time compiling on the bots.
+        * src/libANGLE/validationES3.cpp:
+        (gl::ValidateBindFragDataLocationIndexedEXT):
+        Remove a check for if an unsigned integer is less than 0.
+
+2019-05-08  Alex Christensen  <achristensen@webkit.org>
+
+        Fix High Sierra and Windows builds.
+
+        * src/common/utilities.cpp:
+        (gl::priv::gLineModes):
+        * src/common/utilities.h:
+        (gl::IsLineMode):
+        Don't have a global constructor.  Use a function scoped static variable instead.
+        * GLESv2.cmake:
+        Renderer11.cpp was not building successfully on the bots.
+        I don't think it's needed, so just don't build it.
+
+2019-05-08  Alex Christensen  <achristensen@webkit.org>
+
+        Fix High Sierra build.
+
+        * src/libANGLE/State.cpp:
+        (gl::State::kBufferSetters):
+        * src/libANGLE/State.h:
+        (gl::State::setBufferBinding):
+        Remove the need for a global constructor.
+
+2019-05-08  Don Olmstead  <don.olmstead@sony.com>
+
+        Update ANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=197676
+
+        Reviewed by Alex Christensen.
+
+        Many changed files.  Updated to trunk ANGLE 565441b1078b.
+
+2019-04-29  Alex Christensen  <achristensen@webkit.org>
+
+        <rdar://problem/50299396> Fix internal High Sierra build
+        https://bugs.webkit.org/show_bug.cgi?id=197388
+
+        * Configurations/Base.xcconfig:
+
+2019-04-25  Alex Christensen  <achristensen@webkit.org>
+
+        Start using C++17
+        https://bugs.webkit.org/show_bug.cgi?id=197131
+
+        Reviewed by Darin Adler.
+
+        * Configurations/Base.xcconfig:
+
+2019-03-22  Keith Rollin  <krollin@apple.com>
+
+        Enable ThinLTO support in Production builds
+        https://bugs.webkit.org/show_bug.cgi?id=190758
+        <rdar://problem/45413233>
+
+        Reviewed by Daniel Bates.
+
+        Enable building with Thin LTO in Production when using Xcode 10.2 or
+        later. This change results in a 1.45% progression in PLT5. Full
+        Production build times increase about 2-3%. Incremental build times
+        are more severely affected, and so LTO is not enabled for local
+        engineering builds.
+
+        LTO is enabled only on macOS for now, until rdar://problem/49013399,
+        which affects ARM builds, is fixed.
+
+        To change the LTO setting when building locally:
+
+        - If building with `make`, specify WK_LTO_MODE={none,thin,full} on the
+          command line.
+        - If building with `build-webkit`, specify --lto-mode={none,thin,full}
+          on the command line.
+        - If building with `build-root`, specify --lto={none,thin,full} on the
+          command line.
+        - If building with Xcode, create a LocalOverrides.xcconfig file at the
+          top level of your repository directory (if needed) and define
+          WK_LTO_MODE to full, thin, or none.
+
+        * Configurations/Base.xcconfig:
+
+2019-02-23  Keith Miller  <keith_miller@apple.com>
+
+        Add new mac target numbers
+        https://bugs.webkit.org/show_bug.cgi?id=194955
+
+        Reviewed by Tim Horton.
+
+        * Configurations/Base.xcconfig:
+        * Configurations/DebugRelease.xcconfig:
+
+2019-02-20  Andy Estes  <aestes@apple.com>
+
+        [Xcode] Add SDKVariant.xcconfig to various Xcode projects
+        https://bugs.webkit.org/show_bug.cgi?id=194869
+
+        Rubber-stamped by Jer Noble.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+
 2019-01-18  Jer Noble  <jer.noble@apple.com>
 
         SDK_VARIANT build destinations should be separate from non-SDK_VARIANT builds

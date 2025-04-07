@@ -30,7 +30,7 @@
 
 #include "AffineTransform.h"
 #include "GraphicsContext.h"
-#include <CoreGraphics/CoreGraphics.h>
+#include "PlatformContextDirect2D.h"
 #include <d2d1.h>
 #include <wtf/MainThread.h>
 
@@ -38,6 +38,14 @@
 namespace WebCore {
 
 ID2D1BitmapBrush* Pattern::createPlatformPattern(const GraphicsContext& context, float alpha, const AffineTransform& userSpaceTransformation) const
+{
+    auto platformContext = context.platformContext();
+    RELEASE_ASSERT(platformContext);
+
+    return createPlatformPattern(*platformContext, alpha, userSpaceTransformation);
+}
+
+ID2D1BitmapBrush* Pattern::createPlatformPattern(PlatformGraphicsContext& context, float alpha, const AffineTransform& userSpaceTransformation) const
 {
     AffineTransform patternTransform = userSpaceTransformation * m_patternSpaceTransformation;
     auto bitmapBrushProperties = D2D1::BitmapBrushProperties();
@@ -49,12 +57,10 @@ ID2D1BitmapBrush* Pattern::createPlatformPattern(const GraphicsContext& context,
     brushProperties.opacity = alpha;
 
     auto& patternImage = tileImage();
-
-    auto platformContext = context.platformContext();
-    RELEASE_ASSERT(platformContext);
+    auto nativeImage = patternImage.nativeImage(nullptr);
 
     ID2D1BitmapBrush* patternBrush = nullptr;
-    HRESULT hr = platformContext->CreateBitmapBrush(patternImage.nativeImage(&context).get(), &bitmapBrushProperties, &brushProperties, &patternBrush);
+    HRESULT hr = context.renderTarget()->CreateBitmapBrush(nativeImage.get(), &bitmapBrushProperties, &brushProperties, &patternBrush);
     ASSERT(SUCCEEDED(hr));
     return patternBrush;
 }

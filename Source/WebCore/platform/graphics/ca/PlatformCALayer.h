@@ -99,6 +99,8 @@ public:
 
     bool usesTiledBackingLayer() const { return layerType() == LayerTypePageTiledBackingLayer || layerType() == LayerTypeTiledBackingLayer; }
 
+    bool isPageTiledBackingLayer() const { return layerType() == LayerTypePageTiledBackingLayer; }
+
     PlatformCALayerClient* owner() const { return m_owner; }
     virtual void setOwner(PlatformCALayerClient* owner) { m_owner = owner; }
 
@@ -233,6 +235,8 @@ public:
 
     virtual WindRule shapeWindRule() const = 0;
     virtual void setShapeWindRule(WindRule) = 0;
+
+    virtual void setEventRegion(const EventRegion&) = 0;
     
     virtual GraphicsLayer::CustomAppearance customAppearance() const = 0;
     virtual void updateCustomAppearance(GraphicsLayer::CustomAppearance) = 0;

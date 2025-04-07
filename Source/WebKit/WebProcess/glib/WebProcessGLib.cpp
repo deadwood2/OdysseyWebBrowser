@@ -39,33 +39,58 @@
 #include "WaylandCompositorDisplay.h"
 #endif
 
-#if PLATFORM(WPE)
+#if USE(WPE_RENDERER)
 #include <WebCore/PlatformDisplayLibWPE.h>
 #include <wpe/wpe.h>
 #endif
 
 namespace WebKit {
 
+using namespace WebCore;
+
 void WebProcess::platformSetCacheModel(CacheModel cacheModel)
 {
     WebCore::MemoryCache::singleton().setDisabled(cacheModel == CacheModel::DocumentViewer);
 }
 
-void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& parameters)
+void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters& parameters)
 {
 #if PLATFORM(WPE)
-    auto& implementationLibraryName = parameters.implementationLibraryName;
-    if (!implementationLibraryName.isNull() && implementationLibraryName.data()[0] != '\0')
-        wpe_loader_init(parameters.implementationLibraryName.data());
-    RELEASE_ASSERT(is<PlatformDisplayLibWPE>(PlatformDisplay::sharedDisplay()));
-    downcast<PlatformDisplayLibWPE>(PlatformDisplay::sharedDisplay()).initialize(parameters.hostClientFileDescriptor.releaseFileDescriptor());
+    if (!parameters.isServiceWorkerProcess) {
+        auto& implementationLibraryName = parameters.implementationLibraryName;
+        if (!implementationLibraryName.isNull() && implementationLibraryName.data()[0] != '\0')
+            wpe_loader_init(parameters.implementationLibraryName.data());
+
+        RELEASE_ASSERT(is<PlatformDisplayLibWPE>(PlatformDisplay::sharedDisplay()));
+        downcast<PlatformDisplayLibWPE>(PlatformDisplay::sharedDisplay()).initialize(parameters.hostClientFileDescriptor.releaseFileDescriptor());
+    }
 #endif
+
 #if PLATFORM(WAYLAND)
-    m_waylandCompositorDisplay = WaylandCompositorDisplay::create(parameters.waylandCompositorDisplayName);
+    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::Wayland) {
+#if USE(WPE_RENDERER)
+        if (!parameters.isServiceWorkerProcess) {
+            auto hostClientFileDescriptor = parameters.hostClientFileDescriptor.releaseFileDescriptor();
+            if (hostClientFileDescriptor != -1) {
+                wpe_loader_init(parameters.implementationLibraryName.data());
+                m_wpeDisplay = WebCore::PlatformDisplayLibWPE::create();
+                if (!m_wpeDisplay->initialize(hostClientFileDescriptor))
+                    m_wpeDisplay = nullptr;
+            }
+        }
+#else
+        m_waylandCompositorDisplay = WaylandCompositorDisplay::create(parameters.waylandCompositorDisplayName);
 #endif
+    }
+#endif
+
 #if USE(GSTREAMER)
     WebCore::initializeGStreamer(WTFMove(parameters.gstreamerOptions));
 #endif
+}
+
+void WebProcess::platformSetWebsiteDataStoreParameters(WebProcessDataStoreParameters&&)
+{
 }
 
 void WebProcess::platformTerminate()

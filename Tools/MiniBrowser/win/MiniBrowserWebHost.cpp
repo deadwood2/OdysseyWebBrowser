@@ -29,72 +29,14 @@
 #include "stdafx.h"
 #include "MiniBrowserWebHost.h"
 
-#include "DOMDefaultImpl.h"
-#include "PageLoadTestClient.h"
 #include "WebKitLegacyBrowserWindow.h"
 #include <WebKitLegacy/WebKit.h>
 
-class SimpleEventListener : public DOMEventListener {
-public:
-    SimpleEventListener(LPWSTR type)
-    {
-        wcsncpy_s(m_eventType, 100, type, 100);
-        m_eventType[99] = 0;
-    }
-
-    virtual HRESULT STDMETHODCALLTYPE handleEvent(IDOMEvent* evt)
-    {
-        wchar_t message[255];
-        wcscpy_s(message, 255, m_eventType);
-        wcscat_s(message, 255, L" event fired!");
-        ::MessageBox(0, message, L"Event Handler", MB_OK);
-        return S_OK;
-    }
-
-private:
-    wchar_t m_eventType[100];
-};
-
 typedef _com_ptr_t<_com_IIID<IWebDataSource, &__uuidof(IWebDataSource)>> IWebDataSourcePtr;
-typedef _com_ptr_t<_com_IIID<IWebMutableURLRequest, &__uuidof(IWebMutableURLRequest)>> IWebMutableURLRequestPtr;
 
-HRESULT MiniBrowserWebHost::updateAddressBar(IWebView& webView)
+HRESULT MiniBrowserWebHost::didCommitLoadForFrame(_In_opt_ IWebView* webView, _In_opt_ IWebFrame* frame)
 {
-    IWebFramePtr mainFrame;
-    HRESULT hr = webView.mainFrame(&mainFrame.GetInterfacePtr());
-    if (FAILED(hr))
-        return hr;
-
-    IWebDataSourcePtr dataSource;
-    hr = mainFrame->dataSource(&dataSource.GetInterfacePtr());
-    if (FAILED(hr) || !dataSource)
-        hr = mainFrame->provisionalDataSource(&dataSource.GetInterfacePtr());
-    if (FAILED(hr) || !dataSource)
-        return hr;
-
-    IWebMutableURLRequestPtr request;
-    hr = dataSource->request(&request.GetInterfacePtr());
-    if (FAILED(hr) || !request)
-        return hr;
-
-    _bstr_t frameURL;
-    hr = request->mainDocumentURL(frameURL.GetAddress());
-    if (FAILED(hr))
-        return hr;
-
-    if (frameURL.length()) {
-        m_client->pageLoadTestClient().setPageURL(frameURL);
-        m_client->pageLoadTestClient().didCommitLoad();
-    }
-
-    loadURL(frameURL);
-
-    return S_OK;
-}
-
-void MiniBrowserWebHost::loadURL(_bstr_t& url)
-{
-    ::SendMessage(m_hURLBarWnd, static_cast<UINT>(WM_SETTEXT), 0, reinterpret_cast<LPARAM>(url.GetBSTR()));
+    return didChangeLocationWithinPageForFrame(webView, frame);
 }
 
 HRESULT MiniBrowserWebHost::didFailProvisionalLoadWithError(_In_opt_ IWebView*, _In_opt_ IWebError *error, _In_opt_ IWebFrame*)
@@ -109,6 +51,25 @@ HRESULT MiniBrowserWebHost::didFailProvisionalLoadWithError(_In_opt_ IWebView*, 
     if (_wcsicmp(errorDescription, L"Cancelled"))
         ::MessageBoxW(0, static_cast<LPCWSTR>(errorDescription), L"Error", MB_APPLMODAL | MB_OK);
 
+    return S_OK;
+}
+
+HRESULT MiniBrowserWebHost::didChangeLocationWithinPageForFrame(_In_opt_ IWebView* webView, _In_opt_ IWebFrame* frame)
+{
+    IWebFrame2Ptr frame2(frame);
+    if (!frame2)
+        return E_NOINTERFACE;
+    BOOL isMainFrame;
+    HRESULT hr = frame2->isMainFrame(&isMainFrame);
+    if (FAILED(hr))
+        return hr;
+    if (!isMainFrame)
+        return S_OK;
+    _bstr_t url;
+    hr = webView->mainFrameURL(url.GetAddress());
+    if (FAILED(hr))
+        return hr;
+    m_client->m_client.activeURLChanged(url.GetBSTR());
     return S_OK;
 }
 
@@ -138,65 +99,24 @@ ULONG MiniBrowserWebHost::Release()
     return m_client->Release();
 }
 
-typedef _com_ptr_t<_com_IIID<IDOMDocument, &__uuidof(IDOMDocument)>> IDOMDocumentPtr;
-typedef _com_ptr_t<_com_IIID<IDOMElement, &__uuidof(IDOMElement)>> IDOMElementPtr;
-typedef _com_ptr_t<_com_IIID<IDOMEventTarget, &__uuidof(IDOMEventTarget)>> IDOMEventTargetPtr;
-typedef _com_ptr_t<_com_IIID<IWebFrame2, &__uuidof(IWebFrame2)>> IWebFrame2Ptr;
-
 HRESULT MiniBrowserWebHost::didFinishLoadForFrame(_In_opt_ IWebView* webView, _In_opt_ IWebFrame* frame)
 {
     if (!frame || !webView)
         return E_POINTER;
 
-    IWebFrame2Ptr frame2;
-    if (SUCCEEDED(frame->QueryInterface(&frame2.GetInterfacePtr()))) {
-        BOOL mainFrame = FALSE;
-        if (frame2 && SUCCEEDED(frame2->isMainFrame(&mainFrame))) {
-            if (mainFrame)
-                m_client->pageLoadTestClient().didFinishLoad();
-        }
-    }
-
-    IDOMDocumentPtr doc;
-    frame->DOMDocument(&doc.GetInterfacePtr());
-
-    IDOMElementPtr element;
-    IDOMEventTargetPtr target;
-
     if (m_client)
         m_client->showLastVisitedSites(*webView);
 
-    // The following is for the test page:
-    static _bstr_t id = L"webkit logo";
-    HRESULT hr = doc->getElementById(id, &element.GetInterfacePtr());
-    if (!SUCCEEDED(hr))
-        return hr;
-
-    hr = element->QueryInterface(IID_IDOMEventTarget, reinterpret_cast<void**>(&target.GetInterfacePtr()));
-    if (!SUCCEEDED(hr))
-        return hr;
-
-    static _bstr_t eventName = L"click";
-    static _bstr_t eventType = L"webkit logo click";
-    hr = target->addEventListener(eventName, new SimpleEventListener(eventType), FALSE);
-    if (!SUCCEEDED(hr))
-        return hr;
-
-    return hr;
+    return S_OK;
 }
 
 HRESULT MiniBrowserWebHost::didStartProvisionalLoadForFrame(_In_opt_ IWebView*, _In_opt_ IWebFrame* frame)
 {
-    if (!frame)
-        return E_FAIL;
-
-    m_client->pageLoadTestClient().didStartProvisionalLoad(*frame);
     return S_OK;
 }
 
 HRESULT MiniBrowserWebHost::didFailLoadWithError(_In_opt_ IWebView*, _In_opt_ IWebError*, _In_opt_ IWebFrame*)
 {
-    m_client->pageLoadTestClient().didFailLoad();
     return S_OK;
 }
 
@@ -219,9 +139,6 @@ HRESULT MiniBrowserWebHost::didHandleOnloadEventsForFrame(_In_opt_ IWebView* sen
     if (FAILED(hr))
         return hr;
 
-    if (frameURL.length())
-        m_client->pageLoadTestClient().didHandleOnLoadEvents();
-
     return S_OK;
 }
 
@@ -234,11 +151,30 @@ HRESULT MiniBrowserWebHost::didFirstLayoutInFrame(_In_opt_ IWebView*, _In_opt_ I
     if (FAILED(frame->QueryInterface(&frame2.GetInterfacePtr())))
         return S_OK;
 
-    BOOL mainFrame;
-    if (frame2 && SUCCEEDED(frame2->isMainFrame(&mainFrame))) {
-        if (mainFrame)
-            m_client->pageLoadTestClient().didFirstLayoutForMainFrame();
-    }
+    return S_OK;
+}
 
+HRESULT MiniBrowserWebHost::onNotify(_In_opt_ IWebNotification* notification)
+{
+    _bstr_t name;
+    HRESULT hr = notification->name(name.GetAddress());
+    if (FAILED(hr))
+        return hr;
+    if (name == _bstr_t(WebViewProgressEstimateChangedNotification)) {
+        IUnknownPtr object;
+        hr = notification->getObject(&object.GetInterfacePtr());
+        if (FAILED(hr))
+            return hr;
+        IWebViewPtr webView(object);
+        if (!webView)
+            return E_NOINTERFACE;
+        double progress;
+        hr = webView->estimatedProgress(&progress);
+        if (FAILED(hr))
+            return hr;
+        m_client->m_client.progressChanged(progress);
+    } else if (name == _bstr_t(WebViewProgressFinishedNotification))
+        m_client->m_client.progressFinished();
+    
     return S_OK;
 }

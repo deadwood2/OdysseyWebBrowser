@@ -43,7 +43,7 @@
 #include "WebKitMediaSourceGStreamer.h"
 #endif
 
-#if ENABLE(MEDIA_STREAM) && GST_CHECK_VERSION(1, 10, 0)
+#if ENABLE(MEDIA_STREAM)
 #include "GStreamerMediaStreamSource.h"
 #endif
 
@@ -253,6 +253,23 @@ bool initializeGStreamer(Optional<Vector<String>>&& options)
         if (isGStreamerInitialized)
             gst_mpegts_initialize();
 #endif
+
+        // If the FDK-AAC decoder is available, promote it and downrank the
+        // libav AAC decoders, due to their broken LC support, as reported in:
+        // https://ffmpeg.org/pipermail/ffmpeg-devel/2019-July/247063.html
+        GRefPtr<GstElement> aacDecoder = gst_element_factory_make("fdkaacdec", nullptr);
+        if (aacDecoder) {
+            GstElementFactory* factory = gst_element_get_factory(aacDecoder.get());
+            gst_plugin_feature_set_rank(GST_PLUGIN_FEATURE_CAST(factory), GST_RANK_PRIMARY);
+
+            const char* const elementNames[] = {"avdec_aac", "avdec_aac_fixed", "avdec_aac_latm"};
+            for (unsigned i = 0; i < G_N_ELEMENTS(elementNames); i++) {
+                GRefPtr<GstElement> avAACDecoder = gst_element_factory_make(elementNames[i], nullptr);
+                if (avAACDecoder)
+                    gst_plugin_feature_set_rank(GST_PLUGIN_FEATURE_CAST(gst_element_get_factory(avAACDecoder.get())), GST_RANK_MARGINAL);
+            }
+        }
+
 #endif
     });
     return isGStreamerInitialized;
@@ -266,13 +283,11 @@ bool initializeGStreamerAndRegisterWebKitElements()
     static std::once_flag onceFlag;
     std::call_once(onceFlag, [] {
 #if ENABLE(ENCRYPTED_MEDIA)
-        if (webkitGstCheckVersion(1, 6, 1))
-            gst_element_register(nullptr, "webkitclearkey", GST_RANK_PRIMARY + 100, WEBKIT_TYPE_MEDIA_CK_DECRYPT);
+        gst_element_register(nullptr, "webkitclearkey", GST_RANK_PRIMARY + 100, WEBKIT_TYPE_MEDIA_CK_DECRYPT);
 #endif
 
-#if ENABLE(MEDIA_STREAM) && GST_CHECK_VERSION(1, 10, 0)
-        if (webkitGstCheckVersion(1, 10, 0))
-            gst_element_register(nullptr, "mediastreamsrc", GST_RANK_PRIMARY, WEBKIT_TYPE_MEDIA_STREAM_SRC);
+#if ENABLE(MEDIA_STREAM)
+        gst_element_register(nullptr, "mediastreamsrc", GST_RANK_PRIMARY, WEBKIT_TYPE_MEDIA_STREAM_SRC);
 #endif
 
 #if ENABLE(MEDIA_SOURCE)

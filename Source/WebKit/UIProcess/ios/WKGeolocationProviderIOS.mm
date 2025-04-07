@@ -36,6 +36,7 @@
 #import "WKProcessPoolInternal.h"
 #import "WKUIDelegatePrivate.h"
 #import "WKWebView.h"
+#import "WebFrameProxy.h"
 #import "WebGeolocationManagerProxy.h"
 #import "WebProcessPool.h"
 #import "_WKGeolocationCoreLocationProvider.h"
@@ -295,7 +296,7 @@ static void setEnableHighAccuracy(WKGeolocationManagerRef geolocationManager, bo
     [_listener geolocationAuthorizationDenied];
 }
 
-- (void)positionChanged:(WebCore::GeolocationPosition&&)corePosition
+- (void)positionChanged:(WebCore::GeolocationPositionData&&)corePosition
 {
     ASSERT(_listener);
     auto position = WebKit::WebGeolocationPosition::create(WTFMove(corePosition));

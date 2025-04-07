@@ -17,6 +17,8 @@ set(SQLITE_LIBRARIES SQLite3${DEBUG_SUFFIX})
 set(ZLIB_INCLUDE_DIRS "${WEBKIT_LIBRARIES_DIR}/include/zlib")
 set(ZLIB_LIBRARIES zdll${DEBUG_SUFFIX})
 
+include(target/icu)
+
 # Uncomment the following line to try the Direct2D backend.
 # set(USE_DIRECT2D 1)
 
@@ -71,3 +73,8 @@ endif ()
 
 # Warnings as errors (ignore narrowing conversions)
 add_compile_options(/WX /Wv:18)
+
+if (INTERNAL_BUILD)
+    set(WTF_SCRIPTS_DIR "${CMAKE_BINARY_DIR}/../include/private/WTF/Scripts")
+    set(JavaScriptCore_SCRIPTS_DIR "${CMAKE_BINARY_DIR}/../include/private/JavaScriptCore/Scripts")
+endif ()

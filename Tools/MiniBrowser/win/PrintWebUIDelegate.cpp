@@ -65,8 +65,8 @@ HRESULT PrintWebUIDelegate::createWebViewWithRequest(_In_opt_ IWebView*, _In_opt
     if (!request)
         return E_POINTER;
 
-    auto& newWindow = MainWindow::create(MainWindow::BrowserWindowType::WebKitLegacy).leakRef();
-    bool ok = newWindow.init(hInst);
+    auto& newWindow = MainWindow::create().leakRef();
+    bool ok = newWindow.init(WebKitLegacyBrowserWindow::create, hInst);
     if (!ok)
         return E_FAIL;
     ShowWindow(newWindow.hwnd(), SW_SHOW);
@@ -158,9 +158,6 @@ ULONG PrintWebUIDelegate::Release()
 {
     return m_client.Release();
 }
-
-typedef _com_ptr_t<_com_IIID<IWebFrame, &__uuidof(IWebFrame)>> IWebFramePtr;
-typedef _com_ptr_t<_com_IIID<IWebFramePrivate, &__uuidof(IWebFramePrivate)>> IWebFramePrivatePtr;
 
 HRESULT PrintWebUIDelegate::webViewPrintingMarginRect(_In_opt_ IWebView* view, _Out_ RECT* rect)
 {

@@ -59,14 +59,20 @@
 #import <PDFKit/PDFKit.h>
 #endif
 
-#if PLATFORM(IOSMAC)
-extern "C" {
+#if PLATFORM(MACCATALYST)
 #import <UIKitMacHelper/UINSRevealController.h>
-}
 SOFT_LINK_PRIVATE_FRAMEWORK(UIKitMacHelper)
 SOFT_LINK(UIKitMacHelper, UINSSharedRevealController, id<UINSRevealController>, (void), ())
+#endif // PLATFORM(MACCATALYST)
 
-#endif // PLATFORM(IOSMAC)
+#if ENABLE(REVEAL)
+SOFT_LINK_PRIVATE_FRAMEWORK_OPTIONAL(Reveal)
+SOFT_LINK_PRIVATE_FRAMEWORK_OPTIONAL(RevealCore)
+SOFT_LINK_CLASS_OPTIONAL(Reveal, RVPresenter)
+SOFT_LINK_CLASS_OPTIONAL(Reveal, RVPresentingContext)
+SOFT_LINK_CLASS_OPTIONAL(RevealCore, RVItem)
+SOFT_LINK_CLASS_OPTIONAL(RevealCore, RVSelection)
+#endif
 
 #if PLATFORM(MAC)
 
@@ -153,7 +159,7 @@ SOFT_LINK(UIKitMacHelper, UINSSharedRevealController, id<UINSRevealController>, 
 
 @end
 
-#elif PLATFORM(IOSMAC) // PLATFORM(MAC)
+#elif PLATFORM(MACCATALYST) // PLATFORM(MAC)
 
 @interface WebRevealHighlight <UIRVPresenterHighlightDelegate> : NSObject {
 @private
@@ -240,8 +246,8 @@ SOFT_LINK(UIKitMacHelper, UINSSharedRevealController, id<UINSRevealController>, 
     WebCore::CGContextStateSaver saveState(context);
     CGAffineTransform contextTransform = CGContextGetCTM(context);
     CGFloat backingScale = contextTransform.a;
-    CGFloat iOSMacScaleFactor = [PAL::getUIApplicationClass() sharedApplication]._iOSMacScale;
-    CGAffineTransform transform = CGAffineTransformMakeScale(iOSMacScaleFactor * backingScale, iOSMacScaleFactor * backingScale);
+    CGFloat macCatalystScaleFactor = [PAL::getUIApplicationClass() sharedApplication]._iOSMacScale;
+    CGAffineTransform transform = CGAffineTransformMakeScale(macCatalystScaleFactor * backingScale, macCatalystScaleFactor * backingScale);
     CGContextSetCTM(context, transform);
     
     for (NSValue *v in rects) {
@@ -254,7 +260,7 @@ SOFT_LINK(UIKitMacHelper, UINSSharedRevealController, id<UINSRevealController>, 
 
 @end
 
-#endif // PLATFORM(IOSMAC)
+#endif // PLATFORM(MACCATALYST)
 
 #endif // ENABLE(REVEAL)
 
@@ -266,7 +272,7 @@ std::tuple<RefPtr<Range>, NSDictionary *> DictionaryLookup::rangeForSelection(co
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS;
     
-    if (!getRVItemClass())
+    if (!RevealLibrary() || !RevealCoreLibrary() || !getRVItemClass())
         return { nullptr, nil };
     
     auto selectedRange = selection.toNormalizedRange();
@@ -301,7 +307,7 @@ std::tuple<RefPtr<Range>, NSDictionary *> DictionaryLookup::rangeAtHitTestResult
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS;
     
-    if (!getRVItemClass())
+    if (!RevealLibrary() || !RevealCoreLibrary() || !getRVItemClass())
         return { nullptr, nil };
     
     auto* node = hitTestResult.innerNonSharedNode();
@@ -392,7 +398,7 @@ std::tuple<NSString *, NSDictionary *> DictionaryLookup::stringForPDFSelection(P
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS;
     
-    if (!getRVItemClass())
+    if (!RevealLibrary() || !RevealCoreLibrary() || !getRVItemClass())
         return { nullptr, nil };
 
     // Don't do anything if there is no character at the point.
@@ -436,7 +442,7 @@ static WKRevealController showPopupOrCreateAnimationController(bool createAnimat
     
 #if PLATFORM(MAC)
     
-    if (!getRVItemClass() || !getRVPresenterClass())
+    if (!RevealLibrary() || !RevealCoreLibrary() || !getRVItemClass() || !getRVPresenterClass())
         return nil;
 
     RetainPtr<NSMutableDictionary> mutableOptions = adoptNS([[NSMutableDictionary alloc] init]);
@@ -476,7 +482,7 @@ static WKRevealController showPopupOrCreateAnimationController(bool createAnimat
     RetainPtr<WebRevealHighlight> webHighlight =  adoptNS([[WebRevealHighlight alloc] initWithHighlightRect: highlightRect useDefaultHighlight:!textIndicator.get().contentImage() attributedString:dictionaryPopupInfo.attributedString.get()]);
     RetainPtr<RVPresentingContext> context = adoptNS([allocRVPresentingContextInstance() initWithPointerLocationInView:pointerLocation inView:view highlightDelegate:(id<RVPresenterHighlightDelegate>) webHighlight.get()]);
     
-    RetainPtr<RVItem> item = adoptNS([allocRVItemInstance() initWithText:dictionaryPopupInfo.attributedString.get().string selectedRange:NSMakeRange(0, 0)]);
+    RetainPtr<RVItem> item = adoptNS([allocRVItemInstance() initWithText:dictionaryPopupInfo.attributedString.get().string selectedRange:NSMakeRange(0, dictionaryPopupInfo.attributedString.get().string.length)]);
     
     [webHighlight setClearTextIndicator:[webHighlight = WTFMove(webHighlight), clearTextIndicator = WTFMove(clearTextIndicator)] {
         if (clearTextIndicator)
@@ -485,10 +491,10 @@ static WKRevealController showPopupOrCreateAnimationController(bool createAnimat
     
     if (createAnimationController)
         return [presenter animationControllerForItem:item.get() documentContext:nil presentingContext:context.get() options:nil];
-    [presenter revealItem:item.get() documentContext:nil presentingContext:context.get() options:nil];
+    [presenter revealItem:item.get() documentContext:nil presentingContext:context.get() options:@{ @"forceLookup": @YES }];
     return nil;
     
-#elif PLATFORM(IOSMAC)
+#elif PLATFORM(MACCATALYST)
     
     UNUSED_PARAM(textIndicatorInstallationCallback);
     UNUSED_PARAM(rootViewToViewConversionCallback);
@@ -498,8 +504,8 @@ static WKRevealController showPopupOrCreateAnimationController(bool createAnimat
     auto textIndicator = TextIndicator::create(dictionaryPopupInfo.textIndicator);
     
     RetainPtr<WebRevealHighlight> webHighlight = adoptNS([[WebRevealHighlight alloc] initWithHighlightRect:[view convertRect:textIndicator->selectionRectInRootViewCoordinates() toView:nil] view:view image:textIndicator->contentImage()]);
-    
-    RetainPtr<RVItem> item = adoptNS([allocRVItemInstance() initWithText:dictionaryPopupInfo.attributedString.get().string selectedRange:NSMakeRange(0, 0)]);
+
+    RetainPtr<RVItem> item = adoptNS([allocRVItemInstance() initWithText:dictionaryPopupInfo.attributedString.get().string selectedRange:NSMakeRange(0, dictionaryPopupInfo.attributedString.get().string.length)]);
     
     [UINSSharedRevealController() revealItem:item.get() locationInWindow:dictionaryPopupInfo.origin window:view.window highlighter:(id<UIRVPresenterHighlightDelegate>) webHighlight.get()];
     return nil;

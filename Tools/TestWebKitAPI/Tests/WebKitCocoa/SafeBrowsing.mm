@@ -25,13 +25,14 @@
 
 #import "config.h"
 
-#if ((PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300) || (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000)) && !defined(__i386__) && !PLATFORM(IOSMAC)
+#if HAVE(SAFE_BROWSING)
 
 #import "ClassMethodSwizzler.h"
 #import "PlatformUtilities.h"
 #import "TestNavigationDelegate.h"
 #import "TestWKWebView.h"
 #import <WebKit/WKNavigationDelegate.h>
+#import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKUIDelegatePrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <wtf/RetainPtr.h>
@@ -40,7 +41,7 @@
 
 static bool committedNavigation;
 static bool warningShown;
-static bool goBackClicked;
+static bool didCloseCalled;
 
 @interface SafeBrowsingNavigationDelegate : NSObject <WKNavigationDelegate, WKUIDelegatePrivate>
 @end
@@ -57,9 +58,9 @@ static bool goBackClicked;
     warningShown = true;
 }
 
-- (void)_webViewDidClickGoBackFromSafeBrowsingWarning:(WKWebView *)webView
+- (void)webViewDidClose:(WKWebView *)webView
 {
-    goBackClicked = true;
+    didCloseCalled = true;
 }
 
 @end
@@ -169,15 +170,17 @@ TEST(SafeBrowsing, Preference)
     };
 
     auto webView = adoptNS([WKWebView new]);
+    EXPECT_TRUE([webView configuration].preferences.fraudulentWebsiteWarningEnabled);
+    [webView configuration].preferences.fraudulentWebsiteWarningEnabled = YES;
     [webView setNavigationDelegate:delegate.get()];
-    EXPECT_TRUE([webView configuration].preferences.safeBrowsingEnabled);
+    [webView configuration].preferences.fraudulentWebsiteWarningEnabled = YES;
     [webView loadRequest:[NSURLRequest requestWithURL:resourceURL(@"simple")]];
     while (![webView _safeBrowsingWarning])
         TestWebKitAPI::Util::spinRunLoop();
-    [webView configuration].preferences.safeBrowsingEnabled = NO;
+    [webView configuration].preferences.fraudulentWebsiteWarningEnabled = NO;
     [webView loadRequest:[NSURLRequest requestWithURL:resourceURL(@"simple2")]];
     TestWebKitAPI::Util::run(&done);
-    EXPECT_FALSE([webView configuration].preferences.safeBrowsingEnabled);
+    EXPECT_FALSE([webView configuration].preferences.fraudulentWebsiteWarningEnabled);
     EXPECT_FALSE([webView _safeBrowsingWarning]);
 }
 
@@ -187,6 +190,7 @@ static RetainPtr<WKWebView> safeBrowsingView()
 
     static auto delegate = adoptNS([SafeBrowsingNavigationDelegate new]);
     auto webView = adoptNS([WKWebView new]);
+    [webView configuration].preferences.fraudulentWebsiteWarningEnabled = YES;
     [webView setNavigationDelegate:delegate.get()];
     [webView setUIDelegate:delegate.get()];
     [webView loadRequest:[NSURLRequest requestWithURL:resourceURL(@"simple")]];
@@ -216,20 +220,23 @@ static void checkTitleAndClick(UIButton *button, const char* expectedTitle)
 }
 #endif
 
-template<typename ViewType> void goBack(ViewType *view)
+template<typename ViewType> void goBack(ViewType *view, bool mainFrame = true)
 {
     WKWebView *webView = (WKWebView *)view.superview;
     auto box = view.subviews.firstObject;
     checkTitleAndClick(box.subviews[3], "Go Back");
-    EXPECT_EQ([webView _safeBrowsingWarning], nil);
+    if (mainFrame)
+        EXPECT_EQ([webView _safeBrowsingWarning], nil);
+    else
+        EXPECT_NE([webView _safeBrowsingWarning], nil);
 }
 
 TEST(SafeBrowsing, GoBack)
 {
     auto webView = safeBrowsingView();
-    EXPECT_FALSE(goBackClicked);
+    EXPECT_FALSE(didCloseCalled);
     goBack([webView _safeBrowsingWarning]);
-    EXPECT_TRUE(goBackClicked);
+    EXPECT_TRUE(didCloseCalled);
 }
 
 template<typename ViewType> void visitUnsafeSite(ViewType *view)
@@ -312,6 +319,7 @@ TEST(SafeBrowsing, URLObservation)
 
     auto webViewWithWarning = [&] () -> RetainPtr<WKWebView> {
         auto webView = adoptNS([WKWebView new]);
+        [webView configuration].preferences.fraudulentWebsiteWarningEnabled = YES;
         [webView addObserver:observer.get() forKeyPath:@"URL" options:NSKeyValueObservingOptionNew context:nil];
 
         [webView loadHTMLString:@"meaningful content to be drawn" baseURL:simpleURL.get()];
@@ -363,21 +371,23 @@ TEST(SafeBrowsing, URLObservation)
     }
 }
 
-@interface Simple3LookupContext : NSObject
+static RetainPtr<NSString> phishingResourceName;
+
+@interface SimpleLookupContext : NSObject
 @end
 
-@implementation Simple3LookupContext
+@implementation SimpleLookupContext
 
-+ (Simple3LookupContext *)sharedLookupContext
++ (SimpleLookupContext *)sharedLookupContext
 {
-    static Simple3LookupContext *context = [[Simple3LookupContext alloc] init];
+    static SimpleLookupContext *context = [[SimpleLookupContext alloc] init];
     return context;
 }
 
 - (void)lookUpURL:(NSURL *)URL completionHandler:(void (^)(TestLookupResult *, NSError *))completionHandler
 {
     BOOL phishing = NO;
-    if ([URL isEqual:resourceURL(@"simple3")])
+    if ([URL isEqual:resourceURL(phishingResourceName.get())])
         phishing = YES;
     completionHandler([TestLookupResult resultWithResults:@[[TestServiceLookupResult resultWithProvider:@"TestProvider" phishing:phishing malware:NO unwantedSoftware:NO]]], nil);
 }
@@ -400,10 +410,12 @@ static bool navigationFinished;
 
 TEST(SafeBrowsing, WKWebViewGoBack)
 {
-    ClassMethodSwizzler swizzler(objc_getClass("SSBLookupContext"), @selector(sharedLookupContext), [Simple3LookupContext methodForSelector:@selector(sharedLookupContext)]);
+    phishingResourceName = @"simple3";
+    ClassMethodSwizzler swizzler(objc_getClass("SSBLookupContext"), @selector(sharedLookupContext), [SimpleLookupContext methodForSelector:@selector(sharedLookupContext)]);
     
     auto delegate = adoptNS([WKWebViewGoBackNavigationDelegate new]);
     auto webView = adoptNS([WKWebView new]);
+    [webView configuration].preferences.fraudulentWebsiteWarningEnabled = YES;
     [webView setNavigationDelegate:delegate.get()];
     [webView loadRequest:[NSURLRequest requestWithURL:resourceURL(@"simple")]];
     TestWebKitAPI::Util::run(&navigationFinished);
@@ -417,6 +429,30 @@ TEST(SafeBrowsing, WKWebViewGoBack)
     while (![webView _safeBrowsingWarning])
         TestWebKitAPI::Util::spinRunLoop();
     [webView goBack];
+    TestWebKitAPI::Util::run(&navigationFinished);
+    EXPECT_TRUE([[webView URL] isEqual:resourceURL(@"simple2")]);
+}
+
+TEST(SafeBrowsing, WKWebViewGoBackIFrame)
+{
+    phishingResourceName = @"simple";
+    ClassMethodSwizzler swizzler(objc_getClass("SSBLookupContext"), @selector(sharedLookupContext), [SimpleLookupContext methodForSelector:@selector(sharedLookupContext)]);
+    
+    auto delegate = adoptNS([WKWebViewGoBackNavigationDelegate new]);
+    auto webView = adoptNS([WKWebView new]);
+    [webView configuration].preferences._safeBrowsingEnabled = YES;
+    [webView setNavigationDelegate:delegate.get()];
+    [webView loadRequest:[NSURLRequest requestWithURL:resourceURL(@"simple2")]];
+    TestWebKitAPI::Util::run(&navigationFinished);
+
+    [webView loadRequest:[NSURLRequest requestWithURL:resourceURL(@"simple-iframe")]];
+    while (![webView _safeBrowsingWarning])
+        TestWebKitAPI::Util::spinRunLoop();
+#if !PLATFORM(MAC)
+    [[webView _safeBrowsingWarning] didMoveToWindow];
+#endif
+    navigationFinished = false;
+    goBack([webView _safeBrowsingWarning], false);
     TestWebKitAPI::Util::run(&navigationFinished);
     EXPECT_TRUE([[webView URL] isEqual:resourceURL(@"simple2")]);
 }
@@ -437,4 +473,4 @@ TEST(SafeBrowsing, MissingFramework)
     [webView synchronouslyLoadTestPageNamed:@"simple"];
 }
 
-#endif // WK_API_ENABLED
+#endif // HAVE(SAFE_BROWSING)

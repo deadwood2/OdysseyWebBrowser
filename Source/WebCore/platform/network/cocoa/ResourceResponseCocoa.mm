@@ -111,10 +111,6 @@ CertificateInfo ResourceResponse::platformCertificateInfo() const
 #endif
 }
 
-static CFStringRef const commonHeaderFields[] = {
-    CFSTR("Age"), CFSTR("Cache-Control"), CFSTR("Content-Type"), CFSTR("Date"), CFSTR("Etag"), CFSTR("Expires"), CFSTR("Last-Modified"), CFSTR("Pragma")
-};
-
 NSURLResponse *ResourceResponse::nsURLResponse() const
 {
     if (!m_nsResponse && !m_isNull)
@@ -128,13 +124,13 @@ static void addToHTTPHeaderMap(const void* key, const void* value, void* context
     httpHeaderMap->set((CFStringRef)key, (CFStringRef)value);
 }
 
-static inline AtomicString stripLeadingAndTrailingDoubleQuote(const String& value)
+static inline AtomString stripLeadingAndTrailingDoubleQuote(const String& value)
 {
     unsigned length = value.length();
     if (length < 2 || value[0u] != '"' || value[length - 1] != '"')
         return value;
 
-    return StringView(value).substring(1, length - 2).toAtomicString();
+    return StringView(value).substring(1, length - 2).toAtomString();
 }
 
 static inline HTTPHeaderMap initializeHTTPHeaders(CFHTTPMessageRef messageRef)
@@ -147,12 +143,12 @@ static inline HTTPHeaderMap initializeHTTPHeaders(CFHTTPMessageRef messageRef)
     return headersMap;
 }
 
-static inline AtomicString extractHTTPStatusText(CFHTTPMessageRef messageRef)
+static inline AtomString extractHTTPStatusText(CFHTTPMessageRef messageRef)
 {
     if (auto httpStatusLine = adoptCF(CFHTTPMessageCopyResponseStatusLine(messageRef)))
         return extractReasonPhraseFromHTTPStatusLine(httpStatusLine.get());
 
-    static NeverDestroyed<AtomicString> defaultStatusText("OK", AtomicString::ConstructFromLiteral);
+    static NeverDestroyed<AtomString> defaultStatusText("OK", AtomString::ConstructFromLiteral);
     return defaultStatusText;
 }
 

@@ -29,6 +29,7 @@
 
 #include "MessageReceiver.h"
 #include "MessageSender.h"
+#include "ServiceWorkerFetchTask.h"
 #include <WebCore/FetchIdentifier.h>
 #include <WebCore/SWServer.h>
 #include <pal/SessionID.h>
@@ -63,14 +64,6 @@ public:
 
     PAL::SessionID sessionID() const { return m_sessionID; }
 
-    void didReceiveFetchRedirectResponse(WebCore::FetchIdentifier, const WebCore::ResourceResponse&);
-    void didReceiveFetchResponse(WebCore::FetchIdentifier, const WebCore::ResourceResponse&, bool needsContinueDidReceiveResponseMessage);
-    void didReceiveFetchData(WebCore::FetchIdentifier, const IPC::DataReference&, int64_t encodedDataLength);
-    void didReceiveFetchFormData(WebCore::FetchIdentifier, const IPC::FormDataReference&);
-    void didFinishFetch(WebCore::FetchIdentifier);
-    void didFailFetch(WebCore::FetchIdentifier, const WebCore::ResourceError&);
-    void didNotHandleFetch(WebCore::FetchIdentifier);
-
     void postMessageToServiceWorkerClient(WebCore::DocumentIdentifier destinationContextIdentifier, WebCore::MessageWithMessagePorts&&, WebCore::ServiceWorkerIdentifier sourceServiceWorkerIdentifier, const String& sourceOrigin);
     void postMessageToServiceWorker(WebCore::ServiceWorkerIdentifier destination, WebCore::MessageWithMessagePorts&&, const WebCore::ServiceWorkerOrClientIdentifier& source);
 
@@ -99,6 +92,15 @@ private:
 
     void registerServiceWorkerClient(WebCore::SecurityOriginData&& topOrigin, WebCore::ServiceWorkerClientData&&, const Optional<WebCore::ServiceWorkerRegistrationIdentifier>&, String&& userAgent);
     void unregisterServiceWorkerClient(const WebCore::ServiceWorkerClientIdentifier&);
+    void syncTerminateWorkerFromClient(WebCore::ServiceWorkerIdentifier&&, CompletionHandler<void()>&&);
+
+    void serverToContextConnectionCreated(WebCore::SWServerToContextConnection&) final;
+
+    bool isThrottleable() const { return m_isThrottleable; }
+    bool hasMatchingClient(const WebCore::RegistrableDomain&) const;
+    bool computeThrottleState(const WebCore::RegistrableDomain&) const;
+    void setThrottleState(bool isThrottleable);
+    void updateThrottleState();
 
     IPC::Connection* messageSenderConnection() const final { return m_contentConnection.ptr(); }
     uint64_t messageSenderDestinationID() const final { return identifier().toUInt64(); }
@@ -109,6 +111,7 @@ private:
     Ref<IPC::Connection> m_contentConnection;
     Ref<NetworkProcess> m_networkProcess;
     HashMap<WebCore::ServiceWorkerClientIdentifier, WebCore::ClientOrigin> m_clientOrigins;
+    bool m_isThrottleable { true };
 };
 
 } // namespace WebKit

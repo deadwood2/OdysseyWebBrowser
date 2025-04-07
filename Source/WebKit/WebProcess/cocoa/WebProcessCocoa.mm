@@ -31,6 +31,7 @@
 #import "LogInitialization.h"
 #import "Logging.h"
 #import "ObjCObjectGraph.h"
+#import "ProcessAssertion.h"
 #import "SandboxExtension.h"
 #import "SandboxInitializationParameters.h"
 #import "WKAPICast.h"
@@ -43,11 +44,12 @@
 #import "WebInspector.h"
 #import "WebPage.h"
 #import "WebProcessCreationParameters.h"
+#import "WebProcessDataStoreParameters.h"
 #import "WebProcessProxyMessages.h"
 #import "WebsiteDataStoreParameters.h"
 #import <JavaScriptCore/ConfigFile.h>
 #import <JavaScriptCore/Options.h>
-#import <WebCore/AVFoundationMIMETypeCache.h>
+#import <WebCore/AVAssetMIMETypeCache.h>
 #import <WebCore/AXObjectCache.h>
 #import <WebCore/CPUMonitor.h>
 #import <WebCore/DisplayRefreshMonitorManager.h>
@@ -61,9 +63,12 @@
 #import <WebCore/NSScrollerImpDetails.h>
 #import <WebCore/PerformanceLogging.h>
 #import <WebCore/RuntimeApplicationChecks.h>
+#import <WebCore/SWContextManager.h>
 #import <algorithm>
 #import <dispatch/dispatch.h>
 #import <objc/runtime.h>
+#import <pal/spi/cf/CFNetworkSPI.h>
+#import <pal/spi/cf/CFUtilitiesSPI.h>
 #import <pal/spi/cg/CoreGraphicsSPI.h>
 #import <pal/spi/cocoa/LaunchServicesSPI.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
@@ -74,7 +79,16 @@
 #import <wtf/FileSystem.h>
 #import <wtf/cocoa/NSURLExtras.h>
 
+#if PLATFORM(IOS)
+#import "UIKitSPI.h"
+#endif
+
 #if PLATFORM(IOS_FAMILY)
+#include <bmalloc/MemoryStatusSPI.h>
+#endif
+
+#if PLATFORM(IOS_FAMILY)
+#import "AccessibilitySupportSPI.h"
 #import "WKAccessibilityWebPageObjectIOS.h"
 #import <UIKit/UIAccessibility.h>
 #import <pal/spi/ios/GraphicsServicesSPI.h>
@@ -110,6 +124,7 @@ using namespace WebCore;
 
 #if PLATFORM(MAC)
 static const Seconds cpuMonitoringInterval { 8_min };
+static const double serviceWorkerCPULimit { 0.5 }; // 50% average CPU usage over 8 minutes.
 #endif
 
 void WebProcess::platformSetCacheModel(CacheModel)
@@ -127,7 +142,7 @@ static id NSApplicationAccessibilityFocusedUIElement(NSApplication*, SEL)
 }
 #endif
 
-void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& parameters)
+void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters& parameters)
 {
 #if !LOG_DISABLED || !RELEASE_LOG_DISABLED
     WebCore::initializeLogChannelsIfNecessary(parameters.webCoreLoggingChannels);
@@ -141,11 +156,6 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
 
 #if ENABLE(SANDBOX_EXTENSIONS)
     SandboxExtension::consumePermanently(parameters.uiProcessBundleResourcePathExtensionHandle);
-    SandboxExtension::consumePermanently(parameters.webSQLDatabaseDirectoryExtensionHandle);
-    SandboxExtension::consumePermanently(parameters.applicationCacheDirectoryExtensionHandle);
-    SandboxExtension::consumePermanently(parameters.mediaCacheDirectoryExtensionHandle);
-    SandboxExtension::consumePermanently(parameters.mediaKeyStorageDirectoryExtensionHandle);
-    SandboxExtension::consumePermanently(parameters.javaScriptConfigurationDirectoryExtensionHandle);
 #if ENABLE(MEDIA_STREAM)
     SandboxExtension::consumePermanently(parameters.audioCaptureExtensionHandle);
 #endif
@@ -155,11 +165,6 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
     SandboxExtension::consumePermanently(parameters.containerTemporaryDirectoryExtensionHandle);
 #endif
 #endif
-
-    if (!parameters.javaScriptConfigurationDirectory.isEmpty()) {
-        String javaScriptConfigFile = parameters.javaScriptConfigurationDirectory + "/JSC.config";
-        JSC::processConfigFile(javaScriptConfigFile.latin1().data(), "com.apple.WebKit.WebContent", parameters.uiProcessBundleIdentifier.latin1().data());
-    }
 
     // Disable NSURLCache.
     auto urlCache = adoptNS([[NSURLCache alloc] initWithMemoryCapacity:0 diskCapacity:0 diskPath:nil]);
@@ -191,6 +196,11 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
     [NSApplication _accessibilityInitialize];
 #endif
 
+#if PLATFORM(MAC) && ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
+    // App nap must be manually enabled when not running the NSApplication run loop.
+    __CFRunLoopSetOptionsReason(__CFRunLoopOptionsEnableAppNap, CFSTR("Finished checkin as application - enable app nap"));
+#endif
+
 #if TARGET_OS_IPHONE
     // Priority decay on iOS 9 is impacting page load time so we fix the priority of the WebProcess' main thread (rdar://problem/22003112).
     pthread_set_fixedpriority_self();
@@ -199,7 +209,7 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
     if (!parameters.mediaMIMETypes.isEmpty())
         setMediaMIMETypes(parameters.mediaMIMETypes);
     else {
-        AVFoundationMIMETypeCache::singleton().setCacheMIMETypesCallback([this](const Vector<String>& types) {
+        AVAssetMIMETypeCache::singleton().setCacheMIMETypesCallback([this](const Vector<String>& types) {
             parentProcessConnection()->send(Messages::WebProcessProxy::CacheMediaMIMETypes(types), 0);
         });
     }
@@ -210,6 +220,22 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
     scrollerStylePreferenceChanged(parameters.useOverlayScrollbars);
 #endif
 #endif
+}
+
+void WebProcess::platformSetWebsiteDataStoreParameters(WebProcessDataStoreParameters&& parameters)
+{
+#if ENABLE(SANDBOX_EXTENSIONS)
+    SandboxExtension::consumePermanently(parameters.webSQLDatabaseDirectoryExtensionHandle);
+    SandboxExtension::consumePermanently(parameters.applicationCacheDirectoryExtensionHandle);
+    SandboxExtension::consumePermanently(parameters.mediaCacheDirectoryExtensionHandle);
+    SandboxExtension::consumePermanently(parameters.mediaKeyStorageDirectoryExtensionHandle);
+    SandboxExtension::consumePermanently(parameters.javaScriptConfigurationDirectoryExtensionHandle);
+#endif
+
+    if (!parameters.javaScriptConfigurationDirectory.isEmpty()) {
+        String javaScriptConfigFile = parameters.javaScriptConfigurationDirectory + "/JSC.config";
+        JSC::processConfigFile(javaScriptConfigFile.latin1().data(), "com.apple.WebKit.WebContent", m_uiProcessBundleIdentifier.latin1().data());
+    }
 }
 
 void WebProcess::initializeProcessName(const AuxiliaryProcessInitializationParameters&)
@@ -226,19 +252,22 @@ void WebProcess::initializeProcessName(const AuxiliaryProcessInitializationParam
 #endif
 }
 
-#if PLATFORM(MAC)
 void WebProcess::updateProcessName()
 {
+#if PLATFORM(MAC)
     NSString *applicationName;
     switch (m_processType) {
     case ProcessType::Inspector:
         applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Web Inspector", "Visible name of Web Inspector's web process. The argument is the application name."), (NSString *)m_uiProcessName];
         break;
     case ProcessType::ServiceWorker:
-        applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Service Worker (%@)", "Visible name of Service Worker process. The argument is the application name."), (NSString *)m_uiProcessName, (NSString *)m_securityOrigin];
+        applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Service Worker (%@)", "Visible name of Service Worker process. The argument is the application name."), (NSString *)m_uiProcessName, (NSString *)m_registrableDomain.string()];
         break;
     case ProcessType::PrewarmedWebContent:
         applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Web Content (Prewarmed)", "Visible name of the web process. The argument is the application name."), (NSString *)m_uiProcessName];
+        break;
+    case ProcessType::CachedWebContent:
+        applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Web Content (Cached)", "Visible name of the web process. The argument is the application name."), (NSString *)m_uiProcessName];
         break;
     case ProcessType::WebContent:
         applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Web Content", "Visible name of the web process. The argument is the application name."), (NSString *)m_uiProcessName];
@@ -259,19 +288,62 @@ void WebProcess::updateProcessName()
         ASSERT(!actualApplicationName.isEmpty());
 #endif
     });
-}
 #endif // PLATFORM(MAC)
+}
+
+#if PLATFORM(IOS_FAMILY)
+void WebProcess::processTaskStateDidChange(ProcessTaskStateObserver::TaskState taskState)
+{
+    RELEASE_LOG(ProcessSuspension, "%p - WebProcess::processTaskStateDidChange() - taskState(%d)", this, taskState);
+    if (taskState == ProcessTaskStateObserver::None)
+        return;
+
+    if (taskState == ProcessTaskStateObserver::Suspended) {
+        if (m_processIsSuspended)
+            return;
+
+        RELEASE_LOG(ProcessSuspension, "%p - WebProcess::processTaskStateChanged() - unexpectedly entered Suspended state", this);
+        return;
+    }
+
+    if (!m_processIsSuspended)
+        return;
+
+    // We were awakened from suspension unexpectedly. Notify the WebProcessProxy, but take a process assertion on our parent PID
+    // to ensure that it too is awakened.
+    auto uiProcessAssertion = makeUnique<ProcessAssertion>(parentProcessConnection()->remoteProcessID(), "Unexpectedly resumed", AssertionState::Background, AssertionReason::FinishTask);
+    parentProcessConnection()->sendWithAsyncReply(Messages::WebProcessProxy::ProcessWasUnexpectedlyUnsuspended(), [uiProcessAssertion = WTFMove(uiProcessAssertion)] { });
+}
+#endif
+
+#if PLATFORM(IOS_FAMILY)
+static NSString *webProcessLoaderAccessibilityBundlePath()
+{
+    NSString *accessibilityBundlesPath = nil;
+#if HAVE(ACCESSIBILITY_BUNDLES_PATH)
+    accessibilityBundlesPath = (__bridge NSString *)_AXSAccessibilityBundlesPath();
+#else
+    accessibilityBundlesPath = (__bridge NSString *)GSSystemRootDirectory();
+#if PLATFORM(MACCATALYST)
+    accessibilityBundlesPath = [accessibilityBundlesPath stringByAppendingPathComponent:@"System/iOSSupport"];
+#endif
+    accessibilityBundlesPath = [accessibilityBundlesPath stringByAppendingPathComponent:@"System/Library/AccessibilityBundles"];
+#endif // HAVE(ACCESSIBILITY_BUNDLES_PATH)
+    return [accessibilityBundlesPath stringByAppendingPathComponent:@"WebProcessLoader.axbundle"];
+}
+#endif
 
 static void registerWithAccessibility()
 {
 #if USE(APPKIT)
     [NSAccessibilityRemoteUIElement setRemoteUIApp:YES];
 #endif
+
 #if PLATFORM(IOS_FAMILY)
-    NSString *accessibilityBundlePath = [(NSString *)GSSystemRootDirectory() stringByAppendingString:@"/System/Library/AccessibilityBundles/WebProcessLoader.axbundle"];
+    NSString *bundlePath = webProcessLoaderAccessibilityBundlePath();
     NSError *error = nil;
-    if (![[NSBundle bundleWithPath:accessibilityBundlePath] loadAndReturnError:&error])
-        LOG_ERROR("Failed to load accessibility bundle at %@: %@", accessibilityBundlePath, error);
+    if (![[NSBundle bundleWithPath:bundlePath] loadAndReturnError:&error])
+        LOG_ERROR("Failed to load accessibility bundle at %@: %@", bundlePath, error);
 #endif
 }
 
@@ -380,12 +452,17 @@ void WebProcess::platformInitializeProcess(const AuxiliaryProcessInitializationP
     }
 #endif // ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
 
+    m_uiProcessName = parameters.uiProcessName;
+#endif // PLATFORM(MAC)
+
     if (parameters.extraInitializationData.get("inspector-process"_s) == "1")
         m_processType = ProcessType::Inspector;
 #if ENABLE(SERVICE_WORKER)
     else if (parameters.extraInitializationData.get("service-worker-process"_s) == "1") {
         m_processType = ProcessType::ServiceWorker;
-        m_securityOrigin = parameters.extraInitializationData.get("security-origin"_s);
+#if PLATFORM(MAC)
+        m_registrableDomain = RegistrableDomain::uncheckedCreateFromRegistrableDomainString(parameters.extraInitializationData.get("registrable-domain"_s));
+#endif
     }
 #endif
     else if (parameters.extraInitializationData.get("is-prewarmed"_s) == "1")
@@ -393,15 +470,14 @@ void WebProcess::platformInitializeProcess(const AuxiliaryProcessInitializationP
     else
         m_processType = ProcessType::WebContent;
 
-    m_uiProcessName = parameters.uiProcessName;
-#else
-    UNUSED_PARAM(parameters);
-#endif // PLATFORM(MAC)
-
     registerWithAccessibility();
 
 #if USE(OS_STATE)
     registerWithStateDumper();
+#endif
+
+#if HAVE(APP_SSO)
+    [NSURLSession _disableAppSSO];
 #endif
 }
 
@@ -418,7 +494,7 @@ void WebProcess::stopRunLoop()
 
 void WebProcess::platformTerminate()
 {
-    AVFoundationMIMETypeCache::singleton().setCacheMIMETypesCallback(nullptr);
+    AVAssetMIMETypeCache::singleton().setCacheMIMETypesCallback(nullptr);
 }
 
 RetainPtr<CFDataRef> WebProcess::sourceApplicationAuditData() const
@@ -441,12 +517,8 @@ void WebProcess::initializeSandbox(const AuxiliaryProcessInitializationParameter
 #if ENABLE(WEB_PROCESS_SANDBOX)
 #if ENABLE(MANUAL_SANDBOXING)
     // Need to override the default, because service has a different bundle ID.
-#if WK_API_ENABLED
     NSBundle *webKit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKWebView")];
-#else
-    NSBundle *webKit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKView")];
-#endif
-#if PLATFORM(IOS_FAMILY) && !PLATFORM(IOSMAC)
+#if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
     sandboxParameters.setOverrideSandboxProfilePath([webKit2Bundle pathForResource:@"com.apple.WebKit.WebContent" ofType:@"sb"]);
 #else
     sandboxParameters.setOverrideSandboxProfilePath([webKit2Bundle pathForResource:@"com.apple.WebProcess" ofType:@"sb"]);
@@ -485,7 +557,7 @@ static NSURL *origin(WebPage& page)
 #endif
 
 #if PLATFORM(MAC)
-static RetainPtr<NSArray<NSString *>> activePagesOrigins(const HashMap<uint64_t, RefPtr<WebPage>>& pageMap)
+static RetainPtr<NSArray<NSString *>> activePagesOrigins(const HashMap<PageIdentifier, RefPtr<WebPage>>& pageMap)
 {
     RetainPtr<NSMutableArray<NSString *>> activeOrigins = adoptNS([[NSMutableArray alloc] init]);
 
@@ -530,16 +602,19 @@ void WebProcess::updateCPULimit()
 {
 #if PLATFORM(MAC)
     Optional<double> cpuLimit;
-
-    // Use the largest limit among all pages in this process.
-    for (auto& page : m_pageMap.values()) {
-        auto pageCPULimit = page->cpuLimit();
-        if (!pageCPULimit) {
-            cpuLimit = WTF::nullopt;
-            break;
+    if (m_processType == ProcessType::ServiceWorker)
+        cpuLimit = serviceWorkerCPULimit;
+    else {
+        // Use the largest limit among all pages in this process.
+        for (auto& page : m_pageMap.values()) {
+            auto pageCPULimit = page->cpuLimit();
+            if (!pageCPULimit) {
+                cpuLimit = WTF::nullopt;
+                break;
+            }
+            if (!cpuLimit || pageCPULimit > cpuLimit.value())
+                cpuLimit = pageCPULimit;
         }
-        if (!cpuLimit || pageCPULimit > cpuLimit.value())
-            cpuLimit = pageCPULimit;
     }
 
     if (m_cpuLimit == cpuLimit)
@@ -560,8 +635,11 @@ void WebProcess::updateCPUMonitorState(CPUMonitorUpdateReason reason)
     }
 
     if (!m_cpuMonitor) {
-        m_cpuMonitor = std::make_unique<CPUMonitor>(cpuMonitoringInterval, [this](double cpuUsage) {
-            RELEASE_LOG(PerformanceLogging, "%p - WebProcess exceeded CPU limit of %.1f%% (was using %.1f%%) hasVisiblePages? %d", this, m_cpuLimit.value() * 100, cpuUsage * 100, hasVisibleWebPage());
+        m_cpuMonitor = makeUnique<CPUMonitor>(cpuMonitoringInterval, [this](double cpuUsage) {
+            if (m_processType == ProcessType::ServiceWorker)
+                RELEASE_LOG_ERROR(PerformanceLogging, "%p - Service worker process exceeded CPU limit of %.1f%% (was using %.1f%%)", this, m_cpuLimit.value() * 100, cpuUsage * 100);
+            else
+                RELEASE_LOG_ERROR(PerformanceLogging, "%p - WebProcess exceeded CPU limit of %.1f%% (was using %.1f%%) hasVisiblePages? %d", this, m_cpuLimit.value() * 100, cpuUsage * 100, hasVisibleWebPage());
             parentProcessConnection()->send(Messages::WebProcessProxy::DidExceedCPULimit(), 0);
         });
     } else if (reason == CPUMonitorUpdateReason::VisibilityHasChanged) {
@@ -585,7 +663,6 @@ RefPtr<ObjCObjectGraph> WebProcess::transformHandlesToObjects(ObjCObjectGraph& o
 
         bool shouldTransformObject(id object) const override
         {
-#if WK_API_ENABLED
             if (dynamic_objc_cast<WKBrowsingContextHandle>(object))
                 return true;
 
@@ -593,13 +670,11 @@ RefPtr<ObjCObjectGraph> WebProcess::transformHandlesToObjects(ObjCObjectGraph& o
             if (dynamic_objc_cast<WKTypeRefWrapper>(object))
                 return true;
             ALLOW_DEPRECATED_DECLARATIONS_END
-#endif
             return false;
         }
 
         RetainPtr<id> transformObject(id object) const override
         {
-#if WK_API_ENABLED
             if (auto* handle = dynamic_objc_cast<WKBrowsingContextHandle>(object)) {
                 if (auto* webPage = m_webProcess.webPage(handle._pageID))
                     return wrapper(*webPage);
@@ -611,7 +686,6 @@ RefPtr<ObjCObjectGraph> WebProcess::transformHandlesToObjects(ObjCObjectGraph& o
             if (auto* wrapper = dynamic_objc_cast<WKTypeRefWrapper>(object))
                 return adoptNS([[WKTypeRefWrapper alloc] initWithObject:toAPI(m_webProcess.transformHandlesToObjects(toImpl(wrapper.object)).get())]);
             ALLOW_DEPRECATED_DECLARATIONS_END
-#endif
             return object;
         }
 
@@ -626,7 +700,6 @@ RefPtr<ObjCObjectGraph> WebProcess::transformObjectsToHandles(ObjCObjectGraph& o
     struct Transformer final : ObjCObjectGraph::Transformer {
         bool shouldTransformObject(id object) const override
         {
-#if WK_API_ENABLED
             if (dynamic_objc_cast<WKWebProcessPlugInBrowserContextController>(object))
                 return true;
 
@@ -634,14 +707,11 @@ RefPtr<ObjCObjectGraph> WebProcess::transformObjectsToHandles(ObjCObjectGraph& o
             if (dynamic_objc_cast<WKTypeRefWrapper>(object))
                 return true;
             ALLOW_DEPRECATED_DECLARATIONS_END
-#endif
-
             return false;
         }
 
         RetainPtr<id> transformObject(id object) const override
         {
-#if WK_API_ENABLED
             if (auto* controller = dynamic_objc_cast<WKWebProcessPlugInBrowserContextController>(object))
                 return controller.handle;
 
@@ -649,7 +719,6 @@ RefPtr<ObjCObjectGraph> WebProcess::transformObjectsToHandles(ObjCObjectGraph& o
             if (auto* wrapper = dynamic_objc_cast<WKTypeRefWrapper>(object))
                 return adoptNS([[WKTypeRefWrapper alloc] initWithObject:toAPI(transformObjectsToHandles(toImpl(wrapper.object)).get())]);
             ALLOW_DEPRECATED_DECLARATIONS_END
-#endif
             return object;
         }
     };
@@ -680,6 +749,37 @@ void WebProcess::accessibilityProcessSuspendedNotification(bool suspended)
 {
     UIAccessibilityPostNotification(kAXPidStatusChangedNotification, @{ @"pid" : @(getpid()), @"suspended" : @(suspended) });
 }
+
+bool WebProcess::shouldFreezeOnSuspension() const
+{
+    switch (m_processType) {
+    case ProcessType::Inspector:
+    case ProcessType::ServiceWorker:
+    case ProcessType::PrewarmedWebContent:
+    case ProcessType::CachedWebContent:
+        return false;
+    case ProcessType::WebContent:
+        break;
+    }
+
+    for (auto& page : m_pageMap.values()) {
+        if (!page->isSuspended())
+            return true;
+    }
+
+    // Since all of the pages in this process were suspended, we should not bother freezing it.
+    return false;
+}
+
+void WebProcess::updateFreezerStatus()
+{
+    bool isFreezable = shouldFreezeOnSuspension();
+    auto result = memorystatus_control(MEMORYSTATUS_CMD_SET_PROCESS_IS_FREEZABLE, getpid(), isFreezable ? 1 : 0, nullptr, 0);
+    if (result)
+        RELEASE_LOG_ERROR(ProcessSuspension, "%p - WebProcess::updateFreezerStatus() isFreezable: %d, error: %d", this, isFreezable, result);
+    else
+        RELEASE_LOG(ProcessSuspension, "%p - WebProcess::updateFreezerStatus() isFreezable: %d, success", this, isFreezable);
+}
 #endif
 
 #if PLATFORM(MAC) && ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
@@ -708,9 +808,29 @@ void WebProcess::displayWasRefreshed(CGDirectDisplayID displayID)
 }
 #endif
 
+#if PLATFORM(IOS)
+static float currentBacklightLevel()
+{
+    return WebProcess::singleton().backlightLevel();
+}
+
+void WebProcess::backlightLevelDidChange(float backlightLevel)
+{
+    m_backlightLevel = backlightLevel;
+
+    static std::once_flag onceFlag;
+    std::call_once(
+        onceFlag,
+        [] {
+            Method methodToPatch = class_getInstanceMethod([UIDevice class], @selector(_backlightLevel));
+            method_setImplementation(methodToPatch, reinterpret_cast<IMP>(currentBacklightLevel));
+        });
+}
+#endif
+
 void WebProcess::setMediaMIMETypes(const Vector<String> types)
 {
-    AVFoundationMIMETypeCache::singleton().setSupportedTypes(types);
+    AVAssetMIMETypeCache::singleton().setSupportedTypes(types);
 }
 
 } // namespace WebKit

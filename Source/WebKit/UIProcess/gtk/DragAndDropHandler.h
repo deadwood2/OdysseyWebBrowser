@@ -49,6 +49,7 @@ class ShareableBitmap;
 class WebPageProxy;
 
 class DragAndDropHandler {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(DragAndDropHandler);
 public:
     DragAndDropHandler(WebPageProxy&);
@@ -64,6 +65,7 @@ public:
 
 private:
     struct DroppingContext {
+        WTF_MAKE_STRUCT_FAST_ALLOCATED;
         DroppingContext(GdkDragContext*, const WebCore::IntPoint& position);
 
         GdkDragContext* gdkContext { nullptr };
@@ -78,15 +80,8 @@ private:
 
     WebPageProxy& m_page;
     HashMap<GdkDragContext*, std::unique_ptr<DroppingContext>> m_droppingContexts;
-
-#if GTK_CHECK_VERSION(3, 16, 0)
     GRefPtr<GdkDragContext> m_dragContext;
     RefPtr<WebCore::SelectionData> m_draggingSelectionData;
-#else
-    // We don't have gtk_drag_cancel() in GTK+ < 3.16, so we use the old code.
-    // See https://bugs.webkit.org/show_bug.cgi?id=138468
-    HashMap<GdkDragContext*, RefPtr<WebCore::SelectionData>> m_draggingSelectionDataMap;
-#endif
 };
 
 } // namespace WebKit

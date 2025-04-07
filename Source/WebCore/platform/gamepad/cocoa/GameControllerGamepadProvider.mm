@@ -26,7 +26,7 @@
 #import "config.h"
 #import "GameControllerGamepadProvider.h"
 
-#if ENABLE(GAMEPAD) && (defined(__LP64__) || PLATFORM(IOS_FAMILY))
+#if ENABLE(GAMEPAD)
 
 #import "GameControllerGamepad.h"
 #import "GamepadProviderClient.h"
@@ -61,7 +61,7 @@ void GameControllerGamepadProvider::controllerDidConnect(GCController *controlle
     LOG(Gamepad, "GameControllerGamepadProvider controller %p added", controller);
 
     unsigned index = indexForNewlyConnectedDevice();
-    auto gamepad = std::make_unique<GameControllerGamepad>(controller, index);
+    auto gamepad = makeUnique<GameControllerGamepad>(controller, index);
 
     if (m_gamepadVector.size() <= index)
         m_gamepadVector.grow(index + 1);
@@ -176,4 +176,4 @@ void GameControllerGamepadProvider::inputNotificationTimerFired()
 
 } // namespace WebCore
 
-#endif // ENABLE(GAMEPAD) && (defined(__LP64__) || PLATFORM(IOS_FAMILY))
+#endif // ENABLE(GAMEPAD)

@@ -35,19 +35,23 @@ OBJC_CLASS CALayer;
 
 namespace WebCore {
 
-class StickyPositionViewportConstraints;
-
 class ScrollingTreeStickyNode : public ScrollingTreeNode {
 public:
     WEBCORE_EXPORT static Ref<ScrollingTreeStickyNode> create(ScrollingTree&, ScrollingNodeID);
 
     virtual ~ScrollingTreeStickyNode();
 
+    FloatSize scrollDeltaSinceLastCommit() const;
+
+    CALayer *layer() { return m_layer.get(); }
+
 private:
     ScrollingTreeStickyNode(ScrollingTree&, ScrollingNodeID);
 
     void commitStateBeforeChildren(const ScrollingStateNode&) override;
-    void updateLayersAfterAncestorChange(const ScrollingTreeNode& changedNode, const FloatRect& fixedPositionRect, const FloatSize& cumulativeDelta) override;
+    void applyLayerPositions() override;
+
+    FloatPoint computeLayerPosition() const;
 
     void dumpProperties(WTF::TextStream&, ScrollingStateTreeAsTextBehavior) const override;
 

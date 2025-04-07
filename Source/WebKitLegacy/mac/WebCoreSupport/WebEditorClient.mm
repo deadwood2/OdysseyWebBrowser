@@ -102,7 +102,7 @@ using namespace HTMLNames;
 @end
 #endif
 
-#if (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED < 110000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101300)
+#if (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED < 110000)
 @interface NSAttributedString (WebNSAttributedStringDetails)
 - (DOMDocumentFragment *)_documentFromRange:(NSRange)range document:(DOMDocument *)document documentAttributes:(NSDictionary *)attributes subresources:(NSArray **)subresources;
 @end
@@ -419,13 +419,7 @@ void WebEditorClient::getClientPasteboardDataForRange(WebCore::Range*, Vector<St
     // Not implemented WebKit, only WebKit2.
 }
 
-String WebEditorClient::replacementURLForResource(Ref<SharedBuffer>&&, const String&)
-{
-    // Not implemented in WebKitLegacy.
-    return { };
-}
-
-#if (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300)
+#if (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000) || PLATFORM(MAC)
 
 // FIXME: Remove both this stub and the real version of this function below once we don't need the real version on any supported platform.
 // This stub is not used outside WebKit, but it's here so we won't get a linker error.
@@ -690,28 +684,28 @@ void WebEditorClient::redo()
         [[m_webView undoManager] redo];    
 }
 
-void WebEditorClient::handleKeyboardEvent(KeyboardEvent* event)
+void WebEditorClient::handleKeyboardEvent(KeyboardEvent& event)
 {
-    auto* frame = downcast<Node>(event->target())->document().frame();
+    auto* frame = downcast<Node>(event.target())->document().frame();
 #if !PLATFORM(IOS_FAMILY)
     WebHTMLView *webHTMLView = (WebHTMLView *)[[kit(frame) frameView] documentView];
-    if ([webHTMLView _interpretKeyEvent:event savingCommands:NO])
-        event->setDefaultHandled();
+    if ([webHTMLView _interpretKeyEvent:&event savingCommands:NO])
+        event.setDefaultHandled();
 #else
     WebHTMLView *webHTMLView = (WebHTMLView *)[[kit(frame) frameView] documentView];
-    if ([webHTMLView _handleEditingKeyEvent:event])
-        event->setDefaultHandled();
+    if ([webHTMLView _handleEditingKeyEvent:&event])
+        event.setDefaultHandled();
 #endif
 }
 
-void WebEditorClient::handleInputMethodKeydown(KeyboardEvent* event)
+void WebEditorClient::handleInputMethodKeydown(KeyboardEvent& event)
 {
 #if !PLATFORM(IOS_FAMILY)
     // FIXME: Switch to WebKit2 model, interpreting the event before it's sent down to WebCore.
-    auto* frame = downcast<Node>(event->target())->document().frame();
+    auto* frame = downcast<Node>(event.target())->document().frame();
     WebHTMLView *webHTMLView = (WebHTMLView *)[[kit(frame) frameView] documentView];
-    if ([webHTMLView _interpretKeyEvent:event savingCommands:YES])
-        event->setDefaultHandled();
+    if ([webHTMLView _interpretKeyEvent:&event savingCommands:YES])
+        event.setDefaultHandled();
 #else
     // iOS does not use input manager this way
 #endif
@@ -1264,3 +1258,12 @@ void WebEditorClient::requestCheckingOfString(WebCore::TextCheckingRequest& requ
         }];
 #endif
 }
+
+#if PLATFORM(IOS_FAMILY)
+bool WebEditorClient::shouldAllowSingleClickToChangeSelection(WebCore::Node& targetNode, const WebCore::VisibleSelection& newSelection) const
+{
+    // The text selection assistant will handle selection in the case where we are already editing the node
+    auto* editableRoot = newSelection.rootEditableElement();
+    return !editableRoot || editableRoot != targetNode.rootEditableElement();
+}
+#endif

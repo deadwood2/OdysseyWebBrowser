@@ -48,14 +48,10 @@
 #endif
 
 #import <pal/cf/CoreMediaSoftLink.h>
+#import <pal/cocoa/AVFoundationSoftLink.h>
 
-SOFT_LINK_FRAMEWORK(AVFoundation)
 SOFT_LINK_FRAMEWORK(MediaToolbox)
 SOFT_LINK_FRAMEWORK(AudioToolbox)
-
-SOFT_LINK_CLASS(AVFoundation, AVPlayerItem)
-SOFT_LINK_CLASS(AVFoundation, AVMutableAudioMix)
-SOFT_LINK_CLASS(AVFoundation, AVMutableAudioMixInputParameters)
 
 SOFT_LINK(AudioToolbox, AudioConverterConvertComplexBuffer, OSStatus, (AudioConverterRef inAudioConverter, UInt32 inNumberPCMFrames, const AudioBufferList* inInputData, AudioBufferList* outOutputData), (inAudioConverter, inNumberPCMFrames, inInputData, outOutputData))
 SOFT_LINK(AudioToolbox, AudioConverterNew, OSStatus, (const AudioStreamBasicDescription* inSourceFormat, const AudioStreamBasicDescription* inDestinationFormat, AudioConverterRef* outAudioConverter), (inSourceFormat, inDestinationFormat, outAudioConverter))
@@ -94,8 +90,9 @@ AudioSourceProviderAVFObjC::~AudioSourceProviderAVFObjC()
     if (m_tapStorage) {
         std::lock_guard<Lock> lock(m_tapStorage->mutex);
         m_tapStorage->_this = nullptr;
-        m_tapStorage = nullptr;
     }
+
+    m_tapStorage = nullptr;
 }
 
 void AudioSourceProviderAVFObjC::provideInput(AudioBus* bus, size_t framesToProcess)
@@ -207,7 +204,7 @@ void AudioSourceProviderAVFObjC::createMix()
     ASSERT(m_avPlayerItem);
     ASSERT(m_client);
 
-    m_avAudioMix = adoptNS([allocAVMutableAudioMixInstance() init]);
+    m_avAudioMix = adoptNS([PAL::allocAVMutableAudioMixInstance() init]);
 
     MTAudioProcessingTapCallbacks callbacks = {
         0,
@@ -220,11 +217,15 @@ void AudioSourceProviderAVFObjC::createMix()
     };
 
     MTAudioProcessingTapRef tap = nullptr;
-    MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks, 1, &tap);
+    OSStatus status = MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks, 1, &tap);
     ASSERT(tap);
     ASSERT(m_tap == tap);
+    if (status != noErr) {
+        m_tap = nullptr;
+        return;
+    }
 
-    RetainPtr<AVMutableAudioMixInputParameters> parameters = adoptNS([allocAVMutableAudioMixInputParametersInstance() init]);
+    RetainPtr<AVMutableAudioMixInputParameters> parameters = adoptNS([PAL::allocAVMutableAudioMixInputParametersInstance() init]);
     [parameters setAudioTapProcessor:m_tap.get()];
 
     CMPersistentTrackID trackID = m_avAssetTrack.get().trackID;
@@ -312,12 +313,12 @@ void AudioSourceProviderAVFObjC::prepare(CMItemCount maxFrames, const AudioStrea
 {
     ASSERT(maxFrames >= 0);
 
-    m_tapDescription = std::make_unique<AudioStreamBasicDescription>(*processingFormat);
+    m_tapDescription = makeUniqueWithoutFastMallocCheck<AudioStreamBasicDescription>(*processingFormat);
     int numberOfChannels = processingFormat->mChannelsPerFrame;
     double sampleRate = processingFormat->mSampleRate;
     ASSERT(sampleRate >= 0);
 
-    m_outputDescription = std::make_unique<AudioStreamBasicDescription>();
+    m_outputDescription = makeUniqueWithoutFastMallocCheck<AudioStreamBasicDescription>();
     m_outputDescription->mSampleRate = sampleRate;
     m_outputDescription->mFormatID = kAudioFormatLinearPCM;
     m_outputDescription->mFormatFlags = kAudioFormatFlagsNativeFloatPacked;
@@ -337,7 +338,7 @@ void AudioSourceProviderAVFObjC::prepare(CMItemCount maxFrames, const AudioStrea
     // Make the ringbuffer large enough to store at least two callbacks worth of audio, or 1s, whichever is larger.
     size_t capacity = std::max(static_cast<size_t>(2 * maxFrames), static_cast<size_t>(kRingBufferDuration * sampleRate));
 
-    m_ringBuffer = std::make_unique<CARingBuffer>();
+    m_ringBuffer = makeUnique<CARingBuffer>();
     m_ringBuffer->allocate(CAAudioStreamDescription(*processingFormat), capacity);
 
     // AudioBufferList is a variable-length struct, so create on the heap with a generic new() operator

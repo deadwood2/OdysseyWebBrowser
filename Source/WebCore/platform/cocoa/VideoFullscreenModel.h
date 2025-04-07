@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,6 +34,7 @@
 #include "MediaPlayerEnums.h"
 #include "PlaybackSessionModel.h"
 #include <wtf/CompletionHandler.h>
+#include <wtf/WeakPtr.h>
 
 #if PLATFORM(IOS_FAMILY)
 OBJC_CLASS AVPlayerViewController;
@@ -44,7 +45,7 @@ namespace WebCore {
 
 class VideoFullscreenModelClient;
 
-class VideoFullscreenModel {
+class VideoFullscreenModel : public CanMakeWeakPtr<VideoFullscreenModel> {
 public:
     virtual ~VideoFullscreenModel() { };
     virtual void addClient(VideoFullscreenModelClient&) = 0;
@@ -82,6 +83,7 @@ public:
     virtual void failedToEnterPictureInPicture() { }
     virtual void willExitPictureInPicture() { }
     virtual void didExitPictureInPicture() { }
+    virtual void modelDestroyed() { }
 };
 
 WEBCORE_EXPORT bool supportsPictureInPicture();

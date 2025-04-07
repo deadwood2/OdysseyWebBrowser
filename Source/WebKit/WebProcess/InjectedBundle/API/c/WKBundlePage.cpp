@@ -77,7 +77,7 @@ WKTypeID WKBundlePageGetTypeID()
 void WKBundlePageSetContextMenuClient(WKBundlePageRef pageRef, WKBundlePageContextMenuClientBase* wkClient)
 {
 #if ENABLE(CONTEXT_MENUS)
-    WebKit::toImpl(pageRef)->setInjectedBundleContextMenuClient(std::make_unique<WebKit::InjectedBundlePageContextMenuClient>(wkClient));
+    WebKit::toImpl(pageRef)->setInjectedBundleContextMenuClient(makeUnique<WebKit::InjectedBundlePageContextMenuClient>(wkClient));
 #else
     UNUSED_PARAM(pageRef);
     UNUSED_PARAM(wkClient);
@@ -86,22 +86,22 @@ void WKBundlePageSetContextMenuClient(WKBundlePageRef pageRef, WKBundlePageConte
 
 void WKBundlePageSetEditorClient(WKBundlePageRef pageRef, WKBundlePageEditorClientBase* wkClient)
 {
-    WebKit::toImpl(pageRef)->setInjectedBundleEditorClient(wkClient ? std::make_unique<WebKit::InjectedBundlePageEditorClient>(*wkClient) : std::make_unique<API::InjectedBundle::EditorClient>());
+    WebKit::toImpl(pageRef)->setInjectedBundleEditorClient(wkClient ? makeUnique<WebKit::InjectedBundlePageEditorClient>(*wkClient) : makeUnique<API::InjectedBundle::EditorClient>());
 }
 
 void WKBundlePageSetFormClient(WKBundlePageRef pageRef, WKBundlePageFormClientBase* wkClient)
 {
-    WebKit::toImpl(pageRef)->setInjectedBundleFormClient(std::make_unique<WebKit::InjectedBundlePageFormClient>(wkClient));
+    WebKit::toImpl(pageRef)->setInjectedBundleFormClient(makeUnique<WebKit::InjectedBundlePageFormClient>(wkClient));
 }
 
 void WKBundlePageSetPageLoaderClient(WKBundlePageRef pageRef, WKBundlePageLoaderClientBase* wkClient)
 {
-    WebKit::toImpl(pageRef)->setInjectedBundlePageLoaderClient(std::make_unique<WebKit::InjectedBundlePageLoaderClient>(wkClient));
+    WebKit::toImpl(pageRef)->setInjectedBundlePageLoaderClient(makeUnique<WebKit::InjectedBundlePageLoaderClient>(wkClient));
 }
 
 void WKBundlePageSetResourceLoadClient(WKBundlePageRef pageRef, WKBundlePageResourceLoadClientBase* wkClient)
 {
-    WebKit::toImpl(pageRef)->setInjectedBundleResourceLoadClient(std::make_unique<WebKit::InjectedBundlePageResourceLoadClient>(wkClient));
+    WebKit::toImpl(pageRef)->setInjectedBundleResourceLoadClient(makeUnique<WebKit::InjectedBundlePageResourceLoadClient>(wkClient));
 }
 
 void WKBundlePageSetPolicyClient(WKBundlePageRef pageRef, WKBundlePagePolicyClientBase* wkClient)
@@ -111,7 +111,7 @@ void WKBundlePageSetPolicyClient(WKBundlePageRef pageRef, WKBundlePagePolicyClie
 
 void WKBundlePageSetUIClient(WKBundlePageRef pageRef, WKBundlePageUIClientBase* wkClient)
 {
-    WebKit::toImpl(pageRef)->setInjectedBundleUIClient(std::make_unique<WebKit::InjectedBundlePageUIClient>(wkClient));
+    WebKit::toImpl(pageRef)->setInjectedBundleUIClient(makeUnique<WebKit::InjectedBundlePageUIClient>(wkClient));
 }
 
 void WKBundlePageSetFullScreenClient(WKBundlePageRef pageRef, WKBundlePageFullScreenClientBase* wkClient)
@@ -234,7 +234,7 @@ void WKBundlePageInsertNewlineInQuotedContent(WKBundlePageRef pageRef)
 
 void* WKAccessibilityRootObject(WKBundlePageRef pageRef)
 {
-#if HAVE(ACCESSIBILITY)
+#if ENABLE(ACCESSIBILITY)
     if (!pageRef)
         return 0;
     
@@ -261,7 +261,7 @@ void* WKAccessibilityRootObject(WKBundlePageRef pageRef)
 
 void* WKAccessibilityFocusedObject(WKBundlePageRef pageRef)
 {
-#if HAVE(ACCESSIBILITY)
+#if ENABLE(ACCESSIBILITY)
     if (!pageRef)
         return 0;
     
@@ -284,14 +284,14 @@ void* WKAccessibilityFocusedObject(WKBundlePageRef pageRef)
 
 void WKAccessibilityEnableEnhancedAccessibility(bool enable)
 {
-#if HAVE(ACCESSIBILITY)
+#if ENABLE(ACCESSIBILITY)
     WebCore::AXObjectCache::setEnhancedUserInterfaceAccessibility(enable);
 #endif
 }
 
 bool WKAccessibilityEnhancedAccessibilityEnabled()
 {
-#if HAVE(ACCESSIBILITY)
+#if ENABLE(ACCESSIBILITY)
     return WebCore::AXObjectCache::accessibilityEnhancedUserInterfaceEnabled();
 #else
     return false;
@@ -307,9 +307,10 @@ void WKBundlePageSetDefersLoading(WKBundlePageRef, bool)
 {
 }
 
-WKStringRef WKBundlePageCopyRenderTreeExternalRepresentation(WKBundlePageRef pageRef)
+WKStringRef WKBundlePageCopyRenderTreeExternalRepresentation(WKBundlePageRef pageRef, RenderTreeExternalRepresentationBehavior options)
 {
-    return WebKit::toCopiedAPI(WebKit::toImpl(pageRef)->renderTreeExternalRepresentation());
+    // Convert to webcore options.
+    return WebKit::toCopiedAPI(WebKit::toImpl(pageRef)->renderTreeExternalRepresentation(options));
 }
 
 WKStringRef WKBundlePageCopyRenderTreeExternalRepresentationForPrinting(WKBundlePageRef pageRef)
@@ -592,7 +593,7 @@ void WKBundlePageSetUseDarkAppearance(WKBundlePageRef pageRef, bool useDarkAppea
 {
     WebKit::WebPage* webPage = WebKit::toImpl(pageRef);
     if (WebCore::Page* page = webPage ? webPage->corePage() : nullptr)
-        page->setUseDarkAppearance(useDarkAppearance);
+        page->effectiveAppearanceDidChange(useDarkAppearance, page->useElevatedUserInterfaceLevel());
 }
 
 bool WKBundlePageIsUsingDarkAppearance(WKBundlePageRef pageRef)
@@ -802,21 +803,3 @@ void WKBundlePageSetEventThrottlingBehaviorOverride(WKBundlePageRef page, WKEven
 
     WebKit::toImpl(page)->corePage()->setEventThrottlingBehaviorOverride(behaviorValue);
 }
-
-void WKBundlePageSetCompositingPolicyOverride(WKBundlePageRef page, WKCompositingPolicy* policy)
-{
-    Optional<WebCore::CompositingPolicy> policyValue;
-    if (policy) {
-        switch (*policy) {
-        case kWKCompositingPolicyNormal:
-            policyValue = WebCore::CompositingPolicy::Normal;
-            break;
-        case kWKCompositingPolicyConservative:
-            policyValue = WebCore::CompositingPolicy::Conservative;
-            break;
-        }
-    }
-
-    WebKit::toImpl(page)->corePage()->setCompositingPolicyOverride(policyValue);
-}
-

@@ -98,6 +98,7 @@ using namespace PAL;
 class LayerClient;
 
 class AVFWrapper {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     AVFWrapper(MediaPlayerPrivateAVFoundationCF*);
     ~AVFWrapper();
@@ -213,6 +214,7 @@ private:
 uintptr_t AVFWrapper::s_nextAVFWrapperObjectID;
 
 class LayerClient : public PlatformCALayerClient {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     LayerClient(AVFWrapper* parent) : m_parent(parent) { }
     virtual ~LayerClient() { m_parent = 0; }
@@ -343,7 +345,7 @@ static dispatch_queue_t globalLoaderDelegateQueue()
 void MediaPlayerPrivateAVFoundationCF::registerMediaEngine(MediaEngineRegistrar registrar)
 {
     if (isAvailable())
-        registrar([](MediaPlayer* player) { return std::make_unique<MediaPlayerPrivateAVFoundationCF>(player); },
+        registrar([](MediaPlayer* player) { return makeUnique<MediaPlayerPrivateAVFoundationCF>(player); },
             getSupportedTypes, supportsType, 0, 0, 0, supportsKeySystem);
 }
 
@@ -672,7 +674,7 @@ static bool timeRangeIsValidAndNotEmpty(CMTime start, CMTime duration)
 
 std::unique_ptr<PlatformTimeRanges> MediaPlayerPrivateAVFoundationCF::platformBufferedTimeRanges() const
 {
-    auto timeRanges = std::make_unique<PlatformTimeRanges>();
+    auto timeRanges = makeUnique<PlatformTimeRanges>();
 
     if (!avPlayerItem(m_avfWrapper))
         return timeRanges;
@@ -1137,7 +1139,7 @@ std::unique_ptr<LegacyCDMSession> MediaPlayerPrivateAVFoundationCF::createSessio
     if (!keySystemIsSupported(keySystem))
         return nullptr;
 
-    return std::make_unique<CDMSessionAVFoundationCF>(*this, client);
+    return makeUnique<CDMSessionAVFoundationCF>(*this, client);
 }
 
 #elif ENABLE(LEGACY_ENCRYPTED_MEDIA)
@@ -1641,6 +1643,7 @@ void AVFWrapper::periodicTimeObserverCallback(AVCFPlayerRef, CMTime cmTime, void
 }
 
 struct NotificationCallbackData {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     RetainPtr<CFStringRef> m_propertyName;
     void* m_context;
 
@@ -1708,7 +1711,7 @@ void AVFWrapper::notificationCallback(CFNotificationCenterRef, void* observer, C
     LOG(Media, "AVFWrapper::notificationCallback(if=%d) %s", reinterpret_cast<uintptr_t>(observer), notificationName);
 #endif
 
-    auto notificationData = std::make_unique<NotificationCallbackData>(propertyName, observer);
+    auto notificationData = makeUnique<NotificationCallbackData>(propertyName, observer);
 
     dispatch_async_f(dispatch_get_main_queue(), notificationData.release(), processNotification);
 }
@@ -1785,6 +1788,7 @@ void AVFWrapper::seekToTime(const MediaTime& time, const MediaTime& negativeTole
 
 #if HAVE(AVFOUNDATION_MEDIA_SELECTION_GROUP) && HAVE(AVFOUNDATION_LEGIBLE_OUTPUT_SUPPORT)
 struct LegibleOutputData {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     RetainPtr<CFArrayRef> m_attributedStrings;
     RetainPtr<CFArrayRef> m_samples;
     MediaTime m_time;
@@ -1833,7 +1837,7 @@ void AVFWrapper::legibleOutputCallback(void* context, AVCFPlayerItemLegibleOutpu
 
     ASSERT(legibleOutput == self->m_legibleOutput);
 
-    auto legibleOutputData = std::make_unique<LegibleOutputData>(attributedStrings, nativeSampleBuffers, PAL::toMediaTime(itemTime), context);
+    auto legibleOutputData = makeUnique<LegibleOutputData>(attributedStrings, nativeSampleBuffers, PAL::toMediaTime(itemTime), context);
 
     dispatch_async_f(dispatch_get_main_queue(), legibleOutputData.release(), processCue);
 }
@@ -1841,6 +1845,7 @@ void AVFWrapper::legibleOutputCallback(void* context, AVCFPlayerItemLegibleOutpu
 
 #if HAVE(AVFOUNDATION_LOADER_DELEGATE)
 struct LoadRequestData {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     RetainPtr<AVCFAssetResourceLoadingRequestRef> m_request;
     void* m_context;
 
@@ -1926,7 +1931,7 @@ Boolean AVFWrapper::resourceLoaderShouldWaitForLoadingOfRequestedResource(AVCFAs
 
     LOG(Media, "AVFWrapper::resourceLoaderShouldWaitForLoadingOfRequestedResource(%p)", self);
 
-    auto loadRequestData = std::make_unique<LoadRequestData>(loadingRequest, context);
+    auto loadRequestData = makeUnique<LoadRequestData>(loadingRequest, context);
 
     dispatch_async_f(dispatch_get_main_queue(), loadRequestData.release(), processShouldWaitForLoadingOfResource);
 
@@ -1953,7 +1958,7 @@ PlatformLayer* AVFWrapper::platformLayer()
         return 0;
 
     // Create a PlatformCALayer so we can resize the video layer to match the element size.
-    m_layerClient = std::make_unique<LayerClient>(this);
+    m_layerClient = makeUnique<LayerClient>(this);
     if (!m_layerClient)
         return 0;
 

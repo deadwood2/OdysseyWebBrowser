@@ -62,15 +62,6 @@ WTF_EXTERN_C_END
 #import <CFNetwork/CFNSURLConnection.h>
 #endif
 
-// This only needs to be declared on macOS 10.12 Sierra because
-// it will never appear in those SDK headers.  See also
-// HAVE(CFNETWORK_OVERRIDE_SESSION_COOKIE_ACCEPT_POLICY).
-#if defined(__OBJC__) && PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED == 101200
-@interface NSHTTPCookieStorage ()
-@property (nonatomic, readwrite) BOOL _overrideSessionCookieAcceptPolicy;
-@end
-#endif
-
 #else // !PLATFORM(WIN) && !USE(APPLE_INTERNAL_SDK)
 
 typedef CF_ENUM(int64_t, _TimingDataOptions)
@@ -100,6 +91,14 @@ typedef struct _CFURLResponse* CFURLResponseRef;
 typedef struct OpaqueCFHTTPCookieStorage* CFHTTPCookieStorageRef;
 typedef CFIndex CFURLRequestPriority;
 typedef int CFHTTPCookieStorageAcceptPolicy;
+
+CF_ENUM(CFHTTPCookieStorageAcceptPolicy)
+{
+    CFHTTPCookieStorageAcceptPolicyAlways = 0,
+    CFHTTPCookieStorageAcceptPolicyNever = 1,
+    CFHTTPCookieStorageAcceptPolicyOnlyFromMainDocumentDomain = 2,
+    CFHTTPCookieStorageAcceptPolicyExclusivelyFromMainDocumentDomain = 3,
+};
 
 #ifdef __BLOCKS__
 typedef void (^CFCachedURLResponseCallBackBlock)(CFCachedURLResponseRef);
@@ -175,7 +174,7 @@ typedef void (^CFCachedURLResponseCallBackBlock)(CFCachedURLResponseRef);
 - (NSDate *)_lastModifiedDate;
 @end
 
-#if PLATFORM(WATCHOS) && __WATCH_OS_VERSION_MAX_ALLOWED >= 60000
+#if PLATFORM(WATCHOS)
 typedef NS_ENUM(NSInteger, NSURLSessionCompanionProxyPreference) {
     NSURLSessionCompanionProxyPreferenceDefault = 0,
     NSURLSessionCompanionProxyPreferencePreferCompanion,
@@ -189,14 +188,21 @@ typedef NS_ENUM(NSInteger, NSURLSessionCompanionProxyPreference) {
 @property (nullable, copy) NSString *_sourceApplicationBundleIdentifier;
 @property (nullable, copy) NSString *_sourceApplicationSecondaryIdentifier;
 @property BOOL _shouldSkipPreferredClientCertificateLookup NS_AVAILABLE(10_10, 8_0);
+@property BOOL _allowsTLSFallback;
 #if PLATFORM(IOS_FAMILY)
 @property (nullable, copy) NSString *_CTDataConnectionServiceType;
 #endif
 #if HAVE(CFNETWORK_WITH_AUTO_ADDED_HTTP_HEADER_SUPPRESSION_SUPPORT)
 @property (nullable, copy) NSSet *_suppressedAutoAddedHTTPHeaders;
 #endif
-#if PLATFORM(WATCHOS) && __WATCH_OS_VERSION_MAX_ALLOWED >= 60000
+#if PLATFORM(WATCHOS)
 @property NSURLSessionCompanionProxyPreference _companionProxyPreference;
+#endif
+#if HAVE(APP_SSO)
+@property BOOL _preventsAppSSO;
+#endif
+#if HAVE(ALLOWS_SENSITIVE_LOGGING)
+@property BOOL _allowsSensitiveLogging;
 #endif
 @end
 
@@ -208,12 +214,12 @@ typedef NS_ENUM(NSInteger, NSURLSessionCompanionProxyPreference) {
 @property (nullable, readwrite, retain) NSURL *_siteForCookies;
 @property (readwrite) BOOL _isTopLevelNavigation;
 #endif
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300) || (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000)
+#if PLATFORM(MAC) || (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000)
 @property (nonatomic, assign) BOOL _preconnect;
 #endif
 @end
 
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300) || (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000)
+#if PLATFORM(MAC) || (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000)
 @interface NSURLSessionTaskTransactionMetrics ()
 @property (copy, readonly) NSString* _remoteAddressAndPort;
 @property (copy, readonly) NSUUID* _connectionIdentifier;
@@ -231,11 +237,14 @@ typedef NS_ENUM(NSInteger, NSURLSessionCompanionProxyPreference) {
 @end
 #endif
 
-#if HAVE(CFNETWORK_NSURLSESSION_STRICTRUSTEVALUATE)
 @interface NSURLSession (SPI)
+#if HAVE(CFNETWORK_NSURLSESSION_STRICTRUSTEVALUATE)
 + (void)_strictTrustEvaluate:(NSURLAuthenticationChallenge *)challenge queue:(dispatch_queue_t)queue completionHandler:(void (^)(NSURLAuthenticationChallenge *challenge, OSStatus trustResult))cb;
-@end
 #endif
+#if HAVE(APP_SSO)
++ (void)_disableAppSSO;
+#endif
+@end
 
 extern NSString * const NSURLAuthenticationMethodOAuth;
 
@@ -323,6 +332,10 @@ Boolean _CFHostIsDomainTopLevel(CFStringRef domain);
 void _CFURLRequestCreateArchiveList(CFAllocatorRef, CFURLRequestRef, CFIndex* version, CFTypeRef** objects, CFIndex* objectCount, CFDictionaryRef* protocolProperties);
 CFMutableURLRequestRef _CFURLRequestCreateFromArchiveList(CFAllocatorRef, CFIndex version, CFTypeRef* objects, CFIndex objectCount, CFDictionaryRef protocolProperties);
 void CFURLRequestSetProxySettings(CFMutableURLRequestRef, CFDictionaryRef);
+
+#if HAVE(HSTS_STORAGE_PATH)
+void _CFNetworkSetHSTSStoragePath(CFStringRef);
+#endif
 
 #endif // !PLATFORM(WIN)
 

@@ -25,7 +25,7 @@
 
 #include "config.h"
 
-#if WK_API_ENABLED && PLATFORM(IOS_FAMILY)
+#if PLATFORM(IOS_FAMILY)
 
 #import "ClassMethodSwizzler.h"
 #import "PlatformUtilities.h"
@@ -35,7 +35,7 @@
 #import <WebKit/WKWebViewPrivate.h>
 #import <wtf/BlockPtr.h>
 
-typedef UIView <UITextInputTraits_Private_Proposed_SPI_34583628> AutofillInputView;
+typedef UIView <UITextInputPrivate> AutofillInputView;
 
 @interface AutofillTestView : TestWKWebView
 @end
@@ -188,4 +188,4 @@ TEST(WKWebViewAutofillTests, AutofillRequiresInputSession)
 
 } // namespace TestWebKitAPI
 
-#endif // WK_API_ENABLED && PLATFORM(IOS_FAMILY)
+#endif // PLATFORM(IOS_FAMILY)

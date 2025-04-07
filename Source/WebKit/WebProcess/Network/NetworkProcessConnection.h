@@ -29,6 +29,7 @@
 #include "Connection.h"
 #include "ShareableResource.h"
 #include "WebIDBConnectionToServer.h"
+#include <WebCore/ServiceWorkerTypes.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
 
@@ -64,7 +65,7 @@ public:
 
     void didReceiveNetworkProcessConnectionMessage(IPC::Connection&, IPC::Decoder&);
 
-    void writeBlobsToTemporaryFiles(const Vector<String>& blobURLs, CompletionHandler<void(Vector<String>&& filePaths)>&&);
+    void writeBlobsToTemporaryFiles(PAL::SessionID, const Vector<String>& blobURLs, CompletionHandler<void(Vector<String>&& filePaths)>&&);
 
 #if ENABLE(INDEXED_DATABASE)
     WebIDBConnectionToServer* existingIDBConnectionToServerForIdentifier(uint64_t identifier) const { return m_webIDBConnectionsByIdentifier.get(identifier); };
@@ -74,6 +75,9 @@ public:
 #if ENABLE(SERVICE_WORKER)
     WebSWClientConnection* existingServiceWorkerConnectionForSession(PAL::SessionID sessionID) { return m_swConnectionsBySession.get(sessionID); }
     WebSWClientConnection& serviceWorkerConnectionForSession(PAL::SessionID);
+
+    WebCore::SWServerConnectionIdentifier initializeSWClientConnection(WebSWClientConnection&);
+    void removeSWClientConnection(WebSWClientConnection&);
 #endif
 
 private:

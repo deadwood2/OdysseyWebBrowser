@@ -36,10 +36,13 @@ class ResourceRequest;
 class ResourceResponse;
 
 class PreviewConverter {
+    WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(PreviewConverter);
 public:
     PreviewConverter(id delegate, const ResourceResponse&, const String& password = { });
     PreviewConverter(NSData *, const String& uti, const String& password = { });
+
+    WEBCORE_EXPORT static bool supportsMIMEType(const String& mimeType);
 
     QLPreviewConverter *platformConverter() const { return m_platformConverter.get(); }
     ResourceRequest safeRequest(const ResourceRequest&) const;

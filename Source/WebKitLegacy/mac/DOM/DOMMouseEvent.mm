@@ -92,7 +92,7 @@
     return IMPL->metaKey();
 }
 
-- (unsigned short)button
+- (short)button
 {
     WebCore::JSMainThreadNullState state;
     return IMPL->button();
@@ -158,3 +158,5 @@
 }
 
 @end
+
+#undef IMPL

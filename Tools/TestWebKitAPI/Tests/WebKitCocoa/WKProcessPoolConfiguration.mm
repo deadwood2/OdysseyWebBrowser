@@ -24,10 +24,10 @@
  */
 
 #import "config.h"
+
+#import "Utilities.h"
 #import <WebKit/WKFoundation.h>
-
-#if WK_API_ENABLED
-
+#import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/_WKProcessPoolConfiguration.h>
 #import <wtf/RetainPtr.h>
 
@@ -36,14 +36,10 @@ TEST(WKProcessPoolConfiguration, Copy)
     auto configuration = adoptNS([[_WKProcessPoolConfiguration alloc] init]);
 
     [configuration setInjectedBundleURL:[NSURL fileURLWithPath:@"/path/to/injected.wkbundle"]];
-    [configuration setMaximumProcessCount:42];
     [configuration setCustomWebContentServiceBundleIdentifier:@"org.webkit.WebContent.custom"];
     [configuration setIgnoreSynchronousMessagingTimeoutsForTesting:YES];
     [configuration setAttrStyleEnabled:YES];
     [configuration setAdditionalReadAccessAllowedURLs:@[ [NSURL fileURLWithPath:@"/path/to/allow/read/access/"] ]];
-#if PLATFORM(IOS_FAMILY) && !PLATFORM(IOS_FAMILY_SIMULATOR)
-    [configuration setWirelessContextIdentifier:25];
-#endif
     [configuration setDiskCacheSizeOverride:42000];
     [configuration setCachePartitionedURLSchemes:@[ @"ssh", @"vnc" ]];
     [configuration setAlwaysRevalidatedURLSchemes:@[ @"afp", @"smb" ]];
@@ -65,14 +61,10 @@ TEST(WKProcessPoolConfiguration, Copy)
     auto copy = adoptNS([configuration copy]);
 
     EXPECT_TRUE([[configuration injectedBundleURL] isEqual:[copy injectedBundleURL]]);
-    EXPECT_EQ([configuration maximumProcessCount], [copy maximumProcessCount]);
     EXPECT_TRUE([[configuration customWebContentServiceBundleIdentifier] isEqual:[copy customWebContentServiceBundleIdentifier]]);
     EXPECT_EQ([configuration ignoreSynchronousMessagingTimeoutsForTesting], [copy ignoreSynchronousMessagingTimeoutsForTesting]);
     EXPECT_EQ([configuration attrStyleEnabled], [copy attrStyleEnabled]);
     EXPECT_TRUE([[configuration additionalReadAccessAllowedURLs] isEqual:[copy additionalReadAccessAllowedURLs]]);
-#if PLATFORM(IOS_FAMILY) && !PLATFORM(IOS_FAMILY_SIMULATOR)
-    EXPECT_EQ([configuration wirelessContextIdentifier], [copy wirelessContextIdentifier]);
-#endif
     EXPECT_EQ([configuration diskCacheSizeOverride], [copy diskCacheSizeOverride]);
     EXPECT_TRUE([[configuration cachePartitionedURLSchemes] isEqual:[copy cachePartitionedURLSchemes]]);
     EXPECT_TRUE([[configuration alwaysRevalidatedURLSchemes] isEqual:[copy alwaysRevalidatedURLSchemes]]);
@@ -92,4 +84,35 @@ TEST(WKProcessPoolConfiguration, Copy)
     EXPECT_EQ([configuration suppressesConnectionTerminationOnSystemChange], [copy suppressesConnectionTerminationOnSystemChange]);
 }
 
-#endif
+TEST(WKProcessPool, JavaScriptConfiguration)
+{
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSURL *tempDir = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"CustomPathsTest"] isDirectory:YES];
+    NSError *error = nil;
+    BOOL success = [fileManager createDirectoryAtURL:tempDir withIntermediateDirectories:YES attributes:nil error:&error];
+    EXPECT_TRUE(success);
+    EXPECT_FALSE(error);
+
+    NSData *contents = [@""
+    "processName =~ /WebContent/ {\n"
+        "logFile = \"Log.txt\"\n"
+        "jscOptions {\n"
+            "dumpOptions = 1\n"
+            "dumpDFGDisassembly = true\n"
+        "}\n"
+    "}"
+    "" dataUsingEncoding:NSUTF8StringEncoding];
+    BOOL result = [contents writeToURL:[tempDir URLByAppendingPathComponent:@"JSC.config"] atomically:YES];
+    EXPECT_TRUE(result);
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    configuration.get().processPool._javaScriptConfigurationDirectory = tempDir;
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) configuration:configuration.get()]);
+    [webView loadHTMLString:@"<html>hello</html>" baseURL:[NSURL URLWithString:@"https://webkit.org/"]];
+
+    NSString *path = [tempDir URLByAppendingPathComponent:@"Log.txt"].path;
+    while (![fileManager fileExistsAtPath:path])
+        TestWebKitAPI::Util::spinRunLoop();
+    [fileManager removeItemAtPath:tempDir.path error:&error];
+    EXPECT_FALSE(error);
+}

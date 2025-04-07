@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ShareableBitmap_h
-#define ShareableBitmap_h
+#pragma once
 
 #include "SharedMemory.h"
 #include <WebCore/IntRect.h>
@@ -38,6 +37,13 @@
 
 #if USE(CAIRO)
 #include <WebCore/RefPtrCairo.h>
+#endif
+
+#if USE(DIRECT2D)
+interface ID2D1Bitmap;
+interface ID2D1RenderTarget;
+
+#include <WebCore/COMPtr.h>
 #endif
 
 namespace WebCore {
@@ -63,6 +69,8 @@ public:
         WTF_MAKE_NONCOPYABLE(Handle);
     public:
         Handle();
+        Handle(Handle&&) = default;
+        Handle& operator=(Handle&&) = default;
 
         bool isNull() const { return m_handle.isNull(); }
 
@@ -123,6 +131,9 @@ public:
     // This creates a BitmapImage that directly references the shared bitmap data.
     // This is only safe to use when we know that the contents of the shareable bitmap won't change.
     RefPtr<cairo_surface_t> createCairoSurface();
+#elif USE(DIRECT2D)
+    COMPtr<ID2D1Bitmap> createDirect2DSurface(ID2D1RenderTarget*);
+    void sync(WebCore::GraphicsContext&);
 #endif
 
 private:
@@ -143,19 +154,24 @@ private:
     static void releaseSurfaceData(void* typelessBitmap);
 #endif
 
+public:
     void* data() const;
+private:
     size_t sizeInBytes() const { return numBytesForSize(m_size, m_configuration).unsafeGet(); }
 
     WebCore::IntSize m_size;
     Configuration m_configuration;
 
+#if USE(DIRECT2D)
+    COMPtr<ID2D1Bitmap> m_bitmap;
+#endif
+
     // If the shareable bitmap is backed by shared memory, this points to the shared memory object.
     RefPtr<SharedMemory> m_sharedMemory;
 
     // If the shareable bitmap is backed by fastMalloced memory, this points to the data.
-    void* m_data;
+    void* m_data { nullptr };
 };
 
 } // namespace WebKit
 
-#endif // ShareableBitmap_h

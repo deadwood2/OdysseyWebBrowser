@@ -686,8 +686,9 @@ public:
             COMPILE_ASSERT(STATE == AllFieldsSet, result_is_not_ready);
             COMPILE_ASSERT(sizeof(Error) == sizeof(JSON::Object), cannot_cast);
 
-            Ref<JSON::Object> result = m_result.releaseNonNull();
-            return WTFMove(*reinterpret_cast<Ref<Error>*>(&result));
+            Ref<JSON::Object> jsonResult = m_result.releaseNonNull();
+            auto result = WTFMove(*reinterpret_cast<Ref<Error>*>(&jsonResult));
+            return result;
         }
     };
 
@@ -860,6 +861,7 @@ namespace Inspector {
 
 
 class ObjCInspectorDatabaseBackendDispatcher final : public AlternateDatabaseBackendDispatcher {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     ObjCInspectorDatabaseBackendDispatcher(id<TestProtocolDatabaseDomainHandler> handler) { m_delegate = handler; }
     virtual void executeSQLSyncOptionalReturnValues(long requestId, int in_databaseId, const String& in_query) override;
@@ -1188,8 +1190,8 @@ using namespace Inspector;
     [_databaseHandler release];
     _databaseHandler = [handler retain];
 
-    auto alternateDispatcher = std::make_unique<ObjCInspectorDatabaseBackendDispatcher>(handler);
-    auto alternateAgent = std::make_unique<AlternateDispatchableAgent<DatabaseBackendDispatcher, AlternateDatabaseBackendDispatcher>>("Database"_s, *_controller, WTFMove(alternateDispatcher));
+    auto alternateDispatcher = makeUnique<ObjCInspectorDatabaseBackendDispatcher>(handler);
+    auto alternateAgent = makeUnique<AlternateDispatchableAgent<DatabaseBackendDispatcher, AlternateDatabaseBackendDispatcher>>("Database"_s, *_controller, WTFMove(alternateDispatcher));
     _controller->appendExtraAgent(WTFMove(alternateAgent));
 }
 
@@ -1344,6 +1346,8 @@ __attribute__((visibility ("default")))
 
 
 
+
+#import <WebInspector/RWIProtocolBuildCompatibilityObjects.h>
 
 ### End File: TestProtocol.h
 

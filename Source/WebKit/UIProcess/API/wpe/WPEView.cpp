@@ -42,8 +42,8 @@ using namespace WebKit;
 namespace WKWPE {
 
 View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseConfiguration)
-    : m_client(std::make_unique<API::ViewClient>())
-    , m_pageClient(std::make_unique<PageClientImpl>(*this))
+    : m_client(makeUnique<API::ViewClient>())
+    , m_pageClient(makeUnique<PageClientImpl>(*this))
     , m_size { 800, 600 }
     , m_viewStateFlags { WebCore::ActivityState::WindowIsActive, WebCore::ActivityState::IsFocused, WebCore::ActivityState::IsVisible, WebCore::ActivityState::IsInWindow }
     , m_backend(backend)
@@ -100,9 +100,29 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
                 flags.add(WebCore::ActivityState::IsInWindow);
             view.setViewState(flags);
         },
+#if WPE_CHECK_VERSION(1, 3, 0)
+        // get_accessible
+        [](void* data) -> void*
+        {
+#if ENABLE(ACCESSIBILITY)
+            auto& view = *reinterpret_cast<View*>(data);
+            return view.accessible();
+#else
+            return nullptr;
+#endif
+        },
+        // set_device_scale_factor
+        [](void* data, float scale)
+        {
+            auto& view = *reinterpret_cast<View*>(data);
+            view.page().setIntrinsicDeviceScaleFactor(scale);
+        },
+#else
         // padding
         nullptr,
         nullptr,
+#endif // WPE_CHECK_VERSION(1, 3, 0)
+        // padding
         nullptr
     };
     wpe_view_backend_set_backend_client(m_backend, &s_backendClient, this);
@@ -153,10 +173,18 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
     m_pageProxy->initializeWebPage();
 }
 
+View::~View()
+{
+#if ENABLE(ACCESSIBILITY)
+    if (m_accessible)
+        webkitWebViewAccessibleSetWebView(m_accessible.get(), nullptr);
+#endif
+}
+
 void View::setClient(std::unique_ptr<API::ViewClient>&& client)
 {
     if (!client)
-        m_client = std::make_unique<API::ViewClient>();
+        m_client = makeUnique<API::ViewClient>();
     else
         m_client = WTFMove(client);
 }
@@ -196,5 +224,14 @@ void View::close()
 {
     m_pageProxy->close();
 }
+
+#if ENABLE(ACCESSIBILITY)
+WebKitWebViewAccessible* View::accessible() const
+{
+    if (!m_accessible)
+        m_accessible = webkitWebViewAccessibleNew(const_cast<View*>(this));
+    return m_accessible.get();
+}
+#endif
 
 } // namespace WKWPE

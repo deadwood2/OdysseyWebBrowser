@@ -58,6 +58,7 @@ class AudioSourceProviderAVFObjC;
 class AudioTrackPrivateAVFObjC;
 class CDMInstanceFairPlayStreamingAVFObjC;
 class CDMSessionAVFoundationObjC;
+class ImageRotationSessionVT;
 class InbandMetadataTextTrackPrivateAVF;
 class MediaSelectionGroupAVFObjC;
 class PixelBufferConformerCV;
@@ -121,7 +122,7 @@ public:
     void canPlayFastReverseDidChange(bool);
     void canPlayFastForwardDidChange(bool);
 
-    void setShouldBufferData(bool) override;
+    void setBufferingPolicy(MediaPlayerEnums::BufferingPolicy) override;
 
 #if HAVE(AVFOUNDATION_VIDEO_OUTPUT)
     void outputMediaDataWillChange(AVPlayerItemVideoOutput*);
@@ -170,7 +171,6 @@ private:
     bool platformPaused() const override;
     MediaTime currentMediaTime() const override;
     void setVolume(float) override;
-    bool supportsMuting() const override { return true; }
     void setMuted(bool) override;
     void setClosedCaptionsVisible(bool) override;
     void paint(GraphicsContext&, const FloatRect&) override;
@@ -325,6 +325,7 @@ private:
     Vector<String> preferredAudioCharacteristics() const;
 
     void setShouldDisableSleep(bool) override;
+    void updateRotationSession();
 
     Optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() final;
 
@@ -337,7 +338,6 @@ private:
     bool performTaskAtMediaTime(WTF::Function<void()>&&, MediaTime) final;
     void setShouldObserveTimeControlStatus(bool);
 
-    WeakPtrFactory<MediaPlayerPrivateAVFoundationObjC> m_weakPtrFactory;
     RetainPtr<AVURLAsset> m_avAsset;
     RetainPtr<AVPlayer> m_avPlayer;
     RetainPtr<AVPlayerItem> m_avPlayerItem;
@@ -361,6 +361,7 @@ private:
     RetainPtr<CVPixelBufferRef> m_lastPixelBuffer;
     RetainPtr<CGImageRef> m_lastImage;
     BinarySemaphore m_videoOutputSemaphore;
+    std::unique_ptr<ImageRotationSessionVT> m_imageRotationSession;
     std::unique_ptr<VideoTextureCopierCV> m_videoTextureCopier;
 #endif
 
@@ -424,11 +425,11 @@ private:
     mutable long long m_cachedTotalBytes;
     unsigned m_pendingStatusChanges;
     int m_cachedItemStatus;
+    MediaPlayer::BufferingPolicy m_bufferingPolicy { MediaPlayer::BufferingPolicy::Default };
     bool m_cachedLikelyToKeepUp;
     bool m_cachedBufferEmpty;
     bool m_cachedBufferFull;
     bool m_cachedHasEnabledAudio;
-    bool m_shouldBufferData;
     bool m_cachedIsReadyForDisplay;
     bool m_haveBeenAskedToCreateLayer;
     bool m_cachedCanPlayFastForward;

@@ -45,7 +45,7 @@ WI.CSSManager = class CSSManager extends WI.Object
         this._styleSheetIdentifierMap = new Map;
         this._styleSheetFrameURLMap = new Map;
         this._nodeStylesMap = {};
-        this._modifiedCSSRules = new Map;
+        this._modifiedStyles = new Map;
         this._defaultAppearance = null;
         this._forcedAppearance = null;
 
@@ -81,20 +81,93 @@ WI.CSSManager = class CSSManager extends WI.Object
         }
     }
 
-    static protocolMediaSourceToEnum(source)
+    static protocolGroupingTypeToEnum(type)
     {
-        switch (source) {
-        case CSSAgent.CSSMediaSource.MediaRule:
-            return WI.CSSMedia.Type.MediaRule;
-        case CSSAgent.CSSMediaSource.ImportRule:
-            return WI.CSSMedia.Type.ImportRule;
-        case CSSAgent.CSSMediaSource.LinkedSheet:
-            return WI.CSSMedia.Type.LinkedStyleSheet;
-        case CSSAgent.CSSMediaSource.InlineSheet:
-            return WI.CSSMedia.Type.InlineStyleSheet;
+        // COMPATIBILITY (iOS 13): CSS.Grouping did not exist yet.
+        if (!InspectorBackend.domains.CSS.Grouping) {
+            switch (type) {
+            case "mediaRule":
+                return WI.CSSGrouping.Type.MediaRule;
+            case "importRule":
+                return WI.CSSGrouping.Type.MediaImportRule;
+            case "linkedSheet":
+                return WI.CSSGrouping.Type.MediaLinkNode;
+            case "inlineSheet":
+                return WI.CSSGrouping.Type.MediaStyleNode;
+            }
+        }
+        return type;
+    }
+
+    static displayNameForPseudoId(pseudoId)
+    {
+        // Compatibility (iOS 12.2): CSS.PseudoId did not exist.
+        if (!InspectorBackend.domains.CSS.PseudoId) {
+            switch (pseudoId) {
+            case 1: // PseudoId.FirstLine
+                return WI.unlocalizedString("::first-line");
+            case 2: // PseudoId.FirstLetter
+                return WI.unlocalizedString("::first-letter");
+            case 3: // PseudoId.Marker
+                return WI.unlocalizedString("::marker");
+            case 4: // PseudoId.Before
+                return WI.unlocalizedString("::before");
+            case 5: // PseudoId.After
+                return WI.unlocalizedString("::after");
+            case 6: // PseudoId.Selection
+                return WI.unlocalizedString("::selection");
+            case 7: // PseudoId.Scrollbar
+                return WI.unlocalizedString("::scrollbar");
+            case 8: // PseudoId.ScrollbarThumb
+                return WI.unlocalizedString("::scrollbar-thumb");
+            case 9: // PseudoId.ScrollbarButton
+                return WI.unlocalizedString("::scrollbar-button");
+            case 10: // PseudoId.ScrollbarTrack
+                return WI.unlocalizedString("::scrollbar-track");
+            case 11: // PseudoId.ScrollbarTrackPiece
+                return WI.unlocalizedString("::scrollbar-track-piece");
+            case 12: // PseudoId.ScrollbarCorner
+                return WI.unlocalizedString("::scrollbar-corner");
+            case 13: // PseudoId.Resizer
+                return WI.unlocalizedString("::resizer");
+
+            default:
+                console.error("Unknown pseudo id", pseudoId);
+                return "";
+            }
+        }
+
+        switch (pseudoId) {
+        case CSSManager.PseudoSelectorNames.FirstLine:
+            return WI.unlocalizedString("::first-line");
+        case CSSManager.PseudoSelectorNames.FirstLetter:
+            return WI.unlocalizedString("::first-letter");
+        case CSSManager.PseudoSelectorNames.Marker:
+            return WI.unlocalizedString("::marker");
+        case CSSManager.PseudoSelectorNames.Before:
+            return WI.unlocalizedString("::before");
+        case CSSManager.PseudoSelectorNames.After:
+            return WI.unlocalizedString("::after");
+        case CSSManager.PseudoSelectorNames.Selection:
+            return WI.unlocalizedString("::selection");
+        case CSSManager.PseudoSelectorNames.Scrollbar:
+            return WI.unlocalizedString("::scrollbar");
+        case CSSManager.PseudoSelectorNames.ScrollbarThumb:
+            return WI.unlocalizedString("::scrollbar-thumb");
+        case CSSManager.PseudoSelectorNames.ScrollbarButton:
+            return WI.unlocalizedString("::scrollbar-button");
+        case CSSManager.PseudoSelectorNames.ScrollbarTrack:
+            return WI.unlocalizedString("::scrollbar-track");
+        case CSSManager.PseudoSelectorNames.ScrollbarTrackPiece:
+            return WI.unlocalizedString("::scrollbar-track-piece");
+        case CSSManager.PseudoSelectorNames.ScrollbarCorner:
+            return WI.unlocalizedString("::scrollbar-corner");
+        case CSSManager.PseudoSelectorNames.Resizer:
+            return WI.unlocalizedString("::resizer");
+
         default:
-            console.assert(false, "Unknown CSS.CSSMediaSource", source);
-            return WI.CSSMedia.Type.MediaRule;
+            console.error("Unknown pseudo id", pseudoId);
+            return "";
         }
     }
 
@@ -107,7 +180,7 @@ WI.CSSManager = class CSSManager extends WI.Object
 
     get styleSheets()
     {
-        return [...this._styleSheetIdentifierMap.values()];
+        return Array.from(this._styleSheetIdentifierMap.values());
     }
 
     get defaultAppearance()
@@ -227,9 +300,14 @@ WI.CSSManager = class CSSManager extends WI.Object
         return styles;
     }
 
-    preferredInspectorStyleSheetForFrame(frame, callback, doNotCreateIfMissing)
+    inspectorStyleSheetsForFrame(frame)
     {
-        var inspectorStyleSheets = this._inspectorStyleSheetsForFrame(frame);
+        return this.styleSheets.filter((styleSheet) => styleSheet.isInspectorStyleSheet() && styleSheet.parentFrame === frame);
+    }
+
+    preferredInspectorStyleSheetForFrame(frame, callback)
+    {
+        var inspectorStyleSheets = this.inspectorStyleSheetsForFrame(frame);
         for (let styleSheet of inspectorStyleSheets) {
             if (styleSheet[WI.CSSManager.PreferredInspectorStyleSheetSymbol]) {
                 callback(styleSheet);
@@ -237,12 +315,11 @@ WI.CSSManager = class CSSManager extends WI.Object
             }
         }
 
-        if (doNotCreateIfMissing)
-            return;
-
         if (CSSAgent.createStyleSheet) {
             CSSAgent.createStyleSheet(frame.id, function(error, styleSheetId) {
+                const url = null;
                 let styleSheet = WI.cssManager.styleSheetForIdentifier(styleSheetId);
+                styleSheet.updateInfo(url, frame, styleSheet.origin, styleSheet.isInlineStyleTag(), styleSheet.startLineNumber, styleSheet.startColumnNumber);
                 styleSheet[WI.CSSManager.PreferredInspectorStyleSheetSymbol] = true;
                 callback(styleSheet);
             });
@@ -322,10 +399,30 @@ WI.CSSManager = class CSSManager extends WI.Object
         this.mediaQueryResultChanged();
     }
 
+    get modifiedStyles()
+    {
+        return Array.from(this._modifiedStyles.values());
+    }
+
+    addModifiedStyle(style)
+    {
+        this._modifiedStyles.set(style.stringId, style);
+    }
+
+    getModifiedStyle(style)
+    {
+        return this._modifiedStyles.get(style.stringId);
+    }
+
+    removeModifiedStyle(style)
+    {
+        this._modifiedStyles.delete(style.stringId);
+    }
+
+    // PageObserver
+
     defaultAppearanceDidChange(protocolName)
     {
-        // Called from WI.PageObserver.
-
         let appearance = null;
 
         switch (protocolName) {
@@ -349,34 +446,16 @@ WI.CSSManager = class CSSManager extends WI.Object
         this.dispatchEventToListeners(WI.CSSManager.Event.DefaultAppearanceDidChange, {appearance});
     }
 
-    get modifiedCSSRules()
-    {
-        return Array.from(this._modifiedCSSRules.values());
-    }
-
-    addModifiedCSSRule(cssRule)
-    {
-        this._modifiedCSSRules.set(cssRule.stringId, cssRule);
-    }
-
-    removeModifiedCSSRule(cssRule)
-    {
-        this._modifiedCSSRules.delete(cssRule.stringId);
-    }
-
-    // Protected
+    // CSSObserver
 
     mediaQueryResultChanged()
     {
-        // Called from WI.CSSObserver.
-
         for (var key in this._nodeStylesMap)
             this._nodeStylesMap[key].mediaQueryResultDidChange();
     }
 
     styleSheetChanged(styleSheetIdentifier)
     {
-        // Called from WI.CSSObserver.
         var styleSheet = this.styleSheetForIdentifier(styleSheetIdentifier);
         console.assert(styleSheet);
 
@@ -412,18 +491,6 @@ WI.CSSManager = class CSSManager extends WI.Object
     }
 
     // Private
-
-    _inspectorStyleSheetsForFrame(frame)
-    {
-        let styleSheets = [];
-
-        for (let styleSheet of this.styleSheets) {
-            if (styleSheet.isInspectorStyleSheet() && styleSheet.parentFrame === frame)
-                styleSheets.push(styleSheet);
-        }
-
-        return styleSheets;
-    }
 
     _nodePseudoClassesDidChange(event)
     {
@@ -461,7 +528,7 @@ WI.CSSManager = class CSSManager extends WI.Object
         this._fetchedInitialStyleSheets = InspectorBackend.domains.CSS.hasEvent("styleSheetAdded");
         this._styleSheetIdentifierMap.clear();
         this._styleSheetFrameURLMap.clear();
-        this._modifiedCSSRules.clear();
+        this._modifiedStyles.clear();
 
         this._nodeStylesMap = {};
     }
@@ -473,7 +540,7 @@ WI.CSSManager = class CSSManager extends WI.Object
         var resource = event.data.resource;
         console.assert(resource);
 
-        if (resource.type !== WI.Resource.Type.Stylesheet)
+        if (resource.type !== WI.Resource.Type.StyleSheet)
             return;
 
         this._clearStyleSheetsForResource(resource);
@@ -484,7 +551,7 @@ WI.CSSManager = class CSSManager extends WI.Object
         console.assert(event.target instanceof WI.Resource);
 
         var resource = event.target;
-        if (resource.type !== WI.Resource.Type.Stylesheet)
+        if (resource.type !== WI.Resource.Type.StyleSheet)
             return;
 
         this._clearStyleSheetsForResource(resource);
@@ -492,7 +559,7 @@ WI.CSSManager = class CSSManager extends WI.Object
 
     _clearStyleSheetsForResource(resource)
     {
-        // Clear known stylesheets for this URL and frame. This will cause the stylesheets to
+        // Clear known stylesheets for this URL and frame. This will cause the style sheets to
         // be updated next time _fetchInfoForAllStyleSheets is called.
         this._styleSheetIdentifierMap.delete(this._frameURLMapKey(resource.parentFrame, resource.url));
     }
@@ -566,15 +633,15 @@ WI.CSSManager = class CSSManager extends WI.Object
         if (resource === this._ignoreResourceContentDidChangeEventForResource)
             return;
 
-        // Ignore if it isn't a CSS stylesheet.
-        if (resource.type !== WI.Resource.Type.Stylesheet || resource.syntheticMIMEType !== "text/css")
+        // Ignore if it isn't a CSS style sheet.
+        if (resource.type !== WI.Resource.Type.StyleSheet || resource.syntheticMIMEType !== "text/css")
             return;
 
         function applyStyleSheetChanges()
         {
             function styleSheetFound(styleSheet)
             {
-                resource.__pendingChangeTimeout = undefined;
+                resource.__pendingChangeTimeout.cancel();
 
                 console.assert(styleSheet);
                 if (!styleSheet)
@@ -590,9 +657,9 @@ WI.CSSManager = class CSSManager extends WI.Object
             this._lookupStyleSheetForResource(resource, styleSheetFound.bind(this));
         }
 
-        if (resource.__pendingChangeTimeout)
-            clearTimeout(resource.__pendingChangeTimeout);
-        resource.__pendingChangeTimeout = setTimeout(applyStyleSheetChanges.bind(this), 500);
+        if (!resource.__pendingChangeTimeout)
+            resource.__pendingChangeTimeout = new Throttler(applyStyleSheetChanges.bind(this), 100);
+        resource.__pendingChangeTimeout.fire();
     }
 
     _updateResourceContent(styleSheet)
@@ -601,8 +668,9 @@ WI.CSSManager = class CSSManager extends WI.Object
 
         function fetchedStyleSheetContent(parameters)
         {
+            styleSheet.__pendingChangeTimeout.cancel();
+
             let representedObject = parameters.sourceCode;
-            representedObject.__pendingChangeTimeout = undefined;
 
             console.assert(representedObject.url);
             if (!representedObject.url)
@@ -615,7 +683,7 @@ WI.CSSManager = class CSSManager extends WI.Object
 
                 // Only try to update stylesheet resources. Other resources, like documents, can contain
                 // multiple stylesheets and we don't have the source ranges to update those.
-                if (representedObject.type !== WI.Resource.Type.Stylesheet)
+                if (representedObject.type !== WI.Resource.Type.StyleSheet)
                     return;
             }
 
@@ -649,9 +717,9 @@ WI.CSSManager = class CSSManager extends WI.Object
                 this._fetchInfoForAllStyleSheets(styleSheetReady.bind(this));
         }
 
-        if (styleSheet.__pendingChangeTimeout)
-            clearTimeout(styleSheet.__pendingChangeTimeout);
-        styleSheet.__pendingChangeTimeout = setTimeout(applyStyleSheetChanges.bind(this), 500);
+        if (!styleSheet.__pendingChangeTimeout)
+            styleSheet.__pendingChangeTimeout = new Throttler(applyStyleSheetChanges.bind(this), 100);
+        styleSheet.__pendingChangeTimeout.fire();
     }
 };
 
@@ -667,6 +735,22 @@ WI.CSSManager.Appearance = {
     Dark: Symbol("dark"),
 };
 
+WI.CSSManager.PseudoSelectorNames = {
+    After: "after",
+    Before: "before",
+    FirstLetter: "first-letter",
+    FirstLine: "first-line",
+    Marker: "marker",
+    Resizer: "resizer",
+    Scrollbar: "scrollbar",
+    ScrollbarButton: "scrollbar-button",
+    ScrollbarCorner: "scrollbar-corner",
+    ScrollbarThumb: "scrollbar-thumb",
+    ScrollbarTrack: "scrollbar-track",
+    ScrollbarTrackPiece: "scrollbar-track-piece",
+    Selection: "selection",
+};
+
 WI.CSSManager.PseudoElementNames = ["before", "after"];
 WI.CSSManager.ForceablePseudoClasses = ["active", "focus", "hover", "visited"];
-WI.CSSManager.PreferredInspectorStyleSheetSymbol = Symbol("css-manager-preferred-inspector-stylesheet");
+WI.CSSManager.PreferredInspectorStyleSheetSymbol = Symbol("css-manager-preferred-inspector-style-sheet");

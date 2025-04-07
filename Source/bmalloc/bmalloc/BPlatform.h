@@ -40,12 +40,16 @@
 #define BOS_DARWIN 1
 #endif
 
-#ifdef __unix
+#if defined(__unix) || defined(__unix__)
 #define BOS_UNIX 1
 #endif
 
 #ifdef __linux__
 #define BOS_LINUX 1
+#endif
+
+#if defined(__FreeBSD__) || defined(__DragonFly__) || defined(__FreeBSD_kernel__)
+#define BOS_FREEBSD 1
 #endif
 
 #if defined(WIN32) || defined(_WIN32)

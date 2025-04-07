@@ -52,6 +52,11 @@ void WebsiteDataStoreParameters::encode(IPC::Encoder& encoder) const
 #if ENABLE(SERVICE_WORKER)
     encoder << serviceWorkerRegistrationDirectory << serviceWorkerRegistrationDirectoryExtensionHandle;
 #endif
+
+    encoder << localStorageDirectory << localStorageDirectoryExtensionHandle;
+
+    encoder << perOriginStorageQuota;
+    encoder << perThirdPartyOriginStorageQuota;
 }
 
 Optional<WebsiteDataStoreParameters> WebsiteDataStoreParameters::decode(IPC::Decoder& decoder)
@@ -117,6 +122,30 @@ Optional<WebsiteDataStoreParameters> WebsiteDataStoreParameters::decode(IPC::Dec
         return WTF::nullopt;
     parameters.serviceWorkerRegistrationDirectoryExtensionHandle = WTFMove(*serviceWorkerRegistrationDirectoryExtensionHandle);
 #endif
+
+    Optional<String> localStorageDirectory;
+    decoder >> localStorageDirectory;
+    if (!localStorageDirectory)
+        return WTF::nullopt;
+    parameters.localStorageDirectory = WTFMove(*localStorageDirectory);
+
+    Optional<SandboxExtension::Handle> localStorageDirectoryExtensionHandle;
+    decoder >> localStorageDirectoryExtensionHandle;
+    if (!localStorageDirectoryExtensionHandle)
+        return WTF::nullopt;
+    parameters.localStorageDirectoryExtensionHandle = WTFMove(*localStorageDirectoryExtensionHandle);
+
+    Optional<uint64_t> perOriginStorageQuota;
+    decoder >> perOriginStorageQuota;
+    if (!perOriginStorageQuota)
+        return WTF::nullopt;
+    parameters.perOriginStorageQuota = *perOriginStorageQuota;
+
+    Optional<uint64_t> perThirdPartyOriginStorageQuota;
+    decoder >> perThirdPartyOriginStorageQuota;
+    if (!perThirdPartyOriginStorageQuota)
+        return WTF::nullopt;
+    parameters.perThirdPartyOriginStorageQuota = *perThirdPartyOriginStorageQuota;
     
     return parameters;
 }
@@ -134,6 +163,7 @@ WebsiteDataStoreParameters WebsiteDataStoreParameters::privateSessionParameters(
 #if ENABLE(SERVICE_WORKER)
         , { }, { }
 #endif
+        , { }, { }
     };
 }
 

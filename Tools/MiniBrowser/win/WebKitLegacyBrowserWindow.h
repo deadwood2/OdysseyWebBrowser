@@ -25,13 +25,15 @@
 
 #pragma once
 #include "BrowserWindow.h"
-#include "PageLoadTestClient.h"
 #include <WebKitLegacy/WebKit.h>
 #include <comip.h>
 #include <memory>
 #include <vector>
+#include <wtf/Ref.h>
 
+typedef _com_ptr_t<_com_IIID<IUnknown, &__uuidof(IUnknown)>> IUnknownPtr;
 typedef _com_ptr_t<_com_IIID<IWebFrame, &__uuidof(IWebFrame)>> IWebFramePtr;
+typedef _com_ptr_t<_com_IIID<IWebFrame2, &__uuidof(IWebFrame2)>> IWebFrame2Ptr;
 typedef _com_ptr_t<_com_IIID<IWebView, &__uuidof(IWebView)>> IWebViewPtr;
 typedef _com_ptr_t<_com_IIID<IWebViewPrivate2, &__uuidof(IWebViewPrivate2)>> IWebViewPrivatePtr;
 typedef _com_ptr_t<_com_IIID<IWebFrameLoadDelegate, &__uuidof(IWebFrameLoadDelegate)>> IWebFrameLoadDelegatePtr;
@@ -47,10 +49,13 @@ typedef _com_ptr_t<_com_IIID<IWebCache, &__uuidof(IWebCache)>> IWebCachePtr;
 typedef _com_ptr_t<_com_IIID<IWebResourceLoadDelegate, &__uuidof(IWebResourceLoadDelegate)>> IWebResourceLoadDelegatePtr;
 typedef _com_ptr_t<_com_IIID<IWebDownloadDelegate, &__uuidof(IWebDownloadDelegate)>> IWebDownloadDelegatePtr;
 typedef _com_ptr_t<_com_IIID<IWebFramePrivate, &__uuidof(IWebFramePrivate)>> IWebFramePrivatePtr;
+typedef _com_ptr_t<_com_IIID<IWebMutableURLRequest, &__uuidof(IWebMutableURLRequest)>> IWebMutableURLRequestPtr;
+typedef _com_ptr_t<_com_IIID<IWebNotificationObserver, &__uuidof(IWebNotificationObserver)>> IWebNotificationObserverPtr;
+typedef _com_ptr_t<_com_IIID<IWebNotificationCenter, &__uuidof(IWebNotificationCenter)>> IWebNotificationCenterPtr;
 
 class WebKitLegacyBrowserWindow : public BrowserWindow {
 public:
-    static Ref<BrowserWindow> create(HWND mainWnd, HWND urlBarWnd, bool useLayeredWebView = false, bool pageLoadTesting = false);
+    static Ref<BrowserWindow> create(BrowserWindowClient&, HWND mainWnd, bool useLayeredWebView = false);
 
 private:
     friend class AccessibilityDelegate;
@@ -58,7 +63,6 @@ private:
     friend class PrintWebUIDelegate;
     friend class WebDownloadDelegate;
     friend class ResourceLoadDelegate;
-    friend class PageLoadTestClient;
 
     ULONG AddRef();
     ULONG Release();
@@ -66,15 +70,14 @@ private:
     HRESULT init();
     HRESULT prepareViews(HWND mainWnd, const RECT& clientRect);
 
-    HRESULT loadHTMLString(const BSTR&);
     HRESULT loadURL(const BSTR& passedURL);
+    void reload();
 
     void showLastVisitedSites(IWebView&);
     void launchInspector();
     void openProxySettings();
     void navigateForwardOrBackward(UINT menuID);
     void navigateToHistory(UINT menuID);
-    void exitProgram();
     bool seedInitialDefaultPreferences();
     bool setToDefaultPreferences();
 
@@ -100,8 +103,6 @@ private:
     void setUserAgent(_bstr_t& customUAString);
     _bstr_t userAgent();
 
-    PageLoadTestClient& pageLoadTestClient() { return *m_pageLoadTestClient; }
-
     void resetZoom();
     void zoomIn();
     void zoomOut();
@@ -114,10 +115,11 @@ private:
     void updateStatistics(HWND dialog);
     void setPreference(UINT menuID, bool enable);
 
-    WebKitLegacyBrowserWindow(HWND mainWnd, HWND urlBarWnd, bool useLayeredWebView, bool pageLoadTesting);
+    WebKitLegacyBrowserWindow(BrowserWindowClient&, HWND mainWnd, bool useLayeredWebView);
     void subclassForLayeredWindow();
     bool setCacheFolder();
 
+    BrowserWindowClient& m_client;
     std::vector<IWebHistoryItemPtr> m_historyItems;
 
     IWebViewPtr m_webView;
@@ -138,10 +140,7 @@ private:
     IWebCachePtr m_webCache;
 
     HWND m_hMainWnd { nullptr };
-    HWND m_hURLBarWnd { nullptr };
     HWND m_viewWnd { nullptr };
 
     bool m_useLayeredWebView;
-
-    std::unique_ptr<PageLoadTestClient> m_pageLoadTestClient;
 };

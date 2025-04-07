@@ -44,6 +44,7 @@
 #import "WebView.h"
 #import "WebViewInternal.h"
 #import "WebViewPrivate.h"
+#import <WebCore/ContentChangeObserver.h>
 #import <WebCore/DisabledAdaptations.h>
 #import <WebCore/FileChooser.h>
 #import <WebCore/FloatRect.h>
@@ -181,18 +182,11 @@ void WebChromeClientIOS::setNeedsScrollNotifications(WebCore::Frame& frame, bool
     [[webView() _UIKitDelegateForwarder] webView:webView() needsScrollNotifications:[NSNumber numberWithBool:flag] forFrame:kit(&frame)];
 }
 
-void WebChromeClientIOS::observedContentChange(WebCore::Frame& frame)
+void WebChromeClientIOS::didFinishContentChangeObserving(WebCore::Frame& frame, WKContentChange observedContentChange)
 {
-    [[webView() _UIKitDelegateForwarder] webView:webView() didObserveDeferredContentChange:WKObservedContentChange() forFrame:kit(&frame)];
-}
-
-void WebChromeClientIOS::clearContentChangeObservers(WebCore::Frame& frame)
-{
-    ASSERT(WebThreadCountOfObservedDOMTimers() > 0);
-    if (WebThreadCountOfObservedDOMTimers() > 0) {
-        WebThreadClearObservedDOMTimers();
-        observedContentChange(frame);
-    }
+    if (!frame.document())
+        return;
+    [[webView() _UIKitDelegateForwarder] webView:webView() didObserveDeferredContentChange:observedContentChange forFrame:kit(&frame)];
 }
 
 static inline NSString *nameForViewportFitValue(ViewportFit value)

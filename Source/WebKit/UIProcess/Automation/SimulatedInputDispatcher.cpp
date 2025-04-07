@@ -216,13 +216,17 @@ void SimulatedInputDispatcher::resolveLocation(const WebCore::IntPoint& currentL
         break;
     }
     case MouseMoveOrigin::Element: {
-        m_client.viewportInViewCenterPointOfElement(m_page, m_frameID.value(), nodeHandle.value(), [destination = location.value(), completionHandler = WTFMove(completionHandler)](Optional<WebCore::IntPoint> inViewCenterPoint, Optional<AutomationCommandError> error) mutable {
+        m_client.viewportInViewCenterPointOfElement(m_page, m_frameID, nodeHandle.value(), [destination = location.value(), completionHandler = WTFMove(completionHandler)](Optional<WebCore::IntPoint> inViewCenterPoint, Optional<AutomationCommandError> error) mutable {
             if (error) {
                 completionHandler(WTF::nullopt, error);
                 return;
             }
 
-            ASSERT(inViewCenterPoint);
+            if (!inViewCenterPoint) {
+                completionHandler(WTF::nullopt, AUTOMATION_COMMAND_ERROR_WITH_NAME(ElementNotInteractable));
+                return;
+            }
+
             destination.moveBy(inViewCenterPoint.value());
             completionHandler(destination, WTF::nullopt);
         });
@@ -269,7 +273,12 @@ void SimulatedInputDispatcher::transitionInputSourceToState(SimulatedInputSource
                 eventDispatchFinished(error);
                 return;
             }
-            RELEASE_ASSERT(location);
+
+            if (!location) {
+                eventDispatchFinished(AUTOMATION_COMMAND_ERROR_WITH_NAME(ElementNotInteractable));
+                return;
+            }
+
             b.location = location;
             // The "dispatch a pointer{Down,Up,Move} action" algorithms (§17.4 Dispatching Actions).
             if (!a.pressedMouseButton && b.pressedMouseButton) {
@@ -281,13 +290,13 @@ void SimulatedInputDispatcher::transitionInputSourceToState(SimulatedInputSource
             } else if (a.pressedMouseButton && !b.pressedMouseButton) {
 #if !LOG_DISABLED
                 String mouseButtonName = Inspector::Protocol::AutomationHelpers::getEnumConstantValue(a.pressedMouseButton.value());
-                LOG(Automation, "SimulatedInputDispatcher[%p]: simulating MouseUp[button=%s] @ (%d, %d) for transition to %d.%d", this, mouseButtonName.utf8().data(), a.location.value().x(), a.location.value().y(), m_keyframeIndex, m_inputSourceStateIndex);
+                LOG(Automation, "SimulatedInputDispatcher[%p]: simulating MouseUp[button=%s] @ (%d, %d) for transition to %d.%d", this, mouseButtonName.utf8().data(), b.location.value().x(), b.location.value().y(), m_keyframeIndex, m_inputSourceStateIndex);
 #endif
                 m_client.simulateMouseInteraction(m_page, MouseInteraction::Up, a.pressedMouseButton.value(), b.location.value(), WTFMove(eventDispatchFinished));
             } else if (a.location != b.location) {
                 LOG(Automation, "SimulatedInputDispatcher[%p]: simulating MouseMove from (%d, %d) to (%d, %d) for transition to %d.%d", this, a.location.value().x(), a.location.value().y(), b.location.value().x(), b.location.value().y(), m_keyframeIndex, m_inputSourceStateIndex);
                 // FIXME: This does not interpolate mousemoves per the "perform a pointer move" algorithm (§17.4 Dispatching Actions).
-                m_client.simulateMouseInteraction(m_page, MouseInteraction::Move, b.pressedMouseButton.valueOr(MouseButton::NoButton), b.location.value(), WTFMove(eventDispatchFinished));
+                m_client.simulateMouseInteraction(m_page, MouseInteraction::Move, b.pressedMouseButton.valueOr(MouseButton::None), b.location.value(), WTFMove(eventDispatchFinished));
             } else
                 eventDispatchFinished(WTF::nullopt);
         });
@@ -303,14 +312,19 @@ void SimulatedInputDispatcher::transitionInputSourceToState(SimulatedInputSource
                 eventDispatchFinished(error);
                 return;
             }
-            RELEASE_ASSERT(location);
+
+            if (!location) {
+                eventDispatchFinished(AUTOMATION_COMMAND_ERROR_WITH_NAME(ElementNotInteractable));
+                return;
+            }
+
             b.location = location;
             // The "dispatch a pointer{Down,Up,Move} action" algorithms (§17.4 Dispatching Actions).
             if (!a.pressedMouseButton && b.pressedMouseButton) {
                 LOG(Automation, "SimulatedInputDispatcher[%p]: simulating TouchDown @ (%d, %d) for transition to %d.%d", this, b.location.value().x(), b.location.value().y(), m_keyframeIndex, m_inputSourceStateIndex);
                 m_client.simulateTouchInteraction(m_page, TouchInteraction::TouchDown, b.location.value(), WTF::nullopt, WTFMove(eventDispatchFinished));
             } else if (a.pressedMouseButton && !b.pressedMouseButton) {
-                LOG(Automation, "SimulatedInputDispatcher[%p]: simulating LiftUp @ (%d, %d) for transition to %d.%d", this, a.location.value().x(), a.location.value().y(), m_keyframeIndex, m_inputSourceStateIndex);
+                LOG(Automation, "SimulatedInputDispatcher[%p]: simulating LiftUp @ (%d, %d) for transition to %d.%d", this, b.location.value().x(), b.location.value().y(), m_keyframeIndex, m_inputSourceStateIndex);
                 m_client.simulateTouchInteraction(m_page, TouchInteraction::LiftUp, b.location.value(), WTF::nullopt, WTFMove(eventDispatchFinished));
             } else if (a.location != b.location) {
                 LOG(Automation, "SimulatedInputDispatcher[%p]: simulating MoveTo from (%d, %d) to (%d, %d) for transition to %d.%d", this, a.location.value().x(), a.location.value().y(), b.location.value().x(), b.location.value().y(), m_keyframeIndex, m_inputSourceStateIndex);
@@ -368,7 +382,7 @@ void SimulatedInputDispatcher::transitionInputSourceToState(SimulatedInputSource
     }
 }
 
-void SimulatedInputDispatcher::run(uint64_t frameID, Vector<SimulatedInputKeyFrame>&& keyFrames, HashSet<Ref<SimulatedInputSource>>& inputSources, AutomationCompletionHandler&& completionHandler)
+void SimulatedInputDispatcher::run(Optional<WebCore::FrameIdentifier> frameID, Vector<SimulatedInputKeyFrame>&& keyFrames, HashSet<Ref<SimulatedInputSource>>& inputSources, AutomationCompletionHandler&& completionHandler)
 {
     ASSERT(!isActive());
     if (isActive()) {
@@ -387,7 +401,7 @@ void SimulatedInputDispatcher::run(uint64_t frameID, Vector<SimulatedInputKeyFra
     m_keyframes.append(SimulatedInputKeyFrame::keyFrameFromStateOfInputSources(m_inputSources));
     m_keyframes.appendVector(WTFMove(keyFrames));
 
-    LOG(Automation, "SimulatedInputDispatcher[%p]: starting input simulation using %d keyframes", this, m_keyframeIndex);
+    LOG(Automation, "SimulatedInputDispatcher[%p]: starting input simulation using %zu keyframes", this, m_keyframes.size());
 
     transitionToNextKeyFrame();
 }

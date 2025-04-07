@@ -26,8 +26,10 @@
 #include "config.h"
 #include "StorageNamespaceImpl.h"
 
+#include "NetworkProcessConnection.h"
 #include "StorageAreaImpl.h"
 #include "StorageAreaMap.h"
+#include "StorageManagerSetMessages.h"
 #include "WebPage.h"
 #include "WebPageGroupProxy.h"
 #include "WebProcess.h"
@@ -40,31 +42,27 @@
 namespace WebKit {
 using namespace WebCore;
 
-Ref<StorageNamespaceImpl> StorageNamespaceImpl::createSessionStorageNamespace(uint64_t identifier, unsigned quotaInBytes)
+Ref<StorageNamespaceImpl> StorageNamespaceImpl::createSessionStorageNamespace(Identifier identifier, unsigned quotaInBytes, PAL::SessionID sessionID)
 {
-    return adoptRef(*new StorageNamespaceImpl(StorageType::Session, identifier, nullptr, quotaInBytes));
+    return adoptRef(*new StorageNamespaceImpl(StorageType::Session, identifier, nullptr, quotaInBytes, sessionID));
 }
 
-Ref<StorageNamespaceImpl> StorageNamespaceImpl::createEphemeralLocalStorageNamespace(uint64_t identifier, unsigned quotaInBytes)
+Ref<StorageNamespaceImpl> StorageNamespaceImpl::createLocalStorageNamespace(Identifier identifier, unsigned quotaInBytes, PAL::SessionID sessionID)
 {
-    return adoptRef(*new StorageNamespaceImpl(StorageType::EphemeralLocal, identifier, nullptr, quotaInBytes));
+    return adoptRef(*new StorageNamespaceImpl(StorageType::Local, identifier, nullptr, quotaInBytes, sessionID));
 }
 
-Ref<StorageNamespaceImpl> StorageNamespaceImpl::createLocalStorageNamespace(uint64_t identifier, unsigned quotaInBytes)
+Ref<StorageNamespaceImpl> StorageNamespaceImpl::createTransientLocalStorageNamespace(Identifier identifier, WebCore::SecurityOrigin& topLevelOrigin, uint64_t quotaInBytes, PAL::SessionID sessionID)
 {
-    return adoptRef(*new StorageNamespaceImpl(StorageType::Local, identifier, nullptr, quotaInBytes));
+    return adoptRef(*new StorageNamespaceImpl(StorageType::TransientLocal, identifier, &topLevelOrigin, quotaInBytes, sessionID));
 }
 
-Ref<StorageNamespaceImpl> StorageNamespaceImpl::createTransientLocalStorageNamespace(uint64_t identifier, WebCore::SecurityOrigin& topLevelOrigin, uint64_t quotaInBytes)
-{
-    return adoptRef(*new StorageNamespaceImpl(StorageType::TransientLocal, identifier, &topLevelOrigin, quotaInBytes));
-}
-
-StorageNamespaceImpl::StorageNamespaceImpl(WebCore::StorageType storageType, uint64_t storageNamespaceID, WebCore::SecurityOrigin* topLevelOrigin, unsigned quotaInBytes)
+StorageNamespaceImpl::StorageNamespaceImpl(WebCore::StorageType storageType, Identifier storageNamespaceID, WebCore::SecurityOrigin* topLevelOrigin, unsigned quotaInBytes, PAL::SessionID sessionID)
     : m_storageType(storageType)
     , m_storageNamespaceID(storageNamespaceID)
     , m_topLevelOrigin(topLevelOrigin)
     , m_quotaInBytes(quotaInBytes)
+    , m_sessionID(sessionID)
 {
 }
 
@@ -77,16 +75,14 @@ void StorageNamespaceImpl::didDestroyStorageAreaMap(StorageAreaMap& map)
     m_storageAreaMaps.remove(map.securityOrigin().data());
 }
 
-Ref<StorageArea> StorageNamespaceImpl::storageArea(const SecurityOriginData& securityOrigin)
+Ref<StorageArea> StorageNamespaceImpl::storageArea(const SecurityOriginData& securityOriginData)
 {
-    if (m_storageType == StorageType::EphemeralLocal)
-        return ephemeralLocalStorageArea(securityOrigin);
-
     RefPtr<StorageAreaMap> map;
 
-    auto& slot = m_storageAreaMaps.add(securityOrigin, nullptr).iterator->value;
+    auto securityOrigin = securityOriginData.securityOrigin();
+    auto& slot = m_storageAreaMaps.add(securityOrigin->data(), nullptr).iterator->value;
     if (!slot) {
-        map = StorageAreaMap::create(this, securityOrigin.securityOrigin());
+        map = StorageAreaMap::create(this, WTFMove(securityOrigin));
         slot = map.get();
     } else
         map = slot;
@@ -94,120 +90,34 @@ Ref<StorageArea> StorageNamespaceImpl::storageArea(const SecurityOriginData& sec
     return StorageAreaImpl::create(map.releaseNonNull());
 }
 
-class StorageNamespaceImpl::EphemeralStorageArea final : public StorageArea {
-public:
-    static Ref<EphemeralStorageArea> create(const SecurityOriginData& origin, unsigned quotaInBytes)
-    {
-        return adoptRef(*new EphemeralStorageArea(origin, quotaInBytes));
-    }
-
-    Ref<EphemeralStorageArea> copy()
-    {
-        return adoptRef(*new EphemeralStorageArea(*this));
-    }
-
-private:
-    EphemeralStorageArea(const SecurityOriginData& origin, unsigned quotaInBytes)
-        : m_securityOriginData(origin)
-        , m_storageMap(StorageMap::create(quotaInBytes))
-    {
-    }
-
-    EphemeralStorageArea(EphemeralStorageArea& other)
-        : m_securityOriginData(other.m_securityOriginData)
-        , m_storageMap(other.m_storageMap)
-    {
-    }
-
-    // WebCore::StorageArea.
-    unsigned length()
-    {
-        return m_storageMap->length();
-    }
-
-    String key(unsigned index)
-    {
-        return m_storageMap->key(index);
-    }
-
-    String item(const String& key)
-    {
-        return m_storageMap->getItem(key);
-    }
-
-    void setItem(Frame*, const String& key, const String& value, bool& quotaException)
-    {
-        String oldValue;
-        if (auto newMap = m_storageMap->setItem(key, value, oldValue, quotaException))
-            m_storageMap = WTFMove(newMap);
-    }
-
-    void removeItem(Frame*, const String& key)
-    {
-        String oldValue;
-        if (auto newMap = m_storageMap->removeItem(key, oldValue))
-            m_storageMap = WTFMove(newMap);
-    }
-
-    void clear(Frame*)
-    {
-        if (!m_storageMap->length())
-            return;
-
-        m_storageMap = StorageMap::create(m_storageMap->quota());
-    }
-
-    bool contains(const String& key)
-    {
-        return m_storageMap->contains(key);
-    }
-
-    StorageType storageType() const
-    {
-        return StorageType::EphemeralLocal;
-    }
-
-    size_t memoryBytesUsedByCache()
-    {
-        return 0;
-    }
-
-    void incrementAccessCount() { }
-    void decrementAccessCount() { }
-    void closeDatabaseIfIdle() { }
-
-    const SecurityOriginData& securityOrigin() const
-    {
-        return m_securityOriginData;
-    }
-
-    SecurityOriginData m_securityOriginData;
-    RefPtr<StorageMap> m_storageMap;
-};
-
-Ref<StorageArea> StorageNamespaceImpl::ephemeralLocalStorageArea(const SecurityOriginData& securityOrigin)
-{
-    auto& slot = m_ephemeralLocalStorageAreas.add(securityOrigin, nullptr).iterator->value;
-    if (!slot)
-        slot = StorageNamespaceImpl::EphemeralStorageArea::create(securityOrigin, m_quotaInBytes);
-    ASSERT(slot);
-    return *slot;
-}
-
 Ref<StorageNamespace> StorageNamespaceImpl::copy(Page* newPage)
 {
     ASSERT(m_storageNamespaceID);
+    ASSERT(m_storageType == StorageType::Session);
 
-    if (m_storageType == StorageType::Session)
-        return createSessionStorageNamespace(WebPage::fromCorePage(newPage)->pageID(), m_quotaInBytes);
+    if (auto networkProcessConnection = WebProcess::singleton().existingNetworkProcessConnection())
+        networkProcessConnection->connection().send(Messages::StorageManagerSet::CloneSessionStorageNamespace(newPage->sessionID(), m_storageNamespaceID, WebPage::fromCorePage(newPage)->sessionStorageNamespaceIdentifier()), 0);
 
-    ASSERT(m_storageType == StorageType::EphemeralLocal);
-    auto newNamespace = adoptRef(*new StorageNamespaceImpl(m_storageType, m_storageNamespaceID, m_topLevelOrigin.get(), m_quotaInBytes));
+    return adoptRef(*new StorageNamespaceImpl(m_storageType, WebPage::fromCorePage(newPage)->sessionStorageNamespaceIdentifier(), m_topLevelOrigin.get(), m_quotaInBytes, newPage->sessionID()));
+}
 
-    for (auto& iter : m_ephemeralLocalStorageAreas)
-        newNamespace->m_ephemeralLocalStorageAreas.set(iter.key, iter.value->copy());
+void StorageNamespaceImpl::setSessionIDForTesting(PAL::SessionID sessionID)
+{
+    m_sessionID = sessionID;
+    for (auto storageAreaMap : m_storageAreaMaps.values())
+        storageAreaMap->disconnect();
+}
 
-    return newNamespace;
+PageIdentifier StorageNamespaceImpl::sessionStoragePageID() const
+{
+    ASSERT(m_storageType == StorageType::Session);
+    return makeObjectIdentifier<PageIdentifierType>(m_storageNamespaceID.toUInt64());
+}
+
+uint64_t StorageNamespaceImpl::pageGroupID() const
+{
+    ASSERT(m_storageType == StorageType::Local || m_storageType == StorageType::TransientLocal);
+    return m_storageNamespaceID.toUInt64();
 }
 
 } // namespace WebKit

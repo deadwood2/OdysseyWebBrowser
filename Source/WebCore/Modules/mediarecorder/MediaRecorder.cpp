@@ -35,12 +35,15 @@
 #include "MediaRecorderErrorEvent.h"
 #include "MediaRecorderPrivate.h"
 #include "SharedBuffer.h"
+#include <wtf/IsoMallocInlines.h>
 
 #if PLATFORM(COCOA)
 #include "MediaRecorderPrivateAVFImpl.h"
 #endif
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(MediaRecorder);
 
 creatorFunction MediaRecorder::m_customCreator = nullptr;
 
@@ -154,8 +157,8 @@ Ref<Blob> MediaRecorder::createRecordingDataBlob()
 {
     auto data = m_private->fetchData();
     if (!data)
-        return Blob::create();
-    return Blob::create(*data, m_private->mimeType());
+        return Blob::create(scriptExecutionContext()->sessionID());
+    return Blob::create(scriptExecutionContext()->sessionID(), *data, m_private->mimeType());
 }
 
 void MediaRecorder::didAddOrRemoveTrack()

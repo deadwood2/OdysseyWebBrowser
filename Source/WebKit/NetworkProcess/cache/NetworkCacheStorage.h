@@ -113,9 +113,9 @@ public:
     static const unsigned lastStableVersion = 13;
 #endif
 
-    String basePath() const;
+    String basePathIsolatedCopy() const;
     String versionPath() const;
-    String recordsPath() const;
+    String recordsPathIsolatedCopy() const;
 
     const Salt& salt() const { return m_salt; }
 
@@ -169,7 +169,6 @@ private:
     
     const Mode m_mode;
     const Salt m_salt;
-    const bool m_canUseBlobsForForBodyData;
 
     size_t m_capacity { std::numeric_limits<size_t>::max() };
     size_t m_approximateRecordsSize { 0 };
@@ -208,10 +207,6 @@ private:
     // Completing writes will dispatch more writes without delay.
     Seconds m_initialWriteDelay { 1_s };
 };
-
-// FIXME: Remove, used by NetworkCacheStatistics only.
-using RecordFileTraverseFunction = Function<void (const String& fileName, const String& hashString, const String& type, bool isBlob, const String& recordDirectoryPath)>;
-void traverseRecordsFiles(const String& recordsPath, const String& type, const RecordFileTraverseFunction&);
 
 }
 }

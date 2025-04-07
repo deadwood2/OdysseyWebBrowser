@@ -24,8 +24,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebEvent_h
-#define WebEvent_h
+#pragma once
 
 // FIXME: We should probably move to makeing the WebCore/PlatformFooEvents trivial classes so that
 // we can use them as the event type.
@@ -34,6 +33,7 @@
 #include <WebCore/FloatSize.h>
 #include <WebCore/IntPoint.h>
 #include <WebCore/IntSize.h>
+#include <WebCore/KeypressCommand.h>
 #include <wtf/OptionSet.h>
 #include <wtf/WallTime.h>
 #include <wtf/text/WTFString.h>
@@ -127,10 +127,10 @@ private:
 class WebMouseEvent : public WebEvent {
 public:
     enum Button {
-        NoButton = -1,
-        LeftButton,
+        LeftButton = 0,
         MiddleButton,
-        RightButton
+        RightButton,
+        NoButton = -2
     };
 
     enum SyntheticClickType { NoTap, OneFingerTap, TwoFingerTap };
@@ -259,7 +259,7 @@ public:
 #elif PLATFORM(GTK)
     WebKeyboardEvent(Type, const String& text, const String& key, const String& code, const String& keyIdentifier, int windowsVirtualKeyCode, int nativeVirtualKeyCode, bool handledByInputMethod, Vector<String>&& commands, bool isKeypad, OptionSet<Modifier>, WallTime timestamp);
 #elif PLATFORM(IOS_FAMILY)
-    WebKeyboardEvent(Type, const String& text, const String& unmodifiedText, const String& key, const String& code, const String& keyIdentifier, int windowsVirtualKeyCode, int nativeVirtualKeyCode, int macCharCode, bool isAutoRepeat, bool isKeypad, bool isSystemKey, OptionSet<Modifier>, WallTime timestamp);
+    WebKeyboardEvent(Type, const String& text, const String& unmodifiedText, const String& key, const String& code, const String& keyIdentifier, int windowsVirtualKeyCode, int nativeVirtualKeyCode, int macCharCode, bool handledByInputMethod, bool isAutoRepeat, bool isKeypad, bool isSystemKey, OptionSet<Modifier>, WallTime timestamp);
 #elif USE(LIBWPE)
     WebKeyboardEvent(Type, const String& text, const String& key, const String& code, const String& keyIdentifier, int windowsVirtualKeyCode, int nativeVirtualKeyCode, bool isKeypad, OptionSet<Modifier>, WallTime timestamp);
 #else
@@ -278,7 +278,7 @@ public:
     int32_t windowsVirtualKeyCode() const { return m_windowsVirtualKeyCode; }
     int32_t nativeVirtualKeyCode() const { return m_nativeVirtualKeyCode; }
     int32_t macCharCode() const { return m_macCharCode; }
-#if USE(APPKIT) || PLATFORM(GTK)
+#if USE(APPKIT) || USE(UIKIT_KEYBOARD_ADDITIONS) || PLATFORM(GTK)
     bool handledByInputMethod() const { return m_handledByInputMethod; }
 #endif
 #if USE(APPKIT)
@@ -308,7 +308,7 @@ private:
     int32_t m_windowsVirtualKeyCode;
     int32_t m_nativeVirtualKeyCode;
     int32_t m_macCharCode;
-#if USE(APPKIT) || PLATFORM(GTK)
+#if USE(APPKIT) || USE(UIKIT_KEYBOARD_ADDITIONS) || PLATFORM(GTK)
     bool m_handledByInputMethod;
 #endif
 #if USE(APPKIT)
@@ -497,5 +497,3 @@ private:
 #endif // ENABLE(TOUCH_EVENTS)
 
 } // namespace WebKit
-
-#endif // WebEvent_h

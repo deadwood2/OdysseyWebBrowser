@@ -31,6 +31,7 @@
 #include "GenericCallback.h"
 #include "PlatformCAAnimationRemote.h"
 #include "RemoteLayerBackingStore.h"
+#include "TransactionID.h"
 #include <WebCore/Color.h>
 #include <WebCore/FilterOperations.h>
 #include <WebCore/FloatPoint3D.h>
@@ -50,9 +51,8 @@ class Encoder;
 
 namespace WebKit {
 
-class PlatformCALayerRemote;
-
 class RemoteLayerTreeTransaction {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     enum LayerChange {
         NameChanged                     = 1LLU << 1,
@@ -92,9 +92,11 @@ public:
         EdgeAntialiasingMaskChanged     = 1LLU << 35,
         CustomAppearanceChanged         = 1LLU << 36,
         UserInteractionEnabledChanged   = 1LLU << 37,
+        EventRegionChanged              = 1LLU << 38,
     };
 
     struct LayerCreationProperties {
+        WTF_MAKE_STRUCT_FAST_ALLOCATED;
         LayerCreationProperties();
 
         void encode(IPC::Encoder&) const;
@@ -110,6 +112,7 @@ public:
     };
 
     struct LayerProperties {
+        WTF_MAKE_STRUCT_FAST_ALLOCATED;
         LayerProperties();
         LayerProperties(const LayerProperties& other);
 
@@ -119,6 +122,7 @@ public:
         void notePropertiesChanged(OptionSet<LayerChange> changeFlags)
         {
             changedProperties.add(changeFlags);
+            everChangedProperties.add(changeFlags);
         }
 
         void resetChangedProperties()
@@ -127,6 +131,7 @@ public:
         }
 
         OptionSet<LayerChange> changedProperties;
+        OptionSet<LayerChange> everChangedProperties;
 
         String name;
         std::unique_ptr<WebCore::TransformationMatrix> transform;
@@ -169,10 +174,13 @@ public:
         bool opaque;
         bool contentsHidden;
         bool userInteractionEnabled;
+        WebCore::EventRegion eventRegion;
     };
 
     explicit RemoteLayerTreeTransaction();
     ~RemoteLayerTreeTransaction();
+    RemoteLayerTreeTransaction(RemoteLayerTreeTransaction&&);
+    RemoteLayerTreeTransaction& operator=(RemoteLayerTreeTransaction&&);
 
     void encode(IPC::Encoder&) const;
     static bool decode(IPC::Decoder&, RemoteLayerTreeTransaction&);
@@ -257,8 +265,8 @@ public:
     bool avoidsUnsafeArea() const { return m_avoidsUnsafeArea; }
     void setAvoidsUnsafeArea(bool avoidsUnsafeArea) { m_avoidsUnsafeArea = avoidsUnsafeArea; }
 
-    uint64_t transactionID() const { return m_transactionID; }
-    void setTransactionID(uint64_t transactionID) { m_transactionID = transactionID; }
+    TransactionID transactionID() const { return m_transactionID; }
+    void setTransactionID(TransactionID transactionID) { m_transactionID = transactionID; }
 
     ActivityStateChangeID activityStateChangeID() const { return m_activityStateChangeID; }
     void setActivityStateChangeID(ActivityStateChangeID activityStateChangeID) { m_activityStateChangeID = activityStateChangeID; }
@@ -267,8 +275,8 @@ public:
     const Vector<TransactionCallbackID>& callbackIDs() const { return m_callbackIDs; }
     void setCallbackIDs(Vector<TransactionCallbackID>&& callbackIDs) { m_callbackIDs = WTFMove(callbackIDs); }
 
-    OptionSet<WebCore::LayoutMilestone> newlyReachedLayoutMilestones() const { return m_newlyReachedLayoutMilestones; }
-    void setNewlyReachedLayoutMilestones(OptionSet<WebCore::LayoutMilestone> milestones) { m_newlyReachedLayoutMilestones = milestones; }
+    OptionSet<WebCore::LayoutMilestone> newlyReachedPaintingMilestones() const { return m_newlyReachedPaintingMilestones; }
+    void setNewlyReachedPaintingMilestones(OptionSet<WebCore::LayoutMilestone> milestones) { m_newlyReachedPaintingMilestones = milestones; }
 
     bool hasEditorState() const { return !!m_editorState; }
     const EditorState& editorState() const { return m_editorState.value(); }
@@ -302,9 +310,9 @@ private:
     double m_initialScaleFactor { 1 };
     double m_viewportMetaTagWidth { -1 };
     uint64_t m_renderTreeSize { 0 };
-    uint64_t m_transactionID { 0 };
+    TransactionID m_transactionID;
     ActivityStateChangeID m_activityStateChangeID { ActivityStateChangeAsynchronous };
-    OptionSet<WebCore::LayoutMilestone> m_newlyReachedLayoutMilestones;
+    OptionSet<WebCore::LayoutMilestone> m_newlyReachedPaintingMilestones;
     bool m_scaleWasSetByUIProcess { false };
     bool m_allowsUserScaling { false };
     bool m_avoidsUnsafeArea { true };

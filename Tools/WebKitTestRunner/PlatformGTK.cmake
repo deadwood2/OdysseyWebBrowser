@@ -10,6 +10,7 @@ list(APPEND WebKitTestRunner_SOURCES
     ${WEBKIT_TESTRUNNER_DIR}/gtk/EventSenderProxyGtk.cpp
     ${WEBKIT_TESTRUNNER_DIR}/gtk/PlatformWebViewGtk.cpp
     ${WEBKIT_TESTRUNNER_DIR}/gtk/TestControllerGtk.cpp
+    ${WEBKIT_TESTRUNNER_DIR}/gtk/UIScriptControllerGtk.cpp
     ${WEBKIT_TESTRUNNER_DIR}/gtk/main.cpp
 )
 
@@ -29,9 +30,7 @@ list(APPEND WebKitTestRunner_LIBRARIES
     ${CAIRO_LIBRARIES}
     ${GTK3_LIBRARIES}
     ${GLIB_LIBRARIES}
-    WTF
     WebCore
-    WebCorePlatformGTK
 )
 
 set(WebKitTestRunnerInjectedBundle_LIBRARIES

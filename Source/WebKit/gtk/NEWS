@@ -1,129 +1,149 @@
 ================
-WebKitGTK 2.24.4
+WebKitGTK 2.26.4
 ================
 
-What's new in WebKitGTK 2.24.4?
+What's new in WebKitGTK 2.26.4?
 
-  - Updated the user agent string to make happy certain websites which
-    would claim that the browser being used was unsupported.
-  - Improve loading of multimedia streams to avoid memory exhaustion due
-    to excessive caching.
-  - Fix display of documents with MIME type application/xml in the Web
-    Inspector, when loaded using XmlHttpRequest.
-  - Fix a hang while scrolling certain websites which include HLS video
-    content (Twitter, for example).
-  - Fix rounding artifacts in volume levels for media playback.
+  - Always use a light theme for rendering form controls.
+  - Fix the build with WPE renderer disabled.
+  - Fix the build with OpenGL disabled.
+  - Fix the build with GCC 10.
   - Fix several crashes and rendering issues.
-  - Fix the build with video track support disabled.
-  - Fix the build with OpenGL support disabled.
-  - Fix build issue which would cause media controls to disappear when
-    Python 3.x was used during the build process.
+
+================
+WebKitGTK 2.26.3
+================
+
+What's new in WebKitGTK 2.26.3?
+
+  - Fix issues while trying to play a video on NextCloud.
+  - Make sure the GL video sink uses a valid WebKit shared GL context.
+  - Fix vertical alignment of text containing arabic diacritics.
+  - Fix build with icu 65.1.
+  - Fix page loading errors with websites using HSTS.
+  - Fix web process crash when displaying a KaTeX formula.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.26.2
+================
+
+What's new in WebKitGTK 2.26.2?
+
+  - Improve performance of querying system fallback fonts.
+  - Don't use prgname in dbus-proxy socket path.
+  - Fix thread-safety issues in image decoders.
+  - Fix the build with WebDriver disabled.
+  - Disable accelerated compositing when we fail to initialize the EGL dispaly under Wayland.
+  - Fill the objects category in emoji picker.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.26.1
+================
+
+What's new in WebKitGTK+ 2.26.1?
+
+  - Fix MSE media player with GStreamer 1.14.
+  - Fix HTML alternate loads never finishing.
+  - Fix web view initialization delay on fisrt load.
+  - Validate user agent string set via API.
+  - Fix a crash when a web view is destroyed with accelerated compositing mode enabled.
+  - Fix EGL initialization with newer versions of Mesa.
+  - Do not enable the sandbox inside docker.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.26.0
+================
+
+What's new in WebKitGTK+ 2.26.0?
+
+  - Disable process swap on navigation.
+  - Do not enable the sandbox in Snap.
+  - Fix sandbox parsing DISPLAY on X11.
+  - Translation updates: Brazilian Portuguese, German.
 
 =================
-WebKitGTK  2.24.3
+WebKitGTK 2.25.92
 =================
 
-What's new in WebKitGTK 2.24.3?
+What's new in WebKitGTK+ 2.25.92?
 
-  - Deprecate WebSQL APIs.
+  - Add WEBKIT_USE_SINGLE_WEB_PROCESS environment variable to force single process model in all WebKitWebContext.
+    This is a temporary solution for applications still depending on the single process mode behavior. It will be
+    only available in 2.26 series.
+  - Add new API to remove a filter from an user content manager given its identifier.
+  - Add support for HSTS.
+  - Several improvements and bug fixes in MSE media player.
+  - Fix building without unified sources.
+  - Fix several crashes and rendering issues.
+  - Translation updates: Polish, Ukrainian.
+
+================
+WebKitGTK 2.25.4
+================
+
+What's new in WebKitGTK+ 2.25.4?
+
+  - Switch to use libsoup WebSockets API.
+  - Add support for permessage-deflate WebSocket extension.
+  - Add support for datalist element in text input fields.
+  - Fix a crash with empty video source.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.25.3
+================
+
+What's new in WebKitGTK+ 2.25.3?
+
+  - Remove support for GTK2 NPAPI plugins.
+  - Fix web view updates after swapping web process if accelerated compositing mode is forced.
+  - Make kinetic scrolling work again.
+  - Fix position of emoji chooser when page is scrolled.
+  - Fix web process deadlock when scrolling twitter timeline which contains HLS videos.
+  - Make navigation gesture use dark fallback background color color on dark themes.
   - Make Previous/Next gesture work in RTL mode.
+  - Support cancelling touchscreen back/forward gesture.
+  - Add user agent quirk to make github work in FreeBSD.
   - Fix content disappearing when using CSS transforms.
-  - Fix rendering artifacts in youtube volume button.
-  - Fix trapezoid artifact in github comment box.
+  - Fix some radio streams that could not be played.
   - Fix video pause that sometimes caused to skip to finish.
   - Fix volume level changes when playing a video.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.25.2
+================
+
+What's new in WebKitGTK+ 2.25.2?
+
+  - Enable process switch on cross site navigation.
+  - Use libwpe with fdo backend to implement accelerated compositing under wayland.
+  - Fix rendering artifacts in youtube volume button.
+  - Fix trapezoid artifact in github comment box.
+  - Ensure web extensions directory is readable when sandbox is enabled.
+  - Fix the executable name of WebDriver process, renamed by mistake in 2.25.1.
+  - Enable hyperlink auditing setting by default.
+  - Remove the option to build without using the redirected XComposite window.
   - Fix HLS streams being slow to start.
-  - Fix some radio streams that could not be played.
-  - Fix the build with older versions of GStreamer.
-  - Fix the build with video and audio disabled.
+  - Make accessibility work when sandbox is enabled.
   - Fix several crashes and rendering issues.
-  - Translation updates: Brazilian Portuguese.
 
-=================
-WebKitGTK  2.24.2
-=================
+================
+WebKitGTK 2.25.1
+================
 
-What's new in WebKitGTK 2.24.2?
+What's new in WebKitGTK+ 2.25.1?
 
-  - Fix rendering of emojis copy-pasted from GTK emoji chooser.
-  - Fix space characters not being rendered with some CJK fonts.
-  - Fix adaptive streaming playback with older GStreamer versions.
-  - Set a maximum zoom level for pinch zooming gesture.
-  - Fix navigation gesture to not interfere with scrolling.
-  - Fix SSE2 detection at compile time, ensuring the right flags are passed to the compiler.
-  - Fix several crashes and rendering issues.
-  - Translation updates: Danish, Spanish, Ukrainian.
-  - Security fixes: CVE-2019-8595, CVE-2019-8607, CVE-2019-8615.
-
-=================
-WebKitGTK  2.24.1
-=================
-
-What's new in WebKitGTK 2.24.1?
-
-  - Do not allow changes in active URI before provisional load starts for non-API requests.
-  - Stop the threaded compositor when the page is not visible or layer tree state is frozen.
-  - Use WebKit HTTP source element again for adaptive streaming fragments downloading.
-  - Properly handle empty resources in webkit_web_resource_get_data().
-  - Add quirk to ensure outlook.live.com uses the modern UI.
-  - Fix methods returing GObject or boxed types in JavaScriptCore GLib API.
-  - Ensure callback data is passed to functions and constructors with no parameters in JavaScriptCore GLib API.
-  - Fix rendering of complex text when the font uses x,y origins.
-  - Fix sound loop with Google Hangouts and WhatsApp notifications.
-  - Fix the build with GStreamer 1.12.5 and GST GL enabled.
-  - Detect SSE2 at compile time.
-  - Fix several crashes and rendering issues.
-  - Security fixes: CVE-2019-6251.
-
-=================
-WebKitGTK  2.24.0
-=================
-
-What's new in WebKitGTK 2.24.0?
-
-  - Fix several crashes.
-  - Translation updates: Italian.
-
-=================
-WebKitGTK 2.23.92
-=================
-
-What's new in WebKitGTK 2.23.92?
-
-  - Fix constructors returning a GObject in JSC GLib API.
-  - Do not scan NPAPI plugins when plugins are disabled in settings.
-  - Add WebKitUserContentFilterStore to the API docs.
-  - Fix several crashes and rendering issues.
-  - Translation updates: Polish.
-
-=================
-WebKitGTK 2.23.91
-=================
-
-What's new in WebKitGTK 2.23.91?
-
-  - Add new API to handle user content filters.
-  - Fix a UI process crash while filling selection data during drag and drop.
-  - Fix deadlock on Linux/x64 between SamplingProfiler and VMTraps.
-  - Fix several crashes and rendering issues.
-  - Translation updates: Italian.
-
-=================
-WebKitGTK 2.23.90
-=================
-
-What's new in WebKitGTK 2.23.90?
-
-  - Add a new setting to disable JavaScript elments from documents during parsing.
-  - Add new API to expose JavaScriptCore options.
-  - Add support for JPEG2000 images.
-  - Add support for back/forward touchpad gesture.
-  - Add support for pinch zoom on touchpad.
-  - Use a scrolled window in alert dialogs to handle long contents.
-  - Sleep disabler now inhibits idle when a "System" sleep disabler is requested.
-  - Remove experimental sandboxing support, it's not yet ready for stable release.
-  - Fix a web process deadlock when starting the remote inspector.
-  - Fix a crash when browsing inspector:// URI without port set.
+  - Add support for subprocess sandboxing.
+  - Add API to get the web process unique identifier of a WebKitFrame.
+  - Add WebKitWebPage::did-associate-form-controls-for-frame signal and deprecate did-associate-form-controls.
+  - Implement AtkComponentIface scroll_to methods.
+  - Improve rendering of form controls when GTK theme is dark and enable prefers-color-scheme media query.
+  - Show the emoji chooser popover for editable content.
+  - Fix touch capabilities detection for websites checking touch events properties present in window or pointer media queries.
   - Fix several crashes and rendering issues.
 
 =================

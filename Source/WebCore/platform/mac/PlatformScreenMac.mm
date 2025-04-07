@@ -112,6 +112,7 @@ ScreenProperties collectScreenProperties()
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
 
     ScreenProperties screenProperties;
+    bool screenHasInvertedColors = [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldInvertColors];
 
     for (NSScreen *screen in [NSScreen screens]) {
         auto displayID = WebCore::displayID(screen);
@@ -124,15 +125,12 @@ ScreenProperties collectScreenProperties()
         int screenDepth = NSBitsPerPixelFromDepth(screen.depth);
         int screenDepthPerComponent = NSBitsPerSampleFromDepth(screen.depth);
         bool screenSupportsExtendedColor = [screen canRepresentDisplayGamut:NSDisplayGamutP3];
-        bool screenHasInvertedColors = CGDisplayUsesInvertedPolarity();
         bool screenIsMonochrome = CGDisplayUsesForceToGray();
         uint32_t displayMask = CGDisplayIDToOpenGLDisplayMask(displayID);
         IORegistryGPUID gpuID = 0;
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
         if (displayMask)
             gpuID = gpuIDForDisplayMask(displayMask);
-#endif
 
         screenProperties.screenDataMap.set(displayID, ScreenData { screenAvailableRect, screenRect, colorSpace, screenDepth, screenDepthPerComponent, screenSupportsExtendedColor, screenHasInvertedColors, screenIsMonochrome, displayMask, gpuID });
 
@@ -181,7 +179,6 @@ uint32_t displayMaskForDisplay(PlatformDisplayID displayID)
     return 0;
 }
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
 IORegistryGPUID primaryGPUID()
 {
     return gpuIDForDisplay(screenProperties().primaryDisplayID);
@@ -232,7 +229,6 @@ IORegistryGPUID gpuIDForDisplayMask(GLuint displayMask)
     CGLDestroyRendererInfo(rendererInfo);
     return (IORegistryGPUID) gpuIDHigh << 32 | gpuIDLow;
 }
-#endif // !__MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
 
 static ScreenData getScreenProperties(Widget* widget)
 {
@@ -256,7 +252,7 @@ bool screenHasInvertedColors()
 
     // This is a system-wide accessibility setting, same on all screens.
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
-    return CGDisplayUsesInvertedPolarity();
+    return [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldInvertColors];
 }
 
 int screenDepth(Widget* widget)

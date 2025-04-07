@@ -32,6 +32,7 @@
 #include "FormDataReference.h"
 #include "Logging.h"
 #include "NetworkProcessMessages.h"
+#include "ServiceWorkerFetchTaskMessages.h"
 #include "WebCacheStorageProvider.h"
 #include "WebCoreArgumentCoders.h"
 #include "WebDatabaseProvider.h"
@@ -72,7 +73,7 @@ static const Seconds syncWorkerTerminationTimeout { 100_ms }; // Only used by la
 
 class ServiceWorkerFrameLoaderClient final : public EmptyFrameLoaderClient {
 public:
-    ServiceWorkerFrameLoaderClient(WebSWContextManagerConnection& connection, PAL::SessionID sessionID, uint64_t pageID, uint64_t frameID, const String& userAgent)
+    ServiceWorkerFrameLoaderClient(WebSWContextManagerConnection& connection, PAL::SessionID sessionID, WebCore::PageIdentifier pageID, FrameIdentifier frameID, const String& userAgent)
         : m_connection(connection)
         , m_sessionID(sessionID)
         , m_pageID(pageID)
@@ -94,18 +95,18 @@ private:
     bool shouldUseCredentialStorage(DocumentLoader*, unsigned long) final { return true; }
 
     PAL::SessionID sessionID() const final { return m_sessionID; }
-    Optional<uint64_t> pageID() const final { return m_pageID; }
-    Optional<uint64_t> frameID() const final { return m_frameID; }
+    Optional<WebCore::PageIdentifier> pageID() const final { return m_pageID; }
+    Optional<WebCore::FrameIdentifier> frameID() const final { return m_frameID; }
     String userAgent(const URL&) final { return m_userAgent; }
 
     WebSWContextManagerConnection& m_connection;
     PAL::SessionID m_sessionID;
-    uint64_t m_pageID { 0 };
-    uint64_t m_frameID { 0 };
+    PageIdentifier m_pageID;
+    FrameIdentifier m_frameID;
     String m_userAgent;
 };
 
-WebSWContextManagerConnection::WebSWContextManagerConnection(Ref<IPC::Connection>&& connection, uint64_t pageGroupID, uint64_t pageID, const WebPreferencesStore& store)
+WebSWContextManagerConnection::WebSWContextManagerConnection(Ref<IPC::Connection>&& connection, uint64_t pageGroupID, PageIdentifier pageID, const WebPreferencesStore& store)
     : m_connectionToNetworkProcess(WTFMove(connection))
     , m_pageGroupID(pageGroupID)
     , m_pageID(pageID)
@@ -144,6 +145,7 @@ void WebSWContextManagerConnection::installServiceWorker(const ServiceWorkerCont
 #if ENABLE(INDEXED_DATABASE)
     pageConfiguration.databaseProvider = WebDatabaseProvider::getOrCreate(m_pageGroupID);
 #endif
+    pageConfiguration.socketProvider = WebSocketProvider::create();
 
     auto effectiveUserAgent =  WTFMove(userAgent);
     if (effectiveUserAgent.isNull())
@@ -151,7 +153,8 @@ void WebSWContextManagerConnection::installServiceWorker(const ServiceWorkerCont
 
     // FIXME: This method should be moved directly to WebCore::SWContextManager::Connection
     // If it weren't for ServiceWorkerFrameLoaderClient's dependence on WebDocumentLoader, this could already happen.
-    auto frameLoaderClient = std::make_unique<ServiceWorkerFrameLoaderClient>(*this, sessionID, m_pageID, ++m_previousServiceWorkerID, effectiveUserAgent);
+    // FIXME: Weird to pass m_previousServiceWorkerID as a FrameIdentifier.
+    auto frameLoaderClient = makeUnique<ServiceWorkerFrameLoaderClient>(*this, sessionID, m_pageID, frameIdentifierFromID(++m_previousServiceWorkerID), effectiveUserAgent);
     pageConfiguration.loaderClientForMainFrame = frameLoaderClient.get();
     m_loaders.add(WTFMove(frameLoaderClient));
 
@@ -225,12 +228,12 @@ void WebSWContextManagerConnection::startFetch(SWServerConnectionIdentifier serv
 {
     auto* serviceWorkerThreadProxy = SWContextManager::singleton().serviceWorkerThreadProxy(serviceWorkerIdentifier);
     if (!serviceWorkerThreadProxy) {
-        m_connectionToNetworkProcess->send(Messages::NetworkProcess::DidNotHandleFetch { serverConnectionIdentifier, fetchIdentifier }, 0);
+        m_connectionToNetworkProcess->send(Messages::ServiceWorkerFetchTask::DidNotHandle { }, fetchIdentifier);
         return;
     }
 
     if (!isValidFetch(request, options, serviceWorkerThreadProxy->scriptURL(), referrer)) {
-        m_connectionToNetworkProcess->send(Messages::NetworkProcess::DidNotHandleFetch { serverConnectionIdentifier, fetchIdentifier }, 0);
+        m_connectionToNetworkProcess->send(Messages::ServiceWorkerFetchTask::DidNotHandle { }, fetchIdentifier);
         return;
     }
 
@@ -357,10 +360,22 @@ void WebSWContextManagerConnection::didFinishSkipWaiting(uint64_t callbackID)
         callback();
 }
 
-NO_RETURN void WebSWContextManagerConnection::terminateProcess()
+void WebSWContextManagerConnection::terminateProcess()
 {
     RELEASE_LOG(ServiceWorker, "Service worker process is exiting because it is no longer needed");
     _exit(EXIT_SUCCESS);
+}
+
+void WebSWContextManagerConnection::setThrottleState(bool isThrottleable)
+{
+    RELEASE_LOG(ServiceWorker, "Service worker throttleable state is set to %d", isThrottleable);
+    m_isThrottleable = isThrottleable;
+    WebProcess::singleton().setProcessSuppressionEnabled(isThrottleable);
+}
+
+bool WebSWContextManagerConnection::isThrottleable() const
+{
+    return m_isThrottleable;
 }
 
 } // namespace WebCore

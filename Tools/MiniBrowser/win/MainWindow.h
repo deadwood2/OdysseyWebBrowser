@@ -26,26 +26,25 @@
 #pragma once
 
 #include "BrowserWindow.h"
+#include <functional>
 #include <memory>
 #include <string>
 #include <wtf/RefPtr.h>
 
-class MainWindow : public RefCounted<MainWindow> {
+class MainWindow final : public RefCounted<MainWindow>, public BrowserWindowClient {
 public:
-    enum class BrowserWindowType {
-        WebKit,
-        WebKitLegacy
-    };
-    static Ref<MainWindow> create(BrowserWindowType);
+    using BrowserWindowFactory = std::function<Ref<BrowserWindow>(BrowserWindowClient&, HWND mainWnd, bool usesLayeredWebView)>;
+
+    static Ref<MainWindow> create();
 
     ~MainWindow();
-    bool init(HINSTANCE hInstance, bool usesLayeredWebView = false, bool pageLoadTesting = false);
+    bool init(BrowserWindowFactory, HINSTANCE hInstance, bool usesLayeredWebView = false);
 
     void resizeSubViews();
     HWND hwnd() const { return m_hMainWnd; }
     BrowserWindow* browserWindow() const { return m_browserWindow.get(); }
 
-    void loadURL(BSTR url);
+    void loadURL(std::wstring);
     
 private:
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -55,17 +54,23 @@ private:
     static std::wstring s_windowClass;
     static size_t s_numInstances;
 
-    MainWindow(BrowserWindowType);
+    MainWindow();
     bool toggleMenuItem(UINT menuID);
     void onURLBarEnter();
     void updateDeviceScaleFactor();
+
+    // BrowserWindowClient
+    void progressChanged(double) final;
+    void progressFinished() final;
+    void activeURLChanged(std::wstring) final;
 
     HWND m_hMainWnd { nullptr };
     HWND m_hURLBarWnd { nullptr };
     HWND m_hBackButtonWnd { nullptr };
     HWND m_hForwardButtonWnd { nullptr };
+    HWND m_hReloadButtonWnd { nullptr };
+    HWND m_hProgressIndicator { nullptr };
     HWND m_hCacheWnd { nullptr };
     HGDIOBJ m_hURLBarFont { nullptr };
-    BrowserWindowType m_browserWindowType;
     RefPtr<BrowserWindow> m_browserWindow;
 };

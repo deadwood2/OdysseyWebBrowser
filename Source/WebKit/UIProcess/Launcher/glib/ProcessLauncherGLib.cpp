@@ -27,6 +27,7 @@
 #include "config.h"
 #include "ProcessLauncher.h"
 
+#include "BubblewrapLauncher.h"
 #include "Connection.h"
 #include "ProcessExecutablePath.h"
 #include <errno.h>
@@ -48,6 +49,41 @@ static void childSetupFunction(gpointer userData)
     close(socket);
 }
 
+#if ENABLE(BUBBLEWRAP_SANDBOX)
+static bool isInsideDocker()
+{
+    static Optional<bool> ret;
+    if (ret)
+        return *ret;
+
+    ret = g_file_test("/.dockerenv", G_FILE_TEST_EXISTS);
+    return *ret;
+}
+
+static bool isInsideFlatpak()
+{
+    static Optional<bool> ret;
+    if (ret)
+        return *ret;
+
+    ret = g_file_test("/.flatpak-info", G_FILE_TEST_EXISTS);
+    return *ret;
+}
+
+static bool isInsideSnap()
+{
+    static Optional<bool> ret;
+    if (ret)
+        return *ret;
+
+    // The "SNAP" environment variable is not unlikely to be set for/by something other
+    // than Snap, so check a couple of additional variables to avoid false positives.
+    // See: https://snapcraft.io/docs/environment-variables
+    ret = g_getenv("SNAP") && g_getenv("SNAP_NAME") && g_getenv("SNAP_REVISION");
+    return *ret;
+}
+#endif
+
 void ProcessLauncher::launchProcess()
 {
     IPC::Connection::SocketPair socketPair = IPC::Connection::createPlatformConnection(IPC::Connection::ConnectionOptions::SetCloexecOnServer);
@@ -66,10 +102,6 @@ void ProcessLauncher::launchProcess()
     case ProcessLauncher::ProcessType::Plugin64:
     case ProcessLauncher::ProcessType::Plugin32:
         executablePath = executablePathOfPluginProcess();
-#if ENABLE(PLUGIN_PROCESS_GTK2)
-        if (m_launchOptions.extraInitializationData.contains("requires-gtk2"))
-            executablePath.append('2');
-#endif
         pluginPath = m_launchOptions.extraInitializationData.get("plugin-path");
         realPluginPath = FileSystem::fileSystemRepresentation(pluginPath);
         break;
@@ -119,7 +151,21 @@ void ProcessLauncher::launchProcess()
 
     GUniqueOutPtr<GError> error;
     GRefPtr<GSubprocess> process;
-    process = adoptGRef(g_subprocess_launcher_spawnv(launcher.get(), argv, &error.outPtr()));
+
+#if ENABLE(BUBBLEWRAP_SANDBOX)
+    const char* sandboxEnv = g_getenv("WEBKIT_FORCE_SANDBOX");
+    bool sandboxEnabled = m_launchOptions.extraInitializationData.get("enable-sandbox") == "true";
+
+    if (sandboxEnv)
+        sandboxEnabled = !strcmp(sandboxEnv, "1");
+
+    // You cannot use bubblewrap within Flatpak or Docker so lets ensure it never happens.
+    // Snap can allow it but has its own limitations that require workarounds.
+    if (sandboxEnabled && !isInsideFlatpak() && !isInsideSnap() && !isInsideDocker())
+        process = bubblewrapSpawn(launcher.get(), m_launchOptions, argv, &error.outPtr());
+    else
+#endif
+        process = adoptGRef(g_subprocess_launcher_spawnv(launcher.get(), argv, &error.outPtr()));
 
     if (!process.get())
         g_error("Unable to fork a new child process: %s", error->message);

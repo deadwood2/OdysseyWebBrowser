@@ -27,12 +27,10 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WI.ConsoleCommandView = class ConsoleCommandView extends WI.Object
+WI.ConsoleCommandView = class ConsoleCommandView
 {
     constructor(commandText, className)
     {
-        super();
-
         this._commandText = commandText;
         this._className = className || "";
     }
@@ -43,13 +41,14 @@ WI.ConsoleCommandView = class ConsoleCommandView extends WI.Object
     {
         this._element = document.createElement("div");
         this._element.classList.add("console-user-command");
+        this._element.dir = "ltr";
         this._element.setAttribute("data-labelprefix", WI.UIString("Input: "));
 
         if (this._className)
             this._element.classList.add(this._className);
 
         this._formattedCommandElement = this._element.appendChild(document.createElement("span"));
-        this._formattedCommandElement.classList.add("console-message-text");
+        this._formattedCommandElement.classList.add("console-message-body");
         this._formattedCommandElement.textContent = this._commandText;
 
         // FIXME: <https://webkit.org/b/143545> Web Inspector: LogContentView should use higher level objects

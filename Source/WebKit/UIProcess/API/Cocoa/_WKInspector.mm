@@ -26,12 +26,11 @@
 #import "config.h"
 #import "_WKInspector.h"
 
-#if WK_API_ENABLED
-
 #import "WKWebViewInternal.h"
 #import "WebProcessProxy.h"
 #import "_WKFrameHandleInternal.h"
 #import "_WKInspectorInternal.h"
+#import <WebCore/FrameIdentifier.h>
 #import <wtf/RetainPtr.h>
 
 @implementation _WKInspector
@@ -101,7 +100,7 @@
 - (void)showMainResourceForFrame:(_WKFrameHandle *)frame
 {
     if (auto* page = _inspector->inspectedPage())
-        _inspector->showMainResourceForFrame(page->process().webFrame(frame._frameID));
+        _inspector->showMainResourceForFrame(page->process().webFrame(WebCore::frameIdentifierFromID(frame._frameID)));
 }
 
 - (void)attach
@@ -112,11 +111,6 @@
 - (void)detach
 {
     _inspector->detach();
-}
-
-- (void)showTimelines
-{
-    _inspector->showTimelines();
 }
 
 - (void)togglePageProfiling
@@ -141,5 +135,3 @@
 }
 
 @end
-
-#endif

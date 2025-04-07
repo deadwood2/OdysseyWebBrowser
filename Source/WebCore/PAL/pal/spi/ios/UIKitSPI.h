@@ -54,6 +54,10 @@ WTF_EXTERN_C_END
 - (CGFloat)_iOSMacScale;
 @end
 
+#if __has_include(<UIKit/UIFocusRingStyle.h>)
+#import <UIKit/UIFocusRingStyle.h>
+#endif
+
 #else // USE(APPLE_INTERNAL_SDK)
 
 #import <UIKit/UIKit.h>
@@ -61,8 +65,6 @@ WTF_EXTERN_C_END
 #if ENABLE(DRAG_SUPPORT)
 #import <UIKit/NSItemProvider+UIKitAdditions.h>
 #endif
-
-NS_ASSUME_NONNULL_BEGIN
 
 typedef NS_ENUM(NSInteger, UIApplicationSceneClassicMode) {
     UIApplicationSceneClassicModeOriginalPad = 4,
@@ -105,12 +107,15 @@ typedef enum {
 @interface UIColor ()
 
 + (UIColor *)systemBlueColor;
++ (UIColor *)systemBrownColor;
 + (UIColor *)systemGrayColor;
 + (UIColor *)systemGreenColor;
 + (UIColor *)systemOrangeColor;
 + (UIColor *)systemPinkColor;
++ (UIColor *)systemPurpleColor;
 + (UIColor *)systemRedColor;
 + (UIColor *)systemYellowColor;
++ (UIColor *)systemTealColor;
 
 + (UIColor *)_disambiguated_due_to_CIImage_colorWithCGColor:(CGColorRef)cgColor;
 
@@ -134,11 +139,9 @@ typedef enum {
 + (UIViewController *)viewControllerForView:(UIView *)view;
 @end
 
-NS_ASSUME_NONNULL_END
-
 #if __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000
 @interface NSURL ()
-@property (nonatomic, copy, nullable, setter=_setTitle:) NSString *_title;
+@property (nonatomic, copy, setter=_setTitle:) NSString *_title;
 @end
 #endif
 
@@ -147,6 +150,18 @@ NS_ASSUME_NONNULL_END
 #if ENABLE(FULL_KEYBOARD_ACCESS)
 @interface UIColor (IPI)
 + (UIColor *)keyboardFocusIndicatorColor;
+@end
+
+@interface UIFocusRingStyle (Staging_47831886)
++ (CGFloat)cornerRadius;
++ (CGFloat)maxAlpha;
++ (CGFloat)alphaThreshold;
+@end
+#endif
+
+#if HAVE(OS_DARK_MODE_SUPPORT)
+@interface UIColor (UIColorInternal)
++ (UIColor *)tableCellDefaultSelectionTintColor;
 @end
 #endif
 

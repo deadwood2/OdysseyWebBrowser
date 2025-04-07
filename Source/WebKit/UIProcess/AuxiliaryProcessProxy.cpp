@@ -72,9 +72,6 @@ void AuxiliaryProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions& lau
     case ProcessLauncher::ProcessType::Network:
         varname = "NETWORK_PROCESS_CMD_PREFIX";
         break;
-    case ProcessLauncher::ProcessType::NetworkDaemon:
-        ASSERT_NOT_REACHED();
-        break;
     }
     const char* processCmdPrefix = getenv(varname);
     if (processCmdPrefix && *processCmdPrefix)
@@ -89,7 +86,7 @@ void AuxiliaryProcessProxy::connect()
     ASSERT(!m_processLauncher);
     ProcessLauncher::LaunchOptions launchOptions;
     getLaunchOptions(launchOptions);
-    m_processLauncher = ProcessLauncher::create(this, launchOptions);
+    m_processLauncher = ProcessLauncher::create(this, WTFMove(launchOptions));
 }
 
 void AuxiliaryProcessProxy::terminate()

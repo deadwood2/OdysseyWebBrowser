@@ -26,7 +26,7 @@
 #import "config.h"
 #import "AuxiliaryProcess.h"
 
-#if PLATFORM(IOS_FAMILY) && !PLATFORM(IOSMAC)
+#if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
 
 #import "SandboxInitializationParameters.h"
 #import "XPCServiceEntryPoint.h"
@@ -63,7 +63,7 @@ void AuxiliaryProcess::initializeSandbox(const AuxiliaryProcessInitializationPar
         sandboxParameters.setUserDirectorySuffix(defaultUserDirectorySuffix);
     }
 
-#if !PLATFORM(IOSMAC)
+#if !PLATFORM(MACCATALYST)
     String sandboxImportPath = "/usr/local/share/sandbox/imports";
     sandboxParameters.addPathParameter("IMPORT_DIR", FileSystem::fileSystemRepresentation(sandboxImportPath).data());
 #endif
@@ -111,11 +111,6 @@ void AuxiliaryProcess::initializeSandbox(const AuxiliaryProcessInitializationPar
 void AuxiliaryProcess::setQOS(int, int)
 {
 
-}
-
-void AuxiliaryProcess::platformStopRunLoop()
-{
-    XPCServiceExit(WTFMove(m_priorityBoostMessage));
 }
 
 } // namespace WebKit

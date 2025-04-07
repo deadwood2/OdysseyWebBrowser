@@ -26,7 +26,9 @@
 #pragma once
 
 #include "NetworkDataTask.h"
+#include <WebCore/FrameIdentifier.h>
 #include <WebCore/NetworkLoadInformation.h>
+#include <WebCore/PageIdentifier.h>
 #include <WebCore/StoredCredentialsPolicy.h>
 #include <pal/SessionID.h>
 #include <wtf/CompletionHandler.h>
@@ -49,8 +51,8 @@ public:
         String referrer;
         String userAgent;
         PAL::SessionID sessionID;
-        uint64_t pageID;
-        uint64_t frameID;
+        WebCore::PageIdentifier pageID;
+        WebCore::FrameIdentifier frameID;
         WebCore::StoredCredentialsPolicy storedCredentialsPolicy;
     };
     using CompletionCallback = CompletionHandler<void(WebCore::ResourceError&&)>;
@@ -72,6 +74,7 @@ private:
     void didSendData(uint64_t totalBytesSent, uint64_t totalBytesExpectedToSend) final;
     void wasBlocked() final;
     void cannotShowURL() final;
+    void wasBlockedByRestrictions() final;
 
     Parameters m_parameters;
     Ref<NetworkProcess> m_networkProcess;

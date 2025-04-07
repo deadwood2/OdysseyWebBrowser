@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -62,7 +62,7 @@ public:
         return adoptRef(*new PlaybackSessionInterfaceAVKit(model));
     }
     virtual ~PlaybackSessionInterfaceAVKit();
-    PlaybackSessionModel* playbackSessionModel() const { return m_playbackSessionModel; }
+    PlaybackSessionModel* playbackSessionModel() const;
 
     // PlaybackSessionModelClient
     WEBCORE_EXPORT void durationChanged(double) override;
@@ -77,6 +77,7 @@ public:
     WEBCORE_EXPORT void wirelessVideoPlaybackDisabledChanged(bool) override;
     WEBCORE_EXPORT void mutedChanged(bool) override;
     WEBCORE_EXPORT void volumeChanged(double) override;
+    WEBCORE_EXPORT void modelDestroyed() override;
 
     WEBCORE_EXPORT virtual void invalidate();
 

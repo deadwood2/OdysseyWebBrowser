@@ -26,6 +26,7 @@
 #import "config.h"
 #import "WebProcessPool.h"
 
+#import "AccessibilitySupportSPI.h"
 #import "CookieStorageUtilsCF.h"
 #import "LegacyCustomProtocolManagerClient.h"
 #import "NetworkProcessCreationParameters.h"
@@ -53,11 +54,14 @@
 #import <sys/param.h>
 #import <wtf/FileSystem.h>
 #import <wtf/ProcessPrivilege.h>
+#import <wtf/SoftLinking.h>
 #import <wtf/cocoa/Entitlements.h>
 #import <wtf/spi/darwin/dyldSPI.h>
 
 #if PLATFORM(MAC)
 #import <QuartzCore/CARemoteLayerServer.h>
+#else
+#import "UIKitSPI.h"
 #endif
 
 NSString *WebServiceWorkerRegistrationDirectoryDefaultsKey = @"WebServiceWorkerRegistrationDirectory";
@@ -69,12 +73,15 @@ NSString *WebKitJSCFTLJITEnabledDefaultsKey = @"WebKitJSCFTLJITEnabledDefaultsKe
 static NSString *WebKitApplicationDidChangeAccessibilityEnhancedUserInterfaceNotification = @"NSApplicationDidChangeAccessibilityEnhancedUserInterfaceNotification";
 #endif
 
-static NSString * const WebKitNetworkCacheEfficacyLoggingEnabledDefaultsKey = @"WebKitNetworkCacheEfficacyLoggingEnabled";
-
 static NSString * const WebKitSuppressMemoryPressureHandlerDefaultsKey = @"WebKitSuppressMemoryPressureHandler";
 
 #if ENABLE(RESOURCE_LOAD_STATISTICS) && !RELEASE_LOG_DISABLED
 static NSString * const WebKitLogCookieInformationDefaultsKey = @"WebKitLogCookieInformation";
+#endif
+
+#if PLATFORM(IOS)
+SOFT_LINK_PRIVATE_FRAMEWORK(BackBoardServices)
+SOFT_LINK(BackBoardServices, BKSDisplayBrightnessGetCurrent, float, (), ());
 #endif
 
 namespace WebKit {
@@ -91,8 +98,6 @@ static void registerUserDefaultsIfNeeded()
     
     [registrationDictionary setObject:@YES forKey:WebKitJSCJITEnabledDefaultsKey];
     [registrationDictionary setObject:@YES forKey:WebKitJSCFTLJITEnabledDefaultsKey];
-
-    [registrationDictionary setObject:@NO forKey:WebKitNetworkCacheEfficacyLoggingEnabledDefaultsKey];
 
     [[NSUserDefaults standardUserDefaults] registerDefaults:registrationDictionary];
 }
@@ -130,7 +135,7 @@ void WebProcessPool::platformInitialize()
     if (![[NSUserDefaults standardUserDefaults] boolForKey:@"WebKitSuppressMemoryPressureHandler"])
         installMemoryPressureHandler();
 
-    setLegacyCustomProtocolManagerClient(std::make_unique<LegacyCustomProtocolManagerClient>());
+    setLegacyCustomProtocolManagerClient(makeUnique<LegacyCustomProtocolManagerClient>());
 }
 
 #if PLATFORM(IOS_FAMILY)
@@ -157,8 +162,10 @@ void WebProcessPool::platformResolvePathsForSandboxExtensions()
 #endif
 }
 
-void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& parameters)
+void WebProcessPool::platformInitializeWebProcess(const WebProcessProxy& process, WebProcessCreationParameters& parameters)
 {
+    parameters.mediaMIMETypes = process.mediaMIMETypes();
+
 #if PLATFORM(MAC)
     ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
@@ -274,9 +281,9 @@ void WebProcessPool::platformInitializeNetworkProcess(NetworkProcessCreationPara
         }
     }
 
-    parameters.networkATSContext = adoptCF(_CFNetworkCopyATSContext());
+    parameters.defaultDataStoreParameters.networkSessionParameters.enableLegacyTLS = [defaults boolForKey:@"WebKitEnableLegacyTLS"];
 
-    parameters.shouldEnableNetworkCacheEfficacyLogging = [defaults boolForKey:WebKitNetworkCacheEfficacyLoggingEnabledDefaultsKey];
+    parameters.networkATSContext = adoptCF(_CFNetworkCopyATSContext());
 
 #if PLATFORM(IOS_FAMILY)
     parameters.ctDataConnectionServiceType = m_configuration->ctDataConnectionServiceType();
@@ -293,9 +300,10 @@ void WebProcessPool::platformInitializeNetworkProcess(NetworkProcessCreationPara
     parameters.storageAccessAPIEnabled = storageAccessAPIEnabled();
     parameters.suppressesConnectionTerminationOnSystemChange = m_configuration->suppressesConnectionTerminationOnSystemChange();
 
-#if ENABLE(PROXIMITY_NETWORKING)
-    parameters.wirelessContextIdentifier = m_configuration->wirelessContextIdentifier();
-#endif
+    parameters.shouldEnableITPDatabase = [defaults boolForKey:[NSString stringWithFormat:@"InternalDebug%@", WebPreferencesKey::isITPDatabaseEnabledKey().createCFString().get()]];
+    parameters.downloadMonitorSpeedMultiplier = m_configuration->downloadMonitorSpeedMultiplier();
+
+    parameters.enableAdClickAttributionDebugMode = [defaults boolForKey:[NSString stringWithFormat:@"Experimental%@", WebPreferencesKey::adClickAttributionDebugModeEnabledKey().createCFString().get()]];
 }
 
 void WebProcessPool::platformInvalidateContext()
@@ -379,6 +387,19 @@ bool WebProcessPool::networkProcessHasEntitlementForTesting(const String& entitl
     return WTF::hasEntitlement(ensureNetworkProcess().connection()->xpcConnection(), entitlement.utf8().data());
 }
 
+#if PLATFORM(IOS)
+float WebProcessPool::displayBrightness()
+{
+    return BKSDisplayBrightnessGetCurrent();
+}
+    
+void WebProcessPool::backlightLevelDidChangeCallback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo)
+{
+    WebProcessPool* pool = reinterpret_cast<WebProcessPool*>(observer);
+    pool->sendToAllProcesses(Messages::WebProcess::BacklightLevelDidChange(BKSDisplayBrightnessGetCurrent()));
+}
+#endif
+
 void WebProcessPool::registerNotificationObservers()
 {
 #if !PLATFORM(IOS_FAMILY)
@@ -418,13 +439,26 @@ void WebProcessPool::registerNotificationObservers()
     }];
 #endif
 
+    m_activationObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidBecomeActiveNotification object:NSApp queue:[NSOperationQueue currentQueue] usingBlock:^(NSNotification *notification) {
+        setApplicationIsActive(true);
+    }];
+
+    m_deactivationObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidResignActiveNotification object:NSApp queue:[NSOperationQueue currentQueue] usingBlock:^(NSNotification *notification) {
+        setApplicationIsActive(false);
+    }];
+#elif PLATFORM(IOS)
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), this, backlightLevelDidChangeCallback, static_cast<CFStringRef>(UIBacklightLevelChangedNotification), nullptr, CFNotificationSuspensionBehaviorCoalesce);
+    m_accessibilityEnabledObserver = [[NSNotificationCenter defaultCenter] addObserverForName:(__bridge id)kAXSApplicationAccessibilityEnabledNotification object:nil queue:[NSOperationQueue currentQueue] usingBlock:^(NSNotification *) {
+        for (size_t i = 0; i < m_processes.size(); ++i)
+            m_processes[i]->unblockAccessibilityServerIfNeeded();
+    }];
 #endif // !PLATFORM(IOS_FAMILY)
 }
 
 void WebProcessPool::unregisterNotificationObservers()
 {
 #if !PLATFORM(IOS_FAMILY)
-    [[NSNotificationCenter defaultCenter] removeObserver:m_enhancedAccessibilityObserver.get()];    
+    [[NSNotificationCenter defaultCenter] removeObserver:m_enhancedAccessibilityObserver.get()];
     [[NSNotificationCenter defaultCenter] removeObserver:m_automaticTextReplacementNotificationObserver.get()];
     [[NSNotificationCenter defaultCenter] removeObserver:m_automaticSpellingCorrectionNotificationObserver.get()];
     [[NSNotificationCenter defaultCenter] removeObserver:m_automaticQuoteSubstitutionNotificationObserver.get()];
@@ -433,6 +467,11 @@ void WebProcessPool::unregisterNotificationObservers()
 #if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
     [[NSNotificationCenter defaultCenter] removeObserver:m_scrollerStyleNotificationObserver.get()];
 #endif
+    [[NSNotificationCenter defaultCenter] removeObserver:m_activationObserver.get()];
+    [[NSNotificationCenter defaultCenter] removeObserver:m_deactivationObserver.get()];
+#elif PLATFORM(IOS)
+    CFNotificationCenterRemoveObserver(CFNotificationCenterGetDarwinNotifyCenter(), this, static_cast<CFStringRef>(UIBacklightLevelChangedNotification) , nullptr);
+    [[NSNotificationCenter defaultCenter] removeObserver:m_accessibilityEnabledObserver.get()];
 #endif // !PLATFORM(IOS_FAMILY)
 }
 
@@ -477,7 +516,7 @@ void WebProcessPool::startDisplayLink(IPC::Connection& connection, unsigned obse
             return;
         }
     }
-    auto displayLink = std::make_unique<DisplayLink>(displayID);
+    auto displayLink = makeUnique<DisplayLink>(displayID);
     displayLink->addObserver(connection, observerID);
     m_displayLinks.append(WTFMove(displayLink));
 }
@@ -509,6 +548,17 @@ void WebProcessPool::setStorageAccessAPIEnabled(bool enabled)
 {
     m_storageAccessAPIEnabled = enabled;
     sendToNetworkingProcess(Messages::NetworkProcess::SetStorageAccessAPIEnabled(enabled));
+}
+
+void WebProcessPool::clearPermanentCredentialsForProtectionSpace(WebCore::ProtectionSpace&& protectionSpace)
+{
+    auto sharedStorage = [NSURLCredentialStorage sharedCredentialStorage];
+    auto credentials = [sharedStorage credentialsForProtectionSpace:protectionSpace.nsSpace()];
+    for (NSString* user in credentials) {
+        auto credential = credentials[user];
+        if (credential.persistence == NSURLCredentialPersistencePermanent)
+            [sharedStorage removeCredential:credentials[user] forProtectionSpace:protectionSpace.nsSpace()];
+    }
 }
 
 int networkProcessLatencyQOS()

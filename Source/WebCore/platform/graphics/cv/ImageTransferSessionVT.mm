@@ -34,7 +34,7 @@
 #import <CoreMedia/CMSampleBuffer.h>
 #import <pal/cf/CoreMediaSoftLink.h>
 
-#if HAVE(IOSURFACE) && !PLATFORM(IOSMAC)
+#if HAVE(IOSURFACE) && !PLATFORM(MACCATALYST)
 #include <pal/spi/cocoa/IOSurfaceSPI.h>
 #endif
 
@@ -45,7 +45,7 @@ using namespace PAL;
 
 static inline CFStringRef cvPixelFormatOpenGLKey()
 {
-#if PLATFORM(IOS_FAMILY) && !PLATFORM(IOSMAC)
+#if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
     return kCVPixelFormatOpenGLESCompatibility;
 #else
     return kCVPixelBufferOpenGLCompatibilityKey;
@@ -59,20 +59,20 @@ ImageTransferSessionVT::ImageTransferSessionVT(uint32_t pixelFormat)
     ASSERT(transferSession);
     m_transferSession = adoptCF(transferSession);
 
-    auto status = VTSessionSetProperty(transferSession, kVTPixelTransferPropertyKey_ScalingMode, kVTScalingMode_Letterbox);
+    auto status = VTSessionSetProperty(transferSession, kVTPixelTransferPropertyKey_ScalingMode, kVTScalingMode_Trim);
     if (status != kCVReturnSuccess)
         RELEASE_LOG(Media, "ImageTransferSessionVT::ImageTransferSessionVT: VTSessionSetProperty(kVTPixelTransferPropertyKey_ScalingMode) failed with error %d", static_cast<int>(status));
 
-    status = VTSessionSetProperty(transferSession, kVTPixelTransferPropertyKey_EnableHighSpeedTransfer, @(YES));
+    status = VTSessionSetProperty(transferSession, kVTPixelTransferPropertyKey_EnableHighSpeedTransfer, @YES);
     if (status != kCVReturnSuccess)
         RELEASE_LOG(Media, "ImageTransferSessionVT::ImageTransferSessionVT: VTSessionSetProperty(kVTPixelTransferPropertyKey_EnableHighSpeedTransfer) failed with error %d", static_cast<int>(status));
 
-    status = VTSessionSetProperty(transferSession, kVTPixelTransferPropertyKey_RealTime, @(YES));
+    status = VTSessionSetProperty(transferSession, kVTPixelTransferPropertyKey_RealTime, @YES);
     if (status != kCVReturnSuccess)
         RELEASE_LOG(Media, "ImageTransferSessionVT::ImageTransferSessionVT: VTSessionSetProperty(kVTPixelTransferPropertyKey_RealTime) failed with error %d", static_cast<int>(status));
 
-#if PLATFORM(IOS_FAMILY) && !PLATFORM(IOSMAC)
-    status = VTSessionSetProperty(transferSession, kVTPixelTransferPropertyKey_EnableHardwareAcceleratedTransfer, @(YES));
+#if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
+    status = VTSessionSetProperty(transferSession, kVTPixelTransferPropertyKey_EnableHardwareAcceleratedTransfer, @YES);
     if (status != kCVReturnSuccess)
         RELEASE_LOG(Media, "ImageTransferSessionVT::ImageTransferSessionVT: VTSessionSetProperty(kVTPixelTransferPropertyKey_EnableHardwareAcceleratedTransfer) failed with error %d", static_cast<int>(status));
 #endif
@@ -89,7 +89,7 @@ bool ImageTransferSessionVT::setSize(const IntSize& size)
         (__bridge NSString *)kCVPixelBufferWidthKey : @(size.width()),
         (__bridge NSString *)kCVPixelBufferHeightKey : @(size.height()),
         (__bridge NSString *)kCVPixelBufferPixelFormatTypeKey : @(m_pixelFormat),
-        (__bridge NSString *)cvPixelFormatOpenGLKey() : @(YES),
+        (__bridge NSString *)cvPixelFormatOpenGLKey() : @YES,
         (__bridge NSString *)kCVPixelBufferIOSurfacePropertiesKey : @{ /*empty dictionary*/ },
     };
 
@@ -265,7 +265,7 @@ RetainPtr<CMSampleBufferRef> ImageTransferSessionVT::createCMSampleBuffer(CGImag
     return createCMSampleBuffer(pixelBuffer.get(), sampleTime, size);
 }
 
-#if HAVE(IOSURFACE) && !PLATFORM(IOSMAC)
+#if HAVE(IOSURFACE) && !PLATFORM(MACCATALYST)
 
 #if PLATFORM(MAC)
 static int32_t roundUpToMacroblockMultiple(int32_t size)
@@ -280,7 +280,7 @@ CFDictionaryRef ImageTransferSessionVT::ioSurfacePixelBufferCreationOptions(IOSu
         return m_ioSurfaceBufferAttributes.get();
 
     m_ioSurfaceBufferAttributes = (__bridge CFDictionaryRef) @{
-        (__bridge NSString *)cvPixelFormatOpenGLKey() : @(YES),
+        (__bridge NSString *)cvPixelFormatOpenGLKey() : @YES,
     };
 
 #if PLATFORM(MAC)
@@ -295,7 +295,7 @@ CFDictionaryRef ImageTransferSessionVT::ioSurfacePixelBufferCreationOptions(IOSu
         && (IOSurfaceGetBytesPerRowOfPlane(surface, 1) >= width + extendedRight)
         && (IOSurfaceGetAllocSize(surface) >= (height + extendedBottom) * IOSurfaceGetBytesPerRowOfPlane(surface, 0) * 3 / 2)) {
             m_ioSurfaceBufferAttributes = (__bridge CFDictionaryRef) @{
-                (__bridge NSString *)kCVPixelBufferOpenGLCompatibilityKey : @(YES),
+                (__bridge NSString *)kCVPixelBufferOpenGLCompatibilityKey : @YES,
                 (__bridge NSString *)kCVPixelBufferExtendedPixelsRightKey : @(extendedRight),
                 (__bridge NSString *)kCVPixelBufferExtendedPixelsBottomKey : @(extendedBottom)
             };
@@ -350,7 +350,7 @@ RefPtr<MediaSample> ImageTransferSessionVT::convertMediaSample(MediaSample& samp
     return MediaSampleAVFObjC::create(resizedBuffer.get(), sample.videoRotation(), sample.videoMirrored());
 }
 
-#if HAVE(IOSURFACE) && !PLATFORM(IOSMAC)
+#if HAVE(IOSURFACE) && !PLATFORM(MACCATALYST)
 RefPtr<MediaSample> ImageTransferSessionVT::createMediaSample(IOSurfaceRef surface, const MediaTime& sampleTime, const IntSize& size, MediaSample::VideoRotation rotation, bool mirrored)
 {
     auto sampleBuffer = createCMSampleBuffer(surface, sampleTime, size);

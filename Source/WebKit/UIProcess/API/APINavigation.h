@@ -30,9 +30,12 @@
 #include "FrameInfoData.h"
 #include "NavigationActionData.h"
 #include "WebBackForwardListItem.h"
+#include "WebContentMode.h"
+#include <WebCore/AdClickAttribution.h>
 #include <WebCore/ProcessIdentifier.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/SecurityOriginData.h>
+#include <wtf/Optional.h>
 #include <wtf/Ref.h>
 
 namespace WebCore {
@@ -106,7 +109,7 @@ public:
 
     bool wasUserInitiated() const { return !!m_lastNavigationAction.userGestureTokenIdentifier; }
 
-    bool shouldForceDownload() const { return !m_lastNavigationAction.downloadAttribute.isNull(); }
+    bool shouldPerformDownload() const { return !m_lastNavigationAction.downloadAttribute.isNull(); }
 
     bool isSystemPreview() const
     {
@@ -122,6 +125,9 @@ public:
     bool openedByDOMWithOpener() const { return m_lastNavigationAction.openedByDOMWithOpener; }
     const WebCore::SecurityOriginData& requesterOrigin() const { return m_lastNavigationAction.requesterOrigin; }
 
+    void setUserContentExtensionsEnabled(bool enabled) { m_userContentExtensionsEnabled = enabled; }
+    bool userContentExtensionsEnabled() const { return m_userContentExtensionsEnabled; }
+
     WebCore::LockHistory lockHistory() const { return m_lastNavigationAction.lockHistory; }
     WebCore::LockBackForwardList lockBackForwardList() const { return m_lastNavigationAction.lockBackForwardList; }
 
@@ -136,11 +142,16 @@ public:
     void setDestinationFrameSecurityOrigin(const WebCore::SecurityOriginData& origin) { m_destinationFrameSecurityOrigin = origin; }
     const WebCore::SecurityOriginData& destinationFrameSecurityOrigin() const { return m_destinationFrameSecurityOrigin; }
 
+    void setEffectiveContentMode(WebKit::WebContentMode mode) { m_effectiveContentMode = mode; }
+    WebKit::WebContentMode effectiveContentMode() const { return m_effectiveContentMode; }
+
 #if !LOG_DISABLED
     const char* loggingString() const;
 #endif
 
     const std::unique_ptr<SubstituteData>& substituteData() const { return m_substituteData; }
+
+    const Optional<WebCore::AdClickAttribution>& adClickAttribution() const { return m_lastNavigationAction.adClickAttribution; }
 
 private:
     explicit Navigation(WebKit::WebNavigationState&);
@@ -161,6 +172,8 @@ private:
     WebKit::NavigationActionData m_lastNavigationAction;
     WebKit::FrameInfoData m_originatingFrameInfo;
     WebCore::SecurityOriginData m_destinationFrameSecurityOrigin;
+    bool m_userContentExtensionsEnabled { true };
+    WebKit::WebContentMode m_effectiveContentMode { WebKit::WebContentMode::Recommended };
 };
 
 } // namespace API

@@ -34,7 +34,7 @@ WI.DebuggerObserver = class DebuggerObserver
 
     globalObjectCleared()
     {
-        WI.debuggerManager.reset();
+        WI.debuggerManager.globalObjectCleared();
     }
 
     scriptParsed(scriptId, url, startLine, startColumn, endLine, endColumn, isContentScript, sourceURL, sourceMapURL, isModule)
@@ -55,7 +55,8 @@ WI.DebuggerObserver = class DebuggerObserver
 
     scriptFailedToParse(url, scriptSource, startLine, errorLine, errorMessage)
     {
-        // FIXME: Not implemented.
+        // NOTE: A Console.messageAdded event will handle the error message.
+        WI.debuggerManager.scriptDidFail(this.target, url, scriptSource);
     }
 
     breakpointResolved(breakpointId, location)

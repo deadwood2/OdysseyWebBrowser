@@ -34,6 +34,7 @@
 #include "MiniBrowserReplace.h"
 #include <dbghelp.h>
 #include <shlobj.h>
+#include <wtf/Optional.h>
 #include <wtf/StdLibExtras.h>
 
 // Global Variables:
@@ -231,6 +232,34 @@ Optional<Credential> askCredential(HWND hwnd, const std::wstring& realm)
     return WTF::nullopt;
 }
 
+bool askServerTrustEvaluation(HWND hwnd, const std::wstring& pems)
+{
+    class ServerTrustEvaluationDialog : public Dialog {
+    public:
+        ServerTrustEvaluationDialog(const std::wstring& pems)
+            : m_pems { pems }
+        {
+            SendMessage(GetDlgItem(this->hDlg(), IDC_SERVER_TRUST_TEXT), WM_SETFONT, (WPARAM)GetStockObject(ANSI_FIXED_FONT), TRUE);
+        }
+
+    protected:
+        std::wstring m_pems;
+
+        void setup()
+        {
+            setText(IDC_SERVER_TRUST_TEXT, m_pems);
+        }
+
+        void ok() final
+        {
+
+        }
+    };
+
+    ServerTrustEvaluationDialog dialog { pems };
+    return dialog.run(hInst, hwnd, IDD_SERVER_TRUST);
+}
+
 CommandLineOptions parseCommandLine()
 {
     CommandLineOptions options;
@@ -242,17 +271,29 @@ CommandLineOptions parseCommandLine()
             options.usesLayeredWebView = true;
         else if (!wcsicmp(argv[i], L"--desktop"))
             options.useFullDesktop = true;
-        else if (!wcsicmp(argv[i], L"--performance"))
-            options.pageLoadTesting = true;
         else if (!wcsicmp(argv[i], L"--wk1") || !wcsicmp(argv[i], L"--legacy"))
-            options.windowType = MainWindow::BrowserWindowType::WebKitLegacy;
+            options.windowType = BrowserWindowType::WebKitLegacy;
 #if ENABLE(WEBKIT)
         else if (!wcsicmp(argv[i], L"--wk2") || !wcsicmp(argv[i], L"--webkit"))
-            options.windowType = MainWindow::BrowserWindowType::WebKit;
+            options.windowType = BrowserWindowType::WebKit;
 #endif
         else if (!options.requestedURL)
             options.requestedURL = argv[i];
     }
 
     return options;
+}
+
+std::wstring replaceString(std::wstring src, const std::wstring& oldValue, const std::wstring& newValue)
+{
+    if (src.empty() || oldValue.empty())
+        return src;
+
+    size_t pos = 0;
+    while ((pos = src.find(oldValue, pos)) != src.npos) {
+        src.replace(pos, oldValue.length(), newValue);
+        pos += newValue.length();
+    }
+
+    return src;
 }

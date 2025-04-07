@@ -31,7 +31,7 @@
 #import <WebKit/WKWebViewPrivate.h>
 #import <wtf/RetainPtr.h>
 
-#if WK_API_ENABLED && !PLATFORM(IOS_FAMILY)
+#if !PLATFORM(IOS_FAMILY)
 
 typedef enum : NSUInteger {
     NSTextFinderAsynchronousDocumentFindOptionsBackwards = 1 << 0,
@@ -142,6 +142,37 @@ TEST(WebKit, FindInPage)
     EXPECT_EQ((NSUInteger)1000, [result.matches count]);
 }
 
+TEST(WebKit, FindInPageWithPlatformPresentation)
+{
+    // This should be the same as above, but does not generate rects or images, so that AppKit won't paint its find UI.
+
+    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 200, 200)]);
+    [webView _setOverrideDeviceScaleFactor:2];
+    [webView _setUsePlatformFindUI:NO];
+
+    NSURLRequest *request = [NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"lots-of-text" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]];
+    [webView loadRequest:request];
+    [webView _test_waitForDidFinishNavigation];
+
+    // Find all matches, but recieve no rects.
+    auto result = findMatches(webView.get(), @"Birthday");
+    EXPECT_EQ((NSUInteger)360, [result.matches count]);
+    RetainPtr<FindMatch> match = [result.matches objectAtIndex:0];
+    EXPECT_EQ((NSUInteger)0, [match textRects].count);
+
+    // Ensure that no image is generated.
+    __block bool generateTextImageDone = false;
+    [match generateTextImage:^(NSImage *image) {
+        EXPECT_EQ(image, nullptr);
+        generateTextImageDone = true;
+    }];
+    TestWebKitAPI::Util::run(&generateTextImageDone);
+
+    // Ensure that we cap the number of matches. There are actually 1600, but we only get the first 1000.
+    result = findMatches(webView.get(), @" ");
+    EXPECT_EQ((NSUInteger)1000, [result.matches count]);
+}
+
 TEST(WebKit, FindInPageWrapping)
 {
     RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)]);
@@ -191,6 +222,22 @@ TEST(WebKit, FindInPageWrappingDisabled)
     result = findMatches(webView.get(), @"word", noFindOptions, 1);
     EXPECT_EQ((NSUInteger)0, [result.matches count]);
     EXPECT_FALSE(result.didWrap);
+}
+
+TEST(WebKit, FindInPageBackwardsFirst)
+{
+    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)]);
+    [webView _setOverrideDeviceScaleFactor:2];
+
+    [webView loadHTMLString:@"word word" baseURL:nil];
+    [webView _test_waitForDidFinishNavigation];
+
+    // Find one match, doing an incremental search.
+    auto result = findMatches(webView.get(), @"word", wrapBackwardsFindOptions, 1);
+    EXPECT_EQ((NSUInteger)1, [result.matches count]);
+
+    result = findMatches(webView.get(), @"word", wrapBackwardsFindOptions, 1);
+    EXPECT_EQ((NSUInteger)1, [result.matches count]);
 }
 
 TEST(WebKit, FindInPageWrappingSubframe)
@@ -248,4 +295,4 @@ TEST(WebKit, FindAndReplace)
     EXPECT_WK_STREQ("hi hi", [webView stringByEvaluatingJavaScript:@"document.body.textContent"]);
 }
 
-#endif // WK_API_ENABLED && !PLATFORM(IOS_FAMILY)
+#endif // !PLATFORM(IOS_FAMILY)

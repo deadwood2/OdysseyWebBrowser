@@ -272,7 +272,7 @@ HRESULT WebMutableURLRequest::isEqual(_In_opt_ IWebURLRequest* other, _Out_ BOOL
 
 HRESULT WebMutableURLRequest::addValue(_In_ BSTR value, _In_ BSTR field)
 {
-    m_request.addHTTPHeaderField(WTF::AtomicString(value, SysStringLen(value)), String(field, SysStringLen(field)));
+    m_request.addHTTPHeaderField(WTF::AtomString(value, SysStringLen(value)), String(field, SysStringLen(field)));
     return S_OK;
 }
 
@@ -365,9 +365,13 @@ HRESULT WebMutableURLRequest::setClientCertificate(ULONG_PTR cert)
         return E_POINTER;
 
     PCCERT_CONTEXT certContext = reinterpret_cast<PCCERT_CONTEXT>(cert);
+#if USE(CF)
     RetainPtr<CFDataRef> certData = WebCore::copyCertificateToData(certContext);
     ResourceHandle::setClientCertificate(m_request.url().host().toString(), certData.get());
     return S_OK;
+#else
+    return E_NOTIMPL;
+#endif
 }
 
 CFURLRequestRef WebMutableURLRequest::cfRequest()

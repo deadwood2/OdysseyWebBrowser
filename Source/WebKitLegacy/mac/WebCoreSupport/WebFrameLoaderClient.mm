@@ -209,20 +209,20 @@ WebFrameLoaderClient::WebFrameLoaderClient(WebFrame *webFrame)
 {
 }
 
-Optional<uint64_t> WebFrameLoaderClient::pageID() const
+Optional<PageIdentifier> WebFrameLoaderClient::pageID() const
 {
     return WTF::nullopt;
 }
 
-Optional<uint64_t> WebFrameLoaderClient::frameID() const
+Optional<FrameIdentifier> WebFrameLoaderClient::frameID() const
 {
     return WTF::nullopt;
 }
 
 PAL::SessionID WebFrameLoaderClient::sessionID() const
 {
-    RELEASE_ASSERT_NOT_REACHED();
-    return PAL::SessionID::defaultSessionID();
+    auto* coreFrame = core(m_webFrame.get());
+    return coreFrame && coreFrame->page() ? coreFrame->page()->sessionID() : PAL::SessionID::defaultSessionID();
 }
 
 void WebFrameLoaderClient::frameLoaderDestroyed()
@@ -724,7 +724,7 @@ void WebFrameLoaderClient::dispatchDidCommitLoad(Optional<HasInsecureContent>)
         CallFrameLoadDelegate(implementations->didCommitLoadForFrameFunc, webView, @selector(webView:didCommitLoadForFrame:), m_webFrame.get());
 }
 
-void WebFrameLoaderClient::dispatchDidFailProvisionalLoad(const ResourceError& error)
+void WebFrameLoaderClient::dispatchDidFailProvisionalLoad(const ResourceError& error, WillContinueLoading)
 {
     m_webFrame->_private->provisionalURL = nullptr;
 
@@ -866,7 +866,7 @@ void WebFrameLoaderClient::dispatchShow()
     [[webView _UIDelegateForwarder] webViewShow:webView];
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const ResourceResponse& response, const ResourceRequest& request, WebCore::PolicyCheckIdentifier identifier, FramePolicyFunction&& function)
+void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const ResourceResponse& response, const ResourceRequest& request, WebCore::PolicyCheckIdentifier identifier, const String&, FramePolicyFunction&& function)
 {
     WebView *webView = getWebView(m_webFrame.get());
 
@@ -1067,7 +1067,7 @@ void WebFrameLoaderClient::updateGlobalHistory()
 static void addRedirectURL(WebHistoryItem *item, const String& url)
 {
     if (!item->_private->_redirectURLs)
-        item->_private->_redirectURLs = std::make_unique<Vector<String>>();
+        item->_private->_redirectURLs = makeUnique<Vector<String>>();
 
     // Our API allows us to store all the URLs in the redirect chain, but for
     // now we only have a use for the final URL.
@@ -1380,7 +1380,7 @@ IGNORE_WARNINGS_END
 
 void WebFrameLoaderClient::savePlatformDataToCachedFrame(CachedFrame* cachedFrame)
 {
-    cachedFrame->setCachedFramePlatformData(std::make_unique<WebCachedFramePlatformData>(m_webFrame->_private->webFrameView.documentView));
+    cachedFrame->setCachedFramePlatformData(makeUnique<WebCachedFramePlatformData>(m_webFrame->_private->webFrameView.documentView));
 
 #if PLATFORM(IOS_FAMILY)
     // At this point we know this frame is going to be cached. Stop all plugins.
@@ -1584,7 +1584,7 @@ NSDictionary *WebFrameLoaderClient::actionDictionary(const NavigationAction& act
 
     if (auto mouseEventData = action.mouseEventData()) {
         WebElementDictionary *element = [[WebElementDictionary alloc]
-            initWithHitTestResult:core(m_webFrame.get())->eventHandler().hitTestResultAtPoint(mouseEventData->absoluteLocation)];
+            initWithHitTestResult:core(m_webFrame.get())->eventHandler().hitTestResultAtPoint(mouseEventData->absoluteLocation, HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::DisallowUserAgentShadowContent | HitTestRequest::AllowChildFrameContent)];
         [result setObject:element forKey:WebActionElementKey];
         [element release];
 
@@ -1920,29 +1920,13 @@ RefPtr<Widget> WebFrameLoaderClient::createPlugin(const IntSize& size, HTMLPlugI
     int errorCode = 0;
 
     WebView *webView = getWebView(m_webFrame.get());
-#if !PLATFORM(IOS_FAMILY)
-    SEL selector = @selector(webView:plugInViewWithArguments:);
-#endif
-
     Document* document = core(m_webFrame.get())->document();
     NSURL *baseURL = document->baseURL();
     NSURL *pluginURL = url;
-    
-    // <rdar://problem/8366089>: AppleConnect has a bug where it does not
-    // understand the parameter names specified in the <object> element that
-    // embeds its plug-in. This site-specific hack works around the issue by
-    // converting the parameter names to lowercase before passing them to the
-    // plug-in.
-#if !PLATFORM(IOS_FAMILY)
-    Frame* frame = core(m_webFrame.get());
-#endif
     NSMutableArray *attributeKeys = kit(paramNames);
+
 #if !PLATFORM(IOS_FAMILY)
-    if (frame && frame->settings().needsSiteSpecificQuirks() && equalLettersIgnoringASCIICase(mimeType, "application/x-snkp")) {
-        for (NSUInteger i = 0; i < [attributeKeys count]; ++i)
-            [attributeKeys replaceObjectAtIndex:i withObject:[[attributeKeys objectAtIndex:i] lowercaseString]];
-    }
-    
+    SEL selector = @selector(webView:plugInViewWithArguments:);
     if ([[webView UIDelegate] respondsToSelector:selector]) {
         NSMutableDictionary *attributes = [[NSMutableDictionary alloc] initWithObjects:kit(paramValues) forKeys:attributeKeys];
         NSDictionary *arguments = [[NSDictionary alloc] initWithObjectsAndKeys:
@@ -2051,10 +2035,6 @@ RefPtr<Widget> WebFrameLoaderClient::createPlugin(const IntSize& size, HTMLPlugI
     END_BLOCK_OBJC_EXCEPTIONS;
 
     return nullptr;
-}
-
-void WebFrameLoaderClient::recreatePlugin(Widget*)
-{
 }
 
 void WebFrameLoaderClient::redirectDataToPlugin(Widget& pluginWidget)
@@ -2263,8 +2243,11 @@ RefPtr<PreviewLoaderClient> WebFrameLoaderClient::createPreviewLoaderClient(cons
     if (!filePath)
         return nullptr;
 
+    auto documentWriter = adoptRef(*new QuickLookDocumentWriter(filePath));
+
     [m_webFrame provisionalDataSource]._quickLookContent = @{ WebQuickLookFileNameKey : filePath, WebQuickLookUTIKey : uti };
-    return adoptRef(*new QuickLookDocumentWriter(filePath));
+    [m_webFrame provisionalDataSource]._quickLookPreviewLoaderClient = documentWriter.ptr();
+    return documentWriter;
 }
 #endif
 

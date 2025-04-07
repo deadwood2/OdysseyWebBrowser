@@ -37,6 +37,7 @@ namespace TestWebKitAPI {
 static unsigned deletionCount;
 
 class CalculationDeletionTestNode : public WebCore::CalcExpressionNode {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     virtual ~CalculationDeletionTestNode()
     {
@@ -52,7 +53,7 @@ private:
 
 static Ref<WebCore::CalculationValue> createTestValue()
 {
-    auto node = std::make_unique<CalculationDeletionTestNode>();
+    auto node = makeUnique<CalculationDeletionTestNode>();
     return WebCore::CalculationValue::create(WTFMove(node), WebCore::ValueRangeAll);
 }
 

@@ -27,11 +27,14 @@
 
 #import "PlatformUtilities.h"
 #import "Test.h"
+#import "TestNavigationDelegate.h"
+#import "TestWKWebView.h"
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKURLSchemeHandler.h>
 #import <WebKit/WKURLSchemeTaskPrivate.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
+#import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/WKWebsiteDataStorePrivate.h>
 #import <WebKit/WKWebsiteDataStoreRef.h>
 #import <WebKit/WebKit.h>
@@ -45,14 +48,13 @@
 #import <wtf/text/StringHash.h>
 #import <wtf/text/WTFString.h>
 
-#if WK_API_ENABLED
-
 struct ResourceInfo {
     RetainPtr<NSString> mimeType;
     const char* data;
 };
 
 static bool done;
+static bool didFinishNavigation;
 
 static String expectedMessage;
 static String retrievedString;
@@ -966,11 +968,10 @@ TEST(ServiceWorkers, WaitForPolicyDelegate)
 
 void setConfigurationInjectedBundlePath(WKWebViewConfiguration* configuration)
 {
-    WKRetainPtr<WKContextRef> context(AdoptWK, TestWebKitAPI::Util::createContextForInjectedBundleTest("InternalsInjectedBundleTest"));
+    WKRetainPtr<WKContextRef> context = adoptWK(TestWebKitAPI::Util::createContextForInjectedBundleTest("InternalsInjectedBundleTest"));
     configuration.processPool = (WKProcessPool *)context.get();
     auto pool = configuration.processPool;
     [pool _registerURLSchemeServiceWorkersCanHandle:@"sw"];
-    [pool _setMaximumNumberOfProcesses:5];
 
     configuration.websiteDataStore = (WKWebsiteDataStore *)WKContextGetWebsiteDataStore(context.get());
 }
@@ -1249,8 +1250,6 @@ TEST(ServiceWorkers, HasServiceWorkerRegistrationBit)
     newConfiguration.get().websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     [newConfiguration.get().websiteDataStore _setServiceWorkerRegistrationDirectory: @"~/nonexistingfolder"];
 
-    [newConfiguration.get().processPool _setMaximumNumberOfProcesses:1];
-
     webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:newConfiguration.get()]);
     request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"sw://host/regularPageWithoutConnection.html"]];
     [webView loadRequest:request];
@@ -1261,18 +1260,93 @@ TEST(ServiceWorkers, HasServiceWorkerRegistrationBit)
     newConfiguration.get().websiteDataStore = [configuration websiteDataStore];
 
     webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:newConfiguration.get()]);
-    EXPECT_EQ(1u, webView.get().configuration.processPool._webProcessCountIgnoringPrewarmed);
+    EXPECT_EQ(2u, webView.get().configuration.processPool._webProcessCountIgnoringPrewarmed);
     request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"sw://host/regularPageWithConnection.html"]];
     [webView loadRequest:request];
     TestWebKitAPI::Util::run(&done);
     done = false;
 
     // Make sure that loading the simple page did not start the service worker process.
-    EXPECT_EQ(1u, webView.get().configuration.processPool._webProcessCountIgnoringPrewarmed);
+    EXPECT_EQ(2u, webView.get().configuration.processPool._webProcessCountIgnoringPrewarmed);
 
     [[configuration websiteDataStore] removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
         done = true;
     }];
+    TestWebKitAPI::Util::run(&done);
+    done = false;
+}
+
+static const char* readCacheBytes = R"SWRESOURCE(
+<script>
+
+function log(msg)
+{
+    window.webkit.messageHandlers.sw.postMessage(msg);
+}
+
+window.caches.keys().then(keys => {
+    log(keys.length && keys[0] === "test" ? "PASS" : "FAIL");
+}, () => {
+    log("FAIL");
+});
+
+</script>
+)SWRESOURCE";
+
+static const char* writeCacheBytes = R"SWRESOURCE(
+<script>
+
+function log(msg)
+{
+    window.webkit.messageHandlers.sw.postMessage(msg);
+}
+
+window.caches.open("test").then(() => {
+    log("PASS");
+}, () => {
+    log("FAIL");
+});
+
+</script>
+)SWRESOURCE";
+
+@interface SWMessageHandlerForCacheStorage : NSObject <WKScriptMessageHandler>
+@end
+
+@implementation SWMessageHandlerForCacheStorage
+- (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message
+{
+    EXPECT_WK_STREQ(@"PASS", [message body]);
+    done = true;
+}
+@end
+
+TEST(ServiceWorkers, CacheStorageInPrivateBrowsingMode)
+{
+    [WKWebsiteDataStore _allowWebsiteDataRecordsForAllOrigins];
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+
+    auto messageHandler = adoptNS([[SWMessageHandlerForCacheStorage alloc] init]);
+    [[configuration userContentController] addScriptMessageHandler:messageHandler.get() name:@"sw"];
+
+    auto handler = adoptNS([[SWSchemes alloc] init]);
+    handler->resources.set("sw://host/readCache.html", ResourceInfo { @"text/html", readCacheBytes });
+    handler->resources.set("sw://host/writeCache.html", ResourceInfo { @"text/html", writeCacheBytes });
+    [configuration setURLSchemeHandler:handler.get() forURLScheme:@"SW"];
+
+    configuration.get().websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+    [configuration.get().processPool _registerURLSchemeServiceWorkersCanHandle:@"sw"];
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    auto *request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"sw://host/writeCache.html"]];
+    [webView loadRequest:request];
+    TestWebKitAPI::Util::run(&done);
+    done = false;
+
+    webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"sw://host/readCache.html"]];
+    [webView loadRequest:request];
     TestWebKitAPI::Util::run(&done);
     done = false;
 }
@@ -1326,7 +1400,8 @@ TEST(ServiceWorkers, ServiceWorkerAndCacheStorageDefaultDirectories)
     [webView loadRequest:request];
     TestWebKitAPI::Util::run(&done);
     done = false;
-    EXPECT_TRUE([[configuration websiteDataStore] _hasRegisteredServiceWorker]);
+    while (![[configuration websiteDataStore] _hasRegisteredServiceWorker])
+        TestWebKitAPI::Util::spinRunLoop(0.1);
 
     webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
     [webView.get().configuration.processPool _registerURLSchemeServiceWorkersCanHandle:@"sw"];
@@ -1375,7 +1450,8 @@ TEST(ServiceWorkers, ServiceWorkerAndCacheStorageSpecificDirectories)
     [webView loadRequest:request];
     TestWebKitAPI::Util::run(&done);
     done = false;
-    EXPECT_TRUE([websiteDataStore _hasRegisteredServiceWorker]);
+    while (![websiteDataStore _hasRegisteredServiceWorker])
+        TestWebKitAPI::Util::spinRunLoop(0.1);
 
     webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
     request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"sw://host/regularPageGrabbingCacheStorageDirectory.html"]];
@@ -1430,6 +1506,7 @@ TEST(ServiceWorkers, NonDefaultSessionID)
     TestWebKitAPI::Util::run(&done);
     done = false;
 
+    [webView _close];
     webView = nullptr;
 
     EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:serviceWorkersPath.path]);
@@ -1454,7 +1531,7 @@ void waitUntilServiceWorkerProcessCount(WKProcessPool *processPool, unsigned pro
     } while (true);
 }
 
-TEST(ServiceWorkers, ProcessPerOrigin)
+TEST(ServiceWorkers, ProcessPerSite)
 {
     ASSERT(mainBytes);
     ASSERT(scriptBytes);
@@ -1476,6 +1553,8 @@ TEST(ServiceWorkers, ProcessPerOrigin)
     RetainPtr<SWSchemes> handler1 = adoptNS([[SWSchemes alloc] init]);
     handler1->resources.set("sw1://host/main.html", ResourceInfo { @"text/html", mainBytes });
     handler1->resources.set("sw1://host/sw.js", ResourceInfo { @"application/javascript", scriptBytes });
+    handler1->resources.set("sw1://host2/main.html", ResourceInfo { @"text/html", mainBytes });
+    handler1->resources.set("sw1://host2/sw.js", ResourceInfo { @"application/javascript", scriptBytes });
     [configuration setURLSchemeHandler:handler1.get() forURLScheme:@"sw1"];
 
     RetainPtr<SWSchemes> handler2 = adoptNS([[SWSchemes alloc] init]);
@@ -1516,10 +1595,19 @@ TEST(ServiceWorkers, ProcessPerOrigin)
     TestWebKitAPI::Util::run(&done);
     done = false;
 
+    EXPECT_EQ(1U, processPool._serviceWorkerProcessCount);
+
+    RetainPtr<WKWebView> webView4 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    NSURLRequest *request3 = [NSURLRequest requestWithURL:[NSURL URLWithString:@"sw1://host2/main.html"]];
+    [webView4 loadRequest:request3];
+
+    TestWebKitAPI::Util::run(&done);
+    done = false;
+
     EXPECT_EQ(2U, processPool._serviceWorkerProcessCount);
 
     NSURLRequest *aboutBlankRequest = [NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]];
-    [webView3 loadRequest:aboutBlankRequest];
+    [webView4 loadRequest:aboutBlankRequest];
 
     waitUntilServiceWorkerProcessCount(processPool, 1);
     EXPECT_EQ(1U, processPool._serviceWorkerProcessCount);
@@ -1529,8 +1617,77 @@ TEST(ServiceWorkers, ProcessPerOrigin)
     EXPECT_EQ(1U, processPool._serviceWorkerProcessCount);
 
     [webView1 loadRequest:aboutBlankRequest];
+    [webView3 loadRequest:aboutBlankRequest];
     waitUntilServiceWorkerProcessCount(processPool, 0);
     EXPECT_EQ(0U, processPool._serviceWorkerProcessCount);
+}
+
+TEST(ServiceWorkers, ThrottleCrash)
+{
+    ASSERT(mainBytes);
+    ASSERT(scriptBytes);
+
+    [WKWebsiteDataStore _allowWebsiteDataRecordsForAllOrigins];
+
+    // Start with a clean slate data store
+    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
+        done = true;
+    }];
+    TestWebKitAPI::Util::run(&done);
+    done = false;
+
+    auto messageHandler = adoptNS([[SWMessageHandler alloc] init]);
+
+    auto handler = adoptNS([[SWSchemes alloc] init]);
+    handler->resources.set("sw1://host/main.html", ResourceInfo { @"text/html", mainBytes });
+    handler->resources.set("sw1://host/sw.js", ResourceInfo { @"application/javascript", scriptBytes });
+
+    auto navigationDelegate = adoptNS([[TestNavigationDelegate alloc] init]);
+    [navigationDelegate setDidFinishNavigation:^(WKWebView *, WKNavigation *) {
+        didFinishNavigation = true;
+    }];
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+#if PLATFORM(MAC)
+    [[configuration preferences] _setAppNapEnabled:YES];
+#endif
+    [[configuration userContentController] addScriptMessageHandler:messageHandler.get() name:@"sw"];
+    [configuration setURLSchemeHandler:handler.get() forURLScheme:@"sw1"];
+
+    auto *processPool = configuration.get().processPool;
+    [processPool _registerURLSchemeServiceWorkersCanHandle:@"sw1"];
+
+    auto webView1 = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get() addToWindow: YES]);
+    [webView1 setNavigationDelegate:navigationDelegate.get()];
+
+    // Let's make it so that webView1 be app nappable after loading is completed.
+    [webView1.get().window resignKeyWindow];
+#if PLATFORM(MAC)
+    [webView1.get().window orderOut:nil];
+#endif
+
+    auto *request1 = [NSURLRequest requestWithURL:[NSURL URLWithString:@"sw1://host/main.html"]];
+    [webView1 loadRequest:request1];
+
+    didFinishNavigation = false;
+    TestWebKitAPI::Util::run(&didFinishNavigation);
+
+    auto webView2Configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+#if PLATFORM(MAC)
+    [[webView2Configuration preferences] _setAppNapEnabled:NO];
+#endif
+    [webView2Configuration setProcessPool:processPool];
+    [[webView2Configuration userContentController] addScriptMessageHandler:messageHandler.get() name:@"sw"];
+    [webView2Configuration setURLSchemeHandler:handler.get() forURLScheme:@"sw1"];
+    webView2Configuration.get()._relatedWebView = webView1.get();
+
+    auto webView2 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:webView2Configuration.get()]);
+    [webView2 setNavigationDelegate:navigationDelegate.get()];
+
+    [webView2 loadRequest:request1];
+
+    didFinishNavigation = false;
+    TestWebKitAPI::Util::run(&didFinishNavigation);
 }
 
 TEST(ServiceWorkers, LoadData)
@@ -1652,4 +1809,87 @@ TEST(ServiceWorkers, RestoreFromDiskNonDefaultStore)
     }
 }
 
-#endif // WK_API_ENABLED
+TEST(ServiceWorkers, SuspendNetworkProcess)
+{
+    [WKWebsiteDataStore _allowWebsiteDataRecordsForAllOrigins];
+
+    // Start with a clean slate data store
+    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
+        done = true;
+    }];
+    TestWebKitAPI::Util::run(&done);
+    done = false;
+
+    RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+
+    RetainPtr<SWMessageHandler> messageHandler = adoptNS([[SWMessageHandler alloc] init]);
+    [[configuration userContentController] addScriptMessageHandler:messageHandler.get() name:@"sw"];
+
+    RetainPtr<SWSchemes> handler = adoptNS([[SWSchemes alloc] init]);
+    handler->resources.set("sw://host/main.html", ResourceInfo { @"text/html", mainBytes });
+    handler->resources.set("sw://host/sw.js", ResourceInfo { @"application/javascript", scriptBytes });
+    [configuration setURLSchemeHandler:handler.get() forURLScheme:@"SW"];
+
+    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    [webView.get().configuration.processPool _registerURLSchemeServiceWorkersCanHandle:@"sw"];
+
+    auto delegate = adoptNS([[TestSWAsyncNavigationDelegate alloc] init]);
+    [webView setNavigationDelegate:delegate.get()];
+    [webView setUIDelegate:delegate.get()];
+
+    done = false;
+
+    // Normal load to get SW registered.
+    NSURLRequest *request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"sw://host/main.html"]];
+    [webView loadRequest:request];
+
+    TestWebKitAPI::Util::run(&done);
+    done = false;
+
+    auto store = [configuration websiteDataStore];
+    auto path = store._serviceWorkerRegistrationDirectory;
+
+    NSURL* directory = [NSURL fileURLWithPath:path isDirectory:YES];
+    NSURL *swDBPath = [directory URLByAppendingPathComponent:@"ServiceWorkerRegistrations-4.sqlite3"];
+
+    EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:swDBPath.path]);
+
+    [ webView.get().configuration.processPool _sendNetworkProcessWillSuspendImminently];
+
+    EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:swDBPath.path]);
+
+    [ webView.get().configuration.processPool _sendNetworkProcessDidResume];
+
+    [webView loadRequest:request];
+    TestWebKitAPI::Util::run(&done);
+    done = false;
+
+    EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:swDBPath.path]);
+}
+
+TEST(WebKit, ServiceWorkerDatabaseWithRecordsTableButUnexpectedSchema)
+{
+    // Copy the baked database files to the database directory
+    NSURL *url1 = [[NSBundle mainBundle] URLForResource:@"BadServiceWorkerRegistrations-4" withExtension:@"sqlite3" subdirectory:@"TestWebKitAPI.resources"];
+
+    NSURL *swPath = [NSURL fileURLWithPath:[@"~/Library/Caches/TestWebKitAPI/WebKit/ServiceWorkers/" stringByExpandingTildeInPath]];
+    [[NSFileManager defaultManager] removeItemAtURL:swPath error:nil];
+    EXPECT_FALSE([[NSFileManager defaultManager] fileExistsAtPath:swPath.path]);
+
+    [[NSFileManager defaultManager] createDirectoryAtURL:swPath withIntermediateDirectories:YES attributes:nil error:nil];
+    [[NSFileManager defaultManager] copyItemAtURL:url1 toURL:[swPath URLByAppendingPathComponent:@"ServiceWorkerRegistrations-4.sqlite3"] error:nil];
+
+    auto websiteDataStoreConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] init]);
+    websiteDataStoreConfiguration.get()._serviceWorkerRegistrationDirectory = swPath;
+    auto dataStore = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfiguration.get()]);
+
+    // Fetch SW records
+    auto websiteDataTypes = adoptNS([[NSSet alloc] initWithArray:@[WKWebsiteDataTypeServiceWorkerRegistrations]]);
+    static bool readyToContinue;
+    [dataStore fetchDataRecordsOfTypes:websiteDataTypes.get() completionHandler:^(NSArray<WKWebsiteDataRecord *> *dataRecords) {
+        EXPECT_EQ(0U, dataRecords.count);
+        readyToContinue = true;
+    }];
+    TestWebKitAPI::Util::run(&readyToContinue);
+    readyToContinue = false;
+}

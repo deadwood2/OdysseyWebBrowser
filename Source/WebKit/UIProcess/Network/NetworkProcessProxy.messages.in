@@ -23,7 +23,7 @@
 messages -> NetworkProcessProxy LegacyReceiver {
     DidCreateNetworkConnectionToWebProcess(IPC::Attachment connectionIdentifier)
 
-    DidReceiveAuthenticationChallenge(uint64_t pageID, uint64_t frameID, WebCore::AuthenticationChallenge challenge, uint64_t challengeID)
+    DidReceiveAuthenticationChallenge(PAL::SessionID sessionID, WebCore::PageIdentifier pageID, WebCore::FrameIdentifier frameID, WebCore::AuthenticationChallenge challenge, uint64_t challengeID)
 
     DidFetchWebsiteData(uint64_t callbackID, struct WebKit::WebsiteData websiteData)
     DidDeleteWebsiteData(uint64_t callbackID)
@@ -31,22 +31,26 @@ messages -> NetworkProcessProxy LegacyReceiver {
 
     DidSyncAllCookies()
 
+    TestProcessIncomingSyncMessagesWhenWaitingForSyncReply(WebCore::PageIdentifier webPageID) -> (bool handled) Synchronous
+
     ProcessReadyToSuspend()
     SetIsHoldingLockedFiles(bool isHoldingLockedFiles)
 
     # Diagnostic messages logging
-    LogDiagnosticMessage(uint64_t pageID, String message, String description, enum:bool WebCore::ShouldSample shouldSample)
-    LogDiagnosticMessageWithResult(uint64_t pageID, String message, String description, uint32_t result, enum:bool WebCore::ShouldSample shouldSample)
-    LogDiagnosticMessageWithValue(uint64_t pageID, String message, String description, double value, unsigned significantFigures, enum:bool WebCore::ShouldSample shouldSample)
+    LogDiagnosticMessage(WebCore::PageIdentifier pageID, String message, String description, enum:bool WebCore::ShouldSample shouldSample)
+    LogDiagnosticMessageWithResult(WebCore::PageIdentifier pageID, String message, String description, uint32_t result, enum:bool WebCore::ShouldSample shouldSample)
+    LogDiagnosticMessageWithValue(WebCore::PageIdentifier pageID, String message, String description, double value, unsigned significantFigures, enum:bool WebCore::ShouldSample shouldSample)
     LogGlobalDiagnosticMessageWithValue(String message, String description, double value, unsigned significantFigures, enum:bool WebCore::ShouldSample shouldSample)
 
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
     LogTestingEvent(PAL::SessionID sessionID, String event)
     NotifyResourceLoadStatisticsProcessed()
-    NotifyWebsiteDataDeletionForTopPrivatelyOwnedDomainsFinished()
-    NotifyWebsiteDataScanForTopPrivatelyControlledDomainsFinished()
+    NotifyWebsiteDataDeletionForRegistrableDomainsFinished()
+    NotifyWebsiteDataScanForRegistrableDomainsFinished()
     NotifyResourceLoadStatisticsTelemetryFinished(unsigned totalPrevalentResources, unsigned totalPrevalentResourcesWithUserInteraction, unsigned top3SubframeUnderTopFrameOrigins)
-    RequestStorageAccessConfirm(uint64_t pageID, uint64_t frameID, String subFrameHost, String topFrameHost) -> (bool userDidGrantAccess) Async
+    RequestStorageAccessConfirm(WebCore::PageIdentifier pageID, WebCore::FrameIdentifier frameID, WebCore::RegistrableDomain subFrameDomain, WebCore::RegistrableDomain topFrameDomain) -> (bool userDidGrantAccess) Async
+    DeleteWebsiteDataInUIProcessForRegistrableDomains(PAL::SessionID sessionID, OptionSet<WebKit::WebsiteDataType> dataTypes, OptionSet<WebKit::WebsiteDataFetchOption> fetchOptions, Vector<WebCore::RegistrableDomain> domains) -> (HashSet<WebCore::RegistrableDomain> domainsWithMatchingDataRecords) Async
+    DidCommitCrossSiteLoadWithDataTransferFromPrevalentResource(WebCore::PageIdentifier pageID)
 #endif
 #if ENABLE(CONTENT_EXTENSIONS)
     ContentExtensionRules(WebKit::UserContentControllerIdentifier identifier)
@@ -59,9 +63,9 @@ messages -> NetworkProcessProxy LegacyReceiver {
 #endif
 
 #if ENABLE(SERVICE_WORKER)
-    EstablishWorkerContextConnectionToNetworkProcess(struct WebCore::SecurityOriginData origin)
-    EstablishWorkerContextConnectionToNetworkProcessForExplicitSession(struct WebCore::SecurityOriginData origin, PAL::SessionID explicitSession)
+    EstablishWorkerContextConnectionToNetworkProcess(WebCore::RegistrableDomain registrableDomain)
+    EstablishWorkerContextConnectionToNetworkProcessForExplicitSession(WebCore::RegistrableDomain registrableDomain, PAL::SessionID explicitSession)
 #endif
 
-    RequestCacheStorageSpace(PAL::SessionID sessionID, struct WebCore::ClientOrigin origin, uint64_t quota, uint64_t currentSize, uint64_t spaceRequired) -> (Optional<uint64_t> newQuota) Async
+    RequestStorageSpace(PAL::SessionID sessionID, struct WebCore::ClientOrigin origin, uint64_t quota, uint64_t currentSize, uint64_t spaceRequired) -> (Optional<uint64_t> newQuota) Async
 }

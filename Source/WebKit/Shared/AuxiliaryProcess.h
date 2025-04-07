@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -62,6 +62,18 @@ public:
     void removeMessageReceiver(IPC::StringReference messageReceiverName, uint64_t destinationID);
     void removeMessageReceiver(IPC::StringReference messageReceiverName);
     void removeMessageReceiver(IPC::MessageReceiver&);
+    
+    template <typename T>
+    void addMessageReceiver(IPC::StringReference messageReceiverName, ObjectIdentifier<T> destinationID, IPC::MessageReceiver& receiver)
+    {
+        addMessageReceiver(messageReceiverName, destinationID.toUInt64(), receiver);
+    }
+    
+    template <typename T>
+    void removeMessageReceiver(IPC::StringReference messageReceiverName, ObjectIdentifier<T> destinationID)
+    {
+        removeMessageReceiver(messageReceiverName, destinationID.toUInt64());
+    }
 
     void setProcessSuppressionEnabled(bool);
 
@@ -77,6 +89,10 @@ public:
 
 #if PLATFORM(MAC)
     static bool isSystemWebKit();
+#endif
+    
+#if PLATFORM(COCOA)
+    bool parentProcessHasEntitlement(const char* entitlement);
 #endif
 
 protected:

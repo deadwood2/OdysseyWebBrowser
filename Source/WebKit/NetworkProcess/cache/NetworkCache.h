@@ -28,6 +28,8 @@
 #include "NetworkCacheEntry.h"
 #include "NetworkCacheStorage.h"
 #include "ShareableResource.h"
+#include <WebCore/FrameIdentifier.h>
+#include <WebCore/PageIdentifier.h>
 #include <WebCore/ResourceResponse.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/OptionSet.h>
@@ -48,7 +50,6 @@ namespace NetworkCache {
 
 class Cache;
 class SpeculativeLoadManager;
-class Statistics;
 
 struct MappedBody {
 #if ENABLE(SHAREABLE_RESOURCE)
@@ -65,12 +66,10 @@ enum class RetrieveDecision {
     NoDueToStreamingMedia,
 };
 
-// FIXME: This enum is used in the Statistics code in a way that prevents removing or reordering anything.
 enum class StoreDecision {
     Yes,
     NoDueToProtocol,
     NoDueToHTTPMethod,
-    NoDueToAttachmentResponse, // Unused.
     NoDueToNoStoreResponse,
     NoDueToHTTPStatusCode,
     NoDueToNoStoreRequest,
@@ -87,20 +86,20 @@ enum class UseDecision {
     NoDueToExpiredRedirect
 };
 
-using GlobalFrameID = std::pair<uint64_t /*webPageID*/, uint64_t /*webFrameID*/>;
+using GlobalFrameID = std::pair<WebCore::PageIdentifier, WebCore::FrameIdentifier>; // FIXME: Use GlobalFrameIdentifier.
+
+enum class CacheOption : uint8_t {
+    // In testing mode we try to eliminate sources of randomness. Cache does not shrink and there are no read timeouts.
+    TestingMode = 1 << 0,
+    RegisterNotify = 1 << 1,
+#if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
+    SpeculativeRevalidation = 1 << 2,
+#endif
+};
 
 class Cache : public RefCounted<Cache> {
 public:
-    enum class Option {
-        EfficacyLogging = 1 << 0,
-        // In testing mode we try to eliminate sources of randomness. Cache does not shrink and there are no read timeouts.
-        TestingMode = 1 << 1,
-        RegisterNotify = 1 << 2,
-#if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
-        SpeculativeRevalidation = 1 << 3,
-#endif
-    };
-    static RefPtr<Cache> open(NetworkProcess&, const String& cachePath, OptionSet<Option>);
+    static RefPtr<Cache> open(NetworkProcess&, const String& cachePath, OptionSet<CacheOption>, PAL::SessionID);
 
     void setCapacity(size_t);
 
@@ -116,7 +115,7 @@ public:
     };
     using RetrieveCompletionHandler = Function<void(std::unique_ptr<Entry>, const RetrieveInfo&)>;
     void retrieve(const WebCore::ResourceRequest&, const GlobalFrameID&, RetrieveCompletionHandler&&);
-    std::unique_ptr<Entry> store(const WebCore::ResourceRequest&, const WebCore::ResourceResponse&, RefPtr<WebCore::SharedBuffer>&&, Function<void(MappedBody&)>&&);
+    std::unique_ptr<Entry> store(const WebCore::ResourceRequest&, const WebCore::ResourceResponse&, RefPtr<WebCore::SharedBuffer>&&, Function<void(MappedBody&)>&& = nullptr);
     std::unique_ptr<Entry> storeRedirect(const WebCore::ResourceRequest&, const WebCore::ResourceResponse&, const WebCore::ResourceRequest& redirectRequest, Optional<Seconds> maxAgeCap);
     std::unique_ptr<Entry> update(const WebCore::ResourceRequest&, const GlobalFrameID&, const Entry&, const WebCore::ResourceResponse& validatingResponse);
 
@@ -140,18 +139,19 @@ public:
 
     void dumpContentsToFile();
 
-    String recordsPath() const;
+    String recordsPathIsolatedCopy() const;
 
 #if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
     SpeculativeLoadManager* speculativeLoadManager() { return m_speculativeLoadManager.get(); }
 #endif
 
     NetworkProcess& networkProcess() { return m_networkProcess.get(); }
+    const PAL::SessionID& sessionID() const { return m_sessionID; }
 
     ~Cache();
 
 private:
-    Cache(NetworkProcess&, Ref<Storage>&&, OptionSet<Option> options);
+    Cache(NetworkProcess&, Ref<Storage>&&, OptionSet<CacheOption>, PAL::SessionID);
 
     Key makeCacheKey(const WebCore::ResourceRequest&);
 
@@ -169,9 +169,9 @@ private:
     std::unique_ptr<WebCore::LowPowerModeNotifier> m_lowPowerModeNotifier;
     std::unique_ptr<SpeculativeLoadManager> m_speculativeLoadManager;
 #endif
-    std::unique_ptr<Statistics> m_statistics;
 
     unsigned m_traverseCount { 0 };
+    PAL::SessionID m_sessionID;
 };
 
 } // namespace NetworkCache

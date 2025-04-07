@@ -167,7 +167,7 @@ private:
         }
     }
 
-    RefPtr<API::Object> getInjectedBundleInitializationUserData(WebProcessPool&)
+    RefPtr<API::Object> getInjectedBundleInitializationUserData(WebProcessPool&) override
     {
         GRefPtr<GVariant> data = webkitWebContextInitializeWebExtensions(m_webContext);
         GUniquePtr<gchar> dataString(g_variant_print(data.get(), TRUE));
@@ -179,5 +179,5 @@ private:
 
 void attachInjectedBundleClientToContext(WebKitWebContext* webContext)
 {
-    webkitWebContextGetProcessPool(webContext).setInjectedBundleClient(std::make_unique<WebKitInjectedBundleClient>(webContext));
+    webkitWebContextGetProcessPool(webContext).setInjectedBundleClient(makeUnique<WebKitInjectedBundleClient>(webContext));
 }

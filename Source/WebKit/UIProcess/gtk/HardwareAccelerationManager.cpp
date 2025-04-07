@@ -26,13 +26,7 @@
 #include "config.h"
 #include "HardwareAccelerationManager.h"
 
-#include "WaylandCompositor.h"
-#include <WebCore/NotImplemented.h>
-#include <WebCore/PlatformDisplay.h>
-
-#if USE(REDIRECTED_XCOMPOSITE_WINDOW)
-#include <WebCore/PlatformDisplayX11.h>
-#endif
+#include "AcceleratedBackingStore.h"
 
 namespace WebKit {
 using namespace WebCore;
@@ -58,25 +52,10 @@ HardwareAccelerationManager::HardwareAccelerationManager()
         return;
     }
 
-#if USE(REDIRECTED_XCOMPOSITE_WINDOW)
-    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::X11) {
-        auto& display = downcast<PlatformDisplayX11>(PlatformDisplay::sharedDisplay());
-        Optional<int> damageBase, errorBase;
-        if (!display.supportsXComposite() || !display.supportsXDamage(damageBase, errorBase)) {
-            m_canUseHardwareAcceleration = false;
-            return;
-        }
+    if (!AcceleratedBackingStore::checkRequirements()) {
+        m_canUseHardwareAcceleration = false;
+        return;
     }
-#endif
-
-#if PLATFORM(WAYLAND) && USE(EGL)
-    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::Wayland) {
-        if (!WaylandCompositor::singleton().isRunning()) {
-            m_canUseHardwareAcceleration = false;
-            return;
-        }
-    }
-#endif
 
     const char* forceCompositing = getenv("WEBKIT_FORCE_COMPOSITING_MODE");
     if (forceCompositing && strcmp(forceCompositing, "0"))

@@ -36,7 +36,7 @@ using namespace WebCore;
 
 ScrollingTreeFrameScrollingNodeRemoteMac::ScrollingTreeFrameScrollingNodeRemoteMac(ScrollingTree& tree, ScrollingNodeType nodeType, ScrollingNodeID nodeID)
     : ScrollingTreeFrameScrollingNodeMac(tree, nodeType, nodeID)
-    , m_scrollerPair(std::make_unique<ScrollerPairMac>(*this))
+    , m_scrollerPair(makeUnique<ScrollerPairMac>(*this))
 {
 }
 
@@ -54,6 +54,7 @@ void ScrollingTreeFrameScrollingNodeRemoteMac::commitStateBeforeChildren(const S
     ScrollingTreeFrameScrollingNodeMac::commitStateBeforeChildren(stateNode);
     const auto& scrollingStateNode = downcast<ScrollingStateFrameScrollingNode>(stateNode);
 
+    // FIXME: Push to ScrollingTreeScrollingNodeDelegateMac?
     if (scrollingStateNode.hasChangedProperty(ScrollingStateFrameScrollingNode::VerticalScrollbarLayer))
         m_scrollerPair->verticalScroller().setHostLayer(scrollingStateNode.verticalScrollbarLayer());
 
@@ -63,11 +64,12 @@ void ScrollingTreeFrameScrollingNodeRemoteMac::commitStateBeforeChildren(const S
     m_scrollerPair->updateValues();
 }
 
-void ScrollingTreeFrameScrollingNodeRemoteMac::setScrollLayerPosition(const FloatPoint& position, const FloatRect& layoutViewport)
+void ScrollingTreeFrameScrollingNodeRemoteMac::repositionRelatedLayers()
 {
-    ScrollingTreeFrameScrollingNodeMac::setScrollLayerPosition(position, layoutViewport);
+    ScrollingTreeFrameScrollingNodeMac::repositionRelatedLayers();
 
-    m_scrollerPair->updateValues();
+    if (m_scrollerPair)
+        m_scrollerPair->updateValues();
 }
 
 ScrollingEventResult ScrollingTreeFrameScrollingNodeRemoteMac::handleWheelEvent(const PlatformWheelEvent& wheelEvent)
@@ -79,6 +81,8 @@ ScrollingEventResult ScrollingTreeFrameScrollingNodeRemoteMac::handleWheelEvent(
 
 bool ScrollingTreeFrameScrollingNodeRemoteMac::handleMouseEvent(const PlatformMouseEvent& mouseEvent)
 {
+    if (!m_scrollerPair)
+        return false;
     return m_scrollerPair->handleMouseEvent(mouseEvent);
 }
 

@@ -46,7 +46,8 @@
 
 namespace WebCore {
 
-class MediaPlayerPrivateMediaFoundation : public MediaPlayerPrivateInterface, public CanMakeWeakPtr<MediaPlayerPrivateMediaFoundation> {
+class MediaPlayerPrivateMediaFoundation final : public MediaPlayerPrivateInterface, public CanMakeWeakPtr<MediaPlayerPrivateMediaFoundation> {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit MediaPlayerPrivateMediaFoundation(MediaPlayer*);
     ~MediaPlayerPrivateMediaFoundation();
@@ -56,53 +57,51 @@ public:
     static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
     static bool isAvailable();
 
-    void load(const String& url) override;
-    void cancelLoad() override;
+    void load(const String& url) final;
+    void cancelLoad() final;
 
-    void prepareToPlay() override;
+    void play() final;
+    void pause() final;
 
-    void play() override;
-    void pause() override;
+    bool supportsFullscreen() const final;
 
-    bool supportsFullscreen() const override;
+    FloatSize naturalSize() const final;
 
-    FloatSize naturalSize() const override;
+    bool hasVideo() const final;
+    bool hasAudio() const final;
 
-    bool hasVideo() const override;
-    bool hasAudio() const override;
+    void setVisible(bool) final;
 
-    void setVisible(bool) override;
+    bool seeking() const final;
+    void seek(float) final;
 
-    bool seeking() const override;
-    void seek(float) override;
+    void setRate(float) final;
 
-    void setRate(float) override;
+    float duration() const final;
 
-    float duration() const override;
+    float currentTime() const final;
 
-    float currentTime() const override;
+    bool paused() const final;
 
-    bool paused() const override;
+    void setVolume(float) final;
 
-    void setVolume(float) override;
+    void setMuted(bool) final;
 
-    bool supportsMuting() const override;
-    void setMuted(bool) override;
+    MediaPlayer::NetworkState networkState() const final;
+    MediaPlayer::ReadyState readyState() const final;
 
-    MediaPlayer::NetworkState networkState() const override;
-    MediaPlayer::ReadyState readyState() const override;
+    float maxTimeSeekable() const final;
 
-    float maxTimeSeekable() const override;
+    std::unique_ptr<PlatformTimeRanges> buffered() const final;
 
-    std::unique_ptr<PlatformTimeRanges> buffered() const override;
+    bool didLoadingProgress() const final;
 
-    bool didLoadingProgress() const override;
+    void setSize(const IntSize&) final;
 
-    void setSize(const IntSize&) override;
-
-    void paint(GraphicsContext&, const FloatRect&) override;
+    void paint(GraphicsContext&, const FloatRect&) final;
 
 private:
+    WeakPtr<MediaPlayerPrivateMediaFoundation> m_weakThis;
     MediaPlayer* m_player;
     IntSize m_size;
     bool m_visible;
@@ -112,10 +111,8 @@ private:
     bool m_hasVideo;
     bool m_preparingToPlay;
     float m_volume;
-    HWND m_hwndVideo;
     MediaPlayer::NetworkState m_networkState;
     MediaPlayer::ReadyState m_readyState;
-    FloatRect m_lastPaintRect;
 
     class MediaPlayerListener;
     HashSet<MediaPlayerListener*> m_listeners;
@@ -153,18 +150,13 @@ private:
     void onSessionStarted();
     void onSessionEnded();
 
-    LPCWSTR registerVideoWindowClass();
-    void createVideoWindow();
-    void destroyVideoWindow();
-
+    HWND hostWindow();
     void invalidateFrameView();
 
     void addListener(MediaPlayerListener*);
     void removeListener(MediaPlayerListener*);
     void setNaturalSize(const FloatSize&);
     void notifyDeleted();
-
-    static LRESULT CALLBACK VideoViewWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
     bool setAllChannelVolumes(float);
 
@@ -177,6 +169,7 @@ private:
     };
 
     class AsyncCallback : public IMFAsyncCallback, public MediaPlayerListener {
+        WTF_MAKE_FAST_ALLOCATED;
     public:
         AsyncCallback(MediaPlayerPrivateMediaFoundation*, bool event);
         ~AsyncCallback();
@@ -200,6 +193,7 @@ private:
     typedef Deque<COMPtr<IMFSample>> VideoSampleList;
 
     class VideoSamplePool {
+        WTF_MAKE_FAST_ALLOCATED;
     public:
         VideoSamplePool() = default;
         virtual ~VideoSamplePool() = default;
@@ -221,6 +215,7 @@ private:
     class Direct3DPresenter;
 
     class VideoScheduler {
+        WTF_MAKE_FAST_ALLOCATED;
     public:
         VideoScheduler() = default;
         virtual ~VideoScheduler() = default;
@@ -266,6 +261,7 @@ private:
     };
 
     class Direct3DPresenter {
+        WTF_MAKE_FAST_ALLOCATED;
     public:
         Direct3DPresenter();
         ~Direct3DPresenter();
@@ -301,9 +297,6 @@ private:
         HRESULT getSwapChainPresentParameters(IMFMediaType*, D3DPRESENT_PARAMETERS* presentParams);
         HRESULT createD3DDevice();
         HRESULT createD3DSample(IDirect3DSwapChain9*, COMPtr<IMFSample>& videoSample);
-        HRESULT updateDestRect();
-
-        HRESULT presentSwapChain(IDirect3DSwapChain9*, IDirect3DSurface9*);
 
         UINT m_deviceResetToken { 0 };
         HWND m_hwnd { nullptr };
@@ -331,6 +324,7 @@ private:
         , public IMFVideoDisplayControl
         , public IMFAsyncCallback
         , public MediaPlayerListener {
+        WTF_MAKE_FAST_ALLOCATED;
     public:
         CustomVideoPresenter(MediaPlayerPrivateMediaFoundation*);
         ~CustomVideoPresenter();

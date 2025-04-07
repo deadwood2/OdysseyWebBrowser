@@ -29,7 +29,6 @@ WI.Script = class Script extends WI.SourceCode
     {
         super();
 
-        console.assert(id);
         console.assert(target instanceof WI.Target);
         console.assert(range instanceof WI.TextRange);
 
@@ -186,6 +185,10 @@ WI.Script = class Script extends WI.SourceCode
 
     requestContentFromBackend()
     {
+        let specialContentPromise = WI.SourceCode.generateSpecialContentForURL(this._url);
+        if (specialContentPromise)
+            return specialContentPromise;
+
         if (!this._id) {
             // There is no identifier to request content with. Return false to cause the
             // pending callbacks to get null content.
@@ -275,6 +278,13 @@ WI.Script = class Script extends WI.SourceCode
                     return resource;
             }
         } catch { }
+
+        if (!this.isMainResource()) {
+            for (let frame of WI.networkManager.frames) {
+                if (frame.mainResource.type === WI.Resource.Type.Document && frame.mainResource.url.startsWith(this._url))
+                    return frame.mainResource;
+            }
+        }
 
         return null;
     }

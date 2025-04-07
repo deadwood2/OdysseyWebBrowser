@@ -40,7 +40,7 @@ typedef id PlatformUIElement;
 #else
 typedef struct objc_object* PlatformUIElement;
 #endif
-#elif HAVE(ACCESSIBILITY) && PLATFORM(GTK)
+#elif HAVE(ACCESSIBILITY) && USE(ATK)
 #include "AccessibilityNotificationHandlerAtk.h"
 #include <atk/atk.h>
 #include <wtf/glib/GRefPtr.h>
@@ -170,6 +170,7 @@ public:
     bool isSingleLine() const;
     bool isMultiLine() const;
     bool hasPopup() const;
+    JSRetainPtr<JSStringRef> popupValue() const;
     int hierarchicalLevel() const;
     double clickPointX();
     double clickPointY();
@@ -188,6 +189,7 @@ public:
     JSRetainPtr<JSStringRef> attributesOfRows();
     JSRetainPtr<JSStringRef> attributesOfVisibleCells();
     JSRetainPtr<JSStringRef> attributesOfHeader();
+    bool isInTableCell() const;
     int indexInTable();
     JSRetainPtr<JSStringRef> rowIndexRange();
     JSRetainPtr<JSStringRef> columnIndexRange();
@@ -206,7 +208,7 @@ public:
     RefPtr<AccessibilityUIElement> ariaOwnsElementAtIndex(unsigned);
     RefPtr<AccessibilityUIElement> ariaFlowToElementAtIndex(unsigned);
     RefPtr<AccessibilityUIElement> ariaControlsElementAtIndex(unsigned);
-#if PLATFORM(MAC) || PLATFORM(GTK)
+#if PLATFORM(MAC) || USE(ATK)
     RefPtr<AccessibilityUIElement> ariaDetailsElementAtIndex(unsigned);
     RefPtr<AccessibilityUIElement> ariaErrorMessageElementAtIndex(unsigned);
 #else
@@ -214,7 +216,7 @@ public:
     RefPtr<AccessibilityUIElement> ariaErrorMessageElementAtIndex(unsigned) { return nullptr; }
 #endif
 
-#if PLATFORM(GTK)
+#if USE(ATK)
     RefPtr<AccessibilityUIElement> ariaLabelledByElementAtIndex(unsigned);
     RefPtr<AccessibilityUIElement> ariaDescribedByElementAtIndex(unsigned);
     RefPtr<AccessibilityUIElement> ariaOwnsReferencingElementAtIndex(unsigned);
@@ -255,6 +257,7 @@ public:
     unsigned uiElementCountForSearchPredicate(JSContextRef, AccessibilityUIElement* startElement, bool isDirectionNext, JSValueRef searchKey, JSStringRef searchText, bool visibleOnly, bool immediateDescendantsOnly);
     RefPtr<AccessibilityUIElement> uiElementForSearchPredicate(JSContextRef, AccessibilityUIElement* startElement, bool isDirectionNext, JSValueRef searchKey, JSStringRef searchText, bool visibleOnly, bool immediateDescendantsOnly);
     JSRetainPtr<JSStringRef> selectTextWithCriteria(JSContextRef, JSStringRef ambiguityResolution, JSValueRef searchStrings, JSStringRef replacementString, JSStringRef activity);
+    JSValueRef searchTextWithCriteria(JSContextRef, JSValueRef searchStrings, JSStringRef startFrom, JSStringRef direction);
 
     // Text-specific
     JSRetainPtr<JSStringRef> characterAtOffset(int offset);
@@ -279,6 +282,8 @@ public:
     RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForMarkers(AccessibilityTextMarker* startMarker, AccessibilityTextMarker* endMarker);
     RefPtr<AccessibilityTextMarkerRange> selectedTextMarkerRange();
     void resetSelectedTextMarkerRange();
+    bool replaceTextInRange(JSStringRef, int position, int length);
+    bool insertText(JSStringRef);
     RefPtr<AccessibilityTextMarker> startTextMarkerForTextMarkerRange(AccessibilityTextMarkerRange*);
     RefPtr<AccessibilityTextMarker> endTextMarkerForTextMarkerRange(AccessibilityTextMarkerRange*);
     RefPtr<AccessibilityTextMarker> endTextMarkerForBounds(int x, int y, int width, int height);
@@ -366,7 +371,7 @@ private:
     void getChildren(Vector<RefPtr<AccessibilityUIElement> >&);
     void getChildrenWithRange(Vector<RefPtr<AccessibilityUIElement> >&, unsigned location, unsigned length);
 
-#if PLATFORM(GTK)
+#if USE(ATK)
     RefPtr<AccessibilityNotificationHandler> m_notificationHandler;
 #endif
 #endif

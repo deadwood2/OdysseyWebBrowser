@@ -39,9 +39,11 @@
 #include <WebCore/IntSize.h>
 #include <WebCore/LayoutMilestone.h>
 #include <WebCore/MediaProducer.h>
+#include <WebCore/PageIdentifier.h>
 #include <WebCore/Pagination.h>
 #include <WebCore/ScrollTypes.h>
 #include <WebCore/UserInterfaceLayoutDirection.h>
+#include <WebCore/ViewportArguments.h>
 #include <pal/SessionID.h>
 #include <wtf/HashMap.h>
 #include <wtf/text/WTFString.h>
@@ -62,15 +64,22 @@ class Encoder;
 namespace WebKit {
 
 struct WebPageCreationParameters {
+    explicit WebPageCreationParameters(PAL::SessionID sessionID)
+        : sessionID(sessionID)
+    {
+    }
+
     void encode(IPC::Encoder&) const;
     static Optional<WebPageCreationParameters> decode(IPC::Decoder&);
 
+    PAL::SessionID sessionID;
     WebCore::IntSize viewSize;
 
     OptionSet<WebCore::ActivityState::Flag> activityState;
     
     WebPreferencesStore store;
     DrawingAreaType drawingAreaType;
+    DrawingAreaIdentifier drawingAreaIdentifier;
     WebPageGroupData pageGroupData;
 
     bool isEditable;
@@ -94,7 +103,6 @@ struct WebPageCreationParameters {
     String userAgent;
 
     Vector<BackForwardListItemState> itemStates;
-    PAL::SessionID sessionID;
 
     UserContentControllerIdentifier userContentControllerID;
     uint64_t visitedLinkTableID;
@@ -113,8 +121,9 @@ struct WebPageCreationParameters {
     float mediaVolume;
     WebCore::MediaProducer::MutedStateFlags muted;
     bool mayStartMediaWhenInWindow;
+    bool mediaPlaybackIsSuspended { false };
 
-    WebCore::IntSize viewLayoutSize;
+    WebCore::IntSize minimumSizeForAutoLayout;
     bool autoSizingShouldExpandToViewHeight;
     Optional<WebCore::IntSize> viewportSizeForCSSViewportUnits;
     
@@ -134,6 +143,7 @@ struct WebPageCreationParameters {
     bool isProcessSwap { false };
 
     bool useDarkAppearance { false };
+    bool useElevatedUserInterfaceLevel { false };
 
 #if PLATFORM(MAC)
     ColorSpaceData colorSpace;
@@ -147,15 +157,19 @@ struct WebPageCreationParameters {
     bool ignoresViewportScaleLimits;
     WebCore::FloatSize viewportConfigurationViewLayoutSize;
     double viewportConfigurationLayoutSizeScaleFactor;
+    double viewportConfigurationMinimumEffectiveDeviceWidth;
     WebCore::FloatSize viewportConfigurationViewSize;
     WebCore::FloatSize maximumUnobscuredSize;
     int32_t deviceOrientation { 0 };
+    bool keyboardIsAttached { false };
+    bool canShowWhileLocked { false };
+    Optional<WebCore::ViewportArguments> overrideViewportArguments;
 #endif
 #if PLATFORM(COCOA)
     bool smartInsertDeleteEnabled;
     Vector<String> additionalSupportedImageTypes;
 #endif
-#if PLATFORM(WPE)
+#if USE(WPE_RENDERER)
     IPC::Attachment hostFileDescriptor;
 #endif
     bool appleMailPaginationQuirkEnabled;
@@ -194,6 +208,12 @@ struct WebPageCreationParameters {
 #endif
 
     Optional<WebCore::Color> backgroundColor;
+
+    Optional<WebCore::PageIdentifier> oldPageID;
+
+#if PLATFORM(GTK)
+    String themeName;
+#endif
 };
 
 } // namespace WebKit

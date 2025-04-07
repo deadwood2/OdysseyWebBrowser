@@ -54,6 +54,7 @@ struct WTREventQueueItem;
 #endif
 
 class EventSenderProxy {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit EventSenderProxy(TestController*);
     ~EventSenderProxy();
@@ -75,6 +76,10 @@ public:
     void leapForward(int milliseconds);
 
     void keyDown(WKStringRef key, WKEventModifiers, unsigned location);
+
+#if PLATFORM(COCOA)
+    unsigned mouseButtonsCurrentlyDown() const { return m_mouseButtonsCurrentlyDown; }
+#endif
 
 #if ENABLE(TOUCH_EVENTS)
     // Touch events.
@@ -137,13 +142,13 @@ private:
     WKEventMouseButton m_clickButton;
 #if PLATFORM(COCOA)
     int eventNumber;
+    unsigned m_mouseButtonsCurrentlyDown { 0 };
 #elif PLATFORM(GTK)
     Deque<WTREventQueueItem> m_eventQueue;
     unsigned m_mouseButtonsCurrentlyDown { 0 };
     Vector<GUniquePtr<GdkEvent>> m_touchEvents;
     HashSet<int> m_updatedTouchEvents;
 #elif PLATFORM(WPE)
-    struct wpe_view_backend* m_viewBackend;
     uint32_t m_buttonState;
     uint32_t m_mouseButtonsCurrentlyDown { 0 };
     Vector<struct wpe_input_touch_event_raw> m_touchEvents;

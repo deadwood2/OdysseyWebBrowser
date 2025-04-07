@@ -26,7 +26,7 @@
 #import "config.h"
 #import "NetworkProcess.h"
 
-#if PLATFORM(IOS_FAMILY) && !PLATFORM(IOSMAC)
+#if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
 
 #import "NetworkCache.h"
 #import "NetworkProcessCreationParameters.h"
@@ -78,8 +78,10 @@ void NetworkProcess::clearCacheForAllOrigins(uint32_t cachesToClear)
     ResourceCachesToClear resourceCachesToClear = static_cast<ResourceCachesToClear>(cachesToClear);
     if (resourceCachesToClear == InMemoryResourceCachesOnly)
         return;
-    if (m_cache)
-        m_cache->clear();
+    forEachNetworkSession([](NetworkSession& session) {
+        if (auto* cache = session.cache())
+            cache->clear();
+    });
 }
 
 void NetworkProcess::platformInitializeNetworkProcess(const NetworkProcessCreationParameters& parameters)
