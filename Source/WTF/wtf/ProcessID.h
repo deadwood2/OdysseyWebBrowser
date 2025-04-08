@@ -33,6 +33,10 @@
 #include <windows.h>
 #endif
 
+#if PLATFORM(MUI)
+#include <proto/exec.h>
+#endif
+
 namespace WTF {
 
 #if OS(WINDOWS)
@@ -45,6 +49,8 @@ inline ProcessID getCurrentProcessID()
 {
 #if OS(WINDOWS)
     return GetCurrentProcessId();
+#elif PLATFORM(MUI)
+    return (int) FindTask(NULL);
 #else
     return getpid();
 #endif

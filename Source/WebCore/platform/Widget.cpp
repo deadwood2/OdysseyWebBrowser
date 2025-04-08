@@ -182,6 +182,7 @@ IntPoint Widget::convertToContainingWindow(const IntPoint& localPoint) const
 
 #if !PLATFORM(COCOA)
 
+#if !PLATFORM(MUI)
 Widget::Widget(PlatformWidget widget)
 {
     init(widget);
@@ -191,6 +192,7 @@ IntRect Widget::frameRect() const
 {
     return m_frame;
 }
+#endif
 
 IntRect Widget::convertFromRootToContainingWindow(const Widget*, const IntRect& rect)
 {
@@ -271,7 +273,7 @@ FloatPoint Widget::convertFromContainingView(const FloatPoint& parentPoint) cons
     return convertFromContainingView(IntPoint(parentPoint));
 }
 
-#if !PLATFORM(COCOA) && !PLATFORM(GTK) && !PLATFORM(WIN)
+#if !PLATFORM(COCOA) && !PLATFORM(GTK) && !PLATFORM(WIN) && !PLATFORM(MUI)
 
 Widget::~Widget()
 {

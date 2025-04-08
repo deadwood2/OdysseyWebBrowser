@@ -41,6 +41,7 @@
 #include <wtf/RetainPtr.h>
 #include <wtf/UniqueArray.h>
 #include <wtf/text/WTFString.h>
+#include <wtf/text/CString.h>
 
 #if USE(CA)
 #include "PlatformCALayer.h"

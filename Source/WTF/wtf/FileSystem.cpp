@@ -33,7 +33,7 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 
-#if !OS(WINDOWS)
+#if !OS(WINDOWS) && !PLATFORM(MUI)
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>

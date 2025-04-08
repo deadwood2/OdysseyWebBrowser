@@ -60,7 +60,9 @@ public:
 
 private:
     WTF::Function<void()> m_testNotificationCallback;
+#if !PLATFORM(MUI)
     RunLoop::Timer<WheelEventTestTrigger> m_testTriggerTimer;
+#endif
     mutable Lock m_testTriggerMutex;
     WTF::HashMap<ScrollableAreaIdentifier, DeferTestTriggerReasonSet> m_deferTestTriggerReasons;
 };

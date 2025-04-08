@@ -33,6 +33,7 @@
 
 #if USE(CAIRO)
 
+#include "Logging.h"
 #include "AffineTransform.h"
 #include "CairoOperations.h"
 #include "CairoUtilities.h"
@@ -47,6 +48,20 @@
 #include "ShadowBlur.h"
 
 namespace WebCore {
+
+#if PLATFORM(MUI)
+
+bool FontCascade::canReturnFallbackFontsForComplexText()
+{
+    return false;
+}
+
+bool FontCascade::canExpandAroundIdeographsInComplexText()
+{
+    return false;
+}
+
+#endif
 
 void FontCascade::drawGlyphs(GraphicsContext& context, const Font& font, const GlyphBuffer& glyphBuffer,
     unsigned from, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode)

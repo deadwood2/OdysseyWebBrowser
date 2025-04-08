@@ -26,6 +26,7 @@
 
 #pragma once
 
+#undef Exception
 #include "ExceptionOr.h"
 #include "ImageBuffer.h"
 #include <JavaScriptCore/ArrayBuffer.h>
