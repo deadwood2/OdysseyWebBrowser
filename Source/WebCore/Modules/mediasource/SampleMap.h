@@ -24,7 +24,7 @@
  */
 
 #pragma once
-
+//morphos_2.30.0
 #include <wtf/MediaTime.h>
 #include <wtf/RefPtr.h>
 #include <wtf/StdMap.h>
@@ -93,6 +93,7 @@ public:
     const_reverse_iterator rend() const { return m_samples.rend(); }
 
     WEBCORE_EXPORT iterator findSampleWithDecodeKey(const KeyType&);
+    WEBCORE_EXPORT iterator findSampleAfterDecodeKey(const KeyType&);
     WEBCORE_EXPORT reverse_iterator reverseFindSampleWithDecodeKey(const KeyType&);
     WEBCORE_EXPORT reverse_iterator findSyncSamplePriorToPresentationTime(const MediaTime&, const MediaTime& threshold = MediaTime::positiveInfiniteTime());
     WEBCORE_EXPORT reverse_iterator findSyncSamplePriorToDecodeIterator(reverse_iterator);

@@ -30,7 +30,7 @@
  */
 
 #pragma once
-
+//morphos_2.30.0
 #if ENABLE(MEDIA_SOURCE)
 
 #include "ActiveDOMObject.h"
@@ -77,11 +77,12 @@ public:
     double timestampOffset() const;
     ExceptionOr<void> setTimestampOffset(double);
 
-#if ENABLE(VIDEO_TRACK)
     VideoTrackList& videoTracks();
+    VideoTrackList* videoTracksIfExists() const { return m_videoTracks.get(); }
     AudioTrackList& audioTracks();
+    AudioTrackList* audioTracksIfExists() const { return m_audioTracks.get(); }
     TextTrackList& textTracks();
-#endif
+    TextTrackList* textTracksIfExists() const { return m_textTracks.get(); }
 
     double appendWindowStart() const;
     ExceptionOr<void> setAppendWindowStart(double);
@@ -127,7 +128,10 @@ public:
     MediaTime highestPresentationTimestamp() const;
     void readyStateChanged();
 
+#if defined(morphos_2_30_0)
+#else
     bool hasPendingActivity() const final;
+#endif
 
     void trySignalAllSamplesEnqueued();
 
@@ -144,11 +148,14 @@ private:
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
 
-    void suspend(ReasonForSuspension) final;
-    void resume() final;
+    // ActiveDOMObject.
     void stop() final;
     const char* activeDOMObjectName() const final;
+#if defined(morphos_2_30_0)
+    bool virtualHasPendingActivity() const final;
+#else
     bool canSuspendForDocumentSuspension() const final;
+#endif
 
     void sourceBufferPrivateDidReceiveInitializationSegment(const InitializationSegment&) final;
     void sourceBufferPrivateDidReceiveSample(MediaSample&) final;
@@ -217,7 +224,11 @@ private:
 
     Ref<SourceBufferPrivate> m_private;
     MediaSource* m_source;
+#if defined(morphos_2_30_0)
+    UniqueRef<MainThreadGenericEventQueue> m_asyncEventQueue;
+#else
     GenericEventQueue m_asyncEventQueue;
+#endif
     AppendMode m_mode { AppendMode::Segments };
 
     Vector<unsigned char> m_pendingAppendData;

@@ -79,6 +79,8 @@ public:
 
     bool shouldOpenAsAboutBlank(const String&) const;
 
+    bool needsVP9FullRangeFlagQuirk() const;
+
 private:
     bool needsQuirks() const;
 
@@ -94,6 +96,7 @@ private:
     mutable Optional<bool> m_needsGMailOverflowScrollQuirk;
     mutable Optional<bool> m_needsYouTubeOverflowScrollQuirk;
 #endif
+    mutable Optional<bool> m_needsVP9FullRangeFlagQuirk;
 };
 
 }

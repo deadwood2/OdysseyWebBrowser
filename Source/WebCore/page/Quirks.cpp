@@ -139,6 +139,17 @@ bool Quirks::hasBrokenEncryptedMediaAPISupportQuirk() const
     return m_hasBrokenEncryptedMediaAPISupportQuirk.value();
 }
 
+bool Quirks::needsVP9FullRangeFlagQuirk() const
+{
+    if (!needsQuirks())
+        return false;
+
+    if (!m_needsVP9FullRangeFlagQuirk)
+        m_needsVP9FullRangeFlagQuirk = equalLettersIgnoringASCIICase(m_document->url().host(), "www.youtube.com");
+
+    return *m_needsVP9FullRangeFlagQuirk;
+}
+
 bool Quirks::shouldDisableContentChangeObserverTouchEventAdjustment() const
 {
     if (!needsQuirks())
