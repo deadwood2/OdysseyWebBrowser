@@ -45,6 +45,11 @@
 #include <gio/gio.h>
 #endif
 
+#if PLATFORM(MUI)
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+
 namespace WTF {
 
 namespace FileSystemImpl {
@@ -287,8 +292,6 @@ MappedFileData::~MappedFileData()
     unmapViewOfFile(m_fileData, m_fileSize);
 }
 
-#if HAVE(MMAP)
-
 MappedFileData::MappedFileData(const String& filePath, MappedFileMode mode, bool& success)
 {
     auto fd = openFile(filePath, FileOpenMode::Read);
@@ -296,6 +299,8 @@ MappedFileData::MappedFileData(const String& filePath, MappedFileMode mode, bool
     success = mapFileHandle(fd, mode);
     closeFile(fd);
 }
+
+#if HAVE(MMAP)
 
 bool MappedFileData::mapFileHandle(PlatformFileHandle handle, MappedFileMode mode)
 {
@@ -338,6 +343,52 @@ bool MappedFileData::mapFileHandle(PlatformFileHandle handle, MappedFileMode mod
 bool unmapViewOfFile(void* buffer, size_t size)
 {
     return !munmap(buffer, size);
+}
+
+#elif PLATFORM(MUI)
+
+bool MappedFileData::mapFileHandle(PlatformFileHandle handle, MappedFileMode mapMode)
+{
+    if (!isHandleValid(handle))
+        return false;
+
+    int fd;
+    fd = handle;
+
+    struct stat fileStat;
+    if (fstat(fd, &fileStat)) {
+        return false;
+    }
+
+    unsigned size;
+    if (!WTF::convertSafely(fileStat.st_size, size)) {
+        return false;
+    }
+
+    if (!size) {
+        return true;
+    }
+	
+    void* data = malloc(size);
+
+	if (nullptr == data) {
+			return false;
+	}
+
+	if (size != read(fd, data, size)) {
+			free(data);
+			return false;
+	}
+
+    m_fileData = data;
+    m_fileSize = size;
+    return true;
+}
+
+bool unmapViewOfFile(void* buffer, size_t size)
+{
+    free(buffer);
+    return true;
 }
 
 #endif

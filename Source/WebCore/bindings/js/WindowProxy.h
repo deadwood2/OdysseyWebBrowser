@@ -20,6 +20,7 @@
 
 #pragma once
 
+#undef Exception
 #include "DOMWrapperWorld.h"
 #include <JavaScriptCore/Strong.h>
 #include <wtf/HashMap.h>
