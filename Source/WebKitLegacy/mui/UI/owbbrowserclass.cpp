@@ -29,42 +29,40 @@
 #define USE_MORPHOS_SURFACE 0
 
 /* WebKit */
-#include "config.h"
-#include "GraphicsContext.h"
-#include "BackForwardController.h"
-#include "ContextMenu.h"
-#include "ContextMenuController.h"
+#include <WebCore/GraphicsContext.h>
+#include <WebCore/BackForwardController.h>
+#include <WebCore/ContextMenu.h>
+#include <WebCore/ContextMenuController.h>
 #include <wtf/text/CString.h>
 #include <wtf/MonotonicTime.h>
-#include "SharedBuffer.h"
-#include "DocumentLoader.h"
-#include "EventHandler.h"
-#include "DocumentLoader.h"
-#include "DOMImplementation.h"
-#include "DragController.h"
-#include "DragData.h"
-#include "Editor.h"
+#include <WebCore/SharedBuffer.h>
+#include <WebCore/DocumentLoader.h>
+#include <WebCore/EventHandler.h>
+#include <WebCore/DocumentLoader.h>
+#include <WebCore/DOMImplementation.h>
+#include <WebCore/DragController.h>
+#include <WebCore/DragData.h>
+#include <WebCore/Editor.h>
 #include "FileIOLinux.h"
-#include "FocusController.h"
-#include "Frame.h"
-#include "FrameLoader.h"
-#include "FrameLoadRequest.h"
-#include "FrameView.h"
-#include "HostWindow.h"
+#include <WebCore/FocusController.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameLoader.h>
+#include <WebCore/FrameLoadRequest.h>
+#include <WebCore/FrameView.h>
+#include <WebCore/HostWindow.h>
 #include <wtf/MainThread.h>
-#include "Page.h"
-#include "PlatformMouseEvent.h"
-#include "PlatformKeyboardEvent.h"
-#include "KeyboardEvent.h"
-#include "WindowsKeyboardCodes.h"
+#include <WebCore/Page.h>
+#include <WebCore/PlatformMouseEvent.h>
+#include <WebCore/PlatformKeyboardEvent.h>
+#include <WebCore/KeyboardEvent.h>
+#include <WebCore/WindowsKeyboardCodes.h>
 #include "PopupMenuMorphOS.h"
-#include "PrintContext.h"
-#include "ProgressTracker.h"
-#include "RenderView.h"
-#include "SharedTimer.h"
-#include "Settings.h"
-#include "SubstituteData.h"
-#include "Timer.h"
+#include <WebCore/PrintContext.h>
+#include <WebCore/ProgressTracker.h>
+#include <WebCore/RenderView.h>
+#include <WebCore/Settings.h>
+#include <WebCore/SubstituteData.h>
+#include <WebCore/Timer.h>
 #include "WebBackForwardList.h"
 #include "WebDataSource.h"
 #include "WebPreferences.h"
@@ -74,8 +72,8 @@
 #include "PlatformContextCairo.h"
 
 #if ENABLE(VIDEO)
-#include "HTMLMediaElement.h"
-#include "MediaPlayer.h"
+#include <WebCore/HTMLMediaElement.h>
+#include <WebCore/MediaPlayer.h>
 #endif
 
 /* OWB */

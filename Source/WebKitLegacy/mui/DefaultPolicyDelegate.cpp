@@ -26,10 +26,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "DefaultPolicyDelegate.h"
-#include "ResourceRequest.h"
-#include "ResourceResponse.h"
+#include <WebCore/ResourceRequest.h>
+#include <WebCore/ResourceResponse.h>
 #include "WebError.h"
 #include "WebFrame.h"
 #include "WebFramePolicyListener.h"

@@ -25,13 +25,12 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "config.h"
 #include "WebInspector.h"
 #include "WebInspectorClient.h"
 #include "WebView.h"
 
-#include <InspectorController.h>
-#include <Page.h>
+#include <WebCore/InspectorController.h>
+#include <WebCore/Page.h>
 #include <wtf/Assertions.h>
 
 using namespace WebCore;

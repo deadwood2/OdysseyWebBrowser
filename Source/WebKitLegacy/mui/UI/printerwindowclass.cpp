@@ -26,11 +26,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-
-#include "Document.h"
-#include "FrameView.h"
-#include "HostWindow.h"
+#include <WebCore/Document.h>
+#include <WebCore/FrameView.h>
+#include <WebCore/HostWindow.h>
 
 #include "WebFrame.h"
 #include "WebView.h"

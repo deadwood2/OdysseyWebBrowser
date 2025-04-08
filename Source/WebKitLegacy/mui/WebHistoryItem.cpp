@@ -25,14 +25,13 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "config.h"
 #include "WebHistoryItem.h"
 #include "WebHistoryItem_p.h"
 #include "BackForwardList.h"
 
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
-#include <HistoryItem.h>
+#include <WebCore/HistoryItem.h>
 
 #include <clib/debug_protos.h>
 

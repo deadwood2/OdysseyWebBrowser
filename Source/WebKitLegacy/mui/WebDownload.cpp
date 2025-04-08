@@ -28,7 +28,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebFrameNetworkingContext.h"
 #include "WebDownload.h"
 #include "WebDownloadPrivate.h"
@@ -46,14 +45,14 @@
 #include <sys/types.h>
 
 #include <wtf/text/WTFString.h>
-#include <NotImplemented.h>
-#include <ResourceError.h>
-#include <ResourceHandle.h>
-#include <ResourceHandleInternal.h>
-#include <ResourceRequest.h>
-#include <ResourceHandleClient.h>
-#include <ResourceResponse.h>
-#include <FileIOLinux.h>
+#include <WebCore/NotImplemented.h>
+#include <WebCore/ResourceError.h>
+#include <WebCore/ResourceHandle.h>
+#include "ResourceHandleInternal.h"
+#include <WebCore/ResourceRequest.h>
+#include <WebCore/ResourceHandleClient.h>
+#include <WebCore/ResourceResponse.h>
+#include "FileIOLinux.h"
 
 #include "NetworkStorageSessionMap.h"
 

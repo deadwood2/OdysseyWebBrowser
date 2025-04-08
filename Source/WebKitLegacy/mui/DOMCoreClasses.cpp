@@ -26,7 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "DOMCoreClasses.h"
 
 #include "DOMCSSClasses.h"
@@ -35,22 +34,22 @@
 
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include <DOMWindow.h>
-#include <Document.h>
-#include <Element.h>
-#include <Font.h>
-#include <FontCascade.h>
-#include <Event.h>
-#include <HTMLCollection.h>
-#include <HTMLFormElement.h>
-#include <HTMLInputElement.h>
-#include <HTMLCollection.h>
-#include <HTMLNames.h>
-#include <HTMLOptionElement.h>
-#include <HTMLSelectElement.h>
-#include <HTMLTextAreaElement.h>
-#include <NodeList.h>
-#include <RenderElement.h>
+#include <WebCore/DOMWindow.h>
+#include <WebCore/Document.h>
+#include <WebCore/Element.h>
+#include <WebCore/Font.h>
+#include <WebCore/FontCascade.h>
+#include <WebCore/Event.h>
+#include <WebCore/HTMLCollection.h>
+#include <WebCore/HTMLFormElement.h>
+#include <WebCore/HTMLInputElement.h>
+#include <WebCore/HTMLCollection.h>
+#include <WebCore/HTMLNames.h>
+#include <WebCore/HTMLOptionElement.h>
+#include <WebCore/HTMLSelectElement.h>
+#include <WebCore/HTMLTextAreaElement.h>
+#include <WebCore/NodeList.h>
+#include <WebCore/RenderElement.h>
 #include <WebCore/ScrollIntoViewOptions.h>
 
 

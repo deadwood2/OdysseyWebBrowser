@@ -23,12 +23,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#include "config.h"
 #include "WebApplicationCache.h"
 
 #include <wtf/RetainPtr.h>
-#include <ApplicationCache.h>
-#include <ApplicationCacheStorage.h>
+#include <WebCore/ApplicationCache.h>
+#include <WebCore/ApplicationCacheStorage.h>
 #include <wtf/URL.h>
 
 using namespace WebCore;

@@ -26,16 +26,14 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-
 #include "HTTPHeaderPropertyBag.h"
 
 #include <wtf/Platform.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 #include <wtf/URL.h>
-#include <ResourceHandle.h>
-#include <ResourceResponse.h>
+#include <WebCore/ResourceHandle.h>
+#include <WebCore/ResourceResponse.h>
 
 using namespace WebCore;
 

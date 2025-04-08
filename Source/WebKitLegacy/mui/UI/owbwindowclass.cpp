@@ -28,42 +28,40 @@
  */
 
 /* OWB */
-#include "config.h"
 #include "WebFrame.h"
 #include "WebView.h"
 #include <wtf/text/CString.h>
-#include "DOMImplementation.h"
-#include "Editor.h"
+#include <WebCore/DOMImplementation.h>
+#include <WebCore/Editor.h>
 #include "FileIOLinux.h"
-#include "FocusController.h"
-#include "Frame.h"
-#include "FrameView.h"
-#include "GraphicsContext.h"
-#include "InspectorController.h"
+#include <WebCore/FocusController.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameView.h>
+#include <WebCore/GraphicsContext.h>
+#include <WebCore/InspectorController.h>
 #include <wtf/MainThread.h>
-#include "Page.h"
-#include "ProgressTracker.h"
-#include "Settings.h"
-#include "Scrollbar.h"
-#include "SharedBuffer.h"
-#include "SharedTimer.h"
-#include "SubstituteData.h"
-#include "Timer.h"
+#include <WebCore/Page.h>
+#include <WebCore/ProgressTracker.h>
+#include <WebCore/Settings.h>
+#include <WebCore/Scrollbar.h>
+#include <WebCore/SharedBuffer.h>
+#include <WebCore/SubstituteData.h>
+#include <WebCore/Timer.h>
 #include "WebDataSource.h"
 #include "WebHistory.h"
 #include "WebHistoryItem.h"
 #include "WebHistoryItem_p.h"
-#include "GraphicsContext.h"
+#include <WebCore/GraphicsContext.h>
 #include "WebBackForwardList.h"
 #include "WebPreferences.h"
-#include "WindowFeatures.h"
-#include "FrameLoader.h"
+#include <WebCore/WindowFeatures.h>
+#include <WebCore/FrameLoader.h>
 #include "ScriptEntry.h"
 #include "TopSitesManager.h"
-#include "markup.h"
+#include <WebCore/markup.h>
 
 #if ENABLE(VIDEO)
-#include "HTMLMediaElement.h"
+#include <WebCore/HTMLMediaElement.h>
 #endif
 
 #include <unistd.h>

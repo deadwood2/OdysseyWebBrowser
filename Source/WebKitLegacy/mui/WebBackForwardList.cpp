@@ -26,7 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebBackForwardList.h"
 #include "WebBackForwardList_p.h"
 #include "WebHistoryItem.h"
@@ -35,10 +34,10 @@
 #include "WebFrame.h"
 #include "WebPreferences.h"
 
-#include <BackForwardList.h>
-#include <HistoryItem.h>
-#include <Page.h>
-#include <PageGroup.h>
+#include "BackForwardList.h"
+#include <WebCore/HistoryItem.h>
+#include <WebCore/Page.h>
+#include <WebCore/PageGroup.h>
 
 using std::min;
 using namespace WebCore;

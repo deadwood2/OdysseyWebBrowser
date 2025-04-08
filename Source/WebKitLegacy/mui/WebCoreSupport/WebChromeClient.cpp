@@ -26,14 +26,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebChromeClient.h"
 #include "ColorChooserController.h"
 #include "DateTimeChooserController.h"
-#include "ColorChooser.h"
+#include <WebCore/ColorChooser.h>
 #include "DateTimeChooser.h"
-#include "FileChooser.h"
-#include "FileIconLoader.h"
+#include <WebCore/FileChooser.h>
+#include <WebCore/FileIconLoader.h>
 #include "JSActionDelegate.h"
 #include "WebDesktopNotificationsDelegate.h"
 #include "WebHitTestResults.h"
@@ -50,22 +49,22 @@
 
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include <ContextMenu.h>
-#include <FileChooser.h>
-#include <FloatRect.h>
-#include <Frame.h>
-#include <FrameLoadRequest.h>
-#include <FrameView.h>
-#include <HTMLNames.h>
-#include <Icon.h>
-#include <IntRect.h>
-#include <NavigationAction.h> 
-#include <NotImplemented.h>
-#include <Page.h>
-#include <SecurityOrigin.h>
-#include <PopupMenuMorphOS.h>
-#include <SearchPopupMenuMorphOS.h>
-#include <WindowFeatures.h>
+#include <WebCore/ContextMenu.h>
+#include <WebCore/FileChooser.h>
+#include <WebCore/FloatRect.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameLoadRequest.h>
+#include <WebCore/FrameView.h>
+#include <WebCore/HTMLNames.h>
+#include <WebCore/Icon.h>
+#include <WebCore/IntRect.h>
+#include <WebCore/NavigationAction.h> 
+#include <WebCore/NotImplemented.h>
+#include <WebCore/Page.h>
+#include <WebCore/SecurityOrigin.h>
+#include "PopupMenuMorphOS.h"
+#include "SearchPopupMenuMorphOS.h"
+#include <WebCore/WindowFeatures.h>
 #include "gui.h"
 #include "utils.h"
 #include <proto/intuition.h>
@@ -450,7 +449,7 @@ void WebChromeClient::dashboardRegionsChanged()
 }
 #endif
 
-#include "ApplicationCacheStorage.h"
+#include <WebCore/ApplicationCacheStorage.h>
 void WebChromeClient::reachedMaxAppCacheSize(int64_t spaceNeeded)
 {
     // FIXME: Free some space.

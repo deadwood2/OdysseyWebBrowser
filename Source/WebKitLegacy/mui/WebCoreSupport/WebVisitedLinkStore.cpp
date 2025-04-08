@@ -23,14 +23,12 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-
 #include "WebVisitedLinkStore.h"
 
 #include "WebHistory.h"
 #include "WebHistoryDelegate.h"
 #include "WebView.h"
-#include "PageCache.h"
+#include <WebCore/PageCache.h>
 #include <wtf/NeverDestroyed.h>
 
 using namespace WebCore;

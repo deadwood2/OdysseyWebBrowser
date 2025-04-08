@@ -41,7 +41,7 @@
 #include "WebDataSource.h"
 #include "WebDataSource.h"
 
-#include <CachedFramePlatformData.h>
+#include <WebCore/CachedFramePlatformData.h>
 
 class WebCachedFramePlatformData : public WebCore::CachedFramePlatformData {
 public:

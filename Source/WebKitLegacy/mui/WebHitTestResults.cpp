@@ -25,7 +25,6 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "config.h"
 #include "WebHitTestResults.h"
 
 #include "WebFrame.h"
@@ -33,11 +32,11 @@
 #include "WebFrameLoaderClient.h"
 
 #include <wtf/text/CString.h>
-#include <Document.h>
-#include <Frame.h>
-#include <HitTestResult.h>
-#include <FrameLoader.h>
-#include <Image.h>
+#include <WebCore/Document.h>
+#include <WebCore/Frame.h>
+#include <WebCore/HitTestResult.h>
+#include <WebCore/FrameLoader.h>
+#include <WebCore/Image.h>
 
 using namespace WebCore;
 

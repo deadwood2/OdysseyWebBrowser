@@ -26,16 +26,15 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebInspectorClient.h"
 
 #include <wtf/text/CString.h>
-#include "IntRect.h"
-#include "NotImplemented.h"
-#include "Frame.h"
-#include "FrameView.h"
-#include "InspectorController.h"
-#include "Page.h"
+#include <WebCore/IntRect.h>
+#include <WebCore/NotImplemented.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameView.h>
+#include <WebCore/InspectorController.h>
+#include <WebCore/Page.h>
 #include <wtf/text/WTFString.h>
 #include "WebFrameLoadDelegate.h"
 #include "JSActionDelegate.h"

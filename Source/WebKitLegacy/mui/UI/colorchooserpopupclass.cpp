@@ -26,10 +26,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "GraphicsContext.h"
-#include "ColorChooser.h"
-#include "ColorChooserClient.h"
+#include <WebCore/GraphicsContext.h>
+#include <WebCore/ColorChooser.h>
+#include <WebCore/ColorChooserClient.h>
 #include "ColorChooserController.h"
 
 #include <Calltips_mcc.h>

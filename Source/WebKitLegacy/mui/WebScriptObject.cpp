@@ -26,13 +26,12 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebScriptObject.h"
 
 #include <wtf/text/WTFString.h>
-#include "Document.h"
+#include <WebCore/Document.h>
 #include <wtf/Assertions.h>
-#include "NotImplemented.h"
+#include <WebCore/NotImplemented.h>
 
 using namespace WebCore;
 

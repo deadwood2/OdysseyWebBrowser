@@ -29,7 +29,7 @@
 #ifndef WebProgressTrackerClient_h
 #define WebProgressTrackerClient_h
 
-#include <ProgressTrackerClient.h>
+#include <WebCore/ProgressTrackerClient.h>
 
 class WebFrame;
 

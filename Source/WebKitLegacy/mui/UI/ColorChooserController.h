@@ -26,8 +26,8 @@
 #ifndef ColorChooserController_h
 #define ColorChooserController_h
 
-#include "ColorChooserClient.h"
-#include "ColorChooser.h"
+#include <WebCore/ColorChooserClient.h>
+#include <WebCore/ColorChooser.h>
 
 namespace WebCore {
 class ColorChooserClient;

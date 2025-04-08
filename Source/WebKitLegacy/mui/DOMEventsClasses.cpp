@@ -26,13 +26,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
+
 #include "DOMEventsClasses.h"
 
-#include <DOMWindow.h>
-#include <Event.h>
-#include <KeyboardEvent.h>
-#include <MouseEvent.h>
+#include <WebCore/DOMWindow.h>
+#include <WebCore/Event.h>
+#include <WebCore/KeyboardEvent.h>
+#include <WebCore/MouseEvent.h>
 
 
 void DOMEventListener::handleEvent(DOMEvent* /*evt*/)

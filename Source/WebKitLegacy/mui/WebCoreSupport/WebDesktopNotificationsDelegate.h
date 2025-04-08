@@ -28,8 +28,8 @@
 
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
 
-#include "Notification.h"
-#include "NotificationClient.h"
+#include <WebCore/Notification.h>
+#include <WebCore/NotificationClient.h>
 
 class WebView;
 

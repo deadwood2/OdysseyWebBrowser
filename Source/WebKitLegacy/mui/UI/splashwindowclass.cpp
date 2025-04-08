@@ -26,11 +26,10 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebFrame.h"
 #include "WebView.h"
-#include "Page.h"
-#include "Frame.h"
+#include <WebCore/Page.h>
+#include <WebCore/Frame.h>
 
 extern "C"
 {

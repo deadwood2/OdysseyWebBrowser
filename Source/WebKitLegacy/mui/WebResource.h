@@ -40,8 +40,8 @@
 #include "BALBase.h"
 #include <wtf/URL.h>
 #include <wtf/text/WTFString.h>
-#include <ResourceResponse.h>
-#include <SharedBuffer.h>
+#include <WebCore/ResourceResponse.h>
+#include <WebCore/SharedBuffer.h>
 #include <wtf/RefPtr.h>
 
 class WebResource {

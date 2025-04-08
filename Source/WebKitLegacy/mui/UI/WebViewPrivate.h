@@ -29,9 +29,9 @@
 #define WebViewPrivate_H
 
 #include "WebView.h"
-#include "IntRect.h"
+#include <WebCore/IntRect.h>
 #include <wtf/Vector.h>
-#include "FrameView.h"
+#include <WebCore/FrameView.h>
 #include <WebCore/Frame.h>
 #include "BALBase.h"
 #include "cairo.h"

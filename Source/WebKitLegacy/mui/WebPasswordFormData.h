@@ -31,7 +31,7 @@
 #ifndef WebPasswordFormData_h
 #define WebPasswordFormData_h
 
-#include "HTMLFormElement.h"
+#include <WebCore/HTMLFormElement.h>
 #include <wtf/URL.h>
 
 namespace WebCore {

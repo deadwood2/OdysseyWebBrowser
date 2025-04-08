@@ -26,18 +26,17 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
 #include <wtf/Vector.h>
 #include "FileIOLinux.h"
-#include "Page.h"
-#include "UserContentController.h"
-#include "UserContentURLPattern.h"
-#include "UserScript.h"
+#include <WebCore/Page.h>
+#include <WebCore/UserContentController.h>
+#include <WebCore/UserContentURLPattern.h>
+#include <WebCore/UserScript.h>
 #include "WebScriptWorld.h"
 #include "WebView.h"
-#include "JSDOMWindow.h"
+#include <WebCore/JSDOMWindow.h>
 
 #include <stdio.h>
 #include <string.h>

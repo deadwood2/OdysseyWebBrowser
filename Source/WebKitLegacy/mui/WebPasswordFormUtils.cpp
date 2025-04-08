@@ -40,12 +40,11 @@
 // This method based on Firefox2 code in
 //   toolkit/components/passwordmgr/base/nsPasswordManager.cpp
 
-#include "config.h"
 #include "WebPasswordFormUtils.h"
 
-#include "HTMLFormElement.h"
-#include "HTMLInputElement.h"
-#include "HTMLNames.h"
+#include <WebCore/HTMLFormElement.h>
+#include <WebCore/HTMLInputElement.h>
+#include <WebCore/HTMLNames.h>
 
 #include "DOMUtilitiesPrivate.h"
 

@@ -26,7 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebDatabaseManager.h"
 
 #include "WebSecurityOrigin.h"
@@ -34,12 +33,11 @@
 #include <wtf/MainThread.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
-#include <DatabaseManager.h>
-#include <DatabaseTracker.h>
-#include <DatabaseManagerClient.h>
+#include <WebCore/DatabaseManager.h>
+#include <WebCore/DatabaseTracker.h>
+#include <WebCore/DatabaseManagerClient.h>
 #include <wtf/FileSystem.h>
-#include <SecurityOrigin.h>
-#include "ObserverServiceData.h"
+#include <WebCore/SecurityOrigin.h>
 
 using namespace WebCore;
 using namespace std;

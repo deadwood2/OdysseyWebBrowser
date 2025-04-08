@@ -29,8 +29,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "GraphicsContext.h"
+#include <WebCore/GraphicsContext.h>
 #include "WebHistory.h"
 #include "WebHistoryItem.h"
 

@@ -23,13 +23,12 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "ColorChooserController.h"
 
 #include "WebView.h"
 #include "WebChromeClient.h"
-#include "ColorChooserClient.h"
-#include "Color.h"
+#include <WebCore/ColorChooserClient.h>
+#include <WebCore/Color.h>
 
 #include "gui.h"
 

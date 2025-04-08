@@ -4,8 +4,8 @@ set(OdysseyWebBrowser_SOURCES
 
 set(OdysseyWebBrowser_INCLUDE_DIRECTORIES
     "${CAIRO_INCLUDE_DIRS}"
-    "${WEBKIT_DIR}/mui/Api/MorphOS"
-    "${WEBKIT_DIR}/mui/Api/AROS/include"
+    "${WEBKITLEGACY_DIR}/mui/UI"
+    "${WEBKITLEGACY_DIR}/mui/UI/AROS/include"
     "${DERIVED_SOURCES_WEBCORE_DIR}"
 )
 

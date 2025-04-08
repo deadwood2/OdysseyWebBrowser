@@ -26,11 +26,10 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #if ENABLE(VIDEO)
-#include "HTMLMediaElement.h"
+#include <WebCore/HTMLMediaElement.h>
 #endif
-#include "MediaPlayer.h"
+#include <WebCore/MediaPlayer.h>
 
 
 #include <proto/intuition.h>

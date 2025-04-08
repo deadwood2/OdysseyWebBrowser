@@ -24,38 +24,37 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#include "config.h"
 #include "PluginView.h"
 
-#include "Document.h"
-#include "DocumentLoader.h"
-#include "Element.h"
-#include "EventNames.h"
-#include "FrameLoader.h"
-#include "FrameLoadRequest.h"
-#include "FrameTree.h"
-#include "Frame.h"
-#include "FrameView.h"
-#include "GraphicsContext.h"
-#include "Image.h"
-#include "HTMLNames.h"
-#include "HTMLPlugInElement.h"
-#include "HostWindow.h"
-#include "KeyboardEvent.h"
-#include "MouseEvent.h"
-#include "NotImplemented.h"
-#include "Page.h"
-#include "PlatformMouseEvent.h"
+#include <WebCore/Document.h>
+#include <WebCore/DocumentLoader.h>
+#include <WebCore/Element.h>
+#include <WebCore/EventNames.h>
+#include <WebCore/FrameLoader.h>
+#include <WebCore/FrameLoadRequest.h>
+#include <WebCore/FrameTree.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameView.h>
+#include <WebCore/GraphicsContext.h>
+#include <WebCore/Image.h>
+#include <WebCore/HTMLNames.h>
+#include <WebCore/HTMLPlugInElement.h>
+#include <WebCore/HostWindow.h>
+#include <WebCore/KeyboardEvent.h>
+#include <WebCore/MouseEvent.h>
+#include <WebCore/NotImplemented.h>
+#include <WebCore/Page.h>
+#include <WebCore/PlatformMouseEvent.h>
 #include "PluginDebug.h"
 #include "PluginMainThreadScheduler.h"
 #include "PluginPackage.h"
-#include "RenderLayer.h"
-#include "Settings.h"
-#include "JSDOMBinding.h"
-#include "CommonVM.h"
-#include "ScriptController.h"
-#include "npruntime_impl.h"
-#include "runtime_root.h"
+#include <WebCore/RenderLayer.h>
+#include <WebCore/Settings.h>
+#include <WebCore/JSDOMBinding.h>
+#include <WebCore/CommonVM.h>
+#include <WebCore/ScriptController.h>
+#include <WebCore/npruntime_impl.h>
+#include <WebCore/runtime_root.h>
 #include <JavaScriptCore/JSLock.h>
 #include <JavaScriptCore/JSCJSValue.h>
 

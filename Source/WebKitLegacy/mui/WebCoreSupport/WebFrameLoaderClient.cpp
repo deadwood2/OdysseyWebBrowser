@@ -26,14 +26,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebFrameLoaderClient.h"
 
 #include "WebHistoryItem_p.h"
 #include "DefaultPolicyDelegate.h"
 #include "DOMCoreClasses.h"
 #include "FileIOLinux.h"
-#include "NotImplemented.h"
+#include <WebCore/NotImplemented.h>
 #include "NetworkStorageSessionMap.h"
 #include "WebNavigationAction.h"
 #include "WebCachedFramePlatformData.h"
@@ -59,35 +58,35 @@
 #include "WebURLResponse.h"
 #include "WebView.h"
 
-#include <CachedFrame.h>
-#include <DNS.h>
-#include <CredentialStorage.h>
-#include <DocumentLoader.h>
-#include <FormState.h>
-#include <Frame.h>
-#include <FrameLoader.h>
-#include <FrameTree.h>
-#include <FrameView.h>
-#include <HTMLAppletElement.h>
-#include <HTMLFormElement.h>
-#include <HTMLFrameElement.h>
-#include <HTMLFrameOwnerElement.h>
-#include <HTMLNames.h>
-#include <HTMLObjectElement.h>
-#include <HTMLPlugInElement.h>
-#include <HistoryItem.h>
-#include <Logging.h>
-#include <MIMETypeRegistry.h>
-#include <Page.h>
-#include <PluginDatabase.h>
-#include <PluginPackage.h>
-#include <PluginView.h>
-#include <ResourceHandle.h>
-#include <ResourceHandleInternal.h>
-#include <ResourceLoader.h>
-#include <SubresourceLoader.h>
-#include <ScriptController.h>
-#include <Settings.h>
+#include <WebCore/CachedFrame.h>
+#include <WebCore/DNS.h>
+#include <WebCore/CredentialStorage.h>
+#include <WebCore/DocumentLoader.h>
+#include <WebCore/FormState.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameLoader.h>
+#include <WebCore/FrameTree.h>
+#include <WebCore/FrameView.h>
+#include <WebCore/HTMLAppletElement.h>
+#include <WebCore/HTMLFormElement.h>
+#include <WebCore/HTMLFrameElement.h>
+#include <WebCore/HTMLFrameOwnerElement.h>
+#include <WebCore/HTMLNames.h>
+#include <WebCore/HTMLObjectElement.h>
+#include <WebCore/HTMLPlugInElement.h>
+#include <WebCore/HistoryItem.h>
+#include <WebCore/Logging.h>
+#include <WebCore/MIMETypeRegistry.h>
+#include <WebCore/Page.h>
+#include "PluginDatabase.h"
+#include "PluginPackage.h"
+#include "PluginView.h"
+#include <WebCore/ResourceHandle.h>
+#include "ResourceHandleInternal.h"
+#include <WebCore/ResourceLoader.h>
+#include <WebCore/SubresourceLoader.h>
+#include <WebCore/ScriptController.h>
+#include <WebCore/Settings.h>
 #include <JavaScriptCore/APICast.h>
 #include <WebCore/NetworkStorageSession.h>
 

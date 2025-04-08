@@ -31,7 +31,7 @@
 
 #include "DOMCoreClasses.h"
 
-#include <CSSStyleDeclaration.h>
+#include <WebCore/CSSStyleDeclaration.h>
 
 class DOMCSSStyleDeclaration : public DOMObject
 {

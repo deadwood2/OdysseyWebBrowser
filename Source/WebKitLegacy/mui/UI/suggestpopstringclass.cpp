@@ -26,11 +26,10 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include <WebCore/NetworkingContext.h>
-#include "ResourceHandle.h"
-#include "ResourceRequest.h"
-#include "ResourceHandleClient.h"
+#include <WebCore/ResourceHandle.h>
+#include <WebCore/ResourceRequest.h>
+#include <WebCore/ResourceHandleClient.h>
 #include "SuggestEntry.h"
 #include "NetworkStorageSessionMap.h"
 
