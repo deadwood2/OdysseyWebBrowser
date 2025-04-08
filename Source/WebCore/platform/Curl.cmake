@@ -20,6 +20,7 @@ list(APPEND WebCore_SOURCES
     platform/network/curl/CurlRequest.cpp
     platform/network/curl/CurlRequestScheduler.cpp
     platform/network/curl/CurlResourceHandleDelegate.cpp
+    platform/network/curl/CurlStream.cpp
     platform/network/curl/CurlSSLHandle.cpp
     platform/network/curl/CurlSSLVerifier.cpp
     platform/network/curl/DNSResolveQueueCurl.cpp
