@@ -30,18 +30,6 @@
 #include <wtf/UniqueArray.h>
 #include <wtf/Vector.h>
 
-#if OS(AROS)
-namespace WTF {
-template<class T, class... Args>
-ALWAYS_INLINE decltype(auto) makeUnique(Args&&... args)
-{
-    return std::make_unique<T>(std::forward<Args>(args)...);
-}
-} // namespace WTF
-
-using namespace WTF;
-#endif
-
 namespace WebCore {
 
 class CurlStreamScheduler;
