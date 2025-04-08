@@ -78,9 +78,16 @@ class TextTrackRepresentation;
 struct Cookie;
 struct GraphicsDeviceAdapter;
 
+#if PLATFORM(MUI)
+class Page;
+#endif
+
 struct MediaEngineSupportParameters {
     ContentType type;
     URL url;
+#if PLATFORM(MUI)
+    Page* page { nullptr };
+#endif
     bool isMediaSource { false };
     bool isMediaStream { false };
     Vector<ContentType> contentTypesRequiringHardwareSupport;
@@ -276,6 +283,11 @@ public:
     virtual const void* mediaPlayerLogIdentifier() { return nullptr; }
     virtual const Logger& mediaPlayerLogger() = 0;
 #endif
+
+#if PLATFORM(MUI)
+    virtual Page* mediaPlayerPage() { return nullptr; }
+#endif
+
 };
 
 class WEBCORE_EXPORT MediaPlayer : public MediaPlayerEnums, public RefCounted<MediaPlayer> {
@@ -496,6 +508,10 @@ public:
 
 #if PLATFORM(WIN) && USE(AVFOUNDATION)
     GraphicsDeviceAdapter* graphicsDeviceAdapter() const;
+#endif
+
+#if PLATFORM(MUI)
+    void setOutputPixelFormat(int pixfmt);
 #endif
 
     bool hasSingleSecurityOrigin() const;
