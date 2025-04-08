@@ -496,7 +496,7 @@ static String undoNameForEditAction(EditAction editAction)
         case EditAction::AlignRight: return "Align Right";
         case EditAction::Center: return "Center";
         case EditAction::Justify: return "Justify";
-        case EditAction::SetWritingDirection: return "Set Writing Direction";
+        case EditAction::SetBlockWritingDirection: return "Set Writing Direction";
         case EditAction::Subscript: return "Subscript";
         case EditAction::Superscript: return "Superscript";
         case EditAction::Underline: return "Underline";
@@ -589,13 +589,13 @@ void WebEditorClient::redo()
     m_undoTarget->redo();
 }
 
-void WebEditorClient::handleKeyboardEvent(KeyboardEvent* evt)
+void WebEditorClient::handleKeyboardEvent(KeyboardEvent& evt)
 {
-    if (m_webView->handleEditingKeyboardEvent(evt))
-        evt->setDefaultHandled();
+    if (m_webView->handleEditingKeyboardEvent(&evt))
+        evt.setDefaultHandled();
 }
 
-void WebEditorClient::handleInputMethodKeydown(KeyboardEvent* )
+void WebEditorClient::handleInputMethodKeydown(KeyboardEvent& )
 {
 }
 
@@ -950,11 +950,6 @@ void WebEditorClient::setInputMethodState(bool enabled)
 
 void WebEditorClient::canceledComposition()
 {
-}
-
-String WebEditorClient::replacementURLForResource(Ref<WebCore::SharedBuffer>&&, const String&)
-{
-    return { };
 }
 
 //bool WebEditorClient::shouldShowDeleteInterface(HTMLElement* element)

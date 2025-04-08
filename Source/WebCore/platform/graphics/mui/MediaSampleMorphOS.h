@@ -7,7 +7,7 @@
 #include "FloatSize.h"
 #include "AcinerellaPointer.h"
 #include "AcinerellaMuxer.h"
-#include <wtf/text/AtomicString.h>
+#include <wtf/text/AtomString.h>
 
 namespace WebCore {
 
@@ -23,7 +23,7 @@ public:
     MediaTime presentationTime() const override { return m_pts; }
     MediaTime decodeTime() const override { return m_dts; }
     MediaTime duration() const override { return m_duration; }
-    AtomicString trackID() const override { return AtomicString(m_trackId); }
+    AtomString trackID() const override { return AtomString(m_trackId); }
     void setTrackID(const String& trackId) override { m_trackId = trackId; }
     size_t sizeInBytes() const override { return m_size; }
     FloatSize presentationSize() const override { return m_presentationSize; }

@@ -263,7 +263,7 @@ const char* WebFrame::name()
     if (!coreFrame->document())
         return strdup("");
 
-    const AtomicString& frameName = coreFrame->tree().uniqueName();
+    const AtomString& frameName = coreFrame->tree().uniqueName();
     if (!frameName.isEmpty())
         return strdup(frameName.string().utf8().data());
 
@@ -453,7 +453,7 @@ WebFrame* WebFrame::findFrameNamed(const char* name)
         return 0;
 
     String nameString = String::fromUTF8(name);
-    Frame* foundFrame = coreFrame->tree().find(AtomicString(nameString), *coreFrame);
+    Frame* foundFrame = coreFrame->tree().find(AtomString(nameString), *coreFrame);
     if (!foundFrame)
         return 0;
 
@@ -667,7 +667,7 @@ bool WebFrame::allowsFollowingLink(const char* url) const
     HTMLFormElement *formElement = formElementFromDOMElement(form);
     if (formElement) {
         Vector<HTMLGenericFormElement*>& elements = formElement->formElements;
-        AtomicString targetName((UChar*)name, SysStringLen(name));
+        AtomString targetName((UChar*)name, SysStringLen(name));
         for (unsigned int i = 0; i < elements.size(); i++) {
             HTMLGenericFormElement *elt = elements[i];
             // Skip option elements, other duds
@@ -1245,18 +1245,18 @@ bool WebFrame::elementDoesAutoComplete(DOMElement *element)
 
 bool WebFrame::pauseAnimation(const char* name, double time, const char* element)
 {
-    Element* coreElement = core(this)->document()->getElementById(AtomicString(element));
+    Element* coreElement = core(this)->document()->getElementById(AtomString(element));
     if (!coreElement || !coreElement->renderer())
         return false;
-    return core(this)->animation().pauseAnimationAtTime(*coreElement, AtomicString(name), time);
+    return core(this)->animation().pauseAnimationAtTime(*coreElement, AtomString(name), time);
 }
 
 bool WebFrame::pauseTransition(const char* name, double time, const char* element)
 {
-    Element* coreElement = core(this)->document()->getElementById(AtomicString(element));
+    Element* coreElement = core(this)->document()->getElementById(AtomString(element));
     if (!coreElement || !coreElement->renderer())
         return false;
-    return core(this)->animation().pauseTransitionAtTime(*coreElement, AtomicString(name), time);
+    return core(this)->animation().pauseTransitionAtTime(*coreElement, AtomString(name), time);
 }
 
 void WebFrame::setEditable(bool flag)
@@ -1330,7 +1330,7 @@ bool WebFrame::stringByEvaluatingJavaScriptInScriptWorld(WebScriptWorld* world, 
 
     // The global object is probably a proxy object? - if so, we know how to use this!
     JSC::JSObject* globalObjectObj = toJS(globalObjectRef);
-    auto& vm = *globalObjectObj->vm();
+    auto& vm = globalObjectObj->vm();
     if (globalObjectObj->inherits<JSWindowProxy>(vm))
         anyWorldGlobalObject = JSC::jsDynamicCast<JSDOMWindow*>(vm, static_cast<JSWindowProxy*>(globalObjectObj)->window());
 
@@ -1358,7 +1358,7 @@ bool WebFrame::stringByEvaluatingJavaScriptInScriptWorld(WebScriptWorld* world, 
 #if 0
 TransferSharedPtr<WebValue> WebFrame::getWrappedAttributeEventListener(const char* name)
 {
-    AtomicString type(name);
+    AtomString type(name);
     Frame* coreFrame = core(this);
     if (!coreFrame && !coreFrame->document())
         return 0;
@@ -1377,7 +1377,7 @@ void WebFrame::addEventListener(const char* name, TransferSharedPtr<WebValue> va
     if (!value->m_val->isJSObject())
         return;
 
-    AtomicString type(name);
+    AtomString type(name);
     Frame* frame = core(this);
     if (!frame && !frame->document())
         return;
@@ -1390,7 +1390,7 @@ void WebFrame::removeEventListener(const char* name, TransferSharedPtr<WebValue>
     if (!value->m_val->isJSObject())
         return;
 
-    AtomicString type(name);
+    AtomString type(name);
     Frame* frame = core(this);
     if (!frame && !frame->document())
         return;
@@ -1406,7 +1406,7 @@ void WebFrame::dispatchEvent(const char* name)
     Frame* coreFrame = core(this);
     if (!coreFrame->document())
         return;
-    AtomicString type(name);
+    AtomString type(name);
     RefPtr<Event> ev = Event::create(type, WebCore::Event::CanBubble::No, WebCore::Event::IsCancelable::No);
     coreFrame->document()->dispatchWindowEvent(*ev.get());
 }

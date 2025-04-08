@@ -44,8 +44,8 @@ namespace WebCore {
     virtual ~SearchPopupMenuMorphOS() {}
 
     virtual PopupMenu* popupMenu();
-    void saveRecentSearches(const AtomicString& name, const Vector<RecentSearch>&) override;
-    void loadRecentSearches(const AtomicString& name, Vector<RecentSearch>&) override;
+    void saveRecentSearches(const AtomString& name, const Vector<RecentSearch>&) override;
+    void loadRecentSearches(const AtomString& name, Vector<RecentSearch>&) override;
     bool enabled();
 
   private:

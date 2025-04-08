@@ -34,7 +34,7 @@
 
 #include "WebFrame.h"
 #include "WebView.h"
-#include "platform/graphics/cairo/PlatformContextCairo.h"
+#include "PlatformContextCairo.h"
 
 #include <proto/dos.h>
 #include <cairo/cairo-ps.h>

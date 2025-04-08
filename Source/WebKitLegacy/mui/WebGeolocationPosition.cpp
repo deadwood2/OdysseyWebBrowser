@@ -48,10 +48,10 @@ WebGeolocationPosition::~WebGeolocationPosition()
 
 void WebGeolocationPosition::initWithTimestamp(double timestamp, double latitude, double longitude, double accuracy)
 {
-    m_position = GeolocationPosition { timestamp, latitude, longitude, accuracy };
+    m_position = GeolocationPositionData { timestamp, latitude, longitude, accuracy };
 }
 
-Optional<WebCore::GeolocationPosition> core(WebGeolocationPosition* position)
+Optional<WebCore::GeolocationPositionData> core(WebGeolocationPosition* position)
 {
     if (!position)
         return WTF::nullopt;
