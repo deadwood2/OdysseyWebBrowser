@@ -47,6 +47,9 @@ protected:
     WTF_EXPORT_PRIVATE void postTaskReply(CrossThreadTask&&);
     WTF_EXPORT_PRIVATE void suspendAndWait();
     WTF_EXPORT_PRIVATE void resume();
+#if PLATFORM(MUI)
+    WTF_EXPORT_PRIVATE void kill();
+#endif
 
 private:
     void handleTaskRepliesOnMainThread();

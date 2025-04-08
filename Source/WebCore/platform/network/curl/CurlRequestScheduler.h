@@ -50,6 +50,10 @@ public:
 
     void callOnWorkerThread(WTF::Function<void()>&&);
 
+#if PLATFORM(MUI)
+    void stopCurlThread();
+#endif
+
 private:
     void startThreadIfNeeded();
     void stopThreadIfNoMoreJobRunning();

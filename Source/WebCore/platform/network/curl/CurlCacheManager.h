@@ -52,7 +52,10 @@ public:
     void didReceiveData(ResourceHandle&, const char*, size_t); // Save data
     void didFinishLoading(ResourceHandle&);
     void didFail(ResourceHandle&);
+#if PLATFORM(MUI)
     void didCancel(ResourceHandle&);
+    void saveIndex();
+#endif
 
     void addCacheEntryClient(const String& url, ResourceHandle* job);
     void removeCacheEntryClient(const String& url, ResourceHandle* job);
@@ -71,7 +74,9 @@ private:
     size_t m_currentStorageSize;
     size_t m_storageSizeLimit;
 
+#if !PLATFORM(MUI)
     void saveIndex();
+#endif
     void loadIndex();
     void makeRoomForNewEntry();
 
