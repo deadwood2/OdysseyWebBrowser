@@ -486,6 +486,11 @@ void CurlRequest::didCompleteTransfer(CURLcode result)
 void CurlRequest::didCancelTransfer()
 {
     finalizeTransfer();
+#if PLATFORM(MUI)
+    callClient([this, protectedThis = makeRef(*this)](CurlRequest& request, CurlRequestClient& client) {
+        client.curlDidCancel(request);
+    });
+#endif
     cleanupDownloadFile();
 }
 
