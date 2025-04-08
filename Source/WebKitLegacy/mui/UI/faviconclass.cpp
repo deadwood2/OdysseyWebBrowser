@@ -103,7 +103,9 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
             case MA_FavIcon_PageURL:
             {
 // broken 2.18
-                WebIconDatabase* sharedWebIconDatabase = NULL;//WebIconDatabase::sharedWebIconDatabase();
+// broken 2.26
+                //WebIconDatabase* sharedWebIconDatabase = NULL;//WebIconDatabase::sharedWebIconDatabase();
+                APTR sharedWebIconDatabase = NULL;
                     
                 if(sharedWebIconDatabase)
                 {
@@ -187,8 +189,9 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
                         }
                         else
                         {
-                            sharedWebIconDatabase->retainIconForURL(data->url);
-                            icon = (WebCore::BitmapImage*) sharedWebIconDatabase->iconForURL((const char *) data->url, IntSize(FAVICON_WIDTH*FACTOR, FAVICON_HEIGHT*FACTOR), false);
+// broken 2.26
+/*                            sharedWebIconDatabase->retainIconForURL(data->url);
+                            icon = (WebCore::BitmapImage*) sharedWebIconDatabase->iconForURL((const char *) data->url, IntSize(FAVICON_WIDTH*FACTOR, FAVICON_HEIGHT*FACTOR), false);*/
                         }
 
                         if(!icon)

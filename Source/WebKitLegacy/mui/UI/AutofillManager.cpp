@@ -22,7 +22,7 @@
 #include <WebCore/HTMLCollection.h>
 #include <WebCore/HTMLFormElement.h>
 #include <WebCore/HTMLInputElement.h>
-#include "HTMLFormControlsCollection.h"
+//#include "HTMLFormControlsCollection.h"
 
 #include "gui.h"
 #include <clib/debug_protos.h>
@@ -64,16 +64,17 @@ void AutofillManager::autofillTextField(const String& value)
 
 void AutofillManager::saveTextFields(HTMLFormElement* form)
 {
-    RefPtr<HTMLCollection> elements = form->elements();
-    size_t itemCount = elements->length();
-    for (size_t i = 0; i < itemCount; ++i) {
-        if (is<HTMLInputElement>(form->item(i))) {
-            HTMLInputElement* element = downcast<HTMLInputElement>(form->item(i));
-            if (!isAutofillable(element))
-                continue;
-            autofillBackingStore().add(element->getAttribute(HTMLNames::nameAttr).string(), element->value());
-        }
-    }
+asm("int3");
+//    RefPtr<HTMLCollection> elements = form->elements();
+//    size_t itemCount = elements->length();
+//    for (size_t i = 0; i < itemCount; ++i) {
+//        if (is<HTMLInputElement>(form->item(i))) {
+//            HTMLInputElement* element = downcast<HTMLInputElement>(form->item(i));
+//            if (!isAutofillable(element))
+//                continue;
+//            autofillBackingStore().add(element->getAttribute(HTMLNames::nameAttr).string(), element->value());
+//        }
+//    }
 }
 
 void AutofillManager::clear()
