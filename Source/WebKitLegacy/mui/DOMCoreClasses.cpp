@@ -662,7 +662,7 @@ WebFontDescription* DOMElement::font()
         return 0;
 
     auto fontDescription = renderer->style().fontCascade().fontDescription();
-    AtomicString family = fontDescription.firstFamily();
+    AtomString family = fontDescription.firstFamily();
     
     WebFontDescription *webFontDescription = new WebFontDescription();
     webFontDescription->family = strdup(family.string().utf8().data());

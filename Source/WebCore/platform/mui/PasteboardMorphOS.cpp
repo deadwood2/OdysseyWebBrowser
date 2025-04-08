@@ -317,7 +317,7 @@ void Pasteboard::write(const PasteboardURL& pasteboardURL)
 static URL getURLForImageNode(Node* node)
 {
     // FIXME: Later this code should be shared with Chromium somehow. Chances are all platforms want it.
-    AtomicString urlString;
+    AtomString urlString;
     if (is<HTMLImageElement>(node) || is<HTMLInputElement>(node))
         urlString = downcast<Element>(node)->getAttribute(HTMLNames::srcAttr);
 #if ENABLE(SVG)

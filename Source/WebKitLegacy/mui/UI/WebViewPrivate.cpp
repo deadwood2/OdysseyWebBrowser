@@ -72,7 +72,7 @@
 #include "WebScriptWorld.h"
 #include "WebView.h"
 #include "WindowFeatures.h"
-#include "platform/graphics/cairo/PlatformContextCairo.h"
+#include "PlatformContextCairo.h"
 #include <WebCore/HTMLTextFormControlElement.h>
 
 #include "CommonVM.h"

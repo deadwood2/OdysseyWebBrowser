@@ -3,6 +3,6 @@
 
 #define VERSION  "2.1"
 #define WEBKITVER "605.1.15"
-#define REVISION "WebKit " WEBKITVER " (webkitgtk-2.24.4)"
+#define REVISION "WebKit " WEBKITVER " (webkitgtk-2.26.4)"
 
 #endif /* __VERSIONINFO_H__ */

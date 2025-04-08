@@ -19,6 +19,15 @@ elseif (WIN32 AND NOT WTF_PLATFORM_WIN_CAIRO)
     set(ICU_DATA_LIBRARY ${ICU_UC_LIBRARY})
 
     set(ICU_LIBRARIES ${ICU_I18N_LIBRARY} ${ICU_UC_LIBRARY})
+elseif (${PORT} STREQUAL "MUI")
+    set(ICU_INCLUDE_DIRS ${AROS_SDK_DIR}/include/)
+
+    set(ICU_I18N_LIBRARY ${AROS_SDK_DIR}/lib/libicui18n.a)
+    set(ICU_UC_LIBRARY ${AROS_SDK_DIR}/lib/libicuuc.a)
+    set(ICU_DATA_LIBRARY ${AROS_SDK_DIR}/lib/libicudata.a)
+
+    set(ICU_LIBRARIES ${ICU_I18N_LIBRARY} ${ICU_UC_LIBRARY})
+
 else ()
     message(FATAL_ERROR "Could not find ICU targets. Use find_package(ICU REQUIRED data i1n8 uc)")
 endif ()

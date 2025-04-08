@@ -41,7 +41,7 @@
 namespace WebCore {
 
 class GeolocationController;
-class GeolocationPosition;
+class GeolocationPositionData;
 
 // FIXME: this should not be in WebCore. It should be moved to WebKit.
 // Provides a mock object for the geolocation client.
@@ -53,7 +53,7 @@ public:
     void reset();
     void setController(GeolocationController*);
 
-    void setPosition(RefPtr<GeolocationPosition>);
+    void setPosition(RefPtr<GeolocationPositionData>);
     void setPositionUnavailableError(const String& errorMessage);
     void setPermission(bool allowed);
     int numberOfPendingPermissionRequests() const;
@@ -63,7 +63,7 @@ public:
     void startUpdating() final;
     void stopUpdating() final;
     void setEnableHighAccuracy(bool) final;
-    Optional<WebCore::GeolocationPosition> lastPosition() final;
+    Optional<WebCore::GeolocationPositionData> lastPosition() final;
 
     void requestPermission(Geolocation&) final;
     void cancelPermissionRequest(Geolocation&) final;
@@ -78,7 +78,7 @@ private:
     void clearError();
 
     GeolocationController* m_controller;
-    RefPtr<GeolocationPosition> m_lastPosition;
+    RefPtr<GeolocationPositionData> m_lastPosition;
     bool m_hasError;
     String m_errorMessage;
     Timer m_controllerTimer;

@@ -71,7 +71,7 @@
 #include "WebIconDatabase.h"
 #include "AutofillManager.h"
 #include "TopSitesManager.h"
-#include "platform/graphics/cairo/PlatformContextCairo.h"
+#include "PlatformContextCairo.h"
 
 #if ENABLE(VIDEO)
 #include "HTMLMediaElement.h"

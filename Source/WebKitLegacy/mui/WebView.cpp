@@ -155,7 +155,7 @@
 #include <TypingCommand.h>
 #include <UserContentController.h>
 #include <WindowsKeyboardCodes.h>
-#include <page/DiagnosticLoggingClient.h>
+#include <WebCore/DiagnosticLoggingClient.h>
 #include <WebCore/ShouldTreatAsContinuingLoad.h>
 #include <WebCore/Pasteboard.h>
 

@@ -46,6 +46,7 @@
 #include "WebSecurityOrigin.h"
 #include "WebView.h"
 #include "WebViewWindow.h"
+#include <WebCore/FullscreenManager.h>
 
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
@@ -369,6 +370,16 @@ void WebChromeClient::scroll(const IntSize& delta, const IntRect& scrollViewRect
     m_webView->scrollBackingStore(core(m_webView->topLevelFrame())->view(), delta.width(), delta.height(), scrollViewRect, clipRect);
 }
 
+IntPoint WebChromeClient::accessibilityScreenToRootView(const WebCore::IntPoint& point) const
+{
+    return screenToRootView(point);
+}
+
+IntRect WebChromeClient::rootViewToAccessibilityScreen(const WebCore::IntRect& rect) const
+{
+    return rootViewToScreen(rect);
+}
+
 IntRect WebChromeClient::rootViewToScreen(const IntRect& rect) const
 {
     return rect;
@@ -382,6 +393,12 @@ PlatformPageClient WebChromeClient::platformPageClient() const
 void WebChromeClient::contentsSizeChanged(Frame&, const IntSize&) const
 {
 }
+
+void WebChromeClient::intrinsicContentsSizeChanged(const IntSize&) const
+{
+    notImplemented();
+}
+
 
 void WebChromeClient::mouseDidMoveOverElement(const HitTestResult& result, unsigned modifierFlags)
 {
@@ -579,9 +596,9 @@ bool WebChromeClient::supportsFullScreenForElement(const WebCore::Element& eleme
 void WebChromeClient::enterFullScreenForElement(WebCore::Element& element)
 {
     //kprintf("enterFullScreenForElement\n");
-    element.document().webkitWillEnterFullScreen(element);
+    element.document().fullscreenManager().willEnterFullscreen(element);
     m_webView->enterFullScreenForElement(&element);
-    element.document().webkitDidEnterFullScreen();
+    element.document().fullscreenManager().didEnterFullscreen();
     m_fullScreenElement = &element;
 }
 
@@ -593,9 +610,9 @@ void WebChromeClient::exitFullScreenForElement(WebCore::Element*)
     // be null. In addition the parameter may be disappearing in the future.
     // So we use the reference to the element we saved above.
     ASSERT(m_fullScreenElement);
-    m_fullScreenElement->document().webkitWillExitFullScreen();
+    m_fullScreenElement->document().fullscreenManager().willExitFullscreen();
     m_webView->exitFullScreenForElement(m_fullScreenElement.get());
-    m_fullScreenElement->document().webkitDidExitFullScreen();
+    m_fullScreenElement->document().fullscreenManager().didExitFullscreen();
     m_fullScreenElement = nullptr;
 }
 
@@ -629,6 +646,10 @@ void WebChromeClient::attachViewOverlayGraphicsLayer(WebCore::GraphicsLayer*)
 RefPtr<WebCore::Icon> WebChromeClient::createIconForFiles(const Vector<String>&)
 {
     return nullptr;
+}
+
+void WebChromeClient::didFinishLoadingImageForElement(WebCore::HTMLImageElement&)
+{
 }
 
 //void WebChromeClient::fullScreenRendererChanged(RenderBox*)

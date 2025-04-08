@@ -6,6 +6,7 @@ set(WebKitLegacy_INCLUDE_DIRECTORIES
     "${FORWARDING_HEADERS_DIR}"
     "${FORWARDING_HEADERS_DIR}/WebCore"
     "${WEBCORE_DIR}/platform/linux"
+    "${WEBCORE_DIR}/platform/graphics/cairo"
     "${WEBKITLEGACY_DIR}/mui"
     "${WEBKITLEGACY_DIR}/mui/UI"
     "${WEBKITLEGACY_DIR}/mui/WebCoreSupport"

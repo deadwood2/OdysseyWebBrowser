@@ -231,7 +231,7 @@ public:
 				request.addHTTPHeaderField(HTTPHeaderName::Cookie, cookieHeaderField);
 		}
 
-		auto curlRequest = CurlRequest::create(WTFMove(request), *this);
+		auto curlRequest = CurlRequest::create(WTFMove(request), *this, PAL::SessionID::defaultSessionID());
 		return curlRequest;
 	}
 
@@ -260,7 +260,7 @@ public:
 		return false;
 	}
 	
-	void curlDidReceiveResponse(CurlRequest& request, const CurlResponse& response) override
+	void curlDidReceiveResponse(CurlRequest& request, CurlResponse&& response) override
 	{
 		D(dprintf("%s(%p): %s\n", __PRETTY_FUNCTION__, this, m_url.utf8().data()));
 		if (m_curlRequest.get() == &request)
@@ -347,7 +347,7 @@ public:
 		}
 	}
 	
-	void curlDidComplete(CurlRequest& request) override
+	void curlDidComplete(CurlRequest& request, NetworkLoadMetrics&&) override
 	{
 		D(dprintf("%s(%p): %s %lld\n", __PRETTY_FUNCTION__, this, m_url.utf8().data(), m_length));
 		if (m_curlRequest.get() == &request)
@@ -359,7 +359,7 @@ public:
 		}
 	}
 	
-	void curlDidFailWithError(CurlRequest& request, const ResourceError&) override
+	void curlDidFailWithError(CurlRequest& request, ResourceError&&, CertificateInfo&&) override
 	{
 		D(dprintf("%s(%p)\n", __PRETTY_FUNCTION__, this));
 		if (m_curlRequest.get() == &request)
@@ -595,7 +595,7 @@ public:
 				request.addHTTPHeaderField(HTTPHeaderName::Cookie, cookieHeaderField);
 		}
 
-		auto curlRequest = CurlRequest::create(WTFMove(request), *this);
+		auto curlRequest = CurlRequest::create(WTFMove(request), *this, PAL::SessionID::defaultSessionID());
 		return curlRequest;
 	}
 
@@ -623,7 +623,7 @@ public:
 		return false;
 	}
 	
-	void curlDidReceiveResponse(CurlRequest& request, const CurlResponse& response) override
+	void curlDidReceiveResponse(CurlRequest& request, CurlResponse&& response) override
 	{
 		D(dprintf("%s(%p): %s\n", __PRETTY_FUNCTION__, this, m_url.utf8().data()));
 		if (m_curlRequest.get() == &request)
@@ -699,7 +699,7 @@ public:
 		}
 	}
 	
-	void curlDidComplete(CurlRequest& request) override
+	void curlDidComplete(CurlRequest& request, NetworkLoadMetrics&&) override
 	{
 		D(dprintf("%s(%p): %s %d OK %d onfini %d\n", __PRETTY_FUNCTION__, this, m_url.utf8().data(), m_buffer?m_buffer->size():0, m_curlRequest.get() == &request, !!m_onFinished));
 		if (m_curlRequest.get() == &request)
@@ -710,7 +710,7 @@ public:
 		}
 	}
 	
-	void curlDidFailWithError(CurlRequest& request, const ResourceError&) override
+	void curlDidFailWithError(CurlRequest& request, ResourceError&&, CertificateInfo&&) override
 	{
 		D(dprintf("%s(%p)\n", __PRETTY_FUNCTION__, this));
 		if (m_curlRequest.get() == &request)

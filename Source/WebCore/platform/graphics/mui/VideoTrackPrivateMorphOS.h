@@ -24,9 +24,9 @@ public:
 
     int trackIndex() const override { return m_index; }
 
-    AtomicString id() const override { return AtomicString(m_id); }
-    AtomicString label() const override { return AtomicString(m_label); }
-    AtomicString language() const override { return AtomicString(m_language); }
+    AtomString id() const override { return AtomString(m_id); }
+    AtomString label() const override { return AtomString(m_label); }
+    AtomString language() const override { return AtomString(m_language); }
 
 protected:
     VideoTrackPrivateMorphOS(WeakPtr<MediaPlayerPrivateMorphOS>, int index);

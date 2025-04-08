@@ -829,7 +829,7 @@ LayoutUnit RenderThemeBal::sliderTickSnappingThreshold() const
 }
 #endif
 
-bool RenderThemeBal::supportsDataListUI(const AtomicString& type) const
+bool RenderThemeBal::supportsDataListUI(const AtomString& type) const
 {
 #if ENABLE(DATALIST_ELEMENT)
   // FIXME: We need to support other types.

@@ -54,7 +54,7 @@ public:
     virtual LayoutUnit sliderTickSnappingThreshold() const override;
 #endif
 
-    virtual bool supportsDataListUI(const AtomicString&) const override;
+    virtual bool supportsDataListUI(const AtomString&) const override;
 
 #if ENABLE(PROGRESS_ELEMENT)
     virtual void adjustProgressBarStyle(StyleResolver&, RenderStyle&, const Element*) const override;
