@@ -869,6 +869,19 @@ void IDBServer::resume()
     CrossThreadTaskHandler::resume();
 }
 
+#if PLATFORM(MUI)
+void IDBServer::nop()
+{
+}
+
+void IDBServer::shutdown()
+{
+    kill();
+    // post a task to unblock waitForMessage for final iteration (since m_killed is set)
+    postDatabaseTask(createCrossThreadTask(*this, &IDBServer::nop));
+}
+#endif
+
 } // namespace IDBServer
 } // namespace WebCore
 

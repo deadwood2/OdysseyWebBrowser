@@ -58,4 +58,12 @@ void WebDatabaseProvider::deleteAllDatabases()
         server->idbServer().closeAndDeleteDatabasesModifiedSince(-WallTime::infinity(), [] { });
 }
 
+#if PLATFORM(MUI)
+void WebDatabaseProvider::shutdownServers()
+{
+    for (auto& server : m_idbServerMap.values())
+        server->idbServer().shutdown();
+}
+#endif
+
 #endif

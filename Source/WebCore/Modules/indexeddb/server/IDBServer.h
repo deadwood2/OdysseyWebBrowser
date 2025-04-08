@@ -125,6 +125,11 @@ public:
     WEBCORE_EXPORT void tryStop(ShouldForceStop);
     WEBCORE_EXPORT void resume();
 
+#if PLATFORM(MUI)
+    WEBCORE_EXPORT void nop();
+    WEBCORE_EXPORT void shutdown();
+#endif
+
 private:
     IDBServer(PAL::SessionID, IDBBackingStoreTemporaryFileHandler&, QuotaManagerGetter&&);
     IDBServer(PAL::SessionID, const String& databaseDirectoryPath, IDBBackingStoreTemporaryFileHandler&, QuotaManagerGetter&&);

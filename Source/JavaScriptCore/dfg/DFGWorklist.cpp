@@ -581,6 +581,14 @@ Worklist* existingGlobalDFGWorklistOrNull()
     return theGlobalDFGWorklist;
 }
 
+#if PLATFORM(MUI)
+void shutdownGlobalDFGWorklist()
+{
+    if (existingGlobalDFGWorklistOrNull())
+        delete existingGlobalDFGWorklistOrNull(); /* runs thread stop */
+}
+#endif
+
 static Worklist* theGlobalFTLWorklist;
 
 Worklist& ensureGlobalFTLWorklist()
@@ -598,6 +606,15 @@ Worklist* existingGlobalFTLWorklistOrNull()
 {
     return theGlobalFTLWorklist;
 }
+
+#if PLATFORM(MUI)
+void shutdownGlobalFTLWorklist()
+{
+    if (existingGlobalFTLWorklistOrNull())
+        delete existingGlobalFTLWorklistOrNull(); /* runs thread stop */
+}
+#endif
+
 
 Worklist& ensureGlobalWorklistFor(CompilationMode mode)
 {

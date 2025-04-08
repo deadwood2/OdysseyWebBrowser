@@ -52,6 +52,9 @@ struct ScheduleContext {
 };
 
 void decode(const URL&, const ScheduleContext&, DecodeCompletionHandler&&);
+#if PLATFORM(MUI)
+void shutdown();
+#endif
 
 }
 
