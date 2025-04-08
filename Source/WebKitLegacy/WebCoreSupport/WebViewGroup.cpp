@@ -23,7 +23,6 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebViewGroup.h"
 
 #include "WebStorageNamespaceProvider.h"

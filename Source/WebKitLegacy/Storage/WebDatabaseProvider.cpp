@@ -23,8 +23,6 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-
 #include "WebDatabaseProvider.h"
 
 #include <pal/SessionID.h>
