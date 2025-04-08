@@ -251,10 +251,16 @@ public:
     void enableHttpPutRequest();
     void setInFileSizeLarge(curl_off_t);
     void setHttpCustomRequest(const String&);
+#if PLATFORM(MUI)
+    void setResumeOffset(long long);
+#endif
 
     void enableConnectionOnly();
 
     void enableAcceptEncoding();
+#if PLATFORM(MUI)
+    void disableAcceptEncoding();
+#endif
     void enableAllowedProtocols();
 
     void setHttpAuthUserPass(const String&, const String&, long authType = CURLAUTH_ANY);
