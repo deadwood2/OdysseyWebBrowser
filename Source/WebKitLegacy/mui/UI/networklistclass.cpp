@@ -26,13 +26,12 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "BALBase.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include "ResourceHandle.h"
+#include <WebCore/ResourceHandle.h>
 #include "ResourceHandleInternal.h"
-#include "ResourceRequest.h"
+#include <WebCore/ResourceRequest.h>
 
 #include <proto/exec.h>
 #include <proto/intuition.h>

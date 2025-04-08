@@ -17,13 +17,11 @@
     Boston, MA 02110-1301, USA.
 */
 
-#include "config.h"
-
 #include "WebFrameNetworkingContext.h"
 
-#include "FrameLoaderClient.h"
+#include <WebCore/FrameLoaderClient.h>
 #include "NetworkStorageSessionMap.h"
-#include "Page.h"
+#include <WebCore/Page.h>
 #include <WebCore/FrameLoader.h>
 
 #include <wtf/NeverDestroyed.h>

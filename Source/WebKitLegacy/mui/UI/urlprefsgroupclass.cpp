@@ -26,14 +26,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
 #include <WebCore/CookieJarDB.h>
 #include "FileIOLinux.h"
-#include "Page.h"
+#include <WebCore/Page.h>
 #include <JavaScriptCore/RegularExpression.h>
-#include "Settings.h"
+#include <WebCore/Settings.h>
 #include "WebView.h"
 #include "WebPreferences.h"
 

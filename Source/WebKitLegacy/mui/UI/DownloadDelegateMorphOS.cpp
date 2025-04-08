@@ -30,8 +30,7 @@
 #define NO_INLINE_STDARG
 #endif
 
-#include "config.h"
-#include "ResourceResponse.h"
+#include <WebCore/ResourceResponse.h>
 #include "WebDownload.h"
 #include "WebDownloadPrivate.h"
 #include "WebURLResponse.h"

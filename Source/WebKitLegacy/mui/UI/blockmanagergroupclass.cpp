@@ -26,10 +26,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include "Document.h"
+#include <WebCore/Document.h>
 
 #include <proto/intuition.h>
 #include <proto/utility.h>

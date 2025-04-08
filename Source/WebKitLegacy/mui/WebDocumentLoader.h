@@ -39,7 +39,7 @@
 #include "WebDataSource.h"
 #include "WebDataSource.h"
 
-#include <DocumentLoader.h>
+#include <WebCore/DocumentLoader.h>
 
 class WebDocumentLoader : public WebCore::DocumentLoader
 {

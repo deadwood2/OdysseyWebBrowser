@@ -24,14 +24,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "PluginDatabase.h"
 
-#include "Frame.h"
+#include <WebCore/Frame.h>
 #include <wtf/URL.h>
 #include "PluginPackage.h"
 #if ENABLE(NETSCAPE_PLUGIN_METADATA_CACHE)
-#include "FileSystem.h"
+#include <WebCore/FileSystem.h>
 #endif
 #include <stdlib.h>
 #include <wtf/text/CString.h>

@@ -26,10 +26,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "GraphicsContext.h"
+#include <WebCore/GraphicsContext.h>
 #include "WebIconDatabase.h"
-#include "BitmapImage.h"
+#include <WebCore/BitmapImage.h>
 #include <wtf/text/CString.h>
 
 #include <cairo.h>

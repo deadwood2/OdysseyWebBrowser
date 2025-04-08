@@ -26,25 +26,24 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "DataObjectMorphOS.h"
-#include "DataTransfer.h"
-#include "DragController.h"
-#include "Pasteboard.h"
-#include "SharedBuffer.h"
+#include <WebCore/DataTransfer.h>
+#include <WebCore/DragController.h>
+#include <WebCore/Pasteboard.h>
+#include <WebCore/SharedBuffer.h>
 #include "WebDragClient.h"
 #include "WebDropSource.h"
 #include "WebView.h"
 
-#include <DragData.h>
-#include <Font.h>
-#include <FontDescription.h>
-#include <FontSelector.h>
-#include <Frame.h>
-#include <FrameView.h>
-#include <GraphicsContext.h>
-#include <Page.h>
-#include <StringTruncator.h>
+#include <WebCore/DragData.h>
+#include <WebCore/Font.h>
+#include <WebCore/FontDescription.h>
+#include <WebCore/FontSelector.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameView.h>
+#include <WebCore/GraphicsContext.h>
+#include <WebCore/Page.h>
+#include <WebCore/StringTruncator.h>
 
 #include <wtf/text/CString.h>
 #include "gui.h"

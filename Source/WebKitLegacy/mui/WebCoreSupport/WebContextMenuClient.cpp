@@ -26,25 +26,23 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-
-#include <Editor.h>
+#include <WebCore/Editor.h>
 #include "WebContextMenuClient.h"
-#include "UserGestureIndicator.h"
+#include <WebCore/UserGestureIndicator.h>
 #include <wtf/text/CString.h>
 
 #include "WebDownload.h"
 #include "WebHitTestResults.h"
 #include "WebView.h"
 
-#include <ContextMenu.h>
-#include <Event.h>
+#include <WebCore/ContextMenu.h>
+#include <WebCore/Event.h>
 #include <WebCore/Frame.h>
-#include <FrameLoader.h>
-#include <FrameLoadRequest.h>
-#include <Page.h>
-#include <ResourceRequest.h>
-#include <NotImplemented.h>
+#include <WebCore/FrameLoader.h>
+#include <WebCore/FrameLoadRequest.h>
+#include <WebCore/Page.h>
+#include <WebCore/ResourceRequest.h>
+#include <WebCore/NotImplemented.h>
 
 #include "gui.h"
 #include <clib/debug_protos.h>

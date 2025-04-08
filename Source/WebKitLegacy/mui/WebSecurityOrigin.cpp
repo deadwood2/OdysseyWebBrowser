@@ -26,14 +26,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebSecurityOrigin.h"
 
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
-#include <SecurityOrigin.h>
-#include <DatabaseManager.h>
-#include <DatabaseTracker.h>
+#include <WebCore/SecurityOrigin.h>
+#include <WebCore/DatabaseManager.h>
+#include <WebCore/DatabaseTracker.h>
 
 using namespace WebCore;
 

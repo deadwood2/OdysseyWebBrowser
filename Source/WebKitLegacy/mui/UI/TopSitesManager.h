@@ -23,7 +23,7 @@
 #include <wtf/RefCounted.h>
 
 #include "WebKitTypes.h"
-#include "SQLiteDatabase.h"
+#include <WebCore/SQLiteDatabase.h>
 
 namespace WTF {
 class String;

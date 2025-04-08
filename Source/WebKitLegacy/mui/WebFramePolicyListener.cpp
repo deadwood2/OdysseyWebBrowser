@@ -26,16 +26,14 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-
 #include "WebFramePolicyListener.h"
 
 #include "WebFrame.h"
 #include "WebFrameLoaderClient.h"
 
-#include <Frame.h>
-#include <FrameLoader.h>
-#include <FrameLoaderClient.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameLoader.h>
+#include <WebCore/FrameLoaderClient.h>
 
 using namespace WebCore;
 

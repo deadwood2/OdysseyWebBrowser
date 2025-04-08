@@ -26,20 +26,19 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebNavigationAction.h"
 #include "WebFrame.h"
 #include "WebHitTestResults.h"
 
 #include <wtf/text/CString.h>
 #include "DOMCoreClasses.h"
-#include "EventHandler.h"
-#include "Frame.h"
-#include "HitTestResult.h"
-#include "HTMLFormElement.h"
-#include <MouseEvent.h>
-#include <NavigationAction.h>
-#include <UIEventWithKeyState.h>
+#include <WebCore/EventHandler.h>
+#include <WebCore/Frame.h>
+#include <WebCore/HitTestResult.h>
+#include <WebCore/HTMLFormElement.h>
+#include <WebCore/MouseEvent.h>
+#include <WebCore/NavigationAction.h>
+#include <WebCore/UIEventWithKeyState.h>
 
 using namespace WebCore;
 

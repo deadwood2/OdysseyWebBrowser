@@ -26,7 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebDataSource.h"
 
 #include "WebDocumentLoader.h"
@@ -38,12 +37,12 @@
 #include "WebURLResponse.h"
 
 #include <wtf/text/WTFString.h>
-#include <CachedResourceLoader.h>
-#include <Document.h>
-#include <Frame.h>
-#include <FrameLoader.h>
+#include <WebCore/CachedResourceLoader.h>
+#include <WebCore/Document.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameLoader.h>
 #include <wtf/URL.h>
-#include <SharedBuffer.h>
+#include <WebCore/SharedBuffer.h>
 
 using namespace WebCore;
 

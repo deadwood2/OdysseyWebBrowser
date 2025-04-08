@@ -19,7 +19,7 @@
 #ifndef AutofillBackingStore_h
 #define AutofillBackingStore_h
 
-#include "SQLiteDatabase.h"
+#include <WebCore/SQLiteDatabase.h>
 
 namespace WebCore {
 

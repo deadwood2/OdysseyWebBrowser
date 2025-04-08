@@ -26,16 +26,15 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "BALBase.h"
 #include "WebPreferences.h"
 #include "WebPreferenceKeysPrivate.h"
 
 #include <wtf/text/CString.h>
 #include <wtf/FileSystem.h>
-#include <Font.h>
+#include <WebCore/Font.h>
 #include <wtf/text/WTFString.h>
-#include <PluginDatabase.h>
+#include "PluginDatabase.h"
 #include <wtf/text/StringHash.h>
 #include "ObserverServiceData.h"
 

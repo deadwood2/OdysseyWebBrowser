@@ -29,11 +29,10 @@
 #ifndef __OWBPRINTCONTEXT__
 #define __OWBPRINTCONTEXT__
 
-#include "config.h"
-#include "GraphicsContext.h"
-#include "Frame.h"
-#include "FrameView.h"
-#include "PrintContext.h"
+#include <WebCore/GraphicsContext.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameView.h>
+#include <WebCore/PrintContext.h>
 
 #include <clib/debug_protos.h>
 

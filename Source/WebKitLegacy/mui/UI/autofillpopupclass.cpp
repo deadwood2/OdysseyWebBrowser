@@ -26,12 +26,11 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "GraphicsContext.h"
+#include <WebCore/GraphicsContext.h>
 
 #include <Calltips_mcc.h>
 #include <clib/debug_protos.h>
-#include "IntRect.h"
+#include <WebCore/IntRect.h>
 
 #include "gui.h"
 

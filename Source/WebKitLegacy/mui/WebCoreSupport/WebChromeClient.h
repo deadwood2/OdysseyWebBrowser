@@ -26,10 +26,10 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <ChromeClient.h>
-#include <FocusDirection.h>
-#include <GraphicsContext.h>
-#include <ScrollTypes.h>
+#include <WebCore/ChromeClient.h>
+#include <WebCore/FocusDirection.h>
+#include <WebCore/GraphicsContext.h>
+#include <WebCore/ScrollTypes.h>
 #include <wtf/Forward.h>
 
 #include <clib/debug_protos.h>

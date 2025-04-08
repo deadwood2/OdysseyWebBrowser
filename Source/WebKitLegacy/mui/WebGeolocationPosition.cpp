@@ -26,10 +26,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebGeolocationPosition.h"
 
-#include <GeolocationPosition.h>
+#include <WebCore/GeolocationPosition.h>
 
 using namespace WebCore;
 

@@ -27,13 +27,12 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "GraphicsContext.h"
+#include <WebCore/GraphicsContext.h>
 #include <wtf/text/CString.h>
-#include "MIMETypeRegistry.h"
+#include <WebCore/MIMETypeRegistry.h>
 #include "PluginDatabase.h"
 #include "PluginPackage.h"
-#include "PluginData.h"
+#include <WebCore/PluginData.h>
 
 #include <proto/exec.h>
 #include <proto/intuition.h>

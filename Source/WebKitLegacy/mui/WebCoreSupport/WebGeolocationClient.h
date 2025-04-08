@@ -32,8 +32,8 @@
 #ifndef GeolocationClientMock_h
 #define GeolocationClientMock_h
 
-#include "GeolocationClient.h"
-#include "Timer.h"
+#include <WebCore/GeolocationClient.h>
+#include <WebCore/Timer.h>
 #include <wtf/HashSet.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>

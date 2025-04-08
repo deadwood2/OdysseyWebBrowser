@@ -26,12 +26,11 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include <Document.h>
+#include <WebCore/Document.h>
 #include "WebDesktopNotificationsDelegate.h"
 #include "WebSecurityOrigin.h"
 #include "WebView.h"
-#include "NotificationPermissionCallback.h"
+#include <WebCore/NotificationPermissionCallback.h>
 #include <wtf/text/CString.h>
 
 #include <clib/debug_protos.h>

@@ -30,7 +30,7 @@
 #define WebHistoryItemPrivate_H
 
 #include <wtf/RefPtr.h>
-#include <HistoryItem.h>
+#include <WebCore/HistoryItem.h>
 
 class WebHistoryItemPrivate {
 public:

@@ -30,7 +30,7 @@
 #define WebHistory_H
 
 #include "WebKitTypes.h"
-#include "SQLiteDatabase.h"
+#include <WebCore/SQLiteDatabase.h>
 #include <vector>
 
 namespace WebCore {

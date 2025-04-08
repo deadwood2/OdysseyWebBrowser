@@ -16,18 +16,16 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include "config.h"
-
 #include "TopSitesManager.h"
 
 #include <wtf/text/Base64.h>
 #include <wtf/text/CString.h>
-#include "BitmapImage.h"
+#include <WebCore/BitmapImage.h>
 #include "FileIOLinux.h"
 #include <wtf/URL.h>
-#include "SharedBuffer.h"
-#include "SQLiteDatabase.h"
-#include "SQLiteStatement.h"
+#include <WebCore/SharedBuffer.h>
+#include <WebCore/SQLiteDatabase.h>
+#include <WebCore/SQLiteStatement.h>
 #include "WebHistory.h"
 #include "WebHistoryItem.h"
 #include "WebPreferences.h"

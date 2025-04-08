@@ -26,14 +26,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/HashMap.h>
-#include "ResourceHandle.h"
-#include "SQLiteDatabase.h"
-#include "SQLiteStatement.h"
+#include <WebCore/ResourceHandle.h>
+#include <WebCore/SQLiteDatabase.h>
+#include <WebCore/SQLiteStatement.h>
 
 #include <proto/intuition.h>
 #include <proto/utility.h>

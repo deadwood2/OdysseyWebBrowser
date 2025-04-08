@@ -31,7 +31,6 @@
 #include <proto/intuition.h>
 #include <proto/muimaster.h>
 
-#include "config.h"
 #include "gui.h"
 
 APTR MakeCheck(CONST_STRPTR str, ULONG checked)

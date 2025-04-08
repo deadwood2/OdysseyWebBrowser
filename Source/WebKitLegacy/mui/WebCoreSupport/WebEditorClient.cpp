@@ -26,7 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebEditorClient.h"
 
 #include "DOMRange.h"
@@ -37,18 +36,18 @@
 
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
-#include <Document.h>
+#include <WebCore/Document.h>
 #include <WebCore/HTMLElement.h>
-#include <HTMLInputElement.h>
-#include <HTMLNames.h>
-#include <KeyboardEvent.h>
-#include <PlatformKeyboardEvent.h>
-#include <NotImplemented.h>
-#include <Range.h>
-#include <UndoStep.h>
-#include <VisibleSelection.h> 
+#include <WebCore/HTMLInputElement.h>
+#include <WebCore/HTMLNames.h>
+#include <WebCore/KeyboardEvent.h>
+#include <WebCore/PlatformKeyboardEvent.h>
+#include <WebCore/NotImplemented.h>
+#include <WebCore/Range.h>
+#include <WebCore/UndoStep.h>
+#include <WebCore/VisibleSelection.h> 
 
-#include "TextBoundaries.h"
+#include <WebCore/TextBoundaries.h>
 #include "gui.h"
 #include "utils.h"
 #if !OS(AROS)

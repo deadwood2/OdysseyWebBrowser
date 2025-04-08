@@ -24,13 +24,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#include "config.h"
 #include "PluginPackage.h"
 
 #include <wtf/text/CString.h>
-#include "MIMETypeRegistry.h"
-#include "NotImplemented.h"
-#include "npruntime_impl.h"
+#include <WebCore/MIMETypeRegistry.h>
+#include <WebCore/NotImplemented.h>
+#include <WebCore/npruntime_impl.h>
 #include "PluginDebug.h"
 #include <clib/debug_protos.h>
 

@@ -4,7 +4,7 @@ include(platform/ImageDecoders.cmake)
 include(platform/TextureMapper.cmake)
 include(platform/FreeType.cmake)
 
-list(APPEND WebCore_INCLUDE_DIRECTORIES
+list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/cairo"
     "${WEBCORE_DIR}/platform/graphics/cairo"
     "${WEBCORE_DIR}/platform/graphics/mui"
@@ -16,6 +16,10 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/mediacapabilities"
     "${WEBKITLEGACY_DIR}/mui/UI"
     "${WEBKITLEGACY_DIR}/mui/UI/AROS/include"
+)
+
+list(APPEND WebCore_INCLUDE_DIRECTORIES
+    "${DERIVED_SOURCES_DIR}/ForwardingHeaders"
 )
 
 list(APPEND WebCore_SOURCES
@@ -96,6 +100,9 @@ list(APPEND WebCore_SOURCES
     platform/text/TextEncodingDetectorICU.cpp
 )
 
+list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
+)
+
 list(APPEND WebCore_LIBRARIES
     ${CAIRO_LIBRARIES}
     ${FONTCONFIG_LIBRARIES}
@@ -118,102 +125,4 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     ${SQLITE_INCLUDE_DIR}
     ${ZLIB_INCLUDE_DIRS}
 )
-
-set(WebCore_FORWARDING_HEADERS_DIRECTORIES
-    .
-    accessibility
-    bindings
-    bridge
-    contentextensions
-    css
-    dom
-    editing
-    fileapi
-    history
-    html
-    inspector
-    loader
-    page
-    platform
-    plugins
-    rendering
-    storage
-    style
-    svg
-    websockets
-    workers
-    xml
-
-    Modules/geolocation
-    Modules/indexeddb
-    Modules/mediastream
-    Modules/websockets
-
-    Modules/indexeddb/client
-    Modules/indexeddb/legacy
-    Modules/indexeddb/server
-    Modules/indexeddb/shared
-    Modules/notifications
-    Modules/webdatabase
-
-    bindings/js
-
-    bridge/c
-    bridge/jsc
-
-    css/parser
-
-    html/forms
-    html/parser
-    html/shadow
-    html/track
-
-    loader/appcache
-    loader/archive
-    loader/cache
-    loader/icon
-
-
-    page/animation
-    page/csp
-    page/scrolling
-
-    platform/animation
-    platform/audio
-    platform/graphics
-    platform/mediacapabilities
-    platform/mock
-    platform/network
-    platform/network/curl
-    platform/sql
-    platform/text
-
-
-    platform/graphics/filters
-    platform/graphics/opengl
-    platform/graphics/opentype
-    platform/graphics/texmap
-    platform/graphics/transforms
-    platform/graphics/win
-
-    platform/mediastream/libwebrtc
-
-    platform/text/transcoder
-
-    rendering/line
-    rendering/shapes
-    rendering/style
-    rendering/svg
-
-    svg/animation
-    svg/graphics
-    svg/properties
-
-    svg/graphics/filters
-)
-
-set(WebCore_FORWARDING_HEADERS_FILES
-)
-
-WEBKIT_CREATE_FORWARDING_HEADERS(WebCore DIRECTORIES ${WebCore_FORWARDING_HEADERS_DIRECTORIES} FILES ${WebCore_FORWARDING_HEADERS_FILES})
 

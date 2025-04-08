@@ -16,14 +16,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include "config.h"
-
 #include "AutofillManager.h"
 
 #include "AutofillBackingStore.h"
-#include "HTMLCollection.h"
-#include "HTMLFormElement.h"
-#include "HTMLInputElement.h"
+#include <WebCore/HTMLCollection.h>
+#include <WebCore/HTMLFormElement.h>
+#include <WebCore/HTMLInputElement.h>
 #include "HTMLFormControlsCollection.h"
 
 #include "gui.h"

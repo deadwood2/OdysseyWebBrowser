@@ -25,7 +25,7 @@
 #ifndef ExtCredential_h
 #define ExtCredential_h
 
-#include "Credential.h"
+#include <WebCore/Credential.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {

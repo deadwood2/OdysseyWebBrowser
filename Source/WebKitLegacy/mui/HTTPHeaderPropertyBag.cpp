@@ -26,13 +26,12 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "HTTPHeaderPropertyBag.h"
 
-#include "HTTPHeaderMap.h"
+#include <WebCore/HTTPHeaderMap.h>
 
 #include <wtf/text/WTFString.h>
-#include <ResourceResponse.h>
+#include <WebCore/ResourceResponse.h>
 
 HTTPHeaderPropertyBag::HTTPHeaderPropertyBag(WebURLResponse* response)
     : m_response(response)

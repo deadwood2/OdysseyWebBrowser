@@ -1,19 +1,13 @@
-set(WebKitLegacy_INCLUDE_DIRECTORIES
-    "${CMAKE_BINARY_DIR}"
-    "${WEBKITLEGACY_DIR}/Storage"
-    "${WEBKITLEGACY_DIR}/WebCoreSupport"
-    "${CMAKE_SOURCE_DIR}/Source"
-    "${FORWARDING_HEADERS_DIR}"
-    "${FORWARDING_HEADERS_DIR}/WebCore"
-    "${WEBCORE_DIR}/platform/linux"
-    "${WEBCORE_DIR}/platform/graphics/cairo"
+list(APPEND WebKitLegacy_PRIVATE_INCLUDE_DIRECTORIES
+    "${WEBCORE_DIR}/platform/mui"
+    "${WEBCORE_DIR}/platform/bal"
+    "${WEBCORE_DIR}/platform/graphics/mui"
+    "${WEBKITLEGACY_DIR}/mui/WebCoreLeaks"
     "${WEBKITLEGACY_DIR}/mui"
     "${WEBKITLEGACY_DIR}/mui/UI"
     "${WEBKITLEGACY_DIR}/mui/WebCoreSupport"
     "${WEBKITLEGACY_DIR}/mui/Widgets"
     "${WEBKITLEGACY_DIR}/mui/Plugins"
-    "${WEBKITLEGACY_DIR}/Storage"
-    "${WEBKITLEGACY_DIR}/WebCoreSupport"
     "${WEBKITLEGACY_DIR}/mui/UI/AROS/include/"
 )
 
@@ -196,5 +190,7 @@ list(APPEND WebKitLegacy_SOURCES
 
     WebCoreSupport/WebViewGroup.cpp
 )
+
+add_definitions("-include WebKitPrefix.h")
 
 set(WebKitLegacy_LIBRARY_TYPE STATIC)

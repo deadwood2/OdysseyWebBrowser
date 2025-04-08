@@ -26,7 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringView.h>
@@ -35,12 +34,12 @@
 #include "WebHistoryItem.h"
 #include "WebPreferences.h"
 #include "WebVisitedLinkStore.h"
-#include "SQLiteDatabase.h"
-#include "SQLiteStatement.h"
+#include <WebCore/SQLiteDatabase.h>
+#include <WebCore/SQLiteStatement.h>
 #include <wtf/MonotonicTime.h>
 #include "wtf/Vector.h"
-#include "PageGroup.h"
-#include "HistoryItem.h"
+#include <WebCore/PageGroup.h>
+#include <WebCore/HistoryItem.h>
 #if 0
 // broken 2.18
 #include "IconDatabase.h"

@@ -27,22 +27,21 @@
  */
 
 /* OWB */
-#include "config.h"
-#include "GraphicsContext.h"
+#include <WebCore/GraphicsContext.h>
 #include "WebFrame.h"
 #include "WebView.h"
 #include <wtf/text/CString.h>
-#include "Page.h"
-#include "DOMImplementation.h"
-#include "Editor.h"
-#include "FocusController.h"
-#include "Frame.h"
-#include "FrameView.h"
-#include "Timer.h"
+#include <WebCore/Page.h>
+#include <WebCore/DOMImplementation.h>
+#include <WebCore/Editor.h>
+#include <WebCore/FocusController.h>
+#include <WebCore/Frame.h>
+#include <WebCore/FrameView.h>
+#include <WebCore/Timer.h>
 #include <wtf/MainThread.h>
-#include "ResourceHandle.h"
+#include <WebCore/ResourceHandle.h>
 #include "ResourceHandleInternal.h"
-#include <FrameLoader.h>
+#include <WebCore/FrameLoader.h>
 #include <unistd.h>
 #include <cstdio>
 

@@ -26,15 +26,14 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "WebMutableURLRequest.h"
 
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include <FormData.h>
-#include <ResourceHandle.h>
-#include <ResourceRequest.h>
-#include <ResourceRequestBase.h>
+#include <WebCore/FormData.h>
+#include <WebCore/ResourceHandle.h>
+#include <WebCore/ResourceRequest.h>
+#include <WebCore/ResourceRequestBase.h>
 
 using namespace WebCore;
 
