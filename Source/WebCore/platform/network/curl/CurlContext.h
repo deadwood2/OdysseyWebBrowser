@@ -89,6 +89,7 @@ private:
 // CurlContext --------------------------------------------
 
 class CurlRequestScheduler;
+class CurlStreamScheduler;
 
 class CurlContext : public CurlGlobal {
     WTF_MAKE_NONCOPYABLE(CurlContext);
@@ -101,6 +102,7 @@ public:
     const CurlShareHandle& shareHandle() { return m_shareHandle; }
 
     CurlRequestScheduler& scheduler() { return *m_scheduler; }
+    CurlStreamScheduler& streamScheduler();
 
 #if PLATFORM(MUI)
     void stopThread();
@@ -302,6 +304,13 @@ public:
     Optional<CertificateInfo> certificateInfo() const;
 
     static long long maxCurlOffT();
+
+#if PLATFORM(MUI)
+    // socket
+    Expected<curl_socket_t, CURLcode> getActiveSocket();
+    CURLcode send(const uint8_t*, size_t, size_t&);
+    CURLcode receive(uint8_t*, size_t, size_t&);
+#endif
 
 #ifndef NDEBUG
     void enableVerboseIfUsed();

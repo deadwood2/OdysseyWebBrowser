@@ -153,6 +153,11 @@ void CurlContext::initShareHandle()
     curl_easy_cleanup(curl);
 }
 
+CurlStreamScheduler& CurlContext::streamScheduler()
+{
+    return *m_scheduler;
+}
+
 bool CurlContext::isHttp2Enabled() const
 {
     curl_version_info_data* data = curl_version_info(CURLVERSION_NOW);
@@ -683,6 +688,9 @@ void CurlHandle::setDebugCallbackFunction(curl_debug_callback callbackFunc, void
 void CurlHandle::enableConnectionOnly()
 {
     curl_easy_setopt(m_handle, CURLOPT_CONNECT_ONLY, 1L);
+#if PLATFORM(MUI)
+    curl_easy_setopt(m_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+#endif
 }
 
 Optional<String> CurlHandle::getProxyUrl()
@@ -981,6 +989,29 @@ Optional<size_t> CurlSocketHandle::receive(uint8_t* buffer, size_t bufferSize)
 
     return bytesRead;
 }
+
+#if PLATFORM(MUI)
+Expected<curl_socket_t, CURLcode> CurlHandle::getActiveSocket()
+{
+    curl_socket_t socket;
+
+    CURLcode errorCode = curl_easy_getinfo(m_handle, CURLINFO_ACTIVESOCKET, &socket);
+    if (errorCode != CURLE_OK)
+        return makeUnexpected(errorCode);
+
+    return socket;
+}
+
+CURLcode CurlHandle::send(const uint8_t* buffer, size_t bufferSize, size_t& bytesSent)
+{
+    return curl_easy_send(m_handle, buffer, bufferSize, &bytesSent);
+}
+
+CURLcode CurlHandle::receive(uint8_t* buffer, size_t bufferSize, size_t& bytesRead)
+{
+    return curl_easy_recv(m_handle, buffer, bufferSize, &bytesRead);
+}
+#endif
 
 }
 
