@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2020 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -25,6 +25,7 @@ from future.utils import lrange
 import logging
 import os
 import re
+import requests
 import subprocess
 
 import ews.common.util as util
@@ -37,12 +38,15 @@ class Buildbot():
     # Buildbot status codes referenced from https://github.com/buildbot/buildbot/blob/master/master/buildbot/process/results.py
     ALL_RESULTS = lrange(7)
     SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION, RETRY, CANCELLED = ALL_RESULTS
+    icons_for_queues_mapping = {}
 
     @classmethod
-    def send_patch_to_buildbot(cls, patch_path, properties=[]):
+    def send_patch_to_buildbot(cls, patch_path, send_to_commit_queue=False, properties=None):
+        properties = properties or []
+        buildbot_port = config.COMMIT_QUEUE_PORT if send_to_commit_queue else config.BUILDBOT_SERVER_PORT
         command = ['buildbot', 'try',
                    '--connect=pb',
-                   '--master={}:{}'.format(config.BUILDBOT_SERVER_HOST, config.BUILDBOT_SERVER_PORT),
+                   '--master={}:{}'.format(config.BUILDBOT_SERVER_HOST, buildbot_port),
                    '--username={}'.format(config.BUILDBOT_TRY_USERNAME),
                    '--passwd={}'.format(config.BUILDBOT_TRY_PASSWORD),
                    '--diff={}'.format(patch_path),
@@ -51,10 +55,9 @@ class Buildbot():
         for property in properties:
             command.append('--property={}'.format(property))
 
-        _log.debug('Executing command: {}'.format(command))
         return_code = subprocess.call(command)
         if return_code:
-            _log.warn('Error executing: {}, return code={}'.format(command, return_code))
+            _log.warn('Error executing buildbot try command for {}, return code={}'.format(patch_path, return_code))
 
         return return_code
 
@@ -80,3 +83,44 @@ class Buildbot():
         if not words:
             return builder_name
         return words[0].lower()
+
+    @classmethod
+    def fetch_config(cls):
+        config_url = 'https://{}/config.json'.format(config.BUILDBOT_SERVER_HOST)
+        config_data = util.fetch_data_from_url(config_url)
+        if not config_data:
+            return {}
+        return config_data.json()
+
+    @classmethod
+    def update_icons_for_queues_mapping(cls):
+        config = cls.fetch_config()
+        for builder in config.get('builders', []):
+            shortname = builder.get('shortname')
+            Buildbot.icons_for_queues_mapping[shortname] = builder.get('icon')
+
+        return Buildbot.icons_for_queues_mapping
+
+    @classmethod
+    def retry_build(cls, builder_id, build_number):
+        if not (util.is_valid_id(builder_id) and util.is_valid_id(build_number)):
+            return False
+
+        build_url = 'https://{}/api/v2/builders/{}/builds/{}'.format(config.BUILDBOT_SERVER_HOST, builder_id, build_number)
+        username = os.getenv('EWS_ADMIN_USERNAME')
+        password = os.getenv('EWS_ADMIN_PASSWORD')
+        session = requests.Session()
+        response = session.head('https://{}/auth/login'.format(config.BUILDBOT_SERVER_HOST), auth=(username, password))
+        if (not response) or response.status_code not in (200, 302):
+            _log.error('Authentication to {} failed. Please check username/password.'.format(config.BUILDBOT_SERVER_HOST))
+            return False
+
+        json_data = {'method': 'rebuild', 'id': 1, 'jsonrpc': '2.0', 'params': {'reason': 'retried-by-user'}}
+        response = session.post(build_url, json=json_data)
+
+        if response and response.status_code == 200:
+            _log.info('Successfuly submitted retry request for build: {}'.format(build_url))
+            return True
+
+        _log.error('Failed to retry build: {}, http response code: {}'.format(build_url, response.status_code))
+        return False

@@ -51,6 +51,7 @@
 #include "WebsiteDataStoreParameters.h"
 #include <JavaScriptCore/APICast.h>
 #include <JavaScriptCore/Exception.h>
+#include <JavaScriptCore/JSGlobalObjectInlines.h>
 #include <JavaScriptCore/JSLock.h>
 #include <WebCore/ApplicationCache.h>
 #include <WebCore/ApplicationCacheStorage.h>
@@ -79,7 +80,6 @@
 #include <WebCore/UserGestureIndicator.h>
 #include <WebCore/UserScript.h>
 #include <WebCore/UserStyleSheet.h>
-#include <pal/SessionID.h>
 #include <wtf/ProcessPrivilege.h>
 
 #if ENABLE(NOTIFICATIONS)
@@ -157,25 +157,25 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
     if (preference == "WebKitTabToLinksPreferenceKey") {
         WebPreferencesStore::overrideBoolValueForKey(WebPreferencesKey::tabsToLinksKey(), enabled);
         for (auto* page : pages)
-            WebPage::fromCorePage(page)->setTabToLinksEnabled(enabled);
+            WebPage::fromCorePage(*page).setTabToLinksEnabled(enabled);
     }
 
     if (preference == "WebKit2AsynchronousPluginInitializationEnabled") {
         WebPreferencesStore::overrideBoolValueForKey(WebPreferencesKey::asynchronousPluginInitializationEnabledKey(), enabled);
         for (auto* page : pages)
-            WebPage::fromCorePage(page)->setAsynchronousPluginInitializationEnabled(enabled);
+            WebPage::fromCorePage(*page).setAsynchronousPluginInitializationEnabled(enabled);
     }
 
     if (preference == "WebKit2AsynchronousPluginInitializationEnabledForAllPlugins") {
         WebPreferencesStore::overrideBoolValueForKey(WebPreferencesKey::asynchronousPluginInitializationEnabledForAllPluginsKey(), enabled);
         for (auto* page : pages)
-            WebPage::fromCorePage(page)->setAsynchronousPluginInitializationEnabledForAllPlugins(enabled);
+            WebPage::fromCorePage(*page).setAsynchronousPluginInitializationEnabledForAllPlugins(enabled);
     }
 
     if (preference == "WebKit2ArtificialPluginInitializationDelayEnabled") {
         WebPreferencesStore::overrideBoolValueForKey(WebPreferencesKey::artificialPluginInitializationDelayEnabledKey(), enabled);
         for (auto* page : pages)
-            WebPage::fromCorePage(page)->setArtificialPluginInitializationDelayEnabled(enabled);
+            WebPage::fromCorePage(*page).setArtificialPluginInitializationDelayEnabled(enabled);
     }
 
 #if ENABLE(SERVICE_CONTROLS)
@@ -236,8 +236,24 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
 #if ENABLE(WEB_RTC)
     if (preference == "WebKitWebRTCMDNSICECandidatesEnabled")
         RuntimeEnabledFeatures::sharedFeatures().setWebRTCMDNSICECandidatesEnabled(enabled);
-    if (preference == "WebKitWebRTCUnifiedPlanEnabled")
-        RuntimeEnabledFeatures::sharedFeatures().setWebRTCUnifiedPlanEnabled(enabled);
+#endif
+
+#if ENABLE(VIDEO_TRACK)
+    if (preference == "WebKitGenericCueAPIEnabled") {
+        WebPreferencesStore::overrideBoolValueForKey(WebPreferencesKey::genericCueAPIEnabledKey(), enabled);
+        for (auto* page : pages)
+            page->settings().setGenericCueAPIEnabled(enabled);
+        return;
+    }
+#endif
+
+#if ENABLE(GPU_PROCESS)
+    if (preference == "WebKitUseGPUProcessForMedia" || preference == "WebKitCaptureAudioInGPUProcessEnabledKey") {
+        WebPreferencesStore::overrideBoolValueForKey(WebPreferencesKey::useGPUProcessForMediaKey(), enabled);
+        for (auto* page : pages)
+            page->settings().setUseGPUProcessForMedia(enabled);
+        return;
+    }
 #endif
 
     if (preference == "WebKitIsSecureContextAttributeEnabled") {
@@ -254,6 +270,8 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
 #if ENABLE(LAYOUT_FORMATTING_CONTEXT)
     if (preference == "LayoutFormattingContextEnabled")
         RuntimeEnabledFeatures::sharedFeatures().setLayoutFormattingContextEnabled(enabled);
+    if (preference == "LayoutFormattingContextIntegrationEnabled")
+        RuntimeEnabledFeatures::sharedFeatures().setLayoutFormattingContextIntegrationEnabled(enabled);
 #endif
 
 #if ENABLE(CSS_PAINTING_API)
@@ -266,12 +284,16 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
         RuntimeEnabledFeatures::sharedFeatures().setCSSTypedOMEnabled(enabled);
 #endif
 
+#if ENABLE(OFFSCREEN_CANVAS)
+    if (preference == "OffscreenCanvasEnabled")
+        RuntimeEnabledFeatures::sharedFeatures().setOffscreenCanvasEnabled(enabled);
+#endif
+
     // Map the names used in LayoutTests with the names used in WebCore::Settings and WebPreferencesStore.
 #define FOR_EACH_OVERRIDE_BOOL_PREFERENCE(macro) \
     macro(WebKitJavaEnabled, JavaEnabled, javaEnabled) \
     macro(WebKitJavaScriptEnabled, ScriptEnabled, javaScriptEnabled) \
     macro(WebKitPluginsEnabled, PluginsEnabled, pluginsEnabled) \
-    macro(WebKitUsesPageCachePreferenceKey, UsesPageCache, usesPageCache) \
     macro(WebKitWebAudioEnabled, WebAudioEnabled, webAudioEnabled) \
     macro(WebKitWebGLEnabled, WebGLEnabled, webGLEnabled) \
     macro(WebKitXSSAuditorEnabled, XSSAuditorEnabled, xssAuditorEnabled) \
@@ -344,18 +366,6 @@ void InjectedBundle::setJavaScriptCanAccessClipboard(WebPageGroupProxy* pageGrou
     const HashSet<Page*>& pages = PageGroup::pageGroup(pageGroup->identifier())->pages();
     for (HashSet<Page*>::iterator iter = pages.begin(); iter != pages.end(); ++iter)
         (*iter)->settings().setJavaScriptCanAccessClipboard(enabled);
-}
-
-void InjectedBundle::setPrivateBrowsingEnabled(WebPageGroupProxy* pageGroup, bool enabled)
-{
-    ASSERT(!hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
-    if (enabled)
-        WebProcess::singleton().ensureLegacyPrivateBrowsingSessionInNetworkProcess();
-
-    PageGroup::pageGroup(pageGroup->identifier())->enableLegacyPrivateBrowsingForTesting(enabled);
-
-    auto webStorageNameSpaceProvider = WebStorageNamespaceProvider::getOrCreate(*pageGroup);
-    webStorageNameSpaceProvider->enableLegacyPrivateBrowsingForTesting(enabled);
 }
 
 void InjectedBundle::setPopupBlockingEnabled(WebPageGroupProxy* pageGroup, bool enabled)
@@ -520,15 +530,14 @@ void InjectedBundle::reportException(JSContextRef context, JSValueRef exception)
     if (!context || !exception)
         return;
 
-    JSC::ExecState* execState = toJS(context);
-    JSLockHolder lock(execState);
+    JSC::JSGlobalObject* globalObject = toJS(context);
+    JSLockHolder lock(globalObject);
 
     // Make sure the context has a DOMWindow global object, otherwise this context didn't originate from a Page.
-    JSC::JSGlobalObject* globalObject = execState->lexicalGlobalObject();
     if (!toJSDOMWindow(globalObject->vm(), globalObject))
         return;
 
-    WebCore::reportException(execState, toJS(execState, exception));
+    WebCore::reportException(globalObject, toJS(globalObject, exception));
 }
 
 void InjectedBundle::didCreatePage(WebPage* page)
@@ -600,9 +609,9 @@ uint64_t InjectedBundle::webNotificationID(JSContextRef jsContext, JSValueRef js
 // FIXME Get rid of this function and move it into WKBundle.cpp.
 Ref<API::Data> InjectedBundle::createWebDataFromUint8Array(JSContextRef context, JSValueRef data)
 {
-    JSC::ExecState* execState = toJS(context);
-    JSLockHolder lock(execState);
-    RefPtr<Uint8Array> arrayData = WebCore::toUnsharedUint8Array(execState->vm(), toJS(execState, data));
+    JSC::JSGlobalObject* globalObject = toJS(context);
+    JSLockHolder lock(globalObject);
+    RefPtr<Uint8Array> arrayData = WebCore::toUnsharedUint8Array(globalObject->vm(), toJS(globalObject, data));
     return API::Data::create(static_cast<unsigned char*>(arrayData->baseAddress()), arrayData->byteLength());
 }
 

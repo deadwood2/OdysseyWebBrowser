@@ -28,6 +28,7 @@
 
 #include "RemoteObjectRegistryMessages.h"
 #include "WebPage.h"
+#include "WebProcess.h"
 
 namespace WebKit {
 
@@ -35,7 +36,7 @@ WebRemoteObjectRegistry::WebRemoteObjectRegistry(_WKRemoteObjectRegistry *remote
     : RemoteObjectRegistry(remoteObjectRegistry)
     , m_page(page)
 {
-    WebProcess::singleton().addMessageReceiver(Messages::RemoteObjectRegistry::messageReceiverName(), m_page.pageID(), *this);
+    WebProcess::singleton().addMessageReceiver(Messages::RemoteObjectRegistry::messageReceiverName(), m_page.identifier(), *this);
     page.setRemoteObjectRegistry(this);
 }
 
@@ -47,7 +48,7 @@ WebRemoteObjectRegistry::~WebRemoteObjectRegistry()
 void WebRemoteObjectRegistry::close()
 {
     if (m_page.remoteObjectRegistry() == this) {
-        WebProcess::singleton().removeMessageReceiver(Messages::RemoteObjectRegistry::messageReceiverName(), m_page.pageID());
+        WebProcess::singleton().removeMessageReceiver(Messages::RemoteObjectRegistry::messageReceiverName(), m_page.identifier());
         m_page.setRemoteObjectRegistry(nullptr);
     }
 }
@@ -55,6 +56,11 @@ void WebRemoteObjectRegistry::close()
 IPC::MessageSender& WebRemoteObjectRegistry::messageSender()
 {
     return m_page;
+}
+
+uint64_t WebRemoteObjectRegistry::messageDestinationID()
+{
+    return m_page.webPageProxyIdentifier().toUInt64();
 }
 
 } // namespace WebKit

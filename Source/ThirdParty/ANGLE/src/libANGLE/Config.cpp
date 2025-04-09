@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2002-2010 The ANGLE Project Authors. All rights reserved.
+// Copyright 2002 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -60,7 +60,8 @@ Config::Config()
       transparentBlueValue(0),
       optimalOrientation(0),
       colorComponentType(EGL_COLOR_COMPONENT_TYPE_FIXED_EXT),
-      recordable(EGL_FALSE)
+      recordable(EGL_FALSE),
+      framebufferTarget(EGL_FALSE)  // TODO: http://anglebug.com/4208
 {}
 
 Config::~Config() {}
@@ -359,6 +360,9 @@ std::vector<const Config *> ConfigSet::filter(const AttributeMap &attributeMap) 
                     break;
                 case EGL_RECORDABLE_ANDROID:
                     match = config.recordable == static_cast<EGLBoolean>(attributeValue);
+                    break;
+                case EGL_FRAMEBUFFER_TARGET_ANDROID:
+                    match = config.framebufferTarget == static_cast<EGLBoolean>(attributeValue);
                     break;
                 default:
                     UNREACHABLE();

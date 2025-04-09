@@ -29,6 +29,7 @@
 #if ENABLE(NETSCAPE_PLUGIN_API)
 
 #include "PluginProcessProxy.h"
+#include "WebProcessProxyMessages.h"
 #include "WebsiteDataFetchOption.h"
 #include <wtf/CryptographicallyRandomNumber.h>
 #include <wtf/NeverDestroyed.h>
@@ -81,12 +82,17 @@ uint64_t PluginProcessManager::pluginProcessToken(const PluginModuleInfo& plugin
     return token;
 }
 
-void PluginProcessManager::getPluginProcessConnection(uint64_t pluginProcessToken, Messages::WebProcessProxy::GetPluginProcessConnection::DelayedReply&& reply)
+bool PluginProcessManager::getPluginProcessConnection(uint64_t pluginProcessToken, Messages::WebProcessProxy::GetPluginProcessConnection::DelayedReply&& reply)
 {
     ASSERT(pluginProcessToken);
 
-    PluginProcessProxy* pluginProcess = getOrCreatePluginProcess(pluginProcessToken);
+    auto* pluginProcess = getOrCreatePluginProcess(pluginProcessToken);
+    ASSERT(pluginProcess);
+    if (!pluginProcess)
+        return false;
+
     pluginProcess->getPluginProcessConnection(WTFMove(reply));
+    return true;
 }
 
 void PluginProcessManager::removePluginProcessProxy(PluginProcessProxy* pluginProcessProxy)

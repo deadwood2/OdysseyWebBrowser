@@ -29,11 +29,11 @@
 #include "DataReference.h"
 #include "LibWebRTCNetwork.h"
 #include "NetworkConnectionToWebProcessMessages.h"
-#include "ServiceWorkerClientFetchMessages.h"
 #include "StorageAreaMap.h"
 #include "StorageAreaMapMessages.h"
 #include "WebCacheStorageProvider.h"
 #include "WebCoreArgumentCoders.h"
+#include "WebIDBConnectionToServer.h"
 #include "WebIDBConnectionToServerMessages.h"
 #include "WebLoaderStrategy.h"
 #include "WebMDNSRegisterMessages.h"
@@ -56,7 +56,9 @@
 #include "WebSocketStream.h"
 #include "WebSocketStreamMessages.h"
 #include <WebCore/CachedResource.h>
+#include <WebCore/HTTPCookieAcceptPolicy.h>
 #include <WebCore/MemoryCache.h>
+#include <WebCore/MessagePort.h>
 #include <WebCore/SharedBuffer.h>
 #include <pal/SessionID.h>
 
@@ -67,8 +69,9 @@
 namespace WebKit {
 using namespace WebCore;
 
-NetworkProcessConnection::NetworkProcessConnection(IPC::Connection::Identifier connectionIdentifier)
+NetworkProcessConnection::NetworkProcessConnection(IPC::Connection::Identifier connectionIdentifier, HTTPCookieAcceptPolicy cookieAcceptPolicy)
     : m_connection(IPC::Connection::createClientConnection(connectionIdentifier, *this))
+    , m_cookieAcceptPolicy(cookieAcceptPolicy)
 {
     m_connection->open();
 }
@@ -107,7 +110,7 @@ void NetworkProcessConnection::didReceiveMessage(IPC::Connection& connection, IP
 
 #if USE(LIBWEBRTC)
     if (decoder.messageReceiverName() == Messages::WebRTCSocket::messageReceiverName()) {
-        WebProcess::singleton().libWebRTCNetwork().socket(decoder.destinationID()).didReceiveMessage(connection, decoder);
+        WebProcess::singleton().libWebRTCNetwork().socket(makeObjectIdentifier<LibWebRTCSocketIdentifierType>(decoder.destinationID())).didReceiveMessage(connection, decoder);
         return;
     }
     if (decoder.messageReceiverName() == Messages::WebRTCMonitor::messageReceiverName()) {
@@ -128,21 +131,15 @@ void NetworkProcessConnection::didReceiveMessage(IPC::Connection& connection, IP
 
 #if ENABLE(INDEXED_DATABASE)
     if (decoder.messageReceiverName() == Messages::WebIDBConnectionToServer::messageReceiverName()) {
-        if (auto idbConnection = m_webIDBConnectionsByIdentifier.get(decoder.destinationID()))
-            idbConnection->didReceiveMessage(connection, decoder);
+        if (m_webIDBConnection)
+            m_webIDBConnection->didReceiveMessage(connection, decoder);
         return;
     }
 #endif
 
 #if ENABLE(SERVICE_WORKER)
     if (decoder.messageReceiverName() == Messages::WebSWClientConnection::messageReceiverName()) {
-        auto serviceWorkerConnection = m_swConnectionsByIdentifier.get(makeObjectIdentifier<SWServerConnectionIdentifierType>(decoder.destinationID()));
-        if (serviceWorkerConnection)
-            serviceWorkerConnection->didReceiveMessage(connection, decoder);
-        return;
-    }
-    if (decoder.messageReceiverName() == Messages::ServiceWorkerClientFetch::messageReceiverName()) {
-        WebServiceWorkerProvider::singleton().didReceiveServiceWorkerClientFetchMessage(connection, decoder);
+        serviceWorkerConnection().didReceiveMessage(connection, decoder);
         return;
     }
     if (decoder.messageReceiverName() == Messages::WebSWContextManagerConnection::messageReceiverName()) {
@@ -193,17 +190,13 @@ void NetworkProcessConnection::didClose(IPC::Connection&)
     WebProcess::singleton().networkProcessConnectionClosed(this);
 
 #if ENABLE(INDEXED_DATABASE)
-    for (auto& connection : m_webIDBConnectionsByIdentifier.values())
-        connection->connectionToServerLost();
-    
-    m_webIDBConnectionsByIdentifier.clear();
-    m_webIDBConnectionsBySession.clear();
+    if (auto idbConnection = std::exchange(m_webIDBConnection, nullptr))
+        idbConnection->connectionToServerLost();
 #endif
 
 #if ENABLE(SERVICE_WORKER)
-    auto connections = std::exchange(m_swConnectionsByIdentifier, { });
-    for (auto& connection : connections.values())
-        connection->connectionToServerLost();
+    if (auto swConnection = std::exchange(m_swConnection, nullptr))
+        swConnection->connectionToServerLost();
 #endif
 }
 
@@ -211,9 +204,9 @@ void NetworkProcessConnection::didReceiveInvalidMessage(IPC::Connection&, IPC::S
 {
 }
 
-void NetworkProcessConnection::writeBlobsToTemporaryFiles(PAL::SessionID sessionID, const Vector<String>& blobURLs, CompletionHandler<void(Vector<String>&& filePaths)>&& completionHandler)
+void NetworkProcessConnection::writeBlobsToTemporaryFiles(const Vector<String>& blobURLs, CompletionHandler<void(Vector<String>&& filePaths)>&& completionHandler)
 {
-    WebProcess::singleton().ensureNetworkProcessConnection().connection().sendWithAsyncReply(Messages::NetworkConnectionToWebProcess::WriteBlobsToTemporaryFiles(sessionID, blobURLs), WTFMove(completionHandler));
+    connection().sendWithAsyncReply(Messages::NetworkConnectionToWebProcess::WriteBlobsToTemporaryFiles(blobURLs), WTFMove(completionHandler));
 }
 
 void NetworkProcessConnection::didFinishPingLoad(uint64_t pingLoadIdentifier, ResourceError&& error, ResourceResponse&& response)
@@ -231,10 +224,20 @@ void NetworkProcessConnection::setOnLineState(bool isOnLine)
     WebProcess::singleton().webLoaderStrategy().setOnLineState(isOnLine);
 }
 
-#if ENABLE(SHAREABLE_RESOURCE)
-void NetworkProcessConnection::didCacheResource(const ResourceRequest& request, const ShareableResource::Handle& handle, PAL::SessionID sessionID)
+bool NetworkProcessConnection::cookiesEnabled() const
 {
-    CachedResource* resource = MemoryCache::singleton().resourceForRequest(request, sessionID);
+    return m_cookieAcceptPolicy != HTTPCookieAcceptPolicy::Never;
+}
+
+void NetworkProcessConnection::cookieAcceptPolicyChanged(HTTPCookieAcceptPolicy newPolicy)
+{
+    m_cookieAcceptPolicy = newPolicy;
+}
+
+#if ENABLE(SHAREABLE_RESOURCE)
+void NetworkProcessConnection::didCacheResource(const ResourceRequest& request, const ShareableResource::Handle& handle)
+{
+    auto* resource = MemoryCache::singleton().resourceForRequest(request, WebProcess::singleton().sessionID());
     if (!resource)
         return;
     
@@ -249,46 +252,31 @@ void NetworkProcessConnection::didCacheResource(const ResourceRequest& request, 
 #endif
 
 #if ENABLE(INDEXED_DATABASE)
-WebIDBConnectionToServer& NetworkProcessConnection::idbConnectionToServerForSession(PAL::SessionID sessionID)
+WebIDBConnectionToServer& NetworkProcessConnection::idbConnectionToServer()
 {
-    return *m_webIDBConnectionsBySession.ensure(sessionID, [&] {
-        auto connection = WebIDBConnectionToServer::create(sessionID);
-        
-        auto result = m_webIDBConnectionsByIdentifier.add(connection->identifier(), connection.copyRef());
-        ASSERT_UNUSED(result, result.isNewEntry);
-        
-        return connection;
-    }).iterator->value;
+    if (!m_webIDBConnection)
+        m_webIDBConnection = WebIDBConnectionToServer::create();
+    return *m_webIDBConnection;
 }
 #endif
 
 #if ENABLE(SERVICE_WORKER)
-WebSWClientConnection& NetworkProcessConnection::serviceWorkerConnectionForSession(PAL::SessionID sessionID)
+WebSWClientConnection& NetworkProcessConnection::serviceWorkerConnection()
 {
-    ASSERT(sessionID.isValid());
-    return *m_swConnectionsBySession.ensure(sessionID, [sessionID] {
-        return WebSWClientConnection::create(sessionID);
-    }).iterator->value;
+    if (!m_swConnection)
+        m_swConnection = WebSWClientConnection::create();
+    return *m_swConnection;
 }
-
-void NetworkProcessConnection::removeSWClientConnection(WebSWClientConnection& connection)
-{
-    ASSERT(m_swConnectionsByIdentifier.contains(connection.serverConnectionIdentifier()));
-    m_swConnectionsByIdentifier.remove(connection.serverConnectionIdentifier());
-}
-
-SWServerConnectionIdentifier NetworkProcessConnection::initializeSWClientConnection(WebSWClientConnection& connection)
-{
-    ASSERT(connection.sessionID().isValid());
-    SWServerConnectionIdentifier identifier;
-    bool result = m_connection->sendSync(Messages::NetworkConnectionToWebProcess::EstablishSWServerConnection(connection.sessionID()), Messages::NetworkConnectionToWebProcess::EstablishSWServerConnection::Reply(identifier), 0);
-    ASSERT_UNUSED(result, result);
-
-    ASSERT(!m_swConnectionsByIdentifier.contains(identifier));
-    m_swConnectionsByIdentifier.add(identifier, &connection);
-
-    return identifier;
-}
-
 #endif
+
+void NetworkProcessConnection::messagesAvailableForPort(const WebCore::MessagePortIdentifier& messagePortIdentifier)
+{
+    WebProcess::singleton().messagesAvailableForPort(messagePortIdentifier);
+}
+
+void NetworkProcessConnection::checkProcessLocalPortForActivity(const WebCore::MessagePortIdentifier& messagePortIdentifier, CompletionHandler<void(MessagePortChannelProvider::HasActivity)>&& callback)
+{
+    callback(WebCore::MessagePort::isExistingMessagePortLocallyReachable(messagePortIdentifier) ? MessagePortChannelProvider::HasActivity::Yes : MessagePortChannelProvider::HasActivity::No);
+}
+
 } // namespace WebKit

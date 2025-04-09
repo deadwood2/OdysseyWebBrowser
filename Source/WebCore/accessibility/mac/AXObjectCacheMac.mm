@@ -28,12 +28,12 @@
 
 #if ENABLE(ACCESSIBILITY) && PLATFORM(MAC)
 
-#import "AXIsolatedTreeNode.h"
+#import "AXIsolatedObject.h"
 #import "AccessibilityObject.h"
 #import "AccessibilityTable.h"
 #import "RenderObject.h"
 #import "WebAccessibilityObjectWrapperMac.h"
-#import <pal/spi/mac/NSAccessibilitySPI.h>
+#import <pal/spi/cocoa/NSAccessibilitySPI.h>
 
 #if USE(APPLE_INTERNAL_SDK)
 #include <ApplicationServices/ApplicationServicesPriv.h>
@@ -232,27 +232,19 @@ static AXTextSelectionGranularity platformGranularityForWebCoreGranularity(WebCo
 
 namespace WebCore {
 
-void AXObjectCache::detachWrapper(AccessibilityObject* obj, AccessibilityDetachmentType)
-{
-    [obj->wrapper() detach];
-    obj->setWrapper(nullptr);
-}
-
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-void AXObjectCache::associateIsolatedTreeNode(AccessibilityObject& object, AXIsolatedTreeNode& node, AXIsolatedTreeID treeID)
-{
-    auto wrapper = object.wrapper();
-    ASSERT(wrapper);
-    wrapper.isolatedTreeIdentifier = treeID;
-    node.setWrapper(wrapper);
-}
-#endif
-
-void AXObjectCache::attachWrapper(AccessibilityObject* obj)
+void AXObjectCache::attachWrapper(AXCoreObject* obj)
 {
     RetainPtr<WebAccessibilityObjectWrapper> wrapper = adoptNS([[WebAccessibilityObjectWrapper alloc] initWithAccessibilityObject:obj]);
     obj->setWrapper(wrapper.get());
 }
+
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+void AXObjectCache::attachWrapper(AXIsolatedObject* isolatedObject, WebAccessibilityObjectWrapper* wrapper)
+{
+    [wrapper attachIsolatedObject:(AXCoreObject*)isolatedObject];
+    isolatedObject->setWrapper(wrapper);
+}
+#endif
 
 static BOOL axShouldRepostNotificationsForTests = false;
 
@@ -276,7 +268,7 @@ static void AXPostNotificationWithUserInfo(AccessibilityObjectWrapper *object, N
     NSAccessibilityPostNotificationWithUserInfo(object, notification, userInfo);
 }
 
-void AXObjectCache::postPlatformNotification(AccessibilityObject* obj, AXNotification notification)
+void AXObjectCache::postPlatformNotification(AXCoreObject* obj, AXNotification notification)
 {
     if (!obj)
         return;

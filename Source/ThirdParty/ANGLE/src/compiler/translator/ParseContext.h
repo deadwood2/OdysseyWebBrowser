@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2002-2014 The ANGLE Project Authors. All rights reserved.
+// Copyright 2002 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -40,9 +40,11 @@ class TParseContext : angle::NonCopyable
                   ShCompileOptions options,
                   bool checksPrecErrors,
                   TDiagnostics *diagnostics,
-                  const ShBuiltInResources &resources);
+                  const ShBuiltInResources &resources,
+                  ShShaderOutput outputType);
     ~TParseContext();
 
+    bool anyMultiviewExtensionAvailable();
     const angle::pp::Preprocessor &getPreprocessor() const { return mPreprocessor; }
     angle::pp::Preprocessor &getPreprocessor() { return mPreprocessor; }
     void *getScanner() const { return mScanner; }
@@ -72,6 +74,8 @@ class TParseContext : angle::NonCopyable
     {
         mFragmentPrecisionHighOnESSL1 = fragmentPrecisionHigh;
     }
+
+    bool isEarlyFragmentTestsSpecified() const { return mEarlyFragmentTestsSpecified; }
 
     void setLoopNestingLevel(int loopNestintLevel) { mLoopNestingLevel = loopNestintLevel; }
 
@@ -246,7 +250,7 @@ class TParseContext : angle::NonCopyable
                                                         const TSourceLoc &initLocation,
                                                         TIntermTyped *initializer);
 
-    TIntermInvariantDeclaration *parseInvariantDeclaration(
+    TIntermGlobalQualifierDeclaration *parseGlobalQualifierDeclaration(
         const TTypeQualifierBuilder &typeQualifierBuilder,
         const TSourceLoc &identifierLoc,
         const ImmutableString &identifier,
@@ -429,7 +433,7 @@ class TParseContext : angle::NonCopyable
     void appendStatement(TIntermBlock *block, TIntermNode *statement);
 
     void checkTextureGather(TIntermAggregate *functionCall);
-    void checkTextureOffsetConst(TIntermAggregate *functionCall);
+    void checkTextureOffset(TIntermAggregate *functionCall);
     void checkImageMemoryAccessForBuiltinFunctions(TIntermAggregate *functionCall);
     void checkImageMemoryAccessForUserDefinedFunctions(const TFunction *functionDefinition,
                                                        const TIntermAggregate *functionCall);
@@ -457,6 +461,8 @@ class TParseContext : angle::NonCopyable
     {
         return mGeometryShaderOutputPrimitiveType;
     }
+
+    ShShaderOutput getOutputType() const { return mOutputType; }
 
     // TODO(jmadill): make this private
     TSymbolTable &symbolTable;  // symbol table that goes with the language currently being parsed
@@ -539,9 +545,17 @@ class TParseContext : angle::NonCopyable
 
     void checkYuvIsNotSpecified(const TSourceLoc &location, bool yuv);
 
+    void checkEarlyFragmentTestsIsNotSpecified(const TSourceLoc &location, bool earlyFragmentTests);
+
     bool checkUnsizedArrayConstructorArgumentDimensionality(const TIntermSequence &arguments,
                                                             TType type,
                                                             const TSourceLoc &line);
+    // Check texture offset is within range.
+    void checkSingleTextureOffset(const TSourceLoc &line,
+                                  const TConstantUnion *values,
+                                  size_t size,
+                                  int minOffsetValue,
+                                  int maxOffsetValue);
 
     // Will set the size of the outermost array according to geometry shader input layout.
     void checkGeometryShaderInputAndSetArraySize(const TSourceLoc &location,
@@ -610,6 +624,7 @@ class TParseContext : angle::NonCopyable
                                   // without precision, explicit or implicit.
     bool mFragmentPrecisionHighOnESSL1;  // true if highp precision is supported when compiling
                                          // ESSL1.
+    bool mEarlyFragmentTestsSpecified;   // true if layout(early_fragment_tests) in; is specified.
     TLayoutMatrixPacking mDefaultUniformMatrixPacking;
     TLayoutBlockStorage mDefaultUniformBlockStorage;
     TLayoutMatrixPacking mDefaultBufferMatrixPacking;
@@ -651,6 +666,11 @@ class TParseContext : angle::NonCopyable
     int mGeometryShaderMaxVertices;
     int mMaxGeometryShaderInvocations;
     int mMaxGeometryShaderMaxVertices;
+
+    // Track when we add new scope for func body in ESSL 1.00 spec
+    bool mFunctionBodyNewScope;
+
+    ShShaderOutput mOutputType;
 };
 
 int PaParseStrings(size_t count,

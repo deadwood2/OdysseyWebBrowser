@@ -31,10 +31,8 @@ class DifferentStencilMasksTest : public ANGLETest
         setWebGLCompatibilityEnabled(true);
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         mProgram = CompileProgram(essl1_shaders::vs::Zero(), essl1_shaders::fs::Blue());
         ASSERT_NE(0u, mProgram);
 
@@ -42,13 +40,11 @@ class DifferentStencilMasksTest : public ANGLETest
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDisable(GL_STENCIL_TEST);
         if (mProgram != 0)
             glDeleteProgram(mProgram);
-
-        ANGLETest::TearDown();
     }
 
     GLuint mProgram;
@@ -71,6 +67,9 @@ TEST_P(DifferentStencilMasksTest, DrawWithSameEffectiveMask)
 // Tests that effectively different front and back masks are illegal.
 TEST_P(DifferentStencilMasksTest, DrawWithDifferentMask)
 {
+    // TODO(hqle): Make this test work for Metal. http://anglebug.com/4134
+    ANGLE_SKIP_TEST_IF(IsMetal());
+
     glStencilMaskSeparate(GL_FRONT, 0x0001);
     glStencilMaskSeparate(GL_BACK, 0x0002);
 
@@ -104,11 +103,5 @@ TEST_P(DifferentStencilMasksTest, DrawWithDifferentMask_NoStencilBuffer)
 
 // Use this to select which configurations (e.g. which renderer, which GLES major version) these
 // tests should be run against.
-ANGLE_INSTANTIATE_TEST(DifferentStencilMasksTest,
-                       ES2_D3D9(),
-                       ES2_D3D11(),
-                       ES3_D3D11(),
-                       ES2_OPENGL(),
-                       ES3_OPENGL(),
-                       ES2_VULKAN());
+ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(DifferentStencilMasksTest);
 }  // anonymous namespace

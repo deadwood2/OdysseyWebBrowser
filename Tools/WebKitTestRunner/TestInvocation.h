@@ -73,11 +73,15 @@ public:
     void notifyDownloadDone();
 
     void didClearStatisticsThroughWebsiteDataRemoval();
+    void didSetShouldDowngradeReferrer();
+    void didSetShouldBlockThirdPartyCookies();
+    void didSetFirstPartyWebsiteDataRemovalMode();
     void didResetStatisticsToConsistentState();
     void didSetBlockCookiesForHost();
     void didSetStatisticsDebugMode();
     void didSetPrevalentResourceForDebugMode();
     void didSetLastSeen();
+    void didMergeStatistic();
     void didSetPrevalentResource();
     void didSetVeryPrevalentResource();
     void didSetHasHadUserInteraction();

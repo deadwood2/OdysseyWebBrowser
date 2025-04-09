@@ -29,6 +29,8 @@
 #include "APIArray.h"
 #include "Logging.h"
 #include "SessionState.h"
+#include "WebBackForwardCache.h"
+#include "WebBackForwardListCounts.h"
 #include "WebPageProxy.h"
 #include <WebCore/DiagnosticLoggingClient.h>
 #include <WebCore/DiagnosticLoggingKeys.h>
@@ -64,7 +66,7 @@ WebBackForwardListItem* WebBackForwardList::itemForID(const BackForwardItemIdent
     if (!item)
         return nullptr;
 
-    ASSERT(item->pageID() == m_page->pageID());
+    ASSERT(item->pageID() == m_page->identifier());
     return item;
 }
 
@@ -273,6 +275,11 @@ unsigned WebBackForwardList::forwardListCount() const
     return m_page && m_currentIndex ? m_entries.size() - (*m_currentIndex + 1) : 0;
 }
 
+WebBackForwardListCounts WebBackForwardList::counts() const
+{
+    return WebBackForwardListCounts { backListCount(), forwardListCount() };
+}
+
 Ref<API::Array> WebBackForwardList::backList() const
 {
     return backListAsAPIArrayWithLimit(backListCount());
@@ -437,7 +444,7 @@ void WebBackForwardList::restoreFromState(BackForwardListState backForwardListSt
     // FIXME: Enable restoring resourceDirectoryURL.
     for (auto& backForwardListItemState : backForwardListState.items) {
         backForwardListItemState.identifier = { Process::identifier(), ObjectIdentifier<BackForwardItemIdentifier::ItemIdentifierType>::generate() };
-        items.uncheckedAppend(WebBackForwardListItem::create(WTFMove(backForwardListItemState), m_page->pageID()));
+        items.uncheckedAppend(WebBackForwardListItem::create(WTFMove(backForwardListItemState), m_page->identifier()));
     }
     m_currentIndex = backForwardListState.currentIndex ? Optional<size_t>(*backForwardListState.currentIndex) : WTF::nullopt;
     m_entries = WTFMove(items);
@@ -467,9 +474,10 @@ Vector<BackForwardListItemState> WebBackForwardList::itemStates() const
 
 void WebBackForwardList::didRemoveItem(WebBackForwardListItem& backForwardListItem)
 {
+    backForwardListItem.wasRemovedFromBackForwardList();
+
     m_page->backForwardRemovedItem(backForwardListItem.itemID());
 
-    backForwardListItem.setSuspendedPage(nullptr);
 #if PLATFORM(COCOA) || PLATFORM(GTK)
     backForwardListItem.setSnapshot(nullptr);
 #endif
@@ -482,7 +490,7 @@ const char* WebBackForwardList::loggingString()
     StringBuilder builder;
 
     builder.appendLiteral("WebBackForwardList 0x");
-    appendUnsignedAsHex(reinterpret_cast<uintptr_t>(this), builder);
+    builder.append(hex(reinterpret_cast<uintptr_t>(this)));
     builder.appendLiteral(" - ");
     builder.appendNumber(m_entries.size());
     builder.appendLiteral(" entries, has current index ");

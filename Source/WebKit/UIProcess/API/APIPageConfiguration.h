@@ -27,9 +27,10 @@
 
 #include "APIObject.h"
 #include "WebPreferencesStore.h"
-#include <pal/SessionID.h>
+#include "WebViewCategory.h"
 #include <wtf/Forward.h>
 #include <wtf/GetPtr.h>
+#include <wtf/HashSet.h>
 
 #if PLATFORM(IOS_FAMILY)
 OBJC_PROTOCOL(_UIClickInteractionDriving);
@@ -44,12 +45,12 @@ class WebPreferences;
 class WebProcessPool;
 class WebURLSchemeHandler;
 class WebUserContentControllerProxy;
+class WebsiteDataStore;
 }
 
 namespace API {
 
 class ApplicationManifest;
-class WebsiteDataStore;
 class WebsitePolicies;
 
 class PageConfiguration : public ObjectImpl<Object::Type::PageConfiguration> {
@@ -84,8 +85,8 @@ public:
     WebKit::VisitedLinkStore* visitedLinkStore();
     void setVisitedLinkStore(WebKit::VisitedLinkStore*);
 
-    WebsiteDataStore* websiteDataStore();
-    void setWebsiteDataStore(WebsiteDataStore*);
+    WebKit::WebsiteDataStore* websiteDataStore();
+    void setWebsiteDataStore(WebKit::WebsiteDataStore*);
 
     WebsitePolicies* defaultWebsitePolicies() const;
     void setDefaultWebsitePolicies(WebsitePolicies*);
@@ -135,6 +136,12 @@ public:
     void setURLSchemeHandlerForURLScheme(Ref<WebKit::WebURLSchemeHandler>&&, const WTF::String&);
     const HashMap<WTF::String, Ref<WebKit::WebURLSchemeHandler>>& urlSchemeHandlers() { return m_urlSchemeHandlers; }
 
+    const Vector<WTF::String>& corsDisablingPatterns() const { return m_corsDisablingPatterns; }
+    void setCORSDisablingPatterns(Vector<WTF::String>&& patterns) { m_corsDisablingPatterns = WTFMove(patterns); }
+
+    WebKit::WebViewCategory webViewCategory() const { return m_webViewCategory; }
+    void setWebViewCategory(WebKit::WebViewCategory category) { m_webViewCategory = category; }
+
 private:
 
     RefPtr<WebKit::WebProcessPool> m_processPool;
@@ -145,7 +152,7 @@ private:
     RefPtr<WebKit::WebPageProxy> m_relatedPage;
     RefPtr<WebKit::VisitedLinkStore> m_visitedLinkStore;
 
-    RefPtr<WebsiteDataStore> m_websiteDataStore;
+    RefPtr<WebKit::WebsiteDataStore> m_websiteDataStore;
     RefPtr<WebsitePolicies> m_defaultWebsitePolicies;
 
     bool m_treatsSHA1SignedCertificatesAsInsecure { true };
@@ -171,6 +178,8 @@ private:
 #endif
 
     HashMap<WTF::String, Ref<WebKit::WebURLSchemeHandler>> m_urlSchemeHandlers;
+    Vector<WTF::String> m_corsDisablingPatterns;
+    WebKit::WebViewCategory m_webViewCategory { WebKit::WebViewCategory::HybridApp };
 };
 
 } // namespace API

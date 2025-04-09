@@ -41,6 +41,7 @@
 #import "_WKRemoteObjectInterface.h"
 #import <objc/runtime.h>
 
+extern "C" const char *_protocol_getMethodTypeEncoding(Protocol *p, SEL sel, BOOL isRequiredMethod, BOOL isInstanceMethod);
 extern "C" id __NSMakeSpecialForwardingCaptureBlock(const char *signature, void (^handler)(NSInvocation *inv));
 
 static const void* replyBlockKey = &replyBlockKey;
@@ -105,22 +106,22 @@ struct PendingReply {
     return remoteObject.autorelease();
 }
 
-- (id)_initWithWebPage:(WebKit::WebPage&)page
+- (id)_initWithWebPage:(NakedRef<WebKit::WebPage>)page
 {
     if (!(self = [super init]))
         return nil;
 
-    _remoteObjectRegistry = makeUnique<WebKit::WebRemoteObjectRegistry>(self, page);
+    _remoteObjectRegistry = makeUnique<WebKit::WebRemoteObjectRegistry>(self, page.get());
 
     return self;
 }
 
-- (id)_initWithWebPageProxy:(WebKit::WebPageProxy&)page
+- (id)_initWithWebPageProxy:(NakedRef<WebKit::WebPageProxy>)page
 {
     if (!(self = [super init]))
         return nil;
 
-    _remoteObjectRegistry = makeUnique<WebKit::UIRemoteObjectRegistry>(self, page);
+    _remoteObjectRegistry = makeUnique<WebKit::UIRemoteObjectRegistry>(self, page.get());
 
     return self;
 }

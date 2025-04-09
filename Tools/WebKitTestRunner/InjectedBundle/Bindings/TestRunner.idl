@@ -85,7 +85,6 @@ interface TestRunner {
     void setNeedsStorageAccessFromFileURLsQuirk(boolean value);
     void setPluginsEnabled(boolean value);
     void setJavaScriptCanAccessClipboard(boolean value);
-    void setPrivateBrowsingEnabled(boolean value);
     void setPopupBlockingEnabled(boolean value);
     void setAuthorAndUserStylesEnabled(boolean value);
     void setCustomPolicyDelegate(boolean enabled, boolean permissive);
@@ -251,6 +250,9 @@ interface TestRunner {
 
     void setAllowsAnySSLCertificate(boolean value);
 
+    void setShouldSwapToEphemeralSessionOnNextNavigation(boolean value);
+    void setShouldSwapToDefaultSessionOnNextNavigation(boolean value);
+
     // Secure text input mode (Mac only)
     readonly attribute boolean secureEventInputIsEnabled;
     
@@ -290,12 +292,14 @@ interface TestRunner {
     void disconnectMockGamepad(unsigned long index);
 
     // Resource Load Statistics
+    void setStatisticsEnabled(boolean value);
     void installStatisticsDidModifyDataRecordsCallback(object callback);
     void installStatisticsDidScanDataRecordsCallback(object callback);
     void installStatisticsDidRunTelemetryCallback(object callback);
     void setStatisticsDebugMode(boolean value, object completionHandler);
     void setStatisticsPrevalentResourceForDebugMode(DOMString hostName, object completionHandler);
     void setStatisticsLastSeen(DOMString hostName, double seconds, object completionHandler);
+    void setStatisticsMergeStatistic(DOMString hostName, DOMString topFrameDomain1, DOMString topFrameDomain2, double lastSeen, boolean hadUserInteraction, double mostRecentUserInteraction, boolean isGrandfathered, boolean isPrevalent, boolean isVeryPrevalent, unsigned long dataRecordsRemoved, object completionHandler);
     void setStatisticsPrevalentResource(DOMString hostName, boolean value, object completionHandler);
     void setStatisticsVeryPrevalentResource(DOMString hostName, boolean value, object completionHandler);
     boolean isStatisticsPrevalentResource(DOMString hostName);
@@ -305,8 +309,10 @@ interface TestRunner {
     boolean isStatisticsRegisteredAsRedirectingTo(DOMString hostRedirectedFrom, DOMString hostRedirectedTo);
     void setStatisticsHasHadUserInteraction(DOMString hostName, boolean value, object completionHandler);
     boolean isStatisticsHasHadUserInteraction(DOMString hostName);
+    boolean isStatisticsOnlyInDatabaseOnce(DOMString subHost, DOMString topHost);
     void setStatisticsGrandfathered(DOMString hostName, boolean value);
     boolean isStatisticsGrandfathered(DOMString hostName);
+    void setUseITPDatabase(boolean value);
     void setStatisticsSubframeUnderTopFrameOrigin(DOMString hostName, DOMString topFrameHostName);
     void setStatisticsSubresourceUnderTopFrameOrigin(DOMString hostName, DOMString topFrameHostName);
     void setStatisticsSubresourceUniqueRedirectTo(DOMString hostName, DOMString hostNameRedirectedTo);
@@ -315,7 +321,7 @@ interface TestRunner {
     void setStatisticsTopFrameUniqueRedirectFrom(DOMString hostName, DOMString hostNameRedirectedTo);
     void setStatisticsCrossSiteLoadWithLinkDecoration(DOMString fromHost, DOMString toHost);
     void setStatisticsTimeToLiveUserInteraction(double seconds);
-    void statisticsNotifyObserver();
+    boolean statisticsNotifyObserver();
     void statisticsProcessStatisticsAndDataRecords();
     void statisticsUpdateCookieBlocking(object completionHandler);
     void statisticsSubmitTelemetry();
@@ -335,6 +341,9 @@ interface TestRunner {
     void setStatisticsCacheMaxAgeCap(double seconds);
     void statisticsResetToConsistentState(object completionHandler);
     boolean hasStatisticsIsolatedSession(DOMString hostName);
+    void setStatisticsShouldDowngradeReferrer(boolean value, object callback);
+    void setStatisticsShouldBlockThirdPartyCookies(boolean value, object callback, optional boolean onlyOnSitesWithoutUserInteraction);
+    void setStatisticsFirstPartyWebsiteDataRemovalMode(boolean value, object callback);
 
     // Injected bundle form client.
     void installTextDidChangeInTextFieldCallback(object callback);
@@ -354,16 +363,14 @@ interface TestRunner {
     void abortModal();
 
     void setWebRTCMDNSICECandidatesEnabled(boolean value);
-    void setWebRTCUnifiedPlanEnabled(boolean value);
     void setCustomUserAgent(DOMString userAgent);
 
     void setWebAPIStatisticsEnabled(boolean value);
 
     void terminateNetworkProcess();
-    void terminateServiceWorkerProcess();
+    void terminateServiceWorkers();
+    void setUseSeparateServiceWorkerProcess(boolean value);
 
-    void setCanHandleHTTPSServerTrustEvaluation(boolean canHandle);
-    readonly attribute boolean canDoServerTrustEvaluationInNetworkProcess;
     readonly attribute unsigned long serverTrustEvaluationCallbackCallsCount;
 
     readonly attribute boolean didCancelClientRedirect;
@@ -380,16 +387,19 @@ interface TestRunner {
     void clearMockMediaDevices();
     void removeMockMediaDevice(DOMString persistentId);
     void resetMockMediaDevices();
+    void setMockCameraOrientation(unsigned long orientation);
+    boolean isMockRealtimeMediaSourceCenterEnabled();
 
     void injectUserScript(DOMString string);
     readonly attribute unsigned long userScriptInjectedCount;
 
     void sendDisplayConfigurationChangedMessageForTesting();
 
-    // WebAuthN
-    void setWebAuthenticationMockConfiguration(object configuration);
+    void setServiceWorkerFetchTimeout(double seconds);
+
+    // WebAuthn
     void addTestKeyToKeychain(DOMString privateKeyBase64, DOMString attrLabel, DOMString applicationTagBase64);
-    void cleanUpKeychain(DOMString attrLabel);
+    void cleanUpKeychain(DOMString attrLabel, optional DOMString applicationTagBase64);
     boolean keyExistsInKeychain(DOMString attrLabel, DOMString applicationTagBase64);
 
     // Ad Click Attribution

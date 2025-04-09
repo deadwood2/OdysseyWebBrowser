@@ -20,7 +20,7 @@ using namespace angle;
 
 namespace
 {
-constexpr unsigned int kIterationsPerStep = 64;
+constexpr unsigned int kIterationsPerStep = 2;
 
 struct TextureUploadParams final : public RenderTestParams
 {
@@ -35,7 +35,7 @@ struct TextureUploadParams final : public RenderTestParams
         webgl = false;
     }
 
-    std::string suffix() const override;
+    std::string story() const override;
 
     GLsizei baseSize;
     GLsizei subImageSize;
@@ -45,15 +45,15 @@ struct TextureUploadParams final : public RenderTestParams
 
 std::ostream &operator<<(std::ostream &os, const TextureUploadParams &params)
 {
-    os << params.suffix().substr(1);
+    os << params.backendAndStory().substr(1);
     return os;
 }
 
-std::string TextureUploadParams::suffix() const
+std::string TextureUploadParams::story() const
 {
     std::stringstream strstr;
 
-    strstr << RenderTestParams::suffix();
+    strstr << RenderTestParams::story();
 
     if (webgl)
     {
@@ -75,9 +75,11 @@ class TextureUploadBenchmarkBase : public ANGLERenderTest,
   protected:
     void initShaders();
 
-    GLuint mProgram;
-    GLuint mPositionLoc;
-    GLuint mSamplerLoc;
+    GLuint mProgram    = 0;
+    GLint mPositionLoc = -1;
+    GLint mSamplerLoc  = -1;
+    GLuint mTexture    = 0;
+    std::vector<float> mTextureData;
 };
 
 class TextureUploadSubImageBenchmark : public TextureUploadBenchmarkBase
@@ -86,6 +88,14 @@ class TextureUploadSubImageBenchmark : public TextureUploadBenchmarkBase
     TextureUploadSubImageBenchmark() : TextureUploadBenchmarkBase("TexSubImage")
     {
         addExtensionPrerequisite("GL_EXT_texture_storage");
+    }
+
+    void initializeBenchmark() override
+    {
+        TextureUploadBenchmarkBase::initializeBenchmark();
+
+        const auto &params = GetParam();
+        glTexStorage2DEXT(GL_TEXTURE_2D, 1, GL_RGBA8, params.baseSize, params.baseSize);
     }
 
     void drawBenchmark() override;
@@ -99,8 +109,71 @@ class TextureUploadFullMipBenchmark : public TextureUploadBenchmarkBase
     void drawBenchmark() override;
 };
 
+class PBOSubImageBenchmark : public TextureUploadBenchmarkBase
+{
+  public:
+    PBOSubImageBenchmark() : TextureUploadBenchmarkBase("PBO") {}
+
+    void initializeBenchmark() override
+    {
+        TextureUploadBenchmarkBase::initializeBenchmark();
+
+        const auto &params = GetParam();
+
+        glTexStorage2DEXT(GL_TEXTURE_2D, 1, GL_RGBA8, params.baseSize, params.baseSize);
+
+        glGenBuffers(1, &mPBO);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mPBO);
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, params.baseSize * params.baseSize * 4,
+                     mTextureData.data(), GL_STREAM_DRAW);
+    }
+
+    void destroyBenchmark()
+    {
+        TextureUploadBenchmarkBase::destroyBenchmark();
+        glDeleteBuffers(1, &mPBO);
+    }
+
+    void drawBenchmark() override;
+
+  private:
+    GLuint mPBO;
+};
+
+class PBOCompressedSubImageBenchmark : public TextureUploadBenchmarkBase
+{
+  public:
+    PBOCompressedSubImageBenchmark() : TextureUploadBenchmarkBase("PBOCompressed") {}
+
+    void initializeBenchmark() override
+    {
+        TextureUploadBenchmarkBase::initializeBenchmark();
+
+        const auto &params = GetParam();
+
+        glTexStorage2DEXT(GL_TEXTURE_2D, 1, GL_COMPRESSED_RGB8_ETC2, params.baseSize,
+                          params.baseSize);
+
+        glGenBuffers(1, &mPBO);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mPBO);
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, params.subImageSize * params.subImageSize / 2,
+                     mTextureData.data(), GL_STREAM_DRAW);
+    }
+
+    void destroyBenchmark()
+    {
+        TextureUploadBenchmarkBase::destroyBenchmark();
+        glDeleteBuffers(1, &mPBO);
+    }
+
+    void drawBenchmark() override;
+
+  private:
+    GLuint mPBO;
+};
+
 TextureUploadBenchmarkBase::TextureUploadBenchmarkBase(const char *benchmarkName)
-    : ANGLERenderTest(benchmarkName, GetParam()), mProgram(0u), mPositionLoc(-1), mSamplerLoc(-1)
+    : ANGLERenderTest(benchmarkName, GetParam())
 {
     setWebGLCompatibilityEnabled(GetParam().webgl);
     setRobustResourceInit(GetParam().webgl);
@@ -124,6 +197,18 @@ void TextureUploadBenchmarkBase::initializeBenchmark()
     {
         glRequestExtensionANGLE("GL_EXT_disjoint_timer_query");
     }
+
+    glActiveTexture(GL_TEXTURE0);
+    glGenTextures(1, &mTexture);
+    glBindTexture(GL_TEXTURE_2D, mTexture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    ASSERT_TRUE(params.baseSize >= params.subImageSize);
+    mTextureData.resize(params.baseSize * params.baseSize * 4, 0.5);
 
     ASSERT_GL_NO_ERROR();
 }
@@ -149,6 +234,7 @@ void main()
     mPositionLoc = glGetAttribLocation(mProgram, "a_position");
     mSamplerLoc  = glGetUniformLocation(mProgram, "s_texture");
     glUseProgram(mProgram);
+    glUniform1i(mSamplerLoc, 0);
 
     glDisable(GL_DEPTH_TEST);
 
@@ -157,6 +243,7 @@ void main()
 
 void TextureUploadBenchmarkBase::destroyBenchmark()
 {
+    glDeleteTextures(1, &mTexture);
     glDeleteProgram(mProgram);
 }
 
@@ -164,27 +251,12 @@ void TextureUploadSubImageBenchmark::drawBenchmark()
 {
     const auto &params = GetParam();
 
-    std::vector<float> textureData(params.subImageSize * params.subImageSize * 4, 0.5);
-
-    GLTexture tex;
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexStorage2DEXT(GL_TEXTURE_2D, 1, GL_RGBA8, params.baseSize, params.baseSize);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    glUniform1i(mSamplerLoc, 0);
-
-    ASSERT_GL_NO_ERROR();
-
     startGpuTimer();
     for (unsigned int iteration = 0; iteration < params.iterationsPerStep; ++iteration)
     {
         glTexSubImage2D(GL_TEXTURE_2D, 0, rand() % (params.baseSize - params.subImageSize),
                         rand() % (params.baseSize - params.subImageSize), params.subImageSize,
-                        params.subImageSize, GL_RGBA, GL_UNSIGNED_BYTE, textureData.data());
+                        params.subImageSize, GL_RGBA, GL_UNSIGNED_BYTE, mTextureData.data());
 
         // Perform a draw just so the texture data is flushed.  With the position attributes not
         // set, a constant default value is used, resulting in a very cheap draw.
@@ -199,30 +271,56 @@ void TextureUploadFullMipBenchmark::drawBenchmark()
 {
     const auto &params = GetParam();
 
-    std::vector<float> textureData(params.baseSize * params.baseSize * 4, 0.5);
-
     startGpuTimer();
     for (size_t it = 0; it < params.iterationsPerStep; ++it)
     {
-        GLTexture tex;
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, tex);
-
         // Stage data for all mips
         GLint mip = 0;
         for (GLsizei levelSize = params.baseSize; levelSize > 0; levelSize >>= 1)
         {
             glTexImage2D(GL_TEXTURE_2D, mip++, GL_RGBA, levelSize, levelSize, 0, GL_RGBA,
-                         GL_UNSIGNED_BYTE, textureData.data());
+                         GL_UNSIGNED_BYTE, mTextureData.data());
         }
 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        // Perform a draw just so the texture data is flushed.  With the position attributes not
+        // set, a constant default value is used, resulting in a very cheap draw.
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
+    stopGpuTimer();
 
-        glUniform1i(mSamplerLoc, 0);
+    ASSERT_GL_NO_ERROR();
+}
+
+void PBOSubImageBenchmark::drawBenchmark()
+{
+    const auto &params = GetParam();
+
+    startGpuTimer();
+    for (unsigned int iteration = 0; iteration < params.iterationsPerStep; ++iteration)
+    {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, rand() % (params.baseSize - params.subImageSize),
+                        rand() % (params.baseSize - params.subImageSize), params.subImageSize,
+                        params.subImageSize, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+        // Perform a draw just so the texture data is flushed.  With the position attributes not
+        // set, a constant default value is used, resulting in a very cheap draw.
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
+    stopGpuTimer();
+
+    ASSERT_GL_NO_ERROR();
+}
+
+void PBOCompressedSubImageBenchmark::drawBenchmark()
+{
+    const auto &params = GetParam();
+
+    startGpuTimer();
+    for (unsigned int iteration = 0; iteration < params.iterationsPerStep; ++iteration)
+    {
+        glCompressedTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, params.subImageSize, params.subImageSize,
+                                  GL_COMPRESSED_RGB8_ETC2,
+                                  params.subImageSize * params.subImageSize / 2, 0);
 
         // Perform a draw just so the texture data is flushed.  With the position attributes not
         // set, a constant default value is used, resulting in a very cheap draw.
@@ -244,7 +342,7 @@ TextureUploadParams D3D11Params(bool webglCompat)
 TextureUploadParams OpenGLOrGLESParams(bool webglCompat)
 {
     TextureUploadParams params;
-    params.eglParameters = egl_platform::OPENGL_OR_GLES(false);
+    params.eglParameters = egl_platform::OPENGL_OR_GLES();
     params.webgl         = webglCompat;
     return params;
 }
@@ -254,6 +352,30 @@ TextureUploadParams VulkanParams(bool webglCompat)
     TextureUploadParams params;
     params.eglParameters = egl_platform::VULKAN();
     params.webgl         = webglCompat;
+    return params;
+}
+
+TextureUploadParams VulkanPBOParams(GLsizei baseSize, GLsizei subImageSize)
+{
+    TextureUploadParams params;
+    params.eglParameters = egl_platform::VULKAN();
+    params.webgl         = false;
+    params.trackGpuTime  = false;
+    params.baseSize      = baseSize;
+    params.subImageSize  = subImageSize;
+    return params;
+}
+
+TextureUploadParams ES3OpenGLPBOParams(GLsizei baseSize, GLsizei subImageSize)
+{
+    TextureUploadParams params;
+    params.eglParameters = egl_platform::OPENGL();
+    params.majorVersion  = 3;
+    params.minorVersion  = 0;
+    params.webgl         = false;
+    params.trackGpuTime  = false;
+    params.baseSize      = baseSize;
+    params.subImageSize  = subImageSize;
     return params;
 }
 
@@ -269,12 +391,25 @@ TEST_P(TextureUploadFullMipBenchmark, Run)
     run();
 }
 
+TEST_P(PBOSubImageBenchmark, Run)
+{
+    run();
+}
+
+TEST_P(PBOCompressedSubImageBenchmark, Run)
+{
+    run();
+}
+
+using namespace params;
+
 ANGLE_INSTANTIATE_TEST(TextureUploadSubImageBenchmark,
                        D3D11Params(false),
                        D3D11Params(true),
                        OpenGLOrGLESParams(false),
                        OpenGLOrGLESParams(true),
                        VulkanParams(false),
+                       NullDevice(VulkanParams(false)),
                        VulkanParams(true));
 
 ANGLE_INSTANTIATE_TEST(TextureUploadFullMipBenchmark,
@@ -283,4 +418,13 @@ ANGLE_INSTANTIATE_TEST(TextureUploadFullMipBenchmark,
                        OpenGLOrGLESParams(false),
                        OpenGLOrGLESParams(true),
                        VulkanParams(false),
+                       NullDevice(VulkanParams(false)),
                        VulkanParams(true));
+
+ANGLE_INSTANTIATE_TEST(PBOSubImageBenchmark,
+                       ES3OpenGLPBOParams(1024, 128),
+                       VulkanPBOParams(1024, 128));
+
+ANGLE_INSTANTIATE_TEST(PBOCompressedSubImageBenchmark,
+                       ES3OpenGLPBOParams(128, 128),
+                       VulkanPBOParams(128, 128));

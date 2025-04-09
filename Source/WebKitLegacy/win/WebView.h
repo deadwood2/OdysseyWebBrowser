@@ -566,7 +566,7 @@ private:
     // GraphicsLayerClient
     void notifyAnimationStarted(const WebCore::GraphicsLayer*, const String&, MonotonicTime) override;
     void notifyFlushRequired(const WebCore::GraphicsLayer*) override;
-    void paintContents(const WebCore::GraphicsLayer*, WebCore::GraphicsContext&, OptionSet<WebCore::GraphicsLayerPaintingPhase>, const WebCore::FloatRect& inClip, WebCore::GraphicsLayerPaintBehavior) override;
+    void paintContents(const WebCore::GraphicsLayer*, WebCore::GraphicsContext&, const WebCore::FloatRect& inClip, WebCore::GraphicsLayerPaintBehavior) override;
 
 #if USE(CA)
     // CACFLayerTreeHostClient
@@ -617,7 +617,7 @@ protected:
 #endif
 
     ULONG m_refCount { 0 };
-#if !ASSERT_DISABLED
+#if ASSERT_ENABLED
     bool m_deletionHasBegun { false };
 #endif
     HWND m_hostWindow { nullptr };
@@ -680,7 +680,7 @@ protected:
 
     static bool s_allowSiteSpecificHacks;
 
-    WebCore::SuspendableTimer* m_closeWindowTimer { nullptr };
+    WebCore::SuspendableTimerBase* m_closeWindowTimer { nullptr };
     std::unique_ptr<TRACKMOUSEEVENT> m_mouseOutTracker;
 
     HWND m_topLevelParent { nullptr };

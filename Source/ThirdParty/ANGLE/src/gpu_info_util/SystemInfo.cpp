@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2013-2017 The ANGLE Project Authors. All rights reserved.
+// Copyright 2013 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -25,22 +25,28 @@ std::string VendorName(VendorID vendor)
     {
         case kVendorID_AMD:
             return "AMD";
-        case kVendorID_Intel:
-            return "Intel";
+        case kVendorID_ARM:
+            return "ARM";
+        case kVendorID_Broadcom:
+            return "Broadcom";
+        case kVendorID_GOOGLE:
+            return "Google";
         case kVendorID_ImgTec:
             return "ImgTec";
+        case kVendorID_Intel:
+            return "Intel";
+        case kVendorID_Kazan:
+            return "Kazan";
         case kVendorID_NVIDIA:
             return "NVIDIA";
         case kVendorID_Qualcomm:
             return "Qualcomm";
-        case kVendorID_Vivante:
-            return "Vivante";
         case kVendorID_VeriSilicon:
             return "VeriSilicon";
+        case kVendorID_Vivante:
+            return "Vivante";
         case kVendorID_VMWare:
             return "VMWare";
-        case kVendorID_Kazan:
-            return "Kazan";
         default:
             return "Unknown (" + std::to_string(vendor) + ")";
     }
@@ -102,6 +108,11 @@ bool IsAMD(VendorID vendorId)
 bool IsARM(VendorID vendorId)
 {
     return vendorId == kVendorID_ARM;
+}
+
+bool IsBroadcom(VendorID vendorId)
+{
+    return vendorId == kVendorID_Broadcom;
 }
 
 bool IsImgTec(VendorID vendorId)
@@ -238,7 +249,7 @@ bool CMDeviceIDToDeviceAndVendorID(const std::string &id, uint32_t *vendorId, ui
     return success;
 }
 
-void FindActiveGPU(SystemInfo *info)
+void GetDualGPUInfo(SystemInfo *info)
 {
     ASSERT(!info->gpus.empty());
 
@@ -259,7 +270,6 @@ void FindActiveGPU(SystemInfo *info)
 
     // Assume that a combination of NVIDIA or AMD with Intel means Optimus or AMD Switchable
     info->activeGPUIndex  = active;
-    info->primaryGPUIndex = active;
     info->isOptimus       = hasIntel && IsNVIDIA(info->gpus[active].vendorId);
     info->isAMDSwitchable = hasIntel && IsAMD(info->gpus[active].vendorId);
 }
@@ -309,5 +319,15 @@ void PrintSystemInfo(const SystemInfo &info)
         std::cout << "Machine Model Version: " << info.machineModelVersion << "\n";
     }
     std::cout << std::endl;
+}
+
+VersionInfo ParseNvidiaDriverVersion(uint32_t version)
+{
+    return {
+        version >> 22,         // major
+        version >> 14 & 0xff,  // minor
+        version >> 6 & 0xff,   // subMinor
+        version & 0x3f         // patch
+    };
 }
 }  // namespace angle

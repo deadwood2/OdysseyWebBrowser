@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2014 The ANGLE Project Authors. All rights reserved.
+// Copyright 2014 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -43,7 +43,7 @@ class SwapChainPanelNativeWindow : public InspectableNativeWindow,
     ComPtr<IDXGISwapChain1> mSwapChain;
 };
 
-[uuid(8ACBD974 - 8187 - 4508 - AD80 - AEC77F93CF36)] class SwapChainPanelSizeChangedHandler
+__declspec(uuid("8ACBD974-8187-4508-AD80-AEC77F93CF36")) class SwapChainPanelSizeChangedHandler
     : public Microsoft::WRL::RuntimeClass<
           Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
           ABI::Windows::UI::Xaml::ISizeChangedEventHandler>
@@ -92,5 +92,5 @@ HRESULT GetSwapChainPanelSize(
     const ComPtr<ABI::Windows::UI::Xaml::Controls::ISwapChainPanel> &swapChainPanel,
     const ComPtr<ABI::Windows::UI::Core::ICoreDispatcher> &dispatcher,
     Size *windowSize);
-}
+}  // namespace rx
 #endif  // LIBANGLE_RENDERER_D3D_D3D11_WINRT_SWAPCHAINPANELNATIVEWINDOW_H_

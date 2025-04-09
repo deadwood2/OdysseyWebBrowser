@@ -21,7 +21,10 @@
 #include "WebProcessTest.h"
 #include <JavaScriptCore/JSContextRef.h>
 #include <JavaScriptCore/JSRetainPtr.h>
+#include <fcntl.h>
 #include <gio/gio.h>
+#include <gio/gunixfdlist.h>
+#include <glib/gstdio.h>
 #if USE(GSTREAMER)
 #include <gst/gst.h>
 #endif
@@ -63,6 +66,9 @@ static const char introspectionXML[] =
     "  </method>"
     "  <method name='RemoveAVPluginsFromGSTRegistry'>"
     "  </method>"
+    "  <signal name='PageCreated'>"
+    "   <arg type='t' name='pageID' direction='out'/>"
+    "  </signal>"
     "  <signal name='DocumentLoaded'/>"
     "  <signal name='FormControlsAssociated'>"
     "   <arg type='s' name='formIds' direction='out'/>"
@@ -89,6 +95,7 @@ static const char introspectionXML[] =
 
 
 typedef enum {
+    PageCreatedSignal,
     DocumentLoadedSignal,
     URIChangedSignal,
     FormControlsAssociatedSignal,
@@ -99,6 +106,12 @@ typedef enum {
 struct DelayedSignal {
     explicit DelayedSignal(DelayedSignalType type)
         : type(type)
+    {
+    }
+
+    DelayedSignal(DelayedSignalType type, guint64 n)
+        : type(type)
+        , n(n)
     {
     }
 
@@ -124,6 +137,7 @@ struct DelayedSignal {
     CString str3;
     gboolean b;
     gboolean b2;
+    guint64 n;
 };
 
 Deque<DelayedSignal> delayedSignalsQueue;
@@ -150,6 +164,8 @@ static void documentLoadedCallback(WebKitWebPage* webPage, WebKitWebExtension* e
     webkit_dom_dom_window_webkit_message_handlers_post_message(window.get(), "dom", "DocumentLoaded");
     G_GNUC_END_IGNORE_DEPRECATIONS;
 #endif
+
+    webkit_web_page_send_message_to_view(webPage, webkit_user_message_new("DocumentLoaded", nullptr), nullptr, nullptr, nullptr);
 
     gpointer data = g_object_get_data(G_OBJECT(extension), "dbus-connection");
     if (data)
@@ -405,8 +421,98 @@ static void willSubmitFormCallback(WebKitWebPage* webPage, WebKitDOMElement* for
     }
 }
 
+static gboolean pageMessageReceivedCallback(WebKitWebPage* webPage, WebKitUserMessage* message, WebKitWebExtension* extension)
+{
+    const char* messageName = webkit_user_message_get_name(message);
+    if (!g_strcmp0(messageName, "Test.Hello")) {
+        auto* parameters = webkit_user_message_get_parameters(message);
+        g_assert_nonnull(parameters);
+        const char* parameter = nullptr;
+        g_variant_get(parameters, "&s", &parameter);
+        g_assert_cmpstr(parameter, ==, "WebProcess");
+        g_assert_null(webkit_user_message_get_fd_list(message));
+        webkit_user_message_send_reply(message, webkit_user_message_new("Test.Hello", g_variant_new("s", "UIProcess")));
+        return TRUE;
+    }
+
+    if (!g_strcmp0(messageName, "Test.Optional")) {
+        auto* parameters = webkit_user_message_get_parameters(message);
+        g_assert_nonnull(parameters);
+        const char* parameter1 = nullptr;
+        const char* parameter2 = nullptr;
+        g_variant_get(parameters, "(&sm&s)", &parameter1, &parameter2);
+        g_assert_cmpstr(parameter1, ==, "Hello");
+        webkit_user_message_send_reply(message, webkit_user_message_new("Test.Optional", g_variant_new("s", parameter2 ? parameter2 : "NULL")));
+        return TRUE;
+    }
+
+    if (!g_strcmp0(messageName, "Test.Ping")) {
+        g_assert_null(webkit_user_message_get_parameters(message));
+        webkit_user_message_send_reply(message, webkit_user_message_new("Test.Pong", nullptr));
+        return TRUE;
+    }
+
+    if (!g_strcmp0(messageName, "Test.OpenFile")) {
+        auto* parameters = webkit_user_message_get_parameters(message);
+        g_assert_nonnull(parameters);
+        const char* filename = nullptr;
+        g_variant_get(parameters, "&s", &filename);
+        int fd = g_open(filename, O_RDONLY, 0);
+        g_assert_cmpint(fd, !=, -1);
+        GRefPtr<GUnixFDList> fdList = adoptGRef(g_unix_fd_list_new());
+        GUniqueOutPtr<GError> error;
+        g_unix_fd_list_append(fdList.get(), fd, &error.outPtr());
+        g_assert_no_error(error.get());
+        close(fd);
+
+        webkit_user_message_send_reply(message, webkit_user_message_new_with_fd_list("Test.OpenFile", g_variant_new("h", 0), fdList.get()));
+        return TRUE;
+    }
+
+    if (!g_strcmp0(messageName, "Test.Infinite")) {
+        abort();
+        return TRUE;
+    }
+
+    if (!g_strcmp0(messageName, "Test.AsyncPing")) {
+        webkit_web_page_send_message_to_view(webPage, webkit_user_message_new("Test.Ping", nullptr), nullptr,
+            [](GObject* object, GAsyncResult* result, gpointer) {
+                auto* webPage = WEBKIT_WEB_PAGE(object);
+                GUniqueOutPtr<GError> error;
+                GRefPtr<WebKitUserMessage> reply = adoptGRef(webkit_web_page_send_message_to_view_finish(webPage, result, &error.outPtr()));
+                g_assert_no_error(error.get());
+                g_assert_cmpstr(webkit_user_message_get_name(reply.get()), ==, "Test.Pong");
+                webkit_web_page_send_message_to_view(webPage, webkit_user_message_new("Test.AsyncPong", nullptr), nullptr, nullptr, nullptr);
+            }, nullptr);
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+static void emitPageCreated(GDBusConnection* connection, guint64 pageID)
+{
+    bool ok = g_dbus_connection_emit_signal(
+        connection,
+        nullptr,
+        "/org/webkit/gtk/WebExtensionTest",
+        "org.webkit.gtk.WebExtensionTest",
+        "PageCreated",
+        g_variant_new("(t)", pageID),
+        nullptr);
+    g_assert_true(ok);
+}
+
 static void pageCreatedCallback(WebKitWebExtension* extension, WebKitWebPage* webPage, gpointer)
 {
+    if (auto* data = g_object_get_data(G_OBJECT(extension), "dbus-connection"))
+        emitPageCreated(G_DBUS_CONNECTION(data), webkit_web_page_get_id(webPage));
+    else
+        delayedSignalsQueue.append(DelayedSignal(PageCreatedSignal, webkit_web_page_get_id(webPage)));
+
+    webkit_web_extension_send_message_to_context(extension, webkit_user_message_new("PageCreated", g_variant_new("(t)", webkit_web_page_get_id(webPage))),
+        nullptr, nullptr, nullptr);
+
     g_signal_connect(webPage, "document-loaded", G_CALLBACK(documentLoadedCallback), extension);
     g_signal_connect(webPage, "notify::uri", G_CALLBACK(uriChangedCallback), extension);
     g_signal_connect(webPage, "send-request", G_CALLBACK(sendRequestCallback), nullptr);
@@ -414,6 +520,26 @@ static void pageCreatedCallback(WebKitWebExtension* extension, WebKitWebPage* we
     g_signal_connect(webPage, "context-menu", G_CALLBACK(contextMenuCallback), nullptr);
     g_signal_connect(webPage, "form-controls-associated-for-frame", G_CALLBACK(formControlsAssociatedForFrameCallback), extension);
     g_signal_connect(webPage, "will-submit-form", G_CALLBACK(willSubmitFormCallback), extension);
+    g_signal_connect(webPage, "user-message-received", G_CALLBACK(pageMessageReceivedCallback), extension);
+}
+
+static gboolean extensionMessageReceivedCallback(WebKitWebExtension* extension, WebKitUserMessage* message)
+{
+    const char* messageName = webkit_user_message_get_name(message);
+    if (g_strcmp0(messageName, "RequestPing")) {
+        webkit_web_extension_send_message_to_context(extension, webkit_user_message_new("Ping", nullptr), nullptr,
+            [](GObject* object, GAsyncResult* result, gpointer) {
+                auto* extension = WEBKIT_WEB_EXTENSION(object);
+                GUniqueOutPtr<GError> error;
+                GRefPtr<WebKitUserMessage> reply = adoptGRef(webkit_web_extension_send_message_to_context_finish(extension, result, &error.outPtr()));
+                g_assert_no_error(error.get());
+                g_assert_cmpstr(webkit_user_message_get_name(reply.get()), ==, "Pong");
+                webkit_web_extension_send_message_to_context(extension, webkit_user_message_new("Test.FinishedPingRequest", nullptr), nullptr, nullptr, nullptr);
+            }, nullptr);
+        return TRUE;
+    }
+
+    return FALSE;
 }
 
 static char* echoCallback(const char* message)
@@ -520,13 +646,17 @@ static const GDBusInterfaceVTable interfaceVirtualTable = {
     methodCallCallback, 0, 0, { 0, }
 };
 
-static void busAcquiredCallback(GDBusConnection* connection, const char* name, gpointer userData)
+static void dbusConnectionCreated(GObject*, GAsyncResult* result, gpointer userData)
 {
-    static GDBusNodeInfo* introspectionData = 0;
-    if (!introspectionData)
-        introspectionData = g_dbus_node_info_new_for_xml(introspectionXML, 0);
-
     GUniqueOutPtr<GError> error;
+    GDBusConnection* connection = g_dbus_connection_new_for_address_finish(result, &error.outPtr());
+    g_assert(G_IS_DBUS_CONNECTION(connection));
+    g_assert_no_error(error.get());
+
+    static GDBusNodeInfo* introspectionData = nullptr;
+    if (!introspectionData)
+        introspectionData = g_dbus_node_info_new_for_xml(introspectionXML, nullptr);
+
     unsigned registrationID = g_dbus_connection_register_object(
         connection,
         "/org/webkit/gtk/WebExtensionTest",
@@ -536,12 +666,15 @@ static void busAcquiredCallback(GDBusConnection* connection, const char* name, g
         static_cast<GDestroyNotify>(g_object_unref),
         &error.outPtr());
     if (!registrationID)
-        g_warning("Failed to register object: %s\n", error->message);
+        g_error("Failed to register object: %s\n", error->message);
 
-    g_object_set_data(G_OBJECT(userData), "dbus-connection", connection);
+    g_object_set_data_full(G_OBJECT(userData), "dbus-connection", connection, g_object_unref);
     while (delayedSignalsQueue.size()) {
         DelayedSignal delayedSignal = delayedSignalsQueue.takeFirst();
         switch (delayedSignal.type) {
+        case PageCreatedSignal:
+            emitPageCreated(connection, delayedSignal.n);
+            break;
         case DocumentLoadedSignal:
             emitDocumentLoaded(connection);
             break;
@@ -578,20 +711,19 @@ extern "C" void webkit_web_extension_initialize_with_user_data(WebKitWebExtensio
     g_assert_cmpstr(webkit_script_world_get_name(isolatedWorld), ==, "WebExtensionTestScriptWorld");
     g_object_set_data_full(G_OBJECT(extension), "wk-script-world", isolatedWorld, g_object_unref);
 
+    g_signal_connect(extension, "user-message-received", G_CALLBACK(extensionMessageReceivedCallback), nullptr);
     g_signal_connect(extension, "page-created", G_CALLBACK(pageCreatedCallback), extension);
     g_signal_connect(webkit_script_world_get_default(), "window-object-cleared", G_CALLBACK(windowObjectCleared), nullptr);
 
     registerGResource();
 
     g_assert_nonnull(userData);
-    g_assert_true(g_variant_is_of_type(userData, G_VARIANT_TYPE_UINT32));
-    GUniquePtr<char> busName(g_strdup_printf("org.webkit.gtk.WebExtensionTest%u", g_variant_get_uint32(userData)));
-    g_bus_own_name(
-        G_BUS_TYPE_SESSION,
-        busName.get(),
-        G_BUS_NAME_OWNER_FLAGS_NONE,
-        busAcquiredCallback,
-        0, 0,
-        g_object_ref(extension),
-        static_cast<GDestroyNotify>(g_object_unref));
+    const char* guid;
+    const char* address;
+    g_variant_get(userData, "(&s&s)", &guid, &address);
+    g_assert_nonnull(guid);
+    g_assert_nonnull(address);
+
+    g_dbus_connection_new_for_address(address, G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT, nullptr, nullptr,
+        dbusConnectionCreated, extension);
 }

@@ -164,7 +164,7 @@ bool WebEditorClient::shouldApplyStyle(StyleProperties* style, Range* range)
 
 void WebEditorClient::registerAttachmentIdentifier(const String& identifier, const String& contentType, const String& preferredFileName, Ref<SharedBuffer>&& data)
 {
-    m_page->send(Messages::WebPageProxy::RegisterAttachmentIdentifierFromData(identifier, contentType, preferredFileName, { data }));
+    m_page->send(Messages::WebPageProxy::RegisterAttachmentIdentifierFromData(identifier, contentType, preferredFileName, data.get()));
 }
 
 void WebEditorClient::registerAttachments(Vector<WebCore::SerializedAttachmentData>&& data)
@@ -360,7 +360,7 @@ WebCore::DOMPasteAccessResponse WebEditorClient::requestDOMPasteAccess(const Str
     return m_page->requestDOMPasteAccess(originIdentifier);
 }
 
-#if PLATFORM(WIN)
+#if !PLATFORM(COCOA) && !USE(GLIB)
 void WebEditorClient::handleKeyboardEvent(KeyboardEvent& event)
 {
     if (m_page->handleEditingKeyboardEvent(event))
@@ -371,7 +371,7 @@ void WebEditorClient::handleInputMethodKeydown(KeyboardEvent&)
 {
     notImplemented();
 }
-#endif // PLATFORM(WIN)
+#endif // !PLATFORM(COCOA) && !USE(GLIB)
 
 void WebEditorClient::textFieldDidBeginEditing(Element* element)
 {
@@ -421,6 +421,11 @@ void WebEditorClient::textDidChangeInTextArea(Element* element)
 
 #if !PLATFORM(IOS_FAMILY)
 void WebEditorClient::overflowScrollPositionChanged()
+{
+    notImplemented();
+}
+
+void WebEditorClient::subFrameScrollPositionChanged()
 {
     notImplemented();
 }
@@ -599,13 +604,13 @@ void WebEditorClient::willSetInputMethodState()
 {
 }
 
-void WebEditorClient::setInputMethodState(bool enabled)
+void WebEditorClient::setInputMethodState(Element* element)
 {
-#if PLATFORM(GTK)
-    m_page->setInputMethodState(enabled);
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    m_page->setInputMethodState(element);
 #else
     notImplemented();
-    UNUSED_PARAM(enabled);
+    UNUSED_PARAM(element);
 #endif
 }
 

@@ -44,10 +44,6 @@ namespace API {
 class Array;
 }
 
-namespace PAL {
-class SessionID;
-}
-
 namespace WebCore {
 class CertificateInfo;
 class Frame;
@@ -77,7 +73,7 @@ public:
 
     WebPage* page() const;
 
-    static WebFrame* fromCoreFrame(WebCore::Frame&);
+    static WebFrame* fromCoreFrame(const WebCore::Frame&);
     WebCore::Frame* coreFrame() const { return m_coreFrame; }
 
     FrameInfoData info() const;
@@ -92,7 +88,7 @@ public:
     void continueWillSubmitForm(uint64_t);
 
     void startDownload(const WebCore::ResourceRequest&, const String& suggestedName = { });
-    void convertMainResourceLoadToDownload(WebCore::DocumentLoader*, PAL::SessionID, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&);
+    void convertMainResourceLoadToDownload(WebCore::DocumentLoader*, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&);
 
     void addConsoleMessage(MessageSource, MessageLevel, const String&, uint64_t requestID = 0);
 
@@ -171,6 +167,8 @@ public:
     TransactionID firstLayerTreeTransactionIDAfterDidCommitLoad() const { return m_firstLayerTreeTransactionIDAfterDidCommitLoad; }
     void setFirstLayerTreeTransactionIDAfterDidCommitLoad(TransactionID transactionID) { m_firstLayerTreeTransactionIDAfterDidCommitLoad = transactionID; }
 #endif
+
+    WebFrameLoaderClient* frameLoaderClient() const { return m_frameLoaderClient.get(); }
 
 private:
     static Ref<WebFrame> create(std::unique_ptr<WebFrameLoaderClient>);

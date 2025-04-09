@@ -27,7 +27,6 @@
 
 #include "ArgumentCoders.h"
 #include <WebCore/AutoplayEvent.h>
-#include <WebCore/CacheStorageConnection.h>
 #include <WebCore/ColorSpace.h>
 #include <WebCore/DiagnosticLoggingClient.h>
 #include <WebCore/FrameLoaderTypes.h>
@@ -41,6 +40,7 @@
 #include <WebCore/ServiceWorkerTypes.h>
 #include <WebCore/StoredCredentialsPolicy.h>
 #include <WebCore/WorkerType.h>
+#include <wtf/EnumTraits.h>
 
 #if ENABLE(APPLE_PAY)
 #include <WebCore/PaymentHeaders.h>
@@ -80,7 +80,9 @@ class FloatRect;
 class FloatRoundedRect;
 class FloatSize;
 class FixedPositionViewportConstraints;
+class FontHandle;
 class HTTPHeaderMap;
+class ImageHandle;
 class IntPoint;
 class IntRect;
 class IntSize;
@@ -88,8 +90,9 @@ class KeyframeValueList;
 class LayoutSize;
 class LayoutPoint;
 class LinearTimingFunction;
+class NativeImageHandle;
 class Notification;
-class Path;
+class PasteboardCustomData;
 class ProtectionSpace;
 class Region;
 class ResourceError;
@@ -117,7 +120,6 @@ struct Length;
 struct GrammarDetail;
 struct MimeClassInfo;
 struct PasteboardImage;
-struct PasteboardCustomData;
 struct PasteboardURL;
 struct PluginInfo;
 struct PromisedAttachmentInfo;
@@ -146,6 +148,9 @@ class SelectionRect;
 struct Highlight;
 struct PasteboardImage;
 struct PasteboardWebContent;
+#endif
+
+#if ENABLE(META_VIEWPORT)
 struct ViewportArguments;
 #endif
 
@@ -184,7 +189,13 @@ struct SerializedAttachmentData;
 #if ENABLE(INDEXED_DATABASE)
 using IDBKeyPath = Variant<String, Vector<String>>;
 #endif
+
+namespace DOMCacheEngine {
+struct CacheInfo;
+struct Record;
 }
+
+} // namespace WebCore
 
 namespace IPC {
 
@@ -287,13 +298,21 @@ template<> struct ArgumentCoder<WebCore::FloatQuad> {
     static void encode(Encoder&, const WebCore::FloatQuad&);
     static Optional<WebCore::FloatQuad> decode(Decoder&);
 };
+#endif // PLATFORM(IOS_FAMILY)
 
+#if ENABLE(META_VIEWPORT)
 template<> struct ArgumentCoder<WebCore::ViewportArguments> {
     static void encode(Encoder&, const WebCore::ViewportArguments&);
     static bool decode(Decoder&, WebCore::ViewportArguments&);
     static Optional<WebCore::ViewportArguments> decode(Decoder&);
 };
-#endif // PLATFORM(IOS_FAMILY)
+
+#endif
+
+template<> struct ArgumentCoder<WebCore::ViewportAttributes> {
+    static void encode(Encoder&, const WebCore::ViewportAttributes&);
+    static bool decode(Decoder&, WebCore::ViewportAttributes&);
+};
 
 template<> struct ArgumentCoder<WebCore::IntPoint> {
     static void encode(Encoder&, const WebCore::IntPoint&);
@@ -323,20 +342,9 @@ template<> struct ArgumentCoder<WebCore::LayoutPoint> {
     static bool decode(Decoder&, WebCore::LayoutPoint&);
 };
 
-template<> struct ArgumentCoder<WebCore::Path> {
-    static void encode(Encoder&, const WebCore::Path&);
-    static bool decode(Decoder&, WebCore::Path&);
-    static Optional<WebCore::Path> decode(Decoder&);
-};
-
 template<> struct ArgumentCoder<WebCore::Length> {
     static void encode(Encoder&, const WebCore::Length&);
     static bool decode(Decoder&, WebCore::Length&);
-};
-
-template<> struct ArgumentCoder<WebCore::ViewportAttributes> {
-    static void encode(Encoder&, const WebCore::ViewportAttributes&);
-    static bool decode(Decoder&, WebCore::ViewportAttributes&);
 };
 
 template<> struct ArgumentCoder<WebCore::VelocityData> {
@@ -376,6 +384,23 @@ template<> struct ArgumentCoder<WebCore::Credential> {
 template<> struct ArgumentCoder<WebCore::Cursor> {
     static void encode(Encoder&, const WebCore::Cursor&);
     static bool decode(Decoder&, WebCore::Cursor&);
+};
+
+template<> struct ArgumentCoder<WebCore::FontHandle> {
+    static void encode(Encoder&, const WebCore::FontHandle&);
+    static bool decode(Decoder&, WebCore::FontHandle&);
+    static void encodePlatformData(Encoder&, const WebCore::FontHandle&);
+    static bool decodePlatformData(Decoder&, WebCore::FontHandle&);
+};
+
+template<> struct ArgumentCoder<WebCore::ImageHandle> {
+    static void encode(Encoder&, const WebCore::ImageHandle&);
+    static bool decode(Decoder&, WebCore::ImageHandle&);
+};
+
+template<> struct ArgumentCoder<WebCore::NativeImageHandle> {
+    static void encode(Encoder&, const WebCore::NativeImageHandle&);
+    static bool decode(Decoder&, WebCore::NativeImageHandle&);
 };
 
 template<> struct ArgumentCoder<WebCore::ResourceRequest> {
@@ -420,6 +445,26 @@ template<> struct ArgumentCoder<WTF::MachSendRight> {
 template<> struct ArgumentCoder<WebCore::KeypressCommand> {
     static void encode(Encoder&, const WebCore::KeypressCommand&);
     static Optional<WebCore::KeypressCommand> decode(Decoder&);
+};
+
+template<> struct ArgumentCoder<CGPoint> {
+    static void encode(Encoder&, CGPoint);
+    static Optional<CGPoint> decode(Decoder&);
+};
+
+template<> struct ArgumentCoder<CGSize> {
+    static void encode(Encoder&, CGSize);
+    static Optional<CGSize> decode(Decoder&);
+};
+
+template<> struct ArgumentCoder<CGRect> {
+    static void encode(Encoder&, CGRect);
+    static Optional<CGRect> decode(Decoder&);
+};
+
+template<> struct ArgumentCoder<CGAffineTransform> {
+    static void encode(Encoder&, CGAffineTransform);
+    static Optional<CGAffineTransform> decode(Decoder&);
 };
 #endif
 
@@ -697,6 +742,11 @@ template<> struct ArgumentCoder<WebCore::ShippingMethodUpdate> {
     static Optional<WebCore::ShippingMethodUpdate> decode(Decoder&);
 };
 
+template<> struct ArgumentCoder<WebCore::PaymentSessionError> {
+    static void encode(Encoder&, const WebCore::PaymentSessionError&);
+    static Optional<WebCore::PaymentSessionError> decode(Decoder&);
+};
+
 #endif
 
 #if ENABLE(MEDIA_STREAM)
@@ -776,9 +826,9 @@ namespace WTF {
 template<> struct EnumTraits<WebCore::ColorSpace> {
     using values = EnumValues<
     WebCore::ColorSpace,
-    WebCore::ColorSpace::ColorSpaceSRGB,
-    WebCore::ColorSpace::ColorSpaceLinearRGB,
-    WebCore::ColorSpace::ColorSpaceDisplayP3
+    WebCore::ColorSpace::SRGB,
+    WebCore::ColorSpace::LinearRGB,
+    WebCore::ColorSpace::DisplayP3
     >;
 };
 
@@ -869,7 +919,7 @@ template<> struct EnumTraits<WebCore::StoredCredentialsPolicy> {
         WebCore::StoredCredentialsPolicy,
         WebCore::StoredCredentialsPolicy::DoNotUse,
         WebCore::StoredCredentialsPolicy::Use,
-        WebCore::StoredCredentialsPolicy::EphemeralStatelessCookieless
+        WebCore::StoredCredentialsPolicy::EphemeralStateless
     >;
 };
 

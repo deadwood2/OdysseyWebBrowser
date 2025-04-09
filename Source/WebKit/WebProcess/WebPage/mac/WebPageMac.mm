@@ -68,7 +68,7 @@
 #import <WebCore/FrameLoader.h>
 #import <WebCore/FrameView.h>
 #import <WebCore/GraphicsContext.h>
-#import <WebCore/GraphicsContext3D.h>
+#import <WebCore/GraphicsContextGLOpenGL.h>
 #import <WebCore/HTMLConverter.h>
 #import <WebCore/HTMLPlugInImageElement.h>
 #import <WebCore/HitTestResult.h>
@@ -90,11 +90,11 @@
 #import <WebCore/TextIterator.h>
 #import <WebCore/VisibleUnits.h>
 #import <WebCore/WindowsKeyboardCodes.h>
-#import <pal/spi/mac/NSAccessibilitySPI.h>
+#import <pal/spi/cocoa/NSAccessibilitySPI.h>
 #import <wtf/SetForScope.h>
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
-#import <WebCore/MediaPlaybackTargetMac.h>
+#import <WebCore/MediaPlaybackTargetCocoa.h>
 #import <WebCore/MediaPlaybackTargetMock.h>
 #endif
 
@@ -268,7 +268,7 @@ bool WebPage::executeKeypressCommandsInternal(const Vector<WebCore::KeypressComm
             } else {
                 bool commandWasHandledByUIProcess = false;
                 WebProcess::singleton().parentProcessConnection()->sendSync(Messages::WebPageProxy::ExecuteSavedCommandBySelector(commands[i].commandName),
-                    Messages::WebPageProxy::ExecuteSavedCommandBySelector::Reply(commandWasHandledByUIProcess), m_pageID);
+                    Messages::WebPageProxy::ExecuteSavedCommandBySelector::Reply(commandWasHandledByUIProcess), m_identifier);
                 eventWasHandled |= commandWasHandledByUIProcess;
             }
         }
@@ -832,6 +832,7 @@ void WebPage::handleSelectionServiceClick(FrameSelection& selection, const Vecto
     Vector<uint8_t> selectionDataVector;
     selectionDataVector.append(reinterpret_cast<const uint8_t*>(selectionData.bytes), selectionData.length);
 
+    flushPendingEditorStateUpdate();
     send(Messages::WebPageProxy::ShowContextMenu(ContextMenuContextData(point, selectionDataVector, phoneNumbers, selection.selection().isContentEditable()), UserData()));
 }
 #endif
@@ -861,7 +862,7 @@ void WebPage::performImmediateActionHitTestAtLocation(WebCore::FloatPoint locati
     if (element)
         immediateActionHitTestPreventsDefault = element->dispatchMouseForceWillBegin();
 
-    WebHitTestResultData immediateActionResult(hitTestResult);
+    WebHitTestResultData immediateActionResult(hitTestResult, { });
 
     RefPtr<Range> selectionRange = corePage()->focusController().focusedOrMainFrame().selection().selection().firstRange();
 
@@ -1026,7 +1027,7 @@ void WebPage::playbackTargetSelected(uint64_t contextId, const WebCore::MediaPla
 {
     switch (targetContext.type()) {
     case MediaPlaybackTargetContext::AVOutputContextType:
-        m_page->setPlaybackTarget(contextId, WebCore::MediaPlaybackTargetMac::create(targetContext.avOutputContext()));
+        m_page->setPlaybackTarget(contextId, WebCore::MediaPlaybackTargetCocoa::create(targetContext.avOutputContext()));
         break;
     case MediaPlaybackTargetContext::MockType:
         m_page->setPlaybackTarget(contextId, WebCore::MediaPlaybackTargetMock::create(targetContext.mockDeviceName(), targetContext.mockState()));
@@ -1045,6 +1046,11 @@ void WebPage::playbackTargetAvailabilityDidChange(uint64_t contextId, bool chang
 void WebPage::setShouldPlayToPlaybackTarget(uint64_t contextId, bool shouldPlay)
 {
     m_page->setShouldPlayToPlaybackTarget(contextId, shouldPlay);
+}
+
+void WebPage::playbackTargetPickerWasDismissed(uint64_t contextId)
+{
+    m_page->playbackTargetPickerWasDismissed(contextId);
 }
 #endif
 

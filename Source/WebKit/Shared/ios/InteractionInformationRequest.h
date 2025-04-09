@@ -41,6 +41,7 @@ struct InteractionInformationRequest {
 
     bool includeSnapshot { false };
     bool includeLinkIndicator { false };
+    bool includeCaretContext { false };
 
     bool linkIndicatorShouldHaveLegacyMargins { false };
 
@@ -50,8 +51,8 @@ struct InteractionInformationRequest {
         this->point = point;
     }
 
-    bool isValidForRequest(const InteractionInformationRequest&);
-    bool isApproximatelyValidForRequest(const InteractionInformationRequest& other);
+    bool isValidForRequest(const InteractionInformationRequest&, int radius = 0);
+    bool isApproximatelyValidForRequest(const InteractionInformationRequest&, int radius);
 
     void encode(IPC::Encoder&) const;
     static bool decode(IPC::Decoder&, InteractionInformationRequest&);

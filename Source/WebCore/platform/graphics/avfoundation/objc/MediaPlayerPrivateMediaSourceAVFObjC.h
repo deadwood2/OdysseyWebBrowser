@@ -30,6 +30,7 @@
 
 #include "MediaPlayerPrivate.h"
 #include "SourceBufferPrivateClient.h"
+#include <wtf/Deque.h>
 #include <wtf/Function.h>
 #include <wtf/HashMap.h>
 #include <wtf/LoggerHelper.h>
@@ -217,14 +218,12 @@ private:
 
     bool didLoadingProgress() const override;
 
-    void setSize(const IntSize&) override;
-
     NativeImagePtr nativeImageForCurrentTime() override;
     bool updateLastPixelBuffer();
     bool updateLastImage();
     void paint(GraphicsContext&, const FloatRect&) override;
     void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&) override;
-    bool copyVideoTextureToPlatformTexture(GraphicsContext3D*, Platform3DObject, GC3Denum target, GC3Dint level, GC3Denum internalFormat, GC3Denum format, GC3Denum type, bool premultiplyAlpha, bool flipY) override;
+    bool copyVideoTextureToPlatformTexture(GraphicsContextGLOpenGL*, PlatformGLObject, GCGLenum target, GCGLint level, GCGLenum internalFormat, GCGLenum format, GCGLenum type, bool premultiplyAlpha, bool flipY) override;
 
     bool supportsAcceleratedRendering() const override;
     // called when the rendering system flips the into or out of accelerated rendering mode.

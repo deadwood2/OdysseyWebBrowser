@@ -231,10 +231,8 @@ class WebGLReadOutsideFramebufferTest : public ANGLETest
         setWebGLCompatibilityEnabled(true);
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         constexpr char kVS[] = R"(
 attribute vec3 a_position;
 varying vec2 v_texCoord;
@@ -266,11 +264,7 @@ void main() {
         drawQuad(mProgram, "a_position", 0.0f, 1.0f, true);
     }
 
-    void TearDown() override
-    {
-        glDeleteProgram(mProgram);
-        ANGLETest::TearDown();
-    }
+    void testTearDown() override { glDeleteProgram(mProgram); }
 
     using TestFunc = void (WebGLReadOutsideFramebufferTest::*)(int x,
                                                                int y,
@@ -368,6 +362,8 @@ TEST_P(WebGLReadOutsideFramebufferTest, CopyTexSubImage2D)
 // Check that copyTexImage2D sets (0,0,0,0) for pixels outside the framebuffer.
 TEST_P(WebGLReadOutsideFramebufferTest, CopyTexImage2D)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(IsVulkan() || IsD3D9() || IsD3D11());
     Main2D(&WebGLReadOutsideFramebufferTest::TestCopyTexImage2D, true);
 
     // TODO(fjhenigman): Figure out this failure.
@@ -381,26 +377,19 @@ TEST_P(WebGLReadOutsideFramebufferTest, CopyTexImage2D)
 // the corresponding source pixel is outside the framebuffer.
 TEST_P(WebGL2ReadOutsideFramebufferTest, CopyTexSubImage3D)
 {
+    // TODO(hqle): Metal doesn't implement 3D texture yet.
+    // http://anglebug.com/4136 (ES2 renderer is mistakenly included in this test)
+    ANGLE_SKIP_TEST_IF(IsMetal());
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(IsVulkan() || IsD3D9() || IsD3D11());
     // Robust CopyTexSubImage3D behaviour is not implemented on OpenGL.
     ANGLE_SKIP_TEST_IF(IsDesktopOpenGL() || IsOpenGLES());
 
     Main3D(&WebGLReadOutsideFramebufferTest::TestCopyTexSubImage3D, false);
 }
 
-ANGLE_INSTANTIATE_TEST(WebGLReadOutsideFramebufferTest,
-                       ES2_D3D9(),
-                       ES2_D3D11(),
-                       ES3_D3D11(),
-                       ES2_D3D11_FL9_3(),
-                       ES2_OPENGL(),
-                       ES3_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES3_OPENGLES());
+ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(WebGLReadOutsideFramebufferTest);
 
-ANGLE_INSTANTIATE_TEST(WebGL2ReadOutsideFramebufferTest,
-                       ES3_D3D11(),
-                       ES3_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES3_OPENGLES());
+ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(WebGL2ReadOutsideFramebufferTest);
 
 }  // namespace angle

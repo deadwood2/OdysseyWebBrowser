@@ -128,26 +128,20 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
         font = m_font.fallbackRangesAt(0).fontForCharacter(baseCharacter);
         if (!font)
             font = &m_font.fallbackRangesAt(0).fontForFirstRange();
-        stringAttributes = adoptCF(CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, font->getCFStringAttributes(m_font.enableKerning(), font->platformData().orientation())));
+        stringAttributes = adoptCF(CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, font->getCFStringAttributes(m_font.enableKerning(), font->platformData().orientation(), m_font.fontDescription().locale()).get()));
         // We don't know which font should be used to render this grapheme cluster, so enable CoreText's fallback mechanism by using the CTFont which doesn't have CoreText's fallback disabled.
         CFDictionarySetValue(const_cast<CFMutableDictionaryRef>(stringAttributes.get()), kCTFontAttributeName, font->platformData().font());
     } else
-        stringAttributes = font->getCFStringAttributes(m_font.enableKerning(), font->platformData().orientation());
+        stringAttributes = font->getCFStringAttributes(m_font.enableKerning(), font->platformData().orientation(), m_font.fontDescription().locale());
 
     RetainPtr<CTLineRef> line;
 
     if (!m_mayUseNaturalWritingDirection || m_run.directionalOverride()) {
         const short ltrForcedEmbeddingLevelValue = 0;
         const short rtlForcedEmbeddingLevelValue = 1;
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED == 101400) || (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED == 120000)
-        static const void* optionKeys[] = { kCTTypesetterOptionForcedEmbeddingLevel, kCTTypesetterOptionAllowUnboundedLayout };
-        static const void* ltrOptionValues[] = { CFNumberCreate(kCFAllocatorDefault, kCFNumberShortType, &ltrForcedEmbeddingLevelValue), kCFBooleanTrue };
-        static const void* rtlOptionValues[] = { CFNumberCreate(kCFAllocatorDefault, kCFNumberShortType, &rtlForcedEmbeddingLevelValue), kCFBooleanTrue };
-#else
         static const void* optionKeys[] = { kCTTypesetterOptionForcedEmbeddingLevel };
         static const void* ltrOptionValues[] = { CFNumberCreate(kCFAllocatorDefault, kCFNumberShortType, &ltrForcedEmbeddingLevelValue) };
         static const void* rtlOptionValues[] = { CFNumberCreate(kCFAllocatorDefault, kCFNumberShortType, &rtlForcedEmbeddingLevelValue) };
-#endif
         static CFDictionaryRef ltrTypesetterOptions = CFDictionaryCreate(kCFAllocatorDefault, optionKeys, ltrOptionValues, WTF_ARRAY_LENGTH(optionKeys), &kCFCopyStringDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         static CFDictionaryRef rtlTypesetterOptions = CFDictionaryCreate(kCFAllocatorDefault, optionKeys, rtlOptionValues, WTF_ARRAY_LENGTH(optionKeys), &kCFCopyStringDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
 

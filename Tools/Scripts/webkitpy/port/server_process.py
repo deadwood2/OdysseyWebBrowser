@@ -35,6 +35,9 @@ import signal
 import sys
 import time
 
+from webkitpy.common.system.executive import ScriptError
+from webkitpy.common.unicode_compatibility import encode_if_necessary
+
 # Note that although win32 python does provide an implementation of
 # the win32 select API, it only works on sockets, and not on the named pipes
 # used by subprocess, so we have to use the native APIs directly.
@@ -47,8 +50,6 @@ else:
     import os
     import select
 
-from webkitpy.common.system.executive import ScriptError
-
 
 _log = logging.getLogger(__name__)
 
@@ -60,10 +61,11 @@ class ServerProcess(object):
     indefinitely. The class also handles transparently restarting processes
     as necessary to keep issuing commands."""
 
-    def __init__(self, port_obj, name, cmd, env=None, universal_newlines=False, treat_no_data_as_crash=False, target_host=None):
+    def __init__(self, port_obj, name, cmd, env=None, universal_newlines=False, treat_no_data_as_crash=False, target_host=None, crash_message=None):
         self._port = port_obj
         self._name = name  # Should be the command name (e.g. DumpRenderTree, ImageDiff)
         self._cmd = cmd
+        self._crash_message = crash_message or 'This test marked as a crash'
 
         # Windows does not allow unicode values in the environment
         if env and self._port.host.platform.is_native_win():
@@ -110,8 +112,8 @@ class ServerProcess(object):
                 self._proc.stderr = None
 
         self._proc = None
-        self._output = str()  # bytesarray() once we require Python 2.6
-        self._error = str()  # bytesarray() once we require Python 2.6
+        self._output = b''
+        self._error = b''
         self._crashed = False
         self.timed_out = False
 
@@ -178,23 +180,24 @@ class ServerProcess(object):
         if not self._proc:
             self._start()
         try:
-            self._proc.stdin.write(bytes)
-        except IOError as e:
+            self._proc.stdin.write(encode_if_necessary(bytes))
+            self._proc.stdin.flush()
+        except (IOError, ValueError) as e:
             self.stop(0.0)
             # stop() calls _reset(), so we have to set crashed to True after calling stop()
             # unless we already know that this is a timeout.
             if not ignore_crash:
-                _log.debug('This test marked as a crash because of a broken pipe when writing to stdin of the server process.')
+                _log.debug('{} because of a broken pipe when writing to stdin of the server process.'.format(self._crash_message))
                 self._crashed = True
 
     def _pop_stdout_line_if_ready(self):
-        index_after_newline = self._output.find('\n') + 1
+        index_after_newline = self._output.find(b'\n') + 1
         if index_after_newline > 0:
             return self._pop_output_bytes(index_after_newline)
         return None
 
     def _pop_stderr_line_if_ready(self):
-        index_after_newline = self._error.find('\n') + 1
+        index_after_newline = self._error.find(b'\n') + 1
         if index_after_newline > 0:
             return self._pop_error_bytes(index_after_newline)
         return None
@@ -297,14 +300,14 @@ class ServerProcess(object):
             if out_fd in read_fds:
                 data = self._proc.stdout.read()
                 if not data and not stopping and (self._treat_no_data_as_crash or self._proc.poll()):
-                    _log.debug('This test marked as a crash because of no data while reading stdout for the server process.')
+                    _log.debug('{} because of no data while reading stdout for the server process.'.format(self._crash_message))
                     self._crashed = True
                 self._output += data
 
             if err_fd in read_fds:
                 data = self._proc.stderr.read()
                 if not data and not stopping and (self._treat_no_data_as_crash or self._proc.poll()):
-                    _log.debug('This test marked as a crash because of no data while reading stdout for the server process.')
+                    _log.debug('{} because of no data while reading stdout for the server process.'.format(self._crash_message))
                     self._crashed = True
                 self._error += data
         except IOError as e:
@@ -349,7 +352,7 @@ class ServerProcess(object):
 
     def has_crashed(self):
         if not self._crashed and self.poll():
-            _log.debug('This test marked as a crash because of failure to poll the server process (return code was %s).' % self._proc.returncode)
+            _log.debug('{} because of failure to poll the server process (return code was {}).'.format(self._crash_message, self._proc.returncode))
             self._crashed = True
             self._handle_possible_interrupt()
         return self._crashed

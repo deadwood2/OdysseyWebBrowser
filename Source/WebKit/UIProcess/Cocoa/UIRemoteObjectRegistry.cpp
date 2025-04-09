@@ -31,9 +31,9 @@
 
 namespace WebKit {
 
-ProcessThrottler::BackgroundActivityToken UIRemoteObjectRegistry::takeBackgroundActivityToken()
+std::unique_ptr<ProcessThrottler::BackgroundActivity> UIRemoteObjectRegistry::backgroundActivity(ASCIILiteral name)
 {
-    return m_page.process().throttler().backgroundActivityToken();
+    return m_page.process().throttler().backgroundActivity(name).moveToUniquePtr();
 }
 
 UIRemoteObjectRegistry::UIRemoteObjectRegistry(_WKRemoteObjectRegistry *remoteObjectRegistry, WebPageProxy& page)
@@ -53,6 +53,11 @@ void UIRemoteObjectRegistry::sendInvocation(const RemoteObjectInvocation& invoca
 IPC::MessageSender& UIRemoteObjectRegistry::messageSender()
 {
     return m_page;
+}
+
+uint64_t UIRemoteObjectRegistry::messageDestinationID()
+{
+    return m_page.webPageID().toUInt64();
 }
 
 } // namespace WebKit

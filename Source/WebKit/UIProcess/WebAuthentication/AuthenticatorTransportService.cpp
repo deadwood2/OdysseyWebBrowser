@@ -53,7 +53,7 @@ UniqueRef<AuthenticatorTransportService> AuthenticatorTransportService::create(W
     }
 }
 
-UniqueRef<AuthenticatorTransportService> AuthenticatorTransportService::createMock(WebCore::AuthenticatorTransport transport, Observer& observer, const MockWebAuthenticationConfiguration& configuration)
+UniqueRef<AuthenticatorTransportService> AuthenticatorTransportService::createMock(WebCore::AuthenticatorTransport transport, Observer& observer, const WebCore::MockWebAuthenticationConfiguration& configuration)
 {
     switch (transport) {
     case WebCore::AuthenticatorTransport::Internal:
@@ -75,11 +75,19 @@ AuthenticatorTransportService::AuthenticatorTransportService(Observer& observer)
 
 void AuthenticatorTransportService::startDiscovery()
 {
-    // Enforce asynchronous execution of makeCredential.
     RunLoop::main().dispatch([weakThis = makeWeakPtr(*this)] {
         if (!weakThis)
             return;
         weakThis->startDiscoveryInternal();
+    });
+}
+
+void AuthenticatorTransportService::restartDiscovery()
+{
+    RunLoop::main().dispatch([weakThis = makeWeakPtr(*this)] {
+        if (!weakThis)
+            return;
+        weakThis->restartDiscoveryInternal();
     });
 }
 

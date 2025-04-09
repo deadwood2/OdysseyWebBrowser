@@ -35,12 +35,17 @@
 #include "WebURLSchemeHandler.h"
 #include "WebUserContentControllerProxy.h"
 
+#if USE(APPLE_INTERNAL_SDK)
+#include <WebKitAdditions/PageConfigurationAdditions.h>
+#else
+#define PAGE_CONFIGURATION_ADDITIONS
+#endif
+
 #if ENABLE(APPLICATION_MANIFEST)
 #include "APIApplicationManifest.h"
 #endif
 
 namespace API {
-using namespace WebCore;
 using namespace WebKit;
 
 Ref<PageConfiguration> PageConfiguration::create()
@@ -49,12 +54,11 @@ Ref<PageConfiguration> PageConfiguration::create()
 }
 
 PageConfiguration::PageConfiguration()
+PAGE_CONFIGURATION_ADDITIONS
 {
 }
 
-PageConfiguration::~PageConfiguration()
-{
-}
+PageConfiguration::~PageConfiguration() = default;
 
 Ref<PageConfiguration> PageConfiguration::copy() const
 {
@@ -85,6 +89,8 @@ Ref<PageConfiguration> PageConfiguration::copy() const
 #endif
     for (auto& pair : this->m_urlSchemeHandlers)
         copy->m_urlSchemeHandlers.set(pair.key, pair.value.copyRef());
+    copy->m_corsDisablingPatterns = this->m_corsDisablingPatterns;
+    copy->m_webViewCategory = this->m_webViewCategory;
 
     return copy;
 }
@@ -140,7 +146,6 @@ void PageConfiguration::setRelatedPage(WebPageProxy* relatedPage)
     m_relatedPage = relatedPage;
 }
 
-
 VisitedLinkStore* PageConfiguration::visitedLinkStore()
 {
     return m_visitedLinkStore.get();
@@ -151,12 +156,12 @@ void PageConfiguration::setVisitedLinkStore(VisitedLinkStore* visitedLinkStore)
     m_visitedLinkStore = visitedLinkStore;
 }
 
-API::WebsiteDataStore* PageConfiguration::websiteDataStore()
+WebKit::WebsiteDataStore* PageConfiguration::websiteDataStore()
 {
     return m_websiteDataStore.get();
 }
 
-void PageConfiguration::setWebsiteDataStore(API::WebsiteDataStore* websiteDataStore)
+void PageConfiguration::setWebsiteDataStore(WebKit::WebsiteDataStore* websiteDataStore)
 {
     m_websiteDataStore = websiteDataStore;
 }

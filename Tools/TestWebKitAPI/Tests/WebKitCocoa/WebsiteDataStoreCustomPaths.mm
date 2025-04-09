@@ -25,11 +25,13 @@
 
 #import "config.h"
 
+#import "HTTPServer.h"
 #import "PlatformUtilities.h"
 #import "TCPServer.h"
 #import "Test.h"
 #import "TestNavigationDelegate.h"
 #import "TestWKWebView.h"
+#import <JavaScriptCore/JSCConfig.h>
 #import <WebKit/WKPreferencesRef.h>
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKUserContentControllerPrivate.h>
@@ -405,8 +407,7 @@ TEST(WebKit, WebsiteDataStoreEphemeral)
     configuration.get().websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
     [configuration.get().websiteDataStore _setResourceLoadStatisticsEnabled:YES];
 
-    // We expect the directory to be created by starting up the data store machinery, but not the data file.
-    EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:defaultResourceLoadStatisticsPath.path]);
+    EXPECT_FALSE([[NSFileManager defaultManager] fileExistsAtPath:defaultResourceLoadStatisticsPath.path]);
 
     NSURL *defaultResourceLoadStatisticsFilePath = [NSURL fileURLWithPath:[@"~/Library/WebKit/TestWebKitAPI/WebsiteData/ResourceLoadStatistics/full_browsing_session_resourceLog.plist" stringByExpandingTildeInPath] isDirectory:NO];
     EXPECT_FALSE([[NSFileManager defaultManager] fileExistsAtPath:defaultResourceLoadStatisticsFilePath.path]);
@@ -449,8 +450,7 @@ TEST(WebKit, WebsiteDataStoreEphemeralViaConfiguration)
     configuration.get().websiteDataStore = [[[WKWebsiteDataStore alloc] _initWithConfiguration:dataStoreConfiguration.get()] autorelease];
     [configuration.get().websiteDataStore _setResourceLoadStatisticsEnabled:YES];
 
-    // We expect the directory to be created by starting up the data store machinery, but not the data file.
-    EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:defaultResourceLoadStatisticsPath.path]);
+    EXPECT_FALSE([[NSFileManager defaultManager] fileExistsAtPath:defaultResourceLoadStatisticsPath.path]);
 
     NSURL *defaultResourceLoadStatisticsFilePath = [NSURL fileURLWithPath:[@"~/Library/WebKit/TestWebKitAPI/WebsiteData/ResourceLoadStatistics/full_browsing_session_resourceLog.plist" stringByExpandingTildeInPath] isDirectory:NO];
     EXPECT_FALSE([[NSFileManager defaultManager] fileExistsAtPath:defaultResourceLoadStatisticsFilePath.path]);
@@ -524,6 +524,21 @@ TEST(WebKit, ApplicationIdentifiers)
     EXPECT_TRUE([[websiteDataStoreConfiguration sourceApplicationBundleIdentifier] isEqualToString:@"testidentifier"]);
 }
 
+TEST(WebKit, WebsiteDataStoreConfigurationPathNull)
+{
+    EXPECT_TRUE([[[[_WKWebsiteDataStoreConfiguration alloc] init] autorelease] _indexedDBDatabaseDirectory]);
+    EXPECT_FALSE([[[[_WKWebsiteDataStoreConfiguration alloc] initNonPersistentConfiguration] autorelease] _indexedDBDatabaseDirectory]);
+}
+
+TEST(WebKit, WebsiteDataStoreIfExists)
+{
+    auto webViewConfiguration = adoptNS([WKWebViewConfiguration new]);
+    EXPECT_FALSE([webViewConfiguration _websiteDataStoreIfExists]);
+    WKWebsiteDataStore *dataStore = [webViewConfiguration websiteDataStore];
+    EXPECT_TRUE([webViewConfiguration _websiteDataStoreIfExists]);
+    EXPECT_TRUE(dataStore._configuration.persistent);
+}
+
 TEST(WebKit, NetworkCacheDirectory)
 {
     using namespace TestWebKitAPI;
@@ -556,36 +571,14 @@ TEST(WebKit, NetworkCacheDirectory)
     EXPECT_FALSE(error);
 }
 
+#if HAVE(NETWORK_FRAMEWORK)
+
 TEST(WebKit, ApplicationCacheDirectories)
 {
-    using namespace TestWebKitAPI;
-    TCPServer server([] (int socket) {
-        TCPServer::read(socket);
-        const char* firstResponse =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Length: 31\r\n\r\n"
-        "<html manifest='test.appcache'>";
-        TCPServer::write(socket, firstResponse, strlen(firstResponse));
-        
-        TCPServer::read(socket);
-        const char* secondResponse =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Length: 35\r\n\r\n"
-        "CACHE MANIFEST\n"
-        "index.html\n"
-        "test.mp4\n";
-        TCPServer::write(socket, secondResponse, strlen(secondResponse));
-
-        TCPServer::read(socket);
-        TCPServer::write(socket, firstResponse, strlen(firstResponse));
-        
-        const char* videoResponse =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: video/test\r\n"
-        "Content-Length: 5\r\n\r\n"
-        "test!";
-        TCPServer::read(socket);
-        TCPServer::write(socket, videoResponse, strlen(videoResponse));
+    TestWebKitAPI::HTTPServer server({
+        { "/index.html", { "<html manifest='test.appcache'>" } },
+        { "/test.appcache", { "CACHE MANIFEST\nindex.html\ntest.mp4\n" } },
+        { "/test.mp4", { {{ "Content-Type", "video/test" }}, "test!" }},
     });
     
     NSURL *tempDir = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"CustomPathsTest"] isDirectory:YES];
@@ -606,17 +599,21 @@ TEST(WebKit, ApplicationCacheDirectories)
     [webView synchronouslyLoadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%d/index.html", server.port()]]]];
 
     while (![fileManager fileExistsAtPath:subdirectoryPath])
-        Util::spinRunLoop();
+        TestWebKitAPI::Util::spinRunLoop();
 
     NSError *error = nil;
     [fileManager removeItemAtPath:path error:&error];
     EXPECT_FALSE(error);
 }
 
+#endif // HAVE(NETWORK_FRAMEWORK)
+
 // FIXME: investigate why this test times out on High Sierra
 #if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400) || PLATFORM(IOS_FAMILY)
 TEST(WebKit, MediaCache)
 {
+    JSC::Config::configureForTesting();
+
     std::atomic<bool> done = false;
     using namespace TestWebKitAPI;
     RetainPtr<NSData> data = [NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"test" withExtension:@"mp4" subdirectory:@"TestWebKitAPI.resources"]];
@@ -633,7 +630,7 @@ TEST(WebKit, MediaCache)
 
         while (!done) {
             auto bytes = TCPServer::read(socket);
-            if (done)
+            if (done || bytes.isEmpty())
                 break;
             StringView request(static_cast<const LChar*>(bytes.data()), bytes.size());
             String rangeBytes = "Range: bytes="_s;

@@ -71,6 +71,7 @@ class DisplayVk : public DisplayImpl, public vk::Context
     EGLSyncImpl *createSync(const egl::AttributeMap &attribs) override;
 
     gl::Version getMaxSupportedESVersion() const override;
+    gl::Version getMaxConformantESVersion() const override;
 
     virtual const char *getWSIExtension() const = 0;
     virtual const char *getWSILayer() const;
@@ -92,11 +93,11 @@ class DisplayVk : public DisplayImpl, public vk::Context
     // TODO(jmadill): Remove this once refactor is done. http://anglebug.com/3041
     egl::Error getEGLError(EGLint errorCode);
 
+    void populateFeatureList(angle::FeatureList *features) override;
+
   private:
     virtual SurfaceImpl *createWindowSurfaceVk(const egl::SurfaceState &state,
-                                               EGLNativeWindowType window,
-                                               EGLint width,
-                                               EGLint height) = 0;
+                                               EGLNativeWindowType window) = 0;
     void generateExtensions(egl::DisplayExtensions *outExtensions) const override;
     void generateCaps(egl::Caps *outCaps) const override;
 

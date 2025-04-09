@@ -52,9 +52,10 @@ egl::Error ToEGL(Result result, rx::DisplayVk *displayVk, EGLint errorCode)
 
 namespace rx
 {
-// Mirrors std_validation_str in loader.c
-const char *g_VkStdValidationLayerName = "VK_LAYER_LUNARG_standard_validation";
-const char *g_VkValidationLayerNames[] = {
+// Unified layer that includes full validation layer stack
+const char *g_VkKhronosValidationLayerName  = "VK_LAYER_KHRONOS_validation";
+const char *g_VkStandardValidationLayerName = "VK_LAYER_LUNARG_standard_validation";
+const char *g_VkValidationLayerNames[]      = {
     "VK_LAYER_GOOGLE_threading", "VK_LAYER_LUNARG_parameter_validation",
     "VK_LAYER_LUNARG_object_tracker", "VK_LAYER_LUNARG_core_validation",
     "VK_LAYER_GOOGLE_unique_objects"};
@@ -72,9 +73,14 @@ bool HasValidationLayer(const std::vector<VkLayerProperties> &layerProps, const 
     return false;
 }
 
+bool HasKhronosValidationLayer(const std::vector<VkLayerProperties> &layerProps)
+{
+    return HasValidationLayer(layerProps, g_VkKhronosValidationLayerName);
+}
+
 bool HasStandardValidationLayer(const std::vector<VkLayerProperties> &layerProps)
 {
-    return HasValidationLayer(layerProps, g_VkStdValidationLayerName);
+    return HasValidationLayer(layerProps, g_VkStandardValidationLayerName);
 }
 
 bool HasValidationLayers(const std::vector<VkLayerProperties> &layerProps)
@@ -150,9 +156,6 @@ angle::Result AllocateBufferOrImageMemory(vk::Context *context,
     return angle::Result::Continue;
 }
 
-const char *g_VkLoaderLayersPathEnv = "VK_LAYER_PATH";
-const char *g_VkICDPathEnv          = "VK_ICD_FILENAMES";
-
 const char *VulkanResultString(VkResult result)
 {
     switch (result)
@@ -209,6 +212,8 @@ const char *VulkanResultString(VkResult result)
                    "layout, or is incompatible in a way that prevents sharing an image.";
         case VK_ERROR_VALIDATION_FAILED_EXT:
             return "The validation layers detected invalid API usage.";
+        case VK_ERROR_INVALID_SHADER_NV:
+            return "Invalid Vulkan shader was generated.";
         default:
             return "Unknown vulkan error code.";
     }
@@ -218,9 +223,14 @@ bool GetAvailableValidationLayers(const std::vector<VkLayerProperties> &layerPro
                                   bool mustHaveLayers,
                                   VulkanLayerVector *enabledLayerNames)
 {
-    if (HasStandardValidationLayer(layerProps))
+    // Favor unified Khronos layer, but fallback to standard validation
+    if (HasKhronosValidationLayer(layerProps))
     {
-        enabledLayerNames->push_back(g_VkStdValidationLayerName);
+        enabledLayerNames->push_back(g_VkKhronosValidationLayerName);
+    }
+    else if (HasStandardValidationLayer(layerProps))
+    {
+        enabledLayerNames->push_back(g_VkStandardValidationLayerName);
     }
     else if (HasValidationLayers(layerProps))
     {
@@ -249,6 +259,10 @@ bool GetAvailableValidationLayers(const std::vector<VkLayerProperties> &layerPro
 
 namespace vk
 {
+const char *gLoaderLayersPathEnv   = "VK_LAYER_PATH";
+const char *gLoaderICDFilenamesEnv = "VK_ICD_FILENAMES";
+const char *gANGLEPreferredDevice  = "ANGLE_PREFERRED_DEVICE";
+
 VkImageAspectFlags GetDepthStencilAspectFlags(const angle::Format &format)
 {
     return (format.depthBits > 0 ? VK_IMAGE_ASPECT_DEPTH_BIT : 0) |
@@ -264,12 +278,6 @@ VkImageAspectFlags GetFormatAspectFlags(const angle::Format &format)
     return dsAspect != 0 ? dsAspect : VK_IMAGE_ASPECT_COLOR_BIT;
 }
 
-VkImageAspectFlags GetDepthStencilAspectFlagsForCopy(bool copyDepth, bool copyStencil)
-{
-    return copyDepth ? VK_IMAGE_ASPECT_DEPTH_BIT
-                     : 0 | copyStencil ? VK_IMAGE_ASPECT_STENCIL_BIT : 0;
-}
-
 // Context implementation.
 Context::Context(RendererVk *renderer) : mRenderer(renderer) {}
 
@@ -281,7 +289,7 @@ VkDevice Context::getDevice() const
 }
 
 // MemoryProperties implementation.
-MemoryProperties::MemoryProperties() : mMemoryProperties{0} {}
+MemoryProperties::MemoryProperties() : mMemoryProperties{} {}
 
 void MemoryProperties::init(VkPhysicalDevice physicalDevice)
 {
@@ -292,7 +300,7 @@ void MemoryProperties::init(VkPhysicalDevice physicalDevice)
 
 void MemoryProperties::destroy()
 {
-    mMemoryProperties = {0};
+    mMemoryProperties = {};
 }
 
 angle::Result MemoryProperties::findCompatibleMemoryIndex(
@@ -336,8 +344,16 @@ void StagingBuffer::destroy(VkDevice device)
     mSize = 0;
 }
 
-angle::Result StagingBuffer::init(Context *context, VkDeviceSize size, StagingUsage usage)
+angle::Result StagingBuffer::init(ContextVk *contextVk, VkDeviceSize size, StagingUsage usage)
 {
+    // TODO: Remove with anglebug.com/2162: Vulkan: Implement device memory sub-allocation
+    // Check if we have too many resources allocated already and need to free some before allocating
+    // more and (possibly) exceeding the device's limits.
+    if (contextVk->shouldFlush())
+    {
+        ANGLE_TRY(contextVk->flushImpl(nullptr));
+    }
+
     VkBufferCreateInfo createInfo    = {};
     createInfo.sType                 = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     createInfo.flags                 = 0;
@@ -350,17 +366,17 @@ angle::Result StagingBuffer::init(Context *context, VkDeviceSize size, StagingUs
     VkMemoryPropertyFlags flags =
         (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-    ANGLE_VK_TRY(context, mBuffer.init(context->getDevice(), createInfo));
+    ANGLE_VK_TRY(contextVk, mBuffer.init(contextVk->getDevice(), createInfo));
     VkMemoryPropertyFlags flagsOut = 0;
-    ANGLE_TRY(AllocateBufferMemory(context, flags, &flagsOut, nullptr, &mBuffer, &mDeviceMemory));
+    ANGLE_TRY(AllocateBufferMemory(contextVk, flags, &flagsOut, nullptr, &mBuffer, &mDeviceMemory));
     mSize = static_cast<size_t>(size);
     return angle::Result::Continue;
 }
 
-void StagingBuffer::dumpResources(Serial serial, std::vector<vk::GarbageObject> *garbageQueue)
+void StagingBuffer::release(ContextVk *contextVk)
 {
-    mBuffer.dumpResources(serial, garbageQueue);
-    mDeviceMemory.dumpResources(serial, garbageQueue);
+    contextVk->addGarbage(&mBuffer);
+    contextVk->addGarbage(&mDeviceMemory);
 }
 
 angle::Result AllocateBufferMemory(vk::Context *context,
@@ -415,161 +431,122 @@ angle::Result InitShaderAndSerial(Context *context,
     return angle::Result::Continue;
 }
 
-// GarbageObject implementation.
-GarbageObject::GarbageObject()
-    : mSerial(), mHandleType(HandleType::Invalid), mHandle(VK_NULL_HANDLE)
-{}
-
-GarbageObject::GarbageObject(const GarbageObject &other) = default;
-
-GarbageObject &GarbageObject::operator=(const GarbageObject &other) = default;
-
-bool GarbageObject::destroyIfComplete(VkDevice device, Serial completedSerial)
+gl::TextureType Get2DTextureType(uint32_t layerCount, GLint samples)
 {
-    if (completedSerial >= mSerial)
+    if (layerCount > 1)
     {
-        destroy(device);
-        return true;
+        if (samples > 1)
+        {
+            return gl::TextureType::_2DMultisampleArray;
+        }
+        else
+        {
+            return gl::TextureType::_2DArray;
+        }
     }
-
-    return false;
+    else
+    {
+        if (samples > 1)
+        {
+            return gl::TextureType::_2DMultisample;
+        }
+        else
+        {
+            return gl::TextureType::_2D;
+        }
+    }
 }
 
+GarbageObject::GarbageObject() : mHandleType(HandleType::Invalid), mHandle(VK_NULL_HANDLE) {}
+
+GarbageObject::GarbageObject(HandleType handleType, GarbageHandle handle)
+    : mHandleType(handleType), mHandle(handle)
+{}
+
+GarbageObject::GarbageObject(GarbageObject &&other) : GarbageObject()
+{
+    *this = std::move(other);
+}
+
+GarbageObject &GarbageObject::operator=(GarbageObject &&rhs)
+{
+    std::swap(mHandle, rhs.mHandle);
+    std::swap(mHandleType, rhs.mHandleType);
+    return *this;
+}
+
+// GarbageObject implementation
+// Using c-style casts here to avoid conditional compile for MSVC 32-bit
+//  which fails to compile with reinterpret_cast, requiring static_cast.
 void GarbageObject::destroy(VkDevice device)
 {
     switch (mHandleType)
     {
         case HandleType::Semaphore:
-            vkDestroySemaphore(device, reinterpret_cast<VkSemaphore>(mHandle), nullptr);
+            vkDestroySemaphore(device, (VkSemaphore)mHandle, nullptr);
             break;
         case HandleType::CommandBuffer:
             // Command buffers are pool allocated.
             UNREACHABLE();
             break;
         case HandleType::Event:
-            vkDestroyEvent(device, reinterpret_cast<VkEvent>(mHandle), nullptr);
+            vkDestroyEvent(device, (VkEvent)mHandle, nullptr);
             break;
         case HandleType::Fence:
-            vkDestroyFence(device, reinterpret_cast<VkFence>(mHandle), nullptr);
+            vkDestroyFence(device, (VkFence)mHandle, nullptr);
             break;
         case HandleType::DeviceMemory:
-            vkFreeMemory(device, reinterpret_cast<VkDeviceMemory>(mHandle), nullptr);
+            vkFreeMemory(device, (VkDeviceMemory)mHandle, nullptr);
             break;
         case HandleType::Buffer:
-            vkDestroyBuffer(device, reinterpret_cast<VkBuffer>(mHandle), nullptr);
+            vkDestroyBuffer(device, (VkBuffer)mHandle, nullptr);
             break;
         case HandleType::BufferView:
-            vkDestroyBufferView(device, reinterpret_cast<VkBufferView>(mHandle), nullptr);
+            vkDestroyBufferView(device, (VkBufferView)mHandle, nullptr);
             break;
         case HandleType::Image:
-            vkDestroyImage(device, reinterpret_cast<VkImage>(mHandle), nullptr);
+            vkDestroyImage(device, (VkImage)mHandle, nullptr);
             break;
         case HandleType::ImageView:
-            vkDestroyImageView(device, reinterpret_cast<VkImageView>(mHandle), nullptr);
+            vkDestroyImageView(device, (VkImageView)mHandle, nullptr);
             break;
         case HandleType::ShaderModule:
-            vkDestroyShaderModule(device, reinterpret_cast<VkShaderModule>(mHandle), nullptr);
+            vkDestroyShaderModule(device, (VkShaderModule)mHandle, nullptr);
             break;
         case HandleType::PipelineLayout:
-            vkDestroyPipelineLayout(device, reinterpret_cast<VkPipelineLayout>(mHandle), nullptr);
+            vkDestroyPipelineLayout(device, (VkPipelineLayout)mHandle, nullptr);
             break;
         case HandleType::RenderPass:
-            vkDestroyRenderPass(device, reinterpret_cast<VkRenderPass>(mHandle), nullptr);
+            vkDestroyRenderPass(device, (VkRenderPass)mHandle, nullptr);
             break;
         case HandleType::Pipeline:
-            vkDestroyPipeline(device, reinterpret_cast<VkPipeline>(mHandle), nullptr);
+            vkDestroyPipeline(device, (VkPipeline)mHandle, nullptr);
             break;
         case HandleType::DescriptorSetLayout:
-            vkDestroyDescriptorSetLayout(device, reinterpret_cast<VkDescriptorSetLayout>(mHandle),
-                                         nullptr);
+            vkDestroyDescriptorSetLayout(device, (VkDescriptorSetLayout)mHandle, nullptr);
             break;
         case HandleType::Sampler:
-            vkDestroySampler(device, reinterpret_cast<VkSampler>(mHandle), nullptr);
+            vkDestroySampler(device, (VkSampler)mHandle, nullptr);
             break;
         case HandleType::DescriptorPool:
-            vkDestroyDescriptorPool(device, reinterpret_cast<VkDescriptorPool>(mHandle), nullptr);
+            vkDestroyDescriptorPool(device, (VkDescriptorPool)mHandle, nullptr);
             break;
         case HandleType::Framebuffer:
-            vkDestroyFramebuffer(device, reinterpret_cast<VkFramebuffer>(mHandle), nullptr);
+            vkDestroyFramebuffer(device, (VkFramebuffer)mHandle, nullptr);
             break;
         case HandleType::CommandPool:
-            vkDestroyCommandPool(device, reinterpret_cast<VkCommandPool>(mHandle), nullptr);
+            vkDestroyCommandPool(device, (VkCommandPool)mHandle, nullptr);
             break;
         case HandleType::QueryPool:
-            vkDestroyQueryPool(device, reinterpret_cast<VkQueryPool>(mHandle), nullptr);
+            vkDestroyQueryPool(device, (VkQueryPool)mHandle, nullptr);
             break;
         default:
             UNREACHABLE();
             break;
     }
 }
+
 }  // namespace vk
-
-// VK_EXT_debug_utils
-PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT   = nullptr;
-PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT = nullptr;
-PFN_vkCmdBeginDebugUtilsLabelEXT vkCmdBeginDebugUtilsLabelEXT       = nullptr;
-PFN_vkCmdEndDebugUtilsLabelEXT vkCmdEndDebugUtilsLabelEXT           = nullptr;
-PFN_vkCmdInsertDebugUtilsLabelEXT vkCmdInsertDebugUtilsLabelEXT     = nullptr;
-
-// VK_EXT_debug_report
-PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT   = nullptr;
-PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT = nullptr;
-
-// VK_KHR_get_physical_device_properties2
-PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR = nullptr;
-
-#if defined(ANGLE_PLATFORM_FUCHSIA)
-// VK_FUCHSIA_imagepipe_surface
-PFN_vkCreateImagePipeSurfaceFUCHSIA vkCreateImagePipeSurfaceFUCHSIA = nullptr;
-#endif
-
-#define GET_FUNC(vkName)                                                                   \
-    do                                                                                     \
-    {                                                                                      \
-        vkName = reinterpret_cast<PFN_##vkName>(vkGetInstanceProcAddr(instance, #vkName)); \
-        ASSERT(vkName);                                                                    \
-    } while (0)
-
-void InitDebugUtilsEXTFunctions(VkInstance instance)
-{
-    GET_FUNC(vkCreateDebugUtilsMessengerEXT);
-    GET_FUNC(vkDestroyDebugUtilsMessengerEXT);
-    GET_FUNC(vkCmdBeginDebugUtilsLabelEXT);
-    GET_FUNC(vkCmdEndDebugUtilsLabelEXT);
-    GET_FUNC(vkCmdInsertDebugUtilsLabelEXT);
-}
-
-void InitDebugReportEXTFunctions(VkInstance instance)
-{
-    GET_FUNC(vkCreateDebugReportCallbackEXT);
-    GET_FUNC(vkDestroyDebugReportCallbackEXT);
-}
-
-void InitGetPhysicalDeviceProperties2KHRFunctions(VkInstance instance)
-{
-    GET_FUNC(vkGetPhysicalDeviceProperties2KHR);
-}
-
-#if defined(ANGLE_PLATFORM_FUCHSIA)
-void InitImagePipeSurfaceFUCHSIAFunctions(VkInstance instance)
-{
-    GET_FUNC(vkCreateImagePipeSurfaceFUCHSIA);
-}
-#endif
-
-#if defined(ANGLE_PLATFORM_ANDROID)
-PFN_vkGetAndroidHardwareBufferPropertiesANDROID vkGetAndroidHardwareBufferPropertiesANDROID =
-    nullptr;
-PFN_vkGetMemoryAndroidHardwareBufferANDROID vkGetMemoryAndroidHardwareBufferANDROID = nullptr;
-void InitExternalMemoryHardwareBufferANDROIDFunctions(VkInstance instance)
-{
-    GET_FUNC(vkGetAndroidHardwareBufferPropertiesANDROID);
-    GET_FUNC(vkGetMemoryAndroidHardwareBufferANDROID);
-}
-#endif
-
-#undef GET_FUNC
 
 namespace gl_vk
 {
@@ -596,10 +573,10 @@ VkSamplerMipmapMode GetSamplerMipmapMode(const GLenum filter)
 {
     switch (filter)
     {
-        case GL_LINEAR:
         case GL_LINEAR_MIPMAP_LINEAR:
         case GL_NEAREST_MIPMAP_LINEAR:
             return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        case GL_LINEAR:
         case GL_NEAREST:
         case GL_NEAREST_MIPMAP_NEAREST:
         case GL_LINEAR_MIPMAP_NEAREST:
@@ -658,7 +635,7 @@ VkPrimitiveTopology GetPrimitiveTopology(gl::PrimitiveMode mode)
     }
 }
 
-VkCullModeFlags GetCullMode(const gl::RasterizerState &rasterState)
+VkCullModeFlagBits GetCullMode(const gl::RasterizerState &rasterState)
 {
     if (!rasterState.cullFace)
     {
@@ -739,6 +716,32 @@ VkComponentSwizzle GetSwizzle(const GLenum swizzle)
     }
 }
 
+VkCompareOp GetCompareOp(const GLenum compareFunc)
+{
+    switch (compareFunc)
+    {
+        case GL_NEVER:
+            return VK_COMPARE_OP_NEVER;
+        case GL_LESS:
+            return VK_COMPARE_OP_LESS;
+        case GL_EQUAL:
+            return VK_COMPARE_OP_EQUAL;
+        case GL_LEQUAL:
+            return VK_COMPARE_OP_LESS_OR_EQUAL;
+        case GL_GREATER:
+            return VK_COMPARE_OP_GREATER;
+        case GL_NOTEQUAL:
+            return VK_COMPARE_OP_NOT_EQUAL;
+        case GL_GEQUAL:
+            return VK_COMPARE_OP_GREATER_OR_EQUAL;
+        case GL_ALWAYS:
+            return VK_COMPARE_OP_ALWAYS;
+        default:
+            UNREACHABLE();
+            return VK_COMPARE_OP_ALWAYS;
+    }
+}
+
 void GetOffset(const gl::Offset &glOffset, VkOffset3D *vkOffset)
 {
     vkOffset->x = glOffset.x;
@@ -801,6 +804,16 @@ VkColorComponentFlags GetColorComponentFlags(bool red, bool green, bool blue, bo
            (blue ? VK_COLOR_COMPONENT_B_BIT : 0) | (alpha ? VK_COLOR_COMPONENT_A_BIT : 0);
 }
 
+VkShaderStageFlags GetShaderStageFlags(gl::ShaderBitSet activeShaders)
+{
+    VkShaderStageFlags flags = 0;
+    for (const gl::ShaderType shaderType : activeShaders)
+    {
+        flags |= kShaderStageMap[shaderType];
+    }
+    return flags;
+}
+
 void GetViewport(const gl::Rectangle &viewport,
                  float nearPlane,
                  float farPlane,
@@ -821,5 +834,71 @@ void GetViewport(const gl::Rectangle &viewport,
         viewportOut->height = -viewportOut->height;
     }
 }
+
+void GetExtentsAndLayerCount(gl::TextureType textureType,
+                             const gl::Extents &extents,
+                             VkExtent3D *extentsOut,
+                             uint32_t *layerCountOut)
+{
+    extentsOut->width  = extents.width;
+    extentsOut->height = extents.height;
+
+    switch (textureType)
+    {
+        case gl::TextureType::CubeMap:
+            extentsOut->depth = 1;
+            *layerCountOut    = gl::kCubeFaceCount;
+            break;
+
+        case gl::TextureType::_2DArray:
+        case gl::TextureType::_2DMultisampleArray:
+            extentsOut->depth = 1;
+            *layerCountOut    = extents.depth;
+            break;
+
+        default:
+            extentsOut->depth = extents.depth;
+            *layerCountOut    = 1;
+            break;
+    }
+}
 }  // namespace gl_vk
+
+namespace vk_gl
+{
+void AddSampleCounts(VkSampleCountFlags sampleCounts, gl::SupportedSampleSet *setOut)
+{
+    // The possible bits are VK_SAMPLE_COUNT_n_BIT = n, with n = 1 << b.  At the time of this
+    // writing, b is in [0, 6], however, we test all 32 bits in case the enum is extended.
+    for (size_t bit : angle::BitSet32<32>(sampleCounts & kSupportedSampleCounts))
+    {
+        setOut->insert(static_cast<GLuint>(1 << bit));
+    }
+}
+
+GLuint GetMaxSampleCount(VkSampleCountFlags sampleCounts)
+{
+    GLuint maxCount = 0;
+    for (size_t bit : angle::BitSet32<32>(sampleCounts & kSupportedSampleCounts))
+    {
+        maxCount = static_cast<GLuint>(1 << bit);
+    }
+    return maxCount;
+}
+
+GLuint GetSampleCount(VkSampleCountFlags supportedCounts, GLuint requestedCount)
+{
+    for (size_t bit : angle::BitSet32<32>(supportedCounts & kSupportedSampleCounts))
+    {
+        GLuint sampleCount = static_cast<GLuint>(1 << bit);
+        if (sampleCount >= requestedCount)
+        {
+            return sampleCount;
+        }
+    }
+
+    UNREACHABLE();
+    return 0;
+}
+}  // namespace vk_gl
 }  // namespace rx

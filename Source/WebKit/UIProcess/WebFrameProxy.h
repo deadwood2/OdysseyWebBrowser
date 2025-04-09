@@ -69,6 +69,8 @@ public:
     WebCore::FrameIdentifier frameID() const { return m_frameID; }
     WebPageProxy* page() const { return m_page.get(); }
 
+    bool pageIsClosed() const { return !m_page; } // Needs to be thread-safe.
+
     void webProcessWillShutDown();
 
     bool isMainFrame() const;
@@ -109,7 +111,7 @@ public:
     void getResourceData(API::URL*, Function<void (API::Data*, CallbackBase::Error)>&&);
 
     void didStartProvisionalLoad(const URL&);
-    void didExplicitOpen(const URL&);
+    void didExplicitOpen(URL&&, String&& mimeType);
     void didReceiveServerRedirectForProvisionalLoad(const URL&);
     void didFailProvisionalLoad();
     void didCommitLoad(const String& contentType, WebCertificateInfo&, bool containsPluginDocument);

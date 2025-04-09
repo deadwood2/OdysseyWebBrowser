@@ -27,6 +27,7 @@
 #import <WebKit/WebKit.h>
 
 #import "PlatformUtilities.h"
+#import "ServiceWorkerTCPServer.h"
 #import "Test.h"
 #import "TestNavigationDelegate.h"
 #import "TestWKWebView.h"
@@ -108,36 +109,6 @@ struct ResourceInfo {
     RetainPtr<NSString> mimeType;
     const char* data;
 };
-
-@interface StorageSchemes : NSObject <WKURLSchemeHandler> {
-@public
-    HashMap<String, ResourceInfo> resources;
-}
-@end
-
-@implementation StorageSchemes {
-}
-
-- (void)webView:(WKWebView *)webView startURLSchemeTask:(id <WKURLSchemeTask>)task
-{
-    auto entry = resources.find([task.request.URL absoluteString]);
-    if (entry == resources.end()) {
-        NSLog(@"Did not find resource entry for URL %@", task.request.URL);
-        return;
-    }
-    
-    RetainPtr<NSURLResponse> response = adoptNS([[NSURLResponse alloc] initWithURL:task.request.URL MIMEType:entry->value.mimeType.get() expectedContentLength:1 textEncodingName:nil]);
-    [task didReceiveResponse:response.get()];
-    
-    [task didReceiveData:[NSData dataWithBytesNoCopy:(void*)entry->value.data length:strlen(entry->value.data) freeWhenDone:NO]];
-    [task didFinish];
-}
-
-- (void)webView:(WKWebView *)webView stopURLSchemeTask:(id <WKURLSchemeTask>)task
-{
-}
-
-@end
 
 static bool receivedMessage;
 
@@ -225,27 +196,25 @@ static inline void setVisible(TestWKWebView *webView)
 TEST(WebKit, QuotaDelegate)
 {
     done = false;
-    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
+    _WKWebsiteDataStoreConfiguration *storeConfiguration = [[[_WKWebsiteDataStoreConfiguration alloc] init] autorelease];
+    storeConfiguration.perOriginStorageQuota = 1024 * 400;
+    WKWebsiteDataStore *dataStore = [[[WKWebsiteDataStore alloc] _initWithConfiguration:storeConfiguration] autorelease];
+    [dataStore removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
         done = true;
     }];
     TestWebKitAPI::Util::run(&done);
 
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [configuration setWebsiteDataStore:dataStore];
 
-    [[configuration websiteDataStore] _setPerOriginStorageQuota: 1024 * 400];
-    
     auto messageHandler = adoptNS([[QuotaMessageHandler alloc] init]);
     [[configuration userContentController] addScriptMessageHandler:messageHandler.get() name:@"qt"];
 
-    auto handler1 = adoptNS([[StorageSchemes alloc] init]);
-    handler1->resources.set("qt1://test1.html", ResourceInfo { @"text/html", TestBytes });
-    [configuration setURLSchemeHandler:handler1.get() forURLScheme:@"QT1"];
-    [configuration.get().processPool _registerURLSchemeServiceWorkersCanHandle:@"qt1"];
-
-    auto handler2 = adoptNS([[StorageSchemes alloc] init]);
-    handler2->resources.set("qt2://test2.html", ResourceInfo { @"text/html", TestBytes });
-    [configuration setURLSchemeHandler:handler2.get() forURLScheme:@"QT2"];
-    [configuration.get().processPool _registerURLSchemeServiceWorkersCanHandle:@"qt2"];
+    ServiceWorkerTCPServer server({
+        { "text/html", TestBytes }
+    }, {
+        { "text/html", TestBytes }
+    });
 
     auto webView1 = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get() addToWindow:YES]);
     auto delegate1 = adoptNS([[QuotaDelegate alloc] init]);
@@ -253,7 +222,7 @@ TEST(WebKit, QuotaDelegate)
     setVisible(webView1.get());
     
     receivedQuotaDelegateCalled = false;
-    [webView1 loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"qt1://test1.html"]]];
+    [webView1 loadRequest:server.request()];
     Util::run(&receivedQuotaDelegateCalled);
 
     auto webView2 = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get() addToWindow:YES]);
@@ -262,7 +231,7 @@ TEST(WebKit, QuotaDelegate)
     setVisible(webView2.get());
 
     receivedMessage = false;
-    [webView2 loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"qt2://test2.html"]]];
+    [webView2 loadRequest:server.requestWithLocalhost()];
     [messageHandler setExpectedMessage: @"start"];
     Util::run(&receivedMessage);
 
@@ -286,22 +255,24 @@ TEST(WebKit, QuotaDelegate)
 TEST(WebKit, QuotaDelegateReload)
 {
     done = false;
-    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
+    _WKWebsiteDataStoreConfiguration *storeConfiguration = [[[_WKWebsiteDataStoreConfiguration alloc] init] autorelease];
+    storeConfiguration.perOriginStorageQuota = 1024 * 400;
+    WKWebsiteDataStore *dataStore = [[[WKWebsiteDataStore alloc] _initWithConfiguration:storeConfiguration] autorelease];
+    [dataStore removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
         done = true;
     }];
     TestWebKitAPI::Util::run(&done);
     
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
-    
-    [[configuration websiteDataStore] _setPerOriginStorageQuota: 1024 * 400];
+    [configuration setWebsiteDataStore:dataStore];
     
     auto messageHandler = adoptNS([[QuotaMessageHandler alloc] init]);
     [[configuration userContentController] addScriptMessageHandler:messageHandler.get() name:@"qt"];
     
-    auto handler = adoptNS([[StorageSchemes alloc] init]);
-    handler->resources.set("qt://test1.html", ResourceInfo { @"text/html", TestBytes });
-    [configuration setURLSchemeHandler:handler.get() forURLScheme:@"QT"];
-    [configuration.get().processPool _registerURLSchemeServiceWorkersCanHandle:@"qt"];
+    ServiceWorkerTCPServer server({
+        { "text/html", TestBytes },
+        { "text/html", TestBytes }
+    });
     
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get() addToWindow:YES]);
     auto delegate = adoptNS([[QuotaDelegate alloc] init]);
@@ -309,7 +280,7 @@ TEST(WebKit, QuotaDelegateReload)
     setVisible(webView.get());
 
     receivedQuotaDelegateCalled = false;
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"qt://test1.html"]]];
+    [webView loadRequest:server.request()];
     Util::run(&receivedQuotaDelegateCalled);
 
     [delegate denyQuota];
@@ -332,22 +303,23 @@ TEST(WebKit, QuotaDelegateReload)
 TEST(WebKit, QuotaDelegateNavigateFragment)
 {
     done = false;
-    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
+    _WKWebsiteDataStoreConfiguration *storeConfiguration = [[[_WKWebsiteDataStoreConfiguration alloc] init] autorelease];
+    storeConfiguration.perOriginStorageQuota = 1024 * 400;
+    WKWebsiteDataStore *dataStore = [[[WKWebsiteDataStore alloc] _initWithConfiguration:storeConfiguration] autorelease];
+    [dataStore removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
         done = true;
     }];
     TestWebKitAPI::Util::run(&done);
 
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
-
-    [[configuration websiteDataStore] _setPerOriginStorageQuota: 1024 * 400];
+    [configuration setWebsiteDataStore:dataStore];
 
     auto messageHandler = adoptNS([[QuotaMessageHandler alloc] init]);
     [[configuration userContentController] addScriptMessageHandler:messageHandler.get() name:@"qt"];
 
-    auto handler = adoptNS([[StorageSchemes alloc] init]);
-    handler->resources.set("qt://test1.html", ResourceInfo { @"text/html", TestBytes });
-    [configuration setURLSchemeHandler:handler.get() forURLScheme:@"QT"];
-    [configuration.get().processPool _registerURLSchemeServiceWorkersCanHandle:@"qt"];
+    ServiceWorkerTCPServer server({
+        { "text/html", TestBytes }
+    });
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get() addToWindow:YES]);
     auto delegate = adoptNS([[QuotaDelegate alloc] init]);
@@ -355,7 +327,7 @@ TEST(WebKit, QuotaDelegateNavigateFragment)
     setVisible(webView.get());
 
     receivedQuotaDelegateCalled = false;
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"qt://test1.html"]]];
+    [webView loadRequest:server.request()];
     Util::run(&receivedQuotaDelegateCalled);
 
     [delegate denyQuota];
@@ -365,7 +337,7 @@ TEST(WebKit, QuotaDelegateNavigateFragment)
     Util::run(&receivedMessage);
 
     receivedQuotaDelegateCalled = false;
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"qt://test1.html#fragment"]]];
+    [webView loadRequest:server.requestWithFragment()];
     [webView stringByEvaluatingJavaScript:@"doTestAgain()"];
 
     [messageHandler setExpectedMessage: @"start"];
@@ -382,20 +354,23 @@ TEST(WebKit, QuotaDelegateNavigateFragment)
 TEST(WebKit, DefaultQuota)
 {
     done = false;
-    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
+    _WKWebsiteDataStoreConfiguration *storeConfiguration = [[[_WKWebsiteDataStoreConfiguration alloc] init] autorelease];
+    WKWebsiteDataStore *dataStore = [[[WKWebsiteDataStore alloc] _initWithConfiguration:storeConfiguration] autorelease];
+
+    [dataStore removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
         done = true;
     }];
     TestWebKitAPI::Util::run(&done);
 
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [configuration setWebsiteDataStore:dataStore];
 
     auto messageHandler = adoptNS([[QuotaMessageHandler alloc] init]);
     [[configuration userContentController] addScriptMessageHandler:messageHandler.get() name:@"qt"];
 
-    auto handler = adoptNS([[StorageSchemes alloc] init]);
-    handler->resources.set("qt://test1.html", ResourceInfo { @"text/html", TestUrlBytes });
-    [configuration setURLSchemeHandler:handler.get() forURLScheme:@"QT"];
-    [configuration.get().processPool _registerURLSchemeServiceWorkersCanHandle:@"qt"];
+    ServiceWorkerTCPServer server({
+        { "text/html", TestUrlBytes }
+    });
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get() addToWindow:YES]);
     auto delegate = adoptNS([[QuotaDelegate alloc] init]);
@@ -409,7 +384,7 @@ TEST(WebKit, DefaultQuota)
     [webView setNavigationDelegate:navigationDelegate.get()];
 
     didFinishNavigation = false;
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"qt://test1.html"]]];
+    [webView loadRequest:server.request()];
     Util::run(&didFinishNavigation);
 
     receivedQuotaDelegateCalled = false;

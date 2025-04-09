@@ -33,6 +33,7 @@
 #import "DrawingAreaProxyMessages.h"
 #import "LayerTreeContext.h"
 #import "WebPageProxy.h"
+#import "WebPageProxyMessages.h"
 #import "WebProcessProxy.h"
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <wtf/BlockPtr.h>
@@ -122,7 +123,7 @@ void TiledCoreAnimationDrawingAreaProxy::didUpdateGeometry()
 void TiledCoreAnimationDrawingAreaProxy::waitForDidUpdateActivityState(ActivityStateChangeID)
 {
     Seconds activityStateUpdateTimeout = Seconds::fromMilliseconds(250);
-    process().connection()->waitForAndDispatchImmediately<Messages::WebPageProxy::DidUpdateActivityState>(m_webPageProxy.pageID(), activityStateUpdateTimeout, IPC::WaitForOption::InterruptWaitingIfSyncMessageArrives);
+    process().connection()->waitForAndDispatchImmediately<Messages::WebPageProxy::DidUpdateActivityState>(m_webPageProxy.webPageID(), activityStateUpdateTimeout, IPC::WaitForOption::InterruptWaitingIfSyncMessageArrives);
 }
 
 void TiledCoreAnimationDrawingAreaProxy::willSendUpdateGeometry()

@@ -26,16 +26,9 @@
 #include "config.h"
 #include "APIUserContentWorld.h"
 
+#include "ContentWorldShared.h"
+
 namespace API {
-
-static const uint64_t normalWorldIdentifer = 1;
-
-static uint64_t generateIdentifier()
-{
-    static uint64_t identifier = normalWorldIdentifer;
-
-    return ++identifier;
-}
 
 Ref<UserContentWorld> UserContentWorld::worldWithName(const WTF::String& name)
 {
@@ -49,13 +42,12 @@ UserContentWorld& UserContentWorld::normalWorld()
 }
 
 UserContentWorld::UserContentWorld(const WTF::String& name)
-    : m_identifier(generateIdentifier())
-    , m_name(name)
+    : ContentWorldBase(name)
 {
 }
 
 UserContentWorld::UserContentWorld(ForNormalWorldOnly)
-    : m_identifier(normalWorldIdentifer)
+    : ContentWorldBase(WebKit::pageContentWorldIdentifier())
 {
 }
 

@@ -143,6 +143,16 @@ public:
     unsigned activeCount { 0 };
 };
 
+static String makeCachePath(const String& baseCachePath)
+{
+#if PLATFORM(MAC)
+    // Put development cache to a different directory to avoid affecting the system cache.
+    if (!AuxiliaryProcess::isSystemWebKit())
+        return FileSystem::pathByAppendingComponent(baseCachePath, "Development"_s);
+#endif
+    return baseCachePath;
+}
+
 static String makeVersionedDirectoryPath(const String& baseDirectoryPath)
 {
     String versionSubdirectory = makeString(versionDirectoryPrefix, Storage::version);
@@ -164,16 +174,21 @@ static String makeSaltFilePath(const String& baseDirectoryPath)
     return FileSystem::pathByAppendingComponent(makeVersionedDirectoryPath(baseDirectoryPath), saltFileName);
 }
 
-RefPtr<Storage> Storage::open(const String& cachePath, Mode mode)
+RefPtr<Storage> Storage::open(const String& baseCachePath, Mode mode, size_t capacity)
 {
     ASSERT(RunLoop::isMain());
+    ASSERT(!baseCachePath.isNull());
+
+    auto cachePath = makeCachePath(baseCachePath);
 
     if (!FileSystem::makeAllDirectories(makeVersionedDirectoryPath(cachePath)))
         return nullptr;
+
     auto salt = readOrMakeSalt(makeSaltFilePath(cachePath));
     if (!salt)
         return nullptr;
-    return adoptRef(new Storage(cachePath, mode, *salt));
+
+    return adoptRef(new Storage(cachePath, mode, *salt, capacity));
 }
 
 using RecordFileTraverseFunction = Function<void (const String& fileName, const String& hashString, const String& type, bool isBlob, const String& recordDirectoryPath)>;
@@ -223,11 +238,12 @@ static void deleteEmptyRecordsDirectories(const String& recordsPath)
     });
 }
 
-Storage::Storage(const String& baseDirectoryPath, Mode mode, Salt salt)
+Storage::Storage(const String& baseDirectoryPath, Mode mode, Salt salt, size_t capacity)
     : m_basePath(baseDirectoryPath)
     , m_recordsPath(makeRecordsDirectoryPath(baseDirectoryPath))
     , m_mode(mode)
     , m_salt(salt)
+    , m_capacity(capacity)
     , m_readOperationTimeoutTimer(*this, &Storage::cancelAllReadOperations)
     , m_writeOperationDispatchTimer(*this, &Storage::dispatchPendingWriteOperations)
     , m_ioQueue(WorkQueue::create("com.apple.WebKit.Cache.Storage", WorkQueue::Type::Concurrent))
@@ -971,8 +987,10 @@ void Storage::traverse(const String& type, OptionSet<TraverseFlag> flags, Traver
 void Storage::setCapacity(size_t capacity)
 {
     ASSERT(RunLoop::isMain());
+    if (m_capacity == capacity)
+        return;
 
-#if !ASSERT_DISABLED
+#if ASSERT_ENABLED
     const size_t assumedAverageRecordSize = 50 << 10;
     size_t maximumRecordCount = capacity / assumedAverageRecordSize;
     // ~10 bits per element are required for <1% false positive rate.
@@ -1122,10 +1140,6 @@ void Storage::deleteOldVersions()
                 return;
             if (directoryVersion >= version)
                 return;
-#if PLATFORM(MAC)
-            if (!AuxiliaryProcess::isSystemWebKit() && directoryVersion == lastStableVersion)
-                return;
-#endif
 
             auto oldVersionPath = FileSystem::pathByAppendingComponent(cachePath, subdirName);
             LOG(NetworkCacheStorage, "(NetworkProcess) deleting old cache version, path %s", oldVersionPath.utf8().data());

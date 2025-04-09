@@ -155,9 +155,15 @@ void PageClientImpl::setCursor(const WebCore::Cursor& cursor)
         gdk_window_set_cursor(window, newCursor);
 }
 
-void PageClientImpl::setCursorHiddenUntilMouseMoves(bool /* hiddenUntilMouseMoves */)
+void PageClientImpl::setCursorHiddenUntilMouseMoves(bool hiddenUntilMouseMoves)
 {
-    notImplemented();
+    if (!hiddenUntilMouseMoves)
+        return;
+
+    setCursor(WebCore::noneCursor());
+
+    // There's no need to set a timer to restore the cursor by hand. It will
+    // be automatically restored when the mouse moves.
 }
 
 void PageClientImpl::didChangeViewportProperties(const WebCore::ViewportAttributes&)
@@ -224,8 +230,6 @@ void PageClientImpl::doneWithKeyEvent(const NativeWebKeyboardEvent& event, bool 
 {
     if (wasEventHandled)
         return;
-    if (event.isFakeEventForComposition())
-        return;
 
     WebKitWebViewBase* webkitWebViewBase = WEBKIT_WEB_VIEW_BASE(m_viewWidget);
     webkitWebViewBaseForwardNextKeyEvent(webkitWebViewBase);
@@ -290,9 +294,9 @@ void PageClientImpl::selectionDidChange()
         webkitWebViewSelectionDidChange(WEBKIT_WEB_VIEW(m_viewWidget));
 }
 
-RefPtr<ViewSnapshot> PageClientImpl::takeViewSnapshot()
+RefPtr<ViewSnapshot> PageClientImpl::takeViewSnapshot(Optional<WebCore::IntRect>&& clipRect)
 {
-    return webkitWebViewBaseTakeViewSnapshot(WEBKIT_WEB_VIEW_BASE(m_viewWidget));
+    return webkitWebViewBaseTakeViewSnapshot(WEBKIT_WEB_VIEW_BASE(m_viewWidget), WTFMove(clipRect));
 }
 
 void PageClientImpl::didChangeContentSize(const IntSize& size)
@@ -578,6 +582,12 @@ IPC::Attachment PageClientImpl::hostFileDescriptor()
     return webkitWebViewBaseRenderHostFileDescriptor(WEBKIT_WEB_VIEW_BASE(m_viewWidget));
 }
 #endif
+
+void PageClientImpl::didChangeWebPageID() const
+{
+    if (WEBKIT_IS_WEB_VIEW(m_viewWidget))
+        webkitWebViewDidChangePageID(WEBKIT_WEB_VIEW(m_viewWidget));
+}
 
 String PageClientImpl::themeName() const
 {

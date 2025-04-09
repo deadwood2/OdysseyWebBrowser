@@ -28,7 +28,7 @@
 
 #include "Connection.h"
 #include "ShareableResource.h"
-#include "WebIDBConnectionToServer.h"
+#include <WebCore/MessagePortChannelProvider.h>
 #include <WebCore/ServiceWorkerTypes.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
@@ -37,27 +37,27 @@ namespace IPC {
 class DataReference;
 }
 
-namespace PAL {
-class SessionID;
-}
-
 namespace WebCore {
 class ResourceError;
 class ResourceRequest;
 class ResourceResponse;
+struct MessagePortIdentifier;
+struct MessageWithMessagePorts;
+enum class HTTPCookieAcceptPolicy : uint8_t;
 }
 
 namespace WebKit {
 
+class WebIDBConnectionToServer;
 class WebSWClientConnection;
 
 typedef uint64_t ResourceLoadIdentifier;
 
 class NetworkProcessConnection : public RefCounted<NetworkProcessConnection>, IPC::Connection::Client {
 public:
-    static Ref<NetworkProcessConnection> create(IPC::Connection::Identifier connectionIdentifier)
+    static Ref<NetworkProcessConnection> create(IPC::Connection::Identifier connectionIdentifier, WebCore::HTTPCookieAcceptPolicy httpCookieAcceptPolicy)
     {
-        return adoptRef(*new NetworkProcessConnection(connectionIdentifier));
+        return adoptRef(*new NetworkProcessConnection(connectionIdentifier, httpCookieAcceptPolicy));
     }
     ~NetworkProcessConnection();
     
@@ -65,23 +65,26 @@ public:
 
     void didReceiveNetworkProcessConnectionMessage(IPC::Connection&, IPC::Decoder&);
 
-    void writeBlobsToTemporaryFiles(PAL::SessionID, const Vector<String>& blobURLs, CompletionHandler<void(Vector<String>&& filePaths)>&&);
+    void writeBlobsToTemporaryFiles(const Vector<String>& blobURLs, CompletionHandler<void(Vector<String>&& filePaths)>&&);
 
 #if ENABLE(INDEXED_DATABASE)
-    WebIDBConnectionToServer* existingIDBConnectionToServerForIdentifier(uint64_t identifier) const { return m_webIDBConnectionsByIdentifier.get(identifier); };
-    WebIDBConnectionToServer& idbConnectionToServerForSession(PAL::SessionID);
+    WebIDBConnectionToServer* existingIDBConnectionToServer() const { return m_webIDBConnection.get(); };
+    WebIDBConnectionToServer& idbConnectionToServer();
 #endif
 
 #if ENABLE(SERVICE_WORKER)
-    WebSWClientConnection* existingServiceWorkerConnectionForSession(PAL::SessionID sessionID) { return m_swConnectionsBySession.get(sessionID); }
-    WebSWClientConnection& serviceWorkerConnectionForSession(PAL::SessionID);
-
-    WebCore::SWServerConnectionIdentifier initializeSWClientConnection(WebSWClientConnection&);
-    void removeSWClientConnection(WebSWClientConnection&);
+    WebSWClientConnection& serviceWorkerConnection();
 #endif
 
+#if HAVE(AUDIT_TOKEN)
+    void setNetworkProcessAuditToken(Optional<audit_token_t> auditToken) { m_networkProcessAuditToken = auditToken; }
+    Optional<audit_token_t> networkProcessAuditToken() const { return m_networkProcessAuditToken; }
+#endif
+
+    bool cookiesEnabled() const;
+
 private:
-    NetworkProcessConnection(IPC::Connection::Identifier);
+    NetworkProcessConnection(IPC::Connection::Identifier, WebCore::HTTPCookieAcceptPolicy);
 
     // IPC::Connection::Client
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
@@ -92,24 +95,30 @@ private:
     void didFinishPingLoad(uint64_t pingLoadIdentifier, WebCore::ResourceError&&, WebCore::ResourceResponse&&);
     void didFinishPreconnection(uint64_t preconnectionIdentifier, WebCore::ResourceError&&);
     void setOnLineState(bool isOnLine);
+    void cookieAcceptPolicyChanged(WebCore::HTTPCookieAcceptPolicy);
+
+    void checkProcessLocalPortForActivity(const WebCore::MessagePortIdentifier&, CompletionHandler<void(WebCore::MessagePortChannelProvider::HasActivity)>&&);
+    void messagesAvailableForPort(const WebCore::MessagePortIdentifier&);
 
 #if ENABLE(SHAREABLE_RESOURCE)
     // Message handlers.
-    void didCacheResource(const WebCore::ResourceRequest&, const ShareableResource::Handle&, PAL::SessionID);
+    void didCacheResource(const WebCore::ResourceRequest&, const ShareableResource::Handle&);
 #endif
 
     // The connection from the web process to the network process.
     Ref<IPC::Connection> m_connection;
+#if HAVE(AUDIT_TOKEN)
+    Optional<audit_token_t> m_networkProcessAuditToken;
+#endif
 
 #if ENABLE(INDEXED_DATABASE)
-    HashMap<PAL::SessionID, RefPtr<WebIDBConnectionToServer>> m_webIDBConnectionsBySession;
-    HashMap<uint64_t, RefPtr<WebIDBConnectionToServer>> m_webIDBConnectionsByIdentifier;
+    RefPtr<WebIDBConnectionToServer> m_webIDBConnection;
 #endif
 
 #if ENABLE(SERVICE_WORKER)
-    HashMap<PAL::SessionID, RefPtr<WebSWClientConnection>> m_swConnectionsBySession;
-    HashMap<WebCore::SWServerConnectionIdentifier, WebSWClientConnection*> m_swConnectionsByIdentifier;
+    RefPtr<WebSWClientConnection> m_swConnection;
 #endif
+    WebCore::HTTPCookieAcceptPolicy m_cookieAcceptPolicy;
 };
 
 } // namespace WebKit

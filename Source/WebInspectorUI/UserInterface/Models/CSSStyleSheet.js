@@ -68,6 +68,16 @@ WI.CSSStyleSheet = class CSSStyleSheet extends WI.SourceCode
         return this._origin;
     }
 
+    get injected()
+    {
+        return isWebKitExtensionScheme(this.urlComponents.scheme);
+    }
+
+    get anonymous()
+    {
+        return !this.isInspectorStyleSheet() && !this._url;
+    }
+
     get url()
     {
         return this._url;
@@ -87,6 +97,9 @@ WI.CSSStyleSheet = class CSSStyleSheet extends WI.SourceCode
 
     get displayName()
     {
+        if (this.isInspectorStyleSheet())
+            return WI.UIString("Inspector Style Sheet");
+
         if (this._url)
             return WI.displayNameForURL(this._url, this.urlComponents);
 
@@ -173,19 +186,21 @@ WI.CSSStyleSheet = class CSSStyleSheet extends WI.SourceCode
         if (!this._id)
             return;
 
+        let target = WI.assumingMainTarget();
+
         function contentDidChange(error)
         {
             if (error)
                 return;
 
-            DOMAgent.markUndoableState();
+            target.DOMAgent.markUndoableState();
 
             this.dispatchEventToListeners(WI.CSSStyleSheet.Event.ContentDidChange);
         }
 
         this._ignoreNextContentDidChangeNotification = true;
 
-        CSSAgent.setStyleSheetText(this._id, this.currentRevision.content, contentDidChange.bind(this));
+        target.CSSAgent.setStyleSheetText(this._id, this.currentRevision.content, contentDidChange.bind(this));
     }
 
     requestContentFromBackend()
@@ -200,7 +215,8 @@ WI.CSSStyleSheet = class CSSStyleSheet extends WI.SourceCode
             return Promise.reject(new Error("There is no identifier to request content with."));
         }
 
-        return CSSAgent.getStyleSheetText(this._id);
+        let target = WI.assumingMainTarget();
+        return target.CSSAgent.getStyleSheetText(this._id);
     }
 
     noteContentDidChange()

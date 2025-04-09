@@ -47,6 +47,7 @@
 #include "WebsitePoliciesData.h"
 #include <JavaScriptCore/APICast.h>
 #include <JavaScriptCore/JSContextRef.h>
+#include <JavaScriptCore/JSGlobalObjectInlines.h>
 #include <JavaScriptCore/JSLock.h>
 #include <JavaScriptCore/JSValueRef.h>
 #include <WebCore/ArchiveResource.h>
@@ -170,13 +171,13 @@ WebPage* WebFrame::page() const
     if (!m_coreFrame)
         return nullptr;
     
-    if (Page* page = m_coreFrame->page())
-        return WebPage::fromCorePage(page);
+    if (auto* page = m_coreFrame->page())
+        return &WebPage::fromCorePage(*page);
 
     return nullptr;
 }
 
-WebFrame* WebFrame::fromCoreFrame(Frame& frame)
+WebFrame* WebFrame::fromCoreFrame(const Frame& frame)
 {
     auto* webFrameLoaderClient = toWebFrameLoaderClient(frame.loader().client());
     if (!webFrameLoaderClient)
@@ -283,12 +284,10 @@ void WebFrame::startDownload(const WebCore::ResourceRequest& request, const Stri
     auto policyDownloadID = m_policyDownloadID;
     m_policyDownloadID = { };
 
-    auto& webProcess = WebProcess::singleton();
-    PAL::SessionID sessionID = page() ? page()->sessionID() : PAL::SessionID::defaultSessionID();
-    webProcess.ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::StartDownload(sessionID, policyDownloadID, request, suggestedName), 0);
+    WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::StartDownload(policyDownloadID, request, suggestedName), 0);
 }
 
-void WebFrame::convertMainResourceLoadToDownload(DocumentLoader* documentLoader, PAL::SessionID sessionID, const ResourceRequest& request, const ResourceResponse& response)
+void WebFrame::convertMainResourceLoadToDownload(DocumentLoader* documentLoader, const ResourceRequest& request, const ResourceResponse& response)
 {
     ASSERT(m_policyDownloadID.downloadID());
 
@@ -307,7 +306,7 @@ void WebFrame::convertMainResourceLoadToDownload(DocumentLoader* documentLoader,
     else
         mainResourceLoadIdentifier = 0;
 
-    webProcess.ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::ConvertMainResourceLoadToDownload(sessionID, mainResourceLoadIdentifier, policyDownloadID, request, response), 0);
+    webProcess.ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::ConvertMainResourceLoadToDownload(mainResourceLoadIdentifier, policyDownloadID, request, response), 0);
 }
 
 void WebFrame::addConsoleMessage(MessageSource messageSource, MessageLevel messageLevel, const String& message, uint64_t requestID)
@@ -517,7 +516,7 @@ JSGlobalContextRef WebFrame::jsContext()
     if (!m_coreFrame)
         return nullptr;
 
-    return toGlobalRef(m_coreFrame->script().globalObject(mainThreadNormalWorld())->globalExec());
+    return toGlobalRef(m_coreFrame->script().globalObject(mainThreadNormalWorld()));
 }
 
 JSGlobalContextRef WebFrame::jsContextForWorld(InjectedBundleScriptWorld* world)
@@ -525,7 +524,7 @@ JSGlobalContextRef WebFrame::jsContextForWorld(InjectedBundleScriptWorld* world)
     if (!m_coreFrame)
         return nullptr;
 
-    return toGlobalRef(m_coreFrame->script().globalObject(world->coreWorld())->globalExec());
+    return toGlobalRef(m_coreFrame->script().globalObject(world->coreWorld()));
 }
 
 bool WebFrame::handlesPageScaleGesture() const
@@ -704,12 +703,14 @@ void WebFrame::stopLoading()
 
 WebFrame* WebFrame::frameForContext(JSContextRef context)
 {
-
-    JSC::JSGlobalObject* globalObjectObj = toJS(context)->lexicalGlobalObject();
+    JSC::JSGlobalObject* globalObjectObj = toJS(context);
     JSDOMWindow* window = jsDynamicCast<JSDOMWindow*>(globalObjectObj->vm(), globalObjectObj);
     if (!window)
         return nullptr;
-    return WebFrame::fromCoreFrame(*(window->wrapped().frame()));
+    auto* coreFrame = window->wrapped().frame();
+    if (!coreFrame)
+        return nullptr;
+    return WebFrame::fromCoreFrame(*coreFrame);
 }
 
 JSValueRef WebFrame::jsWrapperForWorld(InjectedBundleNodeHandle* nodeHandle, InjectedBundleScriptWorld* world)
@@ -718,10 +719,9 @@ JSValueRef WebFrame::jsWrapperForWorld(InjectedBundleNodeHandle* nodeHandle, Inj
         return 0;
 
     JSDOMWindow* globalObject = m_coreFrame->script().globalObject(world->coreWorld());
-    ExecState* exec = globalObject->globalExec();
 
-    JSLockHolder lock(exec);
-    return toRef(exec, toJS(exec, globalObject, nodeHandle->coreNode()));
+    JSLockHolder lock(globalObject);
+    return toRef(globalObject, toJS(globalObject, globalObject, nodeHandle->coreNode()));
 }
 
 JSValueRef WebFrame::jsWrapperForWorld(InjectedBundleRangeHandle* rangeHandle, InjectedBundleScriptWorld* world)
@@ -730,10 +730,9 @@ JSValueRef WebFrame::jsWrapperForWorld(InjectedBundleRangeHandle* rangeHandle, I
         return 0;
 
     JSDOMWindow* globalObject = m_coreFrame->script().globalObject(world->coreWorld());
-    ExecState* exec = globalObject->globalExec();
 
-    JSLockHolder lock(exec);
-    return toRef(exec, toJS(exec, globalObject, rangeHandle->coreRange()));
+    JSLockHolder lock(globalObject);
+    return toRef(globalObject, toJS(globalObject, globalObject, rangeHandle->coreRange()));
 }
 
 String WebFrame::counterValue(JSObjectRef element)

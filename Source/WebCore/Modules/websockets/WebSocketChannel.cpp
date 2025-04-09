@@ -104,13 +104,14 @@ WebSocketChannel::ConnectStatus WebSocketChannel::connect(const URL& requestedUR
     if (m_identifier)
         InspectorInstrumentation::didCreateWebSocket(m_document.get(), m_identifier, validatedURL->url);
 
-    if (Frame* frame = m_document->frame()) {
-        ref();
-        Page* page = frame->page();
-        PAL::SessionID sessionID = page ? page->sessionID() : PAL::SessionID::defaultSessionID();
-        String partition = m_document->domainForCachePartition();
-        m_handle = m_socketProvider->createSocketStreamHandle(m_handshake->url(), *this, sessionID, partition, frame->loader().networkingContext());
-    }
+    auto* frame = m_document->frame();
+    auto* page = m_document->page();
+    if (!frame || !page)
+        return ConnectStatus::KO;
+
+    ref();
+    String partition = m_document->domainForCachePartition();
+    m_handle = m_socketProvider->createSocketStreamHandle(m_handshake->url(), *this, page->sessionID(), partition, frame->loader().networkingContext());
     return ConnectStatus::OK;
 }
 
@@ -202,7 +203,7 @@ void WebSocketChannel::close(int code, const String& reason)
 
 void WebSocketChannel::fail(const String& reason)
 {
-    LOG(Network, "WebSocketChannel %p fail() reason='%s'", this, reason.utf8().data());
+    RELEASE_LOG(Network, "WebSocketChannel %p fail() reason='%s'", this, reason.utf8().data());
     ASSERT(!m_suspended);
     if (m_document) {
         InspectorInstrumentation::didReceiveWebSocketFrameError(m_document.get(), m_identifier, reason);
@@ -362,6 +363,7 @@ void WebSocketChannel::didFailSocketStream(SocketStreamHandle& handle, const Soc
             message = "WebSocket network error: " + error.localizedDescription();
         InspectorInstrumentation::didReceiveWebSocketFrameError(m_document.get(), m_identifier, message);
         m_document->addConsoleMessage(MessageSource::Network, MessageLevel::Error, message);
+        LOG_ERROR("%s", message.utf8().data());
     }
     m_shouldDiscardReceivedData = true;
     if (m_client)

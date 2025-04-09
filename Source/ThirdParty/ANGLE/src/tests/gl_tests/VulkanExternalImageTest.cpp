@@ -55,8 +55,10 @@ class VulkanExternalImageTest : public ANGLETest
 };
 
 // glImportMemoryFdEXT must be able to import a valid opaque fd.
-TEST_P(VulkanExternalImageTest, ShouldImportOpaqueFd)
+TEST_P(VulkanExternalImageTest, ShouldImportMemoryOpaqueFd)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     ANGLE_SKIP_TEST_IF(!EnsureGLExtensionEnabled("GL_EXT_memory_object_fd"));
 
     VulkanExternalHelper helper;
@@ -90,9 +92,42 @@ TEST_P(VulkanExternalImageTest, ShouldImportOpaqueFd)
     vkFreeMemory(helper.getDevice(), deviceMemory, nullptr);
 }
 
+// glImportSemaphoreFdEXT must be able to import a valid opaque fd.
+TEST_P(VulkanExternalImageTest, ShouldImportSemaphoreOpaqueFd)
+{
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
+    ANGLE_SKIP_TEST_IF(!EnsureGLExtensionEnabled("GL_EXT_semaphore_fd"));
+
+    VulkanExternalHelper helper;
+    helper.initialize();
+
+    ANGLE_SKIP_TEST_IF(!helper.canCreateSemaphoreOpaqueFd());
+
+    VkSemaphore vkSemaphore = VK_NULL_HANDLE;
+    VkResult result         = helper.createSemaphoreOpaqueFd(&vkSemaphore);
+    EXPECT_EQ(result, VK_SUCCESS);
+
+    int fd = kInvalidFd;
+    result = helper.exportSemaphoreOpaqueFd(vkSemaphore, &fd);
+    EXPECT_EQ(result, VK_SUCCESS);
+    EXPECT_NE(fd, kInvalidFd);
+
+    {
+        GLSemaphore glSemaphore;
+        glImportSemaphoreFdEXT(glSemaphore, GL_HANDLE_TYPE_OPAQUE_FD_EXT, fd);
+    }
+
+    EXPECT_GL_NO_ERROR();
+
+    vkDestroySemaphore(helper.getDevice(), vkSemaphore, nullptr);
+}
+
 // Test creating and clearing a simple RGBA8 texture in a opaque fd.
 TEST_P(VulkanExternalImageTest, ShouldClearOpaqueFdRGBA8)
 {
+    // http://anglebug.com/4229
+    ANGLE_SKIP_TEST_IF(IsVulkan());
     ANGLE_SKIP_TEST_IF(!EnsureGLExtensionEnabled("GL_EXT_memory_object_fd"));
 
     VulkanExternalHelper helper;
@@ -142,14 +177,6 @@ TEST_P(VulkanExternalImageTest, ShouldClearOpaqueFdRGBA8)
 
 // Use this to select which configurations (e.g. which renderer, which GLES major version) these
 // tests should be run against.
-ANGLE_INSTANTIATE_TEST(VulkanExternalImageTest,
-                       ES2_D3D9(),
-                       ES2_D3D11(),
-                       ES3_D3D11(),
-                       ES2_OPENGL(),
-                       ES3_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES3_OPENGLES(),
-                       ES2_VULKAN());
+ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(VulkanExternalImageTest);
 
 }  // namespace angle

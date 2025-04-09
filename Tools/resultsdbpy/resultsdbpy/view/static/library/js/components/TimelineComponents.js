@@ -118,18 +118,25 @@ function XScrollableCanvasProvider(exporter, ...childrenFunctions) {
         presenterRef.setState({resize:true});
     });
     const resizeContainerWidth = width => {containerRef.setState({width: width})};
+    const getScrollableBoundingClientRect = () => scrollRef.element.getBoundingClientRect();
     const presenterRef = REF.createRef({
         state: {scrollLeft: 0},
         onElementMount: (element) => {
-            element.style.width = `${element.parentElement.parentElement.offsetWidth}px`;
-            resizeEventStream.add(element.offsetWidth);
+            const scrollableWidth =  getScrollableBoundingClientRect().width;
+            element.style.width = `${scrollableWidth}px`;
+            resizeEventStream.add(scrollableWidth);
         },
         onStateUpdate: (element, stateDiff, state) => {
             if (stateDiff.resize) {
-                element.style.width = `${element.parentElement.parentElement.offsetWidth}px`;
-                resizeEventStream.add(element.offsetWidth);
+                const scrollableWidth =  getScrollableBoundingClientRect().width;
+                element.style.width = `${scrollableWidth}px`;
+                resizeEventStream.add(scrollableWidth);
             }
         }
+    });
+    const layoutSizeMayChange = new EventStream();
+    layoutSizeMayChange.action(() => {
+        presenterRef.setState({resize:true});
     });
     // Provide parent functions/event to children to use
 
@@ -138,14 +145,30 @@ function XScrollableCanvasProvider(exporter, ...childrenFunctions) {
             <div ref="${presenterRef}" style="position: -webkit-sticky; position:sticky; top:0; left: 0">${
                 ListProvider((updateChildrenFunctions) => {
                     if (exporter) {
-                        exporter((children) => {
-                            updateChildrenFunctions(children);
-                            // this make sure the newly added children receive current state
-                            resizeEventStream.replayLast();
-                            scrollEventStream.replayLast();
-                        });
+                        exporter(
+                            /**
+                            * Update Children
+                            * @param children {Array} r An array of the children
+                            */
+                            (children) => {
+                                updateChildrenFunctions(children);
+                                // Propigate the current state to new children
+                                resizeEventStream.replayLast();
+                                scrollEventStream.replayLast();
+                            },
+                            /**
+                            * Notify Re-render
+                            * @param width {number} r if undefined, it will auto detact the width change
+                            */
+                            (width) => {
+                                if (typeof width === "number" && width >= 0)
+                                    resizeEventStream.add(width);
+                                else
+                                    layoutSizeMayChange.add();
+                            }
+                        );
                     }
-                }, [resizeContainerWidth, scrollEventStream, resizeEventStream], ...childrenFunctions)
+                }, [resizeContainerWidth, scrollEventStream, resizeEventStream, layoutSizeMayChange], ...childrenFunctions)
             }</div>
         </div>
     </div>`;
@@ -256,7 +279,17 @@ Timeline.CanvasSeriesComponent = (dots, scales, option = {}) => {
             });
             colorBatchRender.addSeq(color, (context, color) => {
                 context.arc(x + dotMargin + useRadius, baselineY, useRadius, 0, 2 * Math.PI);
-                if (typeof innerLabel === "number" || typeof innerLabel === "string") {
+                if (innerLabel instanceof Image || typeof innerLabel === "string" && (innerLabel.endsWith('.svg') || innerLabel.endsWith('.png') || innerLabel.endsWith('.jpg') || innerLabel.endsWith('.jpeg'))) {
+                    let image = innerLabel;
+                    if (typeof innerLabel === "string") {
+                        image = new Image();
+                        image.src = innerLabel;
+                    }
+                    const image_padding = useRadius - fontSize / 2;
+                    drawLabelsSeqs.push(() => {
+                        context.drawImage(image, x + dotMargin + image_padding, y + image_padding, fontSize, fontSize);
+                    });
+                } else if (typeof innerLabel === "number" || typeof innerLabel === "string") {
                     drawLabelsSeqs.push(() => {
                         // Draw the inner label
                         const innerLabelSize = context.measureText(innerLabel);
@@ -340,7 +373,10 @@ Timeline.CanvasSeriesComponent = (dots, scales, option = {}) => {
             context.moveTo(startX, radius);
             context.lineTo(startX + renderWidth, radius);
         });
-
+        if (!scales || !dots || !scales.length || !dots.length) {
+            colorBatchRender.batchRender(context);
+            return;
+        }
         // Draw the dots
         // First, Calculate the render range:
         let startScalesIndex = Math.floor((scrollLeft + startX) / dotWidth);
@@ -475,9 +511,10 @@ Timeline.CanvasSeriesComponent = (dots, scales, option = {}) => {
     });
 }
 
-Timeline.ExpandableSeriesComponent = (mainSeries, subSerieses, exporter) => {
+Timeline.ExpandableSeriesComponent = (mainSeries, options, subSerieses, exporter) => {
+    let layoutSizeMayChangeEvent = null;
     const ref = REF.createRef({
-        state: {expanded: false},
+        state: {expanded: options.expanded ? options.expanded : false},
         onStateUpdate: (element, stateDiff) => {
             if (stateDiff.expanded === false) {
                 element.children[0].style.display = 'none';
@@ -488,15 +525,18 @@ Timeline.ExpandableSeriesComponent = (mainSeries, subSerieses, exporter) => {
                 element.children[1].style.display = 'none';
                 element.children[2].style.display = 'block';
             }
+            // Notify inside of the provider that we may changed the layout size because of expanded / unexpanded.
+            layoutSizeMayChangeEvent.add();
         }
     });
     if (exporter)
         exporter((expanded) => ref.setState({expanded: expanded}));
-    return ListProviderReceiver((updateContainerWidth, onContainerScroll, onResize) => {
+    return ListProviderReceiver((updateContainerWidth, onContainerScroll, onResize, layoutSizeMayChange) => {
+        layoutSizeMayChangeEvent = layoutSizeMayChange;
         return `<div class="groupSeries" ref="${ref}">
             <div class="series" style="display:none;"></div>
-            <div>${mainSeries(updateContainerWidth, onContainerScroll, onResize)}</div>
-            <div style="display:none">${subSerieses.map((subSeries) => subSeries(updateContainerWidth, onContainerScroll, onResize)).join("")}</div>
+            <div>${mainSeries(updateContainerWidth, onContainerScroll, onResize, layoutSizeMayChange)}</div>
+            <div style="display:none">${subSerieses.map((subSeries) => subSeries(updateContainerWidth, onContainerScroll, onResize, layoutSizeMayChange)).join("")}</div>
         </div>`;
     });
 }
@@ -505,9 +545,9 @@ Timeline.HeaderComponent = (label) => {
     return `<div class="series">${label}</div>`;
 }
 
-Timeline.ExpandableHeaderComponent = (mainLabel, subLabels, exporter) => {
+Timeline.ExpandableHeaderComponent = (mainLabel, options, subLabels, exporter) => {
     const ref = REF.createRef({
-        state: {expanded: false},
+        state: {expanded: options.expanded ? options.expanded : false},
         onStateUpdate: (element, stateDiff) => {
             if (stateDiff.expanded === false)
                 element.children[1].style.display = "none";
@@ -531,9 +571,9 @@ Timeline.SeriesWithHeaderComponent = (header, series) => {
     return {header, series};
 }
 
-Timeline.ExpandableSeriesWithHeaderExpanderComponent = (mainSeriesWithLable, ...subSeriesWithLable) => {
+Timeline.ExpandableSeriesWithHeaderExpanderComponent = (mainSeriesWithLable, options, ...subSeriesWithLable) => {
     const ref = REF.createRef({
-        state: {expanded: false},
+        state: {expanded: options.expanded ? options.expanded : false},
         onStateUpdate: (element, stateDiff) => {
             if (stateDiff.expanded === false)
                 element.innerText = "+";
@@ -558,8 +598,8 @@ Timeline.ExpandableSeriesWithHeaderExpanderComponent = (mainSeriesWithLable, ...
         })
     }));
     return {
-        header: Timeline.ExpandableHeaderComponent(`<a class="link-button" href="javascript:void(0)" ref="${ref}">+</a>` + mainLabel, subLabels, composer),
-        series: Timeline.ExpandableSeriesComponent(mainSeries, subSerieses, composer),
+        header: Timeline.ExpandableHeaderComponent(`<a class="link-button" href="javascript:void(0)" ref="${ref}">+</a>` + mainLabel, options, subLabels, composer),
+        series: Timeline.ExpandableSeriesComponent(mainSeries, options, subSerieses, composer),
     }
 }
 
@@ -586,6 +626,8 @@ Timeline.CanvasXAxisComponent = (scales, option = {}) => {
     const scaleWidth = parseInt(computedStyle.getPropertyValue('--smallSize')) + parseInt(computedStyle.getPropertyValue('--tinySize'));
     const scaleTagLineHeight = parseInt(computedStyle.getPropertyValue('--smallSize'));
     const scaleTagLinePadding = 10;
+    const scaleGroupTagLinePadding = 3;
+    const scaleGroupMargin = fontSizeNumber / 2;
     const scaleBroadLineHeight = parseInt(computedStyle.getPropertyValue('--tinySize')) / 2;
     const maxinumTextHeight = scaleWidth * 4.5;
     const canvasHeight = typeof option.height === "number" ? option.height : parseInt(computedStyle.getPropertyValue('--smallSize')) * 5;
@@ -600,6 +642,7 @@ Timeline.CanvasXAxisComponent = (scales, option = {}) => {
         const baseLineY = isTop ? y + canvasHeight - scaleBroadLineHeight : y + scaleBroadLineHeight;
         const middlePointX = x + totalWidth / 2;
         if (group > 1) {
+            const groupBaselineY = isTop ? baseLineY - scaleBroadLineHeight : baseLineY + scaleBroadLineHeight;
             colorBatchRender.lazyCreateColorSeqs(usedGroupColor, (context) => {
                 context.beginPath();
             }, (context, color) => {
@@ -608,27 +651,27 @@ Timeline.CanvasXAxisComponent = (scales, option = {}) => {
                 context.stroke();
             });
             colorBatchRender.addSeq(usedGroupColor, (context) => {
-                context.moveTo(x + context.lineWidth, isTop ? canvasHeight : y);
-                context.lineTo(x + context.lineWidth, baseLineY);
-                context.moveTo(x, baseLineY);
-                context.lineTo(x + totalWidth, baseLineY);
-                context.moveTo(x + totalWidth, isTop ? canvasHeight : y);
-                context.lineTo(x + totalWidth, baseLineY);
-                context.moveTo(middlePointX, baseLineY);
+                context.moveTo(x + scaleGroupMargin, groupBaselineY);
+                context.lineTo(x + scaleGroupMargin, baseLineY);
+                context.moveTo(x + scaleGroupMargin, groupBaselineY);
+                context.lineTo(x + totalWidth - scaleGroupMargin, groupBaselineY);
+                context.moveTo(x + totalWidth - scaleGroupMargin, groupBaselineY);
+                context.lineTo(x + totalWidth - scaleGroupMargin, baseLineY);
+                context.moveTo(middlePointX, groupBaselineY);
                 if (!isTop)
-                    context.lineTo(middlePointX, baseLineY + scaleTagLineHeight - scaleTagLinePadding);
+                    context.lineTo(middlePointX, groupBaselineY + scaleTagLineHeight - scaleTagLinePadding - scaleGroupTagLinePadding);
                 else
-                    context.lineTo(middlePointX, baseLineY - scaleTagLineHeight + scaleTagLinePadding);
+                    context.lineTo(middlePointX, groupBaselineY - scaleTagLineHeight + scaleTagLinePadding + scaleGroupTagLinePadding);
             });
         } else {
-            colorBatchRender.lazyCreateColorSeqs(usedLineColor, (context) => {
+            colorBatchRender.lazyCreateColorSeqs(usedGroupColor, (context) => {
                 context.beginPath();
             }, (context, color) => {
                 context.lineWidth = 1;
                 context.strokeStyle = color;
                 context.stroke();
             });
-            colorBatchRender.addSeq(usedLineColor, (context) => {
+            colorBatchRender.addSeq(usedGroupColor, (context) => {
                 context.moveTo(middlePointX, baseLineY);
                 if (!isTop)
                     context.lineTo(middlePointX, baseLineY + scaleTagLineHeight - scaleTagLinePadding);
@@ -692,19 +735,6 @@ Timeline.CanvasXAxisComponent = (scales, option = {}) => {
         const usedLineColor = computedStyle.getPropertyValue('--borderColorInlineElement');
         const baseLineY = isTop ? canvasHeight - scaleBroadLineHeight : scaleBroadLineHeight;
         const context = element.getContext("2d", { alpha: false });
-        let currentStartScaleIndex = Math.floor(scrollLeft / scaleWidth);
-        if (currentStartScaleIndex < 0)
-            currentStartScaleIndex = 0;
-        const currentStartScaleKey = getScaleKey(scales[currentStartScaleIndex]);
-        let currentEndScaleIndex = Math.ceil((scrollLeft + renderWidth) / scaleWidth);
-        currentEndScaleIndex = currentEndScaleIndex >= scales.length ? scales.length - 1 : currentEndScaleIndex;
-        const currentEndScaleKey = getScaleKey(scales[currentEndScaleIndex]);
-        const currentStartNode = scalesMapLinkList.map.get(currentStartScaleKey);
-        const currentEndNode = scalesMapLinkList.map.get(currentEndScaleKey);
-        if (!currentEndNode) {
-            console.error(currentEndScaleKey);
-        }
-        let now = currentStartNode;
         // Clear pervious batch render
         colorBatchRender.clear();
         colorBatchRender.lazyCreateColorSeqs(usedLineColor, (context) => {
@@ -718,6 +748,24 @@ Timeline.CanvasXAxisComponent = (scales, option = {}) => {
             context.moveTo(0, baseLineY);
             context.lineTo(element.logicWidth, baseLineY);
         });
+        if (!scales || !scales.length) {
+            colorBatchRender.batchRender(context);
+            return;
+        }
+        let currentStartScaleIndex = Math.floor(scrollLeft / scaleWidth);
+        if (currentStartScaleIndex < 0)
+            currentStartScaleIndex = 0;
+        const currentStartScaleKey = getScaleKey(scales[currentStartScaleIndex]);
+        let currentEndScaleIndex = Math.ceil((scrollLeft + renderWidth) / scaleWidth);
+        currentEndScaleIndex = currentEndScaleIndex >= scales.length ? scales.length - 1 : currentEndScaleIndex;
+        const currentEndScaleKey = getScaleKey(scales[currentEndScaleIndex]);
+        const currentStartNode = scalesMapLinkList.map.get(currentStartScaleKey);
+        const currentEndNode = scalesMapLinkList.map.get(currentEndScaleKey);
+        if (!currentEndNode) {
+            console.error(currentEndScaleKey);
+        }
+        let now = currentStartNode;
+        
 
         onScreenScales = [];
         while (now != currentEndNode.next) {
@@ -870,13 +918,13 @@ Timeline.CanvasContainer = (exporter, ...children) => {
         return {headers, serieses};
     };
     const {headers, serieses} = upackChildren(children);
-    let composer = FP.composer(FP.currying((updateHeaders, updateSerieses) => {
+    let composer = FP.composer(FP.currying((updateHeaders, updateSerieses, notifyRerender) => {
         if (exporter)
             exporter((newChildren) => {
                 const {headers, serieses} = upackChildren(newChildren);
                 updateHeaders(headers);
                 updateSerieses(serieses);
-            });
+            }, notifyRerender);
     }));
     return (
         `<div class="timeline">

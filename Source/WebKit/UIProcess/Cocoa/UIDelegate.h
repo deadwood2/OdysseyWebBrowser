@@ -88,18 +88,19 @@ private:
         void fullscreenMayReturnToInline(WebPageProxy*) final;
         void didEnterFullscreen(WebPageProxy*) final;
         void didExitFullscreen(WebPageProxy*) final;
-        void runJavaScriptAlert(WebPageProxy*, const WTF::String&, WebFrameProxy*, const WebCore::SecurityOriginData&, Function<void()>&& completionHandler) final;
-        void runJavaScriptConfirm(WebPageProxy*, const WTF::String&, WebFrameProxy*, const WebCore::SecurityOriginData&, Function<void(bool)>&& completionHandler) final;
-        void runJavaScriptPrompt(WebPageProxy*, const WTF::String&, const WTF::String&, WebFrameProxy*, const WebCore::SecurityOriginData&, Function<void(const WTF::String&)>&&) final;
+        void runJavaScriptAlert(WebPageProxy&, const WTF::String&, WebFrameProxy*, WebCore::SecurityOriginData&&, Function<void()>&& completionHandler) final;
+        void runJavaScriptConfirm(WebPageProxy&, const WTF::String&, WebFrameProxy*, WebCore::SecurityOriginData&&, Function<void(bool)>&& completionHandler) final;
+        void runJavaScriptPrompt(WebPageProxy&, const WTF::String&, const WTF::String&, WebFrameProxy*, WebCore::SecurityOriginData&&, Function<void(const WTF::String&)>&&) final;
         void presentStorageAccessConfirmDialog(const WTF::String& requestingDomain, const WTF::String& currentDomain, CompletionHandler<void(bool)>&&);
         void requestStorageAccessConfirm(WebPageProxy&, WebFrameProxy*, const WebCore::RegistrableDomain& requestingDomain, const WebCore::RegistrableDomain& currentDomain, CompletionHandler<void(bool)>&&) final;
         void decidePolicyForGeolocationPermissionRequest(WebPageProxy&, WebFrameProxy&, API::SecurityOrigin&, Function<void(bool)>&) final;
         bool canRunBeforeUnloadConfirmPanel() const final;
-        void runBeforeUnloadConfirmPanel(WebPageProxy*, const WTF::String&, WebFrameProxy*, const WebCore::SecurityOriginData&, Function<void(bool)>&& completionHandler) final;
+        void runBeforeUnloadConfirmPanel(WebPageProxy&, const WTF::String&, WebFrameProxy*, WebCore::SecurityOriginData&&, Function<void(bool)>&& completionHandler) final;
         void exceededDatabaseQuota(WebPageProxy*, WebFrameProxy*, API::SecurityOrigin*, const WTF::String& databaseName, const WTF::String& displayName, unsigned long long currentQuota, unsigned long long currentOriginUsage, unsigned long long currentUsage, unsigned long long expectedUsage, Function<void(unsigned long long)>&& completionHandler) final;
         void reachedApplicationCacheOriginQuota(WebPageProxy*, const WebCore::SecurityOrigin&, uint64_t currentQuota, uint64_t totalBytesNeeded, Function<void(unsigned long long)>&& completionHandler) final;
         void didResignInputElementStrongPasswordAppearance(WebPageProxy&, API::Object*) final;
         bool takeFocus(WebPageProxy*, WKFocusDirection) final;
+        void handleAutoplayEvent(WebPageProxy&, WebCore::AutoplayEvent, OptionSet<WebCore::AutoplayEventFlags>) final;
 #if PLATFORM(MAC)
         void showPage(WebPageProxy*) final;
         void focus(WebPageProxy*) final;
@@ -116,17 +117,17 @@ private:
         void drawHeader(WebPageProxy&, WebFrameProxy&, WebCore::FloatRect&&) final;
         void drawFooter(WebPageProxy&, WebFrameProxy&, WebCore::FloatRect&&) final;
         void decidePolicyForNotificationPermissionRequest(WebPageProxy&, API::SecurityOrigin&, Function<void(bool)>&&) final;
-        void handleAutoplayEvent(WebPageProxy&, WebCore::AutoplayEvent, OptionSet<WebCore::AutoplayEventFlags>) final;
         void unavailablePluginButtonClicked(WebPageProxy&, WKPluginUnavailabilityReason, API::Dictionary&) final;
         void mouseDidMoveOverElement(WebPageProxy&, const WebHitTestResultData&, OptionSet<WebEvent::Modifier>, API::Object*);
         void didClickAutoFillButton(WebPageProxy&, API::Object*) final;
         void toolbarsAreVisible(WebPageProxy&, Function<void(bool)>&&) final;
-        bool runOpenPanel(WebPageProxy*, WebFrameProxy*, const WebCore::SecurityOriginData&, API::OpenPanelParameters*, WebOpenPanelResultListenerProxy*) final;
+        bool runOpenPanel(WebPageProxy&, WebFrameProxy*, WebCore::SecurityOriginData&&, API::OpenPanelParameters*, WebOpenPanelResultListenerProxy*) final;
         void didExceedBackgroundResourceLimitWhileInForeground(WebPageProxy&, WKResourceLimit) final;
         void saveDataToFileInDownloadsFolder(WebPageProxy*, const WTF::String&, const WTF::String&, const URL&, API::Data&) final;
+        void didAttachInspector(WebPageProxy&, WebInspectorProxy&) final;
 #endif
 #if ENABLE(DEVICE_ORIENTATION)
-        void shouldAllowDeviceOrientationAndMotionAccess(WebKit::WebPageProxy&, WebFrameProxy&, const WebCore::SecurityOriginData&, CompletionHandler<void(bool)>&&) final;
+        void shouldAllowDeviceOrientationAndMotionAccess(WebKit::WebPageProxy&, WebFrameProxy&, WebCore::SecurityOriginData&&, CompletionHandler<void(bool)>&&) final;
 #endif
         bool needsFontAttributes() const final { return m_uiDelegate.m_delegateMethods.webViewDidChangeFontAttributes; }
         void didChangeFontAttributes(const WebCore::FontAttributes&) final;
@@ -154,6 +155,9 @@ private:
 
         void imageOrMediaDocumentSizeChanged(const WebCore::IntSize&) final;
         void didShowSafeBrowsingWarning() final;
+#if ENABLE(WEB_AUTHN)
+        void runWebAuthenticationPanel(WebPageProxy&, API::WebAuthenticationPanel&, WebFrameProxy&, WebCore::SecurityOriginData&&, CompletionHandler<void(WebAuthenticationPanelResult)>&&) final;
+#endif
 
         UIDelegate& m_uiDelegate;
     };
@@ -172,6 +176,7 @@ private:
         bool webViewRequestGeolocationPermissionForFrameDecisionHandler : 1;
         bool webViewDidResignInputElementStrongPasswordAppearanceWithUserInfo : 1;
         bool webViewTakeFocus : 1;
+        bool webViewHandleAutoplayEventWithFlags : 1;
 #if PLATFORM(MAC)
         bool showWebView : 1;
         bool focusWebView : 1;
@@ -183,7 +188,6 @@ private:
         bool webViewSetResizable : 1;
         bool webViewSetWindowFrame : 1;
         bool webViewDidNotHandleWheelEvent : 1;
-        bool webViewHandleAutoplayEventWithFlags : 1;
         bool webViewUnavailablePlugInButtonClicked : 1;
         bool webViewDidClickAutoFillButtonWithUserInfo : 1;
         bool webViewDrawHeaderInRectForPageWithTitleURL : 1;
@@ -195,6 +199,7 @@ private:
         bool webViewSaveDataToFileSuggestedFilenameMimeTypeOriginatingURL : 1;
         bool webViewRunOpenPanelWithParametersInitiatedByFrameCompletionHandler : 1;
         bool webViewRequestNotificationPermissionForSecurityOriginDecisionHandler : 1;
+        bool webViewDidAttachInspector : 1;
 #endif
 #if ENABLE(DEVICE_ORIENTATION)
         bool webViewShouldAllowDeviceOrientationAndMotionAccessRequestedByFrameDecisionHandler : 1;
@@ -234,6 +239,9 @@ private:
 #endif
         bool webViewHasVideoInPictureInPictureDidChange : 1;
         bool webViewDidShowSafeBrowsingWarning : 1;
+#if ENABLE(WEB_AUTHN)
+        bool webViewRunWebAuthenticationPanelInitiatedByFrameCompletionHandler : 1;
+#endif
     } m_delegateMethods;
 };
 

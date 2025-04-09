@@ -46,6 +46,9 @@
 
 - (IBAction)openLocation:(id)sender;
 
+- (IBAction)saveAsPDF:(id)sender;
+- (IBAction)saveAsWebArchive:(id)sender;
+
 - (IBAction)fetch:(id)sender;
 - (IBAction)share:(id)sender;
 - (IBAction)reload:(id)sender;

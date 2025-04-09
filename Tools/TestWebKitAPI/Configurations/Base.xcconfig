@@ -83,7 +83,6 @@ DEBUG_DEFINES = $(DEBUG_DEFINES_$(CURRENT_VARIANT));
 SUPPORTED_PLATFORMS = iphoneos iphonesimulator macosx appletvos appletvsimulator watchos watchsimulator;
 
 TARGET_MAC_OS_X_VERSION_MAJOR = $(TARGET_MAC_OS_X_VERSION_MAJOR$(MACOSX_DEPLOYMENT_TARGET:suffix:identifier));
-TARGET_MAC_OS_X_VERSION_MAJOR_12 = 101200;
 TARGET_MAC_OS_X_VERSION_MAJOR_13 = 101300;
 TARGET_MAC_OS_X_VERSION_MAJOR_14 = 101400;
 TARGET_MAC_OS_X_VERSION_MAJOR_15 = 101500;
@@ -98,8 +97,9 @@ AD_HOC_CODE_SIGNING_ALLOWED[sdk=iphonesimulator*] = YES;
 WEBKIT_UMBRELLA_FRAMEWORKS_DIR = $(NEXT_ROOT)$(SYSTEM_LIBRARY_DIR)/Frameworks/WebKit.framework/Versions/A/Frameworks;
 WEBCORE_PRIVATE_HEADERS_DIR = $(WEBKIT_UMBRELLA_FRAMEWORKS_DIR)/WebCore.framework/PrivateHeaders;
 
-EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*] = *IOS.h *IOS.cpp *IOS.mm;
-EXCLUDED_SOURCE_FILE_NAMES[sdk=iphone*] = *Mac.h *Mac.cpp *Mac.mm */mac/*;
+EXCLUDED_SOURCE_FILE_NAMES = $(EXCLUDED_SOURCE_FILE_NAMES_$(WK_COCOA_TOUCH));
+EXCLUDED_SOURCE_FILE_NAMES_ = *IOS.h *IOS.cpp *IOS.mm;
+EXCLUDED_SOURCE_FILE_NAMES_cocoatouch = *Mac.h *Mac.cpp *Mac.mm */mac/*;
 
 OTHER_CFLAGS = $(ASAN_OTHER_CFLAGS) --system-header-prefix=WebKit/;
 OTHER_CFLAGS[sdk=macosx*] = $(inherited) -iframework $(SDKROOT)$(SYSTEM_LIBRARY_DIR)/PrivateFrameworks;
@@ -114,3 +114,5 @@ WK_COCOA_TOUCH_watchos = cocoatouch;
 WK_COCOA_TOUCH_watchsimulator = cocoatouch;
 WK_COCOA_TOUCH_appletvos = cocoatouch;
 WK_COCOA_TOUCH_appletvsimulator = cocoatouch;
+
+SYSTEM_FRAMEWORK_SEARCH_PATHS = $(SDKROOT)$(SYSTEM_LIBRARY_DIR)/PrivateFrameworks $(SDKROOT)$(SYSTEM_LIBRARY_DIR)/Frameworks $(SDKROOT)$(SYSTEM_LIBRARY_DIR)/Frameworks/Quartz.framework/Frameworks $(inherited);

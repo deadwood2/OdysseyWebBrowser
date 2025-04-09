@@ -300,7 +300,7 @@ void NetworkDataTaskSoup::sendRequestCallback(SoupRequest* soupRequest, GAsyncRe
         // This can happen when the request is cancelled and a new one is started before
         // the previous async operation completed. This is common when forcing a redirection
         // due to HSTS. We can simply ignore this old request.
-#if !ASSERT_DISABLED
+#if ASSERT_ENABLED
         GUniqueOutPtr<GError> error;
         GRefPtr<GInputStream> inputStream = adoptGRef(soup_request_send_finish(soupRequest, result, &error.outPtr()));
         ASSERT(g_error_matches(error.get(), G_IO_ERROR, G_IO_ERROR_CANCELLED));
@@ -378,7 +378,7 @@ void NetworkDataTaskSoup::dispatchDidReceiveResponse()
     deprecatedResponseMetrics.requestStart = m_networkLoadMetrics.requestStart;
     deprecatedResponseMetrics.responseStart = m_networkLoadMetrics.responseStart;
 
-    didReceiveResponse(ResourceResponse(m_response), [this, protectedThis = makeRef(*this)](PolicyAction policyAction) {
+    didReceiveResponse(ResourceResponse(m_response), NegotiatedLegacyTLS::No, [this, protectedThis = makeRef(*this)](PolicyAction policyAction) {
         if (m_state == State::Canceling || m_state == State::Completed) {
             clearRequest();
             return;
@@ -531,7 +531,7 @@ void NetworkDataTaskSoup::authenticate(AuthenticationChallenge&& challenge)
 
 void NetworkDataTaskSoup::continueAuthenticate(AuthenticationChallenge&& challenge)
 {
-    m_client->didReceiveChallenge(AuthenticationChallenge(challenge), [this, protectedThis = makeRef(*this), challenge](AuthenticationChallengeDisposition disposition, const Credential& credential) {
+    m_client->didReceiveChallenge(AuthenticationChallenge(challenge), NegotiatedLegacyTLS::No, [this, protectedThis = makeRef(*this), challenge](AuthenticationChallengeDisposition disposition, const Credential& credential) {
         if (m_state == State::Canceling || m_state == State::Completed) {
             clearRequest();
             return;
@@ -674,6 +674,20 @@ void NetworkDataTaskSoup::continueHTTPRedirection()
     m_password = url.pass();
     m_lastHTTPMethod = request.httpMethod();
     request.removeCredentials();
+
+    if (isTopLevelNavigation()) {
+        request.setFirstPartyForCookies(request.url());
+#if SOUP_CHECK_VERSION(2, 69, 90)
+        soup_message_set_is_top_level_navigation(m_soupMessage.get(), true);
+#endif
+    }
+
+#if SOUP_CHECK_VERSION(2, 69, 90)
+    if (request.isSameSite()) {
+        GUniquePtr<SoupURI> requestURI = urlToSoupURI(request.url());
+        soup_message_set_site_for_cookies(m_soupMessage.get(), requestURI.get());
+    }
+#endif
 
     if (isCrossOrigin) {
         // The network layer might carry over some headers from the original request that
@@ -920,7 +934,7 @@ void NetworkDataTaskSoup::download()
     m_downloadOutputStream = adoptGRef(G_OUTPUT_STREAM(outputStream.leakRef()));
 
     auto& downloadManager = m_session->networkProcess().downloadManager();
-    auto download = makeUnique<Download>(downloadManager, m_pendingDownloadID, *this, m_session->sessionID(), suggestedFilename());
+    auto download = makeUnique<Download>(downloadManager, m_pendingDownloadID, *this, *m_session, suggestedFilename());
     auto* downloadPtr = download.get();
     downloadManager.dataTaskBecameDownloadTask(m_pendingDownloadID, WTFMove(download));
     downloadPtr->didCreateDestination(m_pendingDownloadLocation);

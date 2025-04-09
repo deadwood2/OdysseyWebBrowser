@@ -152,9 +152,164 @@ void EventSenderProxy::leapForward(int milliseconds)
     m_time += milliseconds / 1000.0;
 }
 
+static unsigned makeKeyDataForScanCode(int virtualKeyCode)
+{
+    unsigned scancode = MapVirtualKey(virtualKeyCode, MAPVK_VK_TO_VSC);
+    int keyData = scancode & 0xFF;
+
+    bool forceExtended = false;
+    switch (virtualKeyCode) {
+    case VK_LEFT:
+    case VK_UP:
+    case VK_RIGHT:
+    case VK_DOWN:
+    case VK_PRIOR:
+    case VK_NEXT:
+    case VK_END:
+    case VK_HOME:
+    case VK_INSERT:
+    case VK_DELETE:
+    case VK_DIVIDE:
+    case VK_NUMLOCK:
+    case VK_RCONTROL:
+    case VK_RMENU:
+        // Some keys need to turn on KF_EXTENDED explicitly
+        forceExtended = true;
+        break;
+    default:
+        break;
+    }
+
+    scancode = scancode >> 8;
+    if (scancode == 0xe0 || scancode == 0xe1 || forceExtended)
+        keyData += KF_EXTENDED;
+    unsigned repeat = 1;
+    return keyData << 16 | repeat;
+}
+
+static void pumpMessageQueue()
+{
+    MSG msg;
+    while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+}
+
 void EventSenderProxy::keyDown(WKStringRef keyRef, WKEventModifiers wkModifiers, unsigned location)
 {
-    notImplemented();
+    int virtualKeyCode = 0;
+    int charCode = 0;
+
+    bool needsShiftKeyModifier = false;
+    if (WKStringIsEqualToUTF8CString(keyRef, "leftArrow"))
+        virtualKeyCode = VK_LEFT;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "rightArrow"))
+        virtualKeyCode = VK_RIGHT;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "upArrow"))
+        virtualKeyCode = VK_UP;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "downArrow"))
+        virtualKeyCode = VK_DOWN;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "pageUp"))
+        virtualKeyCode = VK_PRIOR;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "pageDown"))
+        virtualKeyCode = VK_NEXT;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "home"))
+        virtualKeyCode = VK_HOME;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "end"))
+        virtualKeyCode = VK_END;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "insert"))
+        virtualKeyCode = VK_INSERT;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "delete"))
+        virtualKeyCode = VK_DELETE;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "printScreen"))
+        virtualKeyCode = VK_SNAPSHOT;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "menu"))
+        virtualKeyCode = VK_APPS;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "leftControl"))
+        virtualKeyCode = VK_LCONTROL;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "leftShift"))
+        virtualKeyCode = VK_LSHIFT;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "leftAlt"))
+        virtualKeyCode = VK_LMENU;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "rightControl"))
+        virtualKeyCode = VK_RCONTROL;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "rightShift"))
+        virtualKeyCode = VK_RSHIFT;
+    else if (WKStringIsEqualToUTF8CString(keyRef, "rightAlt"))
+        virtualKeyCode = VK_RMENU;
+    else {
+        size_t keyLength = WKStringGetLength(keyRef);
+        static const char shiftedUSCharacters[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ~!@#$%^&*()_+{}|:\"<>?";
+        wchar_t keyStr[3];
+        WKStringGetCharacters(keyRef, keyStr, _countof(keyStr));
+        if (keyLength == 1) {
+            charCode = keyStr[0];
+            virtualKeyCode = LOBYTE(VkKeyScan(charCode));
+            if (strchr(shiftedUSCharacters, charCode))
+                needsShiftKeyModifier = true;
+        } else if (keyStr[0] == 'F') {
+            if (keyLength == 2 && isASCIIDigit(keyStr[1]))
+                virtualKeyCode = VK_F1 + keyStr[1] - '1';
+            else if (keyLength == 3 && keyStr[1] == '1' && isASCIIDigit(keyStr[2]))
+                virtualKeyCode = VK_F10 + keyStr[2] - '0';
+        }
+    }
+
+    unsigned keyData = makeKeyDataForScanCode(virtualKeyCode);
+
+    switch (virtualKeyCode) {
+    case VK_LCONTROL:
+    case VK_RCONTROL:
+        virtualKeyCode = VK_CONTROL;
+        break;
+    case VK_LSHIFT:
+    case VK_RSHIFT:
+        virtualKeyCode = VK_SHIFT;
+        break;
+    case VK_LMENU:
+    case VK_RMENU:
+        virtualKeyCode = VK_MENU;
+        break;
+    default:
+        break;
+    }
+
+    bool isSysKey = false;
+    BYTE keyState[256];
+    if (wkModifiers || needsShiftKeyModifier) {
+        GetKeyboardState(keyState);
+
+        BYTE newKeyState[256];
+        memcpy(newKeyState, keyState, sizeof(keyState));
+
+        if (wkModifiers & kWKEventModifiersControlKey)
+            newKeyState[VK_CONTROL] = 0x80;
+        if (wkModifiers & kWKEventModifiersShiftKey || needsShiftKeyModifier)
+            newKeyState[VK_SHIFT] = 0x80;
+        if (wkModifiers & kWKEventModifiersAltKey) {
+            newKeyState[VK_MENU] = 0x80;
+            isSysKey = true;
+        }
+
+        SetKeyboardState(newKeyState);
+    }
+
+    if (virtualKeyCode != 255)
+        dispatchMessage(isSysKey ? WM_SYSKEYDOWN : WM_KEYDOWN, virtualKeyCode, keyData);
+    else {
+        // For characters that do not exist in the active keyboard layout,
+        // ::TranslateMessage will not work, so we post an WM_CHAR event ourselves.
+        dispatchMessage(WM_CHAR, charCode, 0);
+    }
+    pumpMessageQueue();
+
+    keyData |= (KF_UP | KF_REPEAT) << 16;
+    dispatchMessage(isSysKey ? WM_SYSKEYUP : WM_KEYUP, virtualKeyCode, keyData);
+    pumpMessageQueue();
+
+    if (wkModifiers || needsShiftKeyModifier)
+        SetKeyboardState(keyState);
 }
 
 } // namespace WTR

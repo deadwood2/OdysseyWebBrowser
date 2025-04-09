@@ -48,6 +48,7 @@
 #import "WKStringCF.h"
 #import "WKViewInternal.h"
 #import "WKWebViewInternal.h"
+#import "WKWebViewPrivateForTestingMac.h"
 #import "WebColorPickerMac.h"
 #import "WebContextMenuProxyMac.h"
 #import "WebDataListSuggestionsDropdownMac.h"
@@ -564,7 +565,7 @@ CALayer *PageClientImpl::acceleratedCompositingRootLayer() const
     return m_impl->acceleratedCompositingRootLayer();
 }
 
-RefPtr<ViewSnapshot> PageClientImpl::takeViewSnapshot()
+RefPtr<ViewSnapshot> PageClientImpl::takeViewSnapshot(Optional<WebCore::IntRect>&&)
 {
     return m_impl->takeViewSnapshot();
 }
@@ -918,11 +919,6 @@ _WKRemoteObjectRegistry *PageClientImpl::remoteObjectRegistry()
     return m_impl->remoteObjectRegistry();
 }
 
-void PageClientImpl::didFinishProcessingAllPendingMouseEvents()
-{
-    m_impl->didFinishProcessingAllPendingMouseEvents();
-}
-
 void PageClientImpl::didRestoreScrollPosition()
 {
     m_impl->didRestoreScrollPosition();
@@ -953,6 +949,11 @@ bool PageClientImpl::effectiveUserInterfaceLevelIsElevated() const
 void PageClientImpl::takeFocus(WebCore::FocusDirection direction)
 {
     m_impl->takeFocus(direction);
+}
+
+void PageClientImpl::requestDOMPasteAccess(const WebCore::IntRect& elementRect, const String& originIdentifier, CompletionHandler<void(WebCore::DOMPasteAccessResponse)>&& completion)
+{
+    m_impl->requestDOMPasteAccess(elementRect, originIdentifier, WTFMove(completion));
 }
 
 } // namespace WebKit

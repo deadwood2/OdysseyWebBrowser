@@ -31,8 +31,6 @@
 
 #if ENABLE(ACCESSIBILITY)
 
-#import "AXIsolatedTree.h"
-#import "AXIsolatedTreeNode.h"
 #import "AXObjectCache.h"
 #import "AccessibilityARIAGridRow.h"
 #import "AccessibilityList.h"
@@ -248,8 +246,6 @@ using namespace HTMLNames;
 #define NSAccessibilityImmediateDescendantsOnly @"AXImmediateDescendantsOnly"
 #endif
 
-#define _axBackingObject self.axBackingObject
-
 static NSArray *convertMathPairsToNSArray(const AccessibilityObject::AccessibilityMathMultiscriptPairs& pairs, NSString *subscriptKey, NSString *superscriptKey)
 {
     NSMutableArray *array = [NSMutableArray arrayWithCapacity:pairs.size()];
@@ -264,7 +260,7 @@ static NSArray *convertMathPairsToNSArray(const AccessibilityObject::Accessibili
     return array;
 }
 
-static void addChildToArray(AccessibilityObjectInterface& child, RetainPtr<NSMutableArray> array)
+static void addChildToArray(AXCoreObject& child, RetainPtr<NSMutableArray> array)
 {
     WebAccessibilityObjectWrapper *wrapper = child.wrapper();
     // We want to return the attachment view instead of the object representing the attachment,
@@ -275,20 +271,10 @@ static void addChildToArray(AccessibilityObjectInterface& child, RetainPtr<NSMut
         [array.get() addObject:wrapper];
 }
 
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-NSArray *convertToNSArray(const Vector<RefPtr<WebCore::AXIsolatedTreeNode>>& children)
+NSArray *convertToNSArray(const WebCore::AXCoreObject::AccessibilityChildrenVector& children)
 {
     NSMutableArray *result = [[NSMutableArray alloc] initWithCapacity:children.size()];
-    for (auto& child : children)
-        addChildToArray(*child, result)
-    return [result autorelease];
-}
-#endif
-
-NSArray *convertToNSArray(const WebCore::AccessibilityObject::AccessibilityChildrenVector& children)
-{
-    NSMutableArray *result = [[NSMutableArray alloc] initWithCapacity:children.size()];
-    for (auto& child : children)
+    for (const auto& child : children)
         addChildToArray(*child, result);
     return [result autorelease];
 }
@@ -296,71 +282,71 @@ NSArray *convertToNSArray(const WebCore::AccessibilityObject::AccessibilityChild
 @implementation WebAccessibilityObjectWrapperBase
 
 @synthesize identifier=_identifier;
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-@synthesize isolatedTreeIdentifier=_isolatedTreeIdentifier;
-#endif
 
-- (id)initWithAccessibilityObject:(AccessibilityObject*)axObject
+- (id)initWithAccessibilityObject:(AXCoreObject*)axObject
 {
     if (!(self = [super init]))
         return nil;
 
-    m_object = axObject;
-    _identifier = m_object->axObjectID();
-
+    [self attachAXObject:axObject];
     return self;
 }
 
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-- (RefPtr<WebCore::AXIsolatedTreeNode>)isolatedTreeNode
+- (void)attachAXObject:(AXCoreObject*)axObject
 {
-    RELEASE_ASSERT(!isMainThread());
+    ASSERT(axObject && (_identifier == InvalidAXID || _identifier == axObject->objectID()));
+    m_axObject = axObject;
+    if (_identifier == InvalidAXID)
+        _identifier = m_axObject->objectID();
+}
 
-    if (!_identifier)
-        return nullptr;
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+- (void)attachIsolatedObject:(AXCoreObject*)isolatedObject
+{
+    ASSERT(isolatedObject && (_identifier == InvalidAXID || _identifier == isolatedObject->objectID()));
+    m_isolatedObject = isolatedObject;
+    if (_identifier == InvalidAXID)
+        _identifier = m_isolatedObject->objectID();
+}
+#endif
 
-    if (m_isolatedTreeNode)
-        return m_isolatedTreeNode;
+- (void)detachAXObject
+{
+    m_axObject = nullptr;
+}
 
-    m_isolatedTreeNode = AXIsolatedTree::nodeInTreeForID(_isolatedTreeIdentifier, _identifier);
-    return m_isolatedTreeNode;
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+- (void)detachIsolatedObject
+{
+    m_isolatedObject = nullptr;
 }
 #endif
 
 - (void)detach
 {
-    m_object = nullptr;
-    _identifier = 0;
-
+    _identifier = InvalidAXID;
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    m_isolatedTreeNode = nullptr;
-    _isolatedTreeIdentifier = 0;
+    if (!isMainThread()) {
+        ASSERT(AXObjectCache::clientSupportsIsolatedTree());
+        [self detachIsolatedObject];
+        return;
+    }
 #endif
+    [self detachAXObject];
 }
 
 - (BOOL)updateObjectBackingStore
 {
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    if (_AXUIElementRequestServicedBySecondaryAXThread()) {
-        RELEASE_ASSERT(!isMainThread());
-        if (auto treeNode = self.isolatedTreeNode) {
-            if (auto tree = treeNode->tree())
-                tree->applyPendingChanges();
-        }
-        return _identifier;
-    }
-#endif
-    
     // Calling updateBackingStore() can invalidate this element so self must be retained.
-    // If it does become invalidated, m_object will be nil.
+    // If it does become invalidated, self.axBackingObject will be nil.
     CFRetain((__bridge CFTypeRef)self);
     CFAutorelease((__bridge CFTypeRef)self);
 
-    if (!m_object)
+    if (!self.axBackingObject)
         return NO;
     
-    m_object->updateBackingStore();
-    if (!m_object)
+    self.axBackingObject->updateBackingStore();
+    if (!self.axBackingObject)
         return NO;
     
     return YES;
@@ -371,43 +357,37 @@ NSArray *convertToNSArray(const WebCore::AccessibilityObject::AccessibilityChild
     return nil;
 }
 
-- (AccessibilityObject*)accessibilityObject
-{
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    ASSERT(!_AXUIElementRequestServicedBySecondaryAXThread());
-#endif
-    return m_object;
-}
-
 // This should be the "visible" text that's actually on the screen if possible.
 // If there's alternative text, that can override the title.
 - (NSString *)baseAccessibilityTitle
 {
-    return _axBackingObject->titleAttributeValue();
+    return self.axBackingObject->titleAttributeValue();
 }
 
-- (WebCore::AccessibilityObjectInterface*)axBackingObject
+- (WebCore::AXCoreObject*)axBackingObject
 {
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    if (_AXUIElementRequestServicedBySecondaryAXThread())
-        return self.isolatedTreeNode.get();
+    if (!isMainThread()) {
+        ASSERT(AXObjectCache::clientSupportsIsolatedTree());
+        return m_isolatedObject;
+    }
 #endif
-    return m_object;
+    return m_axObject;
 }
 
 - (NSString *)baseAccessibilityDescription
 {
-    return _axBackingObject->descriptionAttributeValue();
+    return self.axBackingObject->descriptionAttributeValue();
 }
 
 - (NSArray<NSString *> *)baseAccessibilitySpeechHint
 {
-    return [(NSString *)_axBackingObject->speechHintAttributeValue() componentsSeparatedByString:@" "];
+    return [(NSString *)self.axBackingObject->speechHintAttributeValue() componentsSeparatedByString:@" "];
 }
 
 - (NSString *)baseAccessibilityHelpText
 {
-    return _axBackingObject->helpTextAttributeValue();
+    return self.axBackingObject->helpTextAttributeValue();
 }
 
 struct PathConversionInfo {
@@ -421,21 +401,21 @@ static void convertPathToScreenSpaceFunction(PathConversionInfo& conversion, con
     CGMutablePathRef newPath = conversion.path;
     FloatRect rect;
     switch (element.type) {
-    case PathElementMoveToPoint:
+    case PathElement::Type::MoveToPoint:
     {
         rect = FloatRect(element.points[0], FloatSize());
         CGPoint newPoint = [wrapper convertRectToSpace:rect space:AccessibilityConversionSpace::Screen].origin;
         CGPathMoveToPoint(newPath, nil, newPoint.x, newPoint.y);
         break;
     }
-    case PathElementAddLineToPoint:
+    case PathElement::Type::AddLineToPoint:
     {
         rect = FloatRect(element.points[0], FloatSize());
         CGPoint newPoint = [wrapper convertRectToSpace:rect space:AccessibilityConversionSpace::Screen].origin;
         CGPathAddLineToPoint(newPath, nil, newPoint.x, newPoint.y);
         break;
     }
-    case PathElementAddQuadCurveToPoint:
+    case PathElement::Type::AddQuadCurveToPoint:
     {
         rect = FloatRect(element.points[0], FloatSize());
         CGPoint newPoint1 = [wrapper convertRectToSpace:rect space:AccessibilityConversionSpace::Screen].origin;
@@ -445,7 +425,7 @@ static void convertPathToScreenSpaceFunction(PathConversionInfo& conversion, con
         CGPathAddQuadCurveToPoint(newPath, nil, newPoint1.x, newPoint1.y, newPoint2.x, newPoint2.y);
         break;
     }
-    case PathElementAddCurveToPoint:
+    case PathElement::Type::AddCurveToPoint:
     {
         rect = FloatRect(element.points[0], FloatSize());
         CGPoint newPoint1 = [wrapper convertRectToSpace:rect space:AccessibilityConversionSpace::Screen].origin;
@@ -458,7 +438,7 @@ static void convertPathToScreenSpaceFunction(PathConversionInfo& conversion, con
         CGPathAddCurveToPoint(newPath, nil, newPoint1.x, newPoint1.y, newPoint2.x, newPoint2.y, newPoint3.x, newPoint3.y);
         break;
     }
-    case PathElementCloseSubpath:
+    case PathElement::Type::CloseSubpath:
     {
         CGPathCloseSubpath(newPath);
         break;
@@ -485,7 +465,7 @@ static void convertPathToScreenSpaceFunction(PathConversionInfo& conversion, con
 
 - (CGRect)convertRectToSpace:(WebCore::FloatRect &)rect space:(AccessibilityConversionSpace)space
 {
-    if (!m_object)
+    if (!self.axBackingObject)
         return CGRectZero;
     
     CGSize size = CGSizeMake(rect.size().width(), rect.size().height());
@@ -494,7 +474,7 @@ static void convertPathToScreenSpaceFunction(PathConversionInfo& conversion, con
     CGRect cgRect = CGRectMake(point.x, point.y, size.width, size.height);
 
     // WebKit1 code path... platformWidget() exists.
-    FrameView* frameView = m_object->documentFrameView();
+    FrameView* frameView = self.axBackingObject->documentFrameView();
 #if PLATFORM(IOS_FAMILY)
     WAKView* documentView = frameView ? frameView->documentView() : nullptr;
     if (documentView) {
@@ -518,66 +498,20 @@ static void convertPathToScreenSpaceFunction(PathConversionInfo& conversion, con
     }
 #endif
     else
-        return static_cast<CGRect>(m_object->convertFrameToSpace(rect, space));
+        return static_cast<CGRect>(self.axBackingObject->convertFrameToSpace(rect, space));
 }
 
 - (NSString *)ariaLandmarkRoleDescription
 {
-    switch (_axBackingObject->roleValue()) {
-    case AccessibilityRole::LandmarkBanner:
-        return AXARIAContentGroupText(@"ARIALandmarkBanner");
-    case AccessibilityRole::LandmarkComplementary:
-        return AXARIAContentGroupText(@"ARIALandmarkComplementary");
-    case AccessibilityRole::LandmarkContentInfo:
-        return AXARIAContentGroupText(@"ARIALandmarkContentInfo");
-    case AccessibilityRole::LandmarkMain:
-        return AXARIAContentGroupText(@"ARIALandmarkMain");
-    case AccessibilityRole::LandmarkNavigation:
-        return AXARIAContentGroupText(@"ARIALandmarkNavigation");
-    case AccessibilityRole::LandmarkDocRegion:
-    case AccessibilityRole::LandmarkRegion:
-        return AXARIAContentGroupText(@"ARIALandmarkRegion");
-    case AccessibilityRole::LandmarkSearch:
-        return AXARIAContentGroupText(@"ARIALandmarkSearch");
-    case AccessibilityRole::ApplicationAlert:
-        return AXARIAContentGroupText(@"ARIAApplicationAlert");
-    case AccessibilityRole::ApplicationAlertDialog:
-        return AXARIAContentGroupText(@"ARIAApplicationAlertDialog");
-    case AccessibilityRole::ApplicationDialog:
-        return AXARIAContentGroupText(@"ARIAApplicationDialog");
-    case AccessibilityRole::ApplicationLog:
-        return AXARIAContentGroupText(@"ARIAApplicationLog");
-    case AccessibilityRole::ApplicationMarquee:
-        return AXARIAContentGroupText(@"ARIAApplicationMarquee");
-    case AccessibilityRole::ApplicationStatus:
-        return AXARIAContentGroupText(@"ARIAApplicationStatus");
-    case AccessibilityRole::ApplicationTimer:
-        return AXARIAContentGroupText(@"ARIAApplicationTimer");
-    case AccessibilityRole::Document:
-        return AXARIAContentGroupText(@"ARIADocument");
-    case AccessibilityRole::DocumentArticle:
-        return AXARIAContentGroupText(@"ARIADocumentArticle");
-    case AccessibilityRole::DocumentMath:
-        return AXARIAContentGroupText(@"ARIADocumentMath");
-    case AccessibilityRole::DocumentNote:
-        return AXARIAContentGroupText(@"ARIADocumentNote");
-    case AccessibilityRole::UserInterfaceTooltip:
-        return AXARIAContentGroupText(@"ARIAUserInterfaceTooltip");
-    case AccessibilityRole::TabPanel:
-        return AXARIAContentGroupText(@"ARIATabPanel");
-    case AccessibilityRole::WebApplication:
-        return AXARIAContentGroupText(@"ARIAWebApplication");
-    default:
-        return nil;
-    }
+    return self.axBackingObject->ariaLandmarkRoleDescription();
 }
 
 - (void)baseAccessibilitySetFocus:(BOOL)focus
 {
     // If focus is just set without making the view the first responder, then keyboard focus won't move to the right place.
-    if (focus && !m_object->document()->frame()->selection().isFocusedAndActive()) {
-        FrameView* frameView = m_object->documentFrameView();
-        Page* page = m_object->page();
+    if (focus && !self.axBackingObject->document()->frame()->selection().isFocusedAndActive()) {
+        FrameView* frameView = self.axBackingObject->documentFrameView();
+        Page* page = self.axBackingObject->page();
         if (page && frameView) {
             ChromeClient& chromeClient = page->chrome().client();
             chromeClient.focus();
@@ -590,7 +524,7 @@ static void convertPathToScreenSpaceFunction(PathConversionInfo& conversion, con
         }
     }
 
-    m_object->setFocused(focus);
+    self.axBackingObject->setFocused(focus);
 }
 
 - (NSString *)accessibilityPlatformMathSubscriptKey
@@ -608,14 +542,14 @@ static void convertPathToScreenSpaceFunction(PathConversionInfo& conversion, con
 - (NSArray *)accessibilityMathPostscriptPairs
 {
     AccessibilityObject::AccessibilityMathMultiscriptPairs pairs;
-    m_object->mathPostscripts(pairs);
+    self.axBackingObject->mathPostscripts(pairs);
     return convertMathPairsToNSArray(pairs, [self accessibilityPlatformMathSubscriptKey], [self accessibilityPlatformMathSuperscriptKey]);
 }
 
 - (NSArray *)accessibilityMathPrescriptPairs
 {
     AccessibilityObject::AccessibilityMathMultiscriptPairs pairs;
-    m_object->mathPrescripts(pairs);
+    self.axBackingObject->mathPrescripts(pairs);
     return convertMathPairsToNSArray(pairs, [self accessibilityPlatformMathSubscriptKey], [self accessibilityPlatformMathSuperscriptKey]);
 }
 
@@ -785,10 +719,10 @@ AccessibilitySearchCriteria accessibilitySearchCriteriaForSearchPredicateParamet
     if ([searchTextParameter isKindOfClass:[NSString class]])
         searchText = searchTextParameter;
     
-    AccessibilityObject* startElement = nullptr;
+    AXCoreObject* startElement = nullptr;
     if ([startElementParameter isKindOfClass:[WebAccessibilityObjectWrapperBase class]])
-        startElement = [startElementParameter accessibilityObject];
-    
+        startElement = [startElementParameter axBackingObject];
+
     bool visibleOnly = false;
     if ([visibleOnlyParameter isKindOfClass:[NSNumber class]])
         visibleOnly = [visibleOnlyParameter boolValue];

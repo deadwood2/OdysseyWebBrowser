@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2002-2013 The ANGLE Project Authors. All rights reserved.
+// Copyright 2002 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -34,14 +34,16 @@ const unsigned int Float32One   = 0x3F800000;
 const unsigned short Float16One = 0x3C00;
 
 template <typename T>
-inline bool isPow2(T x)
+inline constexpr bool isPow2(T x)
 {
     static_assert(std::is_integral<T>::value, "isPow2 must be called on an integer type.");
     return (x & (x - 1)) == 0 && (x != 0);
 }
 
-inline int log2(int x)
+template <typename T>
+inline int log2(T x)
 {
+    static_assert(std::is_integral<T>::value, "log2 must be called on an integer type.");
     int r = 0;
     while ((x >> r) > 1)
         r++;
@@ -181,15 +183,27 @@ destType bitCast(const sourceType &source)
     return output;
 }
 
+// https://stackoverflow.com/a/37581284
+template <typename T>
+static constexpr double normalize(T value)
+{
+    return value < 0 ? -static_cast<double>(value) / std::numeric_limits<T>::min()
+                     : static_cast<double>(value) / std::numeric_limits<T>::max();
+}
+
 inline unsigned short float32ToFloat16(float fp32)
 {
     unsigned int fp32i = bitCast<unsigned int>(fp32);
     unsigned int sign  = (fp32i & 0x80000000) >> 16;
     unsigned int abs   = fp32i & 0x7FFFFFFF;
 
-    if (abs > 0x47FFEFFF)  // Infinity
-    {
-        return static_cast<unsigned short>(sign | 0x7FFF);
+    if (abs > 0x7F800000)
+    {  // NaN
+        return 0x7FFF;
+    }
+    else if (abs > 0x47FFEFFF)
+    {  // Infinity
+        return static_cast<uint16_t>(sign | 0x7C00);
     }
     else if (abs < 0x38800000)  // Denormal
     {
@@ -443,12 +457,12 @@ inline float float10ToFloat32(unsigned short fp11)
 
 // Convers to and from float and 16.16 fixed point format.
 
-inline float FixedToFloat(uint32_t fixedInput)
+inline float ConvertFixedToFloat(uint32_t fixedInput)
 {
     return static_cast<float>(fixedInput) / 65536.0f;
 }
 
-inline uint32_t FloatToFixed(float floatInput)
+inline uint32_t ConvertFloatToFixed(float floatInput)
 {
     static constexpr uint32_t kHighest = 32767 * 65536 + 65535;
     static constexpr uint32_t kLowest  = static_cast<uint32_t>(-32768 * 65536 + 65535);
@@ -1237,6 +1251,13 @@ T roundUp(const T value, const T alignment)
 }
 
 template <typename T>
+constexpr T roundUpPow2(const T value, const T alignment)
+{
+    ASSERT(gl::isPow2(alignment));
+    return (value + alignment - 1) & ~(alignment - 1);
+}
+
+template <typename T>
 angle::CheckedNumeric<T> CheckedRoundUp(const T value, const T alignment)
 {
     angle::CheckedNumeric<T> checkedValue(value);
@@ -1244,16 +1265,30 @@ angle::CheckedNumeric<T> CheckedRoundUp(const T value, const T alignment)
     return roundUp(checkedValue, checkedAlignment);
 }
 
-inline unsigned int UnsignedCeilDivide(unsigned int value, unsigned int divisor)
+inline constexpr unsigned int UnsignedCeilDivide(unsigned int value, unsigned int divisor)
 {
     unsigned int divided = value / divisor;
     return (divided + ((value % divisor == 0) ? 0 : 1));
 }
 
+#if defined(__has_builtin)
+#    define ANGLE_HAS_BUILTIN(x) __has_builtin(x)
+#else
+#    define ANGLE_HAS_BUILTIN(x) 0
+#endif
+
 #if defined(_MSC_VER)
 
 #    define ANGLE_ROTL(x, y) _rotl(x, y)
+#    define ANGLE_ROTL64(x, y) _rotl64(x, y)
 #    define ANGLE_ROTR16(x, y) _rotr16(x, y)
+
+#elif defined(__clang__) && ANGLE_HAS_BUILTIN(__builtin_rotateleft32) && \
+    ANGLE_HAS_BUILTIN(__builtin_rotateleft64) && ANGLE_HAS_BUILTIN(__builtin_rotateright16)
+
+#    define ANGLE_ROTL(x, y) __builtin_rotateleft32(x, y)
+#    define ANGLE_ROTL64(x, y) __builtin_rotateleft64(x, y)
+#    define ANGLE_ROTR16(x, y) __builtin_rotateright16(x, y)
 
 #else
 
@@ -1262,12 +1297,18 @@ inline uint32_t RotL(uint32_t x, int8_t r)
     return (x << r) | (x >> (32 - r));
 }
 
+inline uint64_t RotL64(uint64_t x, int8_t r)
+{
+    return (x << r) | (x >> (64 - r));
+}
+
 inline uint16_t RotR16(uint16_t x, int8_t r)
 {
     return (x >> r) | (x << (16 - r));
 }
 
 #    define ANGLE_ROTL(x, y) ::rx::RotL(x, y)
+#    define ANGLE_ROTL64(x, y) ::rx::RotL64(x, y)
 #    define ANGLE_ROTR16(x, y) ::rx::RotR16(x, y)
 
 #endif  // namespace rx

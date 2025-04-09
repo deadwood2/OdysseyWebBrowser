@@ -63,9 +63,6 @@ RemoteLayerTreeDrawingArea::RemoteLayerTreeDrawingArea(WebPage& webPage, const W
     , m_layerFlushTimer(*this, &RemoteLayerTreeDrawingArea::flushLayers)
 {
     webPage.corePage()->settings().setForceCompositingMode(true);
-#if PLATFORM(IOS_FAMILY)
-    webPage.corePage()->settings().setDelegatesPageScaling(true);
-#endif
     m_rootLayer->setName("drawing area root");
 
     m_commitQueue = dispatch_queue_create("com.apple.WebKit.WebContent.RemoteLayerTreeDrawingArea.CommitQueue", nullptr);
@@ -75,7 +72,7 @@ RemoteLayerTreeDrawingArea::RemoteLayerTreeDrawingArea(WebPage& webPage, const W
     // FIXME: While using the high end of the range of DisplayIDs makes a collision with real, non-RemoteLayerTreeDrawingArea
     // DisplayIDs less likely, it is not entirely safe to have a RemoteLayerTreeDrawingArea and TiledCoreAnimationDrawingArea
     // coeexist in the same process.
-    webPage.windowScreenDidChange(std::numeric_limits<uint32_t>::max() - webPage.pageID().toUInt64());
+    webPage.windowScreenDidChange(std::numeric_limits<uint32_t>::max() - webPage.identifier().toUInt64());
 }
 
 RemoteLayerTreeDrawingArea::~RemoteLayerTreeDrawingArea()
@@ -116,6 +113,16 @@ void RemoteLayerTreeDrawingArea::willDestroyDisplayRefreshMonitor(DisplayRefresh
         m_displayRefreshMonitorsToNotify->remove(remoteMonitor);
 }
 
+void RemoteLayerTreeDrawingArea::adoptDisplayRefreshMonitorsFromDrawingArea(DrawingArea& drawingArea)
+{
+    if (is<RemoteLayerTreeDrawingArea>(drawingArea)) {
+        auto& otherDrawingArea = downcast<RemoteLayerTreeDrawingArea>(drawingArea);
+        m_displayRefreshMonitors = WTFMove(otherDrawingArea.m_displayRefreshMonitors);
+        for (auto* monitor : m_displayRefreshMonitors)
+            monitor->updateDrawingArea(*this);
+    }
+}
+
 void RemoteLayerTreeDrawingArea::updateRootLayers()
 {
     Vector<Ref<GraphicsLayer>> children;
@@ -151,7 +158,7 @@ void RemoteLayerTreeDrawingArea::updateGeometry(const IntSize& viewSize, bool fl
     send(Messages::DrawingAreaProxy::DidUpdateGeometry());
 }
 
-bool RemoteLayerTreeDrawingArea::shouldUseTiledBackingForFrameView(const FrameView& frameView)
+bool RemoteLayerTreeDrawingArea::shouldUseTiledBackingForFrameView(const FrameView& frameView) const
 {
     return frameView.frame().isMainFrame() || m_webPage.corePage()->settings().asyncFrameScrollingEnabled();
 }
@@ -221,7 +228,6 @@ void RemoteLayerTreeDrawingArea::setViewExposedRect(Optional<WebCore::FloatRect>
     updateScrolledExposedRect();
 }
 
-#if PLATFORM(IOS_FAMILY)
 WebCore::FloatRect RemoteLayerTreeDrawingArea::exposedContentRect() const
 {
     FrameView* frameView = m_webPage.mainFrameView();
@@ -242,7 +248,6 @@ void RemoteLayerTreeDrawingArea::setExposedContentRect(const FloatRect& exposedC
     frameView->setExposedContentRect(exposedContentRect);
     scheduleCompositingLayerFlush();
 }
-#endif
 
 void RemoteLayerTreeDrawingArea::updateScrolledExposedRect()
 {
@@ -449,7 +454,7 @@ void RemoteLayerTreeDrawingArea::flushLayers()
     RefPtr<BackingStoreFlusher> backingStoreFlusher = BackingStoreFlusher::create(WebProcess::singleton().parentProcessConnection(), WTFMove(commitEncoder), WTFMove(contextsToFlush));
     m_pendingBackingStoreFlusher = backingStoreFlusher;
 
-    auto pageID = m_webPage.pageID();
+    auto pageID = m_webPage.identifier();
     dispatch_async(m_commitQueue, [backingStoreFlusher = WTFMove(backingStoreFlusher), pageID] {
         backingStoreFlusher->flush();
 

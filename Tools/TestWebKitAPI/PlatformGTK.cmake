@@ -55,8 +55,6 @@ ADD_WHOLE_ARCHIVE_TO_LIBRARIES(TestWebCore_LIBRARIES)
 list(APPEND TestWebKit_SOURCES
     ${test_main_SOURCES}
 
-    Tests/WebKit/gtk/InputMethodFilter.cpp
-
     glib/UtilitiesGLib.cpp
 
     gtk/PlatformUtilitiesGtk.cpp
@@ -84,7 +82,6 @@ target_include_directories(TestWebKitAPIBase PRIVATE "${CMAKE_SOURCE_DIR}/Source
 target_sources(TestWebKitAPIInjectedBundle PRIVATE
     glib/UtilitiesGLib.cpp
 
-    gtk/InjectedBundleControllerGtk.cpp
     gtk/PlatformUtilitiesGtk.cpp
 )
 target_include_directories(TestWebKitAPIInjectedBundle PRIVATE

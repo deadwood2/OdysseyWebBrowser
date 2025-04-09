@@ -656,14 +656,15 @@ void WebChromeClient::unavailablePluginButtonClicked(Element& element, RenderEmb
     CallUIDelegate(m_webView, @selector(webView:didPressMissingPluginButton:), kit(&element));
 }
 
-void WebChromeClient::mouseDidMoveOverElement(const HitTestResult& result, unsigned modifierFlags)
+void WebChromeClient::mouseDidMoveOverElement(const HitTestResult& result, unsigned modifierFlags, const String& toolTip, TextDirection)
 {
     WebElementDictionary *element = [[WebElementDictionary alloc] initWithHitTestResult:result];
     [m_webView _mouseDidMoveOverElement:element modifierFlags:modifierFlags];
     [element release];
+    setToolTip(toolTip);
 }
 
-void WebChromeClient::setToolTip(const String& toolTip, TextDirection)
+void WebChromeClient::setToolTip(const String& toolTip)
 {
     NSView<WebDocumentView> *documentView = [[[m_webView _selectedOrMainFrame] frameView] documentView];
     if ([documentView isKindOfClass:[WebHTMLView class]])
@@ -1118,6 +1119,10 @@ void WebChromeClient::setMockMediaPlaybackTargetPickerState(const String& name, 
     [m_webView _setMockMediaPlaybackTargetPickerName:name state:state];
 }
 
+void WebChromeClient::mockMediaPlaybackTargetPickerDismissPopup()
+{
+    [m_webView _mockMediaPlaybackTargetPickerDismissPopup];
+}
 #endif
 
 String WebChromeClient::signedPublicKeyAndChallengeString(unsigned keySizeIndex, const String& challengeString, const URL& url) const

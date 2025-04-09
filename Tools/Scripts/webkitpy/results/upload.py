@@ -22,15 +22,19 @@
 
 import webkitpy.thirdparty.autoinstalled.requests
 
+import os
 import json
 import requests
 import sys
+import time
 
 import platform as host_platform
 
 
 class Upload(object):
+    API_KEY = os.getenv('RESULTS_SERVER_API_KEY')
     UPLOAD_ENDPOINT = '/api/upload'
+    ARCHIVE_UPLOAD_ENDPOINT = '/api/upload/archive'
     BUILDBOT_DETAILS = ['buildbot-master', 'builder-name', 'build-number', 'buildbot-worker']
     VERSION = 0
 
@@ -65,7 +69,7 @@ class Upload(object):
             buildbot_args = [details.get(arg, None) is None for arg in obj.BUILDBOT_DETAILS]
             if any(buildbot_args) and not all(buildbot_args):
                 raise ValueError('All buildbot details must be defined for upload, details missing: {}'.format(', '.join(
-                    [obj.BUILDBOT_DETAILS[i] for i in xrange(len(obj.BUILDBOT_DETAILS)) if buildbot_args[i]],
+                    [obj.BUILDBOT_DETAILS[i] for i in range(len(obj.BUILDBOT_DETAILS)) if buildbot_args[i]],
                 )))
 
             def unpack_test(current, path_to_test, data):
@@ -77,8 +81,14 @@ class Upload(object):
                 unpack_test(current[path_to_test[0]], path_to_test[1:], data)
 
             results = {}
-            for test, data in obj.results.iteritems():
-                unpack_test(results, test.split('/'), data)
+
+            # FIXME: Python 2 removal, this dictionary is large enough that Python 2 can't just use items
+            if sys.version_info > (3, 0):
+                for test, data in obj.results.items():
+                    unpack_test(results, test.split('/'), data)
+            else:
+                for test, data in obj.results.iteritems():
+                    unpack_test(results, test.split('/'), data)
 
             result = dict(
                 version=obj.VERSION,
@@ -99,7 +109,7 @@ class Upload(object):
         self.suite = suite
         self.configuration = configuration
         self.commits = commits
-        self.timestamp = timestamp
+        self.timestamp = int(timestamp or time.time())
         self.details = details
         self.run_stats = run_stats
         self.results = results
@@ -125,7 +135,7 @@ class Upload(object):
             architecture=architecture or host_platform.machine(),
         )
         optional_data = dict(version_name=version_name, model=model, style=style, flavor=flavor, sdk=sdk)
-        config.update({key: value for key, value in optional_data.iteritems() if value is not None})
+        config.update({key: value for key, value in optional_data.items() if value is not None})
         return config
 
     @staticmethod
@@ -153,7 +163,7 @@ class Upload(object):
     def create_run_stats(start_time=None, end_time=None, tests_skipped=None, **kwargs):
         stats = dict(**kwargs)
         optional_data = dict(start_time=start_time, end_time=end_time, tests_skipped=tests_skipped)
-        stats.update({key: value for key, value in optional_data.iteritems() if value is not None})
+        stats.update({key: value for key, value in optional_data.items() if value is not None})
         return stats
 
     @staticmethod
@@ -162,23 +172,84 @@ class Upload(object):
 
         # Tests which don't declare expectations or results are assumed to have passed.
         optional_data = dict(expected=expected, actual=actual, log=log)
-        result.update({key: value for key, value in optional_data.iteritems() if value is not None})
+        result.update({key: value for key, value in optional_data.items() if value is not None})
         return result
 
-    def upload(self, url, log_line_func=lambda val: sys.stdout.write(val + '\n')):
+    def upload(self, hostname, log_line_func=lambda val: sys.stdout.write(val + '\n')):
         try:
-            response = requests.post(url + self.UPLOAD_ENDPOINT, data=json.dumps(self, cls=Upload.Encoder))
+            data = Upload.Encoder().default(self)
+            if self.API_KEY:
+                data['api_key'] = self.API_KEY
+            response = requests.post(
+                '{}{}'.format(hostname, self.UPLOAD_ENDPOINT),
+                headers={'Content-type': 'application/json'},
+                data=json.dumps(data),
+                verify=False,
+            )
         except requests.exceptions.ConnectionError:
-            log_line_func(' ' * 4 + 'Failed to upload to {}, results server not online'.format(url))
+            log_line_func(' ' * 4 + 'Failed to upload to {}, results server not online'.format(hostname))
             return False
         except ValueError as e:
             log_line_func(' ' * 4 + 'Failed to encode upload data: {}'.format(e))
             return False
 
         if response.status_code != 200:
-            log_line_func(' ' * 4 + 'Error uploading to {}:'.format(url))
-            log_line_func(' ' * 8 + response.json()['description'])
+            log_line_func(' ' * 4 + 'Error uploading to {}'.format(hostname))
+            try:
+                log_line_func(' ' * 8 + response.json().get('description'))
+            except ValueError:
+                for line in response.text.splitlines():
+                    log_line_func(' ' * 8 + line)
             return False
 
-        log_line_func(' ' * 4 + 'Uploaded results to {}'.format(url))
+        log_line_func(' ' * 4 + 'Uploaded results to {}'.format(hostname))
+        return True
+
+    def upload_archive(self, hostname, archive, log_line_func=lambda val: sys.stdout.write(val + '\n')):
+        try:
+            meta_data = dict(
+                version=self.VERSION,
+                suite=self.suite,
+                configuration=json.dumps(self.configuration or self.create_configuration()),
+                commits=json.dumps(self.commits),
+            )
+            if self.timestamp:
+                meta_data['timestamp'] = self.timestamp
+            if self.API_KEY:
+                meta_data['api_key'] = self.API_KEY
+            meta_data['Content-type'] = 'application/octet-stream'
+            response = requests.post(
+                '{}{}'.format(hostname, self.ARCHIVE_UPLOAD_ENDPOINT),
+                data=meta_data,
+                files=dict(file=archive),
+                verify=False,
+            )
+
+        except requests.exceptions.ConnectionError:
+            log_line_func(' ' * 4 + 'Failed to upload test archive to {}, results server not online'.format(hostname))
+            return False
+        except ValueError as e:
+            log_line_func(' ' * 4 + 'Failed to encode archive reference data: {}'.format(e))
+            return False
+
+        # FIXME: <rdar://problem/56154412> do not fail test runs because of 403 errors
+        if response.status_code not in [200, 403, 413]:
+            log_line_func(' ' * 4 + 'Error uploading archive to {}'.format(hostname))
+            try:
+                log_line_func(' ' * 8 + response.json().get('description'))
+            except ValueError:
+                for line in response.text.splitlines():
+                    log_line_func(' ' * 8 + line)
+            return False
+
+        if response.status_code == 200:
+            log_line_func(' ' * 4 + 'Uploaded test archive to {}'.format(hostname))
+        else:
+            log_line_func(' ' * 4 + 'Upload to {} failed:'.format(hostname))
+            try:
+                log_line_func(' ' * 8 + response.json().get('description'))
+            except ValueError:
+                for line in response.text.splitlines():
+                    log_line_func(' ' * 8 + line)
+            log_line_func(' ' * 4 + 'This error is not fatal, continuing')
         return True

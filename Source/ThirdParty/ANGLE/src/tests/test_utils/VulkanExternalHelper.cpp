@@ -8,7 +8,6 @@
 
 #include "test_utils/VulkanExternalHelper.h"
 
-#include <vulkan/vulkan.h>
 #include <vector>
 
 #include "common/bitset_utils.h"
@@ -142,7 +141,8 @@ VulkanExternalHelper::~VulkanExternalHelper()
 void VulkanExternalHelper::initialize()
 {
     ASSERT(mInstance == VK_NULL_HANDLE);
-
+    VkResult result = volkInitialize();
+    ASSERT(result == VK_SUCCESS);
     std::vector<VkExtensionProperties> instanceExtensionProperties =
         EnumerateInstanceExtensionProperties(nullptr);
 
@@ -185,9 +185,10 @@ void VulkanExternalHelper::initialize()
         /* .ppEnabledExtensionName = */ enabledInstanceExtensions.data(),
     };
 
-    VkResult result = vkCreateInstance(&instanceCreateInfo, nullptr, &mInstance);
+    result = vkCreateInstance(&instanceCreateInfo, nullptr, &mInstance);
     ASSERT(result == VK_SUCCESS);
     ASSERT(mInstance != VK_NULL_HANDLE);
+    volkLoadInstance(mInstance);
 
     std::vector<VkPhysicalDevice> physicalDevices = EnumeratePhysicalDevices(mInstance);
     ASSERT(physicalDevices.size() > 0);
@@ -261,6 +262,7 @@ void VulkanExternalHelper::initialize()
     result = vkCreateDevice(mPhysicalDevice, &deviceCreateInfo, nullptr, &mDevice);
     ASSERT(result == VK_SUCCESS);
     ASSERT(mDevice != VK_NULL_HANDLE);
+    volkLoadDevice(mDevice);
 
     constexpr uint32_t kGraphicsQueueIndex = 0;
     static_assert(kGraphicsQueueIndex < kGraphicsQueueCount, "must be in range");
@@ -277,6 +279,11 @@ void VulkanExternalHelper::initialize()
             vkGetInstanceProcAddr(mInstance, "vkGetPhysicalDeviceImageFormatProperties2"));
     vkGetMemoryFdKHR = reinterpret_cast<PFN_vkGetMemoryFdKHR>(
         vkGetInstanceProcAddr(mInstance, "vkGetMemoryFdKHR"));
+    vkGetSemaphoreFdKHR = reinterpret_cast<PFN_vkGetSemaphoreFdKHR>(
+        vkGetInstanceProcAddr(mInstance, "vkGetSemaphoreFdKHR"));
+    vkGetPhysicalDeviceExternalSemaphorePropertiesKHR =
+        reinterpret_cast<PFN_vkGetPhysicalDeviceExternalSemaphorePropertiesKHR>(
+            vkGetInstanceProcAddr(mInstance, "vkGetPhysicalDeviceExternalSemaphorePropertiesKHR"));
 }
 
 bool VulkanExternalHelper::canCreateImageOpaqueFd(VkFormat format,
@@ -331,8 +338,8 @@ bool VulkanExternalHelper::canCreateImageOpaqueFd(VkFormat format,
     {
         return false;
     }
-    if (!(externalImageFormatProperties.externalMemoryProperties.externalMemoryFeatures &
-          kRequiredFeatures))
+    if ((externalImageFormatProperties.externalMemoryProperties.externalMemoryFeatures &
+         kRequiredFeatures) != kRequiredFeatures)
     {
         return false;
     }
@@ -432,6 +439,64 @@ VkResult VulkanExternalHelper::exportMemoryOpaqueFd(VkDeviceMemory deviceMemory,
     };
 
     return vkGetMemoryFdKHR(mDevice, &memoryGetFdInfo, fd);
+}
+
+bool VulkanExternalHelper::canCreateSemaphoreOpaqueFd() const
+{
+    if (!mHasExternalSemaphoreFd || !vkGetPhysicalDeviceExternalSemaphorePropertiesKHR)
+    {
+        return false;
+    }
+
+    VkPhysicalDeviceExternalSemaphoreInfo externalSemaphoreInfo = {
+        /* .sType = */ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO,
+        /* .pNext = */ nullptr,
+        /* .handleType = */ VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT,
+    };
+
+    VkExternalSemaphoreProperties externalSemaphoreProperties = {};
+    vkGetPhysicalDeviceExternalSemaphorePropertiesKHR(mPhysicalDevice, &externalSemaphoreInfo,
+                                                      &externalSemaphoreProperties);
+
+    constexpr VkExternalSemaphoreFeatureFlags kRequiredFeatures =
+        VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT | VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT;
+
+    if ((externalSemaphoreProperties.externalSemaphoreFeatures & kRequiredFeatures) !=
+        kRequiredFeatures)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+VkResult VulkanExternalHelper::createSemaphoreOpaqueFd(VkSemaphore *semaphore)
+{
+    VkExportSemaphoreCreateInfo exportSemaphoreCreateInfo = {
+        /* .sType = */ VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO,
+        /* .pNext = */ nullptr,
+        /* .handleTypes = */ VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT,
+    };
+
+    VkSemaphoreCreateInfo semaphoreCreateInfo = {
+        /* .sType = */ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        /* .pNext = */ &exportSemaphoreCreateInfo,
+        /* .flags = */ 0,
+    };
+
+    return vkCreateSemaphore(mDevice, &semaphoreCreateInfo, nullptr, semaphore);
+}
+
+VkResult VulkanExternalHelper::exportSemaphoreOpaqueFd(VkSemaphore semaphore, int *fd)
+{
+    VkSemaphoreGetFdInfoKHR semaphoreGetFdInfo = {
+        /* .sType = */ VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
+        /* .pNext = */ nullptr,
+        /* .semaphore = */ semaphore,
+        /* .handleType = */ VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT,
+    };
+
+    return vkGetSemaphoreFdKHR(mDevice, &semaphoreGetFdInfo, fd);
 }
 
 }  // namespace angle

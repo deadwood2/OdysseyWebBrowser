@@ -31,6 +31,7 @@
 
 #if USE(DIRECT2D)
 #include <d2d1.h>
+#include <d3d11_1.h>
 #endif
 
 namespace WebKit {
@@ -56,7 +57,7 @@ void BackingStore::incorporateUpdate(const UpdateInfo& updateInfo)
     if (!bitmap)
         return;
 
-#if !ASSERT_DISABLED
+#if ASSERT_ENABLED
     IntSize updateSize = updateInfo.updateRectBounds.size();
     updateSize.scale(m_deviceScaleFactor);
     ASSERT(bitmap->size() == updateSize);

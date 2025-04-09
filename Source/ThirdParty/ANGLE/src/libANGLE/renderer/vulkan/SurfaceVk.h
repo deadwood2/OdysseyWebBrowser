@@ -10,7 +10,7 @@
 #ifndef LIBANGLE_RENDERER_VULKAN_SURFACEVK_H_
 #define LIBANGLE_RENDERER_VULKAN_SURFACEVK_H_
 
-#include <vulkan/vulkan.h>
+#include "volk.h"
 
 #include "libANGLE/renderer/SurfaceImpl.h"
 #include "libANGLE/renderer/vulkan/RenderTargetVk.h"
@@ -20,10 +20,27 @@ namespace rx
 {
 class RendererVk;
 
-class OffscreenSurfaceVk : public SurfaceImpl
+class SurfaceVk : public SurfaceImpl
 {
   public:
-    OffscreenSurfaceVk(const egl::SurfaceState &surfaceState, EGLint width, EGLint height);
+    angle::Result getAttachmentRenderTarget(const gl::Context *context,
+                                            GLenum binding,
+                                            const gl::ImageIndex &imageIndex,
+                                            GLsizei samples,
+                                            FramebufferAttachmentRenderTarget **rtOut) override;
+
+  protected:
+    SurfaceVk(const egl::SurfaceState &surfaceState);
+    ~SurfaceVk() override;
+
+    RenderTargetVk mColorRenderTarget;
+    RenderTargetVk mDepthStencilRenderTarget;
+};
+
+class OffscreenSurfaceVk : public SurfaceVk
+{
+  public:
+    OffscreenSurfaceVk(const egl::SurfaceState &surfaceState);
     ~OffscreenSurfaceVk() override;
 
     egl::Error initialize(const egl::Display *display) override;
@@ -43,6 +60,7 @@ class OffscreenSurfaceVk : public SurfaceImpl
                             EGLint buffer) override;
     egl::Error releaseTexImage(const gl::Context *context, EGLint buffer) override;
     egl::Error getSyncValues(EGLuint64KHR *ust, EGLuint64KHR *msc, EGLuint64KHR *sbc) override;
+    egl::Error getMscRate(EGLint *numerator, EGLint *denominator) override;
     void setSwapInterval(EGLint interval) override;
 
     // width and height can change with client window resizing
@@ -51,11 +69,6 @@ class OffscreenSurfaceVk : public SurfaceImpl
 
     EGLint isPostSubBufferSupported() const override;
     EGLint getSwapBehavior() const override;
-
-    angle::Result getAttachmentRenderTarget(const gl::Context *context,
-                                            GLenum binding,
-                                            const gl::ImageIndex &imageIndex,
-                                            FramebufferAttachmentRenderTarget **rtOut) override;
 
     angle::Result initializeContents(const gl::Context *context,
                                      const gl::ImageIndex &imageIndex) override;
@@ -71,12 +84,12 @@ class OffscreenSurfaceVk : public SurfaceImpl
         angle::Result initialize(DisplayVk *displayVk,
                                  EGLint width,
                                  EGLint height,
-                                 const vk::Format &vkFormat);
+                                 const vk::Format &vkFormat,
+                                 GLint samples);
         void destroy(const egl::Display *display);
 
         vk::ImageHelper image;
-        vk::ImageView imageView;
-        RenderTargetVk renderTarget;
+        vk::ImageViewHelper imageViews;
     };
 
     angle::Result initializeImpl(DisplayVk *displayVk);
@@ -88,13 +101,82 @@ class OffscreenSurfaceVk : public SurfaceImpl
     AttachmentImage mDepthStencilAttachment;
 };
 
-class WindowSurfaceVk : public SurfaceImpl
+// Data structures used in WindowSurfaceVk
+namespace impl
+{
+// The submission fence of the context used to throttle the CPU.
+struct SwapHistory : angle::NonCopyable
+{
+    SwapHistory();
+    SwapHistory(SwapHistory &&other) = delete;
+    SwapHistory &operator=(SwapHistory &&other) = delete;
+    ~SwapHistory();
+
+    void destroy(RendererVk *renderer);
+
+    angle::Result waitFence(ContextVk *contextVk);
+
+    // Fence associated with the last submitted work to render to this swapchain image.
+    vk::Shared<vk::Fence> sharedFence;
+};
+static constexpr size_t kSwapHistorySize = 2;
+
+// Old swapchain and associated present semaphores that need to be scheduled for destruction when
+// appropriate.
+struct SwapchainCleanupData : angle::NonCopyable
+{
+    SwapchainCleanupData();
+    SwapchainCleanupData(SwapchainCleanupData &&other);
+    ~SwapchainCleanupData();
+
+    void destroy(VkDevice device, vk::Recycler<vk::Semaphore> *semaphoreRecycler);
+
+    // The swapchain to be destroyed.
+    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    // Any present semaphores that were pending destruction at the time the swapchain was
+    // recreated will be scheduled for destruction at the same time as the swapchain.
+    std::vector<vk::Semaphore> semaphores;
+};
+
+// A circular buffer per image stores the semaphores used for presenting that image.  Taking the
+// swap history into account, only the oldest semaphore is guaranteed to be no longer in use by the
+// presentation engine.  See doc/PresentSemaphores.md for details.
+//
+// Old swapchains are scheduled to be destroyed at the same time as the first semaphore used to
+// present an image of the new swapchain.  This is to ensure that the presentation engine is no
+// longer presenting an image from the old swapchain.
+struct ImagePresentHistory : angle::NonCopyable
+{
+    ImagePresentHistory();
+    ImagePresentHistory(ImagePresentHistory &&other);
+    ~ImagePresentHistory();
+
+    vk::Semaphore semaphore;
+    std::vector<SwapchainCleanupData> oldSwapchains;
+};
+
+// Swapchain images and their associated objects.
+struct SwapchainImage : angle::NonCopyable
+{
+    SwapchainImage();
+    SwapchainImage(SwapchainImage &&other);
+    ~SwapchainImage();
+
+    vk::ImageHelper image;
+    vk::ImageViewHelper imageViews;
+    vk::Framebuffer framebuffer;
+
+    // A circular array of semaphores used for presenting this image.
+    static constexpr size_t kPresentHistorySize = kSwapHistorySize + 1;
+    std::array<ImagePresentHistory, kPresentHistorySize> presentHistory;
+    size_t currentPresentHistoryIndex = 0;
+};
+}  // namespace impl
+
+class WindowSurfaceVk : public SurfaceVk
 {
   public:
-    WindowSurfaceVk(const egl::SurfaceState &surfaceState,
-                    EGLNativeWindowType window,
-                    EGLint width,
-                    EGLint height);
+    WindowSurfaceVk(const egl::SurfaceState &surfaceState, EGLNativeWindowType window);
     ~WindowSurfaceVk() override;
 
     void destroy(const egl::Display *display) override;
@@ -115,6 +197,7 @@ class WindowSurfaceVk : public SurfaceImpl
                             EGLint buffer) override;
     egl::Error releaseTexImage(const gl::Context *context, EGLint buffer) override;
     egl::Error getSyncValues(EGLuint64KHR *ust, EGLuint64KHR *msc, EGLuint64KHR *sbc) override;
+    egl::Error getMscRate(EGLint *numerator, EGLint *denominator) override;
     void setSwapInterval(EGLint interval) override;
 
     // width and height can change with client window resizing
@@ -124,47 +207,55 @@ class WindowSurfaceVk : public SurfaceImpl
     EGLint isPostSubBufferSupported() const override;
     EGLint getSwapBehavior() const override;
 
-    angle::Result getAttachmentRenderTarget(const gl::Context *context,
-                                            GLenum binding,
-                                            const gl::ImageIndex &imageIndex,
-                                            FramebufferAttachmentRenderTarget **rtOut) override;
-
     angle::Result initializeContents(const gl::Context *context,
                                      const gl::ImageIndex &imageIndex) override;
 
-    angle::Result getCurrentFramebuffer(vk::Context *context,
+    angle::Result getCurrentFramebuffer(ContextVk *context,
                                         const vk::RenderPass &compatibleRenderPass,
                                         vk::Framebuffer **framebufferOut);
 
-    angle::Result generateSemaphoresForFlush(vk::Context *context,
-                                             const vk::Semaphore **outWaitSemaphore,
-                                             const vk::Semaphore **outSignalSempahore);
+    vk::Semaphore getAcquireImageSemaphore();
 
   protected:
+    angle::Result swapImpl(const gl::Context *context,
+                           EGLint *rects,
+                           EGLint n_rects,
+                           const void *pNextChain);
+
     EGLNativeWindowType mNativeWindowType;
     VkSurfaceKHR mSurface;
-    VkInstance mInstance;
+    VkSurfaceCapabilitiesKHR mSurfaceCaps;
 
   private:
-    virtual angle::Result createSurfaceVk(vk::Context *context, gl::Extents *extentsOut) = 0;
+    virtual angle::Result createSurfaceVk(vk::Context *context, gl::Extents *extentsOut)      = 0;
     virtual angle::Result getCurrentWindowSize(vk::Context *context, gl::Extents *extentsOut) = 0;
 
     angle::Result initializeImpl(DisplayVk *displayVk);
-    angle::Result recreateSwapchain(DisplayVk *displayVk,
+    angle::Result recreateSwapchain(ContextVk *contextVk,
                                     const gl::Extents &extents,
                                     uint32_t swapHistoryIndex);
-    angle::Result checkForOutOfDateSwapchain(DisplayVk *displayVk,
+    angle::Result createSwapChain(vk::Context *context,
+                                  const gl::Extents &extents,
+                                  VkSwapchainKHR oldSwapchain);
+    angle::Result checkForOutOfDateSwapchain(ContextVk *contextVk,
                                              uint32_t swapHistoryIndex,
                                              bool presentOutOfDate);
-    void releaseSwapchainImages(RendererVk *renderer);
-    angle::Result nextSwapchainImage(DisplayVk *displayVk);
-    angle::Result present(DisplayVk *displayVk,
+    angle::Result resizeSwapchainImages(vk::Context *context, uint32_t imageCount);
+    void releaseSwapchainImages(ContextVk *contextVk);
+    void destroySwapChainImages(DisplayVk *displayVk);
+    VkResult nextSwapchainImage(vk::Context *context);
+    angle::Result present(ContextVk *contextVk,
                           EGLint *rects,
                           EGLint n_rects,
-                          bool &swapchainOutOfDate);
-    angle::Result swapImpl(DisplayVk *displayVk, EGLint *rects, EGLint n_rects);
+                          const void *pNextChain,
+                          bool *presentOutOfDate);
 
-    VkSurfaceCapabilitiesKHR mSurfaceCaps;
+    angle::Result updateAndDrawOverlay(ContextVk *contextVk, impl::SwapchainImage *image) const;
+
+    angle::Result newPresentSemaphore(vk::Context *context, vk::Semaphore *semaphoreOut);
+
+    bool isMultiSampled() const;
+
     std::vector<VkPresentModeKHR> mPresentModes;
 
     VkSwapchainKHR mSwapchain;
@@ -175,64 +266,34 @@ class WindowSurfaceVk : public SurfaceImpl
     VkSurfaceTransformFlagBitsKHR mPreTransform;
     VkCompositeAlphaFlagBitsKHR mCompositeAlpha;
 
-    RenderTargetVk mColorRenderTarget;
-    RenderTargetVk mDepthStencilRenderTarget;
-
-    uint32_t mCurrentSwapchainImageIndex;
-
-    struct SwapchainImage : angle::NonCopyable
-    {
-        SwapchainImage();
-        SwapchainImage(SwapchainImage &&other);
-        ~SwapchainImage();
-
-        vk::ImageHelper image;
-        vk::ImageView imageView;
-        vk::Framebuffer framebuffer;
-    };
-
-    std::vector<SwapchainImage> mSwapchainImages;
-
-    // Each time vkPresent is called, a wait semaphore is needed to know when the work to render the
-    // frame is done. For ANGLE to know when that is, it needs to add a signal semaphore to each
-    // flush. Conversely, before being able to use a swap chain image, ANGLE needs to wait on the
-    // semaphore returned by vkAcquireNextImage.
-    //
-    // We build a chain of semaphores starting with the semaphore returned by vkAcquireNextImageKHR
-    // and ending with the semaphore provided to vkPresent. Each time generateSemaphoresForFlush is
-    // called, a new semaphore is created and appended to mFlushSemaphoreChain. The second last
-    // semaphore is used as a wait semaphore and the last one is used as a signal semaphore for the
-    // flush.
-    //
-    // The semaphore chain is cleared after every call to present and a new one is started once
-    // vkAquireImage is called.
-    //
-    // We don't need a semaphore chain for offscreen surfaces or surfaceless rendering because the
-    // results cannot affect the images in a swap chain.
-    std::vector<vk::Semaphore> mFlushSemaphoreChain;
-
-    // A circular buffer that stores the serial of the renderer on every swap.  The CPU is
-    // throttled by waiting for the 2nd previous serial to finish.  Old swapchains are scheduled to
-    // be destroyed at the same time.
-    struct SwapHistory : angle::NonCopyable
-    {
-        SwapHistory();
-        SwapHistory(SwapHistory &&other);
-        SwapHistory &operator=(SwapHistory &&other);
-        ~SwapHistory();
-
-        void destroy(VkDevice device);
-
-        Serial serial;
-        std::vector<vk::Semaphore> semaphores;
-        VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-    };
-    static constexpr size_t kSwapHistorySize = 2;
-    std::array<SwapHistory, kSwapHistorySize> mSwapHistory;
+    // A circular buffer that stores the submission fence of the context on every swap.  The CPU is
+    // throttled by waiting for the 2nd previous serial to finish.
+    std::array<impl::SwapHistory, impl::kSwapHistorySize> mSwapHistory;
     size_t mCurrentSwapHistoryIndex;
 
+    // The previous swapchain which needs to be scheduled for destruction when appropriate.  This
+    // will be done when the first image of the current swapchain is presented.  If there were
+    // older swapchains pending destruction when the swapchain is recreated, they will accumulate
+    // and be destroyed with the previous swapchain.
+    //
+    // Note that if the user resizes the window such that the swapchain is recreated every frame,
+    // this array can go grow indefinitely.
+    std::vector<impl::SwapchainCleanupData> mOldSwapchains;
+
+    std::vector<impl::SwapchainImage> mSwapchainImages;
+    vk::Semaphore mAcquireImageSemaphore;
+    uint32_t mCurrentSwapchainImageIndex;
+
+    vk::Recycler<vk::Semaphore> mPresentSemaphoreRecycler;
+
+    // Depth/stencil image.  Possibly multisampled.
     vk::ImageHelper mDepthStencilImage;
-    vk::ImageView mDepthStencilImageView;
+    vk::ImageViewHelper mDepthStencilImageViews;
+
+    // Multisample color image, view and framebuffer, if multisampling enabled.
+    vk::ImageHelper mColorImageMS;
+    vk::ImageViewHelper mColorImageMSViews;
+    vk::Framebuffer mFramebufferMS;
 };
 
 }  // namespace rx

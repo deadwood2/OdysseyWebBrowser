@@ -26,7 +26,10 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import StringIO
+import sys
+
+if sys.version_info > (3, 0):
+    from functools import reduce
 
 from webkitpy.common.config import urls
 from webkitpy.common.checkout.changelog import ChangeLog, parse_bug_id_from_changelog
@@ -34,6 +37,7 @@ from webkitpy.common.checkout.commitinfo import CommitInfo
 from webkitpy.common.checkout.scm import CommitMessage
 from webkitpy.common.memoized import memoized
 from webkitpy.common.system.executive import ScriptError
+from webkitpy.common.unicode_compatibility import StringIO
 
 
 # This class represents the WebKit-specific parts of the checkout (like ChangeLogs).
@@ -61,7 +65,7 @@ class Checkout(object):
         # that ChangeLog files are utf-8.  parse_latest_entry_from_file
         # expects a file-like object which vends unicode(), so we decode here.
         # Old revisions of Sources/WebKit/wx/ChangeLog have some invalid utf8 characters.
-        changelog_file = StringIO.StringIO(changelog_contents.decode("utf-8", "ignore"))
+        changelog_file = StringIO(changelog_contents.decode("utf-8", "ignore"))
         return ChangeLog.parse_latest_entry_from_file(changelog_file)
 
     def changelog_entries_for_revision(self, revision, changed_files=None):
@@ -118,7 +122,7 @@ class Checkout(object):
         # expect absolute paths, so this method returns absolute paths.
         if not changed_files:
             changed_files = self._scm.changed_files(git_commit)
-        return filter(predicate, map(self._scm.absolute_path, changed_files))
+        return list(filter(predicate, list(map(self._scm.absolute_path, changed_files))))
 
     def modified_changelogs(self, git_commit, changed_files=None):
         return self._modified_files_matching_predicate(git_commit, self.is_path_to_changelog, changed_files=changed_files)
@@ -145,7 +149,7 @@ class Checkout(object):
         commit_infos = sorted(self.recent_commit_infos_for_files(changed_files), key=lambda info: info.revision(), reverse=True)
         reviewers = filter(lambda person: person and person.can_review, sum(map(lambda info: [info.reviewer(), info.author()], commit_infos), []))
         unique_reviewers = reduce(lambda suggestions, reviewer: suggestions + [reviewer if reviewer not in suggestions else None], reviewers, [])
-        return filter(lambda reviewer: reviewer, unique_reviewers)
+        return list(filter(lambda reviewer: reviewer, unique_reviewers))
 
     def bug_id_for_this_commit(self, git_commit, changed_files=None):
         try:

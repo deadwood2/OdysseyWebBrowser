@@ -38,9 +38,9 @@ namespace WebKit {
 
 class Download;
 class NetworkSessionCocoa;
+struct SessionWrapper;
 
 class NetworkDataTaskCocoa final : public NetworkDataTask {
-    friend class NetworkSessionCocoa;
 public:
     static Ref<NetworkDataTask> create(NetworkSession& session, NetworkDataTaskClient& client, const WebCore::ResourceRequest& request, WebCore::FrameIdentifier frameID, WebCore::PageIdentifier pageID, WebCore::StoredCredentialsPolicy storedCredentialsPolicy, WebCore::ContentSniffingPolicy shouldContentSniff, WebCore::ContentEncodingSniffingPolicy shouldContentEncodingSniff, bool shouldClearReferrerOnHTTPSToHTTPRedirect, PreconnectOnly shouldPreconnectOnly, bool dataTaskIsForMainFrameNavigation, bool dataTaskIsForMainResourceNavigationForAnyFrame, Optional<NetworkActivityTracker> networkActivityTracker)
     {
@@ -49,11 +49,12 @@ public:
 
     ~NetworkDataTaskCocoa();
 
-    typedef uint64_t TaskIdentifier;
+    using TaskIdentifier = uint64_t;
 
     void didSendData(uint64_t totalBytesSent, uint64_t totalBytesExpectedToSend);
-    void didReceiveChallenge(WebCore::AuthenticationChallenge&&, ChallengeCompletionHandler&&);
+    void didReceiveChallenge(WebCore::AuthenticationChallenge&&, NegotiatedLegacyTLS, ChallengeCompletionHandler&&);
     void didCompleteWithError(const WebCore::ResourceError&, const WebCore::NetworkLoadMetrics&);
+    void didReceiveResponse(WebCore::ResourceResponse&&, NegotiatedLegacyTLS, ResponseCompletionHandler&&);
     void didReceiveData(Ref<WebCore::SharedBuffer>&&);
 
     void willPerformHTTPRedirection(WebCore::ResourceResponse&&, WebCore::ResourceRequest&&, RedirectCompletionHandler&&);
@@ -80,15 +81,16 @@ private:
     bool tryPasswordBasedAuthentication(const WebCore::AuthenticationChallenge&, ChallengeCompletionHandler&);
     void applySniffingPoliciesAndBindRequestToInferfaceIfNeeded(__strong NSURLRequest*&, bool shouldContentSniff, bool shouldContentEncodingSniff);
 
-    void restrictRequestReferrerToOriginIfNeeded(WebCore::ResourceRequest&, bool shouldBlockCookies);
+    void restrictRequestReferrerToOriginIfNeeded(WebCore::ResourceRequest&);
 
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
     static NSHTTPCookieStorage *statelessCookieStorage();
     void blockCookies();
 #endif
-    bool isThirdPartyRequest(const WebCore::ResourceRequest&);
+    bool isThirdPartyRequest(const WebCore::ResourceRequest&) const;
     bool isAlwaysOnLoggingAllowed() const;
 
+    SessionWrapper& m_sessionWrapper;
     RefPtr<SandboxExtension> m_sandboxExtension;
     RetainPtr<NSURLSessionDataTask> m_task;
     WebCore::NetworkLoadMetrics m_networkLoadMetrics;

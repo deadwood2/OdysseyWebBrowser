@@ -29,6 +29,7 @@
 
 #include "BubblewrapLauncher.h"
 #include "Connection.h"
+#include "FlatpakLauncher.h"
 #include "ProcessExecutablePath.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -48,6 +49,26 @@ static void childSetupFunction(gpointer userData)
     int socket = GPOINTER_TO_INT(userData);
     close(socket);
 }
+
+#if OS(LINUX)
+static bool isFlatpakSpawnUsable()
+{
+    static Optional<bool> ret;
+    if (ret)
+        return *ret;
+
+    // For our usage to work we need flatpak >= 1.5.2 on the host and flatpak-xdg-utils > 1.0.1 in the sandbox
+    GRefPtr<GSubprocess> process = adoptGRef(g_subprocess_new(static_cast<GSubprocessFlags>(G_SUBPROCESS_FLAGS_STDOUT_SILENCE | G_SUBPROCESS_FLAGS_STDERR_SILENCE),
+        nullptr, "flatpak-spawn", "--sandbox", "--sandbox-expose-path-ro-try=/this_path_doesnt_exist", "echo", nullptr));
+
+    if (!process.get())
+        ret = false;
+    else
+        ret = g_subprocess_wait_check(process.get(), nullptr, nullptr);
+
+    return *ret;
+}
+#endif
 
 #if ENABLE(BUBBLEWRAP_SANDBOX)
 static bool isInsideDocker()
@@ -126,6 +147,12 @@ void ProcessLauncher::launchProcess()
             prefixArgs.append(arg.utf8());
         nargs += prefixArgs.size();
     }
+
+    bool configureJSCForTesting = false;
+    if (m_launchOptions.processType == ProcessLauncher::ProcessType::Web && m_client && m_client->shouldConfigureJSCForTesting()) {
+        configureJSCForTesting = true;
+        nargs++;
+    }
 #endif
 
     char** argv = g_newa(char*, nargs);
@@ -138,6 +165,10 @@ void ProcessLauncher::launchProcess()
     argv[i++] = const_cast<char*>(realExecutablePath.data());
     argv[i++] = processIdentifier.get();
     argv[i++] = webkitSocket.get();
+#if ENABLE(DEVELOPER_MODE)
+    if (configureJSCForTesting)
+        argv[i++] = const_cast<char*>("--configure-jsc-for-testing");
+#endif
 #if ENABLE(NETSCAPE_PLUGIN_API)
     argv[i++] = const_cast<char*>(realPluginPath.data());
 #else
@@ -152,19 +183,23 @@ void ProcessLauncher::launchProcess()
     GUniqueOutPtr<GError> error;
     GRefPtr<GSubprocess> process;
 
-#if ENABLE(BUBBLEWRAP_SANDBOX)
+#if OS(LINUX)
     const char* sandboxEnv = g_getenv("WEBKIT_FORCE_SANDBOX");
     bool sandboxEnabled = m_launchOptions.extraInitializationData.get("enable-sandbox") == "true";
 
     if (sandboxEnv)
         sandboxEnabled = !strcmp(sandboxEnv, "1");
 
+    if (sandboxEnabled && isFlatpakSpawnUsable())
+        process = flatpakSpawn(launcher.get(), m_launchOptions, argv, socketPair.client, &error.outPtr());
+#if ENABLE(BUBBLEWRAP_SANDBOX)
     // You cannot use bubblewrap within Flatpak or Docker so lets ensure it never happens.
     // Snap can allow it but has its own limitations that require workarounds.
-    if (sandboxEnabled && !isInsideFlatpak() && !isInsideSnap() && !isInsideDocker())
+    else if (sandboxEnabled && !isInsideFlatpak() && !isInsideSnap() && !isInsideDocker())
         process = bubblewrapSpawn(launcher.get(), m_launchOptions, argv, &error.outPtr());
+#endif // ENABLE(BUBBLEWRAP_SANDBOX)
     else
-#endif
+#endif // OS(LINUX)
         process = adoptGRef(g_subprocess_launcher_spawnv(launcher.get(), argv, &error.outPtr()));
 
     if (!process.get())

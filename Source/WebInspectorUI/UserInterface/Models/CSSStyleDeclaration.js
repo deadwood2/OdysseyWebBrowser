@@ -100,7 +100,7 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
             return this._ownerRule && this._ownerRule.editable;
 
         if (this._type === WI.CSSStyleDeclaration.Type.Inline)
-            return !this._node.isInUserAgentShadowTree();
+            return !this._node.isInUserAgentShadowTree() || WI.DOMManager.supportsEditingUserAgentShadowTrees();
 
         return false;
     }
@@ -124,7 +124,7 @@ WI.CSSStyleDeclaration = class CSSStyleDeclaration extends WI.Object
         //                                  ^
         //                                  update only happens here
         if (this._updatesInProgressCount > 0 && !options.forceUpdate) {
-            if (WI.isDebugUIEnabled() && WI.settings.debugEnableStyleEditingDebugMode.value && text !== this._text)
+            if (WI.settings.debugEnableStyleEditingDebugMode.value && text !== this._text)
                 console.warn("Style modified while editing:", text);
 
             return;

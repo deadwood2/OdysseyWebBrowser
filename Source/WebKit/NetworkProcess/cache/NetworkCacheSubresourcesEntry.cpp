@@ -30,6 +30,7 @@
 
 #include "Logging.h"
 #include "NetworkCacheCoders.h"
+#include <WebCore/RegistrableDomain.h>
 
 namespace WebKit {
 namespace NetworkCache {
@@ -79,6 +80,12 @@ bool SubresourceInfo::decode(WTF::Persistence::Decoder& decoder, SubresourceInfo
         return false;
     
     return true;
+}
+
+bool SubresourceInfo::isFirstParty() const
+{
+    WebCore::RegistrableDomain firstPartyDomain { m_firstPartyForCookies };
+    return firstPartyDomain.matches(URL(URL(), key().identifier()));
 }
 
 Storage::Record SubresourcesEntry::encodeAsStorageRecord() const

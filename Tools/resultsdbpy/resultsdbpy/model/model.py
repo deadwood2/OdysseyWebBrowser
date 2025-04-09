@@ -30,6 +30,7 @@ from resultsdbpy.model.configuration_context import ConfigurationContext
 from resultsdbpy.model.upload_context import UploadContext
 from resultsdbpy.model.suite_context import SuiteContext
 from resultsdbpy.model.test_context import TestContext
+from resultsdbpy.model.failure_context import FailureContext
 
 
 class Model(object):
@@ -37,10 +38,13 @@ class Model(object):
     TTL_WEEK = 7 * TTL_DAY
     TTL_YEAR = 365 * TTL_DAY
 
-    def __init__(self, redis, cassandra, repositories=[], default_ttl_seconds=TTL_YEAR * 5, async_processing=False):
+    def __init__(self, redis, cassandra, repositories=[], default_ttl_seconds=TTL_YEAR * 5, archive_ttl_seconds=TTL_WEEK * 8, async_processing=False):
         if default_ttl_seconds is not None and default_ttl_seconds < 4 * self.TTL_WEEK:
             raise ValueError('TTL must be at least 4 weeks')
+        if archive_ttl_seconds is not None and archive_ttl_seconds < 2 * self.TTL_WEEK:
+            raise ValueError('Archive TTL must be at least 2 weeks')
         self.default_ttl_seconds = default_ttl_seconds
+        self.archive_ttl_seconds = archive_ttl_seconds or default_ttl_seconds
         self._async_processing = async_processing
 
         self.redis = redis
@@ -66,19 +70,24 @@ class Model(object):
             commit_context=self.commit_context,
             ttl_seconds=self.default_ttl_seconds,
         )
+        self.failure_context = FailureContext(
+            configuration_context=self.configuration_context,
+            commit_context=self.commit_context,
+            ttl_seconds=self.default_ttl_seconds,
+        )
         self.ci_context = CIContext(
             configuration_context=self.configuration_context,
             commit_context=self.commit_context,
             ttl_seconds=self.default_ttl_seconds,
         )
 
-        for context in [self.suite_context, self.test_context, self.ci_context]:
+        for context in [self.suite_context, self.test_context, self.ci_context, self.failure_context]:
             self.upload_context.register_upload_callback(context.name, context.register)
 
         self.archive_context = ArchiveContext(
             configuration_context=self.configuration_context,
             commit_context=self.commit_context,
-            ttl_seconds=self.default_ttl_seconds,
+            ttl_seconds=self.archive_ttl_seconds,
         )
 
     def do_work(self):

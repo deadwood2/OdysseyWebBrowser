@@ -62,42 +62,40 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
     {
         super.initialLayout();
 
-        if (WI.settings.experimentalEnableStylesIcons.value) {
-            let iconClassName = null;
-            switch (this._style.type) {
-            case WI.CSSStyleDeclaration.Type.Rule:
-                console.assert(this._style.ownerRule);
-                if (this._style.inherited) {
-                    iconClassName = "inherited-style-rule-icon";
-                    break;
-                }
-
-                switch (this._style.ownerRule.type) {
-                case WI.CSSStyleSheet.Type.Author:
-                    iconClassName = "author-style-rule-icon";
-                    break;
-                case WI.CSSStyleSheet.Type.User:
-                    iconClassName = "user-style-rule-icon";
-                    break;
-                case WI.CSSStyleSheet.Type.UserAgent:
-                    iconClassName = "user-agent-style-rule-icon";
-                    break;
-                case WI.CSSStyleSheet.Type.Inspector:
-                    iconClassName = "inspector-style-rule-icon";
-                    break;
-                }
-                break;
-            case WI.CSSStyleDeclaration.Type.Inline:
-            case WI.CSSStyleDeclaration.Type.Attribute:
-                if (this._style.inherited)
-                    iconClassName = "inherited-element-style-rule-icon";
-                else
-                    iconClassName = WI.DOMTreeElementPathComponent.DOMElementIconStyleClassName;
+        let iconClassName = null;
+        switch (this._style.type) {
+        case WI.CSSStyleDeclaration.Type.Rule:
+            console.assert(this._style.ownerRule);
+            if (this._style.inherited) {
+                iconClassName = "inherited-style-rule-icon";
                 break;
             }
-            console.assert(iconClassName);
-            this._element.classList.add("has-icon", iconClassName);
+
+            switch (this._style.ownerRule.type) {
+            case WI.CSSStyleSheet.Type.Author:
+                iconClassName = "author-style-rule-icon";
+                break;
+            case WI.CSSStyleSheet.Type.User:
+                iconClassName = "user-style-rule-icon";
+                break;
+            case WI.CSSStyleSheet.Type.UserAgent:
+                iconClassName = "user-agent-style-rule-icon";
+                break;
+            case WI.CSSStyleSheet.Type.Inspector:
+                iconClassName = "inspector-style-rule-icon";
+                break;
+            }
+            break;
+        case WI.CSSStyleDeclaration.Type.Inline:
+        case WI.CSSStyleDeclaration.Type.Attribute:
+            if (this._style.inherited)
+                iconClassName = "inherited-element-style-rule-icon";
+            else
+                iconClassName = WI.DOMTreeElementPathComponent.DOMElementIconStyleClassName;
+            break;
         }
+        console.assert(iconClassName);
+        this._element.classList.add("has-icon", iconClassName);
 
         let groupings = this._style.groupings.filter((grouping) => grouping.text !== "all");
         if (groupings.length) {
@@ -226,23 +224,19 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
 
     // SpreadsheetSelectorField delegate
 
-    spreadsheetSelectorFieldDidChange(direction)
+    spreadsheetSelectorFieldDidCommit(changed)
     {
         let selectorText = this._selectorElement.textContent.trim();
-
-        if (!selectorText || selectorText === this._style.ownerRule.selectorText)
-            this._discardSelectorChange();
-        else {
+        if (selectorText && changed) {
             this.dispatchEventToListeners(WI.SpreadsheetCSSStyleDeclarationSection.Event.SelectorWillChange);
-            this._style.ownerRule.singleFireEventListener(WI.CSSRule.Event.SelectorChanged, this._renderSelector, this);
-            this._style.ownerRule.selectorText = selectorText;
-        }
+            this._style.ownerRule.setSelectorText(selectorText).finally(this._renderSelector.bind(this));
+        } else
+            this._discardSelectorChange();
+    }
 
-        if (!direction) {
-            // Don't do anything when it's a blur event.
-            return;
-        }
-
+    spreadsheetSelectorFieldWillNavigate(direction)
+    {
+        console.assert(direction);
         if (direction === "forward")
             this._propertiesEditor.startEditingFirstProperty();
         else if (direction === "backward") {
@@ -356,14 +350,12 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
             selectorElement.classList.add(WI.SpreadsheetCSSStyleDeclarationSection.MatchedSelectorElementStyleClassName);
         };
 
-        if (WI.settings.experimentalEnableStylesIcons.value) {
-            if (!this._iconElement) {
-                this._iconElement = document.createElement("img");
-                this._iconElement.classList.add("icon");
-                WI.addMouseDownContextMenuHandlers(this._iconElement, this._populateIconElementContextMenu.bind(this));
-            }
-            this._selectorElement.appendChild(this._iconElement);
+        if (!this._iconElement) {
+            this._iconElement = document.createElement("img");
+            this._iconElement.classList.add("icon");
+            WI.addMouseDownContextMenuHandlers(this._iconElement, this._populateIconElementContextMenu.bind(this));
         }
+        this._selectorElement.appendChild(this._iconElement);
 
         switch (this._style.type) {
         case WI.CSSStyleDeclaration.Type.Rule:
@@ -560,15 +552,13 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
             let sourceCode = this._style.ownerRule.sourceCodeLocation.displaySourceCode;
             if (sourceCode instanceof WI.CSSStyleSheet || (sourceCode instanceof WI.Resource && sourceCode.type === WI.Resource.Type.StyleSheet))
                 label = WI.UIString("Reveal in Style Sheet");
-            else if (WI.settings.experimentalEnableSourcesTab.value)
-                label = WI.UIString("Reveal in Sources Tab");
             else
-                label = WI.UIString("Reveal in Resources Tab");
-
+                label = WI.UIString("Reveal in Sources Tab");
             contextMenu.appendItem(label, () => {
                 WI.showSourceCodeLocation(this._style.ownerRule.sourceCodeLocation, {
                     ignoreNetworkTab: true,
                     ignoreSearchTab: true,
+                    initiatorHint: WI.TabBrowser.TabNavigationInitiator.ContextMenu,
                 });
             });
         }
@@ -647,7 +637,7 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
         let node = this._style.node;
 
         if (!this._style.ownerRule) {
-            WI.domManager.highlightDOMNode(node.id);
+            node.highlight();
             return;
         }
 

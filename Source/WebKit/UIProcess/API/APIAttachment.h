@@ -28,13 +28,14 @@
 #if ENABLE(ATTACHMENT_ELEMENT)
 
 #include "APIObject.h"
+#include "GenericCallback.h"
 #include "WKBase.h"
-#include "WebPageProxy.h"
 #include <wtf/RefPtr.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
 
 OBJC_CLASS NSFileWrapper;
+OBJC_CLASS NSString;
 
 namespace WebCore {
 class SharedBuffer;

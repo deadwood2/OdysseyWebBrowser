@@ -39,6 +39,8 @@ OBJC_CLASS AVMediaSelectionGroup;
 OBJC_CLASS AVOutputContext;
 OBJC_CLASS AVPlayerItem;
 OBJC_CLASS AVPlayerItemLegibleOutput;
+OBJC_CLASS AVPlayerItemMetadataCollector;
+OBJC_CLASS AVPlayerItemMetadataOutput;
 OBJC_CLASS AVPlayerItemVideoOutput;
 OBJC_CLASS AVPlayerLayer;
 OBJC_CLASS AVURLAsset;
@@ -83,11 +85,10 @@ public:
     void tracksChanged() override;
     void didEnd() override;
 
-#if HAVE(AVFOUNDATION_MEDIA_SELECTION_GROUP)
     RetainPtr<AVPlayerItem> playerItem() const { return m_avPlayerItem; }
     void processCue(NSArray *, NSArray *, const MediaTime&);
     void flushCues();
-#endif
+
     AVPlayer *avPlayer() const { return m_avPlayer.get(); }
 
 #if HAVE(AVFOUNDATION_LOADER_DELEGATE)
@@ -116,17 +117,16 @@ public:
     void durationDidChange(const MediaTime&);
     void rateDidChange(double);
     void timeControlStatusDidChange(int);
+    void metadataGroupDidArrive(const RetainPtr<NSArray>&, const MediaTime&);
     void metadataDidArrive(const RetainPtr<NSArray>&, const MediaTime&);
     void firstFrameAvailableDidChange(bool);
     void trackEnabledDidChange(bool);
     void canPlayFastReverseDidChange(bool);
     void canPlayFastForwardDidChange(bool);
 
-    void setBufferingPolicy(MediaPlayerEnums::BufferingPolicy) override;
+    void setBufferingPolicy(MediaPlayer::BufferingPolicy) override;
 
-#if HAVE(AVFOUNDATION_VIDEO_OUTPUT)
     void outputMediaDataWillChange(AVPlayerItemVideoOutput*);
-#endif
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     void playbackTargetIsWirelessDidChange();
@@ -155,10 +155,13 @@ public:
     bool waitingForKey() const final { return m_waitingForKey; }
 #endif
 
+    MediaTime currentMediaTime() const override;
+
 private:
     // engine support
+    friend class MediaPlayerFactoryAVFoundationObjC;
     static void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types);
-    static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
+    static MediaPlayer::SupportsType supportsTypeAndCodecs(const MediaEngineSupportParameters&);
     static bool supportsKeySystem(const String& keySystem, const String& mimeType);
 
     static bool isAvailable();
@@ -169,10 +172,8 @@ private:
     void platformPlay() override;
     void platformPause() override;
     bool platformPaused() const override;
-    MediaTime currentMediaTime() const override;
     void setVolume(float) override;
     void setMuted(bool) override;
-    void setClosedCaptionsVisible(bool) override;
     void paint(GraphicsContext&, const FloatRect&) override;
     void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&) override;
     PlatformLayer* platformLayer() const override;
@@ -192,7 +193,6 @@ private:
 
     bool supportsAcceleratedRendering() const override { return true; }
     MediaTime mediaTimeForTimeValue(const MediaTime&) const override;
-    double maximumDurationToCacheMediaTime() const override;
 
     void createAVPlayer() override;
     void createAVPlayerItem() override;
@@ -256,7 +256,6 @@ private:
     RetainPtr<CGImageRef> createImageForTimeInRect(float, const FloatRect&);
     void paintWithImageGenerator(GraphicsContext&, const FloatRect&);
 
-#if HAVE(AVFOUNDATION_VIDEO_OUTPUT)
     enum class UpdateType { UpdateSynchronously, UpdateAsynchronously };
     void updateLastImage(UpdateType type = UpdateType::UpdateAsynchronously);
 
@@ -268,8 +267,7 @@ private:
     NativeImagePtr nativeImageForCurrentTime() override;
     void waitForVideoOutputMediaDataWillChange();
 
-    bool copyVideoTextureToPlatformTexture(GraphicsContext3D*, Platform3DObject, GC3Denum target, GC3Dint level, GC3Denum internalFormat, GC3Denum format, GC3Denum type, bool premultiplyAlpha, bool flipY) override;
-#endif
+    bool copyVideoTextureToPlatformTexture(GraphicsContextGLOpenGL*, PlatformGLObject, GCGLenum target, GCGLint level, GCGLenum internalFormat, GCGLenum format, GCGLenum type, bool premultiplyAlpha, bool flipY) override;
 
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
     std::unique_ptr<LegacyCDMSession> createSession(const String& keySystem, LegacyCDMSessionClient*) override;
@@ -277,14 +275,12 @@ private:
 
     String languageOfPrimaryAudioTrack() const override;
 
-#if HAVE(AVFOUNDATION_MEDIA_SELECTION_GROUP)
     void processMediaSelectionOptions();
     bool hasLoadedMediaSelectionGroups();
 
     AVMediaSelectionGroup* safeMediaSelectionGroupForLegibleMedia();
     AVMediaSelectionGroup* safeMediaSelectionGroupForAudibleMedia();
     AVMediaSelectionGroup* safeMediaSelectionGroupForVisualMedia();
-#endif
 
     NSArray* safeAVAssetTracksForAudibleMedia();
 
@@ -305,6 +301,8 @@ private:
 #endif
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
+    bool hasVideo() const final;
+    bool hasAudio() const final;
     bool isCurrentPlaybackTargetWireless() const override;
     String wirelessPlaybackTargetName() const override;
     MediaPlayer::WirelessPlaybackTargetType wirelessPlaybackTargetType() const override;
@@ -355,7 +353,6 @@ private:
 #endif
 
     RetainPtr<AVAssetImageGenerator> m_imageGenerator;
-#if HAVE(AVFOUNDATION_VIDEO_OUTPUT)
     RetainPtr<AVPlayerItemVideoOutput> m_videoOutput;
     RetainPtr<WebCoreAVFPullDelegate> m_videoOutputDelegate;
     RetainPtr<CVPixelBufferRef> m_lastPixelBuffer;
@@ -363,7 +360,6 @@ private:
     BinarySemaphore m_videoOutputSemaphore;
     std::unique_ptr<ImageRotationSessionVT> m_imageRotationSession;
     std::unique_ptr<VideoTextureCopierCV> m_videoTextureCopier;
-#endif
 
 #if HAVE(CORE_VIDEO)
     std::unique_ptr<PixelBufferConformerCV> m_pixelBufferConformer;
@@ -377,17 +373,15 @@ private:
     HashMap<String, RetainPtr<AVAssetResourceLoadingRequest>> m_sessionIDToRequestMap;
 #endif
 
-#if HAVE(AVFOUNDATION_MEDIA_SELECTION_GROUP) && HAVE(AVFOUNDATION_LEGIBLE_OUTPUT_SUPPORT)
+#if HAVE(AVFOUNDATION_LEGIBLE_OUTPUT_SUPPORT)
     RetainPtr<AVPlayerItemLegibleOutput> m_legibleOutput;
 #endif
 
 #if ENABLE(VIDEO_TRACK)
     Vector<RefPtr<AudioTrackPrivateAVFObjC>> m_audioTracks;
     Vector<RefPtr<VideoTrackPrivateAVFObjC>> m_videoTracks;
-#if HAVE(AVFOUNDATION_MEDIA_SELECTION_GROUP)
     RefPtr<MediaSelectionGroupAVFObjC> m_audibleGroup;
     RefPtr<MediaSelectionGroupAVFObjC> m_visualGroup;
-#endif
 #endif
 
     InbandTextTrackPrivateAVF* m_currentTextTrack;
@@ -410,6 +404,9 @@ private:
     RefPtr<CDMInstanceFairPlayStreamingAVFObjC> m_cdmInstance;
 #endif
 #endif
+
+    RetainPtr<AVPlayerItemMetadataCollector> m_metadataCollector;
+    RetainPtr<AVPlayerItemMetadataOutput> m_metadataOutput;
 
     mutable RetainPtr<NSArray> m_cachedSeekableRanges;
     mutable RetainPtr<NSArray> m_cachedLoadedRanges;

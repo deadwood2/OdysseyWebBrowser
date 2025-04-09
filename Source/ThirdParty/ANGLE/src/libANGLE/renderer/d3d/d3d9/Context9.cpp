@@ -10,6 +10,7 @@
 #include "libANGLE/renderer/d3d/d3d9/Context9.h"
 
 #include "common/string_utils.h"
+#include "libANGLE/renderer/OverlayImpl.h"
 #include "libANGLE/renderer/d3d/CompilerD3D.h"
 #include "libANGLE/renderer/d3d/ProgramD3D.h"
 #include "libANGLE/renderer/d3d/RenderbufferD3D.h"
@@ -50,7 +51,7 @@ CompilerImpl *Context9::createCompiler()
 
 ShaderImpl *Context9::createShader(const gl::ShaderState &data)
 {
-    return new ShaderD3D(data, mRenderer->getWorkarounds(), mRenderer->getNativeExtensions());
+    return new ShaderD3D(data, mRenderer->getFeatures(), mRenderer->getNativeExtensions());
 }
 
 ProgramImpl *Context9::createProgram(const gl::ProgramState &data)
@@ -68,6 +69,8 @@ TextureImpl *Context9::createTexture(const gl::TextureState &state)
     switch (state.getType())
     {
         case gl::TextureType::_2D:
+        // GL_TEXTURE_VIDEO_IMAGE_WEBGL maps to 2D texture on Windows platform.
+        case gl::TextureType::VideoImage:
             return new TextureD3D_2D(state, mRenderer);
         case gl::TextureType::CubeMap:
             return new TextureD3D_Cube(state, mRenderer);
@@ -139,6 +142,18 @@ MemoryObjectImpl *Context9::createMemoryObject()
     return nullptr;
 }
 
+SemaphoreImpl *Context9::createSemaphore()
+{
+    UNREACHABLE();
+    return nullptr;
+}
+
+OverlayImpl *Context9::createOverlay(const gl::OverlayState &state)
+{
+    // Not implemented.
+    return new OverlayImpl(state);
+}
+
 angle::Result Context9::flush(const gl::Context *context)
 {
     return mRenderer->flush(context);
@@ -166,6 +181,17 @@ angle::Result Context9::drawArraysInstanced(const gl::Context *context,
     return mRenderer->genericDrawArrays(context, mode, first, count, instanceCount);
 }
 
+angle::Result Context9::drawArraysInstancedBaseInstance(const gl::Context *context,
+                                                        gl::PrimitiveMode mode,
+                                                        GLint first,
+                                                        GLsizei count,
+                                                        GLsizei instanceCount,
+                                                        GLuint baseInstance)
+{
+    ANGLE_HR_UNREACHABLE(this);
+    return angle::Result::Continue;
+}
+
 angle::Result Context9::drawElements(const gl::Context *context,
                                      gl::PrimitiveMode mode,
                                      GLsizei count,
@@ -173,6 +199,17 @@ angle::Result Context9::drawElements(const gl::Context *context,
                                      const void *indices)
 {
     return mRenderer->genericDrawElements(context, mode, count, type, indices, 0);
+}
+
+angle::Result Context9::drawElementsBaseVertex(const gl::Context *context,
+                                               gl::PrimitiveMode mode,
+                                               GLsizei count,
+                                               gl::DrawElementsType type,
+                                               const void *indices,
+                                               GLint baseVertex)
+{
+    ANGLE_HR_UNREACHABLE(this);
+    return angle::Result::Continue;
 }
 
 angle::Result Context9::drawElementsInstanced(const gl::Context *context,
@@ -185,6 +222,31 @@ angle::Result Context9::drawElementsInstanced(const gl::Context *context,
     return mRenderer->genericDrawElements(context, mode, count, type, indices, instances);
 }
 
+angle::Result Context9::drawElementsInstancedBaseVertex(const gl::Context *context,
+                                                        gl::PrimitiveMode mode,
+                                                        GLsizei count,
+                                                        gl::DrawElementsType type,
+                                                        const void *indices,
+                                                        GLsizei instances,
+                                                        GLint baseVertex)
+{
+    ANGLE_HR_UNREACHABLE(this);
+    return angle::Result::Continue;
+}
+
+angle::Result Context9::drawElementsInstancedBaseVertexBaseInstance(const gl::Context *context,
+                                                                    gl::PrimitiveMode mode,
+                                                                    GLsizei count,
+                                                                    gl::DrawElementsType type,
+                                                                    const void *indices,
+                                                                    GLsizei instances,
+                                                                    GLint baseVertex,
+                                                                    GLuint baseInstance)
+{
+    ANGLE_HR_UNREACHABLE(this);
+    return angle::Result::Continue;
+}
+
 angle::Result Context9::drawRangeElements(const gl::Context *context,
                                           gl::PrimitiveMode mode,
                                           GLuint start,
@@ -194,6 +256,19 @@ angle::Result Context9::drawRangeElements(const gl::Context *context,
                                           const void *indices)
 {
     return mRenderer->genericDrawElements(context, mode, count, type, indices, 0);
+}
+
+angle::Result Context9::drawRangeElementsBaseVertex(const gl::Context *context,
+                                                    gl::PrimitiveMode mode,
+                                                    GLuint start,
+                                                    GLuint end,
+                                                    GLsizei count,
+                                                    gl::DrawElementsType type,
+                                                    const void *indices,
+                                                    GLint baseVertex)
+{
+    ANGLE_HR_UNREACHABLE(this);
+    return angle::Result::Continue;
 }
 
 angle::Result Context9::drawArraysIndirect(const gl::Context *context,
@@ -253,7 +328,7 @@ void Context9::popGroupMarker()
 void Context9::pushDebugGroup(GLenum source, GLuint id, const std::string &message)
 {
     // Fall through to the EXT_debug_marker functions
-    pushGroupMarker(message.size(), message.c_str());
+    pushGroupMarker(static_cast<GLsizei>(message.size()), message.c_str());
 }
 
 void Context9::popDebugGroup()

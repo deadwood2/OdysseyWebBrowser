@@ -27,6 +27,9 @@
 #include "AuxiliaryProcessProxy.h"
 
 #include "AuxiliaryProcessMessages.h"
+#include "Logging.h"
+#include "WebPageProxy.h"
+#include "WebProcessProxy.h"
 #include <wtf/RunLoop.h>
 
 namespace WebKit {
@@ -72,6 +75,11 @@ void AuxiliaryProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions& lau
     case ProcessLauncher::ProcessType::Network:
         varname = "NETWORK_PROCESS_CMD_PREFIX";
         break;
+#if ENABLE(GPU_PROCESS)
+    case ProcessLauncher::ProcessType::GPU:
+        varname = "GPU_PROCESS_CMD_PREFIX";
+        break;
+#endif
     }
     const char* processCmdPrefix = getenv(varname);
     if (processCmdPrefix && *processCmdPrefix)
@@ -112,21 +120,54 @@ AuxiliaryProcessProxy::State AuxiliaryProcessProxy::state() const
     return AuxiliaryProcessProxy::State::Running;
 }
 
-bool AuxiliaryProcessProxy::sendMessage(std::unique_ptr<IPC::Encoder> encoder, OptionSet<IPC::SendOption> sendOptions)
+bool AuxiliaryProcessProxy::wasTerminated() const
+{
+    switch (state()) {
+    case AuxiliaryProcessProxy::State::Launching:
+        return false;
+    case AuxiliaryProcessProxy::State::Terminated:
+        return true;
+    case AuxiliaryProcessProxy::State::Running:
+        break;
+    }
+
+    auto pid = processIdentifier();
+    if (!pid)
+        return true;
+
+#if PLATFORM(COCOA)
+    // Use kill() with a signal of 0 to make sure there is indeed still a process with the given PID.
+    // This is needed because it sometimes takes a little bit of time for us to get notified that a process
+    // was terminated.
+    return kill(pid, 0) && errno == ESRCH;
+#else
+    return false;
+#endif
+}
+
+bool AuxiliaryProcessProxy::sendMessage(std::unique_ptr<IPC::Encoder> encoder, OptionSet<IPC::SendOption> sendOptions, Optional<std::pair<CompletionHandler<void(IPC::Decoder*)>, uint64_t>>&& asyncReplyInfo)
 {
     switch (state()) {
     case State::Launching:
         // If we're waiting for the child process to launch, we need to stash away the messages so we can send them once we have a connection.
-        m_pendingMessages.append(std::make_pair(WTFMove(encoder), sendOptions));
+        m_pendingMessages.append({ WTFMove(encoder), sendOptions, WTFMove(asyncReplyInfo) });
         return true;
 
     case State::Running:
-        return connection()->sendMessage(WTFMove(encoder), sendOptions);
+        if (connection()->sendMessage(WTFMove(encoder), sendOptions)) {
+            if (asyncReplyInfo)
+                IPC::addAsyncReplyHandler(*connection(), asyncReplyInfo->second, WTFMove(asyncReplyInfo->first));
+            return true;
+        }
+        break;
 
     case State::Terminated:
-        return false;
+        break;
     }
 
+    if (asyncReplyInfo)
+        asyncReplyInfo->first(nullptr);
+    
     return false;
 }
 
@@ -172,13 +213,15 @@ void AuxiliaryProcessProxy::didFinishLaunching(ProcessLauncher*, IPC::Connection
     connectionWillOpen(*m_connection);
     m_connection->open();
 
-    for (size_t i = 0; i < m_pendingMessages.size(); ++i) {
-        std::unique_ptr<IPC::Encoder> message = WTFMove(m_pendingMessages[i].first);
-        OptionSet<IPC::SendOption> sendOptions = m_pendingMessages[i].second;
-        m_connection->sendMessage(WTFMove(message), sendOptions);
+    for (auto&& pendingMessage : std::exchange(m_pendingMessages, { })) {
+        if (!shouldSendPendingMessage(pendingMessage))
+            continue;
+        auto encoder = WTFMove(pendingMessage.encoder);
+        auto sendOptions = pendingMessage.sendOptions;
+        if (pendingMessage.asyncReplyInfo)
+            IPC::addAsyncReplyHandler(*connection(), pendingMessage.asyncReplyInfo->second, WTFMove(pendingMessage.asyncReplyInfo->first));
+        m_connection->sendMessage(WTFMove(encoder), sendOptions);
     }
-
-    m_pendingMessages.clear();
 }
 
 void AuxiliaryProcessProxy::shutDownProcess()
@@ -226,6 +269,11 @@ void AuxiliaryProcessProxy::setProcessSuppressionEnabled(bool processSuppression
 
 void AuxiliaryProcessProxy::connectionWillOpen(IPC::Connection&)
 {
+}
+
+void AuxiliaryProcessProxy::logInvalidMessage(IPC::Connection& connection, IPC::StringReference messageReceiverName, IPC::StringReference messageName)
+{
+    RELEASE_LOG_FAULT(IPC, "Received an invalid message '%{public}s::%{public}s' from the %{public}s process.", messageReceiverName.toString().data(), messageName.toString().data(), processName().characters());
 }
 
 } // namespace WebKit

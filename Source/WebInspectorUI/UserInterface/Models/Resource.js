@@ -34,6 +34,10 @@ WI.Resource = class Resource extends WI.SourceCode
 
         if (type in WI.Resource.Type)
             type = WI.Resource.Type[type];
+        else if (type === "Stylesheet") {
+            // COMPATIBILITY (iOS 13): Page.ResourceType.Stylesheet was renamed to Page.ResourceType.StyleSheet.
+            type = WI.Resource.Type.StyleSheet;
+        }
 
         this._url = url;
         this._urlComponents = null;
@@ -178,13 +182,23 @@ WI.Resource = class Resource extends WI.SourceCode
         }
     }
 
-    static classNameForResource(resource)
+    static classNamesForResource(resource)
     {
+        let classes = [];
+
+        let isOverride = resource.isLocalResourceOverride;
+        let wasOverridden = resource.responseSource === WI.Resource.ResponseSource.InspectorOverride;
+        let shouldBeOverridden = resource.isLoading() && WI.networkManager.localResourceOverrideForURL(resource.url);
+        if (isOverride || wasOverridden || shouldBeOverridden)
+            classes.push("override");
+
         if (resource.type === WI.Resource.Type.Other) {
             if (resource.requestedByteRange)
-                return "resource-type-range";
-        }
-        return resource.type;
+                classes.push("resource-type-range");
+        } else
+            classes.push(resource.type);
+
+        return classes;
     }
 
     static displayNameForProtocol(protocol)
@@ -244,16 +258,18 @@ WI.Resource = class Resource extends WI.SourceCode
             return WI.Resource.ResponseSource.Unknown;
 
         switch (source) {
-        case NetworkAgent.ResponseSource.Unknown:
+        case InspectorBackend.Enum.Network.ResponseSource.Unknown:
             return WI.Resource.ResponseSource.Unknown;
-        case NetworkAgent.ResponseSource.Network:
+        case InspectorBackend.Enum.Network.ResponseSource.Network:
             return WI.Resource.ResponseSource.Network;
-        case NetworkAgent.ResponseSource.MemoryCache:
+        case InspectorBackend.Enum.Network.ResponseSource.MemoryCache:
             return WI.Resource.ResponseSource.MemoryCache;
-        case NetworkAgent.ResponseSource.DiskCache:
+        case InspectorBackend.Enum.Network.ResponseSource.DiskCache:
             return WI.Resource.ResponseSource.DiskCache;
-        case NetworkAgent.ResponseSource.ServiceWorker:
+        case InspectorBackend.Enum.Network.ResponseSource.ServiceWorker:
             return WI.Resource.ResponseSource.ServiceWorker;
+        case InspectorBackend.Enum.Network.ResponseSource.InspectorOverride:
+            return WI.Resource.ResponseSource.InspectorOverride;
         default:
             console.error("Unknown response source type", source);
             return WI.Resource.ResponseSource.Unknown;
@@ -263,11 +279,11 @@ WI.Resource = class Resource extends WI.SourceCode
     static networkPriorityFromPayload(priority)
     {
         switch (priority) {
-        case NetworkAgent.MetricsPriority.Low:
+        case InspectorBackend.Enum.Network.MetricsPriority.Low:
             return WI.Resource.NetworkPriority.Low;
-        case NetworkAgent.MetricsPriority.Medium:
+        case InspectorBackend.Enum.Network.MetricsPriority.Medium:
             return WI.Resource.NetworkPriority.Medium;
-        case NetworkAgent.MetricsPriority.High:
+        case InspectorBackend.Enum.Network.MetricsPriority.High:
             return WI.Resource.NetworkPriority.High;
         default:
             console.error("Unknown metrics priority", priority);
@@ -352,6 +368,20 @@ WI.Resource = class Resource extends WI.SourceCode
         return true;
     }
 
+    get isScript()
+    {
+        return this._type === Resource.Type.Script;
+    }
+
+    get supportsScriptBlackboxing()
+    {
+        if (this.isLocalResourceOverride)
+            return false;
+        if (!this.finished || this.failed)
+            return false;
+        return super.supportsScriptBlackboxing;
+    }
+
     get displayName()
     {
         return WI.displayNameForURL(this._url, this.urlComponents);
@@ -396,26 +426,24 @@ WI.Resource = class Resource extends WI.SourceCode
 
     createObjectURL()
     {
+        let revision = this.currentRevision;
+        let blobContent = revision.blobContent;
+        if (blobContent)
+            return URL.createObjectURL(blobContent)
+
         // If content is not available, fallback to using original URL.
         // The client may try to revoke it, but nothing will happen.
-        let content = this.content;
-        if (!content)
-            return this._url;
-
-        if (content instanceof Blob)
-            return URL.createObjectURL(content);
-
-        if (typeof content === "string") {
-            let blob = textToBlob(content, this._mimeType);
-            return URL.createObjectURL(blob);
-        }
-
-        return null;
+        return this._url;
     }
 
     isMainResource()
     {
         return this._parentFrame ? this._parentFrame.mainResource === this : false;
+    }
+
+    get isLocalResourceOverride()
+    {
+        return false;
     }
 
     addInitiatedResource(resource)
@@ -701,6 +729,10 @@ WI.Resource = class Resource extends WI.SourceCode
 
         if (type in WI.Resource.Type)
             type = WI.Resource.Type[type];
+        else if (type === "Stylesheet") {
+            // COMPATIBILITY (iOS 13): Page.ResourceType.Stylesheet was renamed to Page.ResourceType.StyleSheet.
+            type = WI.Resource.Type.StyleSheet;
+        }
 
         if (url)
             this._url = url;
@@ -826,11 +858,11 @@ WI.Resource = class Resource extends WI.SourceCode
         // If we have the requestIdentifier we can get the actual response for this specific resource.
         // Otherwise the content will be cached resource data, which might not exist anymore.
         if (this._requestIdentifier)
-            return NetworkAgent.getResponseBody(this._requestIdentifier);
+            return this._target.NetworkAgent.getResponseBody(this._requestIdentifier);
 
         // There is no request identifier or frame to request content from.
         if (this._parentFrame)
-            return PageAgent.getResourceContent(this._parentFrame.id, this._url);
+            return this._target.PageAgent.getResourceContent(this._parentFrame.id, this._url);
 
         return Promise.reject(new Error("Content request failed."));
     }
@@ -1034,6 +1066,24 @@ WI.Resource = class Resource extends WI.SourceCode
         cookie[WI.Resource.MainResourceCookieKey] = this.isMainResource();
     }
 
+    async createLocalResourceOverride({initialMIMEType, initialBase64Encoded, initialContent} = {})
+    {
+        console.assert(!this.isLocalResourceOverride);
+        console.assert(WI.NetworkManager.supportsLocalResourceOverrides());
+
+        let {rawContent, rawBase64Encoded} = await this.requestContent();
+
+        return WI.LocalResourceOverride.create({
+            url: this.url,
+            mimeType: initialMIMEType !== undefined ? initialMIMEType : this.mimeType,
+            content: initialContent !== undefined ? initialContent : rawContent,
+            base64Encoded: initialBase64Encoded !== undefined ? initialBase64Encoded : rawBase64Encoded,
+            statusCode: this.statusCode,
+            statusText: this.statusText,
+            headers: this.responseHeaders,
+        });
+    }
+
     generateCURLCommand()
     {
         function escapeStringPosix(str) {
@@ -1053,14 +1103,14 @@ WI.Resource = class Resource extends WI.SourceCode
                                  .replace(/\r/g, "\\r")
                                  .replace(/!/g, "\\041")
                                  .replace(/[^\x20-\x7E]/g, escapeCharacter) + "'";
-            } else {
-                // Use single quote syntax.
-                return `'${str}'`;
             }
+
+            // Use single quote syntax.
+            return `'${str}'`;
         }
 
         let command = ["curl " + escapeStringPosix(this.url).replace(/[[{}\]]/g, "\\$&")];
-        command.push(`-X${this.requestMethod}`);
+        command.push("-X " + escapeStringPosix(this.requestMethod));
 
         for (let key in this.requestHeaders)
             command.push("-H " + escapeStringPosix(`${key}: ${this.requestHeaders[key]}`));
@@ -1125,7 +1175,7 @@ WI.Resource = class Resource extends WI.SourceCode
         let errorString = WI.UIString("Unable to show certificate for \u201C%s\u201D").format(this.url);
 
         try {
-            let {serializedCertificate} = await NetworkAgent.getSerializedCertificate(this._requestIdentifier);
+            let {serializedCertificate} = await this._target.NetworkAgent.getSerializedCertificate(this._requestIdentifier);
             if (InspectorFrontendHost.showCertificate(serializedCertificate))
                 return;
         } catch (e) {
@@ -1174,9 +1224,6 @@ WI.Resource.Type = {
     Beacon: "resource-type-beacon",
     WebSocket: "resource-type-websocket",
     Other: "resource-type-other",
-
-    // COMPATIBILITY (iOS 13): Page.ResourceType.Stylesheet was renamed to Page.ResourceType.StyleSheet.
-    Stylesheet: "resource-type-style-sheet",
 };
 
 WI.Resource.ResponseSource = {
@@ -1185,6 +1232,7 @@ WI.Resource.ResponseSource = {
     MemoryCache: Symbol("memory-cache"),
     DiskCache: Symbol("disk-cache"),
     ServiceWorker: Symbol("service-worker"),
+    InspectorOverride: Symbol("inspector-override"),
 };
 
 WI.Resource.NetworkPriority = {
@@ -1204,8 +1252,9 @@ WI.settings.resourceGroupingMode = new WI.Setting("resource-grouping-mode", WI.R
 WI.Resource._mimeTypeMap = {
     "text/html": WI.Resource.Type.Document,
     "text/xml": WI.Resource.Type.Document,
-    "text/plain": WI.Resource.Type.Document,
     "application/xhtml+xml": WI.Resource.Type.Document,
+
+    "text/plain": WI.Resource.Type.Other,
 
     "text/css": WI.Resource.Type.StyleSheet,
     "text/xsl": WI.Resource.Type.StyleSheet,

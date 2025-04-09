@@ -27,6 +27,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import logging
 import re
 import sys
 
@@ -35,7 +36,12 @@ from webkitpy.common.version_name_map import PUBLIC_TABLE, INTERNAL_TABLE, Versi
 from webkitpy.common.system.executive import Executive
 
 
+_log = logging.getLogger(__name__)
+
+
 class PlatformInfo(object):
+    MAX = 2147483647
+
     """This class provides a consistent (and mockable) interpretation of
     system-specific values (like sys.platform and platform.mac_ver())
     to be used by the rest of the webkitpy code base.
@@ -60,11 +66,13 @@ class PlatformInfo(object):
             self.os_version = Version.from_string(platform_module.mac_ver()[0])
         elif self.os_name.startswith('win'):
             self.os_version = self._win_version()
-        elif self.os_name == 'linux' or self.os_name == 'freebsd' or self.os_name == 'openbsd' or self.os_name == 'netbsd':
-            return
         else:
             # Most other platforms (namely iOS) return conforming version strings.
-            self.os_version = Version.from_string(platform_module.release())
+            version = re.search(r'\d+.\d+(.\d+)?', platform_module.release())
+            if version:
+                self.os_version = Version.from_string(version.group(0))
+            else:
+                _log.debug('No OS version number found')
 
     def is_mac(self):
         return self.os_name == 'mac'
@@ -118,11 +126,11 @@ class PlatformInfo(object):
 
     def total_bytes_memory(self):
         if self.is_mac():
-            return long(self._executive.run_command(["sysctl", "-n", "hw.memsize"]))
+            return int(self._executive.run_command(["sysctl", "-n", "hw.memsize"]))
         return None
 
     def terminal_width(self):
-        """Returns sys.maxint if the width cannot be determined."""
+        """Returns MAX if the width cannot be determined."""
         try:
             if self.is_win():
                 # From http://code.activestate.com/recipes/440694-determine-size-of-console-window-on-windows/
@@ -135,7 +143,7 @@ class PlatformInfo(object):
                     # Note that we return 1 less than the width since writing into the rightmost column
                     # automatically performs a line feed.
                     return right - left
-                return sys.maxint
+                return self.MAX
             else:
                 import fcntl
                 import struct
@@ -144,7 +152,7 @@ class PlatformInfo(object):
                 _, columns, _, _ = struct.unpack('HHHH', packed)
                 return columns
         except:
-            return sys.maxint
+            return self.MAX
 
     def build_version(self):
         if self.is_mac():

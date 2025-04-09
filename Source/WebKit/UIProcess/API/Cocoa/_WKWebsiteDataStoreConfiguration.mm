@@ -42,7 +42,7 @@ static void checkURLArgument(NSURL *url)
     if (!self)
         return nil;
 
-    _configuration->setPersistent(true);
+    API::Object::constructInWrapper<WebKit::WebsiteDataStoreConfiguration>(self, WebKit::IsPersistent::Yes);
 
     return self;
 }
@@ -53,9 +53,15 @@ static void checkURLArgument(NSURL *url)
     if (!self)
         return nil;
 
-    _configuration->setPersistent(false);
+    API::Object::constructInWrapper<WebKit::WebsiteDataStoreConfiguration>(self, WebKit::IsPersistent::No);
 
     return self;
+}
+
+- (void)dealloc
+{
+    _configuration->~WebsiteDataStoreConfiguration();
+    [super dealloc];
 }
 
 - (BOOL)isPersistent
@@ -203,6 +209,16 @@ static void checkURLArgument(NSURL *url)
     _configuration->setServiceWorkerRegistrationDirectory(url.path);
 }
 
+- (BOOL)serviceWorkerProcessTerminationDelayEnabled
+{
+    return _configuration->serviceWorkerProcessTerminationDelayEnabled();
+}
+
+- (void)setServiceWorkerProcessTerminationDelayEnabled:(BOOL)enabled
+{
+    _configuration->setServiceWorkerProcessTerminationDelayEnabled(enabled);
+}
+
 - (void)setSourceApplicationBundleIdentifier:(NSString *)identifier
 {
     _configuration->setSourceApplicationBundleIdentifier(identifier);
@@ -282,6 +298,116 @@ static void checkURLArgument(NSURL *url)
 - (void)setDeviceManagementRestrictionsEnabled:(BOOL)enabled
 {
     _configuration->setDeviceManagementRestrictionsEnabled(enabled);
+}
+
+- (BOOL)networkCacheSpeculativeValidationEnabled
+{
+    return _configuration->networkCacheSpeculativeValidationEnabled();
+}
+
+- (void)setNetworkCacheSpeculativeValidationEnabled:(BOOL)enabled
+{
+    _configuration->setNetworkCacheSpeculativeValidationEnabled(enabled);
+}
+
+- (BOOL)fastServerTrustEvaluationEnabled
+{
+    return _configuration->fastServerTrustEvaluationEnabled();
+}
+
+- (void)setFastServerTrustEvaluationEnabled:(BOOL)enabled
+{
+    return _configuration->setFastServerTrustEvaluationEnabled(enabled);
+}
+
+- (NSUInteger)perOriginStorageQuota
+{
+    return _configuration->perOriginStorageQuota();
+}
+
+- (void)setPerOriginStorageQuota:(NSUInteger)quota
+{
+    _configuration->setPerOriginStorageQuota(quota);
+}
+
+- (NSUInteger)testSpeedMultiplier
+{
+    return _configuration->testSpeedMultiplier();
+}
+
+- (void)setTestSpeedMultiplier:(NSUInteger)quota
+{
+    _configuration->setTestSpeedMultiplier(quota);
+}
+
+- (BOOL)suppressesConnectionTerminationOnSystemChange
+{
+    return _configuration->suppressesConnectionTerminationOnSystemChange();
+}
+
+- (void)setSuppressesConnectionTerminationOnSystemChange:(BOOL)suppresses
+{
+    _configuration->setSuppressesConnectionTerminationOnSystemChange(suppresses);
+}
+
+- (BOOL)allowsServerPreconnect
+{
+    return _configuration->allowsServerPreconnect();
+}
+
+- (void)setAllowsServerPreconnect:(BOOL)allows
+{
+    _configuration->setAllowsServerPreconnect(allows);
+}
+
+- (NSString *)boundInterfaceIdentifier
+{
+    return _configuration->boundInterfaceIdentifier();
+}
+
+- (void)setBoundInterfaceIdentifier:(NSString *)identifier
+{
+    _configuration->setBoundInterfaceIdentifier(identifier);
+}
+
+- (BOOL)allowsCellularAccess
+{
+    return _configuration->allowsCellularAccess();
+}
+
+- (void)setAllowsCellularAccess:(BOOL)allows
+{
+    _configuration->setAllowsCellularAccess(allows);
+}
+
+- (BOOL)legacyTLSEnabled
+{
+    return _configuration->legacyTLSEnabled();
+}
+
+- (void)setLegacyTLSEnabled:(BOOL)enable
+{
+    _configuration->setLegacyTLSEnabled(enable);
+}
+
+- (NSDictionary *)proxyConfiguration
+{
+    return (__bridge NSDictionary *)_configuration->proxyConfiguration();
+}
+
+- (NSString *)dataConnectionServiceType
+{
+    return _configuration->dataConnectionServiceType();
+}
+
+- (void)setDataConnectionServiceType:(NSString *)type
+{
+    _configuration->setDataConnectionServiceType(type);
+}
+
+- (void)setProxyConfiguration:(NSDictionary *)configuration
+{
+    _configuration->setProxyConfiguration((__bridge CFDictionaryRef)[configuration copy]);
 }
 
 - (BOOL)allLoadsBlockedByDeviceManagementRestrictionsForTesting

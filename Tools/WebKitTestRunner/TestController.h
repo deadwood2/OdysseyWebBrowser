@@ -88,6 +88,7 @@ private:
 class TestController {
 public:
     static TestController& singleton();
+    static WKWebsiteDataStoreRef websiteDataStore();
 
     static const unsigned viewWidth;
     static const unsigned viewHeight;
@@ -185,6 +186,8 @@ public:
     void setAuthenticationUsername(String username) { m_authenticationUsername = username; }
     void setAuthenticationPassword(String password) { m_authenticationPassword = password; }
     void setAllowsAnySSLCertificate(bool);
+    void setShouldSwapToEphemeralSessionOnNextNavigation(bool value) { m_shouldSwapToEphemeralSessionOnNextNavigation = value; }
+    void setShouldSwapToDefaultSessionOnNextNavigation(bool value) { m_shouldSwapToDefaultSessionOnNextNavigation = value; }
 
     void setBlockAllPlugins(bool shouldBlock);
     void setPluginSupportedMode(const String&);
@@ -204,9 +207,11 @@ public:
     void setShouldDownloadUndisplayableMIMETypes(bool value) { m_shouldDownloadUndisplayableMIMETypes = value; }
     void setShouldAllowDeviceOrientationAndMotionAccess(bool value) { m_shouldAllowDeviceOrientationAndMotionAccess = value; }
 
+    void setStatisticsEnabled(bool value);
     void setStatisticsDebugMode(bool value);
     void setStatisticsPrevalentResourceForDebugMode(WKStringRef hostName);
     void setStatisticsLastSeen(WKStringRef hostName, double seconds);
+    void setStatisticsMergeStatistic(WKStringRef host, WKStringRef topFrameDomain1, WKStringRef topFrameDomain2, double lastSeen, bool hadUserInteraction, double mostRecentUserInteraction, bool isGrandfathered, bool isPrevalent, bool isVeryPrevalent, int dataRecordsRemoved);
     void setStatisticsPrevalentResource(WKStringRef hostName, bool value);
     void setStatisticsVeryPrevalentResource(WKStringRef hostName, bool value);
     String dumpResourceLoadStatistics();
@@ -217,8 +222,10 @@ public:
     bool isStatisticsRegisteredAsRedirectingTo(WKStringRef hostRedirectedFrom, WKStringRef hostRedirectedTo);
     void setStatisticsHasHadUserInteraction(WKStringRef hostName, bool value);
     bool isStatisticsHasHadUserInteraction(WKStringRef hostName);
+    bool isStatisticsOnlyInDatabaseOnce(WKStringRef subHost, WKStringRef topHost);
     void setStatisticsGrandfathered(WKStringRef hostName, bool value);
     bool isStatisticsGrandfathered(WKStringRef hostName);
+    void setUseITPDatabase(bool value);
     void setStatisticsSubframeUnderTopFrameOrigin(WKStringRef hostName, WKStringRef topFrameHostName);
     void setStatisticsSubresourceUnderTopFrameOrigin(WKStringRef hostName, WKStringRef topFrameHostName);
     void setStatisticsSubresourceUniqueRedirectTo(WKStringRef hostName, WKStringRef hostNameRedirectedTo);
@@ -245,6 +252,9 @@ public:
     bool isStatisticsHasLocalStorage(WKStringRef hostName);
     void setStatisticsCacheMaxAgeCap(double seconds);
     bool hasStatisticsIsolatedSession(WKStringRef hostName);
+    void setStatisticsShouldDowngradeReferrer(bool value);
+    void setStatisticsShouldBlockThirdPartyCookies(bool value, bool onlyOnSitesWithoutUserInteraction);
+    void setStatisticsFirstPartyWebsiteDataRemovalMode(bool value);
     void statisticsResetToConsistentState();
 
     void getAllStorageAccessEntries();
@@ -258,7 +268,9 @@ public:
 #endif
 
     void terminateNetworkProcess();
-    void terminateServiceWorkerProcess();
+    void terminateServiceWorkers();
+
+    void resetQuota();
 
     void removeAllSessionCredentials();
 
@@ -282,14 +294,17 @@ public:
     void clearMockMediaDevices();
     void removeMockMediaDevice(WKStringRef persistentID);
     void resetMockMediaDevices();
+    void setMockCameraOrientation(uint64_t);
+    bool isMockRealtimeMediaSourceCenterEnabled() const;
 
     void injectUserScript(WKStringRef);
     
     void sendDisplayConfigurationChangedMessageForTesting();
 
-    void setWebAuthenticationMockConfiguration(WKDictionaryRef);
+    void setServiceWorkerFetchTimeoutForTesting(double seconds);
+
     void addTestKeyToKeychain(const String& privateKeyBase64, const String& attrLabel, const String& applicationTagBase64);
-    void cleanUpKeychain(const String& attrLabel);
+    void cleanUpKeychain(const String& attrLabel, const String& applicationTagBase64);
     bool keyExistsInKeychain(const String& attrLabel, const String& applicationTagBase64);
 
 #if PLATFORM(COCOA)
@@ -305,7 +320,6 @@ public:
     void setAllowedMenuActions(const Vector<String>&);
     void installCustomMenuAction(const String& name, bool dismissesAutomatically);
 
-    bool canDoServerTrustEvaluationInNetworkProcess() const;
     uint64_t serverTrustEvaluationCallbackCallsCount() const { return m_serverTrustEvaluationCallbackCallsCount; }
 
     void setShouldDismissJavaScriptAlertsAsynchronously(bool);
@@ -344,10 +358,13 @@ private:
     void platformCreateWebView(WKPageConfigurationRef, const TestOptions&);
     static PlatformWebView* platformCreateOtherPage(PlatformWebView* parentView, WKPageConfigurationRef, const TestOptions&);
     void platformResetPreferencesToConsistentValues();
-    void platformResetStateToConsistentValues(const TestOptions&);
+    // Returns false if the reset timed out.
+    bool platformResetStateToConsistentValues(const TestOptions&);
 #if PLATFORM(COCOA)
     void cocoaPlatformInitialize();
     void cocoaResetStateToConsistentValues(const TestOptions&);
+    void setApplicationBundleIdentifier(const String&);
+    void clearApplicationBundleIdentifierTestingOverride();
 #endif
     void platformConfigureViewForTest(const TestInvocation&);
     void platformWillRunTest(const TestInvocation&);
@@ -393,6 +410,10 @@ private:
     // WKContextClient
     static void networkProcessDidCrash(WKContextRef, const void*);
     void networkProcessDidCrash();
+    static void serviceWorkerProcessDidCrash(WKContextRef, WKProcessID, const void*);
+    void serviceWorkerProcessDidCrash(WKProcessID);
+    static void gpuProcessDidCrash(WKContextRef, WKProcessID, const void*);
+    void gpuProcessDidCrash(WKProcessID);
 
     // WKPageNavigationClient
     static void didCommitNavigation(WKPageRef, WKNavigationRef, WKTypeRef userData, const void*);
@@ -488,8 +509,12 @@ private:
     bool m_usingServerMode { false };
     bool m_gcBetweenTests { false };
     bool m_shouldDumpPixelsForAllTests { false };
+    bool m_createdOtherPage { false };
     std::vector<std::string> m_paths;
     std::set<std::string> m_allowedHosts;
+    HashMap<String, bool> m_internalFeatures;
+    HashMap<String, bool> m_experimentalFeatures;
+
     WKRetainPtr<WKStringRef> m_injectedBundlePath;
     WKRetainPtr<WKStringRef> m_testPluginDirectory;
 
@@ -562,7 +587,7 @@ private:
     bool m_checkForWorldLeaks { false };
 
     bool m_allowAnyHTTPSCertificateForAllowedHosts { false };
-    
+
     bool m_shouldDecideNavigationPolicyAfterDelay { false };
     bool m_shouldDecideResponsePolicyAfterDelay { false };
 
@@ -592,6 +617,12 @@ private:
     uint64_t m_serverTrustEvaluationCallbackCallsCount { 0 };
     bool m_shouldDismissJavaScriptAlertsAsynchronously { false };
     bool m_allowsAnySSLCertificate { true };
+    bool m_shouldSwapToEphemeralSessionOnNextNavigation { false };
+    bool m_shouldSwapToDefaultSessionOnNextNavigation { false };
+    
+#if PLATFORM(COCOA)
+    bool m_hasSetApplicationBundleIdentifier { false };
+#endif
 };
 
 struct TestCommand {

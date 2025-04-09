@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2014 The ANGLE Project Authors. All rights reserved.
+// Copyright 2014 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -53,8 +53,12 @@ class SurfaceImpl : public FramebufferAttachmentObjectImpl
     virtual egl::Error initialize(const egl::Display *display)                           = 0;
     virtual FramebufferImpl *createDefaultFramebuffer(const gl::Context *context,
                                                       const gl::FramebufferState &state) = 0;
-    virtual egl::Error swap(const gl::Context *context)                                  = 0;
+    virtual egl::Error makeCurrent(const gl::Context *context);
+    virtual egl::Error unMakeCurrent(const gl::Context *context);
+    virtual egl::Error swap(const gl::Context *context) = 0;
     virtual egl::Error swapWithDamage(const gl::Context *context, EGLint *rects, EGLint n_rects);
+    virtual egl::Error swapWithFrameToken(const gl::Context *context,
+                                          EGLFrameTokenANGLE frameToken);
     virtual egl::Error postSubBuffer(const gl::Context *context,
                                      EGLint x,
                                      EGLint y,
@@ -67,6 +71,7 @@ class SurfaceImpl : public FramebufferAttachmentObjectImpl
                                     EGLint buffer)                                            = 0;
     virtual egl::Error releaseTexImage(const gl::Context *context, EGLint buffer)             = 0;
     virtual egl::Error getSyncValues(EGLuint64KHR *ust, EGLuint64KHR *msc, EGLuint64KHR *sbc) = 0;
+    virtual egl::Error getMscRate(EGLint *numerator, EGLint *denominator)                     = 0;
     virtual void setSwapInterval(EGLint interval)                                             = 0;
     virtual void setFixedWidth(EGLint width);
     virtual void setFixedHeight(EGLint height);

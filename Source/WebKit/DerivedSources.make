@@ -22,6 +22,10 @@
 
 VPATH = \
     $(WebKit2) \
+    $(WebKit2)/GPUProcess \
+    $(WebKit2)/GPUProcess/mac \
+    $(WebKit2)/GPUProcess/media \
+    $(WebKit2)/GPUProcess/webrtc \
     $(WebKit2)/NetworkProcess \
     $(WebKit2)/NetworkProcess/Cookies \
     $(WebKit2)/NetworkProcess/cache \
@@ -46,7 +50,11 @@ VPATH = \
     $(WebKit2)/WebProcess/Databases/IndexedDB \
     $(WebKit2)/WebProcess/FullScreen \
     $(WebKit2)/WebProcess/Geolocation \
+    $(WebKit2)/WebProcess/GPU \
+    $(WebKit2)/WebProcess/GPU/media \
+    $(WebKit2)/WebProcess/GPU/webrtc \
     $(WebKit2)/WebProcess/IconDatabase \
+    $(WebKit2)/WebProcess/Inspector \
     $(WebKit2)/WebProcess/MediaCache \
     $(WebKit2)/WebProcess/MediaStream \
     $(WebKit2)/WebProcess/Network \
@@ -71,6 +79,8 @@ VPATH = \
     $(WebKit2)/UIProcess/Cocoa \
     $(WebKit2)/UIProcess/Databases \
     $(WebKit2)/UIProcess/Downloads \
+    $(WebKit2)/UIProcess/GPU \
+    $(WebKit2)/UIProcess/Inspector \
     $(WebKit2)/UIProcess/MediaStream \
     $(WebKit2)/UIProcess/Network \
     $(WebKit2)/UIProcess/Network/CustomProtocols \
@@ -103,8 +113,15 @@ MESSAGE_RECEIVERS = \
     DrawingAreaProxy \
     EditableImageController \
     EventDispatcher \
+    GPUProcess \
+    GPUProcessProxy \
+    GPUProcessConnection \
+    GPUConnectionToWebProcess \
     LegacyCustomProtocolManager \
     LegacyCustomProtocolManagerProxy \
+    LibWebRTCCodecs \
+    LibWebRTCCodecsProxy \
+    MediaPlayerPrivateRemote \
     NPObjectMessageReceiver \
     NetworkConnectionToWebProcess \
     NetworkContentRuleListManager \
@@ -126,13 +143,23 @@ MESSAGE_RECEIVERS = \
     PluginProcessConnectionManager \
     PluginProcessProxy \
     PluginProxy \
+    RemoteAudioMediaStreamTrackRendererManager \
+    RemoteAudioMediaStreamTrackRenderer \
     RemoteLayerTreeDrawingAreaProxy \
+    RemoteMediaPlayerManager \
+    RemoteMediaPlayerManagerProxy \
+    RemoteMediaPlayerProxy \
+    RemoteMediaRecorder \
+    RemoteMediaRecorderManager \
+    RemoteMediaResourceManager \
     RemoteObjectRegistry \
+    RemoteSampleBufferDisplayLayer \
+    RemoteSampleBufferDisplayLayerManager \
     RemoteScrollingCoordinator \
     RemoteWebInspectorProxy \
     RemoteWebInspectorUI \
+    SampleBufferDisplayLayer \
     SecItemShimProxy \
-    ServiceWorkerClientFetch \
     ServiceWorkerFetchTask \
     SmartMagnificationController \
     StorageAreaMap \
@@ -147,7 +174,6 @@ MESSAGE_RECEIVERS = \
     ViewUpdateDispatcher \
     VisitedLinkStore \
     VisitedLinkTableController \
-    WebAuthenticatorCoordinator \
     WebAuthenticatorCoordinatorProxy \
     WebAutomationSession \
     WebAutomationSessionProxy \
@@ -158,8 +184,8 @@ MESSAGE_RECEIVERS = \
     WebFullScreenManagerProxy \
     WebGeolocationManager \
     WebGeolocationManagerProxy \
-    WebIDBConnectionToClient \
     WebIDBConnectionToServer \
+    WebIDBServer \
     WebInspector \
     WebInspectorInterruptDispatcher \
     WebInspectorProxy \
@@ -183,6 +209,8 @@ MESSAGE_RECEIVERS = \
     WebSWContextManagerConnection \
     WebSWServerConnection \
     WebSWServerToContextConnection \
+    WebDeviceOrientationUpdateProvider \
+    WebDeviceOrientationUpdateProviderProxy \
     WebSocketChannel \
     WebSocketStream \
     WebUserContentController \
@@ -191,7 +219,6 @@ MESSAGE_RECEIVERS = \
 
 SCRIPTS = \
     $(WebKit2)/Scripts/generate-message-receiver.py \
-    $(WebKit2)/Scripts/generate-messages-header.py \
     $(WebKit2)/Scripts/webkit/__init__.py \
     $(WebKit2)/Scripts/webkit/messages.py \
     $(WebKit2)/Scripts/webkit/model.py \
@@ -208,15 +235,12 @@ HEADER_FLAGS = $(shell echo $(BUILT_PRODUCTS_DIR) $(HEADER_SEARCH_PATHS) $(SYSTE
 all : \
     $(MESSAGE_RECEIVERS:%=%MessageReceiver.cpp) \
     $(MESSAGE_RECEIVERS:%=%Messages.h) \
+    $(MESSAGE_RECEIVERS:%=%MessagesReplies.h) \
 #
 
-%MessageReceiver.cpp : %.messages.in $(SCRIPTS)
+%MessageReceiver.cpp %Messages.h %MessagesReplies.h : %.messages.in $(SCRIPTS)
 	@echo Generating message receiver for $*...
-	@python $(WebKit2)/Scripts/generate-message-receiver.py $< > $@
-
-%Messages.h : %.messages.in $(SCRIPTS)
-	@echo Generating messages header for $*...
-	@python $(WebKit2)/Scripts/generate-messages-header.py $< > $@
+	@python $(WebKit2)/Scripts/generate-message-receiver.py $< --implementation $*MessageReceiver.cpp --header $*Messages.h --reply-header $*MessagesReplies.h
 
 TEXT_PREPROCESSOR_FLAGS=-E -P -w
 
@@ -232,7 +256,8 @@ endif
 SANDBOX_PROFILES = \
 	com.apple.WebProcess.sb \
 	com.apple.WebKit.plugin-common.sb \
-	com.apple.WebKit.NetworkProcess.sb
+	com.apple.WebKit.NetworkProcess.sb \
+	com.apple.WebKit.GPUProcess.sb
 
 all : $(SANDBOX_PROFILES)
 

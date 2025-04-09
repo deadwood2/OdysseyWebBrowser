@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,8 +26,18 @@
 #pragma once
 
 #import "UIScriptControllerCocoa.h"
+#import <wtf/BlockPtr.h>
 
 #if PLATFORM(IOS_FAMILY)
+
+#if HAVE(PENCILKIT)
+@class PKCanvasView;
+#endif
+
+namespace WebCore {
+class FloatPoint;
+class FloatRect;
+}
 
 namespace WTR {
 
@@ -38,7 +48,7 @@ public:
     {
     }
 
-    void checkForOutstandingCallbacks() override;
+    void waitForOutstandingCallbacks() override;
     void doAfterPresentationUpdate(JSValueRef) override;
     void doAfterNextStablePresentationUpdate(JSValueRef) override;
     void ensurePositionInformationIsUpToDateAt(long x, long y, JSValueRef) override;
@@ -53,6 +63,7 @@ public:
     void liftUpAtPoint(long x, long y, long touchCount, JSValueRef) override;
     void singleTapAtPoint(long x, long y, JSValueRef) override;
     void singleTapAtPointWithModifiers(long x, long y, JSValueRef modifierArray, JSValueRef) override;
+    void twoFingerSingleTapAtPoint(long x, long y, JSValueRef callback) override;
     void doubleTapAtPoint(long x, long y, float delay, JSValueRef) override;
     void stylusDownAtPoint(long x, long y, float azimuthAngle, float altitudeAngle, float pressure, JSValueRef) override;
     void stylusMoveToPoint(long x, long y, float azimuthAngle, float altitudeAngle, float pressure, JSValueRef) override;
@@ -65,6 +76,8 @@ public:
     void enterText(JSStringRef text) override;
     void typeCharacterUsingHardwareKeyboard(JSStringRef character, JSValueRef) override;
     void keyDown(JSStringRef character, JSValueRef modifierArray) override;
+
+    void activateAtPoint(long x, long y, JSValueRef callback) override;
 
     void rawKeyDown(JSStringRef) override;
     void rawKeyUp(JSStringRef) override;
@@ -111,11 +124,12 @@ public:
     JSObjectRef rectForMenuAction(JSStringRef) const override;
     JSObjectRef menuRect() const override;
     bool isDismissingMenu() const override;
-    bool isShowingMenu() const override;
+    void chooseMenuAction(JSStringRef, JSValueRef) override;
     void setSafeAreaInsets(double top, double right, double bottom, double left) override;
     void beginBackSwipe(JSValueRef) override;
     void completeBackSwipe(JSValueRef) override;
     bool isShowingDataListSuggestions() const override;
+    void activateDataListSuggestion(unsigned, JSValueRef) override;
     void drawSquareInEditableImage() override;
     long numberOfStrokesInEditableImage() override;
     void setKeyboardInputModeIdentifier(JSStringRef) override;
@@ -125,24 +139,29 @@ public:
     JSObjectRef calendarType() const override;
     void setHardwareKeyboardAttached(bool) override;
     void setAllowsViewportShrinkToFit(bool) override;
+    void copyText(JSStringRef) override;
 
     void setDidStartFormControlInteractionCallback(JSValueRef) override;
     void setDidEndFormControlInteractionCallback(JSValueRef) override;
-    void setDidShowForcePressPreviewCallback(JSValueRef) override;
-    void setDidDismissForcePressPreviewCallback(JSValueRef) override;
+    void setDidShowContextMenuCallback(JSValueRef) override;
+    void setDidDismissContextMenuCallback(JSValueRef) override;
     void setWillBeginZoomingCallback(JSValueRef) override;
     void setDidEndZoomingCallback(JSValueRef) override;
     void setDidShowKeyboardCallback(JSValueRef) override;
     void setDidHideKeyboardCallback(JSValueRef) override;
-    void setDidShowMenuCallback(JSValueRef) override;
-    void setDidHideMenuCallback(JSValueRef) override;
     void setWillPresentPopoverCallback(JSValueRef) override;
     void setDidDismissPopoverCallback(JSValueRef) override;
     void setDidEndScrollingCallback(JSValueRef) override;
     void clearAllCallbacks() override;
 
 private:
+    void waitForModalTransitionToFinish() const;
     void waitForSingleTapToReset() const;
+    WebCore::FloatRect rectForMenuAction(CFStringRef) const;
+    void singleTapAtPointWithModifiers(WebCore::FloatPoint location, Vector<String>&& modifierFlags, BlockPtr<void()>&&);
+#if HAVE(PENCILKIT)
+    PKCanvasView *findEditableImageCanvas() const;
+#endif
 };
 
 }

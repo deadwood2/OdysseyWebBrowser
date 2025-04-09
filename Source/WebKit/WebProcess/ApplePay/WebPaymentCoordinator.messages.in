@@ -24,14 +24,14 @@
 
 #if ENABLE(APPLE_PAY)
 
-messages -> WebPaymentCoordinator {
+messages -> WebPaymentCoordinator NotRefCounted {
 
     ValidateMerchant(String validationURLString)
     DidAuthorizePayment(WebCore::Payment payment)
     DidSelectShippingMethod(WebCore::ApplePaySessionPaymentRequest::ShippingMethod shippingMethod)
     DidSelectShippingContact(WebCore::PaymentContact shippingContact)
     DidSelectPaymentMethod(WebCore::PaymentMethod paymentMethod)
-    DidCancelPaymentSession()
+    DidCancelPaymentSession(WebCore::PaymentSessionError sessionError)
 }
 
 #endif

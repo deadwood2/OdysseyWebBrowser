@@ -49,6 +49,13 @@ public:
     JSRetainPtr<JSStringRef> firstRedoLabel() const override;
     NSUndoManager *platformUndoManager() const override;
 
+    void setDidShowMenuCallback(JSValueRef) override;
+    void setDidHideMenuCallback(JSValueRef) override;
+    void dismissMenu() override;
+    bool isShowingMenu() const override;
+
+    void setContinuousSpellCheckingEnabled(bool) override;
+
 protected:
     explicit UIScriptControllerCocoa(UIScriptContext&);
     TestRunnerWKWebView *webView() const;

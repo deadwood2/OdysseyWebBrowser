@@ -50,10 +50,10 @@ public:
 private:
     ~WebChromeClient();
 
-    void didInsertMenuElement(WebCore::HTMLMenuElement&);
-    void didRemoveMenuElement(WebCore::HTMLMenuElement&);
-    void didInsertMenuItemElement(WebCore::HTMLMenuItemElement&);
-    void didRemoveMenuItemElement(WebCore::HTMLMenuItemElement&);
+    void didInsertMenuElement(WebCore::HTMLMenuElement&) final;
+    void didRemoveMenuElement(WebCore::HTMLMenuElement&) final;
+    void didInsertMenuItemElement(WebCore::HTMLMenuItemElement&) final;
+    void didRemoveMenuItemElement(WebCore::HTMLMenuItemElement&) final;
 
     void chromeDestroyed() final;
     
@@ -133,10 +133,8 @@ private:
     bool shouldUnavailablePluginMessageBeButton(WebCore::RenderEmbeddedObject::PluginUnavailabilityReason) const final;
     void unavailablePluginButtonClicked(WebCore::Element&, WebCore::RenderEmbeddedObject::PluginUnavailabilityReason) const final;
 
-    void mouseDidMoveOverElement(const WebCore::HitTestResult&, unsigned modifierFlags) final;
+    void mouseDidMoveOverElement(const WebCore::HitTestResult&, unsigned modifierFlags, const String& toolTip, WebCore::TextDirection) final;
 
-    void setToolTip(const String&, WebCore::TextDirection) final;
-    
     void print(WebCore::Frame&) final;
 
     void exceededDatabaseQuota(WebCore::Frame&, const String& databaseName, WebCore::DatabaseDetails) final;
@@ -183,6 +181,8 @@ private:
     void associateEditableImageWithAttachment(WebCore::GraphicsLayer::EmbeddedViewID, const String& attachmentID) final;
     void didCreateEditableImage(WebCore::GraphicsLayer::EmbeddedViewID) final;
     void didDestroyEditableImage(WebCore::GraphicsLayer::EmbeddedViewID) final;
+
+    bool shouldUseMouseEventForSelection(const WebCore::PlatformMouseEvent&) final;
 #endif
 
 #if ENABLE(ORIENTATION_EVENTS)
@@ -193,9 +193,10 @@ private:
     void showShareSheet(WebCore::ShareDataWithParsedURL&, WTF::CompletionHandler<void(bool)>&&) final;
     void loadIconForFiles(const Vector<String>&, WebCore::FileIconLoader&) final;
 
-#if !PLATFORM(IOS_FAMILY)
     void setCursor(const WebCore::Cursor&) final;
     void setCursorHiddenUntilMouseMoves(bool) final;
+#if !HAVE(NSCURSOR) && !PLATFORM(GTK)
+    bool supportsSettingCursor() final { return false; }
 #endif
 
 #if ENABLE(POINTER_LOCK)
@@ -239,7 +240,7 @@ private:
             VideoTrigger |
             PluginTrigger|
             CanvasTrigger |
-#if PLATFORM(MAC) || PLATFORM(IOS_FAMILY)
+#if PLATFORM(COCOA) || USE(NICOSIA)
             ScrollableNonMainFrameTrigger |
 #endif
 #if PLATFORM(IOS_FAMILY)
@@ -355,6 +356,7 @@ private:
     void playbackTargetPickerClientStateDidChange(uint64_t, WebCore::MediaProducer::MediaStateFlags) final;
     void setMockMediaPlaybackTargetPickerEnabled(bool) final;
     void setMockMediaPlaybackTargetPickerState(const String&, WebCore::MediaPlaybackTargetContext::State) final;
+    void mockMediaPlaybackTargetPickerDismissPopup() final;
 #endif
 
     void imageOrMediaDocumentSizeChanged(const WebCore::IntSize&) final;
@@ -368,8 +370,8 @@ private:
     void didInvalidateDocumentMarkerRects() final;
 
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
-    void hasStorageAccess(WebCore::RegistrableDomain&& subFrameDomain, WebCore::RegistrableDomain&& topFrameDomain, WebCore::FrameIdentifier, WebCore::PageIdentifier, WTF::CompletionHandler<void(bool)>&&) final;
-    void requestStorageAccess(WebCore::RegistrableDomain&& subFrameDomain, WebCore::RegistrableDomain&& topFrameDomain, WebCore::FrameIdentifier, WebCore::PageIdentifier, WTF::CompletionHandler<void(WebCore::StorageAccessWasGranted, WebCore::StorageAccessPromptWasShown)>&&) final;
+    void hasStorageAccess(WebCore::RegistrableDomain&& subFrameDomain, WebCore::RegistrableDomain&& topFrameDomain, WebCore::Frame&, WTF::CompletionHandler<void(bool)>&&) final;
+    void requestStorageAccess(WebCore::RegistrableDomain&& subFrameDomain, WebCore::RegistrableDomain&& topFrameDomain, WebCore::Frame&, WTF::CompletionHandler<void(WebCore::StorageAccessWasGranted, WebCore::StorageAccessPromptWasShown)>&&) final;
 #endif
 
 #if ENABLE(DEVICE_ORIENTATION)
@@ -381,7 +383,10 @@ private:
     bool userIsInteracting() const final;
     void setUserIsInteracting(bool) final;
 
-    String m_cachedToolTip;
+#if ENABLE(WEB_AUTHN)
+    void setMockWebAuthenticationConfiguration(const WebCore::MockWebAuthenticationConfiguration&) final;
+#endif
+
     mutable RefPtr<WebFrame> m_cachedFrameSetLargestFrame;
     mutable bool m_cachedMainFrameHasHorizontalScrollbar { false };
     mutable bool m_cachedMainFrameHasVerticalScrollbar { false };

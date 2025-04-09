@@ -31,6 +31,7 @@
 #import "BitmapImage.h"
 #import "CSSPrimitiveValue.h"
 #import "CSSToLengthConversionData.h"
+#import "CSSValueKey.h"
 #import "CSSValueKeywords.h"
 #import "ColorIOS.h"
 #import "DateComponents.h"
@@ -344,7 +345,7 @@ FloatRect RenderThemeIOS::addRoundedBorderClip(const RenderObject& box, Graphics
     return border.rect();
 }
 
-void RenderThemeIOS::adjustCheckboxStyle(StyleResolver&, RenderStyle& style, const Element*) const
+void RenderThemeIOS::adjustCheckboxStyle(RenderStyle& style, const Element*) const
 {
     if (!style.width().isIntrinsicOrAuto() && !style.height().isAuto())
         return;
@@ -358,7 +359,7 @@ static CGPoint shortened(CGPoint start, CGPoint end, float width)
 {
     float x = end.x - start.x;
     float y = end.y - start.y;
-    float ratio = (!x && !y) ? 0 : width / sqrtf(x * x + y * y);
+    float ratio = (!x && !y) ? 0 : width / std::hypot(x, y);
     return CGPointMake(start.x + x * ratio, start.y + y * ratio);
 }
 
@@ -447,19 +448,19 @@ int RenderThemeIOS::baselinePosition(const RenderBox& box) const
     return RenderTheme::baselinePosition(box);
 }
 
-bool RenderThemeIOS::isControlStyled(const RenderStyle& style, const BorderData& border, const FillLayer& background, const Color& backgroundColor) const
+bool RenderThemeIOS::isControlStyled(const RenderStyle& style, const RenderStyle& userAgentStyle) const
 {
     // Buttons and MenulistButtons are styled if they contain a background image.
     if (style.appearance() == PushButtonPart || style.appearance() == MenulistButtonPart)
         return !style.visitedDependentColor(CSSPropertyBackgroundColor).isVisible() || style.backgroundLayers().hasImage();
 
     if (style.appearance() == TextFieldPart || style.appearance() == TextAreaPart)
-        return style.backgroundLayers() != background;
+        return style.backgroundLayers() != userAgentStyle.backgroundLayers();
 
-    return RenderTheme::isControlStyled(style, border, background, backgroundColor);
+    return RenderTheme::isControlStyled(style, userAgentStyle);
 }
 
-void RenderThemeIOS::adjustRadioStyle(StyleResolver&, RenderStyle& style, const Element*) const
+void RenderThemeIOS::adjustRadioStyle(RenderStyle& style, const Element*) const
 {
     if (!style.width().isIntrinsicOrAuto() && !style.height().isAuto())
         return;
@@ -561,7 +562,7 @@ void RenderThemeIOS::adjustRoundBorderRadius(RenderStyle& style, RenderBox& box)
 static void applyCommonButtonPaddingToStyle(RenderStyle& style, const Element& element)
 {
     Document& document = element.document();
-    auto emSize = CSSPrimitiveValue::create(0.5, CSSPrimitiveValue::CSS_EMS);
+    auto emSize = CSSPrimitiveValue::create(0.5, CSSUnitType::CSS_EMS);
     int pixels = emSize->computeLength<int>(CSSToLengthConversionData(&style, document.renderStyle(), document.renderView(), document.frame()->pageZoomFactor()));
     style.setPaddingBox(LengthBox(0, pixels, 0, pixels));
 }
@@ -620,7 +621,7 @@ static void adjustInputElementButtonStyle(RenderStyle& style, const HTMLInputEle
     }
 }
 
-void RenderThemeIOS::adjustMenuListButtonStyle(StyleResolver&, RenderStyle& style, const Element* element) const
+void RenderThemeIOS::adjustMenuListButtonStyle(RenderStyle& style, const Element* element) const
 {
     // Set the min-height to be at least MenuListMinHeight.
     if (style.height().isAuto())
@@ -765,9 +766,9 @@ const CGFloat kTrackThickness = 4.0;
 const CGFloat kTrackRadius = kTrackThickness / 2.0;
 const int kDefaultSliderThumbSize = 16;
 
-void RenderThemeIOS::adjustSliderTrackStyle(StyleResolver& selector, RenderStyle& style, const Element* element) const
+void RenderThemeIOS::adjustSliderTrackStyle(RenderStyle& style, const Element* element) const
 {
-    RenderTheme::adjustSliderTrackStyle(selector, style, element);
+    RenderTheme::adjustSliderTrackStyle(style, element);
 
     // FIXME: We should not be relying on border radius for the appearance of our controls <rdar://problem/7675493>.
     int radius = static_cast<int>(kTrackRadius);
@@ -989,9 +990,9 @@ int RenderThemeIOS::sliderTickOffsetFromTrackCenter() const
 }
 #endif
 
-void RenderThemeIOS::adjustSearchFieldStyle(StyleResolver& selector, RenderStyle& style, const Element* element) const
+void RenderThemeIOS::adjustSearchFieldStyle(RenderStyle& style, const Element* element) const
 {
-    RenderTheme::adjustSearchFieldStyle(selector, style, element);
+    RenderTheme::adjustSearchFieldStyle(style, element);
 
     if (!element)
         return;
@@ -1011,9 +1012,9 @@ bool RenderThemeIOS::paintSearchFieldDecorations(const RenderObject& box, const 
     return paintTextFieldDecorations(box, paintInfo, rect);
 }
 
-void RenderThemeIOS::adjustButtonStyle(StyleResolver& selector, RenderStyle& style, const Element* element) const
+void RenderThemeIOS::adjustButtonStyle(RenderStyle& style, const Element* element) const
 {
-    RenderTheme::adjustButtonStyle(selector, style, element);
+    RenderTheme::adjustButtonStyle(style, element);
 
 #if ENABLE(INPUT_TYPE_COLOR)
     if (style.appearance() == ColorWellPart)
@@ -1024,7 +1025,7 @@ void RenderThemeIOS::adjustButtonStyle(StyleResolver& selector, RenderStyle& sty
     // CSSPrimitiveValue::computeLengthInt only needs the element's style to calculate em lengths.
     // Since the element might not be in a document, just pass nullptr for the root element style
     // and the render view.
-    auto emSize = CSSPrimitiveValue::create(1.0, CSSPrimitiveValue::CSS_EMS);
+    auto emSize = CSSPrimitiveValue::create(1.0, CSSUnitType::CSS_EMS);
     int pixels = emSize->computeLength<int>(CSSToLengthConversionData(&style, nullptr, nullptr, 1.0, false));
     style.setPaddingBox(LengthBox(0, pixels, 0, pixels));
 
@@ -1129,9 +1130,18 @@ Color RenderThemeIOS::platformInactiveSelectionBackgroundColor(OptionSet<StyleCo
     return Color::transparent;
 }
 
+static Optional<Color>& cachedFocusRingColor()
+{
+    static NeverDestroyed<Optional<Color>> color;
+    return color;
+}
+
 #if ENABLE(FULL_KEYBOARD_ACCESS)
 Color RenderThemeIOS::platformFocusRingColor(OptionSet<StyleColor::Options>) const
 {
+    if (cachedFocusRingColor().hasValue())
+        return *cachedFocusRingColor();
+
     // FIXME: Should be using -keyboardFocusIndicatorColor. For now, work around <rdar://problem/50838886>.
     return colorFromUIColor([PAL::getUIColorClass() systemBlueColor]);
 }
@@ -1162,13 +1172,13 @@ FontCascadeDescription& RenderThemeIOS::cachedSystemFontDescription(CSSValueID v
     static NeverDestroyed<FontCascadeDescription> shortFootnoteFont;
     static NeverDestroyed<FontCascadeDescription> shortCaption1Font;
     static NeverDestroyed<FontCascadeDescription> tallBodyFont;
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000
+#if HAVE(SYSTEM_FONT_STYLE_TITLE_0)
     static NeverDestroyed<FontCascadeDescription> title0Font;
 #endif
     static NeverDestroyed<FontCascadeDescription> title1Font;
     static NeverDestroyed<FontCascadeDescription> title2Font;
     static NeverDestroyed<FontCascadeDescription> title3Font;
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000
+#if HAVE(SYSTEM_FONT_STYLE_TITLE_4)
     static NeverDestroyed<FontCascadeDescription> title4Font;
 #endif
 
@@ -1196,7 +1206,7 @@ FontCascadeDescription& RenderThemeIOS::cachedSystemFontDescription(CSSValueID v
         return headlineFont;
     case CSSValueAppleSystemBody:
         return bodyFont;
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000
+#if HAVE(SYSTEM_FONT_STYLE_TITLE_0)
     case CSSValueAppleSystemTitle0:
         return title0Font;
 #endif
@@ -1206,7 +1216,7 @@ FontCascadeDescription& RenderThemeIOS::cachedSystemFontDescription(CSSValueID v
         return title2Font;
     case CSSValueAppleSystemTitle3:
         return title3Font;
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000
+#if HAVE(SYSTEM_FONT_STYLE_TITLE_4)
     case CSSValueAppleSystemTitle4:
         return title4Font;
 #endif
@@ -1265,7 +1275,7 @@ void RenderThemeIOS::updateCachedSystemFontDescription(CSSValueID valueID, FontC
         textStyle = kCTUIFontTextStyleBody;
         fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
         break;
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000
+#if HAVE(SYSTEM_FONT_STYLE_TITLE_0)
     case CSSValueAppleSystemTitle0:
         textStyle = kCTUIFontTextStyleTitle0;
         fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
@@ -1283,7 +1293,7 @@ void RenderThemeIOS::updateCachedSystemFontDescription(CSSValueID valueID, FontC
         textStyle = kCTUIFontTextStyleTitle3;
         fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
         break;
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000
+#if HAVE(SYSTEM_FONT_STYLE_TITLE_4)
     case CSSValueAppleSystemTitle4:
         textStyle = kCTUIFontTextStyleTitle4;
         fontDescriptor = adoptCF(CTFontDescriptorCreateWithTextStyle(textStyle, contentSizeCategory(), nullptr));
@@ -1430,6 +1440,118 @@ String RenderThemeIOS::mediaControlsBase64StringForIconNameAndType(const String&
 
 #endif // ENABLE(VIDEO)
 
+struct CSSValueIDAndSelector {
+    CSSValueID cssValueID;
+    SEL selector;
+};
+
+static const Vector<CSSValueIDAndSelector>& cssValueIDSelectorList()
+{
+    static NeverDestroyed<Vector<CSSValueIDAndSelector>> cssValueIDSelectorList;
+
+    static std::once_flag initializeOnce;
+    std::call_once(
+        initializeOnce,
+        [] {
+        cssValueIDSelectorList.get() = Vector(std::initializer_list<CSSValueIDAndSelector> {
+#if HAVE(OS_DARK_MODE_SUPPORT)
+            { CSSValueText, @selector(labelColor) },
+            { CSSValueAppleSystemLabel, @selector(labelColor) },
+            { CSSValueAppleSystemHeaderText, @selector(labelColor) },
+            { CSSValueAppleSystemSecondaryLabel, @selector(secondaryLabelColor) },
+            { CSSValueAppleSystemTertiaryLabel, @selector(tertiaryLabelColor) },
+            { CSSValueAppleSystemQuaternaryLabel, @selector(quaternaryLabelColor) },
+            { CSSValueAppleSystemPlaceholderText, @selector(placeholderTextColor) },
+            { CSSValueWebkitControlBackground, @selector(systemBackgroundColor) },
+            { CSSValueAppleSystemControlBackground, @selector(systemBackgroundColor) },
+            { CSSValueAppleSystemTextBackground, @selector(systemBackgroundColor) },
+            { CSSValueAppleSystemBackground, @selector(systemBackgroundColor) },
+            { CSSValueAppleSystemSecondaryBackground, @selector(secondarySystemBackgroundColor) },
+            { CSSValueAppleSystemTertiaryBackground, @selector(tertiarySystemBackgroundColor) },
+            { CSSValueAppleSystemGroupedBackground, @selector(systemGroupedBackgroundColor) },
+            { CSSValueAppleSystemSecondaryGroupedBackground, @selector(secondarySystemGroupedBackgroundColor) },
+            { CSSValueAppleSystemTertiaryGroupedBackground, @selector(tertiarySystemGroupedBackgroundColor) },
+            { CSSValueAppleSystemGrid, @selector(separatorColor) },
+            { CSSValueAppleSystemSeparator, @selector(separatorColor) },
+            { CSSValueAppleSystemContainerBorder, @selector(separatorColor) },
+            { CSSValueAppleSystemSelectedContentBackground, @selector(tableCellDefaultSelectionTintColor) },
+            { CSSValueAppleSystemUnemphasizedSelectedContentBackground, @selector(tableCellDefaultSelectionTintColor) },
+            { CSSValueAppleSystemBrown, @selector(systemBrownColor) },
+            { CSSValueAppleSystemIndigo, @selector(systemIndigoColor) },
+#endif
+            { CSSValueAppleSystemTeal, @selector(systemTealColor) },
+            { CSSValueAppleWirelessPlaybackTargetActive, @selector(systemBlueColor) },
+            { CSSValueAppleSystemBlue, @selector(systemBlueColor) },
+            { CSSValueAppleSystemGray, @selector(systemGrayColor) },
+            { CSSValueAppleSystemGreen, @selector(systemGreenColor) },
+            { CSSValueAppleSystemOrange, @selector(systemOrangeColor) },
+            { CSSValueAppleSystemPink, @selector(systemPinkColor) },
+            { CSSValueAppleSystemPurple, @selector(systemPurpleColor) },
+            { CSSValueAppleSystemRed, @selector(systemRedColor) },
+            { CSSValueAppleSystemYellow, @selector(systemYellowColor) }
+        });
+    });
+
+    return cssValueIDSelectorList;
+}
+
+static Optional<Color> systemColorFromCSSValueID(CSSValueID cssValueID, bool useDarkAppearance, bool useElevatedUserInterfaceLevel)
+{
+    LocalCurrentTraitCollection localTraitCollection(useDarkAppearance, useElevatedUserInterfaceLevel);
+
+    auto cssColorToSelector = [cssValueID] () -> SEL {
+        for (auto& cssValueIDSelector : cssValueIDSelectorList()) {
+            if (cssValueIDSelector.cssValueID == cssValueID)
+                return cssValueIDSelector.selector;
+        }
+        return nullptr;
+    };
+
+    if (auto selector = cssColorToSelector()) {
+        if (auto color = wtfObjCMsgSend<UIColor *>(PAL::getUIColorClass(), selector))
+            return Color(color.CGColor, Color::Semantic);
+    }
+    return WTF::nullopt;
+}
+
+
+static RenderThemeIOS::CSSValueToSystemColorMap& globalCSSValueToSystemColorMap()
+{
+    static NeverDestroyed<RenderThemeIOS::CSSValueToSystemColorMap> colorMap;
+    return colorMap;
+}
+
+const RenderThemeIOS::CSSValueToSystemColorMap& RenderThemeIOS::cssValueToSystemColorMap()
+{
+    static NeverDestroyed<CSSValueToSystemColorMap> map;
+
+    static std::once_flag onceFlag;
+    std::call_once(
+        onceFlag,
+        [] {
+        for (auto& cssValueIDSelector : cssValueIDSelectorList()) {
+            for (bool useDarkAppearance : { false, true }) {
+                for (bool useElevatedUserInterfaceLevel : { false, true }) {
+                    if (auto color = systemColorFromCSSValueID(cssValueIDSelector.cssValueID, useDarkAppearance, useElevatedUserInterfaceLevel))
+                        map.get().add(CSSValueKey { cssValueIDSelector.cssValueID, useDarkAppearance, useElevatedUserInterfaceLevel }, *color);
+                }
+            }
+        }
+    });
+
+    return map;
+}
+
+void RenderThemeIOS::setCSSValueToSystemColorMap(CSSValueToSystemColorMap&& colorMap)
+{
+    globalCSSValueToSystemColorMap() = WTFMove(colorMap);
+}
+
+void RenderThemeIOS::setFocusRingColor(const Color& color)
+{
+    cachedFocusRingColor() = color;
+}
+
 Color RenderThemeIOS::systemColor(CSSValueID cssValueID, OptionSet<StyleColor::Options> options) const
 {
     const bool forVisitedLink = options.contains(StyleColor::Options::ForVisitedLink);
@@ -1446,79 +1568,15 @@ Color RenderThemeIOS::systemColor(CSSValueID cssValueID, OptionSet<StyleColor::O
     return cache.systemStyleColors.ensure(cssValueID, [this, cssValueID, options] () -> Color {
         const bool useDarkAppearance = options.contains(StyleColor::Options::UseDarkAppearance);
         const bool useElevatedUserInterfaceLevel = options.contains(StyleColor::Options::UseElevatedUserInterfaceLevel);
-        LocalCurrentTraitCollection localTraitCollection(useDarkAppearance, useElevatedUserInterfaceLevel);
-
-        auto cssColorToSelector = [cssValueID] () -> SEL {
-            switch (cssValueID) {
-#if HAVE(OS_DARK_MODE_SUPPORT)
-            case CSSValueText:
-            case CSSValueAppleSystemLabel:
-            case CSSValueAppleSystemHeaderText:
-                return @selector(labelColor);
-            case CSSValueAppleSystemSecondaryLabel:
-                return @selector(secondaryLabelColor);
-            case CSSValueAppleSystemTertiaryLabel:
-                return @selector(tertiaryLabelColor);
-            case CSSValueAppleSystemQuaternaryLabel:
-                return @selector(quaternaryLabelColor);
-            case CSSValueAppleSystemPlaceholderText:
-                return @selector(placeholderTextColor);
-            case CSSValueWebkitControlBackground:
-            case CSSValueAppleSystemControlBackground:
-            case CSSValueAppleSystemTextBackground:
-            case CSSValueAppleSystemBackground:
-                return @selector(systemBackgroundColor);
-            case CSSValueAppleSystemSecondaryBackground:
-                return @selector(secondarySystemBackgroundColor);
-            case CSSValueAppleSystemTertiaryBackground:
-                return @selector(tertiarySystemBackgroundColor);
-            case CSSValueAppleSystemGroupedBackground:
-                return @selector(systemGroupedBackgroundColor);
-            case CSSValueAppleSystemSecondaryGroupedBackground:
-                return @selector(secondarySystemGroupedBackgroundColor);
-            case CSSValueAppleSystemTertiaryGroupedBackground:
-                return @selector(tertiarySystemGroupedBackgroundColor);
-            case CSSValueAppleSystemGrid:
-            case CSSValueAppleSystemSeparator:
-            case CSSValueAppleSystemContainerBorder:
-                return @selector(separatorColor);
-            case CSSValueAppleSystemSelectedContentBackground:
-            case CSSValueAppleSystemUnemphasizedSelectedContentBackground:
-                return @selector(tableCellDefaultSelectionTintColor);
-            case CSSValueAppleSystemBrown:
-                return @selector(systemBrownColor);
-            case CSSValueAppleSystemIndigo:
-                return @selector(systemIndigoColor);
-#endif
-            case CSSValueAppleSystemTeal:
-                return @selector(systemTealColor);
-            case CSSValueAppleWirelessPlaybackTargetActive:
-            case CSSValueAppleSystemBlue:
-                return @selector(systemBlueColor);
-            case CSSValueAppleSystemGray:
-                return @selector(systemGrayColor);
-            case CSSValueAppleSystemGreen:
-                return @selector(systemGreenColor);
-            case CSSValueAppleSystemOrange:
-                return @selector(systemOrangeColor);
-            case CSSValueAppleSystemPink:
-                return @selector(systemPinkColor);
-            case CSSValueAppleSystemPurple:
-                return @selector(systemPurpleColor);
-            case CSSValueAppleSystemRed:
-                return @selector(systemRedColor);
-            case CSSValueAppleSystemYellow:
-                return @selector(systemYellowColor);
-            default:
-                return nullptr;
-            }
-        };
-
-        if (auto selector = cssColorToSelector()) {
-            if (auto color = wtfObjCMsgSend<UIColor *>(PAL::getUIColorClass(), selector))
-                return Color(color.CGColor, Color::Semantic);
+        if (!globalCSSValueToSystemColorMap().isEmpty()) {
+            auto it = globalCSSValueToSystemColorMap().find(CSSValueKey { cssValueID, useDarkAppearance, useElevatedUserInterfaceLevel });
+            if (it == globalCSSValueToSystemColorMap().end())
+                return RenderTheme::systemColor(cssValueID, options);
+            return Color(it->value.rgb(), Color::Semantic);
         }
-
+        auto color = systemColorFromCSSValueID(cssValueID, useDarkAppearance, useElevatedUserInterfaceLevel);
+        if (color)
+            return *color;
         return RenderTheme::systemColor(cssValueID, options);
     }).iterator->value;
 }
@@ -1529,6 +1587,7 @@ const CGSize attachmentSize = { 160, 119 };
 
 const CGFloat attachmentBorderRadius = 16;
 static Color attachmentBorderColor() { return Color(204, 204, 204); }
+static CGFloat attachmentBorderThickness = 1;
 
 static Color attachmentProgressColor() { return Color(222, 222, 222); }
 const CGFloat attachmentProgressBorderThickness = 3;
@@ -1839,15 +1898,18 @@ static void paintAttachmentProgress(GraphicsContext& context, RenderAttachmentIn
 
 static Path attachmentBorderPath(RenderAttachmentInfo& info)
 {
+    auto insetAttachmentRect = info.attachmentRect;
+    insetAttachmentRect.inflate(-attachmentBorderThickness / 2);
+
     Path borderPath;
-    borderPath.addRoundedRect(info.attachmentRect, FloatSize(attachmentBorderRadius, attachmentBorderRadius));
+    borderPath.addRoundedRect(insetAttachmentRect, FloatSize(attachmentBorderRadius, attachmentBorderRadius));
     return borderPath;
 }
 
 static void paintAttachmentBorder(GraphicsContext& context, Path& borderPath)
 {
     context.setStrokeColor(attachmentBorderColor());
-    context.setStrokeThickness(1);
+    context.setStrokeThickness(attachmentBorderThickness);
     context.strokePath(borderPath);
 }
 
@@ -2033,7 +2095,7 @@ void RenderThemeIOS::paintSystemPreviewBadge(Image& image, const PaintInfo& pain
         m_ciContext = [CIContext context];
 
     RetainPtr<CGImageRef> cgImage;
-#if HAVE(IOSURFACE)
+#if HAVE(IOSURFACE_COREIMAGE_SUPPORT)
     // Crop the result to the badge location.
     CIImage *croppedImage = [sourceOverFilter.outputImage imageByCroppingToRect:flippedInsetBadgeRect];
     CIImage *translatedImage = [croppedImage imageByApplyingTransform:CGAffineTransformMakeTranslation(-flippedInsetBadgeRect.origin.x, -flippedInsetBadgeRect.origin.y)];

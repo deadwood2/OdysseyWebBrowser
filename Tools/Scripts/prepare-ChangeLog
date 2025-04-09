@@ -345,11 +345,6 @@ sub actuallyGenerateFunctionLists($$$$$$)
     print STDERR "  Extracting affected function names from source files.\n";
     my %filesToExamine = map { $_ => 1 } (keys(%line_ranges_before_changed), keys(%line_ranges_after_changed));
     foreach my $file (keys %filesToExamine) {
-        # Escape whitespace in filenames rather than adding quotes, since many functions can open files
-        # and other code doesn't expect to see a trailing " character when sniffing a file extension.
-        chomp $file;
-        $file =~ s/ /\\ /g;
-
         my %saw_function;
 
         # Find all the functions in the file.
@@ -642,6 +637,13 @@ sub generateNewChangeLogs($$$$$$$$$$$$$$)
 {
     my ($prefixes, $filesInChangeLog, $addedRegressionTests, $requiresTests, $functionLists, $bugURL, $bugDescription, $bugRadarURL, $name, $emailAddress, $gitReviewer, $gitCommit, $writeChangeLogs, $delimiters) = @_;
 
+    my $hasWebCoreChange = 0;
+    foreach my $prefix (@$prefixes) {
+        if (unixPath($prefix) =~ m|/WebCore/$|) {
+            $hasWebCoreChange = 1;
+        }
+    }
+
     # Generate new ChangeLog entries and (optionally) write out new ChangeLog files.
     foreach my $prefix (@$prefixes) {
         my $endl = "\n";
@@ -688,7 +690,11 @@ sub generateNewChangeLogs($$$$$$$$$$$$$$)
         print CHANGE_LOG normalizeLineEndings("        Reviewed by $reviewer.\n\n", $endl);
         print CHANGE_LOG normalizeLineEndings($description . "\n", $endl) if $description;
 
-        if (unixPath($prefix) =~ m|/WebCore/$| || @$requiresTests) {
+        my $shouldMentionTests = @$requiresTests;
+        $shouldMentionTests |= !$hasWebCoreChange && unixPath($prefix) =~ m|/WebKit/$|;
+        $shouldMentionTests |= unixPath($prefix) =~ m|/WebCore/$|;
+
+        if ($shouldMentionTests) {
             if (@$addedRegressionTests) {
                 print CHANGE_LOG normalizeLineEndings(testListForChangeLog(sort @$addedRegressionTests), $endl);
             } else {
@@ -1468,6 +1474,7 @@ sub get_function_line_ranges_for_javascript($$)
     my $functionJustSeen = 0;
     my $getterJustSeen = 0;
     my $setterJustSeen = 0;
+    my $asyncJustSeen = 0;
     my $assignmentJustSeen = 0;
     my $staticOrContructorSeen = 0;
 
@@ -1653,6 +1660,13 @@ sub get_function_line_ranges_for_javascript($$)
                 next;
             }
 
+            # Async prefix.
+            if ($1 eq 'async') {
+                next if $lastToken eq '.';
+                $asyncJustSeen = 1;
+                next;
+            }
+
             # Static.
             if ($1 eq 'static' or $1 eq 'constructor') {
                 $staticOrContructorSeen = 1;
@@ -1680,14 +1694,15 @@ sub get_function_line_ranges_for_javascript($$)
                 push(@currentFunctionNames, $currentClass);
                 push(@currentFunctionDepths, $bracesDepth);
                 push(@currentFunctionStartLines, $.);
-            } elsif ($getterJustSeen or $setterJustSeen) {
+            } elsif ($getterJustSeen or $setterJustSeen or $asyncJustSeen) {
                 $word = "get $word" if $getterJustSeen;
                 $word = "set $word" if $setterJustSeen;
+                $word = "async $word" if $asyncJustSeen;
 
                 push(@currentIdentifiers, $word);
 
                 my $mode = $currentParsingMode[$#currentParsingMode];
-                my $currentFunction = join('.', (@currentScopes, ($mode eq 'class') ? "prototype" : "", @currentIdentifiers));
+                my $currentFunction = join('.', (@currentScopes, ($mode eq 'class' and !$staticOrContructorSeen) ? "prototype" : "", @currentIdentifiers));
                 $currentFunction =~ s/\.{2,}/\./g; # Removes consecutive periods.
 
                 push(@currentParsingMode, "function");
@@ -1713,6 +1728,7 @@ sub get_function_line_ranges_for_javascript($$)
             $functionJustSeen = 0;
             $getterJustSeen = 0;
             $setterJustSeen = 0;
+            $asyncJustSeen = 0;
             $assignmentJustSeen = 0;
         }
     }
@@ -1870,6 +1886,7 @@ sub get_selector_line_ranges_for_css($$)
     my @stack;
     my $context;
     my @currentParseMode = ("global");
+    my @groupingStack;
     my $selectorBraces = 0;
 
     while (<$fileHandle>) {
@@ -1889,11 +1906,20 @@ sub get_selector_line_ranges_for_css($$)
 
                     $inBrace -= 1;
 
-                    pop(@currentParseMode);
-                    my $name = pop(@stack);
-                    my $startLine = pop(@stack);
-                    my $endLine = $.;
-                    push(@ranges, [$startLine, $endLine, $name]);
+                    my $parseMode = pop(@currentParseMode);
+                    if ($parseMode eq "selector") {
+                        my $name = pop(@stack);
+                        my $startLine = pop(@stack);
+                        my $endLine = $.;
+                        my $groupingPrefix = join(" ", @groupingStack);
+                        if (length $groupingPrefix) {
+                            $groupingPrefix .= " "
+                        }
+                        push(@ranges, [$startLine, $endLine, $groupingPrefix . $name]);
+                    } elsif ($parseMode eq "media") {
+                        pop(@groupingStack);
+                    }
+
                     $selectorBraces = 0;
                 }
             } elsif ($token eq "/*") {
@@ -1907,7 +1933,7 @@ sub get_selector_line_ranges_for_css($$)
                     my $startLine = $.;
                     if ($token =~ /^\@media/) {
                         push(@currentParseMode, "media");
-                        push(@stack, ($startLine, $token));
+                        push(@groupingStack, $token);
                     } else {
                         push(@currentParseMode, "selector");
                         push(@stack, ($startLine, $token));
@@ -2111,7 +2137,7 @@ sub attributeCommand($$)
         }
         $result = $attributeCache{$attr}{$file};
     } elsif (isGit()) {
-        my $command = GIT . " check-attr $attr -- $file";
+        my $command = GIT . " check-attr $attr -- '$file'";
         $result = `$command`;
         chomp $result;
         $result =~ s/.*\W(\w)/$1/;

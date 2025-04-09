@@ -26,6 +26,7 @@
 #include "config.h"
 #include "WebURLSchemeHandler.h"
 
+#include "URLSchemeTaskParameters.h"
 #include "WebPageProxy.h"
 #include "WebURLSchemeTask.h"
 
@@ -48,12 +49,13 @@ WebURLSchemeHandler::~WebURLSchemeHandler()
     ASSERT(m_tasks.isEmpty());
 }
 
-void WebURLSchemeHandler::startTask(WebPageProxy& page, WebProcessProxy& process, uint64_t taskIdentifier, ResourceRequest&& request, SyncLoadCompletionHandler&& completionHandler)
+void WebURLSchemeHandler::startTask(WebPageProxy& page, WebProcessProxy& process, PageIdentifier webPageID, URLSchemeTaskParameters&& parameters, SyncLoadCompletionHandler&& completionHandler)
 {
-    auto result = m_tasks.add(taskIdentifier, WebURLSchemeTask::create(*this, page, process, taskIdentifier, WTFMove(request), WTFMove(completionHandler)));
+    auto taskIdentifier = parameters.taskIdentifier;
+    auto result = m_tasks.add(taskIdentifier, WebURLSchemeTask::create(*this, page, process, webPageID, WTFMove(parameters), WTFMove(completionHandler)));
     ASSERT(result.isNewEntry);
 
-    auto pageEntry = m_tasksByPageIdentifier.add(page.pageID(), HashSet<uint64_t>());
+    auto pageEntry = m_tasksByPageIdentifier.add(page.identifier(), HashSet<uint64_t>());
     ASSERT(!pageEntry.iterator->value.contains(taskIdentifier));
     pageEntry.iterator->value.add(taskIdentifier);
 
@@ -70,7 +72,7 @@ WebProcessProxy* WebURLSchemeHandler::processForTaskIdentifier(uint64_t taskIden
 
 void WebURLSchemeHandler::stopAllTasksForPage(WebPageProxy& page, WebProcessProxy* process)
 {
-    auto iterator = m_tasksByPageIdentifier.find(page.pageID());
+    auto iterator = m_tasksByPageIdentifier.find(page.identifier());
     if (iterator == m_tasksByPageIdentifier.end())
         return;
 
@@ -96,7 +98,7 @@ void WebURLSchemeHandler::stopTask(WebPageProxy& page, uint64_t taskIdentifier)
     iterator->value->stop();
     platformStopTask(page, iterator->value);
 
-    removeTaskFromPageMap(page.pageID(), taskIdentifier);
+    removeTaskFromPageMap(page.identifier(), taskIdentifier);
     m_tasks.remove(iterator);
 }
 
@@ -104,12 +106,12 @@ void WebURLSchemeHandler::taskCompleted(WebURLSchemeTask& task)
 {
     auto takenTask = m_tasks.take(task.identifier());
     ASSERT_UNUSED(takenTask, takenTask->ptr() == &task);
-    removeTaskFromPageMap(task.pageID(), task.identifier());
+    removeTaskFromPageMap(task.pageProxyID(), task.identifier());
 
     platformTaskCompleted(task);
 }
 
-void WebURLSchemeHandler::removeTaskFromPageMap(PageIdentifier pageID, uint64_t taskID)
+void WebURLSchemeHandler::removeTaskFromPageMap(WebPageProxyIdentifier pageID, uint64_t taskID)
 {
     auto iterator = m_tasksByPageIdentifier.find(pageID);
     ASSERT(iterator != m_tasksByPageIdentifier.end());

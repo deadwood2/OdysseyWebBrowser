@@ -55,7 +55,6 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         this._selectable = selectable;
 
         this._cachedNumberOfDescendents = 0;
-        this._previousSelectedTreeElement = null;
 
         let comparator = (a, b) => {
             function getLevel(treeElement) {
@@ -799,17 +798,6 @@ WI.TreeOutline = class TreeOutline extends WI.Object
             treeElement.select(omitFocus);
         }
 
-        let selectedTreeElement = this.selectedTreeElement;
-        if (selectedTreeElement !== this._previousSelectedTreeElement) {
-            if (this._previousSelectedTreeElement && this._previousSelectedTreeElement.listItemElement)
-                this._previousSelectedTreeElement.listItemElement.classList.remove("last-selected");
-
-            this._previousSelectedTreeElement = selectedTreeElement;
-
-            if (this._previousSelectedTreeElement && this._previousSelectedTreeElement.listItemElement)
-                this._previousSelectedTreeElement.listItemElement.classList.add("last-selected");
-        }
-
         this._dispatchSelectionDidChangeEvent();
 
         this._processingSelectionChange = false;
@@ -1054,11 +1042,14 @@ WI.TreeOutline = class TreeOutline extends WI.Object
 
         // Redraw if we are about to scroll.
         if (!shouldScroll) {
-            // Redraw if all of the previously centered `WI.TreeElement` are no longer centered.
-            if (visibleTreeElements.intersects(this._virtualizedVisibleTreeElements)) {
-                // Redraw if there is a `WI.TreeElement` that should be shown that isn't attached.
-                if (visibleTreeElements.isSubsetOf(this._virtualizedAttachedTreeElements))
-                    return;
+            // Redraw if there are a different number of items to show.
+            if (visibleTreeElements.size === this._virtualizedVisibleTreeElements.size) {
+                // Redraw if all of the previously centered `WI.TreeElement` are no longer centered.
+                if (visibleTreeElements.intersects(this._virtualizedVisibleTreeElements)) {
+                    // Redraw if there is a `WI.TreeElement` that should be shown that isn't attached.
+                    if (visibleTreeElements.isSubsetOf(this._virtualizedAttachedTreeElements))
+                        return;
+                }
             }
         }
 

@@ -480,16 +480,23 @@ void GraphicsLayerCA::willBeDestroyed()
 
 void GraphicsLayerCA::setName(const String& name)
 {
+    if (name == this->name())
+        return;
+
+    GraphicsLayer::setName(name);
+    noteLayerPropertyChanged(NameChanged);
+}
+
+String GraphicsLayerCA::debugName() const
+{
 #if ENABLE(TREE_DEBUGGING)
     String caLayerDescription;
     if (!m_layer->isPlatformCALayerRemote())
         caLayerDescription = makeString("CALayer(0x", hex(reinterpret_cast<uintptr_t>(m_layer->platformLayer()), Lowercase), ") ");
-    GraphicsLayer::setName(makeString(caLayerDescription, "GraphicsLayer(0x", hex(reinterpret_cast<uintptr_t>(this), Lowercase), ", ", primaryLayerID(), ") ", name));
+    return makeString(caLayerDescription, "GraphicsLayer(0x", hex(reinterpret_cast<uintptr_t>(this), Lowercase), ", ", primaryLayerID(), ") ", name());
 #else
-    GraphicsLayer::setName(name);
+    return name();
 #endif
-
-    noteLayerPropertyChanged(NameChanged);
 }
 
 GraphicsLayer::PlatformLayerID GraphicsLayerCA::primaryLayerID() const
@@ -1027,7 +1034,7 @@ void GraphicsLayerCA::addProcessingActionForAnimation(const String& animationNam
 
 bool GraphicsLayerCA::addAnimation(const KeyframeValueList& valueList, const FloatSize& boxSize, const Animation* anim, const String& animationName, double timeOffset)
 {
-    LOG(Animations, "GraphicsLayerCA %p %llu addAnimation %s (can be accelerated %d)", this, primaryLayerID(), animationName.utf8().data(), animationCanBeAccelerated(valueList, anim));
+    LOG_WITH_STREAM(Animations, stream << "GraphicsLayerCA " << this << " id " << primaryLayerID() << " addAnimation " << anim << " " << animationName << " duration " << anim->duration() << " (can be accelerated " << animationCanBeAccelerated(valueList, anim) << ")");
 
     ASSERT(!animationName.isEmpty());
 
@@ -1058,7 +1065,7 @@ bool GraphicsLayerCA::addAnimation(const KeyframeValueList& valueList, const Flo
 
 void GraphicsLayerCA::pauseAnimation(const String& animationName, double timeOffset)
 {
-    LOG(Animations, "GraphicsLayerCA %p pauseAnimation %s (running %d)", this, animationName.utf8().data(), animationIsRunning(animationName));
+    LOG_WITH_STREAM(Animations, stream << "GraphicsLayerCA " << this << " id " << primaryLayerID() << " pauseAnimation " << animationName << " (is running " << animationIsRunning(animationName) << ")");
 
     // Call add since if there is already a Remove in there, we don't want to overwrite it with a Pause.
     addProcessingActionForAnimation(animationName, AnimationProcessingAction { Pause, Seconds { timeOffset } });
@@ -1068,7 +1075,7 @@ void GraphicsLayerCA::pauseAnimation(const String& animationName, double timeOff
 
 void GraphicsLayerCA::seekAnimation(const String& animationName, double timeOffset)
 {
-    LOG(Animations, "GraphicsLayerCA %p seekAnimation %s (running %d)", this, animationName.utf8().data(), animationIsRunning(animationName));
+    LOG_WITH_STREAM(Animations, stream << "GraphicsLayerCA " << this << " id " << primaryLayerID() << " seekAnimation " << animationName << " to " << timeOffset << " (is running " << animationIsRunning(animationName) << ")");
 
     // Call add since if there is already a Remove in there, we don't want to overwrite it with a Pause.
     addProcessingActionForAnimation(animationName, AnimationProcessingAction { Seek, Seconds { timeOffset } });
@@ -1078,10 +1085,12 @@ void GraphicsLayerCA::seekAnimation(const String& animationName, double timeOffs
 
 void GraphicsLayerCA::removeAnimation(const String& animationName)
 {
-    LOG(Animations, "GraphicsLayerCA %p removeAnimation %s (running %d)", this, animationName.utf8().data(), animationIsRunning(animationName));
+    LOG_WITH_STREAM(Animations, stream << "GraphicsLayerCA " << this << " id " << primaryLayerID() << " removeAnimation " << animationName << " (is running " << animationIsRunning(animationName) << ")");
 
-    if (!animationIsRunning(animationName))
+    if (!animationIsRunning(animationName)) {
+        removeFromUncommittedAnimations(animationName);
         return;
+    }
 
     addProcessingActionForAnimation(animationName, AnimationProcessingAction(Remove));
     noteLayerPropertyChanged(AnimationChanged | CoverageRectChanged);
@@ -1089,13 +1098,13 @@ void GraphicsLayerCA::removeAnimation(const String& animationName)
 
 void GraphicsLayerCA::platformCALayerAnimationStarted(const String& animationKey, MonotonicTime startTime)
 {
-    LOG(Animations, "GraphicsLayerCA %p platformCALayerAnimationStarted %s at %f", this, animationKey.utf8().data(), startTime.secondsSinceEpoch().seconds());
+    LOG_WITH_STREAM(Animations, stream << "GraphicsLayerCA " << this << " id " << primaryLayerID() << " platformCALayerAnimationStarted " << animationKey);
     client().notifyAnimationStarted(this, animationKey, startTime);
 }
 
 void GraphicsLayerCA::platformCALayerAnimationEnded(const String& animationKey)
 {
-    LOG(Animations, "GraphicsLayerCA %p platformCALayerAnimationEnded %s", this, animationKey.utf8().data());
+    LOG_WITH_STREAM(Animations, stream << "GraphicsLayerCA " << this << " id " << primaryLayerID() << " platformCALayerAnimationEnded " << animationKey);
     client().notifyAnimationEnded(this, animationKey);
 }
 
@@ -1365,13 +1374,7 @@ TransformationMatrix GraphicsLayerCA::layerTransform(const FloatPoint& position,
     else if (m_transform)
         currentTransform = *m_transform;
     
-    if (!currentTransform.isIdentity()) {
-        FloatPoint3D absoluteAnchorPoint(anchorPoint());
-        absoluteAnchorPoint.scale(size().width(), size().height(), 1);
-        transform.translate3d(absoluteAnchorPoint.x(), absoluteAnchorPoint.y(), absoluteAnchorPoint.z());
-        transform.multiply(currentTransform);
-        transform.translate3d(-absoluteAnchorPoint.x(), -absoluteAnchorPoint.y(), -absoluteAnchorPoint.z());
-    }
+    transform.multiply(transformByApplyingAnchorPoint(currentTransform));
 
     if (GraphicsLayer* parentLayer = parent()) {
         if (parentLayer->hasNonIdentityChildrenTransform()) {
@@ -1385,6 +1388,20 @@ TransformationMatrix GraphicsLayerCA::layerTransform(const FloatPoint& position,
     }
     
     return transform;
+}
+
+TransformationMatrix GraphicsLayerCA::transformByApplyingAnchorPoint(const TransformationMatrix& matrix) const
+{
+    if (matrix.isIdentity())
+        return matrix;
+
+    TransformationMatrix result;
+    FloatPoint3D absoluteAnchorPoint(anchorPoint());
+    absoluteAnchorPoint.scale(size().width(), size().height(), 1);
+    result.translate3d(absoluteAnchorPoint.x(), absoluteAnchorPoint.y(), absoluteAnchorPoint.z());
+    result.multiply(matrix);
+    result.translate3d(-absoluteAnchorPoint.x(), -absoluteAnchorPoint.y(), -absoluteAnchorPoint.z());
+    return result;
 }
 
 GraphicsLayerCA::VisibleAndCoverageRects GraphicsLayerCA::computeVisibleAndCoverageRect(TransformState& state, bool preserves3D, ComputeVisibleRectFlags flags) const
@@ -1477,7 +1494,8 @@ void GraphicsLayerCA::setVisibleAndCoverageRects(const VisibleAndCoverageRects& 
     auto bounds = FloatRect(m_boundsOrigin, size());
     if (auto extent = animationExtent()) {
         // Adjust the animation extent to match the current animation position.
-        bounds = rects.animatingTransform.inverse().valueOr(TransformationMatrix()).mapRect(*extent);
+        auto animatingTransformWithAnchorPoint = transformByApplyingAnchorPoint(rects.animatingTransform);
+        bounds = animatingTransformWithAnchorPoint.inverse().valueOr(TransformationMatrix()).mapRect(*extent);
     }
 
     // FIXME: we need to take reflections into account when determining whether this layer intersects the coverage rect.
@@ -1912,20 +1930,21 @@ void GraphicsLayerCA::commitLayerChangesAfterSublayers(CommitState& commitState)
 
 void GraphicsLayerCA::updateNames()
 {
+    auto name = debugName();
     switch (structuralLayerPurpose()) {
     case StructuralLayerForPreserves3D:
-        m_structuralLayer->setName("preserve-3d: " + name());
+        m_structuralLayer->setName("preserve-3d: " + name);
         break;
     case StructuralLayerForReplicaFlattening:
-        m_structuralLayer->setName("replica flattening: " + name());
+        m_structuralLayer->setName("replica flattening: " + name);
         break;
     case StructuralLayerForBackdrop:
-        m_structuralLayer->setName("backdrop hosting: " + name());
+        m_structuralLayer->setName("backdrop hosting: " + name);
         break;
     case NoStructuralLayer:
         break;
     }
-    m_layer->setName(name());
+    m_layer->setName(name);
 }
 
 void GraphicsLayerCA::updateSublayerList(bool maxLayerDepthReached)
@@ -2579,9 +2598,10 @@ void GraphicsLayerCA::updateContentsColorLayer()
 }
 
 // The clipping strategy depends on whether the rounded rect has equal corner radii.
+// roundedRect is in the coordinate space of clippingLayer.
 void GraphicsLayerCA::updateClippingStrategy(PlatformCALayer& clippingLayer, RefPtr<PlatformCALayer>& shapeMaskLayer, const FloatRoundedRect& roundedRect)
 {
-    if (roundedRect.radii().isUniformCornerRadius()) {
+    if (roundedRect.radii().isUniformCornerRadius() && clippingLayer.bounds() == roundedRect.rect()) {
         clippingLayer.setMask(nullptr);
         if (shapeMaskLayer) {
             shapeMaskLayer->setOwner(nullptr);
@@ -2599,11 +2619,8 @@ void GraphicsLayerCA::updateClippingStrategy(PlatformCALayer& clippingLayer, Ref
         shapeMaskLayer->setName("shape mask");
     }
     
-    shapeMaskLayer->setPosition(roundedRect.rect().location());
-    FloatRect shapeBounds({ }, roundedRect.rect().size());
-    shapeMaskLayer->setBounds(shapeBounds);
-    FloatRoundedRect offsetRoundedRect(shapeBounds, roundedRect.radii());
-    shapeMaskLayer->setShapeRoundedRect(offsetRoundedRect);
+    shapeMaskLayer->setBounds(clippingLayer.bounds());
+    shapeMaskLayer->setShapeRoundedRect(roundedRect);
 
     clippingLayer.setCornerRadius(0);
     clippingLayer.setMask(shapeMaskLayer.get());
@@ -2618,13 +2635,13 @@ void GraphicsLayerCA::updateContentsRects()
     const FloatRect contentBounds(0, 0, m_contentsRect.width(), m_contentsRect.height());
 
     FloatPoint clippingOrigin(m_contentsClippingRect.rect().location());
-    FloatRect clippingBounds(FloatPoint(), m_contentsClippingRect.rect().size());
+    FloatRect clippingBounds({ }, m_contentsClippingRect.rect().size());
     
     bool gainedOrLostClippingLayer = false;
     if (m_contentsClippingRect.isRounded() || !m_contentsClippingRect.rect().contains(m_contentsRect)) {
         if (!m_contentsClippingLayer) {
             m_contentsClippingLayer = createPlatformCALayer(PlatformCALayer::LayerTypeLayer, this);
-            m_contentsClippingLayer->setAnchorPoint(FloatPoint());
+            m_contentsClippingLayer->setAnchorPoint({ });
 #if ENABLE(TREE_DEBUGGING)
             m_contentsClippingLayer->setName(makeString("contents clipping ", m_contentsClippingLayer->layerID()));
 #else
@@ -2635,8 +2652,11 @@ void GraphicsLayerCA::updateContentsRects()
 
         m_contentsClippingLayer->setPosition(clippingOrigin);
         m_contentsClippingLayer->setBounds(clippingBounds);
+        
+        auto clippingRectRelativeToClippingLayer = m_contentsClippingRect;
+        clippingRectRelativeToClippingLayer.setLocation({ });
 
-        updateClippingStrategy(*m_contentsClippingLayer, m_contentsShapeMaskLayer, m_contentsClippingRect);
+        updateClippingStrategy(*m_contentsClippingLayer, m_contentsShapeMaskLayer, clippingRectRelativeToClippingLayer);
 
         if (gainedOrLostClippingLayer) {
             m_contentsLayer->removeFromSuperlayer();
@@ -3147,6 +3167,16 @@ void GraphicsLayerCA::appendToUncommittedAnimations(LayerPropertyAnimation&& ani
     m_animations->animationsToProcess.remove(animation.m_name);
 
     m_animations->uncomittedAnimations.append(WTFMove(animation));
+}
+
+void GraphicsLayerCA::removeFromUncommittedAnimations(const String& animationName)
+{
+    if (!m_animations)
+        return;
+
+    m_animations->uncomittedAnimations.removeFirstMatching([&animationName] (auto& current) {
+        return current.m_name == animationName;
+    });
 }
 
 bool GraphicsLayerCA::createFilterAnimationsFromKeyframes(const KeyframeValueList& valueList, const Animation* animation, const String& animationName, Seconds timeOffset)
@@ -3733,7 +3763,7 @@ void GraphicsLayerCA::dumpAdditionalProperties(TextStream& textStream, LayerTree
         textStream << indent << "(in window " << tiledBacking()->isInWindow() << ")\n";
     }
 
-    if (m_layer->wantsDeepColorBackingStore())
+    if ((behavior & LayerTreeAsTextIncludeDeepColor) && m_layer->wantsDeepColorBackingStore())
         textStream << indent << "(deep color 1)\n";
 
     if (behavior & LayerTreeAsTextIncludeContentLayers) {
@@ -4005,8 +4035,7 @@ RefPtr<PlatformCALayer> GraphicsLayerCA::fetchCloneLayers(GraphicsLayer* replica
         replicaState.setBranchType(ReplicaState::ChildBranch);
     }
 
-    if (contentsClippingLayer) {
-        ASSERT(contentsLayer);
+    if (contentsClippingLayer && contentsLayer) {
         contentsClippingLayer->appendSublayer(*contentsLayer);
     }
 

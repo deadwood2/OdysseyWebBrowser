@@ -311,7 +311,7 @@ WI.CSSKeywordCompletions._colors = [
     "paleturquoise", "palevioletred", "papayawhip", "peachpuff", "peru", "pink", "plum", "powderblue", "rebeccapurple", "rosybrown",
     "royalblue", "saddlebrown", "salmon", "sandybrown", "seagreen", "seashell", "sienna", "skyblue", "slateblue",
     "slategray", "slategrey", "snow", "springgreen", "steelblue", "tan", "thistle", "tomato", "turquoise", "violet",
-    "wheat", "whitesmoke", "yellowgreen", "rgb()", "rgba()", "hsl()", "hsla()"
+    "wheat", "whitesmoke", "yellowgreen", "rgb()", "rgba()", "hsl()", "hsla()", "color()",
 ];
 
 WI.CSSKeywordCompletions._colorAwareProperties = new Set([
@@ -611,15 +611,6 @@ WI.CSSKeywordCompletions._propertyKeywordMap = {
     ],
     "perspective-origin": [
         "none", "left", "right", "bottom", "top", "center"
-    ],
-    "-webkit-marquee-increment": [
-        "small", "large", "medium"
-    ],
-    "-webkit-marquee-repetition": [
-        "infinite"
-    ],
-    "-webkit-marquee-speed": [
-        "normal", "slow", "fast"
     ],
     "margin-right": [
         "auto"
@@ -952,12 +943,6 @@ WI.CSSKeywordCompletions._propertyKeywordMap = {
     ],
     "-webkit-margin-top-collapse": [
         "collapse", "separate", "discard",
-    ],
-    "-webkit-marquee-direction": [
-        "left", "right", "auto", "reverse", "forwards", "backwards", "ahead", "up", "down",
-    ],
-    "-webkit-marquee-style": [
-        "none", "scroll", "slide", "alternate",
     ],
     "-webkit-max-logical-height": [
         "auto", "intrinsic", "min-intrinsic", "min-content", "-webkit-min-content", "max-content", "-webkit-max-content", "-webkit-fill-available", "fit-content", "-webkit-fit-content", "none", "calc()"

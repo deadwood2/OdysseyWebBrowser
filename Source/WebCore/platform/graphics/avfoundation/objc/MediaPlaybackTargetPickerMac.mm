@@ -30,7 +30,7 @@
 
 #import "Logging.h"
 #import <WebCore/FloatRect.h>
-#import <WebCore/MediaPlaybackTargetMac.h>
+#import <WebCore/MediaPlaybackTargetCocoa.h>
 #import <objc/runtime.h>
 #import <pal/cf/CoreMediaSoftLink.h>
 #import <pal/spi/cocoa/AVKitSPI.h>
@@ -72,14 +72,16 @@ MediaPlaybackTargetPickerMac::~MediaPlaybackTargetPickerMac()
 
 bool MediaPlaybackTargetPickerMac::externalOutputDeviceAvailable()
 {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     return devicePicker().externalOutputDeviceAvailable;
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 Ref<MediaPlaybackTarget> MediaPlaybackTargetPickerMac::playbackTarget()
 {
     AVOutputContext* context = m_outputDeviceMenuController ? [m_outputDeviceMenuController.get() outputContext] : nullptr;
 
-    return WebCore::MediaPlaybackTargetMac::create(context);
+    return WebCore::MediaPlaybackTargetCocoa::create(context);
 }
 
 AVOutputDeviceMenuController *MediaPlaybackTargetPickerMac::devicePicker()
@@ -98,26 +100,33 @@ AVOutputDeviceMenuController *MediaPlaybackTargetPickerMac::devicePicker()
 
         LOG(Media, "MediaPlaybackTargetPickerMac::devicePicker - allocated menu controller %p", m_outputDeviceMenuController.get());
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         if (m_outputDeviceMenuController.get().externalOutputDeviceAvailable)
             availableDevicesDidChange();
+ALLOW_DEPRECATED_DECLARATIONS_END
     }
 
     return m_outputDeviceMenuController.get();
 }
 
-void MediaPlaybackTargetPickerMac::showPlaybackTargetPicker(const FloatRect& location, bool checkActiveRoute, bool useDarkAppearance)
+void MediaPlaybackTargetPickerMac::showPlaybackTargetPicker(const FloatRect& location, bool hasActiveRoute, bool useDarkAppearance)
 {
     if (!client() || m_showingMenu)
         return;
 
-    LOG(Media, "MediaPlaybackTargetPickerMac::showPlaybackTargetPicker - checkActiveRoute = %i", (int)checkActiveRoute);
+    LOG(Media, "MediaPlaybackTargetPickerMac::showPlaybackTargetPicker - hasActiveRoute = %i", (int)hasActiveRoute);
 
     m_showingMenu = true;
 
-    if ([devicePicker() showMenuForRect:location appearanceName:(useDarkAppearance ? NSAppearanceNameVibrantDark : NSAppearanceNameVibrantLight) allowReselectionOfSelectedOutputDevice:!checkActiveRoute]) {
-        if (!checkActiveRoute)
-            currentDeviceDidChange();
-    }
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    bool targetSelected = [devicePicker() showMenuForRect:location appearanceName:(useDarkAppearance ? NSAppearanceNameVibrantDark : NSAppearanceNameVibrantLight) allowReselectionOfSelectedOutputDevice:!hasActiveRoute];
+ALLOW_DEPRECATED_DECLARATIONS_END
+
+    if (targetSelected != hasActiveRoute)
+        currentDeviceDidChange();
+    else if (!targetSelected && !hasActiveRoute)
+        playbackTargetPickerWasDismissed();
+
     m_showingMenu = false;
 }
 

@@ -33,10 +33,8 @@ class CHROMIUMFramebufferMixedSamplesTest : public ANGLETest
                IsGLExtensionEnabled("GL_OES_rgb8_rgba8");
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         mProgram = CompileProgram(essl1_shaders::vs::Simple(), essl1_shaders::fs::UniformColor());
 
         GLuint position_loc = glGetAttribLocation(mProgram, essl1_shaders::PositionAttrib());
@@ -56,14 +54,12 @@ class CHROMIUMFramebufferMixedSamplesTest : public ANGLETest
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteBuffers(1, &mVBO);
         glDeleteProgram(mProgram);
 
         ASSERT_GL_NO_ERROR();
-
-        ANGLETest::TearDown();
     }
 
     void prepareForDraw(SetupFBOType fbo_type)
@@ -270,8 +266,4 @@ TEST_P(CHROMIUMFramebufferMixedSamplesTest, MultisampleStencilEffective)
     EXPECT_EQ(0, memcmp(results[0].get(), results[2].get(), kResultSize));
 }
 
-ANGLE_INSTANTIATE_TEST(CHROMIUMFramebufferMixedSamplesTest,
-                       ES2_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES3_OPENGL(),
-                       ES2_VULKAN());
+ANGLE_INSTANTIATE_TEST_ES2(CHROMIUMFramebufferMixedSamplesTest);

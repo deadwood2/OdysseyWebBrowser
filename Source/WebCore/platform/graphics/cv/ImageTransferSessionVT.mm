@@ -28,17 +28,19 @@
 
 #if USE(VIDEOTOOLBOX)
 
+#import "GraphicsContextCG.h"
 #import "Logging.h"
 #import "MediaSampleAVFObjC.h"
 #import <CoreMedia/CMFormatDescription.h>
 #import <CoreMedia/CMSampleBuffer.h>
+
+#import "CoreVideoSoftLink.h"
 #import <pal/cf/CoreMediaSoftLink.h>
+#import "VideoToolboxSoftLink.h"
 
 #if HAVE(IOSURFACE) && !PLATFORM(MACCATALYST)
 #include <pal/spi/cocoa/IOSurfaceSPI.h>
 #endif
-
-#import "CoreVideoSoftLink.h"
 
 namespace WebCore {
 using namespace PAL;
@@ -305,6 +307,20 @@ CFDictionaryRef ImageTransferSessionVT::ioSurfacePixelBufferCreationOptions(IOSu
 #endif
 
     return m_ioSurfaceBufferAttributes.get();
+}
+
+RetainPtr<CVPixelBufferRef> ImageTransferSessionVT::createPixelBuffer(IOSurfaceRef surface)
+{
+    if (!surface)
+        return nullptr;
+
+    CVPixelBufferRef pixelBuffer;
+    auto status = CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, surface, ioSurfacePixelBufferCreationOptions(surface), &pixelBuffer);
+    if (status) {
+        RELEASE_LOG(Media, "CVPixelBufferCreateWithIOSurface failed with error code: %d", static_cast<int>(status));
+        return nullptr;
+    }
+    return adoptCF(pixelBuffer);
 }
 
 RetainPtr<CVPixelBufferRef> ImageTransferSessionVT::createPixelBuffer(IOSurfaceRef surface, const IntSize& size)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -22,6 +22,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
+
+#pragma once
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && !PLATFORM(IOS_FAMILY)
 
@@ -50,11 +52,13 @@ public:
     void playbackTargetPickerClientStateDidChange(uint64_t, WebCore::MediaProducer::MediaStateFlags);
     void setMockMediaPlaybackTargetPickerEnabled(bool);
     void setMockMediaPlaybackTargetPickerState(const String&, WebCore::MediaPlaybackTargetContext::State);
+    void mockMediaPlaybackTargetPickerDismissPopup();
 
     // WebMediaSessionManagerClient
     void setPlaybackTarget(uint64_t, Ref<WebCore::MediaPlaybackTarget>&&) override;
     void externalOutputDeviceAvailableDidChange(uint64_t, bool) override;
     void setShouldPlayToPlaybackTarget(uint64_t, bool) override;
+    void playbackTargetPickerWasDismissed(uint64_t) override;
 
     void invalidate();
 

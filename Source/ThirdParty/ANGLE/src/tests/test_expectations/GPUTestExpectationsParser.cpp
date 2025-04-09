@@ -8,6 +8,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "common/angleutils.h"
 #include "common/debug.h"
@@ -69,6 +70,8 @@ enum Token
     kConfigGLDesktop,
     kConfigGLES,
     kConfigVulkan,
+    kConfigSwiftShader,
+    kConfigMetal,
     // Android devices
     kConfigNexus5X,
     kConfigPixel2,
@@ -106,12 +109,28 @@ enum ErrorType
 
 struct TokenInfo
 {
+    constexpr TokenInfo()
+        : name(nullptr),
+          condition(GPUTestConfig::kConditionNone),
+          expectation(GPUTestExpectationsParser::kGpuTestPass)
+    {}
+
+    constexpr TokenInfo(const char *nameIn,
+                        GPUTestConfig::Condition conditionIn,
+                        GPUTestExpectationsParser::GPUTestExpectation expectationIn)
+        : name(nameIn), condition(conditionIn), expectation(expectationIn)
+    {}
+
+    constexpr TokenInfo(const char *nameIn, GPUTestConfig::Condition conditionIn)
+        : TokenInfo(nameIn, conditionIn, GPUTestExpectationsParser::kGpuTestPass)
+    {}
+
     const char *name;
     GPUTestConfig::Condition condition;
     GPUTestExpectationsParser::GPUTestExpectation expectation;
 };
 
-const TokenInfo kTokenData[kNumberOfTokens] = {
+constexpr TokenInfo kTokenData[kNumberOfTokens] = {
     {"xp", GPUTestConfig::kConditionWinXP},
     {"vista", GPUTestConfig::kConditionWinVista},
     {"win7", GPUTestConfig::kConditionWin7},
@@ -130,7 +149,7 @@ const TokenInfo kTokenData[kNumberOfTokens] = {
     {"mojave", GPUTestConfig::kConditionMacMojave},
     {"mac", GPUTestConfig::kConditionMac},
     {"linux", GPUTestConfig::kConditionLinux},
-    {"chromeos"},  // (https://anglebug.com/3363) ChromeOS not supported yet
+    {"chromeos", GPUTestConfig::kConditionNone},  // https://anglebug.com/3363 CrOS not supported
     {"android", GPUTestConfig::kConditionAndroid},
     {"nvidia", GPUTestConfig::kConditionNVIDIA},
     {"amd", GPUTestConfig::kConditionAMD},
@@ -143,19 +162,21 @@ const TokenInfo kTokenData[kNumberOfTokens] = {
     {"opengl", GPUTestConfig::kConditionGLDesktop},
     {"gles", GPUTestConfig::kConditionGLES},
     {"vulkan", GPUTestConfig::kConditionVulkan},
+    {"swiftshader", GPUTestConfig::kConditionSwiftShader},
+    {"metal", GPUTestConfig::kConditionMetal},
     {"nexus5x", GPUTestConfig::kConditionNexus5X},
-    {"pixel2", GPUTestConfig::kConditionPixel2},
+    {"pixel2orxl", GPUTestConfig::kConditionPixel2OrXL},
     {"quadrop400", GPUTestConfig::kConditionNVIDIAQuadroP400},
     {"pass", GPUTestConfig::kConditionNone, GPUTestExpectationsParser::kGpuTestPass},
     {"fail", GPUTestConfig::kConditionNone, GPUTestExpectationsParser::kGpuTestFail},
     {"flaky", GPUTestConfig::kConditionNone, GPUTestExpectationsParser::kGpuTestFlaky},
     {"timeout", GPUTestConfig::kConditionNone, GPUTestExpectationsParser::kGpuTestTimeout},
     {"skip", GPUTestConfig::kConditionNone, GPUTestExpectationsParser::kGpuTestSkip},
-    {":"},  // kSeparatorColon
-    {"="},  // kSeparatorEqual
-    {},     // kNumberOfExactMatchTokens
-    {},     // kTokenComment
-    {},     // kTokenWord
+    {":", GPUTestConfig::kConditionNone},  // kSeparatorColon
+    {"=", GPUTestConfig::kConditionNone},  // kSeparatorEqual
+    {},                                    // kNumberOfExactMatchTokens
+    {},                                    // kTokenComment
+    {},                                    // kTokenWord
 };
 
 const char *kErrorMessage[kNumberOfErrors] = {
@@ -207,22 +228,68 @@ inline Token ParseToken(const std::string &word)
     return kTokenWord;
 }
 
-// reference name can have the last character as *.
-inline bool NamesMatching(const std::string &ref, const std::string &testName)
+// reference name can have *.
+inline bool NamesMatching(const char *ref, const char *testName)
 {
-    size_t len = ref.length();
-    if (len == 0)
-        return false;
-    if (ref[len - 1] == '*')
+    // Find the first * in ref.
+    const char *firstWildcard = strchr(ref, '*');
+
+    // If there are no wildcards, match the strings precisely.
+    if (firstWildcard == nullptr)
     {
-        if (testName.length() > len - 1 && ref.compare(0, len - 1, testName, 0, len - 1) == 0)
-            return true;
+        return strcmp(ref, testName) == 0;
+    }
+
+    // Otherwise, match up to the wildcard first.
+    size_t preWildcardLen = firstWildcard - ref;
+    if (strncmp(ref, testName, preWildcardLen) != 0)
+    {
         return false;
     }
-    return (ref == testName);
+
+    const char *postWildcardRef = ref + preWildcardLen + 1;
+
+    // As a small optimization, if the wildcard is the last character in ref, accept the match
+    // already.
+    if (postWildcardRef[0] == '\0')
+    {
+        return true;
+    }
+
+    // Try to match the wildcard with a number of characters.
+    for (size_t matchSize = 0; testName[matchSize] != '\0'; ++matchSize)
+    {
+        if (NamesMatching(postWildcardRef, testName + matchSize))
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 }  // anonymous namespace
+
+const char *GetConditionName(uint32_t condition)
+{
+    if (condition == GPUTestConfig::kConditionNone)
+    {
+        return nullptr;
+    }
+
+    for (const TokenInfo &info : kTokenData)
+    {
+        if (info.condition == condition)
+        {
+            // kConditionNone is used to tag tokens that aren't conditions, but this case has been
+            // handled above.
+            ASSERT(info.condition != GPUTestConfig::kConditionNone);
+            return info.name;
+        }
+    }
+
+    return nullptr;
+}
 
 GPUTestExpectationsParser::GPUTestExpectationsParser()
 {
@@ -278,7 +345,7 @@ int32_t GPUTestExpectationsParser::getTestExpectation(const std::string &testNam
     GPUTestExpectationEntry *foundEntry = nullptr;
     for (size_t i = 0; i < mEntries.size(); ++i)
     {
-        if (NamesMatching(mEntries[i].testName, testName))
+        if (NamesMatching(mEntries[i].testName.c_str(), testName.c_str()))
         {
             size_t expectationLen = mEntries[i].testName.length();
             // The longest/most specific matching expectation overrides any others.
@@ -324,9 +391,9 @@ bool GPUTestExpectationsParser::parseLine(const GPUTestConfig &config,
         SplitString(lineData, kWhitespaceASCII, KEEP_WHITESPACE, SPLIT_WANT_NONEMPTY);
     int32_t stage = kLineParserBegin;
     GPUTestExpectationEntry entry;
-    entry.lineNumber  = lineNumber;
-    entry.used        = false;
-    bool skipLine     = false;
+    entry.lineNumber = lineNumber;
+    entry.used       = false;
+    bool skipLine    = false;
     for (size_t i = 0; i < tokens.size() && !skipLine; ++i)
     {
         Token token = ParseToken(tokens[i]);
@@ -366,6 +433,8 @@ bool GPUTestExpectationsParser::parseLine(const GPUTestConfig &config,
             case kConfigGLDesktop:
             case kConfigGLES:
             case kConfigVulkan:
+            case kConfigSwiftShader:
+            case kConfigMetal:
             case kConfigNexus5X:
             case kConfigPixel2:
             case kConfigNVIDIAQuadroP400:

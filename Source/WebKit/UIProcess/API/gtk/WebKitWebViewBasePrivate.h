@@ -30,16 +30,18 @@
 #include "APIPageConfiguration.h"
 #include "DragAndDropHandler.h"
 #include "GestureController.h"
+#include "InputMethodState.h"
 #include "SameDocumentNavigationType.h"
 #include "ViewGestureController.h"
 #include "ViewSnapshotStore.h"
 #include "WebContextMenuProxyGtk.h"
 #include "WebInspectorProxy.h"
+#include "WebKitInputMethodContext.h"
 #include "WebKitWebViewBase.h"
 #include "WebPageProxy.h"
+#include <wtf/Optional.h>
 
 WebKitWebViewBase* webkitWebViewBaseCreate(const API::PageConfiguration&);
-GtkIMContext* webkitWebViewBaseGetIMContext(WebKitWebViewBase*);
 WebKit::WebPageProxy* webkitWebViewBaseGetPage(WebKitWebViewBase*);
 void webkitWebViewBaseCreateWebPage(WebKitWebViewBase*, Ref<API::PageConfiguration>&&);
 void webkitWebViewBaseSetTooltipText(WebKitWebViewBase*, const char*);
@@ -54,7 +56,7 @@ void webkitWebViewBaseSetInspectorViewSize(WebKitWebViewBase*, unsigned size);
 void webkitWebViewBaseSetActiveContextMenuProxy(WebKitWebViewBase*, WebKit::WebContextMenuProxyGtk*);
 WebKit::WebContextMenuProxyGtk* webkitWebViewBaseGetActiveContextMenuProxy(WebKitWebViewBase*);
 GdkEvent* webkitWebViewBaseTakeContextMenuEvent(WebKitWebViewBase*);
-void webkitWebViewBaseSetInputMethodState(WebKitWebViewBase*, bool enabled);
+void webkitWebViewBaseSetInputMethodState(WebKitWebViewBase*, Optional<WebKit::InputMethodState>&&);
 void webkitWebViewBaseUpdateTextInputState(WebKitWebViewBase*);
 void webkitWebViewBaseSetContentsSize(WebKitWebViewBase*, const WebCore::IntSize&);
 
@@ -82,7 +84,7 @@ WebKit::DragAndDropHandler& webkitWebViewBaseDragAndDropHandler(WebKitWebViewBas
 
 WebKit::GestureController& webkitWebViewBaseGestureController(WebKitWebViewBase*);
 
-RefPtr<WebKit::ViewSnapshot> webkitWebViewBaseTakeViewSnapshot(WebKitWebViewBase*);
+RefPtr<WebKit::ViewSnapshot> webkitWebViewBaseTakeViewSnapshot(WebKitWebViewBase*, Optional<WebCore::IntRect>&&);
 
 void webkitWebViewBaseSetEnableBackForwardNavigationGesture(WebKitWebViewBase*, bool enabled);
 WebKit::ViewGestureController* webkitWebViewBaseViewGestureController(WebKitWebViewBase*);
@@ -102,3 +104,10 @@ void webkitWebViewBaseShowEmojiChooser(WebKitWebViewBase*, const WebCore::IntRec
 #if USE(WPE_RENDERER)
 int webkitWebViewBaseRenderHostFileDescriptor(WebKitWebViewBase*);
 #endif
+
+void webkitWebViewBaseRequestPointerLock(WebKitWebViewBase*);
+void webkitWebViewBaseDidLosePointerLock(WebKitWebViewBase*);
+
+void webkitWebViewBaseSetInputMethodContext(WebKitWebViewBase*, WebKitInputMethodContext*);
+WebKitInputMethodContext* webkitWebViewBaseGetInputMethodContext(WebKitWebViewBase*);
+void webkitWebViewBaseSynthesizeCompositionKeyPress(WebKitWebViewBase*, const String& text, Optional<Vector<WebCore::CompositionUnderline>>&&, Optional<WebKit::EditingRange>&&);

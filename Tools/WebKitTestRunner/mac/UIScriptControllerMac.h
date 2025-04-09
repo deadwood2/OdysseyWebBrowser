@@ -43,6 +43,7 @@ public:
     double zoomScale() const override;
     void simulateAccessibilitySettingsChangeNotification(JSValueRef) override;
     bool isShowingDataListSuggestions() const override;
+    void activateDataListSuggestion(unsigned index, JSValueRef callback) override;
     void beginBackSwipe(JSValueRef) override;
     void completeBackSwipe(JSValueRef) override;
     void playBackEventStream(JSStringRef, JSValueRef) override;
@@ -51,6 +52,15 @@ public:
     bool isWindowContentViewFirstResponder() const override;
     void toggleCapsLock(JSValueRef) override;
     NSView *platformContentView() const override;
+    void clearAllCallbacks() override;
+    void copyText(JSStringRef) override;
+
+    void chooseMenuAction(JSStringRef, JSValueRef) override;
+
+    void activateAtPoint(long x, long y, JSValueRef callback) override;
+
+private:
+    NSTableView *dataListSuggestionsTableView() const;
 };
 
 } // namespace WTR

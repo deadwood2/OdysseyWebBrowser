@@ -26,7 +26,6 @@
 #pragma once
 
 #include "APIObject.h"
-#include "HTTPCookieAcceptPolicy.h"
 #include <WebCore/Cookie.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/Forward.h>
@@ -37,6 +36,7 @@ struct Cookie;
 #if PLATFORM(COCOA)
 class CookieStorageObserver;
 #endif
+enum class HTTPCookieAcceptPolicy : uint8_t;
 }
 
 namespace WebKit {
@@ -47,7 +47,6 @@ class WebsiteDataStore;
 namespace API {
 
 class APIWebCookieManagerProxyObserver;
-class WebsiteDataStore;
 
 class HTTPCookieStore final : public ObjectImpl<Object::Type::HTTPCookieStore> {
 public:
@@ -61,6 +60,9 @@ public:
     void cookies(CompletionHandler<void(const Vector<WebCore::Cookie>&)>&&);
     void setCookies(const Vector<WebCore::Cookie>&, CompletionHandler<void()>&&);
     void deleteCookie(const WebCore::Cookie&, CompletionHandler<void()>&&);
+    
+    void deleteAllCookies(CompletionHandler<void()>&&);
+    void setHTTPCookieAcceptPolicy(WebCore::HTTPCookieAcceptPolicy, CompletionHandler<void()>&&);
 
     class Observer {
     public:
@@ -86,6 +88,8 @@ private:
     static void deleteCookieFromDefaultUIProcessCookieStore(const WebCore::Cookie&);
     void startObservingChangesToDefaultUIProcessCookieStore(Function<void()>&&);
     void stopObservingChangesToDefaultUIProcessCookieStore();
+    void deleteCookiesInDefaultUIProcessCookieStore();
+    void setHTTPCookieAcceptPolicyInDefaultUIProcessCookieStore(WebCore::HTTPCookieAcceptPolicy);
     
     // FIXME: This is a reference cycle.
     Ref<WebKit::WebsiteDataStore> m_owningDataStore;

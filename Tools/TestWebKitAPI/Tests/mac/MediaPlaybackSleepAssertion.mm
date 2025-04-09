@@ -31,11 +31,11 @@
 #import "WebCoreTestSupport.h"
 #import <Carbon/Carbon.h>
 #import <IOKit/pwr_mgt/IOPMLib.h>
+#import <JavaScriptCore/JSCConfig.h>
 #import <JavaScriptCore/JSContext.h>
 #import <WebCore/Settings.h>
 #import <WebKit/WebKitLegacy.h>
 #import <wtf/RetainPtr.h>
-#import <wtf/mac/AppKitCompatibilityDeclarations.h>
 
 static bool didFinishLoad = false;
 static bool didBeginPlaying = false;
@@ -143,6 +143,8 @@ static bool hasAssertionType(CFStringRef type)
 
 TEST(WebKitLegacy, MediaPlaybackSleepAssertion)
 {
+    JSC::Config::configureForTesting();
+
     didFinishLoad = false;
     didBeginPlaying = false;
     didStopPlaying = false;

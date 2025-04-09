@@ -33,6 +33,7 @@
 #include "CookieJarDB.h"
 #include "CookieRequestHeaderFieldProxy.h"
 #include "CurlContext.h"
+#include "HTTPCookieAcceptPolicy.h"
 #include "NetworkingContext.h"
 #include "ResourceHandle.h"
 #include <wtf/FileSystem.h>
@@ -80,17 +81,29 @@ CookieJarDB& NetworkStorageSession::cookieDatabase() const
     return m_cookieDatabase;
 }
 
-void NetworkStorageSession::setCookiesFromDOM(const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, const String& value) const
+void NetworkStorageSession::setCookiesFromDOM(const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, ShouldAskITP, const String& value) const
 {
     cookieStorage().setCookiesFromDOM(*this, firstParty, sameSiteInfo, url, frameID, pageID, value);
 }
 
-bool NetworkStorageSession::cookiesEnabled() const
+HTTPCookieAcceptPolicy NetworkStorageSession::cookieAcceptPolicy() const
 {
-    return cookieStorage().cookiesEnabled(*this);
+    switch (cookieStorage().cookieAcceptPolicy(*this)) {
+    case CookieAcceptPolicy::Always:
+        return HTTPCookieAcceptPolicy::AlwaysAccept;
+    case CookieAcceptPolicy::Never:
+        return HTTPCookieAcceptPolicy::Never;
+    case CookieAcceptPolicy::OnlyFromMainDocumentDomain:
+        return HTTPCookieAcceptPolicy::OnlyFromMainDocumentDomain;
+    case CookieAcceptPolicy::ExclusivelyFromMainDocumentDomain:
+        return HTTPCookieAcceptPolicy::ExclusivelyFromMainDocumentDomain;
+    }
+
+    ASSERT_NOT_REACHED();
+    return HTTPCookieAcceptPolicy::OnlyFromMainDocumentDomain;
 }
 
-std::pair<String, bool> NetworkStorageSession::cookiesForDOM(const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, IncludeSecureCookies includeSecureCookies) const
+std::pair<String, bool> NetworkStorageSession::cookiesForDOM(const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, IncludeSecureCookies includeSecureCookies, ShouldAskITP) const
 {
     return cookieStorage().cookiesForDOM(*this, firstParty, sameSiteInfo, url, frameID, pageID, includeSecureCookies);
 }
@@ -154,7 +167,13 @@ Vector<Cookie> NetworkStorageSession::getCookies(const URL&)
     return { };
 }
 
-bool NetworkStorageSession::getRawCookies(const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, Vector<Cookie>& rawCookies) const
+void NetworkStorageSession::hasCookies(const RegistrableDomain&, CompletionHandler<void(bool)>&& completionHandler) const
+{
+    // FIXME: Implement.
+    completionHandler(false);
+}
+
+bool NetworkStorageSession::getRawCookies(const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, ShouldAskITP, Vector<Cookie>& rawCookies) const
 {
     return cookieStorage().getRawCookies(*this, firstParty, sameSiteInfo, url, frameID, pageID, rawCookies);
 }
@@ -164,7 +183,7 @@ void NetworkStorageSession::flushCookieStore()
     // FIXME: Implement for WebKit to use.
 }
 
-std::pair<String, bool> NetworkStorageSession::cookieRequestHeaderFieldValue(const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, IncludeSecureCookies includeSecureCookies) const
+std::pair<String, bool> NetworkStorageSession::cookieRequestHeaderFieldValue(const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, IncludeSecureCookies includeSecureCookies, ShouldAskITP) const
 {
     return cookieStorage().cookieRequestHeaderFieldValue(*this, firstParty, sameSiteInfo, url, frameID, pageID, includeSecureCookies);
 }

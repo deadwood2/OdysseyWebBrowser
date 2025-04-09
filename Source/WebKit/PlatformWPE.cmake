@@ -75,12 +75,6 @@ list(APPEND WebKit_UNIFIED_SOURCE_LIST_FILES
     "SourcesWPE.txt"
 )
 
-list(APPEND WebKit_MESSAGES_IN_FILES
-    NetworkProcess/CustomProtocols/LegacyCustomProtocolManager.messages.in
-
-    UIProcess/Network/CustomProtocols/LegacyCustomProtocolManagerProxy.messages.in
-)
-
 list(APPEND WebKit_DERIVED_SOURCES
     ${WebKit_DERIVED_SOURCES_DIR}/WebKitResourcesGResourceBundle.c
 
@@ -116,6 +110,7 @@ set(WPE_API_INSTALLED_HEADERS
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitGeolocationManager.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitGeolocationPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitHitTestResult.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitInputMethodContext.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitInstallMissingMediaPluginsPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitJavascriptResult.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitMimeInfo.h
@@ -124,9 +119,12 @@ set(WPE_API_INSTALLED_HEADERS
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitNetworkProxySettings.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitNotificationPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitNotification.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitOptionMenu.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitOptionMenuItem.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitPlugin.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitPolicyDecision.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitRectangle.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitResponsePolicyDecision.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitScriptDialog.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitSecurityManager.h
@@ -140,6 +138,7 @@ set(WPE_API_INSTALLED_HEADERS
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitUserContentFilterStore.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitUserContentManager.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitUserMediaPermissionRequest.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitUserMessage.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitWebContext.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitWebResource.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitWebView.h
@@ -232,10 +231,8 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${FORWARDING_HEADERS_WPE_DOM_DIR}"
     "${DERIVED_SOURCES_DIR}"
     "${DERIVED_SOURCES_WPE_API_DIR}"
-    "${WEBKIT_DIR}/NetworkProcess/CustomProtocols/soup"
     "${WEBKIT_DIR}/NetworkProcess/glib"
     "${WEBKIT_DIR}/NetworkProcess/soup"
-    "${WEBKIT_DIR}/NetworkProcess/unix"
     "${WEBKIT_DIR}/Platform/IPC/glib"
     "${WEBKIT_DIR}/Platform/IPC/unix"
     "${WEBKIT_DIR}/Platform/classifier"
@@ -246,13 +243,11 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/Shared/glib"
     "${WEBKIT_DIR}/Shared/libwpe"
     "${WEBKIT_DIR}/Shared/soup"
-    "${WEBKIT_DIR}/Shared/unix"
     "${WEBKIT_DIR}/UIProcess/API/C/cairo"
     "${WEBKIT_DIR}/UIProcess/API/C/wpe"
     "${WEBKIT_DIR}/UIProcess/API/glib"
     "${WEBKIT_DIR}/UIProcess/API/wpe"
     "${WEBKIT_DIR}/UIProcess/CoordinatedGraphics"
-    "${WEBKIT_DIR}/UIProcess/Network/CustomProtocols/soup"
     "${WEBKIT_DIR}/UIProcess/geoclue"
     "${WEBKIT_DIR}/UIProcess/gstreamer"
     "${WEBKIT_DIR}/UIProcess/linux"
@@ -263,7 +258,6 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM"
     "${WEBKIT_DIR}/WebProcess/soup"
-    "${WEBKIT_DIR}/WebProcess/unix"
     "${WEBKIT_DIR}/WebProcess/WebCoreSupport/soup"
     "${WEBKIT_DIR}/WebProcess/WebPage/CoordinatedGraphics"
     "${WEBKIT_DIR}/WebProcess/WebPage/atk"
@@ -281,13 +275,14 @@ list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
     ${FREETYPE_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
     ${GSTREAMER_INCLUDE_DIRS}
-    ${HARFBUZZ_INCLUDE_DIRS}
     ${LIBSECCOMP_INCLUDE_DIRS}
     ${LIBSOUP_INCLUDE_DIRS}
     ${WPE_INCLUDE_DIRS}
 )
 
 list(APPEND WebKit_LIBRARIES
+    HarfBuzz::HarfBuzz
+    HarfBuzz::ICU
     ${ATK_LIBRARIES}
     ${ATK_BRIDGE_LIBRARIES}
     ${CAIRO_LIBRARIES}
@@ -295,7 +290,6 @@ list(APPEND WebKit_LIBRARIES
     ${GLIB_LIBRARIES}
     ${GLIB_GMODULE_LIBRARIES}
     ${GSTREAMER_LIBRARIES}
-    ${HARFBUZZ_LIBRARIES}
     ${LIBSECCOMP_LIBRARIES}
     ${LIBSOUP_LIBRARIES}
     ${WPE_LIBRARIES}
@@ -401,16 +395,16 @@ if (ENABLE_WPE_QT_API)
     target_compile_definitions(qtwpe PUBLIC QT_NO_KEYWORDS=1)
     target_link_libraries(qtwpe ${qtwpe_LIBRARIES})
     target_include_directories(qtwpe SYSTEM PRIVATE ${qtwpe_INCLUDE_DIRECTORIES})
-    install(TARGETS qtwpe DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}/qml/org/wpewebkit/qtwpe/")
-    install(FILES ${WEBKIT_DIR}/UIProcess/API/wpe/qt/qmldir DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}/qml/org/wpewebkit/qtwpe/")
+    install(TARGETS qtwpe DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}/qt5/qml/org/wpewebkit/qtwpe/")
+    install(FILES ${WEBKIT_DIR}/UIProcess/API/wpe/qt/qmldir DESTINATION "${CMAKE_INSTALL_FULL_LIBDIR}/qt5/qml/org/wpewebkit/qtwpe/")
 
-    file(MAKE_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/qml/org/wpewebkit/qtwpe)
+    file(MAKE_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/qt5/qml/org/wpewebkit/qtwpe)
     add_custom_command(TARGET qtwpe POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy
         ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libqtwpe.so
-        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/qml/org/wpewebkit/qtwpe)
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/qt5/qml/org/wpewebkit/qtwpe)
     add_custom_command(TARGET qtwpe POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy
         ${WEBKIT_DIR}/UIProcess/API/wpe/qt/qmldir
-        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/qml/org/wpewebkit/qtwpe)
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/qt5/qml/org/wpewebkit/qtwpe)
 endif ()
 
 install(TARGETS WPEInjectedBundle

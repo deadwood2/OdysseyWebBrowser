@@ -26,6 +26,7 @@
 #include "config.h"
 
 #import "PlatformUtilities.h"
+#import "TCPServer.h"
 #import "TestNavigationDelegate.h"
 #import "TestWKWebView.h"
 #import <WebKit/WKFoundation.h>
@@ -38,6 +39,17 @@
 #import <wtf/RetainPtr.h>
 
 static bool finishedNavigation = false;
+
+@interface _WKResourceLoadStatisticsFirstParty : NSObject
+@property (nonatomic, readonly) NSString *firstPartyDomain;
+@property (nonatomic, readonly) BOOL thirdPartyStorageAccessGranted;
+@property (nonatomic, readonly) NSTimeInterval timeLastUpdated;
+@end
+
+@interface _WKResourceLoadStatisticsThirdParty : NSObject
+@property (nonatomic, readonly) NSString *thirdPartyDomain;
+@property (nonatomic, readonly) NSArray<_WKResourceLoadStatisticsFirstParty *> *underFirstParties;
+@end
 
 @interface DisableITPDuringNavigationDelegate : NSObject <WKNavigationDelegate>
 @end
@@ -57,6 +69,33 @@ static bool finishedNavigation = false;
 
 @end
 
+bool isITPDatabaseEnabled()
+{
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto defaultDatabaseEnabled = [configuration preferences]._isITPDatabaseEnabled;
+
+    NSNumber *databaseEnabledValue = [defaults objectForKey:@"InternalDebugIsITPDatabaseEnabled"];
+    if (databaseEnabledValue)
+        return databaseEnabledValue.boolValue;
+
+    return defaultDatabaseEnabled;
+}
+
+static void ensureITPFileIsCreated()
+{
+    static bool doneFlag;
+    auto *dataStore = [WKWebsiteDataStore defaultDataStore];
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    [dataStore _setResourceLoadStatisticsEnabled:YES];
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
+    [dataStore _setUseITPDatabase:true completionHandler: ^(void) {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+    [dataStore _setResourceLoadStatisticsEnabled:NO];
+}
+
 TEST(ResourceLoadStatistics, GrandfatherCallback)
 {
     auto *dataStore = [WKWebsiteDataStore defaultDataStore];
@@ -71,7 +110,9 @@ TEST(ResourceLoadStatistics, GrandfatherCallback)
     static bool grandfatheredFlag;
 
     [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
-        ASSERT_TRUE([message isEqualToString:@"Grandfathered"]);
+        // Only if the database store is not default-enabled do we need to check that this first message is correct.
+        if (!isITPDatabaseEnabled())
+            ASSERT_TRUE([message isEqualToString:@"Grandfathered"]);
         grandfatheredFlag = true;
     }];
 
@@ -79,6 +120,25 @@ TEST(ResourceLoadStatistics, GrandfatherCallback)
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
     [dataStore _setResourceLoadStatisticsEnabled:YES];
     [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
+
+    if (isITPDatabaseEnabled()) {
+        TestWebKitAPI::Util::run(&grandfatheredFlag);
+
+        // Since the database store is enabled, we need to disable it to test this functionality with the plist.
+        // We already have a NetworkProcess up and running with ITP enabled. We now make another call initializing
+        // the memory store and testing grandfathering.
+        grandfatheredFlag = false;
+        [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+            ASSERT_TRUE([message isEqualToString:@"Grandfathered"]);
+            grandfatheredFlag = true;
+        }];
+
+        [dataStore _setUseITPDatabase:false completionHandler: ^(void) {
+            doneFlag = true;
+        }];
+
+        TestWebKitAPI::Util::run(&doneFlag);
+    }
 
     TestWebKitAPI::Util::run(&grandfatheredFlag);
 
@@ -91,6 +151,7 @@ TEST(ResourceLoadStatistics, GrandfatherCallback)
     }
 
     grandfatheredFlag = false;
+    doneFlag = false;
     [dataStore removeDataOfTypes:[WKWebsiteDataStore _allWebsiteDataTypesIncludingPrivate]  modifiedSince:[NSDate distantPast] completionHandler:^ {
         doneFlag = true;
     }];
@@ -122,6 +183,83 @@ TEST(ResourceLoadStatistics, GrandfatherCallback)
     }
 }
 
+TEST(ResourceLoadStatistics, GrandfatherCallbackDatabase)
+{
+    auto *dataStore = [WKWebsiteDataStore defaultDataStore];
+
+    NSURL *statisticsDirectoryURL = [NSURL fileURLWithPath:[@"~/Library/WebKit/TestWebKitAPI/WebsiteData/ResourceLoadStatistics" stringByExpandingTildeInPath] isDirectory:YES];
+    NSURL *fileURL = [statisticsDirectoryURL URLByAppendingPathComponent:@"observations.db"];
+    [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil];
+    [[NSFileManager defaultManager] removeItemAtURL:statisticsDirectoryURL error:nil];
+    EXPECT_FALSE([[NSFileManager defaultManager] fileExistsAtPath:statisticsDirectoryURL.path]);
+
+    static bool grandfatheredFlag;
+    static bool doneFlag;
+
+    [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+        // Only if the database store is default-enabled do we need to check that this first message is correct.
+        if (isITPDatabaseEnabled())
+            ASSERT_TRUE([message isEqualToString:@"Grandfathered"]);
+        grandfatheredFlag = true;
+    }];
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    [dataStore _setResourceLoadStatisticsEnabled:YES];
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
+
+    if (!isITPDatabaseEnabled()) {
+        TestWebKitAPI::Util::run(&grandfatheredFlag);
+
+        // Since the database store is not enabled, we need to update the store to use a database instead of a plist for this test.
+        // We already have a NetworkProcess up and running with ITP enabled. We now make another call initializing
+        // the database store and testing grandfathering.
+        grandfatheredFlag = false;
+        [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+            ASSERT_TRUE([message isEqualToString:@"Grandfathered"]);
+            grandfatheredFlag = true;
+        }];
+
+        [dataStore _setUseITPDatabase:true completionHandler: ^(void) {
+            doneFlag = true;
+        }];
+
+        TestWebKitAPI::Util::run(&doneFlag);
+    }
+
+    TestWebKitAPI::Util::run(&grandfatheredFlag);
+
+    // Spin the runloop until the resource load statistics file has written to disk.
+    // If the test enters a spin loop here, it has failed.
+    while (true) {
+        if ([[NSFileManager defaultManager] fileExistsAtPath:fileURL.path])
+            break;
+        TestWebKitAPI::Util::spinRunLoop(1);
+    }
+
+    grandfatheredFlag = false;
+    doneFlag = false;
+    [dataStore removeDataOfTypes:[WKWebsiteDataStore _allWebsiteDataTypesIncludingPrivate]  modifiedSince:[NSDate distantPast] completionHandler:^ {
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+    TestWebKitAPI::Util::spinRunLoop(10);
+
+    // The website data store remove should have completed, but since we removed all of the data types that are monitored by resource load statistics,
+    // no grandfathering call should have been made. Note that the database file will not be deleted like in the persistent storage case, only cleared.
+    EXPECT_FALSE(grandfatheredFlag);
+
+    doneFlag = false;
+    [dataStore removeDataOfTypes:[NSSet setWithObjects:WKWebsiteDataTypeCookies, _WKWebsiteDataTypeResourceLoadStatistics, nil] modifiedSince:[NSDate distantPast] completionHandler:^ {
+        doneFlag = true;
+    }];
+
+    // Since we did not remove every data type covered by resource load statistics, we do expect that grandfathering took place again.
+    // If the test hangs waiting on either of these conditions, it has failed.
+    TestWebKitAPI::Util::run(&grandfatheredFlag);
+    TestWebKitAPI::Util::run(&doneFlag);
+}
+
 TEST(ResourceLoadStatistics, ShouldNotGrandfatherOnStartup)
 {
     auto *dataStore = [WKWebsiteDataStore defaultDataStore];
@@ -136,8 +274,12 @@ TEST(ResourceLoadStatistics, ShouldNotGrandfatherOnStartup)
     EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:targetURL.path]);
 
     static bool callbackFlag;
+    static bool doneFlag;
+
     [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
-        ASSERT_TRUE([message isEqualToString:@"PopulatedWithoutGrandfathering"]);
+        // Only if the database store is not default-enabled do we need to check that this first message is correct.
+        if (!isITPDatabaseEnabled())
+            ASSERT_TRUE([message isEqualToString:@"PopulatedWithoutGrandfathering"]);
         callbackFlag = true;
     }];
 
@@ -145,6 +287,75 @@ TEST(ResourceLoadStatistics, ShouldNotGrandfatherOnStartup)
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
     [dataStore _setResourceLoadStatisticsEnabled:YES];
     [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
+
+    if (isITPDatabaseEnabled()) {
+        TestWebKitAPI::Util::run(&callbackFlag);
+
+        // Since the database store is enabled, we need to disable it to test this functionality with the plist.
+        // We already have a NetworkProcess up and running with ITP enabled. We now make another call initializing
+        // the memory store and testing grandfathering.
+        callbackFlag = false;
+        [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+            ASSERT_TRUE([message isEqualToString:@"PopulatedWithoutGrandfathering"]);
+            callbackFlag = true;
+        }];
+
+        // Since the ITP Database is enabled, the plist file has been deleted. We need to create it again.
+        [[NSFileManager defaultManager] createDirectoryAtURL:statisticsDirectoryURL withIntermediateDirectories:YES attributes:nil error:nil];
+        [[NSFileManager defaultManager] copyItemAtURL:testResourceURL toURL:targetURL error:nil];
+        EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:targetURL.path]);
+
+        [dataStore _setUseITPDatabase:false completionHandler: ^(void) {
+            doneFlag = true;
+        }];
+
+        TestWebKitAPI::Util::run(&doneFlag);
+    }
+
+    TestWebKitAPI::Util::run(&callbackFlag);
+}
+
+TEST(ResourceLoadStatistics, ShouldNotGrandfatherOnStartupDatabase)
+{
+    auto *dataStore = [WKWebsiteDataStore defaultDataStore];
+
+    ensureITPFileIsCreated();
+
+    static bool callbackFlag;
+    static bool doneFlag;
+
+    [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+        // Only if the database store is default-enabled do we need to check that this first message is correct.
+        if (isITPDatabaseEnabled())
+            ASSERT_TRUE([message isEqualToString:@"PopulatedWithoutGrandfathering"]);
+        callbackFlag = true;
+    }];
+
+    // We need an active NetworkProcess to perform ResourceLoadStatistics operations.
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    [dataStore _setResourceLoadStatisticsEnabled:YES];
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
+
+    if (!isITPDatabaseEnabled()) {
+        TestWebKitAPI::Util::run(&callbackFlag);
+
+        // Since the database store is not enabled, we need to update the store to use a database instead of a plist for this test.
+        // We already have a NetworkProcess up and running with ITP enabled. We now make another call initializing
+        // the database store and testing grandfathering.
+        callbackFlag = false;
+        [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+            ASSERT_TRUE([message isEqualToString:@"PopulatedWithoutGrandfathering"]);
+            callbackFlag = true;
+        }];
+
+        ensureITPFileIsCreated();
+
+        [dataStore _setUseITPDatabase:true completionHandler: ^(void) {
+            doneFlag = true;
+        }];
+
+        TestWebKitAPI::Util::run(&doneFlag);
+    }
 
     TestWebKitAPI::Util::run(&callbackFlag);
 }
@@ -164,13 +375,16 @@ TEST(ResourceLoadStatistics, ChildProcessesNotLaunched)
 
     [[NSFileManager defaultManager] createDirectoryAtURL:statisticsDirectoryURL withIntermediateDirectories:YES attributes:nil error:nil];
     [[NSFileManager defaultManager] copyItemAtURL:testResourceURL toURL:targetURL error:nil];
-
+    
     EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:targetURL.path]);
 
+    static bool callbackFlag;
     static bool doneFlag;
     [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
-        EXPECT_TRUE([message isEqualToString:@"PopulatedWithoutGrandfathering"]);
-        doneFlag = true;
+        // Only if the database store is not default-enabled do we need to check that this first message is correct.
+        if (!isITPDatabaseEnabled())
+            EXPECT_TRUE([message isEqualToString:@"PopulatedWithoutGrandfathering"]);
+        callbackFlag = true;
     }];
 
     // We need an active NetworkProcess to perform ResourceLoadStatistics operations.
@@ -178,7 +392,90 @@ TEST(ResourceLoadStatistics, ChildProcessesNotLaunched)
     [dataStore _setResourceLoadStatisticsEnabled:YES];
     [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
 
-    TestWebKitAPI::Util::run(&doneFlag);
+    if (isITPDatabaseEnabled()) {
+        TestWebKitAPI::Util::run(&callbackFlag);
+
+        // Since the database store is enabled, we need to disable it to test this functionality with the plist.
+        // We already have a NetworkProcess up and running with ITP enabled. We now make another call initializing
+        // the memory store and testing grandfathering.
+        callbackFlag = false;
+        [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+            ASSERT_TRUE([message isEqualToString:@"PopulatedWithoutGrandfathering"]);
+            callbackFlag = true;
+        }];
+
+        // Since the ITP Database is enabled, the plist file has been deleted. We need to create it again.
+        [[NSFileManager defaultManager] createDirectoryAtURL:statisticsDirectoryURL withIntermediateDirectories:YES attributes:nil error:nil];
+        [[NSFileManager defaultManager] copyItemAtURL:testResourceURL toURL:targetURL error:nil];
+        EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:targetURL.path]);
+
+        [dataStore _setUseITPDatabase:false completionHandler: ^(void) {
+            doneFlag = true;
+        }];
+
+        TestWebKitAPI::Util::run(&doneFlag);
+    }
+
+    TestWebKitAPI::Util::run(&callbackFlag);
+
+    EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:targetURL.path]);
+
+    webView.clear();
+
+    EXPECT_EQ((size_t)0, [sharedProcessPool _pluginProcessCount]);
+}
+
+TEST(ResourceLoadStatistics, ChildProcessesNotLaunchedDatabase)
+{
+    // Ensure the shared process pool exists so the data store operations we're about to do work with it.
+    WKProcessPool *sharedProcessPool = [WKProcessPool _sharedProcessPool];
+
+    EXPECT_EQ((size_t)0, [sharedProcessPool _pluginProcessCount]);
+
+    auto *dataStore = [WKWebsiteDataStore defaultDataStore];
+
+    NSURL *statisticsDirectoryURL = [NSURL fileURLWithPath:[@"~/Library/WebKit/TestWebKitAPI/WebsiteData/ResourceLoadStatistics" stringByExpandingTildeInPath] isDirectory:YES];
+    NSURL *targetURL = [statisticsDirectoryURL URLByAppendingPathComponent:@"observations.db"];
+
+    ensureITPFileIsCreated();
+
+    static bool callbackFlag;
+    static bool doneFlag;
+
+    [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+        // Only if the database store is default-enabled do we need to check that this first message is correct.
+        if (isITPDatabaseEnabled())
+            EXPECT_TRUE([message isEqualToString:@"PopulatedWithoutGrandfathering"]);
+        callbackFlag = true;
+    }];
+
+    // We need an active NetworkProcess to perform ResourceLoadStatistics operations.
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    [dataStore _setResourceLoadStatisticsEnabled:YES];
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
+
+    if (!isITPDatabaseEnabled()) {
+        TestWebKitAPI::Util::run(&callbackFlag);
+
+        // Since the database store is not enabled, we need to update the store to use a database instead of a plist for this test.
+        // We already have a NetworkProcess up and running with ITP enabled. We now make another call initializing
+        // the database store and testing grandfathering.
+        callbackFlag = false;
+        [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+            ASSERT_TRUE([message isEqualToString:@"PopulatedWithoutGrandfathering"]);
+            callbackFlag = true;
+        }];
+
+        ensureITPFileIsCreated();
+
+        [dataStore _setUseITPDatabase:true completionHandler: ^(void) {
+            doneFlag = true;
+        }];
+
+        TestWebKitAPI::Util::run(&doneFlag);
+    }
+
+    TestWebKitAPI::Util::run(&callbackFlag);
 
     EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:targetURL.path]);
 
@@ -474,6 +771,108 @@ TEST(ResourceLoadStatistics, NetworkProcessRestart)
     TestWebKitAPI::Util::run(&doneFlag);
 }
 
+@interface DataTaskIdentifierCollisionDelegate : NSObject <WKNavigationDelegate, WKUIDelegate>
+- (NSArray<NSString *> *)waitForMessages:(size_t)count;
+@end
+
+@implementation DataTaskIdentifierCollisionDelegate {
+    RetainPtr<NSMutableArray<NSString *>> _messages;
+}
+
+- (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler
+{
+    [_messages addObject:message];
+    completionHandler();
+}
+
+- (NSArray<NSString *> *)waitForMessages:(size_t)messageCount
+{
+    _messages = adoptNS([NSMutableArray arrayWithCapacity:messageCount]);
+    while ([_messages count] < messageCount)
+        TestWebKitAPI::Util::spinRunLoop();
+    return _messages.autorelease();
+}
+
+- (void)webView:(WKWebView *)webView didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential * credential))completionHandler
+{
+    completionHandler(NSURLSessionAuthChallengeUseCredential, [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust]);
+}
+
+@end
+
+#if HAVE(SSL)
+TEST(ResourceLoadStatistics, DataTaskIdentifierCollision)
+{
+    using namespace TestWebKitAPI;
+
+    std::atomic<unsigned> serversConnected { 0 };
+    const char* header = "HTTP/1.1 200 OK\r\nContent-Length: 27\r\n\r\n";
+
+    TCPServer httpsServer(TCPServer::Protocol::HTTPSProxy, [&] (SSL* ssl) {
+        serversConnected++;
+        while (serversConnected < 2)
+            usleep(100000);
+        TCPServer::read(ssl);
+        TCPServer::write(ssl, header, strlen(header));
+        const char* body = "<script>alert('1')</script>";
+        TCPServer::write(ssl, body, strlen(body));
+    });
+
+    TCPServer httpServer([&] (int socket) {
+        serversConnected++;
+        while (serversConnected < 2)
+            usleep(100000);
+        TCPServer::read(socket);
+        TCPServer::write(socket, header, strlen(header));
+        const char* body = "<script>alert('2')</script>";
+        TCPServer::write(socket, body, strlen(body));
+    });
+
+    _WKWebsiteDataStoreConfiguration *storeConfiguration = [[_WKWebsiteDataStoreConfiguration new] autorelease];
+    storeConfiguration.httpsProxy = [NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/", httpsServer.port()]];
+    storeConfiguration.allowsServerPreconnect = NO;
+    WKWebsiteDataStore *dataStore = [[[WKWebsiteDataStore alloc] _initWithConfiguration:storeConfiguration] autorelease];
+    auto viewConfiguration = adoptNS([WKWebViewConfiguration new]);
+    [viewConfiguration setWebsiteDataStore:dataStore];
+
+    auto webView1 = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 100, 100) configuration:viewConfiguration.get()]);
+    [webView1 synchronouslyLoadHTMLString:@"start network process and initialize data store"];
+    auto delegate = adoptNS([DataTaskIdentifierCollisionDelegate new]);
+    auto webView2 = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 100, 100) configuration:viewConfiguration.get()]);
+    [webView1 setUIDelegate:delegate.get()];
+    [webView1 setNavigationDelegate:delegate.get()];
+    [webView2 setUIDelegate:delegate.get()];
+    [webView2 setNavigationDelegate:delegate.get()];
+    [dataStore _setResourceLoadStatisticsEnabled:YES];
+    [dataStore _setResourceLoadStatisticsDebugMode:YES];
+
+    __block bool isolatedSessionDomain = false;
+    __block NSURL *prevalentExample = [NSURL URLWithString:@"https://prevalent-example.com/"];
+    [dataStore _logUserInteraction:prevalentExample completionHandler:^{
+        [dataStore _setPrevalentDomain:prevalentExample completionHandler: ^(void) {
+            [dataStore _scheduleCookieBlockingUpdate:^{
+                isolatedSessionDomain = true;
+            }];
+        }];
+    }];
+    TestWebKitAPI::Util::run(&isolatedSessionDomain);
+
+    [webView1 loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%d/", httpServer.port()]]]];
+    [webView2 loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://prevalent-example.com/"]]];
+
+    NSArray<NSString *> *messages = [delegate waitForMessages:2];
+    auto contains = [] (NSArray<NSString *> *array, NSString *expected) {
+        for (NSString *s in array) {
+            if ([s isEqualToString:expected])
+                return true;
+        }
+        return false;
+    };
+    EXPECT_TRUE(contains(messages, @"1"));
+    EXPECT_TRUE(contains(messages, @"2"));
+}
+#endif // HAVE(SSL)
+
 TEST(ResourceLoadStatistics, NoMessagesWhenNotTesting)
 {
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
@@ -483,4 +882,535 @@ TEST(ResourceLoadStatistics, NoMessagesWhenNotTesting)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) configuration:configuration.get()]);
     [webView synchronouslyLoadTestPageNamed:@"simple"];
     EXPECT_FALSE([WKWebsiteDataStore _defaultDataStoreExists]);
+}
+
+TEST(ResourceLoadStatistics, FlushObserverWhenWebPageIsClosedByJavaScript)
+{
+    auto *sharedProcessPool = [WKProcessPool _sharedProcessPool];
+    auto *dataStore = [WKWebsiteDataStore defaultDataStore];
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [configuration setProcessPool: sharedProcessPool];
+    configuration.get().websiteDataStore = dataStore;
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    [webView loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView _test_waitForDidFinishNavigation];
+
+    [dataStore _setResourceLoadStatisticsEnabled:YES];
+
+    static bool doneFlag = false;
+    [dataStore _clearResourceLoadStatistics:^(void) {
+        doneFlag = true;
+    }];
+
+    static bool statisticsUpdated = false;
+    [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+        if (![message isEqualToString:@"Statistics Updated"])
+            return;
+        statisticsUpdated = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Seed test data in the web process' observer.
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Check that the third-party is not yet registered.
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_FALSE(isRegistered);
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    statisticsUpdated = false;
+    [webView loadHTMLString:@"<body><script>close();</script></body>" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+
+    // Wait for the statistics to be updated in the network process.
+    TestWebKitAPI::Util::run(&statisticsUpdated);
+
+    // Check that the third-party is now registered.
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+}
+
+TEST(ResourceLoadStatistics, GetResourceLoadStatisticsDataSummary)
+{
+    auto *sharedProcessPool = [WKProcessPool _sharedProcessPool];
+    auto *dataStore = [WKWebsiteDataStore defaultDataStore];
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [configuration setProcessPool: sharedProcessPool];
+    configuration.get().websiteDataStore = dataStore;
+
+    auto webView1 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    auto webView2 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    auto webView3 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    [webView1 loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView1 _test_waitForDidFinishNavigation];
+    [webView2 loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit2.org"]];
+    [webView2 _test_waitForDidFinishNavigation];
+    [webView3 loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit3.org"]];
+    [webView3 _test_waitForDidFinishNavigation];
+
+    [dataStore _setResourceLoadStatisticsEnabled:YES];
+
+    static bool doneFlag = false;
+    [dataStore _clearResourceLoadStatistics:^(void) {
+        doneFlag = true;
+    }];
+
+    static bool statisticsUpdated = false;
+    [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+        if (![message isEqualToString:@"Statistics Updated"])
+            return;
+        statisticsUpdated = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // set third parties to be prevalent
+    [dataStore _setPrevalentDomain:[NSURL URLWithString:@"http://evil1.com"] completionHandler: ^(void) {
+        doneFlag = true;
+    }];
+    doneFlag = false;
+    [dataStore _setPrevalentDomain:[NSURL URLWithString:@"http://evil2.com"] completionHandler: ^(void) {
+        doneFlag = true;
+    }];
+    doneFlag = false;
+    [dataStore _setPrevalentDomain:[NSURL URLWithString:@"http://evil3.com"] completionHandler: ^(void) {
+        doneFlag = true;
+    }];
+
+    // Seed test data in the web process' observer.
+
+    // evil1
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil1.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit2.org"] thirdParty:[NSURL URLWithString:@"http://evil1.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+
+    // evil2
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil2.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+
+    // evil3
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil3.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit2.org"] thirdParty:[NSURL URLWithString:@"http://evil3.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit3.org"] thirdParty:[NSURL URLWithString:@"http://evil3.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    statisticsUpdated = false;
+    [webView1 loadHTMLString:@"<body><script>close();</script></body>" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView2 loadHTMLString:@"<body><script>close();</script></body>" baseURL:[NSURL URLWithString:@"http://webkit2.org"]];
+    [webView3 loadHTMLString:@"<body><script>close();</script></body>" baseURL:[NSURL URLWithString:@"http://webkit3.org"]];
+
+    // Wait for the statistics to be updated in the network process.
+    TestWebKitAPI::Util::run(&statisticsUpdated);
+
+    // Check that the third-party evil1 is now registered as subresource.
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil1.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit2.org"] thirdParty:[NSURL URLWithString:@"http://evil1.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+
+    // Check that the third-party evil2 is now registered as subresource.
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil2.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+
+    // Check that the third-party evil3 is now registered as subresource.
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil3.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit2.org"] thirdParty:[NSURL URLWithString:@"http://evil3.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit3.org"] thirdParty:[NSURL URLWithString:@"http://evil3.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+
+    // Collect the ITP data summary which should include all third parties in the
+    // order: [evil3.com, evil1.com, evil2.com] sorted by number of first parties
+    // it appears under or redirects to
+    doneFlag = false;
+    [dataStore _getResourceLoadStatisticsDataSummary:^void(NSArray<_WKResourceLoadStatisticsThirdParty *> *thirdPartyData)
+    {
+        NSEnumerator *thirdPartyDomains = [thirdPartyData objectEnumerator];
+
+        // evil3
+        _WKResourceLoadStatisticsThirdParty *evil3ThirdParty = [thirdPartyDomains nextObject];
+        EXPECT_WK_STREQ(evil3ThirdParty.thirdPartyDomain, @"evil3.com");
+
+        NSEnumerator *evil3Enumerator = [evil3ThirdParty.underFirstParties objectEnumerator];
+        _WKResourceLoadStatisticsFirstParty *evil3FirstParty1 = [evil3Enumerator nextObject];
+        _WKResourceLoadStatisticsFirstParty *evil3FirstParty2 = [evil3Enumerator nextObject];
+        _WKResourceLoadStatisticsFirstParty *evil3FirstParty3 = [evil3Enumerator nextObject];
+
+        ASSERT_TRUE(evil3FirstParty1 != nil);
+        ASSERT_TRUE(evil3FirstParty2 != nil);
+        ASSERT_TRUE(evil3FirstParty3 != nil);
+
+        EXPECT_WK_STREQ(evil3FirstParty1.firstPartyDomain, @"webkit2.org");
+        EXPECT_WK_STREQ(evil3FirstParty2.firstPartyDomain, @"webkit3.org");
+        EXPECT_WK_STREQ(evil3FirstParty3.firstPartyDomain, @"webkit.org");
+
+        EXPECT_FALSE(evil3FirstParty1.thirdPartyStorageAccessGranted);
+        EXPECT_FALSE(evil3FirstParty2.thirdPartyStorageAccessGranted);
+        EXPECT_FALSE(evil3FirstParty3.thirdPartyStorageAccessGranted);
+
+        // evil1
+        _WKResourceLoadStatisticsThirdParty *evil1ThirdParty = [thirdPartyDomains nextObject];
+        EXPECT_WK_STREQ(evil1ThirdParty.thirdPartyDomain, @"evil1.com");
+
+        NSEnumerator *evil1Enumerator = [evil1ThirdParty.underFirstParties objectEnumerator];
+        _WKResourceLoadStatisticsFirstParty *evil1FirstParty1= [evil1Enumerator nextObject];
+        _WKResourceLoadStatisticsFirstParty *evil1FirstParty2 = [evil1Enumerator nextObject];
+
+        ASSERT_TRUE(evil1FirstParty1 != nil);
+        ASSERT_TRUE(evil1FirstParty2 != nil);
+
+        EXPECT_WK_STREQ(evil1FirstParty1.firstPartyDomain, @"webkit2.org");
+        EXPECT_WK_STREQ(evil1FirstParty2.firstPartyDomain, @"webkit.org");
+
+        EXPECT_FALSE(evil1FirstParty1.thirdPartyStorageAccessGranted);
+        EXPECT_FALSE(evil1FirstParty2.thirdPartyStorageAccessGranted);
+
+        // evil2
+        _WKResourceLoadStatisticsThirdParty *evil2ThirdParty = [thirdPartyDomains nextObject];
+        EXPECT_WK_STREQ(evil2ThirdParty.thirdPartyDomain, @"evil2.com");
+
+        NSEnumerator *evil2Enumerator = [evil2ThirdParty.underFirstParties objectEnumerator];
+        _WKResourceLoadStatisticsFirstParty *evil2FirstParty1 = [evil2Enumerator nextObject];
+
+        ASSERT_TRUE(evil2FirstParty1 != nil);
+
+        EXPECT_WK_STREQ(evil2FirstParty1.firstPartyDomain, @"webkit.org");
+        EXPECT_FALSE(evil2FirstParty1.thirdPartyStorageAccessGranted);
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+}
+
+TEST(ResourceLoadStatistics, GetResourceLoadStatisticsDataSummaryDatabase)
+{
+    auto *sharedProcessPool = [WKProcessPool _sharedProcessPool];
+    auto *dataStore = [WKWebsiteDataStore defaultDataStore];
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [configuration setProcessPool: sharedProcessPool];
+    configuration.get().websiteDataStore = dataStore;
+
+    auto webView1 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    auto webView2 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    auto webView3 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    [webView1 loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView1 _test_waitForDidFinishNavigation];
+    [webView2 loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit2.org"]];
+    [webView2 _test_waitForDidFinishNavigation];
+    [webView3 loadHTMLString:@"WebKit Test" baseURL:[NSURL URLWithString:@"http://webkit3.org"]];
+    [webView3 _test_waitForDidFinishNavigation];
+
+    [dataStore _setResourceLoadStatisticsEnabled:YES];
+
+    static bool doneFlag = false;
+    [dataStore _setUseITPDatabase:true completionHandler: ^(void) {
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    doneFlag = false;
+    [dataStore _clearResourceLoadStatistics:^(void) {
+        doneFlag = true;
+    }];
+
+    static bool statisticsUpdated = false;
+    [dataStore _setResourceLoadStatisticsTestingCallback:^(WKWebsiteDataStore *, NSString *message) {
+        if (![message isEqualToString:@"Statistics Updated"])
+            return;
+        statisticsUpdated = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Teach ITP about bad origins.
+    doneFlag = false;
+    [dataStore _setPrevalentDomain:[NSURL URLWithString:@"http://evil1.com"] completionHandler: ^(void) {
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    doneFlag = false;
+    [dataStore _setPrevalentDomain:[NSURL URLWithString:@"http://evil2.com"] completionHandler: ^(void) {
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    doneFlag = false;
+    [dataStore _setPrevalentDomain:[NSURL URLWithString:@"http://evil3.com"] completionHandler: ^(void) {
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Capture time for comparison later.
+    NSTimeInterval beforeUpdatingTime = [[NSDate date] timeIntervalSince1970];
+
+    // Seed test data in the web process' observer.
+
+    // evil1
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil1.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit2.org"] thirdParty:[NSURL URLWithString:@"http://evil1.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // evil2
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil2.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // evil3
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil3.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit2.org"] thirdParty:[NSURL URLWithString:@"http://evil3.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+    doneFlag = false;
+    [sharedProcessPool _seedResourceLoadStatisticsForTestingWithFirstParty:[NSURL URLWithString:@"http://webkit3.org"] thirdParty:[NSURL URLWithString:@"http://evil3.com"] shouldScheduleNotification:NO completionHandler: ^() {
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    statisticsUpdated = false;
+    [webView1 loadHTMLString:@"<body><script>close();</script></body>" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView2 loadHTMLString:@"<body><script>close();</script></body>" baseURL:[NSURL URLWithString:@"http://webkit2.org"]];
+    [webView3 loadHTMLString:@"<body><script>close();</script></body>" baseURL:[NSURL URLWithString:@"http://webkit3.org"]];
+
+    // Wait for the statistics to be updated in the network process.
+    TestWebKitAPI::Util::run(&statisticsUpdated);
+
+    // Check that the third-party evil1 is now registered as subresource.
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil1.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit2.org"] thirdParty:[NSURL URLWithString:@"http://evil1.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Check that the third-party evil2 is now registered as subresource.
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil2.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Check that the third-party evil3 is now registered as subresource.
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit.org"] thirdParty:[NSURL URLWithString:@"http://evil3.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit2.org"] thirdParty:[NSURL URLWithString:@"http://evil3.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+    doneFlag = false;
+    [dataStore _isRegisteredAsSubresourceUnderFirstParty:[NSURL URLWithString:@"http://webkit3.org"] thirdParty:[NSURL URLWithString:@"http://evil3.com"] completionHandler: ^(BOOL isRegistered) {
+        EXPECT_TRUE(isRegistered);
+        doneFlag = true;
+    }];
+    TestWebKitAPI::Util::run(&doneFlag);
+
+    // Collect the ITP data summary which should include all third parties in the
+    // order: [evil3.com, evil1.com, evil2.com] sorted by number of first parties
+    // it appears under or redirects to.
+    doneFlag = false;
+    [dataStore _getResourceLoadStatisticsDataSummary:^void(NSArray<_WKResourceLoadStatisticsThirdParty *> *thirdPartyData)
+    {
+        NSEnumerator *thirdPartyDomains = [thirdPartyData objectEnumerator];
+
+        // evil3
+        _WKResourceLoadStatisticsThirdParty *evil3ThirdParty = [thirdPartyDomains nextObject];
+        EXPECT_WK_STREQ(evil3ThirdParty.thirdPartyDomain, @"evil3.com");
+
+        NSEnumerator *evil3Enumerator = [evil3ThirdParty.underFirstParties objectEnumerator];
+        _WKResourceLoadStatisticsFirstParty *evil3FirstParty1 = [evil3Enumerator nextObject];
+        _WKResourceLoadStatisticsFirstParty *evil3FirstParty2 = [evil3Enumerator nextObject];
+        _WKResourceLoadStatisticsFirstParty *evil3FirstParty3 = [evil3Enumerator nextObject];
+
+        ASSERT_TRUE(evil3FirstParty1 != nil);
+        ASSERT_TRUE(evil3FirstParty2 != nil);
+        ASSERT_TRUE(evil3FirstParty3 != nil);
+
+        EXPECT_WK_STREQ(evil3FirstParty1.firstPartyDomain, @"webkit2.org");
+        EXPECT_WK_STREQ(evil3FirstParty2.firstPartyDomain, @"webkit3.org");
+        EXPECT_WK_STREQ(evil3FirstParty3.firstPartyDomain, @"webkit.org");
+
+        EXPECT_FALSE(evil3FirstParty1.thirdPartyStorageAccessGranted);
+        EXPECT_FALSE(evil3FirstParty2.thirdPartyStorageAccessGranted);
+        EXPECT_FALSE(evil3FirstParty3.thirdPartyStorageAccessGranted);
+
+        NSTimeInterval rightNow = [[NSDate date] timeIntervalSince1970];
+
+        // Check timestamp for evil3 is reported as being within the correct range.
+        NSTimeInterval evil1TimeLastUpdated = evil3FirstParty1.timeLastUpdated;
+        NSTimeInterval evil2TimeLastUpdated = evil3FirstParty2.timeLastUpdated;
+        NSTimeInterval evil3TimeLastUpdated = evil3FirstParty3.timeLastUpdated;
+
+        EXPECT_TRUE(beforeUpdatingTime < evil1TimeLastUpdated);
+        EXPECT_TRUE(beforeUpdatingTime < evil2TimeLastUpdated);
+        EXPECT_TRUE(beforeUpdatingTime < evil3TimeLastUpdated);
+
+        NSTimeInterval evil1HourDifference = (rightNow - evil1TimeLastUpdated) / 3600;
+        NSTimeInterval evil2HourDifference = (rightNow - evil2TimeLastUpdated) / 3600;
+        NSTimeInterval evil3HourDifference = (rightNow - evil3TimeLastUpdated) / 3600;
+
+        EXPECT_TRUE(evil1HourDifference < 24*3600);
+        EXPECT_TRUE(evil2HourDifference < 24*3600);
+        EXPECT_TRUE(evil3HourDifference < 24*3600);
+
+        // evil1
+        _WKResourceLoadStatisticsThirdParty *evil1ThirdParty = [thirdPartyDomains nextObject];
+        EXPECT_WK_STREQ(evil1ThirdParty.thirdPartyDomain, @"evil1.com");
+
+        NSEnumerator *evil1Enumerator = [evil1ThirdParty.underFirstParties objectEnumerator];
+        _WKResourceLoadStatisticsFirstParty *evil1FirstParty1= [evil1Enumerator nextObject];
+        _WKResourceLoadStatisticsFirstParty *evil1FirstParty2 = [evil1Enumerator nextObject];
+
+        ASSERT_TRUE(evil1FirstParty1 != nil);
+        ASSERT_TRUE(evil1FirstParty2 != nil);
+
+        EXPECT_WK_STREQ(evil1FirstParty1.firstPartyDomain, @"webkit2.org");
+        EXPECT_WK_STREQ(evil1FirstParty2.firstPartyDomain, @"webkit.org");
+
+        EXPECT_FALSE(evil1FirstParty1.thirdPartyStorageAccessGranted);
+        EXPECT_FALSE(evil1FirstParty2.thirdPartyStorageAccessGranted);
+
+        // Check timestamp for evil1 is reported as being within the correct range.
+        evil1TimeLastUpdated = evil1FirstParty1.timeLastUpdated;
+        evil2TimeLastUpdated = evil1FirstParty2.timeLastUpdated;
+
+        EXPECT_TRUE(beforeUpdatingTime < evil1TimeLastUpdated);
+        EXPECT_TRUE(beforeUpdatingTime < evil2TimeLastUpdated);
+
+        evil1HourDifference = (rightNow - evil1TimeLastUpdated) / 3600;
+        evil2HourDifference = (rightNow - evil2TimeLastUpdated) / 3600;
+
+        EXPECT_TRUE(evil1HourDifference < 24*3600);
+        EXPECT_TRUE(evil2HourDifference < 24*3600);
+
+        // evil2
+        _WKResourceLoadStatisticsThirdParty *evil2ThirdParty = [thirdPartyDomains nextObject];
+        EXPECT_WK_STREQ(evil2ThirdParty.thirdPartyDomain, @"evil2.com");
+
+        NSEnumerator *evil2Enumerator = [evil2ThirdParty.underFirstParties objectEnumerator];
+        _WKResourceLoadStatisticsFirstParty *evil2FirstParty1 = [evil2Enumerator nextObject];
+
+        ASSERT_TRUE(evil2FirstParty1 != nil);
+
+        EXPECT_WK_STREQ(evil2FirstParty1.firstPartyDomain, @"webkit.org");
+        EXPECT_FALSE(evil2FirstParty1.thirdPartyStorageAccessGranted);
+
+        // Check timestamp for evil2 is reported as being within the correct range.
+        evil1TimeLastUpdated = evil1FirstParty1.timeLastUpdated;
+
+        EXPECT_TRUE(beforeUpdatingTime < evil1TimeLastUpdated);
+
+        evil1HourDifference = (rightNow - evil1TimeLastUpdated) / 3600;
+
+        EXPECT_TRUE(evil1HourDifference < 24*3600);
+
+        doneFlag = true;
+    }];
+
+    TestWebKitAPI::Util::run(&doneFlag);
 }

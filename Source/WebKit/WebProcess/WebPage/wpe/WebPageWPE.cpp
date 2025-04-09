@@ -28,11 +28,8 @@
 
 #include "WebKitWebPageAccessibilityObject.h"
 #include "WebPageProxy.h"
-#include "WebPreferencesKeys.h"
-#include "WebPreferencesStore.h"
+#include "WebPageProxyMessages.h"
 #include <WebCore/NotImplemented.h>
-#include <WebCore/Settings.h>
-#include <WebCore/SharedBuffer.h>
 
 namespace WebKit {
 using namespace WebCore;
@@ -56,11 +53,6 @@ void WebPage::platformReinitialize()
 
 void WebPage::platformDetach()
 {
-}
-
-void WebPage::platformEditorState(Frame&, EditorState&, IncludePostLayoutDataHint) const
-{
-    notImplemented();
 }
 
 bool WebPage::performDefaultBehaviorForKeyEvent(const WebKeyboardEvent&)

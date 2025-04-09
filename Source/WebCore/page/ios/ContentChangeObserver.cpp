@@ -470,6 +470,12 @@ void ContentChangeObserver::mouseMovedDidFinish()
     setMouseMovedEventIsBeingDispatched(false);
 }
 
+void ContentChangeObserver::willNotProceedWithFixedObservationTimeWindow()
+{
+    ASSERT(!isMouseMovedEventBeingDispatched());
+    adjustObservedState(Event::WillNotProceedWithFixedObservationTimeWindow);
+}
+
 void ContentChangeObserver::setShouldObserveNextStyleRecalc(bool shouldObserve)
 {
     if (shouldObserve)
@@ -561,6 +567,10 @@ void ContentChangeObserver::adjustObservedState(Event event)
             notifyClientIfNeeded();
             return;
         }
+        if (event == Event::WillNotProceedWithFixedObservationTimeWindow) {
+            notifyClientIfNeeded();
+            return;
+        }
     }
     // These events (DOM timer, transition and style recalc) could trigger style changes that are candidates to visibility checking.
     {
@@ -630,7 +640,7 @@ void ContentChangeObserver::adjustObservedState(Event event)
 
 bool ContentChangeObserver::shouldObserveVisibilityChangeForElement(const Element& element)
 {
-    return isObservingContentChanges() && !visibleRendererWasDestroyed(element) && !element.document().quirks().shouldIgnoreContentChange(element);
+    return isObservingContentChanges() && !visibleRendererWasDestroyed(element);
 }
 
 ContentChangeObserver::StyleChangeScope::StyleChangeScope(Document& document, const Element& element)

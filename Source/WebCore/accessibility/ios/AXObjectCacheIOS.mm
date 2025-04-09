@@ -36,19 +36,13 @@
 
 namespace WebCore {
     
-void AXObjectCache::detachWrapper(AccessibilityObject* obj, AccessibilityDetachmentType)
-{
-    [obj->wrapper() detach];
-    obj->setWrapper(nullptr);
-}
-
-void AXObjectCache::attachWrapper(AccessibilityObject* obj)
+void AXObjectCache::attachWrapper(AXCoreObject* obj)
 {
     RetainPtr<AccessibilityObjectWrapper> wrapper = adoptNS([[WebAccessibilityObjectWrapper alloc] initWithAccessibilityObject:obj]);
     obj->setWrapper(wrapper.get());
 }
 
-void AXObjectCache::postPlatformNotification(AccessibilityObject* obj, AXNotification notification)
+void AXObjectCache::postPlatformNotification(AXCoreObject* obj, AXNotification notification)
 {
     if (!obj)
         return;

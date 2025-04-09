@@ -30,8 +30,8 @@ from buildbot.schedulers.trysched import Try_Userpass
 from buildbot.worker import Worker
 from buildbot.util import identifiers as buildbot_identifiers
 
-from factories import (APITestsFactory, BindingsFactory, BuildFactory, Factory, GTKFactory,
-                       JSCTestsFactory, StyleFactory, TestFactory, WPEFactory, WebKitPerlFactory,
+from factories import (APITestsFactory, BindingsFactory, BuildFactory, CommitQueueFactory, Factory, GTKBuildFactory,
+                       GTKAPIBuildAndTestFactory, JSCTestsFactory, StyleFactory, TestFactory, WPEFactory, WebKitPerlFactory,
                        WebKitPyFactory, WinCairoFactory, WindowsFactory, iOSBuildFactory, iOSTestsFactory,
                        macOSBuildFactory, macOSWK1Factory, macOSWK2Factory, ServicesFactory, WatchListFactory)
 
@@ -59,8 +59,10 @@ def loadBuilderConfig(c, is_test_mode_enabled=False, master_prefix_path='./'):
         builder['tags'] = getTagsForBuilder(builder)
         factory = globals()[builder['factory']]
         builder['description'] = builder.pop('shortname')
+        if 'icon' in builder:
+            del builder['icon']
         factorykwargs = {}
-        for key in ['platform', 'configuration', 'architectures', 'triggers', 'additionalArguments']:
+        for key in ['platform', 'configuration', 'architectures', 'triggers', 'remotes', 'additionalArguments', 'runTests']:
             value = builder.pop(key, None)
             if value:
                 factorykwargs[key] = value
@@ -72,6 +74,7 @@ def loadBuilderConfig(c, is_test_mode_enabled=False, master_prefix_path='./'):
 
         c['builders'].append(builder)
 
+    c['prioritizeBuilders'] = prioritizeBuilders
     c['schedulers'] = []
     for scheduler in config['schedulers']:
         schedulerClassName = scheduler.pop('type')
@@ -84,6 +87,12 @@ def loadBuilderConfig(c, is_test_mode_enabled=False, master_prefix_path='./'):
             # FIXME: Read the credentials from local file on disk.
             scheduler['userpass'] = [(os.getenv('BUILDBOT_TRY_USERNAME', 'sampleuser'), os.getenv('BUILDBOT_TRY_PASSWORD', 'samplepass'))]
         c['schedulers'].append(schedulerClass(**scheduler))
+
+
+def prioritizeBuilders(buildmaster, builders):
+    # Prioritize builder queues over tester queues
+    builders.sort(key=lambda b: 'build' in b.name.lower(), reverse=True)
+    return builders
 
 
 def checkValidWorker(worker):

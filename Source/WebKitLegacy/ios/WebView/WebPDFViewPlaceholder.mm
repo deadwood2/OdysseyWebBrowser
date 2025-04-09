@@ -30,6 +30,7 @@
 #import "WebFrameInternal.h"
 #import "WebPDFViewIOS.h"
 #import <JavaScriptCore/JSContextRef.h>
+#import <JavaScriptCore/OpaqueJSString.h>
 #import <WebCore/DataTransfer.h>
 #import <WebCore/EventHandler.h>
 #import <WebCore/EventNames.h>
@@ -70,7 +71,7 @@ static const float PAGE_HEIGHT_INSET = 4.0f * 2.0f;
     return [NSValue valueWithBytes:&rect objCType:@encode(CGRect)];
 }
 
-- (CGRect)CGRectValue
+- (CGRect)_web_CGRectValue
 {
     CGRect result;
     [self getValue:&result];
@@ -457,7 +458,7 @@ static const float PAGE_HEIGHT_INSET = 4.0f * 2.0f;
     if ((!pageNumber) || (pageNumber > [_pageRects count]))
         return CGRectNull;
 
-    return [[_pageRects objectAtIndex:pageNumber - 1] CGRectValue];
+    return [[_pageRects objectAtIndex:pageNumber - 1] _web_CGRectValue];
 }
 
 - (void)simulateClickOnLinkToURL:(NSURL *)URL
@@ -466,7 +467,7 @@ static const float PAGE_HEIGHT_INSET = 4.0f * 2.0f;
         return;
 
     auto event = MouseEvent::create(eventNames().clickEvent, Event::CanBubble::Yes, Event::IsCancelable::Yes, Event::IsComposed::Yes,
-        MonotonicTime::now(), nullptr, 1, { }, { }, { }, { }, 0, 0, nullptr, 0, 0, nullptr, MouseEvent::IsSimulated::Yes);
+        MonotonicTime::now(), nullptr, 1, { }, { }, { }, { }, 0, 0, nullptr, 0, 0, MouseEvent::IsSimulated::Yes);
 
     // Call to the frame loader because this is where our security checks are made.
     Frame* frame = core([_dataSource webFrame]);

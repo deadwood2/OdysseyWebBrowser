@@ -16,6 +16,7 @@ set(WebKit_INCLUDE_DIRECTORIES
     "${WebKit_DERIVED_SOURCES_DIR}"
     "${WebKit_DERIVED_SOURCES_DIR}/include"
     "${WEBKIT_DIR}"
+    "${WEBKIT_DIR}/GPUProcess"
     "${WEBKIT_DIR}/NetworkProcess"
     "${WEBKIT_DIR}/NetworkProcess/Classifier"
     "${WEBKIT_DIR}/NetworkProcess/Cookies"
@@ -54,6 +55,8 @@ set(WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/UIProcess/Automation"
     "${WEBKIT_DIR}/UIProcess/Downloads"
     "${WEBKIT_DIR}/UIProcess/Gamepad"
+    "${WEBKIT_DIR}/UIProcess/GPU"
+    "${WEBKIT_DIR}/UIProcess/Inspector"
     "${WEBKIT_DIR}/UIProcess/Launcher"
     "${WEBKIT_DIR}/UIProcess/Network"
     "${WEBKIT_DIR}/UIProcess/Network/CustomProtocols"
@@ -75,11 +78,15 @@ set(WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/WebProcess/FullScreen"
     "${WEBKIT_DIR}/WebProcess/Gamepad"
     "${WEBKIT_DIR}/WebProcess/Geolocation"
+    "${WEBKIT_DIR}/WebProcess/GPU"
+    "${WEBKIT_DIR}/WebProcess/GPU/media"
+    "${WEBKIT_DIR}/WebProcess/GPU/webrtc"
     "${WEBKIT_DIR}/WebProcess/IconDatabase"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/c"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/DOM"
+    "${WEBKIT_DIR}/WebProcess/Inspector"
     "${WEBKIT_DIR}/WebProcess/Launching"
     "${WEBKIT_DIR}/WebProcess/MediaCache"
     "${WEBKIT_DIR}/WebProcess/MediaStream"
@@ -109,7 +116,7 @@ list(APPEND WebKit_UNIFIED_SOURCE_LIST_FILES
 set(WebKit_MESSAGES_IN_FILES
     NetworkProcess/Cookies/WebCookieManager.messages.in
 
-    NetworkProcess/IndexedDB/WebIDBConnectionToClient.messages.in
+    NetworkProcess/IndexedDB/WebIDBServer.messages.in
 
     NetworkProcess/NetworkConnectionToWebProcess.messages.in
     NetworkProcess/NetworkContentRuleListManager.messages.in
@@ -143,12 +150,10 @@ set(WebKit_MESSAGES_IN_FILES
     Shared/Plugins/NPObjectMessageReceiver.messages.in
 
     UIProcess/DrawingAreaProxy.messages.in
-    UIProcess/RemoteWebInspectorProxy.messages.in
     UIProcess/VisitedLinkStore.messages.in
     UIProcess/WebCookieManagerProxy.messages.in
     UIProcess/WebFullScreenManagerProxy.messages.in
     UIProcess/WebGeolocationManagerProxy.messages.in
-    UIProcess/WebInspectorProxy.messages.in
     UIProcess/WebPageProxy.messages.in
     UIProcess/WebPasteboardProxy.messages.in
     UIProcess/WebProcessPool.messages.in
@@ -157,6 +162,9 @@ set(WebKit_MESSAGES_IN_FILES
     UIProcess/Automation/WebAutomationSession.messages.in
 
     UIProcess/Downloads/DownloadProxy.messages.in
+
+    UIProcess/Inspector/RemoteWebInspectorProxy.messages.in
+    UIProcess/Inspector/WebInspectorProxy.messages.in
 
     UIProcess/Network/NetworkProcessProxy.messages.in
 
@@ -174,6 +182,11 @@ set(WebKit_MESSAGES_IN_FILES
 
     WebProcess/Geolocation/WebGeolocationManager.messages.in
 
+    WebProcess/Inspector/RemoteWebInspectorUI.messages.in
+    WebProcess/Inspector/WebInspector.messages.in
+    WebProcess/Inspector/WebInspectorInterruptDispatcher.messages.in
+    WebProcess/Inspector/WebInspectorUI.messages.in
+
     WebProcess/Network/webrtc/WebMDNSRegister.messages.in
     WebProcess/Network/webrtc/WebRTCMonitor.messages.in
     WebProcess/Network/webrtc/WebRTCResolver.messages.in
@@ -190,7 +203,6 @@ set(WebKit_MESSAGES_IN_FILES
     WebProcess/Plugins/PluginProcessConnectionManager.messages.in
     WebProcess/Plugins/PluginProxy.messages.in
 
-    WebProcess/Storage/ServiceWorkerClientFetch.messages.in
     WebProcess/Storage/WebSWClientConnection.messages.in
     WebProcess/Storage/WebSWContextManagerConnection.messages.in
 
@@ -198,25 +210,22 @@ set(WebKit_MESSAGES_IN_FILES
 
     WebProcess/WebPage/DrawingArea.messages.in
     WebProcess/WebPage/EventDispatcher.messages.in
-    WebProcess/WebPage/RemoteWebInspectorUI.messages.in
     WebProcess/WebPage/VisitedLinkTableController.messages.in
-    WebProcess/WebPage/WebInspector.messages.in
-    WebProcess/WebPage/WebInspectorInterruptDispatcher.messages.in
-    WebProcess/WebPage/WebInspectorUI.messages.in
     WebProcess/WebPage/WebPage.messages.in
 
     WebProcess/WebStorage/StorageAreaMap.messages.in
 )
 
-if (${WebCore_LIBRARY_TYPE} STREQUAL STATIC)
-    # Link with WebCore as PRIVATE not to propagate WebCore to all users of WebKit.
-    set(WebKit_LIBRARIES
-        PRIVATE WebCore
-        PUBLIC WebCoreHeaderInterface
-    )
-else ()
+if (${WebCore_LIBRARY_TYPE} STREQUAL SHARED)
     # All users of WebKit need to link WebCore if WebCore is a shared library.
-    set(WebKit_LIBRARIES PUBLIC WebCore)
+    if (APPLE)
+        set(WebKit_PRIVATE_LIBRARIES WebCore)
+    else ()
+        set(WebKit_LIBRARIES WebCore)
+    endif ()
+else ()
+    set(WebKit_LIBRARIES WebCoreHeaderInterface)
+    set(WebKit_PRIVATE_LIBRARIES WebCore)
 endif ()
 
 set(WebProcess_LIBRARIES
@@ -231,7 +240,7 @@ set(PluginProcess_LIBRARIES
     WebKit
 )
 
-if (ENABLE_GRAPHICS_CONTEXT_3D)
+if (ENABLE_GRAPHICS_CONTEXT_GL)
     # For platforms that want to use system-provided OpenGL (ES) / EGL headers,
     # these include directories, libraries or definitions need to be
     # added before the ANGLE directories.
@@ -239,8 +248,8 @@ if (ENABLE_GRAPHICS_CONTEXT_3D)
         list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
             ${LIBEPOXY_INCLUDE_DIRS}
         )
-        list(APPEND WebKit_LIBRARIES
-            PRIVATE ${LIBEPOXY_LIBRARIES}
+        list(APPEND WebKit_PRIVATE_LIBRARIES
+            ${LIBEPOXY_LIBRARIES}
         )
         add_definitions(${LIBEPOXY_DEFINITIONS})
     else ()
@@ -248,16 +257,16 @@ if (ENABLE_GRAPHICS_CONTEXT_3D)
             list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
                 ${OPENGL_INCLUDE_DIRS}
             )
-            list(APPEND WebKit_LIBRARIES
-                PRIVATE ${OPENGL_LIBRARIES}
+            list(APPEND WebKit_PRIVATE_LIBRARIES
+                ${OPENGL_LIBRARIES}
             )
             add_definitions(${OPENGL_DEFINITIONS})
         elseif (USE_OPENGL_ES)
             list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
                 ${OPENGLES2_INCLUDE_DIRS}
             )
-            list(APPEND WebKit_LIBRARIES
-                PRIVATE ${OPENGLES2_LIBRARIES}
+            list(APPEND WebKit_PRIVATE_LIBRARIES
+                ${OPENGLES2_LIBRARIES}
             )
             add_definitions(${OPENGLES2_DEFINITIONS})
         endif ()
@@ -266,8 +275,8 @@ if (ENABLE_GRAPHICS_CONTEXT_3D)
             list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
                 ${EGL_INCLUDE_DIRS}
             )
-            list(APPEND WebKit_LIBRARIES
-                PRIVATE ${EGL_LIBRARIES}
+            list(APPEND WebKit_PRIVATE_LIBRARIES
+                ${EGL_LIBRARIES}
             )
             add_definitions(${EGL_DEFINITIONS})
         endif ()
@@ -275,7 +284,7 @@ if (ENABLE_GRAPHICS_CONTEXT_3D)
 endif ()
 
 if (ATOMIC_INT64_REQUIRES_LIBATOMIC)
-    list(APPEND WebKit_LIBRARIES PRIVATE atomic)
+    list(APPEND WebKit_PRIVATE_LIBRARIES atomic)
 endif ()
 
 if (UNIX)
@@ -284,7 +293,7 @@ if (UNIX)
         set(CMAKE_REQUIRED_LIBRARIES rt)
         check_function_exists(shm_open SHM_OPEN_REQUIRES_LIBRT)
         if (SHM_OPEN_REQUIRES_LIBRT)
-            list(APPEND WebKit_LIBRARIES PRIVATE rt)
+            list(APPEND WebKit_PRIVATE_LIBRARIES rt)
         endif ()
         unset(CMAKE_REQUIRED_LIBRARIES)
     endif ()
@@ -306,21 +315,20 @@ set(WebKit_AUTOMATION_PROTOCOL_GENERATOR_EXTRA_FLAGS
 WEBKIT_FRAMEWORK_DECLARE(WebKit)
 WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
 
-# Helper macro which wraps generate-message-receiver.py and generate-message-header.py scripts
+# Helper macro which wraps the generate-message-receiver.py script
 #   _output_source is a list name which will contain generated sources.(eg. WebKit_SOURCES)
 #   _input_files are messages.in files to generate.
 macro(GENERATE_MESSAGE_SOURCES _output_source _input_files)
     foreach (_file ${_input_files})
         get_filename_component(_name ${_file} NAME_WE)
         add_custom_command(
-            OUTPUT ${WebKit_DERIVED_SOURCES_DIR}/${_name}MessageReceiver.cpp ${WebKit_DERIVED_SOURCES_DIR}/${_name}Messages.h
+            OUTPUT ${WebKit_DERIVED_SOURCES_DIR}/${_name}MessageReceiver.cpp ${WebKit_DERIVED_SOURCES_DIR}/${_name}Messages.h ${WebKit_DERIVED_SOURCES_DIR}/${_name}MessagesReplies.h
             MAIN_DEPENDENCY ${_file}
             DEPENDS ${WEBKIT_DIR}/Scripts/webkit/__init__.py
                     ${WEBKIT_DIR}/Scripts/webkit/messages.py
                     ${WEBKIT_DIR}/Scripts/webkit/model.py
                     ${WEBKIT_DIR}/Scripts/webkit/parser.py
-            COMMAND ${PYTHON_EXECUTABLE} ${WEBKIT_DIR}/Scripts/generate-message-receiver.py ${_file} > ${WebKit_DERIVED_SOURCES_DIR}/${_name}MessageReceiver.cpp
-            COMMAND ${PYTHON_EXECUTABLE} ${WEBKIT_DIR}/Scripts/generate-messages-header.py ${_file} > ${WebKit_DERIVED_SOURCES_DIR}/${_name}Messages.h
+            COMMAND ${PYTHON_EXECUTABLE} ${WEBKIT_DIR}/Scripts/generate-message-receiver.py ${_file} --implementation ${WebKit_DERIVED_SOURCES_DIR}/${_name}MessageReceiver.cpp --header ${WebKit_DERIVED_SOURCES_DIR}/${_name}Messages.h --reply-header ${WebKit_DERIVED_SOURCES_DIR}/${_name}MessagesReplies.h
             WORKING_DIRECTORY ${WEBKIT_DIR}
             VERBATIM)
 
@@ -422,6 +430,7 @@ ADD_WEBKIT_PREFIX_HEADER(WebKit)
 add_executable(WebProcess ${WebProcess_SOURCES})
 ADD_WEBKIT_PREFIX_HEADER(WebProcess)
 target_link_libraries(WebProcess ${WebProcess_LIBRARIES})
+target_include_directories(WebProcess PRIVATE ${WebProcess_INCLUDE_DIRECTORIES})
 
 if (WebKit_WebProcess_OUTPUT_NAME)
     set_target_properties(WebProcess PROPERTIES OUTPUT_NAME ${WebKit_WebProcess_OUTPUT_NAME})
@@ -430,6 +439,7 @@ endif ()
 add_executable(NetworkProcess ${NetworkProcess_SOURCES})
 ADD_WEBKIT_PREFIX_HEADER(NetworkProcess)
 target_link_libraries(NetworkProcess ${NetworkProcess_LIBRARIES})
+target_include_directories(NetworkProcess PRIVATE ${NetworkProcess_INCLUDE_DIRECTORIES})
 
 if (WebKit_NetworkProcess_OUTPUT_NAME)
     set_target_properties(NetworkProcess PROPERTIES OUTPUT_NAME ${WebKit_NetworkProcess_OUTPUT_NAME})
@@ -447,6 +457,7 @@ if (ENABLE_PLUGIN_PROCESS AND NOT "${PORT}" STREQUAL "Mac")
     add_executable(PluginProcess ${PluginProcess_SOURCES})
     ADD_WEBKIT_PREFIX_HEADER(PluginProcess)
     target_link_libraries(PluginProcess ${PluginProcess_LIBRARIES})
+    target_include_directories(PluginProcess PRIVATE ${PluginProcess_INCLUDE_DIRECTORIES})
     install(TARGETS PluginProcess DESTINATION "${LIBEXEC_INSTALL_DIR}")
 
     if (COMPILER_IS_GCC_OR_CLANG)

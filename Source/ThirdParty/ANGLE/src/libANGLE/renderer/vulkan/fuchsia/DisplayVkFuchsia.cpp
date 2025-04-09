@@ -3,7 +3,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
-// DisplayVkFuchsia.h:
+// DisplayVkFuchsia.cpp:
 //    Implements methods from DisplayVkFuchsia
 //
 
@@ -23,20 +23,16 @@ bool DisplayVkFuchsia::isValidNativeWindow(EGLNativeWindowType window) const
 }
 
 SurfaceImpl *DisplayVkFuchsia::createWindowSurfaceVk(const egl::SurfaceState &state,
-                                                     EGLNativeWindowType window,
-                                                     EGLint width,
-                                                     EGLint height)
+                                                     EGLNativeWindowType window)
 {
     ASSERT(isValidNativeWindow(window));
-    return new WindowSurfaceVkFuchsia(state, window, width, height);
+    return new WindowSurfaceVkFuchsia(state, window);
 }
 
 egl::ConfigSet DisplayVkFuchsia::generateConfigs()
 {
     constexpr GLenum kColorFormats[] = {GL_BGRA8_EXT, GL_BGRX8_ANGLEX};
-    constexpr EGLint kSampleCounts[] = {0};
-    return egl_vk::GenerateConfigs(kColorFormats, egl_vk::kConfigDepthStencilFormats, kSampleCounts,
-                                   this);
+    return egl_vk::GenerateConfigs(kColorFormats, egl_vk::kConfigDepthStencilFormats, this);
 }
 
 bool DisplayVkFuchsia::checkConfigSupport(egl::Config *config)
@@ -56,4 +52,13 @@ const char *DisplayVkFuchsia::getWSILayer() const
     return "VK_LAYER_FUCHSIA_imagepipe_swapchain";
 }
 
+bool IsVulkanFuchsiaDisplayAvailable()
+{
+    return true;
+}
+
+DisplayImpl *CreateVulkanFuchsiaDisplay(const egl::DisplayState &state)
+{
+    return new DisplayVkFuchsia(state);
+}
 }  // namespace rx

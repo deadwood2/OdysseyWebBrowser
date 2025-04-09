@@ -17,7 +17,7 @@
 #include "libANGLE/renderer/vulkan/RendererVk.h"
 #include "libANGLE/renderer/vulkan/SurfaceVk.h"
 #include "libANGLE/renderer/vulkan/SyncVk.h"
-#include "third_party/trace_event/trace_event.h"
+#include "libANGLE/trace.h"
 
 namespace rx
 {
@@ -41,6 +41,8 @@ egl::Error DisplayVk::initialize(egl::Display *display)
 
 void DisplayVk::terminate()
 {
+    mRenderer->reloadVolkIfNeeded();
+
     ASSERT(mRenderer);
     mRenderer->onDestroy(this);
 }
@@ -83,7 +85,7 @@ DeviceImpl *DisplayVk::createDevice()
 
 egl::Error DisplayVk::waitClient(const gl::Context *context)
 {
-    TRACE_EVENT0("gpu.angle", "DisplayVk::waitClient");
+    ANGLE_TRACE_EVENT0("gpu.angle", "DisplayVk::waitClient");
     ContextVk *contextVk = vk::GetImpl(context);
     return angle::ToEGL(contextVk->finishImpl(), this, EGL_BAD_ACCESS);
 }
@@ -98,21 +100,14 @@ SurfaceImpl *DisplayVk::createWindowSurface(const egl::SurfaceState &state,
                                             EGLNativeWindowType window,
                                             const egl::AttributeMap &attribs)
 {
-    EGLint width  = attribs.getAsInt(EGL_WIDTH, 0);
-    EGLint height = attribs.getAsInt(EGL_HEIGHT, 0);
-
-    return createWindowSurfaceVk(state, window, width, height);
+    return createWindowSurfaceVk(state, window);
 }
 
 SurfaceImpl *DisplayVk::createPbufferSurface(const egl::SurfaceState &state,
                                              const egl::AttributeMap &attribs)
 {
     ASSERT(mRenderer);
-
-    EGLint width  = attribs.getAsInt(EGL_WIDTH, 0);
-    EGLint height = attribs.getAsInt(EGL_HEIGHT, 0);
-
-    return new OffscreenSurfaceVk(state, width, height);
+    return new OffscreenSurfaceVk(state);
 }
 
 SurfaceImpl *DisplayVk::createPbufferFromClientBuffer(const egl::SurfaceState &state,
@@ -167,11 +162,16 @@ gl::Version DisplayVk::getMaxSupportedESVersion() const
     return mRenderer->getMaxSupportedESVersion();
 }
 
+gl::Version DisplayVk::getMaxConformantESVersion() const
+{
+    return mRenderer->getMaxConformantESVersion();
+}
+
 void DisplayVk::generateExtensions(egl::DisplayExtensions *outExtensions) const
 {
-    outExtensions->createContextRobustness  = true;
-    outExtensions->surfaceOrientation       = true;
-    outExtensions->displayTextureShareGroup = true;
+    outExtensions->createContextRobustness      = true;
+    outExtensions->surfaceOrientation           = true;
+    outExtensions->displayTextureShareGroup     = true;
     outExtensions->robustResourceInitialization = true;
 
     // The Vulkan implementation will always say that EGL_KHR_swap_buffers_with_damage is supported.
@@ -189,7 +189,22 @@ void DisplayVk::generateExtensions(egl::DisplayExtensions *outExtensions) const
     outExtensions->glTextureCubemapImage = true;
     outExtensions->glTexture3DImage      = false;
     outExtensions->glRenderbufferImage   = true;
-    outExtensions->imageNativeBuffer = getRenderer()->getFeatures().supportsAndroidHardwareBuffer;
+    outExtensions->imageNativeBuffer =
+        getRenderer()->getFeatures().supportsAndroidHardwareBuffer.enabled;
+    outExtensions->surfacelessContext = true;
+    outExtensions->glColorspace = getRenderer()->getFeatures().supportsSwapchainColorspace.enabled;
+
+#if defined(ANGLE_PLATFORM_ANDROID)
+    outExtensions->framebufferTargetANDROID = true;
+#endif  // defined(ANGLE_PLATFORM_ANDROID)
+
+    outExtensions->contextPriority = true;
+    outExtensions->noConfigContext = true;
+
+#if defined(ANGLE_PLATFORM_GGP)
+    outExtensions->ggpStreamDescriptor = true;
+    outExtensions->swapWithFrameToken  = true;
+#endif  // defined(ANGLE_PLATFORM_GGP)
 }
 
 void DisplayVk::generateCaps(egl::Caps *outCaps) const
@@ -232,4 +247,10 @@ egl::Error DisplayVk::getEGLError(EGLint errorCode)
 {
     return egl::Error(errorCode, 0, std::move(mStoredErrorString));
 }
+
+void DisplayVk::populateFeatureList(angle::FeatureList *features)
+{
+    mRenderer->getFeatures().populateFeatureList(features);
+}
+
 }  // namespace rx

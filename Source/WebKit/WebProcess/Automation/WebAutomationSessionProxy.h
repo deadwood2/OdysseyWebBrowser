@@ -28,7 +28,9 @@
 #include "Connection.h"
 #include "CoordinateSystem.h"
 #include <JavaScriptCore/JSBase.h>
+#include <JavaScriptCore/PrivateName.h>
 #include <WebCore/FrameIdentifier.h>
+#include <WebCore/IntRect.h>
 #include <WebCore/PageIdentifier.h>
 #include <wtf/text/WTFString.h>
 
@@ -55,6 +57,8 @@ public:
     void didEvaluateJavaScriptFunction(WebCore::FrameIdentifier, uint64_t callbackID, const String& result, const String& errorType);
 
 private:
+    JSObjectRef scriptObject(JSGlobalContextRef);
+    void setScriptObject(JSGlobalContextRef, JSObjectRef);
     JSObjectRef scriptObjectForFrame(WebFrame&);
     WebCore::Element* elementForNodeHandle(WebFrame&, const String&);
 
@@ -62,7 +66,7 @@ private:
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
 
     // Called by WebAutomationSessionProxy messages
-    void evaluateJavaScriptFunction(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>, const String& function, Vector<String> arguments, bool expectsImplicitCallbackArgument, int callbackTimeout, uint64_t callbackID);
+    void evaluateJavaScriptFunction(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>, const String& function, Vector<String> arguments, bool expectsImplicitCallbackArgument, Optional<double> callbackTimeout, uint64_t callbackID);
     void resolveChildFrameWithOrdinal(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>, uint32_t ordinal, CompletionHandler<void(Optional<String>, Optional<WebCore::FrameIdentifier>)>&&);
     void resolveChildFrameWithNodeHandle(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>, const String& nodeHandle, CompletionHandler<void(Optional<String>, Optional<WebCore::FrameIdentifier>)>&&);
     void resolveChildFrameWithName(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>, const String& name, CompletionHandler<void(Optional<String>, Optional<WebCore::FrameIdentifier>)>&&);
@@ -70,13 +74,15 @@ private:
     void focusFrame(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>);
     void computeElementLayout(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>, String nodeHandle, bool scrollIntoViewIfNeeded, CoordinateSystem, CompletionHandler<void(Optional<String>, WebCore::IntRect, Optional<WebCore::IntPoint>, bool)>&&);
     void selectOptionElement(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>, String nodeHandle, CompletionHandler<void(Optional<String>)>&&);
+    void setFilesForInputFileUpload(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>, String nodeHandle, Vector<String>&& filenames, CompletionHandler<void(Optional<String>)>&&);
     void takeScreenshot(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>, String nodeHandle, bool scrollIntoViewIfNeeded, bool clipToViewport, uint64_t callbackID);
+    void snapshotRectForScreenshot(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>, String nodeHandle, bool scrollIntoViewIfNeeded, bool clipToViewport, CompletionHandler<void(Optional<String>, WebCore::IntRect&&)>&&);
     void getCookiesForFrame(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>, CompletionHandler<void(Optional<String>, Vector<WebCore::Cookie>)>&&);
     void deleteCookie(WebCore::PageIdentifier, Optional<WebCore::FrameIdentifier>, String cookieName, CompletionHandler<void(Optional<String>)>&&);
 
     String m_sessionIdentifier;
+    JSC::PrivateName m_scriptObjectIdentifier;
 
-    HashMap<WebCore::FrameIdentifier, JSObjectRef> m_webFrameScriptObjectMap;
     HashMap<WebCore::FrameIdentifier, Vector<uint64_t>> m_webFramePendingEvaluateJavaScriptCallbacksMap;
 };
 

@@ -48,20 +48,20 @@ void RemoteObjectRegistry::sendInvocation(const RemoteObjectInvocation& invocati
 
     if (auto* replyInfo = invocation.replyInfo()) {
         ASSERT(!m_pendingReplies.contains(replyInfo->replyID));
-        m_pendingReplies.add(replyInfo->replyID, takeBackgroundActivityToken());
+        m_pendingReplies.add(replyInfo->replyID, backgroundActivity("RemoteObjectRegistry invocation"_s));
     }
 
-    messageSender().send(Messages::RemoteObjectRegistry::InvokeMethod(invocation));
+    messageSender().send(Messages::RemoteObjectRegistry::InvokeMethod(invocation), messageDestinationID());
 }
 
 void RemoteObjectRegistry::sendReplyBlock(uint64_t replyID, const UserData& blockInvocation)
 {
-    messageSender().send(Messages::RemoteObjectRegistry::CallReplyBlock(replyID, blockInvocation));
+    messageSender().send(Messages::RemoteObjectRegistry::CallReplyBlock(replyID, blockInvocation), messageDestinationID());
 }
 
 void RemoteObjectRegistry::sendUnusedReply(uint64_t replyID)
 {
-    messageSender().send(Messages::RemoteObjectRegistry::ReleaseUnusedReplyBlock(replyID));
+    messageSender().send(Messages::RemoteObjectRegistry::ReleaseUnusedReplyBlock(replyID), messageDestinationID());
 }
 
 void RemoteObjectRegistry::invokeMethod(const RemoteObjectInvocation& invocation)

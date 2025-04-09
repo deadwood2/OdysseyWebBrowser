@@ -28,6 +28,7 @@
 
 #include <WebCore/Cookie.h>
 #include <WebCore/CookieStorageObserver.h>
+#include <WebCore/HTTPCookieAcceptPolicy.h>
 #include <pal/spi/cf/CFNetworkSPI.h>
 
 namespace API {
@@ -68,6 +69,32 @@ void HTTPCookieStore::stopObservingChangesToDefaultUIProcessCookieStore()
 {
     if (auto observer = std::exchange(m_defaultUIProcessObserver, nullptr))
         observer->stopObserving();
+}
+
+void HTTPCookieStore::deleteCookiesInDefaultUIProcessCookieStore()
+{
+    [[NSHTTPCookieStorage sharedHTTPCookieStorage] removeCookiesSinceDate:[NSDate distantPast]];
+}
+
+static NSHTTPCookieAcceptPolicy toNSHTTPCookieAcceptPolicy(WebCore::HTTPCookieAcceptPolicy policy)
+{
+    switch (policy) {
+    case WebCore::HTTPCookieAcceptPolicy::AlwaysAccept:
+        return NSHTTPCookieAcceptPolicyAlways;
+    case WebCore::HTTPCookieAcceptPolicy::Never:
+        return NSHTTPCookieAcceptPolicyNever;
+    case WebCore::HTTPCookieAcceptPolicy::OnlyFromMainDocumentDomain:
+        return NSHTTPCookieAcceptPolicyOnlyFromMainDocumentDomain;
+    case WebCore::HTTPCookieAcceptPolicy::ExclusivelyFromMainDocumentDomain:
+        return (NSHTTPCookieAcceptPolicy)NSHTTPCookieAcceptPolicyExclusivelyFromMainDocumentDomain;
+    }
+    ASSERT_NOT_REACHED();
+    return NSHTTPCookieAcceptPolicyAlways;
+}
+
+void HTTPCookieStore::setHTTPCookieAcceptPolicyInDefaultUIProcessCookieStore(WebCore::HTTPCookieAcceptPolicy policy)
+{
+    [[NSHTTPCookieStorage sharedHTTPCookieStorage] setCookieAcceptPolicy:toNSHTTPCookieAcceptPolicy(policy)];
 }
 
 } // namespace API

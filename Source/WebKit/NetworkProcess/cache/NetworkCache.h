@@ -28,9 +28,11 @@
 #include "NetworkCacheEntry.h"
 #include "NetworkCacheStorage.h"
 #include "ShareableResource.h"
+#include "WebPageProxyIdentifier.h"
 #include <WebCore/FrameIdentifier.h>
 #include <WebCore/PageIdentifier.h>
 #include <WebCore/ResourceResponse.h>
+#include <pal/SessionID.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/OptionSet.h>
 #include <wtf/Seconds.h>
@@ -48,6 +50,7 @@ class NetworkProcess;
 
 namespace NetworkCache {
 
+class AsyncRevalidation;
 class Cache;
 class SpeculativeLoadManager;
 
@@ -80,13 +83,36 @@ enum class StoreDecision {
 enum class UseDecision {
     Use,
     Validate,
+    AsyncRevalidate,
     NoDueToVaryingHeaderMismatch,
     NoDueToMissingValidatorFields,
     NoDueToDecodeFailure,
     NoDueToExpiredRedirect
 };
 
-using GlobalFrameID = std::pair<WebCore::PageIdentifier, WebCore::FrameIdentifier>; // FIXME: Use GlobalFrameIdentifier.
+struct GlobalFrameID {
+    WebPageProxyIdentifier webPageProxyID;
+    WebCore::PageIdentifier webPageID;
+    WebCore::FrameIdentifier frameID;
+    
+    unsigned hash() const;
+};
+
+inline unsigned GlobalFrameID::hash() const
+{
+    unsigned hashes[2];
+    hashes[0] = WTF::intHash(webPageID.toUInt64());
+    hashes[1] = WTF::intHash(frameID.toUInt64());
+
+    return StringHasher::hashMemory(hashes, sizeof(hashes));
+}
+
+inline bool operator==(const GlobalFrameID& a, const GlobalFrameID& b)
+{
+    // No need to check webPageProxyID since webPageIDs are globally unique and a given WebPage is always
+    // associated with the same WebPageProxy.
+    return a.webPageID == b.webPageID &&  a.frameID == b.frameID;
+}
 
 enum class CacheOption : uint8_t {
     // In testing mode we try to eliminate sources of randomness. Cache does not shrink and there are no read timeouts.
@@ -101,7 +127,8 @@ class Cache : public RefCounted<Cache> {
 public:
     static RefPtr<Cache> open(NetworkProcess&, const String& cachePath, OptionSet<CacheOption>, PAL::SessionID);
 
-    void setCapacity(size_t);
+    size_t capacity() const;
+    void updateCapacity();
 
     // Completion handler may get called back synchronously on failure.
     struct RetrieveInfo {
@@ -117,7 +144,7 @@ public:
     void retrieve(const WebCore::ResourceRequest&, const GlobalFrameID&, RetrieveCompletionHandler&&);
     std::unique_ptr<Entry> store(const WebCore::ResourceRequest&, const WebCore::ResourceResponse&, RefPtr<WebCore::SharedBuffer>&&, Function<void(MappedBody&)>&& = nullptr);
     std::unique_ptr<Entry> storeRedirect(const WebCore::ResourceRequest&, const WebCore::ResourceResponse&, const WebCore::ResourceRequest& redirectRequest, Optional<Seconds> maxAgeCap);
-    std::unique_ptr<Entry> update(const WebCore::ResourceRequest&, const GlobalFrameID&, const Entry&, const WebCore::ResourceResponse& validatingResponse);
+    std::unique_ptr<Entry> update(const WebCore::ResourceRequest&, const Entry&, const WebCore::ResourceResponse& validatingResponse);
 
     struct TraversalEntry {
         const Entry& entry;
@@ -145,13 +172,18 @@ public:
     SpeculativeLoadManager* speculativeLoadManager() { return m_speculativeLoadManager.get(); }
 #endif
 
+#if ENABLE(NETWORK_CACHE_STALE_WHILE_REVALIDATE)
+    void startAsyncRevalidationIfNeeded(const WebCore::ResourceRequest&, const NetworkCache::Key&, std::unique_ptr<Entry>&&, const GlobalFrameID&);
+#endif
+
     NetworkProcess& networkProcess() { return m_networkProcess.get(); }
     const PAL::SessionID& sessionID() const { return m_sessionID; }
+    const String& storageDirectory() const { return m_storageDirectory; }
 
     ~Cache();
 
 private:
-    Cache(NetworkProcess&, Ref<Storage>&&, OptionSet<CacheOption>, PAL::SessionID);
+    Cache(NetworkProcess&, const String& storageDirectory, Ref<Storage>&&, OptionSet<CacheOption>, PAL::SessionID);
 
     Key makeCacheKey(const WebCore::ResourceRequest&);
 
@@ -170,9 +202,36 @@ private:
     std::unique_ptr<SpeculativeLoadManager> m_speculativeLoadManager;
 #endif
 
+#if ENABLE(NETWORK_CACHE_STALE_WHILE_REVALIDATE)
+    HashMap<Key, std::unique_ptr<AsyncRevalidation>> m_pendingAsyncRevalidations;
+#endif
+
     unsigned m_traverseCount { 0 };
     PAL::SessionID m_sessionID;
+    String m_storageDirectory;
 };
 
 } // namespace NetworkCache
 } // namespace WebKit
+
+namespace WTF {
+
+struct GlobalFrameIDHash {
+    static unsigned hash(const WebKit::NetworkCache::GlobalFrameID& key) { return key.hash(); }
+    static bool equal(const WebKit::NetworkCache::GlobalFrameID& a, const WebKit::NetworkCache::GlobalFrameID& b) { return a == b; }
+    static const bool safeToCompareToEmptyOrDeleted = true;
+};
+
+template<> struct HashTraits<WebKit::NetworkCache::GlobalFrameID> : GenericHashTraits<WebKit::NetworkCache::GlobalFrameID> {
+    static WebKit::NetworkCache::GlobalFrameID emptyValue() { return { }; }
+
+    static void constructDeletedValue(WebKit::NetworkCache::GlobalFrameID& slot) { slot.webPageID = makeObjectIdentifier<WebCore::PageIdentifierType>(std::numeric_limits<uint64_t>::max()); }
+
+    static bool isDeletedValue(const WebKit::NetworkCache::GlobalFrameID& slot) { return slot.webPageID.toUInt64() == std::numeric_limits<uint64_t>::max(); }
+};
+
+template<> struct DefaultHash<WebKit::NetworkCache::GlobalFrameID> {
+    typedef GlobalFrameIDHash Hash;
+};
+
+}

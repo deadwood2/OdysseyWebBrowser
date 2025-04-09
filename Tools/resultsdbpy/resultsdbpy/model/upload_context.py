@@ -37,14 +37,15 @@ from resultsdbpy.model.configuration_context import ClusteredByConfiguration
 
 class UploadContext(object):
     QUEUE_NAME = 'upload_queue'
-    PROCESS_TIMEOUT = 24 * 60 * 60
-    MAX_ATTEMPTS = 3
-    RETRY_TIME = 5 * 60  # After 5 minutes, re-try a task even if it's in-flight
-    MAX_TASKS_IN_SCAN = 10
+    PROCESS_TIMEOUT = 7 * 24 * 60 * 60
+    MAX_ATTEMPTS = 5
+    RETRY_TIME = 10 * 60  # After 10 minutes, re-try a task even if it's in-flight
+    MAX_TASKS_IN_SCAN = 40
 
     class SuitesByConfiguration(ClusteredByConfiguration):
-        __table_name__ = 'suites_by_configuration'
+        __table_name__ = 'suites_by_configuration_and_branch'
         suite = columns.Text(primary_key=True, required=True)
+        branch = columns.Text(primary_key=True, required=True)
 
     class UploadsByConfiguration(ClusteredByConfiguration):
         __table_name__ = 'uploads_by_configuration_01'
@@ -151,14 +152,16 @@ class UploadContext(object):
     def _do_job_for_key(self, key, attempts=1):
         job_complete = False
         try:
-            data = json.loads(self.redis.get(f'data_for_{key}'))
-            self.synchronously_process_test_results(
-                configuration=Configuration.from_json(data['configuration']),
-                commits=[Commit.from_json(commit_json) for commit_json in data['commits']],
-                suite=data['suite'],
-                timestamp=data['timestamp'],
-                test_results=data['test_results'],
-            )
+            raw_data = self.redis.get(f'data_for_{key}')
+            if raw_data:
+                data = json.loads(raw_data)
+                self.synchronously_process_test_results(
+                    configuration=Configuration.from_json(data['configuration']),
+                    commits=[Commit.from_json(commit_json) for commit_json in data['commits']],
+                    suite=data['suite'],
+                    timestamp=data['timestamp'],
+                    test_results=data['test_results'],
+                )
             job_complete = True
         finally:
             if job_complete or attempts >= self.MAX_ATTEMPTS:
@@ -227,11 +230,11 @@ class UploadContext(object):
         branches = self.commit_context.branch_keys_for_commits(commits)
 
         with self:
-            self.configuration_context.register_configuration(configuration, timestamp=timestamp)
-
             for branch in branches:
+                self.configuration_context.register_configuration(configuration, branch=branch, timestamp=timestamp)
+
                 self.configuration_context.insert_row_with_configuration(
-                    self.SuitesByConfiguration.__table_name__, configuration, suite=suite,
+                    self.SuitesByConfiguration.__table_name__, configuration, suite=suite, branch=branch,
                     ttl=int((uuid // Commit.TIMESTAMP_TO_UUID_MULTIPLIER) + self.ttl_seconds - time.time()) if self.ttl_seconds else None,
                 )
                 self.configuration_context.insert_row_with_configuration(
@@ -258,11 +261,11 @@ class UploadContext(object):
                 ).items()})
             return result
 
-    def find_suites(self, configurations, recent=True, limit=100):
+    def find_suites(self, configurations, branch=None, recent=True, limit=100):
         with self:
             return {
                 config: [row.suite for row in rows] for config, rows in self.configuration_context.select_from_table_with_configurations(
-                    self.SuitesByConfiguration.__table_name__, configurations=configurations, recent=recent, limit=limit,
+                    self.SuitesByConfiguration.__table_name__, configurations=configurations, branch=branch, recent=recent, limit=limit,
                 ).items()
             }
 

@@ -77,6 +77,7 @@ function installDependenciesWithApt {
         libicu-dev \
         libjpeg-dev \
         libfile-copy-recursive-perl \
+        libopenjp2-7-dev \
         $(aptIfElse libpng-dev libpng12-dev) \
         libseccomp-dev \
         libsqlite3-dev \
@@ -97,6 +98,7 @@ function installDependenciesWithApt {
         apache2 \
         curl \
         gdb \
+        fonts-liberation \
         libapache2-mod-bw \
         libapache2-mod-php \
         php-json \
@@ -115,6 +117,7 @@ function installDependenciesWithApt {
         gsettings-desktop-schemas-dev \
         libegl1-mesa-dev \
         libexpat1-dev \
+        libfdk-aac-dev \
         libgles2-mesa-dev \
         libluajit-5.1-dev \
         libmount-dev \
@@ -135,6 +138,7 @@ function installDependenciesWithApt {
         libwayland-dev \
         luajit \
         python3-setuptools \
+        uuid-dev \
         yasm"
 
     # These are dependencies necessary for using webkit-patch
@@ -181,6 +185,7 @@ function installDependenciesWithPacman {
         m4 \
         make \
         ninja \
+        openjpeg2 \
         patch \
         perl-file-copy-recursive \
         pkg-config \
@@ -206,13 +211,15 @@ function installDependenciesWithPacman {
         python2-gobject \
         python2-lxml \
         python2-psutil \
-        ruby"
+        ruby \
+        ttf-liberation"
 
     # These are dependencies necessary for building the jhbuild.
     packages="$packages \
         expat \
         git \
         gsettings-desktop-schemas \
+        libfdk-aac \
         libproxy \
         libpsl \
         libpulse \
@@ -290,6 +297,7 @@ function installDependenciesWithDnf {
         libxml2-devel \
         libxslt-devel \
         ninja-build \
+        openjpeg2-devel \
         patch \
         perl-File-Copy-Recursive \
         perl-JSON-PP \
@@ -304,6 +312,7 @@ function installDependenciesWithDnf {
         curl \
         gdb \
         httpd \
+        liberation-fonts \
         mod_bw \
         mod_ssl \
         perl-CGI \
@@ -320,6 +329,7 @@ function installDependenciesWithDnf {
     # These are dependencies necessary for building the jhbuild.
     packages="$packages \
         expat-devel \
+        fdk-aac-devel \
         git \
         gsettings-desktop-schemas-devel \
         libmount-devel \
@@ -327,6 +337,7 @@ function installDependenciesWithDnf {
         libpsl-devel \
         libsrtp-devel \
         libtheora-devel \
+        libuuid-devel \
         libv4l-devel \
         libvorbis-devel \
         libvpx-devel \

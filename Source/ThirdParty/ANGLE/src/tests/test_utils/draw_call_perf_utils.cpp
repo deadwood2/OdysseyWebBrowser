@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2017 The ANGLE Project Authors. All rights reserved.
+// Copyright 2017 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -52,6 +52,15 @@ uniform sampler2D tex;
 void main()
 {
     gl_FragColor = texture2D(tex, texCoord);
+})";
+
+constexpr char kDoubleTextureFS[] = R"(precision mediump float;
+varying vec2 texCoord;
+uniform sampler2D tex1;
+uniform sampler2D tex2;
+void main()
+{
+    gl_FragColor = texture2D(tex1, texCoord) + texture2D(tex2, texCoord);
 })";
 
 void Generate2DTriangleData(size_t numTris, std::vector<float> *floatData)
@@ -107,6 +116,20 @@ GLuint SetupSimpleDrawProgram()
 GLuint SetupSimpleTextureProgram()
 {
     GLuint program = CompileProgram(kSimpleTexCoordVS, kSimpleTextureFS);
+    if (program == 0u)
+    {
+        return program;
+    }
+
+    // Use the program object
+    glUseProgram(program);
+
+    return program;
+}
+
+GLuint SetupDoubleTextureProgram()
+{
+    GLuint program = CompileProgram(kSimpleTexCoordVS, kDoubleTextureFS);
     if (program == 0u)
     {
         return program;

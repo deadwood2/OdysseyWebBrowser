@@ -93,6 +93,16 @@
     [self doesNotRecognizeSelector:_cmd];
 }
 
+- (IBAction)saveAsPDF:(id)sender
+{
+    [self doesNotRecognizeSelector:_cmd];
+}
+
+- (IBAction)saveAsWebArchive:(id)sender
+{
+    [self doesNotRecognizeSelector:_cmd];
+}
+
 - (IBAction)goBack:(id)sender
 {
     [self doesNotRecognizeSelector:_cmd];

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2012-2014 The ANGLE Project Authors. All rights reserved.
+// Copyright 2012 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -17,7 +17,7 @@
 #include "libANGLE/renderer/d3d/d3d11/formatutils11.h"
 #include "libANGLE/renderer/d3d/d3d11/renderer11_utils.h"
 #include "libANGLE/renderer/d3d/d3d11/texture_format_table.h"
-#include "third_party/trace_event/trace_event.h"
+#include "libANGLE/trace.h"
 
 // Precompiled shaders
 #include "libANGLE/renderer/d3d/d3d11/shaders/compiled/passthrough2d11vs.h"
@@ -186,7 +186,7 @@ EGLint SwapChain11::resetOffscreenColorBuffer(DisplayD3D *displayD3D,
 {
     ASSERT(mNeedsOffscreenTexture);
 
-    TRACE_EVENT0("gpu.angle", "SwapChain11::resetOffscreenTexture");
+    ANGLE_TRACE_EVENT0("gpu.angle", "SwapChain11::resetOffscreenTexture");
     ID3D11Device *device = mRenderer->getDevice();
 
     ASSERT(device != nullptr);
@@ -204,7 +204,7 @@ EGLint SwapChain11::resetOffscreenColorBuffer(DisplayD3D *displayD3D,
 
     const d3d11::Format &backbufferFormatInfo =
         d3d11::Format::Get(mOffscreenRenderTargetFormat, mRenderer->getRenderer11DeviceCaps());
-    D3D11_TEXTURE2D_DESC offscreenTextureDesc = {0};
+    D3D11_TEXTURE2D_DESC offscreenTextureDesc = {};
 
     // If the app passed in a share handle or D3D texture, open the resource
     // See EGL_ANGLE_d3d_share_handle_client_buffer and EGL_ANGLE_d3d_texture_client_buffer
@@ -338,7 +338,7 @@ EGLint SwapChain11::resetOffscreenColorBuffer(DisplayD3D *displayD3D,
 
     if (previousOffscreenTexture.valid())
     {
-        D3D11_BOX sourceBox = {0};
+        D3D11_BOX sourceBox = {};
         sourceBox.left      = 0;
         sourceBox.right     = std::min(previousWidth, backbufferWidth);
         sourceBox.top       = std::max(previousHeight - backbufferHeight, 0);
@@ -385,7 +385,7 @@ EGLint SwapChain11::resetOffscreenDepthBuffer(DisplayD3D *displayD3D,
         // must also have the same quality value.
         if (mOffscreenTexture.valid() && getD3DSamples() > 1)
         {
-            D3D11_TEXTURE2D_DESC offscreenTextureDesc = {0};
+            D3D11_TEXTURE2D_DESC offscreenTextureDesc = {};
             mOffscreenTexture.getDesc(&offscreenTextureDesc);
             depthStencilTextureDesc.SampleDesc.Quality = offscreenTextureDesc.SampleDesc.Quality;
         }
@@ -452,7 +452,7 @@ EGLint SwapChain11::resetOffscreenDepthBuffer(DisplayD3D *displayD3D,
 
 EGLint SwapChain11::resize(DisplayD3D *displayD3D, EGLint backbufferWidth, EGLint backbufferHeight)
 {
-    TRACE_EVENT0("gpu.angle", "SwapChain11::resize");
+    ANGLE_TRACE_EVENT0("gpu.angle", "SwapChain11::resize");
     ID3D11Device *device = mRenderer->getDevice();
 
     if (device == nullptr)
@@ -582,7 +582,7 @@ EGLint SwapChain11::reset(DisplayD3D *displayD3D,
         return resize(displayD3D, backbufferWidth, backbufferHeight);
     }
 
-    TRACE_EVENT0("gpu.angle", "SwapChain11::reset");
+    ANGLE_TRACE_EVENT0("gpu.angle", "SwapChain11::reset");
     ID3D11Device *device = mRenderer->getDevice();
 
     if (device == nullptr)
@@ -663,7 +663,7 @@ angle::Result SwapChain11::initPassThroughResources(DisplayD3D *displayD3D)
         return angle::Result::Continue;
     }
 
-    TRACE_EVENT0("gpu.angle", "SwapChain11::initPassThroughResources");
+    ANGLE_TRACE_EVENT0("gpu.angle", "SwapChain11::initPassThroughResources");
     ID3D11Device *device = mRenderer->getDevice();
 
     ASSERT(device != nullptr);

@@ -17,10 +17,8 @@ namespace rx
 {
 
 WindowSurfaceVkAndroid::WindowSurfaceVkAndroid(const egl::SurfaceState &surfaceState,
-                                               EGLNativeWindowType window,
-                                               EGLint width,
-                                               EGLint height)
-    : WindowSurfaceVk(surfaceState, window, width, height)
+                                               EGLNativeWindowType window)
+    : WindowSurfaceVk(surfaceState, window)
 {}
 
 angle::Result WindowSurfaceVkAndroid::createSurfaceVk(vk::Context *context, gl::Extents *extentsOut)
@@ -43,7 +41,7 @@ angle::Result WindowSurfaceVkAndroid::getCurrentWindowSize(vk::Context *context,
     int32_t height = ANativeWindow_getHeight(mNativeWindowType);
     ANGLE_VK_CHECK(context, width > 0 && height > 0, VK_ERROR_INITIALIZATION_FAILED);
 
-    *extentsOut = gl::Extents(width, height, 0);
+    *extentsOut = gl::Extents(width, height, 1);
     return angle::Result::Continue;
 }
 

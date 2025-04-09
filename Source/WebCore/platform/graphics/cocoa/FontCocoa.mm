@@ -113,6 +113,11 @@ static bool needsAscentAdjustment(CFStringRef familyName)
 
 #endif
 
+static bool isAhemFont(CFStringRef familyName)
+{
+    return familyName && caseInsensitiveCompare(familyName, CFSTR("Ahem"));
+}
+
 void Font::platformInit()
 {
 #if PLATFORM(IOS_FAMILY)
@@ -141,6 +146,11 @@ void Font::platformInit()
     }
 
     auto familyName = adoptCF(CTFontCopyFamilyName(m_platformData.font()));
+
+    // Disable antialiasing when rendering with Ahem because many tests require this.
+    if (isAhemFont(familyName.get()))
+        m_allowsAntialiasing = false;
+
 #if PLATFORM(MAC)
     // We need to adjust Times, Helvetica, and Courier to closely match the
     // vertical metrics of their Microsoft counterparts that are the de facto
@@ -531,6 +541,29 @@ RefPtr<Font> Font::platformCreateScaledFont(const FontDescription&, float scaleF
     RetainPtr<CTFontRef> scaledFont = adoptCF(CTFontCreateWithFontDescriptor(fontDescriptor.get(), size, nullptr));
 
     return createDerivativeFont(scaledFont.get(), size, m_platformData.orientation(), fontTraits, m_platformData.syntheticBold(), m_platformData.syntheticOblique());
+}
+
+void Font::applyTransforms(GlyphBuffer& glyphBuffer, unsigned beginningIndex, bool enableKerning, bool requiresShaping, const AtomString& locale) const
+{
+    // FIXME: Implement GlyphBuffer initial advance.
+    CTFontTransformOptions options = (enableKerning ? kCTFontTransformApplyPositioning : 0) | (requiresShaping ? kCTFontTransformApplyShaping : 0);
+#if HAVE(CTFONTTRANSFORMGLYPHSWITHLANGUAGE)
+    auto handler = ^(CFRange range, CGGlyph** newGlyphsPointer, CGSize** newAdvancesPointer) {
+        range.location = std::min(std::max(range.location, static_cast<CFIndex>(0)), static_cast<CFIndex>(glyphBuffer.size()));
+        if (range.length < 0) {
+            range.length = std::min(range.location, -range.length);
+            range.location = range.location - range.length;
+            glyphBuffer.remove(beginningIndex + range.location, range.length);
+        } else
+            glyphBuffer.makeHole(beginningIndex + range.location, range.length, this);
+        *newGlyphsPointer = glyphBuffer.glyphs(beginningIndex);
+        *newAdvancesPointer = glyphBuffer.advances(beginningIndex);
+    };
+    CTFontTransformGlyphsWithLanguage(m_platformData.ctFont(), glyphBuffer.glyphs(beginningIndex), reinterpret_cast<CGSize*>(glyphBuffer.advances(beginningIndex)), glyphBuffer.size() - beginningIndex, options, locale.string().createCFString().get(), handler);
+#else
+    UNUSED_PARAM(locale);
+    CTFontTransformGlyphs(m_platformData.ctFont(), glyphBuffer.glyphs(beginningIndex), reinterpret_cast<CGSize*>(glyphBuffer.advances(beginningIndex)), glyphBuffer.size() - beginningIndex, options);
+#endif
 }
 
 static int extractNumber(CFNumberRef number)

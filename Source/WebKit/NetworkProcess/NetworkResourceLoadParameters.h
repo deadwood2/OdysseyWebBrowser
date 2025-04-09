@@ -29,8 +29,8 @@
 #include "SandboxExtension.h"
 #include "UserContentControllerIdentifier.h"
 #include <WebCore/ContentSecurityPolicyResponseHeaders.h>
+#include <WebCore/CrossOriginAccessControl.h>
 #include <WebCore/FetchOptions.h>
-#include <WebCore/SecurityOrigin.h>
 #include <wtf/Seconds.h>
 
 namespace IPC {
@@ -44,11 +44,6 @@ typedef uint64_t ResourceLoadIdentifier;
 
 class NetworkResourceLoadParameters : public NetworkLoadParameters {
 public:
-    explicit NetworkResourceLoadParameters(PAL::SessionID sessionID)
-        : NetworkLoadParameters(sessionID)
-    {
-    }
-
     void encode(IPC::Encoder&) const;
     static Optional<NetworkResourceLoadParameters> decode(IPC::Decoder&);
 
@@ -65,6 +60,14 @@ public:
     bool shouldEnableCrossOriginResourcePolicy { false };
     Vector<RefPtr<WebCore::SecurityOrigin>> frameAncestorOrigins;
     bool isHTTPSUpgradeEnabled { false };
+    bool pageHasResourceLoadClient { false };
+    Optional<WebCore::FrameIdentifier> parentFrameID;
+
+#if ENABLE(SERVICE_WORKER)
+    WebCore::ServiceWorkersMode serviceWorkersMode { WebCore::ServiceWorkersMode::None };
+    Optional<WebCore::ServiceWorkerRegistrationIdentifier> serviceWorkerRegistrationIdentifier;
+    OptionSet<WebCore::HTTPHeadersToKeepFromCleaning> httpHeadersToKeep;
+#endif
 
 #if ENABLE(CONTENT_EXTENSIONS)
     URL mainDocumentURL;

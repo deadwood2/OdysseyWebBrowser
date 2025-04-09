@@ -207,19 +207,19 @@ void GraphicsContext::restorePlatformState()
     Direct2D::restore(*platformContext());
 }
 
-void GraphicsContext::drawNativeImage(const COMPtr<ID2D1Bitmap>& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator compositeOperator, BlendMode blendMode, ImageOrientation orientation)
+void GraphicsContext::drawNativeImage(const COMPtr<ID2D1Bitmap>& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
     if (paintingDisabled())
         return;
 
     if (m_impl) {
-        m_impl->drawNativeImage(image, imageSize, destRect, srcRect, compositeOperator, blendMode, orientation);
+        m_impl->drawNativeImage(image, imageSize, destRect, srcRect, options);
         return;
     }
 
     ASSERT(hasPlatformContext());
     auto& state = this->state();
-    Direct2D::drawNativeImage(*platformContext(), image.get(), imageSize, destRect, srcRect, compositeOperator, blendMode, orientation, state.imageInterpolationQuality, state.alpha, Direct2D::ShadowState(state));
+    Direct2D::drawNativeImage(*platformContext(), image.get(), imageSize, destRect, srcRect, options, state.alpha, Direct2D::ShadowState(state));
 }
 
 void GraphicsContext::releaseWindowsContext(HDC hdc, const IntRect& dstRect, bool supportAlphaBlend)
@@ -296,7 +296,7 @@ GraphicsContextPlatformPrivate::GraphicsContextPlatformPrivate(PlatformContextDi
 
 GraphicsContextPlatformPrivate::GraphicsContextPlatformPrivate(std::unique_ptr<PlatformContextDirect2D>&& ownedPlatformContext, GraphicsContext::BitmapRenderingContextType renderingType)
     : m_ownedPlatformContext(WTFMove(ownedPlatformContext))
-    , m_platformContext(*ownedPlatformContext)
+    , m_platformContext(*m_ownedPlatformContext)
     , m_rendererType(renderingType)
 {
     if (!m_platformContext.renderTarget())
@@ -423,19 +423,19 @@ void GraphicsContext::flush()
     Direct2D::flush(*platformContext());
 }
 
-void GraphicsContext::drawPattern(Image& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, CompositeOperator compositeOperator, BlendMode blendMode)
+void GraphicsContext::drawPattern(Image& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
 {
     if (paintingDisabled() || !patternTransform.isInvertible())
         return;
 
     if (m_impl) {
-        m_impl->drawPattern(image, destRect, tileRect, patternTransform, phase, spacing, compositeOperator, blendMode);
+        m_impl->drawPattern(image, destRect, tileRect, patternTransform, phase, spacing, options);
         return;
     }
 
     ASSERT(hasPlatformContext());
     if (auto tileImage = image.nativeImageForCurrentFrame(this))
-        Direct2D::drawPattern(*platformContext(), WTFMove(tileImage), IntSize(image.size()), destRect, tileRect, patternTransform, phase, compositeOperator, blendMode);
+        Direct2D::drawPattern(*platformContext(), WTFMove(tileImage), IntSize(image.size()), destRect, tileRect, patternTransform, phase, options.compositeOperator(), options.blendMode());
 }
 
 void GraphicsContext::clipToImageBuffer(ImageBuffer& buffer, const FloatRect& destRect)
@@ -589,7 +589,7 @@ void GraphicsContext::drawPath(const Path& path)
     ASSERT(hasPlatformContext());
     auto& state = this->state();
     auto& context = *platformContext();
-    Direct2D::drawPath(context, path, Direct2D::StrokeSource(state, context), Direct2D::ShadowState(state));
+    Direct2D::drawPath(context, path, Direct2D::StrokeSource(state, *this), Direct2D::ShadowState(state));
 }
 
 void GraphicsContext::fillPath(const Path& path)
@@ -605,7 +605,7 @@ void GraphicsContext::fillPath(const Path& path)
     ASSERT(hasPlatformContext());
     auto& state = this->state();
     auto& context = *platformContext();
-    Direct2D::fillPath(context, path, Direct2D::FillSource(state, context), Direct2D::ShadowState(state));
+    Direct2D::fillPath(context, path, Direct2D::FillSource(state, *this), Direct2D::ShadowState(state));
 }
 
 void GraphicsContext::strokePath(const Path& path)
@@ -621,7 +621,7 @@ void GraphicsContext::strokePath(const Path& path)
     ASSERT(hasPlatformContext());
     auto& state = this->state();
     auto& context = *platformContext();
-    Direct2D::strokePath(context, path, Direct2D::StrokeSource(state, context), Direct2D::ShadowState(state));
+    Direct2D::strokePath(context, path, Direct2D::StrokeSource(state, *this), Direct2D::ShadowState(state));
 }
 
 void GraphicsContext::fillRect(const FloatRect& rect)
@@ -637,7 +637,7 @@ void GraphicsContext::fillRect(const FloatRect& rect)
     ASSERT(hasPlatformContext());
     auto& state = this->state();
     auto& context = *platformContext();
-    Direct2D::fillRect(context, rect, Direct2D::FillSource(state, context), Direct2D::ShadowState(state));
+    Direct2D::fillRect(context, rect, Direct2D::FillSource(state, *this), Direct2D::ShadowState(state));
 }
 
 void GraphicsContext::fillRect(const FloatRect& rect, const Color& color)
@@ -681,7 +681,7 @@ void GraphicsContext::fillRectWithRoundedHole(const FloatRect& rect, const Float
     ASSERT(hasPlatformContext());
     auto& state = this->state();
     auto& context = *platformContext();
-    Direct2D::fillRectWithRoundedHole(context, rect, roundedHoleRect, Direct2D::FillSource(state, context), Direct2D::ShadowState(state));
+    Direct2D::fillRectWithRoundedHole(context, rect, roundedHoleRect, Direct2D::FillSource(state, *this), Direct2D::ShadowState(state));
 }
 
 void GraphicsContext::clip(const FloatRect& rect)
@@ -861,7 +861,7 @@ void GraphicsContext::strokeRect(const FloatRect& rect, float lineWidth)
     ASSERT(hasPlatformContext());
     auto& state = this->state();
     auto& context = *platformContext();
-    Direct2D::strokeRect(context, rect, lineWidth, Direct2D::StrokeSource(state, context), Direct2D::ShadowState(state));
+    Direct2D::strokeRect(context, rect, lineWidth, Direct2D::StrokeSource(state, *this), Direct2D::ShadowState(state));
 }
 
 void GraphicsContext::setLineCap(LineCap cap)
@@ -1062,19 +1062,19 @@ void GraphicsContext::setPlatformImageInterpolationQuality(InterpolationQuality 
     D2D1_INTERPOLATION_MODE quality = D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
 
     switch (mode) {
-    case InterpolationDefault:
+    case InterpolationQuality::Default:
         quality = D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
         break;
-    case InterpolationNone:
+    case InterpolationQuality::DoNotInterpolate:
         quality = D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
         break;
-    case InterpolationLow:
+    case InterpolationQuality::Low:
         quality = D2D1_INTERPOLATION_MODE_LINEAR;
         break;
-    case InterpolationMedium:
+    case InterpolationQuality::Medium:
         quality = D2D1_INTERPOLATION_MODE_CUBIC;
         break;
-    case InterpolationHigh:
+    case InterpolationQuality::High:
         quality = D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC;
         break;
     }

@@ -43,7 +43,7 @@ namespace WebCore {
 
 static inline void releaseUint8Vector(void *array, const void*)
 {
-    adoptMallocPtr(static_cast<uint8_t*>(array));
+    WTF::VectorMalloc::free(array);
 }
 
 RefPtr<MediaSampleAVFObjC> MediaSampleAVFObjC::createImageSample(Vector<uint8_t>&& array, unsigned long width, unsigned long height)
@@ -309,6 +309,15 @@ RefPtr<JSC::Uint8ClampedArray> MediaSampleAVFObjC::getRGBAImageData() const
 #else
     return nullptr;
 #endif
+}
+
+void MediaSampleAVFObjC::setAsDisplayImmediately(MediaSample& sample)
+{
+    CFArrayRef attachmentsArray = CMSampleBufferGetSampleAttachmentsArray(sample.platformSample().sample.cmSampleBuffer, true);
+    for (CFIndex i = 0; i < CFArrayGetCount(attachmentsArray); ++i) {
+        CFMutableDictionaryRef attachments = checked_cf_cast<CFMutableDictionaryRef>(CFArrayGetValueAtIndex(attachmentsArray, i));
+        CFDictionarySetValue(attachments, kCMSampleAttachmentKey_DisplayImmediately, kCFBooleanTrue);
+    }
 }
 
 String MediaSampleAVFObjC::toJSONString() const

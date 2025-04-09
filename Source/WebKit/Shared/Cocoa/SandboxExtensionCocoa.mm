@@ -40,9 +40,9 @@ namespace WebKit {
 class SandboxExtensionImpl {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static std::unique_ptr<SandboxExtensionImpl> create(const char* path, SandboxExtension::Type type, Optional<pid_t> pid = WTF::nullopt)
+    static std::unique_ptr<SandboxExtensionImpl> create(const char* path, SandboxExtension::Type type, Optional<audit_token_t> auditToken = WTF::nullopt)
     {
-        std::unique_ptr<SandboxExtensionImpl> impl { new SandboxExtensionImpl(path, type, pid) };
+        std::unique_ptr<SandboxExtensionImpl> impl { new SandboxExtensionImpl(path, type, auditToken) };
         if (!impl->m_token)
             return nullptr;
         return impl;
@@ -84,7 +84,7 @@ public:
     }
 
 private:
-    char* sandboxExtensionForType(const char* path, SandboxExtension::Type type, Optional<pid_t> pid = WTF::nullopt)
+    char* sandboxExtensionForType(const char* path, SandboxExtension::Type type, Optional<audit_token_t> auditToken)
     {
         switch (type) {
         case SandboxExtension::Type::ReadOnly:
@@ -92,28 +92,32 @@ private:
         case SandboxExtension::Type::ReadWrite:
             return sandbox_extension_issue_file(APP_SANDBOX_READ_WRITE, path, 0);
         case SandboxExtension::Type::Mach:
-#if HAVE(SANDBOX_ISSUE_MACH_EXTENSION_TO_PROCESS_BY_PID)
-            return sandbox_extension_issue_mach_to_process_by_pid("com.apple.webkit.extension.mach"_s, path, 0, pid.value());
+            if (!auditToken)
+                return sandbox_extension_issue_mach("com.apple.webkit.extension.mach"_s, path, 0);
+#if HAVE(SANDBOX_ISSUE_MACH_EXTENSION_TO_PROCESS_BY_AUDIT_TOKEN)
+            return sandbox_extension_issue_mach_to_process("com.apple.webkit.extension.mach"_s, path, 0, *auditToken);
 #else
-            UNUSED_PARAM(pid);
+            UNUSED_PARAM(auditToken);
             ASSERT_NOT_REACHED();
             return nullptr;
 #endif
         case SandboxExtension::Type::Generic:
             return sandbox_extension_issue_generic(path, 0);
-        case SandboxExtension::Type::ReadByPid:
-#if HAVE(SANDBOX_ISSUE_READ_EXTENSION_TO_PROCESS_BY_PID)
-            return sandbox_extension_issue_file_to_process_by_pid(APP_SANDBOX_READ, path, SANDBOX_EXTENSION_USER_INTENT, pid.value());
+        case SandboxExtension::Type::ReadByProcess:
+#if HAVE(SANDBOX_ISSUE_READ_EXTENSION_TO_PROCESS_BY_AUDIT_TOKEN)
+            if (!auditToken)
+                return nullptr;
+            return sandbox_extension_issue_file_to_process(APP_SANDBOX_READ, path, 0, *auditToken);
 #else
-            UNUSED_PARAM(pid);
+            UNUSED_PARAM(auditToken);
             ASSERT_NOT_REACHED();
             return nullptr;
 #endif
         }
     }
 
-    SandboxExtensionImpl(const char* path, SandboxExtension::Type type, Optional<pid_t> pid = WTF::nullopt)
-        : m_token { sandboxExtensionForType(path, type, pid) }
+    SandboxExtensionImpl(const char* path, SandboxExtension::Type type, Optional<audit_token_t> auditToken)
+        : m_token { sandboxExtensionForType(path, type, auditToken) }
     {
     }
 
@@ -332,11 +336,11 @@ bool SandboxExtension::createHandleForGenericExtension(const String& extensionCl
     return true;
 }
 
-bool SandboxExtension::createHandleForMachLookupByPid(const String& service, pid_t pid, Handle& handle)
+bool SandboxExtension::createHandleForMachLookup(const String& service, Optional<audit_token_t> auditToken, Handle& handle)
 {
     ASSERT(!handle.m_sandboxExtension);
     
-    handle.m_sandboxExtension = SandboxExtensionImpl::create(service.utf8().data(), Type::Mach, pid);
+    handle.m_sandboxExtension = SandboxExtensionImpl::create(service.utf8().data(), Type::Mach, auditToken);
     if (!handle.m_sandboxExtension) {
         WTFLogAlways("Could not create a '%s' sandbox extension", service.utf8().data());
         return false;
@@ -345,16 +349,13 @@ bool SandboxExtension::createHandleForMachLookupByPid(const String& service, pid
     return true;
 }
 
-bool SandboxExtension::createHandleForReadByPid(const String& path, ProcessID pid, Handle& handle)
+bool SandboxExtension::createHandleForReadByAuditToken(const String& path, audit_token_t auditToken, Handle& handle)
 {
     ASSERT(!handle.m_sandboxExtension);
-    
-    if (!pid)
-        return false;
 
-    handle.m_sandboxExtension = SandboxExtensionImpl::create(path.utf8().data(), Type::ReadByPid, pid);
+    handle.m_sandboxExtension = SandboxExtensionImpl::create(path.utf8().data(), Type::ReadByProcess, auditToken);
     if (!handle.m_sandboxExtension) {
-        WTFLogAlways("Could not create sandbox extension");
+        LOG_ERROR("Could not create a sandbox extension for '%s'", path.utf8().data());
         return false;
     }
     

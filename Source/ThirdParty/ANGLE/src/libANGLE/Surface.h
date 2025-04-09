@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2002-2014 The ANGLE Project Authors. All rights reserved.
+// Copyright 2002 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -55,6 +55,7 @@ struct SurfaceState final : private angle::NonCopyable
     bool timestampsEnabled;
     SupportedCompositorTiming supportedCompositorTimings;
     SupportedTimestamps supportedTimestamps;
+    bool directComposition;
 };
 
 class Surface : public LabeledObject, public gl::FramebufferAttachmentObject
@@ -68,8 +69,11 @@ class Surface : public LabeledObject, public gl::FramebufferAttachmentObject
     EGLint getType() const;
 
     Error initialize(const Display *display);
+    Error makeCurrent(const gl::Context *context);
+    Error unMakeCurrent(const gl::Context *context);
     Error swap(const gl::Context *context);
     Error swapWithDamage(const gl::Context *context, EGLint *rects, EGLint n_rects);
+    Error swapWithFrameToken(const gl::Context *context, EGLFrameTokenANGLE frameToken);
     Error postSubBuffer(const gl::Context *context,
                         EGLint x,
                         EGLint y,
@@ -81,11 +85,11 @@ class Surface : public LabeledObject, public gl::FramebufferAttachmentObject
     Error releaseTexImage(const gl::Context *context, EGLint buffer);
 
     Error getSyncValues(EGLuint64KHR *ust, EGLuint64KHR *msc, EGLuint64KHR *sbc);
+    Error getMscRate(EGLint *numerator, EGLint *denominator);
 
     EGLint isPostSubBufferSupported() const;
 
     void setSwapInterval(EGLint interval);
-    Error setIsCurrent(const gl::Context *context, bool isCurrent);
     Error onDestroy(const Display *display);
 
     void setMipmapLevel(EGLint level);
@@ -95,7 +99,8 @@ class Surface : public LabeledObject, public gl::FramebufferAttachmentObject
     void setFixedWidth(EGLint width);
     void setFixedHeight(EGLint height);
 
-    gl::Framebuffer *createDefaultFramebuffer(const gl::Context *context);
+    gl::Framebuffer *createDefaultFramebuffer(const gl::Context *context,
+                                              egl::Surface *readSurface);
 
     const Config *getConfig() const;
 
@@ -139,7 +144,7 @@ class Surface : public LabeledObject, public gl::FramebufferAttachmentObject
     }
     EGLint getOrientation() const { return mOrientation; }
 
-    bool directComposition() const { return mDirectComposition; }
+    bool directComposition() const { return mState.directComposition; }
 
     gl::InitState initState(const gl::ImageIndex &imageIndex) const override;
     void setInitState(const gl::ImageIndex &imageIndex, gl::InitState initState) override;
@@ -202,8 +207,6 @@ class Surface : public LabeledObject, public gl::FramebufferAttachmentObject
     bool mFixedSize;
     size_t mFixedWidth;
     size_t mFixedHeight;
-
-    bool mDirectComposition;
 
     bool mRobustResourceInitialization;
 

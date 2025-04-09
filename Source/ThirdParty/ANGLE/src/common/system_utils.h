@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2014 The ANGLE Project Authors. All rights reserved.
+// Copyright 2014 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -17,16 +17,24 @@ namespace angle
 std::string GetExecutablePath();
 std::string GetExecutableDirectory();
 const char *GetSharedLibraryExtension();
+const char *GetExecutableExtension();
+char GetPathSeparator();
 Optional<std::string> GetCWD();
 bool SetCWD(const char *dirName);
 bool SetEnvironmentVar(const char *variableName, const char *value);
 bool UnsetEnvironmentVar(const char *variableName);
 std::string GetEnvironmentVar(const char *variableName);
-const char *GetPathSeparator();
+const char *GetPathSeparatorForEnvironmentVar();
 bool PrependPathToEnvironmentVar(const char *variableName, const char *path);
+bool IsDirectory(const char *filename);
+
+// Get absolute time in seconds.  Use this function to get an absolute time with an unknown origin.
+double GetCurrentTime();
 
 // Run an application and get the output.  Gets a nullptr-terminated set of args to execute the
 // application with, and returns the stdout and stderr outputs as well as the exit code.
+//
+// Pass nullptr for stdoutOut/stderrOut if you don't need to capture. exitCodeOut is required.
 //
 // Returns false if it fails to actually execute the application.
 bool RunApp(const std::vector<const char *> &args,
@@ -48,7 +56,21 @@ class Library : angle::NonCopyable
     }
 };
 
-Library *OpenSharedLibrary(const char *libraryName);
+// Use SYSTEM_DIR to bypass loading ANGLE libraries with the same name as system DLLS
+// (e.g. opengl32.dll)
+enum class SearchType
+{
+    ApplicationDir,
+    SystemDir
+};
+
+Library *OpenSharedLibrary(const char *libraryName, SearchType searchType);
+
+// Returns true if the process is currently being debugged.
+bool IsDebuggerAttached();
+
+// Calls system APIs to break into the debugger.
+void BreakDebugger();
 }  // namespace angle
 
 #endif  // COMMON_SYSTEM_UTILS_H_

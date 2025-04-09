@@ -32,6 +32,7 @@
 #include "config.h"
 #include "NetworkDataTaskBlob.h"
 
+#include "AuthenticationManager.h"
 #include "DataReference.h"
 #include "Download.h"
 #include "Logging.h"
@@ -290,7 +291,7 @@ void NetworkDataTaskBlob::dispatchDidReceiveResponse(Error errorCode)
         break;
     }
 
-    didReceiveResponse(WTFMove(response), [this, protectedThis = WTFMove(protectedThis), errorCode](PolicyAction policyAction) {
+    didReceiveResponse(WTFMove(response), NegotiatedLegacyTLS::No, [this, protectedThis = WTFMove(protectedThis), errorCode](PolicyAction policyAction) {
         LOG(NetworkSession, "%p - NetworkDataTaskBlob::didReceiveResponse completionHandler (%u)", this, static_cast<unsigned>(policyAction));
 
         if (m_state == State::Canceling || m_state == State::Completed) {
@@ -467,7 +468,7 @@ void NetworkDataTaskBlob::download()
     }
 
     auto& downloadManager = m_networkProcess->downloadManager();
-    auto download = makeUnique<Download>(downloadManager, m_pendingDownloadID, *this, m_session->sessionID(), suggestedFilename());
+    auto download = makeUnique<Download>(downloadManager, m_pendingDownloadID, *this, *m_session, suggestedFilename());
     auto* downloadPtr = download.get();
     downloadManager.dataTaskBecameDownloadTask(m_pendingDownloadID, WTFMove(download));
     downloadPtr->didCreateDestination(m_pendingDownloadLocation);

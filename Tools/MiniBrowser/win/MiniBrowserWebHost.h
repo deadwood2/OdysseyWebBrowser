@@ -60,7 +60,7 @@ public:
 
     // IWebFrameLoadDelegatePrivate
     virtual HRESULT STDMETHODCALLTYPE didFinishDocumentLoadForFrame(_In_opt_ IWebView* sender, _In_opt_ IWebFrame*) { return S_OK; }
-    virtual HRESULT STDMETHODCALLTYPE didFirstLayoutInFrame(_In_opt_ IWebView* sender, _In_opt_ IWebFrame*);
+    virtual HRESULT STDMETHODCALLTYPE didFirstLayoutInFrame(_In_opt_ IWebView* sender, _In_opt_ IWebFrame*) { return S_OK; }
     virtual HRESULT STDMETHODCALLTYPE didHandleOnloadEventsForFrame(_In_opt_ IWebView*, _In_opt_ IWebFrame*);
     virtual HRESULT STDMETHODCALLTYPE didFirstVisuallyNonEmptyLayoutInFrame(_In_opt_ IWebView* sender, _In_opt_ IWebFrame*)  { return S_OK; }
 
@@ -68,5 +68,6 @@ public:
     virtual HRESULT STDMETHODCALLTYPE onNotify(_In_opt_ IWebNotification*);
 
 private:
+    ULONG m_refCount { 0 };
     WebKitLegacyBrowserWindow* m_client { nullptr };
 };

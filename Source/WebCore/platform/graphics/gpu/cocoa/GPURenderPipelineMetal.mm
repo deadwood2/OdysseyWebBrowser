@@ -29,8 +29,10 @@
 #if ENABLE(WEBGPU)
 
 #import "GPUDevice.h"
+#import "GPUErrorScopes.h"
 #import "GPULimits.h"
 #import "GPUPipelineMetalConvertLayout.h"
+#import "GPURenderPipelineDescriptor.h"
 #import "GPUUtils.h"
 #import "WHLSLPrepare.h"
 #import "WHLSLVertexBufferIndexCalculator.h"
@@ -223,19 +225,19 @@ static bool trySetVertexInput(const GPUVertexInputDescriptor& descriptor, MTLRen
 
 static MTLColorWriteMask mtlColorWriteMaskForGPUColorWriteFlags(GPUColorWriteFlags flags)
 {
-    if (flags == static_cast<GPUColorWriteFlags>(GPUColorWriteBits::Flags::All))
+    if (flags == static_cast<GPUColorWriteFlags>(GPUColorWrite::Flags::All))
         return MTLColorWriteMaskAll;
 
-    auto options = OptionSet<GPUColorWriteBits::Flags>::fromRaw(flags);
+    auto options = OptionSet<GPUColorWrite::Flags>::fromRaw(flags);
 
     MTLColorWriteMask mask = MTLColorWriteMaskNone;
-    if (options & GPUColorWriteBits::Flags::Red)
+    if (options & GPUColorWrite::Flags::Red)
         mask |= MTLColorWriteMaskRed;
-    if (options & GPUColorWriteBits::Flags::Green)
+    if (options & GPUColorWrite::Flags::Green)
         mask |= MTLColorWriteMaskGreen;
-    if (options & GPUColorWriteBits::Flags::Blue)
+    if (options & GPUColorWrite::Flags::Blue)
         mask |= MTLColorWriteMaskBlue;
-    if (options & GPUColorWriteBits::Flags::Alpha)
+    if (options & GPUColorWrite::Flags::Alpha)
         mask |= MTLColorWriteMaskAlpha;
 
     return mask;
@@ -376,7 +378,7 @@ static bool trySetMetalFunctions(MTLLibrary *vertexMetalLibrary, MTLLibrary *fra
     return false;
 }
 
-static bool trySetFunctions(const GPUPipelineStageDescriptor& vertexStage, const Optional<GPUPipelineStageDescriptor>& fragmentStage, const GPUDevice& device, MTLRenderPipelineDescriptor* mtlDescriptor, Optional<WHLSL::RenderPipelineDescriptor>& whlslDescriptor, GPUErrorScopes& errorScopes)
+static bool trySetFunctions(const GPUProgrammableStageDescriptor& vertexStage, const Optional<GPUProgrammableStageDescriptor>& fragmentStage, const GPUDevice& device, MTLRenderPipelineDescriptor* mtlDescriptor, Optional<WHLSL::RenderPipelineDescriptor>& whlslDescriptor, GPUErrorScopes& errorScopes)
 {
     RetainPtr<MTLLibrary> vertexLibrary, fragmentLibrary;
     String vertexEntryPoint, fragmentEntryPoint;
@@ -482,7 +484,7 @@ static RetainPtr<MTLRenderPipelineDescriptor> convertRenderPipelineDescriptor(co
     return mtlDescriptor;
 }
 
-static RetainPtr<MTLRenderPipelineState> tryCreateMtlRenderPipelineState(const GPURenderPipelineDescriptor& descriptor, const GPUDevice& device, GPUErrorScopes& errorScopes)
+static RetainPtr<MTLRenderPipelineState> tryCreateMtlRenderPipelineState(const GPUDevice& device, const GPURenderPipelineDescriptor& descriptor, GPUErrorScopes& errorScopes)
 {
     if (!device.platformDevice()) {
         errorScopes.generatePrefixedError("Invalid GPUDevice!");
@@ -521,20 +523,36 @@ RefPtr<GPURenderPipeline> GPURenderPipeline::tryCreate(const GPUDevice& device, 
 
     // FIXME: https://bugs.webkit.org/show_bug.cgi?id=198387 depthStencilAttachmentDescriptor isn't implemented yet for WHLSL compiler.
 
-    auto pipeline = tryCreateMtlRenderPipelineState(descriptor, device, errorScopes);
+    auto pipeline = tryCreateMtlRenderPipelineState(device, descriptor, errorScopes);
     if (!pipeline)
         return nullptr;
 
-    return adoptRef(new GPURenderPipeline(WTFMove(depthStencil), WTFMove(pipeline), descriptor.primitiveTopology, descriptor.vertexInput.indexFormat, errorScopes));
+    return adoptRef(new GPURenderPipeline(WTFMove(depthStencil), WTFMove(pipeline), descriptor.primitiveTopology, descriptor.vertexInput.indexFormat, descriptor.layout, descriptor));
 }
 
-GPURenderPipeline::GPURenderPipeline(RetainPtr<MTLDepthStencilState>&& depthStencil, RetainPtr<MTLRenderPipelineState>&& pipeline, GPUPrimitiveTopology topology, Optional<GPUIndexFormat> format, GPUErrorScopes& errorScopes)
-    : GPUObjectBase(makeRef(errorScopes))
+GPURenderPipeline::GPURenderPipeline(RetainPtr<MTLDepthStencilState>&& depthStencil, RetainPtr<MTLRenderPipelineState>&& pipeline, GPUPrimitiveTopology topology, Optional<GPUIndexFormat> format, const RefPtr<GPUPipelineLayout>& layout, const GPURenderPipelineDescriptorBase& renderDescriptorBase)
+    : GPUPipeline()
     , m_depthStencilState(WTFMove(depthStencil))
     , m_platformRenderPipeline(WTFMove(pipeline))
     , m_primitiveTopology(topology)
     , m_indexFormat(format)
+    , m_layout(layout)
+    , m_renderDescriptorBase(renderDescriptorBase)
 {
+}
+
+GPURenderPipeline::~GPURenderPipeline() = default;
+
+bool GPURenderPipeline::recompile(const GPUDevice& device, GPUProgrammableStageDescriptor&& vertexStage, Optional<GPUProgrammableStageDescriptor>&& fragmentStage)
+{
+    GPURenderPipelineDescriptor descriptor(makeRefPtr(m_layout.get()), WTFMove(vertexStage), WTFMove(fragmentStage), m_renderDescriptorBase);
+    auto errorScopes = GPUErrorScopes::create([] (GPUError&&) { });
+    if (auto pipeline = tryCreateMtlRenderPipelineState(device, descriptor, errorScopes)) {
+        m_platformRenderPipeline = WTFMove(pipeline);
+        return true;
+    }
+
+    return false;
 }
 
 } // namespace WebCore

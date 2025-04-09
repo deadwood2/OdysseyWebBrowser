@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2015 The ANGLE Project Authors. All rights reserved.
+// Copyright 2015 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -606,8 +606,8 @@ TEST_F(FragmentShaderValidationTest, AssignUniformToGlobalESSL3)
 }
 
 // Global variable initializers need to be constant expressions (ESSL 1.00 section 4.3)
-// Initializing with an uniform should generate a warning
-// (we don't generate an error on ESSL 1.00 because of legacy compatibility)
+// Initializing with an uniform used to generate a warning on ESSL 1.00 because of legacy
+// compatibility, but that causes dEQP to fail (which expects an error)
 TEST_F(FragmentShaderValidationTest, AssignUniformToGlobalESSL1)
 {
     const std::string &shaderString =
@@ -619,15 +619,7 @@ TEST_F(FragmentShaderValidationTest, AssignUniformToGlobalESSL1)
         "}\n";
     if (compile(shaderString))
     {
-        if (!hasWarning())
-        {
-            FAIL() << "Shader compilation succeeded without warnings, expecting warning:\n"
-                   << mInfoLog;
-        }
-    }
-    else
-    {
-        FAIL() << "Shader compilation failed, expecting success with warning:\n" << mInfoLog;
+        FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
     }
 }
 
@@ -1289,24 +1281,88 @@ TEST_F(FragmentShaderValidationTest, DynamicallyIndexedFragmentOutput)
     }
 }
 
-// Test that indexing an interface block array with a non-constant expression is forbidden, even if
+// Test that indexing a uniform buffer array with a non-constant expression is forbidden, even if
 // ANGLE is able to constant fold the index expression. ESSL 3.00 section 4.3.7.
-TEST_F(FragmentShaderValidationTest, DynamicallyIndexedInterfaceBlock)
+TEST_F(FragmentShaderValidationTest, DynamicallyIndexedUniformBuffer)
 {
     const std::string &shaderString =
-        "#version 300 es\n"
-        "precision mediump float;\n"
-        "uniform int a;\n"
-        "uniform B\n"
-        "{\n"
-        "    vec4 f;\n"
-        "}\n"
-        "blocks[2];\n"
-        "out vec4 my_FragColor;\n"
-        "void main()\n"
-        "{\n"
-        "    my_FragColor = blocks[true ? 0 : a].f;\n"
-        "}\n";
+        R"(#version 300 es
+        precision mediump float;
+        uniform int a;
+        uniform B
+        {
+            vec4 f;
+        }
+        blocks[2];
+        out vec4 my_FragColor;
+        void main()
+        {
+            my_FragColor = blocks[true ? 0 : a].f;
+        })";
+    if (compile(shaderString))
+    {
+        FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+    }
+}
+
+// Test that indexing a storage buffer array with a non-constant expression is forbidden, even if
+// ANGLE is able to constant fold the index expression. ESSL 3.10 section 4.3.9.
+TEST_F(FragmentShaderValidationTest, DynamicallyIndexedStorageBuffer)
+{
+    const std::string &shaderString =
+        R"(#version 310 es
+        precision mediump float;
+        uniform int a;
+        layout(std140) buffer B
+        {
+            vec4 f;
+        }
+        blocks[2];
+        out vec4 my_FragColor;
+        void main()
+        {
+            my_FragColor = blocks[true ? 0 : a].f;
+        })";
+    if (compile(shaderString))
+    {
+        FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+    }
+}
+
+// Test that indexing a sampler array with a non-constant expression is forbidden, even if ANGLE is
+// able to constant fold the index expression. ESSL 3.00 section 4.1.7.1.
+TEST_F(FragmentShaderValidationTest, DynamicallyIndexedSampler)
+{
+    const std::string &shaderString =
+        R"(#version 300 es
+        precision mediump float;
+        uniform int a;
+        uniform sampler2D s[2];
+        out vec4 my_FragColor;
+        void main()
+        {
+            my_FragColor = texture(s[true ? 0 : a], vec2(0));
+        })";
+    if (compile(shaderString))
+    {
+        FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+    }
+}
+
+// Test that indexing an image array with a non-constant expression is forbidden, even if ANGLE is
+// able to constant fold the index expression. ESSL 3.10 section 4.1.7.2.
+TEST_F(FragmentShaderValidationTest, DynamicallyIndexedImage)
+{
+    const std::string &shaderString =
+        R"(#version 310 es
+        precision mediump float;
+        uniform int a;
+        layout(rgba32f) uniform highp readonly image2D image[2];
+        out vec4 my_FragColor;
+        void main()
+        {
+            my_FragColor = imageLoad(image[true ? 0 : a], ivec2(0));
+        })";
     if (compile(shaderString))
     {
         FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
@@ -1346,6 +1402,46 @@ TEST_F(WebGL2FragmentShaderValidationTest, IndexFragDataWithNonConstant)
     if (compile(shaderString))
     {
         FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+    }
+}
+
+// Global variable initializers need to be constant expressions (ESSL 1.00 section 4.3)
+// Initializing with an uniform should generate a warning
+// (we don't generate an error on ESSL 1.00 because of WebGL compatibility)
+TEST_F(WebGL2FragmentShaderValidationTest, AssignUniformToGlobalESSL1)
+{
+    const std::string &shaderString =
+        "precision mediump float;\n"
+        "uniform float a;\n"
+        "float b = a * 2.0;\n"
+        "void main() {\n"
+        "   gl_FragColor = vec4(b);\n"
+        "}\n";
+    if (compile(shaderString))
+    {
+        if (!hasWarning())
+        {
+            FAIL() << "Shader compilation succeeded without warnings, expecting warning:\n"
+                   << mInfoLog;
+        }
+    }
+    else
+    {
+        FAIL() << "Shader compilation failed, expecting success with warning:\n" << mInfoLog;
+    }
+}
+
+// Test that deferring global variable init works with an empty main().
+TEST_F(WebGL2FragmentShaderValidationTest, DeferGlobalVariableInitWithEmptyMain)
+{
+    const std::string &shaderString =
+        "precision mediump float;\n"
+        "uniform float u;\n"
+        "float foo = u;\n"
+        "void main() {}\n";
+    if (!compile(shaderString))
+    {
+        FAIL() << "Shader compilation failed, expecting success:\n" << mInfoLog;
     }
 }
 
@@ -1466,6 +1562,46 @@ TEST_F(WebGL1FragmentShaderValidationTest, NonConstantLoopIndex)
     if (compile(shaderString))
     {
         FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+    }
+}
+
+// Global variable initializers need to be constant expressions (ESSL 1.00 section 4.3)
+// Initializing with an uniform should generate a warning
+// (we don't generate an error on ESSL 1.00 because of WebGL compatibility)
+TEST_F(WebGL1FragmentShaderValidationTest, AssignUniformToGlobalESSL1)
+{
+    const std::string &shaderString =
+        "precision mediump float;\n"
+        "uniform float a;\n"
+        "float b = a * 2.0;\n"
+        "void main() {\n"
+        "   gl_FragColor = vec4(b);\n"
+        "}\n";
+    if (compile(shaderString))
+    {
+        if (!hasWarning())
+        {
+            FAIL() << "Shader compilation succeeded without warnings, expecting warning:\n"
+                   << mInfoLog;
+        }
+    }
+    else
+    {
+        FAIL() << "Shader compilation failed, expecting success with warning:\n" << mInfoLog;
+    }
+}
+
+// Test that deferring global variable init works with an empty main().
+TEST_F(WebGL1FragmentShaderValidationTest, DeferGlobalVariableInitWithEmptyMain)
+{
+    const std::string &shaderString =
+        "precision mediump float;\n"
+        "uniform float u;\n"
+        "float foo = u;\n"
+        "void main() {}\n";
+    if (!compile(shaderString))
+    {
+        FAIL() << "Shader compilation failed, expecting success:\n" << mInfoLog;
     }
 }
 
@@ -1785,6 +1921,21 @@ TEST_F(ComputeShaderValidationTest, NoWorkGroupSizeSpecified)
     if (!compile(shaderString))
     {
         FAIL() << "Shader compilation failed, expecting success:\n" << mInfoLog;
+    }
+}
+
+// Test that workgroup size declaration doesn't accept variable declaration.
+TEST_F(ComputeShaderValidationTest, NoVariableDeclrationAfterWorkGroupSize)
+{
+    constexpr char kShaderString[] =
+        R"(#version 310 es
+        layout(local_size_x = 1) in vec4 x;
+        void main()
+        {
+        })";
+    if (compile(kShaderString))
+    {
+        FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
     }
 }
 
@@ -2633,20 +2784,6 @@ TEST_F(FragmentShaderValidationTest, ShiftByNegative)
     else
     {
         FAIL() << "Shader compilation failed, expecting success with warning:\n" << mInfoLog;
-    }
-}
-
-// Test that deferring global variable init works with an empty main().
-TEST_F(FragmentShaderValidationTest, DeferGlobalVariableInitWithEmptyMain)
-{
-    const std::string &shaderString =
-        "precision mediump float;\n"
-        "uniform float u;\n"
-        "float foo = u;\n"
-        "void main() {}\n";
-    if (!compile(shaderString))
-    {
-        FAIL() << "Shader compilation failed, expecting success:\n" << mInfoLog;
     }
 }
 
@@ -5563,6 +5700,50 @@ TEST_F(FragmentShaderValidationTest, AtomicAddWithNonStorageVariable)
     }
 }
 
+// Test that it is acceptable to pass a swizzle of a member of a shader storage block to the mem
+// argument of an atomic memory function.
+TEST_F(FragmentShaderValidationTest, AtomicAddWithSwizzle)
+{
+    const std::string &shaderString =
+        R"(#version 310 es
+
+        layout(std140) buffer bufferName{
+            uvec4 u1[2];
+        } instanceName[3];
+
+        void main()
+        {
+            atomicAdd(instanceName[2].u1[1].y, 2u);
+        })";
+
+    if (!compile(shaderString))
+    {
+        FAIL() << "Shader compilation failed, expecting success:\n" << mInfoLog;
+    }
+}
+
+// Test that it is not allowed to pass an expression that does not constitute of indexing, field
+// selection or swizzle to the mem argument of an atomic memory function.
+TEST_F(FragmentShaderValidationTest, AtomicAddWithNonIndexNonSwizzleExpression)
+{
+    const std::string &shaderString =
+        R"(#version 310 es
+
+        layout(std140) buffer bufferName{
+            uint u1[2];
+        } instanceName[3];
+
+        void main()
+        {
+            atomicAdd(instanceName[2].u1[1] + 1u, 2u);
+        })";
+
+    if (compile(shaderString))
+    {
+        FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+    }
+}
+
 // Test that negative indexing of a matrix doesn't result in an assert.
 TEST_F(FragmentShaderValidationTest, MatrixNegativeIndex)
 {
@@ -6061,5 +6242,157 @@ void main() {
     if (compile(shaderString))
     {
         FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+    }
+}
+
+// Test that layout(early_fragment_tests) in; is valid in fragment shader
+TEST_F(FragmentShaderValidationTest, ValidEarlyFragmentTests)
+{
+    constexpr char kShaderString[] =
+        R"(#version 310 es
+        precision mediump float;
+        layout(early_fragment_tests) in;
+        out vec4 color;
+        void main()
+        {
+            color = vec4(0.0);
+        })";
+    if (!compile(kShaderString))
+    {
+        FAIL() << "Shader compilation failed, expecting success:\n" << mInfoLog;
+    }
+}
+
+// Test that layout(early_fragment_tests=x) in; is invalid
+TEST_F(FragmentShaderValidationTest, InvalidValueForEarlyFragmentTests)
+{
+    constexpr char kShaderString[] =
+        R"(#version 310 es
+        precision mediump float;
+        layout(early_fragment_tests=1) in;
+        out vec4 color;
+        void main()
+        {
+            color = vec4(0.0);
+        })";
+    if (compile(kShaderString))
+    {
+        FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+    }
+}
+
+// Test that layout(early_fragment_tests) in varying; is invalid
+TEST_F(FragmentShaderValidationTest, InvalidEarlyFragmentTestsOnVariableDecl)
+{
+    constexpr char kShaderString[] =
+        R"(#version 310 es
+        precision mediump float;
+        layout(early_fragment_tests) in vec4 v;
+        out vec4 color;
+        void main()
+        {
+            color = v;
+        })";
+    if (compile(kShaderString))
+    {
+        FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+    }
+}
+
+// Test that layout(early_fragment_tests) in; is invalid in vertex shader
+TEST_F(VertexShaderValidationTest, InvalidEarlyFragmentTests)
+{
+    constexpr char kShaderString[] =
+        R"(#version 310 es
+        layout(early_fragment_tests) in;
+        void main()
+        {
+            gl_Position = vec4(0.0);
+        })";
+    if (compile(kShaderString))
+    {
+        FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+    }
+}
+
+// Test that layout(early_fragment_tests) in; is invalid in compute shader
+TEST_F(ComputeShaderValidationTest, InvalidEarlyFragmentTests)
+{
+    constexpr char kShaderString[] =
+        R"(#version 310 es
+        layout(local_size_x = 1) in;
+        layout(early_fragment_tests) in;
+        void main() {})";
+    if (compile(kShaderString))
+    {
+        FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+    }
+}
+
+// Test that layout(x) in; only accepts x=early_fragment_tests.
+TEST_F(FragmentShaderValidationTest, NothingButEarlyFragmentTestsWithInWithoutVariableDecl)
+{
+    const char *noValueQualifiers[] = {
+        "shared",      "packed",
+        "std140",      "std430",
+        "row_major",   "col_major",
+        "location",    "yuv",
+        "rgba32f",     "rgba16f",
+        "r32f",        "rgba8",
+        "rgba8_snorm", "rgba32i",
+        "rgba16i",     "rgba8i",
+        "r32i",        "rgba32ui",
+        "rgba16ui",    "rgba8ui",
+        "r32ui",       "points",
+        "lines",       "lines_adjacency",
+        "triangles",   "triangles_adjacency",
+        "line_strip",  "triangle_strip",
+    };
+
+    const char *withValueQualifiers[] = {
+        "location",     "binding",   "offset",      "local_size_x", "local_size_y",
+        "local_size_z", "num_views", "invocations", "max_vertices", "index",
+    };
+
+    constexpr char kShaderStringPre[] =
+        R"(#version 310 es
+        precision mediump float;
+        layout()";
+    constexpr char kShaderStringPost[] =
+        R"() in;
+        out vec4 color;
+        void main()
+        {
+            color = vec4(0.0);
+        })";
+
+    // Make sure the method of constructing shaders is valid.
+    const std::string validShaderString =
+        kShaderStringPre + std::string("early_fragment_tests") + kShaderStringPost;
+    if (!compile(validShaderString))
+    {
+        FAIL() << "Shader compilation failed, expecting success:\n" << mInfoLog;
+    }
+
+    for (size_t i = 0; i < ArraySize(noValueQualifiers); ++i)
+    {
+        const std::string shaderString =
+            kShaderStringPre + std::string(noValueQualifiers[i]) + kShaderStringPost;
+
+        if (compile(shaderString))
+        {
+            FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+        }
+    }
+
+    for (size_t i = 0; i < ArraySize(withValueQualifiers); ++i)
+    {
+        const std::string shaderString =
+            kShaderStringPre + std::string(withValueQualifiers[i]) + "=1" + kShaderStringPost;
+
+        if (compile(shaderString))
+        {
+            FAIL() << "Shader compilation succeeded, expecting failure:\n" << mInfoLog;
+        }
     }
 }

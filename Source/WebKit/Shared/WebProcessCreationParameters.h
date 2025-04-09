@@ -29,7 +29,7 @@
 #include "SandboxExtension.h"
 #include "TextCheckerState.h"
 #include "UserData.h"
-#include <pal/SessionID.h>
+#include "WebProcessDataStoreParameters.h"
 #include <wtf/HashMap.h>
 #include <wtf/ProcessID.h>
 #include <wtf/RetainPtr.h>
@@ -47,8 +47,12 @@
 #endif
 
 #if USE(SOUP)
-#include "HTTPCookieAcceptPolicy.h"
+#include <WebCore/HTTPCookieAcceptPolicy.h>
 #include <WebCore/SoupNetworkProxySettings.h>
+#endif
+
+#if PLATFORM(IOS_FAMILY)
+#include <WebCore/RenderThemeIOS.h>
 #endif
 
 namespace API {
@@ -84,9 +88,6 @@ struct WebProcessCreationParameters {
 #endif
 #if ENABLE(MEDIA_STREAM)
     SandboxExtension::Handle audioCaptureExtensionHandle;
-    bool shouldCaptureAudioInUIProcess { false };
-    bool shouldCaptureVideoInUIProcess { false };
-    bool shouldCaptureDisplayInUIProcess { false };
 #endif
 
     String webCoreLoggingChannels;
@@ -114,6 +115,7 @@ struct WebProcessCreationParameters {
     CacheModel cacheModel;
 
     double defaultRequestTimeoutInterval { INT_MAX };
+    unsigned backForwardCacheCapacity { 0 };
 
     bool shouldAlwaysUseComplexTextCodePath { false };
     bool shouldEnableMemoryPressureReliefLogging { false };
@@ -157,7 +159,6 @@ struct WebProcessCreationParameters {
     HashMap<String, bool> notificationPermissions;
 #endif
 
-    HashMap<PAL::SessionID, HashMap<unsigned, WallTime>> plugInAutoStartOriginHashes;
     Vector<String> plugInAutoStartOrigins;
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
@@ -193,6 +194,28 @@ struct WebProcessCreationParameters {
     bool isServiceWorkerProcess { false };
     IPC::Attachment hostClientFileDescriptor;
     CString implementationLibraryName;
+#endif
+
+    Optional<WebProcessDataStoreParameters> websiteDataStoreParameters;
+    
+#if PLATFORM(IOS)
+    Optional<SandboxExtension::Handle> compilerServiceExtensionHandle;
+    Optional<SandboxExtension::Handle> contentFilterExtensionHandle;
+    Optional<SandboxExtension::Handle> launchServicesOpenExtensionHandle;
+    Optional<SandboxExtension::Handle> diagnosticsExtensionHandle;
+#endif
+
+#if PLATFORM(COCOA)
+    Optional<SandboxExtension::Handle> neHelperExtensionHandle;
+    Optional<SandboxExtension::Handle> neSessionManagerExtensionHandle;
+    bool systemHasBattery { false };
+    Optional<HashMap<String, Vector<String>, ASCIICaseInsensitiveHash>> mimeTypesMap;
+#endif
+
+#if PLATFORM(IOS_FAMILY)
+    bool currentUserInterfaceIdiomIsPad { false };
+    WebCore::RenderThemeIOS::CSSValueToSystemColorMap cssValueToSystemColorMap;
+    WebCore::Color focusRingColor;
 #endif
 };
 

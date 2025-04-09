@@ -29,6 +29,7 @@
 #include "StorageNamespaceImpl.h"
 #include "WebPage.h"
 #include "WebPageGroupProxy.h"
+#include "WebProcess.h"
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 
@@ -66,17 +67,20 @@ WebStorageNamespaceProvider::~WebStorageNamespaceProvider()
 
 Ref<WebCore::StorageNamespace> WebStorageNamespaceProvider::createSessionStorageNamespace(Page& page, unsigned quota)
 {
-    return StorageNamespaceImpl::createSessionStorageNamespace(WebPage::fromCorePage(&page)->sessionStorageNamespaceIdentifier(), quota, page.sessionID());
+    auto& webPage = WebPage::fromCorePage(page);
+    return StorageNamespaceImpl::createSessionStorageNamespace(webPage.sessionStorageNamespaceIdentifier(), webPage.identifier(), quota);
 }
 
 Ref<WebCore::StorageNamespace> WebStorageNamespaceProvider::createLocalStorageNamespace(unsigned quota, PAL::SessionID sessionID)
 {
-    return StorageNamespaceImpl::createLocalStorageNamespace(m_localStorageNamespaceIdentifier, quota, sessionID);
+    ASSERT_UNUSED(sessionID, sessionID == WebProcess::singleton().sessionID());
+    return StorageNamespaceImpl::createLocalStorageNamespace(m_localStorageNamespaceIdentifier, quota);
 }
 
 Ref<WebCore::StorageNamespace> WebStorageNamespaceProvider::createTransientLocalStorageNamespace(WebCore::SecurityOrigin& topLevelOrigin, unsigned quota, PAL::SessionID sessionID)
 {
-    return StorageNamespaceImpl::createTransientLocalStorageNamespace(m_localStorageNamespaceIdentifier, topLevelOrigin, quota, sessionID);
+    ASSERT_UNUSED(sessionID, sessionID == WebProcess::singleton().sessionID());
+    return StorageNamespaceImpl::createTransientLocalStorageNamespace(m_localStorageNamespaceIdentifier, topLevelOrigin, quota);
 }
 
 }

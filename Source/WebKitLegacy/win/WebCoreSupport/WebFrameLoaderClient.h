@@ -41,9 +41,9 @@ class WebFrame;
 class WebFramePolicyListener;
 class WebHistory;
 
-class WebFrameLoaderClient : public WebCore::FrameLoaderClient, public WebCore::ProgressTrackerClient {
+class WebFrameLoaderClient : public WebCore::FrameLoaderClient {
 public:
-    WebFrameLoaderClient(WebFrame* = 0);
+    WebFrameLoaderClient(WebFrame* = nullptr);
     ~WebFrameLoaderClient();
 
     void setWebFrame(WebFrame* webFrame) { m_webFrame = webFrame; }
@@ -53,7 +53,6 @@ public:
 
     Optional<WebCore::PageIdentifier> pageID() const final;
     Optional<WebCore::FrameIdentifier> frameID() const final;
-    PAL::SessionID sessionID() const final;
 
     bool hasWebView() const override;
 
@@ -68,7 +67,7 @@ public:
     void detachedFromParent2() override;
     void detachedFromParent3() override;
 
-    void convertMainResourceLoadToDownload(WebCore::DocumentLoader*, PAL::SessionID, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&) override;
+    void convertMainResourceLoadToDownload(WebCore::DocumentLoader*, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&) override;
     void assignIdentifierToInitialRequest(unsigned long identifier, WebCore::DocumentLoader*, const WebCore::ResourceRequest&) override;
 
     void dispatchWillSendRequest(WebCore::DocumentLoader*, unsigned long identifier, WebCore::ResourceRequest&, const WebCore::ResourceResponse& redirectResponse) override;
@@ -120,10 +119,6 @@ public:
     void setMainFrameDocumentReady(bool) override;
 
     void startDownload(const WebCore::ResourceRequest&, const String& suggestedName = String()) override;
-
-    void progressStarted(WebCore::Frame&) override;
-    void progressEstimateChanged(WebCore::Frame&) override;
-    void progressFinished(WebCore::Frame&) override;
 
     void committedLoad(WebCore::DocumentLoader*, const char*, int) override;
     void finishedLoading(WebCore::DocumentLoader*) override;
@@ -177,8 +172,7 @@ public:
     void didFinishLoad() override;
     void prepareForDataSourceReplacement() override;
 
-    void didSaveToPageCache() override;
-    void didRestoreFromPageCache() override;
+    void didRestoreFromBackForwardCache() override;
 
     void dispatchDidBecomeFrameset(bool) override;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,9 +33,11 @@
 #import "WKProcessPool.h"
 #import "WKRetainPtr.h"
 #import "WKUserContentController.h"
+#import "WKWebpagePreferencesInternal.h"
 #import "WKWebView.h"
 #import "WKWebViewContentProviderRegistry.h"
 #import "WebKit2Initialize.h"
+#import "WebPreferencesDefaultValues.h"
 #import "WebURLSchemeHandlerCocoa.h"
 #import "_WKApplicationManifestInternal.h"
 #import "_WKVisitedLinkStore.h"
@@ -130,6 +132,7 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     BOOL _convertsPositionStyleOnCopy;
     BOOL _allowsMetaRefresh;
     BOOL _allowUniversalAccessFromFileURLs;
+    BOOL _allowTopNavigationToDataURLs;
 
 #if PLATFORM(IOS_FAMILY)
     LazyInitialized<RetainPtr<WKWebViewContentProviderRegistry>> _contentProviderRegistry;
@@ -234,6 +237,7 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     _convertsPositionStyleOnCopy = NO;
     _allowsMetaRefresh = YES;
     _allowUniversalAccessFromFileURLs = NO;
+    _allowTopNavigationToDataURLs = NO;
     _needsStorageAccessFromFileURLsQuirk = YES;
 
 #if PLATFORM(IOS_FAMILY)
@@ -381,6 +385,7 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     configuration->_convertsPositionStyleOnCopy = self->_convertsPositionStyleOnCopy;
     configuration->_allowsMetaRefresh = self->_allowsMetaRefresh;
     configuration->_allowUniversalAccessFromFileURLs = self->_allowUniversalAccessFromFileURLs;
+    configuration->_allowTopNavigationToDataURLs = self->_allowTopNavigationToDataURLs;
 
     configuration->_invisibleAutoplayNotPermitted = self->_invisibleAutoplayNotPermitted;
     configuration->_mediaDataLoadsAutomatically = self->_mediaDataLoadsAutomatically;
@@ -680,6 +685,16 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     _allowUniversalAccessFromFileURLs = allowUniversalAccessFromFileURLs;
 }
 
+- (BOOL)_allowTopNavigationToDataURLs
+{
+    return _allowTopNavigationToDataURLs;
+}
+
+- (void)_setAllowTopNavigationToDataURLs:(BOOL)allowTopNavigationToDataURLs
+{
+    _allowTopNavigationToDataURLs = allowTopNavigationToDataURLs;
+}
+
 - (BOOL)_convertsPositionStyleOnCopy
 {
     return _convertsPositionStyleOnCopy;
@@ -874,6 +889,29 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 - (void)_setShouldDeferAsynchronousScriptsUntilAfterDocumentLoad:(BOOL)shouldDeferAsynchronousScriptsUntilAfterDocumentLoad
 {
     _shouldDeferAsynchronousScriptsUntilAfterDocumentLoad = shouldDeferAsynchronousScriptsUntilAfterDocumentLoad;
+}
+
+- (WKWebsiteDataStore *)_websiteDataStoreIfExists
+{
+    return _websiteDataStore.peek();
+}
+
+- (NSArray<NSString *> *)_corsDisablingPatterns
+{
+    auto& vector = _pageConfiguration->corsDisablingPatterns();
+    NSMutableArray *array = [NSMutableArray arrayWithCapacity:vector.size()];
+    for (auto& pattern : vector)
+        [array addObject:pattern];
+    return array;
+}
+
+- (void)_setCORSDisablingPatterns:(NSArray<NSString *> *)patterns
+{
+    Vector<String> vector;
+    vector.reserveInitialCapacity(patterns.count);
+    for (NSString *pattern in patterns)
+        vector.uncheckedAppend(pattern);
+    _pageConfiguration->setCORSDisablingPatterns(WTFMove(vector));
 }
 
 - (BOOL)_drawsBackground
@@ -1119,6 +1157,44 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 - (BOOL)_undoManagerAPIEnabled
 {
     return _undoManagerAPIEnabled;
+}
+
+static WebKit::WebViewCategory toWebKitWebViewCategory(_WKWebViewCategory category)
+{
+    switch (category) {
+    case _WKWebViewCategoryHybridApp:
+        return WebKit::WebViewCategory::HybridApp;
+    case _WKWebViewCategoryInAppBrowser:
+        return WebKit::WebViewCategory::InAppBrowser;
+    case _WKWebViewCategoryWebBrowser:
+        return WebKit::WebViewCategory::WebBrowser;
+    }
+    ASSERT_NOT_REACHED();
+    return WebKit::WebViewCategory::HybridApp;
+}
+
+static _WKWebViewCategory toWKWebViewCategory(WebKit::WebViewCategory category)
+{
+    switch (category) {
+    case WebKit::WebViewCategory::HybridApp:
+        return _WKWebViewCategoryHybridApp;
+    case WebKit::WebViewCategory::InAppBrowser:
+        return _WKWebViewCategoryInAppBrowser;
+    case WebKit::WebViewCategory::WebBrowser:
+        return _WKWebViewCategoryWebBrowser;
+    }
+    ASSERT_NOT_REACHED();
+    return _WKWebViewCategoryHybridApp;
+}
+
+- (_WKWebViewCategory)_webViewCategory
+{
+    return toWKWebViewCategory(_pageConfiguration->webViewCategory());
+}
+
+- (void)_setWebViewCategory:(_WKWebViewCategory)category
+{
+    _pageConfiguration->setWebViewCategory(toWebKitWebViewCategory(category));
 }
 
 @end

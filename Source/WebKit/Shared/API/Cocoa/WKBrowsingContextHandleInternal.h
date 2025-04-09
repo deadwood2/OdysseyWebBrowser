@@ -24,12 +24,21 @@
  */
 
 #import "WKBrowsingContextHandle.h"
+#import "WebPageProxyIdentifier.h"
 #import <WebCore/PageIdentifier.h>
+#import <wtf/NakedRef.h>
+
+namespace WebKit {
+class WebPage;
+class WebPageProxy;
+}
 
 @interface WKBrowsingContextHandle ()
 
-@property (nonatomic, readonly, getter=_pageID) WebCore::PageIdentifier pageID;
+@property (nonatomic, readonly, getter=_pageProxyID) WebKit::WebPageProxyIdentifier pageProxyID;
+@property (nonatomic, readonly, getter=_webPageID) WebCore::PageIdentifier webPageID;
 
-- (id)_initWithPageID:(WebCore::PageIdentifier)pageID;
-
+- (id)_initWithPageProxy:(NakedRef<WebKit::WebPageProxy>)page;
+- (id)_initWithPage:(NakedRef<WebKit::WebPage>)page;
+- (id)_initWithPageProxyID:(WebKit::WebPageProxyIdentifier)pageProxyID andWebPageID:(WebCore::PageIdentifier)webPageID;
 @end
