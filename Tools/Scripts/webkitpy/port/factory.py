@@ -1,5 +1,5 @@
 # Copyright (C) 2010 Google Inc. All rights reserved.
-# Copyright (C) 2013-2018 Apple Inc. All rights reserved.
+# Copyright (C) 2013-2019 Apple Inc. All rights reserved.
 # Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
 #
 # Redistribution and use in source and binary forms, with or without
@@ -65,6 +65,12 @@ def platform_options(use_globs=False):
         optparse.make_option('--wincairo', action='store_const', dest='platform',
             const=('wincairo'),
             help=('Alias for --platform=wincairo')),
+        optparse.make_option('--ftw', action='store_const', dest='platform',
+            const=('ftw'),
+            help=('Alias for --platform=ftw')),
+        optparse.make_option('--maccatalyst', action='store_const', dest='platform',
+            const=('maccatalyst'),
+            help=('Alias for --platform=maccatalyst')),
         ] + (config.apple_additions().platform_options() if config.apple_additions() else [])
 
 
@@ -85,7 +91,6 @@ def configuration_options():
 def _builder_options(builder_name):
     configuration = "Debug" if re.search(r"[d|D](ebu|b)g", builder_name) else "Release"
     is_webkit2 = builder_name.find("WK2") != -1
-    builder_name = builder_name
     return optparse.Values({'builder_name': builder_name, 'configuration': configuration, 'webkit_test_runner': is_webkit2})
 
 
@@ -102,9 +107,11 @@ class PortFactory(object):
         'watch_simulator.WatchSimulatorPort',
         'watch_device.WatchDevicePort',
         'jsc_only.JscOnlyPort',
+        'mac.MacCatalystPort',
         'mac.MacPort',
         'mock_drt.MockDRTPort',
         'test.TestPort',
+        'win.FTWPort',
         'win.WinCairoPort',
         'win.WinPort',
         'wpe.WPEPort',
@@ -132,9 +139,10 @@ class PortFactory(object):
         classes = []
         for port_class in self.PORT_CLASSES:
             module_name, class_name = port_class.rsplit('.', 1)
-            module = __import__(module_name, globals(), locals(), [], -1)
-            cls = module.__dict__[class_name]
-            classes.append(cls)
+            module = __import__('webkitpy.port.{}'.format(module_name), globals(), locals(), [], 0)
+            cls = module.__dict__.get('port').__dict__.get(module_name).__dict__.get(class_name)
+            if cls:
+                classes.append(cls)
         if config.apple_additions() and hasattr(config.apple_additions(), 'ports'):
             classes += config.apple_additions().ports()
 

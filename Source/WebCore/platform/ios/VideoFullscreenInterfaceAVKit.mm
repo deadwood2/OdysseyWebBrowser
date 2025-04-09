@@ -28,6 +28,8 @@
 #if PLATFORM(IOS_FAMILY)
 #import "VideoFullscreenInterfaceAVKit.h"
 
+#import "PictureInPictureSupport.h"
+
 #if HAVE(AVKIT)
 
 #import "GeometryUtilities.h"
@@ -332,13 +334,13 @@ static VideoFullscreenInterfaceAVKit::ExitFullScreenReason convertToExitFullScre
     if (![_avPlayerController delegate])
         return;
 
-    WebCore::MediaPlayerEnums::VideoGravity gravity = WebCore::MediaPlayerEnums::VideoGravityResizeAspect;
+    MediaPlayerEnums::VideoGravity gravity = MediaPlayerEnums::VideoGravity::ResizeAspect;
     if (videoGravity == AVLayerVideoGravityResize)
-        gravity = WebCore::MediaPlayerEnums::VideoGravityResize;
+        gravity = MediaPlayerEnums::VideoGravity::Resize;
     if (videoGravity == AVLayerVideoGravityResizeAspect)
-        gravity = WebCore::MediaPlayerEnums::VideoGravityResizeAspect;
+        gravity = MediaPlayerEnums::VideoGravity::ResizeAspect;
     else if (videoGravity == AVLayerVideoGravityResizeAspectFill)
-        gravity = WebCore::MediaPlayerEnums::VideoGravityResizeAspectFill;
+        gravity = MediaPlayerEnums::VideoGravity::ResizeAspectFill;
     else
         ASSERT_NOT_REACHED();
     
@@ -873,10 +875,13 @@ void VideoFullscreenInterfaceAVKit::exitFullscreen(const IntRect& finalRect)
 
     setInlineRect(finalRect, true);
     doExitFullscreen();
+    m_shouldIgnoreAVKitCallbackAboutExitFullscreenReason = true;
 }
 
 void VideoFullscreenInterfaceAVKit::cleanupFullscreen()
 {
+    m_shouldIgnoreAVKitCallbackAboutExitFullscreenReason = false;
+
     LOG(Fullscreen, "VideoFullscreenInterfaceAVKit::cleanupFullscreen(%p)", this);
 
     m_cleanupNeedsReturnVideoContentLayer = true;
@@ -956,6 +961,8 @@ void VideoFullscreenInterfaceAVKit::preparedToReturnToInline(bool visible, const
 {
     LOG(Fullscreen, "VideoFullscreenInterfaceAVKit::preparedToReturnToInline(%p) - visible(%s)", this, boolString(visible));
     setInlineRect(inlineRect, visible);
+    [[m_playerViewController view] setNeedsLayout];
+    [[m_playerViewController view] layoutIfNeeded];
     if (m_prepareToInlineCallback) {
         WTF::Function<void(bool)> callback = WTFMove(m_prepareToInlineCallback);
         callback(visible);
@@ -1071,6 +1078,9 @@ void VideoFullscreenInterfaceAVKit::didStopPictureInPicture()
 
         if (m_exitFullscreenNeedsExitPictureInPicture)
             doExitFullscreen();
+
+        if (m_enterFullscreenNeedsExitPictureInPicture)
+            doEnterFullscreen();
         return;
     }
 
@@ -1096,7 +1106,6 @@ void VideoFullscreenInterfaceAVKit::prepareForPictureInPictureStopWithCompletion
 {
     LOG(Fullscreen, "VideoFullscreenInterfaceAVKit::prepareForPictureInPictureStopWithCompletionHandler(%p)", this);
     if (m_shouldReturnToFullscreenWhenStoppingPiP) {
-
         m_shouldReturnToFullscreenWhenStoppingPiP = false;
         m_restoringFullscreenForPictureInPictureStop = true;
 
@@ -1119,6 +1128,12 @@ void VideoFullscreenInterfaceAVKit::prepareForPictureInPictureStopWithCompletion
 
 bool VideoFullscreenInterfaceAVKit::shouldExitFullscreenWithReason(VideoFullscreenInterfaceAVKit::ExitFullScreenReason reason)
 {
+    // AVKit calls playerViewController:shouldExitFullScreenWithReason in the scenario that the exit fullscreen request
+    // is from the web process (e.g., through Javascript API videoElement.webkitExitFullscreen()).
+    // We have to ignore the callback in that case.
+    if (m_shouldIgnoreAVKitCallbackAboutExitFullscreenReason)
+        return true;
+
     if (!m_videoFullscreenModel)
         return true;
 
@@ -1313,6 +1328,7 @@ void VideoFullscreenInterfaceAVKit::doEnterFullscreen()
     [[m_playerViewController view] layoutIfNeeded];
     if (m_targetMode.hasFullscreen() && !m_currentMode.hasFullscreen()) {
         m_enterFullscreenNeedsEnterFullscreen = true;
+        [m_window setHidden:NO];
         [m_playerViewController enterFullScreenAnimated:YES completionHandler:[this, protectedThis = makeRefPtr(this)] (BOOL success, NSError *error) {
             enterFullscreenHandler(success, error);
         }];
@@ -1464,8 +1480,10 @@ void VideoFullscreenInterfaceAVKit::setMode(HTMLMediaElementEnums::VideoFullscre
         return;
 
     m_currentMode.setMode(mode);
+    // Mode::mode() can be 3 (VideoFullscreenModeStandard | VideoFullscreenModePictureInPicture).
+    // HTMLVideoElement does not expect such a value in the fullscreenModeChanged() callback.
     if (m_videoFullscreenModel)
-        m_videoFullscreenModel->fullscreenModeChanged(m_currentMode.mode());
+        m_videoFullscreenModel->fullscreenModeChanged(mode);
 }
 
 void VideoFullscreenInterfaceAVKit::clearMode(HTMLMediaElementEnums::VideoFullscreenMode mode)

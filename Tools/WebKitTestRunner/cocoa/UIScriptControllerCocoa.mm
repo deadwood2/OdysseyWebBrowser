@@ -33,6 +33,7 @@
 #import "UIScriptContext.h"
 #import <JavaScriptCore/JavaScriptCore.h>
 #import <WebKit/WKWebViewPrivate.h>
+#import <WebKit/WKWebViewPrivateForTesting.h>
 
 namespace WTR {
 
@@ -164,6 +165,41 @@ JSRetainPtr<JSStringRef> UIScriptControllerCocoa::firstRedoLabel() const
 NSUndoManager *UIScriptControllerCocoa::platformUndoManager() const
 {
     return platformContentView().undoManager;
+}
+
+void UIScriptControllerCocoa::setDidShowMenuCallback(JSValueRef callback)
+{
+    UIScriptController::setDidShowMenuCallback(callback);
+    webView().didShowMenuCallback = ^{
+        if (!m_context)
+            return;
+        m_context->fireCallback(CallbackTypeDidShowMenu);
+    };
+}
+
+void UIScriptControllerCocoa::setDidHideMenuCallback(JSValueRef callback)
+{
+    UIScriptController::setDidHideMenuCallback(callback);
+    webView().didHideMenuCallback = ^{
+        if (!m_context)
+            return;
+        m_context->fireCallback(CallbackTypeDidHideMenu);
+    };
+}
+
+void UIScriptControllerCocoa::dismissMenu()
+{
+    [webView() dismissActiveMenu];
+}
+
+bool UIScriptControllerCocoa::isShowingMenu() const
+{
+    return webView().showingMenu;
+}
+
+void UIScriptControllerCocoa::setContinuousSpellCheckingEnabled(bool enabled)
+{
+    [webView() _setContinuousSpellCheckingEnabledForTesting:enabled];
 }
 
 } // namespace WTR

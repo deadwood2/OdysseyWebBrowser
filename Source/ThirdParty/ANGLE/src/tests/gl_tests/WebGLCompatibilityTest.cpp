@@ -67,13 +67,6 @@ class WebGLCompatibilityTest : public ANGLETest
         setWebGLCompatibilityEnabled(true);
     }
 
-    void SetUp() override
-    {
-        ANGLETest::SetUp();
-        glRequestExtensionANGLE = reinterpret_cast<PFNGLREQUESTEXTENSIONANGLEPROC>(
-            eglGetProcAddress("glRequestExtensionANGLE"));
-    }
-
     template <typename T>
     void TestFloatTextureFormat(GLenum internalFormat,
                                 GLenum format,
@@ -285,8 +278,6 @@ void main()
                                                    GLsizei blockSize,
                                                    const std::string &extName,
                                                    bool subImageAllowed);
-
-    PFNGLREQUESTEXTENSIONANGLEPROC glRequestExtensionANGLE = nullptr;
 };
 
 class WebGL2CompatibilityTest : public WebGLCompatibilityTest
@@ -498,14 +489,15 @@ void main()
 
     constexpr char kFSES3[] =
         R"(#version 300 es
-#extension GL_OES_EGL_image_external : require
+#extension GL_OES_EGL_image_external_essl3 : require
 precision highp float;
 uniform samplerExternalOES sampler;
+out vec4 my_FragColor;
 void main()
 {
-    gl_FragColor = texture(sampler, vec2(0, 0));
+    my_FragColor = texture(sampler, vec2(0, 0));
 })";
-    if (getClientMajorVersion() > 3)
+    if (getClientMajorVersion() >= 3)
     {
         EXPECT_EQ(0u, CompileShader(GL_FRAGMENT_SHADER, kFSES3));
     }
@@ -531,7 +523,7 @@ void main()
         glGetIntegerv(GL_TEXTURE_BINDING_EXTERNAL_OES, &result);
         EXPECT_GL_NO_ERROR();
 
-        if (getClientMajorVersion() > 3 &&
+        if (getClientMajorVersion() >= 3 &&
             IsGLExtensionRequestable("GL_OES_EGL_image_external_essl3"))
         {
             glRequestExtensionANGLE("GL_OES_EGL_image_external_essl3");
@@ -591,6 +583,17 @@ TEST_P(WebGLCompatibilityTest, EnablePixelBufferObjectExtensions)
     if (IsGLExtensionRequestable("GL_NV_pixel_buffer_object"))
     {
         glRequestExtensionANGLE("GL_NV_pixel_buffer_object");
+        EXPECT_GL_NO_ERROR();
+
+        // Create a framebuffer to read from
+        GLRenderbuffer renderbuffer;
+        glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA4, 1, 1);
+
+        GLFramebuffer fbo;
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER,
+                                  renderbuffer);
         EXPECT_GL_NO_ERROR();
 
         glBindBuffer(GL_PIXEL_PACK_BUFFER, buffer);
@@ -993,6 +996,14 @@ TEST_P(WebGLCompatibilityTest, EnableTextureRectangle)
         glTexImage2D(GL_TEXTURE_RECTANGLE_ANGLE, 0, GL_RGBA, 16, 16, 0, GL_RGBA, GL_UNSIGNED_BYTE,
                      nullptr);
         EXPECT_GL_NO_ERROR();
+
+        glDisableExtensionANGLE("GL_ANGLE_texture_rectangle");
+        EXPECT_GL_NO_ERROR();
+
+        EXPECT_FALSE(IsGLExtensionEnabled("GL_ANGLE_texture_rectangle"));
+
+        glBindTexture(GL_TEXTURE_RECTANGLE_ANGLE, texture);
+        EXPECT_GL_ERROR(GL_INVALID_ENUM);
     }
 }
 
@@ -2844,7 +2855,8 @@ TEST_P(WebGLCompatibilityTest, RG32FTextures)
 
 TEST_P(WebGLCompatibilityTest, RGB32FTextures)
 {
-    ANGLE_SKIP_TEST_IF(IsLinux() && IsIntel());
+    // TODO(syoussefi): Missing format support.  http://anglebug.com/2898
+    ANGLE_SKIP_TEST_IF(IsVulkan());
 
     constexpr float data[] = {1000.0f, -500.0f, 10.0f, 1.0f};
 
@@ -2880,6 +2892,9 @@ TEST_P(WebGLCompatibilityTest, RGB32FTextures)
 
 TEST_P(WebGLCompatibilityTest, RGBA32FTextures)
 {
+    // TODO(syoussefi): Missing format support.  http://anglebug.com/2898
+    ANGLE_SKIP_TEST_IF(IsVulkan());
+
     constexpr float data[] = {7000.0f, 100.0f, 33.0f, -1.0f};
 
     for (auto extension : FloatingPointTextureExtensions)
@@ -3255,6 +3270,9 @@ TEST_P(WebGLCompatibilityTest, RG16FTextures)
 
 TEST_P(WebGLCompatibilityTest, RGB16FTextures)
 {
+    // TODO(syoussefi): Missing format support.  http://anglebug.com/2898
+    ANGLE_SKIP_TEST_IF(IsVulkan());
+
     ANGLE_SKIP_TEST_IF(IsOzone() && IsIntel());
 
     constexpr float readPixelsData[] = {7000.0f, 100.0f, 33.0f, 1.0f};
@@ -3590,7 +3608,7 @@ void main() {
     FillTexture2D(tex0.get(), width, height, GLColor::black, 0, GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE);
     FillTexture2D(tex1.get(), width, height, 0x80, 0, GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT,
                   GL_UNSIGNED_INT);
-    FillTexture2D(tex2.get(), width, height, 0x40, 0, GL_DEPTH_STENCIL, GL_DEPTH_STENCIL,
+    FillTexture2D(tex2.get(), width, height, 0x40, 0, GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL,
                   GL_UNSIGNED_INT_24_8);
     ASSERT_GL_NO_ERROR();
 
@@ -3652,6 +3670,8 @@ void main() {
 // But the level of the 3D texture != the level of the read attachment.
 TEST_P(WebGL2CompatibilityTest, NoTextureCopyingFeedbackLoopBetween3DLevels)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(IsVulkan());
     GLTexture texture;
     GLFramebuffer framebuffer;
 
@@ -3671,6 +3691,8 @@ TEST_P(WebGL2CompatibilityTest, NoTextureCopyingFeedbackLoopBetween3DLevels)
 // But the zoffset of the 3D texture != the layer of the read attachment.
 TEST_P(WebGL2CompatibilityTest, NoTextureCopyingFeedbackLoopBetween3DLayers)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(IsVulkan());
     GLTexture texture;
     GLFramebuffer framebuffer;
 
@@ -4070,6 +4092,9 @@ TEST_P(WebGLCompatibilityTest, FramebufferAttachmentQuery)
 // Tests WebGL reports INVALID_OPERATION for mismatch of drawbuffers and fragment output
 TEST_P(WebGLCompatibilityTest, DrawBuffers)
 {
+    // Fails on Intel Ubuntu 19.04 Mesa 19.0.2 Vulkan. http://anglebug.com/3616
+    ANGLE_SKIP_TEST_IF(IsLinux() && IsIntel() && IsVulkan());
+
     // Make sure we can use at least 4 attachments for the tests.
     bool useEXT = false;
     if (getClientMajorVersion() < 3)
@@ -4234,6 +4259,10 @@ void main()
             EXPECT_GL_ERROR(GL_INVALID_OPERATION);
         }
     }
+
+    // TODO(syoussefi): Qualcomm driver crashes in the presence of VK_ATTACHMENT_UNUSED.
+    // http://anglebug.com/3423
+    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAndroid());
 
     // Test that attachments written to get the correct color from shader output but that even when
     // the extension is used, disabled attachments are not written at all and stay red.
@@ -4618,15 +4647,7 @@ TEST_P(WebGL2CompatibilityTest, UniformVariablesReturnTypes)
 
 // Use this to select which configurations (e.g. which renderer, which GLES major version) these
 // tests should be run against.
-ANGLE_INSTANTIATE_TEST(WebGLCompatibilityTest,
-                       ES2_D3D9(),
-                       ES2_D3D11(),
-                       ES3_D3D11(),
-                       ES2_OPENGL(),
-                       ES3_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES3_OPENGLES(),
-                       ES2_VULKAN());
+ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(WebGLCompatibilityTest);
 
-ANGLE_INSTANTIATE_TEST(WebGL2CompatibilityTest, ES3_D3D11(), ES3_OPENGL(), ES3_OPENGLES());
+ANGLE_INSTANTIATE_TEST_ES3(WebGL2CompatibilityTest);
 }  // namespace angle

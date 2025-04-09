@@ -38,11 +38,13 @@
 #include "NativeWebMouseEvent.h"
 #include "NativeWebWheelEvent.h"
 #include "PageClientImpl.h"
+#include "PointerLockManager.h"
 #include "ViewGestureController.h"
 #include "WebEventFactory.h"
 #include "WebInspectorProxy.h"
 #include "WebKit2Initialize.h"
 #include "WebKitEmojiChooser.h"
+#include "WebKitInputMethodContextImplGtk.h"
 #include "WebKitWebViewAccessible.h"
 #include "WebKitWebViewBasePrivate.h"
 #include "WebPageGroup.h"
@@ -108,9 +110,7 @@ public:
             // by the WTR do not and we must calculate a time manually. This time
             // is not calculated in the WTR, because GTK+ does not work well with
             // anything other than GDK_CURRENT_TIME on synthesized events.
-            GTimeVal timeValue;
-            g_get_current_time(&timeValue);
-            eventTime = (timeValue.tv_sec * 1000) + (timeValue.tv_usec / 1000);
+            eventTime = g_get_monotonic_time() / 1000;
         }
 
         GdkEventType type;
@@ -195,6 +195,7 @@ struct _WebKitWebViewBasePrivate {
     KeyBindingTranslator keyBindingTranslator;
     TouchEventsMap touchEvents;
     IntSize contentsSize;
+    GUniquePtr<GdkEvent> lastMotionEvent;
 
     GtkWindow* toplevelOnScreenWindow { nullptr };
     unsigned long toplevelFocusInEventID { 0 };
@@ -229,6 +230,8 @@ struct _WebKitWebViewBasePrivate {
     CompletionHandler<void(String)> emojiChooserCompletionHandler;
     RunLoop::Timer<WebKitWebViewBasePrivate> releaseEmojiChooserTimer;
 #endif
+
+    std::unique_ptr<PointerLockManager> pointerLockManager;
 };
 
 WEBKIT_DEFINE_TYPE(WebKitWebViewBase, webkit_web_view_base, GTK_TYPE_CONTAINER)
@@ -426,7 +429,9 @@ static void webkitWebViewBaseRealize(GtkWidget* widget)
     gtk_widget_set_window(widget, window);
     gdk_window_set_user_data(window, widget);
 
-    gtk_im_context_set_client_window(priv->inputMethodFilter.context(), window);
+    auto* imContext = priv->inputMethodFilter.context();
+    if (WEBKIT_IS_INPUT_METHOD_CONTEXT_IMPL_GTK(imContext))
+        webkitInputMethodContextImplGtkSetClientWindow(WEBKIT_INPUT_METHOD_CONTEXT_IMPL_GTK(imContext), window);
 
     if (priv->acceleratedBackingStore)
         priv->acceleratedBackingStore->realize();
@@ -435,7 +440,10 @@ static void webkitWebViewBaseRealize(GtkWidget* widget)
 static void webkitWebViewBaseUnrealize(GtkWidget* widget)
 {
     WebKitWebViewBase* webView = WEBKIT_WEB_VIEW_BASE(widget);
-    gtk_im_context_set_client_window(webView->priv->inputMethodFilter.context(), nullptr);
+
+    auto* imContext = webView->priv->inputMethodFilter.context();
+    if (WEBKIT_IS_INPUT_METHOD_CONTEXT_IMPL_GTK(imContext))
+        webkitInputMethodContextImplGtkSetClientWindow(WEBKIT_INPUT_METHOD_CONTEXT_IMPL_GTK(imContext), nullptr);
 
     if (webView->priv->acceleratedBackingStore)
         webView->priv->acceleratedBackingStore->unrealize();
@@ -560,6 +568,11 @@ static void webkitWebViewBaseDispose(GObject* gobject)
 #if GTK_CHECK_VERSION(3, 24, 0)
     webkitWebViewBaseCompleteEmojiChooserRequest(webView, emptyString());
 #endif
+    if (webView->priv->pointerLockManager) {
+        webView->priv->pointerLockManager->unlock();
+        webView->priv->pointerLockManager = nullptr;
+    }
+    webView->priv->inputMethodFilter.setContext(nullptr);
     webView->priv->pageProxy->close();
     webView->priv->acceleratedBackingStore = nullptr;
     webView->priv->sleepDisabler = nullptr;
@@ -786,13 +799,11 @@ static gboolean webkitWebViewBaseKeyPressEvent(GtkWidget* widget, GdkEventKey* k
         priv->shouldForwardNextKeyEvent = FALSE;
         return GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->key_press_event(widget, keyEvent);
     }
-
-    // We need to copy the event as otherwise it could be destroyed before we reach the lambda body.
-    GUniquePtr<GdkEvent> event(gdk_event_copy(reinterpret_cast<GdkEvent*>(keyEvent)));
-    priv->inputMethodFilter.filterKeyEvent(keyEvent, [priv, event = WTFMove(event)](const WebCore::CompositionResults& compositionResults, InputMethodFilter::EventFakedForComposition faked) {
-        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(event.get(), compositionResults, faked,
-            !compositionResults.compositionUpdated() ? priv->keyBindingTranslator.commandsForKeyEvent(&event->key) : Vector<String>()));
-    });
+    auto filterResult = priv->inputMethodFilter.filterKeyEvent(keyEvent);
+    if (!filterResult.handled) {
+        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(reinterpret_cast<GdkEvent*>(keyEvent), filterResult.keyText,
+            NativeWebKeyboardEvent::HandledByInputMethod::No, WTF::nullopt, WTF::nullopt, priv->keyBindingTranslator.commandsForKeyEvent(keyEvent)));
+    }
 
     return GDK_EVENT_STOP;
 }
@@ -807,11 +818,10 @@ static gboolean webkitWebViewBaseKeyReleaseEvent(GtkWidget* widget, GdkEventKey*
         return GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->key_release_event(widget, keyEvent);
     }
 
-    // We need to copy the event as otherwise it could be destroyed before we reach the lambda body.
-    GUniquePtr<GdkEvent> event(gdk_event_copy(reinterpret_cast<GdkEvent*>(keyEvent)));
-    priv->inputMethodFilter.filterKeyEvent(keyEvent, [priv, event = WTFMove(event)](const WebCore::CompositionResults& compositionResults, InputMethodFilter::EventFakedForComposition faked) {
-        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(event.get(), compositionResults, faked, { }));
-    });
+    if (!priv->inputMethodFilter.filterKeyEvent(keyEvent).handled) {
+        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(reinterpret_cast<GdkEvent*>(keyEvent), { },
+            NativeWebKeyboardEvent::HandledByInputMethod::No, WTF::nullopt, WTF::nullopt, { }));
+    }
 
     return GDK_EVENT_STOP;
 }
@@ -822,6 +832,7 @@ static void webkitWebViewBaseHandleMouseEvent(WebKitWebViewBase* webViewBase, Gd
     ASSERT(!priv->dialog);
 
     int clickCount = 0;
+    Optional<IntPoint> movementDelta;
     GdkEventType eventType = gdk_event_get_event_type(event);
     switch (eventType) {
     case GDK_BUTTON_PRESS:
@@ -836,7 +847,7 @@ static void webkitWebViewBaseHandleMouseEvent(WebKitWebViewBase* webViewBase, Gd
         if (nextEvent && (nextEvent->any.type == GDK_2BUTTON_PRESS || nextEvent->any.type == GDK_3BUTTON_PRESS))
             return;
 
-        priv->inputMethodFilter.notifyMouseButtonPress();
+        priv->inputMethodFilter.cancelComposition();
 
         guint button;
         gdk_event_get_button(event, &button);
@@ -851,6 +862,16 @@ static void webkitWebViewBaseHandleMouseEvent(WebKitWebViewBase* webViewBase, Gd
         gtk_widget_grab_focus(GTK_WIDGET(webViewBase));
         break;
     case GDK_MOTION_NOTIFY:
+        // Pointer Lock. 7.1 Attributes: movementX/Y must be updated regardless of pointer lock state.
+        if (priv->lastMotionEvent) {
+            double currentX, currentY;
+            gdk_event_get_root_coords(event, &currentX, &currentY);
+            double previousX, previousY;
+            gdk_event_get_root_coords(priv->lastMotionEvent.get(), &previousX, &previousY);
+            movementDelta = IntPoint(currentX - previousX, currentY - previousY);
+        }
+        priv->lastMotionEvent.reset(gdk_event_copy(event));
+        break;
     case GDK_ENTER_NOTIFY:
     case GDK_LEAVE_NOTIFY:
         break;
@@ -858,7 +879,7 @@ static void webkitWebViewBaseHandleMouseEvent(WebKitWebViewBase* webViewBase, Gd
         ASSERT_NOT_REACHED();
     }
 
-    priv->pageProxy->handleMouseEvent(NativeWebMouseEvent(event, clickCount));
+    priv->pageProxy->handleMouseEvent(NativeWebMouseEvent(event, clickCount, movementDelta));
 }
 
 static gboolean webkitWebViewBaseButtonPressEvent(GtkWidget* widget, GdkEventButton* event)
@@ -960,6 +981,11 @@ static gboolean webkitWebViewBaseMotionNotifyEvent(GtkWidget* widget, GdkEventMo
     if (priv->dialog) {
         auto* widgetClass = GTK_WIDGET_CLASS(webkit_web_view_base_parent_class);
         return widgetClass->motion_notify_event ? widgetClass->motion_notify_event(widget, event) : GDK_EVENT_PROPAGATE;
+    }
+
+    if (priv->pointerLockManager) {
+        priv->pointerLockManager->didReceiveMotionEvent(reinterpret_cast<GdkEvent*>(event));
+        return GDK_EVENT_STOP;
     }
 
     webkitWebViewBaseHandleMouseEvent(webViewBase, reinterpret_cast<GdkEvent*>(event));
@@ -1449,6 +1475,8 @@ static void webkit_web_view_base_class_init(WebKitWebViewBaseClass* webkitWebVie
     // Usually starting a context triggers InitializeWebKit2, but in case
     // we create a view without asking before for a default_context we get a crash.
     WebKit::InitializeWebKit2();
+
+    gtk_widget_class_set_css_name(widgetClass, "webkitwebview");
 }
 
 WebKitWebViewBase* webkitWebViewBaseCreate(const API::PageConfiguration& configuration)
@@ -1456,11 +1484,6 @@ WebKitWebViewBase* webkitWebViewBaseCreate(const API::PageConfiguration& configu
     WebKitWebViewBase* webkitWebViewBase = WEBKIT_WEB_VIEW_BASE(g_object_new(WEBKIT_TYPE_WEB_VIEW_BASE, nullptr));
     webkitWebViewBaseCreateWebPage(webkitWebViewBase, configuration.copy());
     return webkitWebViewBase;
-}
-
-GtkIMContext* webkitWebViewBaseGetIMContext(WebKitWebViewBase* webkitWebViewBase)
-{
-    return webkitWebViewBase->priv->inputMethodFilter.context();
 }
 
 WebPageProxy* webkitWebViewBaseGetPage(WebKitWebViewBase* webkitWebViewBase)
@@ -1480,8 +1503,6 @@ void webkitWebViewBaseCreateWebPage(WebKitWebViewBase* webkitWebViewBase, Ref<AP
     priv->pageProxy = processPool->createWebPage(*priv->pageClient, WTFMove(configuration));
     priv->acceleratedBackingStore = AcceleratedBackingStore::create(*priv->pageProxy);
     priv->pageProxy->initializeWebPage();
-
-    priv->inputMethodFilter.setPage(priv->pageProxy.get());
 
     // We attach this here, because changes in scale factor are passed directly to the page proxy.
     priv->pageProxy->setIntrinsicDeviceScaleFactor(gtk_widget_get_scale_factor(GTK_WIDGET(webkitWebViewBase)));
@@ -1648,16 +1669,19 @@ bool webkitWebViewBaseIsInWindow(WebKitWebViewBase* webViewBase)
     return webViewBase->priv->activityState.contains(ActivityState::IsInWindow);
 }
 
-void webkitWebViewBaseSetInputMethodState(WebKitWebViewBase* webkitWebViewBase, bool enabled)
+void webkitWebViewBaseSetInputMethodState(WebKitWebViewBase* webkitWebViewBase, Optional<InputMethodState>&& state)
 {
-    webkitWebViewBase->priv->inputMethodFilter.setEnabled(enabled);
+    webkitWebViewBase->priv->inputMethodFilter.setState(WTFMove(state));
 }
 
 void webkitWebViewBaseUpdateTextInputState(WebKitWebViewBase* webkitWebViewBase)
 {
     const auto& editorState = webkitWebViewBase->priv->pageProxy->editorState();
-    if (!editorState.isMissingPostLayoutData)
-        webkitWebViewBase->priv->inputMethodFilter.setCursorRect(editorState.postLayoutData().caretRectAtStart);
+    if (!editorState.isMissingPostLayoutData) {
+        webkitWebViewBase->priv->inputMethodFilter.notifyCursorRect(editorState.postLayoutData().caretRectAtStart);
+        webkitWebViewBase->priv->inputMethodFilter.notifySurrounding(editorState.postLayoutData().surroundingContext, editorState.postLayoutData().surroundingContextCursorPosition,
+            editorState.postLayoutData().surroundingContextSelectionPosition);
+    }
 }
 
 void webkitWebViewBaseSetContentsSize(WebKitWebViewBase* webkitWebViewBase, const IntSize& contentsSize)
@@ -1735,12 +1759,11 @@ void webkitWebViewBasePageClosed(WebKitWebViewBase* webkitWebViewBase)
         webkitWebViewBase->priv->acceleratedBackingStore->update({ });
 }
 
-RefPtr<WebKit::ViewSnapshot> webkitWebViewBaseTakeViewSnapshot(WebKitWebViewBase* webkitWebViewBase)
+RefPtr<WebKit::ViewSnapshot> webkitWebViewBaseTakeViewSnapshot(WebKitWebViewBase* webkitWebViewBase, Optional<IntRect>&& clipRect)
 {
     WebPageProxy* page = webkitWebViewBase->priv->pageProxy.get();
 
-    IntSize size = page->viewSize();
-
+    IntSize size = clipRect ? clipRect->size() : page->viewSize();
     float deviceScale = page->deviceScaleFactor();
     size.scale(deviceScale);
 
@@ -1748,6 +1771,11 @@ RefPtr<WebKit::ViewSnapshot> webkitWebViewBaseTakeViewSnapshot(WebKitWebViewBase
     cairoSurfaceSetDeviceScale(surface.get(), deviceScale, deviceScale);
 
     RefPtr<cairo_t> cr = adoptRef(cairo_create(surface.get()));
+    if (clipRect) {
+        cairo_translate(cr.get(), -clipRect->x(), -clipRect->y());
+        cairo_rectangle(cr.get(), clipRect->x(), clipRect->y(), clipRect->width(), clipRect->height());
+        cairo_clip(cr.get());
+    }
     webkitWebViewBaseDraw(GTK_WIDGET(webkitWebViewBase), cr.get());
 
     return ViewSnapshot::create(WTFMove(surface));
@@ -1841,3 +1869,70 @@ int webkitWebViewBaseRenderHostFileDescriptor(WebKitWebViewBase* webkitWebViewBa
     return webkitWebViewBase->priv->acceleratedBackingStore->renderHostFileDescriptor();
 }
 #endif
+
+void webkitWebViewBaseRequestPointerLock(WebKitWebViewBase* webViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webViewBase->priv;
+    RELEASE_ASSERT(!priv->pointerLockManager);
+    if (!priv->lastMotionEvent) {
+        GtkWidget* viewWidget = GTK_WIDGET(webViewBase);
+        auto* device = gdk_seat_get_pointer(gdk_display_get_default_seat(gtk_widget_get_display(viewWidget)));
+        int x, y;
+        GdkModifierType state;
+        gdk_window_get_device_position(gtk_widget_get_window(viewWidget), device, &x, &y, &state);
+        priv->lastMotionEvent.reset(gdk_event_new(GDK_MOTION_NOTIFY));
+        priv->lastMotionEvent->motion.x = x;
+        priv->lastMotionEvent->motion.y = y;
+        int rootX, rootY;
+        gdk_window_get_root_coords(gtk_widget_get_window(viewWidget), x, y, &rootX, &rootY);
+        priv->lastMotionEvent->motion.x_root = rootX;
+        priv->lastMotionEvent->motion.y_root = rootY;
+        priv->lastMotionEvent->motion.state = state;
+    }
+    priv->pointerLockManager = PointerLockManager::create(*priv->pageProxy, priv->lastMotionEvent.get());
+    if (priv->pointerLockManager->lock()) {
+        priv->pageProxy->didAllowPointerLock();
+        return;
+    }
+
+    priv->pointerLockManager = nullptr;
+    priv->pageProxy->didDenyPointerLock();
+}
+
+void webkitWebViewBaseDidLosePointerLock(WebKitWebViewBase* webViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webViewBase->priv;
+    if (!priv->pointerLockManager)
+        return;
+
+    priv->pointerLockManager->unlock();
+    priv->pointerLockManager = nullptr;
+}
+
+void webkitWebViewBaseSetInputMethodContext(WebKitWebViewBase* webViewBase, WebKitInputMethodContext* context)
+{
+    webViewBase->priv->inputMethodFilter.setContext(context);
+}
+
+WebKitInputMethodContext* webkitWebViewBaseGetInputMethodContext(WebKitWebViewBase* webViewBase)
+{
+    return webViewBase->priv->inputMethodFilter.context();
+}
+
+void webkitWebViewBaseSynthesizeCompositionKeyPress(WebKitWebViewBase* webViewBase, const String& text, Optional<Vector<CompositionUnderline>>&& underlines, Optional<EditingRange>&& selectionRange)
+{
+    static GdkEvent* event = nullptr;
+    if (!event) {
+        event = gdk_event_new(GDK_KEY_PRESS);
+        event->key.time = GDK_CURRENT_TIME;
+
+        // The Windows composition key event code is 299 or VK_PROCESSKEY. We need to
+        // emit this code for web compatibility reasons when key events trigger
+        // composition results. GDK doesn't have an equivalent, so we send VoidSymbol
+        // here to WebCore. PlatformKeyEvent converts this code into VK_PROCESSKEY.
+        event->key.keyval = GDK_KEY_VoidSymbol;
+    }
+
+    WebKitWebViewBasePrivate* priv = webViewBase->priv;
+    priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(event, text, NativeWebKeyboardEvent::HandledByInputMethod::Yes, WTFMove(underlines), WTFMove(selectionRange), { }));
+}

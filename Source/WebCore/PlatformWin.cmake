@@ -37,20 +37,20 @@ list(APPEND WebCore_SOURCES
 
     platform/audio/PlatformMediaSessionManager.cpp
 
-    platform/graphics/GraphicsContext3DPrivate.cpp
-
     platform/graphics/egl/GLContextEGL.cpp
 
-    platform/graphics/opengl/Extensions3DOpenGLCommon.cpp
-    platform/graphics/opengl/Extensions3DOpenGLES.cpp
-    platform/graphics/opengl/GraphicsContext3DOpenGLCommon.cpp
-    platform/graphics/opengl/GraphicsContext3DOpenGLES.cpp
+    platform/graphics/opengl/ExtensionsGLOpenGLCommon.cpp
+    platform/graphics/opengl/ExtensionsGLOpenGLES.cpp
+    platform/graphics/opengl/GraphicsContextGLOpenGLCommon.cpp
+    platform/graphics/opengl/GraphicsContextGLOpenGLES.cpp
+    platform/graphics/opengl/GraphicsContextGLOpenGLPrivate.cpp
     platform/graphics/opengl/TemporaryOpenGLSetting.cpp
 
     platform/graphics/opentype/OpenTypeUtilities.cpp
 
     platform/graphics/win/ColorDirect2D.cpp
     platform/graphics/win/ComplexTextControllerDirectWrite.cpp
+    platform/graphics/win/ComplexTextControllerUniscribe.cpp
     platform/graphics/win/DIBPixelData.cpp
     platform/graphics/win/FloatPointDirect2D.cpp
     platform/graphics/win/FloatRectDirect2D.cpp
@@ -69,7 +69,6 @@ list(APPEND WebCore_SOURCES
     platform/graphics/win/SimpleFontDataWin.cpp
     platform/graphics/win/TransformationMatrixDirect2D.cpp
     platform/graphics/win/TransformationMatrixWin.cpp
-    platform/graphics/win/UniscribeController.cpp
 
     platform/network/win/DownloadBundleWin.cpp
     platform/network/win/NetworkStateNotifierWin.cpp
@@ -81,7 +80,6 @@ list(APPEND WebCore_SOURCES
     platform/win/DefWndProcWindowClass.cpp
     platform/win/DragDataWin.cpp
     platform/win/DragImageWin.cpp
-    platform/win/EventLoopWin.cpp
     platform/win/GDIObjectCounter.cpp
     platform/win/GDIUtilities.cpp
     platform/win/KeyEventWin.cpp
@@ -108,6 +106,7 @@ list(APPEND WebCore_SOURCES
     platform/win/WheelEventWin.cpp
     platform/win/WidgetWin.cpp
     platform/win/WindowMessageBroadcaster.cpp
+    platform/win/WindowsKeyNames.cpp
 
     rendering/RenderThemeWin.cpp
 )
@@ -143,6 +142,7 @@ list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
     platform/win/WebCoreTextRenderer.h
     platform/win/WindowMessageBroadcaster.h
     platform/win/WindowMessageListener.h
+    platform/win/WindowsKeyNames.h
     platform/win/WindowsTouch.h
 )
 
@@ -154,7 +154,6 @@ list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
 if (USE_CF)
     list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
         "${WEBCORE_DIR}/platform/cf"
-        "${WEBCORE_DIR}/platform/cf/win"
     )
 
     list(APPEND WebCore_SOURCES
@@ -164,15 +163,11 @@ if (USE_CF)
 
         platform/cf/SharedBufferCF.cpp
 
-        platform/cf/win/CertificateCFWin.cpp
-
         platform/text/cf/HyphenationCF.cpp
     )
 
     list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
         loader/archive/cf/LegacyWebArchive.h
-
-        platform/cf/win/CertificateCFWin.h
     )
 
     list(APPEND WebCore_LIBRARIES ${COREFOUNDATION_LIBRARY})
@@ -180,6 +175,18 @@ if (USE_CF)
 else ()
     list(APPEND WebCore_SOURCES
         platform/text/Hyphenation.cpp
+    )
+endif ()
+
+if (USE_CFURLCONNECTION)
+    list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
+        ${WEBCORE_DIR}/platform/cf/win
+    )
+    list(APPEND WebCore_SOURCES
+        platform/cf/win/CertificateCFWin.cpp
+    )
+    list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
+        platform/cf/win/CertificateCFWin.h
     )
 endif ()
 

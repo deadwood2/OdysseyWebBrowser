@@ -28,10 +28,13 @@
 
 #if HAVE(APP_SSO)
 
+#import "APIFrameHandle.h"
+#import "APINavigationAction.h"
 #import "PopUpSOAuthorizationSession.h"
 #import "RedirectSOAuthorizationSession.h"
 #import "SubFrameSOAuthorizationSession.h"
 #import "WKSOAuthorizationDelegate.h"
+#import "WebPageProxy.h"
 #import <WebCore/ResourceRequest.h>
 #import <pal/cocoa/AppSSOSoftLink.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
@@ -66,13 +69,14 @@ void SOAuthorizationCoordinator::tryAuthorize(Ref<API::NavigationAction>&& navig
     }
 
     // SubFrameSOAuthorizationSession should only be allowed for Apple first parties.
-    bool subframeNavigation = navigationAction->targetFrame() && !navigationAction->targetFrame()->isMainFrame();
+    auto* targetFrame = navigationAction->targetFrame();
+    bool subframeNavigation = targetFrame && !targetFrame->isMainFrame();
     if (subframeNavigation && (!page.mainFrame() || ![AKAuthorizationController isURLFromAppleOwnedDomain:page.mainFrame()->url()])) {
         completionHandler(false);
         return;
     }
 
-    auto session = subframeNavigation ? SubFrameSOAuthorizationSession::create(m_soAuthorization.get(), WTFMove(navigationAction), page, WTFMove(completionHandler)) : RedirectSOAuthorizationSession::create(m_soAuthorization.get(), WTFMove(navigationAction), page, WTFMove(completionHandler));
+    auto session = subframeNavigation ? SubFrameSOAuthorizationSession::create(m_soAuthorization.get(), WTFMove(navigationAction), page, WTFMove(completionHandler), targetFrame->handle().frameID()) : RedirectSOAuthorizationSession::create(m_soAuthorization.get(), WTFMove(navigationAction), page, WTFMove(completionHandler));
     [m_soAuthorizationDelegate setSession:WTFMove(session)];
 }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2014 The ANGLE Project Authors. All rights reserved.
+// Copyright 2014 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -24,6 +24,11 @@ namespace
 {
 
 constexpr const ImmutableString kAngleDecorString("angle_");
+// D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT = 128;
+const unsigned int kMaxInputResourceSlotCount = 128u;
+// If uniform block member's array size is larger than kMinArraySizeUseStructuredBuffer,
+// then we translate uniform block to StructuredBuffer for compiling performance.
+const unsigned int kMinArraySizeUseStructuredBuffer = 50u;
 
 static const char *UniformRegisterPrefix(const TType &type)
 {
@@ -37,7 +42,9 @@ static const char *UniformRegisterPrefix(const TType &type)
     }
 }
 
-static TString InterfaceBlockFieldTypeString(const TField &field, TLayoutBlockStorage blockStorage)
+static TString InterfaceBlockFieldTypeString(const TField &field,
+                                             TLayoutBlockStorage blockStorage,
+                                             bool usedStructuredbuffer)
 {
     const TType &fieldType                   = *field.type();
     const TLayoutMatrixPacking matrixPacking = fieldType.getLayoutQualifier().matrixPacking;
@@ -53,9 +60,12 @@ static TString InterfaceBlockFieldTypeString(const TField &field, TLayoutBlockSt
     }
     else if (structure)
     {
+        // If uniform block's layout is std140 and translating it to StructuredBuffer,
+        // should pack structure in the end, in order to fit API buffer.
+        bool forcePackingEnd = usedStructuredbuffer && (blockStorage == EbsStd140);
         // Use HLSL row-major packing for GLSL column-major matrices
         return QualifiedStructNameString(*structure, matrixPacking == EmpColumnMajor,
-                                         blockStorage == EbsStd140);
+                                         blockStorage == EbsStd140, forcePackingEnd);
     }
     else
     {
@@ -98,15 +108,17 @@ void OutputUniformIndexArrayInitializer(TInfoSinkBase &out,
 
 ResourcesHLSL::ResourcesHLSL(StructureHLSL *structureHLSL,
                              ShShaderOutput outputType,
-                             const std::vector<Uniform> &uniforms,
+                             ShCompileOptions compileOptions,
+                             const std::vector<ShaderVariable> &uniforms,
                              unsigned int firstUniformRegister)
     : mUniformRegister(firstUniformRegister),
       mUniformBlockRegister(0),
-      mTextureRegister(0),
+      mSRVRegister(0),
       mUAVRegister(0),
       mSamplerCount(0),
       mStructureHLSL(structureHLSL),
       mOutputType(outputType),
+      mCompileOptions(compileOptions),
       mUniforms(uniforms)
 {}
 
@@ -120,7 +132,7 @@ void ResourcesHLSL::reserveUniformBlockRegisters(unsigned int registerCount)
     mUniformBlockRegister = registerCount;
 }
 
-const Uniform *ResourcesHLSL::findUniformByName(const ImmutableString &name) const
+const ShaderVariable *ResourcesHLSL::findUniformByName(const ImmutableString &name) const
 {
     for (size_t uniformIndex = 0; uniformIndex < mUniforms.size(); ++uniformIndex)
     {
@@ -138,13 +150,13 @@ unsigned int ResourcesHLSL::assignUniformRegister(const TType &type,
                                                   unsigned int *outRegisterCount)
 {
     unsigned int registerIndex;
-    const Uniform *uniform = findUniformByName(name);
+    const ShaderVariable *uniform = findUniformByName(name);
     ASSERT(uniform);
 
     if (IsSampler(type.getBasicType()) ||
         (IsImage(type.getBasicType()) && type.getMemoryQualifier().readonly))
     {
-        registerIndex = mTextureRegister;
+        registerIndex = mSRVRegister;
     }
     else if (IsImage(type.getBasicType()))
     {
@@ -164,12 +176,30 @@ unsigned int ResourcesHLSL::assignUniformRegister(const TType &type,
         mUniformRegisterMap[uniform->name] = registerIndex;
     }
 
+    if (uniform->name == "angle_BaseVertex" && uniform->mappedName == "angle_BaseVertex")
+    {
+        mUniformRegisterMap["gl_BaseVertex"] = registerIndex;
+    }
+    else
+    {
+        mUniformRegisterMap[uniform->name] = registerIndex;
+    }
+
+    if (uniform->name == "angle_BaseInstance" && uniform->mappedName == "angle_BaseInstance")
+    {
+        mUniformRegisterMap["gl_BaseInstance"] = registerIndex;
+    }
+    else
+    {
+        mUniformRegisterMap[uniform->name] = registerIndex;
+    }
+
     unsigned int registerCount = HLSLVariableRegisterCount(*uniform, mOutputType);
 
     if (IsSampler(type.getBasicType()) ||
         (IsImage(type.getBasicType()) && type.getMemoryQualifier().readonly))
     {
-        mTextureRegister += registerCount;
+        mSRVRegister += registerCount;
     }
     else if (IsImage(type.getBasicType()))
     {
@@ -192,10 +222,10 @@ unsigned int ResourcesHLSL::assignSamplerInStructUniformRegister(const TType &ty
 {
     // Sampler that is a field of a uniform structure.
     ASSERT(IsSampler(type.getBasicType()));
-    unsigned int registerIndex                     = mTextureRegister;
+    unsigned int registerIndex                     = mSRVRegister;
     mUniformRegisterMap[std::string(name.c_str())] = registerIndex;
     unsigned int registerCount = type.isArray() ? type.getArraySizeProduct() : 1u;
-    mTextureRegister += registerCount;
+    mSRVRegister += registerCount;
     if (outRegisterCount)
     {
         *outRegisterCount = registerCount;
@@ -222,8 +252,8 @@ void ResourcesHLSL::outputHLSLSamplerUniformGroup(
         unsigned int registerCount;
 
         // The uniform might be just a regular sampler or one extracted from a struct.
-        unsigned int samplerArrayIndex = 0u;
-        const Uniform *uniformByName   = findUniformByName(name);
+        unsigned int samplerArrayIndex      = 0u;
+        const ShaderVariable *uniformByName = findUniformByName(name);
         if (uniformByName)
         {
             samplerArrayIndex = assignUniformRegister(type, name, &registerCount);
@@ -368,7 +398,7 @@ void ResourcesHLSL::outputUniform(TInfoSinkBase &out,
     // nameless structs in ES, as nameless structs cannot be used anywhere that layout qualifiers
     // are permitted.
     const TString &typeName = ((structure && structure->symbolType() != SymbolType::Empty)
-                                   ? QualifiedStructNameString(*structure, false, false)
+                                   ? QualifiedStructNameString(*structure, false, false, false)
                                    : TypeString(type));
 
     const TString &registerString =
@@ -429,7 +459,7 @@ void ResourcesHLSL::uniformsHeader(TInfoSinkBase &out,
         {
             if (IsImage2D(type.getBasicType()))
             {
-                const Uniform *uniform = findUniformByName(variable.name());
+                const ShaderVariable *uniform = findUniformByName(variable.name());
                 if (type.getMemoryQualifier().readonly)
                 {
                     reservedReadonlyImageRegisterCount +=
@@ -469,7 +499,7 @@ void ResourcesHLSL::uniformsHeader(TInfoSinkBase &out,
             {
                 registerIndex = assignedAtomicCounterBindings[binding];
             }
-            const Uniform *uniform             = findUniformByName(variable.name());
+            const ShaderVariable *uniform      = findUniformByName(variable.name());
             mUniformRegisterMap[uniform->name] = registerIndex;
         }
         else
@@ -531,9 +561,9 @@ void ResourcesHLSL::uniformsHeader(TInfoSinkBase &out,
         mSamplerCount = groupTextureRegisterIndex;
 
         // Reserve t type register for readonly image2D variables.
-        mReadonlyImage2DRegisterIndex = mTextureRegister;
+        mReadonlyImage2DRegisterIndex = mSRVRegister;
         groupTextureRegisterIndex += reservedReadonlyImageRegisterCount;
-        mTextureRegister += reservedReadonlyImageRegisterCount;
+        mSRVRegister += reservedReadonlyImageRegisterCount;
 
         for (int groupId = HLSL_TEXTURE_MIN; groupId < HLSL_TEXTURE_MAX; ++groupId)
         {
@@ -592,7 +622,8 @@ void ResourcesHLSL::imageMetadataUniforms(TInfoSinkBase &out, unsigned int regIn
         out << "    struct ImageMetadata\n"
                "    {\n"
                "        int layer;\n"
-               "        int3 padding;\n"
+               "        uint level;\n"
+               "        int2 padding;\n"
                "    };\n";
 
         if (mReadonlyImageCount > 0)
@@ -621,6 +652,21 @@ TString ResourcesHLSL::uniformBlocksHeader(
         if (instanceVariable != nullptr)
         {
             interfaceBlocks += uniformBlockStructString(interfaceBlock);
+        }
+
+        // In order to avoid compile performance issue, translate uniform block to structured
+        // buffer. anglebug.com/3682.
+        // TODO(anglebug.com/4205): Support uniform block with an instance name.
+        if (instanceVariable == nullptr &&
+            shouldTranslateUniformBlockToStructuredBuffer(interfaceBlock))
+        {
+            unsigned int structuredBufferRegister = mSRVRegister;
+            interfaceBlocks +=
+                uniformBlockWithOneLargeArrayMemberString(interfaceBlock, structuredBufferRegister);
+            mUniformBlockRegisterMap[interfaceBlock.name().data()] = structuredBufferRegister;
+            mUniformBlockUseStructuredBufferMap[interfaceBlock.name().data()] = true;
+            mSRVRegister += 1u;
+            continue;
         }
 
         unsigned int activeRegister                            = mUniformBlockRegister;
@@ -710,6 +756,22 @@ TString ResourcesHLSL::uniformBlockString(const TInterfaceBlock &interfaceBlock,
     return hlsl;
 }
 
+TString ResourcesHLSL::uniformBlockWithOneLargeArrayMemberString(
+    const TInterfaceBlock &interfaceBlock,
+    unsigned int registerIndex)
+{
+    TString hlsl, typeString;
+
+    const TField &field                    = *interfaceBlock.fields()[0];
+    const TLayoutBlockStorage blockStorage = interfaceBlock.blockStorage();
+    typeString = InterfaceBlockFieldTypeString(field, blockStorage, true);
+
+    hlsl += "StructuredBuffer <" + typeString + "> " + Decorate(field.name()) + " : register(t" +
+            str(registerIndex) + ");\n";
+
+    return hlsl;
+}
+
 TString ResourcesHLSL::shaderStorageBlockString(const TInterfaceBlock &interfaceBlock,
                                                 const TVariable *instanceVariable,
                                                 unsigned int registerIndex,
@@ -761,7 +823,7 @@ TString ResourcesHLSL::uniformBlockMembersString(const TInterfaceBlock &interfac
             hlsl += padHelper.prePaddingString(fieldType);
         }
 
-        hlsl += "    " + InterfaceBlockFieldTypeString(field, blockStorage) + " " +
+        hlsl += "    " + InterfaceBlockFieldTypeString(field, blockStorage, false) + " " +
                 Decorate(field.name()) + ArrayString(fieldType).data() + ";\n";
 
         // must pad out after matrices and arrays, where HLSL usually allows itself room to pack
@@ -770,7 +832,7 @@ TString ResourcesHLSL::uniformBlockMembersString(const TInterfaceBlock &interfac
         {
             const bool useHLSLRowMajorPacking =
                 (fieldType.getLayoutQualifier().matrixPacking == EmpColumnMajor);
-            hlsl += padHelper.postPaddingString(fieldType, useHLSLRowMajorPacking);
+            hlsl += padHelper.postPaddingString(fieldType, useHLSLRowMajorPacking, false);
         }
     }
 
@@ -785,5 +847,18 @@ TString ResourcesHLSL::uniformBlockStructString(const TInterfaceBlock &interface
            "\n"
            "{\n" +
            uniformBlockMembersString(interfaceBlock, blockStorage) + "};\n\n";
+}
+
+bool ResourcesHLSL::shouldTranslateUniformBlockToStructuredBuffer(
+    const TInterfaceBlock &interfaceBlock)
+{
+    const TType &fieldType = *interfaceBlock.fields()[0]->type();
+
+    // TODO(anglebug.com/4206): Support uniform block contains only a matrix array member,
+    // and fix row-major/column-major conversion issue.
+    return (mCompileOptions & SH_DONT_TRANSLATE_UNIFORM_BLOCK_TO_STRUCTUREDBUFFER) == 0 &&
+           mSRVRegister < kMaxInputResourceSlotCount && interfaceBlock.fields().size() == 1u &&
+           fieldType.getStruct() != nullptr && fieldType.getNumArraySizes() == 1u &&
+           fieldType.getOutermostArraySize() >= kMinArraySizeUseStructuredBuffer;
 }
 }  // namespace sh

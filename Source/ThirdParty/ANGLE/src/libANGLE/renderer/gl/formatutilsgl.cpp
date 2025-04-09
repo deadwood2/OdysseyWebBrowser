@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2015 The ANGLE Project Authors. All rights reserved.
+// Copyright 2015 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -11,8 +11,10 @@
 
 #include <limits>
 
+#include "anglebase/no_destructor.h"
 #include "common/string_utils.h"
 #include "libANGLE/formatutils.h"
+#include "platform/FeaturesGL.h"
 
 namespace rx
 {
@@ -207,6 +209,16 @@ static InternalFormatInfoMap BuildInternalFormatInfoMap()
     InsertFormatMapping(&map, GL_RGBA32I,           VersionOrExts(3, 0, "GL_EXT_texture_integer"),    NeverSupported(),  VersionOrExts(3, 0, "GL_EXT_texture_integer"), VersionOnly(3, 0),                          NeverSupported(),  VersionOnly(3, 0),                        VersionOnly(3, 0)                         );
     InsertFormatMapping(&map, GL_RGBA32UI,          VersionOrExts(3, 0, "GL_EXT_texture_integer"),    NeverSupported(),  VersionOrExts(3, 0, "GL_EXT_texture_integer"), VersionOnly(3, 0),                          NeverSupported(),  VersionOnly(3, 0),                        VersionOnly(3, 0)                         );
 
+    InsertFormatMapping(&map, GL_R16,               VersionOrExts(3, 0, "GL_ARB_texture_rg"),         AlwaysSupported(), VersionOrExts(3, 0, "GL_ARB_texture_rg"),      ExtsOnly("GL_EXT_texture_norm16"),          AlwaysSupported(), ExtsOnly("GL_EXT_texture_norm16"),        ExtsOnly("GL_EXT_texture_norm16")         );
+    InsertFormatMapping(&map, GL_RG16,              VersionOrExts(3, 0, "GL_ARB_texture_rg"),         AlwaysSupported(), VersionOrExts(3, 0, "GL_ARB_texture_rg"),      ExtsOnly("GL_EXT_texture_norm16"),          AlwaysSupported(), ExtsOnly("GL_EXT_texture_norm16"),        ExtsOnly("GL_EXT_texture_norm16")         );
+    InsertFormatMapping(&map, GL_RGB16,             AlwaysSupported(),                                AlwaysSupported(), NeverSupported(),                              ExtsOnly("GL_EXT_texture_norm16"),          AlwaysSupported(), NeverSupported(),                         NeverSupported()                          );
+    InsertFormatMapping(&map, GL_RGBA16,            AlwaysSupported(),                                AlwaysSupported(), AlwaysSupported(),                             ExtsOnly("GL_EXT_texture_norm16"),          AlwaysSupported(), ExtsOnly("GL_EXT_texture_norm16"),        ExtsOnly("GL_EXT_texture_norm16")         );
+
+    InsertFormatMapping(&map, GL_R16_SNORM,         VersionOnly(3, 1),                                AlwaysSupported(), NeverSupported(),                              ExtsOnly("GL_EXT_texture_norm16"),          AlwaysSupported(), NeverSupported(),                         NeverSupported()                          );
+    InsertFormatMapping(&map, GL_RG16_SNORM,        VersionOnly(3, 1),                                AlwaysSupported(), NeverSupported(),                              ExtsOnly("GL_EXT_texture_norm16"),          AlwaysSupported(), NeverSupported(),                         NeverSupported()                          );
+    InsertFormatMapping(&map, GL_RGB16_SNORM,       VersionOnly(3, 1),                                AlwaysSupported(), NeverSupported(),                              ExtsOnly("GL_EXT_texture_norm16"),          AlwaysSupported(), NeverSupported(),                         NeverSupported()                          );
+    InsertFormatMapping(&map, GL_RGBA16_SNORM,      VersionOnly(3, 1),                                AlwaysSupported(), NeverSupported(),                              ExtsOnly("GL_EXT_texture_norm16"),          AlwaysSupported(), NeverSupported(),                         NeverSupported()                          );
+
     // Unsized formats
     InsertFormatMapping(&map, GL_ALPHA,             NeverSupported(),                                 NeverSupported(),  NeverSupported(),                              AlwaysSupported(),                          AlwaysSupported(), NeverSupported(),                         NeverSupported()                          );
     InsertFormatMapping(&map, GL_LUMINANCE,         NeverSupported(),                                 NeverSupported(),  NeverSupported(),                              AlwaysSupported(),                          AlwaysSupported(), NeverSupported(),                         NeverSupported()                          );
@@ -305,8 +317,73 @@ static InternalFormatInfoMap BuildInternalFormatInfoMap()
     // From GL_ANGLE_texture_compression_dxt5
     InsertFormatMapping(&map, GL_COMPRESSED_RGBA_S3TC_DXT5_ANGLE, ExtsOnly("GL_EXT_texture_compression_s3tc"),     AlwaysSupported(), NeverSupported(), ExtsOnly("GL_ANGLE_texture_compression_dxt5"), AlwaysSupported(), NeverSupported(),                      NeverSupported()                );
 
-    // From GL_ETC1_RGB8_OES
-    InsertFormatMapping(&map, GL_ETC1_RGB8_OES,                   VersionOrExts(4, 3, "GL_ARB_ES3_compatibility"), AlwaysSupported(), NeverSupported(), VersionOrExts(3, 0, "GL_ETC1_RGB8_OES"),       AlwaysSupported(), NeverSupported(),                      NeverSupported()                );
+    // From GL_OES_compressed_ETC1_RGB8_texture
+    InsertFormatMapping(&map, GL_ETC1_RGB8_OES,                   VersionOrExts(4, 3, "GL_ARB_ES3_compatibility"), AlwaysSupported(), NeverSupported(), VersionOrExts(3, 0, "GL_OES_compressed_ETC1_RGB8_texture"),       AlwaysSupported(), NeverSupported(),                      NeverSupported()                );
+
+    // From GL_OES_texture_compression_astc
+    //                       | Format                                  | OpenGL texture   | Filter         | Render          | OpenGL ES texture support                      | Filter           | ES attachment   | ES renderbuffer |
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_4x4_KHR,           NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_5x4_KHR,           NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_5x5_KHR,           NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_6x5_KHR,           NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_6x6_KHR,           NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_8x5_KHR,           NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_8x6_KHR,           NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_8x8_KHR,           NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_10x5_KHR,          NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_10x6_KHR,          NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_10x8_KHR,          NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_10x10_KHR,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_12x10_KHR,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_12x12_KHR,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR,   NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x4_KHR,   NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR,   NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x5_KHR,   NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR,   NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_8x5_KHR,   NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_8x6_KHR,   NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR,   NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x5_KHR,  NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x6_KHR,  NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x8_KHR,  NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x10_KHR, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_KHR_texture_compression_astc_ldr"), AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_3x3x3_OES,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_4x3x3_OES,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_4x4x3_OES,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_4x4x4_OES,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_5x4x4_OES,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_5x5x4_OES,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_5x5x5_OES,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_6x5x5_OES,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_6x6x5_OES,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_ASTC_6x6x6_OES,         NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_3x3x3_OES, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x3x3_OES, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4x3_OES, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4x4_OES, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x4x4_OES, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5x4_OES, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_5x5x5_OES, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x5x5_OES, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6x5_OES, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6x6_OES, NeverSupported(), NeverSupported(), NeverSupported(), ExtsOnly("GL_OES_texture_compression_astc"),     AlwaysSupported(), NeverSupported(), NeverSupported());
+
+    // From GL_IMG_texture_compression_pvrtc
+    //                       | Format                               | OpenGL texture support                         | Filter           | Render          | OpenGL ES texture support                      | Filter           | OpenGL ES texture attachment support | OpenGL ES renderbuffer support |
+    InsertFormatMapping(&map, GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG,    ExtsOnly("GL_IMG_texture_compression_pvrtc"),     AlwaysSupported(), NeverSupported(), ExtsOnly("GL_IMG_texture_compression_pvrtc"),   AlwaysSupported(), NeverSupported(),                      NeverSupported()                );
+    InsertFormatMapping(&map, GL_COMPRESSED_RGB_PVRTC_2BPPV1_IMG,    ExtsOnly("GL_IMG_texture_compression_pvrtc"),     AlwaysSupported(), NeverSupported(), ExtsOnly("GL_IMG_texture_compression_pvrtc"),   AlwaysSupported(), NeverSupported(),                      NeverSupported()                );
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG,   ExtsOnly("GL_IMG_texture_compression_pvrtc"),     AlwaysSupported(), NeverSupported(), ExtsOnly("GL_IMG_texture_compression_pvrtc"),   AlwaysSupported(), NeverSupported(),                      NeverSupported()                );
+    InsertFormatMapping(&map, GL_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,   ExtsOnly("GL_IMG_texture_compression_pvrtc"),     AlwaysSupported(), NeverSupported(), ExtsOnly("GL_IMG_texture_compression_pvrtc"),   AlwaysSupported(), NeverSupported(),                      NeverSupported()                );
+
+    // From GL_EXT_pvrtc_sRGB
+    //                       | Format                                      | OpenGL texture support  | Filter          | Render          | OpenGL ES texture support      | Filter           | OpenGL ES texture attachment support | OpenGL ES renderbuffer support |
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB_PVRTC_2BPPV1_EXT,          NeverSupported(),         NeverSupported(), NeverSupported(), ExtsOnly("GL_EXT_pvrtc_sRGB"),   AlwaysSupported(), NeverSupported(),                      NeverSupported()                );
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB_PVRTC_4BPPV1_EXT,          NeverSupported(),         NeverSupported(), NeverSupported(), ExtsOnly("GL_EXT_pvrtc_sRGB"),   AlwaysSupported(), NeverSupported(),                      NeverSupported()                );
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB_ALPHA_PVRTC_2BPPV1_EXT,    NeverSupported(),         NeverSupported(), NeverSupported(), ExtsOnly("GL_EXT_pvrtc_sRGB"),   AlwaysSupported(), NeverSupported(),                      NeverSupported()                );
+    InsertFormatMapping(&map, GL_COMPRESSED_SRGB_ALPHA_PVRTC_4BPPV1_EXT,    NeverSupported(),         NeverSupported(), NeverSupported(), ExtsOnly("GL_EXT_pvrtc_sRGB"),   AlwaysSupported(), NeverSupported(),                      NeverSupported()                );
 
     // clang-format on
 
@@ -315,8 +392,9 @@ static InternalFormatInfoMap BuildInternalFormatInfoMap()
 
 static const InternalFormatInfoMap &GetInternalFormatMap()
 {
-    static const InternalFormatInfoMap formatMap = BuildInternalFormatInfoMap();
-    return formatMap;
+    static const angle::base::NoDestructor<InternalFormatInfoMap> formatMap(
+        BuildInternalFormatInfoMap());
+    return *formatMap;
 }
 
 const InternalFormat &GetInternalFormatInfo(GLenum internalFormat, StandardGL standard)
@@ -338,12 +416,12 @@ const InternalFormat &GetInternalFormatInfo(GLenum internalFormat, StandardGL st
         }
     }
 
-    static const InternalFormat defaultInternalFormat;
-    return defaultInternalFormat;
+    static const angle::base::NoDestructor<InternalFormat> defaultInternalFormat;
+    return *defaultInternalFormat;
 }
 
 static GLenum GetNativeInternalFormat(const FunctionsGL *functions,
-                                      const WorkaroundsGL &workarounds,
+                                      const angle::FeaturesGL &features,
                                       const gl::InternalFormat &internalFormat)
 {
     GLenum result = internalFormat.internalFormat;
@@ -355,13 +433,13 @@ static GLenum GetNativeInternalFormat(const FunctionsGL *functions,
         // even if the provided type is GL_FLOAT.
         result = internalFormat.sizedInternalFormat;
 
-        if (workarounds.avoid1BitAlphaTextureFormats && internalFormat.alphaBits == 1)
+        if (features.avoid1BitAlphaTextureFormats.enabled && internalFormat.alphaBits == 1)
         {
             // Use an 8-bit format instead
             result = GL_RGBA8;
         }
 
-        if (workarounds.rgba4IsNotSupportedForColorRendering &&
+        if (features.rgba4IsNotSupportedForColorRendering.enabled &&
             internalFormat.sizedInternalFormat == GL_RGBA4)
         {
             // Use an 8-bit format instead
@@ -413,7 +491,7 @@ static GLenum GetNativeInternalFormat(const FunctionsGL *functions,
             // Workaround Adreno driver not supporting unsized EXT_texture_rg formats
             result = internalFormat.sizedInternalFormat;
         }
-        else if (workarounds.unsizedsRGBReadPixelsDoesntTransform &&
+        else if (features.unsizedsRGBReadPixelsDoesntTransform.enabled &&
                  internalFormat.colorEncoding == GL_SRGB)
         {
             // Work around some Adreno driver bugs that don't read back SRGB data correctly when
@@ -426,7 +504,7 @@ static GLenum GetNativeInternalFormat(const FunctionsGL *functions,
 }
 
 static GLenum GetNativeFormat(const FunctionsGL *functions,
-                              const WorkaroundsGL &workarounds,
+                              const angle::FeaturesGL &features,
                               GLenum format)
 {
     GLenum result = format;
@@ -462,7 +540,7 @@ static GLenum GetNativeFormat(const FunctionsGL *functions,
     }
     else if (functions->isAtLeastGLES(gl::Version(3, 0)))
     {
-        if (workarounds.unsizedsRGBReadPixelsDoesntTransform)
+        if (features.unsizedsRGBReadPixelsDoesntTransform.enabled)
         {
             if (format == GL_SRGB)
             {
@@ -480,7 +558,7 @@ static GLenum GetNativeFormat(const FunctionsGL *functions,
 }
 
 static GLenum GetNativeCompressedFormat(const FunctionsGL *functions,
-                                        const WorkaroundsGL &workarounds,
+                                        const angle::FeaturesGL &features,
                                         GLenum format)
 {
     GLenum result = format;
@@ -509,7 +587,7 @@ static GLenum GetNativeCompressedFormat(const FunctionsGL *functions,
 }
 
 static GLenum GetNativeType(const FunctionsGL *functions,
-                            const WorkaroundsGL &workarounds,
+                            const angle::FeaturesGL &features,
                             GLenum format,
                             GLenum type)
 {
@@ -558,7 +636,7 @@ static GLenum GetNativeType(const FunctionsGL *functions,
 }
 
 static GLenum GetNativeReadType(const FunctionsGL *functions,
-                                const WorkaroundsGL &workarounds,
+                                const angle::FeaturesGL &features,
                                 GLenum type)
 {
     GLenum result = type;
@@ -576,94 +654,103 @@ static GLenum GetNativeReadType(const FunctionsGL *functions,
 }
 
 static GLenum GetNativeReadFormat(const FunctionsGL *functions,
-                                  const WorkaroundsGL &workarounds,
-                                  GLenum format)
+                                  const angle::FeaturesGL &features,
+                                  GLenum attachmentReadFormat,
+                                  GLenum format,
+                                  GLenum type)
 {
     GLenum result = format;
+    if (features.readPixelsUsingImplementationColorReadFormatForNorm16.enabled &&
+        type == GL_UNSIGNED_SHORT && format == GL_RGBA &&
+        (attachmentReadFormat == GL_RED || attachmentReadFormat == GL_RG))
+    {
+        result = attachmentReadFormat;
+    }
     return result;
 }
 
 TexImageFormat GetTexImageFormat(const FunctionsGL *functions,
-                                 const WorkaroundsGL &workarounds,
+                                 const angle::FeaturesGL &features,
                                  GLenum internalFormat,
                                  GLenum format,
                                  GLenum type)
 {
     TexImageFormat result;
     result.internalFormat = GetNativeInternalFormat(
-        functions, workarounds, gl::GetInternalFormatInfo(internalFormat, type));
-    result.format = GetNativeFormat(functions, workarounds, format);
-    result.type   = GetNativeType(functions, workarounds, format, type);
+        functions, features, gl::GetInternalFormatInfo(internalFormat, type));
+    result.format = GetNativeFormat(functions, features, format);
+    result.type   = GetNativeType(functions, features, format, type);
     return result;
 }
 
 TexSubImageFormat GetTexSubImageFormat(const FunctionsGL *functions,
-                                       const WorkaroundsGL &workarounds,
+                                       const angle::FeaturesGL &features,
                                        GLenum format,
                                        GLenum type)
 {
     TexSubImageFormat result;
-    result.format = GetNativeFormat(functions, workarounds, format);
-    result.type   = GetNativeType(functions, workarounds, format, type);
+    result.format = GetNativeFormat(functions, features, format);
+    result.type   = GetNativeType(functions, features, format, type);
     return result;
 }
 
 CompressedTexImageFormat GetCompressedTexImageFormat(const FunctionsGL *functions,
-                                                     const WorkaroundsGL &workarounds,
+                                                     const angle::FeaturesGL &features,
                                                      GLenum internalFormat)
 {
     CompressedTexImageFormat result;
-    result.internalFormat = GetNativeCompressedFormat(functions, workarounds, internalFormat);
+    result.internalFormat = GetNativeCompressedFormat(functions, features, internalFormat);
     return result;
 }
 
 CompressedTexSubImageFormat GetCompressedSubTexImageFormat(const FunctionsGL *functions,
-                                                           const WorkaroundsGL &workarounds,
+                                                           const angle::FeaturesGL &features,
                                                            GLenum format)
 {
     CompressedTexSubImageFormat result;
-    result.format = GetNativeCompressedFormat(functions, workarounds, format);
+    result.format = GetNativeCompressedFormat(functions, features, format);
     return result;
 }
 
 CopyTexImageImageFormat GetCopyTexImageImageFormat(const FunctionsGL *functions,
-                                                   const WorkaroundsGL &workarounds,
+                                                   const angle::FeaturesGL &features,
                                                    GLenum internalFormat,
                                                    GLenum framebufferType)
 {
     CopyTexImageImageFormat result;
     result.internalFormat = GetNativeInternalFormat(
-        functions, workarounds, gl::GetInternalFormatInfo(internalFormat, framebufferType));
+        functions, features, gl::GetInternalFormatInfo(internalFormat, framebufferType));
     return result;
 }
 
 TexStorageFormat GetTexStorageFormat(const FunctionsGL *functions,
-                                     const WorkaroundsGL &workarounds,
+                                     const angle::FeaturesGL &features,
                                      GLenum internalFormat)
 {
     TexStorageFormat result;
-    result.internalFormat = GetNativeInternalFormat(functions, workarounds,
+    result.internalFormat = GetNativeInternalFormat(functions, features,
                                                     gl::GetSizedInternalFormatInfo(internalFormat));
     return result;
 }
 
 RenderbufferFormat GetRenderbufferFormat(const FunctionsGL *functions,
-                                         const WorkaroundsGL &workarounds,
+                                         const angle::FeaturesGL &features,
                                          GLenum internalFormat)
 {
     RenderbufferFormat result;
-    result.internalFormat = GetNativeInternalFormat(functions, workarounds,
+    result.internalFormat = GetNativeInternalFormat(functions, features,
                                                     gl::GetSizedInternalFormatInfo(internalFormat));
     return result;
 }
 ReadPixelsFormat GetReadPixelsFormat(const FunctionsGL *functions,
-                                     const WorkaroundsGL &workarounds,
+                                     const angle::FeaturesGL &features,
+                                     GLenum attachmentReadFormat,
                                      GLenum format,
                                      GLenum type)
 {
     ReadPixelsFormat result;
-    result.format = GetNativeReadFormat(functions, workarounds, format);
-    result.type   = GetNativeReadType(functions, workarounds, type);
+    result.format = GetNativeReadFormat(functions, features, attachmentReadFormat, format, type);
+    result.type   = GetNativeReadType(functions, features, type);
     return result;
 }
 }  // namespace nativegl

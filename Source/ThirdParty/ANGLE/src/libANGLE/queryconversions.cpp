@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2014 The ANGLE Project Authors. All rights reserved.
+// Copyright 2014 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -61,7 +61,16 @@ NativeT CastQueryValueToInt(GLenum pname, QueryT value)
 
     if (queryType == GL_FLOAT)
     {
-        return static_cast<NativeT>(std::round(value));
+        // ARM devices cast float to uint differently than Intel.
+        // Basically, any negative floating point number becomes 0
+        // when converted to unsigned int. Instead, convert to a signed
+        // int and then convert to unsigned int to "preserve the value"
+        // E.g. common case for tests is to pass in -1 as an invalid query
+        // value. If cast to a unsigned int it becomes 0 (GL_NONE) and is now
+        // a valid enum and negative tests fail. But converting to int
+        // and then to final unsigned int gives us 4294967295 (0xffffffff)
+        // which is what we want.
+        return static_cast<NativeT>(static_cast<GLint64>(std::round(value)));
     }
 
     return static_cast<NativeT>(value);
@@ -69,14 +78,9 @@ NativeT CastQueryValueToInt(GLenum pname, QueryT value)
 
 }  // anonymous namespace
 
-// ES 3.10 Section 2.2.2
-// When querying bitmasks(such as SAMPLE_MASK_VALUE or STENCIL_WRITEMASK) with GetIntegerv, the
-// mask value is treated as a signed integer, so that mask values with the high bit set will not be
-// clamped when returned as signed integers.
-GLint CastMaskValue(const Context *context, GLuint value)
+GLint CastMaskValue(GLuint value)
 {
-    return (context->getClientVersion() >= Version(3, 1) ? static_cast<GLint>(value)
-                                                         : clampCast<GLint>(value));
+    return clampCast<GLint>(value);
 }
 
 template <typename QueryT, typename InternalT>

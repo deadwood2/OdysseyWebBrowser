@@ -29,13 +29,6 @@
 #include <WebKit/WKBase.h>
 #include <WebKit/WKContext.h>
 
-#if defined(WIN32) || defined(_WIN32)
-typedef int WKProcessID;
-#else
-#include <unistd.h>
-typedef pid_t WKProcessID;
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -67,11 +60,11 @@ WK_EXPORT void WKContextRegisterURLSchemeAsCanDisplayOnlyIfCanRequest(WKContextR
 
 WK_EXPORT void WKContextSetDomainRelaxationForbiddenForURLScheme(WKContextRef context, WKStringRef urlScheme);
 
-WK_EXPORT void WKContextSetCanHandleHTTPSServerTrustEvaluation(WKContextRef context, bool value);
+WK_EXPORT void WKContextSetCanHandleHTTPSServerTrustEvaluation(WKContextRef context, bool value) WK_C_API_DEPRECATED;
 
 WK_EXPORT void WKContextSetPrewarmsProcessesAutomatically(WKContextRef context, bool value);
 
-WK_EXPORT void WKContextSetDiskCacheSpeculativeValidationEnabled(WKContextRef context, bool value);
+WK_EXPORT void WKContextSetDiskCacheSpeculativeValidationEnabled(WKContextRef context, bool value) WK_C_API_DEPRECATED;
 
 WK_EXPORT void WKContextSetIconDatabasePath(WKContextRef context, WKStringRef iconDatabasePath);
 
@@ -91,7 +84,7 @@ WK_EXPORT void WKContextWarmInitialProcess(WKContextRef context);
 WK_EXPORT void WKContextSetUsesNetworkProcess(WKContextRef, bool);
 
 WK_EXPORT void WKContextTerminateNetworkProcess(WKContextRef);
-WK_EXPORT void WKContextTerminateServiceWorkerProcess(WKContextRef);
+WK_EXPORT void WKContextTerminateServiceWorkers(WKContextRef);
 
 WK_EXPORT void WKContextSetAllowsAnySSLCertificateForWebSocketTesting(WKContextRef, bool);
 WK_EXPORT void WKContextSetAllowsAnySSLCertificateForServiceWorkerTesting(WKContextRef, bool);
@@ -109,7 +102,7 @@ WK_EXPORT void WKContextSetMemoryCacheDisabled(WKContextRef, bool disabled);
 
 WK_EXPORT void WKContextSetFontWhitelist(WKContextRef, WKArrayRef);
 
-WK_EXPORT void WKContextPreconnectToServer(WKContextRef context, WKURLRef serverURL);
+WK_EXPORT void WKContextPreconnectToServer(WKContextRef context, WKURLRef serverURL) WK_C_API_DEPRECATED;
 
 WK_EXPORT WKProcessID WKContextGetNetworkProcessIdentifier(WKContextRef context);
 
@@ -123,6 +116,8 @@ WK_EXPORT void WKContextSyncLocalStorage(WKContextRef contextRef, void* context,
 
 typedef void (*WKContextClearLegacyPrivateBrowsingLocalStorageCallback)(void* functionContext);
 WK_EXPORT void WKContextClearLegacyPrivateBrowsingLocalStorage(WKContextRef contextRef, void* context, WKContextClearLegacyPrivateBrowsingLocalStorageCallback callback);
+
+WK_EXPORT void WKContextSetUseSeparateServiceWorkerProcess(WKContextRef context, bool forceServiceWorkerProcess);
 
 #ifdef __cplusplus
 }

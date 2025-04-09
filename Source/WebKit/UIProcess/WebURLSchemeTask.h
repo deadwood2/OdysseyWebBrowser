@@ -34,6 +34,10 @@
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
+namespace API {
+class FrameInfo;
+}
+
 namespace IPC {
 class DataReference;
 }
@@ -46,6 +50,7 @@ class SharedBuffer;
 
 namespace WebKit {
 
+struct URLSchemeTaskParameters;
 class WebURLSchemeHandler;
 class WebPageProxy;
 
@@ -54,20 +59,19 @@ using SyncLoadCompletionHandler = CompletionHandler<void(const WebCore::Resource
 class WebURLSchemeTask : public ThreadSafeRefCounted<WebURLSchemeTask>, public InstanceCounted<WebURLSchemeTask> {
     WTF_MAKE_NONCOPYABLE(WebURLSchemeTask);
 public:
-    static Ref<WebURLSchemeTask> create(WebURLSchemeHandler&, WebPageProxy&, WebProcessProxy&, uint64_t identifier, WebCore::ResourceRequest&&, SyncLoadCompletionHandler&&);
+    static Ref<WebURLSchemeTask> create(WebURLSchemeHandler&, WebPageProxy&, WebProcessProxy&, WebCore::PageIdentifier, URLSchemeTaskParameters&&, SyncLoadCompletionHandler&&);
 
     ~WebURLSchemeTask();
 
     uint64_t identifier() const { ASSERT(RunLoop::isMain()); return m_identifier; }
-    WebCore::PageIdentifier pageID() const { ASSERT(RunLoop::isMain()); return m_pageIdentifier; }
-
+    WebPageProxyIdentifier pageProxyID() const { ASSERT(RunLoop::isMain()); return m_pageProxyID; }
+    WebCore::PageIdentifier webPageID() const { ASSERT(RunLoop::isMain()); return m_webPageID; }
     WebProcessProxy* process() { ASSERT(RunLoop::isMain()); return m_process.get(); }
+    const WebCore::ResourceRequest& request() const { ASSERT(RunLoop::isMain()); return m_request; }
+    API::FrameInfo& frameInfo() const { return m_frameInfo.get(); }
 
 #if PLATFORM(COCOA)
     NSURLRequest *nsRequest() const;
-#endif
-#if PLATFORM(WIN)
-    const WebCore::ResourceRequest& request() const { ASSERT(RunLoop::isMain()); return m_request; }
 #endif
 
     enum class ExceptionType {
@@ -87,16 +91,17 @@ public:
     void pageDestroyed();
 
 private:
-    WebURLSchemeTask(WebURLSchemeHandler&, WebPageProxy&, WebProcessProxy&, uint64_t identifier, WebCore::ResourceRequest&&, SyncLoadCompletionHandler&&);
+    WebURLSchemeTask(WebURLSchemeHandler&, WebPageProxy&, WebProcessProxy&, WebCore::PageIdentifier, URLSchemeTaskParameters&&, SyncLoadCompletionHandler&&);
 
     bool isSync() const { return !!m_syncCompletionHandler; }
 
     Ref<WebURLSchemeHandler> m_urlSchemeHandler;
-    WebPageProxy* m_page;
     RefPtr<WebProcessProxy> m_process;
     uint64_t m_identifier;
-    WebCore::PageIdentifier m_pageIdentifier;
+    WebPageProxyIdentifier m_pageProxyID;
+    WebCore::PageIdentifier m_webPageID;
     WebCore::ResourceRequest m_request;
+    Ref<API::FrameInfo> m_frameInfo;
     mutable Lock m_requestLock;
     bool m_stopped { false };
     bool m_responseSent { false };

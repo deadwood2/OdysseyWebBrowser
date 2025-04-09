@@ -270,9 +270,12 @@ public:
 #endif
 #endif
 
-#if PLATFORM(COCOA) || PLATFORM(GTK)
+#if PLATFORM(COCOA) || PLATFORM(GTK) || PLATFORM(WPE)
     virtual void selectionDidChange() = 0;
-    virtual RefPtr<ViewSnapshot> takeViewSnapshot() = 0;
+#endif
+
+#if PLATFORM(COCOA) || PLATFORM(GTK)
+    virtual RefPtr<ViewSnapshot> takeViewSnapshot(Optional<WebCore::IntRect>&&) = 0;
 #endif
 
 #if USE(APPKIT)
@@ -300,6 +303,9 @@ public:
     virtual void doneWithKeyEvent(const NativeWebKeyboardEvent&, bool wasEventHandled) = 0;
 #if ENABLE(TOUCH_EVENTS)
     virtual void doneWithTouchEvent(const NativeWebTouchEvent&, bool wasEventHandled) = 0;
+#endif
+#if ENABLE(IOS_TOUCH_EVENTS)
+    virtual void doneDeferringNativeGestures(bool preventNativeGestures) = 0;
 #endif
 
     virtual RefPtr<WebPopupMenuProxy> createPopupMenuProxy(WebPageProxy&) = 0;
@@ -396,7 +402,7 @@ public:
     virtual void saveImageToLibrary(Ref<WebCore::SharedBuffer>&&) = 0;
     virtual void showPlaybackTargetPicker(bool hasVideo, const WebCore::IntRect& elementRect, WebCore::RouteSharingPolicy, const String&) = 0;
     virtual void disableDoubleTapGesturesDuringTapIfNecessary(uint64_t requestID) = 0;
-    virtual void handleSmartMagnificationInformationForPotentialTap(uint64_t requestID, const WebCore::FloatRect& renderRect, bool fitEntireRect, double viewportMinimumScale, double viewportMaximumScale) = 0;
+    virtual void handleSmartMagnificationInformationForPotentialTap(uint64_t requestID, const WebCore::FloatRect& renderRect, bool fitEntireRect, double viewportMinimumScale, double viewportMaximumScale, bool nodeIsRootLevel) = 0;
     virtual double minimumZoomScale() const = 0;
     virtual WebCore::FloatRect documentRect() const = 0;
     virtual void scrollingNodeScrollViewWillStartPanGesture() = 0;
@@ -453,8 +459,6 @@ public:
     virtual void didHandleAcceptedCandidate() = 0;
 #endif
 
-    virtual void didFinishProcessingAllPendingMouseEvents() = 0;
-
     virtual void videoControlsManagerDidChange() { }
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && !PLATFORM(IOS_FAMILY)
@@ -502,7 +506,7 @@ public:
     virtual RetainPtr<WKDrawingView> createDrawingView(WebCore::GraphicsLayer::EmbeddedViewID) { return nullptr; }
 #endif
 
-#if ENABLE(POINTER_EVENTS)
+#if ENABLE(POINTER_EVENTS) && PLATFORM(COCOA)
     virtual void cancelPointersForGestureRecognizer(UIGestureRecognizer*) { }
     virtual WTF::Optional<unsigned> activeTouchIdentifierForGestureRecognizer(UIGestureRecognizer*) { return WTF::nullopt; }
 #endif
@@ -510,6 +514,8 @@ public:
 #if USE(WPE_RENDERER)
     virtual IPC::Attachment hostFileDescriptor() = 0;
 #endif
+
+    virtual void didChangeWebPageID() const { }
 
 #if PLATFORM(GTK)
     virtual String themeName() const = 0;

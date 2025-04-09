@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,12 +48,16 @@
 #import "WKProcessPoolInternal.h"
 #import "WKWebViewConfigurationInternal.h"
 #import "WKWebViewContentProviderRegistry.h"
+#import "WKWebViewIOS.h"
 #import "WKWebViewInternal.h"
+#import "WKWebViewPrivateForTesting.h"
 #import "WebContextMenuProxy.h"
 #import "WebDataListSuggestionsDropdownIOS.h"
 #import "WebEditCommandProxy.h"
+#import "WebPageProxy.h"
 #import "WebProcessProxy.h"
 #import "_WKDownloadInternal.h"
+#import <WebCore/Cursor.h>
 #import <WebCore/DOMPasteAccess.h>
 #import <WebCore/DictionaryLookup.h>
 #import <WebCore/NotImplemented.h>
@@ -110,7 +114,7 @@ IntSize PageClientImpl::viewSize()
     if (UIScrollView *scroller = [m_contentView _scroller])
         return IntSize(scroller.bounds.size);
 
-    return IntSize(m_contentView.bounds.size);
+    return IntSize([m_contentView bounds].size);
 }
 
 bool PageClientImpl::isViewWindowActive()
@@ -245,9 +249,9 @@ void PageClientImpl::disableDoubleTapGesturesDuringTapIfNecessary(uint64_t reque
     [m_contentView _disableDoubleTapGesturesDuringTapIfNecessary:requestID];
 }
 
-void PageClientImpl::handleSmartMagnificationInformationForPotentialTap(uint64_t requestID, const WebCore::FloatRect& renderRect, bool fitEntireRect, double viewportMinimumScale, double viewportMaximumScale)
+void PageClientImpl::handleSmartMagnificationInformationForPotentialTap(uint64_t requestID, const WebCore::FloatRect& renderRect, bool fitEntireRect, double viewportMinimumScale, double viewportMaximumScale, bool nodeIsRootLevel)
 {
-    [m_contentView _handleSmartMagnificationInformationForPotentialTap:requestID renderRect:renderRect fitEntireRect:fitEntireRect viewportMinimumScale:viewportMinimumScale viewportMaximumScale:viewportMaximumScale];
+    [m_contentView _handleSmartMagnificationInformationForPotentialTap:requestID renderRect:renderRect fitEntireRect:fitEntireRect viewportMinimumScale:viewportMinimumScale viewportMaximumScale:viewportMaximumScale nodeIsRootLevel:nodeIsRootLevel];
 }
 
 double PageClientImpl::minimumZoomScale() const
@@ -263,9 +267,14 @@ WebCore::FloatRect PageClientImpl::documentRect() const
     return [m_contentView bounds];
 }
 
-void PageClientImpl::setCursor(const Cursor&)
+void PageClientImpl::setCursor(const Cursor& cursor)
 {
-    notImplemented();
+    // The Web process may have asked to change the cursor when the view was in an active window, but
+    // if it is no longer in a window or the window is not active, then the cursor should not change.
+    if (!isViewWindowActive())
+        return;
+
+    cursor.setAsPlatformCursor();
 }
 
 void PageClientImpl::setCursorHiddenUntilMouseMoves(bool)
@@ -417,6 +426,15 @@ void PageClientImpl::doneWithTouchEvent(const NativeWebTouchEvent& nativeWebtouc
 }
 #endif
 
+#if ENABLE(IOS_TOUCH_EVENTS)
+
+void PageClientImpl::doneDeferringNativeGestures(bool preventNativeGestures)
+{
+    [m_contentView _doneDeferringNativeGestures:preventNativeGestures];
+}
+
+#endif // ENABLE(IOS_TOUCH_EVENTS)
+
 RefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy&)
 {
     return nullptr;
@@ -468,7 +486,7 @@ void PageClientImpl::updateAcceleratedCompositingMode(const LayerTreeContext&)
 void PageClientImpl::didPerformDictionaryLookup(const DictionaryPopupInfo& dictionaryPopupInfo)
 {
 #if ENABLE(REVEAL)
-    DictionaryLookup::showPopup(dictionaryPopupInfo, m_contentView, nullptr);
+    DictionaryLookup::showPopup(dictionaryPopupInfo, m_contentView.getAutoreleased(), nullptr);
 #else
     UNUSED_PARAM(dictionaryPopupInfo);
 #endif // ENABLE(REVEAL)
@@ -495,7 +513,7 @@ CALayer *PageClientImpl::acceleratedCompositingRootLayer() const
     return nullptr;
 }
 
-RefPtr<ViewSnapshot> PageClientImpl::takeViewSnapshot()
+RefPtr<ViewSnapshot> PageClientImpl::takeViewSnapshot(Optional<WebCore::IntRect>&&)
 {
     return [m_webView _takeViewSnapshot];
 }
@@ -549,7 +567,10 @@ void PageClientImpl::elementDidFocus(const FocusedElementInformation& nodeInform
         auto nsData = adoptNS([[NSData alloc] initWithBytesNoCopy:const_cast<void*>(static_cast<const void*>(data->bytes())) length:data->size() freeWhenDone:NO]);
         auto unarchiver = secureUnarchiverFromData(nsData.get());
         @try {
-            userObject = [unarchiver decodeObjectOfClass:[NSObject class] forKey:@"userObject"];
+            if (auto* allowedClasses = m_webView.get()->_page->process().processPool().allowedClassesForParameterCoding())
+                userObject = [unarchiver decodeObjectOfClasses:allowedClasses forKey:@"userObject"];
+            else
+                userObject = [unarchiver decodeObjectOfClass:[NSObject class] forKey:@"userObject"];
         } @catch (NSException *exception) {
             LOG_ERROR("Failed to decode user data: %@", exception);
         }
@@ -791,7 +812,7 @@ WebCore::UserInterfaceLayoutDirection PageClientImpl::userInterfaceLayoutDirecti
 
 Ref<ValidationBubble> PageClientImpl::createValidationBubble(const String& message, const ValidationBubble::Settings& settings)
 {
-    return ValidationBubble::create(m_contentView, message, settings);
+    return ValidationBubble::create(m_contentView.getAutoreleased(), message, settings);
 }
 
 #if ENABLE(INPUT_TYPE_COLOR)
@@ -804,7 +825,7 @@ RefPtr<WebColorPicker> PageClientImpl::createColorPicker(WebPageProxy*, const We
 #if ENABLE(DATALIST_ELEMENT)
 RefPtr<WebDataListSuggestionsDropdown> PageClientImpl::createDataListSuggestionsDropdown(WebPageProxy& page)
 {
-    return WebDataListSuggestionsDropdownIOS::create(page, m_contentView);
+    return WebDataListSuggestionsDropdownIOS::create(page, m_contentView.getAutoreleased());
 }
 #endif
 
@@ -872,7 +893,7 @@ void PageClientImpl::requestDOMPasteAccess(const WebCore::IntRect& elementRect, 
 #if HAVE(PENCILKIT)
 RetainPtr<WKDrawingView> PageClientImpl::createDrawingView(WebCore::GraphicsLayer::EmbeddedViewID embeddedViewID)
 {
-    return adoptNS([[WKDrawingView alloc] initWithEmbeddedViewID:embeddedViewID contentView:m_contentView]);
+    return adoptNS([[WKDrawingView alloc] initWithEmbeddedViewID:embeddedViewID contentView:m_contentView.getAutoreleased()]);
 }
 #endif
 

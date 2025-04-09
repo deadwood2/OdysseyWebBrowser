@@ -38,6 +38,7 @@
 #include "IntRect.h"
 #include "IntSize.h"
 #include <d2d1_1.h>
+#include <d3d11_1.h>
 #include <shlwapi.h>
 #include <wincodec.h>
 
@@ -45,6 +46,9 @@
 namespace WebCore {
 
 namespace Direct2D {
+
+constexpr DXGI_FORMAT webkitTextureFormat = DXGI_FORMAT_B8G8R8A8_UNORM;
+constexpr D2D1_ALPHA_MODE webkitAlphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
 
 IntSize bitmapSize(IWICBitmapSource* bitmapSource)
 {
@@ -61,33 +65,45 @@ FloatSize bitmapSize(ID2D1Bitmap* bitmapSource)
     return bitmapSource->GetSize();
 }
 
-FloatPoint bitmapResolution(IWICBitmapSource* bitmapSource)
+FloatSize bitmapResolution(IWICBitmapSource* bitmapSource)
 {
-    constexpr double dpiBase = 96.0;
+    constexpr double dpiBase = 96;
 
     double dpiX, dpiY;
     HRESULT hr = bitmapSource->GetResolution(&dpiX, &dpiY);
     if (!SUCCEEDED(hr))
         return { };
 
-    FloatPoint result(dpiX, dpiY);
+    FloatSize result(dpiX, dpiY);
     result.scale(1.0 / dpiBase);
     return result;
 }
 
-FloatPoint bitmapResolution(ID2D1Bitmap* bitmap)
+FloatSize bitmapResolution(ID2D1Bitmap* bitmap)
 {
-    constexpr double dpiBase = 96.0;
+    constexpr double dpiBase = 96;
 
     float dpiX, dpiY;
     bitmap->GetDpi(&dpiX, &dpiY);
 
-    FloatPoint result(dpiX, dpiY);
+    FloatSize result(dpiX, dpiY);
     result.scale(1.0 / dpiBase);
     return result;
 
 }
 
+FloatSize bitmapResolution(ID2D1RenderTarget* target)
+{
+    constexpr double dpiBase = 96;
+
+    float dpiX, dpiY;
+    target->GetDpi(&dpiX, &dpiY);
+
+    FloatSize result(dpiX, dpiY);
+    result.scale(1.0 / dpiBase);
+    return result;
+
+}
 unsigned bitsPerPixel(GUID bitmapFormat)
 {
     COMPtr<IWICComponentInfo> componentInfo;
@@ -140,7 +156,7 @@ D2D1_PIXEL_FORMAT pixelFormatForSoftwareManipulation()
 D2D1_PIXEL_FORMAT pixelFormat()
 {
     // Since we need to interact with HDC from time-to-time, we are forced to use DXGI_FORMAT_B8G8R8A8_UNORM and D2D1_ALPHA_MODE_PREMULTIPLIED
-    return D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED);
+    return D2D1::PixelFormat(webkitTextureFormat, webkitAlphaMode);
 }
 
 GUID wicBitmapFormat()
@@ -220,12 +236,59 @@ COMPtr<ID2D1BitmapRenderTarget> createBitmapRenderTargetOfSize(const IntSize& si
 
     COMPtr<ID2D1BitmapRenderTarget> bitmapContext;
     auto desiredSize = D2D1::SizeF(size.width(), size.height());
-    D2D1_SIZE_U pixelSize = size;
+    D2D1_SIZE_U pixelSize = D2D1::SizeU(clampTo<unsigned>(deviceScaleFactor * size.width()), clampTo<unsigned>(deviceScaleFactor * size.height()));
     HRESULT hr = renderTarget->CreateCompatibleRenderTarget(&desiredSize, &pixelSize, nullptr, D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_GDI_COMPATIBLE, &bitmapContext);
     if (!SUCCEEDED(hr))
         return nullptr;
 
     return bitmapContext;
+}
+
+COMPtr<IDXGISurface1> createDXGISurfaceOfSize(const IntSize& size, ID3D11Device1* directXDevice, bool crossProcess)
+{
+    if (!directXDevice)
+        directXDevice = Direct2D::defaultDirectXDevice();
+
+    // Create the render target texture
+    D3D11_TEXTURE2D_DESC desc;
+    ZeroMemory(&desc, sizeof(desc));
+    desc.Width = size.width();
+    desc.Height = size.height();
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = webkitTextureFormat;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    desc.CPUAccessFlags = 0;
+    desc.MiscFlags = D3D11_RESOURCE_MISC_GDI_COMPATIBLE;
+    if (crossProcess)
+        desc.MiscFlags |= D3D11_RESOURCE_MISC_SHARED_NTHANDLE | D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+
+    COMPtr<ID3D11Texture2D> texture;
+    HRESULT hr = directXDevice->CreateTexture2D(&desc, nullptr, &texture);
+    RELEASE_ASSERT(SUCCEEDED(hr));
+
+    COMPtr<IDXGISurface1> surface;
+    hr = texture->QueryInterface(&surface);
+    RELEASE_ASSERT(SUCCEEDED(hr));
+
+    return surface;
+}
+
+COMPtr<ID2D1RenderTarget> createSurfaceRenderTarget(IDXGISurface1* surface)
+{
+    auto pixelFormat = D2D1::PixelFormat(webkitTextureFormat, webkitAlphaMode);
+
+    auto properties = D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT,
+        pixelFormat, 0, 0, D2D1_RENDER_TARGET_USAGE_GDI_COMPATIBLE, D2D1_FEATURE_LEVEL_10);
+
+    COMPtr<ID2D1RenderTarget> renderTarget;
+    HRESULT hr = GraphicsContext::systemFactory()->CreateDxgiSurfaceRenderTarget(surface, properties, &renderTarget);
+    if (!SUCCEEDED(hr))
+        return nullptr;
+
+    return renderTarget;
 }
 
 void copyRectFromOneSurfaceToAnother(ID2D1Bitmap* from, ID2D1Bitmap* to, const IntSize& sourceOffset, const IntRect& rect, const IntSize& destOffset)
@@ -297,6 +360,152 @@ void writeDiagnosticPNGToPath(ID2D1RenderTarget* renderTarget, ID2D1Bitmap* bitm
 
     hr = stream->Commit(STGC_DEFAULT);
     ASSERT(SUCCEEDED(hr));
+}
+
+static ID3D11DeviceContext1* immediateContext = nullptr;
+
+ID3D11DeviceContext1* dxgiImmediateContext()
+{
+    if (!immediateContext)
+        defaultDirectXDevice();
+
+    RELEASE_ASSERT(immediateContext);
+    return immediateContext;
+}
+
+ID3D11Device1* defaultDirectXDevice()
+{
+    static ID3D11Device1* defaultDevice1 = nullptr;
+
+    if (!defaultDevice1) {
+        int deviceFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+#ifndef NDEBUG
+        deviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+
+        ID3D11Device* defaultDevice = nullptr;
+        D3D_FEATURE_LEVEL featureLevel = { };
+        ID3D11DeviceContext* immediateDeviceContext = nullptr;
+        HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, deviceFlags, nullptr, 0, D3D11_SDK_VERSION, &defaultDevice, &featureLevel, &immediateDeviceContext);
+        RELEASE_ASSERT(SUCCEEDED(hr));
+
+        hr = defaultDevice->QueryInterface(&defaultDevice1);
+        RELEASE_ASSERT(SUCCEEDED(hr));
+        defaultDevice1->AddRef();
+
+        hr = immediateDeviceContext->QueryInterface(__uuidof(ID3D11DeviceContext1), reinterpret_cast<void**>(&immediateContext));
+        RELEASE_ASSERT(SUCCEEDED(hr));
+        immediateContext->AddRef();
+    }
+
+    return defaultDevice1;
+}
+
+bool createDeviceAndContext(COMPtr<ID3D11Device1>& d3dDevice, COMPtr<ID3D11DeviceContext1>& immediateContext)
+{
+    int deviceFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+#ifndef NDEBUG
+    deviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+
+    D3D_FEATURE_LEVEL featureLevel = { };
+    ID3D11Device* defaultDevice = nullptr;
+    ID3D11DeviceContext* immediateDeviceContext = nullptr;
+    HRESULT hr = ::D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, deviceFlags, nullptr, 0, D3D11_SDK_VERSION, &defaultDevice, &featureLevel, &immediateDeviceContext);
+    RELEASE_ASSERT(SUCCEEDED(hr));
+
+    hr = defaultDevice->QueryInterface(&d3dDevice);
+    RELEASE_ASSERT(SUCCEEDED(hr));
+    defaultDevice->Release();
+
+    hr = immediateDeviceContext->QueryInterface(&immediateContext);
+    RELEASE_ASSERT(SUCCEEDED(hr));
+    immediateContext->Release();
+    return true;
+}
+
+COMPtr<IDXGIDevice1> toDXGIDevice(const COMPtr<ID3D11Device1>& d3dDevice)
+{
+    if (!d3dDevice)
+        return nullptr;
+
+    COMPtr<IDXGIDevice1> dxgiDevice;
+    HRESULT hr = d3dDevice->QueryInterface(__uuidof(IDXGIDevice1), (void **)&dxgiDevice);
+    if (!SUCCEEDED(hr))
+        return nullptr;
+
+    return dxgiDevice;
+}
+
+COMPtr<IDXGIFactory2> factoryForDXGIDevice(const COMPtr<IDXGIDevice1>& device)
+{
+    if (!device)
+        return nullptr;
+
+    COMPtr<IDXGIAdapter> adaptor;
+    HRESULT hr = device->GetParent(__uuidof(IDXGIAdapter), reinterpret_cast<void**>(&adaptor));
+    RELEASE_ASSERT(SUCCEEDED(hr));
+
+    COMPtr<IDXGIFactory> factory;
+    hr = adaptor->GetParent(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&factory));
+    RELEASE_ASSERT(SUCCEEDED(hr));
+
+    COMPtr<IDXGIFactory2> factory2;
+    hr = factory->QueryInterface(&factory2); 
+    RELEASE_ASSERT(SUCCEEDED(hr));
+    
+    return factory2;
+}
+
+COMPtr<IDXGISwapChain> swapChainOfSizeForWindowAndDevice(const WebCore::IntSize& size, HWND window, const COMPtr<ID3D11Device1>& device)
+{
+    if (!device)
+        return nullptr;
+
+    DXGI_SWAP_CHAIN_DESC1 swapChainDescription;
+    ::ZeroMemory(&swapChainDescription, sizeof(swapChainDescription));
+    swapChainDescription.Width = size.width();
+    swapChainDescription.Height = size.height();
+    swapChainDescription.Format = webkitTextureFormat;
+    swapChainDescription.SampleDesc.Count = 1;
+    swapChainDescription.SampleDesc.Quality = 0;
+    swapChainDescription.BufferUsage = DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swapChainDescription.BufferCount = 1;
+    swapChainDescription.Flags = DXGI_SWAP_CHAIN_FLAG_GDI_COMPATIBLE;
+
+    auto factory = Direct2D::factoryForDXGIDevice(Direct2D::toDXGIDevice(device));
+
+    COMPtr<IDXGISwapChain1> swapChain1;
+    HRESULT hr = factory->CreateSwapChainForHwnd(device.get(), window, &swapChainDescription, nullptr, nullptr, &swapChain1);
+    if (!SUCCEEDED(hr))
+        return nullptr;
+
+    COMPtr<IDXGISwapChain> swapChain(Query, swapChain1);
+    return swapChain;
+}
+
+COMPtr<ID2D1Bitmap> createBitmapCopyFromContext(ID2D1BitmapRenderTarget* bitmapTarget)
+{
+    COMPtr<ID2D1Bitmap> currentCanvas;
+    HRESULT hr = bitmapTarget->GetBitmap(&currentCanvas);
+    if (!SUCCEEDED(hr))
+        return nullptr;
+
+    auto bitmapCreateProperties = bitmapProperties();
+
+    COMPtr<ID2D1Bitmap> bitmap;
+    D2D1_SIZE_U bitmapSize = currentCanvas->GetPixelSize();
+    hr = bitmapTarget->CreateBitmap(bitmapSize, bitmapCreateProperties, &bitmap);
+    if (!SUCCEEDED(hr))
+        return nullptr;
+
+    auto targetPos = D2D1::Point2U();
+    D2D1_RECT_U dataRect = D2D1::RectU(0, 0, bitmapSize.width, bitmapSize.height);
+    hr = bitmap->CopyFromBitmap(&targetPos, currentCanvas.get(), &dataRect);
+    if (!SUCCEEDED(hr))
+        return false;
+
+    return bitmap;
 }
 
 } // namespace Direct2D

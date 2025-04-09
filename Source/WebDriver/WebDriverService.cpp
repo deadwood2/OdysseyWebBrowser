@@ -126,6 +126,7 @@ const WebDriverService::Command WebDriverService::s_commands[] = {
     { HTTPMethod::Delete, "/session/$sessionId/window", &WebDriverService::closeWindow },
     { HTTPMethod::Post, "/session/$sessionId/window", &WebDriverService::switchToWindow },
     { HTTPMethod::Get, "/session/$sessionId/window/handles", &WebDriverService::getWindowHandles },
+    { HTTPMethod::Post, "/session/$sessionId/window/new", &WebDriverService::newWindow },
     { HTTPMethod::Post, "/session/$sessionId/frame", &WebDriverService::switchToFrame },
     { HTTPMethod::Post, "/session/$sessionId/frame/parent", &WebDriverService::switchToParentFrame },
     { HTTPMethod::Get, "/session/$sessionId/window/rect", &WebDriverService::getWindowRect },
@@ -153,6 +154,7 @@ const WebDriverService::Command WebDriverService::s_commands[] = {
     { HTTPMethod::Post, "/session/$sessionId/element/$elementId/clear", &WebDriverService::elementClear },
     { HTTPMethod::Post, "/session/$sessionId/element/$elementId/value", &WebDriverService::elementSendKeys },
 
+    { HTTPMethod::Get, "/session/$sessionId/source", &WebDriverService::getPageSource },
     { HTTPMethod::Post, "/session/$sessionId/execute/sync", &WebDriverService::executeScript },
     { HTTPMethod::Post, "/session/$sessionId/execute/async", &WebDriverService::executeAsyncScript },
 
@@ -318,7 +320,9 @@ static Optional<uint64_t> unsignedValue(JSON::Value& value)
     return intValue;
 }
 
-static Optional<Timeouts> deserializeTimeouts(JSON::Object& timeoutsObject)
+enum class IgnoreUnknownTimeout { No, Yes };
+
+static Optional<Timeouts> deserializeTimeouts(JSON::Object& timeoutsObject, IgnoreUnknownTimeout ignoreUnknownTimeout)
 {
     // §8.5 Set Timeouts.
     // https://w3c.github.io/webdriver/webdriver-spec.html#dfn-deserialize-as-a-timeout
@@ -328,21 +332,114 @@ static Optional<Timeouts> deserializeTimeouts(JSON::Object& timeoutsObject)
         if (it->key == "sessionId")
             continue;
 
+        if (it->key == "script" && it->value->isNull()) {
+            timeouts.script = std::numeric_limits<double>::infinity();
+            continue;
+        }
+
         // If value is not an integer, or it is less than 0 or greater than the maximum safe integer, return error with error code invalid argument.
         auto timeoutMS = unsignedValue(*it->value);
         if (!timeoutMS)
             return WTF::nullopt;
 
         if (it->key == "script")
-            timeouts.script = Seconds::fromMilliseconds(timeoutMS.value());
+            timeouts.script = timeoutMS.value();
         else if (it->key == "pageLoad")
-            timeouts.pageLoad = Seconds::fromMilliseconds(timeoutMS.value());
+            timeouts.pageLoad = timeoutMS.value();
         else if (it->key == "implicit")
-            timeouts.implicit = Seconds::fromMilliseconds(timeoutMS.value());
-        else
+            timeouts.implicit = timeoutMS.value();
+        else if (ignoreUnknownTimeout == IgnoreUnknownTimeout::No)
             return WTF::nullopt;
     }
     return timeouts;
+}
+
+static Optional<Proxy> deserializeProxy(JSON::Object& proxyObject)
+{
+    // §7.1 Proxy.
+    // https://w3c.github.io/webdriver/#proxy
+    Proxy proxy;
+    if (!proxyObject.getString("proxyType"_s, proxy.type))
+        return WTF::nullopt;
+
+    if (proxy.type == "direct" || proxy.type == "autodetect" || proxy.type == "system")
+        return proxy;
+
+    if (proxy.type == "pac") {
+        String autoconfigURL;
+        if (!proxyObject.getString("proxyAutoconfigUrl"_s, autoconfigURL))
+            return WTF::nullopt;
+
+        proxy.autoconfigURL = autoconfigURL;
+        return proxy;
+    }
+
+    if (proxy.type == "manual") {
+        RefPtr<JSON::Value> value;
+        if (proxyObject.getValue("ftpProxy"_s, value)) {
+            String ftpProxy;
+            if (!value->asString(ftpProxy))
+                return WTF::nullopt;
+
+            proxy.ftpURL = URL({ }, makeString("ftp://", ftpProxy));
+            if (!proxy.ftpURL->isValid())
+                return WTF::nullopt;
+        }
+        if (proxyObject.getValue("httpProxy"_s, value)) {
+            String httpProxy;
+            if (!value->asString(httpProxy))
+                return WTF::nullopt;
+
+            proxy.httpURL = URL({ }, makeString("http://", httpProxy));
+            if (!proxy.httpURL->isValid())
+                return WTF::nullopt;
+        }
+        if (proxyObject.getValue("sslProxy"_s, value)) {
+            String sslProxy;
+            if (!value->asString(sslProxy))
+                return WTF::nullopt;
+
+            proxy.httpsURL = URL({ }, makeString("https://", sslProxy));
+            if (!proxy.httpsURL->isValid())
+                return WTF::nullopt;
+        }
+        if (proxyObject.getValue("socksProxy", value)) {
+            String socksProxy;
+            if (!value->asString(socksProxy))
+                return WTF::nullopt;
+
+            proxy.socksURL = URL({ }, makeString("socks://", socksProxy));
+            if (!proxy.socksURL->isValid())
+                return WTF::nullopt;
+
+            RefPtr<JSON::Value> socksVersionValue;
+            if (!proxyObject.getValue("socksVersion", socksVersionValue))
+                return WTF::nullopt;
+
+            auto socksVersion = unsignedValue(*socksVersionValue);
+            if (!socksVersion || socksVersion.value() > 255)
+                return WTF::nullopt;
+            proxy.socksVersion = socksVersion.value();
+        }
+        if (proxyObject.getValue("noProxy"_s, value)) {
+            RefPtr<JSON::Array> noProxy;
+            if (!value->asArray(noProxy))
+                return WTF::nullopt;
+
+            auto noProxyLength = noProxy->length();
+            for (unsigned i = 0; i < noProxyLength; ++i) {
+                RefPtr<JSON::Value> addressValue = noProxy->get(i);
+                String address;
+                if (!addressValue->asString(address))
+                    return WTF::nullopt;
+                proxy.ignoreAddressList.append(WTFMove(address));
+            }
+        }
+
+        return proxy;
+    }
+
+    return WTF::nullopt;
 }
 
 static Optional<PageLoadStrategy> deserializePageLoadStrategy(const String& pageLoadStrategy)
@@ -389,9 +486,15 @@ void WebDriverService::parseCapabilities(const JSON::Object& matchedCapabilities
     String platformName;
     if (matchedCapabilities.getString("platformName"_s, platformName))
         capabilities.platformName = platformName;
+    RefPtr<JSON::Object> proxy;
+    if (matchedCapabilities.getObject("proxy"_s, proxy))
+        capabilities.proxy = deserializeProxy(*proxy);
+    bool strictFileInteractability;
+    if (matchedCapabilities.getBoolean("strictFileInteractability"_s, strictFileInteractability))
+        capabilities.strictFileInteractability = strictFileInteractability;
     RefPtr<JSON::Object> timeouts;
     if (matchedCapabilities.getObject("timeouts"_s, timeouts))
-        capabilities.timeouts = deserializeTimeouts(*timeouts);
+        capabilities.timeouts = deserializeTimeouts(*timeouts, IgnoreUnknownTimeout::No);
     String pageLoadStrategy;
     if (matchedCapabilities.getString("pageLoadStrategy"_s, pageLoadStrategy))
         capabilities.pageLoadStrategy = deserializePageLoadStrategy(pageLoadStrategy);
@@ -411,6 +514,12 @@ bool WebDriverService::findSessionOrCompleteWithError(JSON::Object& parameters, 
 
     if (!m_session || m_session->id() != sessionID) {
         completionHandler(CommandResult::fail(CommandResult::ErrorCode::InvalidSessionID));
+        return false;
+    }
+
+    if (!m_session->isConnected()) {
+        m_session = nullptr;
+        completionHandler(CommandResult::fail(CommandResult::ErrorCode::InvalidSessionID, String("session deleted because of page crash or hang.")));
         return false;
     }
 
@@ -442,10 +551,18 @@ RefPtr<JSON::Object> WebDriverService::validatedCapabilities(const JSON::Object&
                 return nullptr;
             result->setString(it->key, pageLoadStrategy);
         } else if (it->key == "proxy") {
-            // FIXME: implement proxy support.
+            RefPtr<JSON::Object> proxy;
+            if (!it->value->asObject(proxy) || !deserializeProxy(*proxy))
+                return nullptr;
+            result->setValue(it->key, RefPtr<JSON::Value>(it->value));
+        } else if (it->key == "strictFileInteractability") {
+            bool strictFileInteractability;
+            if (!it->value->asBoolean(strictFileInteractability))
+                return nullptr;
+            result->setBoolean(it->key, strictFileInteractability);
         } else if (it->key == "timeouts") {
             RefPtr<JSON::Object> timeouts;
-            if (!it->value->asObject(timeouts) || !deserializeTimeouts(*timeouts))
+            if (!it->value->asObject(timeouts) || !deserializeTimeouts(*timeouts, IgnoreUnknownTimeout::No))
                 return nullptr;
             result->setValue(it->key, RefPtr<JSON::Value>(it->value));
         } else if (it->key == "unhandledPromptBehavior") {
@@ -496,6 +613,8 @@ RefPtr<JSON::Object> WebDriverService::matchCapabilities(const JSON::Object& mer
         matchedCapabilities->setString("platformName"_s, platformCapabilities.platformName.value());
     if (platformCapabilities.acceptInsecureCerts)
         matchedCapabilities->setBoolean("acceptInsecureCerts"_s, platformCapabilities.acceptInsecureCerts.value());
+    if (platformCapabilities.strictFileInteractability)
+        matchedCapabilities->setBoolean("strictFileInteractability"_s, platformCapabilities.strictFileInteractability.value());
     if (platformCapabilities.setWindowRect)
         matchedCapabilities->setBoolean("setWindowRect"_s, platformCapabilities.setWindowRect.value());
 
@@ -522,7 +641,12 @@ RefPtr<JSON::Object> WebDriverService::matchCapabilities(const JSON::Object& mer
             if (acceptInsecureCerts && !platformCapabilities.acceptInsecureCerts.value())
                 return nullptr;
         } else if (it->key == "proxy") {
-            // FIXME: implement proxy support.
+            RefPtr<JSON::Object> proxy;
+            it->value->asObject(proxy);
+            String proxyType;
+            proxy->getString("proxyType"_s, proxyType);
+            if (!platformSupportProxyType(proxyType))
+                return nullptr;
         } else if (!platformMatchCapability(it->key, it->value))
             return nullptr;
         matchedCapabilities->setValue(it->key, RefPtr<JSON::Value>(it->value));
@@ -699,6 +823,7 @@ void WebDriverService::createSession(Vector<Capabilities>&& capabilitiesList, st
             capabilitiesObject->setString("browserVersion"_s, capabilities.browserVersion.valueOr(emptyString()));
             capabilitiesObject->setString("platformName"_s, capabilities.platformName.valueOr(emptyString()));
             capabilitiesObject->setBoolean("acceptInsecureCerts"_s, capabilities.acceptInsecureCerts.valueOr(false));
+            capabilitiesObject->setBoolean("strictFileInteractability"_s, capabilities.strictFileInteractability.valueOr(false));
             capabilitiesObject->setBoolean("setWindowRect"_s, capabilities.setWindowRect.valueOr(true));
             switch (capabilities.unhandledPromptBehavior.valueOr(UnhandledPromptBehavior::DismissAndNotify)) {
             case UnhandledPromptBehavior::Dismiss:
@@ -728,12 +853,15 @@ void WebDriverService::createSession(Vector<Capabilities>&& capabilitiesList, st
                 capabilitiesObject->setString("pageLoadStrategy"_s, "eager");
                 break;
             }
-            // FIXME: implement proxy support.
-            capabilitiesObject->setObject("proxy"_s, JSON::Object::create());
+            if (!capabilities.proxy)
+                capabilitiesObject->setObject("proxy"_s, JSON::Object::create());
             RefPtr<JSON::Object> timeoutsObject = JSON::Object::create();
-            timeoutsObject->setInteger("script"_s, m_session->scriptTimeout().millisecondsAs<int>());
-            timeoutsObject->setInteger("pageLoad"_s, m_session->pageLoadTimeout().millisecondsAs<int>());
-            timeoutsObject->setInteger("implicit"_s, m_session->implicitWaitTimeout().millisecondsAs<int>());
+            if (m_session->scriptTimeout() == std::numeric_limits<double>::infinity())
+                timeoutsObject->setValue("script"_s, JSON::Value::null());
+            else
+                timeoutsObject->setDouble("script"_s, m_session->scriptTimeout());
+            timeoutsObject->setDouble("pageLoad"_s, m_session->pageLoadTimeout());
+            timeoutsObject->setDouble("implicit"_s, m_session->implicitWaitTimeout());
             capabilitiesObject->setObject("timeouts"_s, WTFMove(timeoutsObject));
 
             resultObject->setObject("capabilities"_s, WTFMove(capabilitiesObject));
@@ -794,7 +922,7 @@ void WebDriverService::setTimeouts(RefPtr<JSON::Object>&& parameters, Function<v
     if (!findSessionOrCompleteWithError(*parameters, completionHandler))
         return;
 
-    auto timeouts = deserializeTimeouts(*parameters);
+    auto timeouts = deserializeTimeouts(*parameters, IgnoreUnknownTimeout::Yes);
     if (!timeouts) {
         completionHandler(CommandResult::fail(CommandResult::ErrorCode::InvalidArgument));
         return;
@@ -1039,6 +1167,29 @@ void WebDriverService::getWindowHandles(RefPtr<JSON::Object>&& parameters, Funct
         m_session->getWindowHandles(WTFMove(completionHandler));
 }
 
+void WebDriverService::newWindow(RefPtr<JSON::Object>&& parameters, Function<void (CommandResult&&)>&& completionHandler)
+{
+    // §11.5 New Window
+    // https://w3c.github.io/webdriver/#new-window
+    if (!findSessionOrCompleteWithError(*parameters, completionHandler))
+        return;
+
+    Optional<String> typeHint;
+    RefPtr<JSON::Value> value;
+    if (parameters->getValue("type"_s, value)) {
+        String valueString;
+        if (value->asString(valueString)) {
+            if (valueString == "window" || valueString == "tab")
+                typeHint = valueString;
+        } else if (!value->isNull()) {
+            completionHandler(CommandResult::fail(CommandResult::ErrorCode::InvalidArgument));
+            return;
+        }
+    }
+
+    m_session->newWindow(typeHint, WTFMove(completionHandler));
+}
+
 void WebDriverService::switchToFrame(RefPtr<JSON::Object>&& parameters, Function<void (CommandResult&&)>&& completionHandler)
 {
     // §10.5 Switch To Frame.
@@ -1048,6 +1199,32 @@ void WebDriverService::switchToFrame(RefPtr<JSON::Object>&& parameters, Function
 
     RefPtr<JSON::Value> frameID;
     if (!parameters->getValue("id"_s, frameID)) {
+        completionHandler(CommandResult::fail(CommandResult::ErrorCode::InvalidArgument));
+        return;
+    }
+
+    switch (frameID->type()) {
+    case JSON::Value::Type::Null:
+        break;
+    case JSON::Value::Type::Double:
+    case JSON::Value::Type::Integer:
+        if (!valueAsNumberInRange(*frameID, 0, std::numeric_limits<unsigned short>::max())) {
+            completionHandler(CommandResult::fail(CommandResult::ErrorCode::InvalidArgument));
+            return;
+        }
+        break;
+    case JSON::Value::Type::Object: {
+        RefPtr<JSON::Object> frameIDObject;
+        frameID->asObject(frameIDObject);
+        if (frameIDObject->find(Session::webElementIdentifier()) == frameIDObject->end()) {
+            completionHandler(CommandResult::fail(CommandResult::ErrorCode::InvalidArgument));
+            return;
+        }
+        break;
+    }
+    case JSON::Value::Type::Boolean:
+    case JSON::Value::Type::String:
+    case JSON::Value::Type::Array:
         completionHandler(CommandResult::fail(CommandResult::ErrorCode::InvalidArgument));
         return;
     }
@@ -1395,6 +1572,16 @@ void WebDriverService::elementSendKeys(RefPtr<JSON::Object>&& parameters, Functi
     m_session->elementSendKeys(elementID.value(), text, WTFMove(completionHandler));
 }
 
+void WebDriverService::getPageSource(RefPtr<JSON::Object>&& parameters, Function<void (CommandResult&&)>&& completionHandler)
+{
+    // §15.1 Getting Page Source.
+    // https://w3c.github.io/webdriver/webdriver-spec.html#getting-page-source
+    if (!findSessionOrCompleteWithError(*parameters, completionHandler))
+        return;
+
+    m_session->getPageSource(WTFMove(completionHandler));
+}
+
 static bool findScriptAndArgumentsOrCompleteWithError(JSON::Object& parameters, Function<void (CommandResult&&)>& completionHandler, String& script, RefPtr<JSON::Array>& arguments)
 {
     if (!parameters.getString("script"_s, script)) {
@@ -1600,10 +1787,8 @@ void WebDriverService::deleteAllCookies(RefPtr<JSON::Object>&& parameters, Funct
 static bool processPauseAction(JSON::Object& actionItem, Action& action, Optional<String>& errorMessage)
 {
     RefPtr<JSON::Value> durationValue;
-    if (!actionItem.getValue("duration"_s, durationValue)) {
-        errorMessage = String("The parameter 'duration' is missing in pause action");
-        return false;
-    }
+    if (!actionItem.getValue("duration"_s, durationValue))
+        return true;
 
     auto duration = unsignedValue(*durationValue);
     if (!duration) {
@@ -2059,15 +2244,12 @@ void WebDriverService::takeElementScreenshot(RefPtr<JSON::Object>&& parameters, 
     if (!elementID)
         return;
 
-    bool scrollIntoView = true;
-    parameters->getBoolean("scroll"_s, scrollIntoView);
-
-    m_session->waitForNavigationToComplete([this, elementID, scrollIntoView, completionHandler = WTFMove(completionHandler)](CommandResult&& result) mutable {
+    m_session->waitForNavigationToComplete([this, elementID, completionHandler = WTFMove(completionHandler)](CommandResult&& result) mutable {
         if (result.isError()) {
             completionHandler(WTFMove(result));
             return;
         }
-        m_session->takeScreenshot(elementID.value(), scrollIntoView, WTFMove(completionHandler));
+        m_session->takeScreenshot(elementID.value(), true, WTFMove(completionHandler));
     });
 }
 

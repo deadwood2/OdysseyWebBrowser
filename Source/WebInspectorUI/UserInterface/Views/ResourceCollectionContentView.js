@@ -35,8 +35,10 @@ WI.ResourceCollectionContentView = class ResourceCollectionContentView extends W
 
         super(collection, contentViewConstructor);
 
+        this.element.classList.add("resource-collection");
+
         if (collection.resourceType === WI.Resource.Type.Image) {
-            this._showGridButtonNavigationItem = new WI.ActivateButtonNavigationItem("show-grid", WI.UIString("Show Grid"), WI.UIString("Hide Grid"), "Images/NavigationItemCheckers.svg", 13, 13);
+            this._showGridButtonNavigationItem = new WI.ActivateButtonNavigationItem("show-grid", WI.UIString("Show transparency grid"), WI.UIString("Hide transparency grid"), "Images/NavigationItemCheckers.svg", 13, 13);
             this._showGridButtonNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._handleShowGridButtonClicked, this);
             this._showGridButtonNavigationItem.visibilityPriority = WI.NavigationItem.VisibilityPriority.Low;
             this._showGridButtonNavigationItem.activated = !!WI.settings.showImageGrid.value;
@@ -96,6 +98,14 @@ WI.ResourceCollectionContentView = class ResourceCollectionContentView extends W
         WI.settings.showImageGrid.removeEventListener(null, null, this);
 
         super.detached();
+    }
+
+    get contentViewConstructorOptions()
+    {
+        let contentViewConstructorOptions = super.contentViewConstructorOptions;
+        if (this.representedObject.resourceType === WI.Resource.Type.Image)
+            contentViewConstructorOptions.disableDropZone = true;
+        return contentViewConstructorOptions;
     }
 
     contentViewAdded(contentView)

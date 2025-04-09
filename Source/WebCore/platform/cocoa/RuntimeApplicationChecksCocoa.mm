@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -66,6 +66,15 @@ void setApplicationBundleIdentifier(const String& bundleIdentifier)
     applicationBundleIdentifierOverride() = bundleIdentifier;
 }
 
+void clearApplicationBundleIdentifierTestingOverride()
+{
+    ASSERT(RunLoop::isMain());
+    applicationBundleIdentifierOverride() = emptyString();
+#if !ASSERT_MSG_DISABLED
+    applicationBundleIdentifierOverrideWasQueried = false;
+#endif
+}
+
 static Optional<uint32_t>& applicationSDKVersionOverride()
 {
     static NeverDestroyed<Optional<uint32_t>> version;
@@ -88,6 +97,12 @@ bool isInWebProcess()
 {
     static bool mainBundleIsWebProcess = [[[NSBundle mainBundle] bundleIdentifier] hasPrefix:@"com.apple.WebKit.WebContent"];
     return mainBundleIsWebProcess;
+}
+
+bool isInNetworkProcess()
+{
+    static bool mainBundleIsNetworkProcess = [[[NSBundle mainBundle] bundleIdentifier] hasPrefix:@"com.apple.WebKit.Networking"];
+    return mainBundleIsNetworkProcess;
 }
 
 static bool applicationBundleIsEqualTo(const String& bundleIdentifierString)
@@ -187,6 +202,12 @@ bool MacApplication::isSolidStateNetworksDownloader()
     return isSolidStateNetworksDownloader;
 }
 
+bool MacApplication::isEpsonSoftwareUpdater()
+{
+    static bool isEpsonSoftwareUpdater = applicationBundleIsEqualTo("com.epson.EPSON_Software_Updater"_s);
+    return isEpsonSoftwareUpdater;
+}
+
 #endif // PLATFORM(MAC)
 
 #if PLATFORM(IOS_FAMILY)
@@ -212,6 +233,12 @@ bool IOSApplication::isMobileSafari()
 {
     static bool isMobileSafari = applicationBundleIsEqualTo("com.apple.mobilesafari"_s);
     return isMobileSafari;
+}
+
+bool IOSApplication::isSafariViewService()
+{
+    static bool isSafariViewService = applicationBundleIsEqualTo("com.apple.SafariViewService"_s);
+    return isSafariViewService;
 }
 
 bool IOSApplication::isIMDb()
@@ -244,12 +271,6 @@ bool IOSApplication::isSpringBoard()
 {
     static bool isSpringBoard = applicationBundleIsEqualTo("com.apple.springboard"_s);
     return isSpringBoard;
-}
-
-bool IOSApplication::isWebApp()
-{
-    static bool isWebApp = applicationBundleIsEqualTo("com.apple.webapp"_s);
-    return isWebApp;
 }
 
 // FIXME: this needs to be changed when the WebProcess is changed to an XPC service.
@@ -310,6 +331,18 @@ bool IOSApplication::isEvernote()
 {
     static bool isEvernote = applicationBundleIsEqualTo("com.evernote.iPhone.Evernote"_s);
     return isEvernote;
+}
+
+bool IOSApplication::isEventbrite()
+{
+    static bool isEventbrite = applicationBundleIsEqualTo("com.eventbrite.attendee"_s);
+    return isEventbrite;
+}
+
+bool IOSApplication::isDataActivation()
+{
+    static bool isDataActivation = applicationBundleIsEqualTo("com.apple.DataActivation"_s);
+    return isDataActivation;
 }
 
 #endif

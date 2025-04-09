@@ -147,6 +147,31 @@ static void filterSavedCallback(WebKitUserContentFilterStore *store, GAsyncResul
     g_main_loop_quit(data->mainLoop);
 }
 
+static void webViewClose(WebKitWebView* webView, gpointer)
+{
+    g_object_unref(webView);
+}
+
+static WebKitWebView* createWebView(WebKitWebView* webView, WebKitNavigationAction*, gpointer)
+{
+    auto backend = createViewBackend(1280, 720);
+    struct wpe_view_backend* wpeBackend = backend->backend();
+    if (!wpeBackend)
+        return nullptr;
+
+    auto* viewBackend = webkit_web_view_backend_new(wpeBackend,
+        [](gpointer data) {
+            delete static_cast<WPEToolingBackends::ViewBackend*>(data);
+        }, backend.release());
+
+    auto* newWebView = webkit_web_view_new_with_related_view(viewBackend, webView);
+    webkit_web_view_set_settings(newWebView, webkit_web_view_get_settings(webView));
+
+    g_signal_connect(newWebView, "close", G_CALLBACK(webViewClose), nullptr);
+
+    return newWebView;
+}
+
 int main(int argc, char *argv[])
 {
 #if ENABLE_DEVELOPER_MODE
@@ -170,10 +195,13 @@ int main(int argc, char *argv[])
     g_option_context_free(context);
 
     if (printVersion) {
-        g_print("WPE WebKit %u.%u.%u\n",
+        g_print("WPE WebKit %u.%u.%u",
             webkit_get_major_version(),
             webkit_get_minor_version(),
             webkit_get_micro_version());
+        if (g_strcmp0(SVN_REVISION, "tarball"))
+            g_print(" (%s)", SVN_REVISION);
+        g_print("\n");
         return 0;
     }
 
@@ -260,6 +288,7 @@ int main(int argc, char *argv[])
         "is-controlled-by-automation", automationMode,
         nullptr));
     g_object_unref(settings);
+    g_object_add_weak_pointer(G_OBJECT(webView), reinterpret_cast<void**>(&webView));
 
     backendPtr->setInputClient(std::make_unique<InputClient>(loop, webView));
 #if defined(HAVE_ACCESSIBILITY) && HAVE_ACCESSIBILITY
@@ -270,7 +299,8 @@ int main(int argc, char *argv[])
 
     webkit_web_context_set_automation_allowed(webContext, automationMode);
     g_signal_connect(webContext, "automation-started", G_CALLBACK(automationStartedCallback), webView);
-    g_signal_connect(webView, "permission-request", G_CALLBACK(decidePermissionRequest), NULL);
+    g_signal_connect(webView, "permission-request", G_CALLBACK(decidePermissionRequest), nullptr);
+    g_signal_connect(webView, "create", G_CALLBACK(createWebView), nullptr);
 
     if (ignoreTLSErrors)
         webkit_web_context_set_tls_errors_policy(webContext, WEBKIT_TLS_ERRORS_POLICY_IGNORE);
@@ -280,7 +310,11 @@ int main(int argc, char *argv[])
         webkit_web_view_set_background_color(webView, &color);
 
     if (uriArguments) {
-        GFile* file = g_file_new_for_commandline_arg(uriArguments[0]);
+        const char* uri = uriArguments[0];
+        if (g_str_equal(uri, "about:gpu"))
+            uri = "webkit://gpu";
+
+        GFile* file = g_file_new_for_commandline_arg(uri);
         char* url = g_file_get_uri(file);
         g_object_unref(file);
         webkit_web_view_load_uri(webView, url);
@@ -292,7 +326,10 @@ int main(int argc, char *argv[])
 
     g_main_loop_run(loop);
 
-    g_object_unref(webView);
+    if (webView) {
+        g_object_remove_weak_pointer(G_OBJECT(webView), reinterpret_cast<void**>(&webView));
+        g_object_unref(webView);
+    }
     if (privateMode || automationMode)
         g_object_unref(webContext);
     g_main_loop_unref(loop);

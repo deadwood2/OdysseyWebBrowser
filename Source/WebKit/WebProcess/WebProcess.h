@@ -35,23 +35,27 @@
 #include "SandboxExtension.h"
 #include "StorageAreaIdentifier.h"
 #include "TextCheckerState.h"
+#include "UserContentControllerIdentifier.h"
 #include "ViewUpdateDispatcher.h"
 #include "WebInspectorInterruptDispatcher.h"
+#include "WebPageProxyIdentifier.h"
 #include "WebProcessCreationParameters.h"
 #include "WebSQLiteDatabaseTracker.h"
 #include "WebSocketChannelManager.h"
 #include <WebCore/ActivityState.h>
 #include <WebCore/FrameIdentifier.h>
+#include <WebCore/NetworkStorageSession.h>
 #include <WebCore/PageIdentifier.h>
 #include <WebCore/RegistrableDomain.h>
 #if PLATFORM(MAC)
 #include <WebCore/ScreenProperties.h>
 #endif
+#include <WebCore/ServiceWorkerTypes.h>
 #include <WebCore/Timer.h>
 #include <pal/HysteresisActivity.h>
 #include <pal/SessionID.h>
 #include <wtf/Forward.h>
-#include <wtf/HashMap.h>
+#include <wtf/HashCountedSet.h>
 #include <wtf/HashSet.h>
 #include <wtf/RefCounter.h>
 #include <wtf/text/AtomString.h>
@@ -64,6 +68,7 @@
 
 #if PLATFORM(IOS_FAMILY)
 #include "ProcessTaskStateObserver.h"
+OBJC_CLASS BKSProcessAssertion;
 #endif
 
 #if PLATFORM(WAYLAND) && USE(WPE_RENDERER)
@@ -83,8 +88,10 @@ class ApplicationCacheStorage;
 class CPUMonitor;
 class CertificateInfo;
 class PageGroup;
+class RegistrableDomain;
 class ResourceRequest;
 class UserGestureToken;
+struct BackForwardItemIdentifier;
 struct MessagePortIdentifier;
 struct MessageWithMessagePorts;
 struct MockMediaDevice;
@@ -101,20 +108,25 @@ namespace WebKit {
 
 class EventDispatcher;
 class GamepadData;
+class GPUProcessConnection;
 class InjectedBundle;
+class LibWebRTCCodecs;
 class LibWebRTCNetwork;
 class NetworkProcessConnection;
 class ObjCObjectGraph;
+struct ServiceWorkerInitializationData;
 class StorageAreaMap;
 class UserData;
 class WaylandCompositorDisplay;
 class WebAutomationSessionProxy;
 class WebCacheStorageProvider;
+class WebCompiledContentRuleListData;
 class WebConnectionToUIProcess;
 class WebFrame;
 class WebLoaderStrategy;
 class WebPage;
 class WebPageGroupProxy;
+struct UserMessage;
 struct WebProcessCreationParameters;
 struct WebProcessDataStoreParameters;
 class WebProcessSupplement;
@@ -156,18 +168,24 @@ public:
 
     WebPage* webPage(WebCore::PageIdentifier) const;
     void createWebPage(WebCore::PageIdentifier, WebPageCreationParameters&&);
-    void removeWebPage(PAL::SessionID, WebCore::PageIdentifier);
+    void removeWebPage(WebCore::PageIdentifier);
     WebPage* focusedWebPage() const;
 
     InjectedBundle* injectedBundle() const { return m_injectedBundle.get(); }
+    
+    PAL::SessionID sessionID() const { ASSERT(m_sessionID); return *m_sessionID; }
+
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    WebCore::ThirdPartyCookieBlockingMode thirdPartyCookieBlockingMode() const { return m_thirdPartyCookieBlockingMode; }
+#endif
 
 #if PLATFORM(COCOA)
     const WTF::MachSendRight& compositingRenderServerPort() const { return m_compositingRenderServerPort; }
 #endif
 
     bool shouldPlugInAutoStartFromOrigin(WebPage&, const String& pageOrigin, const String& pluginOrigin, const String& mimeType);
-    void plugInDidStartFromOrigin(const String& pageOrigin, const String& pluginOrigin, const String& mimeType, PAL::SessionID);
-    void plugInDidReceiveUserInteraction(const String& pageOrigin, const String& pluginOrigin, const String& mimeType, PAL::SessionID);
+    void plugInDidStartFromOrigin(const String& pageOrigin, const String& pluginOrigin, const String& mimeType);
+    void plugInDidReceiveUserInteraction(const String& pageOrigin, const String& pluginOrigin, const String& mimeType);
     void setPluginLoadClientPolicy(uint8_t policy, const String& host, const String& bundleIdentifier, const String& versionString);
     void resetPluginLoadClientPolicies(const HashMap<String, HashMap<String, HashMap<String, uint8_t>>>&);
     void clearPluginClientPolicies();
@@ -202,11 +220,20 @@ public:
     NetworkProcessConnection* existingNetworkProcessConnection() { return m_networkProcessConnection.get(); }
     WebLoaderStrategy& webLoaderStrategy();
 
+#if ENABLE(GPU_PROCESS)
+    GPUProcessConnection& ensureGPUProcessConnection();
+    void gpuProcessConnectionClosed(GPUProcessConnection*);
+    GPUProcessConnection* existingGPUProcessConnection() { return m_gpuProcessConnection.get(); }
+
+#if PLATFORM(COCOA) && USE(LIBWEBRTC)
+    LibWebRTCCodecs& libWebRTCCodecs();
+#endif
+
+#endif // ENABLE(GPU_PROCESS)
+
     LibWebRTCNetwork& libWebRTCNetwork();
 
     void setCacheModel(CacheModel);
-
-    void ensureLegacyPrivateBrowsingSessionInNetworkProcess();
 
     void pageDidEnterWindow(WebCore::PageIdentifier);
     void pageWillLeaveWindow(WebCore::PageIdentifier);
@@ -230,9 +257,7 @@ public:
 
     void setHiddenPageDOMTimerThrottlingIncreaseLimit(int milliseconds);
 
-    void processWillSuspendImminently();
-    void prepareToSuspend();
-    void cancelPrepareToSuspend();
+    void prepareToSuspend(bool isSuspensionImminent, CompletionHandler<void()>&&);
     void processDidResume();
 
     void sendPrewarmInformation(const URL&);
@@ -276,7 +301,7 @@ public:
     void unblockAccessibilityServer(const SandboxExtension::Handle&);
 #endif
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
     float backlightLevel() const { return m_backlightLevel; }
 #endif
 
@@ -285,6 +310,18 @@ public:
 #endif
 
     bool areAllPagesThrottleable() const;
+
+    void messagesAvailableForPort(const WebCore::MessagePortIdentifier&);
+
+#if ENABLE(SERVICE_WORKER)
+    void addServiceWorkerRegistration(WebCore::ServiceWorkerRegistrationIdentifier);
+    bool removeServiceWorkerRegistration(WebCore::ServiceWorkerRegistrationIdentifier);
+#endif
+
+#if PLATFORM(IOS)
+    void grantAccessToAssetServices(WebKit::SandboxExtension::Handle&& mobileAssetHandle,  WebKit::SandboxExtension::Handle&& mobileAssetV2Handle);
+    void revokeAccessToAssetServices();
+#endif
 
 private:
     WebProcess();
@@ -323,7 +360,7 @@ private:
     void registerURLSchemeAsLocal(const String&) const;
     void registerURLSchemeAsNoAccess(const String&) const;
     void registerURLSchemeAsDisplayIsolated(const String&) const;
-    void registerURLSchemeAsCORSEnabled(const String&) const;
+    void registerURLSchemeAsCORSEnabled(const String&);
     void registerURLSchemeAsAlwaysRevalidated(const String&) const;
     void registerURLSchemeAsCachePartitioned(const String&) const;
     void registerURLSchemeAsCanDisplayOnlyIfCanRequest(const String&) const;
@@ -333,13 +370,14 @@ private:
     void setShouldUseFontSmoothing(bool);
     void setResourceLoadStatisticsEnabled(bool);
     void clearResourceLoadStatistics();
+    void flushResourceLoadStatistics();
+    void seedResourceLoadStatisticsForTesting(const WebCore::RegistrableDomain& firstPartyDomain, const WebCore::RegistrableDomain& thirdPartyDomain, bool shouldScheduleNotification, CompletionHandler<void()>&&);
     void userPreferredLanguagesChanged(const Vector<String>&) const;
     void fullKeyboardAccessModeChanged(bool fullKeyboardAccessEnabled);
 
-    bool isPlugInAutoStartOriginHash(unsigned plugInOriginHash, PAL::SessionID);
-    void didAddPlugInAutoStartOriginHash(unsigned plugInOriginHash, WallTime expirationTime, PAL::SessionID);
-    void resetPlugInAutoStartOriginDefaultHashes(const HashMap<unsigned, WallTime>& hashes);
-    void resetPlugInAutoStartOriginHashes(const HashMap<PAL::SessionID, HashMap<unsigned, WallTime>>& hashes);
+    bool isPlugInAutoStartOriginHash(unsigned plugInOriginHash);
+    void didAddPlugInAutoStartOriginHash(unsigned plugInOriginHash, WallTime expirationTime);
+    void resetPlugInAutoStartOriginHashes(HashMap<unsigned, WallTime>&& hashes);
 
     void platformSetCacheModel(CacheModel);
 
@@ -355,11 +393,6 @@ private:
     void mainThreadPing();
     void backgroundResponsivenessPing();
 
-    void didTakeAllMessagesForPort(Vector<WebCore::MessageWithMessagePorts>&& messages, uint64_t messageCallbackIdentifier, uint64_t messageBatchIdentifier);
-    void checkProcessLocalPortForActivity(const WebCore::MessagePortIdentifier&, uint64_t callbackIdentifier);
-    void didCheckRemotePortForActivity(uint64_t callbackIdentifier, bool hasActivity);
-    void messagesAvailableForPort(const WebCore::MessagePortIdentifier&);
-
 #if ENABLE(GAMEPAD)
     void setInitialGamepads(const Vector<GamepadData>&);
     void gamepadConnected(const GamepadData&);
@@ -367,17 +400,17 @@ private:
 #endif
 
 #if ENABLE(SERVICE_WORKER)
-    void establishWorkerContextConnectionToNetworkProcess(uint64_t pageGroupID, WebCore::PageIdentifier, const WebPreferencesStore&, PAL::SessionID);
-    void registerServiceWorkerClients();
+    void establishWorkerContextConnectionToNetworkProcess(uint64_t pageGroupID, WebPageProxyIdentifier, WebCore::PageIdentifier, const WebPreferencesStore&, WebCore::RegistrableDomain&&, ServiceWorkerInitializationData&&, CompletionHandler<void()>&&);
 #endif
 
-    void releasePageCache();
-
-    void fetchWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, CompletionHandler<void(WebsiteData&&)>&&);
-    void deleteWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, WallTime modifiedSince, CompletionHandler<void()>&&);
-    void deleteWebsiteDataForOrigins(PAL::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>& origins, CompletionHandler<void()>&&);
+    void fetchWebsiteData(OptionSet<WebsiteDataType>, CompletionHandler<void(WebsiteData&&)>&&);
+    void deleteWebsiteData(OptionSet<WebsiteDataType>, WallTime modifiedSince, CompletionHandler<void()>&&);
+    void deleteWebsiteDataForOrigins(OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>& origins, CompletionHandler<void()>&&);
 
     void setMemoryCacheDisabled(bool);
+
+    void setBackForwardCacheCapacity(unsigned);
+    void clearCachedPage(WebCore::BackForwardItemIdentifier, CompletionHandler<void()>&&);
 
 #if ENABLE(SERVICE_CONTROLS)
     void setEnabledServices(bool hasImageServices, bool hasSelectionServices, bool hasRichContentServices);
@@ -387,10 +420,6 @@ private:
     void setInjectedBundleParameter(const String& key, const IPC::DataReference&);
     void setInjectedBundleParameters(const IPC::DataReference&);
 
-    enum class ShouldAcknowledgeWhenReadyToSuspend { No, Yes };
-    void actualPrepareToSuspend(ShouldAcknowledgeWhenReadyToSuspend);
-
-    bool hasPageRequiringPageCacheWhileSuspended() const;
     bool areAllPagesSuspended() const;
 
     void ensureAutomationSessionProxy(const String& sessionIdentifier);
@@ -426,6 +455,10 @@ private:
 
 #endif
 
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    void setShouldBlockThirdPartyCookiesForTesting(WebCore::ThirdPartyCookieBlockingMode, CompletionHandler<void()>&&);
+#endif
+
     void platformInitializeProcess(const AuxiliaryProcessInitializationParameters&);
 
     // IPC::Connection::Client
@@ -449,7 +482,7 @@ private:
     void updateProcessName();
 #endif
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
     void backlightLevelDidChange(float backlightLevel);
 #endif
 
@@ -457,6 +490,8 @@ private:
     void processTaskStateDidChange(ProcessTaskStateObserver::TaskState) final;
     bool shouldFreezeOnSuspension() const;
     void updateFreezerStatus();
+
+    void releaseProcessWasResumedAssertions();
 #endif
 
 #if ENABLE(VIDEO)
@@ -465,6 +500,12 @@ private:
 #endif
 
     void clearCurrentModifierStateForTesting();
+
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    void sendMessageToWebExtension(UserMessage&&);
+#endif
+
+    bool isAlwaysOnLoggingAllowed() { return m_sessionID ? m_sessionID->isAlwaysOnLoggingAllowed() : true; }
 
     RefPtr<WebConnectionToUIProcess> m_webConnection;
 
@@ -478,7 +519,7 @@ private:
 #endif
     RefPtr<WebInspectorInterruptDispatcher> m_webInspectorInterruptDispatcher;
 
-    HashMap<PAL::SessionID, HashMap<unsigned, WallTime>> m_plugInAutoStartOriginHashes;
+    HashMap<unsigned, WallTime> m_plugInAutoStartOriginHashes;
     HashSet<String> m_plugInAutoStartOrigins;
 
     bool m_hasSetCacheModel { false };
@@ -500,6 +541,13 @@ private:
     String m_uiProcessBundleIdentifier;
     RefPtr<NetworkProcessConnection> m_networkProcessConnection;
     WebLoaderStrategy& m_webLoaderStrategy;
+
+#if ENABLE(GPU_PROCESS)
+    RefPtr<GPUProcessConnection> m_gpuProcessConnection;
+#if PLATFORM(COCOA) && USE(LIBWEBRTC)
+    std::unique_ptr<LibWebRTCCodecs> m_libWebRTCCodecs;
+#endif
+#endif
 
     Ref<WebCacheStorageProvider> m_cacheStorageProvider;
     WebSocketChannelManager m_webSocketChannelManager;
@@ -530,7 +578,10 @@ private:
 
 #if PLATFORM(IOS_FAMILY)
     WebSQLiteDatabaseTracker m_webSQLiteDatabaseTracker;
-    ProcessTaskStateObserver m_taskStateObserver { *this };
+    RefPtr<ProcessTaskStateObserver> m_taskStateObserver;
+    Lock m_processWasResumedAssertionsLock;
+    RetainPtr<BKSProcessAssertion> m_processWasResumedUIAssertion;
+    RetainPtr<BKSProcessAssertion> m_processWasResumedOwnAssertion;
 #endif
 
     enum PageMarkingLayersAsVolatileCounterType { };
@@ -569,11 +620,28 @@ private:
     HashMap<String, RefPtr<SandboxExtension>> m_mediaCaptureSandboxExtensions;
 #endif
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
     float m_backlightLevel { 0 };
 #endif
 
+#if ENABLE(SERVICE_WORKER)
+    HashCountedSet<WebCore::ServiceWorkerRegistrationIdentifier> m_swRegistrationCounts;
+#endif
+
     HashMap<StorageAreaIdentifier, StorageAreaMap*> m_storageAreaMaps;
+    
+    // Prewarmed WebProcesses do not have an associated sessionID yet, which is why this is an optional.
+    // By the time the WebProcess gets a WebPage, it is guaranteed to have a sessionID.
+    Optional<PAL::SessionID> m_sessionID;
+
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    WebCore::ThirdPartyCookieBlockingMode m_thirdPartyCookieBlockingMode { WebCore::ThirdPartyCookieBlockingMode::All };
+#endif
+
+#if PLATFORM(IOS)
+    RefPtr<SandboxExtension> m_assetServiceExtension;
+    RefPtr<SandboxExtension> m_assetServiceV2Extension;
+#endif
 };
 
 } // namespace WebKit

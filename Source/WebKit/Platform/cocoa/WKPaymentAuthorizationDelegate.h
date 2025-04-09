@@ -39,17 +39,10 @@ class PaymentAuthorizationPresenter;
 
 using DidRequestMerchantSessionCompletion = BlockPtr<void(PKPaymentMerchantSession *, NSError *)>;
 
-#if HAVE(PASSKIT_GRANULAR_ERRORS)
 using DidAuthorizePaymentCompletion = BlockPtr<void(PKPaymentAuthorizationResult *)>;
 using DidSelectPaymentMethodCompletion = BlockPtr<void(PKPaymentRequestPaymentMethodUpdate *)>;
 using DidSelectShippingContactCompletion = BlockPtr<void(PKPaymentRequestShippingContactUpdate *)>;
 using DidSelectShippingMethodCompletion = BlockPtr<void(PKPaymentRequestShippingMethodUpdate *)>;
-#else
-using DidAuthorizePaymentCompletion = BlockPtr<void(PKPaymentAuthorizationStatus)>;
-using DidSelectPaymentMethodCompletion = BlockPtr<void(NSArray *)>;
-using DidSelectShippingContactCompletion = BlockPtr<void(PKPaymentAuthorizationStatus, NSArray *, NSArray *)>;
-using DidSelectShippingMethodCompletion = BlockPtr<void(PKPaymentAuthorizationStatus, NSArray *)>;
-#endif
 
 }
 
@@ -59,15 +52,11 @@ using DidSelectShippingMethodCompletion = BlockPtr<void(PKPaymentAuthorizationSt
 
 - (instancetype)init NS_UNAVAILABLE;
 
-@property (nonatomic, readonly) BOOL didReachFinalState;
-@property (nonatomic, readonly) NSArray<PKPaymentSummaryItem *> *summaryItems;
-@property (nonatomic, readonly) NSArray<PKShippingMethod *> *shippingMethods;
-
 - (void)completeMerchantValidation:(PKPaymentMerchantSession *)session error:(NSError *)error;
-- (void)completePaymentMethodSelection:(NSArray<PKPaymentSummaryItem *> *)summaryItems;
+- (void)completePaymentMethodSelection:(PKPaymentRequestPaymentMethodUpdate *)paymentMethodUpdate;
 - (void)completePaymentSession:(PKPaymentAuthorizationStatus)status errors:(NSArray<NSError *> *)errors didReachFinalState:(BOOL)didReachFinalState;
-- (void)completeShippingContactSelection:(PKPaymentAuthorizationStatus)status summaryItems:(NSArray<PKPaymentSummaryItem *> *)summaryItems shippingMethods:(NSArray<PKShippingMethod *> *)shippingMethods errors:(NSArray<NSError *> *)errors;
-- (void)completeShippingMethodSelection:(NSArray<PKPaymentSummaryItem *> *)summaryItems;
+- (void)completeShippingContactSelection:(PKPaymentRequestShippingContactUpdate *)shippingContactUpdate;
+- (void)completeShippingMethodSelection:(PKPaymentRequestShippingMethodUpdate *)shippingMethodUpdate;
 - (void)invalidate;
 
 @end

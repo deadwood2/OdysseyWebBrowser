@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2002-2014 The ANGLE Project Authors. All rights reserved.
+// Copyright 2002 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -14,6 +14,16 @@ namespace rx
 SurfaceImpl::SurfaceImpl(const egl::SurfaceState &state) : mState(state) {}
 
 SurfaceImpl::~SurfaceImpl() {}
+
+egl::Error SurfaceImpl::makeCurrent(const gl::Context *context)
+{
+    return egl::NoError();
+}
+
+egl::Error SurfaceImpl::unMakeCurrent(const gl::Context *context)
+{
+    return egl::NoError();
+}
 
 egl::Error SurfaceImpl::swapWithDamage(const gl::Context *context, EGLint *rects, EGLint n_rects)
 {
@@ -83,4 +93,10 @@ egl::Error SurfaceImpl::getFrameTimestamps(EGLuint64KHR frameId,
     return egl::EglBadDisplay();
 }
 
+egl::Error SurfaceImpl::swapWithFrameToken(const gl::Context *context,
+                                           EGLFrameTokenANGLE frameToken)
+{
+    UNREACHABLE();
+    return egl::EglBadDisplay();
+}
 }  // namespace rx

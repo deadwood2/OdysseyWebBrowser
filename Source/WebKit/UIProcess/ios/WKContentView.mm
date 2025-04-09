@@ -36,7 +36,6 @@
 #import "PageClientImplIOS.h"
 #import "PrintInfo.h"
 #import "RemoteLayerTreeDrawingAreaProxy.h"
-#import "RemoteScrollingCoordinatorProxy.h"
 #import "SmartMagnificationController.h"
 #import "UIKitSPI.h"
 #import "VersionChecks.h"
@@ -46,10 +45,11 @@
 #import "WKPreferencesInternal.h"
 #import "WKProcessGroupPrivate.h"
 #import "WKWebViewConfiguration.h"
-#import "WKWebViewInternal.h"
+#import "WKWebViewIOS.h"
 #import "WebFrameProxy.h"
 #import "WebKit2Initialize.h"
 #import "WebPageGroup.h"
+#import "WebPageProxyMessages.h"
 #import "WebProcessPool.h"
 #import "_WKFrameHandleInternal.h"
 #import "_WKWebViewPrintFormatterInternal.h"
@@ -63,9 +63,11 @@
 #import <WebCore/RuntimeApplicationChecks.h>
 #import <WebCore/VelocityData.h>
 #import <objc/message.h>
+#import <pal/spi/cocoa/NSAccessibilitySPI.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/text/TextStream.h>
+#import "AppKitSoftLink.h"
 
 
 @interface WKInspectorIndicationView : UIView
@@ -167,7 +169,7 @@ static NSArray *keyCommandsPlaceholderHackForEvernote(id self, SEL _cmd)
     _page->setDelegatesScrolling(true);
 
 #if ENABLE(FULLSCREEN_API)
-    _page->setFullscreenClient(makeUnique<WebKit::FullscreenClient>(_webView));
+    _page->setFullscreenClient(makeUnique<WebKit::FullscreenClient>(self.webView));
 #endif
 
     WebKit::WebProcessPool::statistics().wkViewCount++;
@@ -201,6 +203,8 @@ static NSArray *keyCommandsPlaceholderHackForEvernote(id self, SEL _cmd)
 
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillResignActive:) name:UIApplicationWillResignActiveNotification object:[UIApplication sharedApplication]];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidBecomeActive:) name:UIApplicationDidBecomeActiveNotification object:[UIApplication sharedApplication]];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:UIApplicationDidEnterBackgroundNotification object:[UIApplication sharedApplication]];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillEnterForeground:) name:UIApplicationWillEnterForegroundNotification object:[UIApplication sharedApplication]];
 
 #if USE(UIKIT_KEYBOARD_ADDITIONS)
     if (WebCore::IOSApplication::isEvernote() && !linkedOnOrAfter(WebKit::SDKVersion::FirstWhereWKContentViewDoesNotOverrideKeyCommands))
@@ -221,18 +225,22 @@ static NSArray *keyCommandsPlaceholderHackForEvernote(id self, SEL _cmd)
     ASSERT(!_visibilityPropagationView);
     // Propagate the view's visibility state to the WebContent process so that it is marked as "Foreground Running" when necessary.
     _visibilityPropagationView = adoptNS([[_UILayerHostView alloc] initWithFrame:CGRectZero pid:processIdentifier contextID:contextID]);
-    RELEASE_LOG(Process, "Created visibility propagation view %p for WebContent process with PID %d", _visibilityPropagationView.get(), processIdentifier);
+    RELEASE_LOG(Process, "Created visibility propagation view %p (contextID: %u) for WebContent process with PID %d", _visibilityPropagationView.get(), contextID, processIdentifier);
     [self addSubview:_visibilityPropagationView.get()];
 }
 
 - (void)_removeVisibilityPropagationView
 {
+    if (!_visibilityPropagationView)
+        return;
+
+    RELEASE_LOG(Process, "Removing visibility propagation view %p", _visibilityPropagationView.get());
     [_visibilityPropagationView removeFromSuperview];
     _visibilityPropagationView = nullptr;
 }
 #endif
 
-- (instancetype)initWithFrame:(CGRect)frame processPool:(WebKit::WebProcessPool&)processPool configuration:(Ref<API::PageConfiguration>&&)configuration webView:(WKWebView *)webView
+- (instancetype)initWithFrame:(CGRect)frame processPool:(NakedRef<WebKit::WebProcessPool>)processPool configuration:(Ref<API::PageConfiguration>&&)configuration webView:(WKWebView *)webView
 {
     if (!(self = [super initWithFrame:frame webView:webView]))
         return nil;
@@ -261,6 +269,11 @@ static NSArray *keyCommandsPlaceholderHackForEvernote(id self, SEL _cmd)
 - (WebKit::WebPageProxy*)page
 {
     return _page.get();
+}
+
+- (WKWebView *)webView
+{
+    return _webView.getAutoreleased();
 }
 
 - (void)willMoveToWindow:(UIWindow *)newWindow
@@ -362,7 +375,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     if (!_needsDeferredEndScrollingSelectionUpdate)
         return;
 
-    [_textSelectionAssistant deactivateSelection];
+    [_textInteractionAssistant deactivateSelection];
 }
 
 static WebCore::FloatBoxExtent floatBoxExtent(UIEdgeInsets insets)
@@ -404,10 +417,8 @@ static WebCore::FloatBoxExtent floatBoxExtent(UIEdgeInsets insets)
         velocityData = { 0, 0, 0, timestamp };
     }
 
-    WebKit::RemoteScrollingCoordinatorProxy* scrollingCoordinator = _page->scrollingCoordinatorProxy();
-
     CGRect unobscuredContentRectRespectingInputViewBounds = [self _computeUnobscuredContentRectRespectingInputViewBounds:unobscuredContentRect inputViewBounds:inputViewBounds];
-    WebCore::FloatRect fixedPositionRectForLayout = _page->computeCustomFixedPositionRect(unobscuredContentRect, unobscuredContentRectRespectingInputViewBounds, _page->customFixedPositionRect(), zoomScale, WebCore::FrameView::LayoutViewportConstraint::ConstrainedToDocumentRect);
+    WebCore::FloatRect fixedPositionRectForLayout = _page->computeLayoutViewportRect(unobscuredContentRect, unobscuredContentRectRespectingInputViewBounds, _page->layoutViewportRect(), zoomScale, WebCore::FrameView::LayoutViewportConstraint::ConstrainedToDocumentRect);
 
     WebKit::VisibleContentRectUpdateInfo visibleContentRectUpdateInfo(
         visibleContentRect,
@@ -422,7 +433,7 @@ static WebCore::FloatBoxExtent floatBoxExtent(UIEdgeInsets insets)
         isStableState,
         _sizeChangedSinceLastVisibleContentRectUpdate,
         isChangingObscuredInsetsInteractively,
-        _webView._allowsViewportShrinkToFit,
+        self.webView._allowsViewportShrinkToFit,
         enclosedInScrollableAncestorView,
         velocityData,
         downcast<WebKit::RemoteLayerTreeDrawingAreaProxy>(*drawingArea).lastCommittedLayerTreeTransactionID());
@@ -430,12 +441,13 @@ static WebCore::FloatBoxExtent floatBoxExtent(UIEdgeInsets insets)
     LOG_WITH_STREAM(VisibleRects, stream << "-[WKContentView didUpdateVisibleRect]" << visibleContentRectUpdateInfo.dump());
 
     bool wasStableState = _page->inStableState();
+
     _page->updateVisibleContentRects(visibleContentRectUpdateInfo);
 
-    _sizeChangedSinceLastVisibleContentRectUpdate = NO;
+    auto layoutViewport = _page->unconstrainedLayoutViewportRect();
+    _page->adjustLayersForLayoutViewport(layoutViewport);
 
-    WebCore::FloatRect layoutViewport = _page->computeCustomFixedPositionRect(_page->unobscuredContentRect(), _page->unobscuredContentRectRespectingInputViewBounds(), _page->customFixedPositionRect(), zoomScale, WebCore::FrameView::LayoutViewportConstraint::Unconstrained);
-    scrollingCoordinator->viewportChangedViaDelegatedScrolling(_page->unobscuredContentRect().location(), layoutViewport, zoomScale);
+    _sizeChangedSinceLastVisibleContentRectUpdate = NO;
 
     drawingArea->updateDebugIndicator();
     
@@ -517,6 +529,25 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
     objc_setAssociatedObject(element, (void*)[@"ax-machport" hash], @(sendPort), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
+
+- (void)_updateRemoteAccessibilityRegistration:(BOOL)registerProcess
+{
+#if PLATFORM(MACCATALYST)
+    pid_t pid = 0;
+    if (registerProcess)
+        pid = _page->process().processIdentifier();
+    else
+        pid = [objc_getAssociatedObject(self, (void*)[@"ax-pid" hash]) intValue];
+    if (!pid)
+        return;
+
+    if (registerProcess)
+        [WebKit::getNSAccessibilityRemoteUIElementClass() registerRemoteUIProcessIdentifier:pid];
+    else
+        [WebKit::getNSAccessibilityRemoteUIElementClass() unregisterRemoteUIProcessIdentifier:pid];
+#endif
+}
+
 - (void)_accessibilityRegisterUIProcessTokens
 {
     auto uuid = [NSUUID UUID];
@@ -524,6 +555,7 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
 
     // Store information about the WebProcess that can later be retrieved by the iOS Accessibility runtime.
     if (_page->process().state() == WebKit::WebProcessProxy::State::Running) {
+        [self _updateRemoteAccessibilityRegistration:YES];
         IPC::Connection* connection = _page->process().connection();
         storeAccessibilityRemoteConnectionInformation(self, _page->process().processIdentifier(), connection->identifier().port, uuid);
 
@@ -546,6 +578,7 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
 
 - (void)_processDidExit
 {
+    [self _updateRemoteAccessibilityRegistration:NO];
     [self cleanupInteraction];
 
     [self setShowingInspectorIndication:NO];
@@ -554,6 +587,8 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
     [self _removeVisibilityPropagationView];
 #endif
+
+    _isPrintingToPDF = NO;
 }
 
 - (void)_processWillSwap
@@ -594,14 +629,14 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
 
     if (_interactionViewsContainerView) {
         WebCore::FloatPoint scaledOrigin = layerTreeTransaction.scrollOrigin();
-        float scale = [[_webView scrollView] zoomScale];
+        float scale = self.webView.scrollView.zoomScale;
         scaledOrigin.scale(scale);
         [_interactionViewsContainerView setFrame:CGRectMake(scaledOrigin.x(), scaledOrigin.y(), 0, 0)];
     }
     
     if (boundsChanged) {
-        // FIXME: factor computeCustomFixedPositionRect() into something that gives us this rect.
-        WebCore::FloatRect fixedPositionRect = _page->computeCustomFixedPositionRect(_page->unobscuredContentRect(), _page->unobscuredContentRectRespectingInputViewBounds(), _page->customFixedPositionRect(), [[_webView scrollView] zoomScale]);
+        // FIXME: factor computeLayoutViewportRect() into something that gives us this rect.
+        WebCore::FloatRect fixedPositionRect = _page->computeLayoutViewportRect(_page->unobscuredContentRect(), _page->unobscuredContentRectRespectingInputViewBounds(), _page->layoutViewportRect(), self.webView.scrollView.zoomScale);
         [self updateFixedClippingView:fixedPositionRect];
 
         // We need to push the new content bounds to the webview to update fixed position rects.
@@ -685,11 +720,21 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
     _page->applicationDidBecomeActive();
 }
 
+- (void)_applicationDidEnterBackground:(NSNotification*)notification
+{
+    if (!self.window)
+        _page->applicationDidEnterBackgroundForMedia();
+}
+
+- (void)_applicationWillEnterForeground:(NSNotification*)notification
+{
+    if (!self.window)
+        _page->applicationWillEnterForegroundForMedia();
+}
+
 @end
 
 #pragma mark Printing
-
-#if !PLATFORM(MACCATALYST)
 
 @interface WKContentView (_WKWebViewPrintFormatter) <_WKWebViewPrintProvider>
 @end
@@ -699,11 +744,11 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
 - (NSUInteger)_wk_pageCountForPrintFormatter:(_WKWebViewPrintFormatter *)printFormatter
 {
     if (_isPrintingToPDF)
-        return 0;
+        [self _waitForDrawToPDFCallback];
 
     WebCore::FrameIdentifier frameID;
     if (_WKFrameHandle *handle = printFormatter.frameToPrint)
-        frameID = WebCore::frameIdentifierFromID(handle._frameID);
+        frameID = handle->_frameHandle->frameID();
     else if (auto mainFrame = _page->mainFrame())
         frameID = mainFrame->frameID();
     else
@@ -720,6 +765,8 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
     WebKit::PrintInfo printInfo;
     printInfo.pageSetupScaleFactor = 1;
     printInfo.snapshotFirstPage = printFormatter.snapshotFirstPage;
+
+    // FIXME: Paginate when exporting PDFs taller than 200"
     if (printInfo.snapshotFirstPage) {
         static const CGFloat maximumPDFHeight = 200 * 72; // maximum PDF height for a single page is 200 inches
         CGSize contentSize = self.bounds.size;
@@ -742,21 +789,24 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
     });
 }
 
+- (BOOL)_waitForDrawToPDFCallback
+{
+    if (!_page->process().connection()->waitForAndDispatchImmediately<Messages::WebPageProxy::DrawToPDFCallback>(_page->webPageID(), Seconds::infinity()))
+        return false;
+    ASSERT(!_isPrintingToPDF);
+    return true;
+}
+
 - (CGPDFDocumentRef)_wk_printedDocument
 {
     if (_isPrintingToPDF) {
-        if (!_page->process().connection()->waitForAndDispatchImmediately<Messages::WebPageProxy::DrawToPDFCallback>(_page->pageID(), Seconds::infinity())) {
-            ASSERT_NOT_REACHED();
+        if (![self _waitForDrawToPDFCallback])
             return nullptr;
-        }
-        ASSERT(!_isPrintingToPDF);
     }
 
     return _printedDocument.get();
 }
 
 @end
-
-#endif // !PLATFORM(MACCATALYST)
 
 #endif // PLATFORM(IOS_FAMILY)

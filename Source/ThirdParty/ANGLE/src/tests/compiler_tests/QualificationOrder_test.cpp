@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2016 The ANGLE Project Authors. All rights reserved.
+// Copyright 2016 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -429,7 +429,7 @@ TEST_F(QualificationOrderFragmentShaderTest, InvalidFunctionParametersInvariant)
         "}\n"
         "void main()\n"
         "{\n"
-        "    gl_FragColor = vec4(foo0(value));\n"
+        "   gl_FragColor = vec4(foo0(value));\n"
         "}\n";
 
     if (compile(shaderString))
@@ -449,7 +449,7 @@ TEST_F(QualificationOrderFragmentShaderTest, InvalidFunctionParametersAttribute)
         "}\n"
         "void main()\n"
         "{\n"
-        "    gl_FragColor = vec4(foo0(value));\n"
+        "   gl_FragColor = vec4(foo0(value));\n"
         "}\n";
 
     if (compile(shaderString))
@@ -469,7 +469,7 @@ TEST_F(QualificationOrderFragmentShaderTest, InvalidFunctionParametersVarying)
         "}\n"
         "void main()\n"
         "{\n"
-        "    gl_FragColor = vec4(foo0(value));\n"
+        "   gl_FragColor = vec4(foo0(value));\n"
         "}\n";
 
     if (compile(shaderString))
@@ -491,7 +491,7 @@ TEST_F(QualificationOrderFragmentShaderTest, InvalidFunctionParametersLayout)
         "out vec4 colorOUT;\n"
         "void main()\n"
         "{\n"
-        "    colorOUT = vec4(foo0(value));\n"
+        "   colorOUT = vec4(foo0(value));\n"
         "}\n";
 
     if (compile(shaderString))
@@ -513,7 +513,7 @@ TEST_F(QualificationOrderFragmentShaderTest, InvalidFunctionParametersCentroidIn
         "out vec4 colorOUT;\n"
         "void main()\n"
         "{\n"
-        "    colorOUT = vec4(foo0(value));\n"
+        "   colorOUT = vec4(foo0(value));\n"
         "}\n";
 
     if (compile(shaderString))
@@ -535,7 +535,7 @@ TEST_F(QualificationOrderFragmentShaderTest, InvalidFunctionParametersFlatIn)
         "out vec4 colorOUT;\n"
         "void main()\n"
         "{\n"
-        "    colorOUT = vec4(foo0(value));\n"
+        "   colorOUT = vec4(foo0(value));\n"
         "}\n";
 
     if (compile(shaderString))

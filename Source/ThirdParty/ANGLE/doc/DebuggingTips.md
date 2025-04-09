@@ -41,13 +41,6 @@ qapitrace mytrace
 ## Running ANGLE under GAPID on Linux
 
 [GAPID](https://github.com/google/gapid) can be used to capture trace of Vulkan commands on Linux.
-For it to work, libvulkan has to be a shared library, instead of being statically linked into ANGLE,
-which is the default behavior.  This is done with the gn arg:
-
-```
-angle_shared_libvulkan = true
-```
-
 When capturing traces of gtest based tests built inside Chromium checkout, make sure to run the
 tests with `--single-process-tests` argument.
 
@@ -103,6 +96,7 @@ special case, there's little support for it by RenderDoc, though there are worka
 
 On Windows, RenderDoc supports setting the environment variable `RENDERDOC_HOOK_EGL` to 0 to avoid
 this issue.
+
 ### Linux
 
 On Linux, there is no supported workaround by RenderDoc.  See [this
@@ -123,13 +117,6 @@ $ QT_SELECT=5 make -j -C build
 
 # Run RenderDoc from the build directory:
 $ ./build/bin/qrenderdoc
-```
-
-Additionally, libvulkan has to be a shared library, instead of being statically linked into ANGLE,
-which is the default behavior.  This is done with the gn arg:
-
-```
-angle_shared_libvulkan = true
 ```
 
 If your distribution does not provide a recent Vulkan SDK package, you would need to manually
@@ -228,3 +215,7 @@ arguments:
 ```
 -e org.chromium.native_test.NativeTest.StdoutFile /sdcard/chromium_tests_root/out.txt -e org.chromium.native_test.NativeTest.CommandLineFlags "--gtest_filter=*ES2_VULKAN"
 ```
+
+Note that in the above, only a single command line argument is supported with RenderDoc.  If testing
+dEQP on a non-default platform, the easiest way would be to modify `GetDefaultAPIName()` in
+`src/tests/deqp_support/angle_deqp_gtest.cpp` (and avoid `--use-angle=X`).

@@ -28,12 +28,18 @@
 
 #include "Common.h"
 #include "MiniBrowserLibResource.h"
-#include "WebKitLegacyBrowserWindow.h"
-#include <CoreFoundation/CoreFoundation.h>
 #include <sstream>
+
+#if USE(CF)
+#include <CoreFoundation/CoreFoundation.h>
+#endif
 
 #if ENABLE(WEBKIT)
 #include "WebKitBrowserWindow.h"
+#endif
+
+#if ENABLE(WEBKIT_LEGACY)
+#include "WebKitLegacyBrowserWindow.h"
 #endif
 
 namespace WebCore {
@@ -115,6 +121,9 @@ bool MainWindow::init(BrowserWindowFactory factory, HINSTANCE hInstance, bool us
 #if !ENABLE(WEBKIT)
     EnableMenuItem(GetMenu(m_hMainWnd), IDM_NEW_WEBKIT_WINDOW, MF_GRAYED);
 #endif
+#if !ENABLE(WEBKIT_LEGACY)
+    EnableMenuItem(GetMenu(m_hMainWnd), IDM_NEW_WEBKITLEGACY_WINDOW, MF_GRAYED);
+#endif
 
     m_hBackButtonWnd = CreateWindow(L"BUTTON", L"<", WS_CHILD | WS_VISIBLE  | BS_TEXT, 0, 0, 0, 0, m_hMainWnd, reinterpret_cast<HMENU>(IDM_HISTORY_BACKWARD), hInstance, 0);
     m_hForwardButtonWnd = CreateWindow(L"BUTTON", L">", WS_CHILD | WS_VISIBLE | BS_TEXT, 0, 0, 0, 0, m_hMainWnd, reinterpret_cast<HMENU>(IDM_HISTORY_FORWARD), hInstance, 0);
@@ -193,12 +202,14 @@ LRESULT CALLBACK MainWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPA
             break;
         }
 #endif
+#if ENABLE(WEBKIT_LEGACY)
         case IDM_NEW_WEBKITLEGACY_WINDOW: {
             auto& newWindow = MainWindow::create().leakRef();
             newWindow.init(WebKitLegacyBrowserWindow::create, hInst);
             ShowWindow(newWindow.hwnd(), SW_SHOW);
             break;
         }
+#endif
         case IDM_CLOSE_WINDOW:
             PostMessage(hWnd, WM_CLOSE, 0, 0);
             break;
@@ -264,9 +275,12 @@ LRESULT CALLBACK MainWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPA
     case WM_SIZE:
         thisWindow->resizeSubViews();
         break;
-    case WM_DPICHANGED:
+    case WM_DPICHANGED: {
         thisWindow->updateDeviceScaleFactor();
-        return DefWindowProc(hWnd, message, wParam, lParam);
+        auto& rect = *reinterpret_cast<RECT*>(lParam);
+        SetWindowPos(hWnd, nullptr, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, SWP_NOZORDER | SWP_NOACTIVATE);
+        break;
+    }
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
     }
@@ -338,18 +352,21 @@ bool MainWindow::toggleMenuItem(UINT menuID)
     return true;
 }
 
-LRESULT CALLBACK EditProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK EditProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message) {
+    case WM_SETFOCUS:
+        PostMessage(hWnd, EM_SETSEL, 0, -1);
+        break;
     case WM_CHAR:
         if (wParam == 13) {
             // Enter Key
-            ::PostMessage(GetParent(hDlg), static_cast<UINT>(WM_COMMAND), MAKELPARAM(IDC_URL_BAR, 0), 0);
+            ::PostMessage(GetParent(hWnd), static_cast<UINT>(WM_COMMAND), MAKELPARAM(IDC_URL_BAR, 0), 0);
             return 0;
         }
-    default:
-        return CallWindowProc(DefEditProc, hDlg, message, wParam, lParam);
+        break;
     }
+    return CallWindowProc(DefEditProc, hWnd, message, wParam, lParam);
 }
 
 // Message handler for about box.

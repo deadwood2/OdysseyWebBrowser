@@ -27,9 +27,9 @@
 #include "GUniquePtrSoup.h"
 #include "HTTPParsers.h"
 #include "MIMETypeRegistry.h"
+#include "RegistrableDomain.h"
 #include "SharedBuffer.h"
 #include "URLSoup.h"
-#include "WebKitSoupRequestGeneric.h"
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
@@ -111,6 +111,15 @@ void ResourceRequest::updateSoupMessageMembers(SoupMessage* soupMessage) const
     if (firstParty)
         soup_message_set_first_party(soupMessage, firstParty.get());
 
+#if SOUP_CHECK_VERSION(2, 69, 90)
+    if (m_sameSiteDisposition == ResourceRequest::SameSiteDisposition::SameSite) {
+        GUniquePtr<SoupURI> siteForCookies = urlToSoupURI(m_url);
+        soup_message_set_site_for_cookies(soupMessage, siteForCookies.get());
+    }
+
+    soup_message_set_is_top_level_navigation(soupMessage, isTopSite());
+#endif
+
     soup_message_set_flags(soupMessage, m_soupFlags);
 
     if (!acceptEncoding())
@@ -171,6 +180,17 @@ void ResourceRequest::updateFromSoupMessage(SoupMessage* soupMessage)
     if (SoupURI* firstParty = soup_message_get_first_party(soupMessage))
         m_firstPartyForCookies = soupURIToURL(firstParty);
 
+#if SOUP_CHECK_VERSION(2, 69, 90)
+    setIsTopSite(soup_message_get_is_top_level_navigation(soupMessage));
+
+    if (SoupURI* siteForCookies = soup_message_get_site_for_cookies(soupMessage))
+        setIsSameSite(areRegistrableDomainsEqual(soupURIToURL(siteForCookies), m_url));
+    else
+        m_sameSiteDisposition = SameSiteDisposition::Unspecified;
+#else
+    m_sameSiteDisposition = SameSiteDisposition::Unspecified;
+#endif
+
     m_soupFlags = soup_message_get_flags(soupMessage);
 
     // FIXME: m_allowCookies should probably be handled here and on
@@ -183,18 +203,15 @@ void ResourceRequest::updateSoupRequest(SoupRequest* soupRequest) const
 {
     if (m_initiatingPageID) {
         uint64_t* initiatingPageIDPtr = static_cast<uint64_t*>(fastMalloc(sizeof(uint64_t)));
-        *initiatingPageIDPtr = m_initiatingPageID->toUInt64();
+        *initiatingPageIDPtr = *m_initiatingPageID;
         g_object_set_data_full(G_OBJECT(soupRequest), g_intern_static_string(gSoupRequestInitiatingPageIDKey), initiatingPageIDPtr, fastFree);
     }
-
-    if (WEBKIT_IS_SOUP_REQUEST_GENERIC(soupRequest))
-        webkitSoupRequestGenericSetRequest(WEBKIT_SOUP_REQUEST_GENERIC(soupRequest), *this);
 }
 
 void ResourceRequest::updateFromSoupRequest(SoupRequest* soupRequest)
 {
     uint64_t* initiatingPageIDPtr = static_cast<uint64_t*>(g_object_get_data(G_OBJECT(soupRequest), gSoupRequestInitiatingPageIDKey));
-    m_initiatingPageID = makeObjectIdentifier<PageIdentifierType>(initiatingPageIDPtr ? *initiatingPageIDPtr : 0);
+    m_initiatingPageID = initiatingPageIDPtr ? *initiatingPageIDPtr : 0;
 }
 
 unsigned initializeMaximumHTTPConnectionCountPerHost()

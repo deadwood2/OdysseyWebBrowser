@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,9 +39,12 @@
 #import <WebKit/WKUIDelegatePrivate.h>
 #import <WebKit/WKWebView.h>
 #import <WebKit/WKWebViewConfiguration.h>
+#import <WebKit/WKWebViewConfigurationPrivate.h>
+#import <WebKit/WKWebsiteDataStorePrivate.h>
 #import <WebKit/_WKDownload.h>
 #import <WebKit/_WKDownloadDelegate.h>
 #import <WebKit/_WKProcessPoolConfiguration.h>
+#import <WebKit/_WKWebsiteDataStoreConfiguration.h>
 #import <wtf/FileSystem.h>
 #import <wtf/MainThread.h>
 #import <wtf/MonotonicTime.h>
@@ -713,7 +716,11 @@ TEST(_WKDownload, SystemPreviewUSDZBlobNaming)
 TEST(_WKDownload, DownloadAttributeDoesNotStartDownloads)
 {
     auto delegate = adoptNS([[DownloadAttributeTestDelegate alloc] init]);
-    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    configuration.get()._allowTopNavigationToDataURLs = YES;
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
     [webView setNavigationDelegate:delegate.get()];
     [webView configuration].processPool._downloadDelegate = delegate.get();
 
@@ -728,7 +735,11 @@ TEST(_WKDownload, DownloadAttributeDoesNotStartDownloads)
 TEST(_WKDownload, StartDownloadWithDownloadAttribute)
 {
     auto delegate = adoptNS([[DownloadAttributeTestDelegate alloc] init]);
-    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    configuration.get()._allowTopNavigationToDataURLs = YES;
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
     [webView setNavigationDelegate:delegate.get()];
     [webView configuration].processPool._downloadDelegate = delegate.get();
 
@@ -849,10 +860,11 @@ RetainPtr<WKWebView> webViewWithDownloadMonitorSpeedMultiplier(size_t multiplier
     static auto navigationDelegate = adoptNS([DownloadNavigationDelegate new]);
     static auto downloadDelegate = adoptNS([DownloadMonitorTestDelegate new]);
     auto processPoolConfiguration = adoptNS([_WKProcessPoolConfiguration new]);
-    [processPoolConfiguration setDownloadMonitorSpeedMultiplierForTesting:multiplier];
     auto processPool = adoptNS([[WKProcessPool alloc] _initWithConfiguration:processPoolConfiguration.get()]);
+    _WKWebsiteDataStoreConfiguration *dataStoreConfiguration = [[_WKWebsiteDataStoreConfiguration new] autorelease];
+    dataStoreConfiguration.testSpeedMultiplier = multiplier;
     auto webViewConfiguration = adoptNS([WKWebViewConfiguration new]);
-    [webViewConfiguration setProcessPool:processPool.get()];
+    [webViewConfiguration setWebsiteDataStore:[[[WKWebsiteDataStore alloc] _initWithConfiguration:dataStoreConfiguration] autorelease]];
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:webViewConfiguration.get()]);
     [webView setNavigationDelegate:navigationDelegate.get()];
     [webView configuration].processPool._downloadDelegate = downloadDelegate.get();
@@ -1024,6 +1036,124 @@ TEST(WebKit, DownloadNavigationResponseFromMemoryCache)
 
     TestProtocol.additionalResponseHeaders = nil;
     [TestProtocol unregister];
+}
+
+@interface DownloadCancelingDelegate : NSObject <_WKDownloadDelegate>
+@property (readonly) RetainPtr<NSData> resumeData;
+@property (readonly) RetainPtr<NSString> path;
+@end
+
+@implementation DownloadCancelingDelegate
+
+- (void)_download:(_WKDownload *)download decideDestinationWithSuggestedFilename:(NSString *)filename completionHandler:(void (^)(BOOL allowOverwrite, NSString *destination))completionHandler
+{
+    FileSystem::PlatformFileHandle fileHandle;
+    _path = FileSystem::openTemporaryFile("TestWebKitAPI", fileHandle);
+    EXPECT_TRUE(fileHandle != FileSystem::invalidPlatformFileHandle);
+    FileSystem::closeFile(fileHandle);
+    completionHandler(YES, _path.get());
+}
+
+- (void)_download:(_WKDownload *)download didReceiveData:(uint64_t)length
+{
+    EXPECT_EQ(length, 5000ULL);
+    [download cancel];
+}
+
+- (void)_downloadDidCancel:(_WKDownload *)download
+{
+    EXPECT_NOT_NULL(download.resumeData);
+    _resumeData = download.resumeData;
+    isDone = true;
+}
+
+@end
+
+@interface AuthenticationChallengeHandlingDelegate : NSObject <_WKDownloadDelegate>
+@end
+
+@implementation AuthenticationChallengeHandlingDelegate {
+    bool _didReceiveAuthenticationChallenge;
+}
+
+- (void)_download:(_WKDownload *)download didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential*))completionHandler
+{
+    _didReceiveAuthenticationChallenge = true;
+    completionHandler(NSURLSessionAuthChallengeUseCredential, nil);
+}
+
+- (void)_downloadDidFinish:(_WKDownload *)download
+{
+    EXPECT_TRUE(_didReceiveAuthenticationChallenge);
+    isDone = true;
+}
+
+@end
+
+TEST(_WKDownload, ResumedDownloadCanHandleAuthenticationChallenge)
+{
+    using namespace TestWebKitAPI;
+
+    std::atomic<bool> receivedFirstConnection { false };
+
+    TCPServer server([&](int socket) {
+        if (!receivedFirstConnection.exchange(true)) {
+            TCPServer::read(socket);
+
+            const char* responseHeader =
+            "HTTP/1.1 200 OK\r\n"
+            "ETag: test\r\n"
+            "Content-Length: 10000\r\n\r\n";
+            TCPServer::write(socket, responseHeader, strlen(responseHeader));
+
+            char data[5000];
+            memset(data, 0, 5000);
+            TCPServer::write(socket, data, 5000);
+
+            // Wait for the client to cancel the download before closing the connection.
+            Util::run(&isDone);
+        } else {
+            TCPServer::read(socket);
+            const char* challengeHeader =
+            "HTTP/1.1 401 Unauthorized\r\n"
+            "Date: Sat, 23 Mar 2019 06:29:01 GMT\r\n"
+            "Content-Length: 0\r\n"
+            "WWW-Authenticate: Basic realm=\"testrealm\"\r\n\r\n";
+            TCPServer::write(socket, challengeHeader, strlen(challengeHeader));
+
+            TCPServer::read(socket);
+
+            const char* responseHeader =
+            "HTTP/1.1 206 Partial Content\r\n"
+            "ETag: test\r\n"
+            "Content-Range: bytes 5000-9999/10000\r\n"
+            "Content-Length: 5000\r\n\r\n";
+            TCPServer::write(socket, responseHeader, strlen(responseHeader));
+
+            char data[5000];
+            memset(data, 1, 5000);
+            TCPServer::write(socket, data, 5000);
+        }
+    }, 2);
+
+    auto processPool = adoptNS([[WKProcessPool alloc] init]);
+    auto websiteDataStore = adoptNS([WKWebsiteDataStore defaultDataStore]);
+
+    auto delegate1 = adoptNS([[DownloadCancelingDelegate alloc] init]);
+    [processPool _setDownloadDelegate:delegate1.get()];
+
+    isDone = false;
+    NSURLRequest *request = [NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%d/", server.port()]]];
+    [processPool _downloadURLRequest:request websiteDataStore:websiteDataStore.get() originatingWebView:nil];
+
+    Util::run(&isDone);
+
+    isDone = false;
+    auto delegate2 = adoptNS([[AuthenticationChallengeHandlingDelegate alloc] init]);
+    [processPool _setDownloadDelegate:delegate2.get()];
+    [processPool _resumeDownloadFromData:[delegate1 resumeData].get() websiteDataStore:websiteDataStore.get() path:[delegate1 path].get() originatingWebView:nil];
+
+    Util::run(&isDone);
 }
 
 #endif // PLATFORM(MAC) || PLATFORM(IOS)

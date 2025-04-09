@@ -39,6 +39,7 @@
 #include <WebCore/StorageMap.h>
 #include <WebCore/TextEncoding.h>
 #include <memory>
+#include <wtf/CrossThreadCopier.h>
 #include <wtf/WorkQueue.h>
 
 namespace WebKit {
@@ -74,8 +75,7 @@ void StorageManager::destroySessionStorageNamespace(StorageNamespaceIdentifier s
     ASSERT(!RunLoop::isMain());
 
     ASSERT(m_sessionStorageNamespaces.contains(storageNamespaceID));
-    if (auto* sessionStorageNamespace = m_sessionStorageNamespaces.get(storageNamespaceID))
-        m_sessionStorageNamespaces.remove(storageNamespaceID);
+    m_sessionStorageNamespaces.remove(storageNamespaceID);
 }
 
 void StorageManager::cloneSessionStorageNamespace(StorageNamespaceIdentifier storageNamespaceID, StorageNamespaceIdentifier newStorageNamespaceID)
@@ -268,6 +268,29 @@ void StorageManager::clearStorageNamespaces()
     m_localStorageNamespaces.clear();
     m_transientLocalStorageNamespaces.clear();
     m_sessionStorageNamespaces.clear();
+}
+
+Vector<StorageAreaIdentifier> StorageManager::allStorageAreaIdentifiers() const
+{
+    ASSERT(!RunLoop::isMain());
+
+    Vector<StorageAreaIdentifier> identifiers;
+    for (const auto& localStorageNamespace : m_localStorageNamespaces.values()) {
+        for (auto key : localStorageNamespace->storageAreaIdentifiers())
+            identifiers.append(key);
+    }
+
+    for (const auto& trasientLocalStorageNamespace : m_transientLocalStorageNamespaces.values()) {
+        for (auto key : trasientLocalStorageNamespace->storageAreaIdentifiers())
+            identifiers.append(key);
+    }
+
+    for (const auto& sessionStorageNamespace : m_sessionStorageNamespaces.values()) {
+        for (auto key : sessionStorageNamespace->storageAreaIdentifiers())
+            identifiers.append(key);
+    }
+
+    return identifiers;
 }
 
 } // namespace WebKit

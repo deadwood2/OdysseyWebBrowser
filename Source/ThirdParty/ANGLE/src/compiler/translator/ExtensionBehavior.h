@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2002-2010 The ANGLE Project Authors. All rights reserved.
+// Copyright 2002 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -25,6 +25,7 @@ enum class TExtension
     EXT_draw_buffers,
     EXT_frag_depth,
     EXT_geometry_shader,
+    EXT_gpu_shader5,
     EXT_shader_framebuffer_fetch,
     EXT_shader_texture_lod,
     EXT_YUV_target,
@@ -34,8 +35,12 @@ enum class TExtension
     OES_EGL_image_external_essl3,
     OES_standard_derivatives,
     OES_texture_storage_multisample_2d_array,
+    OES_texture_3D,
+    OVR_multiview,
     OVR_multiview2,
     ANGLE_multi_draw,
+    ANGLE_base_vertex_base_instance,
+    WEBGL_video_texture,
 };
 
 enum TBehavior

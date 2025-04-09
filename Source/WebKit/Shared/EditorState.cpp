@@ -108,7 +108,7 @@ bool EditorState::decode(IPC::Decoder& decoder, EditorState& result)
 void EditorState::PostLayoutData::encode(IPC::Encoder& encoder) const
 {
     encoder << typingAttributes;
-#if PLATFORM(IOS_FAMILY) || PLATFORM(GTK)
+#if PLATFORM(IOS_FAMILY) || PLATFORM(GTK) || PLATFORM(WPE)
     encoder << caretRectAtStart;
 #endif
 #if PLATFORM(COCOA)
@@ -142,6 +142,11 @@ void EditorState::PostLayoutData::encode(IPC::Encoder& encoder) const
     encoder << paragraphContextForCandidateRequest;
     encoder << stringForCandidateRequest;
 #endif
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    encoder << surroundingContext;
+    encoder << surroundingContextCursorPosition;
+    encoder << surroundingContextSelectionPosition;
+#endif
     encoder << fontAttributes;
     encoder << canCut;
     encoder << canCopy;
@@ -152,7 +157,7 @@ bool EditorState::PostLayoutData::decode(IPC::Decoder& decoder, PostLayoutData& 
 {
     if (!decoder.decode(result.typingAttributes))
         return false;
-#if PLATFORM(IOS_FAMILY) || PLATFORM(GTK)
+#if PLATFORM(IOS_FAMILY) || PLATFORM(GTK) || PLATFORM(WPE)
     if (!decoder.decode(result.caretRectAtStart))
         return false;
 #endif
@@ -214,6 +219,14 @@ bool EditorState::PostLayoutData::decode(IPC::Decoder& decoder, PostLayoutData& 
     if (!decoder.decode(result.stringForCandidateRequest))
         return false;
 #endif
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    if (!decoder.decode(result.surroundingContext))
+        return false;
+    if (!decoder.decode(result.surroundingContextCursorPosition))
+        return false;
+    if (!decoder.decode(result.surroundingContextSelectionPosition))
+        return false;
+#endif
 
     Optional<Optional<FontAttributes>> optionalFontAttributes;
     decoder >> optionalFontAttributes;
@@ -269,7 +282,7 @@ TextStream& operator<<(TextStream& ts, const EditorState& editorState)
     ts << "postLayoutData";
     if (editorState.postLayoutData().typingAttributes != AttributeNone)
         ts.dumpProperty("typingAttributes", editorState.postLayoutData().typingAttributes);
-#if PLATFORM(IOS_FAMILY) || PLATFORM(GTK)
+#if PLATFORM(IOS_FAMILY) || PLATFORM(GTK) || PLATFORM(WPE)
     if (editorState.postLayoutData().caretRectAtStart != IntRect())
         ts.dumpProperty("caretRectAtStart", editorState.postLayoutData().caretRectAtStart);
 #endif

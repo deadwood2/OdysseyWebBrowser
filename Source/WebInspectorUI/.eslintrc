@@ -34,33 +34,6 @@
         "ecmaVersion": 2018,
     },
     "globals": {
-        // Agents
-        "AuditAgent": true,
-        "ApplicationCacheAgent": true,
-        "CSSAgent": true,
-        "CPUProfilerAgent": true,
-        "CanvasAgent": true,
-        "ConsoleAgent": true,
-        "DOMAgent": true,
-        "DOMDebuggerAgent": true,
-        "DOMStorageAgent": true,
-        "DatabaseAgent": true,
-        "DebuggerAgent": true,
-        "HeapAgent": true,
-        "IndexedDBAgent": true,
-        "InspectorAgent": true,
-        "LayerTreeAgent": true,
-        "MemoryAgent": true,
-        "NetworkAgent": true,
-        "PageAgent": true,
-        "RecordingAgent": true,
-        "RuntimeAgent": true,
-        "ScriptProfilerAgent": true,
-        "ServiceWorkerAgent": true,
-        "TargetAgent": true,
-        "TimelineAgent": true,
-        "WorkerAgent": true,
-
         // Namespace
         "WI": true,
 
@@ -111,7 +84,6 @@
         // Utilities
         "appendWebInspectorConsoleEvaluationSourceURL": true,
         "appendWebInspectorSourceURL": true,
-        "blobAsText": true,
         "clamp": true,
         "doubleQuotedString": true,
         "ellipsis": true,
@@ -125,14 +97,15 @@
         "isEnterKey": true,
         "isFunctionStringNativeCode": true,
         "isTextLikelyMinified": true,
+        "isWebInspectorBootstrapScript": true,
         "isWebInspectorConsoleEvaluationScript": true,
         "isWebInspectorInternalScript": true,
         "isWebKitInternalScript": true,
+        "isWebKitExtensionScheme": true,
         "multiplicationSign": true,
         "parseMIMEType": true,
         "resolveDotsInPath": true,
         "simpleGlobStringToRegExp": true,
-        "textToBlob": true,
         "timestamp": true,
         "zeroWidthSpace": true,
 
@@ -141,7 +114,6 @@
 
         // URL Utilities
         "absoluteURL": true,
-        "decodeBase64ToBlob": true,
         "parseDataURL": true,
         "parseLocationQueryParameters": true,
         "parseQueryString": true,

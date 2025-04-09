@@ -10,6 +10,13 @@
 #ifndef UTIL_FUCHSIA_SCENIC_WINDOW_H
 #define UTIL_FUCHSIA_SCENIC_WINDOW_H
 
+#include "common/debug.h"
+#include "util/OSWindow.h"
+#include "util/util_export.h"
+
+// Disable ANGLE-specific warnings that pop up in fuchsia headers.
+ANGLE_DISABLE_DESTRUCTOR_OVERRIDE_WARNING
+
 #include <fuchsia/ui/policy/cpp/fidl.h>
 #include <fuchsia/ui/scenic/cpp/fidl.h>
 #include <fuchsia_egl.h>
@@ -20,8 +27,7 @@
 #include <zircon/types.h>
 #include <string>
 
-#include "util/OSWindow.h"
-#include "util/util_export.h"
+ANGLE_REENABLE_DESTRUCTOR_OVERRIDE_WARNING
 
 struct FuchsiaEGLWindowDeleter
 {
@@ -32,10 +38,10 @@ class ANGLE_UTIL_EXPORT ScenicWindow : public OSWindow
 {
   public:
     ScenicWindow();
-    ~ScenicWindow();
+    ~ScenicWindow() override;
 
     // OSWindow:
-    bool initialize(const std::string &name, size_t width, size_t height) override;
+    bool initialize(const std::string &name, int width, int height) override;
     void destroy() override;
     void resetNativeWindow() override;
     EGLNativeWindowType getNativeWindow() const override;
@@ -47,13 +53,20 @@ class ANGLE_UTIL_EXPORT ScenicWindow : public OSWindow
     void setVisible(bool isVisible) override;
     void signalTestEvent() override;
 
+    // Presents the window to Scenic.
+    //
+    // We need to do this once per EGL window surface after adding the
+    // surface's image pipe as a child of our window.
+    void present();
+
     // FIDL callbacks:
-    void OnScenicEvents(std::vector<fuchsia::ui::scenic::Event> events);
-    void OnScenicError(zx_status_t status);
+    void onScenicEvents(std::vector<fuchsia::ui::scenic::Event> events);
+    void onScenicError(zx_status_t status);
+    void onFramePresented(fuchsia::scenic::scheduling::FramePresentedInfo info);
 
   private:
-    // Default message loop.
-    async::Loop *mLoop;
+    // ScenicWindow async loop.
+    async::Loop *const mLoop;
 
     // System services.
     zx::channel mServiceRoot;
@@ -64,6 +77,13 @@ class ANGLE_UTIL_EXPORT ScenicWindow : public OSWindow
     scenic::Session mScenicSession;
     scenic::ShapeNode mShape;
     scenic::Material mMaterial;
+
+    // Whether our scenic session has disconnected.
+    bool mLostSession = false;
+
+    // Present limiting.
+    static constexpr int kMaxInFlightPresents = 2;
+    int mInFlightPresents                     = 0;
 
     // Scenic view.
     std::unique_ptr<scenic::View> mView;

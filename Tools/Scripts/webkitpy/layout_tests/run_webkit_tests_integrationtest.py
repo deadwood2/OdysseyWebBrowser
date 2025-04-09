@@ -29,14 +29,16 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import json
-import StringIO
+import sys
 import unittest
 
+from webkitpy.common.unicode_compatibility import StringIO
 from webkitpy.common.system import outputcapture, path
 from webkitpy.common.system.crashlogs_unittest import make_mock_crash_report_darwin
 from webkitpy.common.system.systemhost import SystemHost
 from webkitpy.common.host import Host
 from webkitpy.common.host_mock import MockHost
+from webkitpy.common.unicode_compatibility import StringIO
 
 from webkitpy.layout_tests import run_webkit_tests
 from webkitpy.layout_tests.models.test_run_results import INTERRUPTED_EXIT_STATUS
@@ -77,7 +79,7 @@ def passing_run(extra_args=None, port_obj=None, tests_included=False, host=None,
     if shared_port:
         port_obj.host.port_factory.get = lambda *args, **kwargs: port_obj
 
-    logging_stream = StringIO.StringIO()
+    logging_stream = StringIO()
     run_details = run_webkit_tests.run(port_obj, options, parsed_args, logging_stream=logging_stream)
     return run_details.exit_code == 0
 
@@ -100,7 +102,7 @@ def run_and_capture(port_obj, options, parsed_args, shared_port=True):
     oc = outputcapture.OutputCapture()
     try:
         oc.capture_output()
-        logging_stream = StringIO.StringIO()
+        logging_stream = StringIO()
         run_details = run_webkit_tests.run(port_obj, options, parsed_args, logging_stream=logging_stream)
     finally:
         oc.restore_output()
@@ -135,7 +137,7 @@ def get_test_results(args, host=None):
 
     oc = outputcapture.OutputCapture()
     oc.capture_output()
-    logging_stream = StringIO.StringIO()
+    logging_stream = StringIO()
     try:
         run_details = run_webkit_tests.run(port_obj, options, parsed_args, logging_stream=logging_stream)
     finally:
@@ -176,11 +178,12 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
 
         # FIXME: Remove this when we fix test-webkitpy to work
         # properly on cygwin (bug 63846).
-        self.should_test_processes = not self._platform.is_win()
+        # FIXME: Multiprocessing doesn't do well when nested in Python 3 (https://bugs.webkit.org/show_bug.cgi?id=205280)
+        self.should_test_processes = not self._platform.is_win() and sys.version_info < (3, 0)
 
     def test_basic(self):
         options, args = parse_args(tests_included=True)
-        logging_stream = StringIO.StringIO()
+        logging_stream = StringIO()
         host = MockHost()
         port_obj = host.port_factory.get(options.platform, options)
         details = run_webkit_tests.run(port_obj, options, args, logging_stream)
@@ -195,7 +198,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         one_line_summary = "%d tests ran as expected, %d didn't:\n" % (
             details.initial_results.total - details.initial_results.expected_skips - len(details.initial_results.unexpected_results_by_name),
             len(details.initial_results.unexpected_results_by_name))
-        self.assertTrue(one_line_summary in logging_stream.buflist)
+        self.assertTrue(one_line_summary in logging_stream.getvalue())
 
         # Ensure the results were summarized properly.
         self.assertEqual(details.summarized_results['num_regressions'], details.exit_code)
@@ -219,14 +222,14 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         if self.should_test_processes:
             _, regular_output, _ = logging_run(
                 ['--debug-rwt-logging', '--child-processes', '2'], shared_port=False)
-            self.assertTrue(any(['Running 2 ' in line for line in regular_output.buflist]))
+            self.assertTrue(any(['Running 2 ' in line for line in regular_output.getvalue().splitlines()]))
 
     def test_child_processes_min(self):
         if self.should_test_processes:
             _, regular_output, _ = logging_run(
                 ['--debug-rwt-logging', '--child-processes', '2', '-i', 'passes/passes', 'passes'],
                 tests_included=True, shared_port=False)
-            self.assertTrue(any(['Running 1 ' in line for line in regular_output.buflist]))
+            self.assertTrue(any(['Running 1 ' in line for line in regular_output.getvalue().splitlines()]))
 
     def test_dryrun(self):
         tests_run = get_tests_run(['--dry-run'])
@@ -272,7 +275,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
 
         if self.should_test_processes:
             _, regular_output, _ = logging_run(['failures/expected/keyboard.html', 'passes/text.html', '--child-processes', '2', '--force'], tests_included=True, shared_port=False)
-            self.assertTrue(any(['Interrupted, exiting' in line for line in regular_output.buflist]))
+            self.assertTrue(any(['Interrupted, exiting' in line for line in regular_output.getvalue().splitlines()]))
 
     def test_no_tests_found(self):
         details, err, _ = logging_run(['resources'], tests_included=True)
@@ -476,12 +479,57 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
             tests_included=True, host=host)
         file_list = host.filesystem.written_files.keys()
         self.assertEqual(details.exit_code, 1)
-        expected_token = '"unexpected":{"text-image-checksum.html":{"report":"REGRESSION","expected":"PASS","actual":"IMAGE+TEXT","image_diff_percent":1},"missing_text.html":{"report":"MISSING","expected":"PASS","is_missing_text":true,"actual":"MISSING"}'
-        json_string = host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')
-        self.assertTrue(json_string.find(expected_token) != -1)
-        self.assertTrue(json_string.find('"num_regressions":1') != -1)
-        self.assertTrue(json_string.find('"num_flaky":0') != -1)
-        self.assertTrue(json_string.find('"num_missing":1') != -1)
+        expected_dictionary = {
+            'version': 4,
+            'fixable': 3,
+            'skipped': 0,
+            'num_passes': 0,
+            'num_flaky': 0,
+            'num_missing': 1,
+            'num_regressions': 1,
+            'uses_expectations_file': True,
+            'interrupted': False,
+            'layout_tests_dir': '/test.checkout/LayoutTests',
+            'has_pretty_patch': False,
+            'pixel_tests_enabled': True,
+            'other_crashes': {},
+            'date': '10:10AM on December 13, 2019',
+            'tests': {
+                'failures': {
+                    'expected': {
+                        'missing_image.html': {
+                            'expected': 'PASS MISSING',
+                            'actual': 'MISSING',
+                            'is_missing_image': True,
+                        },
+                    }, 'unexpected': {
+                        'missing_text.html': {
+                            'report': 'MISSING',
+                            'expected': 'PASS',
+                            'actual': 'MISSING',
+                            'is_missing_text': True,
+                        }, 'text-image-checksum.html': {
+                            'report': 'REGRESSION',
+                            'expected': 'PASS',
+                            'actual': 'IMAGE+TEXT',
+                            'image_diff_percent': 1,
+                        },
+                    },
+                },
+            },
+        }
+        actual_dictionary = json.loads(host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')[len('ADD_RESULTS('):-2])
+        self.assertEqual(
+            sorted(list(expected_dictionary['tests']['failures']['expected'])),
+            sorted(list(actual_dictionary['tests']['failures']['expected'])),
+        )
+        self.assertEqual(
+            sorted(list(expected_dictionary['tests']['failures']['unexpected'])),
+            sorted(list(actual_dictionary['tests']['failures']['unexpected'])),
+        )
+        self.assertEqual(expected_dictionary['num_regressions'], actual_dictionary['num_regressions'])
+        self.assertEqual(expected_dictionary['num_flaky'], actual_dictionary['num_flaky'])
+        self.assertEqual(expected_dictionary['num_missing'], actual_dictionary['num_missing'])
 
     def test_pixel_test_directories(self):
         host = MockHost()
@@ -517,7 +565,39 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
     def test_crash_with_stderr(self):
         host = MockHost()
         _, regular_output, _ = logging_run(['failures/unexpected/crash-with-stderr.html'], tests_included=True, host=host)
-        self.assertTrue(host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json').find('{"crash-with-stderr.html":{"report":"REGRESSION","expected":"PASS","actual":"CRASH","has_stderr":true}}') != -1)
+        actual_dictionary = json.loads(host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')[len('ADD_RESULTS('):-2])
+        expected_dictionary = {
+            'version': 4,
+            'fixable': 1,
+            'skipped': 0,
+            'num_passes': 0,
+            'num_flaky': 0,
+            'num_missing': 0,
+            'num_regressions': 1,
+            'uses_expectations_file': True,
+            'interrupted': False,
+            'layout_tests_dir': '/test.checkout/LayoutTests',
+            'has_pretty_patch': False,
+            'pixel_tests_enabled': True,
+            'other_crashes': {},
+            'date': '10:18AM on December 13, 2019',
+            'tests': {
+                'failures': {
+                    'unexpected': {
+                        'crash-with-stderr.html': {
+                            'has_stderr': True,
+                            'report': 'REGRESSION',
+                            'expected': 'PASS',
+                            'actual': 'CRASH',
+                        },
+                    },
+                },
+            },
+        }
+        self.assertEqual(
+            sorted(list(expected_dictionary['tests']['failures']['unexpected'])),
+            sorted(list(actual_dictionary['tests']['failures']['unexpected'])),
+        )
 
     def test_no_image_failure_with_image_diff(self):
         host = MockHost()
@@ -630,7 +710,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         host = MockHost()
         details, err, _ = logging_run(['--no-retry-failures', '--clobber-old-results', 'failures/flaky'], tests_included=True, host=host)
         self.assertEqual(details.exit_code, 1)
-        self.assertTrue('Clobbering old results' in err.getvalue())
+        self.assertTrue('Deleting results directory' in err.getvalue())
         self.assertTrue('flaky/text.html' in err.getvalue())
         self.assertTrue(host.filesystem.exists('/tmp/layout-test-results/failures/flaky/text-actual.txt'))
         self.assertFalse(host.filesystem.exists('retries'))
@@ -740,11 +820,66 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
     def test_reftest_should_not_use_naming_convention_if_not_listed_in_reftestlist(self):
         host = MockHost()
         _, err, _ = logging_run(['--no-show-results', 'reftests/foo/'], tests_included=True, host=host)
-        json_string = host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')
-        self.assertTrue(json_string.find('"unlistedtest.html":{"report":"MISSING","expected":"PASS","is_missing_text":true,"actual":"MISSING","is_missing_image":true}') != -1)
-        self.assertTrue(json_string.find('"num_regressions":4') != -1)
-        self.assertTrue(json_string.find('"num_flaky":0') != -1)
-        self.assertTrue(json_string.find('"num_missing":1') != -1)
+        expected_dictionary = {
+            'version': 4,
+            'fixable': 5,
+            'skipped': 0,
+            'num_passes': 3,
+            'num_flaky': 0,
+            'num_missing': 1,
+            'num_regressions': 4,
+            'uses_expectations_file': True,
+            'interrupted': False,
+            'layout_tests_dir': '/test.checkout/LayoutTests',
+            'has_pretty_patch': False,
+            'pixel_tests_enabled': True,
+            'other_crashes': {},
+            'date': '10:27AM on December 13, 2019',
+            'tests': {
+                'reftests': {
+                    'foo': {
+                        'multiple-both-failure.html': {
+                            'reftest_type': ['!=', '=='],
+                            'report': 'REGRESSION',
+                            'expected': 'PASS',
+                            'actual': 'IMAGE',
+                        }, 'multiple-match-failure.html': {
+                            'reftest_type': ['=='],
+                            'report': 'REGRESSION',
+                            'expected': 'PASS',
+                            'actual': 'IMAGE',
+                            'image_diff_percent': 1,
+                        }, 'multiple-mismatch-failure.html': {
+                            'reftest_type': ['!='],
+                            'report': 'REGRESSION',
+                            'expected': 'PASS',
+                            'actual': 'IMAGE',
+                        }, 'test.html': {
+                            'reftest_type': ['=='],
+                            'report': 'REGRESSION',
+                            'expected': 'PASS',
+                            'actual': 'IMAGE',
+                            'image_diff_percent': None,
+                        }, 'unlistedtest.html': {
+                            'report': 'MISSING',
+                            'expected': 'PASS',
+                            'actual': 'MISSING',
+                            'is_missing_text': True,
+                            'is_missing_image': True,
+                        },
+                    },
+                },
+            },
+        }
+        actual_dictionary = json.loads(host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')[len('ADD_RESULTS('):-2])
+
+        self.assertEqual(
+            expected_dictionary['tests']['reftests']['foo']['unlistedtest.html'],
+            actual_dictionary['tests']['reftests']['foo']['unlistedtest.html'],
+        )
+        self.assertEqual(expected_dictionary['num_regressions'], actual_dictionary['num_regressions'])
+        self.assertEqual(expected_dictionary['num_flaky'], actual_dictionary['num_flaky'])
+        self.assertEqual(expected_dictionary['num_missing'], actual_dictionary['num_missing'])
 
     def test_additional_platform_directory(self):
         self.assertTrue(passing_run(['--additional-platform-directory', '/tmp/foo']))
@@ -798,8 +933,8 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         self.assertEqual(full_results['has_pretty_patch'], False)
 
     def test_unsupported_platform(self):
-        stdout = StringIO.StringIO()
-        stderr = StringIO.StringIO()
+        stdout = StringIO()
+        stderr = StringIO()
         res = run_webkit_tests.main(['--platform', 'foo'], stdout, stderr)
 
         self.assertEqual(res, run_webkit_tests.EXCEPTIONAL_EXIT_STATUS)
@@ -819,7 +954,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         options, parsed_args = parse_args(['--verbose', '--fully-parallel', '--child-processes', '2', 'passes/text.html', 'passes/image.html'], tests_included=True, print_nothing=False)
         host = MockHost()
         port_obj = host.port_factory.get(port_name=options.platform, options=options)
-        logging_stream = StringIO.StringIO()
+        logging_stream = StringIO()
         run_webkit_tests.run(port_obj, options, parsed_args, logging_stream=logging_stream)
         self.assertTrue('text.html passed' in logging_stream.getvalue())
         self.assertTrue('image.html passed' in logging_stream.getvalue())
@@ -836,7 +971,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         oc = outputcapture.OutputCapture()
         try:
             oc.capture_output()
-            logging = StringIO.StringIO()
+            logging = StringIO()
             run_webkit_tests.run(port, run_webkit_tests.parse_args(['--debug-rwt-logging', '-n', '--no-build', '--root', '/build'])[0], [], logging_stream=logging)
         finally:
             output, err, _ = oc.restore_output()
@@ -860,7 +995,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         oc = outputcapture.OutputCapture()
         try:
             oc.capture_output()
-            logging = StringIO.StringIO()
+            logging = StringIO()
             run_webkit_tests._print_expectations(port, run_webkit_tests.parse_args([])[0], [], logging_stream=logging)
         finally:
             output, _, _ = oc.restore_output()
@@ -894,7 +1029,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         oc = outputcapture.OutputCapture()
         try:
             oc.capture_output()
-            logging = StringIO.StringIO()
+            logging = StringIO()
             run_webkit_tests.run(port, run_webkit_tests.parse_args(['--debug-rwt-logging', '-n', '--no-build', '--root', '/build'])[0], [], logging_stream=logging)
         finally:
             output, err, _ = oc.restore_output()
@@ -915,7 +1050,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         oc = outputcapture.OutputCapture()
         try:
             oc.capture_output()
-            logging = StringIO.StringIO()
+            logging = StringIO()
             run_webkit_tests._print_expectations(port, run_webkit_tests.parse_args([])[0], [], logging_stream=logging)
         finally:
             output, _, _ = oc.restore_output()
@@ -948,12 +1083,18 @@ class EndToEndTest(unittest.TestCase):
         self.assertTrue("multiple-match-success.html" not in json["tests"]["reftests"]["foo"])
         self.assertTrue("multiple-mismatch-success.html" not in json["tests"]["reftests"]["foo"])
         self.assertTrue("multiple-both-success.html" not in json["tests"]["reftests"]["foo"])
-        self.assertEqual(json["tests"]["reftests"]["foo"]["multiple-match-failure.html"],
-            {"expected": "PASS", "actual": "IMAGE", "reftest_type": ["=="], "image_diff_percent": 1, "report": "REGRESSION"})
-        self.assertEqual(json["tests"]["reftests"]["foo"]["multiple-mismatch-failure.html"],
-            {"expected": "PASS", "actual": "IMAGE", "reftest_type": ["!="], "report": "REGRESSION"})
-        self.assertEqual(json["tests"]["reftests"]["foo"]["multiple-both-failure.html"],
-            {"expected": "PASS", "actual": "IMAGE", "reftest_type": ["==", "!="], "report": "REGRESSION"})
+        self.assertEqual(
+            json["tests"]["reftests"]["foo"]["multiple-match-failure.html"],
+            {"expected": "PASS", "actual": "IMAGE", "reftest_type": ["=="], "image_diff_percent": 1, "report": "REGRESSION"},
+        )
+        self.assertEqual(
+            json["tests"]["reftests"]["foo"]["multiple-mismatch-failure.html"],
+            {"expected": "PASS", "actual": "IMAGE", "reftest_type": ["!="], "report": "REGRESSION"},
+        )
+        self.assertEqual(
+            json["tests"]["reftests"]["foo"]["multiple-both-failure.html"],
+            {"expected": "PASS", "actual": "IMAGE", "reftest_type": sorted(["==", "!="]), "report": "REGRESSION"},
+        )
 
 
 class RebaselineTest(unittest.TestCase, StreamTestingMixin):
@@ -1040,8 +1181,8 @@ class MainTest(unittest.TestCase):
         def exception_raising_run(port, options, args, stderr):
             assert False
 
-        stdout = StringIO.StringIO()
-        stderr = StringIO.StringIO()
+        stdout = StringIO()
+        stderr = StringIO()
         try:
             run_webkit_tests.run = interrupting_run
             res = run_webkit_tests.main([], stdout, stderr)

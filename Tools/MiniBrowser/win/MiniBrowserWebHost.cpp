@@ -32,8 +32,6 @@
 #include "WebKitLegacyBrowserWindow.h"
 #include <WebKitLegacy/WebKit.h>
 
-typedef _com_ptr_t<_com_IIID<IWebDataSource, &__uuidof(IWebDataSource)>> IWebDataSourcePtr;
-
 HRESULT MiniBrowserWebHost::didCommitLoadForFrame(_In_opt_ IWebView* webView, _In_opt_ IWebFrame* frame)
 {
     return didChangeLocationWithinPageForFrame(webView, frame);
@@ -82,6 +80,10 @@ HRESULT MiniBrowserWebHost::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void**
         *ppvObject = static_cast<IWebFrameLoadDelegate*>(this);
     else if (IsEqualGUID(riid, IID_IWebFrameLoadDelegate))
         *ppvObject = static_cast<IWebFrameLoadDelegate*>(this);
+    else if (IsEqualGUID(riid, IID_IWebFrameLoadDelegatePrivate))
+        *ppvObject = static_cast<IWebFrameLoadDelegatePrivate*>(this);
+    else if (IsEqualGUID(riid, IID_IWebNotificationObserver))
+        *ppvObject = static_cast<IWebNotificationObserver*>(this);
     else
         return E_NOINTERFACE;
 
@@ -91,12 +93,15 @@ HRESULT MiniBrowserWebHost::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void**
 
 ULONG MiniBrowserWebHost::AddRef()
 {
-    return m_client->AddRef();
+    return ++m_refCount;
 }
 
 ULONG MiniBrowserWebHost::Release()
 {
-    return m_client->Release();
+    ULONG newRef = --m_refCount;
+    if (!newRef)
+        delete this;
+    return newRef;
 }
 
 HRESULT MiniBrowserWebHost::didFinishLoadForFrame(_In_opt_ IWebView* webView, _In_opt_ IWebFrame* frame)
@@ -138,18 +143,6 @@ HRESULT MiniBrowserWebHost::didHandleOnloadEventsForFrame(_In_opt_ IWebView* sen
     hr = request->mainDocumentURL(frameURL.GetAddress());
     if (FAILED(hr))
         return hr;
-
-    return S_OK;
-}
-
-HRESULT MiniBrowserWebHost::didFirstLayoutInFrame(_In_opt_ IWebView*, _In_opt_ IWebFrame* frame)
-{
-    if (!frame)
-        return E_POINTER;
-
-    IWebFrame2Ptr frame2;
-    if (FAILED(frame->QueryInterface(&frame2.GetInterfacePtr())))
-        return S_OK;
 
     return S_OK;
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2013 The ANGLE Project Authors. All rights reserved.
+// Copyright 2013 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -54,6 +54,58 @@ struct Type
 };
 
 uint32_t GetPackedTypeInfo(GLenum type);
+
+ANGLE_INLINE GLenum GetNonLinearFormat(const GLenum format)
+{
+    switch (format)
+    {
+        case GL_BGRA8_EXT:
+            return GL_BGRA8_SRGB_ANGLEX;
+        case GL_RGBA8:
+            return GL_SRGB8_ALPHA8;
+        case GL_RGB8:
+        case GL_BGRX8_ANGLEX:
+            return GL_SRGB8;
+        case GL_RGBA16F:
+            return GL_RGBA16F;
+        default:
+            return GL_NONE;
+    }
+}
+
+ANGLE_INLINE bool ColorspaceFormatOverride(const EGLenum colorspace, GLenum *rendertargetformat)
+{
+    // Override the rendertargetformat based on colorpsace
+    switch (colorspace)
+    {
+        case EGL_GL_COLORSPACE_LINEAR:                 // linear colorspace no translation needed
+        case EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT:       // linear colorspace no translation needed
+        case EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT:  // linear colorspace no translation needed
+        case EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT:  // App, not the HW, will specify the
+                                                            // transfer function
+        case EGL_GL_COLORSPACE_SCRGB_EXT:  // App, not the HW, will specify the transfer function
+            // No translation
+            return true;
+        case EGL_GL_COLORSPACE_SRGB_KHR:
+        case EGL_GL_COLORSPACE_DISPLAY_P3_EXT:
+        {
+            GLenum nonLinearFormat = GetNonLinearFormat(*rendertargetformat);
+            if (nonLinearFormat != GL_NONE)
+            {
+                *rendertargetformat = nonLinearFormat;
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        break;
+        default:
+            UNREACHABLE();
+            return false;
+    }
+}
 
 ANGLE_INLINE const Type GetTypeInfo(GLenum type)
 {
@@ -117,14 +169,20 @@ struct InternalFormat
                                                    GLuint *resultOut) const;
 
     bool isLUMA() const;
-    GLenum getReadPixelsFormat() const;
+    GLenum getReadPixelsFormat(const Extensions &extensions) const;
     GLenum getReadPixelsType(const Version &version) const;
+
+    // Support upload a portion of image?
+    bool supportSubImage() const;
 
     // Return true if the format is a required renderbuffer format in the given version of the core
     // spec. Note that it isn't always clear whether all the rules that apply to core required
     // renderbuffer formats also apply to additional formats added by extensions. Because of this
     // extension formats are conservatively not included.
     bool isRequiredRenderbufferFormat(const Version &version) const;
+
+    bool isInt() const;
+    bool isDepthOrStencil() const;
 
     bool operator==(const InternalFormat &other) const;
     bool operator!=(const InternalFormat &other) const;
@@ -153,6 +211,7 @@ struct InternalFormat
     bool compressed;
     GLuint compressedBlockWidth;
     GLuint compressedBlockHeight;
+    GLuint compressedBlockDepth;
 
     GLenum format;
     GLenum type;
@@ -165,6 +224,7 @@ struct InternalFormat
     SupportCheckFunction filterSupport;
     SupportCheckFunction textureAttachmentSupport;  // glFramebufferTexture2D
     SupportCheckFunction renderbufferSupport;       // glFramebufferRenderbuffer
+    SupportCheckFunction blendSupport;
 };
 
 // A "Format" wraps an InternalFormat struct, querying it from either a sized internal format or
@@ -201,8 +261,15 @@ const InternalFormat &GetInternalFormatInfo(GLenum internalFormat, GLenum type);
 // format is valid.
 GLenum GetUnsizedFormat(GLenum internalFormat);
 
+// Return whether the compressed format requires whole image/mip level to be uploaded to texture.
+bool CompressedFormatRequiresWholeImage(GLenum internalFormat);
+
 typedef std::set<GLenum> FormatSet;
 const FormatSet &GetAllSizedInternalFormats();
+
+typedef std::unordered_map<GLenum, std::unordered_map<GLenum, InternalFormat>>
+    InternalFormatInfoMap;
+const InternalFormatInfoMap &GetInternalFormatMap();
 
 // From the ESSL 3.00.4 spec:
 // Vertex shader inputs can only be float, floating-point vectors, matrices, signed and unsigned
@@ -252,12 +319,8 @@ angle::FormatID GetVertexFormatID(VertexAttribType type,
                                   GLuint components,
                                   bool pureInteger);
 
-ANGLE_INLINE angle::FormatID GetVertexFormatID(const VertexAttribute &attrib)
-{
-    return GetVertexFormatID(attrib.type, attrib.normalized, attrib.size, attrib.pureInteger);
-}
-
 angle::FormatID GetVertexFormatID(const VertexAttribute &attrib, VertexAttribType currentValueType);
+angle::FormatID GetCurrentValueFormatID(VertexAttribType currentValueType);
 const VertexFormat &GetVertexFormatFromID(angle::FormatID vertexFormatID);
 size_t GetVertexFormatSize(angle::FormatID vertexFormatID);
 
@@ -270,9 +333,40 @@ bool ValidES3Format(GLenum format);
 bool ValidES3Type(GLenum type);
 bool ValidES3FormatCombination(GLenum format, GLenum type, GLenum internalFormat);
 
+// Implemented in format_map_desktop.cpp
+bool ValidDesktopFormat(GLenum format);
+bool ValidDesktopType(GLenum type);
+bool ValidDesktopFormatCombination(GLenum format, GLenum type, GLenum internalFormat);
+
 // Implemented in es3_copy_conversion_table_autogen.cpp
 bool ValidES3CopyConversion(GLenum textureFormat, GLenum framebufferFormat);
 
+ANGLE_INLINE ComponentType GetVertexAttributeComponentType(bool pureInteger, VertexAttribType type)
+{
+    if (pureInteger)
+    {
+        switch (type)
+        {
+            case VertexAttribType::Byte:
+            case VertexAttribType::Short:
+            case VertexAttribType::Int:
+                return ComponentType::Int;
+
+            case VertexAttribType::UnsignedByte:
+            case VertexAttribType::UnsignedShort:
+            case VertexAttribType::UnsignedInt:
+                return ComponentType::UnsignedInt;
+
+            default:
+                UNREACHABLE();
+                return ComponentType::NoType;
+        }
+    }
+    else
+    {
+        return ComponentType::Float;
+    }
+}
 }  // namespace gl
 
 #endif  // LIBANGLE_FORMATUTILS_H_

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2008, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2020 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -51,8 +51,10 @@
 #import <WebCore/InspectorFrontendClient.h>
 #import <WebCore/Page.h>
 #import <WebCore/ScriptController.h>
+#import <WebCore/Settings.h>
 #import <WebKitLegacy/DOMExtensions.h>
 #import <algorithm>
+#import <wtf/NakedPtr.h>
 #import <wtf/text/Base64.h>
 
 using namespace WebCore;
@@ -67,7 +69,7 @@ static const CGFloat initialWindowHeight = 650;
 @private
     RetainPtr<WebView> _inspectedWebView;
     WebView* _frontendWebView;
-    WebInspectorFrontendClient* _frontendClient;
+    NakedPtr<WebInspectorFrontendClient> _frontendClient;
     WebInspectorClient* _inspectorClient;
     BOOL _attachedToInspectedWebView;
     BOOL _shouldAttach;
@@ -81,9 +83,9 @@ static const CGFloat initialWindowHeight = 650;
 - (void)attach;
 - (void)detach;
 - (BOOL)attached;
-- (void)setFrontendClient:(WebInspectorFrontendClient*)frontendClient;
-- (void)setInspectorClient:(WebInspectorClient*)inspectorClient;
-- (WebInspectorClient*)inspectorClient;
+- (void)setFrontendClient:(NakedPtr<WebInspectorFrontendClient>)frontendClient;
+- (void)setInspectorClient:(NakedPtr<WebInspectorClient>)inspectorClient;
+- (NakedPtr<WebInspectorClient>)inspectorClient;
 - (void)setAttachedWindowHeight:(unsigned)height;
 - (void)setDockingUnavailable:(BOOL)unavailable;
 - (void)destroyInspectorView;
@@ -219,7 +221,7 @@ void WebInspectorFrontendClient::startWindowDrag()
     [[m_frontendWindowController window] performWindowDragWithEvent:[NSApp currentEvent]];
 }
 
-String WebInspectorFrontendClient::localizedStringsURL()
+String WebInspectorFrontendClient::localizedStringsURL() const
 {
     NSBundle *bundle = [NSBundle bundleWithIdentifier:@"com.apple.WebInspectorUI"];
     if (!bundle)
@@ -260,7 +262,7 @@ void WebInspectorFrontendClient::resetState()
 {
     InspectorFrontendClientLocal::resetState();
 
-    auto* inspectorClient = [m_frontendWindowController inspectorClient];
+    auto inspectorClient = [m_frontendWindowController inspectorClient];
     inspectorClient->deleteInspectorStartsAttached();
     inspectorClient->deleteInspectorAttachDisabled();
 
@@ -325,6 +327,20 @@ void WebInspectorFrontendClient::showCertificate(const CertificateInfo& certific
     [certificateView setDetailsDisclosed:YES];
 }
 
+#if ENABLE(INSPECTOR_TELEMETRY)
+bool WebInspectorFrontendClient::supportsDiagnosticLogging()
+{
+    auto* page = frontendPage();
+    return page ? page->settings().diagnosticLoggingEnabled() : false;
+}
+
+void WebInspectorFrontendClient::logDiagnosticEvent(const String& eventName, const DiagnosticLoggingClient::ValueDictionary& dictionary)
+{
+    if (auto* page = frontendPage())
+        page->diagnosticLoggingClient().logDiagnosticMessageWithValueDictionary(eventName, "Legacy Web Inspector Frontend Diagnostics"_s, dictionary, ShouldSample::No);
+}
+#endif
+
 void WebInspectorFrontendClient::updateWindowTitle() const
 {
     NSString *title = [NSString stringWithFormat:UI_STRING_INTERNAL("Web Inspector — %@", "Web Inspector window title"), (NSString *)m_inspectedURL];
@@ -364,7 +380,7 @@ void WebInspectorFrontendClient::save(const String& suggestedURL, const String& 
         } else
             [contentCopy writeToURL:actualURL atomically:YES encoding:NSUTF8StringEncoding error:NULL];
 
-        core([m_frontendWindowController frontendWebView])->mainFrame().script().executeScript([NSString stringWithFormat:@"InspectorFrontendAPI.savedURL(\"%@\")", actualURL.absoluteString]);
+        core([m_frontendWindowController frontendWebView])->mainFrame().script().executeScriptIgnoringException([NSString stringWithFormat:@"InspectorFrontendAPI.savedURL(\"%@\")", actualURL.absoluteString]);
     };
 
     if (!forceSaveDialog) {
@@ -410,7 +426,7 @@ void WebInspectorFrontendClient::append(const String& suggestedURL, const String
     [handle writeData:[content dataUsingEncoding:NSUTF8StringEncoding]];
     [handle closeFile];
 
-    core([m_frontendWindowController frontendWebView])->mainFrame().script().executeScript([NSString stringWithFormat:@"InspectorFrontendAPI.appendedToURL(\"%@\")", [actualURL absoluteString]]);
+    core([m_frontendWindowController frontendWebView])->mainFrame().script().executeScriptIgnoringException([NSString stringWithFormat:@"InspectorFrontendAPI.appendedToURL(\"%@\")", [actualURL absoluteString]]);
 }
 
 // MARK: -
@@ -439,6 +455,7 @@ void WebInspectorFrontendClient::append(const String& suggestedURL, const String
     [preferences setUserStyleSheetEnabled:NO];
     [preferences setAllowFileAccessFromFileURLs:YES];
     [preferences setAllowUniversalAccessFromFileURLs:YES];
+    [preferences setAllowTopNavigationToDataURLs:YES];
     [preferences setStorageBlockingPolicy:WebAllowAllStorage];
 
     _frontendWebView = [[WebView alloc] init];
@@ -657,17 +674,17 @@ void WebInspectorFrontendClient::append(const String& suggestedURL, const String
     return _attachedToInspectedWebView;
 }
 
-- (void)setFrontendClient:(WebInspectorFrontendClient*)frontendClient
+- (void)setFrontendClient:(NakedPtr<WebInspectorFrontendClient>)frontendClient
 {
     _frontendClient = frontendClient;
 }
 
-- (void)setInspectorClient:(WebInspectorClient*)inspectorClient
+- (void)setInspectorClient:(NakedPtr<WebInspectorClient>)inspectorClient
 {
     _inspectorClient = inspectorClient;
 }
 
-- (WebInspectorClient*)inspectorClient
+- (NakedPtr<WebInspectorClient>)inspectorClient
 {
     return _inspectorClient;
 }

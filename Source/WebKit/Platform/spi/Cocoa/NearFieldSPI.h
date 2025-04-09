@@ -93,12 +93,11 @@ typedef NS_ENUM(uint32_t, NFNdefAvailability) {
 @interface NFReaderSession : NFSession
 @property (assign) id<NFReaderSessionDelegate> delegate;
 
-- (BOOL)startPolling;
+- (BOOL)startPollingWithError:(NSError **)outError;
 - (BOOL)stopPolling;
 - (BOOL)connectTag:(NFTag*)tag;
 - (BOOL)disconnectTag;
 - (NSData*)transceive:(NSData*)capdu;
-- (NSError *)updateUIAlertMessage:(NSString *)message;
 @end
 
 @protocol NFReaderSessionDelegate <NSObject>
@@ -108,7 +107,7 @@ typedef NS_ENUM(uint32_t, NFNdefAvailability) {
 
 @interface NFHardwareManager : NSObject
 + (instancetype)sharedHardwareManager;
-- (NSObject<NFSession> *)startReaderSessionWithActionSheetUI:(void(^)(NFReaderSession *session, NSError *error))theStartCallback;
+- (NSObject<NFSession> *)startReaderSession:(void(^)(NFReaderSession *session, NSError *error))theStartCallback;
 - (BOOL)areFeaturesSupported:(NFFeature)featureMask outError:(NSError**)outError;
 @end
 

@@ -1,5 +1,5 @@
 //
-// Copyright(c) 2014 The ANGLE Project Authors. All rights reserved.
+// Copyright 2014 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -46,6 +46,13 @@ ANGLE_EXPORT EGLSurface EGLAPIENTRY EGL_CreatePlatformPixmapSurfaceEXT(EGLDispla
 ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_QueryDisplayAttribEXT(EGLDisplay dpy,
                                                               EGLint attribute,
                                                               EGLAttrib *value);
+
+// EGL_ANGLE_feature_control
+ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_QueryDisplayAttribANGLE(EGLDisplay dpy,
+                                                                EGLint attribute,
+                                                                EGLAttrib *value);
+
+// EGL_EXT_device_query
 ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_QueryDeviceAttribEXT(EGLDeviceEXT device,
                                                              EGLint attribute,
                                                              EGLAttrib *value);
@@ -121,12 +128,16 @@ ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_GetSyncAttribKHR(EGLDisplay dpy,
 // EGL_KHR_wait_sync
 ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_WaitSyncKHR(EGLDisplay dpy, EGLSync sync, EGLint flags);
 
-// EGL_CHROMIUM_get_sync_values
+// EGL_CHROMIUM_sync_control
 ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_GetSyncValuesCHROMIUM(EGLDisplay dpy,
                                                               EGLSurface surface,
                                                               EGLuint64KHR *ust,
                                                               EGLuint64KHR *msc,
                                                               EGLuint64KHR *sbc);
+ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_GetMscRateCHROMIUM(EGLDisplay dpy,
+                                                           EGLSurface surface,
+                                                           EGLint *numerator,
+                                                           EGLint *denominator);
 
 // EGL_KHR_swap_buffers_with_damage
 ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_SwapBuffersWithDamageKHR(EGLDisplay dpy,
@@ -197,6 +208,24 @@ ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_GetFrameTimestampsANDROID(EGLDisplay dpy
                                                                   EGLint numTimestamps,
                                                                   const EGLint *timestamps,
                                                                   EGLnsecsANDROID *values);
+
+// EGL_ANGLE_feature_control
+ANGLE_EXPORT const char *EGLAPIENTRY EGL_QueryStringiANGLE(EGLDisplay dpy,
+                                                           EGLint name,
+                                                           EGLint index);
+
+// EGL_ANDROID_get_native_client_buffer
+ANGLE_EXPORT EGLClientBuffer EGLAPIENTRY
+EGL_GetNativeClientBufferANDROID(const struct AHardwareBuffer *buffer);
+
+// EGL_ANDROID_native_fence_sync
+ANGLE_EXPORT EGLint EGLAPIENTRY EGL_DupNativeFenceFDANDROID(EGLDisplay dpy, EGLSyncKHR sync);
+
+// EGL_ANGLE_swap_with_frame_token
+ANGLE_EXPORT EGLBoolean EGLAPIENTRY
+EGL_SwapBuffersWithFrameTokenANGLE(EGLDisplay dpy,
+                                   EGLSurface surface,
+                                   EGLFrameTokenANGLE frametoken);
 
 }  // extern "C"
 

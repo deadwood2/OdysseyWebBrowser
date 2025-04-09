@@ -81,6 +81,7 @@ static id findAccessibleObjectById(id obj, NSString *idAttribute)
         return obj;
     END_AX_OBJC_EXCEPTIONS
 
+    BEGIN_AX_OBJC_EXCEPTIONS
     NSArray *children = [obj accessibilityAttributeValue:NSAccessibilityChildrenAttribute];
     NSUInteger childrenCount = [children count];
     for (NSUInteger i = 0; i < childrenCount; ++i) {
@@ -88,6 +89,7 @@ static id findAccessibleObjectById(id obj, NSString *idAttribute)
         if (result)
             return result;
     }
+    END_AX_OBJC_EXCEPTIONS
 
     return nullptr;
 }
@@ -95,18 +97,70 @@ static id findAccessibleObjectById(id obj, NSString *idAttribute)
 RefPtr<AccessibilityUIElement> AccessibilityController::accessibleElementById(JSStringRef idAttribute)
 {
     WKBundlePageRef page = InjectedBundle::singleton().page()->page();
-    id root = (__bridge id)WKAccessibilityRootObject(page);
+    PlatformUIElement root = nullptr;
 
-    id result = findAccessibleObjectById(root, [NSString stringWithJSStringRef:idAttribute]);
+    executeOnAXThreadIfPossible([&page, &root] {
+        root = static_cast<PlatformUIElement>(WKAccessibilityRootObject(page));
+    });
+
+    // Now that we have a root and the isolated tree is generated, set
+    // m_useAXThread to true for next request to be handled in the secondary thread.
+    if (WKAccessibilityCanUseSecondaryAXThread(InjectedBundle::singleton().page()->page()))
+        m_useAXThread = true;
+
+    id result;
+    executeOnAXThreadIfPossible([&root, &idAttribute, &result] {
+        result = findAccessibleObjectById(root, [NSString stringWithJSStringRef:idAttribute]);
+    });
+
     if (result)
         return AccessibilityUIElement::create(result);
-
     return nullptr;
 }
 
 JSRetainPtr<JSStringRef> AccessibilityController::platformName()
 {
     return adopt(JSStringCreateWithUTF8CString("mac"));
+}
+
+// AXThread implementation
+
+void AXThread::initializeRunLoop()
+{
+    // Initialize the run loop.
+    {
+        std::lock_guard<Lock> lock(m_initializeRunLoopMutex);
+
+        m_threadRunLoop = CFRunLoopGetCurrent();
+
+        CFRunLoopSourceContext context = { 0, this, 0, 0, 0, 0, 0, 0, 0, threadRunLoopSourceCallback };
+        m_threadRunLoopSource = adoptCF(CFRunLoopSourceCreate(0, 0, &context));
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), m_threadRunLoopSource.get(), kCFRunLoopDefaultMode);
+
+        m_initializeRunLoopConditionVariable.notifyAll();
+    }
+
+    ASSERT(isCurrentThread());
+
+    CFRunLoopRun();
+}
+
+void AXThread::wakeUpRunLoop()
+{
+    CFRunLoopSourceSignal(m_threadRunLoopSource.get());
+    CFRunLoopWakeUp(m_threadRunLoop.get());
+}
+
+void AXThread::threadRunLoopSourceCallback(void* axThread)
+{
+    static_cast<AXThread*>(axThread)->threadRunLoopSourceCallback();
+}
+
+void AXThread::threadRunLoopSourceCallback()
+{
+    @autoreleasepool {
+        dispatchFunctionsFromAXThread();
+    }
 }
 
 } // namespace WTR

@@ -28,8 +28,8 @@
 
 #if HAVE(IOSURFACE)
 
-#import "GraphicsContext3D.h"
 #import "GraphicsContextCG.h"
+#import "GraphicsContextGLOpenGL.h"
 #import "HostWindow.h"
 #import "IOSurfacePool.h"
 #import "ImageBuffer.h"
@@ -231,6 +231,8 @@ IOSurface::IOSurface(IOSurfaceRef surface, CGColorSpaceRef colorSpace)
     m_size = IntSize(IOSurfaceGetWidth(surface), IOSurfaceGetHeight(surface));
     m_totalBytes = IOSurfaceGetAllocSize(surface);
 }
+
+IOSurface::~IOSurface() = default;
 
 IntSize IOSurface::maximumSize()
 {

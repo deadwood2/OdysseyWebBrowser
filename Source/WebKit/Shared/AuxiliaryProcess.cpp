@@ -26,9 +26,9 @@
 #include "config.h"
 #include "AuxiliaryProcess.h"
 
+#include "ContentWorldShared.h"
 #include "Logging.h"
 #include "SandboxInitializationParameters.h"
-#include <WebCore/SchemeRegistry.h>
 #include <pal/SessionID.h>
 
 #if !OS(WINDOWS)
@@ -78,8 +78,9 @@ void AuxiliaryProcess::initialize(const AuxiliaryProcessInitializationParameters
 
     initializeProcessName(parameters);
 
-    // In WebKit2, only the UI process should ever be generating non-default PAL::SessionIDs.
+    // In WebKit2, only the UI process should ever be generating certain identifiers.
     PAL::SessionID::enableGenerationProtection();
+    ContentWorldIdentifier::enableGenerationProtection();
 
     m_connection = IPC::Connection::createClientConnection(parameters.connectionIdentifier, *this);
     initializeConnection(m_connection.get());
@@ -195,9 +196,35 @@ void AuxiliaryProcess::shutDown()
     terminate();
 }
 
-void AuxiliaryProcess::registerURLSchemeServiceWorkersCanHandle(const String& urlScheme) const
+Optional<std::pair<IPC::Connection::Identifier, IPC::Attachment>> AuxiliaryProcess::createIPCConnectionPair()
 {
-    WebCore::SchemeRegistry::registerURLSchemeServiceWorkersCanHandle(urlScheme);
+#if USE(UNIX_DOMAIN_SOCKETS)
+    IPC::Connection::SocketPair socketPair = IPC::Connection::createPlatformConnection();
+    return std::make_pair(socketPair.server, IPC::Attachment { socketPair.client });
+#elif OS(DARWIN)
+    // Create the listening port.
+    mach_port_t listeningPort = MACH_PORT_NULL;
+    auto kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &listeningPort);
+    if (kr != KERN_SUCCESS) {
+        RELEASE_LOG_ERROR(Process, "AuxiliaryProcess::createIPCConnectionPair: Could not allocate mach port, error %x", kr);
+        CRASH();
+    }
+    if (!MACH_PORT_VALID(listeningPort)) {
+        RELEASE_LOG_ERROR(Process, "AuxiliaryProcess::createIPCConnectionPair: Could not allocate mach port, returned port was invalid");
+        CRASH();
+    }
+    return std::make_pair(IPC::Connection::Identifier { listeningPort }, IPC::Attachment { listeningPort, MACH_MSG_TYPE_MAKE_SEND });
+#elif OS(WINDOWS)
+    IPC::Connection::Identifier serverIdentifier, clientIdentifier;
+    if (!IPC::Connection::createServerAndClientIdentifiers(serverIdentifier, clientIdentifier)) {
+        LOG_ERROR("Failed to create server and client identifiers");
+        CRASH();
+    }
+    return std::make_pair(serverIdentifier, IPC::Attachment { clientIdentifier });
+#else
+    notImplemented();
+    return { };
+#endif
 }
 
 #if !PLATFORM(COCOA)

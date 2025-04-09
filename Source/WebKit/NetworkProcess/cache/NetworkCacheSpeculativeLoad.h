@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
+#if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION) || ENABLE(NETWORK_CACHE_STALE_WHILE_REVALIDATE)
 
 #include "NetworkCache.h"
 #include "NetworkCacheEntry.h"
@@ -33,6 +33,7 @@
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/ResourceResponse.h>
 #include <WebCore/SharedBuffer.h>
+#include <wtf/CompletionHandler.h>
 
 namespace WebKit {
 
@@ -43,7 +44,7 @@ namespace NetworkCache {
 class SpeculativeLoad final : public NetworkLoadClient {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    typedef Function<void (std::unique_ptr<NetworkCache::Entry>)> RevalidationCompletionHandler;
+    using RevalidationCompletionHandler = CompletionHandler<void(std::unique_ptr<NetworkCache::Entry>)>;
     SpeculativeLoad(Cache&, const GlobalFrameID&, const WebCore::ResourceRequest&, std::unique_ptr<NetworkCache::Entry>, RevalidationCompletionHandler&&);
 
     virtual ~SpeculativeLoad();
@@ -64,7 +65,6 @@ private:
     void didComplete();
 
     Ref<Cache> m_cache;
-    GlobalFrameID m_globalFrameID;
     RevalidationCompletionHandler m_completionHandler;
     WebCore::ResourceRequest m_originalRequest;
 
@@ -77,7 +77,9 @@ private:
     bool m_didComplete { false };
 };
 
+bool requestsHeadersMatch(const WebCore::ResourceRequest& speculativeValidationRequest, const WebCore::ResourceRequest& actualRequest);
+
 } // namespace NetworkCache
 } // namespace WebKit
 
-#endif // ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
+#endif // ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION) || ENABLE(NETWORK_CACHE_STALE_WHILE_REVALIDATE)

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2014 The ANGLE Project Authors. All rights reserved.
+// Copyright 2014 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -17,7 +17,6 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
-#include "GLSLANG/ShaderLang.h"
 #include "angle_test_instantiate.h"
 #include "util/EGLPlatformParameters.h"
 
@@ -44,12 +43,17 @@ struct PlatformParameters
     PlatformParameters(EGLint majorVersion, EGLint minorVersion, GLESDriverType driver);
 
     EGLint getRenderer() const;
+    EGLint getDeviceType() const;
 
     void initDefaultParameters();
 
-    auto tie() const { return std::tie(driver, eglParameters, majorVersion, minorVersion); }
+    auto tie() const
+    {
+        return std::tie(driver, noFixture, eglParameters, majorVersion, minorVersion);
+    }
 
     GLESDriverType driver;
+    bool noFixture;
     EGLPlatformParameters eglParameters;
     EGLint majorVersion;
     EGLint minorVersion;
@@ -71,7 +75,7 @@ EGLPlatformParameters D3D9_NULL();
 EGLPlatformParameters D3D9_REFERENCE();
 
 EGLPlatformParameters D3D11();
-EGLPlatformParameters D3D11(EGLenum presentPath);
+EGLPlatformParameters D3D11_PRESENT_PATH_FAST();
 EGLPlatformParameters D3D11_FL11_1();
 EGLPlatformParameters D3D11_FL11_0();
 EGLPlatformParameters D3D11_FL10_1();
@@ -102,10 +106,12 @@ EGLPlatformParameters OPENGLES();
 EGLPlatformParameters OPENGLES(EGLint major, EGLint minor);
 EGLPlatformParameters OPENGLES_NULL();
 
-EGLPlatformParameters OPENGL_OR_GLES(bool useNullDevice);
+EGLPlatformParameters OPENGL_OR_GLES();
+EGLPlatformParameters OPENGL_OR_GLES_NULL();
 
 EGLPlatformParameters VULKAN();
 EGLPlatformParameters VULKAN_NULL();
+EGLPlatformParameters VULKAN_SWIFTSHADER();
 
 }  // namespace egl_platform
 
@@ -115,7 +121,7 @@ PlatformParameters ES2_D3D9();
 
 PlatformParameters ES1_D3D11();
 PlatformParameters ES2_D3D11();
-PlatformParameters ES2_D3D11(EGLenum presentPath);
+PlatformParameters ES2_D3D11_PRESENT_PATH_FAST();
 PlatformParameters ES2_D3D11_FL11_0();
 PlatformParameters ES2_D3D11_FL10_1();
 PlatformParameters ES2_D3D11_FL10_0();
@@ -169,10 +175,20 @@ PlatformParameters ES31_NULL();
 
 PlatformParameters ES1_VULKAN();
 PlatformParameters ES1_VULKAN_NULL();
+PlatformParameters ES1_VULKAN_SWIFTSHADER();
 PlatformParameters ES2_VULKAN();
 PlatformParameters ES2_VULKAN_NULL();
+PlatformParameters ES2_VULKAN_SWIFTSHADER();
 PlatformParameters ES3_VULKAN();
 PlatformParameters ES3_VULKAN_NULL();
+PlatformParameters ES3_VULKAN_SWIFTSHADER();
+PlatformParameters ES31_VULKAN();
+PlatformParameters ES31_VULKAN_NULL();
+PlatformParameters ES31_VULKAN_SWIFTSHADER();
+
+PlatformParameters ES1_METAL();
+PlatformParameters ES2_METAL();
+PlatformParameters ES3_METAL();
 
 PlatformParameters ES2_WGL();
 PlatformParameters ES3_WGL();
@@ -182,6 +198,27 @@ inline PlatformParameters WithNoVirtualContexts(const PlatformParameters &params
     PlatformParameters withNoVirtualContexts                  = params;
     withNoVirtualContexts.eglParameters.contextVirtualization = EGL_FALSE;
     return withNoVirtualContexts;
+}
+
+inline PlatformParameters WithNoFixture(const PlatformParameters &params)
+{
+    PlatformParameters withNoFixture = params;
+    withNoFixture.noFixture          = true;
+    return withNoFixture;
+}
+
+inline PlatformParameters WithNoCommandGraph(const PlatformParameters &params)
+{
+    PlatformParameters withNoCommandGraph                = params;
+    withNoCommandGraph.eglParameters.commandGraphFeature = EGL_FALSE;
+    return withNoCommandGraph;
+}
+
+inline PlatformParameters WithNoTransformFeedback(const PlatformParameters &params)
+{
+    PlatformParameters withNoTransformFeedback                     = params;
+    withNoTransformFeedback.eglParameters.transformFeedbackFeature = EGL_FALSE;
+    return withNoTransformFeedback;
 }
 
 }  // namespace angle

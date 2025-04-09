@@ -32,12 +32,23 @@
 #include "Common.h"
 #include "MiniBrowserLibResource.h"
 #include "MiniBrowserReplace.h"
-#include "WebKitLegacyBrowserWindow.h"
-#include <WebKitLegacy/WebKitCOMAPI.h>
+#include <wtf/win/SoftLinking.h>
+
+#if USE(CF)
+#include <CoreFoundation/CoreFoundation.h>
+#endif
 
 #if ENABLE(WEBKIT)
 #include "WebKitBrowserWindow.h"
 #endif
+
+#if ENABLE(WEBKIT_LEGACY)
+#include "WebKitLegacyBrowserWindow.h"
+#include <WebKitLegacy/WebKitCOMAPI.h>
+#endif
+
+SOFT_LINK_LIBRARY(user32);
+SOFT_LINK_OPTIONAL(user32, SetProcessDpiAwarenessContext, BOOL, STDAPICALLTYPE, (DPI_AWARENESS_CONTEXT));
 
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpstrCmdLine, _In_ int nCmdShow)
 {
@@ -63,12 +74,17 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     // Init COM
     OleInitialize(nullptr);
 
-    ::SetProcessDPIAware();
+    if (SetProcessDpiAwarenessContextPtr())
+        SetProcessDpiAwarenessContextPtr()(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    else
+        ::SetProcessDPIAware();
 
+#if !ENABLE(WEBKIT_LEGACY)
+    auto factory = WebKitBrowserWindow::create;
+#elif !ENABLE(WEBKIT)
     auto factory = WebKitLegacyBrowserWindow::create;
-#if ENABLE(WEBKIT)
-    if (options.windowType == BrowserWindowType::WebKit)
-        factory = WebKitBrowserWindow::create;
+#else
+    auto factory = options.windowType == BrowserWindowType::WebKit ? WebKitBrowserWindow::create : WebKitLegacyBrowserWindow::create;
 #endif
     auto& mainWindow = MainWindow::create().leakRef();
     HRESULT hr = mainWindow.init(factory, hInst, options.usesLayeredWebView);
@@ -88,18 +104,31 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
     // Main message loop:
     __try {
-        _com_ptr_t<_com_IIID<IWebKitMessageLoop, &__uuidof(IWebKitMessageLoop)>> messageLoop;
+#if ENABLE(WEBKIT)
+        while (GetMessage(&msg, nullptr, 0, 0)) {
+#if USE(CF)
+            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, true);
+#endif
+            if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg)) {
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
+            }
+        }
+#else
+        IWebKitMessageLoopPtr messageLoop;
 
         hr = WebKitCreateInstance(CLSID_WebKitMessageLoop, 0, IID_IWebKitMessageLoop, reinterpret_cast<void**>(&messageLoop.GetInterfacePtr()));
         if (FAILED(hr))
             goto exit;
 
         messageLoop->run(hAccelTable);
-
+#endif
     } __except(createCrashReport(GetExceptionInformation()), EXCEPTION_EXECUTE_HANDLER) { }
 
 exit:
+#if !ENABLE(WEBKIT)
     shutDownWebKit();
+#endif
 #ifdef _CRTDBG_MAP_ALLOC
     _CrtDumpMemoryLeaks();
 #endif

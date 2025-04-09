@@ -39,9 +39,15 @@ WTF_EXTERN_C_END
 
 #if USE(APPLE_INTERNAL_SDK)
 
-#import <PassKit/PassKit.h>
+#import <PassKit/PKContact.h>
+#import <PassKit/PKError_Private.h>
+#import <PassKit/PKPassLibrary.h>
+#import <PassKit/PKPayment.h>
+#import <PassKit/PKPaymentPass.h>
 #import <PassKit/PKPaymentAuthorizationViewController_Private.h>
+#import <PassKit/PKPaymentMethod.h>
 #import <PassKit/PKPaymentRequest_Private.h>
+#import <PassKitCore/PKPaymentRequestStatus_Private.h>
 #import <PassKitCore/PKPaymentRequest_WebKit.h>
 
 #if PLATFORM(IOS_FAMILY)
@@ -52,13 +58,11 @@ WTF_EXTERN_C_END
 
 #import <Foundation/Foundation.h>
 
-#if HAVE(PASSKIT_API_TYPE)
 typedef NS_ENUM(NSUInteger, PKPaymentRequestAPIType) {
     PKPaymentRequestAPITypeInApp = 0,
     PKPaymentRequestAPITypeWebJS,
     PKPaymentRequestAPITypeWebPaymentRequest,
 };
-#endif
 
 #if PLATFORM(IOS_FAMILY)
 
@@ -274,9 +278,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface PKPaymentAuthorizationViewController ()
 + (void)paymentServicesMerchantURL:(void(^)(NSURL *merchantURL, NSError *error))completion;
-#if HAVE(PASSKIT_API_TYPE)
 + (void)paymentServicesMerchantURLForAPIType:(PKPaymentRequestAPIType)APIType completion:(void(^)(NSURL *merchantURL, NSError *error))completion;
-#endif
 @property (nonatomic, assign, nullable) id<PKPaymentAuthorizationViewControllerPrivateDelegate> privateDelegate;
 @end
 
@@ -296,11 +298,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSString *CTDataConnectionServiceType;
 @end
 
-#if HAVE(PASSKIT_API_TYPE)
 @interface PKPaymentRequest ()
 @property (nonatomic, assign) PKPaymentRequestAPIType APIType;
 @end
-#endif
 
 #if HAVE(PASSKIT_BOUND_INTERFACE_IDENTIFIER)
 @interface PKPaymentRequest ()
@@ -342,16 +342,20 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) PKPaymentAuthorizationStatus status;
 @end
 
-@interface PKPaymentRequestPaymentMethodUpdate : NSObject
-- (instancetype)initWithPaymentSummaryItems:(nonnull NSArray<PKPaymentSummaryItem *> *)paymentSummaryItems;
+@interface PKPaymentRequestUpdate : NSObject
+- (instancetype)initWithPaymentSummaryItems:(NSArray<PKPaymentSummaryItem *> *)paymentSummaryItems;
+@property (nonatomic, copy) NSArray<PKPaymentSummaryItem *> *paymentSummaryItems;
 @end
 
-@interface PKPaymentRequestUpdate : NSObject
+@interface PKPaymentRequestPaymentMethodUpdate : PKPaymentRequestUpdate
 @end
 
 @interface PKPaymentRequestShippingContactUpdate : PKPaymentRequestUpdate
-- (instancetype)initWithPaymentSummaryItems:(nonnull NSArray<PKPaymentSummaryItem *> *)summaryItems shippingMethods:(nonnull NSArray<PKShippingMethod *> *)shippingMethods;
 - (instancetype)initWithErrors:(nullable NSArray<NSError *> *)errors paymentSummaryItems:(nonnull NSArray<PKPaymentSummaryItem *> *)summaryItems shippingMethods:(nonnull NSArray<PKShippingMethod *> *)shippingMethods;
+@property (nonatomic, copy) NSArray<PKShippingMethod *> *shippingMethods;
+@end
+
+@interface PKPaymentRequestShippingMethodUpdate : PKPaymentRequestUpdate
 @end
 
 NS_ASSUME_NONNULL_END

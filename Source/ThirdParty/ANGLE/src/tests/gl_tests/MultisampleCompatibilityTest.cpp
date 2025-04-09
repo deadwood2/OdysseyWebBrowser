@@ -32,10 +32,8 @@ class EXTMultisampleCompatibilityTest : public ANGLETest
         setConfigAlphaBits(8);
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         mProgram = CompileProgram(essl1_shaders::vs::Simple(), essl1_shaders::fs::UniformColor());
 
         GLuint position_loc = glGetAttribLocation(mProgram, essl1_shaders::PositionAttrib());
@@ -52,12 +50,10 @@ class EXTMultisampleCompatibilityTest : public ANGLETest
         glVertexAttribPointer(position_loc, 2, GL_FLOAT, GL_FALSE, 0, 0);
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteBuffers(1, &mVBO);
         glDeleteProgram(mProgram);
-
-        ANGLETest::TearDown();
     }
 
     void prepareForDraw()
@@ -278,11 +274,7 @@ TEST_P(EXTMultisampleCompatibilityTest, DrawAlphaOneAndResolve)
     EXPECT_EQ(0, memcmp(results[0].get(), results[2].get(), kResultSize));
 }
 
-ANGLE_INSTANTIATE_TEST(EXTMultisampleCompatibilityTest,
-                       ES2_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES3_OPENGL(),
-                       ES2_VULKAN());
+ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(EXTMultisampleCompatibilityTest);
 
 class MultisampleCompatibilityTest : public ANGLETest
 {
@@ -378,6 +370,9 @@ TEST_P(MultisampleCompatibilityTest, DrawCoverageAndResolve)
     // TODO: Figure out why this fails on Android.
     ANGLE_SKIP_TEST_IF(IsAndroid() && IsOpenGLES());
 
+    // http://anglebug.com/3855
+    ANGLE_SKIP_TEST_IF(IsWindows() && IsVulkan() && IsIntel());
+
     ANGLE_GL_PROGRAM(drawRed, essl1_shaders::vs::Simple(), essl1_shaders::fs::Red());
 
     GLsizei maxSamples = 0;
@@ -402,11 +397,4 @@ TEST_P(MultisampleCompatibilityTest, DrawCoverageAndResolve)
     }
 }
 
-ANGLE_INSTANTIATE_TEST(MultisampleCompatibilityTest,
-                       ES2_D3D9(),
-                       ES2_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES3_D3D11(),
-                       ES3_OPENGL(),
-                       ES3_OPENGLES(),
-                       ES2_VULKAN());
+ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(MultisampleCompatibilityTest);

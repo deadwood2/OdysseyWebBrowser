@@ -38,46 +38,6 @@
 
 namespace WebKit {
 
-NetworkSessionCreationParameters NetworkSessionCreationParameters::privateSessionParameters(const PAL::SessionID& sessionID)
-{
-    return {
-        sessionID
-        , { }
-        , AllowsCellularAccess::Yes
-#if PLATFORM(COCOA)
-        , { }
-        , { }
-        , { }
-        , AllowsTLSFallback::Yes
-        , false
-        , { }
-        , { }
-        , { }
-        , false
-#endif
-#if USE(SOUP)
-        , { }
-        , SoupCookiePersistentStorageType::Text
-#endif
-#if USE(CURL)
-        , { }
-        , { }
-#endif
-        , { }
-        , { }
-        , false
-        , false
-        , { }
-        , { }
-        , { }
-        , { }
-        , { }
-        , { }
-        , { }
-        , { }
-    };
-}
-
 void NetworkSessionCreationParameters::encode(IPC::Encoder& encoder) const
 {
     encoder << sessionID;
@@ -87,12 +47,10 @@ void NetworkSessionCreationParameters::encode(IPC::Encoder& encoder) const
     IPC::encode(encoder, proxyConfiguration.get());
     encoder << sourceApplicationBundleIdentifier;
     encoder << sourceApplicationSecondaryIdentifier;
-    encoder << allowsTLSFallback;
     encoder << shouldLogCookieInformation;
     encoder << loadThrottleLatency;
     encoder << httpProxy;
     encoder << httpsProxy;
-    encoder << enableLegacyTLS;
 #endif
 #if USE(SOUP)
     encoder << cookiePersistentStoragePath;
@@ -109,12 +67,23 @@ void NetworkSessionCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << shouldIncludeLocalhostInResourceLoadStatistics;
     encoder << enableResourceLoadStatisticsDebugMode;
     encoder << resourceLoadStatisticsManualPrevalentResource;
-    encoder << enableResourceLoadStatisticsNSURLSessionSwitching;
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    encoder << thirdPartyCookieBlockingMode;
+#endif
+    encoder << firstPartyWebsiteDataRemovalMode;
 
     encoder << networkCacheDirectory << networkCacheDirectoryExtensionHandle;
 
     encoder << deviceManagementRestrictionsEnabled;
     encoder << allLoadsBlockedByDeviceManagementRestrictionsForTesting;
+    encoder << dataConnectionServiceType;
+    encoder << fastServerTrustEvaluationEnabled;
+    encoder << networkCacheSpeculativeValidationEnabled;
+    encoder << shouldUseTestingNetworkSession;
+    encoder << staleWhileRevalidateEnabled;
+    encoder << testSpeedMultiplier;
+    encoder << suppressesConnectionTerminationOnSystemChange;
+    encoder << allowsServerPreconnect;
 }
 
 Optional<NetworkSessionCreationParameters> NetworkSessionCreationParameters::decode(IPC::Decoder& decoder)
@@ -149,11 +118,6 @@ Optional<NetworkSessionCreationParameters> NetworkSessionCreationParameters::dec
     if (!sourceApplicationSecondaryIdentifier)
         return WTF::nullopt;
 
-    Optional<AllowsTLSFallback> allowsTLSFallback;
-    decoder >> allowsTLSFallback;
-    if (!allowsTLSFallback)
-        return WTF::nullopt;
-
     Optional<bool> shouldLogCookieInformation;
     decoder >> shouldLogCookieInformation;
     if (!shouldLogCookieInformation)
@@ -172,11 +136,6 @@ Optional<NetworkSessionCreationParameters> NetworkSessionCreationParameters::dec
     Optional<URL> httpsProxy;
     decoder >> httpsProxy;
     if (!httpsProxy)
-        return WTF::nullopt;
-
-    Optional<bool> enableLegacyTLS;
-    decoder >> enableLegacyTLS;
-    if (!enableLegacyTLS)
         return WTF::nullopt;
 #endif
 
@@ -239,9 +198,16 @@ Optional<NetworkSessionCreationParameters> NetworkSessionCreationParameters::dec
     if (!resourceLoadStatisticsManualPrevalentResource)
         return WTF::nullopt;
 
-    Optional<bool> enableResourceLoadStatisticsNSURLSessionSwitching;
-    decoder >> enableResourceLoadStatisticsNSURLSessionSwitching;
-    if (!enableResourceLoadStatisticsNSURLSessionSwitching)
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    Optional<WebCore::ThirdPartyCookieBlockingMode> thirdPartyCookieBlockingMode;
+    decoder >> thirdPartyCookieBlockingMode;
+    if (!thirdPartyCookieBlockingMode)
+        return WTF::nullopt;
+#endif
+
+    Optional<WebCore::FirstPartyWebsiteDataRemovalMode> firstPartyWebsiteDataRemovalMode;
+    decoder >> firstPartyWebsiteDataRemovalMode;
+    if (!firstPartyWebsiteDataRemovalMode)
         return WTF::nullopt;
 
     Optional<String> networkCacheDirectory;
@@ -264,6 +230,46 @@ Optional<NetworkSessionCreationParameters> NetworkSessionCreationParameters::dec
     if (!allLoadsBlockedByDeviceManagementRestrictionsForTesting)
         return WTF::nullopt;
 
+    Optional<String> dataConnectionServiceType;
+    decoder >> dataConnectionServiceType;
+    if (!dataConnectionServiceType)
+        return WTF::nullopt;
+    
+    Optional<bool> fastServerTrustEvaluationEnabled;
+    decoder >> fastServerTrustEvaluationEnabled;
+    if (!fastServerTrustEvaluationEnabled)
+        return WTF::nullopt;
+    
+    Optional<bool> networkCacheSpeculativeValidationEnabled;
+    decoder >> networkCacheSpeculativeValidationEnabled;
+    if (!networkCacheSpeculativeValidationEnabled)
+        return WTF::nullopt;
+    
+    Optional<bool> shouldUseTestingNetworkSession;
+    decoder >> shouldUseTestingNetworkSession;
+    if (!shouldUseTestingNetworkSession)
+        return WTF::nullopt;
+
+    Optional<bool> staleWhileRevalidateEnabled;
+    decoder >> staleWhileRevalidateEnabled;
+    if (!staleWhileRevalidateEnabled)
+        return WTF::nullopt;
+
+    Optional<unsigned> testSpeedMultiplier;
+    decoder >> testSpeedMultiplier;
+    if (!testSpeedMultiplier)
+        return WTF::nullopt;
+    
+    Optional<bool> suppressesConnectionTerminationOnSystemChange;
+    decoder >> suppressesConnectionTerminationOnSystemChange;
+    if (!suppressesConnectionTerminationOnSystemChange)
+        return WTF::nullopt;
+
+    Optional<bool> allowsServerPreconnect;
+    decoder >> allowsServerPreconnect;
+    if (!allowsServerPreconnect)
+        return WTF::nullopt;
+
     return {{
         *sessionID
         , WTFMove(*boundInterfaceIdentifier)
@@ -272,12 +278,10 @@ Optional<NetworkSessionCreationParameters> NetworkSessionCreationParameters::dec
         , WTFMove(proxyConfiguration)
         , WTFMove(*sourceApplicationBundleIdentifier)
         , WTFMove(*sourceApplicationSecondaryIdentifier)
-        , WTFMove(*allowsTLSFallback)
         , WTFMove(*shouldLogCookieInformation)
         , WTFMove(*loadThrottleLatency)
         , WTFMove(*httpProxy)
         , WTFMove(*httpsProxy)
-        , WTFMove(*enableLegacyTLS)
 #endif
 #if USE(SOUP)
         , WTFMove(*cookiePersistentStoragePath)
@@ -293,12 +297,23 @@ Optional<NetworkSessionCreationParameters> NetworkSessionCreationParameters::dec
         , WTFMove(*enableResourceLoadStatisticsLogTestingEvent)
         , WTFMove(*shouldIncludeLocalhostInResourceLoadStatistics)
         , WTFMove(*enableResourceLoadStatisticsDebugMode)
-        , WTFMove(*enableResourceLoadStatisticsNSURLSessionSwitching)
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+        , WTFMove(*thirdPartyCookieBlockingMode)
+#endif
+        , WTFMove(*firstPartyWebsiteDataRemovalMode)
         , WTFMove(*deviceManagementRestrictionsEnabled)
         , WTFMove(*allLoadsBlockedByDeviceManagementRestrictionsForTesting)
         , WTFMove(*resourceLoadStatisticsManualPrevalentResource)
         , WTFMove(*networkCacheDirectory)
         , WTFMove(*networkCacheDirectoryExtensionHandle)
+        , WTFMove(*dataConnectionServiceType)
+        , WTFMove(*fastServerTrustEvaluationEnabled)
+        , WTFMove(*networkCacheSpeculativeValidationEnabled)
+        , WTFMove(*shouldUseTestingNetworkSession)
+        , WTFMove(*staleWhileRevalidateEnabled)
+        , WTFMove(*testSpeedMultiplier)
+        , WTFMove(*suppressesConnectionTerminationOnSystemChange)
+        , WTFMove(*allowsServerPreconnect)
     }};
 }
 

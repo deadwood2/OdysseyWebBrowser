@@ -21,6 +21,7 @@ namespace gl
 class ErrorSet;
 class MemoryProgramCache;
 class Path;
+class Semaphore;
 struct Workarounds;
 }  // namespace gl
 
@@ -50,25 +51,61 @@ class ContextImpl : public GLImplFactory
                                               GLint first,
                                               GLsizei count,
                                               GLsizei instanceCount) = 0;
+    // Necessary for Vulkan since gl_InstanceIndex includes baseInstance
+    virtual angle::Result drawArraysInstancedBaseInstance(const gl::Context *context,
+                                                          gl::PrimitiveMode mode,
+                                                          GLint first,
+                                                          GLsizei count,
+                                                          GLsizei instanceCount,
+                                                          GLuint baseInstance) = 0;
 
     virtual angle::Result drawElements(const gl::Context *context,
                                        gl::PrimitiveMode mode,
                                        GLsizei count,
                                        gl::DrawElementsType type,
-                                       const void *indices)        = 0;
+                                       const void *indices)                                = 0;
+    virtual angle::Result drawElementsBaseVertex(const gl::Context *context,
+                                                 gl::PrimitiveMode mode,
+                                                 GLsizei count,
+                                                 gl::DrawElementsType type,
+                                                 const void *indices,
+                                                 GLint baseVertex)                         = 0;
     virtual angle::Result drawElementsInstanced(const gl::Context *context,
                                                 gl::PrimitiveMode mode,
                                                 GLsizei count,
                                                 gl::DrawElementsType type,
                                                 const void *indices,
-                                                GLsizei instances) = 0;
+                                                GLsizei instances)                         = 0;
+    virtual angle::Result drawElementsInstancedBaseVertex(const gl::Context *context,
+                                                          gl::PrimitiveMode mode,
+                                                          GLsizei count,
+                                                          gl::DrawElementsType type,
+                                                          const void *indices,
+                                                          GLsizei instances,
+                                                          GLint baseVertex)                = 0;
+    virtual angle::Result drawElementsInstancedBaseVertexBaseInstance(const gl::Context *context,
+                                                                      gl::PrimitiveMode mode,
+                                                                      GLsizei count,
+                                                                      gl::DrawElementsType type,
+                                                                      const void *indices,
+                                                                      GLsizei instances,
+                                                                      GLint baseVertex,
+                                                                      GLuint baseInstance) = 0;
     virtual angle::Result drawRangeElements(const gl::Context *context,
                                             gl::PrimitiveMode mode,
                                             GLuint start,
                                             GLuint end,
                                             GLsizei count,
                                             gl::DrawElementsType type,
-                                            const void *indices)   = 0;
+                                            const void *indices)                           = 0;
+    virtual angle::Result drawRangeElementsBaseVertex(const gl::Context *context,
+                                                      gl::PrimitiveMode mode,
+                                                      GLuint start,
+                                                      GLuint end,
+                                                      GLsizei count,
+                                                      gl::DrawElementsType type,
+                                                      const void *indices,
+                                                      GLint baseVertex)                    = 0;
 
     virtual angle::Result drawArraysIndirect(const gl::Context *context,
                                              gl::PrimitiveMode mode,
@@ -143,6 +180,9 @@ class ContextImpl : public GLImplFactory
     // KHR_parallel_shader_compile
     virtual void setMaxShaderCompilerThreads(GLuint count) {}
 
+    // GL_ANGLE_texture_storage_external
+    virtual void invalidateTexture(gl::TextureType target);
+
     // State sync with dirty bits.
     virtual angle::Result syncState(const gl::Context *context,
                                     const gl::State::DirtyBits &dirtyBits,
@@ -162,8 +202,6 @@ class ContextImpl : public GLImplFactory
     virtual const gl::Extensions &getNativeExtensions() const      = 0;
     virtual const gl::Limitations &getNativeLimitations() const    = 0;
 
-    virtual void applyNativeWorkarounds(gl::Workarounds *workarounds) const {}
-
     virtual angle::Result dispatchCompute(const gl::Context *context,
                                           GLuint numGroupsX,
                                           GLuint numGroupsY,
@@ -175,7 +213,7 @@ class ContextImpl : public GLImplFactory
     virtual angle::Result memoryBarrierByRegion(const gl::Context *context,
                                                 GLbitfield barriers)                     = 0;
 
-    const gl::State &getState() { return mState; }
+    const gl::State &getState() const { return mState; }
     int getClientMajorVersion() const { return mState.getClientMajorVersion(); }
     int getClientMinorVersion() const { return mState.getClientMinorVersion(); }
     const gl::Caps &getCaps() const { return mState.getCaps(); }
@@ -193,6 +231,8 @@ class ContextImpl : public GLImplFactory
                      const char *file,
                      const char *function,
                      unsigned int line);
+
+    virtual egl::ContextPriority getContextPriority() const;
 
   protected:
     const gl::State &mState;

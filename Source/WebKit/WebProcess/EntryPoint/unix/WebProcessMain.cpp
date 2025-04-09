@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "WebProcessMainUnix.h"
+#include "WebProcessMain.h"
 
 #include <cstdlib>
 
@@ -42,5 +42,5 @@ int main(int argc, char** argv)
     PAL::GCrypt::initialize();
 #endif
 
-    return WebProcessMainUnix(argc, argv);
+    return WebProcessMain(argc, argv);
 }

@@ -23,12 +23,14 @@
 import traceback
 
 from flask import abort, jsonify
-from resultsdbpy.flask_support.authed_blueprint import AuthedBlueprint
+from resultsdbpy.controller.archive_controller import ArchiveController
 from resultsdbpy.controller.commit_controller import CommitController
 from resultsdbpy.controller.ci_controller import CIController
+from resultsdbpy.controller.failure_controller import FailureController
 from resultsdbpy.controller.suite_controller import SuiteController
 from resultsdbpy.controller.test_controller import TestController
 from resultsdbpy.controller.upload_controller import UploadController
+from resultsdbpy.flask_support.authed_blueprint import AuthedBlueprint
 from werkzeug.exceptions import HTTPException
 
 
@@ -41,8 +43,10 @@ class APIRoutes(AuthedBlueprint):
 
         self.suite_controller = SuiteController(suite_context=model.suite_context)
         self.test_controller = TestController(test_context=model.test_context)
+        self.failure_controller = FailureController(failure_context=model.failure_context)
 
         self.ci_controller = CIController(ci_context=model.ci_context, upload_context=model.upload_context)
+        self.archive_controller = ArchiveController(commit_controller=self.commit_controller, archive_context=model.archive_context, upload_context=model.upload_context)
 
         for code in [400, 404, 405]:
             self.register_error_handler(code, self.error_response)
@@ -58,12 +62,15 @@ class APIRoutes(AuthedBlueprint):
         self.add_url_rule('/commits/register', 'commit_controller_register', self.commit_controller.register, methods=('POST',))
 
         self.add_url_rule('/upload', 'upload', self.upload_controller.upload, methods=('GET', 'POST'))
+        self.add_url_rule('/upload/archive', 'upload_archive', self.archive_controller.endpoint, methods=('GET', 'POST'))
         self.add_url_rule('/upload/process', 'process', self.upload_controller.process, methods=('POST',))
         self.add_url_rule('/suites', 'suites', self.upload_controller.suites, methods=('GET',))
         self.add_url_rule('/<path:suite>/tests', 'tests-in-suite', self.test_controller.list_tests, methods=('GET',))
 
         self.add_url_rule('/results/<path:suite>', 'suite-results', self.suite_controller.find_run_results, methods=('GET',))
         self.add_url_rule('/results/<path:suite>/<path:test>', 'test-results', self.test_controller.find_test_result, methods=('GET',))
+
+        self.add_url_rule('/failures/<path:suite>', 'suite-failures', self.failure_controller.failures, methods=('GET',))
 
         self.add_url_rule('/urls/queue', 'queue-urls', self.ci_controller.urls_for_queue_endpoint, methods=('GET',))
         self.add_url_rule('/urls', 'build-urls', self.ci_controller.urls_for_builds_endpoint, methods=('GET',))

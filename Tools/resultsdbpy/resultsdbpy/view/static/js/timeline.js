@@ -24,6 +24,8 @@
 import {CommitBank} from '/assets/js/commit.js';
 import {Configuration} from '/assets/js/configuration.js';
 import {deepCompare, ErrorDisplay, escapeHTML, paramsToQuery, queryToParams} from '/assets/js/common.js';
+import {Expectations} from '/assets/js/expectations.js';
+import {InvestigateDrawer} from '/assets/js/investigate.js';
 import {ToolTip} from '/assets/js/tooltip.js';
 import {Timeline} from '/library/js/components/TimelineComponents.js';
 import {DOM, EventStream, REF, FP} from '/library/js/Ref.js';
@@ -31,54 +33,8 @@ import {DOM, EventStream, REF, FP} from '/library/js/Ref.js';
 
 const DEFAULT_LIMIT = 100;
 
-const stateToIDMapping = {
-    CRASH: 0x00,
-    TIMEOUT: 0x08,
-    IMAGE: 0x10,
-    AUDIO: 0x18,
-    TEXT: 0x20,
-    FAIL: 0x28,
-    ERROR: 0x30,
-    WARNING: 0x38,
-    PASS: 0x40,
-};
-
-const TestResultsSymbolMap = {
-    success: '✓',
-    failed: '𝖷',
-    timedout: '⎋',
-    crashed: '!',
-}
-
-class Expectations
-{
-    static stringToStateId(string) {
-        return stateToIDMapping[string];
-    }
-
-    static unexpectedResults(results, expectations)
-    {
-        let r = results.split('.');
-        expectations.split(' ').forEach(expectation => {
-            const i = r.indexOf(expectation);
-            if (i > -1)
-                r.splice(i, 1);
-            if (expectation === 'FAIL')
-                ['TEXT', 'AUDIO', 'IMAGE'].forEach(expectation => {
-                    const i = r.indexOf(expectation);
-                    if (i > -1)
-                        r.splice(i, 1);
-                });
-        });
-        let result = 'PASS';
-        r.forEach(candidate => {
-            if (Expectations.stringToStateId(candidate) < Expectations.stringToStateId(result))
-                result = candidate;
-        });
-        return result;
-    }
-}
 let willFilterExpected = false;
+let showTestTimes = false;
 
 function minimumUuidForResults(results, limit) {
     const now = Math.floor(Date.now() / 10);
@@ -199,7 +155,7 @@ function repositoriesForCommits(commits) {
     return repositories;
 }
 
-function xAxisFromScale(scale, repository, updatesArray, isTop=false)
+function xAxisFromScale(scale, repository, updatesArray, isTop=false, viewport=null)
 {
     function scaleForRepository(scale) {
         return scale.map(node => {
@@ -241,10 +197,12 @@ function xAxisFromScale(scale, repository, updatesArray, isTop=false)
                     return {x: canvas.x + point.x, y: canvas.y + scrollDelta + point.y};
                 }),
                 (event) => {return onScaleClick(node);},
+                viewport,
             );
         },
         onScaleLeave: (event, canvas) => {
-            if (!ToolTip.isIn({x: event.x, y: event.y}))
+            const scrollDelta = document.documentElement.scrollTop || document.body.scrollTop;
+            if (!ToolTip.isIn({x: event.x, y: event.y - scrollDelta}))
                 ToolTip.unset();
         },
         // Per the birthday paradox, 10% change of collision with 7.7 million commits with 12 character commits
@@ -257,12 +215,7 @@ function xAxisFromScale(scale, repository, updatesArray, isTop=false)
 }
 
 const testsRegex = /tests_([a-z])+/;
-const failureTypeOrder = ['failed', 'timedout', 'crashed'];
-const failureTypeMapping = {
-    failed: 'ERROR',
-    timedout: 'TIMEOUT',
-    crashed: 'CRASH',
-}
+const worstRegex = /worst_([a-z])+/;
 
 function inPlaceCombine(out, obj)
 {
@@ -290,8 +243,24 @@ function inPlaceCombine(out, obj)
             }
 
             // Set of special case keys which need to be added together
+            if (key.match(worstRegex))
+                return;
             if (key.match(testsRegex)) {
+                const worstKey = `worst_${key}`;
+                out[worstKey] = Math.max(
+                    out[worstKey] ? out[worstKey] : out[key],
+                    obj[worstKey] ? obj[worstKey] : obj[key],
+                );
                 out[key] += obj[key];
+                return;
+            }
+
+            // Some special combination logic
+            if (key === 'time') {
+                out[key] = Math.max(
+                    out[key] ? out[key] : 0,
+                    obj[key] ? obj[key] : 0,
+                );
                 return;
             }
 
@@ -302,8 +271,14 @@ function inPlaceCombine(out, obj)
             }
         });
         Object.keys(obj).forEach(key => {
-            if (key.match(testsRegex) && !(key in out))
+            if (!key.match(testsRegex))
+                return;
+            const worstKey = `worst_${key}`;
+            if (!(key in out)) {
                 out[key] = obj[key];
+                out[worstKey] = obj[key];
+            }
+            out[worstKey] = Math.max(out[worstKey], obj[worstKey] ? obj[worstKey] : obj[key]);
         });
     }
     return out;
@@ -316,8 +291,8 @@ function statsForSingleResult(result) {
         tests_run: 1,
         tests_skipped: 0,
     }
-    failureTypeOrder.forEach(type => {
-        const idForType = Expectations.stringToStateId(failureTypeMapping[type]);
+    Expectations.failureTypes.forEach(type => {
+        const idForType = Expectations.stringToStateId(Expectations.failureTypeMap[type]);
         stats[`tests_${type}`] = actualId > idForType  ? 0 : 1;
         stats[`tests_unexpected_${type}`] = unexpectedId > idForType  ? 0 : 1;
     });
@@ -368,7 +343,7 @@ function combineResults() {
 }
 
 class TimelineFromEndpoint {
-    constructor(endpoint, suite = null) {
+    constructor(endpoint, suite = null, viewport = null) {
         this.endpoint = endpoint;
         this.displayAllCommits = true;
 
@@ -379,7 +354,9 @@ class TimelineFromEndpoint {
         this.updates = [];
         this.xaxisUpdates = [];
         this.timelineUpdate = null;
+        this.notifyRerender = () => {};
         this.repositories = [];
+        this.viewport = viewport;
 
         const self = this;
 
@@ -423,7 +400,7 @@ class TimelineFromEndpoint {
             let components = [];
 
             newRepositories.forEach(repository => {
-                components.push(xAxisFromScale(scale, repository, this.xaxisUpdates, top));
+                components.push(xAxisFromScale(scale, repository, this.xaxisUpdates, top, this.viewport));
                 top = false;
             });
 
@@ -528,14 +505,7 @@ class TimelineFromEndpoint {
         const commits = commitsForResults(this.results, limit, this.allCommits);
         const scale = scaleForCommits(commits);
 
-        const computedStyle = getComputedStyle(document.body);
-        const colorMap = {
-            success: computedStyle.getPropertyValue('--greenLight').trim(),
-            failed: computedStyle.getPropertyValue('--redLight').trim(),
-            timedout: computedStyle.getPropertyValue('--orangeLight').trim(),
-            crashed: computedStyle.getPropertyValue('--purpleLight').trim(),
-        }
-
+        const colorMap = Expectations.colorMap();
         this.updates = [];
         const options = {
             getScaleFunc: (value) => {
@@ -550,35 +520,35 @@ class TimelineFromEndpoint {
 
                 let tag = null;
                 let color = colorMap.success;
-                let symbol = TestResultsSymbolMap.success;
+                let symbol = Expectations.symbolMap.success;
                 if (data.stats) {
-                    tag = data.stats[`tests${willFilterExpected ? '_unexpected_' : '_'}failed`];
+                    if (data.start_time)
+                        tag = data.stats[`tests${willFilterExpected ? '_unexpected_' : '_'}failed`];
+                    else
+                        tag = data.stats[`worst_tests${willFilterExpected ? '_unexpected_' : '_'}failed`];
+                    if (data.stats.worst_tests_run <= 1)
+                        tag = null;
 
-                    // If we have failures that are a result of multiple runs, combine them.
-                    if (tag && !data.start_time) {
-                        tag = Math.ceil(tag / data.stats.tests_run * 100 - .5);
-                        if (!tag)
-                            tag = '<1';
-                        tag = `${tag} %`
-                    }
-
-                    failureTypeOrder.forEach(type => {
+                    Expectations.failureTypes.forEach(type => {
                         if (data.stats[`tests${willFilterExpected ? '_unexpected_' : '_'}${type}`] > 0) {
                             color = colorMap[type];
-                            symbol = TestResultsSymbolMap[type];
+                            symbol = Expectations.symbolMap[type];
                         }
                     });
                 } else {
                     let resultId = Expectations.stringToStateId(data.actual);
                     if (willFilterExpected)
                         resultId = Expectations.stringToStateId(Expectations.unexpectedResults(data.actual, data.expected));
-                    failureTypeOrder.forEach(type => {
-                        if (Expectations.stringToStateId(failureTypeMapping[type]) >= resultId) {
+                    Expectations.failureTypes.forEach(type => {
+                        if (Expectations.stringToStateId(Expectations.failureTypeMap[type]) >= resultId) {
                             color = colorMap[type];
-                            symbol = TestResultsSymbolMap[type];
+                            symbol = Expectations.symbolMap[type];
                         }
                     });
                 }
+                const time = data.time ? Math.round(data.time / 1000) : 0;
+                if (time && showTestTimes)
+                    tag = time;
 
                 return drawDot(context, x, y, false, tag ? tag : null, symbol, false, color);
             },
@@ -586,25 +556,77 @@ class TimelineFromEndpoint {
 
         function onDotClickFactory(configuration) {
             return (data) => {
-                // FIXME: We should do something sane here, but we probably need another endpoint
-                if (!data.start_time) {
-                    alert('Node is a combination of multiple runs');
-                    return;
-                }
-
-                let buildParams = configuration.toParams();
-                buildParams['suite'] = [self.suite];
-                buildParams['uuid'] = [data.uuid];
-                buildParams['after_time'] = [data.start_time];
-                buildParams['before_time'] = [data.start_time];
-                if (branch)
-                    buildParams['branch'] = branch;
-                window.open(`/urls/build?${paramsToQuery(buildParams)}`, '_blank');
+                let allData = [];
+                let partialConfiguration = {};
+                self.configurations.forEach(configurationKey => {
+                    if (configurationKey.compare(configuration) || configurationKey.compareSDKs(configuration))
+                        return;
+                    self.results[configurationKey.toKey()].forEach(pair => {
+                        const computedConfiguration = new Configuration(pair.configuration);
+                        if (computedConfiguration.compare(configuration) || computedConfiguration.compareSDKs(configuration))
+                            return;
+                        let doesMatch = false;
+                        pair.results.forEach(node => {
+                            if (node.uuid !== data.uuid)
+                                return;
+                            doesMatch = true;
+                            let dataNode = {};
+                            Object.keys(node).forEach(key => {
+                                dataNode[key] = node[key];
+                            });
+                            dataNode['configuration'] = computedConfiguration;
+                            allData.push(dataNode);
+                        });
+                        if (doesMatch) {
+                            Configuration.members().forEach(member => {
+                                if (member in partialConfiguration) {
+                                    if (partialConfiguration[member] !== null && partialConfiguration[member] !== computedConfiguration[member])
+                                        partialConfiguration[member] = null;
+                                } else if (computedConfiguration[member] !== null)
+                                    partialConfiguration[member] = computedConfiguration[member];
+                            });
+                        }
+                    });
+                });
+                let agregateData = {};
+                Object.keys(data).forEach(key => {
+                    agregateData[key] = data[key];
+                });
+                agregateData['configuration'] = new Configuration(partialConfiguration);
+                ToolTip.unset();
+                InvestigateDrawer.expand(self.suite, agregateData, allData);
             }
         }
 
         function onDotEnterFactory(configuration) {
             return (data, event, canvas) => {
+                let partialConfiguration = {};
+                self.configurations.forEach(configurationKey => {
+                    if (configurationKey.compare(configuration) || configurationKey.compareSDKs(configuration))
+                        return;
+                    self.results[configurationKey.toKey()].forEach(pair => {
+                        const computedConfiguration = new Configuration(pair.configuration);
+                        if (computedConfiguration.compare(configuration) || computedConfiguration.compareSDKs(configuration))
+                            return;
+                        let doesMatch = false;
+                        pair.results.forEach(node => {
+                            if (doesMatch)
+                                return;
+                            if (node.uuid == data.uuid)
+                                doesMatch = true;
+                        });
+                        if (doesMatch) {
+                            Configuration.members().forEach(member => {
+                                if (member in partialConfiguration) {
+                                    if (partialConfiguration[member] !== null && partialConfiguration[member] !== computedConfiguration[member])
+                                        partialConfiguration[member] = null;
+                                } else if (computedConfiguration[member] !== null)
+                                    partialConfiguration[member] = computedConfiguration[member];
+                            });
+                        }
+                    });
+                });
+                partialConfiguration = new Configuration(partialConfiguration);
                 const scrollDelta = document.documentElement.scrollTop || document.body.scrollTop;
                 ToolTip.set(
                     `<div class="content">
@@ -629,6 +651,8 @@ class TimelineFromEndpoint {
                             return `<a href="/commit/info?${query}" target="_blank">${commit.id.substring(0,12)}</a>`;
                         }).join(', ')}
                         <br>
+                        ${partialConfiguration}
+                        <br>
 
                         ${data.expected ? `Expected: ${data.expected}<br>` : ''}
                         ${data.actual ? `Actual: ${data.actual}<br>` : ''}
@@ -637,12 +661,14 @@ class TimelineFromEndpoint {
                         return {x: canvas.x + point.x, y: canvas.y + scrollDelta + point.y};
                     }),
                     (event) => {onDotClickFactory(configuration)(data);},
+                    self.viewport,
                 );
             }
         }
 
         function onDotLeave(event, canvas) {
-            if (!ToolTip.isIn({x: event.pageX, y: event.pageY}))
+            const scrollDelta = document.documentElement.scrollTop || document.body.scrollTop;
+            if (!ToolTip.isIn({x: event.pageX, y: event.pageY - scrollDelta}))
                 ToolTip.unset();
         }
 
@@ -664,7 +690,7 @@ class TimelineFromEndpoint {
             this.results[configuration.toKey()].forEach(pair => {
                 const strippedConfig = new Configuration(pair.configuration);
                 resultsByKey[strippedConfig.toKey()] = combineResults([], [...pair.results].sort(function(a, b) {return b.uuid - a.uuid;}));
-                delete strippedConfig.sdk;
+                strippedConfig.sdk = null;
                 mappedChildrenConfigs[strippedConfig.toKey()] = strippedConfig;
                 if (!childrenConfigsBySDK[strippedConfig.toKey()])
                     childrenConfigsBySDK[strippedConfig.toKey()] = [];
@@ -709,7 +735,7 @@ class TimelineFromEndpoint {
                     let timelinesBySDK = [];
                     childrenConfigsBySDK[config.toKey()].forEach(sdkConfig => {
                         timelinesBySDK.push(
-                            Timeline.SeriesWithHeaderComponent(`${sdkConfig.sdk}`,
+                            Timeline.SeriesWithHeaderComponent(`${Configuration.integerToVersion(sdkConfig.version)} (${sdkConfig.sdk})`,
                                 Timeline.CanvasSeriesComponent(resultsByKey[sdkConfig.toKey()], scale, {
                                     getScaleFunc: options.getScaleFunc,
                                     compareFunc: options.compareFunc,
@@ -721,7 +747,7 @@ class TimelineFromEndpoint {
                                     exporter: exporterFactory(resultsByKey[sdkConfig.toKey()]),
                                 })));
                     });
-                    myTimeline = Timeline.ExpandableSeriesWithHeaderExpanderComponent(myTimeline, ...timelinesBySDK);
+                    myTimeline = Timeline.ExpandableSeriesWithHeaderExpanderComponent(myTimeline, {}, ...timelinesBySDK);
                 }
                 collapsedTimelines.push(myTimeline);
             });
@@ -747,6 +773,7 @@ class TimelineFromEndpoint {
                         onDotLeave: onDotLeave,
                         exporter: exporterFactory(allResults),
                     })),
+                {expanded: this.configurations.length <= 1},
                 ...collapsedTimelines
             ));
         });
@@ -755,7 +782,7 @@ class TimelineFromEndpoint {
         self.xaxisUpdates = [];
         this.repositories = repositoriesForCommits(commits);
         this.repositories.forEach(repository => {
-            const xAxisComponent = xAxisFromScale(scale, repository, self.xaxisUpdates, top);
+            const xAxisComponent = xAxisFromScale(scale, repository, self.xaxisUpdates, top, self.viewport);
             if (top)
                 children.unshift(xAxisComponent);
             else
@@ -763,7 +790,7 @@ class TimelineFromEndpoint {
             top = false;
         });
 
-        const composer = FP.composer((updateTimeline) => {
+        const composer = FP.composer(FP.currying((updateTimeline, notifyRerender) => {
             self.timelineUpdate = (xAxises) => {
                 children.splice(0, 1);
                 if (self.repositories.length > 1)
@@ -779,7 +806,8 @@ class TimelineFromEndpoint {
                 });
                 updateTimeline(children);
             };
-        });
+            self.notifyRerender = notifyRerender;
+        }));
         return Timeline.CanvasContainer(composer, ...children);
     }
 }
@@ -794,50 +822,64 @@ function LegendLabel(eventStream, filterExpectedText, filterUnexpectedText) {
         }
     });
     eventStream.action((willFilterExpected) => ref.setState(willFilterExpected));
-    return `<div class="label" ref="${ref}"></div>`;
+    return `<div class="label" style="font-size: var(--smallSize)" ref="${ref}"></div>`;
 } 
 
 function Legend(callback=null, plural=false) {
+    InvestigateDrawer.willFilterExpected = willFilterExpected;
     let updateLabelEvents = new EventStream();
-    let result = `<br>
-         <div class="lengend timeline">
-            <div class="item">
-                <div class="dot success"><div class="text">${TestResultsSymbolMap.success}</div></div>
-                ${LegendLabel(
-                    updateLabelEvents,
-                    plural ? 'No unexpected results' : 'Result expected',
-                    plural ? 'All tests passed' : 'Test passed',
-                )}
-            </div>
-            <div class="item">
-                <div class="dot failed"><div class="text">${TestResultsSymbolMap.failed}</div></div>
-                ${LegendLabel(
-                    updateLabelEvents,
-                    plural ? 'Some tests unexpectedly failed' : 'Unexpectedly failed',
-                    plural ? 'Some tests failed' : 'Test failed',
-                )}
-            </div>
-            <div class="item">
-                <div class="dot timeout"><div class="text">${TestResultsSymbolMap.timedout}</div></div>
-                ${LegendLabel(
-                    updateLabelEvents,
-                    plural ? 'Some tests unexpectedly timed out' : 'Unexpectedly timed out',
-                    plural ? 'Some tests timed out' : 'Test timed out',
-                )}
-            </div>
-            <div class="item">
-                <div class="dot crash"><div class="text">${TestResultsSymbolMap.crashed}</div></div>
-                ${LegendLabel(
-                    updateLabelEvents,
-                    plural ? 'Some tests unexpectedly crashed' : 'Unexpectedly crashed',
-                    plural ? 'Some tests crashed' : 'Test crashed',
-                )}
-            </div>
-            <br>
+    const legendDetails = {
+        success: {
+            expected: plural ? 'No unexpected results' : 'Result expected',
+            unexpected: plural ? 'All tests passed' : 'Test passed',
+        },
+        warning: {
+            expected: plural ? 'Some tests unexpectedly reported warnings' : 'Unexpected warning',
+            unexpected: plural ? 'Some tests reported warnings' : 'Test warning',
+        },
+        failed: {
+            expected: plural ? 'Some tests unexpectedly failed' : 'Unexpectedly failed',
+            unexpected: plural ? 'Some tests failed' : 'Test failed',
+        },
+        timedout: {
+            expected: plural ? 'Some tests unexpectedly timed out' : 'Unexpectedly timed out',
+            unexpected: plural ? 'Some tests timed out' : 'Test timed out',
+        },
+        crashed: {
+            expected: plural ? 'Some tests unexpectedly crashed' : 'Unexpectedly crashed',
+            unexpected: plural ? 'Some tests crashed' : 'Test crashed',
+        },
+    };
+    let result = `<div class="lengend horizontal">
+            ${Object.keys(legendDetails).map((key) => {
+                const dot = REF.createRef({
+                    onElementMount: (element) => {
+                        element.addEventListener('mouseleave', (event) => {
+                            if (!ToolTip.isIn({x: event.x, y: event.y}))
+                                ToolTip.unset();
+                        });
+                        element.onmouseover = (event) => {
+                            if (!element.classList.contains('disabled'))
+                                return;
+                            ToolTip.setByElement(
+                                `<div class="content">
+                                    ${willFilterExpected ? legendDetails[key].expected : legendDetails[key].unexpected}
+                                </div>`,
+                                element,
+                                {orientation: ToolTip.HORIZONTAL},
+                            );
+                        };
+                    }
+                });
+                return `<div class="item">
+                        <div class="dot ${key}" ref="${dot}"><div class="text">${Expectations.symbolMap[key]}</div></div>
+                        ${LegendLabel(updateLabelEvents, legendDetails[key].expected, legendDetails[key].unexpected)}
+                    </div>`
+            }).join('')}
         </div>`;
 
     if (callback) {
-        const swtch = REF.createRef({
+        const filterSwitch = REF.createRef({
             onElementMount: (element) => {
                 element.onchange = () => {
                     if (element.checked)
@@ -845,21 +887,42 @@ function Legend(callback=null, plural=false) {
                     else
                         willFilterExpected = false;
                     updateLabelEvents.add(willFilterExpected);
+                    InvestigateDrawer.willFilterExpected = willFilterExpected;
+                    InvestigateDrawer.select(InvestigateDrawer.selected);
+                    callback();
+                };
+            },
+        });
+        const showTimesSwitch = REF.createRef({
+            onElementMount: (element) => {
+                element.onchange = () => {
+                    if (element.checked)
+                        showTestTimes = true;
+                    else
+                        showTestTimes = false;
                     callback();
                 };
             },
         });
 
-        result += `<div class="input" style="width:400px">
+        result += `<div class="input">
             <label>Filter expected results</label>
             <label class="switch">
-                <input type="checkbox"${willFilterExpected ? ' checked': ''} ref="${swtch}">
+                <input type="checkbox"${willFilterExpected ? ' checked': ''} ref="${filterSwitch}">
                 <span class="slider"></span>
             </label>
-        </div>`;
+        </div>`
+        if (!plural)
+            result += `<div class="input">
+                <label>Show test times</label>
+                <label class="switch">
+                    <input type="checkbox"${showTestTimes ? ' checked': ''} ref="${showTimesSwitch}">
+                    <span class="slider"></span>
+                </label>
+            </div>`;
     }
 
-    return `<div class="content">${result}</div><br>`;
+    return `${result}`;
 }
 
 export {Legend, TimelineFromEndpoint, Expectations};

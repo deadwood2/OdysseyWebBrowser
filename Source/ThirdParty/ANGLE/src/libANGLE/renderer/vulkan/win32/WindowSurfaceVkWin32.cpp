@@ -15,10 +15,8 @@ namespace rx
 {
 
 WindowSurfaceVkWin32::WindowSurfaceVkWin32(const egl::SurfaceState &surfaceState,
-                                           EGLNativeWindowType window,
-                                           EGLint width,
-                                           EGLint height)
-    : WindowSurfaceVk(surfaceState, window, width, height)
+                                           EGLNativeWindowType window)
+    : WindowSurfaceVk(surfaceState, window)
 {}
 
 angle::Result WindowSurfaceVkWin32::createSurfaceVk(vk::Context *context, gl::Extents *extentsOut)
@@ -42,7 +40,7 @@ angle::Result WindowSurfaceVkWin32::getCurrentWindowSize(vk::Context *context,
     ANGLE_VK_CHECK(context, GetClientRect(mNativeWindowType, &rect) == TRUE,
                    VK_ERROR_INITIALIZATION_FAILED);
 
-    *extentsOut = gl::Extents(rect.right - rect.left, rect.bottom - rect.top, 0);
+    *extentsOut = gl::Extents(rect.right - rect.left, rect.bottom - rect.top, 1);
     return angle::Result::Continue;
 }
 

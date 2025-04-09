@@ -27,6 +27,7 @@ set(TestWTF_SOURCES
 
     Tests/WTF/AtomString.cpp
     Tests/WTF/BloomFilter.cpp
+    Tests/WTF/BumpPointerAllocator.cpp
     Tests/WTF/CString.cpp
     Tests/WTF/CheckedArithmeticOperations.cpp
     Tests/WTF/ConcurrentPtrHashSet.cpp
@@ -44,6 +45,7 @@ set(TestWTF_SOURCES
     Tests/WTF/HashMap.cpp
     Tests/WTF/HashSet.cpp
     Tests/WTF/Hasher.cpp
+    Tests/WTF/HexNumber.cpp
     Tests/WTF/IntegerToStringConversion.cpp
     Tests/WTF/IteratorRange.cpp
     Tests/WTF/JSONValue.cpp
@@ -64,6 +66,8 @@ set(TestWTF_SOURCES
     Tests/WTF/OptionSet.cpp
     Tests/WTF/Optional.cpp
     Tests/WTF/Packed.cpp
+    Tests/WTF/PackedRef.cpp
+    Tests/WTF/PackedRefPtr.cpp
     Tests/WTF/ParkingLot.cpp
     Tests/WTF/PriorityQueue.cpp
     Tests/WTF/RedBlackTree.cpp
@@ -134,6 +138,7 @@ if (ENABLE_WEBCORE)
         Tests/WebCore/IntPoint.cpp
         Tests/WebCore/IntRect.cpp
         Tests/WebCore/IntSize.cpp
+        Tests/WebCore/KeyedCoding.cpp
         Tests/WebCore/LayoutUnit.cpp
         Tests/WebCore/MIMETypeRegistry.cpp
         Tests/WebCore/ParsedContentRange.cpp
@@ -147,10 +152,11 @@ if (ENABLE_WEBCORE)
     )
 
     set(TestWebCore_LIBRARIES
-        WebCore
-        WebCoreTestSupport
         gtest
     )
+    if (NOT APPLE)
+        list(APPEND TestWebCore_LIBRARIES WebCore WebCoreHeaderInterface)
+    endif ()
 
     set(TestWebCore_PRIVATE_INCLUDE_DIRECTORIES
         ${CMAKE_BINARY_DIR}
@@ -173,9 +179,13 @@ if (ENABLE_WEBKIT_LEGACY)
     )
 
     set(TestWebKitLegacy_LIBRARIES
-        WebKitLegacy
         gtest
     )
+    if (NOT APPLE)
+        list(APPEND TestWebKitLegacy_LIBRARIES
+            WebKitLegacy
+        )
+    endif ()
 
     set(TestWebKitLegacy_PRIVATE_INCLUDE_DIRECTORIES
         ${CMAKE_BINARY_DIR}
@@ -196,7 +206,6 @@ if (ENABLE_WEBKIT)
     set(TestWebKit_SOURCES
         Tests/WebKit/AboutBlankLoad.cpp
         Tests/WebKit/CanHandleRequest.cpp
-        Tests/WebKit/CookieManager.cpp
         Tests/WebKit/DOMWindowExtensionBasic.cpp
         Tests/WebKit/DOMWindowExtensionNoCache.cpp
         Tests/WebKit/DocumentStartUserScriptAlertCrash.cpp
@@ -285,7 +294,7 @@ if (ENABLE_WEBKIT)
                                                       -Wno-unused-parameter)
     endif ()
 
-    add_library(TestWebKitAPIInjectedBundle SHARED
+    set(TestWebKitAPIInjectedBundle_SOURCES
         InjectedBundleController.cpp
         InjectedBundleMain.cpp
         PlatformUtilities.cpp
@@ -314,9 +323,21 @@ if (ENABLE_WEBKIT)
         Tests/WebKit/WillLoad_Bundle.cpp
         Tests/WebKit/WillSendSubmitEvent_Bundle.cpp
     )
+    if (APPLE)
+        list(APPEND TestWebKitAPIInjectedBundle_SOURCES
+            Tests/WebKit/DOMWindowExtensionBasic_Bundle.cpp
+
+            cocoa/UtilitiesCocoa.mm
+
+            mac/InjectedBundleControllerMac.mm
+            mac/PlatformUtilitiesMac.mm
+        )
+    endif ()
+    add_library(TestWebKitAPIInjectedBundle SHARED ${TestWebKitAPIInjectedBundle_SOURCES})
+
     target_compile_definitions(TestWebKitAPIInjectedBundle PRIVATE BUILDING_TestWebKit)
     target_include_directories(TestWebKitAPIInjectedBundle PRIVATE ${TestWebKit_PRIVATE_INCLUDE_DIRECTORIES})
-    target_link_libraries(TestWebKitAPIInjectedBundle PRIVATE WebKit)
+    target_link_libraries(TestWebKitAPIInjectedBundle PRIVATE WebKit WTF)
 
     if (COMPILER_IS_GCC_OR_CLANG)
         WEBKIT_ADD_TARGET_CXX_FLAGS(TestWebKitAPIInjectedBundle -Wno-dangling-else

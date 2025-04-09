@@ -26,8 +26,10 @@
 #include "config.h"
 #include "WebURLSchemeTask.h"
 
+#include "APIFrameInfo.h"
 #include "DataReference.h"
 #include "SharedBufferDataReference.h"
+#include "URLSchemeTaskParameters.h"
 #include "WebErrors.h"
 #include "WebPageMessages.h"
 #include "WebPageProxy.h"
@@ -36,18 +38,19 @@
 namespace WebKit {
 using namespace WebCore;
 
-Ref<WebURLSchemeTask> WebURLSchemeTask::create(WebURLSchemeHandler& handler, WebPageProxy& page, WebProcessProxy& process, uint64_t resourceIdentifier, ResourceRequest&& request, SyncLoadCompletionHandler&& syncCompletionHandler)
+Ref<WebURLSchemeTask> WebURLSchemeTask::create(WebURLSchemeHandler& handler, WebPageProxy& page, WebProcessProxy& process, PageIdentifier webPageID, URLSchemeTaskParameters&& parameters, SyncLoadCompletionHandler&& syncCompletionHandler)
 {
-    return adoptRef(*new WebURLSchemeTask(handler, page, process, resourceIdentifier, WTFMove(request), WTFMove(syncCompletionHandler)));
+    return adoptRef(*new WebURLSchemeTask(handler, page, process, webPageID, WTFMove(parameters), WTFMove(syncCompletionHandler)));
 }
 
-WebURLSchemeTask::WebURLSchemeTask(WebURLSchemeHandler& handler, WebPageProxy& page, WebProcessProxy& process, uint64_t resourceIdentifier, ResourceRequest&& request, SyncLoadCompletionHandler&& syncCompletionHandler)
+WebURLSchemeTask::WebURLSchemeTask(WebURLSchemeHandler& handler, WebPageProxy& page, WebProcessProxy& process, PageIdentifier webPageID, URLSchemeTaskParameters&& parameters, SyncLoadCompletionHandler&& syncCompletionHandler)
     : m_urlSchemeHandler(handler)
-    , m_page(&page)
     , m_process(makeRef(process))
-    , m_identifier(resourceIdentifier)
-    , m_pageIdentifier(page.pageID())
-    , m_request(WTFMove(request))
+    , m_identifier(parameters.taskIdentifier)
+    , m_pageProxyID(page.identifier())
+    , m_webPageID(webPageID)
+    , m_request(WTFMove(parameters.request))
+    , m_frameInfo(API::FrameInfo::create(WTFMove(parameters.frameInfo), &page))
     , m_syncCompletionHandler(WTFMove(syncCompletionHandler))
 {
     ASSERT(RunLoop::isMain());
@@ -82,7 +85,7 @@ auto WebURLSchemeTask::didPerformRedirection(WebCore::ResourceResponse&& respons
         m_request = request;
     }
 
-    m_process->send(Messages::WebPage::URLSchemeTaskDidPerformRedirection(m_urlSchemeHandler->identifier(), m_identifier, response, request), m_page->pageID());
+    m_process->send(Messages::WebPage::URLSchemeTaskDidPerformRedirection(m_urlSchemeHandler->identifier(), m_identifier, response, request), m_webPageID);
 
     return ExceptionType::None;
 }
@@ -107,7 +110,7 @@ auto WebURLSchemeTask::didReceiveResponse(const ResourceResponse& response) -> E
     if (isSync())
         m_syncResponse = response;
 
-    m_process->send(Messages::WebPage::URLSchemeTaskDidReceiveResponse(m_urlSchemeHandler->identifier(), m_identifier, response), m_page->pageID());
+    m_process->send(Messages::WebPage::URLSchemeTaskDidReceiveResponse(m_urlSchemeHandler->identifier(), m_identifier, response), m_webPageID);
     return ExceptionType::None;
 }
 
@@ -134,7 +137,7 @@ auto WebURLSchemeTask::didReceiveData(Ref<SharedBuffer>&& buffer) -> ExceptionTy
         return ExceptionType::None;
     }
 
-    m_process->send(Messages::WebPage::URLSchemeTaskDidReceiveData(m_urlSchemeHandler->identifier(), m_identifier, { buffer }), m_page->pageID());
+    m_process->send(Messages::WebPage::URLSchemeTaskDidReceiveData(m_urlSchemeHandler->identifier(), m_identifier, buffer.get()), m_webPageID);
     return ExceptionType::None;
 }
 
@@ -164,7 +167,7 @@ auto WebURLSchemeTask::didComplete(const ResourceError& error) -> ExceptionType
         m_syncData = nullptr;
     }
 
-    m_process->send(Messages::WebPage::URLSchemeTaskDidComplete(m_urlSchemeHandler->identifier(), m_identifier, error), m_page->pageID());
+    m_process->send(Messages::WebPage::URLSchemeTaskDidComplete(m_urlSchemeHandler->identifier(), m_identifier, error), m_webPageID);
     m_urlSchemeHandler->taskCompleted(*this);
 
     return ExceptionType::None;
@@ -173,9 +176,9 @@ auto WebURLSchemeTask::didComplete(const ResourceError& error) -> ExceptionType
 void WebURLSchemeTask::pageDestroyed()
 {
     ASSERT(RunLoop::isMain());
-    ASSERT(m_page);
 
-    m_page = nullptr;
+    m_pageProxyID = { };
+    m_webPageID = { };
     m_process = nullptr;
     m_stopped = true;
     

@@ -18,6 +18,7 @@ namespace rx
 
 namespace vk
 {
+class CommandGraph;
 
 enum class VisitedState
 {
@@ -32,8 +33,14 @@ enum class CommandGraphResourceType
     Framebuffer,
     Image,
     Query,
+    Dispatcher,
+    // Transform feedback queries could be handled entirely on the CPU (if not using
+    // VK_EXT_transform_feedback), but still need to generate a command graph barrier node.
+    EmulatedQuery,
     FenceSync,
+    GraphBarrier,
     DebugMarker,
+    HostAvailabilityOperation,
 };
 
 // Certain functionality cannot be put in secondary command buffers, so they are special-cased in
@@ -44,26 +51,30 @@ enum class CommandGraphNodeFunction
     BeginQuery,
     EndQuery,
     WriteTimestamp,
+    BeginTransformFeedbackQuery,
+    EndTransformFeedbackQuery,
     SetFenceSync,
     WaitFenceSync,
+    GraphBarrier,
     InsertDebugMarker,
     PushDebugMarker,
     PopDebugMarker,
+    HostAvailabilityOperation,
 };
 
-// Receives notifications when a command buffer is no longer able to record. Can be used with
-// inheritance. Faster than using an interface class since it has inlined methods. Could be used
-// with composition by adding a getCommandBuffer method.
-class CommandBufferOwner
+// Receives notifications when a render pass command buffer is no longer able to record. Can be
+// used with inheritance. Faster than using an interface class since it has inlined methods. Could
+// be used with composition by adding a getCommandBuffer method.
+class RenderPassOwner
 {
   public:
-    CommandBufferOwner() = default;
-    virtual ~CommandBufferOwner() {}
+    RenderPassOwner() = default;
+    virtual ~RenderPassOwner() {}
 
-    ANGLE_INLINE void onCommandBufferFinished() { mCommandBuffer = nullptr; }
+    ANGLE_INLINE void onRenderPassFinished() { mRenderPassCommandBuffer = nullptr; }
 
   protected:
-    CommandBuffer *mCommandBuffer = nullptr;
+    CommandBuffer *mRenderPassCommandBuffer = nullptr;
 };
 
 // Only used internally in the command graph. Kept in the header for better inlining performance.
@@ -87,12 +98,12 @@ class CommandGraphNode final : angle::NonCopyable
     }
 
     // For outside the render pass (copies, transitions, etc).
-    angle::Result beginOutsideRenderPassRecording(Context *context,
+    angle::Result beginOutsideRenderPassRecording(ContextVk *context,
                                                   const CommandPool &commandPool,
                                                   CommandBuffer **commandsOut);
 
     // For rendering commands (draws).
-    angle::Result beginInsideRenderPassRecording(Context *context, CommandBuffer **commandsOut);
+    angle::Result beginInsideRenderPassRecording(ContextVk *context, CommandBuffer **commandsOut);
 
     // storeRenderPassInfo and append*RenderTarget store info relevant to the RenderPass.
     void storeRenderPassInfo(const Framebuffer &framebuffer,
@@ -117,6 +128,21 @@ class CommandGraphNode final : angle::NonCopyable
     {
         mRenderPassAttachmentOps[attachmentIndex].stencilLoadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
         mRenderPassClearValues[attachmentIndex].depthStencil.stencil = stencil;
+    }
+
+    void invalidateRenderPassColorAttachment(size_t attachmentIndex)
+    {
+        mRenderPassAttachmentOps[attachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    }
+
+    void invalidateRenderPassDepthAttachment(size_t attachmentIndex)
+    {
+        mRenderPassAttachmentOps[attachmentIndex].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    }
+
+    void invalidateRenderPassStencilAttachment(size_t attachmentIndex)
+    {
+        mRenderPassAttachmentOps[attachmentIndex].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     }
 
     // Dependency commands order node execution in the command graph.
@@ -155,7 +181,9 @@ class CommandGraphNode final : angle::NonCopyable
 
     CommandGraphResourceType getResourceTypeForDiagnostics() const { return mResourceType; }
     uintptr_t getResourceIDForDiagnostics() const { return mResourceID; }
+    bool hasDiagnosticID() const;
     std::string dumpCommandsForDiagnostics(const char *separator) const;
+    void getMemoryUsageStatsForDiagnostics(size_t *usedMemoryOut, size_t *allocatedMemoryOut) const;
 
     const gl::Rectangle &getRenderPassRenderArea() const { return mRenderPassRenderArea; }
 
@@ -168,26 +196,42 @@ class CommandGraphNode final : angle::NonCopyable
     void setDebugMarker(GLenum source, std::string &&marker);
     const std::string &getDebugMarker() const { return mDebugMarker; }
 
-    ANGLE_INLINE void addGlobalMemoryBarrier(VkFlags srcAccess, VkFlags dstAccess)
+    ANGLE_INLINE void addGlobalMemoryBarrier(VkFlags srcAccess,
+                                             VkFlags dstAccess,
+                                             VkPipelineStageFlags stages)
     {
         mGlobalMemoryBarrierSrcAccess |= srcAccess;
         mGlobalMemoryBarrierDstAccess |= dstAccess;
+        mGlobalMemoryBarrierStages |= stages;
+    }
+
+    ANGLE_INLINE void setActiveTransformFeedbackInfo(size_t validBufferCount,
+                                                     const VkBuffer *counterBuffers,
+                                                     bool rebindBuffer)
+    {
+        mValidTransformFeedbackBufferCount = static_cast<uint32_t>(validBufferCount);
+        mRebindTransformFeedbackBuffers    = rebindBuffer;
+
+        for (size_t index = 0; index < validBufferCount; index++)
+        {
+            mTransformFeedbackCounterBuffers[index] = counterBuffers[index];
+        }
     }
 
     // This can only be set for RenderPass nodes. Each RenderPass node can have at most one owner.
-    void setCommandBufferOwner(CommandBufferOwner *owner)
+    void setRenderPassOwner(RenderPassOwner *owner)
     {
-        ASSERT(mCommandBufferOwner == nullptr);
-        mCommandBufferOwner = owner;
+        ASSERT(mRenderPassOwner == nullptr);
+        mRenderPassOwner = owner;
     }
 
   private:
     ANGLE_INLINE void setHasChildren()
     {
         mHasChildren = true;
-        if (mCommandBufferOwner)
+        if (mRenderPassOwner)
         {
-            mCommandBufferOwner->onCommandBufferFinished();
+            mRenderPassOwner->onRenderPassFinished();
         }
     }
 
@@ -234,10 +278,152 @@ class CommandGraphNode final : angle::NonCopyable
     // For global memory barriers.
     VkFlags mGlobalMemoryBarrierSrcAccess;
     VkFlags mGlobalMemoryBarrierDstAccess;
+    VkPipelineStageFlags mGlobalMemoryBarrierStages;
 
-    // Command buffer notifications.
-    CommandBufferOwner *mCommandBufferOwner;
+    // Render pass command buffer notifications.
+    RenderPassOwner *mRenderPassOwner;
+
+    // Active transform feedback state
+    gl::TransformFeedbackBuffersArray<VkBuffer> mTransformFeedbackCounterBuffers;
+    uint32_t mValidTransformFeedbackBufferCount;
+    bool mRebindTransformFeedbackBuffers;
 };
+
+// Tracks how a resource is used in a command graph and in a VkQueue. The reference count indicates
+// the number of times a resource is used in the graph. The serial indicates the last current use
+// of a resource in the VkQueue. The reference count and serial together can determine if a
+// resource is in use.
+struct ResourceUse
+{
+    ResourceUse() = default;
+
+    uint32_t counter = 0;
+    Serial serial;
+};
+
+class SharedResourceUse final : angle::NonCopyable
+{
+  public:
+    SharedResourceUse() : mUse(nullptr) {}
+    ~SharedResourceUse() { ASSERT(!valid()); }
+    SharedResourceUse(SharedResourceUse &&rhs) : mUse(rhs.mUse) { rhs.mUse = nullptr; }
+    SharedResourceUse &operator=(SharedResourceUse &&rhs)
+    {
+        std::swap(mUse, rhs.mUse);
+        return *this;
+    }
+
+    ANGLE_INLINE bool valid() const { return mUse != nullptr; }
+
+    void init()
+    {
+        ASSERT(!mUse);
+        mUse = new ResourceUse;
+        mUse->counter++;
+    }
+
+    ANGLE_INLINE void release()
+    {
+        ASSERT(valid());
+        ASSERT(mUse->counter > 0);
+        if (--mUse->counter == 0)
+        {
+            delete mUse;
+        }
+        mUse = nullptr;
+    }
+
+    ANGLE_INLINE void releaseAndUpdateSerial(Serial serial)
+    {
+        ASSERT(valid());
+        ASSERT(mUse->counter > 0);
+        ASSERT(mUse->serial <= serial);
+        mUse->serial = serial;
+        release();
+    }
+
+    ANGLE_INLINE void set(const SharedResourceUse &rhs)
+    {
+        ASSERT(rhs.valid());
+        ASSERT(!valid());
+        ASSERT(rhs.mUse->counter < std::numeric_limits<uint32_t>::max());
+        mUse = rhs.mUse;
+        mUse->counter++;
+    }
+
+    // The base counter value for a live resource is "1". Any value greater than one indicates
+    // the resource is in use by a vk::CommandGraph.
+    ANGLE_INLINE bool hasRecordedCommands() const
+    {
+        ASSERT(valid());
+        return mUse->counter > 1;
+    }
+
+    ANGLE_INLINE bool hasRunningCommands(Serial lastCompletedSerial) const
+    {
+        ASSERT(valid());
+        return mUse->serial > lastCompletedSerial;
+    }
+
+    ANGLE_INLINE bool isCurrentlyInUse(Serial lastCompletedSerial) const
+    {
+        return hasRecordedCommands() || hasRunningCommands(lastCompletedSerial);
+    }
+
+    ANGLE_INLINE Serial getSerial() const
+    {
+        ASSERT(valid());
+        return mUse->serial;
+    }
+
+  private:
+    ResourceUse *mUse;
+};
+
+class SharedGarbage
+{
+  public:
+    SharedGarbage();
+    SharedGarbage(SharedGarbage &&other);
+    SharedGarbage(SharedResourceUse &&use, std::vector<GarbageObject> &&garbage);
+    ~SharedGarbage();
+    SharedGarbage &operator=(SharedGarbage &&rhs);
+
+    bool destroyIfComplete(VkDevice device, Serial completedSerial);
+
+  private:
+    SharedResourceUse mLifetime;
+    std::vector<GarbageObject> mGarbage;
+};
+
+using SharedGarbageList = std::vector<SharedGarbage>;
+
+// Mixin to abstract away the resource use tracking.
+class ResourceUseList final : angle::NonCopyable
+{
+  public:
+    ResourceUseList();
+    virtual ~ResourceUseList();
+
+    void add(const SharedResourceUse &resourceUse);
+
+    void releaseResourceUses();
+    void releaseResourceUsesAndUpdateSerials(Serial serial);
+
+  private:
+    std::vector<SharedResourceUse> mResourceUses;
+};
+
+// ResourceUser inlines.
+ANGLE_INLINE void ResourceUseList::add(const SharedResourceUse &resourceUse)
+{
+    // Disabled the assert because of difficulties with ImageView references.
+    // TODO(jmadill): Clean up with graph redesign. http://anglebug.com/4029
+    // ASSERT(!empty());
+    SharedResourceUse newUse;
+    newUse.set(resourceUse);
+    mResourceUses.emplace_back(std::move(newUse));
+}
 
 // This is a helper class for back-end objects used in Vk command buffers. It records a serial
 // at command recording times indicating an order in the queue. We use Fences to detect when
@@ -250,37 +436,48 @@ class CommandGraphResource : angle::NonCopyable
   public:
     virtual ~CommandGraphResource();
 
-    // Returns true if the resource is in use by the renderer.
-    bool isResourceInUse(RendererVk *renderer) const;
+    // Returns true if the resource has commands in the graph.  This is used to know if a flush
+    // should be performed, e.g. if we need to wait for the GPU to finish with the resource.
+    bool hasRecordedCommands() const { return mUse.hasRecordedCommands(); }
 
-    // Get the current queue serial for this resource. Used to release resources, and for
-    // queries, to know if the queue they are submitted on has finished execution.
-    Serial getStoredQueueSerial() const { return mStoredQueueSerial; }
+    // Determine if the driver has finished execution with this resource.
+    bool hasRunningCommands(Serial lastCompletedSerial) const
+    {
+        return mUse.hasRunningCommands(lastCompletedSerial);
+    }
+
+    // Returns true if the resource is in use by ANGLE or the driver.
+    bool isCurrentlyInUse(Serial lastCompletedSerial) const
+    {
+        return mUse.isCurrentlyInUse(lastCompletedSerial);
+    }
+
+    // Ensures the driver is caught up to this resource and it is only in use by ANGLE.
+    angle::Result finishRunningCommands(ContextVk *contextVk);
 
     // Sets up dependency relations. 'this' resource is the resource being written to.
-    void addWriteDependency(CommandGraphResource *writingResource);
+    void addWriteDependency(ContextVk *contextVk, CommandGraphResource *writingResource);
 
     // Sets up dependency relations. 'this' resource is the resource being read.
-    void addReadDependency(CommandGraphResource *readingResource);
+    void addReadDependency(ContextVk *contextVk, CommandGraphResource *readingResource);
 
     // Updates the in-use serial tracked for this resource. Will clear dependencies if the resource
     // was not used in this set of command nodes.
-    ANGLE_INLINE void updateQueueSerial(Serial queueSerial)
-    {
-        ASSERT(queueSerial >= mStoredQueueSerial);
+    void onResourceAccess(ResourceUseList *resourceUseList);
+    void updateCurrentAccessNodes();
 
-        if (queueSerial > mStoredQueueSerial)
-        {
-            mCurrentWritingNode = nullptr;
-            mCurrentReadingNodes.clear();
-            mStoredQueueSerial = queueSerial;
-        }
-    }
+    // If a resource is recreated, as in released and reinitialized, the next access to the
+    // resource will not create an edge from its last node and will create a new independent node.
+    // This is because mUse is reset and the graph believes it's an entirely new resource.  In very
+    // particular cases, such as recreating an image with full mipchain or adding STORAGE_IMAGE flag
+    // to its uses, this function is used to preserve the link between the previous and new
+    // nodes allocated for this resource.
+    void onResourceRecreated(ResourceUseList *resourceUseList);
 
     // Allocates a write node via getNewWriteNode and returns a started command buffer.
     // The started command buffer will render outside of a RenderPass.
     // Will append to an existing command buffer/graph node if possible.
-    angle::Result recordCommands(Context *context, CommandBuffer **commandBufferOut);
+    angle::Result recordCommands(ContextVk *context, CommandBuffer **commandBufferOut);
 
     // Begins a command buffer on the current graph node for in-RenderPass rendering.
     // Called from FramebufferVk::startNewRenderPass and UtilsVk functions.
@@ -293,96 +490,54 @@ class CommandGraphResource : angle::NonCopyable
                                   CommandBuffer **commandBufferOut);
 
     // Checks if we're in a RenderPass without children.
-    bool hasStartedRenderPass() const
-    {
-        return hasChildlessWritingNode() &&
-               mCurrentWritingNode->getInsideRenderPassCommands()->valid();
-    }
+    bool hasStartedRenderPass() const;
 
     // Checks if we're in a RenderPass that encompasses renderArea, returning true if so. Updates
     // serial internally. Returns the started command buffer in commandBufferOut.
-    ANGLE_INLINE bool appendToStartedRenderPass(Serial currentQueueSerial,
-                                                const gl::Rectangle &renderArea,
-                                                CommandBuffer **commandBufferOut)
-    {
-        updateQueueSerial(currentQueueSerial);
-        if (hasStartedRenderPass())
-        {
-            if (mCurrentWritingNode->getRenderPassRenderArea().encloses(renderArea))
-            {
-                *commandBufferOut = mCurrentWritingNode->getInsideRenderPassCommands();
-                return true;
-            }
-        }
-
-        return false;
-    }
+    bool appendToStartedRenderPass(ResourceUseList *resourceUseList,
+                                   const gl::Rectangle &renderArea,
+                                   CommandBuffer **commandBufferOut);
 
     // Returns true if the render pass is started, but there are no commands yet recorded in it.
     // This is useful to know if the render pass ops can be modified.
-    bool renderPassStartedButEmpty() const
-    {
-        return hasStartedRenderPass() &&
-               mCurrentWritingNode->getInsideRenderPassCommands()->empty();
-    }
+    bool renderPassStartedButEmpty() const;
 
-    void clearRenderPassColorAttachment(size_t attachmentIndex, const VkClearColorValue &clearValue)
-    {
-        ASSERT(renderPassStartedButEmpty());
-        mCurrentWritingNode->clearRenderPassColorAttachment(attachmentIndex, clearValue);
-    }
+    void clearRenderPassColorAttachment(size_t attachmentIndex,
+                                        const VkClearColorValue &clearValue);
+    void clearRenderPassDepthAttachment(size_t attachmentIndex, float depth);
+    void clearRenderPassStencilAttachment(size_t attachmentIndex, uint32_t stencil);
 
-    void clearRenderPassDepthAttachment(size_t attachmentIndex, float depth)
-    {
-        ASSERT(renderPassStartedButEmpty());
-        mCurrentWritingNode->clearRenderPassDepthAttachment(attachmentIndex, depth);
-    }
-
-    void clearRenderPassStencilAttachment(size_t attachmentIndex, uint32_t stencil)
-    {
-        ASSERT(renderPassStartedButEmpty());
-        mCurrentWritingNode->clearRenderPassStencilAttachment(attachmentIndex, stencil);
-    }
+    void invalidateRenderPassColorAttachment(size_t attachmentIndex);
+    void invalidateRenderPassDepthAttachment(size_t attachmentIndex);
+    void invalidateRenderPassStencilAttachment(size_t attachmentIndex);
 
     // Accessor for RenderPass RenderArea.
-    const gl::Rectangle &getRenderPassRenderArea() const
-    {
-        ASSERT(hasStartedRenderPass());
-        return mCurrentWritingNode->getRenderPassRenderArea();
-    }
+    const gl::Rectangle &getRenderPassRenderArea() const;
 
     // Called when 'this' object changes, but we'd like to start a new command buffer later.
-    void finishCurrentCommands(RendererVk *renderer);
+    void finishCurrentCommands(ContextVk *contextVk);
 
     // Store a deferred memory barrier. Will be recorded into a primary command buffer at submit.
-    void addGlobalMemoryBarrier(VkFlags srcAccess, VkFlags dstAccess)
-    {
-        ASSERT(mCurrentWritingNode);
-        mCurrentWritingNode->addGlobalMemoryBarrier(srcAccess, dstAccess);
-    }
+    void addGlobalMemoryBarrier(VkFlags srcAccess, VkFlags dstAccess, VkPipelineStageFlags stages);
+
+    // Sets active transform feedback information to current writing node.
+    void setActiveTransformFeedbackInfo(size_t validBufferCount,
+                                        const VkBuffer *counterBuffers,
+                                        bool rebindBuffer);
 
   protected:
     explicit CommandGraphResource(CommandGraphResourceType resourceType);
 
+    // Current resource lifetime.
+    SharedResourceUse mUse;
+
   private:
     // Returns true if this node has a current writing node with no children.
-    ANGLE_INLINE bool hasChildlessWritingNode() const
-    {
-        // Note: currently, we don't have a resource that can issue both generic and special
-        // commands.  We don't create read/write dependencies between mixed generic/special
-        // resources either.  As such, we expect the function to always be generic here.  If such a
-        // resource is added in the future, this can add a check for function == generic and fail if
-        // false.
-        ASSERT(mCurrentWritingNode == nullptr ||
-               mCurrentWritingNode->getFunction() == CommandGraphNodeFunction::Generic);
-        return (mCurrentWritingNode != nullptr && !mCurrentWritingNode->hasChildren());
-    }
+    ANGLE_INLINE bool hasChildlessWritingNode() const;
 
-    void startNewCommands(RendererVk *renderer);
+    void startNewCommands(ContextVk *contextVk);
 
-    void onWriteImpl(CommandGraphNode *writingNode, Serial currentSerial);
-
-    Serial mStoredQueueSerial;
+    void onWriteImpl(ContextVk *contextVk, CommandGraphNode *writingNode);
 
     std::vector<CommandGraphNode *> mCurrentReadingNodes;
 
@@ -426,11 +581,10 @@ class CommandGraph final : angle::NonCopyable
     // dependencies between the previous barrier, the new barrier and all nodes in between.
     CommandGraphNode *allocateNode(CommandGraphNodeFunction function);
 
-    angle::Result submitCommands(Context *context,
+    angle::Result submitCommands(ContextVk *context,
                                  Serial serial,
                                  RenderPassCache *renderPassCache,
-                                 CommandPool *commandPool,
-                                 PrimaryCommandBuffer *primaryCommandBufferOut);
+                                 PrimaryCommandBuffer *primaryCommandBuffer);
     bool empty() const;
     void clear();
 
@@ -439,13 +593,21 @@ class CommandGraph final : angle::NonCopyable
     void beginQuery(const QueryPool *queryPool, uint32_t queryIndex);
     void endQuery(const QueryPool *queryPool, uint32_t queryIndex);
     void writeTimestamp(const QueryPool *queryPool, uint32_t queryIndex);
+    void beginTransformFeedbackEmulatedQuery();
+    void endTransformFeedbackEmulatedQuery();
     // GLsync and EGLSync:
     void setFenceSync(const vk::Event &event);
     void waitFenceSync(const vk::Event &event);
+    // Memory barriers:
+    void memoryBarrier(VkFlags srcAccess, VkFlags dstAccess, VkPipelineStageFlags stages);
     // Debug markers:
     void insertDebugMarker(GLenum source, std::string &&marker);
     void pushDebugMarker(GLenum source, std::string &&marker);
     void popDebugMarker();
+    // Host-visible buffer write availability operation:
+    void makeHostVisibleBufferWriteAvailable();
+    // External memory synchronization:
+    void syncExternalMemory();
 
   private:
     CommandGraphNode *allocateBarrierNode(CommandGraphNodeFunction function,
@@ -456,6 +618,7 @@ class CommandGraph final : angle::NonCopyable
     void addDependenciesToNextBarrier(size_t begin, size_t end, CommandGraphNode *nextBarrier);
 
     void dumpGraphDotFile(std::ostream &out) const;
+    void updateOverlay(ContextVk *contextVk) const;
 
     std::vector<CommandGraphNode *> mNodes;
     bool mEnableGraphDiagnostics;
@@ -510,6 +673,140 @@ class CommandGraph final : angle::NonCopyable
     static constexpr size_t kInvalidNodeIndex = std::numeric_limits<std::size_t>::max();
     size_t mLastBarrierIndex;
 };
+
+// CommandGraphResource inlines.
+ANGLE_INLINE bool CommandGraphResource::hasStartedRenderPass() const
+{
+    return hasChildlessWritingNode() && mCurrentWritingNode->getInsideRenderPassCommands()->valid();
+}
+
+ANGLE_INLINE void CommandGraphResource::updateCurrentAccessNodes()
+{
+    // Clear dependencies if this is a new access.
+    if (!mUse.hasRecordedCommands())
+    {
+        mCurrentWritingNode = nullptr;
+        mCurrentReadingNodes.clear();
+    }
+}
+
+ANGLE_INLINE void CommandGraphResource::onResourceRecreated(ResourceUseList *resourceUseList)
+{
+    // Store reference in resource list.
+    resourceUseList->add(mUse);
+}
+
+ANGLE_INLINE void CommandGraphResource::onResourceAccess(ResourceUseList *resourceUseList)
+{
+    updateCurrentAccessNodes();
+
+    // Store reference in resource list.
+    resourceUseList->add(mUse);
+}
+
+ANGLE_INLINE bool CommandGraphResource::appendToStartedRenderPass(ResourceUseList *resourceUseList,
+                                                                  const gl::Rectangle &renderArea,
+                                                                  CommandBuffer **commandBufferOut)
+{
+    updateCurrentAccessNodes();
+
+    if (hasStartedRenderPass())
+    {
+        // Store reference in resource list.
+        resourceUseList->add(mUse);
+
+        if (mCurrentWritingNode->getRenderPassRenderArea().encloses(renderArea))
+        {
+            *commandBufferOut = mCurrentWritingNode->getInsideRenderPassCommands();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+ANGLE_INLINE bool CommandGraphResource::renderPassStartedButEmpty() const
+{
+    return hasStartedRenderPass() && (!vk::CommandBuffer::CanKnowIfEmpty() ||
+                                      mCurrentWritingNode->getInsideRenderPassCommands()->empty());
+}
+
+ANGLE_INLINE void CommandGraphResource::clearRenderPassColorAttachment(
+    size_t attachmentIndex,
+    const VkClearColorValue &clearValue)
+{
+    ASSERT(renderPassStartedButEmpty());
+    mCurrentWritingNode->clearRenderPassColorAttachment(attachmentIndex, clearValue);
+}
+
+ANGLE_INLINE void CommandGraphResource::clearRenderPassDepthAttachment(size_t attachmentIndex,
+                                                                       float depth)
+{
+    ASSERT(renderPassStartedButEmpty());
+    mCurrentWritingNode->clearRenderPassDepthAttachment(attachmentIndex, depth);
+}
+
+ANGLE_INLINE void CommandGraphResource::clearRenderPassStencilAttachment(size_t attachmentIndex,
+                                                                         uint32_t stencil)
+{
+    ASSERT(renderPassStartedButEmpty());
+    mCurrentWritingNode->clearRenderPassStencilAttachment(attachmentIndex, stencil);
+}
+
+ANGLE_INLINE void CommandGraphResource::invalidateRenderPassColorAttachment(size_t attachmentIndex)
+{
+    ASSERT(hasStartedRenderPass());
+    mCurrentWritingNode->invalidateRenderPassColorAttachment(attachmentIndex);
+}
+
+ANGLE_INLINE void CommandGraphResource::invalidateRenderPassDepthAttachment(size_t attachmentIndex)
+{
+    ASSERT(hasStartedRenderPass());
+    mCurrentWritingNode->invalidateRenderPassDepthAttachment(attachmentIndex);
+}
+
+ANGLE_INLINE void CommandGraphResource::invalidateRenderPassStencilAttachment(
+    size_t attachmentIndex)
+{
+    ASSERT(hasStartedRenderPass());
+    mCurrentWritingNode->invalidateRenderPassStencilAttachment(attachmentIndex);
+}
+
+ANGLE_INLINE const gl::Rectangle &CommandGraphResource::getRenderPassRenderArea() const
+{
+    ASSERT(hasStartedRenderPass());
+    return mCurrentWritingNode->getRenderPassRenderArea();
+}
+
+ANGLE_INLINE void CommandGraphResource::addGlobalMemoryBarrier(VkFlags srcAccess,
+                                                               VkFlags dstAccess,
+                                                               VkPipelineStageFlags stages)
+{
+    ASSERT(mCurrentWritingNode);
+    mCurrentWritingNode->addGlobalMemoryBarrier(srcAccess, dstAccess, stages);
+}
+
+ANGLE_INLINE void CommandGraphResource::setActiveTransformFeedbackInfo(
+    size_t validBufferCount,
+    const VkBuffer *counterBuffers,
+    bool rebindBuffer)
+{
+    ASSERT(mCurrentWritingNode);
+    mCurrentWritingNode->setActiveTransformFeedbackInfo(validBufferCount, counterBuffers,
+                                                        rebindBuffer);
+}
+
+ANGLE_INLINE bool CommandGraphResource::hasChildlessWritingNode() const
+{
+    // Note: currently, we don't have a resource that can issue both generic and special
+    // commands.  We don't create read/write dependencies between mixed generic/special
+    // resources either.  As such, we expect the function to always be generic here.  If such a
+    // resource is added in the future, this can add a check for function == generic and fail if
+    // false.
+    ASSERT(mCurrentWritingNode == nullptr ||
+           mCurrentWritingNode->getFunction() == CommandGraphNodeFunction::Generic);
+    return (mCurrentWritingNode != nullptr && !mCurrentWritingNode->hasChildren());
+}
 }  // namespace vk
 }  // namespace rx
 

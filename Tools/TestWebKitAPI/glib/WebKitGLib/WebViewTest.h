@@ -30,6 +30,7 @@ public:
     virtual ~WebViewTest();
 
     static bool shouldInitializeWebViewInConstructor;
+    static bool shouldCreateEphemeralWebView;
     void initializeWebView();
 
     void platformInitializeWebView();
@@ -70,6 +71,7 @@ public:
 #endif
 
 #if PLATFORM(WPE)
+    void showInWindowAndWaitUntilMapped() { showInWindow(); };
     void showInWindow();
 #endif
 
@@ -95,6 +97,8 @@ public:
     void initializeWebExtensions() final { Test::initializeWebExtensions(); }
 
     static gboolean webProcessTerminated(WebKitWebView*, WebKitWebProcessTerminationReason, WebViewTest*);
+
+    GRefPtr<GDBusProxy> extensionProxy();
 
     GRefPtr<WebKitUserContentManager> m_userContentManager;
     WebKitWebView* m_webView { nullptr };

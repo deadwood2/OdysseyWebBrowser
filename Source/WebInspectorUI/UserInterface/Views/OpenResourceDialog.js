@@ -63,6 +63,17 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
 
     // Protected
 
+    representedObjectIsValid(value)
+    {
+        if (value instanceof WI.Script && value.anonymous)
+            return false;
+
+        if (value instanceof WI.CSSStyleSheet && value.anonymous)
+            return false;
+
+        return super.representedObjectIsValid(value);
+    }
+
     _populateResourceTreeOutline()
     {
         function createHighlightedTitleFragment(title, highlightTextRanges)
@@ -96,6 +107,8 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
                 treeElement = new WI.ResourceTreeElement(representedObject);
             else if (representedObject instanceof WI.Script)
                 treeElement = new WI.ScriptTreeElement(representedObject);
+            else if (representedObject instanceof WI.CSSStyleSheet)
+                treeElement = new WI.CSSStyleSheetTreeElement(representedObject);
 
             return treeElement;
         }
@@ -110,6 +123,9 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
                 continue;
 
             treeElement.mainTitle = createHighlightedTitleFragment(resource.displayName, result.matchingTextRanges);
+
+            if (resource instanceof WI.LocalResource && resource.isLocalResourceOverride)
+                treeElement.subtitle = WI.UIString("Local Override");
 
             let path = resource.urlComponents.path;
             let lastPathComponent = resource.urlComponents.lastPathComponent;
@@ -131,8 +147,12 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
     {
         WI.Frame.removeEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
         WI.Frame.removeEventListener(WI.Frame.Event.ResourceWasAdded, this._resourceWasAdded, this);
+        WI.Frame.removeEventListener(WI.Frame.Event.ResourceWasRemoved, this._resourceWasRemoved, this);
         WI.Target.removeEventListener(WI.Target.Event.ResourceAdded, this._resourceWasAdded, this);
         WI.debuggerManager.removeEventListener(WI.DebuggerManager.Event.ScriptAdded, this._scriptAdded, this);
+        WI.debuggerManager.removeEventListener(WI.DebuggerManager.Event.ScriptRemoved, this._scriptRemoved, this);
+        WI.cssManager.removeEventListener(WI.CSSManager.Event.StyleSheetAdded, this._handleStyleSheetAdded, this);
+        WI.cssManager.removeEventListener(WI.CSSManager.Event.StyleSheetRemoved, this._handleStyleSheetRemoved, this);
 
         this._queryController.reset();
     }
@@ -141,8 +161,12 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
     {
         WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
         WI.Frame.addEventListener(WI.Frame.Event.ResourceWasAdded, this._resourceWasAdded, this);
+        WI.Frame.addEventListener(WI.Frame.Event.ResourceWasRemoved, this._resourceWasRemoved, this);
         WI.Target.addEventListener(WI.Target.Event.ResourceAdded, this._resourceWasAdded, this);
         WI.debuggerManager.addEventListener(WI.DebuggerManager.Event.ScriptAdded, this._scriptAdded, this);
+        WI.debuggerManager.addEventListener(WI.DebuggerManager.Event.ScriptRemoved, this._scriptRemoved, this);
+        WI.cssManager.addEventListener(WI.CSSManager.Event.StyleSheetAdded, this._handleStyleSheetAdded, this);
+        WI.cssManager.addEventListener(WI.CSSManager.Event.StyleSheetRemoved, this._handleStyleSheetRemoved, this);
 
         if (WI.networkManager.mainFrame)
             this._addResourcesForFrame(WI.networkManager.mainFrame);
@@ -152,6 +176,21 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
         for (let target of WI.targets) {
             if (target !== WI.mainTarget)
                 this._addResourcesForTarget(target);
+        }
+
+        this._addLocalResourceOverrides();
+
+        if (WI.NetworkManager.supportsBootstrapScript()) {
+            let bootstrapScript = WI.networkManager.bootstrapScript;
+            if (bootstrapScript) {
+                const suppressFilterUpdate = true;
+                this._addResource(bootstrapScript, suppressFilterUpdate);
+            }
+        }
+
+        for (let styleSheet of WI.cssManager.styleSheets) {
+            if (styleSheet.origin !== WI.CSSStyleSheet.Type.Author && !styleSheet.anonymous)
+                this._addResource(styleSheet);
         }
 
         this._updateFilter();
@@ -290,6 +329,16 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
         this._updateFilter();
     }
 
+    _removeResource(resource)
+    {
+        if (!this.representedObjectIsValid(resource))
+            return;
+
+        this._queryController.removeResource(resource);
+
+        this._updateFilter();
+    }
+
     _addResourcesForFrame(frame)
     {
         const suppressFilterUpdate = true;
@@ -323,16 +372,31 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
 
         let targetData = WI.debuggerManager.dataForTarget(target);
         for (let script of targetData.scripts) {
-            if (script.resource)
+            if (script.anonymous || script.resource || script.dynamicallyAddedScriptElement)
                 continue;
-            if (script.dynamicallyAddedScriptElement)
+            if (!WI.settings.debugShowConsoleEvaluations.value && isWebInspectorConsoleEvaluationScript(script.sourceURL))
                 continue;
-            if ((!WI.isDebugUIEnabled() || !WI.settings.debugShowConsoleEvaluations.value) || isWebInspectorConsoleEvaluationScript(script.sourceURL))
-                continue;
-            if ((!WI.isEngineeringBuild || !WI.settings.engineeringShowInternalScripts.value) && isWebKitInternalScript(script.sourceURL))
+            if (!WI.settings.engineeringShowInternalScripts.value && isWebKitInternalScript(script.sourceURL))
                 continue;
             this._addResource(script, suppressFilterUpdate);
         }
+
+        for (let script of target.extraScriptCollection) {
+            if (script.resource)
+                continue;
+            this._addResource(script, suppressFilterUpdate);
+        }
+    }
+
+    _addLocalResourceOverrides()
+    {
+        if (!WI.NetworkManager.supportsLocalResourceOverrides())
+            return;
+
+        const suppressFilterUpdate = true;
+
+        for (let localResourceOverride of WI.networkManager.localResourceOverrides)
+            this._addResource(localResourceOverride.localResource, suppressFilterUpdate);
     }
 
     _mainResourceDidChange(event)
@@ -348,16 +412,45 @@ WI.OpenResourceDialog = class OpenResourceDialog extends WI.Dialog
         this._addResource(event.data.resource);
     }
 
+    _resourceWasRemoved(event)
+    {
+        this._removeResource(event.data.resource);
+    }
+
     _scriptAdded(event)
     {
-        let script = event.data.script;
-        if (script.resource)
-            return;
-
-        if (script.target === WI.mainTarget)
+        let {script} = event.data;
+        if (script.resource || script.target === WI.mainTarget)
             return;
 
         this._addResource(script);
+    }
+
+    _scriptRemoved(event)
+    {
+        let {script} = event.data;
+        if (script.resource || script.target === WI.mainTarget)
+            return;
+
+        this._removeResource(script);
+    }
+
+    _handleStyleSheetAdded(event)
+    {
+        let {styleSheet} = event.data;
+        if (styleSheet.origin === WI.CSSStyleSheet.Type.Author || styleSheet.anonymous)
+            return;
+
+        this._addResource(styleSheet);
+    }
+
+    _handleStyleSheetRemoved(event)
+    {
+        let {styleSheet} = event.data;
+        if (styleSheet.origin === WI.CSSStyleSheet.Type.Author || styleSheet.anonymous)
+            return;
+
+        this._removeResource(styleSheet);
     }
 };
 

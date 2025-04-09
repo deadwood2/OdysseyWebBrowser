@@ -60,10 +60,8 @@ namespace WebKit {
     
 void PluginProcessProxy::platformGetLaunchOptionsWithAttributes(ProcessLauncher::LaunchOptions& launchOptions, const PluginProcessAttributes& pluginProcessAttributes)
 {
-    if (pluginProcessAttributes.moduleInfo.pluginArchitecture == CPU_TYPE_X86)
-        launchOptions.processType = ProcessLauncher::ProcessType::Plugin32;
-    else
-        launchOptions.processType = ProcessLauncher::ProcessType::Plugin64;
+    ASSERT(pluginProcessAttributes.moduleInfo.pluginArchitecture == CPU_TYPE_X86_64);
+    launchOptions.processType = ProcessLauncher::ProcessType::Plugin64;
 
     launchOptions.extraInitializationData.add("plugin-path", pluginProcessAttributes.moduleInfo.path);
 
@@ -295,8 +293,10 @@ void PluginProcessProxy::launchApplicationAtURL(const String& urlString, const V
     for (size_t i = 0; i < arguments.size(); ++i)
         [argumentsArray addObject:(NSString *)arguments[i]];
 
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     NSDictionary *configuration = [NSDictionary dictionaryWithObject:argumentsArray.get() forKey:NSWorkspaceLaunchConfigurationArguments];
     [[NSWorkspace sharedWorkspace] launchApplicationAtURL:[NSURL URLWithString:urlString] options:NSWorkspaceLaunchAsync configuration:configuration error:nullptr];
+    ALLOW_DEPRECATED_DECLARATIONS_END
     completionHandler(true);
 }
 
@@ -346,7 +346,9 @@ void PluginProcessProxy::openFile(const String& fullPath, CompletionHandler<void
     if (!shouldOpenFile(m_pluginProcessAttributes, fullPath))
         return completionHandler(false);
 
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [[NSWorkspace sharedWorkspace] openFile:fullPath];
+    ALLOW_DEPRECATED_DECLARATIONS_END
     completionHandler(true);
 }
 

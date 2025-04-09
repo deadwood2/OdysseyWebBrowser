@@ -3527,11 +3527,11 @@ static void testsJSCOptions()
 
     guint maxPerThreadStackUsage;
     g_assert_true(jsc_options_get_uint("maxPerThreadStackUsage", &maxPerThreadStackUsage));
-    g_assert_cmpuint(maxPerThreadStackUsage, ==, 4194304);
+    g_assert_cmpuint(maxPerThreadStackUsage, ==, 5242880);
     g_assert_true(jsc_options_set_uint("maxPerThreadStackUsage", 4096));
     g_assert_true(jsc_options_get_uint("maxPerThreadStackUsage", &maxPerThreadStackUsage));
     g_assert_cmpuint(maxPerThreadStackUsage, ==, 4096);
-    g_assert_true(jsc_options_set_uint("maxPerThreadStackUsage", 4194304));
+    g_assert_true(jsc_options_set_uint("maxPerThreadStackUsage", 5242880));
 
     gsize webAssemblyPartialCompileLimit;
     g_assert_true(jsc_options_get_size("webAssemblyPartialCompileLimit", &webAssemblyPartialCompileLimit));
@@ -3541,13 +3541,13 @@ static void testsJSCOptions()
     g_assert_cmpuint(webAssemblyPartialCompileLimit, ==, 6000);
     g_assert_true(jsc_options_set_size("webAssemblyPartialCompileLimit", 5000));
 
-    gdouble smallHeapRAMFraction;
-    g_assert_true(jsc_options_get_double("smallHeapRAMFraction", &smallHeapRAMFraction));
-    g_assert_cmpfloat(smallHeapRAMFraction, ==, 0.25);
-    g_assert_true(jsc_options_set_double("smallHeapRAMFraction", 0.50));
-    g_assert_true(jsc_options_get_double("smallHeapRAMFraction", &smallHeapRAMFraction));
-    g_assert_cmpfloat(smallHeapRAMFraction, ==, 0.50);
-    g_assert_true(jsc_options_set_double("smallHeapRAMFraction", 0.25));
+    gdouble criticalGCMemoryThreshold;
+    g_assert_true(jsc_options_get_double("criticalGCMemoryThreshold", &criticalGCMemoryThreshold));
+    g_assert_cmpfloat(criticalGCMemoryThreshold, ==, 0.80);
+    g_assert_true(jsc_options_set_double("criticalGCMemoryThreshold", 0.90));
+    g_assert_true(jsc_options_get_double("criticalGCMemoryThreshold", &criticalGCMemoryThreshold));
+    g_assert_cmpfloat(criticalGCMemoryThreshold, ==, 0.90);
+    g_assert_true(jsc_options_set_double("criticalGCMemoryThreshold", 0.80));
 
     GUniqueOutPtr<char> configFile;
     g_assert_true(jsc_options_get_string("configFile", &configFile.outPtr()));
@@ -3652,7 +3652,7 @@ static void testsJSCOptions()
         "--jsc-thresholdForJITAfterWarmUp=2000",
         "--jsc-maxPerThreadStackUsage=1024",
         "--jsc-webAssemblyPartialCompileLimit=4000",
-        "--jsc-smallHeapRAMFraction=0.75",
+        "--jsc-criticalGCMemoryThreshold=0.95",
         "--jsc-configFile=/tmp/bar",
         "--jsc-bytecodeRangeToJITCompile=100:300",
         "--jsc-logGC=1",
@@ -3672,8 +3672,8 @@ static void testsJSCOptions()
     g_assert_cmpuint(maxPerThreadStackUsage, ==, 1024);
     g_assert_true(jsc_options_get_size("webAssemblyPartialCompileLimit", &webAssemblyPartialCompileLimit));
     g_assert_cmpuint(webAssemblyPartialCompileLimit, ==, 4000);
-    g_assert_true(jsc_options_get_double("smallHeapRAMFraction", &smallHeapRAMFraction));
-    g_assert_cmpfloat(smallHeapRAMFraction, ==, 0.75);
+    g_assert_true(jsc_options_get_double("criticalGCMemoryThreshold", &criticalGCMemoryThreshold));
+    g_assert_cmpfloat(criticalGCMemoryThreshold, ==, 0.95);
     g_assert_true(jsc_options_get_string("configFile", &configFile.outPtr()));
     g_assert_cmpstr(configFile.get(), ==, "/tmp/bar");
     g_assert_true(jsc_options_get_range_string("bytecodeRangeToJITCompile", &bytecodeRangeToJITCompile.outPtr()));
@@ -3684,7 +3684,7 @@ static void testsJSCOptions()
     // Restore options their default values.
     g_assert_true(jsc_options_set_boolean(JSC_OPTIONS_USE_JIT, TRUE));
     g_assert_true(jsc_options_set_int("thresholdForJITAfterWarmUp", 500));
-    g_assert_true(jsc_options_set_uint("maxPerThreadStackUsage", 4194304));
+    g_assert_true(jsc_options_set_uint("maxPerThreadStackUsage", 5242880));
     g_assert_true(jsc_options_set_size("webAssemblyPartialCompileLimit", 5000));
     g_assert_true(jsc_options_set_double("smallHeapRAMFraction", 0.25));
     g_assert_true(jsc_options_set_string("configFile", nullptr));
@@ -3737,10 +3737,151 @@ static void testsJSCAutocleanups()
 }
 #endif
 
+static void testJSCJSON()
+{
+    {
+        LeakChecker checker;
+        GRefPtr<JSCContext> context = adoptGRef(jsc_context_new());
+        checker.watch(context.get());
+        ExceptionHandler exceptionHandler(context.get());
+
+        GRefPtr<JSCValue> value = adoptGRef(jsc_value_new_from_json(context.get(), nullptr));
+        checker.watch(value.get());
+        g_assert_true(jsc_value_is_null(value.get()));
+
+        value = adoptGRef(jsc_value_new_from_json(context.get(), "25"));
+        checker.watch(value.get());
+        g_assert_true(jsc_value_is_number(value.get()));
+        g_assert_cmpint(jsc_value_to_int32(value.get()), ==, 25);
+
+        value = adoptGRef(jsc_value_new_from_json(context.get(), "2.5"));
+        checker.watch(value.get());
+        g_assert_true(jsc_value_is_number(value.get()));
+        g_assert_cmpfloat(jsc_value_to_double(value.get()), ==, 2.5);
+
+        value = adoptGRef(jsc_value_new_from_json(context.get(), "true"));
+        checker.watch(value.get());
+        g_assert_true(jsc_value_is_boolean(value.get()));
+        g_assert_true(jsc_value_to_boolean(value.get()));
+
+        value = adoptGRef(jsc_value_new_from_json(context.get(), "false"));
+        checker.watch(value.get());
+        g_assert_true(jsc_value_is_boolean(value.get()));
+        g_assert_false(jsc_value_to_boolean(value.get()));
+
+        value = adoptGRef(jsc_value_new_from_json(context.get(), "\"\""));
+        checker.watch(value.get());
+        g_assert_true(jsc_value_is_string(value.get()));
+        GUniquePtr<char> valueString(jsc_value_to_string(value.get()));
+        g_assert_cmpstr(valueString.get(), ==, "");
+
+        value = adoptGRef(jsc_value_new_from_json(context.get(), "\"Foo\""));
+        checker.watch(value.get());
+        g_assert_true(jsc_value_is_string(value.get()));
+        valueString.reset(jsc_value_to_string(value.get()));
+        g_assert_cmpstr(valueString.get(), ==, "Foo");
+
+        value = adoptGRef(jsc_value_new_from_json(context.get(), "[1,2]"));
+        checker.watch(value.get());
+        g_assert_true(jsc_value_is_array(value.get()));
+        GRefPtr<JSCValue> arrayLength = adoptGRef(jsc_value_object_get_property(value.get(), "length"));
+        checker.watch(arrayLength.get());
+        g_assert_true(jsc_value_is_number(arrayLength.get()));
+        g_assert_cmpint(jsc_value_to_int32(arrayLength.get()), ==, 2);
+        valueString.reset(jsc_value_to_string(value.get()));
+        g_assert_cmpstr(valueString.get(), ==, "1,2");
+
+        value = adoptGRef(jsc_value_new_from_json(context.get(), "{\"foo\":42}"));
+        checker.watch(value.get());
+        g_assert_true(jsc_value_is_object(value.get()));
+        GRefPtr<JSCValue> property = adoptGRef(jsc_value_object_get_property(value.get(), "foo"));
+        checker.watch(property.get());
+        g_assert_true(jsc_value_is_number(property.get()));
+        g_assert_cmpint(jsc_value_to_int32(property.get()), ==, 42);
+
+        bool didThrow = false;
+        g_assert_throw_begin(exceptionHandler, didThrow);
+        value = adoptGRef(jsc_value_new_from_json(context.get(), "[1,"));
+        g_assert_null(value.get());
+        g_assert_did_throw(exceptionHandler, didThrow);
+    }
+
+    {
+        LeakChecker checker;
+        GRefPtr<JSCContext> context = adoptGRef(jsc_context_new());
+        checker.watch(context.get());
+        ExceptionHandler exceptionHandler(context.get());
+
+        GRefPtr<JSCValue> value = adoptGRef(jsc_value_new_null(context.get()));
+        checker.watch(value.get());
+        GUniquePtr<char> jsonString(jsc_value_to_json(value.get(), 0));
+        g_assert_cmpstr(jsonString.get(), ==, "null");
+
+        value = adoptGRef(jsc_value_new_undefined(context.get()));
+        checker.watch(value.get());
+        g_assert_null(jsc_value_to_json(value.get(), 0));
+
+        value = adoptGRef(jsc_value_new_number(context.get(), 25));
+        checker.watch(value.get());
+        jsonString.reset(jsc_value_to_json(value.get(), 0));
+        g_assert_cmpstr(jsonString.get(), ==, "25");
+
+        value = adoptGRef(jsc_value_new_number(context.get(), 2.5));
+        checker.watch(value.get());
+        jsonString.reset(jsc_value_to_json(value.get(), 0));
+        g_assert_cmpstr(jsonString.get(), ==, "2.5");
+
+        value = adoptGRef(jsc_value_new_boolean(context.get(), TRUE));
+        checker.watch(value.get());
+        jsonString.reset(jsc_value_to_json(value.get(), 0));
+        g_assert_cmpstr(jsonString.get(), ==, "true");
+
+        value = adoptGRef(jsc_value_new_boolean(context.get(), FALSE));
+        checker.watch(value.get());
+        jsonString.reset(jsc_value_to_json(value.get(), 0));
+        g_assert_cmpstr(jsonString.get(), ==, "false");
+
+        value = adoptGRef(jsc_value_new_string(context.get(), nullptr));
+        checker.watch(value.get());
+        jsonString.reset(jsc_value_to_json(value.get(), 0));
+        g_assert_cmpstr(jsonString.get(), ==, "\"\"");
+
+        value = adoptGRef(jsc_value_new_string(context.get(), "Foo"));
+        checker.watch(value.get());
+        jsonString.reset(jsc_value_to_json(value.get(), 0));
+        g_assert_cmpstr(jsonString.get(), ==, "\"Foo\"");
+
+        value = adoptGRef(jsc_value_new_array(context.get(), G_TYPE_INT, 1, G_TYPE_INT, 2, G_TYPE_NONE));
+        checker.watch(value.get());
+        jsonString.reset(jsc_value_to_json(value.get(), 0));
+        g_assert_cmpstr(jsonString.get(), ==, "[1,2]");
+
+        value = adoptGRef(jsc_value_new_object(context.get(), nullptr, nullptr));
+        checker.watch(value.get());
+        GRefPtr<JSCValue> property = adoptGRef(jsc_value_new_number(context.get(), 42));
+        jsc_value_object_set_property(value.get(), "foo", property.get());
+        jsonString.reset(jsc_value_to_json(value.get(), 0));
+        g_assert_cmpstr(jsonString.get(), ==, "{\"foo\":42}");
+
+        jsonString.reset(jsc_value_to_json(value.get(), 4));
+        g_assert_cmpstr(jsonString.get(), ==, "{\n    \"foo\": 42\n}");
+
+        value = adoptGRef(jsc_context_evaluate(context.get(), "({get a(){ throw '';}})", -1));
+        checker.watch(value.get());
+        bool didThrow = false;
+        g_assert_throw_begin(exceptionHandler, didThrow);
+        g_assert_null(jsc_value_to_json(value.get(), 0));
+        g_assert_did_throw(exceptionHandler, didThrow);
+    }
+}
+
 int main(int argc, char** argv)
 {
     g_test_init(&argc, &argv, nullptr);
 
+    // options should always be the first test, since changing options
+    // is not allowed after the first VM instance is created.
+    g_test_add_func("/jsc/options", testsJSCOptions);
     g_test_add_func("/jsc/basic", testJSCBasic);
     g_test_add_func("/jsc/types", testJSCTypes);
     g_test_add_func("/jsc/global-object", testJSCGlobalObject);
@@ -3755,10 +3896,10 @@ int main(int argc, char** argv)
     g_test_add_func("/jsc/garbage-collector", testJSCGarbageCollector);
     g_test_add_func("/jsc/weak-value", testJSCWeakValue);
     g_test_add_func("/jsc/vm", testsJSCVirtualMachine);
-    g_test_add_func("/jsc/options", testsJSCOptions);
 #ifdef G_DEFINE_AUTOPTR_CLEANUP_FUNC
     g_test_add_func("/jsc/autocleanups", testsJSCAutocleanups);
 #endif
+    g_test_add_func("/jsc/json", testJSCJSON);
 
     return g_test_run();
 }

@@ -223,6 +223,8 @@ interface IWebPreferencesPrivate6 : IWebPreferencesPrivate5
     HRESULT setVisualViewportAPIEnabled([in] BOOL enabled);
     HRESULT CSSOMViewScrollingAPIEnabled([out, retval] BOOL*);
     HRESULT setCSSOMViewScrollingAPIEnabled([in] BOOL enabled);
+    HRESULT CSSOMViewSmoothScrollingEnabled([out, retval] BOOL*);
+    HRESULT setCSSOMViewSmoothScrollingEnabled([in] BOOL enabled);
     HRESULT fetchAPIKeepAliveEnabled([out, retval] BOOL* enabled);
     HRESULT setFetchAPIKeepAliveEnabled([in] BOOL enabled);
     HRESULT spatialNavigationEnabled([out, retval] BOOL *enabled);
@@ -244,6 +246,23 @@ interface IWebPreferencesPrivate7 : IWebPreferencesPrivate6
     HRESULT setResizeObserverEnabled([in] BOOL enabled);
     HRESULT coreMathMLEnabled([out, retval] BOOL* enabled);
     HRESULT setCoreMathMLEnabled([in] BOOL enabled);
-    HRESULT lazyImageLoadingEnabled([out, retval] BOOL*);
-    HRESULT setLazyImageLoadingEnabled([in] BOOL enabled);
+    HRESULT requestIdleCallbackEnabled([out, retval] BOOL* enabled);
+    HRESULT setRequestIdleCallbackEnabled([in] BOOL enabled);
+    HRESULT asyncClipboardAPIEnabled([out, retval] BOOL* enabled);
+    HRESULT setAsyncClipboardAPIEnabled([in] BOOL enabled);
+    HRESULT webAnimationsCompositeOperationsEnabled([out, retval] BOOL*);
+    HRESULT setWebAnimationsCompositeOperationsEnabled([in] BOOL enabled);
+    HRESULT webAnimationsMutableTimelinesEnabled([out, retval] BOOL*);
+    HRESULT setWebAnimationsMutableTimelinesEnabled([in] BOOL enabled);
+    HRESULT aspectRatioOfImgFromWidthAndHeightEnabled([out, retval] BOOL*);
+    HRESULT setAspectRatioOfImgFromWidthAndHeightEnabled([in] BOOL enabled);
+    HRESULT setWebSQLEnabled([in] BOOL enabled);
+    HRESULT webSQLEnabled([out, retval] BOOL* enabled);
+}
+
+[uuid(04D4AAE1-5D01-4CCD-B46E-C022F10A6826)]
+interface IWebPreferencesPrivate8 : IWebPreferencesPrivate7
+{
+    HRESULT allowTopNavigationToDataURLs([out, retval] BOOL* enabled);
+    HRESULT setAllowTopNavigationToDataURLs([in] BOOL enabled);
 }

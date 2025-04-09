@@ -36,14 +36,14 @@
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKRetainPtr.h>
 #import <WebKit/WKUIDelegatePrivate.h>
-#import <WebKit/WKWebViewPrivate.h>
+#import <WebKit/WKWebViewPrivateForTesting.h>
 #import <WebKit/_WKHitTestResult.h>
+#import <WebKit/_WKInspector.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/Vector.h>
 
 #if PLATFORM(MAC)
 #import <Carbon/Carbon.h>
-#import <wtf/mac/AppKitCompatibilityDeclarations.h>
 #endif
 
 static bool done;
@@ -427,6 +427,21 @@ TEST(WebKit, PrintFrame)
     TestWebKitAPI::Util::run(&drawFooterCalled);
 }
 
+TEST(WebKit, PrintPreview)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    auto delegate = adoptNS([[PrintDelegate alloc] init]);
+    [webView setUIDelegate:delegate.get()];
+    [webView loadHTMLString:@"<head><title>test_title</title></head><body onload='print()'>hello world!</body>" baseURL:[NSURL URLWithString:@"http://example.com/"]];
+    TestWebKitAPI::Util::run(&done);
+
+    NSPrintOperation *operation = [webView _printOperationWithPrintInfo:[NSPrintInfo sharedPrintInfo]];
+    NSPrintOperation.currentOperation = operation;
+    auto previewView = [operation view];
+    [webView _close];
+    [previewView drawRect:CGRectMake(0, 0, 10, 10)];
+}
+
 @interface NotificationDelegate : NSObject <WKUIDelegatePrivate> {
     bool _allowNotifications;
 }
@@ -469,11 +484,11 @@ TEST(WebKit, NotificationPermission)
     NSString *html = @"<script>Notification.requestPermission(function(p){alert('permission '+p)})</script>";
     auto webView = adoptNS([[WKWebView alloc] init]);
     [webView setUIDelegate:[[[NotificationDelegate alloc] initWithAllowNotifications:YES] autorelease]];
-    [webView loadHTMLString:html baseURL:[NSURL URLWithString:@"http://example.org"]];
+    [webView loadHTMLString:html baseURL:[NSURL URLWithString:@"https://example.org"]];
     TestWebKitAPI::Util::run(&done);
     done = false;
     [webView setUIDelegate:[[[NotificationDelegate alloc] initWithAllowNotifications:NO] autorelease]];
-    [webView loadHTMLString:html baseURL:[NSURL URLWithString:@"http://example.com"]];
+    [webView loadHTMLString:html baseURL:[NSURL URLWithString:@"https://example.com"]];
     TestWebKitAPI::Util::run(&done);
 }
 
@@ -884,5 +899,35 @@ TEST(WebKit, DidNotHandleWheelEvent)
 }
 
 #endif // RELIABLE_DID_NOT_HANDLE_WHEEL_EVENT
+
+@interface InspectorDelegate : NSObject <WKUIDelegatePrivate>
+@end
+
+@implementation InspectorDelegate
+
+- (void)_webView:(WKWebView *)webView didAttachInspector:(_WKInspector *)inspector
+{
+    EXPECT_EQ(webView._inspector, inspector);
+    EXPECT_TRUE(webView._hasInspectorFrontend);
+    [inspector close];
+    done = true;
+}
+
+@end
+
+TEST(WebKit, DidNotifyWhenInspectorAttached)
+{
+    auto webViewConfiguration = adoptNS([WKWebViewConfiguration new]);
+    webViewConfiguration.get().preferences._developerExtrasEnabled = YES;
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600) configuration:webViewConfiguration.get()]);
+    auto delegate = adoptNS([InspectorDelegate new]);
+    [webView setUIDelegate:delegate.get()];
+    [webView loadHTMLString:@"<head><title>Test page to be inspected</title></head><body><p>Filler content</p></body>" baseURL:[NSURL URLWithString:@"http://example.com/"]];
+
+    EXPECT_FALSE(webView.get()._hasInspectorFrontend);
+
+    [[webView _inspector] show];
+    TestWebKitAPI::Util::run(&done);
+}
 
 #endif // PLATFORM(MAC)

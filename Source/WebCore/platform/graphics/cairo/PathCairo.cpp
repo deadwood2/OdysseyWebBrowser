@@ -242,8 +242,8 @@ void Path::addArcTo(const FloatPoint& p1, const FloatPoint& p2, float radius)
 
     FloatPoint p1p0((p0.x() - p1.x()),(p0.y() - p1.y()));
     FloatPoint p1p2((p2.x() - p1.x()),(p2.y() - p1.y()));
-    float p1p0_length = sqrtf(p1p0.x() * p1p0.x() + p1p0.y() * p1p0.y());
-    float p1p2_length = sqrtf(p1p2.x() * p1p2.x() + p1p2.y() * p1p2.y());
+    float p1p0_length = std::hypot(p1p0.x(), p1p0.y());
+    float p1p2_length = std::hypot(p1p2.x(), p1p2.y());
 
     double cos_phi = (p1p0.x() * p1p2.x() + p1p0.y() * p1p2.y()) / (p1p0_length * p1p2_length);
     // all points on a line logic
@@ -265,7 +265,7 @@ void Path::addArcTo(const FloatPoint& p1, const FloatPoint& p2, float radius)
     FloatPoint t_p1p0((p1.x() + factor_p1p0 * p1p0.x()), (p1.y() + factor_p1p0 * p1p0.y()));
 
     FloatPoint orth_p1p0(p1p0.y(), -p1p0.x());
-    float orth_p1p0_length = sqrt(orth_p1p0.x() * orth_p1p0.x() + orth_p1p0.y() * orth_p1p0.y());
+    float orth_p1p0_length = std::hypot(orth_p1p0.x(), orth_p1p0.y());
     float factor_ra = radius / orth_p1p0_length;
 
     // angle between orth_p1p0 and p1p2 to get the right vector orthographic to p1p0
@@ -394,16 +394,15 @@ bool Path::contains(const FloatPoint& point, WindRule rule) const
     return contains;
 }
 
-bool Path::strokeContains(StrokeStyleApplier* applier, const FloatPoint& point) const
+bool Path::strokeContains(StrokeStyleApplier& applier, const FloatPoint& point) const
 {
     if (isNull())
         return false;
 
-    ASSERT(applier);
     cairo_t* cr = platformPath()->context();
     {
-        GraphicsContext gc(GraphicsContextImplCairo::createFactory(cr));
-        applier->strokeStyle(&gc);
+        GraphicsContext graphicsContext(GraphicsContextImplCairo::createFactory(cr));
+        applier.strokeStyle(&graphicsContext);
     }
 
     return cairo_in_stroke(cr, point.x(), point.y());
@@ -417,33 +416,31 @@ void Path::apply(const PathApplierFunction& function) const
     cairo_t* cr = platformPath()->context();
     auto pathCopy = cairo_copy_path(cr);
     cairo_path_data_t* data;
-    PathElement pelement;
-    FloatPoint points[3];
-    pelement.points = points;
+    PathElement pathElement;
 
     for (int i = 0; i < pathCopy->num_data; i += pathCopy->data[i].header.length) {
         data = &pathCopy->data[i];
         switch (data->header.type) {
         case CAIRO_PATH_MOVE_TO:
-            pelement.type = PathElementMoveToPoint;
-            pelement.points[0] = FloatPoint(data[1].point.x,data[1].point.y);
-            function(pelement);
+            pathElement.type = PathElement::Type::MoveToPoint;
+            pathElement.points[0] = FloatPoint(data[1].point.x, data[1].point.y);
+            function(pathElement);
             break;
         case CAIRO_PATH_LINE_TO:
-            pelement.type = PathElementAddLineToPoint;
-            pelement.points[0] = FloatPoint(data[1].point.x,data[1].point.y);
-            function(pelement);
+            pathElement.type = PathElement::Type::AddLineToPoint;
+            pathElement.points[0] = FloatPoint(data[1].point.x, data[1].point.y);
+            function(pathElement);
             break;
         case CAIRO_PATH_CURVE_TO:
-            pelement.type = PathElementAddCurveToPoint;
-            pelement.points[0] = FloatPoint(data[1].point.x,data[1].point.y);
-            pelement.points[1] = FloatPoint(data[2].point.x,data[2].point.y);
-            pelement.points[2] = FloatPoint(data[3].point.x,data[3].point.y);
-            function(pelement);
+            pathElement.type = PathElement::Type::AddCurveToPoint;
+            pathElement.points[0] = FloatPoint(data[1].point.x, data[1].point.y);
+            pathElement.points[1] = FloatPoint(data[2].point.x, data[2].point.y);
+            pathElement.points[2] = FloatPoint(data[3].point.x, data[3].point.y);
+            function(pathElement);
             break;
         case CAIRO_PATH_CLOSE_PATH:
-            pelement.type = PathElementCloseSubpath;
-            function(pelement);
+            pathElement.type = PathElement::Type::CloseSubpath;
+            function(pathElement);
             break;
         }
     }

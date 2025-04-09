@@ -27,10 +27,8 @@ class IndexedPointsTest : public ANGLETest
 
     float getIndexPositionY(size_t idx) { return (idx == 2 || idx == 3) ? -0.5f : 0.5f; }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         constexpr char kVS[] = R"(precision highp float;
 attribute vec2 position;
 
@@ -100,7 +98,7 @@ void main()
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), &indices[0], GL_STATIC_DRAW);
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteBuffers(1, &mVertexBuffer);
         glDeleteBuffers(1, &mIndexBuffer);
@@ -108,7 +106,6 @@ void main()
 
         glDeleteBuffers(1, &mVertexWithColorBuffer);
         glDeleteProgram(mVertexWithColorBufferProgram);
-        ANGLETest::TearDown();
     }
 
     void runTest(GLuint firstIndex, bool useVertexBufferWithColor = false)
@@ -161,19 +158,17 @@ void main()
 
             if (i < firstIndex)
             {
-                EXPECT_PIXEL_EQ(x, y, 0, 0, 0, 255);
+                EXPECT_PIXEL_COLOR_EQ(x, y, GLColor::black);
             }
             else
             {
                 if (useVertexBufferWithColor)
                 {
-                    // Pixel data is assumed to be GREEN
-                    EXPECT_PIXEL_EQ(x, y, 0, 255, 0, 255);
+                    EXPECT_PIXEL_COLOR_EQ(x, y, GLColor::green);
                 }
                 else
                 {
-                    // Pixel data is assumed to be RED
-                    EXPECT_PIXEL_EQ(x, y, 255, 0, 0, 255);
+                    EXPECT_PIXEL_COLOR_EQ(x, y, GLColor::red);
                 }
             }
         }
@@ -197,52 +192,60 @@ typedef IndexedPointsTest<GLubyte, GL_UNSIGNED_BYTE> IndexedPointsTestUByte;
 
 TEST_P(IndexedPointsTestUByte, UnsignedByteOffset0)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     runTest(0);
 }
 
 TEST_P(IndexedPointsTestUByte, UnsignedByteOffset1)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     runTest(1);
 }
 
 TEST_P(IndexedPointsTestUByte, UnsignedByteOffset2)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     runTest(2);
 }
 
 TEST_P(IndexedPointsTestUByte, UnsignedByteOffset3)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     runTest(3);
 }
 
 TEST_P(IndexedPointsTestUByte, VertexWithColorUnsignedByteOffset0)
 {
-    // TODO(fjhenigman): Fix with buffer offset http://anglebug.com/2848
-    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAMD());
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
 
     runTest(0, true);
 }
 
 TEST_P(IndexedPointsTestUByte, VertexWithColorUnsignedByteOffset1)
 {
-    // TODO(fjhenigman): Fix with buffer offset http://anglebug.com/2848
-    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAMD());
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
 
     runTest(1, true);
 }
 
 TEST_P(IndexedPointsTestUByte, VertexWithColorUnsignedByteOffset2)
 {
-    // TODO(fjhenigman): Fix with buffer offset http://anglebug.com/2848
-    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAMD());
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
 
     runTest(2, true);
 }
 
 TEST_P(IndexedPointsTestUByte, VertexWithColorUnsignedByteOffset3)
 {
-    // TODO(fjhenigman): Fix with buffer offset http://anglebug.com/2848
-    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAMD());
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
 
     runTest(3, true);
 }
@@ -251,60 +254,68 @@ typedef IndexedPointsTest<GLushort, GL_UNSIGNED_SHORT> IndexedPointsTestUShort;
 
 TEST_P(IndexedPointsTestUShort, UnsignedShortOffset0)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     runTest(0);
 }
 
 TEST_P(IndexedPointsTestUShort, UnsignedShortOffset1)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     runTest(1);
 }
 
 TEST_P(IndexedPointsTestUShort, UnsignedShortOffset2)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     runTest(2);
 }
 
 TEST_P(IndexedPointsTestUShort, UnsignedShortOffset3)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     runTest(3);
 }
 
 TEST_P(IndexedPointsTestUShort, VertexWithColorUnsignedShortOffset0)
 {
-    // TODO(fjhenigman): Fix with buffer offset http://anglebug.com/2848
-    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAMD());
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
 
     runTest(0, true);
 }
 
 TEST_P(IndexedPointsTestUShort, VertexWithColorUnsignedShortOffset1)
 {
-    // TODO(fjhenigman): Fix with buffer offset http://anglebug.com/2848
-    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAMD());
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
 
     runTest(1, true);
 }
 
 TEST_P(IndexedPointsTestUShort, VertexWithColorUnsignedShortOffset2)
 {
-    // TODO(fjhenigman): Fix with buffer offset http://anglebug.com/2848
-    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAMD());
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
 
     runTest(2, true);
 }
 
 TEST_P(IndexedPointsTestUShort, VertexWithColorUnsignedShortOffset3)
 {
-    // TODO(fjhenigman): Fix with buffer offset http://anglebug.com/2848
-    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAMD());
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
 
     runTest(3, true);
 }
 
 TEST_P(IndexedPointsTestUShort, VertexWithColorUnsignedShortOffsetChangingIndices)
 {
-    // TODO(fjhenigman): Fix with buffer offset http://anglebug.com/2848
-    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAMD());
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
 
     // TODO(fjhenigman): Figure out why this fails on Ozone Intel.
     ANGLE_SKIP_TEST_IF(IsOzone() && IsIntel() && IsOpenGLES());
@@ -323,7 +334,8 @@ TEST_P(IndexedPointsTestUInt, UnsignedIntOffset0)
     {
         return;
     }
-
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     runTest(0);
 }
 
@@ -333,7 +345,8 @@ TEST_P(IndexedPointsTestUInt, UnsignedIntOffset1)
     {
         return;
     }
-
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     runTest(1);
 }
 
@@ -343,7 +356,8 @@ TEST_P(IndexedPointsTestUInt, UnsignedIntOffset2)
     {
         return;
     }
-
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     runTest(2);
 }
 
@@ -353,7 +367,8 @@ TEST_P(IndexedPointsTestUInt, UnsignedIntOffset3)
     {
         return;
     }
-
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
     runTest(3);
 }
 
@@ -363,8 +378,9 @@ TEST_P(IndexedPointsTestUInt, VertexWithColorUnsignedIntOffset0)
     {
         return;
     }
-
-    runTest(0, false);
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
+    runTest(0, true);
 }
 
 TEST_P(IndexedPointsTestUInt, VertexWithColorUnsignedIntOffset1)
@@ -373,8 +389,9 @@ TEST_P(IndexedPointsTestUInt, VertexWithColorUnsignedIntOffset1)
     {
         return;
     }
-
-    runTest(1, false);
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
+    runTest(1, true);
 }
 
 TEST_P(IndexedPointsTestUInt, VertexWithColorUnsignedIntOffset2)
@@ -383,8 +400,9 @@ TEST_P(IndexedPointsTestUInt, VertexWithColorUnsignedIntOffset2)
     {
         return;
     }
-
-    runTest(2, false);
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
+    runTest(2, true);
 }
 
 TEST_P(IndexedPointsTestUInt, VertexWithColorUnsignedIntOffset3)
@@ -393,29 +411,15 @@ TEST_P(IndexedPointsTestUInt, VertexWithColorUnsignedIntOffset3)
     {
         return;
     }
-
-    runTest(3, false);
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(isSwiftshader());
+    runTest(3, true);
 }
 
 // TODO(lucferron): Diagnose and fix the UByte tests below for Vulkan.
 // http://anglebug.com/2646
 
 // TODO(geofflang): Figure out why this test fails on Intel OpenGL
-ANGLE_INSTANTIATE_TEST(IndexedPointsTestUByte,
-                       ES2_D3D11(),
-                       ES2_D3D11_FL9_3(),
-                       ES2_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES2_VULKAN());
-ANGLE_INSTANTIATE_TEST(IndexedPointsTestUShort,
-                       ES2_D3D11(),
-                       ES2_D3D11_FL9_3(),
-                       ES2_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES2_VULKAN());
-ANGLE_INSTANTIATE_TEST(IndexedPointsTestUInt,
-                       ES2_D3D11(),
-                       ES2_D3D11_FL9_3(),
-                       ES2_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES2_VULKAN());
+ANGLE_INSTANTIATE_TEST_ES2(IndexedPointsTestUByte);
+ANGLE_INSTANTIATE_TEST_ES2(IndexedPointsTestUShort);
+ANGLE_INSTANTIATE_TEST_ES2(IndexedPointsTestUInt);

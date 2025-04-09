@@ -1,14 +1,4 @@
-TOOLS_MODULE = Tools
-
-ifeq (iosmac,$(SDK_VARIANT))
-	DISABLE_WEBKIT_TOOLS = 1
-endif
-
-ifneq (,$(DISABLE_WEBKIT_TOOLS))
-	TOOLS_MODULE =
-endif
-
-MODULES = WebKitLibraries Source $(TOOLS_MODULE)
+MODULES = WebKitLibraries Source Tools
 
 all:
 	@for dir in $(MODULES); do ${MAKE} $@ -C $$dir; exit_status=$$?; \
@@ -19,6 +9,14 @@ debug d:
 	if [ $$exit_status -ne 0 ]; then exit $$exit_status; fi; done
 
 release r:
+	@for dir in $(MODULES); do ${MAKE} $@ -C $$dir; exit_status=$$?; \
+	if [ $$exit_status -ne 0 ]; then exit $$exit_status; fi; done
+
+release+assert ra:
+	@for dir in $(MODULES); do ${MAKE} $@ -C $$dir; exit_status=$$?; \
+	if [ $$exit_status -ne 0 ]; then exit $$exit_status; fi; done
+
+testing t:
 	@for dir in $(MODULES); do ${MAKE} $@ -C $$dir; exit_status=$$?; \
 	if [ $$exit_status -ne 0 ]; then exit $$exit_status; fi; done
 

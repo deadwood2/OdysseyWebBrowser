@@ -26,7 +26,6 @@
 #import "WK2BrowserWindowController.h"
 
 #import "AppDelegate.h"
-#import "AppKitCompatibilityDeclarations.h"
 #import "SettingsController.h"
 #import <WebKit/WKFrameInfo.h>
 #import <WebKit/WKNavigationActionPrivate.h>
@@ -36,6 +35,7 @@
 #import <WebKit/WKUIDelegatePrivate.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
+#import <WebKit/WKWebViewPrivateForTesting.h>
 #import <WebKit/WKWebsiteDataStorePrivate.h>
 #import <WebKit/WebNSURLExtras.h>
 #import <WebKit/_WKIconLoadingDelegate.h>
@@ -102,9 +102,10 @@ static const int testFooterBannerHeight = 58;
     _webView.navigationDelegate = self;
     _webView.UIDelegate = self;
 
+    SettingsController *settingsController = [[NSApplication sharedApplication] browserAppDelegate].settingsController;
     // This setting installs the new WK2 Icon Loading Delegate and tests that mechanism by
     // telling WebKit to load every icon referenced by the page.
-    if ([[SettingsController shared] loadsAllSiteIcons])
+    if (settingsController.loadsAllSiteIcons)
         _webView._iconLoadingDelegate = self;
     
     _webView._observedRenderingProgressEvents = _WKRenderingProgressEventFirstLayout
@@ -113,7 +114,9 @@ static const int testFooterBannerHeight = 58;
         | _WKRenderingProgressEventFirstLayoutAfterSuppressedIncrementalRendering
         | _WKRenderingProgressEventFirstPaintAfterSuppressedIncrementalRendering;
 
-    _zoomTextOnly = NO;
+
+    if (settingsController.customUserAgent)
+        _webView.customUserAgent = settingsController.customUserAgent;
 
     _webView._usePlatformFindUI = NO;
 
@@ -122,9 +125,14 @@ static const int testFooterBannerHeight = 58;
     _textFinder.incrementalSearchingShouldDimContentView = NO;
     _textFinder.client = _webView;
     _textFinder.findBarContainer = self;
+    
+    __weak WKWebView *weakWebView = _webView;
     _textFinder.hideInterfaceCallback = ^{
-        [_webView _hideFindUI];
+        WKWebView *webView = weakWebView;
+        [webView _hideFindUI];
     };
+
+    _zoomTextOnly = NO;
 }
 
 - (instancetype)initWithConfiguration:(WKWebViewConfiguration *)configuration
@@ -135,11 +143,13 @@ static const int testFooterBannerHeight = 58;
     _configuration = [configuration copy];
     _isPrivateBrowsingWindow = !_configuration.websiteDataStore.isPersistent;
 
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(userAgentDidChange:) name:kUserAgentChangedNotificationName object:nil];
     return self;
 }
 
 - (void)dealloc
 {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
     [_webView removeObserver:self forKeyPath:@"title"];
     [_webView removeObserver:self forKeyPath:@"URL"];
     
@@ -152,6 +162,13 @@ static const int testFooterBannerHeight = 58;
     [_configuration release];
 
     [super dealloc];
+}
+
+- (void)userAgentDidChange:(NSNotification *)notification
+{
+    SettingsController *settingsController = [[NSApplication sharedApplication] browserAppDelegate].settingsController;
+    _webView.customUserAgent = settingsController.customUserAgent;
+    [_webView reload];
 }
 
 - (IBAction)fetch:(id)sender
@@ -204,9 +221,17 @@ static BOOL areEssentiallyEqual(double a, double b)
     return (fabs(a - b) <= tolerance);
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-implementations"
 - (BOOL)validateMenuItem:(NSMenuItem *)menuItem
+#pragma GCC diagnostic pop
 {
     SEL action = menuItem.action;
+
+    if (action == @selector(saveAsPDF:))
+        return YES;
+    if (action == @selector(saveAsWebArchive:))
+        return YES;
 
     if (action == @selector(zoomIn:))
         return [self canZoomIn];
@@ -271,12 +296,12 @@ static BOOL areEssentiallyEqual(double a, double b)
         _zoomTextOnly = NO;
         double currentTextZoom = _webView._textZoomFactor;
         _webView._textZoomFactor = 1;
-        _webView._pageZoomFactor = currentTextZoom;
+        _webView.pageZoom = currentTextZoom;
     } else {
         _zoomTextOnly = YES;
         double currentPageZoom = _webView._pageZoomFactor;
         _webView._textZoomFactor = currentPageZoom;
-        _webView._pageZoomFactor = 1;
+        _webView.pageZoom = 1;
     }
 }
 
@@ -288,12 +313,12 @@ static BOOL areEssentiallyEqual(double a, double b)
     if (_zoomTextOnly)
         _webView._textZoomFactor = 1;
     else
-        _webView._pageZoomFactor = 1;
+        _webView.pageZoom = 1;
 }
 
 - (BOOL)canResetZoom
 {
-    return _zoomTextOnly ? (_webView._textZoomFactor != 1) : (_webView._pageZoomFactor != 1);
+    return _zoomTextOnly ? (_webView._textZoomFactor != 1) : (_webView.pageZoom != 1);
 }
 
 - (IBAction)toggleShrinkToFit:(id)sender
@@ -364,7 +389,7 @@ static BOOL areEssentiallyEqual(double a, double b)
 
 - (void)windowWillClose:(NSNotification *)notification
 {
-    [(BrowserAppDelegate *)[[NSApplication sharedApplication] delegate] browserWindowWillClose:self.window];
+    [[[NSApplication sharedApplication] browserAppDelegate] browserWindowWillClose:self.window];
     [self autorelease];
 }
 
@@ -374,7 +399,7 @@ static BOOL areEssentiallyEqual(double a, double b)
 
 - (CGFloat)currentZoomFactor
 {
-    return _zoomTextOnly ? _webView._textZoomFactor : _webView._pageZoomFactor;
+    return _zoomTextOnly ? _webView._textZoomFactor : _webView.pageZoom;
 }
 
 - (void)setCurrentZoomFactor:(CGFloat)factor
@@ -382,7 +407,7 @@ static BOOL areEssentiallyEqual(double a, double b)
     if (_zoomTextOnly)
         _webView._textZoomFactor = factor;
     else
-        _webView._pageZoomFactor = factor;
+        _webView.pageZoom = factor;
 }
 
 - (BOOL)canZoomIn
@@ -413,7 +438,7 @@ static BOOL areEssentiallyEqual(double a, double b)
 
 - (void)didChangeSettings
 {
-    SettingsController *settings = [SettingsController shared];
+    SettingsController *settings = [[NSApplication sharedApplication] browserAppDelegate].settingsController;
     WKPreferences *preferences = _webView.configuration.preferences;
 
     _webView._useSystemAppearance = settings.useSystemAppearance;
@@ -642,7 +667,7 @@ static NSSet *dataTypes()
 
 - (IBAction)printWebView:(id)sender
 {
-    [[_webView _printOperationWithPrintInfo:[NSPrintInfo sharedPrintInfo]] runOperationModalForWindow:self.window delegate:nil didRunSelector:nil contextInfo:nil];
+    [[_webView printOperationWithPrintInfo:[NSPrintInfo sharedPrintInfo]] runOperationModalForWindow:self.window delegate:nil didRunSelector:nil contextInfo:nil];
 }
 
 #pragma mark WKNavigationDelegate
@@ -813,6 +838,32 @@ static NSSet *dataTypes()
 - (void)_webView:(WKWebView *)webView includeSensitiveMediaDeviceDetails:(void (^)(BOOL includeSensitiveDetails))decisionHandler
 {
     decisionHandler(false);
+}
+
+- (IBAction)saveAsPDF:(id)sender
+{
+    NSSavePanel *panel = [NSSavePanel savePanel];
+    panel.allowedFileTypes = @[ @"pdf" ];
+    [panel beginSheetModalForWindow:self.window completionHandler:^(NSInteger result) {
+        if (result == NSModalResponseOK) {
+            [_webView createPDFWithConfiguration:nil completionHandler:^(NSData *pdfSnapshotData, NSError *error) {
+                [pdfSnapshotData writeToURL:[panel URL] options:0 error:nil];
+            }];
+        }
+    }];
+}
+
+- (IBAction)saveAsWebArchive:(id)sender
+{
+    NSSavePanel *panel = [NSSavePanel savePanel];
+    panel.allowedFileTypes = @[ @"webarchive" ];
+    [panel beginSheetModalForWindow:self.window completionHandler:^(NSInteger result) {
+        if (result == NSModalResponseOK) {
+            [_webView createWebArchiveDataWithCompletionHandler:^(NSData *archiveData, NSError *error) {
+                [archiveData writeToURL:[panel URL] options:0 error:nil];
+            }];
+        }
+    }];
 }
 
 @end

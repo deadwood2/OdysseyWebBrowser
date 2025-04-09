@@ -30,6 +30,7 @@
 #include "StorageAreaMapMessages.h"
 #include "StorageManagerSetMessages.h"
 #include <WebCore/TextEncoding.h>
+#include <wtf/CrossThreadCopier.h>
 #include <wtf/threads/BinarySemaphore.h>
 
 namespace WebKit {
@@ -59,8 +60,7 @@ void StorageManagerSet::add(PAL::SessionID sessionID, const String& localStorage
 {
     ASSERT(RunLoop::isMain());
 
-    auto[iter, isNewEntry] = m_storageManagerPaths.add(sessionID, localStorageDirectory);
-    if (isNewEntry) {
+    if (m_storageManagerPaths.add(sessionID, localStorageDirectory).isNewEntry) {
         if (!sessionID.isEphemeral())
             SandboxExtension::consumePermanently(localStorageDirectoryHandle);
 
@@ -78,7 +78,12 @@ void StorageManagerSet::remove(PAL::SessionID sessionID)
 
     if (m_storageManagerPaths.remove(sessionID)) {
         m_queue->dispatch([this, protectedThis = makeRef(*this), sessionID]() {
-            m_storageManagers.remove(sessionID);
+            if (auto storageManager = m_storageManagers.get(sessionID)) {
+                for (auto storageAreaID : storageManager->allStorageAreaIdentifiers())
+                    m_storageAreas.remove(storageAreaID);
+
+                m_storageManagers.remove(sessionID);
+            }
         });
     }
 }
@@ -110,8 +115,11 @@ void StorageManagerSet::removeConnection(IPC::Connection& connection)
     connection.removeWorkQueueMessageReceiver(Messages::StorageManagerSet::messageReceiverName());
 
     m_queue->dispatch([this, protectedThis = makeRef(*this), connectionID]() {
-        for (auto& storageArea : m_storageAreas.values())
-            storageArea->removeListener(connectionID);
+        for (const auto& storageArea : m_storageAreas.values()) {
+            ASSERT(storageArea);
+            if (storageArea)
+                storageArea->removeListener(connectionID);
+        }
     });
 }
 
@@ -121,7 +129,7 @@ void StorageManagerSet::waitUntilTasksFinished()
 
     BinarySemaphore semaphore;
     m_queue->dispatch([this, &semaphore] {
-        for (auto& [sessionID, storageManager] : m_storageManagers)
+        for (auto& storageManager : m_storageManagers.values())
             storageManager->clearStorageNamespaces();
 
         m_storageManagers.clear();
@@ -138,8 +146,11 @@ void StorageManagerSet::waitUntilSyncingLocalStorageFinished()
 
     BinarySemaphore semaphore;
     m_queue->dispatch([this, &semaphore] {
-        for (auto* storageArea : m_storageAreas.values())
-            storageArea->syncToDatabase();
+        for (const auto& storageArea : m_storageAreas.values()) {
+            ASSERT(storageArea);
+            if (storageArea)
+                storageArea->syncToDatabase();
+        }
 
         semaphore.signal();
     });
@@ -299,8 +310,8 @@ void StorageManagerSet::connectToLocalStorageArea(IPC::Connection& connection, P
     }
 
     auto storageAreaID = storageArea->identifier();
-    auto iter = m_storageAreas.add(storageAreaID, storageArea).iterator;
-    ASSERT_UNUSED(iter, storageArea == iter->value);
+    auto iter = m_storageAreas.add(storageAreaID, makeWeakPtr(storageArea)).iterator;
+    ASSERT_UNUSED(iter, storageArea == iter->value.get());
 
     completionHandler(storageAreaID);
 
@@ -324,8 +335,8 @@ void StorageManagerSet::connectToTransientLocalStorageArea(IPC::Connection& conn
     }
 
     auto storageAreaID = storageArea->identifier();
-    auto iter = m_storageAreas.add(storageAreaID, storageArea).iterator;
-    ASSERT_UNUSED(iter, storageArea == iter->value);
+    auto iter = m_storageAreas.add(storageAreaID, makeWeakPtr(storageArea)).iterator;
+    ASSERT_UNUSED(iter, storageArea == iter->value.get());
 
     completionHandler(storageAreaID);
 
@@ -349,8 +360,8 @@ void StorageManagerSet::connectToSessionStorageArea(IPC::Connection& connection,
     }
 
     auto storageAreaID = storageArea->identifier();
-    auto iter = m_storageAreas.add(storageAreaID, storageArea).iterator;
-    ASSERT_UNUSED(iter, storageArea == iter->value);
+    auto iter = m_storageAreas.add(storageAreaID, makeWeakPtr(storageArea)).iterator;
+    ASSERT_UNUSED(iter, storageArea == iter->value.get());
 
     completionHandler(storageAreaID);
     
@@ -361,18 +372,19 @@ void StorageManagerSet::disconnectFromStorageArea(IPC::Connection& connection, S
 {
     ASSERT(!RunLoop::isMain());
 
-    auto* storageArea = m_storageAreas.get(storageAreaID);
+    const auto& storageArea = m_storageAreas.get(storageAreaID);
     ASSERT(storageArea);
     ASSERT(storageArea->hasListener(connection.uniqueID()));
 
-    storageArea->removeListener(connection.uniqueID());
+    if (storageArea)
+        storageArea->removeListener(connection.uniqueID());
 }
 
 void StorageManagerSet::getValues(IPC::Connection& connection, StorageAreaIdentifier storageAreaID, GetValuesCallback&& completionHandler)
 {
     ASSERT(!RunLoop::isMain());
 
-    auto* storageArea = m_storageAreas.get(storageAreaID);
+    const auto& storageArea = m_storageAreas.get(storageAreaID);
     ASSERT(!storageArea || storageArea->hasListener(connection.uniqueID()));
 
     completionHandler(storageArea ? storageArea->items() : HashMap<String, String>());
@@ -382,11 +394,12 @@ void StorageManagerSet::setItem(IPC::Connection& connection, StorageAreaIdentifi
 {
     ASSERT(!RunLoop::isMain());
 
-    auto* storageArea = m_storageAreas.get(storageAreaID);
+    const auto& storageArea = m_storageAreas.get(storageAreaID);
     ASSERT(storageArea);
 
-    bool quotaError;
-    storageArea->setItem(connection.uniqueID(), storageAreaImplID, key, value, urlString, quotaError);
+    bool quotaError = false;
+    if (storageArea)
+        storageArea->setItem(connection.uniqueID(), storageAreaImplID, key, value, urlString, quotaError);
 
     connection.send(Messages::StorageAreaMap::DidSetItem(storageMapSeed, key, quotaError), storageAreaID);
 } 
@@ -395,10 +408,11 @@ void StorageManagerSet::removeItem(IPC::Connection& connection, StorageAreaIdent
 {
     ASSERT(!RunLoop::isMain());
 
-    auto* storageArea = m_storageAreas.get(storageAreaID);
+    const auto& storageArea = m_storageAreas.get(storageAreaID);
     ASSERT(storageArea);
 
-    storageArea->removeItem(connection.uniqueID(), storageAreaImplID, key, urlString);
+    if (storageArea)
+        storageArea->removeItem(connection.uniqueID(), storageAreaImplID, key, urlString);
 
     connection.send(Messages::StorageAreaMap::DidRemoveItem(storageMapSeed, key), storageAreaID);
 }
@@ -407,10 +421,11 @@ void StorageManagerSet::clear(IPC::Connection& connection, StorageAreaIdentifier
 {
     ASSERT(!RunLoop::isMain());
 
-    auto* storageArea = m_storageAreas.get(storageAreaID);
+    const auto& storageArea = m_storageAreas.get(storageAreaID);
     ASSERT(storageArea);
 
-    storageArea->clear(connection.uniqueID(), storageAreaImplID, urlString);
+    if (storageArea)
+        storageArea->clear(connection.uniqueID(), storageAreaImplID, urlString);
 
     connection.send(Messages::StorageAreaMap::DidClear(storageMapSeed), storageAreaID);
 }

@@ -32,44 +32,68 @@
 #import "NfcConnection.h"
 #import <WebCore/FidoConstants.h>
 #import <wtf/BlockPtr.h>
+#import <wtf/RetainPtr.h>
 #import <wtf/RunLoop.h>
 #import <wtf/Vector.h>
 
 #import "NearFieldSoftLink.h"
+
+namespace {
+uint8_t tagID1[] = { 0x01 };
+uint8_t tagID2[] = { 0x02 };
+}
 
 #if HAVE(NEAR_FIELD)
 
 @interface WKMockNFTag : NSObject <NFTag>
 
 - (instancetype)initWithType:(NFTagType)type;
+- (instancetype)initWithType:(NFTagType)type tagID:(NSData *)tagID;
 
 @end
 
 @implementation WKMockNFTag {
     NFTagType _type;
+    RetainPtr<NSData> _tagID;
 }
 
-@synthesize technology;
-@synthesize tagID;
-@synthesize AppData;
-@synthesize UID;
-@synthesize ndefAvailability;
-@synthesize ndefMessageSize;
-@synthesize ndefContainerSize;
-@synthesize tagA;
-@synthesize tagB;
-@synthesize tagF;
+@synthesize technology=_technology;
+@synthesize AppData=_AppData;
+@synthesize UID=_UID;
+@synthesize ndefAvailability=_ndefAvailability;
+@synthesize ndefMessageSize=_ndefMessageSize;
+@synthesize ndefContainerSize=_ndefContainerSize;
+@synthesize tagA=_tagA;
+@synthesize tagB=_tagB;
+@synthesize tagF=_tagF;
 
 - (NFTagType)type
 {
     return _type;
 }
 
+- (NSData *)tagID
+{
+    return _tagID.get();
+}
+
 - (instancetype)initWithNFTag:(id<NFTag>)tag
 {
-    if ((self = [super init]))
+    if ((self = [super init])) {
         _type = tag.type;
+        _tagID = tag.tagID;
+    }
     return self;
+}
+
+- (void)dealloc
+{
+    [_AppData release];
+    _AppData = nil;
+    [_UID release];
+    _UID = nil;
+
+    [super dealloc];
 }
 
 - (NSString*)description
@@ -84,8 +108,15 @@
 
 - (instancetype)initWithType:(NFTagType)type
 {
-    if ((self = [super init]))
+    return [self initWithType:type tagID:adoptNS([[NSData alloc] initWithBytes:tagID1 length:sizeof(tagID1)]).get()];
+}
+
+- (instancetype)initWithType:(NFTagType)type tagID:(NSData *)tagID
+{
+    if ((self = [super init])) {
         _type = type;
+        _tagID = tagID;
+    }
     return self;
 }
 
@@ -95,7 +126,7 @@
 
 namespace WebKit {
 using namespace fido;
-using MockNfc = MockWebAuthenticationConfiguration::Nfc;
+using Mock = WebCore::MockWebAuthenticationConfiguration;
 
 #if HAVE(NEAR_FIELD)
 
@@ -119,6 +150,22 @@ static BOOL NFReaderSessionConnectTag(id, SEL, NFTag *)
     return YES;
 }
 
+static BOOL NFReaderSessionStopPolling(id, SEL)
+{
+    if (!globalNfcService)
+        return NO;
+    globalNfcService->receiveStopPolling();
+    return YES;
+}
+
+static BOOL NFReaderSessionStartPollingWithError(id, SEL, NSError **)
+{
+    if (!globalNfcService)
+        return NO;
+    globalNfcService->receiveStartPolling();
+    return YES;
+}
+
 static NSData* NFReaderSessionTransceive(id, SEL, NSData *)
 {
     if (!globalNfcService)
@@ -130,7 +177,7 @@ static NSData* NFReaderSessionTransceive(id, SEL, NSData *)
 
 #endif // HAVE(NEAR_FIELD)
 
-MockNfcService::MockNfcService(Observer& observer, const MockWebAuthenticationConfiguration& configuration)
+MockNfcService::MockNfcService(Observer& observer, const WebCore::MockWebAuthenticationConfiguration& configuration)
     : NfcService(observer)
     , m_configuration(configuration)
 {
@@ -146,6 +193,21 @@ NSData* MockNfcService::transceive()
     return [result autorelease];
 }
 
+void MockNfcService::receiveStopPolling()
+{
+    // For purpose of restart polling.
+    m_configuration.nfc->multiplePhysicalTags = false;
+}
+
+void MockNfcService::receiveStartPolling()
+{
+    RunLoop::main().dispatch([weakThis = makeWeakPtr(*this)] {
+        if (!weakThis)
+            return;
+        weakThis->detectTags();
+    });
+}
+
 void MockNfcService::platformStartDiscovery()
 {
 #if HAVE(NEAR_FIELD)
@@ -156,7 +218,7 @@ void MockNfcService::platformStartDiscovery()
         method_setImplementation(methodToSwizzle1, (IMP)NFReaderSessionSetDelegate);
 
         Method methodToSwizzle2 = class_getInstanceMethod(getNFReaderSessionClass(), @selector(connectTag:));
-        if (m_configuration.nfc->error == MockNfc::Error::NoConnections)
+        if (m_configuration.nfc->error == Mock::NfcError::NoConnections)
             method_setImplementation(methodToSwizzle2, (IMP)NFReaderSessionConnectTagFail);
         else
             method_setImplementation(methodToSwizzle2, (IMP)NFReaderSessionConnectTag);
@@ -164,15 +226,14 @@ void MockNfcService::platformStartDiscovery()
         Method methodToSwizzle3 = class_getInstanceMethod(getNFReaderSessionClass(), @selector(transceive:));
         method_setImplementation(methodToSwizzle3, (IMP)NFReaderSessionTransceive);
 
-        auto readerSession = adoptNS([allocNFReaderSessionInstance() init]);
-        setDriver(WTF::makeUnique<CtapNfcDriver>(makeUniqueRef<NfcConnection>(readerSession.get(), *this)));
+        Method methodToSwizzle4 = class_getInstanceMethod(getNFReaderSessionClass(), @selector(stopPolling));
+        method_setImplementation(methodToSwizzle4, (IMP)NFReaderSessionStopPolling);
 
-        RunLoop::main().dispatch([weakThis = makeWeakPtr(*this)] {
-            if (!weakThis)
-                return;
-            weakThis->detectTags();
-        });
-        return;
+        Method methodToSwizzle5 = class_getInstanceMethod(getNFReaderSessionClass(), @selector(startPollingWithError:));
+        method_setImplementation(methodToSwizzle5, (IMP)NFReaderSessionStartPollingWithError);
+
+        auto readerSession = adoptNS([allocNFReaderSessionInstance() init]);
+        setConnection(NfcConnection::create(readerSession.get(), *this));
     }
     LOG_ERROR("No nfc authenticators is available.");
 #endif // HAVE(NEAR_FIELD)
@@ -181,18 +242,21 @@ void MockNfcService::platformStartDiscovery()
 void MockNfcService::detectTags() const
 {
 #if HAVE(NEAR_FIELD)
-    if (m_configuration.nfc->error == MockNfc::Error::NoTags)
+    if (m_configuration.nfc->error == Mock::NfcError::NoTags)
         return;
 
     auto callback = makeBlockPtr([configuration = m_configuration] {
         auto tags = adoptNS([[NSMutableArray alloc] init]);
-        if (configuration.nfc->error == MockNfc::Error::WrongTagType || configuration.nfc->multipleTags)
-            [tags addObject:[[WKMockNFTag alloc] initWithType:NFTagTypeUnknown]];
+        if (configuration.nfc->error == Mock::NfcError::WrongTagType || configuration.nfc->multipleTags)
+            [tags addObject:adoptNS([[WKMockNFTag alloc] initWithType:NFTagTypeUnknown]).get()];
         else
-            [tags addObject:[[WKMockNFTag alloc] initWithType:NFTagTypeGeneric4A]];
+            [tags addObject:adoptNS([[WKMockNFTag alloc] initWithType:NFTagTypeGeneric4A]).get()];
 
         if (configuration.nfc->multipleTags)
-            [tags addObject:[[WKMockNFTag alloc] initWithType:NFTagTypeGeneric4A]];
+            [tags addObject:adoptNS([[WKMockNFTag alloc] initWithType:NFTagTypeGeneric4A]).get()];
+
+        if (configuration.nfc->multiplePhysicalTags)
+            [tags addObject:adoptNS([[WKMockNFTag alloc] initWithType:NFTagTypeGeneric4A tagID:adoptNS([[NSData alloc] initWithBytes:tagID2 length:sizeof(tagID2)]).get()]).get()];
 
         [globalNFReaderSessionDelegate readerSession:nil didDetectTags:tags.get()];
     });

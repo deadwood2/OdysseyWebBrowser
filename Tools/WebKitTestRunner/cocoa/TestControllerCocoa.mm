@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,7 +36,6 @@
 #import <Security/SecItem.h>
 #import <WebKit/WKContextConfigurationRef.h>
 #import <WebKit/WKContextPrivate.h>
-#import <WebKit/WKCookieManager.h>
 #import <WebKit/WKPreferencesRefPrivate.h>
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKStringCF.h>
@@ -45,6 +44,7 @@
 #import <WebKit/WKWebViewConfiguration.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
+#import <WebKit/WKWebViewPrivateForTesting.h>
 #import <WebKit/WKWebsiteDataRecordPrivate.h>
 #import <WebKit/WKWebsiteDataStorePrivate.h>
 #import <WebKit/WKWebsiteDataStoreRef.h>
@@ -65,23 +65,14 @@ void initializeWebViewConfiguration(const char* libraryPath, WKStringRef injecte
     globalWebViewConfiguration = [[WKWebViewConfiguration alloc] init];
 
     globalWebViewConfiguration.processPool = (__bridge WKProcessPool *)context;
-    globalWebViewConfiguration.websiteDataStore = (__bridge WKWebsiteDataStore *)WKContextGetWebsiteDataStore(context);
+    globalWebViewConfiguration.websiteDataStore = (__bridge WKWebsiteDataStore *)TestController::websiteDataStore();
     globalWebViewConfiguration._allowUniversalAccessFromFileURLs = YES;
+    globalWebViewConfiguration._allowTopNavigationToDataURLs = YES;
     globalWebViewConfiguration._applePayEnabled = YES;
 
-    WKCookieManagerSetStorageAccessAPIEnabled(WKContextGetCookieManager(context), true);
-
-    WKWebsiteDataStore* poolWebsiteDataStore = (__bridge WKWebsiteDataStore *)WKContextGetWebsiteDataStore((__bridge WKContextRef)globalWebViewConfiguration.processPool);
-    if (libraryPath) {
-        String cacheStorageDirectory = String(libraryPath) + '/' + "CacheStorage";
-        [poolWebsiteDataStore _setCacheStorageDirectory: cacheStorageDirectory];
-
-        String serviceWorkerRegistrationDirectory = String(libraryPath) + '/' + "ServiceWorkers";
-        [poolWebsiteDataStore _setServiceWorkerRegistrationDirectory: serviceWorkerRegistrationDirectory];
-    }
+    WKContextSetStorageAccessAPIEnabled(context, true);
 
     [globalWebViewConfiguration.websiteDataStore _setResourceLoadStatisticsEnabled:YES];
-    [globalWebViewConfiguration.websiteDataStore _resourceLoadStatisticsSetShouldSubmitTelemetry:NO];
 
     [globalWebsiteDataStoreDelegateClient release];
     globalWebsiteDataStoreDelegateClient = [[TestWebsiteDataStoreDelegate alloc] init];
@@ -160,6 +151,11 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
 
     if (options.enableUndoManagerAPI)
         [copiedConfiguration _setUndoManagerAPIEnabled:YES];
+        
+    if (options.useEphemeralSession)
+        [copiedConfiguration setWebsiteDataStore:[WKWebsiteDataStore nonPersistentDataStore]];
+
+    [copiedConfiguration _setAllowTopNavigationToDataURLs:options.allowTopNavigationToDataURLs];
 
     configureContentMode(copiedConfiguration.get(), options);
 
@@ -177,6 +173,8 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
 
     if (options.editable)
         m_mainWebView->setEditable(true);
+
+    m_mainWebView->platformView().allowsLinkPreview = options.allowsLinkPreview;
 }
 
 PlatformWebView* TestController::platformCreateOtherPage(PlatformWebView* parentView, WKPageConfigurationRef, const TestOptions& options)
@@ -245,6 +243,20 @@ void TestController::resetContentExtensions()
     }
 }
 
+void TestController::setApplicationBundleIdentifier(const String& bundleIdentifier)
+{
+    if (bundleIdentifier.isEmpty())
+        return;
+    
+    [TestRunnerWKWebView _setApplicationBundleIdentifier:(NSString *)bundleIdentifier.createCFString().get()];
+}
+
+void TestController::clearApplicationBundleIdentifierTestingOverride()
+{
+    [TestRunnerWKWebView _clearApplicationBundleIdentifierTestingOverride];
+    m_hasSetApplicationBundleIdentifier = false;
+}
+
 void TestController::cocoaResetStateToConsistentValues(const TestOptions& options)
 {
     m_calendarSwizzler = nullptr;
@@ -254,13 +266,11 @@ void TestController::cocoaResetStateToConsistentValues(const TestOptions& option
         TestRunnerWKWebView *platformView = webView->platformView();
         platformView._viewScale = 1;
         platformView._minimumEffectiveDeviceWidth = 0;
-
-        // Toggle on before the test, and toggle off after the test.
-        if (options.shouldShowSpellCheckingDots)
-            [platformView toggleContinuousSpellChecking:nil];
+        [platformView _setContinuousSpellCheckingEnabledForTesting:options.shouldShowSpellCheckingDots];
+        [platformView resetInteractionCallbacks];
     }
 
-    [globalWebsiteDataStoreDelegateClient setAllowRaisingQuota: true];
+    [globalWebsiteDataStoreDelegateClient setAllowRaisingQuota:YES];
 }
 
 void TestController::platformWillRunTest(const TestInvocation& testInvocation)
@@ -349,6 +359,7 @@ void TestController::addTestKeyToKeychain(const String& privateKeyBase64, const 
         (id)kSecClass: (id)kSecClassKey,
         (id)kSecAttrLabel: attrLabel,
         (id)kSecAttrApplicationTag: adoptNS([[NSData alloc] initWithBase64EncodedString:applicationTagBase64 options:NSDataBase64DecodingIgnoreUnknownCharacters]).get(),
+        (id)kSecAttrAccessible: (id)kSecAttrAccessibleAfterFirstUnlock,
 #if HAVE(DATA_PROTECTION_KEYCHAIN)
         (id)kSecUseDataProtectionKeychain: @YES
 #else
@@ -359,18 +370,20 @@ void TestController::addTestKeyToKeychain(const String& privateKeyBase64, const 
     ASSERT_UNUSED(status, !status);
 }
 
-void TestController::cleanUpKeychain(const String& attrLabel)
+void TestController::cleanUpKeychain(const String& attrLabel, const String& applicationTagBase64)
 {
-    NSDictionary* deleteQuery = @{
-        (id)kSecClass: (id)kSecClassKey,
-        (id)kSecAttrLabel: attrLabel,
+    auto deleteQuery = adoptNS([[NSMutableDictionary alloc] init]);
+    [deleteQuery setObject:(id)kSecClassKey forKey:(id)kSecClass];
+    [deleteQuery setObject:attrLabel forKey:(id)kSecAttrLabel];
 #if HAVE(DATA_PROTECTION_KEYCHAIN)
-        (id)kSecUseDataProtectionKeychain: @YES
+    [deleteQuery setObject:@YES forKey:(id)kSecUseDataProtectionKeychain];
 #else
-        (id)kSecAttrNoLegacy: @YES
+    [deleteQuery setObject:@YES forKey:(id)kSecAttrNoLegacy];
 #endif
-    };
-    SecItemDelete((__bridge CFDictionaryRef)deleteQuery);
+    if (!!applicationTagBase64)
+        [deleteQuery setObject:adoptNS([[NSData alloc] initWithBase64EncodedString:applicationTagBase64 options:NSDataBase64DecodingIgnoreUnknownCharacters]).get() forKey:(id)kSecAttrApplicationTag];
+
+    SecItemDelete((__bridge CFDictionaryRef)deleteQuery.get());
 }
 
 bool TestController::keyExistsInKeychain(const String& attrLabel, const String& applicationTagBase64)
@@ -405,15 +418,6 @@ void TestController::setAllowsAnySSLCertificate(bool allows)
     [globalWebsiteDataStoreDelegateClient setAllowAnySSLCertificate: allows];
 }
 
-bool TestController::canDoServerTrustEvaluationInNetworkProcess() const
-{
-#if HAVE(CFNETWORK_NSURLSESSION_STRICTRUSTEVALUATE)
-    return true;
-#else
-    return false;
-#endif
-}
-
 void TestController::installCustomMenuAction(const String& name, bool dismissesAutomatically)
 {
 #if PLATFORM(IOS_FAMILY)
@@ -432,7 +436,7 @@ void TestController::setAllowedMenuActions(const Vector<String>& actions)
 {
 #if PLATFORM(IOS_FAMILY)
     auto actionNames = adoptNS([[NSMutableArray<NSString *> alloc] initWithCapacity:actions.size()]);
-    for (auto action : actions)
+    for (auto& action : actions)
         [actionNames addObject:action];
     [m_mainWebView->platformView() setAllowedMenuActions:actionNames.get()];
 #else

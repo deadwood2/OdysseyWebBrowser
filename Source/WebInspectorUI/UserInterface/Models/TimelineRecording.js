@@ -72,12 +72,12 @@ WI.TimelineRecording = class TimelineRecording extends WI.Object
     static sourceCodeTimelinesSupported()
     {
         // FIXME: Support Network Timeline in ServiceWorker.
-        return WI.sharedApp.debuggableType === WI.DebuggableType.Web;
+        return WI.sharedApp.isWebDebuggable();
     }
 
     // Import / Export
 
-    static import(identifier, json, displayName)
+    static async import(identifier, json, displayName)
     {
         let {startTime, endTime, discontinuities, instrumentTypes, records, markers, memoryPressureEvents, sampleStackTraces, sampleDurations} = json;
         let importedDisplayName = WI.UIString("Imported - %s").format(displayName);
@@ -93,7 +93,7 @@ WI.TimelineRecording = class TimelineRecording extends WI.Object
         recording.initializeCallingContextTrees(sampleStackTraces, sampleDurations);
 
         for (let recordJSON of records) {
-            let record = WI.TimelineRecord.fromJSON(recordJSON);
+            let record = await WI.TimelineRecord.fromJSON(recordJSON);
             if (record) {
                 recording.addRecord(record);
 

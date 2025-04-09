@@ -156,6 +156,13 @@ class TextureImpl : public FramebufferAttachmentObjectImpl, public angle::Subjec
                                                    gl::MemoryObject *memoryObject,
                                                    GLuint64 offset) = 0;
 
+    virtual angle::Result setImageExternal(const gl::Context *context,
+                                           const gl::ImageIndex &index,
+                                           GLenum internalFormat,
+                                           const gl::Extents &size,
+                                           GLenum format,
+                                           GLenum type);
+
     virtual angle::Result setEGLImageTarget(const gl::Context *context,
                                             gl::TextureType type,
                                             egl::Image *image) = 0;
@@ -176,8 +183,22 @@ class TextureImpl : public FramebufferAttachmentObjectImpl, public angle::Subjec
     virtual GLint getMemorySize() const;
     virtual GLint getLevelMemorySize(gl::TextureTarget target, GLint level);
 
+    virtual GLint getNativeID() const;
+
     virtual angle::Result syncState(const gl::Context *context,
                                     const gl::Texture::DirtyBits &dirtyBits) = 0;
+
+    virtual GLenum getColorReadFormat(const gl::Context *context);
+    virtual GLenum getColorReadType(const gl::Context *context);
+
+    virtual angle::Result getTexImage(const gl::Context *context,
+                                      const gl::PixelPackState &packState,
+                                      gl::Buffer *packBuffer,
+                                      gl::TextureTarget target,
+                                      GLint level,
+                                      GLenum format,
+                                      GLenum type,
+                                      void *pixels);
 
   protected:
     const gl::TextureState &mState;

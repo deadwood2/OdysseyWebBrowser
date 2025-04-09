@@ -48,6 +48,7 @@
 #import "WebProcess.h"
 #import <JavaScriptCore/JSContextRef.h>
 #import <JavaScriptCore/JSObjectRef.h>
+#import <JavaScriptCore/OpaqueJSString.h>
 #import <Quartz/Quartz.h>
 #import <QuartzCore/QuartzCore.h>
 #import <WebCore/AXObjectCache.h>
@@ -81,7 +82,7 @@
 #import <WebCore/ScrollbarTheme.h>
 #import <WebCore/Settings.h>
 #import <WebCore/WebAccessibilityObjectWrapperMac.h>
-#import <WebCore/WheelEventTestTrigger.h>
+#import <WebCore/WheelEventTestMonitor.h>
 #import <pal/spi/cg/CoreGraphicsSPI.h>
 #import <pal/spi/mac/NSMenuSPI.h>
 #import <wtf/UUID.h>
@@ -531,8 +532,8 @@ static void getAllScriptsInPDFDocument(CGPDFDocumentRef pdfDocument, Vector<Reta
         if (!CGPDFDictionaryGetName(javaScriptAction, "S", &actionType) || strcmp(actionType, "JavaScript"))
             continue;
 
-        const UInt8* bytes = 0;
-        CFIndex length;
+        const UInt8* bytes = nullptr;
+        CFIndex length = 0;
         CGPDFStreamRef stream;
         CGPDFStringRef string;
         RetainPtr<CFDataRef> data;
@@ -547,7 +548,7 @@ static void getAllScriptsInPDFDocument(CGPDFDocumentRef pdfDocument, Vector<Reta
             bytes = CGPDFStringGetBytePtr(string);
             length = CGPDFStringGetLength(string);
         }
-        if (!bytes)
+        if (!bytes || !length)
             continue;
 
         CFStringEncoding encoding = (length > 1 && bytes[0] == 0xFE && bytes[1] == 0xFF) ? kCFStringEncodingUnicode : kCFStringEncodingUTF8;
@@ -724,8 +725,8 @@ Ref<Scrollbar> PDFPlugin::createScrollbar(ScrollbarOrientation orientation)
     didAddScrollbar(widget.ptr(), orientation);
     if (Frame* frame = webFrame()->coreFrame()) {
         if (Page* page = frame->page()) {
-            if (page->expectsWheelEventTriggers())
-                scrollAnimator().setWheelEventTestTrigger(page->testTrigger());
+            if (page->isMonitoringWheelEvents())
+                scrollAnimator().setWheelEventTestMonitor(page->wheelEventTestMonitor());
         }
     }
     pluginView()->frame()->view()->addChild(widget);
@@ -1735,7 +1736,7 @@ void PDFPlugin::writeItemsToPasteboard(NSString *pasteboardName, NSArray *items,
     for (NSString *type in types)
         pasteboardTypes.append(type);
 
-    uint64_t newChangeCount;
+    int64_t newChangeCount;
     auto& webProcess = WebProcess::singleton();
     webProcess.parentProcessConnection()->sendSync(Messages::WebPasteboardProxy::SetPasteboardTypes(pasteboardName, pasteboardTypes),
         Messages::WebPasteboardProxy::SetPasteboardTypes::Reply(newChangeCount), 0);

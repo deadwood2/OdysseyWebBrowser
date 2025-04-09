@@ -33,11 +33,7 @@ list(APPEND WebKit_UNIFIED_SOURCE_LIST_FILES
 )
 
 list(APPEND WebKit_MESSAGES_IN_FILES
-    NetworkProcess/CustomProtocols/LegacyCustomProtocolManager.messages.in
-
     UIProcess/ViewGestureController.messages.in
-
-    UIProcess/Network/CustomProtocols/LegacyCustomProtocolManagerProxy.messages.in
 
     WebProcess/WebPage/ViewGestureGeometryCollector.messages.in
 )
@@ -53,6 +49,8 @@ list(APPEND WebKit_DERIVED_SOURCES
 if (ENABLE_WAYLAND_TARGET)
     list(APPEND WebKit_DERIVED_SOURCES
         ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitWaylandClientProtocol.c
+        ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/pointer-constraints-unstable-v1-protocol.c
+        ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/relative-pointer-unstable-v1-protocol.c
     )
 endif ()
 
@@ -85,6 +83,7 @@ set(WebKit2GTK_INSTALLED_HEADERS
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitGeolocationManager.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitGeolocationPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitHitTestResult.h
+    ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitInputMethodContext.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitInstallMissingMediaPluginsPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitJavascriptResult.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitMimeInfo.h
@@ -97,6 +96,7 @@ set(WebKit2GTK_INSTALLED_HEADERS
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitOptionMenuItem.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitPlugin.h
+    ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitPointerLockPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitPolicyDecision.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitPrintCustomWidget.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitPrintOperation.h
@@ -113,6 +113,7 @@ set(WebKit2GTK_INSTALLED_HEADERS
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitUserContentFilterStore.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitUserContentManager.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitUserMediaPermissionRequest.h
+    ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitUserMessage.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitWebContext.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitWebInspector.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitWebResource.h
@@ -372,12 +373,9 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${DERIVED_SOURCES_JAVASCRIPCOREGTK_DIR}"
     "${FORWARDING_HEADERS_DIR}/JavaScriptCore/"
     "${FORWARDING_HEADERS_DIR}/JavaScriptCore/glib"
-    "${WEBKIT_DIR}/PluginProcess/unix"
-    "${WEBKIT_DIR}/NetworkProcess/CustomProtocols/soup"
     "${WEBKIT_DIR}/NetworkProcess/glib"
     "${WEBKIT_DIR}/NetworkProcess/gtk"
     "${WEBKIT_DIR}/NetworkProcess/soup"
-    "${WEBKIT_DIR}/NetworkProcess/unix"
     "${WEBKIT_DIR}/Platform/IPC/glib"
     "${WEBKIT_DIR}/Platform/IPC/unix"
     "${WEBKIT_DIR}/Platform/classifier"
@@ -390,13 +388,13 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/Shared/gtk"
     "${WEBKIT_DIR}/Shared/linux"
     "${WEBKIT_DIR}/Shared/soup"
-    "${WEBKIT_DIR}/Shared/unix"
     "${WEBKIT_DIR}/UIProcess/API/C/cairo"
     "${WEBKIT_DIR}/UIProcess/API/C/gtk"
     "${WEBKIT_DIR}/UIProcess/API/glib"
     "${WEBKIT_DIR}/UIProcess/API/gtk"
     "${WEBKIT_DIR}/UIProcess/CoordinatedGraphics"
-    "${WEBKIT_DIR}/UIProcess/Network/CustomProtocols/soup"
+    "${WEBKIT_DIR}/UIProcess/Inspector/glib"
+    "${WEBKIT_DIR}/UIProcess/Inspector/gtk"
     "${WEBKIT_DIR}/UIProcess/Plugins/gtk"
     "${WEBKIT_DIR}/UIProcess/geoclue"
     "${WEBKIT_DIR}/UIProcess/glib"
@@ -408,11 +406,11 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/glib/DOM"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/gtk"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/gtk/DOM"
+    "${WEBKIT_DIR}/WebProcess/Inspector/gtk"
     "${WEBKIT_DIR}/WebProcess/Plugins/Netscape/unix"
     "${WEBKIT_DIR}/WebProcess/Plugins/Netscape/x11"
     "${WEBKIT_DIR}/WebProcess/gtk"
     "${WEBKIT_DIR}/WebProcess/soup"
-    "${WEBKIT_DIR}/WebProcess/unix"
     "${WEBKIT_DIR}/WebProcess/WebCoreSupport/gtk"
     "${WEBKIT_DIR}/WebProcess/WebCoreSupport/soup"
     "${WEBKIT_DIR}/WebProcess/WebPage/CoordinatedGraphics"
@@ -428,7 +426,6 @@ list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
     ${GSTREAMER_PBUTILS_INCLUDE_DIRS}
     ${GTK_INCLUDE_DIRS}
     ${GTK_UNIX_PRINT_INCLUDE_DIRS}
-    ${HARFBUZZ_INCLUDE_DIRS}
     ${LIBSOUP_INCLUDE_DIRS}
 )
 
@@ -459,10 +456,6 @@ list(APPEND NetworkProcess_SOURCES
     NetworkProcess/EntryPoint/unix/NetworkProcessMain.cpp
 )
 
-set(SharedWebKitLibraries
-    ${WebKit_LIBRARIES}
-)
-
 list(APPEND WebKit_LIBRARIES
     ${GTK_UNIX_PRINT_LIBRARIES}
 )
@@ -475,16 +468,16 @@ if (USE_WPE_RENDERER)
 endif ()
 
 if (LIBNOTIFY_FOUND)
-list(APPEND WebKit_LIBRARIES
-    PRIVATE ${LIBNOTIFY_LIBRARIES}
-)
+    list(APPEND WebKit_PRIVATE_LIBRARIES
+        ${LIBNOTIFY_LIBRARIES}
+    )
 endif ()
 
 if (USE_LIBWEBRTC)
-list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
-    "${THIRDPARTY_DIR}/libwebrtc/Source/"
-    "${THIRDPARTY_DIR}/libwebrtc/Source/webrtc"
-)
+    list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
+        "${THIRDPARTY_DIR}/libwebrtc/Source/"
+        "${THIRDPARTY_DIR}/libwebrtc/Source/webrtc"
+    )
 endif ()
 
 # To generate WebKitEnumTypes.h we want to use all installed headers, except WebKitEnumTypes.h itself.
@@ -517,6 +510,7 @@ add_custom_command(
 WEBKIT_BUILD_INSPECTOR_GRESOURCES(${DERIVED_SOURCES_WEBKIT2GTK_DIR})
 
 set(WebKitResources
+    "        <file alias=\"css/gtk-theme.css\">gtk-theme.css</file>\n"
     "        <file alias=\"images/missingImage\">missingImage.png</file>\n"
     "        <file alias=\"images/missingImage@2x\">missingImage@2x.png</file>\n"
     "        <file alias=\"images/panIcon\">panIcon.png</file>\n"
@@ -542,7 +536,7 @@ file(WRITE ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitResourcesGResourceBundle.xml
 add_custom_command(
     OUTPUT ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitResourcesGResourceBundle.c
     DEPENDS ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitResourcesGResourceBundle.xml
-    COMMAND glib-compile-resources --generate --sourcedir=${CMAKE_SOURCE_DIR}/Source/WebCore/Resources --sourcedir=${CMAKE_SOURCE_DIR}/Source/WebCore/platform/audio/resources --target=${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitResourcesGResourceBundle.c ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitResourcesGResourceBundle.xml
+    COMMAND glib-compile-resources --generate --sourcedir=${CMAKE_SOURCE_DIR}/Source/WebCore/Resources --sourcedir=${CMAKE_SOURCE_DIR}/Source/WebCore/platform/audio/resources --sourcedir=${CMAKE_SOURCE_DIR}/Source/WebKit/Resources/gtk --target=${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitResourcesGResourceBundle.c ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitResourcesGResourceBundle.xml
     VERBATIM
 )
 
@@ -551,9 +545,26 @@ if (ENABLE_WAYLAND_TARGET)
     add_custom_command(
         OUTPUT ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitWaylandClientProtocol.c
         DEPENDS ${WEBKIT_DIR}/Shared/gtk/WebKitWaylandProtocol.xml
-        COMMAND wayland-scanner server-header < ${WEBKIT_DIR}/Shared/gtk/WebKitWaylandProtocol.xml > ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitWaylandServerProtocol.h
-        COMMAND wayland-scanner client-header < ${WEBKIT_DIR}/Shared/gtk/WebKitWaylandProtocol.xml > ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitWaylandClientProtocol.h
-        COMMAND wayland-scanner code < ${WEBKIT_DIR}/Shared/gtk/WebKitWaylandProtocol.xml > ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitWaylandClientProtocol.c
+        COMMAND ${WAYLAND_SCANNER} server-header ${WEBKIT_DIR}/Shared/gtk/WebKitWaylandProtocol.xml ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitWaylandServerProtocol.h
+        COMMAND ${WAYLAND_SCANNER} client-header ${WEBKIT_DIR}/Shared/gtk/WebKitWaylandProtocol.xml ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitWaylandClientProtocol.h
+        COMMAND ${WAYLAND_SCANNER} code ${WEBKIT_DIR}/Shared/gtk/WebKitWaylandProtocol.xml ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitWaylandClientProtocol.c
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/pointer-constraints-unstable-v1-protocol.c
+        DEPENDS ${WAYLAND_PROTOCOLS_DATADIR}/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml
+        COMMAND ${WAYLAND_SCANNER} code ${WAYLAND_PROTOCOLS_DATADIR}/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/pointer-constraints-unstable-v1-protocol.c
+        COMMAND ${WAYLAND_SCANNER} client-header ${WAYLAND_PROTOCOLS_DATADIR}/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/pointer-constraints-unstable-v1-client-protocol.h
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/relative-pointer-unstable-v1-protocol.c
+        DEPENDS ${WAYLAND_PROTOCOLS_DATADIR}/unstable/relative-pointer/relative-pointer-unstable-v1.xml
+        COMMAND ${WAYLAND_SCANNER} code ${WAYLAND_PROTOCOLS_DATADIR}/unstable/relative-pointer/relative-pointer-unstable-v1.xml ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/relative-pointer-unstable-v1-protocol.c
+        COMMAND ${WAYLAND_SCANNER} client-header ${WAYLAND_PROTOCOLS_DATADIR}/unstable/relative-pointer/relative-pointer-unstable-v1.xml ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/relative-pointer-unstable-v1-client-protocol.h
+        VERBATIM
     )
 endif ()
 
@@ -699,12 +710,14 @@ if (ENABLE_INTROSPECTION)
             ${WEBKIT_DIR}/Shared/API/glib/WebKitContextMenu.cpp
             ${WEBKIT_DIR}/Shared/API/glib/WebKitContextMenuItem.cpp
             ${WEBKIT_DIR}/Shared/API/glib/WebKitHitTestResult.cpp
+            ${WEBKIT_DIR}/Shared/API/glib/WebKitUserMessage.cpp
             ${WEBKIT_DIR}/Shared/API/glib/WebKitURIRequest.cpp
             ${WEBKIT_DIR}/Shared/API/glib/WebKitURIResponse.cpp
             ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitContextMenu.h
             ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitContextMenuActions.h
             ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitContextMenuItem.h
             ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitHitTestResult.h
+            ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitUserMessage.h
             ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitURIRequest.h
             ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitURIResponse.h
             ${WEBKIT_DIR}/WebProcess/InjectedBundle/API/glib/*.cpp

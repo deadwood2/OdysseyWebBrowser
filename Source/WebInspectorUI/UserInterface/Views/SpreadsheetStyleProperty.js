@@ -180,7 +180,10 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         colonElement.classList.add("colon");
         colonElement.textContent = ": ";
 
-        this._valueElement = this._contentElement.appendChild(document.createElement("span"));
+        let valueContainer = this._contentElement.appendChild(document.createElement("span"));
+        valueContainer.className = "value-container";
+
+        this._valueElement = valueContainer.appendChild(document.createElement("span"));
         this._valueElement.classList.add("value");
         this._renderValue(this._property.rawValue);
 
@@ -202,7 +205,7 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
             this._setupJumpToSymbol(this._valueElement);
         }
 
-        let semicolonElement = this._contentElement.appendChild(document.createElement("span"));
+        let semicolonElement = valueContainer.appendChild(document.createElement("span"));
         semicolonElement.classList.add("semicolon");
         semicolonElement.textContent = ";";
 
@@ -212,7 +215,7 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         } else
             this._contentElement.append(" */");
 
-        if (!this._property.implicit && this._property.ownerStyle.type === WI.CSSStyleDeclaration.Type.Computed) {
+        if (!this._property.implicit && this._property.ownerStyle.type === WI.CSSStyleDeclaration.Type.Computed && !this._property.isShorthand) {
             let effectiveProperty = this._property.ownerStyle.nodeStyles.effectivePropertyForName(this._property.name);
             if (effectiveProperty && !effectiveProperty.styleSheetTextRange)
                 effectiveProperty = effectiveProperty.relatedShorthandProperty;
@@ -317,6 +320,9 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         if (this._selected)
             classNames.push("selected");
 
+        if (this._valueTextField && this._valueTextField.value.includes("\n"))
+            classNames.push("has-newline");
+
         this._element.className = classNames.join(" ");
         this._element.title = elementTitle;
     }
@@ -340,6 +346,11 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
     {
         let isEditingName = textField === this._nameTextField;
         textField.value = isEditingName ? this._property.name : this._property.rawValue;
+    }
+
+    spreadsheetTextFieldAllowsNewlines(textField)
+    {
+        return textField === this._valueTextField;
     }
 
     spreadsheetTextFieldDidChange(textField)
@@ -398,8 +409,11 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
         if (typeof this._delegate.spreadsheetStylePropertyFocusMoved === "function")
             this._delegate.spreadsheetStylePropertyFocusMoved(this, {direction: null});
 
-        if (changed && window.DOMAgent)
-            DOMAgent.markUndoableState();
+        if (changed) {
+            let target = WI.assumingMainTarget();
+            if (target.hasDomain("DOM"))
+                target.DOMAgent.markUndoableState();
+        }
     }
 
     spreadsheetTextFieldDidBackspace(textField)
@@ -540,12 +554,12 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
 
         tokens = this._addVariableTokens(tokens);
 
-        if (this._property.variable || WI.CSSKeywordCompletions.isColorAwareProperty(this._property.name)) {
+        if (this._property.isVariable || WI.CSSKeywordCompletions.isColorAwareProperty(this._property.name)) {
             tokens = this._addGradientTokens(tokens);
             tokens = this._addColorTokens(tokens);
         }
 
-        if (this._property.variable || WI.CSSKeywordCompletions.isTimingFunctionAwareProperty(this._property.name)) {
+        if (this._property.isVariable || WI.CSSKeywordCompletions.isTimingFunctionAwareProperty(this._property.name)) {
             tokens = this._addTimingFunctionTokens(tokens, "cubic-bezier");
             tokens = this._addTimingFunctionTokens(tokens, "spring");
         }
@@ -669,7 +683,9 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
                     newTokens.pushAll(rawTokens);
 
                 startIndex = NaN;
-            } else if (isNaN(startIndex))
+            } else if (token.value in WI.CubicBezier.keywordValues)
+                newTokens.push(this._createInlineSwatch(WI.InlineSwatch.Type.Bezier, [token], WI.CubicBezier.fromString(token.value)));
+            else if (isNaN(startIndex))
                 newTokens.push(token);
         }
 
@@ -733,7 +749,11 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
 
     _handleValueChange()
     {
-        this._property.rawValue = this._valueElement.textContent.trim();
+        let value = this._valueElement.textContent;
+
+        this._property.rawValue = value.trim();
+
+        this._element.classList.toggle("has-newline", value.includes("\n"));
     }
 
     _handleNameBeforeInput(event)
@@ -832,6 +852,7 @@ WI.SpreadsheetStyleProperty = class SpreadsheetStyleProperty extends WI.Object
             const options = {
                 ignoreNetworkTab: true,
                 ignoreSearchTab: true,
+                initiatorHint: WI.TabBrowser.TabNavigationInitiator.LinkClick,
             };
             let sourceCode = sourceCodeLocation.sourceCode;
             WI.showSourceCodeLocation(sourceCode.createSourceCodeLocation(range.startLine, range.startColumn), options);

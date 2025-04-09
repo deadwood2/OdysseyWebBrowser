@@ -96,6 +96,8 @@ WI.EventBreakpointPopover = class EventBreakpointPopover extends WI.Popover
             });
         });
 
+        contentElement.appendChild(WI.createReferencePageLink("event-breakpoints", "global-event-breakpoints"));
+
         this.content = contentElement;
 
         this._presentOverTargetElement();
@@ -105,11 +107,13 @@ WI.EventBreakpointPopover = class EventBreakpointPopover extends WI.Popover
 
     dismiss()
     {
-        this._breakpoint = new WI.EventBreakpoint(WI.EventBreakpoint.Type.Listener, {eventName: this._domEventNameInputElement.value});
-
-        super.dismiss();
+        let eventName = this._domEventNameInputElement.value;
+        if (eventName)
+            this._breakpoint = new WI.EventBreakpoint(WI.EventBreakpoint.Type.Listener, {eventName});
 
         this._suggestionsView.hide();
+
+        super.dismiss();
     }
 
     // CompletionSuggestionsView delegate
@@ -140,6 +144,6 @@ WI.EventBreakpointPopover = class EventBreakpointPopover extends WI.Popover
         let rect = WI.Rect.rectFromClientRect(this._domEventNameInputElement.getBoundingClientRect());
         rect.origin.x += padding;
         rect.size.width -= padding + parseInt(computedStyle.borderRightWidth) + parseInt(computedStyle.paddingRight);
-        this._suggestionsView.show(rect);
+        this._suggestionsView.show(rect.pad(2));
      }
 };

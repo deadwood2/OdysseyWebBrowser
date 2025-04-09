@@ -51,6 +51,7 @@ from webkitpy.common.system.executive import ScriptError
 from webkitpy.common.version_name_map import PUBLIC_TABLE, INTERNAL_TABLE, VersionNameMap
 from webkitpy.common.wavediff import WaveDiff
 from webkitpy.common.webkit_finder import WebKitFinder
+from webkitpy.common.unicode_compatibility import encode_for, encode_if_necessary, decode_for
 from webkitpy.layout_tests.models.test_configuration import TestConfiguration
 from webkitpy.port import config as port_config
 from webkitpy.port import driver
@@ -222,7 +223,7 @@ class Port(object):
         search_paths.append(self.name())
         if self.name() != self.port_name:
             search_paths.append(self.port_name)
-        return map(self._webkit_baseline_path, search_paths)
+        return list(map(self._webkit_baseline_path, search_paths))
 
     @memoized
     def _compare_baseline(self):
@@ -240,13 +241,8 @@ class Port(object):
             return False
         if self.get_option('install') and not self._check_driver():
             return False
-        if self.get_option('install') and not self._check_port_build():
-            return False
         if not self.check_image_diff():
-            if self.get_option('build'):
-                return self._build_image_diff()
-            else:
-                return False
+            return self._build_image_diff()
         return True
 
     def check_api_test_build(self, canonicalized_binaries=None):
@@ -254,10 +250,8 @@ class Port(object):
             canonicalized_binaries = self.path_to_api_test_binaries().keys()
         if not self._root_was_set and self.get_option('build') and not self._build_api_tests(wtf_only=(canonicalized_binaries == ['TestWTF'])):
             return False
-        if self.get_option('install') and not self._check_port_build():
-            return False
 
-        for binary, path in self.path_to_api_test_binaries().iteritems():
+        for binary, path in self.path_to_api_test_binaries().items():
             if binary not in canonicalized_binaries:
                 continue
             if not self._filesystem.exists(path):
@@ -266,23 +260,13 @@ class Port(object):
         return True
 
     def environment_for_api_tests(self):
-        build_root_path = str(self._build_path())
-        return {
-            'DYLD_LIBRARY_PATH': build_root_path,
-            '__XPC_DYLD_LIBRARY_PATH': build_root_path,
-            'DYLD_FRAMEWORK_PATH': build_root_path,
-            '__XPC_DYLD_FRAMEWORK_PATH': build_root_path,
-        }
+        return self.setup_environ_for_server()
 
     def _check_driver(self):
         driver_path = self._path_to_driver()
         if not self._filesystem.exists(driver_path):
             _log.error("%s was not found at %s" % (self.driver_name(), driver_path))
             return False
-        return True
-
-    def _check_port_build(self):
-        # Ports can override this method to do additional checks.
         return True
 
     def check_sys_deps(self):
@@ -295,7 +279,7 @@ class Port(object):
 
     def check_image_diff(self, override_step=None, logging=True):
         """This routine is used to check whether image_diff binary exists."""
-        image_diff_path = self._path_to_image_diff()
+        image_diff_path = self._path_to_default_image_diff()
         if not self._filesystem.exists(image_diff_path):
             if logging:
                 _log.error("ImageDiff was not found at %s" % image_diff_path)
@@ -349,16 +333,8 @@ class Port(object):
     def diff_text(self, expected_text, actual_text, expected_filename, actual_filename):
         """Returns a string containing the diff of the two text strings
         in 'unified diff' format."""
-
-        # The filenames show up in the diff output, make sure they're
-        # raw bytes and not unicode, so that they don't trigger join()
-        # trying to decode the input.
-        def to_raw_bytes(string_value):
-            if isinstance(string_value, unicode):
-                return string_value.encode('utf-8')
-            return string_value
-        expected_filename = to_raw_bytes(expected_filename)
-        actual_filename = to_raw_bytes(actual_filename)
+        expected_filename = decode_for(encode_if_necessary(expected_filename), str)
+        actual_filename = decode_for(encode_if_necessary(actual_filename), str)
         diff = difflib.unified_diff(expected_text.splitlines(True),
                                     actual_text.splitlines(True),
                                     expected_filename,
@@ -367,7 +343,7 @@ class Port(object):
         for line in diff:
             result += line
             if not line.endswith('\n'):
-                result += '\n\ No newline at end of file\n'
+                result += '\n No newline at end of file\n'
         return result
 
     def check_for_leaks(self, process_name, process_id):
@@ -519,7 +495,7 @@ class Port(object):
             baseline_path = self.expected_filename(test_name, '.webarchive', device_type=device_type)
             if not self._filesystem.exists(baseline_path):
                 return None
-        text = self._filesystem.read_binary_file(baseline_path)
+        text = decode_for(self._filesystem.read_binary_file(baseline_path), str)
         return text.replace("\r\n", "\n")
 
     def _get_reftest_list(self, test_name):
@@ -773,7 +749,7 @@ class Port(object):
             if not match:
                 _log.error("Syntax error at line %d in %s: %s" % (line_number + 1, filename, line))
             else:
-                platform_names = filter(lambda token: token, match.group('platforms').lower().split(' ')) if match.group('platforms') else []
+                platform_names = list(filter(lambda token: token, match.group('platforms').lower().split(' '))) if match.group('platforms') else []
                 test_name = match.group('test')
                 if test_name and (not platform_names or self.port_name in platform_names or self._name in platform_names):
                     tests_to_skip.append(test_name)
@@ -884,12 +860,6 @@ class Port(object):
         # to have multiple copies of webkit checked out and built.
         return self._build_path('layout-test-results')
 
-    def wpt_metadata_directory(self):
-        return self._build_path('web-platform-tests-metadata')
-
-    def wpt_manifest_file(self):
-        return self._build_path('web-platform-tests-manifest.json')
-
     def setup_test_run(self, device_type=None):
         """Perform port-specific work at the beginning of a test run."""
         pass
@@ -964,9 +934,9 @@ class Port(object):
 
     @staticmethod
     def _append_value_colon_separated(env, name, value):
-        assert ":" not in value
+        assert os.pathsep not in value
         if name in env and env[name]:
-            env[name] = env[name] + ":" + value
+            env[name] = env[name] + os.pathsep + value
         else:
             env[name] = value
 
@@ -979,7 +949,7 @@ class Port(object):
         """Return a newly created Driver subclass for starting/stopping the test driver."""
         return driver.DriverProxy(self, worker_number, self._driver_class(), pixel_tests=self.get_option('pixel_tests'), no_timeout=no_timeout)
 
-    def start_helper(self, pixel_tests=False):
+    def start_helper(self, pixel_tests=False, prefer_integrated_gpu=False):
         """If a port needs to reconfigure graphics settings or do other
         things to ensure a known test configuration, it should override this
         method."""
@@ -1223,6 +1193,12 @@ class Port(object):
     def allowed_hosts(self):
         return self.get_option("allowed_host", [])
 
+    def internal_feature(self):
+        return self.get_option("internal_feature", [])
+
+    def experimental_feature(self):
+        return self.get_option("experimental_feature", [])
+
     def default_configuration(self):
         return self._config.default_configuration()
 
@@ -1295,12 +1271,20 @@ class Port(object):
             return "-php7"
         return ""
 
+    def _win_php_version(self):
+        root = os.environ.get('XAMPP_ROOT', 'C:\\xampp')
+        prefix = self._filesystem.join(root, 'php')
+        for version in ('5', '7'):
+            conf = self._filesystem.join(prefix, "php{}ts.dll".format(version))
+            if self._filesystem.exists(conf):
+                return "-php{}".format(version)
+        _log.error("No php?ts.dll found in {}".format(prefix))
+        return ""
+
     # We pass sys_platform into this method to make it easy to unit test.
     def _apache_config_file_name_for_platform(self, sys_platform):
-        if sys_platform == 'cygwin':
-            return 'apache' + self._apache_version() + '-httpd-win.conf'
-        if sys_platform == 'win32':
-            return 'win-httpd-' + self._apache_version() + '-php7.conf'
+        if sys_platform in ['cygwin', 'win32']:
+            return 'win-httpd-' + self._apache_version() + self._win_php_version() + '.conf'
         if sys_platform == 'darwin':
             return 'apache' + self._apache_version() + self._darwin_php_version() + '-httpd.conf'
         if sys_platform.startswith('linux'):
@@ -1381,11 +1365,21 @@ class Port(object):
         This is likely only used by start/stop_helper()."""
         return None
 
+    def _path_to_default_image_diff(self):
+        """Returns the full path to the default ImageDiff binary, or None if it is not available."""
+        return self._build_path('ImageDiff')
+
+    @memoized
     def _path_to_image_diff(self):
         """Returns the full path to the image_diff binary, or None if it is not available.
 
         This is likely used only by diff_image()"""
-        return self._build_path('ImageDiff')
+        default_image_diff = self._path_to_default_image_diff()
+        if self._filesystem.exists(default_image_diff):
+            return default_image_diff
+        built_image_diff = self._filesystem.join(self._config.build_directory(self.get_option('configuration'), for_host=True), 'ImageDiff')
+        _log.debug('ImageDiff not found at {}, using {} instead'.format(default_image_diff, built_image_diff))
+        return built_image_diff
 
     API_TEST_BINARY_NAMES = ['TestWTF', 'TestWebKitAPI']
 
@@ -1499,7 +1493,7 @@ class Port(object):
         if args:
             run_script_command.extend(args)
         output = self._executive.run_command(run_script_command, cwd=self.webkit_base(), decode_output=decode_output, env=env)
-        _log.debug('Output of %s:\n%s' % (run_script_command, output.encode('utf-8') if decode_output else output))
+        _log.debug('Output of %s:\n%s' % (run_script_command, encode_for(output, str) if decode_output else output))
         return output
 
     def _build_driver(self):
@@ -1604,8 +1598,6 @@ class Port(object):
     def commits_for_upload(self):
         from webkitpy.results.upload import Upload
 
-        self.host.initialize_scm()
-
         repos = {}
         if port_config.apple_additions() and getattr(port_config.apple_additions(), 'repos', False):
             repos = port_config.apple_additions().repos()
@@ -1614,7 +1606,7 @@ class Port(object):
         repos['webkit'] = up(up(up(up(up(os.path.abspath(__file__))))))
 
         commits = []
-        for repo_id, path in repos.iteritems():
+        for repo_id, path in repos.items():
             scm = SCMDetector(self._filesystem, self._executive).detect_scm_system(path)
             commits.append(Upload.create_commit(
                 repository_id=repo_id,

@@ -30,10 +30,12 @@
 
 #import "AssertionServicesSPI.h"
 #import "Logging.h"
+#import "WebProcessPool.h"
 #import <UIKit/UIApplication.h>
 #import <wtf/HashMap.h>
 #import <wtf/RunLoop.h>
 #import <wtf/Vector.h>
+#import <wtf/WeakHashSet.h>
 
 using WebKit::ProcessAndUIAssertion;
 
@@ -54,7 +56,7 @@ static const Seconds releaseBackgroundTaskAfterExpirationDelay { 2_s };
 @implementation WKProcessAssertionBackgroundTaskManager
 {
     UIBackgroundTaskIdentifier _backgroundTask;
-    HashSet<ProcessAndUIAssertion*> _assertionsNeedingBackgroundTask;
+    WeakHashSet<ProcessAndUIAssertion> _assertionsNeedingBackgroundTask;
     BOOL _applicationIsBackgrounded;
     dispatch_block_t _pendingTaskReleaseTask;
 }
@@ -81,6 +83,9 @@ static const Seconds releaseBackgroundTaskAfterExpirationDelay { 2_s };
 
     [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidEnterBackgroundNotification object:[UIApplication sharedApplication] queue:nil usingBlock:^(NSNotification *) {
         _applicationIsBackgrounded = YES;
+        
+        if (_backgroundTask == UIBackgroundTaskInvalid)
+            WebKit::WebProcessPool::notifyProcessPoolsApplicationIsAboutToSuspend();
     }];
 
     return self;
@@ -100,7 +105,7 @@ static const Seconds releaseBackgroundTaskAfterExpirationDelay { 2_s };
 
 - (void)removeAssertionNeedingBackgroundTask:(ProcessAndUIAssertion&)assertion
 {
-    _assertionsNeedingBackgroundTask.remove(&assertion);
+    _assertionsNeedingBackgroundTask.remove(assertion);
     [self _updateBackgroundTask];
 }
 
@@ -108,8 +113,16 @@ static const Seconds releaseBackgroundTaskAfterExpirationDelay { 2_s };
 {
     ASSERT(RunLoop::isMain());
 
-    for (auto* assertion : copyToVector(_assertionsNeedingBackgroundTask))
-        assertion->uiAssertionWillExpireImminently();
+    Vector<WeakPtr<ProcessAndUIAssertion>> assertionsNeedingBackgroundTask;
+    for (auto& assertion : _assertionsNeedingBackgroundTask)
+        assertionsNeedingBackgroundTask.append(makeWeakPtr(assertion));
+
+    // Note that we don't expect clients to register new assertions when getting notified that the UI assertion will expire imminently.
+    // If clients were to do so, then those new assertions would not get notified of the imminent suspension.
+    for (auto assertion : assertionsNeedingBackgroundTask) {
+        if (assertion)
+            assertion->uiAssertionWillExpireImminently();
+    }
 }
 
 
@@ -143,7 +156,7 @@ static const Seconds releaseBackgroundTaskAfterExpirationDelay { 2_s };
 
 - (void)_updateBackgroundTask
 {
-    if (!_assertionsNeedingBackgroundTask.isEmpty() && _backgroundTask == UIBackgroundTaskInvalid) {
+    if (!_assertionsNeedingBackgroundTask.computesEmpty() && _backgroundTask == UIBackgroundTaskInvalid) {
         if (_applicationIsBackgrounded) {
             RELEASE_LOG_ERROR(ProcessSuspension, "%p - WKProcessAssertionBackgroundTaskManager: Ignored request to start a new background task because the application is already in the background", self);
             return;
@@ -173,7 +186,7 @@ static const Seconds releaseBackgroundTaskAfterExpirationDelay { 2_s };
 
             [self _scheduleReleaseTask];
         }];
-    } else if (_assertionsNeedingBackgroundTask.isEmpty())
+    } else if (_assertionsNeedingBackgroundTask.computesEmpty())
         [self _releaseBackgroundTask];
 }
 
@@ -183,6 +196,8 @@ static const Seconds releaseBackgroundTaskAfterExpirationDelay { 2_s };
         return;
 
     RELEASE_LOG(ProcessSuspension, "%p - WKProcessAssertionBackgroundTaskManager - endBackgroundTask", self);
+    if (_applicationIsBackgrounded)
+        WebKit::WebProcessPool::notifyProcessPoolsApplicationIsAboutToSuspend();
     [[UIApplication sharedApplication] endBackgroundTask:_backgroundTask];
     _backgroundTask = UIBackgroundTaskInvalid;
 }

@@ -27,6 +27,7 @@
 #include "WebKitGeolocationPermissionRequestPrivate.h"
 #include "WebKitNavigationActionPrivate.h"
 #include "WebKitNotificationPermissionRequestPrivate.h"
+#include "WebKitPointerLockPermissionRequestPrivate.h"
 #include "WebKitURIRequestPrivate.h"
 #include "WebKitUserMediaPermissionRequestPrivate.h"
 #include "WebKitWebViewPrivate.h"
@@ -34,6 +35,7 @@
 #include "WebPageProxy.h"
 #include "WebProcessProxy.h"
 #include "WebsiteDataStore.h"
+#include <WebCore/PlatformDisplay.h>
 #include <wtf/glib/GRefPtr.h>
 #include <wtf/glib/RunLoopSourcePriority.h>
 
@@ -48,6 +50,14 @@ public:
     explicit UIClient(WebKitWebView* webView)
         : m_webView(webView)
     {
+    }
+
+    ~UIClient()
+    {
+#if ENABLE(POINTER_LOCK)
+        if (m_pointerLockPermissionRequest)
+            g_object_remove_weak_pointer(G_OBJECT(m_pointerLockPermissionRequest), reinterpret_cast<void**>(&m_pointerLockPermissionRequest));
+#endif
     }
 
 private:
@@ -67,24 +77,24 @@ private:
         webkitWebViewClosePage(m_webView);
     }
 
-    void runJavaScriptAlert(WebPageProxy*, const String& message, WebFrameProxy*, const WebCore::SecurityOriginData&, Function<void()>&& completionHandler) final
+    void runJavaScriptAlert(WebPageProxy&, const String& message, WebFrameProxy*, WebCore::SecurityOriginData&&, Function<void()>&& completionHandler) final
     {
         webkitWebViewRunJavaScriptAlert(m_webView, message.utf8(), WTFMove(completionHandler));
     }
 
-    void runJavaScriptConfirm(WebPageProxy*, const String& message, WebFrameProxy*, const WebCore::SecurityOriginData&, Function<void(bool)>&& completionHandler) final
+    void runJavaScriptConfirm(WebPageProxy&, const String& message, WebFrameProxy*, WebCore::SecurityOriginData&&, Function<void(bool)>&& completionHandler) final
     {
         webkitWebViewRunJavaScriptConfirm(m_webView, message.utf8(), WTFMove(completionHandler));
     }
 
-    void runJavaScriptPrompt(WebPageProxy*, const String& message, const String& defaultValue, WebFrameProxy*, const WebCore::SecurityOriginData&, Function<void(const String&)>&& completionHandler) final
+    void runJavaScriptPrompt(WebPageProxy&, const String& message, const String& defaultValue, WebFrameProxy*, WebCore::SecurityOriginData&&, Function<void(const String&)>&& completionHandler) final
     {
         webkitWebViewRunJavaScriptPrompt(m_webView, message.utf8(), defaultValue.utf8(), WTFMove(completionHandler));
     }
 
     bool canRunBeforeUnloadConfirmPanel() const final { return true; }
 
-    void runBeforeUnloadConfirmPanel(WebPageProxy*, const String& message, WebFrameProxy*, const WebCore::SecurityOriginData&, Function<void(bool)>&& completionHandler) final
+    void runBeforeUnloadConfirmPanel(WebPageProxy&, const String& message, WebFrameProxy*, WebCore::SecurityOriginData&&, Function<void(bool)>&& completionHandler) final
     {
         webkitWebViewRunJavaScriptBeforeUnloadConfirm(m_webView, message.utf8(), WTFMove(completionHandler));
     }
@@ -130,13 +140,25 @@ private:
     }
 
 #if PLATFORM(GTK)
-    static void windowConfigureEventCallback(GtkWindow* window, GdkEventConfigure*, GdkRectangle* targetGeometry)
+    static gboolean windowConfigureEventCallback(GtkWindow* window, GdkEventConfigure*, GdkRectangle* targetGeometry)
     {
         GdkRectangle geometry = { 0, 0, 0, 0 };
-        gtk_window_get_position(window, &geometry.x, &geometry.y);
+        // Position a toplevel window is not supported under wayland.
+#if PLATFORM(WAYLAND)
+        if (WebCore::PlatformDisplay::sharedDisplay().type() != WebCore::PlatformDisplay::Type::Wayland)
+#endif
+        {
+            gtk_window_get_position(window, &geometry.x, &geometry.y);
+            if (geometry.x != targetGeometry->x || geometry.y != targetGeometry->y)
+                return FALSE;
+        }
+
         gtk_window_get_size(window, &geometry.width, &geometry.height);
-        if (geometry.x == targetGeometry->x && geometry.y == targetGeometry->y && geometry.width == targetGeometry->width && geometry.height == targetGeometry->height)
-            RunLoop::current().stop();
+        if (geometry.width != targetGeometry->width || geometry.height != targetGeometry->height)
+            return FALSE;
+
+        RunLoop::current().stop();
+        return FALSE;
     }
 
     void setWindowFrameTimerFired()
@@ -151,20 +173,40 @@ private:
         GdkRectangle geometry = WebCore::IntRect(frame);
         GtkWidget* window = gtk_widget_get_toplevel(GTK_WIDGET(m_webView));
         if (webkit_web_view_is_controlled_by_automation(m_webView) && WebCore::widgetIsOnscreenToplevelWindow(window) && gtk_widget_get_visible(window)) {
-            if ((geometry.x < 0 || geometry.y < 0) && (geometry.width <= 0 || geometry.height <= 0))
+            bool needsMove = false;
+            // Position a toplevel window is not supported under wayland.
+#if PLATFORM(WAYLAND)
+            if (WebCore::PlatformDisplay::sharedDisplay().type() != WebCore::PlatformDisplay::Type::Wayland)
+#endif
+            {
+                if (geometry.x >= 0 && geometry.y >= 0) {
+                    int x, y;
+                    gtk_window_get_position(GTK_WINDOW(window), &x, &y);
+                    needsMove = x != geometry.x || y != geometry.y;
+                }
+            }
+
+            bool needsResize = false;
+            if (geometry.width > 0 && geometry.height > 0) {
+                int width, height;
+                gtk_window_get_size(GTK_WINDOW(window), &width, &height);
+                needsResize = width != geometry.width || height != geometry.height;
+            }
+
+            if (!needsMove && !needsResize)
                 return;
 
             auto signalID = g_signal_connect(window, "configure-event", G_CALLBACK(windowConfigureEventCallback), &geometry);
-            if (geometry.x >= 0 && geometry.y >= 0)
+            if (needsMove)
                 gtk_window_move(GTK_WINDOW(window), geometry.x, geometry.y);
-            if (geometry.width > 0 && geometry.height > 0)
+            if (needsResize)
                 gtk_window_resize(GTK_WINDOW(window), geometry.width, geometry.height);
 
             // We need the move/resize to happen synchronously in automation mode, so we use a nested RunLoop
-            // to wait, up top 1 second, for the configure events.
+            // to wait, up top 200 milliseconds, for the configure events.
             auto timer = makeUnique<RunLoop::Timer<UIClient>>(RunLoop::main(), this, &UIClient::setWindowFrameTimerFired);
             timer->setPriority(RunLoopSourcePriority::RunLoopTimer);
-            timer->startOneShot(1_s);
+            timer->startOneShot(200_ms);
             RunLoop::run();
             timer = nullptr;
             g_signal_handler_disconnect(window, signalID);
@@ -181,6 +223,17 @@ private:
         if (WebCore::widgetIsOnscreenToplevelWindow(window) && gtk_widget_get_visible(window)) {
             gtk_window_get_position(GTK_WINDOW(window), &geometry.x, &geometry.y);
             gtk_window_get_size(GTK_WINDOW(window), &geometry.width, &geometry.height);
+        } else {
+            GdkRectangle defaultGeometry;
+            webkit_window_properties_get_geometry(webkit_web_view_get_window_properties(m_webView), &defaultGeometry);
+            if ((!defaultGeometry.width || !defaultGeometry.height) && WebCore::widgetIsOnscreenToplevelWindow(window)) {
+                int defaultWidth, defaultHeight;
+                gtk_window_get_default_size(GTK_WINDOW(window), &defaultWidth, &defaultHeight);
+                if (!defaultGeometry.width && defaultWidth != -1)
+                    geometry.width = defaultWidth;
+                if (!defaultGeometry.height && defaultHeight != -1)
+                    geometry.height = defaultHeight;
+            }
         }
         completionHandler(WebCore::FloatRect(geometry));
 #elif PLATFORM(WPE)
@@ -200,7 +253,7 @@ private:
         completionHandler(defaultQuota);
     }
 
-    bool runOpenPanel(WebPageProxy*, WebFrameProxy*, const WebCore::SecurityOriginData&, API::OpenPanelParameters* parameters, WebOpenPanelResultListenerProxy* listener) final
+    bool runOpenPanel(WebPageProxy&, WebFrameProxy*, WebCore::SecurityOriginData&&, API::OpenPanelParameters* parameters, WebOpenPanelResultListenerProxy* listener) final
     {
         GRefPtr<WebKitFileChooserRequest> request = adoptGRef(webkitFileChooserRequestCreate(parameters, listener));
         webkitWebViewRunFileChooserRequest(m_webView, request.get());
@@ -250,7 +303,31 @@ private:
         webkitWebViewIsPlayingAudioChanged(m_webView);
     }
 
+#if ENABLE(POINTER_LOCK)
+    void requestPointerLock(WebPageProxy* page) final
+    {
+        GRefPtr<WebKitPointerLockPermissionRequest> permissionRequest = adoptGRef(webkitPointerLockPermissionRequestCreate(m_webView));
+        RELEASE_ASSERT(!m_pointerLockPermissionRequest);
+        m_pointerLockPermissionRequest = permissionRequest.get();
+        g_object_add_weak_pointer(G_OBJECT(m_pointerLockPermissionRequest), reinterpret_cast<void**>(&m_pointerLockPermissionRequest));
+        webkitWebViewMakePermissionRequest(m_webView, WEBKIT_PERMISSION_REQUEST(permissionRequest.get()));
+    }
+
+    void didLosePointerLock(WebPageProxy*) final
+    {
+        if (m_pointerLockPermissionRequest) {
+            webkitPointerLockPermissionRequestDidLosePointerLock(m_pointerLockPermissionRequest);
+            g_object_remove_weak_pointer(G_OBJECT(m_pointerLockPermissionRequest), reinterpret_cast<void**>(&m_pointerLockPermissionRequest));
+            m_pointerLockPermissionRequest = nullptr;
+        }
+        webkitWebViewDidLosePointerLock(m_webView);
+    }
+#endif
+
     WebKitWebView* m_webView;
+#if ENABLE(POINTER_LOCK)
+    WebKitPointerLockPermissionRequest* m_pointerLockPermissionRequest { nullptr };
+#endif
 };
 
 void attachUIClientToView(WebKitWebView* webView)

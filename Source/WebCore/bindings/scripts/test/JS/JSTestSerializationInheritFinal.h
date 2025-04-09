@@ -44,11 +44,11 @@ public:
 
     static JSC::Structure* createStructure(JSC::VM& vm, JSC::JSGlobalObject* globalObject, JSC::JSValue prototype)
     {
-        return JSC::Structure::create(vm, globalObject, prototype, JSC::TypeInfo(JSC::ObjectType, StructureFlags), info());
+        return JSC::Structure::create(vm, globalObject, prototype, JSC::TypeInfo(JSC::ObjectType, StructureFlags), info(), JSC::NonArray);
     }
 
     static JSC::JSValue getConstructor(JSC::VM&, const JSC::JSGlobalObject*);
-    static JSC::JSObject* serialize(JSC::ExecState&, JSTestSerializationInheritFinal& thisObject, JSDOMGlobalObject&, JSC::ThrowScope&);
+    static JSC::JSObject* serialize(JSC::JSGlobalObject&, JSTestSerializationInheritFinal& thisObject, JSDOMGlobalObject&, JSC::ThrowScope&);
     static void analyzeHeap(JSCell*, JSC::HeapAnalyzer&);
     TestSerializationInheritFinal& wrapped() const
     {

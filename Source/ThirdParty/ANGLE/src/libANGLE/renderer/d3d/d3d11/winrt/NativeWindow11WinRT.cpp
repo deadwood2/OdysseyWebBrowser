@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2016 The ANGLE Project Authors. All rights reserved.
+// Copyright 2016 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -38,7 +38,7 @@ bool NativeWindow11WinRT::initialize()
         // to use the EGLNativeWindowType specified in the property set.
         // mWindow is treated as a raw pointer not an AddRef'd interface, so
         // the old mWindow does not need a Release() before this assignment.
-        window = eglNativeWindow.Get();
+        window = reinterpret_cast<EGLNativeWindowType>(eglNativeWindow.Get());
     }
 
     ComPtr<ABI::Windows::UI::Core::ICoreWindow> coreWindow;
@@ -88,8 +88,15 @@ HRESULT NativeWindow11WinRT::createSwapChain(ID3D11Device *device,
                                              DXGI_FORMAT format,
                                              UINT width,
                                              UINT height,
+                                             UINT samples,
                                              IDXGISwapChain **swapChain)
 {
+    if (samples > 1)
+    {
+        // Multisample not implemented for WinRT window types
+        return E_NOTIMPL;
+    }
+
     if (mImpl)
     {
         IDXGIFactory2 *factory2     = d3d11::DynamicCastComObject<IDXGIFactory2>(factory);

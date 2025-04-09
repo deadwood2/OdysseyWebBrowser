@@ -55,6 +55,7 @@ public:
     WEBCORE_EXPORT void initialize(Type) override;
 
     WEBCORE_EXPORT void setName(const String&) override;
+    WEBCORE_EXPORT String debugName() const override;
 
     WEBCORE_EXPORT PlatformLayerID primaryLayerID() const override;
 
@@ -305,6 +306,7 @@ private:
         FloatPoint& position, FloatPoint3D& anchorPoint, FloatSize& alignmentOffset) const;
 
     TransformationMatrix layerTransform(const FloatPoint& position, const TransformationMatrix* customTransform = 0) const;
+    TransformationMatrix transformByApplyingAnchorPoint(const TransformationMatrix&) const;
 
     enum ComputeVisibleRectFlag { RespectAnimatingTransforms = 1 << 0 };
     typedef unsigned ComputeVisibleRectFlags;
@@ -492,6 +494,7 @@ private:
     bool appendToUncommittedAnimations(const KeyframeValueList&, const TransformOperations*, const Animation*, const String& animationName, const FloatSize& boxSize, int animationIndex, Seconds timeOffset, bool isMatrixAnimation);
     bool appendToUncommittedAnimations(const KeyframeValueList&, const FilterOperation*, const Animation*, const String& animationName, int animationIndex, Seconds timeOffset);
     void appendToUncommittedAnimations(LayerPropertyAnimation&&);
+    void removeFromUncommittedAnimations(const String&);
 
     enum LayerChange : uint64_t {
         NoChange                                = 0,

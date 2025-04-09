@@ -29,14 +29,20 @@
 #
 # This the client designed to talk to Tools/QueueStatusServer.
 
+import logging
+import sys
+
 from webkitpy.common.config.urls import statusserver_default_host
 from webkitpy.common.net.bugzilla.attachment import Attachment
 from webkitpy.common.net.networktransaction import NetworkTransaction
+from webkitpy.common.unicode_compatibility import StringIO
 from webkitpy.thirdparty.BeautifulSoup import BeautifulSoup
 
-import StringIO
-import logging
-import urllib2
+if sys.version_info > (3, 0):
+    from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
+else:
+    from urllib2 import HTTPError, Request, urlopen
 
 _log = logging.getLogger(__name__)
 
@@ -64,7 +70,7 @@ class StatusServer:
 
     def set_api_key(self, api_key):
         self._api_key = str(api_key)
-        new_headers = filter(lambda header: header[0] != self._AUTHORIZATION_HEADER_NAME, self._browser.addheaders)
+        new_headers = list(filter(lambda header: header[0] != self._AUTHORIZATION_HEADER_NAME, self._browser.addheaders))
         if api_key:
             new_headers.append(self._authorization_header_name_and_value_pair())
         self._browser.addheaders = new_headers
@@ -138,10 +144,10 @@ class StatusServer:
         self._browser.open(upload_attachment_url)
         self._browser.select_form(name='upload_attachment')
         self._browser['attachment_id'] = unicode(attachment_id)
-        self._browser.add_file(StringIO.StringIO(unicode(attachment_metadata)), 'application/json', 'attachment-{}-metadata.json'.format(attachment_id), 'attachment_metadata')
+        self._browser.add_file(StringIO(unicode(attachment_metadata)), 'application/json', 'attachment-{}-metadata.json'.format(attachment_id), 'attachment_metadata')
         if isinstance(attachment_data, unicode):
             attachment_data = attachment_data.encode('utf-8')
-        self._browser.add_file(StringIO.StringIO(attachment_data), 'text/plain', 'attachment-{}.patch'.format(attachment_id), 'attachment_data')
+        self._browser.add_file(StringIO(attachment_data), 'text/plain', 'attachment-{}.patch'.format(attachment_id), 'attachment_data')
         self._browser.submit()
 
     def upload_attachment(self, attachment):
@@ -221,11 +227,11 @@ class StatusServer:
     def _fetch_url(self, url):
         # FIXME: This should use NetworkTransaction's 404 handling instead.
         try:
-            request = urllib2.Request(url)
+            request = Request(url)
             if self._api_key:
                 request.add_header(*self._authorization_header_name_and_value_pair())
-            return urllib2.urlopen(request, timeout=300).read()
-        except urllib2.HTTPError as e:
+            return urlopen(request, timeout=300).read()
+        except HTTPError as e:
             if e.code == 404:
                 return None
             raise e

@@ -42,10 +42,8 @@ class PBOExtensionTest : public ANGLETest
         setConfigAlphaBits(8);
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         if (IsGLExtensionEnabled("NV_pixel_buffer_object"))
         {
             glGenBuffers(1, &mPBO);
@@ -64,10 +62,8 @@ class PBOExtensionTest : public ANGLETest
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
-        ANGLETest::TearDown();
-
         glDeleteBuffers(1, &mPBO);
         glDeleteProgram(mProgram);
     }
@@ -148,4 +144,4 @@ TEST_P(PBOExtensionTest, PBOWithExistingData)
 
 // Use this to select which configurations (e.g. which renderer, which GLES major version) these
 // tests should be run against.
-ANGLE_INSTANTIATE_TEST(PBOExtensionTest, ES2_D3D11(), ES3_D3D11(), ES3_OPENGL(), ES3_OPENGLES());
+ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(PBOExtensionTest);

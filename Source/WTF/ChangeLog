@@ -1,3 +1,438 @@
+2020-07-07  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [GTK] WebProcess hangs when browsing GitHub
+        https://bugs.webkit.org/show_bug.cgi?id=213970
+
+        Reviewed by Sergio Villar Senin.
+
+        Use a lower priority for LayerFlushTimer and DisplayRefreshMonitorTimer. We were using a very high priority for
+        drawing with the idea of keeping a good rendering performance without being affected by other timers. The
+        problem is that animations can be controlled by timers, so we need to ensure that MainThreadSharedTimer has
+        higher priority than drawing.
+
+        * wtf/glib/RunLoopSourcePriority.h: Use 110 for LayerFlushTimer and DisplayRefreshMonitorTimer.
+
+2020-04-10  Alicia Boya García  <aboya@igalia.com>
+
+        [WTF] DataMutex: Add runUnlocked()
+        https://bugs.webkit.org/show_bug.cgi?id=209811
+
+        Reviewed by Xabier Rodriguez-Calvar.
+
+        This patch introduces a runUnlocked() method in WTF::DataMutex::LockedWrapper
+        to run a lambda function without the lock. This is intended to be used for
+        small sections of the code that need to be unlocked, in cases where using
+        scoping would prove non-ergonomic or where running the unlocked section is only
+        necessary or desired when a certain condition is met -- something that cannot
+        be done with C++ scoping.
+
+        Safety mechanisms are provided. First, because this is used with a lambda, all
+        variables to be used in the unlocked section have to be specified in the
+        capture (global capture is possible but not recommended to simplify analysis).
+        Second, additional checks have been added to DataMutex to detect unlocked
+        accesses among other conditions. This will detect among other things naive
+        access to protected members by means of capturing the LockedWrapper by
+        reference.
+
+        * wtf/DataMutex.h:
+        (WTF::OwnerAwareLockAdapter::lock):
+        (WTF::OwnerAwareLockAdapter::unlock):
+        (WTF::OwnerAwareLockAdapter::tryLock):
+        (WTF::OwnerAwareLockAdapter::isLocked const):
+        (WTF::DataMutex::LockedWrapper::operator->):
+        (WTF::DataMutex::LockedWrapper::operator*):
+        (WTF::DataMutex::LockedWrapper::mutex):
+        (WTF::DataMutex::LockedWrapper::lockHolder):
+        (WTF::DataMutex::LockedWrapper::runUnlocked):
+
+2020-04-16  Alberto Garcia  <berto@igalia.com>
+
+        Unreviewed, set CeilingOnPageSize for MIPS64
+
+        This fixes a build failure ("Must set CeilingOnPageSize in
+        PageBlock.h").
+
+        * wtf/PageBlock.h:
+
+2020-03-27  Michael Catanzaro  <mcatanzaro@gnome.org>
+
+        REGRESSION(r258857): Broke aarch64 JSCOnly CI
+        https://bugs.webkit.org/show_bug.cgi?id=209670
+
+        Reviewed by Carlos Alberto Lopez Perez.
+
+        Change aarch64 to use 4 KB rather than 64 KB as the ceiling on page size.
+
+        This change is definitely incorrect, because it will break our internal aarch64 CI that uses
+        64 KB pages. But maybe it will fix the public aarch64 CI bot that is using 4 KB pages?
+        Further investigation is required, because 64 KB should have been a safe value for all
+        platforms, but first step is to commit this and see what happens.
+
+        * wtf/PageBlock.h:
+
+2020-03-23  Michael Catanzaro  <mcatanzaro@gnome.org>
+
+        REGRESSION(r249808): [GTK] Crash in JSC Config::permanentlyFreeze() on architecture ppc64el
+        https://bugs.webkit.org/show_bug.cgi?id=209236
+
+        Reviewed by Mark Lam.
+
+        Add new CeilingOnPageSize constants, for use in JSC, in order to centralize our compile-time
+        page size guessing into one place. Improve the implementation of pageSize() to
+        RELEASE_ASSERT() when CeilingOnPageSize is wrong, so we can detect and fix it if so. (It
+        will be even easier to detect if we change RELEASE_ASSERT_WITH_MESSAGE() to actually print
+        its message in release builds.) Change pageSize() to use sysconf(_SC_PAGESIZE), which is
+        specified by POSIX, instead of getpagesize(), which is nonstandard.
+
+        * wtf/PageBlock.cpp:
+        (WTF::systemPageSize):
+        (WTF::pageSize):
+        * wtf/PageBlock.h:
+
+2020-03-02  Paulo Matos  <pmatos@igalia.com>
+
+        Fix JSC 32bit alignment increase gcc warning
+        https://bugs.webkit.org/show_bug.cgi?id=208445
+
+        Reviewed by Yusuke Suzuki.
+
+        Use reinterpret_cast_ptr<>() instead of reinterpret_cast<>() to
+        avoid GCC warning about increase in alignment requirement for cast
+        target type.
+
+        * wtf/HashTable.h:
+        (WTF::HashTable::tableSize const):
+        (WTF::HashTable::setTableSize const):
+        (WTF::HashTable::tableSizeMask const):
+        (WTF::HashTable::setTableSizeMask):
+        (WTF::HashTable::keyCount const):
+        (WTF::HashTable::setKeyCount const):
+        (WTF::HashTable::deletedCount const):
+        (WTF::HashTable::setDeletedCount const):
+        (WTF::KeyTraits>::allocateTable):
+        (WTF::KeyTraits>::deallocateTable):
+
+2020-02-25  Philippe Normand  <pnormand@igalia.com>
+
+        [WPE] Enable BACKTRACE_SYMBOLS
+        https://bugs.webkit.org/show_bug.cgi?id=208187
+
+        Reviewed by Žan Doberšek.
+
+        * wtf/PlatformHave.h: Enable backtrace_symbols, to be combined
+        with dladdr() the stacktrace dumps will be improved.
+
+2020-02-25  Philippe Normand  <pnormand@igalia.com>
+
+        [Linux] StackTrace symbols are not demangled
+        https://bugs.webkit.org/show_bug.cgi?id=207933
+
+        Reviewed by Yusuke Suzuki.
+
+        Demangle symbols provided by backtrace_symbols.
+
+        * wtf/StackTrace.cpp:
+        (WTF::StackTrace::dump const):
+
+2020-02-14  Alex Christensen  <achristensen@webkit.org>
+
+        Allow UIDNAInfo.errors from uidna_nameToUnicode that would not cause URL parsing failures
+        https://bugs.webkit.org/show_bug.cgi?id=207360
+        <rdar://problem/57825317>
+
+        Reviewed by Ryosuke Niwa.
+
+        * wtf/URLHelpers.cpp:
+        (WTF::URLHelpers::mapHostName):
+
+2020-02-12  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] Compact JITCodeMap by storing BytecodeIndex and CodeLocation separately
+        https://bugs.webkit.org/show_bug.cgi?id=207673
+
+        Reviewed by Mark Lam.
+
+        * wtf/MallocPtr.h:
+
+2020-02-12  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        Shrink CachedResource
+        https://bugs.webkit.org/show_bug.cgi?id=207618
+
+        Reviewed by Mark Lam.
+
+        * wtf/Markable.h:
+        (WTF::Markable::asOptional const): Add helper method to get Optional easily from Markable.
+        * wtf/ObjectIdentifier.h:
+        (WTF::ObjectIdentifier::MarkableTraits::isEmptyValue):
+        (WTF::ObjectIdentifier::MarkableTraits::emptyValue):
+        (WTF::ObjectIdentifier::ObjectIdentifier): Add MarkableTraits for ObjectIdentifier.
+
+2020-02-10  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        Unreviewed, speculative build fix on watchOS simulator
+        https://bugs.webkit.org/show_bug.cgi?id=207183
+
+        * wtf/HashTable.h:
+        (WTF::HashTableCapacityForSize::capacityForSize):
+
+2020-02-10  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        Unreviewed, fix build failure on watchOS simulator
+        https://bugs.webkit.org/show_bug.cgi?id=207183
+
+        * wtf/HashTable.h:
+        (WTF::HashTableCapacityForSize::capacityForSize):
+
+2020-02-10  Daniel Bates  <dabates@apple.com>
+
+        Disallow setting base URL to a data or JavaScript URL
+        https://bugs.webkit.org/show_bug.cgi?id=207136
+
+        Reviewed by Brent Fulgham.
+
+        Add some more macro definitions.
+
+        * wtf/spi/darwin/dyldSPI.h:
+
+2020-02-08  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [WTF] Try using 75% load factor for HashTable
+        https://bugs.webkit.org/show_bug.cgi?id=207183
+
+        Reviewed by Mark Lam.
+
+        We know that hash-table is one of the most memory consuming part in WebKit.
+        By analyzing many production hash-table implementations[1], I found that many
+        of them are using 75% load-factor while our one is 50%.
+
+        This patch changes the load-factor from 50% to 75%. But we pick 75% only for
+        small tables which capacity is <= 1024 based on collected data by micro-benchmarking.
+        The collected data is telling that longer probe-length affects on performance if table
+        size gets larger.
+
+        [1]: LLVM DenseMap, Abseil's, rust's, and so on.
+
+        * wtf/HashTable.h:
+        (WTF::HashTableCapacityForSize::shouldExpand):
+        (WTF::HashTableCapacityForSize::capacityForSize):
+        (WTF::HashTable::shouldExpand const):
+        (WTF::KeyTraits>::computeBestTableSize):
+
+2020-02-07  Alex Christensen  <achristensen@webkit.org>
+
+        Harden HashTable IPC decoders
+        https://bugs.webkit.org/show_bug.cgi?id=207415
+
+        Reviewed by Chris Dumez.
+
+        * wtf/HashCountedSet.h:
+
+2020-02-07  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        Unreviewed, revert 75% load-factor because of JetStream2/string-unpack-code-SP regression
+        https://bugs.webkit.org/show_bug.cgi?id=207183
+
+        * wtf/HashTable.h:
+        (WTF::HashTable::shouldExpand const):
+        (WTF::KeyTraits>::computeBestTableSize):
+        (WTF::HashTable::shouldExpand): Deleted.
+        (WTF::HashTableCapacityForSize::capacityForSize): Deleted.
+
+2020-02-05  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [WTF] Try using 75% load factor for HashTable
+        https://bugs.webkit.org/show_bug.cgi?id=207183
+
+        Reviewed by Mark Lam.
+
+        We know that hash-table is one of the most memory consuming part in WebKit.
+        By analyzing many production hash-table implementations[1], I found that many
+        of them are using 75% load-factor while our one is 50%.
+
+        A/B test shows that 75% load-factor is performance-neutral in Speedometer2 and
+        JetStream2, while it offers 2~% improvement in Membuster. This means that we are
+        wasting too much memory for no-performance-improvement.
+
+        This patch changes the load-factor from 50% to 75%.
+
+        [1]: LLVM DenseMap, Abseil's, rust's, and so on.
+
+        * wtf/HashTable.h:
+        (WTF::HashTable::shouldExpand):
+        (WTF::HashTable::shouldExpand const):
+        (WTF::HashTableCapacityForSize::capacityForSize):
+        (WTF::KeyTraits>::computeBestTableSize):
+
+2020-02-05  Alex Christensen  <achristensen@webkit.org>
+
+        Make WKWebView._negotiatedLegacyTLS accurate when loading main resouorce from network or cache
+        https://bugs.webkit.org/show_bug.cgi?id=207207
+
+        Reviewed by Chris Dumez.
+
+        * wtf/persistence/PersistentDecoder.cpp:
+        (WTF::Persistence::Decoder::decode):
+        * wtf/persistence/PersistentDecoder.h:
+        * wtf/persistence/PersistentEncoder.cpp:
+        (WTF::Persistence::Encoder::encode):
+        * wtf/persistence/PersistentEncoder.h:
+
+2020-02-04  Adrian Perez de Castro  <aperez@igalia.com>
+
+        Non-unified build fixes early February 2020 edition
+        https://bugs.webkit.org/show_bug.cgi?id=207227
+
+        Reviewed by Don Olmstead.
+
+        * wtf/SingleRootGraph.h: Add missing inclusion of wtf/StringPrintStream.h
+
+2020-02-04  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] Introduce UnlinkedCodeBlockGenerator and reduce sizeof(UnlinkedCodeBlock)
+        https://bugs.webkit.org/show_bug.cgi?id=207087
+
+        Reviewed by Tadeu Zagallo.
+
+        Add more useful methods for RefCountedArray.
+
+        * wtf/RefCountedArray.h:
+        (WTF::RefCountedArray::operator=):
+        (WTF::RefCountedArray::isEmpty const):
+        (WTF::RefCountedArray::front):
+        (WTF::RefCountedArray::front const):
+        (WTF::RefCountedArray::last):
+        (WTF::RefCountedArray::last const):
+
+2020-02-03  Alex Christensen  <achristensen@webkit.org>
+
+        Reduce size of HashMap and HashSet
+        https://bugs.webkit.org/show_bug.cgi?id=207138
+
+        Reviewed by Yusuke Suzuki.
+
+        This reduces sizeof(HashMap) and sizeof(HashSet) from 24 to 8 on 64-bit systems.
+        I measured that the overwhelming majority of HashMaps and HashSets never see more than 0 elements,
+        so I moved the table metadata (tableSize, tableSizeMask, keyCount, deletedCount) to inside the
+        dynamically allocated memory.  This makes another branch in size() for non-empty tables
+        and an additional read and write when rehashing in exchange for fewer writes in the constructor
+        and increased cache locality of everything that uses HashMap and HashSet, which is basically everything.
+
+        * wtf/HashTable.h:
+        (WTF::HashTable::~HashTable):
+        (WTF::HashTable::end):
+        (WTF::HashTable::end const):
+        (WTF::HashTable::random):
+        (WTF::HashTable::size const):
+        (WTF::HashTable::capacity const):
+        (WTF::HashTable::isEmpty const):
+        (WTF::HashTable::reserveInitialCapacity):
+        (WTF::HashTable::shouldExpand const):
+        (WTF::HashTable::mustRehashInPlace const):
+        (WTF::HashTable::shouldShrink const):
+        (WTF::HashTable::shrink):
+        (WTF::HashTable::makeIterator):
+        (WTF::HashTable::makeConstIterator const):
+        (WTF::HashTable::makeKnownGoodIterator):
+        (WTF::HashTable::makeKnownGoodConstIterator const):
+        (WTF::HashTable::tableSize const):
+        (WTF::HashTable::setTableSize const):
+        (WTF::HashTable::tableSizeMask const):
+        (WTF::HashTable::setTableSizeMask):
+        (WTF::HashTable::keyCount const):
+        (WTF::HashTable::setKeyCount const):
+        (WTF::HashTable::deletedCount const):
+        (WTF::HashTable::setDeletedCount const):
+        (WTF::KeyTraits>::HashTable):
+        (WTF::KeyTraits>::inlineLookup):
+        (WTF::KeyTraits>::lookupForWriting):
+        (WTF::KeyTraits>::fullLookupForWriting):
+        (WTF::KeyTraits>::addUniqueForInitialization):
+        (WTF::KeyTraits>::add):
+        (WTF::KeyTraits>::addPassingHashCode):
+        (WTF::KeyTraits>::remove):
+        (WTF::KeyTraits>::removeIf):
+        (WTF::KeyTraits>::allocateTable):
+        (WTF::KeyTraits>::deallocateTable):
+        (WTF::KeyTraits>::expand):
+        (WTF::KeyTraits>::shrinkToBestSize):
+        (WTF::KeyTraits>::deleteReleasedWeakBuckets):
+        (WTF::KeyTraits>::rehash):
+        (WTF::KeyTraits>::clear):
+        (WTF::KeyTraits>::swap):
+        (WTF::KeyTraits>::checkTableConsistencyExceptSize const):
+
+2020-02-03  Sam Weinig  <weinig@apple.com>
+
+        Start splitting platform specific overrides of default enable behavior into their own files
+        https://bugs.webkit.org/show_bug.cgi?id=207105
+
+        Reviewed by Dean Jackson.
+
+        Splits out platform specific overrides of default enable behavior into separate files, 
+        starting with one for all of the Cocoa related ports, one for Apple's Windows port, and
+        one for the WinCario port.
+        
+        The rule is now that all ENABLE_* macros should have a default defined in PlatformEnable.h,
+        but platforms are allowed to override it via their PlatformEnable*.h file. For now, I manually
+        ensured that all the defines in PlatformEnableCocoa.h, PlatformEnableWinApple.h and PlatformEnableWinCairo.h
+        also had defaults in PlatformEnable.h, but going forward this needs be validated either through
+        some sort of macro-based validation, through the style checker or something else.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        * wtf/PlatformEnable.h:
+        * wtf/PlatformEnableCocoa.h: Copied from Source/WTF/wtf/PlatformEnable.h.
+        * wtf/PlatformEnableWinApple.h: Copied from Source/WTF/wtf/PlatformEnable.h.
+        * wtf/PlatformEnableWinCairo.h: Copied from Source/WTF/wtf/PlatformEnable.h.
+
+2020-01-31  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] Add _PRIVATE_LIBRARIES to framework
+        https://bugs.webkit.org/show_bug.cgi?id=207004
+
+        Reviewed by Konstantin Tokarev.
+
+        Move uses of PRIVATE within _LIBRARIES to _PRIVATE_LIBRARIES. Any _LIBRARIES appended
+        afterwards will have that visibility set erroneously.
+
+        * wtf/PlatformFTW.cmake:
+
+2020-01-30  Conrad Shultz  <conrad_shultz@apple.com>
+
+        `FALLTHROUGH` macro isn't properly defined when building Objective-C files using Clang
+        https://bugs.webkit.org/show_bug.cgi?id=206637
+
+        Reviewed by Darin Adler.
+
+        Allow the `FALLTHROUGH` macro to be defined properly when building with either GCC
+        or Clang.
+
+        * wtf/Compiler.h:
+
+2020-01-30  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [WTF] Remove PackedIntVector
+        https://bugs.webkit.org/show_bug.cgi?id=207018
+
+        Reviewed by Mark Lam.
+
+        Simply removing PackedIntVector since (1) nobody uses it, (2) it is somewhat broken (like, size()), and (3) its implementation is not so efficient.
+        If we want to have this feature, we can recreate it.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        * wtf/PackedIntVector.h: Removed.
+
+2020-01-30  Jonathan Bedard  <jbedard@apple.com>
+
+        PAL: Remove old iOS version macros
+        https://bugs.webkit.org/show_bug.cgi?id=206905
+
+        Reviewed by Darin Adler.
+
+        * wtf/PlatformHave.h: Add HAVE(NSPROGRESS_PUBLISHING_SPI).
+
 2020-01-28  Carlos Garcia Campos  <cgarcia@igalia.com>
 
         [GTK] Should use light theme unless website declares support for dark themes in color-schemes property
@@ -9,6 +444,2887 @@
 
         * wtf/PlatformHave.h:
 
+2020-01-28  Jonathan Bedard  <jbedard@apple.com>
+
+        WebCore: Guard uneven corners in rounded rectangles
+        https://bugs.webkit.org/show_bug.cgi?id=206838
+
+        Reviewed by Darin Adler.
+
+        * wtf/PlatformHave.h: Add HAVE(CG_PATH_UNEVEN_CORNERS_ROUNDEDRECT).
+
+2020-01-27  Jonathan Bedard  <jbedard@apple.com>
+
+        WebCore: Remove iOS 11 macros from RenderThemeIOS.mm
+        https://bugs.webkit.org/show_bug.cgi?id=206787
+
+        Reviewed by Darin Adler.
+
+        * wtf/PlatformHave.h: Add HAVE(SYSTEM_FONT_STYLE_TITLE_0) and HAVE(SYSTEM_FONT_STYLE_TITLE_4).
+
+2020-01-27  Jonathan Bedard  <jbedard@apple.com>
+
+        Fix OpenSource iphoneos arm64e build
+        https://bugs.webkit.org/show_bug.cgi?id=206703
+
+        Reviewed by Yusuke Suzuki.
+
+        * wtf/PlatformUse.h: Add USE(DARWIN_REGISTER_MACROS) check.
+
+2020-01-27  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, rolling out r255159.
+
+        Broke the watchOS build.
+
+        Reverted changeset:
+
+        "Fix OpenSource iphoneos arm64e build"
+        https://bugs.webkit.org/show_bug.cgi?id=206703
+        https://trac.webkit.org/changeset/255159
+
+2020-01-27  Jonathan Bedard  <jbedard@apple.com>
+
+        Fix OpenSource iphoneos arm64e build
+        https://bugs.webkit.org/show_bug.cgi?id=206703
+
+        Reviewed by Yusuke Suzuki.
+
+        * wtf/PlatformUse.h: Add USE(DARWIN_REGISTER_MACROS) check.
+
+2020-01-27  Mark Lam  <mark.lam@apple.com>
+
+        Make getVTablePointer() an inline function to be compliant with WebKit style guidelines.
+        https://bugs.webkit.org/show_bug.cgi?id=206816
+
+        Reviewed by Darin Adler.
+
+        Convert getVTablePointer() from a macro into an inline template function.  This
+        makes the naming compliant with WebKit style guidelines.
+
+        * wtf/PointerPreparations.h:
+        (WTF::getVTablePointer):
+
+2020-01-25  Brady Eidson  <beidson@apple.com>
+
+        Make ContentWorlds be identified by an ObjectIdentifier instead of a uint64_t
+        https://bugs.webkit.org/show_bug.cgi?id=206784
+
+        Reviewed by Alex Christensen.
+
+        * wtf/ObjectIdentifier.h:
+        (WTF::ObjectIdentifier::generate):
+        (WTF::ObjectIdentifier::generateThreadSafe):
+        (WTF::ObjectIdentifier::enableGenerationProtection): To allow restricting generating an identifier to the UIProcess.
+
+2020-01-25  Mark Lam  <mark.lam@apple.com>
+
+        Introduce a getVTablePointer() utility function.
+        https://bugs.webkit.org/show_bug.cgi?id=206804
+        <rdar://problem/58872290>
+
+        Reviewed by Yusuke Suzuki and Oliver Hunt.
+
+        With getVTablePointer(), we can abstract away how we get a vtable function pointer
+        without assuming the way it is signed for ARM64E.  With this, we can remove the
+        WTF_PREPARE_VTBL_POINTER_FOR_INSPECTION macro which assumes how a vtable function
+        pointer is signed.
+
+        * wtf/PointerPreparations.h:
+
+2020-01-25  Mark Lam  <mark.lam@apple.com>
+
+        Add some tests for dynamically allocated StaticStringImpls.
+        https://bugs.webkit.org/show_bug.cgi?id=206802
+
+        Reviewed by Darin Adler.
+
+        Removed some unnecessary explicit specialization of the charactersAreAllASCII()
+        template function.
+
+        * wtf/text/StringImpl.cpp:
+        (WTF::StringImpl::createFromLiteral):
+        (WTF::StringImpl::createStaticStringImpl):
+
+2020-01-24  Mark Lam  <mark.lam@apple.com>
+
+        Move singleton Intl string locales out of JSGlobalObject.
+        https://bugs.webkit.org/show_bug.cgi?id=206791
+        <rdar://problem/58889037>
+
+        Reviewed by Yusuke Suzuki.
+
+        Fix a bug in StringImpl::createStaticStringImpl(): I forgot to set its hash value
+        when I introduced it.  StaticStringImpls require that its hash code be set ahead
+        of time, and cannot be mutated at runtime.  See the comment in the definition of
+        StaticStringImpl in StringImpl.h.
+
+        * wtf/text/StringImpl.cpp:
+        (WTF::StringImpl::createStaticStringImpl):
+
+2020-01-24  Mark Lam  <mark.lam@apple.com>
+
+        IntlObject's cached strings should be immortal and safe for concurrent access.
+        https://bugs.webkit.org/show_bug.cgi?id=206779
+        <rdar://problem/58831763>
+
+        Reviewed by Yusuke Suzuki.
+
+        Add a factory for creating a dynamically allocated StaticStringImpl.
+
+        Note: StaticStringImpl is guaranteed to have the same shape as StringImpl.
+        The only difference is that s_refCountFlagIsStaticString is set on the refCount
+        for StaticStringImpl.  Since the client will use the StaticStringImpl as a
+        StringImpl, we implement the factory by using StringImpl::createInternal() for
+        simplicity, and set the s_refCountFlagIsStaticString flag thereafter.
+
+        * wtf/text/StringImpl.cpp:
+        (WTF::StringImpl::createStaticStringImpl):
+        * wtf/text/StringImpl.h:
+
+2020-01-24  Keith Rollin  <krollin@apple.com>
+
+        Fix internal Apple builds after r254411
+        https://bugs.webkit.org/show_bug.cgi?id=206723
+        <rdar://problem/58844735>
+
+        Reviewed by Maciej Stachowiak.
+
+        The default Xcode build configuration has changed between macOS 10.13
+        and macOS 10.15, such that references to some frameworks when bulding
+        for the latter don't work when building for the former. Fix this by
+        explicitly adding support for the desired build location rather than
+        assuming such support will be provided for us.
+
+        * Configurations/WTF.xcconfig:
+
+2020-01-24  Jonathan Bedard  <jbedard@apple.com>
+
+        WTF: Remove old iOS version macros
+        https://bugs.webkit.org/show_bug.cgi?id=206634
+        <rdar://problem/58818561>
+
+        Reviewed by Darin Adler.
+
+        * wtf/PlatformEnable.h: Remove iOS 12 version macro.
+        * wtf/PlatformHave.h: Ditto.
+        * wtf/PlatformUse.h: Ditto.
+
+2020-01-22  Darin Adler  <darin@apple.com>
+
+        Remove some unneeded definitions from Platform.h family headers
+        https://bugs.webkit.org/show_bug.cgi?id=206642
+
+        Reviewed by Eric Carlson.
+
+        * wtf/PlatformEnable.h:
+        Removed ENABLE_RESPECT_EXIF_ORIENTATION because it was unused.
+
+        * wtf/PlatformHave.h:
+        Removed HAVE_PASSKIT_API_TYPE because it is now unused.
+        Removed HAVE_MERGESORT because it was unused.
+        Removed HAVE_AVFOUNDATION_VIDEO_OUTPUT because it is now unused.
+        Removed HAVE_AVFOUNDATION_MEDIA_SELECTION_GROUP because it is now unused.
+        Removed HAVE_CFNETWORK_WITH_CONTENT_ENCODING_SNIFFING_OVERRIDE because it was unused.
+
+        * wtf/PlatformUse.h:
+        Removed USE_ARENA_ALLOC_ALIGNMENT_INTEGER because it was unused.
+        Removed USE_NETWORK_CFDATA_ARRAY_CALLBACK because it is now unused.
+
+2020-01-22  Eric Carlson  <eric.carlson@apple.com>
+
+        uniqueLogIdentifier() should generate a unique identifiers
+        https://bugs.webkit.org/show_bug.cgi?id=206612
+
+        Reviewed by Brent Fulgham.
+
+        * wtf/LoggerHelper.h:
+        (WTF::LoggerHelper::uniqueLogIdentifier):
+
+2020-01-22  Sam Weinig  <weinig@apple.com>
+
+        Remove unused enable macro ENABLE_JIT_CONSTANT_BLINDING
+        https://bugs.webkit.org/show_bug.cgi?id=206415
+
+        Reviewed by Anders Carlsson.
+
+        * wtf/PlatformEnable.h:
+        ENABLE_JIT_CONSTANT_BLINDING is not used anywhere in WebKit so can be removed.
+
+2020-01-22  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] DateMath should accept more ISO-8601 timezone designators even if they are not included in ECMA262 to produce expected results in the wild code
+        https://bugs.webkit.org/show_bug.cgi?id=160287
+
+        Reviewed by Ross Kirsling.
+
+        While ECMA262[1] always requires ":" in a timezone designator between hours and minutes (like, "hh:mm"),
+        ISO-8601 can accept additional forms, "+hh" and "+hhmm". This patch relaxes our Date parsing to accept this
+        type of timezone designators so that we can accept wider forms of date time formats. This addition does not
+        break the existing parsing rules since '+-' prefix can clarify that following sequences are timezones.
+
+        [1]: https://tc39.es/ecma262/#sec-date-time-string-format
+        [2]: https://en.wikipedia.org/wiki/ISO_8601#Time_zone_designators
+
+        * wtf/DateMath.cpp:
+        (WTF::parseES5TimePortion):
+        (WTF::parseES5DateFromNullTerminatedCharacters):
+
+2020-01-21  Ross Kirsling  <ross.kirsling@sony.com>
+
+        [JSC] Date parse logic should be less redundant
+        https://bugs.webkit.org/show_bug.cgi?id=206560
+
+        Reviewed by Darin Adler.
+
+        * wtf/DateMath.cpp:
+        (WTF::parseDateFromNullTerminatedCharacters):
+        * wtf/DateMath.h:
+        Align function signature with parseES5DateFromNullTerminatedCharacters.
+        Namely, drop the integer out param and flip the boolean one.
+
+2020-01-21  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [WTF] AtomStringTable should be small
+        https://bugs.webkit.org/show_bug.cgi?id=206400
+
+        Reviewed by Sam Weinig.
+
+        AtomStringTable is the largest hashtable typically. It takes more
+        than 256KB per WebProcess (sometimes, it took 1MB or more).
+        This patch leverages PackedPtr to compact it from 8 bytes per entry
+        to 6 bytes per entry.
+
+        While this is still large, we should investigate how to compact C++
+        pointers in 4 bytes[1] to shrink memory footprint, since WebKit
+        memory is used by Vector and HashTable fulfilled with pointers.
+
+        [1]: https://bugs.webkit.org/show_bug.cgi?id=206469
+
+        * wtf/DumbPtrTraits.h:
+        (WTF::DumbPtrTraits::hashTableDeletedValue):
+        (WTF::DumbPtrTraits::isHashTableDeletedValue):
+        * wtf/Forward.h:
+        * wtf/HashTraits.h:
+        * wtf/Packed.h:
+        (WTF::Packed<T::Packed):
+        (WTF::Packed<T::isHashTableDeletedValue const):
+        (WTF::GetPtrHelper<PackedPtr<T>>::getPtr):
+        (WTF::PackedPtrTraits::hashTableDeletedValue):
+        (WTF::PackedPtrTraits::isHashTableDeletedValue):
+        (WTF::alignof): Deleted.
+        * wtf/Ref.h:
+        (WTF::Ref::Ref):
+        (WTF::Ref::isHashTableDeletedValue const):
+        (WTF::Ref::hashTableDeletedValue): Deleted.
+        * wtf/RefPtr.h:
+        (WTF::RefPtr::RefPtr):
+        (WTF::RefPtr::isHashTableDeletedValue const):
+        (WTF::RefPtr::hashTableDeletedValue): Deleted.
+        * wtf/text/AtomStringImpl.cpp:
+        (WTF::addToStringTable):
+        (WTF::CStringTranslator::equal):
+        (WTF::CStringTranslator::translate):
+        (WTF::UCharBufferTranslator::equal):
+        (WTF::UCharBufferTranslator::translate):
+        (WTF::HashAndUTF8CharactersTranslator::equal):
+        (WTF::HashAndUTF8CharactersTranslator::translate):
+        (WTF::SubstringTranslator::translate):
+        (WTF::SubstringTranslator8::equal):
+        (WTF::SubstringTranslator16::equal):
+        (WTF::LCharBufferTranslator::equal):
+        (WTF::LCharBufferTranslator::translate):
+        (WTF::BufferFromStaticDataTranslator::equal):
+        (WTF::BufferFromStaticDataTranslator::translate):
+        (WTF::AtomStringImpl::addSlowCase):
+        (WTF::AtomStringImpl::remove):
+        (WTF::AtomStringImpl::lookUpSlowCase):
+        (WTF::AtomStringImpl::lookUp):
+        * wtf/text/AtomStringTable.cpp:
+        (WTF::AtomStringTable::~AtomStringTable):
+        * wtf/text/AtomStringTable.h:
+        (WTF::AtomStringTable::table):
+        (): Deleted.
+        * wtf/text/StringHash.h:
+        (WTF::StringHash::hash):
+        (WTF::StringHash::equal):
+        (WTF::ASCIICaseInsensitiveHash::hash):
+        (WTF::ASCIICaseInsensitiveHash::equal):
+        * wtf/text/StringImpl.h:
+
+2020-01-17  Sam Weinig  <weinig@apple.com>
+
+        Platform.h is out of control Part 8: Macros are used inconsistently
+        https://bugs.webkit.org/show_bug.cgi?id=206425
+
+        Reviewed by Darin Adler.
+
+        Start addressing FIXMEs added to Platform.h (and helper files) during previous
+        cleanup work.
+        
+        - Renames WTF_CPU_EFFECTIVE_ADDRESS_WIDTH to WTF_OS_CONSTANT_EFFECTIVE_ADDRESS_WIDTH,
+          making it available via new macro OS_CONSTANT(...), and syncs bmalloc redefinition.
+        - Renames:
+             USE_LLINT_EMBEDDED_OPCODE_ID to ENABLE_LLINT_EMBEDDED_OPCODE_ID
+             USE_UDIS86 to ENABLE_UDIS86 
+             USE_ARM64_DISASSEMBLER to ENABLE_ARM64_DISASSEMBLER
+          Enable is more appropriate here as these enable functionality within webkit.
+        - Removes undefs that are no longer needed due to only defining the macro once now.
+        - Removes dead defined(__LP64__) check after PLATFORM(MAC) macOS is always 64-bit these
+          days.
+
+        * wtf/Packed.h:
+        (WTF::alignof):
+        * wtf/Platform.h:
+        * wtf/PlatformEnable.h:
+        * wtf/PlatformOS.h:
+        * wtf/WTFAssertions.cpp:
+        * wtf/text/StringCommon.h:
+
+2020-01-20  David Kilzer  <ddkilzer@apple.com>
+
+        Fix missing header guards and clean up empty files in bmalloc, WTF, JavaScriptCore
+        <https://webkit.org/b/206481>
+
+        Reviewed by Darin Adler.
+
+        * wtf/cocoa/Entitlements.h:
+        * wtf/win/PathWalker.h:
+        - Add #pragma once.
+
+2020-01-19  Claudio Saavedra  <csaavedra@igalia.com>
+
+        [GTK] Remove usage of deprecated GTimeVal
+        https://bugs.webkit.org/show_bug.cgi?id=206358
+
+        Reviewed by Žan Doberšek.
+
+        Use g_get_real_time() directly instead of deprecated and unsafe API.
+
+        * wtf/CurrentTime.cpp:
+        (WTF::currentTime):
+
+2020-01-16  Keith Miller  <keith_miller@apple.com>
+
+        Reland bytecode checkpoints since bugs have been fixed
+        https://bugs.webkit.org/show_bug.cgi?id=206361
+
+        Unreviewed, reland.
+
+        The watch bugs have been fixed by https://trac.webkit.org/changeset/254674
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/Bitmap.h:
+        (WTF::WordType>::invert):
+        (WTF::WordType>::operator):
+        (WTF::WordType>::operator const const):
+        * wtf/CMakeLists.txt:
+        * wtf/EnumClassOperatorOverloads.h: Added.
+        * wtf/FastBitVector.h:
+        (WTF::FastBitReference::operator bool const):
+        (WTF::FastBitReference::operator|=):
+        (WTF::FastBitReference::operator&=):
+        (WTF::FastBitVector::fill):
+        (WTF::FastBitVector::grow):
+        * wtf/UnalignedAccess.h:
+        (WTF::unalignedLoad):
+        (WTF::unalignedStore):
+
+2020-01-16  Tim Horton  <timothy_horton@apple.com>
+
+        Fix the build after r254701
+        <rdar://problem/58667355>
+
+        * wtf/Platform.h:
+        * wtf/PlatformEnable.h:
+        AdditionalFeatureDefines has to come first.
+
+2020-01-16  Sam Weinig  <weinig@apple.com>
+
+        Platform.h is out of control Part 7: Split calling convention macro definitions out of Platform.h and into a new PlatformCallingConventions.h
+        https://bugs.webkit.org/show_bug.cgi?id=206377
+
+        Reviewed by Anders Carlsson.
+
+        As a another step towards cleaning up Platform.h, split out all the calling convention
+        macros into their own file.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        Add new header.
+
+        * wtf/Platform.h:
+        * wtf/PlatformCPU.h:
+        * wtf/PlatformEnable.h:
+        * wtf/PlatformHave.h:
+        * wtf/PlatformLegacy.h:
+        * wtf/PlatformOS.h:
+        * wtf/PlatformUse.h:
+        Unify indirect inclusion guard.
+
+        * wtf/PlatformCallingConventions.h: Copied from Source/WTF/wtf/Platform.h.
+
+2020-01-16  Robin Morisset  <rmorisset@apple.com>
+
+        Use dataLogIf more regularly
+        https://bugs.webkit.org/show_bug.cgi?id=206332
+
+        Reviewed by Keith Miller.
+
+        * wtf/DataLog.h:
+        (WTF::dataLog): Marked NEVER_INLINE, since it should never be perf-sensitive
+
+
+2020-01-16  Sam Weinig  <weinig@apple.com>
+
+        Platform.h is out of control Part 6: Split USE_* macro definitions out of Platform.h and into a new PlatformUse.h
+        https://bugs.webkit.org/show_bug.cgi?id=206354
+
+        Reviewed by Dan Bernstein.
+
+        As a another step towards cleaning up Platform.h, split out all the legacy platform
+        macros into their own file.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        Add new file.
+
+        * wtf/Platform.h: In addition to removing all the USE_* macros, consolidate
+        all the sub-includes at the top.
+
+        * wtf/PlatformEnable.h: Moved ASSERT_ENABLED here from Platform.h, 
+        as it makes more sense here. Eventually should be renamed ro ENABLE_ASSERT 
+        for consistency.
+
+        * wtf/PlatformUse.h: Copied from Source/WTF/wtf/Platform.h.
+
+2020-01-16  Per Arne Vollan  <pvollan@apple.com>
+
+        [Win] Fix AppleWin build
+        https://bugs.webkit.org/show_bug.cgi?id=206299
+
+        Reviewed by Brent Fulgham.
+
+        Build internal builds with VS2019.
+
+        * WTF.vcxproj/WTF.proj:
+
+2020-01-15  Sam Weinig  <weinig@apple.com>
+
+        Platform.h is out of control Part 5: Split HAVE_* macro definitions out of Platform.h and into a new PlatformHave.h
+        https://bugs.webkit.org/show_bug.cgi?id=206307
+
+        Reviewed by Anders Carlsson.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        * wtf/Platform.h:
+        * wtf/PlatformHave.h: Copied from Source/WTF/wtf/Platform.h.
+
+2020-01-15  Keith Miller  <keith_miller@apple.com>
+
+        Revert bytecode checkpoints since it breaks watch
+        https://bugs.webkit.org/show_bug.cgi?id=206301
+
+        Unreviewed, revert.
+
+2020-01-14  Sam Weinig  <weinig@apple.com>
+
+        Platform.h is out of control Part 4: Split PLATFORM_* macro definitions out of Platform.h and into a new PlatformLegacy.h
+        https://bugs.webkit.org/show_bug.cgi?id=206272
+
+        Reviewed by Anders Carlsson.
+
+        As a another step towards cleaning up Platform.h, split out all the legacy platform
+        macros into their own file.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        * wtf/Platform.h:
+        * wtf/PlatformLegacy.h: Copied from Source/WTF/wtf/Platform.h.
+
+2020-01-14  Sam Weinig  <weinig@apple.com>
+
+        Plaform.h helper files should have a consistent naming scheme
+        https://bugs.webkit.org/show_bug.cgi?id=206240
+
+        Reviewed by Dean Jackson.
+
+        Rename Plaform.h helper files to use the prefix "Platform" consistently.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        * wtf/CPU.h: Removed.
+        * wtf/FeatureDefines.h: Removed.
+        * wtf/OS.h: Removed.
+        * wtf/Platform.h:
+        * wtf/PlatformCPU.h: Copied from Source/WTF/wtf/CPU.h.
+        * wtf/PlatformEnable.h: Copied from Source/WTF/wtf/FeatureDefines.h.
+        * wtf/PlatformOS.h: Copied from Source/WTF/wtf/OS.h.
+
+2020-01-14  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [Cocoa] Glyph lookup should be language-sensitive (specifically between Yiddish and Hebrew)
+        https://bugs.webkit.org/show_bug.cgi?id=77568
+        <rdar://problem/14649193>
+
+        Reviewed by Simon Fraser.
+
+        * wtf/Platform.h:
+
+2020-01-13  Darin Adler  <darin@apple.com>
+
+        Use even more "shortest form" formatting, and less "fixed precision" and "fixed width"
+        https://bugs.webkit.org/show_bug.cgi?id=198918
+
+        Reviewed by Sam Weinig.
+
+        * wtf/Logger.h:
+        (WTF::LogArgument::toString): Log floating point numbers as shortest form instead of fixed precision.
+
+        * wtf/MediaTime.cpp:
+        (WTF::MediaTime::toString const): Convert time to string as shortest form instead of fixed precision.
+        Also use multiple-argument append for great simplicity and clarity.
+
+2020-01-14  Alicia Boya García  <aboya@igalia.com>
+
+        [WTF] Make MediaTime constructor constexpr
+        https://bugs.webkit.org/show_bug.cgi?id=206036
+
+        Reviewed by Adrian Perez de Castro.
+
+        https://bugs.webkit.org/show_bug.cgi?id=205723 allowed to declare
+        MediaTime variables as static inside functions without needing a
+        global destructor.
+
+        It did not eliminate the call to the MediaTime constructor on runtime
+        though. This wasn't a problem for static variables inside functions,
+        as the compiler adds a guard variable to call the constructor the
+        first time the function is called.
+
+        On the other hand, for variables defined outside of the scope of the
+        function, for them to be initialized the MediaTime constructor would
+        have to be called at runtime from a global constructor, something
+        we're trying to avoid and which generates an error in clang.
+
+        But again, MediaTime is a simple class with only integral values, we
+        shouldn't need a runtime function call to initialize it!
+
+        This patch makes the MediaTime constructor constexpr so that we don't
+        need runtime initialization for static MediaTime variables. This
+        allows us to declare them outside functions and enables the compiler
+        to generate code without guard variables when static MediaTime
+        variables are declared inside functions.
+
+        A test has been added accessing a global const static MediaTime. The
+        build should not produce any error stating the need for a global
+        constructor.
+
+        * wtf/MediaTime.cpp:
+        * wtf/MediaTime.h:
+        (WTF::MediaTime::MediaTime):
+
+2020-01-14  David Kilzer  <ddkilzer@apple.com>
+
+        Enable -Wconditional-uninitialized in bmalloc, WTF, JavaScriptCore
+        <https://webkit.org/b/206190>
+        <rdar://problem/58540387>
+
+        Reviewed by Mark Lam.
+
+        * Configurations/Base.xcconfig:
+        (WARNING_CFLAGS): Add -Wconditional-uninitialized.
+
+2020-01-13  Sam Weinig  <weinig@apple.com>
+
+        Platform.h is out of control Part 3: Move all ENABLE_* macros definitions in FeatureDefines.h
+        https://bugs.webkit.org/show_bug.cgi?id=206139
+
+        Reviewed by Anders Carlsson.
+
+        - Moves all remaining ENABLE_* defines out of Platform.h and into FeatureDefines.h
+        - Moves most, USE_UDIS86 and USE_ARM64_DISASSEMBLER are tangled up in the JIT definitions
+          still, HAVE_* and USE_* defines out of FeatureDefines.h and into Platform.h
+        - Where straigthforward, convert macro definitions into a canonical 3 line entry of the 
+          form:
+          
+              #if !defined(MACRO_NAME) && (<CONDITIONS HERE>)
+              #define MACRO_NAME 1
+              #endif
+
+          There is rarely (if ever) a resone to undefine or define one of these platform related
+          macros to 0 as the usage macros (e.g. HAVE(...), ENABLE(...), etc.) handle undefined as 0.
+        - Added a guard so that FeatureDefines.h can't be included directly, and must be included via
+          Platform.h. This is necessary as it depends heavily on macros defined in Platform.h
+        - Added numerous FIXMEs detailing follow up cleaning.
+
+        * wtf/FeatureDefines.h:
+        * wtf/Platform.h:
+
+2020-01-12  Sam Weinig  <weinig@apple.com>
+
+        Platform.h is out of control Part 2: Split WTF_OS_* macro definitions out of Platform.h and into a new OS.h
+        https://bugs.webkit.org/show_bug.cgi?id=206138
+
+        Reviewed by Anders Carlsson.
+
+        As a another step towards cleaning up Platform.h, split out OS related
+        macros into their own file.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        * wtf/OS.h: Copied from Source/WTF/wtf/Platform.h.
+        * wtf/Platform.h:
+
+2020-01-11  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        REGRESSION(r185816): In the Hong Kong locale, navigator.language reports it's in the Taiwan locale
+        https://bugs.webkit.org/show_bug.cgi?id=200043
+
+        Unreviewed.
+
+        Fix build.
+
+        * wtf/cocoa/LanguageCocoa.mm:
+        (WTF::canMinimizeLanguages):
+
+2020-01-11  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        REGRESSION(r185816): In the Hong Kong locale, navigator.language reports it's in the Taiwan locale
+        https://bugs.webkit.org/show_bug.cgi?id=200043
+
+        Unreviewed.
+
+        Addressing additional review comments.
+
+        * wtf/cocoa/LanguageCocoa.mm:
+        (WTF::canMinimizeLanguages):
+
+2020-01-11  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        Fix internal Apple builds after r254389
+        https://bugs.webkit.org/show_bug.cgi?id=206135
+
+        Rubber stamped by Zalan Bujtas.
+
+        * wtf/spi/cocoa/NSLocaleSPI.h:
+
+2020-01-11  Sam Weinig  <weinig@apple.com>
+
+        Platform.h is out of control Part 1: Split WTF_CPU_* macro definitions out of Platform.h and into a new CPU.h
+        https://bugs.webkit.org/show_bug.cgi?id=206124
+
+        Reviewed by Anders Carlsson.
+
+        As a step towards cleaning up Platform.h, split out CPU related
+        macros into their own file.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        * wtf/CPU.h: Copied from Source/WTF/wtf/Platform.h.
+        * wtf/Platform.h:
+
+2020-01-10  Dean Jackson  <dino@apple.com>
+
+        [WebGL] Clarify USE_OPENGL_ES_3
+        https://bugs.webkit.org/show_bug.cgi?id=206081
+        <rdar://problem/58486798>
+
+        Reviewed by Simon Fraser.
+
+        Make it clear that USE_ANGLE | USE_OPENGL | USE_OPENGL_ES are exclusive,
+        and that the availability of OpenGL ES 3 is a separate query.
+
+        * wtf/Platform.h:
+
+2020-01-11  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        Unreviewed, fix RunLoopGeneric's RunLoop::cycle
+
+        * wtf/generic/RunLoopGeneric.cpp:
+        (WTF::RunLoop::cycle):
+
+2020-01-10  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        REGRESSION(r185816): In the Hong Kong locale, navigator.language reports it's in the Taiwan locale
+        https://bugs.webkit.org/show_bug.cgi?id=200043
+        <rdar://problem/44119496>
+
+        Reviewed by Dean Jackson.
+
+        We ask the system for the current locale using CFLocaleCopyPreferredLanguages(), and then round-trip
+        it through CFBundleGetLocalizationInfoForLocalization() / CFBundleCopyLocalizationForLocalizationInfo().
+        This was to work around the fact that CFLocaleCopyPreferredLanguages() previously didn't report BCP47
+        language codes. However, that round-tripping was introducing errors, such as "zh-Hant-HK" was getting
+        turned into "zh-Hant-TW" which is clearly wrong. The CFBundle functions were never supposed to be used
+        in this way.
+
+        Instead, we can use CFLocaleCreateCanonicalLanguageIdentifierFromString() which is intended to
+        canonicalize locale identifiers, and does return BCP47 language codes. However, this function preserves
+        more fingerprinting entropy than the old code path, so we pass the input through new NSLocale SPI to
+        minimize the entropy revealed.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/Language.h:
+        * wtf/Platform.h:
+        * wtf/PlatformMac.cmake:
+        * wtf/cf/LanguageCF.cpp:
+        (WTF::httpStyleLanguageCode):
+        (WTF::platformUserPreferredLanguages):
+        * wtf/cocoa/LanguageCocoa.mm: Added.
+        (WTF::minimizedLanguagesFromLanguages):
+        * wtf/spi/cocoa/NSLocaleSPI.h: Added.
+
+2020-01-10  Simon Fraser  <simon.fraser@apple.com>
+
+        Introduce ENABLE_META_VIEWPORT and use it in some WK2 code
+        https://bugs.webkit.org/show_bug.cgi?id=206091
+
+        Reviewed by Tim Horton.
+
+        Define ENABLE_META_VIEWPORT for iOS.
+
+        * wtf/FeatureDefines.h:
+
+2020-01-09  Tim Horton  <timothy_horton@apple.com>
+
+        Adopt TARGET_OS_MACCATALYST in more places
+        https://bugs.webkit.org/show_bug.cgi?id=206040
+        <rdar://problem/57127108>
+
+        Reviewed by Simon Fraser.
+
+        * wtf/Platform.h:
+
+2020-01-09  Simon Fraser  <simon.fraser@apple.com>
+
+        Add ENABLE_UI_SIDE_COMPOSITING and use it in a few places
+        https://bugs.webkit.org/show_bug.cgi?id=205982
+
+        Reviewed by Jon Lee.
+        
+        Add a #define ENABLE_UI_SIDE_COMPOSITING for Cocoa platforms. Minor comment cleanup, and
+        move the duplicate ENABLE_ASYNC_SCROLLING from iOS and macOS sections into the Cocoa section.
+
+        * wtf/FeatureDefines.h:
+
+2020-01-08  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        Reduce binary size by purging C++ type information in Objective-C fields and parameters
+        https://bugs.webkit.org/show_bug.cgi?id=205905
+
+        Reviewed by Saam Barati.
+
+        Objective-C has reflection mechanisms. This means that fields, methods, and their types
+        need to hold its string representations in binary even if we are using release build.
+        While typical Objective-C class does not have large size of type names, C++ struct / class
+        has very large one, and putting them in Objective-C method names, parameter types, or fields
+        makes binary size very large.
+
+        Interesting thing is that type information is gathered when parameter is a C++ pointer, reference,
+        or value. And it gathers one-level deep information from this pointer etc. This means that, if
+        we use RefPtr<T>, collected type information is the one of RefPtr, not one of T. So it becomes significantly
+        smaller.
+
+        This patch introduces NakedRef<T>. This is similar to Ref while it does not have any ownership. So it
+        is just a wrapper around T&. We already have NakedPtr<T>. And use NakedRef<T> / NakedPtr<T> instead
+        of T& and T* if,
+
+            1. T is C++ class.
+            2. T* / T& is in Objective-C fields or parameter types (including a return type).
+
+        Then, these type information is one of NakedRef<T> / NakedPtr<T> instead of T, and we can reduce binary size.
+
+        This patch saves 600~KB in binary size.
+
+        Note the following things.
+
+        1. If we use `__attribute__((objc_direct))`, `__attribute__((objc_direct_members))`, possibly, we can completely remove these
+           metadata without using NakedRef / NakedPtr[1]. However, this is not available for our supporting platforms now (including
+           pre-Catalina OSes). This NakedRef / NakedPtr technique can reduce binary without waiting for it.
+        2. Reverting NakedRef / NakedPtr to usual reference / pointer is fairly easy since it is well typed. Once `__attribute__((objc_direct))`
+           becomes available in our platforms, we can consider it. But using NakedRef / NakedPtr is harmless.
+
+        [1]: https://github.com/llvm/llvm-project/commit/d4e1ba3fa9dfec2613bdcc7db0b58dea490c56b1
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        * wtf/NakedRef.h: Added.
+        (WTF::NakedRef::NakedRef):
+        (WTF::NakedRef::operator-> const):
+        (WTF::NakedRef::get const):
+        (WTF::NakedRef::operator T& const):
+        (WTF::NakedRef::operator! const):
+        (WTF::=):
+        (WTF::NakedRef<T>::swap):
+        (WTF::swap):
+
+2020-01-08  Alicia Boya García  <aboya@igalia.com>
+
+        [WTF] Allow MediaTime static constants
+        https://bugs.webkit.org/show_bug.cgi?id=205723
+
+        Reviewed by Darin Adler.
+
+        Despite all its convenience methods, at its core MediaTime is a rather
+        trivial class with only integral members. Despite this, since it had a
+        destructor declared, this made the class non-trivially destructible
+        even if the implementation was empty, and therefore clang did not
+        allow to use it for static variables unless done in form of a pointer.
+
+        By removing the destructor this restriction is lifted and we don't
+        need heap allocations for static MediaTime objects.
+
+        Previous usages of heap allocation for static MediaTime objects have
+        been rewritten to take advantage of this. Test coverage is provided by
+        successful compilation without [-Werror,-Wexit-time-destructors]
+        errors and existing tests.
+
+        * wtf/MediaTime.cpp:
+        (WTF::MediaTime::zeroTime):
+        (WTF::MediaTime::invalidTime):
+        (WTF::MediaTime::positiveInfiniteTime):
+        (WTF::MediaTime::negativeInfiniteTime):
+        (WTF::MediaTime::indefiniteTime):
+        (WTF::MediaTime::~MediaTime): Deleted.
+        * wtf/MediaTime.h:
+
+2020-01-07  Said Abou-Hallawa  <sabouhallawa@apple.com>
+
+        Implement css3-images image-orientation
+        https://bugs.webkit.org/show_bug.cgi?id=89052
+
+        Reviewed by Simon Fraser.
+
+        Remove the ENABLE_CSS_IMAGE_ORIENTATION feature flag.
+
+        * wtf/FeatureDefines.h:
+
+2020-01-07  Simon Fraser  <simon.fraser@apple.com>
+
+        Add some more Animations logging
+        https://bugs.webkit.org/show_bug.cgi?id=205890
+
+        Reviewed by Dean Jackson.
+
+        Make Seconds TextStream-loggable, and make Markable<> loggable.
+
+        * wtf/Seconds.cpp:
+        (WTF::operator<<):
+        * wtf/Seconds.h:
+        * wtf/text/TextStream.h:
+        (WTF::operator<<):
+
+2020-01-07  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [GTK][WPE] Add API to set purpose and hints of active editable element to input methods
+        https://bugs.webkit.org/show_bug.cgi?id=205605
+
+        Reviewed by Žan Doberšek.
+
+        Split ENABLE_IOS_AUTOCORRECT_AND_AUTOCAPITALIZE and remove the IOS prefix.
+
+        * wtf/FeatureDefines.h:
+
+2020-01-06  Don Olmstead  <don.olmstead@sony.com>
+
+        Rename GraphicsContext3D to GraphicsContextGL
+        https://bugs.webkit.org/show_bug.cgi?id=205778
+        <rdar://problem/58327597>
+
+        Reviewed by Ross Kirsling.
+
+        Define USE_OPENGL_3 for Mac and USE_OPENGL_ES_3 for iOS. Use CMake config for
+        Windows and WebGL.
+
+        * wtf/Platform.h:
+
+2020-01-06  Mark Lam  <mark.lam@apple.com>
+
+        Convert ASSERT_DISABLED to ASSERT_ENABLED, and fix some tests of NDEBUG that should actually test for ASSERT_ENABLED.
+        https://bugs.webkit.org/show_bug.cgi?id=205776
+
+        Reviewed by Saam Barati.
+
+        This patch did the following changes:
+
+        1. Replaced ASSERT_DISABLED with ASSERT_ENABLED.  This change does away
+           with the need for the double negative !ASSERT_DISABLED test that is commonly
+           used all over the code, thereby improving code readability.
+
+           In Assertions.h, there is also BACKTRACE_DISABLED, ASSERT_MSG_DISABLED,
+           ASSERT_ARG_DISABLED, FATAL_DISABLED, ERROR_DISABLED, LOG_DISABLED, and
+           RELEASE_LOG_DISABLED.  We should replace those with ..._ENABLED equivalents
+           as well.  We'll do that in another patch.  For now, they are left as is to
+           minimize the size of this patch.
+           See https://bugs.webkit.org/show_bug.cgi?id=205780.
+
+        2. Fixed some code was guarded with "#ifndef NDEBUG" that should actually be
+           guarded by "#if ASSERT_ENABLED" instead.
+
+        3. In cases where the change is minimal, we move some code around so that we can
+           test for "#if ASSERT_ENABLED" instead of "#if !ASSERT_ENABLED".
+
+        * wtf/Assertions.h:
+        * wtf/AutomaticThread.cpp:
+        (WTF::AutomaticThread::start):
+        * wtf/BitVector.h:
+        * wtf/BlockObjCExceptions.mm:
+        (ReportBlockedObjCException):
+        * wtf/BloomFilter.h:
+        * wtf/CallbackAggregator.h:
+        (WTF::CallbackAggregator::CallbackAggregator):
+        * wtf/CheckedArithmetic.h:
+        (WTF::observesOverflow<AssertNoOverflow>):
+        * wtf/CheckedBoolean.h:
+        (CheckedBoolean::CheckedBoolean):
+        (CheckedBoolean::operator bool):
+        * wtf/CompletionHandler.h:
+        (WTF::CompletionHandler<Out):
+        * wtf/DateMath.cpp:
+        (WTF::initializeDates):
+        * wtf/Gigacage.cpp:
+        (Gigacage::tryAllocateZeroedVirtualPages):
+        * wtf/HashTable.h:
+        (WTF::KeyTraits>::checkKey):
+        (WTF::KeyTraits>::checkTableConsistencyExceptSize const):
+        * wtf/LoggerHelper.h:
+        * wtf/NaturalLoops.h:
+        (WTF::NaturalLoops::headerOf const):
+        * wtf/NeverDestroyed.h:
+        (WTF::LazyNeverDestroyed::construct):
+        * wtf/OptionSet.h:
+        (WTF::OptionSet::OptionSet):
+        * wtf/Platform.h:
+        * wtf/PtrTag.h:
+        * wtf/RefCounted.h:
+        (WTF::RefCountedBase::disableThreadingChecks):
+        (WTF::RefCountedBase::enableThreadingChecksGlobally):
+        (WTF::RefCountedBase::RefCountedBase):
+        (WTF::RefCountedBase::applyRefDerefThreadingCheck const):
+        * wtf/SingleRootGraph.h:
+        (WTF::SingleRootGraph::assertIsConsistent const):
+        * wtf/SizeLimits.cpp:
+        * wtf/StackBounds.h:
+        (WTF::StackBounds::checkConsistency const):
+        * wtf/URLParser.cpp:
+        (WTF::URLParser::URLParser):
+        (WTF::URLParser::domainToASCII):
+        * wtf/ValueCheck.h:
+        * wtf/Vector.h:
+        (WTF::Malloc>::checkConsistency):
+        * wtf/WeakHashSet.h:
+        * wtf/WeakPtr.h:
+        (WTF::WeakPtrImpl::WeakPtrImpl):
+        (WTF::WeakPtrFactory::WeakPtrFactory):
+        * wtf/text/AtomStringImpl.cpp:
+        * wtf/text/AtomStringImpl.h:
+        * wtf/text/StringBuilder.cpp:
+        (WTF::StringBuilder::reifyString const):
+        * wtf/text/StringBuilder.h:
+        * wtf/text/StringCommon.h:
+        (WTF::hasPrefixWithLettersIgnoringASCIICaseCommon):
+        * wtf/text/StringHasher.h:
+        (WTF::StringHasher::addCharacters):
+        * wtf/text/StringImpl.h:
+        * wtf/text/SymbolImpl.h:
+        * wtf/text/UniquedStringImpl.h:
+
+2020-01-05  Dean Jackson  <dino@apple.com>
+
+        Rename GraphicsContext3D to GraphicsContextGL
+        https://bugs.webkit.org/show_bug.cgi?id=205778
+        <rdar://problem/58327597>
+
+        Reviewed by Sam Weinig.
+
+        Rename all the GraphicsContext3D things to GraphicsContextGL
+        (includes Extensions3D and GRAPHICS_CONTEXT_3D).
+
+        GraphicsContext3DBase now becomes GraphicsContextGL.
+        GraphicsContext3D is now GraphicsContextGLOpenGL (since it represents
+        the OpenGL implementation of the API).
+
+        * wtf/FeatureDefines.h:
+        * wtf/Platform.h:
+
+2020-01-05  Sam Weinig  <weinig@apple.com>
+
+        Further simplify StringBuilder usage by standardizing hex formating to a single hex() function
+        https://bugs.webkit.org/show_bug.cgi?id=205759
+
+        Reviewed by Dean Jackson.
+
+        Removes appendByteAsHex, appendUnsignedAsHex and appendUnsignedAsHexFixedSize with the
+        following mappings:
+
+            appendByteAsHex(value, builder, case) 
+              -> builder.append(hex(static_cast<unsigned char>(value), 2, case))
+            appendUnsignedAsHex(value, builder, case) 
+              -> builder.append(hex(value, case))
+            appendUnsignedAsHexFixedSize(value, builder, size, case)
+              -> builder.append(hex(value, size, case))
+        
+        Adds new API test for HexNumber.cpp
+
+        * wtf/HexNumber.h:
+        (WTF::appendByteAsHex): Deleted.
+        (WTF::appendUnsignedAsHex): Deleted.
+        (WTF::appendUnsignedAsHexFixedSize): Deleted.
+        Remove now unused helper functions.
+        
+        * wtf/FileSystem.cpp:
+        (WTF::FileSystemImpl::encodeForFileName):
+        Replace appendByteAsHex with direct use of hex(x, 2). The static_cast is needed
+        since there was an implicit down cast when appendByteAsHex was used.
+ 
+        * wtf/Logger.cpp:
+        (WTF::Logger::LogSiteIdentifier::toString const):
+        (WTF::>::toString):
+        * wtf/UUID.cpp:
+        (WTF::createCanonicalUUIDString):
+        Replace appendUnsignedAsHex/appendUnsignedAsHexFixedSize with hex(). Use makeString() 
+        rather StringBuilder to simplify things further.
+
+        * wtf/text/WTFString.cpp:
+        (asciiDebug):
+        Replace appendUnsignedAsHexFixedSize with append(hex()).
+
+2020-01-05  Ross Kirsling  <ross.kirsling@sony.com>
+
+        JavaScript: Invalid date parse for ISO 8601 strings when no timezone given
+        https://bugs.webkit.org/show_bug.cgi?id=89071
+
+        Reviewed by Darin Adler.
+
+        * wtf/DateMath.cpp:
+        (WTF::parseES5TimePortion):
+        (WTF::parseES5DateFromNullTerminatedCharacters):
+        * wtf/DateMath.h:
+        Add an out param to tell JSC whether we still need to do a local time adjustment.
+
+2020-01-03  Dean Jackson  <dino@apple.com>
+
+        [WebGL] Enable ANGLE by default for Cocoa platforms (except simulator)
+        https://bugs.webkit.org/show_bug.cgi?id=205483
+        <rdar://problem/58097701>
+
+        Reverting this from trunk (was r253926) due to the number of
+        flakey tests and failures.
+
+        * wtf/Platform.h:
+
+2020-01-03  Simon Fraser  <simon.fraser@apple.com>
+
+        Add some shared schemes to the WebKit.xcworkspace
+        https://bugs.webkit.org/show_bug.cgi?id=205698
+
+        Reviewed by Tim Horton.
+
+        Make WebKit.xcworkspace show the following schemes by default:
+            All Source
+            All Tools
+            WTF
+            JavaScriptCore
+            WebCore
+            WebKit
+            WebKitLegacy
+            DumpRenderTree
+            WebKitTestRunner
+            TestWebKitAPI
+            MiniBrowser
+            MobileMiniBrowser.
+            
+        Also remove the MobileMiniBrowserUITests scheme.
+
+        * WTF.xcodeproj/xcshareddata/xcschemes/WTF.xcscheme: Copied from Tools/MobileMiniBrowser/MobileMiniBrowser.xcodeproj/xcshareddata/xcschemes/MobileMiniBrowserUITests.xcscheme.
+
+2020-01-02  Yusuke Suzuki  <ysuzuki@apple.com> and Simon Fraser  <simon.fraser@apple.com>
+
+        Experiment: create lots of different malloc zones for easier accounting of memory use
+        https://bugs.webkit.org/show_bug.cgi?id=186422
+
+        Reviewed by Saam Barati.
+
+        This patch introduces ENABLE(MALLOC_HEAP_BREAKDOWN). If this is enabled, we allocate malloc_zone per malloc kind.
+        This offers the way to investigate the usage of memory per kind by using vmmap, like the following.
+
+            VIRTUAL   RESIDENT      DIRTY    SWAPPED ALLOCATION      BYTES DIRTY+SWAP          REGION
+            MALLOC ZONE                                                      SIZE       SIZE       SIZE       SIZE      COUNT  ALLOCATED  FRAG SIZE  % FRAG   COUNT
+            ===========                                                   =======  =========  =========  =========  =========  =========  =========  ======  ======
+            StringImpl_0x116efd000                                         188.0M      69.3M      30.9M         0K     139456      18.0M      12.9M     42%      34
+            DefaultMallocZone_0x10f487000                                  176.0M      53.9M      14.1M         0K     115956      9955K      4497K     32%      22
+            Vector_0x116eff000                                             162.0M      56.3M      55.3M         0K     140715      17.3M      37.9M     69%      36
+            MetadataTable_0x11843b000                                      152.0M      17.5M      17.5M         0K      14200      2353K      15.2M     87%      26
+            WebKit Using System Malloc_0x114cbe000                         150.0M      31.6M      21.8M         0K      87422      16.7M      5278K     24%      23
+            InstructionStream_0x118469000                                  150.0M      5764K      5764K         0K      14470      4688K      1076K     19%      24
+            AssemblerData_0x117ee6000                                      150.0M      1928K      1928K         0K          1         16      1928K    100%      24
+
+        To achieve this goal without making very large change, we put a template type in various containers.
+        For example, Vector will take Malloc parameter (the default one is FastMalloc allocator). If ENABLE(MALLOC_HEAP_BREAKDOWN) is enabled, we change this to
+        specific VectorMalloc allocator, and vmmap can show memory usage of this allocator. This patch also supports malloc_zone per IsoHeap. So we can see memory
+        allocation per IsoHeap in vmmap.
+
+        To use this feature, we need to flip two compile time flags, ENABLE(MALLOC_HEAP_BREAKDOWN) in WTF and BENABLE_MALLOC_HEAP_BREAKDOWN in bmalloc.
+        And use `vmmap $PID` to dump malloc zones. To allocate objects of a class with a specific malloc-zone, use WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(HeapIdentifier) for the class,
+        and define allocator by DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(HeapIdentifier) in a header and DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(HeapIdentifier) in a cpp file.
+
+        This patch also introduce callstack collector for malloc. Vector, HashMap etc. are used to allocate various things, but the above malloc_zone feature only tells thing like "Vector
+        takes XXX MB memory". But what we want to know in this case is what Vector is consuming memory. We collect StackShot for each malloc call, and combine these information to tell
+        which callsite is consuming much memory, which tell us that what Vector is consuming memory.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/Bag.cpp: Copied from Source/JavaScriptCore/parser/SourceProviderCache.cpp.
+        * wtf/Bag.h:
+        (WTF::Private::BagNode::BagNode): Deleted.
+        * wtf/BitVector.cpp:
+        (WTF::BitVector::OutOfLineBits::create):
+        (WTF::BitVector::OutOfLineBits::destroy):
+        * wtf/CMakeLists.txt:
+        * wtf/ConcurrentBuffer.cpp: Copied from Source/JavaScriptCore/parser/SourceProviderCache.cpp.
+        * wtf/ConcurrentBuffer.h:
+        * wtf/DebugHeap.cpp: Copied from Source/JavaScriptCore/runtime/CachePayload.cpp.
+        (WTF::DebugHeap::DebugHeap):
+        (WTF::DebugHeap::malloc):
+        (WTF::DebugHeap::calloc):
+        (WTF::DebugHeap::memalign):
+        (WTF::DebugHeap::realloc):
+        (WTF::DebugHeap::free):
+        * wtf/DebugHeap.h: Added.
+        * wtf/FastBitVector.cpp:
+        (WTF::FastBitVectorWordOwner::setEqualsSlow):
+        (WTF::FastBitVectorWordOwner::resizeSlow):
+        * wtf/FastBitVector.h:
+        (WTF::FastBitVectorWordOwner::~FastBitVectorWordOwner):
+        * wtf/FastMalloc.cpp:
+        (WTF::fastMallocDumpMallocStats):
+        (WTF::AvoidRecordingScope::AvoidRecordingScope):
+        (WTF::AvoidRecordingScope::~AvoidRecordingScope):
+        (WTF::MallocCallTracker::MallocSiteData::MallocSiteData):
+        (WTF::MallocCallTracker::singleton):
+        (WTF::MallocCallTracker::MallocCallTracker):
+        (WTF::MallocCallTracker::recordMalloc):
+        (WTF::MallocCallTracker::recordRealloc):
+        (WTF::MallocCallTracker::recordFree):
+        (WTF::MallocCallTracker::dumpStats):
+        (WTF::fastMalloc):
+        (WTF::fastRealloc):
+        (WTF::fastFree):
+        (WTF::fastAlignedMalloc):
+        (WTF::tryFastAlignedMalloc):
+        (WTF::fastAlignedFree):
+        * wtf/FastMalloc.h:
+        (WTF::FastMalloc::zeroedMalloc):
+        (WTF::FastMalloc::tryZeroedMalloc):
+        * wtf/Forward.h:
+        * wtf/HashTable.cpp:
+        * wtf/HashTable.h:
+        (WTF::KeyTraits>::allocateTable):
+        (WTF::KeyTraits>::deallocateTable):
+        (WTF::KeyTraits>::rehash):
+        * wtf/MallocPtr.h:
+        (WTF::MallocPtr::MallocPtr):
+        (WTF::MallocPtr::malloc):
+        (WTF::MallocPtr::zeroedMalloc):
+        (WTF::MallocPtr::tryMalloc):
+        (WTF::MallocPtr::tryZeroedMalloc):
+        (WTF::adoptMallocPtr):
+        * wtf/MetaAllocator.cpp:
+        (WTF::MetaAllocator::allocFreeSpaceNode):
+        (WTF::MetaAllocator::freeFreeSpaceNode):
+        * wtf/MetaAllocatorHandle.h:
+        * wtf/Platform.h:
+        * wtf/RefCountedArray.cpp: Copied from Source/JavaScriptCore/bytecode/InstructionStream.cpp.
+        * wtf/RefCountedArray.h:
+        (WTF::RefCountedArray::RefCountedArray):
+        (WTF::RefCountedArray::~RefCountedArray):
+        (WTF::RefCountedArray::assign):
+        * wtf/SegmentedVector.cpp: Copied from Source/JavaScriptCore/bytecode/InstructionStream.cpp.
+        * wtf/SegmentedVector.h:
+        * wtf/SmallPtrSet.cpp: Copied from Source/JavaScriptCore/bytecode/InstructionStream.cpp.
+        * wtf/SmallPtrSet.h:
+        (WTF::SmallPtrSet::~SmallPtrSet):
+        (WTF::SmallPtrSet::grow):
+        * wtf/UniqueArray.cpp: Copied from Source/JavaScriptCore/bytecode/InstructionStream.cpp.
+        * wtf/UniqueArray.h:
+        (WTF::UniqueArrayFree::operator() const):
+        (WTF::UniqueArrayFree<T::operator() const):
+        * wtf/Vector.cpp: Copied from Source/JavaScriptCore/bytecode/InstructionStream.cpp.
+        * wtf/Vector.h:
+        (WTF::VectorBufferBase::allocateBuffer):
+        (WTF::VectorBufferBase::tryAllocateBuffer):
+        (WTF::VectorBufferBase::reallocateBuffer):
+        (WTF::VectorBufferBase::deallocateBuffer):
+        (WTF::VectorBufferBase::releaseBuffer):
+        (WTF::VectorBuffer::releaseBuffer):
+        (WTF::Vector::swap):
+        (WTF::Malloc>::Vector):
+        (WTF::=):
+        (WTF::Malloc>::contains const):
+        (WTF::Malloc>::findMatching const):
+        (WTF::Malloc>::find const):
+        (WTF::Malloc>::reverseFind const):
+        (WTF::Malloc>::appendIfNotContains):
+        (WTF::Malloc>::fill):
+        (WTF::Malloc>::appendRange):
+        (WTF::Malloc>::expandCapacity):
+        (WTF::Malloc>::tryExpandCapacity):
+        (WTF::Malloc>::resize):
+        (WTF::Malloc>::resizeToFit):
+        (WTF::Malloc>::shrink):
+        (WTF::Malloc>::grow):
+        (WTF::Malloc>::asanSetInitialBufferSizeTo):
+        (WTF::Malloc>::asanSetBufferSizeToFullCapacity):
+        (WTF::Malloc>::asanBufferSizeWillChangeTo):
+        (WTF::Malloc>::reserveCapacity):
+        (WTF::Malloc>::tryReserveCapacity):
+        (WTF::Malloc>::reserveInitialCapacity):
+        (WTF::Malloc>::shrinkCapacity):
+        (WTF::Malloc>::append):
+        (WTF::Malloc>::tryAppend):
+        (WTF::Malloc>::constructAndAppend):
+        (WTF::Malloc>::tryConstructAndAppend):
+        (WTF::Malloc>::appendSlowCase):
+        (WTF::Malloc>::constructAndAppendSlowCase):
+        (WTF::Malloc>::tryConstructAndAppendSlowCase):
+        (WTF::Malloc>::uncheckedAppend):
+        (WTF::Malloc>::uncheckedConstructAndAppend):
+        (WTF::Malloc>::appendVector):
+        (WTF::Malloc>::insert):
+        (WTF::Malloc>::insertVector):
+        (WTF::Malloc>::remove):
+        (WTF::Malloc>::removeFirst):
+        (WTF::Malloc>::removeFirstMatching):
+        (WTF::Malloc>::removeAll):
+        (WTF::Malloc>::removeAllMatching):
+        (WTF::Malloc>::reverse):
+        (WTF::Malloc>::map const):
+        (WTF::Malloc>::releaseBuffer):
+        (WTF::Malloc>::checkConsistency):
+        (WTF::swap):
+        (WTF::operator==):
+        (WTF::operator!=):
+        (WTF::Malloc>::isolatedCopy const):
+        (WTF::removeRepeatedElements):
+        (WTF::minCapacity>::Vector): Deleted.
+        (WTF::minCapacity>::contains const): Deleted.
+        (WTF::minCapacity>::findMatching const): Deleted.
+        (WTF::minCapacity>::find const): Deleted.
+        (WTF::minCapacity>::reverseFind const): Deleted.
+        (WTF::minCapacity>::appendIfNotContains): Deleted.
+        (WTF::minCapacity>::fill): Deleted.
+        (WTF::minCapacity>::appendRange): Deleted.
+        (WTF::minCapacity>::expandCapacity): Deleted.
+        (WTF::minCapacity>::tryExpandCapacity): Deleted.
+        (WTF::minCapacity>::resize): Deleted.
+        (WTF::minCapacity>::resizeToFit): Deleted.
+        (WTF::minCapacity>::shrink): Deleted.
+        (WTF::minCapacity>::grow): Deleted.
+        (WTF::minCapacity>::asanSetInitialBufferSizeTo): Deleted.
+        (WTF::minCapacity>::asanSetBufferSizeToFullCapacity): Deleted.
+        (WTF::minCapacity>::asanBufferSizeWillChangeTo): Deleted.
+        (WTF::minCapacity>::reserveCapacity): Deleted.
+        (WTF::minCapacity>::tryReserveCapacity): Deleted.
+        (WTF::minCapacity>::reserveInitialCapacity): Deleted.
+        (WTF::minCapacity>::shrinkCapacity): Deleted.
+        (WTF::minCapacity>::append): Deleted.
+        (WTF::minCapacity>::tryAppend): Deleted.
+        (WTF::minCapacity>::constructAndAppend): Deleted.
+        (WTF::minCapacity>::tryConstructAndAppend): Deleted.
+        (WTF::minCapacity>::appendSlowCase): Deleted.
+        (WTF::minCapacity>::constructAndAppendSlowCase): Deleted.
+        (WTF::minCapacity>::tryConstructAndAppendSlowCase): Deleted.
+        (WTF::minCapacity>::uncheckedAppend): Deleted.
+        (WTF::minCapacity>::uncheckedConstructAndAppend): Deleted.
+        (WTF::minCapacity>::appendVector): Deleted.
+        (WTF::minCapacity>::insert): Deleted.
+        (WTF::minCapacity>::insertVector): Deleted.
+        (WTF::minCapacity>::remove): Deleted.
+        (WTF::minCapacity>::removeFirst): Deleted.
+        (WTF::minCapacity>::removeFirstMatching): Deleted.
+        (WTF::minCapacity>::removeAll): Deleted.
+        (WTF::minCapacity>::removeAllMatching): Deleted.
+        (WTF::minCapacity>::reverse): Deleted.
+        (WTF::minCapacity>::map const): Deleted.
+        (WTF::minCapacity>::releaseBuffer): Deleted.
+        (WTF::minCapacity>::checkConsistency): Deleted.
+        (WTF::minCapacity>::isolatedCopy const): Deleted.
+        * wtf/text/CString.cpp:
+        (WTF::CStringBuffer::createUninitialized):
+        * wtf/text/CString.h:
+        * wtf/text/StringBuffer.cpp: Copied from Source/JavaScriptCore/bytecode/InstructionStream.cpp.
+        * wtf/text/StringBuffer.h:
+        (WTF::StringBuffer::StringBuffer):
+        (WTF::StringBuffer::~StringBuffer):
+        (WTF::StringBuffer::resize):
+        (WTF::StringBuffer::release):
+        * wtf/text/StringImpl.cpp:
+        (WTF::StringImpl::~StringImpl):
+        (WTF::StringImpl::destroy):
+        (WTF::StringImpl::createUninitializedInternalNonEmpty):
+        (WTF::StringImpl::reallocateInternal):
+        * wtf/text/StringImpl.h:
+        (WTF::StringImpl::StringImpl):
+        (WTF::StringImpl::createSubstringSharingImpl):
+        (WTF::StringImpl::tryCreateUninitialized):
+        (WTF::StringImpl::adopt):
+        * wtf/text/cf/StringImplCF.cpp:
+        (WTF::StringWrapperCFAllocator::allocate):
+        (WTF::StringWrapperCFAllocator::reallocate):
+        (WTF::StringWrapperCFAllocator::deallocate):
+
+2020-01-02  Dean Jackson  <dino@apple.com>
+
+        REGRESSION(r253926): Crash at libANGLE-shared.dylib: gl::LogMessage::~LogMessage
+        https://bugs.webkit.org/show_bug.cgi?id=205690
+        rdar://58279401
+
+        Reviewed by Eric Carlson.
+
+        Only enable ANGLE for iOS hardware while we investigate this fatal error.
+
+        * wtf/Platform.h:
+
+2020-01-02  Sam Weinig  <weinig@apple.com>
+
+        Simplify StringBuilder API/align with makeString by removing appendFixed* functions and using FormatNumber struct instead
+        https://bugs.webkit.org/show_bug.cgi?id=205671
+
+        Reviewed by Alex Christensen.
+
+        In an ongoing attempt to simplify the StringBuilder interface and unify it's functionality with makeString,
+        this change removes appendFixedPrecisionNumber() and appendFixedWidthNumber(), replacing their uses
+        with direct calls to append(), using a FormattedNumber object to direct it to the appropriate StringTypeAdapter.
+
+        * wtf/text/StringBuilder.h:
+        * wtf/text/StringBuilder.cpp:
+        (WTF::StringBuilder::appendFixedPrecisionNumber): Deleted.
+        (WTF::StringBuilder::appendFixedWidthNumber): Deleted.
+        Remove StringBuilder::appendFixedPrecisionNumber() and StringBuilder::appendFixedWidthNumber(). The same functionality
+        is available and more flexible by passing FormattedNumbers to the variadic append() function.
+        
+        * wtf/text/TextStream.cpp:
+        (WTF::TextStream::operator<<):
+        * wtf/MediaTime.cpp:
+        (WTF::MediaTime::toString const):
+        Replace all uses of builder.appendFixedPrecisionNumber(...) with builder.append(FormattedNumber::fixedPrecision(...))
+        and builder.appendFixedWidthNumber(...) with with builder.append(FormattedNumber::fixedWidth(...))
+
+2019-12-20  Darin Adler  <darin@apple.com>
+
+        Tidy a bit of StringBuilder usage
+        https://bugs.webkit.org/show_bug.cgi?id=205509
+
+        Reviewed by Sam Weinig.
+
+        * wtf/FileSystem.cpp:
+        (WTF::FileSystemImpl::decodeFromFilename): Fix misleading variable name "hexDigit"
+        for result of decoding "%+XXXX"; what's decoded is a character, not a hex digit.
+
+        * wtf/HexNumber.h: Remove unused appendUnsignedAsHexFixedSize function for
+        destinations other than StringBuilder. Don't need it at this time, could add
+        it later if we ever decide we do.
+
+        * wtf/text/StringBuilder.h:
+        (WTF::StringBuilder::appendSubstring): Improved logic in appendSubstring so it
+        will handle even absurd values for offset and length correctly, and added a
+        default length of "infinity" just like in String::substring.
+
+        * wtf/text/StringImpl.cpp:
+        (WTF::StringImpl::convertToLowercaseWithoutLocale): Use isASCII.
+        (WTF::StringImpl::convertToLowercaseWithoutLocaleStartingAtFailingIndex8Bit): Ditto.
+
+        * wtf/text/WTFString.cpp:
+        (asciiDebug): Use StringBuilder to build the string; this was the one place that
+        used appendUnsignedAsHexFixedSize on something else, and there is no need.
+
+2019-12-30  youenn fablet  <youenn@apple.com>
+
+        Ignore URL host for schemes that are not using host information
+        https://bugs.webkit.org/show_bug.cgi?id=205157
+        <rdar://problem/57825963>
+
+        Reviewed by Darin Adler.
+
+        * wtf/URL.cpp:
+        (WTF::URL::removeHostAndPort):
+        * wtf/URL.h:
+
+2019-12-25  Dean Jackson  <dino@apple.com>
+
+        [WebGL] Enable ANGLE by default for Cocoa platforms (except simulator)
+        https://bugs.webkit.org/show_bug.cgi?id=205483
+        rdar://56925821
+
+        Reviewed by Simon Fraser.
+
+        Turn USE_ANGLE on for Cocoa, with the exception of the simulator.
+
+        * wtf/Platform.h:
+
+2019-12-24  Eric Carlson  <eric.carlson@apple.com>
+
+        [Media in GPU process] Enable media player proxy logging
+        https://bugs.webkit.org/show_bug.cgi?id=205557
+        <rdar://problem/58160932>
+
+        Reviewed by Youenn Fablet.
+
+        * wtf/Logger.h:
+        (WTF::Logger::willLog const): Minor optimization: don't check m_enabled unnecessarily.
+
+2019-12-23  Keith Miller  <keith_miller@apple.com>
+
+        DFG/FTL should be able to exit to the middle of a bytecode
+        https://bugs.webkit.org/show_bug.cgi?id=205232
+
+        Reviewed by Saam Barati.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/Bitmap.h:
+        (WTF::WordType>::invert):
+        (WTF::WordType>::operator):
+        (WTF::WordType>::operator const const):
+        * wtf/CMakeLists.txt:
+        * wtf/EnumClassOperatorOverloads.h: Added.
+        * wtf/FastBitVector.h:
+        (WTF::FastBitReference::operator bool const):
+        (WTF::FastBitReference::operator|=):
+        (WTF::FastBitReference::operator&=):
+        (WTF::FastBitVector::fill):
+        (WTF::FastBitVector::grow):
+        * wtf/UnalignedAccess.h:
+        (WTF::unalignedLoad):
+        (WTF::unalignedStore):
+
+2019-12-21  Antti Koivisto  <antti@apple.com>
+
+        Move Vector HashTraits to HashTraits.h to fix GCC build
+        https://bugs.webkit.org/show_bug.cgi?id=205540
+
+        Reviewed by Zalan Bujtas.
+
+        GCC is stricter than LLVM with partial specializations
+
+        Error: partial specialization of struct WTF::HashTraits<WTF::Vector<U, otherCapacity, WTF::CrashOnOverflow, 16> >
+        after instantiation of struct WTF::HashTraits<WTF::Vector<WTF::String> >
+
+        * wtf/HashTraits.h:
+        * wtf/VectorHash.h:
+
+2019-12-20  Truitt Savell  <tsavell@apple.com>
+
+        Unreviewed, rolling out r253820.
+
+        Broke Mac testing
+
+        Reverted changeset:
+
+        "Invalidate only affected elements after media query
+        evaluation changes"
+        https://bugs.webkit.org/show_bug.cgi?id=205392
+        https://trac.webkit.org/changeset/253820
+
+2019-12-20  Antti Koivisto  <antti@apple.com>
+
+        Invalidate only affected elements after media query evaluation changes
+        https://bugs.webkit.org/show_bug.cgi?id=205392
+
+        Reviewed by Zalan Bujtas.
+
+        Fix GCC build error
+
+        Error: partial specialization of ‘struct WTF::HashTraits<WTF::Vector<U, otherCapacity, WTF::CrashOnOverflow, 16> >’
+               after instantiation of ‘struct WTF::HashTraits<WTF::Vector<WTF::String> >’
+
+        * wtf/HashTraits.h:
+        * wtf/VectorHash.h:
+
+        Move to HashTraits to HashTraits.h so it gets specialized before any instantiation.
+
+2019-12-19  Antti Koivisto  <antti@apple.com>
+
+        Allow Vectors as hash keys
+        https://bugs.webkit.org/show_bug.cgi?id=205449
+
+        Reviewed by Geoff Garen.
+
+        Add traits to allow Vectors of hashable types to act as hash keys.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/Vector.h:
+        (WTF::Vector::Vector):
+        (WTF::Vector::~Vector):
+        (WTF::Vector::isHashTableDeletedValue const):
+
+        Use m_size = numeric_limits::max() as the deleted value.
+
+        * wtf/VectorHash.h: Added.
+        (WTF::VectorHash::hash):
+        (WTF::VectorHash::equal):
+
+        Add traits. Empty Vector is the empty value.
+
+2019-12-19  Jer Noble  <jer.noble@apple.com>
+
+        Safely iterate observers in languageDidChange()
+        https://bugs.webkit.org/show_bug.cgi?id=205452
+        <rdar://problem/57937765>
+
+        Reviewed by Eric Carlson.
+
+        Use the "copyToVector() then verify each item is still in the original
+        map" pattern to safely iterate over the observerMap().
+
+        * wtf/Language.cpp:
+        (WTF::languageDidChange):
+
+2019-12-18  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        Unreviewed, build fix after r253730
+        https://bugs.webkit.org/show_bug.cgi?id=204398
+
+        Thread::destructTLS is always required in POSIX environments
+
+        * wtf/Threading.h:
+
+2019-12-18  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        [Win] Use thread_local to hold Ref<WTF::Thread> in the thread rather than using FLS
+        https://bugs.webkit.org/show_bug.cgi?id=204398
+
+        Reviewed by Yusuke Suzuki.
+
+        Use thread_local which is faster than FLS.
+
+        * wtf/Threading.cpp:
+        (WTF::initializeThreading):
+        * wtf/Threading.h:
+        (WTF::Thread::current):
+        * wtf/ThreadingPrimitives.h: Deleted threadSpecificKeyCreate and
+        related functions which aren't used now in Windows port. Deleted
+        THREAD_SPECIFIC_CALL macro which isn't used now.
+        * wtf/win/ThreadingWin.cpp: Added a thread_local variable s_threadHolder.
+        (WTF::Thread::ThreadHolder::~ThreadHolder): Added.
+        (WTF::Thread::currentMayBeNull):
+        (WTF::Thread::initializeTLS): Store a reference of Thread into s_threadHolder.
+        (WTF::Thread::initializeTLSKey): Deleted.
+        (WTF::Thread::destructTLS): Deleted.
+
+2019-12-18  Ben Nham  <nham@apple.com>
+
+        Add network loading signposts
+        https://bugs.webkit.org/show_bug.cgi?id=204822
+        <rdar://problem/57608824>
+
+        Reviewed by Alex Christensen.
+
+        This adds os_signposts related to network loads to aid in debugging networking performance
+        issues. Since URLs are logged in the signposts, this capability is only enabled on Apple
+        internal builds when an environment variable is set.
+
+        * wtf/Platform.h:
+        Add HAVE_OS_SIGNPOST.
+
+2019-12-17  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [iOS] Update to use CTFontCreateForCharactersWithLanguageAndOption()
+        https://bugs.webkit.org/show_bug.cgi?id=205310
+
+        Reviewed by Simon Fraser.
+
+        All our bots are on the appropriate OS version.
+
+        * wtf/Platform.h:
+
+2019-12-17  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] 8Bit JSRopeString can contain 16Bit string in its rope
+        https://bugs.webkit.org/show_bug.cgi?id=205323
+
+        Reviewed by Mark Lam.
+
+        * wtf/text/StringImpl.h:
+        (WTF::StringImpl::copyCharacters):
+
+2019-12-17  Tim Horton  <timothy_horton@apple.com>
+
+        macCatalyst: Cursor should update on mouse movement and style change
+        https://bugs.webkit.org/show_bug.cgi?id=205317
+        <rdar://problem/46793696>
+
+        Reviewed by Anders Carlsson.
+
+        * wtf/FeatureDefines.h:
+        Make ENABLE_CURSOR_SUPPORT true on iOS, for macCatalyst. This results
+        in it being true everywhere, so remove it.
+
+        Add a new ENABLE_CUSTOM_CURSOR_SUPPORT, indicating whether we support
+        custom bitmap cursors. It covers the subset of ENABLE_CURSOR_SUPPORT
+        code that we still don't support in macCatalyst.
+
+        * wtf/Platform.h:
+        Add HAVE_HISERVICES (true on macOS but not macCatalyst) and
+        HAVE_NSCURSOR (true on macOS and macCatalyst but not e.g. iOS).
+
+2019-12-16  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] Remove ArrayBufferNeuteringWatchpointSet
+        https://bugs.webkit.org/show_bug.cgi?id=205194
+
+        Reviewed by Saam Barati.
+
+        This patch adds PackedRef and PackedRefPtr. They are Ref and RefPtr, but its internal pointer is packed.
+        So we can represent them in 6 bytes with 1 byte alignment.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        * wtf/Packed.h:
+        (WTF::alignof):
+        * wtf/PackedRef.h: Copied from Source/JavaScriptCore/runtime/ArrayBufferNeuteringWatchpointSet.h.
+        * wtf/PackedRefPtr.h: Renamed from Source/JavaScriptCore/runtime/ArrayBufferNeuteringWatchpointSet.h.
+        * wtf/RefPtr.h:
+        (WTF::RefPtr::operator UnspecifiedBoolType const):
+        (WTF::RefPtr::unspecifiedBoolTypeInstance const):
+
+2019-12-13  Saam Barati  <sbarati@apple.com>
+
+        Add a Heap::finalize function that takes WTF::Function<void()>
+        https://bugs.webkit.org/show_bug.cgi?id=205211
+
+        Reviewed by Geoffrey Garen.
+
+        * wtf/Function.h:
+        (WTF::Function<Out):
+
+2019-12-13  Per Arne Vollan  <pvollan@apple.com>
+
+        [iOS] Deny mach lookup access to "*.apple-extension-service" in the WebContent process
+        https://bugs.webkit.org/show_bug.cgi?id=205134
+        <rdar://problem/56984257>
+
+        Reviewed by Brent Fulgham.
+
+        Add enum value for the XPC service name filter type.
+
+        * wtf/spi/darwin/SandboxSPI.h:
+
+2019-12-09  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        [MSVC] writeNumberToBufferUnsigned is unsafe for bool type
+        https://bugs.webkit.org/show_bug.cgi?id=204873
+
+        Reviewed by Darin Adler.
+
+        MSVC reports warning for using / operator for bool type.
+        > warning C4804: '/': unsafe use of type 'bool' in operation
+
+        And, 'bool' isn't expected to be serialized as '0' or '1'. 'bool' isn't supported.
+
+        * wtf/text/IntegerToStringConversion.h: Added a static_assert to ensure UnsignedIntegerType isn't bool.
+
+2019-07-13  Darin Adler  <darin@apple.com>
+
+        Streamline PODIntervalTree code and remove ValueToString
+        https://bugs.webkit.org/show_bug.cgi?id=199782
+
+        Reviewed by Anders Carlsson.
+
+        * WTF.xcodeproj/project.pbxproj: Remove ValueToString.h.
+        * wtf/CMakeLists.txt: Ditto.
+
+        * wtf/MediaTime.cpp:
+        (WTF::operator<<): Implement debug-only TextStream serialization
+        based on toJSONString.
+        * wtf/MediaTime.h: Ditto.
+
+        * wtf/text/ValueToString.h: Removed.
+
+2019-12-06  Zan Dobersek  <zdobersek@igalia.com>
+
+        [GTK][WPE] Use bmalloc's memory footprint API for JSC heap growth management
+        https://bugs.webkit.org/show_bug.cgi?id=204576
+
+        Reviewed by Saam Barati.
+
+        Add the new USE_BMALLOC_MEMORY_FOOTPRINT_API, enabled for the iOS-family
+        ports and the Linux ports, as long as system malloc enforcement is
+        disabled and bmalloc is subsequently built and used. The flag is used in
+        JavaScriptCore to enable usage of bmalloc's memory footprint API for
+        JSC heap growth control.
+
+        * wtf/Platform.h:
+
+2019-12-05  Chris Dumez  <cdumez@apple.com>
+
+        [IPC] Fail ObjectIdentifier decoding if the decoded integer is not a valid ID
+        https://bugs.webkit.org/show_bug.cgi?id=204921
+        <rdar://problem/57677747>
+
+        Reviewed by Ryosuke Niwa.
+
+        * wtf/ObjectIdentifier.h:
+        (WTF::ObjectIdentifier::decode):
+
+2019-12-03  Sunny He  <sunny_he@apple.com>
+
+        Enable security assertions on all ASAN builds
+        https://bugs.webkit.org/show_bug.cgi?id=204802
+
+        Reviewed by Ryosuke Niwa.
+
+        * wtf/FeatureDefines.h:
+
+2019-12-03  Christopher Reid  <chris.reid@sony.com>
+
+        Regular expression hangs in Safari only
+        https://bugs.webkit.org/show_bug.cgi?id=202882
+        <rdar://problem/56236654>
+
+        Reviewed by Yusuke Suzuki.
+
+        BumpPointerPool::ensureCapacityCrossPool can cause an infinite loop
+        if multiple large pools are deallocated and a new capacity does not
+        fit in the deallocated pools. BumpPointerPool should try using
+        more pools if the next one isn't large enough.
+
+        * wtf/BumpPointerAllocator.h:
+        (WTF::BumpPointerPool::ensureCapacityCrossPool):
+
+2019-11-28  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        Remove ENABLE_KEYBOARD_CODE_ATTRIBUTE and ENABLE_KEYBOARD_KEY_ATTRIBUTE macros
+        https://bugs.webkit.org/show_bug.cgi?id=204666
+
+        Reviewed by Ross Kirsling and Don Olmstead.
+
+        * wtf/FeatureDefines.h:
+
+2019-11-25  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        [Win] Update KeyboardEvent as per the latest specification
+        https://bugs.webkit.org/show_bug.cgi?id=202183
+
+        Reviewed by Ross Kirsling.
+
+        * wtf/FeatureDefines.h:
+
+2019-11-25  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        Add DefaultHash<OptionSet<T>> and HashTrait<OptionSet<T>> specializations
+        https://bugs.webkit.org/show_bug.cgi?id=204562
+
+        Reviewed by Daniel Bates.
+
+        * WTF.xcodeproj/project.pbxproj: Added OptionSetHash.h
+        * wtf/CMakeLists.txt: Ditto.
+        * wtf/OptionSet.h: Made StorageType public, and use C++14 types.
+        * wtf/OptionSetHash.h: Added.
+        (WTF::DefaultHash<OptionSet<T>>::Hash::hash):
+        (WTF::DefaultHash<OptionSet<T>>::Hash::equal):
+        (WTF::HashTraits<OptionSet<T>>::emptyValue):
+        (WTF::HashTraits<OptionSet<T>>::constructDeletedValue):
+        (WTF::HashTraits<OptionSet<T>>::isDeletedValue):
+
+2019-11-25  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        REGRESSION(r252770): [GTK][WPE] Remote inspector no longer works if debugger is in a different kind of system
+        https://bugs.webkit.org/show_bug.cgi?id=204572
+
+        Reviewed by Žan Doberšek.
+
+        This patch adds the following changes:
+
+         - Use uint32_t instead of size_t to store the body size in the message header, because size_t has a different
+           size in 32 and 64 bit platforms.
+         - Use htonl/ntohl to write/read the body size in the header.
+         - Add a flags byte to the header to include the message byte order. The sender always uses the host byter order
+           and the receiver does the byte swapping if needed.
+
+        * wtf/glib/SocketConnection.cpp:
+        (WTF::messageIsByteSwapped):
+        (WTF::SocketConnection::readMessage):
+        (WTF::SocketConnection::sendMessage):
+
+2019-11-25  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        REGRESSION(r252770): [GTK][WPE] Remote inspector broken in debug builds after r252770
+        https://bugs.webkit.org/show_bug.cgi?id=204569
+
+        Reviewed by Žan Doberšek.
+
+        We need to call relaxAdoptionRequirement() in SocketConnection constructor because we are taking a reference for
+        the read monitor lambda.
+
+        * wtf/glib/SocketConnection.cpp:
+        (WTF::SocketConnection::SocketConnection):
+
+2019-11-25  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        Ran sort-Xcode-project-file.
+
+        Unreviewed.
+
+        * WTF.xcodeproj/project.pbxproj:
+
+2019-11-23  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Try to fix the GTK WebDriver tests in the bots after r252770
+
+        They are failing in the bots because g_variant_new_from_data() is failing due to the given data not being
+        properly aligned for the type being loaded. This is not a problem since GLib 2.60 that checks the alignment and
+        reallocates the buffer in aligned memory only if needed. For previous versions we need to ensure the memory we
+        pass to g_variant_new_from_data() is aligned.
+
+        * wtf/glib/SocketConnection.cpp:
+        (WTF::SocketConnection::readMessage):
+
+2019-11-22  Brent Fulgham  <bfulgham@apple.com>
+
+        Unreviewed FTW build fix after r252687.
+
+        * wtf/PlatformFTW.cmake:
+
+2019-11-22  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [GTK][WPE] RemoteInspector: use sockets instead of DBus
+        https://bugs.webkit.org/show_bug.cgi?id=204503
+
+        Reviewed by Žan Doberšek.
+
+        Add SocketConnection class.
+
+        * wtf/PlatformGTK.cmake:
+        * wtf/PlatformWPE.cmake:
+        * wtf/glib/GSocketMonitor.cpp: Renamed from Source/WebKit/Platform/IPC/glib/GSocketMonitor.cpp.
+        (WTF::GSocketMonitor::start):
+        * wtf/glib/GSocketMonitor.h: Renamed from Source/WebKit/Platform/IPC/glib/GSocketMonitor.h.
+        (WTF::GSocketMonitor::isActive const):
+        * wtf/glib/GTypedefs.h:
+        * wtf/glib/GUniquePtr.h:
+        * wtf/glib/SocketConnection.cpp: Added.
+        (WTF::SocketConnection::SocketConnection):
+        (WTF::SocketConnection::~SocketConnection):
+        (WTF::SocketConnection::read):
+        (WTF::SocketConnection::readMessage):
+        (WTF::SocketConnection::sendMessage):
+        (WTF::SocketConnection::write):
+        (WTF::SocketConnection::waitForSocketWritability):
+        (WTF::SocketConnection::close):
+        (WTF::SocketConnection::didClose):
+        * wtf/glib/SocketConnection.h: Added.
+        (WTF::SocketConnection::create):
+        (WTF::SocketConnection::isClosed const):
+
+2019-11-21  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        Unreviewed, rolling in again, regression is not caused by it
+        https://bugs.webkit.org/show_bug.cgi?id=202471
+
+        * wtf/text/StringCommon.h:
+        (WTF::findCommon):
+
+2019-11-21  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r252683 and r252721.
+        https://bugs.webkit.org/show_bug.cgi?id=204475
+
+        13% regression in JetStream2/prepack-wtb (Requested by
+        yusukesuzuki on #webkit).
+
+        Reverted changesets:
+
+        "Implement String.prototype.replaceAll"
+        https://bugs.webkit.org/show_bug.cgi?id=202471
+        https://trac.webkit.org/changeset/252683
+
+        "Unreviewed, address Darin's feedback on r252683."
+        https://trac.webkit.org/changeset/252721
+
+2019-11-21  Tuomas Karkkainen  <tuomas.webkit@apple.com>
+
+        add ASSERT_NOT_REACHED_WITH_MESSAGE and RELEASE_ASSERT_NOT_REACHED_WITH_MESSAGE
+        https://bugs.webkit.org/show_bug.cgi?id=204445
+
+        Reviewed by Antti Koivisto.
+
+        Add assertions that combine ASSERT_NOT_REACHED and ASSERT_WITH_MESSAGE.
+
+        * wtf/Assertions.h:
+
+2019-11-20  Ross Kirsling  <ross.kirsling@sony.com>
+
+        Unreviewed, address Darin's feedback on r252683.
+
+        * wtf/text/StringCommon.h:
+        (WTF::findCommon):
+
+2019-11-20  ChangSeok Oh  <changseok@webkit.org>
+
+        [GTK] Add ANGLE backend to GTK port
+        https://bugs.webkit.org/show_bug.cgi?id=199060
+
+        Reviewed by Žan Doberšek.
+
+        The GTK port uses TEXTURE_MAPPER that has a gl context for accelerated rendering,
+        and ANGLE has an egl context for WebGL. We want to make both live together
+        so an exception is made where TEXTURE_MAPPER is enabled.
+
+        * wtf/Platform.h:
+
+2019-11-20  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        [Win] Implement WTF::ThreadSpecific in WTF::Thread
+        https://bugs.webkit.org/show_bug.cgi?id=204341
+
+        Reviewed by Brent Fulgham and Yusuke Suzuki.
+
+        Thread::destructTLS had a tricky code to defer destroying
+        WTF::Thread in TLS in order to ensure WTF::Thread is destructed
+        after other ThreadSpecific are destructed, which is a part of
+        cause of nasty hanging issue in the process termination (Bug 204192).
+
+        This change implements WTF::ThreadSpecific in WTF::Thread by
+        adding a new class Thread::SpecificStorage to manage TLS. Simplify
+        Thread::destructTLS. Remove threadMapMutex in ThreadingWin.cpp
+
+        * wtf/PlatformWin.cmake:
+        * wtf/ThreadSpecific.h:
+        (WTF::canBeGCThread>::ThreadSpecific):
+        (WTF::canBeGCThread>::get):
+        (WTF::canBeGCThread>::setInTLS):
+        (WTF::canBeGCThread>::destroy):
+        (WTF::canBeGCThread>::~ThreadSpecific): Deleted.
+        * wtf/Threading.h:
+        (WTF::Thread::specificStorage):
+        (WTF::Thread::current):
+        * wtf/win/ThreadSpecificWin.cpp: Removed.
+        * wtf/win/ThreadingWin.cpp:
+        (WTF::Thread::initializeTLSKey):
+        (WTF::Thread::initializeTLS):
+        (WTF::Thread::destructTLS):
+        (WTF::Thread::SpecificStorage::allocateKey):
+        (WTF::Thread::SpecificStorage::get):
+        (WTF::Thread::SpecificStorage::set):
+        (WTF::Thread::SpecificStorage::destroySlots):
+        (): Deleted.
+        (WTF::Thread::currentDying): Deleted.
+        (WTF::Thread::get): Deleted.
+
+2019-11-19  Ross Kirsling  <ross.kirsling@sony.com>
+
+        Implement String.prototype.replaceAll
+        https://bugs.webkit.org/show_bug.cgi?id=202471
+
+        Reviewed by Yusuke Suzuki.
+
+        * wtf/text/StringCommon.h:
+        (WTF::findCommon):
+        Fix logic: "start > length" early out should come before "empty search string" early out.
+
+2019-11-19  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [IndexedDB] IndexedDB's threading assertion should respect Web thread
+        https://bugs.webkit.org/show_bug.cgi?id=204346
+
+        Reviewed by Daniel Bates.
+
+        * wtf/MainThread.cpp:
+        (WTF::canCurrentThreadAccessThreadLocalData):
+        (WTF::canAccessThreadLocalDataForThread): Deleted.
+        * wtf/MainThread.h:
+        * wtf/cocoa/MainThreadCocoa.mm:
+        (WTF::canCurrentThreadAccessThreadLocalData):
+        (WTF::canAccessThreadLocalDataForThread): Deleted.
+
+2019-11-18  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        Remove self-defined C++14 features in StdLibExtras.h
+        https://bugs.webkit.org/show_bug.cgi?id=204220
+
+        Reviewed by Ross Kirsling.
+
+        Remove std::conjunction, std::in_place_t and std::make_unique definitions.
+        Remove unsued std::clz.
+
+        * wtf/StdLibExtras.h:
+        (std::make_unique): Deleted.
+        (std::exchange): Deleted.
+        (std::clz): Deleted.
+
+2019-11-18  Alex Christensen  <achristensen@webkit.org>
+
+        Use SecTrustEvaluateWithError instead of SecTrustEvaluate where available
+        https://bugs.webkit.org/show_bug.cgi?id=204159
+        <rdar://problem/45894288>
+
+        Reviewed by Darin Adler.
+
+        * wtf/Platform.h:
+
+2019-11-15  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] Remove index-masking on ScopedArguments and put it in IsoSubspace
+        https://bugs.webkit.org/show_bug.cgi?id=204269
+
+        Reviewed by Saam Barati.
+
+        * wtf/MathExtras.h:
+        (WTF::computeIndexingMask): Deleted.
+        (WTF::preciseIndexMaskShiftForSize): Deleted.
+        (WTF::preciseIndexMaskShift): Deleted.
+        (WTF::opaque): Deleted.
+        (WTF::preciseIndexMaskPtr): Deleted.
+
+2019-11-14  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] BlockDirectory's bits should be compact
+        https://bugs.webkit.org/show_bug.cgi?id=204149
+
+        Reviewed by Robin Morisset.
+
+        * wtf/FastBitVector.h:
+        (WTF::fastBitVectorArrayLength):
+        (WTF::FastBitVectorImpl::unsafeWords):
+        (WTF::FastBitVectorImpl::unsafeWords const):
+        (WTF::FastBitReference::FastBitReference):
+        (WTF::FastBitReference::operator bool const):
+        (WTF::FastBitReference::operator=):
+        (WTF::FastBitVector::at):
+        (WTF::FastBitVector::operator[]):
+        (WTF::FastBitVector::BitReference::BitReference): Deleted.
+        (WTF::FastBitVector::BitReference::operator bool const): Deleted.
+        (WTF::FastBitVector::BitReference::operator=): Deleted.
+
+2019-11-11  Ross Kirsling  <ross.kirsling@sony.com>
+
+        UTC offset for Samoa is miscalculated when !HAVE(TIMEGM)
+        https://bugs.webkit.org/show_bug.cgi?id=204032
+
+        Reviewed by Yusuke Suzuki.
+
+        We have code assuming that the world's time zones haven't changed in the past decade,
+        but Samoa changed from UTC-11 to UTC+13 at the beginning of 2012.
+
+        (Note: "Samoa" here means the Independent State of Samoa (Pacific/Apia) and not American Samoa (Pacific/Samoa).
+               See https://en.wikipedia.org/wiki/Time_in_Samoa for more information.)
+
+        * wtf/DateMath.cpp:
+        (WTF::calculateUTCOffset):
+        Update "canned date" from 2009 to 2019.
+
+2019-11-07  Mark Lam  <mark.lam@apple.com>
+
+        Add a stack overflow check in Yarr::ByteCompiler::emitDisjunction().
+        https://bugs.webkit.org/show_bug.cgi?id=203936
+        <rdar://problem/56624724>
+
+        Reviewed by Saam Barati.
+
+        1. Add a StackCheck utility class so that we don't have to keep reinventing this
+           every time we need to add stack checking somewhere.
+        2. Rename some arguments and constants in StackBounds to be more descriptive of
+           what they actually are.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        * wtf/StackBounds.h:
+        (WTF::StackBounds::recursionLimit const):
+        * wtf/StackCheck.h: Added.
+        (WTF::StackCheck::StackCheck):
+        (WTF::StackCheck::isSafeToRecurse):
+
+2019-11-06  Mark Lam  <mark.lam@apple.com>
+
+        Remove remnants of support code for an upwards growing stack.
+        https://bugs.webkit.org/show_bug.cgi?id=203942
+
+        Reviewed by Yusuke Suzuki.
+
+        We haven't supported an upwards growing stack in years, and a lot of code has
+        since been written specifically with only a downwards growing stack in mind (e.g.
+        the LLInt, the JITs).  Also, all our currently supported platforms use a downward
+        growing stack.
+
+        We should remove the remnants of support code for an upwards growing stack.  The
+        presence of that code is deceptive in that it conveys support for an upwards
+        growing stack where this hasn't been the case in years.
+
+        * wtf/StackBounds.cpp:
+        (WTF::StackBounds::newThreadStackBounds):
+        (WTF::StackBounds::currentThreadStackBoundsInternal):
+        (WTF::StackBounds::stackDirection): Deleted.
+        (WTF::testStackDirection2): Deleted.
+        (WTF::testStackDirection): Deleted.
+        * wtf/StackBounds.h:
+        (WTF::StackBounds::size const):
+        (WTF::StackBounds::contains const):
+        (WTF::StackBounds::recursionLimit const):
+        (WTF::StackBounds::StackBounds):
+        (WTF::StackBounds::isGrowingDownwards const):
+        (WTF::StackBounds::checkConsistency const):
+        (WTF::StackBounds::isGrowingDownward const): Deleted.
+        * wtf/StackStats.cpp:
+        (WTF::StackStats::CheckPoint::CheckPoint):
+        (WTF::StackStats::CheckPoint::~CheckPoint):
+        (WTF::StackStats::probe):
+        (WTF::StackStats::LayoutCheckPoint::LayoutCheckPoint):
+
+2019-11-05  Mark Lam  <mark.lam@apple.com>
+
+        WTF::RunLoop should not depend on isMainThread() idiom.
+        https://bugs.webkit.org/show_bug.cgi?id=203873
+        <rdar://problem/56524251>
+
+        Reviewed by Saam Barati, Ryosuke Niwa, and Devin Rousso.
+
+        The isMainThread() idiom is only meaningful for WebCore.  It is less meaningful
+        for JSC since a VM instance can be entered from multiple threads, as long as only
+        one thread enters it at any time.  Hence, the concept of a main thread doesn't
+        make sense at the JSC level.
+
+        Since r251036, we started using a WTF::String to represent the RunLoop mode.
+        This caused problems for JSC clients when USE(CF) since it necessitated the use of
+        StringWrapperCFAllocator to track the life cycle of the CFStringRef generated from
+        the WTF::String.
+
+        To fix this problem, we should restore the original behavior of using CFStringRefs
+        as the RunLoop mode token.
+
+        * wtf/RunLoop.h:
+        (WTF::RunLoop::cycle): Deleted.
+        * wtf/cf/RunLoopCF.cpp:
+        (WTF::RunLoop::cycle):
+        * wtf/generic/RunLoopGeneric.cpp:
+        (WTF::RunLoop::cycle):
+        * wtf/glib/RunLoopGLib.cpp:
+        (WTF::RunLoop::cycle):
+        * wtf/win/RunLoopWin.cpp:
+        (WTF::RunLoop::cycle):
+
+2019-11-05  Tuomas Karkkainen  <tuomas.webkit@apple.com>
+
+        Add definitions of ANSI colors for colorful log output
+        https://bugs.webkit.org/show_bug.cgi?id=203805
+
+        Reviewed by Saam Barati.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/AnsiColors.h: Added.
+        * wtf/CMakeLists.txt:
+
+2019-11-05  Tuomas Karkkainen  <tuomas.webkit@apple.com>
+
+        move CrashReporterClientSPI.h and parts of WKCrashReporter to WTF so it can be used in JavaScriptCore
+        https://bugs.webkit.org/show_bug.cgi?id=203803
+
+        Reviewed by Saam Barati.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/PlatformMac.cmake:
+        * wtf/cocoa/CrashReporter.cpp: Added.
+        (WTF::setCrashLogMessage):
+        * wtf/cocoa/CrashReporter.h: Added.
+        * wtf/spi/cocoa/CrashReporterClientSPI.h: Renamed from Source/WebKit/Platform/spi/Cocoa/CrashReporterClientSPI.h.
+
+2019-11-02  Devin Rousso  <drousso@apple.com>
+
+        Web Inspector: Add diagnostic logging for frontend feature usage
+        https://bugs.webkit.org/show_bug.cgi?id=203579
+        <rdar://problem/56717410>
+
+        Reviewed by Brian Burg.
+
+        Original patch by Matt Baker <mattbaker@apple.com>.
+
+        * wtf/FeatureDefines.h:
+        Add `ENABLE_INSPECTOR_TELEMETRY`, which is only enabled for macOS.
+
+2019-11-01  Devin Rousso  <drousso@apple.com>
+
+        Web Inspector: Timelines: add a timeline that shows information about any recorded CSS animation/transition
+        https://bugs.webkit.org/show_bug.cgi?id=203651
+        <rdar://problem/56128726>
+
+        Reviewed by Brian Burg.
+
+        * wtf/Markable.h:
+        (WTF::operator==):
+        (WTF::operator!=):
+        Add extra utility operators.
+
+2019-10-31  Tim Horton  <timothy_horton@apple.com>
+
+        Turn on IOSurface support in the iOS Simulator
+        https://bugs.webkit.org/show_bug.cgi?id=203026
+        <rdar://problem/56320993>
+
+        Reviewed by Simon Fraser.
+
+        * wtf/Platform.h:
+        Turn on HAVE(IOSURFACE) and USE(IOSURFACE_CANVAS_BACKING_STORE) in the simulator.
+        Add HAVE(IOSURFACE_COREIMAGE_SUPPORT).
+
+2019-10-31  Jer Noble  <jer.noble@apple.com>
+
+        [EME] Batch multiple key requests into one request and response
+        https://bugs.webkit.org/show_bug.cgi?id=203580
+        <rdar://problem/54853345>
+
+        Reviewed by Eric Carlson.
+
+        Support appending an r-value reference Vector to another.
+
+        * wtf/Vector.h:
+        (WTF::minCapacity>::appendVector):
+
+2019-10-31  Alex Christensen  <achristensen@webkit.org>
+
+        Remove unneeded HAVE_TIMINGDATAOPTIONS
+        https://bugs.webkit.org/show_bug.cgi?id=202990
+
+        Reviewed by Brady Eidson.
+
+        * wtf/Platform.h:
+
+2019-10-31  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] DateMath should have TimeClipped version
+        https://bugs.webkit.org/show_bug.cgi?id=203550
+
+        Reviewed by Saam Barati.
+
+        We found that our Date constructor is slow because GregorianDateTime calculation takes so long.
+        We are doing many `fmod`, floating division, `floor` etc. These operations, in particular `fmod`, takes
+        very long time. As a result, 30% of JetStream2/date-format-xparb is taken by `fmod` function.
+
+        But since we are performance timeClip operation, double value in DateInstance is always Int52. We should
+        have integer version of GregorianDateTime calculation which avoids many unnecessary fmod etc.
+
+        While integer division is truncate-to-zero, many Date calculation requires `floor(value / xxx)`. For now,
+        we use integer fast path only when the value is Int52 and positive.
+
+        We see 10~ % improvement in JetStream2/date-format-xparb-SP (from 201 to 239).
+
+        * wtf/DateMath.cpp:
+        (WTF::isLeapYear): Deleted.
+        (WTF::daysInYear): Deleted.
+        (WTF::daysFrom1970ToYear): Deleted.
+        (WTF::msToDays): Deleted.
+        (WTF::msToYear): Deleted.
+        (WTF::dayInYear): Deleted.
+        (WTF::msToMinutes): Deleted.
+        (WTF::msToHours): Deleted.
+        (WTF::monthFromDayInYear): Deleted.
+        (WTF::checkMonth): Deleted.
+        (WTF::dayInMonthFromDayInYear): Deleted.
+        (WTF::dateToDaysFrom1970): Deleted.
+        (WTF::timeClip): Deleted.
+        * wtf/DateMath.h:
+        (WTF::TimeClippedPositiveMilliseconds::TimeClippedPositiveMilliseconds):
+        (WTF::TimeClippedPositiveMilliseconds::value const):
+        (WTF::TimeClippedPositiveMilliseconds::asDouble const):
+        (WTF::timeClip):
+        (WTF::daysFrom1970ToYear):
+        (WTF::daysFrom1970ToYearTimeClippedPositive):
+        (WTF::isLeapYear):
+        (WTF::daysInYear):
+        (WTF::msToDays):
+        (WTF::dayInYear):
+        (WTF::dateToDaysFrom1970):
+        (WTF::msToYear):
+        (WTF::msToMinutes):
+        (WTF::msToHours):
+        (WTF::msToSeconds):
+        (WTF::msToWeekDay):
+        (WTF::monthFromDayInYear):
+        (WTF::dayInMonthFromDayInYear):
+        * wtf/GregorianDateTime.cpp:
+        (WTF::GregorianDateTime::GregorianDateTime):
+        * wtf/GregorianDateTime.h:
+
+2019-10-30  Alex Christensen  <achristensen@webkit.org>
+
+        Prevent Mac CMake build from bit rotting
+        https://bugs.webkit.org/show_bug.cgi?id=203647
+
+        Reviewed by Tim Horton.
+
+        * wtf/PlatformMac.cmake:
+
+2019-10-30  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] Date functions should have intrinsic
+        https://bugs.webkit.org/show_bug.cgi?id=202187
+
+        Reviewed by Keith Miller.
+
+        * wtf/DateMath.h:
+        * wtf/GregorianDateTime.cpp:
+        (WTF::GregorianDateTime::setToCurrentLocalTime):
+        * wtf/GregorianDateTime.h:
+
+2019-10-30  Per Arne Vollan  <pvollan@apple.com>
+
+        It should be possible to create a mach sandbox extension for the WebContent process before the audit token is known
+        https://bugs.webkit.org/show_bug.cgi?id=203618
+
+        Reviewed by Brent Fulgham.
+
+        Added SPI to create mach extension without PID or audit token.
+
+        * wtf/spi/darwin/SandboxSPI.h:
+
+2019-10-30  Daniel Bates  <dabates@apple.com>
+
+        Add pretty printer for CompactPointerTuple
+        https://bugs.webkit.org/show_bug.cgi?id=203495
+
+        Reviewed by Jer Noble.
+
+        #include <wtf/FastMalloc.h> for the definition of WTF_MAKE_FAST_ALLOCATED.
+
+        * wtf/CompactPointerTuple.h:
+
+2019-10-29  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] Add fast path for String#localeCompare
+        https://bugs.webkit.org/show_bug.cgi?id=202676
+
+        Reviewed by Mark Lam.
+
+        * wtf/text/StringView.h:
+        (WTF::StringView::isAllASCII const):
+
+2019-10-26  Chris Lord  <clord@igalia.com>
+
+        Put OffscreenCanvas behind a build flag
+        https://bugs.webkit.org/show_bug.cgi?id=203146
+
+        Reviewed by Ryosuke Niwa.
+
+        * wtf/FeatureDefines.h:
+
+2019-10-25  Andy Estes  <aestes@apple.com>
+
+        [Quick Look] Move the QLPreviewConverter delegate into PreviewConverter and vend a C++ client interface
+        https://bugs.webkit.org/show_bug.cgi?id=203396
+
+        Reviewed by Alex Christensen.
+
+        * wtf/FeatureDefines.h: Defined ENABLE_PREVIEW_CONVERTER.
+
+2019-10-23  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] Figure out missing prepareCallOperation
+        https://bugs.webkit.org/show_bug.cgi?id=203285
+
+        Reviewed by Mark Lam.
+
+        Enable USE(BUILTIN_FRAME_ADDRESS) regardless of platform is the compilers and architectures match.
+
+        * wtf/Platform.h:
+
+2019-10-23  Tim Horton  <timothy_horton@apple.com>
+
+        macCatalyst: Should dispatch contextmenu event on right click
+        https://bugs.webkit.org/show_bug.cgi?id=203316
+        <rdar://problem/54617376>
+
+        Reviewed by Wenson Hsieh.
+
+        * wtf/FeatureDefines.h:
+
+2019-10-23  Truitt Savell  <tsavell@apple.com>
+
+        Unreviewed, rolling out r251261.
+
+        This broke multiple tests
+
+        Reverted changeset:
+
+        "Using version 1 CFRunloopSource for faster task dispatch"
+        https://bugs.webkit.org/show_bug.cgi?id=202874
+        https://trac.webkit.org/changeset/251261
+
+2019-10-23  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [iOS] Remove Hiragino Sans site-specific quirk for Yahoo Japan
+        https://bugs.webkit.org/show_bug.cgi?id=203345
+
+        Reviewed by Simon Fraser.
+
+        * wtf/Platform.h:
+
+2019-10-22  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        Make `JSGlobalObject*` threading change more stabilized by adding tests and assertions
+        https://bugs.webkit.org/show_bug.cgi?id=203274
+
+        Reviewed by Saam Barati.
+
+        * wtf/Platform.h:
+
+2019-10-22  Antti Koivisto  <antti@apple.com>
+
+        operator==(Vector, Vector) should work with different inline capacities
+        https://bugs.webkit.org/show_bug.cgi?id=203245
+
+        Reviewed by Alex Christensen.
+
+        Also allow different overflow behavior and minimum capacity.
+
+        * wtf/Vector.h:
+        (WTF::operator==):
+        (WTF::operator!=):
+
+2019-10-22  Rob Buis  <rbuis@igalia.com>
+
+        https://bugs.webkit.org/show_bug.cgi?id=169667
+        URL: protocol setter needs to be more restrictive around file
+
+        Reviewed by Alex Christensen.
+
+        Restrict setting protocol to "file" as indictaed in the spec [1].
+
+        Test: imported/w3c/web-platform-tests/url/url-setters.html
+
+        [1] https://url.spec.whatwg.org/#scheme-state steps 2.1.3 and 2.1.4.
+
+        * wtf/URL.cpp:
+        (WTF::URL::setProtocol):
+
+2019-10-21  Tim Horton  <timothy_horton@apple.com>
+
+        macCatalyst: Swipe navigation gestures do not work
+        https://bugs.webkit.org/show_bug.cgi?id=203205
+        <rdar://problem/54617473>
+
+        Reviewed by Wenson Hsieh.
+
+        * wtf/Platform.h:
+        Add a new HAVE.
+
+2019-10-20  Mark Lam  <mark.lam@apple.com>
+
+        Remove all uses of untagCodePtr in debugging code.
+        https://bugs.webkit.org/show_bug.cgi?id=203188
+        <rdar://problem/56453043> 
+
+        Reviewed by Yusuke Suzuki.
+
+        We want the ability to always assert on failure to authenticate in untagCodePtr
+        (though we don't currently do that yet).
+
+        * wtf/PtrTag.cpp:
+        (WTF::tagForPtr):
+        * wtf/PtrTag.h:
+        (WTF::retagCodePtrImpl):
+        (WTF::tagCFunctionPtrImpl):
+        (WTF::untagCFunctionPtrImpl):
+        (WTF::assertIsCFunctionPtr):
+        (WTF::isTaggedWith):
+
+2019-10-19  Simon Fraser  <simon.fraser@apple.com>
+
+        Add support to TextStream for dumping HashMap<> and HashSet<>
+        https://bugs.webkit.org/show_bug.cgi?id=202969
+
+        Reviewed by Dean Jackson.
+        
+        Make it possible to output HashMap<> and HashSet<> to TextStream,
+        so long as key and value types are streamable. Also implement operator<<(char)
+        so that chars show as ASCII, rather than numbers.
+
+        * wtf/text/TextStream.cpp:
+        (WTF::TextStream::operator<<):
+        * wtf/text/TextStream.h:
+        (WTF::operator<<):
+
+2019-10-18  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] Make ConcurrentJSLock Lock even if ENABLE_CONCURRENT_JS=OFF
+        https://bugs.webkit.org/show_bug.cgi?id=202892
+
+        Reviewed by Mark Lam.
+
+        BaselineJIT also has concurrent compiler. ENABLE(CONCURRENT_JS) should not rely on ENABLE(DFG_JIT).
+        It should rely on ENABLE(JIT) instead.
+
+        * wtf/Platform.h:
+
+2019-10-17  Mark Lam  <mark.lam@apple.com>
+
+        Use constexpr in more places and remove some unnecessary external linkage.
+        https://bugs.webkit.org/show_bug.cgi?id=203115
+
+        Reviewed by Yusuke Suzuki.
+
+        Also removed unused lockSpinLimit in Threading.h.
+
+        * wtf/MD5.h:
+        * wtf/SHA1.h:
+        * wtf/StackBounds.h:
+        * wtf/Threading.h:
+
+2019-10-17  Sihui Liu  <sihui_liu@apple.com>
+
+        Using version 1 CFRunloopSource for faster task dispatch
+        https://bugs.webkit.org/show_bug.cgi?id=202874
+
+        Reviewed by Geoffrey Garen.
+
+        We used CFRunLoopWakeUp to wake up runloop to process source, which seems to be slow according to profiling. To 
+        avoid calling CFRunLoopWakeUp, we should use version 1 CFRunloopSource instead of version 0. This patch brings
+        about 15% speedup for test PerformanceTests/IndexedDB/basic/objectstore-get.html.
+
+        * wtf/RunLoop.cpp:
+        (WTF::RunLoop::initializeWebRunLoop):
+        (WTF::RunLoop::web):
+        * wtf/RunLoop.h:
+        * wtf/cf/RunLoopCF.cpp:
+        (WTF::RunLoop::performWork):
+        (WTF::RunLoop::RunLoop):
+        (WTF::RunLoop::~RunLoop):
+        (WTF::RunLoop::wakeUp):
+        * wtf/cocoa/MainThreadCocoa.mm:
+        (WTF::initializeMainThreadPlatform):
+        (WTF::scheduleDispatchFunctionsOnMainThread):
+        (WTF::initializeWebThread):
+        (-[JSWTFMainThreadCaller call]): Deleted.
+
+2019-10-16  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        Unreviewed, fix the internal macOS 10.13 and 10.14 builds after r251171
+
+        * wtf/Platform.h: Add a HAVE() macro for AXClientType, which is only available on macOS 10.15+ SDKs.
+
+2019-10-15  Chris Dumez  <cdumez@apple.com>
+
+        [macOS] Simplify main thread initialization
+        https://bugs.webkit.org/show_bug.cgi?id=203001
+
+        Reviewed by Geoff Garen.
+
+        Simplify main thread initialization on macOS by always using pthread main as main thread.
+        The complexity is now isolated to the USE(WEB_THREAD) code path.
+
+        This patch also adds a debug assertion in WTF::initializeWebThreadPlatform() to make sure
+        it gets called on the actual main thread. In release, it will log a fault message indicating
+        it was called on the wrong thread.
+
+        * wtf/MainThread.cpp:
+        * wtf/MainThread.h:
+        * wtf/RefCounted.h:
+        (WTF::RefCountedBase::RefCountedBase):
+        (WTF::RefCountedBase::applyRefDerefThreadingCheck const):
+        * wtf/cocoa/MainThreadCocoa.mm:
+        (WTF::initializeMainThreadPlatform):
+        (WTF::scheduleDispatchFunctionsOnMainThread):
+        (WTF::initializeWebThreadPlatform):
+        (WTF::canAccessThreadLocalDataForThread):
+        (WTF::isMainThread):
+        * wtf/generic/MainThreadGeneric.cpp:
+        * wtf/text/cf/StringImplCF.cpp:
+        (WTF::StringImpl::createCFString):
+        * wtf/win/MainThreadWin.cpp:
+
+2019-10-14  Tim Horton  <timothy_horton@apple.com>
+
+        Unify sources for bindings more densely
+        https://bugs.webkit.org/show_bug.cgi?id=202918
+
+        Reviewed by Simon Fraser.
+
+        * Scripts/generate-unified-source-bundles.rb:
+        Add an option to separate and more densely unify sources that match
+        a given glob pattern.
+
+2019-10-14  Keith Rollin  <krollin@apple.com>
+
+        Remove some support for < iOS 13
+        https://bugs.webkit.org/show_bug.cgi?id=202820
+        <rdar://problem/56164838>
+
+        Reviewed by Anders Carlsson.
+
+        Remove some support for iOS versions less than 13.0.
+
+        Update conditionals that reference __IPHONE_OS_VERSION_MIN_REQUIRED
+        and __IPHONE_OS_VERSION_MAX_ALLOWED, assuming that they both have
+        values >= 130000. This means that expressions like
+        "__IPHONE_OS_VERSION_MIN_REQUIRED < 101300" are always False and
+        "__IPHONE_OS_VERSION_MIN_REQUIRED >= 101300" are always True.
+
+        This removal is part of a series of patches effecting the removal of
+        dead code for old versions of iOS. This particular pass involves
+        changes in which Devin Rousso was involved. These changes are isolated
+        from other similar changes in order to facilitate the reviewing
+        process.
+
+        * wtf/Platform.h:
+
+2019-10-14  Alex Christensen  <achristensen@webkit.org>
+
+        REGRESSION: [iOS 13?] TestWebKitAPI.SharedBufferTest.tryCreateArrayBufferLargeSegments is failing
+        https://bugs.webkit.org/show_bug.cgi?id=201902
+
+        Reviewed by Ryosuke Niwa.
+
+        * wtf/Vector.h:
+        The code introduced in r108153 to workaround a warning when building Chrome was causing us to use uninitialized memory
+        when we create a Vector with the size_t/{signed,unsigned}char constructor with a constexpr size_t.
+        This was the cause of bug 201902 and bug 201620 which only manifested themselves in release builds with some compilers.
+
+2019-10-14  Per Arne Vollan  <pvollan@apple.com>
+
+        [macOS] Sandbox extensions should be created with audit tokens, not PIDs
+        https://bugs.webkit.org/show_bug.cgi?id=201828
+
+        Reviewed by Brent Fulgham.
+
+        Remove HAVE macro for issuing sandbox extension by PID, and fix version checks for the HAVE
+        macros related to issuing sandbox extensions by audit token. Remove SPI for creating
+        extensions by PID, and add SPI for creating mach extension by audit token. Also remove an
+        unneeded flag.
+        
+        * wtf/Platform.h:
+        * wtf/spi/darwin/SandboxSPI.h:
+
+2019-10-08  Ryosuke Niwa  <rniwa@webkit.org>
+
+        Make WebInspector's remote debug EventLoop code into RunLoop
+        https://bugs.webkit.org/show_bug.cgi?id=202716
+
+        Reviewed by Joseph Pecoraro.
+
+        This patch merges WebInspector's EventLoop code into RunLoop as a static function.
+
+        * wtf/RunLoop.h:
+        (WTF::RunLoop::cycle):
+        * wtf/cf/RunLoopCF.cpp:
+        (WTF::RunLoop::cycle): Added.
+        * wtf/generic/RunLoopGeneric.cpp:
+        (WTF::RunLoop::cycle): Added.
+        * wtf/glib/RunLoopGLib.cpp:
+        (WTF::RunLoop::cycle): Added.
+        * wtf/win/RunLoopWin.cpp:
+        (WTF::RunLoop::cycle): Added.
+
+2019-10-10  Ryosuke Niwa  <rniwa@webkit.org>
+
+        Make it safe to store a ThreadSafeRefCounted object in Ref & RefPtr safe inside its destructor
+        https://bugs.webkit.org/show_bug.cgi?id=201576
+
+        Reviewed by Geoffrey Garen and Mark Lam.
+
+        This patch leaves m_refCount 1 inside the last deref call to ThreadSafeRefCounted
+        so that storing an instance of this object in Ref or RefPtr would not trigger a recursive delete.
+
+        Note: this patch does not try to fix a race condition by which another thread tries to ref()
+        this object after the "last" call to deref had happened since such a code would ref() this object
+        long after it had been removed (UAF), nor some code calling deref() before calling ref() inside
+        a destructor since there is no way to defend against unpaired calls to ref() & deref() like that.
+
+        Also added m_deletionHasBegun like RefCounted.
+
+        * wtf/ThreadSafeRefCounted.h:
+        (WTF::ThreadSafeRefCountedBase::ref const):
+        (WTF::ThreadSafeRefCountedBase::hasOneRef const):
+        (WTF::ThreadSafeRefCountedBase::derefBase const):
+
+2019-10-11  Alex Christensen  <achristensen@webkit.org>
+
+        Only use CFNetwork SPI for metrics where needed
+        https://bugs.webkit.org/show_bug.cgi?id=202825
+
+        Reviewed by Joseph Pecoraro.
+
+        * wtf/Platform.h:
+
+2019-10-11  Keith Rollin  <krollin@apple.com>
+
+        Remove some support for < iOS 13
+        https://bugs.webkit.org/show_bug.cgi?id=202819
+        <rdar://problem/56164233>
+
+        Reviewed by Anders Carlsson.
+
+        Remove some support for iOS versions less than 13.0.
+
+        Update conditionals that reference __IPHONE_OS_VERSION_MIN_REQUIRED
+        and __IPHONE_OS_VERSION_MAX_ALLOWED, assuming that they both have
+        values >= 130000. This means that expressions like
+        "__IPHONE_OS_VERSION_MIN_REQUIRED < 101300" are always False and
+        "__IPHONE_OS_VERSION_MIN_REQUIRED >= 101300" are always True.
+
+        This removal is part of a series of patches effecting the removal of
+        dead code for old versions of iOS. This particular pass involves
+        changes in which Jiewen Tan was involved. These changes are isolated
+        from other similar changes in order to facilitate the reviewing
+        process.
+
+        * wtf/Platform.h:
+
+2019-10-11  Jonathan Bedard  <jbedard@apple.com>
+
+        Unreviewed, rolling out r250945.
+
+        Broke 18 Debug API tests
+
+        Reverted changeset:
+
+        "Add support for CompactPointerTuple<..., OptionSet<...>>"
+        https://bugs.webkit.org/show_bug.cgi?id=201316
+        https://trac.webkit.org/changeset/250945
+
+2019-10-11  Xabier Rodriguez Calvar  <calvaris@igalia.com>
+
+        MediaTime pretty printer can print if time is invalid
+        https://bugs.webkit.org/show_bug.cgi?id=202735
+
+        Reviewed by Eric Carlson.
+
+        * wtf/MediaTime.cpp:
+        (WTF::MediaTime::toString const): Append ", invalid" if isInvalid().
+        (WTF::MediaTime::toJSONObject const): Set boolean invalid to true
+        when invalid.
+
+2019-10-09  Keith Rollin  <krollin@apple.com>
+
+        Remove some support for < iOS 13
+        https://bugs.webkit.org/show_bug.cgi?id=202371
+        <rdar://problem/55853960>
+
+        Reviewed by Youenn Fablet.
+
+        Remove some support for iOS versions less than 13.0.
+
+        Update conditionals that reference __IPHONE_OS_VERSION_MIN_REQUIRED
+        and __IPHONE_OS_VERSION_MAX_ALLOWED, assuming that they both have
+        values >= 130000. This means that expressions like
+        "__IPHONE_OS_VERSION_MIN_REQUIRED < 101300" are always False and
+        "__IPHONE_OS_VERSION_MIN_REQUIRED >= 101300" are always True.
+
+        This removal is part of a series of patches effecting the removal of
+        dead code for old versions of iOS. This particular pass involves
+        changes in which Dean Jackson was involved. These changes are isolated
+        from other similar changes in order to facilitate the reviewing
+        process.
+
+        * wtf/FeatureDefines.h:
+        * wtf/Platform.h:
+
+2019-10-09  Daniel Bates  <dabates@apple.com>
+
+        Add support for CompactPointerTuple<..., OptionSet<...>>
+        https://bugs.webkit.org/show_bug.cgi?id=201316
+
+        Reviewed by Yusuke Suzuki.
+
+        Support using an OptionSet<> for the byte value portion of a CompactPointerTuple so that
+        you can encode both a pointer and 8-bit bitmask in a type-safe way. Another benefit of
+        supporting OptionSet<> is that we have a LLDB pretty-printer for it so this makes it easy
+        to see the set flags in such a CompactPointerTuple.
+
+        * wtf/CompactPointerTuple.h:
+
+2019-10-09  Russell Epstein  <repstein@apple.com>
+
+        Unreviewed, rolling out r250930.
+
+        Broke watchOS Builds
+
+        Reverted changeset:
+
+        "Add support for CompactPointerTuple<..., OptionSet<...>>"
+        https://bugs.webkit.org/show_bug.cgi?id=201316
+        https://trac.webkit.org/changeset/250930
+
+2019-10-09  Daniel Bates  <dabates@apple.com>
+
+        Add support for CompactPointerTuple<..., OptionSet<...>>
+        https://bugs.webkit.org/show_bug.cgi?id=201316
+
+        Reviewed by Yusuke Suzuki.
+
+        Support using an OptionSet<> for the byte value portion of a CompactPointerTuple so that
+        you can encode both a pointer and 8-bit bitmask in a type-safe way. Another benefit of
+        supporting OptionSet<> is that we have a LLDB pretty-printer for it so this makes it easy
+        to see the set flags in such a CompactPointerTuple.
+
+        * wtf/CompactPointerTuple.h:
+
+2019-10-08  Robin Morisset  <rmorisset@apple.com>
+
+        dataLogIf should be ALWAYS_INLINE
+        https://bugs.webkit.org/show_bug.cgi?id=202703
+
+        Reviewed by Saam Barati.
+
+        We often have the following pattern:
+        ```
+        static constexpr bool verbose = false;
+        ...
+        dataLogLnIf(verbose, "Something is happening");
+        ```
+        To make sure that these are always properly eliminated I'd like to make dataLogIf/dataLogLnIf ALWAYS_INLINE.
+        
+        We may as well mark the branch as UNLIKELY too, for the cases where the condition comes from Options::verboseSomething() and is only known at runtime.
+
+        * wtf/DataLog.h:
+        (WTF::dataLogIf):
+        (WTF::dataLogLnIf):
+
+2019-10-07  Alexey Proskuryakov  <ap@apple.com>
+
+        Build failure in WebHTMLView.mm with the public SDK (Xcode 11 and Mojave)
+        https://bugs.webkit.org/show_bug.cgi?id=199705
+
+        Patch by Dan Bernstein and Kenneth Russell.
+        Reviewed by Alexey Proskuryakov.
+
+        * wtf/Platform.h: Added HAVE_SUBVIEWS_IVAR_DECLARED_BY_SDK.
+
+2019-10-04  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r250762.
+        https://bugs.webkit.org/show_bug.cgi?id=202609
+
+        Broke JSC tests by breaking refCount check in
+        DropAllLocks::DropAllLocks (Requested by rniwa on #webkit).
+
+        Reverted changeset:
+
+        "Make a ThreadSafeRefCounted object safe to ref & deref inside
+        its destructor"
+        https://bugs.webkit.org/show_bug.cgi?id=201576
+        https://trac.webkit.org/changeset/250762
+
+2019-10-04  Ryosuke Niwa  <rniwa@webkit.org>
+
+        Build fix for macOS Catalina.
+
+        * wtf/spi/darwin/SandboxSPI.h:
+
+2019-10-04  Ryosuke Niwa  <rniwa@webkit.org>
+
+        Make a ThreadSafeRefCounted object safe to ref & deref inside its destructor
+        https://bugs.webkit.org/show_bug.cgi?id=201576
+
+        Reviewed by Geoffrey Garen.
+
+        This patch leaves m_refCount 1 inside the last deref call to ThreadSafeRefCounted
+        such that ref'ing and deref'ing it again inside its destructor would never try
+        to double delete the object.
+
+        Also added m_deletionHasBegun like RefCounted.
+
+        * wtf/ThreadSafeRefCounted.h:
+        (WTF::ThreadSafeRefCountedBase::ref const):
+        (WTF::ThreadSafeRefCountedBase::hasOneRef const):
+        (WTF::ThreadSafeRefCountedBase::derefBase const):
+
 2019-10-04  Heiko Becker  <heirecka@exherbo.org>
 
         Fix build with icu 65.1
@@ -18,6 +3334,347 @@
 
         * wtf/URLHelpers.cpp:
         (WTF::URLHelpers::allCharactersInIDNScriptWhiteList):
+
+2019-10-04  Truitt Savell  <tsavell@apple.com>
+
+        Unreviewed, rolling out r250583.
+
+        Broke multiple internal API tests
+
+        Reverted changeset:
+
+        "[JSC] Place VM* in TLS"
+        https://bugs.webkit.org/show_bug.cgi?id=202391
+        https://trac.webkit.org/changeset/250583
+
+2019-10-03  Keith Rollin  <krollin@apple.com>
+
+        Remove some support for < iOS 13
+        https://bugs.webkit.org/show_bug.cgi?id=202549
+        <rdar://problem/55967232>
+
+        Reviewed by Alex Christensen.
+
+        Remove some support for iOS versions less than 13.0. 
+
+        Update conditionals that reference __IPHONE_OS_VERSION_MIN_REQUIRED
+        and __IPHONE_OS_VERSION_MAX_ALLOWED, assuming that they both have
+        values >= 130000. This means that expressions like
+        "__IPHONE_OS_VERSION_MIN_REQUIRED < 101300" are always False and
+        "__IPHONE_OS_VERSION_MIN_REQUIRED >= 101300" are always True.
+
+        This removal is part of a series of patches effecting the removal of
+        dead code for old versions of iOS. This particular pass involves
+        changes in which Michael Saboff was involved. These changes are
+        isolated from other similar changes in order to facilitate the
+        reviewing process.
+
+        * wtf/spi/darwin/ProcessMemoryFootprint.h:
+
+2019-10-03  Per Arne Vollan  <pvollan@apple.com>
+
+        REGRESSION(249649): Unable to open local files in MiniBrowser on macOS
+        https://bugs.webkit.org/show_bug.cgi?id=201798
+
+        Reviewed by Brent Fulgham.
+
+        Add HAVE_AUDIT_TOKEN and SANDBOX_ISSUE_READ_EXTENSION_TO_PROCESS_BY_AUDIT_TOKEN defines.
+
+        * wtf/Platform.h:
+
+2019-10-02  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        REGRESSION (r245672): <select> dropdown with text-rendering: optimizeLegibility freezes Safari
+        https://bugs.webkit.org/show_bug.cgi?id=202198
+
+        Reviewed by Tim Horton.
+
+        * wtf/Platform.h:
+
+2019-10-02  Mark Lam  <mark.lam@apple.com>
+
+        DoubleToStringConverter::ToExponential() should null terminate its string.
+        https://bugs.webkit.org/show_bug.cgi?id=202492
+        <rdar://problem/55907708>
+
+        Reviewed by Filip Pizlo.
+
+        * wtf/dtoa/double-conversion.cc:
+        - DoubleToStringConverter::DoubleToAscii() always produces a null terminated
+          string.  Fixed the padding loop in DoubleToStringConverter::ToExponential()
+          that follows it to also keep the null terminator.
+
+        * wtf/dtoa/utils.h:
+        (WTF::double_conversion::StringBuilder::AddSubstring):
+        - An assertion in here was using strlen() which indicates that it expects a null
+          terminator in the incoming string.  However, this requirement is too restrictive.
+          The code does not actually depend on the string having a null terminator, only
+          that a null terminator does not manifest before the nth character.  Changed
+          the assertion to use strnlen() instead to reflect this.
+
+2019-10-02  Zan Dobersek  <zdobersek@igalia.com>
+
+        [Nicosia] Enable async scrolling at build-time for Nicosia-using ports
+        https://bugs.webkit.org/show_bug.cgi?id=202397
+
+        Reviewed by Carlos Garcia Campos.
+
+        * wtf/Platform.h:
+        Flip ENABLE_KINETIC_SCROLLING to 1 also for PlayStation and WPE ports
+        when ASYNC_SCROLLING is enabled.
+2019-10-01  Jonathan Bedard  <jbedard@apple.com>
+
+        WebKitTestRunner: Many tests timeout on macOS Catalina
+        https://bugs.webkit.org/show_bug.cgi?id=201616
+        <rdar://problem/55200897>
+
+        Reviewed by Alexey Proskuryakov.
+
+        * wtf/Platform.h: USE_SOURCE_APPLICATION_AUDIT_DATA should only be enabled on
+        builds which allow restricted entitlements.
+
+2019-10-01  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        [JSC] Place VM* in TLS
+        https://bugs.webkit.org/show_bug.cgi?id=202391
+
+        Reviewed by Mark Lam.
+
+        Changed FastTLS's key name from WTF_GC_TLC_KEY to WTF_VM_KEY.
+
+        * wtf/FastTLS.h:
+
+2019-10-01  Keith Rollin  <krollin@apple.com>
+
+        Remove some support for < iOS 13
+        https://bugs.webkit.org/show_bug.cgi?id=202386
+        <rdar://problem/55863017>
+
+        Reviewed by Eric Carlson.
+
+        Remove some support for iOS versions less than 13.0.
+
+        Update conditionals that reference __IPHONE_OS_VERSION_MIN_REQUIRED
+        and __IPHONE_OS_VERSION_MAX_ALLOWED, assuming that they both have
+        values >= 130000. This means that expressions like
+        "__IPHONE_OS_VERSION_MIN_REQUIRED < 101300" are always False and
+        "__IPHONE_OS_VERSION_MIN_REQUIRED >= 101300" are always True.
+
+        This removal is part of a series of patches effecting the removal of
+        dead code for old versions of iOS. This particular pass involves
+        changes in which Jer Noble was involved. These changes are isolated
+        from other similar changes in order to facilitate the reviewing
+        process.
+
+        * wtf/Platform.h:
+
+
+2019-09-30  Alex Christensen  <achristensen@webkit.org>
+
+        Resurrect Mac CMake build
+        https://bugs.webkit.org/show_bug.cgi?id=202384
+
+        Rubber-stamped by Tim Horton.
+
+        * wtf/PlatformMac.cmake:
+
+2019-09-30  Mark Lam  <mark.lam@apple.com>
+
+        Add some assertions to convertUTF8ToUTF16().
+        https://bugs.webkit.org/show_bug.cgi?id=202356
+        <rdar://problem/52846813>
+
+        Reviewed by Filip Pizlo.
+
+        * wtf/unicode/UTF8Conversion.cpp:
+        (WTF::Unicode::convertUTF8ToUTF16):
+
+2019-09-30  Guillaume Emont  <guijemont@igalia.com>
+
+        Don't try to use backtrace() on MIPS
+        https://bugs.webkit.org/show_bug.cgi?id=202196
+
+        Reviewed by Carlos Garcia Campos.
+
+        backtrace() on mips seems to always return 1 on mips/glibc (I tried
+        with buildroot, debian stable and debian testing, with and without
+        libunwind), which renders it useless and breaks a RELEASE_ASSERT in
+        StackTrace::captureStackTrace().
+
+        * wtf/Platform.h:
+
+2019-09-29  Keith Rollin  <krollin@apple.com>
+
+        Address static analysis warning in ParkingLot.cpp: Access to field 'size' results in a dereference of a null pointer
+        https://bugs.webkit.org/show_bug.cgi?id=202154
+        <rdar://problem/55672103>
+
+        Reviewed by Brent Fulgham.
+
+        Static analysis reports the following:
+
+            .../OpenSource/Source/WTF/wtf/ParkingLot.cpp:376:30: warning: Access to field 'size' results in a dereference of a null pointer (loaded from variable 'oldHashtable')
+                RELEASE_ASSERT(newSize > oldHashtable->size);
+                                         ^~~~~~~~~~~~~~~~~~
+
+        This warning arises because earlier code checks to see if oldHashtable
+        is NULL, leading the static analyzer to think that it *could* be NULL.
+        However, even earlier code actually ensures that oldHashtable will not
+        be NULL. Address this by removing the NULL check, and back it up with
+        an ASSERT to ensure that it's not NULL.
+
+        * wtf/ParkingLot.cpp:
+
+2019-09-26  Alexey Shvayka  <shvaikalesh@gmail.com>
+
+        toExponential, toFixed, and toPrecision should allow arguments up to 100
+        https://bugs.webkit.org/show_bug.cgi?id=199163
+
+        Reviewed by Ross Kirsling.
+
+        Increase size of NumberToStringBuffer: <21 digits> + decimal point + <100 digits> + null char = 123.
+        Increase kMaxFixedDigitsAfterPoint to make Number.prototype.toFixed work with arguments up to 100.
+        Also update other constants to their correct values.
+
+        * wtf/dtoa.h:
+        * wtf/dtoa/double-conversion.cc:
+        * wtf/dtoa/double-conversion.h:
+
+2019-09-25  Keith Rollin  <krollin@apple.com>
+
+        Address static analysis warning in UTextProviderLatin1.cpp: Array access results in a null pointer dereference
+        https://bugs.webkit.org/show_bug.cgi?id=202155
+        <rdar://problem/55672422>
+
+        Reviewed by Geoffrey Garen.
+
+        Xcode's static analysis reports:
+
+            .../OpenSource/Source/WTF/wtf/text/icu/UTextProviderLatin1.cpp:185:22: warning: Array access (from variable 'dest') results in a null pointer dereference
+                    dest[length] = 0;
+                    ~~~~         ^
+
+        This error is due to an earlier "if" statement that caused the static
+        analyzer to infer that "dest" could be NULL. It turns out that that
+        previous check was in error, in that it tested for "!dest" when it
+        should have tested for "dest". So this patch fixes that.
+
+        Even with that error fixed, the static analyzer will still infer that
+        "dest" could be NULL at the point shown above. Therefore, add a "dest"
+        test just before the assignment.
+
+        * wtf/text/icu/UTextProviderLatin1.cpp:
+        (WTF::uTextLatin1Extract):
+
+2019-09-25  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        [iPadOS] [DataActivation] Focus moves away after focusing input fields on www.att.com
+        https://bugs.webkit.org/show_bug.cgi?id=202167
+        <rdar://problem/55185021>
+
+        Reviewed by Tim Horton.
+
+        Declare DYLD_IOS_VERSION_13_2.
+
+        * wtf/spi/darwin/dyldSPI.h:
+
+2019-09-24  Keith Rollin  <krollin@apple.com>
+
+        Coalesce or remove PLATFORM(MAC) || PLATFORM(IOS_FAMILY)
+        https://bugs.webkit.org/show_bug.cgi?id=202119
+        <rdar://problem/55638792>
+
+        Reviewed by Alex Christensen.
+
+        After refactoring and other code evolution, some platform checks have
+        ended up looking like PLATFORM(MAC) || PLATFORM(IOS_FAMILY) (or
+        vice-versa). These can be converted into the equivalent
+        PLATFORM(COCOA). Where the instance occurs in a Cocoa-only file, the
+        check can be removed altogether (along with any "#else" branches).
+
+        * wtf/Platform.h:
+        * wtf/text/TextBreakIterator.h:
+
+2019-09-21  David Kilzer  <ddkilzer@apple.com>
+
+        clang-tidy: Fix unnecessary copy/ref churn of for loop variables in WTF/JavaScriptCore
+        <https://webkit.org/b/202069>
+
+        Reviewed by Mark Lam.
+
+        Fix unwanted copying/ref churn of loop variables by making them
+        const references.
+
+        * wtf/AggregateLogger.h:
+        (WTF::AggregateLogger::log const):
+
+2019-09-20  Keith Rollin  <krollin@apple.com>
+
+        Remove some support for < iOS 13
+        https://bugs.webkit.org/show_bug.cgi?id=201967
+        <rdar://problem/55504738>
+
+        Reviewed by Andy Estes.
+
+        Remove some support for iOS versions less than 13.0.
+
+        Update conditionals that reference __IPHONE_OS_VERSION_MIN_REQUIRED
+        and __IPHONE_OS_VERSION_MAX_ALLOWED, assuming that they both have
+        values >= 130000. This means that expressions like
+        "__IPHONE_OS_VERSION_MIN_REQUIRED < 101300" are always False and
+        "__IPHONE_OS_VERSION_MIN_REQUIRED >= 101300" are always True.
+
+        After version checks have been removed, there are some cases where the
+        preprocessor conditional looks like "#if PLATFORM(MAC) ||
+        PLATFORM(IOS_FAMILY)". These can be collapsed into "#if
+        PLATFORM(COCOA)". This additional cleanup will be performed in a
+        subsequent patch.
+
+        This removal is part of a series of patches effecting the removal of
+        dead code for old versions of iOS. This particular pass involves
+        changes in which Andy Estes was involved. These changes are isolated
+        from other similar changes in order to facilitate the reviewing
+        process.
+
+        * wtf/FeatureDefines.h:
+
+2019-09-20  Keith Rollin  <krollin@apple.com>
+
+        Remove some support for < iOS 13
+        https://bugs.webkit.org/show_bug.cgi?id=201973
+        <rdar://problem/55506966>
+
+        Reviewed by Alex Christensen.
+
+        Remove some support for iOS versions less than 13.0.
+
+        Update conditionals that reference __IPHONE_OS_VERSION_MIN_REQUIRED
+        and __IPHONE_OS_VERSION_MAX_ALLOWED, assuming that they both have
+        values >= 130000. This means that expressions like
+        "__IPHONE_OS_VERSION_MIN_REQUIRED < 101300" are always False and
+        "__IPHONE_OS_VERSION_MIN_REQUIRED >= 101300" are always True.
+
+        This removal is part of a series of patches effecting the removal of
+        dead code for old versions of iOS. This particular pass involves
+        changes in which Chris Dumez was involved. These changes are isolated
+        from other similar changes in order to facilitate the reviewing
+        process.
+
+        * wtf/FeatureDefines.h:
+
+2019-09-20  Paulo Matos  <pmatos@igalia.com>
+
+        Implement memory monitoring functions for Linux OS
+        https://bugs.webkit.org/show_bug.cgi?id=200391
+
+        Reviewed by Žan Doberšek.
+
+        * wtf/PlatformGTK.cmake:
+        * wtf/PlatformJSCOnly.cmake:
+        * wtf/PlatformWPE.cmake:
+        * wtf/linux/ProcessMemoryFootprint.h: Added.
+        (ProcessMemoryFootprint::now):
+        (ProcessMemoryFootprint::resetPeak):
 
 2019-09-20  Libor Bukata  <libor.bukata@oracle.com>
 
@@ -29,6 +3686,288 @@
         * wtf/generic/MainThreadGeneric.cpp:
         (WTF::scheduleDispatchFunctionsOnMainThread):
 
+2019-09-17  Mark Lam  <mark.lam@apple.com>
+
+        Use constexpr instead of const in symbol definitions that are obviously constexpr.
+        https://bugs.webkit.org/show_bug.cgi?id=201879
+
+        Rubber-stamped by Joseph Pecoraro.
+
+        * wtf/Assertions.cpp:
+        * wtf/AutomaticThread.cpp:
+        * wtf/BitVector.h:
+        * wtf/Bitmap.h:
+        * wtf/BloomFilter.h:
+        * wtf/Brigand.h:
+        * wtf/CheckedArithmetic.h:
+        * wtf/CrossThreadCopier.h:
+        * wtf/CurrentTime.cpp:
+        * wtf/DataLog.cpp:
+        * wtf/DateMath.cpp:
+        (WTF::daysFrom1970ToYear):
+        * wtf/DeferrableRefCounted.h:
+        * wtf/GetPtr.h:
+        * wtf/HashFunctions.h:
+        * wtf/HashMap.h:
+        * wtf/HashTable.h:
+        * wtf/HashTraits.h:
+        * wtf/JSONValues.cpp:
+        * wtf/JSONValues.h:
+        * wtf/ListHashSet.h:
+        * wtf/Lock.h:
+        * wtf/LockAlgorithm.h:
+        * wtf/LockAlgorithmInlines.h:
+        (WTF::Hooks>::lockSlow):
+        * wtf/Logger.h:
+        * wtf/LoggerHelper.h:
+        (WTF::LoggerHelper::childLogIdentifier const):
+        * wtf/MainThread.cpp:
+        * wtf/MetaAllocatorPtr.h:
+        * wtf/MonotonicTime.h:
+        * wtf/NaturalLoops.h:
+        (WTF::NaturalLoops::NaturalLoops):
+        * wtf/ObjectIdentifier.h:
+        * wtf/RAMSize.cpp:
+        * wtf/Ref.h:
+        * wtf/RefPtr.h:
+        * wtf/RetainPtr.h:
+        * wtf/SchedulePair.h:
+        * wtf/StackShot.h:
+        * wtf/StdLibExtras.h:
+        * wtf/TinyPtrSet.h:
+        * wtf/URL.cpp:
+        * wtf/URLHash.h:
+        * wtf/URLParser.cpp:
+        (WTF::URLParser::defaultPortForProtocol):
+        * wtf/Vector.h:
+        * wtf/VectorTraits.h:
+        * wtf/WallTime.h:
+        * wtf/WeakHashSet.h:
+        * wtf/WordLock.h:
+        * wtf/cocoa/CPUTimeCocoa.cpp:
+        * wtf/cocoa/MemoryPressureHandlerCocoa.mm:
+        * wtf/persistence/PersistentDecoder.h:
+        * wtf/persistence/PersistentEncoder.h:
+        * wtf/text/AtomStringHash.h:
+        * wtf/text/CString.h:
+        * wtf/text/StringBuilder.cpp:
+        (WTF::expandedCapacity):
+        * wtf/text/StringHash.h:
+        * wtf/text/StringImpl.h:
+        * wtf/text/StringToIntegerConversion.h:
+        (WTF::toIntegralType):
+        * wtf/text/SymbolRegistry.h:
+        * wtf/text/TextStream.cpp:
+        (WTF::hasFractions):
+        * wtf/text/WTFString.h:
+        * wtf/text/cocoa/TextBreakIteratorInternalICUCocoa.cpp:
+
+2019-09-16  Alex Christensen  <achristensen@webkit.org>
+
+        Remove "gopher" from list of special schemes in URLParser
+        https://bugs.webkit.org/show_bug.cgi?id=201852
+
+        Reviewed by Simon Fraser.
+
+        There is little meaningful content on gopher servers, and WebKit does not actually support gopher.
+        This makes WebKit match the behavior of Gecko and goes along with a change proposed at
+        https://github.com/whatwg/url/issues/342
+
+        * wtf/URLParser.cpp:
+        (WTF::URLParser::defaultPortForProtocol):
+        (WTF::scheme):
+        (WTF::URLParser::copyURLPartsUntil):
+        (WTF::URLParser::parse):
+
+2019-09-14  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        Retire x86 32bit JIT support
+        https://bugs.webkit.org/show_bug.cgi?id=201790
+
+        Reviewed by Mark Lam.
+
+        * wtf/Platform.h:
+
+2019-09-13  Jonathan Bedard  <jbedard@apple.com>
+
+        iOS 13: Some SPI targets 13.1
+        https://bugs.webkit.org/show_bug.cgi?id=201777
+
+        Reviewed by Alexey Proskuryakov.
+
+        * wtf/Platform.h:
+
+2019-09-12  Mark Lam  <mark.lam@apple.com>
+
+        Harden JSC against the abuse of runtime options.
+        https://bugs.webkit.org/show_bug.cgi?id=201597
+        <rdar://problem/55167068>
+
+        Reviewed by Filip Pizlo.
+
+        Add a source file that was missing so that Xcode can search its contents too.
+
+        * WTF.xcodeproj/project.pbxproj:
+
+2019-09-09  Tim Horton  <timothy_horton@apple.com>
+
+        Clarify some macCatalyst feature flags
+        https://bugs.webkit.org/show_bug.cgi?id=201619
+        <rdar://problem/54615618>
+
+        Reviewed by Megan Gardner.
+
+        * wtf/Platform.h:
+        We prefer specific flags over platform checks.
+
+2019-09-07  David Quesada  <david_quesada@apple.com>
+
+        REGRESSION(r248533): Unable to use WTF::RefCounted when building in a debug configuration against a non-debug WebKit
+        https://bugs.webkit.org/show_bug.cgi?id=201585
+        rdar://problem/55153369
+
+        Reviewed by Chris Dumez.
+
+        Export WTF::RefCountedBase::areThreadingChecksEnabledGlobally regardless of whether or not assertions
+        are enabled for the WTF being built. This allows WebKit-based projects to use RefCounted for their own
+        objects in a debug configuration without requiring a debug build of WebKit.
+
+        * wtf/RefCounted.cpp:
+        * wtf/RefCounted.h:
+
+2019-09-07  Mark Lam  <mark.lam@apple.com>
+
+        performJITMemcpy() source buffer should not be in the Gigacage.
+        https://bugs.webkit.org/show_bug.cgi?id=201577
+        <rdar://problem/55142606>
+
+        Reviewed by Michael Saboff.
+
+        * wtf/Gigacage.h:
+        (Gigacage::contains):
+
+2019-09-06  Mark Lam  <mark.lam@apple.com>
+
+        Harden protection of the Gigacage Config parameters.
+        https://bugs.webkit.org/show_bug.cgi?id=201570
+        <rdar://problem/55134229>
+
+        Reviewed by Saam Barati.
+
+        Just renaming some function names here.
+
+        * wtf/Gigacage.h:
+        (Gigacage::forbidDisablingPrimitiveGigacage):
+        (Gigacage::isDisablingPrimitiveGigacageForbidden):
+        (Gigacage::disableDisablingPrimitiveGigacageIfShouldBeEnabled): Deleted.
+        (Gigacage::isDisablingPrimitiveGigacageDisabled): Deleted.
+
+2019-09-05  Mark Lam  <mark.lam@apple.com>
+
+        Refactor the Gigacage code to require less pointer casting.
+        https://bugs.webkit.org/show_bug.cgi?id=201521
+
+        Reviewed by Saam Barati.
+
+        Remove some unneeded stubs in WTF Gigacage.h.
+
+        * wtf/Gigacage.cpp:
+        * wtf/Gigacage.h:
+        (Gigacage::name):
+        (Gigacage::isEnabled):
+        (Gigacage::basePtr): Deleted.
+        (Gigacage::basePtrs): Deleted.
+
+2019-08-30  Alex Christensen  <achristensen@webkit.org>
+
+        Remove HAVE_CFNETWORK_WITH_AUTO_ADDED_HTTP_HEADER_SUPPRESSION_SUPPORT conditional
+        https://bugs.webkit.org/show_bug.cgi?id=201280
+
+        Reviewed by Youenn Fablet.
+
+        * wtf/Platform.h:
+
+2019-08-30  Alex Christensen  <achristensen@webkit.org>
+
+        Remove HAVE_CFNETWORK_WITH_IGNORE_HSTS conditional
+        https://bugs.webkit.org/show_bug.cgi?id=201279
+
+        Reviewed by Darin Adler.
+
+        * wtf/Platform.h:
+
+2019-08-30  Alex Christensen  <achristensen@webkit.org>
+
+        Fix non-iOS iOS-family and catalyst builds after r249019
+        https://bugs.webkit.org/show_bug.cgi?id=200945
+
+        * wtf/Platform.h:
+        State that they have tls_protocol_version_t
+
+2019-08-30  Simon Fraser  <simon.fraser@apple.com>
+
+        Add system tracing points for compositing updates, and touch-event dispatching
+        https://bugs.webkit.org/show_bug.cgi?id=201327
+
+        Reviewed by Alex Christensen.
+
+        * wtf/SystemTracing.h:
+
+2019-08-30  Keith Rollin  <krollin@apple.com>
+
+        Remove AppKitCompatibilityDeclarations.h
+        https://bugs.webkit.org/show_bug.cgi?id=201283
+        <rdar://problem/54822042>
+
+        Reviewed by Alexey Proskuryakov.
+
+        The two copies of these files -- on in WTF, one in MiniBrowser -- are
+        empty and can be removed.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/PlatformMac.cmake:
+        * wtf/mac/AppKitCompatibilityDeclarations.h: Removed.
+
+2019-08-29  Keith Rollin  <krollin@apple.com>
+
+        Remove HAVE_PASSKIT_GRANULAR_ERRORS conditional
+        https://bugs.webkit.org/show_bug.cgi?id=201278
+        <rdar://problem/54821052>
+
+        Reviewed by Alex Christensen.
+
+        HAVE_PASSKIT_GRANULAR_ERRORS is always True, so remove the conditional
+        tests, keeping the True branches and removing the False branches.
+
+        * wtf/FeatureDefines.h:
+
+2019-08-29  Keith Rollin  <krollin@apple.com>
+
+        Update .xcconfig symbols to reflect the current set of past and future product versions.
+        https://bugs.webkit.org/show_bug.cgi?id=200720
+        <rdar://problem/54305032>
+
+        Reviewed by Alex Christensen.
+
+        Remove version symbols related to old OS's we no longer support,
+        ensure that version symbols are defined for OS's we do support.
+
+        * Configurations/Base.xcconfig:
+        * Configurations/DebugRelease.xcconfig:
+
+2019-08-29  Keith Rollin  <krollin@apple.com>
+
+        Remove 32-bit macOS support
+        https://bugs.webkit.org/show_bug.cgi?id=201282
+        <rdar://problem/54821667>
+
+        Reviewed by Anders Carlsson.
+
+        WebKit doesn’t support 32-bit Mac any more, so remove checks and code
+        for that platform.
+
+        * wtf/Platform.h:
+
 2019-08-29  Chris Dumez  <cdumez@apple.com>
 
         CompletionHandler default constructor does not initialize `m_wasConstructedOnMainThread`
@@ -38,6 +3977,17 @@
 
         * wtf/CompletionHandler.h:
         (WTF::CompletionHandler<Out):
+
+2019-08-29  Chris Dumez  <cdumez@apple.com>
+
+        Crash when mach_port_deallocate() returns KERN_INVALID_NAME
+        https://bugs.webkit.org/show_bug.cgi?id=201248
+        <rdar://problem/54813890>
+
+        Reviewed by Alex Christensen.
+
+        * wtf/cocoa/MachSendRight.cpp:
+        (WTF::deallocateSendRightSafely):
 
 2019-08-25  Fujii Hironori  <Hironori.Fujii@sony.com>
 

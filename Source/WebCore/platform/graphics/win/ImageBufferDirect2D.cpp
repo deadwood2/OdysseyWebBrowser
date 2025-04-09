@@ -51,13 +51,6 @@
 
 namespace WebCore {
 
-static FloatSize scaleSizeToUserSpace(const FloatSize& logicalSize, const IntSize& backingStoreSize, const IntSize& internalSize)
-{
-    float xMagnification = static_cast<float>(backingStoreSize.width()) / internalSize.width();
-    float yMagnification = static_cast<float>(backingStoreSize.height()) / internalSize.height();
-    return FloatSize(logicalSize.width() * xMagnification, logicalSize.height() * yMagnification);
-}
-
 std::unique_ptr<ImageBuffer> ImageBuffer::createCompatibleBuffer(const FloatSize& size, const GraphicsContext& context)
 {
     if (size.isEmpty())
@@ -66,7 +59,7 @@ std::unique_ptr<ImageBuffer> ImageBuffer::createCompatibleBuffer(const FloatSize
     RenderingMode renderingMode = context.renderingMode();
     IntSize scaledSize = ImageBuffer::compatibleBufferSize(size, context);
     bool success = false;
-    std::unique_ptr<ImageBuffer> buffer(new ImageBuffer(scaledSize, 1, ColorSpaceSRGB, renderingMode, nullptr, &context, success));
+    std::unique_ptr<ImageBuffer> buffer(new ImageBuffer(scaledSize, 1, ColorSpace::SRGB, renderingMode, nullptr, &context, success));
 
     if (!success)
         return nullptr;
@@ -91,7 +84,7 @@ ImageBuffer::ImageBuffer(const FloatSize& size, float resolutionScale, ColorSpac
     m_size = IntSize(scaledWidth, scaledHeight);
     m_data.backingStoreSize = m_size;
 
-    bool accelerateRendering = renderingMode == Accelerated;
+    bool accelerateRendering = renderingMode == RenderingMode::Accelerated;
     if (m_size.width() <= 0 || m_size.height() <= 0)
         return;
 
@@ -107,10 +100,7 @@ ImageBuffer::ImageBuffer(const FloatSize& size, float resolutionScale, ColorSpac
     if (!renderTarget)
         renderTarget = GraphicsContext::defaultRenderTarget();
 
-    D2D1_SIZE_F desiredSize = FloatSize(m_logicalSize);
-    D2D1_SIZE_U pixelSize = IntSize(m_logicalSize);
-
-    auto bitmapContext = Direct2D::createBitmapRenderTargetOfSize(m_logicalSize, renderTarget);
+    auto bitmapContext = Direct2D::createBitmapRenderTargetOfSize(m_logicalSize, renderTarget, m_resolutionScale);
     if (!bitmapContext)
         return;
 
@@ -118,7 +108,11 @@ ImageBuffer::ImageBuffer(const FloatSize& size, float resolutionScale, ColorSpac
     if (!SUCCEEDED(hr))
         return;
 
-    m_data.platformContext = makeUnique<PlatformContextDirect2D>(bitmapContext.get());
+    m_data.platformContext = makeUnique<PlatformContextDirect2D>(bitmapContext.get(), [this]() {
+        m_data.loadDataToBitmapIfNeeded();
+    }, [this]() {
+        m_data.markBufferOutOfSync();
+    });
     m_data.context = makeUnique<GraphicsContext>(m_data.platformContext.get(), GraphicsContext::BitmapRenderingContextType::GPUMemory);
 
     success = true;
@@ -130,11 +124,6 @@ ImageBuffer::ImageBuffer(const FloatSize& size, float resolutionScale, ColorSpac
 }
 
 ImageBuffer::~ImageBuffer() = default;
-
-FloatSize ImageBuffer::sizeForDestinationSize(FloatSize destinationSize) const
-{
-    return scaleSizeToUserSpace(destinationSize, m_data.backingStoreSize, internalSize());
-}
 
 GraphicsContext& ImageBuffer::context() const
 {
@@ -197,13 +186,12 @@ RefPtr<Image> ImageBuffer::sinkIntoImage(std::unique_ptr<ImageBuffer> imageBuffe
     IntSize backingStoreSize = imageBuffer->m_data.backingStoreSize;
     float resolutionScale = imageBuffer->m_resolutionScale;
 
-    auto bitmapTarget = reinterpret_cast<ID2D1BitmapRenderTarget*>(imageBuffer->context().platformContext()->renderTarget());
-    return createBitmapImageAfterScalingIfNeeded(bitmapTarget, sinkIntoNativeImage(WTFMove(imageBuffer)), internalSize, logicalSize, backingStoreSize, resolutionScale, preserveResolution);
-}
+    COMPtr<ID2D1BitmapRenderTarget> bitmapTarget;
+    HRESULT hr = imageBuffer->context().platformContext()->renderTarget()->QueryInterface(&bitmapTarget);
+    if (!SUCCEEDED(hr))
+        return nullptr;
 
-BackingStoreCopy ImageBuffer::fastCopyImageMode()
-{
-    return DontCopyBackingStore;
+    return createBitmapImageAfterScalingIfNeeded(bitmapTarget.get(), sinkIntoNativeImage(WTFMove(imageBuffer)), internalSize, logicalSize, backingStoreSize, resolutionScale, preserveResolution);
 }
 
 COMPtr<ID2D1Bitmap> ImageBuffer::sinkIntoNativeImage(std::unique_ptr<ImageBuffer> imageBuffer)
@@ -214,10 +202,13 @@ COMPtr<ID2D1Bitmap> ImageBuffer::sinkIntoNativeImage(std::unique_ptr<ImageBuffer
 
 COMPtr<ID2D1Bitmap> ImageBuffer::copyNativeImage(BackingStoreCopy copyBehavior) const
 {
-    auto bitmapTarget = reinterpret_cast<ID2D1BitmapRenderTarget*>(context().platformContext());
+    COMPtr<ID2D1BitmapRenderTarget> bitmapTarget;
+    HRESULT hr = context().platformContext()->renderTarget()->QueryInterface(&bitmapTarget);
+    if (!SUCCEEDED(hr))
+        return nullptr;
 
     COMPtr<ID2D1Bitmap> image;
-    HRESULT hr = bitmapTarget->GetBitmap(&image);
+    hr = bitmapTarget->GetBitmap(&image);
     ASSERT(SUCCEEDED(hr));
 
     // FIXME: m_data.data is nullptr even when asking to copy backing store leading to test failures.
@@ -249,12 +240,12 @@ COMPtr<ID2D1Bitmap> ImageBuffer::copyNativeImage(BackingStoreCopy copyBehavior) 
     return image;
 }
 
-void ImageBuffer::drawConsuming(std::unique_ptr<ImageBuffer> imageBuffer, GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator op, BlendMode blendMode)
+void ImageBuffer::drawConsuming(std::unique_ptr<ImageBuffer> imageBuffer, GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
-    imageBuffer->draw(destContext, destRect, srcRect, op, blendMode);
+    imageBuffer->draw(destContext, destRect, srcRect, options);
 }
 
-void ImageBuffer::draw(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator op, BlendMode blendMode)
+void ImageBuffer::draw(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
     FloatRect adjustedSrcRect = srcRect;
     adjustedSrcRect.scale(m_resolutionScale, m_resolutionScale);
@@ -265,10 +256,10 @@ void ImageBuffer::draw(GraphicsContext& destContext, const FloatRect& destRect, 
     if (currentImageSize.isZero())
         return;
 
-    destContext.drawNativeImage(compatibleBitmap, currentImageSize, destRect, adjustedSrcRect, op, blendMode);
+    destContext.drawNativeImage(compatibleBitmap, currentImageSize, destRect, adjustedSrcRect, options);
 }
 
-void ImageBuffer::drawPattern(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, CompositeOperator op, BlendMode blendMode)
+void ImageBuffer::drawPattern(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
 {
     FloatRect adjustedSrcRect = srcRect;
     adjustedSrcRect.scale(m_resolutionScale, m_resolutionScale);
@@ -276,14 +267,14 @@ void ImageBuffer::drawPattern(GraphicsContext& destContext, const FloatRect& des
     if (!context().isAcceleratedContext()) {
         if (&destContext == &context() || destContext.isAcceleratedContext()) {
             if (RefPtr<Image> copy = copyImage(CopyBackingStore)) // Drawing into our own buffer, need to deep copy.
-                copy->drawPattern(destContext, destRect, adjustedSrcRect, patternTransform, phase, spacing, op, blendMode);
+                copy->drawPattern(destContext, destRect, adjustedSrcRect, patternTransform, phase, spacing, options);
         } else {
             if (RefPtr<Image> imageForRendering = copyImage(DontCopyBackingStore))
-                imageForRendering->drawPattern(destContext, destRect, adjustedSrcRect, patternTransform, phase, spacing, op, blendMode);
+                imageForRendering->drawPattern(destContext, destRect, adjustedSrcRect, patternTransform, phase, spacing, options);
         }
     } else {
         if (RefPtr<Image> copy = copyImage(CopyBackingStore))
-            copy->drawPattern(destContext, destRect, adjustedSrcRect, patternTransform, phase, spacing, op, blendMode);
+            copy->drawPattern(destContext, destRect, adjustedSrcRect, patternTransform, phase, spacing, options);
     }
 }
 

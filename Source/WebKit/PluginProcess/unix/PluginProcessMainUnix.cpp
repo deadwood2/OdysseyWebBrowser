@@ -26,7 +26,7 @@
  */
 
 #include "config.h"
-#include "PluginProcessMainUnix.h"
+#include "PluginProcessMain.h"
 
 #if ENABLE(PLUGIN_PROCESS)
 
@@ -53,7 +53,7 @@ namespace WebKit {
 static LazyNeverDestroyed<WebCore::XErrorTrapper> xErrorTrapper;
 #endif
 
-class PluginProcessMain final: public AuxiliaryProcessMainBase {
+class PluginProcessMainUnix final: public AuxiliaryProcessMainBase {
 public:
     bool platformInitialize() override
     {
@@ -73,6 +73,7 @@ public:
         if (!strcmp(argv[1], "-scanPlugin")) {
             ASSERT(argc == 3);
 #if PLUGIN_ARCHITECTURE(UNIX)
+            InitializeWebKit2();
             exit(NetscapePluginModule::scanPlugin(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE);
 #else
             exit(EXIT_FAILURE);
@@ -92,9 +93,9 @@ public:
     }
 };
 
-int PluginProcessMainUnix(int argc, char** argv)
+int PluginProcessMain(int argc, char** argv)
 {
-    return AuxiliaryProcessMain<PluginProcess, PluginProcessMain>(argc, argv);
+    return AuxiliaryProcessMain<PluginProcess, PluginProcessMainUnix>(argc, argv);
 }
 
 } // namespace WebKit

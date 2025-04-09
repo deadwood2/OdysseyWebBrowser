@@ -28,6 +28,7 @@ from flask import abort, send_from_directory, redirect, Response
 from jinja2 import Environment, PackageLoader, select_autoescape
 from resultsdbpy.flask_support.util import AssertRequest
 from resultsdbpy.flask_support.authed_blueprint import AuthedBlueprint
+from resultsdbpy.view.archive_view import ArchiveView
 from resultsdbpy.view.ci_view import CIView
 from resultsdbpy.view.commit_view import CommitView
 from resultsdbpy.view.site_menu import SiteMenu
@@ -68,6 +69,11 @@ class ViewRoutes(AuthedBlueprint):
             ci_controller=controller.ci_controller,
             site_menu=self.site_menu,
         )
+        self.archive = ArchiveView(
+            environment=self.environment,
+            archive_controller=controller.archive_controller,
+            site_menu=self.site_menu,
+        )
 
         self.add_url_rule('/', 'main', self.suites.search, methods=('GET',))
         self.add_url_rule('/search', 'search', self.suites.search, methods=('GET',))
@@ -85,10 +91,13 @@ class ViewRoutes(AuthedBlueprint):
         self.add_url_rule('/urls/worker', 'urls-worker', self.ci.worker, methods=('GET',))
         self.add_url_rule('/urls/build', 'urls-build', self.ci.build, methods=('GET',))
 
-        self.site_menu.add_endpoint('Main', self.name + '.main')
-        self.site_menu.add_endpoint('Suites', self.name + '.suites')
+        self.add_url_rule('/archive', 'archive-list', self.archive.extract, methods=('GET',))
+        self.add_url_rule('/archive/<path:path>', 'archive', self.archive.extract, methods=('GET',))
+
+        self.site_menu.add_endpoint('Main', self.name + '.main', parameters=['branch'])
+        self.site_menu.add_endpoint('Suites', self.name + '.suites', parameters=['branch'])
         self.site_menu.add_endpoint('Documentation', self.name + '.documentation')
-        self.site_menu.add_endpoint('Commits', self.name + '.commits')
+        self.site_menu.add_endpoint('Commits', self.name + '.commits', parameters=['branch'])
 
         self.register_error_handler(500, self.response_500)
 
@@ -126,7 +135,7 @@ class ViewRoutes(AuthedBlueprint):
             title=f'{self.title}: {error.code}',
             name=error.name, description=error.description,
             **kwargs)
-        return response
+        return response, error.code
 
     @SiteMenu.render_with_site_menu()
     def documentation(self, **kwargs):

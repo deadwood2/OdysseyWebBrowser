@@ -555,6 +555,11 @@ static void openPrivateWindow(BrowserWindow *window)
     gtk_widget_show(GTK_WIDGET(newWindow));
 }
 
+static void focusLocationBar(BrowserWindow *window)
+{
+    gtk_widget_grab_focus(window->uriEntry);
+}
+
 static void reloadPage(BrowserWindow *window)
 {
     WebKitWebView *webView = browser_tab_get_web_view(window->activeTab);
@@ -704,6 +709,18 @@ static void browserWindowFinalize(GObject *gObject)
 
     if (!windowList)
         gtk_main_quit();
+}
+
+static void browserWindowDispose(GObject *gObject)
+{
+    BrowserWindow *window = BROWSER_WINDOW(gObject);
+
+    if (window->parentWindow) {
+        g_object_remove_weak_pointer(G_OBJECT(window->parentWindow), (gpointer *)&window->parentWindow);
+        window->parentWindow = NULL;
+    }
+
+    G_OBJECT_CLASS(browser_window_parent_class)->dispose(gObject);
 }
 
 static void browserWindowSetupEditorToolbar(BrowserWindow *window)
@@ -941,6 +958,10 @@ static void browser_window_init(BrowserWindow *window)
     gtk_accel_group_connect(window->accelGroup, GDK_KEY_P, GDK_CONTROL_MASK | GDK_SHIFT_MASK, GTK_ACCEL_VISIBLE,
         g_cclosure_new_swap(G_CALLBACK(openPrivateWindow), window, NULL));
 
+    /* Focus location bar */
+    gtk_accel_group_connect(window->accelGroup, GDK_KEY_L, GDK_CONTROL_MASK, GTK_ACCEL_VISIBLE,
+        g_cclosure_new_swap(G_CALLBACK(focusLocationBar), window, NULL));
+
     /* Reload page */
     gtk_accel_group_connect(window->accelGroup, GDK_KEY_F5, 0, GTK_ACCEL_VISIBLE,
         g_cclosure_new_swap(G_CALLBACK(reloadPage), window, NULL));
@@ -1117,6 +1138,7 @@ static void browser_window_class_init(BrowserWindowClass *klass)
     GObjectClass *gobjectClass = G_OBJECT_CLASS(klass);
 
     gobjectClass->constructed = browserWindowConstructed;
+    gobjectClass->dispose = browserWindowDispose;
     gobjectClass->finalize = browserWindowFinalize;
 
     GtkWidgetClass *widgetClass = GTK_WIDGET_CLASS(klass);
@@ -1224,12 +1246,25 @@ void browser_window_set_background_color(BrowserWindow *window, GdkRGBA *rgba)
     gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
 }
 
+static BrowserWindow *findActiveWindow(void)
+{
+    GList *l;
+
+    for (l = windowList; l; l = g_list_next(l)) {
+        BrowserWindow *window = (BrowserWindow *)l->data;
+        if (gtk_window_is_active(GTK_WINDOW(window)))
+            return window;
+    }
+
+    return windowList ? (BrowserWindow *)windowList->data : NULL;
+}
+
 WebKitWebView *browser_window_get_or_create_web_view_for_automation(void)
 {
-    if (!windowList)
+    BrowserWindow *window = findActiveWindow();
+    if (!window)
         return NULL;
 
-    BrowserWindow *window = (BrowserWindow *)windowList->data;
     WebKitWebView *webView = browser_tab_get_web_view(window->activeTab);
     if (gtk_notebook_get_n_pages(GTK_NOTEBOOK(window->notebook)) == 1 && !webkit_web_view_get_uri(webView)) {
         webkit_web_view_load_uri(webView, "about:blank");
@@ -1242,8 +1277,29 @@ WebKitWebView *browser_window_get_or_create_web_view_for_automation(void)
         "user-content-manager", webkit_web_view_get_user_content_manager(webView),
         "is-controlled-by-automation", TRUE,
         NULL));
+    GtkWidget *newWindow = browser_window_new(GTK_WINDOW(window), window->webContext);
+    gtk_window_set_focus_on_map(GTK_WINDOW(newWindow), FALSE);
+    browser_window_append_view(BROWSER_WINDOW(newWindow), newWebView);
+    webkit_web_view_load_uri(newWebView, "about:blank");
+    gtk_widget_show(newWindow);
+    return newWebView;
+}
+
+WebKitWebView *browser_window_create_web_view_in_new_tab_for_automation(void)
+{
+    BrowserWindow *window = findActiveWindow();
+    if (!window)
+        return NULL;
+
+    WebKitWebView *webView = browser_tab_get_web_view(window->activeTab);
+    WebKitWebView *newWebView = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+        "web-context", webkit_web_view_get_context(webView),
+        "settings", webkit_web_view_get_settings(webView),
+        "user-content-manager", webkit_web_view_get_user_content_manager(webView),
+        "is-controlled-by-automation", TRUE,
+        "automation-presentation-type", WEBKIT_AUTOMATION_BROWSING_CONTEXT_PRESENTATION_TAB,
+        NULL));
     browser_window_append_view(window, newWebView);
     webkit_web_view_load_uri(newWebView, "about:blank");
-    gtk_widget_grab_focus(GTK_WIDGET(newWebView));
     return newWebView;
 }

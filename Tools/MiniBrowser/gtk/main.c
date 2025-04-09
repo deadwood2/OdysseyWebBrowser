@@ -66,6 +66,9 @@ static GQuark miniBrowserErrorQuark()
 
 static gchar *argumentToURL(const char *filename)
 {
+    if (g_str_equal(filename, "about:gpu"))
+        filename = "webkit://gpu";
+
     GFile *gfile = g_file_new_for_commandline_arg(filename);
     gchar *fileURL = g_file_get_uri(gfile);
     g_object_unref(gfile);
@@ -462,9 +465,14 @@ static void aboutURISchemeRequestCallback(WebKitURISchemeRequest *request, WebKi
     }
 }
 
-static GtkWidget *createWebViewForAutomationCallback(WebKitAutomationSession* session)
+static GtkWidget *createWebViewForAutomationInWindowCallback(WebKitAutomationSession* session)
 {
     return GTK_WIDGET(browser_window_get_or_create_web_view_for_automation());
+}
+
+static GtkWidget *createWebViewForAutomationInTabCallback(WebKitAutomationSession* session)
+{
+    return GTK_WIDGET(browser_window_create_web_view_in_new_tab_for_automation());
 }
 
 static void automationStartedCallback(WebKitWebContext *webContext, WebKitAutomationSession *session)
@@ -474,7 +482,8 @@ static void automationStartedCallback(WebKitWebContext *webContext, WebKitAutoma
     webkit_automation_session_set_application_info(session, info);
     webkit_application_info_unref(info);
 
-    g_signal_connect(session, "create-web-view", G_CALLBACK(createWebViewForAutomationCallback), NULL);
+    g_signal_connect(session, "create-web-view::window", G_CALLBACK(createWebViewForAutomationInWindowCallback), NULL);
+    g_signal_connect(session, "create-web-view::tab", G_CALLBACK(createWebViewForAutomationInTabCallback), NULL);
 }
 
 typedef struct {
@@ -522,14 +531,19 @@ int main(int argc, char *argv[])
     g_option_context_free (context);
 
     if (printVersion) {
-        g_print("WebKitGTK %u.%u.%u\n",
+        g_print("WebKitGTK %u.%u.%u",
             webkit_get_major_version(),
             webkit_get_minor_version(),
             webkit_get_micro_version());
+        if (g_strcmp0(SVN_REVISION, "tarball"))
+            g_print(" (%s)", SVN_REVISION);
+        g_print("\n");
         return 0;
     }
 
-    WebKitWebContext *webContext = (privateMode || automationMode) ? webkit_web_context_new_ephemeral() : webkit_web_context_get_default();
+    WebKitWebsiteDataManager *manager = (privateMode || automationMode) ? webkit_website_data_manager_new_ephemeral() : webkit_website_data_manager_new(NULL);
+    WebKitWebContext *webContext = g_object_new(WEBKIT_TYPE_WEB_CONTEXT, "website-data-manager", manager, "process-swap-on-cross-site-navigation-enabled", TRUE, NULL);
+    g_object_unref(manager);
 
     if (cookiesPolicy) {
         WebKitCookieManager *cookieManager = webkit_web_context_get_cookie_manager(webContext);

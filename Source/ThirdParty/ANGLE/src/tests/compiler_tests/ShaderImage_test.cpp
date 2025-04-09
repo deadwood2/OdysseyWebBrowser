@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2016 The ANGLE Project Authors. All rights reserved.
+// Copyright 2016 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -72,7 +72,7 @@ void CheckImageLoadCall(TIntermNode *astRoot,
 }
 
 // Checks whether the image is properly exported as a uniform by the compiler.
-void CheckExportedImageUniform(const std::vector<sh::Uniform> &uniforms,
+void CheckExportedImageUniform(const std::vector<sh::ShaderVariable> &uniforms,
                                size_t uniformIndex,
                                ::GLenum imageTypeGL,
                                const TString &imageName)
@@ -243,6 +243,9 @@ TEST_F(ShaderImageTest, ImageMemoryQualifiers)
         "layout(rgba32f) uniform highp volatile writeonly image2D image2;\n"
         "layout(rgba32f) uniform highp volatile restrict readonly writeonly image2D image3;\n"
         "void main() {\n"
+        "    imageSize(image1);\n"
+        "    imageSize(image2);\n"
+        "    imageSize(image3);\n"
         "}";
     if (!compile(shaderString))
     {

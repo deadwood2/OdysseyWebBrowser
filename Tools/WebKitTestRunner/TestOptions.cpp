@@ -56,6 +56,11 @@ static bool isSVGTestPath(const std::string& pathOrURL)
     return pathContains(pathOrURL, "svg/W3C-SVG-1.1") || pathContains(pathOrURL, "svg\\W3C-SVG-1.1");
 }
 
+static bool shouldUseEphemeralSession(const std::string& pathOrURL)
+{
+    return pathContains(pathOrURL, "w3c/IndexedDB-private-browsing") || pathContains(pathOrURL, "w3c\\IndexedDB-private-browsing");
+}
+
 static float deviceScaleFactorForTest(const std::string& pathOrURL)
 {
     if (pathContains(pathOrURL, "/hidpi-3x-"))
@@ -65,10 +70,23 @@ static float deviceScaleFactorForTest(const std::string& pathOrURL)
     return 1;
 }
 
+static bool shouldDumpJSConsoleLogInStdErr(const std::string& pathOrURL)
+{
+    return pathContains(pathOrURL, "localhost:8800/beacon") || pathContains(pathOrURL, "localhost:9443/beacon")
+        || pathContains(pathOrURL, "localhost:8800/cors") || pathContains(pathOrURL, "localhost:9443/cors")
+        || pathContains(pathOrURL, "localhost:8800/fetch") || pathContains(pathOrURL, "localhost:9443/fetch")
+        || pathContains(pathOrURL, "localhost:8800/service-workers") || pathContains(pathOrURL, "localhost:9443/service-workers")
+        || pathContains(pathOrURL, "localhost:8800/xhr") || pathContains(pathOrURL, "localhost:9443/xhr")
+        || pathContains(pathOrURL, "localhost:8800/webrtc") || pathContains(pathOrURL, "localhost:9443/webrtc")
+        || pathContains(pathOrURL, "localhost:8800/websockets") || pathContains(pathOrURL, "localhost:9443/websockets");
+}
+
 TestOptions::TestOptions(const std::string& pathOrURL)
     : useFlexibleViewport(shouldMakeViewportFlexible(pathOrURL))
     , useFixedLayout(shouldUseFixedLayout(pathOrURL))
     , isSVGTest(isSVGTestPath(pathOrURL))
+    , useEphemeralSession(shouldUseEphemeralSession(pathOrURL))
+    , dumpJSConsoleLogInStdErr(shouldDumpJSConsoleLogInStdErr(pathOrURL))
     , deviceScaleFactor(deviceScaleFactorForTest(pathOrURL))
 {
 }

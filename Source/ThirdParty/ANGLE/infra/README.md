@@ -23,7 +23,11 @@ Try jobs from pre-commit builds are found on the builders console:
 
  1. [`bugs.chromium.org/p/chromium/issues/entry?template=Build+Infrastructure`](http://bugs.chromium.org/p/chromium/issues/entry?template=Build+Infrastructure):
 
-    * Request new slaves by filing an infra issue.
+    * If adding a Mac bot, request new slaves by filing an infra issue.
+
+ 1. [`chrome-internal.googlesource.com/infradata/config`](http://chrome-internal.googlesource.com/infradata/config):
+
+    * Update **`configs/chromium-swarm/starlark/bots/angle.star`** with either Mac slaves requested in the previous step or increase the amount of Windows or Linux GCEs.
 
  1. [`chromium.googlesource.com/chromium/tools/build`](https://chromium.googlesource.com/chromium/tools/build):
 
@@ -31,16 +35,12 @@ Try jobs from pre-commit builds are found on the builders console:
     * The recipe code requires 100% code coverage through mock bots, so add mock bot config to GenTests.
     * Maybe run `./scripts/slave/recipes.py test train` to update checked-in golden files. This might no longer be necessary.
 
- 1. [`chrome-internal.googlesource.com/infradata/config`](http://chrome-internal.googlesource.com/infradata/config):
-
-    * Update **`configs/chromium-swarm/bots.cfg`** to map from the slaves requested in step 1 to the builder configured in step 2.
-
  1. [`chromium.googlesource.com/angle/angle`](http://chromium.googlesource.com/angle/angle):
 
     * Update **`infra/config/global/cr-buildbucket.cfg`** to add the new builder (to ci and try), and set the new config option.
     * Update **`infra/config/global/luci-milo.cfg`** to make the builders show up on the ci and try waterfalls.
     * Update **`infra/config/global/luci-scheduler.cfg`** to make the builders trigger on new commits or try jobs respectively.
-    * Update **`infra/config/cq.cfg`** to add the builder to the default CQ jobs (if desired).
+    * Update **`infra/config/global/commit-queue.cfg`** to add the builder to the default CQ jobs (if desired).
 
 ## Other Configuration
 

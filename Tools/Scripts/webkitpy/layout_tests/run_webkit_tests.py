@@ -118,6 +118,10 @@ def parse_args(args):
             help="Use accelerated drawing (OS X only)"),
         optparse.make_option("--remote-layer-tree", action="store_true", default=False,
             help="Use the remote layer tree drawing model (OS X WebKit2 only)"),
+        optparse.make_option("--internal-feature", type="string", action="append", default=[],
+            help="Enable (disable) an internal feature (--internal-feature FeatureName[=true|false])"),
+        optparse.make_option("--experimental-feature", type="string", action="append", default=[],
+            help="Enable (disable) an experimental feature (--experimental-feature FeatureName[=true|false])"),
     ]))
 
     option_group_definitions.append(("WebKit Options", [
@@ -249,8 +253,8 @@ def parse_args(args):
         optparse.make_option("--force", action="store_true", default=False,
             help="Run all tests with PASS as expected result, even those marked SKIP in the test list or " + \
                  "those which are device-specific (implies --skipped=ignore)"),
-        optparse.make_option("--time-out-ms",
-            help="Set the timeout for each test"),
+        optparse.make_option("--time-out-ms", "--timeout",
+            help="Set the timeout for each test in milliseconds"),
         optparse.make_option("--order", action="store", default="natural",
             help=("determine the order in which the test cases will be run. "
                   "'none' == use the order in which the tests were listed either in arguments or test list, "
@@ -311,12 +315,21 @@ def parse_args(args):
     ]))
 
     option_group_definitions.append(("Miscellaneous Options", [
-        optparse.make_option("--lint-test-files", action="store_true",
-        default=False, help=("Makes sure the test files parse for all "
-                            "configurations. Does not run any tests.")),
-        optparse.make_option("--print-expectations", action="store_true",
-        default=False, help=("Print the expected outcome for the given test, or all tests listed in TestExpectations. "
-                            "Does not run any tests.")),
+        optparse.make_option(
+            "--lint-test-files", action="store_true", default=False,
+            help=("Makes sure the test files parse for all configurations. Does not run any tests.")),
+        optparse.make_option(
+            "--print-expectations", action="store_true", default=False,
+            help=("Print the expected outcome for the given test, or all tests listed in TestExpectations. Does not run any tests.")),
+        optparse.make_option(
+            "--webgl-test-suite", action="store_true", default=False,
+            help=("Run exhaustive webgl list, including test ordinarily skipped for performance reasons. Equivalent to '--additional-expectations=LayoutTests/webgl/TestExpectations webgl'")),
+        optparse.make_option(
+            "--use-gpu-process", action="store_true", default=False,
+            help=("Enable all GPU process related features, also set additional expectations and the result report flavor.")),
+        optparse.make_option(
+            "--prefer-integrated-gpu", action="store_true", default=False,
+            help=("Prefer using the lower-power integrated GPU on a dual-GPU system. Note that other running applications and the tests themselves can override this request.")),
     ]))
 
     option_group_definitions.append(("Web Platform Test Server Options", [
@@ -351,7 +364,27 @@ def parse_args(args):
         option_group.add_options(group_options)
         option_parser.add_option_group(option_group)
 
-    return option_parser.parse_args(args)
+    options, args = option_parser.parse_args(args)
+    if options.webgl_test_suite:
+        if not args:
+            args.append('webgl')
+        host = Host()
+        host.initialize_scm()
+        options.additional_expectations.insert(0, host.filesystem.join(host.scm().checkout_root, 'LayoutTests/webgl/TestExpectations'))
+
+    if options.use_gpu_process:
+        host = Host()
+        host.initialize_scm()
+        options.additional_expectations.insert(0, host.filesystem.join(host.scm().checkout_root, 'LayoutTests/gpu-process/TestExpectations'))
+        if not options.internal_feature:
+            options.internal_feature = []
+        options.internal_feature.append('UseGPUProcessForMedia')
+        options.internal_feature.append('CaptureAudioInGPUProcessEnabled')
+        if options.result_report_flavor:
+            raise RuntimeError('--use-gpu-process implicitly sets the result flavor, this should not be overridden')
+        options.result_report_flavor = 'gpuprocess'
+
+    return options, args
 
 
 def _print_expectations(port, options, args, logging_stream):

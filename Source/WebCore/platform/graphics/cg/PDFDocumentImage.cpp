@@ -42,6 +42,7 @@
 #include "SharedBuffer.h"
 #include <CoreGraphics/CGContext.h>
 #include <CoreGraphics/CGPDFDocument.h>
+#include <pal/spi/cg/CoreGraphicsSPI.h>
 #include <wtf/MathExtras.h>
 #include <wtf/RAMSize.h>
 #include <wtf/RetainPtr.h>
@@ -66,7 +67,7 @@ String PDFDocumentImage::filenameExtension() const
     return "pdf";
 }
 
-FloatSize PDFDocumentImage::size() const
+FloatSize PDFDocumentImage::size(ImageOrientation) const
 {
     FloatSize expandedCropBoxSize = FloatSize(expandedIntSize(m_cropBox.size()));
 

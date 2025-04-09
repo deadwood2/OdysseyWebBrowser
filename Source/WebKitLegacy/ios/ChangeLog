@@ -1,3 +1,112 @@
+2020-02-07  Jon Lee  <jonlee@apple.com>
+
+        Web Inspector: Revert slim toolbar
+        https://bugs.webkit.org/show_bug.cgi?id=207422
+
+        Reviewed by Timothy Hatcher.
+
+        The slim toolbar needs a little more work before landing.
+
+        This patch reverts r255547, r255557, r255890, r255892, r255893, r255901, r255980.
+
+        * WebCoreSupport/WebInspectorClientIOS.mm:
+
+2020-02-01  Devin Rousso  <drousso@apple.com>
+
+        Web Inspector: move the items in the toolbar into the tab bar to save vertical space
+        https://bugs.webkit.org/show_bug.cgi?id=204627
+
+        Reviewed by Timothy Hatcher.
+
+        Now that there is no toolbar area, there is nothing obstructing the ability for the window
+        to be moved around when dragging via the title bar area. As such, we can remove the unused
+        `InspectorFrontendHost` APIs.
+
+        * WebCoreSupport/WebInspectorClientIOS.mm:
+        (WebInspectorFrontendClient::startWindowDrag): Deleted.
+
+2020-01-15  Tim Horton  <timothy_horton@apple.com>
+
+        WebKit should not expose a unprefixed CGRectValue category method on NSValue
+        https://bugs.webkit.org/show_bug.cgi?id=206297
+        <rdar://problem/58592554>
+
+        Reviewed by Wenson Hsieh.
+
+        * WebView/WebPDFViewPlaceholder.mm:
+        (-[NSValue CGRectValue]): Deleted.
+
+2020-01-03  Chris Dumez  <cdumez@apple.com>
+
+        Add support for DragEvent
+        https://bugs.webkit.org/show_bug.cgi?id=205758
+
+        Reviewed by Darin Adler.
+
+        * WebView/WebPDFViewPlaceholder.mm:
+        (-[WebPDFViewPlaceholder simulateClickOnLinkToURL:]):
+
+2019-12-20  Brian Burg  <bburg@apple.com>
+
+        Web Inspector: convert some InspectorFrontendHost methods to getters
+        https://bugs.webkit.org/show_bug.cgi?id=205475
+
+        Reviewed by Devin Rousso.
+
+        * WebCoreSupport/WebInspectorClientIOS.mm:
+        (WebInspectorFrontendClient::localizedStringsURL const):
+        (WebInspectorFrontendClient::localizedStringsURL): Deleted.
+
+2019-12-17  Tim Horton  <timothy_horton@apple.com>
+
+        macCatalyst: Cursor should update on mouse movement and style change
+        https://bugs.webkit.org/show_bug.cgi?id=205317
+        <rdar://problem/46793696>
+
+        Reviewed by Anders Carlsson.
+
+        * WebCoreSupport/WebChromeClientIOS.h:
+        Provide a stub implementation of cursor-related ChromeClient methods.
+
+2019-12-14  David Kilzer  <ddkilzer@apple.com>
+
+        Add release assert for selectedIndex in WebKit::WebPopupMenu::show()
+        <https://webkit.org/b/205223>
+        <rdar://problem/57929078>
+
+        Reviewed by Wenson Hsieh.
+
+        * WebCoreSupport/PopupMenuIOS.h:
+        (PopupMenuIOS::show):
+        - Rename `index` parameter to `selectedIndex`.
+        * WebCoreSupport/PopupMenuIOS.mm:
+        (PopupMenuIOS::show):
+        - Rename `index` parameter to `selectedIndex`.
+        (PopupMenuIOS::disconnectClient):
+        - Drive-by fix to change 0 to nullptr.
+
+2019-10-16  Chris Dumez  <cdumez@apple.com>
+
+        Rename PageCache to BackForwardCache
+        https://bugs.webkit.org/show_bug.cgi?id=203048
+
+        Reviewed by Alex Christensen.
+
+        Rename PageCache to BackForwardCache for clarity and consistency with the UIProcess's WebBackForwardCache.
+
+        * WebView/WebUIKitDelegate.h:
+
+2019-10-09  Andy Estes  <aestes@apple.com>
+
+        [iOS] Remove redundant uses of USE(UIKIT_EDITING)
+        https://bugs.webkit.org/show_bug.cgi?id=202717
+
+        Reviewed by Anders Carlsson.
+
+        * WebCoreSupport/WebVisiblePosition.mm:
+        (-[DOMNode startPosition]):
+        (-[DOMNode endPosition]):
+
 2019-08-23  Chris Dumez  <cdumez@apple.com>
 
         [geolocation] Rename interfaces and remove [NoInterfaceObject]

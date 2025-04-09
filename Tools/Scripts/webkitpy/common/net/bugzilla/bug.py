@@ -30,7 +30,7 @@
 
 import re
 
-from .attachment import Attachment
+from webkitpy.common.net.bugzilla.attachment import Attachment
 
 
 class Bug(object):
@@ -110,7 +110,7 @@ class Bug(object):
             return patches
         # Checking reviewer() ensures that it was both reviewed and has a valid
         # reviewer.
-        return filter(lambda patch: patch.reviewer(), patches)
+        return list(filter(lambda patch: patch.reviewer(), patches))
 
     def commit_queued_patches(self, include_invalid=False):
         patches = [patch for patch in self.patches()
@@ -119,7 +119,7 @@ class Bug(object):
             return patches
         # Checking committer() ensures that it was both commit-queue+'d and has
         # a valid committer.
-        return filter(lambda patch: patch.committer(), patches)
+        return list(filter(lambda patch: patch.committer(), patches))
 
     def comments(self):
         return self.bug_dictionary["comments"]
@@ -133,7 +133,7 @@ class Bug(object):
     def commit_revision(self):
         # Sort the comments in reverse order as we want the latest committed revision.
         r = re.compile("Committed r(?P<svn_revision>\d+)")
-        for comment in sorted(self.comments(), reverse=True):
+        for comment in sorted(self.comments(), key=lambda comment: comment['text'], reverse=True):
             rev = r.search(comment['text'])
             if rev:
                 return int(rev.group('svn_revision'))

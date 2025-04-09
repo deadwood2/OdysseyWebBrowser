@@ -2,7 +2,7 @@
 #
 # Copyright (C) 2011 Google Inc. All rights reserved.
 # Copyright (C) 2009 Torch Mobile Inc.
-# Copyright (C) 2009-2019 Apple Inc. All rights reserved.
+# Copyright (C) 2009-2020 Apple Inc. All rights reserved.
 # Copyright (C) 2010 Chris Jerdonek (cjerdonek@webkit.org)
 #
 # Redistribution and use in source and binary forms, with or without
@@ -40,9 +40,10 @@ import os
 import random
 import re
 import unittest
-import cpp as cpp_style
-from cpp import CppChecker
-from ..filter import FilterConfiguration
+from webkitpy.common.unicode_compatibility import decode_if_necessary
+from webkitpy.style.checkers import cpp as cpp_style
+from webkitpy.style.checkers.cpp import CppChecker
+from webkitpy.style.filter import FilterConfiguration
 
 
 # This class works as an error collector and replaces cpp_style.Error
@@ -308,7 +309,7 @@ class CppStyleTestBase(unittest.TestCase):
         return self.perform_lint(code, filename, basic_error_rules, unit_test_config)
 
     # Only include header guard errors.
-    def perform_header_guard_check(self, code, filename='foo.h'):
+    def perform_header_guard_check(self, code, filename):
         basic_error_rules = ('-', '+build/header_guard')
         return self.perform_lint(code, filename, basic_error_rules)
 
@@ -342,9 +343,9 @@ class CppStyleTestBase(unittest.TestCase):
         self.assertEqual(expected_message,
                           self.perform_include_what_you_use(code))
 
-    def assert_header_guard(self, code, expected_message):
+    def assert_header_guard(self, code, expected_message, filename='foo.h'):
         self.assertEqual(expected_message,
-                          self.perform_header_guard_check(code))
+                         self.perform_header_guard_check(code, filename))
 
     def assert_blank_lines_check(self, lines, start_errors, end_errors):
         error_collector = ErrorCollector(self.assertTrue)
@@ -2124,6 +2125,7 @@ class CppStyleTest(CppStyleTestBase):
 
     def test_spacing_before_brackets(self):
         self.assert_lint('delete [] base;', '')
+        self.assert_lint('auto [foo, bar] = getFooAndBar();', '')
         # See SOFT_LINK_CLASS_FOR_HEADER() macro in SoftLinking.h.
         self.assert_lint('        return [get_##framework##_##className##Class() alloc]; \\', '')
         self.assert_lint('        m_taskFunction = [callee, method, arguments...] {', '')
@@ -2447,7 +2449,7 @@ class CppStyleTest(CppStyleTestBase):
         def do_test(self, raw_bytes, has_invalid_utf8):
             error_collector = ErrorCollector(self.assertTrue)
             self.process_file_data('foo.cpp', 'cpp',
-                                   unicode(raw_bytes, 'utf8', 'replace').split('\n'),
+                                   decode_if_necessary(raw_bytes, encoding='utf8', errors='replace').split('\n'),
                                    error_collector)
             # The warning appears only once.
             self.assertEqual(
@@ -2457,12 +2459,12 @@ class CppStyleTest(CppStyleTestBase):
                     ' (or Unicode replacement character).'
                     '  [readability/utf8] [5]'))
 
-        do_test(self, 'Hello world\n', False)
-        do_test(self, '\xe9\x8e\xbd\n', False)
-        do_test(self, '\xe9x\x8e\xbd\n', True)
+        do_test(self, b'Hello world\n', False)
+        do_test(self, b'\xe9\x8e\xbd\n', False)
+        do_test(self, b'\xe9x\x8e\xbd\n', True)
         # This is the encoding of the replacement character itself (which
         # you can see by evaluating codecs.getencoder('utf8')(u'\ufffd')).
-        do_test(self, '\xef\xbf\xbd\n', True)
+        do_test(self, b'\xef\xbf\xbd\n', True)
 
     def test_is_blank_line(self):
         self.assertTrue(cpp_style.is_blank_line(''))
@@ -2674,16 +2676,82 @@ class CppStyleTest(CppStyleTestBase):
     def test_build_header_guard(self):
         rules = ('-', '+build/header_guard')
 
-        # Old header guard.
-        self.assert_header_guard('#ifndef Foo_h',
+        # No warning for config.h and *Prefix.h headers.
+        self.assert_header_guard('', '', 'config.h')
+        self.assert_header_guard('', '', 'FooPrefix.h')
+
+        # No warning for valid header guard.
+        self.assert_header_guard('#pragma once', '')
+
+        # Warning for old header guard.
+        self.assert_header_guard(
+            '#ifndef Foo_h\n'
+            '#define Foo_h\n'
+            '#endif /* Foo_h */\n',
             'Use #pragma once instead of #ifndef for header guard.'
             '  [build/header_guard] [5]')
 
-        # No header guard. Okay, since this could be an ObjC header.
-        self.assert_header_guard('', '')
+        # Warning for missing header guard.
+        self.assert_header_guard(
+            '',
+            'Missing #pragma once for header guard.'
+            '  [build/header_guard_missing] [5]')
 
-        # Valid header guard.
-        self.assert_header_guard('#pragma once', '')
+        # No warning for Obj-C header with #import statement.
+        self.assert_header_guard(
+            '#import <Foundation/Foundation.h>',
+            '')
+
+        # No warning for Obj-C header with @class keyword.
+        self.assert_header_guard(
+            '@class NSString;',
+            '')
+
+        # No warning for Obj-C header with @interface keyword.
+        self.assert_header_guard(
+            '@interface NSString (MyCategory)\n'
+            '@end\n',
+            '')
+
+        # No warning for Obj-C header with @protocol keyword.
+        self.assert_header_guard(
+            '@protocol MyProtocol : NSObject\n'
+            '@end\n',
+            '')
+
+        # Warning for Obj-C header with #import statement and __OBJC__ check.
+        self.assert_header_guard(
+            '#ifdef __OBJC__\n'
+            '#import <Foundation/Foundation.h>\n'
+            '#endif /* __OBJC__ */\n',
+            'Missing #pragma once for header guard.'
+            '  [build/header_guard_missing] [5]')
+
+        # Warning for Obj-C header with @class keyword and __OBJC__ check.
+        self.assert_header_guard(
+            '#ifdef __OBJC__\n'
+            '@class NSString;\n'
+            '#endif /* __OBJC__ */\n',
+            'Missing #pragma once for header guard.'
+            '  [build/header_guard_missing] [5]')
+
+        # Warning for Obj-C header with @interface keyword and __OBJC__ check.
+        self.assert_header_guard(
+            '#ifdef __OBJC__\n'
+            '@interface NSString (MyCategory)\n'
+            '@end\n'
+            '#endif /* __OBJC__ */\n',
+            'Missing #pragma once for header guard.'
+            '  [build/header_guard_missing] [5]')
+
+        # Warning for Obj-C header with @protocol keyword and __OBJC__ check.
+        self.assert_header_guard(
+            '#ifdef __OBJC__\n'
+            '@protocol MyProtocol : NSObject\n'
+            '@end\n'
+            '#endif /* __OBJC__ */\n',
+            'Missing #pragma once for header guard.'
+            '  [build/header_guard_missing] [5]')
 
     def test_build_printf_format(self):
         self.assert_lint(
@@ -2786,7 +2854,7 @@ class CppStyleTest(CppStyleTestBase):
             other_decl_specs = [random.choice(qualifiers), random.choice(signs),
                                 random.choice(types)]
             # remove None
-            other_decl_specs = filter(lambda x: x is not None, other_decl_specs)
+            other_decl_specs = list(filter(lambda x: x is not None, other_decl_specs))
 
             # shuffle
             random.shuffle(other_decl_specs)
@@ -2945,11 +3013,11 @@ class OrderOfIncludesTest(CppStyleTestBase):
 
     def test_check_next_include_order__no_config(self):
         self.assertEqual('Header file should not contain WebCore config.h.',
-                         self.include_state.check_next_include_order(cpp_style._CONFIG_HEADER, 'Foo.h', True, True))
+                         self.include_state.check_next_include_order(cpp_style._CONFIG_HEADER, 'Foo.h', True, True, True))
 
     def test_check_next_include_order__no_self(self):
         self.assertEqual('Header file should not contain itself.',
-                         self.include_state.check_next_include_order(cpp_style._PRIMARY_HEADER, 'Foo.h', True, True))
+                         self.include_state.check_next_include_order(cpp_style._PRIMARY_HEADER, 'Foo.h', True, True, True))
         # Test actual code to make sure that header types are correctly assigned.
         self.assert_language_rules_check('Foo.h',
                                          '#include "Foo.h"\n',
@@ -2961,22 +3029,26 @@ class OrderOfIncludesTest(CppStyleTestBase):
 
     def test_check_next_include_order__likely_then_config(self):
         self.assertEqual('Found header this file implements before WebCore config.h.',
-                         self.include_state.check_next_include_order(cpp_style._PRIMARY_HEADER, 'Foo.cpp', False, True))
+                         self.include_state.check_next_include_order(cpp_style._PRIMARY_HEADER, 'Foo.cpp', False, True, True))
         self.assertEqual('Found WebCore config.h after a header this file implements.',
-                         self.include_state.check_next_include_order(cpp_style._CONFIG_HEADER, 'Foo.cpp', False, True))
+                         self.include_state.check_next_include_order(cpp_style._CONFIG_HEADER, 'Foo.cpp', False, True, True))
+
+    def test_check_next_include_order__no_config_module(self):
+        self.assertEqual('',
+                         self.include_state.check_next_include_order(cpp_style._PRIMARY_HEADER, 'Foo.cpp', False, True, False))
 
     def test_check_next_include_order__other_then_config(self):
         self.assertEqual('Found other header before WebCore config.h.',
-                         self.include_state.check_next_include_order(cpp_style._OTHER_HEADER, 'Foo.cpp', False, True))
+                         self.include_state.check_next_include_order(cpp_style._OTHER_HEADER, 'Foo.cpp', False, True, True))
         self.assertEqual('Found WebCore config.h after other header.',
-                         self.include_state.check_next_include_order(cpp_style._CONFIG_HEADER, 'Foo.cpp', False, True))
+                         self.include_state.check_next_include_order(cpp_style._CONFIG_HEADER, 'Foo.cpp', False, True, True))
 
     def test_check_next_include_order__config_then_other_then_likely(self):
-        self.assertEqual('', self.include_state.check_next_include_order(cpp_style._CONFIG_HEADER, 'Foo.cpp', False, True))
+        self.assertEqual('', self.include_state.check_next_include_order(cpp_style._CONFIG_HEADER, 'Foo.cpp', False, True, True))
         self.assertEqual('Found other header before a header this file implements.',
-                         self.include_state.check_next_include_order(cpp_style._OTHER_HEADER, 'Foo.cpp', False, True))
+                         self.include_state.check_next_include_order(cpp_style._OTHER_HEADER, 'Foo.cpp', False, True, True))
         self.assertEqual('Found header this file implements after other header.',
-                         self.include_state.check_next_include_order(cpp_style._PRIMARY_HEADER, 'Foo.cpp', False, True))
+                         self.include_state.check_next_include_order(cpp_style._PRIMARY_HEADER, 'Foo.cpp', False, True, True))
 
     def test_check_alphabetical_include_order(self):
         self.assert_language_rules_check('foo.h',
@@ -4360,6 +4432,12 @@ class WebKitStyleTest(CppStyleTestBase):
             '')
 
         self.assert_multi_line_lint(
+            '    for (foo *bar in [foo bar:baz])\n'
+            '        process(bar);\n',
+            '',
+            'foo.mm')
+
+        self.assert_multi_line_lint(
             '    for (const Vector& vector: vectors)\n'
             '        process(vector);\n',
             'Missing space around : in range-based for statement  [whitespace/colon] [4]')
@@ -5217,6 +5295,42 @@ class WebKitStyleTest(CppStyleTestBase):
             '  [runtime/max_min_macros] [4]',
             'foo.h')
 
+    def test_wtf_make_unique(self):
+        self.assert_lint(
+             'std::unique_ptr<Foo> foo = WTF::makeUnique<Foo>();',
+             '',
+             'foo.cpp')
+
+        self.assert_lint(
+            'std::unique_ptr<Foo> foo = std::make_unique<Foo>();',
+            "Use 'WTF::makeUnique<Foo>' instead of 'std::make_unique<Foo>'."
+            "  [runtime/wtf_make_unique] [4]",
+            'foo.cpp')
+
+        self.assert_lint(
+            'std::unique_ptr<Foo> foo = std::make_unique<Foo>();',
+            "Use 'WTF::makeUnique<Foo>' instead of 'std::make_unique<Foo>'."
+            "  [runtime/wtf_make_unique] [4]",
+            'foo.mm')
+
+    def test_wtf_make_unique_array(self):
+        self.assert_lint(
+             'WTF::UniqueArray<uint32_t> array = WTF::makeUniqueArray<uint32_t>(10);',
+             '',
+             'foo.cpp')
+
+        self.assert_lint(
+            'std::unique_ptr<uint32_t[]> array = std::make_unique<uint32_t[]>(10);',
+            "Use 'WTF::makeUniqueArray<uint32_t>' instead of 'std::make_unique<uint32_t[]>'."
+            "  [runtime/wtf_make_unique] [4]",
+            'foo.cpp')
+
+        self.assert_lint(
+            'std::unique_ptr<uint32_t[]> array = std::make_unique<uint32_t[]>(10);',
+            "Use 'WTF::makeUniqueArray<uint32_t>' instead of 'std::make_unique<uint32_t[]>'."
+            "  [runtime/wtf_make_unique] [4]",
+            'foo.mm')
+
     def test_wtf_move(self):
         self.assert_lint(
              'A a = WTFMove(b);',
@@ -5427,6 +5541,15 @@ class WebKitStyleTest(CppStyleTestBase):
         self.assert_lint_one_of_many_errors_re('void otherkit_web_view_load(int var1, int var2)',
             'otherkit_web_view_load is incorrectly named. Don\'t use underscores in your identifier names.'
             '  [readability/naming/underscores] [4]', 'Source/Webkit/webkit/foo.cpp')
+
+        # There is an exception for GLib JavaScriptCore API.
+        self.assert_lint('JSCValue* jsc_value_new_null(JSCContext* context)', '', 'Source/JavaScriptCore/API/glib/JSCValue.cpp')
+        self.assert_lint('void my_function(int variable_1)',
+                         ['my_function' + name_underscore_error_message,
+                          'variable_1' + name_underscore_error_message],
+                         'Source/JavaScriptCore/API/glib/JSCValue.cpp')
+        self.assert_lint('gboolean jsc_value_is_undefined(JSCValue* value)',
+                         'jsc_value_is_undefined' + name_underscore_error_message)
 
         # There is an exception for some unit tests that begin with "tst_".
         self.assert_lint('void tst_QWebFrame::arrayObjectEnumerable(int var1, int var2)', '')
@@ -5746,14 +5869,14 @@ class WebKitStyleTest(CppStyleTestBase):
         self.assert_lint('WK_API_AVAILABLE(ios(WK_MAC_TBA))', 'ios(WK_MAC_TBA) is invalid; expected WK_IOS_TBA or a number  [build/wk_api_available] [5]')
 
     def test_os_version_checks(self):
-        self.assert_lint('#if PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED < 110000', 'Misplaced OS version check. Please use a named macro in wtf/Platform.h, wtf/FeatureDefines.h, or an appropriate internal file.  [build/version_check] [5]')
-        self.assert_lint('#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300', 'Misplaced OS version check. Please use a named macro in wtf/Platform.h, wtf/FeatureDefines.h, or an appropriate internal file.  [build/version_check] [5]')
-        self.assert_lint('#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101300', '', 'Source/WTF/wtf/Platform.h')
-        self.assert_lint('#if PLATFORM(MAC) && __IPHONE_OS_VERSION_MIN_REQUIRED > 120000', '', 'Source/WTF/wtf/Platform.h')
-        self.assert_lint('#if PLATFORM(MAC) && __IPHONE_OS_VERSION_MIN_REQUIRED > 120400', 'Incorrect OS version check. VERSION_MIN_REQUIRED values never include a minor version. You may be looking for a combination of VERSION_MIN_REQUIRED for target OS version check and VERSION_MAX_ALLOWED for SDK check.  [build/version_check] [5]', 'Source/WTF/wtf/Platform.h')
-        self.assert_lint('#if !TARGET_OS_SIMULATOR && __WATCH_OS_VERSION_MIN_REQUIRED < 50000', 'Misplaced OS version check. Please use a named macro in wtf/Platform.h, wtf/FeatureDefines.h, or an appropriate internal file.  [build/version_check] [5]')
-        self.assert_lint('#if (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED < 110000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101304)', ['Incorrect OS version check. VERSION_MIN_REQUIRED values never include a minor version. You may be looking for a combination of VERSION_MIN_REQUIRED for target OS version check and VERSION_MAX_ALLOWED for SDK check.  [build/version_check] [5]', 'Misplaced OS version check. Please use a named macro in wtf/Platform.h, wtf/FeatureDefines.h, or an appropriate internal file.  [build/version_check] [5]'])
-        self.assert_lint('#define FOO ((PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101302 && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300))', 'Misplaced OS version check. Please use a named macro in wtf/Platform.h, wtf/FeatureDefines.h, or an appropriate internal file.  [build/version_check] [5]')
+        self.assert_lint('#if PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED < 110000', 'Misplaced OS version check. Please use a named macro in one of headers in the wtf/Platform.h suite of files or an appropriate internal file.  [build/version_check] [5]')
+        self.assert_lint('#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300', 'Misplaced OS version check. Please use a named macro in one of headers in the wtf/Platform.h suite of files or an appropriate internal file.  [build/version_check] [5]')
+        self.assert_lint('#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101300', '', 'Source/WTF/wtf/PlatformEnableCocoa.h')
+        self.assert_lint('#if PLATFORM(MAC) && __IPHONE_OS_VERSION_MIN_REQUIRED > 120000', '', 'Source/WTF/wtf/PlatformHave.h')
+        self.assert_lint('#if PLATFORM(MAC) && __IPHONE_OS_VERSION_MIN_REQUIRED > 120400', 'Incorrect OS version check. VERSION_MIN_REQUIRED values never include a minor version. You may be looking for a combination of VERSION_MIN_REQUIRED for target OS version check and VERSION_MAX_ALLOWED for SDK check.  [build/version_check] [5]', 'Source/WTF/wtf/PlatformEnableCocoa.h')
+        self.assert_lint('#if !TARGET_OS_SIMULATOR && __WATCH_OS_VERSION_MIN_REQUIRED < 50000', 'Misplaced OS version check. Please use a named macro in one of headers in the wtf/Platform.h suite of files or an appropriate internal file.  [build/version_check] [5]')
+        self.assert_lint('#if (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED < 110000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101304)', ['Incorrect OS version check. VERSION_MIN_REQUIRED values never include a minor version. You may be looking for a combination of VERSION_MIN_REQUIRED for target OS version check and VERSION_MAX_ALLOWED for SDK check.  [build/version_check] [5]', 'Misplaced OS version check. Please use a named macro in one of headers in the wtf/Platform.h suite of files or an appropriate internal file.  [build/version_check] [5]'])
+        self.assert_lint('#define FOO ((PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101302 && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300))', 'Misplaced OS version check. Please use a named macro in one of headers in the wtf/Platform.h suite of files or an appropriate internal file.  [build/version_check] [5]')
 
     def test_other(self):
         # FIXME: Implement this.

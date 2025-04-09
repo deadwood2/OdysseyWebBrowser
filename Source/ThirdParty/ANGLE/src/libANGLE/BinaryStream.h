@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2012 The ANGLE Project Authors. All rights reserved.
+// Copyright 2012 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -206,7 +206,7 @@ class BinaryOutputStream : angle::NonCopyable
     }
 
     template <class IntT>
-    void writeIntVector(std::vector<IntT> param)
+    void writeIntVector(const std::vector<IntT> &param)
     {
         writeInt(param.size());
         for (IntT element : param)

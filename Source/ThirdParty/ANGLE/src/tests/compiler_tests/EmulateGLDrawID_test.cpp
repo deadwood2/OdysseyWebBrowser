@@ -7,9 +7,9 @@
 //   Test for ANGLE_draw_id extension
 //
 
-#include "compiler/translator/tree_ops/EmulateGLDrawID.h"
 #include "GLSLANG/ShaderLang.h"
 #include "angle_gl.h"
+#include "compiler/translator/tree_ops/EmulateMultiDrawShaderBuiltins.h"
 #include "gtest/gtest.h"
 #include "tests/test_utils/compiler_test.h"
 
@@ -97,7 +97,7 @@ TEST_F(EmulateGLDrawIDTest, EmulatesUniform)
 
 #ifdef ANGLE_ENABLE_VULKAN
     EXPECT_TRUE(
-        foundInCode(SH_GLSL_VULKAN_OUTPUT, "uniform defaultUniforms\n{\n    int angle_DrawID;"));
+        foundInCode(SH_GLSL_VULKAN_OUTPUT, "uniform defaultUniformsVS\n{\n    int angle_DrawID;"));
 #endif
 #ifdef ANGLE_ENABLE_HLSL
     EXPECT_TRUE(foundInCode(SH_HLSL_3_0_OUTPUT, "uniform int angle_DrawID : register"));

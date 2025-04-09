@@ -26,8 +26,10 @@
 #include "config.h"
 #include "WebURLSchemeTaskProxy.h"
 
+#include "Logging.h"
 #include "URLSchemeTaskParameters.h"
 #include "WebCoreArgumentCoders.h"
+#include "WebFrame.h"
 #include "WebPage.h"
 #include "WebPageProxyMessages.h"
 #include "WebURLSchemeHandlerProxy.h"
@@ -39,9 +41,10 @@
 namespace WebKit {
 using namespace WebCore;
 
-WebURLSchemeTaskProxy::WebURLSchemeTaskProxy(WebURLSchemeHandlerProxy& handler, ResourceLoader& loader)
+WebURLSchemeTaskProxy::WebURLSchemeTaskProxy(WebURLSchemeHandlerProxy& handler, ResourceLoader& loader, WebFrame& frame)
     : m_urlSchemeHandler(handler)
     , m_coreLoader(&loader)
+    , m_frame(&frame)
     , m_request(loader.request())
     , m_identifier(loader.identifier())
 {
@@ -50,7 +53,8 @@ WebURLSchemeTaskProxy::WebURLSchemeTaskProxy(WebURLSchemeHandlerProxy& handler, 
 void WebURLSchemeTaskProxy::startLoading()
 {
     ASSERT(m_coreLoader);
-    m_urlSchemeHandler.page().send(Messages::WebPageProxy::StartURLSchemeTask({m_urlSchemeHandler.identifier(), m_coreLoader->identifier(), m_request}));
+    ASSERT(m_frame);
+    m_urlSchemeHandler.page().send(Messages::WebPageProxy::StartURLSchemeTask(URLSchemeTaskParameters { m_urlSchemeHandler.identifier(), m_coreLoader->identifier(), m_request, m_frame->info() }));
 }
 
 void WebURLSchemeTaskProxy::stopLoading()
@@ -58,6 +62,7 @@ void WebURLSchemeTaskProxy::stopLoading()
     ASSERT(m_coreLoader);
     m_urlSchemeHandler.page().send(Messages::WebPageProxy::StopURLSchemeTask(m_urlSchemeHandler.identifier(), m_coreLoader->identifier()));
     m_coreLoader = nullptr;
+    m_frame = nullptr;
 
     // This line will result in this being deleted.
     m_urlSchemeHandler.taskDidStopLoading(*this);
@@ -73,13 +78,13 @@ void WebURLSchemeTaskProxy::didPerformRedirection(WebCore::ResourceResponse&& re
         // We do not inform the UIProcess of WebKit's new request with the given suggested request.
         // We do want to know if WebKit would have generated a request that differs from the suggested request, though.
         if (request.url() != originalRequest.url())
-            WTFLogAlways("Redirected scheme task would have been sent to a different URL.");
+            RELEASE_LOG(Loading, "Redirected scheme task would have been sent to a different URL.");
 
         processNextPendingTask();
     };
     
     if (m_waitingForCompletionHandler) {
-        WTFLogAlways("Received redirect during previous redirect processing, queuing it.");
+        RELEASE_LOG(Loading, "Received redirect during previous redirect processing, queuing it.");
         queueTask([this, protectedThis = makeRef(*this), redirectResponse = WTFMove(redirectResponse), request = WTFMove(request)]() mutable {
             didPerformRedirection(WTFMove(redirectResponse), WTFMove(request));
         });
@@ -93,7 +98,7 @@ void WebURLSchemeTaskProxy::didPerformRedirection(WebCore::ResourceResponse&& re
 void WebURLSchemeTaskProxy::didReceiveResponse(const ResourceResponse& response)
 {
     if (m_waitingForCompletionHandler) {
-        WTFLogAlways("Received response during redirect processing, queuing it.");
+        RELEASE_LOG(Loading, "Received response during redirect processing, queuing it.");
         queueTask([this, protectedThis = makeRef(*this), response] {
             didReceiveResponse(response);
         });
@@ -116,7 +121,7 @@ void WebURLSchemeTaskProxy::didReceiveData(size_t size, const uint8_t* data)
         return;
 
     if (m_waitingForCompletionHandler) {
-        WTFLogAlways("Received data during response processing, queuing it.");
+        RELEASE_LOG(Loading, "Received data during response processing, queuing it.");
         Vector<uint8_t> dataVector;
         dataVector.append(data, size);
         queueTask([this, protectedThis = makeRef(*this), dataVector = WTFMove(dataVector)] {
@@ -148,12 +153,15 @@ void WebURLSchemeTaskProxy::didComplete(const ResourceError& error)
         m_coreLoader->didFail(error);
 
     m_coreLoader = nullptr;
+    m_frame = nullptr;
 }
 
 bool WebURLSchemeTaskProxy::hasLoader()
 {
-    if (m_coreLoader && m_coreLoader->reachedTerminalState())
+    if (m_coreLoader && m_coreLoader->reachedTerminalState()) {
         m_coreLoader = nullptr;
+        m_frame = nullptr;
+    }
 
     return m_coreLoader;
 }

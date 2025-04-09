@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2016 The ANGLE Project Authors. All rights reserved.
+// Copyright 2016 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -13,6 +13,7 @@
 #include <unordered_map>
 
 #include "angle_gl.h"
+#include "anglebase/no_destructor.h"
 #include "compiler/translator/Compiler.h"
 #include "compiler/translator/util.h"
 
@@ -48,10 +49,6 @@ struct TCompilerDeleter
 {
     void operator()(TCompiler *compiler) const { DeleteCompiler(compiler); }
 };
-
-using UniqueTCompiler = std::unique_ptr<TCompiler, TCompilerDeleter>;
-
-static std::unordered_map<TranslatorCacheKey, UniqueTCompiler> translators;
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
@@ -132,7 +129,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     key.spec   = spec;
     key.output = output;
 
-    if (translators.find(key) == translators.end())
+    using UniqueTCompiler = std::unique_ptr<TCompiler, TCompilerDeleter>;
+    static angle::base::NoDestructor<std::unordered_map<TranslatorCacheKey, UniqueTCompiler>>
+        translators;
+
+    if (translators->find(key) == translators->end())
     {
         UniqueTCompiler translator(
             ConstructCompiler(type, static_cast<ShShaderSpec>(spec), shaderOutput));
@@ -161,16 +162,17 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
         resources.ARM_shader_framebuffer_fetch    = 1;
         resources.EXT_YUV_target                  = 1;
         resources.MaxDualSourceDrawBuffers        = 1;
+        resources.EXT_gpu_shader5                 = 1;
 
         if (!translator->Init(resources))
         {
             return 0;
         }
 
-        translators[key] = std::move(translator);
+        (*translators)[key] = std::move(translator);
     }
 
-    auto &translator = translators[key];
+    auto &translator = (*translators)[key];
 
     const char *shaderStrings[] = {reinterpret_cast<const char *>(data)};
     translator->compile(shaderStrings, 1, options);

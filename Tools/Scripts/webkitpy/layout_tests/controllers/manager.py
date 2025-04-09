@@ -37,12 +37,14 @@ create a final report.
 import json
 import logging
 import random
+import shutil
 import sys
 import time
 from collections import defaultdict, OrderedDict
 
 from webkitpy.common.checkout.scm.detection import SCMDetector
 from webkitpy.common.net.file_uploader import FileUploader
+from webkitpy.common.iteration_compatibility import iteritems, itervalues
 from webkitpy.layout_tests.controllers.layout_test_finder import LayoutTestFinder
 from webkitpy.layout_tests.controllers.layout_test_runner import LayoutTestRunner
 from webkitpy.layout_tests.controllers.test_result_writer import TestResultWriter
@@ -143,9 +145,9 @@ class Manager(object):
 
     def _get_test_inputs(self, tests_to_run, repeat_each, iterations, device_type=None):
         test_inputs = []
-        for _ in xrange(iterations):
+        for _ in range(iterations):
             for test in tests_to_run:
-                for _ in xrange(repeat_each):
+                for _ in range(repeat_each):
                     test_inputs.append(self._test_input_for_file(test, device_type=device_type))
         return test_inputs
 
@@ -158,7 +160,7 @@ class Manager(object):
         # This must be started before we check the system dependencies,
         # since the helper may do things to make the setup correct.
         self._printer.write_update("Starting helper ...")
-        if not self._port.start_helper(self._options.pixel_tests):
+        if not self._port.start_helper(pixel_tests=self._options.pixel_tests, prefer_integrated_gpu=self._options.prefer_integrated_gpu):
             return False
 
         self._update_worker_count(test_names, device_type=device_type)
@@ -217,15 +219,9 @@ class Manager(object):
         start_time = time.time()
 
         # Check to make sure we're not skipping every test.
-        if not sum([len(tests) for tests in tests_to_run_by_device.itervalues()]):
+        if not sum([len(tests) for tests in itervalues(tests_to_run_by_device)]):
             _log.critical('No tests to run.')
             return test_run_results.RunDetails(exit_code=-1)
-
-        needs_http = any((self._is_http_test(test) and not self._needs_web_platform_test(test)) for tests in tests_to_run_by_device.itervalues() for test in tests)
-        needs_web_platform_test_server = any(self._needs_web_platform_test(test) for tests in tests_to_run_by_device.itervalues() for test in tests)
-        needs_websockets = any(self._is_websocket_test(test) for tests in tests_to_run_by_device.itervalues() for test in tests)
-        self._runner = LayoutTestRunner(self._options, self._port, self._printer, self._results_directory, self._test_is_slow,
-                                        needs_http=needs_http, needs_web_platform_test_server=needs_web_platform_test_server, needs_websockets=needs_websockets)
 
         self._printer.write_update("Checking build ...")
         if not self._port.check_build():
@@ -238,12 +234,19 @@ class Manager(object):
         # Create the output directory if it doesn't already exist.
         self._port.host.filesystem.maybe_make_directory(self._results_directory)
 
+        needs_http = any((self._is_http_test(test) and not self._needs_web_platform_test(test)) for tests in itervalues(tests_to_run_by_device) for test in tests)
+        needs_web_platform_test_server = any(self._needs_web_platform_test(test) for tests in itervalues(tests_to_run_by_device) for test in tests)
+        needs_websockets = any(self._is_websocket_test(test) for tests in itervalues(tests_to_run_by_device) for test in tests)
+        self._runner = LayoutTestRunner(self._options, self._port, self._printer, self._results_directory, self._test_is_slow,
+                                        needs_http=needs_http, needs_web_platform_test_server=needs_web_platform_test_server, needs_websockets=needs_websockets)
+
         initial_results = None
         retry_results = None
         enabled_pixel_tests_in_retry = False
 
         max_child_processes_for_run = 1
         child_processes_option_value = self._options.child_processes
+        uploads = []
 
         for device_type in device_type_list:
             self._runner._test_is_slow = lambda test_file: self._test_is_slow(test_file, device_type=device_type)
@@ -281,6 +284,7 @@ class Manager(object):
                     configuration=configuration,
                     details=Upload.create_details(options=self._options),
                     commits=self._port.commits_for_upload(),
+                    timestamp=start_time,
                     run_stats=Upload.create_run_stats(
                         start_time=start_time_for_device,
                         end_time=time.time(),
@@ -288,10 +292,12 @@ class Manager(object):
                     ),
                     results=self._results_to_upload_json_trie(self._expectations[device_type], temp_initial_results),
                 )
-                for url in self._options.report_urls:
-                    self._printer.write_update('Uploading to {} ...'.format(url))
-                    if not upload.upload(url, log_line_func=self._printer.writeln):
+                for hostname in self._options.report_urls:
+                    self._printer.write_update('Uploading to {} ...'.format(hostname))
+                    if not upload.upload(hostname, log_line_func=self._printer.writeln):
                         num_failed_uploads += 1
+                    else:
+                        uploads.append(upload)
                 self._printer.writeln('Uploads completed!')
 
             initial_results = initial_results.merge(temp_initial_results) if initial_results else temp_initial_results
@@ -309,6 +315,21 @@ class Manager(object):
 
         end_time = time.time()
         result = self._end_test_run(start_time, end_time, initial_results, retry_results, enabled_pixel_tests_in_retry)
+
+        if self._options.report_urls and uploads:
+            self._printer.writeln('\n')
+            self._printer.write_update('Preparing to upload test archive ...')
+
+            with self._filesystem.mkdtemp() as temp:
+                archive = self._filesystem.join(temp, 'test-archive')
+                shutil.make_archive(archive, 'zip', self._results_directory)
+
+                for upload in uploads:
+                    for hostname in self._options.report_urls:
+                        self._printer.write_update('Uploading archive to {} ...'.format(hostname))
+                        if not upload.upload_archive(hostname, self._filesystem.open_binary_file_for_reading(archive + '.zip'), log_line_func=self._printer.writeln):
+                            num_failed_uploads += 1
+
         if num_failed_uploads:
             result.exit_code = -1
         return result
@@ -407,7 +428,7 @@ class Manager(object):
                logs after that time.
         """
         crashed_processes = []
-        for test, result in run_results.unexpected_results_by_name.iteritems():
+        for test, result in run_results.unexpected_results_by_name.items():
             if (result.type != test_expectations.CRASH):
                 continue
             for failure in result.failures:
@@ -417,13 +438,13 @@ class Manager(object):
 
         sample_files = self._port.look_for_new_samples(crashed_processes, start_time)
         if sample_files:
-            for test, sample_file in sample_files.iteritems():
+            for test, sample_file in sample_files.items():
                 writer = TestResultWriter(self._port._filesystem, self._port, self._port.results_directory(), test)
                 writer.copy_sample_file(sample_file)
 
         crash_logs = self._port.look_for_new_crash_logs(crashed_processes, start_time)
         if crash_logs:
-            for test, crash_log in crash_logs.iteritems():
+            for test, crash_log in crash_logs.items():
                 writer = TestResultWriter(self._port._filesystem, self._port, self._port.results_directory(), test)
                 writer.write_crash_log(crash_log)
 
@@ -436,16 +457,9 @@ class Manager(object):
                     _log.debug("Adding results for other crash: " + str(test))
 
     def _clobber_old_results(self):
-        # Just clobber the actual test results directories since the other
-        # files in the results directory are explicitly used for cross-run
-        # tracking.
-        self._printer.write_update("Clobbering old results in %s" %
-                                   self._results_directory)
-        layout_tests_dir = self._port.layout_tests_dir()
-        possible_dirs = self._port.test_dirs()
-        for dirname in possible_dirs:
-            if self._filesystem.isdir(self._filesystem.join(layout_tests_dir, dirname)):
-                self._filesystem.rmtree(self._filesystem.join(self._results_directory, dirname))
+        self._printer.write_update("Deleting results directory {}".format(self._results_directory))
+        if self._filesystem.isdir(self._results_directory):
+            self._filesystem.rmtree(self._results_directory)
 
     def _tests_to_retry(self, run_results, include_crashes):
         return [result.test_name for result in run_results.unexpected_results_by_name.values() if
@@ -471,7 +485,7 @@ class Manager(object):
         }
 
         results_trie = {}
-        for result in results.results_by_name.itervalues():
+        for result in itervalues(results.results_by_name):
             if result.type == test_expectations.SKIP:
                 continue
 
@@ -625,7 +639,7 @@ class Manager(object):
             if result.type != test_expectations.SKIP:
                 stats[result.test_name] = {'results': (_worker_number(result.worker_name), result.test_number, result.pid, int(result.test_run_time * 1000), int(result.total_run_time * 1000))}
         stats_trie = {}
-        for name, value in stats.iteritems():
+        for name, value in iteritems(stats):
             json_results_generator.add_path_to_trie(name, value, stats_trie)
         return stats_trie
 

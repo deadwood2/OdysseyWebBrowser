@@ -24,6 +24,9 @@
  */
 
 #include "config.h"
+
+#if ENABLE(UI_SIDE_COMPOSITING)
+
 #include "VisibleContentRectUpdateInfo.h"
 
 #include "WebCoreArgumentCoders.h"
@@ -40,7 +43,7 @@ void VisibleContentRectUpdateInfo::encode(IPC::Encoder& encoder) const
     encoder << m_contentInsets;
     encoder << m_unobscuredContentRectRespectingInputViewBounds;
     encoder << m_unobscuredRectInScrollViewCoordinates;
-    encoder << m_customFixedPositionRect;
+    encoder << m_layoutViewportRect;
     encoder << m_obscuredInsets;
     encoder << m_unobscuredSafeAreaInsets;
     encoder << m_scrollVelocity;
@@ -65,7 +68,7 @@ bool VisibleContentRectUpdateInfo::decode(IPC::Decoder& decoder, VisibleContentR
         return false;
     if (!decoder.decode(result.m_unobscuredRectInScrollViewCoordinates))
         return false;
-    if (!decoder.decode(result.m_customFixedPositionRect))
+    if (!decoder.decode(result.m_layoutViewportRect))
         return false;
     if (!decoder.decode(result.m_obscuredInsets))
         return false;
@@ -111,7 +114,7 @@ TextStream& operator<<(TextStream& ts, const VisibleContentRectUpdateInfo& info)
     ts.dumpProperty("contentInsets", info.contentInsets());
     ts.dumpProperty("unobscuredContentRectRespectingInputViewBounds", info.unobscuredContentRectRespectingInputViewBounds());
     ts.dumpProperty("unobscuredRectInScrollViewCoordinates", info.unobscuredRectInScrollViewCoordinates());
-    ts.dumpProperty("customFixedPositionRect", info.customFixedPositionRect());
+    ts.dumpProperty("layoutViewportRect", info.layoutViewportRect());
     ts.dumpProperty("obscuredInsets", info.obscuredInsets());
     ts.dumpProperty("unobscuredSafeAreaInsets", info.unobscuredSafeAreaInsets());
 
@@ -130,3 +133,5 @@ TextStream& operator<<(TextStream& ts, const VisibleContentRectUpdateInfo& info)
 }
 
 } // namespace WebKit
+
+#endif // ENABLE(UI_SIDE_COMPOSITING)

@@ -29,12 +29,16 @@
 #include "APIPageConfiguration.h"
 #include "APIViewClient.h"
 #include "DrawingAreaProxy.h"
+#include "EditingRange.h"
+#include "EditorState.h"
 #include "NativeWebKeyboardEvent.h"
 #include "NativeWebMouseEvent.h"
 #include "NativeWebTouchEvent.h"
 #include "NativeWebWheelEvent.h"
+#include "ScrollGestureController.h"
 #include "WebPageGroup.h"
 #include "WebProcessPool.h"
+#include <WebCore/CompositionUnderline.h>
 #include <wpe/wpe.h>
 
 using namespace WebKit;
@@ -43,6 +47,7 @@ namespace WKWPE {
 
 View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseConfiguration)
     : m_client(makeUnique<API::ViewClient>())
+    , m_scrollGestureController(makeUnique<ScrollGestureController>())
     , m_pageClient(makeUnique<PageClientImpl>(*this))
     , m_size { 800, 600 }
     , m_viewStateFlags { WebCore::ActivityState::WindowIsActive, WebCore::ActivityState::IsFocused, WebCore::ActivityState::IsVisible, WebCore::ActivityState::IsInWindow }
@@ -59,6 +64,7 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
     if (preferences) {
         preferences->setAcceleratedCompositingEnabled(true);
         preferences->setForceCompositingMode(true);
+        preferences->setThreadedScrollingEnabled(true);
         preferences->setAccelerated2dCanvasEnabled(true);
         preferences->setWebGLEnabled(true);
         preferences->setDeveloperExtrasEnabled(true);
@@ -140,25 +146,41 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
                 preferences.setResourceUsageOverlayVisible(!preferences.resourceUsageOverlayVisible());
                 return;
             }
-            view.page().handleKeyboardEvent(WebKit::NativeWebKeyboardEvent(event));
+            view.handleKeyboardEvent(event);
         },
         // handle_pointer_event
         [](void* data, struct wpe_input_pointer_event* event)
         {
-            auto& page = reinterpret_cast<View*>(data)->page();
+            auto& view = *reinterpret_cast<View*>(data);
+            if (event->type == wpe_input_pointer_event_type_button && event->state == 1)
+                view.m_inputMethodFilter.cancelComposition();
+            auto& page = view.page();
             page.handleMouseEvent(WebKit::NativeWebMouseEvent(event, page.deviceScaleFactor()));
         },
         // handle_axis_event
         [](void* data, struct wpe_input_axis_event* event)
         {
             auto& page = reinterpret_cast<View*>(data)->page();
-            page.handleWheelEvent(WebKit::NativeWebWheelEvent(event, page.deviceScaleFactor()));
+            page.handleWheelEvent(WebKit::NativeWebWheelEvent(event, page.deviceScaleFactor(), WebWheelEvent::Phase::PhaseNone, WebWheelEvent::Phase::PhaseNone));
         },
         // handle_touch_event
         [](void* data, struct wpe_input_touch_event* event)
         {
-            auto& page = reinterpret_cast<View*>(data)->page();
-            page.handleTouchEvent(WebKit::NativeWebTouchEvent(event, page.deviceScaleFactor()));
+            auto& view = *reinterpret_cast<View*>(data);
+            auto& page = view.page();
+
+            WebKit::NativeWebTouchEvent touchEvent(event, page.deviceScaleFactor());
+
+            auto& scrollGestureController = *view.m_scrollGestureController;
+            if (scrollGestureController.isHandling()) {
+                const struct wpe_input_touch_event_raw* touchPoint = touchEvent.nativeFallbackTouchPoint();
+                if (touchPoint->type != wpe_input_touch_event_type_null && scrollGestureController.handleEvent(touchPoint)) {
+                    page.handleWheelEvent(WebKit::NativeWebWheelEvent(scrollGestureController.axisEvent(), page.deviceScaleFactor(), scrollGestureController.phase(), WebWheelEvent::Phase::PhaseNone));
+                    return;
+                }
+            }
+
+            page.handleTouchEvent(touchEvent);
         },
         // padding
         nullptr,
@@ -204,6 +226,41 @@ void View::willStartLoad()
     m_client->willStartLoad(*this);
 }
 
+void View::didChangePageID()
+{
+    m_client->didChangePageID(*this);
+}
+
+void View::didReceiveUserMessage(UserMessage&& message, CompletionHandler<void(UserMessage&&)>&& completionHandler)
+{
+    m_client->didReceiveUserMessage(*this, WTFMove(message), WTFMove(completionHandler));
+}
+
+void View::setInputMethodContext(WebKitInputMethodContext* context)
+{
+    m_inputMethodFilter.setContext(context);
+}
+
+WebKitInputMethodContext* View::inputMethodContext() const
+{
+    return m_inputMethodFilter.context();
+}
+
+void View::setInputMethodState(Optional<InputMethodState>&& state)
+{
+    m_inputMethodFilter.setState(WTFMove(state));
+}
+
+void View::selectionDidChange()
+{
+    const auto& editorState = m_pageProxy->editorState();
+    if (!editorState.isMissingPostLayoutData) {
+        m_inputMethodFilter.notifyCursorRect(editorState.postLayoutData().caretRectAtStart);
+        m_inputMethodFilter.notifySurrounding(editorState.postLayoutData().surroundingContext, editorState.postLayoutData().surroundingContextCursorPosition,
+            editorState.postLayoutData().surroundingContextSelectionPosition);
+    }
+}
+
 void View::setSize(const WebCore::IntSize& size)
 {
     m_size = size;
@@ -216,8 +273,34 @@ void View::setViewState(OptionSet<WebCore::ActivityState::Flag> flags)
     auto changedFlags = m_viewStateFlags ^ flags;
     m_viewStateFlags = flags;
 
+    if (changedFlags.contains(WebCore::ActivityState::IsFocused)) {
+        if (m_viewStateFlags.contains(WebCore::ActivityState::IsFocused))
+            m_inputMethodFilter.notifyFocusedIn();
+        else
+            m_inputMethodFilter.notifyFocusedOut();
+    }
+
     if (changedFlags)
         m_pageProxy->activityStateDidChange(changedFlags);
+}
+
+void View::handleKeyboardEvent(struct wpe_input_keyboard_event* event)
+{
+    auto filterResult = m_inputMethodFilter.filterKeyEvent(event);
+    if (filterResult.handled)
+        return;
+
+    page().handleKeyboardEvent(WebKit::NativeWebKeyboardEvent(event, event->pressed ? filterResult.keyText : String(), NativeWebKeyboardEvent::HandledByInputMethod::No, WTF::nullopt, WTF::nullopt));
+}
+
+void View::synthesizeCompositionKeyPress(const String& text, Optional<Vector<WebCore::CompositionUnderline>>&& underlines, Optional<EditingRange>&& selectionRange)
+{
+    // The Windows composition key event code is 299 or VK_PROCESSKEY. We need to
+    // emit this code for web compatibility reasons when key events trigger
+    // composition results. WPE doesn't have an equivalent, so we send VoidSymbol
+    // here to WebCore. PlatformKeyEvent converts this code into VK_PROCESSKEY.
+    static struct wpe_input_keyboard_event event = { 0, WPE_KEY_VoidSymbol, 0, true, 0 };
+    page().handleKeyboardEvent(WebKit::NativeWebKeyboardEvent(&event, text, NativeWebKeyboardEvent::HandledByInputMethod::Yes, WTFMove(underlines), WTFMove(selectionRange)));
 }
 
 void View::close()

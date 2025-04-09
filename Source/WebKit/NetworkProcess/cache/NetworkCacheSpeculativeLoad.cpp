@@ -25,7 +25,7 @@
 
 #include "config.h"
 
-#if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
+#if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION) || ENABLE(NETWORK_CACHE_STALE_WHILE_REVALIDATE)
 #include "NetworkCacheSpeculativeLoad.h"
 
 #include "Logging.h"
@@ -44,7 +44,6 @@ using namespace WebCore;
 
 SpeculativeLoad::SpeculativeLoad(Cache& cache, const GlobalFrameID& globalFrameID, const ResourceRequest& request, std::unique_ptr<NetworkCache::Entry> cacheEntryForValidation, RevalidationCompletionHandler&& completionHandler)
     : m_cache(cache)
-    , m_globalFrameID(globalFrameID)
     , m_completionHandler(WTFMove(completionHandler))
     , m_originalRequest(request)
     , m_bufferedDataForCache(SharedBuffer::create())
@@ -52,9 +51,10 @@ SpeculativeLoad::SpeculativeLoad(Cache& cache, const GlobalFrameID& globalFrameI
 {
     ASSERT(!m_cacheEntry || m_cacheEntry->needsValidation());
 
-    NetworkLoadParameters parameters { cache.sessionID() };
-    parameters.webPageID = globalFrameID.first;
-    parameters.webFrameID = globalFrameID.second;
+    NetworkLoadParameters parameters;
+    parameters.webPageProxyID = globalFrameID.webPageProxyID;
+    parameters.webPageID = globalFrameID.webPageID;
+    parameters.webFrameID = globalFrameID.frameID;
     parameters.storedCredentialsPolicy = StoredCredentialsPolicy::Use;
     parameters.contentSniffingPolicy = ContentSniffingPolicy::DoNotSniffContent;
     parameters.contentEncodingSniffingPolicy = ContentEncodingSniffingPolicy::Sniff;
@@ -94,7 +94,7 @@ void SpeculativeLoad::didReceiveResponse(ResourceResponse&& receivedResponse, Re
 
     bool validationSucceeded = m_response.httpStatusCode() == 304; // 304 Not Modified
     if (validationSucceeded && m_cacheEntry)
-        m_cacheEntry = m_cache->update(m_originalRequest, m_globalFrameID, *m_cacheEntry, m_response);
+        m_cacheEntry = m_cache->update(m_originalRequest, *m_cacheEntry, m_response);
     else
         m_cacheEntry = nullptr;
 
@@ -154,7 +154,44 @@ void SpeculativeLoad::didComplete()
     m_completionHandler(WTFMove(m_cacheEntry));
 }
 
+#if !LOG_DISABLED
+
+static void dumpHTTPHeadersDiff(const HTTPHeaderMap& headersA, const HTTPHeaderMap& headersB)
+{
+    auto aEnd = headersA.end();
+    for (auto it = headersA.begin(); it != aEnd; ++it) {
+        String valueB = headersB.get(it->key);
+        if (valueB.isNull())
+            LOG(NetworkCacheSpeculativePreloading, "* '%s' HTTP header is only in first request (value: %s)", it->key.utf8().data(), it->value.utf8().data());
+        else if (it->value != valueB)
+            LOG(NetworkCacheSpeculativePreloading, "* '%s' HTTP header differs in both requests: %s != %s", it->key.utf8().data(), it->value.utf8().data(), valueB.utf8().data());
+    }
+    auto bEnd = headersB.end();
+    for (auto it = headersB.begin(); it != bEnd; ++it) {
+        if (!headersA.contains(it->key))
+            LOG(NetworkCacheSpeculativePreloading, "* '%s' HTTP header is only in second request (value: %s)", it->key.utf8().data(), it->value.utf8().data());
+    }
+}
+
+#endif
+
+bool requestsHeadersMatch(const ResourceRequest& speculativeValidationRequest, const ResourceRequest& actualRequest)
+{
+    ASSERT(!actualRequest.isConditional());
+    ResourceRequest speculativeRequest = speculativeValidationRequest;
+    speculativeRequest.makeUnconditional();
+
+    if (speculativeRequest.httpHeaderFields() != actualRequest.httpHeaderFields()) {
+        LOG(NetworkCacheSpeculativePreloading, "Cannot reuse speculatively validated entry because HTTP headers used for validation do not match");
+#if !LOG_DISABLED
+        dumpHTTPHeadersDiff(speculativeRequest.httpHeaderFields(), actualRequest.httpHeaderFields());
+#endif
+        return false;
+    }
+    return true;
+}
+
 } // namespace NetworkCache
 } // namespace WebKit
 
-#endif // ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
+#endif // ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION) || ENABLE(NETWORK_CACHE_STALE_WHILE_REVALIDATE)

@@ -39,6 +39,7 @@
 #import <WebCore/RuntimeApplicationChecks.h>
 #import <WebCore/SecurityOrigin.h>
 #import <WebCore/SecurityOriginData.h>
+#import <WebCore/SocketStreamHandleImpl.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/CallbackAggregator.h>
@@ -61,7 +62,7 @@ static void initializeNetworkSettings()
     if (WebCore::ResourceRequest::resourcePrioritiesEnabled()) {
         const unsigned fastLaneConnectionCount = 1;
 
-        _CFNetworkHTTPConnectionCacheSetLimit(kHTTPPriorityNumLevels, toPlatformRequestPriority(WebCore::ResourceLoadPriority::Highest));
+        _CFNetworkHTTPConnectionCacheSetLimit(kHTTPPriorityNumLevels, WebCore::resourceLoadPriorityCount);
         _CFNetworkHTTPConnectionCacheSetLimit(kHTTPMinimumFastLanePriority, toPlatformRequestPriority(WebCore::ResourceLoadPriority::Medium));
         _CFNetworkHTTPConnectionCacheSetLimit(kHTTPNumFastLanes, fastLaneConnectionCount);
     }
@@ -87,19 +88,14 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
     SandboxExtension::consumePermanently(parameters.defaultDataStoreParameters.indexedDatabaseTempBlobDirectoryExtensionHandle);
 #endif
 #endif
-    m_diskCacheDirectory = parameters.diskCacheDirectory;
 
     _CFNetworkSetATSContext(parameters.networkATSContext.get());
 
     m_uiProcessBundleIdentifier = parameters.uiProcessBundleIdentifier;
-
-#if PLATFORM(IOS_FAMILY)
-    NetworkSessionCocoa::setCTDataConnectionServiceType(parameters.ctDataConnectionServiceType);
-#endif
-
+    
     initializeNetworkSettings();
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
     setSharedHTTPCookieStorage(parameters.uiProcessCookieStorageIdentifier);
 #endif
 
@@ -111,19 +107,7 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
     // - disk cache size passed from UI process is effectively a minimum size.
     // One non-obvious constraint is that we need to use -setSharedURLCache: even in testing mode, to prevent creating a default one on disk later, when some other code touches the cache.
 
-    ASSERT(!m_diskCacheIsDisabledForTesting);
-
-    if (m_diskCacheDirectory.isNull())
-        return;
-
-    SandboxExtension::consumePermanently(parameters.diskCacheDirectoryExtensionHandle);
     m_cacheOptions = { NetworkCache::CacheOption::RegisterNotify };
-    if (parameters.shouldUseTestingNetworkSession)
-        m_cacheOptions.add(NetworkCache::CacheOption::TestingMode);
-#if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
-    if (parameters.shouldEnableNetworkCacheSpeculativeRevalidation)
-        m_cacheOptions.add(NetworkCache::CacheOption::SpeculativeRevalidation);
-#endif
 
     // Disable NSURLCache.
     auto urlCache(adoptNS([[NSURLCache alloc] initWithMemoryCapacity:0 diskCapacity:0 diskPath:nil]));
@@ -206,7 +190,7 @@ void NetworkProcess::clearDiskCache(WallTime modifiedSince, CompletionHandler<vo
     }).get());
 }
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
 void NetworkProcess::setSharedHTTPCookieStorage(const Vector<uint8_t>& identifier)
 {
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));

@@ -28,19 +28,21 @@
 
 #if HAVE(CORE_VIDEO)
 
-#include "GraphicsContext3D.h"
+#include "GraphicsContextGLOpenGL.h"
 
 #include "CoreVideoSoftLink.h"
 
 namespace WebCore {
 
-std::unique_ptr<TextureCacheCV> TextureCacheCV::create(GraphicsContext3D& context)
+std::unique_ptr<TextureCacheCV> TextureCacheCV::create(GraphicsContextGLOpenGL& context)
 {
     TextureCacheType cache = nullptr;
 #if USE(OPENGL_ES)
-    CVReturn error = CVOpenGLESTextureCacheCreate(kCFAllocatorDefault, nullptr, context.platformGraphicsContext3D(), nullptr, &cache);
+    CVEAGLContext eaglContext = static_cast<CVEAGLContext>(context.platformGraphicsContextGL());
+    CVReturn error = CVOpenGLESTextureCacheCreate(kCFAllocatorDefault, nullptr, eaglContext, nullptr, &cache);
 #elif USE(OPENGL)
-    CVReturn error = CVOpenGLTextureCacheCreate(kCFAllocatorDefault, nullptr, context.platformGraphicsContext3D(), CGLGetPixelFormat(context.platformGraphicsContext3D()), nullptr, &cache);
+    CGLContextObj cglContext = static_cast<CGLContextObj>(context.platformGraphicsContextGL());
+    CVReturn error = CVOpenGLTextureCacheCreate(kCFAllocatorDefault, nullptr, cglContext, CGLGetPixelFormat(cglContext), nullptr, &cache);
 #elif USE(ANGLE)
     // FIXME: figure out how to do this integrating via ANGLE.
     UNUSED_PARAM(context);
@@ -53,14 +55,24 @@ std::unique_ptr<TextureCacheCV> TextureCacheCV::create(GraphicsContext3D& contex
     return makeUnique<TextureCacheCV>(context, WTFMove(strongCache));
 }
 
-TextureCacheCV::TextureCacheCV(GraphicsContext3D& context, RetainPtr<TextureCacheType>&& cache)
+TextureCacheCV::TextureCacheCV(GraphicsContextGLOpenGL& context, RetainPtr<TextureCacheType>&& cache)
     : m_context(context)
     , m_cache(cache)
 {
 }
 
-RetainPtr<TextureCacheCV::TextureType> TextureCacheCV::textureFromImage(CVPixelBufferRef image, GC3Denum outputTarget, GC3Dint level, GC3Denum internalFormat, GC3Denum format, GC3Denum type)
+RetainPtr<TextureCacheCV::TextureType> TextureCacheCV::textureFromImage(CVPixelBufferRef image, GCGLenum outputTarget, GCGLint level, GCGLenum internalFormat, GCGLenum format, GCGLenum type)
 {
+#if USE(ANGLE)
+    // FIXME: figure out how to do this integrating via ANGLE.
+    UNUSED_PARAM(image);
+    UNUSED_PARAM(outputTarget);
+    UNUSED_PARAM(level);
+    UNUSED_PARAM(internalFormat);
+    UNUSED_PARAM(format);
+    UNUSED_PARAM(type);
+    return nullptr;
+#else
     TextureType bareVideoTexture = nullptr;
 #if USE(OPENGL_ES)
     size_t width = CVPixelBufferGetWidth(image);
@@ -75,15 +87,6 @@ RetainPtr<TextureCacheCV::TextureType> TextureCacheCV::textureFromImage(CVPixelB
     UNUSED_PARAM(type);
     if (kCVReturnSuccess != CVOpenGLTextureCacheCreateTextureFromImage(kCFAllocatorDefault, m_cache.get(), image, nullptr, &bareVideoTexture))
         return nullptr;
-#elif USE(ANGLE)
-    // FIXME: figure out how to do this integrating via ANGLE.
-    UNUSED_PARAM(image);
-    UNUSED_PARAM(outputTarget);
-    UNUSED_PARAM(level);
-    UNUSED_PARAM(internalFormat);
-    UNUSED_PARAM(format);
-    UNUSED_PARAM(type);
-    return nullptr;
 #endif
     RetainPtr<TextureType> videoTexture = adoptCF(bareVideoTexture);
 
@@ -91,16 +94,17 @@ RetainPtr<TextureCacheCV::TextureType> TextureCacheCV::textureFromImage(CVPixelB
     dispatch_async(dispatch_get_main_queue(), [weakThis] {
         if (!weakThis)
             return;
-        
+
         if (auto cache = weakThis->m_cache.get())
 #if USE(OPENGL_ES)
             CVOpenGLESTextureCacheFlush(cache, 0);
-#else
+#elif USE(OPENGL)
             CVOpenGLTextureCacheFlush(cache, 0);
 #endif
     });
 
     return videoTexture;
+#endif
 }
 
 }

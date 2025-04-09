@@ -102,7 +102,16 @@ class BlendMinMaxTest : public ANGLETest
                 {
                     EXPECT_NEAR(
                         getExpected(blendMin, color.values[componentIdx], prevColor[componentIdx]),
-                        pixel[componentIdx], errorRange);
+                        pixel[componentIdx], errorRange)
+                        << " blendMin=" << blendMin << " componentIdx=" << componentIdx << std::endl
+                        << " color.values[0]=" << color.values[0]
+                        << " prevColor[0]=" << prevColor[0] << std::endl
+                        << " color.values[1]=" << color.values[1]
+                        << " prevColor[1]=" << prevColor[1] << std::endl
+                        << " color.values[2]=" << color.values[2]
+                        << " prevColor[2]=" << prevColor[2] << std::endl
+                        << " color.values[3]=" << color.values[3]
+                        << " prevColor[3]=" << prevColor[3];
                 }
             }
 
@@ -110,10 +119,8 @@ class BlendMinMaxTest : public ANGLETest
         }
     }
 
-    virtual void SetUp()
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         mProgram = CompileProgram(essl1_shaders::vs::Simple(), essl1_shaders::fs::UniformColor());
         if (mProgram == 0)
         {
@@ -149,13 +156,11 @@ class BlendMinMaxTest : public ANGLETest
         ASSERT_GL_NO_ERROR();
     }
 
-    virtual void TearDown()
+    void testTearDown() override
     {
         glDeleteProgram(mProgram);
         glDeleteFramebuffers(1, &mFramebuffer);
         glDeleteRenderbuffers(1, &mColorRenderbuffer);
-
-        ANGLETest::TearDown();
     }
 
     GLuint mProgram;
@@ -185,19 +190,15 @@ TEST_P(BlendMinMaxTest, RGBA16F)
 {
     ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 &&
                        !IsGLExtensionEnabled("GL_EXT_color_buffer_half_float"));
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF((IsAndroid() && IsVulkan()) || isSwiftshader());
+
+    // http://anglebug.com/4185
+    ANGLE_SKIP_TEST_IF(IsMetal());
 
     runTest(GL_RGBA16F, GL_FLOAT);
 }
 
 // Use this to select which configurations (e.g. which renderer, which GLES major version) these
 // tests should be run against.
-ANGLE_INSTANTIATE_TEST(BlendMinMaxTest,
-                       ES2_D3D9(),
-                       ES2_D3D11(),
-                       ES3_D3D11(),
-                       ES2_D3D11_FL9_3(),
-                       ES2_OPENGL(),
-                       ES3_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES3_OPENGLES(),
-                       ES2_VULKAN());
+ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(BlendMinMaxTest);

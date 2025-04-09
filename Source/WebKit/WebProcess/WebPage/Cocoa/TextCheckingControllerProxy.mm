@@ -57,12 +57,12 @@ using namespace WebCore;
 TextCheckingControllerProxy::TextCheckingControllerProxy(WebPage& page)
     : m_page(page)
 {
-    WebProcess::singleton().addMessageReceiver(Messages::TextCheckingControllerProxy::messageReceiverName(), m_page.pageID(), *this);
+    WebProcess::singleton().addMessageReceiver(Messages::TextCheckingControllerProxy::messageReceiverName(), m_page.identifier(), *this);
 }
 
 TextCheckingControllerProxy::~TextCheckingControllerProxy()
 {
-    WebProcess::singleton().removeMessageReceiver(Messages::TextCheckingControllerProxy::messageReceiverName(), m_page.pageID());
+    WebProcess::singleton().removeMessageReceiver(Messages::TextCheckingControllerProxy::messageReceiverName(), m_page.identifier());
 }
 
 static OptionSet<DocumentMarker::MarkerType> relevantMarkerTypes()
@@ -113,7 +113,7 @@ void TextCheckingControllerProxy::replaceRelativeToSelection(AttributedString an
             auto replacementRange = rangeAndOffsetOfReplacement->range;
             if (replacementRange) {
                 bool restoreSelection = frameSelection.selection().isRange();
-                frame.editor().replaceRangeForSpellChecking(*replacementRange, [[annotatedString.string string] substringWithRange:NSMakeRange(relativeReplacementLocation, relativeReplacementLength)]);
+                frame.editor().replaceRangeForSpellChecking(*replacementRange, [[annotatedString.string string] substringWithRange:NSMakeRange(relativeReplacementLocation, relativeReplacementLength + [annotatedString.string length] - length)]);
 
                 size_t selectionLocationToRestore = locationInRoot - selectionOffset;
                 if (restoreSelection && selectionLocationToRestore > locationInRoot + relativeReplacementLocation + relativeReplacementLength) {

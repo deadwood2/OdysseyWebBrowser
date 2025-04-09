@@ -29,6 +29,7 @@
 #include "AuxiliaryProcessProxy.h"
 #include "DownloadProxy.h"
 #include "DownloadProxyMessages.h"
+#include "Logging.h"
 #include "MessageReceiverMap.h"
 #include "NetworkProcessMessages.h"
 #include "NetworkProcessProxy.h"
@@ -79,9 +80,9 @@ void DownloadProxyMap::applicationWillEnterForeground()
         m_process->send(Messages::NetworkProcess::ApplicationWillEnterForeground(), 0);
 }
 
-DownloadProxy& DownloadProxyMap::createDownloadProxy(WebProcessPool& processPool, const WebCore::ResourceRequest& resourceRequest)
+DownloadProxy& DownloadProxyMap::createDownloadProxy(WebsiteDataStore& dataStore, WebProcessPool& processPool, const WebCore::ResourceRequest& resourceRequest)
 {
-    auto downloadProxy = DownloadProxy::create(*this, processPool, resourceRequest);
+    auto downloadProxy = DownloadProxy::create(*this, dataStore, processPool, resourceRequest);
     m_downloads.set(downloadProxy->downloadID(), downloadProxy.copyRef());
 
     RELEASE_LOG(Loading, "Adding download %" PRIu64 " to UIProcess DownloadProxyMap", downloadProxy->downloadID().downloadID());

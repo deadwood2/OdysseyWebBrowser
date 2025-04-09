@@ -42,11 +42,6 @@ WI.SourcesTabContentView = class SourcesTabContentView extends WI.ContentBrowser
         };
     }
 
-    static isTabAllowed()
-    {
-        return !!WI.settings.experimentalEnableSourcesTab.value;
-    }
-
     // Public
 
     get type()
@@ -69,6 +64,7 @@ WI.SourcesTabContentView = class SourcesTabContentView extends WI.ContentBrowser
             || representedObject instanceof WI.ScriptCollection
             || representedObject instanceof WI.CSSStyleSheet
             || representedObject instanceof WI.CSSStyleSheetCollection
+            || representedObject instanceof WI.LocalResourceOverride
             || super.canShowRepresentedObject(representedObject);
     }
 

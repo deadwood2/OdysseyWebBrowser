@@ -166,11 +166,6 @@ void WKBundleSetJavaScriptCanAccessClipboard(WKBundleRef bundleRef, WKBundlePage
     WebKit::toImpl(bundleRef)->setJavaScriptCanAccessClipboard(WebKit::toImpl(pageGroupRef), enabled);
 }
 
-void WKBundleSetPrivateBrowsingEnabled(WKBundleRef bundleRef, WKBundlePageGroupRef pageGroupRef, bool enabled)
-{
-    WebKit::toImpl(bundleRef)->setPrivateBrowsingEnabled(WebKit::toImpl(pageGroupRef), enabled);
-}
-
 void WKBundleSetPopupBlockingEnabled(WKBundleRef bundleRef, WKBundlePageGroupRef pageGroupRef, bool enabled)
 {
     WebKit::toImpl(bundleRef)->setPopupBlockingEnabled(WebKit::toImpl(pageGroupRef), enabled);
@@ -311,9 +306,13 @@ void WKBundleClearResourceLoadStatistics(WKBundleRef)
     WebCore::ResourceLoadObserver::shared().clearState();
 }
 
-void WKBundleResourceLoadStatisticsNotifyObserver(WKBundleRef)
+bool WKBundleResourceLoadStatisticsNotifyObserver(WKBundleRef)
 {
+    if (!WebCore::ResourceLoadObserver::shared().hasStatistics())
+        return false;
+
     WebCore::ResourceLoadObserver::shared().updateCentralStatisticsStore();
+    return true;
 }
 
 

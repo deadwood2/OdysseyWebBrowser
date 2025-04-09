@@ -74,7 +74,7 @@ bool isAcceleratedContext(PlatformContextDirect2D&);
 
 struct FillSource {
     FillSource() = default;
-    explicit FillSource(const GraphicsContextState&, PlatformContextDirect2D&);
+    explicit FillSource(const GraphicsContextState&, const GraphicsContext&);
 
     float globalAlpha { 0 };
     COMPtr<ID2D1Brush> brush;
@@ -85,7 +85,7 @@ struct FillSource {
 
 struct StrokeSource {
     StrokeSource() = default;
-    explicit StrokeSource(const GraphicsContextState&, PlatformContextDirect2D&);
+    explicit StrokeSource(const GraphicsContextState&, const GraphicsContext&);
 
     float globalAlpha { 0 };
     float thickness { 0 };
@@ -106,7 +106,7 @@ struct ShadowState {
     bool ignoreTransforms { false };
 
     float globalAlpha { 1.0 };
-    CompositeOperator globalCompositeOperator { CompositeSourceOver };
+    CompositeOperator globalCompositeOperator { CompositeOperator::SourceOver };
 };
 
 void setLineCap(PlatformContextDirect2D&, LineCap);
@@ -128,14 +128,13 @@ void clearRect(PlatformContextDirect2D&, const FloatRect&);
 
 void drawGlyphs(PlatformContextDirect2D&, const FillSource&, const StrokeSource&, const ShadowState&, const FloatPoint&, const Font&, double, const Vector<unsigned short>& glyphs, const Vector<float>& horizontalAdvances, const Vector<DWRITE_GLYPH_OFFSET>&, float, TextDrawingModeFlags, float, const FloatSize&, const Color&);
 
-void drawNativeImage(PlatformContextDirect2D&, IWICBitmap*, const FloatSize& imageSize, const FloatRect&, const FloatRect&, CompositeOperator, BlendMode, ImageOrientation, InterpolationQuality, float, const ShadowState&);
-void drawNativeImage(PlatformContextDirect2D&, ID2D1Bitmap*, const FloatSize& imageSize, const FloatRect&, const FloatRect&, CompositeOperator, BlendMode, ImageOrientation, InterpolationQuality, float, const ShadowState&);
+void drawNativeImage(PlatformContextDirect2D&, IWICBitmap*, const FloatSize& imageSize, const FloatRect&, const FloatRect&, const ImagePaintingOptions& options, float, const ShadowState&);
+void drawNativeImage(PlatformContextDirect2D&, ID2D1Bitmap*, const FloatSize& imageSize, const FloatRect&, const FloatRect&, const ImagePaintingOptions& options, float, const ShadowState&);
 void drawPath(PlatformContextDirect2D&, const Path&, const StrokeSource&, const ShadowState&);
 void drawPattern(PlatformContextDirect2D&, COMPtr<ID2D1Bitmap>&&, const IntSize&, const FloatRect&, const FloatRect&, const AffineTransform&, const FloatPoint&, CompositeOperator, BlendMode);
 
-void drawWithoutShadow(PlatformContextDirect2D&, const FloatRect& boundingRect, const WTF::Function<void(ID2D1RenderTarget*)>& drawCommands);
-void drawWithShadow(PlatformContextDirect2D&, const FloatRect& boundingRect, const ShadowState&, const WTF::Function<void(ID2D1RenderTarget*)>& drawCommands);
-void drawWithShadowHelper(ID2D1RenderTarget* context, ID2D1Bitmap*, const Color& shadowColor, const FloatSize& shadowOffset, float shadowBlur);
+void drawWithoutShadow(PlatformContextDirect2D&, WTF::Function<void(ID2D1RenderTarget*)>&& drawCommands);
+void drawWithShadow(PlatformContextDirect2D&, FloatRect boundingRect, const ShadowState&, WTF::Function<void(ID2D1RenderTarget*)>&& drawCommands);
 
 void drawRect(PlatformContextDirect2D&, const FloatRect&, float, const Color&, StrokeStyle, const Color&);
 void drawLine(PlatformContextDirect2D&, const FloatPoint&, const FloatPoint&, StrokeStyle, const Color&, float, bool);

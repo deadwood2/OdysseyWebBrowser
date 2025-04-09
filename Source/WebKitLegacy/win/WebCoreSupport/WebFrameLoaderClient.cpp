@@ -133,12 +133,6 @@ Optional<WebCore::FrameIdentifier> WebFrameLoaderClient::frameID() const
     return WTF::nullopt;
 }
 
-PAL::SessionID WebFrameLoaderClient::sessionID() const
-{
-    auto* coreFrame = core(m_webFrame);
-    return coreFrame && coreFrame->page() ? coreFrame->page()->sessionID() : PAL::SessionID::defaultSessionID();
-}
-
 bool WebFrameLoaderClient::hasWebView() const
 {
     return m_webFrame->webView();
@@ -169,7 +163,7 @@ void WebFrameLoaderClient::detachedFromParent3()
     notImplemented();
 }
 
-void WebFrameLoaderClient::convertMainResourceLoadToDownload(DocumentLoader* documentLoader, PAL::SessionID, const ResourceRequest& request, const ResourceResponse& response)
+void WebFrameLoaderClient::convertMainResourceLoadToDownload(DocumentLoader* documentLoader, const ResourceRequest& request, const ResourceResponse& response)
 {
     COMPtr<IWebDownloadDelegate> downloadDelegate;
     COMPtr<IWebView> webView;
@@ -649,27 +643,6 @@ void WebFrameLoaderClient::setMainDocumentError(DocumentLoader*, const ResourceE
     m_hasSentResponseToPlugin = false;
 }
 
-void WebFrameLoaderClient::progressStarted(WebCore::Frame&)
-{
-    static BSTR progressStartedName = SysAllocString(WebViewProgressStartedNotification);
-    IWebNotificationCenter* notifyCenter = WebNotificationCenter::defaultCenterInternal();
-    notifyCenter->postNotificationName(progressStartedName, static_cast<IWebView*>(m_webFrame->webView()), 0);
-}
-
-void WebFrameLoaderClient::progressEstimateChanged(WebCore::Frame&)
-{
-    static BSTR progressEstimateChangedName = SysAllocString(WebViewProgressEstimateChangedNotification);
-    IWebNotificationCenter* notifyCenter = WebNotificationCenter::defaultCenterInternal();
-    notifyCenter->postNotificationName(progressEstimateChangedName, static_cast<IWebView*>(m_webFrame->webView()), 0);
-}
-
-void WebFrameLoaderClient::progressFinished(WebCore::Frame&)
-{
-    static BSTR progressFinishedName = SysAllocString(WebViewProgressFinishedNotification);
-    IWebNotificationCenter* notifyCenter = WebNotificationCenter::defaultCenterInternal();
-    notifyCenter->postNotificationName(progressFinishedName, static_cast<IWebView*>(m_webFrame->webView()), 0);
-}
-
 void WebFrameLoaderClient::startDownload(const ResourceRequest& request, const String& /* suggestedName */)
 {
     m_webFrame->webView()->downloadURL(request.url());
@@ -998,11 +971,7 @@ void WebFrameLoaderClient::transitionToCommittedForNewPage()
     core(m_webFrame)->createView(enclosingIntRect(logicalFrame).size(), backgroundColor, /* fixedLayoutSize */ { }, /* fixedVisibleContentRect */ { });
 }
 
-void WebFrameLoaderClient::didSaveToPageCache()
-{
-}
-
-void WebFrameLoaderClient::didRestoreFromPageCache()
+void WebFrameLoaderClient::didRestoreFromBackForwardCache()
 {
 }
 
@@ -1253,8 +1222,8 @@ void WebFrameLoaderClient::dispatchDidClearWindowObjectInWorld(DOMWrapperWorld& 
     if (&world != &mainThreadNormalWorld())
         return;
 
-    JSContextRef context = toRef(coreFrame->script().globalObject(world)->globalExec());
-    JSObjectRef windowObject = toRef(coreFrame->script().globalObject(world));
+    JSContextRef context = toRef(coreFrame->script().globalObject(world));
+    JSObjectRef windowObject = toRef(JSC::jsCast<JSC::JSObject*>(coreFrame->script().globalObject(world)));
     ASSERT(windowObject);
 
     if (FAILED(frameLoadDelegate->didClearWindowObject(webView, context, windowObject, m_webFrame)))

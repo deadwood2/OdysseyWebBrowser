@@ -45,6 +45,7 @@
 #include "HTMLHtmlElement.h"
 #include "HTMLIFrameElement.h"
 #include "KeyboardEvent.h"
+#include "Logging.h"
 #include "MouseEventWithHitTestResults.h"
 #include "Page.h"
 #include "Pasteboard.h"
@@ -64,7 +65,7 @@
 #include "Settings.h"
 #include "ShadowRoot.h"
 #include "WheelEventDeltaFilter.h"
-#include "WheelEventTestTrigger.h"
+#include "WheelEventTestMonitor.h"
 #include <wtf/BlockObjCExceptions.h>
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
@@ -109,7 +110,7 @@ public:
 
 private:
     RetainPtr<NSEvent> m_savedCurrentEvent;
-#ifndef NDEBUG
+#if ASSERT_ENABLED
     RetainPtr<NSEvent> m_event;
 #endif
     RetainPtr<NSEvent> m_savedPressureEvent;
@@ -118,7 +119,7 @@ private:
 
 inline CurrentEventScope::CurrentEventScope(NSEvent *event, NSEvent *correspondingPressureEvent)
     : m_savedCurrentEvent(currentNSEventSlot())
-#ifndef NDEBUG
+#if ASSERT_ENABLED
     , m_event(event)
 #endif
     , m_savedPressureEvent(correspondingPressureEventSlot())
@@ -165,11 +166,16 @@ void EventHandler::focusDocumentView()
     if (!page)
         return;
 
-    if (FrameView* frameView = m_frame.view()) {
-        if (NSView *documentView = frameView->documentView())
+    if (auto frameView = makeRefPtr(m_frame.view())) {
+        if (NSView *documentView = frameView->documentView()) {
             page->chrome().focusNSView(documentView);
+            // Check page() again because focusNSView can cause reentrancy.
+            if (!m_frame.page())
+                return;
+        }
     }
 
+    RELEASE_ASSERT(page == m_frame.page());
     page->focusController().setFocusedFrame(&m_frame);
 }
 
@@ -812,6 +818,9 @@ static bool scrolledToEdgeInDominantDirection(const ContainerNode& container, co
     if (!container.renderer())
         return true;
 
+    if (!area.canHaveScrollbars())
+        return true;
+
     const RenderStyle& style = container.renderer()->style();
 
     if (!deltaIsPredominantlyVertical(deltaX, deltaY) && deltaX) {
@@ -956,8 +965,8 @@ void EventHandler::platformPrepareForWheelEvents(const PlatformWheelEvent& wheel
     }
     
     Page* page = m_frame.page();
-    if (scrollableArea && page && page->expectsWheelEventTriggers())
-        scrollableArea->scrollAnimator().setWheelEventTestTrigger(page->testTrigger());
+    if (scrollableArea && page && page->isMonitoringWheelEvents())
+        scrollableArea->scrollAnimator().setWheelEventTestMonitor(page->wheelEventTestMonitor());
 
     ScrollLatchingState* latchingState = page ? page->latchingState() : nullptr;
     if (wheelEvent.shouldConsiderLatching()) {
@@ -969,8 +978,7 @@ void EventHandler::platformPrepareForWheelEvents(const PlatformWheelEvent& wheel
                 latchingState->setStartedGestureAtScrollLimit(false);
                 latchingState->setWheelEventElement(wheelEventTarget.get());
                 latchingState->setFrame(&m_frame);
-                // FIXME: What prevents us from deleting this scrollable container while still holding a pointer to it?
-                latchingState->setScrollableContainer(scrollableContainer.get());
+                latchingState->setScrollableContainer(scrollableContainer.copyRef());
                 latchingState->setWidgetIsLatched(result.isOverWidget());
                 isOverWidget = latchingState->widgetIsLatched();
                 page->wheelEventDeltaFilter()->beginFilteringDeltas();
@@ -1026,6 +1034,8 @@ static FrameView* frameViewForLatchingState(Frame& frame, ScrollLatchingState* l
 
 bool EventHandler::platformCompleteWheelEvent(const PlatformWheelEvent& wheelEvent, ContainerNode* scrollableContainer, const WeakPtr<ScrollableArea>& scrollableArea)
 {
+    LOG_WITH_STREAM(Scrolling, stream << "EventHandler::platformCompleteWheelEvent " << wheelEvent << " - scrollableContainer " << scrollableContainer << " scrollableArea " << scrollableArea.get() << " use latched element " << wheelEvent.useLatchedEventElement());
+
     Ref<Frame> protectedFrame(m_frame);
 
     FrameView* view = m_frame.view();
@@ -1035,12 +1045,12 @@ bool EventHandler::platformCompleteWheelEvent(const PlatformWheelEvent& wheelEve
 
     ScrollLatchingState* latchingState = m_frame.page() ? m_frame.page()->latchingState() : nullptr;
     if (wheelEvent.useLatchedEventElement() && !latchingIsLockedToAncestorOfThisFrame(m_frame) && latchingState && latchingState->scrollableContainer()) {
-
         m_isHandlingWheelEvent = false;
 
         // WebKit2 code path
         if (!frameHasPlatformWidget(m_frame) && !latchingState->startedGestureAtScrollLimit() && scrollableContainer == latchingState->scrollableContainer() && scrollableArea && view != scrollableArea) {
             // If we did not start at the scroll limit, do not pass the event on to be handled by enclosing scrollable regions.
+            LOG_WITH_STREAM(Scrolling, stream << "EventHandler " << this << " platformCompleteWheelEvent - latched to " << scrollableArea.get() << " and not propagating");
             return true;
         }
 

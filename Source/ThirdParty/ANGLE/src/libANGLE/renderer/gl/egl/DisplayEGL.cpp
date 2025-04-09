@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2016 The ANGLE Project Authors. All rights reserved.
+// Copyright 2016 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -136,6 +136,21 @@ void DisplayEGL::generateExtensions(egl::DisplayExtensions *outExtensions) const
     outExtensions->glTextureCubemapImage = mEGL->hasExtension("EGL_KHR_gl_texture_cubemap_image");
     outExtensions->glTexture3DImage      = mEGL->hasExtension("EGL_KHR_gl_texture_3D_image");
     outExtensions->glRenderbufferImage   = mEGL->hasExtension("EGL_KHR_gl_renderbuffer_image");
+    outExtensions->pixelFormatFloat      = mEGL->hasExtension("EGL_EXT_pixel_format_float");
+
+    outExtensions->glColorspace = mEGL->hasExtension("EGL_KHR_gl_colorspace");
+    if (outExtensions->glColorspace)
+    {
+        outExtensions->glColorspaceDisplayP3Linear =
+            mEGL->hasExtension("EGL_EXT_gl_colorspace_display_p3_linear");
+        outExtensions->glColorspaceDisplayP3 =
+            mEGL->hasExtension("EGL_EXT_gl_colorspace_display_p3");
+        outExtensions->glColorspaceScrgb = mEGL->hasExtension("EGL_EXT_gl_colorspace_scrgb");
+        outExtensions->glColorspaceScrgbLinear =
+            mEGL->hasExtension("EGL_EXT_gl_colorspace_scrgb_linear");
+        outExtensions->glColorspaceDisplayP3Passthrough =
+            mEGL->hasExtension("EGL_EXT_gl_colorspace_display_p3_passthrough");
+    }
 
     outExtensions->imageNativeBuffer = mEGL->hasExtension("EGL_ANDROID_image_native_buffer");
 
@@ -145,6 +160,15 @@ void DisplayEGL::generateExtensions(egl::DisplayExtensions *outExtensions) const
         eglVersion >= gl::Version(1, 5) || mEGL->hasExtension("EGL_KHR_fence_sync");
     outExtensions->waitSync =
         eglVersion >= gl::Version(1, 5) || mEGL->hasExtension("EGL_KHR_wait_sync");
+
+    outExtensions->getNativeClientBufferANDROID =
+        mEGL->hasExtension("EGL_ANDROID_get_native_client_buffer");
+
+    outExtensions->nativeFenceSyncANDROID = mEGL->hasExtension("EGL_ANDROID_native_fence_sync");
+
+    outExtensions->noConfigContext = mEGL->hasExtension("EGL_KHR_no_config_context");
+
+    outExtensions->framebufferTargetANDROID = mEGL->hasExtension("EGL_ANDROID_framebuffer_target");
 
     DisplayGL::generateExtensions(outExtensions);
 }

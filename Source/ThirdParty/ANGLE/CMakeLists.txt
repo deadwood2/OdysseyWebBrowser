@@ -1,3 +1,13 @@
+if (UNIX AND NOT APPLE)
+    set(is_linux TRUE)
+endif()
+if (WIN32)
+    set(is_win TRUE)
+endif()
+if (APPLE)
+    set(is_mac TRUE)
+endif()
+
 include(Compiler.cmake)
 include(GLESv2.cmake)
 
@@ -44,6 +54,7 @@ set(ANGLE_PRIVATE_INCLUDE_DIRECTORIES
     "${CMAKE_CURRENT_SOURCE_DIR}/include/KHR"
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/third_party/base"
+    "${CMAKE_CURRENT_BINARY_DIR}/include"
 )
 
 set(ANGLE_DEFINITIONS
@@ -56,6 +67,8 @@ set(ANGLE_SOURCES
     ${angle_translator_essl_sources}
     ${angle_translator_glsl_sources}
     ${angle_translator_sources}
+    ${angle_system_utils_sources}
+    "src/libANGLE/FrameCapture_mock.cpp"
 )
 
 set(ANGLEGLESv2_LIBRARIES
@@ -73,7 +86,9 @@ if (USE_ANGLE_EGL)
     add_library(ANGLE STATIC
         ${ANGLE_SOURCES}
         ${libangle_sources}
+        ${libangle_headers}
         ${libangle_image_util_sources}
+        ${libangle_image_util_headers}
         ${xxhash_sources}
     )
     target_include_directories(ANGLE PRIVATE ${ANGLE_PRIVATE_INCLUDE_DIRECTORIES})
@@ -83,12 +98,16 @@ if (USE_ANGLE_EGL)
     )
     target_compile_definitions(ANGLE PUBLIC ${ANGLE_DEFINITIONS})
 
-    add_library(GLESv2 SHARED ${libglesv2_sources})
+    add_library(GLESv2 SHARED
+        ${libglesv2_sources}
+    )
     target_include_directories(GLESv2 PRIVATE ${ANGLE_PRIVATE_INCLUDE_DIRECTORIES})
     target_compile_definitions(GLESv2 PRIVATE LIBGLESV2_IMPLEMENTATION)
     target_link_libraries(GLESv2 ${ANGLEGLESv2_LIBRARIES})
 
-    add_library(EGL SHARED ${libegl_sources})
+    add_library(EGL SHARED
+        ${libegl_sources}
+    )
     target_include_directories(EGL PRIVATE ${ANGLE_PRIVATE_INCLUDE_DIRECTORIES})
     target_compile_definitions(EGL PRIVATE
         ${gl_prototypes}
@@ -115,6 +134,34 @@ else ()
         ${no_gl_prototypes}
         LIBANGLE_IMPLEMENTATION
     )
+endif ()
+
+if (USE_ANGLE_WEBGL)
+    set(libglesv2_entry_points_headers
+        src/libGLESv2/entry_points_egl.h
+        src/libGLESv2/entry_points_gles_2_0_autogen.h
+        src/libGLESv2/entry_points_gles_3_0_autogen.h
+        src/libGLESv2/entry_points_gles_ext_autogen.h
+    )
+
+    WEBKIT_COPY_FILES(LibGLESv2EntryPointsHeaders
+        DESTINATION ${ANGLE_FRAMEWORK_HEADERS_DIR}/ANGLE
+        FILES ${libglesv2_entry_points_headers}
+        FLATTENED
+    )
+
+    add_custom_command(
+        OUTPUT ${ANGLE_FRAMEWORK_HEADERS_DIR}/ANGLE/angle.timestamp
+        DEPENDS LibGLESv2EntryPointsHeaders ANGLEWebGLHeaders
+        COMMAND BUILT_PRODUCTS_DIR=${ANGLE_FRAMEWORK_HEADERS_DIR}/
+            PUBLIC_HEADERS_FOLDER_PATH=ANGLE
+            ${CMAKE_CURRENT_SOURCE_DIR}/adjust-angle-include-paths.sh
+        VERBATIM
+    )
+    add_custom_target(ANGLE-webgl-headers
+        DEPENDS ${ANGLE_FRAMEWORK_HEADERS_DIR}/ANGLE/angle.timestamp
+    )
+    add_dependencies(ANGLEFramework ANGLE-webgl-headers)
 endif ()
 
 if (COMPILER_IS_GCC_OR_CLANG)

@@ -26,11 +26,12 @@
 #include "config.h"
 #include "ViewUpdateDispatcher.h"
 
-#if PLATFORM(IOS_FAMILY)
+#if ENABLE(UI_SIDE_COMPOSITING)
 
 #include "ViewUpdateDispatcherMessages.h"
 #include "WebPage.h"
 #include "WebProcess.h"
+#include <WebCore/PageIdentifier.h>
 #include <wtf/RunLoop.h>
 
 namespace WebKit {
@@ -75,7 +76,7 @@ void ViewUpdateDispatcher::visibleContentRectUpdate(WebCore::PageIdentifier page
 
 void ViewUpdateDispatcher::dispatchVisibleContentRectUpdate()
 {
-    HashMap<PageIdentifier, UpdateData> update;
+    HashMap<WebCore::PageIdentifier, UpdateData> update;
     {
         LockHolder locker(&m_dataMutex);
         update = WTFMove(m_latestUpdate);
@@ -89,4 +90,4 @@ void ViewUpdateDispatcher::dispatchVisibleContentRectUpdate()
 
 } // namespace WebKit
 
-#endif // PLATFORM(IOS_FAMILY)
+#endif // ENABLE(UI_SIDE_COMPOSITING)

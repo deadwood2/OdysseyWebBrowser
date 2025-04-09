@@ -54,7 +54,6 @@ public:
 
     void updateDownloadBufferingFlag() override { };
 
-    bool isLiveStream() const override { return false; }
     MediaTime currentMediaTime() const override;
 
     void pause() override;
@@ -66,7 +65,6 @@ public:
     void durationChanged() override;
     MediaTime durationMediaTime() const override;
 
-    void setRate(float) override;
     std::unique_ptr<PlatformTimeRanges> buffered() const override;
     MediaTime maxMediaTimeSeekable() const override;
 
@@ -86,6 +84,7 @@ public:
     void unblockDurationChanges();
 
 private:
+    friend class MediaPlayerFactoryGStreamerMSE;
     static void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>&);
     static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
 
@@ -93,9 +92,8 @@ private:
     void updateStates() override;
 
     bool doSeek(const MediaTime&, float, GstSeekFlags) override;
-    bool doSeek();
     void maybeFinishSeek();
-    void updatePlaybackRate() override;
+
     void asyncStateChangeDone() override;
 
     // FIXME: Implement videoPlaybackQualityMetrics.

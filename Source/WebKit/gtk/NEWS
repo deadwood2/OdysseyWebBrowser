@@ -1,84 +1,160 @@
 ================
-WebKitGTK 2.26.4
+WebKitGTK 2.28.4
 ================
 
-What's new in WebKitGTK 2.26.4?
+What's new in WebKitGTK 2.28.4?
 
-  - Always use a light theme for rendering form controls.
-  - Fix the build with WPE renderer disabled.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.28.3
+================
+
+What's new in WebKitGTK 2.28.3?
+
+  - Enable kinetic scrolling with async scrolling.
+  - Fix web process hangs on large GitHub pages.
+  - Bubblewrap sandbox should not attempt to bind empty paths.
+  - Fix threading issues in the media player.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.28.2
+================
+
+What's new in WebKitGTK 2.28.2?
+
+  - Fix excessive CPU usage due to GdkFrameClock not being stopped.
+  - Fix UI process crash when EGL_WL_bind_wayland_display extension is not available.
+  - Fix position of select popup menus in X11.
+  - Fix playing of Youtube 'live stream'/H264 URLs.
+  - Fix a crash under X11 when cairo uses xcb.
+  - Fix the build in MIPS64.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.28.1
+================
+
+What's new in WebKitGTK 2.28.1?
+
+  - Fix position of default option element popup windows under Wayland.
+  - Fix rendering after a cross site navigation with PSON enabled and hardware acceleration forced.
+  - Fix a crash in nested wayland compositor when closing a tab with PSON enabled.
+  - Update Chrome and Firefox versions in user agent quirks.
+  - Fix a crash with bubblewrap sandbox enabled.
+  - Fix a crash in JavaScriptCore in ppc64el.
+  - Fix the build with GStreamer 1.12.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.28.0
+================
+
+What's new in WebKitGTK 2.28.0?
+
+  - Enable JIT in MIPS platform.
+  - Do not limit the surrounding text for input methods to current paragraph.
   - Fix the build with OpenGL disabled.
+  - Fix the build when Wayland target is disabled.
+  - Fix the build on ppc64le if __unix is undefined.
+  - Fix several crashes and rendering issues.
+  - Translation updates: Polish.
+
+=================
+WebKitGTK 2.27.91
+=================
+
+What's new in WebKitGTK 2.27.91?
+
+  - Update user agent quirks to fix the unsupported browser message in several google services.
+  - Fix several compile warnings with GCC 10.
   - Fix the build with GCC 10.
   - Fix several crashes and rendering issues.
+  - Translation updates: Chinese
+
+=================
+WebKitGTK 2.27.90
+=================
+
+What's new in WebKitGTK 2.27.90?
+
+  - Add support for same-site cookies.
+  - Add flatpak sandbox support.
+  - Enable WebAudio and WebGL by default in WebKitSettings.
+  - Add a setting to disallow top level navigation to a data URI.
+  - Add support for the -webkit-font-smoothing CSS property.
+  - Always use a light theme for rendering form controls.
+  - Stop making the Web Inspector windows transient.
+  - Ensure mouse cursor is hidden during fullscreen video playback.
+  - Add support for inspecting service workers to the remote inspector.
+  - Fix several crashes and rendering issues.
 
 ================
-WebKitGTK 2.26.3
+WebKitGTK 2.27.4
 ================
 
-What's new in WebKitGTK 2.26.3?
+What's new in WebKitGTK 2.27.4?
 
-  - Fix issues while trying to play a video on NextCloud.
-  - Make sure the GL video sink uses a valid WebKit shared GL context.
-  - Fix vertical alignment of text containing arabic diacritics.
-  - Fix build with icu 65.1.
-  - Fix page loading errors with websites using HSTS.
+  - Add API for input methods.
+  - Add API to serialize/deserialize a JSCValue to/from a JSON string.
+  - Add support for strict secure cookies.
+  - Add support for saving data from remote inspector.
+  - Make ondemand hardware acceleration policy never leave accelerated compositing mode.
+  - Fix rendering of conic gradients in high resolution displays.
+  - Fix special combination characters not respecting the keystroke order when high CPU load.
+  - Honor the IndexedDB directory set in WebsiteDataManager.
+  - Fix rendering of text when there's an initial advance in the text run.
   - Fix web process crash when displaying a KaTeX formula.
+  - Fix network process crash with PSON enabled.
   - Fix several crashes and rendering issues.
 
 ================
-WebKitGTK 2.26.2
+WebKitGTK 2.27.3
 ================
 
-What's new in WebKitGTK 2.26.2?
+What's new in WebKitGTK 2.27.3?
 
-  - Improve performance of querying system fallback fonts.
-  - Don't use prgname in dbus-proxy socket path.
-  - Fix thread-safety issues in image decoders.
+  - Add support for Pointer Lock API.
+  - Improve performance when falling back to system fonts.
+  - Stop using DBus for the remote inspector implementation to improve the performance of both
+    WebDriver and remote inspector.
+  - Implement support for new ARIA roles: code, strong, emphasis, generic.
+  - Fix handling of content type with new custom protocols implementation.
+  - Make image decoders fully thread safe.
+  - Add support for get page source command in WebDriver.
+  - Add support for network proxy capabilities in WebDriver.
+  - Add support for new window command in WebDriver.
+  - Fix several crashes and rendering issues.
+  - Translation updates: Brazilian Portuguese, Ukrainian.
+
+================
+WebKitGTK 2.27.2
+================
+
+What's new in WebKitGTK 2.27.2?
+
+  - Add user messages API for the communication with the web extension.
+  - Enable service workers by default.
+  - Add support for saving data in Web Inspector.
+  - More navigation gesture improvement.
   - Fix the build with WebDriver disabled.
+  - Show also client EGL extensions in about:gpu.
   - Disable accelerated compositing when we fail to initialize the EGL dispaly under Wayland.
-  - Fill the objects category in emoji picker.
   - Fix several crashes and rendering issues.
 
 ================
-WebKitGTK 2.26.1
+WebKitGTK 2.27.1
 ================
 
-What's new in WebKitGTK+ 2.26.1?
+What's new in WebKitGTK+ 2.27.1?
 
-  - Fix MSE media player with GStreamer 1.14.
-  - Fix HTML alternate loads never finishing.
-  - Fix web view initialization delay on fisrt load.
-  - Validate user agent string set via API.
-  - Fix a crash when a web view is destroyed with accelerated compositing mode enabled.
-  - Fix EGL initialization with newer versions of Mesa.
-  - Do not enable the sandbox inside docker.
+  - Enable async scrolling when accelerating compositing policy is 'always'.
+  - Add about:gpu to show information about the graphics stack.
+  - Add API to enable Process Swap on (Cross-site) Navigation, that is now disabled by default.
+  - Add WebKitWebView:page-id property.
+  - Improve swipe navigation gesture style.
   - Fix several crashes and rendering issues.
-
-================
-WebKitGTK 2.26.0
-================
-
-What's new in WebKitGTK+ 2.26.0?
-
-  - Disable process swap on navigation.
-  - Do not enable the sandbox in Snap.
-  - Fix sandbox parsing DISPLAY on X11.
-  - Translation updates: Brazilian Portuguese, German.
-
-=================
-WebKitGTK 2.25.92
-=================
-
-What's new in WebKitGTK+ 2.25.92?
-
-  - Add WEBKIT_USE_SINGLE_WEB_PROCESS environment variable to force single process model in all WebKitWebContext.
-    This is a temporary solution for applications still depending on the single process mode behavior. It will be
-    only available in 2.26 series.
-  - Add new API to remove a filter from an user content manager given its identifier.
-  - Add support for HSTS.
-  - Several improvements and bug fixes in MSE media player.
-  - Fix building without unified sources.
-  - Fix several crashes and rendering issues.
-  - Translation updates: Polish, Ukrainian.
 
 ================
 WebKitGTK 2.25.4

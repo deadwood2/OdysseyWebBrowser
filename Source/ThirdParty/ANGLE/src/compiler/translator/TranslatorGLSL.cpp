@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2002-2013 The ANGLE Project Authors. All rights reserved.
+// Copyright 2002 The ANGLE Project Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -12,6 +12,7 @@
 #include "compiler/translator/OutputGLSL.h"
 #include "compiler/translator/VersionGLSL.h"
 #include "compiler/translator/tree_ops/EmulatePrecision.h"
+#include "compiler/translator/tree_ops/RewriteRowMajorMatrices.h"
 #include "compiler/translator/tree_ops/RewriteTexelFetchOffset.h"
 #include "compiler/translator/tree_ops/RewriteUnaryMinusOperatorFloat.h"
 
@@ -44,7 +45,7 @@ void TranslatorGLSL::initBuiltInFunctionEmulator(BuiltInFunctionEmulator *emu,
     InitBuiltInFunctionEmulatorForGLSLMissingFunctions(emu, getShaderType(), targetGLSLVersion);
 }
 
-void TranslatorGLSL::translate(TIntermBlock *root,
+bool TranslatorGLSL::translate(TIntermBlock *root,
                                ShCompileOptions compileOptions,
                                PerformanceDiagnostics * /*perfDiagnostics*/)
 {
@@ -95,12 +96,26 @@ void TranslatorGLSL::translate(TIntermBlock *root,
 
     if ((compileOptions & SH_REWRITE_TEXELFETCHOFFSET_TO_TEXELFETCH) != 0)
     {
-        sh::RewriteTexelFetchOffset(root, getSymbolTable(), getShaderVersion());
+        if (!sh::RewriteTexelFetchOffset(this, root, getSymbolTable(), getShaderVersion()))
+        {
+            return false;
+        }
     }
 
     if ((compileOptions & SH_REWRITE_FLOAT_UNARY_MINUS_OPERATOR) != 0)
     {
-        sh::RewriteUnaryMinusOperatorFloat(root);
+        if (!sh::RewriteUnaryMinusOperatorFloat(this, root))
+        {
+            return false;
+        }
+    }
+
+    if ((compileOptions & SH_REWRITE_ROW_MAJOR_MATRICES) != 0 && getShaderVersion() >= 300)
+    {
+        if (!RewriteRowMajorMatrices(this, root, &getSymbolTable()))
+        {
+            return false;
+        }
     }
 
     bool precisionEmulation =
@@ -110,7 +125,10 @@ void TranslatorGLSL::translate(TIntermBlock *root,
     {
         EmulatePrecision emulatePrecision(&getSymbolTable());
         root->traverse(&emulatePrecision);
-        emulatePrecision.updateTree();
+        if (!emulatePrecision.updateTree(this, root))
+        {
+            return false;
+        }
         emulatePrecision.writeEmulationHelpers(sink, getShaderVersion(), getOutputType());
     }
 
@@ -192,13 +210,13 @@ void TranslatorGLSL::translate(TIntermBlock *root,
             sink << "out vec4 angle_SecondaryFragData[" << getResources().MaxDualSourceDrawBuffers
                  << "];\n";
         }
+
+        EmitEarlyFragmentTestsGLSL(*this, sink);
     }
 
-    if (getShaderType() == GL_COMPUTE_SHADER && isComputeShaderLocalSizeDeclared())
+    if (getShaderType() == GL_COMPUTE_SHADER)
     {
-        const sh::WorkGroupSize &localSize = getComputeShaderLocalSize();
-        sink << "layout (local_size_x=" << localSize[0] << ", local_size_y=" << localSize[1]
-             << ", local_size_z=" << localSize[2] << ") in;\n";
+        EmitWorkGroupSizeGLSL(*this, sink);
     }
 
     if (getShaderType() == GL_GEOMETRY_SHADER_EXT)
@@ -214,6 +232,8 @@ void TranslatorGLSL::translate(TIntermBlock *root,
                            compileOptions);
 
     root->traverse(&outputGLSL);
+
+    return true;
 }
 
 bool TranslatorGLSL::shouldFlattenPragmaStdglInvariantAll()
@@ -277,14 +297,16 @@ void TranslatorGLSL::writeExtensionBehavior(TIntermNode *root, ShCompileOptions 
             }
         }
 
-        const bool isMultiview = (iter.first == TExtension::OVR_multiview2);
-        if (isMultiview && getShaderType() == GL_VERTEX_SHADER &&
-            (compileOptions & SH_SELECT_VIEW_IN_NV_GLSL_VERTEX_SHADER) != 0u)
+        const bool isMultiview =
+            (iter.first == TExtension::OVR_multiview) || (iter.first == TExtension::OVR_multiview2);
+        if (isMultiview)
         {
-            // Emit the NV_viewport_array2 extension in a vertex shader if the
-            // SH_SELECT_VIEW_IN_NV_GLSL_VERTEX_SHADER option is set and the OVR_multiview2(2)
-            // extension is requested.
-            sink << "#extension GL_NV_viewport_array2 : require\n";
+            // Only either OVR_multiview or OVR_multiview2 should be emitted.
+            if ((iter.first != TExtension::OVR_multiview) ||
+                !IsExtensionEnabled(extBehavior, TExtension::OVR_multiview2))
+            {
+                EmitMultiviewGLSL(*this, compileOptions, iter.first, iter.second, sink);
+            }
         }
 
         // Support ANGLE_texture_multisample extension on GLSL300

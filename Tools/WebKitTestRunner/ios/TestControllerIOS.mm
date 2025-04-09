@@ -42,6 +42,7 @@
 #import <WebKit/WKUserContentControllerPrivate.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
+#import <WebKit/WKWebViewPrivateForTesting.h>
 #import <objc/runtime.h>
 #import <pal/spi/ios/GraphicsServicesSPI.h>
 #import <wtf/MainThread.h>
@@ -82,6 +83,9 @@ static void handleMenuDidHideNotification(CFNotificationCenterRef, void*, CFStri
 
 void TestController::notifyDone()
 {
+    UIView *contentView = [mainWebView()->platformView() valueForKeyPath:@"_currentContentView"];
+    UIView *selectionView = [contentView valueForKeyPath:@"interactionAssistant.selectionView"];
+    [selectionView _removeAllAnimations:YES];
 }
 
 void TestController::platformInitialize()
@@ -138,12 +142,19 @@ void TestController::platformResetPreferencesToConsistentValues()
     [(__bridge WKPreferences *)preferences _setShouldIgnoreMetaViewport:NO];
 }
 
-void TestController::platformResetStateToConsistentValues(const TestOptions& options)
+bool TestController::platformResetStateToConsistentValues(const TestOptions& options)
 {
     cocoaResetStateToConsistentValues(options);
 
     [[UIApplication sharedApplication] _cancelAllTouches];
     [[UIDevice currentDevice] setOrientation:UIDeviceOrientationPortrait animated:NO];
+    UIKeyboardPreferencesController *keyboardPreferences = UIKeyboardPreferencesController.sharedPreferencesController;
+    NSString *automaticMinimizationEnabledPreferenceKey = @"AutomaticMinimizationEnabled";
+    if (![keyboardPreferences boolForPreferenceKey:automaticMinimizationEnabledPreferenceKey]) {
+        [keyboardPreferences setValue:@YES forPreferenceKey:automaticMinimizationEnabledPreferenceKey];
+        CFPreferencesSetAppValue((__bridge CFStringRef)automaticMinimizationEnabledPreferenceKey, kCFBooleanTrue, CFSTR("com.apple.Preferences"));
+    }
+
     GSEventSetHardwareKeyboardAttached(true, 0);
 
     m_inputModeSwizzlers.clear();
@@ -164,7 +175,6 @@ void TestController::platformResetStateToConsistentValues(const TestOptions& opt
         webView.overrideSafeAreaInsets = UIEdgeInsetsZero;
         [webView _clearOverrideLayoutParameters];
         [webView _clearInterfaceOrientationOverride];
-        [webView resetInteractionCallbacks];
         [webView resetCustomMenuAction];
         [webView setAllowedMenuActions:nil];
 
@@ -183,8 +193,28 @@ void TestController::platformResetStateToConsistentValues(const TestOptions& opt
     runUntil(isDoneWaitingForKeyboardToDismiss, m_currentInvocation->shortTimeout());
     runUntil(isDoneWaitingForMenuToDismiss, m_currentInvocation->shortTimeout());
 
+    if (PlatformWebView* platformWebView = mainWebView()) {
+        TestRunnerWKWebView *webView = platformWebView->platformView();
+        UIViewController *webViewController = [[webView window] rootViewController];
+
+        MonotonicTime waitEndTime = MonotonicTime::now() + m_currentInvocation->shortTimeout();
+        
+        bool hasPresentedViewController = !![webViewController presentedViewController];
+        while (hasPresentedViewController && MonotonicTime::now() < waitEndTime) {
+            [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantPast]];
+            hasPresentedViewController = !![webViewController presentedViewController];
+        }
+        
+        if (hasPresentedViewController) {
+            TestInvocation::dumpWebProcessUnresponsiveness("TestController::platformResetPreferencesToConsistentValues - Failed to remove presented view controller\n");
+            return false;
+        }
+    }
+
     if (shouldRestoreFirstResponder)
         [mainWebView()->platformView() becomeFirstResponder];
+
+    return true;
 }
 
 void TestController::platformConfigureViewForTest(const TestInvocation& test)
@@ -240,7 +270,12 @@ void TestController::abortModal()
 
 const char* TestController::platformLibraryPathForTesting()
 {
-    return [[@"~/Library/Application Support/WebKitTestRunner" stringByExpandingTildeInPath] UTF8String];
+    static NSString *platformLibraryPath = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        platformLibraryPath = [[@"~/Library/Application Support/WebKitTestRunner" stringByExpandingTildeInPath] retain];
+    });
+    return platformLibraryPath.UTF8String;
 }
 
 void TestController::setHidden(bool)

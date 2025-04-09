@@ -33,10 +33,8 @@ class DepthStencilTest : public ANGLETest
         setConfigStencilBits(8);
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         glBindTexture(GL_TEXTURE_2D, mColorTexture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, getWindowWidth(), getWindowHeight(), 0, GL_RGBA,
                      GL_UNSIGNED_BYTE, nullptr);
@@ -54,8 +52,8 @@ class DepthStencilTest : public ANGLETest
 
         ASSERT_GL_NO_ERROR();
 
-        // Note: GL_DEPTH_COMPONENT24 is not allowed in GLES2.
-        if (getClientMajorVersion() >= 3)
+        // Note: GL_DEPTH_COMPONENT24 is allowed in GLES2 with GL_OES_depth24 extension.
+        if (getClientMajorVersion() >= 3 || IsGLExtensionEnabled("GL_OES_depth24"))
         {
             // Setup Color/Depth FBO with a depth format that's emulated with packed depth/stencil.
             glBindFramebuffer(GL_FRAMEBUFFER, mColorDepthFBO);
@@ -71,8 +69,6 @@ class DepthStencilTest : public ANGLETest
 
         ASSERT_GL_NO_ERROR();
     }
-
-    void TearDown() override { ANGLETest::TearDown(); }
 
     void bindColorStencilFBO()
     {
@@ -90,7 +86,7 @@ class DepthStencilTest : public ANGLETest
     // depth/stencil format
     void overrideFeaturesVk(FeaturesVk *featuresVk) override
     {
-        featuresVk->forceFallbackFormat = true;
+        featuresVk->overrideFeatures({"force_fallback_format"}, true);
     }
 
     void prepareSingleEmulatedWithPacked();
@@ -238,7 +234,7 @@ void DepthStencilTest::prepareSingleEmulatedWithPacked()
 // Tests that clearing or rendering into a depth-only format doesn't affect stencil.
 TEST_P(DepthStencilTest, DepthOnlyEmulatedWithPacked)
 {
-    ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3);
+    ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 && !IsGLExtensionEnabled("GL_OES_depth24"));
 
     bindColorDepthFBO();
     prepareSingleEmulatedWithPacked();
@@ -248,18 +244,13 @@ TEST_P(DepthStencilTest, DepthOnlyEmulatedWithPacked)
 // Tests that clearing or rendering into a stencil-only format doesn't affect depth.
 TEST_P(DepthStencilTest, StencilOnlyEmulatedWithPacked)
 {
+    // http://anglebug.com/4092
+    ANGLE_SKIP_TEST_IF(IsWindows() && IsD3D9());
     bindColorStencilFBO();
     prepareSingleEmulatedWithPacked();
     ensureDepthUnaffected();
 }
 
-ANGLE_INSTANTIATE_TEST(DepthStencilTest,
-                       ES2_D3D11(),
-                       ES3_D3D11(),
-                       ES2_OPENGL(),
-                       ES3_OPENGL(),
-                       ES2_OPENGLES(),
-                       ES3_OPENGLES(),
-                       ES2_VULKAN());
+ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(DepthStencilTest);
 
 }  // anonymous namespace

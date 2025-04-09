@@ -29,7 +29,10 @@
 from __future__ import print_function
 import logging
 import re
-import itertools
+import sys
+
+if sys.version_info < (3, 0):
+    from itertools import ifilter  as filter
 
 _log = logging.getLogger(__name__)
 
@@ -41,7 +44,7 @@ class ProfilerFactory(object):
         if not profilers:
             return None
         profiler_name = profiler_name or cls.default_profiler_name(host.platform)
-        profiler_class = next(itertools.ifilter(lambda profiler: profiler.name == profiler_name, profilers), None)
+        profiler_class = next(filter(lambda profiler: profiler.name == profiler_name, profilers), None)
         if not profiler_class:
             return None
         return profilers[0](host, executable_path, output_dir, identifier)
@@ -169,7 +172,7 @@ class Perf(SingleFileOutputProfiler):
 
         # Return early if the process produced non-zero exit code or is still running (if it couldn't be killed).
         exit_code = self._wait_process.poll()
-        if exit_code is not 0:
+        if exit_code != 0:
             print("'perf record' failed, ", end=' ')
             if exit_code:
                 print("exit code was %i." % exit_code)
