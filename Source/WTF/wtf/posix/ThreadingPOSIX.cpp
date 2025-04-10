@@ -269,6 +269,9 @@ bool Thread::establishHandle(NewThreadContext* context, Optional<size_t> stackSi
     pthread_t threadHandle;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
+#if OS(AROS)
+    pthread_attr_setstacksize(&attr, 512 * 1024);
+#endif
 #if HAVE(QOS_CLASSES)
     pthread_attr_set_qos_class_np(&attr, dispatchQOSClass(qos), 0);
 #else
@@ -292,6 +295,8 @@ void Thread::initializeCurrentThreadInternal(const char* threadName)
     pthread_setname_np(normalizeThreadName(threadName));
 #elif OS(LINUX)
     prctl(PR_SET_NAME, normalizeThreadName(threadName));
+#elif OS(AROS)
+    pthread_setname_np(pthread_self(), threadName);
 #else
     UNUSED_PARAM(threadName);
 #endif
