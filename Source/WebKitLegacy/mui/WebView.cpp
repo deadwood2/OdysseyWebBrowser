@@ -471,7 +471,7 @@ WebView::WebView()
     // chain Page->MainFrame->FrameLoader->WebFrameLoaderClient
     pageWebFrameLoaderClient->setWebFrame(webFrame);
 
-    pageProgressTrackerClient->setWebFrame(webFrame);
+//    pageProgressTrackerClient->setWebFrame(webFrame);
 
     m_page->mainFrame().init();
 }
