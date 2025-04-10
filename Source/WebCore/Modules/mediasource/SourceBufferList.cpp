@@ -30,7 +30,7 @@
 
 #include "config.h"
 #include "SourceBufferList.h"
-
+//morphos_2.30.0
 #if ENABLE(MEDIA_SOURCE)
 
 #include "Event.h"
@@ -92,6 +92,14 @@ void SourceBufferList::swap(Vector<RefPtr<SourceBuffer>>& other)
     if (removedEntries)
         scheduleEvent(eventNames().removesourcebufferEvent);
 }
+
+#if defined(morphos_2_30_0)
+#else
+bool SourceBufferList::canSuspendForDocumentSuspension() const
+{
+    return !m_asyncEventQueue->hasPendingEvents();
+}
+#endif
 
 void SourceBufferList::scheduleEvent(const AtomString& eventName)
 {

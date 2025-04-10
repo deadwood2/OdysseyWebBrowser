@@ -92,6 +92,8 @@ public:
 
     bool shouldDisableElementFullscreenQuirk() const;
 
+    bool needsVP9FullRangeFlagQuirk() const;
+
 private:
     bool needsQuirks() const;
 
@@ -113,6 +115,7 @@ private:
 #if ENABLE(TOUCH_EVENTS)
     mutable Optional<bool> m_shouldDispatchSimulatedMouseEventsQuirk;
 #endif
+    mutable Optional<bool> m_needsVP9FullRangeFlagQuirk;
 };
 
 }

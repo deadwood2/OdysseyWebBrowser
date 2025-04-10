@@ -24,8 +24,8 @@
  */
 
 #pragma once
-
-#if ENABLE(MEDIA_SOURCE) && ENABLE(VIDEO_TRACK)
+//morphos_2.30.0
+#if ENABLE(MEDIA_SOURCE)
 
 #include "VideoTrack.h"
 
@@ -38,4 +38,4 @@ public:
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_SOURCE) && ENABLE(VIDEO_TRACK)
+#endif // ENABLE(MEDIA_SOURCE)

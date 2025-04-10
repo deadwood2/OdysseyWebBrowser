@@ -29,7 +29,7 @@
  */
 
 #pragma once
-
+//morphos_2.30.0
 #if ENABLE(MEDIA_SOURCE)
 
 #include "ActiveDOMObject.h"
@@ -81,6 +81,10 @@ private:
     const char* activeDOMObjectName() const final;
 
     UniqueRef<MainThreadGenericEventQueue> m_asyncEventQueue;
+#if defined(morphos_2_30_0)
+#else
+    bool canSuspendForDocumentSuspension() const;
+#endif
 
     Vector<RefPtr<SourceBuffer>> m_list;
 };
