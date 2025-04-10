@@ -138,6 +138,7 @@
 #define USE_CURL_OPENSSL 1
 #define USE_TEXTURE_MAPPER 1
 #define USE_TEXTURE_MAPPER_GL 0
+#define USE_PTHREADS 1
 #endif
 
 #if !defined(USE_JSVALUE64) && !defined(USE_JSVALUE32_64)
