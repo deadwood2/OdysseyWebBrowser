@@ -149,7 +149,7 @@ void WebInspectorFrontendClient::frontendLoaded()
     setAttachedWindow(m_attached ? InspectorFrontendClient::DockSide::Bottom : InspectorFrontendClient::DockSide::Undocked);
 }
 
-String WebInspectorFrontendClient::localizedStringsURL()
+String WebInspectorFrontendClient::localizedStringsURL() const
 {
     return String();
 }

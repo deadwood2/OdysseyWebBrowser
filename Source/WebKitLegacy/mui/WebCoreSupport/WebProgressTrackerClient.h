@@ -44,8 +44,6 @@ public:
 
     void setWebFrame(WebFrame* webFrame) { m_webFrame = webFrame; }
 
-    virtual void progressTrackerDestroyed() override;
-
     virtual void progressStarted(WebCore::Frame&) override;
     virtual void progressEstimateChanged(WebCore::Frame&) override;
     virtual void progressFinished(WebCore::Frame&) override;

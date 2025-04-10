@@ -80,7 +80,6 @@
 #include "PluginMainThreadScheduler.h"
 #endif
 
-using JSC::ExecState;
 using JSC::JSLock;
 using JSC::JSObject;
 using JSC::JSValue;
@@ -441,15 +440,15 @@ void PluginView::performRequest(PluginRequest* request)
     
     // Executing a script can cause the plugin view to be destroyed, so we keep a reference to it.
     RefPtr<PluginView> protector(this);
-    auto result = m_parentFrame->script().executeScript(jsString, request->shouldAllowPopups());
+    auto result = m_parentFrame->script().executeScriptIgnoringException(jsString, request->shouldAllowPopups());
 
     if (targetFrameName.isNull()) {
         CString cstr;
         {
-            JSC::ExecState& state = *m_parentFrame->script().globalObject(pluginWorld())->globalExec();
-            JSC::JSLockHolder lock(&state);
+            JSC::JSGlobalObject& globalObject = *m_parentFrame->script().globalObject(pluginWorld());
+            JSC::JSLockHolder lock(&globalObject);
             String resultString;
-            if (result && result.getString(&state, resultString))
+            if (result && result.getString(&globalObject, resultString))
                 cstr = resultString.utf8();
         }
 
@@ -457,6 +456,7 @@ void PluginView::performRequest(PluginRequest* request)
         m_streams.add(stream.copyRef());
         stream->sendJavaScriptStream(requestURL, cstr);
     }
+
 }
 
 void PluginView::requestTimerFired()

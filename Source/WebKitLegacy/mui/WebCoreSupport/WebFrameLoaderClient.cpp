@@ -578,11 +578,7 @@ void WebFrameLoaderClient::transitionToCommittedForNewPage()
     core(m_webFrame)->createView(enclosingIntRect(logicalFrame).size(), backgroundColor, /* fixedLayoutSize */ { }, /* fixedVisibleContentRect */ { });
 }
 
-void WebFrameLoaderClient::didSaveToPageCache()
-{
-}
-
-void WebFrameLoaderClient::didRestoreFromPageCache()
+void WebFrameLoaderClient::didRestoreFromBackForwardCache()
 {
 }
 
@@ -939,7 +935,7 @@ void WebFrameLoaderClient::dispatchUnableToImplementPolicy(const ResourceError& 
     delete webError;
 }
 
-void WebFrameLoaderClient::convertMainResourceLoadToDownload(DocumentLoader* documentLoader, PAL::SessionID sessionID,const ResourceRequest& request, const ResourceResponse& response)
+void WebFrameLoaderClient::convertMainResourceLoadToDownload(DocumentLoader* documentLoader, const ResourceRequest& request, const ResourceResponse& response)
 {
     SharedPtr<WebDownloadDelegate> downloadDelegate;
     WebView* webView = m_webFrame->webView();
@@ -1038,8 +1034,8 @@ void WebFrameLoaderClient::dispatchDidClearWindowObjectInWorld(DOMWrapperWorld& 
     if (!settings || !settings->isScriptEnabled())
         return;
  
-    JSGlobalContextRef context = toGlobalRef(coreFrame->script().globalObject(world)->globalExec());
-    JSObjectRef windowObject = toRef(coreFrame->script().globalObject(world));
+    JSContextRef context = toRef(coreFrame->script().globalObject(world));
+    JSObjectRef windowObject = toRef(JSC::jsCast<JSC::JSObject*>(coreFrame->script().globalObject(world)));
     ASSERT(windowObject);
 
     SharedPtr<WebFrameLoadDelegate> webFrameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
@@ -1100,20 +1096,6 @@ Optional<WebCore::FrameIdentifier> WebFrameLoaderClient::frameID() const
     return WTF::nullopt;
 }
 
-PAL::SessionID WebFrameLoaderClient::sessionID() const
-{
-    return PAL::SessionID::defaultSessionID();
-}
-
-void WebFrameLoaderClient::progressStarted(WebCore::Frame&)
-{
-}
-void WebFrameLoaderClient::progressEstimateChanged(WebCore::Frame&)
-{
-}
-void WebFrameLoaderClient::progressFinished(WebCore::Frame&)
-{
-}
 void WebFrameLoaderClient::dispatchDidReachLayoutMilestone(OptionSet<WebCore::LayoutMilestone>)
 {
 }

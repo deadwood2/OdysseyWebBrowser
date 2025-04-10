@@ -60,7 +60,7 @@ public:
 
     // GeolocationClient
     void geolocationDestroyed() final;
-    void startUpdating() final;
+    void startUpdating(const String& authorizationToken) final;
     void stopUpdating() final;
     void setEnableHighAccuracy(bool) final;
     Optional<WebCore::GeolocationPositionData> lastPosition() final;

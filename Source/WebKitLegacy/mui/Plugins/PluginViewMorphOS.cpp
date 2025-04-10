@@ -63,7 +63,6 @@
 
 #include <clib/debug_protos.h>
 
-using JSC::ExecState;
 using JSC::Interpreter;
 using JSC::JSObject;
 

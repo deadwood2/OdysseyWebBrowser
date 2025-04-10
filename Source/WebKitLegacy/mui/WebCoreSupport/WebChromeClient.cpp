@@ -399,7 +399,7 @@ void WebChromeClient::intrinsicContentsSizeChanged(const IntSize&) const
 }
 
 
-void WebChromeClient::mouseDidMoveOverElement(const HitTestResult& result, unsigned modifierFlags)
+void WebChromeClient::mouseDidMoveOverElement(const HitTestResult& result, unsigned modifierFlags, const WTF::String&, WebCore::TextDirection)
 {
 
 }
@@ -416,11 +416,6 @@ void WebChromeClient::unavailablePluginButtonClicked(Element& element, RenderEmb
     BalWidget *widget = m_webView->viewWindow();
     if(widget)
         DoMethod(widget->window, MM_OWBWindow_LoadURL, "http://fabportnawak.free.fr/owb/plugins/"); // Just a test
-}
-
-void WebChromeClient::setToolTip(const String& toolTip, TextDirection)
-{
-    m_webView->setToolTip(toolTip.utf8().data());
 }
 
 void WebChromeClient::print(Frame& frame)

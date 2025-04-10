@@ -131,7 +131,3 @@ void WebDragClient::startDrag(DragItem item, DataTransfer& dataTransfer, Frame& 
     }
 }
 
-void WebDragClient::dragControllerDestroyed()
-{
-    delete this;
-}

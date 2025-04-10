@@ -43,7 +43,7 @@ public:
     virtual bool paintRadio(const RenderObject&, const PaintInfo&, const IntRect&) override;
     virtual void setRadioSize(RenderStyle&) const override;
     virtual bool paintButton(const RenderObject&, const PaintInfo&, const IntRect&) override;
-    virtual void adjustMenuListStyle(StyleResolver&, RenderStyle&, const Element*) const override;
+    virtual void adjustMenuListStyle(RenderStyle&, const Element*) const override;
     virtual void adjustSliderThumbSize(RenderStyle&, const Element*) const override;
     virtual bool paintSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&) override;
     virtual bool paintSliderThumb(const RenderObject&, const PaintInfo&, const IntRect&) override;
@@ -57,7 +57,7 @@ public:
     virtual bool supportsDataListUI(const AtomString&) const override;
 
 #if ENABLE(PROGRESS_ELEMENT)
-    virtual void adjustProgressBarStyle(StyleResolver&, RenderStyle&, const Element*) const override;
+    virtual void adjustProgressBarStyle(RenderStyle&, const Element*) const override;
     virtual bool paintProgressBar(const RenderObject&, const PaintInfo&, const IntRect&) override;
     virtual double animationRepeatIntervalForProgressBar(RenderProgress*) const override;
     virtual double animationDurationForProgressBar(RenderProgress*) const override;
@@ -70,26 +70,26 @@ public:
     virtual Color platformFocusRingColor(OptionSet<StyleColor::Options>) const override;
     virtual bool supportsFocusRing(const RenderStyle& style) const  override;
 
-    virtual void adjustButtonStyle(StyleResolver&, RenderStyle&, const Element*) const override;
-    virtual void adjustTextFieldStyle(StyleResolver&, RenderStyle&, const Element*) const override;
+    virtual void adjustButtonStyle(RenderStyle&, const Element*) const override;
+    virtual void adjustTextFieldStyle(RenderStyle&, const Element*) const override;
     virtual bool paintTextField(const RenderObject&, const PaintInfo&, const FloatRect&) override;
 
-    virtual void adjustTextAreaStyle(StyleResolver&, RenderStyle&, const Element*) const override;
+    virtual void adjustTextAreaStyle(RenderStyle&, const Element*) const override;
     virtual bool paintTextArea(const RenderObject&, const PaintInfo&, const FloatRect&) override;
 
-    virtual void adjustSearchFieldStyle(StyleResolver&, RenderStyle&, const Element*) const override;
-    virtual void adjustSearchFieldCancelButtonStyle(StyleResolver&, RenderStyle&, const Element*) const override;
+    virtual void adjustSearchFieldStyle(RenderStyle&, const Element*) const override;
+    virtual void adjustSearchFieldCancelButtonStyle(RenderStyle&, const Element*) const override;
     virtual bool paintSearchField(const RenderObject&, const PaintInfo&, const IntRect&) override;
     virtual bool paintSearchFieldCancelButton(const RenderBox&, const PaintInfo&, const IntRect&) override;
 
-    virtual void adjustMenuListButtonStyle(StyleResolver&, RenderStyle&, const Element*) const override;
+    virtual void adjustMenuListButtonStyle(RenderStyle&, const Element*) const override;
     virtual bool paintMenuListButtonDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) override;
-    virtual void adjustCheckboxStyle(StyleResolver&, RenderStyle&, const Element*) const override;
-    virtual void adjustRadioStyle(StyleResolver&, RenderStyle&, const Element*) const override;
+    virtual void adjustCheckboxStyle(RenderStyle&, const Element*) const override;
+    virtual void adjustRadioStyle(RenderStyle&, const Element*) const override;
     virtual bool paintMenuList(const RenderObject&, const PaintInfo&, const FloatRect&) override;
 
-    virtual void adjustMediaControlStyle(StyleResolver&, RenderStyle&, const Element*) const override;
-    virtual void adjustSliderTrackStyle(StyleResolver&, RenderStyle&, const Element*) const override;
+    virtual void adjustMediaControlStyle(RenderStyle&, const Element*) const override;
+    virtual void adjustSliderTrackStyle(RenderStyle&, const Element*) const override;
     virtual bool paintMediaFullscreenButton(const RenderObject&, const PaintInfo&, const IntRect&) override;
     virtual bool paintMediaSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&) override;
     virtual bool paintMediaVolumeSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&) override;

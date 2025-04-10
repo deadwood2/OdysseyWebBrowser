@@ -91,7 +91,7 @@ public:
     // InspectorFrontendClient API.
     void frontendLoaded() override;
 
-    WTF::String localizedStringsURL() override;
+    WTF::String localizedStringsURL() const override;
 
     void bringToFront() override;
     void closeWindow() override;

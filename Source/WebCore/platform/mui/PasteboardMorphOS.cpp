@@ -586,14 +586,20 @@ static String getPlainText(Frame* )
 */
 }
 
-void Pasteboard::read(PasteboardPlainText& text)
+void Pasteboard::read(PasteboardPlainText& text, PlainTextURLReadingPolicy, Optional<size_t>)
 {
     m_dataObject->setText(getPlainText(0));
     text.text = m_dataObject->text();
 }
 
-void Pasteboard::read(PasteboardFileReader& reader)
+void Pasteboard::read(PasteboardWebContentReader&, WebContentReadingPolicy, Optional<size_t>)
 {
+    notImplemented();
+}
+
+void Pasteboard::read(PasteboardFileReader&)
+{
+     notImplemented();
 }
 
 bool Pasteboard::hasData()
@@ -683,10 +689,6 @@ void Pasteboard::write(const PasteboardWebContent&)
 {
 }
 
-void Pasteboard::read(PasteboardWebContentReader&, WebContentReadingPolicy)
-{
-}
-
 Pasteboard::Pasteboard()
 {
 }
@@ -696,7 +698,7 @@ String Pasteboard::readOrigin()
     return { };
 }
 
-void Pasteboard::writeCustomData(const PasteboardCustomData&)
+void Pasteboard::writeCustomData(const Vector<PasteboardCustomData>&)
 {
 }
 

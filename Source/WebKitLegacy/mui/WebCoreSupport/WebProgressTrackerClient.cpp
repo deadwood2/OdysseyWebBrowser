@@ -40,11 +40,6 @@ WebProgressTrackerClient::~WebProgressTrackerClient()
 {
 }
 
-void WebProgressTrackerClient::progressTrackerDestroyed()
-{
-    delete this;
-}
-
 void WebProgressTrackerClient::progressStarted(WebCore::Frame&)
 {
 #ifdef BENCH_LOAD_TIME

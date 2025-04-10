@@ -28,7 +28,7 @@
 #include "WebHistory.h"
 #include "WebHistoryDelegate.h"
 #include "WebView.h"
-#include <WebCore/PageCache.h>
+#include <WebCore/BackForwardCache.h>
 #include <wtf/NeverDestroyed.h>
 
 using namespace WebCore;

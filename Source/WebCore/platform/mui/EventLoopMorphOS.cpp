@@ -22,8 +22,4 @@
 
 namespace WebCore {
 
-void EventLoop::cycle()
-{
-}
-
 } // namespace WebCore

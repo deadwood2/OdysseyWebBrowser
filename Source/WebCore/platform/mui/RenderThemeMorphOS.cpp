@@ -257,13 +257,13 @@ void RenderThemeBal::setButtonStyle(RenderStyle& style) const
     style.setPaddingBottom(Length(vertPadding, Fixed));
 }
 
-void RenderThemeBal::adjustButtonStyle(StyleResolver&, RenderStyle& style, const Element*) const
+void RenderThemeBal::adjustButtonStyle(RenderStyle& style, const Element*) const
 {
     setButtonStyle(style);
     //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
-void RenderThemeBal::adjustTextAreaStyle(StyleResolver&, RenderStyle& style, const Element*) const
+void RenderThemeBal::adjustTextAreaStyle(RenderStyle& style, const Element*) const
 {
     setButtonStyle(style);
 }
@@ -273,7 +273,7 @@ bool RenderThemeBal::paintTextArea(const RenderObject& object, const PaintInfo& 
     return paintTextFieldOrTextAreaOrSearchField(object, info, IntRect(rect));
 }
 
-void RenderThemeBal::adjustTextFieldStyle(StyleResolver&, RenderStyle& style, const Element*) const
+void RenderThemeBal::adjustTextFieldStyle(RenderStyle& style, const Element*) const
 {
     setButtonStyle(style);
 }
@@ -312,12 +312,12 @@ bool RenderThemeBal::paintTextField(const RenderObject& object, const PaintInfo&
     return paintTextFieldOrTextAreaOrSearchField(object, info, IntRect(rect));
 }
 
-void RenderThemeBal::adjustSearchFieldStyle(StyleResolver&, RenderStyle& style, const Element*) const
+void RenderThemeBal::adjustSearchFieldStyle(RenderStyle& style, const Element*) const
 {
     setButtonStyle(style);
 }
 
-void RenderThemeBal::adjustSearchFieldCancelButtonStyle(StyleResolver&, RenderStyle& style, const Element*) const
+void RenderThemeBal::adjustSearchFieldCancelButtonStyle(RenderStyle& style, const Element*) const
 {
     static const float defaultControlFontPixelSize = 13;
     static const float defaultCancelButtonSize = 9;
@@ -361,7 +361,7 @@ bool RenderThemeBal::paintSearchFieldCancelButton(const RenderBox& object, const
     return false;
 }
 
-void RenderThemeBal::adjustMenuListButtonStyle(StyleResolver&, RenderStyle& style, const Element*) const
+void RenderThemeBal::adjustMenuListButtonStyle(RenderStyle& style, const Element*) const
 {
     // These seem to be reasonable padding values from observation.
     const int paddingLeft = 8;
@@ -514,12 +514,12 @@ bool RenderThemeBal::paintButton(const RenderObject& object, const PaintInfo& in
     return false;
 }
 
-void RenderThemeBal::adjustMenuListStyle(StyleResolver& css, RenderStyle& style, const Element* element) const
+void RenderThemeBal::adjustMenuListStyle(RenderStyle& style, const Element* element) const
 {
-    adjustMenuListButtonStyle(css, style, element);
+    adjustMenuListButtonStyle(style, element);
 }
 
-void RenderThemeBal::adjustCheckboxStyle(StyleResolver&, RenderStyle& style, const Element*) const
+void RenderThemeBal::adjustCheckboxStyle(RenderStyle& style, const Element*) const
 {
     setCheckboxSize(style);
     style.setBoxShadow(nullptr);
@@ -528,7 +528,7 @@ void RenderThemeBal::adjustCheckboxStyle(StyleResolver&, RenderStyle& style, con
     //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
-void RenderThemeBal::adjustRadioStyle(StyleResolver&, RenderStyle& style, const Element*) const
+void RenderThemeBal::adjustRadioStyle(RenderStyle& style, const Element*) const
 {
     setRadioSize(style);
     style.setBoxShadow(nullptr);
@@ -840,7 +840,7 @@ bool RenderThemeBal::supportsDataListUI(const AtomString& type) const
 #endif
 }
 
-void RenderThemeBal::adjustMediaControlStyle(StyleResolver&, RenderStyle& style, const Element* element) const
+void RenderThemeBal::adjustMediaControlStyle(RenderStyle& style, const Element* element) const
 {
 #if ENABLE(VIDEO)
     float fullScreenMultiplier = determineFullScreenMultiplier(element);
@@ -904,7 +904,7 @@ void RenderThemeBal::adjustMediaControlStyle(StyleResolver&, RenderStyle& style,
 #endif
 }
 
-void RenderThemeBal::adjustSliderTrackStyle(StyleResolver&, RenderStyle& style, const Element* element) const
+void RenderThemeBal::adjustSliderTrackStyle(RenderStyle& style, const Element* element) const
 {
     float fullScreenMultiplier = determineFullScreenMultiplier(element);
 

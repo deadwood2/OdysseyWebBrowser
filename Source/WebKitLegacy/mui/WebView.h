@@ -1423,12 +1423,6 @@ public:
      */
     void move(BalPoint lastPos, BalPoint newPos);
 
-    /**
-     * get backgroundColor
-     */
-    unsigned backgroundColor();
-
-
     /*
      * get webInspector
      */

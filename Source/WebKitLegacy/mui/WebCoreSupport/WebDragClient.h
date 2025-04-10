@@ -34,8 +34,6 @@ class WebDragClient : public WebCore::DragClient {
 public:
     WebDragClient(WebView*);
 
-    virtual void dragControllerDestroyed() override;
-
     virtual WebCore::DragSourceAction dragSourceActionMaskForPoint(const WebCore::IntPoint&) override;
     virtual void willPerformDragDestinationAction(WebCore::DragDestinationAction, const WebCore::DragData&) override;
     virtual void willPerformDragSourceAction(WebCore::DragSourceAction, const WebCore::IntPoint&, WebCore::DataTransfer&) override;

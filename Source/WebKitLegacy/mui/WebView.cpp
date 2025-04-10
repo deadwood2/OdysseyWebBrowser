@@ -120,16 +120,18 @@
 #include <WebCore/IntPoint.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/KeyboardEvent.h>
+#include <WebCore/LegacySchemeRegistry.h>
 #include <WebCore/LibWebRTCProvider.h>
 #include <WebCore/Logging.h>
 #include <WebCore/MemoryCache.h>
 #include <WebCore/MIMETypeRegistry.h>
+#include <WebCore/MediaRecorderProvider.h>
 #include <WebCore/NotImplemented.h>
 #include "ObserverData.h"
 #include "ObserverServiceData.h"
 #include <WebCore/Page.h>
 #include <WebCore/PageConfiguration.h>
-#include <WebCore/PageCache.h>
+#include <WebCore/BackForwardCache.h>
 #include <WebCore/PageGroup.h>
 #include <WebCore/PlatformKeyboardEvent.h>
 #include <WebCore/PlatformMouseEvent.h>
@@ -143,7 +145,6 @@
 #include <WebCore/RenderWidget.h>
 #include <WebCore/ResourceHandle.h>
 #include <WebCore/ResourceHandleClient.h>
-#include <WebCore/SchemeRegistry.h>
 #include <WebCore/ScriptController.h> 
 #include <WebCore/ScrollbarTheme.h>
 #include <WebCore/SecurityOrigin.h>
@@ -392,27 +393,28 @@ WebView::WebView()
     m_inspectorClient = new WebInspectorClient(this);
 
     WebFrameLoaderClient * pageWebFrameLoaderClient = new WebFrameLoaderClient();
-    WebProgressTrackerClient * pageProgressTrackerClient = new WebProgressTrackerClient();
 
     auto storageProvider = PageStorageSessionProvider::create();
     PageConfiguration configuration(
+        PAL::SessionID::defaultSessionID(),
         makeUniqueRef<WebEditorClient>(this),
         SocketProvider::create(),
         makeUniqueRef<LibWebRTCProvider>(),
-        WebCore::CacheStorageProvider::create(),
+        CacheStorageProvider::create(),
         BackForwardList::create(),
-        CookieJar::create(storageProvider.copyRef())
+        CookieJar::create(storageProvider.copyRef()),
+        makeUniqueRef<WebProgressTrackerClient>(),
+        makeUniqueRef<MediaRecorderProvider>()
     );
     configuration.backForwardClient = BackForwardList::create();
     configuration.chromeClient = new WebChromeClient(this);
     configuration.contextMenuClient = new WebContextMenuClient(this);
-    configuration.dragClient = new WebDragClient(this);
+    configuration.dragClient = makeUnique<WebDragClient>(this);
     configuration.inspectorClient = m_inspectorClient;
     configuration.loaderClientForMainFrame = pageWebFrameLoaderClient;
     configuration.applicationCacheStorage = &WebApplicationCache::storage();
     configuration.databaseProvider = &WebDatabaseProvider::singleton();
     configuration.storageNamespaceProvider = &m_webViewGroup->storageNamespaceProvider();
-    configuration.progressTrackerClient = pageProgressTrackerClient;
     configuration.userContentProvider = &m_webViewGroup->userContentController();
     configuration.visitedLinkStore = &WebVisitedLinkStore::singleton();
     configuration.pluginInfoProvider = &WebPluginInfoProvider::singleton();
@@ -537,14 +539,14 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     unsigned cacheMinDeadCapacity = 0;
     unsigned cacheMaxDeadCapacity = 0;
     auto deadDecodedDataDeletionInterval = 0_s;
-    unsigned pageCacheCapacity = 0;
+    unsigned backForwardCacheCapacity = 0;
 
     uint64_t memorySize = ramSize() / MB;
 
     switch (cacheModel) {
     case WebCacheModelDocumentViewer: {
         // Page cache capacity (in pages)
-        pageCacheCapacity = 0;
+        backForwardCacheCapacity = 0;
 
         // Object cache capacities (in bytes)
         if (memorySize >= 2048)
@@ -566,11 +568,11 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     case WebCacheModelDocumentBrowser: {
         // Page cache capacity (in pages)
         if (memorySize >= 512)
-            pageCacheCapacity = 2;
+            backForwardCacheCapacity = 2;
         else if (memorySize >= 256)
-            pageCacheCapacity = 1;
+            backForwardCacheCapacity = 1;
         else
-            pageCacheCapacity = 0;
+            backForwardCacheCapacity = 0;
 
         // Object cache capacities (in bytes)
         if (memorySize >= 2048)
@@ -592,11 +594,11 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     case WebCacheModelPrimaryWebBrowser: {
         // Page cache capacity (in pages)
         if (memorySize >= 512)
-            pageCacheCapacity = 2;
+            backForwardCacheCapacity = 2;
         else if (memorySize >= 256)
-            pageCacheCapacity = 1;
+            backForwardCacheCapacity = 1;
         else
-            pageCacheCapacity = 0;
+            backForwardCacheCapacity = 0;
 
         // Object cache capacities (in bytes)
         // (Testing indicates that value / MB depends heavily on content and
@@ -677,7 +679,7 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     auto& memoryCache = MemoryCache::singleton();
     memoryCache.setCapacities(cacheMinDeadCapacity, cacheMaxDeadCapacity, cacheTotalCapacity);
     memoryCache.setDeadDecodedDataDeletionInterval(deadDecodedDataDeletionInterval);
-    PageCache::singleton().setMaxSize(pageCacheCapacity);
+    BackForwardCache::singleton().setMaxSize(backForwardCacheCapacity);
 
     CurlCacheManager::singleton().setStorageSizeLimit(cacheDiskCapacity);
 
@@ -707,7 +709,7 @@ void WebView::close()
     // The easiest way to do that is to disable page cache
     // The preferences can be null.
     if (m_preferences && m_preferences->usesPageCache())
-        m_page->settings().setUsesPageCache(false);
+        m_page->settings().setUsesBackForwardCache(false);
 
     if (m_page)
         m_page->mainFrame().loader().detachFromParent(); 
@@ -1682,13 +1684,13 @@ const char* WebView::stringByEvaluatingJavaScriptFromString(const char* script)
     if (!coreFrame)
         return NULL; 
 
-    JSC::JSValue scriptExecutionResult = coreFrame->script().executeScript(script, false);
+    JSC::JSValue scriptExecutionResult = coreFrame->script().executeScriptIgnoringException(script, false);
     if(!scriptExecutionResult)
         return NULL;
     else if (scriptExecutionResult.isString()) {
-        JSC::ExecState* exec = coreFrame->script().globalObject(mainThreadNormalWorld())->globalExec();
-        JSC::JSLockHolder lock(exec);
-        return scriptExecutionResult.getString(exec).ascii().data();
+        JSC::JSGlobalObject* lexicalGlobalObject = coreFrame->script().globalObject(mainThreadNormalWorld());
+        JSC::JSLockHolder lock(lexicalGlobalObject);
+        return scriptExecutionResult.getString(lexicalGlobalObject).ascii().data();
     }
     return NULL;
 }
@@ -1702,7 +1704,7 @@ void WebView::executeScript(const char* script)
     if (!coreFrame)
         return ;
 
-    coreFrame->script().executeScript(String::fromUTF8(script), true);
+    coreFrame->script().executeScriptIgnoringException(String::fromUTF8(script), true);
 }
 
 WebScriptObject* WebView::windowScriptObject()
@@ -2189,7 +2191,7 @@ const char* WebView::mainFrameTitle()
 
 void WebView::registerURLSchemeAsLocal(const char* scheme)
 {
-    SchemeRegistry::registerURLSchemeAsLocal(scheme);
+    LegacySchemeRegistry::registerURLSchemeAsLocal(scheme);
 }
 
 void WebView::setSmartInsertDeleteEnabled(bool flag)
@@ -2591,7 +2593,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     settings->setRequestAnimationFrameEnabled(!!enabled);
 
     enabled = preferences->usesPageCache();
-    settings->setUsesPageCache(!!enabled);
+    settings->setUsesBackForwardCache(!!enabled);
 
     enabled = preferences->isDOMPasteAllowed();
     settings->setDOMPasteAllowed(!!enabled);
@@ -2982,14 +2984,6 @@ void WebView::resize(BalRectangle r)
 void WebView::move(BalPoint lastPos, BalPoint newPos)
 {
     d->move(lastPos, newPos);
-}
-
-unsigned WebView::backgroundColor()
-{
-    if (!m_mainFrame)
-        return 0;
-    Frame* coreFrame = core(m_mainFrame);
-    return coreFrame->view()->baseBackgroundColor().rgb();
 }
 
 void WebView::allowLocalLoadsForAll()

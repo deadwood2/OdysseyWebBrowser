@@ -226,12 +226,12 @@ public:
 		{
 			auto& storageSession = *context->storageSession();
 			auto includeSecureCookies = request.url().protocolIs("https") ? IncludeSecureCookies::Yes : IncludeSecureCookies::No;
-			String cookieHeaderField = storageSession.cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), WTF::nullopt, WTF::nullopt, includeSecureCookies).first;
+			String cookieHeaderField = storageSession.cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), WTF::nullopt, WTF::nullopt, includeSecureCookies, ShouldAskITP::Yes).first;
 			if (!cookieHeaderField.isEmpty())
 				request.addHTTPHeaderField(HTTPHeaderName::Cookie, cookieHeaderField);
 		}
 
-		auto curlRequest = CurlRequest::create(WTFMove(request), *this, PAL::SessionID::defaultSessionID());
+		auto curlRequest = CurlRequest::create(WTFMove(request), *this);
 		return curlRequest;
 	}
 
@@ -590,12 +590,12 @@ public:
 		{
 			auto& storageSession = *context->storageSession();
 			auto includeSecureCookies = request.url().protocolIs("https") ? IncludeSecureCookies::Yes : IncludeSecureCookies::No;
-			String cookieHeaderField = storageSession.cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), WTF::nullopt, WTF::nullopt, includeSecureCookies).first;
+			String cookieHeaderField = storageSession.cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), WTF::nullopt, WTF::nullopt, includeSecureCookies, ShouldAskITP::Yes).first;
 			if (!cookieHeaderField.isEmpty())
 				request.addHTTPHeaderField(HTTPHeaderName::Cookie, cookieHeaderField);
 		}
 
-		auto curlRequest = CurlRequest::create(WTFMove(request), *this, PAL::SessionID::defaultSessionID());
+		auto curlRequest = CurlRequest::create(WTFMove(request), *this);
 		return curlRequest;
 	}
 

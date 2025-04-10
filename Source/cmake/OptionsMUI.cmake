@@ -98,6 +98,26 @@ add_definitions(-DUSER_AGENT_GTK_MINOR_VERSION=1)
 # FIXME: These need to be configurable.
 
 include(target/icu)
+set(SQLite3_LIBRARY ${AROS_SDK_DIR}/lib/libsqlite3.a)
+add_library(SQLite::SQLite3 UNKNOWN IMPORTED GLOBAL)
+set_target_properties(SQLite::SQLite3 PROPERTIES
+    IMPORTED_LOCATION "${SQLite3_LIBRARY}"
+)
+set(LibPSL_LIBRARY ${AROS_SDK_DIR}/lib/libpsl.a)
+add_library(LibPSL::LibPSL UNKNOWN IMPORTED GLOBAL)
+set_target_properties(LibPSL::LibPSL PROPERTIES
+    IMPORTED_LOCATION "${LibPSL_LIBRARY}"
+)
+set(HarfBuzz_LIBRARY ${AROS_SDK_DIR}/lib/libamiga.a)
+add_library(HarfBuzz::HarfBuzz UNKNOWN IMPORTED GLOBAL)
+set_target_properties(HarfBuzz::HarfBuzz PROPERTIES
+    IMPORTED_LOCATION "${HarfBuzz_LIBRARY}"
+)
+set(HarfBuzz_ICU_LIBRARY ${AROS_SDK_DIR}/lib/libamiga.a)
+add_library(HarfBuzz::ICU UNKNOWN IMPORTED GLOBAL)
+set_target_properties(HarfBuzz::ICU PROPERTIES
+    IMPORTED_LOCATION "${HarfBuzz_ICU_LIBRARY}"
+)
 
 #find_package(Cairo 1.10.2 REQUIRED)
 #find_package(Fontconfig 2.8.0 REQUIRED)

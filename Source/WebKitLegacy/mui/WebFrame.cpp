@@ -312,7 +312,7 @@ JSGlobalContextRef WebFrame::globalContext()
     if (!coreFrame)
         return 0;
 
-    return toGlobalRef(coreFrame->script().globalObject(mainThreadNormalWorld())->globalExec());
+    return toGlobalRef(coreFrame->script().globalObject(mainThreadNormalWorld()));
 }
 
 void WebFrame::loadURL(const char* url)
@@ -335,7 +335,7 @@ JSGlobalContextRef WebFrame::contextForScriptWorld(WebScriptWorld* world)
     if (!coreFrame)
         return 0;
 
-    return toGlobalRef(coreFrame->script().globalObject(world->world())->globalExec());
+    return toGlobalRef(coreFrame->script().globalObject(world->world()));
 }
 
 void WebFrame::loadRequest(WebMutableURLRequest* request)
@@ -1335,7 +1335,7 @@ bool WebFrame::stringByEvaluatingJavaScriptInScriptWorld(WebScriptWorld* world, 
     // Get the frame from the global object we've settled on.
     Frame* frame = anyWorldGlobalObject->wrapped().frame();
     ASSERT(frame->document());
-    JSC::JSValue result = frame->script().executeScriptInWorld(world->world(), string, true);
+    JSC::JSValue result = frame->script().executeScriptInWorldIgnoringException(world->world(), string, true);
 
     if (!frame) // In case the script removed our frame from the page.
         return true;
@@ -1346,9 +1346,9 @@ bool WebFrame::stringByEvaluatingJavaScriptInScriptWorld(WebScriptWorld* world, 
     if (!result || (!result.isBoolean() && !result.isString() && !result.isNumber()))
         return true;
 
-    JSC::ExecState* exec = anyWorldGlobalObject->globalExec();
-    JSC::JSLockHolder lock(exec);
-    String resultString = result.toWTFString(exec);
+    JSC::JSGlobalObject* lexicalGlobalObject = anyWorldGlobalObject;
+    JSC::JSLockHolder lock(lexicalGlobalObject);
+    String resultString = result.toWTFString(lexicalGlobalObject);
     *evaluationResult = strdup(resultString.utf8().data());
 
     return true;
