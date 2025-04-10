@@ -34,7 +34,7 @@
 
 #include <windows.h>
 
-#elif OS(UNIX)
+#elif OS(UNIX) || OS(AROS)
 
 #include <pthread.h>
 #if HAVE(PTHREAD_NP_H)
@@ -70,7 +70,7 @@ StackBounds StackBounds::currentThreadStackBoundsInternal()
     return newThreadStackBounds(pthread_self());
 }
 
-#elif OS(UNIX)
+#elif OS(UNIX) || OS(AROS)
 
 #if OS(OPENBSD)
 
@@ -135,7 +135,7 @@ StackBounds StackBounds::currentThreadStackBoundsInternal()
     //         | guardPage         | reserved memory for the stack
     //         |-------------------|    |
     //         | uncommittedMemory |    v
-    //    Low  |-------------------|  ----- <--- stackOrigin.AllocationBase
+    //    Low  |-------------------|  ----- Source/WTF/<--- Source/WTF/stackOrigin.AllocationBase
     //
     // See http://msdn.microsoft.com/en-us/library/ms686774%28VS.85%29.aspx for more information.
 

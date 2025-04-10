@@ -40,7 +40,9 @@
 
 #if USE(FREETYPE)
 #include "FcUniquePtr.h"
+#if USE(HARFBUZZ)
 #include "HbUniquePtr.h"
+#endif
 #include "RefPtrFontconfig.h"
 #include <memory>
 #endif

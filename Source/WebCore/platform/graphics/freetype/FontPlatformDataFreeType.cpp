@@ -34,10 +34,13 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_TRUETYPE_TABLES_H
+#if USE(HARFBUZZ)
 #include <hb-ft.h>
 #include <hb-ot.h>
+#endif
 #include <wtf/MathExtras.h>
 #include <wtf/text/WTFString.h>
+#include <mutex>
 
 namespace WebCore {
 

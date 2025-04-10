@@ -104,6 +104,10 @@ if (COMPILER_IS_GCC_OR_CLANG)
         WEBKIT_APPEND_GLOBAL_COMPILER_FLAGS(-fno-exceptions)
         WEBKIT_APPEND_GLOBAL_CXX_FLAGS(-fno-rtti)
 
+        if ("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "i386")
+            WEBKIT_APPEND_GLOBAL_COMPILER_FLAGS(-march=i686)
+        endif ()
+
         if (WIN32)
             WEBKIT_APPEND_GLOBAL_COMPILER_FLAGS(-mno-ms-bitfields)
             WEBKIT_PREPEND_GLOBAL_COMPILER_FLAGS(-Wno-unknown-pragmas)
@@ -116,8 +120,7 @@ if (COMPILER_IS_GCC_OR_CLANG)
                                          -Wformat-security
                                          -Wmissing-format-attribute
                                          -Wpointer-arith
-                                         -Wundef
-                                         -Wwrite-strings)
+                                         -Wundef)
 
     # Warnings to be disabled
     # FIXME: We should probably not be disabling -Wno-maybe-uninitialized?
@@ -146,6 +149,12 @@ if (COMPILER_IS_GCC_OR_CLANG)
         if (NOT SSE2_SUPPORT_FOUND)
             message(FATAL_ERROR "SSE2 support is required to compile WebKit")
         endif ()
+    endif ()
+
+    if (${PORT} STREQUAL "MUI")
+    WEBKIT_PREPEND_GLOBAL_COMPILER_FLAGS(-Wno-unused-parameter
+                                         -Wno-write-strings
+                                         -Werror)
     endif ()
 endif ()
 
