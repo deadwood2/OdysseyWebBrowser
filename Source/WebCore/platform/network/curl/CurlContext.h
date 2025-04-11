@@ -314,10 +314,12 @@ public:
 
     static long long maxCurlOffT();
 
+#if PLATFORM(MUI)
     // socket
     Expected<curl_socket_t, CURLcode> getActiveSocket();
     CURLcode send(const uint8_t*, size_t, size_t&);
     CURLcode receive(uint8_t*, size_t, size_t&);
+#endif
 
 #ifndef NDEBUG
     void enableVerboseIfUsed();
