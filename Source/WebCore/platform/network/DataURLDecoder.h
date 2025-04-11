@@ -53,6 +53,9 @@ struct ScheduleContext {
 
 enum class Mode { Legacy, ForgivingBase64 };
 void decode(const URL&, const ScheduleContext&, Mode, DecodeCompletionHandler&&);
+#if PLATFORM(MUI)
+void shutdown();
+#endif
 
 }
 

@@ -168,5 +168,13 @@ void decode(const URL& url, const ScheduleContext& scheduleContext, Mode mode, D
     });
 }
 
+#if PLATFORM(MUI)
+void shutdown()
+{
+    /// EVIL!!!!! but triggers completion of detached thread
+    delete &decodeQueue();
+}
+#endif
+
 }
 }

@@ -126,10 +126,16 @@ JS_EXPORT_PRIVATE unsigned setNumberOfFTLCompilerThreads(unsigned);
 // For DFGMode compilations.
 JS_EXPORT_PRIVATE Worklist& ensureGlobalDFGWorklist();
 JS_EXPORT_PRIVATE Worklist* existingGlobalDFGWorklistOrNull();
+#if PLATFORM(MUI)
+JS_EXPORT_PRIVATE void shutdownGlobalDFGWorklist();
+#endif
 
 // For FTLMode and FTLForOSREntryMode compilations.
 JS_EXPORT_PRIVATE Worklist& ensureGlobalFTLWorklist();
 JS_EXPORT_PRIVATE Worklist* existingGlobalFTLWorklistOrNull();
+#if PLATFORM(MUI)
+JS_EXPORT_PRIVATE void shutdownGlobalFTLWorklist();
+#endif
 
 Worklist& ensureGlobalWorklistFor(CompilationMode);
 
