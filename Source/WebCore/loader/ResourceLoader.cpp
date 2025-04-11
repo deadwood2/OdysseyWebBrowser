@@ -68,6 +68,10 @@
 #define FRAME_ID ((frame() ? frame()->frameID().valueOr(FrameIdentifier()) : FrameIdentifier()).toUInt64())
 #define RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(isAlwaysOnLoggingAllowed(), Network, "%p - [pageID=%" PRIu64 ", frameID=%" PRIu64 ", frameLoader=%p, resourceID=%lu] ResourceLoader::" fmt, this, PAGE_ID, FRAME_ID, frameLoader(), identifier(), ##__VA_ARGS__)
 
+#if PLATFORM(MUI)
+extern bool canAllocateMemory(long long size);
+#endif
+
 namespace WebCore {
 
 DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(ResourceLoader);
@@ -91,6 +95,11 @@ void ResourceLoader::finishNetworkLoad()
 
     if (m_handle) {
         ASSERT(m_handle->client() == this);
+#if PLATFORM(MUI)
+        // Clear out the ResourceHandle's client so that it doesn't try to call
+        // us back after we release it, unless it has been replaced by someone else.
+        if (m_handle->client() == this)
+#endif
         m_handle->clearClient();
         m_handle = nullptr;
     }
@@ -312,6 +321,11 @@ void ResourceLoader::addDataOrBuffer(const char* data, unsigned length, SharedBu
 {
     if (m_options.dataBufferingPolicy == DataBufferingPolicy::DoNotBufferData)
         return;
+
+#if PLATFORM(MUI)
+    if (!canAllocateMemory(length + (m_resourceData ? m_resourceData->size() : 0)))
+      return;
+#endif
 
     if (!m_resourceData || dataPayloadType == DataPayloadWholeResource) {
         if (buffer)
@@ -787,6 +801,13 @@ void ResourceLoader::didReceiveAuthenticationChallenge(ResourceHandle* handle, c
     challenge.authenticationClient()->receivedRequestToContinueWithoutCredential(challenge);
     ASSERT(!m_handle || !m_handle->hasAuthenticationChallenge());
 }
+#if USE(CURL_OPENSSL)
+void ResourceLoader::didReceiveSSLSecurityExtension(const ResourceRequest& request, const char* securityExtension)
+{
+    RefPtr<ResourceLoader> protector(this);
+    frameLoader()->didReceiveSSLSecurityExtension(request, securityExtension);
+}
+#endif
 
 #if USE(PROTECTION_SPACE_AUTH_CALLBACK)
 void ResourceLoader::canAuthenticateAgainstProtectionSpaceAsync(ResourceHandle*, const ProtectionSpace& protectionSpace, CompletionHandler<void(bool)>&& completionHandler)

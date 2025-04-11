@@ -119,6 +119,15 @@
 #define WTF_OS_WINDOWS 1
 #endif
 
+/* OS(AROS) */
+#if defined(__AROS__)
+#define WTF_OS_AROS 1
+#endif
+
+/* OS(MORPHOS) */
+#if defined(__MORPHOS__)
+#define WTF_OS_MORPHOS 1
+#endif
 
 /* OS(UNIX) - Any Unix-like system */
 #if    OS(AIX)              \

@@ -287,10 +287,10 @@ void FontCascade::update(RefPtr<FontSelector>&& fontSelector) const
 
 GlyphBuffer FontCascade::layoutText(CodePath codePathToUse, const TextRun& run, unsigned from, unsigned to, ForTextEmphasisOrNot forTextEmphasis) const
 {
-    if (codePathToUse != Complex)
+//    if (codePathToUse != Complex)
         return layoutSimpleText(run, from, to, forTextEmphasis);
 
-    return layoutComplexText(run, from, to, forTextEmphasis);
+//    return layoutComplexText(run, from, to, forTextEmphasis);
 }
 
 FloatSize FontCascade::drawText(GraphicsContext& context, const TextRun& run, const FloatPoint& point, unsigned from, Optional<unsigned> to, CustomFontNotReadyAction customFontNotReadyAction) const
@@ -1289,11 +1289,15 @@ static GlyphUnderlineType computeUnderlineType(const TextRun& textRun, const Gly
     case UBLOCK_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B:
     case UBLOCK_CJK_COMPATIBILITY_IDEOGRAPHS_SUPPLEMENT:
     case UBLOCK_CJK_STROKES:
+#if !OS(AROS)
     case UBLOCK_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_C:
     case UBLOCK_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_D:
+#endif
     case UBLOCK_IDEOGRAPHIC_DESCRIPTION_CHARACTERS:
     case UBLOCK_LINEAR_B_IDEOGRAMS:
+#if !OS(AROS)
     case UBLOCK_ENCLOSED_IDEOGRAPHIC_SUPPLEMENT:
+#endif
     case UBLOCK_HIRAGANA:
     case UBLOCK_KATAKANA:
     case UBLOCK_BOPOMOFO:
@@ -1301,8 +1305,10 @@ static GlyphUnderlineType computeUnderlineType(const TextRun& textRun, const Gly
     case UBLOCK_HANGUL_JAMO:
     case UBLOCK_HANGUL_COMPATIBILITY_JAMO:
     case UBLOCK_HANGUL_SYLLABLES:
+#if !OS(AROS)
     case UBLOCK_HANGUL_JAMO_EXTENDED_A:
     case UBLOCK_HANGUL_JAMO_EXTENDED_B:
+#endif
         return GlyphUnderlineType::DrawOverGlyph;
     default:
         return GlyphUnderlineType::SkipDescenders;

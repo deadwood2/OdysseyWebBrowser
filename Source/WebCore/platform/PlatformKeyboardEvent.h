@@ -41,6 +41,10 @@ OBJC_CLASS NSEvent;
 OBJC_CLASS WebEvent;
 #endif
 
+#if PLATFORM(MUI)
+#include "BALBase.h"
+#endif
+
 namespace WebCore {
 
     class PlatformKeyboardEvent : public PlatformEvent {
@@ -52,6 +56,9 @@ namespace WebCore {
             , m_autoRepeat(false)
             , m_isKeypad(false)
             , m_isSystemKey(false)
+#if PLATFORM(MUI)
+            , m_balEventKey(0)
+#endif
         {
         }
 
@@ -150,6 +157,11 @@ namespace WebCore {
         static String singleCharacterString(unsigned);
 #endif
 
+#if PLATFORM(MUI)
+        PlatformKeyboardEvent(BalEventKey*);
+        BalEventKey* balEventKey() const;
+#endif
+
     protected:
         String m_text;
         String m_unmodifiedText;
@@ -185,6 +197,10 @@ namespace WebCore {
 #endif
         // The modifier state is optional, since it is not needed in the UI process or in legacy WebKit.
         static Optional<OptionSet<Modifier>> s_currentModifiers;
+
+#if PLATFORM(MUI)
+        BalEventKey* m_balEventKey;
+#endif
     };
     
 } // namespace WebCore

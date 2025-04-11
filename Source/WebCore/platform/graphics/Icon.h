@@ -33,6 +33,11 @@
 OBJC_CLASS NSImage;
 #elif PLATFORM(WIN)
 typedef struct HICON__* HICON;
+#elif PLATFORM(MUI)
+#include "BALBase.h"
+namespace WebCore {
+class Image;
+}
 #endif
 
 namespace WebCore {
@@ -72,6 +77,9 @@ private:
 #elif PLATFORM(WIN)
     Icon(HICON);
     HICON m_hIcon;
+#elif PLATFORM(MUI)
+    Icon();
+    RefPtr<Image> m_icon;
 #endif
 };
 
