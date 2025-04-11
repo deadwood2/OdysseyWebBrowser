@@ -113,7 +113,7 @@ static constexpr size_t maxIslandsPerRegion = islandRegionSize / islandSizeInByt
 static constexpr size_t fixedExecutableMemoryPoolSize = 128 * MB;
 #endif
 #elif CPU(X86_64)
-static constexpr size_t fixedExecutableMemoryPoolSize = 1 * GB;
+static constexpr size_t fixedExecutableMemoryPoolSize = 196 * MB;
 #else
 static constexpr size_t fixedExecutableMemoryPoolSize = 32 * MB;
 #endif
