@@ -3370,8 +3370,10 @@ void FrameView::performPostLayoutTasks()
 
     resnapAfterLayout();
 
+#if HAVE(ACCESSIBILITY)
     if (AXObjectCache* cache = frame().document()->existingAXObjectCache())
         cache->performDeferredCacheUpdate();
+#endif
 }
 
 IntSize FrameView::sizeForResizeEvent() const

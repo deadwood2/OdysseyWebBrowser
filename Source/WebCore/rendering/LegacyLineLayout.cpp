@@ -150,10 +150,12 @@ LegacyRootInlineBox* LegacyLineLayout::createAndAppendRootInlineBox()
     LegacyRootInlineBox* rootBox = newRootBox.get();
     m_lineBoxes.appendLineBox(WTFMove(newRootBox));
 
+#if HAVE(ACCESSIBILITY)
     if (UNLIKELY(AXObjectCache::accessibilityEnabled()) && firstRootBox() == rootBox) {
         if (AXObjectCache* cache = m_flow.document().existingAXObjectCache())
             cache->deferRecomputeIsIgnored(m_flow.element());
     }
+#endif
 
     return rootBox;
 }
