@@ -303,6 +303,9 @@ CurlHandle::CurlHandle()
     enableVerboseIfUsed();
     enableStdErrIfUsed();
 #endif
+#if PLATFORM(MUI)
+    curl_easy_setopt(m_handle, CURLOPT_BUFFERSIZE, 64 * 1024);
+#endif
 }
 
 CurlHandle::~CurlHandle()
@@ -406,6 +409,11 @@ void CurlHandle::setUrl(const URL& url)
 
     if (url.protocolIs("https"))
         enableSSLForHost(m_url.host().toString());
+#if PLATFORM(MUI)
+/* From curl 7.66.0 */
+/*    else
+        curl_easy_setopt(m_handle, CURLOPT_HTTP09_ALLOWED, 1L);  // HTTP only*/
+#endif
 }
 
 void CurlHandle::appendRequestHeaders(const HTTPHeaderMap& headers)
@@ -458,6 +466,13 @@ void CurlHandle::enableRequestHeaders()
     const struct curl_slist* headers = m_requestHeaders.head();
     curl_easy_setopt(m_handle, CURLOPT_HTTPHEADER, headers);
 }
+
+#if PLATFORM(MUI)
+void CurlHandle::disableAcceptEncoding()
+{
+    curl_easy_setopt(m_handle, CURLOPT_ENCODING, NULL);
+}
+#endif
 
 void CurlHandle::enableHttp()
 {
@@ -523,6 +538,13 @@ void CurlHandle::setHttpCustomRequest(const String& method)
     enableHttp();
     curl_easy_setopt(m_handle, CURLOPT_CUSTOMREQUEST, method.ascii().data());
 }
+
+#if PLATFORM(MUI)
+void CurlHandle::setResumeOffset(long long offset)
+{
+	curl_easy_setopt(m_handle, CURLOPT_RESUME_FROM_LARGE, curl_off_t(offset));
+}
+#endif
 
 void CurlHandle::enableAcceptEncoding()
 {

@@ -40,6 +40,8 @@
 #include <wtf/WallTime.h>
 #include <wtf/text/StringConcatenateNumbers.h>
 
+#include <sys/stat.h>
+
 namespace WebCore {
 
 #define CORRUPT_MARKER_SUFFIX "-corrupted"

@@ -32,6 +32,28 @@
 
 #include "CurlRequestSchedulerClient.h"
 
+#if PLATFORM(MUI)
+#include <proto/exec.h>
+#include <proto/bsdsocket.h>
+#include <unistd.h>
+#include <bsdsocket/socketbasetags.h>
+#include <aros/debug.h>
+struct Library *SocketBase;
+void init_SocketBase()
+{
+    SocketBase = OpenLibrary("bsdsocket.library", 4L);
+    SocketBaseTags(
+        SBTM_SETVAL(SBTC_ERRNOPTR(sizeof(errno))), (IPTR) &errno,
+        SBTM_SETVAL(SBTC_LOGTAGPTR),       (IPTR) "cURL",
+        TAG_DONE);
+}
+void close_SocketBase()
+{
+    CloseLibrary(SocketBase);
+    SocketBase = NULL;
+}
+#endif
+
 namespace WebCore {
 
 CurlRequestScheduler::CurlRequestScheduler(long maxConnects, long maxTotalConnections, long maxHostConnections)
@@ -93,10 +115,18 @@ void CurlRequestScheduler::startThreadIfNeeded()
     }
 
     m_thread = Thread::create("curlThread", [this] {
+#if PLATFORM(MUI)
+        init_SocketBase();
+        /* Increase priority so that network data is transported immediatelly */
+        SetTaskPri(FindTask(NULL), 1);
+#endif
         workerThread();
 
         auto locker = holdLock(m_mutex);
         m_runThread = false;
+#if PLATFORM(MUI)
+        close_SocketBase();
+#endif
     }, ThreadType::Network);
 }
 
@@ -104,11 +134,14 @@ void CurlRequestScheduler::stopThreadIfNoMoreJobRunning()
 {
     ASSERT(!isMainThread());
 
+#if !PLATFORM(MUI)
+    /* Keep the original curlThread running until browser quits */
     auto locker = holdLock(m_mutex);
     if (m_activeJobs.size() || m_taskQueue.size())
         return;
 
     m_runThread = false;
+#endif
 }
 
 #if PLATFORM(MUI)
@@ -184,7 +217,14 @@ void CurlRequestScheduler::workerThread()
             // and bail out, stopping the file download. So make sure we
             // have valid file descriptors before calling select.
             if (maxfd >= 0)
+#if PLATFORM(MUI)
+                rc = WaitSelect(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout, nullptr);
+            else {
+                usleep(100 * 1000);
+            }
+#else
                 rc = ::select(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout);
+#endif
         } while (rc == -1 && errno == EINTR);
 
         int activeCount = 0;
