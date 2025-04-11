@@ -53,19 +53,26 @@ class GtkPortTest(port_testcase.PortTestCase):
 
     def test_default_baseline_search_path(self):
         port = self.make_port()
-        self.assertEqual(port.default_baseline_search_path(), ['/mock-checkout/LayoutTests/platform/gtk',
-            '/mock-checkout/LayoutTests/platform/wk2'])
+        self.assertEqual(port.default_baseline_search_path(),
+                         ['/mock-checkout/LayoutTests/platform/gtk',
+                          '/mock-checkout/LayoutTests/platform/glib',
+                          '/mock-checkout/LayoutTests/platform/wk2'])
 
     def test_port_specific_expectations_files(self):
         port = self.make_port()
-        self.assertEqual(port.expectations_files(), ['/mock-checkout/LayoutTests/TestExpectations',
-            '/mock-checkout/LayoutTests/platform/wk2/TestExpectations',
-            '/mock-checkout/LayoutTests/platform/gtk/TestExpectations'])
+        self.assertEqual(port.expectations_files(),
+                         ['/mock-checkout/LayoutTests/TestExpectations',
+                          '/mock-checkout/LayoutTests/platform/wk2/TestExpectations',
+                          '/mock-checkout/LayoutTests/platform/glib/TestExpectations',
+                          '/mock-checkout/LayoutTests/platform/gtk/TestExpectations'])
 
     def test_show_results_html_file(self):
         port = self.make_port()
         port._executive = MockExecutive(should_log=True)
-        expected_logs = "MOCK run_command: ['Tools/Scripts/run-minibrowser', '--release', '--gtk', 'file://test.html'], cwd=/mock-checkout\n"
+        port._filesystem = MockFileSystem({
+            "/mock-build/bin/MiniBrowser": ""
+        })
+        expected_logs = "MOCK run_command: ['/mock-build/bin/MiniBrowser', 'file://test.html'], cwd=/mock-checkout\n"
         OutputCapture().assert_outputs(self, port.show_results_html_file, ["test.html"], expected_logs=expected_logs)
 
     def test_default_timeout_ms(self):

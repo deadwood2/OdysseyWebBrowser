@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Igalia S.L.
+ * Copyright (C) 2012, 2020 Igalia S.L.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -37,6 +37,7 @@ public:
     void checkContextMenuEvent(GdkEvent* event)
     {
         g_assert_nonnull(event);
+#if !USE(GTK4)
         g_assert_cmpint(event->type, ==, m_expectedEventType);
 
         switch (m_expectedEventType) {
@@ -55,6 +56,7 @@ public:
         default:
             g_assert_not_reached();
         }
+#endif
     }
 
     static gboolean contextMenuCallback(WebKitWebView* webView, WebKitContextMenu* contextMenu, GdkEvent* event, WebKitHitTestResult* hitTestResult, ContextMenuTest* test)
@@ -94,41 +96,42 @@ public:
         quitMainLoop();
     }
 
-    GtkMenu* getPopupMenu()
+    GtkWidget* getContextMenuWidget()
     {
         GUniquePtr<GList> toplevels(gtk_window_list_toplevels());
         for (GList* iter = toplevels.get(); iter; iter = g_list_next(iter)) {
             if (!GTK_IS_WINDOW(iter->data))
                 continue;
 
+#if USE(GTK4)
+            return nullptr;
+#else
             GtkWidget* child = gtk_bin_get_child(GTK_BIN(iter->data));
             if (!GTK_IS_MENU(child))
                 continue;
 
             if (gtk_menu_get_attach_widget(GTK_MENU(child)) == GTK_WIDGET(m_webView))
-                return GTK_MENU(child);
+                return child;
+#endif // USE(GTK4)
         }
         g_assert_not_reached();
         return 0;
     }
 
-    void checkActionState(GtkAction* action, unsigned state)
+    void checkActionState(GAction* action, unsigned state)
     {
-        if (state & Visible)
-            g_assert_true(gtk_action_get_visible(action));
-        else
-            g_assert_false(gtk_action_get_visible(action));
-
         if (state & Enabled)
-            g_assert_true(gtk_action_get_sensitive(action));
+            g_assert_true(g_action_get_enabled(action));
         else
-            g_assert_false(gtk_action_get_sensitive(action));
+            g_assert_false(g_action_get_enabled(action));
 
-        if (GTK_IS_TOGGLE_ACTION(action)) {
+        const GVariantType* type = g_action_get_state_type(action);
+        if (type && g_variant_type_equal(type, G_VARIANT_TYPE_BOOLEAN)) {
+            GRefPtr<GVariant> actionState = adoptGRef(g_action_get_state(action));
             if (state & Checked)
-                g_assert_true(gtk_toggle_action_get_active(GTK_TOGGLE_ACTION(action)));
+                g_assert_true(g_variant_get_boolean(actionState.get()));
             else
-                g_assert_false(gtk_toggle_action_get_active(GTK_TOGGLE_ACTION(action)));
+                g_assert_false(g_variant_get_boolean(actionState.get()));
         }
     }
 
@@ -140,17 +143,19 @@ public:
         WebKitContextMenuItem* item = WEBKIT_CONTEXT_MENU_ITEM(items->data);
         assertObjectIsDeletedWhenTestFinishes(G_OBJECT(item));
 
+#if !USE(GTK4)
         G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
         GtkAction* action = webkit_context_menu_item_get_action(item);
         g_assert_true(GTK_IS_ACTION(action));
         G_GNUC_END_IGNORE_DEPRECATIONS;
+#endif
 
         GAction* gAction = webkit_context_menu_item_get_gaction(item);
         g_assert_true(G_IS_ACTION(gAction));
 
         g_assert_cmpint(webkit_context_menu_item_get_stock_action(item), ==, stockAction);
 
-        checkActionState(action, state);
+        checkActionState(gAction, state);
 
         return g_list_next(items);
     }
@@ -163,13 +168,15 @@ public:
         WebKitContextMenuItem* item = WEBKIT_CONTEXT_MENU_ITEM(items->data);
         assertObjectIsDeletedWhenTestFinishes(G_OBJECT(item));
 
+#if !USE(GTK4)
         G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
         GtkAction* action = webkit_context_menu_item_get_action(item);
         g_assert_true(GTK_IS_ACTION(action));
-        G_GNUC_END_IGNORE_DEPRECATIONS;
+#endif
 
         GAction* gAction = webkit_context_menu_item_get_gaction(item);
         g_assert_true(G_IS_ACTION(gAction));
+#if !USE(GTK4)
         g_assert_cmpstr(gtk_action_get_name(action), ==, g_action_get_name(gAction));
         g_assert_cmpint(gtk_action_get_sensitive(action), ==, g_action_get_enabled(gAction));
         if (GTK_IS_TOGGLE_ACTION(action)) {
@@ -181,8 +188,10 @@ public:
 
         g_assert_cmpint(webkit_context_menu_item_get_stock_action(item), ==, WEBKIT_CONTEXT_MENU_ACTION_CUSTOM);
         g_assert_cmpstr(gtk_action_get_label(action), ==, label);
+        G_GNUC_END_IGNORE_DEPRECATIONS;
+#endif
 
-        checkActionState(action, state);
+        checkActionState(gAction, state);
 
         return g_list_next(items);
     }
@@ -195,16 +204,18 @@ public:
         WebKitContextMenuItem* item = WEBKIT_CONTEXT_MENU_ITEM(items->data);
         assertObjectIsDeletedWhenTestFinishes(G_OBJECT(item));
 
+#if !USE(GTK4)
         G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
         GtkAction* action = webkit_context_menu_item_get_action(item);
         g_assert_true(GTK_IS_ACTION(action));
         g_assert_cmpstr(gtk_action_get_label(action), ==, label);
         G_GNUC_END_IGNORE_DEPRECATIONS;
+#endif
 
         GAction* gAction = webkit_context_menu_item_get_gaction(item);
         g_assert_true(G_IS_ACTION(gAction));
 
-        checkActionState(action, state);
+        checkActionState(gAction, state);
 
         WebKitContextMenu* subMenu = webkit_context_menu_item_get_submenu(item);
         g_assert_true(WEBKIT_IS_CONTEXT_MENU(subMenu));
@@ -265,7 +276,9 @@ public:
 
     void showContextMenuTriggeredByPopupEventAndWaitUntilFinished()
     {
+#if !USE(GTK4)
         m_expectedEventType = GDK_NOTHING;
+#endif
         g_idle_add(reinterpret_cast<GSourceFunc>(emitPopupMenuSignalIdleCallback), this);
         g_main_loop_run(m_mainLoop);
     }
@@ -301,6 +314,7 @@ public:
         Audio,
         VideoLive,
         Editable,
+        RichEditable,
         Selection
     };
 
@@ -423,6 +437,24 @@ public:
             iter = checkCurrentItemIsSeparatorAndGetNext(iter);
             iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_UNICODE, Visible | Enabled);
             break;
+        case RichEditable:
+            g_assert_false(webkit_hit_test_result_context_is_link(hitTestResult));
+            g_assert_false(webkit_hit_test_result_context_is_image(hitTestResult));
+            g_assert_false(webkit_hit_test_result_context_is_media(hitTestResult));
+            g_assert_true(webkit_hit_test_result_context_is_editable(hitTestResult));
+            g_assert_false(webkit_hit_test_result_context_is_selection(hitTestResult));
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_CUT, Visible);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_COPY, Visible);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_PASTE, Visible | Enabled);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_PASTE_AS_PLAIN_TEXT, Visible | Enabled);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_DELETE, Visible);
+            iter = checkCurrentItemIsSeparatorAndGetNext(iter);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_SELECT_ALL, Visible | Enabled);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_INSERT_EMOJI, Visible | Enabled);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_FONT_MENU, Visible | Enabled);
+            iter = checkCurrentItemIsSeparatorAndGetNext(iter);
+            iter = checkCurrentItemIsStockActionAndGetNext(iter, WEBKIT_CONTEXT_MENU_ACTION_UNICODE, Visible | Enabled);
+            break;
         case Selection:
             g_assert_false(webkit_hit_test_result_context_is_link(hitTestResult));
             g_assert_false(webkit_hit_test_result_context_is_image(hitTestResult));
@@ -460,7 +492,8 @@ static void prepareContextMenuTestView(ContextMenuDefaultTest* test)
         " <input style='position:absolute; left:1; top:30' size='10'></input>"
         " <video style='position:absolute; left:1; top:50' width='300' height='300' controls='controls' preload='none'><source src='silence.webm' type='video/webm' /></video>"
         " <audio style='position:absolute; left:1; top:60' width='50' height='20' controls='controls' preload='none'><source src='track.ogg' type='audio/ogg' /></audio>"
-        " <p style='position:absolute; left:1; top:90' id='text_to_select'>Lorem ipsum.</p>"
+        " <div contenteditable style='position:absolute; left:1; top: 90; height: 20px; width: 100px'></div>"
+        " <p style='position:absolute; left:1; top:110' id='text_to_select'>Lorem ipsum.</p>"
         " <script>"
         "  window.getSelection().removeAllRanges();"
         "  var select_range = document.createRange();"
@@ -474,14 +507,13 @@ static void prepareContextMenuTestView(ContextMenuDefaultTest* test)
 
 static void testContextMenuDefaultMenu(ContextMenuDefaultTest* test, gconstpointer)
 {
-    test->showInWindowAndWaitUntilMapped();
-
+    test->showInWindow();
     prepareContextMenuTestView(test);
 
     // Context menu for selection.
     // This test should always be the first because any other click removes the selection.
     test->m_expectedMenuType = ContextMenuDefaultTest::Selection;
-    test->showContextMenuAtPositionAndWaitUntilFinished(2, 115);
+    test->showContextMenuAtPositionAndWaitUntilFinished(2, 135);
 
     // Context menu for document.
     test->m_expectedMenuType = ContextMenuDefaultTest::Navigation;
@@ -514,12 +546,15 @@ static void testContextMenuDefaultMenu(ContextMenuDefaultTest* test, gconstpoint
     // Context menu for editable.
     test->m_expectedMenuType = ContextMenuDefaultTest::Editable;
     test->showContextMenuAtPositionAndWaitUntilFinished(5, 35);
+
+    // Context menu for rich editable.
+    test->m_expectedMenuType = ContextMenuDefaultTest::RichEditable;
+    test->showContextMenuAtPositionAndWaitUntilFinished(5, 95);
 }
 
 static void testPopupEventSignal(ContextMenuDefaultTest* test, gconstpointer)
 {
-    test->showInWindowAndWaitUntilMapped();
-
+    test->showInWindow();
     prepareContextMenuTestView(test);
 
     test->m_expectedMenuType = ContextMenuDefaultTest::Selection;
@@ -528,8 +563,7 @@ static void testPopupEventSignal(ContextMenuDefaultTest* test, gconstpointer)
 
 static void testContextMenuKey(ContextMenuDefaultTest* test, gconstpointer)
 {
-    test->showInWindowAndWaitUntilMapped();
-
+    test->showInWindow();
     prepareContextMenuTestView(test);
 
     test->m_expectedMenuType = ContextMenuDefaultTest::Selection;
@@ -543,18 +577,26 @@ public:
     bool contextMenu(WebKitContextMenu* contextMenu, GdkEvent*, WebKitHitTestResult* hitTestResult)
     {
         // Append our custom item to the default menu.
+#if !USE(GTK4)
         G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
         if (m_action)
             webkit_context_menu_append(contextMenu, webkit_context_menu_item_new(m_action.get()));
         else if (m_gAction)
             webkit_context_menu_append(contextMenu, webkit_context_menu_item_new_from_gaction(m_gAction.get(), m_gActionTitle.data(), m_expectedTarget.get()));
         G_GNUC_END_IGNORE_DEPRECATIONS;
+#endif
         quitMainLoop();
 
         return false;
     }
 
-    GtkMenuItem* getMenuItem(GtkMenu* menu, const gchar* itemLabel)
+#if USE(GTK4)
+    GtkButton* getMenuItem(GtkWidget* popover, const gchar* itemLabel)
+    {
+        return nullptr;
+    }
+#else
+    GtkMenuItem* getMenuItem(GtkWidget* menu, const gchar* itemLabel)
     {
         GUniquePtr<GList> items(gtk_container_get_children(GTK_CONTAINER(menu)));
         for (GList* iter = items.get(); iter; iter = g_list_next(iter)) {
@@ -563,15 +605,21 @@ public:
                 return child;
         }
         g_assert_not_reached();
-        return 0;
+        return nullptr;
     }
+#endif // USE(GTK4)
 
     void activateMenuItem()
     {
         g_assert_nonnull(m_itemToActivateLabel);
-        GtkMenu* menu = getPopupMenu();
-        GtkMenuItem* item = getMenuItem(menu, m_itemToActivateLabel);
+        auto* menu = getContextMenuWidget();
+        auto* item = getMenuItem(menu, m_itemToActivateLabel);
+#if USE(GTK4)
+
+#else
+        // GTK3 uses a menu, which contains menu items.
         gtk_menu_shell_activate_item(GTK_MENU_SHELL(menu), GTK_WIDGET(item), TRUE);
+#endif // USE(GTK4)
         m_itemToActivateLabel = nullptr;
     }
 
@@ -622,10 +670,14 @@ public:
         m_action = action;
         m_gAction = nullptr;
         m_expectedTarget = nullptr;
+#if !USE(GTK4)
+        G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
         if (GTK_IS_TOGGLE_ACTION(action))
             g_signal_connect_swapped(action, "toggled", G_CALLBACK(actionToggledCallback), this);
         else
             g_signal_connect_swapped(action, "activate", G_CALLBACK(actionActivatedCallback), this);
+        G_GNUC_END_IGNORE_DEPRECATIONS;
+#endif
     }
 
     void setAction(GAction* action, const char* title, GVariant* target = nullptr)
@@ -650,11 +702,12 @@ public:
 
 static void testContextMenuPopulateMenu(ContextMenuCustomTest* test, gconstpointer)
 {
-    test->showInWindowAndWaitUntilMapped();
-
+    test->showInWindow();
     test->loadHtml("<html><body>WebKitGTK Context menu tests</body></html>", "file:///");
     test->waitUntilLoadFinished();
 
+#if !USE(GTK4)
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
     // Create a custom menu item.
     GRefPtr<GtkAction> action = adoptGRef(gtk_action_new("WebKitGTKCustomAction", "Custom _Action", nullptr, nullptr));
     test->setAction(action.get());
@@ -670,6 +723,8 @@ static void testContextMenuPopulateMenu(ContextMenuCustomTest* test, gconstpoint
     test->toggleCustomMenuItemAndWaitUntilToggled(gtk_action_get_label(toggleAction.get()));
     g_assert_false(test->m_activated);
     g_assert_true(test->m_toggled);
+    G_GNUC_END_IGNORE_DEPRECATIONS;
+#endif
 
     // Create a custom menu item using GAction.
     GRefPtr<GAction> gAction = adoptGRef(G_ACTION(g_simple_action_new("WebKitGTKCustomGAction", nullptr)));
@@ -711,6 +766,7 @@ public:
         webkit_context_menu_insert(contextMenu, webkit_context_menu_item_new_separator(), 2);
 
         // Add custom actions.
+#if !USE(GTK4)
         G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
         GRefPtr<GtkAction> action = adoptGRef(gtk_action_new("WebKitGTKCustomAction", "Custom _Action", nullptr, nullptr));
         gtk_action_set_sensitive(action.get(), FALSE);
@@ -719,6 +775,7 @@ public:
         gtk_toggle_action_set_active(GTK_TOGGLE_ACTION(toggleAction.get()), TRUE);
         webkit_context_menu_append(contextMenu, webkit_context_menu_item_new(toggleAction.get()));
         webkit_context_menu_append(contextMenu, webkit_context_menu_item_new_separator());
+#endif
         GRefPtr<GAction> gAction = adoptGRef(G_ACTION(g_simple_action_new("WebKitGTKCustomGAction", nullptr)));
         g_simple_action_set_enabled(G_SIMPLE_ACTION(gAction.get()), FALSE);
         webkit_context_menu_insert(contextMenu, webkit_context_menu_item_new_from_gaction(gAction.get(), "Custom _GAction", nullptr), -1);
@@ -771,69 +828,10 @@ public:
 
 static void testContextMenuCustomMenu(ContextMenuCustomFullTest* test, gconstpointer)
 {
-    test->showInWindowAndWaitUntilMapped();
-
+    test->showInWindow();
     test->loadHtml("<html><body>WebKitGTK Context menu tests</body></html>", "file:///");
     test->waitUntilLoadFinished();
 
-    test->showContextMenuAndWaitUntilFinished();
-}
-
-class ContextMenuDisabledTest: public ContextMenuTest {
-public:
-    MAKE_GLIB_TEST_FIXTURE(ContextMenuDisabledTest);
-
-    enum DisableMode {
-        IgnoreClicks,
-        IgnoreDefaultMenu
-    };
-
-    static gboolean buttonPressEventCallback(GtkWidget*, GdkEvent* event, ContextMenuDisabledTest* test)
-    {
-        if (event->button.button != 3)
-            return FALSE;
-        return test->rightButtonPressed();
-    }
-
-    ContextMenuDisabledTest()
-        : m_disableMode(IgnoreClicks)
-    {
-        g_signal_connect(m_webView, "button-press-event", G_CALLBACK(buttonPressEventCallback), this);
-    }
-
-    bool contextMenu(WebKitContextMenu* contextMenu, GdkEvent*, WebKitHitTestResult*)
-    {
-        if (m_disableMode == IgnoreClicks)
-            g_assert_not_reached();
-        else
-            quitMainLoop();
-
-        return true;
-    }
-
-    bool rightButtonPressed()
-    {
-        if (m_disableMode == IgnoreClicks) {
-            quitMainLoopAfterProcessingPendingEvents();
-            return true;
-        }
-        return false;
-    }
-
-    DisableMode m_disableMode;
-};
-
-static void testContextMenuDisableMenu(ContextMenuDisabledTest* test, gconstpointer)
-{
-    test->showInWindowAndWaitUntilMapped();
-
-    test->loadHtml("<html><body>WebKitGTK Context menu tests</body></html>", "file:///");
-    test->waitUntilLoadFinished();
-
-    test->m_disableMode = ContextMenuDisabledTest::IgnoreDefaultMenu;
-    test->showContextMenuAndWaitUntilFinished();
-
-    test->m_disableMode = ContextMenuDisabledTest::IgnoreClicks;
     test->showContextMenuAndWaitUntilFinished();
 }
 
@@ -878,8 +876,7 @@ public:
 
 static void testContextMenuSubMenu(ContextMenuSubmenuTest* test, gconstpointer)
 {
-    test->showInWindowAndWaitUntilMapped();
-
+    test->showInWindow();
     test->loadHtml("<html><body>WebKitGTK Context menu tests</body></html>", "file:///");
     test->waitUntilLoadFinished();
 
@@ -919,8 +916,7 @@ public:
 
 static void testContextMenuDismissed(ContextMenuDismissedTest* test, gconstpointer)
 {
-    test->showInWindowAndWaitUntilMapped();
-
+    test->showInWindow();
     test->loadHtml("<html><body>WebKitGTK Context menu tests</body></html>", "file:///");
     test->waitUntilLoadFinished();
 
@@ -969,7 +965,7 @@ public:
 
 static void testContextMenuWebExtensionMenu(ContextMenuWebExtensionTest* test, gconstpointer)
 {
-    test->showInWindowAndWaitUntilMapped();
+    test->showInWindow();
     test->loadHtml("<html><body>WebKitGTK Context menu tests<br>"
         "<a style='position:absolute; left:1; top:10' href='http://www.webkitgtk.org'>WebKitGTK Website</a></body></html>",
         "ContextMenuTestDefault");
@@ -1059,7 +1055,7 @@ public:
 
 static void testContextMenuWebExtensionNode(ContextMenuWebExtensionNodeTest* test, gconstpointer)
 {
-    test->showInWindowAndWaitUntilMapped();
+    test->showInWindow();
     test->loadHtml("<html><body><p style='position:absolute; left:1; top:1'>WebKitGTK Context menu tests</p><br>"
         "<a style='position:absolute; left:1; top:100' href='http://www.webkitgtk.org'>WebKitGTK Website</a></body></html>",
         "ContextMenuTestNode");
@@ -1129,8 +1125,7 @@ static void serverCallback(SoupServer* server, SoupMessage* message, const char*
 
 static void testContextMenuLiveStream(ContextMenuDefaultTest* test, gconstpointer)
 {
-    test->showInWindowAndWaitUntilMapped();
-
+    test->showInWindow();
     test->loadURI(kServer->getURIForPath("/live-stream").data());
     test->waitUntilLoadFinished();
 
@@ -1143,17 +1138,19 @@ void beforeAll()
     kServer = new WebKitTestServer();
     kServer->run(serverCallback);
 
+#if !USE(GTK4)
+    // FIXME: Rework context menu API in GTK4 to not expose GdkEvent.
     ContextMenuDefaultTest::add("WebKitWebView", "default-menu", testContextMenuDefaultMenu);
     ContextMenuDefaultTest::add("WebKitWebView", "context-menu-key", testContextMenuKey);
     ContextMenuDefaultTest::add("WebKitWebView", "popup-event-signal", testPopupEventSignal);
     ContextMenuDefaultTest::add("WebKitWebView", "live-stream", testContextMenuLiveStream);
     ContextMenuCustomTest::add("WebKitWebView", "populate-menu", testContextMenuPopulateMenu);
     ContextMenuCustomFullTest::add("WebKitWebView", "custom-menu", testContextMenuCustomMenu);
-    ContextMenuDisabledTest::add("WebKitWebView", "disable-menu", testContextMenuDisableMenu);
     ContextMenuSubmenuTest::add("WebKitWebView", "submenu", testContextMenuSubMenu);
     ContextMenuDismissedTest::add("WebKitWebView", "menu-dismissed", testContextMenuDismissed);
     ContextMenuWebExtensionTest::add("WebKitWebPage", "context-menu", testContextMenuWebExtensionMenu);
     ContextMenuWebExtensionNodeTest::add("WebKitWebPage", "context-menu-node", testContextMenuWebExtensionNode);
+#endif
 }
 
 void afterAll()

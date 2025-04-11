@@ -28,45 +28,6 @@ namespace rx
 namespace
 {
 
-MTLColorWriteMask GetColorWriteMask(const mtl::Format &mtlFormat, bool *emulatedChannelsOut)
-{
-    const angle::Format &intendedFormat = mtlFormat.intendedAngleFormat();
-    const angle::Format &actualFormat   = mtlFormat.actualAngleFormat();
-    bool emulatedChannels               = false;
-    MTLColorWriteMask colorWritableMask = MTLColorWriteMaskAll;
-    if (intendedFormat.alphaBits == 0 && actualFormat.alphaBits)
-    {
-        emulatedChannels = true;
-        // Disable alpha write to this texture
-        colorWritableMask = colorWritableMask & (~MTLColorWriteMaskAlpha);
-    }
-    if (intendedFormat.luminanceBits == 0)
-    {
-        if (intendedFormat.redBits == 0 && actualFormat.redBits)
-        {
-            emulatedChannels = true;
-            // Disable red write to this texture
-            colorWritableMask = colorWritableMask & (~MTLColorWriteMaskRed);
-        }
-        if (intendedFormat.greenBits == 0 && actualFormat.greenBits)
-        {
-            emulatedChannels = true;
-            // Disable green write to this texture
-            colorWritableMask = colorWritableMask & (~MTLColorWriteMaskGreen);
-        }
-        if (intendedFormat.blueBits == 0 && actualFormat.blueBits)
-        {
-            emulatedChannels = true;
-            // Disable blue write to this texture
-            colorWritableMask = colorWritableMask & (~MTLColorWriteMaskBlue);
-        }
-    }
-
-    *emulatedChannelsOut = emulatedChannels;
-
-    return colorWritableMask;
-}
-
 gl::ImageIndex GetImageBaseLevelIndex(const mtl::TextureRef &image)
 {
     gl::ImageIndex imageBaseIndex;
@@ -337,7 +298,7 @@ void TextureMtl::releaseTexture(bool releaseImages)
 
     for (RenderTargetMtl &rt : mLayeredRenderTargets)
     {
-        rt.set(nullptr);
+        rt.reset();
     }
 
     if (releaseImages)
@@ -397,7 +358,7 @@ angle::Result TextureMtl::ensureTextureCreated(const gl::Context *context)
     ANGLE_TRY(checkForEmulatedChannels(context, mFormat, mNativeTexture));
 
     // Transfer data from images to actual texture object
-    mtl::BlitCommandEncoder *encoder                = nullptr;
+    mtl::BlitCommandEncoder *encoder = nullptr;
     for (int layer = 0; layer < layers; ++layer)
     {
         for (GLuint mip = 0; mip < mips; ++mip)
@@ -418,8 +379,8 @@ angle::Result TextureMtl::ensureTextureCreated(const gl::Context *context)
                 {
                     encoder = contextMtl->getBlitCommandEncoder();
                 }
-                encoder->copyTexture(mNativeTexture, layer, mip, mtlOrigin, mtlSize,
-                                     imageToTransfer, 0, 0, mtlOrigin);
+                encoder->copyTexture(imageToTransfer, 0, 0, mtlOrigin, mtlSize, mNativeTexture,
+                                     layer, mip, mtlOrigin);
             }
 
             imageToTransfer = nullptr;
@@ -489,6 +450,7 @@ angle::Result TextureMtl::setImage(const gl::Context *context,
                                    GLenum format,
                                    GLenum type,
                                    const gl::PixelUnpackState &unpack,
+                                   gl::Buffer *unpackBuffer,
                                    const uint8_t *pixels)
 {
     const gl::InternalFormat &formatInfo = gl::GetInternalFormatInfo(internalFormat, type);
@@ -812,7 +774,8 @@ angle::Result TextureMtl::getAttachmentRenderTarget(const gl::Context *context,
 }
 
 angle::Result TextureMtl::syncState(const gl::Context *context,
-                                    const gl::Texture::DirtyBits &dirtyBits)
+                                    const gl::Texture::DirtyBits &dirtyBits,
+                                    gl::TextureCommand source)
 {
     if (dirtyBits.any())
     {
@@ -826,42 +789,18 @@ angle::Result TextureMtl::syncState(const gl::Context *context,
     return angle::Result::Continue;
 }
 
-angle::Result TextureMtl::bindVertexShader(const gl::Context *context,
-                                           mtl::RenderCommandEncoder *cmdEncoder,
-                                           int textureSlotIndex,
-                                           int samplerSlotIndex)
+angle::Result TextureMtl::bindToShader(const gl::Context *context,
+                                       mtl::RenderCommandEncoder *cmdEncoder,
+                                       gl::ShaderType shaderType,
+                                       int textureSlotIndex,
+                                       int samplerSlotIndex)
 {
     ASSERT(mNativeTexture);
-    // ES 2.0: non power of two texture won't have any mipmap.
-    // We don't support OES_texture_npot atm.
+
     float maxLodClamp = FLT_MAX;
-    if (!mIsPow2)
-    {
-        maxLodClamp = 0;
-    }
 
-    cmdEncoder->setVertexTexture(mNativeTexture, textureSlotIndex);
-    cmdEncoder->setVertexSamplerState(mMetalSamplerState, 0, maxLodClamp, samplerSlotIndex);
-
-    return angle::Result::Continue;
-}
-
-angle::Result TextureMtl::bindFragmentShader(const gl::Context *context,
-                                             mtl::RenderCommandEncoder *cmdEncoder,
-                                             int textureSlotIndex,
-                                             int samplerSlotIndex)
-{
-    ASSERT(mNativeTexture);
-    // ES 2.0: non power of two texture won't have any mipmap.
-    // We don't support OES_texture_npot atm.
-    float maxLodClamp = FLT_MAX;
-    if (!mIsPow2)
-    {
-        maxLodClamp = 0;
-    }
-
-    cmdEncoder->setFragmentTexture(mNativeTexture, textureSlotIndex);
-    cmdEncoder->setFragmentSamplerState(mMetalSamplerState, 0, maxLodClamp, samplerSlotIndex);
+    cmdEncoder->setTexture(shaderType, mNativeTexture, textureSlotIndex);
+    cmdEncoder->setSamplerState(shaderType, mMetalSamplerState, 0, maxLodClamp, samplerSlotIndex);
 
     return angle::Result::Continue;
 }
@@ -1089,8 +1028,9 @@ angle::Result TextureMtl::checkForEmulatedChannels(const gl::Context *context,
                                                    const mtl::Format &mtlFormat,
                                                    const mtl::TextureRef &texture)
 {
-    bool emulatedChannels               = false;
-    MTLColorWriteMask colorWritableMask = GetColorWriteMask(mtlFormat, &emulatedChannels);
+    bool emulatedChannels = false;
+    MTLColorWriteMask colorWritableMask =
+        mtl::GetEmulatedColorWriteMask(mtlFormat, &emulatedChannels);
     texture->setColorWritableMask(colorWritableMask);
 
     // For emulated channels that GL texture intends to not have,
@@ -1175,7 +1115,7 @@ angle::Result TextureMtl::copySubImageWithDraw(const gl::Context *context,
     DisplayMtl *displayMtl         = contextMtl->getDisplay();
     FramebufferMtl *framebufferMtl = mtl::GetImpl(source);
 
-    RenderTargetMtl *colorReadRT = framebufferMtl->getColorReadRenderTarget();
+    RenderTargetMtl *colorReadRT = framebufferMtl->getColorReadRenderTarget(context);
 
     if (!colorReadRT || !colorReadRT->getTexture())
     {
@@ -1199,9 +1139,7 @@ angle::Result TextureMtl::copySubImageWithDraw(const gl::Context *context,
     blitParams.srcYFlipped  = framebufferMtl->flipY();
     blitParams.dstLuminance = internalFormat.isLUMA();
 
-    displayMtl->getUtils().blitWithDraw(context, cmdEncoder, blitParams);
-
-    return angle::Result::Continue;
+    return displayMtl->getUtils().blitWithDraw(context, cmdEncoder, blitParams);
 }
 
 angle::Result TextureMtl::copySubImageCPU(const gl::Context *context,
@@ -1216,7 +1154,7 @@ angle::Result TextureMtl::copySubImageCPU(const gl::Context *context,
 
     ContextMtl *contextMtl         = mtl::GetImpl(context);
     FramebufferMtl *framebufferMtl = mtl::GetImpl(source);
-    RenderTargetMtl *colorReadRT   = framebufferMtl->getColorReadRenderTarget();
+    RenderTargetMtl *colorReadRT   = framebufferMtl->getColorReadRenderTarget(context);
 
     if (!colorReadRT || !colorReadRT->getTexture())
     {
@@ -1240,10 +1178,10 @@ angle::Result TextureMtl::copySubImageCPU(const gl::Context *context,
         PackPixelsParams packParams(srcRowArea, dstFormat, dstRowPitch, false, nullptr, 0);
 
         // Read pixels from framebuffer to memory:
-        gl::Rectangle flippedSrcRowArea = framebufferMtl->getReadPixelArea(srcRowArea);
+        gl::Rectangle flippedSrcRowArea =
+            framebufferMtl->getCorrectFlippedReadArea(context, srcRowArea);
         ANGLE_TRY(framebufferMtl->readPixelsImpl(context, flippedSrcRowArea, packParams,
-                                                 framebufferMtl->getColorReadRenderTarget(),
-                                                 conversionRow.data()));
+                                                 colorReadRT, conversionRow.data()));
 
         // Upload to texture
         ANGLE_TRY(UploadTextureContents(context, image, dstFormat, mtlDstRowArea, 0, 0,

@@ -85,10 +85,15 @@ void cleanUp()
 
 namespace TestWebKitAPI {
 
+// Re-enable this test for Mojave once webkit.org/b/206956 is resolved
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
 TEST(WebKitLegacy, CrossPartitionFileSchemeAccess)
 {
     NSURL *url = [[NSBundle mainBundle] URLForResource:@"CrossPartitionFileSchemeAccess" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
     const char *filePath = [url fileSystemRepresentation];
+    WTFLogAlways("Cleaning up from previous run...");
+    cleanUp();
+    WTFLogAlways("Creating partition...");
     createPartition(filePath);
         
     RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
@@ -99,7 +104,10 @@ TEST(WebKitLegacy, CrossPartitionFileSchemeAccess)
     
     NSURLRequest *request = [NSURLRequest requestWithURL:url];
     [webView loadRequest:request];
+    WTFLogAlways("Navigating...");
     Util::run(&navigationComplete);
+    WTFLogAlways("Cleaning up...");
     cleanUp();
 }
+#endif
 }

@@ -55,6 +55,13 @@ bool AccessibilityUIElement::isValid() const
     return m_element;            
 }
 
+#if !ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+bool AccessibilityUIElement::isIsolatedObject() const
+{
+    return false;
+}
+#endif
+
 // iOS specific methods
 #if !PLATFORM(IOS_FAMILY)
 JSRetainPtr<JSStringRef> AccessibilityUIElement::identifier() { return nullptr; }
@@ -75,9 +82,10 @@ bool AccessibilityUIElement::scrollPageRight() { return false; }
 bool AccessibilityUIElement::hasContainedByFieldsetTrait() { return false; }
 RefPtr<AccessibilityUIElement> AccessibilityUIElement::fieldsetAncestorElement() { return nullptr; }
 bool AccessibilityUIElement::isSearchField() const { return false; }
+bool AccessibilityUIElement::isInDefinitionListDefinition() const { return false; }
+bool AccessibilityUIElement::isInDefinitionListTerm() const { return false; }
 bool AccessibilityUIElement::isTextArea() const { return false; }
 RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::textMarkerRangeMatchesTextNearMarkers(JSStringRef, AccessibilityTextMarker*, AccessibilityTextMarker*) { return nullptr; }
-bool AccessibilityUIElement::dismiss() { return false; }
 JSRetainPtr<JSStringRef> AccessibilityUIElement::attributedStringForElement() { return nullptr; }
 bool AccessibilityUIElement::isInTableCell() const { return false; }
 #endif
@@ -110,6 +118,7 @@ RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::sentenceTextMarkerR
 RefPtr<AccessibilityTextMarker> AccessibilityUIElement::nextSentenceEndTextMarkerForTextMarker(AccessibilityTextMarker*) { return nullptr; }
 RefPtr<AccessibilityTextMarker> AccessibilityUIElement::previousSentenceStartTextMarkerForTextMarker(AccessibilityTextMarker*) { return nullptr; }
 RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::misspellingTextMarkerRange(AccessibilityTextMarkerRange*, bool) { return nullptr; }
+void AccessibilityUIElement::dismiss() { }
 #endif
 
 } // namespace WTR

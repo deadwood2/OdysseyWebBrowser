@@ -63,11 +63,11 @@ struct TestDoubleHashTraits : HashTraits<double> {
     static const int minimumTableSize = 8;
 };
 
-typedef HashMap<double, int64_t, DefaultHash<double>::Hash, TestDoubleHashTraits> DoubleHashMap;
+typedef HashMap<double, int64_t, DefaultHash<double>, TestDoubleHashTraits> DoubleHashMap;
 
 static int bucketForKey(double key)
 {
-    return DefaultHash<double>::Hash::hash(key) & (TestDoubleHashTraits::minimumTableSize - 1);
+    return DefaultHash<double>::hash(key) & (TestDoubleHashTraits::minimumTableSize - 1);
 }
 
 template<typename T> struct BigTableHashTraits : public HashTraits<T> {
@@ -1021,7 +1021,7 @@ TEST(WTF_HashMap, Random_WrapAround)
 
 TEST(WTF_HashMap, Random_IsEvenlyDistributed)
 {
-    HashMap<unsigned, unsigned, DefaultHash<unsigned>::Hash, WTF::UnsignedWithZeroKeyHashTraits<unsigned>> map;
+    HashMap<unsigned, unsigned, DefaultHash<unsigned>, WTF::UnsignedWithZeroKeyHashTraits<unsigned>> map;
     map.add(0, 0);
     map.add(1, 1);
 
@@ -1047,39 +1047,54 @@ TEST(WTF_HashMap, ReserveInitialCapacity)
 {
     HashMap<String, String> map;
     EXPECT_EQ(0u, map.size());
+    EXPECT_EQ(0u, map.capacity());
+
     map.reserveInitialCapacity(9999);
     EXPECT_EQ(0u, map.size());
+    EXPECT_EQ(32768u, map.capacity());
+
     for (int i = 0; i < 9999; ++i)
         map.add(makeString("foo", i), makeString("bar", i));
     EXPECT_EQ(9999u, map.size());
+    EXPECT_EQ(32768u, map.capacity());
     EXPECT_TRUE(map.contains("foo3"_str));
     EXPECT_STREQ("bar3", map.get("foo3"_str).utf8().data());
+
     for (int i = 0; i < 9999; ++i)
         map.add(makeString("excess", i), makeString("baz", i));
     EXPECT_EQ(9999u + 9999u, map.size());
+    EXPECT_EQ(32768u + 32768u, map.capacity());
+
     for (int i = 0; i < 9999; ++i)
         EXPECT_TRUE(map.remove(makeString("foo", i)));
     EXPECT_EQ(9999u, map.size());
+    EXPECT_EQ(32768u, map.capacity());
     EXPECT_STREQ("baz3", map.get("excess3"_str).utf8().data());
+
     for (int i = 0; i < 9999; ++i)
         EXPECT_TRUE(map.remove(makeString("excess", i)));
     EXPECT_EQ(0u, map.size());
-    
+    EXPECT_EQ(8u, map.capacity());
+
     HashMap<String, String> map2;
     map2.reserveInitialCapacity(9999);
     EXPECT_FALSE(map2.remove("foo1"_s));
+
     for (int i = 0; i < 2000; ++i)
         map2.add(makeString("foo", i), makeString("bar", i));
     EXPECT_EQ(2000u, map2.size());
+    EXPECT_EQ(32768u, map2.capacity());
+
     for (int i = 0; i < 2000; ++i)
         EXPECT_TRUE(map2.remove(makeString("foo", i)));
     EXPECT_EQ(0u, map2.size());
+    EXPECT_EQ(8u, map2.capacity());
 }
 
 TEST(WTF_HashMap, Random_IsEvenlyDistributedAfterRemove)
 {
     for (size_t tableSize = 2; tableSize <= 2 * 6; ++tableSize) { // Our hash tables shrink at a load factor of 1 / 6.
-        HashMap<unsigned, unsigned, DefaultHash<unsigned>::Hash, WTF::UnsignedWithZeroKeyHashTraits<unsigned>> map;
+        HashMap<unsigned, unsigned, DefaultHash<unsigned>, WTF::UnsignedWithZeroKeyHashTraits<unsigned>> map;
         for (size_t i = 0; i < tableSize; ++i)
             map.add(i, i);
         for (size_t i = 2; i < tableSize; ++i)

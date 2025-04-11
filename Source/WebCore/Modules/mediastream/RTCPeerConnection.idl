@@ -73,11 +73,11 @@ typedef (object or DOMString) AlgorithmIdentifier;
 [
     ActiveDOMObject,
     Conditional=WEB_RTC,
-    ConstructorCallWith=Document,
     EnabledAtRuntime=PeerConnection,
     ExportMacro=WEBCORE_EXPORT,
-    JSBuiltinConstructor
 ] interface RTCPeerConnection : EventTarget {
+    [JSBuiltin, CallWith=Document] constructor();
+
     // JS built-in constructor handles the optional RTCConfiguration
     [PrivateIdentifier, CallWith=Document, MayThrowException] void initializeWith(RTCConfiguration configuration);
 
@@ -116,7 +116,7 @@ typedef (object or DOMString) AlgorithmIdentifier;
     attribute EventHandler oniceconnectionstatechange;
     attribute EventHandler onicegatheringstatechange;
     attribute EventHandler onconnectionstatechange;
-    // FIXME 169644: missing onfingerprintfailure and onicecandidateerror
+    attribute EventHandler onicecandidateerror;
 
     // Private API used to implement the overloaded operations above. Queued functions are called by runQueuedOperation().
     // See RTCPeerConnectionInternals.js.

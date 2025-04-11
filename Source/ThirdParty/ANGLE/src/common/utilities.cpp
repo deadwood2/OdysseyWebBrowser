@@ -7,10 +7,11 @@
 // utilities.cpp: Conversion functions and other utility routines.
 
 // Older clang versions have a false positive on this warning here.
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wglobal-constructors"
+#endif
 
 #include "common/utilities.h"
-#include <GLSLANG/ShaderVars.h>
 #include "GLES3/gl3.h"
 #include "common/mathutil.h"
 #include "common/platform.h"
@@ -166,6 +167,9 @@ GLenum VariableComponentType(GLenum type)
         case GL_IMAGE_CUBE:
         case GL_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_IMAGE_CUBE:
+        case GL_IMAGE_CUBE_MAP_ARRAY:
+        case GL_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_UNSIGNED_INT_ATOMIC_COUNTER:
         case GL_SAMPLER_VIDEO_IMAGE_WEBGL:
             return GL_INT;
@@ -316,21 +320,25 @@ int VariableRowCount(GLenum type)
         case GL_SAMPLER_2D_RECT_ANGLE:
         case GL_SAMPLER_2D_MULTISAMPLE:
         case GL_SAMPLER_2D_MULTISAMPLE_ARRAY:
+        case GL_SAMPLER_CUBE_MAP_ARRAY:
         case GL_INT_SAMPLER_2D:
         case GL_INT_SAMPLER_3D:
         case GL_INT_SAMPLER_CUBE:
         case GL_INT_SAMPLER_2D_ARRAY:
         case GL_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
+        case GL_INT_SAMPLER_CUBE_MAP_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_2D:
         case GL_UNSIGNED_INT_SAMPLER_3D:
         case GL_UNSIGNED_INT_SAMPLER_CUBE:
         case GL_UNSIGNED_INT_SAMPLER_2D_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
+        case GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY:
         case GL_SAMPLER_2D_SHADOW:
         case GL_SAMPLER_CUBE_SHADOW:
         case GL_SAMPLER_2D_ARRAY_SHADOW:
+        case GL_SAMPLER_CUBE_MAP_ARRAY_SHADOW:
         case GL_IMAGE_2D:
         case GL_INT_IMAGE_2D:
         case GL_UNSIGNED_INT_IMAGE_2D:
@@ -344,6 +352,9 @@ int VariableRowCount(GLenum type)
         case GL_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_ATOMIC_COUNTER:
+        case GL_IMAGE_CUBE_MAP_ARRAY:
+        case GL_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_SAMPLER_VIDEO_IMAGE_WEBGL:
             return 1;
         case GL_FLOAT_MAT2:
@@ -381,12 +392,14 @@ int VariableColumnCount(GLenum type)
         case GL_SAMPLER_2D_ARRAY:
         case GL_SAMPLER_2D_MULTISAMPLE:
         case GL_SAMPLER_2D_MULTISAMPLE_ARRAY:
+        case GL_SAMPLER_CUBE_MAP_ARRAY:
         case GL_INT_SAMPLER_2D:
         case GL_INT_SAMPLER_3D:
         case GL_INT_SAMPLER_CUBE:
         case GL_INT_SAMPLER_2D_ARRAY:
         case GL_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
+        case GL_INT_SAMPLER_CUBE_MAP_ARRAY:
         case GL_SAMPLER_EXTERNAL_OES:
         case GL_SAMPLER_2D_RECT_ANGLE:
         case GL_UNSIGNED_INT_SAMPLER_2D:
@@ -395,9 +408,11 @@ int VariableColumnCount(GLenum type)
         case GL_UNSIGNED_INT_SAMPLER_2D_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
+        case GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY:
         case GL_SAMPLER_2D_SHADOW:
         case GL_SAMPLER_CUBE_SHADOW:
         case GL_SAMPLER_2D_ARRAY_SHADOW:
+        case GL_SAMPLER_CUBE_MAP_ARRAY_SHADOW:
         case GL_IMAGE_2D:
         case GL_INT_IMAGE_2D:
         case GL_UNSIGNED_INT_IMAGE_2D:
@@ -407,6 +422,9 @@ int VariableColumnCount(GLenum type)
         case GL_IMAGE_2D_ARRAY:
         case GL_INT_IMAGE_2D_ARRAY:
         case GL_UNSIGNED_INT_IMAGE_2D_ARRAY:
+        case GL_IMAGE_CUBE_MAP_ARRAY:
+        case GL_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_IMAGE_CUBE:
         case GL_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_IMAGE_CUBE:
@@ -455,6 +473,7 @@ bool IsSamplerType(GLenum type)
         case GL_SAMPLER_EXTERNAL_OES:
         case GL_SAMPLER_2D_MULTISAMPLE:
         case GL_SAMPLER_2D_MULTISAMPLE_ARRAY:
+        case GL_SAMPLER_CUBE_MAP_ARRAY:
         case GL_SAMPLER_2D_RECT_ANGLE:
         case GL_INT_SAMPLER_2D:
         case GL_INT_SAMPLER_3D:
@@ -462,15 +481,18 @@ bool IsSamplerType(GLenum type)
         case GL_INT_SAMPLER_2D_ARRAY:
         case GL_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
+        case GL_INT_SAMPLER_CUBE_MAP_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_2D:
         case GL_UNSIGNED_INT_SAMPLER_3D:
         case GL_UNSIGNED_INT_SAMPLER_CUBE:
         case GL_UNSIGNED_INT_SAMPLER_2D_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
+        case GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY:
         case GL_SAMPLER_2D_SHADOW:
         case GL_SAMPLER_CUBE_SHADOW:
         case GL_SAMPLER_2D_ARRAY_SHADOW:
+        case GL_SAMPLER_CUBE_MAP_ARRAY_SHADOW:
         case GL_SAMPLER_VIDEO_IMAGE_WEBGL:
             return true;
     }
@@ -505,6 +527,9 @@ bool IsImageType(GLenum type)
         case GL_IMAGE_2D_ARRAY:
         case GL_INT_IMAGE_2D_ARRAY:
         case GL_UNSIGNED_INT_IMAGE_2D_ARRAY:
+        case GL_IMAGE_CUBE_MAP_ARRAY:
+        case GL_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_IMAGE_CUBE:
         case GL_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_IMAGE_CUBE:
@@ -527,6 +552,9 @@ bool IsImage2DType(GLenum type)
         case GL_IMAGE_2D_ARRAY:
         case GL_INT_IMAGE_2D_ARRAY:
         case GL_UNSIGNED_INT_IMAGE_2D_ARRAY:
+        case GL_IMAGE_CUBE_MAP_ARRAY:
+        case GL_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_IMAGE_CUBE:
         case GL_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_IMAGE_CUBE:
@@ -890,40 +918,6 @@ bool SamplerNameContainsNonZeroArrayElement(const std::string &name)
     return false;
 }
 
-const sh::ShaderVariable *FindShaderVarField(const sh::ShaderVariable &var,
-                                             const std::string &fullName,
-                                             GLuint *fieldIndexOut)
-{
-    if (var.fields.empty())
-    {
-        return nullptr;
-    }
-    size_t pos = fullName.find_first_of(".");
-    if (pos == std::string::npos)
-    {
-        return nullptr;
-    }
-    std::string topName = fullName.substr(0, pos);
-    if (topName != var.name)
-    {
-        return nullptr;
-    }
-    std::string fieldName = fullName.substr(pos + 1);
-    if (fieldName.empty())
-    {
-        return nullptr;
-    }
-    for (size_t field = 0; field < var.fields.size(); ++field)
-    {
-        if (var.fields[field].name == fieldName)
-        {
-            *fieldIndexOut = static_cast<GLuint>(field);
-            return &var.fields[field];
-        }
-    }
-    return nullptr;
-}
-
 unsigned int ArraySizeProduct(const std::vector<unsigned int> &arraySizes)
 {
     unsigned int arraySizeProduct = 1u;
@@ -946,6 +940,13 @@ unsigned int ParseArrayIndex(const std::string &name, size_t *nameLengthWithoutA
         for (size_t i = open + 1; i < name.length() - 1u; ++i)
         {
             if (!isdigit(name[i]))
+            {
+                indexIsValidDecimalNumber = false;
+                break;
+            }
+
+            // Leading zeroes are invalid
+            if ((i == (open + 1)) && (name[i] == '0') && (name[i + 1] != ']'))
             {
                 indexIsValidDecimalNumber = false;
                 break;
@@ -1029,6 +1030,66 @@ PipelineType GetPipelineType(ShaderType type)
     }
 }
 
+const char *GetDebugMessageSourceString(GLenum source)
+{
+    switch (source)
+    {
+        case GL_DEBUG_SOURCE_API:
+            return "API";
+        case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
+            return "Window System";
+        case GL_DEBUG_SOURCE_SHADER_COMPILER:
+            return "Shader Compiler";
+        case GL_DEBUG_SOURCE_THIRD_PARTY:
+            return "Third Party";
+        case GL_DEBUG_SOURCE_APPLICATION:
+            return "Application";
+        case GL_DEBUG_SOURCE_OTHER:
+            return "Other";
+        default:
+            return "Unknown Source";
+    }
+}
+
+const char *GetDebugMessageTypeString(GLenum type)
+{
+    switch (type)
+    {
+        case GL_DEBUG_TYPE_ERROR:
+            return "Error";
+        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
+            return "Deprecated behavior";
+        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
+            return "Undefined behavior";
+        case GL_DEBUG_TYPE_PORTABILITY:
+            return "Portability";
+        case GL_DEBUG_TYPE_PERFORMANCE:
+            return "Performance";
+        case GL_DEBUG_TYPE_OTHER:
+            return "Other";
+        case GL_DEBUG_TYPE_MARKER:
+            return "Marker";
+        default:
+            return "Unknown Type";
+    }
+}
+
+const char *GetDebugMessageSeverityString(GLenum severity)
+{
+    switch (severity)
+    {
+        case GL_DEBUG_SEVERITY_HIGH:
+            return "High";
+        case GL_DEBUG_SEVERITY_MEDIUM:
+            return "Medium";
+        case GL_DEBUG_SEVERITY_LOW:
+            return "Low";
+        case GL_DEBUG_SEVERITY_NOTIFICATION:
+            return "Notification";
+        default:
+            return "Unknown Severity";
+    }
+}
 }  // namespace gl
 
 namespace egl
@@ -1091,6 +1152,7 @@ bool IsExternalImageTarget(EGLenum target)
     {
         case EGL_NATIVE_BUFFER_ANDROID:
         case EGL_D3D11_TEXTURE_ANGLE:
+        case EGL_LINUX_DMA_BUF_EXT:
             return true;
 
         default:
@@ -1124,6 +1186,8 @@ const char *GetGenericErrorMessage(EGLint error)
             return "Bad match.";
         case EGL_BAD_NATIVE_WINDOW:
             return "Bad native window.";
+        case EGL_BAD_NATIVE_PIXMAP:
+            return "Bad native pixmap.";
         case EGL_BAD_PARAMETER:
             return "Bad parameter.";
         case EGL_BAD_SURFACE:

@@ -26,6 +26,7 @@
 #include "config.h"
 #include "ViewGestureController.h"
 
+#include "APINavigation.h"
 #include "DrawingAreaProxy.h"
 #include "WebBackForwardList.h"
 #include <WebCore/GRefPtrGtk.h>
@@ -337,8 +338,7 @@ void ViewGestureController::beginSwipeGesture(WebBackForwardListItem* targetItem
         if (color.isValid()) {
             m_backgroundColorForCurrentSnapshot = color;
             if (!m_currentSwipeSnapshotPattern) {
-                double red, green, blue, alpha;
-                color.getRGBA(red, green, blue, alpha);
+                auto [red, green, blue, alpha] = color.toSRGBALossy<float>();
                 m_currentSwipeSnapshotPattern = adoptRef(cairo_pattern_create_rgba(red, green, blue, alpha));
             }
         }
@@ -507,6 +507,8 @@ void ViewGestureController::removeSwipeSnapshot()
 
     m_backgroundColorForCurrentSnapshot = Color();
 
+    m_pendingNavigation = nullptr;
+
     didEndGesture();
 
     m_swipeProgressTracker.reset();
@@ -535,8 +537,10 @@ static GUniquePtr<GdkEvent> createScrollEvent(GtkWidget* widget, double xDelta, 
     event->scroll.is_stop = !xDelta && !yDelta;
     event->scroll.window = GDK_WINDOW(g_object_ref(window));
     gdk_event_set_screen(event.get(), gdk_window_get_screen(window));
-    gdk_event_set_device(event.get(), gdk_device_manager_get_client_pointer(gdk_display_get_device_manager(gdk_window_get_display(window))));
-    gdk_event_set_source_device(event.get(), gdk_device_manager_get_client_pointer(gdk_display_get_device_manager(gdk_window_get_display(window))));
+
+    GdkDevice* pointer = gdk_seat_get_pointer(gdk_display_get_default_seat(gdk_window_get_display(window)));
+    gdk_event_set_device(event.get(), pointer);
+    gdk_event_set_source_device(event.get(), pointer);
 
     return event;
 }

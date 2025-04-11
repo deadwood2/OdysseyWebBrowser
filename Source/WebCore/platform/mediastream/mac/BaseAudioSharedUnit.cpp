@@ -30,10 +30,16 @@
 
 #include "AudioSession.h"
 #include "CoreAudioCaptureSource.h"
+#include "DeprecatedGlobalSettings.h"
 #include "Logging.h"
 #include "PlatformMediaSessionManager.h"
 
 namespace WebCore {
+
+BaseAudioSharedUnit::BaseAudioSharedUnit()
+    : m_sampleRate(AudioSession::sharedSession().sampleRate())
+{
+}
 
 void BaseAudioSharedUnit::addClient(CoreAudioCaptureSource& client)
 {
@@ -73,16 +79,14 @@ void BaseAudioSharedUnit::startProducingData()
 {
     ASSERT(isMainThread());
 
+    if (m_suspended)
+        resume();
+
     if (++m_producingCount != 1)
         return;
 
     if (isProducingData())
         return;
-
-    if (m_suspended) {
-        RELEASE_LOG_INFO(WebRTC, "BaseAudioSharedUnit::startProducingData - exiting early as suspended");
-        return;
-    }
 
     if (hasAudioUnit()) {
         cleanupAudioUnit();
@@ -93,12 +97,10 @@ void BaseAudioSharedUnit::startProducingData()
 
 OSStatus BaseAudioSharedUnit::startUnit()
 {
-#if PLATFORM(IOS_FAMILY)
-    if (!m_disableAudioSessionCheck) {
-        PlatformMediaSessionManager::sharedManager().sessionCanProduceAudioChanged();
-        ASSERT(AudioSession::sharedSession().category() == AudioSession::PlayAndRecord);
-    }
-#endif
+    forEachClient([](auto& client) {
+        client.audioUnitWillStart();
+    });
+    ASSERT(!DeprecatedGlobalSettings::shouldManageAudioSessionCategory() || AudioSession::sharedSession().category() == AudioSession::PlayAndRecord);
 
     if (auto error = startInternal()) {
         captureFailed();
@@ -160,7 +162,9 @@ void BaseAudioSharedUnit::reconfigure()
 OSStatus BaseAudioSharedUnit::resume()
 {
     ASSERT(isMainThread());
-    ASSERT(m_suspended);
+    if (!m_suspended)
+        return 0;
+
     ASSERT(!isProducingData());
 
     RELEASE_LOG_INFO(WebRTC, "BaseAudioSharedUnit::resume");
@@ -172,16 +176,10 @@ OSStatus BaseAudioSharedUnit::resume()
         reconfigure();
     }
 
-    if (!hasAudioUnit())
-        return 0;
-
-    if (m_producingCount) {
-        if (auto error = startUnit())
-            return error;
-    }
+    ASSERT(!m_producingCount);
 
     forEachClient([](auto& client) {
-        client.notifyMutedChange(false);
+        client.setMuted(false);
     });
 
     return 0;
@@ -197,8 +195,10 @@ OSStatus BaseAudioSharedUnit::suspend()
     stopInternal();
 
     forEachClient([](auto& client) {
-        client.notifyMutedChange(true);
+        client.setMuted(true);
     });
+
+    ASSERT(!m_producingCount);
 
     return 0;
 }

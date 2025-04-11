@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
+#import "config.h"
 
 #import "PlatformUtilities.h"
 #import "TestURLSchemeHandler.h"
@@ -313,7 +313,7 @@ TEST(PasteMixedContent, CopyAndPasteWithCustomPasteboardDataOnly)
     auto source = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 400, 400) configuration:configuration.get()]);
     [source synchronouslyLoadHTMLString:markupForSource baseURL:[NSURL URLWithString:@"same://"]];
     [source selectAll:nil];
-    [source _executeEditCommand:@"copy" argument:nil completion:nil];
+    [source _synchronouslyExecuteEditCommand:@"copy" argument:nil];
 
     auto destination = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 400, 400) configuration:configuration.get()]);
     [destination synchronouslyLoadHTMLString:markupForDestination baseURL:[NSURL URLWithString:@"same://"]];

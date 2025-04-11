@@ -42,55 +42,52 @@ static bool applicationBundleIdentifierOverrideWasQueried;
 
 // The application bundle identifier gets set to the UIProcess bundle identifier by the WebProcess and
 // the Networking upon initialization. It is unset otherwise.
-static String& applicationBundleIdentifierOverride()
+static String& bundleIdentifierOverride()
 {
-    static NeverDestroyed<String> identifier;
+    static NeverDestroyed<String> identifierOverride;
 #if !ASSERT_MSG_DISABLED
     applicationBundleIdentifierOverrideWasQueried = true;
 #endif
+    return identifierOverride;
+}
+
+static String& bundleIdentifier()
+{
+    static NeverDestroyed<String> identifier;
     return identifier;
 }
 
 String applicationBundleIdentifier()
 {
-    // The override only gets set in WebKit2's WebProcess and NetworkProcess. If unset, we use the main bundle identifier.
-    const auto& identifier = applicationBundleIdentifierOverride();
+    // The override only gets set in WebKitTestRunner. If unset, we use the bundle identifier set
+    // in WebKit2's WebProcess and NetworkProcess. If that is also unset, we use the main bundle identifier.
+    auto identifier = bundleIdentifierOverride();
     ASSERT(identifier.isNull() || RunLoop::isMain());
+    if (identifier.isNull())
+        identifier = bundleIdentifier();
     return identifier.isNull() ? String([[NSBundle mainBundle] bundleIdentifier]) : identifier;
 }
 
-void setApplicationBundleIdentifier(const String& bundleIdentifier)
+void setApplicationBundleIdentifier(const String& identifier)
+{
+    ASSERT(RunLoop::isMain());
+    bundleIdentifier() = identifier;
+}
+
+void setApplicationBundleIdentifierOverride(const String& identifier)
 {
     ASSERT(RunLoop::isMain());
     ASSERT_WITH_MESSAGE(!applicationBundleIdentifierOverrideWasQueried, "applicationBundleIsEqualTo() and applicationBundleStartsWith() should not be called before setApplicationBundleIdentifier()");
-    applicationBundleIdentifierOverride() = bundleIdentifier;
+    bundleIdentifierOverride() = identifier;
 }
 
 void clearApplicationBundleIdentifierTestingOverride()
 {
     ASSERT(RunLoop::isMain());
-    applicationBundleIdentifierOverride() = emptyString();
+    bundleIdentifierOverride() = String();
 #if !ASSERT_MSG_DISABLED
     applicationBundleIdentifierOverrideWasQueried = false;
 #endif
-}
-
-static Optional<uint32_t>& applicationSDKVersionOverride()
-{
-    static NeverDestroyed<Optional<uint32_t>> version;
-    return version;
-}
-
-void setApplicationSDKVersion(uint32_t version)
-{
-    applicationSDKVersionOverride() = version;
-}
-
-uint32_t applicationSDKVersion()
-{
-    if (applicationSDKVersionOverride())
-        return *applicationSDKVersionOverride();
-    return dyld_get_program_sdk_version();
 }
 
 bool isInWebProcess()
@@ -114,7 +111,9 @@ static bool applicationBundleIsEqualTo(const String& bundleIdentifierString)
 
 bool MacApplication::isSafari()
 {
-    static bool isSafari = applicationBundleIsEqualTo("com.apple.Safari"_s) || applicationBundleIsEqualTo("com.apple.SafariTechnologyPreview"_s);
+    static bool isSafari = applicationBundleIsEqualTo("com.apple.Safari"_s)
+        || applicationBundleIsEqualTo("com.apple.SafariTechnologyPreview"_s)
+        || applicationBundleIdentifier().startsWith("com.apple.Safari.");
     return isSafari;
 }
 
@@ -164,6 +163,12 @@ bool MacApplication::isMicrosoftOutlook()
 {
     static bool isMicrosoftOutlook = applicationBundleIsEqualTo("com.microsoft.Outlook"_s);
     return isMicrosoftOutlook;
+}
+
+bool MacApplication::isMiniBrowser()
+{
+    static bool isMiniBrowser = applicationBundleIsEqualTo("org.webkit.MiniBrowser"_s);
+    return isMiniBrowser;
 }
 
 bool MacApplication::isQuickenEssentials()
@@ -343,6 +348,60 @@ bool IOSApplication::isDataActivation()
 {
     static bool isDataActivation = applicationBundleIsEqualTo("com.apple.DataActivation"_s);
     return isDataActivation;
+}
+
+bool IOSApplication::isMiniBrowser()
+{
+    static bool isMiniBrowser = applicationBundleIsEqualTo("org.webkit.MiniBrowser"_s);
+    return isMiniBrowser;
+}
+
+bool IOSApplication::isNews()
+{
+    static bool isNews = applicationBundleIsEqualTo("com.apple.news"_s);
+    return isNews;
+}
+
+bool IOSApplication::isStocks()
+{
+    static bool isStocks = applicationBundleIsEqualTo("com.apple.stocks"_s);
+    return isStocks;
+}
+
+bool IOSApplication::isFeedly()
+{
+    static bool isFeedly = applicationBundleIsEqualTo("com.devhd.feedly"_s);
+    return isFeedly;
+}
+
+bool IOSApplication::isPocketCity()
+{
+    static bool isPocketCity = applicationBundleIsEqualTo("com.codebrewgames.pocketcity"_s);
+    return isPocketCity;
+}
+
+bool IOSApplication::isEssentialSkeleton()
+{
+    static bool isEssentialSkeleton = applicationBundleIsEqualTo("com.3d4medical.EssentialSkeleton"_s);
+    return isEssentialSkeleton;
+}
+
+bool IOSApplication::isLaBanquePostale()
+{
+    static bool isLaBanquePostale = applicationBundleIsEqualTo("fr.labanquepostale.moncompte"_s);
+    return isLaBanquePostale;
+}
+
+bool IOSApplication::isESPNFantasySports()
+{
+    static bool isESPNFantasySports = applicationBundleIsEqualTo("com.espn.fantasyFootball"_s);
+    return isESPNFantasySports;
+}
+
+bool IOSApplication::isDoubleDown()
+{
+    static bool isDoubleDown = applicationBundleIsEqualTo("com.doubledowninteractive.DDCasino"_s);
+    return isDoubleDown;
 }
 
 #endif

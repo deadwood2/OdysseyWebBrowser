@@ -224,6 +224,8 @@ public:
 
     void setMinimumSizeForAutoLayout(CGSize);
     CGSize minimumSizeForAutoLayout() const;
+    void setSizeToContentAutoSizeMaximumSize(CGSize);
+    CGSize sizeToContentAutoSizeMaximumSize() const;
     void setShouldExpandToViewHeightForAutoLayout(bool);
     bool shouldExpandToViewHeightForAutoLayout() const;
     void setIntrinsicContentSize(CGSize);
@@ -297,7 +299,7 @@ public:
     bool windowOcclusionDetectionEnabled() const { return m_windowOcclusionDetectionEnabled; }
 
     void prepareForMoveToWindow(NSWindow *targetWindow, WTF::Function<void()>&& completionHandler);
-    NSWindow *targetWindowForMovePreparation() const { return m_targetWindowForMovePreparation; }
+    NSWindow *targetWindowForMovePreparation() const { return m_targetWindowForMovePreparation.get(); }
 
     void updateSecureInputState();
     void resetSecureInputState();
@@ -429,6 +431,7 @@ public:
     NSString *stringForToolTip(NSToolTipTag tag);
     void toolTipChanged(const String& oldToolTip, const String& newToolTip);
 
+    void enterAcceleratedCompositingWithRootLayer(CALayer *);
     void setAcceleratedCompositingRootLayer(CALayer *);
     CALayer *acceleratedCompositingRootLayer() const { return m_rootLayer.get(); }
 
@@ -677,6 +680,8 @@ private:
     void handleRequestedCandidates(NSInteger sequenceNumber, NSArray<NSTextCheckingResult *> *candidates);
     void flushPendingMouseEventCallbacks();
 
+    void viewWillMoveToWindowImpl(NSWindow *);
+
 #if ENABLE(DRAG_SUPPORT)
     void sendDragEndToPage(CGPoint endPoint, NSDragOperation);
 #endif
@@ -732,7 +737,7 @@ private:
 
     bool m_shouldDeferViewInWindowChanges { false };
     bool m_viewInWindowChangeWasDeferred { false };
-    NSWindow *m_targetWindowForMovePreparation { nullptr };
+    RetainPtr<NSWindow> m_targetWindowForMovePreparation;
 
     id m_flagsChangedEventMonitor { nullptr };
 

@@ -32,7 +32,10 @@
 #include "InjectedBundle.h"
 #include "InjectedBundlePage.h"
 #include "JSAccessibilityController.h"
-
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+#include <pal/spi/cocoa/AccessibilitySupportSPI.h>
+#include <pal/spi/mac/HIServicesSPI.h>
+#endif
 #include <WebKit/WKBundle.h>
 #include <WebKit/WKBundlePage.h>
 #include <WebKit/WKBundlePagePrivate.h>
@@ -51,6 +54,26 @@ AccessibilityController::AccessibilityController()
 AccessibilityController::~AccessibilityController()
 {
 }
+
+void AccessibilityController::setIsolatedTreeMode(bool flag)
+{
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+    if (m_accessibilityIsolatedTreeMode != flag) {
+        m_accessibilityIsolatedTreeMode = flag;
+        updateIsolatedTreeMode();
+    }
+#endif
+}
+
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+void AccessibilityController::updateIsolatedTreeMode()
+{
+    // Override to set identifier to VoiceOver so that requests are handled in isolated mode.
+    _AXSetClientIdentificationOverride(m_accessibilityIsolatedTreeMode ? (AXClientType)kAXClientTypeWebKitTesting : kAXClientTypeNoActiveRequestFound);
+    _AXSSetIsolatedTreeMode(m_accessibilityIsolatedTreeMode ? AXSIsolatedTreeModeMainThread : AXSIsolatedTreeModeOff);
+    m_useMockAXThread = WKAccessibilityCanUseSecondaryAXThread(InjectedBundle::singleton().page()->page());
+}
+#endif
 
 void AccessibilityController::makeWindowObject(JSContextRef context, JSObjectRef windowObject, JSValueRef* exception)
 {
@@ -78,11 +101,6 @@ Ref<AccessibilityUIElement> AccessibilityController::rootElement()
     WKBundlePageRef page = InjectedBundle::singleton().page()->page();
     PlatformUIElement root = static_cast<PlatformUIElement>(WKAccessibilityRootObject(page));
 
-    // Now that we have a root and the isolated tree is generated, set
-    // m_useAXThread to true for next request to be handled in the secondary thread.
-    if (WKAccessibilityCanUseSecondaryAXThread(InjectedBundle::singleton().page()->page()))
-        m_useAXThread = true;
-
     return AccessibilityUIElement::create(root);
 }
 
@@ -93,24 +111,45 @@ Ref<AccessibilityUIElement> AccessibilityController::focusedElement()
     return AccessibilityUIElement::create(focusedElement);
 }
 
-void AccessibilityController::executeOnAXThreadIfPossible(Function<void()>&& function)
+void AccessibilityController::executeOnAXThreadAndWait(Function<void()>&& function)
 {
-    if (m_useAXThread) {
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+    if (m_useMockAXThread) {
         AXThread::dispatch([&function, this] {
             function();
             m_semaphore.signal();
         });
 
-        // Spin the main loop so that any required DOM processing can be
-        // executed in the main thread. That is the case of most parameterized
-        // attributes, where the attribute value has to be calculated
-        // back in the main thread.
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, .25, false);
         m_semaphore.wait();
     } else
+#endif
         function();
 }
+
+void AccessibilityController::executeOnAXThread(Function<void()>&& function)
+{
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+    if (m_useMockAXThread) {
+        AXThread::dispatch([function = WTFMove(function)] {
+            function();
+        });
+    } else
 #endif
+        function();
+}
+
+void AccessibilityController::executeOnMainThread(Function<void()>&& function)
+{
+    if (isMainThread()) {
+        function();
+        return;
+    }
+
+    AXThread::dispatchBarrier([function = WTFMove(function)] {
+        function();
+    });
+}
+#endif // PLATFORM(COCOA)
 
 RefPtr<AccessibilityUIElement> AccessibilityController::elementAtPoint(int x, int y)
 {
@@ -137,7 +176,7 @@ void AXThread::dispatch(Function<void()>&& function)
     axThread.createThreadIfNeeded();
 
     {
-        std::lock_guard<Lock> lock(axThread.m_functionsMutex);
+        auto locker = holdLock(axThread.m_functionsMutex);
         axThread.m_functions.append(WTFMove(function));
     }
 
@@ -146,7 +185,7 @@ void AXThread::dispatch(Function<void()>&& function)
 
 void AXThread::dispatchBarrier(Function<void()>&& function)
 {
-    dispatch([function = WTFMove(function)]() mutable {
+    dispatch([function = WTFMove(function)] () mutable {
         callOnMainThread(WTFMove(function));
     });
 }
@@ -185,7 +224,7 @@ void AXThread::dispatchFunctionsFromAXThread()
     Vector<Function<void()>> functions;
 
     {
-        std::lock_guard<Lock> lock(m_functionsMutex);
+        auto locker = holdLock(m_functionsMutex);
         functions = WTFMove(m_functions);
     }
 

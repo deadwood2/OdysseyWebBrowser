@@ -1,3 +1,39 @@
+2020-09-18  Rafael Fontenelle  <rafaelff@gnome.org>
+
+        [l10n] [pt_BR] Updated Brazilian Portuguese translation
+        https://bugs.webkit.org/show_bug.cgi?id=216436
+
+        Rubber-stamped by Carlos Garcia Campos.
+
+        * pt_BR.po:
+
+2020-08-17  Piotr Drąg  <piotrdrag@gmail.com>
+
+        [GTK][l10n] Updated Polish translation of WebKitGTK for 2.30
+        https://bugs.webkit.org/show_bug.cgi?id=215547
+
+        Rubber-stamped by Carlos Garcia Campos.
+
+        * pl.po:
+
+2020-06-18  Yuri Chornoivan  <yurchor@ukr.net>
+
+        [GTK] [l10n] Updated Ukrainian translation of WebKitGTK
+        https://bugs.webkit.org/show_bug.cgi?id=212844
+
+        Rubber-stamped by Carlos Garcia Campos.
+
+        * uk.po:
+
+2020-05-20  Yuri Chornoivan  <yurchor@ukr.net>
+
+        [GTK] [l10n] Updated Ukrainian translation of WebKitGTK+
+        https://bugs.webkit.org/show_bug.cgi?id=209798
+
+        Rubber-stamped by Carlos Garcia Campos.
+
+        * uk.po:
+
 2020-03-05  Piotr Drąg  <piotrdrag@gmail.com>
 
         [GTK][l10n] Updated Polish translation of WebKitGTK for 2.28

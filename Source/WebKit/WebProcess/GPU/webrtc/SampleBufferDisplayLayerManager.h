@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
 
 #include "SampleBufferDisplayLayer.h"
 #include <wtf/HashMap.h>
@@ -42,7 +42,7 @@ public:
     void removeLayer(SampleBufferDisplayLayer&);
 
     void didReceiveLayerMessage(IPC::Connection&, IPC::Decoder&);
-    std::unique_ptr<WebCore::SampleBufferDisplayLayer> createLayer(SampleBufferDisplayLayer::Client&, bool hideRootLayer, WebCore::IntSize);
+    std::unique_ptr<WebCore::SampleBufferDisplayLayer> createLayer(SampleBufferDisplayLayer::Client&);
 
 private:
     HashMap<SampleBufferDisplayLayerIdentifier, WeakPtr<SampleBufferDisplayLayer>> m_layers;
@@ -50,4 +50,4 @@ private:
 
 }
 
-#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)

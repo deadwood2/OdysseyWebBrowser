@@ -26,11 +26,13 @@
 #include "config.h"
 #include "SampleBufferDisplayLayerManager.h"
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#include "Decoder.h"
+#include <WebCore/IntSize.h>
 
-using namespace WebCore;
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
 
 namespace WebKit {
+using namespace WebCore;
 
 void SampleBufferDisplayLayerManager::didReceiveLayerMessage(IPC::Connection& connection, IPC::Decoder& decoder)
 {
@@ -38,9 +40,9 @@ void SampleBufferDisplayLayerManager::didReceiveLayerMessage(IPC::Connection& co
         layer->didReceiveMessage(connection, decoder);
 }
 
-std::unique_ptr<WebCore::SampleBufferDisplayLayer> SampleBufferDisplayLayerManager::createLayer(SampleBufferDisplayLayer::Client& client, bool hideRootLayer, WebCore::IntSize size)
+std::unique_ptr<WebCore::SampleBufferDisplayLayer> SampleBufferDisplayLayerManager::createLayer(SampleBufferDisplayLayer::Client& client)
 {
-    auto layer = SampleBufferDisplayLayer::create(*this, client, hideRootLayer, size);
+    auto layer = SampleBufferDisplayLayer::create(*this, client);
     if (!layer)
         return { };
 

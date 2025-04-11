@@ -26,11 +26,15 @@
 #import "config.h"
 #import "SystemBattery.h"
 
+#import <notify.h>
 #import <pal/spi/cocoa/IOPSLibSPI.h>
 
 namespace WebCore {
 
 static Optional<bool> hasBattery;
+static Optional<bool> hasAC;
+static Optional<bool> hasBatteryOverrideForTesting;
+static Optional<bool> hasACOverrideForTesting;
 
 void setSystemHasBattery(bool battery)
 {
@@ -39,22 +43,92 @@ void setSystemHasBattery(bool battery)
 
 bool systemHasBattery()
 {
-    if (hasBattery.hasValue())
-        return *hasBattery;
+    if (hasBatteryOverrideForTesting)
+        return *hasBatteryOverrideForTesting;
 
-    RetainPtr<CFTypeRef> powerSourcesInfo = adoptCF(IOPSCopyPowerSourcesInfo());
-    if (!powerSourcesInfo)
-        return false;
-    RetainPtr<CFArrayRef> powerSourcesList = adoptCF(IOPSCopyPowerSourcesList(powerSourcesInfo.get()));
-    if (!powerSourcesList)
-        return false;
-    for (CFIndex i = 0, count = CFArrayGetCount(powerSourcesList.get()); i < count; ++i) {
-        CFDictionaryRef description = IOPSGetPowerSourceDescription(powerSourcesInfo.get(), CFArrayGetValueAtIndex(powerSourcesList.get(), i));
-        CFTypeRef value = CFDictionaryGetValue(description, CFSTR(kIOPSTypeKey));
-        if (!value || CFEqual(value, CFSTR(kIOPSInternalBatteryType)))
+    if (!hasBattery.hasValue()) {
+        hasBattery = [] {
+#if PLATFORM(IOS) || PLATFORM(WATCHOS)
+            // Devices running iOS / WatchOS always have a battery.
             return true;
+#elif PLATFORM(APPLETV)
+            return false;
+#else
+            RetainPtr<CFTypeRef> powerSourcesInfo = adoptCF(IOPSCopyPowerSourcesInfo());
+            if (!powerSourcesInfo)
+                return false;
+            RetainPtr<CFArrayRef> powerSourcesList = adoptCF(IOPSCopyPowerSourcesList(powerSourcesInfo.get()));
+            if (!powerSourcesList)
+                return false;
+            for (CFIndex i = 0, count = CFArrayGetCount(powerSourcesList.get()); i < count; ++i) {
+                CFDictionaryRef description = IOPSGetPowerSourceDescription(powerSourcesInfo.get(), CFArrayGetValueAtIndex(powerSourcesList.get(), i));
+                CFTypeRef value = CFDictionaryGetValue(description, CFSTR(kIOPSTypeKey));
+                if (!value || CFEqual(value, CFSTR(kIOPSInternalBatteryType)))
+                    return true;
+            }
+            return false;
+#endif
+        }();
     }
-    return false;
+
+    return *hasBattery;
+}
+
+void resetSystemHasAC()
+{
+    hasAC.reset();
+}
+
+void setSystemHasAC(bool ac)
+{
+    hasAC = ac;
+}
+
+bool systemHasAC()
+{
+    if (hasACOverrideForTesting)
+        return *hasACOverrideForTesting;
+
+    if (!hasAC.hasValue()) {
+        hasAC = [] {
+#if PLATFORM(APPLETV)
+            return true;
+#else
+            RetainPtr<CFTypeRef> powerSourcesInfo = adoptCF(IOPSCopyPowerSourcesInfo());
+            if (!powerSourcesInfo)
+                return false;
+            RetainPtr<CFArrayRef> powerSourcesList = adoptCF(IOPSCopyPowerSourcesList(powerSourcesInfo.get()));
+            if (!powerSourcesList)
+                return false;
+            for (CFIndex i = 0, count = CFArrayGetCount(powerSourcesList.get()); i < count; ++i) {
+                CFDictionaryRef description = IOPSGetPowerSourceDescription(powerSourcesInfo.get(), CFArrayGetValueAtIndex(powerSourcesList.get(), i));
+                if (!description)
+                    continue;
+                CFTypeRef value = CFDictionaryGetValue(description, CFSTR(kIOPSPowerSourceStateKey));
+                if (value && CFEqual(value, CFSTR(kIOPSACPowerValue)))
+                    return true;
+            }
+            return false;
+#endif
+        }();
+    }
+
+    return *hasAC;
+}
+
+Optional<bool> cachedSystemHasAC()
+{
+    return hasAC;
+}
+
+void setOverrideSystemHasBatteryForTesting(Optional<bool>&& hasBattery)
+{
+    hasBatteryOverrideForTesting = WTFMove(hasBattery);
+}
+
+void setOverrideSystemHasACForTesting(Optional<bool>&& hasAC)
+{
+    hasACOverrideForTesting = WTFMove(hasAC);
 }
 
 }

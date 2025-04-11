@@ -30,6 +30,7 @@
 
 #include "DataReference.h"
 #include "FormDataReference.h"
+#include "Logging.h"
 #include "ServiceWorkerFetchTaskMessages.h"
 #include "SharedBufferDataReference.h"
 #include "WebCoreArgumentCoders.h"
@@ -84,7 +85,7 @@ void WebServiceWorkerFetchTaskClient::didReceiveData(Ref<SharedBuffer>&& buffer)
         return;
     }
 
-    m_connection->send(Messages::ServiceWorkerFetchTask::DidReceiveData { buffer.get(), static_cast<int64_t>(buffer->size()) }, m_fetchIdentifier);
+    m_connection->send(Messages::ServiceWorkerFetchTask::DidReceiveSharedBuffer { buffer.get(), static_cast<int64_t>(buffer->size()) }, m_fetchIdentifier);
 }
 
 void WebServiceWorkerFetchTaskClient::didReceiveFormDataAndFinish(Ref<FormData>&& formData)
@@ -145,6 +146,8 @@ void WebServiceWorkerFetchTaskClient::didFail(const ResourceError& error)
         return;
 
     if (m_waitingForContinueDidReceiveResponseMessage) {
+        RELEASE_LOG(ServiceWorker, "ServiceWorkerFrameLoaderClient::didFail while waiting, fetch identifier %llu", m_fetchIdentifier.toUInt64());
+
         m_responseData = makeUniqueRef<ResourceError>(error.isolatedCopy());
         return;
     }
@@ -160,6 +163,8 @@ void WebServiceWorkerFetchTaskClient::didFinish()
         return;
 
     if (m_waitingForContinueDidReceiveResponseMessage) {
+        RELEASE_LOG(ServiceWorker, "ServiceWorkerFrameLoaderClient::didFinish while waiting, fetch identifier %llu", m_fetchIdentifier.toUInt64());
+
         m_didFinish = true;
         return;
     }
@@ -186,6 +191,8 @@ void WebServiceWorkerFetchTaskClient::cancel()
 
 void WebServiceWorkerFetchTaskClient::continueDidReceiveResponse()
 {
+    RELEASE_LOG(ServiceWorker, "ServiceWorkerFrameLoaderClient::continueDidReceiveResponse, has connection %d, didFinish %d, response type %ld", !!m_connection, m_didFinish, static_cast<long>(m_responseData.index()));
+
     if (!m_connection)
         return;
 

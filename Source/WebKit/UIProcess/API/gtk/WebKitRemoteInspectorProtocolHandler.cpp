@@ -22,7 +22,7 @@
 
 #if ENABLE(REMOTE_INSPECTOR)
 
-#include "APIUserContentWorld.h"
+#include "APIContentWorld.h"
 #include "WebKitError.h"
 #include "WebKitNavigationPolicyDecision.h"
 #include "WebKitUserContentManagerPrivate.h"
@@ -42,7 +42,7 @@ public:
     {
     }
 
-    void didPostMessage(WebPageProxy& page, FrameInfoData&&, WebCore::SerializedScriptValue& serializedScriptValue) override
+    void didPostMessage(WebPageProxy& page, FrameInfoData&&, API::ContentWorld&, WebCore::SerializedScriptValue& serializedScriptValue) override
     {
         String message = serializedScriptValue.toString();
         Vector<String> tokens = message.split(':');
@@ -53,6 +53,15 @@ public:
         m_inspectorProtocolHandler.inspect(requestURL.hostAndPort(), tokens[0].toUInt64(), tokens[1].toUInt64(), tokens[2]);
     }
 
+    bool supportsAsyncReply() override
+    {
+        return false;
+    }
+    
+    void didPostMessageWithAsyncReply(WebPageProxy&, FrameInfoData&&, API::ContentWorld&, WebCore::SerializedScriptValue&, WTF::Function<void(API::SerializedScriptValue*, const String&)>&&) override
+    {
+    }
+
     ~ScriptMessageClient() { }
 
 private:
@@ -60,7 +69,6 @@ private:
 };
 
 RemoteInspectorProtocolHandler::RemoteInspectorProtocolHandler(WebKitWebContext* context)
-    : m_context(context)
 {
     webkit_web_context_register_uri_scheme(context, "inspector", [](WebKitURISchemeRequest* request, gpointer userData) {
         static_cast<RemoteInspectorProtocolHandler*>(userData)->handleRequest(request);
@@ -73,7 +81,7 @@ RemoteInspectorProtocolHandler::~RemoteInspectorProtocolHandler()
         g_object_weak_unref(G_OBJECT(webView), reinterpret_cast<GWeakNotify>(webViewDestroyed), this);
 
     for (auto* userContentManager : m_userContentManagers) {
-        webkitUserContentManagerGetUserContentControllerProxy(userContentManager)->removeUserMessageHandlerForName("inspector", API::UserContentWorld::normalWorld());
+        webkitUserContentManagerGetUserContentControllerProxy(userContentManager)->removeUserMessageHandlerForName("inspector", API::ContentWorld::pageContentWorld());
         g_object_weak_unref(G_OBJECT(userContentManager), reinterpret_cast<GWeakNotify>(userContentManagerDestroyed), this);
     }
 }
@@ -106,7 +114,7 @@ void RemoteInspectorProtocolHandler::handleRequest(WebKitURISchemeRequest* reque
     auto* userContentManager = webkit_web_view_get_user_content_manager(webView);
     auto userContentManagerResult = m_userContentManagers.add(userContentManager);
     if (userContentManagerResult.isNewEntry) {
-        auto handler = WebScriptMessageHandler::create(makeUnique<ScriptMessageClient>(*this), "inspector", API::UserContentWorld::normalWorld());
+        auto handler = WebScriptMessageHandler::create(makeUnique<ScriptMessageClient>(*this), "inspector", API::ContentWorld::pageContentWorld());
         webkitUserContentManagerGetUserContentControllerProxy(userContentManager)->addUserScriptMessageHandler(handler.get());
         g_object_weak_ref(G_OBJECT(userContentManager), reinterpret_cast<GWeakNotify>(userContentManagerDestroyed), this);
     }

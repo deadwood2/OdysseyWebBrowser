@@ -51,7 +51,7 @@ class BuildFactory(Factory):
     def __init__(self, platform, configuration, architectures, triggers=None, additionalArguments=None, SVNMirror=None, device_model=None):
         Factory.__init__(self, platform, configuration, architectures, True, additionalArguments, SVNMirror, device_model)
 
-        if platform == "win":
+        if platform == "win" or platform.startswith("playstation"):
             self.addStep(CompileWebKit(timeout=2 * 60 * 60))
         else:
             self.addStep(CompileWebKit())
@@ -59,7 +59,7 @@ class BuildFactory(Factory):
         if triggers:
             self.addStep(ArchiveBuiltProduct())
             self.addStep(UploadBuiltProduct())
-            if platform.startswith('mac') or platform.startswith('ios-simulator'):
+            if platform.startswith('mac') or platform.startswith('ios-simulator') or platform.startswith('tvos-simulator') or platform.startswith('watchos-simulator'):
                 self.addStep(ArchiveMinifiedBuiltProduct())
                 self.addStep(UploadMinifiedBuiltProduct())
             if self.ShouldRunJSCBundleStep:
@@ -84,6 +84,9 @@ class TestFactory(Factory):
         if platform == 'wincairo':
             self.addStep(InstallWinCairoDependencies())
 
+        if platform.startswith('mac') or platform.startswith('ios-simulator'):
+            self.addStep(WaitForCrashCollection())
+
         if self.JSCTestClass:
             self.addStep(self.JSCTestClass())
         if self.LayoutTestClass:
@@ -101,6 +104,10 @@ class TestFactory(Factory):
         self.addStep(RunBuiltinsTests())
         if not platform.startswith('win'):
             self.addStep(RunDashboardTests())
+
+        if platform.startswith('mac') or platform.startswith('ios-simulator'):
+            self.addStep(TriggerCrashLogSubmission())
+
         if self.LayoutTestClass:
             self.addStep(ArchiveTestResults())
             self.addStep(UploadTestResults())
@@ -109,11 +116,11 @@ class TestFactory(Factory):
             self.addStep(GenerateJSCBundle())
         if platform == "gtk":
             self.addStep(RunGtkAPITests())
-            self.addStep(RunWebDriverTests())
-            self.addStep(RunTest262Tests())
+            if additionalArguments and "--display-server=wayland" in additionalArguments:
+                self.addStep(RunWebDriverTests())
         if platform == "wpe":
             self.addStep(RunWPEAPITests())
-            self.addStep(RunTest262Tests())
+            self.addStep(RunWebDriverTests())
 
 
 class BuildAndTestFactory(TestFactory):
@@ -190,6 +197,23 @@ class Test262Factory(Factory):
         self.addStep(DownloadBuiltProduct())
         self.addStep(ExtractBuiltProduct())
         self.addStep(RunTest262Tests())
+
+
+class TestJSFactory(Factory):
+    def __init__(self, platform, configuration, architectures, additionalArguments=None, SVNMirror=None, device_model=None):
+        Factory.__init__(self, platform, configuration, architectures, False, additionalArguments, SVNMirror, device_model)
+        self.addStep(DownloadBuiltProduct())
+        self.addStep(ExtractBuiltProduct())
+        self.addStep(RunJavaScriptCoreTests())
+        self.addStep(RunTest262Tests())
+
+
+class TestWebDriverFactory(Factory):
+    def __init__(self, platform, configuration, architectures, additionalArguments=None, SVNMirror=None, device_model=None):
+        Factory.__init__(self, platform, configuration, architectures, False, additionalArguments, SVNMirror, device_model)
+        self.addStep(DownloadBuiltProduct())
+        self.addStep(ExtractBuiltProduct())
+        self.addStep(RunWebDriverTests())
 
 
 class TestWebKit1Factory(TestFactory):

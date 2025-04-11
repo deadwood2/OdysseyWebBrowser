@@ -41,7 +41,7 @@ namespace rx
 {
 class ContextImpl;
 
-class TextureImpl : public FramebufferAttachmentObjectImpl, public angle::Subject
+class TextureImpl : public FramebufferAttachmentObjectImpl
 {
   public:
     TextureImpl(const gl::TextureState &state);
@@ -56,6 +56,7 @@ class TextureImpl : public FramebufferAttachmentObjectImpl, public angle::Subjec
                                    GLenum format,
                                    GLenum type,
                                    const gl::PixelUnpackState &unpack,
+                                   gl::Buffer *unpackBuffer,
                                    const uint8_t *pixels)    = 0;
     virtual angle::Result setSubImage(const gl::Context *context,
                                       const gl::ImageIndex &index,
@@ -186,7 +187,8 @@ class TextureImpl : public FramebufferAttachmentObjectImpl, public angle::Subjec
     virtual GLint getNativeID() const;
 
     virtual angle::Result syncState(const gl::Context *context,
-                                    const gl::Texture::DirtyBits &dirtyBits) = 0;
+                                    const gl::Texture::DirtyBits &dirtyBits,
+                                    gl::TextureCommand source) = 0;
 
     virtual GLenum getColorReadFormat(const gl::Context *context);
     virtual GLenum getColorReadType(const gl::Context *context);

@@ -68,11 +68,11 @@ private:
     void checkUpdateBlocksize(unsigned bytesRead);
 
     // PlatformMediaResourceClient virtual methods.
-    void responseReceived(PlatformMediaResource&, const ResourceResponse&, CompletionHandler<void(PolicyChecker::ShouldContinue)>&&) override;
+    void responseReceived(PlatformMediaResource&, const ResourceResponse&, CompletionHandler<void(ShouldContinuePolicyCheck)>&&) override;
     void dataReceived(PlatformMediaResource&, const char*, int) override;
     void accessControlCheckFailed(PlatformMediaResource&, const ResourceError&) override;
     void loadFailed(PlatformMediaResource&, const ResourceError&) override;
-    void loadFinished(PlatformMediaResource&) override;
+    void loadFinished(PlatformMediaResource&, const NetworkLoadMetrics&) override;
 
     static constexpr int s_growBlocksizeLimit { 1 };
     static constexpr int s_growBlocksizeCount { 2 };
@@ -988,14 +988,14 @@ void CachedResourceStreamingClient::checkUpdateBlocksize(unsigned bytesRead)
     }
 }
 
-void CachedResourceStreamingClient::responseReceived(PlatformMediaResource&, const ResourceResponse& response, CompletionHandler<void(PolicyChecker::ShouldContinue)>&& completionHandler)
+void CachedResourceStreamingClient::responseReceived(PlatformMediaResource&, const ResourceResponse& response, CompletionHandler<void(ShouldContinuePolicyCheck)>&& completionHandler)
 {
     ASSERT(isMainThread());
     WebKitWebSrc* src = WEBKIT_WEB_SRC(m_src.get());
     WebKitWebSrcPrivate* priv = src->priv;
     DataMutex<WebKitWebSrcPrivate::StreamingMembers>::LockedWrapper members(priv->dataMutex);
     if (members->requestNumber != m_requestNumber) {
-        completionHandler(PolicyChecker::ShouldContinue::No);
+        completionHandler(ShouldContinuePolicyCheck::No);
         return;
     }
 
@@ -1047,7 +1047,7 @@ void CachedResourceStreamingClient::responseReceived(PlatformMediaResource&, con
         GST_ELEMENT_ERROR(src, RESOURCE, READ, ("R%u: Received %d HTTP error code", m_requestNumber, response.httpStatusCode()), (nullptr));
         members->doesHaveEOS = true;
         members->responseCondition.notifyOne();
-        completionHandler(PolicyChecker::ShouldContinue::No);
+        completionHandler(ShouldContinuePolicyCheck::No);
         return;
     }
 
@@ -1058,7 +1058,7 @@ void CachedResourceStreamingClient::responseReceived(PlatformMediaResource&, con
             GST_ELEMENT_ERROR(src, RESOURCE, READ, ("R%u: Received unexpected %d HTTP status code for range request", m_requestNumber, response.httpStatusCode()), (nullptr));
             members->doesHaveEOS = true;
             members->responseCondition.notifyOne();
-            completionHandler(PolicyChecker::ShouldContinue::No);
+            completionHandler(ShouldContinuePolicyCheck::No);
             return;
         }
         GST_DEBUG_OBJECT(src, "R%u: Range request succeeded", m_requestNumber);
@@ -1097,7 +1097,7 @@ void CachedResourceStreamingClient::responseReceived(PlatformMediaResource&, con
     members->wasResponseReceived = true;
     members->responseCondition.notifyOne();
 
-    completionHandler(PolicyChecker::ShouldContinue::Yes);
+    completionHandler(ShouldContinuePolicyCheck::Yes);
 }
 
 void CachedResourceStreamingClient::dataReceived(PlatformMediaResource&, const char* data, int length)
@@ -1168,7 +1168,7 @@ void CachedResourceStreamingClient::loadFailed(PlatformMediaResource&, const Res
     members->responseCondition.notifyOne();
 }
 
-void CachedResourceStreamingClient::loadFinished(PlatformMediaResource&)
+void CachedResourceStreamingClient::loadFinished(PlatformMediaResource&, const NetworkLoadMetrics&)
 {
     ASSERT(isMainThread());
     WebKitWebSrc* src = WEBKIT_WEB_SRC(m_src.get());

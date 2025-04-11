@@ -45,11 +45,13 @@
 @property (nonatomic, copy) void (^didDismissPopoverCallback)(void);
 @property (nonatomic, copy) void (^didEndScrollingCallback)(void);
 @property (nonatomic, copy) void (^rotationDidEndCallback)(void);
+@property (nonatomic, copy) void (^windowTapRecognizedCallback)(void);
 @property (nonatomic, copy) NSString *accessibilitySpeakSelectionContent;
 
 - (void)setAllowedMenuActions:(NSArray<NSString *> *)actions;
 
 - (void)resetCustomMenuAction;
+- (void)immediatelyDismissContextMenuIfNeeded;
 - (void)installCustomMenuAction:(NSString *)name dismissesAutomatically:(BOOL)dismissesAutomatically callback:(dispatch_block_t)callback;
 
 - (void)zoomToScale:(double)scale animated:(BOOL)animated completionHandler:(void (^)(void))completionHandler;
@@ -58,9 +60,11 @@
 
 @property (nonatomic, assign) UIEdgeInsets overrideSafeAreaInsets;
 
+@property (nonatomic, readonly) UIView *contentView;
 @property (nonatomic, readonly, getter=isShowingKeyboard) BOOL showingKeyboard;
 @property (nonatomic, readonly, getter=isDismissingMenu) BOOL dismissingMenu;
 @property (nonatomic, readonly, getter=isShowingPopover) BOOL showingPopover;
+@property (nonatomic, readonly, getter=isShowingContextMenu) BOOL showingContextMenu;
 @property (nonatomic, assign) BOOL usesSafariLikeRotation;
 @property (nonatomic, readonly, getter=isInteractingWithFormControl) BOOL interactingWithFormControl;
 

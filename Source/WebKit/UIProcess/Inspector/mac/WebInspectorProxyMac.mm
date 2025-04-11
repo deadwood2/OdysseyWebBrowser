@@ -28,6 +28,7 @@
 
 #if PLATFORM(MAC)
 
+#import "GlobalFindInPageState.h"
 #import "WKInspectorPrivateMac.h"
 #import "WKInspectorViewController.h"
 #import "WKViewInternal.h"
@@ -163,6 +164,12 @@ static void* kWindowContentLayoutObserverContext = &kWindowContentLayoutObserver
 
 // MARK: WKInspectorViewControllerDelegate methods
 
+- (void)inspectorViewControllerDidBecomeActive:(WKInspectorViewController *)inspectorViewController
+{
+    if (_inspectorProxy)
+        _inspectorProxy->didBecomeActive();
+}
+
 - (void)inspectorViewControllerInspectorDidCrash:(WKInspectorViewController *)inspectorViewController
 {
     if (_inspectorProxy)
@@ -190,6 +197,11 @@ static void* kWindowContentLayoutObserverContext = &kWindowContentLayoutObserver
 
 namespace WebKit {
 using namespace WebCore;
+
+void WebInspectorProxy::didBecomeActive()
+{
+    m_inspectorPage->send(Messages::WebInspectorUI::UpdateFindString(WebKit::stringForFind()));
+}
 
 void WebInspectorProxy::attachmentViewDidChange(NSView *oldView, NSView *newView)
 {
@@ -298,6 +310,7 @@ void WebInspectorProxy::platformCreateFrontendWindow()
     [contentView addSubview:inspectorView];
 
     updateInspectorWindowTitle();
+    applyForcedAppearance();
 }
 
 void WebInspectorProxy::closeFrontendPage()
@@ -398,6 +411,9 @@ bool WebInspectorProxy::platformCanAttach(bool webProcessCanAttach)
     if ([WKInspectorViewController viewIsInspectorWebView:inspectedView])
         return webProcessCanAttach;
 
+    if (inspectedView.hidden)
+        return false;
+
     static const float minimumAttachedHeight = 250;
     static const float maximumAttachedHeightRatio = 0.75;
     static const float minimumAttachedWidth = 500;
@@ -411,6 +427,13 @@ bool WebInspectorProxy::platformCanAttach(bool webProcessCanAttach)
 void WebInspectorProxy::platformAttachAvailabilityChanged(bool available)
 {
     // Do nothing.
+}
+
+void WebInspectorProxy::platformSetForcedAppearance(InspectorFrontendClient::Appearance appearance)
+{
+    m_frontendAppearance = appearance;
+
+    applyForcedAppearance();
 }
 
 void WebInspectorProxy::platformInspectedURLChanged(const String& urlString)
@@ -482,7 +505,7 @@ void WebInspectorProxy::platformSave(const String& suggestedURL, const String& c
         } else
             [contentCopy writeToURL:actualURL atomically:YES encoding:NSUTF8StringEncoding error:NULL];
 
-        m_inspectorPage->process().send(Messages::WebInspectorUI::DidSave([actualURL absoluteString]), m_inspectorPage->webPageID());
+        m_inspectorPage->send(Messages::WebInspectorUI::DidSave([actualURL absoluteString]));
     };
 
     if (!forceSaveDialog) {
@@ -527,7 +550,7 @@ void WebInspectorProxy::platformAppend(const String& suggestedURL, const String&
     [handle writeData:[content dataUsingEncoding:NSUTF8StringEncoding]];
     [handle closeFile];
 
-    m_inspectorPage->process().send(Messages::WebInspectorUI::DidAppend([actualURL absoluteString]), m_inspectorPage->webPageID());
+    m_inspectorPage->send(Messages::WebInspectorUI::DidAppend([actualURL absoluteString]));
 }
 
 void WebInspectorProxy::windowFrameDidChange()
@@ -736,7 +759,10 @@ void WebInspectorProxy::platformSetSheetRect(const FloatRect& rect)
 
 void WebInspectorProxy::platformStartWindowDrag()
 {
-    [m_inspectorViewController webView]->_page->startWindowDrag();
+    if (auto* webView = [m_inspectorViewController webView]) {
+        if (webView->_page)
+            webView->_page->startWindowDrag();
+    }
 }
 
 String WebInspectorProxy::inspectorPageURL()
@@ -799,6 +825,27 @@ DebuggableInfoData WebInspectorProxy::infoForLocalDebuggable()
     result.targetIsSimulator = false;
 
     return result;
+}
+
+void WebInspectorProxy::applyForcedAppearance()
+{
+    NSWindow *window = m_inspectorWindow.get();
+    if (!window)
+        return;
+
+    switch (m_frontendAppearance) {
+    case InspectorFrontendClient::Appearance::System:
+        window.appearance = nil;
+        break;
+
+    case InspectorFrontendClient::Appearance::Light:
+        window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+        break;
+
+    case InspectorFrontendClient::Appearance::Dark:
+        window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+        break;
+    }
 }
 
 } // namespace WebKit

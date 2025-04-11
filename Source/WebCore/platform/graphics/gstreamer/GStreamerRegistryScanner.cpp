@@ -67,12 +67,28 @@ GStreamerRegistryScanner::~GStreamerRegistryScanner()
     gst_plugin_feature_list_free(m_demuxerFactories);
 }
 
-GStreamerRegistryScanner::RegistryLookupResult GStreamerRegistryScanner::hasElementForMediaType(GList* elementFactories, const char* capsString, bool shouldCheckHardwareClassifier) const
+GStreamerRegistryScanner::RegistryLookupResult GStreamerRegistryScanner::hasElementForMediaType(GList* elementFactories, const char* capsString, bool shouldCheckHardwareClassifier, Optional<Vector<String>> blackList) const
 {
     GRefPtr<GstCaps> caps = adoptGRef(gst_caps_from_string(capsString));
     GList* candidates = gst_element_factory_list_filter(elementFactories, caps.get(), GST_PAD_SINK, false);
     bool isSupported = candidates;
     bool isUsingHardware = false;
+
+    if (blackList.hasValue() && !blackList->isEmpty()) {
+        bool hasValidCandidate = false;
+        for (GList* factories = candidates; factories; factories = g_list_next(factories)) {
+            String name(gst_plugin_feature_get_name(GST_PLUGIN_FEATURE_CAST(factories->data)));
+            if (blackList->contains(name))
+                continue;
+            hasValidCandidate = true;
+            break;
+        }
+        if (!hasValidCandidate) {
+            GST_WARNING("All elements for caps %" GST_PTR_FORMAT " are blacklisted", caps.get());
+            isSupported = false;
+            shouldCheckHardwareClassifier = false;
+        }
+    }
 
     if (shouldCheckHardwareClassifier) {
         for (GList* factories = candidates; factories; factories = g_list_next(factories)) {
@@ -159,7 +175,8 @@ void GStreamerRegistryScanner::initialize()
         m_codecMap.add(AtomString("x-vorbis"), false);
     }
 
-    if (hasElementForMediaType(m_demuxerFactories, "video/x-matroska")) {
+    bool matroskaSupported = hasElementForMediaType(m_demuxerFactories, "video/x-matroska");
+    if (matroskaSupported) {
         auto vp8DecoderAvailable = hasElementForMediaType(m_videoDecoderFactories, "video/x-vp8", true);
         auto vp9DecoderAvailable = hasElementForMediaType(m_videoDecoderFactories, "video/x-vp9", true);
 
@@ -188,6 +205,12 @@ void GStreamerRegistryScanner::initialize()
         m_codecMap.add(AtomString("x-h264"), h264DecoderAvailable.isUsingHardware);
         m_codecMap.add(AtomString("avc*"), h264DecoderAvailable.isUsingHardware);
         m_codecMap.add(AtomString("mp4v*"), h264DecoderAvailable.isUsingHardware);
+    }
+
+    Vector<String> av1DecodersBlacklist { "av1dec"_s };
+    if ((matroskaSupported || isContainerTypeSupported("video/mp4")) && hasElementForMediaType(m_videoDecoderFactories, "video/x-av1", false, makeOptional(WTFMove(av1DecodersBlacklist)))) {
+        m_codecMap.add(AtomString("av01*"), false);
+        m_codecMap.add(AtomString("x-av1"), false);
     }
 
     if (m_isMediaSource)
@@ -262,16 +285,12 @@ void GStreamerRegistryScanner::initialize()
         m_mimeTypeSet.add(AtomString("audio/x-mpeg"));
     }
 
-    bool matroskaSupported = hasElementForMediaType(m_demuxerFactories, "video/x-matroska");
     if (matroskaSupported) {
         m_mimeTypeSet.add(AtomString("video/x-matroska"));
 
         if (hasElementForMediaType(m_videoDecoderFactories, "video/x-vp10"))
             m_mimeTypeSet.add(AtomString("video/webm"));
     }
-
-    if ((matroskaSupported || isContainerTypeSupported("video/mp4")) && hasElementForMediaType(m_videoDecoderFactories, "video/x-av1"))
-        m_codecMap.add(AtomString("av01*"), false);
 }
 
 bool GStreamerRegistryScanner::isCodecSupported(String codec, bool shouldCheckForHardwareUse) const
@@ -298,6 +317,39 @@ bool GStreamerRegistryScanner::isCodecSupported(String codec, bool shouldCheckFo
     return supported;
 }
 
+MediaPlayerEnums::SupportsType GStreamerRegistryScanner::isContentTypeSupported(const ContentType& contentType, const Vector<ContentType>& contentTypesRequiringHardwareSupport) const
+{
+    using SupportsType = MediaPlayerEnums::SupportsType;
+
+    const auto& containerType = contentType.containerType();
+    if (!isContainerTypeSupported(containerType))
+        return SupportsType::IsNotSupported;
+
+    const auto& codecs = contentType.codecs();
+
+    // Spec says we should not return "probably" if the codecs string is empty.
+    if (codecs.isEmpty())
+        return SupportsType::MayBeSupported;
+
+    for (const auto& codec : codecs) {
+        bool requiresHardwareSupport = contentTypesRequiringHardwareSupport
+            .findMatching([containerType, codec](auto& hardwareContentType) -> bool {
+            auto hardwareContainer = hardwareContentType.containerType();
+            if (!hardwareContainer.isEmpty()
+                && fnmatch(hardwareContainer.utf8().data(), containerType.utf8().data(), 0))
+                return false;
+            auto hardwareCodecs = hardwareContentType.codecs();
+            return hardwareCodecs.isEmpty()
+                || hardwareCodecs.findMatching([codec](auto& hardwareCodec) -> bool {
+                    return !fnmatch(hardwareCodec.utf8().data(), codec.utf8().data(), 0);
+            }) != notFound;
+        }) != notFound;
+        if (!isCodecSupported(codec, requiresHardwareSupport))
+            return SupportsType::IsNotSupported;
+    }
+    return SupportsType::IsSupported;
+}
+
 bool GStreamerRegistryScanner::areAllCodecsSupported(const Vector<String>& codecs, bool shouldCheckForHardwareUse) const
 {
     for (String codec : codecs) {
@@ -310,6 +362,21 @@ bool GStreamerRegistryScanner::areAllCodecsSupported(const Vector<String>& codec
 
 bool GStreamerRegistryScanner::isAVC1CodecSupported(const String& codec, bool shouldCheckForHardwareUse) const
 {
+    auto checkH264Caps = [&](const char* capsString) {
+        bool supported = false;
+        auto lookupResult = hasElementForMediaType(m_videoDecoderFactories, capsString, true);
+        supported = lookupResult;
+        if (shouldCheckForHardwareUse)
+            supported = lookupResult.isUsingHardware;
+        GST_DEBUG("%s decoding supported for codec %s: %s", shouldCheckForHardwareUse ? "Hardware" : "Software", codec.utf8().data(), boolForPrinting(supported));
+        return supported;
+    };
+
+    if (codec.find('.') == notFound) {
+        GST_DEBUG("Codec has no profile/level, falling back to unconstrained caps");
+        return checkH264Caps("video/x-h264");
+    }
+
     auto components = codec.split('.');
     long int spsAsInteger = strtol(components[1].utf8().data(), nullptr, 16);
     uint8_t sps[3];
@@ -335,16 +402,6 @@ bool GStreamerRegistryScanner::isAVC1CodecSupported(const String& codec, bool sh
     }
 
     GST_DEBUG("Codec %s translates to H.264 profile %s and level %s", codec.utf8().data(), profile, level);
-
-    auto checkH264Caps = [&](const char* capsString) {
-        bool supported = false;
-        auto lookupResult = hasElementForMediaType(m_videoDecoderFactories, capsString, true);
-        supported = lookupResult;
-        if (shouldCheckForHardwareUse)
-            supported = lookupResult.isUsingHardware;
-        GST_DEBUG("%s decoding supported for codec %s: %s", shouldCheckForHardwareUse ? "Hardware" : "Software", codec.utf8().data(), boolForPrinting(supported));
-        return supported;
-    };
 
     if (const char* maxVideoResolution = g_getenv("WEBKIT_GST_MAX_AVC1_RESOLUTION")) {
         uint8_t levelAsInteger = gst_codec_utils_h264_get_level_idc(level);

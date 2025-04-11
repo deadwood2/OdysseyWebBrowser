@@ -13,6 +13,7 @@
 #include "common/debug.h"
 #include "common/platform.h"
 #include "common/system_utils.h"
+#include "common/utilities.h"
 #include "third_party/perf/perf_test.h"
 #include "third_party/trace_event/trace_event.h"
 #include "util/shader_utils.h"
@@ -115,10 +116,7 @@ void UpdateTraceEventDuration(angle::PlatformMethods *platform,
 
 double MonotonicallyIncreasingTime(angle::PlatformMethods *platform)
 {
-    // Move the time origin to the first call to this function, to avoid generating unnecessarily
-    // large timestamps.
-    static double origin = angle::GetCurrentTime();
-    return angle::GetCurrentTime() - origin;
+    return GetHostTimeSeconds();
 }
 
 void DumpTraceEventsToJSONFile(const std::vector<TraceEvent> &traceEvents,
@@ -130,20 +128,16 @@ void DumpTraceEventsToJSONFile(const std::vector<TraceEvent> &traceEvents,
     {
         Json::Value value(Json::objectValue);
 
-        std::stringstream phaseName;
-        phaseName << traceEvent.phase;
-
-        const auto microseconds =
-            static_cast<Json::LargestInt>(traceEvent.timestamp * 1000.0 * 1000.0);
+        const auto microseconds = static_cast<Json::LargestInt>(traceEvent.timestamp) * 1000 * 1000;
 
         value["name"] = traceEvent.name;
         value["cat"]  = traceEvent.categoryName;
-        value["ph"]   = phaseName.str();
+        value["ph"]   = std::string(1, traceEvent.phase);
         value["ts"]   = microseconds;
-        value["pid"]  = "ANGLE";
-        value["tid"]  = strcmp(traceEvent.categoryName, "gpu.angle.gpu") == 0 ? "GPU" : "CPU";
+        value["pid"]  = strcmp(traceEvent.categoryName, "gpu.angle.gpu") == 0 ? "GPU" : "ANGLE";
+        value["tid"]  = 1;
 
-        eventsValue.append(value);
+        eventsValue.append(std::move(value));
     }
 
     Json::Value root(Json::objectValue);
@@ -152,12 +146,38 @@ void DumpTraceEventsToJSONFile(const std::vector<TraceEvent> &traceEvents,
     std::ofstream outFile;
     outFile.open(outputFileName);
 
-    Json::StyledWriter styledWrite;
-    outFile << styledWrite.write(root);
+    Json::StreamWriterBuilder factory;
+    std::unique_ptr<Json::StreamWriter> const writer(factory.newStreamWriter());
+    std::ostringstream stream;
+    writer->write(root, &outFile);
 
     outFile.close();
 }
+
+ANGLE_MAYBE_UNUSED void KHRONOS_APIENTRY DebugMessageCallback(GLenum source,
+                                                              GLenum type,
+                                                              GLuint id,
+                                                              GLenum severity,
+                                                              GLsizei length,
+                                                              const GLchar *message,
+                                                              const void *userParam)
+{
+    std::string sourceText   = gl::GetDebugMessageSourceString(source);
+    std::string typeText     = gl::GetDebugMessageTypeString(type);
+    std::string severityText = gl::GetDebugMessageSeverityString(severity);
+    std::cerr << sourceText << ", " << typeText << ", " << severityText << ": " << message << "\n";
+}
 }  // anonymous namespace
+
+TraceEvent::TraceEvent(char phaseIn,
+                       const char *categoryNameIn,
+                       const char *nameIn,
+                       double timestampIn)
+    : phase(phaseIn), categoryName(categoryNameIn), name{}, timestamp(timestampIn), tid(1)
+{
+    ASSERT(strlen(nameIn) < kMaxNameLen);
+    strcpy(name, nameIn);
+}
 
 ANGLEPerfTest::ANGLEPerfTest(const std::string &name,
                              const std::string &backend,
@@ -168,7 +188,7 @@ ANGLEPerfTest::ANGLEPerfTest(const std::string &name,
       mStory(story),
       mGPUTimeNs(0),
       mSkipTest(false),
-      mStepsToRun(std::numeric_limits<unsigned int>::max()),
+      mStepsToRun(gStepsToRunOverride),
       mNumStepsPerformed(0),
       mIterationsPerStep(iterationsPerStep),
       mRunning(true)
@@ -197,34 +217,28 @@ void ANGLEPerfTest::run()
     }
 
     // Calibrate to a fixed number of steps during an initial set time.
-    if (!gStepsToRunOverride.valid())
+    if (mStepsToRun <= 0)
     {
-        doRunLoop(kCalibrationRunTimeSeconds);
-
-        // Scale steps down according to the time that exeeded one second.
-        double scale = kCalibrationRunTimeSeconds / mTimer.getElapsedTime();
-        mStepsToRun  = static_cast<size_t>(static_cast<double>(mNumStepsPerformed) * scale);
-
-        // Calibration allows the perf test runner script to save some time.
-        if (gCalibration)
-        {
-            mReporter->AddResult(".steps", static_cast<size_t>(mStepsToRun));
-            return;
-        }
+        calibrateStepsToRun();
     }
-    else
+
+    // Check again for early exit.
+    if (mSkipTest)
     {
-        mStepsToRun = gStepsToRunOverride.value();
+        return;
     }
 
     // Do another warmup run. Seems to consistently improve results.
     doRunLoop(kMaximumRunTimeSeconds);
 
-    double totalTime = 0.0;
     for (unsigned int trial = 0; trial < kNumTrials; ++trial)
     {
         doRunLoop(kMaximumRunTimeSeconds);
-        totalTime += printResults();
+        printResults();
+        if (gVerboseLogging)
+        {
+            printf("Trial %d time: %.2lf seconds.\n", trial + 1, mTimer.getElapsedTime());
+        }
     }
 }
 
@@ -312,6 +326,45 @@ double ANGLEPerfTest::normalizedTime(size_t value) const
     return static_cast<double>(value) / static_cast<double>(mNumStepsPerformed);
 }
 
+void ANGLEPerfTest::calibrateStepsToRun()
+{
+    // First do two warmup loops. There's no science to this. Two loops was experimentally helpful
+    // on a Windows NVIDIA setup when testing with Vulkan and native trace tests.
+    for (int i = 0; i < 2; ++i)
+    {
+        doRunLoop(kCalibrationRunTimeSeconds);
+        if (gVerboseLogging)
+        {
+            printf("Pre-calibration warm-up took %.2lf seconds.\n", mTimer.getElapsedTime());
+        }
+    }
+
+    // Now the real computation.
+    doRunLoop(kCalibrationRunTimeSeconds);
+
+    double elapsedTime = mTimer.getElapsedTime();
+
+    // Scale steps down according to the time that exeeded one second.
+    double scale = kCalibrationRunTimeSeconds / elapsedTime;
+    mStepsToRun  = static_cast<unsigned int>(static_cast<double>(mNumStepsPerformed) * scale);
+
+    if (gVerboseLogging)
+    {
+        printf(
+            "Running %d steps (calibration took %.2lf seconds). Expecting trial time of %.2lf "
+            "seconds.\n",
+            mStepsToRun, elapsedTime,
+            mStepsToRun * (elapsedTime / static_cast<double>(mNumStepsPerformed)));
+    }
+
+    // Calibration allows the perf test runner script to save some time.
+    if (gCalibration)
+    {
+        mReporter->AddResult(".steps", static_cast<size_t>(mStepsToRun));
+        return;
+    }
+}
+
 std::string RenderTestParams::backend() const
 {
     std::stringstream strstr;
@@ -320,10 +373,10 @@ std::string RenderTestParams::backend() const
     {
         case angle::GLESDriverType::AngleEGL:
             break;
-        case angle::GLESDriverType::SystemEGL:
-            return "_native";
         case angle::GLESDriverType::SystemWGL:
-            return "_wgl";
+        case angle::GLESDriverType::SystemEGL:
+            strstr << "_native";
+            break;
         default:
             assert(0);
             return "_unk";
@@ -331,6 +384,8 @@ std::string RenderTestParams::backend() const
 
     switch (getRenderer())
     {
+        case EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE:
+            break;
         case EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE:
             strstr << "_d3d11";
             break;
@@ -342,9 +397,6 @@ std::string RenderTestParams::backend() const
             break;
         case EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE:
             strstr << "_gles";
-            break;
-        case EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE:
-            strstr << "_default";
             break;
         case EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE:
             strstr << "_vulkan";
@@ -364,7 +416,7 @@ std::string RenderTestParams::backend() const
 
 std::string RenderTestParams::story() const
 {
-    return "";
+    return (surfaceType == SurfaceType::Offscreen ? "_offscreen" : "");
 }
 
 std::string RenderTestParams::backendAndStory() const
@@ -378,9 +430,10 @@ ANGLERenderTest::ANGLERenderTest(const std::string &name, const RenderTestParams
                     testParams.story(),
                     OneFrame() ? 1 : testParams.iterationsPerStep),
       mTestParams(testParams),
+      mIsTimestampQueryAvailable(false),
       mGLWindow(nullptr),
       mOSWindow(nullptr),
-      mIsTimestampQueryAvailable(false)
+      mSwapEnabled(true)
 {
     // Force fast tests to make sure our slowest bots don't time out.
     if (OneFrame())
@@ -399,8 +452,14 @@ ANGLERenderTest::ANGLERenderTest(const std::string &name, const RenderTestParams
                                                            angle::SearchType::ApplicationDir));
             break;
         case angle::GLESDriverType::SystemEGL:
+#if defined(ANGLE_USE_UTIL_LOADER) && !defined(ANGLE_PLATFORM_WINDOWS)
+            mGLWindow = EGLWindow::New(testParams.majorVersion, testParams.minorVersion);
+            mEntryPointsLib.reset(
+                angle::OpenSharedLibraryWithExtension(GetNativeEGLLibraryNameWithExtension()));
+#else
             std::cerr << "Not implemented." << std::endl;
             mSkipTest = true;
+#endif  // defined(ANGLE_USE_UTIL_LOADER) && !defined(ANGLE_PLATFORM_WINDOWS)
             break;
         case angle::GLESDriverType::SystemWGL:
 #if defined(ANGLE_USE_UTIL_LOADER) && defined(ANGLE_PLATFORM_WINDOWS)
@@ -471,7 +530,16 @@ void ANGLERenderTest::SetUp()
     EGLPlatformParameters withMethods = mTestParams.eglParameters;
     withMethods.platformMethods       = &mPlatformMethods;
 
-    if (!mGLWindow->initializeGL(mOSWindow, mEntryPointsLib.get(), withMethods, mConfigParams))
+    // Request a common framebuffer config
+    mConfigParams.redBits     = 8;
+    mConfigParams.greenBits   = 8;
+    mConfigParams.blueBits    = 8;
+    mConfigParams.alphaBits   = 8;
+    mConfigParams.depthBits   = 24;
+    mConfigParams.stencilBits = 8;
+
+    if (!mGLWindow->initializeGL(mOSWindow, mEntryPointsLib.get(), mTestParams.driver, withMethods,
+                                 mConfigParams))
     {
         mSkipTest = true;
         FAIL() << "Failed initializing GL Window";
@@ -498,6 +566,28 @@ void ANGLERenderTest::SetUp()
         return;
     }
 
+#if defined(ANGLE_ENABLE_ASSERTS)
+    if (IsGLExtensionEnabled("GL_KHR_debug"))
+    {
+        glEnable(GL_DEBUG_OUTPUT);
+        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+        // Enable medium and high priority messages.
+        glDebugMessageControlKHR(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_HIGH, 0, nullptr,
+                                 GL_TRUE);
+        glDebugMessageControlKHR(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_MEDIUM, 0, nullptr,
+                                 GL_TRUE);
+        // Disable low and notification priority messages.
+        glDebugMessageControlKHR(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_LOW, 0, nullptr,
+                                 GL_FALSE);
+        glDebugMessageControlKHR(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION, 0,
+                                 nullptr, GL_FALSE);
+        // Disable medium priority performance messages to reduce spam.
+        glDebugMessageControlKHR(GL_DONT_CARE, GL_DEBUG_TYPE_PERFORMANCE, GL_DEBUG_SEVERITY_MEDIUM,
+                                 0, nullptr, GL_FALSE);
+        glDebugMessageCallbackKHR(DebugMessageCallback, this);
+    }
+#endif
+
     initializeBenchmark();
 
     if (mTestParams.iterationsPerStep == 0)
@@ -505,6 +595,21 @@ void ANGLERenderTest::SetUp()
         mSkipTest = true;
         FAIL() << "Please initialize 'iterationsPerStep'.";
         // FAIL returns.
+    }
+
+    // Capture a screenshot if enabled.
+    if (gScreenShotDir != nullptr)
+    {
+        std::stringstream screenshotNameStr;
+        screenshotNameStr << gScreenShotDir << GetPathSeparator() << "angle" << mBackend << "_"
+                          << mStory << ".png";
+        std::string screenshotName = screenshotNameStr.str();
+        saveScreenshot(screenshotName);
+    }
+
+    if (mStepsToRun <= 0)
+    {
+        calibrateStepsToRun();
     }
 }
 
@@ -554,6 +659,24 @@ void ANGLERenderTest::endInternalTraceEvent(const char *name)
     }
 }
 
+void ANGLERenderTest::beginGLTraceEvent(const char *name, double hostTimeSec)
+{
+    if (gEnableTrace)
+    {
+        mTraceEventBuffer.emplace_back(TRACE_EVENT_PHASE_BEGIN, gTraceCategories[1].name, name,
+                                       hostTimeSec);
+    }
+}
+
+void ANGLERenderTest::endGLTraceEvent(const char *name, double hostTimeSec)
+{
+    if (gEnableTrace)
+    {
+        mTraceEventBuffer.emplace_back(TRACE_EVENT_PHASE_END, gTraceCategories[1].name, name,
+                                       hostTimeSec);
+    }
+}
+
 void ANGLERenderTest::step()
 {
     beginInternalTraceEvent("step");
@@ -577,12 +700,20 @@ void ANGLERenderTest::step()
     else
     {
         drawBenchmark();
+
         // Swap is needed so that the GPU driver will occasionally flush its
         // internal command queue to the GPU. This is enabled for null back-end
         // devices because some back-ends (e.g. Vulkan) also accumulate internal
         // command queues.
-        mGLWindow->swap();
+        if (mSwapEnabled)
+        {
+            mGLWindow->swap();
+        }
         mOSWindow->messageLoop();
+
+#if defined(ANGLE_ENABLE_ASSERTS)
+        EXPECT_EQ(static_cast<GLenum>(GL_NO_ERROR), glGetError());
+#endif  // defined(ANGLE_ENABLE_ASSERTS)
     }
 
     endInternalTraceEvent("step");
@@ -672,3 +803,14 @@ std::vector<TraceEvent> &ANGLERenderTest::getTraceEventBuffer()
 {
     return mTraceEventBuffer;
 }
+
+namespace angle
+{
+double GetHostTimeSeconds()
+{
+    // Move the time origin to the first call to this function, to avoid generating unnecessarily
+    // large timestamps.
+    static double origin = angle::GetCurrentTime();
+    return angle::GetCurrentTime() - origin;
+}
+}  // namespace angle

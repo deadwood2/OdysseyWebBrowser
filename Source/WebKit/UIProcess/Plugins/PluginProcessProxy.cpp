@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -62,7 +62,8 @@ Ref<PluginProcessProxy> PluginProcessProxy::create(PluginProcessManager* PluginP
 }
 
 PluginProcessProxy::PluginProcessProxy(PluginProcessManager* PluginProcessManager, const PluginProcessAttributes& pluginProcessAttributes, uint64_t pluginProcessToken)
-    : m_pluginProcessManager(PluginProcessManager)
+    : m_throttler(*this, false)
+    , m_pluginProcessManager(PluginProcessManager)
     , m_pluginProcessAttributes(pluginProcessAttributes)
     , m_pluginProcessToken(pluginProcessToken)
     , m_numPendingConnectionRequests(0)
@@ -214,9 +215,10 @@ void PluginProcessProxy::didClose(IPC::Connection&)
     pluginProcessCrashedOrFailedToLaunch();
 }
 
-void PluginProcessProxy::didReceiveInvalidMessage(IPC::Connection& connection, IPC::StringReference messageReceiverName, IPC::StringReference messageName)
+void PluginProcessProxy::didReceiveInvalidMessage(IPC::Connection& connection, IPC::MessageName messageName)
 {
-    logInvalidMessage(connection, messageReceiverName, messageName);
+    logInvalidMessage(connection, messageName);
+    terminate();
 }
 
 void PluginProcessProxy::didFinishLaunching(ProcessLauncher*, IPC::Connection::Identifier connectionIdentifier)
@@ -234,7 +236,7 @@ void PluginProcessProxy::didFinishLaunching(ProcessLauncher*, IPC::Connection::I
     
     PluginProcessCreationParameters parameters;
     parameters.processType = m_pluginProcessAttributes.processType;
-    if (parameters.processType == PluginProcessTypeSnapshot) {
+    if (parameters.processType == PluginProcessType::Snapshot) {
         parameters.minimumLifetime = snapshottingMinimumLifetime;
         parameters.terminationTimeout = snapshottingShutdownTimeout;
     } else {

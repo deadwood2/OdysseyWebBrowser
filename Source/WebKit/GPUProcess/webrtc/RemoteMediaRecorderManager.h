@@ -27,7 +27,7 @@
 
 #pragma once
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
 
 #include "MediaRecorderIdentifier.h"
 #include "MessageReceiver.h"
@@ -60,7 +60,7 @@ public:
 private:
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
-    void createRecorder(MediaRecorderIdentifier, bool recordAudio, int width, int height, CompletionHandler<void(Optional<WebCore::ExceptionData>&&)>&&);
+    void createRecorder(MediaRecorderIdentifier, bool recordAudio, bool recordVideo, CompletionHandler<void(Optional<WebCore::ExceptionData>&&)>&&);
     void releaseRecorder(MediaRecorderIdentifier);
 
     GPUConnectionToWebProcess& m_gpuConnectionToWebProcess;

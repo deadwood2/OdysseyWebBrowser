@@ -25,42 +25,78 @@
 
 #pragma once
 
+#import <wtf/RetainPtr.h>
+
 #if HAVE(NETWORK_FRAMEWORK)
 
 #import <Network/Network.h>
+#import <wtf/CompletionHandler.h>
 #import <wtf/Forward.h>
 #import <wtf/HashMap.h>
-#import <wtf/RetainPtr.h>
 #import <wtf/text/StringHash.h>
 
 namespace TestWebKitAPI {
 
+class Connection;
+
 class HTTPServer {
 public:
     struct HTTPResponse;
-    enum class Protocol : uint8_t { Http, Https, HttpsWithLegacyTLS };
-    HTTPServer(std::initializer_list<std::pair<String, HTTPResponse>>, Protocol = Protocol::Http);
+    struct RequestData;
+    enum class Protocol : uint8_t { Http, Https, HttpsWithLegacyTLS, Http2 };
+    using CertificateVerifier = Function<void(sec_protocol_metadata_t, sec_trust_t, sec_protocol_verify_complete_t)>;
+
+    HTTPServer(std::initializer_list<std::pair<String, HTTPResponse>>, Protocol = Protocol::Http, CertificateVerifier&& = nullptr, RetainPtr<SecIdentityRef>&& = nullptr, Optional<uint16_t> port = { });
+    HTTPServer(Function<void(Connection)>&&, Protocol = Protocol::Http);
+    ~HTTPServer();
     uint16_t port() const;
-    NSURLRequest *request() const;
+    NSURLRequest *request(const String& path = "/"_str) const;
+    size_t totalRequests() const;
+    void cancel();
+
+    static void respondWithChallengeThenOK(Connection);
     
 private:
-    void respondToRequests(nw_connection_t);
-    
+    static RetainPtr<nw_parameters_t> listenerParameters(Protocol, CertificateVerifier&&, RetainPtr<SecIdentityRef>&&, Optional<uint16_t> port);
+    static void respondToRequests(Connection, Ref<RequestData>);
+
+    Ref<RequestData> m_requestData;
     RetainPtr<nw_listener_t> m_listener;
-    const Protocol m_protocol;
-    const HashMap<String, HTTPResponse> m_requestResponseMap;
+    Protocol m_protocol { Protocol::Http };
+};
+
+class Connection {
+public:
+    void send(String&&, CompletionHandler<void()>&& = nullptr) const;
+    void send(Vector<uint8_t>&&, CompletionHandler<void()>&& = nullptr) const;
+    void send(RetainPtr<dispatch_data_t>&&, CompletionHandler<void()>&& = nullptr) const;
+    void receiveBytes(CompletionHandler<void(Vector<uint8_t>&&)>&&) const;
+    void receiveHTTPRequest(CompletionHandler<void(Vector<char>&&)>&&, Vector<char>&& buffer = { }) const;
+    void terminate();
+    void cancel();
+
+private:
+    friend class HTTPServer;
+    Connection(nw_connection_t connection)
+        : m_connection(connection) { }
+
+    RetainPtr<nw_connection_t> m_connection;
 };
 
 struct HTTPServer::HTTPResponse {
-    HTTPResponse(String&& body)
-        : body(WTFMove(body)) { }
+    enum class TerminateConnection { No, Yes };
+    
+    HTTPResponse(const String& body)
+        : body(body) { }
     HTTPResponse(HashMap<String, String>&& headerFields, String&& body)
         : headerFields(WTFMove(headerFields))
         , body(WTFMove(body)) { }
-    HTTPResponse(unsigned statusCode, HashMap<String, String>&& headerFields, String&& body = { })
+    HTTPResponse(unsigned statusCode, HashMap<String, String>&& headerFields = { }, String&& body = { })
         : statusCode(statusCode)
         , headerFields(WTFMove(headerFields))
         , body(WTFMove(body)) { }
+    HTTPResponse(TerminateConnection terminateConnection)
+        : terminateConnection(terminateConnection) { }
 
     HTTPResponse(const HTTPResponse&) = default;
     HTTPResponse(HTTPResponse&&) = default;
@@ -71,10 +107,67 @@ struct HTTPServer::HTTPResponse {
     unsigned statusCode { 200 };
     HashMap<String, String> headerFields;
     String body;
+    TerminateConnection terminateConnection { TerminateConnection::No };
 };
+
+namespace H2 {
+
+// https://http2.github.io/http2-spec/#rfc.section.4.1
+class Frame {
+public:
+
+    // https://http2.github.io/http2-spec/#rfc.section.6
+    enum class Type : uint8_t {
+        Data = 0x0,
+        Headers = 0x1,
+        Priority = 0x2,
+        RSTStream = 0x3,
+        Settings = 0x4,
+        PushPromise = 0x5,
+        Ping = 0x6,
+        GoAway = 0x7,
+        WindowUpdate = 0x8,
+        Continuation = 0x9,
+    };
+
+    Frame(Type type, uint8_t flags, uint32_t streamID, Vector<uint8_t> payload)
+        : m_type(type)
+        , m_flags(flags)
+        , m_streamID(streamID)
+        , m_payload(WTFMove(payload)) { }
+
+    Type type() const { return m_type; }
+    uint8_t flags() const { return m_flags; }
+    uint32_t streamID() const { return m_streamID; }
+    const Vector<uint8_t>& payload() const { return m_payload; }
+
+private:
+    Type m_type;
+    uint8_t m_flags;
+    uint32_t m_streamID;
+    Vector<uint8_t> m_payload;
+};
+
+class Connection : public RefCounted<Connection> {
+public:
+    static Ref<Connection> create(TestWebKitAPI::Connection tlsConnection) { return adoptRef(*new Connection(tlsConnection)); }
+    void send(Frame&&, CompletionHandler<void()>&& = nullptr) const;
+    void receive(CompletionHandler<void(Frame&&)>&&) const;
+private:
+    Connection(TestWebKitAPI::Connection tlsConnection)
+        : m_tlsConnection(tlsConnection) { }
+
+    TestWebKitAPI::Connection m_tlsConnection;
+    mutable bool m_expectClientConnectionPreface { true };
+    mutable bool m_sendServerConnectionPreface { true };
+    mutable Vector<uint8_t> m_receiveBuffer;
+};
+
+} // namespace H2
 
 } // namespace TestWebKitAPI
 
 #endif // HAVE(NETWORK_FRAMEWORK)
 
 RetainPtr<SecIdentityRef> testIdentity();
+RetainPtr<SecIdentityRef> testIdentity2();

@@ -22,8 +22,9 @@
 
 import re
 
+from webkitcorepy import Version
+
 from webkitpy.common.memoized import memoized
-from webkitpy.common.version import Version
 
 
 PUBLIC_TABLE = 'public'
@@ -61,10 +62,11 @@ class VersionNameMap(object):
                 'High Sierra': Version(10, 13),
                 'Mojave': Version(10, 14),
                 'Catalina': Version(10, 15),
+                'Big Sur': Version(11, 0),
             },
-            'ios': self._automap_to_major_version('iOS', minimum=Version(10), maximum=Version(13)),
-            'tvos': self._automap_to_major_version('tvOS', minimum=Version(10), maximum=Version(13)),
-            'watchos': self._automap_to_major_version('watchOS', minimum=Version(1), maximum=Version(6)),
+            'ios': self._automap_to_major_version('iOS', minimum=Version(10), maximum=Version(14)),
+            'tvos': self._automap_to_major_version('tvOS', minimum=Version(10), maximum=Version(14)),
+            'watchos': self._automap_to_major_version('watchOS', minimum=Version(1), maximum=Version(7)),
             'win': {
                 'Win10': Version(10),
                 '8.1': Version(6, 3),

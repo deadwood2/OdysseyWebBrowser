@@ -58,15 +58,6 @@ AccessibilityUIElement::AccessibilityUIElement(PlatformUIElement element)
 {
 }
 
-AccessibilityUIElement::AccessibilityUIElement(const AccessibilityUIElement& other)
-    : m_element(other.m_element)
-{
-}
-
-AccessibilityUIElement::~AccessibilityUIElement()
-{
-}
-
 bool AccessibilityUIElement::isEqual(AccessibilityUIElement* otherElement)
 {
     COMPtr<IAccessibleComparable> comparable = comparableObject(m_element.get());
@@ -756,6 +747,10 @@ void AccessibilityUIElement::press()
         return;
 
     m_element->accDoDefaultAction(self());
+}
+
+void AccessibilityUIElement::dismiss()
+{
 }
 
 AccessibilityUIElement AccessibilityUIElement::disclosedRowAtIndex(unsigned index)

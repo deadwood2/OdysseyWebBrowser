@@ -23,8 +23,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#pragma once
-
 #import "IOSurface.h"
 #import "IntSize.h"
 #import <QuartzCore/QuartzCore.h>
@@ -46,25 +44,6 @@ ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 #else
 #error Unsupported platform
 #endif
-{
-    NakedPtr<WebCore::GraphicsContextGLOpenGL> _context;
-    float _devicePixelRatio;
-#if HAVE(IOSURFACE) && (USE(OPENGL) || USE(ANGLE))
-    std::unique_ptr<WebCore::IOSurface> _contentsBuffer;
-    std::unique_ptr<WebCore::IOSurface> _drawingBuffer;
-    std::unique_ptr<WebCore::IOSurface> _spareBuffer;
-    WebCore::IntSize _bufferSize;
-    BOOL _usingAlpha;
-#endif
-#if USE(ANGLE)
-    void* _eglDisplay;
-    void* _eglConfig;
-    void* _contentsPbuffer;
-    void* _drawingPbuffer;
-    void* _sparePbuffer;
-    void* _latchedPbuffer;
-#endif
-}
 
 @property (nonatomic) NakedPtr<WebCore::GraphicsContextGLOpenGL> context;
 
@@ -72,14 +51,16 @@ ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 
 - (CGImageRef)copyImageSnapshotWithColorSpace:(CGColorSpaceRef)colorSpace;
 
-#if HAVE(IOSURFACE) && (USE(OPENGL) || USE(ANGLE))
-- (void)allocateIOSurfaceBackingStoreWithSize:(WebCore::IntSize)size usingAlpha:(BOOL)usingAlpha;
+- (void)prepareForDisplay;
+
+#if USE(OPENGL) || USE(ANGLE)
+- (bool)allocateIOSurfaceBackingStoreWithSize:(WebCore::IntSize)size usingAlpha:(BOOL)usingAlpha;
 - (void)bindFramebufferToNextAvailableSurface;
 #endif
 
 #if USE(ANGLE)
 - (void)setEGLDisplay:(void*)eglDisplay config:(void*)eglConfig;
-- (void)dealloc;
+- (void)releaseGLResources;
 #endif
 
 @end

@@ -9,6 +9,7 @@
 #ifndef LIBGLESV2_GLOBALSTATE_H_
 #define LIBGLESV2_GLOBALSTATE_H_
 
+#include "common/tls.h"
 #include "libANGLE/Context.h"
 #include "libANGLE/Debug.h"
 #include "libANGLE/Thread.h"
@@ -16,19 +17,24 @@
 
 #include <mutex>
 
+namespace angle
+{
+using GlobalMutex = std::recursive_mutex;
+}  // namespace angle
+
 namespace egl
 {
 class Debug;
 class Thread;
 
-std::mutex &GetGlobalMutex();
+angle::GlobalMutex &GetGlobalMutex();
 Thread *GetCurrentThread();
 Debug *GetDebug();
 void SetContextCurrent(Thread *thread, gl::Context *context);
 }  // namespace egl
 
 #define ANGLE_SCOPED_GLOBAL_LOCK() \
-    std::lock_guard<std::mutex> globalMutexLock(egl::GetGlobalMutex())
+    std::lock_guard<angle::GlobalMutex> globalMutexLock(egl::GetGlobalMutex())
 
 namespace gl
 {
@@ -36,6 +42,14 @@ extern Context *gSingleThreadedContext;
 
 ANGLE_INLINE Context *GetGlobalContext()
 {
+#if defined(ANGLE_PLATFORM_ANDROID)
+    // TODO: Replace this branch with a compile time flag (http://anglebug.com/4764)
+    if (gUseAndroidOpenGLTlsSlot)
+    {
+        return static_cast<gl::Context *>(ANGLE_ANDROID_GET_GL_TLS()[kAndroidOpenGLTlsSlot]);
+    }
+#endif
+
     if (gSingleThreadedContext)
     {
         return gSingleThreadedContext;
@@ -47,6 +61,19 @@ ANGLE_INLINE Context *GetGlobalContext()
 
 ANGLE_INLINE Context *GetValidGlobalContext()
 {
+#if defined(ANGLE_PLATFORM_ANDROID)
+    // TODO: Replace this branch with a compile time flag (http://anglebug.com/4764)
+    if (gUseAndroidOpenGLTlsSlot)
+    {
+        Context *context =
+            static_cast<gl::Context *>(ANGLE_ANDROID_GET_GL_TLS()[kAndroidOpenGLTlsSlot]);
+        if (context && !context->isContextLost())
+        {
+            return context;
+        }
+    }
+#endif
+
     if (gSingleThreadedContext && !gSingleThreadedContext->isContextLost())
     {
         return gSingleThreadedContext;
@@ -56,10 +83,10 @@ ANGLE_INLINE Context *GetValidGlobalContext()
     return thread->getValidContext();
 }
 
-ANGLE_INLINE std::unique_lock<std::mutex> GetShareGroupLock(const Context *context)
+ANGLE_INLINE std::unique_lock<angle::GlobalMutex> GetShareGroupLock(const Context *context)
 {
-    return context->isShared() ? std::unique_lock<std::mutex>(egl::GetGlobalMutex())
-                               : std::unique_lock<std::mutex>();
+    return context->isShared() ? std::unique_lock<angle::GlobalMutex>(egl::GetGlobalMutex())
+                               : std::unique_lock<angle::GlobalMutex>();
 }
 }  // namespace gl
 

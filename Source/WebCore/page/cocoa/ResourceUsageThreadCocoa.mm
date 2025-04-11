@@ -23,22 +23,22 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "ResourceUsageThread.h"
+#import "config.h"
+#import "ResourceUsageThread.h"
 
 #if ENABLE(RESOURCE_USAGE)
 
-#include "WorkerThread.h"
-#include <JavaScriptCore/GCActivityCallback.h>
-#include <JavaScriptCore/Heap.h>
-#include <JavaScriptCore/SamplingProfiler.h>
-#include <JavaScriptCore/VM.h>
-#include <mach/mach.h>
-#include <mach/vm_statistics.h>
-#include <wtf/MachSendRight.h>
-#include <wtf/ResourceUsage.h>
-#include <wtf/spi/cocoa/MachVMSPI.h>
-#include <wtf/text/StringConcatenateNumbers.h>
+#import "WorkerThread.h"
+#import <JavaScriptCore/GCActivityCallback.h>
+#import <JavaScriptCore/Heap.h>
+#import <JavaScriptCore/SamplingProfiler.h>
+#import <JavaScriptCore/VM.h>
+#import <mach/mach.h>
+#import <mach/vm_statistics.h>
+#import <wtf/MachSendRight.h>
+#import <wtf/ResourceUsage.h>
+#import <wtf/spi/cocoa/MachVMSPI.h>
+#import <wtf/text/StringConcatenateNumbers.h>
 
 namespace WebCore {
 
@@ -136,7 +136,12 @@ static Vector<ThreadInfo> threadInfos()
 void ResourceUsageThread::platformSaveStateBeforeStarting()
 {
 #if ENABLE(SAMPLING_PROFILER)
-    m_samplingProfilerMachThread = m_vm->samplingProfiler() ? m_vm->samplingProfiler()->machThread() : MACH_PORT_NULL;
+    m_samplingProfilerMachThread = MACH_PORT_NULL;
+
+    if (auto* profiler = m_vm->samplingProfiler()) {
+        if (auto* thread = profiler->thread())
+            m_samplingProfilerMachThread = thread->machThread();
+    }
 #endif
 }
 
@@ -156,8 +161,8 @@ void ResourceUsageThread::platformCollectCPUData(JSC::VM*, ResourceUsageData& da
 
     HashSet<mach_port_t> knownWebKitThreads;
     {
-        LockHolder lock(Thread::allThreadsMutex());
-        for (auto* thread : Thread::allThreads(lock)) {
+        auto locker = holdLock(Thread::allThreadsMutex());
+        for (auto* thread : Thread::allThreads(locker)) {
             mach_port_t machThread = thread->machThread();
             if (machThread != MACH_PORT_NULL)
                 knownWebKitThreads.add(machThread);
@@ -168,6 +173,9 @@ void ResourceUsageThread::platformCollectCPUData(JSC::VM*, ResourceUsageData& da
     {
         LockHolder lock(WorkerThread::workerThreadsMutex());
         for (auto* thread : WorkerThread::workerThreads(lock)) {
+            // Ignore worker threads that have not been fully started yet.
+            if (!thread->thread())
+                continue;
             mach_port_t machThread = thread->thread()->machThread();
             if (machThread != MACH_PORT_NULL)
                 knownWorkerThreads.set(machThread, thread->identifier().isolatedCopy());

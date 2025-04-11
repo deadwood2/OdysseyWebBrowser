@@ -39,10 +39,11 @@
 #import "WebKit2Initialize.h"
 #import "WebPageGroup.h"
 #import "WebPageProxy.h"
-#import "WebPreferencesKeys.h"
+#import "WebPreferences.h"
 #import "WebProcessPool.h"
 #import "WebViewImpl.h"
 #import "_WKLinkIconParametersInternal.h"
+#import <WebCore/WebViewVisualIdentificationOverlay.h>
 #import <WebKit/WKDragDestinationAction.h>
 #import <pal/spi/cocoa/AVKitSPI.h>
 #import <wtf/BlockPtr.h>
@@ -963,6 +964,7 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
     _data->_impl = makeUnique<WebKit::WebViewImpl>(self, nullptr, processPool.get(), WTFMove(configuration));
 
     [self maybeInstallIconLoadingClient];
+    [WebViewVisualIdentificationOverlay installForWebViewIfNeeded:self kind:@"WKView" deprecated:YES];
 
     return self;
 }
@@ -1194,7 +1196,8 @@ static WebCore::UserInterfaceLayoutDirection toUserInterfaceLayoutDirection(NSUs
     configuration->setPageGroup(WebKit::toImpl(pageGroupRef));
     configuration->setRelatedPage(WebKit::toImpl(relatedPage));
 #if PLATFORM(MAC)
-    configuration->preferenceValues().set(WebKit::WebPreferencesKey::systemLayoutDirectionKey(), WebKit::WebPreferencesStore::Value(static_cast<uint32_t>(toUserInterfaceLayoutDirection(self.userInterfaceLayoutDirection))));
+    configuration->setPreferences(&configuration->pageGroup()->preferences());
+    configuration->preferences()->setSystemLayoutDirection(static_cast<uint32_t>(toUserInterfaceLayoutDirection(self.userInterfaceLayoutDirection)));
 #endif
 
     return [self initWithFrame:frame processPool:*WebKit::toImpl(contextRef) configuration:WTFMove(configuration)];
@@ -1266,6 +1269,16 @@ static WebCore::UserInterfaceLayoutDirection toUserInterfaceLayoutDirection(NSUs
 - (void)setMinimumSizeForAutoLayout:(NSSize)minimumSizeForAutoLayout
 {
     _data->_impl->setMinimumSizeForAutoLayout(NSSizeToCGSize(minimumSizeForAutoLayout));
+}
+
+- (NSSize)sizeToContentAutoSizeMaximumSize
+{
+    return NSSizeFromCGSize(_data->_impl->sizeToContentAutoSizeMaximumSize());
+}
+
+- (void)setSizeToContentAutoSizeMaximumSize:(NSSize)sizeToContentAutoSizeMaximumSize
+{
+    _data->_impl->setSizeToContentAutoSizeMaximumSize(NSSizeToCGSize(sizeToContentAutoSizeMaximumSize));
 }
 
 - (BOOL)shouldExpandToViewHeightForAutoLayout

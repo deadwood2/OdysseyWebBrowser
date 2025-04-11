@@ -64,7 +64,7 @@ public:
     CString toString() const;
 
     void encode(Encoder&) const;
-    static bool decode(Decoder&, StringReference&);
+    static WARN_UNUSED_RETURN bool decode(Decoder&, StringReference&);
 
     struct Hash {
         static unsigned hash(const StringReference& a);
@@ -97,9 +97,7 @@ inline bool StringReference::Hash::equal(const StringReference& a, const StringR
 namespace WTF {
 template<typename T> struct DefaultHash;
 
-template<> struct DefaultHash<IPC::StringReference> {
-    typedef IPC::StringReference::Hash Hash;
-};
+template<> struct DefaultHash<IPC::StringReference> : IPC::StringReference::Hash { };
 
 template<> struct HashTraits<IPC::StringReference> : GenericHashTraits<IPC::StringReference> {
     static const bool emptyValueIsZero = 0;

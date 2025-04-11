@@ -175,7 +175,6 @@ TEST_P(EGLContextSharingTest, DisplayShareGroupObjectSharing)
     ASSERT_GL_TRUE(glIsTexture(textureFromCtx0));
 
     ASSERT_GL_FALSE(glIsBuffer(bufferFromCtx0));
-    glDeleteBuffers(1, &bufferFromCtx0);
     ASSERT_GL_NO_ERROR();
 
     // Call readpixels on the texture to verify that the backend has proper support
@@ -375,9 +374,6 @@ TEST_P(EGLContextSharingTest, SamplerLifetime)
 TEST_P(EGLContextSharingTest, DeleteReaderOfSharedTexture)
 {
     ANGLE_SKIP_TEST_IF(!platformSupportsMultithreading());
-
-    // Bug in the Vulkan backend. http://anglebug.com/4130
-    ANGLE_SKIP_TEST_IF(IsVulkan());
 
     // Initialize contexts
     EGLWindow *window = getEGLWindow();

@@ -172,10 +172,12 @@ std::ostream &operator<<(std::ostream &os, GraphicsResetStatus value);
 
 enum class HandleType : uint8_t
 {
-    OpaqueFd = 0,
+    OpaqueFd    = 0,
+    ZirconVmo   = 1,
+    ZirconEvent = 2,
 
-    InvalidEnum = 1,
-    EnumCount   = 1,
+    InvalidEnum = 3,
+    EnumCount   = 3,
 };
 
 template <>
@@ -513,10 +515,11 @@ enum class TextureTarget : uint8_t
     CubeMapNegativeY    = 10,
     CubeMapPositiveZ    = 11,
     CubeMapNegativeZ    = 12,
-    VideoImage          = 13,
+    CubeMapArray        = 13,
+    VideoImage          = 14,
 
-    InvalidEnum = 14,
-    EnumCount   = 14,
+    InvalidEnum = 15,
+    EnumCount   = 15,
 };
 
 template <>
@@ -534,10 +537,11 @@ enum class TextureType : uint8_t
     External            = 5,
     Rectangle           = 6,
     CubeMap             = 7,
-    VideoImage          = 8,
+    CubeMapArray        = 8,
+    VideoImage          = 9,
 
-    InvalidEnum = 9,
-    EnumCount   = 9,
+    InvalidEnum = 10,
+    EnumCount   = 10,
 };
 
 template <>

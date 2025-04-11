@@ -167,10 +167,10 @@ void WebInspector::openInNewTab(const String& urlString)
         return;
 
     Frame& inspectedMainFrame = inspectedPage->mainFrame();
-    FrameLoadRequest frameLoadRequest { *inspectedMainFrame.document(), inspectedMainFrame.document()->securityOrigin(), ResourceRequest { urlString }, "_blank"_s, LockHistory::No, LockBackForwardList::No, MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Allow, ShouldOpenExternalURLsPolicy::ShouldNotAllow, InitiatedByMainFrame::Unknown };
+    FrameLoadRequest frameLoadRequest { *inspectedMainFrame.document(), inspectedMainFrame.document()->securityOrigin(), ResourceRequest { urlString }, "_blank"_s, InitiatedByMainFrame::Unknown };
 
     NavigationAction action { *inspectedMainFrame.document(), frameLoadRequest.resourceRequest(), frameLoadRequest.initiatedByMainFrame(), NavigationType::LinkClicked };
-    Page* newPage = inspectedPage->chrome().createWindow(inspectedMainFrame, frameLoadRequest, { }, action);
+    Page* newPage = inspectedPage->chrome().createWindow(inspectedMainFrame, { }, action);
     if (!newPage)
         return;
 
@@ -281,9 +281,9 @@ void WebInspector::timelineRecordingChanged(bool active)
     WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorProxy::TimelineRecordingChanged(active), m_page->identifier());
 }
 
-void WebInspector::setMockCaptureDevicesEnabledOverride(Optional<bool> enabled)
+void WebInspector::setDeveloperPreferenceOverride(InspectorClient::DeveloperPreference developerPreference, Optional<bool> overrideValue)
 {
-    WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorProxy::SetMockCaptureDevicesEnabledOverride(enabled), m_page->identifier());
+    WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorProxy::SetDeveloperPreferenceOverride(developerPreference, overrideValue), m_page->identifier());
 }
 
 bool WebInspector::canAttachWindow()

@@ -47,9 +47,16 @@
 #import <WebCore/Scrollbar.h>
 #import <WebCore/WebAccessibilityObjectWrapperMac.h>
 #import <pal/spi/cocoa/NSAccessibilitySPI.h>
-#import <wtf/ObjCRuntimeExtras.h>
+#import <pal/spi/mac/HIServicesSPI.h>
+#import <wtf/cocoa/VectorCocoa.h>
 
 namespace ax = WebCore::Accessibility;
+
+@interface WKAccessibilityWebPageObject()
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+@property (nonatomic, strong) NSArray *cachedParameterizedAttributeNames;
+#endif
+@end
 
 @implementation WKAccessibilityWebPageObject
 
@@ -86,17 +93,28 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (NSArray *)accessibilityParameterizedAttributeNames
 ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
-    return ax::retrieveValueFromMainThread<RetainPtr<id>>([PROTECTED_SELF] () -> RetainPtr<id> {
-        NSMutableArray *names = [NSMutableArray array];
-        if (!protectedSelf->m_page)
-            return names;
-        
-        if (auto corePage = protectedSelf->m_page->corePage()) {
-            for (auto& name : corePage->pageOverlayController().copyAccessibilityAttributesNames(true))
-                [names addObject:(NSString *)name];
-        }
-        return names;
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+    if (id cachedNames = self.cachedParameterizedAttributeNames)
+        return cachedNames;
+#endif
+
+    id names = ax::retrieveValueFromMainThread<RetainPtr<id>>([PROTECTED_SELF] () -> RetainPtr<id> {
+        auto page = protectedSelf->m_page;
+        if (!page)
+            return @[];
+
+        auto corePage = page->corePage();
+        if (!corePage)
+            return @[];
+
+        return createNSArray(corePage->pageOverlayController().copyAccessibilityAttributesNames(true));
     }).autorelease();
+
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+    self.cachedParameterizedAttributeNames = names;
+#endif
+
+    return names;
 }
 
 ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
@@ -125,16 +143,16 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (NSArray *)accessibilityActionNames
 ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
-    return [NSArray array];
+    return @[];
 }
 
 - (NSArray *)accessibilityChildren
 {
     id wrapper = [self accessibilityRootObjectWrapper];
     if (!wrapper)
-        return [NSArray array];
+        return @[];
     
-    return [NSArray arrayWithObject:wrapper];
+    return @[wrapper];
 }
 
 ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
@@ -253,8 +271,7 @@ ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 
         // Isolated tree frames have the offset encoded into them so we don't need to undo here.
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-        bool queryingIsolatedTree = WebCore::AXObjectCache::clientSupportsIsolatedTree() && _AXUIElementRequestServicedBySecondaryAXThread();
-        applyContentOffset = !queryingIsolatedTree;
+        applyContentOffset = !WebCore::AXObjectCache::isIsolatedTreeEnabled() || !_AXUIElementRequestServicedBySecondaryAXThread();
 #endif
         if (auto pluginView = WebKit::WebPage::pluginViewForFrame(protectedSelf->m_page->mainFrame()))
             applyContentOffset = !pluginView->plugin()->pluginHandlesContentOffsetForAccessibilityHitTest();

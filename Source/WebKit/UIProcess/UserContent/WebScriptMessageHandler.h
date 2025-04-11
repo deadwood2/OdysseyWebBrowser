@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "APIUserContentWorld.h"
+#include "APIContentWorld.h"
 #include "WebUserContentControllerDataTypes.h"
 #include <wtf/Identified.h>
 #include <wtf/Ref.h>
@@ -38,7 +38,8 @@ class SerializedScriptValue;
 }
 
 namespace API {
-class UserContentWorld;
+class ContentWorld;
+class SerializedScriptValue;
 }
 
 namespace WebKit {
@@ -52,24 +53,26 @@ public:
     class Client {
     public:
         virtual ~Client() { }
-        virtual void didPostMessage(WebPageProxy&, FrameInfoData&&, WebCore::SerializedScriptValue&) = 0;
+        virtual void didPostMessage(WebPageProxy&, FrameInfoData&&, API::ContentWorld&, WebCore::SerializedScriptValue&) = 0;
+        virtual bool supportsAsyncReply() = 0;
+        virtual void didPostMessageWithAsyncReply(WebPageProxy&, FrameInfoData&&, API::ContentWorld&, WebCore::SerializedScriptValue&, WTF::Function<void(API::SerializedScriptValue*, const String&)>&&) = 0;
     };
 
-    static Ref<WebScriptMessageHandler> create(std::unique_ptr<Client>, const String& name, API::UserContentWorld&);
+    static Ref<WebScriptMessageHandler> create(std::unique_ptr<Client>, const String& name, API::ContentWorld&);
     virtual ~WebScriptMessageHandler();
 
     String name() const { return m_name; }
 
-    API::ContentWorldBase& world() { return m_world.get(); }
+    API::ContentWorld& world() { return m_world.get(); }
 
     Client& client() const { return *m_client; }
 
 private:
-    WebScriptMessageHandler(std::unique_ptr<Client>, const String&, API::UserContentWorld&);
+    WebScriptMessageHandler(std::unique_ptr<Client>, const String&, API::ContentWorld&);
 
     std::unique_ptr<Client> m_client;
     String m_name;
-    Ref<API::UserContentWorld> m_world;
+    Ref<API::ContentWorld> m_world;
 };
 
 } // namespace API

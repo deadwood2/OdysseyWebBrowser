@@ -51,7 +51,7 @@ class TestGenericFactory(TestCase):
         factory = factories.Factory(platform='ios-simulator-13', configuration='release', architectures='arm64')
         self.assertBuildSteps(factory.steps, [
             _BuildStepFactory(steps.ConfigureBuild, platform='ios-simulator-13', configuration='release', architectures='arm64', buildOnly=True, triggers=None, remotes=None, additionalArguments=None),
-            _BuildStepFactory(steps.ValidatePatch, verifycqplus=False),
+            _BuildStepFactory(steps.ValidatePatch),
             _BuildStepFactory(steps.PrintConfiguration),
             _BuildStepFactory(steps.CheckOutSource),
             _BuildStepFactory(steps.CheckOutSpecificRevision),
@@ -63,7 +63,7 @@ class TestGenericFactory(TestCase):
         self.assertBuildSteps(factory.steps, [
             _BuildStepFactory(steps.ConfigureBuild, platform='ios-simulator-13', configuration='release', architectures='arm64', buildOnly=True, triggers=None, remotes=None, additionalArguments=None),
             _BuildStepFactory(steps.CheckPatchRelevance),
-            _BuildStepFactory(steps.ValidatePatch, verifycqplus=False),
+            _BuildStepFactory(steps.ValidatePatch),
             _BuildStepFactory(steps.PrintConfiguration),
             _BuildStepFactory(steps.CheckOutSource),
             _BuildStepFactory(steps.CheckOutSpecificRevision),
@@ -104,7 +104,7 @@ class TestTestsFactory(TestCase):
         self.assertBuildSteps(factory.steps, [
             _BuildStepFactory(steps.ConfigureBuild, platform='*', configuration=None, architectures=None, buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
             _BuildStepFactory(steps.CheckPatchRelevance),
-            _BuildStepFactory(steps.ValidatePatch, verifycqplus=False),
+            _BuildStepFactory(steps.ValidatePatch),
             _BuildStepFactory(steps.PrintConfiguration),
             _BuildStepFactory(steps.CheckOutSource),
             _BuildStepFactory(steps.CheckOutSpecificRevision),
@@ -116,7 +116,7 @@ class TestTestsFactory(TestCase):
         factory = factories.WebKitPerlFactory(platform='*', configuration=None, architectures=None)
         self.assertBuildSteps(factory.steps, [
             _BuildStepFactory(steps.ConfigureBuild, platform='*', configuration=None, architectures=None, buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
-            _BuildStepFactory(steps.ValidatePatch, verifycqplus=False),
+            _BuildStepFactory(steps.ValidatePatch),
             _BuildStepFactory(steps.PrintConfiguration),
             _BuildStepFactory(steps.CheckOutSource),
             _BuildStepFactory(steps.CheckOutSpecificRevision),
@@ -129,7 +129,7 @@ class TestTestsFactory(TestCase):
         self.assertBuildSteps(factory.steps, [
             _BuildStepFactory(steps.ConfigureBuild, platform='*', configuration=None, architectures=None, buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
             _BuildStepFactory(steps.CheckPatchRelevance),
-            _BuildStepFactory(steps.ValidatePatch, verifycqplus=False),
+            _BuildStepFactory(steps.ValidatePatch),
             _BuildStepFactory(steps.PrintConfiguration),
             _BuildStepFactory(steps.CheckOutSource),
             _BuildStepFactory(steps.CheckOutSpecificRevision),
@@ -144,12 +144,317 @@ class TestTestsFactory(TestCase):
         self.assertBuildSteps(factory.steps, [
             _BuildStepFactory(steps.ConfigureBuild, platform='*', configuration=None, architectures=None, buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
             _BuildStepFactory(steps.CheckPatchRelevance),
-            _BuildStepFactory(steps.ValidatePatch, verifycqplus=False),
+            _BuildStepFactory(steps.ValidatePatch),
             _BuildStepFactory(steps.PrintConfiguration),
             _BuildStepFactory(steps.CheckOutSource),
             _BuildStepFactory(steps.CheckOutSpecificRevision),
             _BuildStepFactory(steps.ApplyPatch),
             _BuildStepFactory(steps.RunEWSUnitTests),
             _BuildStepFactory(steps.RunEWSBuildbotCheckConfig),
+            _BuildStepFactory(steps.RunResultsdbpyTests),
             _BuildStepFactory(steps.RunBuildWebKitOrgUnitTests),
+        ])
+
+
+class TestBuildFactory(TestCase):
+    def test_generic_build_factory(self):
+        factory = factories.BuildFactory(platform='mac-mojave', configuration='release', architectures=["x86_64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='mac-mojave', configuration='release', architectures=["x86_64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.CompileWebKit, skipUpload=False),
+        ])
+
+    def test_macos_build_factory(self):
+        factory = factories.macOSBuildFactory(platform='mac-mojave', configuration='release', architectures=["x86_64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='mac-mojave', configuration='release', architectures=["x86_64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.CompileWebKit, skipUpload=False),
+        ])
+
+    def test_macos_build_only_factory(self):
+        factory = factories.macOSBuildOnlyFactory(platform='mac-bigsur', configuration='release', architectures=["arm64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='mac-bigsur', configuration='release', architectures=["arm64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.CheckPatchRelevance),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.CompileWebKit, skipUpload=True),
+        ])
+
+    def test_ios_build_factory(self):
+        factory = factories.iOSBuildFactory(platform='ios-simulator-13', configuration='release', architectures=["x86_64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='ios-simulator-13', configuration='release', architectures=["x86_64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.CompileWebKit, skipUpload=False),
+        ])
+
+    def test_ios_embedded_build_factory(self):
+        factory = factories.iOSEmbeddedBuildFactory(platform='ios-13', configuration='release', architectures=["arm64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='ios-13', configuration='release', architectures=["arm64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.CompileWebKit, skipUpload=True),
+        ])
+
+    def test_watchos_build_factory(self):
+        factory = factories.watchOSBuildFactory(platform='watchos-6', configuration='release', architectures=["arm64_32"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='watchos-6', configuration='release', architectures=["arm64_32"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.CompileWebKit, skipUpload=True),
+        ])
+
+    def test_tvos_build_factory(self):
+        factory = factories.tvOSBuildFactory(platform='tvos-13', configuration='release', architectures=["arm64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='tvos-13', configuration='release', architectures=["arm64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.CompileWebKit, skipUpload=True),
+        ])
+
+    def test_gtk_build_factory(self):
+        factory = factories.GTKBuildFactory(platform='gtk', configuration='release', architectures=['x86_64'])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='gtk', configuration='release', architectures=['x86_64'], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.InstallGtkDependencies),
+            _BuildStepFactory(steps.CompileWebKit, skipUpload=False),
+        ])
+
+    def test_wpe_factory(self):
+        factory = factories.WPEFactory(platform='wpe', configuration='release', architectures=['x86_64'])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='wpe', configuration='release', architectures=['x86_64'], buildOnly=True, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.InstallWpeDependencies),
+            _BuildStepFactory(steps.CompileWebKit, skipUpload=True),
+        ])
+
+    def test_wincairo_factory(self):
+        factory = factories.WinCairoFactory(platform='wincairo', configuration='release', architectures=['x86_64'])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='wincairo', configuration='release', architectures=['x86_64'], buildOnly=True, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.CompileWebKit, skipUpload=True),
+        ])
+
+    def test_jsc_mipsel_factory(self):
+        factory = factories.JSCBuildFactory(platform='jsc', configuration='release', architectures=["mipsel"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='jsc', configuration='release', architectures=["mipsel"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.CheckPatchRelevance),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.CompileJSC),
+        ])
+
+    def test_jsc_armv7_factory(self):
+        factory = factories.JSCBuildFactory(platform='jsc', configuration='release', architectures=["armv7"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='jsc', configuration='release', architectures=["armv7"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.CheckPatchRelevance),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.CompileJSC),
+        ])
+
+
+class TestBuildAndTestsFactory(TestCase):
+    def test_windows_factory(self):
+        factory = factories.WindowsFactory(platform='win', configuration='release', architectures=["x86_64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='win', configuration='release', architectures=["x86_64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.CheckPatchRelevance),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.CompileWebKit, skipUpload=True),
+            _BuildStepFactory(steps.ValidatePatch, verifyBugClosed=False, addURLs=False),
+            _BuildStepFactory(steps.RunWebKit1Tests),
+            _BuildStepFactory(steps.SetBuildSummary),
+        ])
+
+
+class TestCommitQueueFactory(TestCase):
+    def test_commit_queue_factory(self):
+        factory = factories.CommitQueueFactory(platform='mac-mojave', configuration='release', architectures=["x86_64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='mac-mojave', configuration='release', architectures=["x86_64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch, verifycqplus=True),
+            _BuildStepFactory(steps.ValidateCommiterAndReviewer),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.UpdateWorkingDirectory),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.ValidateChangeLogAndReviewer),
+            _BuildStepFactory(steps.FindModifiedChangeLogs),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.CompileWebKit, skipUpload=True),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.ValidatePatch, addURLs=False, verifycqplus=True),
+            _BuildStepFactory(steps.CheckPatchStatusOnEWSQueues),
+            _BuildStepFactory(steps.RunWebKitTests),
+            _BuildStepFactory(steps.ValidatePatch, addURLs=False, verifycqplus=True),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.UpdateWorkingDirectory),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.CreateLocalGITCommit),
+            _BuildStepFactory(steps.PushCommitToWebKitRepo),
+            _BuildStepFactory(steps.SetBuildSummary),
+        ])
+
+
+class TestLayoutTestsFactory(TestCase):
+    def test_macos_wk1_release_factory(self):
+        factory = factories.macOSWK1Factory(platform='mac-mojave', configuration='release', architectures=["x86_64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='mac-mojave', configuration='release', architectures=["x86_64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.CheckPatchRelevance),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.DownloadBuiltProduct),
+            _BuildStepFactory(steps.ExtractBuiltProduct),
+            _BuildStepFactory(steps.WaitForCrashCollection),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.RunWebKit1Tests),
+            _BuildStepFactory(steps.TriggerCrashLogSubmission),
+            _BuildStepFactory(steps.SetBuildSummary),
+        ])
+
+    def test_macos_wk1_debug_factory(self):
+        factory = factories.macOSWK1Factory(platform='mac-mojave', configuration='debug', architectures=["x86_64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='mac-mojave', configuration='debug', architectures=["x86_64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.CheckPatchRelevance),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.DownloadBuiltProduct),
+            _BuildStepFactory(steps.ExtractBuiltProduct),
+            _BuildStepFactory(steps.WaitForCrashCollection),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.RunWebKit1Tests),
+            _BuildStepFactory(steps.TriggerCrashLogSubmission),
+            _BuildStepFactory(steps.SetBuildSummary),
+        ])
+
+    def test_macos_wk2_factory(self):
+        factory = factories.macOSWK2Factory(platform='mac-mojave', configuration='release', architectures=["x86_64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='mac-mojave', configuration='release', architectures=["x86_64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.DownloadBuiltProduct),
+            _BuildStepFactory(steps.ExtractBuiltProduct),
+            _BuildStepFactory(steps.WaitForCrashCollection),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.RunWebKitTests),
+            _BuildStepFactory(steps.TriggerCrashLogSubmission),
+            _BuildStepFactory(steps.SetBuildSummary),
+        ])
+
+    def test_ios_wk2_factory(self):
+        factory = factories.iOSTestsFactory(platform='ios-simulator-13', configuration='release', architectures=["x86_64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='ios-simulator-13', configuration='release', architectures=["x86_64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.DownloadBuiltProduct),
+            _BuildStepFactory(steps.ExtractBuiltProduct),
+            _BuildStepFactory(steps.WaitForCrashCollection),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.RunWebKitTests),
+            _BuildStepFactory(steps.TriggerCrashLogSubmission),
+            _BuildStepFactory(steps.SetBuildSummary),
+        ])
+
+    def test_gtk_factory(self):
+        factory = factories.GTKTestsFactory(platform='gtk', configuration='release', architectures=["x86_64"])
+        self.assertBuildSteps(factory.steps, [
+            _BuildStepFactory(steps.ConfigureBuild, platform='gtk', configuration='release', architectures=["x86_64"], buildOnly=False, triggers=None, remotes=None, additionalArguments=None),
+            _BuildStepFactory(steps.ValidatePatch),
+            _BuildStepFactory(steps.PrintConfiguration),
+            _BuildStepFactory(steps.CheckOutSource),
+            _BuildStepFactory(steps.CheckOutSpecificRevision),
+            _BuildStepFactory(steps.ApplyPatch),
+            _BuildStepFactory(steps.InstallGtkDependencies),
+            _BuildStepFactory(steps.DownloadBuiltProduct),
+            _BuildStepFactory(steps.ExtractBuiltProduct),
+            _BuildStepFactory(steps.KillOldProcesses),
+            _BuildStepFactory(steps.RunWebKitTests),
+            _BuildStepFactory(steps.SetBuildSummary),
         ])

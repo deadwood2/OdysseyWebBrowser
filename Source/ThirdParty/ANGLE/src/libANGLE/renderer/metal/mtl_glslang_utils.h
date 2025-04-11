@@ -19,16 +19,38 @@ namespace rx
 {
 namespace mtl
 {
+
+struct SamplerBinding
+{
+    uint32_t textureBinding = 0;
+    uint32_t samplerBinding = 0;
+};
+
+struct TranslatedShaderInfo
+{
+    std::array<SamplerBinding, kMaxGLSamplerBindings> actualSamplerBindings;
+    // NOTE(hqle): UBO, XFB bindings.
+};
+
 void GlslangGetShaderSource(const gl::ProgramState &programState,
                             const gl::ProgramLinkedResources &resources,
                             gl::ShaderMap<std::string> *shaderSourcesOut,
-                            ShaderInterfaceVariableInfoMap *variableInfoMapOut);
+                            ShaderMapInterfaceVariableInfoMap *variableInfoMapOut);
 
 angle::Result GlslangGetShaderSpirvCode(ErrorHandler *context,
+                                        const gl::ShaderBitSet &linkedShaderStages,
                                         const gl::Caps &glCaps,
                                         const gl::ShaderMap<std::string> &shaderSources,
-                                        const ShaderInterfaceVariableInfoMap &variableInfoMap,
+                                        const ShaderMapInterfaceVariableInfoMap &variableInfoMap,
                                         gl::ShaderMap<std::vector<uint32_t>> *shaderCodeOut);
+
+// Translate from SPIR-V code to Metal shader source code.
+angle::Result SpirvCodeToMsl(Context *context,
+                             const gl::ProgramState &programState,
+                             gl::ShaderMap<std::vector<uint32_t>> *sprivShaderCode,
+                             gl::ShaderMap<TranslatedShaderInfo> *mslShaderInfoOut,
+                             gl::ShaderMap<std::string> *mslCodeOut);
+
 }  // namespace mtl
 }  // namespace rx
 

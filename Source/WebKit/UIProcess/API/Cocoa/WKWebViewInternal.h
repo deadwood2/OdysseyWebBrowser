@@ -35,7 +35,7 @@
 #import <wtf/RefPtr.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/Variant.h>
-#include <wtf/WeakObjCPtr.h>
+#import <wtf/WeakObjCPtr.h>
 
 #if PLATFORM(IOS_FAMILY)
 #import "DynamicViewportSizeUpdate.h"
@@ -68,6 +68,7 @@ class Attachment;
 namespace WebKit {
 enum class ContinueUnsafeLoad : bool;
 class IconLoadingDelegate;
+class InspectorDelegate;
 class NavigationState;
 class ResourceLoadDelegate;
 class SafeBrowsingWarning;
@@ -112,6 +113,7 @@ class ViewGestureController;
     std::unique_ptr<WebKit::UIDelegate> _uiDelegate;
     std::unique_ptr<WebKit::IconLoadingDelegate> _iconLoadingDelegate;
     std::unique_ptr<WebKit::ResourceLoadDelegate> _resourceLoadDelegate;
+    std::unique_ptr<WebKit::InspectorDelegate> _inspectorDelegate;
 
     WeakObjCPtr<id <_WKTextManipulationDelegate>> _textManipulationDelegate;
     WeakObjCPtr<id <_WKInputDelegate>> _inputDelegate;
@@ -215,6 +217,8 @@ class ViewGestureController;
     BOOL _didDeferUpdateVisibleContentRectsForUIScrollViewDelegateCallback;
     BOOL _didDeferUpdateVisibleContentRectsForAnyReason;
     BOOL _didDeferUpdateVisibleContentRectsForUnstableScrollView;
+    BOOL _alwaysSendNextVisibleContentRectUpdate;
+    BOOL _contentViewShouldBecomeFirstResponderAfterNavigationGesture;
 
     BOOL _waitingForEndAnimatedResize;
     BOOL _waitingForCommitAfterAnimatedResize;

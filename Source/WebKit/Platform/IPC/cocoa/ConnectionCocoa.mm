@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,6 +36,7 @@
 #import <mach/mach_error.h>
 #import <mach/vm_map.h>
 #import <sys/mman.h>
+#import <wtf/HexNumber.h>
 #import <wtf/MachSendRight.h>
 #import <wtf/RunLoop.h>
 #import <wtf/spi/darwin/XPCSPI.h>
@@ -86,7 +87,7 @@ private:
         : m_xpcConnection(xpcConnection)
         , m_watchdogTimer(RunLoop::main(), this, &ConnectionTerminationWatchdog::watchdogTimerFired)
 #if PLATFORM(IOS_FAMILY)
-        , m_assertion(makeUnique<WebKit::ProcessAndUIAssertion>(xpc_connection_get_pid(m_xpcConnection.get()), "ConnectionTerminationWatchdog"_s, WebKit::AssertionState::Background))
+        , m_assertion(makeUnique<WebKit::ProcessAndUIAssertion>(xpc_connection_get_pid(m_xpcConnection.get()), "ConnectionTerminationWatchdog"_s, WebKit::ProcessAssertionType::Background))
 #endif
     {
         m_watchdogTimer.startOneShot(interval);
@@ -214,7 +215,7 @@ bool Connection::open()
         m_isConnected = true;
         
         // Send the initialize message, which contains a send right for the server to use.
-        auto encoder = makeUnique<Encoder>("IPC", "InitializeConnection", 0);
+        auto encoder = makeUnique<Encoder>(MessageName::InitializeConnection, 0);
         encoder->encode(MachPort(m_receivePort, MACH_MSG_TYPE_MAKE_SEND));
 
         initializeSendSource();
@@ -273,9 +274,10 @@ bool Connection::sendMessage(std::unique_ptr<MachMessage> message)
         return false;
 
     default:
-        CString messageName = makeString(message->messageReceiverName().data(), "::", message->messageName().data()).utf8();
-        WebKit::setCrashReportApplicationSpecificInformation((__bridge CFStringRef)[NSString stringWithFormat:@"Unhandled error code %x, message '%s', hash %d", kr, messageName.data(), messageName.hash()]);
-        CRASH_WITH_INFO(kr, messageName.hash());
+        auto messageName = message->messageName();
+        auto errorMessage = makeString("Unhandled error code 0x", hex(kr), ", message '", description(messageName), "' (", messageName, ')');
+        WebKit::logAndSetCrashLogMessage(errorMessage.utf8().data());
+        CRASH_WITH_INFO(kr, WTF::enumToUnderlyingType(messageName));
     }
 }
 
@@ -297,16 +299,24 @@ bool Connection::sendOutgoingMessage(std::unique_ptr<Encoder> encoder)
 
     bool messageBodyIsOOL = false;
     auto messageSize = MachMessage::messageSize(encoder->bufferSize(), numberOfPortDescriptors, messageBodyIsOOL);
+    if (UNLIKELY(messageSize.hasOverflowed()))
+        return false;
+
     if (messageSize > inlineMessageMaxSize) {
         messageBodyIsOOL = true;
         messageSize = MachMessage::messageSize(0, numberOfPortDescriptors, messageBodyIsOOL);
+        if (UNLIKELY(messageSize.hasOverflowed()))
+            return false;
     }
 
-    auto message = MachMessage::create(encoder->messageReceiverName().toString(), encoder->messageName().toString(), messageSize);
+    size_t safeMessageSize = messageSize.unsafeGet();
+    auto message = MachMessage::create(encoder->messageName(), safeMessageSize);
+    if (!message)
+        return false;
 
     auto* header = message->header();
     header->msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
-    header->msgh_size = messageSize;
+    header->msgh_size = safeMessageSize;
     header->msgh_remote_port = m_sendPort;
     header->msgh_local_port = MACH_PORT_NULL;
     header->msgh_id = messageBodyIsOOL ? outOfLineBodyMessageID : inlineBodyMessageID;
@@ -407,32 +417,32 @@ static std::unique_ptr<Decoder> createMessageDecoder(mach_msg_header_t* header)
         uint8_t* body = reinterpret_cast<uint8_t*>(header + 1);
         size_t bodySize = header->msgh_size - sizeof(mach_msg_header_t);
 
-        return makeUnique<Decoder>(body, bodySize, nullptr, Vector<Attachment> { });
+        return Decoder::create(body, bodySize, nullptr, Vector<Attachment> { });
     }
 
-    bool messageBodyIsOOL = header->msgh_id == outOfLineBodyMessageID;
-
     mach_msg_body_t* body = reinterpret_cast<mach_msg_body_t*>(header + 1);
-    mach_msg_size_t numDescriptors = body->msgh_descriptor_count;
-    ASSERT(numDescriptors);
+    mach_msg_size_t numberOfPortDescriptors = body->msgh_descriptor_count;
+    ASSERT(numberOfPortDescriptors);
+    if (!numberOfPortDescriptors)
+        return nullptr;
 
     uint8_t* descriptorData = reinterpret_cast<uint8_t*>(body + 1);
 
     // If the message body was sent out-of-line, don't treat the last descriptor
     // as an attachment, since it is really the message body.
-    if (messageBodyIsOOL)
-        --numDescriptors;
+    bool messageBodyIsOOL = header->msgh_id == outOfLineBodyMessageID;
+    mach_msg_size_t numberOfAttachments = messageBodyIsOOL ? numberOfPortDescriptors - 1 : numberOfPortDescriptors;
 
     // Build attachment list
-    Vector<Attachment> attachments(numDescriptors);
+    Vector<Attachment> attachments(numberOfAttachments);
 
-    for (mach_msg_size_t i = 0; i < numDescriptors; ++i) {
+    for (mach_msg_size_t i = 0; i < numberOfAttachments; ++i) {
         mach_msg_descriptor_t* descriptor = reinterpret_cast<mach_msg_descriptor_t*>(descriptorData);
         ASSERT(descriptor->type.type == MACH_MSG_PORT_DESCRIPTOR);
         if (descriptor->type.type != MACH_MSG_PORT_DESCRIPTOR)
             return nullptr;
 
-        attachments[numDescriptors - i - 1] = Attachment(descriptor->port.name, descriptor->port.disposition);
+        attachments[numberOfAttachments - i - 1] = Attachment(descriptor->port.name, descriptor->port.disposition);
         descriptorData += sizeof(mach_msg_port_descriptor_t);
     }
 
@@ -445,7 +455,8 @@ static std::unique_ptr<Decoder> createMessageDecoder(mach_msg_header_t* header)
         uint8_t* messageBody = static_cast<uint8_t*>(descriptor->out_of_line.address);
         size_t messageBodySize = descriptor->out_of_line.size;
 
-        return makeUnique<Decoder>(messageBody, messageBodySize, [](const uint8_t* buffer, size_t length) {
+        return Decoder::create(messageBody, messageBodySize, [](const uint8_t* buffer, size_t length) {
+            // FIXME: <rdar://problem/62086358> bufferDeallocator block ignores mach_msg_ool_descriptor_t->deallocate
             vm_deallocate(mach_task_self(), reinterpret_cast<vm_address_t>(buffer), length);
         }, WTFMove(attachments));
     }
@@ -453,7 +464,7 @@ static std::unique_ptr<Decoder> createMessageDecoder(mach_msg_header_t* header)
     uint8_t* messageBody = descriptorData;
     size_t messageBodySize = header->msgh_size - (descriptorData - reinterpret_cast<uint8_t*>(header));
 
-    return makeUnique<Decoder>(messageBody, messageBodySize, nullptr, WTFMove(attachments));
+    return Decoder::create(messageBody, messageBodySize, nullptr, WTFMove(attachments));
 }
 
 // The receive buffer size should always include the maximum trailer size.
@@ -482,7 +493,8 @@ static mach_msg_header_t* readFromMachPort(mach_port_t machPort, ReceiveBuffer& 
 
     if (kr != MACH_MSG_SUCCESS) {
 #if ASSERT_ENABLED
-        WebKit::setCrashReportApplicationSpecificInformation((__bridge CFStringRef)[NSString stringWithFormat:@"Unhandled error code %x from mach_msg, receive port is %x", kr, machPort]);
+        auto errorMessage = makeString("Unhandled error code 0x", hex(kr), " from mach_msg, receive port is 0x", hex(machPort));
+        WebKit::logAndSetCrashLogMessage(errorMessage.utf8().data());
 #endif
         ASSERT_NOT_REACHED();
         return nullptr;
@@ -524,7 +536,7 @@ void Connection::receiveSourceEventHandler()
     decoder->setImportanceAssertion(makeUnique<ImportanceAssertion>(header));
 #endif
 
-    if (decoder->messageReceiverName() == "IPC" && decoder->messageName() == "InitializeConnection") {
+    if (decoder->messageName() == MessageName::InitializeConnection) {
         ASSERT(m_isServer);
         ASSERT(!m_isConnected);
         ASSERT(!m_sendPort);
@@ -562,29 +574,6 @@ void Connection::receiveSourceEventHandler()
         
         return;
     }
-
-#if !PLATFORM(IOS_FAMILY)
-    if (decoder->messageReceiverName() == "IPC" && decoder->messageName() == "SetExceptionPort") {
-        if (m_isServer) {
-            // Server connections aren't supposed to have their exception ports overridden. Treat this as an invalid message.
-            StringReference messageReceiverNameReference = decoder->messageReceiverName();
-            String messageReceiverName(String(messageReceiverNameReference.data(), messageReceiverNameReference.size()));
-            StringReference messageNameReference = decoder->messageName();
-            String messageName(String(messageNameReference.data(), messageNameReference.size()));
-
-            RunLoop::main().dispatch([protectedThis = makeRef(*this), messageReceiverName = WTFMove(messageReceiverName), messageName = WTFMove(messageName)]() mutable {
-                protectedThis->dispatchDidReceiveInvalidMessage(messageReceiverName.utf8(), messageName.utf8());
-            });
-            return;
-        }
-        MachPort exceptionPort;
-        if (!decoder->decode(exceptionPort))
-            return;
-
-        setMachExceptionPort(exceptionPort.port());
-        return;
-    }
-#endif
 
     processIncomingMessage(WTFMove(decoder));
 }    

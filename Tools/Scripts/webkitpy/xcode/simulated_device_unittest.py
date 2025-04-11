@@ -1,4 +1,4 @@
-# Copyright (C) 2017-2019 Apple Inc. All rights reserved.
+# Copyright (C) 2017-2020 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -19,6 +19,17 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+import json
+import unittest
+
+from webkitcorepy import string_utils, Version
+
+from webkitpy.common.system.executive_mock import MockExecutive2
+from webkitpy.common.system.filesystem_mock import MockFileSystem
+from webkitpy.common.system.systemhost_mock import MockSystemHost
+from webkitpy.xcode.device_type import DeviceType
+from webkitpy.xcode.simulated_device import DeviceRequest, SimulatedDeviceManager, SimulatedDevice
 
 simctl_json_output = """{
  "devicetypes" : [
@@ -67,7 +78,7 @@ simctl_json_output = """{
      "identifier" : "com.apple.CoreSimulator.SimDeviceType.iPhone-8-Plus"
    },
    {
-     "name" : "iPhone SE",
+     "name" : "iPhone SE (1st generation)",
      "identifier" : "com.apple.CoreSimulator.SimDeviceType.iPhone-SE"
    },
    {
@@ -373,7 +384,7 @@ simctl_json_output = """{
      {
        "state" : "Shutdown",
        "availability" : "(available)",
-       "name" : "iPhone SE",
+       "name" : "iPhone SE (1st generation)",
        "udid" : "DB46D0DB-510E-4928-BDB4-1A0192ED4A38"
      },
      {
@@ -494,18 +505,6 @@ simctl_json_output = """{
    "com.apple.carousel.sessionservice"
  ]
 }"""
-
-import json
-import unittest
-
-from webkitpy.common.system.executive_mock import MockExecutive2
-from webkitpy.common.system.filesystem_mock import MockFileSystem
-from webkitpy.common.system.systemhost_mock import MockSystemHost
-from webkitpy.common.version import Version
-from webkitpy.common.unicode_compatibility import encode_if_necessary
-from webkitpy.xcode.device_type import DeviceType
-from webkitpy.xcode.simulated_device import DeviceRequest, SimulatedDeviceManager, SimulatedDevice
-
 
 class SimulatedDeviceTest(unittest.TestCase):
 
@@ -651,7 +650,7 @@ class SimulatedDeviceTest(unittest.TestCase):
         # as determined from the .json output.
         device_plist = device.filesystem.expanduser(device.filesystem.join(SimulatedDeviceManager.simulator_device_path, device.udid, 'device.plist'))
         index_position = device.filesystem.files[device_plist].index(b'</integer>') - 1
-        device.filesystem.files[device_plist] = device.filesystem.files[device_plist][:index_position] + encode_if_necessary(str(state)) + device.filesystem.files[device_plist][index_position + 1:]
+        device.filesystem.files[device_plist] = device.filesystem.files[device_plist][:index_position] + string_utils.encode(str(state)) + device.filesystem.files[device_plist][index_position + 1:]
 
     def test_swapping_devices(self):
         SimulatedDeviceTest.reset_simulated_device_manager()

@@ -30,8 +30,8 @@
 import unittest
 
 from webkitpy.common.system.filesystem_mock import MockFileSystem
-from webkitpy.common.unicode_compatibility import StringIO
-from webkitpy.common.checkout.changelog import *
+from webkitpy.common.checkout.changelog import ChangeLog, ChangeLogEntry, CommitterList, parse_bug_id_from_changelog
+from webkitcorepy import StringIO
 
 
 class ChangeLogTest(unittest.TestCase):
@@ -383,7 +383,7 @@ class ChangeLogTest(unittest.TestCase):
         self._assert_parse_reviewer_text_list('Reviewed by NOBODY.', None)
         self._assert_parse_reviewer_text_list('Reviewed by NOBODY - Build Fix.', None)
         self._assert_parse_reviewer_text_list('Reviewed by NOBODY, layout tests fix.', None)
-        self._assert_parse_reviewer_text_list('Reviewed by NOBODY(rollout)', None)
+        self._assert_parse_reviewer_text_list('Reviewed by NOBODY(revert)', None)
         self._assert_parse_reviewer_text_list('Reviewed by NOBODY (Build fix, forgot to svn add this file)', None)
         self._assert_parse_reviewer_text_list('Reviewed by nobody (trivial follow up fix), Joseph Pecoraro LGTM-ed.', None)
 
@@ -607,10 +607,6 @@ class ChangeLogTest(unittest.TestCase):
 
         Perform some file operations (automatically added comments).
 
-        * QueueStatusServer/config/charts.py: Copied from Tools/QueueStatusServer/model/queuelog.py.
-        (get_time_unit):
-        * QueueStatusServer/handlers/queuecharts.py: Added.
-        (QueueCharts):
         * Scripts/webkitpy/tool/bot/testdata/webkit_sheriff_0.js: Removed.
         * EWSTools/build-vm.sh: Renamed from Tools/EWSTools/cold-boot.sh.
 ''', True),

@@ -36,14 +36,15 @@ void InjectedBundleController::platformInitialize()
     NSMutableDictionary *argumentDomain = [[[NSUserDefaults standardUserDefaults] volatileDomainForName:NSArgumentDomain] mutableCopy];
     if (!argumentDomain)
         argumentDomain = [[NSMutableDictionary alloc] init];
-    
-    NSDictionary *dict = [NSDictionary dictionaryWithObjectsAndKeys:
-                          [NSNumber numberWithInteger:4],   @"AppleAntiAliasingThreshold",
-                          [NSNumber numberWithInteger:0],   @"AppleFontSmoothing",
-                          @NO,     @"NSScrollAnimationEnabled",
-                          @NO,     @"NSOverlayScrollersEnabled",
-                          @"Always",                        @"AppleShowScrollBars",
-                          nil];
+
+    // FIXME: We should set these in the UI process and propagate them to the
+    // Web Content process at process launch time, because most tests do not
+    // have an injected bundle, so these do not make TestWebKitAPI behavior consistent.
+    NSDictionary *dict = @{
+        @"AppleAntiAliasingThreshold": @(4),
+        @"AppleFontSmoothing": @(0),
+        @"NSScrollAnimationEnabled": @NO,
+    };
 
     [argumentDomain addEntriesFromDictionary:dict];
     [[NSUserDefaults standardUserDefaults] setVolatileDomain:argumentDomain forName:NSArgumentDomain];

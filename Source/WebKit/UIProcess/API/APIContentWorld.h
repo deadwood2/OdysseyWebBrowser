@@ -27,47 +27,38 @@
 
 #include "APIObject.h"
 #include "ContentWorldShared.h"
+#include <wtf/HashSet.h>
 #include <wtf/text/WTFString.h>
+
+namespace WebKit {
+class WebUserContentControllerProxy;
+}
 
 namespace API {
 
-class ContentWorldBase {
+class ContentWorld final : public API::ObjectImpl<API::Object::Type::ContentWorld> {
 public:
-    virtual ~ContentWorldBase() = default;
-
-    WebKit::ContentWorldIdentifier identifier() const { return m_identifier; }
-    const WTF::String& name() const { return m_name; }
-    std::pair<WebKit::ContentWorldIdentifier, WTF::String> worldData() const { return { m_identifier, m_name }; }
-
-    virtual void ref() const = 0;
-    virtual void deref() const = 0;
-
-protected:
-    ContentWorldBase(const WTF::String& name);
-    ContentWorldBase(WebKit::ContentWorldIdentifier identifier)
-        : m_identifier(identifier)
-    {
-    }
-
-private:
-    WebKit::ContentWorldIdentifier m_identifier;
-    WTF::String m_name;
-};
-
-class ContentWorld final : public API::ObjectImpl<API::Object::Type::ContentWorld>, public ContentWorldBase {
-public:
+    static ContentWorld* worldForIdentifier(WebKit::ContentWorldIdentifier);
     static Ref<ContentWorld> sharedWorldWithName(const WTF::String&);
     static ContentWorld& pageContentWorld();
     static ContentWorld& defaultClientWorld();
 
     virtual ~ContentWorld();
 
-    void ref() const final { ObjectImpl::ref(); }
-    void deref() const final { ObjectImpl::deref(); }
+    WebKit::ContentWorldIdentifier identifier() const { return m_identifier; }
+    const WTF::String& name() const { return m_name; }
+    std::pair<WebKit::ContentWorldIdentifier, WTF::String> worldData() const { return { m_identifier, m_name }; }
+
+    void addAssociatedUserContentControllerProxy(WebKit::WebUserContentControllerProxy&);
+    void userContentControllerProxyDestroyed(WebKit::WebUserContentControllerProxy&);
 
 private:
     explicit ContentWorld(const WTF::String&);
     explicit ContentWorld(WebKit::ContentWorldIdentifier);
+
+    WebKit::ContentWorldIdentifier m_identifier;
+    WTF::String m_name;
+    HashSet<WebKit::WebUserContentControllerProxy*> m_associatedContentControllerProxies;
 };
 
 } // namespace API

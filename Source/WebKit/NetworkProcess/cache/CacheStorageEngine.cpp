@@ -32,6 +32,7 @@
 #include "NetworkProcess.h"
 #include "WebsiteDataType.h"
 #include <WebCore/CacheQueryOptions.h>
+#include <WebCore/RetrieveRecordsOptions.h>
 #include <WebCore/SecurityOrigin.h>
 #include <wtf/CallbackAggregator.h>
 #include <wtf/NeverDestroyed.h>
@@ -133,10 +134,10 @@ void Engine::retrieveCaches(NetworkProcess& networkProcess, PAL::SessionID sessi
 }
 
 
-void Engine::retrieveRecords(NetworkProcess& networkProcess, PAL::SessionID sessionID, uint64_t cacheIdentifier, URL&& url, WebCore::DOMCacheEngine::RecordsCallback&& callback)
+void Engine::retrieveRecords(NetworkProcess& networkProcess, PAL::SessionID sessionID, uint64_t cacheIdentifier, WebCore::RetrieveRecordsOptions&& options, WebCore::DOMCacheEngine::RecordsCallback&& callback)
 {
-    from(networkProcess, sessionID, [cacheIdentifier, url = WTFMove(url), callback = WTFMove(callback)](auto& engine) mutable {
-        engine.retrieveRecords(cacheIdentifier, WTFMove(url), WTFMove(callback));
+    from(networkProcess, sessionID, [cacheIdentifier, options = WTFMove(options), callback = WTFMove(callback)](auto& engine) mutable {
+        engine.retrieveRecords(cacheIdentifier, WTFMove(options), WTFMove(callback));
     });
 }
 
@@ -311,14 +312,14 @@ void Engine::retrieveCaches(const WebCore::ClientOrigin& origin, uint64_t update
     });
 }
 
-void Engine::retrieveRecords(uint64_t cacheIdentifier, URL&& url, RecordsCallback&& callback)
+void Engine::retrieveRecords(uint64_t cacheIdentifier, WebCore::RetrieveRecordsOptions&& options, RecordsCallback&& callback)
 {
-    readCache(cacheIdentifier, [url = WTFMove(url), callback = WTFMove(callback)](CacheOrError&& result) mutable {
+    readCache(cacheIdentifier, [options = WTFMove(options), callback = WTFMove(callback)](CacheOrError&& result) mutable {
         if (!result.has_value()) {
             callback(makeUnexpected(result.error()));
             return;
         }
-        result.value().get().retrieveRecords(url, WTFMove(callback));
+        result.value().get().retrieveRecords(options, WTFMove(callback));
     });
 }
 
@@ -404,7 +405,7 @@ void Engine::readCachesFromDisk(const WebCore::ClientOrigin& origin, CachesCallb
             return;
         }
 
-        caches->initialize([callback = WTFMove(callback), caches = caches.copyRef()](Optional<Error>&& error) mutable {
+        caches->initialize([callback = WTFMove(callback), caches](Optional<Error>&& error) mutable {
             if (error) {
                 callback(makeUnexpected(error.value()));
                 return;
@@ -530,23 +531,25 @@ void Engine::removeFile(const String& filename)
 
 void Engine::writeSizeFile(const String& path, uint64_t size, CompletionHandler<void()>&& completionHandler)
 {
-    CompletionHandlerCallingScope completionHandlerCaller(WTFMove(completionHandler));
-    if (!shouldPersist())
-        return;
+    ASSERT(RunLoop::isMain());
 
-    m_ioQueue->dispatch([path = path.isolatedCopy(), size, completionHandlerCaller = WTFMove(completionHandlerCaller)]() mutable {
+    if (!shouldPersist())
+        return completionHandler();
+
+    m_ioQueue->dispatch([path = path.isolatedCopy(), size, completionHandler = WTFMove(completionHandler)]() mutable {
         LockHolder locker(globalSizeFileLock);
         auto fileHandle = FileSystem::openFile(path, FileSystem::FileOpenMode::Write);
-        auto closeFileHandler = makeScopeExit([&] {
+
+        if (FileSystem::isHandleValid(fileHandle)) {
+            FileSystem::truncateFile(fileHandle, 0);
+
+            auto value = String::number(size).utf8();
+            FileSystem::writeToFile(fileHandle, value.data(), value.length());
+
             FileSystem::closeFile(fileHandle);
-        });
-        if (!FileSystem::isHandleValid(fileHandle))
-            return;
+        }
 
-        FileSystem::truncateFile(fileHandle, 0);
-        FileSystem::writeToFile(fileHandle, String::number(size).utf8().data(), String::number(size).utf8().length());
-
-        RunLoop::main().dispatch([completionHandlerCaller = WTFMove(completionHandlerCaller)]() mutable { });
+        RunLoop::main().dispatch(WTFMove(completionHandler));
     });
 }
 
@@ -642,7 +645,7 @@ void Engine::fetchDirectoryEntries(bool shouldComputeSize, const Vector<String>&
 {
     auto taskCounter = ReadOriginsTaskCounter::create(WTFMove(completionHandler));
     for (auto& folderPath : folderPaths) {
-        Caches::retrieveOriginFromDirectory(folderPath, *m_ioQueue, [protectedThis = makeRef(*this), shouldComputeSize, taskCounter = taskCounter.copyRef()] (auto&& origin) mutable {
+        Caches::retrieveOriginFromDirectory(folderPath, *m_ioQueue, [protectedThis = makeRef(*this), shouldComputeSize, taskCounter] (auto&& origin) mutable {
             ASSERT(RunLoop::isMain());
             if (!origin)
                 return;
@@ -688,7 +691,7 @@ void Engine::clearAllCaches(CompletionHandler<void()>&& completionHandler)
     });
 
     for (auto& caches : m_caches.values())
-        caches->clear([callbackAggregator = callbackAggregator.copyRef()] { });
+        caches->clear([callbackAggregator] { });
 }
 
 void Engine::clearAllCachesFromDisk(CompletionHandler<void()>&& completionHandler)
@@ -720,7 +723,7 @@ void Engine::clearCachesForOrigin(const WebCore::SecurityOriginData& origin, Com
 
     for (auto& keyValue : m_caches) {
         if (keyValue.key.topOrigin == origin || keyValue.key.clientOrigin == origin)
-            keyValue.value->clear([callbackAggregator = callbackAggregator.copyRef()] { });
+            keyValue.value->clear([callbackAggregator] { });
     }
 }
 
@@ -738,7 +741,7 @@ void Engine::clearCachesForOriginFromDirectories(const Vector<String>& folderPat
 {
     auto callbackAggregator = CallbackAggregator::create(WTFMove(completionHandler));
     for (auto& folderPath : folderPaths) {
-        Caches::retrieveOriginFromDirectory(folderPath, *m_ioQueue, [this, protectedThis = makeRef(*this), origin, callbackAggregator = callbackAggregator.copyRef(), folderPath] (Optional<WebCore::ClientOrigin>&& folderOrigin) mutable {
+        Caches::retrieveOriginFromDirectory(folderPath, *m_ioQueue, [this, protectedThis = makeRef(*this), origin, callbackAggregator, folderPath] (Optional<WebCore::ClientOrigin>&& folderOrigin) mutable {
             if (!folderOrigin)
                 return;
             if (folderOrigin->topOrigin != origin && folderOrigin->clientOrigin != origin)

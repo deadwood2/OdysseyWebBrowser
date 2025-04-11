@@ -32,7 +32,7 @@
 // here to bring it up to parity with the Mac version (see TextInputControllerMac.m), and then reenable skipped iOS tests that use TextInputController.
 
 #import <WebKit/WebFramePrivate.h>
-#import <WebKit/WebKit.h>
+#import <WebKit/WebKitLegacy.h>
 
 @implementation TextInputController
 
@@ -75,7 +75,7 @@
     if (!range)
         return nil;
 
-    return [NSArray arrayWithObjects:@([range startOffset]), @([range endOffset]), nil];
+    return @[@([range startOffset]), @([range endOffset])];
 }
 
 - (void)insertText:(NSString *)text

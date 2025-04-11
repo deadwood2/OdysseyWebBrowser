@@ -25,6 +25,9 @@
 
 #import "BrowserWindowController.h"
 
+#import "AppDelegate.h"
+#import "SettingsController.h"
+
 @interface BrowserWindowController () <NSSharingServicePickerDelegate, NSSharingServiceDelegate>
 @end
 
@@ -40,6 +43,18 @@
 
 - (void)windowDidLoad
 {
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 110000
+    // FIXME: We should probably adopt the default unified style, but we'd need
+    // somewhere to put the window/page title.
+    self.window.toolbarStyle = NSWindowToolbarStyleExpanded;
+
+    reloadButton.image = [NSImage imageWithSystemSymbolName:@"arrow.clockwise" accessibilityDescription:@"Reload"];
+    // FIXME: Should these be localized?
+    backButton.image = [NSImage imageWithSystemSymbolName:@"chevron.left" accessibilityDescription:@"Go back"];
+    forwardButton.image = [NSImage imageWithSystemSymbolName:@"chevron.right" accessibilityDescription:@"Go forward"];
+    share.image = [NSImage imageWithSystemSymbolName:@"square.and.arrow.up" accessibilityDescription:@"Share"];
+    toggleUseShrinkToFitButton.image = [NSImage imageWithSystemSymbolName:@"arrow.up.left.and.arrow.down.right" accessibilityDescription:@"Use Shrink to fit"];
+#endif
     [share sendActionOn:NSEventMaskLeftMouseDown];
     [super windowDidLoad];
 }
@@ -88,6 +103,11 @@
     [self doesNotRecognizeSelector:_cmd];
 }
 
+- (IBAction)showCertificate:(id)sender
+{
+    [self doesNotRecognizeSelector:_cmd];
+}
+
 - (IBAction)forceRepaint:(id)sender
 {
     [self doesNotRecognizeSelector:_cmd];
@@ -124,6 +144,33 @@
         [self.mainContentView removeFromSuperview];
     else
         [containerView addSubview:self.mainContentView];
+}
+
+- (IBAction)toggleFullWindowWebView:(id)sender
+{
+    BOOL newFillWindow = ![self webViewFillsWindow];
+    [self setWebViewFillsWindow:newFillWindow];
+
+    SettingsController *settings = [[NSApplication sharedApplication] browserAppDelegate].settingsController;
+    settings.webViewFillsWindow = newFillWindow;
+}
+
+- (BOOL)webViewFillsWindow
+{
+    return NSEqualRects(containerView.bounds, self.mainContentView.frame);
+}
+
+- (void)setWebViewFillsWindow:(BOOL)fillWindow
+{
+    if (fillWindow)
+        [self.mainContentView setFrame:containerView.bounds];
+    else {
+        const CGFloat viewInset = 100.0f;
+        NSRect viewRect = NSInsetRect(containerView.bounds, viewInset, viewInset);
+        // Make it not vertically centered, to reveal y-flipping bugs.
+        viewRect = NSOffsetRect(viewRect, 0, -25);
+        [self.mainContentView setFrame:viewRect];
+    }
 }
 
 - (IBAction)zoomIn:(id)sender

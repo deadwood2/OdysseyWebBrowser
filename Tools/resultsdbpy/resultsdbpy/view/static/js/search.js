@@ -149,12 +149,14 @@ function SearchBar(callback, suites) {
                 if (event.keyCode == 0x28 /* DOM_VK_DOWN */ || event.keyCode == 0x26 /* DOM_VK_UP */)
                     return;
 
+                const inputValue = element.value.trimStart().trimEnd();
+                if (!inputValue)
+                    return;
                 let myDispatch = Date.now();
-
                 candidates = {};
                 suites.forEach(suite => {
                     inFlight += 1;
-                    fetch(`api/${suite}/tests?limit=${LIMIT}&test=${element.value}`).then(response => {
+                    fetch(`api/${suite}/tests?limit=${LIMIT}&test=${inputValue}`).then(response => {
                         inFlight -= 1;
                         if (myDispatch < currentDispatch) {
                             candidatesRef.setState({});
@@ -215,7 +217,8 @@ function SearchBar(callback, suites) {
                             ignoring = false;
                         return;
                     }
-                    tests.add(str);
+                    if (str)
+                        tests.add(str);
                 });
                 tests = [...tests];
                 if (tests.length <= 1)
@@ -250,7 +253,7 @@ function SearchBar(callback, suites) {
     });
 
     return `<div class="input">
-            <input type="text" ref="${inputRef}" autocomplete="off" required/>
+            <input type="text" ref="${inputRef}" autocomplete="off" autocapitalize="none" required/>
             <label>Search test</label>
         </div>
         <ul class="search-candidates" ref="${candidatesRef}" style="display: none;"></ul>`;

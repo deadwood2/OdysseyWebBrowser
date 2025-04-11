@@ -60,7 +60,7 @@ public:
     void focusedElementChanged(WebCore::Element*) final;
     void focusedFrameChanged(WebCore::Frame*) final;
 
-    WebCore::Page* createWindow(WebCore::Frame&, const WebCore::FrameLoadRequest&, const WebCore::WindowFeatures&, const WebCore::NavigationAction&) final;
+    WebCore::Page* createWindow(WebCore::Frame&, const WebCore::WindowFeatures&, const WebCore::NavigationAction&) final;
     void show() final;
 
     bool canRunModal() final;
@@ -133,7 +133,7 @@ public:
     void setNeedsOneShotDrawingSynchronization() final { }
     // Sets a flag to specify that the view needs to be updated, so we need
     // to do an eager layout before the drawing.
-    void scheduleCompositingLayerFlush() final;
+    void scheduleRenderingUpdate() final;
 
 #if PLATFORM(WIN) && USE(AVFOUNDATION)
     WebCore::GraphicsDeviceAdapter* graphicsDeviceAdapter() const final;

@@ -53,7 +53,12 @@ WebIDBServer::WebIDBServer(PAL::SessionID sessionID, const String& directory, We
     });
     semaphore.wait();
 }
-    
+
+WebIDBServer::~WebIDBServer()
+{
+    ASSERT(RunLoop::isMain());
+}
+
 void WebIDBServer::closeAndDeleteDatabasesModifiedSince(WallTime modificationTime, CompletionHandler<void()>&& callback)
 {
     ASSERT(RunLoop::isMain());
@@ -84,12 +89,22 @@ void WebIDBServer::closeAndDeleteDatabasesForOrigins(const Vector<WebCore::Secur
     });
 }
 
-void WebIDBServer::suspend(ShouldForceStop shouldForceStop)
+void WebIDBServer::renameOrigin(const WebCore::SecurityOriginData& oldOrigin, const WebCore::SecurityOriginData& newOrigin, CompletionHandler<void()>&& callback)
 {
     ASSERT(RunLoop::isMain());
 
-    if (shouldForceStop == ShouldForceStop::No && WebCore::SQLiteDatabaseTracker::hasTransactionInProgress())
-        return;
+    postTask([this, protectedThis = makeRef(*this), oldOrigin = oldOrigin.isolatedCopy(), newOrigin = newOrigin.isolatedCopy(), callback = WTFMove(callback)] () mutable {
+        ASSERT(!RunLoop::isMain());
+
+        LockHolder locker(m_server->lock());
+        m_server->renameOrigin(oldOrigin, newOrigin);
+        postTaskReply(CrossThreadTask(WTFMove(callback)));
+    });
+}
+
+void WebIDBServer::suspend()
+{
+    ASSERT(RunLoop::isMain());
 
     if (m_isSuspended)
         return;
@@ -310,7 +325,7 @@ void WebIDBServer::openDBRequestCancelled(const WebCore::IDBRequestData& request
     m_server->openDBRequestCancelled(requestData);
 }
 
-void WebIDBServer::getAllDatabaseNames(IPC::Connection& connection, const WebCore::SecurityOriginData& mainFrameOrigin, const WebCore::SecurityOriginData& openingOrigin, uint64_t callbackID)
+void WebIDBServer::getAllDatabaseNamesAndVersions(IPC::Connection& connection, const WebCore::IDBResourceIdentifier& requestIdentifier, const WebCore::ClientOrigin& origin)
 {
     ASSERT(!RunLoop::isMain());
 
@@ -318,7 +333,7 @@ void WebIDBServer::getAllDatabaseNames(IPC::Connection& connection, const WebCor
     ASSERT(webIDBConnection);
 
     LockHolder locker(m_server->lock());
-    m_server->getAllDatabaseNames(webIDBConnection->identifier(), mainFrameOrigin, openingOrigin, callbackID);
+    m_server->getAllDatabaseNamesAndVersions(webIDBConnection->identifier(), requestIdentifier, origin);
 }
 
 void WebIDBServer::addConnection(IPC::Connection& connection, WebCore::ProcessIdentifier processIdentifier)
@@ -335,6 +350,7 @@ void WebIDBServer::addConnection(IPC::Connection& connection, WebCore::ProcessId
         LockHolder locker(m_server->lock());
         m_server->registerConnection(iter->value->connectionToClient());
     });
+    m_connections.add(&connection);
     connection.addThreadMessageReceiver(Messages::WebIDBServer::messageReceiverName(), this);
 }
 
@@ -342,6 +358,7 @@ void WebIDBServer::removeConnection(IPC::Connection& connection)
 {
     ASSERT(RunLoop::isMain());
 
+    m_connections.remove(&connection);
     connection.removeThreadMessageReceiver(Messages::WebIDBServer::messageReceiverName());
     postTask([this, protectedThis = makeRef(*this), connectionID = connection.uniqueID()] {
         auto connection = m_connectionMap.take(connectionID);
@@ -363,6 +380,27 @@ void WebIDBServer::postTask(Function<void()>&& task)
 void WebIDBServer::dispatchToThread(Function<void()>&& task)
 {
     CrossThreadTaskHandler::postTask(CrossThreadTask(WTFMove(task)));
+}
+
+void WebIDBServer::close()
+{
+    ASSERT(RunLoop::isMain());
+
+    // Remove the references held by IPC::Connection.
+    for (auto* connection : m_connections)
+        connection->removeThreadMessageReceiver(Messages::WebIDBServer::messageReceiverName());
+
+    CrossThreadTaskHandler::setCompletionCallback([protectedThis = makeRef(*this)]() mutable {
+        ASSERT(!RunLoop::isMain());
+        callOnMainRunLoop([protectedThis = WTFMove(protectedThis)]() mutable { });
+    });
+
+    postTask([this]() mutable {
+        m_connectionMap.clear();
+        m_server = nullptr;
+
+        CrossThreadTaskHandler::kill();
+    });
 }
 
 } // namespace WebKit

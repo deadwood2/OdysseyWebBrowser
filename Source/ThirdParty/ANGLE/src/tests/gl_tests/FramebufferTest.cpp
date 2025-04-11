@@ -362,15 +362,34 @@ TEST_P(FramebufferFormatsTest, ReadDrawCompleteness)
     EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::red);
 }
 
+// Test that a renderbuffer with RGB565 format works as expected. This test is intended for some
+// back-end having no support for native RGB565 renderbuffer and thus having to emulate using RGBA
+// format.
+TEST_P(FramebufferFormatsTest, RGB565Renderbuffer)
+{
+    GLRenderbuffer rbo;
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB565, 1, 1);
+
+    GLFramebuffer completeFBO;
+    glBindFramebuffer(GL_FRAMEBUFFER, completeFBO);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, rbo);
+
+    EXPECT_GLENUM_EQ(GL_FRAMEBUFFER_COMPLETE, glCheckFramebufferStatus(GL_FRAMEBUFFER));
+
+    ASSERT_GL_NO_ERROR();
+
+    glClearColor(1, 0, 0, 0.5f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::red);
+}
+
 class FramebufferTest_ES3 : public ANGLETest
 {};
 
 // Covers invalidating an incomplete framebuffer. This should be a no-op, but should not error.
 TEST_P(FramebufferTest_ES3, InvalidateIncomplete)
 {
-    // TODO: anglebug.com/3971
-    ANGLE_SKIP_TEST_IF(IsVulkan());
-
     GLFramebuffer framebuffer;
     GLRenderbuffer renderbuffer;
 
@@ -463,6 +482,75 @@ TEST_P(FramebufferTest_ES3, TextureAttachmentMipLevels)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 6);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 6);
     ExpectFramebufferCompleteOrUnsupported(GL_FRAMEBUFFER);
+}
+
+TEST_P(FramebufferTest_ES3, TextureAttachmentMipLevelsReadBack)
+{
+#if defined(ADDRESS_SANITIZER)
+    // http://anglebug.com/4737
+    ANGLE_SKIP_TEST_IF(IsOSX());
+#endif
+
+    GLFramebuffer framebuffer;
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
+    GLTexture texture;
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    const std::array<GLColor, 2 * 2> mip0Data = {GLColor::red, GLColor::red, GLColor::red,
+                                                 GLColor::red};
+    const std::array<GLColor, 1 * 1> mip1Data = {GLColor::green};
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 4, 4, 0, GL_RGBA, GL_UNSIGNED_BYTE, mip0Data.data());
+    glTexImage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, mip1Data.data());
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 1);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 1);
+    EXPECT_GL_FRAMEBUFFER_COMPLETE(GL_FRAMEBUFFER);
+
+    glClearColor(0, 0, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::blue);
+}
+
+// TextureAttachmentMipLevelsReadBackWithDraw is a copy of TextureAttachmentMipLevelsReadBack except
+// for adding a draw after the last clear. The draw forces ANGLE's Vulkan backend to use the
+// framebuffer that is level 1 of the texture which will trigger the mismatch use of the GL level
+// and Vulkan level in referring to that rendertarget.
+TEST_P(FramebufferTest_ES3, TextureAttachmentMipLevelsReadBackWithDraw)
+{
+#if defined(ADDRESS_SANITIZER)
+    // http://anglebug.com/4737
+    ANGLE_SKIP_TEST_IF(IsOSX());
+#endif
+
+    ANGLE_GL_PROGRAM(greenProgram, essl1_shaders::vs::Simple(), essl1_shaders::fs::Green());
+
+    GLFramebuffer framebuffer;
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
+    GLTexture texture;
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    const std::array<GLColor, 2 * 2> mip0Data = {GLColor::red, GLColor::red, GLColor::red,
+                                                 GLColor::red};
+    const std::array<GLColor, 1 * 1> mip1Data = {GLColor::green};
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 4, 4, 0, GL_RGBA, GL_UNSIGNED_BYTE, mip0Data.data());
+    glTexImage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, mip1Data.data());
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 1);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 1);
+    EXPECT_GL_FRAMEBUFFER_COMPLETE(GL_FRAMEBUFFER);
+
+    glClearColor(0, 0, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // This draw triggers the use of the framebuffer
+    glUseProgram(greenProgram);
+    drawQuad(greenProgram.get(), std::string(essl1_shaders::PositionAttrib()), 0.0f);
+    ASSERT_GL_NO_ERROR();
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
 }
 
 // Test that passing an attachment COLOR_ATTACHMENTm where m is equal to MAX_COLOR_ATTACHMENTS
@@ -902,9 +990,6 @@ class FramebufferTest_ES31 : public ANGLETest
 // FRAMEBUFFER_DEFAULT_HEIGHT parameters is zero, the framebuffer is incomplete.
 TEST_P(FramebufferTest_ES31, IncompleteMissingAttachmentDefaultParam)
 {
-    // anglebug.com/3565
-    ANGLE_SKIP_TEST_IF(IsVulkan());
-
     GLFramebuffer mFramebuffer;
     glBindFramebuffer(GL_FRAMEBUFFER, mFramebuffer.get());
 
@@ -933,9 +1018,6 @@ TEST_P(FramebufferTest_ES31, IncompleteMissingAttachmentDefaultParam)
 // Test that the sample count of a mix of texture and renderbuffer should be same.
 TEST_P(FramebufferTest_ES31, IncompleteMultisampleSampleCountMix)
 {
-    // anglebug.com/3565
-    ANGLE_SKIP_TEST_IF(IsVulkan());
-
     GLFramebuffer mFramebuffer;
     glBindFramebuffer(GL_FRAMEBUFFER, mFramebuffer.get());
 
@@ -972,9 +1054,6 @@ TEST_P(FramebufferTest_ES31, IncompleteMultisampleSampleCountMix)
 // Test that the sample count of texture attachments should be same.
 TEST_P(FramebufferTest_ES31, IncompleteMultisampleSampleCountTex)
 {
-    // anglebug.com/3565
-    ANGLE_SKIP_TEST_IF(IsVulkan());
-
     GLFramebuffer mFramebuffer;
     glBindFramebuffer(GL_FRAMEBUFFER, mFramebuffer.get());
 
@@ -1009,9 +1088,6 @@ TEST_P(FramebufferTest_ES31, IncompleteMultisampleSampleCountTex)
 // TEXTURE_FIXED_SAMPLE_LOCATIONS must be TRUE for all attached textures.
 TEST_P(FramebufferTest_ES31, IncompleteMultisampleFixedSampleLocationsMix)
 {
-    // anglebug.com/3565
-    ANGLE_SKIP_TEST_IF(IsVulkan());
-
     GLFramebuffer mFramebuffer;
     glBindFramebuffer(GL_FRAMEBUFFER, mFramebuffer.get());
 
@@ -1035,9 +1111,6 @@ TEST_P(FramebufferTest_ES31, IncompleteMultisampleFixedSampleLocationsMix)
 // Test that the value of TEXTURE_FIXED_SAMPLE_LOCATIONS is the same for all attached textures.
 TEST_P(FramebufferTest_ES31, IncompleteMultisampleFixedSampleLocationsTex)
 {
-    // anglebug.com/3565
-    ANGLE_SKIP_TEST_IF(IsVulkan());
-
     GLFramebuffer mFramebuffer;
     glBindFramebuffer(GL_FRAMEBUFFER, mFramebuffer.get());
 
@@ -1208,7 +1281,306 @@ TEST_P(AddDummyTextureNoRenderTargetTest, NoProgramOutputWorkaround)
     ASSERT_GL_NO_ERROR();
 }
 
+// Covers a bug in ANGLE's Vulkan back-end framebuffer cache which ignored depth/stencil after
+// calls to DrawBuffers.
+TEST_P(FramebufferTest_ES3, AttachmentStateChange)
+{
+    constexpr GLuint kSize = 2;
+
+    ANGLE_GL_PROGRAM(program, essl1_shaders::vs::Simple(), essl1_shaders::fs::Green());
+
+    GLTexture colorTexture;
+    glBindTexture(GL_TEXTURE_2D, colorTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, kSize, kSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    GLFramebuffer fbo;
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+
+    ASSERT_GL_NO_ERROR();
+    ASSERT_GL_FRAMEBUFFER_COMPLETE(GL_FRAMEBUFFER);
+
+    // First draw without a depth buffer.
+    drawQuad(program, essl1_shaders::PositionAttrib(), 0.5f);
+
+    GLRenderbuffer depthBuffer;
+    glBindRenderbuffer(GL_RENDERBUFFER, depthBuffer);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, kSize, kSize);
+
+    // Bind just a renderbuffer and draw.
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthBuffer);
+
+    ASSERT_GL_NO_ERROR();
+    ASSERT_GL_FRAMEBUFFER_COMPLETE(GL_FRAMEBUFFER);
+
+    glDrawBuffers(0, nullptr);
+    drawQuad(program, essl1_shaders::PositionAttrib(), 0.5f);
+
+    // Re-enable color buffer and draw one final time. This previously triggered a crash.
+    GLenum drawBuffs = {GL_COLOR_ATTACHMENT0};
+    glDrawBuffers(1, &drawBuffs);
+
+    drawQuad(program, essl1_shaders::PositionAttrib(), 0.5f);
+    ASSERT_GL_NO_ERROR();
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+}
+
+// Tests that we can support a feedback loop between a depth textures and the depth buffer.
+// Does not totally mirror the case used in Manhattan. The Manhattan case seems to handle
+// "clear" specially instead of rendering to depth in the same RP.
+TEST_P(FramebufferTest_ES3, DepthFeedbackLoopSupported)
+{
+    // Feedback loops not supported on D3D11 and may not ever be.
+    ANGLE_SKIP_TEST_IF(IsD3D11());
+
+    // Also this particular test doesn't work on Android despite similar support in Manhattan.
+    ANGLE_SKIP_TEST_IF(IsAndroid() && IsOpenGLES());
+
+    constexpr GLuint kSize = 2;
+    glViewport(0, 0, kSize, kSize);
+
+    constexpr char kFS[] = R"(precision mediump float;
+varying vec2 v_texCoord;
+uniform sampler2D depth;
+void main()
+{
+    if (abs(texture2D(depth, v_texCoord).x - 0.5) < 0.1)
+    {
+        gl_FragColor = vec4(0, 1, 0, 1);
+    }
+    else
+    {
+        gl_FragColor = vec4(1, 0, 0, 1);
+    }
+})";
+
+    ANGLE_GL_PROGRAM(program, essl1_shaders::vs::Texture2D(), kFS);
+
+    GLFramebuffer framebuffer;
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
+    GLTexture colorTexture;
+    glBindTexture(GL_TEXTURE_2D, colorTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, kSize, kSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+
+    GLTexture depthTexture;
+    glBindTexture(GL_TEXTURE_2D, depthTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, kSize, kSize, 0, GL_DEPTH_COMPONENT,
+                 GL_UNSIGNED_INT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
+
+    ASSERT_GL_NO_ERROR();
+    ASSERT_GL_FRAMEBUFFER_COMPLETE(GL_FRAMEBUFFER);
+
+    // Clear depth to 0.5.
+    glClearDepthf(0.5f);
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    // Disable the depth mask. Although this does not remove the feedback loop as defined by the
+    // spec it mimics what gfxbench does in its rendering tests.
+    glDepthMask(false);
+
+    // Verify we can sample the depth texture and get 0.5.
+    drawQuad(program, essl1_shaders::PositionAttrib(), 0.5);
+
+    ASSERT_GL_NO_ERROR();
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+}
+
+// Covers a bug in ANGLE's Vulkan back-end. Our VkFramebuffer cache would in some cases forget to
+// check the draw states when computing a cache key.
+TEST_P(FramebufferTest_ES3, DisabledAttachmentRedefinition)
+{
+    constexpr GLuint kSize = 2;
+
+    // Make a Framebuffer with two attachments with one enabled and one disabled.
+    GLTexture texA, texB;
+    glBindTexture(GL_TEXTURE_2D, texA);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, kSize, kSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glBindTexture(GL_TEXTURE_2D, texB);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, kSize, kSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    GLFramebuffer fbo;
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texA, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, texB, 0);
+
+    // Mask out the second texture.
+    constexpr GLenum kOneDrawBuf = GL_COLOR_ATTACHMENT0;
+    glDrawBuffers(1, &kOneDrawBuf);
+
+    ASSERT_GL_NO_ERROR();
+    ASSERT_GL_FRAMEBUFFER_COMPLETE(GL_FRAMEBUFFER);
+
+    // Set up a very simple shader.
+    ANGLE_GL_PROGRAM(program, essl1_shaders::vs::Simple(), essl1_shaders::fs::Green());
+    glViewport(0, 0, kSize, kSize);
+
+    // Draw
+    drawQuad(program, essl1_shaders::PositionAttrib(), 0.5f, 1.0f, true);
+    ASSERT_GL_NO_ERROR();
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+
+    // Update the masked out attachment and draw again.
+    std::vector<GLColor> redPixels(kSize * kSize, GLColor::red);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, kSize, kSize, GL_RGBA, GL_UNSIGNED_BYTE,
+                    redPixels.data());
+
+    // Draw
+    drawQuad(program, essl1_shaders::PositionAttrib(), 0.5f, 1.0f, true);
+    ASSERT_GL_NO_ERROR();
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+
+    glReadBuffer(GL_COLOR_ATTACHMENT1);
+    ASSERT_GL_NO_ERROR();
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::red);
+}
+
+class FramebufferTest : public ANGLETest
+{};
+
+template <typename T>
+void FillTexture2D(GLuint texture,
+                   GLsizei width,
+                   GLsizei height,
+                   const T &onePixelData,
+                   GLint level,
+                   GLint internalFormat,
+                   GLenum format,
+                   GLenum type)
+{
+    std::vector<T> allPixelsData(width * height, onePixelData);
+
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D, level, internalFormat, width, height, 0, format, type,
+                 allPixelsData.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+}
+
+// Multi-context uses of textures should not cause rendering feedback loops.
+TEST_P(FramebufferTest, MultiContextNoRenderingFeedbackLoops)
+{
+    constexpr char kTextureVS[] =
+        R"(attribute vec4 a_position;
+varying vec2 v_texCoord;
+void main() {
+    gl_Position = a_position;
+    v_texCoord = (a_position.xy * 0.5) + 0.5;
+})";
+
+    constexpr char kTextureFS[] =
+        R"(precision mediump float;
+varying vec2 v_texCoord;
+uniform sampler2D u_texture;
+void main() {
+    gl_FragColor = texture2D(u_texture, v_texCoord).rgba;
+})";
+
+    ANGLE_GL_PROGRAM(textureProgram, kTextureVS, kTextureFS);
+
+    glUseProgram(textureProgram.get());
+    GLint uniformLoc = glGetUniformLocation(textureProgram.get(), "u_texture");
+    ASSERT_NE(-1, uniformLoc);
+    glUniform1i(uniformLoc, 0);
+
+    GLTexture texture;
+    FillTexture2D(texture.get(), 1, 1, GLColor::red, 0, GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE);
+    glBindTexture(GL_TEXTURE_2D, texture.get());
+    // Note that _texture_ is still bound to GL_TEXTURE_2D in this context at this point.
+
+    EGLWindow *window          = getEGLWindow();
+    EGLDisplay display         = window->getDisplay();
+    EGLConfig config           = window->getConfig();
+    EGLSurface surface         = window->getSurface();
+    EGLint contextAttributes[] = {
+        EGL_CONTEXT_MAJOR_VERSION_KHR,
+        GetParam().majorVersion,
+        EGL_CONTEXT_MINOR_VERSION_KHR,
+        GetParam().minorVersion,
+        EGL_NONE,
+    };
+    EGLContext context1 = eglGetCurrentContext();
+    // Create context2, sharing resources with context1.
+    EGLContext context2 = eglCreateContext(display, config, context1, contextAttributes);
+    ASSERT_NE(context2, EGL_NO_CONTEXT);
+    eglMakeCurrent(display, surface, surface, context2);
+
+    constexpr char kVS[] =
+        R"(attribute vec4 a_position;
+void main() {
+    gl_Position = a_position;
+})";
+
+    constexpr char kFS[] =
+        R"(precision mediump float;
+void main() {
+    gl_FragColor = vec4(0.0, 1.0, 0.0, 1.0);
+})";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    glUseProgram(program.get());
+
+    ASSERT_GL_NO_ERROR();
+
+    // Render to the texture in context2.
+    GLFramebuffer framebuffer;
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.get());
+    // Texture is still a valid name in context2.
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture.get(), 0);
+    ASSERT_GLENUM_EQ(GL_FRAMEBUFFER_COMPLETE, glCheckFramebufferStatus(GL_FRAMEBUFFER));
+    // There is no rendering feedback loop at this point.
+
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    ASSERT_GL_NO_ERROR();
+
+    // If draw is no-op'ed, texture will not be filled appropriately.
+    drawQuad(program.get(), "a_position", 0.5f, 1.0f, true);
+    ASSERT_GL_NO_ERROR();
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+
+    // Make context1 current again.
+    eglMakeCurrent(display, surface, surface, context1);
+
+    // Render texture to screen.
+    drawQuad(textureProgram.get(), "a_position", 0.5f, 1.0f, true);
+    ASSERT_GL_NO_ERROR();
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+
+    eglDestroyContext(display, context2);
+}
+
+// Ensure cube-incomplete attachments cause incomplete Framebuffers.
+TEST_P(FramebufferTest, IncompleteCubeMap)
+{
+    constexpr GLuint kSize = 2;
+
+    GLTexture srcTex;
+    glBindTexture(GL_TEXTURE_CUBE_MAP, srcTex);
+    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X, 0, GL_RGBA, kSize, kSize, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, nullptr);
+
+    GLFramebuffer fbo;
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X,
+                           srcTex, 0);
+
+    ASSERT_GL_NO_ERROR();
+    ASSERT_GLENUM_EQ(glCheckFramebufferStatus(GL_FRAMEBUFFER),
+                     GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
+}
+
 ANGLE_INSTANTIATE_TEST_ES2(AddDummyTextureNoRenderTargetTest);
+ANGLE_INSTANTIATE_TEST_ES2(FramebufferTest);
 ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(FramebufferFormatsTest);
 ANGLE_INSTANTIATE_TEST_ES3(FramebufferTest_ES3);
 ANGLE_INSTANTIATE_TEST_ES31(FramebufferTest_ES31);

@@ -7,15 +7,11 @@ list(APPEND WebKitLegacy_SOURCES_Classes
     win/WebURLAuthenticationChallengeSenderCURL.cpp
 )
 list(APPEND WebKitLegacy_PRIVATE_LIBRARIES
-    ${OPENSSL_LIBRARIES}
+    OpenSSL::SSL
     D3D11.lib
     Dxgi.lib
     mfuuid.lib
     strmiids.lib
-    ${LIBXML2_LIBRARIES}
-    ${LIBXSLT_LIBRARIES}
-    ${SQLITE_LIBRARIES}
-    ${ZLIB_LIBRARIES}
 )
 
 add_custom_command(
@@ -473,8 +469,12 @@ WEBKIT_MAKE_FORWARDING_HEADERS(WebKitLegacyGUID
     FILES ${WebKitLegacy_PUBLIC_FRAMEWORK_HEADERS}
     FLATTENED
 )
-add_dependencies(WebKitLegacyFrameworkHeaders WebCorePrivateFrameworkHeaders)
 
 set(WebKitLegacy_OUTPUT_NAME
     WebKit${DEBUG_SUFFIX}
+)
+
+list(APPEND WebKitLegacy_PRIVATE_DEFINITIONS
+    STATICALLY_LINKED_WITH_PAL
+    STATICALLY_LINKED_WITH_WebCore
 )

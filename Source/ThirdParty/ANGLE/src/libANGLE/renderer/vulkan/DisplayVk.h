@@ -18,6 +18,20 @@ namespace rx
 {
 class RendererVk;
 
+class ShareGroupVk : public ShareGroupImpl
+{
+  public:
+    ShareGroupVk() : mCurrentUniqueSerial(1) {}
+
+    BufferSerial generateBufferSerial() { return ++mCurrentUniqueSerial; }
+    TextureSerial generateTextureSerial() { return ++mCurrentUniqueSerial; }
+    SamplerSerial generateSamplerSerial() { return ++mCurrentUniqueSerial; }
+    ImageViewSerial generateImageViewSerial() { return ++mCurrentUniqueSerial; }
+
+  private:
+    uint32_t mCurrentUniqueSerial;
+};
+
 class DisplayVk : public DisplayImpl, public vk::Context
 {
   public:
@@ -95,15 +109,24 @@ class DisplayVk : public DisplayImpl, public vk::Context
 
     void populateFeatureList(angle::FeatureList *features) override;
 
+    bool isRobustResourceInitEnabled() const override;
+
+    ShareGroupImpl *createShareGroup() override;
+
+  protected:
+    void generateExtensions(egl::DisplayExtensions *outExtensions) const override;
+
   private:
     virtual SurfaceImpl *createWindowSurfaceVk(const egl::SurfaceState &state,
                                                EGLNativeWindowType window) = 0;
-    void generateExtensions(egl::DisplayExtensions *outExtensions) const override;
     void generateCaps(egl::Caps *outCaps) const override;
+
+    virtual angle::Result waitNativeImpl();
 
     mutable angle::ScratchBuffer mScratchBuffer;
 
     std::string mStoredErrorString;
+    bool mHasSurfaceWithRobustInit;
 };
 
 }  // namespace rx

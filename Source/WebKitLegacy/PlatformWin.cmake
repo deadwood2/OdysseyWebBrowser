@@ -1,7 +1,6 @@
 if (${WTF_PLATFORM_WIN_CAIRO})
     add_definitions(-DUSE_CAIRO=1 -DUSE_CURL=1 -DWEBKIT_EXPORTS=1)
     list(APPEND WebKitLegacy_PRIVATE_INCLUDE_DIRECTORIES
-        ${CAIRO_INCLUDE_DIRS}
         "${WEBKIT_LIBRARIES_DIR}/include"
     )
     list(APPEND WebKitLegacy_SOURCES_Classes
@@ -9,7 +8,8 @@ if (${WTF_PLATFORM_WIN_CAIRO})
         win/WebURLAuthenticationChallengeSenderCURL.cpp
     )
     list(APPEND WebKitLegacy_PRIVATE_LIBRARIES
-        ${OPENSSL_LIBRARIES}
+        $<TARGET_OBJECTS:WebCore>
+        OpenSSL::SSL
         mfuuid.lib
         strmiids.lib
     )
@@ -24,10 +24,10 @@ else ()
         CoreText${DEBUG_SUFFIX}
         QuartzCore${DEBUG_SUFFIX}
         libdispatch${DEBUG_SUFFIX}
-        ${LIBXML2_LIBRARIES}
-        ${LIBXSLT_LIBRARIES}
-        ${SQLITE_LIBRARIES}
-        ${ZLIB_LIBRARIES}
+        libxml2${DEBUG_SUFFIX}
+        libxslt${DEBUG_SUFFIX}
+        zdll${DEBUG_SUFFIX}
+        SQLite3${DEBUG_SUFFIX}
     )
 endif ()
 
@@ -275,19 +275,6 @@ source_group(Includes FILES ${WebKitLegacy_INCLUDES})
 source_group(Classes FILES ${WebKitLegacy_SOURCES_Classes})
 source_group(WebCoreSupport FILES ${WebKitLegacy_SOURCES_WebCoreSupport})
 
-# Build the COM interface:
-macro(GENERATE_INTERFACE _infile _defines _depends)
-    get_filename_component(_filewe ${_infile} NAME_WE)
-    add_custom_command(
-        OUTPUT  ${WebKitLegacy_DERIVED_SOURCES_DIR}/Interfaces/${_filewe}.h
-        MAIN_DEPENDENCY ${_infile}
-        DEPENDS ${_depends}
-        COMMAND midl.exe /I "${CMAKE_CURRENT_SOURCE_DIR}/win/Interfaces" /I "${CMAKE_CURRENT_SOURCE_DIR}/win/Interfaces/Accessible2" /I "${WebKitLegacy_DERIVED_SOURCES_DIR}/include" /I "${CMAKE_CURRENT_SOURCE_DIR}/win" /WX /char signed /env win32 /tlb "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${_filewe}.tlb" /out "${WebKitLegacy_DERIVED_SOURCES_DIR}/Interfaces" /h "${WebKitLegacy_DERIVED_SOURCES_DIR}/Interfaces/${_filewe}.h" /iid "${_filewe}_i.c" ${_defines} "${CMAKE_CURRENT_SOURCE_DIR}/${_infile}"
-        USES_TERMINAL VERBATIM)
-    set_source_files_properties(${WebKitLegacy_DERIVED_SOURCES_DIR}/Interfaces/${_filewe}.h PROPERTIES GENERATED TRUE)
-    set_source_files_properties(${WebKitLegacy_DERIVED_SOURCES_DIR}/Interfaces/${_filewe}_i.c PROPERTIES GENERATED TRUE)
-endmacro()
-
 set(MIDL_DEFINES /D\ \"__PRODUCTION__=01\")
 
 set(WEBKITLEGACY_IDL_DEPENDENCIES
@@ -385,22 +372,38 @@ set(WEBKITLEGACY_IDL_DEPENDENCIES
     "${WebKitLegacy_DERIVED_SOURCES_DIR}/include/autoversion.h"
 )
 
+# Build the COM interface:
+function(GENERATE_INTERFACE _infile)
+    cmake_parse_arguments(opt "HEADER_ONLY" "" "" ${ARGN})
+    get_filename_component(_filewe ${_infile} NAME_WE)
+    set(output ${WebKitLegacy_DERIVED_SOURCES_DIR}/Interfaces/${_filewe}.h)
+    if (NOT ${opt_HEADER_ONLY})
+        list(APPEND output ${WebKitLegacy_DERIVED_SOURCES_DIR}/Interfaces/${_filewe}_i.c)
+    endif ()
+    add_custom_command(
+        OUTPUT ${output}
+        MAIN_DEPENDENCY ${_infile}
+        DEPENDS ${WEBKITLEGACY_IDL_DEPENDENCIES}
+        COMMAND midl.exe /I "${CMAKE_CURRENT_SOURCE_DIR}/win/Interfaces" /I "${CMAKE_CURRENT_SOURCE_DIR}/win/Interfaces/Accessible2" /I "${WebKitLegacy_DERIVED_SOURCES_DIR}/include" /I "${CMAKE_CURRENT_SOURCE_DIR}/win" /WX /char signed /env win32 /tlb "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${_filewe}.tlb" /out "${WebKitLegacy_DERIVED_SOURCES_DIR}/Interfaces" /h "${WebKitLegacy_DERIVED_SOURCES_DIR}/Interfaces/${_filewe}.h" /iid "${_filewe}_i.c" ${MIDL_DEFINES} "${CMAKE_CURRENT_SOURCE_DIR}/${_infile}"
+        USES_TERMINAL VERBATIM)
+endfunction()
+
 add_custom_command(
     OUTPUT ${WebKitLegacy_DERIVED_SOURCES_DIR}/include/autoversion.h
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMAND ${PERL_EXECUTABLE} ${WEBKIT_LIBRARIES_DIR}/tools/scripts/auto-version.pl ${WebKitLegacy_DERIVED_SOURCES_DIR}
     VERBATIM)
 
-GENERATE_INTERFACE(win/Interfaces/WebKit.idl ${MIDL_DEFINES} "${WEBKITLEGACY_IDL_DEPENDENCIES}")
-GENERATE_INTERFACE(win/Interfaces/Accessible2/AccessibleApplication.idl ${MIDL_DEFINES} "${WEBKITLEGACY_IDL_DEPENDENCIES}")
-GENERATE_INTERFACE(win/Interfaces/Accessible2/Accessible2.idl ${MIDL_DEFINES} "${WEBKITLEGACY_IDL_DEPENDENCIES}")
-GENERATE_INTERFACE(win/Interfaces/Accessible2/Accessible2_2.idl ${MIDL_DEFINES} "${WEBKITLEGACY_IDL_DEPENDENCIES}")
-GENERATE_INTERFACE(win/Interfaces/Accessible2/AccessibleRelation.idl ${MIDL_DEFINES} "${WEBKITLEGACY_IDL_DEPENDENCIES}")
-GENERATE_INTERFACE(win/Interfaces/Accessible2/AccessibleStates.idl ${MIDL_DEFINES} "${WEBKITLEGACY_IDL_DEPENDENCIES}")
-GENERATE_INTERFACE(win/Interfaces/Accessible2/IA2CommonTypes.idl ${MIDL_DEFINES} "${WEBKITLEGACY_IDL_DEPENDENCIES}")
-GENERATE_INTERFACE(win/Interfaces/Accessible2/AccessibleEditableText.idl ${MIDL_DEFINES} "${WEBKITLEGACY_IDL_DEPENDENCIES}")
-GENERATE_INTERFACE(win/Interfaces/Accessible2/AccessibleText.idl ${MIDL_DEFINES} "${WEBKITLEGACY_IDL_DEPENDENCIES}")
-GENERATE_INTERFACE(win/Interfaces/Accessible2/AccessibleText2.idl ${MIDL_DEFINES} "${WEBKITLEGACY_IDL_DEPENDENCIES}")
+GENERATE_INTERFACE(win/Interfaces/WebKit.idl)
+GENERATE_INTERFACE(win/Interfaces/Accessible2/AccessibleApplication.idl)
+GENERATE_INTERFACE(win/Interfaces/Accessible2/Accessible2.idl)
+GENERATE_INTERFACE(win/Interfaces/Accessible2/Accessible2_2.idl)
+GENERATE_INTERFACE(win/Interfaces/Accessible2/AccessibleRelation.idl)
+GENERATE_INTERFACE(win/Interfaces/Accessible2/AccessibleStates.idl HEADER_ONLY)
+GENERATE_INTERFACE(win/Interfaces/Accessible2/IA2CommonTypes.idl HEADER_ONLY)
+GENERATE_INTERFACE(win/Interfaces/Accessible2/AccessibleEditableText.idl)
+GENERATE_INTERFACE(win/Interfaces/Accessible2/AccessibleText.idl)
+GENERATE_INTERFACE(win/Interfaces/Accessible2/AccessibleText2.idl)
 
 add_library(WebKitLegacyGUID STATIC
     "${WebKitLegacy_DERIVED_SOURCES_DIR}/Interfaces/WebKit.h"
@@ -436,19 +439,19 @@ list(APPEND WebKitLegacy_PRIVATE_LIBRARIES
     Shlwapi
     Usp10
     Version
-    WebKitGUID${DEBUG_SUFFIX}
+    WebKitLegacyGUID
     WindowsCodecs
     Winmm
     dxguid
 )
 
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /SUBSYSTEM:WINDOWS /FORCE:MULTIPLE")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
 
 # We need the webkit libraries to come before the system default libraries to prevent symbol conflicts with uuid.lib.
 # To do this we add system default libs as webkit libs and zero out system default libs.
 string(REPLACE " " "\;" CXX_LIBS ${CMAKE_CXX_STANDARD_LIBRARIES})
-list(APPEND WebKitLegacy_LIBRARIES ${CXX_LIBS})
+list(APPEND WebKitLegacy_PRIVATE_LIBRARIES ${CXX_LIBS})
 set(CMAKE_CXX_STANDARD_LIBRARIES "")
 
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${MSVC_RUNTIME_LINKER_FLAGS}")
@@ -485,9 +488,14 @@ WEBKIT_MAKE_FORWARDING_HEADERS(WebKitLegacyGUID
     FLATTENED
 )
 if (NOT INTERNAL_BUILD)
-    add_dependencies(WebKitLegacyFrameworkHeaders WebCorePrivateFrameworkHeaders)
+    add_dependencies(WebKitLegacyFrameworkHeaders WebCore_CopyPrivateHeaders)
 endif ()
 
 set(WebKitLegacy_OUTPUT_NAME
     WebKit${DEBUG_SUFFIX}
+)
+
+list(APPEND WebKitLegacy_PRIVATE_DEFINITIONS
+    STATICALLY_LINKED_WITH_PAL
+    STATICALLY_LINKED_WITH_WebCore
 )

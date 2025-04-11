@@ -32,9 +32,31 @@
 
 namespace WebCore {
 
-void AXIsolatedObject::detachPlatformWrapper(AccessibilityDetachmentType)
+void AXIsolatedObject::initializePlatformProperties(const AXCoreObject& object)
 {
-    [wrapper() detach];
+    if (object.isScrollView()) {
+        m_platformWidget = object.platformWidget();
+        m_remoteParent = object.remoteParentObject();
+    }
+}
+
+RemoteAXObjectRef AXIsolatedObject::remoteParentObject() const
+{
+    auto* scrollView = Accessibility::findAncestor<AXCoreObject>(*this, true, [] (const AXCoreObject& object) {
+        return object.isScrollView();
+    });
+    return is<AXIsolatedObject>(scrollView) ? downcast<AXIsolatedObject>(scrollView)->m_remoteParent.get() : nil;
+}
+
+void AXIsolatedObject::attachPlatformWrapper(AccessibilityObjectWrapper* wrapper)
+{
+    [wrapper attachIsolatedObject:this];
+    setWrapper(wrapper);
+}
+
+void AXIsolatedObject::detachPlatformWrapper(AccessibilityDetachmentType detachmentType)
+{
+    [wrapper() detachIsolatedObject:detachmentType];
 }
 
 } // WebCore

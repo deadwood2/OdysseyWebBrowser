@@ -163,7 +163,15 @@ void ShaderVariable::indexIntoArray(unsigned int arrayIndex)
 unsigned int ShaderVariable::getNestedArraySize(unsigned int arrayNestingIndex) const
 {
     ASSERT(arraySizes.size() > arrayNestingIndex);
-    return arraySizes[arraySizes.size() - 1u - arrayNestingIndex];
+    unsigned int arraySize = arraySizes[arraySizes.size() - 1u - arrayNestingIndex];
+
+    if (arraySize == 0)
+    {
+        // Unsized array, so give it at least 1 entry
+        arraySize = 1;
+    }
+
+    return arraySize;
 }
 
 unsigned int ShaderVariable::getBasicTypeElementCount() const
@@ -272,6 +280,39 @@ bool ShaderVariable::findInfoByMappedName(const std::string &mappedFullName,
         }
         return false;
     }
+}
+
+const sh::ShaderVariable *ShaderVariable::findField(const std::string &fullName,
+                                                    uint32_t *fieldIndexOut) const
+{
+    if (fields.empty())
+    {
+        return nullptr;
+    }
+    size_t pos = fullName.find_first_of(".");
+    if (pos == std::string::npos)
+    {
+        return nullptr;
+    }
+    std::string topName = fullName.substr(0, pos);
+    if (topName != name)
+    {
+        return nullptr;
+    }
+    std::string fieldName = fullName.substr(pos + 1);
+    if (fieldName.empty())
+    {
+        return nullptr;
+    }
+    for (size_t field = 0; field < fields.size(); ++field)
+    {
+        if (fields[field].name == fieldName)
+        {
+            *fieldIndexOut = static_cast<GLuint>(field);
+            return &fields[field];
+        }
+    }
+    return nullptr;
 }
 
 bool ShaderVariable::isBuiltIn() const

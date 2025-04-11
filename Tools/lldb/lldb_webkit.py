@@ -34,9 +34,10 @@ import string
 import struct
 
 
-def addSummaryAndSyntheticFormattersForRawBitmaskType(debugger, type_name, enumerator_value_to_name_map):
+def addSummaryAndSyntheticFormattersForRawBitmaskType(debugger, type_name, enumerator_value_to_name_map, flags_mask=None):
     class GeneratedRawBitmaskProvider(RawBitmaskProviderBase):
         ENUMERATOR_VALUE_TO_NAME_MAP = enumerator_value_to_name_map.copy()
+        FLAGS_MASK = flags_mask
 
     def raw_bitmask_summary_provider(valobj, dict):
         provider = GeneratedRawBitmaskProvider(valobj, dict)
@@ -61,9 +62,6 @@ def __lldb_init_module(debugger, dict):
     debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFStringView_SummaryProvider WTF::StringView')
     debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFAtomString_SummaryProvider WTF::AtomString')
     debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFVector_SummaryProvider -x "^WTF::Vector<.+>$"')
-    debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFHashTable_SummaryProvider -x "^WTF::HashTable<.+>$"')
-    debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFHashMap_SummaryProvider -x "^WTF::HashMap<.+>$"')
-    debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFHashSet_SummaryProvider -x "^WTF::HashSet<.+>$"')
     debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFMediaTime_SummaryProvider WTF::MediaTime')
     debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFOptionSet_SummaryProvider -x "^WTF::OptionSet<.+>$"')
     debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFCompactPointerTuple_SummaryProvider -x "^WTF::CompactPointerTuple<.+,.+>$"')
@@ -92,7 +90,6 @@ def __lldb_init_module(debugger, dict):
 
     # synthetic types (see <https://lldb.llvm.org/varformats.html>)
     debugger.HandleCommand('type synthetic add -x "^WTF::Vector<.+>$" --python-class lldb_webkit.WTFVectorProvider')
-    debugger.HandleCommand('type synthetic add -x "^WTF::HashTable<.+>$" --python-class lldb_webkit.WTFHashTableProvider')
     debugger.HandleCommand('type synthetic add -x "^WTF::OptionSet<.+>$" --python-class lldb_webkit.WTFOptionSetProvider')
     debugger.HandleCommand('type synthetic add -x "^WTF::CompactPointerTuple<.+,.+>$" --python-class lldb_webkit.WTFCompactPointerTupleProvider')
 
@@ -107,6 +104,19 @@ def __lldb_init_module(debugger, dict):
         0x00400000: "WebEventFlagMaskRightOptionKey",
         0x01000000: "WebEventFlagMaskRightCommandKey",
     })
+
+    # AppKit
+    NSEventModifierFlagDeviceIndependentFlagsMask = 0xffff0000
+    addSummaryAndSyntheticFormattersForRawBitmaskType(debugger, "NSEventModifierFlags", {
+        1 << 16: "NSEventModifierFlagCapsLock",
+        1 << 17: "NSEventModifierFlagShift",
+        1 << 18: "NSEventModifierFlagControl",
+        1 << 19: "NSEventModifierFlagOption",
+        1 << 20: "NSEventModifierFlagCommand",
+        1 << 21: "NSEventModifierFlagNumericPad",
+        1 << 22: "NSEventModifierFlagHelp",
+        1 << 23: "NSEventModifierFlagFunction",
+    }, flags_mask=NSEventModifierFlagDeviceIndependentFlagsMask)
 
 
 def WTFString_SummaryProvider(valobj, dict):
@@ -133,21 +143,6 @@ def WTFAtomString_SummaryProvider(valobj, dict):
 def WTFVector_SummaryProvider(valobj, dict):
     provider = WTFVectorProvider(valobj, dict)
     return "{ size = %d, capacity = %d }" % (provider.size, provider.capacity)
-
-
-def WTFHashTable_SummaryProvider(valobj, dict):
-    provider = WTFHashTableProvider(valobj, dict)
-    return "{ tableSize = %d, keyCount = %d }" % (provider.tableSize(), provider.keyCount())
-
-
-def WTFHashMap_SummaryProvider(valobj, dict):
-    provider = WTFHashMapProvider(valobj, dict)
-    return "{ tableSize = %d, keyCount = %d }" % (provider.tableSize(), provider.keyCount())
-
-
-def WTFHashSet_SummaryProvider(valobj, dict):
-    provider = WTFHashSetProvider(valobj, dict)
-    return "{ tableSize = %d, keyCount = %d }" % (provider.tableSize(), provider.keyCount())
 
 
 def WTFOptionSet_SummaryProvider(valobj, dict):
@@ -842,17 +837,21 @@ class WTFOptionSetProvider(FlagEnumerationProvider):
 
 class RawBitmaskProviderBase(FlagEnumerationProvider):
     ENUMERATOR_VALUE_TO_NAME_MAP = {}
+    FLAGS_MASK = None  # Useful when a bitmask represents multiple disjoint sets of flags (e.g. NSEventModifierFlags).
 
     def _enumerator_value_to_name_map(self):
         return self.ENUMERATOR_VALUE_TO_NAME_MAP
 
     def _bitmask(self):
-        return self.valobj.GetValueAsUnsigned(0)
+        result = self.valobj.GetValueAsUnsigned(0)
+        if self.FLAGS_MASK is not None:
+            result = result & self.FLAGS_MASK
+        return result
 
 
 class WTFCompactPointerTupleProvider(object):
 
-    TYPE_MASK = 0xF800000000000007
+    TYPE_MASK = 0xFFFF000000000000
     POINTER_MASK = ~TYPE_MASK
 
     def __init__(self, valobj, internal_dict):
@@ -926,7 +925,7 @@ class WTFCompactPointerTupleProvider(object):
             pointer_data = lldb.SBData.CreateDataFromUInt64Array(byte_order, address_byte_size, [data & self.POINTER_MASK])
             self._pointer = self.valobj.CreateValueFromData('[0]', pointer_data, self.valobj.GetType().GetTemplateArgumentType(0))
 
-            type_data = lldb.SBData.CreateDataFromUInt64Array(byte_order, address_byte_size, [(data >> 59 | data << 5) & 0xFF])
+            type_data = lldb.SBData.CreateDataFromUInt64Array(byte_order, address_byte_size, [(data >> 48) & 0xFFFF])
             type_to_use = self.valobj.GetType().GetTemplateArgumentType(1)
             if not self.is_human_readable_type():
                 type_to_use = self.valobj.GetTarget().GetBasicType(lldb.eBasicTypeUnsignedInt)
@@ -970,86 +969,6 @@ class WTFVectorProvider:
         self.size = self.valobj.GetChildMemberWithName('m_size').GetValueAsUnsigned(0)
         self.capacity = self.valobj.GetChildMemberWithName('m_capacity').GetValueAsUnsigned(0)
         self.data_type = self.buffer.GetType().GetPointeeType()
-        self.data_size = self.data_type.GetByteSize()
-
-    def has_children(self):
-        return True
-
-
-class WTFHashMapProvider:
-    def __init__(self, valobj, internal_dict):
-        self.valobj = valobj
-        impl_ptr = self.valobj.GetChildMemberWithName('m_impl')
-        self._hash_table_provider = WTFHashTableProvider(impl_ptr, dict)
-
-    def tableSize(self):
-        return self._hash_table_provider.tableSize()
-
-    def keyCount(self):
-        return self._hash_table_provider.keyCount()
-
-
-class WTFHashSetProvider:
-    def __init__(self, valobj, internal_dict):
-        self.valobj = valobj
-        impl_ptr = self.valobj.GetChildMemberWithName('m_impl')
-        self._hash_table_provider = WTFHashTableProvider(impl_ptr, dict)
-
-    def tableSize(self):
-        return self._hash_table_provider.tableSize()
-
-    def keyCount(self):
-        return self._hash_table_provider.keyCount()
-
-
-class WTFHashTableProvider:
-    def __init__(self, valobj, internal_dict):
-        self.valobj = valobj
-        self.update()
-
-    def tableSize(self):
-        return self.valobj.GetChildMemberWithName('m_tableSize').GetValueAsUnsigned(0)
-
-    def keyCount(self):
-        return self.valobj.GetChildMemberWithName('m_keyCount').GetValueAsUnsigned(0)
-
-    # Synthetic children provider methods.
-    def num_children(self):
-        return self.tableSize() + 5
-
-    def get_child_index(self, name):
-        if name == "m_table":
-            return self.tableSize()
-        elif name == "m_tableSize":
-            return self.tableSize() + 1
-        elif name == "m_tableSizeMask":
-            return self.tableSize() + 2
-        elif name == "m_keyCount":
-            return self.tableSize() + 3
-        elif name == "m_deletedCount":
-            return self.tableSize() + 4
-        else:
-            return int(name.lstrip('[').rstrip(']'))
-
-    def get_child_at_index(self, index):
-        if index == self.tableSize():
-            return self.valobj.GetChildMemberWithName('m_table')
-        elif index == self.tableSize() + 1:
-            return self.valobj.GetChildMemberWithName('m_tableSize')
-        elif index == self.tableSize() + 2:
-            return self.valobj.GetChildMemberWithName('m_tableSizeMask')
-        elif index == self.tableSize() + 3:
-            return self.valobj.GetChildMemberWithName('m_keyCount')
-        elif index == self.tableSize() + 4:
-            return self.valobj.GetChildMemberWithName('m_deletedCount')
-        elif index < self.tableSize():
-            table = self.valobj.GetChildMemberWithName('m_table')
-            return table.CreateChildAtOffset('[' + str(index) + ']', index * self.data_size, self.data_type)
-        else:
-            return None
-
-    def update(self):
-        self.data_type = self.valobj.GetType().GetTemplateArgumentType(1)
         self.data_size = self.data_type.GetByteSize()
 
     def has_children(self):

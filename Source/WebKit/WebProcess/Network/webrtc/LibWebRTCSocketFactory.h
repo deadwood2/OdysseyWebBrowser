@@ -32,16 +32,19 @@
 #include <WebCore/LibWebRTCMacros.h>
 #include <WebCore/LibWebRTCSocketIdentifier.h>
 #include <webrtc/rtc_base/net_helpers.h>
-#include <webrtc/p2p/base/packet_socket_factory.h>
+#include <webrtc/api/packet_socket_factory.h>
+#include <wtf/Deque.h>
+#include <wtf/Function.h>
 #include <wtf/HashMap.h>
 
 namespace WebKit {
 
+class LibWebRTCNetwork;
 class LibWebRTCSocket;
 
 class LibWebRTCSocketFactory {
 public:
-    LibWebRTCSocketFactory() { }
+    LibWebRTCSocketFactory() = default;
 
     void addSocket(LibWebRTCSocket&);
     void removeSocket(LibWebRTCSocket&);
@@ -53,20 +56,25 @@ public:
     rtc::AsyncPacketSocket* createClientTcpSocket(const void* socketGroup, const rtc::SocketAddress& localAddress, const rtc::SocketAddress& remoteAddress, String&& userAgent, const rtc::PacketSocketTcpOptions&);
     rtc::AsyncPacketSocket* createNewConnectionSocket(LibWebRTCSocket&, WebCore::LibWebRTCSocketIdentifier newConnectionSocketIdentifier, const rtc::SocketAddress&);
 
-    LibWebRTCResolver* resolver(uint64_t identifier) { return m_resolvers.get(identifier); }
-    std::unique_ptr<LibWebRTCResolver> takeResolver(uint64_t identifier) { return m_resolvers.take(identifier); }
+    LibWebRTCResolver* resolver(LibWebRTCResolverIdentifier identifier) { return m_resolvers.get(identifier); }
+    std::unique_ptr<LibWebRTCResolver> takeResolver(LibWebRTCResolverIdentifier identifier) { return m_resolvers.take(identifier); }
     rtc::AsyncResolverInterface* createAsyncResolver();
     
     void disableNonLocalhostConnections() { m_disableNonLocalhostConnections = true; }
+
+    void setConnection(RefPtr<IPC::Connection>&&);
+    IPC::Connection* connection();
 
 private:
     // We cannot own sockets, clients of the factory are responsible to free them.
     HashMap<WebCore::LibWebRTCSocketIdentifier, LibWebRTCSocket*> m_sockets;
     
     // We can own resolvers as we control their Destroy method.
-    HashMap<uint64_t, std::unique_ptr<LibWebRTCResolver>> m_resolvers;
-    static uint64_t s_uniqueResolverIdentifier;
+    HashMap<LibWebRTCResolverIdentifier, std::unique_ptr<LibWebRTCResolver>> m_resolvers;
     bool m_disableNonLocalhostConnections { false };
+
+    RefPtr<IPC::Connection> m_connection;
+    Deque<Function<void(IPC::Connection&)>> m_pendingMessageTasks;
 };
 
 } // namespace WebKit

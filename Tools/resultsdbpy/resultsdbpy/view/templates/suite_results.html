@@ -86,7 +86,7 @@ class MainView {
         Object.keys(this.children).forEach(key => {this.children[key].teardown();});
         this.children = {};
         sortedSuites.forEach((suite) => {
-            this.children[suite] = new TimelineFromEndpoint('api/results/' + suite);
+            this.children[suite] = new TimelineFromEndpoint('api/results/' + suite, suite);
         });
         return sortedSuites;
     }
@@ -175,7 +175,7 @@ ${Drawer([
         for (let suite in view.children) {
             view.children[suite].update();
         }
-    }, true),
+    }, true, true),
     LimitSlider(() => {view.reload()}),
     BranchSelector(() => {
         CommitBank.reload();
@@ -184,6 +184,7 @@ ${Drawer([
     ConfigurationSelectors(() => {view.reload()}),
 ], () => onLayoutChange.add())}
 <div class="main right-sidebar under-topbar-with-actions">
+    <br>
     <div class="content" ref=${REF.createRef({
             onElementMount: (element) => {
                 for (let suite in view.children) {

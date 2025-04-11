@@ -23,7 +23,10 @@ namespace rx
 {
 
 DisplayVk::DisplayVk(const egl::DisplayState &state)
-    : DisplayImpl(state), vk::Context(new RendererVk()), mScratchBuffer(1000u)
+    : DisplayImpl(state),
+      vk::Context(new RendererVk()),
+      mScratchBuffer(1000u),
+      mHasSurfaceWithRobustInit(false)
 {}
 
 DisplayVk::~DisplayVk()
@@ -44,7 +47,7 @@ void DisplayVk::terminate()
     mRenderer->reloadVolkIfNeeded();
 
     ASSERT(mRenderer);
-    mRenderer->onDestroy(this);
+    mRenderer->onDestroy();
 }
 
 egl::Error DisplayVk::makeCurrent(egl::Surface * /*drawSurface*/,
@@ -92,20 +95,35 @@ egl::Error DisplayVk::waitClient(const gl::Context *context)
 
 egl::Error DisplayVk::waitNative(const gl::Context *context, EGLint engine)
 {
-    UNIMPLEMENTED();
-    return egl::EglBadAccess();
+    ANGLE_TRACE_EVENT0("gpu.angle", "DisplayVk::waitNative");
+    return angle::ResultToEGL(waitNativeImpl());
+}
+
+angle::Result DisplayVk::waitNativeImpl()
+{
+    return angle::Result::Continue;
 }
 
 SurfaceImpl *DisplayVk::createWindowSurface(const egl::SurfaceState &state,
                                             EGLNativeWindowType window,
                                             const egl::AttributeMap &attribs)
 {
+    if (attribs.get(EGL_ROBUST_RESOURCE_INITIALIZATION_ANGLE, EGL_FALSE) == EGL_TRUE)
+    {
+        mHasSurfaceWithRobustInit = true;
+    }
+
     return createWindowSurfaceVk(state, window);
 }
 
 SurfaceImpl *DisplayVk::createPbufferSurface(const egl::SurfaceState &state,
                                              const egl::AttributeMap &attribs)
 {
+    if (attribs.get(EGL_ROBUST_RESOURCE_INITIALIZATION_ANGLE, EGL_FALSE) == EGL_TRUE)
+    {
+        mHasSurfaceWithRobustInit = true;
+    }
+
     ASSERT(mRenderer);
     return new OffscreenSurfaceVk(state);
 }
@@ -135,11 +153,16 @@ ImageImpl *DisplayVk::createImage(const egl::ImageState &state,
     return new ImageVk(state, context);
 }
 
-rx::ContextImpl *DisplayVk::createContext(const gl::State &state,
-                                          gl::ErrorSet *errorSet,
-                                          const egl::Config *configuration,
-                                          const gl::Context *shareContext,
-                                          const egl::AttributeMap &attribs)
+ShareGroupImpl *DisplayVk::createShareGroup()
+{
+    return new ShareGroupVk();
+}
+
+ContextImpl *DisplayVk::createContext(const gl::State &state,
+                                      gl::ErrorSet *errorSet,
+                                      const egl::Config *configuration,
+                                      const gl::Context *shareContext,
+                                      const egl::AttributeMap &attribs)
 {
     return new ContextVk(state, errorSet, mRenderer);
 }
@@ -169,7 +192,7 @@ gl::Version DisplayVk::getMaxConformantESVersion() const
 
 void DisplayVk::generateExtensions(egl::DisplayExtensions *outExtensions) const
 {
-    outExtensions->createContextRobustness      = true;
+    outExtensions->createContextRobustness      = getRenderer()->getNativeExtensions().robustness;
     outExtensions->surfaceOrientation           = true;
     outExtensions->displayTextureShareGroup     = true;
     outExtensions->robustResourceInitialization = true;
@@ -193,17 +216,24 @@ void DisplayVk::generateExtensions(egl::DisplayExtensions *outExtensions) const
         getRenderer()->getFeatures().supportsAndroidHardwareBuffer.enabled;
     outExtensions->surfacelessContext = true;
     outExtensions->glColorspace = getRenderer()->getFeatures().supportsSwapchainColorspace.enabled;
+    outExtensions->imageGlColorspace = outExtensions->glColorspace;
 
 #if defined(ANGLE_PLATFORM_ANDROID)
     outExtensions->framebufferTargetANDROID = true;
 #endif  // defined(ANGLE_PLATFORM_ANDROID)
 
-    outExtensions->contextPriority = true;
+    // Disable context priority when non-zero memory init is enabled. This enforces a queue order.
+    outExtensions->contextPriority = !getRenderer()->getFeatures().allocateNonZeroMemory.enabled;
     outExtensions->noConfigContext = true;
+
+#if defined(ANGLE_PLATFORM_ANDROID)
+    outExtensions->nativeFenceSyncANDROID =
+        getRenderer()->getFeatures().supportsAndroidNativeFenceSync.enabled;
+#endif  // defined(ANGLE_PLATFORM_ANDROID)
 
 #if defined(ANGLE_PLATFORM_GGP)
     outExtensions->ggpStreamDescriptor = true;
-    outExtensions->swapWithFrameToken  = true;
+    outExtensions->swapWithFrameToken  = getRenderer()->getFeatures().supportsGGPFrameToken.enabled;
 #endif  // defined(ANGLE_PLATFORM_GGP)
 }
 
@@ -231,8 +261,8 @@ void DisplayVk::handleError(VkResult result,
     ASSERT(result != VK_SUCCESS);
 
     std::stringstream errorStream;
-    errorStream << "Internal Vulkan error: " << VulkanResultString(result) << ", in " << file
-                << ", " << function << ":" << line << ".";
+    errorStream << "Internal Vulkan error (" << result << "): " << VulkanResultString(result)
+                << ", in " << file << ", " << function << ":" << line << ".";
     mStoredErrorString = errorStream.str();
 
     if (result == VK_ERROR_DEVICE_LOST)
@@ -253,4 +283,9 @@ void DisplayVk::populateFeatureList(angle::FeatureList *features)
     mRenderer->getFeatures().populateFeatureList(features);
 }
 
+bool DisplayVk::isRobustResourceInitEnabled() const
+{
+    // We return true if any surface was created with robust resource init enabled.
+    return mHasSurfaceWithRobustInit;
+}
 }  // namespace rx

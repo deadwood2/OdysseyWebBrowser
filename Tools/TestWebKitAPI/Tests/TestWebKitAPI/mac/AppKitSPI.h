@@ -31,7 +31,6 @@
 #import <AppKit/NSInspectorBarItemController.h>
 #import <AppKit/NSInspectorBar_Private.h>
 #import <AppKit/NSTextInputClient_Private.h>
-#import <AppKit/NSTextInputContext_Private.h>
 #import <AppKit/NSWindow_Private.h>
 
 #else
@@ -40,11 +39,7 @@
 - (void)selectedRangeWithCompletionHandler:(void(^)(NSRange selectedRange))completionHandler;
 - (void)markedRangeWithCompletionHandler:(void(^)(NSRange markedRange))completionHandler;
 - (void)hasMarkedTextWithCompletionHandler:(void(^)(BOOL hasMarkedText))completionHandler;
-@end
-
-@interface NSTextInputContext (WebKitSupport)
-- (void)handleEvent:(NSEvent *)event completionHandler:(void(^)(BOOL handled))completionHandler;
-- (void)handleEventByInputMethod:(NSEvent *)event completionHandler:(void(^)(BOOL handled))completionHandler;
+- (void)attributedSubstringForProposedRange:(NSRange)range completionHandler:(void(^)(NSAttributedString *, NSRange actualRange))completionHandler;
 @end
 
 @protocol NSInspectorBarClient <NSObject>

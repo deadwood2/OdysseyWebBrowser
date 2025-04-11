@@ -29,6 +29,7 @@
 #include "RemoteWebInspectorProxyMessages.h"
 #include "RemoteWebInspectorUIMessages.h"
 #include "WebCoreArgumentCoders.h"
+#include "WebInspectorUI.h"
 #include "WebPage.h"
 #include "WebProcess.h"
 #include <WebCore/CertificateInfo.h>
@@ -54,6 +55,7 @@ RemoteWebInspectorUI::RemoteWebInspectorUI(WebPage& page)
     : m_page(page)
     , m_frontendAPIDispatcher(page)
 {
+    WebInspectorUI::enableFrontendFeatures();
 }
 
 void RemoteWebInspectorUI::initialize(DebuggableInfoData&& debuggableInfo, const String& backendCommandsURL)
@@ -65,6 +67,13 @@ void RemoteWebInspectorUI::initialize(DebuggableInfoData&& debuggableInfo, const
 
     m_frontendAPIDispatcher.reset();
     m_frontendAPIDispatcher.dispatchCommand("setDockingUnavailable"_s, true);
+}
+
+void RemoteWebInspectorUI::updateFindString(const String& findString)
+{
+    StringBuilder builder;
+    JSON::Value::escapeString(builder, findString);
+    m_frontendAPIDispatcher.dispatchCommand("updateFindString"_s, builder.toString());
 }
 
 void RemoteWebInspectorUI::didSave(const String& url)
@@ -110,6 +119,11 @@ void RemoteWebInspectorUI::changeSheetRect(const FloatRect& rect)
     WebProcess::singleton().parentProcessConnection()->send(Messages::RemoteWebInspectorProxy::SetSheetRect(rect), m_page.identifier());
 }
 
+void RemoteWebInspectorUI::setForcedAppearance(WebCore::InspectorFrontendClient::Appearance appearance)
+{
+    WebProcess::singleton().parentProcessConnection()->send(Messages::RemoteWebInspectorProxy::SetForcedAppearance(appearance), m_page.identifier());
+}
+
 void RemoteWebInspectorUI::startWindowDrag()
 {
     WebProcess::singleton().parentProcessConnection()->send(Messages::RemoteWebInspectorProxy::StartWindowDrag(), m_page.identifier());
@@ -125,6 +139,22 @@ void RemoteWebInspectorUI::moveWindowBy(float x, float y)
 WebCore::UserInterfaceLayoutDirection RemoteWebInspectorUI::userInterfaceLayoutDirection() const
 {
     return m_page.corePage()->userInterfaceLayoutDirection();
+}
+
+bool RemoteWebInspectorUI::supportsDockSide(DockSide dockSide)
+{
+    switch (dockSide) {
+    case DockSide::Undocked:
+        return true;
+
+    case DockSide::Right:
+    case DockSide::Left:
+    case DockSide::Bottom:
+        return false;
+    }
+
+    ASSERT_NOT_REACHED();
+    return false;
 }
 
 void RemoteWebInspectorUI::bringToFront()

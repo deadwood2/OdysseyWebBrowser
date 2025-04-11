@@ -32,14 +32,13 @@ import json
 import sys
 import unittest
 
-from webkitpy.common.unicode_compatibility import StringIO
+from webkitcorepy import StringIO
+
 from webkitpy.common.system import outputcapture, path
 from webkitpy.common.system.crashlogs_unittest import make_mock_crash_report_darwin
 from webkitpy.common.system.systemhost import SystemHost
 from webkitpy.common.host import Host
 from webkitpy.common.host_mock import MockHost
-from webkitpy.common.unicode_compatibility import StringIO
-
 from webkitpy.layout_tests import run_webkit_tests
 from webkitpy.layout_tests.models.test_run_results import INTERRUPTED_EXIT_STATUS
 from webkitpy.port import test
@@ -59,6 +58,9 @@ def parse_args(extra_args=None, tests_included=False, new_results=False, print_n
 
     if not '--world-leaks' in extra_args:
         args.append('--world-leaks')
+
+    if not '--accessibility-isolated-tree' in extra_args:
+        args.append('--accessibility-isolated-tree')
 
     args.extend(extra_args)
     if not tests_included:
@@ -277,15 +279,10 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
             _, regular_output, _ = logging_run(['failures/expected/keyboard.html', 'passes/text.html', '--child-processes', '2', '--force'], tests_included=True, shared_port=False)
             self.assertTrue(any(['Interrupted, exiting' in line for line in regular_output.getvalue().splitlines()]))
 
-    def test_no_tests_found(self):
-        details, err, _ = logging_run(['resources'], tests_included=True)
-        self.assertEqual(details.exit_code, -1)
-        self.assertContains(err, 'No tests to run.\n')
-
-    def test_no_tests_found_2(self):
+    def test_all_tests_skipped(self):
         details, err, _ = logging_run(['foo'], tests_included=True)
-        self.assertEqual(details.exit_code, -1)
-        self.assertContains(err, 'No tests to run.\n')
+        self.assertEqual(details.exit_code, 0)
+        self.assertContains(err, 'All tests skipped.\n')
 
     def test_natural_order(self):
         tests_to_run = ['passes/audio.html', 'failures/expected/text.html', 'failures/expected/missing_text.html', 'passes/args.html']

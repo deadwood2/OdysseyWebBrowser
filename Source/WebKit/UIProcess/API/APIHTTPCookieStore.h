@@ -58,6 +58,7 @@ public:
     virtual ~HTTPCookieStore();
 
     void cookies(CompletionHandler<void(const Vector<WebCore::Cookie>&)>&&);
+    void cookiesForURL(WTF::URL&&, CompletionHandler<void(Vector<WebCore::Cookie>&&)>&&);
     void setCookies(const Vector<WebCore::Cookie>&, CompletionHandler<void()>&&);
     void deleteCookie(const WebCore::Cookie&, CompletionHandler<void()>&&);
     
@@ -76,13 +77,15 @@ public:
     void cookiesDidChange();
     void cookieManagerDestroyed();
 
+    void filterAppBoundCookies(const Vector<WebCore::Cookie>&, CompletionHandler<void(Vector<WebCore::Cookie>&&)>&&);
+
 private:
     HTTPCookieStore(WebKit::WebsiteDataStore&);
 
     void registerForNewProcessPoolNotifications();
     void unregisterForNewProcessPoolNotifications();
 
-    static void flushDefaultUIProcessCookieStore();
+    void flushDefaultUIProcessCookieStore(CompletionHandler<void()>&&);
     static Vector<WebCore::Cookie> getAllDefaultUIProcessCookieStoreCookies();
     static void setCookieInDefaultUIProcessCookieStore(const WebCore::Cookie&);
     static void deleteCookieFromDefaultUIProcessCookieStore(const WebCore::Cookie&);

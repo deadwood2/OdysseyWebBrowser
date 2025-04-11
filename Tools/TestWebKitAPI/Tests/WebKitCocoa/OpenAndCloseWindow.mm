@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
+#import "config.h"
 
 #import "PlatformUtilities.h"
 #import <WebKit/WKPreferences.h>
@@ -318,4 +318,24 @@ TEST(WebKit, OpenWindowThenDocumentOpen)
         TestWebKitAPI::Util::sleep(0.1);
 
     EXPECT_TRUE([[[openedWebView _mainFrameURL] absoluteString] isEqualToString:[[webView URL] absoluteString]]);
+}
+
+TEST(WebKit, OpenFileURLWithHost)
+{
+    resetToConsistentState();
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+
+    auto uiDelegate = adoptNS([[OpenWindowThenDocumentOpenUIDelegate alloc] init]);
+    [webView setUIDelegate:uiDelegate.get()];
+    [webView configuration].preferences.javaScriptCanOpenWindowsAutomatically = YES;
+
+    NSURLRequest *request = [NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"open-window-with-file-url-with-host" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]];
+    [webView loadRequest:request];
+
+    while (![[[webView URL] absoluteString] hasSuffix:@"#test"])
+        TestWebKitAPI::Util::spinRunLoop();
+
+    while (![[[webView URL] absoluteString] hasPrefix:@"file:///"])
+        TestWebKitAPI::Util::spinRunLoop();
 }

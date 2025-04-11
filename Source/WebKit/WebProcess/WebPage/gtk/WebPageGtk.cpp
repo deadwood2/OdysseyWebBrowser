@@ -42,8 +42,8 @@
 #include <WebCore/KeyboardEvent.h>
 #include <WebCore/NotImplemented.h>
 #include <WebCore/Page.h>
-#include <WebCore/PasteboardHelper.h>
 #include <WebCore/PlatformKeyboardEvent.h>
+#include <WebCore/RenderTheme.h>
 #include <WebCore/Settings.h>
 #include <WebCore/SharedBuffer.h>
 #include <WebCore/UserAgent.h>
@@ -164,6 +164,7 @@ void WebPage::themeDidChange(String&& themeName)
 
     m_themeName = WTFMove(themeName);
     g_object_set(gtk_settings_get_default(), "gtk-theme-name", m_themeName.utf8().data(), nullptr);
+    RenderTheme::singleton().platformColorsDidChange();
     Page::updateStyleForAllPagesAfterGlobalChangeInEnvironment();
 }
 

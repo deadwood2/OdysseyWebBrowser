@@ -346,6 +346,8 @@ void WebAutomationSession::createBrowsingContext(const String* optionalPresentat
         if (!page)
             ASYNC_FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InternalError, "The remote session failed to create a new browsing context.");
 
+        // WebDriver allows running commands in a browsing context which has not done any loads yet. Force WebProcess to be created so it can receive messages.
+        page->launchInitialProcessIfNecessary();
         callback->sendSuccess(protectedThis->handleForWebPageProxy(*page), toProtocol(protectedThis->m_client->currentPresentationOfPage(protectedThis.get(), *page)));
     });
 }
@@ -373,7 +375,7 @@ void WebAutomationSession::switchToBrowsingContext(const String& browsingContext
 
     m_client->requestSwitchToPage(*this, *page, [frameID, page = makeRef(*page), callback = WTFMove(callback)]() {
         page->setFocus(true);
-        page->send(Messages::WebAutomationSessionProxy::FocusFrame(page->webPageID(), frameID), 0);
+        page->process().send(Messages::WebAutomationSessionProxy::FocusFrame(page->webPageID(), frameID), 0);
 
         callback->sendSuccess();
     });
@@ -777,6 +779,10 @@ void WebAutomationSession::documentLoadedForFrame(const WebFrameProxy& frame)
             m_loadTimer.stop();
             callback->sendSuccess(JSON::Object::create());
         }
+
+#if ENABLE(WEBDRIVER_MOUSE_INTERACTIONS)
+        resetClickCount();
+#endif
     } else {
         if (auto callback = m_pendingEagerNavigationInBrowsingContextCallbacksPerFrame.take(frame.frameID())) {
             m_loadTimer.stop();
@@ -855,7 +861,7 @@ static bool fileCanBeAcceptedForUpload(const String& filename, const HashSet<Str
     if (allowedFileExtensions.contains(extension))
         return true;
 
-    String mappedMIMEType = WebCore::MIMETypeRegistry::getMIMETypeForExtension(extension).convertToASCIILowercase();
+    String mappedMIMEType = WebCore::MIMETypeRegistry::mimeTypeForExtension(extension).convertToASCIILowercase();
     if (mappedMIMEType.isEmpty())
         return false;
     
@@ -945,7 +951,7 @@ void WebAutomationSession::evaluateJavaScriptFunction(const String& browsingCont
     uint64_t callbackID = m_nextEvaluateJavaScriptCallbackID++;
     m_evaluateJavaScriptFunctionCallbacks.set(callbackID, WTFMove(callback));
 
-    page->send(Messages::WebAutomationSessionProxy::EvaluateJavaScriptFunction(page->webPageID(), frameID, function, argumentsVector, expectsImplicitCallbackArgument, callbackTimeout, callbackID), 0);
+    page->process().send(Messages::WebAutomationSessionProxy::EvaluateJavaScriptFunction(page->webPageID(), frameID, function, argumentsVector, expectsImplicitCallbackArgument, callbackTimeout, callbackID), 0);
 }
 
 void WebAutomationSession::didEvaluateJavaScriptFunction(uint64_t callbackID, const String& result, const String& errorType)
@@ -974,7 +980,7 @@ void WebAutomationSession::resolveChildFrameHandle(const String& browsingContext
     if (frameNotFound)
         ASYNC_FAIL_WITH_PREDEFINED_ERROR(FrameNotFound);
 
-    WTF::CompletionHandler<void(Optional<String>, Optional<FrameIdentifier>)> completionHandler = [this, protectedThis = makeRef(*this), callback = callback.copyRef()](Optional<String> errorType, Optional<FrameIdentifier> frameID) mutable {
+    WTF::CompletionHandler<void(Optional<String>, Optional<FrameIdentifier>)> completionHandler = [this, protectedThis = makeRef(*this), callback](Optional<String> errorType, Optional<FrameIdentifier> frameID) mutable {
         if (errorType) {
             callback->sendFailure(STRING_FOR_PREDEFINED_ERROR_MESSAGE(*errorType));
             return;
@@ -984,17 +990,17 @@ void WebAutomationSession::resolveChildFrameHandle(const String& browsingContext
     };
 
     if (optionalNodeHandle) {
-        page->sendWithAsyncReply(Messages::WebAutomationSessionProxy::ResolveChildFrameWithNodeHandle(page->webPageID(), frameID, *optionalNodeHandle), WTFMove(completionHandler));
+        page->process().sendWithAsyncReply(Messages::WebAutomationSessionProxy::ResolveChildFrameWithNodeHandle(page->webPageID(), frameID, *optionalNodeHandle), WTFMove(completionHandler));
         return;
     }
 
     if (optionalName) {
-        page->sendWithAsyncReply(Messages::WebAutomationSessionProxy::ResolveChildFrameWithName(page->webPageID(), frameID, *optionalName), WTFMove(completionHandler));
+        page->process().sendWithAsyncReply(Messages::WebAutomationSessionProxy::ResolveChildFrameWithName(page->webPageID(), frameID, *optionalName), WTFMove(completionHandler));
         return;
     }
 
     if (optionalOrdinal) {
-        page->sendWithAsyncReply(Messages::WebAutomationSessionProxy::ResolveChildFrameWithOrdinal(page->webPageID(), frameID, *optionalOrdinal), WTFMove(completionHandler));
+        page->process().sendWithAsyncReply(Messages::WebAutomationSessionProxy::ResolveChildFrameWithOrdinal(page->webPageID(), frameID, *optionalOrdinal), WTFMove(completionHandler));
         return;
     }
 
@@ -1012,7 +1018,7 @@ void WebAutomationSession::resolveParentFrameHandle(const String& browsingContex
     if (frameNotFound)
         ASYNC_FAIL_WITH_PREDEFINED_ERROR(FrameNotFound);
 
-    WTF::CompletionHandler<void(Optional<String>, Optional<FrameIdentifier>)> completionHandler = [this, protectedThis = makeRef(*this), callback = callback.copyRef()](Optional<String> errorType, Optional<FrameIdentifier> frameID) mutable {
+    WTF::CompletionHandler<void(Optional<String>, Optional<FrameIdentifier>)> completionHandler = [this, protectedThis = makeRef(*this), callback](Optional<String> errorType, Optional<FrameIdentifier> frameID) mutable {
         if (errorType) {
             callback->sendFailure(STRING_FOR_PREDEFINED_ERROR_MESSAGE(*errorType));
             return;
@@ -1021,7 +1027,7 @@ void WebAutomationSession::resolveParentFrameHandle(const String& browsingContex
         callback->sendSuccess(handleForWebFrameID(frameID));
     };
 
-    page->sendWithAsyncReply(Messages::WebAutomationSessionProxy::ResolveParentFrame(page->webPageID(), frameID), WTFMove(completionHandler));
+    page->process().sendWithAsyncReply(Messages::WebAutomationSessionProxy::ResolveParentFrame(page->webPageID(), frameID), WTFMove(completionHandler));
 }
 
 static Optional<CoordinateSystem> protocolStringToCoordinateSystem(const String& coordinateSystemString)
@@ -1048,7 +1054,7 @@ void WebAutomationSession::computeElementLayout(const String& browsingContextHan
     if (!coordinateSystem)
         ASYNC_FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The parameter 'coordinateSystem' is invalid.");
 
-    WTF::CompletionHandler<void(Optional<String>, WebCore::IntRect, Optional<WebCore::IntPoint>, bool)> completionHandler = [callback = callback.copyRef()](Optional<String> errorType, WebCore::IntRect rect, Optional<WebCore::IntPoint> inViewCenterPoint, bool isObscured) mutable {
+    WTF::CompletionHandler<void(Optional<String>, WebCore::IntRect, Optional<WebCore::IntPoint>, bool)> completionHandler = [callback](Optional<String> errorType, WebCore::IntRect rect, Optional<WebCore::IntPoint> inViewCenterPoint, bool isObscured) mutable {
         if (errorType) {
             callback->sendFailure(STRING_FOR_PREDEFINED_ERROR_MESSAGE(*errorType));
             return;
@@ -1083,7 +1089,7 @@ void WebAutomationSession::computeElementLayout(const String& browsingContextHan
     };
 
     bool scrollIntoViewIfNeeded = optionalScrollIntoViewIfNeeded ? *optionalScrollIntoViewIfNeeded : false;
-    page->sendWithAsyncReply(Messages::WebAutomationSessionProxy::ComputeElementLayout(page->webPageID(), frameID, nodeHandle, scrollIntoViewIfNeeded, coordinateSystem.value()), WTFMove(completionHandler));
+    page->process().sendWithAsyncReply(Messages::WebAutomationSessionProxy::ComputeElementLayout(page->webPageID(), frameID, nodeHandle, scrollIntoViewIfNeeded, coordinateSystem.value()), WTFMove(completionHandler));
 }
 
 void WebAutomationSession::selectOptionElement(const String& browsingContextHandle, const String& frameHandle, const String& nodeHandle, Ref<SelectOptionElementCallback>&& callback)
@@ -1097,7 +1103,7 @@ void WebAutomationSession::selectOptionElement(const String& browsingContextHand
     if (frameNotFound)
         ASYNC_FAIL_WITH_PREDEFINED_ERROR(FrameNotFound);
 
-    WTF::CompletionHandler<void(Optional<String>)> completionHandler = [callback = callback.copyRef()](Optional<String> errorType) mutable {
+    WTF::CompletionHandler<void(Optional<String>)> completionHandler = [callback](Optional<String> errorType) mutable {
         if (errorType) {
             callback->sendFailure(STRING_FOR_PREDEFINED_ERROR_MESSAGE(*errorType));
             return;
@@ -1106,7 +1112,7 @@ void WebAutomationSession::selectOptionElement(const String& browsingContextHand
         callback->sendSuccess();
     };
 
-    page->sendWithAsyncReply(Messages::WebAutomationSessionProxy::SelectOptionElement(page->webPageID(), frameID, nodeHandle), WTFMove(completionHandler));
+    page->process().sendWithAsyncReply(Messages::WebAutomationSessionProxy::SelectOptionElement(page->webPageID(), frameID, nodeHandle), WTFMove(completionHandler));
 }
 
 void WebAutomationSession::isShowingJavaScriptDialog(Inspector::ErrorString& errorString, const String& browsingContextHandle, bool* result)
@@ -1257,7 +1263,7 @@ void WebAutomationSession::setFilesForInputFileUpload(const String& browsingCont
         newFileList.append(filename);
     }
 
-    CompletionHandler<void(Optional<String>)> completionHandler = [callback = callback.copyRef()](Optional<String> errorType) mutable {
+    CompletionHandler<void(Optional<String>)> completionHandler = [callback](Optional<String> errorType) mutable {
         if (errorType) {
             callback->sendFailure(STRING_FOR_PREDEFINED_ERROR_MESSAGE(*errorType));
             return;
@@ -1266,7 +1272,7 @@ void WebAutomationSession::setFilesForInputFileUpload(const String& browsingCont
         callback->sendSuccess();
     };
 
-    page->sendWithAsyncReply(Messages::WebAutomationSessionProxy::SetFilesForInputFileUpload(page->webPageID(), frameID, nodeHandle, WTFMove(newFileList)), WTFMove(completionHandler));
+    page->process().sendWithAsyncReply(Messages::WebAutomationSessionProxy::SetFilesForInputFileUpload(page->webPageID(), frameID, nodeHandle, WTFMove(newFileList)), WTFMove(completionHandler));
 }
 
 static Ref<Inspector::Protocol::Automation::Cookie> buildObjectForCookie(const WebCore::Cookie& cookie)
@@ -1276,7 +1282,7 @@ static Ref<Inspector::Protocol::Automation::Cookie> buildObjectForCookie(const W
         .setValue(cookie.value)
         .setDomain(cookie.domain)
         .setPath(cookie.path)
-        .setExpires(cookie.expires ? cookie.expires / 1000 : 0)
+        .setExpires(cookie.expires ? *cookie.expires / 1000 : 0)
         .setSize((cookie.name.length() + cookie.value.length()))
         .setHttpOnly(cookie.httpOnly)
         .setSecure(cookie.secure)
@@ -1300,7 +1306,7 @@ void WebAutomationSession::getAllCookies(const String& browsingContextHandle, Re
     if (!page)
         ASYNC_FAIL_WITH_PREDEFINED_ERROR(WindowNotFound);
 
-    WTF::CompletionHandler<void(Optional<String>, Vector<WebCore::Cookie>)> completionHandler = [callback = callback.copyRef()](Optional<String> errorType, Vector<WebCore::Cookie> cookies) mutable {
+    WTF::CompletionHandler<void(Optional<String>, Vector<WebCore::Cookie>)> completionHandler = [callback](Optional<String> errorType, Vector<WebCore::Cookie> cookies) mutable {
         if (errorType) {
             callback->sendFailure(STRING_FOR_PREDEFINED_ERROR_MESSAGE(*errorType));
             return;
@@ -1309,7 +1315,7 @@ void WebAutomationSession::getAllCookies(const String& browsingContextHandle, Re
         callback->sendSuccess(buildArrayForCookies(cookies));
     };
 
-    page->sendWithAsyncReply(Messages::WebAutomationSessionProxy::GetCookiesForFrame(page->webPageID(), WTF::nullopt), WTFMove(completionHandler));
+    page->process().sendWithAsyncReply(Messages::WebAutomationSessionProxy::GetCookiesForFrame(page->webPageID(), WTF::nullopt), WTFMove(completionHandler));
 }
 
 void WebAutomationSession::deleteSingleCookie(const String& browsingContextHandle, const String& cookieName, Ref<DeleteSingleCookieCallback>&& callback)
@@ -1318,7 +1324,7 @@ void WebAutomationSession::deleteSingleCookie(const String& browsingContextHandl
     if (!page)
         ASYNC_FAIL_WITH_PREDEFINED_ERROR(WindowNotFound);
 
-    WTF::CompletionHandler<void(Optional<String>)> completionHandler = [callback = callback.copyRef()](Optional<String> errorType) mutable {
+    WTF::CompletionHandler<void(Optional<String>)> completionHandler = [callback](Optional<String> errorType) mutable {
         if (errorType) {
             callback->sendFailure(STRING_FOR_PREDEFINED_ERROR_MESSAGE(*errorType));
             return;
@@ -1327,7 +1333,7 @@ void WebAutomationSession::deleteSingleCookie(const String& browsingContextHandl
         callback->sendSuccess();
     };
 
-    page->sendWithAsyncReply(Messages::WebAutomationSessionProxy::DeleteCookie(page->webPageID(), WTF::nullopt, cookieName), WTFMove(completionHandler));
+    page->process().sendWithAsyncReply(Messages::WebAutomationSessionProxy::DeleteCookie(page->webPageID(), WTF::nullopt, cookieName), WTFMove(completionHandler));
 }
 
 static String domainByAddingDotPrefixIfNeeded(String domain)
@@ -1388,7 +1394,7 @@ void WebAutomationSession::addSingleCookie(const String& browsingContextHandle, 
         ASYNC_FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(MissingParameter, "The parameter 'httpOnly' was not found.");
 
     WebCookieManagerProxy* cookieManager = m_processPool->supplement<WebCookieManagerProxy>();
-    cookieManager->setCookies(page->websiteDataStore().sessionID(), { cookie }, [callback = callback.copyRef()]() {
+    cookieManager->setCookies(page->websiteDataStore().sessionID(), { cookie }, [callback]() {
         callback->sendSuccess();
     });
 }
@@ -1509,6 +1515,27 @@ void WebAutomationSession::viewportInViewCenterPointOfElement(WebPageProxy& page
 }
 
 #if ENABLE(WEBDRIVER_MOUSE_INTERACTIONS)
+void WebAutomationSession::updateClickCount(MouseButton button, const WebCore::IntPoint& position, Seconds maxTime, int maxDistance)
+{
+    auto now = MonotonicTime::now();
+    if (now - m_lastClickTime < maxTime && button == m_lastClickButton && m_lastClickPosition.distanceSquaredToPoint(position) < maxDistance) {
+        m_clickCount++;
+        m_lastClickTime = now;
+        return;
+    }
+
+    m_clickCount = 1;
+    m_lastClickTime = now;
+    m_lastClickButton = button;
+    m_lastClickPosition = position;
+}
+
+void WebAutomationSession::resetClickCount()
+{
+    m_clickCount = 1;
+    m_lastClickButton = MouseButton::None;
+    m_lastClickPosition = { };
+}
 
 void WebAutomationSession::simulateMouseInteraction(WebPageProxy& page, MouseInteraction interaction, MouseButton mouseButton, const WebCore::IntPoint& locationInViewport, CompletionHandler<void(Optional<AutomationCommandError>)>&& completionHandler)
 {
@@ -1530,7 +1557,7 @@ void WebAutomationSession::simulateMouseInteraction(WebPageProxy& page, MouseInt
             callbackInMap(AUTOMATION_COMMAND_ERROR_WITH_NAME(Timeout));
         callbackInMap = WTFMove(mouseEventsFlushedCallback);
 
-        platformSimulateMouseInteraction(page, interaction, mouseButton, locationInViewport, OptionSet<WebEvent::Modifier>::fromRaw(m_currentModifiers));
+        platformSimulateMouseInteraction(page, interaction, mouseButton, locationInViewport, platformWebModifiersFromRaw(m_currentModifiers));
 
         // If the event does not hit test anything in the window, then it may not have been delivered.
         if (callbackInMap && !page->isProcessingMouseEvents()) {
@@ -1653,7 +1680,7 @@ void WebAutomationSession::performMouseInteraction(const String& handle, const J
         if (!parsedButton)
             ASYNC_FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The parameter 'button' is invalid.");
 
-        auto mouseEventsFlushedCallback = [protectedThis = WTFMove(protectedThis), callback = WTFMove(callback), page = page.copyRef(), x, y](Optional<AutomationCommandError> error) {
+        auto mouseEventsFlushedCallback = [protectedThis = WTFMove(protectedThis), callback = WTFMove(callback), page, x, y](Optional<AutomationCommandError> error) {
             if (error)
                 callback->sendFailure(error.value().toProtocolString());
             else {
@@ -2025,7 +2052,7 @@ void WebAutomationSession::takeScreenshot(const String& handle, const String* op
         return;
     }
 
-    CompletionHandler<void(Optional<String>, WebCore::IntRect&&)> completionHandler = [page = makeRef(*page), callback = callback.copyRef(), takeViewSnapsot = WTFMove(takeViewSnapsot)](Optional<String> errorType, WebCore::IntRect&& rect) mutable {
+    CompletionHandler<void(Optional<String>, WebCore::IntRect&&)> completionHandler = [page = makeRef(*page), callback, takeViewSnapsot = WTFMove(takeViewSnapsot)](Optional<String> errorType, WebCore::IntRect&& rect) mutable {
         if (errorType) {
             callback->sendFailure(STRING_FOR_PREDEFINED_ERROR_MESSAGE(*errorType));
             return;
@@ -2034,12 +2061,12 @@ void WebAutomationSession::takeScreenshot(const String& handle, const String* op
         takeViewSnapsot(page.get(), WTFMove(rect), WTFMove(callback));
     };
 
-    page->sendWithAsyncReply(Messages::WebAutomationSessionProxy::SnapshotRectForScreenshot(page->webPageID(), frameID, nodeHandle, scrollIntoViewIfNeeded, clipToViewport), WTFMove(completionHandler));
+    page->process().sendWithAsyncReply(Messages::WebAutomationSessionProxy::SnapshotRectForScreenshot(page->webPageID(), frameID, nodeHandle, scrollIntoViewIfNeeded, clipToViewport), WTFMove(completionHandler));
 #else
     uint64_t callbackID = m_nextScreenshotCallbackID++;
     m_screenshotCallbacks.set(callbackID, WTFMove(callback));
 
-    page->send(Messages::WebAutomationSessionProxy::TakeScreenshot(page->webPageID(), frameID, nodeHandle, scrollIntoViewIfNeeded, clipToViewport, callbackID), 0);
+    page->process().send(Messages::WebAutomationSessionProxy::TakeScreenshot(page->webPageID(), frameID, nodeHandle, scrollIntoViewIfNeeded, clipToViewport, callbackID), 0);
 #endif
 }
 

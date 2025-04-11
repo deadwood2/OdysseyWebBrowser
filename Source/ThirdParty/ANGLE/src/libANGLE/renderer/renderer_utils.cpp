@@ -9,20 +9,21 @@
 
 #include "libANGLE/renderer/renderer_utils.h"
 
+#include "common/string_utils.h"
+#include "common/system_utils.h"
+#include "common/utilities.h"
 #include "image_util/copyimage.h"
 #include "image_util/imageformats.h"
-
 #include "libANGLE/AttributeMap.h"
 #include "libANGLE/Context.h"
+#include "libANGLE/Context.inl.h"
 #include "libANGLE/Display.h"
 #include "libANGLE/formatutils.h"
 #include "libANGLE/renderer/ContextImpl.h"
 #include "libANGLE/renderer/Format.h"
-
 #include "platform/Feature.h"
 
 #include <string.h>
-#include "common/utilities.h"
 
 namespace rx
 {
@@ -205,11 +206,58 @@ void SetFloatUniformMatrixFast(unsigned int arrayElementOffset,
 
     memcpy(targetData, valueData, matrixSize * count);
 }
-
 }  // anonymous namespace
 
+void RotateRectangle(const SurfaceRotation rotation,
+                     const bool flipY,
+                     const int framebufferWidth,
+                     const int framebufferHeight,
+                     const gl::Rectangle &incoming,
+                     gl::Rectangle *outgoing)
+{
+    // GLES's y-axis points up; Vulkan's points down.
+    switch (rotation)
+    {
+        case SurfaceRotation::Identity:
+            // Do not rotate gl_Position (surface matches the device's orientation):
+            outgoing->x     = incoming.x;
+            outgoing->y     = flipY ? framebufferHeight - incoming.y - incoming.height : incoming.y;
+            outgoing->width = incoming.width;
+            outgoing->height = incoming.height;
+            break;
+        case SurfaceRotation::Rotated90Degrees:
+            // Rotate gl_Position 90 degrees:
+            outgoing->x      = incoming.y;
+            outgoing->y      = flipY ? incoming.x : framebufferWidth - incoming.x - incoming.width;
+            outgoing->width  = incoming.height;
+            outgoing->height = incoming.width;
+            break;
+        case SurfaceRotation::Rotated180Degrees:
+            // Rotate gl_Position 180 degrees:
+            outgoing->x     = framebufferWidth - incoming.x - incoming.width;
+            outgoing->y     = flipY ? incoming.y : framebufferHeight - incoming.y - incoming.height;
+            outgoing->width = incoming.width;
+            outgoing->height = incoming.height;
+            break;
+        case SurfaceRotation::Rotated270Degrees:
+            // Rotate gl_Position 270 degrees:
+            outgoing->x      = framebufferHeight - incoming.y - incoming.height;
+            outgoing->y      = flipY ? framebufferWidth - incoming.x - incoming.width : incoming.x;
+            outgoing->width  = incoming.height;
+            outgoing->height = incoming.width;
+            break;
+        default:
+            UNREACHABLE();
+            break;
+    }
+}
+
 PackPixelsParams::PackPixelsParams()
-    : destFormat(nullptr), outputPitch(0), packBuffer(nullptr), offset(0)
+    : destFormat(nullptr),
+      outputPitch(0),
+      packBuffer(nullptr),
+      offset(0),
+      rotation(SurfaceRotation::Identity)
 {}
 
 PackPixelsParams::PackPixelsParams(const gl::Rectangle &areaIn,
@@ -223,7 +271,8 @@ PackPixelsParams::PackPixelsParams(const gl::Rectangle &areaIn,
       outputPitch(outputPitchIn),
       packBuffer(packBufferIn),
       reverseRowOrder(reverseRowOrderIn),
-      offset(offsetIn)
+      offset(offsetIn),
+      rotation(SurfaceRotation::Identity)
 {}
 
 void PackPixels(const PackPixelsParams &params,
@@ -236,14 +285,73 @@ void PackPixels(const PackPixelsParams &params,
 
     const uint8_t *source = sourceIn;
     int inputPitch        = inputPitchIn;
-
-    if (params.reverseRowOrder)
+    int destWidth         = params.area.width;
+    int destHeight        = params.area.height;
+    int xAxisPitch        = 0;
+    int yAxisPitch        = 0;
+    switch (params.rotation)
     {
-        source += inputPitch * (params.area.height - 1);
-        inputPitch = -inputPitch;
+        case SurfaceRotation::Identity:
+            // The source image is not rotated (i.e. matches the device's orientation), and may or
+            // may not be y-flipped.  The image is row-major.  Each source row (one step along the
+            // y-axis for each step in the dest y-axis) is inputPitch past the previous row.  Along
+            // a row, each source pixel (one step along the x-axis for each step in the dest
+            // x-axis) is sourceFormat.pixelBytes past the previous pixel.
+            xAxisPitch = sourceFormat.pixelBytes;
+            if (params.reverseRowOrder)
+            {
+                // The source image is y-flipped, which means we start at the last row, and each
+                // source row is BEFORE the previous row.
+                source += inputPitchIn * (params.area.height - 1);
+                inputPitch = -inputPitch;
+                yAxisPitch = -inputPitchIn;
+            }
+            else
+            {
+                yAxisPitch = inputPitchIn;
+            }
+            break;
+        case SurfaceRotation::Rotated90Degrees:
+            // The source image is rotated 90 degrees counter-clockwise.  Y-flip is always applied
+            // to rotated images.  The image is column-major.  Each source column (one step along
+            // the source x-axis for each step in the dest y-axis) is inputPitch past the previous
+            // column.  Along a column, each source pixel (one step along the y-axis for each step
+            // in the dest x-axis) is sourceFormat.pixelBytes past the previous pixel.
+            xAxisPitch = inputPitchIn;
+            yAxisPitch = sourceFormat.pixelBytes;
+            destWidth  = params.area.height;
+            destHeight = params.area.width;
+            break;
+        case SurfaceRotation::Rotated180Degrees:
+            // The source image is rotated 180 degrees.  Y-flip is always applied to rotated
+            // images.  The image is row-major, but upside down.  Each source row (one step along
+            // the y-axis for each step in the dest y-axis) is inputPitch after the previous row.
+            // Along a row, each source pixel (one step along the x-axis for each step in the dest
+            // x-axis) is sourceFormat.pixelBytes BEFORE the previous pixel.
+            xAxisPitch = -static_cast<int>(sourceFormat.pixelBytes);
+            yAxisPitch = inputPitchIn;
+            source += sourceFormat.pixelBytes * (params.area.width - 1);
+            break;
+        case SurfaceRotation::Rotated270Degrees:
+            // The source image is rotated 270 degrees counter-clockwise (or 90 degrees clockwise).
+            // Y-flip is always applied to rotated images.  The image is column-major, where each
+            // column (one step in the source x-axis for one step in the dest y-axis) is inputPitch
+            // BEFORE the previous column.  Along a column, each source pixel (one step along the
+            // y-axis for each step in the dest x-axis) is sourceFormat.pixelBytes BEFORE the
+            // previous pixel.  The first pixel is at the end of the source.
+            xAxisPitch = -inputPitchIn;
+            yAxisPitch = -static_cast<int>(sourceFormat.pixelBytes);
+            destWidth  = params.area.height;
+            destHeight = params.area.width;
+            source += inputPitch * (params.area.height - 1) +
+                      sourceFormat.pixelBytes * (params.area.width - 1);
+            break;
+        default:
+            UNREACHABLE();
+            break;
     }
 
-    if (sourceFormat == *params.destFormat)
+    if (params.rotation == SurfaceRotation::Identity && sourceFormat == *params.destFormat)
     {
         // Direct copy possible
         for (int y = 0; y < params.area.height; ++y)
@@ -259,13 +367,13 @@ void PackPixels(const PackPixelsParams &params,
     if (fastCopyFunc)
     {
         // Fast copy is possible through some special function
-        for (int y = 0; y < params.area.height; ++y)
+        for (int y = 0; y < destHeight; ++y)
         {
-            for (int x = 0; x < params.area.width; ++x)
+            for (int x = 0; x < destWidth; ++x)
             {
                 uint8_t *dest =
                     destWithOffset + y * params.outputPitch + x * params.destFormat->pixelBytes;
-                const uint8_t *src = source + y * inputPitch + x * sourceFormat.pixelBytes;
+                const uint8_t *src = source + y * yAxisPitch + x * xAxisPitch;
 
                 fastCopyFunc(src, dest);
             }
@@ -286,13 +394,13 @@ void PackPixels(const PackPixelsParams &params,
     PixelReadFunction pixelReadFunction = sourceFormat.pixelReadFunction;
     ASSERT(pixelReadFunction != nullptr);
 
-    for (int y = 0; y < params.area.height; ++y)
+    for (int y = 0; y < destHeight; ++y)
     {
-        for (int x = 0; x < params.area.width; ++x)
+        for (int x = 0; x < destWidth; ++x)
         {
             uint8_t *dest =
                 destWithOffset + y * params.outputPitch + x * params.destFormat->pixelBytes;
-            const uint8_t *src = source + y * inputPitch + x * sourceFormat.pixelBytes;
+            const uint8_t *src = source + y * yAxisPitch + x * xAxisPitch;
 
             // readFunc and writeFunc will be using the same type of color, CopyTexImage
             // will not allow the copy otherwise.
@@ -514,7 +622,7 @@ angle::Result IncompleteTextureSet::getIncompleteTexture(
                                  GL_UNSIGNED_BYTE, color));
     }
 
-    ANGLE_TRY(t->syncState(context));
+    ANGLE_TRY(t->syncState(context, gl::TextureCommand::Other));
 
     mIncompleteTextures[type].set(context, t.release());
     *textureOut = mIncompleteTextures[type].get();
@@ -768,22 +876,6 @@ angle::Result GetVertexRangeInfo(const gl::Context *context,
 
 gl::Rectangle ClipRectToScissor(const gl::State &glState, const gl::Rectangle &rect, bool invertY)
 {
-    if (glState.isScissorTestEnabled())
-    {
-        gl::Rectangle clippedRect;
-        if (!gl::ClipRectangle(glState.getScissor(), rect, &clippedRect))
-        {
-            return gl::Rectangle();
-        }
-
-        if (invertY)
-        {
-            clippedRect.y = rect.height - clippedRect.y - clippedRect.height;
-        }
-
-        return clippedRect;
-    }
-
     // If the scissor test isn't enabled, assume it has infinite size.  Its intersection with the
     // rect would be the rect itself.
     //
@@ -791,14 +883,37 @@ gl::Rectangle ClipRectToScissor(const gl::State &glState, const gl::Rectangle &r
     // unnecessary pipeline creations if two otherwise identical pipelines are used on framebuffers
     // with different sizes.  If such usage is observed in an application, we should investigate
     // possible optimizations.
-    return rect;
+    if (!glState.isScissorTestEnabled())
+    {
+        return rect;
+    }
+
+    gl::Rectangle clippedRect;
+    if (!gl::ClipRectangle(glState.getScissor(), rect, &clippedRect))
+    {
+        return gl::Rectangle();
+    }
+
+    if (invertY)
+    {
+        clippedRect.y = rect.height - clippedRect.y - clippedRect.height;
+    }
+
+    return clippedRect;
 }
 
-void OverrideFeaturesWithDisplayState(angle::FeatureSetBase *features,
-                                      const egl::DisplayState &state)
+void ApplyFeatureOverrides(angle::FeatureSetBase *features, const egl::DisplayState &state)
 {
     features->overrideFeatures(state.featureOverridesEnabled, true);
     features->overrideFeatures(state.featureOverridesDisabled, false);
+
+    // Override with environment as well.
+    std::vector<std::string> overridesEnabled =
+        angle::GetStringsFromEnvironmentVar("ANGLE_FEATURE_OVERRIDES_ENABLED", ":");
+    std::vector<std::string> overridesDisabled =
+        angle::GetStringsFromEnvironmentVar("ANGLE_FEATURE_OVERRIDES_DISABLED", ":");
+    features->overrideFeatures(overridesEnabled, true);
+    features->overrideFeatures(overridesDisabled, false);
 }
 
 void GetSamplePosition(GLsizei sampleCount, size_t index, GLfloat *xy)
@@ -821,4 +936,257 @@ void GetSamplePosition(GLsizei sampleCount, size_t index, GLfloat *xy)
         xy[1] = kSamplePositions[indexKey][2 * index + 1];
     }
 }
+
+// These macros are to avoid code too much duplication for variations of multi draw types
+#define DRAW_ARRAYS__ contextImpl->drawArrays(context, mode, firsts[drawID], counts[drawID])
+#define DRAW_ARRAYS_INSTANCED_                                                      \
+    contextImpl->drawArraysInstanced(context, mode, firsts[drawID], counts[drawID], \
+                                     instanceCounts[drawID])
+#define DRAW_ELEMENTS__ \
+    contextImpl->drawElements(context, mode, counts[drawID], type, indices[drawID])
+#define DRAW_ELEMENTS_INSTANCED_                                                             \
+    contextImpl->drawElementsInstanced(context, mode, counts[drawID], type, indices[drawID], \
+                                       instanceCounts[drawID])
+#define DRAW_ARRAYS_INSTANCED_BASE_INSTANCE                                                     \
+    contextImpl->drawArraysInstancedBaseInstance(context, mode, firsts[drawID], counts[drawID], \
+                                                 instanceCounts[drawID], baseInstances[drawID])
+#define DRAW_ELEMENTS_INSTANCED_BASE_VERTEX_BASE_INSTANCE                             \
+    contextImpl->drawElementsInstancedBaseVertexBaseInstance(                         \
+        context, mode, counts[drawID], type, indices[drawID], instanceCounts[drawID], \
+        baseVertices[drawID], baseInstances[drawID])
+#define DRAW_CALL(drawType, instanced, bvbi) DRAW_##drawType##instanced##bvbi
+
+#define MULTI_DRAW_BLOCK(drawType, instanced, bvbi, hasDrawID, hasBaseVertex, hasBaseInstance) \
+    for (GLsizei drawID = 0; drawID < drawcount; ++drawID)                                     \
+    {                                                                                          \
+        if (ANGLE_NOOP_DRAW(instanced))                                                        \
+        {                                                                                      \
+            continue;                                                                          \
+        }                                                                                      \
+        ANGLE_SET_DRAW_ID_UNIFORM(hasDrawID)(drawID);                                          \
+        ANGLE_SET_BASE_VERTEX_UNIFORM(hasBaseVertex)(baseVertices[drawID]);                    \
+        ANGLE_SET_BASE_INSTANCE_UNIFORM(hasBaseInstance)(baseInstances[drawID]);               \
+        ANGLE_TRY(DRAW_CALL(drawType, instanced, bvbi));                                       \
+        ANGLE_MARK_TRANSFORM_FEEDBACK_USAGE(instanced);                                        \
+        gl::MarkShaderStorageUsage(context);                                                   \
+    }
+
+angle::Result MultiDrawArraysGeneral(ContextImpl *contextImpl,
+                                     const gl::Context *context,
+                                     gl::PrimitiveMode mode,
+                                     const GLint *firsts,
+                                     const GLsizei *counts,
+                                     GLsizei drawcount)
+{
+    gl::Program *programObject = context->getState().getLinkedProgram(context);
+    const bool hasDrawID       = programObject && programObject->hasDrawIDUniform();
+    if (hasDrawID)
+    {
+        MULTI_DRAW_BLOCK(ARRAYS, _, _, 1, 0, 0)
+    }
+    else
+    {
+        MULTI_DRAW_BLOCK(ARRAYS, _, _, 0, 0, 0)
+    }
+
+    return angle::Result::Continue;
+}
+
+angle::Result MultiDrawArraysInstancedGeneral(ContextImpl *contextImpl,
+                                              const gl::Context *context,
+                                              gl::PrimitiveMode mode,
+                                              const GLint *firsts,
+                                              const GLsizei *counts,
+                                              const GLsizei *instanceCounts,
+                                              GLsizei drawcount)
+{
+    gl::Program *programObject = context->getState().getLinkedProgram(context);
+    const bool hasDrawID       = programObject && programObject->hasDrawIDUniform();
+    if (hasDrawID)
+    {
+        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _, 1, 0, 0)
+    }
+    else
+    {
+        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _, 0, 0, 0)
+    }
+
+    return angle::Result::Continue;
+}
+
+angle::Result MultiDrawElementsGeneral(ContextImpl *contextImpl,
+                                       const gl::Context *context,
+                                       gl::PrimitiveMode mode,
+                                       const GLsizei *counts,
+                                       gl::DrawElementsType type,
+                                       const GLvoid *const *indices,
+                                       GLsizei drawcount)
+{
+    gl::Program *programObject = context->getState().getLinkedProgram(context);
+    const bool hasDrawID       = programObject && programObject->hasDrawIDUniform();
+    if (hasDrawID)
+    {
+        MULTI_DRAW_BLOCK(ELEMENTS, _, _, 1, 0, 0)
+    }
+    else
+    {
+        MULTI_DRAW_BLOCK(ELEMENTS, _, _, 0, 0, 0)
+    }
+
+    return angle::Result::Continue;
+}
+
+angle::Result MultiDrawElementsInstancedGeneral(ContextImpl *contextImpl,
+                                                const gl::Context *context,
+                                                gl::PrimitiveMode mode,
+                                                const GLsizei *counts,
+                                                gl::DrawElementsType type,
+                                                const GLvoid *const *indices,
+                                                const GLsizei *instanceCounts,
+                                                GLsizei drawcount)
+{
+    gl::Program *programObject = context->getState().getLinkedProgram(context);
+    const bool hasDrawID       = programObject && programObject->hasDrawIDUniform();
+    if (hasDrawID)
+    {
+        MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _, 1, 0, 0)
+    }
+    else
+    {
+        MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _, 0, 0, 0)
+    }
+
+    return angle::Result::Continue;
+}
+
+angle::Result MultiDrawArraysInstancedBaseInstanceGeneral(ContextImpl *contextImpl,
+                                                          const gl::Context *context,
+                                                          gl::PrimitiveMode mode,
+                                                          const GLint *firsts,
+                                                          const GLsizei *counts,
+                                                          const GLsizei *instanceCounts,
+                                                          const GLuint *baseInstances,
+                                                          GLsizei drawcount)
+{
+    gl::Program *programObject = context->getState().getLinkedProgram(context);
+    const bool hasDrawID       = programObject && programObject->hasDrawIDUniform();
+    const bool hasBaseInstance = programObject && programObject->hasBaseInstanceUniform();
+    ResetBaseVertexBaseInstance resetUniforms(programObject, false, hasBaseInstance);
+
+    if (hasDrawID && hasBaseInstance)
+    {
+        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _BASE_INSTANCE, 1, 0, 1)
+    }
+    else if (hasDrawID)
+    {
+        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _BASE_INSTANCE, 1, 0, 0)
+    }
+    else if (hasBaseInstance)
+    {
+        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _BASE_INSTANCE, 0, 0, 1)
+    }
+    else
+    {
+        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _BASE_INSTANCE, 0, 0, 0)
+    }
+
+    return angle::Result::Continue;
+}
+
+angle::Result MultiDrawElementsInstancedBaseVertexBaseInstanceGeneral(ContextImpl *contextImpl,
+                                                                      const gl::Context *context,
+                                                                      gl::PrimitiveMode mode,
+                                                                      const GLsizei *counts,
+                                                                      gl::DrawElementsType type,
+                                                                      const GLvoid *const *indices,
+                                                                      const GLsizei *instanceCounts,
+                                                                      const GLint *baseVertices,
+                                                                      const GLuint *baseInstances,
+                                                                      GLsizei drawcount)
+{
+    gl::Program *programObject = context->getState().getLinkedProgram(context);
+    const bool hasDrawID       = programObject && programObject->hasDrawIDUniform();
+    const bool hasBaseVertex   = programObject && programObject->hasBaseVertexUniform();
+    const bool hasBaseInstance = programObject && programObject->hasBaseInstanceUniform();
+    ResetBaseVertexBaseInstance resetUniforms(programObject, hasBaseVertex, hasBaseInstance);
+
+    if (hasDrawID)
+    {
+        if (hasBaseVertex)
+        {
+            if (hasBaseInstance)
+            {
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 1, 1, 1)
+            }
+            else
+            {
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 1, 1, 0)
+            }
+        }
+        else
+        {
+            if (hasBaseInstance)
+            {
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 1, 0, 1)
+            }
+            else
+            {
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 1, 0, 0)
+            }
+        }
+    }
+    else
+    {
+        if (hasBaseVertex)
+        {
+            if (hasBaseInstance)
+            {
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 0, 1, 1)
+            }
+            else
+            {
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 0, 1, 0)
+            }
+        }
+        else
+        {
+            if (hasBaseInstance)
+            {
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 0, 0, 1)
+            }
+            else
+            {
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 0, 0, 0)
+            }
+        }
+    }
+
+    return angle::Result::Continue;
+}
+
+ResetBaseVertexBaseInstance::ResetBaseVertexBaseInstance(gl::Program *programObject,
+                                                         bool resetBaseVertex,
+                                                         bool resetBaseInstance)
+    : mProgramObject(programObject),
+      mResetBaseVertex(resetBaseVertex),
+      mResetBaseInstance(resetBaseInstance)
+{}
+
+ResetBaseVertexBaseInstance::~ResetBaseVertexBaseInstance()
+{
+    if (mProgramObject)
+    {
+        // Reset emulated uniforms to zero to avoid affecting other draw calls
+        if (mResetBaseVertex)
+        {
+            mProgramObject->setBaseVertexUniform(0);
+        }
+
+        if (mResetBaseInstance)
+        {
+            mProgramObject->setBaseInstanceUniform(0);
+        }
+    }
+}
+
 }  // namespace rx

@@ -26,7 +26,7 @@
 
 #pragma once
 
-#if PLATFORM(IOS_FAMILY)
+#if PLATFORM(IOS_FAMILY) && ENABLE(VIDEO_PRESENTATION_MODE)
 
 #include "EventListener.h"
 #include "HTMLMediaElementEnums.h"
@@ -36,10 +36,10 @@
 #include <objc/objc.h>
 #include <wtf/Forward.h>
 #include <wtf/Function.h>
-#include <wtf/RefCounted.h>
-#include <wtf/RefPtr.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/RunLoop.h>
+#include <wtf/ThreadSafeRefCounted.h>
+#include <wtf/WeakPtr.h>
 
 OBJC_CLASS UIViewController;
 OBJC_CLASS UIWindow;
@@ -61,8 +61,8 @@ class VideoFullscreenChangeObserver;
 class VideoFullscreenInterfaceAVKit final
     : public VideoFullscreenModelClient
     , public PlaybackSessionModelClient
-    , public ThreadSafeRefCounted<VideoFullscreenInterfaceAVKit> {
-
+    , public ThreadSafeRefCounted<VideoFullscreenInterfaceAVKit, WTF::DestructionThread::MainRunLoop>
+    , public CanMakeWeakPtr<VideoFullscreenInterfaceAVKit> {
 public:
     WEBCORE_EXPORT static Ref<VideoFullscreenInterfaceAVKit> create(PlaybackSessionInterfaceAVKit&);
     virtual ~VideoFullscreenInterfaceAVKit();
@@ -79,7 +79,7 @@ public:
     // PlaybackSessionModelClient
     WEBCORE_EXPORT void externalPlaybackChanged(bool enabled, PlaybackSessionModel::ExternalPlaybackTargetType, const String& localizedDeviceName) final;
 
-    WEBCORE_EXPORT void setupFullscreen(UIView&, const IntRect& initialRect, UIView *, HTMLMediaElementEnums::VideoFullscreenMode, bool allowsPictureInPicturePlayback, bool standby);
+    WEBCORE_EXPORT void setupFullscreen(UIView& videoView, const IntRect& initialRect, const FloatSize& videoDimensions, UIView* parentView, HTMLMediaElementEnums::VideoFullscreenMode, bool allowsPictureInPicturePlayback, bool standby);
     WEBCORE_EXPORT void enterFullscreen();
     WEBCORE_EXPORT void exitFullscreen(const IntRect& finalRect);
     WEBCORE_EXPORT void cleanupFullscreen();
@@ -219,6 +219,7 @@ protected:
 
     bool m_waitingForPreparedToExit { false };
     bool m_shouldIgnoreAVKitCallbackAboutExitFullscreenReason { false };
+    bool m_enteringPictureInPicture { false };
 };
 
 }

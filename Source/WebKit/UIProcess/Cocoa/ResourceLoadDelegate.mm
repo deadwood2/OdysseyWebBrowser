@@ -26,6 +26,7 @@
 #import "config.h"
 #import "ResourceLoadDelegate.h"
 
+#import <WebCore/AuthenticationMac.h>
 #import "AuthenticationChallengeProxy.h"
 #import "WKNSURLAuthenticationChallenge.h"
 #import "_WKResourceLoadDelegate.h"
@@ -63,7 +64,7 @@ void ResourceLoadDelegate::setDelegate(id <_WKResourceLoadDelegate> delegate)
     m_delegateMethods.didPerformHTTPRedirection = [delegate respondsToSelector:@selector(webView:resourceLoad:didPerformHTTPRedirection:newRequest:)];
     m_delegateMethods.didReceiveChallenge = [delegate respondsToSelector:@selector(webView:resourceLoad:didReceiveChallenge:)];
     m_delegateMethods.didReceiveResponse = [delegate respondsToSelector:@selector(webView:resourceLoad:didReceiveResponse:)];
-    m_delegateMethods.didCompleteWithError = [delegate respondsToSelector:@selector(webView:resourceLoad:didCompleteWithError:)];
+    m_delegateMethods.didCompleteWithError = [delegate respondsToSelector:@selector(webView:resourceLoad:didCompleteWithError:response:)];
 }
 
 ResourceLoadDelegate::ResourceLoadClient::ResourceLoadClient(ResourceLoadDelegate& delegate)
@@ -82,7 +83,7 @@ void ResourceLoadDelegate::ResourceLoadClient::didSendRequest(WebKit::ResourceLo
     if (!delegate)
         return;
 
-    [delegate webView:m_resourceLoadDelegate.m_webView.get().get() resourceLoad:wrapper(API::ResourceLoadInfo::create(WTFMove(loadInfo)).get()) didSendRequest:request.nsURLRequest(WebCore::HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody)];
+    [delegate webView:m_resourceLoadDelegate.m_webView.get().get() resourceLoad:wrapper(API::ResourceLoadInfo::create(WTFMove(loadInfo)).get()) didSendRequest:request.nsURLRequest(WebCore::HTTPBodyUpdatePolicy::UpdateHTTPBody)];
 }
 
 void ResourceLoadDelegate::ResourceLoadClient::didPerformHTTPRedirection(WebKit::ResourceLoadInfo&& loadInfo, WebCore::ResourceResponse&& response, WebCore::ResourceRequest&& request) const
@@ -97,7 +98,7 @@ void ResourceLoadDelegate::ResourceLoadClient::didPerformHTTPRedirection(WebKit:
     [delegate webView:m_resourceLoadDelegate.m_webView.get().get() resourceLoad:wrapper(API::ResourceLoadInfo::create(WTFMove(loadInfo)).get()) didPerformHTTPRedirection:response.nsURLResponse() newRequest:request.nsURLRequest(WebCore::HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody)];
 }
 
-void ResourceLoadDelegate::ResourceLoadClient::didReceiveChallenge(WebKit::ResourceLoadInfo&& loadInfo, WebKit::AuthenticationChallengeProxy& challenge) const
+void ResourceLoadDelegate::ResourceLoadClient::didReceiveChallenge(WebKit::ResourceLoadInfo&& loadInfo, WebCore::AuthenticationChallenge&& challenge) const
 {
     if (!m_resourceLoadDelegate.m_delegateMethods.didReceiveChallenge)
         return;
@@ -106,7 +107,7 @@ void ResourceLoadDelegate::ResourceLoadClient::didReceiveChallenge(WebKit::Resou
     if (!delegate)
         return;
 
-    [delegate webView:m_resourceLoadDelegate.m_webView.get().get() resourceLoad:wrapper(API::ResourceLoadInfo::create(WTFMove(loadInfo)).get()) didReceiveChallenge:wrapper(challenge)];
+    [delegate webView:m_resourceLoadDelegate.m_webView.get().get() resourceLoad:wrapper(API::ResourceLoadInfo::create(WTFMove(loadInfo)).get()) didReceiveChallenge:mac(challenge)];
 }
 
 void ResourceLoadDelegate::ResourceLoadClient::didReceiveResponse(WebKit::ResourceLoadInfo&& loadInfo, WebCore::ResourceResponse&& response) const
@@ -121,7 +122,7 @@ void ResourceLoadDelegate::ResourceLoadClient::didReceiveResponse(WebKit::Resour
     [delegate webView:m_resourceLoadDelegate.m_webView.get().get() resourceLoad:wrapper(API::ResourceLoadInfo::create(WTFMove(loadInfo)).get()) didReceiveResponse:response.nsURLResponse()];
 }
 
-void ResourceLoadDelegate::ResourceLoadClient::didCompleteWithError(WebKit::ResourceLoadInfo&& loadInfo, WebCore::ResourceError&& error) const
+void ResourceLoadDelegate::ResourceLoadClient::didCompleteWithError(WebKit::ResourceLoadInfo&& loadInfo, WebCore::ResourceResponse&& response, WebCore::ResourceError&& error) const
 {
     if (!m_resourceLoadDelegate.m_delegateMethods.didCompleteWithError)
         return;
@@ -130,7 +131,7 @@ void ResourceLoadDelegate::ResourceLoadClient::didCompleteWithError(WebKit::Reso
     if (!delegate)
         return;
 
-    [delegate webView:m_resourceLoadDelegate.m_webView.get().get() resourceLoad:wrapper(API::ResourceLoadInfo::create(WTFMove(loadInfo)).get()) didCompleteWithError:error.nsError()];
+    [delegate webView:m_resourceLoadDelegate.m_webView.get().get() resourceLoad:wrapper(API::ResourceLoadInfo::create(WTFMove(loadInfo)).get()) didCompleteWithError:error.nsError() response:response.nsURLResponse()];
 }
 
 } // namespace WebKit

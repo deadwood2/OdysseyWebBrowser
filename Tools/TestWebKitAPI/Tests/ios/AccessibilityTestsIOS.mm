@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
+#import "config.h"
 
 #if PLATFORM(IOS_FAMILY)
 
@@ -35,6 +35,12 @@
 #import <WebKit/WKWebViewPrivateForTesting.h>
 #import <WebKit/_WKRemoteObjectInterface.h>
 #import <WebKit/_WKRemoteObjectRegistry.h>
+
+#import <wtf/SoftLinking.h>
+
+SOFT_LINK_LIBRARY(libAccessibility)
+SOFT_LINK(libAccessibility, _AXSZoomTouchSetEnabled, void, (Boolean enabled), (enabled));
+SOFT_LINK(libAccessibility, _AXSApplicationAccessibilitySetEnabled, void, (Boolean enabled), (enabled));
 
 @implementation WKWebView (WKAccessibilityTesting)
 - (NSArray<NSValue *> *)rectsAtSelectionOffset:(NSInteger)offset withText:(NSString *)text
@@ -87,13 +93,13 @@ TEST(AccessibilityTests, RectsForSpeakingSelectionWithLineWrapping)
 
     NSArray<NSValue *> *rects = [webView rectsAtSelectionOffset:0 withText:@"abcdefghijklmnopqrstuvwxyz"];
 #if PLATFORM(MACCATALYST)
-    checkCGRectValueAtIndex(rects, CGRectMake(8, 8, 304, 116), 0);
+    checkCGRectValueAtIndex(rects, CGRectMake(8, 10, 304, 114), 0);
     checkCGRectValueAtIndex(rects, CGRectMake(8, 124, 304, 116), 1);
     checkCGRectValueAtIndex(rects, CGRectMake(8, 240, 304, 116), 2);
     checkCGRectValueAtIndex(rects, CGRectMake(8, 356, 304, 116), 3);
     checkCGRectValueAtIndex(rects, CGRectMake(8, 472, 145, 116), 4);
 #else
-    checkCGRectValueAtIndex(rects, CGRectMake(8, 8, 304, 114), 0);
+    checkCGRectValueAtIndex(rects, CGRectMake(8, 10, 304, 112), 0);
     checkCGRectValueAtIndex(rects, CGRectMake(8, 122, 304, 117), 1);
     checkCGRectValueAtIndex(rects, CGRectMake(8, 239, 304, 117), 2);
     checkCGRectValueAtIndex(rects, CGRectMake(8, 356, 304, 117), 3);
@@ -148,6 +154,9 @@ TEST(AccessibilityTests, StoreSelection)
 
 TEST(AccessibilityTests, WebProcessLoaderBundleLoaded)
 {
+    _AXSZoomTouchSetEnabled(true);
+    _AXSApplicationAccessibilitySetEnabled(true);
+
     WKWebViewConfiguration *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"AccessibilityTestPlugin"];
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500) configuration:configuration]);
     _WKRemoteObjectInterface *interface = [_WKRemoteObjectInterface remoteObjectInterfaceWithProtocol:@protocol(AccessibilityTestSupportProtocol)];
@@ -171,6 +180,9 @@ TEST(AccessibilityTests, WebProcessLoaderBundleLoaded)
         isDone = true;
     }];
     TestWebKitAPI::Util::run(&isDone);
+
+    _AXSZoomTouchSetEnabled(false);
+    _AXSApplicationAccessibilitySetEnabled(false);
 }
 
 } // namespace TestWebKitAPI

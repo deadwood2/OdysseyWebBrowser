@@ -162,7 +162,7 @@ bool ArgumentCoder<ResourceError>::decodePlatformData(Decoder& decoder, Resource
 void ArgumentCoder<SoupNetworkProxySettings>::encode(Encoder& encoder, const SoupNetworkProxySettings& settings)
 {
     ASSERT(!settings.isEmpty());
-    encoder.encodeEnum(settings.mode);
+    encoder << settings.mode;
     if (settings.mode != SoupNetworkProxySettings::Mode::Custom)
         return;
 
@@ -178,7 +178,7 @@ void ArgumentCoder<SoupNetworkProxySettings>::encode(Encoder& encoder, const Sou
 
 bool ArgumentCoder<SoupNetworkProxySettings>::decode(Decoder& decoder, SoupNetworkProxySettings& settings)
 {
-    if (!decoder.decodeEnum(settings.mode))
+    if (!decoder.decode(settings.mode))
         return false;
 
     if (settings.mode != SoupNetworkProxySettings::Mode::Custom)
@@ -262,6 +262,19 @@ bool ArgumentCoder<FontHandle>::decodePlatformData(Decoder&, FontHandle&)
     ASSERT_NOT_REACHED();
     return false;
 }
+
+#if ENABLE(VIDEO)
+void ArgumentCoder<SerializedPlatformDataCueValue>::encodePlatformData(Encoder& encoder, const SerializedPlatformDataCueValue& value)
+{
+    ASSERT_NOT_REACHED();
+}
+
+Optional<SerializedPlatformDataCueValue>  ArgumentCoder<SerializedPlatformDataCueValue>::decodePlatformData(Decoder& decoder, WebCore::SerializedPlatformDataCueValue::PlatformType platformType)
+{
+    ASSERT_NOT_REACHED();
+    return WTF::nullopt;
+}
+#endif
 
 }
 

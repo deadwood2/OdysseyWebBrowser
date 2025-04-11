@@ -26,10 +26,11 @@
 #include "config.h"
 #include "RemoteSampleBufferDisplayLayerManager.h"
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
 
 #include "Decoder.h"
 #include "RemoteSampleBufferDisplayLayer.h"
+#include <WebCore/IntSize.h>
 
 namespace WebKit {
 
@@ -46,15 +47,11 @@ void RemoteSampleBufferDisplayLayerManager::didReceiveLayerMessage(IPC::Connecti
         layer->didReceiveMessage(connection, decoder);
 }
 
-// FIXME: We should refactor code to use an asynchronous IPC.
-void RemoteSampleBufferDisplayLayerManager::createLayer(SampleBufferDisplayLayerIdentifier identifier, bool hideRootLayer, IntSize size, Messages::RemoteSampleBufferDisplayLayerManager::CreateLayerDelayedReply&& reply)
+void RemoteSampleBufferDisplayLayerManager::createLayer(SampleBufferDisplayLayerIdentifier identifier, bool hideRootLayer, WebCore::IntSize size, LayerCreationCallback&& callback)
 {
     ASSERT(!m_layers.contains(identifier));
-    auto layer = RemoteSampleBufferDisplayLayer::create(identifier, m_connection.copyRef(), hideRootLayer, size);
-    if (!layer)
-        return reply({ }, { });
-
-    reply(layer->contextID(), layer->bounds());
+    auto layer = RemoteSampleBufferDisplayLayer::create(identifier, m_connection.copyRef());
+    layer->initialize(hideRootLayer, size, WTFMove(callback));
     m_layers.add(identifier, WTFMove(layer));
 }
 
@@ -66,4 +63,4 @@ void RemoteSampleBufferDisplayLayerManager::releaseLayer(SampleBufferDisplayLaye
 
 }
 
-#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)

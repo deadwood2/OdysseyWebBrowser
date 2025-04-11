@@ -157,12 +157,13 @@ class TestRunResults(object):
 
 
 class RunDetails(object):
-    def __init__(self, exit_code, summarized_results=None, initial_results=None, retry_results=None, enabled_pixel_tests_in_retry=False):
+    def __init__(self, exit_code, summarized_results=None, initial_results=None, retry_results=None, enabled_pixel_tests_in_retry=False, skipped_all_tests=False):
         self.exit_code = exit_code
         self.summarized_results = summarized_results
         self.initial_results = initial_results
         self.retry_results = retry_results
         self.enabled_pixel_tests_in_retry = enabled_pixel_tests_in_retry
+        self.skipped_all_tests = skipped_all_tests
 
 
 def _interpret_test_failures(failures):
@@ -359,7 +360,7 @@ def summarize_results(port_obj, expectations_by_type, initial_results, retry_res
         # FIXME: Do we really need to populate this both here and in the json_results_generator?
         if port_obj.get_option("builder_name"):
             port_obj.host.initialize_scm()
-            results['revision'] = port_obj.host.scm().head_svn_revision()
+            results['revision'] = port_obj.commits_for_upload()[0]['id']
     except Exception as e:
         _log.warn("Failed to determine svn revision for checkout (cwd: %s, webkit_base: %s), leaving 'revision' key blank in full_results.json.\n%s" % (port_obj._filesystem.getcwd(), port_obj.path_from_webkit_base(), e))
         # Handle cases where we're running outside of version control.

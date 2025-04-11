@@ -65,19 +65,21 @@ public:
 
     bool pullAvalaibleSamplesAsChunks(AudioBufferList&, size_t frameCount, uint64_t timeStamp, Function<void()>&&);
 
-    void setPaused(bool);
-
     void setVolume(float volume) { m_volume = volume; }
     float volume() const { return m_volume; }
 
     void setMuted(bool muted) { m_muted = muted; }
     bool muted() const { return m_muted; }
 
+    const CAAudioStreamDescription* inputDescription() const { return m_inputDescription.get(); }
+
 #if !RELEASE_LOG_DISABLED
     const Logger& logger() const final { return m_logger; }
     const void* logIdentifier() const final { return m_logIdentifier; }
     void setLogger(Ref<const Logger>&&, const void*);
 #endif
+
+    static constexpr float EquivalentToMaxVolume = 0.95;
 
 private:
     AudioSampleDataSource(size_t, LoggerHelper&);
@@ -111,8 +113,7 @@ private:
 
     float m_volume { 1.0 };
     bool m_muted { false };
-    bool m_paused { true };
-    bool m_transitioningFromPaused { true };
+    bool m_shouldComputeOutputSampleOffset { true };
 
 #if !RELEASE_LOG_DISABLED
     Ref<const Logger> m_logger;

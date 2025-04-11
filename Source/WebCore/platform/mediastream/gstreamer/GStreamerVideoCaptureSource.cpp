@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2018 Metrological Group B.V.
+ * Copyright (C) 2020 Igalia S.L.
  * Author: Thibault Saunier <tsaunier@igalia.com>
  * Author: Alejandro G. Castro  <alex@igalia.com>
  *
@@ -21,25 +22,15 @@
 
 #include "config.h"
 
-#if ENABLE(MEDIA_STREAM) && USE(LIBWEBRTC) && USE(GSTREAMER)
+#if ENABLE(MEDIA_STREAM) && USE(GSTREAMER)
 #include "GStreamerVideoCaptureSource.h"
 
 #include "GStreamerCaptureDeviceManager.h"
 #include "MediaSampleGStreamer.h"
 
 #include <gst/app/gstappsink.h>
-#include <webrtc/api/media_stream_interface.h>
-#include <webrtc/api/peer_connection_interface.h>
-#include <webrtc/media/base/video_common.h>
-// #include <webrtc/media/engine/video_capturer.h>
-// #include <webrtc/media/engine/video_capturer_factory.h>
-#include <webrtc/modules/video_capture/video_capture_factory.h>
-#include <webrtc/modules/video_capture/video_capture_defines.h>
 
 namespace WebCore {
-
-const static int defaultWidth = 640;
-const static int defaultHeight = 480;
 
 GST_DEBUG_CATEGORY(webkit_video_capture_source_debug);
 #define GST_CAT_DEFAULT webkit_video_capture_source_debug
@@ -295,4 +286,4 @@ void GStreamerVideoCaptureSource::generatePresets()
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM) && USE(LIBWEBRTC)
+#endif // ENABLE(MEDIA_STREAM) && USE(GSTREAMER)

@@ -97,24 +97,15 @@ static id findAccessibleObjectById(id obj, NSString *idAttribute)
 RefPtr<AccessibilityUIElement> AccessibilityController::accessibleElementById(JSStringRef idAttribute)
 {
     WKBundlePageRef page = InjectedBundle::singleton().page()->page();
-    PlatformUIElement root = nullptr;
+    PlatformUIElement root = static_cast<PlatformUIElement>(WKAccessibilityRootObject(page));
 
-    executeOnAXThreadIfPossible([&page, &root] {
-        root = static_cast<PlatformUIElement>(WKAccessibilityRootObject(page));
-    });
-
-    // Now that we have a root and the isolated tree is generated, set
-    // m_useAXThread to true for next request to be handled in the secondary thread.
-    if (WKAccessibilityCanUseSecondaryAXThread(InjectedBundle::singleton().page()->page()))
-        m_useAXThread = true;
-
-    id result;
-    executeOnAXThreadIfPossible([&root, &idAttribute, &result] {
+    RetainPtr<id> result;
+    executeOnAXThreadAndWait([&root, &idAttribute, &result] {
         result = findAccessibleObjectById(root, [NSString stringWithJSStringRef:idAttribute]);
     });
 
     if (result)
-        return AccessibilityUIElement::create(result);
+        return AccessibilityUIElement::create(result.get());
     return nullptr;
 }
 
@@ -129,7 +120,7 @@ void AXThread::initializeRunLoop()
 {
     // Initialize the run loop.
     {
-        std::lock_guard<Lock> lock(m_initializeRunLoopMutex);
+        auto locker = holdLock(m_initializeRunLoopMutex);
 
         m_threadRunLoop = CFRunLoopGetCurrent();
 

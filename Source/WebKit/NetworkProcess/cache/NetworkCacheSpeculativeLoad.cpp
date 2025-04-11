@@ -42,7 +42,7 @@ namespace NetworkCache {
 
 using namespace WebCore;
 
-SpeculativeLoad::SpeculativeLoad(Cache& cache, const GlobalFrameID& globalFrameID, const ResourceRequest& request, std::unique_ptr<NetworkCache::Entry> cacheEntryForValidation, RevalidationCompletionHandler&& completionHandler)
+SpeculativeLoad::SpeculativeLoad(Cache& cache, const GlobalFrameID& globalFrameID, const ResourceRequest& request, std::unique_ptr<NetworkCache::Entry> cacheEntryForValidation, Optional<NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain, RevalidationCompletionHandler&& completionHandler)
     : m_cache(cache)
     , m_completionHandler(WTFMove(completionHandler))
     , m_originalRequest(request)
@@ -50,6 +50,14 @@ SpeculativeLoad::SpeculativeLoad(Cache& cache, const GlobalFrameID& globalFrameI
     , m_cacheEntry(WTFMove(cacheEntryForValidation))
 {
     ASSERT(!m_cacheEntry || m_cacheEntry->needsValidation());
+
+    auto* networkSession = m_cache->networkProcess().networkSession(m_cache->sessionID());
+    if (!networkSession) {
+        RunLoop::main().dispatch([completionHandler = WTFMove(m_completionHandler)]() mutable {
+            completionHandler(nullptr);
+        });
+        return;
+    }
 
     NetworkLoadParameters parameters;
     parameters.webPageProxyID = globalFrameID.webPageProxyID;
@@ -59,12 +67,23 @@ SpeculativeLoad::SpeculativeLoad(Cache& cache, const GlobalFrameID& globalFrameI
     parameters.contentSniffingPolicy = ContentSniffingPolicy::DoNotSniffContent;
     parameters.contentEncodingSniffingPolicy = ContentEncodingSniffingPolicy::Sniff;
     parameters.request = m_originalRequest;
-    m_networkLoad = makeUnique<NetworkLoad>(*this, nullptr, WTFMove(parameters), *cache.networkProcess().networkSession(cache.sessionID()));
+    parameters.isNavigatingToAppBoundDomain = isNavigatingToAppBoundDomain;
+    m_networkLoad = makeUnique<NetworkLoad>(*this, nullptr, WTFMove(parameters), *networkSession);
+    m_networkLoad->start();
 }
 
 SpeculativeLoad::~SpeculativeLoad()
 {
     ASSERT(!m_networkLoad);
+}
+
+void SpeculativeLoad::cancel()
+{
+    if (!m_networkLoad)
+        return;
+    m_networkLoad->cancel();
+    m_networkLoad = nullptr;
+    m_completionHandler(nullptr);
 }
 
 void SpeculativeLoad::willSendRedirectedRequest(ResourceRequest&& request, ResourceRequest&& redirectRequest, ResourceResponse&& redirectResponse)

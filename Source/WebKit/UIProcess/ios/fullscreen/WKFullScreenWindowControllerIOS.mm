@@ -490,15 +490,6 @@ static const NSTimeInterval kAnimationDuration = 0.2;
 #pragma mark -
 #pragma mark External Interface
 
-#if USE(APPLE_INTERNAL_SDK)
-#import <WebKitAdditions/WKFullScreenWindowControllerIOSAdditions.mm>
-#else
-static RetainPtr<UIWindow> makeWindowFromView(UIView *)
-{
-    return adoptNS([[UIWindow alloc] init]);
-}
-#endif
-
 - (void)enterFullScreen
 {
     if ([self isFullScreen])
@@ -514,7 +505,7 @@ static RetainPtr<UIWindow> makeWindowFromView(UIView *)
 
     _fullScreenState = WebKit::WaitingToEnterFullScreen;
 
-    _window = makeWindowFromView(webView.get());
+    _window = adoptNS([[UIWindow alloc] initWithWindowScene:[[webView window] windowScene]]);
     [_window setBackgroundColor:[UIColor clearColor]];
     [_window setWindowLevel:UIWindowLevelNormal - 1];
     [_window setHidden:NO];
@@ -775,8 +766,10 @@ static RetainPtr<UIWindow> makeWindowFromView(UIView *)
         _webViewPlaceholder.get().parent = nil;
         [_webViewPlaceholder removeFromSuperview];
 
-        if (auto page = [self._webView _page])
+        if (auto page = [self._webView _page]) {
             page->setSuppressVisibilityUpdates(false);
+            page->setNeedsDOMWindowResizeEvent();
+        }
     });
 
     if (auto page = [self._webView _page])
@@ -786,6 +779,7 @@ static RetainPtr<UIWindow> makeWindowFromView(UIView *)
 
     [_fullscreenViewController setPrefersStatusBarHidden:YES];
     _fullscreenViewController = nil;
+    _exitRequested = NO;
 }
 
 - (void)close
@@ -933,15 +927,8 @@ static RetainPtr<UIWindow> makeWindowFromView(UIView *)
     // If SecTrustCopyInfo returned NULL then it's likely that the SecTrustRef has not been evaluated
     // and the only way to get the information we need is to call SecTrustEvaluate ourselves.
     if (!infoDictionary) {
-#if HAVE(SEC_TRUST_EVALUATE_WITH_ERROR)
         if (!SecTrustEvaluateWithError(trust, nullptr))
             return nil;
-#else
-        SecTrustResultType result = kSecTrustResultProceed;
-        OSStatus err = SecTrustEvaluate(trust, &result);
-        if (err != noErr)
-            return nil;
-#endif
         infoDictionary = CFBridgingRelease(SecTrustCopyInfo(trust));
         if (!infoDictionary)
             return nil;
@@ -1007,6 +994,11 @@ static RetainPtr<UIWindow> makeWindowFromView(UIView *)
 
 - (void)_dismissFullscreenViewController
 {
+    if (!_fullscreenViewController) {
+        [self _completedExitFullScreen];
+        return;
+    }
+
     [_fullscreenViewController setAnimating:YES];
     [_fullscreenViewController dismissViewControllerAnimated:YES completion:^{
         if (![self._webView _page])
@@ -1050,11 +1042,6 @@ static RetainPtr<UIWindow> makeWindowFromView(UIView *)
 
 - (void)_interactivePinchDismissChanged:(id)sender
 {
-    if (!_inInteractiveDismiss && _interactivePinchDismissGestureRecognizer.get().state == UIGestureRecognizerStateBegan) {
-        [self _startToDismissFullscreenChanged:sender];
-        return;
-    }
-
     CGFloat scale = [_interactivePinchDismissGestureRecognizer scale];
     CGFloat velocity = [_interactivePinchDismissGestureRecognizer velocity];
     CGFloat progress = std::min(1., std::max(0., 1 - scale));

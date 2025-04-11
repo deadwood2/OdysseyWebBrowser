@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
 
 #include "MessageReceiver.h"
 #include "SampleBufferDisplayLayerIdentifier.h"
@@ -38,7 +38,7 @@ class SampleBufferDisplayLayerManager;
 
 class SampleBufferDisplayLayer final : public WebCore::SampleBufferDisplayLayer, public IPC::MessageReceiver, public CanMakeWeakPtr<SampleBufferDisplayLayer> {
 public:
-    static std::unique_ptr<SampleBufferDisplayLayer> create(SampleBufferDisplayLayerManager&, Client&, bool hideRootLayer, WebCore::IntSize);
+    static std::unique_ptr<SampleBufferDisplayLayer> create(SampleBufferDisplayLayerManager&, Client&);
     ~SampleBufferDisplayLayer();
 
     SampleBufferDisplayLayerIdentifier identifier() const { return m_identifier; }
@@ -46,31 +46,32 @@ public:
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
 
 private:
-    SampleBufferDisplayLayer(SampleBufferDisplayLayerManager&, Client&, bool hideRootLayer, WebCore::IntSize);
+    SampleBufferDisplayLayer(SampleBufferDisplayLayerManager&, Client&);
 
     // WebCore::SampleBufferDisplayLayer
+    void initialize(bool hideRootLayer, WebCore::IntSize, CompletionHandler<void(bool)>&&) final;
     bool didFail() const final;
     void updateDisplayMode(bool hideDisplayLayer, bool hideRootLayer) final;
-    CGRect bounds() const final;
     void updateAffineTransform(CGAffineTransform) final;
-    void updateBoundsAndPosition(CGRect, CGPoint) final;
+    void updateBoundsAndPosition(CGRect, WebCore::MediaSample::VideoRotation) final;
     void flush() final;
     void flushAndRemoveImage() final;
+    void play() final;
+    void pause() final;
     void enqueueSample(WebCore::MediaSample&) final;
     void clearEnqueuedSamples() final;
     PlatformLayer* rootLayer() final;
-    
+
     void setDidFail(bool);
 
     WeakPtr<SampleBufferDisplayLayerManager> m_manager;
     Ref<IPC::Connection> m_connection;
     SampleBufferDisplayLayerIdentifier m_identifier;
 
-    RetainPtr<PlatformLayer> m_videoLayer;
-    CGRect m_bounds;
+    PlatformLayerContainer m_videoLayer;
     bool m_didFail { false };
 };
 
 }
 
-#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)

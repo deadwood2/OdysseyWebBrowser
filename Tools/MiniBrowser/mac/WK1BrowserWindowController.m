@@ -166,6 +166,8 @@ static BOOL areEssentiallyEqual(double a, double b)
         [menuItem setTitle:[_webView isHidden] ? @"Show Web View" : @"Hide Web View"];
     else if (action == @selector(removeReinsertWebView:))
         [menuItem setTitle:[_webView window] ? @"Remove Web View" : @"Insert Web View"];
+    else if (action == @selector(toggleFullWindowWebView:))
+        [menuItem setTitle:[self webViewFillsWindow] ? @"Inset Web View" : @"Fit Web View to Window"];
     else if (action == @selector(toggleZoomMode:))
         [menuItem setState:_zoomTextOnly ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleEditable:))
@@ -189,10 +191,13 @@ static BOOL areEssentiallyEqual(double a, double b)
 
     if (action == @selector(goBack:))
         return [_webView canGoBack];
-    
+
     if (action == @selector(goForward:))
         return [_webView canGoForward];
-    
+
+    if (action == @selector(showCertificate:))
+        return NO;
+
     return YES;
 }
 
@@ -334,6 +339,8 @@ static BOOL areEssentiallyEqual(double a, double b)
     [[WebPreferences standardPreferences] setPunchOutWhiteBackgroundsInDarkMode:settings.punchOutWhiteBackgroundsInDarkMode];
 
     _webView._useSystemAppearance = settings.useSystemAppearance;
+
+    [self setWebViewFillsWindow:settings.webViewFillsWindow];
 
     BOOL useTransparentWindows = settings.useTransparentWindows;
     if (useTransparentWindows != !self.window.isOpaque) {

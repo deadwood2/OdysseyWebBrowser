@@ -39,6 +39,7 @@
 #include <WebCore/FrameView.h>
 #include <WebCore/HTMLInputElement.h>
 #include <WebCore/HTMLTextAreaElement.h>
+#include <WebCore/Range.h>
 #include <WebCore/TextIterator.h>
 #include <WebCore/VisiblePosition.h>
 #include <WebCore/VisibleUnits.h>
@@ -68,12 +69,10 @@ void WebPage::sendMessageToWebExtension(UserMessage&& message)
     sendMessageToWebExtensionWithReply(WTFMove(message), [](UserMessage&&) { });
 }
 
-void WebPage::platformEditorState(Frame& frame, EditorState& result, IncludePostLayoutDataHint shouldIncludePostLayoutData) const
+void WebPage::getPlatformEditorState(Frame& frame, EditorState& result) const
 {
-    if (shouldIncludePostLayoutData == IncludePostLayoutDataHint::No || !frame.view() || frame.view()->needsLayout()) {
-        result.isMissingPostLayoutData = true;
+    if (result.isMissingPostLayoutData || !frame.view() || frame.view()->needsLayout())
         return;
-    }
 
     auto& postLayoutData = result.postLayoutData();
     postLayoutData.caretRectAtStart = frame.selection().absoluteCaretBounds();
@@ -85,13 +84,13 @@ void WebPage::platformEditorState(Frame& frame, EditorState& result, IncludePost
 #if PLATFORM(GTK)
     const Editor& editor = frame.editor();
     if (selection.isRange()) {
-        if (editor.selectionHasStyle(CSSPropertyFontWeight, "bold") == TrueTriState)
+        if (editor.selectionHasStyle(CSSPropertyFontWeight, "bold") == TriState::True)
             postLayoutData.typingAttributes |= AttributeBold;
-        if (editor.selectionHasStyle(CSSPropertyFontStyle, "italic") == TrueTriState)
+        if (editor.selectionHasStyle(CSSPropertyFontStyle, "italic") == TriState::True)
             postLayoutData.typingAttributes |= AttributeItalics;
-        if (editor.selectionHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "underline") == TrueTriState)
+        if (editor.selectionHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "underline") == TriState::True)
             postLayoutData.typingAttributes |= AttributeUnderline;
-        if (editor.selectionHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "line-through") == TrueTriState)
+        if (editor.selectionHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "line-through") == TriState::True)
             postLayoutData.typingAttributes |= AttributeStrikeThrough;
     } else if (selection.isCaret()) {
         if (editor.selectionStartHasStyle(CSSPropertyFontWeight, "bold"))
@@ -108,20 +107,19 @@ void WebPage::platformEditorState(Frame& frame, EditorState& result, IncludePost
     if (selection.isContentEditable()) {
         auto selectionStart = selection.visibleStart();
         auto surroundingStart = startOfEditableContent(selectionStart);
-        auto surroundingEnd = endOfEditableContent(selectionStart);
-        auto surroundingRange = makeRange(surroundingStart, surroundingEnd);
+        auto surroundingRange = makeSimpleRange(surroundingStart, endOfEditableContent(selectionStart));
         auto compositionRange = frame.editor().compositionRange();
-        if (compositionRange && surroundingRange->contains(*compositionRange)) {
-            auto clonedRange = surroundingRange->cloneRange();
-            surroundingRange->setEnd(compositionRange->startPosition());
-            clonedRange->setStart(compositionRange->endPosition());
-            postLayoutData.surroundingContext = plainText(surroundingRange.get()) + plainText(clonedRange.ptr());
-            postLayoutData.surroundingContextCursorPosition = TextIterator::rangeLength(surroundingRange.get());
+        if (surroundingRange && compositionRange && createLiveRange(surroundingRange)->contains(createLiveRange(*compositionRange).get())) {
+            auto beforeText = plainText({ surroundingRange->start, compositionRange->start });
+            postLayoutData.surroundingContext = beforeText + plainText({ compositionRange->end, surroundingRange->end });
+            postLayoutData.surroundingContextCursorPosition = beforeText.length();
             postLayoutData.surroundingContextSelectionPosition = postLayoutData.surroundingContextCursorPosition;
         } else {
-            postLayoutData.surroundingContext = plainText(surroundingRange.get());
-            postLayoutData.surroundingContextCursorPosition = TextIterator::rangeLength(makeRange(surroundingStart, selectionStart).get());
-            postLayoutData.surroundingContextSelectionPosition = TextIterator::rangeLength(makeRange(surroundingStart, selection.visibleEnd()).get());
+            auto cursorPositionRange = makeSimpleRange(surroundingStart, selectionStart);
+            auto selectionPositionRange = makeSimpleRange(surroundingStart, selection.visibleEnd());
+            postLayoutData.surroundingContext = surroundingRange ? plainText(*surroundingRange) : emptyString();
+            postLayoutData.surroundingContextCursorPosition = cursorPositionRange ? characterCount(*cursorPositionRange) : 0;
+            postLayoutData.surroundingContextSelectionPosition = selectionPositionRange ? characterCount(*selectionPositionRange): 0;
         }
     }
 }

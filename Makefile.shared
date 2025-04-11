@@ -24,13 +24,6 @@ ifneq (,$(ARCHS))
 	else
 		XCODE_OPTIONS := $(XCODE_OPTIONS) ARCHS="$(ARCHS)"
 		XCODE_OPTIONS += ONLY_ACTIVE_ARCH=NO
-		# Make Plugin.32 and Plugin.64 build even when they can't be built for the specified architecture.
-		ifeq ($(ARCHS),i386)
-			XCODE_OPTIONS += VALID_ARCHS=i386
-		endif
-		ifeq ($(ARCHS),x86_64)
-			XCODE_OPTIONS += VALID_ARCHS=x86_64
-		endif
 	endif
 endif
 
@@ -47,10 +40,14 @@ endif
 ifeq ($(findstring UseNewBuildSystem,$(ARGS)),)
 	CAN_USE_XCBUILD = $(shell perl -I$(SCRIPTS_PATH) -Mwebkitdirs -e 'print canUseXCBuild()')
 	ifeq ($(CAN_USE_XCBUILD),1)
-		XCODE_OPTIONS += -UseNewBuildSystem=YES
-		XCODE_OPTIONS += USE_NEW_BUILD_SYSTEM=YES
+		# Temporarily disable default use of XCBuild until issues with it are ironed out.
+		#XCODE_OPTIONS += -UseNewBuildSystem=YES
+		#XCODE_OPTIONS += USE_NEW_BUILD_SYSTEM=YES
+		XCODE_OPTIONS += -UseNewBuildSystem=NO
+		XCODE_OPTIONS += USE_NEW_BUILD_SYSTEM=NO
 	else
 		XCODE_OPTIONS += -UseNewBuildSystem=NO
+		XCODE_OPTIONS += USE_NEW_BUILD_SYSTEM=NO
 	endif
 endif
 

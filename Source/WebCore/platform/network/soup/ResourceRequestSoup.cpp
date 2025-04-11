@@ -112,12 +112,13 @@ void ResourceRequest::updateSoupMessageMembers(SoupMessage* soupMessage) const
         soup_message_set_first_party(soupMessage, firstParty.get());
 
 #if SOUP_CHECK_VERSION(2, 69, 90)
-    if (m_sameSiteDisposition == ResourceRequest::SameSiteDisposition::SameSite) {
-        GUniquePtr<SoupURI> siteForCookies = urlToSoupURI(m_url);
-        soup_message_set_site_for_cookies(soupMessage, siteForCookies.get());
+    if (!isSameSiteUnspecified()) {
+        if (isSameSite()) {
+            GUniquePtr<SoupURI> siteForCookies = urlToSoupURI(m_url);
+            soup_message_set_site_for_cookies(soupMessage, siteForCookies.get());
+        }
+        soup_message_set_is_top_level_navigation(soupMessage, isTopSite());
     }
-
-    soup_message_set_is_top_level_navigation(soupMessage, isTopSite());
 #endif
 
     soup_message_set_flags(soupMessage, m_soupFlags);
@@ -193,8 +194,10 @@ void ResourceRequest::updateFromSoupMessage(SoupMessage* soupMessage)
 
     m_soupFlags = soup_message_get_flags(soupMessage);
 
-    // FIXME: m_allowCookies should probably be handled here and on
-    // doUpdatePlatformRequest somehow.
+#if SOUP_CHECK_VERSION(2, 71, 0)
+    m_acceptEncoding = !soup_message_is_feature_disabled(soupMessage, SOUP_TYPE_CONTENT_DECODER);
+    m_allowCookies = !soup_message_is_feature_disabled(soupMessage, SOUP_TYPE_COOKIE_JAR);
+#endif
 }
 
 static const char* gSoupRequestInitiatingPageIDKey = "wk-soup-request-initiating-page-id";
@@ -241,7 +244,7 @@ GUniquePtr<SoupURI> ResourceRequest::createSoupURI() const
     // when both the username and password are non-null. When we have credentials, empty usernames and passwords
     // should be empty strings instead of null.
     String urlUser = m_url.user();
-    String urlPass = m_url.pass();
+    String urlPass = m_url.password();
     if (!urlUser.isEmpty() || !urlPass.isEmpty()) {
         soup_uri_set_user(soupURI.get(), urlUser.utf8().data());
         soup_uri_set_password(soupURI.get(), urlPass.utf8().data());

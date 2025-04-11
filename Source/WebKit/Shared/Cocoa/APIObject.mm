@@ -33,6 +33,7 @@
 #import "WKConnectionInternal.h"
 #import "WKContentRuleListInternal.h"
 #import "WKContentRuleListStoreInternal.h"
+#import "WKContentWorldInternal.h"
 #import "WKContextMenuElementInfoInternal.h"
 #import "WKFrameInfoInternal.h"
 #import "WKHTTPCookieStoreInternal.h"
@@ -71,11 +72,11 @@
 #import "_WKAttachmentInternal.h"
 #import "_WKAutomationSessionInternal.h"
 #import "_WKContentRuleListActionInternal.h"
-#import "_WKContentWorldInternal.h"
 #import "_WKCustomHeaderFieldsInternal.h"
 #import "_WKDownloadInternal.h"
 #import "_WKExperimentalFeatureInternal.h"
 #import "_WKFrameHandleInternal.h"
+#import "_WKFrameTreeNodeInternal.h"
 #import "_WKGeolocationPositionInternal.h"
 #import "_WKHitTestResultInternal.h"
 #import "_WKInspectorDebuggableInfoInternal.h"
@@ -153,7 +154,7 @@ void* Object::newObject(size_t size, Type type)
 
     case Type::AuthenticationChallenge:
         ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-        wrapper = allocateWKObject([WKNSURLAuthenticationChallenge self], size);
+        wrapper = allocateWKObject([WKNSURLAuthenticationChallenge class], size);
         ALLOW_DEPRECATED_DECLARATIONS_END
         break;
 
@@ -189,7 +190,7 @@ void* Object::newObject(size_t size, Type type)
         // While not actually a WKObject instance, WKConnection uses allocateWKObject to allocate extra space
         // instead of using ObjectStorage because the wrapped C++ object is a subclass of WebConnection.
         ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-        wrapper = allocateWKObject([WKConnection self], size);
+        wrapper = allocateWKObject([WKConnection class], size);
         ALLOW_DEPRECATED_DECLARATIONS_END
         break;
 
@@ -230,7 +231,7 @@ void* Object::newObject(size_t size, Type type)
         break;
 
     case Type::Error:
-        wrapper = allocateWKObject([WKNSError self], size);
+        wrapper = allocateWKObject([WKNSError class], size);
         break;
 
     case Type::FrameHandle:
@@ -241,6 +242,9 @@ void* Object::newObject(size_t size, Type type)
         wrapper = [WKFrameInfo alloc];
         break;
 
+    case Type::FrameTreeNode:
+        wrapper = [_WKFrameTreeNode alloc];
+        break;
 #if PLATFORM(IOS_FAMILY)
     case Type::GeolocationPosition:
         wrapper = [_WKGeolocationPosition alloc];
@@ -294,15 +298,15 @@ void* Object::newObject(size_t size, Type type)
         break;
 
     case Type::String:
-        wrapper = allocateWKObject([WKNSString self], size);
+        wrapper = allocateWKObject([WKNSString class], size);
         break;
 
     case Type::URL:
-        wrapper = allocateWKObject([WKNSURL self], size);
+        wrapper = allocateWKObject([WKNSURL class], size);
         break;
 
     case Type::URLRequest:
-        wrapper = allocateWKObject([WKNSURLRequest self], size);
+        wrapper = allocateWKObject([WKNSURLRequest class], size);
         break;
 
     case Type::URLSchemeTask:
@@ -348,11 +352,7 @@ void* Object::newObject(size_t size, Type type)
         break;
 
     case Type::ContentWorld:
-        wrapper = [_WKContentWorld alloc];
-        break;
-
-    case Type::UserContentWorld:
-        wrapper = [_WKUserContentWorld alloc];
+        wrapper = [WKContentWorld alloc];
         break;
 
     case Type::UserInitiatedAction:
@@ -425,7 +425,7 @@ void* Object::newObject(size_t size, Type type)
         break;
 
     default:
-        wrapper = allocateWKObject([WKObject self], size);
+        wrapper = allocateWKObject([WKObject class], size);
         break;
     }
 

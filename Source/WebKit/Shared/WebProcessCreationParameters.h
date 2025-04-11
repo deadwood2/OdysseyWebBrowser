@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,12 +38,9 @@
 #include <wtf/text/WTFString.h>
 
 #if PLATFORM(COCOA)
-#include <wtf/MachSendRight.h>
-#endif
-
-#if PLATFORM(MAC)
 #include <WebCore/PlatformScreen.h>
 #include <WebCore/ScreenProperties.h>
+#include <wtf/MachSendRight.h>
 #endif
 
 #if USE(SOUP)
@@ -53,6 +50,10 @@
 
 #if PLATFORM(IOS_FAMILY)
 #include <WebCore/RenderThemeIOS.h>
+#endif
+
+#if ENABLE(NETSCAPE_PLUGIN_API)
+#include <WebCore/PluginData.h>
 #endif
 
 namespace API {
@@ -73,7 +74,7 @@ struct WebProcessCreationParameters {
     WebProcessCreationParameters& operator=(WebProcessCreationParameters&&);
 
     void encode(IPC::Encoder&) const;
-    static bool decode(IPC::Decoder&, WebProcessCreationParameters&);
+    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, WebProcessCreationParameters&);
 
     String injectedBundlePath;
     SandboxExtension::Handle injectedBundlePathExtensionHandle;
@@ -103,11 +104,10 @@ struct WebProcessCreationParameters {
     Vector<String> urlSchemesRegisteredAsCORSEnabled;
     Vector<String> urlSchemesRegisteredAsAlwaysRevalidated;
     Vector<String> urlSchemesRegisteredAsCachePartitioned;
-    Vector<String> urlSchemesServiceWorkersCanHandle;
     Vector<String> urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest;
 
-    Vector<String> fontWhitelist;
-    Vector<String> languages;
+    Vector<String> fontAllowList;
+    Vector<String> overrideLanguages;
 #if USE(GSTREAMER)
     Vector<String> gstreamerOptions;
 #endif
@@ -124,6 +124,7 @@ struct WebProcessCreationParameters {
     bool fullKeyboardAccessEnabled { false };
     bool memoryCacheDisabled { false };
     bool attrStyleEnabled { false };
+    bool useGPUProcessForMedia { false };
 
 #if ENABLE(SERVICE_CONTROLS)
     bool hasImageServices { false };
@@ -162,7 +163,7 @@ struct WebProcessCreationParameters {
     Vector<String> plugInAutoStartOrigins;
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
-    HashMap<String, HashMap<String, HashMap<String, uint8_t>>> pluginLoadClientPolicies;
+    HashMap<String, HashMap<String, HashMap<String, WebCore::PluginLoadClientPolicy>>> pluginLoadClientPolicies;
 #endif
 
 #if PLATFORM(COCOA)
@@ -179,6 +180,7 @@ struct WebProcessCreationParameters {
 
 #if PLATFORM(COCOA)
     Vector<String> mediaMIMETypes;
+    WebCore::ScreenProperties screenProperties;
 #endif
 
 #if ENABLE(RESOURCE_LOAD_STATISTICS) && !RELEASE_LOG_DISABLED
@@ -186,7 +188,6 @@ struct WebProcessCreationParameters {
 #endif
 
 #if PLATFORM(MAC)
-    WebCore::ScreenProperties screenProperties;
     bool useOverlayScrollbars { true };
 #endif
 
@@ -200,22 +201,39 @@ struct WebProcessCreationParameters {
     
 #if PLATFORM(IOS)
     Optional<SandboxExtension::Handle> compilerServiceExtensionHandle;
-    Optional<SandboxExtension::Handle> contentFilterExtensionHandle;
-    Optional<SandboxExtension::Handle> launchServicesOpenExtensionHandle;
-    Optional<SandboxExtension::Handle> diagnosticsExtensionHandle;
+#endif
+
+    Optional<SandboxExtension::Handle> containerManagerExtensionHandle;
+    Optional<SandboxExtension::Handle> mobileGestaltExtensionHandle;
+
+#if PLATFORM(IOS_FAMILY)
+    SandboxExtension::HandleArray diagnosticsExtensionHandles;
+    SandboxExtension::HandleArray dynamicMachExtensionHandles;
+    SandboxExtension::HandleArray dynamicIOKitExtensionHandles;
 #endif
 
 #if PLATFORM(COCOA)
-    Optional<SandboxExtension::Handle> neHelperExtensionHandle;
-    Optional<SandboxExtension::Handle> neSessionManagerExtensionHandle;
     bool systemHasBattery { false };
-    Optional<HashMap<String, Vector<String>, ASCIICaseInsensitiveHash>> mimeTypesMap;
+    bool systemHasAC { false };
 #endif
 
 #if PLATFORM(IOS_FAMILY)
     bool currentUserInterfaceIdiomIsPad { false };
+    bool supportsPictureInPicture { false };
     WebCore::RenderThemeIOS::CSSValueToSystemColorMap cssValueToSystemColorMap;
     WebCore::Color focusRingColor;
+    String localizedDeviceModel;
+#endif
+
+#if PLATFORM(COCOA)
+    SandboxExtension::HandleArray mediaExtensionHandles; // FIXME(207716): Remove when GPU process is complete.
+#if ENABLE(CFPREFS_DIRECT_MODE)
+    Optional<SandboxExtension::HandleArray> preferencesExtensionHandles;
+#endif
+#endif
+
+#if PLATFORM(GTK)
+    bool useSystemAppearanceForScrollbars { false };
 #endif
 };
 

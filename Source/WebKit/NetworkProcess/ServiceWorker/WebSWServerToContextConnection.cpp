@@ -106,10 +106,9 @@ void WebSWServerToContextConnection::terminateWorker(ServiceWorkerIdentifier ser
     send(Messages::WebSWContextManagerConnection::TerminateWorker(serviceWorkerIdentifier));
 }
 
-void WebSWServerToContextConnection::syncTerminateWorker(ServiceWorkerIdentifier serviceWorkerIdentifier)
+void WebSWServerToContextConnection::terminateDueToUnresponsiveness()
 {
-    if (!sendSync(Messages::WebSWContextManagerConnection::SyncTerminateWorker(serviceWorkerIdentifier), Messages::WebSWContextManagerConnection::SyncTerminateWorker::Reply(), 0, 10_s, IPC::SendSyncOption::ForceDispatchWhenDestinationIsWaitingForUnboundedSyncReply))
-        m_connection.networkProcess().parentProcessConnection()->send(Messages::NetworkProcessProxy::TerminateUnresponsiveServiceWorkerProcesses(registrableDomain(), m_connection.sessionID()), 0);
+    m_connection.networkProcess().parentProcessConnection()->send(Messages::NetworkProcessProxy::TerminateUnresponsiveServiceWorkerProcesses { webProcessIdentifier() }, 0);
 }
 
 void WebSWServerToContextConnection::findClientByIdentifierCompleted(uint64_t requestIdentifier, const Optional<ServiceWorkerClientData>& data, bool hasSecurityError)
@@ -120,11 +119,6 @@ void WebSWServerToContextConnection::findClientByIdentifierCompleted(uint64_t re
 void WebSWServerToContextConnection::matchAllCompleted(uint64_t requestIdentifier, const Vector<ServiceWorkerClientData>& clientsData)
 {
     send(Messages::WebSWContextManagerConnection::MatchAllCompleted { requestIdentifier, clientsData });
-}
-
-void WebSWServerToContextConnection::claimCompleted(uint64_t requestIdentifier)
-{
-    send(Messages::WebSWContextManagerConnection::ClaimCompleted { requestIdentifier });
 }
 
 void WebSWServerToContextConnection::connectionIsNoLongerNeeded()

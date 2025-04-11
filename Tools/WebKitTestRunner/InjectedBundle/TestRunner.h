@@ -115,8 +115,8 @@ public:
     void setPopupBlockingEnabled(bool);
     void setAuthorAndUserStylesEnabled(bool);
     void setCustomPolicyDelegate(bool enabled, bool permissive = false);
-    void addOriginAccessWhitelistEntry(JSStringRef sourceOrigin, JSStringRef destinationProtocol, JSStringRef destinationHost, bool allowDestinationSubdomains);
-    void removeOriginAccessWhitelistEntry(JSStringRef sourceOrigin, JSStringRef destinationProtocol, JSStringRef destinationHost, bool allowDestinationSubdomains);
+    void addOriginAccessAllowListEntry(JSStringRef sourceOrigin, JSStringRef destinationProtocol, JSStringRef destinationHost, bool allowDestinationSubdomains);
+    void removeOriginAccessAllowListEntry(JSStringRef sourceOrigin, JSStringRef destinationProtocol, JSStringRef destinationHost, bool allowDestinationSubdomains);
     void setUserStyleSheetEnabled(bool);
     void setUserStyleSheetLocation(JSStringRef);
     void setSpatialNavigationEnabled(bool);
@@ -350,6 +350,7 @@ public:
     void setDidCancelClientRedirect(bool value) { m_didCancelClientRedirect = value; }
 
     void runUIScript(JSStringRef script, JSValueRef callback);
+    void runUIScriptImmediately(JSStringRef script, JSValueRef callback);
     void runUIScriptCallback(unsigned callbackID, JSStringRef result);
 
     // Contextual menu actions
@@ -375,12 +376,15 @@ public:
     // Gamepads
     void connectMockGamepad(unsigned index);
     void disconnectMockGamepad(unsigned index);
-    void setMockGamepadDetails(unsigned index, JSStringRef gamepadID, unsigned axisCount, unsigned buttonCount);
+    void setMockGamepadDetails(unsigned index, JSStringRef gamepadID, JSStringRef mapping, unsigned axisCount, unsigned buttonCount);
     void setMockGamepadAxisValue(unsigned index, unsigned axisIndex, double value);
     void setMockGamepadButtonValue(unsigned index, unsigned buttonIndex, double value);
     
     // Resource Load Statistics
+    void clearStatisticsDataForDomain(JSStringRef domain);
+    bool doesStatisticsDomainIDExistInDatabase(unsigned domainID);
     void setStatisticsEnabled(bool value);
+    bool isStatisticsEphemeral();
     void installStatisticsDidModifyDataRecordsCallback(JSValueRef callback);
     void installStatisticsDidScanDataRecordsCallback(JSValueRef callback);
     void installStatisticsDidRunTelemetryCallback(JSValueRef callback);
@@ -400,6 +404,8 @@ public:
     void statisticsCallDidSetLastSeenCallback();
     void setStatisticsMergeStatistic(JSStringRef hostName, JSStringRef topFrameDomain1, JSStringRef topFrameDomain2, double lastSeen, bool hadUserInteraction, double mostRecentUserInteraction, bool isGrandfathered, bool isPrevalent, bool isVeryPrevalent, unsigned dataRecordsRemoved, JSValueRef completionHandler);
     void statisticsCallDidSetMergeStatisticCallback();
+    void setStatisticsExpiredStatistic(JSStringRef hostName, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent, JSValueRef completionHandler);
+    void statisticsCallDidSetExpiredStatisticCallback();
     void setStatisticsPrevalentResource(JSStringRef hostName, bool value, JSValueRef completionHandler);
     void statisticsCallDidSetPrevalentResourceCallback();
     void setStatisticsVeryPrevalentResource(JSStringRef hostName, bool value, JSValueRef completionHandler);
@@ -427,7 +433,6 @@ public:
     void setStatisticsNotifyPagesWhenDataRecordsWereScanned(bool);
     void setStatisticsIsRunningTest(bool);
     void setStatisticsShouldClassifyResourcesBeforeDataRecordsRemoval(bool);
-    void setStatisticsNotifyPagesWhenTelemetryWasCaptured(bool value);
     void setStatisticsMinimumTimeBetweenDataRecordsRemoval(double);
     void setStatisticsGrandfatheringTime(double seconds);
     void setStatisticsMaxStatisticsEntries(unsigned);
@@ -436,6 +441,7 @@ public:
     void statisticsClearInMemoryAndPersistentStoreModifiedSinceHours(unsigned hours, JSValueRef callback);
     void statisticsClearThroughWebsiteDataRemoval(JSValueRef callback);
     void statisticsDeleteCookiesForHost(JSStringRef hostName, bool includeHttpOnlyCookies);
+    void statisticsCallClearInMemoryAndPersistentStoreCallback();
     void statisticsCallClearThroughWebsiteDataRemovalCallback();
     bool isStatisticsHasLocalStorage(JSStringRef hostName);
     void setStatisticsCacheMaxAgeCap(double seconds);
@@ -446,8 +452,16 @@ public:
     void statisticsCallDidSetShouldBlockThirdPartyCookiesCallback();
     void setStatisticsFirstPartyWebsiteDataRemovalMode(bool value, JSValueRef callback);
     void statisticsCallDidSetFirstPartyWebsiteDataRemovalModeCallback();
+    void statisticsSetToSameSiteStrictCookies(JSStringRef hostName, JSValueRef callback);
+    void statisticsCallDidSetToSameSiteStrictCookiesCallback();
+    void statisticsSetFirstPartyHostCNAMEDomain(JSStringRef firstPartyURLString, JSStringRef cnameURLString, JSValueRef completionHandler);
+    void statisticsCallDidSetFirstPartyHostCNAMEDomainCallback();
+    void statisticsSetThirdPartyCNAMEDomain(JSStringRef cnameURLString, JSValueRef completionHandler);
+    void statisticsCallDidSetThirdPartyCNAMEDomainCallback();
     void statisticsResetToConsistentState(JSValueRef completionHandler);
     void statisticsCallDidResetToConsistentStateCallback();
+    void loadedThirdPartyDomains(JSValueRef callback);
+    void callDidReceiveLoadedThirdPartyDomainsCallback(Vector<String>&& domains);
 
     // Injected bundle form client.
     void installTextDidChangeInTextFieldCallback(JSValueRef callback);
@@ -458,7 +472,6 @@ public:
     void textFieldDidEndEditingCallback();
 
     // Storage Access API
-    void setStorageAccessAPIEnabled(bool);
     void getAllStorageAccessEntries(JSValueRef callback);
     void callDidReceiveAllStorageAccessEntriesCallback(Vector<String>& domains);
 
@@ -494,6 +507,11 @@ public:
     void setMockCameraOrientation(unsigned);
     bool isMockRealtimeMediaSourceCenterEnabled();
 
+    bool hasAppBoundSession();
+    void clearAppBoundSession();
+    void setAppBoundDomains(JSValueRef originArray, JSValueRef callback);
+    void didSetAppBoundDomainsCallback();
+
     size_t userScriptInjectedCount() const;
     void injectUserScript(JSStringRef);
 
@@ -503,8 +521,8 @@ public:
 
     // FIXME(189876)
     void addTestKeyToKeychain(JSStringRef privateKeyBase64, JSStringRef attrLabel, JSStringRef applicationTagBase64);
-    void cleanUpKeychain(JSStringRef attrLabel, JSStringRef applicationTagBase64);
-    bool keyExistsInKeychain(JSStringRef attrLabel, JSStringRef applicationTagBase64);
+    void cleanUpKeychain(JSStringRef attrLabel, JSStringRef applicationLabelBase64);
+    bool keyExistsInKeychain(JSStringRef attrLabel, JSStringRef applicationLabelBase64);
 
     unsigned long serverTrustEvaluationCallbackCallsCount();
 

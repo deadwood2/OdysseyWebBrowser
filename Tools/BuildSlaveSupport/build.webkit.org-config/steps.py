@@ -1,4 +1,4 @@
-# Copyright (C) 2017 Apple Inc. All rights reserved.
+# Copyright (C) 2017-2020 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -140,6 +140,20 @@ class KillOldProcesses(shell.Compile):
     command = ["python", "./Tools/BuildSlaveSupport/kill-old-processes", "buildbot"]
 
 
+class TriggerCrashLogSubmission(shell.Compile):
+    name = "trigger-crash-log-submission"
+    description = ["triggering crash log submission"]
+    descriptionDone = ["triggered crash log submission"]
+    command = ["python", "./Tools/BuildSlaveSupport/trigger-crash-log-submission"]
+
+
+class WaitForCrashCollection(shell.Compile):
+    name = "wait-for-crash-collection"
+    description = ["waiting for crash collection to quiesce"]
+    descriptionDone = ["crash collection has quiesced"]
+    command = ["python", "./Tools/BuildSlaveSupport/wait-for-crash-collection", "--timeout", str(5 * 60)]
+
+
 class CleanBuildIfScheduled(shell.Compile):
     name = "delete WebKitBuild directory"
     description = ["deleting WebKitBuild directory"]
@@ -178,7 +192,7 @@ class InstallGtkDependencies(shell.ShellCommand):
     name = "jhbuild"
     description = ["updating gtk dependencies"]
     descriptionDone = ["updated gtk dependencies"]
-    command = ["perl", "./Tools/Scripts/update-webkitgtk-libs"]
+    command = ["perl", "./Tools/Scripts/update-webkitgtk-libs", WithProperties("--%(configuration)s")]
     haltOnFailure = True
 
 
@@ -186,17 +200,17 @@ class InstallWpeDependencies(shell.ShellCommand):
     name = "jhbuild"
     description = ["updating wpe dependencies"]
     descriptionDone = ["updated wpe dependencies"]
-    command = ["perl", "./Tools/Scripts/update-webkitwpe-libs"]
+    command = ["perl", "./Tools/Scripts/update-webkitwpe-libs", WithProperties("--%(configuration)s")]
     haltOnFailure = True
 
 
 def appendCustomBuildFlags(step, platform, fullPlatform):
-    if platform not in ('gtk', 'wincairo', 'ios', 'jsc-only', 'wpe'):
+    if platform not in ('gtk', 'wincairo', 'ios', 'jsc-only', 'wpe', 'playstation', 'tvos', 'watchos',):
         return
-    if fullPlatform.startswith('ios-simulator'):
-        platform = 'ios-simulator'
-    elif platform == 'ios':
-        platform = 'device'
+    if 'simulator' in fullPlatform:
+        platform = platform + '-simulator'
+    elif platform in ['ios', 'tvos', 'watchos']:
+        platform = platform + '-device'
     step.setCommand(step.command + ['--' + platform])
 
 
@@ -228,11 +242,11 @@ class CompileWebKit(shell.Compile):
 
         if additionalArguments:
             self.setCommand(self.command + additionalArguments)
-        if platform in ('mac', 'ios') and architecture:
+        if platform in ('mac', 'ios', 'tvos', 'watchos') and architecture:
             self.setCommand(self.command + ['ARCHS=' + architecture])
-            if platform == 'ios':
+            if platform in ['ios', 'tvos', 'watchos']:
                 self.setCommand(self.command + ['ONLY_ACTIVE_ARCH=NO'])
-        if platform in ('mac', 'ios') and buildOnly:
+        if platform in ('mac', 'ios', 'tvos', 'watchos') and buildOnly:
             # For build-only bots, the expectation is that tests will be run on separate machines,
             # so we need to package debug info as dSYMs. Only generating line tables makes
             # this much faster than full debug info, and crash logs still have line numbers.
@@ -370,8 +384,8 @@ class RunJavaScriptCoreTests(TestWithFailureCount):
             self.command += ['--no-testmasm', '--no-testair', '--no-testb3', '--no-testdfg', '--no-testapi']
         # Linux bots have currently problems with JSC tests that try to use large amounts of memory.
         # Check: https://bugs.webkit.org/show_bug.cgi?id=175140
-        if platform in ('gtk', 'wpe'):
-            self.setCommand(self.command + ['--memory-limited'])
+        if platform in ('gtk', 'wpe', 'jsc-only'):
+            self.setCommand(self.command + ['--memory-limited', '--verbose'])
         # WinCairo uses the Windows command prompt, not Cygwin.
         elif platform == 'wincairo':
             self.setCommand(self.command + ['--test-writer=ruby'])
@@ -400,7 +414,7 @@ class RunJavaScriptCoreTests(TestWithFailureCount):
 
 class RunRemoteJavaScriptCoreTests(RunJavaScriptCoreTests):
     def start(self):
-        self.setCommand(self.command + ["--memory-limited", "--remote-config-file", "../../remote-jsc-tests-config.json"])
+        self.setCommand(self.command + ["--remote-config-file", "../../remote-jsc-tests-config.json"])
         return RunJavaScriptCoreTests.start(self)
 
 
@@ -439,7 +453,6 @@ class RunWebKitTests(shell.Test):
                "--master-name", "webkit.org",
                "--buildbot-master", BUILD_WEBKIT_URL,
                "--report", RESULTS_WEBKIT_URL,
-               "--test-results-server", "webkit-test-results.webkit.org",
                "--exit-after-n-crashes-or-timeouts", "50",
                "--exit-after-n-failures", "500",
                WithProperties("--%(configuration)s")]
@@ -653,6 +666,7 @@ class RunLLDBWebKitTests(RunPythonTests):
         "./Tools/Scripts/test-lldb-webkit",
         "--verbose",
         "--no-build",
+        WithProperties("--%(configuration)s"),
     ]
     failedTestsFormatString = "%d lldb test%s failed"
 
@@ -1004,6 +1018,7 @@ class UploadTestResults(transfer.FileUpload):
         kwargs['slavesrc'] = self.slavesrc
         kwargs['masterdest'] = self.masterdest
         kwargs['mode'] = 0644
+        kwargs['blocksize'] = 1024 * 256
         transfer.FileUpload.__init__(self, **kwargs)
 
 
