@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -65,8 +65,8 @@ enum ListType {
 };
 
 struct EditorState {
+    String originIdentifierForPasteboard;
     bool shouldIgnoreSelectionChanges { false };
-
     bool selectionIsNone { true }; // This will be false when there is a caret selection.
     bool selectionIsRange { false };
     bool isContentEditable { false };
@@ -74,15 +74,7 @@ struct EditorState {
     bool isInPasswordField { false };
     bool isInPlugin { false };
     bool hasComposition { false };
-    bool isMissingPostLayoutData { false };
-
-#if PLATFORM(IOS_FAMILY)
-    WebCore::IntRect firstMarkedRect;
-    WebCore::IntRect lastMarkedRect;
-    String markedText;
-#endif
-
-    String originIdentifierForPasteboard;
+    bool isMissingPostLayoutData { true };
 
     struct PostLayoutData {
         uint32_t typingAttributes { AttributeNone };
@@ -100,6 +92,10 @@ struct EditorState {
 #if PLATFORM(IOS_FAMILY)
         WebCore::IntRect caretRectAtEnd;
         Vector<WebCore::SelectionRect> selectionRects;
+        Vector<WebCore::SelectionRect> markedTextRects;
+        String markedText;
+        WebCore::IntRect markedTextCaretRectAtStart;
+        WebCore::IntRect markedTextCaretRectAtEnd;
         String wordAtSelection;
         UChar32 characterAfterSelection { 0 };
         UChar32 characterBeforeSelection { 0 };
@@ -133,14 +129,14 @@ struct EditorState {
         bool canPaste { false };
 
         void encode(IPC::Encoder&) const;
-        static bool decode(IPC::Decoder&, PostLayoutData&);
+        static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, PostLayoutData&);
     };
 
     const PostLayoutData& postLayoutData() const;
     PostLayoutData& postLayoutData();
 
     void encode(IPC::Encoder&) const;
-    static bool decode(IPC::Decoder&, EditorState&);
+    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, EditorState&);
 
 private:
     PostLayoutData m_postLayoutData;

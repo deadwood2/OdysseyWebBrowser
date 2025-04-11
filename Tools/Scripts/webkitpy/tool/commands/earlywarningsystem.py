@@ -29,22 +29,17 @@
 
 import json
 import logging
-import os
 from optparse import make_option
 import sys
 
-from webkitpy.common.config.committers import CommitterList
-from webkitpy.common.config.ports import DeprecatedPort
+from webkitcorepy import string_utils
+
 from webkitpy.common.system.filesystem import FileSystem
 from webkitpy.common.system.executive import ScriptError
-from webkitpy.common.unicode_compatibility import encode_for
 from webkitpy.tool.bot.earlywarningsystemtask import EarlyWarningSystemTask, EarlyWarningSystemTaskDelegate
-from webkitpy.tool.bot.bindingstestresultsreader import BindingsTestResultsReader
 from webkitpy.tool.bot.layouttestresultsreader import LayoutTestResultsReader
-from webkitpy.tool.bot.webkitpytestresultsreader import WebkitpyTestResultsReader
 from webkitpy.tool.bot.jsctestresultsreader import JSCTestResultsReader
 from webkitpy.tool.bot.patchanalysistask import UnableToApplyPatch, PatchIsNotValid, PatchIsNotApplicable
-from webkitpy.tool.bot.queueengine import QueueEngine
 from webkitpy.tool.commands.queues import AbstractReviewQueue
 
 _log = logging.getLogger(__name__)
@@ -63,10 +58,6 @@ class AbstractEarlyWarningSystem(AbstractReviewQueue, EarlyWarningSystemTaskDele
 
         if self.group() == "jsc":
             self._test_results_reader = JSCTestResultsReader(self._tool, self._port.jsc_results_directory())
-        elif self.group() == "bindings":
-            self._test_results_reader = BindingsTestResultsReader(self._tool, self._port.jsc_results_directory())
-        elif self.group() == "webkitpy":
-            self._test_results_reader = WebkitpyTestResultsReader(self._tool, self._port.python_unittest_results_directory())
         else:
             self._test_results_reader = LayoutTestResultsReader(self._tool, self._port.results_directory(), self._log_directory())
 
@@ -84,8 +75,7 @@ class AbstractEarlyWarningSystem(AbstractReviewQueue, EarlyWarningSystemTaskDele
         if not extra_message_text:
             return  # Don't comment on Bugzilla if we don't have failing tests.
 
-        results_link = tool.status_server.results_url_for_status(status_id)
-        message = "Attachment %s did not pass %s (%s):\nOutput: %s" % (patch.id(), self.name, self.port_name, results_link)
+        message = "Attachment %s did not pass %s (%s)" % (patch.id(), self.name, self.port_name)
         if extra_message_text:
             message += "\n\n%s" % extra_message_text
         # FIXME: We might want to add some text about rejecting from the commit-queue in
@@ -104,26 +94,18 @@ class AbstractEarlyWarningSystem(AbstractReviewQueue, EarlyWarningSystemTaskDele
         task = self._create_task(patch)
         try:
             succeeded = task.run()
-            if not succeeded:
-                # Caller unlocks when review_patch returns True, so we only need to unlock on transient failure.
-                # Unlocking the patch would result in patch being re-tried.
-                self._unlock_patch(patch)
             return succeeded
         except PatchIsNotValid as error:
-            self._did_error(patch, "%s did not process patch. Reason: %s" % (self.name, error.failure_message))
             return False
         except UnableToApplyPatch as e:
-            self._did_error(patch, "%s unable to apply patch." % self.name)
             return False
         except PatchIsNotApplicable as e:
-            self._did_skip(patch)
             return False
         except ScriptError as e:
             self._post_reject_message_on_bug(self._tool, patch, task.failure_status_id, self._failing_tests_message(task, patch))
             results_archive = task.results_archive_from_patch_test_run(patch)
             if results_archive:
                 self._upload_results_archive_for_patch(patch, results_archive)
-            self._did_fail(patch)
             raise e
 
     # EarlyWarningSystemDelegate methods
@@ -132,14 +114,7 @@ class AbstractEarlyWarningSystem(AbstractReviewQueue, EarlyWarningSystemTaskDele
         return self.name
 
     def run_command(self, command):
-        self.run_webkit_patch(command + [self._deprecated_port.flag()] + (['--architecture=%s' % self._port.architecture()] if self._port.architecture() and self._port.did_override_architecture else []))
-
-    def command_passed(self, message, patch):
-        self._update_status(message, patch=patch)
-
-    def command_failed(self, message, script_error, patch):
-        failure_log = self._log_from_script_error_for_upload(script_error)
-        return self._update_status(message, patch=patch, results_file=failure_log)
+        self.run_webkit_patch(command + [self._deprecated_port.flag()] + (['--architecture=%s' % self._port.architecture()] if self._port.architecture() != self._port.DEFAULT_ARCHITECTURE else []))
 
     def test_results(self):
         return self._test_results_reader.results()
@@ -154,7 +129,7 @@ class AbstractEarlyWarningSystem(AbstractReviewQueue, EarlyWarningSystemTaskDele
         return self._group
 
     def refetch_patch(self, patch):
-        return super(AbstractEarlyWarningSystem, self)._refetch_patch(patch)
+        return self._tool.bugs.fetch_attachment(patch.id())
 
     def report_flaky_tests(self, patch, flaky_test_results, results_archive):
         pass
@@ -178,9 +153,9 @@ class AbstractEarlyWarningSystem(AbstractReviewQueue, EarlyWarningSystemTaskDele
         classes = []
         for name, config in ewses.items():
             if sys.version_info > (3, 0):
-                translated = encode_for(name, str).translate(' -')
+                translated = string_utils.encode(name, target_type=str).translate(' -')
             else:
-                translated = encode_for(name, str).translate(None, ' -')
+                translated = string_utils.encode(name, target_type=str).translate(None, ' -')
 
             classes.append(type(translated, (cls,), {
                 'name': config.get('name', config['port'] + '-ews'),

@@ -39,7 +39,7 @@ WI.GraphicsOverviewContentView = class GraphicsOverviewContentView extends WI.Co
         this._refreshButtonNavigationItem = new WI.ButtonNavigationItem("refresh", WI.UIString("Refresh"), "Images/ReloadFull.svg", 13, 13);
         this._refreshButtonNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._handleRefreshButtonClicked, this);
 
-        this._showGridButtonNavigationItem = new WI.ActivateButtonNavigationItem("show-grid", WI.UIString("Show transparency grid"), WI.UIString("Hide transparency grid"), "Images/NavigationItemCheckers.svg", 13, 13);
+        this._showGridButtonNavigationItem = new WI.ActivateButtonNavigationItem("show-grid", WI.UIString("Show transparency grid", "Show transparency grid (tooltip)"), WI.UIString("Hide transparency grid"), "Images/NavigationItemCheckers.svg", 13, 13);
         this._showGridButtonNavigationItem.activated = !!WI.settings.showImageGrid.value;
         this._showGridButtonNavigationItem.addEventListener(WI.ButtonNavigationItem.Event.Clicked, this._handleShowGridButtonClicked, this);
 
@@ -104,7 +104,7 @@ WI.GraphicsOverviewContentView = class GraphicsOverviewContentView extends WI.Co
 
                 let navigationItems = overviewView.navigationItems;
                 if (navigationItems.length) {
-                    let navigationBar = new WI.NavigationBar(document.createElement("nav"), navigationItems);
+                    let navigationBar = new WI.NavigationBar(document.createElement("nav"), {navigationItems});
                     headerElement.appendChild(navigationBar.element);
                     this.addSubview(navigationBar);
                 }

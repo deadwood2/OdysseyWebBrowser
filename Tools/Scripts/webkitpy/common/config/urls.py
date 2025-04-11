@@ -53,9 +53,8 @@ direct_attachment_url = r"https?://bug-(?P<bug_id>\d+)-attachments.%s/attachment
 buildbot_url = "https://build.webkit.org"
 
 svn_server_host = "svn.webkit.org"
-svn_server_realm = "<http://svn.webkit.org:80> Mac OS Forge"
+svn_server_realm = "<https://svn.webkit.org:443> Mac OS Forge"
 
-statusserver_default_host = "webkit-queues.webkit.org"
 ewsserver_default_host = "ews.webkit.org"
 
 

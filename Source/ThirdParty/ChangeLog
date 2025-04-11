@@ -1,3 +1,94 @@
+2020-08-05  Tim Horton  <timothy_horton@apple.com>
+
+        Remove all references to non-existent 10.16
+        https://bugs.webkit.org/show_bug.cgi?id=215202
+
+        Reviewed by Wenson Hsieh.
+
+        * gtest/xcode/Config/DebugProject.xcconfig:
+        * gtest/xcode/Config/ReleaseProject.xcconfig:
+
+2020-07-22  Conrad Shultz  <conrad_shultz@apple.com>
+
+        Update macOS Version macros
+        https://bugs.webkit.org/show_bug.cgi?id=214653
+
+        Reviewed by Tim Horton.
+
+        * gtest/xcode/Config/DebugProject.xcconfig:
+        * gtest/xcode/Config/ReleaseProject.xcconfig:
+
+2020-06-30  Andy Estes  <aestes@apple.com>
+
+        [Xcode] Enable the "My Mac (Mac Catalyst)" destination in WebKit Xcode projects
+        https://bugs.webkit.org/show_bug.cgi?id=213740
+
+        Reviewed by Darin Adler.
+
+        * gtest/xcode/Config/General.xcconfig: Set SUPPORTS_MACCATALYST to YES to tell Xcode that
+        this project supports building for Mac Catalyst.
+
+2020-06-22  Tim Horton  <timothy_horton@apple.com>
+
+        Update macOS version macros
+        https://bugs.webkit.org/show_bug.cgi?id=213484
+
+        Reviewed by Alexey Proskuryakov.
+
+        * gtest/xcode/Config/DebugProject.xcconfig:
+        * gtest/xcode/Config/ReleaseProject.xcconfig:
+
+2020-05-14  Daniel Bates  <dabates@apple.com>
+
+        Include LocalOverrides.xcconfig in all Tools projects
+        https://bugs.webkit.org/show_bug.cgi?id=211789
+
+        Reviewed by Dan Bernstein.
+
+        Matches what is done for all Source projects so as to support local overriding of configs.
+        Only allow overrides when building for Debug and Release. Again, this matches what is
+        being done for Source projects.
+
+        * gtest/xcode/Config/DebugProject.xcconfig:
+        * gtest/xcode/Config/ReleaseProject.xcconfig:
+
+2020-04-25  Darin Adler  <darin@apple.com>
+
+        [Cocoa] Deal with another round of Xcode upgrade checks
+        https://bugs.webkit.org/show_bug.cgi?id=211027
+
+        Reviewed by Alexey Proskuryakov.
+
+        * gtest/xcode/gtest.xcodeproj/project.pbxproj: Bump the upgrade check version.
+        Add a harmless base localization, rename English localization to en,
+        remove Japanese, French, German; this project contains nothing localized.
+
+2020-04-03  David Kilzer  <ddkilzer@apple.com>
+
+        [Xcode] Replace ASAN_OTHER_CFLAGS and ASAN_OTHER_CPLUSPLUSFLAGS with $(inherited)
+        <https://webkit.org/b/209963>
+        <rdar://problem/61257504>
+
+        Reviewed by Alexey Proskuryakov.
+
+        * gtest/xcode/Config/General.xcconfig:
+        - Remove ASAN_OTHER_CFLAGS, ASAN_OTHER_CPLUSPLUSFLAGS and
+          ASAN_OTHER_LDFLAGS.
+
+2020-03-01  Ting-Wei Lan  <lantw44@gmail.com>
+
+        Re-add the patch used to work around gtest linking failure on FreeBSD
+        https://bugs.webkit.org/show_bug.cgi?id=208409
+
+        Reviewed by Michael Catanzaro.
+
+        The patch was added in https://bugs.webkit.org/show_bug.cgi?id=138420 to
+        fix gtest linking error on FreeBSD. However, it was accidentally dropped
+        in r235613, the commit updating gtest, causing the error to happen
+        again. Re-add it to fix the build on FreeBSD.
+
+        * gtest/src/gtest-death-test.cc:
+
 2020-01-24  Sergio Villar Senin  <svillar@igalia.com>
 
         Remove WebVR from the tree

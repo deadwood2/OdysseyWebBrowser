@@ -1,87 +1,141 @@
 =================
-WPE WebKit 2.28.4
+WPE WebKit 2.30.6
 =================
 
-What's new in WPE WebKit 2.28.4?
+What's new in WPE WebKit 2.30.6?
 
+  - Update User-Agent quirks again for Google Docs and Google Drive.
   - Fix several crashes and rendering issues.
 
 =================
-WPE WebKit 2.28.3
+WPE WebKit 2.30.5
 =================
 
-What's new in WPE WebKit 2.28.3?
+What's new in WPE WebKit 2.30.5?
 
+  - Fix RunLoop objects leaked in worker threads.
+  - Fix aarch64 llint build with JIT disabled.
+  - Use Internet Explorer quirk for Google Docs.
+
+=================
+WPE WebKit 2.30.4
+=================
+
+What's new in WPE WebKit 2.30.4?
+
+  - Fix text data sent with WebSocket when using libsoup older than 2.68.
+  - Fix rendering on the Raspberry Pi 3 using the proprietary GPU driver.
+  - Fix clipping of descendant layers of a mask layer.
+  - Fix the build with ICU 68.1.
+
+=================
+WPE WebKit 2.30.3
+=================
+
+What's new in WPE WebKit 2.30.3?
+
+  - Add new JavaScriptCore build option USE_64KB_PAGE_BLOCK.
+  - Update Outlook User-Agent quirk.
+  - Fix rendering of CSS backdrop filters with rounded borders.
+  - Fix <iframe> scrolling when asynchronous scrolling is in use.
+  - Fix the build with video support disabled.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.30.2
+=================
+
+What's new in WPE WebKit 2.30.2?
+
+  - Fix cookies set in WebSocket requests not appearing in the inspector.
+  - Fix scrolling when smooth scrolling is enabled in async scrolling mode.
+  - Fix WebSocket requests with same-site cookies.
+  - Fix TLS certificate information for service workers.
+  - Handle chassis type when its value is quoted.
+  - Fix the build with ENABLE_MEDIA_STREAM enabled and ENABLE_WEB_RTC_DISABLED.
+  - Fix the build with ENABLE_ACCELERATED_2D_CANVAS enabled.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.30.1
+=================
+
+What's new in WPE WebKit 2.30.1?
+
+  - Fix downloads started by an ephemeral web context.
+
+=================
+WPE WebKit 2.30.0
+=================
+
+What's new in WPE WebKit 2.30.0?
+
+  - Fix NTLM authentication.
+  - Fix the build due to the seccomp.h header not being found.
+
+==================
+WPE WebKit 2.29.91
+==================
+
+What's new in WPE WebKit 2.29.91?
+
+  - Enable support for the Notification Web API.
+  - Stop using the Firefox User-Agent quirk for Google Docs.
+  - Fix User-Agent header after a redirect when a new quirk is required.
+  - Fix rendering of the frames timeline panel in the Web Inspector.
+  - Fix display of per-thread CPU usage in the Web Inspector.
+  - Fix several crashes and rendering issues.
+
+==================
+WPE WebKit 2.29.90
+==================
+
+What's new in WPE WebKit 2.29.90?
+
+  - Fix font variation settings when font smoothing setting is also present.
+  - Fix argument order for clone syscall seccomp filter on s390x.
+  - Fix a crash when selecting text.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.29.2
+=================
+
+What's new in WPE WebKit 2.29.2?
+
+  - Add support for backdrop filters.
+  - Add support for text-underline-offset and text-decoration-thickness.
+  - Add OpenCDM and AV1 support to media backend.
+  - Add new API to get ITP data summary.
+  - Fix several crashes and rendering issues.
+
+=================
+WPE WebKit 2.29.1
+=================
+
+What's new in WPE WebKit 2.29.1?
+
+  - Add Intelligent Tracking Prevention (ITP) support.
+  - Add webkit_authentication_request_get_security_origin.
+  - Add support for video formats in img elements.
+  - Add API to handle video autoplay policy that now defaults to disallow autoplay videos with audio.
+  - Add API to mute a web view.
+  - Add API to allow applications to handle the HTTP authentication credential storage.
+  - Add API to configure and handle the DOM cache.
+  - Add API to configure and handle Service Worker registrations.
+  - Add a WebKitSetting to set the media content types requiring hardware support.
+  - Add support for sndio to bubblewrap sandbox.
+  - Add support for website data to the existing permission request API.
+  - Add support for rendering many user interface controls (scroll bars, progress bars,
+    spin buttons, menu lists, sliders, etc.)
+  - Add USER_AGENT_BRANDING build option.
+  - Use a mobile User-Agent string on tablets and handheld devices.
+  - Change the cookies accept policy to always when no-third-party is set and ITP is enabled.
   - Enable kinetic scrolling with async scrolling.
-  - Fix web process hangs on large GitHub pages.
   - Bubblewrap sandbox should not attempt to bind empty paths.
-  - Fix threading issues in the media player.
-  - Fix several crashes and rendering issues.
-
-=================
-WPE WebKit 2.28.2
-=================
-
-What's new in WPE WebKit 2.28.2?
-
-  - Fix playing of Youtube 'live stream'/H264 URLs.
-  - Fix the build in MIPS64.
-  - Fix several crashes and rendering issues.
-
-=================
-WPE WebKit 2.28.1
-=================
-
-What's new in WPE WebKit 2.28.1?
-
-  - Update Chrome and Firefox versions in user agent quirks.
-  - Improved performance when using an OpenMAX video decoder and OpenGL ES 2.
-  - Fix inverted horizontal scrolling.
-  - Fix a crash with bubblewrap sandbox enabled.
-  - Fix a crash in JavaScriptCore in ppc64el.
-  - Fix the build with GStreamer 1.12.
-  - Fix several crashes and rendering issues.
-
-=================
-WPE WebKit 2.28.0
-=================
-
-What's new in WPE WebKit 2.28.0?
-
-  - Enable the JavaScriptCore JIT for the MIPS platform.
-  - Do not limit the surrounding text for input methods to current paragraph.
-  - Add support in MiniBrowser for WebDriver close session commands.
-  - Fix the build on ppc64le if __unix is undefined.
-  - Fix several crashes and rendering issues.
-
-==================
-WPE WebKit 2.27.91
-==================
-
-What's new in WPE WebKit 2.27.91?
-
-  - Add support for 2D-axis smooth motion input events.
-  - Add support for exporting decoded frames as DMA-BUF directly to the video
-    sink when GStreamer places them in EGL memory.
-  - Update User-Agent quirks to fix the "Unsupported browser" message in
-    several Google services.
-  - Install the QtWPE QML plug-in in a standard location.
-  - Fix QtWPE API headers.
-  - Fix several compilation warnings with GCC 10.
-  - Fix the build with GCC 10.
-  - Fix several crashes and rendering issues.
-
-==================
-WPE WebKit 2.27.90
-==================
-
-What's new in WPE WebKit 2.27.90?
-
-  - Add support for same-site cookies.
-  - Add Flatpak sandbox support.
-  - Enable WebAudio and WebGL by default in WebKitSettings.
-  - Add a setting to disallow top level navigation to a data URI.
-  - Add support for the -webkit-font-smoothing CSS property.
+  - Fix several race conditions and threading issues in the media player.
+  - Fix web process hangs on large GitHub pages.
+  - Fix a race condition causing a crash in media player.
   - Fix several crashes and rendering issues.
 
 =================

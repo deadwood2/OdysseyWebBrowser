@@ -36,13 +36,13 @@ import string
 import sys
 import tempfile
 
+from webkitcorepy import Version, string_utils
+
 from webkitpy.common.checkout.scm.scm import AuthenticationError, SCM, commit_error_handler
 from webkitpy.common.config.urls import svn_server_host, svn_server_realm
 from webkitpy.common.memoized import memoized
 from webkitpy.common.system.executive import Executive, ScriptError
 from webkitpy.common.webkit_finder import WebKitFinder
-from webkitpy.common.version import Version
-from webkitpy.common.unicode_compatibility import encode_if_necessary
 
 
 _log = logging.getLogger(__name__)
@@ -276,16 +276,19 @@ class SVN(SCM, SVNRepository):
     def svn_revision(self, path):
         return self.value_from_svn_info(path, 'Revision')
 
-    def native_revision(self, path):
-        return self.svn_revision(path)
-
-    def native_branch(self, path):
+    def svn_branch(self, path):
         relative_url = self.value_from_svn_info(path, 'Relative URL')[2:]
         if relative_url.startswith('trunk'):
             return 'trunk'
         elif relative_url.startswith('branch'):
             return relative_url.split('/')[1]
         raise Exception('{} is not a branch'.format(relative_url.split('/')[0]))
+
+    def native_revision(self, path):
+        return self.svn_revision(path)
+
+    def native_branch(self, path):
+        return self.svn_branch(path)
 
     def timestamp_of_revision(self, path, revision):
         # We use --xml to get timestamps like 2013-02-08T08:18:04.964409Z
@@ -369,7 +372,7 @@ class SVN(SCM, SVNRepository):
     def apply_reverse_diff(self, revision):
         # '-c -revision' applies the inverse diff of 'revision'
         svn_merge_args = ['merge', '--non-interactive', '-c', '-%s' % revision, self._repository_url()]
-        _log.warning("svn merge has been known to take more than 10 minutes to complete.  It is recommended you use git for rollouts.")
+        _log.warning("svn merge has been known to take more than 10 minutes to complete. It is recommended you use git for reverts.")
         _log.debug("Running 'svn %s'" % " ".join(svn_merge_args))
         # FIXME: Should this use cwd=self.checkout_root?
         self._run_svn(svn_merge_args)
@@ -412,4 +415,4 @@ class SVN(SCM, SVNRepository):
 
     def propget(self, pname, path):
         dir, base = os.path.split(path)
-        return encode_if_necessary(self._run_svn(['pget', pname, base], cwd=dir).rstrip("\n"))
+        return string_utils.encode(self._run_svn(['pget', pname, base], cwd=dir).rstrip("\n"))

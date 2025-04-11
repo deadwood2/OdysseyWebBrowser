@@ -1,6 +1,6 @@
 # Copyright (C) 2012 Google, Inc.
 # Copyright (C) 2010 Chris Jerdonek (cjerdonek@webkit.org)
-# Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2020 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -37,15 +37,15 @@ import traceback
 import unittest
 
 from webkitpy.common.system.logutils import configure_logging
-from webkitpy.common.system.executive import ScriptError
 from webkitpy.common.system.filesystem import FileSystem
 from webkitpy.common.host import Host
-from webkitpy.common.unicode_compatibility import StringIO
 from webkitpy.test.finder import Finder
 from webkitpy.test.printer import Printer
 from webkitpy.test.runner import Runner, unit_test_name
 from webkitpy.results.upload import Upload
 from webkitpy.results.options import upload_options
+
+from webkitcorepy import StringIO
 
 _log = logging.getLogger(__name__)
 
@@ -62,6 +62,7 @@ def main():
 
     tester = Tester()
     tester.add_tree(os.path.join(_webkit_root, 'Tools', 'Scripts'), 'webkitpy')
+    tester.add_tree(os.path.join(_webkit_root, 'Tools', 'Scripts', 'libraries', 'webkitcorepy'), 'webkitcorepy')
 
     # There is no WebKit2 on Windows, so we don't need to run WebKit2 unittests on it.
     if not (sys.platform.startswith('win') or sys.platform == 'cygwin'):
@@ -70,20 +71,6 @@ def main():
     tester.skip(('webkitpy.common.checkout.scm.scm_unittest',), 'are really, really, slow', 31818)
     if sys.platform.startswith('win'):
         tester.skip(('webkitpy.common.checkout', 'webkitpy.common.config', 'webkitpy.tool'), 'fail horribly on win32', 54526)
-
-    # This only needs to run on Unix, so don't worry about win32 for now.
-    appengine_sdk_path = '/usr/local/google_appengine'
-    if os.path.exists(appengine_sdk_path):
-        if not appengine_sdk_path in sys.path:
-            sys.path.append(appengine_sdk_path)
-        import dev_appserver
-        from google.appengine.dist import use_library
-        use_library('django', '1.2')
-        dev_appserver.fix_sys_path()
-        tester.add_tree(os.path.join(_webkit_root, 'Tools', 'QueueStatusServer'))
-    else:
-        _log.info('Skipping QueueStatusServer tests; the Google AppEngine Python SDK is not installed.')
-
     return not tester.run()
 
 
@@ -169,6 +156,9 @@ class Tester(object):
         from webkitpy.thirdparty import autoinstall_everything
         autoinstall_everything()
 
+        from webkitcorepy import AutoInstall
+        AutoInstall.install_everything()
+
         start_time = time.time()
 
         if getattr(self._options, 'coverage', False):
@@ -228,7 +218,7 @@ class Tester(object):
 
             _host.initialize_scm()
             upload = Upload(
-                suite='webkitpy-tests',
+                suite=self._options.suite or 'webkitpy-tests',
                 configuration=Upload.create_configuration(
                     platform=_host.platform.os_name,
                     version=str(_host.platform.os_version),
@@ -236,6 +226,7 @@ class Tester(object):
                     style=self.upload_style,
                     sdk=_host.platform.build_version(),
                     flavor=self._options.result_report_flavor,
+                    architecture=_host.platform.architecture(),
                 ),
                 details=Upload.create_details(options=self._options),
                 commits=[Upload.create_commit(

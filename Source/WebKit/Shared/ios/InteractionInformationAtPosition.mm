@@ -29,7 +29,6 @@
 #import "ArgumentCodersCocoa.h"
 #import "WebCoreArgumentCoders.h"
 #import <pal/spi/cocoa/DataDetectorsCoreSPI.h>
-#import <pal/spi/cocoa/NSKeyedArchiverSPI.h>
 #import <wtf/SoftLinking.h>
 
 SOFT_LINK_PRIVATE_FRAMEWORK(DataDetectorsCore)
@@ -85,6 +84,7 @@ void InteractionInformationAtPosition::encode(IPC::Encoder& encoder) const
 #if ENABLE(DATALIST_ELEMENT)
     encoder << preventTextInteraction;
 #endif
+    encoder << shouldNotUseIBeamInEditableContent;
     encoder << elementContext;
 }
 
@@ -200,6 +200,9 @@ bool InteractionInformationAtPosition::decode(IPC::Decoder& decoder, Interaction
     if (!decoder.decode(result.preventTextInteraction))
         return false;
 #endif
+
+    if (!decoder.decode(result.shouldNotUseIBeamInEditableContent))
+        return false;
 
     if (!decoder.decode(result.elementContext))
         return false;

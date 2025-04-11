@@ -22,8 +22,9 @@
 
 import logging
 
+from webkitcorepy import Version
+
 from webkitpy.common.memoized import memoized
-from webkitpy.common.version import Version
 from webkitpy.port.config import apple_additions, Config
 from webkitpy.port.ios import IOSPort
 from webkitpy.xcode.device_type import DeviceType
@@ -79,7 +80,6 @@ class IOSSimulatorPort(IOSPort):
         return result
 
     def setup_environ_for_server(self, server_name=None):
-        _log.debug("setup_environ_for_server")
         env = super(IOSSimulatorPort, self).setup_environ_for_server(server_name)
         if server_name == self.driver_name():
             if self.get_option('leaks'):

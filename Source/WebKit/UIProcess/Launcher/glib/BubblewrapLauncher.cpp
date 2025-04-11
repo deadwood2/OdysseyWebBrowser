@@ -40,11 +40,13 @@
 #define BASE_DIRECTORY "wpe"
 #endif
 
-#if __has_include(<sys/memfd.h>)
+#include <sys/mman.h>
 
-#include <sys/memfd.h>
+#ifndef MFD_ALLOW_SEALING
 
-#else
+#if HAVE(LINUX_MEMFD_H)
+
+#include <linux/memfd.h>
 
 // These defines were added in glibc 2.27, the same release that added memfd_create.
 // But the kernel added all of this in Linux 3.17. So it's totally safe for us to
@@ -59,13 +61,13 @@
 #define F_SEAL_GROW   0x0004
 #define F_SEAL_WRITE  0x0008
 
-#define MFD_ALLOW_SEALING 2U
-
 static int memfd_create(const char* name, unsigned flags)
 {
     return syscall(__NR_memfd_create, name, flags);
 }
-#endif
+#endif // #if HAVE(LINUX_MEMFD_H)
+
+#endif // #ifndef MFD_ALLOW_SEALING
 
 namespace WebKit {
 using namespace WebCore;
@@ -381,6 +383,18 @@ static void bindPulse(Vector<CString>& args)
     bindIfExists(args, "/dev/snd", BindFlags::Device);
 }
 
+static void bindSndio(Vector<CString>& args)
+{
+    bindIfExists(args, "/tmp/sndio", BindFlags::ReadWrite);
+
+    GUniquePtr<char> sndioUidDir(g_strdup_printf("/tmp/sndio-%d", getuid()));
+    bindIfExists(args, sndioUidDir.get(), BindFlags::ReadWrite);
+
+    const char* homeDir = g_get_home_dir();
+    GUniquePtr<char> sndioHomeDir(g_build_filename(homeDir, ".sndio", nullptr));
+    bindIfExists(args, sndioHomeDir.get(), BindFlags::ReadWrite);
+}
+
 static void bindFonts(Vector<CString>& args)
 {
     const char* configDir = g_get_user_config_dir();
@@ -569,8 +583,8 @@ static int setupSeccomp()
     // can do, and we should support code portability between different
     // container tools.
     //
-    // This syscall blacklist is copied from linux-user-chroot, which was in turn
-    // clearly influenced by the Sandstorm.io blacklist.
+    // This syscall block list is copied from linux-user-chroot, which was in turn
+    // clearly influenced by the Sandstorm.io block list.
     //
     // If you make any changes here, I suggest sending the changes along
     // to other sandbox maintainers. Using the libseccomp list is also
@@ -578,7 +592,7 @@ static int setupSeccomp()
     // https://groups.google.com/forum/#!topic/libseccomp
     //
     // A non-exhaustive list of links to container tooling that might
-    // want to share this blacklist:
+    // want to share this block list:
     //
     //  https://github.com/sandstorm-io/sandstorm
     //    in src/sandstorm/supervisor.c++
@@ -600,7 +614,7 @@ static int setupSeccomp()
     struct {
         int scall;
         struct scmp_arg_cmp* arg;
-    } syscallBlacklist[] = {
+    } syscallBlockList[] = {
         // Block dmesg
         { SCMP_SYS(syslog), nullptr },
         // Useless old syscall.
@@ -646,7 +660,7 @@ static int setupSeccomp()
     if (!seccomp)
         g_error("Failed to init seccomp");
 
-    for (auto& rule : syscallBlacklist) {
+    for (auto& rule : syscallBlockList) {
         int scall = rule.scall;
         int r;
         if (rule.arg)
@@ -709,8 +723,7 @@ GRefPtr<GSubprocess> bubblewrapSpawn(GSubprocessLauncher* launcher, const Proces
 #if ENABLE(NETSCAPE_PLUGIN_API)
     // It is impossible to know what access arbitrary plugins need and since it is for legacy
     // reasons lets just leave it unsandboxed.
-    if (launchOptions.processType == ProcessLauncher::ProcessType::Plugin64
-        || launchOptions.processType == ProcessLauncher::ProcessType::Plugin32)
+    if (launchOptions.processType == ProcessLauncher::ProcessType::Plugin)
         return adoptGRef(g_subprocess_launcher_spawnv(launcher, argv, error));
 #endif
 
@@ -816,6 +829,7 @@ GRefPtr<GSubprocess> bubblewrapSpawn(GSubprocessLauncher* launcher, const Proces
         bindDBusSession(sandboxArgs, proxy);
         // FIXME: We should move to Pipewire as soon as viable, Pulse doesn't restrict clients atm.
         bindPulse(sandboxArgs);
+        bindSndio(sandboxArgs);
         bindFonts(sandboxArgs);
         bindGStreamerData(sandboxArgs);
         bindOpenGL(sandboxArgs);

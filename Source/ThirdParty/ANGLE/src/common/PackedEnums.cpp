@@ -24,6 +24,8 @@ TextureType TextureTargetToType(TextureTarget target)
         case TextureTarget::CubeMapPositiveY:
         case TextureTarget::CubeMapPositiveZ:
             return TextureType::CubeMap;
+        case TextureTarget::CubeMapArray:
+            return TextureType::CubeMapArray;
         case TextureTarget::External:
             return TextureType::External;
         case TextureTarget::Rectangle:
@@ -71,6 +73,8 @@ TextureTarget NonCubeTextureTypeToTarget(TextureType type)
             return TextureTarget::_2DMultisampleArray;
         case TextureType::_3D:
             return TextureTarget::_3D;
+        case TextureType::CubeMapArray:
+            return TextureTarget::CubeMapArray;
         case TextureType::VideoImage:
             return TextureTarget::VideoImage;
         default:
@@ -132,6 +136,12 @@ TextureType SamplerTypeToTextureType(GLenum samplerType)
         case GL_SAMPLER_CUBE_SHADOW:
             return TextureType::CubeMap;
 
+        case GL_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_SAMPLER_CUBE_MAP_ARRAY_SHADOW:
+            return TextureType::CubeMapArray;
+
         case GL_SAMPLER_2D_ARRAY:
         case GL_INT_SAMPLER_2D_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_2D_ARRAY:
@@ -183,6 +193,7 @@ bool IsArrayTextureType(TextureType type)
     {
         case TextureType::_2DArray:
         case TextureType::_2DMultisampleArray:
+        case TextureType::CubeMapArray:
             return true;
         default:
             return false;
@@ -254,6 +265,102 @@ std::ostream &operator<<(std::ostream &os, DrawElementsType value)
     return os;
 }
 
+std::ostream &operator<<(std::ostream &os, BlendEquationType value)
+{
+    switch (value)
+    {
+        case BlendEquationType::Add:
+            os << "GL_FUNC_ADD";
+            break;
+        case BlendEquationType::Min:
+            os << "GL_MIN";
+            break;
+        case BlendEquationType::Max:
+            os << "GL_MAX";
+            break;
+        case BlendEquationType::Subtract:
+            os << "GL_FUNC_SUBTRACT";
+            break;
+        case BlendEquationType::ReverseSubtract:
+            os << "GL_FUNC_REVERSE_SUBTRACT";
+            break;
+        default:
+            os << "GL_INVALID_ENUM";
+            break;
+    }
+
+    return os;
+}
+
+std::ostream &operator<<(std::ostream &os, BlendFactorType value)
+{
+    switch (value)
+    {
+        case BlendFactorType::Zero:
+            os << "GL_ZERO";
+            break;
+        case BlendFactorType::One:
+            os << "GL_ONE";
+            break;
+        case BlendFactorType::SrcColor:
+            os << "GL_SRC_COLOR";
+            break;
+        case BlendFactorType::OneMinusSrcColor:
+            os << "GL_ONE_MINUS_SRC_COLOR";
+            break;
+        case BlendFactorType::SrcAlpha:
+            os << "GL_SRC_ALPHA";
+            break;
+        case BlendFactorType::OneMinusSrcAlpha:
+            os << "GL_ONE_MINUS_SRC_ALPHA";
+            break;
+        case BlendFactorType::DstAlpha:
+            os << "GL_DST_ALPHA";
+            break;
+        case BlendFactorType::OneMinusDstAlpha:
+            os << "GL_ONE_MINUS_DST_ALPHA";
+            break;
+        case BlendFactorType::DstColor:
+            os << "GL_DST_COLOR";
+            break;
+        case BlendFactorType::OneMinusDstColor:
+            os << "GL_ONE_MINUS_DST_COLOR";
+            break;
+        case BlendFactorType::SrcAlphaSaturate:
+            os << "GL_SRC_ALPHA_SATURATE";
+            break;
+        case BlendFactorType::ConstantColor:
+            os << "GL_CONSTANT_COLOR";
+            break;
+        case BlendFactorType::OneMinusConstantColor:
+            os << "GL_ONE_MINUS_CONSTANT_COLOR";
+            break;
+        case BlendFactorType::ConstantAlpha:
+            os << "GL_CONSTANT_ALPHA";
+            break;
+        case BlendFactorType::OneMinusConstantAlpha:
+            os << "GL_ONE_MINUS_CONSTANT_ALPHA";
+            break;
+        case BlendFactorType::Src1Alpha:
+            os << "GL_SRC1_ALPHA_EXT";
+            break;
+        case BlendFactorType::Src1Color:
+            os << "GL_SRC1_COLOR_EXT";
+            break;
+        case BlendFactorType::OneMinusSrc1Color:
+            os << "GL_ONE_MINUS_SRC1_COLOR_EXT";
+            break;
+        case BlendFactorType::OneMinusSrc1Alpha:
+            os << "GL_ONE_MINUS_SRC1_ALPHA_EXT";
+            break;
+        default:
+            os << "GL_INVALID_ENUM";
+            break;
+    }
+
+    return os;
+}
+
 std::ostream &operator<<(std::ostream &os, VertexAttribType value)
 {
     switch (value)
@@ -289,7 +396,7 @@ std::ostream &operator<<(std::ostream &os, VertexAttribType value)
             os << "GL_UNSIGNED_INT";
             break;
         case VertexAttribType::UnsignedInt2101010:
-            os << "GL_UNSIGNED_INT_10_10_10_2";
+            os << "GL_UNSIGNED_INT_2_10_10_10_REV";
             break;
         case VertexAttribType::UnsignedInt1010102:
             os << "GL_UNSIGNED_INT_10_10_10_2_OES";

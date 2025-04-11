@@ -83,6 +83,11 @@ Error ValidateCreatePbufferFromClientBuffer(Display *display,
                                             Config *config,
                                             const AttributeMap &attributes);
 
+Error ValidateCreatePixmapSurface(Display *display,
+                                  Config *config,
+                                  EGLNativePixmapType pixmap,
+                                  const AttributeMap &attributes);
+
 Error ValidateMakeCurrent(Display *display, Surface *draw, Surface *read, gl::Context *context);
 
 Error ValidateCreateImage(const Display *display,
@@ -174,10 +179,10 @@ Error ValidateStreamPostD3DTextureANGLE(const Display *display,
                                         void *texture,
                                         const AttributeMap &attribs);
 
-Error ValidateGetMscRateCHROMIUM(const Display *display,
-                                 const Surface *surface,
-                                 const EGLint *numerator,
-                                 const EGLint *denominator);
+Error ValidateGetMscRateANGLE(const Display *display,
+                              const Surface *surface,
+                              const EGLint *numerator,
+                              const EGLint *denominator);
 Error ValidateGetSyncValuesCHROMIUM(const Display *display,
                                     const Surface *surface,
                                     const EGLuint64KHR *ust,

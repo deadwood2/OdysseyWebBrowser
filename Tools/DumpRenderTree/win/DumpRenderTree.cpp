@@ -799,10 +799,12 @@ static void enableExperimentalFeatures(IWebPreferences* preferences)
     prefsPrivate->setWebAnimationsEnabled(TRUE);
     prefsPrivate->setWebAnimationsCompositeOperationsEnabled(TRUE);
     prefsPrivate->setWebAnimationsMutableTimelinesEnabled(TRUE);
+    prefsPrivate->setCSSCustomPropertiesAndValuesEnabled(TRUE);
     prefsPrivate->setServerTimingEnabled(TRUE);
     prefsPrivate->setAspectRatioOfImgFromWidthAndHeightEnabled(TRUE);
     // FIXME: WebGL2
     // FIXME: WebRTC
+    prefsPrivate->setCSSOMViewSmoothScrollingEnabled(TRUE);
 }
 
 static void resetWebPreferencesToConsistentValues(IWebPreferences* preferences)
@@ -834,6 +836,7 @@ static void resetWebPreferencesToConsistentValues(IWebPreferences* preferences)
 #endif
 
     prefsPrivate->setAllowTopNavigationToDataURLs(TRUE);
+    prefsPrivate->setModernUnprefixedWebAudioEnabled(TRUE);
     prefsPrivate->setAllowUniversalAccessFromFileURLs(TRUE);
     prefsPrivate->setAllowFileAccessFromFileURLs(TRUE);
     preferences->setStandardFontFamily(standardFamily);
@@ -921,6 +924,7 @@ static void setWebPreferencesForTestOptions(IWebPreferences* preferences, const 
     prefsPrivate->setAllowTopNavigationToDataURLs(options.allowTopNavigationToDataURLs);
     preferences->setPrivateBrowsingEnabled(options.useEphemeralSession);
     preferences->setUsesPageCache(options.enableBackForwardCache);
+    prefsPrivate->setCSSOMViewSmoothScrollingEnabled(options.enableCSSOMViewSmoothScrolling);
 }
 
 static String applicationId()
@@ -1048,7 +1052,7 @@ static void resetWebViewToConsistentStateBeforeTesting(const TestOptions& option
     if (webViewPrivate && SUCCEEDED(webViewPrivate->viewWindow(&viewWindow)) && viewWindow)
         ::SetFocus(viewWindow);
 
-    webViewPrivate->resetOriginAccessWhitelists();
+    webViewPrivate->resetOriginAccessAllowLists();
 
     sharedUIDelegate->resetUndoManager();
 

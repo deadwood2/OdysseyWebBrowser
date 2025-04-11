@@ -52,6 +52,7 @@ public:
     void waitUntilLoadFinished();
     void waitUntilTitleChangedTo(const char* expectedTitle);
     void waitUntilTitleChanged();
+    void waitUntilFileChanged(const char*, GFileMonitorEvent);
     void resizeView(int width, int height);
     void hideView();
     void selectAll();
@@ -64,20 +65,16 @@ public:
     void clickMouseButton(int x, int y, unsigned button = 1, unsigned mouseModifiers = 0);
     void keyStroke(unsigned keyVal, unsigned keyModifiers = 0);
 
-#if PLATFORM(GTK)
-    void showInWindow(GtkWindowType = GTK_WINDOW_POPUP);
-    void showInWindowAndWaitUntilMapped(GtkWindowType = GTK_WINDOW_POPUP, int width = 0, int height = 0);
-    void emitPopupMenuSignal();
-#endif
+    void showInWindow(int width = 0, int height = 0);
 
-#if PLATFORM(WPE)
-    void showInWindowAndWaitUntilMapped() { showInWindow(); };
-    void showInWindow();
+#if PLATFORM(GTK)
+    void emitPopupMenuSignal();
 #endif
 
     WebKitJavascriptResult* runJavaScriptAndWaitUntilFinished(const char* javascript, GError**);
     WebKitJavascriptResult* runJavaScriptFromGResourceAndWaitUntilFinished(const char* resource, GError**);
     WebKitJavascriptResult* runJavaScriptInWorldAndWaitUntilFinished(const char* javascript, const char* world, GError**);
+    WebKitJavascriptResult* runJavaScriptWithoutForcedUserGesturesAndWaitUntilFinished(const char* javascript, GError**);
 
     // Javascript result helpers.
     static char* javascriptResultToCString(WebKitJavascriptResult*);
@@ -111,13 +108,10 @@ public:
     size_t m_resourceDataSize { 0 };
     cairo_surface_t* m_surface { nullptr };
     bool m_expectedWebProcessCrash { false };
+    GRefPtr<GFile> m_monitoredFile;
+    GFileMonitorEvent m_expectedFileChangeEvent;
 
 #if PLATFORM(GTK)
     GtkWidget* m_parentWindow { nullptr };
-#endif
-
-private:
-#if PLATFORM(GTK)
-    void doMouseButtonEvent(GdkEventType, int, int, unsigned, unsigned);
 #endif
 };

@@ -29,7 +29,11 @@
 typedef struct _WebKitInputMethodContext WebKitInputMethodContext;
 
 #if PLATFORM(GTK)
-typedef struct _GdkEventKey GdkEventKey;
+#if USE(GTK4)
+typedef struct _GdkEvent GdkEvent;
+#else
+typedef union _GdkEvent GdkEvent;
+#endif
 #elif PLATFORM(WPE)
 struct wpe_input_keyboard_event;
 #endif
@@ -53,7 +57,7 @@ public:
     void setState(Optional<InputMethodState>&&);
 
 #if PLATFORM(GTK)
-    using PlatformEventKey = GdkEventKey;
+    using PlatformEventKey = GdkEvent;
 #elif PLATFORM(WPE)
     using PlatformEventKey = struct wpe_input_keyboard_event;
 #endif
@@ -62,6 +66,10 @@ public:
         String keyText;
     };
     FilterResult filterKeyEvent(PlatformEventKey*);
+
+#if PLATFORM(GTK)
+    FilterResult filterKeyEvent(unsigned type, unsigned keyval, unsigned keycode, unsigned modifiers);
+#endif
 
     void notifyFocusedIn();
     void notifyFocusedOut();
@@ -104,6 +112,9 @@ private:
     struct {
         bool isActive { false };
         bool preeditChanged { false };
+#if PLATFORM(GTK) && USE(GTK4)
+        bool isFakeKeyEventForTesting { false };
+#endif
     } m_filteringContext;
 
     String m_compositionResult;

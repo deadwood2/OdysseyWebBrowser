@@ -116,6 +116,7 @@ static BOOL sendingDelegateMessage;
 #endif
 
 static CFRunLoopObserverRef mainRunLoopAutoUnlockObserver;
+static BOOL mainThreadHasPendingAutoUnlock;
 
 static Lock startupLock;
 static StaticCondition startupCondition;
@@ -447,7 +448,11 @@ static void MainRunLoopAutoUnlock(CFRunLoopObserverRef, CFRunLoopActivity, void*
 
     if (sMainThreadModalCount)
         return;
-    
+
+    if (!mainThreadHasPendingAutoUnlock)
+        return;
+
+    mainThreadHasPendingAutoUnlock = NO;
     CFRunLoopRemoveObserver(CFRunLoopGetCurrent(), mainRunLoopAutoUnlockObserver, kCFRunLoopCommonModes);
 
     _WebThreadUnlock();
@@ -458,6 +463,7 @@ static void _WebThreadAutoLock(void)
     ASSERT(!WebThreadIsCurrent());
 
     if (!mainThreadLockCount) {
+        mainThreadHasPendingAutoUnlock = YES;
         CFRunLoopAddObserver(CFRunLoopGetCurrent(), mainRunLoopAutoUnlockObserver, kCFRunLoopCommonModes);    
         _WebThreadLock();
         CFRunLoopWakeUp(CFRunLoopGetMain());
@@ -584,12 +590,11 @@ static void* RunWebThread(void*)
 {
     FloatingPointEnvironment::singleton().propagateMainThreadEnvironment();
 
-    // WTF::initializeMainThread() needs to be called before JSC::initializeThreading() since the
+    // WTF::initializeWebThread() needs to be called before JSC::initialize() since the
     // code invoked by the latter needs to know if it's running on the WebThread. See
     // <rdar://problem/8502487>.
-    WTF::initializeMainThread();
     WTF::initializeWebThread();
-    JSC::initializeThreading();
+    JSC::initialize();
     
     // Make sure that the WebThread and the main thread share the same ThreadGlobalData objects.
     WebCore::threadGlobalData().setWebCoreThreadData();
@@ -633,7 +638,7 @@ static void StartWebThread()
     webThreadStarted = TRUE;
 
     // ThreadGlobalData touches AtomString, which requires Threading initialization.
-    WTF::initializeThreading();
+    WTF::initializeMainThread();
 
     // Initialize AtomString on the main thread.
     WTF::AtomString::init();
@@ -642,8 +647,6 @@ static void StartWebThread()
     // can later set it's thread-specific data to point to the same objects.
     WebCore::ThreadGlobalData& unused = WebCore::threadGlobalData();
     UNUSED_PARAM(unused);
-
-    RunLoop::initializeMainRunLoop();
 
     // register class for WebThread deallocation
     WebCoreObjCDeallocOnWebThread([WAKWindow class]);

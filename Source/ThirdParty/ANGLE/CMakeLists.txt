@@ -54,6 +54,7 @@ set(ANGLE_PRIVATE_INCLUDE_DIRECTORIES
     "${CMAKE_CURRENT_SOURCE_DIR}/include/KHR"
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/common/third_party/base"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/zlib/google"
     "${CMAKE_CURRENT_BINARY_DIR}/include"
 )
 
@@ -90,6 +91,7 @@ if (USE_ANGLE_EGL)
         ${libangle_image_util_sources}
         ${libangle_image_util_headers}
         ${xxhash_sources}
+        ${zlib_wrapper_sources}
     )
     target_include_directories(ANGLE PRIVATE ${ANGLE_PRIVATE_INCLUDE_DIRECTORIES})
     target_compile_definitions(ANGLE PRIVATE
@@ -129,6 +131,7 @@ if (USE_ANGLE_EGL)
 else ()
     add_library(ANGLE STATIC ${ANGLE_SOURCES})
     target_include_directories(ANGLE PRIVATE ${ANGLE_PRIVATE_INCLUDE_DIRECTORIES})
+    target_link_libraries(ANGLE PRIVATE ${CMAKE_DL_LIBS})
     target_compile_definitions(ANGLE PRIVATE
         ${ANGLE_DEFINITIONS}
         ${no_gl_prototypes}
@@ -150,22 +153,20 @@ if (USE_ANGLE_WEBGL)
         FLATTENED
     )
 
-    add_custom_command(
-        OUTPUT ${ANGLE_FRAMEWORK_HEADERS_DIR}/ANGLE/angle.timestamp
+    add_custom_target(ANGLE-webgl-headers
         DEPENDS LibGLESv2EntryPointsHeaders ANGLEWebGLHeaders
         COMMAND BUILT_PRODUCTS_DIR=${ANGLE_FRAMEWORK_HEADERS_DIR}/
+            DERIVED_FILE_DIR=${BUILT_PRODUCTS_DIR}
             PUBLIC_HEADERS_FOLDER_PATH=ANGLE
             ${CMAKE_CURRENT_SOURCE_DIR}/adjust-angle-include-paths.sh
         VERBATIM
-    )
-    add_custom_target(ANGLE-webgl-headers
-        DEPENDS ${ANGLE_FRAMEWORK_HEADERS_DIR}/ANGLE/angle.timestamp
     )
     add_dependencies(ANGLEFramework ANGLE-webgl-headers)
 endif ()
 
 if (COMPILER_IS_GCC_OR_CLANG)
     WEBKIT_ADD_TARGET_CXX_FLAGS(ANGLE -Wno-cast-align
+                                      -Wno-deprecated-copy
                                       -Wno-suggest-attribute=format
                                       -Wno-type-limits
                                       -Wno-undef

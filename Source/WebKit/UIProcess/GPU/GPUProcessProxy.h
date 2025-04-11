@@ -37,6 +37,10 @@
 #include <memory>
 #include <pal/SessionID.h>
 
+#if HAVE(VISIBILITY_PROPAGATION_VIEW)
+#include "LayerHostingContext.h"
+#endif
+
 namespace WebKit {
 
 class WebProcessProxy;
@@ -53,17 +57,24 @@ public:
 
     void getGPUProcessConnection(WebProcessProxy&, Messages::WebProcessProxy::GetGPUProcessConnectionDelayedReply&&);
 
-    ProcessThrottler& throttler() { return m_throttler; }
+    ProcessThrottler& throttler() final { return m_throttler; }
     void updateProcessAssertion();
 
     // ProcessThrottlerClient
     void sendProcessDidResume() final { }
+    ASCIILiteral clientName() const final { return "GPUProcess"_s; }
 
 #if ENABLE(MEDIA_STREAM)
     void setUseMockCaptureDevices(bool);
+    void setOrientationForMediaCapture(uint64_t orientation);
+    void updateCaptureAccess(bool allowAudioCapture, bool allowVideoCapture, bool allowDisplayCapture, WebCore::ProcessIdentifier, CompletionHandler<void()>&&);
 #endif
 
     void removeSession(PAL::SessionID);
+
+#if HAVE(VISIBILITY_PROPAGATION_VIEW)
+    LayerHostingContextID contextIDForVisibilityPropagation() const;
+#endif
 
 private:
     explicit GPUProcessProxy();
@@ -82,33 +93,33 @@ private:
 
     // ProcessThrottlerClient
     void sendPrepareToSuspend(IsSuspensionImminent, CompletionHandler<void()>&&) final { }
-    void didSetAssertionState(AssertionState) final { }
 
     // ProcessLauncher::Client
     void didFinishLaunching(ProcessLauncher*, IPC::Connection::Identifier) override;
 
-    typedef uint64_t ConnectionRequestIdentifier;
-    void openGPUProcessConnection(ConnectionRequestIdentifier, WebProcessProxy&);
-
     // IPC::Connection::Client
+    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
     void didClose(IPC::Connection&) override;
-    void didReceiveInvalidMessage(IPC::Connection&, IPC::StringReference messageReceiverName, IPC::StringReference messageName) override;
+    void didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName) override;
+
+#if HAVE(VISIBILITY_PROPAGATION_VIEW)
+    void didCreateContextForVisibilityPropagation(LayerHostingContextID);
+#endif
 
     static GPUProcessProxy* m_singleton;
-
-    struct ConnectionRequest {
-        WeakPtr<WebProcessProxy> webProcess;
-        Messages::WebProcessProxy::GetGPUProcessConnectionDelayedReply reply;
-    };
-    ConnectionRequestIdentifier m_connectionRequestIdentifier { 0 };
-    HashMap<ConnectionRequestIdentifier, ConnectionRequest> m_connectionRequests;
 
     ProcessThrottler m_throttler;
     ProcessThrottler::ActivityVariant m_activityFromWebProcesses;
 #if ENABLE(MEDIA_STREAM)
     bool m_useMockCaptureDevices { false };
+    uint64_t m_orientation { 0 };
 #endif
     HashSet<PAL::SessionID> m_sessionIDs;
+
+#if HAVE(VISIBILITY_PROPAGATION_VIEW)
+    LayerHostingContextID m_contextIDForVisibilityPropagation { 0 };
+    Vector<WeakPtr<WebProcessProxy>> m_processesPendingVisibilityPropagationNotification;
+#endif
 };
 
 } // namespace WebKit

@@ -23,7 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#include "config.h"
+#import "config.h"
 #import "JavaScriptCore.h"
 
 #if JSC_OBJC_API_ENABLED
@@ -40,9 +40,12 @@
 #import "WeakGCMap.h"
 #import "WeakGCMapInlines.h"
 #import <wtf/Vector.h>
-#import <wtf/spi/darwin/dyldSPI.h>
 
-#include <mach-o/dyld.h>
+#if PLATFORM(COCOA)
+#import <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
+#endif
+
+#import <mach-o/dyld.h>
 
 #if PLATFORM(APPLETV)
 #else
@@ -720,7 +723,7 @@ bool supportsInitMethodConstructors()
     // base our check on what SDK was used to build the application.
     static uint32_t programSDKVersion = 0;
     if (!programSDKVersion)
-        programSDKVersion = dyld_get_program_sdk_version();
+        programSDKVersion = applicationSDKVersion();
 
     return programSDKVersion >= firstSDKVersionWithInitConstructorSupport;
 #endif

@@ -35,6 +35,10 @@
 #import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
 
+@interface WKWebView (WKWebViewInternal)
+- (void)paste:(id)sender;
+@end
+
 namespace WTR {
 
 UIScriptControllerCocoa::UIScriptControllerCocoa(UIScriptContext& context)
@@ -76,11 +80,6 @@ void UIScriptControllerCocoa::doAsyncTask(JSValueRef callback)
             return;
         m_context->asyncTaskComplete(callbackID);
     });
-}
-
-void UIScriptControllerCocoa::setShareSheetCompletesImmediatelyWithResolution(bool resolved)
-{
-    [webView() _setShareSheetCompletesImmediatelyWithResolutionForTesting:resolved];
 }
 
 void UIScriptControllerCocoa::removeViewFromWindow(JSValueRef callback)
@@ -147,9 +146,11 @@ JSObjectRef UIScriptControllerCocoa::contentsOfUserInterfaceItem(JSStringRef int
     return JSValueToObject(m_context->jsContext(), [JSValue valueWithObject:contentDictionary inContext:[JSContext contextWithJSGlobalContextRef:m_context->jsContext()]].JSValueRef, nullptr);
 }
 
-void UIScriptControllerCocoa::setDefaultCalendarType(JSStringRef calendarIdentifier)
+void UIScriptControllerCocoa::setDefaultCalendarType(JSStringRef calendarIdentifier, JSStringRef localeIdentifier)
 {
-    TestController::singleton().setDefaultCalendarType((__bridge NSString *)adoptCF(JSStringCopyCFString(kCFAllocatorDefault, calendarIdentifier)).get());
+    auto cfCalendarIdentifier = adoptCF(JSStringCopyCFString(kCFAllocatorDefault, calendarIdentifier));
+    auto cfLocaleIdentifier = adoptCF(JSStringCopyCFString(kCFAllocatorDefault, localeIdentifier));
+    TestController::singleton().setDefaultCalendarType((__bridge NSString *)cfCalendarIdentifier.get(), (__bridge NSString *)cfLocaleIdentifier.get());
 }
 
 JSRetainPtr<JSStringRef> UIScriptControllerCocoa::lastUndoLabel() const
@@ -200,6 +201,11 @@ bool UIScriptControllerCocoa::isShowingMenu() const
 void UIScriptControllerCocoa::setContinuousSpellCheckingEnabled(bool enabled)
 {
     [webView() _setContinuousSpellCheckingEnabledForTesting:enabled];
+}
+
+void UIScriptControllerCocoa::paste()
+{
+    [webView() paste:nil];
 }
 
 } // namespace WTR

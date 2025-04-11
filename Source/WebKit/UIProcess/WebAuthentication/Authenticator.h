@@ -34,6 +34,9 @@
 #include <wtf/Forward.h>
 #include <wtf/RefCounted.h>
 #include <wtf/WeakPtr.h>
+#include <wtf/spi/cocoa/SecuritySPI.h>
+
+OBJC_CLASS LAContext;
 
 namespace WebCore {
 class AuthenticatorAssertionResponse;
@@ -52,7 +55,9 @@ public:
         virtual void downgrade(Authenticator* id, Ref<Authenticator>&& downgradedAuthenticator) = 0;
         virtual void authenticatorStatusUpdated(WebAuthenticationStatus) = 0;
         virtual void requestPin(uint64_t retries, CompletionHandler<void(const WTF::String&)>&&) = 0;
-        virtual void selectAssertionResponse(const HashSet<Ref<WebCore::AuthenticatorAssertionResponse>>&, CompletionHandler<void(const WebCore::AuthenticatorAssertionResponse&)>&&) = 0;
+        virtual void selectAssertionResponse(Vector<Ref<WebCore::AuthenticatorAssertionResponse>>&&, WebAuthenticationSource, CompletionHandler<void(WebCore::AuthenticatorAssertionResponse*)>&&) = 0;
+        virtual void decidePolicyForLocalAuthenticator(CompletionHandler<void(LocalAuthenticatorPolicy)>&&) = 0;
+        virtual void cancelRequest() = 0;
     };
 
     virtual ~Authenticator() = default;

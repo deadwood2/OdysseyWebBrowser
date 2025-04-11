@@ -226,7 +226,10 @@ class Plan
         @outputHandler = outputHandler
         @errorHandler = errorHandler
         @isSlow = !!$runCommandOptions[:isSlow]
-        @shouldCrash = !!$runCommandOptions[:shouldCrash]
+        @crashOK = !!$runCommandOptions[:crashOK]
+        if @crashOK
+            @outputHandler = noisyOutputHandler
+        end
         @additionalEnv = []
     end
     
@@ -234,7 +237,7 @@ class Plan
         # It's important to remember that the test is actually run in a subshell, so if we change directory
         # in the subshell when we return we will be in our original directory. This is nice because we don't
         # have to bend over backwards to do things relative to the root.
-        script = "(cd ../#{Shellwords.shellescape(@directory.to_s)} && #{@shouldCrash ? "!" : ""}("
+        script = "(cd ../#{Shellwords.shellescape(@directory.to_s)} && ("
         ($envVars + additionalEnv).each { |var| script += "export " << var << "; " }
         script += "\"$@\" " + escapeAll(@arguments) + "))"
         return script
@@ -253,6 +256,8 @@ class Plan
 
         script += "export DYLD_FRAMEWORK_PATH=$(cd #{$testingFrameworkPath.dirname}; pwd)\n"
         script += "export JSCTEST_timeout=#{Shellwords.shellescape(ENV['JSCTEST_timeout'])}\n"
+        script += "export JSCTEST_hardTimeout=#{Shellwords.shellescape(ENV['JSCTEST_hardTimeout'])}\n"
+        script += "export JSCTEST_memoryLimit=#{Shellwords.shellescape(ENV['JSCTEST_memoryLimit'])}\n"
         $envVars.each { |var| script += "export " << var << "\n" }
         script += "#{shellCommand} || exit 1"
         "echo #{Shellwords.shellescape(script)} > #{Shellwords.shellescape((Pathname.new("..") + @name).to_s)}"
@@ -263,8 +268,12 @@ class Plan
     end
     
     def successCommand
-        if $progressMeter or $verbosity >= 2
-            "rm -f #{failFile} ; echo PASS: #{Shellwords.shellescape(@name)}"
+        executionTimeMessage = ""
+        if $reportExecutionTime
+            executionTimeMessage = " $(($SECONDS - $START_TIME))s"
+        end
+        if $progressMeter or $reportExecutionTime or $verbosity >= 2
+            "rm -f #{failFile} ; echo PASS: #{Shellwords.shellescape(@name)}#{executionTimeMessage}"
         else
             "rm -f #{failFile}"
         end
@@ -277,6 +286,9 @@ class Plan
     def writeRunScript(filename)
         File.open(filename, "w") {
             | outp |
+            if $reportExecutionTime
+                outp.puts "START_TIME=$SECONDS"
+            end
             outp.puts "echo Running #{Shellwords.shellescape(@name)}"
             cmd  = "(" + shellCommand + " || (echo $? > #{failFile})) 2>&1 "
             cmd += @outputHandler.call(@name)

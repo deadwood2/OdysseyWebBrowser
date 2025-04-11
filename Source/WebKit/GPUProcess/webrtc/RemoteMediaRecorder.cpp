@@ -26,7 +26,7 @@
 #include "config.h"
 #include "RemoteMediaRecorder.h"
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
 
 #include "SharedRingBufferStorage.h"
 #include <WebCore/CARingBuffer.h>
@@ -35,13 +35,12 @@
 #include <WebCore/WebAudioBufferList.h>
 #include <wtf/CompletionHandler.h>
 
+namespace WebKit {
 using namespace WebCore;
 
-namespace WebKit {
-
-std::unique_ptr<RemoteMediaRecorder> RemoteMediaRecorder::create(GPUConnectionToWebProcess& gpuConnectionToWebProcess, MediaRecorderIdentifier identifier, bool recordAudio, int width, int height)
+std::unique_ptr<RemoteMediaRecorder> RemoteMediaRecorder::create(GPUConnectionToWebProcess& gpuConnectionToWebProcess, MediaRecorderIdentifier identifier, bool recordAudio, bool recordVideo)
 {
-    auto writer = MediaRecorderPrivateWriter::create(recordAudio, width, height);
+    auto writer = MediaRecorderPrivateWriter::create(recordAudio, recordVideo);
     if (!writer)
         return nullptr;
     return std::unique_ptr<RemoteMediaRecorder>(new RemoteMediaRecorder { gpuConnectionToWebProcess, identifier, writer.releaseNonNull(), recordAudio });
@@ -111,7 +110,7 @@ void RemoteMediaRecorder::videoSampleAvailable(WebCore::RemoteVideoSample&& remo
         return;
     }
 
-    auto sampleBuffer = m_imageTransferSession->createMediaSample(remoteSample.surface(), remoteSample.time(), remoteSample.size());
+    auto sampleBuffer = m_imageTransferSession->createMediaSample(remoteSample);
     if (!sampleBuffer) {
         ASSERT_NOT_REACHED();
         return;
@@ -136,4 +135,4 @@ void RemoteMediaRecorder::stopRecording()
 
 }
 
-#endif
+#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)

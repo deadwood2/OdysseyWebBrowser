@@ -75,6 +75,7 @@
 #define WebKitLocalStorageDatabasePathPreferenceKey "WebKitLocalStorageDatabasePath"
 #define WebKitHyperlinkAuditingEnabledPreferenceKey "WebKitHyperlinkAuditingEnabled"
 #define WebKitWebAudioEnabledPreferenceKey "WebKitWebAudioEnabled"
+#define WebKitModernUnprefixedWebAudioEnabledPreferenceKey "WebKitWebAudioEnabled"
 #define WebKitShouldDisplaySubtitlesPreferenceKey "WebKitShouldDisplaySubtitles"
 #define WebKitShouldDisplayCaptionsPreferenceKey "WebKitShouldDisplayCaptions"
 #define WebKitShouldDisplayTextDescriptionsPreferenceKey "WebKitShouldDisplayTextDescriptions"
@@ -195,6 +196,8 @@
 
 #define WebKitWebAnimationsCSSIntegrationEnabledPreferenceKey "WebKitWebAnimationsCSSIntegrationEnabled"
 
+#define WebKitCSSCustomPropertiesAndValuesEnabledPreferenceKey "WebKitCSSCustomPropertiesAndValuesEnabled"
+
 #define WebKitUserTimingEnabledPreferenceKey "WebKitUserTimingEnabled"
 
 #define WebKitResourceTimingEnabledPreferenceKey "WebKitResourceTimingEnabled"
@@ -214,6 +217,7 @@
 #define WebKitServerTimingEnabledPreferenceKey "WebKitServerTimingEnabled"
 
 #define WebKitCSSOMViewScrollingAPIEnabledPreferenceKey "WebKitCSSOMViewScrollingAPIEnabled"
+
 #define WebKitCSSOMViewSmoothScrollingEnabledPreferenceKey "WebKitCSSOMViewSmoothScrollingEnabled"
 
 #define WebKitResizeObserverEnabledPreferenceKey "WebKitResizeObserverEnabled"

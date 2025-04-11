@@ -24,7 +24,13 @@
 #include <wtf/glib/GUniquePtr.h>
 
 #if PLATFORM(GTK)
+#include <WebCore/GtkVersioning.h>
+#if USE(GTK4)
+#include "WebKitWebViewBaseInternal.h"
+using PlatformEventKey = GdkEvent;
+#else
 using PlatformEventKey = GdkEventKey;
+#endif
 #define KEY(x) GDK_KEY_##x
 #define CONTROL_MASK GDK_CONTROL_MASK
 #define SHIFT_MASK GDK_SHIFT_MASK
@@ -92,11 +98,18 @@ static gboolean webkitInputMethodContextMockFilterKeyEvent(WebKitInputMethodCont
         return FALSE;
 
 #if PLATFORM(GTK)
+#if USE(GTK4)
+    auto* event = reinterpret_cast<KeyEvent*>(keyEvent);
+    unsigned keyval = event->keyval;
+    auto state = static_cast<GdkModifierType>(event->modifiers);
+    bool isKeyPress = event->type == GDK_KEY_PRESS;
+#else
     GdkModifierType state;
     guint keyval;
     if (!gdk_event_get_state(reinterpret_cast<GdkEvent*>(keyEvent), &state) || !gdk_event_get_keyval(reinterpret_cast<GdkEvent*>(keyEvent), &keyval))
         return FALSE;
     bool isKeyPress = gdk_event_get_event_type(reinterpret_cast<GdkEvent*>(keyEvent)) == GDK_KEY_PRESS;
+#endif
     gunichar character = gdk_keyval_to_unicode(keyval);
 #elif PLATFORM(WPE)
     uint32_t state = keyEvent->modifiers;
@@ -250,13 +263,12 @@ public:
     InputMethodTest()
         : m_context(adoptGRef(static_cast<WebKitInputMethodContextMock*>(g_object_new(webkit_input_method_context_mock_get_type(), nullptr))))
     {
+        WebViewTest::showInWindow();
 #if PLATFORM(GTK)
-        WebViewTest::showInWindowAndWaitUntilMapped(GTK_WINDOW_TOPLEVEL);
         auto* defaultContext = webkit_web_view_get_input_method_context(m_webView);
         g_assert_true(WEBKIT_IS_INPUT_METHOD_CONTEXT(defaultContext));
         assertObjectIsDeletedWhenTestFinishes(G_OBJECT(defaultContext));
 #elif PLATFORM(WPE)
-        WebViewTest::showInWindow();
         g_assert_null(webkit_web_view_get_input_method_context(m_webView));
 #endif
         assertObjectIsDeletedWhenTestFinishes(G_OBJECT(m_context.get()));

@@ -26,7 +26,7 @@
 #include "config.h"
 #include "RemoteSampleBufferDisplayLayer.h"
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
 
 #include "SampleBufferDisplayLayerMessages.h"
 #include <WebCore/ImageTransferSessionVT.h>
@@ -34,36 +34,36 @@
 #include <WebCore/MediaSampleAVFObjC.h>
 #include <WebCore/RemoteVideoSample.h>
 
+namespace WebKit {
 using namespace WebCore;
 
-namespace WebKit {
-
-std::unique_ptr<RemoteSampleBufferDisplayLayer> RemoteSampleBufferDisplayLayer::create(SampleBufferDisplayLayerIdentifier identifier, Ref<IPC::Connection>&& connection, bool hideRootLayer, IntSize size)
+std::unique_ptr<RemoteSampleBufferDisplayLayer> RemoteSampleBufferDisplayLayer::create(SampleBufferDisplayLayerIdentifier identifier, Ref<IPC::Connection>&& connection)
 {
-    auto layer = std::unique_ptr<RemoteSampleBufferDisplayLayer>(new RemoteSampleBufferDisplayLayer(identifier, WTFMove(connection), hideRootLayer, size));
+    auto layer = std::unique_ptr<RemoteSampleBufferDisplayLayer>(new RemoteSampleBufferDisplayLayer(identifier, WTFMove(connection)));
     return layer->m_sampleBufferDisplayLayer ? WTFMove(layer) : nullptr;
 }
 
-RemoteSampleBufferDisplayLayer::RemoteSampleBufferDisplayLayer(SampleBufferDisplayLayerIdentifier identifier, Ref<IPC::Connection>&& connection, bool hideRootLayer, IntSize size)
+RemoteSampleBufferDisplayLayer::RemoteSampleBufferDisplayLayer(SampleBufferDisplayLayerIdentifier identifier, Ref<IPC::Connection>&& connection)
     : m_identifier(identifier)
     , m_connection(WTFMove(connection))
-    , m_sampleBufferDisplayLayer(LocalSampleBufferDisplayLayer::create(*this, hideRootLayer, size))
+    , m_sampleBufferDisplayLayer(LocalSampleBufferDisplayLayer::create(*this))
 {
     ASSERT(m_sampleBufferDisplayLayer);
-    if (!m_sampleBufferDisplayLayer)
-        return;
+}
 
-    m_layerHostingContext = LayerHostingContext::createForExternalHostingProcess();
-    m_layerHostingContext->setRootLayer(m_sampleBufferDisplayLayer->rootLayer());
+void RemoteSampleBufferDisplayLayer::initialize(bool hideRootLayer, IntSize size, LayerInitializationCallback&& callback)
+{
+    m_sampleBufferDisplayLayer->initialize(hideRootLayer, size, [this, weakThis = makeWeakPtr(this), callback = WTFMove(callback)](bool didSucceed) mutable {
+        if (!weakThis || !didSucceed)
+            return callback({ });
+        m_layerHostingContext = LayerHostingContext::createForExternalHostingProcess();
+        m_layerHostingContext->setRootLayer(m_sampleBufferDisplayLayer->rootLayer());
+        callback(m_layerHostingContext->contextID());
+    });
 }
 
 RemoteSampleBufferDisplayLayer::~RemoteSampleBufferDisplayLayer()
 {
-}
-
-Optional<LayerHostingContextID> RemoteSampleBufferDisplayLayer::contextID()
-{
-    return m_layerHostingContext->contextID();
 }
 
 CGRect RemoteSampleBufferDisplayLayer::bounds() const
@@ -81,9 +81,9 @@ void RemoteSampleBufferDisplayLayer::updateAffineTransform(CGAffineTransform tra
     m_sampleBufferDisplayLayer->updateAffineTransform(transform);
 }
 
-void RemoteSampleBufferDisplayLayer::updateBoundsAndPosition(CGRect bounds, CGPoint position)
+void RemoteSampleBufferDisplayLayer::updateBoundsAndPosition(CGRect bounds, WebCore::MediaSample::VideoRotation rotation)
 {
-    m_sampleBufferDisplayLayer->updateRootLayerBoundsAndPosition(bounds, position);
+    m_sampleBufferDisplayLayer->updateRootLayerBoundsAndPosition(bounds, rotation, LocalSampleBufferDisplayLayer::ShouldUpdateRootLayer::Yes);
 }
 
 void RemoteSampleBufferDisplayLayer::flush()
@@ -96,10 +96,18 @@ void RemoteSampleBufferDisplayLayer::flushAndRemoveImage()
     m_sampleBufferDisplayLayer->flushAndRemoveImage();
 }
 
+void RemoteSampleBufferDisplayLayer::play()
+{
+    m_sampleBufferDisplayLayer->play();
+}
+
+void RemoteSampleBufferDisplayLayer::pause()
+{
+    m_sampleBufferDisplayLayer->pause();
+}
+
 void RemoteSampleBufferDisplayLayer::enqueueSample(WebCore::RemoteVideoSample&& remoteSample)
 {
-    m_mediaTime = remoteSample.time();
-
     if (!m_imageTransferSession || m_imageTransferSession->pixelFormat() != remoteSample.videoFormat())
         m_imageTransferSession = ImageTransferSessionVT::create(remoteSample.videoFormat());
 
@@ -107,7 +115,7 @@ void RemoteSampleBufferDisplayLayer::enqueueSample(WebCore::RemoteVideoSample&& 
     if (!m_imageTransferSession)
         return;
 
-    auto sample = m_imageTransferSession->createMediaSample(remoteSample.surface(), remoteSample.time(), remoteSample.size());
+    auto sample = m_imageTransferSession->createMediaSample(remoteSample);
 
     ASSERT(sample);
     if (!sample)
@@ -132,12 +140,6 @@ void RemoteSampleBufferDisplayLayer::sampleBufferDisplayLayerStatusDidChange(Web
     send(Messages::SampleBufferDisplayLayer::SetDidFail { m_sampleBufferDisplayLayer->didFail() });
 }
 
-WTF::MediaTime RemoteSampleBufferDisplayLayer::streamTime() const
-{
-    // This is only an approximation which will clear all samples enqueued in m_sampleBufferDisplayLayer except the one being pushed.
-    return m_mediaTime;
 }
 
-}
-
-#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)

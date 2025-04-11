@@ -52,14 +52,29 @@ static OptionSet<WebEvent::Modifier> modifiersForEventModifiers(unsigned eventMo
     return modifiers;
 }
 
-WallTime wallTimeForEventTime(uint64_t timestamp)
+WallTime wallTimeForEventTime(uint64_t msTimeStamp)
 {
-    // This works if and only if the WPE backend uses CLOCK_MONOTONIC for its
-    // event timestamps, and so long as g_get_monotonic_time() continues to do
-    // so as well, and so long as WTF::MonotonicTime continues to use
-    // g_get_monotonic_time(). It also assumes the event timestamp is in
-    // milliseconds.
-    return timestamp ? MonotonicTime::fromRawSeconds(timestamp / 1000.).approximateWallTime() : WallTime::now();
+    // WPE event time field is an uint32_t, too small for full ms timestamps since
+    // the epoch, and are expected to be just timestamps with monotonic behavior
+    // to be compared among themselves, not against WallTime-like measurements.
+    // Thus the need to define a reference origin based on the first event received.
+
+    static uint64_t firstEventTimeStamp;
+    static WallTime firstEventWallTime;
+    static std::once_flag once;
+
+    // Fallback for zero timestamps.
+    if (!msTimeStamp)
+        return WallTime::now();
+
+    std::call_once(once, [msTimeStamp]() {
+        firstEventTimeStamp = msTimeStamp;
+        firstEventWallTime = WallTime::now();
+    });
+
+    uint64_t delta = msTimeStamp - firstEventTimeStamp;
+
+    return firstEventWallTime + Seconds(delta / 1000.);
 }
 
 WebKeyboardEvent WebEventFactory::createWebKeyboardEvent(struct wpe_input_keyboard_event* event, const String& text, bool handledByInputMethod, Optional<Vector<WebCore::CompositionUnderline>>&& preeditUnderlines, Optional<EditingRange>&& preeditSelectionRange)
@@ -149,6 +164,7 @@ WebWheelEvent WebEventFactory::createWebWheelEvent(struct wpe_input_axis_event* 
 
     WebCore::FloatSize wheelTicks;
     WebCore::FloatSize delta;
+    bool hasPreciseScrollingDeltas = false;
 
 #if WPE_CHECK_VERSION(1, 5, 0)
     if (event->type & wpe_input_axis_event_type_mask_2d) {
@@ -162,6 +178,7 @@ WebWheelEvent WebEventFactory::createWebWheelEvent(struct wpe_input_axis_event* 
         case wpe_input_axis_event_type_motion_smooth:
             wheelTicks = WebCore::FloatSize(event2D->x_axis / deviceScaleFactor, event2D->y_axis / deviceScaleFactor);
             delta = wheelTicks;
+            hasPreciseScrollingDeltas = true;
             break;
         default:
             return WebWheelEvent();
@@ -169,7 +186,7 @@ WebWheelEvent WebEventFactory::createWebWheelEvent(struct wpe_input_axis_event* 
 
         return WebWheelEvent(WebEvent::Wheel, position, position,
             delta, wheelTicks, phase, momentumPhase,
-            WebWheelEvent::ScrollByPixelWheelEvent,
+            WebWheelEvent::ScrollByPixelWheelEvent, hasPreciseScrollingDeltas,
             OptionSet<WebEvent::Modifier> { }, wallTimeForEventTime(event->time));
     }
 #endif
@@ -195,6 +212,7 @@ WebWheelEvent WebEventFactory::createWebWheelEvent(struct wpe_input_axis_event* 
     case Smooth:
         wheelTicks = WebCore::FloatSize(0, event->value / deviceScaleFactor);
         delta = wheelTicks;
+        hasPreciseScrollingDeltas = true;
         break;
     default:
         return WebWheelEvent();
@@ -202,7 +220,7 @@ WebWheelEvent WebEventFactory::createWebWheelEvent(struct wpe_input_axis_event* 
 
     return WebWheelEvent(WebEvent::Wheel, position, position,
         delta, wheelTicks, phase, momentumPhase,
-        WebWheelEvent::ScrollByPixelWheelEvent,
+        WebWheelEvent::ScrollByPixelWheelEvent, hasPreciseScrollingDeltas,
         OptionSet<WebEvent::Modifier> { }, wallTimeForEventTime(event->time));
 }
 

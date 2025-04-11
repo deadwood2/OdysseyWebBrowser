@@ -201,6 +201,18 @@
   "BC3_RGBA_UNORM_SRGB_BLOCK": {
     "blockPixelBytes": "16"
   },
+  "BC4_RED_UNORM_BLOCK": {
+    "blockPixelBytes": "8"
+  },
+  "BC4_RED_SNORM_BLOCK": {
+    "blockPixelBytes": "8"
+  },
+  "BC5_RG_UNORM_BLOCK": {
+    "blockPixelBytes": "16"
+  },
+  "BC5_RG_SNORM_BLOCK": {
+    "blockPixelBytes": "16"
+  },
   "BPTC_SRGB_ALPHA_UNORM_BLOCK": {
     "blockPixelBytes": "16"
   },
@@ -250,27 +262,27 @@
     "blockPixelBytes": "16"
   },
   "PVRTC1_RGB_4BPP_UNORM_BLOCK": {
-    "blockPixelBytes": "1"
+    "blockPixelBytes": "8"
   },
   "PVRTC1_RGB_2BPP_UNORM_BLOCK": {
-    "blockPixelBytes": "1"
+    "blockPixelBytes": "8"
   },
   "PVRTC1_RGBA_4BPP_UNORM_BLOCK": {
-    "blockPixelBytes": "1"
+    "blockPixelBytes": "8"
   },
   "PVRTC1_RGBA_2BPP_UNORM_BLOCK": {
-    "blockPixelBytes": "1"
+    "blockPixelBytes": "8"
   },
   "PVRTC1_RGB_2BPP_UNORM_SRGB_BLOCK": {
-    "blockPixelBytes": "1"
+    "blockPixelBytes": "8"
   },
   "PVRTC1_RGB_4BPP_UNORM_SRGB_BLOCK": {
-    "blockPixelBytes": "1"
+    "blockPixelBytes": "8"
   },
   "PVRTC1_RGBA_2BPP_UNORM_SRGB_BLOCK": {
-    "blockPixelBytes": "1"
+    "blockPixelBytes": "8"
   },
   "PVRTC1_RGBA_4BPP_UNORM_SRGB_BLOCK": {
-    "blockPixelBytes": "1"
+    "blockPixelBytes": "8"
   }
 }

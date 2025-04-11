@@ -23,19 +23,32 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "APIHTTPCookieStore.h"
+#import "config.h"
+#import "APIHTTPCookieStore.h"
 
-#include <WebCore/Cookie.h>
-#include <WebCore/CookieStorageObserver.h>
-#include <WebCore/HTTPCookieAcceptPolicy.h>
-#include <pal/spi/cf/CFNetworkSPI.h>
+#import "WebsiteDataStore.h"
+#import <WebCore/Cookie.h>
+#import <WebCore/CookieStorageObserver.h>
+#import <WebCore/HTTPCookieAcceptPolicy.h>
+#import <pal/spi/cf/CFNetworkSPI.h>
+#import <wtf/BlockPtr.h>
+#import <wtf/RunLoop.h>
 
 namespace API {
 
-void HTTPCookieStore::flushDefaultUIProcessCookieStore()
+void HTTPCookieStore::flushDefaultUIProcessCookieStore(CompletionHandler<void()>&& completionHandler)
 {
+#if HAVE(FOUNDATION_WITH_SAVE_COOKIES_WITH_COMPLETION_HANDLER)
+    ASSERT(RunLoop::isMain());
+    m_owningDataStore->dispatchOnQueue([completionHandler = WTFMove(completionHandler)] () mutable {
+        [[NSHTTPCookieStorage sharedHTTPCookieStorage] _saveCookies:makeBlockPtr([completionHandler = WTFMove(completionHandler)]() mutable {
+            RunLoop::main().dispatch(WTFMove(completionHandler));
+        }).get()];
+    });
+#else
     [[NSHTTPCookieStorage sharedHTTPCookieStorage] _saveCookies];
+    RunLoop::main().dispatch(WTFMove(completionHandler));
+#endif
 }
 
 Vector<WebCore::Cookie> HTTPCookieStore::getAllDefaultUIProcessCookieStoreCookies()

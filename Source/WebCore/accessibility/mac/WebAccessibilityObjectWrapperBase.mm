@@ -62,15 +62,17 @@
 #import "RenderWidget.h"
 #import "ScrollView.h"
 #import "TextCheckerClient.h"
-#import "TextCheckingHelper.h"
 #import "VisibleUnits.h"
 #import "WebCoreFrameView.h"
+#import <wtf/cocoa/VectorCocoa.h>
 
 #if PLATFORM(MAC)
+#import "WebAccessibilityObjectWrapperMac.h"
 #import <pal/spi/mac/HIServicesSPI.h>
 #else
 #import "WAKView.h"
 #import "WAKWindow.h"
+#import "WebAccessibilityObjectWrapperIOS.h"
 #endif
 
 using namespace WebCore;
@@ -248,35 +250,34 @@ using namespace HTMLNames;
 
 static NSArray *convertMathPairsToNSArray(const AccessibilityObject::AccessibilityMathMultiscriptPairs& pairs, NSString *subscriptKey, NSString *superscriptKey)
 {
-    NSMutableArray *array = [NSMutableArray arrayWithCapacity:pairs.size()];
-    for (const auto& pair : pairs) {
-        NSMutableDictionary *pairDictionary = [NSMutableDictionary dictionary];
-        if (pair.first && pair.first->wrapper() && !pair.first->accessibilityIsIgnored())
-            [pairDictionary setObject:pair.first->wrapper() forKey:subscriptKey];
-        if (pair.second && pair.second->wrapper() && !pair.second->accessibilityIsIgnored())
-            [pairDictionary setObject:pair.second->wrapper() forKey:superscriptKey];
-        [array addObject:pairDictionary];
-    }
-    return array;
-}
-
-static void addChildToArray(AXCoreObject& child, RetainPtr<NSMutableArray> array)
-{
-    WebAccessibilityObjectWrapper *wrapper = child.wrapper();
-    // We want to return the attachment view instead of the object representing the attachment,
-    // otherwise, we get palindrome errors in the AX hierarchy.
-    if (child.isAttachment() && [wrapper attachmentView])
-        [array.get() addObject:[wrapper attachmentView]];
-    else if (wrapper)
-        [array.get() addObject:wrapper];
+    return createNSArray(pairs, [&] (auto& pair) {
+        WebAccessibilityObjectWrapper *wrappers[2];
+        NSString *keys[2];
+        NSUInteger count = 0;
+        if (pair.first && pair.first->wrapper() && !pair.first->accessibilityIsIgnored()) {
+            wrappers[0] = pair.first->wrapper();
+            keys[0] = subscriptKey;
+            count = 1;
+        }
+        if (pair.second && pair.second->wrapper() && !pair.second->accessibilityIsIgnored()) {
+            wrappers[count] = pair.second->wrapper();
+            keys[count] = superscriptKey;
+            count += 1;
+        }
+        return adoptNS([[NSDictionary alloc] initWithObjects:wrappers forKeys:keys count:count]);
+    }).autorelease();
 }
 
 NSArray *convertToNSArray(const WebCore::AXCoreObject::AccessibilityChildrenVector& children)
 {
-    NSMutableArray *result = [[NSMutableArray alloc] initWithCapacity:children.size()];
-    for (const auto& child : children)
-        addChildToArray(*child, result);
-    return [result autorelease];
+    return createNSArray(children, [] (auto& child) -> id {
+        auto wrapper = child->wrapper();
+        // We want to return the attachment view instead of the object representing the attachment,
+        // otherwise, we get palindrome errors in the AX hierarchy.
+        if (child->isAttachment() && wrapper.attachmentView)
+            return wrapper.attachmentView;
+        return wrapper;
+    }).autorelease();
 }
 
 @implementation WebAccessibilityObjectWrapperBase
@@ -310,46 +311,35 @@ NSArray *convertToNSArray(const WebCore::AXCoreObject::AccessibilityChildrenVect
 }
 #endif
 
-- (void)detachAXObject
+- (void)detach
 {
+    ASSERT(isMainThread());
+    _identifier = InvalidAXID;
     m_axObject = nullptr;
 }
 
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-- (void)detachIsolatedObject
+- (void)detachIsolatedObject:(AccessibilityDetachmentType)detachmentType
 {
+    ASSERT_UNUSED(detachmentType, detachmentType == AccessibilityDetachmentType::ElementChanged ? _identifier != InvalidAXID && m_axObject : true);
     m_isolatedObject = nullptr;
 }
 #endif
 
-- (void)detach
-{
-    _identifier = InvalidAXID;
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    if (!isMainThread()) {
-        ASSERT(AXObjectCache::clientSupportsIsolatedTree());
-        [self detachIsolatedObject];
-        return;
-    }
-#endif
-    [self detachAXObject];
-}
-
-- (BOOL)updateObjectBackingStore
+- (WebCore::AXCoreObject*)updateObjectBackingStore
 {
     // Calling updateBackingStore() can invalidate this element so self must be retained.
     // If it does become invalidated, self.axBackingObject will be nil.
     CFRetain((__bridge CFTypeRef)self);
     CFAutorelease((__bridge CFTypeRef)self);
 
-    if (!self.axBackingObject)
-        return NO;
-    
-    self.axBackingObject->updateBackingStore();
-    if (!self.axBackingObject)
-        return NO;
-    
-    return YES;
+    auto* backingObject = self.axBackingObject;
+    if (!backingObject)
+        return nil;
+
+    backingObject->updateBackingStore();
+
+    return self.axBackingObject;
 }
 
 - (id)attachmentView
@@ -367,12 +357,20 @@ NSArray *convertToNSArray(const WebCore::AXCoreObject::AccessibilityChildrenVect
 - (WebCore::AXCoreObject*)axBackingObject
 {
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    if (!isMainThread()) {
-        ASSERT(AXObjectCache::clientSupportsIsolatedTree());
+    if (AXObjectCache::isIsolatedTreeEnabled())
         return m_isolatedObject;
-    }
 #endif
     return m_axObject;
+}
+
+- (BOOL)isIsolatedObject
+{
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+    auto* backingObject = self.axBackingObject;
+    return backingObject && backingObject->isAXIsolatedObjectInstance();
+#else
+    return NO;
+#endif
 }
 
 - (NSString *)baseAccessibilityDescription
@@ -446,7 +444,7 @@ static void convertPathToScreenSpaceFunction(PathConversionInfo& conversion, con
     }
 }
 
-- (CGPathRef)convertPathToScreenSpace:(Path &)path
+- (CGPathRef)convertPathToScreenSpace:(const Path&)path
 {
     PathConversionInfo conversion = { self, CGPathCreateMutable() };
     path.apply([&conversion](const PathElement& pathElement) {
@@ -463,7 +461,7 @@ static void convertPathToScreenSpaceFunction(PathConversionInfo& conversion, con
     return nil;
 }
 
-- (CGRect)convertRectToSpace:(WebCore::FloatRect &)rect space:(AccessibilityConversionSpace)space
+- (CGRect)convertRectToSpace:(const WebCore::FloatRect&)rect space:(AccessibilityConversionSpace)space
 {
     if (!self.axBackingObject)
         return CGRectZero;
@@ -553,6 +551,23 @@ static void convertPathToScreenSpaceFunction(PathConversionInfo& conversion, con
     return convertMathPairsToNSArray(pairs, [self accessibilityPlatformMathSubscriptKey], [self accessibilityPlatformMathSuperscriptKey]);
 }
 
+- (NSDictionary<NSString *, id> *)baseAccessibilityResolvedEditingStyles
+{
+    NSMutableDictionary<NSString *, id> *results = [NSMutableDictionary dictionary];
+    auto editingStyles = self.axBackingObject->resolvedEditingStyles();
+    for (String& key : editingStyles.keys()) {
+        auto value = editingStyles.get(key);
+        id result = WTF::switchOn(value,
+            [] (String& typedValue) -> id { return (NSString *)typedValue; },
+            [] (bool& typedValue) -> id { return @(typedValue); },
+            [] (int& typedValue) -> id { return @(typedValue); },
+            [] (auto&) { return nil; }
+        );
+        results[(NSString *)key] = result;
+    }
+    return results;
+}
+
 // This is set by DRT when it wants to listen for notifications.
 static BOOL accessibilityShouldRepostNotifications;
 + (void)accessibilitySetShouldRepostNotifications:(BOOL)repost
@@ -620,6 +635,22 @@ static NSDictionary *dictionaryRemovingNonSupportedTypes(NSDictionary *dictionar
         [[NSNotificationCenter defaultCenter] postNotificationName:@"AXDRTNotification" object:self userInfo:info];
     }
 }
+
+#ifndef NDEBUG
+- (NSString *)innerHTML
+{
+    if (auto* element = self.axBackingObject->element())
+        return element->innerHTML();
+    return nil;
+}
+
+- (NSString *)outerHTML
+{
+    if (auto* element = self.axBackingObject->element())
+        return element->outerHTML();
+    return nil;
+}
+#endif
 
 #pragma mark Search helpers
 
@@ -693,6 +724,13 @@ static AccessibilitySearchKey accessibilitySearchKeyForString(const String& valu
     return static_cast<int>(searchKey) ? searchKey : AccessibilitySearchKey::AnyType;
 }
 
+static Optional<AccessibilitySearchKey> makeVectorElement(const AccessibilitySearchKey*, id arrayElement)
+{
+    if (![arrayElement isKindOfClass:NSString.class])
+        return WTF::nullopt;
+    return { { accessibilitySearchKeyForString(arrayElement) } };
+}
+
 AccessibilitySearchCriteria accessibilitySearchCriteriaForSearchPredicateParameterizedAttribute(const NSDictionary *parameterizedAttribute)
 {
     NSString *directionParameter = [parameterizedAttribute objectForKey:@"AXDirection"];
@@ -731,16 +769,9 @@ AccessibilitySearchCriteria accessibilitySearchCriteriaForSearchPredicateParamet
     
     if ([searchKeyParameter isKindOfClass:[NSString class]])
         criteria.searchKeys.append(accessibilitySearchKeyForString(searchKeyParameter));
-    else if ([searchKeyParameter isKindOfClass:[NSArray class]]) {
-        size_t searchKeyCount = static_cast<size_t>([searchKeyParameter count]);
-        criteria.searchKeys.reserveInitialCapacity(searchKeyCount);
-        for (size_t i = 0; i < searchKeyCount; ++i) {
-            NSString *searchKey = [searchKeyParameter objectAtIndex:i];
-            if ([searchKey isKindOfClass:[NSString class]])
-                criteria.searchKeys.uncheckedAppend(accessibilitySearchKeyForString(searchKey));
-        }
-    }
-    
+    else if ([searchKeyParameter isKindOfClass:[NSArray class]])
+        criteria.searchKeys = makeVector<AccessibilitySearchKey>(searchKeyParameter);
+
     return criteria;
 }
 

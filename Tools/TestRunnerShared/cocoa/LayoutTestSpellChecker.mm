@@ -209,8 +209,9 @@ static NSTextCheckingType nsTextCheckingType(JSStringRef jsType)
     _results = adoptNS(results.copy);
 }
 
-- (void)setResultsFromJSObject:(JSObjectRef)resultsObject inContext:(JSContextRef)context
+- (void)setResultsFromJSValue:(JSValueRef)resultsValue inContext:(JSContextRef)context
 {
+    auto resultsObject = JSValueToObject(context, resultsValue, nullptr);
     auto fromPropertyName = adopt(JSStringCreateWithUTF8CString("from"));
     auto toPropertyName = adopt(JSStringCreateWithUTF8CString("to"));
     auto typePropertyName = adopt(JSStringCreateWithUTF8CString("type"));
@@ -242,12 +243,10 @@ static NSTextCheckingType nsTextCheckingType(JSStringRef jsType)
                 auto detailsObject = JSValueToObject(context, detailsValue, nullptr);
                 auto detailsObjectProperties = JSObjectCopyPropertyNames(context, detailsObject);
                 for (size_t detailIndex = 0; detailIndex < JSPropertyNameArrayGetCount(detailsObjectProperties); ++detailIndex) {
-                    auto detail = adoptNS([[NSMutableDictionary alloc] init]);
                     auto detailObject = JSValueToObject(context, JSObjectGetPropertyAtIndex(context, detailsObject, detailIndex, nullptr), nullptr);
                     long from = lroundl(JSValueToNumber(context, JSObjectGetProperty(context, detailObject, fromPropertyName.get(), nullptr), nullptr));
                     long to = lroundl(JSValueToNumber(context, JSObjectGetProperty(context, detailObject, toPropertyName.get(), nullptr), nullptr));
-                    [detail setObject:[NSValue valueWithRange:NSMakeRange(from, to - from)] forKey:NSGrammarRange];
-                    [details addObject:detail.get()];
+                    [details addObject:@{ NSGrammarRange: [NSValue valueWithRange:NSMakeRange(from, to - from)] }];
                 }
                 JSPropertyNameArrayRelease(detailsObjectProperties);
             }

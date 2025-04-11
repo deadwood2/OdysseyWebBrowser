@@ -444,9 +444,10 @@ public:
 
     static gboolean leaveFullScreenIdle(FullScreenClientTest* test)
     {
-        // FIXME: Implement key strokes in WPE
 #if PLATFORM(GTK)
         test->keyStroke(GDK_KEY_Escape);
+#else
+        test->keyStroke(WPE_KEY_Escape);
 #endif
         return FALSE;
     }
@@ -464,9 +465,7 @@ public:
 #if ENABLE(FULLSCREEN_API)
 static void testWebViewFullScreen(FullScreenClientTest* test, gconstpointer)
 {
-#if PLATFORM(GTK)
-    test->showInWindowAndWaitUntilMapped();
-#endif
+    test->showInWindow();
     test->loadHtml("<html><body>FullScreen test</body></html>", 0);
     test->waitUntilLoadFinished();
     test->requestFullScreenAndWaitUntilEnteredFullScreen();
@@ -570,7 +569,7 @@ public:
 
 static void testWebViewSubmitForm(FormClientTest* test, gconstpointer)
 {
-    test->showInWindowAndWaitUntilMapped();
+    test->showInWindow();
 
     const char* formHTML =
         "<html><body>"
@@ -821,7 +820,7 @@ static void testWebViewSnapshot(SnapshotWebViewTest* test, gconstpointer)
     g_assert_cmpint(cairo_image_surface_get_height(surface1), ==, 100);
 
     // Show the WebView in a popup widow of 50x50 and try again with WEBKIT_SNAPSHOT_REGION_VISIBLE.
-    test->showInWindowAndWaitUntilMapped(GTK_WINDOW_POPUP, 50, 50);
+    test->showInWindow(50, 50);
     surface1 = cairo_surface_reference(test->getSnapshotAndWaitUntilReady(WEBKIT_SNAPSHOT_REGION_VISIBLE, WEBKIT_SNAPSHOT_OPTIONS_NONE));
     g_assert_nonnull(surface1);
     g_assert_cmpuint(cairo_surface_get_type(surface1), ==, CAIRO_SURFACE_TYPE_IMAGE);
@@ -1106,11 +1105,9 @@ static void testWebViewNotificationInitialPermissionDisallowed(NotificationWebVi
 
 static void testWebViewIsPlayingAudio(IsPlayingAudioWebViewTest* test, gconstpointer)
 {
-#if PLATFORM(GTK)
     // The web view must be realized for the video to start playback and
     // trigger changes in WebKitWebView::is-playing-audio.
-    test->showInWindowAndWaitUntilMapped(GTK_WINDOW_TOPLEVEL);
-#endif
+    test->showInWindow();
 
     // Initially, web views should always report no audio being played.
     g_assert_false(webkit_web_view_is_playing_audio(test->m_webView));
@@ -1131,6 +1128,21 @@ static void testWebViewIsPlayingAudio(IsPlayingAudioWebViewTest* test, gconstpoi
     if (webkit_web_view_is_playing_audio(test->m_webView))
         test->waitUntilIsPlayingAudioChanged();
     g_assert_false(webkit_web_view_is_playing_audio(test->m_webView));
+}
+
+static void testWebViewIsAudioMuted(WebViewTest* test, gconstpointer)
+{
+    g_assert_false(webkit_web_view_get_is_muted(test->m_webView));
+    webkit_web_view_set_is_muted(test->m_webView, TRUE);
+    g_assert_true(webkit_web_view_get_is_muted(test->m_webView));
+    webkit_web_view_set_is_muted(test->m_webView, FALSE);
+    g_assert_false(webkit_web_view_get_is_muted(test->m_webView));
+}
+
+static void testWebViewAutoplayPolicy(WebViewTest* test, gconstpointer)
+{
+    WebKitWebsitePolicies* policies = webkit_web_view_get_website_policies(test->m_webView);
+    g_assert_cmpint(webkit_website_policies_get_autoplay_policy(policies), ==, WEBKIT_AUTOPLAY_ALLOW_WITHOUT_SOUND);
 }
 
 static void testWebViewBackgroundColor(WebViewTest* test, gconstpointer)
@@ -1181,7 +1193,7 @@ static void testWebViewPreferredSize(WebViewTest* test, gconstpointer)
 {
     test->loadHtml("<html style='width: 325px; height: 615px'></html>", nullptr);
     test->waitUntilLoadFinished();
-    test->showInWindowAndWaitUntilMapped();
+    test->showInWindow();
     GtkRequisition minimunSize, naturalSize;
     gtk_widget_get_preferred_size(GTK_WIDGET(test->m_webView), &minimunSize, &naturalSize);
     g_assert_cmpint(minimunSize.width, ==, 0);
@@ -1389,6 +1401,8 @@ void beforeAll()
 #if PLATFORM(WPE)
     FrameDisplayedTest::add("WebKitWebView", "frame-displayed", testWebViewFrameDisplayed);
 #endif
+    WebViewTest::add("WebKitWebView", "is-audio-muted", testWebViewIsAudioMuted);
+    WebViewTest::add("WebKitWebView", "autoplay-policy", testWebViewAutoplayPolicy);
 }
 
 void afterAll()

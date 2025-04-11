@@ -26,16 +26,15 @@
 #include "config.h"
 #include "RemoteAudioMediaStreamTrackRenderer.h"
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
 
 #include "SharedRingBufferStorage.h"
 #include <WebCore/AudioMediaStreamTrackRenderer.h>
 #include <WebCore/CARingBuffer.h>
 #include <WebCore/WebAudioBufferList.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 #if !RELEASE_LOG_DISABLED
 static const void* nextLogIdentifier()
@@ -91,11 +90,6 @@ void RemoteAudioMediaStreamTrackRenderer::clear()
     m_renderer->clear();
 }
 
-void RemoteAudioMediaStreamTrackRenderer::setMuted(bool value)
-{
-    m_renderer->setMuted(value);
-}
-
 void RemoteAudioMediaStreamTrackRenderer::setVolume(float value)
 {
     m_renderer->setVolume(value);
@@ -139,4 +133,4 @@ void RemoteAudioMediaStreamTrackRenderer::audioSamplesAvailable(MediaTime time, 
 
 }
 
-#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)

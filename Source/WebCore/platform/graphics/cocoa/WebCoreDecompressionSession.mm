@@ -26,8 +26,6 @@
 #import "config.h"
 #import "WebCoreDecompressionSession.h"
 
-#if USE(VIDEOTOOLBOX)
-
 #import "Logging.h"
 #import "PixelBufferConformerCV.h"
 #import <CoreMedia/CMBufferQueue.h>
@@ -216,7 +214,7 @@ void WebCoreDecompressionSession::ensureDecompressionSessionForSample(CMSampleBu
 
     if (!m_decompressionSession) {
         CMVideoFormatDescriptionRef videoFormatDescription = CMSampleBufferGetFormatDescription(sample);
-        auto videoDecoderSpecification = @{ (__bridge NSString *)kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder: @YES };
+        auto videoDecoderSpecification = @{ (__bridge NSString *)kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder: @( m_hardwareDecoderEnabled ) };
 
         NSDictionary *attributes;
         if (m_mode == OpenGL)
@@ -621,5 +619,3 @@ void WebCoreDecompressionSession::updateQosWithDecodeTimeStatistics(double ratio
 }
 
 }
-
-#endif

@@ -33,6 +33,8 @@
 #include "WebInspectorUtilities.h"
 #include <JavaScriptCore/InspectorFrontendChannel.h>
 #include <WebCore/FloatRect.h>
+#include <WebCore/InspectorClient.h>
+#include <WebCore/InspectorFrontendClient.h>
 #include <wtf/Forward.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
@@ -79,7 +81,7 @@ class WebInspectorProxy
 #endif
 {
 public:
-    static Ref<WebInspectorProxy> create(WebPageProxy* inspectedPage)
+    static Ref<WebInspectorProxy> create(WebPageProxy& inspectedPage)
     {
         return adoptRef(*new WebInspectorProxy(inspectedPage));
     }
@@ -106,11 +108,13 @@ public:
     void resetState();
 
     void reset();
-    void updateForNewPageProcess(WebPageProxy*);
+    void updateForNewPageProcess(WebPageProxy&);
 
 #if PLATFORM(MAC)
     enum class InspectionTargetType { Local, Remote };
     static RetainPtr<NSWindow> createFrontendWindow(NSRect savedWindowFrame, InspectionTargetType);
+
+    void didBecomeActive();
 
     void updateInspectorWindowTitle() const;
     void inspectedViewFrameDidChange(CGFloat = 0);
@@ -162,6 +166,10 @@ public:
 
     void setDiagnosticLoggingAvailable(bool);
 
+    // Browser
+    void browserExtensionsEnabled(HashMap<String, String>&&);
+    void browserExtensionsDisabled(HashSet<String>&&);
+
     // Provided by platform WebInspectorProxy implementations.
     static String inspectorPageURL();
     static String inspectorTestPageURL();
@@ -176,7 +184,7 @@ public:
     static const unsigned initialWindowHeight;
 
 private:
-    explicit WebInspectorProxy(WebPageProxy*);
+    explicit WebInspectorProxy(WebPageProxy&);
 
     void createFrontendPage();
     void closeFrontendPageAndWindow();
@@ -200,6 +208,7 @@ private:
     void platformHide();
     bool platformIsFront();
     void platformAttachAvailabilityChanged(bool);
+    void platformSetForcedAppearance(WebCore::InspectorFrontendClient::Appearance);
     void platformInspectedURLChanged(const String&);
     void platformShowCertificate(const WebCore::CertificateInfo&);
     unsigned platformInspectedWindowHeight();
@@ -229,11 +238,12 @@ private:
     void bringToFront();
     void bringInspectedPageToFront();
     void attachAvailabilityChanged(bool);
+    void setForcedAppearance(WebCore::InspectorFrontendClient::Appearance);
     void inspectedURLChanged(const String&);
     void showCertificate(const WebCore::CertificateInfo&);
     void elementSelectionChanged(bool);
     void timelineRecordingChanged(bool);
-    void setMockCaptureDevicesEnabledOverride(Optional<bool>);
+    void setDeveloperPreferenceOverride(WebCore::InspectorClient::DeveloperPreference, Optional<bool>);
 
     void save(const String& filename, const String& content, bool base64Encoded, bool forceSaveAs);
     void append(const String& filename, const String& content);
@@ -246,6 +256,10 @@ private:
     unsigned inspectionLevel() const;
 
     WebPreferences& inspectorPagePreferences() const;
+
+#if PLATFORM(MAC)
+    void applyForcedAppearance();
+#endif
 
 #if PLATFORM(GTK) || PLATFORM(WPE)
     void updateInspectorWindowTitle() const;
@@ -269,7 +283,6 @@ private:
     bool m_ignoreFirstBringToFront { false };
     bool m_elementSelectionActive { false };
     bool m_ignoreElementSelectionChange { false };
-    bool m_isOpening { false };
     bool m_isActiveFrontend { false };
 
     AttachmentSide m_attachmentSide {AttachmentSide::Bottom};
@@ -282,6 +295,7 @@ private:
     RunLoop::Timer<WebInspectorProxy> m_closeFrontendAfterInactivityTimer;
     String m_urlString;
     WebCore::FloatRect m_sheetRect;
+    WebCore::InspectorFrontendClient::Appearance m_frontendAppearance { WebCore::InspectorFrontendClient::Appearance::System };
     bool m_isObservingContentLayoutRect { false };
 #elif PLATFORM(GTK)
     std::unique_ptr<WebInspectorProxyClient> m_client;
@@ -289,6 +303,7 @@ private:
     GtkWidget* m_inspectorWindow { nullptr };
     GtkWidget* m_headerBar { nullptr };
     String m_inspectedURLString;
+    bool m_isOpening { false };
 #elif PLATFORM(WIN)
     HWND m_inspectedViewWindow { nullptr };
     HWND m_inspectedViewParentWindow { nullptr };

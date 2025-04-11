@@ -26,8 +26,6 @@
 #import "config.h"
 #import "RemoteLayerTreeDisplayRefreshMonitor.h"
 
-#if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
-
 namespace WebKit {
 using namespace WebCore;
 
@@ -43,13 +41,19 @@ RemoteLayerTreeDisplayRefreshMonitor::~RemoteLayerTreeDisplayRefreshMonitor()
         m_drawingArea->willDestroyDisplayRefreshMonitor(this);
 }
 
+void RemoteLayerTreeDisplayRefreshMonitor::setPreferredFramesPerSecond(FramesPerSecond preferredFramesPerSecond)
+{
+    if (m_drawingArea)
+        m_drawingArea->setPreferredFramesPerSecond(preferredFramesPerSecond);
+}
+
 bool RemoteLayerTreeDisplayRefreshMonitor::requestRefreshCallback()
 {
     if (!m_drawingArea || !isActive())
         return false;
 
     if (!isScheduled())
-        static_cast<DrawingArea&>(*m_drawingArea.get()).scheduleCompositingLayerFlush();
+        static_cast<DrawingArea&>(*m_drawingArea.get()).scheduleRenderingUpdate();
 
     setIsActive(true);
     setIsScheduled(true);
@@ -73,5 +77,3 @@ void RemoteLayerTreeDisplayRefreshMonitor::updateDrawingArea(RemoteLayerTreeDraw
 }
 
 }
-
-#endif // USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)

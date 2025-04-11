@@ -1,93 +1,171 @@
 ================
-WebKitGTK 2.28.4
+WebKitGTK 2.30.6
 ================
 
-What's new in WebKitGTK 2.28.4?
+What's new in WebKitGTK 2.30.6?
 
+  - Update user agent quirks again for Google Docs and Google Drive
   - Fix several crashes and rendering issues.
 
 ================
-WebKitGTK 2.28.3
+WebKitGTK 2.30.5
 ================
 
-What's new in WebKitGTK 2.28.3?
+What's new in WebKitGTK 2.30.5?
 
-  - Enable kinetic scrolling with async scrolling.
+  - Bring back the WebKitPluginProcess intallation that was removed by mistake.
+  - Fix RunLoop objects leaked in worker threads.
+  - Fix aarch64 llint build with JIT disabled.
+  - Use Internet Explorer quirk for Google Docs.
+
+================
+WebKitGTK 2.30.4
+================
+
+What's new in WebKitGTK 2.30.4?
+
+  - Fix text data sent with WebSockets when using libsoup < 2.68.
+  - Fix the rendering on Raspberry Pi 3 using the proprietary video driver.
+  - Fix clipping of descedant layers of a mask layer.
+  - Fix the build with ICU 68.1.
+
+================
+WebKitGTK 2.30.3
+================
+
+What's new in WebKitGTK 2.30.3?
+
+  - Add new build option USE(64KB_PAGE_BLOCK).
+  - Fix backdrop filters with rounded borders.
+  - Fix scrolling iframes when async scrolling is enabled.
+  - Allow applications to handle drag and drop on the web view again.
+  - Update Outlook user agent quirk.
+  - Fix the build with video support disabled.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.30.2
+================
+
+What's new in WebKitGTK 2.30.2?
+
+  - Fix scrolling when smooth scrolling is enabled in async scrolling mode.
+  - Fix WebSocket requests with same-site cookies.
+  - Fix TLS certificate information for service workers.
+  - Handle chassis type when its value is quoted.
+  - Fix the build with ENABLE_MEDIA_STREAM enabled and ENABLE_WEB_RTC_DISABLED.
+  - Fix the build with ENABLE_GAMEPAD enabled.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.30.1
+================
+
+What's new in WebKitGTK 2.30.1?
+
+  - Bring back the environment variable to force single process mode when PSON is disabled.
+  - Fix downloads started by an ephemeral web context.
+  - Translation updates: Brazilian Portuguese.
+
+================
+WebKitGTK 2.30.0
+================
+
+What's new in WebKitGTK 2.30.0?
+
+  - Fix NTLM authentication.
+  - Don't try to use SHM on wayland with older wpebackend-fdo.
+  - Fix the build due to seccomp.h heasder not found.
+
+=================
+WebKitGTK 2.29.92
+=================
+
+What's new in WebKitGTK 2.29.92?
+
+  - Fix user agent header after a redirect when a new quirk is required.
+  - Stop using firefox user agent quirk for google docs.
+  - Fix rendering frames timeline panel in web inspector.
+  - Fix per-thread cpu usage in web inspector.
+  - Fix several crashes and rendering issues.
+  - Translation updates: Polish
+
+=================
+WebKitGTK 2.29.91
+=================
+
+What's new in WebKitGTK 2.29.91?
+
+  - Fix a web process crash introduced in 2.29.90.
+
+=================
+WebKitGTK 2.29.90
+=================
+
+What's new in WebKitGTK 2.29.90?
+
+  - Fix font variation settings when font smoothing setting is also present.
+  - Fix HTML drag and drop operations.
+  - Fix argument order for clone syscall seccomp filter on s390x.
+  - Fix a crash when selecting text.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.29.4
+================
+
+What's new in WebKitGTK 2.29.4?
+
+  - Add support for backdrop filters.
+  - Add support for text-underline-offset and text-decoration-thickness.
+  - Add OpenCDM and AV1 support to media backend.
+  - Add new API to get ITP data summary.
+  - Use mobile user-agent on tablets.
+  - Fix several crashes and rendering issues.
+
+================
+WebKitGTK 2.29.3
+================
+
+What's new in WebKitGTK 2.29.3?
+
+  - Add webkit_authentication_request_get_security_origin.
+  - Change the cookies accept policy to always when no-third-party is set and ITP is enabled.
   - Fix web process hangs on large GitHub pages.
   - Bubblewrap sandbox should not attempt to bind empty paths.
-  - Fix threading issues in the media player.
+  - Add support for sndio to bubblewrap sandbox.
+  - Also handle dark themes when the name ends with -Dark.
+  - Fix a race condition causing a crash in media player.
   - Fix several crashes and rendering issues.
 
 ================
-WebKitGTK 2.28.2
+WebKitGTK 2.29.2
 ================
 
-What's new in WebKitGTK 2.28.2?
+What's new in WebKitGTK 2.29.2?
 
-  - Fix excessive CPU usage due to GdkFrameClock not being stopped.
-  - Fix UI process crash when EGL_WL_bind_wayland_display extension is not available.
-  - Fix position of select popup menus in X11.
-  - Fix playing of Youtube 'live stream'/H264 URLs.
-  - Fix a crash under X11 when cairo uses xcb.
-  - Fix the build in MIPS64.
+  - Add Intelligent Tracking Prevention (ITP) support.
+  - Add support for video formats in img elements.
+  - Add API to handle video autoplay policy that now defaults to disallow autoplay videos with audio.
+  - Add API to mute a web view.
+  - Add API to allow applications to handle the HTTP authentication credential storage.
+  - Add a WebKitSetting to set the media content types requiring hardware support.
+  - Fix a crash during drag an drop due to a bug introduced in 2.29.1.
+  - Do not start page load during animation in back/forward gesture.
   - Fix several crashes and rendering issues.
+  - Translation updates: Ukrainian.
 
 ================
-WebKitGTK 2.28.1
+WebKitGTK 2.29.1
 ================
 
-What's new in WebKitGTK 2.28.1?
+What's new in WebKitGTK 2.29.1?
 
-  - Fix position of default option element popup windows under Wayland.
-  - Fix rendering after a cross site navigation with PSON enabled and hardware acceleration forced.
-  - Fix a crash in nested wayland compositor when closing a tab with PSON enabled.
-  - Update Chrome and Firefox versions in user agent quirks.
-  - Fix a crash with bubblewrap sandbox enabled.
-  - Fix a crash in JavaScriptCore in ppc64el.
-  - Fix the build with GStreamer 1.12.
-  - Fix several crashes and rendering issues.
-
-================
-WebKitGTK 2.28.0
-================
-
-What's new in WebKitGTK 2.28.0?
-
-  - Enable JIT in MIPS platform.
-  - Do not limit the surrounding text for input methods to current paragraph.
-  - Fix the build with OpenGL disabled.
-  - Fix the build when Wayland target is disabled.
-  - Fix the build on ppc64le if __unix is undefined.
-  - Fix several crashes and rendering issues.
-  - Translation updates: Polish.
-
-=================
-WebKitGTK 2.27.91
-=================
-
-What's new in WebKitGTK 2.27.91?
-
-  - Update user agent quirks to fix the unsupported browser message in several google services.
-  - Fix several compile warnings with GCC 10.
-  - Fix the build with GCC 10.
-  - Fix several crashes and rendering issues.
-  - Translation updates: Chinese
-
-=================
-WebKitGTK 2.27.90
-=================
-
-What's new in WebKitGTK 2.27.90?
-
-  - Add support for same-site cookies.
-  - Add flatpak sandbox support.
-  - Enable WebAudio and WebGL by default in WebKitSettings.
-  - Add a setting to disallow top level navigation to a data URI.
-  - Add support for the -webkit-font-smoothing CSS property.
-  - Always use a light theme for rendering form controls.
-  - Stop making the Web Inspector windows transient.
-  - Ensure mouse cursor is hidden during fullscreen video playback.
-  - Add support for inspecting service workers to the remote inspector.
+  - Stop using GTK theming to render form controls.
+  - Add API to disable GTK theming for scrollbars too.
+  - Fix several race conditions and threading issues in the media player.
+  - Add USER_AGENT_BRANDING build option.
+  - Add paste as plain text option to the context menu for rich editable content.
   - Fix several crashes and rendering issues.
 
 ================

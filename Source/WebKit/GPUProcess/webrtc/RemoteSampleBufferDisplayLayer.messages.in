@@ -21,16 +21,18 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 # THE POSSIBILITY OF SUCH DAMAGE.
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
 
 messages -> RemoteSampleBufferDisplayLayer NotRefCounted {
     UpdateDisplayMode(bool hideDisplayLayer, bool hideRootLayer)
     UpdateAffineTransform(CGAffineTransform transform)
-    UpdateBoundsAndPosition(CGRect bounds, CGPoint position)
+    UpdateBoundsAndPosition(CGRect bounds, WebCore::MediaSample::VideoRotation rotation)
     Flush()
     FlushAndRemoveImage()
     EnqueueSample(WebCore::RemoteVideoSample sample)
     ClearEnqueuedSamples()
+    Play()
+    Pause()
 }
 
 #endif

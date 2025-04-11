@@ -27,6 +27,7 @@
 #import "_WKDownloadInternal.h"
 
 #import "DownloadProxy.h"
+#import "WKFrameInfoInternal.h"
 #import "WKNSData.h"
 #import "WKWebViewInternal.h"
 #import <wtf/WeakObjCPtr.h>
@@ -66,11 +67,9 @@
 
 -(NSArray<NSURL *> *)redirectChain
 {
-    auto& redirectURLs = _download->redirectChain();
-    NSMutableArray<NSURL *> *nsURLs = [NSMutableArray arrayWithCapacity:redirectURLs.size()];
-    for (const auto& redirectURL : redirectURLs)
-        [nsURLs addObject:(NSURL *)redirectURL];
-    return nsURLs;
+    return createNSArray(_download->redirectChain(), [] (auto& url) -> NSURL * {
+        return url;
+    }).autorelease();
 }
 
 - (BOOL)wasUserInitiated
@@ -81,6 +80,11 @@
 - (NSData *)resumeData
 {
     return WebKit::wrapper(_download->resumeData());
+}
+
+- (WKFrameInfo *)originatingFrame
+{
+    return WebKit::wrapper(&_download->frameInfo());
 }
 
 - (id)copyWithZone:(NSZone *)zone

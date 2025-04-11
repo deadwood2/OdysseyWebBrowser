@@ -25,6 +25,7 @@ angle::Result TextureNULL::setImage(const gl::Context *context,
                                     GLenum format,
                                     GLenum type,
                                     const gl::PixelUnpackState &unpack,
+                                    gl::Buffer *unpackBuffer,
                                     const uint8_t *pixels)
 {
     // TODO(geofflang): Read all incoming pixel data (maybe hash it?) to make sure we don't read out
@@ -172,7 +173,8 @@ angle::Result TextureNULL::releaseTexImage(const gl::Context *context)
 }
 
 angle::Result TextureNULL::syncState(const gl::Context *context,
-                                     const gl::Texture::DirtyBits &dirtyBits)
+                                     const gl::Texture::DirtyBits &dirtyBits,
+                                     gl::TextureCommand source)
 {
     return angle::Result::Continue;
 }

@@ -272,7 +272,10 @@ class Plan
         @outputHandler = outputHandler
         @errorHandler = errorHandler
         @isSlow = !!$runCommandOptions[:isSlow]
-        @shouldCrash = !!$runCommandOptions[:shouldCrash]
+        @crashOK = !!$runCommandOptions[:crashOK]
+        if @crashOK
+            @outputHandler = noisyOutputHandler
+        end
         @additionalEnv = []
     end
     
@@ -299,10 +302,7 @@ class Plan
         script += "    <<-END_OF_SCRIPT\n"
         script += "        require 'open3'\n"
         script += "        def success(status)\n"
-        script += "            if (#{@shouldCrash})\n"
-        script += "                !status.success?\n"
-        script += "            else\n"
-        script += "                status.success?\n"
+        script += "            status.success?\n"
         script += "        end\n"
         script += "        script_location = File.expand_path(File.dirname(__FILE__))\n"
         script += "        Dir.chdir(\"\\\#{script_location}"
@@ -313,6 +313,8 @@ class Plan
         script += "/.runner\") do\n"
         script += "            ENV[\"DYLD_FRAMEWORK_PATH\"] = \"#{$testingFrameworkPath.dirname}\"\n"
         script += "            ENV[\"JSCTEST_timeout\"] = \"#{ENV['JSCTEST_timeout']}\"\n"
+        script += "            ENV[\"JSCTEST_hardTimeout\"] = \"#{ENV['JSCTEST_hardTimeout']}\"\n"
+        script += "            ENV[\"JSCTEST_memoryLimit\"] = \"#{ENV['JSCTEST_memoryLimit']}\"\n"
 
         script += "            #{shellCommand}"
         script += "            print out\n"
@@ -375,10 +377,7 @@ class Plan
             outp.puts "require 'open3'"
             outp.puts "require 'fileutils'"
             outp.puts "def success(status)"
-            outp.puts "    if (#{@shouldCrash})"
-            outp.puts "        !status.success?"
-            outp.puts "    else"
-            outp.puts "        status.success?"
+            outp.puts "   status.success?"
             outp.puts "end"
 
             cmd = shellCommand

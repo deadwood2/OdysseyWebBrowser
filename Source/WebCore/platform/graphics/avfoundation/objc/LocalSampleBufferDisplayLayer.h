@@ -27,22 +27,24 @@
 
 #if ENABLE(MEDIA_STREAM) && USE(AVFOUNDATION)
 
+#include "FrameRateMonitor.h"
 #include "SampleBufferDisplayLayer.h"
 #include <wtf/Deque.h>
 #include <wtf/Forward.h>
 #include <wtf/RetainPtr.h>
+#include <wtf/WorkQueue.h>
 
 OBJC_CLASS AVSampleBufferDisplayLayer;
 OBJC_CLASS WebAVSampleBufferStatusChangeListener;
 
 namespace WebCore {
 
-class WEBCORE_EXPORT LocalSampleBufferDisplayLayer final : public SampleBufferDisplayLayer, public CanMakeWeakPtr<LocalSampleBufferDisplayLayer> {
+class WEBCORE_EXPORT LocalSampleBufferDisplayLayer final : public SampleBufferDisplayLayer, public CanMakeWeakPtr<LocalSampleBufferDisplayLayer, WeakPtrFactoryInitialization::Eager> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static std::unique_ptr<LocalSampleBufferDisplayLayer> create(Client&, bool hideRootLayer, IntSize);
+    static std::unique_ptr<LocalSampleBufferDisplayLayer> create(Client&);
 
-    LocalSampleBufferDisplayLayer(RetainPtr<AVSampleBufferDisplayLayer>&&, Client&, bool hideRootLayer, IntSize);
+    LocalSampleBufferDisplayLayer(RetainPtr<AVSampleBufferDisplayLayer>&&, Client&);
     ~LocalSampleBufferDisplayLayer();
 
     // API used by WebAVSampleBufferStatusChangeListener
@@ -50,39 +52,77 @@ public:
     void layerErrorDidChange();
     void rootLayerBoundsDidChange();
 
+    CGRect bounds() const;
+
     PlatformLayer* displayLayer();
 
     PlatformLayer* rootLayer() final;
 
-    void updateRootLayerBoundsAndPosition(CGRect, CGPoint);
+    enum class ShouldUpdateRootLayer { No, Yes };
+    void updateRootLayerBoundsAndPosition(CGRect, MediaSample::VideoRotation, ShouldUpdateRootLayer);
 
+    void initialize(bool hideRootLayer, IntSize, CompletionHandler<void(bool didSucceed)>&&) final;
     bool didFail() const final;
 
     void updateDisplayMode(bool hideDisplayLayer, bool hideRootLayer) final;
 
-    CGRect bounds() const final;
     void updateAffineTransform(CGAffineTransform)  final;
-    void updateBoundsAndPosition(CGRect, CGPoint) final;
+    void updateBoundsAndPosition(CGRect, MediaSample::VideoRotation) final;
 
     void flush() final;
     void flushAndRemoveImage() final;
 
+    void play() final;
+    void pause() final;
+
     void enqueueSample(MediaSample&) final;
     void clearEnqueuedSamples() final;
+    void setRenderPolicy(RenderPolicy) final;
 
 private:
     void removeOldSamplesFromPendingQueue();
     void addSampleToPendingQueue(MediaSample&);
     void requestNotificationWhenReadyForVideoData();
+    void enqueueSampleBuffer(MediaSample&);
+
+#if !RELEASE_LOG_DISABLED
+    void onIrregularFrameRateNotification(MonotonicTime frameTime, MonotonicTime lastFrameTime);
+#endif
 
 private:
     RetainPtr<WebAVSampleBufferStatusChangeListener> m_statusChangeListener;
     RetainPtr<AVSampleBufferDisplayLayer> m_sampleBufferDisplayLayer;
     RetainPtr<PlatformLayer> m_rootLayer;
+    RenderPolicy m_renderPolicy { RenderPolicy::TimingInfo };
+    
+    RefPtr<WorkQueue> m_processingQueue;
 
+    // Only accessed through m_processingQueue or if m_processingQueue is null.
     using PendingSampleQueue = Deque<Ref<MediaSample>>;
     PendingSampleQueue m_pendingVideoSampleQueue;
+    
+    bool m_paused { false };
+
+#if !RELEASE_LOG_DISABLED
+    FrameRateMonitor m_frameRateMonitor;
+#endif
 };
+
+inline void LocalSampleBufferDisplayLayer::setRenderPolicy(RenderPolicy renderPolicy)
+{
+    m_renderPolicy = renderPolicy;
+}
+
+inline void LocalSampleBufferDisplayLayer::play()
+{
+    m_paused = false;
+}
+
+inline void LocalSampleBufferDisplayLayer::pause()
+{
+    m_paused = true;
+}
+
 
 }
 

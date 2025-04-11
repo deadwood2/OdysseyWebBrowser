@@ -26,6 +26,7 @@
 WebKitBuildbot = function()
 {
     const queueInfo = {
+        "Apple-BigSur-Release-Build": {platform: Dashboard.Platform.macOSBigSur, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
         "Apple-Catalina-Debug-Build": {platform: Dashboard.Platform.macOSCatalina, debug: true, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
         "Apple-Catalina-Release-Build": {platform: Dashboard.Platform.macOSCatalina, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
         "Apple-Catalina-Debug-WK1-Tests": {platform: Dashboard.Platform.macOSCatalina, debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
@@ -33,7 +34,6 @@ WebKitBuildbot = function()
         "Apple-Catalina-Release-WK1-Tests": {platform: Dashboard.Platform.macOSCatalina, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
         "Apple-Catalina-Release-WK2-Perf": {platform: Dashboard.Platform.macOSCatalina, debug: false, performance: true, heading: "Performance"},
         "Apple-Catalina-Release-WK2-Tests": {platform: Dashboard.Platform.macOSCatalina, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
-        "Apple-Catalina-Leaks": {platform: Dashboard.Platform.macOSCatalina, debug: false, leaks: true},
         "Apple-Catalina JSC": {platform: Dashboard.Platform.macOSCatalina, heading: "JavaScript", combinedQueues: {
             "Apple-Catalina-LLINT-CLoop-BuildAndTest": {heading: "LLINT CLoop (BuildAndTest)"},
             "Apple-Catalina-Debug-JSC-Tests": {heading: "Debug JSC (Tests)"},
@@ -54,12 +54,14 @@ WebKitBuildbot = function()
         "Apple iOS 13 Simulator Debug WK2 (Tests)": {platform: Dashboard.Platform.iOS13Simulator, debug: true, heading:"iOS Debug", tester: true, testCategory: Buildbot.TestCategory.WebKit2},
         "Apple iPadOS 13 Simulator Release WK2 (Tests)": {platform: Dashboard.Platform.iOS13Simulator, heading:"iPadOS Release", debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
         "Apple iPadOS 13 Simulator Debug WK2 (Tests)": {platform: Dashboard.Platform.iOS13Simulator, heading:"iPadOS Debug", debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
+        "Apple-tvOS-13-Release-Build": {platform: Dashboard.Platform.tvOS13Device, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
+        "Apple-tvOS-Simulator-13-Release-Build": {platform: Dashboard.Platform.tvOS13Simulator, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
+        "Apple-watchOS-6-Release-Build": {platform: Dashboard.Platform.watchOS6Device, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.ThirtyTwoBit},
+        "Apple-watchOS-Simulator-6-Release-Build": {platform: Dashboard.Platform.watchOS6Simulator, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
         "Apple Win 10 Debug (Build)": {platform: Dashboard.Platform.Windows10, debug: true, builder: true, architecture: Buildbot.BuildArchitecture.ThirtyTwoBit },
         "Apple Win 10 Release (Build)": {platform: Dashboard.Platform.Windows10, builder: true, architecture: Buildbot.BuildArchitecture.ThirtyTwoBit},
         "Apple Win 10 Debug (Tests)": {platform: Dashboard.Platform.Windows10, debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
         "Apple Win 10 Release (Tests)": {platform: Dashboard.Platform.Windows10, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
-        "Apple Win 7 Release (Build)": {platform: Dashboard.Platform.Windows7, builder: true, architecture: Buildbot.BuildArchitecture.ThirtyTwoBit},
-        "Apple Win 7 Release (Tests)": {platform: Dashboard.Platform.Windows7, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
         "WinCairo 64-bit WKL Release (Build)": {platform: Dashboard.Platform.WinCairo, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
         "WinCairo 64-bit WKL Release (Tests)": {platform: Dashboard.Platform.WinCairo, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
         "WinCairo 64-bit WKL Debug (Build)": {platform: Dashboard.Platform.WinCairo, debug: true, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},

@@ -73,10 +73,14 @@ public:
 
         bool isNull() const;
 
+#if OS(DARWIN) || OS(WINDOWS)
+        size_t size() const { return m_size; }
+#endif
+
         void clear();
 
         void encode(IPC::Encoder&) const;
-        static bool decode(IPC::Decoder&, Handle&);
+        static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, Handle&);
 
 #if USE(UNIX_DOMAIN_SOCKETS)
         IPC::Attachment releaseAttachment() const;

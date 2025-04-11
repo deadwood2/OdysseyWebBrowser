@@ -37,18 +37,20 @@ public:
         return adoptRef(*new ResourceLoadInfo(WTFMove(info)));
     }
 
+    explicit ResourceLoadInfo(WebKit::ResourceLoadInfo&& info)
+        : m_info(WTFMove(info)) { }
+
     WebKit::NetworkResourceLoadIdentifier resourceLoadID() const { return m_info.resourceLoadID; }
     Optional<WebCore::FrameIdentifier> frameID() const { return m_info.frameID; }
     Optional<WebCore::FrameIdentifier> parentFrameID() const { return m_info.parentFrameID; }
+    const WTF::URL& originalURL() const { return m_info.originalURL; }
+    const WTF::String& originalHTTPMethod() const { return m_info.originalHTTPMethod; }
+    WallTime eventTimestamp() const { return m_info.eventTimestamp; }
+    bool loadedFromCache() const { return m_info.loadedFromCache; }
+    WebKit::ResourceLoadInfo::Type resourceLoadType() const { return m_info.type; }
 
 private:
-    explicit ResourceLoadInfo(WebKit::ResourceLoadInfo&& info)
-        : m_info(WTFMove(info))
-    {
-    }
-
     const WebKit::ResourceLoadInfo m_info;
-
 };
 
 } // namespace API

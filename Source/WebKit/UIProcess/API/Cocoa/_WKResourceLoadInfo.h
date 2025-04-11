@@ -25,19 +25,42 @@
 
 #import <WebKit/WKFoundation.h>
 
-@class _WKFrameHandle;
-
 NS_ASSUME_NONNULL_BEGIN
 
+@class _WKFrameHandle;
+
+typedef NS_ENUM(NSInteger, _WKResourceLoadInfoResourceType) {
+    _WKResourceLoadInfoResourceTypeApplicationManifest,
+    _WKResourceLoadInfoResourceTypeBeacon,
+    _WKResourceLoadInfoResourceTypeCSPReport,
+    _WKResourceLoadInfoResourceTypeDocument,
+    _WKResourceLoadInfoResourceTypeImage,
+    _WKResourceLoadInfoResourceTypeFetch,
+    _WKResourceLoadInfoResourceTypeFont,
+    _WKResourceLoadInfoResourceTypeMedia,
+    _WKResourceLoadInfoResourceTypeObject,
+    _WKResourceLoadInfoResourceTypePing,
+    _WKResourceLoadInfoResourceTypeScript,
+    _WKResourceLoadInfoResourceTypeStylesheet,
+    _WKResourceLoadInfoResourceTypeXMLHTTPRequest,
+    _WKResourceLoadInfoResourceTypeXSLT,
+    _WKResourceLoadInfoResourceTypeOther = -1,
+};
+
 WK_CLASS_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA))
-@interface _WKResourceLoadInfo : NSObject
+@interface _WKResourceLoadInfo : NSObject <NSSecureCoding>
 
 + (instancetype)new NS_UNAVAILABLE;
 - (instancetype)init NS_UNAVAILABLE;
 
 @property (nonatomic, readonly) uint64_t resourceLoadID;
-@property (nonatomic, readonly) _WKFrameHandle* frame;
-@property (nonatomic, readonly, nullable) _WKFrameHandle* parentFrame;
+@property (nonatomic, readonly) _WKFrameHandle *frame;
+@property (nonatomic, readonly, nullable) _WKFrameHandle *parentFrame;
+@property (nonatomic, readonly) NSURL *originalURL;
+@property (nonatomic, readonly) NSString *originalHTTPMethod;
+@property (nonatomic, readonly) NSDate *eventTimestamp;
+@property (nonatomic, readonly) BOOL loadedFromCache;
+@property (nonatomic, readonly) _WKResourceLoadInfoResourceType resourceType;
 
 @end
 

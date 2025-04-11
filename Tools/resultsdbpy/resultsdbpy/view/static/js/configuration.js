@@ -91,6 +91,20 @@ class Configuration {
         return result.join('.');
     }
 
+    static combine()
+    {
+        if (!arguments.length)
+            return new Configuration();
+        const combined = new Configuration(arguments[0]);
+        for (let i = 1; i < arguments.length; ++i) {
+            Configuration.members().forEach(member => {
+                if (arguments[i][member] !== combined[member])
+                    combined[member] = null;
+            });
+        }
+        return combined;
+    }
+
     constructor(json = {}) {
         this.platform = json.platform ? json.platform : null;
         this.version = json.version ? Configuration.versionToInteger(json.version) : null;
@@ -165,6 +179,8 @@ class Configuration {
             result += ' ' + this.style.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('-');
         } if (this.model != null)
             result += ' on ' + this.model;
+        if (this.architecture != null)
+            result += ' with ' + this.architecture;
 
         if (this.sdk != null)
             result += ' (' + this.sdk + ')';
@@ -240,7 +256,7 @@ class Configuration {
             version_name = this.version_name.substring(0, this.version_name.length - 2)
         return {
             platform: [this.platform],
-            version:[this.version ? Configuration.integerToVersion(this.version) : null],
+            version:[this.version && !this.version_name ? Configuration.integerToVersion(this.version) : null],
             version_name: [version_name],
             is_simulator: [this.is_simulator === null ? null : (this.is_simulator ? 'True' : 'False')],
             style: [this.style],

@@ -94,8 +94,6 @@ class AutoinstallImportHook(object):
         # order for autoinstall_everything(), below, to work properly.
         if '.mechanize' in fullname:
             self._install_mechanize()
-        elif '.pep8' in fullname:
-            self._install_pep8()
         elif '.pycodestyle' in fullname:
             self._install_pycodestyle()
         elif '.pylint' in fullname:
@@ -128,6 +126,8 @@ class AutoinstallImportHook(object):
             self._install_beautifulsoup()
         elif '.html5lib' in fullname:
             self._install_html5lib()
+        elif '.toml' in fullname:
+            self._install_toml()
 
     def _install_six(self):
         self._install("https://files.pythonhosted.org/packages/16/d8/bc6316cf98419719bd59c91742194c111b6f2e85abac88e496adefaf7afe/six-1.11.0.tar.gz",
@@ -151,9 +151,6 @@ class AutoinstallImportHook(object):
         self._install("https://files.pythonhosted.org/packages/7d/a9/8c6bf60710781ce13a9987c0debda8adab35eb79c6b5525f7fe5240b7a8a/keyring-7.3.1.tar.gz",
                              "keyring-7.3.1/keyring")
 
-    def _install_pep8(self):
-        self._install("https://files.pythonhosted.org/packages/01/a0/64ba19519db49e4094d82599412a9660dee8c26a7addbbb1bf17927ceefe/pep8-1.7.1.tar.gz",
-                             "pep8-1.7.1/pep8.py")
     def _install_pycodestyle(self):
         self._install("https://files.pythonhosted.org/packages/source/p/pycodestyle/pycodestyle-2.5.0.tar.gz",
                              "pycodestyle-2.5.0/pycodestyle.py")
@@ -167,8 +164,8 @@ class AutoinstallImportHook(object):
 
     def _install_mozprocess(self):
         self._ensure_autoinstalled_dir_is_in_sys_path()
-        self._install("https://files.pythonhosted.org/packages/cb/26/144dbc28d1f40e392f8a0cbee771ba624a61017f016c77ad88424d84b230/mozprocess-0.25.tar.gz",
-                              "mozprocess-0.25/mozprocess")
+        self._install("https://files.pythonhosted.org/packages/97/e7/7907f0bf2d0b42b154741f8ff63a199486fc67c90aac88cde5f2d1ad1ea2/mozprocess-1.1.0.tar.gz",
+                              "mozprocess-1.1.0/mozprocess")
 
     def _install_pytest_timeout(self):
         self._install("https://files.pythonhosted.org/packages/cc/b7/b2a61365ea6b6d2e8881360ae7ed8dad0327ad2df89f2f0be4a02304deb2/pytest-timeout-1.2.0.tar.gz",
@@ -322,6 +319,11 @@ class AutoinstallImportHook(object):
             all_firefox_release_urls = "\n".join(re.findall(r'.*browser_download_url.*', firefox_releases_line_separated))
             full_firefox_url = re.findall(r'.*%s.*' % filename_postfix, all_firefox_release_urls)[0].split('"')[3]
             self.install_binary(full_firefox_url, 'geckodriver')
+
+    def _install_toml(self):
+        toml_dir = self._fs.join(_AUTOINSTALLED_DIR, "toml")
+        installer = AutoInstaller(prepend_to_search_path=True, target_dir=toml_dir)
+        installer.install(url="https://files.pythonhosted.org/packages/b9/19/5cbd78eac8b1783671c40e34bb0fa83133a06d340a38b55c645076d40094/toml-0.10.0.tar.gz", url_subpath="toml-0.10.0/toml")
 
     def _install(self, url, url_subpath=None, target_name=None):
         installer = AutoInstaller(target_dir=_AUTOINSTALLED_DIR)

@@ -102,13 +102,7 @@
         (allow file-read* asset-access-filter)
         (if (memq 'with-media-playback options)
             (play-media asset-access-filter))
-        (allow mach-lookup (with report) (with telemetry)
-               (global-name "com.apple.mobileassetd" "com.apple.mobileassetd.v2"))
         (mobile-preferences-read "com.apple.MobileAsset")))
-
-(define-once (mobile-keybag-access)
-     (allow iokit-open
-            (iokit-user-client-class "AppleKeyStoreUserClient")))
 
 (define-once (play-audio)
     (allow mach-lookup
@@ -140,6 +134,7 @@
            (global-name "com.apple.coremedia.admin")
            (global-name "com.apple.coremedia.asset.xpc")
            (global-name "com.apple.coremedia.assetimagegenerator.xpc")
+           (global-name "com.apple.coremedia.audiodeviceclock.xpc") ; Needed for CMTimeBase
            (global-name "com.apple.coremedia.audioprocessingtap.xpc")
            (global-name "com.apple.coremedia.capturesession")      ; Actually for video capture
            (global-name "com.apple.coremedia.capturesource")       ; Also for video capture (<rdar://problem/15794291>).
@@ -155,6 +150,7 @@
            (global-name "com.apple.coremedia.samplebufferrendersynchronizer.xpc")
            (global-name "com.apple.coremedia.sandboxserver.xpc")
            (global-name "com.apple.coremedia.systemcontroller.xpc")
+           (global-name "com.apple.coremedia.visualcontext.xpc")
            (global-name "com.apple.coremedia.volumecontroller.xpc"))
 
     (allow mach-lookup (with report) (with telemetry)
@@ -310,7 +306,8 @@
             ;; <rdar://problem/23857452>
             (allow file-read* file-map-executable
                    (subpath "/AppleInternal")
-                   (subpath "/usr/local/lib")))
+                   (subpath "/usr/local/lib")
+                   (subpath "/usr/appleinternal/lib/sanitizers")))
             (with-elevated-precedence
                 (allow file-read* file-map-executable file-issue-extension
                    (front-user-home-subpath "/XcodeBuiltProducts")))
@@ -405,7 +402,6 @@
 
     (allow mach-lookup (with report) (with telemetry)
         (global-name-regex #"^com\.apple\.uikit\.viewservice\..+")
-        (xpc-service-name-regex #"\.apple-extension-service$") ;; <rdar://problem/19525887>
         (xpc-service-name-regex #"\.viewservice$") ;; <rdar://problem/31252371>
     )
 
@@ -441,16 +437,10 @@
 
 (deny file-write-mount file-write-unmount)
 
-(allow file-read-metadata (with no-times)
-       (vnode-type DIRECTORY))
-(with-filter (apple-signed-executable?)
-  (allow file-read-metadata
-         (vnode-type DIRECTORY)))
+(allow file-read-metadata
+    (vnode-type DIRECTORY))
 
-(with-filter (apple-signed-executable?)
-  (managed-configuration-read "CloudConfigurationDetails.plist")
-  (managed-configuration-read "CloudConfigurationSetAsideDetails.plist")
-  (mobile-preferences-read "com.apple.security"))
+(mobile-preferences-read "com.apple.security")
 
 (with-filter (system-attribute apple-internal)
   (mobile-preferences-read "com.apple.PrototypeTools"))
@@ -592,7 +582,6 @@
        (ipc-posix-name-prefix "apple.cfprefs."))
  
 (allow mach-lookup (with report) (with telemetry)
-    (global-name "com.apple.lsd.open")
     (global-name "com.apple.lsd.mapdb"))
 
 ;; <rdar://problem/12413942>
@@ -657,9 +646,6 @@
 (allow process-info-dirtycontrol (target self))
 (allow process-info-rusage (target self))
 (allow process-info-codesignature (target self))
-
-(with-filter (apple-signed-executable?)
-    (mobile-preferences-read "com.apple.demo-settings"))
 
 ;;;
 ;;; End common.sb content
@@ -761,9 +747,6 @@
 
 (framebuffer-access)
 
-;; <rdar://problem/7822790>
-(mobile-keybag-access)
-
 ; <rdar://problem/7595408> , <rdar://problem/7643881>
 (opengl)
 
@@ -805,6 +788,7 @@
         "kern.osproductversion"
         "kern.osrelease"
         "kern.osvariant_status"
+        "kern.osversion"
         "kern.secure_kernel"
         "kern.version"
         "vm.footprint_suspend"))
@@ -837,6 +821,7 @@
     (iokit-property "device-colors") ;; <rdar://problem/51322072>
     (iokit-property "device-id")
     (iokit-property "device-perf-memory-class")
+    (iokit-property "dfr")
     (iokit-property "display-corner-radius") ;; <rdar://problem/50602737>
     (iokit-property "emu")
     (iokit-property "graphics-featureset-class") ;; <rdar://problem/49497720>
@@ -886,10 +871,6 @@
 (accessibility-support)
 
 (media-accessibility-support)
-
-;; Remote Web Inspector
-(allow mach-lookup
-       (global-name "com.apple.webinspector"))
 
 ;; Various services required by CFNetwork and other frameworks
 (allow mach-lookup

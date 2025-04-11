@@ -26,6 +26,7 @@
 #pragma once
 
 #include "NetworkLoadParameters.h"
+#include "PolicyDecision.h"
 #include "SandboxExtension.h"
 #include "UserContentControllerIdentifier.h"
 #include <WebCore/ContentSecurityPolicyResponseHeaders.h>
@@ -62,6 +63,7 @@ public:
     bool isHTTPSUpgradeEnabled { false };
     bool pageHasResourceLoadClient { false };
     Optional<WebCore::FrameIdentifier> parentFrameID;
+    bool crossOriginAccessControlCheckEnabled { true };
 
 #if ENABLE(SERVICE_WORKER)
     WebCore::ServiceWorkersMode serviceWorkersMode { WebCore::ServiceWorkersMode::None };
@@ -73,6 +75,8 @@ public:
     URL mainDocumentURL;
     Optional<UserContentControllerIdentifier> userContentControllerIdentifier;
 #endif
+    
+    Optional<NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain { NavigatingToAppBoundDomain::No };
 };
 
 } // namespace WebKit

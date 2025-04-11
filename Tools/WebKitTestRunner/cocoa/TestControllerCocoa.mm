@@ -51,7 +51,9 @@
 #import <WebKit/_WKApplicationManifest.h>
 #import <WebKit/_WKUserContentExtensionStore.h>
 #import <WebKit/_WKUserContentExtensionStorePrivate.h>
+#import <WebKit/_WKWebsiteDataStoreConfiguration.h>
 #import <wtf/MainThread.h>
+#import <wtf/cocoa/VectorCocoa.h>
 #import <wtf/spi/cocoa/SecuritySPI.h>
 
 namespace WTR {
@@ -65,14 +67,10 @@ void initializeWebViewConfiguration(const char* libraryPath, WKStringRef injecte
     globalWebViewConfiguration = [[WKWebViewConfiguration alloc] init];
 
     globalWebViewConfiguration.processPool = (__bridge WKProcessPool *)context;
-    globalWebViewConfiguration.websiteDataStore = (__bridge WKWebsiteDataStore *)TestController::websiteDataStore();
+    globalWebViewConfiguration.websiteDataStore = (__bridge WKWebsiteDataStore *)TestController::defaultWebsiteDataStore();
     globalWebViewConfiguration._allowUniversalAccessFromFileURLs = YES;
     globalWebViewConfiguration._allowTopNavigationToDataURLs = YES;
     globalWebViewConfiguration._applePayEnabled = YES;
-
-    WKContextSetStorageAccessAPIEnabled(context, true);
-
-    [globalWebViewConfiguration.websiteDataStore _setResourceLoadStatisticsEnabled:YES];
 
     [globalWebsiteDataStoreDelegateClient release];
     globalWebsiteDataStoreDelegateClient = [[TestWebsiteDataStoreDelegate alloc] init];
@@ -101,10 +99,9 @@ void TestController::cocoaPlatformInitialize()
     String resourceLoadStatisticsFolder = String(dumpRenderTreeTemp) + '/' + "ResourceLoadStatistics";
     [[NSFileManager defaultManager] createDirectoryAtPath:resourceLoadStatisticsFolder withIntermediateDirectories:YES attributes:nil error: nil];
     String fullBrowsingSessionResourceLog = resourceLoadStatisticsFolder + '/' + "full_browsing_session_resourceLog.plist";
-    NSDictionary *resourceLogPlist = [[NSDictionary alloc] initWithObjectsAndKeys: [NSNumber numberWithInt:1], @"version", nil];
+    NSDictionary *resourceLogPlist = @{ @"version": @(1) };
     if (![resourceLogPlist writeToFile:fullBrowsingSessionResourceLog atomically:YES])
         WTFCrash();
-    [resourceLogPlist release];
 }
 
 WKContextRef TestController::platformContext()
@@ -123,6 +120,24 @@ void TestController::platformAddTestOptions(TestOptions& options) const
         options.contextOptions.enableProcessSwapOnNavigation = true;
     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"EnableProcessSwapOnWindowOpen"])
         options.contextOptions.enableProcessSwapOnWindowOpen = true;
+
+#if PLATFORM(IOS_FAMILY)
+    if (options.enableInAppBrowserPrivacy)
+        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"WebKitDebugIsInAppBrowserPrivacyEnabled"];
+#endif
+}
+
+void TestController::platformInitializeDataStore(WKPageConfigurationRef, const TestOptions& options)
+{
+    if (options.useEphemeralSession || options.standaloneWebApplicationURL.length()) {
+        auto websiteDataStoreConfig = options.useEphemeralSession ? [[[_WKWebsiteDataStoreConfiguration alloc] initNonPersistentConfiguration] autorelease] : [[[_WKWebsiteDataStoreConfiguration alloc] init] autorelease];
+        if (!options.useEphemeralSession)
+            configureWebsiteDataStoreTemporaryDirectories((WKWebsiteDataStoreConfigurationRef)websiteDataStoreConfig);
+        if (options.standaloneWebApplicationURL.length())
+            [websiteDataStoreConfig setStandaloneApplicationURL:[NSURL URLWithString:[NSString stringWithUTF8String:options.standaloneWebApplicationURL.c_str()]]];
+        m_websiteDataStore = (__bridge WKWebsiteDataStoreRef)[[[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfig] autorelease];
+    } else
+        m_websiteDataStore = (__bridge WKWebsiteDataStoreRef)globalWebViewConfiguration.websiteDataStore;
 }
 
 void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOptions& options)
@@ -136,8 +151,10 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
         [copiedConfiguration setIgnoresViewportScaleLimits:YES];
     if (options.useCharacterSelectionGranularity)
         [copiedConfiguration setSelectionGranularity:WKSelectionGranularityCharacter];
-    if (options.useCharacterSelectionGranularity)
-        [copiedConfiguration setSelectionGranularity:WKSelectionGranularityCharacter];
+    if (options.isAppBoundWebView)
+        [copiedConfiguration setLimitsNavigationsToAppBoundDomains:YES];
+#else
+    [copiedConfiguration _setServiceControlsEnabled:options.enableServiceControls];
 #endif
 
     if (options.enableAttachmentElement)
@@ -149,11 +166,7 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
     if (options.enableEditableImages)
         [copiedConfiguration _setEditableImagesEnabled:YES];
 
-    if (options.enableUndoManagerAPI)
-        [copiedConfiguration _setUndoManagerAPIEnabled:YES];
-        
-    if (options.useEphemeralSession)
-        [copiedConfiguration setWebsiteDataStore:[WKWebsiteDataStore nonPersistentDataStore]];
+    [copiedConfiguration setWebsiteDataStore:(WKWebsiteDataStore *)websiteDataStore()];
 
     [copiedConfiguration _setAllowTopNavigationToDataURLs:options.allowTopNavigationToDataURLs];
 
@@ -175,12 +188,15 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
         m_mainWebView->setEditable(true);
 
     m_mainWebView->platformView().allowsLinkPreview = options.allowsLinkPreview;
+    [m_mainWebView->platformView() _setShareSheetCompletesImmediatelyWithResolutionForTesting:YES];
 }
 
 PlatformWebView* TestController::platformCreateOtherPage(PlatformWebView* parentView, WKPageConfigurationRef, const TestOptions& options)
 {
     WKWebViewConfiguration *newConfiguration = [[globalWebViewConfiguration copy] autorelease];
     newConfiguration._relatedWebView = static_cast<WKWebView*>(parentView->platformView());
+    if (newConfiguration._relatedWebView)
+        newConfiguration.websiteDataStore = newConfiguration._relatedWebView.configuration.websiteDataStore;
     PlatformWebView* view = new PlatformWebView(newConfiguration, options);
     finishCreatingPlatformWebView(view, options);
     return view;
@@ -213,17 +229,24 @@ void TestController::platformRunUntil(bool& done, WTF::Seconds timeout)
 
 static NSCalendar *swizzledCalendar()
 {
-    return [NSCalendar calendarWithIdentifier:TestController::singleton().getOverriddenCalendarIdentifier().get()];
-}
-    
-RetainPtr<NSString> TestController::getOverriddenCalendarIdentifier() const
-{
-    return m_overriddenCalendarIdentifier;
+    NSCalendar *calendar = [NSCalendar calendarWithIdentifier:TestController::singleton().overriddenCalendarIdentifier()];
+    calendar.locale = [NSLocale localeWithLocaleIdentifier:TestController::singleton().overriddenCalendarLocaleIdentifier()];
+    return calendar;
 }
 
-void TestController::setDefaultCalendarType(NSString *identifier)
+NSString *TestController::overriddenCalendarIdentifier() const
 {
-    m_overriddenCalendarIdentifier = identifier;
+    return m_overriddenCalendarAndLocaleIdentifiers.first.get();
+}
+
+NSString *TestController::overriddenCalendarLocaleIdentifier() const
+{
+    return m_overriddenCalendarAndLocaleIdentifiers.second.get();
+}
+
+void TestController::setDefaultCalendarType(NSString *identifier, NSString *localeIdentifier)
+{
+    m_overriddenCalendarAndLocaleIdentifiers = { identifier, localeIdentifier };
     if (!m_calendarSwizzler)
         m_calendarSwizzler = makeUnique<ClassMethodSwizzler>([NSCalendar class], @selector(currentCalendar), reinterpret_cast<IMP>(swizzledCalendar));
 }
@@ -260,7 +283,7 @@ void TestController::clearApplicationBundleIdentifierTestingOverride()
 void TestController::cocoaResetStateToConsistentValues(const TestOptions& options)
 {
     m_calendarSwizzler = nullptr;
-    m_overriddenCalendarIdentifier = nil;
+    m_overriddenCalendarAndLocaleIdentifiers = { nil, nil };
     
     if (auto* webView = mainWebView()) {
         TestRunnerWKWebView *platformView = webView->platformView();
@@ -268,6 +291,7 @@ void TestController::cocoaResetStateToConsistentValues(const TestOptions& option
         platformView._minimumEffectiveDeviceWidth = 0;
         [platformView _setContinuousSpellCheckingEnabledForTesting:options.shouldShowSpellCheckingDots];
         [platformView resetInteractionCallbacks];
+        [platformView _resetNavigationGestureStateForTesting];
     }
 
     [globalWebsiteDataStoreDelegateClient setAllowRaisingQuota:YES];
@@ -323,13 +347,29 @@ void TestController::getAllStorageAccessEntries()
     if (!parentView)
         return;
 
-    [globalWebViewConfiguration.websiteDataStore _getAllStorageAccessEntriesFor:parentView->platformView() completionHandler:^(NSArray<NSString *> *nsDomains) {
-        Vector<String> domains;
-        domains.reserveInitialCapacity(nsDomains.count);
-        for (NSString *domain : nsDomains)
-            domains.uncheckedAppend(domain);
-        m_currentInvocation->didReceiveAllStorageAccessEntries(domains);
+    [globalWebViewConfiguration.websiteDataStore _getAllStorageAccessEntriesFor:parentView->platformView() completionHandler:^(NSArray<NSString *> *domains) {
+        m_currentInvocation->didReceiveAllStorageAccessEntries(makeVector<String>(domains));
     }];
+}
+
+void TestController::loadedThirdPartyDomains()
+{
+    auto* parentView = mainWebView();
+    if (!parentView)
+        return;
+    
+    [globalWebViewConfiguration.websiteDataStore _loadedThirdPartyDomainsFor:parentView->platformView() completionHandler:^(NSArray<NSString *> *domains) {
+        m_currentInvocation->didReceiveLoadedThirdPartyDomains(makeVector<String>(domains));
+    }];
+}
+
+void TestController::clearLoadedThirdPartyDomains()
+{
+    auto* parentView = mainWebView();
+    if (!parentView)
+        return;
+
+    [globalWebViewConfiguration.websiteDataStore _clearLoadedThirdPartyDomainsFor:parentView->platformView()];
 }
 
 void TestController::injectUserScript(WKStringRef script)
@@ -370,7 +410,7 @@ void TestController::addTestKeyToKeychain(const String& privateKeyBase64, const 
     ASSERT_UNUSED(status, !status);
 }
 
-void TestController::cleanUpKeychain(const String& attrLabel, const String& applicationTagBase64)
+void TestController::cleanUpKeychain(const String& attrLabel, const String& applicationLabelBase64)
 {
     auto deleteQuery = adoptNS([[NSMutableDictionary alloc] init]);
     [deleteQuery setObject:(id)kSecClassKey forKey:(id)kSecClass];
@@ -380,19 +420,19 @@ void TestController::cleanUpKeychain(const String& attrLabel, const String& appl
 #else
     [deleteQuery setObject:@YES forKey:(id)kSecAttrNoLegacy];
 #endif
-    if (!!applicationTagBase64)
-        [deleteQuery setObject:adoptNS([[NSData alloc] initWithBase64EncodedString:applicationTagBase64 options:NSDataBase64DecodingIgnoreUnknownCharacters]).get() forKey:(id)kSecAttrApplicationTag];
+    if (!!applicationLabelBase64)
+        [deleteQuery setObject:adoptNS([[NSData alloc] initWithBase64EncodedString:applicationLabelBase64 options:NSDataBase64DecodingIgnoreUnknownCharacters]).get() forKey:(id)kSecAttrApplicationLabel];
 
     SecItemDelete((__bridge CFDictionaryRef)deleteQuery.get());
 }
 
-bool TestController::keyExistsInKeychain(const String& attrLabel, const String& applicationTagBase64)
+bool TestController::keyExistsInKeychain(const String& attrLabel, const String& applicationLabelBase64)
 {
     NSDictionary *query = @{
         (id)kSecClass: (id)kSecClassKey,
         (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPrivate,
         (id)kSecAttrLabel: attrLabel,
-        (id)kSecAttrApplicationTag: adoptNS([[NSData alloc] initWithBase64EncodedString:applicationTagBase64 options:NSDataBase64DecodingIgnoreUnknownCharacters]).get(),
+        (id)kSecAttrApplicationLabel: adoptNS([[NSData alloc] initWithBase64EncodedString:applicationLabelBase64 options:NSDataBase64DecodingIgnoreUnknownCharacters]).get(),
 #if HAVE(DATA_PROTECTION_KEYCHAIN)
         (id)kSecUseDataProtectionKeychain: @YES
 #else
@@ -435,10 +475,7 @@ void TestController::installCustomMenuAction(const String& name, bool dismissesA
 void TestController::setAllowedMenuActions(const Vector<String>& actions)
 {
 #if PLATFORM(IOS_FAMILY)
-    auto actionNames = adoptNS([[NSMutableArray<NSString *> alloc] initWithCapacity:actions.size()]);
-    for (auto& action : actions)
-        [actionNames addObject:action];
-    [m_mainWebView->platformView() setAllowedMenuActions:actionNames.get()];
+    [m_mainWebView->platformView() setAllowedMenuActions:createNSArray(actions).get()];
 #else
     UNUSED_PARAM(actions);
 #endif

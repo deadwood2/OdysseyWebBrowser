@@ -62,9 +62,24 @@ TEST(WTF_Packed, AssignAndGet)
     {
         PackedPtr<uint8_t> key { nullptr };
         static_assert(OS_CONSTANT(EFFECTIVE_ADDRESS_WIDTH) != 64, "");
-        uint8_t* max = bitwise_cast<uint8_t*>(static_cast<uintptr_t>(((1ULL) << OS_CONSTANT(EFFECTIVE_ADDRESS_WIDTH)) - 1));
-        key = max;
-        EXPECT_EQ(key.get(), max);
+        uint8_t* candidates[] = {
+            0,
+            bitwise_cast<uint8_t*>(static_cast<uintptr_t>((1ULL << (OS_CONSTANT(EFFECTIVE_ADDRESS_WIDTH) / 2)) - 1)),
+            bitwise_cast<uint8_t*>(static_cast<uintptr_t>((1ULL << (OS_CONSTANT(EFFECTIVE_ADDRESS_WIDTH) - 1)) - 1)),
+#if !CPU(X86_64) || OS(DARWIN) || OS(LINUX) || OS(WINDOWS)
+            // These OSes will never allocate user space addresses with
+            // bit 47 (i.e. OS_CONSTANT(EFFECTIVE_ADDRESS_WIDTH) - 1) set.
+            bitwise_cast<uint8_t*>(static_cast<uintptr_t>((1ULL << OS_CONSTANT(EFFECTIVE_ADDRESS_WIDTH)) - 1)),
+#else
+            bitwise_cast<uint8_t*>(static_cast<uintptr_t>(~((1ULL << (OS_CONSTANT(EFFECTIVE_ADDRESS_WIDTH) - 1)) - 1))), // min higher half
+            bitwise_cast<uint8_t*>(std::numeric_limits<uintptr_t>::max()), // max higher half
+#endif
+        };
+        int count = sizeof(candidates) / sizeof(uint8_t*);
+        for (int i = 0; i < count; i++) {
+            key = candidates[i];
+            EXPECT_EQ(key.get(), candidates[i]);
+        }
     }
 }
 
@@ -76,7 +91,7 @@ TEST(WTF_Packed, PackedAlignedPtr)
     }
     {
         PackedAlignedPtr<uint8_t, 16> key { nullptr };
-#if OS(DARWIN) && CPU(ARM64)
+#if (OS(IOS) || OS(TVOS) || OS(WATCHOS)) && CPU(ARM64)
         EXPECT_EQ(sizeof(key), 4U);
 #else
         EXPECT_LE(sizeof(key), 6U);

@@ -55,7 +55,7 @@ class DrawBuffersTest : public ANGLETest
         }
 
         // This test seems to fail on an nVidia machine when the window is hidden
-        setWindowVisible(true);
+        setWindowVisible(getOSWindow(), true);
 
         glGenFramebuffers(1, &mFBO);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, mFBO);
@@ -278,6 +278,47 @@ TEST_P(DrawBuffersTest, Gaps)
     verifyAttachment2D(1, mTextures[0], GL_TEXTURE_2D, 0);
 
     glDeleteProgram(program);
+}
+
+// Test that clear works with gaps
+TEST_P(DrawBuffersTest, ClearWithGaps)
+{
+    // TODO(syoussefi): Qualcomm driver crashes in the presence of VK_ATTACHMENT_UNUSED.
+    // http://anglebug.com/3423
+    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAndroid());
+
+    ANGLE_SKIP_TEST_IF(!setupTest());
+
+    glGetIntegerv(GL_MAX_DRAW_BUFFERS, &mMaxDrawBuffers);
+    ASSERT_GE(mMaxDrawBuffers, 4);
+
+    glBindTexture(GL_TEXTURE_2D, mTextures[0]);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mTextures[0], 0);
+
+    glBindTexture(GL_TEXTURE_2D, mTextures[1]);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, mTextures[1], 0);
+
+    const GLenum bufs[] = {GL_COLOR_ATTACHMENT0, GL_NONE, GL_NONE, GL_COLOR_ATTACHMENT3};
+
+    bool flags[8] = {true, false, false, true};
+    GLuint program;
+    setupMRTProgram(flags, &program);
+
+    setDrawBuffers(4, bufs);
+
+    glClearColor(1.0f, 1.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // A bogus draw to make sure clears are done with a render pass in the Vulkan backend.
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ZERO, GL_ONE);
+    drawQuad(program, positionAttrib(), 0.5);
+    EXPECT_GL_NO_ERROR();
+
+    verifyAttachment2DColor(0, mTextures[0], GL_TEXTURE_2D, 0, GLColor::yellow);
+    verifyAttachment2DColor(3, mTextures[1], GL_TEXTURE_2D, 0, GLColor::yellow);
+
+    EXPECT_GL_NO_ERROR();
 }
 
 TEST_P(DrawBuffersTest, FirstAndLast)

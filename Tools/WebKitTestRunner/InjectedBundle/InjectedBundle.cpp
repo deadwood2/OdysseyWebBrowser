@@ -120,7 +120,9 @@ void InjectedBundle::didCreatePage(WKBundlePageRef page)
 
     WKRetainPtr<WKStringRef> messsageName = adoptWK(WKStringCreateWithUTF8CString("Initialization"));
     WKTypeRef result = nullptr;
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     WKBundlePostSynchronousMessage(m_bundle, messsageName.get(), nullptr, &result);
+    ALLOW_DEPRECATED_DECLARATIONS_END
     ASSERT(WKGetTypeID(result) == WKDictionaryGetTypeID());
     WKRetainPtr<WKDictionaryRef> initializationDictionary = adoptWK(static_cast<WKDictionaryRef>(result));
 
@@ -242,6 +244,11 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         if (shouldGC)
             WKBundleGarbageCollectJavaScriptObjects(m_bundle);
 
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+        WKRetainPtr<WKStringRef> axIsolatedModeKey = adoptWK(WKStringCreateWithUTF8CString("AccessibilityIsolatedTree"));
+        m_accessibilityIsolatedTreeMode = WKBooleanGetValue(static_cast<WKBooleanRef>(WKDictionaryGetItemForKey(messageBodyDictionary, axIsolatedModeKey.get())));
+#endif
+        
         WKRetainPtr<WKStringRef> allowedHostsKey = adoptWK(WKStringCreateWithUTF8CString("AllowedHosts"));
         WKTypeRef allowedHostsValue = WKDictionaryGetItemForKey(messageBodyDictionary, allowedHostsKey.get());
         if (allowedHostsValue && WKGetTypeID(allowedHostsValue) == WKArrayGetTypeID()) {
@@ -322,6 +329,11 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         return;
     }
 
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidClearStatisticsInMemoryAndPersistentStore")) {
+        m_testRunner->statisticsCallClearInMemoryAndPersistentStoreCallback();
+        return;
+    }
+
     if (WKStringIsEqualToUTF8CString(messageName, "CallDidClearStatisticsThroughWebsiteDataRemoval")) {
         m_testRunner->statisticsCallClearThroughWebsiteDataRemovalCallback();
         return;
@@ -339,6 +351,21 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
 
     if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetFirstPartyWebsiteDataRemovalMode")) {
         m_testRunner->statisticsCallDidSetFirstPartyWebsiteDataRemovalModeCallback();
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetToSameSiteStrictCookies")) {
+        m_testRunner->statisticsCallDidSetToSameSiteStrictCookiesCallback();
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetFirstPartyHostCNAMEDomain")) {
+        m_testRunner->statisticsCallDidSetFirstPartyHostCNAMEDomainCallback();
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetThirdPartyCNAMEDomain")) {
+        m_testRunner->statisticsCallDidSetThirdPartyCNAMEDomainCallback();
         return;
     }
 
@@ -369,6 +396,11 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
     
     if (WKStringIsEqualToUTF8CString(messageName, "CallDidMergeStatistic")) {
         m_testRunner->statisticsCallDidSetMergeStatisticCallback();
+        return;
+    }
+    
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetExpiredStatistic")) {
+        m_testRunner->statisticsCallDidSetExpiredStatisticCallback();
         return;
     }
 
@@ -402,6 +434,24 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         }
 
         m_testRunner->callDidReceiveAllStorageAccessEntriesCallback(domains);
+        return;
+    }
+    
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidReceiveLoadedThirdPartyDomains")) {
+        ASSERT(messageBody);
+        ASSERT(WKGetTypeID(messageBody) == WKArrayGetTypeID());
+
+        WKArrayRef domainsArray = static_cast<WKArrayRef>(messageBody);
+        auto size = WKArrayGetSize(domainsArray);
+        Vector<String> domains;
+        domains.reserveInitialCapacity(size);
+        for (size_t i = 0; i < size; ++i) {
+            WKTypeRef item = WKArrayGetItemAtIndex(domainsArray, i);
+            if (item && WKGetTypeID(item) == WKStringGetTypeID())
+                domains.uncheckedAppend(toWTFString(static_cast<WKStringRef>(item)));
+        }
+
+        m_testRunner->callDidReceiveLoadedThirdPartyDomainsCallback(WTFMove(domains));
         return;
     }
 
@@ -485,7 +535,12 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         m_testRunner->performCustomMenuAction();
         return;
     }
-    
+
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetAppBoundDomains")) {
+        m_testRunner->didSetAppBoundDomainsCallback();
+        return;
+    }
+
     WKRetainPtr<WKStringRef> errorMessageName = adoptWK(WKStringCreateWithUTF8CString("Error"));
     WKRetainPtr<WKStringRef> errorMessageBody = adoptWK(WKStringCreateWithUTF8CString("Unknown"));
     WKBundlePagePostMessage(page, errorMessageName.get(), errorMessageBody.get());
@@ -526,6 +581,9 @@ void InjectedBundle::beginTesting(WKDictionaryRef settings, BegingTestingMode te
     m_textInputController = TextInputController::create();
 #if HAVE(ACCESSIBILITY)
     m_accessibilityController = AccessibilityController::create();
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+    m_accessibilityController->setIsolatedTreeMode(m_accessibilityIsolatedTreeMode);
+#endif
 #endif
 
     // Don't change experimental or internal features here; those should be set in TestController::resetPreferencesToConsistentValues().
@@ -580,7 +638,7 @@ void InjectedBundle::beginTesting(WKDictionaryRef settings, BegingTestingMode te
 
     WKBundleClearAllDatabases(m_bundle);
     WKBundlePageClearApplicationCache(page()->page());
-    WKBundleResetOriginAccessWhitelists(m_bundle);
+    WKBundleResetOriginAccessAllowLists(m_bundle);
     WKBundleClearResourceLoadStatistics(m_bundle);
 
     // [WK2] REGRESSION(r128623): It made layout tests extremely slow
@@ -651,7 +709,11 @@ void InjectedBundle::dumpToStdErr(const String& output)
     if (output.isEmpty())
         return;
     WKRetainPtr<WKStringRef> messageName = adoptWK(WKStringCreateWithUTF8CString("DumpToStdErr"));
-    WKRetainPtr<WKStringRef> messageBody = adoptWK(WKStringCreateWithUTF8CString(output.utf8().data()));
+    WKRetainPtr<WKStringRef> messageBody;
+    if (auto utf8 = output.tryGetUtf8())
+        messageBody = adoptWK(WKStringCreateWithUTF8CString(utf8->data()));
+    else
+        messageBody = adoptWK(WKStringCreateWithUTF8CString("Out of memory\n"));
     WKBundlePagePostMessage(page()->page(), messageName.get(), messageBody.get());
 }
 
@@ -662,7 +724,11 @@ void InjectedBundle::outputText(const String& output)
     if (output.isEmpty())
         return;
     WKRetainPtr<WKStringRef> messageName = adoptWK(WKStringCreateWithUTF8CString("TextOutput"));
-    WKRetainPtr<WKStringRef> messageBody = adoptWK(WKStringCreateWithUTF8CString(output.utf8().data()));
+    WKRetainPtr<WKStringRef> messageBody;
+    if (auto utf8 = output.tryGetUtf8())
+        messageBody = adoptWK(WKStringCreateWithUTF8CString(utf8->data()));
+    else
+        messageBody = adoptWK(WKStringCreateWithUTF8CString("Out of memory\n"));
     // We use WKBundlePagePostMessageIgnoringFullySynchronousMode() instead of WKBundlePagePostMessage() to make sure that all text output
     // is done via asynchronous IPC, even if the connection is in fully synchronous mode due to a WKBundlePagePostSynchronousMessageForTesting()
     // call. Otherwise, messages logged via sync and async IPC may end up out of order and cause flakiness.

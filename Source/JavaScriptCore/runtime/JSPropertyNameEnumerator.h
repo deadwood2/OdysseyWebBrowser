@@ -87,6 +87,8 @@ public:
     static void visitChildren(JSCell*, SlotVisitor&);
 
 private:
+    friend class LLIntOffsetsExtractor;
+
     JSPropertyNameEnumerator(VM&, Structure*, uint32_t, uint32_t, WriteBarrier<JSString>*, unsigned);
     void finishCreation(VM&, RefPtr<PropertyNameArrayData>&&);
 
@@ -139,6 +141,11 @@ inline JSPropertyNameEnumerator* propertyNameEnumerator(JSGlobalObject* globalOb
     bool successfullyNormalizedChain = normalizePrototypeChain(globalObject, base, sawPolyProto) != InvalidPrototypeChain;
 
     Structure* structureAfterGettingPropertyNames = base->structure(vm);
+    if (!structureAfterGettingPropertyNames->canAccessPropertiesQuicklyForEnumeration()) {
+        indexedLength = 0;
+        numberStructureProperties = 0;
+    }
+
     enumerator = JSPropertyNameEnumerator::create(vm, structureAfterGettingPropertyNames, indexedLength, numberStructureProperties, WTFMove(propertyNames));
     if (!indexedLength && successfullyNormalizedChain && structureAfterGettingPropertyNames == structure) {
         enumerator->setCachedPrototypeChain(vm, structure->prototypeChain(globalObject, base));

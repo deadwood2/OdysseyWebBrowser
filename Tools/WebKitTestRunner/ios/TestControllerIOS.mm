@@ -52,9 +52,18 @@ static BOOL overrideIsInHardwareKeyboardMode()
     return NO;
 }
 
-static void overridePresentViewControllerOrPopover()
+static void overridePresentMenuOrPopoverOrViewController()
 {
 }
+
+#if !HAVE(NONDESTRUCTIVE_IMAGE_PASTE_SUPPORT_QUERY)
+
+static BOOL overrideKeyboardDelegateSupportsImagePaste(id, SEL)
+{
+    return NO;
+}
+
+#endif
 
 namespace WTR {
 
@@ -83,7 +92,7 @@ static void handleMenuDidHideNotification(CFNotificationCenterRef, void*, CFStri
 
 void TestController::notifyDone()
 {
-    UIView *contentView = [mainWebView()->platformView() valueForKeyPath:@"_currentContentView"];
+    UIView *contentView = mainWebView()->platformView().contentView;
     UIView *selectionView = [contentView valueForKeyPath:@"interactionAssistant.selectionView"];
     [selectionView _removeAllAnimations:YES];
 }
@@ -146,26 +155,49 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
 {
     cocoaResetStateToConsistentValues(options);
 
+    [UIKeyboardImpl.activeInstance setCorrectionLearningAllowed:NO];
+    [UIPasteboard generalPasteboard].items = @[ ];
     [[UIApplication sharedApplication] _cancelAllTouches];
     [[UIDevice currentDevice] setOrientation:UIDeviceOrientationPortrait animated:NO];
     UIKeyboardPreferencesController *keyboardPreferences = UIKeyboardPreferencesController.sharedPreferencesController;
-    NSString *automaticMinimizationEnabledPreferenceKey = @"AutomaticMinimizationEnabled";
+    auto globalPreferencesDomainName = CFSTR("com.apple.Preferences");
+    auto automaticMinimizationEnabledPreferenceKey = @"AutomaticMinimizationEnabled";
     if (![keyboardPreferences boolForPreferenceKey:automaticMinimizationEnabledPreferenceKey]) {
         [keyboardPreferences setValue:@YES forPreferenceKey:automaticMinimizationEnabledPreferenceKey];
-        CFPreferencesSetAppValue((__bridge CFStringRef)automaticMinimizationEnabledPreferenceKey, kCFBooleanTrue, CFSTR("com.apple.Preferences"));
+        CFPreferencesSetAppValue((__bridge CFStringRef)automaticMinimizationEnabledPreferenceKey, kCFBooleanTrue, globalPreferencesDomainName);
+    }
+
+    // Disables the dictation keyboard shortcut for testing.
+    auto dictationKeyboardShortcutPreferenceKey = @"HWKeyboardDictationShortcut";
+    auto dictationKeyboardShortcutValueForTesting = @(-1);
+    if (![dictationKeyboardShortcutValueForTesting isEqual:[keyboardPreferences valueForPreferenceKey:dictationKeyboardShortcutPreferenceKey]]) {
+        [keyboardPreferences setValue:dictationKeyboardShortcutValueForTesting forPreferenceKey:dictationKeyboardShortcutPreferenceKey];
+        CFPreferencesSetAppValue((__bridge CFStringRef)dictationKeyboardShortcutPreferenceKey, (__bridge CFNumberRef)dictationKeyboardShortcutValueForTesting, globalPreferencesDomainName);
     }
 
     GSEventSetHardwareKeyboardAttached(true, 0);
 
-    m_inputModeSwizzlers.clear();
-    m_overriddenKeyboardInputMode = nil;
+#if !HAVE(NONDESTRUCTIVE_IMAGE_PASTE_SUPPORT_QUERY)
+    // FIXME: Remove this workaround once -[UIKeyboardImpl delegateSupportsImagePaste] no longer increments the general pasteboard's changeCount.
+    if (!m_keyboardDelegateSupportsImagePasteSwizzler)
+        m_keyboardDelegateSupportsImagePasteSwizzler = makeUnique<InstanceMethodSwizzler>(UIKeyboardImpl.class, @selector(delegateSupportsImagePaste), reinterpret_cast<IMP>(overrideKeyboardDelegateSupportsImagePaste));
+#endif
+
+    if (m_overriddenKeyboardInputMode) {
+        m_overriddenKeyboardInputMode = nil;
+        m_inputModeSwizzlers.clear();
+        [UIKeyboardImpl.sharedInstance prepareKeyboardInputModeFromPreferences:nil];
+    }
 
     m_presentPopoverSwizzlers.clear();
     if (!options.shouldPresentPopovers) {
-        m_presentPopoverSwizzlers.append(makeUnique<InstanceMethodSwizzler>([UIViewController class], @selector(presentViewController:animated:completion:), reinterpret_cast<IMP>(overridePresentViewControllerOrPopover)));
-        m_presentPopoverSwizzlers.append(makeUnique<InstanceMethodSwizzler>([UIPopoverController class], @selector(presentPopoverFromRect:inView:permittedArrowDirections:animated:), reinterpret_cast<IMP>(overridePresentViewControllerOrPopover)));
+#if USE(UICONTEXTMENU)
+        m_presentPopoverSwizzlers.append(makeUnique<InstanceMethodSwizzler>([UIContextMenuInteraction class], @selector(_presentMenuAtLocation:), reinterpret_cast<IMP>(overridePresentMenuOrPopoverOrViewController)));
+#endif
+        m_presentPopoverSwizzlers.append(makeUnique<InstanceMethodSwizzler>([UIPopoverController class], @selector(presentPopoverFromRect:inView:permittedArrowDirections:animated:), reinterpret_cast<IMP>(overridePresentMenuOrPopoverOrViewController)));
+        m_presentPopoverSwizzlers.append(makeUnique<InstanceMethodSwizzler>([UIViewController class], @selector(presentViewController:animated:completion:), reinterpret_cast<IMP>(overridePresentMenuOrPopoverOrViewController)));
     }
-    
+
     BOOL shouldRestoreFirstResponder = NO;
     if (PlatformWebView* platformWebView = mainWebView()) {
         TestRunnerWKWebView *webView = platformWebView->platformView();
@@ -186,6 +218,8 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
 
         if (webView.interactingWithFormControl)
             shouldRestoreFirstResponder = [webView resignFirstResponder];
+
+        [webView immediatelyDismissContextMenuIfNeeded];
     }
 
     UIMenuController.sharedMenuController.menuVisible = NO;
@@ -204,6 +238,16 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
             [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantPast]];
             hasPresentedViewController = !![webViewController presentedViewController];
         }
+
+        if (hasPresentedViewController) {
+            // As a last resort, just dismiss the remaining presented view controller ourselves.
+            __block BOOL isDoneDismissingViewController = NO;
+            [webViewController dismissViewControllerAnimated:NO completion:^{
+                isDoneDismissingViewController = YES;
+            }];
+            runUntil(isDoneDismissingViewController, m_currentInvocation->shortTimeout());
+            hasPresentedViewController = !![webViewController presentedViewController];
+        }
         
         if (hasPresentedViewController) {
             TestInvocation::dumpWebProcessUnresponsiveness("TestController::platformResetPreferencesToConsistentValues - Failed to remove presented view controller\n");
@@ -213,6 +257,8 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
 
     if (shouldRestoreFirstResponder)
         [mainWebView()->platformView() becomeFirstResponder];
+
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"WebKitDebugIsInAppBrowserPrivacyEnabled"];
 
     return true;
 }

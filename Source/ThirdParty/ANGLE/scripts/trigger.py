@@ -8,6 +8,7 @@
 #   Helper script for triggering GPU tests on swarming.
 
 import argparse
+import hashlib
 import os
 import subprocess
 import sys
@@ -33,33 +34,40 @@ def main():
     mb_script_path = os.path.join('tools', 'mb', 'mb.py')
     subprocess.call(['python', mb_script_path, 'isolate', out_gn_path, args.test])
 
-    isolate_script_path = os.path.join('tools', 'swarming_client', 'isolate.py')
+    isolate_cmd_path = os.path.join('tools', 'luci-go', 'isolate')
     isolate_file = os.path.join(out_file_path, '%s.isolate' % args.test)
     isolated_file = os.path.join(out_file_path, '%s.isolated' % args.test)
 
     isolate_args = [
-        'python', isolate_script_path, 'archive', '-I', 'https://isolateserver.appspot.com', '-i',
-        isolate_file, '-s', isolated_file
+        isolate_cmd_path, 'archive', '-I', 'https://isolateserver.appspot.com', '-i', isolate_file,
+        '-s', isolated_file
     ]
-    stdout = subprocess.check_output(isolate_args)
-    sha = stdout[:40]
+    subprocess.check_call(isolate_args)
+    with open(isolated_file, 'rb') as f:
+        sha = hashlib.sha1(f.read()).hexdigest()
 
     print('Got an isolated SHA of %s' % sha)
-    swarming_script_path = os.path.join('tools', 'swarming_client', 'swarming.py')
+    swarming_script_path = os.path.join('tools', 'luci-go', 'swarming')
 
-    swarmings_args = [
-        'python', swarming_script_path, 'trigger', '-S', 'chromium-swarm.appspot.com', '-I',
-        'isolateserver.appspot.com', '-d', 'os', args.os_dim, '-d', 'pool', args.pool, '-d', 'gpu',
-        args.gpu_dim,
-        '--shards=%d' % args.shards, '-s', sha
+    swarming_args = [
+        swarming_script_path, 'trigger', '-S', 'chromium-swarm.appspot.com', '-I',
+        'https://isolateserver.appspot.com', '-d', 'os=' + args.os_dim, '-d', 'pool=' + args.pool,
+        '-d', 'gpu=' + args.gpu_dim, '-s', sha
     ]
 
-    if unknown:
-        swarmings_args += ["--"] + unknown
+    for i in range(args.shards):
+        shard_args = swarming_args[:]
+        shard_args.extend([
+            '--env',
+            'GTEST_TOTAL_SHARDS=%d' % args.shards,
+            '--env',
+            'GTEST_SHARD_INDEX=%d' % i,
+        ])
+        if unknown:
+            shard_args += ["--"] + unknown
 
-
-    print(' '.join(swarmings_args))
-    subprocess.call(swarmings_args)
+        print(' '.join(shard_args))
+        subprocess.call(shard_args)
     return 0
 
 

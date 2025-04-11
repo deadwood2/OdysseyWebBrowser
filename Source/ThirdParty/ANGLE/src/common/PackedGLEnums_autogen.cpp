@@ -613,6 +613,10 @@ HandleType FromGLenum<HandleType>(GLenum from)
     {
         case GL_HANDLE_TYPE_OPAQUE_FD_EXT:
             return HandleType::OpaqueFd;
+        case GL_HANDLE_TYPE_ZIRCON_VMO_ANGLE:
+            return HandleType::ZirconVmo;
+        case GL_HANDLE_TYPE_ZIRCON_EVENT_ANGLE:
+            return HandleType::ZirconEvent;
         default:
             return HandleType::InvalidEnum;
     }
@@ -624,6 +628,10 @@ GLenum ToGLenum(HandleType from)
     {
         case HandleType::OpaqueFd:
             return GL_HANDLE_TYPE_OPAQUE_FD_EXT;
+        case HandleType::ZirconVmo:
+            return GL_HANDLE_TYPE_ZIRCON_VMO_ANGLE;
+        case HandleType::ZirconEvent:
+            return GL_HANDLE_TYPE_ZIRCON_EVENT_ANGLE;
         default:
             UNREACHABLE();
             return 0;
@@ -636,6 +644,12 @@ std::ostream &operator<<(std::ostream &os, HandleType value)
     {
         case HandleType::OpaqueFd:
             os << "GL_HANDLE_TYPE_OPAQUE_FD_EXT";
+            break;
+        case HandleType::ZirconVmo:
+            os << "GL_HANDLE_TYPE_ZIRCON_VMO_ANGLE";
+            break;
+        case HandleType::ZirconEvent:
+            os << "GL_HANDLE_TYPE_ZIRCON_EVENT_ANGLE";
             break;
         default:
             os << "GL_INVALID_ENUM";
@@ -1979,6 +1993,8 @@ TextureTarget FromGLenum<TextureTarget>(GLenum from)
             return TextureTarget::CubeMapPositiveZ;
         case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
             return TextureTarget::CubeMapNegativeZ;
+        case GL_TEXTURE_CUBE_MAP_ARRAY:
+            return TextureTarget::CubeMapArray;
         case GL_TEXTURE_VIDEO_IMAGE_WEBGL:
             return TextureTarget::VideoImage;
         default:
@@ -2016,6 +2032,8 @@ GLenum ToGLenum(TextureTarget from)
             return GL_TEXTURE_CUBE_MAP_POSITIVE_Z;
         case TextureTarget::CubeMapNegativeZ:
             return GL_TEXTURE_CUBE_MAP_NEGATIVE_Z;
+        case TextureTarget::CubeMapArray:
+            return GL_TEXTURE_CUBE_MAP_ARRAY;
         case TextureTarget::VideoImage:
             return GL_TEXTURE_VIDEO_IMAGE_WEBGL;
         default:
@@ -2067,6 +2085,9 @@ std::ostream &operator<<(std::ostream &os, TextureTarget value)
         case TextureTarget::CubeMapNegativeZ:
             os << "GL_TEXTURE_CUBE_MAP_NEGATIVE_Z";
             break;
+        case TextureTarget::CubeMapArray:
+            os << "GL_TEXTURE_CUBE_MAP_ARRAY";
+            break;
         case TextureTarget::VideoImage:
             os << "GL_TEXTURE_VIDEO_IMAGE_WEBGL";
             break;
@@ -2098,6 +2119,8 @@ TextureType FromGLenum<TextureType>(GLenum from)
             return TextureType::Rectangle;
         case GL_TEXTURE_CUBE_MAP:
             return TextureType::CubeMap;
+        case GL_TEXTURE_CUBE_MAP_ARRAY:
+            return TextureType::CubeMapArray;
         case GL_TEXTURE_VIDEO_IMAGE_WEBGL:
             return TextureType::VideoImage;
         default:
@@ -2125,6 +2148,8 @@ GLenum ToGLenum(TextureType from)
             return GL_TEXTURE_RECTANGLE_ANGLE;
         case TextureType::CubeMap:
             return GL_TEXTURE_CUBE_MAP;
+        case TextureType::CubeMapArray:
+            return GL_TEXTURE_CUBE_MAP_ARRAY;
         case TextureType::VideoImage:
             return GL_TEXTURE_VIDEO_IMAGE_WEBGL;
         default:
@@ -2160,6 +2185,9 @@ std::ostream &operator<<(std::ostream &os, TextureType value)
             break;
         case TextureType::CubeMap:
             os << "GL_TEXTURE_CUBE_MAP";
+            break;
+        case TextureType::CubeMapArray:
+            os << "GL_TEXTURE_CUBE_MAP_ARRAY";
             break;
         case TextureType::VideoImage:
             os << "GL_TEXTURE_VIDEO_IMAGE_WEBGL";

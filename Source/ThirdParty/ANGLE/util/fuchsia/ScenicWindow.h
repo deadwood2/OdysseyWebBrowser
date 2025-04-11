@@ -42,12 +42,14 @@ class ANGLE_UTIL_EXPORT ScenicWindow : public OSWindow
 
     // OSWindow:
     bool initialize(const std::string &name, int width, int height) override;
+    void disableErrorMessageDialog() override;
     void destroy() override;
     void resetNativeWindow() override;
     EGLNativeWindowType getNativeWindow() const override;
     EGLNativeDisplayType getNativeDisplay() const override;
     void messageLoop() override;
     void setMousePosition(int x, int y) override;
+    bool setOrientation(int width, int height) override;
     bool setPosition(int x, int y) override;
     bool resize(int width, int height) override;
     void setVisible(bool isVisible) override;
@@ -63,8 +65,12 @@ class ANGLE_UTIL_EXPORT ScenicWindow : public OSWindow
     void onScenicEvents(std::vector<fuchsia::ui::scenic::Event> events);
     void onScenicError(zx_status_t status);
     void onFramePresented(fuchsia::scenic::scheduling::FramePresentedInfo info);
+    void onViewMetrics(const fuchsia::ui::gfx::Metrics &metrics);
+    void onViewProperties(const fuchsia::ui::gfx::ViewProperties &properties);
 
   private:
+    void updateViewSize();
+
     // ScenicWindow async loop.
     async::Loop *const mLoop;
 
@@ -87,6 +93,15 @@ class ANGLE_UTIL_EXPORT ScenicWindow : public OSWindow
 
     // Scenic view.
     std::unique_ptr<scenic::View> mView;
+
+    // View geometry.
+    float mDisplayHeightDips = 0.f;
+    float mDisplayWidthDips  = 0.f;
+    float mDisplayScaleX     = 0.f;
+    float mDisplayScaleY     = 0.f;
+    bool mHasViewProperties  = false;
+    bool mHasViewMetrics     = false;
+    bool mViewSizeDirty      = false;
 
     // EGL native window.
     std::unique_ptr<fuchsia_egl_window, FuchsiaEGLWindowDeleter> mFuchsiaEGLWindow;

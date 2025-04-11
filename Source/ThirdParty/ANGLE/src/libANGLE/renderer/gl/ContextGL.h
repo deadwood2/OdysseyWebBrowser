@@ -76,9 +76,6 @@ class ContextGL : public ContextImpl
     // Program Pipeline object creation
     ProgramPipelineImpl *createProgramPipeline(const gl::ProgramPipelineState &data) override;
 
-    // Path object creation
-    std::vector<PathImpl *> createPaths(GLsizei range) override;
-
     // Memory object creation.
     MemoryObjectImpl *createMemoryObject() override;
 
@@ -164,49 +161,46 @@ class ContextGL : public ContextImpl
                                        gl::DrawElementsType type,
                                        const void *indirect) override;
 
-    // CHROMIUM_path_rendering implementation
-    void stencilFillPath(const gl::Path *path, GLenum fillMode, GLuint mask) override;
-    void stencilStrokePath(const gl::Path *path, GLint reference, GLuint mask) override;
-    void coverFillPath(const gl::Path *path, GLenum coverMode) override;
-    void coverStrokePath(const gl::Path *path, GLenum coverMode) override;
-    void stencilThenCoverFillPath(const gl::Path *path,
-                                  GLenum fillMode,
-                                  GLuint mask,
-                                  GLenum coverMode) override;
-    void stencilThenCoverStrokePath(const gl::Path *path,
-                                    GLint reference,
-                                    GLuint mask,
-                                    GLenum coverMode) override;
-    void coverFillPathInstanced(const std::vector<gl::Path *> &paths,
-                                GLenum coverMode,
-                                GLenum transformType,
-                                const GLfloat *transformValues) override;
-    void coverStrokePathInstanced(const std::vector<gl::Path *> &paths,
-                                  GLenum coverMode,
-                                  GLenum transformType,
-                                  const GLfloat *transformValues) override;
-    void stencilFillPathInstanced(const std::vector<gl::Path *> &paths,
-                                  GLenum fillMode,
-                                  GLuint mask,
-                                  GLenum transformType,
-                                  const GLfloat *transformValues) override;
-    void stencilStrokePathInstanced(const std::vector<gl::Path *> &paths,
-                                    GLint reference,
-                                    GLuint mask,
-                                    GLenum transformType,
-                                    const GLfloat *transformValues) override;
-    void stencilThenCoverFillPathInstanced(const std::vector<gl::Path *> &paths,
-                                           GLenum coverMode,
-                                           GLenum fillMode,
-                                           GLuint mask,
-                                           GLenum transformType,
-                                           const GLfloat *transformValues) override;
-    void stencilThenCoverStrokePathInstanced(const std::vector<gl::Path *> &paths,
-                                             GLenum coverMode,
-                                             GLint reference,
-                                             GLuint mask,
-                                             GLenum transformType,
-                                             const GLfloat *transformValues) override;
+    angle::Result multiDrawArrays(const gl::Context *context,
+                                  gl::PrimitiveMode mode,
+                                  const GLint *firsts,
+                                  const GLsizei *counts,
+                                  GLsizei drawcount) override;
+    angle::Result multiDrawArraysInstanced(const gl::Context *context,
+                                           gl::PrimitiveMode mode,
+                                           const GLint *firsts,
+                                           const GLsizei *counts,
+                                           const GLsizei *instanceCounts,
+                                           GLsizei drawcount) override;
+    angle::Result multiDrawElements(const gl::Context *context,
+                                    gl::PrimitiveMode mode,
+                                    const GLsizei *counts,
+                                    gl::DrawElementsType type,
+                                    const GLvoid *const *indices,
+                                    GLsizei drawcount) override;
+    angle::Result multiDrawElementsInstanced(const gl::Context *context,
+                                             gl::PrimitiveMode mode,
+                                             const GLsizei *counts,
+                                             gl::DrawElementsType type,
+                                             const GLvoid *const *indices,
+                                             const GLsizei *instanceCounts,
+                                             GLsizei drawcount) override;
+    angle::Result multiDrawArraysInstancedBaseInstance(const gl::Context *context,
+                                                       gl::PrimitiveMode mode,
+                                                       const GLint *firsts,
+                                                       const GLsizei *counts,
+                                                       const GLsizei *instanceCounts,
+                                                       const GLuint *baseInstances,
+                                                       GLsizei drawcount) override;
+    angle::Result multiDrawElementsInstancedBaseVertexBaseInstance(const gl::Context *context,
+                                                                   gl::PrimitiveMode mode,
+                                                                   const GLsizei *counts,
+                                                                   gl::DrawElementsType type,
+                                                                   const GLvoid *const *indices,
+                                                                   const GLsizei *instanceCounts,
+                                                                   const GLint *baseVertices,
+                                                                   const GLuint *baseInstances,
+                                                                   GLsizei drawcount) override;
 
     // Device loss
     gl::GraphicsResetStatus getResetStatus() override;
@@ -216,13 +210,16 @@ class ContextGL : public ContextImpl
     std::string getRendererDescription() const override;
 
     // EXT_debug_marker
-    void insertEventMarker(GLsizei length, const char *marker) override;
-    void pushGroupMarker(GLsizei length, const char *marker) override;
-    void popGroupMarker() override;
+    angle::Result insertEventMarker(GLsizei length, const char *marker) override;
+    angle::Result pushGroupMarker(GLsizei length, const char *marker) override;
+    angle::Result popGroupMarker() override;
 
     // KHR_debug
-    void pushDebugGroup(GLenum source, GLuint id, const std::string &message) override;
-    void popDebugGroup() override;
+    angle::Result pushDebugGroup(const gl::Context *context,
+                                 GLenum source,
+                                 GLuint id,
+                                 const std::string &message) override;
+    angle::Result popDebugGroup(const gl::Context *context) override;
 
     // State sync with dirty bits.
     angle::Result syncState(const gl::Context *context,

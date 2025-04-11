@@ -35,12 +35,31 @@ messages -> MediaPlayerPrivateRemote NotRefCounted {
     PlaybackStateChanged(bool paused)
     EngineFailedToLoad(int platformErrorCode)
     UpdateCachedState(struct WebKit::RemoteMediaPlayerState state)
-    CharacteristicChanged(bool hasAudio, bool hasVideo, enum:uint8_t WebCore::MediaPlayerEnums::MovieLoadType movieLoadType)
+    CharacteristicChanged(struct WebKit::RemoteMediaPlayerState state)
     SizeChanged(WebCore::FloatSize naturalSize)
 
     AddRemoteAudioTrack(WebKit::TrackPrivateRemoteIdentifier trackID, struct WebKit::TrackPrivateRemoteConfiguration configuration)
     RemoveRemoteAudioTrack(WebKit::TrackPrivateRemoteIdentifier trackID)
     RemoteAudioTrackConfigurationChanged(WebKit::TrackPrivateRemoteIdentifier trackID, struct WebKit::TrackPrivateRemoteConfiguration configuration)
+
+    AddRemoteTextTrack(WebKit::TrackPrivateRemoteIdentifier trackID, struct WebKit::TextTrackPrivateRemoteConfiguration configuration)
+    RemoveRemoteTextTrack(WebKit::TrackPrivateRemoteIdentifier trackID)
+    RemoteTextTrackConfigurationChanged(WebKit::TrackPrivateRemoteIdentifier trackID, struct WebKit::TextTrackPrivateRemoteConfiguration configuration)
+
+    ParseWebVTTFileHeader(WebKit::TrackPrivateRemoteIdentifier trackID, String header)
+    ParseWebVTTCueData(WebKit::TrackPrivateRemoteIdentifier trackID, IPC::DataReference data)
+    ParseWebVTTCueDataStruct(WebKit::TrackPrivateRemoteIdentifier trackID, WebCore::ISOWebVTTCue cueData)
+
+    AddDataCue(WebKit::TrackPrivateRemoteIdentifier trackID, MediaTime start, MediaTime end, IPC::DataReference data)
+#if ENABLE(DATACUE_VALUE)
+    AddDataCueWithType(WebKit::TrackPrivateRemoteIdentifier trackID, MediaTime start, MediaTime end, WebCore::SerializedPlatformDataCueValue cueData, String type)
+    UpdateDataCue(WebKit::TrackPrivateRemoteIdentifier trackID, MediaTime start, MediaTime end, WebCore::SerializedPlatformDataCueValue cueData)
+    RemoveDataCue(WebKit::TrackPrivateRemoteIdentifier trackID, MediaTime start, MediaTime end, WebCore::SerializedPlatformDataCueValue cueData)
+#endif
+
+    AddGenericCue(WebKit::TrackPrivateRemoteIdentifier trackID, struct WebCore::GenericCueData cue)
+    UpdateGenericCue(WebKit::TrackPrivateRemoteIdentifier trackID, struct WebCore::GenericCueData cue)
+    RemoveGenericCue(WebKit::TrackPrivateRemoteIdentifier trackID, struct WebCore::GenericCueData cue)
 
     AddRemoteVideoTrack(WebKit::TrackPrivateRemoteIdentifier trackID, struct WebKit::TrackPrivateRemoteConfiguration configuration)
     RemoveRemoteVideoTrack(WebKit::TrackPrivateRemoteIdentifier trackID)
@@ -48,6 +67,7 @@ messages -> MediaPlayerPrivateRemote NotRefCounted {
 
     RequestResource(WebKit::RemoteMediaResourceIdentifier remoteMediaResourceIdentifier, WebCore::ResourceRequest request, enum:uint8_t WebCore::PlatformMediaResourceLoader::LoadOptions options) -> () Async
     RemoveResource(WebKit::RemoteMediaResourceIdentifier remoteMediaResourceIdentifier)
+    SendH2Ping(URL url) -> (Expected<Seconds, WebCore::ResourceError> result) Async
     ResourceNotSupported()
 
     EngineUpdated()
@@ -56,6 +76,11 @@ messages -> MediaPlayerPrivateRemote NotRefCounted {
 
 #if ENABLE(ENCRYPTED_MEDIA)
     WaitingForKeyChanged()
+    InitializationDataEncountered(String initDataType, IPC::DataReference initData)
+#endif
+
+#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
+    MediaPlayerKeyNeeded(IPC::DataReference message)
 #endif
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)

@@ -29,6 +29,7 @@
 #if ENABLE(GPU_PROCESS)
 
 #include "RemoteMediaPlayerProxy.h"
+#include <WebCore/ResourceError.h>
 
 namespace WebKit {
 
@@ -49,6 +50,14 @@ RefPtr<PlatformMediaResource> RemoteMediaResourceLoader::requestResource(Resourc
         return nullptr;
 
     return m_remoteMediaPlayerProxy->requestResource(WTFMove(request), options);
+}
+
+void RemoteMediaResourceLoader::sendH2Ping(const URL& url, CompletionHandler<void(Expected<Seconds, ResourceError>&&)>&& completionHandler)
+{
+    if (!m_remoteMediaPlayerProxy)
+        return completionHandler(makeUnexpected(internalError(url)));
+    
+    m_remoteMediaPlayerProxy->sendH2Ping(url, WTFMove(completionHandler));
 }
 
 } // namespace WebKit

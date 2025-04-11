@@ -32,8 +32,7 @@ from webkitpy.layout_tests.models.test_configuration import TestConfiguration
 from webkitpy.port.base import Port
 from webkitpy.port.headlessdriver import HeadlessDriver
 from webkitpy.port.linux_get_crash_log import GDBCrashLogGenerator
-from webkitpy.port.waylanddriver import WaylandDriver
-
+import os
 
 class WPEPort(Port):
     port_name = "wpe"
@@ -42,6 +41,9 @@ class WPEPort(Port):
         super(WPEPort, self).__init__(*args, **kwargs)
 
         self._display_server = self.get_option("display_server")
+        if self._display_server == 'xvfb':
+            # While not supported by WPE, xvfb is used as the default value in the main scripts
+            self._display_server = 'headless'
         if self._should_use_jhbuild():
             self._jhbuild_wrapper = [self.path_from_webkit_base('Tools', 'jhbuild', 'jhbuild-wrapper'), '--wpe', 'run']
             self.set_option_default('wrapper', ' '.join(self._jhbuild_wrapper))
@@ -67,7 +69,7 @@ class WPEPort(Port):
 
     @memoized
     def _driver_class(self):
-        return WaylandDriver
+        return HeadlessDriver
 
     def setup_environ_for_server(self, server_name=None):
         environment = super(WPEPort, self).setup_environ_for_server(server_name)
@@ -77,17 +79,20 @@ class WPEPort(Port):
         environment['TEST_RUNNER_TEST_PLUGIN_PATH'] = self._build_path('lib', 'plugins')
         environment['WEBKIT_EXEC_PATH'] = self._build_path('bin')
         self._copy_value_from_environ_if_set(environment, 'WEBKIT_OUTPUTDIR')
+        self._copy_value_from_environ_if_set(environment, 'WEBKIT_JHBUILD')
         self._copy_value_from_environ_if_set(environment, 'WEBKIT_TOP_LEVEL')
-        self._copy_value_from_environ_if_set(environment, 'USE_PLAYBIN3')
-        self._copy_value_from_environ_if_set(environment, 'GST_DEBUG')
-        self._copy_value_from_environ_if_set(environment, 'GST_DEBUG_DUMP_DOT_DIR')
-        self._copy_value_from_environ_if_set(environment, 'GST_DEBUG_FILE')
-        self._copy_value_from_environ_if_set(environment, 'GST_DEBUG_NO_COLOR')
+        self._copy_value_from_environ_if_set(environment, 'WEBKIT_DEBUG')
         self._copy_value_from_environ_if_set(environment, 'LIBGL_ALWAYS_SOFTWARE')
+        self._copy_value_from_environ_if_set(environment, 'XR_RUNTIME_JSON')
+        self._copy_value_from_environ_if_set(environment, 'WEBKIT_GST_USE_PLAYBIN3')
+        for gst_variable in ('DEBUG', 'DEBUG_DUMP_DOT_DIR', 'DEBUG_FILE', 'DEBUG_NO_COLOR',
+                             'PLUGIN_SCANNER', 'PLUGIN_PATH', 'PLUGIN_SYSTEM_PATH', 'REGISTRY',
+                             'PLUGIN_PATH_1_0'):
+            self._copy_value_from_environ_if_set(environment, 'GST_%s' % gst_variable)
         return environment
 
     def show_results_html_file(self, results_filename):
-        self._run_script("run-minibrowser", [path.abspath_to_uri(self.host.platform, results_filename)])
+        self.run_minibrowser([path.abspath_to_uri(self.host.platform, results_filename)])
 
     def check_sys_deps(self):
         return super(WPEPort, self).check_sys_deps() and self._driver_class().check_driver(self)
@@ -108,7 +113,7 @@ class WPEPort(Port):
         return self._path_to_image_diff()
 
     def _search_paths(self):
-        return [self.port_name, 'wk2'] + self.get_option("additional_platform_directory", [])
+        return [self.port_name, 'glib', 'wk2'] + self.get_option("additional_platform_directory", [])
 
     def default_baseline_search_path(self, **kwargs):
         return list(map(self._webkit_baseline_path, self._search_paths()))
@@ -117,13 +122,26 @@ class WPEPort(Port):
         return list(map(lambda x: self._filesystem.join(self._webkit_baseline_path(x), 'TestExpectations'), reversed(self._search_paths())))
 
     def test_expectations_file_position(self):
-        # WPE port baseline search path is wpe -> wk2 -> generic, so port test expectations file is at third to last position.
-        return 2
+        # WPE port baseline search path is wpe -> glib -> wk2 -> generic, so port test expectations file is at third to last position.
+        return 3
 
     def _get_crash_log(self, name, pid, stdout, stderr, newer_than, target_host=None):
-        return GDBCrashLogGenerator(self._executive, name, pid, newer_than, self._filesystem, self._path_to_driver).generate_crash_log(stdout, stderr)
+        return GDBCrashLogGenerator(self._executive, name, pid, newer_than,
+                                    self._filesystem, self._path_to_driver, self.port_name, self.get_option('configuration')).generate_crash_log(stdout, stderr)
 
     def configuration_for_upload(self, host=None):
         configuration = super(WPEPort, self).configuration_for_upload(host=host)
         configuration['platform'] = 'WPE'
         return configuration
+
+    def run_minibrowser(self, args):
+        miniBrowser = self._build_path('bin', 'MiniBrowser')
+        if not self._filesystem.isfile(miniBrowser):
+            print("%s not found... Did you run build-webkit?" % miniBrowser)
+            return 1
+        command = [miniBrowser]
+        if os.environ.get("WEBKIT_MINI_BROWSER_PREFIX"):
+            command.insert(0, os.environ["WEBKIT_MINI_BROWSER_PREFIX"])
+        if self._should_use_jhbuild():
+            command = self._jhbuild_wrapper + command
+        return self._executive.run_command(command + args, cwd=self.webkit_base(), stdout=None, return_stderr=False, decode_output=False)

@@ -11,7 +11,6 @@
 #include "compiler/translator/ExtensionGLSL.h"
 #include "compiler/translator/OutputGLSL.h"
 #include "compiler/translator/VersionGLSL.h"
-#include "compiler/translator/tree_ops/EmulatePrecision.h"
 #include "compiler/translator/tree_ops/RewriteRowMajorMatrices.h"
 #include "compiler/translator/tree_ops/RewriteTexelFetchOffset.h"
 #include "compiler/translator/tree_ops/RewriteUnaryMinusOperatorFloat.h"
@@ -118,19 +117,9 @@ bool TranslatorGLSL::translate(TIntermBlock *root,
         }
     }
 
-    bool precisionEmulation =
-        getResources().WEBGL_debug_shader_precision && getPragma().debugShaderPrecision;
-
-    if (precisionEmulation)
-    {
-        EmulatePrecision emulatePrecision(&getSymbolTable());
-        root->traverse(&emulatePrecision);
-        if (!emulatePrecision.updateTree(this, root))
-        {
-            return false;
-        }
-        emulatePrecision.writeEmulationHelpers(sink, getShaderVersion(), getOutputType());
-    }
+    bool precisionEmulation = false;
+    if (!emulatePrecisionIfNeeded(root, sink, &precisionEmulation, getOutputType()))
+        return false;
 
     // Write emulated built-in functions if needed.
     if (!getBuiltInFunctionEmulator().isOutputEmpty())
@@ -265,6 +254,8 @@ void TranslatorGLSL::writeVersion(TIntermNode *root)
 
 void TranslatorGLSL::writeExtensionBehavior(TIntermNode *root, ShCompileOptions compileOptions)
 {
+    bool usesTextureCubeMapArray = false;
+
     TInfoSinkBase &sink                   = getInfoSink().obj;
     const TExtensionBehavior &extBehavior = getExtensionBehavior();
     for (const auto &iter : extBehavior)
@@ -316,6 +307,13 @@ void TranslatorGLSL::writeExtensionBehavior(TIntermNode *root, ShCompileOptions 
             sink << "#extension GL_ARB_texture_multisample : " << GetBehaviorString(iter.second)
                  << "\n";
         }
+
+        if ((iter.first == TExtension::OES_texture_cube_map_array ||
+             iter.first == TExtension::EXT_texture_cube_map_array) &&
+            (iter.second == EBhRequire || iter.second == EBhEnable))
+        {
+            usesTextureCubeMapArray = true;
+        }
     }
 
     // GLSL ES 3 explicit location qualifiers need to use an extension before GLSL 330
@@ -334,6 +332,21 @@ void TranslatorGLSL::writeExtensionBehavior(TIntermNode *root, ShCompileOptions 
         // on drivers that don't have the extension at all as it would break WebGL 1 for
         // some users.
         sink << "#extension GL_ARB_gpu_shader5 : enable\n";
+        sink << "#extension GL_EXT_gpu_shader5 : enable\n";
+    }
+
+    if (usesTextureCubeMapArray)
+    {
+        if (getOutputType() >= SH_GLSL_COMPATIBILITY_OUTPUT &&
+            getOutputType() < SH_GLSL_400_CORE_OUTPUT)
+        {
+            sink << "#extension GL_ARB_texture_cube_map_array : enable\n";
+        }
+        else if (getOutputType() == SH_ESSL_OUTPUT && getShaderVersion() < 320)
+        {
+            sink << "#extension GL_OES_texture_cube_map_array : enable\n";
+            sink << "#extension GL_EXT_texture_cube_map_array : enable\n";
+        }
     }
 
     TExtensionGLSL extensionGLSL(getOutputType());

@@ -61,41 +61,28 @@ RemoteScrollingTree::~RemoteScrollingTree()
 {
 }
 
-ScrollingEventResult RemoteScrollingTree::tryToHandleWheelEvent(const PlatformWheelEvent& wheelEvent)
-{
-    if (shouldHandleWheelEventSynchronously(wheelEvent))
-        return ScrollingEventResult::SendToMainThread;
-
-    if (willWheelEventStartSwipeGesture(wheelEvent))
-        return ScrollingEventResult::DidNotHandleEvent;
-
-    handleWheelEvent(wheelEvent);
-    return ScrollingEventResult::DidHandleEvent;
-}
-
 #if PLATFORM(MAC)
-void RemoteScrollingTree::handleWheelEventPhase(PlatformWheelEventPhase phase)
+void RemoteScrollingTree::handleWheelEventPhase(ScrollingNodeID, PlatformWheelEventPhase)
 {
     // FIXME: hand off to m_scrollingCoordinatorProxy?
 }
 #endif
 
 #if PLATFORM(IOS_FAMILY)
-void RemoteScrollingTree::scrollingTreeNodeWillStartPanGesture()
+void RemoteScrollingTree::scrollingTreeNodeWillStartPanGesture(ScrollingNodeID nodeID)
 {
-    m_scrollingCoordinatorProxy.scrollingTreeNodeWillStartPanGesture();
+    m_scrollingCoordinatorProxy.scrollingTreeNodeWillStartPanGesture(nodeID);
 }
 
-void RemoteScrollingTree::scrollingTreeNodeWillStartScroll()
+void RemoteScrollingTree::scrollingTreeNodeWillStartScroll(ScrollingNodeID nodeID)
 {
-    m_scrollingCoordinatorProxy.scrollingTreeNodeWillStartScroll();
+    m_scrollingCoordinatorProxy.scrollingTreeNodeWillStartScroll(nodeID);
 }
 
-void RemoteScrollingTree::scrollingTreeNodeDidEndScroll()
+void RemoteScrollingTree::scrollingTreeNodeDidEndScroll(ScrollingNodeID nodeID)
 {
-    m_scrollingCoordinatorProxy.scrollingTreeNodeDidEndScroll();
+    m_scrollingCoordinatorProxy.scrollingTreeNodeDidEndScroll(nodeID);
 }
-
 #endif
 
 void RemoteScrollingTree::scrollingTreeNodeDidScroll(ScrollingTreeScrollingNode& node, ScrollingLayerPositionAction scrollingLayerPositionAction)

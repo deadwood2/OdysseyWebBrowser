@@ -88,7 +88,8 @@ private:
 class TestController {
 public:
     static TestController& singleton();
-    static WKWebsiteDataStoreRef websiteDataStore();
+    static void configureWebsiteDataStoreTemporaryDirectories(WKWebsiteDataStoreConfigurationRef);
+    static WKWebsiteDataStoreRef defaultWebsiteDataStore();
 
     static const unsigned viewWidth;
     static const unsigned viewHeight;
@@ -111,6 +112,8 @@ public:
     WKContextRef context() { return m_context.get(); }
     WKUserContentControllerRef userContentController() { return m_userContentController.get(); }
 
+    WKWebsiteDataStoreRef websiteDataStore();
+
     EventSenderProxy* eventSenderProxy() { return m_eventSenderProxy.get(); }
 
     bool shouldUseRemoteLayerTree() const { return m_shouldUseRemoteLayerTree; }
@@ -131,6 +134,10 @@ public:
 
     void simulateWebNotificationClick(uint64_t notificationID);
 
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+    bool accessibilityIsolatedTreeMode() const { return m_accessibilityIsolatedTreeMode; }
+#endif
+    
     // Geolocation.
     void setGeolocationPermission(bool);
     void setMockGeolocationPosition(double latitude, double longitude, double accuracy, bool providesAltitude, double altitude, bool providesAltitudeAccuracy, double altitudeAccuracy, bool providesHeading, double heading, bool providesSpeed, double speed, bool providesFloorLevel, double floorLevel);
@@ -207,11 +214,15 @@ public:
     void setShouldDownloadUndisplayableMIMETypes(bool value) { m_shouldDownloadUndisplayableMIMETypes = value; }
     void setShouldAllowDeviceOrientationAndMotionAccess(bool value) { m_shouldAllowDeviceOrientationAndMotionAccess = value; }
 
+    void clearStatisticsDataForDomain(WKStringRef domain);
+    bool doesStatisticsDomainIDExistInDatabase(unsigned domainID);
     void setStatisticsEnabled(bool value);
+    bool isStatisticsEphemeral();
     void setStatisticsDebugMode(bool value);
     void setStatisticsPrevalentResourceForDebugMode(WKStringRef hostName);
     void setStatisticsLastSeen(WKStringRef hostName, double seconds);
     void setStatisticsMergeStatistic(WKStringRef host, WKStringRef topFrameDomain1, WKStringRef topFrameDomain2, double lastSeen, bool hadUserInteraction, double mostRecentUserInteraction, bool isGrandfathered, bool isPrevalent, bool isVeryPrevalent, int dataRecordsRemoved);
+    void setStatisticsExpiredStatistic(WKStringRef host, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent);
     void setStatisticsPrevalentResource(WKStringRef hostName, bool value);
     void setStatisticsVeryPrevalentResource(WKStringRef hostName, bool value);
     String dumpResourceLoadStatistics();
@@ -240,7 +251,6 @@ public:
     void setStatisticsNotifyPagesWhenDataRecordsWereScanned(bool);
     void setStatisticsIsRunningTest(bool);
     void setStatisticsShouldClassifyResourcesBeforeDataRecordsRemoval(bool);
-    void setStatisticsNotifyPagesWhenTelemetryWasCaptured(bool value);
     void setStatisticsMinimumTimeBetweenDataRecordsRemoval(double);
     void setStatisticsGrandfatheringTime(double seconds);
     void setStatisticsMaxStatisticsEntries(unsigned);
@@ -255,9 +265,19 @@ public:
     void setStatisticsShouldDowngradeReferrer(bool value);
     void setStatisticsShouldBlockThirdPartyCookies(bool value, bool onlyOnSitesWithoutUserInteraction);
     void setStatisticsFirstPartyWebsiteDataRemovalMode(bool value);
+    void setStatisticsToSameSiteStrictCookies(WKStringRef hostName);
+    void setStatisticsFirstPartyHostCNAMEDomain(WKStringRef firstPartyURLString, WKStringRef cnameURLString);
+    void setStatisticsThirdPartyCNAMEDomain(WKStringRef cnameURLString);
+    void setAppBoundDomains(WKArrayRef originURLs);
     void statisticsResetToConsistentState();
 
     void getAllStorageAccessEntries();
+    void loadedThirdPartyDomains();
+    void clearLoadedThirdPartyDomains();
+    void clearAppBoundSession();
+    void reinitializeAppBoundDomains();
+    void updateBundleIdentifierInNetworkProcess(const String& bundleIdentifier);
+    void clearBundleIdentifierInNetworkProcess();
 
     WKArrayRef openPanelFileURLs() const { return m_openPanelFileURLs.get(); }
     void setOpenPanelFileURLs(WKArrayRef fileURLs) { m_openPanelFileURLs = fileURLs; }
@@ -296,6 +316,7 @@ public:
     void resetMockMediaDevices();
     void setMockCameraOrientation(uint64_t);
     bool isMockRealtimeMediaSourceCenterEnabled() const;
+    bool hasAppBoundSession();
 
     void injectUserScript(WKStringRef);
     
@@ -304,12 +325,13 @@ public:
     void setServiceWorkerFetchTimeoutForTesting(double seconds);
 
     void addTestKeyToKeychain(const String& privateKeyBase64, const String& attrLabel, const String& applicationTagBase64);
-    void cleanUpKeychain(const String& attrLabel, const String& applicationTagBase64);
-    bool keyExistsInKeychain(const String& attrLabel, const String& applicationTagBase64);
+    void cleanUpKeychain(const String& attrLabel, const String& applicationLabelBase64);
+    bool keyExistsInKeychain(const String& attrLabel, const String& applicationLabelBase64);
 
 #if PLATFORM(COCOA)
-    RetainPtr<NSString> getOverriddenCalendarIdentifier() const;
-    void setDefaultCalendarType(NSString *identifier);
+    NSString *overriddenCalendarIdentifier() const;
+    NSString *overriddenCalendarLocaleIdentifier() const;
+    void setDefaultCalendarType(NSString *identifier, NSString *localeIdentifier);
 #endif // PLATFORM(COCOA)
 
 #if PLATFORM(IOS_FAMILY)
@@ -335,6 +357,8 @@ public:
     void setAdClickAttributionConversionURLForTesting(WKURLRef);
     void markAdClickAttributionsAsExpiredForTesting();
 
+    void didSetAppBoundDomains() const;
+
 private:
     WKRetainPtr<WKPageConfigurationRef> generatePageConfiguration(const TestOptions&);
     WKRetainPtr<WKContextConfigurationRef> generateContextConfiguration(const TestOptions::ContextOptions&) const;
@@ -351,6 +375,7 @@ private:
     bool handleControlCommand(const char* command);
 
     void platformInitialize();
+    void platformInitializeDataStore(WKPageConfigurationRef, const TestOptions&);
     void platformDestroy();
     WKContextRef platformAdjustContext(WKContextRef, WKContextConfigurationRef);
     void platformInitializeContext();
@@ -502,7 +527,7 @@ private:
     std::unique_ptr<TestInvocation> m_currentInvocation;
 #if PLATFORM(COCOA)
     std::unique_ptr<ClassMethodSwizzler> m_calendarSwizzler;
-    RetainPtr<NSString> m_overriddenCalendarIdentifier;
+    std::pair<RetainPtr<NSString>, RetainPtr<NSString>> m_overriddenCalendarAndLocaleIdentifiers;
 #endif // PLATFORM(COCOA)
     bool m_verbose { false };
     bool m_printSeparators { false };
@@ -530,6 +555,9 @@ private:
     Vector<std::unique_ptr<InstanceMethodSwizzler>> m_inputModeSwizzlers;
     RetainPtr<UIKeyboardInputMode> m_overriddenKeyboardInputMode;
     Vector<std::unique_ptr<InstanceMethodSwizzler>> m_presentPopoverSwizzlers;
+#if !HAVE(NONDESTRUCTIVE_IMAGE_PASTE_SUPPORT_QUERY)
+    std::unique_ptr<InstanceMethodSwizzler> m_keyboardDelegateSupportsImagePasteSwizzler;
+#endif
 #endif
 
     enum State {
@@ -588,6 +616,10 @@ private:
 
     bool m_allowAnyHTTPSCertificateForAllowedHosts { false };
 
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+    bool m_accessibilityIsolatedTreeMode { false };
+#endif
+    
     bool m_shouldDecideNavigationPolicyAfterDelay { false };
     bool m_shouldDecideResponsePolicyAfterDelay { false };
 
@@ -599,6 +631,7 @@ private:
 #endif
 
     std::unique_ptr<EventSenderProxy> m_eventSenderProxy;
+    WKRetainPtr<WKWebsiteDataStoreRef> m_websiteDataStore;
 
     WorkQueueManager m_workQueueManager;
 

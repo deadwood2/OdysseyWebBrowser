@@ -23,20 +23,21 @@ list(APPEND DumpRenderTree_LIBRARIES
 )
 
 list(APPEND DumpRenderTree_INCLUDE_DIRECTORIES
-    cg
-    cf
-    mac
-    mac/InternalHeaders/WebKit
-    TestNetscapePlugIn
+    ${DumpRenderTree_DIR}/cg
+    ${DumpRenderTree_DIR}/cf
+    ${DumpRenderTree_DIR}/cocoa
+    ${DumpRenderTree_DIR}/mac
+    ${DumpRenderTree_DIR}/mac/InternalHeaders/WebKit
+    ${DumpRenderTree_DIR}/TestNetscapePlugIn
     ${FORWARDING_HEADERS_DIR}
     ${FORWARDING_HEADERS_DIR}/WebCore
     ${FORWARDING_HEADERS_DIR}/WebKit
     ${FORWARDING_HEADERS_DIR}/WebKitLegacy
     ${WEBCORE_DIR}/testing/cocoa
     ${WEBKITLEGACY_DIR}
-    ${WEBKIT_TESTRUNNER_SHARED_DIR}/cocoa
-    ${WEBKIT_TESTRUNNER_SHARED_DIR}/mac
-    ${WEBKIT_TESTRUNNER_SHARED_DIR}/spi
+    ${WebKitTestRunner_SHARED_DIR}/cocoa
+    ${WebKitTestRunner_SHARED_DIR}/mac
+    ${WebKitTestRunner_SHARED_DIR}/spi
 )
 
 # Common ${TestNetscapePlugIn_SOURCES} from CMakeLists.txt are C++ source files.
@@ -74,6 +75,7 @@ list(APPEND DumpRenderTree_Cpp_SOURCES
 
 list(APPEND DumpRenderTree_ObjCpp_SOURCES
     DefaultPolicyDelegate.mm
+    cocoa/UIScriptControllerCocoa.mm
     mac/AccessibilityCommonMac.mm
     mac/AccessibilityControllerMac.mm
     mac/AccessibilityNotificationHandler.mm
@@ -99,8 +101,8 @@ list(APPEND DumpRenderTree_ObjCpp_SOURCES
     mac/UIDelegate.mm
     mac/UIScriptControllerMac.mm
     mac/WorkQueueItemMac.mm
-    ${WEBKIT_TESTRUNNER_SHARED_DIR}/cocoa/ClassMethodSwizzler.mm
-    ${WEBKIT_TESTRUNNER_SHARED_DIR}/cocoa/LayoutTestSpellChecker.mm
+    ${WebKitTestRunner_SHARED_DIR}/cocoa/ClassMethodSwizzler.mm
+    ${WebKitTestRunner_SHARED_DIR}/cocoa/LayoutTestSpellChecker.mm
 )
 
 set(DumpRenderTree_SOURCES

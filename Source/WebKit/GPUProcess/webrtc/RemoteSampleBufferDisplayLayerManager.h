@@ -25,16 +25,21 @@
 
 #pragma once
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
 
 #include "MessageReceiver.h"
 #include "RemoteSampleBufferDisplayLayerManagerMessagesReplies.h"
 #include "SampleBufferDisplayLayerIdentifier.h"
+#include <WebCore/IntSize.h>
 #include <wtf/HashMap.h>
 
 namespace IPC {
 class Connection;
 class Decoder;
+}
+
+namespace WebCore {
+class IntSize;
 }
 
 namespace WebKit {
@@ -49,14 +54,13 @@ public:
 
     void didReceiveLayerMessage(IPC::Connection&, IPC::Decoder&);
     void didReceiveMessageFromWebProcess(IPC::Connection& connection, IPC::Decoder& decoder) { didReceiveMessage(connection, decoder); }
-    void didReceiveSyncMessageFromWebProcess(IPC::Connection& connection, IPC::Decoder& decoder, std::unique_ptr<IPC::Encoder>& encoder) { didReceiveSyncMessage(connection, decoder, encoder); }
 
 private:
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
-    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) final;
 
-    void createLayer(SampleBufferDisplayLayerIdentifier, bool hideRootLayer, WebCore::IntSize, Messages::RemoteSampleBufferDisplayLayerManager::CreateLayerDelayedReply&&);
+    using LayerCreationCallback = CompletionHandler<void(Optional<LayerHostingContextID>)>&&;
+    void createLayer(SampleBufferDisplayLayerIdentifier, bool hideRootLayer, WebCore::IntSize, LayerCreationCallback);
     void releaseLayer(SampleBufferDisplayLayerIdentifier);
 
     Ref<IPC::Connection> m_connection;
@@ -65,4 +69,4 @@ private:
 
 }
 
-#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)

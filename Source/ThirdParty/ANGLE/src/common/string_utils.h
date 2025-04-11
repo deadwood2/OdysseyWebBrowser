@@ -69,9 +69,18 @@ bool BeginsWith(const char *str, const char *prefix);
 bool BeginsWith(const std::string &str, const std::string &prefix, const size_t prefixLength);
 
 // Check if the string str ends with the given suffix.
-// Suffix may not be NUL and needs to be NULL terminated.
+// The comparison is case sensitive.
+bool EndsWith(const std::string &str, const std::string &suffix);
+
+// Check if the string str ends with the given suffix.
+// Suffix may not be NULL and needs to be NULL terminated.
 // The comparison is case sensitive.
 bool EndsWith(const std::string &str, const char *suffix);
+
+// Check if the string str ends with the given suffix.
+// str and suffix may not be NULL and need to be NULL terminated.
+// The comparison is case sensitive.
+bool EndsWith(const char *str, const char *suffix);
 
 // Convert to lower-case.
 void ToLower(std::string *str);
@@ -80,6 +89,9 @@ void ToLower(std::string *str);
 bool ReplaceSubstring(std::string *str,
                       const std::string &substring,
                       const std::string &replacement);
+
+// Split up a string parsed from an environment variable.
+std::vector<std::string> GetStringsFromEnvironmentVar(const char *varName, const char *separator);
 
 }  // namespace angle
 

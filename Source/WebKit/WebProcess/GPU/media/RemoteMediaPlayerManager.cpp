@@ -28,9 +28,7 @@
 
 #if ENABLE(GPU_PROCESS)
 
-#include "AudioMediaStreamTrackRenderer.h"
 #include "MediaPlayerPrivateRemote.h"
-#include "RemoteAudioMediaStreamTrackRenderer.h"
 #include "RemoteMediaPlayerConfiguration.h"
 #include "RemoteMediaPlayerMIMETypeCache.h"
 #include "RemoteMediaPlayerManagerProxyMessages.h"
@@ -144,7 +142,6 @@ void RemoteMediaPlayerManager::initialize(const WebProcessCreationParameters& pa
 
 std::unique_ptr<MediaPlayerPrivateInterface> RemoteMediaPlayerManager::createRemoteMediaPlayer(MediaPlayer* player, MediaPlayerEnums::MediaEngineIdentifier remoteEngineIdentifier)
 {
-    auto id = MediaPlayerPrivateRemoteIdentifier::generate();
 
     RemoteMediaPlayerProxyConfiguration proxyConfiguration;
     proxyConfiguration.referrer = player->referrer();
@@ -155,19 +152,30 @@ std::unique_ptr<MediaPlayerPrivateInterface> RemoteMediaPlayerManager::createRem
 #endif
     proxyConfiguration.mediaContentTypesRequiringHardwareSupport = player->mediaContentTypesRequiringHardwareSupport();
     proxyConfiguration.preferredAudioCharacteristics = player->preferredAudioCharacteristics();
+#if !RELEASE_LOG_DISABLED
     proxyConfiguration.logIdentifier = reinterpret_cast<uint64_t>(player->mediaPlayerLogIdentifier());
+#endif
     proxyConfiguration.shouldUsePersistentCache = player->shouldUsePersistentCache();
     proxyConfiguration.isVideo = player->isVideoPlayer();
 
-    RemoteMediaPlayerConfiguration playerConfiguration;
-    bool sendSucceeded = gpuProcessConnection().connection().sendSync(Messages::RemoteMediaPlayerManagerProxy::CreateMediaPlayer(id, remoteEngineIdentifier, proxyConfiguration), Messages::RemoteMediaPlayerManagerProxy::CreateMediaPlayer::Reply(playerConfiguration), 0);
-    if (!sendSucceeded) {
-        WTFLogAlways("Failed to create remote media player.");
-        return nullptr;
-    }
+    auto documentSecurityOrigin = player->documentSecurityOrigin();
+    proxyConfiguration.documentSecurityOrigin = documentSecurityOrigin;
 
-    auto remotePlayer = MediaPlayerPrivateRemote::create(player, remoteEngineIdentifier, id, *this, playerConfiguration);
-    m_players.add(id, makeWeakPtr(*remotePlayer));
+    auto identifier = MediaPlayerPrivateRemoteIdentifier::generate();
+    RemoteMediaPlayerConfiguration playerConfiguration;
+    auto completionHandler = [this, weakThis = makeWeakPtr(this), identifier, documentSecurityOrigin = WTFMove(documentSecurityOrigin)](auto&& playerConfiguration) mutable {
+        if (!weakThis)
+            return;
+
+        if (const auto& player = m_players.get(identifier))
+            player->setConfiguration(WTFMove(playerConfiguration), WTFMove(documentSecurityOrigin));
+    };
+
+    gpuProcessConnection().connection().sendWithAsyncReply(Messages::RemoteMediaPlayerManagerProxy::CreateMediaPlayer(identifier, remoteEngineIdentifier, proxyConfiguration), completionHandler, 0);
+
+    auto remotePlayer = MediaPlayerPrivateRemote::create(player, remoteEngineIdentifier, identifier, *this);
+    m_players.add(identifier, makeWeakPtr(*remotePlayer));
+
     return remotePlayer;
 }
 
@@ -176,6 +184,17 @@ void RemoteMediaPlayerManager::deleteRemoteMediaPlayer(MediaPlayerPrivateRemoteI
     m_players.take(id);
     gpuProcessConnection().connection().send(Messages::RemoteMediaPlayerManagerProxy::DeleteMediaPlayer(id), 0);
 }
+
+MediaPlayerPrivateRemoteIdentifier RemoteMediaPlayerManager::findRemotePlayerId(const MediaPlayerPrivateInterface* player)
+{
+    for (auto pair : m_players) {
+        if (pair.value == player)
+            return pair.key;
+    }
+
+    return { };
+}
+
 
 void RemoteMediaPlayerManager::getSupportedTypes(MediaPlayerEnums::MediaEngineIdentifier remoteEngineIdentifier, HashSet<String, ASCIICaseInsensitiveHash>& result)
 {
@@ -248,11 +267,10 @@ void RemoteMediaPlayerManager::updatePreferences(const Settings& settings)
 
     RemoteMediaPlayerSupport::setRegisterRemotePlayerCallback(settings.useGPUProcessForMedia() ? WTFMove(registerEngine) : RemoteMediaPlayerSupport::RegisterRemotePlayerCallback());
 
-#if PLATFORM(COCOA) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
     if (settings.useGPUProcessForMedia()) {
-        WebCore::AudioMediaStreamTrackRenderer::setCreator(WebKit::AudioMediaStreamTrackRenderer::create);
-        WebCore::SampleBufferDisplayLayer::setCreator([](auto& client, bool hideRootLayer, auto size) {
-            return WebProcess::singleton().ensureGPUProcessConnection().sampleBufferDisplayLayerManager().createLayer(client, hideRootLayer, size);
+        WebCore::SampleBufferDisplayLayer::setCreator([](auto& client) {
+            return WebProcess::singleton().ensureGPUProcessConnection().sampleBufferDisplayLayerManager().createLayer(client);
         });
     }
 #endif

@@ -26,41 +26,44 @@
 #include "config.h"
 #include "SampleBufferDisplayLayer.h"
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
 
+#include "GPUProcessConnection.h"
 #include "LayerHostingContext.h"
 #include "RemoteSampleBufferDisplayLayerManagerMessages.h"
 #include "RemoteSampleBufferDisplayLayerManagerMessagesReplies.h"
 #include "RemoteSampleBufferDisplayLayerMessages.h"
 #include "SampleBufferDisplayLayerManager.h"
 #include "WebCoreArgumentCoders.h"
-
-using namespace WebCore;
+#include "WebProcess.h"
+#include <WebCore/RemoteVideoSample.h>
 
 namespace WebKit {
+using namespace WebCore;
 
-std::unique_ptr<SampleBufferDisplayLayer> SampleBufferDisplayLayer::create(SampleBufferDisplayLayerManager& manager, Client& client, bool hideRootLayer, IntSize size)
+std::unique_ptr<SampleBufferDisplayLayer> SampleBufferDisplayLayer::create(SampleBufferDisplayLayerManager& manager, Client& client)
 {
-    auto layer = std::unique_ptr<SampleBufferDisplayLayer>(new SampleBufferDisplayLayer(manager, client, hideRootLayer, size));
-    return layer->rootLayer() ? WTFMove(layer) : nullptr;
+    return std::unique_ptr<SampleBufferDisplayLayer>(new SampleBufferDisplayLayer(manager, client));
 }
 
-SampleBufferDisplayLayer::SampleBufferDisplayLayer(SampleBufferDisplayLayerManager& manager, Client& client, bool hideRootLayer, IntSize size)
+SampleBufferDisplayLayer::SampleBufferDisplayLayer(SampleBufferDisplayLayerManager& manager, Client& client)
     : WebCore::SampleBufferDisplayLayer(client)
     , m_manager(makeWeakPtr(manager))
     , m_connection(WebProcess::singleton().ensureGPUProcessConnection().connection())
     , m_identifier(SampleBufferDisplayLayerIdentifier::generate())
 {
     manager.addLayer(*this);
+}
 
-    Optional<LayerHostingContextID> contextId;
-    if (!m_connection->sendSync(Messages::RemoteSampleBufferDisplayLayerManager::CreateLayer { m_identifier, hideRootLayer, size }, Messages::RemoteSampleBufferDisplayLayerManager::CreateLayer::Reply { contextId, m_bounds }, 0))
-        return;
-
-    if (!contextId)
-        return;
-
-    m_videoLayer = LayerHostingContext::createPlatformLayerForHostingContext(*contextId);
+void SampleBufferDisplayLayer::initialize(bool hideRootLayer, IntSize size, CompletionHandler<void(bool)>&& callback)
+{
+    m_connection->sendWithAsyncReply(Messages::RemoteSampleBufferDisplayLayerManager::CreateLayer { m_identifier, hideRootLayer, size }, [this, weakThis = makeWeakPtr(this), callback = WTFMove(callback)](auto contextId) mutable {
+        if (!weakThis)
+            return callback(false);
+        if (contextId)
+            m_videoLayer = LayerHostingContext::createPlatformLayerForHostingContext(*contextId);
+        callback(!!m_videoLayer);
+    });
 }
 
 SampleBufferDisplayLayer::~SampleBufferDisplayLayer()
@@ -80,20 +83,14 @@ void SampleBufferDisplayLayer::updateDisplayMode(bool hideDisplayLayer, bool hid
     m_connection->send(Messages::RemoteSampleBufferDisplayLayer::UpdateDisplayMode { hideDisplayLayer, hideRootLayer }, m_identifier);
 }
 
-CGRect SampleBufferDisplayLayer::bounds() const
-{
-    return m_bounds;
-}
-
 void SampleBufferDisplayLayer::updateAffineTransform(CGAffineTransform transform)
 {
     m_connection->send(Messages::RemoteSampleBufferDisplayLayer::UpdateAffineTransform { transform }, m_identifier);
 }
 
-void SampleBufferDisplayLayer::updateBoundsAndPosition(CGRect bounds, CGPoint position)
+void SampleBufferDisplayLayer::updateBoundsAndPosition(CGRect bounds, MediaSample::VideoRotation rotation)
 {
-    m_bounds = bounds;
-    m_connection->send(Messages::RemoteSampleBufferDisplayLayer::UpdateBoundsAndPosition { bounds, position }, m_identifier);
+    m_connection->send(Messages::RemoteSampleBufferDisplayLayer::UpdateBoundsAndPosition { bounds, rotation }, m_identifier);
 }
 
 void SampleBufferDisplayLayer::flush()
@@ -104,6 +101,16 @@ void SampleBufferDisplayLayer::flush()
 void SampleBufferDisplayLayer::flushAndRemoveImage()
 {
     m_connection->send(Messages::RemoteSampleBufferDisplayLayer::FlushAndRemoveImage { }, m_identifier);
+}
+
+void SampleBufferDisplayLayer::play()
+{
+    m_connection->send(Messages::RemoteSampleBufferDisplayLayer::Play { }, m_identifier);
+}
+
+void SampleBufferDisplayLayer::pause()
+{
+    m_connection->send(Messages::RemoteSampleBufferDisplayLayer::Pause { }, m_identifier);
 }
 
 void SampleBufferDisplayLayer::enqueueSample(MediaSample& sample)

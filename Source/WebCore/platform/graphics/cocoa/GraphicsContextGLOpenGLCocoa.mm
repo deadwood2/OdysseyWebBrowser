@@ -23,7 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#include "config.h"
+#import "config.h"
 
 #if ENABLE(GRAPHICS_CONTEXT_GL)
 #import "GraphicsContextGLOpenGL.h"
@@ -64,21 +64,21 @@
 #define GL_ANGLE_explicit_context
 #define GL_ANGLE_explicit_context_gles1
 typedef void* GLeglContext;
-#include <ANGLE/egl.h>
-#include <ANGLE/eglext.h>
-#include <ANGLE/eglext_angle.h>
-#include <ANGLE/entry_points_egl.h>
-#include <ANGLE/entry_points_egl_ext.h>
-#include <ANGLE/entry_points_gles_2_0_autogen.h>
-#include <ANGLE/entry_points_gles_ext_autogen.h>
-#include <ANGLE/gl2ext.h>
-#include <ANGLE/gl2ext_angle.h>
+#import <ANGLE/egl.h>
+#import <ANGLE/eglext.h>
+#import <ANGLE/eglext_angle.h>
+#import <ANGLE/entry_points_egl.h>
+#import <ANGLE/entry_points_egl_ext.h>
+#import <ANGLE/entry_points_gles_2_0_autogen.h>
+#import <ANGLE/entry_points_gles_ext_autogen.h>
+#import <ANGLE/gl2ext.h>
+#import <ANGLE/gl2ext_angle.h>
 #endif
 
 #if USE(OPENGL_ES) || USE(OPENGL)
-#include "ExtensionsGLOpenGL.h"
+#import "ExtensionsGLOpenGL.h"
 #elif USE(ANGLE)
-#include "ExtensionsGLANGLE.h"
+#import "ExtensionsGLANGLE.h"
 #endif
 
 #if PLATFORM(MAC)
@@ -268,8 +268,8 @@ GraphicsContextGLOpenGL::GraphicsContextGLOpenGL(GraphicsContextGLAttributes att
     CGLContextObj sharedCGLContext = sharedContext ? static_cast<CGLContextObj>(sharedContext->m_contextObj) : nullptr;
 
     CGLError err = CGLCreateContext(pixelFormatObj, sharedCGLContext, &cglContext);
-    GLint abortOnBlacklist = 0;
-    CGLSetParameter(cglContext, kCGLCPAbortOnGPURestartStatusBlacklisted, &abortOnBlacklist);
+    GLint abortOnBlocklist = 0;
+    CGLSetParameter(cglContext, kCGLCPAbortOnGPURestartStatusBlacklisted, &abortOnBlocklist);
 
 #if PLATFORM(MAC) // FIXME: This probably should be USE(OPENGL) - see <rdar://53062794>.
 
@@ -345,8 +345,24 @@ GraphicsContextGLOpenGL::GraphicsContextGLOpenGL(GraphicsContextGLAttributes att
         eglContextAttributes.append(EGL_CONTEXT_OPENGL_BACKWARDS_COMPATIBLE_ANGLE);
         eglContextAttributes.append(EGL_FALSE);
     }
-    eglContextAttributes.append(EGL_CONTEXT_WEBGL_COMPATIBILITY_ANGLE);
+    if (!sharedContext) {
+        // The shared context is only non-null when creating a context
+        // on behalf of the VideoTextureCopier. WebGL-specific rendering
+        // feedback loop validation does not work in multi-context
+        // scenarios, and must be disabled for the VideoTextureCopier's
+        // context.
+        eglContextAttributes.append(EGL_CONTEXT_WEBGL_COMPATIBILITY_ANGLE);
+        eglContextAttributes.append(EGL_TRUE);
+    }
+    // WebGL requires that all resources are cleared at creation.
+    eglContextAttributes.append(EGL_ROBUST_RESOURCE_INITIALIZATION_ANGLE);
     eglContextAttributes.append(EGL_TRUE);
+    // WebGL doesn't allow client arrays.
+    eglContextAttributes.append(EGL_CONTEXT_CLIENT_ARRAYS_ENABLED_ANGLE);
+    eglContextAttributes.append(EGL_FALSE);
+    // WebGL doesn't allow implicit creation of objects on bind.
+    eglContextAttributes.append(EGL_CONTEXT_BIND_GENERATES_RESOURCE_CHROMIUM);
+    eglContextAttributes.append(EGL_FALSE);
 
     if (strstr(displayExtensions, "EGL_ANGLE_power_preference")) {
         eglContextAttributes.append(EGL_POWER_PREFERENCE_ANGLE);
@@ -368,7 +384,7 @@ GraphicsContextGLOpenGL::GraphicsContextGLOpenGL(GraphicsContextGLAttributes att
     if (m_isForWebGL2)
         gl::Enable(GraphicsContextGL::PRIMITIVE_RESTART_FIXED_INDEX);
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
     ExtensionsGL& extensions = getExtensions();
 
     static constexpr const char* requiredExtensions[] = {
@@ -385,6 +401,7 @@ GraphicsContextGLOpenGL::GraphicsContextGLOpenGL(GraphicsContextGLAttributes att
         extensions.ensureEnabled(requiredExtensions[i]);
     }
 
+#if PLATFORM(MAC)
     EGLDeviceEXT device = nullptr;
     EGL_QueryDisplayAttribEXT(m_displayObj, EGL_DEVICE_EXT, reinterpret_cast<EGLAttrib*>(&device));
     CGLContextObj cglContext = nullptr;
@@ -393,6 +410,10 @@ GraphicsContextGLOpenGL::GraphicsContextGLOpenGL(GraphicsContextGLAttributes att
     EGL_QueryDeviceAttribEXT(device, EGL_CGL_PIXEL_FORMAT_ANGLE, reinterpret_cast<EGLAttrib*>(&pixelFormat));
     auto gpuID = (hostWindow && hostWindow->displayID()) ? gpuIDForDisplay(hostWindow->displayID()) : primaryGPUID();
     setGPUByRegistryID(cglContext, pixelFormat, gpuID);
+#else
+    UNUSED_PARAM(hostWindow);
+#endif
+
 #else
     UNUSED_PARAM(hostWindow);
 #endif // PLATFORM(MAC)
@@ -452,7 +473,6 @@ GraphicsContextGLOpenGL::GraphicsContextGLOpenGL(GraphicsContextGLAttributes att
     ::glGenFramebuffersEXT(1, &m_fbo);
     ::glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, m_fbo);
 
-    m_state.boundFBO = m_fbo;
     if (!attrs.antialias && (attrs.stencil || attrs.depth))
         ::glGenRenderbuffersEXT(1, &m_depthStencilBuffer);
 
@@ -460,7 +480,6 @@ GraphicsContextGLOpenGL::GraphicsContextGLOpenGL(GraphicsContextGLAttributes att
     if (attrs.antialias) {
         ::glGenFramebuffersEXT(1, &m_multisampleFBO);
         ::glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, m_multisampleFBO);
-        m_state.boundFBO = m_multisampleFBO;
         ::glGenRenderbuffersEXT(1, &m_multisampleColorBuffer);
         if (attrs.stencil || attrs.depth)
             ::glGenRenderbuffersEXT(1, &m_multisampleDepthStencilBuffer);
@@ -468,7 +487,7 @@ GraphicsContextGLOpenGL::GraphicsContextGLOpenGL(GraphicsContextGLAttributes att
 #elif USE(ANGLE)
     gl::GenFramebuffers(1, &m_fbo);
     gl::BindFramebuffer(GL_FRAMEBUFFER, m_fbo);
-    m_state.boundFBO = m_fbo;
+    m_state.boundDrawFBO = m_state.boundReadFBO = m_fbo;
 
     if (!attrs.antialias && (attrs.stencil || attrs.depth))
         gl::GenRenderbuffers(1, &m_depthStencilBuffer);
@@ -477,12 +496,23 @@ GraphicsContextGLOpenGL::GraphicsContextGLOpenGL(GraphicsContextGLAttributes att
     if (attrs.antialias) {
         gl::GenFramebuffers(1, &m_multisampleFBO);
         gl::BindFramebuffer(GL_FRAMEBUFFER, m_multisampleFBO);
-        m_state.boundFBO = m_multisampleFBO;
+        m_state.boundDrawFBO = m_state.boundReadFBO = m_multisampleFBO;
         gl::GenRenderbuffers(1, &m_multisampleColorBuffer);
         if (attrs.stencil || attrs.depth)
             gl::GenRenderbuffers(1, &m_multisampleDepthStencilBuffer);
+    } else if (attrs.preserveDrawingBuffer) {
+        // If necessary, create another texture to handle preserveDrawingBuffer:true without
+        // antialiasing.
+        gl::GenTextures(1, &m_preserveDrawingBufferTexture);
+        gl::BindTexture(GL_TEXTURE_2D, m_preserveDrawingBufferTexture);
+        gl::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        gl::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        gl::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        gl::TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        gl::BindTexture(GL_TEXTURE_2D, 0);
+        // Create an FBO with which to perform BlitFramebuffer from one texture to the other.
+        gl::GenFramebuffers(1, &m_preserveDrawingBufferFBO);
     }
-
 #endif // USE(ANGLE)
 
 #if !USE(ANGLE)
@@ -566,6 +596,10 @@ GraphicsContextGLOpenGL::~GraphicsContextGLOpenGL()
                 gl::DeleteRenderbuffers(1, &m_depthStencilBuffer);
         }
         gl::DeleteFramebuffers(1, &m_fbo);
+        if (m_preserveDrawingBufferTexture)
+            gl::DeleteTextures(1, &m_preserveDrawingBufferTexture);
+        if (m_preserveDrawingBufferFBO)
+            gl::DeleteFramebuffers(1, &m_preserveDrawingBufferFBO);
 #endif
 
 #if USE(OPENGL_ES)
@@ -575,6 +609,7 @@ GraphicsContextGLOpenGL::~GraphicsContextGLOpenGL()
         CGLSetCurrentContext(0);
         CGLDestroyContext(cglContext);
 #elif USE(ANGLE)
+        [m_webGLLayer releaseGLResources];
         EGL_MakeCurrent(m_displayObj, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         EGL_DestroyContext(m_displayObj, m_contextObj);
 #endif
@@ -646,7 +681,7 @@ void GraphicsContextGLOpenGL::checkGPUStatus()
     CGLContextObj cglContext = static_cast<CGLContextObj>(platformGraphicsContextGL());
     CGLGetParameter(cglContext, kCGLCPGPURestartStatus, &restartStatus);
     if (restartStatus == kCGLCPGPURestartStatusBlacklisted) {
-        LOG(WebGL, "The GPU has blacklisted us (%p). Terminating.", this);
+        LOG(WebGL, "The GPU has blocklisted us (%p). Terminating.", this);
         exit(EX_OSERR);
     }
     if (restartStatus == kCGLCPGPURestartStatusCaused) {
@@ -658,7 +693,7 @@ void GraphicsContextGLOpenGL::checkGPUStatus()
     EAGLContext* currentContext = static_cast<EAGLContext*>(PlatformGraphicsContextGL());
     [currentContext getParameter:kEAGLCPGPURestartStatus to:&restartStatus];
     if (restartStatus == kEAGLCPGPURestartStatusCaused || restartStatus == kEAGLCPGPURestartStatusBlacklisted) {
-        LOG(WebGL, "The GPU has either reset or blacklisted us (%p). Lose the context.", this);
+        LOG(WebGL, "The GPU has either reset or blocklisted us (%p). Lose the context.", this);
         forceContextLost();
         [EAGLContext setCurrentContext:0];
     }
@@ -703,10 +738,10 @@ bool GraphicsContextGLOpenGL::texImageIOSurface2D(GCGLenum target, GCGLenum inte
 }
 
 #if USE(OPENGL)
-void GraphicsContextGLOpenGL::allocateIOSurfaceBackingStore(IntSize size)
+bool GraphicsContextGLOpenGL::allocateIOSurfaceBackingStore(IntSize size)
 {
     LOG(WebGL, "GraphicsContextGLOpenGL::allocateIOSurfaceBackingStore at %d x %d. (%p)", size.width(), size.height(), this);
-    [m_webGLLayer allocateIOSurfaceBackingStoreWithSize:size usingAlpha:contextAttributes().alpha];
+    return [m_webGLLayer allocateIOSurfaceBackingStoreWithSize:size usingAlpha:contextAttributes().alpha];
 }
 
 void GraphicsContextGLOpenGL::updateFramebufferTextureBackingStoreFromLayer()
@@ -762,23 +797,18 @@ void GraphicsContextGLOpenGL::updateCGLContext()
 }
 #endif
 
-void GraphicsContextGLOpenGL::allocateIOSurfaceBackingStore(IntSize size)
+bool GraphicsContextGLOpenGL::allocateIOSurfaceBackingStore(IntSize size)
 {
-#if HAVE(IOSURFACE)
     LOG(WebGL, "GraphicsContextGLOpenGL::allocateIOSurfaceBackingStore at %d x %d. (%p)", size.width(), size.height(), this);
-    [m_webGLLayer allocateIOSurfaceBackingStoreWithSize:size usingAlpha:contextAttributes().alpha];
-#else
-    UNUSED_PARAM(size);
-#endif
+    return [m_webGLLayer allocateIOSurfaceBackingStoreWithSize:size usingAlpha:contextAttributes().alpha];
 }
 
 void GraphicsContextGLOpenGL::updateFramebufferTextureBackingStoreFromLayer()
 {
-#if HAVE(IOSURFACE)
     LOG(WebGL, "GraphicsContextGLOpenGL::updateFramebufferTextureBackingStoreFromLayer(). (%p)", this);
     [m_webGLLayer bindFramebufferToNextAvailableSurface];
-#endif
 }
+
 #endif // USE(ANGLE)
 
 bool GraphicsContextGLOpenGL::isGLES2Compliant() const
@@ -841,6 +871,11 @@ void GraphicsContextGLOpenGL::screenDidChange(PlatformDisplayID displayID)
 #endif // USE(ANGLE)
 }
 #endif // !PLATFORM(MAC)
+
+void GraphicsContextGLOpenGL::prepareForDisplay()
+{
+    [m_webGLLayer prepareForDisplay];
+}
 
 }
 

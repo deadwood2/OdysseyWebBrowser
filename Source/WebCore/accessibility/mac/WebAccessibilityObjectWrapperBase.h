@@ -26,14 +26,11 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebAccessibilityObjectWrapperBase_h
-#define WebAccessibilityObjectWrapperBase_h
-
-#include "AccessibilityObjectInterface.h"
-#include <CoreGraphics/CoreGraphics.h>
-#include <wtf/RefPtr.h>
-#include <wtf/Variant.h>
-#include <wtf/WeakPtr.h>
+#import "AccessibilityObjectInterface.h"
+#import <CoreGraphics/CoreGraphics.h>
+#import <wtf/RefPtr.h>
+#import <wtf/Variant.h>
+#import <wtf/WeakPtr.h>
 
 namespace WebCore {
 struct AccessibilitySearchCriteria;
@@ -58,10 +55,15 @@ class VisiblePosition;
 #endif
 
 - (void)detach;
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+- (void)detachIsolatedObject:(WebCore::AccessibilityDetachmentType)detachmentType;
+#endif
 
 @property (nonatomic, assign) WebCore::AXID identifier;
 
-- (BOOL)updateObjectBackingStore;
+// Updates the underlying object and accessibility hierarchy , and returns the
+// corresponding AXCoreObject.
+- (WebCore::AXCoreObject*)updateObjectBackingStore;
 
 // This can be either an AccessibilityObject or an AXIsolatedObject
 - (WebCore::AXCoreObject*)axBackingObject;
@@ -80,13 +82,15 @@ class VisiblePosition;
 - (void)accessibilityPostedNotification:(NSString *)notificationName;
 - (void)accessibilityPostedNotification:(NSString *)notificationName userInfo:(NSDictionary *)userInfo;
 
-- (CGPathRef)convertPathToScreenSpace:(WebCore::Path &)path;
+- (CGPathRef)convertPathToScreenSpace:(const WebCore::Path&)path;
 
-- (CGRect)convertRectToSpace:(WebCore::FloatRect &)rect space:(WebCore::AccessibilityConversionSpace)space;
+- (CGRect)convertRectToSpace:(const WebCore::FloatRect&)rect space:(WebCore::AccessibilityConversionSpace)space;
 
 // Math related functions
 - (NSArray *)accessibilityMathPostscriptPairs;
 - (NSArray *)accessibilityMathPrescriptPairs;
+
+- (NSDictionary<NSString *, id> *)baseAccessibilityResolvedEditingStyles;
 
 extern WebCore::AccessibilitySearchCriteria accessibilitySearchCriteriaForSearchPredicateParameterizedAttribute(const NSDictionary *);
 
@@ -97,5 +101,3 @@ extern NSArray *convertToNSArray(const WebCore::AXCoreObject::AccessibilityChild
 #endif
 
 @end
-
-#endif // WebAccessibilityObjectWrapperBase_h

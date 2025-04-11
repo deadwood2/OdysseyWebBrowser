@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2020 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -21,9 +21,11 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import base64
+import json
 import logging
 import os
 import re
+import requests
 import socket
 import time
 
@@ -33,11 +35,15 @@ from ews.models.patch import Patch
 from ews.thirdparty.BeautifulSoup import BeautifulSoup, SoupStrainer
 import ews.common.util as util
 import ews.config as config
+import dateutil.parser
 
 _log = logging.getLogger(__name__)
 
 
 class Bugzilla():
+    bug_open_statuses = ['UNCONFIRMED', 'NEW', 'ASSIGNED', 'REOPENED']
+    bug_closed_statuses = ['RESOLVED', 'VERIFIED', 'CLOSED']
+
     @classmethod
     def retrieve_attachment(cls, attachment_id):
         attachment_json = Bugzilla._fetch_attachment_json(attachment_id)
@@ -51,9 +57,48 @@ class Bugzilla():
         return attachment_json
 
     @classmethod
+    def get_cq_plus_timestamp(cls, attachment_id):
+        attachment_json = Bugzilla._fetch_attachment_json(attachment_id)
+        if not attachment_json:
+            _log.warn('Unable to fetch attachment {}.'.format(attachment_id))
+            return None
+
+        for flag in attachment_json.get('flags'):
+            if flag.get('name') == 'commit-queue' and flag.get('status') == '+':
+                try:
+                    return dateutil.parser.parse(flag.get('modification_date'))
+                except:
+                    _log.error('Unable to parse timestamp: {}'.format(flag.get('modification_date')))
+        return None
+
+    @classmethod
     def save_attachment(cls, attachment_id, attachment_data):
         with open(Bugzilla.file_path_for_patch(attachment_id), 'w') as attachment_file:
             attachment_file.write(attachment_data)
+
+    @classmethod
+    def get_bugzilla_api_key(cls):
+        try:
+            passwords = json.load(open('passwords.json'))
+            return passwords.get('BUGZILLA_API_KEY', '')
+        except Exception as e:
+            _log.error('Error in reading Bugzilla api key')
+            return ''
+
+    @classmethod
+    def fetch_data_from_bugzilla_with_authentication(cls, url):
+        _log.info('Fetching from bugzilla: {}'.format(url))
+        response = None
+        try:
+            response = requests.get(url, timeout=10, params={'Bugzilla_api_key': cls.get_bugzilla_api_key()})
+            if response.status_code != 200:
+                _log.error('Accessed {url} with unexpected status code {status_code}.'.format(url=url, status_code=response.status_code))
+                return None
+        except Exception as e:
+            # Catching all exceptions here to safeguard api key.
+            _log.error('Failed to access {}'.format(url))
+            return None
+        return response
 
     @classmethod
     def _fetch_attachment_json(cls, attachment_id):
@@ -62,10 +107,7 @@ class Bugzilla():
             return None
 
         attachment_url = '{}rest/bug/attachment/{}'.format(config.BUG_SERVER_URL, attachment_id)
-        api_key = os.getenv('BUGZILLA_API_KEY', None)
-        if api_key:
-            attachment_url += '?api_key={}'.format(api_key)
-        attachment = util.fetch_data_from_url(attachment_url)
+        attachment = cls.fetch_data_from_bugzilla_with_authentication(attachment_url)
         if not attachment:
             return None
         attachment_json = attachment.json().get('attachments')
@@ -74,16 +116,28 @@ class Bugzilla():
         return attachment_json.get(str(attachment_id))
 
     @classmethod
+    def _get_bug_json(cls, bug_id):
+        if not util.is_valid_id(bug_id):
+            _log.warn('Invalid bug id: {}'.format(bug_id))
+            return []
+
+        bug_url = '{}rest/bug/{}'.format(config.BUG_SERVER_URL, bug_id)
+        bug = cls.fetch_data_from_bugzilla_with_authentication(bug_url)
+        if not bug:
+            return None
+        bugs_json = bug.json().get('bugs')
+        if not bugs_json or len(bugs_json) == 0:
+            return None
+        return bugs_json[0]
+
+    @classmethod
     def _get_commit_queue_patches_from_bug(cls, bug_id):
         if not util.is_valid_id(bug_id):
             _log.warn('Invalid bug id: "{}"'.format(bug_id))
             return []
 
         bug_url = '{}rest/bug/{}/attachment'.format(config.BUG_SERVER_URL, bug_id)
-        api_key = os.getenv('BUGZILLA_API_KEY', None)
-        if api_key:
-            bug_url += '?api_key={}'.format(api_key)
-        bug = util.fetch_data_from_url(bug_url)
+        bug = cls.fetch_data_from_bugzilla_with_authentication(bug_url)
         if not bug:
             return []
         bug_json = bug.json().get('bugs')
@@ -128,6 +182,17 @@ class Bugzilla():
             ids_for_commit_queue.extend(cls._get_commit_queue_patches_from_bug(bug_id))
         return ids_for_commit_queue
 
+    @classmethod
+    def is_bug_closed(cls, bug_id):
+        bug_json = cls._get_bug_json(bug_id)
+        if not bug_json or not bug_json.get('status'):
+            _log.warn('Unable to fetch bug {}.'.format(bug_id))
+            return -1
+
+        if bug_json.get('status') in cls.bug_closed_statuses:
+            return 1
+        return 0
+
 
 class BugzillaBeautifulSoup():
     # FIXME: Deprecate this class when https://bugzilla.mozilla.org/show_bug.cgi?id=1508531 is fixed.
@@ -158,24 +223,28 @@ class BugzillaBeautifulSoup():
         attempts = 0
         while not authenticated:
             attempts += 1
-            _log.info('Logging in as {}...'.format(username))
+            _log.debug('Logging in as {}...'.format(username))
             self.browser.open(config.BUG_SERVER_URL + 'index.cgi?GoAheadAndLogIn=1')
             self.browser.select_form(name="login")
             self.browser['Bugzilla_login'] = username
             self.browser['Bugzilla_password'] = password
             self.browser.find_control("Bugzilla_restrictlogin").items[0].selected = False
-            response = self.browser.submit()
+            try:
+                response = self.browser.submit()
+            except:
+                _log.error('Unexpected error while authenticating to bugzilla.')
+                continue
 
             match = re.search("<title>(.+?)</title>", response.read())
             # If the resulting page has a title, and it contains the word
             # "invalid" assume it's the login failure page.
             if match and re.search("Invalid", match.group(1), re.IGNORECASE):
                 errorMessage = 'Bugzilla login failed: {}'.format(match.group(1))
-                if attempts >= 5:
+                if attempts >= 3:
                     # raise an exception only if this was the last attempt
                     raise Exception(errorMessage)
                 _log.error(errorMessage)
-                time.sleep(5)
+                time.sleep(3)
             else:
                 authenticated = True
 
@@ -196,7 +265,7 @@ class BugzillaBeautifulSoup():
     def _load_query(self, query):
         self.authenticate()
         full_url = '{}{}'.format(config.BUG_SERVER_URL, query)
-        _log.info('Getting list of patches needing review, URL: {}'.format(full_url))
+        _log.debug('Getting list of patches needing review, URL: {}'.format(full_url))
         return self.browser.open(full_url)
 
     def _parse_attachment_ids_request_query(self, page, since=None):

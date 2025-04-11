@@ -27,8 +27,10 @@
 #include "AuxiliaryProcess.h"
 
 #include "ContentWorldShared.h"
+#include "LogInitialization.h"
 #include "Logging.h"
 #include "SandboxInitializationParameters.h"
+#include <WebCore/LogInitialization.h>
 #include <pal/SessionID.h>
 
 #if !OS(WINDOWS)
@@ -76,6 +78,11 @@ void AuxiliaryProcess::initialize(const AuxiliaryProcessInitializationParameters
     SandboxInitializationParameters sandboxParameters;
     initializeSandbox(parameters, sandboxParameters);
 
+#if !LOG_DISABLED || !RELEASE_LOG_DISABLED
+    WebCore::initializeLogChannelsIfNecessary();
+    WebKit::initializeLogChannelsIfNecessary();
+#endif // !LOG_DISABLED || !RELEASE_LOG_DISABLED
+
     initializeProcessName(parameters);
 
     // In WebKit2, only the UI process should ever be generating certain identifiers.
@@ -107,22 +114,22 @@ void AuxiliaryProcess::initializeConnection(IPC::Connection*)
 {
 }
 
-void AuxiliaryProcess::addMessageReceiver(IPC::StringReference messageReceiverName, IPC::MessageReceiver& messageReceiver)
+void AuxiliaryProcess::addMessageReceiver(IPC::ReceiverName messageReceiverName, IPC::MessageReceiver& messageReceiver)
 {
     m_messageReceiverMap.addMessageReceiver(messageReceiverName, messageReceiver);
 }
 
-void AuxiliaryProcess::addMessageReceiver(IPC::StringReference messageReceiverName, uint64_t destinationID, IPC::MessageReceiver& messageReceiver)
+void AuxiliaryProcess::addMessageReceiver(IPC::ReceiverName messageReceiverName, uint64_t destinationID, IPC::MessageReceiver& messageReceiver)
 {
     m_messageReceiverMap.addMessageReceiver(messageReceiverName, destinationID, messageReceiver);
 }
 
-void AuxiliaryProcess::removeMessageReceiver(IPC::StringReference messageReceiverName, uint64_t destinationID)
+void AuxiliaryProcess::removeMessageReceiver(IPC::ReceiverName messageReceiverName, uint64_t destinationID)
 {
     m_messageReceiverMap.removeMessageReceiver(messageReceiverName, destinationID);
 }
 
-void AuxiliaryProcess::removeMessageReceiver(IPC::StringReference messageReceiverName)
+void AuxiliaryProcess::removeMessageReceiver(IPC::ReceiverName messageReceiverName)
 {
     m_messageReceiverMap.removeMessageReceiver(messageReceiverName);
 }
@@ -236,9 +243,9 @@ void AuxiliaryProcess::initializeSandbox(const AuxiliaryProcessInitializationPar
 {
 }
 
-void AuxiliaryProcess::didReceiveInvalidMessage(IPC::Connection&, IPC::StringReference messageReceiverName, IPC::StringReference messageName)
+void AuxiliaryProcess::didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName messageName)
 {
-    WTFLogAlways("Received invalid message: '%s::%s'", messageReceiverName.toString().data(), messageName.toString().data());
+    WTFLogAlways("Received invalid message: '%s'", description(messageName));
     CRASH();
 }
 

@@ -82,15 +82,16 @@ GCC_WARN_UNDECLARED_SELECTOR = YES;
 GCC_WARN_UNINITIALIZED_AUTOS = YES;
 GCC_WARN_UNUSED_FUNCTION = YES;
 GCC_WARN_UNUSED_VARIABLE = NO;
-WARNING_CFLAGS = -Wcast-qual -Wchar-subscripts -Wextra-tokens -Wformat=2 -Winit-self -Wmissing-format-attribute -Wmissing-noreturn -Wpacked -Wpointer-arith -Wredundant-decls -Wundef -Wwrite-strings -Wexit-time-destructors -Wglobal-constructors -Wtautological-compare -Wimplicit-fallthrough;
+WARNING_CFLAGS = -Wcast-qual -Wchar-subscripts -Wextra-tokens -Wformat=2 -Winit-self -Wmissing-format-attribute -Wmissing-noreturn -Wpacked -Wpointer-arith -Wredundant-decls -Wundef -Wwrite-strings -Wexit-time-destructors -Wglobal-constructors -Wtautological-compare -Wimplicit-fallthrough -Wvla;
 
 HEADER_SEARCH_PATHS = ${BUILT_PRODUCTS_DIR}/usr/local/include;
 
-TARGET_MAC_OS_X_VERSION_MAJOR = $(TARGET_MAC_OS_X_VERSION_MAJOR$(MACOSX_DEPLOYMENT_TARGET:suffix:identifier));
-TARGET_MAC_OS_X_VERSION_MAJOR_13 = 101300;
-TARGET_MAC_OS_X_VERSION_MAJOR_14 = 101400;
-TARGET_MAC_OS_X_VERSION_MAJOR_15 = 101500;
-TARGET_MAC_OS_X_VERSION_MAJOR_16 = 101600;
+TARGET_MAC_OS_X_VERSION_MAJOR = $(TARGET_MAC_OS_X_VERSION_MAJOR_$(MACOSX_DEPLOYMENT_TARGET:base)$(MACOSX_DEPLOYMENT_TARGET:suffix:identifier));
+TARGET_MAC_OS_X_VERSION_MAJOR_10_13 = 101300;
+TARGET_MAC_OS_X_VERSION_MAJOR_10_14 = 101400;
+TARGET_MAC_OS_X_VERSION_MAJOR_10_15 = 101500;
+TARGET_MAC_OS_X_VERSION_MAJOR_11_0 = 110000;
+TARGET_MAC_OS_X_VERSION_MAJOR_12_0 = 120000;
 
 SUPPORTED_PLATFORMS = macosx;
 
@@ -113,7 +114,3 @@ DEAD_CODE_STRIPPING_normal = YES;
 DEAD_CODE_STRIPPING = $(DEAD_CODE_STRIPPING_$(CURRENT_VARIANT));
 
 SDKROOT = macosx.internal;
-
-OTHER_CFLAGS = $(ASAN_OTHER_CFLAGS);
-OTHER_CPLUSPLUSFLAGS = $(ASAN_OTHER_CPLUSPLUSFLAGS);
-OTHER_LDFLAGS = $(ASAN_OTHER_LDFLAGS);

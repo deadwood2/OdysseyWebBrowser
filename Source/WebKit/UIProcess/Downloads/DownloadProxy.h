@@ -36,6 +36,7 @@
 
 namespace API {
 class Data;
+class FrameInfo;
 }
 
 namespace WebCore {
@@ -54,9 +55,15 @@ class WebPageProxy;
 class WebProcessPool;
 class WebsiteDataStore;
 
+struct FrameInfoData;
+
 class DownloadProxy : public API::ObjectImpl<API::Object::Type::Download>, public IPC::MessageReceiver {
 public:
-    static Ref<DownloadProxy> create(DownloadProxyMap&, WebsiteDataStore&, WebProcessPool&, const WebCore::ResourceRequest&);
+
+    template<typename... Args> static Ref<DownloadProxy> create(Args&&... args)
+    {
+        return adoptRef(*new DownloadProxy(std::forward<Args>(args)...));
+    }
     ~DownloadProxy();
 
     DownloadID downloadID() const { return m_downloadID; }
@@ -72,7 +79,6 @@ public:
     void didReceiveSyncDownloadProxyMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&);
 
     WebPageProxy* originatingPage() const;
-    void setOriginatingPage(WebPageProxy*);
 
     void setRedirectChain(Vector<URL>&& redirectChain) { m_redirectChain = WTFMove(redirectChain); }
     const Vector<URL>& redirectChain() const { return m_redirectChain; }
@@ -83,12 +89,6 @@ public:
     String destinationFilename() const { return m_destinationFilename; }
     void setDestinationFilename(const String& d) { m_destinationFilename = d; }
 
-    uint64_t expectedContentLength() const { return m_expectedContentLength; }
-    void setExpectedContentLength(uint64_t expectedContentLength) { m_expectedContentLength = expectedContentLength; }
-
-    uint64_t bytesLoaded() const { return m_bytesLoaded; }
-    void setBytesLoaded(uint64_t bytesLoaded) { m_bytesLoaded = bytesLoaded; }
-
 #if USE(SYSTEM_PREVIEW)
     bool isSystemPreviewDownload() const { return request().isSystemPreview(); }
     WebCore::SystemPreviewInfo systemPreviewDownloadInfo() const { return request().systemPreviewInfo(); }
@@ -98,8 +98,10 @@ public:
     void publishProgress(const URL&);
 #endif
 
+    API::FrameInfo& frameInfo() { return m_frameInfo.get(); }
+
 private:
-    explicit DownloadProxy(DownloadProxyMap&, WebsiteDataStore&, WebProcessPool&, const WebCore::ResourceRequest&);
+    explicit DownloadProxy(DownloadProxyMap&, WebsiteDataStore&, WebProcessPool&, const WebCore::ResourceRequest&, const FrameInfoData&, WebPageProxy*);
 
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
@@ -108,7 +110,7 @@ private:
     void didStart(const WebCore::ResourceRequest&, const String& suggestedFilename);
     void didReceiveAuthenticationChallenge(WebCore::AuthenticationChallenge&&, uint64_t challengeID);
     void didReceiveResponse(const WebCore::ResourceResponse&);
-    void didReceiveData(uint64_t length);
+    void didReceiveData(uint64_t bytesWritten, uint64_t totalBytesWritten, uint64_t totalBytesExpectedToWrite);
     void shouldDecodeSourceDataOfMIMEType(const String& mimeType, bool& result);
     void didCreateDestination(const String& path);
     void didFinish();
@@ -126,12 +128,11 @@ private:
     WebCore::ResourceRequest m_request;
     String m_suggestedFilename;
     String m_destinationFilename;
-    uint64_t m_expectedContentLength { 0 };
-    uint64_t m_bytesLoaded { 0 };
 
     WeakPtr<WebPageProxy> m_originatingPage;
     Vector<URL> m_redirectChain;
     bool m_wasUserInitiated { true };
+    Ref<API::FrameInfo> m_frameInfo;
 };
 
 } // namespace WebKit

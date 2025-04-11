@@ -27,27 +27,38 @@
 
 #import "PlatformUtilities.h"
 #import "TestWKWebView.h"
+#import <WebCore/PictureInPictureSupport.h>
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <wtf/RetainPtr.h>
 
+// We can enable the test for old iOS versions after <rdar://problem/63572534> is fixed.
+#if ENABLE(VIDEO_PRESENTATION_MODE) && (PLATFORM(MAC) || (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 140000))
+
 TEST(WKWebViewCloseAllMediaPresentations, PictureInPicture)
 {
+    if (!WebCore::supportsPictureInPicture())
+        return;
+
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     configuration.get().preferences._allowsPictureInPictureMediaPlayback = YES;
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get() addToWindow:YES]);
 
-    [webView synchronouslyLoadHTMLString:@"<video src=video-with-audio.mp4 webkit-playsinline></video>"];
-    [webView objectByEvaluatingJavaScript:@"document.querySelector('video').addEventListener('webkitpresentationmodechanged', event => { window.webkit.messageHandlers.testHandler.postMessage('presentationmodechanged'); });"];
-
-    __block bool presentationModeChanged = false;
-    [webView performAfterReceivingMessage:@"presentationmodechanged" action:^{ presentationModeChanged = true; }];
+    [webView synchronouslyLoadHTMLString:@"<video src=video-with-audio.mp4 webkit-playsinline playsinline loop></video>"];
 
     [webView objectByEvaluatingJavaScriptWithUserGesture:@"document.querySelector('video').webkitSetPresentationMode('picture-in-picture')"];
 
-    TestWebKitAPI::Util::run(&presentationModeChanged);
+    do {
+        id result = [webView objectByEvaluatingJavaScript:@"document.querySelector('video').webkitDisplayingFullscreen"];
+        if ([result boolValue])
+            break;
 
-    presentationModeChanged = false;
+        TestWebKitAPI::Util::sleep(0.5);
+    } while (true);
+
+    [webView objectByEvaluatingJavaScript:@"document.querySelector('video').addEventListener('webkitpresentationmodechanged', event => { window.webkit.messageHandlers.testHandler.postMessage('presentationmodechanged'); });"];
+
+    __block bool presentationModeChanged = false;
     [webView performAfterReceivingMessage:@"presentationmodechanged" action:^{ presentationModeChanged = true; }];
 
     [webView _closeAllMediaPresentations];
@@ -57,13 +68,17 @@ TEST(WKWebViewCloseAllMediaPresentations, PictureInPicture)
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"document.querySelector('video').webkitPresentationMode"].UTF8String, "inline");
 }
 
+#endif
+
+#if ENABLE(FULLSCREEN_API)
+
 TEST(WKWebViewCloseAllMediaPresentations, VideoFullscreen)
 {
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     configuration.get().preferences._fullScreenEnabled = YES;
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get() addToWindow:YES]);
 
-    [webView synchronouslyLoadHTMLString:@"<video src=video-with-audio.mp4 webkit-playsinline></video>"];
+    [webView synchronouslyLoadHTMLString:@"<video src=video-with-audio.mp4 webkit-playsinline playsinline loop></video>"];
     [webView objectByEvaluatingJavaScript:@"document.querySelector('video').addEventListener('webkitpresentationmodechanged', event => { window.webkit.messageHandlers.testHandler.postMessage('presentationmodechanged'); });"];
 
     __block bool presentationModeChanged = false;
@@ -108,3 +123,5 @@ TEST(WKWebViewCloseAllMediaPresentations, ElementFullscreen)
 
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"document.webkitFullscreenElement"].UTF8String, "<null>");
 }
+
+#endif

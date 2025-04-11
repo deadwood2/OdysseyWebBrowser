@@ -362,17 +362,12 @@ static String generateHtml(const char* templateHtml, const String& substitute, c
     return stream.toString();
 }
 
-// FIXME<rdar://problem/48909336>: Replace the below with AppSSO constants.
 static void checkAuthorizationOptions(bool userActionInitiated, String initiatorOrigin, int initiatingAction)
 {
     EXPECT_TRUE(gAuthorization);
-    // FIXME: Remove the selector once the iOS bots has been updated to a recent SDK.
-    auto selector = NSSelectorFromString(@"authorizationOptions");
-    if ([gAuthorization respondsToSelector:selector]) {
-        EXPECT_EQ(((NSNumber *)[gAuthorization performSelector:selector][SOAuthorizationOptionUserActionInitiated]).boolValue, userActionInitiated);
-        EXPECT_WK_STREQ([gAuthorization performSelector:selector][@"initiatorOrigin"], initiatorOrigin);
-        EXPECT_EQ(((NSNumber *)[gAuthorization performSelector:selector][@"initiatingAction"]).intValue, initiatingAction);
-    }
+    EXPECT_EQ(((NSNumber *)[gAuthorization authorizationOptions][SOAuthorizationOptionUserActionInitiated]).boolValue, userActionInitiated);
+    EXPECT_WK_STREQ([gAuthorization authorizationOptions][SOAuthorizationOptionInitiatorOrigin], initiatorOrigin);
+    EXPECT_EQ(((NSNumber *)[gAuthorization authorizationOptions][SOAuthorizationOptionInitiatingAction]).intValue, initiatingAction);
 }
 
 namespace TestWebKitAPI {
@@ -1427,6 +1422,184 @@ TEST(SOAuthorizationRedirect, NSNotificationCenter)
     gNotificationCallback(nullptr);
     EXPECT_FALSE(uiShowed);
 }
+
+TEST(SOAuthorizationRedirect, DismissUIDuringMiniaturization)
+{
+    resetState();
+    ClassMethodSwizzler swizzler1(PAL::getSOAuthorizationClass(), @selector(canPerformAuthorizationWithURL:responseCode:), reinterpret_cast<IMP>(overrideCanPerformAuthorizationWithURL));
+    InstanceMethodSwizzler swizzler2(PAL::getSOAuthorizationClass(), @selector(setDelegate:), reinterpret_cast<IMP>(overrideSetDelegate));
+    InstanceMethodSwizzler swizzler3(PAL::getSOAuthorizationClass(), @selector(beginAuthorizationWithURL:httpHeaders:httpBody:), reinterpret_cast<IMP>(overrideBeginAuthorizationWithURL));
+    InstanceMethodSwizzler swizzler4(PAL::getSOAuthorizationClass(), @selector(getAuthorizationHintsWithURL:responseCode:completion:), reinterpret_cast<IMP>(overrideGetAuthorizationHintsWithURL));
+
+    RetainPtr<NSURL> testURL = [[NSBundle mainBundle] URLForResource:@"simple" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    auto delegate = adoptNS([[TestSOAuthorizationDelegate alloc] init]);
+    configureSOAuthorizationWebView(webView.get(), delegate.get(), OpenExternalSchemesPolicy::Allow);
+
+    [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
+    Util::run(&authorizationPerformed);
+
+    auto viewController = adoptNS([[TestSOAuthorizationViewController alloc] init]);
+    auto view = adoptNS([[NSView alloc] initWithFrame:NSZeroRect]);
+    [viewController setView:view.get()];
+
+    [gDelegate authorization:gAuthorization presentViewController:viewController.get() withCompletion:^(BOOL success, NSError *) {
+        EXPECT_TRUE(success);
+    }];
+    Util::run(&uiShowed);
+
+    bool didEndSheet = false;
+    auto *hostWindow = [webView hostWindow];
+    auto observer = adoptNS([[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidEndSheetNotification object:hostWindow queue:nil usingBlock:[&didEndSheet] (NSNotification *) {
+        didEndSheet = true;
+    }]);
+    [hostWindow miniaturize:hostWindow];
+
+    // Dimiss the UI
+    [gDelegate authorizationDidCancel:gAuthorization];
+    EXPECT_FALSE(didEndSheet);
+
+    // UI is only dimissed after the hostWindow is deminimized.
+    [hostWindow deminiaturize:hostWindow];
+    EXPECT_TRUE(didEndSheet);
+}
+
+TEST(SOAuthorizationRedirect, DismissUIDuringHiding)
+{
+    resetState();
+    ClassMethodSwizzler swizzler1(PAL::getSOAuthorizationClass(), @selector(canPerformAuthorizationWithURL:responseCode:), reinterpret_cast<IMP>(overrideCanPerformAuthorizationWithURL));
+    InstanceMethodSwizzler swizzler2(PAL::getSOAuthorizationClass(), @selector(setDelegate:), reinterpret_cast<IMP>(overrideSetDelegate));
+    InstanceMethodSwizzler swizzler3(PAL::getSOAuthorizationClass(), @selector(beginAuthorizationWithURL:httpHeaders:httpBody:), reinterpret_cast<IMP>(overrideBeginAuthorizationWithURL));
+    InstanceMethodSwizzler swizzler4(PAL::getSOAuthorizationClass(), @selector(getAuthorizationHintsWithURL:responseCode:completion:), reinterpret_cast<IMP>(overrideGetAuthorizationHintsWithURL));
+
+    RetainPtr<NSURL> testURL = [[NSBundle mainBundle] URLForResource:@"simple" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    auto delegate = adoptNS([[TestSOAuthorizationDelegate alloc] init]);
+    configureSOAuthorizationWebView(webView.get(), delegate.get(), OpenExternalSchemesPolicy::Allow);
+
+    [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
+    Util::run(&authorizationPerformed);
+
+    auto viewController = adoptNS([[TestSOAuthorizationViewController alloc] init]);
+    auto view = adoptNS([[NSView alloc] initWithFrame:NSZeroRect]);
+    [viewController setView:view.get()];
+
+    [gDelegate authorization:gAuthorization presentViewController:viewController.get() withCompletion:^(BOOL success, NSError *) {
+        EXPECT_TRUE(success);
+    }];
+    Util::run(&uiShowed);
+
+    bool didEndSheet = false;
+    auto observer = adoptNS([[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidEndSheetNotification object:[webView hostWindow] queue:nil usingBlock:[&didEndSheet] (NSNotification *) {
+        didEndSheet = true;
+    }]);
+
+    [NSApp hide:NSApp];
+
+    // Dimiss the UI
+    [gDelegate authorizationDidCancel:gAuthorization];
+    EXPECT_FALSE(didEndSheet);
+
+    // UI is only dimissed after the hostApp is unhidden.
+    [NSApp unhide:NSApp];
+    EXPECT_TRUE(didEndSheet);
+}
+
+TEST(SOAuthorizationRedirect, DismissUIDuringMiniaturizationThenAnother)
+{
+    resetState();
+    ClassMethodSwizzler swizzler1(PAL::getSOAuthorizationClass(), @selector(canPerformAuthorizationWithURL:responseCode:), reinterpret_cast<IMP>(overrideCanPerformAuthorizationWithURL));
+    InstanceMethodSwizzler swizzler2(PAL::getSOAuthorizationClass(), @selector(setDelegate:), reinterpret_cast<IMP>(overrideSetDelegate));
+    InstanceMethodSwizzler swizzler3(PAL::getSOAuthorizationClass(), @selector(beginAuthorizationWithURL:httpHeaders:httpBody:), reinterpret_cast<IMP>(overrideBeginAuthorizationWithURL));
+    InstanceMethodSwizzler swizzler4(PAL::getSOAuthorizationClass(), @selector(getAuthorizationHintsWithURL:responseCode:completion:), reinterpret_cast<IMP>(overrideGetAuthorizationHintsWithURL));
+
+    RetainPtr<NSURL> testURL = [[NSBundle mainBundle] URLForResource:@"simple" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    auto delegate = adoptNS([[TestSOAuthorizationDelegate alloc] init]);
+    configureSOAuthorizationWebView(webView.get(), delegate.get(), OpenExternalSchemesPolicy::Allow);
+
+    [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
+    Util::run(&authorizationPerformed);
+
+    auto viewController1 = adoptNS([[TestSOAuthorizationViewController alloc] init]);
+    auto view1 = adoptNS([[NSView alloc] initWithFrame:NSZeroRect]);
+    [viewController1 setView:view1.get()];
+
+    [gDelegate authorization:gAuthorization presentViewController:viewController1.get() withCompletion:^(BOOL success, NSError *) {
+        EXPECT_TRUE(success);
+    }];
+    Util::run(&uiShowed);
+
+    bool didEndSheet = false;
+    auto *hostWindow = [webView hostWindow];
+    auto observer = adoptNS([[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidEndSheetNotification object:hostWindow queue:nil usingBlock:[&didEndSheet] (NSNotification *) {
+        didEndSheet = true;
+    }]);
+    [hostWindow miniaturize:hostWindow];
+
+    // Dimiss the UI
+    [gDelegate authorizationDidCancel:gAuthorization];
+    EXPECT_FALSE(didEndSheet);
+
+    // Load another AppSSO request.
+    authorizationPerformed = false;
+    [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
+    Util::run(&authorizationPerformed);
+
+    // UI is only dimissed after the hostApp is unhidden.
+    [hostWindow deminiaturize:hostWindow];
+    EXPECT_TRUE(didEndSheet);
+}
+
+TEST(SOAuthorizationRedirect, DismissUIDuringHidingThenAnother)
+{
+    resetState();
+    ClassMethodSwizzler swizzler1(PAL::getSOAuthorizationClass(), @selector(canPerformAuthorizationWithURL:responseCode:), reinterpret_cast<IMP>(overrideCanPerformAuthorizationWithURL));
+    InstanceMethodSwizzler swizzler2(PAL::getSOAuthorizationClass(), @selector(setDelegate:), reinterpret_cast<IMP>(overrideSetDelegate));
+    InstanceMethodSwizzler swizzler3(PAL::getSOAuthorizationClass(), @selector(beginAuthorizationWithURL:httpHeaders:httpBody:), reinterpret_cast<IMP>(overrideBeginAuthorizationWithURL));
+    InstanceMethodSwizzler swizzler4(PAL::getSOAuthorizationClass(), @selector(getAuthorizationHintsWithURL:responseCode:completion:), reinterpret_cast<IMP>(overrideGetAuthorizationHintsWithURL));
+
+    RetainPtr<NSURL> testURL = [[NSBundle mainBundle] URLForResource:@"simple" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    auto delegate = adoptNS([[TestSOAuthorizationDelegate alloc] init]);
+    configureSOAuthorizationWebView(webView.get(), delegate.get(), OpenExternalSchemesPolicy::Allow);
+
+    [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
+    Util::run(&authorizationPerformed);
+
+    auto viewController = adoptNS([[TestSOAuthorizationViewController alloc] init]);
+    auto view = adoptNS([[NSView alloc] initWithFrame:NSZeroRect]);
+    [viewController setView:view.get()];
+
+    [gDelegate authorization:gAuthorization presentViewController:viewController.get() withCompletion:^(BOOL success, NSError *) {
+        EXPECT_TRUE(success);
+    }];
+    Util::run(&uiShowed);
+
+    bool didEndSheet = false;
+    auto observer = adoptNS([[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidEndSheetNotification object:[webView hostWindow] queue:nil usingBlock:[&didEndSheet] (NSNotification *) {
+        didEndSheet = true;
+    }]);
+
+    [NSApp hide:NSApp];
+
+    // Dimiss the UI
+    [gDelegate authorizationDidCancel:gAuthorization];
+    EXPECT_FALSE(didEndSheet);
+
+    // Load another AppSSO request.
+    authorizationPerformed = false;
+    [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
+    Util::run(&authorizationPerformed);
+
+    // UI is only dimissed after the hostApp is unhidden.
+    [NSApp unhide:NSApp];
+    EXPECT_TRUE(didEndSheet);
+}
 #endif
 
 TEST(SOAuthorizationPopUp, NoInterceptions)
@@ -2092,6 +2265,38 @@ TEST(SOAuthorizationSubFrame, InterceptionError)
     EXPECT_WK_STREQ("", finalURL);
 }
 
+TEST(SOAuthorizationSubFrame, InterceptionCancel)
+{
+    resetState();
+    ClassMethodSwizzler swizzler1(PAL::getSOAuthorizationClass(), @selector(canPerformAuthorizationWithURL:responseCode:), reinterpret_cast<IMP>(overrideCanPerformAuthorizationWithURL));
+    InstanceMethodSwizzler swizzler2(PAL::getSOAuthorizationClass(), @selector(setDelegate:), reinterpret_cast<IMP>(overrideSetDelegate));
+    InstanceMethodSwizzler swizzler3(PAL::getSOAuthorizationClass(), @selector(beginAuthorizationWithURL:httpHeaders:httpBody:), reinterpret_cast<IMP>(overrideBeginAuthorizationWithURL));
+    ClassMethodSwizzler swizzler4([AKAuthorizationController class], @selector(isURLFromAppleOwnedDomain:), reinterpret_cast<IMP>(overrideIsURLFromAppleOwnedDomain));
+    InstanceMethodSwizzler swizzler5(PAL::getSOAuthorizationClass(), @selector(getAuthorizationHintsWithURL:responseCode:completion:), reinterpret_cast<IMP>(overrideGetAuthorizationHintsWithURL));
+
+    RetainPtr<NSURL> baseURL = [[NSBundle mainBundle] URLForResource:@"simple2" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
+    RetainPtr<NSURL> testURL = [[NSBundle mainBundle] URLForResource:@"GetSessionCookie" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
+    auto testHtml = generateHtml(parentTemplate, testURL.get().absoluteString);
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    auto delegate = adoptNS([[TestSOAuthorizationDelegate alloc] init]);
+    configureSOAuthorizationWebView(webView.get(), delegate.get());
+
+    [webView loadHTMLString:testHtml baseURL:baseURL.get()];
+    [webView waitForMessage:@"null"];
+    [webView waitForMessage:@"SOAuthorizationDidStart"];
+    checkAuthorizationOptions(false, "file://", 2);
+
+    [gDelegate authorizationDidCancel:gAuthorization];
+    [webView waitForMessage:@"null"];
+    [webView waitForMessage:@"SOAuthorizationDidCancel"];
+    [webView waitForMessage:@""];
+    // Trys to wait until the iframe load is finished.
+    Util::sleep(0.5);
+    // Make sure we don't load the request of the iframe to the main frame.
+    EXPECT_WK_STREQ("", finalURL);
+}
+
 TEST(SOAuthorizationSubFrame, InterceptionSuccess)
 {
     resetState();
@@ -2346,7 +2551,7 @@ TEST(SOAuthorizationSubFrame, InterceptionErrorWithReferrer)
     auto delegate = adoptNS([[TestSOAuthorizationDelegate alloc] init]);
     configureSOAuthorizationWebView(webView.get(), delegate.get());
 
-    auto origin = makeString("http://127.0.0.1:", static_cast<unsigned>(server.port()));
+    auto origin = makeString("http://127.0.0.1:", server.port());
     [webView _loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:(id)origin]] shouldOpenExternalURLs:NO];
     [webView waitForMessage:(id)origin];
     [webView waitForMessage:@"SOAuthorizationDidStart"];

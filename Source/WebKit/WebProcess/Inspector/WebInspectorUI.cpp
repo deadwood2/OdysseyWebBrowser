@@ -48,16 +48,21 @@ Ref<WebInspectorUI> WebInspectorUI::create(WebPage& page)
     return adoptRef(*new WebInspectorUI(page));
 }
 
-WebInspectorUI::WebInspectorUI(WebPage& page)
-    : m_page(page)
-    , m_frontendAPIDispatcher(page)
-    , m_debuggableInfo(DebuggableInfoData::empty())
+void WebInspectorUI::enableFrontendFeatures()
 {
     RuntimeEnabledFeatures::sharedFeatures().setInspectorAdditionsEnabled(true);
     RuntimeEnabledFeatures::sharedFeatures().setImageBitmapEnabled(true);
 #if ENABLE(WEBGL2)
     RuntimeEnabledFeatures::sharedFeatures().setWebGL2Enabled(true);
 #endif
+}
+
+WebInspectorUI::WebInspectorUI(WebPage& page)
+    : m_page(page)
+    , m_frontendAPIDispatcher(page)
+    , m_debuggableInfo(DebuggableInfoData::empty())
+{
+    WebInspectorUI::enableFrontendFeatures();
 }
 
 void WebInspectorUI::establishConnection(WebPageProxyIdentifier inspectedPageIdentifier, const DebuggableInfoData& debuggableInfo, bool underTest, unsigned inspectionLevel)
@@ -185,15 +190,34 @@ void WebInspectorUI::resetState()
     WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorProxy::ResetState(), m_inspectedPageIdentifier);
 }
 
+void WebInspectorUI::setForcedAppearance(WebCore::InspectorFrontendClient::Appearance appearance)
+{
+    WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorProxy::SetForcedAppearance(appearance), m_inspectedPageIdentifier);
+}
+
 WebCore::UserInterfaceLayoutDirection WebInspectorUI::userInterfaceLayoutDirection() const
 {
     return m_page.corePage()->userInterfaceLayoutDirection();
 }
 
-void WebInspectorUI::requestSetDockSide(DockSide side)
+bool WebInspectorUI::supportsDockSide(DockSide dockSide)
+{
+    switch (dockSide) {
+    case DockSide::Undocked:
+    case DockSide::Right:
+    case DockSide::Left:
+    case DockSide::Bottom:
+        return true;
+    }
+
+    ASSERT_NOT_REACHED();
+    return false;
+}
+
+void WebInspectorUI::requestSetDockSide(DockSide dockSide)
 {
     auto& webProcess = WebProcess::singleton();
-    switch (side) {
+    switch (dockSide) {
     case DockSide::Undocked:
         webProcess.parentProcessConnection()->send(Messages::WebInspectorProxy::Detach(), m_inspectedPageIdentifier);
         break;
@@ -209,31 +233,31 @@ void WebInspectorUI::requestSetDockSide(DockSide side)
     }
 }
 
-void WebInspectorUI::setDockSide(DockSide side)
+void WebInspectorUI::setDockSide(DockSide dockSide)
 {
-    ASCIILiteral sideString { ASCIILiteral::null() };
+    ASCIILiteral dockSideString { ASCIILiteral::null() };
 
-    switch (side) {
+    switch (dockSide) {
     case DockSide::Undocked:
-        sideString = "undocked"_s;
+        dockSideString = "undocked"_s;
         break;
 
     case DockSide::Right:
-        sideString = "right"_s;
+        dockSideString = "right"_s;
         break;
 
     case DockSide::Left:
-        sideString = "left"_s;
+        dockSideString = "left"_s;
         break;
 
     case DockSide::Bottom:
-        sideString = "bottom"_s;
+        dockSideString = "bottom"_s;
         break;
     }
 
-    m_dockSide = side;
+    m_dockSide = dockSide;
 
-    m_frontendAPIDispatcher.dispatchCommand("setDockSide"_s, String(sideString));
+    m_frontendAPIDispatcher.dispatchCommand("setDockSide"_s, String(dockSideString));
 }
 
 void WebInspectorUI::setDockingUnavailable(bool unavailable)
@@ -248,6 +272,13 @@ void WebInspectorUI::setIsVisible(bool visible)
     m_isVisible = visible;
 
     m_frontendAPIDispatcher.dispatchCommand("setIsVisible"_s, visible);
+}
+
+void WebInspectorUI::updateFindString(const String& findString)
+{
+    StringBuilder builder;
+    JSON::Value::escapeString(builder, findString);
+    m_frontendAPIDispatcher.dispatchCommand("updateFindString"_s, builder.toString());
 }
 
 void WebInspectorUI::changeAttachedWindowHeight(unsigned height)

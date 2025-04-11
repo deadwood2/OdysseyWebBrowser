@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2020 Apple Inc. All rights reserved.
  * Copyright (C) 2012 Nokia Corporation and/or its subsidiary(-ies)
  *
  * Redistribution and use in source and binary forms, with or without
@@ -36,6 +36,7 @@
 #include <WebCore/IntPoint.h>
 #include <WebCore/IntSize.h>
 #include <WebCore/KeypressCommand.h>
+#include <wtf/EnumTraits.h>
 #include <wtf/OptionSet.h>
 #include <wtf/WallTime.h>
 #include <wtf/text/WTFString.h>
@@ -117,7 +118,7 @@ protected:
     WebEvent(Type, OptionSet<Modifier>, WallTime timestamp);
 
     void encode(IPC::Encoder&) const;
-    static bool decode(IPC::Decoder&, WebEvent&);
+    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, WebEvent&);
 
 private:
     uint32_t m_type;
@@ -140,14 +141,14 @@ public:
     WebMouseEvent();
 
 #if PLATFORM(MAC)
-    WebMouseEvent(Type, Button, unsigned short buttons, const WebCore::IntPoint& position, const WebCore::IntPoint& globalPosition, float deltaX, float deltaY, float deltaZ, int clickCount, OptionSet<Modifier>, WallTime timestamp, double force, SyntheticClickType = NoTap, int eventNumber = -1, int menuType = 0);
+    WebMouseEvent(Type, Button, unsigned short buttons, const WebCore::IntPoint& positionInView, const WebCore::IntPoint& globalPosition, float deltaX, float deltaY, float deltaZ, int clickCount, OptionSet<Modifier>, WallTime timestamp, double force, SyntheticClickType = NoTap, int eventNumber = -1, int menuType = 0);
 #else
-    WebMouseEvent(Type, Button, unsigned short buttons, const WebCore::IntPoint& position, const WebCore::IntPoint& globalPosition, float deltaX, float deltaY, float deltaZ, int clickCount, OptionSet<Modifier>, WallTime timestamp, double force = 0, SyntheticClickType = NoTap);
+    WebMouseEvent(Type, Button, unsigned short buttons, const WebCore::IntPoint& positionInView, const WebCore::IntPoint& globalPosition, float deltaX, float deltaY, float deltaZ, int clickCount, OptionSet<Modifier>, WallTime timestamp, double force = 0, SyntheticClickType = NoTap);
 #endif
 
     Button button() const { return static_cast<Button>(m_button); }
     unsigned short buttons() const { return m_buttons; }
-    const WebCore::IntPoint& position() const { return m_position; }
+    const WebCore::IntPoint& position() const { return m_position; } // Relative to the view.
     const WebCore::IntPoint& globalPosition() const { return m_globalPosition; }
     float deltaX() const { return m_deltaX; }
     float deltaY() const { return m_deltaY; }
@@ -161,22 +162,22 @@ public:
     SyntheticClickType syntheticClickType() const { return static_cast<SyntheticClickType>(m_syntheticClickType); }
 
     void encode(IPC::Encoder&) const;
-    static bool decode(IPC::Decoder&, WebMouseEvent&);
+    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, WebMouseEvent&);
 
 private:
     static bool isMouseEventType(Type);
 
-    uint32_t m_button;
+    uint32_t m_button { static_cast<uint32_t>(NoButton) };
     unsigned short m_buttons { 0 };
-    WebCore::IntPoint m_position;
+    WebCore::IntPoint m_position; // Relative to the view.
     WebCore::IntPoint m_globalPosition;
-    float m_deltaX;
-    float m_deltaY;
-    float m_deltaZ;
-    int32_t m_clickCount;
+    float m_deltaX { 0 };
+    float m_deltaY { 0 };
+    float m_deltaZ { 0 };
+    int32_t m_clickCount { 0 };
 #if PLATFORM(MAC)
-    int32_t m_eventNumber;
-    int32_t m_menuTypeForEvent;
+    int32_t m_eventNumber { -1 };
+    int32_t m_menuTypeForEvent { 0 };
 #endif
     double m_force { 0 };
     uint32_t m_syntheticClickType { NoTap };
@@ -200,13 +201,13 @@ public:
         PhaseMayBegin    = 1 << 5,
     };
 
-    WebWheelEvent() { }
+    WebWheelEvent() = default;
 
     WebWheelEvent(Type, const WebCore::IntPoint& position, const WebCore::IntPoint& globalPosition, const WebCore::FloatSize& delta, const WebCore::FloatSize& wheelTicks, Granularity, OptionSet<Modifier>, WallTime timestamp);
 #if PLATFORM(COCOA)
     WebWheelEvent(Type, const WebCore::IntPoint& position, const WebCore::IntPoint& globalPosition, const WebCore::FloatSize& delta, const WebCore::FloatSize& wheelTicks, Granularity, bool directionInvertedFromDevice, Phase, Phase momentumPhase, bool hasPreciseScrollingDeltas, uint32_t scrollCount, const WebCore::FloatSize& unacceleratedScrollingDelta, OptionSet<Modifier>, WallTime timestamp);
 #elif PLATFORM(GTK) || USE(LIBWPE)
-    WebWheelEvent(Type, const WebCore::IntPoint& position, const WebCore::IntPoint& globalPosition, const WebCore::FloatSize& delta, const WebCore::FloatSize& wheelTicks, Phase, Phase momentumPhase, Granularity, OptionSet<Modifier>, WallTime timestamp);
+    WebWheelEvent(Type, const WebCore::IntPoint& position, const WebCore::IntPoint& globalPosition, const WebCore::FloatSize& delta, const WebCore::FloatSize& wheelTicks, Phase, Phase momentumPhase, Granularity, bool hasPreciseScrollingDeltas, OptionSet<Modifier>, WallTime timestamp);
 #endif
 
     const WebCore::IntPoint position() const { return m_position; }
@@ -217,14 +218,16 @@ public:
     bool directionInvertedFromDevice() const { return m_directionInvertedFromDevice; }
     Phase phase() const { return static_cast<Phase>(m_phase); }
     Phase momentumPhase() const { return static_cast<Phase>(m_momentumPhase); }
-#if PLATFORM(COCOA)
+#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE)
     bool hasPreciseScrollingDeltas() const { return m_hasPreciseScrollingDeltas; }
+#endif
+#if PLATFORM(COCOA)
     uint32_t scrollCount() const { return m_scrollCount; }
     const WebCore::FloatSize& unacceleratedScrollingDelta() const { return m_unacceleratedScrollingDelta; }
 #endif
 
     void encode(IPC::Encoder&) const;
-    static bool decode(IPC::Decoder&, WebWheelEvent&);
+    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, WebWheelEvent&);
 
 private:
     static bool isWheelEventType(Type);
@@ -233,13 +236,15 @@ private:
     WebCore::IntPoint m_globalPosition;
     WebCore::FloatSize m_delta;
     WebCore::FloatSize m_wheelTicks;
-    uint32_t m_granularity; // Granularity
-    bool m_directionInvertedFromDevice;
+    uint32_t m_granularity { ScrollByPageWheelEvent };
+    bool m_directionInvertedFromDevice { false };
     uint32_t m_phase { Phase::PhaseNone };
     uint32_t m_momentumPhase { Phase::PhaseNone };
+#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE)
+    bool m_hasPreciseScrollingDeltas { false };
+#endif
 #if PLATFORM(COCOA)
-    bool m_hasPreciseScrollingDeltas;
-    uint32_t m_scrollCount;
+    uint32_t m_scrollCount { 0 };
     WebCore::FloatSize m_unacceleratedScrollingDelta;
 #endif
 };
@@ -287,7 +292,7 @@ public:
     bool isSystemKey() const { return m_isSystemKey; }
 
     void encode(IPC::Encoder&) const;
-    static bool decode(IPC::Decoder&, WebKeyboardEvent&);
+    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, WebKeyboardEvent&);
 
     static bool isKeyboardEventType(Type);
 
@@ -297,11 +302,11 @@ private:
     String m_key;
     String m_code;
     String m_keyIdentifier;
-    int32_t m_windowsVirtualKeyCode;
-    int32_t m_nativeVirtualKeyCode;
-    int32_t m_macCharCode;
+    int32_t m_windowsVirtualKeyCode { 0 };
+    int32_t m_nativeVirtualKeyCode { 0 };
+    int32_t m_macCharCode { 0 };
 #if USE(APPKIT) || USE(UIKIT_KEYBOARD_ADDITIONS) || PLATFORM(GTK) || USE(LIBWPE)
-    bool m_handledByInputMethod;
+    bool m_handledByInputMethod { false };
 #endif
 #if PLATFORM(GTK) || USE(LIBWPE)
     Optional<Vector<WebCore::CompositionUnderline>> m_preeditUnderlines;
@@ -312,9 +317,9 @@ private:
 #elif PLATFORM(GTK)
     Vector<String> m_commands;
 #endif
-    bool m_isAutoRepeat;
-    bool m_isKeypad;
-    bool m_isSystemKey;
+    bool m_isAutoRepeat { false };
+    bool m_isKeypad { false };
+    bool m_isSystemKey { false };
 };
 
 #if ENABLE(TOUCH_EVENTS)
@@ -334,7 +339,7 @@ public:
         Stylus
     };
 
-    WebPlatformTouchPoint() { }
+    WebPlatformTouchPoint() = default;
     WebPlatformTouchPoint(unsigned identifier, WebCore::IntPoint location, TouchPointState phase)
         : m_identifier(identifier)
         , m_location(location)
@@ -368,9 +373,9 @@ public:
     static Optional<WebPlatformTouchPoint> decode(IPC::Decoder&);
 
 private:
-    unsigned m_identifier;
+    unsigned m_identifier { 0 };
     WebCore::IntPoint m_location;
-    uint32_t m_phase;
+    uint32_t m_phase { TouchReleased };
 #if ENABLE(IOS_TOUCH_EVENTS)
     double m_radiusX { 0 };
     double m_radiusY { 0 };
@@ -384,7 +389,7 @@ private:
 
 class WebTouchEvent : public WebEvent {
 public:
-    WebTouchEvent() { }
+    WebTouchEvent() = default;
     WebTouchEvent(WebEvent::Type type, OptionSet<Modifier> modifiers, WallTime timestamp, const Vector<WebPlatformTouchPoint>& touchPoints, WebCore::IntPoint position, bool isPotentialTap, bool isGesture, float gestureScale, float gestureRotation)
         : WebEvent(type, modifiers, timestamp)
         , m_touchPoints(touchPoints)
@@ -414,17 +419,17 @@ public:
     bool allTouchPointsAreReleased() const;
 
     void encode(IPC::Encoder&) const;
-    static bool decode(IPC::Decoder&, WebTouchEvent&);
+    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, WebTouchEvent&);
     
 private:
     Vector<WebPlatformTouchPoint> m_touchPoints;
     
     WebCore::IntPoint m_position;
-    bool m_canPreventNativeGestures;
-    bool m_isPotentialTap;
-    bool m_isGesture;
-    float m_gestureScale;
-    float m_gestureRotation;
+    bool m_canPreventNativeGestures { false };
+    bool m_isPotentialTap { false };
+    bool m_isGesture { false };
+    float m_gestureScale { 0 };
+    float m_gestureRotation { 0 };
 };
 #else
 // FIXME: Move this class to its own header file.
@@ -481,7 +486,7 @@ public:
     bool allTouchPointsAreReleased() const;
 
     void encode(IPC::Encoder&) const;
-    static bool decode(IPC::Decoder&, WebTouchEvent&);
+    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, WebTouchEvent&);
   
 private:
     static bool isTouchEventType(Type);
@@ -493,3 +498,37 @@ private:
 #endif // ENABLE(TOUCH_EVENTS)
 
 } // namespace WebKit
+
+namespace WTF {
+
+template<> struct EnumTraits<WebKit::WebEvent::Modifier> {
+    using values = EnumValues<
+        WebKit::WebEvent::Modifier,
+        WebKit::WebEvent::Modifier::ShiftKey,
+        WebKit::WebEvent::Modifier::ControlKey,
+        WebKit::WebEvent::Modifier::AltKey,
+        WebKit::WebEvent::Modifier::MetaKey,
+        WebKit::WebEvent::Modifier::CapsLockKey
+    >;
+};
+
+template<> struct EnumTraits<WebKit::WebMouseEvent::Button> {
+    using values = EnumValues<
+        WebKit::WebMouseEvent::Button,
+        WebKit::WebMouseEvent::Button::LeftButton,
+        WebKit::WebMouseEvent::Button::MiddleButton,
+        WebKit::WebMouseEvent::Button::RightButton,
+        WebKit::WebMouseEvent::Button::NoButton
+    >;
+};
+
+template<> struct EnumTraits<WebKit::WebMouseEvent::SyntheticClickType> {
+    using values = EnumValues<
+        WebKit::WebMouseEvent::SyntheticClickType,
+        WebKit::WebMouseEvent::SyntheticClickType::NoTap,
+        WebKit::WebMouseEvent::SyntheticClickType::OneFingerTap,
+        WebKit::WebMouseEvent::SyntheticClickType::TwoFingerTap
+    >;
+};
+
+} // namespace WTF

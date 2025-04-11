@@ -134,10 +134,12 @@ ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_GetSyncValuesCHROMIUM(EGLDisplay dpy,
                                                               EGLuint64KHR *ust,
                                                               EGLuint64KHR *msc,
                                                               EGLuint64KHR *sbc);
-ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_GetMscRateCHROMIUM(EGLDisplay dpy,
-                                                           EGLSurface surface,
-                                                           EGLint *numerator,
-                                                           EGLint *denominator);
+
+// EGL_ANGLE_sync_control_rate
+ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_GetMscRateANGLE(EGLDisplay dpy,
+                                                        EGLSurface surface,
+                                                        EGLint *numerator,
+                                                        EGLint *denominator);
 
 // EGL_KHR_swap_buffers_with_damage
 ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_SwapBuffersWithDamageKHR(EGLDisplay dpy,
@@ -226,6 +228,13 @@ ANGLE_EXPORT EGLBoolean EGLAPIENTRY
 EGL_SwapBuffersWithFrameTokenANGLE(EGLDisplay dpy,
                                    EGLSurface surface,
                                    EGLFrameTokenANGLE frametoken);
+
+// EGL_ANGLE_power_preference
+ANGLE_EXPORT void EGLAPIENTRY EGL_ReleaseHighPowerGPUANGLE(EGLDisplay dpy, EGLContext ctx);
+
+ANGLE_EXPORT void EGLAPIENTRY EGL_ReacquireHighPowerGPUANGLE(EGLDisplay dpy, EGLContext ctx);
+
+ANGLE_EXPORT void EGLAPIENTRY EGL_HandleGPUSwitchANGLE(EGLDisplay dpy);
 
 }  // extern "C"
 

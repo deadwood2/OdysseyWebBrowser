@@ -36,6 +36,7 @@
 #include "DumpRenderTree.h"
 #include "WebCoreTestSupport.h"
 
+#include <JavaScriptCore/JSRetainPtr.h>
 #include <JavaScriptCore/JavaScriptCore.h>
 #include <WebCore/COMPtr.h>
 #include <WebCore/PlatformWheelEvent.h>
@@ -832,6 +833,10 @@ void mouseScrollBy(double x, double y, bool continuous)
     RECT rect;
     ::GetWindowRect(webViewWindow, &rect);
 
+    COMPtr<IWebFramePrivate> framePrivate;
+    if (SUCCEEDED(frame->QueryInterface(&framePrivate)))
+        framePrivate->layout();
+
     if (x) {
         UINT scrollChars = 1;
         ::SystemParametersInfo(SPI_GETWHEELSCROLLCHARS, 0, &scrollChars, 0);
@@ -899,7 +904,17 @@ static JSValueRef monitorWheelEvents(JSContextRef context, JSObjectRef function,
         return JSValueMakeUndefined(context);
 
     WebCore::Frame* coreFrame = core(static_cast<WebFrame*>(frame2.get()));
-    WebCoreTestSupport::monitorWheelEvents(*coreFrame);
+
+    bool resetLatching = true;
+    if (argumentCount > 0) {
+        auto resetLatchingString = adopt(JSStringCreateWithUTF8CString("resetLatching"));
+        auto resetLatchingValue = JSObjectGetProperty(context, JSValueToObject(context, arguments[0], nullptr), resetLatchingString.get(), nullptr);
+
+        if (resetLatchingValue && JSValueIsBoolean(context, resetLatchingValue))
+            resetLatching = JSValueToBoolean(context, resetLatchingValue);
+    }
+
+    WebCoreTestSupport::monitorWheelEvents(*coreFrame, resetLatching);
     
     return JSValueMakeUndefined(context);
 }
@@ -923,7 +938,7 @@ static JSValueRef callAfterScrollingCompletes(JSContextRef context, JSObjectRef 
         return JSValueMakeUndefined(context);
 
     WebCore::Frame* coreFrame = core(static_cast<WebFrame*>(frame2.get()));
-    WebCoreTestSupport::setTestCallbackAndStartNotificationTimer(*coreFrame, globalContext, jsCallbackFunction);
+    WebCoreTestSupport::setWheelEventMonitorTestCallbackAndStartMonitoring(false, false, *coreFrame, globalContext, jsCallbackFunction);
 
     return JSValueMakeUndefined(context);
 }

@@ -31,6 +31,7 @@
 #import "APIPageConfiguration.h"
 #import "AccessibilityIOS.h"
 #import "FullscreenClient.h"
+#import "GPUProcessProxy.h"
 #import "InputViewUpdateDeferrer.h"
 #import "Logging.h"
 #import "PageClientImplIOS.h"
@@ -134,6 +135,7 @@
 
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
     RetainPtr<_UILayerHostView> _visibilityPropagationView;
+    RetainPtr<_UILayerHostView> _visibilityPropagationViewForGPUProcess;
 #endif
 
     WebCore::HistoricalVelocityData _historicalKinematicData;
@@ -167,6 +169,7 @@ static NSArray *keyCommandsPlaceholderHackForEvernote(id self, SEL _cmd)
     _page->setIntrinsicDeviceScaleFactor(WebCore::screenScaleFactor([UIScreen mainScreen]));
     _page->setUseFixedLayout(true);
     _page->setDelegatesScrolling(true);
+    _page->setScreenIsBeingCaptured([[[self window] screen] isCaptured]);
 
 #if ENABLE(FULLSCREEN_API)
     _page->setFullscreenClient(makeUnique<WebKit::FullscreenClient>(self.webView));
@@ -188,7 +191,7 @@ static NSArray *keyCommandsPlaceholderHackForEvernote(id self, SEL _cmd)
     [_fixedClippingView addSubview:_rootContentView.get()];
 
     if (!linkedOnOrAfter(WebKit::SDKVersion::FirstWithLazyGestureRecognizerInstallation))
-        [self setupInteraction];
+        [self setUpInteraction];
     [self setUserInteractionEnabled:YES];
 
     self.layer.hitTestsAsOpaque = YES;
@@ -199,12 +202,14 @@ static NSArray *keyCommandsPlaceholderHackForEvernote(id self, SEL _cmd)
 
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
     [self _setupVisibilityPropagationView];
+    [self _setupVisibilityPropagationViewForGPUProcess];
 #endif
 
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillResignActive:) name:UIApplicationWillResignActiveNotification object:[UIApplication sharedApplication]];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidBecomeActive:) name:UIApplicationDidBecomeActiveNotification object:[UIApplication sharedApplication]];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:UIApplicationDidEnterBackgroundNotification object:[UIApplication sharedApplication]];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillEnterForeground:) name:UIApplicationWillEnterForegroundNotification object:[UIApplication sharedApplication]];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_screenCapturedDidChange:) name:UIScreenCapturedDidChangeNotification object:[UIScreen mainScreen]];
 
 #if USE(UIKIT_KEYBOARD_ADDITIONS)
     if (WebCore::IOSApplication::isEvernote() && !linkedOnOrAfter(WebKit::SDKVersion::FirstWhereWKContentViewDoesNotOverrideKeyCommands))
@@ -229,6 +234,24 @@ static NSArray *keyCommandsPlaceholderHackForEvernote(id self, SEL _cmd)
     [self addSubview:_visibilityPropagationView.get()];
 }
 
+- (void)_setupVisibilityPropagationViewForGPUProcess
+{
+    if (!WebKit::GPUProcessProxy::singletonIfCreated())
+        return;
+    auto processIdentifier = WebKit::GPUProcessProxy::singleton().processIdentifier();
+    auto contextID = WebKit::GPUProcessProxy::singleton().contextIDForVisibilityPropagation();
+    if (!processIdentifier || !contextID)
+        return;
+
+    if (_visibilityPropagationViewForGPUProcess)
+        return;
+
+    // Propagate the view's visibility state to the GPU process so that it is marked as "Foreground Running" when necessary.
+    _visibilityPropagationViewForGPUProcess = adoptNS([[_UILayerHostView alloc] initWithFrame:CGRectZero pid:processIdentifier contextID:contextID]);
+    RELEASE_LOG(Process, "Created visibility propagation view %p (contextID: %u) for GPU process with PID %d", _visibilityPropagationViewForGPUProcess.get(), contextID, processIdentifier);
+    [self addSubview:_visibilityPropagationViewForGPUProcess.get()];
+}
+
 - (void)_removeVisibilityPropagationView
 {
     if (!_visibilityPropagationView)
@@ -237,6 +260,16 @@ static NSArray *keyCommandsPlaceholderHackForEvernote(id self, SEL _cmd)
     RELEASE_LOG(Process, "Removing visibility propagation view %p", _visibilityPropagationView.get());
     [_visibilityPropagationView removeFromSuperview];
     _visibilityPropagationView = nullptr;
+}
+
+- (void)_removeVisibilityPropagationViewForGPUProcess
+{
+    if (!_visibilityPropagationViewForGPUProcess)
+        return;
+
+    RELEASE_LOG(Process, "Removing visibility propagation view %p", _visibilityPropagationViewForGPUProcess.get());
+    [_visibilityPropagationViewForGPUProcess removeFromSuperview];
+    _visibilityPropagationViewForGPUProcess = nullptr;
 }
 #endif
 
@@ -255,7 +288,7 @@ static NSArray *keyCommandsPlaceholderHackForEvernote(id self, SEL _cmd)
 
 - (void)dealloc
 {
-    [self cleanupInteraction];
+    [self cleanUpInteraction];
 
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 
@@ -298,7 +331,7 @@ static NSArray *keyCommandsPlaceholderHackForEvernote(id self, SEL _cmd)
     [super didMoveToWindow];
 
     if (self.window)
-        [self setupInteraction];
+        [self setUpInteraction];
 }
 
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
@@ -403,6 +436,7 @@ static WebCore::FloatBoxExtent floatBoxExtent(UIEdgeInsets insets)
     inStableState:(BOOL)isStableState
     isChangingObscuredInsetsInteractively:(BOOL)isChangingObscuredInsetsInteractively
     enclosedInScrollableAncestorView:(BOOL)enclosedInScrollableAncestorView
+    sendEvenIfUnchanged:(BOOL)sendEvenIfUnchanged
 {
     auto drawingArea = _page->drawingArea();
     if (!drawingArea)
@@ -442,7 +476,7 @@ static WebCore::FloatBoxExtent floatBoxExtent(UIEdgeInsets insets)
 
     bool wasStableState = _page->inStableState();
 
-    _page->updateVisibleContentRects(visibleContentRectUpdateInfo);
+    _page->updateVisibleContentRects(visibleContentRectUpdateInfo, sendEvenIfUnchanged);
 
     auto layoutViewport = _page->unconstrainedLayoutViewportRect();
     _page->adjustLayersForLayoutViewport(layoutViewport);
@@ -491,11 +525,7 @@ static WebCore::FloatBoxExtent floatBoxExtent(UIEdgeInsets insets)
 
 - (UIInterfaceOrientation)interfaceOrientation
 {
-#if HAVE(UISCENE)
     return self.window.windowScene.interfaceOrientation;
-#else
-    return UIApp.interfaceOrientation;
-#endif
 }
 
 #pragma mark Internal
@@ -579,7 +609,7 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
 - (void)_processDidExit
 {
     [self _updateRemoteAccessibilityRegistration:NO];
-    [self cleanupInteraction];
+    [self cleanUpInteraction];
 
     [self setShowingInspectorIndication:NO];
     [self _hideInspectorHighlight];
@@ -591,6 +621,13 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
     _isPrintingToPDF = NO;
 }
 
+#if ENABLE(GPU_PROCESS)
+- (void)_gpuProcessCrashed
+{
+    [self _removeVisibilityPropagationViewForGPUProcess];
+}
+#endif
+
 - (void)_processWillSwap
 {
     // FIXME: Should we do something differently?
@@ -600,7 +637,7 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
 - (void)_didRelaunchProcess
 {
     [self _accessibilityRegisterUIProcessTokens];
-    [self setupInteraction];
+    [self setUpInteraction];
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
     [self _setupVisibilityPropagationView];
 #endif
@@ -610,6 +647,11 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
 - (void)_processDidCreateContextForVisibilityPropagation
 {
     [self _setupVisibilityPropagationView];
+}
+
+- (void)_gpuProcessDidCreateContextForVisibilityPropagation
+{
+    [self _setupVisibilityPropagationViewForGPUProcess];
 }
 #endif
 
@@ -730,6 +772,11 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
 {
     if (!self.window)
         _page->applicationWillEnterForegroundForMedia();
+}
+
+- (void)_screenCapturedDidChange:(NSNotification *)notification
+{
+    _page->setScreenIsBeingCaptured([[[self window] screen] isCaptured]);
 }
 
 @end

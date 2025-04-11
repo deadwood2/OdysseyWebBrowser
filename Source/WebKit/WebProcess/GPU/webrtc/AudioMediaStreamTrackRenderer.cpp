@@ -26,7 +26,7 @@
 #include "config.h"
 #include "AudioMediaStreamTrackRenderer.h"
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
 
 #include "GPUProcessConnection.h"
 #include "RemoteAudioMediaStreamTrackRendererManagerMessages.h"
@@ -73,12 +73,6 @@ void AudioMediaStreamTrackRenderer::clear()
     m_connection->send(Messages::RemoteAudioMediaStreamTrackRenderer::Clear { }, m_identifier);
 }
 
-void AudioMediaStreamTrackRenderer::setMuted(bool value)
-{
-    WebCore::AudioMediaStreamTrackRenderer::setMuted(value);
-    m_connection->send(Messages::RemoteAudioMediaStreamTrackRenderer::SetMuted { value }, m_identifier);
-}
-
 void AudioMediaStreamTrackRenderer::setVolume(float value)
 {
     WebCore::AudioMediaStreamTrackRenderer::setVolume(value);
@@ -117,4 +111,4 @@ void AudioMediaStreamTrackRenderer::storageChanged(SharedMemory* storage)
 
 }
 
-#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)

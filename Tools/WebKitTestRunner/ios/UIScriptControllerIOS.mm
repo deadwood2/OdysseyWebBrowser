@@ -303,9 +303,10 @@ void UIScriptControllerIOS::singleTapAtPointWithModifiers(WebCore::FloatPoint lo
     for (auto& modifierFlag : modifierFlags)
         [[HIDEventGenerator sharedHIDEventGenerator] keyDown:modifierFlag];
 
-    [[HIDEventGenerator sharedHIDEventGenerator] tap:globalToContentCoordinates(webView(), location.x(), location.y()) completionBlock:[this, protectedThis = makeRefPtr(*this), modifierFlags = WTFMove(modifierFlags), block = WTFMove(block)] () mutable {
+    [[HIDEventGenerator sharedHIDEventGenerator] tap:globalToContentCoordinates(webView(), location.x(), location.y()) completionBlock:[this, protectedThis = makeRef(*this), modifierFlags = WTFMove(modifierFlags), block = WTFMove(block)] () mutable {
         if (!m_context)
             return;
+
         for (size_t i = modifierFlags.size(); i; ) {
             --i;
             [[HIDEventGenerator sharedHIDEventGenerator] keyUp:modifierFlags[i]];
@@ -553,9 +554,12 @@ void UIScriptControllerIOS::keyDown(JSStringRef character, JSValueRef modifierAr
     String inputString = toWTFString(toWK(character));
     auto modifierFlags = parseModifierArray(m_context->jsContext(), modifierArray);
 
-    for (auto& modifierFlag : modifierFlags)
+    for (auto& modifierFlag : modifierFlags) {
+        WTFLogAlways("Sending modifier keydown: %s", modifierFlag.utf8().data());
         [[HIDEventGenerator sharedHIDEventGenerator] keyDown:modifierFlag];
+    }
 
+    WTFLogAlways("Sending keydown for input string '%s'", inputString.utf8().data());
     [[HIDEventGenerator sharedHIDEventGenerator] keyDown:inputString];
     [[HIDEventGenerator sharedHIDEventGenerator] keyUp:inputString];
 
@@ -606,9 +610,24 @@ void UIScriptControllerIOS::selectFormAccessoryPickerRow(long rowIndex)
     [webView() selectFormAccessoryPickerRow:rowIndex];
 }
 
+bool UIScriptControllerIOS::selectFormAccessoryHasCheckedItemAtRow(long rowIndex) const
+{
+    return [webView() selectFormAccessoryHasCheckedItemAtRow:rowIndex];
+}
+
 void UIScriptControllerIOS::setTimePickerValue(long hour, long minute)
 {
     [webView() setTimePickerValueToHour:hour minute:minute];
+}
+
+double UIScriptControllerIOS::timePickerValueHour() const
+{
+    return [webView() timePickerValueHour];
+}
+
+double UIScriptControllerIOS::timePickerValueMinute() const
+{
+    return [webView() timePickerValueMinute];
 }
 
 bool UIScriptControllerIOS::isPresentingModally() const
@@ -667,7 +686,7 @@ void UIScriptControllerIOS::immediateScrollToOffset(long x, long y)
 static UIScrollView *enclosingScrollViewIncludingSelf(UIView *view)
 {
     do {
-        if ([view isKindOfClass:[UIScrollView self]])
+        if ([view isKindOfClass:[UIScrollView class]])
             return static_cast<UIScrollView *>(view);
     } while ((view = [view superview]));
 
@@ -821,11 +840,6 @@ JSObjectRef UIScriptControllerIOS::inputViewBounds() const
     return JSValueToObject(m_context->jsContext(), [JSValue valueWithObject:toNSDictionary(webView()._inputViewBounds) inContext:[JSContext contextWithJSGlobalContextRef:m_context->jsContext()]].JSValueRef, nullptr);
 }
 
-void UIScriptControllerIOS::removeAllDynamicDictionaries()
-{
-    [UIKeyboard removeAllDynamicDictionaries];
-}
-
 JSRetainPtr<JSStringRef> UIScriptControllerIOS::scrollingTreeAsText() const
 {
     return adopt(JSStringCreateWithCFString((CFStringRef)[webView() _scrollingTreeAsText]));
@@ -834,6 +848,12 @@ JSRetainPtr<JSStringRef> UIScriptControllerIOS::scrollingTreeAsText() const
 JSObjectRef UIScriptControllerIOS::propertiesOfLayerWithID(uint64_t layerID) const
 {
     return JSValueToObject(m_context->jsContext(), [JSValue valueWithObject:[webView() _propertiesOfLayerWithID:layerID] inContext:[JSContext contextWithJSGlobalContextRef:m_context->jsContext()]].JSValueRef, nullptr);
+}
+
+bool UIScriptControllerIOS::mayContainEditableElementsInRect(unsigned x, unsigned y, unsigned width, unsigned height)
+{
+    auto contentRect = CGRectMake(x, y, width, height);
+    return [webView() _mayContainEditableElementsInRect:[webView() convertRect:contentRect fromView:platformContentView()]];
 }
 
 static UIDeviceOrientation toUIDeviceOrientation(DeviceOrientation* orientation)
@@ -923,7 +943,7 @@ void UIScriptControllerIOS::setDidDismissContextMenuCallback(JSValueRef callback
     webView().didDismissContextMenuCallback = makeBlockPtr([this, strongThis = makeRef(*this)] {
         if (!m_context)
             return;
-        m_context->fireCallback(CallbackTypeDidEndFormControlInteraction);
+        m_context->fireCallback(CallbackTypeDidDismissContextMenu);
     }).get();
 }
 
@@ -1189,6 +1209,11 @@ void UIScriptControllerIOS::toggleCapsLock(JSValueRef callback)
     doAsyncTask(callback);
 }
 
+bool UIScriptControllerIOS::keyboardIsAutomaticallyShifted() const
+{
+    return UIKeyboardImpl.activeInstance.isAutoShifted;
+}
+
 JSObjectRef UIScriptControllerIOS::attachmentInfo(JSStringRef jsAttachmentIdentifier)
 {
     auto attachmentIdentifier = toWTFString(toWK(jsAttachmentIdentifier));
@@ -1208,13 +1233,13 @@ JSObjectRef UIScriptControllerIOS::attachmentInfo(JSStringRef jsAttachmentIdenti
 
 UIView *UIScriptControllerIOS::platformContentView() const
 {
-    return [webView() valueForKeyPath:@"_currentContentView"];
+    return webView().contentView;
 }
 
 JSObjectRef UIScriptControllerIOS::calendarType() const
 {
-    UIView *contentView = [webView() valueForKeyPath:@"_currentContentView"];
-    NSString *calendarTypeString = [contentView valueForKeyPath:@"formInputControl.dateTimePickerCalendarType"];
+    UIView *contentView = webView().contentView;
+    NSString *calendarTypeString = [contentView valueForKeyPath:@"dateTimeInputControl.dateTimePickerCalendarType"];
     auto jsContext = m_context->jsContext();
     return JSValueToObject(jsContext, [JSValue valueWithObject:calendarTypeString inContext:[JSContext contextWithJSGlobalContextRef:jsContext]].JSValueRef, nullptr);
 }
@@ -1261,6 +1286,21 @@ void UIScriptControllerIOS::doAfterDoubleTapDelay(JSValueRef callback)
 void UIScriptControllerIOS::copyText(JSStringRef text)
 {
     UIPasteboard.generalPasteboard.string = text->string();
+}
+
+void UIScriptControllerIOS::installTapGestureOnWindow(JSValueRef callback)
+{
+    m_context->registerCallback(callback, CallbackTypeWindowTapRecognized);
+    webView().windowTapRecognizedCallback = makeBlockPtr([this, strongThis = makeRef(*this)] {
+        if (!m_context)
+            return;
+        m_context->fireCallback(CallbackTypeWindowTapRecognized);
+    }).get();
+}
+
+bool UIScriptControllerIOS::isShowingContextMenu() const
+{
+    return webView().showingContextMenu;
 }
 
 }

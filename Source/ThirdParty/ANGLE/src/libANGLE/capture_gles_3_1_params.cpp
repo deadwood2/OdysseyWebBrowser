@@ -38,7 +38,11 @@ void CaptureDrawArraysIndirect_indirect(const State &glState,
                                         const void *indirect,
                                         ParamCapture *paramCapture)
 {
-    UNIMPLEMENTED();
+    // DrawArraysIndirect requires that all data sourced for the command,
+    // including the DrawArraysIndirectCommand structure, be in buffer objects,
+    // and may not be called when the default vertex array object is bound.
+    // Indirect pointer is automatically captured in capture_gles_3_1_autogen.cpp
+    assert(!isCallValid || glState.getTargetBuffer(gl::BufferBinding::DrawIndirect));
 }
 
 void CaptureDrawElementsIndirect_indirect(const State &glState,
@@ -48,7 +52,11 @@ void CaptureDrawElementsIndirect_indirect(const State &glState,
                                           const void *indirect,
                                           ParamCapture *paramCapture)
 {
-    UNIMPLEMENTED();
+    // DrawElementsIndirect requires that all data sourced for the command,
+    // including the DrawElementsIndirectCommand structure, be in buffer objects,
+    // and may not be called when the default vertex array object is bound
+    // Indirect pointer is automatically captured in capture_gles_3_1_autogen.cpp
+    assert(!isCallValid || glState.getTargetBuffer(gl::BufferBinding::DrawIndirect));
 }
 
 void CaptureGenProgramPipelines_pipelinesPacked(const State &glState,
@@ -98,7 +106,7 @@ void CaptureGetProgramInterfaceiv_params(const State &glState,
                                          GLint *params,
                                          ParamCapture *paramCapture)
 {
-    UNIMPLEMENTED();
+    CaptureMemory(params, sizeof(GLint), paramCapture);
 }
 
 void CaptureGetProgramPipelineInfoLog_length(const State &glState,
@@ -163,7 +171,7 @@ void CaptureGetProgramResourceName_length(const State &glState,
                                           GLchar *name,
                                           ParamCapture *paramCapture)
 {
-    UNIMPLEMENTED();
+    paramCapture->readBufferSizeBytes = sizeof(GLsizei);
 }
 
 void CaptureGetProgramResourceName_name(const State &glState,
@@ -176,7 +184,7 @@ void CaptureGetProgramResourceName_name(const State &glState,
                                         GLchar *name,
                                         ParamCapture *paramCapture)
 {
-    UNIMPLEMENTED();
+    CaptureString(name, paramCapture);
 }
 
 void CaptureGetProgramResourceiv_props(const State &glState,
@@ -191,7 +199,7 @@ void CaptureGetProgramResourceiv_props(const State &glState,
                                        GLint *params,
                                        ParamCapture *paramCapture)
 {
-    UNIMPLEMENTED();
+    CaptureMemory(props, sizeof(GLenum) * propCount, paramCapture);
 }
 
 void CaptureGetProgramResourceiv_length(const State &glState,
@@ -206,7 +214,7 @@ void CaptureGetProgramResourceiv_length(const State &glState,
                                         GLint *params,
                                         ParamCapture *paramCapture)
 {
-    UNIMPLEMENTED();
+    paramCapture->readBufferSizeBytes = sizeof(GLsizei);
 }
 
 void CaptureGetProgramResourceiv_params(const State &glState,
@@ -221,7 +229,18 @@ void CaptureGetProgramResourceiv_params(const State &glState,
                                         GLint *params,
                                         ParamCapture *paramCapture)
 {
-    UNIMPLEMENTED();
+    // See QueryProgramResourceiv for details on how these are handled
+    for (int i = 0; i < propCount; ++i)
+    {
+        if (props[i] == GL_ACTIVE_VARIABLES)
+        {
+            // This appears to be the only property that isn't a single integer
+            UNIMPLEMENTED();
+            return;
+        }
+    }
+
+    CaptureMemory(props, sizeof(GLint) * propCount, paramCapture);
 }
 
 void CaptureGetTexLevelParameterfv_params(const State &glState,
@@ -249,7 +268,7 @@ void CaptureGetTexLevelParameteriv_params(const State &glState,
 void CaptureProgramUniform1fv_value(const State &glState,
                                     bool isCallValid,
                                     ShaderProgramID program,
-                                    GLint location,
+                                    UniformLocation location,
                                     GLsizei count,
                                     const GLfloat *value,
                                     ParamCapture *paramCapture)
@@ -260,7 +279,7 @@ void CaptureProgramUniform1fv_value(const State &glState,
 void CaptureProgramUniform1iv_value(const State &glState,
                                     bool isCallValid,
                                     ShaderProgramID program,
-                                    GLint location,
+                                    UniformLocation location,
                                     GLsizei count,
                                     const GLint *value,
                                     ParamCapture *paramCapture)
@@ -271,7 +290,7 @@ void CaptureProgramUniform1iv_value(const State &glState,
 void CaptureProgramUniform1uiv_value(const State &glState,
                                      bool isCallValid,
                                      ShaderProgramID program,
-                                     GLint location,
+                                     UniformLocation location,
                                      GLsizei count,
                                      const GLuint *value,
                                      ParamCapture *paramCapture)
@@ -282,7 +301,7 @@ void CaptureProgramUniform1uiv_value(const State &glState,
 void CaptureProgramUniform2fv_value(const State &glState,
                                     bool isCallValid,
                                     ShaderProgramID program,
-                                    GLint location,
+                                    UniformLocation location,
                                     GLsizei count,
                                     const GLfloat *value,
                                     ParamCapture *paramCapture)
@@ -293,7 +312,7 @@ void CaptureProgramUniform2fv_value(const State &glState,
 void CaptureProgramUniform2iv_value(const State &glState,
                                     bool isCallValid,
                                     ShaderProgramID program,
-                                    GLint location,
+                                    UniformLocation location,
                                     GLsizei count,
                                     const GLint *value,
                                     ParamCapture *paramCapture)
@@ -304,7 +323,7 @@ void CaptureProgramUniform2iv_value(const State &glState,
 void CaptureProgramUniform2uiv_value(const State &glState,
                                      bool isCallValid,
                                      ShaderProgramID program,
-                                     GLint location,
+                                     UniformLocation location,
                                      GLsizei count,
                                      const GLuint *value,
                                      ParamCapture *paramCapture)
@@ -315,7 +334,7 @@ void CaptureProgramUniform2uiv_value(const State &glState,
 void CaptureProgramUniform3fv_value(const State &glState,
                                     bool isCallValid,
                                     ShaderProgramID program,
-                                    GLint location,
+                                    UniformLocation location,
                                     GLsizei count,
                                     const GLfloat *value,
                                     ParamCapture *paramCapture)
@@ -326,7 +345,7 @@ void CaptureProgramUniform3fv_value(const State &glState,
 void CaptureProgramUniform3iv_value(const State &glState,
                                     bool isCallValid,
                                     ShaderProgramID program,
-                                    GLint location,
+                                    UniformLocation location,
                                     GLsizei count,
                                     const GLint *value,
                                     ParamCapture *paramCapture)
@@ -337,7 +356,7 @@ void CaptureProgramUniform3iv_value(const State &glState,
 void CaptureProgramUniform3uiv_value(const State &glState,
                                      bool isCallValid,
                                      ShaderProgramID program,
-                                     GLint location,
+                                     UniformLocation location,
                                      GLsizei count,
                                      const GLuint *value,
                                      ParamCapture *paramCapture)
@@ -348,7 +367,7 @@ void CaptureProgramUniform3uiv_value(const State &glState,
 void CaptureProgramUniform4fv_value(const State &glState,
                                     bool isCallValid,
                                     ShaderProgramID program,
-                                    GLint location,
+                                    UniformLocation location,
                                     GLsizei count,
                                     const GLfloat *value,
                                     ParamCapture *paramCapture)
@@ -359,7 +378,7 @@ void CaptureProgramUniform4fv_value(const State &glState,
 void CaptureProgramUniform4iv_value(const State &glState,
                                     bool isCallValid,
                                     ShaderProgramID program,
-                                    GLint location,
+                                    UniformLocation location,
                                     GLsizei count,
                                     const GLint *value,
                                     ParamCapture *paramCapture)
@@ -370,7 +389,7 @@ void CaptureProgramUniform4iv_value(const State &glState,
 void CaptureProgramUniform4uiv_value(const State &glState,
                                      bool isCallValid,
                                      ShaderProgramID program,
-                                     GLint location,
+                                     UniformLocation location,
                                      GLsizei count,
                                      const GLuint *value,
                                      ParamCapture *paramCapture)
@@ -381,7 +400,7 @@ void CaptureProgramUniform4uiv_value(const State &glState,
 void CaptureProgramUniformMatrix2fv_value(const State &glState,
                                           bool isCallValid,
                                           ShaderProgramID program,
-                                          GLint location,
+                                          UniformLocation location,
                                           GLsizei count,
                                           GLboolean transpose,
                                           const GLfloat *value,
@@ -393,7 +412,7 @@ void CaptureProgramUniformMatrix2fv_value(const State &glState,
 void CaptureProgramUniformMatrix2x3fv_value(const State &glState,
                                             bool isCallValid,
                                             ShaderProgramID program,
-                                            GLint location,
+                                            UniformLocation location,
                                             GLsizei count,
                                             GLboolean transpose,
                                             const GLfloat *value,
@@ -405,7 +424,7 @@ void CaptureProgramUniformMatrix2x3fv_value(const State &glState,
 void CaptureProgramUniformMatrix2x4fv_value(const State &glState,
                                             bool isCallValid,
                                             ShaderProgramID program,
-                                            GLint location,
+                                            UniformLocation location,
                                             GLsizei count,
                                             GLboolean transpose,
                                             const GLfloat *value,
@@ -417,7 +436,7 @@ void CaptureProgramUniformMatrix2x4fv_value(const State &glState,
 void CaptureProgramUniformMatrix3fv_value(const State &glState,
                                           bool isCallValid,
                                           ShaderProgramID program,
-                                          GLint location,
+                                          UniformLocation location,
                                           GLsizei count,
                                           GLboolean transpose,
                                           const GLfloat *value,
@@ -429,7 +448,7 @@ void CaptureProgramUniformMatrix3fv_value(const State &glState,
 void CaptureProgramUniformMatrix3x2fv_value(const State &glState,
                                             bool isCallValid,
                                             ShaderProgramID program,
-                                            GLint location,
+                                            UniformLocation location,
                                             GLsizei count,
                                             GLboolean transpose,
                                             const GLfloat *value,
@@ -441,7 +460,7 @@ void CaptureProgramUniformMatrix3x2fv_value(const State &glState,
 void CaptureProgramUniformMatrix3x4fv_value(const State &glState,
                                             bool isCallValid,
                                             ShaderProgramID program,
-                                            GLint location,
+                                            UniformLocation location,
                                             GLsizei count,
                                             GLboolean transpose,
                                             const GLfloat *value,
@@ -453,7 +472,7 @@ void CaptureProgramUniformMatrix3x4fv_value(const State &glState,
 void CaptureProgramUniformMatrix4fv_value(const State &glState,
                                           bool isCallValid,
                                           ShaderProgramID program,
-                                          GLint location,
+                                          UniformLocation location,
                                           GLsizei count,
                                           GLboolean transpose,
                                           const GLfloat *value,
@@ -465,7 +484,7 @@ void CaptureProgramUniformMatrix4fv_value(const State &glState,
 void CaptureProgramUniformMatrix4x2fv_value(const State &glState,
                                             bool isCallValid,
                                             ShaderProgramID program,
-                                            GLint location,
+                                            UniformLocation location,
                                             GLsizei count,
                                             GLboolean transpose,
                                             const GLfloat *value,
@@ -477,7 +496,7 @@ void CaptureProgramUniformMatrix4x2fv_value(const State &glState,
 void CaptureProgramUniformMatrix4x3fv_value(const State &glState,
                                             bool isCallValid,
                                             ShaderProgramID program,
-                                            GLint location,
+                                            UniformLocation location,
                                             GLsizei count,
                                             GLboolean transpose,
                                             const GLfloat *value,

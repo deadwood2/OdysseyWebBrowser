@@ -232,6 +232,7 @@ void WebPreferences::initializeDefaultSettings()
     CFDictionaryAddValue(defaults, CFSTR(WebKitJavaScriptRuntimeFlagsPreferenceKey), CFSTR("0"));
     CFDictionaryAddValue(defaults, CFSTR(WebKitWebSecurityEnabledPreferenceKey), kCFBooleanTrue);
     CFDictionaryAddValue(defaults, CFSTR(WebKitAllowTopNavigationToDataURLsPreferenceKey), kCFBooleanFalse);
+    CFDictionaryAddValue(defaults, CFSTR(WebKitWebAudioEnabledPreferenceKey), kCFBooleanFalse);
     CFDictionaryAddValue(defaults, CFSTR(WebKitAllowUniversalAccessFromFileURLsPreferenceKey), kCFBooleanFalse);
     CFDictionaryAddValue(defaults, CFSTR(WebKitAllowFileAccessFromFileURLsPreferenceKey), kCFBooleanTrue);
     CFDictionaryAddValue(defaults, CFSTR(WebKitJavaScriptCanAccessClipboardPreferenceKey), kCFBooleanFalse);
@@ -321,6 +322,8 @@ void WebPreferences::initializeDefaultSettings()
     CFDictionaryAddValue(defaults, CFSTR(WebKitWebAnimationsMutableTimelinesEnabledPreferenceKey), kCFBooleanFalse);
 
     CFDictionaryAddValue(defaults, CFSTR(WebKitWebAnimationsCSSIntegrationEnabledPreferenceKey), kCFBooleanFalse);
+
+    CFDictionaryAddValue(defaults, CFSTR(WebKitCSSCustomPropertiesAndValuesEnabledPreferenceKey), kCFBooleanFalse);
 
     CFDictionaryAddValue(defaults, CFSTR(WebKitUserTimingEnabledPreferenceKey), kCFBooleanFalse);
 
@@ -1922,7 +1925,7 @@ void WebPreferences::didRemoveFromWebView()
 
 HRESULT WebPreferences::shouldDisplaySubtitles(_Out_ BOOL* enabled)
 {
-#if ENABLE(VIDEO_TRACK)
+#if ENABLE(VIDEO)
     if (!enabled)
         return E_POINTER;
 
@@ -1935,7 +1938,7 @@ HRESULT WebPreferences::shouldDisplaySubtitles(_Out_ BOOL* enabled)
 
 HRESULT WebPreferences::setShouldDisplaySubtitles(BOOL enabled)
 {
-#if ENABLE(VIDEO_TRACK)
+#if ENABLE(VIDEO)
     setBoolValue(WebKitShouldDisplaySubtitlesPreferenceKey, enabled);
     return S_OK;
 #else
@@ -1945,7 +1948,7 @@ HRESULT WebPreferences::setShouldDisplaySubtitles(BOOL enabled)
 
 HRESULT WebPreferences::shouldDisplayCaptions(_Out_ BOOL* enabled)
 {
-#if ENABLE(VIDEO_TRACK)
+#if ENABLE(VIDEO)
     if (!enabled)
         return E_POINTER;
 
@@ -1958,7 +1961,7 @@ HRESULT WebPreferences::shouldDisplayCaptions(_Out_ BOOL* enabled)
 
 HRESULT WebPreferences::setShouldDisplayCaptions(BOOL enabled)
 {
-#if ENABLE(VIDEO_TRACK)
+#if ENABLE(VIDEO)
     setBoolValue(WebKitShouldDisplayCaptionsPreferenceKey, enabled);
     return S_OK;
 #else
@@ -1968,7 +1971,7 @@ HRESULT WebPreferences::setShouldDisplayCaptions(BOOL enabled)
 
 HRESULT WebPreferences::shouldDisplayTextDescriptions(_Out_ BOOL* enabled)
 {
-#if ENABLE(VIDEO_TRACK)
+#if ENABLE(VIDEO)
     if (!enabled)
         return E_POINTER;
 
@@ -1981,7 +1984,7 @@ HRESULT WebPreferences::shouldDisplayTextDescriptions(_Out_ BOOL* enabled)
 
 HRESULT WebPreferences::setShouldDisplayTextDescriptions(BOOL enabled)
 {
-#if ENABLE(VIDEO_TRACK)
+#if ENABLE(VIDEO)
     setBoolValue(WebKitShouldDisplayTextDescriptionsPreferenceKey, enabled);
     return S_OK;
 #else
@@ -2386,6 +2389,20 @@ HRESULT WebPreferences::webAnimationsMutableTimelinesEnabled(_Out_ BOOL* enabled
     return S_OK;
 }
 
+HRESULT WebPreferences::setCSSCustomPropertiesAndValuesEnabled(BOOL enabled)
+{
+    setBoolValue(WebKitCSSCustomPropertiesAndValuesEnabledPreferenceKey, enabled);
+    return S_OK;
+}
+
+HRESULT WebPreferences::CSSCustomPropertiesAndValuesEnabled(_Out_ BOOL* enabled)
+{
+    if (!enabled)
+        return E_POINTER;
+    *enabled = boolValueForKey(WebKitCSSCustomPropertiesAndValuesEnabledPreferenceKey);
+    return S_OK;
+}
+    
 HRESULT WebPreferences::setUserTimingEnabled(BOOL enabled)
 {
     setBoolValue(WebKitUserTimingEnabledPreferenceKey, enabled);
@@ -2481,5 +2498,19 @@ HRESULT WebPreferences::allowTopNavigationToDataURLs(_Out_ BOOL* allowAccess)
 HRESULT WebPreferences::setAllowTopNavigationToDataURLs(BOOL allowAccess)
 {
     setBoolValue(WebKitAllowTopNavigationToDataURLsPreferenceKey, allowAccess);
+    return S_OK;
+}
+
+HRESULT WebPreferences::modernUnprefixedWebAudioEnabled(_Out_ BOOL* enabled)
+{
+    if (!enabled)
+        return E_POINTER;
+    *enabled = boolValueForKey(WebKitWebAudioEnabledPreferenceKey);
+    return S_OK;
+}
+
+HRESULT WebPreferences::setModernUnprefixedWebAudioEnabled(BOOL enabled)
+{
+    setBoolValue(WebKitWebAudioEnabledPreferenceKey, enabled);
     return S_OK;
 }

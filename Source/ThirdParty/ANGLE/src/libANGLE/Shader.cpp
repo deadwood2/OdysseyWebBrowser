@@ -317,7 +317,8 @@ void Shader::compile(const Context *context)
     mState.mGeometryShaderInputPrimitiveType.reset();
     mState.mGeometryShaderOutputPrimitiveType.reset();
     mState.mGeometryShaderMaxVertices.reset();
-    mState.mGeometryShaderInvocations = 1;
+    mState.mGeometryShaderInvocations      = 1;
+    mState.mEarlyFragmentTestsOptimization = false;
 
     mState.mCompileStatus = CompileStatus::COMPILE_REQUESTED;
     mBoundCompiler.set(context, context->getCompiler());
@@ -490,6 +491,8 @@ void Shader::resolveCompile()
             std::sort(mState.mInputVaryings.begin(), mState.mInputVaryings.end(), CompareShaderVar);
             mState.mActiveOutputVariables =
                 GetActiveShaderVariables(sh::GetOutputVariables(compilerHandle));
+            mState.mEarlyFragmentTestsOptimization =
+                sh::HasEarlyFragmentTestsOptimization(compilerHandle);
             break;
         }
         case ShaderType::Geometry:
@@ -651,7 +654,7 @@ std::string Shader::getTransformFeedbackVaryingMappedName(const std::string &tfV
             else if (varying.isStruct())
             {
                 GLuint fieldIndex = 0;
-                const auto *field = FindShaderVarField(varying, tfVaryingName, &fieldIndex);
+                const auto *field = varying.findField(tfVaryingName, &fieldIndex);
                 ASSERT(field != nullptr && !field->isStruct() && !field->isArray());
                 return varying.mappedName + "." + field->mappedName;
             }

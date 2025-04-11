@@ -18,6 +18,12 @@
  */
 
 #include "config.h"
+
+// Include WebKitSettingsPrivate.h for webkitSettingsSetMediaCaptureRequiresSecureConnection().
+#define WEBKIT2_COMPILATION
+#include "WebKitSettingsPrivate.h"
+#undef WEBKIT2_COMPILATION
+
 #include "WebViewTest.h"
 #include <wtf/HashSet.h>
 #include <wtf/RunLoop.h>
@@ -311,8 +317,8 @@ public:
     void setCreateNewWebViewsInWindowsWithDefaultSize(int width = 800, int height = 600)
     {
         m_shouldCreateWebViewsInNewWindowsAutomatically = true;
-        m_DefaultGeometryNewWindows.width = width;
-        m_DefaultGeometryNewWindows.height = height;
+        m_defaultGeometryNewWindows.width = width;
+        m_defaultGeometryNewWindows.height = height;
     }
 #endif
 
@@ -332,8 +338,8 @@ public:
 #if PLATFORM(GTK)
         keyStroke(GDK_KEY_a);
         keyStroke(GDK_KEY_b);
-        while (gtk_events_pending())
-            gtk_main_iteration();
+        while (g_main_context_pending(nullptr))
+            g_main_context_iteration(nullptr, TRUE);
 #endif
     }
 
@@ -361,10 +367,15 @@ public:
 #if PLATFORM(GTK)
         if (m_shouldCreateWebViewsInNewWindowsAutomatically) {
             g_assert_null(m_parentWindow);
+#if USE(GTK4)
+            m_parentWindow = gtk_window_new();
+            gtk_window_set_child(GTK_WINDOW(m_parentWindow), GTK_WIDGET(newWebView));
+#else
             m_parentWindow = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-            gtk_window_set_default_size(GTK_WINDOW(m_parentWindow), m_DefaultGeometryNewWindows.width, m_DefaultGeometryNewWindows.height);
             gtk_container_add(GTK_CONTAINER(m_parentWindow), GTK_WIDGET(newWebView));
             gtk_widget_show(GTK_WIDGET(newWebView));
+#endif
+            gtk_window_set_default_size(GTK_WINDOW(m_parentWindow), m_defaultGeometryNewWindows.width, m_defaultGeometryNewWindows.height);
             gtk_widget_show(m_parentWindow);
         }
 #endif
@@ -410,7 +421,7 @@ public:
 
 #if PLATFORM(GTK)
     bool m_shouldCreateWebViewsInNewWindowsAutomatically { false };
-    cairo_rectangle_int_t m_DefaultGeometryNewWindows;
+    cairo_rectangle_int_t m_defaultGeometryNewWindows;
 #endif
 };
 
@@ -475,10 +486,7 @@ public:
 
 static void testWebViewCreateNavigationData(CreateNavigationDataTest* test, gconstpointer)
 {
-#if PLATFORM(GTK)
-    test->showInWindowAndWaitUntilMapped();
-#endif
-
+    test->showInWindow();
     test->loadHTML(
         "<html><body>"
         "<input style=\"position:absolute; left:0; top:0; margin:0; padding:0\" type=\"button\" value=\"click to show a popup\" onclick=\"window.open('data:foo');\"/>"
@@ -518,10 +526,16 @@ static void testWebViewCreateNavigationData(CreateNavigationDataTest* test, gcon
 #if PLATFORM(GTK)
 static gboolean checkMimeTypeForFilter(GtkFileFilter* filter, const gchar* mimeType)
 {
+#if USE(GTK4)
+    GRefPtr<GFileInfo> filterInfo = adoptGRef(g_file_info_new());
+    g_file_info_set_content_type(filterInfo.get(), mimeType);
+    return gtk_filter_match(GTK_FILTER(filter), filterInfo.get());
+#else
     GtkFileFilterInfo filterInfo;
     filterInfo.contains = GTK_FILE_FILTER_MIME_TYPE;
     filterInfo.mime_type = mimeType;
     return gtk_file_filter_filter(filter, &filterInfo);
+#endif
 }
 #endif
 
@@ -584,9 +598,7 @@ static void testWebViewDisallowModalDialogs(ModalDialogsTest* test, gconstpointe
 
 static void testWebViewJavaScriptDialogs(UIClientTest* test, gconstpointer)
 {
-#if PLATFORM(GTK)
-    test->showInWindowAndWaitUntilMapped(GTK_WINDOW_TOPLEVEL);
-#endif
+    test->showInWindow();
 
     static const char* htmlOnLoadFormat = "<html><body onLoad=\"%s\"></body></html>";
     static const char* jsAlertFormat = "alert('%s')";
@@ -715,7 +727,7 @@ static void testWebViewOpenWindowNoDefaultSize(UIClientTest* test, gconstpointer
     // If no size specified for window.open(), and new windows are not set to a specific default size with gtk_window_set_default_size()
     // on the create signal, then new windows open with the size of the previous window.
     cairo_rectangle_int_t expectedGeometry = { 0, 0, 527, 671 };
-    test->showInWindowAndWaitUntilMapped(GTK_WINDOW_TOPLEVEL, expectedGeometry.width, expectedGeometry.height);
+    test->showInWindow(expectedGeometry.width, expectedGeometry.height);
     test->setExpectedWindowProperties(UIClientTest::WindowProperties(&expectedGeometry, false, false, false, false, false, true, false));
     test->loadHtml("<html><body onLoad=\"window.open('', '', 'left=0,top=0,location=no,menubar=no,status=no,toolbar=no,scrollbars=no').close();\"></body></html>", nullptr);
     test->waitUntilMainLoopFinishes();
@@ -725,7 +737,7 @@ static void testWebViewOpenWindowNoDefaultSize(UIClientTest* test, gconstpointer
 #if PLATFORM(GTK)
 static void testWebViewMouseTarget(UIClientTest* test, gconstpointer)
 {
-    test->showInWindowAndWaitUntilMapped(GTK_WINDOW_TOPLEVEL);
+    test->showInWindow();
 
     const char* linksHoveredHTML =
         "<html><head>"
@@ -844,9 +856,7 @@ static void testWebViewGeolocationPermissionRequests(UIClientTest* test, gconstp
     // to register the error quark twice. See https://bugs.webkit.org/show_bug.cgi?id=89858.
     // Make warnings non-fatal for this test to make it pass.
     Test::removeLogFatalFlag(G_LOG_LEVEL_WARNING);
-#if PLATFORM(GTK)
-    test->showInWindowAndWaitUntilMapped();
-#endif
+    test->showInWindow();
     static const char* geolocationRequestHTML =
         "<html>"
         "  <script>"
@@ -889,10 +899,10 @@ static void testWebViewUserMediaEnumerateDevicesPermissionCheck(UIClientTest* te
     WebKitSettings* settings = webkit_web_view_get_settings(test->m_webView);
     gboolean enabled = webkit_settings_get_enable_media_stream(settings);
     webkit_settings_set_enable_media_stream(settings, TRUE);
+    webkitSettingsSetMediaCaptureRequiresSecureConnection(settings, FALSE);
+    webkit_settings_set_enable_mock_capture_devices(settings, TRUE);
 
-#if PLATFORM(GTK)
-    test->showInWindowAndWaitUntilMapped();
-#endif
+    test->showInWindow();
     static const char* userMediaRequestHTML =
         "<html>"
         "  <script>"
@@ -923,6 +933,8 @@ static void testWebViewUserMediaEnumerateDevicesPermissionCheck(UIClientTest* te
     test->waitUntilTitleChangedTo("OK");
 
     webkit_settings_set_enable_media_stream(settings, enabled);
+    webkit_settings_set_enable_mock_capture_devices(settings, FALSE);
+    webkitSettingsSetMediaCaptureRequiresSecureConnection(settings, TRUE);
 }
 
 static void testWebViewUserMediaPermissionRequests(UIClientTest* test, gconstpointer)
@@ -930,18 +942,17 @@ static void testWebViewUserMediaPermissionRequests(UIClientTest* test, gconstpoi
     WebKitSettings* settings = webkit_web_view_get_settings(test->m_webView);
     gboolean enabled = webkit_settings_get_enable_media_stream(settings);
     webkit_settings_set_enable_media_stream(settings, TRUE);
+    webkit_settings_set_enable_mock_capture_devices(settings, TRUE);
+    webkitSettingsSetMediaCaptureRequiresSecureConnection(settings, FALSE);
 
-#if PLATFORM(GTK)
-    test->showInWindowAndWaitUntilMapped();
-#endif
-    static const char* userMediaRequestHTML =
-        "<html>"
+    test->showInWindow();
+    static const char* userMediaRequestHTML = "<html>"
         "  <script>"
         "  function runTest()"
         "  {"
-        "    navigator.webkitGetUserMedia({audio: true, video: true},"
-        "                                 function(s) { document.title = \"OK\" },"
-        "                                 function(e) { document.title = e.name });"
+        "    navigator.mediaDevices.getUserMedia({audio: true, video: true})"
+        "    .then((stream) => { document.title = \"OK\"; })"
+        "    .catch((e) => { document.title = e.name; });"
         "  }"
         "  </script>"
         "  <body onload='runTest();'></body>"
@@ -954,7 +965,7 @@ static void testWebViewUserMediaPermissionRequests(UIClientTest* test, gconstpoi
     // Test denying a permission request.
     test->m_allowPermissionRequests = false;
     test->loadHtml(userMediaRequestHTML, nullptr);
-    test->waitUntilTitleChangedTo("PermissionDeniedError");
+    test->waitUntilTitleChangedTo("NotAllowedError");
 
     // Test allowing a permission request.
     test->m_allowPermissionRequests = true;
@@ -962,6 +973,8 @@ static void testWebViewUserMediaPermissionRequests(UIClientTest* test, gconstpoi
     test->waitUntilTitleChangedTo("OK");
 
     webkit_settings_set_enable_media_stream(settings, enabled);
+    webkit_settings_set_enable_mock_capture_devices(settings, FALSE);
+    webkitSettingsSetMediaCaptureRequiresSecureConnection(settings, TRUE);
 }
 
 static void testWebViewAudioOnlyUserMediaPermissionRequests(UIClientTest* test, gconstpointer)
@@ -969,18 +982,17 @@ static void testWebViewAudioOnlyUserMediaPermissionRequests(UIClientTest* test, 
     WebKitSettings* settings = webkit_web_view_get_settings(test->m_webView);
     gboolean enabled = webkit_settings_get_enable_media_stream(settings);
     webkit_settings_set_enable_media_stream(settings, TRUE);
+    webkit_settings_set_enable_mock_capture_devices(settings, TRUE);
+    webkitSettingsSetMediaCaptureRequiresSecureConnection(settings, FALSE);
 
-#if PLATFORM(GTK)
-    test->showInWindowAndWaitUntilMapped();
-#endif
-    static const char* userMediaRequestHTML =
-        "<html>"
+    test->showInWindow();
+    static const char* userMediaRequestHTML = "<html>"
         "  <script>"
         "  function runTest()"
         "  {"
-        "    navigator.webkitGetUserMedia({audio: true, video: false},"
-        "                                 function(s) { document.title = \"OK\" },"
-        "                                 function(e) { document.title = e.name });"
+        "    navigator.mediaDevices.getUserMedia({audio: true, video: false})"
+        "    .then((stream) => { document.title = \"OK\"; })"
+        "    .catch((e) => { document.title = e.name; });"
         "  }"
         "  </script>"
         "  <body onload='runTest();'></body>"
@@ -993,19 +1005,18 @@ static void testWebViewAudioOnlyUserMediaPermissionRequests(UIClientTest* test, 
     // Test denying a permission request.
     test->m_allowPermissionRequests = false;
     test->loadHtml(userMediaRequestHTML, nullptr);
-    test->waitUntilTitleChangedTo("PermissionDeniedError");
+    test->waitUntilTitleChangedTo("NotAllowedError");
 
     webkit_settings_set_enable_media_stream(settings, enabled);
+    webkit_settings_set_enable_mock_capture_devices(settings, FALSE);
+    webkitSettingsSetMediaCaptureRequiresSecureConnection(settings, TRUE);
 }
 #endif // ENABLE(MEDIA_STREAM)
 
 #if ENABLE(POINTER_LOCK)
 static void testWebViewPointerLockPermissionRequest(UIClientTest* test, gconstpointer)
 {
-#if PLATFORM(GTK)
-    test->showInWindowAndWaitUntilMapped(GTK_WINDOW_TOPLEVEL);
-#endif
-
+    test->showInWindow();
     static const char* pointerLockRequestHTML =
         "<html>"
         "  <script>"
@@ -1073,9 +1084,7 @@ private:
 
 static void testWebViewFileChooserRequest(FileChooserTest* test, gconstpointer)
 {
-#if PLATFORM(GTK)
-    test->showInWindowAndWaitUntilMapped();
-#endif
+    test->showInWindow();
     static const char* fileChooserHTMLFormat = "<html><body><input style='position:absolute;left:0;top:0;margin:0;padding:0' type='file' %s/></body></html>";
 
     // Multiple selections not allowed, no MIME filtering.
@@ -1224,7 +1233,7 @@ private:
 static void testWebViewColorChooserRequest(ColorChooserTest* test, gconstpointer)
 {
     static const char* colorChooserHTMLFormat = "<html><body><input style='position:absolute;left:1;top:1;margin:0;padding:0;width:45;height:25' type='color' %s/></body></html>";
-    test->showInWindowAndWaitUntilMapped();
+    test->showInWindow();
 
     GUniquePtr<char> defaultColorHTML(g_strdup_printf(colorChooserHTMLFormat, ""));
     test->loadHtml(defaultColorHTML.get(), nullptr);

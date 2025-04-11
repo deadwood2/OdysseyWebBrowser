@@ -26,16 +26,11 @@
 #include "config.h"
 #include "AudioMediaStreamTrackRendererCocoa.h"
 
-#if ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#if ENABLE(MEDIA_STREAM)
 
-#include "AudioSampleBufferList.h"
+#include "AudioMediaStreamTrackRendererUnit.h"
 #include "AudioSampleDataSource.h"
-#include "AudioSession.h"
 #include "CAAudioStreamDescription.h"
-#include "Logging.h"
-
-#include <pal/cf/CoreMediaSoftLink.h>
-#include <pal/spi/cocoa/AudioToolboxSPI.h>
 
 namespace WebCore {
 
@@ -45,188 +40,66 @@ AudioMediaStreamTrackRendererCocoa::~AudioMediaStreamTrackRendererCocoa() = defa
 
 void AudioMediaStreamTrackRendererCocoa::start()
 {
-    m_shouldPlay = true;
+    clear();
 
-    if (m_dataSource)
-        m_dataSource->setPaused(false);
+    if (auto* formatDescription = AudioMediaStreamTrackRendererUnit::singleton().formatDescription())
+        m_outputDescription = makeUnique<CAAudioStreamDescription>(*formatDescription);
 }
 
 void AudioMediaStreamTrackRendererCocoa::stop()
 {
-    m_shouldPlay = false;
-
     if (m_dataSource)
-        m_dataSource->setPaused(true);
+        AudioMediaStreamTrackRendererUnit::singleton().removeSource(*m_dataSource);
 }
 
 void AudioMediaStreamTrackRendererCocoa::clear()
 {
-    m_shouldPlay = false;
-
-    if (m_dataSource)
-        m_dataSource->setPaused(true);
-
-    if (m_remoteIOUnit) {
-        AudioOutputUnitStop(m_remoteIOUnit);
-        AudioComponentInstanceDispose(m_remoteIOUnit);
-        m_remoteIOUnit = nullptr;
-    }
+    stop();
 
     m_dataSource = nullptr;
-    m_inputDescription = nullptr;
-    m_outputDescription = nullptr;
-    m_isAudioUnitStarted = false;
+    m_outputDescription = { };
 }
 
-AudioComponentInstance AudioMediaStreamTrackRendererCocoa::createAudioUnit(CAAudioStreamDescription& outputDescription)
+void AudioMediaStreamTrackRendererCocoa::setVolume(float volume)
 {
-    AudioComponentInstance remoteIOUnit { nullptr };
-
-    AudioComponentDescription ioUnitDescription { kAudioUnitType_Output, 0, kAudioUnitManufacturer_Apple, 0, 0 };
-#if PLATFORM(IOS_FAMILY)
-    ioUnitDescription.componentSubType = kAudioUnitSubType_RemoteIO;
-#else
-    ioUnitDescription.componentSubType = kAudioUnitSubType_DefaultOutput;
-#endif
-
-    AudioComponent ioComponent = AudioComponentFindNext(nullptr, &ioUnitDescription);
-    ASSERT(ioComponent);
-    if (!ioComponent) {
-        ERROR_LOG(LOGIDENTIFIER, "unable to find remote IO unit component");
-        return nullptr;
-    }
-
-    OSStatus err = AudioComponentInstanceNew(ioComponent, &remoteIOUnit);
-    if (err) {
-        ERROR_LOG(LOGIDENTIFIER, "unable to open vpio unit, error = ", err, " (", (const char*)&err, ")");
-        return nullptr;
-    }
-
-#if PLATFORM(IOS_FAMILY)
-    UInt32 param = 1;
-    err = AudioUnitSetProperty(remoteIOUnit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0, &param, sizeof(param));
-    if (err) {
-        ERROR_LOG(LOGIDENTIFIER, "unable to enable vpio unit output, error = ", err, " (", (const char*)&err, ")");
-        return nullptr;
-    }
-#endif
-
-    AURenderCallbackStruct callback = { inputProc, this };
-    err = AudioUnitSetProperty(remoteIOUnit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Global, 0, &callback, sizeof(callback));
-    if (err) {
-        ERROR_LOG(LOGIDENTIFIER, "unable to set vpio unit speaker proc, error = ", err, " (", (const char*)&err, ")");
-        return nullptr;
-    }
-
-    UInt32 size = sizeof(outputDescription.streamDescription());
-    err  = AudioUnitGetProperty(remoteIOUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &outputDescription.streamDescription(), &size);
-    if (err) {
-        ERROR_LOG(LOGIDENTIFIER, "unable to get input stream format, error = ", err, " (", (const char*)&err, ")");
-        return nullptr;
-    }
-
-    outputDescription.streamDescription().mSampleRate = AudioSession::sharedSession().sampleRate();
-
-    err = AudioUnitSetProperty(remoteIOUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &outputDescription.streamDescription(), sizeof(outputDescription.streamDescription()));
-    if (err) {
-        ERROR_LOG(LOGIDENTIFIER, "unable to set input stream format, error = ", err, " (", (const char*)&err, ")");
-        return nullptr;
-    }
-
-    err = AudioUnitInitialize(remoteIOUnit);
-    if (err) {
-        ERROR_LOG(LOGIDENTIFIER, "AudioUnitInitialize() failed, error = ", err, " (", (const char*)&err, ")");
-        return nullptr;
-    }
-
-    return remoteIOUnit;
+    AudioMediaStreamTrackRenderer::setVolume(volume);
+    if (m_dataSource)
+        m_dataSource->setVolume(volume);
 }
 
-// May get called on a background thread.
 void AudioMediaStreamTrackRendererCocoa::pushSamples(const MediaTime& sampleTime, const PlatformAudioData& audioData, const AudioStreamDescription& description, size_t sampleCount)
 {
+    ASSERT(!isMainThread());
     ASSERT(description.platformDescription().type == PlatformDescription::CAAudioStreamBasicType);
-    if (!m_shouldPlay) {
-        if (m_isAudioUnitStarted) {
-            if (m_remoteIOUnit)
-                AudioOutputUnitStop(m_remoteIOUnit);
-            m_isAudioUnitStarted = false;
-        }
-        return;
-    }
+    if (!m_dataSource || !m_dataSource->inputDescription() || *m_dataSource->inputDescription() != description) {
+        auto dataSource = AudioSampleDataSource::create(description.sampleRate() * 2, *this);
 
-    if (!m_inputDescription || *m_inputDescription != description) {
-        m_isAudioUnitStarted = false;
-
-        if (m_remoteIOUnit) {
-            AudioOutputUnitStop(m_remoteIOUnit);
-            AudioComponentInstanceDispose(m_remoteIOUnit);
-            m_remoteIOUnit = nullptr;
-        }
-
-        m_inputDescription = nullptr;
-        m_outputDescription = nullptr;
-
-        CAAudioStreamDescription inputDescription = toCAAudioStreamDescription(description);
-        CAAudioStreamDescription outputDescription;
-
-        auto remoteIOUnit = createAudioUnit(outputDescription);
-        if (!remoteIOUnit)
-            return;
-
-        m_inputDescription = makeUnique<CAAudioStreamDescription>(inputDescription);
-        m_outputDescription = makeUnique<CAAudioStreamDescription>(outputDescription);
-
-        m_dataSource = AudioSampleDataSource::create(description.sampleRate() * 2, *this);
-
-        if (m_dataSource->setInputFormat(inputDescription) || m_dataSource->setOutputFormat(outputDescription)) {
-            AudioComponentInstanceDispose(remoteIOUnit);
+        if (dataSource->setInputFormat(toCAAudioStreamDescription(description))) {
+            ERROR_LOG(LOGIDENTIFIER, "Unable to set the input format of data source");
             return;
         }
 
-        if (auto error = AudioOutputUnitStart(remoteIOUnit)) {
-            ERROR_LOG(LOGIDENTIFIER, "AudioOutputUnitStart failed, error = ", error, " (", (const char*)&error, ")");
-            AudioComponentInstanceDispose(remoteIOUnit);
-            m_inputDescription = nullptr;
+        if (!m_outputDescription || dataSource->setOutputFormat(*m_outputDescription)) {
+            ERROR_LOG(LOGIDENTIFIER, "Unable to set the output format of data source");
             return;
         }
 
-        m_isAudioUnitStarted = true;
+        callOnMainThread([this, weakThis = makeWeakPtr(this), oldSource = m_dataSource, newSource = dataSource]() mutable {
+            if (!weakThis)
+                return;
 
-        m_dataSource->setVolume(volume());
-        m_remoteIOUnit = remoteIOUnit;
+            if (oldSource)
+                AudioMediaStreamTrackRendererUnit::singleton().removeSource(*oldSource);
+
+            newSource->setVolume(volume());
+            AudioMediaStreamTrackRendererUnit::singleton().addSource(WTFMove(newSource));
+        });
+        m_dataSource = WTFMove(dataSource);
     }
 
     m_dataSource->pushSamples(sampleTime, audioData, sampleCount);
-
-    if (!m_isAudioUnitStarted) {
-        if (auto error = AudioOutputUnitStart(m_remoteIOUnit)) {
-            ERROR_LOG(LOGIDENTIFIER, "AudioOutputUnitStart failed, error = ", error, " (", (const char*)&error, ")");
-            return;
-        }
-        m_isAudioUnitStarted = true;
-    }
 }
-
-OSStatus AudioMediaStreamTrackRendererCocoa::render(UInt32 sampleCount, AudioBufferList& ioData, UInt32 /*inBusNumber*/, const AudioTimeStamp& timeStamp, AudioUnitRenderActionFlags& actionFlags)
-{
-    if (isMuted() || !m_shouldPlay || !m_dataSource) {
-        AudioSampleBufferList::zeroABL(ioData, static_cast<size_t>(sampleCount * m_outputDescription->bytesPerFrame()));
-        actionFlags = kAudioUnitRenderAction_OutputIsSilence;
-        return 0;
-    }
-
-    m_dataSource->pullSamples(ioData, static_cast<size_t>(sampleCount), timeStamp.mSampleTime, timeStamp.mHostTime, AudioSampleDataSource::Copy);
-
-    return 0;
-}
-
-OSStatus AudioMediaStreamTrackRendererCocoa::inputProc(void* userData, AudioUnitRenderActionFlags* actionFlags, const AudioTimeStamp* timeStamp, UInt32 inBusNumber, UInt32 sampleCount, AudioBufferList* ioData)
-{
-    return static_cast<AudioMediaStreamTrackRendererCocoa*>(userData)->render(sampleCount, *ioData, inBusNumber, *timeStamp, *actionFlags);
-}
-
 
 } // namespace WebCore
 
-#endif // ENABLE(VIDEO_TRACK) && ENABLE(MEDIA_STREAM)
+#endif // ENABLE(MEDIA_STREAM)

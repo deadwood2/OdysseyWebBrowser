@@ -25,7 +25,9 @@
 
 #pragma once
 
+#include "MediaSample.h"
 #include "PlatformLayer.h"
+#include <wtf/CompletionHandler.h>
 #include <wtf/WeakPtr.h>
 
 namespace WTF {
@@ -42,30 +44,35 @@ public:
     public:
         virtual ~Client() = default;
         virtual void sampleBufferDisplayLayerStatusDidChange(SampleBufferDisplayLayer&) = 0;
-        virtual WTF::MediaTime streamTime() const = 0;
     };
 
-    WEBCORE_EXPORT static std::unique_ptr<SampleBufferDisplayLayer> create(Client&, bool hideRootLayer, IntSize);
-    using LayerCreator = std::unique_ptr<SampleBufferDisplayLayer> (*)(Client&, bool hideRootLayer, IntSize);
+    WEBCORE_EXPORT static std::unique_ptr<SampleBufferDisplayLayer> create(Client&);
+    using LayerCreator = std::unique_ptr<SampleBufferDisplayLayer> (*)(Client&);
     WEBCORE_EXPORT static void setCreator(LayerCreator);
 
     virtual ~SampleBufferDisplayLayer() = default;
 
+    virtual void initialize(bool hideRootLayer, IntSize, CompletionHandler<void(bool didSucceed)>&&) = 0;
     virtual bool didFail() const = 0;
 
     virtual void updateDisplayMode(bool hideDisplayLayer, bool hideRootLayer) = 0;
 
-    virtual CGRect bounds() const = 0;
     virtual void updateAffineTransform(CGAffineTransform) = 0;
-    virtual void updateBoundsAndPosition(CGRect, CGPoint) = 0;
+    virtual void updateBoundsAndPosition(CGRect, MediaSample::VideoRotation) = 0;
 
     virtual void flush() = 0;
     virtual void flushAndRemoveImage() = 0;
+
+    virtual void play() = 0;
+    virtual void pause() = 0;
 
     virtual void enqueueSample(MediaSample&) = 0;
     virtual void clearEnqueuedSamples() = 0;
 
     virtual PlatformLayer* rootLayer() = 0;
+
+    enum class RenderPolicy { TimingInfo, Immediately };
+    virtual void setRenderPolicy(RenderPolicy) { };
 
 protected:
     explicit SampleBufferDisplayLayer(Client&);

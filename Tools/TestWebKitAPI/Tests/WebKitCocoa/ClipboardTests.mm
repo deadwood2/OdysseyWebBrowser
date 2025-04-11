@@ -108,7 +108,7 @@ static void writeMultipleObjectsToPlatformPasteboard()
     NSPasteboard *pasteboard = NSPasteboard.generalPasteboard;
     [pasteboard clearContents];
     [pasteboard writeObjects:@[firstItem.get(), secondItem.get(), thirdItem.get(), fourthItem.get()]];
-#elif PLATFORM(IOS)
+#elif PLATFORM(IOS_FAMILY) && !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
     auto firstItem = adoptNS([[NSItemProvider alloc] initWithObject:@"Hello"]);
     auto secondItem = adoptNS([[NSItemProvider alloc] initWithObject:[NSURL URLWithString:@"https://apple.com/"]]);
     auto thirdItem = adoptNS([[NSItemProvider alloc] init]);
@@ -165,3 +165,21 @@ TEST(ClipboardTests, WriteSanitizedMarkup)
     EXPECT_FALSE([writtenMarkup containsString:@"super secret"]);
     EXPECT_FALSE([writtenMarkup containsString:@"<script>"]);
 }
+
+#if PLATFORM(MAC)
+
+TEST(ClipboardTests, ConvertTIFFToPNGWhenPasting)
+{
+    auto webView = createWebViewForClipboardTests();
+    auto url = [[NSBundle mainBundle] URLForResource:@"sunset-in-cupertino-100px" withExtension:@"tiff" subdirectory:@"TestWebKitAPI.resources"];
+    auto pasteboard = NSPasteboard.generalPasteboard;
+    [pasteboard clearContents];
+    [pasteboard setData:[NSData dataWithContentsOfURL:url] forType:NSPasteboardTypeTIFF];
+    [webView readClipboard];
+
+    EXPECT_WK_STREQ("", [webView stringByEvaluatingJavaScript:@"exception ? exception.message : ''"]);
+    EXPECT_EQ(1U, [[webView objectByEvaluatingJavaScript:@"clipboardData.length"] unsignedIntValue]);
+    EXPECT_TRUE([[webView stringByEvaluatingJavaScript:@"clipboardData[0]['image/png'].src"] containsString:@"blob:"]);
+}
+
+#endif // PLATFORM(MAC)

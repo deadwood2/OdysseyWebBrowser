@@ -258,7 +258,7 @@ enum {
 
         // Since this is a "secret default" we don't bother registering it.
         BOOL omitPDFSupport = [[NSUserDefaults standardUserDefaults] boolForKey:@"WebKitOmitPDFSupport"];
-        if (!omitPDFSupport)
+        if (!omitPDFSupport) {
 #if PLATFORM(IOS_FAMILY)
 #define WebPDFView ([WebView _getPDFViewClass])
 #endif
@@ -266,6 +266,7 @@ enum {
 #if PLATFORM(IOS_FAMILY)
 #undef WebPDFView
 #endif
+        }
     }
     
     if (!addedImageTypes && !allowImageTypeOmission) {
@@ -353,6 +354,7 @@ enum {
         
         // Need to tell WebCore what function to call for the "History Item has Changed" notification.
         // Note: We also do this in WebHistoryItem's init method.
+        // FIXME: This means that if we mix legacy WebKit and modern WebKit in the same process, we won't get both notifications.
         WebCore::notifyHistoryItemChanged = WKNotifyHistoryItemChanged;
 
 #if !PLATFORM(IOS_FAMILY)

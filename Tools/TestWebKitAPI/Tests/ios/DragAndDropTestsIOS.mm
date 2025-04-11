@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
+#import "config.h"
 
 #if ENABLE(DRAG_SUPPORT) && PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
 
@@ -78,7 +78,7 @@ static NSData *testZIPArchive()
     return [NSData dataWithContentsOfURL:zipFileURL];
 }
 
-@implementation TestWKWebView (DragAndDropTests)
+@implementation TestWKWebView (DragAndDropTestsIOS)
 
 - (BOOL)editorContainsImageElement
 {
@@ -361,7 +361,7 @@ TEST(DragAndDropTests, ContentEditableToContentEditable)
     EXPECT_TRUE([observedEventNames containsObject:@"dragenter"]);
     EXPECT_TRUE([observedEventNames containsObject:@"dragover"]);
     EXPECT_TRUE([observedEventNames containsObject:@"drop"]);
-    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(960, 201, 2, 227), [simulator finalSelectionStartRect]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(960, 205, 2, 223), [simulator finalSelectionStartRect]);
     checkRichTextTypePrecedesPlainTextType(simulator.get());
     EXPECT_TRUE([simulator lastKnownDropProposal].precise);
 
@@ -989,7 +989,7 @@ TEST(DragAndDropTests, ExternalSourceUTF8PlainTextOnly)
     [simulator setExternalItemProviders:@[ simulatedItemProvider.get() ]];
     [simulator runFrom:CGPointMake(300, 400) to:CGPointMake(100, 300)];
     EXPECT_WK_STREQ(textPayload.UTF8String, [webView stringByEvaluatingJavaScript:@"editor.textContent"].UTF8String);
-    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(1935, 201, 2, 227), [simulator finalSelectionStartRect]);
+    checkCGRectIsEqualToCGRectWithLogging(CGRectMake(1935, 205, 2, 223), [simulator finalSelectionStartRect]);
 }
 
 TEST(DragAndDropTests, ExternalSourceJPEGOnly)
@@ -1972,7 +1972,7 @@ TEST(DragAndDropTests, DataTransferSetDataValidURL)
     [webView stringByEvaluatingJavaScript:@"writeCustomData = true"];
 
     __block bool done = false;
-    [simulator.get() setOverridePerformDropBlock:^NSArray<UIDragItem *> *(id <UIDropSession> session)
+    [simulator setOverridePerformDropBlock:^NSArray<UIDragItem *> *(id <UIDropSession> session)
     {
         EXPECT_EQ(1UL, session.items.count);
         auto *item = session.items[0].itemProvider;
@@ -2009,7 +2009,7 @@ TEST(DragAndDropTests, DataTransferSetDataUnescapedURL)
     [webView stringByEvaluatingJavaScript:@"writeCustomData = true"];
 
     __block bool done = false;
-    [simulator.get() setOverridePerformDropBlock:^NSArray<UIDragItem *> *(id <UIDropSession> session)
+    [simulator setOverridePerformDropBlock:^NSArray<UIDragItem *> *(id <UIDropSession> session)
     {
         EXPECT_EQ(1UL, session.items.count);
         auto *item = session.items[0].itemProvider;
@@ -2070,7 +2070,7 @@ TEST(DragAndDropTests, DataTransferSanitizeHTML)
     [webView stringByEvaluatingJavaScript:@"writeCustomData = true"];
 
     __block bool done = false;
-    [simulator.get() setOverridePerformDropBlock:^NSArray<UIDragItem *> *(id <UIDropSession> session)
+    [simulator setOverridePerformDropBlock:^NSArray<UIDragItem *> *(id <UIDropSession> session)
     {
         EXPECT_EQ(1UL, session.items.count);
         auto *item = session.items[0].itemProvider;
@@ -2134,6 +2134,26 @@ TEST(DragAndDropTests, DropPreviewForImageInEditableArea)
     UITargetedDragPreview *finalPreview = (UITargetedDragPreview *)delayedDropPreviews.firstObject;
     EXPECT_EQ(UIImageView.class, finalPreview.view.class);
     EXPECT_FALSE(isCompletelyWhite([(UIImageView *)finalPreview.view image]));
+}
+
+TEST(DragAndDropTests, SuggestedNameContainsDot)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500)]);
+    [webView synchronouslyLoadTestPageNamed:@"gif-and-file-input"];
+
+    auto firstItem = adoptNS([[NSItemProvider alloc] init]);
+    [firstItem registerDataRepresentationForTypeIdentifier:(__bridge NSString *)kUTTypePNG withData:testIconImageData()];
+    [firstItem setSuggestedName:@"one.foo"];
+
+    auto secondItem = adoptNS([[NSItemProvider alloc] init]);
+    [secondItem registerDataRepresentationForTypeIdentifier:(__bridge NSString *)kUTTypePNG withData:testIconImageData()];
+    [secondItem setSuggestedName:@"two.foo.PNG"];
+
+    auto simulator = adoptNS([[DragAndDropSimulator alloc] initWithWebView:webView.get()]);
+    [simulator setExternalItemProviders:@[ firstItem.get(), secondItem.get() ]];
+    [simulator runFrom:CGPointMake(0, 0) to:CGPointMake(100, 300)];
+
+    EXPECT_WK_STREQ("one.foo.png (image/png)\ntwo.foo.PNG (image/png)", [webView stringByEvaluatingJavaScript:@"output.innerText"]);
 }
 
 } // namespace TestWebKitAPI

@@ -51,7 +51,8 @@ WI.QuickConsole = class QuickConsole extends WI.View
         // would be for CodeMirror's event handler to pass if it doesn't do anything.
         this.prompt.escapeKeyHandlerWhenEmpty = function() { WI.toggleSplitConsole(); };
 
-        this._navigationBar = new WI.SizesToFitNavigationBar;
+        const navigationbarElement = null;
+        this._navigationBar = new WI.NavigationBar(navigationbarElement, {sizesToFit: true});
         this.addSubview(this._navigationBar);
 
         this._activeExecutionContextNavigationItemDivider = new WI.DividerNavigationItem;
@@ -120,6 +121,12 @@ WI.QuickConsole = class QuickConsole extends WI.View
 
         if (context.type === WI.ExecutionContext.Type.Internal)
             return WI.unlocalizedString("[Internal] ") + context.name;
+
+        if (context.type === WI.ExecutionContext.Type.User) {
+            let extensionName = WI.browserManager.extensionNameForExecutionContext(context);
+            if (extensionName)
+                return truncate(extensionName, maxLength);
+        }
 
         let target = context.target;
         if (target.type === WI.TargetType.Worker)
@@ -192,9 +199,13 @@ WI.QuickConsole = class QuickConsole extends WI.View
             return;
         }
 
-        if (WI.networkManager.frames.length === 1 && WI.networkManager.mainFrame.executionContextList.contexts.length === 1 && !WI.targetManager.workerTargets.length) {
-            toggleHidden(true);
-            return;
+        if (WI.networkManager.frames.length === 1 && !WI.targetManager.workerTargets.length) {
+            let mainFrameContexts = WI.networkManager.mainFrame.executionContextList.contexts;
+            let contextsToShow = mainFrameContexts.filter((context) => context.type !== WI.ExecutionContext.Type.Internal || WI.settings.engineeringShowInternalExecutionContexts.value);
+            if (contextsToShow.length <= 1) {
+                toggleHidden(true);
+                return;
+            }
         }
 
         const maxLength = 40;
@@ -271,7 +282,7 @@ WI.QuickConsole = class QuickConsole extends WI.View
 
         let otherFrames = WI.networkManager.frames.filter((frame) => frame !== mainFrame && frame.executionContextList.pageExecutionContext);
         if (otherFrames.length) {
-            contextMenu.appendHeader(WI.UIString("Frames"));
+            contextMenu.appendHeader(WI.UIString("Frames", "Frames @ Execution Context Picker", "Title for list of HTML subframe JavaScript execution contexts"));
 
             for (let frame of otherFrames)
                 addExecutionContextsForFrame(frame);
@@ -279,7 +290,7 @@ WI.QuickConsole = class QuickConsole extends WI.View
 
         let workerTargets = WI.targetManager.workerTargets;
         if (workerTargets.length) {
-            contextMenu.appendHeader(WI.UIString("Workers"));
+            contextMenu.appendHeader(WI.UIString("Workers", "Workers @ Execution Context Picker", "Title for list of JavaScript web worker execution contexts"));
 
             for (let target of workerTargets)
                 addExecutionContext(target.executionContext);
@@ -328,6 +339,8 @@ WI.QuickConsole = class QuickConsole extends WI.View
 
     _handleEngineeringShowInternalExecutionContextsSettingChanged(event)
     {
+        this._updateActiveExecutionContextDisplay();
+
         if (WI.runtimeManager.activeExecutionContext.type !== WI.ExecutionContext.Type.Internal)
             return;
 
@@ -337,15 +350,15 @@ WI.QuickConsole = class QuickConsole extends WI.View
 
     _handleFramePageExecutionContextChanged(event)
     {
-        if (this._restoreSelectedExecutionContextForFrame !== event.target)
+        let frame = event.target;
+
+        if (this._restoreSelectedExecutionContextForFrame !== frame)
             return;
 
         this._restoreSelectedExecutionContextForFrame = null;
 
-        let {context} = event.data;
-
         this._useExecutionContextOfInspectedNode = false;
-        this._setActiveExecutionContext(context);
+        this._setActiveExecutionContext(frame.pageExecutionContext);
     }
 
     _handleFrameExecutionContextsCleared(event)
@@ -353,8 +366,10 @@ WI.QuickConsole = class QuickConsole extends WI.View
         let {committingProvisionalLoad, contexts} = event.data;
 
         let hasActiveExecutionContext = contexts.some((context) => context === WI.runtimeManager.activeExecutionContext);
-        if (!hasActiveExecutionContext)
+        if (!hasActiveExecutionContext) {
+            this._updateActiveExecutionContextDisplay();
             return;
+        }
 
         // If this frame is navigating and it is selected in the UI we want to reselect its new item after navigation.
         if (committingProvisionalLoad && !this._restoreSelectedExecutionContextForFrame) {
@@ -362,6 +377,8 @@ WI.QuickConsole = class QuickConsole extends WI.View
 
             // As a fail safe, if the frame never gets an execution context, clear the restore value.
             setTimeout(() => {
+                if (this._restoreSelectedExecutionContextForFrame)
+                    this._updateActiveExecutionContextDisplay();
                 this._restoreSelectedExecutionContextForFrame = null;
             }, 10);
             return;
@@ -389,8 +406,10 @@ WI.QuickConsole = class QuickConsole extends WI.View
     _handleTargetRemoved(event)
     {
         let {target} = event.data;
-        if (target !== WI.runtimeManager.activeExecutionContext)
+        if (target !== WI.runtimeManager.activeExecutionContext) {
+            this._updateActiveExecutionContextDisplay();
             return;
+        }
 
         this._useExecutionContextOfInspectedNode = InspectorBackend.hasDomain("DOM");
         this._setActiveExecutionContext(this._resolveDesiredActiveExecutionContext());

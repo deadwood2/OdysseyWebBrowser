@@ -23,8 +23,8 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "SOAuthorizationSession.h"
+#import "config.h"
+#import "SOAuthorizationSession.h"
 
 #if HAVE(APP_SSO)
 
@@ -169,16 +169,15 @@ void SOAuthorizationSession::continueStartAfterDecidePolicy(const SOAuthorizatio
     if (!m_soAuthorization || !m_page || !m_navigationAction)
         return;
 
-    // FIXME: <rdar://problem/48909336> Replace the below with AppSSO constants.
     auto initiatorOrigin = emptyString();
     if (m_navigationAction->sourceFrame())
-        initiatorOrigin = m_navigationAction->sourceFrame()->securityOrigin().securityOrigin().toString();
+        initiatorOrigin = m_navigationAction->sourceFrame()->securityOrigin().securityOrigin()->toString();
     if (m_action == InitiatingAction::SubFrame && m_page->mainFrame())
         initiatorOrigin = WebCore::SecurityOrigin::create(m_page->mainFrame()->url())->toString();
     NSDictionary *authorizationOptions = @{
         SOAuthorizationOptionUserActionInitiated: @(m_navigationAction->isProcessingUserGesture()),
-        @"initiatorOrigin": (NSString *)initiatorOrigin,
-        @"initiatingAction": @(static_cast<NSInteger>(m_action))
+        SOAuthorizationOptionInitiatorOrigin: (NSString *)initiatorOrigin,
+        SOAuthorizationOptionInitiatingAction: @(static_cast<NSInteger>(m_action))
     };
     [m_soAuthorization setAuthorizationOptions:authorizationOptions];
 
@@ -295,6 +294,33 @@ void SOAuthorizationSession::dismissViewController()
     ASSERT(m_viewController);
 #if PLATFORM(MAC)
     ASSERT(m_sheetWindow && m_sheetWindowWillCloseObserver);
+
+    // This is a workaround for an AppKit issue: <rdar://problem/59125329>.
+    // [m_sheetWindow sheetParent] is null if the parent is minimized or the host app is hidden.
+    if (m_page && m_page->platformWindow()) {
+        auto *presentingWindow = m_page->platformWindow();
+        if (presentingWindow.miniaturized) {
+            if (m_presentingWindowDidDeminiaturizeObserver)
+                return;
+            m_presentingWindowDidDeminiaturizeObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidDeminiaturizeNotification object:presentingWindow queue:nil usingBlock:[protectedThis = makeRefPtr(this), this] (NSNotification *) {
+                dismissViewController();
+                [[NSNotificationCenter defaultCenter] removeObserver:m_presentingWindowDidDeminiaturizeObserver.get()];
+                m_presentingWindowDidDeminiaturizeObserver = nullptr;
+            }];
+            return;
+        }
+    }
+
+    if (NSApp.hidden) {
+        if (m_applicationDidUnhideObserver)
+            return;
+        m_applicationDidUnhideObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidUnhideNotification object:NSApp queue:nil usingBlock:[protectedThis = makeRefPtr(this), this] (NSNotification *) {
+            dismissViewController();
+            [[NSNotificationCenter defaultCenter] removeObserver:m_applicationDidUnhideObserver.get()];
+            m_applicationDidUnhideObserver = nullptr;
+        }];
+        return;
+    }
 
     [[NSNotificationCenter defaultCenter] removeObserver:m_sheetWindowWillCloseObserver.get()];
     m_sheetWindowWillCloseObserver = nullptr;

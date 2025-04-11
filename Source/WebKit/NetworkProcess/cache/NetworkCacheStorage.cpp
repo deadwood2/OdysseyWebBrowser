@@ -34,6 +34,7 @@
 #include <mutex>
 #include <wtf/Condition.h>
 #include <wtf/Lock.h>
+#include <wtf/PageBlock.h>
 #include <wtf/RandomNumber.h>
 #include <wtf/RunLoop.h>
 #include <wtf/text/CString.h>
@@ -47,7 +48,11 @@ static const char versionDirectoryPrefix[] = "Version ";
 static const char recordsDirectoryName[] = "Records";
 static const char blobsDirectoryName[] = "Blobs";
 static const char blobSuffix[] = "-blob";
-constexpr size_t maximumInlineBodySize { 16 * 1024 };
+
+static inline size_t maximumInlineBodySize()
+{
+    return WTF::pageSize();
+}
 
 static double computeRecordWorth(FileTimes);
 
@@ -291,7 +296,7 @@ static size_t estimateRecordsSize(unsigned recordCount, unsigned blobCount)
 {
     auto inlineBodyCount = recordCount - std::min(blobCount, recordCount);
     auto headerSizes = recordCount * 4096;
-    auto inlineBodySizes = (maximumInlineBodySize / 2) * inlineBodyCount;
+    auto inlineBodySizes = (maximumInlineBodySize() / 2) * inlineBodyCount;
     return headerSizes + inlineBodySizes;
 }
 
@@ -428,29 +433,63 @@ struct RecordMetaData {
     uint64_t headerOffset { 0 };
 };
 
-static bool decodeRecordMetaData(RecordMetaData& metaData, const Data& fileData)
+static WARN_UNUSED_RETURN bool decodeRecordMetaData(RecordMetaData& metaData, const Data& fileData)
 {
     bool success = false;
     fileData.apply([&metaData, &success](const uint8_t* data, size_t size) {
         WTF::Persistence::Decoder decoder(data, size);
-        if (!decoder.decode(metaData.cacheStorageVersion))
+        
+        Optional<unsigned> cacheStorageVersion;
+        decoder >> cacheStorageVersion;
+        if (!cacheStorageVersion)
             return false;
-        if (!decoder.decode(metaData.key))
+        metaData.cacheStorageVersion = WTFMove(*cacheStorageVersion);
+
+        Optional<Key> key;
+        decoder >> key;
+        if (!key)
             return false;
-        if (!decoder.decode(metaData.timeStamp))
+        metaData.key = WTFMove(*key);
+
+        Optional<WallTime> timeStamp;
+        decoder >> timeStamp;
+        if (!timeStamp)
             return false;
-        if (!decoder.decode(metaData.headerHash))
+        metaData.timeStamp = WTFMove(*timeStamp);
+
+        Optional<SHA1::Digest> headerHash;
+        decoder >> headerHash;
+        if (!headerHash)
             return false;
-        if (!decoder.decode(metaData.headerSize))
+        metaData.headerHash = WTFMove(*headerHash);
+
+        Optional<uint64_t> headerSize;
+        decoder >> headerSize;
+        if (!headerSize)
             return false;
-        if (!decoder.decode(metaData.bodyHash))
+        metaData.headerSize = WTFMove(*headerSize);
+
+        Optional<SHA1::Digest> bodyHash;
+        decoder >> bodyHash;
+        if (!bodyHash)
             return false;
-        if (!decoder.decode(metaData.bodySize))
+        metaData.bodyHash = WTFMove(*bodyHash);
+
+        Optional<uint64_t> bodySize;
+        decoder >> bodySize;
+        if (!bodySize)
             return false;
-        if (!decoder.decode(metaData.isBodyInline))
+        metaData.bodySize = WTFMove(*bodySize);
+
+        Optional<bool> isBodyInline;
+        decoder >> isBodyInline;
+        if (!isBodyInline)
             return false;
+        metaData.isBodyInline = WTFMove(*isBodyInline);
+
         if (!decoder.verifyChecksum())
             return false;
+
         metaData.headerOffset = decoder.currentOffset();
         success = true;
         return false;
@@ -458,7 +497,7 @@ static bool decodeRecordMetaData(RecordMetaData& metaData, const Data& fileData)
     return success;
 }
 
-static bool decodeRecordHeader(const Data& fileData, RecordMetaData& metaData, Data& headerData, const Salt& salt)
+static WARN_UNUSED_RETURN bool decodeRecordHeader(const Data& fileData, RecordMetaData& metaData, Data& headerData, const Salt& salt)
 {
     if (!decodeRecordMetaData(metaData, fileData)) {
         LOG(NetworkCacheStorage, "(NetworkProcess) meta data decode failure");
@@ -799,7 +838,7 @@ void Storage::dispatchPendingWriteOperations()
 
 bool Storage::shouldStoreBodyAsBlob(const Data& bodyData)
 {
-    return bodyData.size() > maximumInlineBodySize;
+    return bodyData.size() > maximumInlineBodySize();
 }
 
 void Storage::dispatchWriteOperation(std::unique_ptr<WriteOperation> writeOperationPtr)
@@ -957,7 +996,7 @@ void Storage::traverse(const String& type, OptionSet<TraverseFlag> flags, Traver
                     traverseOperation.handler(&record, info);
                 }
 
-                std::lock_guard<Lock> lock(traverseOperation.activeMutex);
+                auto locker = holdLock(traverseOperation.activeMutex);
                 --traverseOperation.activeCount;
                 traverseOperation.activeCondition.notifyOne();
             });

@@ -70,15 +70,6 @@ IGNORE_WARNINGS_END
     return [_dragAndDropSimulator draggingSession];
 }
 
-- (void)waitForPendingMouseEvents
-{
-    __block bool doneProcessMouseEvents = false;
-    [self _doAfterProcessingAllPendingMouseEvents:^{
-        doneProcessMouseEvents = true;
-    }];
-    TestWebKitAPI::Util::run(&doneProcessMouseEvents);
-}
-
 @end
 
 // This exceeds the default drag hysteresis of all potential drag types.
@@ -186,6 +177,8 @@ static NSImage *defaultExternalDragImage()
     [_webView mouseEnterAtPoint:_startLocationInWindow];
     [_webView mouseMoveToPoint:_startLocationInWindow withFlags:0];
     [_webView mouseDownAtPoint:_startLocationInWindow simulatePressure:NO];
+    // Make sure that we exceed the minimum 150ms delay between handling mousedown and drag when dragging a text selection.
+    [_webView setEventTimestampOffset:0.25];
     [_webView mouseDragToPoint:[self locationInViewForCurrentProgress]];
     [_webView waitForPendingMouseEvents];
 
@@ -195,6 +188,7 @@ static NSImage *defaultExternalDragImage()
     [_webView waitForPendingMouseEvents];
 
     TestWebKitAPI::Util::run(&_doneWaitingForDrop);
+    [_webView setEventTimestampOffset:0];
 }
 
 - (void)beginDraggingSessionInWebView:(DragAndDropTestWKWebView *)webView withItems:(NSArray<NSDraggingItem *> *)items source:(id<NSDraggingSource>)source

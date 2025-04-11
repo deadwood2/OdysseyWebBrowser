@@ -120,8 +120,7 @@ void ProcessLauncher::launchProcess()
         executablePath = executablePathOfWebProcess();
         break;
 #if ENABLE(NETSCAPE_PLUGIN_API)
-    case ProcessLauncher::ProcessType::Plugin64:
-    case ProcessLauncher::ProcessType::Plugin32:
+    case ProcessLauncher::ProcessType::Plugin:
         executablePath = executablePathOfPluginProcess();
         pluginPath = m_launchOptions.extraInitializationData.get("plugin-path");
         realPluginPath = FileSystem::fileSystemRepresentation(pluginPath);
@@ -130,6 +129,11 @@ void ProcessLauncher::launchProcess()
     case ProcessLauncher::ProcessType::Network:
         executablePath = executablePathOfNetworkProcess();
         break;
+#if ENABLE(GPU_PROCESS)
+    case ProcessLauncher::ProcessType::GPU:
+        executablePath = executablePathOfGPUProcess();
+        break;
+#endif
     default:
         ASSERT_NOT_REACHED();
         return;

@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
+#import "config.h"
 
 #import "PlatformUtilities.h"
 #import <WebKit/WKProcessPool.h>
@@ -32,6 +32,10 @@
 #import <WebKit/WKWebViewConfiguration.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <wtf/RetainPtr.h>
+
+// FIXME: This test is causing flakiness in API tests. It sets the cookie accept policy to 'Never'
+// and following tests often are unable to set cookies.
+#if !PLATFORM(IOS_FAMILY)
 
 static bool receivedScriptMessage = false;
 static RetainPtr<WKScriptMessage> lastScriptMessage;
@@ -72,3 +76,5 @@ TEST(WebKit, CookieAcceptPolicy)
     [[NSHTTPCookieStorage sharedHTTPCookieStorage] setCookieAcceptPolicy:originalCookieAcceptPolicy];
     [[NSHTTPCookieStorage sharedHTTPCookieStorage] _saveCookies];
 }
+
+#endif // !PLATFORM(IOS_FAMILY)

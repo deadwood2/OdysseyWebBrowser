@@ -585,7 +585,7 @@ TEST(WTF_RefPtr, ReleaseInNonMainThread)
 
 TEST(WTF_RefPtr, ReleaseInNonMainThreadDestroyInMainThread)
 {
-    RunLoop::initializeMainRunLoop();
+    WTF::initializeMainThread();
     done = false;
     Thread::create("", [object = MainThreadSafeRefCountedObject::create()] { });
     TestWebKitAPI::Util::run(&done);

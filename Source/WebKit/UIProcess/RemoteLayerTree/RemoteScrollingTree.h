@@ -45,7 +45,6 @@ public:
     virtual ~RemoteScrollingTree();
 
     bool isRemoteScrollingTree() const override { return true; }
-    WebCore::ScrollingEventResult tryToHandleWheelEvent(const WebCore::PlatformWheelEvent&) override;
 
     void handleMouseEvent(const WebCore::PlatformMouseEvent&);
 
@@ -60,13 +59,13 @@ private:
     explicit RemoteScrollingTree(RemoteScrollingCoordinatorProxy&);
 
 #if PLATFORM(MAC)
-    void handleWheelEventPhase(WebCore::PlatformWheelEventPhase) override;
+    void handleWheelEventPhase(WebCore::ScrollingNodeID, WebCore::PlatformWheelEventPhase) override;
 #endif
 
 #if PLATFORM(IOS_FAMILY)
-    void scrollingTreeNodeWillStartPanGesture() override;
-    void scrollingTreeNodeWillStartScroll() override;
-    void scrollingTreeNodeDidEndScroll() override;
+    void scrollingTreeNodeWillStartPanGesture(WebCore::ScrollingNodeID) override;
+    void scrollingTreeNodeWillStartScroll(WebCore::ScrollingNodeID) override;
+    void scrollingTreeNodeDidEndScroll(WebCore::ScrollingNodeID) override;
 #endif
 
     Ref<WebCore::ScrollingTreeNode> createScrollingTreeNode(WebCore::ScrollingNodeType, WebCore::ScrollingNodeID) override;

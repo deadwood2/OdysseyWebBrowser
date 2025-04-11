@@ -33,6 +33,7 @@
 #include <WebKit/WKCertificateInfoCurl.h>
 #include <WebKit/WKCredential.h>
 #include <WebKit/WKInspector.h>
+#include <WebKit/WKPreferencesRefPrivate.h>
 #include <WebKit/WKProtectionSpace.h>
 #include <WebKit/WKProtectionSpaceCurl.h>
 #include <WebKit/WKWebsiteDataStoreRef.h>
@@ -64,9 +65,8 @@ std::string createUTF8String(const wchar_t* src, size_t srcLength)
     return { buffer.data(), actualLength };
 }
 
-std::wstring createPEMString(WKProtectionSpaceRef protectionSpace)
+std::wstring createPEMString(WKCertificateInfoRef certificateInfo)
 {
-    auto certificateInfo = WKProtectionSpaceCopyCertificateInfo(protectionSpace);
     auto chainSize = WKCertificateInfoGetCertificateChainSize(certificateInfo);
 
     std::wstring pems;
@@ -206,10 +206,10 @@ void WebKitBrowserWindow::reload()
     WKPageReload(page);
 }
 
-void WebKitBrowserWindow::navigateForwardOrBackward(UINT menuID)
+void WebKitBrowserWindow::navigateForwardOrBackward(bool forward)
 {
     auto page = WKViewGetPage(m_view.get());
-    if (menuID == IDM_HISTORY_FORWARD)
+    if (forward)
         WKPageGoForward(page);
     else
         WKPageGoBack(page);
@@ -226,6 +226,16 @@ void WebKitBrowserWindow::setPreference(UINT menuID, bool enable)
     auto pgroup = WKPageGetPageGroup(page);
     auto pref = WKPageGroupGetPreferences(pgroup);
     switch (menuID) {
+    case IDM_ACC_COMPOSITING:
+        WKPreferencesSetAcceleratedCompositingEnabled(pref, enable);
+        break;
+    case IDM_COMPOSITING_BORDERS:
+        WKPreferencesSetCompositingBordersVisible(pref, enable);
+        WKPreferencesSetCompositingRepaintCountersVisible(pref, enable);
+        break;
+    case IDM_DEBUG_INFO_LAYER:
+        WKPreferencesSetTiledScrollingIndicatorVisible(pref, enable);
+        break;
     case IDM_DISABLE_IMAGES:
         WKPreferencesSetLoadsImagesAutomatically(pref, !enable);
         break;
@@ -367,13 +377,21 @@ void WebKitBrowserWindow::didReceiveAuthenticationChallenge(WKPageRef page, WKAu
 bool WebKitBrowserWindow::canTrustServerCertificate(WKProtectionSpaceRef protectionSpace)
 {
     auto host = createString(adoptWK(WKProtectionSpaceCopyHost(protectionSpace)).get());
-    auto pem = createPEMString(protectionSpace);
+    auto certificateInfo = adoptWK(WKProtectionSpaceCopyCertificateInfo(protectionSpace));
+    auto verificationError = WKCertificateInfoGetVerificationError(certificateInfo.get());
+    auto description = createString(adoptWK(WKCertificateInfoCopyVerificationErrorDescription(certificateInfo.get())).get());
+    auto pem = createPEMString(certificateInfo.get());
 
     auto it = m_acceptedServerTrustCerts.find(host);
     if (it != m_acceptedServerTrustCerts.end() && it->second == pem)
         return true;
 
-    if (askServerTrustEvaluation(hwnd(), pem)) {
+    std::wstring textString = L"[HOST] " + host + L"\r\n";
+    textString.append(L"[ERROR] " + std::to_wstring(verificationError) + L"\r\n");
+    textString.append(L"[DESCRIPTION] " + description + L"\r\n");
+    textString.append(pem);
+
+    if (askServerTrustEvaluation(hwnd(), textString)) {
         m_acceptedServerTrustCerts.emplace(host, pem);
         return true;
     }
@@ -399,5 +417,5 @@ WKPageRef WebKitBrowserWindow::createNewPage(WKPageRef page, WKPageConfiguration
 void WebKitBrowserWindow::didNotHandleKeyEvent(WKPageRef, WKNativeEventPtr event, const void* clientInfo)
 {
     auto& thisWindow = toWebKitBrowserWindow(clientInfo);
-    DefWindowProc(thisWindow.hwnd(), event->message, event->wParam, event->lParam);
+    PostMessage(thisWindow.m_hMainWnd, event->message, event->wParam, event->lParam);
 }

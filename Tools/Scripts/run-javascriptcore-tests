@@ -46,6 +46,12 @@ use Text::ParseWords;
 setConfiguration();
 my $configuration = configuration();
 
+if (shouldUseFlatpak()) {
+    my @command = (File::Spec->catfile(sourceDir(), "Tools", "Scripts", "run-javascriptcore-tests"));
+    runInFlatpak(@command);
+}
+
+
 # These variables are intentionally left undefined.
 my $root;
 my $showHelp;
@@ -54,8 +60,10 @@ my $childProcesses;
 my $shellRunner;
 my $makeRunner;
 my $rubyRunner;
+my $gnuParallelRunner;
 my $testWriter;
 my $memoryLimited;
+my $reportExecutionTime;
 
 my $report;
 my $buildbotMaster;
@@ -97,6 +105,7 @@ my $gmallocDefaultPath = "/usr/lib/libgmalloc.dylib";
 my $createTarball = 0;
 my $remoteHost = 0;
 my $model = 0;
+my $archs = undef;
 my $version;
 my $versionName;
 my $sdk;
@@ -224,6 +233,7 @@ my $filter;
 my $usage = <<EOF;
 Usage: $programName [options] [options to pass to build system]
   --help                        Show this help message
+  --architecture                Attempt to override the native architecture of a machine.
   --root=                       Path to pre-built root containing jsc
   --[no-]ftl-jit                Turn the FTL JIT on or off
   --[no-]build                  Check (or don't check) to see if the jsc build is up-to-date (default: $buildJSCDefault)
@@ -265,6 +275,8 @@ Usage: $programName [options] [options to pass to build system]
 
   --memory-limited              Indicate that we are targeting the test for a memory limited device.
                                 Skip tests tagged with //\@skip if \$memoryLimited
+
+  --report-execution-time       Print execution time for each stress test.
 
   --filter                      Only run tests whose name matches the given regular expression.
   --env-vars                    Pass a list of environment variables to set before running tests.
@@ -318,6 +330,7 @@ GetOptions(
     'tarball!' => \$createTarball,
     'remote=s' => \$remoteHost,
     'model=s' => \$model,
+    'architecture=s' => \$archs,
     'version=s' => \$version,
     'version-name=s' => \$versionName,
     'sdk=s' => \$sdk,
@@ -326,8 +339,10 @@ GetOptions(
     'shell-runner' => \$shellRunner,
     'make-runner' => \$makeRunner,
     'ruby-runner' => \$rubyRunner,
+    'gnu-parallel-runner' => \$gnuParallelRunner,
     'test-writer=s' => \$testWriter,
     'memory-limited' => \$memoryLimited,
+    'report-execution-time' => \$reportExecutionTime,
     'filter=s' => \$filter,
     'help' => \$showHelp,
     'env-vars=s' => \$envVars,
@@ -339,7 +354,6 @@ GetOptions(
     'build-number=s' => \$buildNumber,
     'buildbot-worker=s' => \$buildbotWorker,
 );
-
 
 my $specificTestsSpecified = 0;
 if ($runTestMasm == DO_RUN
@@ -403,6 +417,7 @@ sub configurationForUpload()
         $platform = 'win';
         if (!$version) {
             $version = winVersion();
+            $versionName = "Win$version->{major}";
         }
     } elsif (isAppleMacWebKit()) {
         $platform = 'mac';
@@ -415,11 +430,13 @@ sub configurationForUpload()
         }
 
         if (!$versionName) {
-            if ($version->{minor} eq 15) {
+            if ($version->{major} eq 11 && $version->{minor} eq 0) {
+                $versionName = "Big Sur";
+            } elsif ($version->{major} eq 10 && $version->{minor} eq 15) {
                 $versionName = "Catalina";
-            } elsif ($version->{minor} eq 14) {
+            } elsif ($version->{major} eq 10 && $version->{minor} eq 14) {
                 $versionName = "Mojave";
-            } elsif ($version->{minor} eq 13) {
+            } elsif ($version->{major} eq 10 && $version->{minor} eq 13) {
                 $versionName = "High Sierra";
             }
         }
@@ -436,7 +453,7 @@ sub configurationForUpload()
 
     my $result = {
         platform => $platform,
-        architecture => architecture(),
+        architecture => $archs,
         is_simulator => $simulator,
         style => lc(configuration()),
         version => "$version->{major}.$version->{minor}.$version->{subminor}",
@@ -470,6 +487,42 @@ if ($showHelp) {
 }
 
 setConfigurationProductDir(Cwd::abs_path($root)) if (defined($root));
+my $archsInBuild = architecturesForProducts();
+
+my $nativeTarget = "";
+my $nativePort = 0;
+$nativeTarget = $remoteHost if ($remoteHost);
+if (defined $remoteConfigFile) {
+    open my $handle, '<', $remoteConfigFile or die "Failed to open $remoteConfigFile: $!";
+    my $configJson = do { local $/; <$handle> };
+    my $remoteConfig = decode_json($configJson);
+    if (defined $remoteConfig->{"remotes"}) {
+        my $remotes = $remoteConfig->{"remotes"};
+        my @split = split(':', @$remotes[0]->{"address"});
+        $nativeTarget = $split[0];
+        $nativePort = $split[1] if scalar(@split) > 1;
+    } elsif (defined $remoteConfig->{"remote"}) {
+        my @split = split(':', $remoteConfig->{"remote"});
+        $nativeTarget = $split[0];
+        $nativePort = $split[1] if scalar(@split) > 1;
+    }
+}
+$nativePort = 22 if $nativeTarget && !$nativePort;
+
+if (defined $archs) {
+    die "$archs not supported by the provided binary, which supports '$archsInBuild'" if index($archsInBuild, $archs) == -1;
+} else {
+    # Fallback is x86_64, which we replace with the native architecture if the native architecture is in the provided build
+    $archs = "x86_64";
+    $archs = nativeArchitecture($nativeTarget, $nativePort) if (!isAppleMacWebKit() || index($archsInBuild, nativeArchitecture($nativeTarget, $nativePort)) != -1);
+}
+
+# For running tests, arm64e should map to arm64
+$archs = "arm64" if $archs eq "arm64e";
+if ($archs ne nativeArchitecture($nativeTarget, $nativePort) && (nativeArchitecture($nativeTarget, $nativePort) ne "arm64" || !isAppleMacWebKit())) {
+    die "Cannot run tests with $archs on this machine";
+}
+
 configurationForUpload() if (defined($report));
 
 if (defined($jsonFileName)) {
@@ -519,6 +572,7 @@ if ($coverage) {
 my $productDir = jscProductDir();
 $ENV{DYLD_FRAMEWORK_PATH} = $productDir;
 $ENV{JSCTEST_timeout} = 120 unless $ENV{JSCTEST_timeout}; # Set a 120 second timeout on all jsc tests (if environment variable not defined already).
+$ENV{JSCTEST_hardTimeout} = 300 unless $ENV{JSCTEST_hardTimeout}; # Set a 300 second hard timeout on all jsc tests (if environment variable not defined already). If the test does not finish after 300 seconds from soft-timeout, we terminate the shell.
 $ENV{TZ}="US/Pacific"; # Some tests fail if the time zone is not set to US/Pacific (<https://webkit.org/b/136363>)
 setPathForRunningWebKitApp(\%ENV) if isCygwin();
 
@@ -538,7 +592,8 @@ sub runTest {
     chdir($productDir) or die "Failed to switch directory to '$productDir'\n";
     my @command = (testPath($productDir, $testName));
     unshift @command, ("xcrun", "-sdk", xcodeSDK(), "sim") if willUseIOSSimulatorSDK();
-    unshift @command, wrapperPrefixIfNeeded() if shouldUseJhbuild();
+    unshift @command, ("/usr/bin/arch", "-$archs") if $archs ne nativeArchitecture($nativeTarget, $nativePort);
+    unshift @command, wrapperPrefixIfNeeded() if isGtk() or isWPE();
 
     if ($envVars ne "") {
         foreach my $var (split(/\s+/, $envVars)) {
@@ -680,6 +735,13 @@ sub runJSCStressTests
             "JSTests/complex.yaml",
             "JSTests/ChakraCore.yaml",
             "JSTests/wasm.yaml");
+
+        my $internalTestsDir = File::Spec->catdir(dirname(sourceDir()), "Internal", "Tests", "InternalJSTests");
+        if (-e $internalTestsDir and -d $internalTestsDir) {
+            push(@testList, File::Spec->catfile($internalTestsDir, "internal-js-tests.yaml"));
+            push(@testList, File::Spec->catfile($internalTestsDir, "regress.yaml"));
+        }
+
         $hasTestsToRun = 1;
     }
 
@@ -692,7 +754,12 @@ sub runJSCStressTests
     $ENV{LANG}="en_US.UTF-8";
     my @jscStressDriverCmd = (
         "/usr/bin/env", "ruby", "Tools/Scripts/run-jsc-stress-tests",
-        "-j", jscPath($productDir), "-o", $jscStressResultsDir);
+        "-j", jscPath($productDir), "-o", $jscStressResultsDir, "--arch", $archs);
+
+    if (nativeArchitecture($nativeTarget, $nativePort) ne $archs) {
+        push(@jscStressDriverCmd, "--force-architecture");
+        push(@jscStressDriverCmd, $archs);
+    }
 
     push(@jscStressDriverCmd, @testList);
 
@@ -731,6 +798,8 @@ sub runJSCStressTests
     if ($remoteHost) {
         push(@jscStressDriverCmd, "--remote");
         push(@jscStressDriverCmd, $remoteHost);
+        # We're doing this for verbosity=2 which will cause us to log "PASS: " results
+        push(@jscStressDriverCmd, "-v", "-v");
     }
 
     if ($remoteConfigFile) {
@@ -760,6 +829,10 @@ sub runJSCStressTests
         push(@jscStressDriverCmd, "--ruby-runner");
     }
 
+    if ($gnuParallelRunner) {
+        push(@jscStressDriverCmd, "--gnu-parallel-runner");
+    }
+
     if ($testWriter) {
         push(@jscStressDriverCmd, "--test-writer");
         push(@jscStressDriverCmd, $testWriter);
@@ -767,6 +840,10 @@ sub runJSCStressTests
 
     if ($memoryLimited) {
         push(@jscStressDriverCmd, "--memory-limited");
+    }
+
+    if ($reportExecutionTime) {
+        push(@jscStressDriverCmd, "--report-execution-time");
     }
 
     if ($filter) {
@@ -781,7 +858,7 @@ sub runJSCStressTests
         push(@jscStressDriverCmd, "--no-copy");
     }
 
-    unshift @jscStressDriverCmd, wrapperPrefixIfNeeded() if shouldUseJhbuild();
+    unshift @jscStressDriverCmd, wrapperPrefixIfNeeded() if isGtk() or isWPE();
 
     # End option processing, the rest of the arguments are tests
     push(@jscStressDriverCmd, "--");
@@ -796,7 +873,7 @@ sub runJSCStressTests
     }
 
     if (!$hasTestsToRun) {
-        exit(0);
+        return;
     }
 
     print "Running: " . join(" ", @jscStressDriverCmd) . "\n";
@@ -878,15 +955,18 @@ sub uploadResults
         return 0;
     }
 
+    my @commits = [];
+    my $internalCheckout = File::Spec->catdir(dirname(sourceDir()), "Internal");
+    if (-e $internalCheckout and -d $internalCheckout) {
+        @commits = [commitForDirectory(sourceDir(), 'webkit'), commitForDirectory($internalCheckout, 'safari')]
+    } else {
+        @commits = [commitForDirectory(sourceDir(), 'webkit')]
+    }
+
     my %upload = (
         version => 0,
         suite => 'javascriptcore-tests',
-        # FIXME: Integrate branches, https://bugs.webkit.org/show_bug.cgi?id=204094
-        # FIXME: Integrate the Safari repository, https://bugs.webkit.org/show_bug.cgi?id=204095
-        commits => [{
-            repository_id => 'webkit',
-            id => determineCurrentSVNRevision(),
-        }],
+        commits => @commits,
         configuration => configurationForUpload(),
         test_results => {
             run_stats => {
@@ -913,7 +993,6 @@ sub uploadResults
     }
 
     print "Uploading results to $report\n";
-
     open(HANDLE, "|-", "curl -X POST $report/api/upload -H 'Content-Type: application/json' -f -d '\@-'") or die "Failed to open curl";
 
     # Json conforming to https://results.webkit.org/documentation#API-Uploads.
@@ -926,5 +1005,6 @@ sub uploadResults
         return 0;
     }
     print "Upload to $report failed\n";
+
     return 1;
 }

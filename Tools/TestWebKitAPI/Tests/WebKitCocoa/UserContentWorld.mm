@@ -44,14 +44,15 @@
 #import <WebKit/_WKUserStyleSheet.h>
 #import <wtf/RetainPtr.h>
 
-TEST(UserContentWorld, NormalWorld)
+TEST(ContentWorld, NormalWorld)
 {
     RetainPtr<WKUserScript> basicUserScript = adoptNS([[WKUserScript alloc] initWithSource:@"" injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]);
-    EXPECT_EQ([basicUserScript _userContentWorld], [_WKUserContentWorld normalWorld]);
+    EXPECT_NE([basicUserScript _userContentWorld], [_WKUserContentWorld normalWorld]);
+    EXPECT_WK_STREQ([basicUserScript _userContentWorld].name, [_WKUserContentWorld normalWorld].name);
     EXPECT_NULL([basicUserScript _userContentWorld].name);
 }
 
-TEST(UserContentWorld, NormalWorldUserScript)
+TEST(ContentWorld, NormalWorldUserScript)
 {
     RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
 
@@ -76,21 +77,22 @@ TEST(UserContentWorld, NormalWorldUserScript)
     TestWebKitAPI::Util::run(&isDone);
 }
 
-TEST(UserContentWorld, IsolatedWorld)
+TEST(ContentWorld, IsolatedWorld)
 {
-    RetainPtr<_WKUserContentWorld> isolatedWorld = [_WKUserContentWorld worldWithName:@"TestWorld"];
+    RetainPtr<WKContentWorld> isolatedWorld = [WKContentWorld worldWithName:@"TestWorld"];
     EXPECT_WK_STREQ([isolatedWorld name], @"TestWorld");
 
-    RetainPtr<WKUserScript> userScript = adoptNS([[WKUserScript alloc] _initWithSource:@"" injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES legacyWhitelist:@[] legacyBlacklist:@[] userContentWorld:isolatedWorld.get()]);
-    EXPECT_EQ([userScript _userContentWorld], isolatedWorld.get());
+    RetainPtr<WKUserScript> userScript = adoptNS([[WKUserScript alloc] _initWithSource:@"" injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES includeMatchPatternStrings:@[] excludeMatchPatternStrings:@[] associatedURL:nil contentWorld:isolatedWorld.get() deferRunningUntilNotification:NO]);
+    EXPECT_EQ([userScript _contentWorld], isolatedWorld.get());
+    EXPECT_WK_STREQ([userScript _userContentWorld].name, [isolatedWorld name]);
 }
 
-TEST(UserContentWorld, IsolatedWorldUserScript)
+TEST(ContentWorld, IsolatedWorldUserScript)
 {
     RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
 
-    RetainPtr<_WKUserContentWorld> isolatedWorld = [_WKUserContentWorld worldWithName:@"TestWorld"];
-    RetainPtr<WKUserScript> userScript = adoptNS([[WKUserScript alloc] _initWithSource:@"window.setFromUserScript = true;" injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES legacyWhitelist:@[] legacyBlacklist:@[] userContentWorld:isolatedWorld.get()]);
+    RetainPtr<WKContentWorld> isolatedWorld = [WKContentWorld worldWithName:@"TestWorld"];
+    RetainPtr<WKUserScript> userScript = adoptNS([[WKUserScript alloc] _initWithSource:@"window.setFromUserScript = true;" injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES includeMatchPatternStrings:@[] excludeMatchPatternStrings:@[] associatedURL:nil contentWorld:isolatedWorld.get() deferRunningUntilNotification:NO]);
     [[configuration userContentController] addUserScript:userScript.get()];
 
     RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
@@ -150,8 +152,8 @@ TEST(UserContentWorld, IsolatedWorldPlugIn)
 
     RetainPtr<WKWebViewConfiguration> configuration = retainPtr([WKWebViewConfiguration _test_configurationWithTestPlugInClassName:testPlugInClassName]);
     
-    RetainPtr<_WKUserContentWorld> isolatedWorld = [_WKUserContentWorld worldWithName:@"TestWorld"];
-    RetainPtr<WKUserScript> userScript = adoptNS([[WKUserScript alloc] _initWithSource:@"window.setFromUserScript = true;" injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES legacyWhitelist:@[] legacyBlacklist:@[] userContentWorld:isolatedWorld.get()]);
+    RetainPtr<WKContentWorld> isolatedWorld = [WKContentWorld worldWithName:@"TestWorld"];
+    RetainPtr<WKUserScript> userScript = adoptNS([[WKUserScript alloc] _initWithSource:@"window.setFromUserScript = true;" injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES includeMatchPatternStrings:@[] excludeMatchPatternStrings:@[] associatedURL:nil contentWorld:isolatedWorld.get() deferRunningUntilNotification:NO]);
     [[configuration userContentController] addUserScript:userScript.get()];
     RetainPtr<TestURLSchemeHandler> schemeHandler = adoptNS([[TestURLSchemeHandler alloc] init]);
     [configuration setURLSchemeHandler:schemeHandler.get() forURLScheme:@"testscheme"];

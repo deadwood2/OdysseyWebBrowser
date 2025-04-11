@@ -28,6 +28,7 @@
 #import <WebKit/WKBackForwardListItem.h>
 #import <WebKit/WKContentRuleList.h>
 #import <WebKit/WKContentRuleListStore.h>
+#import <WebKit/WKContentWorld.h>
 #import <WebKit/WKContextMenuElementInfo.h>
 #import <WebKit/WKError.h>
 #import <WebKit/WKFindConfiguration.h>
@@ -48,6 +49,7 @@
 #import <WebKit/WKProcessPool.h>
 #import <WebKit/WKScriptMessage.h>
 #import <WebKit/WKScriptMessageHandler.h>
+#import <WebKit/WKScriptMessageHandlerWithReply.h>
 #import <WebKit/WKSecurityOrigin.h>
 #import <WebKit/WKSnapshotConfiguration.h>
 #import <WebKit/WKUIDelegate.h>

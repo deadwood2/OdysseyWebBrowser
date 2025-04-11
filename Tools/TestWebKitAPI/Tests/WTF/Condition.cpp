@@ -38,7 +38,7 @@ namespace TestWebKitAPI {
 
 namespace {
 
-const bool verbose = false;
+static constexpr bool verbose = false;
 
 enum NotifyStyle {
     AlwaysNotifyOne,
@@ -118,7 +118,7 @@ void runTest(
                     notify(notifyStyle, fullCondition, shouldNotify);
 
                     {
-                        std::lock_guard<Lock> locker(receivedLock);
+                        auto locker = holdLock(receivedLock);
                         received.append(result);
                     }
                 }
@@ -155,7 +155,7 @@ void runTest(
         thread->waitForCompletion();
 
     {
-        std::lock_guard<Lock> locker(lock);
+        auto locker = holdLock(lock);
         shouldContinue = false;
     }
     emptyCondition.notifyAll();

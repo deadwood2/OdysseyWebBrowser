@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
 
 #include "MediaRecorderIdentifier.h"
 #include "SharedRingBufferStorage.h"
@@ -44,27 +44,29 @@ class MediaStreamPrivate;
 
 namespace WebKit {
 
-class MediaRecorderPrivate final : public WebCore::MediaRecorderPrivate, public SharedRingBufferStorage::Client, public CanMakeWeakPtr<MediaRecorderPrivate> {
+class MediaRecorderPrivate final
+    : public WebCore::MediaRecorderPrivate
+    , public SharedRingBufferStorage::Client
+    , public CanMakeWeakPtr<MediaRecorderPrivate> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    explicit MediaRecorderPrivate(const WebCore::MediaStreamPrivate&);
+    explicit MediaRecorderPrivate(WebCore::MediaStreamPrivate&);
     ~MediaRecorderPrivate();
 
 private:
     // WebCore::MediaRecorderPrivate
-    void sampleBufferUpdated(const WebCore::MediaStreamTrackPrivate&, WebCore::MediaSample&) final;
-    void audioSamplesAvailable(const WebCore::MediaStreamTrackPrivate&, const WTF::MediaTime&, const WebCore::PlatformAudioData&, const WebCore::AudioStreamDescription&, size_t) final;
+    void videoSampleAvailable(WebCore::MediaSample&) final;
     void fetchData(CompletionHandler<void(RefPtr<WebCore::SharedBuffer>&&, const String& mimeType)>&&) final;
     void stopRecording() final;
+    void startRecording(ErrorCallback&&) final;
+    void audioSamplesAvailable(const WTF::MediaTime&, const WebCore::PlatformAudioData&, const WebCore::AudioStreamDescription&, size_t) final;
 
     // SharedRingBufferStorage::Client
     void storageChanged(SharedMemory*);
 
     MediaRecorderIdentifier m_identifier;
-
+    Ref<MediaStreamPrivate> m_stream;
     Ref<IPC::Connection> m_connection;
-    String m_recordedAudioTrackID;
-    String m_recordedVideoTrackID;
 
     std::unique_ptr<WebCore::CARingBuffer> m_ringBuffer;
     WebCore::CAAudioStreamDescription m_description { };
@@ -73,5 +75,5 @@ private:
 
 }
 
-#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
+#endif // PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
 

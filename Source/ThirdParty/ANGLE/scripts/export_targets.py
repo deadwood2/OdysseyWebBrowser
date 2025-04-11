@@ -183,11 +183,12 @@ IGNORED_INCLUDES = {
     b'libANGLE/renderer/d3d/DisplayD3D.h',
     b'libANGLE/renderer/d3d/RenderTargetD3D.h',
     b'libANGLE/renderer/d3d/d3d11/winrt/NativeWindow11WinRT.h',
-    b'libANGLE/renderer/gl/glx/DisplayGLX.h',
     b'libANGLE/renderer/gl/cgl/DisplayCGL.h',
     b'libANGLE/renderer/gl/eagl/DisplayEAGL.h',
-    b'libANGLE/renderer/gl/egl/ozone/DisplayOzone.h',
     b'libANGLE/renderer/gl/egl/android/DisplayAndroid.h',
+    b'libANGLE/renderer/gl/egl/DisplayEGL.h',
+    b'libANGLE/renderer/gl/egl/gbm/DisplayGbm.h',
+    b'libANGLE/renderer/gl/glx/DisplayGLX.h',
     b'libANGLE/renderer/gl/wgl/DisplayWGL.h',
     b'libANGLE/renderer/metal/DisplayMtl_api.h',
     b'libANGLE/renderer/null/DisplayNULL.h',
@@ -197,6 +198,7 @@ IGNORED_INCLUDES = {
     b'libANGLE/renderer/vulkan/mac/DisplayVkMac.h',
     b'libANGLE/renderer/vulkan/win32/DisplayVkWin32.h',
     b'libANGLE/renderer/vulkan/xcb/DisplayVkXcb.h',
+    b'third_party/volk/volk.h',
     b'kernel/image.h',
 }
 
@@ -216,11 +218,13 @@ IGNORED_INCLUDE_PREFIXES = {
 }
 
 IGNORED_DIRECTORIES = {
+    '//third_party/glslang',
     '//third_party/SwiftShader',
     '//third_party/vulkan-headers',
     '//third_party/vulkan-loader',
     '//third_party/vulkan-tools',
     '//third_party/vulkan-validation-layers',
+    '//third_party/zlib',
 }
 
 def has_all_includes(target_name: str, descs: dict) -> bool:

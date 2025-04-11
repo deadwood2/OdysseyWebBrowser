@@ -23,6 +23,7 @@
 from __future__ import unicode_literals
 
 import datetime
+import logging
 import re
 
 from django.http import HttpResponse
@@ -35,12 +36,14 @@ from ews.models.build import Build
 from ews.models.patch import Patch
 import ews.config as config
 
+_log = logging.getLogger(__name__)
+
 
 class StatusBubble(View):
     # These queue names are from shortname in https://trac.webkit.org/browser/webkit/trunk/Tools/BuildSlaveSupport/ews-build/config.json
     # FIXME: Auto-generate this list https://bugs.webkit.org/show_bug.cgi?id=195640
     # Note: This list is sorted in the order of which bubbles appear in bugzilla.
-    ALL_QUEUES = ['style', 'ios', 'ios-sim', 'mac', 'mac-debug', 'gtk', 'wpe', 'wincairo', 'win',
+    ALL_QUEUES = ['style', 'ios', 'ios-sim', 'mac', 'mac-debug', 'mac-AS', 'tv', 'tv-sim', 'watch', 'watch-sim', 'gtk', 'wpe', 'wincairo', 'win',
                   'ios-wk2', 'mac-wk1', 'mac-wk2', 'mac-debug-wk1', 'api-ios', 'api-mac', 'api-gtk',
                   'bindings', 'jsc', 'jsc-armv7', 'jsc-mips', 'jsc-i386', 'webkitperl', 'webkitpy', 'services']
     # FIXME: Auto-generate the queue's trigger relationship
@@ -51,14 +54,19 @@ class StatusBubble(View):
         'mac-wk1': 'mac',
         'mac-wk2': 'mac',
         'mac-debug-wk1': 'mac-debug',
+        'api-gtk': 'gtk',
     }
 
     STEPS_TO_HIDE = ['^Archived built product$', '^Uploaded built product$', '^Transferred archive to S3$',
                      '^Archived test results$', '^Uploaded test results$', '^Extracted test results$',
                      '^Downloaded built product$', '^Extracted built product$',
+                     '^Crash collection has quiesced$', '^Triggered crash log submission$',
                      '^Cleaned and updated working directory$', '^Checked out required revision$', '^Updated working directory$',
                      '^Validated patch$', '^Killed old processes$', '^Configured build$', '^OS:.*Xcode:', '(skipped)',
-                     '^Printed configuration$', '^Checked patch relevance$']
+                     '^Printed configuration$', '^Patch contains relevant changes$', '^Deleted .git/index.lock$',
+                     '^triggered.*$', '^Found modified ChangeLogs$', '^Created local git commit$', '^Set build summary$',
+                     '^Validated commiter$', '^Validated commiter and reviewer$', '^Validated ChangeLog and Reviewer$',
+                     '^Removed flags on bugzilla patch$', '^Checked patch status on other queues$']
     DAYS_TO_CHECK = 3
     BUILDER_ICON = u'\U0001f6e0'
     TESTER_ICON = u'\U0001f52c'
@@ -79,6 +87,7 @@ class StatusBubble(View):
         build = None
         if builds:
             build = builds[0]
+            builds = builds[:10]  # Limit number of builds to display in status-bubble hover over message
         if not self._should_show_bubble_for_build(build):
             return None
 
@@ -88,6 +97,11 @@ class StatusBubble(View):
             bubble['queue_position'] = queue_position
             if not queue_position:
                 return None
+            if self._get_parent_queue(queue):
+                queue = self._get_parent_queue(queue)
+            queue_full_name = Buildbot.queue_name_by_shortname_mapping.get(queue)
+            if queue_full_name:
+                bubble['url'] = 'https://{}/#/builders/{}'.format(config.BUILDBOT_SERVER_HOST, queue_full_name)
             bubble['details_message'] = 'Waiting in queue, processing has not started yet.\n\nPosition in queue: {}'.format(queue_position)
             return bubble
 
@@ -105,13 +119,17 @@ class StatusBubble(View):
             bubble['details_message'] = 'Waiting for available bot to retry the build.\n\nRecent messages:' + self._steps_messages_from_multiple_builds(builds)
         elif build.result == Buildbot.SUCCESS:
             if is_parent_build:
-                if patch.modified < (timezone.now() - datetime.timedelta(days=StatusBubble.DAYS_TO_CHECK)):
+                if patch.created < (timezone.now() - datetime.timedelta(days=StatusBubble.DAYS_TO_CHECK)):
                     # Do not display bubble for old patch for which no build has been reported on given queue.
                     # Most likely the patch would never be processed on this queue, since either the queue was
                     # added after the patch was submitted, or build request for that patch was cancelled.
                     return None
                 bubble['state'] = 'started'
-                bubble['details_message'] = 'Build is in-progress. Recent messages:' + self._steps_messages_from_multiple_builds(builds) + '\n\nWaiting to run tests.'
+                bubble['details_message'] = 'Waiting to run tests.'
+                queue_full_name = Buildbot.queue_name_by_shortname_mapping.get(queue)
+                if queue_full_name:
+                    bubble['url'] = 'https://{}/#/builders/{}'.format(config.BUILDBOT_SERVER_HOST, queue_full_name)
+                    builder_full_name = queue_full_name.replace('-', ' ')
             else:
                 bubble['state'] = 'pass'
                 if is_builder_queue and is_tester_queue:
@@ -237,7 +255,7 @@ class StatusBubble(View):
             is_parent_build = True
         if not builds:
             return (None, None)
-        builds.sort(key=lambda build: build.started_at, reverse=True)
+        builds.sort(key=lambda build: build.number, reverse=True)
         return (builds, is_parent_build)
 
     def get_builds_for_queue(self, patch, queue):
@@ -265,28 +283,30 @@ class StatusBubble(View):
         # FIXME: Handle retried builds and cancelled build-requests as well.
         from_timestamp = timezone.now() - datetime.timedelta(days=StatusBubble.DAYS_TO_CHECK)
 
-        if patch.modified < from_timestamp:
+        if patch.created < from_timestamp:
             # Do not display bubble for old patch for which no build has been reported on given queue.
             # Most likely the patch would never be processed on this queue, since either the queue was
             # added after the patch was submitted, or build request for that patch was cancelled.
             return None
 
+        sent = 'sent_to_commit_queue' if queue == 'commit' else 'sent_to_buildbot'
         previously_sent_patches = set(Patch.objects
-                                          .filter(modified__gte=from_timestamp)
-                                          .filter(sent_to_buildbot=True)
+                                          .filter(created__gte=from_timestamp)
+                                          .filter(**{sent: True})
                                           .filter(obsolete=False)
-                                          .filter(modified__lt=patch.modified))
+                                          .filter(created__lt=patch.created))
         if parent_queue:
             recent_builds_parent_queue = Build.objects \
-                                             .filter(modified__gte=from_timestamp) \
+                                             .filter(created__gte=from_timestamp) \
                                              .filter(builder_display_name=parent_queue)
             processed_patches_parent_queue = set([build.patch for build in recent_builds_parent_queue])
             return len(previously_sent_patches - processed_patches_parent_queue) + 1
 
         recent_builds = Build.objects \
-                            .filter(modified__gte=from_timestamp) \
+                            .filter(created__gte=from_timestamp) \
                             .filter(builder_display_name=queue)
         processed_patches = set([build.patch for build in recent_builds])
+        _log.debug('Patch: {}, queue: {}, previous patches: {}'.format(patch.patch_id, queue, previously_sent_patches - processed_patches))
         return len(previously_sent_patches - processed_patches) + 1
 
     def _build_bubbles_for_patch(self, patch, hide_icons=False):
@@ -295,16 +315,24 @@ class StatusBubble(View):
         show_retry = False
         bubbles = []
 
-        if not (patch and patch.sent_to_buildbot):
+        if not patch:
             return (None, show_submit_to_ews, failed_to_apply, show_retry)
 
-        for queue in StatusBubble.ALL_QUEUES:
-            bubble = self._build_bubble(patch, queue, hide_icons)
-            if bubble:
-                show_submit_to_ews = False
-                bubbles.append(bubble)
-                if bubble['state'] in ('fail', 'error'):
-                    show_retry = True
+        if patch.sent_to_buildbot:
+            for queue in StatusBubble.ALL_QUEUES:
+                bubble = self._build_bubble(patch, queue, hide_icons)
+                if bubble:
+                    show_submit_to_ews = False
+                    bubbles.append(bubble)
+                    if bubble['state'] in ('fail', 'error'):
+                        show_retry = True
+
+        if patch.sent_to_commit_queue:
+            if not patch.sent_to_buildbot:
+                hide_icons = True
+            cq_bubble = self._build_bubble(patch, 'commit', hide_icons)
+            if cq_bubble:
+                bubbles.insert(0, cq_bubble)
 
         return (bubbles, show_submit_to_ews, failed_to_apply, show_retry)
 

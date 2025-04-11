@@ -90,9 +90,9 @@ struct TestOptions {
     bool checkForWorldLeaks { false };
     bool shouldIgnoreMetaViewport { false };
     bool shouldShowSpellCheckingDots { false };
+    bool enableServiceControls { false };
     bool enableEditableImages { false };
     bool editable { false };
-    bool enableUndoManagerAPI { false };
     bool shouldHandleRunOpenPanel { true };
     bool shouldPresentPopovers { true };
     bool enableAppNap { false };
@@ -101,8 +101,11 @@ struct TestOptions {
     bool allowsLinkPreview { true };
     bool enableCaptureVideoInUIProcess { false };
     bool enableCaptureVideoInGPUProcess { false };
+    bool enableCaptureAudioInUIProcess { false };
     bool enableCaptureAudioInGPUProcess { false };
     bool allowTopNavigationToDataURLs { true };
+    bool enableInAppBrowserPrivacy { false };
+    bool isAppBoundWebView { false };
 
     double contentInsetTop { 0 };
 
@@ -110,6 +113,7 @@ struct TestOptions {
     std::string applicationManifest;
     std::string jscOptions;
     std::string additionalSupportedImageTypes;
+    std::string standaloneWebApplicationURL;
     HashMap<String, bool> experimentalFeatures;
     HashMap<String, bool> internalDebugFeatures;
     String contentMode;
@@ -152,10 +156,10 @@ struct TestOptions {
             || runSingly != options.runSingly
             || checkForWorldLeaks != options.checkForWorldLeaks
             || shouldShowSpellCheckingDots != options.shouldShowSpellCheckingDots
+            || enableServiceControls != options.enableServiceControls
             || shouldIgnoreMetaViewport != options.shouldIgnoreMetaViewport
             || enableEditableImages != options.enableEditableImages
             || editable != options.editable
-            || enableUndoManagerAPI != options.enableUndoManagerAPI
             || shouldHandleRunOpenPanel != options.shouldHandleRunOpenPanel
             || shouldPresentPopovers != options.shouldPresentPopovers
             || contentInsetTop != options.contentInsetTop
@@ -167,8 +171,12 @@ struct TestOptions {
             || allowsLinkPreview != options.allowsLinkPreview
             || enableCaptureVideoInUIProcess != options.enableCaptureVideoInUIProcess
             || enableCaptureVideoInGPUProcess != options.enableCaptureVideoInGPUProcess
+            || enableCaptureAudioInUIProcess != options.enableCaptureAudioInUIProcess
             || enableCaptureAudioInGPUProcess != options.enableCaptureAudioInGPUProcess
-            || allowTopNavigationToDataURLs != options.allowTopNavigationToDataURLs)
+            || allowTopNavigationToDataURLs != options.allowTopNavigationToDataURLs
+            || enableInAppBrowserPrivacy != options.enableInAppBrowserPrivacy
+            || standaloneWebApplicationURL != options.standaloneWebApplicationURL
+            || isAppBoundWebView != options.isAppBoundWebView)
             return false;
 
         if (!contextOptions.hasSameInitializationOptions(options.contextOptions))

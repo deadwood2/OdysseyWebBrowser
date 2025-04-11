@@ -32,6 +32,8 @@
 #include <WebCore/WebMediaSessionManagerClient.h>
 #include <wtf/Ref.h>
 
+OBJC_CLASS WebView;
+
 namespace WebCore {
 class FloatRect;
 class MediaPlaybackTarget;
@@ -41,29 +43,31 @@ class Page;
 class WebMediaPlaybackTargetPicker : public WebCore::WebMediaSessionManagerClient {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static std::unique_ptr<WebMediaPlaybackTargetPicker> create(WebCore::Page&);
+    static std::unique_ptr<WebMediaPlaybackTargetPicker> create(WebView *, WebCore::Page&);
 
-    explicit WebMediaPlaybackTargetPicker(WebCore::Page&);
-    virtual ~WebMediaPlaybackTargetPicker() { }
+    explicit WebMediaPlaybackTargetPicker(WebView *, WebCore::Page&);
+    virtual ~WebMediaPlaybackTargetPicker() = default;
 
-    void addPlaybackTargetPickerClient(uint64_t);
-    void removePlaybackTargetPickerClient(uint64_t);
-    void showPlaybackTargetPicker(uint64_t, const WebCore::FloatRect&, bool hasVideo);
-    void playbackTargetPickerClientStateDidChange(uint64_t, WebCore::MediaProducer::MediaStateFlags);
+    void addPlaybackTargetPickerClient(WebCore::PlaybackTargetClientContextIdentifier);
+    void removePlaybackTargetPickerClient(WebCore::PlaybackTargetClientContextIdentifier);
+    void showPlaybackTargetPicker(WebCore::PlaybackTargetClientContextIdentifier, const WebCore::FloatRect&, bool hasVideo);
+    void playbackTargetPickerClientStateDidChange(WebCore::PlaybackTargetClientContextIdentifier, WebCore::MediaProducer::MediaStateFlags);
     void setMockMediaPlaybackTargetPickerEnabled(bool);
     void setMockMediaPlaybackTargetPickerState(const String&, WebCore::MediaPlaybackTargetContext::State);
     void mockMediaPlaybackTargetPickerDismissPopup();
 
-    // WebMediaSessionManagerClient
-    void setPlaybackTarget(uint64_t, Ref<WebCore::MediaPlaybackTarget>&&) override;
-    void externalOutputDeviceAvailableDidChange(uint64_t, bool) override;
-    void setShouldPlayToPlaybackTarget(uint64_t, bool) override;
-    void playbackTargetPickerWasDismissed(uint64_t) override;
-
     void invalidate();
 
 private:
+    // WebMediaSessionManagerClient
+    void setPlaybackTarget(WebCore::PlaybackTargetClientContextIdentifier, Ref<WebCore::MediaPlaybackTarget>&&) final;
+    void externalOutputDeviceAvailableDidChange(WebCore::PlaybackTargetClientContextIdentifier, bool) final;
+    void setShouldPlayToPlaybackTarget(WebCore::PlaybackTargetClientContextIdentifier, bool) final;
+    void playbackTargetPickerWasDismissed(WebCore::PlaybackTargetClientContextIdentifier) final;
+    PlatformView* platformView() const final;
+
     WebCore::Page* m_page;
+    WebView *m_webView;
 };
 
 #endif

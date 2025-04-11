@@ -28,6 +28,7 @@
 
 #include "Connection.h"
 #include "ShareableResource.h"
+#include <JavaScriptCore/ConsoleTypes.h>
 #include <WebCore/MessagePortChannelProvider.h>
 #include <WebCore/ServiceWorkerTypes.h>
 #include <wtf/RefCounted.h>
@@ -41,6 +42,7 @@ namespace WebCore {
 class ResourceError;
 class ResourceRequest;
 class ResourceResponse;
+struct Cookie;
 struct MessagePortIdentifier;
 struct MessageWithMessagePorts;
 enum class HTTPCookieAcceptPolicy : uint8_t;
@@ -83,6 +85,12 @@ public:
 
     bool cookiesEnabled() const;
 
+#if HAVE(COOKIE_CHANGE_LISTENER_API)
+    void cookiesAdded(const String& host, const Vector<WebCore::Cookie>&);
+    void cookiesDeleted(const String& host, const Vector<WebCore::Cookie>&);
+    void allCookiesDeleted();
+#endif
+
 private:
     NetworkProcessConnection(IPC::Connection::Identifier, WebCore::HTTPCookieAcceptPolicy);
 
@@ -90,7 +98,7 @@ private:
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
     void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) override;
     void didClose(IPC::Connection&) override;
-    void didReceiveInvalidMessage(IPC::Connection&, IPC::StringReference messageReceiverName, IPC::StringReference messageName) override;
+    void didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName) override;
 
     void didFinishPingLoad(uint64_t pingLoadIdentifier, WebCore::ResourceError&&, WebCore::ResourceResponse&&);
     void didFinishPreconnection(uint64_t preconnectionIdentifier, WebCore::ResourceError&&);
@@ -104,6 +112,8 @@ private:
     // Message handlers.
     void didCacheResource(const WebCore::ResourceRequest&, const ShareableResource::Handle&);
 #endif
+
+    void broadcastConsoleMessage(MessageSource, MessageLevel, const String& message);
 
     // The connection from the web process to the network process.
     Ref<IPC::Connection> m_connection;

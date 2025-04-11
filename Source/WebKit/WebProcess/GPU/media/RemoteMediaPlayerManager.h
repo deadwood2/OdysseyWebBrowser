@@ -51,7 +51,8 @@ class WebProcess;
 struct TrackPrivateRemoteConfiguration;
 
 class RemoteMediaPlayerManager
-    : public WebProcessSupplement {
+    : public WebProcessSupplement
+    , public CanMakeWeakPtr<RemoteMediaPlayerManager> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit RemoteMediaPlayerManager(WebProcess&);
@@ -67,6 +68,8 @@ public:
     void didReceivePlayerMessage(IPC::Connection&, IPC::Decoder&);
 
     void deleteRemoteMediaPlayer(MediaPlayerPrivateRemoteIdentifier);
+
+    MediaPlayerPrivateRemoteIdentifier findRemotePlayerId(const WebCore::MediaPlayerPrivateInterface*);
 
 private:
     std::unique_ptr<WebCore::MediaPlayerPrivateInterface> createRemoteMediaPlayer(WebCore::MediaPlayer*, WebCore::MediaPlayerEnums::MediaEngineIdentifier);
