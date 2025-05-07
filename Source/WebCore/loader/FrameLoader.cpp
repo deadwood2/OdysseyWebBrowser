@@ -4176,7 +4176,7 @@ bool FrameLoader::arePluginsEnabled()
 #if USE(CURL_OPENSSL)
 void FrameLoader::didReceiveSSLSecurityExtension(const ResourceRequest& request, const char* securityExtension)
 {
-    m_client.didReceiveSSLSecurityExtension(request, securityExtension);
+    m_client->didReceiveSSLSecurityExtension(request, securityExtension);
 }
 #endif
 

@@ -35,6 +35,7 @@
 
 #if PLATFORM(MUI)
 #include <proto/exec.h>
+#undef Exception
 #endif
 
 namespace WTF {

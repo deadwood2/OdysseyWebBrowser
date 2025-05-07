@@ -92,11 +92,11 @@ bool ResourceHandle::start()
     d->m_startTime = MonotonicTime::now();
 
 #if PLATFORM(MUI)
-    if ((!d->m_user.isEmpty() || !d->m_pass.isEmpty()) && !shouldUseCredentialStorage()) {
+    if ((!d->m_user.isEmpty() || !d->m_password.isEmpty()) && !shouldUseCredentialStorage()) {
         // Credentials for ftp can only be passed in URL, the didReceiveAuthenticationChallenge delegate call won't be made.
         URL urlWithCredentials(d->m_firstRequest.url());
         urlWithCredentials.setUser(d->m_user);
-        urlWithCredentials.setPass(d->m_pass);
+        urlWithCredentials.setPassword(d->m_password);
         d->m_firstRequest.setURL(urlWithCredentials);
     }
 #endif

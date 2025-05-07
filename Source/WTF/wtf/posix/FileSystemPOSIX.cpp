@@ -617,7 +617,7 @@ bool getVolumeFreeSpace(const String& path, uint64_t& freeSpace)
 #endif
 }
 
-String openTemporaryFile(const String& prefix, PlatformFileHandle& handle, const String& suffix)
+String openTemporaryFile(const String& tmpPath, const String& prefix, PlatformFileHandle& handle, const String& suffix)
 {
     // FIXME: Suffix is not supported, but OK for now since the code using it is macOS-port-only.
     ASSERT_UNUSED(suffix, suffix.isEmpty());
