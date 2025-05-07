@@ -587,14 +587,18 @@ bool WebFrameLoaderClient::canCachePage() const
     return true;
 }
 
-RefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String& name, HTMLFrameOwnerElement& ownerElement,
-    const String& referrer)
+RefPtr<Frame> WebFrameLoaderClient::createFrame(const String& name, HTMLFrameOwnerElement& ownerElement)
 {
+#if 0
+// broken 2.30
     RefPtr<Frame> result = createFrame(url, name, &ownerElement, referrer);
     if (!result)
         return 0;
 
     return result;
+#endif
+asm("int3");
+    return 0;
 }
 
 RefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String& name, HTMLFrameOwnerElement* ownerElement, const String& referrer)
@@ -619,7 +623,11 @@ RefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String& na
         return 0;
     }
 
+#if 0
+// broken 2.30
     childFrame->loader().loadURLIntoChildFrame(url, referrer, childFrame.get());
+#endif
+asm("int3");
 
     // The frame's onload handler may have removed it from the document.
     if (!childFrame->tree().parent()) {
@@ -1039,15 +1047,16 @@ void WebFrameLoaderClient::dispatchDidClearWindowObjectInWorld(DOMWrapperWorld& 
         webFrameLoadDelegate->windowObjectClearNotification(m_webFrame, (void*)context, (void*)windowObject);
 }
 
-void WebFrameLoaderClient::frameLoaderDestroyed()
-{
-    // The FrameLoader going away is equivalent to the Frame going away,
-    // so we now need to clear our frame pointer.
-    // FrameLoaderClient own WebFrame.
-
-    delete m_webFrame;
-    delete this;
-}
+// changed 2.30
+//void WebFrameLoaderClient::frameLoaderDestroyed()
+//{
+//    // The FrameLoader going away is equivalent to the Frame going away,
+//    // so we now need to clear our frame pointer.
+//    // FrameLoaderClient own WebFrame.
+//
+//    delete m_webFrame;
+//    delete this;
+//}
 
 void WebFrameLoaderClient::makeRepresentation(DocumentLoader*)
 {

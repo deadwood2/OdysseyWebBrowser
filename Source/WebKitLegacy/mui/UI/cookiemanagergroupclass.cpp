@@ -177,7 +177,10 @@ DEFTMETHOD(CookieManagerGroup_Load)
     NetworkStorageSession& storageSession = NetworkStorageSessionMap::defaultStorageSession();
 
     HashSet<String> hosts;
+#if 0
+// broken 2.30
     storageSession.cookieStorage().getHostnamesWithCookies(storageSession, hosts);
+#endif
     Vector<Cookie> cookies = storageSession.cookieDatabase().getAllCookies();
 
     for (HashSet<String>::iterator it = hosts.begin(); it != hosts.end(); ++it)
@@ -224,7 +227,7 @@ DEFTMETHOD(CookieManagerGroup_Load)
                 node.domain = strdup(domain);
                 node.protocol = cookie.secure ? strdup("https") : strdup("http");
                 node.path = strdup(cookie.path.utf8().data());
-                node.expiry = cookie.expires;
+                node.expiry = cookie.expires.value();
                 node.secure = cookie.secure;
                 node.http_only = cookie.httpOnly;
                 node.session = cookie.session;

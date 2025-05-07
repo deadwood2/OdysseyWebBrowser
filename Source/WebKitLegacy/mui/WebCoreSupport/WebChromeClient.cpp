@@ -142,14 +142,15 @@ void WebChromeClient::focusedFrameChanged(WebCore::Frame*)
 {
 }
 
-Page* WebChromeClient::createWindow(Frame&, const FrameLoadRequest& frameLoadRequest, const WindowFeatures& features, const WebCore::NavigationAction&)
+Page* WebChromeClient::createWindow(Frame&, const WindowFeatures& features, const WebCore::NavigationAction&)
 {
     if (features.dialog)
     {
         kprintf("%s: features.dialog not implemented on MorphOS.\n", __PRETTY_FUNCTION__);
         return 0;
     }
-
+#if 0
+// broken 2.30
     //kprintf("WebChromeClient::createWindow(url: <%s> framename: <%s> empty: %d)\n", frameLoadRequest.resourceRequest().url().string().utf8().data(), frameLoadRequest.frameName().utf8().data(),  frameLoadRequest.isEmpty());
 
     ULONG frame = frameLoadRequest.isEmpty();
@@ -182,6 +183,7 @@ Page* WebChromeClient::createWindow(Frame&, const FrameLoadRequest& frameLoadReq
     {
         return core(widget->webView);
     }
+#endif
 
     return 0;
 }

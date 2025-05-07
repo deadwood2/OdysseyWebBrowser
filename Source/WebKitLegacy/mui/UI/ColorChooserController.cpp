@@ -89,8 +89,11 @@ void ColorChooserController::openColorChooser()
 
     if(widget)
     {
+#if 0
+// broken 2.30
         Color color = m_client->currentColor();
         DoMethod((Object *) widget->browser, MM_OWBBrowser_ColorChooser_ShowPopup, this, &color);
+#endif
     }
 }
 

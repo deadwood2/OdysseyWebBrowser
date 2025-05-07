@@ -164,7 +164,7 @@
 #include <wtf/text/WTFString.h>
 #include <JavaScriptCore/InitializeThreading.h>
 
-#include "EncodingICU.h"
+//#include "EncodingICU.h"
 #include <wtf/HashSet.h>
 #include <wtf/MainThread.h>
 #include <wtf/RAMSize.h>
@@ -391,8 +391,6 @@ WebView::WebView()
 
     m_inspectorClient = new WebInspectorClient(this);
 
-    WebFrameLoaderClient * pageWebFrameLoaderClient = new WebFrameLoaderClient();
-
     auto storageProvider = PageStorageSessionProvider::create();
     PageConfiguration configuration(
         PAL::SessionID::defaultSessionID(),
@@ -403,6 +401,7 @@ WebView::WebView()
         BackForwardList::create(),
         CookieJar::create(storageProvider.copyRef()),
         makeUniqueRef<WebProgressTrackerClient>(),
+        makeUniqueRef<WebFrameLoaderClient>(),
         makeUniqueRef<MediaRecorderProvider>()
     );
     configuration.backForwardClient = BackForwardList::create();
@@ -410,7 +409,6 @@ WebView::WebView()
     configuration.contextMenuClient = new WebContextMenuClient(this);
     configuration.dragClient = makeUnique<WebDragClient>(this);
     configuration.inspectorClient = m_inspectorClient;
-    configuration.loaderClientForMainFrame = pageWebFrameLoaderClient;
     configuration.applicationCacheStorage = &WebApplicationCache::storage();
     configuration.databaseProvider = &WebDatabaseProvider::singleton();
     configuration.storageNamespaceProvider = &m_webViewGroup->storageNamespaceProvider();
@@ -466,7 +464,8 @@ WebView::WebView()
     m_mainFrame = webFrame;
     // webFrame is now owned by WebFrameLoaderClient and will be destroyed in
     // chain Page->MainFrame->FrameLoader->WebFrameLoaderClient
-    pageWebFrameLoaderClient->setWebFrame(webFrame);
+// broken 2.30
+//    pageWebFrameLoaderClient->setWebFrame(webFrame);
 
 //    pageProgressTrackerClient->setWebFrame(webFrame);
 
@@ -3107,7 +3106,8 @@ void WebView::setInspectorSettings(const char* settings)
     m_inspectorSettings = settings;
 }
 
-
+#if 0
+// broken 2.30
 const char* WebView::encodeHostName(const char* source)
 {
     UChar destinationBuffer[HOST_NAME_BUFFER_LENGTH];
@@ -3167,6 +3167,7 @@ const char* WebView::decodeHostName(const char* source)
     String result(destinationBuffer, numCharactersConverted);
     return strdup(result.utf8().data()); 
 }
+#endif
 
 void WebView::addChildren(WebWindow* webWindow)
 {
