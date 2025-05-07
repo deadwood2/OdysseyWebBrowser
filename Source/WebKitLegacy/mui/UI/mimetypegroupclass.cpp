@@ -503,7 +503,7 @@ DEFMMETHOD(Import)
         for(HashSet<String, ASCIICaseInsensitiveHash>::iterator it = supportedMimeTypes->begin(); it != supportedMimeTypes->end(); ++it)
         {
             String mimetype = *it;
-            Vector<String> extensions = MIMETypeRegistry::getExtensionsForMIMEType(mimetype);
+            Vector<String> extensions = MIMETypeRegistry::extensionsForMIMEType(mimetype);
             String extension = "";
 
             for(unsigned int i = 0; i < extensions.size(); i++)

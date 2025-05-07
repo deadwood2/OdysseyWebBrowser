@@ -58,7 +58,6 @@ public:
 
     Ref<WebCore::FrameNetworkingContext> createNetworkingContext() override;
 
-    void frameLoaderDestroyed() override;
     void makeRepresentation(WebCore::DocumentLoader*) override;
     void forceLayoutForNonHTML() override;
 
@@ -92,7 +91,7 @@ public:
     void dispatchWillClose() override;
     void dispatchDidStartProvisionalLoad() override;
     void dispatchDidReceiveTitle(const WebCore::StringWithDirection&) override;
-    void dispatchDidCommitLoad(Optional<WebCore::HasInsecureContent>) override;
+    void dispatchDidCommitLoad(Optional<WebCore::HasInsecureContent>,  Optional<WebCore::UsedLegacyTLS>) override;
     void dispatchDidFailProvisionalLoad(const WebCore::ResourceError&, WebCore::WillContinueLoading) override;
     void dispatchDidFailLoad(const WebCore::ResourceError&) override;
     void dispatchDidFinishDocumentLoad() override;
@@ -137,18 +136,18 @@ public:
     void didRunInsecureContent(WebCore::SecurityOrigin&, const URL&) override;
     void didDetectXSS(const URL&, bool didBlockEntirePage) override;
 
-    WebCore::ResourceError cancelledError(const WebCore::ResourceRequest&) override;
-    WebCore::ResourceError blockedError(const WebCore::ResourceRequest&) override;
-    WebCore::ResourceError blockedByContentBlockerError(const WebCore::ResourceRequest&) override;
-    WebCore::ResourceError cannotShowURLError(const WebCore::ResourceRequest&) override;
-    WebCore::ResourceError interruptedForPolicyChangeError(const WebCore::ResourceRequest&) override;
-    WebCore::ResourceError cannotShowMIMETypeError(const WebCore::ResourceResponse&) override;
-    WebCore::ResourceError fileDoesNotExistError(const WebCore::ResourceResponse&) override;
-    WebCore::ResourceError pluginWillHandleLoadError(const WebCore::ResourceResponse&) override;
+    WebCore::ResourceError cancelledError(const WebCore::ResourceRequest&) const override;
+    WebCore::ResourceError blockedError(const WebCore::ResourceRequest&) const  override;
+    WebCore::ResourceError blockedByContentBlockerError(const WebCore::ResourceRequest&) const  override;
+    WebCore::ResourceError cannotShowURLError(const WebCore::ResourceRequest&) const  override;
+    WebCore::ResourceError interruptedForPolicyChangeError(const WebCore::ResourceRequest&) const  override;
+    WebCore::ResourceError cannotShowMIMETypeError(const WebCore::ResourceResponse&) const  override;
+    WebCore::ResourceError fileDoesNotExistError(const WebCore::ResourceResponse&) const  override;
+    WebCore::ResourceError pluginWillHandleLoadError(const WebCore::ResourceResponse&) const  override;
 
-    bool shouldFallBack(const WebCore::ResourceError&) override;
+    bool shouldFallBack(const WebCore::ResourceError&) const override;
 
-    WTF::String userAgent(const URL&) override;
+    WTF::String userAgent(const URL&) const override;
 
     Ref<WebCore::DocumentLoader> createDocumentLoader(const WebCore::ResourceRequest&, const WebCore::SubstituteData&) override;
     void updateCachedDocumentLoader(WebCore::DocumentLoader&) override { }
@@ -174,12 +173,9 @@ public:
 
     void didRestoreFromBackForwardCache() override;
 
-    void dispatchDidBecomeFrameset(bool) override;
-
     bool canCachePage() const override;
 
-    RefPtr<WebCore::Frame> createFrame(const URL&, const WTF::String& name, WebCore::HTMLFrameOwnerElement&,
-        const WTF::String& referrer) override;
+    RefPtr<WebCore::Frame> createFrame(const WTF::String& name, WebCore::HTMLFrameOwnerElement&) override;
     RefPtr<WebCore::Widget> createPlugin(const WebCore::IntSize&, WebCore::HTMLPlugInElement&, const URL&, const Vector<WTF::String>&, const Vector<WTF::String>&, const WTF::String&, bool loadManually) override;
     void redirectDataToPlugin(WebCore::Widget&) override;
 
@@ -199,6 +195,7 @@ public:
     bool shouldAlwaysUsePluginDocument(const WTF::String& mimeType) const override;
 
     void prefetchDNS(const String&) override;
+    void sendH2Ping(const URL&, CompletionHandler<void(Expected<Seconds, WebCore::ResourceError>&&)>&&) final;
 
 private:
     RefPtr<WebCore::Frame> createFrame(const WTF::URL&, const WTF::String& name, WebCore::HTMLFrameOwnerElement*, const WTF::String& referrer);

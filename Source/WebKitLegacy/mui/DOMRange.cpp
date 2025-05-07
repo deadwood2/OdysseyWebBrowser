@@ -30,12 +30,18 @@
 #include <wtf/text/CString.h>
 #include <WebCore/ExceptionCode.h>
 #include <WebCore/Range.h>
+#include <WebCore/SimpleRange.h>
 
 using namespace WebCore;
 
 DOMRange* DOMRange::createInstance(WebCore::Range* range)
 {
     return new DOMRange(range);
+}
+
+DOMRange* DOMRange::createInstance(const Optional<WebCore::SimpleRange>& range)
+{
+    return createInstance(createLiveRange(range).get());
 }
 
 DOMRange::DOMRange(WebCore::Range* range)

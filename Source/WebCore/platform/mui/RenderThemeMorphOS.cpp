@@ -23,11 +23,12 @@
 
 #include "CSSValueKeywords.h"
 #include "Frame.h"
+#include "Gradient.h"
 #include "HTMLMediaElement.h"
 #include "HostWindow.h"
 #include "InputType.h"
 #include "InputTypeNames.h"
-#include "MediaControlElements.h"
+//#include "MediaControlElements.h"
 #include "Page.h"
 #include "PaintInfo.h"
 #include "RenderFullScreen.h"
@@ -79,49 +80,52 @@ const unsigned paddingDivisor = 5;
 const unsigned fullScreenEnlargementFactor = 2;
 const float scaleFactorThreshold = 2.0;
 
+#define makeSRGBA(x) \
+    { (x & 0x00FF0000) >> 16, (x & 0x0000FF00) >> 8, (x & 0x000000FF) } 
+
 // Colors
-const RGBA32 caretBottom = 0xff2163bf;
-const RGBA32 caretTop = 0xff69a5fa;
+const SRGBA<uint8_t> caretBottom = makeSRGBA(0xff2163bf);
+const SRGBA<uint8_t> caretTop = makeSRGBA(0xff69a5fa);
 
-const RGBA32 regularBottom = 0xffdcdee4;
-const RGBA32 regularTop = 0xfff7f2ee;
-const RGBA32 hoverBottom = 0xffb5d3fc;
-const RGBA32 hoverTop = 0xffcceaff;
-const RGBA32 depressedBottom = 0xff3388ff;
-const RGBA32 depressedTop = 0xff66a0f2;
-const RGBA32 disabledBottom = 0xffe7e7e7;
-const RGBA32 disabledTop = 0xffefefef;
+const SRGBA<uint8_t> regularBottom = makeSRGBA(0xffdcdee4);
+const SRGBA<uint8_t> regularTop = makeSRGBA(0xfff7f2ee);
+const SRGBA<uint8_t> hoverBottom = makeSRGBA(0xffb5d3fc);
+const SRGBA<uint8_t> hoverTop = makeSRGBA(0xffcceaff);
+const SRGBA<uint8_t> depressedBottom = makeSRGBA(0xff3388ff);
+const SRGBA<uint8_t> depressedTop = makeSRGBA(0xff66a0f2);
+const SRGBA<uint8_t> disabledBottom = makeSRGBA(0xffe7e7e7);
+const SRGBA<uint8_t> disabledTop = makeSRGBA(0xffefefef);
 
-const RGBA32 regularBottomOutline = 0xff6e7073;
-const RGBA32 regularTopOutline = 0xffb9b8b8;
-const RGBA32 hoverBottomOutline = 0xff2163bf;
-const RGBA32 hoverTopOutline = 0xff69befa;
-const RGBA32 depressedBottomOutline = 0xff0c3d81;
-const RGBA32 depressedTopOutline = 0xff1d4d70;
-const RGBA32 disabledOutline = 0xffd5d9de;
+const SRGBA<uint8_t> regularBottomOutline = makeSRGBA(0xff6e7073);
+const SRGBA<uint8_t> regularTopOutline = makeSRGBA(0xffb9b8b8);
+const SRGBA<uint8_t> hoverBottomOutline = makeSRGBA(0xff2163bf);
+const SRGBA<uint8_t> hoverTopOutline = makeSRGBA(0xff69befa);
+const SRGBA<uint8_t> depressedBottomOutline = makeSRGBA(0xff0c3d81);
+const SRGBA<uint8_t> depressedTopOutline = makeSRGBA(0xff1d4d70);
+const SRGBA<uint8_t> disabledOutline = makeSRGBA(0xffd5d9de);
 
-const RGBA32 progressRegularBottom = caretTop;
-const RGBA32 progressRegularTop = caretBottom;
+const SRGBA<uint8_t> progressRegularBottom = caretTop;
+const SRGBA<uint8_t> progressRegularTop = caretBottom;
 
-const RGBA32 rangeSliderRegularBottom = 0xfff6f2ee;
-const RGBA32 rangeSliderRegularTop = 0xffdee0e5;
-const RGBA32 rangeSliderRollBottom = 0xffc9e8fe;
-const RGBA32 rangeSliderRollTop = 0xffb5d3fc;
+const SRGBA<uint8_t> rangeSliderRegularBottom = makeSRGBA(0xfff6f2ee);
+const SRGBA<uint8_t> rangeSliderRegularTop = makeSRGBA(0xffdee0e5);
+const SRGBA<uint8_t> rangeSliderRollBottom = makeSRGBA(0xffc9e8fe);
+const SRGBA<uint8_t> rangeSliderRollTop = makeSRGBA(0xffb5d3fc);
 
-const RGBA32 rangeSliderRegularBottomOutline = 0xffb9babd;
-const RGBA32 rangeSliderRegularTopOutline = 0xffb7b7b7;
-const RGBA32 rangeSliderRollBottomOutline = 0xff67abe0;
-const RGBA32 rangeSliderRollTopOutline = 0xff69adf9;
+const SRGBA<uint8_t> rangeSliderRegularBottomOutline = makeSRGBA(0xffb9babd);
+const SRGBA<uint8_t> rangeSliderRegularTopOutline = makeSRGBA(0xffb7b7b7);
+const SRGBA<uint8_t> rangeSliderRollBottomOutline = makeSRGBA(0xff67abe0);
+const SRGBA<uint8_t> rangeSliderRollTopOutline = makeSRGBA(0xff69adf9);
 
-const RGBA32 dragRegularLight = 0xfffdfdfd;
-const RGBA32 dragRegularDark = 0xffbababa;
-const RGBA32 dragRollLight = 0xfff2f2f2;
-const RGBA32 dragRollDark = 0xff69a8ff;
+const SRGBA<uint8_t> dragRegularLight = makeSRGBA(0xfffdfdfd);
+const SRGBA<uint8_t> dragRegularDark = makeSRGBA(0xffbababa);
+const SRGBA<uint8_t> dragRollLight = makeSRGBA(0xfff2f2f2);
+const SRGBA<uint8_t> dragRollDark = makeSRGBA(0xff69a8ff);
 
-const RGBA32 selection = 0xff2b8fff;
+const SRGBA<uint8_t> selection = makeSRGBA(0xff2b8fff);
 
-const RGBA32 blackPen = Color::black;
-const RGBA32 focusRingPen = 0xff7dadd9;
+const SRGBA<uint8_t> blackPen = Color::black;
+const SRGBA<uint8_t> focusRingPen = makeSRGBA(0xff7dadd9);
 
 float RenderThemeBal::defaultFontSize = 16;
 
@@ -140,11 +144,11 @@ const String& RenderThemeBal::defaultGUIFont()
     return fontFace;
 }
 
-static Ref<Gradient> createLinearGradient(RGBA32 top, RGBA32 bottom, const IntPoint& a, const IntPoint& b)
+static Ref<Gradient> createLinearGradient(SRGBA<uint8_t> top, SRGBA<uint8_t> bottom, const IntPoint& a, const IntPoint& b)
 {
     Ref<Gradient> gradient = Gradient::create(Gradient::LinearData { a, b });
-    gradient.get().addColorStop(0.0, Color(top));
-    gradient.get().addColorStop(1.0, Color(bottom));
+    gradient.get().addColorStop({ 0.0, Color(top) });
+    gradient.get().addColorStop({ 1.0, Color(bottom) });
     return gradient;
 }
 
@@ -592,8 +596,8 @@ static void drawArrowsAndSeparator(const RenderObject& o, const PaintInfo& paint
     // Draw the bottom arrow
  ///   paintInfo.context().drawConvexPolygon(3, arrow2, true);
 
-    Color leftSeparatorColor(0, 0, 0, 40);
-    Color rightSeparatorColor(255, 255, 255, 40);
+    Color leftSeparatorColor(SRGBA<uint8_t>{0, 0, 0, 40});
+    Color rightSeparatorColor(SRGBA<uint8_t>{ 255, 255, 255, 40});
 
     int separatorSpace = 2; // Deliberately ignores zoom since it looks nicer if it stays thin.
     int leftEdgeOfSeparator = static_cast<int>(leftEdge - arrowPaddingLeft * o.style().effectiveZoom()); // FIXME: Round?
@@ -727,7 +731,7 @@ bool RenderThemeBal::paintSliderTrackRect(const RenderObject& object, const Pain
 }
 
 bool RenderThemeBal::paintSliderTrackRect(const RenderObject& object, const PaintInfo& info, const IntRect& rect,
-        RGBA32 strokeColorStart, RGBA32 strokeColorEnd, RGBA32 fillColorStart, RGBA32 fillColorEnd)
+        SRGBA<uint8_t> strokeColorStart, SRGBA<uint8_t> strokeColorEnd, SRGBA<uint8_t> fillColorStart, SRGBA<uint8_t> fillColorEnd)
 {
     UNUSED_PARAM(object);
 
@@ -840,11 +844,25 @@ bool RenderThemeBal::supportsDataListUI(const AtomString& type) const
 #endif
 }
 
+#if ENABLE(VIDEO)
+static RefPtr<HTMLMediaElement> parentMediaElement(const Node* node)
+{
+    if (!node)
+        return nullptr;
+    RefPtr<Node> mediaNode = node->shadowHost();
+    if (!mediaNode)
+        mediaNode = const_cast<Node*>(node);
+    if (!is<HTMLMediaElement>(*mediaNode))
+        return nullptr;
+    return downcast<HTMLMediaElement>(mediaNode.get());
+}
+#endif
+
 void RenderThemeBal::adjustMediaControlStyle(RenderStyle& style, const Element* element) const
 {
 #if ENABLE(VIDEO)
     float fullScreenMultiplier = determineFullScreenMultiplier(element);
-    HTMLMediaElement* mediaElement = parentMediaElement((Element *)element).get();
+    HTMLMediaElement* mediaElement = parentMediaElement(((Element *)element)).get();
     if (!mediaElement)
         return;
 
@@ -932,7 +950,7 @@ static bool paintMediaButton(GraphicsContext& context, const IntRect& rect, Imag
 bool RenderThemeBal::paintMediaPlayButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = parentMediaElement(object).get();
+    HTMLMediaElement* mediaElement = parentMediaElement(object.node()).get();
 
     if (!mediaElement)
         return false;
@@ -961,7 +979,7 @@ bool RenderThemeBal::paintMediaPlayButton(const RenderObject& object, const Pain
 bool RenderThemeBal::paintMediaMuteButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = parentMediaElement(object).get();
+    HTMLMediaElement* mediaElement = parentMediaElement(object.node()).get();
 
     if (!mediaElement)
         return false;
@@ -990,7 +1008,7 @@ bool RenderThemeBal::paintMediaMuteButton(const RenderObject& object, const Pain
 bool RenderThemeBal::paintMediaFullscreenButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = parentMediaElement(object).get();
+    HTMLMediaElement* mediaElement = parentMediaElement(object.node()).get();
     if (!mediaElement)
         return false;
 
@@ -1134,7 +1152,7 @@ static Image* getMediaSliderThumb()
 bool RenderThemeBal::paintMediaSliderTrack(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = parentMediaElement(object).get();
+    HTMLMediaElement* mediaElement = parentMediaElement(object.node()).get();
     if (!mediaElement)
         return false;
 
@@ -1180,9 +1198,9 @@ bool RenderThemeBal::paintMediaSliderTrack(const RenderObject& object, const Pai
 
         context.save();
         context.setStrokeStyle(NoStroke);
-        context.setFillGradient(createLinearGradient(startColor.dark().rgb(),
-                Color(startColor.red() / 2, startColor.green() / 2, startColor.blue() / 2, startColor.alpha()).dark().rgb(),
-                sliderTopLeft, sliderTopRight));
+//        context.setFillGradient(createLinearGradient(startColor.darkened().rgb(),
+//                Color(startColor.red() / 2, startColor.green() / 2, startColor.blue() / 2, startColor.alpha()).dark().rgb(),
+//                sliderTopLeft, sliderTopRight));
         context.fillRect(bufferedRect);
         context.restore();
     }
@@ -1253,60 +1271,55 @@ Color RenderThemeBal::platformTapHighlightColor() const
 
 Color RenderThemeBal::platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
 {
-    Color c(0xFF618ECE);
+    Color c(SRGBA<uint8_t>(makeSRGBA(0xFF618ECE)));
     return c;
 }
 
 Color RenderThemeBal::platformInactiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
 {
-    Color c(0xFFCFCFCF);
+    Color c(SRGBA<uint8_t>(makeSRGBA(0xFFCFCFCF)));
     return c;
 }
 
 Color RenderThemeBal::platformActiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const
 {
-    Color c(0xFF000000);
+    Color c(SRGBA<uint8_t>(makeSRGBA(0xFF000000)));
     return c;
 }
 
 Color RenderThemeBal::platformInactiveSelectionForegroundColor(OptionSet<StyleColor::Options>) const
 {
-    Color c(0xFF3F3F3F);
+    Color c(SRGBA<uint8_t>(makeSRGBA(0xFF3F3F3F)));
     return c;
 }
 
 Color RenderThemeBal::platformActiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
 {
-    Color c(0xFF618ECE);
+    Color c(SRGBA<uint8_t>(makeSRGBA(0xFF618ECE)));
     return c;
 }
 
 Color RenderThemeBal::platformInactiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
 {
-    Color c(0xFFCFCFCF);
+    Color c(SRGBA<uint8_t>(makeSRGBA(0xFFCFCFCF)));
     return c;
 }
 
 Color RenderThemeBal::platformActiveListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const
 {
-    Color c(0xFF000000);
+    Color c(SRGBA<uint8_t>(makeSRGBA(0xFF000000)));
     return c;
 }
 
 Color RenderThemeBal::platformInactiveListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const
 {
-    Color c(0xFF3F3F3F);
+    Color c(SRGBA<uint8_t>(makeSRGBA(0xFF3F3F3F)));
     return c;
 }
 
-Color RenderThemeBal::platformActiveTextSearchHighlightColor(OptionSet<StyleColor::Options>) const
+Color RenderThemeBal::platformTextSearchHighlightColor(OptionSet<StyleColor::Options>) const
 {
-    return Color(255, 150, 50); // Orange.
-}
-
-Color RenderThemeBal::platformInactiveTextSearchHighlightColor(OptionSet<StyleColor::Options>) const
-{
-    return Color(255, 255, 0); // Yellow.
+    return Color::yellow;
 }
 
 void RenderThemeBal::updateCachedSystemFontDescription(CSSValueID, FontCascadeDescription& fontDescription) const

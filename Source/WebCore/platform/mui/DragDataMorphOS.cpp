@@ -97,12 +97,12 @@ String DragData::asURL(FilenameConversionPolicy filenamePolicy, String* title) c
     if (!m_platformDragData->hasURL())
         return String();
     if (filenamePolicy != ConvertFilenames) {
-        URL url(URL(), m_platformDragData->url());
+        URL url(URL(), m_platformDragData->url().string());
         if (url.isLocalFile())
             return String();
     }
 
-    String url(m_platformDragData->url());
+    String url(m_platformDragData->url().string());
     if (title)
         *title = m_platformDragData->urlLabel();
     return url;

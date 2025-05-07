@@ -27,7 +27,7 @@ public:
     WTF::String url() const
     {
         if(frame())
-            return frame()->document()->url();
+            return frame()->document()->url().string();
         else
             return WTF::String("");
     }

@@ -324,9 +324,9 @@ void WebFrame::loadURL(const char* url)
     if (isAbsolute(url)) {
         string u = "file://";
         u += url;
-        coreFrame->loader().load(FrameLoadRequest(*coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(u.c_str()))), ShouldOpenExternalURLsPolicy::ShouldNotAllow));
+        coreFrame->loader().load(FrameLoadRequest(*coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(u.c_str())))));
     } else
-        coreFrame->loader().load(FrameLoadRequest(*coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(url))), ShouldOpenExternalURLsPolicy::ShouldNotAllow));
+        coreFrame->loader().load(FrameLoadRequest(*coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(url)))));
 }
 
 JSGlobalContextRef WebFrame::contextForScriptWorld(WebScriptWorld* world)
@@ -344,7 +344,7 @@ void WebFrame::loadRequest(WebMutableURLRequest* request)
     if (!coreFrame)
         return;
 
-    coreFrame->loader().load(FrameLoadRequest(*coreFrame, request->resourceRequest(), ShouldOpenExternalURLsPolicy::ShouldNotAllow));
+    coreFrame->loader().load(FrameLoadRequest(*coreFrame, request->resourceRequest()));
 }
 
 void WebFrame::loadHTMLString(const char* string, const char* baseURL, const char* unreachableURL)
@@ -361,7 +361,7 @@ void WebFrame::loadHTMLString(const char* string, const char* baseURL, const cha
     SubstituteData substituteData(WTFMove(data), failingURL, response, SubstituteData::SessionHistoryVisibility::Hidden);
 
     if (Frame* coreFrame = core(this))
-        coreFrame->loader().load(FrameLoadRequest(*coreFrame, request, ShouldOpenExternalURLsPolicy::ShouldNotAllow, substituteData));
+        coreFrame->loader().load(FrameLoadRequest(*coreFrame, request, substituteData));
 }
 
 void WebFrame::loadHTMLString(const char* string, const char* baseURL)
@@ -423,7 +423,7 @@ const char* WebFrame::url() const
     url = coreFrame->document()->url().string();
     break;
       default:
-    url = coreFrame->document()->url();
+    url = coreFrame->document()->url().string();
       }
 
     return strdup(url.utf8().data());
@@ -613,7 +613,7 @@ Ref<Frame> WebFrame::createSubframeWithOwnerElement(WebView* webView, Page* page
 {
     d->webView = webView;
 
-    Ref<Frame> frame = Frame::create(page, ownerElement, new WebFrameLoaderClient(this));
+    Ref<Frame> frame = Frame::create(page, ownerElement, makeUniqueRef<WebFrameLoaderClient>(this));
     d->frame = frame.ptr();
     return frame;
 }
@@ -1188,7 +1188,7 @@ void WebFrame::updateBackground()
 
     Optional<Color> backgroundColor;
     if (webView()->transparent())
-        backgroundColor = Color(Color::transparent);
+        backgroundColor = Color(Color::transparentBlack);
     else
         backgroundColor = Color(Color::white);
 
@@ -1212,7 +1212,7 @@ int WebFrame::numberOfActiveAnimations()
     if (!coreFrame)
         return 0;
 
-    return  coreFrame->animation().numberOfActiveAnimations(coreFrame->document());
+    return  coreFrame->legacyAnimation().numberOfActiveAnimations(coreFrame->document());
 }
 
 static HTMLInputElement* inputElementFromDOMElement(DOMElement* element)
@@ -1246,7 +1246,7 @@ bool WebFrame::pauseAnimation(const char* name, double time, const char* element
     Element* coreElement = core(this)->document()->getElementById(AtomString(element));
     if (!coreElement || !coreElement->renderer())
         return false;
-    return core(this)->animation().pauseAnimationAtTime(*coreElement, AtomString(name), time);
+    return core(this)->legacyAnimation().pauseAnimationAtTime(*coreElement, AtomString(name), time);
 }
 
 bool WebFrame::pauseTransition(const char* name, double time, const char* element)
@@ -1254,7 +1254,7 @@ bool WebFrame::pauseTransition(const char* name, double time, const char* elemen
     Element* coreElement = core(this)->document()->getElementById(AtomString(element));
     if (!coreElement || !coreElement->renderer())
         return false;
-    return core(this)->animation().pauseTransitionAtTime(*coreElement, AtomString(name), time);
+    return core(this)->legacyAnimation().pauseTransitionAtTime(*coreElement, AtomString(name), time);
 }
 
 void WebFrame::setEditable(bool flag)

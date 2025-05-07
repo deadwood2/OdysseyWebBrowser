@@ -140,7 +140,7 @@ public:
     void setNeedsOneShotDrawingSynchronization() final { }
     // Sets a flag to specify that the view needs to be updated, so we need
     // to do an eager layout before the drawing.
-    void scheduleCompositingLayerFlush() final;
+    void scheduleRenderingUpdate() final;
 
     void scrollRectIntoView(const WebCore::IntRect&) const final { }
 

@@ -257,7 +257,7 @@ void Pasteboard::writeString(const String& type, const String& data)
     return;
 }
 
-void Pasteboard::writeSelection(Range& selectedRange, bool , Frame& frame, ShouldSerializeSelectedTextForDataTransfer shouldSerializeSelectedTextForDataTransfer)
+void Pasteboard::writeSelection(const SimpleRange& selectedRange, bool , Frame& frame, ShouldSerializeSelectedTextForDataTransfer shouldSerializeSelectedTextForDataTransfer)
 {
     String text = shouldSerializeSelectedTextForDataTransfer == IncludeImageAltTextForDataTransfer ? frame.editor().selectedTextForDataTransfer() : frame.editor().selectedText();
 
@@ -472,7 +472,7 @@ void Pasteboard::setDragImage(DragImage, const IntPoint& )
     D(kprintf("Pasteboard::setDragImage()\n"));
 }
 
-RefPtr<DocumentFragment> Pasteboard::documentFragment(Frame& frame, Range& context,
+RefPtr<DocumentFragment> Pasteboard::documentFragment(Frame& frame, const SimpleRange& context,
                                                           bool allowPlainText, bool& chosePlainText)
 {
 #warning "XXX: what to do here, exactly?"
@@ -597,9 +597,9 @@ void Pasteboard::read(PasteboardWebContentReader&, WebContentReadingPolicy, Opti
     notImplemented();
 }
 
-void Pasteboard::read(PasteboardFileReader&)
+void Pasteboard::read(PasteboardFileReader& reader, Optional<size_t>)
 {
-     notImplemented();
+    notImplemented();
 }
 
 bool Pasteboard::hasData()
@@ -648,7 +648,7 @@ String Pasteboard::readString(const String& type)
     case ClipboardDataTypeURIList:
         return m_dataObject->uriList();
     case ClipboardDataTypeURL:
-        return m_dataObject->url();
+        return m_dataObject->url().string();
     case ClipboardDataTypeMarkup:
         return m_dataObject->markup();
     case ClipboardDataTypeText:

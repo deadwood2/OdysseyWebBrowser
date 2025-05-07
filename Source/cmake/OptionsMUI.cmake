@@ -97,7 +97,28 @@ add_definitions(-DUSER_AGENT_GTK_MINOR_VERSION=1)
 
 # FIXME: These need to be configurable.
 
-include(target/icu)
+set(ICU_INCLUDE_DIRS ${AROS_SDK_DIR}/include/)
+set(ICU_DATA_LIBRARY ${AROS_SDK_DIR}/lib/libicudata.a)
+add_library(ICU::data UNKNOWN IMPORTED)
+set_target_properties(ICU::data PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${ICU_INCLUDE_DIRS}"
+    IMPORTED_LOCATION "${ICU_DATA_LIBRARY}"
+)
+set(ICU_I18N_LIBRARY ${AROS_SDK_DIR}/lib/libicui18n.a)
+add_library(ICU::i18n UNKNOWN IMPORTED)
+set_target_properties(ICU::i18n PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${ICU_INCLUDE_DIRS}"
+    IMPORTED_LINK_INTERFACE_LANGUAGES "CXX"
+    IMPORTED_LOCATION "${ICU_I18N_LIBRARY}"
+)
+set(ICU_UC_LIBRARY ${AROS_SDK_DIR}/lib/libicuuc.a)
+add_library(ICU::uc UNKNOWN IMPORTED)
+set_target_properties(ICU::uc PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${ICU_INCLUDE_DIRS}"
+    IMPORTED_LINK_INTERFACE_LANGUAGES "CXX"
+    IMPORTED_LOCATION "${ICU_UC_LIBRARY}"
+)
+
 set(SQLite3_LIBRARY ${AROS_SDK_DIR}/lib/libsqlite3.a)
 add_library(SQLite::SQLite3 UNKNOWN IMPORTED GLOBAL)
 set_target_properties(SQLite::SQLite3 PROPERTIES
@@ -118,22 +139,56 @@ add_library(HarfBuzz::ICU UNKNOWN IMPORTED GLOBAL)
 set_target_properties(HarfBuzz::ICU PROPERTIES
     IMPORTED_LOCATION "${HarfBuzz_ICU_LIBRARY}"
 )
-
-#find_package(Cairo 1.10.2 REQUIRED)
-#find_package(Fontconfig 2.8.0 REQUIRED)
-#find_package(Freetype 2.4.2 REQUIRED)
-#find_package(ICU REQUIRED COMPONENTS data i18n uc)
-#find_package(JPEG REQUIRED)
-#find_package(LibXml2 2.8.0 REQUIRED)
-#find_package(LibXslt 1.1.7 REQUIRED)
-#find_package(PNG REQUIRED)
-#find_package(Sqlite REQUIRED)
-#find_package(ZLIB REQUIRED)
-
-# We don't use find_package for GLX because it is part of -lGL, unlike EGL.
-#find_package(OpenGL)
-#check_include_files("GL/glx.h" GLX_FOUND)
-#find_package(EGL)
+set(LibXml2_LIBRARY ${AROS_SDK_DIR}/lib/libxml2.a)
+add_library(LibXml2::LibXml2 UNKNOWN IMPORTED GLOBAL)
+set_target_properties(LibXml2::LibXml2 PROPERTIES
+    IMPORTED_LOCATION "${LibXml2_LIBRARY}"
+)
+set(LibXslt_LIBRARY ${AROS_SDK_DIR}/lib/libxslt.a)
+add_library(LibXslt::LibXslt UNKNOWN IMPORTED GLOBAL)
+set_target_properties(LibXslt::LibXslt PROPERTIES
+    IMPORTED_LOCATION "${LibXslt_LIBRARY}"
+)
+set(ZLIB_LIBRARY ${AROS_SDK_DIR}/lib/libz.a)
+add_library(ZLIB::ZLIB UNKNOWN IMPORTED GLOBAL)
+set_target_properties(ZLIB::ZLIB PROPERTIES
+    IMPORTED_LOCATION "${ZLIB_LIBRARY}"
+)
+set(Cairo_LIBRARY ${AROS_SDK_DIR}/lib/libcairo.a)
+add_library(Cairo::Cairo UNKNOWN IMPORTED GLOBAL)
+set_target_properties(Cairo::Cairo PROPERTIES
+    IMPORTED_LOCATION "${Cairo_LIBRARY}"
+)
+set(libcurl_LIBRARY ${AROS_SDK_DIR}/lib/libcurl.a)
+add_library(CURL::libcurl UNKNOWN IMPORTED GLOBAL)
+set_target_properties(CURL::libcurl PROPERTIES
+    IMPORTED_LOCATION "${libcurl_LIBRARY}"
+)
+set(SSL_LIBRARY ${AROS_SDK_DIR}/lib/libssl.a)
+add_library(OpenSSL::SSL UNKNOWN IMPORTED GLOBAL)
+set_target_properties(OpenSSL::SSL PROPERTIES
+    IMPORTED_LOCATION "${SSL_LIBRARY}"
+)
+set(JPEG_LIBRARY ${AROS_SDK_DIR}/lib/libjpeg.a)
+add_library(JPEG::JPEG UNKNOWN IMPORTED GLOBAL)
+set_target_properties(JPEG::JPEG PROPERTIES
+    IMPORTED_LOCATION "${JPEG_LIBRARY}"
+)
+set(PNG_LIBRARY ${AROS_SDK_DIR}/lib/libpng.a)
+add_library(PNG::PNG UNKNOWN IMPORTED GLOBAL)
+set_target_properties(PNG::PNG PROPERTIES
+    IMPORTED_LOCATION "${PNG_LIBRARY}"
+)
+set(Fontconfig_LIBRARY ${AROS_SDK_DIR}/lib/libfontconfig.a)
+add_library(Fontconfig::Fontconfig UNKNOWN IMPORTED GLOBAL)
+set_target_properties(Fontconfig::Fontconfig PROPERTIES
+    IMPORTED_LOCATION "${Fontconfig_LIBRARY}"
+)
+set(Freetype_LIBRARY ${AROS_SDK_DIR}/lib/libfreetype2.a)
+add_library(Freetype::Freetype UNKNOWN IMPORTED GLOBAL)
+set_target_properties(Freetype::Freetype PROPERTIES
+    IMPORTED_LOCATION "${Freetype_LIBRARY}"
+)
 
 if (EGL_FOUND)
     set(WTF_USE_EGL 1)

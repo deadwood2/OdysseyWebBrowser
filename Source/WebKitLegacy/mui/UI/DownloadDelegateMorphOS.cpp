@@ -271,7 +271,7 @@ void DownloadDelegateMorphOS::didFinish(WebDownload* download)
     free(ptr);
 
     URL url = URL({ }, priv->requestUri);
-    url.setPass("");
+    url.setPassword("");
     ptr = strdup(url.string().utf8().data());
     stccpy(ccomment, ptr, sizeof(ccomment));
     free(ptr);
@@ -314,7 +314,7 @@ void DownloadDelegateMorphOS::didFailWithError(WebDownload* download, WebError* 
         free(ptr);
 
         URL url = URL({ }, priv->requestUri);
-        url.setPass("");
+        url.setPassword("");
         comment = String("FAILED ") + url.string();
         ptr = strdup(comment.utf8().data());
         stccpy(ccomment, ptr, sizeof(ccomment));

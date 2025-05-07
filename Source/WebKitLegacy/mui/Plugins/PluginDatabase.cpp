@@ -284,7 +284,7 @@ PluginPackage* PluginDatabase::findPlugin(const URL& url, String& mimeType)
     if (!mimeType.isEmpty())
         return pluginForMIMEType(mimeType);
     
-    String filename = url.lastPathComponent();
+    String filename = url.lastPathComponent().toString();
     if (filename.endsWith('/'))
         return 0;
     

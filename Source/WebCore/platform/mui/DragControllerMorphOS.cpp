@@ -61,9 +61,12 @@ bool DragController::isCopyKeyDown(const DragData&)
     return false;
 }
 
-DragOperation DragController::dragOperation(const DragData& dragData)
+Optional<DragOperation> DragController::dragOperation(const DragData& dragData)
 {
-     return dragData.containsURL(DragData::DoNotConvertFilenames) && !m_didInitiateDrag ? DragOperationCopy : DragOperationNone;
+    if (dragData.containsURL(DragData::DoNotConvertFilenames) && !m_didInitiateDrag)
+        return DragOperation::Copy;
+
+    return WTF::nullopt;
 }
 
 const IntSize& DragController::maxDragImageSize()

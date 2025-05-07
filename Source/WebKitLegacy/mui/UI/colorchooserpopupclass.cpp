@@ -29,6 +29,7 @@
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/ColorChooser.h>
 #include <WebCore/ColorChooserClient.h>
+#include <WebCore/IntRect.h>
 #include "ColorChooserController.h"
 
 #include <Calltips_mcc.h>
@@ -82,10 +83,11 @@ DEFNEW
             data->coloradjust = coloradjust;
             data->controller = controller;
             data->source = source;
+            auto components = color->toSRGBALossy<uint8_t>();
 
-            SetAttrs(data->coloradjust, MUIA_Coloradjust_Red,   color->red() << 24,
-                                        MUIA_Coloradjust_Green, color->green() << 24,
-                                        MUIA_Coloradjust_Blue,  color->blue() << 24,
+            SetAttrs(data->coloradjust, MUIA_Coloradjust_Red,   components.red << 24,
+                                        MUIA_Coloradjust_Green, components.green << 24,
+                                        MUIA_Coloradjust_Blue,  components.blue << 24,
                                         TAG_DONE);
 
             DoMethod(data->coloradjust, MUIM_Notify, MUIA_Coloradjust_RGB, MUIV_EveryTime, obj, 3, MM_ColorChooserPopup_DidSelect, FALSE);
@@ -112,8 +114,10 @@ DEFDISP
 DEFSMETHOD(ColorChooserPopup_DidSelect)
 {
     GETDATA;
-
-    Color color = Color((char) getv(data->coloradjust, MUIA_Coloradjust_Red), (char) getv(data->coloradjust, MUIA_Coloradjust_Green), (char) getv(data->coloradjust, MUIA_Coloradjust_Blue));
+    Color color = Color(SRGBA<uint8_t>({
+                    (uint8_t) getv(data->coloradjust, MUIA_Coloradjust_Red), 
+                    (uint8_t) getv(data->coloradjust, MUIA_Coloradjust_Green), 
+                    (uint8_t) getv(data->coloradjust, MUIA_Coloradjust_Blue)}));
 
     data->controller->didChooseColor(color);
 

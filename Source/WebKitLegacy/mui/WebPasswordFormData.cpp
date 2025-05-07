@@ -49,7 +49,7 @@ URL stripURL(const URL& url)
 {
     URL strippedURL = url;
     strippedURL.setUser(String());
-    strippedURL.setPass(String());
+    strippedURL.setPassword(String());
     strippedURL.setQuery(String());
     strippedURL.setFragmentIdentifier(String());
     strippedURL.removeFragmentIdentifier();
@@ -129,7 +129,7 @@ void assemblePasswordFormResult(const URL& fullOrigin,
     // (scheme, host, and port).
     URL signonRealmURL = stripURL(fullOrigin);
     signonRealmURL.setPath("");
-    result->signonRealm = signonRealmURL;
+    result->signonRealm = signonRealmURL.string();
 
     if (submit)
         result->submitElement = submit->name();

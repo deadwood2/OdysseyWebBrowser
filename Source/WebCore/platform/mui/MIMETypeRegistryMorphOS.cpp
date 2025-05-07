@@ -162,7 +162,7 @@ static const ExtensionMap extensionMap [] = {
     { 0, 0 }
 };
 
-String MIMETypeRegistry::getMIMETypeForExtension(const String &ext)
+String MIMETypeRegistry::mimeTypeForExtension(const String &ext)
 {
     String s = ext.convertToLowercaseWithoutLocale();
     const ExtensionMap *e = extensionMap;
@@ -194,7 +194,7 @@ String MIMETypeRegistry::getMIMETypeForExtension(const String &ext)
     return String();
 }
 
-Vector<String> MIMETypeRegistry::getExtensionsForMIMEType(const String& type)
+Vector<String> MIMETypeRegistry::extensionsForMIMEType(const String& type)
 {
     Vector<String> extensions;
     String s = type.convertToLowercaseWithoutLocale();
@@ -231,7 +231,7 @@ bool MIMETypeRegistry::isApplicationPluginMIMEType(const String&)
     return false;
 }
 
-String MIMETypeRegistry::getPreferredExtensionForMIMEType(const String &)
+String MIMETypeRegistry::preferredExtensionForMIMEType(const String &)
 {
     return String();
 }

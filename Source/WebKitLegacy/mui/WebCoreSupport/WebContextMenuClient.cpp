@@ -96,11 +96,11 @@ void WebContextMenuClient::searchWithGoogle(const Frame* frame)
     String url("https://www.google.com/search?q=");
     url.append(encoded);
     url.append("&ie=UTF-8&oe=UTF-8");
+    auto searchURL = URL { { }, url };
 
     if (Page* page = frame->page()) {
       UserGestureIndicator indicator(ProcessingUserGesture);
-      page->mainFrame().loader().urlSelected(URL({ }, url), String(), 0,
-              LockHistory::No, LockBackForwardList::No, MaybeSendReferrer, ShouldOpenExternalURLsPolicy::ShouldNotAllow);
+      page->mainFrame().loader().changeLocation(searchURL, { }, nullptr, WebCore::LockHistory::No, WebCore::LockBackForwardList::No, WebCore::ReferrerPolicy::EmptyString, WebCore::ShouldOpenExternalURLsPolicy::ShouldNotAllow);
     };
 }
 

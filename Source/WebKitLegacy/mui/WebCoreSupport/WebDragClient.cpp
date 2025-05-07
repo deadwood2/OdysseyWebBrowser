@@ -53,6 +53,31 @@
 
 using namespace WebCore;
 
+typedef enum WebDragSourceAction {
+    WebDragSourceActionNone         = 0,
+    WebDragSourceActionDHTML        = 1,
+    WebDragSourceActionImage        = 2,
+    WebDragSourceActionLink         = 4,
+    WebDragSourceActionSelection    = 8,
+    WebDragSourceActionAny          = (unsigned long)-1
+} WebDragSourceAction;
+
+static OptionSet<DragSourceAction> coreDragSourceActionMask(WebDragSourceAction actionMask)
+{
+    OptionSet<DragSourceAction> result;
+
+    if (actionMask & WebDragSourceActionDHTML)
+        result.add(DragSourceAction::DHTML);
+    if (actionMask & WebDragSourceActionImage)
+        result.add(DragSourceAction::Image);
+    if (actionMask & WebDragSourceActionLink)
+        result.add(DragSourceAction::Link);
+    if (actionMask & WebDragSourceActionSelection)
+        result.add(DragSourceAction::Selection);
+
+    return result;
+}
+
 WebDragClient::WebDragClient(WebView* webView)
     : m_webView(webView) 
 {
@@ -65,10 +90,11 @@ void WebDragClient::willPerformDragDestinationAction(DragDestinationAction actio
     D(kprintf("willPerformDragDestinationAction action %d dragData %p\n", action, dragData));
 }
 
-DragSourceAction WebDragClient::dragSourceActionMaskForPoint(const IntPoint& windowPoint)
+OptionSet<DragSourceAction> WebDragClient::dragSourceActionMaskForPoint(const IntPoint& windowPoint)
 {
     D(kprintf("dragSourceActionMaskForPoint (%d %d)\n", windowPoint.x(), windowPoint.y()));
-    return DragSourceActionAny;
+    WebDragSourceAction actionMask = WebDragSourceActionAny;
+    return coreDragSourceActionMask(actionMask);
 }
 
 void WebDragClient::willPerformDragSourceAction(DragSourceAction action, const IntPoint& startPos, DataTransfer&)
@@ -91,9 +117,9 @@ void WebDragClient::startDrag(DragItem item, DataTransfer& dataTransfer, Frame& 
         RefPtr<DataObjectMorphOS> dataObject = dataTransfer.pasteboard().dataObject();
         D(kprintf("dataObject %p\n", dataObject.get()));
 
-        if (item.sourceAction != DragSourceActionLink)
+        if (item.sourceAction != DragSourceAction::Link)
         {
-            DragData dragData(dataObject.get(), IntPoint(0, 0), IntPoint(0,0), dataTransfer.sourceOperation());
+            DragData dragData(dataObject.get(), IntPoint(0, 0), IntPoint(0,0), dataTransfer.sourceOperationMask());
             char *data = NULL;
 
             if(dragData.containsURL())
@@ -114,7 +140,7 @@ void WebDragClient::startDrag(DragItem item, DataTransfer& dataTransfer, Frame& 
         }
         set(widget->browser, MA_OWBBrowser_DragImage, m_dragImage.get().get());
         set(widget->browser, MA_OWBBrowser_DragData, dataObject.get());
-        set(widget->browser, MA_OWBBrowser_DragOperation, dataTransfer.sourceOperation());
+        set(widget->browser, MA_OWBBrowser_DragOperation, dataTransfer.sourceOperationMask());
 
         DoMethod(widget->browser, MUIM_DoDrag, 0x80000000,0x80000000, 0);
 

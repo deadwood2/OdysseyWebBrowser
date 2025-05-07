@@ -43,7 +43,7 @@
 
 namespace WebCore {
 
-static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pasteboard, Frame& frame, Range& range, bool allowPlainText, bool& chosePlainText)
+static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pasteboard, Frame& frame, const SimpleRange& range, bool allowPlainText, bool& chosePlainText)
 {
     chosePlainText = false;
 
@@ -70,21 +70,21 @@ static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pas
 
 void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> options)
 {
-    RefPtr<Range> range = selectedRange();
+    Optional<SimpleRange> range = selectedRange();
     if (!range)
         return;
 
     bool chosePlainText;
-    RefPtr<DocumentFragment> fragment = createFragmentFromPasteboardData(*pasteboard, m_frame, *range,
+    RefPtr<DocumentFragment> fragment = createFragmentFromPasteboardData(*pasteboard, *m_document.frame(), *range,
         options.contains(PasteOption::AllowPlainText), chosePlainText);
-    if (fragment && shouldInsertFragment(*fragment.get(), range.get(), EditorInsertAction::Pasted))
+    if (fragment && shouldInsertFragment(*fragment.get(), range, EditorInsertAction::Pasted))
         pasteAsFragment(fragment.releaseNonNull(), canSmartReplaceWithPasteboard(*pasteboard), chosePlainText,
             options.contains(PasteOption::IgnoreMailBlockquote) ? MailBlockquoteHandling::IgnoreBlockquote : MailBlockquoteHandling::RespectBlockquote);
 }
 
-RefPtr<DocumentFragment> Editor::webContentFromPasteboard(Pasteboard& pasteboard, Range& context, bool allowPlainText, bool& chosePlainText)
+RefPtr<DocumentFragment> Editor::webContentFromPasteboard(Pasteboard& pasteboard, const SimpleRange& context, bool allowPlainText, bool& chosePlainText)
 {
-    return createFragmentFromPasteboardData(pasteboard, m_frame, context, allowPlainText, chosePlainText);
+    return createFragmentFromPasteboardData(pasteboard, *m_document.frame(), context, allowPlainText, chosePlainText);
 }
 
 void Editor::writeImageToPasteboard(Pasteboard&, Element&, const URL&, const String&)

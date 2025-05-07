@@ -119,7 +119,7 @@ struct IEvent {
     LONG height;
 };
 
-void PluginView::paint(GraphicsContext& context, const IntRect& rect, Widget::SecurityOriginPaintPolicy)
+void PluginView::paint(GraphicsContext& context, const IntRect& rect, Widget::SecurityOriginPaintPolicy, EventRegionContext*)
 {
     if (!m_isStarted || m_status !=  PluginStatusLoadedSuccessfully) {
         // Draw the "missing plugin" image

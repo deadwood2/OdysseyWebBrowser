@@ -332,7 +332,7 @@ void WebFrameLoaderClient::dispatchDidReceiveTitle(const WebCore::StringWithDire
         webFrameLoadDelegate->titleChange(m_webFrame, title.string.utf8().data());
 }
 
-void WebFrameLoaderClient::dispatchDidCommitLoad(Optional<HasInsecureContent>)
+void WebFrameLoaderClient::dispatchDidCommitLoad(Optional<HasInsecureContent>, Optional<UsedLegacyTLS>)
 {
     SharedPtr<WebFrameLoadDelegate> webFrameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
     if (webFrameLoadDelegate)
@@ -512,7 +512,7 @@ Ref<DocumentLoader> WebFrameLoaderClient::createDocumentLoader(const ResourceReq
 
     WebDataSource* dataSource = WebDataSource::createInstance(loader.ptr());
     loader->setDataSource(dataSource);
-    return WTFMove(loader);
+    return loader;
 }
 
 void WebFrameLoaderClient::setTitle(const WebCore::StringWithDirection& title, const URL& url)
@@ -572,17 +572,13 @@ void WebFrameLoaderClient::transitionToCommittedForNewPage()
     WebView* view = m_webFrame->webView();
     BalRectangle rect = view->frameRect();
     bool transparent = view->transparent();
-    Color backgroundColor = transparent ? Color::transparent : Color::white;
+    Color backgroundColor = transparent ? Color::transparentBlack : Color::white;
     FloatRect logicalFrame(rect);
 //    logicalFrame.scale(1.0f / view->deviceScaleFactor());
     core(m_webFrame)->createView(enclosingIntRect(logicalFrame).size(), backgroundColor, /* fixedLayoutSize */ { }, /* fixedVisibleContentRect */ { });
 }
 
 void WebFrameLoaderClient::didRestoreFromBackForwardCache()
-{
-}
-
-void WebFrameLoaderClient::dispatchDidBecomeFrameset(bool)
 {
 }
 
@@ -783,7 +779,7 @@ void WebFrameLoaderClient::prepareForDataSourceReplacement()
     notImplemented();
 }
 
-String WebFrameLoaderClient::userAgent(const URL& url)
+String WebFrameLoaderClient::userAgent(const URL& url) const
 {
     return m_webFrame->webView()->userAgentForURL(url.string().utf8().data()).c_str();
 }
@@ -793,47 +789,47 @@ void WebFrameLoaderClient::saveViewStateToItem(HistoryItem&)
 }
 
 // FIXME: We need to have better names for the 7 next *Error methods and have a localized description for each.
-ResourceError WebFrameLoaderClient::cancelledError(const ResourceRequest& request)
+ResourceError WebFrameLoaderClient::cancelledError(const ResourceRequest& request) const
 {
     return ResourceError(String(WebURLErrorDomain), WebURLErrorCancelled, request.url(), String());
 }
 
-ResourceError WebFrameLoaderClient::blockedError(const ResourceRequest& request)
+ResourceError WebFrameLoaderClient::blockedError(const ResourceRequest& request) const
 {
     return ResourceError(String(WebKitErrorDomain), WebKitErrorCannotUseRestrictedPort, request.url(), String());
 }
 
-ResourceError WebFrameLoaderClient::cannotShowURLError(const ResourceRequest& request)
+ResourceError WebFrameLoaderClient::cannotShowURLError(const ResourceRequest& request) const
 {
     return ResourceError(String(WebKitCannotShowURL), WebURLErrorBadURL, request.url(), String());
 }
 
-ResourceError WebFrameLoaderClient::interruptedForPolicyChangeError(const ResourceRequest& request)
+ResourceError WebFrameLoaderClient::interruptedForPolicyChangeError(const ResourceRequest& request) const
 {
     return ResourceError(String(WebKitErrorDomain), WebKitErrorFrameLoadInterruptedByPolicyChange, request.url(), String());
 }
 
-ResourceError WebFrameLoaderClient::cannotShowMIMETypeError(const ResourceResponse& response)
+ResourceError WebFrameLoaderClient::cannotShowMIMETypeError(const ResourceResponse& response) const
 {
     return ResourceError(String(WebKitErrorMIMETypeKey), WebKitErrorCannotShowMIMEType, response.url(), String());
 }
 
-ResourceError WebFrameLoaderClient::fileDoesNotExistError(const ResourceResponse& response)
+ResourceError WebFrameLoaderClient::fileDoesNotExistError(const ResourceResponse& response) const
 {
     return ResourceError(String(WebKitFileDoesNotExist), WebURLErrorFileDoesNotExist, response.url(), String());
 }
 
-ResourceError WebFrameLoaderClient::pluginWillHandleLoadError(const ResourceResponse& response)
+ResourceError WebFrameLoaderClient::pluginWillHandleLoadError(const ResourceResponse& response) const
 {
     return ResourceError(String(WebKitErrorDomain), WebKitErrorPlugInWillHandleLoad, response.url(), String());
 }
 
-ResourceError WebFrameLoaderClient::blockedByContentBlockerError(const WebCore::ResourceRequest& request)
+ResourceError WebFrameLoaderClient::blockedByContentBlockerError(const WebCore::ResourceRequest& request) const
 {
     return ResourceError(String(WebKitErrorDomain), WebKitErrorBlockedByContentBlocker, request.url(), String());
 }
 
-bool WebFrameLoaderClient::shouldFallBack(const ResourceError& error)
+bool WebFrameLoaderClient::shouldFallBack(const ResourceError& error) const
 {
     return error.errorCode() != WebURLErrorCancelled;
 }
@@ -1080,6 +1076,12 @@ Ref<FrameNetworkingContext> WebFrameLoaderClient::createNetworkingContext()
 void WebFrameLoaderClient::prefetchDNS(const String& hostname)
 {
     WebCore::prefetchDNS(hostname);
+}
+
+void WebFrameLoaderClient::sendH2Ping(const URL& url, CompletionHandler<void(Expected<Seconds, WebCore::ResourceError>&&)>&& completionHandler)
+{
+    ASSERT_NOT_REACHED();
+    completionHandler(makeUnexpected(WebCore::internalError(url)));
 }
 
 void WebFrameLoaderClient::dispatchDidFailToStartPlugin(const WebCore::PluginView&) const

@@ -44,6 +44,7 @@
 #include <WebCore/PlatformKeyboardEvent.h>
 #include <WebCore/NotImplemented.h>
 #include <WebCore/Range.h>
+#include <WebCore/SimpleRange.h>
 #include <WebCore/UndoStep.h>
 #include <WebCore/VisibleSelection.h> 
 
@@ -233,7 +234,7 @@ int WebEditorClient::spellCheckerDocumentTag()
     return 0;
 }
 
-bool WebEditorClient::shouldBeginEditing(Range* range)
+bool WebEditorClient::shouldBeginEditing(const WebCore::SimpleRange& range)
 {
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
     if (editing) {
@@ -245,7 +246,7 @@ bool WebEditorClient::shouldBeginEditing(Range* range)
     return true;
 }
 
-bool WebEditorClient::shouldEndEditing(Range* range)
+bool WebEditorClient::shouldEndEditing(const WebCore::SimpleRange& range)
 {
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
     if (editing) {
@@ -298,17 +299,17 @@ void WebEditorClient::didWriteSelectionToPasteboard()
     notImplemented();
 }
 
-void WebEditorClient::willWriteSelectionToPasteboard(WebCore::Range*)
+void WebEditorClient::willWriteSelectionToPasteboard(const Optional<WebCore::SimpleRange>&)
 {
     notImplemented();
 }
 
-void WebEditorClient::getClientPasteboardDataForRange(WebCore::Range*, Vector<String>&, Vector<RefPtr<WebCore::SharedBuffer> >&)
+void WebEditorClient::getClientPasteboardData(const Optional<WebCore::SimpleRange>&, Vector<String>&, Vector<RefPtr<WebCore::SharedBuffer> >&)
 {
     notImplemented();
 }
 
-bool WebEditorClient::shouldDeleteRange(Range* range)
+bool WebEditorClient::shouldDeleteRange(const Optional<WebCore::SimpleRange>& range)
 {
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
     if (editing) {
@@ -320,12 +321,12 @@ bool WebEditorClient::shouldDeleteRange(Range* range)
     return true; 
 }
 
-bool WebEditorClient::shouldInsertNode(WebCore::Node* node, Range* replacingRange, EditorInsertAction givenAction)
+bool WebEditorClient::shouldInsertNode(WebCore::Node& node, const Optional<WebCore::SimpleRange>& insertingRange, EditorInsertAction givenAction)
 { 
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
     if (editing) {
-        DOMRange* domRange = DOMRange::createInstance(replacingRange);
-        DOMNode* domNode = DOMNode::createInstance(node);
+        DOMRange* domRange = DOMRange::createInstance(insertingRange);
+        DOMNode* domNode = DOMNode::createInstance(&node);
         bool result = editing->shouldInsertNode(m_webView, domNode, domRange, (WebViewInsertAction)givenAction);
         delete domNode;
         delete domRange;
@@ -334,11 +335,11 @@ bool WebEditorClient::shouldInsertNode(WebCore::Node* node, Range* replacingRang
     return true; 
 }
 
-bool WebEditorClient::shouldInsertText(const String& str, Range* replacingRange, EditorInsertAction givenAction)
+bool WebEditorClient::shouldInsertText(const String& str, const Optional<WebCore::SimpleRange>& insertingRange, EditorInsertAction givenAction)
 {     
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
     if (editing) {
-        DOMRange* domRange = DOMRange::createInstance(replacingRange);
+        DOMRange* domRange = DOMRange::createInstance(insertingRange);
         bool result = editing->shouldInsertText(m_webView, strdup(str.utf8().data()), domRange, (WebViewInsertAction)givenAction);
         delete domRange;
         return result;
@@ -352,7 +353,7 @@ bool WebEditorClient::isSelectTrailingWhitespaceEnabled(void) const
 }
 
 
-bool WebEditorClient::shouldApplyStyle(StyleProperties* style, Range* toElementsInDOMRange)
+bool WebEditorClient::shouldApplyStyle(const StyleProperties&, const Optional<SimpleRange>&)
 {
   /*
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
@@ -372,7 +373,7 @@ void WebEditorClient::didApplyStyle()
     notImplemented();
 }
 
-bool WebEditorClient::shouldMoveRangeAfterDelete(Range* /*range*/, Range* /*rangeToBeReplaced*/)
+bool WebEditorClient::shouldMoveRangeAfterDelete(const WebCore::SimpleRange&, const WebCore::SimpleRange&)
 { 
     notImplemented(); return true; 
 }
@@ -383,13 +384,13 @@ bool WebEditorClient::smartInsertDeleteEnabled(void)
     return m_webView->smartInsertDeleteEnabled();
 }
 
-bool WebEditorClient::shouldChangeSelectedRange(WebCore::Range* current, WebCore::Range* proposed, WebCore::EAffinity selection, bool stillSelected)
+bool WebEditorClient::shouldChangeSelectedRange(const Optional<WebCore::SimpleRange>& current, const Optional<WebCore::SimpleRange>& proposed, WebCore::EAffinity selectionAffinity, bool stillSelected)
 {
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
     if (editing) {
         DOMRange* currentRange = DOMRange::createInstance(current);
         DOMRange* proposedRange = DOMRange::createInstance(proposed);
-        bool result = editing->shouldChangeSelectedDOMRange(m_webView, currentRange, proposedRange, (WebSelectionAffinity)selection, stillSelected);
+        bool result = editing->shouldChangeSelectedDOMRange(m_webView, currentRange, proposedRange, (WebSelectionAffinity)selectionAffinity, stillSelected);
         delete currentRange;
         delete proposedRange;
         return result;
@@ -806,7 +807,7 @@ void WebEditorClient::updateSpellingUIWithGrammarString(const String& string, co
         for (unsigned i = 0; i < detail.guesses.size(); i++)
             guessesTab[i] = strdup(detail.guesses[i].utf8().data());
         
-        editing->updateSpellingUIWithGrammarString(strdup(string.utf8().data()), detail.location, detail.length, strdup(detail.userDescription.utf8().data()), guessesTab, (int)detail.guesses.size());
+        editing->updateSpellingUIWithGrammarString(strdup(string.utf8().data()), detail.range.location, detail.range.length, strdup(detail.userDescription.utf8().data()), guessesTab, (int)detail.guesses.size());
         for (unsigned i = 0; i < detail.guesses.size(); i++)
             fastFree(guessesTab[i]);
     }

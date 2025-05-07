@@ -461,7 +461,7 @@ std::unique_ptr<ColorChooser> WebChromeClient::createColorChooser(ColorChooserCl
 {
     std::unique_ptr<ColorChooserController> controller = std::unique_ptr<ColorChooserController>(new ColorChooserController(this, &chooserClient));
     controller->openUI();
-    return std::move(controller);
+    return controller;
 }
 #endif
 
@@ -549,7 +549,7 @@ IntPoint WebChromeClient::screenToRootView(const WebCore::IntPoint& p) const
     return p;
 }
 
-void WebChromeClient::scheduleCompositingLayerFlush()
+void WebChromeClient::scheduleRenderingUpdate()
 {
 }
 

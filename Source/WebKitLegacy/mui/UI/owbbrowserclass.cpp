@@ -508,7 +508,7 @@ DEFNEW
                         ResourceResponse response(URL(), mimeType, dataSource->size(), frame->loader().documentLoader()->overrideEncoding());
                         SubstituteData substituteData(WTFMove(dataSource), failingURL, response, SubstituteData::SessionHistoryVisibility::Hidden);
 
-                        FrameLoadRequest frameLoadRequest(*frame, request, ShouldOpenExternalURLsPolicy::ShouldNotAllow, substituteData);
+                        FrameLoadRequest frameLoadRequest(*frame, request, substituteData);
                         frame->loader().load(WTFMove(frameLoadRequest));
 
                         set(obj, MA_OWBBrowser_URL, (char *) getv(browser, MA_OWBBrowser_URL));
@@ -3542,7 +3542,7 @@ DEFMMETHOD(DragDrop)
         set(obj, MA_OWBBrowser_DragURL, "");
         set(obj, MA_OWBBrowser_DragImage, 0);
         set(obj, MA_OWBBrowser_DragData, 0);
-        set(obj, MA_OWBBrowser_DragOperation, DragOperationNone);
+        set(obj, MA_OWBBrowser_DragOperation, 0 /* DragOperationNone */);
 #endif
     }
     else /* Drop from other elements */
@@ -3584,7 +3584,7 @@ DEFMMETHOD(CreateShortHelp)
         IntPoint point = IntPoint(viewportPos.x(), viewportPos.y());
         HitTestResult result(point);
 
-        result = frame->eventHandler().hitTestResultAtPoint(point, false);
+        result = frame->eventHandler().hitTestResultAtPoint(point, {HitTestRequest::ReadOnly});
         
         if(!result.altDisplayString().isEmpty())
             return (IPTR) utf8_to_local(result.altDisplayString().utf8().data());

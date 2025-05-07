@@ -1000,7 +1000,7 @@ DEFNEW
 
     menus_init();
 
-    JSC::initializeThreading();
+    JSC::initialize();
     WTF::initializeMainThread();
     WebPlatformStrategies::initialize();
 

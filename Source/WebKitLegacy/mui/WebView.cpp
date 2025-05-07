@@ -368,8 +368,7 @@ WebView::WebView()
     , m_dragOperation(WebDragOperationNone)
     , m_currentDragData(0)
 {
-    JSC::initializeThreading();
-    RunLoop::initializeMainRunLoop();
+    JSC::initialize();
 
     d->clearDirtyRegion();
 
@@ -459,8 +458,6 @@ WebView::WebView()
     RuntimeEnabledFeatures::sharedFeatures().setCSSPaintingAPIEnabled(true);
     RuntimeEnabledFeatures::sharedFeatures().setCSSTypedOMEnabled(true);
     RuntimeEnabledFeatures::sharedFeatures().setLegacyCSSVendorPrefixesEnabled(true);
-
-    RuntimeEnabledFeatures::sharedFeatures().setInputTypeColorEnabled(true);
 
     RuntimeEnabledFeatures::sharedFeatures().setCSSLogicalEnabled(true);
 
@@ -1184,7 +1181,7 @@ bool WebView::canShowMIMEType(const char* mimeType)
 {
     String type = String(mimeType).convertToLowercaseWithoutLocale();
     Frame* coreFrame = core(m_mainFrame);
-    bool allowPlugins = coreFrame && coreFrame->loader().subframeLoader().allowPlugins();
+    bool allowPlugins = coreFrame && coreFrame->loader().arePluginsEnabled();
     
     bool canShow = type.isEmpty()
     || MIMETypeRegistry::isSupportedImageMIMEType(type)
@@ -1985,8 +1982,10 @@ WebHitTestResults* WebView::elementAtPoint(BalPoint& point)
 
     IntPoint webCorePoint(point);
     HitTestResult result = HitTestResult(webCorePoint);
-    if (frame->contentRenderer())
-        result = frame->eventHandler().hitTestResultAtPoint(webCorePoint, false);
+    if (frame->contentRenderer()) {
+        constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::AllowChildFrameContent };
+        result = frame->eventHandler().hitTestResultAtPoint(webCorePoint, hitType);
+    }
     return WebHitTestResults::createInstance(result);
 }
 
@@ -2026,10 +2025,10 @@ WebDragOperation WebView::dragEnter(WebDragData* webDragData, int identity,
 
     m_dropEffect = DropEffectDefault;
     m_dragTargetDispatch = true;
-    DragOperation effect = m_page->dragController().dragEntered(dragData);
+    DragOperation effect = m_page->dragController().dragEntered(dragData).value();
     // Mask the operation against the drag source's allowed operations.
     if ((effect & dragData.draggingSourceOperationMask()) != effect)
-        effect = DragOperationNone;
+        effect = { };
     m_dragTargetDispatch = false;
 
     if (m_dropEffect != DropEffectDefault) {
@@ -2053,10 +2052,10 @@ WebDragOperation WebView::dragOver(const BalPoint& clientPoint, const BalPoint& 
 
     m_dropEffect = DropEffectDefault;
     m_dragTargetDispatch = true;
-    DragOperation effect = m_page->dragController().dragUpdated(dragData);
+    DragOperation effect = m_page->dragController().dragUpdated(dragData).value();
     // Mask the operation against the drag source's allowed operations.
     if ((effect & dragData.draggingSourceOperationMask()) != effect)
-        effect = DragOperationNone;
+        effect = { };
     m_dragTargetDispatch = false;
 
     if (m_dropEffect != DropEffectDefault) {
@@ -3014,17 +3013,17 @@ bool WebView::invalidateBackingStore(const WebCore::IntRect* rect)
 
 void WebView::addOriginAccessWhitelistEntry(const char* sourceOrigin, const char* destinationProtocol, const char* destinationHost, bool allowDestinationSubDomains) const
 {
-    SecurityPolicy::addOriginAccessWhitelistEntry(SecurityOrigin::createFromString(sourceOrigin), destinationProtocol, destinationHost, allowDestinationSubDomains);
+    SecurityPolicy::addOriginAccessAllowlistEntry(SecurityOrigin::createFromString(sourceOrigin), destinationProtocol, destinationHost, allowDestinationSubDomains);
 }
 
 void WebView::removeOriginAccessWhitelistEntry(const char* sourceOrigin, const char* destinationProtocol, const char* destinationHost, bool allowDestinationSubdomains) const
 {
-    SecurityPolicy::removeOriginAccessWhitelistEntry(SecurityOrigin::createFromString(sourceOrigin), destinationProtocol, destinationHost, allowDestinationSubdomains);
+    SecurityPolicy::removeOriginAccessAllowlistEntry(SecurityOrigin::createFromString(sourceOrigin), destinationProtocol, destinationHost, allowDestinationSubdomains);
 }
 
 void WebView::resetOriginAccessWhitelists() const
 {
-    SecurityPolicy::resetOriginAccessWhitelists();
+    SecurityPolicy::resetOriginAccessAllowlists();
 }
 
 void WebView::setHistoryDelegate(TransferSharedPtr<WebHistoryDelegate> historyDelegate)

@@ -271,7 +271,7 @@ DEFTMETHOD(CookieManagerGroup_Clear)
 
     /* Remove from database */
     NetworkStorageSession& storageSession = NetworkStorageSessionMap::defaultStorageSession();
-    storageSession.cookieStorage().deleteAllCookies(storageSession);
+    storageSession.deleteAllCookies();
 
     return 0;
 }
@@ -433,7 +433,7 @@ DEFTMETHOD(CookieManagerGroup_Remove)
             cookieURL.append(domain);
             cookieURL.append(entry->path);
             URL url({ }, cookieURL);
-            storageSession.cookieStorage().deleteCookie(storageSession, url, entry->name);
+            storageSession.deleteCookie(url, entry->name);
             DoMethod(data->lt_cookies, MUIM_Listtree_Remove, NULL, MUIV_Listtree_Remove_TreeNode_Active, 0);
         }
         else if(entry && entry->flags == COOKIEFLAG_DOMAIN)

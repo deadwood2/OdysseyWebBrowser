@@ -373,7 +373,7 @@ void MorphOSWebFrameDelegate::didFinishLoad(WebFrame* webFrame)
 
         updateNavigation(widget->browser);
 
-        String wurl = coreFrame->loader().documentLoader()->url();
+        String wurl = coreFrame->loader().documentLoader()->url().string();
         DoMethod(app, MM_OWBApp_SetFormState, &wurl, coreFrame->document());
 
         // Don't record private browsing views
@@ -448,7 +448,7 @@ void MorphOSWebFrameDelegate::didFailLoad(WebFrame* webFrame, WebError* error)
         else
         {
             char errorstring[512];
-            String shorterror = error->resourceError().failingURL();
+            String shorterror = error->resourceError().failingURL().string();
             shorterror.truncate(128);
             ULONG len = strescape(shorterror.latin1().data(), NULL);
             char failingURL[len+1];
@@ -1355,7 +1355,7 @@ bool WebViewPrivate::onMouseButtonDown(BalEventButton event)
             IntPoint point = IntPoint(viewportPos.x(), viewportPos.y());
             HitTestResult result(point);
 
-            result = frame->eventHandler().hitTestResultAtPoint(point, false);
+            result = frame->eventHandler().hitTestResultAtPoint(point, {HitTestRequest::ReadOnly});
 
             if(result.innerNonSharedNode() && !result.absoluteLinkURL().string().isEmpty())
             {
@@ -1390,7 +1390,7 @@ bool WebViewPrivate::onMouseButtonUp(BalEventButton event)
         IntPoint point = IntPoint(viewportPos.x(), viewportPos.y());
         HitTestResult result(point);
 
-        result = frame->eventHandler().hitTestResultAtPoint(point, false);
+        result = frame->eventHandler().hitTestResultAtPoint(point, {HitTestRequest::ReadOnly});
 
         if (!result.innerNonSharedNode()) return handled;
 

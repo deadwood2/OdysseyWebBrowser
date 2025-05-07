@@ -111,8 +111,7 @@ public:
     virtual Color platformInactiveListBoxSelectionForegroundColor(OptionSet<StyleColor::Options>) const override;
 
     // Highlighting colors for TextMatches.
-    virtual Color platformActiveTextSearchHighlightColor(OptionSet<StyleColor::Options>) const override;
-    virtual Color platformInactiveTextSearchHighlightColor(OptionSet<StyleColor::Options>) const override;
+    virtual Color platformTextSearchHighlightColor(OptionSet<StyleColor::Options>) const override;
 
     WTF::String fileListNameForWidth(const Vector<String>&, const WebCore::Font&, int) const;
 
@@ -120,6 +119,8 @@ protected:
     virtual void updateCachedSystemFontDescription(CSSValueID systemFontID, FontCascadeDescription&) const override;
 
 private:
+    bool canPaint(const PaintInfo&) const final { return true; }
+
     static const String& defaultGUIFont();
 
     // The default variable-width font size. We use this as the default font
@@ -135,8 +136,8 @@ private:
 
     bool paintTextFieldOrTextAreaOrSearchField(const RenderObject&, const PaintInfo&, const IntRect&);
     bool paintSliderTrackRect(const RenderObject&, const PaintInfo&, const IntRect&);
-    bool paintSliderTrackRect(const RenderObject&, const PaintInfo&, const IntRect&, RGBA32 strokeColorStart,
-                RGBA32 strokeColorEnd, RGBA32 fillColorStart, RGBA32 fillColorEnd);
+    bool paintSliderTrackRect(const RenderObject&, const PaintInfo&, const IntRect&, SRGBA<uint8_t> strokeColorStart,
+                SRGBA<uint8_t> strokeColorEnd, SRGBA<uint8_t> fillColorStart, SRGBA<uint8_t> fillColorEnd);
 
 };
 

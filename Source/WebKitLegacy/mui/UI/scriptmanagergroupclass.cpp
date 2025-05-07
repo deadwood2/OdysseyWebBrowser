@@ -760,8 +760,9 @@ DEFSMETHOD(ScriptManagerGroup_InjectScripts)
                                                             URL(URL(), String(url)), // XXX: will be empty most of the time...
                                                             Vector<String>(scripts_list[i]->whitelist),
                                                             Vector<String>(scripts_list[i]->blacklist),
-                                                            InjectAtDocumentEnd,
-                                                            InjectInAllFrames);
+                                                            UserScriptInjectionTime::DocumentEnd,
+                                                            UserContentInjectedFrames::InjectInAllFrames,
+                                                            WaitForNotificationBeforeInjecting::No);
 #if 0
 // broken 2.14
 WebView.configuration.m_userContentController

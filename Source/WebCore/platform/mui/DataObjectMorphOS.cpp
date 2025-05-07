@@ -20,6 +20,7 @@
 #include "DataObjectMorphOS.h"
 
 #include "markup.h"
+#include "SimpleRange.h"
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
@@ -44,7 +45,7 @@ String DataObjectMorphOS::text() const
 String DataObjectMorphOS::markup() const
 {
     if (m_range)
-        return serializePreservingVisualAppearance(*m_range, nullptr, AnnotateForInterchange::Yes, ConvertBlocksToInlines::No,
+        return serializePreservingVisualAppearance(makeSimpleRange(*m_range), nullptr, AnnotateForInterchange::Yes, ConvertBlocksToInlines::No,
             ResolveURLs::YesExcludingLocalFileURLsForPrivacy);
     return m_markup;
 }
@@ -102,12 +103,12 @@ void DataObjectMorphOS::setURIList(const String& uriListString)
 void DataObjectMorphOS::setURL(const URL& url, const String& label)
 {
     m_url = url;
-    m_uriList = url;
+    m_uriList = url.string();
     setText(url.string());
 
     String actualLabel(label);
     if (actualLabel.isEmpty())
-        actualLabel = url;
+        actualLabel = url.string();
 
     StringBuilder markup;
     markup.append("<a href=\"");
@@ -136,7 +137,7 @@ String DataObjectMorphOS::urlLabel() const
         return text();
 
     if (hasURL())
-        return url();
+        return url().string();
 
     return String();
 }
