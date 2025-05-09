@@ -32,7 +32,8 @@
 #include "WebView.h"
 #include "WebNotificationDelegate.h"
 
-WebProgressTrackerClient::WebProgressTrackerClient()
+WebProgressTrackerClient::WebProgressTrackerClient(WebFrame* webFrame)
+    : m_webFrame(webFrame)
 {
 }
 
@@ -46,25 +47,25 @@ void WebProgressTrackerClient::progressStarted(WebCore::Frame&)
     gettimeofday(&m_timerStart, NULL);
 #endif
 
-//    m_webFrame->webView()->stopLoading(false);
-//
-//    SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
-//    if (webNotificationDelegate)
-//        webNotificationDelegate->startLoadNotification(m_webFrame);
+    m_webFrame->webView()->stopLoading(false);
+
+    SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
+    if (webNotificationDelegate)
+        webNotificationDelegate->startLoadNotification(m_webFrame);
 }
 
 void WebProgressTrackerClient::progressEstimateChanged(WebCore::Frame&)
 {
-//    SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
-//    if (webNotificationDelegate)
-//        webNotificationDelegate->progressNotification(m_webFrame);
+    SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
+    if (webNotificationDelegate)
+        webNotificationDelegate->progressNotification(m_webFrame);
 }
 
 void WebProgressTrackerClient::progressFinished(WebCore::Frame&)
 {
-//    SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
-//    if (webNotificationDelegate)
-//        webNotificationDelegate->finishedLoadNotification(m_webFrame);
+    SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
+    if (webNotificationDelegate)
+        webNotificationDelegate->finishedLoadNotification(m_webFrame);
 
 #ifdef BENCH_LOAD_TIME
     gettimeofday(&m_timerStop, NULL);

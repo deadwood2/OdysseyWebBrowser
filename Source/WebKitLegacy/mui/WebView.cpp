@@ -390,6 +390,7 @@ WebView::WebView()
 
     m_inspectorClient = new WebInspectorClient(this);
 
+    WebFrame* webFrame = WebFrame::createInstance();
     auto storageProvider = PageStorageSessionProvider::create();
     PageConfiguration configuration(
         PAL::SessionID::defaultSessionID(),
@@ -399,8 +400,8 @@ WebView::WebView()
         CacheStorageProvider::create(),
         BackForwardList::create(),
         CookieJar::create(storageProvider.copyRef()),
-        makeUniqueRef<WebProgressTrackerClient>(),
-        makeUniqueRef<WebFrameLoaderClient>(),
+        makeUniqueRef<WebProgressTrackerClient>(webFrame),
+        makeUniqueRef<WebFrameLoaderClient>(webFrame),
         makeUniqueRef<MediaRecorderProvider>()
     );
     configuration.backForwardClient = BackForwardList::create();
@@ -458,15 +459,10 @@ WebView::WebView()
 
     RuntimeEnabledFeatures::sharedFeatures().setCSSLogicalEnabled(true);
 
-    WebFrame* webFrame = WebFrame::createInstance(); 
     webFrame->initWithWebView(this, m_page); 
     m_mainFrame = webFrame;
     // webFrame is now owned by WebFrameLoaderClient and will be destroyed in
     // chain Page->MainFrame->FrameLoader->WebFrameLoaderClient
-// broken 2.30
-//    pageWebFrameLoaderClient->setWebFrame(webFrame);
-
-//    pageProgressTrackerClient->setWebFrame(webFrame);
 
     m_page->mainFrame().init();
 }

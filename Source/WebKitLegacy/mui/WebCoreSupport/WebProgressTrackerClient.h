@@ -39,10 +39,8 @@ class WebFrame;
 
 class WebProgressTrackerClient : public WebCore::ProgressTrackerClient {
 public:
-    WebProgressTrackerClient();
+    WebProgressTrackerClient(WebFrame* = nullptr);
     virtual ~WebProgressTrackerClient();
-
-    void setWebFrame(WebFrame* webFrame) { m_webFrame = webFrame; }
 
     virtual void progressStarted(WebCore::Frame&) override;
     virtual void progressEstimateChanged(WebCore::Frame&) override;
