@@ -1494,9 +1494,6 @@ void exitFullScreenForElement(WebCore::Element* element);
     const char* inspectorSettings() const;
     void setInspectorSettings(const char*);
 
-    const char* encodeHostName(const char* source);
-    const char* decodeHostName(const char* source);
-
     void addChildren(WebWindow*);
     void removeChildren(WebWindow*);
 

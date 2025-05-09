@@ -164,7 +164,6 @@
 #include <wtf/text/WTFString.h>
 #include <JavaScriptCore/InitializeThreading.h>
 
-//#include "EncodingICU.h"
 #include <wtf/HashSet.h>
 #include <wtf/MainThread.h>
 #include <wtf/RAMSize.h>
@@ -3105,69 +3104,6 @@ void WebView::setInspectorSettings(const char* settings)
 {
     m_inspectorSettings = settings;
 }
-
-#if 0
-// broken 2.30
-const char* WebView::encodeHostName(const char* source)
-{
-    UChar destinationBuffer[HOST_NAME_BUFFER_LENGTH];
-
-    String src = String::fromUTF8(source);
-    int length = src.length();
-
-    if (src.find("%") != notFound)
-        src = decodeURLEscapeSequences(src);
-
-    auto upconvertedCharacters = StringView(src).upconvertedCharacters();
-    const UChar* sourceBuffer = upconvertedCharacters;
-
-    bool error = false;
-    int32_t numCharactersConverted = WTF::Unicode::IDNToASCII(sourceBuffer, length, destinationBuffer, HOST_NAME_BUFFER_LENGTH, &error);
-
-    if (error)
-        return source;
-    if (numCharactersConverted == length && memcmp(sourceBuffer, destinationBuffer, length * sizeof(UChar)) == 0) {
-        return source;
-    }
-   
-    if (!numCharactersConverted)
-        return source;
-
-    String result(destinationBuffer, numCharactersConverted);
-    return strdup(result.utf8().data()); 
-}
-
-const char* WebView::decodeHostName(const char* source)
-{
-    UChar destinationBuffer[HOST_NAME_BUFFER_LENGTH];
-
-    String src = String::fromUTF8(source);
-
-
-    auto upconvertedCharacters = StringView(src).upconvertedCharacters();
-    const UChar* sourceBuffer = upconvertedCharacters;
-    int length = src.length();
-
-    bool error = false;
-    int32_t numCharactersConverted = WTF::Unicode::IDNToUnicode(sourceBuffer, length, destinationBuffer, HOST_NAME_BUFFER_LENGTH, &error);
-
-    if (error)
-        return source;
-
-    if (numCharactersConverted == length && memcmp(sourceBuffer, destinationBuffer, length * sizeof(UChar)) == 0) {
-        return source;
-    }
-    if (!WTF::Unicode::allCharactersInIDNScriptWhiteList(destinationBuffer, numCharactersConverted)) {
-        return source; 
-    }
-
-    if (!numCharactersConverted)
-        return source;
-
-    String result(destinationBuffer, numCharactersConverted);
-    return strdup(result.utf8().data()); 
-}
-#endif
 
 void WebView::addChildren(WebWindow* webWindow)
 {
