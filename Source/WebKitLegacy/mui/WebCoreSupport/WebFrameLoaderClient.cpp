@@ -592,51 +592,16 @@ bool WebFrameLoaderClient::canCachePage() const
 
 RefPtr<Frame> WebFrameLoaderClient::createFrame(const String& name, HTMLFrameOwnerElement& ownerElement)
 {
-#if 0
-// broken 2.30
-    RefPtr<Frame> result = createFrame(url, name, &ownerElement, referrer);
-    if (!result)
-        return 0;
-
-    return result;
-#endif
-asm("int3");
-    return 0;
-}
-
-RefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String& name, HTMLFrameOwnerElement* ownerElement, const String& referrer)
-{
-    if (url.string().isEmpty())
-        return 0;
-
     Frame* coreFrame = core(m_webFrame);
     ASSERT(coreFrame);
 
     WebFrame* webFrame = WebFrame::createInstance();
 
-    RefPtr<Frame> childFrame = webFrame->createSubframeWithOwnerElement(m_webFrame->webView(), coreFrame->page(), ownerElement);
+    RefPtr<Frame> childFrame = webFrame->createSubframeWithOwnerElement(m_webFrame->webView(), coreFrame->page(), &ownerElement);
 
     childFrame->tree().setName(name);
-    coreFrame->tree().appendChild(*childFrame.get());
+    coreFrame->tree().appendChild(*childFrame);
     childFrame->init();
-
-    // The creation of the frame may have run arbitrary JavaScript that removed it from the page already.
-    if (!childFrame->page()) {
-        delete webFrame;
-        return 0;
-    }
-
-#if 0
-// broken 2.30
-    childFrame->loader().loadURLIntoChildFrame(url, referrer, childFrame.get());
-#endif
-asm("int3");
-
-    // The frame's onload handler may have removed it from the document.
-    if (!childFrame->tree().parent()) {
-        delete webFrame;
-        return 0;
-    }
 
     return childFrame;
 }
