@@ -53,7 +53,6 @@
 #include <WebCore/FileChooser.h>
 #include <WebCore/FloatRect.h>
 #include <WebCore/Frame.h>
-#include <WebCore/FrameLoadRequest.h>
 #include <WebCore/FrameView.h>
 #include <WebCore/HTMLNames.h>
 #include <WebCore/Icon.h>
@@ -142,28 +141,27 @@ void WebChromeClient::focusedFrameChanged(WebCore::Frame*)
 {
 }
 
-Page* WebChromeClient::createWindow(Frame&, const WindowFeatures& features, const WebCore::NavigationAction&)
+Page* WebChromeClient::createWindow(Frame&, const WindowFeatures& features, const WebCore::NavigationAction& navigationAction)
 {
     if (features.dialog)
     {
         kprintf("%s: features.dialog not implemented on MorphOS.\n", __PRETTY_FUNCTION__);
         return 0;
     }
-#if 0
-// broken 2.30
+
     //kprintf("WebChromeClient::createWindow(url: <%s> framename: <%s> empty: %d)\n", frameLoadRequest.resourceRequest().url().string().utf8().data(), frameLoadRequest.frameName().utf8().data(),  frameLoadRequest.isEmpty());
 
-    ULONG frame = frameLoadRequest.isEmpty();
+    ULONG frame = navigationAction.isEmpty();
     ULONG privatebrowsing = getv(m_webView->viewWindow()->browser, MA_OWBBrowser_PrivateBrowsing);
     BalWidget *widget = NULL;
 
     if(features.newPagePolicy == NEWPAGE_POLICY_WINDOW)
     {
-        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, frame ? frameLoadRequest.frameName().utf8().data() : frameLoadRequest.resourceRequest().url().string().utf8().data(), frame, NULL, FALSE, &features, privatebrowsing);
+        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, navigationAction.url().string().utf8().data(), frame, NULL, FALSE, &features, privatebrowsing);
     }
     else if(features.newPagePolicy == NEWPAGE_POLICY_TAB)
     {
-        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, frame ? frameLoadRequest.frameName().utf8().data() : frameLoadRequest.resourceRequest().url().string().utf8().data(), frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
+        widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, navigationAction.url().string().utf8().data(), frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
     }
     else /* User settings are considered for new page */
     {
@@ -171,11 +169,11 @@ Page* WebChromeClient::createWindow(Frame&, const WindowFeatures& features, cons
 
         if(popuppolicy == MV_OWBApp_NewPagePolicy_Window)
         {
-            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, frame ? frameLoadRequest.frameName().utf8().data() : frameLoadRequest.resourceRequest().url().string().utf8().data(), frame, NULL, FALSE, &features, privatebrowsing);
+            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, navigationAction.url().string().utf8().data(), frame, NULL, FALSE, &features, privatebrowsing);
         }
         else if(popuppolicy == MV_OWBApp_NewPagePolicy_Tab)
         {
-            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, frame ? frameLoadRequest.frameName().utf8().data() : frameLoadRequest.resourceRequest().url().string().utf8().data(), frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
+            widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, NULL, navigationAction.url().string().utf8().data(), frame, NULL, features.donotactivate? TRUE : FALSE, privatebrowsing, FALSE);
         }
     }
 
@@ -183,7 +181,6 @@ Page* WebChromeClient::createWindow(Frame&, const WindowFeatures& features, cons
     {
         return core(widget->webView);
     }
-#endif
 
     return 0;
 }
