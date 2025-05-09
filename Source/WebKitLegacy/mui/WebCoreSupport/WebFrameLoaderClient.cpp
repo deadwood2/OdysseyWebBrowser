@@ -135,7 +135,10 @@ WebFrameLoaderClient::WebFrameLoaderClient(WebFrame* webFrame)
 WebFrameLoaderClient::~WebFrameLoaderClient()
 {
     if (m_webFrame)
+    {
+        delete m_webFrame;
         m_webFrame = 0;
+    }
     if (m_pluginView)
         delete m_pluginView;
     m_policyListenerPrivate = nullptr;
@@ -1046,17 +1049,6 @@ void WebFrameLoaderClient::dispatchDidClearWindowObjectInWorld(DOMWrapperWorld& 
     if (webFrameLoadDelegate)
         webFrameLoadDelegate->windowObjectClearNotification(m_webFrame, (void*)context, (void*)windowObject);
 }
-
-// changed 2.30
-//void WebFrameLoaderClient::frameLoaderDestroyed()
-//{
-//    // The FrameLoader going away is equivalent to the Frame going away,
-//    // so we now need to clear our frame pointer.
-//    // FrameLoaderClient own WebFrame.
-//
-//    delete m_webFrame;
-//    delete this;
-//}
 
 void WebFrameLoaderClient::makeRepresentation(DocumentLoader*)
 {
