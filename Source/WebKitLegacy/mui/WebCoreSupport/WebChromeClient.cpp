@@ -398,9 +398,9 @@ void WebChromeClient::intrinsicContentsSizeChanged(const IntSize&) const
 }
 
 
-void WebChromeClient::mouseDidMoveOverElement(const HitTestResult& result, unsigned modifierFlags, const WTF::String&, WebCore::TextDirection)
+void WebChromeClient::mouseDidMoveOverElement(const HitTestResult& result, unsigned modifierFlags, const WTF::String& toolTip, WebCore::TextDirection)
 {
-
+    m_webView->setToolTip(toolTip.utf8().data());
 }
 
 bool WebChromeClient::shouldUnavailablePluginMessageBeButton(RenderEmbeddedObject::PluginUnavailabilityReason pluginUnavailabilityReason) const
