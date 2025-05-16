@@ -48,6 +48,7 @@ list(APPEND WebCore_SOURCES
     platform/graphics/mui/AcinerellaPointer.cpp
     platform/graphics/mui/AcinerellaVideoDecoder.cpp
     platform/graphics/mui/AudioTrackPrivateMorphOS.cpp
+    platform/graphics/mui/DisplayRefreshMonitorMorphOS.cpp
     platform/graphics/mui/MediaDescriptionMorphOS.cpp
     platform/graphics/mui/MediaPlayerPrivateMorphOS.cpp
     platform/graphics/mui/MediaSampleMorphOS.cpp
