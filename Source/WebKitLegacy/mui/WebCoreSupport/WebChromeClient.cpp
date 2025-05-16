@@ -550,6 +550,7 @@ IntPoint WebChromeClient::screenToRootView(const WebCore::IntPoint& p) const
 
 void WebChromeClient::scheduleRenderingUpdate()
 {
+    m_webView->paint();
 }
 
 void WebChromeClient::attachRootGraphicsLayer(WebCore::Frame& frame, WebCore::GraphicsLayer* layer)

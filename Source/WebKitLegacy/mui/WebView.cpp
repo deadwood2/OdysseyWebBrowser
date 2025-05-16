@@ -368,6 +368,7 @@ WebView::WebView()
     , m_currentDragData(0)
 {
     JSC::initialize();
+    WTF::initializeMainThread();
 
     d->clearDirtyRegion();
 
@@ -897,11 +898,7 @@ bool WebView::defaultActionOnFocusedNode(BalEventKey event)
 
 void WebView::paint()
 {
-    /*Frame* coreFrame = core(m_mainFrame);
-    if (!coreFrame)
-        return;
-    FrameView* frameView = coreFrame->view();
-    frameView->paint();*/
+    m_page->updateRendering();
 }
 
 BalRectangle WebView::frameRect()
