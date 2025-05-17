@@ -41,6 +41,7 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
         PlayStation
         WPE
         WinCairo
+        MUI
     )
     set(PORT "NOPORT" CACHE STRING "choose which WebKit port to build (one of ${ALL_PORTS})")
 
@@ -128,7 +129,7 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
     elseif (CMAKE_SYSTEM_NAME MATCHES "Fuchsia")
         set(WTF_OS_FUCHSIA 1)
     else ()
-        message(FATAL_ERROR "Unknown OS '${CMAKE_SYSTEM_NAME}'")
+#        message(FATAL_ERROR "Unknown OS '${CMAKE_SYSTEM_NAME}'")
     endif ()
 
     # -----------------------------------------------------------------------------
@@ -142,11 +143,16 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
     set(JavaScriptCore_LIBRARY_TYPE STATIC)
     set(PAL_LIBRARY_TYPE STATIC)
     set(WebCore_LIBRARY_TYPE STATIC)
-    set(WebKitLegacy_LIBRARY_TYPE SHARED)
+    set(WebKitLegacy_LIBRARY_TYPE STATIC)
     set(WebKit_LIBRARY_TYPE SHARED)
     set(WebCoreTestSupport_LIBRARY_TYPE STATIC)
 
+    if (${PORT} STREQUAL "MUI")
+    set(CMAKE_POSITION_INDEPENDENT_CODE False)
+    else ()
     set(CMAKE_POSITION_INDEPENDENT_CODE True)
+    endif ()
+
 
     # -----------------------------------------------------------------------------
     # Install JavaScript shell

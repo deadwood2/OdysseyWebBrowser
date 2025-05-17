@@ -73,6 +73,10 @@
 #include <sys/syscall.h>
 #endif
 
+#if OS(AROS)
+#include <semaphore.h>
+#endif
+
 namespace WTF {
 
 static Lock globalSuspendLock;
@@ -186,7 +190,7 @@ void Thread::initializePlatformThreading()
     }
     g_wtfConfig.isThreadSuspendResumeSignalConfigured = true;
 
-#if !OS(DARWIN)
+#if !OS(DARWIN) && !OS(AROS)
     globalSemaphoreForSuspendResume.construct(0);
 
     // Signal handlers are process global configuration.
@@ -227,7 +231,7 @@ ThreadIdentifier Thread::currentID()
 
 void Thread::initializeCurrentThreadEvenIfNonWTFCreated()
 {
-#if !OS(DARWIN)
+#if !OS(DARWIN) && !OS(AROS)
     RELEASE_ASSERT(g_wtfConfig.isThreadSuspendResumeSignalConfigured);
     sigset_t mask;
     sigemptyset(&mask);

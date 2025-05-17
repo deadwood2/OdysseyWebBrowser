@@ -26,6 +26,7 @@
 
 #pragma once
 
+#undef Exception
 #include "WebCoreJSBuiltinInternals.h"
 #include <JavaScriptCore/HeapInlines.h>
 #include <JavaScriptCore/JSGlobalObject.h>

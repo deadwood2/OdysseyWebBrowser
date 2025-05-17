@@ -85,6 +85,10 @@
 #include "LegacyPreviewLoaderClient.h"
 #endif
 
+#if ENABLE(DATE_AND_TIME_INPUT_TYPES)
+#include "DateTimeChooser.h"
+#endif
+
 namespace WebCore {
 
 class UserMessageHandlerDescriptor;

@@ -23,6 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
+#undef Exception
+
 #include "config.h"
 #include "ScrollView.h"
 
@@ -77,6 +79,12 @@ bool ScrollView::setHasVerticalScrollbar(bool hasBar, bool* contentSizeAffected)
 bool ScrollView::setHasScrollbarInternal(RefPtr<Scrollbar>& scrollbar, ScrollbarOrientation orientation, bool hasBar, bool* contentSizeAffected)
 {
     ASSERT(!hasBar || !avoidScrollbarCreation());
+
+#if PLATFORM(MUI)
+    if(!parent()) {
+        hasBar = false;
+    }
+#endif
 
     if (hasBar && !scrollbar) {
         scrollbar = createScrollbar(orientation);
@@ -702,6 +710,12 @@ void ScrollView::updateScrollbars(const ScrollPosition& desiredPosition)
                 sendContentResizedNotification |= changeAffectsContentSize;
             }
         }
+
+            #if PLATFORM(MUI)
+            if(!parent()) {
+                sendContentResizedNotification = false;
+            }
+            #endif
 
         const unsigned cMaxUpdateScrollbarsPass = 2;
         if ((sendContentResizedNotification || needAnotherPass) && m_updateScrollbarsPass < cMaxUpdateScrollbarsPass) {

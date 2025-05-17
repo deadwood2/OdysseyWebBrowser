@@ -26,6 +26,7 @@
 
 #pragma once
 
+#undef Exception
 #include "ExceptionOr.h"
 #include <JavaScriptCore/ArrayBuffer.h>
 #include <JavaScriptCore/JSCJSValue.h>

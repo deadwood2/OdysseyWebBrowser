@@ -135,8 +135,17 @@
 #define USE_ACCELERATE 1
 #endif
 
-#if OS(WINDOWS)
+#if OS(WINDOWS) || OS(AROS) || OS(MORPHOS)
 #define USE_SYSTEM_MALLOC 1
+#endif
+
+#if PLATFORM(MUI)
+#define USE_CAIRO 1
+#define USE_FREETYPE 1
+#define USE_CURL 1
+#define USE_CURL_OPENSSL 1
+#define USE_TEXTURE_MAPPER 1
+#define USE_TEXTURE_MAPPER_GL 0
 #endif
 
 #if CPU(REGISTER64)

@@ -72,6 +72,8 @@
 #endif
 #elif OS(WINDOWS)
 #define WTF_PLATFORM_WIN 1
+#elif OS(AROS)
+#define WTF_PLATFORM_MUI 1
 #endif
 
 /* PLATFORM(COCOA) */

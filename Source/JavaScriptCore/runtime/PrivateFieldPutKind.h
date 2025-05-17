@@ -54,7 +54,7 @@ private:
     constexpr PrivateFieldPutKind(uint8_t value)
         : m_value(value)
     {
-        ASSERT(m_value == None || m_value == Set || m_value == Define, m_value);
+//        ASSERT(m_value == None || m_value == Set || m_value == Define, m_value);
     }
 
     uint8_t m_value;

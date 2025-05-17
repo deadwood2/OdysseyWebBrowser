@@ -4188,6 +4188,13 @@ bool FrameLoader::shouldSuppressTextInputFromEditing() const
     return m_frame.settings().shouldSuppressTextInputFromEditingDuringProvisionalNavigation() && m_state == FrameState::Provisional;
 }
 
+#if USE(CURL_OPENSSL)
+void FrameLoader::didReceiveSSLSecurityExtension(const ResourceRequest& request, const char* securityExtension)
+{
+    m_client->didReceiveSSLSecurityExtension(request, securityExtension);
+}
+#endif
+
 } // namespace WebCore
 
 #undef PAGE_ID

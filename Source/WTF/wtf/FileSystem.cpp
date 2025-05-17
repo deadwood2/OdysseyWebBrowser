@@ -33,7 +33,7 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 
-#if !OS(WINDOWS)
+#if !OS(WINDOWS) && !PLATFORM(MUI)
 #include <sys/mman.h>
 #include <sys/stat.h>
 #endif
@@ -41,6 +41,11 @@
 #if USE(GLIB)
 #include <gio/gfiledescriptorbased.h>
 #include <gio/gio.h>
+#endif
+
+#if PLATFORM(MUI)
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 namespace WTF {
@@ -353,6 +358,52 @@ bool MappedFileData::mapFileHandle(PlatformFileHandle handle, FileOpenMode openM
 bool unmapViewOfFile(void* buffer, size_t size)
 {
     return !munmap(buffer, size);
+}
+
+#elif PLATFORM(MUI)
+
+bool MappedFileData::mapFileHandle(PlatformFileHandle handle, FileOpenMode openMode, MappedFileMode mapMode)
+{
+    if (!isHandleValid(handle))
+        return false;
+
+    int fd;
+    fd = handle;
+
+    struct stat fileStat;
+    if (fstat(fd, &fileStat)) {
+        return false;
+    }
+
+    unsigned size;
+    if (!WTF::convertSafely(fileStat.st_size, size)) {
+        return false;
+    }
+
+    if (!size) {
+        return true;
+    }
+	
+    void* data = malloc(size);
+
+	if (nullptr == data) {
+			return false;
+	}
+
+	if (size != read(fd, data, size)) {
+			free(data);
+			return false;
+	}
+
+    m_fileData = data;
+    m_fileSize = size;
+    return true;
+}
+
+bool unmapViewOfFile(void* buffer, size_t size)
+{
+    free(buffer);
+    return true;
 }
 
 #endif

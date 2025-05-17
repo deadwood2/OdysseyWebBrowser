@@ -30,6 +30,10 @@
 #include "PointerID.h"
 #include <wtf/WindowsExtras.h>
 
+#if PLATFORM(MUI)
+#include "BALBase.h"
+#endif
+
 namespace WebCore {
 
 const double ForceAtClick = 1;
@@ -77,6 +81,10 @@ const double ForceAtForceClick = 2;
         SyntheticClickType syntheticClickType() const { return m_syntheticClickType; }
         PointerID pointerId() const { return m_pointerId; }
         const String& pointerType() const { return m_pointerType; }
+
+#if PLATFORM(MUI)
+        PlatformMouseEvent(BalEventButton*);
+#endif
 
 #if PLATFORM(MAC)
         int eventNumber() const { return m_eventNumber; }

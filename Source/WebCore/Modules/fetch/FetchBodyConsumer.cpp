@@ -39,6 +39,10 @@
 #include <wtf/StringExtras.h>
 #include <wtf/URLParser.h>
 
+extern "C" {
+    void *memmem(const void *h0, size_t k, const void *n0, size_t l);
+}
+
 namespace WebCore {
 
 static inline Ref<Blob> blobFromData(ScriptExecutionContext* context, const unsigned char* data, unsigned length, const String& contentType)
