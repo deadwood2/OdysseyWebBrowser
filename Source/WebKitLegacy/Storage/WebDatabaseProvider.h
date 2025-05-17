@@ -44,6 +44,10 @@ public:
     WebCore::IDBClient::IDBConnectionToServer& idbConnectionToServerForSession(const PAL::SessionID&) override;
 
     void deleteAllDatabases();
+
+#if PLATFORM(MUI)
+    void shutdownServers();
+#endif
 #endif
 
 private:

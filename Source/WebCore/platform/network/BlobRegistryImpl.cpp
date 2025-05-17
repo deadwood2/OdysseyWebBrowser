@@ -47,6 +47,9 @@
 #include <wtf/Scope.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/WorkQueue.h>
+#if PLATFORM(MUI)
+#include <proto/exec.h>
+#endif
 
 namespace WebCore {
 
@@ -359,5 +362,12 @@ Vector<RefPtr<BlobDataFileReference>> BlobRegistryImpl::filesInBlob(const URL& u
 
     return result;
 }
+#if PLATFORM(MUI)
+void shutdownBlobRegistryImpl()
+{
+    if (FindTask("org.webkit.BlobUtility") != NULL)
+        delete &blobUtilityQueue();
+}
+#endif
 
 } // namespace WebCore
