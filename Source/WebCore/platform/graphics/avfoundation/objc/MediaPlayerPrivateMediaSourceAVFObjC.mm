@@ -33,14 +33,14 @@
 #import "AVStreamDataParserMIMETypeCache.h"
 #import "CDMSessionAVStreamSession.h"
 #import "GraphicsContextCG.h"
+#import "GraphicsContextGL.h"
+#import "GraphicsContextGLCV.h"
 #import "Logging.h"
 #import "MediaSourcePrivateAVFObjC.h"
 #import "MediaSourcePrivateClient.h"
 #import "PixelBufferConformerCV.h"
 #import "TextTrackRepresentation.h"
-#import "TextureCacheCV.h"
 #import "VideoLayerManagerObjC.h"
-#import "VideoTextureCopierCV.h"
 #import "WebCoreDecompressionSession.h"
 #import <AVFoundation/AVAsset.h>
 #import <AVFoundation/AVTime.h>
@@ -210,7 +210,7 @@ private:
 
     MediaPlayer::SupportsType supportsTypeAndCodecs(const MediaEngineSupportParameters& parameters) const final
     {
-        return MediaPlayerPrivateMediaSourceAVFObjC::supportsType(parameters);
+        return MediaPlayerPrivateMediaSourceAVFObjC::supportsTypeAndCodecs(parameters);
     }
 };
 
@@ -236,18 +236,10 @@ bool MediaPlayerPrivateMediaSourceAVFObjC::isAvailable()
 
 void MediaPlayerPrivateMediaSourceAVFObjC::getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types)
 {
-    auto& streamDataParserCache = AVStreamDataParserMIMETypeCache::singleton();
-    if (streamDataParserCache.isAvailable()) {
-        types = streamDataParserCache.supportedTypes();
-        return;
-    }
-
-    auto& assetCache = AVAssetMIMETypeCache::singleton();
-    if (assetCache.isAvailable())
-        types = assetCache.supportedTypes();
+    types = AVStreamDataParserMIMETypeCache::singleton().supportedTypes();
 }
 
-MediaPlayer::SupportsType MediaPlayerPrivateMediaSourceAVFObjC::supportsType(const MediaEngineSupportParameters& parameters)
+MediaPlayer::SupportsType MediaPlayerPrivateMediaSourceAVFObjC::supportsTypeAndCodecs(const MediaEngineSupportParameters& parameters)
 {
     // This engine does not support non-media-source sources.
     if (!parameters.isMediaSource)
@@ -274,11 +266,11 @@ void MediaPlayerPrivateMediaSourceAVFObjC::load(const String&)
     m_player->networkStateChanged();
 }
 
-void MediaPlayerPrivateMediaSourceAVFObjC::load(const String&, MediaSourcePrivateClient* client)
+void MediaPlayerPrivateMediaSourceAVFObjC::load(const URL&, const ContentType&, MediaSourcePrivateClient* client)
 {
     ALWAYS_LOG(LOGIDENTIFIER);
 
-    m_mediaSourcePrivate = MediaSourcePrivateAVFObjC::create(this, client);
+    m_mediaSourcePrivate = MediaSourcePrivateAVFObjC::create(*this, client);
     m_mediaSourcePrivate->setVideoLayer(m_sampleBufferDisplayLayer.get());
     m_mediaSourcePrivate->setDecompressionSession(m_decompressionSession.get());
 
@@ -565,10 +557,10 @@ bool MediaPlayerPrivateMediaSourceAVFObjC::didLoadingProgress() const
     return loadingProgressed;
 }
 
-NativeImagePtr MediaPlayerPrivateMediaSourceAVFObjC::nativeImageForCurrentTime()
+RefPtr<NativeImage> MediaPlayerPrivateMediaSourceAVFObjC::nativeImageForCurrentTime()
 {
     updateLastImage();
-    return m_lastImage.get();
+    return m_lastImage;
 }
 
 bool MediaPlayerPrivateMediaSourceAVFObjC::updateLastPixelBuffer()
@@ -608,7 +600,7 @@ bool MediaPlayerPrivateMediaSourceAVFObjC::updateLastImage()
         m_rgbConformer = makeUnique<PixelBufferConformerCV>((__bridge CFDictionaryRef)attributes);
     }
 
-    m_lastImage = m_rgbConformer->createImageFromPixelBuffer(m_lastPixelBuffer.get());
+    m_lastImage = NativeImage::create(m_rgbConformer->createImageFromPixelBuffer(m_lastPixelBuffer.get()));
     return true;
 }
 
@@ -627,11 +619,11 @@ void MediaPlayerPrivateMediaSourceAVFObjC::paintCurrentFrameInContext(GraphicsCo
         return;
 
     GraphicsContextStateSaver stateSaver(context);
-    FloatRect imageRect(0, 0, CGImageGetWidth(image.get()), CGImageGetHeight(image.get()));
-    context.drawNativeImage(image, imageRect.size(), outputRect, imageRect);
+    FloatRect imageRect { FloatPoint::zero(), image->size() };
+    context.drawNativeImage(*image, imageRect.size(), outputRect, imageRect);
 }
 
-bool MediaPlayerPrivateMediaSourceAVFObjC::copyVideoTextureToPlatformTexture(GraphicsContextGLOpenGL* context, PlatformGLObject outputTexture, GCGLenum outputTarget, GCGLint level, GCGLenum internalFormat, GCGLenum format, GCGLenum type, bool premultiplyAlpha, bool flipY)
+CVPixelBufferRef MediaPlayerPrivateMediaSourceAVFObjC::pixelBufferForCurrentTime()
 {
     // We have been asked to paint into a WebGL canvas, so take that as a signal to create
     // a decompression session, even if that means the native video can't also be displayed
@@ -641,20 +633,12 @@ bool MediaPlayerPrivateMediaSourceAVFObjC::copyVideoTextureToPlatformTexture(Gra
         acceleratedRenderingStateChanged();
     }
 
-    ASSERT(context);
-
     if (updateLastPixelBuffer()) {
         if (!m_lastPixelBuffer)
-            return false;
+            return nullptr;
     }
 
-    size_t width = CVPixelBufferGetWidth(m_lastPixelBuffer.get());
-    size_t height = CVPixelBufferGetHeight(m_lastPixelBuffer.get());
-
-    if (!m_videoTextureCopier)
-        m_videoTextureCopier = makeUnique<VideoTextureCopierCV>(*context);
-
-    return m_videoTextureCopier->copyImageToPlatformTexture(m_lastPixelBuffer.get(), width, height, outputTexture, outputTarget, level, internalFormat, format, type, premultiplyAlpha, flipY);
+    return m_lastPixelBuffer.get();
 }
 
 bool MediaPlayerPrivateMediaSourceAVFObjC::hasAvailableVideoFrame() const
@@ -1166,6 +1150,16 @@ ALLOW_NEW_API_WITHOUT_GUARDS_END
     [audioRenderer setVolume:m_player->volume()];
     [audioRenderer setAudioTimePitchAlgorithm:(m_player->preservesPitch() ? AVAudioTimePitchAlgorithmSpectral : AVAudioTimePitchAlgorithmVarispeed)];
 
+#if HAVE(AUDIO_OUTPUT_DEVICE_UNIQUE_ID)
+    auto deviceId = m_player->audioOutputDeviceIdOverride();
+    if (!deviceId.isNull()) {
+        if (deviceId.isEmpty())
+            audioRenderer.audioOutputDeviceUniqueID = nil;
+        else
+            audioRenderer.audioOutputDeviceUniqueID = deviceId;
+    }
+#endif
+
     @try {
         [m_synchronizer addRenderer:audioRenderer];
     } @catch(NSException *exception) {
@@ -1210,7 +1204,7 @@ RetainPtr<PlatformLayer> MediaPlayerPrivateMediaSourceAVFObjC::createVideoFullsc
 void MediaPlayerPrivateMediaSourceAVFObjC::setVideoFullscreenLayer(PlatformLayer *videoFullscreenLayer, WTF::Function<void()>&& completionHandler)
 {
     updateLastImage();
-    m_videoLayerManager->setVideoFullscreenLayer(videoFullscreenLayer, WTFMove(completionHandler), m_lastImage);
+    m_videoLayerManager->setVideoFullscreenLayer(videoFullscreenLayer, WTFMove(completionHandler), m_lastImage ? m_lastImage->platformImage() : nullptr);
 }
 
 void MediaPlayerPrivateMediaSourceAVFObjC::setVideoFullscreenFrame(FloatRect frame)
@@ -1230,7 +1224,8 @@ void MediaPlayerPrivateMediaSourceAVFObjC::syncTextTrackBounds()
     
 void MediaPlayerPrivateMediaSourceAVFObjC::setTextTrackRepresentation(TextTrackRepresentation* representation)
 {
-    m_videoLayerManager->setTextTrackRepresentation(representation);
+    auto* representationLayer = representation ? representation->platformLayer() : nil;
+    m_videoLayerManager->setTextTrackRepresentationLayer(representationLayer);
 }
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
@@ -1274,6 +1269,22 @@ bool MediaPlayerPrivateMediaSourceAVFObjC::performTaskAtMediaTime(WTF::Function<
         taskIn();
     }];
     return true;
+}
+
+void MediaPlayerPrivateMediaSourceAVFObjC::audioOutputDeviceChanged()
+{
+#if HAVE(AUDIO_OUTPUT_DEVICE_UNIQUE_ID)
+    if (!m_player)
+        return;
+    auto deviceId = m_player->audioOutputDeviceId();
+    for (auto& key : m_sampleBufferAudioRendererMap.keys()) {
+        auto renderer = ((__bridge AVSampleBufferAudioRenderer *)key.get());
+        if (deviceId.isEmpty())
+            renderer.audioOutputDeviceUniqueID = nil;
+        else
+            renderer.audioOutputDeviceUniqueID = deviceId;
+    }
+#endif
 }
 
 WTFLogChannel& MediaPlayerPrivateMediaSourceAVFObjC::logChannel() const

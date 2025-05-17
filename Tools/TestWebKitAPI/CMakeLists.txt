@@ -33,6 +33,7 @@ set(TestWTF_SOURCES
     Tests/WTF/CString.cpp
     Tests/WTF/CheckedArithmeticOperations.cpp
     Tests/WTF/CompactRefPtrTuple.cpp
+    Tests/WTF/CompactUniquePtrTuple.cpp
     Tests/WTF/ConcurrentPtrHashSet.cpp
     Tests/WTF/Condition.cpp
     Tests/WTF/CrossThreadCopier.cpp
@@ -117,9 +118,15 @@ set(TestWTF_PRIVATE_INCLUDE_DIRECTORIES
 )
 
 set(TestWTF_LIBRARIES
-    WebKit::WTF
     gtest
 )
+
+set(TestWTF_FRAMEWORKS
+    WTF
+)
+if (NOT USE_SYSTEM_MALLOC)
+    list(APPEND TestWTF_FRAMEWORKS bmalloc)
+endif ()
 
 WEBKIT_EXECUTABLE_DECLARE(TestWTF)
 
@@ -130,19 +137,22 @@ if (ENABLE_JAVASCRIPTCORE)
         WTFStringUtilities.cpp
 
         Tests/JavaScriptCore/DisallowVMEntry.cpp
+        Tests/JavaScriptCore/InspectorConsoleMessage.cpp
         Tests/JavaScriptCore/PropertySlot.cpp
     )
 
     set(TestJavaScriptCore_LIBRARIES
-        WebKit::JavaScriptCore
         gtest
+    )
+    set(TestJavaScriptCore_FRAMEWORKS
+        JavaScriptCore
+        WTF
     )
 
     set(TestJavaScriptCore_PRIVATE_INCLUDE_DIRECTORIES
         ${CMAKE_BINARY_DIR}
         ${TESTWEBKITAPI_DIR}
         ${THIRDPARTY_DIR}/gtest/include
-        ${JavaScriptCoreCore_PRIVATE_FRAMEWORK_HEADERS_DIR}
     )
 
     WEBKIT_EXECUTABLE_DECLARE(TestJavaScriptCore)
@@ -185,8 +195,11 @@ if (ENABLE_WEBCORE)
     )
 
     set(TestWebCore_LIBRARIES
-        WebKit::WebCore
         gtest
+    )
+    set(TestWebCore_FRAMEWORKS
+        PAL
+        WebCore
     )
 
     set(TestWebCore_PRIVATE_INCLUDE_DIRECTORIES
@@ -287,6 +300,7 @@ if (ENABLE_WEBKIT)
 
     set(TestWebKit_PRIVATE_INCLUDE_DIRECTORIES
         ${CMAKE_BINARY_DIR}
+        ${JavaScriptCore_PRIVATE_FRAMEWORK_HEADERS_DIR}
         ${TESTWEBKITAPI_DIR}
         ${THIRDPARTY_DIR}/gtest/include
         ${PAL_FRAMEWORK_HEADERS_DIR}
@@ -296,8 +310,10 @@ if (ENABLE_WEBKIT)
 
     set(TestWebKit_LIBRARIES
         TestWebKitAPIBase
-        WebKit::WebKit
         gtest
+    )
+    set(TestWebKit_FRAMEWORKS
+        WebKit
     )
 
     set(TestWebKit_DEPENDENCIES

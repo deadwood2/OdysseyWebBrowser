@@ -33,7 +33,7 @@
 #include "BitmapImage.h"
 #include "CairoOperations.h"
 #include "Color.h"
-#include "ColorConversion.h"
+#include "ColorTransferFunctions.h"
 #include "GraphicsContext.h"
 #include "GraphicsContextImplCairo.h"
 #include "ImageBufferUtilitiesCairo.h"
@@ -66,7 +66,7 @@ void ImageBufferCairoBackend::draw(GraphicsContext& destContext, const FloatRect
     const auto& destinationContextState = destContext.state();
 
     if (auto image = copyNativeImage(&destContext == &context() ? CopyBackingStore : DontCopyBackingStore))
-        drawNativeImage(*destContext.platformContext(), image.get(), destRect, srcRect, { options, destinationContextState.imageInterpolationQuality }, destinationContextState.alpha, WebCore::Cairo::ShadowState(destinationContextState));
+        drawPlatformImage(*destContext.platformContext(), image->platformImage().get(), destRect, srcRect, { options, destinationContextState.imageInterpolationQuality }, destinationContextState.alpha, WebCore::Cairo::ShadowState(destinationContextState));
 }
 
 void ImageBufferCairoBackend::drawPattern(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
@@ -80,36 +80,42 @@ void ImageBufferCairoBackend::drawPattern(GraphicsContext& destContext, const Fl
     }
 
     if (auto image = copyNativeImage(&destContext == &context() ? CopyBackingStore : DontCopyBackingStore))
-        Cairo::drawPattern(*destContext.platformContext(), image.get(), m_logicalSize, destRect, srcRect, patternTransform, phase, options);
+        Cairo::drawPattern(*destContext.platformContext(), image->platformImage().get(), logicalSize(), destRect, srcRect, patternTransform, phase, options);
 }
 
-void ImageBufferCairoBackend::transformColorSpace(ColorSpace srcColorSpace, ColorSpace destColorSpace)
+void ImageBufferCairoBackend::clipToMask(GraphicsContext& destContext, const FloatRect& destRect)
+{
+    if (auto image = copyNativeImage(DontCopyBackingStore))
+        Cairo::clipToImageBuffer(*destContext.platformContext(), image->platformImage().get(), destRect);
+}
+
+void ImageBufferCairoBackend::transformColorSpace(DestinationColorSpace srcColorSpace, DestinationColorSpace destColorSpace)
 {
     if (srcColorSpace == destColorSpace)
         return;
 
     // only sRGB <-> linearRGB are supported at the moment
-    if ((srcColorSpace != ColorSpace::LinearRGB && srcColorSpace != ColorSpace::SRGB)
-        || (destColorSpace != ColorSpace::LinearRGB && destColorSpace != ColorSpace::SRGB))
+    if ((srcColorSpace != DestinationColorSpace::LinearSRGB && srcColorSpace != DestinationColorSpace::SRGB)
+        || (destColorSpace != DestinationColorSpace::LinearSRGB && destColorSpace != DestinationColorSpace::SRGB))
         return;
 
-    if (destColorSpace == ColorSpace::LinearRGB) {
+    if (destColorSpace == DestinationColorSpace::LinearSRGB) {
         static const std::array<uint8_t, 256> linearRgbLUT = [] {
             std::array<uint8_t, 256> array;
             for (unsigned i = 0; i < 256; i++) {
                 float color = i / 255.0f;
-                color = rgbToLinearColorComponent(color);
+                color = SRGBTransferFunction<float, TransferFunctionMode::Clamped>::toLinear(color);
                 array[i] = static_cast<uint8_t>(round(color * 255));
             }
             return array;
         }();
         platformTransformColorSpace(linearRgbLUT);
-    } else if (destColorSpace == ColorSpace::SRGB) {
+    } else if (destColorSpace == DestinationColorSpace::SRGB) {
         static const std::array<uint8_t, 256> deviceRgbLUT= [] {
             std::array<uint8_t, 256> array;
             for (unsigned i = 0; i < 256; i++) {
                 float color = i / 255.0f;
-                color = linearToRGBColorComponent(color);
+                color = SRGBTransferFunction<float, TransferFunctionMode::Clamped>::toGammaEncoded(color);
                 array[i] = static_cast<uint8_t>(round(color * 255));
             }
             return array;

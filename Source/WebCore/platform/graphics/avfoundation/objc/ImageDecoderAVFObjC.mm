@@ -254,34 +254,14 @@ public:
         m_hasAlpha = alphaInfo != kCGImageAlphaNone && alphaInfo != kCGImageAlphaNoneSkipLast && alphaInfo != kCGImageAlphaNoneSkipFirst;
     }
 
-    struct ByteRange {
-        size_t byteOffset { 0 };
-        size_t byteLength { 0 };
-    };
-
-    Optional<ByteRange> byteRange() const
+    Optional<ByteRange> byteRange() const final
     {
         if (PAL::CMSampleBufferGetDataBuffer(m_sample.get())
             || PAL::CMSampleBufferGetImageBuffer(m_sample.get())
             || !PAL::CMSampleBufferDataIsReady(m_sample.get()))
             return WTF::nullopt;
 
-        CFNumberRef byteOffsetCF = (CFNumberRef)PAL::CMGetAttachment(m_sample.get(), PAL::kCMSampleBufferAttachmentKey_SampleReferenceByteOffset, nullptr);
-        if (!byteOffsetCF || CFGetTypeID(byteOffsetCF) != CFNumberGetTypeID())
-            return WTF::nullopt;
-
-        int64_t byteOffset { 0 };
-        if (!CFNumberGetValue(byteOffsetCF, kCFNumberSInt64Type, &byteOffset))
-            return WTF::nullopt;
-
-        CMItemCount sizeArrayEntries = 0;
-        PAL::CMSampleBufferGetSampleSizeArray(m_sample.get(), 0, nullptr, &sizeArrayEntries);
-        if (sizeArrayEntries != 1)
-            return WTF::nullopt;
-
-        size_t singleSizeEntry;
-        PAL::CMSampleBufferGetSampleSizeArray(m_sample.get(), 1, &singleSizeEntry, nullptr);
-        return {{static_cast<size_t>(byteOffset), singleSizeEntry}};
+        return byteRangeForAttachment(PAL::kCMSampleBufferAttachmentKey_SampleReferenceByteOffset);
     }
 
     SampleFlags flags() const override
@@ -425,7 +405,7 @@ bool ImageDecoderAVFObjC::storeSampleBuffer(CMSampleBufferRef sampleBuffer)
         return false;
     }
 
-    auto presentationTime = PAL::toMediaTime(PAL::CMSampleBufferGetPresentationTimeStamp(sampleBuffer));
+    auto presentationTime = PAL::toMediaTime(PAL::CMSampleBufferGetOutputPresentationTimeStamp(sampleBuffer));
     auto iter = m_sampleData.presentationOrder().findSampleWithPresentationTime(presentationTime);
 
     if (m_imageRotationSession)
@@ -533,9 +513,9 @@ bool ImageDecoderAVFObjC::frameIsCompleteAtIndex(size_t index) const
     return sampleIsComplete(*sampleData);
 }
 
-ImageOrientation ImageDecoderAVFObjC::frameOrientationAtIndex(size_t) const
+ImageDecoder::FrameMetadata ImageDecoderAVFObjC::frameMetadataAtIndex(size_t) const
 {
-    return ImageOrientation::None;
+    return { };
 }
 
 Seconds ImageDecoderAVFObjC::frameDurationAtIndex(size_t index) const
@@ -553,6 +533,20 @@ bool ImageDecoderAVFObjC::frameHasAlphaAtIndex(size_t index) const
     return sampleData ? sampleData->hasAlpha() : false;
 }
 
+Vector<ImageDecoder::FrameInfo> ImageDecoderAVFObjC::frameInfos() const
+{
+    if (m_sampleData.empty())
+        return { };
+
+    Vector<ImageDecoder::FrameInfo> infos;
+    for (auto& sample : m_sampleData.presentationOrder()) {
+        auto* imageSample = (ImageDecoderAVFObjCSample*)sample.second.get();
+        infos.append({ imageSample->hasAlpha(), Seconds(imageSample->duration().toDouble())});
+    }
+
+    return infos;
+}
+
 bool ImageDecoderAVFObjC::frameAllowSubsamplingAtIndex(size_t index) const
 {
     return index <= m_sampleData.size();
@@ -567,7 +561,7 @@ unsigned ImageDecoderAVFObjC::frameBytesAtIndex(size_t index, SubsamplingLevel s
     return (frameSize.area() * 4).unsafeGet();
 }
 
-NativeImagePtr ImageDecoderAVFObjC::createFrameImageAtIndex(size_t index, SubsamplingLevel, const DecodingOptions&)
+PlatformImagePtr ImageDecoderAVFObjC::createFrameImageAtIndex(size_t index, SubsamplingLevel, const DecodingOptions&)
 {
     LockHolder holder { m_sampleGeneratorLock };
 
@@ -592,7 +586,6 @@ NativeImagePtr ImageDecoderAVFObjC::createFrameImageAtIndex(size_t index, Subsam
         } while (--m_cursor != m_sampleData.decodeOrder().begin());
     }
 
-    RetainPtr<CGImageRef> image;
     while (true) {
         if (decodeTime < m_cursor->second->decodeTime())
             return nullptr;

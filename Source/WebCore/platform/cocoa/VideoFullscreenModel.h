@@ -69,15 +69,15 @@ public:
 
 #if PLATFORM(IOS_FAMILY)
     virtual UIViewController *presentingViewController() { return nullptr; }
-    virtual UIViewController *createVideoFullscreenViewController(AVPlayerViewController *) { return nullptr; }
+    virtual RetainPtr<UIViewController> createVideoFullscreenViewController(AVPlayerViewController *) { return nullptr; }
 #endif
 };
 
 class VideoFullscreenModelClient {
 public:
     virtual ~VideoFullscreenModelClient() = default;
-    virtual void hasVideoChanged(bool) { };
-    virtual void videoDimensionsChanged(const FloatSize&) { };
+    virtual void hasVideoChanged(bool) { }
+    virtual void videoDimensionsChanged(const FloatSize&) { }
     virtual void willEnterPictureInPicture() { }
     virtual void didEnterPictureInPicture() { }
     virtual void failedToEnterPictureInPicture() { }

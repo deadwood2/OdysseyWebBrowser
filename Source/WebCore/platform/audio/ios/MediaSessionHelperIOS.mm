@@ -30,6 +30,7 @@
 
 #import "Logging.h"
 #import "MediaPlaybackTargetCocoa.h"
+#import "RuntimeEnabledFeatures.h"
 #import "WebCoreThreadRun.h"
 #import <AVFoundation/AVAudioSession.h>
 #import <AVFoundation/AVRouteDetector.h>
@@ -38,6 +39,7 @@
 #import <wtf/BlockObjCExceptions.h>
 #import <wtf/MainThread.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/RunLoop.h>
 #import <wtf/UniqueRef.h>
 
 #import <pal/cocoa/AVFoundationSoftLink.h>
@@ -56,6 +58,7 @@ SOFT_LINK_CONSTANT_MAY_FAIL(Celestial, AVSystemController_CarPlayIsConnectedAttr
 SOFT_LINK_CONSTANT_MAY_FAIL(Celestial, AVSystemController_CarPlayIsConnectedDidChangeNotification, NSString *)
 SOFT_LINK_CONSTANT_MAY_FAIL(Celestial, AVSystemController_CarPlayIsConnectedNotificationParameter, NSString *)
 SOFT_LINK_CONSTANT_MAY_FAIL(Celestial, AVSystemController_ServerConnectionDiedNotification, NSString *)
+SOFT_LINK_CONSTANT_MAY_FAIL(Celestial, AVSystemController_SubscribeToNotificationsAttribute, NSString *)
 #endif
 
 using namespace WebCore;
@@ -125,25 +128,30 @@ private:
 #endif
 };
 
-static UniqueRef<MediaSessionHelper>& sharedHelperInstance()
+static std::unique_ptr<MediaSessionHelper>& sharedHelperInstance()
 {
-    static NeverDestroyed<UniqueRef<MediaSessionHelper>> helper = makeUniqueRef<MediaSessionHelperiOS>();
+    static NeverDestroyed<std::unique_ptr<MediaSessionHelper>> helper;
     return helper;
 }
 
 MediaSessionHelper& MediaSessionHelper::sharedHelper()
 {
-    return sharedHelperInstance();
+    auto& helper = sharedHelperInstance();
+    if (!helper)
+        resetSharedHelper();
+
+    ASSERT(helper);
+    return *helper;
 }
 
 void MediaSessionHelper::resetSharedHelper()
 {
-    sharedHelperInstance() = makeUniqueRef<MediaSessionHelperiOS>();
+    sharedHelperInstance() = makeUnique<MediaSessionHelperiOS>();
 }
 
 void MediaSessionHelper::setSharedHelper(UniqueRef<MediaSessionHelper>&& helper)
 {
-    sharedHelperInstance() = WTFMove(helper);
+    sharedHelperInstance() = helper.moveToUniquePtr();
 }
 
 void MediaSessionHelper::addClient(MediaSessionHelperClient& client)
@@ -183,6 +191,9 @@ void MediaSessionHelperiOS::providePresentingApplicationPID(int pid)
     if (m_havePresentedApplicationPID)
         return;
     m_havePresentedApplicationPID = true;
+
+    if (RuntimeEnabledFeatures::sharedFeatures().disableMediaExperiencePIDInheritance())
+        return;
 
     if (!canLoadAVSystemController_PIDToInheritApplicationStateFrom())
         return;
@@ -230,6 +241,10 @@ void MediaSessionHelperiOS::mediaServerConnectionDied()
 {
     updateCarPlayIsConnected(WTF::nullopt);
 
+    // FIXME: Remove these once rdar://27662716 lands
+    if (canLoadAVSystemController_CarPlayIsConnectedDidChangeNotification() && canLoadAVSystemController_SubscribeToNotificationsAttribute())
+        [[getAVSystemControllerClass() sharedAVSystemController] setAttribute:@[getAVSystemController_CarPlayIsConnectedDidChangeNotification()] forKey:getAVSystemController_SubscribeToNotificationsAttribute() error:nil];
+
     if (!m_havePresentedApplicationPID)
         return;
 
@@ -273,10 +288,10 @@ void MediaSessionHelperiOS::activeAudioRouteDidChange(bool shouldPause)
 
 void MediaSessionHelperiOS::activeVideoRouteDidChange()
 {
-    auto playbackTarget = MediaPlaybackTargetCocoa::create();
-    m_activeVideoRouteSupportsAirPlayVideo = playbackTarget->supportsRemoteVideoPlayback();
+    m_playbackTarget = MediaPlaybackTargetCocoa::create();
+    m_activeVideoRouteSupportsAirPlayVideo = m_playbackTarget->supportsRemoteVideoPlayback();
     for (auto& client : m_clients)
-        client.activeVideoRouteDidChange(m_activeVideoRouteSupportsAirPlayVideo ? SupportsAirPlayVideo::Yes : SupportsAirPlayVideo::No, playbackTarget.copyRef());
+        client.activeVideoRouteDidChange(m_activeVideoRouteSupportsAirPlayVideo ? SupportsAirPlayVideo::Yes : SupportsAirPlayVideo::No, *m_playbackTarget);
 }
 #endif
 
@@ -343,10 +358,12 @@ void MediaSessionHelperiOS::externalOutputDeviceAvailableDidChange()
         [center addObserver:self selector:@selector(mediaServerConnectionDied:) name:getAVSystemController_ServerConnectionDiedNotification() object:nil];
     if (canLoadAVSystemController_CarPlayIsConnectedDidChangeNotification())
         [center addObserver:self selector:@selector(carPlayIsConnectedDidChange:) name:getAVSystemController_CarPlayIsConnectedDidChangeNotification() object:nil];
+    if (canLoadAVSystemController_CarPlayIsConnectedDidChangeNotification() && canLoadAVSystemController_SubscribeToNotificationsAttribute())
+        [[getAVSystemControllerClass() sharedAVSystemController] setAttribute:@[getAVSystemController_CarPlayIsConnectedDidChangeNotification()] forKey:getAVSystemController_SubscribeToNotificationsAttribute() error:nil];
 #endif
 
     // Now playing won't work unless we turn on the delivery of remote control events.
-    dispatch_async(dispatch_get_main_queue(), ^{
+    RunLoop::main().dispatch([] {
         BEGIN_BLOCK_OBJC_EXCEPTIONS
         [[PAL::getUIApplicationClass() sharedApplication] beginReceivingRemoteControlEvents];
         END_BLOCK_OBJC_EXCEPTIONS
@@ -361,7 +378,7 @@ void MediaSessionHelperiOS::externalOutputDeviceAvailableDidChange()
 
 #if !PLATFORM(WATCHOS)
     if (!pthread_main_np()) {
-        dispatch_async(dispatch_get_main_queue(), [routeDetector = WTFMove(_routeDetector)] () mutable {
+        RunLoop::main().dispatch([routeDetector = WTFMove(_routeDetector)] () mutable {
             LOG(Media, "safelyTearDown - dipatched to UI thread.");
             BEGIN_BLOCK_OBJC_EXCEPTIONS
             routeDetector.get().routeDetectionEnabled = NO;

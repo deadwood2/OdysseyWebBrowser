@@ -28,7 +28,7 @@ namespace rx
 // Conversion buffers hold translated index and vertex data.
 struct ConversionBufferMtl
 {
-    ConversionBufferMtl(const gl::Context *context, size_t initialSize, size_t alignment);
+    ConversionBufferMtl(ContextMtl *context, size_t initialSize, size_t alignment);
     ~ConversionBufferMtl();
 
     // One state value determines if we need to re-stream vertex data.
@@ -42,13 +42,35 @@ struct ConversionBufferMtl
     size_t convertedOffset;
 };
 
+struct VertexConversionBufferMtl : public ConversionBufferMtl
+{
+    VertexConversionBufferMtl(ContextMtl *context,
+                              angle::FormatID formatIDIn,
+                              GLuint strideIn,
+                              size_t offsetIn);
+
+    // The conversion is identified by the triple of {format, stride, offset}.
+    angle::FormatID formatID;
+    GLuint stride;
+    size_t offset;
+};
+
 struct IndexConversionBufferMtl : public ConversionBufferMtl
 {
-    IndexConversionBufferMtl(const gl::Context *context,
-                             gl::DrawElementsType type,
+    IndexConversionBufferMtl(ContextMtl *context,
+                             gl::DrawElementsType elemType,
+                             bool primitiveRestartEnabled,
                              size_t offsetIn);
 
-    const gl::DrawElementsType type;
+    const gl::DrawElementsType elemType;
+    const size_t offset;
+    bool primitiveRestartEnabled;
+};
+
+struct UniformConversionBufferMtl : public ConversionBufferMtl
+{
+    UniformConversionBufferMtl(ContextMtl *context, size_t offsetIn);
+
     const size_t offset;
 };
 
@@ -108,25 +130,40 @@ class BufferMtl : public BufferImpl, public BufferHolderMtl
                                 bool primitiveRestartEnabled,
                                 gl::IndexRange *outRange) override;
 
-    angle::Result getFirstLastIndices(gl::DrawElementsType type,
+    void onDataChanged() override;
+
+    angle::Result getFirstLastIndices(ContextMtl *contextMtl,
+                                      gl::DrawElementsType type,
                                       size_t offset,
                                       size_t count,
-                                      std::pair<uint32_t, uint32_t> *outIndices) const;
+                                      std::pair<uint32_t, uint32_t> *outIndices);
 
-    const uint8_t *getClientShadowCopyData(const gl::Context *context);
+    const uint8_t *getClientShadowCopyData(ContextMtl *contextMtl);
 
-    ConversionBufferMtl *getVertexConversionBuffer(const gl::Context *context,
+    ConversionBufferMtl *getVertexConversionBuffer(ContextMtl *context,
                                                    angle::FormatID formatID,
                                                    GLuint stride,
                                                    size_t offset);
 
-    IndexConversionBufferMtl *getIndexConversionBuffer(const gl::Context *context,
-                                                       gl::DrawElementsType type,
+    IndexConversionBufferMtl *getIndexConversionBuffer(ContextMtl *context,
+                                                       gl::DrawElementsType elemType,
+                                                       bool primitiveRestartEnabled,
                                                        size_t offset);
+
+    ConversionBufferMtl *getUniformConversionBuffer(ContextMtl *context, size_t offset);
+
+    // NOTE(hqle): If the buffer is modifed by GPU, this function must be explicitly
+    // called.
+    void markConversionBuffersDirty();
 
     size_t size() const { return static_cast<size_t>(mState.getSize()); }
 
   private:
+    angle::Result setDataImpl(const gl::Context *context,
+                              gl::BufferBinding target,
+                              const void *data,
+                              size_t size,
+                              gl::BufferUsage usage);
     angle::Result setSubDataImpl(const gl::Context *context,
                                  const void *data,
                                  size_t size,
@@ -135,33 +172,29 @@ class BufferMtl : public BufferImpl, public BufferHolderMtl
     angle::Result commitShadowCopy(const gl::Context *context);
     angle::Result commitShadowCopy(const gl::Context *context, size_t size);
 
-    void markConversionBuffersDirty();
-
     void clearConversionBuffers();
 
+    bool clientShadowCopyDataNeedSync(ContextMtl *contextMtl);
+    void ensureShadowCopySyncedFromGPU(ContextMtl *contextMtl);
+    uint8_t *syncAndObtainShadowCopy(ContextMtl *contextMtl);
+
+    // Convenient method
+    const uint8_t *getClientShadowCopyData(const gl::Context *context)
+    {
+        return getClientShadowCopyData(mtl::GetImpl(context));
+    }
     // Client side shadow buffer
     angle::MemoryBuffer mShadowCopy;
 
     // GPU side buffers pool
     mtl::BufferPool mBufferPool;
 
-    struct VertexConversionBuffer : public ConversionBufferMtl
-    {
-        VertexConversionBuffer(const gl::Context *context,
-                               angle::FormatID formatIDIn,
-                               GLuint strideIn,
-                               size_t offsetIn);
-
-        // The conversion is identified by the triple of {format, stride, offset}.
-        angle::FormatID formatID;
-        GLuint stride;
-        size_t offset;
-    };
-
     // A cache of converted vertex data.
-    std::vector<VertexConversionBuffer> mVertexConversionBuffers;
+    std::vector<VertexConversionBufferMtl> mVertexConversionBuffers;
 
     std::vector<IndexConversionBufferMtl> mIndexConversionBuffers;
+
+    std::vector<UniformConversionBufferMtl> mUniformConversionBuffers;
 };
 
 class SimpleWeakBufferHolderMtl : public BufferHolderMtl

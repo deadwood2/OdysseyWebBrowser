@@ -25,6 +25,8 @@
 
 #import "config.h"
 
+#import "HandleXPCEndpointMessages.h"
+#import "Logging.h"
 #import "WKCrashReporter.h"
 #import "XPCServiceEntryPoint.h"
 #import <CoreFoundation/CoreFoundation.h>
@@ -37,17 +39,41 @@
 
 namespace WebKit {
 
+static void setAppleLanguagesPreference()
+{
+    auto bootstrap = adoptOSObject(xpc_copy_bootstrap());
+    if (!bootstrap)
+        return;
+
+    if (xpc_object_t languages = xpc_dictionary_get_value(bootstrap.get(), "OverrideLanguages")) {
+        @autoreleasepool {
+            NSDictionary *existingArguments = [[NSUserDefaults standardUserDefaults] volatileDomainForName:NSArgumentDomain];
+            NSMutableDictionary *newArguments = [existingArguments mutableCopy];
+            RetainPtr<NSMutableArray> newLanguages = adoptNS([[NSMutableArray alloc] init]);
+            xpc_array_apply(languages, ^(size_t index, xpc_object_t value) {
+                [newLanguages addObject:[NSString stringWithCString:xpc_string_get_string_ptr(value) encoding:NSUTF8StringEncoding]];
+                return true;
+            });
+            [newArguments setValue:newLanguages.get() forKey:@"AppleLanguages"];
+            [[NSUserDefaults standardUserDefaults] setVolatileDomain:newArguments forName:NSArgumentDomain];
+        }
+    }
+}
+
 static void XPCServiceEventHandler(xpc_connection_t peer)
 {
     static xpc_object_t priorityBoostMessage = nullptr;
 
-    xpc_connection_set_target_queue(peer, dispatch_get_main_queue());
+    xpc_connection_set_target_queue(peer, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0));
     xpc_connection_set_event_handler(peer, ^(xpc_object_t event) {
         xpc_type_t type = xpc_get_type(event);
         if (type == XPC_TYPE_ERROR) {
             if (event == XPC_ERROR_CONNECTION_INVALID || event == XPC_ERROR_TERMINATION_IMMINENT) {
+                RELEASE_LOG_FAULT(IPC, "Exiting: Received XPC event type: %s", event == XPC_ERROR_CONNECTION_INVALID ? "XPC_ERROR_CONNECTION_INVALID" : "XPC_ERROR_TERMINATION_IMMINENT");
                 // FIXME: Handle this case more gracefully.
-                exit(EXIT_FAILURE);
+                [[NSRunLoop mainRunLoop] performBlock:^{
+                    exit(EXIT_FAILURE);
+                }];
             }
         } else {
             assert(type == XPC_TYPE_DICTIONARY);
@@ -65,14 +91,18 @@ static void XPCServiceEventHandler(xpc_connection_t peer)
                     entryPointFunctionName = CFSTR(STRINGIZE_VALUE_OF(PLUGIN_SERVICE_INITIALIZER));
                 else if (!strcmp(serviceName, "com.apple.WebKit.GPU"))
                     entryPointFunctionName = CFSTR(STRINGIZE_VALUE_OF(GPU_SERVICE_INITIALIZER));
+                else if (!strcmp(serviceName, "com.apple.WebKit.WebAuthn"))
+                    entryPointFunctionName = CFSTR(STRINGIZE_VALUE_OF(WEBAUTHN_SERVICE_INITIALIZER));
                 else
                     RELEASE_ASSERT_NOT_REACHED();
 
                 typedef void (*InitializerFunction)(xpc_connection_t, xpc_object_t, xpc_object_t);
                 InitializerFunction initializerFunctionPtr = reinterpret_cast<InitializerFunction>(CFBundleGetFunctionPointerForName(webKitBundle, entryPointFunctionName));
                 if (!initializerFunctionPtr) {
-                    NSLog(@"Unable to find entry point in WebKit.framework with name: %@", (__bridge NSString *)entryPointFunctionName);
-                    exit(EXIT_FAILURE);
+                    RELEASE_LOG_FAULT(IPC, "Exiting: Unable to find entry point in WebKit.framework with name: %s", [(__bridge NSString *)entryPointFunctionName UTF8String]);
+                    [[NSRunLoop mainRunLoop] performBlock:^{
+                        exit(EXIT_FAILURE);
+                    }];
                 }
 
                 auto reply = adoptOSObject(xpc_dictionary_create_reply(event));
@@ -87,7 +117,12 @@ static void XPCServiceEventHandler(xpc_connection_t peer)
                 if (fd != -1)
                     dup2(fd, STDERR_FILENO);
 
-                initializerFunctionPtr(peer, event, priorityBoostMessage);
+                dispatch_sync(dispatch_get_main_queue(), ^{
+                    initializerFunctionPtr(peer, event, priorityBoostMessage);
+
+                    setAppleLanguagesPreference();
+                });
+
                 if (priorityBoostMessage)
                     xpc_release(priorityBoostMessage);
             }
@@ -97,6 +132,8 @@ static void XPCServiceEventHandler(xpc_connection_t peer)
                 assert(!priorityBoostMessage);
                 priorityBoostMessage = xpc_retain(event);
             }
+
+            handleXPCEndpointMessages(event);
         }
     });
 
@@ -130,15 +167,15 @@ int XPCServiceMain(int argc, const char** argv)
 #endif
 
     auto bootstrap = adoptOSObject(xpc_copy_bootstrap());
-#if PLATFORM(IOS_FAMILY)
-    auto containerEnvironmentVariables = xpc_dictionary_get_value(bootstrap.get(), "ContainerEnvironmentVariables");
-    xpc_dictionary_apply(containerEnvironmentVariables, ^(const char *key, xpc_object_t value) {
-        setenv(key, xpc_string_get_string_ptr(value), 1);
-        return true;
-    });
-#endif
 
     if (bootstrap) {
+#if PLATFORM(IOS_FAMILY)
+        auto containerEnvironmentVariables = xpc_dictionary_get_value(bootstrap.get(), "ContainerEnvironmentVariables");
+        xpc_dictionary_apply(containerEnvironmentVariables, ^(const char *key, xpc_object_t value) {
+            setenv(key, xpc_string_get_string_ptr(value), 1);
+            return true;
+        });
+#endif
 #if PLATFORM(MAC)
 #if ASAN_ENABLED
         // EXC_RESOURCE on ASAN builds freezes the process for several minutes: rdar://65027596
@@ -161,20 +198,6 @@ int XPCServiceMain(int argc, const char** argv)
             crashDueWebKitFrameworkVersionMismatch();
         }
 #endif
-
-        if (xpc_object_t languages = xpc_dictionary_get_value(bootstrap.get(), "OverrideLanguages")) {
-            @autoreleasepool {
-                NSDictionary *existingArguments = [[NSUserDefaults standardUserDefaults] volatileDomainForName:NSArgumentDomain];
-                NSMutableDictionary *newArguments = [existingArguments mutableCopy];
-                RetainPtr<NSMutableArray> newLanguages = adoptNS([[NSMutableArray alloc] init]);
-                xpc_array_apply(languages, ^(size_t index, xpc_object_t value) {
-                    [newLanguages addObject:[NSString stringWithCString:xpc_string_get_string_ptr(value) encoding:NSUTF8StringEncoding]];
-                    return true;
-                });
-                [newArguments setValue:newLanguages.get() forKey:@"AppleLanguages"];
-                [[NSUserDefaults standardUserDefaults] setVolatileDomain:newArguments forName:NSArgumentDomain];
-            }
-        }
     }
 
 #if PLATFORM(MAC)

@@ -27,15 +27,16 @@
 
 #if ENABLE(GPU_PROCESS)
 
+#include "DataReference.h"
 #include "MessageReceiver.h"
 #include "RemoteMediaResourceIdentifier.h"
 #include <WebCore/PolicyChecker.h>
 #include <wtf/HashMap.h>
+#include <wtf/WeakPtr.h>
 
 namespace IPC {
 class Connection;
 class Decoder;
-class DataReference;
 }
 
 namespace WebCore {

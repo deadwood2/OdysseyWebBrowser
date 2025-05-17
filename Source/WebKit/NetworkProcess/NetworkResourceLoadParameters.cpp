@@ -110,6 +110,8 @@ void NetworkResourceLoadParameters::encode(IPC::Encoder& encoder) const
     encoder << parentFrameID;
     encoder << crossOriginAccessControlCheckEnabled;
 
+    encoder << documentURL;
+    
 #if ENABLE(SERVICE_WORKER)
     encoder << serviceWorkersMode;
     encoder << serviceWorkerRegistrationIdentifier;
@@ -122,6 +124,7 @@ void NetworkResourceLoadParameters::encode(IPC::Encoder& encoder) const
 #endif
     
     encoder << isNavigatingToAppBoundDomain;
+    encoder << pcmDataCarried;
 }
 
 Optional<NetworkResourceLoadParameters> NetworkResourceLoadParameters::decode(IPC::Decoder& decoder)
@@ -274,6 +277,12 @@ Optional<NetworkResourceLoadParameters> NetworkResourceLoadParameters::decode(IP
         return WTF::nullopt;
     result.crossOriginAccessControlCheckEnabled = *crossOriginAccessControlCheckEnabled;
     
+    Optional<URL> documentURL;
+    decoder >> documentURL;
+    if (!documentURL)
+        return WTF::nullopt;
+    result.documentURL = *documentURL;
+
 #if ENABLE(SERVICE_WORKER)
     Optional<ServiceWorkersMode> serviceWorkersMode;
     decoder >> serviceWorkersMode;
@@ -311,6 +320,12 @@ Optional<NetworkResourceLoadParameters> NetworkResourceLoadParameters::decode(IP
         return WTF::nullopt;
     result.isNavigatingToAppBoundDomain = *isNavigatingToAppBoundDomain;
 
+    Optional<Optional<WebCore::PrivateClickMeasurement::PcmDataCarried>> pcmDataCarried;
+    decoder >> pcmDataCarried;
+    if (!pcmDataCarried)
+        return WTF::nullopt;
+    result.pcmDataCarried = *pcmDataCarried;
+    
     return result;
 }
     

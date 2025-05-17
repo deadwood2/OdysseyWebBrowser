@@ -31,30 +31,34 @@
 #include "NetworkProcess.h"
 #include <WebCore/NetworkStorageSession.h>
 
+#if USE(GCRYPT)
+#include <pal/crypto/gcrypt/Initialization.h>
+#endif
+
 namespace WebKit {
 
-static RefPtr<NetworkProcess> globalNetworkProcess;
-
-class NetworkProcessMainSoup final: public AuxiliaryProcessMainBase {
+class NetworkProcessMainSoup final: public AuxiliaryProcessMainBaseNoSingleton<NetworkProcess> {
 public:
+    bool platformInitialize() override
+    {
+#if USE(GCRYPT)
+        PAL::GCrypt::initialize();
+#endif
+        return true;
+    }
+
     void platformFinalize() override
     {
+        // FIXME: Is this still needed? We should probably destroy all existing sessions at this point instead.
         // Needed to destroy the SoupSession and SoupCookieJar, e.g. to avoid
         // leaking SQLite temporary journaling files.
-        globalNetworkProcess->destroySession(PAL::SessionID::defaultSessionID());
+        process().destroySession(PAL::SessionID::defaultSessionID());
     }
 };
 
-template<>
-void initializeAuxiliaryProcess<NetworkProcess>(AuxiliaryProcessInitializationParameters&& parameters)
-{
-    static NeverDestroyed<NetworkProcess> networkProcess(WTFMove(parameters));
-    globalNetworkProcess = &networkProcess.get();
-}
-    
 int NetworkProcessMain(int argc, char** argv)
 {
-    return AuxiliaryProcessMain<NetworkProcess, NetworkProcessMainSoup>(argc, argv);
+    return AuxiliaryProcessMain<NetworkProcessMainSoup>(argc, argv);
 }
 
 } // namespace WebKit

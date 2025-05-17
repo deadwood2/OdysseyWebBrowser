@@ -45,7 +45,7 @@ Checked<unsigned, RecordOverflow> ShareableBitmap::calculateBytesPerRow(WebCore:
     return cairo_format_stride_for_width(cairoFormat, size.width());
 }
 
-unsigned ShareableBitmap::calculateBytesPerPixel(const Configuration&)
+Checked<unsigned, RecordOverflow> ShareableBitmap::calculateBytesPerPixel(const Configuration&)
 {
     return 4;
 }
@@ -71,7 +71,7 @@ void ShareableBitmap::paint(GraphicsContext& context, const IntPoint& dstPoint, 
 void ShareableBitmap::paint(GraphicsContext& context, float scaleFactor, const IntPoint& dstPoint, const IntRect& srcRect)
 {
     RefPtr<cairo_surface_t> surface = createSurfaceFromData(data(), m_size);
-    cairoSurfaceSetDeviceScale(surface.get(), scaleFactor, scaleFactor);
+    cairo_surface_set_device_scale(surface.get(), scaleFactor, scaleFactor);
     FloatRect destRect(dstPoint, srcRect.size());
 
     ASSERT(context.hasPlatformContext());

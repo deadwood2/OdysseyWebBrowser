@@ -17,6 +17,9 @@ list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
 list(APPEND WebCore_SOURCES
     editing/libwpe/EditorLibWPE.cpp
 
+    page/playstation/ResourceUsageOverlayPlayStation.cpp
+    page/playstation/ResourceUsageThreadPlayStation.cpp
+
     page/scrolling/nicosia/ScrollingCoordinatorNicosia.cpp
     page/scrolling/nicosia/ScrollingStateNodeNicosia.cpp
     page/scrolling/nicosia/ScrollingTreeFixedNode.cpp
@@ -42,13 +45,6 @@ list(APPEND WebCore_SOURCES
 
     platform/graphics/libwpe/PlatformDisplayLibWPE.cpp
 
-    platform/graphics/opengl/ExtensionsGLOpenGLCommon.cpp
-    platform/graphics/opengl/ExtensionsGLOpenGLES.cpp
-    platform/graphics/opengl/GraphicsContextGLOpenGLCommon.cpp
-    platform/graphics/opengl/GraphicsContextGLOpenGLES.cpp
-    platform/graphics/opengl/GraphicsContextGLOpenGLPrivate.cpp
-    platform/graphics/opengl/TemporaryOpenGLSetting.cpp
-
     platform/libwpe/PasteboardLibWPE.cpp
     platform/libwpe/PlatformKeyboardEventLibWPE.cpp
     platform/libwpe/PlatformPasteboardLibWPE.cpp
@@ -60,6 +56,7 @@ list(APPEND WebCore_SOURCES
     platform/playstation/PlatformScreenPlayStation.cpp
     platform/playstation/ScrollbarThemePlayStation.cpp
     platform/playstation/UserAgentPlayStation.cpp
+    platform/playstation/WidgetPlayStation.cpp
 
     platform/posix/SharedBufferPOSIX.cpp
 

@@ -30,6 +30,7 @@
 
 #include "DrawingAreaProxy.h"
 #include "GPUProcessConnectionInfo.h"
+#include "GPUProcessConnectionParameters.h"
 #include "GPUProcessCreationParameters.h"
 #include "GPUProcessMessages.h"
 #include "GPUProcessProxyMessages.h"
@@ -47,6 +48,11 @@
 
 #if PLATFORM(IOS_FAMILY)
 #include <wtf/spi/darwin/XPCSPI.h>
+#endif
+
+#if USE(SANDBOX_EXTENSIONS_FOR_CACHE_AND_TEMP_DIRECTORY_ACCESS)
+#include "SandboxUtilities.h"
+#include <wtf/FileSystem.h>
 #endif
 
 #define MESSAGE_CHECK(assertion) MESSAGE_CHECK_BASE(assertion, this->connection())
@@ -83,44 +89,40 @@ static inline bool shouldCreateMicrophoneSandboxExtension()
     return true;
 }
 
-GPUProcessProxy* GPUProcessProxy::m_singleton = nullptr;
+static WeakPtr<GPUProcessProxy>& singleton()
+{
+    static NeverDestroyed<WeakPtr<GPUProcessProxy>> singleton;
+    return singleton;
+}
 
-GPUProcessProxy& GPUProcessProxy::singleton()
+Ref<GPUProcessProxy> GPUProcessProxy::getOrCreate()
 {
     ASSERT(RunLoop::isMain());
-
-    static std::once_flag onceFlag;
-    static LazyNeverDestroyed<GPUProcessProxy> gpuProcess;
-
-    std::call_once(onceFlag, [] {
-        gpuProcess.construct();
-
-        GPUProcessCreationParameters parameters;
-#if ENABLE(MEDIA_STREAM)
-        parameters.useMockCaptureDevices = gpuProcess->m_useMockCaptureDevices;
-
-        bool needsCameraSandboxExtension = shouldCreateCameraSandboxExtension();
-        bool needsMicrophoneSandboxExtension = shouldCreateMicrophoneSandboxExtension();
-        if (needsCameraSandboxExtension)
-            SandboxExtension::createHandleForGenericExtension("com.apple.webkit.camera"_s, parameters.cameraSandboxExtensionHandle);
-        if (needsMicrophoneSandboxExtension)
-            SandboxExtension::createHandleForGenericExtension("com.apple.webkit.microphone"_s, parameters.microphoneSandboxExtensionHandle);
-#if PLATFORM(IOS)
-        if (needsCameraSandboxExtension || needsMicrophoneSandboxExtension)
-            SandboxExtension::createHandleForMachLookup("com.apple.tccd"_s, WTF::nullopt, parameters.tccSandboxExtensionHandle);
-#endif
-#endif
-        parameters.parentPID = getCurrentProcessID();
-
-        // Initialize the GPU process.
-        gpuProcess->send(Messages::GPUProcess::InitializeGPUProcess(parameters), 0);
-        gpuProcess->updateProcessAssertion();
-
-        m_singleton = &gpuProcess.get();
-    });
-
-    return gpuProcess.get();
+    if (auto& existingGPUProcess = singleton()) {
+        ASSERT(existingGPUProcess->state() != State::Terminated);
+        return *existingGPUProcess;
+    }
+    auto gpuProcess = adoptRef(*new GPUProcessProxy);
+    singleton() = makeWeakPtr(gpuProcess.get());
+    return gpuProcess;
 }
+
+GPUProcessProxy* GPUProcessProxy::singletonIfCreated()
+{
+    return singleton().get();
+}
+
+#if USE(SANDBOX_EXTENSIONS_FOR_CACHE_AND_TEMP_DIRECTORY_ACCESS)
+static String gpuProcessCachesDirectory()
+{
+    String path = pathForProcessContainer() + "/Library/Caches/com.apple.WebKit.GPU/";
+    path = stringByResolvingSymlinksInPath(path);
+
+    FileSystem::makeAllDirectories(path);
+    
+    return path;
+}
+#endif
 
 GPUProcessProxy::GPUProcessProxy()
     : AuxiliaryProcessProxy()
@@ -130,6 +132,38 @@ GPUProcessProxy::GPUProcessProxy()
 #endif
 {
     connect();
+
+    GPUProcessCreationParameters parameters;
+#if ENABLE(MEDIA_STREAM)
+    parameters.useMockCaptureDevices = m_useMockCaptureDevices;
+
+    bool needsCameraSandboxExtension = shouldCreateCameraSandboxExtension();
+    bool needsMicrophoneSandboxExtension = shouldCreateMicrophoneSandboxExtension();
+    if (needsCameraSandboxExtension)
+        SandboxExtension::createHandleForGenericExtension("com.apple.webkit.camera"_s, parameters.cameraSandboxExtensionHandle);
+    if (needsMicrophoneSandboxExtension)
+        SandboxExtension::createHandleForGenericExtension("com.apple.webkit.microphone"_s, parameters.microphoneSandboxExtensionHandle);
+#if PLATFORM(IOS)
+    if (needsCameraSandboxExtension || needsMicrophoneSandboxExtension)
+        SandboxExtension::createHandleForMachLookup("com.apple.tccd"_s, WTF::nullopt, parameters.tccSandboxExtensionHandle);
+#endif
+#endif
+    parameters.parentPID = getCurrentProcessID();
+
+#if USE(SANDBOX_EXTENSIONS_FOR_CACHE_AND_TEMP_DIRECTORY_ACCESS)
+    auto containerCachesDirectory = resolveAndCreateReadWriteDirectoryForSandboxExtension(gpuProcessCachesDirectory());
+    auto containerTemporaryDirectory = resolveAndCreateReadWriteDirectoryForSandboxExtension(WebProcessPool::containerTemporaryDirectory());
+
+    if (!containerCachesDirectory.isEmpty())
+        SandboxExtension::createHandleWithoutResolvingPath(containerCachesDirectory, SandboxExtension::Type::ReadWrite, parameters.containerCachesDirectoryExtensionHandle);
+
+    if (!containerTemporaryDirectory.isEmpty())
+        SandboxExtension::createHandleWithoutResolvingPath(containerTemporaryDirectory, SandboxExtension::Type::ReadWrite, parameters.containerTemporaryDirectoryExtensionHandle);
+#endif
+
+    // Initialize the GPU process.
+    send(Messages::GPUProcess::InitializeGPUProcess(parameters), 0);
+    updateProcessAssertion();
 }
 
 GPUProcessProxy::~GPUProcessProxy() = default;
@@ -155,6 +189,27 @@ void GPUProcessProxy::updateCaptureAccess(bool allowAudioCapture, bool allowVide
 {
     sendWithAsyncReply(Messages::GPUProcess::UpdateCaptureAccess { allowAudioCapture, allowVideoCapture, allowDisplayCapture, processID }, WTFMove(completionHandler));
 }
+
+
+void GPUProcessProxy::addMockMediaDevice(const WebCore::MockMediaDevice& device)
+{
+    send(Messages::GPUProcess::AddMockMediaDevice { device }, 0);
+}
+
+void GPUProcessProxy::clearMockMediaDevices()
+{
+    send(Messages::GPUProcess::ClearMockMediaDevices { }, 0);
+}
+
+void GPUProcessProxy::removeMockMediaDevice(const String& persistentId)
+{
+    send(Messages::GPUProcess::RemoveMockMediaDevice { persistentId }, 0);
+}
+
+void GPUProcessProxy::resetMockMediaDevices()
+{
+    send(Messages::GPUProcess::ResetMockMediaDevices { }, 0);
+}
 #endif
 
 void GPUProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions& launchOptions)
@@ -170,9 +225,11 @@ void GPUProcessProxy::connectionWillOpen(IPC::Connection&)
 void GPUProcessProxy::processWillShutDown(IPC::Connection& connection)
 {
     ASSERT_UNUSED(connection, this->connection() == &connection);
+    if (singleton() == this)
+        singleton() = nullptr;
 }
 
-void GPUProcessProxy::getGPUProcessConnection(WebProcessProxy& webProcessProxy, Messages::WebProcessProxy::GetGPUProcessConnection::DelayedReply&& reply)
+void GPUProcessProxy::getGPUProcessConnection(WebProcessProxy& webProcessProxy, const GPUProcessConnectionParameters& parameters, Messages::WebProcessProxy::GetGPUProcessConnection::DelayedReply&& reply)
 {
     addSession(webProcessProxy.websiteDataStore());
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
@@ -183,7 +240,7 @@ void GPUProcessProxy::getGPUProcessConnection(WebProcessProxy& webProcessProxy, 
 #endif
 
     RELEASE_LOG(ProcessSuspension, "%p - GPUProcessProxy is taking a background assertion because a web process is requesting a connection", this);
-    sendWithAsyncReply(Messages::GPUProcess::CreateGPUConnectionToWebProcess { webProcessProxy.coreProcessIdentifier(), webProcessProxy.sessionID() }, [this, weakThis = makeWeakPtr(*this), reply = WTFMove(reply)](auto&& identifier) mutable {
+    sendWithAsyncReply(Messages::GPUProcess::CreateGPUConnectionToWebProcess { webProcessProxy.coreProcessIdentifier(), webProcessProxy.sessionID(), parameters }, [this, weakThis = makeWeakPtr(*this), reply = WTFMove(reply)](auto&& identifier) mutable {
         if (!weakThis) {
             RELEASE_LOG_ERROR(Process, "GPUProcessProxy::getGPUProcessConnection: GPUProcessProxy deallocated during connection establishment");
             return reply({ });
@@ -208,6 +265,9 @@ void GPUProcessProxy::getGPUProcessConnection(WebProcessProxy& webProcessProxy, 
 
 void GPUProcessProxy::gpuProcessCrashed()
 {
+    if (singleton() == this)
+        singleton() = nullptr;
+
     for (auto& processPool : WebProcessPool::allProcessPools())
         processPool->gpuProcessCrashed(processIdentifier());
 }
@@ -271,7 +331,11 @@ void GPUProcessProxy::updateProcessAssertion()
         }
         return;
     }
-    m_activityFromWebProcesses = nullptr;
+
+    // Use std::exchange() instead of a simple nullptr assignment to avoid re-entering this
+    // function during the destructor of the ProcessThrottler activity, before setting
+    // m_activityFromWebProcesses.
+    std::exchange(m_activityFromWebProcesses, nullptr);
 }
 
 static inline GPUProcessSessionParameters gpuProcessSessionParameters(const WebsiteDataStore& store)
@@ -312,6 +376,23 @@ void GPUProcessProxy::removeSession(PAL::SessionID sessionID)
 
     if (m_sessionIDs.remove(sessionID))
         send(Messages::GPUProcess::RemoveSession { sessionID }, 0);
+}
+
+void GPUProcessProxy::sendPrepareToSuspend(IsSuspensionImminent isSuspensionImminent, CompletionHandler<void()>&& completionHandler)
+{
+    sendWithAsyncReply(Messages::GPUProcess::PrepareToSuspend(isSuspensionImminent == IsSuspensionImminent::Yes), WTFMove(completionHandler), 0, { }, ShouldStartProcessThrottlerActivity::No);
+}
+
+void GPUProcessProxy::sendProcessDidResume()
+{
+    if (canSendMessage())
+        send(Messages::GPUProcess::ProcessDidResume(), 0);
+}
+
+void GPUProcessProxy::terminateWebProcess(WebCore::ProcessIdentifier webProcessIdentifier)
+{
+    if (auto* process = WebProcessProxy::processForIdentifier(webProcessIdentifier))
+        process->requestTermination(ProcessTerminationReason::RequestedByGPUProcess);
 }
 
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)

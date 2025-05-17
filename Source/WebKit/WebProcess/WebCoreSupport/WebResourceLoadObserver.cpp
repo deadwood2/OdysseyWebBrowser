@@ -63,14 +63,14 @@ static bool is3xxRedirect(const ResourceResponse& response)
 
 WebResourceLoadObserver::WebResourceLoadObserver(ResourceLoadStatistics::IsEphemeral isEphemeral)
     : m_isEphemeral(isEphemeral)
-    , m_notificationTimer(*this, &WebResourceLoadObserver::updateCentralStatisticsStore)
+    , m_notificationTimer([this] { updateCentralStatisticsStore([] { }); })
 {
 }
 
 WebResourceLoadObserver::~WebResourceLoadObserver()
 {
     if (hasStatistics())
-        updateCentralStatisticsStore();
+        updateCentralStatisticsStore([] { });
 }
 
 void WebResourceLoadObserver::requestStorageAccessUnderOpener(const RegistrableDomain& domainInNeedOfStorageAccess, WebPage& openerPage, Document& openerDocument)
@@ -109,11 +109,12 @@ void WebResourceLoadObserver::scheduleNotificationIfNeeded()
         m_notificationTimer.startOneShot(minimumNotificationInterval);
 }
 
-void WebResourceLoadObserver::updateCentralStatisticsStore()
+void WebResourceLoadObserver::updateCentralStatisticsStore(CompletionHandler<void()>&& completionHandler)
 {
     m_notificationTimer.stop();
-    WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::ResourceLoadStatisticsUpdated(takeStatistics()), 0);
+    WebProcess::singleton().ensureNetworkProcessConnection().connection().sendWithAsyncReply(Messages::NetworkConnectionToWebProcess::ResourceLoadStatisticsUpdated(takeStatistics()), WTFMove(completionHandler));
 }
+
 
 String WebResourceLoadObserver::statisticsForURL(const URL& url)
 {
@@ -383,7 +384,7 @@ void WebResourceLoadObserver::logUserInteractionWithReducedTimeResolution(const 
     if (shouldLogUserInteraction) {
         auto counter = ++m_loggingCounter;
 #define LOCAL_LOG(str, ...) \
-        RELEASE_LOG(ResourceLoadStatistics, "ResourceLoadObserver::logUserInteraction: counter = %" PRIu64 ": " str, counter, ##__VA_ARGS__)
+        RELEASE_LOG(ResourceLoadStatistics, "ResourceLoadObserver::logUserInteraction: counter=%" PRIu64 ": " str, counter, ##__VA_ARGS__)
 
         auto escapeForJSON = [](String s) {
             s.replace('\\', "\\\\").replace('"', "\\\"");
@@ -415,6 +416,31 @@ void WebResourceLoadObserver::logSubresourceLoadingForTesting(const RegistrableD
         scheduleNotificationIfNeeded();
     else
         m_notificationTimer.stop();
+}
+
+bool WebResourceLoadObserver::hasCrossPageStorageAccess(const SubFrameDomain& subDomain, const TopFrameDomain& topDomain) const
+{
+    auto it = m_domainsWithCrossPageStorageAccess.find(topDomain);
+
+    if (it != m_domainsWithCrossPageStorageAccess.end())
+        return it->value.contains(subDomain);
+
+    return false;
+}
+
+void WebResourceLoadObserver::setDomainsWithCrossPageStorageAccess(HashMap<TopFrameDomain, SubFrameDomain>&& domains, CompletionHandler<void()>&& completionHandler)
+{
+    for (auto& topDomain : domains.keys()) {
+        m_domainsWithCrossPageStorageAccess.ensure(topDomain, [] { return HashSet<RegistrableDomain> { };
+            }).iterator->value.add(domains.get(topDomain));
+
+        // Some sites have quirks where multiple login domains require storage access.
+        if (auto additionalLoginDomain = WebCore::NetworkStorageSession::findAdditionalLoginDomain(topDomain, domains.get(topDomain))) {
+            m_domainsWithCrossPageStorageAccess.ensure(topDomain, [] { return HashSet<RegistrableDomain> { };
+                }).iterator->value.add(*additionalLoginDomain);
+        }
+    }
+    completionHandler();
 }
 
 } // namespace WebKit

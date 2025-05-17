@@ -52,6 +52,7 @@ WI.DOMNode = class DOMNode extends WI.Object
         this._shadowRootType = payload.shadowRootType;
         this._computedRole = null;
         this._contentSecurityPolicyHash = payload.contentSecurityPolicyHash;
+        this._layoutContextType = null;
 
         if (this._nodeType === Node.DOCUMENT_NODE)
             this.ownerDocument = this;
@@ -153,6 +154,9 @@ WI.DOMNode = class DOMNode extends WI.Object
 
         if (this.isMediaElement())
             WI.DOMNode.addEventListener(WI.DOMNode.Event.DidFireEvent, this._handleDOMNodeDidFireEvent, this);
+
+        // Setting layoutContextType to anything other than null will dispatch an event.
+        this.layoutContextType = payload.layoutContextType;
     }
 
     // Static
@@ -242,10 +246,27 @@ WI.DOMNode = class DOMNode extends WI.Object
         this._childNodeCount = count;
     }
 
+    get layoutContextType()
+    {
+        return this._layoutContextType;
+    }
+
+    set layoutContextType(layoutContextType)
+    {
+        layoutContextType ||= null;
+        if (layoutContextType === this._layoutContextType)
+            return;
+
+        this._layoutContextType = layoutContextType;
+        this.dispatchEventToListeners(WI.DOMNode.Event.LayoutContextTypeChanged);
+    }
+
     markDestroyed()
     {
         console.assert(!this._destroyed, this);
         this._destroyed = true;
+
+        this.layoutContextType = null;
     }
 
     computedRole()
@@ -553,6 +574,34 @@ WI.DOMNode = class DOMNode extends WI.Object
         target.DOMAgent.highlightNode(WI.DOMManager.buildHighlightConfig(mode), this.id);
     }
 
+    showGridOverlay(color, {showLineNames, showLineNumbers, showExtendedGridLines, showTrackSizes, showAreaNames} = {})
+    {
+        console.assert(color instanceof WI.Color, color);
+
+        if (this._destroyed)
+            return Promise.reject("Cannot show overlay, node is destroyed");
+
+        let target = WI.assumingMainTarget();
+        return target.DOMAgent.showGridOverlay.invoke({
+            nodeId: this.id,
+            gridColor: color.toProtocol(),
+            showLineNames: !!showLineNames,
+            showLineNumbers: !!showLineNumbers,
+            showExtendedGridLines: !!showExtendedGridLines,
+            showTrackSizes: !!showTrackSizes,
+            showAreaNames: !!showAreaNames,
+        });
+    }
+
+    hideGridOverlay()
+    {
+        if (this._destroyed)
+            return Promise.reject("Cannot hide overlay, node is destroyed");
+
+        let target = WI.assumingMainTarget();
+        return target.DOMAgent.hideGridOverlay(this.id);
+    }
+
     scrollIntoView()
     {
         WI.RemoteObject.resolveNode(this).then((object) => {
@@ -757,39 +806,12 @@ WI.DOMNode = class DOMNode extends WI.Object
 
     get escapedIdSelector()
     {
-        let id = this.getAttribute("id");
-        if (!id)
-            return "";
-
-        id = id.trim();
-        if (!id.length)
-            return "";
-
-        id = CSS.escape(id);
-        if (/[\s'"]/.test(id))
-            return `[id="${id}"]`;
-
-        return `#${id}`;
+        return this._idSelector(true);
     }
 
     get escapedClassSelector()
     {
-        let classes = this.getAttribute("class");
-        if (!classes)
-            return "";
-
-        classes = classes.trim();
-        if (!classes.length)
-            return "";
-
-        let foundClasses = new Set;
-        return classes.split(/\s+/).reduce((selector, className) => {
-            if (!className.length || foundClasses.has(className))
-                return selector;
-
-            foundClasses.add(className);
-            return `${selector}.${CSS.escape(className)}`;
-        }, "");
+        return this._classSelector(true);
     }
 
     get displayName()
@@ -797,6 +819,15 @@ WI.DOMNode = class DOMNode extends WI.Object
         if (this.isPseudoElement())
             return "::" + this._pseudoType;
         return this.nodeNameInCorrectCase() + this.escapedIdSelector + this.escapedClassSelector;
+    }
+
+    get unescapedSelector()
+    {
+        if (this.isPseudoElement())
+            return "::" + this._pseudoType;
+
+        const shouldEscape = false;
+        return this.nodeNameInCorrectCase() + this._idSelector(shouldEscape) + this._classSelector(shouldEscape);
     }
 
     appropriateSelectorFor(justSelector)
@@ -1066,6 +1097,43 @@ WI.DOMNode = class DOMNode extends WI.Object
                 callback.apply(null, args);
         };
     }
+
+    _idSelector(shouldEscape)
+    {
+        let id = this.getAttribute("id");
+        if (!id)
+            return "";
+
+        id = id.trim();
+        if (!id.length)
+            return "";
+
+        if (shouldEscape)
+            id = CSS.escape(id);
+        if (/[\s'"]/.test(id))
+            return `[id="${id}"]`;
+
+        return `#${id}`;
+    }
+
+    _classSelector(shouldEscape) {
+        let classes = this.getAttribute("class");
+        if (!classes)
+            return "";
+
+        classes = classes.trim();
+        if (!classes.length)
+            return "";
+
+        let foundClasses = new Set;
+        return classes.split(/\s+/).reduce((selector, className) => {
+            if (!className.length || foundClasses.has(className))
+                return selector;
+
+            foundClasses.add(className);
+            return `${selector}.${(shouldEscape ? CSS.escape(className) : className)}`;
+        }, "");
+    }
 };
 
 WI.DOMNode.Event = {
@@ -1075,6 +1143,7 @@ WI.DOMNode.Event = {
     EventListenersChanged: "dom-node-event-listeners-changed",
     DidFireEvent: "dom-node-did-fire-event",
     PowerEfficientPlaybackStateChanged: "dom-node-power-efficient-playback-state-changed",
+    LayoutContextTypeChanged: "dom-node-layout-context-type-changed",
 };
 
 WI.DOMNode.PseudoElementType = {
@@ -1093,4 +1162,9 @@ WI.DOMNode.CustomElementState = {
     Custom: "custom",
     Waiting: "waiting",
     Failed: "failed",
+};
+
+// Corresponds to `CSS.LayoutContextType`.
+WI.DOMNode.LayoutContextType = {
+    Grid: "grid",
 };

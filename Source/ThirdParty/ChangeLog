@@ -1,3 +1,746 @@
+2021-02-24  Tim Horton  <timothy_horton@apple.com>
+
+        Fix linker warnings building gtest for macCatalyst
+        https://bugs.webkit.org/show_bug.cgi?id=222346
+        <rdar://problem/74405116>
+
+        Reviewed by Alexey Proskuryakov.
+
+        * gtest/xcode/Config/FrameworkTarget.xcconfig:
+        * gtest/xcode/Config/General.xcconfig:
+        Work around a linker warning about macCatalyst by not specifying
+        an INSTALL_NAME that is outside of /System/iOSSupport, where all
+        macCatalyst-only binaries must live.
+
+2021-01-08  Ryan Hostetler  <rhost@apple.com>
+
+        Add support for source caching between platforms
+        https://bugs.webkit.org/show_bug.cgi?id=220439
+        rdar://72905725
+
+        Reviewed by Andy Estes.
+
+        Include all libwebrtc target soruces in the installsrc phase.
+
+2020-12-25  Yusuke Suzuki  <ysuzuki@apple.com>
+
+        Update capstone
+        https://bugs.webkit.org/show_bug.cgi?id=219941
+
+        Reviewed by Michael Catanzaro.
+
+        * capstone/CMakeLists.txt:
+        * capstone/Source/.gitignore:
+        * capstone/Source/.travis.yml:
+        * capstone/Source/CMakeLists.txt:
+        * capstone/Source/COMPILE.TXT:
+        * capstone/Source/COMPILE_CMAKE.TXT:
+        * capstone/Source/COMPILE_MSVC.TXT:
+        * capstone/Source/CREDITS.TXT:
+        * capstone/Source/ChangeLog-capstone:
+        * capstone/Source/HACK.TXT:
+        * capstone/Source/LEB128.h:
+        (decodeULEB128):
+        * capstone/Source/MCDisassembler.h:
+        * capstone/Source/MCFixedLenDisassembler.h:
+        * capstone/Source/MCInst.c:
+        (MCInst_Init):
+        (MCInst_clear):
+        (MCInst_insert0):
+        (MCInst_setOpcode):
+        (MCInst_setOpcodePub):
+        (MCInst_getOpcode):
+        (MCInst_getOpcodePub):
+        (MCInst_getOperand):
+        (MCInst_getNumOperands):
+        (MCInst_addOperand2):
+        (MCOperand_isValid):
+        (MCOperand_isReg):
+        (MCOperand_isImm):
+        (MCOperand_isFPImm):
+        (MCOperand_getReg):
+        (MCOperand_setReg):
+        (MCOperand_getImm):
+        (MCOperand_setImm):
+        (MCOperand_getFPImm):
+        (MCOperand_setFPImm):
+        (MCOperand_CreateReg1):
+        (MCOperand_CreateReg0):
+        (MCOperand_CreateImm1):
+        (MCOperand_CreateImm0):
+        (MCOperand_Init): Deleted.
+        * capstone/Source/MCInst.h:
+        * capstone/Source/MCInstrDesc.c:
+        (MCOperandInfo_isPredicate):
+        (MCOperandInfo_isOptionalDef):
+        * capstone/Source/MCInstrDesc.h:
+        * capstone/Source/MCRegisterInfo.c:
+        (MCRegisterInfo_InitMCRegisterInfo):
+        (DiffListIterator_init):
+        (DiffListIterator_getVal):
+        (DiffListIterator_next):
+        (DiffListIterator_isValid):
+        (MCRegisterInfo_getMatchingSuperReg):
+        (MCRegisterInfo_getSubReg):
+        (MCRegisterInfo_getRegClass):
+        (MCRegisterClass_contains):
+        * capstone/Source/MCRegisterInfo.h:
+        * capstone/Source/Makefile:
+        * capstone/Source/MathExtras.h:
+        (Hi_32):
+        (Lo_32):
+        (isUIntN):
+        (isMask_32):
+        (isMask_64):
+        (isShiftedMask_32):
+        (isShiftedMask_64):
+        (isPowerOf2_32):
+        (CountLeadingZeros_32):
+        (CountLeadingOnes_32):
+        (CountLeadingZeros_64):
+        (CountLeadingOnes_64):
+        (CountTrailingZeros_32):
+        (CountTrailingOnes_32):
+        (CountTrailingZeros_64):
+        (CountTrailingOnes_64):
+        (CountPopulation_32):
+        (CountPopulation_64):
+        (Log2_32):
+        (Log2_64):
+        (Log2_32_Ceil):
+        (Log2_64_Ceil):
+        (GreatestCommonDivisor64):
+        (BitsToDouble):
+        (BitsToFloat):
+        (DoubleToBits):
+        (FloatToBits):
+        (MinAlign):
+        (NextPowerOf2):
+        (RoundUpToAlignment):
+        (OffsetToAlignment):
+        (abs64):
+        (SignExtend32):
+        (SignExtend64):
+        (countLeadingZeros):
+        * capstone/Source/README.md:
+        * capstone/Source/SPONSORS.TXT: Added.
+        * capstone/Source/SStream.c:
+        (SStream_Init):
+        (SStream_concat0):
+        (SStream_concat):
+        (printInt64Bang):
+        (printUInt64Bang):
+        (printInt64):
+        (printInt32BangDec):
+        (printInt32Bang):
+        (printInt32):
+        (printUInt32Bang):
+        (printUInt32):
+        * capstone/Source/SStream.h:
+        * capstone/Source/arch/ARM/ARMAddressingModes.h:
+        (ARM_AM_getAddrOpcStr):
+        (ARM_AM_getShiftOpcStr):
+        (ARM_AM_getShiftOpcEncoding):
+        (ARM_AM_getAMSubModeStr):
+        (rotr32):
+        (rotl32):
+        (getSORegOpc):
+        (getSORegOffset):
+        (ARM_AM_getSORegShOp):
+        (getSOImmValImm):
+        (getSOImmValRot):
+        (getSOImmValRotate):
+        (getSOImmVal):
+        (isSOImmTwoPartVal):
+        (getSOImmTwoPartFirst):
+        (getSOImmTwoPartSecond):
+        (getThumbImmValShift):
+        (isThumbImmShiftedVal):
+        (getThumbImm16ValShift):
+        (isThumbImm16ShiftedVal):
+        (getThumbImmNonShiftedVal):
+        (getT2SOImmValSplatVal):
+        (getT2SOImmValRotateVal):
+        (getT2SOImmVal):
+        (getT2SOImmValRotate):
+        (isT2SOImmTwoPartVal):
+        (getT2SOImmTwoPartFirst):
+        (getT2SOImmTwoPartSecond):
+        (ARM_AM_getAM2Opc):
+        (getAM2Offset):
+        (getAM2Op):
+        (getAM2ShiftOpc):
+        (getAM2IdxMode):
+        (getAM3Opc):
+        (getAM3Offset):
+        (getAM3Op):
+        (getAM3IdxMode):
+        (getAM4SubMode):
+        (getAM4ModeImm):
+        (ARM_AM_getAM5Opc):
+        (ARM_AM_getAM5Offset):
+        (ARM_AM_getAM5Op):
+        (createNEONModImm):
+        (getNEONModImmOpCmode):
+        (getNEONModImmVal):
+        (ARM_AM_decodeNEONModImm):
+        (getFPImmFloat):
+        * capstone/Source/arch/ARM/ARMBaseInfo.h:
+        (ARMCC_getOppositeCondition):
+        (ARMCC_ARMCondCodeToString):
+        (ARM_PROC_IFlagsToString):
+        (ARM_PROC_IModToString):
+        (ARM_MB_MemBOptToString):
+        (ARM_ISB_InstSyncBOptToString):
+        (isARMLowRegister):
+        (ARMII_AddrModeToString):
+        * capstone/Source/arch/ARM/ARMDisassembler.c:
+        (ITStatus_push_back):
+        (ITStatus_instrInITBlock):
+        (ITStatus_instrLastInITBlock):
+        (ITStatus_getITCC):
+        (ITStatus_advanceITState):
+        (ITStatus_setITState):
+        (Check):
+        (ARM_getFeatureBits):
+        (DecodePredicateOperand):
+        (ARM_init):
+        (checkDecodedInstruction):
+        (_ARM_getInstruction):
+        (AddThumb1SBit):
+        (AddThumbPredicate):
+        (UpdateThumbVFPPredicate):
+        (_Thumb_getInstruction):
+        (Thumb_getInstruction):
+        (ARM_getInstruction):
+        (DecodeGPRnopcRegisterClass):
+        (DecodeGPRwithAPSRRegisterClass):
+        (DecodetGPRRegisterClass):
+        (DecodetcGPRRegisterClass):
+        (DecoderGPRRegisterClass):
+        (DecodeDPRRegisterClass):
+        (DecodeDPR_8RegisterClass):
+        (DecodeDPR_VFP2RegisterClass):
+        (DecodeDPairRegisterClass):
+        (DecodeCCOutOperand):
+        (DecodeSORegImmOperand):
+        (DecodeSORegRegOperand):
+        (DecodeRegListOperand):
+        (DecodeSPRRegListOperand):
+        (DecodeDPRRegListOperand):
+        (DecodeBitfieldMaskOperand):
+        (DecodeCopMemInstruction):
+        (DecodeAddrMode2IdxInstruction):
+        (DecodeSORegMemOperand):
+        (DecodeAddrMode3Instruction):
+        (DecodeRFEInstruction):
+        (DecodeQADDInstruction):
+        (DecodeMemMultipleWritebackInstruction):
+        (DecodeCPSInstruction):
+        (DecodeT2CPSInstruction):
+        (DecodeT2MOVTWInstruction):
+        (DecodeArmMOVTWInstruction):
+        (DecodeSMLAInstruction):
+        (DecodeAddrModeImm12Operand):
+        (DecodeAddrMode5Operand):
+        (DecodeAddrMode7Operand):
+        (DecodeT2BInstruction):
+        (DecodeBranchImmInstruction):
+        (DecodeAddrMode6Operand):
+        (DecodeVLDInstruction):
+        (DecodeVLDST1Instruction):
+        (DecodeVLDST2Instruction):
+        (DecodeVLDST3Instruction):
+        (DecodeVLDST4Instruction):
+        (DecodeVSTInstruction):
+        (DecodeVLD1DupInstruction):
+        (DecodeVLD2DupInstruction):
+        (DecodeVLD3DupInstruction):
+        (DecodeVLD4DupInstruction):
+        (DecodeNEONModImmInstruction):
+        (DecodeVSHLMaxInstruction):
+        (DecodeShiftRight8Imm):
+        (DecodeShiftRight16Imm):
+        (DecodeShiftRight32Imm):
+        (DecodeShiftRight64Imm):
+        (DecodeTBLInstruction):
+        (DecodeThumbAddSpecialReg):
+        (DecodeThumbBROperand):
+        (DecodeT2BROperand):
+        (DecodeThumbCmpBROperand):
+        (DecodeThumbAddrModeRR):
+        (DecodeThumbAddrModeIS):
+        (DecodeThumbAddrModePC):
+        (DecodeThumbAddrModeSP):
+        (DecodeT2AddrModeSOReg):
+        (DecodeT2LoadShift):
+        (DecodeT2LoadImm8):
+        (DecodeT2LoadImm12):
+        (DecodeT2LoadT):
+        (DecodeT2LoadLabel):
+        (DecodeT2Imm8S4):
+        (DecodeT2AddrModeImm8s4):
+        (DecodeT2AddrModeImm0_1020s4):
+        (DecodeT2Imm8):
+        (DecodeT2AddrModeImm8):
+        (DecodeT2LdStPre):
+        (DecodeT2AddrModeImm12):
+        (DecodeThumbAddSPImm):
+        (DecodeThumbAddSPReg):
+        (DecodeThumbCPS):
+        (DecodePostIdxReg):
+        (DecodeThumbBLXOffset):
+        (DecodeCoprocessor):
+        (DecodeThumbTableBranch):
+        (DecodeThumb2BCCInstruction):
+        (DecodeT2SOImm):
+        (DecodeThumbBCCTargetOperand):
+        (DecodeThumbBLTargetOperand):
+        (DecodeMemBarrierOption):
+        (DecodeInstSyncBarrierOption):
+        (DecodeMSRMask):
+        (DecodeBankedReg):
+        (DecodeDoubleRegLoad):
+        (DecodeDoubleRegStore):
+        (DecodeLDRPreImm):
+        (DecodeLDRPreReg):
+        (DecodeSTRPreImm):
+        (DecodeSTRPreReg):
+        (DecodeVLD1LN):
+        (DecodeVST1LN):
+        (DecodeVLD2LN):
+        (DecodeVST2LN):
+        (DecodeVLD3LN):
+        (DecodeVST3LN):
+        (DecodeVLD4LN):
+        (DecodeVST4LN):
+        (DecodeVMOVSRR):
+        (DecodeVMOVRRS):
+        (DecodeIT):
+        (DecodeT2LDRDPreInstruction):
+        (DecodeT2STRDPreInstruction):
+        (DecodeT2Adr):
+        (DecodeT2ShifterImmOperand):
+        (DecodeSwap):
+        (DecodeVCVTD):
+        (DecodeVCVTQ):
+        (DecodeLDR):
+        (DecodeMRRC2):
+        * capstone/Source/arch/ARM/ARMGenAsmWriter.inc:
+        * capstone/Source/arch/ARM/ARMGenDisassemblerTables.inc:
+        * capstone/Source/arch/ARM/ARMGenInstrInfo.inc:
+        * capstone/Source/arch/ARM/ARMGenRegisterInfo.inc:
+        * capstone/Source/arch/ARM/ARMInstPrinter.c:
+        (get_op_access):
+        (set_mem_access):
+        (op_addImm):
+        (ARM_getRegName):
+        (translateShiftImm):
+        (printRegImmShift):
+        (printRegName):
+        (ARM_printInst):
+        (printOperand):
+        (printThumbLdrLabelOperand):
+        (printSORegRegOperand):
+        (printSORegImmOperand):
+        (printAM2PreOrOffsetIndexOp):
+        (printAddrModeTBB):
+        (printAddrModeTBH):
+        (printAddrMode2Operand):
+        (printAddrMode2OffsetOperand):
+        (printAM3PreOrOffsetIndexOp):
+        (printAddrMode3Operand):
+        (printAddrMode3OffsetOperand):
+        (printPostIdxImm8Operand):
+        (printPostIdxRegOperand):
+        (printPostIdxImm8s4Operand):
+        (printAddrMode5Operand):
+        (printAddrMode6Operand):
+        (printAddrMode7Operand):
+        (printAddrMode6OffsetOperand):
+        (printBitfieldInvMaskImmOperand):
+        (printMemBOption):
+        (printInstSyncBOption):
+        (printShiftImmOperand):
+        (printPKHLSLShiftImm):
+        (printPKHASRShiftImm):
+        (printRegisterList):
+        (printGPRPairOperand):
+        (printSetendOperand):
+        (printCPSIMod):
+        (printCPSIFlag):
+        (printMSRMaskOperand):
+        (printBankedRegOperand):
+        (printPredicateOperand):
+        (printMandatoryPredicateOperand):
+        (printSBitModifierOperand):
+        (printNoHashImmediate):
+        (printPImmediate):
+        (printCImmediate):
+        (printCoprocOptionImm):
+        (printAdrLabelOperand):
+        (printThumbS4ImmOperand):
+        (printThumbSRImm):
+        (printThumbITMask):
+        (printThumbAddrModeRROperand):
+        (printThumbAddrModeImm5SOperand):
+        (printThumbAddrModeImm5S1Operand):
+        (printThumbAddrModeImm5S2Operand):
+        (printThumbAddrModeImm5S4Operand):
+        (printThumbAddrModeSPOperand):
+        (printT2SOOperand):
+        (printAddrModeImm12Operand):
+        (printT2AddrModeImm8Operand):
+        (printT2AddrModeImm8s4Operand):
+        (printT2AddrModeImm0_1020s4Operand):
+        (printT2AddrModeImm8OffsetOperand):
+        (printT2AddrModeImm8s4OffsetOperand):
+        (printT2AddrModeSoRegOperand):
+        (printFPImmOperand):
+        (printNEONModImmOperand):
+        (printImmPlusOneOperand):
+        (printRotImmOperand):
+        (printModImmOperand):
+        (printFBits16):
+        (printFBits32):
+        (printVectorIndex):
+        (printVectorListOne):
+        (printVectorListTwo):
+        (printVectorListTwoSpaced):
+        (printVectorListThree):
+        (printVectorListFour):
+        (printVectorListOneAllLanes):
+        (printVectorListTwoAllLanes):
+        (printVectorListThreeAllLanes):
+        (printVectorListFourAllLanes):
+        (printVectorListTwoSpacedAllLanes):
+        (printVectorListThreeSpacedAllLanes):
+        (printVectorListFourSpacedAllLanes):
+        (printVectorListThreeSpaced):
+        (printVectorListFourSpaced):
+        (ARM_addVectorDataType):
+        (ARM_addVectorDataSize):
+        (ARM_addReg):
+        (ARM_addUserMode):
+        (ARM_addSysReg):
+        * capstone/Source/arch/ARM/ARMMapping.c:
+        (ARM_reg_name2):
+        (ARM_insn_name):
+        (ARM_rel_branch):
+        (ARM_blx_to_arm_mode):
+        (ARM_reg_access):
+        * capstone/Source/arch/ARM/ARMMapping.h:
+        * capstone/Source/arch/ARM/ARMMappingInsn.inc:
+        * capstone/Source/arch/ARM/ARMMappingInsnOp.inc:
+        * capstone/Source/arch/ARM/ARMModule.c:
+        (ARM_global_init):
+        (ARM_option):
+        (init): Deleted.
+        (option): Deleted.
+        (ARM_enable): Deleted.
+        * capstone/Source/arch/ARM/ARMModule.h: Added.
+        * capstone/Source/arch/Mips/MipsDisassembler.c:
+        (getFeatureBits):
+        (Mips_init):
+        (readInstruction16):
+        (readInstruction32):
+        (MipsDisassembler_getInstruction):
+        (Mips_getInstruction):
+        (getReg):
+        (DecodeINSVE_DF_4):
+        (DecodeAddiGroupBranch_4):
+        (DecodeDaddiGroupBranch_4):
+        (DecodeBlezlGroupBranch_4):
+        (DecodeBgtzlGroupBranch_4):
+        (DecodeBgtzGroupBranch_4):
+        (DecodeBlezGroupBranch_4):
+        (DecodeCPU16RegsRegisterClass):
+        (DecodeGPR64RegisterClass):
+        (DecodeGPRMM16RegisterClass):
+        (DecodeGPRMM16ZeroRegisterClass):
+        (DecodeGPRMM16MovePRegisterClass):
+        (DecodeGPR32RegisterClass):
+        (DecodePtrRegisterClass):
+        (DecodeDSPRRegisterClass):
+        (DecodeFGR64RegisterClass):
+        (DecodeFGR32RegisterClass):
+        (DecodeCCRRegisterClass):
+        (DecodeFCCRegisterClass):
+        (DecodeCCRegisterClass):
+        (DecodeFGRCCRegisterClass):
+        (DecodeMem):
+        (DecodeCacheOp):
+        (DecodeCacheOpMM):
+        (DecodeCacheOpR6):
+        (DecodeSyncI):
+        (DecodeMSA128Mem):
+        (DecodeMemMMImm4):
+        (DecodeMemMMSPImm5Lsl2):
+        (DecodeMemMMGPImm7Lsl2):
+        (DecodeMemMMReglistImm4Lsl2):
+        (DecodeMemMMImm12):
+        (DecodeMemMMImm16):
+        (DecodeFMem):
+        (DecodeFMem2):
+        (DecodeFMem3):
+        (DecodeFMemCop2R6):
+        (DecodeSpecial3LlSc):
+        (DecodeHWRegsRegisterClass):
+        (DecodeAFGR64RegisterClass):
+        (DecodeACC64DSPRegisterClass):
+        (DecodeHI32DSPRegisterClass):
+        (DecodeLO32DSPRegisterClass):
+        (DecodeMSA128BRegisterClass):
+        (DecodeMSA128HRegisterClass):
+        (DecodeMSA128WRegisterClass):
+        (DecodeMSA128DRegisterClass):
+        (DecodeMSACtrlRegisterClass):
+        (DecodeCOP2RegisterClass):
+        (DecodeBranchTarget):
+        (DecodeJumpTarget):
+        (DecodeBranchTarget21):
+        (DecodeBranchTarget26):
+        (DecodeBranchTarget7MM):
+        (DecodeBranchTarget10MM):
+        (DecodeBranchTargetMM):
+        (DecodeJumpTargetMM):
+        (DecodeAddiur2Simm7):
+        (DecodeUImm6Lsl2):
+        (DecodeLiSimm7):
+        (DecodeSimm4):
+        (DecodeSimm16):
+        (DecodeLSAImm):
+        (DecodeInsSize):
+        (DecodeExtSize):
+        (DecodeSimm19Lsl2):
+        (DecodeSimm18Lsl3):
+        (DecodeSimm9SP):
+        (DecodeANDI16Imm):
+        (DecodeUImm5lsl2):
+        (DecodeRegListOperand):
+        (DecodeRegListOperand16):
+        (DecodeMovePRegPair):
+        (DecodeSimm23Lsl2):
+        * capstone/Source/arch/Mips/MipsDisassembler.h:
+        * capstone/Source/arch/Mips/MipsGenAsmWriter.inc:
+        * capstone/Source/arch/Mips/MipsGenDisassemblerTables.inc:
+        * capstone/Source/arch/Mips/MipsGenInstrInfo.inc:
+        * capstone/Source/arch/Mips/MipsGenRegisterInfo.inc:
+        * capstone/Source/arch/Mips/MipsInstPrinter.c:
+        (set_mem_access):
+        (isReg):
+        (MipsFCCToString):
+        (printRegName):
+        (Mips_printInst):
+        (printOperand):
+        (printUnsignedImm):
+        (printUnsignedImm8):
+        (printMemOperand):
+        (printMemOperandEA):
+        (printFCCOperand):
+        (printRegisterPair):
+        (printAlias1):
+        (printAlias2):
+        (printAlias):
+        (printRegisterList):
+        * capstone/Source/arch/Mips/MipsMapping.c:
+        (Mips_get_insn_id):
+        (Mips_group_name):
+        (Mips_map_insn):
+        (Mips_map_register):
+        * capstone/Source/arch/Mips/MipsMappingInsn.inc:
+        * capstone/Source/arch/Mips/MipsModule.c:
+        (updated_mode):
+        (Mips_global_init):
+        (Mips_option):
+        (init): Deleted.
+        (option): Deleted.
+        (Mips_enable): Deleted.
+        * capstone/Source/arch/Mips/MipsModule.h: Added.
+        * capstone/Source/capstone.pc.in:
+        * capstone/Source/cmake.sh: Added.
+        * capstone/Source/config.mk:
+        * capstone/Source/cs.c:
+        (cs_version):
+        (cs_support):
+        (cs_errno):
+        (cs_strerror):
+        (cs_open):
+        (cs_close):
+        (fill_insn):
+        (skipdata_size):
+        (cs_option):
+        (skipdata_opstr):
+        (cs_disasm):
+        (cs_disasm_ex):
+        (cs_free):
+        (cs_malloc):
+        (cs_disasm_iter):
+        (cs_reg_name):
+        (cs_insn_name):
+        (cs_group_name):
+        (cs_insn_group):
+        (cs_reg_read):
+        (cs_reg_write):
+        (cs_op_count):
+        (cs_op_index):
+        (cs_regs_access):
+        (cs_kern_os_calloc): Deleted.
+        * capstone/Source/cs_priv.h:
+        * capstone/Source/functions.mk:
+        * capstone/Source/include/capstone/arm.h:
+        * capstone/Source/include/capstone/arm64.h:
+        * capstone/Source/include/capstone/capstone.h:
+        * capstone/Source/include/capstone/evm.h:
+        * capstone/Source/include/capstone/m680x.h:
+        * capstone/Source/include/capstone/m68k.h:
+        * capstone/Source/include/capstone/mips.h:
+        * capstone/Source/include/capstone/mos65xx.h: Added.
+        * capstone/Source/include/capstone/platform.h:
+        * capstone/Source/include/capstone/ppc.h:
+        * capstone/Source/include/capstone/sparc.h:
+        * capstone/Source/include/capstone/systemz.h:
+        * capstone/Source/include/capstone/tms320c64x.h:
+        * capstone/Source/include/capstone/x86.h:
+        * capstone/Source/include/capstone/xcore.h:
+        * capstone/Source/include/platform.h: Copied from Source/ThirdParty/capstone/Source/include/capstone/platform.h.
+        * capstone/Source/include/windowsce/stdint.h:
+        * capstone/Source/make.sh:
+        * capstone/Source/nmake-x86.bat: Removed.
+        * capstone/Source/nmake.bat:
+        * capstone/Source/pkgconfig.mk:
+        * capstone/Source/utils.c:
+        (make_id2insn):
+        (insn_find):
+        (name2id):
+        (id2name):
+        (count_positive):
+        (count_positive8):
+        (cs_strdup):
+        (cs_snprintf):
+        (arr_exist8):
+        (arr_exist):
+        * capstone/Source/utils.h:
+        * capstone/capstone-Revision.txt:
+
+2020-12-21  Ryan Hostetler  <rhost@apple.com>
+
+        $(findstring iphone,$(SDKROOT)) fails when SDKROOT is not lowercase
+        https://bugs.webkit.org/show_bug.cgi?id=219993
+        rdar://72436093
+
+        Reviewed by Darin Adler.
+
+        Update SDKROOT evaluation to be lowercase and SDK filename only.
+
+        * Makefile:
+
+2020-12-04  Adam Roben  <aroben@apple.com>
+
+        More FALLBACK_PLATFORM adoption
+        https://bugs.webkit.org/show_bug.cgi?id=219545
+
+        Reviewed by Tim Horton.
+
+        * gtest/xcode/Config/SDKVariant.xcconfig:
+        WK_EMPTY_$(THIS_IS_NOT_EMPTY) evaluates to the empty string, not to
+        NO.
+
+2020-12-03  Adam Roben  <aroben@apple.com>
+
+        Adopt FALLBACK_PLATFORM
+        https://bugs.webkit.org/show_bug.cgi?id=219504
+
+        Reviewed by Tim Horton.
+
+        * gtest/xcode/Config/SDKVariant.xcconfig: Use FALLBACK_PLATFORM it if
+        it's defined, otherwise use PLATFORM_NAME as before.
+
+2020-10-12  Luming Yin  <luming_yin@apple.com>
+
+        [macOS] Workaround for MAC_OS_X_VERSION_MAJOR incorrectly including minor version when building 
+        with Xcode 12 on macOS Big Sur SUs
+        https://bugs.webkit.org/show_bug.cgi?id=217602
+        rdar://70194453
+
+        Reviewed by Darin Adler.
+
+        The previous workaround turns out to be ineffective because we can't set the value of 
+        TARGET_MAC_OS_X_VERSION_MAJOR based on a previous value of itself. Introduce a new 
+        variable TARGET_MAC_OS_X_VERSION_MAJOR to determine whether we need to explicitly 
+        adjust MAC_OS_X_VERSION_MAJOR to 110000.
+
+        * gtest/xcode/Config/General.xcconfig:
+
+2020-10-12  Luming Yin  <luming_yin@apple.com>
+
+        [macOS] Workaround for MAC_OS_X_VERSION_MAJOR incorrectly including minor version when building 
+        with Xcode 12 on macOS Big Sur SUs
+        https://bugs.webkit.org/show_bug.cgi?id=217602
+        rdar://70194453
+
+        Reviewed by Darin Adler.
+
+        Due to a bug in Xcode (rdar://70185899), Xcode 12.0 and Xcode 12.1 Beta incorrectly includes the 
+        minor release number in MAC_OS_X_VERSION_MAJOR, which causes Debug and Release builds of WebKit 
+        to be misconfigured when building on macOS Big Sur SUs, leading to webpages failing to load.
+
+        To work around the Xcode bug, when the MAC_OS_X_VERSION_MAJOR includes the minor version number, 
+        drop the minor version number by explicitly setting TARGET_MAC_OS_X_VERSION_MAJOR to 110000.
+
+        Note: This change should be reverted after <rdar://70185899> is resolved.
+
+        * gtest/xcode/Config/General.xcconfig:
+
+2020-10-04  Ryan Hostetler  <rhost@apple.com>
+
+        Submission failure with "make: *** No rule to make target `installsrc'. Stop"
+        https://bugs.webkit.org/show_bug.cgi?id=214696
+        <rdar://problem/62268104>
+
+        Reviewed by Darin Adler.
+
+        Add installsrc phase to support xbs submitproject for WebKit repository.
+        This change allows internal tools to submit and build in a single step.
+
+        * Makefile:
+
+2020-09-22  Keith Rollin  <krollin@apple.com>
+
+        Unify debug and release target aliases
+        https://bugs.webkit.org/show_bug.cgi?id=216863
+        <rdar://problem/69407746>
+
+        Reviewed by Tim Horton.
+
+        All Makefiles have "debug", "d", "release", and "r" for build
+        targets. Others -- but not all -- also include "dev", "develop",
+        "development", "dep", "deploy", and "deployment". Because of this
+        inconsistency, trying to use those additional targets didn't work. It
+        looks like all Makefiles used to support all of those targets, but
+        some got dropped along the way. For instance, the top-level Makefile
+        and Source/Makefile dropped them in 2013 as part of Bug 107863. And it
+        looks like WebKitLibraries/Makefile never had them. Given that those
+        additional targets don't work, it seems like no one uses them, so
+        let's remove them completely.
+
+        * Makefile:
+
+2020-09-22  Keith Rollin  <krollin@apple.com>
+
+        Refactor build rules in Makefiles and Makefile.shared
+        https://bugs.webkit.org/show_bug.cgi?id=216806
+        <rdar://problem/69332316>
+
+        Reviewed by David Kilzer.
+
+        Factor out the common aspects of the build rules in Makefile.shared
+        and the various Makefiles. This allows us to more easily see what's
+        different between the various build targets, and to apply uniform
+        changes across all of the targets.
+
+        * Makefile:
+
 2020-08-05  Tim Horton  <timothy_horton@apple.com>
 
         Remove all references to non-existent 10.16

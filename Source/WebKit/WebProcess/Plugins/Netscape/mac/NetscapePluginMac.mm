@@ -31,7 +31,9 @@
 #import "LayerTreeContext.h"
 #import "NetscapeBrowserFuncs.h"
 #import "PluginController.h"
-#import "WebEvent.h"
+#import "WebKeyboardEvent.h"
+#import "WebMouseEvent.h"
+#import "WebWheelEvent.h"
 #import <Carbon/Carbon.h>
 #import <WebCore/GraphicsContext.h>
 #import <WebCore/NotImplemented.h>
@@ -479,8 +481,7 @@ static bool isFlagsChangedEvent(const WebKeyboardEvent& keyboardEvent)
 
 static NPNSString *convertToNPNNString(const String& string)
 {
-    CFTypeRef releasedString = string.createCFString().autorelease();
-    return static_cast<NPNSString*>(const_cast<void*>(releasedString));
+    return static_cast<NPNSString*>(static_cast<NSString*>(string));
 }
 
 static NPCocoaEvent initializeKeyboardEvent(const WebKeyboardEvent& keyboardEvent)

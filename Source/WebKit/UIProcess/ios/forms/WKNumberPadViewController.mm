@@ -26,7 +26,7 @@
 #import "config.h"
 #import "WKNumberPadViewController.h"
 
-#if PLATFORM(WATCHOS)
+#if HAVE(PEPPER_UI_CORE)
 
 #import "UIKitSPI.h"
 #import "WKNumberPadView.h"
@@ -161,7 +161,7 @@ static CGFloat inputLabelFontSize()
         [_inputText appendString:@"+"];
         break;
     case WKNumberPadKeyAccept:
-        [self.delegate quickboard:self textEntered:[[[NSAttributedString alloc] initWithString:_inputText.get()] autorelease]];
+        [self.delegate quickboard:self textEntered:adoptNS([[NSAttributedString alloc] initWithString:_inputText.get()]).get()];
         return;
     case WKNumberPadKey0:
         [_inputText appendString:@"0"];
@@ -264,4 +264,4 @@ static CGFloat inputLabelFontSize()
 
 @end
 
-#endif // PLATFORM(WATCHOS)
+#endif // HAVE(PEPPER_UI_CORE)

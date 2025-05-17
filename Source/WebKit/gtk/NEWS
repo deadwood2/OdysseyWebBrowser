@@ -1,114 +1,117 @@
 ================
-WebKitGTK 2.30.6
+WebKitGTK 2.32.4
 ================
 
-What's new in WebKitGTK 2.30.6?
+What's new in WebKitGTK 2.32.4?
 
-  - Update user agent quirks again for Google Docs and Google Drive
+  - Do not append .asc extension to downloaded text/plain files.
   - Fix several crashes and rendering issues.
 
 ================
-WebKitGTK 2.30.5
+WebKitGTK 2.32.3
 ================
 
-What's new in WebKitGTK 2.30.5?
+What's new in WebKitGTK 2.32.3?
 
-  - Bring back the WebKitPluginProcess intallation that was removed by mistake.
-  - Fix RunLoop objects leaked in worker threads.
-  - Fix aarch64 llint build with JIT disabled.
-  - Use Internet Explorer quirk for Google Docs.
-
-================
-WebKitGTK 2.30.4
-================
-
-What's new in WebKitGTK 2.30.4?
-
-  - Fix text data sent with WebSockets when using libsoup < 2.68.
-  - Fix the rendering on Raspberry Pi 3 using the proprietary video driver.
-  - Fix clipping of descedant layers of a mask layer.
-  - Fix the build with ICU 68.1.
-
-================
-WebKitGTK 2.30.3
-================
-
-What's new in WebKitGTK 2.30.3?
-
-  - Add new build option USE(64KB_PAGE_BLOCK).
-  - Fix backdrop filters with rounded borders.
-  - Fix scrolling iframes when async scrolling is enabled.
-  - Allow applications to handle drag and drop on the web view again.
-  - Update Outlook user agent quirk.
-  - Fix the build with video support disabled.
+  - Properly set the cookies settings after a network process crash.
+  - Fix accessibility tree after a cross site navigation with PSON enabled.
+  - Ensure WebKitScriptWorld::window-object-cleared signal is always emitted.
   - Fix several crashes and rendering issues.
 
 ================
-WebKitGTK 2.30.2
+WebKitGTK 2.32.2
 ================
 
-What's new in WebKitGTK 2.30.2?
+What's new in WebKitGTK 2.32.2?
 
-  - Fix scrolling when smooth scrolling is enabled in async scrolling mode.
-  - Fix WebSocket requests with same-site cookies.
-  - Fix TLS certificate information for service workers.
-  - Handle chassis type when its value is quoted.
-  - Fix the build with ENABLE_MEDIA_STREAM enabled and ENABLE_WEB_RTC_DISABLED.
-  - Fix the build with ENABLE_GAMEPAD enabled.
+  - Improve calculation of initial WebKitWebView size.
+  - Fix kinetic scrolling on touchpad with async scrolling off.
+  - Fix a crash on empty drag operation in X11.
+  - Fix rendering on HiDPI /4k screen and scaling.
+  - Handle null native surface for for surfaceless rendering.
+  - Fix JavaScriptCore crash on 32-bit big endian systems.
   - Fix several crashes and rendering issues.
 
 ================
-WebKitGTK 2.30.1
+WebKitGTK 2.32.1
 ================
 
-What's new in WebKitGTK 2.30.1?
+What's new in WebKitGTK 2.32.1?
 
-  - Bring back the environment variable to force single process mode when PSON is disabled.
-  - Fix downloads started by an ephemeral web context.
-  - Translation updates: Brazilian Portuguese.
-
-================
-WebKitGTK 2.30.0
-================
-
-What's new in WebKitGTK 2.30.0?
-
-  - Fix NTLM authentication.
-  - Don't try to use SHM on wayland with older wpebackend-fdo.
-  - Fix the build due to seccomp.h heasder not found.
-
-=================
-WebKitGTK 2.29.92
-=================
-
-What's new in WebKitGTK 2.29.92?
-
-  - Fix user agent header after a redirect when a new quirk is required.
-  - Stop using firefox user agent quirk for google docs.
-  - Fix rendering frames timeline panel in web inspector.
-  - Fix per-thread cpu usage in web inspector.
+  - Support building against the Musl C library.
+  - Support building against ICU version 69 or newer.
+  - Improve handling of Media Capture devices.
+  - Improve WebAudio playback.
+  - Improve video orientation handling.
+  - Improve seeking support for MSE playback.
+  - Improve flush support in EME decryptors.
+  - Fix HTTP status codes for requests done through a custom URI handler.
+  - Fix the Bubblewrap sandbox in certain 32-bit systems.
+  - Fix inconsistencies between the WebKitWebView.is-muted property state
+    and values returned by webkit_web_view_is_playing_audio().
+  - Fix the build with ENABLE_VIDEO=OFF.
+  - Fix wrong timestamps for long-lived cookies.
+  - Fix UI process crash when failing to load favicons.
   - Fix several crashes and rendering issues.
-  - Translation updates: Polish
+  - Translation updates: Swedish.
 
-=================
-WebKitGTK 2.29.91
-=================
+================
+WebKitGTK 2.32.0
+================
 
-What's new in WebKitGTK 2.29.91?
+What's new in WebKitGTK 2.32.0?
 
-  - Fix a web process crash introduced in 2.29.90.
-
-=================
-WebKitGTK 2.29.90
-=================
-
-What's new in WebKitGTK 2.29.90?
-
-  - Fix font variation settings when font smoothing setting is also present.
-  - Fix HTML drag and drop operations.
-  - Fix argument order for clone syscall seccomp filter on s390x.
-  - Fix a crash when selecting text.
+  - Fix the authentication request port when URL omits the port.
+  - Fix iframe scrolling when main frame is scrolled in async scrolling mode.
+  - Stop using g_memdup.
+  - Show a warning message when overriding signal handler for threading suspension.
+  - Fix the build on RISC-V with GCC 11.
   - Fix several crashes and rendering issues.
+  - Translation updates: Polish.
+
+=================
+WebKitGTK 2.31.91
+=================
+
+What's new in WebKitGTK 2.31.91?
+
+  - Make WebKitSecurityOrigin a simple data store for <protocol, host, port> and deprecate webkit_security_origin_is_opaque().
+  - Fix user agent again to work on several google websites.
+  - Fix web view url on web process terminate signals.
+  - Fix preferred language overrides sent to the web process.
+  - Fix the build in i386.
+  - Translation updates: Simplified Chinese.
+
+=================
+WebKitGTK 2.31.90
+=================
+
+What's new in WebKitGTK 2.31.90?
+
+  - Add permission request API for MediaKeySystem access.
+  - Fix rendering when using opacity filters on hardware accelerated layers.
+  - Fix flatpak-spawn subsandbox to not clear environment variables.
+  - Ensure a URI scheme handler can't be registered multiple times.
+  - Fix several crashes and rendering issues.
+  - The minimum required GStreamer version is now 1.14.
+  - CEA-608 closed captions support (requires WEBKIT_GST_USE_PLAYBIN3=1 environment variable).
+  - Advertise CBCS decryption and VP9 support in Thunder.
+  - Advertise DASH as supported in the media player.
+  - Improved support for playbin3.
+  - Translation updates: Ukrainian.
+
+================
+WebKitGTK 2.31.1
+================
+
+What's new in WebKitGTK 2.31.1?
+
+  - Remove support for NPAPI plugins.
+  - Enable the web process cache when PSON is enabled too.
+  - TLS errors and proxy settings APIs have been moved from WebKitContext to WebKitWebsiteDataManager.
+  - Add new API to remove individual scripts/stylesheets using WebKitUserContentManager.
+  - Correctly apply the system font scaling factor.
+  - Show main loop frames information in the web inspector.
 
 ================
 WebKitGTK 2.29.4

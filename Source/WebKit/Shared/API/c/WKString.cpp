@@ -30,6 +30,7 @@
 #include "WKAPICast.h"
 #include <JavaScriptCore/InitializeThreading.h>
 #include <JavaScriptCore/OpaqueJSString.h>
+#include <WebCore/WebCoreJITOperations.h>
 #include <wtf/unicode/UTF8Conversion.h>
 
 WKTypeID WKStringGetTypeID()
@@ -134,5 +135,6 @@ WKStringRef WKStringCreateWithJSString(JSStringRef jsStringRef)
 JSStringRef WKStringCopyJSString(WKStringRef stringRef)
 {
     JSC::initialize();
+    WebCore::populateJITOperations();
     return OpaqueJSString::tryCreate(WebKit::toImpl(stringRef)->string()).leakRef();
 }

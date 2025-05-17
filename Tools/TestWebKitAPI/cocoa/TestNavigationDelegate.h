@@ -42,7 +42,7 @@
 - (void)waitForDidStartProvisionalNavigation;
 - (void)waitForDidFinishNavigation;
 - (void)waitForDidFinishNavigationWithPreferences:(WKWebpagePreferences *)preferences;
-- (void)waitForDidFailProvisionalNavigation;
+- (NSError *)waitForDidFailProvisionalNavigation;
 
 @end
 
@@ -51,4 +51,5 @@
 - (void)_test_waitForDidFinishNavigation;
 - (void)_test_waitForDidFinishNavigationWithPreferences:(WKWebpagePreferences *)preferences;
 - (void)_test_waitForDidFinishNavigationWithoutPresentationUpdate;
+- (void)_test_waitForWebContentProcessDidTerminate;
 @end

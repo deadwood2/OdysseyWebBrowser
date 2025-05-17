@@ -25,9 +25,11 @@
 
 #pragma once
 
+#include "DataReference.h"
 #include "MessageReceiver.h"
 #include "MessageSender.h"
 #include "PolicyDecision.h"
+#include "ProcessThrottler.h"
 #include "SandboxExtension.h"
 #include "WebFramePolicyListenerProxy.h"
 #include "WebPageProxyMessagesReplies.h"
@@ -66,7 +68,7 @@ struct WebNavigationDataStore;
 using LayerHostingContextID = uint32_t;
 #endif
 
-class ProvisionalPageProxy : public IPC::MessageReceiver, public IPC::MessageSender, public CanMakeWeakPtr<ProvisionalPageProxy> {
+class ProvisionalPageProxy : public IPC::MessageReceiver, public IPC::MessageSender {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     ProvisionalPageProxy(WebPageProxy&, Ref<WebProcessProxy>&&, std::unique_ptr<SuspendedPageProxy>, uint64_t navigationID, bool isServerRedirect, const WebCore::ResourceRequest&, ProcessSwapRequestedByClient, API::WebsitePolicies*);
@@ -87,6 +89,9 @@ public:
 
 #if PLATFORM(COCOA)
     Vector<uint8_t> takeAccessibilityToken() { return WTFMove(m_accessibilityToken); }
+#endif
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    const String& accessibilityPlugID() { return m_accessibilityPlugID; }
 #endif
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
     LayerHostingContextID contextIDForVisibilityPropagation() const { return m_contextIDForVisibilityPropagation; }
@@ -136,6 +141,9 @@ private:
 #if PLATFORM(COCOA)
     void registerWebProcessAccessibilityToken(const IPC::DataReference&);
 #endif
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    void bindAccessibilityTree(const String&);
+#endif
 #if ENABLE(CONTENT_FILTERING)
     void contentFilterDidBlockLoadForFrame(const WebCore::ContentFilterUnblockHandler&, WebCore::FrameIdentifier);
 #endif
@@ -160,6 +168,9 @@ private:
 
 #if PLATFORM(COCOA)
     Vector<uint8_t> m_accessibilityToken;
+#endif
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    String m_accessibilityPlugID;
 #endif
 #if PLATFORM(IOS_FAMILY)
     UniqueRef<ProcessThrottler::ForegroundActivity> m_provisionalLoadActivity;

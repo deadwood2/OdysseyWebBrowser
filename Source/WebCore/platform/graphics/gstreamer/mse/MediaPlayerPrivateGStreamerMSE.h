@@ -47,7 +47,7 @@ public:
     static void registerMediaEngine(MediaEngineRegistrar);
 
     void load(const String&) override;
-    void load(const String&, MediaSourcePrivateClient*) override;
+    void load(const URL&, const ContentType&, MediaSourcePrivateClient*) override;
 
     void updateDownloadBufferingFlag() override { };
 
@@ -108,6 +108,7 @@ private:
     mutable bool m_eosPending = false;
     bool m_gstSeekCompleted = true;
     RefPtr<MediaSourcePrivateClient> m_mediaSource;
+    RefPtr<MediaSourcePrivateGStreamer> m_mediaSourcePrivate;
     MediaTime m_mediaTimeDuration;
     bool m_mseSeekCompleted = true;
     bool m_areDurationChangesBlocked = false;

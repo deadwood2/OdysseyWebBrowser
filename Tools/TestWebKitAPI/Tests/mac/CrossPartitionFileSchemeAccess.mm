@@ -59,8 +59,8 @@ void createPartition(const char *filePath)
     const char* targetFile = "resources/CrossPartitionFileSchemeAccess.html";
     
     const char* createDirCmd  = "mkdir resources";
-    const char* createDiskImage = "hdiutil create otherVolume.dmg -srcfolder resources/ -ov > /dev/null";
-    const char* attachDiskImage = "hdiutil attach otherVolume.dmg > /dev/null";
+    const char* createDiskImage = "hdiutil create otherVolume.dmg -srcfolder resources/ -ov";
+    const char* attachDiskImage = "hdiutil attach otherVolume.dmg";
     
     std::string createFileCmd = "echo ";
     createFileCmd.append(fileContent);
@@ -85,8 +85,8 @@ void cleanUp()
 
 namespace TestWebKitAPI {
 
-// Re-enable this test for Mojave once webkit.org/b/206956 is resolved
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
+// Re-enable this test for Catalina once webkit.org/b/206956 is resolved
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101600
 TEST(WebKitLegacy, CrossPartitionFileSchemeAccess)
 {
     NSURL *url = [[NSBundle mainBundle] URLForResource:@"CrossPartitionFileSchemeAccess" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
@@ -99,8 +99,8 @@ TEST(WebKitLegacy, CrossPartitionFileSchemeAccess)
     RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
     
-    CrossPartitionFileSchemeAccessNavigationDelegate *delegate = [[CrossPartitionFileSchemeAccessNavigationDelegate alloc] init];
-    [webView setNavigationDelegate:delegate];
+    auto delegate = adoptNS([[CrossPartitionFileSchemeAccessNavigationDelegate alloc] init]);
+    [webView setNavigationDelegate:delegate.get()];
     
     NSURLRequest *request = [NSURLRequest requestWithURL:url];
     [webView loadRequest:request];

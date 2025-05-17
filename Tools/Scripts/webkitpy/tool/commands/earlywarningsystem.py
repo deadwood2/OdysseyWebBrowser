@@ -34,17 +34,19 @@ import sys
 
 from webkitcorepy import string_utils
 
-from webkitpy.common.system.filesystem import FileSystem
 from webkitpy.common.system.executive import ScriptError
+from webkitpy.common.system.filesystem import FileSystem
 from webkitpy.tool.bot.earlywarningsystemtask import EarlyWarningSystemTask, EarlyWarningSystemTaskDelegate
-from webkitpy.tool.bot.layouttestresultsreader import LayoutTestResultsReader
 from webkitpy.tool.bot.jsctestresultsreader import JSCTestResultsReader
+from webkitpy.tool.bot.layouttestresultsreader import LayoutTestResultsReader
 from webkitpy.tool.bot.patchanalysistask import UnableToApplyPatch, PatchIsNotValid, PatchIsNotApplicable
+from webkitpy.tool.commands.deprecatedcommand import DeprecatedCommand
 from webkitpy.tool.commands.queues import AbstractReviewQueue
 
 _log = logging.getLogger(__name__)
 
 
+@DeprecatedCommand
 class AbstractEarlyWarningSystem(AbstractReviewQueue, EarlyWarningSystemTaskDelegate):
     # FIXME: Switch _default_run_tests from opt-in to opt-out once more bots are ready to run tests.
     run_tests = False
@@ -95,11 +97,11 @@ class AbstractEarlyWarningSystem(AbstractReviewQueue, EarlyWarningSystemTaskDele
         try:
             succeeded = task.run()
             return succeeded
-        except PatchIsNotValid as error:
+        except PatchIsNotValid:
             return False
-        except UnableToApplyPatch as e:
+        except UnableToApplyPatch:
             return False
-        except PatchIsNotApplicable as e:
+        except PatchIsNotApplicable:
             return False
         except ScriptError as e:
             self._post_reject_message_on_bug(self._tool, patch, task.failure_status_id, self._failing_tests_message(task, patch))

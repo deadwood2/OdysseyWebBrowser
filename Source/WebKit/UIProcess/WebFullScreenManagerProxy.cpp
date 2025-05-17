@@ -51,6 +51,7 @@ WebFullScreenManagerProxy::~WebFullScreenManagerProxy()
 {
     m_page.process().removeMessageReceiver(Messages::WebFullScreenManagerProxy::messageReceiverName(), m_page.webPageID());
     m_client.closeFullScreenManager();
+    callCloseCompletionHandlers();
 }
 
 void WebFullScreenManagerProxy::willEnterFullScreen()
@@ -76,6 +77,19 @@ void WebFullScreenManagerProxy::willExitFullScreen()
     m_page.send(Messages::WebFullScreenManager::WillExitFullScreen());
 }
 
+void WebFullScreenManagerProxy::callCloseCompletionHandlers()
+{
+    auto closeMediaCallbacks = WTFMove(m_closeCompletionHandlers);
+    for (auto& callback : closeMediaCallbacks)
+        callback();
+}
+
+void WebFullScreenManagerProxy::closeWithCallback(CompletionHandler<void()>&& completionHandler)
+{
+    m_closeCompletionHandlers.append(WTFMove(completionHandler));
+    close();
+}
+
 void WebFullScreenManagerProxy::didExitFullScreen()
 {
     m_page.fullscreenClient().didExitFullscreen(&m_page);
@@ -85,11 +99,17 @@ void WebFullScreenManagerProxy::didExitFullScreen()
         if (WebAutomationSession* automationSession = m_page.process().processPool().automationSession())
             automationSession->didExitFullScreenForPage(m_page);
     }
+    callCloseCompletionHandlers();
 }
 
 void WebFullScreenManagerProxy::setAnimatingFullScreen(bool animating)
 {
     m_page.send(Messages::WebFullScreenManager::SetAnimatingFullScreen(animating));
+}
+
+void WebFullScreenManagerProxy::requestEnterFullScreen()
+{
+    m_page.send(Messages::WebFullScreenManager::RequestEnterFullScreen());
 }
 
 void WebFullScreenManagerProxy::requestExitFullScreen()
@@ -141,8 +161,14 @@ bool WebFullScreenManagerProxy::isFullScreen()
     return m_client.isFullScreen();
 }
 
-void WebFullScreenManagerProxy::enterFullScreen()
+bool WebFullScreenManagerProxy::blocksReturnToFullscreenFromPictureInPicture() const
 {
+    return m_blocksReturnToFullscreenFromPictureInPicture;
+}
+
+void WebFullScreenManagerProxy::enterFullScreen(bool blocksReturnToFullscreenFromPictureInPicture)
+{
+    m_blocksReturnToFullscreenFromPictureInPicture = blocksReturnToFullscreenFromPictureInPicture;
     m_client.enterFullScreen();
 }
 
@@ -150,7 +176,7 @@ void WebFullScreenManagerProxy::exitFullScreen()
 {
     m_client.exitFullScreen();
 }
-    
+
 void WebFullScreenManagerProxy::beganEnterFullScreen(const IntRect& initialFrame, const IntRect& finalFrame)
 {
     m_client.beganEnterFullScreen(initialFrame, finalFrame);

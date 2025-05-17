@@ -148,9 +148,6 @@ private:
 
     void redeliverManualStream();
 
-    void pluginSnapshotTimerFired();
-    void pluginDidReceiveUserInteraction();
-
     bool shouldCreateTransientPaintingSnapshot() const;
 
     // WebCore::PluginViewBase
@@ -165,8 +162,6 @@ private:
     WebCore::Scrollbar* horizontalScrollbar() override;
     WebCore::Scrollbar* verticalScrollbar() override;
     bool wantsWheelEvents() override;
-    bool shouldAlwaysAutoStart() const override;
-    void beginSnapshottingRunningPlugin() override;
     bool shouldAllowNavigationFromDrags() const override;
     bool shouldNotAddLayer() const override;
     void willDetachRenderer() override;
@@ -226,11 +221,6 @@ private:
     bool artificialPluginInitializationDelayEnabled() const override;
     void protectPluginFromDestruction() override;
     void unprotectPluginFromDestruction() override;
-#if PLATFORM(X11) && ENABLE(NETSCAPE_PLUGIN_API)
-    uint64_t createPluginContainer() override;
-    void windowedPluginGeometryDidChange(const WebCore::IntRect& frameRect, const WebCore::IntRect& clipRect, uint64_t windowID) override;
-    void windowedPluginVisibilityDidChange(bool isVisible, uint64_t windowID) override;
-#endif
 
     void didInitializePlugin() override;
     void didFailToInitializePlugin() override;
@@ -251,10 +241,6 @@ private:
     bool m_isWaitingForSynchronousInitialization { false };
     bool m_isWaitingUntilMediaCanStart { false };
     bool m_pluginProcessHasCrashed { false };
-
-#if ENABLE(PRIMARY_SNAPSHOTTED_PLUGIN_HEURISTIC)
-    bool m_didPlugInStartOffScreen { false };
-#endif
 
     // Pending URLRequests that the plug-in has made.
     Deque<RefPtr<URLRequest>> m_pendingURLRequests;
@@ -283,12 +269,6 @@ private:
 
     // This snapshot is used to avoid side effects should the plugin run JS during painting.
     RefPtr<ShareableBitmap> m_transientPaintingSnapshot;
-    // This timer is used when plugin snapshotting is enabled, to capture a plugin placeholder.
-    WebCore::DeferrableOneShotTimer m_pluginSnapshotTimer;
-#if ENABLE(PRIMARY_SNAPSHOTTED_PLUGIN_HEURISTIC) || PLATFORM(COCOA)
-    unsigned m_countSnapshotRetries { 0 };
-#endif
-    bool m_didReceiveUserInteraction { false };
 
     double m_pageScaleFactor { 1 };
 

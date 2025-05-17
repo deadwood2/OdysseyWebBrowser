@@ -46,9 +46,7 @@ namespace WebCore {
 
 void platformReleaseMemory(Critical)
 {
-#if USE(PLATFORM_SYSTEM_FALLBACK_LIST)
     SystemFontDatabaseCoreText::singleton().clear();
-#endif
     clearFontFamilySpecificationCoreTextCache();
 
 #if PLATFORM(IOS_FAMILY) && !PLATFORM(IOS_FAMILY_SIMULATOR) && !PLATFORM(MACCATALYST)
@@ -67,6 +65,15 @@ void platformReleaseMemory(Critical)
     tileControllerMemoryHandler().trimUnparentedTilesToTarget(0);
 #endif
 
+    IOSurfacePool::sharedPool().discardAllSurfaces();
+
+#if CACHE_SUBIMAGES
+    SubimageCacheWithTimer::clear();
+#endif
+}
+
+void platformReleaseGraphicsMemory(Critical)
+{
     IOSurfacePool::sharedPool().discardAllSurfaces();
 
 #if CACHE_SUBIMAGES

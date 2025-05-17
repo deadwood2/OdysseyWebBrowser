@@ -238,7 +238,7 @@
         (iokit-user-client-class "AppleKeyStoreUserClient") ;; Needed by NSURLCache
 ))
 
-(define-once (debugging-support)
+(define-once (internal-debugging-support)
         ;; <rdar://problem/8379706>
         ;; <rdar://problem/12868101>
         ;; <rdar://problem/22766887>
@@ -377,14 +377,10 @@
     (allow-read-write-and-issue-generic-extensions
            (extension "com.apple.security.exception.files.absolute-path.read-write")
            (extension "com.apple.security.exception.files.home-relative-path.read-write"))
-    (allow iokit-open
-           (extension "com.apple.security.exception.iokit-user-client-class"))
     (allow managed-preference-read
            (extension "com.apple.security.exception.managed-preference.read-only"))
     (allow user-preference-read
            (extension "com.apple.security.exception.shared-preference.read-only"))
-    (allow user-preference-read user-preference-write
-           (extension "com.apple.security.exception.shared-preference.read-write"))
     (allow sysctl-read
            (extension "com.apple.security.exception.sysctl.read-only"))
     (allow sysctl-read sysctl-write
@@ -404,7 +400,9 @@
                (sysctl-name-prefix "kern.proc.")
                (sysctl-name-prefix "kern.procargs2."))))
 
-(debugging-support)
+(with-filter (system-attribute apple-internal)
+    (internal-debugging-support)
+)
 
 (allow file-read*
     required-etc-files
@@ -458,7 +456,6 @@
     (sysctl-name "hw.l3settings")
     (sysctl-name "hw.logicalcpu")
     (sysctl-name "hw.logicalcpu_max")
-    (sysctl-name "hw.memsize")
     (sysctl-name "hw.pagesize")
     (sysctl-name "hw.physicalcpu")
     (sysctl-name "hw.physicalcpu_max")
@@ -551,6 +548,7 @@
         "hw.cpu64bit_capable"
         "hw.ncpu"
         "hw.machine" ;; Needed by CFNetwork (CFURLProtocols)
+        "hw.memsize"
         "hw.model" ;; Needed for bundle loading
         "hw.pagesize_compat" ;; Needed by bmalloc
         "kern.bootargs"  ;; Needed for bundle loading
@@ -660,6 +658,14 @@
     (literal "/dev/aes_0")
     (literal "/dev/random")
     (literal "/dev/urandom"))
+
+(if (system-attribute apple-internal)
+    (allow file-read* file-write-data file-ioctl
+        (literal "/dev/dtracehelper"))
+; else
+    (deny (with no-log) file-read* file-write-data file-ioctl
+        (literal "/dev/dtracehelper"))
+)
 
 ;; Access to MobileGestalt
 (allow mach-lookup

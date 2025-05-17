@@ -73,7 +73,7 @@ private:
 class CDMPrivateThunder final : public CDMPrivate {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    CDMPrivateThunder(const String& keySystem) : m_keySystem(keySystem) { };
+    CDMPrivateThunder(const String& keySystem);
     virtual ~CDMPrivateThunder() = default;
 
     Vector<AtomString> supportedInitDataTypes() const final;
@@ -95,11 +95,13 @@ public:
     bool supportsServerCertificates() const final;
     bool supportsSessions() const final;
     bool supportsInitData(const AtomString&, const SharedBuffer&) const final;
+    RefPtr<SharedBuffer> sanitizeInitData(const AtomString& initDataType, const SharedBuffer& initData) const final;
     RefPtr<SharedBuffer> sanitizeResponse(const SharedBuffer&) const final;
     Optional<String> sanitizeSessionId(const String&) const final;
 
 private:
     String m_keySystem;
+    Thunder::UniqueThunderSystem m_thunderSystem;
 };
 
 class CDMInstanceThunder final : public CDMInstanceProxy {

@@ -30,7 +30,6 @@
 
 #import <WebCore/FloatQuad.h>
 #import <WebCore/GeometryUtilities.h>
-#import <WebCore/InspectorOverlay.h>
 
 @implementation WKInspectorHighlightView
 
@@ -38,20 +37,19 @@
 {
     if (!(self = [super initWithFrame:frame]))
         return nil;
-    _layers = [[NSMutableArray alloc] init];
+    _layers = adoptNS([[NSMutableArray alloc] init]);
     return self;
 }
 
 - (void)dealloc
 {
     [self _removeAllLayers];
-    [_layers release];
     [super dealloc];
 }
 
 - (void)_removeAllLayers
 {
-    for (CAShapeLayer *layer in _layers)
+    for (CAShapeLayer *layer in _layers.get())
         [layer removeFromSuperlayer];
     [_layers removeAllObjects];
 }
@@ -64,10 +62,9 @@
     [self _removeAllLayers];
 
     for (NSUInteger i = 0; i < numLayers; ++i) {
-        CAShapeLayer *layer = [[CAShapeLayer alloc] init];
-        [_layers addObject:layer];
-        [self.layer addSublayer:layer];
-        [layer release];
+        auto layer = adoptNS([[CAShapeLayer alloc] init]);
+        [_layers addObject:layer.get()];
+        [self.layer addSublayer:layer.get()];
     }
 }
 
@@ -210,7 +207,7 @@ static void layerPath(CAShapeLayer *layer, const WebCore::FloatQuad& outerQuad)
     CGPathRelease(path);
 }
 
-- (void)_layoutForNodeHighlight:(const WebCore::Highlight&)highlight offset:(unsigned)offset
+- (void)_layoutForNodeHighlight:(const WebCore::InspectorOverlay::Highlight&)highlight offset:(unsigned)offset
 {
     ASSERT([_layers count] >= offset + 4);
     ASSERT(highlight.quads.size() >= offset + 4);
@@ -238,7 +235,7 @@ static void layerPath(CAShapeLayer *layer, const WebCore::FloatQuad& outerQuad)
     layerPath(contentLayer, contentQuad);
 }
 
-- (void)_layoutForNodeListHighlight:(const WebCore::Highlight&)highlight
+- (void)_layoutForNodeListHighlight:(const WebCore::InspectorOverlay::Highlight&)highlight
 {
     if (!highlight.quads.size()) {
         [self _removeAllLayers];
@@ -252,7 +249,7 @@ static void layerPath(CAShapeLayer *layer, const WebCore::FloatQuad& outerQuad)
         [self _layoutForNodeHighlight:highlight offset:i * 4];
 }
 
-- (void)_layoutForRectsHighlight:(const WebCore::Highlight&)highlight
+- (void)_layoutForRectsHighlight:(const WebCore::InspectorOverlay::Highlight&)highlight
 {
     NSUInteger numLayers = highlight.quads.size();
     if (!numLayers) {
@@ -270,11 +267,11 @@ static void layerPath(CAShapeLayer *layer, const WebCore::FloatQuad& outerQuad)
     }
 }
 
-- (void)update:(const WebCore::Highlight&)highlight
+- (void)update:(const WebCore::InspectorOverlay::Highlight&)highlight
 {
-    if (highlight.type == WebCore::HighlightType::Node || highlight.type == WebCore::HighlightType::NodeList)
+    if (highlight.type == WebCore::InspectorOverlay::Highlight::Type::Node || highlight.type == WebCore::InspectorOverlay::Highlight::Type::NodeList)
         [self _layoutForNodeListHighlight:highlight];
-    else if (highlight.type == WebCore::HighlightType::Rects)
+    else if (highlight.type == WebCore::InspectorOverlay::Highlight::Type::Rects)
         [self _layoutForRectsHighlight:highlight];
 }
 

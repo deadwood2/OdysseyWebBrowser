@@ -1,3 +1,1160 @@
+2021-05-31  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        Cherry-pick ANGLE: Add array bounds checks for WebGL shaders
+        https://bugs.webkit.org/show_bug.cgi?id=226397
+
+        Reviewed by Dean Jackson.
+
+        Cherry-pick ANGLE commit b0d39ba2aba218402ff2f32f6e16f18cf4975ff4
+        At the moment does not affect any WebKit client.
+        Makes the code consistent with OpenGL.
+        Makes it easier to understand same change in Metal backend.
+
+        Upstream description:
+        Add array bounds checks for WebGL shaders
+        WebGL shaders may contain OOB array accesses which in turn
+        cause undefined behavior, which may result in security
+        issues. This was detected as an UNKNOWN READ by UBSAN while
+        testing with SwANGLE.
+
+        * src/libANGLE/renderer/vulkan/ShaderVk.cpp:
+        (rx::ShaderVk::compile):
+
+2021-05-27  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        Cherry-pick ANGLE: D3D11: Skip blits if there is no intersection of dest areas
+        https://bugs.webkit.org/show_bug.cgi?id=225190
+        <rdar://77084155>
+
+        Reviewed by David Kilzer.
+
+        Cherry-pick ANGLE commit b574643ef28c92fcea5122dd7a72acb42a514eed
+        Fixes a security issue on D3D11.
+        Potential a correctness issue on some OpenGL drivers.
+        No effect on Metal, but the nodiscard part is still useful.
+
+        Upstream description:
+        D3D11: Skip blits if there is no intersection of dest areas
+
+        Blit11 would clip the destination rectangle with the destination size
+        but ignore the result. gl::ClipRectangle returns false when the
+        rectangles do not intersect at all, indicating the blit can be skipped.
+
+        This could lead to an out-of-bounds write to the GPU memory for the
+        destination texture.
+
+        Mark ClipRectangle as nodiscard to prevent future issues.
+        * src/libANGLE/angletypes.h:
+        * src/libANGLE/renderer/d3d/d3d11/Blit11.cpp:
+        * src/libANGLE/renderer/gl/FramebufferGL.cpp:
+        (rx::FramebufferGL::clipSrcRegion):
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::updateScissor):
+        * src/libANGLE/renderer/vulkan/ContextVk.cpp:
+        (rx::ContextVk::updateScissor):
+        * src/tests/gl_tests/BlitFramebufferANGLETest.cpp:
+        (TEST_P):
+
+2021-02-25  Kyle Piddington  <kpiddington@apple.com>
+
+        Fix crashes in fast/canvas/webgl/texImage video tests
+        Refactor IOSurfaceSurfaceMtl to match open source implementation.
+        Additional cleanup
+
+        https://bugs.webkit.org/show_bug.cgi?id=222331
+
+        Reviewed by Dean Jackson.
+
+
+        * src/libANGLE/renderer/metal/ContextMtl.h:
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::onBackbufferResized):
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::createPbufferSurface):
+        (rx::DisplayMtl::createPbufferFromClientBuffer):
+        * src/libANGLE/renderer/metal/FrameBufferMtl.h:
+        (rx::FramebufferMtl::getAttachedBackbuffer const):
+        * src/libANGLE/renderer/metal/FrameBufferMtl.mm:
+        (rx::FramebufferMtl::FramebufferMtl):
+        * src/libANGLE/renderer/metal/IOSurfaceSurfaceMtl.h:
+        * src/libANGLE/renderer/metal/IOSurfaceSurfaceMtl.mm:
+        (rx::IOSurfaceSurfaceMtl::IOSurfaceSurfaceMtl):
+        (rx::IOSurfaceSurfaceMtl::~IOSurfaceSurfaceMtl):
+        (rx::IOSurfaceSurfaceMtl::bindTexImage):
+        (rx::IOSurfaceSurfaceMtl::releaseTexImage):
+        (rx::IOSurfaceSurfaceMtl::getAttachmentRenderTarget):
+        (rx::IOSurfaceSurfaceMtl::ensureColorTextureCreated):
+        (rx::IOSurfaceSurfaceMtl::ValidateAttributes):
+        * src/libANGLE/renderer/metal/SurfaceMtl.h:
+        (rx::SurfaceMtl::getColorTexture):
+        (rx::SurfaceMtl::getSamples const):
+        (rx::SurfaceMtl::hasRobustResourceInit const):
+        (rx::WindowSurfaceMtl::preserveBuffer const):
+        * src/libANGLE/renderer/metal/SurfaceMtl.mm:
+        (rx::SurfaceMtl::SurfaceMtl):
+        * src/libANGLE/renderer/metal/TextureMtl.h:
+        * src/libANGLE/renderer/metal/TextureMtl.mm:
+        (rx::TextureMtl::ensureTextureCreated):
+        (rx::TextureMtl::ensureSamplerStateCreated):
+        (rx::TextureMtl::bindTexImage):
+        (rx::TextureMtl::releaseTexImage):
+        (rx::TextureMtl::getAttachmentRenderTarget):
+        * src/libANGLE/renderer/metal/mtl_common.h:
+
+2021-02-19  Kyle Piddington  <kpiddington@apple.com>
+
+        Fix a number of functional regressions caused by enabling the Metal ANGLE backend by default.
+        https://bugs.webkit.org/show_bug.cgi?id=220895
+        <rdar://problem/73539537>
+
+        Reviewed by Kenneth Russell.
+
+        Take two of this commit - this time with the new files FixTypeConstructors and NameEmbeddedUniformStructsMetal.
+        
+        Fixed webgl/1.0.3/conformance/context/context-hidden-alpha.html
+
+        MTL Translator direct fixes for webgl/1.0.3/conformance/glsl/constructors/glsl-construct-*vec2 tests, Plus fix for GL_VertexIndex
+
+        Fix EmitMetal crash for missing function textureRect.
+
+        Additional fixes for 73675990, shaders-with-invariance.html, shaders-with-uniform-structs.html, struct-specifiers-in-uniforms.html, framebuffer-object-attachment.html
+
+        Fixed clamping of array elements.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * src/compiler/translator/TranslatorMetalDirect.cpp:
+        (sh::TranslatorMetalDirect::translateImpl):
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GenMetalTraverser::emitPostQualifier):
+        (GenMetalTraverser::visitBinary):
+        (GenMetalTraverser::BuildFuncToName):
+        * src/compiler/translator/TranslatorMetalDirect/FixTypeConstructors.cpp: Added.
+        (sh::FixTypeTraverser::FixTypeTraverser):
+        (sh::FixTypeConstructors):
+        * src/compiler/translator/TranslatorMetalDirect/FixTypeConstructors.h: Added.
+        * src/compiler/translator/TranslatorMetalDirect/NameEmbeddedUniformStructsMetal.cpp: Added.
+        (sh::NameEmbeddedStructUniformsMetal):
+        * src/compiler/translator/TranslatorMetalDirect/NameEmbeddedUniformStructsMetal.h: Added.
+        * src/compiler/translator/TranslatorMetalDirect/Pipeline.cpp:
+        (SaturateVectorOf):
+        * src/compiler/translator/TranslatorMetalDirect/ProgramPrelude.cpp:
+        (sh::ProgramPrelude::ProgramPrelude):
+        * src/compiler/translator/TranslatorMetalDirect/ReduceInterfaceBlocks.cpp:
+        (sh::Reducer::Reducer):
+        (sh::ReduceInterfaceBlocks):
+        * src/compiler/translator/TranslatorMetalDirect/ReduceInterfaceBlocks.h:
+        * src/compiler/translator/TranslatorMetalDirect/SeparateCompoundStructDeclarations.cpp:
+        * src/libANGLE/renderer/load_functions_table_autogen.cpp:
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::drawElementsImpl):
+        * src/libANGLE/renderer/metal/IOSurfaceSurfaceMtl.h:
+        * src/libANGLE/renderer/metal/IOSurfaceSurfaceMtl.mm:
+        (rx::IOSurfaceSurfaceMtl::IOSurfaceSurfaceMtl):
+        (rx::IOSurfaceSurfaceMtl::createBackingTexture):
+        * src/libANGLE/renderer/metal/RenderBufferMtl.mm:
+        (rx::RenderbufferMtl::setStorageImpl):
+        * src/libANGLE/renderer/metal/VertexArrayMtl.h:
+        * src/libANGLE/renderer/metal/VertexArrayMtl.mm:
+        (rx::VertexArrayMtl::getIndexBuffer):
+        (rx::VertexArrayMtl::convertIndexBuffer):
+        (rx::VertexArrayMtl::streamIndexBufferFromClient):
+        * src/libANGLE/renderer/metal/mtl_utils.mm:
+        (rx::mtl::InitializeDepthStencilTextureContentsGPU):
+        * src/libANGLE/renderer/metal/shaders/blit.metal:
+        * src/libANGLE/renderer/metal/shaders/mtl_default_shaders_src_autogen.inc:
+
+2021-02-19  Chris Dumez  <cdumez@apple.com>
+
+        Unreviewed, reverting r273188.
+
+        Broke the build: Is missing a cpp file
+
+        Reverted changeset:
+
+        "Fix a number of functional regressions caused by enabling the
+        Metal ANGLE backend by default."
+        https://bugs.webkit.org/show_bug.cgi?id=220895
+        https://commits.webkit.org/r273188
+
+2021-02-19  Kyle Piddington  <kpiddington@apple.com>
+
+        Fix a number of functional regressions caused by enabling the Metal ANGLE backend by default.
+        https://bugs.webkit.org/show_bug.cgi?id=220895
+        <rdar://problem/73539537>
+
+        Reviewed by Kenneth Russell.
+
+        Fixed webgl/1.0.3/conformance/context/context-hidden-alpha.html
+
+        MTL Translator direct fixes for webgl/1.0.3/conformance/glsl/constructors/glsl-construct-*vec2 tests, Plus fix for GL_VertexIndex
+
+        Fix EmitMetal crash for missing function textureRect.
+
+        Additional fixes for 73675990, shaders-with-invariance.html, shaders-with-uniform-structs.html, struct-specifiers-in-uniforms.html, framebuffer-object-attachment.html
+
+        Fixed clamping of array elements.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * src/compiler/translator/TranslatorMetalDirect.cpp:
+        (sh::TranslatorMetalDirect::translateImpl):
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GenMetalTraverser::emitPostQualifier):
+        (GenMetalTraverser::visitBinary):
+        (GenMetalTraverser::BuildFuncToName):
+        * src/compiler/translator/TranslatorMetalDirect/FixTypeConstructors.cpp: Added.
+        (sh::FixTypeTraverser::FixTypeTraverser):
+        (sh::FixTypeConstructors):
+        * src/compiler/translator/TranslatorMetalDirect/FixTypeConstructors.h: Added.
+        * src/compiler/translator/TranslatorMetalDirect/NameEmbeddedUniformStructsMetal.cpp: Added.
+        (sh::NameEmbeddedStructUniformsMetal):
+        * src/compiler/translator/TranslatorMetalDirect/NameEmbeddedUniformStructsMetal.h: Added.
+        * src/compiler/translator/TranslatorMetalDirect/Pipeline.cpp:
+        (SaturateVectorOf):
+        * src/compiler/translator/TranslatorMetalDirect/ProgramPrelude.cpp:
+        (sh::ProgramPrelude::ProgramPrelude):
+        * src/compiler/translator/TranslatorMetalDirect/ReduceInterfaceBlocks.cpp:
+        (sh::Reducer::Reducer):
+        (sh::ReduceInterfaceBlocks):
+        * src/compiler/translator/TranslatorMetalDirect/ReduceInterfaceBlocks.h:
+        * src/compiler/translator/TranslatorMetalDirect/SeparateCompoundStructDeclarations.cpp:
+        * src/libANGLE/renderer/load_functions_table_autogen.cpp:
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::drawElementsImpl):
+        * src/libANGLE/renderer/metal/IOSurfaceSurfaceMtl.h:
+        * src/libANGLE/renderer/metal/IOSurfaceSurfaceMtl.mm:
+        (rx::IOSurfaceSurfaceMtl::IOSurfaceSurfaceMtl):
+        (rx::IOSurfaceSurfaceMtl::createBackingTexture):
+        * src/libANGLE/renderer/metal/RenderBufferMtl.mm:
+        (rx::RenderbufferMtl::setStorageImpl):
+        * src/libANGLE/renderer/metal/VertexArrayMtl.h:
+        * src/libANGLE/renderer/metal/VertexArrayMtl.mm:
+        (rx::VertexArrayMtl::getIndexBuffer):
+        (rx::VertexArrayMtl::convertIndexBuffer):
+        (rx::VertexArrayMtl::streamIndexBufferFromClient):
+        * src/libANGLE/renderer/metal/mtl_utils.mm:
+        (rx::mtl::InitializeDepthStencilTextureContentsGPU):
+        * src/libANGLE/renderer/metal/shaders/blit.metal:
+        * src/libANGLE/renderer/metal/shaders/mtl_default_shaders_src_autogen.inc:
+
+2021-02-19  Kyle Piddington  <kpiddington@apple.com>
+
+        Crash in readPixels with ANGLE Metal backend
+        https://bugs.webkit.org/show_bug.cgi?id=220877
+
+        RenderbufferMtl::initializeContents is sometimes bound with a
+        default level index, which doesn't specify type, layer count, or
+        other information. When this path is called with an invalid index,
+        assume a 2d index.
+
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/RenderBufferMtl.mm:
+        (rx::RenderbufferMtl::initializeContents):
+
+2021-02-17  Dean Jackson  <dino@apple.com>
+
+        Metal-Angle on IOS fails in ValidateCreatePbufferFromClientBuffer
+        https://bugs.webkit.org/show_bug.cgi?id=222069
+
+        Reviewed by Simon Fraser.
+
+        Due to the differences between OpenGL and OpenGLES, WebCore
+        binds its IOSurfaces to a different texture target on macOS and iOS.
+        This isn't really needed with the Metal-ANGLE backend, but while we're
+        still supporting the OpenGL backend it is easier to have the Metal backend
+        use both targets.
+
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::generateConfigs): Look for EGL_TEXTURE_2D on iOS. Note
+        we don't have to worry about the weird "iOS App on macOS" situation since
+        that only applies to using OpenGLES on macOS. Yay for Metal!
+
+2021-01-13  Kenneth Russell  <kbr@chromium.org>
+
+        [WebGL2] fbostatequery, negativebufferapi, negativevertexarrayapi, shaderstatequery conformance failures
+        https://bugs.webkit.org/show_bug.cgi?id=220372
+
+        Reviewed by Darin Adler.
+
+        Add a needed early-out in drawArraysInstanced validation when the
+        primitive count is zero. This patch will be upstreamed to ANGLE
+        afterward.
+
+        * src/libANGLE/validationES.h:
+        (gl::ValidateDrawArraysAttribs):
+        (gl::ValidateDrawArraysCommon):
+
+2021-01-08  Kyle Piddington  <kpiddington@apple.com>
+
+        Failures of attribute location conformance tests with Metal backend
+        https://bugs.webkit.org/show_bug.cgi?id=220137
+
+        Reviewed by Dean Jackson.
+
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GenMetalTraverser::emitAttributeDeclaration):
+        * src/libANGLE/renderer/metal/mtl_glslang_mtl_utils.mm:
+        (rx::mtl::updateShaderAttributes):
+        (rx::mtl::GlslangGetMSL):
+
+2021-01-04  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        [WinCairo][CMake][MSBuild][ANGLE] entry_points_*.h was generated twice both in LibGLESv2EntryPointsHeaders and GLESv2 projects
+        https://bugs.webkit.org/show_bug.cgi?id=220251
+
+        Reviewed by Kenneth Russell.
+
+        WinCairo port is supporting both CMake Visual Studio generator and
+        Ninja generator. However, CMake Visual Studio builds was failing
+        as the following error.
+
+        > ANGLE\Headers\ANGLE/entry_points_egl.h(13,10): fatal error C1083: Cannot open include file: 'export.h': No such file or directory (compiling source file ...\texmap\ANGLEContext.cpp)
+
+        entry_points_egl.h was generated twice both in
+        LibGLESv2EntryPointsHeaders and GLESv2 projects. However, the
+        post-process script adjust-angle-include-paths.py was invoked only
+        in LibGLESv2EntryPointsHeaders project.
+
+        GLESv2 target needs to have a direct or indirect dependency to
+        LibGLESv2EntryPointsHeaders target for CMake Visual Studio
+        generator to eliminate duplicated custom commands.
+
+        * CMakeLists.txt: Added add_dependencies(GLESv2 LibGLESv2EntryPointsHeaders) only if WIN32.
+
+2021-01-02  James Darpinian  <jdarpinian@chromium.org>
+
+        Enable some ANGLE workarounds on iOS
+        https://bugs.webkit.org/show_bug.cgi?id=220203
+
+        Reviewed by Kenneth Russell.
+
+        Running ANGLE's unit tests on iOS upstream exposed the need to enable a couple of existing
+        workaround flags. https://crrev.com/c/2601106 and https://crrev.com/c/2606657 are the
+        upstream changes corresponding to these fixes.
+
+        * src/libANGLE/renderer/gl/FramebufferGL.cpp:
+        (rx::FramebufferGL::blit):
+        * src/libANGLE/renderer/gl/renderergl_utils.cpp:
+        (rx::nativegl_gl::InitializeFeatures):
+
+2020-12-23  Kyle Piddington  <kpiddington@apple.com>
+
+        [ANGLE] Metal backend renders tdl.js samples as red
+        https://bugs.webkit.org/show_bug.cgi?id=220129
+
+        Reviewed by Kenneth Russell.
+
+        * src/libANGLE/renderer/metal/FrameBufferMtl.mm:
+        (rx::FramebufferMtl::blitWithDraw):
+
+2020-12-22  Michael Catanzaro  <mcatanzaro@gnome.org>
+
+        warning: enumerated and non-enumerated type in conditional expression in Compiler.cpp
+        https://bugs.webkit.org/show_bug.cgi?id=220062
+
+        Reviewed by Dean Jackson.
+
+        Building ANGLE with -Wextra is too aggressive. -Wextra is great for code that we control,
+        where the burden of squashing warnings is relatively low. But with ANGLE, we have to either
+        land fixes upstream, or carry them downstream forever. It doesn't make sense to bother with
+        this for minor build warning fixes when upstream is clearly not using the same warning flags
+        and/or same compiler that we do.
+
+        Since we add -Wextra in our global flags, we have to manually override it here. We can now
+        also stop explicitly disabling other warnings that are implied by -Wextra.
+
+        Finally, note that changes.diff is not modified because this is, confusingly, a downstream
+        WebKit build file.
+
+        * CMakeLists.txt:
+
+2020-12-22  Kenneth Russell  <kbr@chromium.org>
+
+        [WebGL2] deqp/functional/gles3/texturespecification RGB4444 and RGB565 failures on Mac AMD
+        https://bugs.webkit.org/show_bug.cgi?id=220093
+
+        Reviewed by Alex Christensen.
+
+        Promote the RGBA4444 and RGB565 texture formats to RGB[A]8 in
+        order to work around OpenGL driver bugs on macOS with AMD GPUs.
+
+        * include/platform/FeaturesGL.h:
+        * src/libANGLE/renderer/gl/formatutilsgl.cpp:
+        (rx::nativegl::GetNativeInternalFormat):
+        * src/libANGLE/renderer/gl/renderergl_utils.cpp:
+        (rx::nativegl_gl::InitializeFeatures):
+
+2020-12-16  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        [WinCairo] Enable USE_ANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=219421
+
+        Reviewed by Don Olmstead.
+
+        * CMakeLists.txt: Added entry_points_egl_ext.h to libglesv2_entry_points_headers.
+
+2020-12-14  Alex Christensen  <achristensen@webkit.org>
+
+        Fix build.
+
+        * src/gpu_info_util/SystemInfo_apple.mm:
+        (angle::GetSystemInfo):
+        ##if should be #if
+
+2020-12-14  Dean Jackson  <dino@apple.com>
+
+        Build fix for Mac Catalyst. Remove code that was accidentally
+        included in the previous commit.
+
+        * src/gpu_info_util/SystemInfo_apple.mm:
+        (angle::GetSystemInfo):
+
+2020-12-12  Kyle Piddington  <kpiddington@apple.com>
+
+        Improved Metal backend for ANGLE, with direct GLSL to Metal compiler translation
+        https://bugs.webkit.org/show_bug.cgi?id=219759
+        <rdar://problem/72200222>
+
+        Reviewed by Dean Jackson.
+
+        Reviewer's note: While this patch is landing in WebKit now, it will
+        be submitted to the main ANGLE project for official review, then re-merged
+        back into WebKit. The feature provided here is not enabled by default.
+
+        Provide a WebGL1 compliant transpiler for GLSL content. With this
+        change, we can leverage the already present open source work in the
+        ANGLE project to enable webgl to run on top of Metal. In addition,
+        this patch contains a number of fixes to the existing ANGLE Metal backend.
+
+        Test: Tests were validated with the dEQP test suite with ANGLE, in
+        addition to running standard layout tests.
+
+2020-12-04  Adam Roben  <aroben@apple.com>
+
+        More FALLBACK_PLATFORM adoption
+        https://bugs.webkit.org/show_bug.cgi?id=219545
+
+        Reviewed by Tim Horton.
+
+        * Configurations/SDKVariant.xcconfig:
+        WK_EMPTY_$(THIS_IS_NOT_EMPTY) evaluates to the empty string, not to
+        NO.
+
+2020-12-04  Rob Buis  <rbuis@igalia.com>
+
+        WebGL2: Null pointer dereference in std::string implementation in gl::Shader::getTransformFeedbackVaryingMappedName
+        https://bugs.webkit.org/show_bug.cgi?id=218602
+
+        Reviewed by Dean Jackson.
+
+        Skip varying if field is not found since in this
+        case we have no match for the varying parameter name.
+
+        * src/libANGLE/Shader.cpp:
+        (gl::Shader::getTransformFeedbackVaryingMappedName):
+
+2020-12-03  Adam Roben  <aroben@apple.com>
+
+        Adopt FALLBACK_PLATFORM
+        https://bugs.webkit.org/show_bug.cgi?id=219504
+
+        Reviewed by Tim Horton.
+
+        * Configurations/SDKVariant.xcconfig: Use FALLBACK_PLATFORM it if it's
+        defined, otherwise use PLATFORM_NAME as before.
+
+2020-12-02  Dean Jackson  <dino@apple.com>
+
+        Build fix for Mac Catalyst. Include the SystemInfo header.
+
+        * src/libANGLE/renderer/gl/apple/DisplayApple_api.cpp:
+
+2020-12-02  Rob Buis  <rbuis@igalia.com>
+
+        Fix ANGLE CMakeLists.txt warnings
+        https://bugs.webkit.org/show_bug.cgi?id=219260
+
+        Reviewed by Philippe Normand.
+
+        Fix warning when building on GTK:
+        Make Warning (dev) at Source/ThirdParty/ANGLE/CMakeLists.txt:103:
+        Syntax Warning in cmake code at column 37
+
+        Argument not separated from preceding token by whitespace.
+        This warning is for project developers.  Use -Wno-dev to suppress it.
+
+        * CMakeLists.txt:
+
+2020-12-02  James Darpinian  <jdarpinian@chromium.org>
+
+        Update ANGLE 2020-11-12
+        https://bugs.webkit.org/show_bug.cgi?id=218877
+
+        Reviewed by Kenneth Russell.
+
+        * Excessively large list of upstream changes omitted.
+
+2020-11-30  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, reverting r270129, r270194, and r270258.
+
+        r270129 broke macCatalyst build
+
+        Reverted changesets:
+
+        "Update ANGLE 2020-11-12"
+        https://bugs.webkit.org/show_bug.cgi?id=218877
+        https://trac.webkit.org/changeset/270129
+
+        "Fix ANGLE CMakeLists.txt warnings"
+        https://bugs.webkit.org/show_bug.cgi?id=219260
+        https://trac.webkit.org/changeset/270194
+
+        "Attempted build fix for Mac Catalyst. Include the SystemInfo
+        header."
+        https://trac.webkit.org/changeset/270258
+
+2020-11-30  Dean Jackson  <dino@apple.com>
+
+        Attempted build fix for Mac Catalyst. Include the SystemInfo header.
+
+        * src/libANGLE/renderer/gl/apple/DisplayApple_api.cpp:
+
+2020-11-27  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        [ANGLE] Convert adjust-angle-include-paths.sh to a Python script for Windows without Cygwin
+        https://bugs.webkit.org/show_bug.cgi?id=219299
+
+        Reviewed by Kenneth Russell.
+
+        WinCairo port can't use shell scripts because it isn't using
+        Cygwin.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * CMakeLists.txt:
+        * adjust-angle-include-paths.py: Added.
+        * adjust-angle-include-paths.sh: Removed.
+
+2020-11-27  Rob Buis  <rbuis@igalia.com>
+
+        Fix ANGLE CMakeLists.txt warnings
+        https://bugs.webkit.org/show_bug.cgi?id=219260
+
+        Reviewed by Philippe Normand.
+
+        Fix warning when building on GTK:
+        Make Warning (dev) at Source/ThirdParty/ANGLE/CMakeLists.txt:103:
+        Syntax Warning in cmake code at column 37
+
+        Argument not separated from preceding token by whitespace.
+        This warning is for project developers.  Use -Wno-dev to suppress it.
+
+        * CMakeLists.txt:
+
+2020-11-20  James Darpinian  <jdarpinian@chromium.org>
+
+        Update ANGLE 2020-11-12
+        https://bugs.webkit.org/show_bug.cgi?id=218877
+
+        Reviewed by Kenneth Russell.
+
+        * Excessively large list of upstream changes omitted.
+
+2020-11-19  James Darpinian  <jdarpinian@chromium.org>
+
+        Improve update-angle script and move to Tools/Scripts
+        https://bugs.webkit.org/show_bug.cgi?id=218831
+
+        Reviewed by Kenneth Russell.
+
+        update-angle fetches changes from upstream ANGLE into Source/ThirdParty/ANGLE,
+        updates WebKit's build files and helps merge WebKit's local changes.
+
+          - Moved to Tools/Scripts so that it doesn't overwrite itself during the
+            update process.
+          - Reversed direction of rebase. Before the script rebased ANGLE on WebKit;
+            now it rebases WebKit's ANGLE changes on upstream ANGLE master. This
+            makes a lot more sense and results in fewer changes to rebase. This
+            requires the use of git-filter-repo to make the rebase not prohibitively
+            slow.
+          - Removed bash dependency.
+          - Fixed all issues identified by shellcheck.
+          - Fixed changes.diff to show added files, while filtering files added by
+            WebKit's build process.
+          - Fixed changes.diff to ignore whitespace changes.
+          - Added --regenerate-changes-diff option to update changes.diff in between
+            ANGLE updates.
+          - Updated [angle_]commit.h generation for upstream changes.
+          - Removed need to run the script multiple times during the rebase process.
+
+        * update-angle.sh: Removed.
+
+2020-11-19  Dean Jackson  <dino@apple.com>
+
+        Add schemes for ANGLE to Xcode project
+        https://bugs.webkit.org/show_bug.cgi?id=217546
+        rdar://69062082
+
+        Reviewed by Alex Christensen.
+
+        * Configurations/Base.xcconfig: Update paths for built frameworks.
+        * ANGLE.xcodeproj/xcshareddata/xcschemes/ANGLE (dynamic).xcscheme: Added.
+        * ANGLE.xcodeproj/xcshareddata/xcschemes/ANGLE (static).xcscheme: Added.
+        * ANGLE.xcodeproj/xcshareddata/xcschemes/ANGLE.xcscheme: Added.
+
+2020-11-04  David Kilzer  <ddkilzer@apple.com>
+
+        WebKit should remove unused debug variant support
+        <https://webkit.org/b/218315>
+        <rdar://problem/70785369>
+
+        Reviewed by Darin Adler.
+
+        Remove support for building the debug variant since it is
+        currently unused. We now set default values for the
+        DEAD_CODE_STRIPPING, DEBUG_DEFINES, GCC_OPTIMIZATION_LEVEL and
+        STRIP_INSTALLED_PRODUCT variables.
+
+        Also move these values out of the Xcode project into
+        Base.xcconfig files using the [config=Debug] specifier so that
+        these overrides are next to the definitions.
+
+        Additional changes in behavior are noted below.
+
+        * Configurations/ANGLE-dynamic.xcconfig:
+        - Move DEBUG_DEFINES to Base.xcconfig.
+        - Set up DEAD_CODE_STRIPPING and STRIP_INSTALLED_PRODUCT the
+          same as for other WebKit projects. Previously dead code and
+          symbols were never stipped in Release or Production builds.
+
+        * Configurations/ANGLE-static.xcconfig:
+        - Move DEBUG_DEFINES to Base.xcconfig.
+
+        * Configurations/Base.xcconfig:
+        - Set up DEBUG_DEFINES and GCC_OPTIMIZATION_LEVEL the same as
+          other WebKit projects. Previously Debug builds were built with
+          -Os instead of -O0.
+
+2020-11-03  David Kilzer  <ddkilzer@apple.com>
+
+        Stop building ANGLE source files twice
+        <https://webkit.org/b/218469>
+
+        Reviewed by Dean Jackson.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        (ANGLE (dynamic)):
+        - Replace sources with empty.cpp. Xcode requires a single source
+          file to be compiled to create a dylib, even if the static
+          library contains all necessary symbols.
+        - Add dependency on "ANGLE (static)" target.
+        * Configurations/ANGLE-dynamic.xcconfig:
+        (ANGLE_OTHER_LDFLAGS):
+        - Add $(ANGLE_STATIC_LIB_OTHER_LDFLAGS).
+        (ANGLE_STATIC_LIB_OTHER_LDFLAGS): Add.
+        - Special linker command-line switch to load all symbols from
+          libANGLE.a when linking libANGLE-shared.dylib.
+        * src/empty.cpp: Add.
+        - See above why this is needed by Xcode.
+
+2020-10-12  Dean Jackson  <dino@apple.com>
+
+        Add schemes for ANGLE to Xcode project
+        https://bugs.webkit.org/show_bug.cgi?id=217546
+        rdar://69062082
+
+        Reviewed by Alex Christensen.
+
+        * ANGLE.xcodeproj/xcshareddata/xcschemes/ANGLE (dynamic).xcscheme: Added.
+        * ANGLE.xcodeproj/xcshareddata/xcschemes/ANGLE (static).xcscheme: Added.
+        * ANGLE.xcodeproj/xcshareddata/xcschemes/ANGLE.xcscheme: Added.
+
+2020-10-28  Tim Horton  <timothy_horton@apple.com>
+
+        macCatalyst WebGL on Apple Silicon devices is using a software renderer
+        https://bugs.webkit.org/show_bug.cgi?id=218303
+        <rdar://problem/70587571>
+
+        Reviewed by Geoffrey Garen.
+
+        * src/gpu_info_util/SystemInfo.h:
+        * src/gpu_info_util/SystemInfo_apple.mm:
+        (angle::GetSystemInfo):
+        We can just use the macOS version of GetSystemInfo in macCatalyst.
+
+        * src/gpu_info_util/SystemInfo_macos.mm:
+        (angle::GetSystemInfo_mac):
+        * src/libANGLE/Display.cpp:
+        * src/libANGLE/formatutils.cpp:
+        (gl::BuildInternalFormatInfoMap):
+        * src/libANGLE/renderer/gl/renderergl_utils.cpp:
+        (rx::nativegl_gl::GenerateCaps):
+        It turns out we must use EAGL in macCatalyst on Apple Silicon in all cases,
+        not just in-process in iOS apps (the problem is not just about coexistence
+        of the two GLs, but actually about our ability to load the accelerated
+        renderer /at all/ in macCatalyst processes).
+
+        I left the runtime switching in place, because there is a future in which
+        we /can/ use CGL in non-iOS-app processes, but that future is not now.
+
+2020-10-13  Keith Rollin  <krollin@apple.com>
+
+        Remove leftover MACOSX_DEPLOYMENT_TARGET_macosx support
+        https://bugs.webkit.org/show_bug.cgi?id=217649
+        <rdar://problem/70236877>
+
+        Reviewed by Darin Adler.
+
+        Bug 42796 introduced MACOSX_DEPLOYMENT_TARGET_<PLATFORM> as "support
+        for compiling WebKit against iOS SDKs". Support for the iOS part of
+        this feature was later removed in several changes, including Bug
+        139212, Bug 139463 and Bug 144762. However, vestiges have remained for
+        five or six years in the form of MACOSX_DEPLOYMENT_TARGET_macosx. The
+        inclusion of the platform in MACOSX_DEPLOYMENT_TARGET is no longer
+        needed and can be removed.
+
+        This changes brings most projects in conformance with other projects
+        that don't support including the platform in MACOSX_DEPLOYMENT_TARGET,
+        including WebEditingTester, gtest, WebKitTestRunner, MiniBrowser, and
+        TestWebKitAPI.
+
+        Along the way, remove a couple of left-over references to macOS 10.16,
+        and a couple of places where [sdk=macosx*] was still being used.
+
+        With this change, initialization of MACOSX_DEPLOYMENT_TARGET should be
+        consistent across all projects, with two exceptions: WebKitLauncher
+        (which hardcodes it to 10.12) and libwebrtc's copy of googletest
+        (which hardcodes it to 10.4). The reasons for these hard-coded values
+        is not apparent, so leave them be.
+
+        * Configurations/DebugRelease.xcconfig:
+
+2020-10-12  Luming Yin  <luming_yin@apple.com>
+
+        [macOS] Workaround for MAC_OS_X_VERSION_MAJOR incorrectly including minor version when building 
+        with Xcode 12 on macOS Big Sur SUs
+        https://bugs.webkit.org/show_bug.cgi?id=217602
+        rdar://70194453
+
+        Reviewed by Darin Adler.
+
+        The previous workaround turns out to be ineffective because we can't set the value of 
+        TARGET_MAC_OS_X_VERSION_MAJOR based on a previous value of itself. Introduce a new 
+        variable TARGET_MAC_OS_X_VERSION_MAJOR to determine whether we need to explicitly 
+        adjust MAC_OS_X_VERSION_MAJOR to 110000.
+
+        * Configurations/DebugRelease.xcconfig:
+
+2020-10-12  Luming Yin  <luming_yin@apple.com>
+
+        [macOS] Workaround for MAC_OS_X_VERSION_MAJOR incorrectly including minor version when building 
+        with Xcode 12 on macOS Big Sur SUs
+        https://bugs.webkit.org/show_bug.cgi?id=217602
+        rdar://70194453
+
+        Reviewed by Darin Adler.
+
+        Due to a bug in Xcode (rdar://70185899), Xcode 12.0 and Xcode 12.1 Beta incorrectly includes the 
+        minor release number in MAC_OS_X_VERSION_MAJOR, which causes Debug and Release builds of WebKit 
+        to be misconfigured when building on macOS Big Sur SUs, leading to webpages failing to load.
+
+        To work around the Xcode bug, when the MAC_OS_X_VERSION_MAJOR includes the minor version number, 
+        drop the minor version number by explicitly setting TARGET_MAC_OS_X_VERSION_MAJOR to 110000.
+
+        Note: This change should be reverted after <rdar://70185899> is resolved.
+
+        * Configurations/DebugRelease.xcconfig:
+
+2020-10-11  Luming Yin  <luming_yin@apple.com>
+
+        Strip patch version from TARGET_MAC_OS_X_VERSION_MAJOR when building for macOS Big Sur 
+        or later
+        https://bugs.webkit.org/show_bug.cgi?id=217594
+        rdar://70188497
+
+        Reviewed by Darin Adler.
+
+        To ensure successful Mac Catalyst WebKit builds, strip the patch version from 
+        TARGET_MAC_OS_X_VERSION_MAJOR by using two `base:`s on MACOSX_DEPLOYMENT_TARGET.
+
+        * Configurations/Base.xcconfig:
+
+2020-10-11  Luming Yin  <luming_yin@apple.com>
+
+        Ignore deployment suffix and identifier when computing major OS version for macOS 
+        Big Sur and newer
+        https://bugs.webkit.org/show_bug.cgi?id=217584
+        rdar://70168426
+
+        Reviewed by Darin Adler.
+
+        Stop using MACOSX_DEPLOYMENT_TARGET:suffix:identifier to compute major OS versions. 
+        Only use the deployment target base for macOS Big Sur and newer. Keep the manual 
+        definitions for legacy versions of macOS.
+
+        * Configurations/Base.xcconfig:
+
+2020-10-07  Keith Rollin  <krollin@apple.com>
+
+        Update post-processing rules for headers to not unnecessarily change timestamps
+        https://bugs.webkit.org/show_bug.cgi?id=217371
+        <rdar://problem/69992230>
+
+        Reviewed by Darin Adler.
+
+        Under XCBuild, the scripts employed in custom build rules can be
+        invoked in innocuous situations. A common example is when the user is
+        building from the command-line and they change the `make` output from
+        stdout to a file, or vice-versa. Changing the output changes the
+        setting of the COLOR_DIAGNOSTICS environment variable, which is enough
+        to cause XCBuild to think something is different and that the custom
+        build rule needs to be invoked. For the script's part, nothing
+        significant has changed, yet it post-processes the header files,
+        causing their modification dates to change, causing downstream
+        rebuilds to occur.
+
+        Fix this problem by adopting an approach that doesn't modify the
+        post-processed header files unless their contents actually change.
+
+        * adjust-angle-include-paths-rule:
+
+2020-10-02  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        [iOS WK1] Crashes when using ANGLE WebGL from another thread
+        https://bugs.webkit.org/show_bug.cgi?id=216106
+        <rdar://problem/68602452>
+
+        Reviewed by Kenneth Russell.
+
+        Add two extensions for EAGL and CGL backends to declare the
+        underlying platform context being "volatile". It means that
+        the thread-global current context is being modified behind
+        ANGLE. If ANGLE context is marked volatile for a particular
+        API, it will sync the underlying context for every EGL
+        function that needs the context. Most intuitive use is
+        for the client to call eglMakeCurrent before calling any
+        gl function if the client knowns the platform state might
+        be dirty.
+
+        Implement eglReleaseThread for EAGL and CGL backends.
+        Releasing thread will unset the platform current context.
+
+        Fix a bug of omitting EGL_ANGLE_device_eagl from being
+        advertised.
+
+        * extensions/EGL_ANGLE_platform_angle_device_context_volatile_cgl.txt: Added.
+        * extensions/EGL_ANGLE_platform_angle_device_context_volatile_eagl.txt: Added.
+        * include/EGL/eglext_angle.h:
+        * src/libANGLE/Caps.cpp:
+        (egl::DeviceExtensions::getStrings const):
+        (egl::ClientExtensions::getStrings const):
+        * src/libANGLE/Caps.h:
+        * src/libANGLE/Display.cpp:
+        (egl::Display::prepareForCall):
+        (egl::Display::releaseThread):
+        (egl::GenerateClientExtensions):
+        * src/libANGLE/Display.h:
+        * src/libANGLE/renderer/DisplayImpl.cpp:
+        (rx::DisplayImpl::prepareForCall):
+        (rx::DisplayImpl::releaseThread):
+        * src/libANGLE/renderer/DisplayImpl.h:
+        * src/libANGLE/renderer/gl/cgl/DisplayCGL.h:
+        * src/libANGLE/renderer/gl/cgl/DisplayCGL.mm:
+        (rx::DisplayCGL::initialize):
+        (rx::DisplayCGL::terminate):
+        (rx::DisplayCGL::prepareForCall):
+        (rx::DisplayCGL::releaseThread):
+        (rx::DisplayCGL::makeCurrent):
+        * src/libANGLE/renderer/gl/eagl/DisplayEAGL.h:
+        * src/libANGLE/renderer/gl/eagl/DisplayEAGL.mm:
+        (rx::DisplayEAGL::initialize):
+        (rx::DisplayEAGL::terminate):
+        (rx::DisplayEAGL::prepareForCall):
+        (rx::DisplayEAGL::releaseThread):
+        * src/libANGLE/validationEGL.cpp:
+        * src/libGLESv2/entry_points_egl.cpp:
+        * src/libGLESv2/entry_points_egl_ext.cpp:
+
+2020-09-29  James Darpinian  <jdarpinian@chromium.org>
+
+        Fix EXT_color_buffer_half_float on iOS
+        https://bugs.webkit.org/show_bug.cgi?id=217107
+
+        Reviewed by Kenneth Russell.
+
+        * src/libANGLE/Context.cpp:
+        (gl::Context::generateSupportedExtensions const):
+        * src/libANGLE/renderer/gl/renderergl_utils.cpp:
+        (rx::nativegl_gl::GenerateTextureFormatCaps):
+
+2020-09-24  Dean Jackson  <dino@apple.com>
+
+        WebGL should use GLES in iOS apps running on Apple Silicon
+        https://bugs.webkit.org/show_bug.cgi?id=216722
+        <rdar://problem/68976337>
+
+        Reviewed by Tim Horton.
+
+        Change ANGLE to dynamically load either EAGL (OpenGLES) or CGL (OpenGL) depending
+        on both compile and runtime configurations.
+            Intel Mac -> CGL
+            Intel Mac Catalyst -> CGL
+            Intel iOS Simulator -> EAGL
+            iOS Device -> EAGL
+            Apple Silicon Mac -> CGL
+            Apple Silicon Mac Catalyst (with Mac app) -> CGL
+            Apple Silicon Mac Catalyst (with iOS app) -> EAGL
+
+        The trickiest bit is Apple Silicon Mac Catalyst, which depends on the
+        type of the application it is attempting to run. In that case ANGLE must compile
+        both the CGL and EAGL interfaces and then pick one to use after launch.
+
+        * ANGLE.xcodeproj/project.pbxproj: Add new files.
+
+        * Configurations/ANGLE-dynamic.xcconfig: Remove all the OpenGL* linking.
+        * Configurations/ANGLE-static.xcconfig:
+
+        * GLESv2.cmake: New files.
+
+        * src/common/platform.h: New definitions for CPU type on Apple Systems.
+
+        * src/gpu_info_util/SystemInfo.h: Split SystemInfo for Apple into two
+        files, for iOS and Mac. Added a field for isiOSAppOnMac that will only
+        be true when running an iOS binary on Apple Silicon.
+        * src/gpu_info_util/SystemInfo_apple.mm: Added. Decides which SystemInfo
+        to call.
+        (angle::GetSystemInfo):
+        * src/gpu_info_util/SystemInfo_ios.cpp:
+        (angle::GetSystemInfo_ios):
+        (angle::GetSystemInfo): Deleted.
+        * src/gpu_info_util/SystemInfo_macos.mm:
+        (angle::GetSystemInfo_mac):
+        (angle::GetSystemInfo): Deleted.
+
+        * src/libANGLE/Caps.cpp: Can no longer just check for PLATFORM_IOS. This
+        might still need a runtime check.
+        (gl::DetermineDepthTextureANGLESupport):
+        (gl::DetermineDepthTextureOESSupport):
+
+        * src/libANGLE/Display.cpp: This is the main initialization point for
+        ANGLE, which decides at compile/runtime which variant of Display to
+        create.
+
+        * src/libANGLE/formatutils.cpp: Add the correct formats.
+        (gl::BuildInternalFormatInfoMap):
+
+        * src/libANGLE/renderer/gl/SoftLinking_apple.h: Added. Macros to help soft-link
+        functions and ObjC classes.
+        * src/libANGLE/renderer/gl/cgl/CGLFunctions.cpp: Added. Where we soft-link all
+        the OpenGL/CGL API.
+        * src/libANGLE/renderer/gl/cgl/CGLFunctions.h: Added.
+
+        * src/libANGLE/renderer/gl/cgl/DisplayCGL.mm: Use the soft-linked methods.
+        * src/libANGLE/renderer/gl/cgl/IOSurfaceSurfaceCGL.cpp:
+        * src/libANGLE/renderer/gl/cgl/WindowSurfaceCGL.h:
+        * src/libANGLE/renderer/gl/cgl/WindowSurfaceCGL.mm: Rename WebSwapLayer to WebSwapLayerCGL
+        otherwise it clashes with the EAGL version.
+        (rx::WindowSurfaceCGL::initialize):
+        (-[WebSwapLayer initWithSharedState:withContext:withFunctions:]): Deleted.
+        (-[WebSwapLayer copyCGLPixelFormatForDisplayMask:]): Deleted.
+        (-[WebSwapLayer copyCGLContextForPixelFormat:]): Deleted.
+        (-[WebSwapLayer canDrawInCGLContext:pixelFormat:forLayerTime:displayTime:]): Deleted.
+        (-[WebSwapLayer drawInCGLContext:pixelFormat:forLayerTime:displayTime:]): Deleted.
+
+        * src/libANGLE/renderer/gl/eagl/DeviceEAGL.cpp: Similar changes to the CGL implementation.
+        * src/libANGLE/renderer/gl/eagl/DeviceEAGL.h:
+        * src/libANGLE/renderer/gl/eagl/DisplayEAGL.h:
+        * src/libANGLE/renderer/gl/eagl/DisplayEAGL.mm:
+        (rx::DisplayEAGL::initialize):
+        (rx::DisplayEAGL::terminate):
+        (rx::WorkerContextEAGL::~WorkerContextEAGL):
+        (rx::WorkerContextEAGL::makeCurrent):
+        (rx::WorkerContextEAGL::unmakeCurrent):
+        (rx::DisplayEAGL::createWorkerContext):
+        * src/libANGLE/renderer/gl/eagl/EAGLFunctions.h: Added.
+        * src/libANGLE/renderer/gl/eagl/EAGLFunctions.mm: Added.
+        * src/libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.mm:
+        * src/libANGLE/renderer/gl/eagl/PbufferSurfaceEAGL.cpp:
+        * src/libANGLE/renderer/gl/eagl/RendererEAGL.cpp:
+        * src/libANGLE/renderer/gl/eagl/WindowSurfaceEAGL.h:
+        * src/libANGLE/renderer/gl/eagl/WindowSurfaceEAGL.mm:
+        (-[WebSwapLayerEAGL display]):
+        (rx::WindowSurfaceEAGL::initialize):
+        (-[WebSwapLayer initWithSharedState:withContext:withFunctions:]): Deleted.
+        (-[WebSwapLayer display]): Deleted.
+
+        * src/libANGLE/renderer/gl/renderergl_utils.cpp: Runtime check.
+        (rx::nativegl_gl::GenerateCaps):
+
+2020-09-25  James Darpinian  <jdarpinian@chromium.org>
+
+        Support EXT_float_blend
+        https://bugs.webkit.org/show_bug.cgi?id=216949
+
+        Reviewed by Kenneth Russell.
+
+        * src/libANGLE/renderer/gl/renderergl_utils.cpp:
+        (rx::nativegl_gl::GenerateCaps):
+
+2020-09-24  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        REGRESSION: Textures Fail to Render in WebGL from HLS Stream [iOS 14]
+        https://bugs.webkit.org/show_bug.cgi?id=215908
+        <rdar://problem/68000962>
+
+        Reviewed by Dean Jackson.
+
+        Disable ANGLE workers until EAGL implementation is more complete.
+        Current implementation fails to compile any shader, since the
+        compilation happens in the worker thread and worker EAGL context
+        which does not use the same sharegroup as the main context.
+        The shader objects are created in the main context but the shader
+        source setting and compilation happens in the worker context.
+        EAGL needs a flush between state changes, and adding that
+        correctly is a bigger change to be done later.
+
+        Use sized formats when calling [EAGLContext -texImageIOSurface]
+        from EGL_ANGLE_iosurface_client_buffer code. The texImageIOSurface
+        accepts parameters with glTexImage2D logic. On ES3, some of the
+        internal formats must be sized formats. The EAGLContext instantiated
+        by ANGLE is ES3, even if the ANGLE context would be ES2.
+
+        No tests added since this should be caught with the many video
+        related tests. It's unclear why this is not the case -- at
+        least on real hw. This is to be investigated later, too.
+
+        * src/libANGLE/renderer/driver_utils.h:
+        (rx::IsIOS):
+        * src/libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.mm:
+        * src/libANGLE/renderer/gl/renderergl_utils.cpp:
+        (rx::nativegl_gl::InitializeFeatures):
+
+2020-09-11  James Darpinian  <jdarpinian@chromium.org>
+
+        [WebGL2] Support EXT_color_buffer_half_float on WebGL 2.0 contexts
+        https://bugs.webkit.org/show_bug.cgi?id=216010
+
+        Reviewed by Kenneth Russell.
+
+        * src/libANGLE/formatutils.cpp:
+        (gl::SizedHalfFloatRGTextureAttachmentSupport):
+        (gl::SizedHalfFloatRGBTextureAttachmentSupport):
+        (gl::SizedHalfFloatRGBRenderbufferSupport):
+        (gl::SizedHalfFloatRGBATextureAttachmentSupport):
+
+2020-09-03  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        Mark uniform samplers in an array unused per element
+        https://bugs.webkit.org/show_bug.cgi?id=215630
+
+        Reviewed by Dean Jackson.
+
+        Mark uniform samplers in an uniform sampler array unused per
+        element, if driver informs the element being unused.
+        Before, one element would mark the whole array as being
+        unused, and samplers that were in use would not be updated.
+
+        * src/libANGLE/Context.cpp:
+        (gl::StateCache::updateActiveImageUnitIndices):
+        * src/libANGLE/Program.cpp:
+        (gl::SamplerBinding::SamplerBinding):
+        (gl::ImageBinding::ImageBinding):
+        (gl::Program::getSamplerUniformBinding const):
+        (gl::Program::getImageUniformBinding const):
+        (gl::Program::linkSamplerAndImageBindings):
+        (gl::Program::updateSamplerUniform):
+        (gl::Program::serialize const):
+        (gl::Program::deserialize):
+        * src/libANGLE/ProgramExecutable.cpp:
+        (gl::ProgramExecutable::updateActiveSamplers):
+        (gl::ProgramExecutable::updateActiveImages):
+        (gl::ProgramExecutable::setSamplerUniformTextureTypeAndFormat):
+        * src/libANGLE/ProgramExecutable.h:
+        * src/libANGLE/renderer/gl/ProgramGL.cpp:
+        (rx::ProgramGL::markUnusedUniformLocations):
+        * src/libANGLE/renderer/metal/ProgramMtl.mm:
+        (rx::ProgramMtl::updateTextures):
+        * src/libANGLE/renderer/vulkan/ProgramExecutableVk.cpp:
+        (rx::ProgramExecutableVk::updateImagesDescriptorSet):
+        (rx::ProgramExecutableVk::updateTexturesDescriptorSet):
+        * src/tests/gl_tests/ComputeShaderTest.cpp:
+        * src/tests/gl_tests/UniformTest.cpp:
+
+2020-09-01  David Kilzer  <ddkilzer@apple.com>
+
+        [ANGLE] InternalFormat::blendSupport is uninitialized by constructor
+        <https://webkit.org/b/216053>
+        <rdar://problem/68166032>
+
+        Reviewed by Kenneth Russell.
+
+        * changes.diff: Add this patch.
+        * src/libANGLE/formatutils.cpp:
+        (gl::InternalFormat::InternalFormat):
+        - Initialize blendSupport to NeverSupported.
+
+2020-08-31  James Darpinian  <jdarpinian@chromium.org>
+
+        Implement WEBGL_compressed_texture_s3tc_srgb extension
+        https://bugs.webkit.org/show_bug.cgi?id=215973
+
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/gl/formatutilsgl.cpp:
+        (rx::nativegl::ExtAndVersionOrExt):
+        (rx::nativegl::BuildInternalFormatInfoMap):
+
+2020-08-12  Keith Rollin  <krollin@apple.com>
+
+        Remove the need for defining USE_NEW_BUILD_SYSTEM
+        https://bugs.webkit.org/show_bug.cgi?id=215439
+
+        Reviewed by Darin Adler.
+
+        When building WebKit for XCBuild, we currently require that the
+        external build system (such as the Makefile, build-webkit, etc.)
+        defines the USE_NEW_BUILD_SYSTEM=YES build setting. This build setting
+        controls parts of our build instructions that are sensitive to when
+        XCBuild or the Legacy build system are being used. Notably, we need to
+        know when to use our custom “copy and modify” scripts with copying
+        certain header files (used with the Legacy build system) vs. using the
+        enhanced Copy Headers build phase that’s enabled with
+        APPLY_RULES_IN_COPY_HEADERS=YES (introduced with and used by XCBuild).
+        The choice of which method to copy headers is used is controlled by
+        USE_NEW_BUILD_SYSTEM.
+
+        There is no built-in build setting that we can probe to help us
+        determine which approach to take when copying and modifying headers,
+        which is why we need to define USE_NEW_BUILD_SYSTEM ourselves. But it
+        turns out that we can *detect* which build system is being used by
+        taking advantage of a subtle difference between the two systems. As
+        noted in:
+
+            https://developer.apple.com/documentation/xcode-release-notes/build-system-release-notes-for-xcode-10
+
+            “When an .xcconfig file contains multiple assignments of the same
+             build setting, later assignments using $(inherited) or
+             $(<setting_name>) will inherit from earlier assignments in the
+             .xcconfig. The legacy build system caused every use of
+             $(inherited) or $(<setting_name>) skip any other values defined
+             within the .xcconfig.”
+
+        This difference can be exploited as follows:
+
+            WK_WHICH_BUILD_SYSTEM = not_
+            WK_WHICH_BUILD_SYSTEM = $(inherited)legacy
+            WK_USE_NEW_BUILD_SYSTEM = $(WK_USE_NEW_BUILD_SYSTEM_$(WK_WHICH_BUILD_SYSTEM))
+            WK_USE_NEW_BUILD_SYSTEM_legacy = NO
+            WK_USE_NEW_BUILD_SYSTEM_not_legacy = YES
+
+        We can then use WK_USE_NEW_BUILD_SYSTEM where we used to use the
+        externally-defined USE_NEW_BUILD_SYSTEM.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * Configurations/ANGLE-dynamic.xcconfig:
+        * Configurations/ANGLE-static.xcconfig:
+        * Configurations/Base.xcconfig:
+
 2020-08-07  Dean Jackson  <dino@apple.com>
 
         ANGLE: No need to check for Catalyst in the iOS build

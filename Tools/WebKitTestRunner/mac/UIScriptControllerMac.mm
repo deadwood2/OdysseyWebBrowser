@@ -97,6 +97,43 @@ void UIScriptControllerMac::simulateAccessibilitySettingsChangeNotification(JSVa
     }).get()];
 }
 
+bool UIScriptControllerMac::isShowingDateTimePicker() const
+{
+    for (NSWindow *childWindow in webView().window.childWindows) {
+        if ([childWindow isKindOfClass:NSClassFromString(@"WKDateTimePickerWindow")])
+            return true;
+    }
+    return false;
+}
+
+double UIScriptControllerMac::dateTimePickerValue() const
+{
+    for (NSWindow *childWindow in webView().window.childWindows) {
+        if ([childWindow isKindOfClass:NSClassFromString(@"WKDateTimePickerWindow")]) {
+            for (NSView *subview in childWindow.contentView.subviews) {
+                if ([subview isKindOfClass:[NSDatePicker class]])
+                    return [[(NSDatePicker *)subview dateValue] timeIntervalSince1970] * 1000;
+            }
+        }
+    }
+    return 0;
+}
+
+void UIScriptControllerMac::chooseDateTimePickerValue()
+{
+    for (NSWindow *childWindow in webView().window.childWindows) {
+        if ([childWindow isKindOfClass:NSClassFromString(@"WKDateTimePickerWindow")]) {
+            for (NSView *subview in childWindow.contentView.subviews) {
+                if ([subview isKindOfClass:[NSDatePicker class]]) {
+                    NSDatePicker *datePicker = (NSDatePicker *)subview;
+                    [datePicker.target performSelector:datePicker.action withObject:datePicker];
+                    return;
+                }
+            }
+        }
+    }
+}
+
 bool UIScriptControllerMac::isShowingDataListSuggestions() const
 {
     return dataListSuggestionsTableView();
@@ -192,7 +229,7 @@ void UIScriptControllerMac::completeBackSwipe(JSValueRef callback)
 
 void UIScriptControllerMac::playBackEventStream(JSStringRef eventStream, JSValueRef callback)
 {
-    RetainPtr<CFStringRef> stream = adoptCF(JSStringCopyCFString(kCFAllocatorDefault, eventStream));
+    auto stream = adoptCF(JSStringCopyCFString(kCFAllocatorDefault, eventStream));
     playBackEvents(webView(), m_context, (__bridge NSString *)stream.get(), callback);
 }
 

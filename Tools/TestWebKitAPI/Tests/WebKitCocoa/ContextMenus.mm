@@ -25,7 +25,7 @@
 
 #import "config.h"
 
-#if PLATFORM(IOS) && USE(UICONTEXTMENU)
+#if USE(UICONTEXTMENU)
 
 #import "TestContextMenuDriver.h"
 #import "TestWKWebView.h"
@@ -74,7 +74,7 @@ static RetainPtr<TestContextMenuDriver> contextMenuWebViewDriver(Class delegateC
     contextMenuRequested = true;
     UIContextMenuContentPreviewProvider previewProvider = ^UIViewController * ()
     {
-        return [[[UIViewController alloc] init] autorelease];
+        return adoptNS([[UIViewController alloc] init]).autorelease();
     };
     UIContextMenuActionProvider actionProvider = ^UIMenu *(NSArray<UIMenuElement *> *suggestedActions)
     {
@@ -141,7 +141,7 @@ TEST(ContextMenu, DISABLED_End)
     contextMenuRequested = true;
     UIContextMenuContentPreviewProvider previewProvider = ^UIViewController * ()
     {
-        return [[[UIViewController alloc] init] autorelease];
+        return adoptNS([[UIViewController alloc] init]).autorelease();
     };
     UIContextMenuActionProvider actionProvider = ^UIMenu *(NSArray<UIMenuElement *> *suggestedActions)
     {
@@ -309,7 +309,7 @@ TEST(ContextMenu, DISABLED_Legacy)
     contextMenuRequested = true;
     UIContextMenuContentPreviewProvider previewProvider = ^UIViewController * ()
     {
-        return [[[UIViewController alloc] init] autorelease];
+        return adoptNS([[UIViewController alloc] init]).autorelease();
     };
     UIContextMenuActionProvider actionProvider = ^UIMenu *(NSArray<UIMenuElement *> *suggestedActions)
     {
@@ -352,4 +352,4 @@ TEST(ContextMenu, DISABLED_SuggestedActions)
     EXPECT_TRUE(willPresentCalled);
 }
 
-#endif // PLATFORM(IOS) && USE(UICONTEXTMENU)
+#endif // USE(UICONTEXTMENU)

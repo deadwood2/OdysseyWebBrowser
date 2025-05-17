@@ -32,13 +32,8 @@ list(APPEND TestWebCore_SOURCES
 
     win/TestWebCoreStubs.cpp
 )
-list(APPEND TestWebCore_DEFINITIONS
-    STATICALLY_LINKED_WITH_PAL=1
-    STATICALLY_LINKED_WITH_WebCore=1
-)
 
 list(APPEND TestWebCore_LIBRARIES
-    $<TARGET_OBJECTS:WebCore>
     Crypt32
     D2d1
     Dwrite
@@ -53,6 +48,7 @@ list(APPEND TestWebCore_LIBRARIES
 if (${WTF_PLATFORM_WIN_CAIRO})
     list(APPEND TestWebCore_LIBRARIES
         Cairo::Cairo
+        MediaFoundation
         OpenSSL::SSL
         mfuuid
         strmiids

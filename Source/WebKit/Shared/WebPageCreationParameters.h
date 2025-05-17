@@ -156,8 +156,9 @@ struct WebPageCreationParameters {
     double viewportConfigurationMinimumEffectiveDeviceWidth;
     WebCore::FloatSize viewportConfigurationViewSize;
     Optional<WebCore::ViewportArguments> overrideViewportArguments;
-    Optional<SandboxExtension::Handle> frontboardExtensionHandle;
-    Optional<SandboxExtension::Handle> iconServicesExtensionHandle;
+#endif
+#if ENABLE(ATTACHMENT_ELEMENT)
+    Optional<SandboxExtension::HandleArray> attachmentElementExtensionHandles;
 #endif
 #if PLATFORM(IOS_FAMILY)
     WebCore::FloatSize screenSize;
@@ -173,6 +174,13 @@ struct WebPageCreationParameters {
 #if PLATFORM(COCOA)
     bool smartInsertDeleteEnabled;
     Vector<String> additionalSupportedImageTypes;
+    SandboxExtension::HandleArray mediaExtensionHandles; // FIXME(207716): Remove when GPU process is complete.
+    SandboxExtension::HandleArray mediaIOKitExtensionHandles;
+    SandboxExtension::HandleArray gpuIOKitExtensionHandles;
+    SandboxExtension::HandleArray gpuMachExtensionHandles;
+#endif
+#if HAVE(STATIC_FONT_REGISTRY)
+    Optional<SandboxExtension::Handle> fontMachExtensionHandle;
 #endif
 #if HAVE(APP_ACCENT_COLORS)
     WebCore::Color accentColor;
@@ -183,8 +191,6 @@ struct WebPageCreationParameters {
 #if PLATFORM(WIN)
     uint64_t nativeWindowHandle;
 #endif
-    bool appleMailPaginationQuirkEnabled;
-    bool appleMailLinesClampEnabled;
     bool shouldScaleViewToFitDocument;
 
     WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection;
@@ -194,6 +200,7 @@ struct WebPageCreationParameters {
     Optional<double> cpuLimit;
 
     HashMap<String, uint64_t> urlSchemeHandlers;
+    Vector<String> urlSchemesWithLegacyCustomProtocolHandlers;
 
 #if ENABLE(APPLICATION_MANIFEST)
     Optional<WebCore::ApplicationManifest> applicationManifest;
@@ -226,16 +233,32 @@ struct WebPageCreationParameters {
     bool shouldCaptureVideoInGPUProcess { false };
     bool shouldCaptureDisplayInUIProcess { false };
     bool shouldRenderCanvasInGPUProcess { false };
+    bool shouldRenderDOMInGPUProcess { false };
+    bool shouldPlayMediaInGPUProcess { false };
+#if ENABLE(WEBGL)
+    bool shouldRenderWebGLInGPUProcess { false };
+#endif
+    bool shouldEnableVP8Decoder { false };
     bool shouldEnableVP9Decoder { false };
     bool shouldEnableVP9SWDecoder { false };
+#if ENABLE(APP_BOUND_DOMAINS)
     bool needsInAppBrowserPrivacyQuirks { false };
     bool limitsNavigationsToAppBoundDomains { false };
+#endif
+    bool lastNavigationWasAppBound { false };
     bool canUseCredentialStorage { true };
 
     WebCore::ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking { WebCore::ShouldRelaxThirdPartyCookieBlocking::No };
 
 #if PLATFORM(GTK)
     String themeName;
+#endif
+
+    bool textInteractionEnabled { true };
+    bool httpsUpgradeEnabled { true };
+    
+#if PLATFORM(IOS)
+    bool allowsDeprecatedSynchronousXMLHttpRequestDuringUnload { false };
 #endif
 };
 

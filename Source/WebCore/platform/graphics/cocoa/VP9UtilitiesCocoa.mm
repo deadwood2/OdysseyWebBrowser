@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,10 +23,10 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "VP9UtilitiesCocoa.h"
+#import "config.h"
+#import "VP9UtilitiesCocoa.h"
 
-#if PLATFORM(COCOA)
+#if ENABLE(VP9) && PLATFORM(COCOA)
 
 #import "FourCC.h"
 #import "LibWebRTCProvider.h"
@@ -35,38 +35,44 @@
 #import "ScreenProperties.h"
 #import "SystemBattery.h"
 #import "VideoConfiguration.h"
+#import <CoreMedia/CMFormatDescription.h>
+#import <JavaScriptCore/DataView.h>
+#import <webm/vp9_header_parser.h>
 #import <wtf/text/StringToIntegerConversion.h>
 
 #import <pal/cocoa/AVFoundationSoftLink.h>
+#import <pal/cf/CoreMediaSoftLink.h>
+#import "CoreVideoSoftLink.h"
 #import "VideoToolboxSoftLink.h"
 
 namespace WebCore {
 
-// FIXME: Remove this once kCMVideoCodecType_VP9 is added to CMFormatDescription.h
-constexpr CMVideoCodecType kCMVideoCodecType_VP9 { 'vp09' };
+using namespace PAL;
+using namespace webm;
 
-static bool hardwareVP9DecoderDisabledForTesting { false };
-
-struct OverrideScreenData {
-    float width { 0 };
-    float height { 0 };
-    float scale { 1 };
-};
-static Optional<OverrideScreenData> screenSizeAndScaleForTesting;
-
-void setOverrideVP9HardwareDecoderDisabledForTesting(bool disabled)
+VP9TestingOverrides& VP9TestingOverrides::singleton()
 {
-    hardwareVP9DecoderDisabledForTesting = disabled;
+    static NeverDestroyed<VP9TestingOverrides> instance;
+    return instance;
 }
 
-void setOverrideVP9ScreenSizeAndScaleForTesting(float width, float height, float scale)
+void VP9TestingOverrides::setHardwareDecoderDisabled(Optional<bool>&& disabled)
 {
-    screenSizeAndScaleForTesting = makeOptional<OverrideScreenData>({ width, height, scale });
+    m_hardwareDecoderDisabled = WTFMove(disabled);
+    if (m_configurationChangedCallback)
+        m_configurationChangedCallback();
 }
 
-void resetOverrideVP9ScreenSizeAndScaleForTesting()
+void VP9TestingOverrides::setVP9ScreenSizeAndScale(Optional<ScreenDataOverrides>&& overrides)
 {
-    screenSizeAndScaleForTesting = WTF::nullopt;
+    m_screenSizeAndScale = WTFMove(overrides);
+    if (m_configurationChangedCallback)
+        m_configurationChangedCallback();
+}
+
+void VP9TestingOverrides::setConfigurationChangedCallback(std::function<void()>&& callback)
+{
+    m_configurationChangedCallback = WTFMove(callback);
 }
 
 enum class ResolutionCategory : uint8_t {
@@ -102,6 +108,11 @@ void registerWebKitVP9Decoder()
     LibWebRTCProvider::registerWebKitVP9Decoder();
 }
 
+void registerWebKitVP8Decoder()
+{
+    LibWebRTCProvider::registerWebKitVP8Decoder();
+}
+
 void registerSupplementalVP9Decoder()
 {
     if (!VideoToolboxLibrary(true))
@@ -113,12 +124,31 @@ void registerSupplementalVP9Decoder()
 
 bool isVP9DecoderAvailable()
 {
+#if PLATFORM(IOS)
+    return canLoad_VideoToolbox_VTIsHardwareDecodeSupported() && VTIsHardwareDecodeSupported(kCMVideoCodecType_VP9);
+#else
     if (!VideoToolboxLibrary(true))
         return false;
     return noErr == VTSelectAndCreateVideoDecoderInstance(kCMVideoCodecType_VP9, kCFAllocatorDefault, nullptr, nullptr);
+#endif
 }
 
-bool isVPCodecConfigurationRecordSupported(VPCodecConfigurationRecord& codecConfiguration)
+bool isVP8DecoderAvailable()
+{
+    if (!VideoToolboxLibrary(true))
+        return false;
+    return noErr == VTSelectAndCreateVideoDecoderInstance('vp08', kCFAllocatorDefault, nullptr, nullptr);
+}
+
+static bool vp9HardwareDecoderAvailable()
+{
+    if (auto disabledForTesting = VP9TestingOverrides::singleton().hardwareDecoderDisabled())
+        return !*disabledForTesting;
+
+    return canLoad_VideoToolbox_VTIsHardwareDecodeSupported() && VTIsHardwareDecodeSupported(kCMVideoCodecType_VP9);
+}
+
+static bool isVP9CodecConfigurationRecordSupported(VPCodecConfigurationRecord& codecConfiguration)
 {
     if (!isVP9DecoderAvailable())
         return false;
@@ -140,7 +170,7 @@ bool isVPCodecConfigurationRecordSupported(VPCodecConfigurationRecord& codecConf
         return false;
 
     // Hardware decoders are always available.
-    if (canLoad_VideoToolbox_VTIsHardwareDecodeSupported() && VTIsHardwareDecodeSupported(kCMVideoCodecType_VP9) && !hardwareVP9DecoderDisabledForTesting)
+    if (vp9HardwareDecoderAvailable())
         return true;
 
     // For wall-powered devices, always report VP9 as supported, even if not powerEfficient.
@@ -154,9 +184,8 @@ bool isVPCodecConfigurationRecordSupported(VPCodecConfigurationRecord& codecConf
         return true;
 
     bool has4kScreen = false;
-
-    if (screenSizeAndScaleForTesting) {
-        auto screenSize = FloatSize(screenSizeAndScaleForTesting->width, screenSizeAndScaleForTesting->height).scaled(screenSizeAndScaleForTesting->scale);
+    if (auto overrideForTesting = VP9TestingOverrides::singleton().vp9ScreenSizeAndScale()) {
+        auto screenSize = FloatSize(overrideForTesting->width, overrideForTesting->height).scaled(overrideForTesting->scale);
         has4kScreen = resolutionCategory(screenSize) >= ResolutionCategory::R_4K;
     } else {
         for (auto& screenData : getScreenProperties().screenDataMap.values()) {
@@ -168,6 +197,37 @@ bool isVPCodecConfigurationRecordSupported(VPCodecConfigurationRecord& codecConf
     }
 
     return has4kScreen;
+}
+
+static bool isVP8CodecConfigurationRecordSupported(VPCodecConfigurationRecord& codecConfiguration)
+{
+    if (!isVP8DecoderAvailable())
+        return false;
+
+    // VP8 decoder only supports Profile 0;
+    if (codecConfiguration.profile)
+        return false;
+
+    // VP8 decoder only supports 420 chroma subsampling.
+    if (codecConfiguration.chromaSubsampling > VPConfigurationChromaSubsampling::Subsampling_420_Colocated)
+        return false;
+
+    // VP8 decoder only supports 8-bit color:
+    if (codecConfiguration.bitDepth > 8)
+        return false;
+
+    return true;
+}
+
+bool isVPCodecConfigurationRecordSupported(VPCodecConfigurationRecord& codecConfiguration)
+{
+    if (codecConfiguration.codecName == "vp08" || codecConfiguration.codecName == "vp8")
+        return isVP8CodecConfigurationRecordSupported(codecConfiguration);
+
+    if (codecConfiguration.codecName == "vp09" || codecConfiguration.codecName == "vp9")
+        return isVP9CodecConfigurationRecordSupported(codecConfiguration);
+
+    return false;
 }
 
 bool validateVPParameters(VPCodecConfigurationRecord& codecConfiguration, MediaCapabilitiesInfo& info, const VideoConfiguration& videoConfiguration)
@@ -191,7 +251,7 @@ bool validateVPParameters(VPCodecConfigurationRecord& codecConfiguration, MediaC
             return false;
     }
 
-    if (canLoad_VideoToolbox_VTIsHardwareDecodeSupported() && VTIsHardwareDecodeSupported(kCMVideoCodecType_VP9) && !hardwareVP9DecoderDisabledForTesting) {
+    if (vp9HardwareDecoderAvailable()) {
         // HW VP9 Decoder does not support alpha channel:
         if (videoConfiguration.alphaChannel && *videoConfiguration.alphaChannel)
             return false;
@@ -240,8 +300,8 @@ bool validateVPParameters(VPCodecConfigurationRecord& codecConfiguration, MediaC
 
     bool has4kScreen = false;
 
-    if (screenSizeAndScaleForTesting) {
-        auto screenSize = FloatSize(screenSizeAndScaleForTesting->width, screenSizeAndScaleForTesting->height).scaled(screenSizeAndScaleForTesting->scale);
+    if (auto overrideForTesting = VP9TestingOverrides::singleton().vp9ScreenSizeAndScale()) {
+        auto screenSize = FloatSize(overrideForTesting->width, overrideForTesting->height).scaled(overrideForTesting->scale);
         has4kScreen = resolutionCategory(screenSize) >= ResolutionCategory::R_4K;
     } else {
         for (auto& screenData : getScreenProperties().screenDataMap.values()) {
@@ -257,6 +317,390 @@ bool validateVPParameters(VPCodecConfigurationRecord& codecConfiguration, MediaC
 
     info.supported = true;
     return true;
+}
+
+static uint8_t convertToColorPrimaries(const Primaries& coefficients)
+{
+    switch (coefficients) {
+    case Primaries::kBt709:
+        return VPConfigurationColorPrimaries::BT_709_6;
+    case Primaries::kUnspecified:
+        return VPConfigurationColorPrimaries::Unspecified;
+    case Primaries::kBt470M:
+        return VPConfigurationColorPrimaries::BT_470_6_M;
+    case Primaries::kBt470Bg:
+        return VPConfigurationColorPrimaries::BT_470_7_BG;
+    case Primaries::kSmpte170M:
+        return VPConfigurationColorPrimaries::BT_601_7;
+    case Primaries::kSmpte240M:
+        return VPConfigurationColorPrimaries::SMPTE_ST_240;
+    case Primaries::kFilm:
+        return VPConfigurationColorPrimaries::Film;
+    case Primaries::kBt2020:
+        return VPConfigurationColorPrimaries::BT_2020_Nonconstant_Luminance;
+    case Primaries::kSmpteSt4281:
+        return VPConfigurationColorPrimaries::SMPTE_ST_428_1;
+    case Primaries::kSmpteRp431:
+        return VPConfigurationColorPrimaries::SMPTE_RP_431_2;
+    case Primaries::kSmpteEg432:
+        return VPConfigurationColorPrimaries::SMPTE_EG_432_1;
+    case Primaries::kJedecP22Phosphors:
+        return VPConfigurationColorPrimaries::EBU_Tech_3213_E;
+    }
+}
+
+static CFStringRef convertToCMColorPrimaries(uint8_t primaries)
+{
+    switch (primaries) {
+    case VPConfigurationColorPrimaries::BT_709_6:
+        return kCVImageBufferColorPrimaries_ITU_R_709_2;
+    case VPConfigurationColorPrimaries::EBU_Tech_3213_E:
+        return kCVImageBufferColorPrimaries_EBU_3213;
+    case VPConfigurationColorPrimaries::BT_601_7:
+    case VPConfigurationColorPrimaries::SMPTE_ST_240:
+        return kCVImageBufferColorPrimaries_SMPTE_C;
+    case VPConfigurationColorPrimaries::SMPTE_RP_431_2:
+        return kCMFormatDescriptionColorPrimaries_DCI_P3;
+    case VPConfigurationColorPrimaries::SMPTE_EG_432_1:
+        return kCMFormatDescriptionColorPrimaries_P3_D65;
+    case VPConfigurationColorPrimaries::BT_2020_Nonconstant_Luminance:
+        return kCMFormatDescriptionColorPrimaries_ITU_R_2020;
+    }
+
+    return nullptr;
+}
+
+static uint8_t convertToTransferCharacteristics(const TransferCharacteristics& characteristics)
+{
+    switch (characteristics) {
+    case TransferCharacteristics::kBt709:
+        return VPConfigurationTransferCharacteristics::BT_709_6;
+    case TransferCharacteristics::kUnspecified:
+        return VPConfigurationTransferCharacteristics::Unspecified;
+    case TransferCharacteristics::kGamma22curve:
+        return VPConfigurationTransferCharacteristics::BT_470_6_M;
+    case TransferCharacteristics::kGamma28curve:
+        return VPConfigurationTransferCharacteristics::BT_470_7_BG;
+    case TransferCharacteristics::kSmpte170M:
+        return VPConfigurationTransferCharacteristics::BT_601_7;
+    case TransferCharacteristics::kSmpte240M:
+        return VPConfigurationTransferCharacteristics::SMPTE_ST_240;
+    case TransferCharacteristics::kLinear:
+        return VPConfigurationTransferCharacteristics::Linear;
+    case TransferCharacteristics::kLog:
+        return VPConfigurationTransferCharacteristics::Logrithmic;
+    case TransferCharacteristics::kLogSqrt:
+        return VPConfigurationTransferCharacteristics::Logrithmic_Sqrt;
+    case TransferCharacteristics::kIec6196624:
+        return VPConfigurationTransferCharacteristics::IEC_61966_2_4;
+    case TransferCharacteristics::kBt1361ExtendedColourGamut:
+        return VPConfigurationTransferCharacteristics::BT_1361_0;
+    case TransferCharacteristics::kIec6196621:
+        return VPConfigurationTransferCharacteristics::IEC_61966_2_1;
+    case TransferCharacteristics::k10BitBt2020:
+        return VPConfigurationTransferCharacteristics::BT_2020_10bit;
+    case TransferCharacteristics::k12BitBt2020:
+        return VPConfigurationTransferCharacteristics::BT_2020_12bit;
+    case TransferCharacteristics::kSmpteSt2084:
+        return VPConfigurationTransferCharacteristics::SMPTE_ST_2084;
+    case TransferCharacteristics::kSmpteSt4281:
+        return VPConfigurationTransferCharacteristics::SMPTE_ST_428_1;
+    case TransferCharacteristics::kAribStdB67Hlg:
+        return VPConfigurationTransferCharacteristics::BT_2100_HLG;
+    }
+}
+
+static CFStringRef convertToCMTransferFunction(uint8_t characteristics)
+{
+    switch (characteristics) {
+    case VPConfigurationTransferCharacteristics::BT_709_6:
+        return kCVImageBufferTransferFunction_ITU_R_709_2;
+    case VPConfigurationTransferCharacteristics::SMPTE_ST_240:
+        return kCVImageBufferTransferFunction_SMPTE_240M_1995;
+    case VPConfigurationTransferCharacteristics::SMPTE_ST_2084:
+        return kCMFormatDescriptionTransferFunction_SMPTE_ST_2084_PQ;
+    case VPConfigurationTransferCharacteristics::BT_2020_10bit:
+    case VPConfigurationTransferCharacteristics::BT_2020_12bit:
+        return kCMFormatDescriptionTransferFunction_ITU_R_2020;
+    case VPConfigurationTransferCharacteristics::SMPTE_ST_428_1:
+        return kCMFormatDescriptionTransferFunction_SMPTE_ST_428_1;
+    case VPConfigurationTransferCharacteristics::BT_2100_HLG:
+        return kCMFormatDescriptionTransferFunction_ITU_R_2100_HLG;
+    case VPConfigurationTransferCharacteristics::IEC_61966_2_1:
+        return canLoad_CoreMedia_kCMFormatDescriptionTransferFunction_sRGB() ? PAL::get_CoreMedia_kCMFormatDescriptionTransferFunction_sRGB() : nullptr;
+    case VPConfigurationTransferCharacteristics::Linear:
+        return kCMFormatDescriptionTransferFunction_Linear;
+    }
+
+    return nullptr;
+}
+
+static uint8_t convertToMatrixCoefficients(const MatrixCoefficients& coefficients)
+{
+    switch (coefficients) {
+    case MatrixCoefficients::kRgb:
+        return VPConfigurationMatrixCoefficients::Identity;
+    case MatrixCoefficients::kBt709:
+        return VPConfigurationMatrixCoefficients::BT_709_6;
+    case MatrixCoefficients::kUnspecified:
+        return VPConfigurationMatrixCoefficients::Unspecified;
+    case MatrixCoefficients::kFcc:
+        return VPConfigurationMatrixCoefficients::FCC;
+    case MatrixCoefficients::kBt470Bg:
+        return VPConfigurationMatrixCoefficients::BT_470_7_BG;
+    case MatrixCoefficients::kSmpte170M:
+        return VPConfigurationMatrixCoefficients::BT_601_7;
+    case MatrixCoefficients::kSmpte240M:
+        return VPConfigurationMatrixCoefficients::SMPTE_ST_240;
+    case MatrixCoefficients::kYCgCo:
+        return VPConfigurationMatrixCoefficients::YCgCo;
+    case MatrixCoefficients::kBt2020NonconstantLuminance:
+        return VPConfigurationMatrixCoefficients::BT_2020_Nonconstant_Luminance;
+    case MatrixCoefficients::kBt2020ConstantLuminance:
+        return VPConfigurationMatrixCoefficients::BT_2020_Constant_Luminance;
+    }
+}
+
+static CFStringRef convertToCMYCbCRMatrix(uint8_t coefficients)
+{
+    switch (coefficients) {
+    case VPConfigurationMatrixCoefficients::BT_2020_Nonconstant_Luminance:
+        return kCMFormatDescriptionYCbCrMatrix_ITU_R_2020;
+    case VPConfigurationMatrixCoefficients::BT_470_7_BG:
+    case VPConfigurationMatrixCoefficients::BT_601_7:
+        return kCVImageBufferYCbCrMatrix_ITU_R_601_4;
+    case VPConfigurationMatrixCoefficients::BT_709_6:
+        return kCVImageBufferYCbCrMatrix_ITU_R_709_2;
+    case VPConfigurationMatrixCoefficients::SMPTE_ST_240:
+        return kCVImageBufferYCbCrMatrix_SMPTE_240M_1995;
+    }
+
+    return nullptr;
+}
+
+static uint8_t convertSubsamplingXYToChromaSubsampling(uint64_t x, uint64_t y)
+{
+    if (x & y)
+        return VPConfigurationChromaSubsampling::Subsampling_420_Colocated;
+    if (x & !y)
+        return VPConfigurationChromaSubsampling::Subsampling_422;
+    if (!x & !y)
+        return VPConfigurationChromaSubsampling::Subsampling_444;
+    // This indicates 4:4:0 subsampling, which is not expressable in the 'vpcC' box. Default to 4:2:0.
+    return VPConfigurationChromaSubsampling::Subsampling_420_Colocated;
+}
+
+static RetainPtr<CMFormatDescriptionRef> createFormatDescriptionFromVPCodecConfigurationRecord(const VPCodecConfigurationRecord& record, int32_t width, int32_t height)
+{
+    // Ref: "VP Codec ISO Media File Format Binding, v1.0, 2017-03-31"
+    // <https://www.webmproject.org/vp9/mp4/>
+    //
+    // class VPCodecConfigurationBox extends FullBox('vpcC', version = 1, 0)
+    // {
+    //     VPCodecConfigurationRecord() vpcConfig;
+    // }
+    //
+    // aligned (8) class VPCodecConfigurationRecord {
+    //     unsigned int (8)     profile;
+    //     unsigned int (8)     level;
+    //     unsigned int (4)     bitDepth;
+    //     unsigned int (3)     chromaSubsampling;
+    //     unsigned int (1)     videoFullRangeFlag;
+    //     unsigned int (8)     colourPrimaries;
+    //     unsigned int (8)     transferCharacteristics;
+    //     unsigned int (8)     matrixCoefficients;
+    //     unsigned int (16)    codecIntializationDataSize;
+    //     unsigned int (8)[]   codecIntializationData;
+    // }
+    //
+    // codecIntializationDataSize​For VP8 and VP9 this field must be 0.
+    // codecIntializationData​binary codec initialization data. Not used for VP8 and VP9.
+    //
+    // FIXME: Convert existing struct to an ISOBox and replace the writing code below
+    // with a subclass of ISOFullBox.
+
+    constexpr size_t VPCodecConfigurationContentsSize = 12;
+
+    uint32_t versionAndFlags = 1 << 24;
+    uint8_t bitDepthChromaAndRange = (0xF & record.bitDepth) << 4 | (0x7 & record.chromaSubsampling) << 1 | (0x1 & record.videoFullRangeFlag);
+    uint16_t codecIntializationDataSize = 0;
+
+    auto view = JSC::DataView::create(ArrayBuffer::create(VPCodecConfigurationContentsSize, 1), 0, VPCodecConfigurationContentsSize);
+    view->set(0, versionAndFlags, false);
+    view->set(4, record.profile, false);
+    view->set(5, record.level, false);
+    view->set(6, bitDepthChromaAndRange, false);
+    view->set(7, record.colorPrimaries, false);
+    view->set(8, record.transferCharacteristics, false);
+    view->set(9, record.matrixCoefficients, false);
+    view->set(10, codecIntializationDataSize, false);
+
+    auto data = adoptCF(CFDataCreate(kCFAllocatorDefault, (const UInt8 *)view->data(), view->byteLength()));
+
+    CFTypeRef configurationKeys[] = { CFSTR("vpcC") };
+    CFTypeRef configurationValues[] = { data.get() };
+    auto configurationDict = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, configurationKeys, configurationValues, WTF_ARRAY_LENGTH(configurationKeys), &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+
+    Vector<CFTypeRef> extensionsKeys { kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms };
+    Vector<CFTypeRef> extensionsValues = { configurationDict.get() };
+
+    if (record.videoFullRangeFlag == VPConfigurationRange::FullRange) {
+        extensionsKeys.append(kCMFormatDescriptionExtension_FullRangeVideo);
+        extensionsValues.append(kCFBooleanTrue);
+    }
+
+    if (auto cmColorPrimaries = convertToCMColorPrimaries(record.colorPrimaries)) {
+        extensionsKeys.append(kCVImageBufferColorPrimariesKey);
+        extensionsValues.append(cmColorPrimaries);
+    }
+
+    if (auto cmTransferFunction = convertToCMTransferFunction(record.transferCharacteristics)) {
+        extensionsKeys.append(kCVImageBufferTransferFunctionKey);
+        extensionsValues.append(cmTransferFunction);
+    }
+
+    if (auto cmMatrix = convertToCMYCbCRMatrix(record.matrixCoefficients)) {
+        extensionsKeys.append(kCVImageBufferYCbCrMatrixKey);
+        extensionsValues.append(cmMatrix);
+    }
+
+    auto extensions = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, extensionsKeys.data(), extensionsValues.data(), extensionsKeys.size(), &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+
+    CMVideoFormatDescriptionRef formatDescription = nullptr;
+    CMVideoCodecType codec = record.codecName == "vp09" ? kCMVideoCodecType_VP9 : 'vp08';
+    if (noErr != CMVideoFormatDescriptionCreate(kCFAllocatorDefault, codec, width, height, extensions.get(), &formatDescription))
+        return nullptr;
+    return adoptCF(formatDescription);
+}
+
+RetainPtr<CMFormatDescriptionRef> createFormatDescriptionFromVP9HeaderParser(const vp9_parser::Vp9HeaderParser& parser, const webm::Element<Colour>& color)
+{
+    VPCodecConfigurationRecord record;
+
+    record.codecName = "vp09";
+    record.profile = parser.profile();
+    // CoreMedia does nat care about the VP9 codec level; hard-code to Level 1.0 here:
+    record.level = 10;
+    record.bitDepth = parser.bit_depth();
+    record.videoFullRangeFlag = parser.color_range() ? VPConfigurationRange::FullRange : VPConfigurationRange::VideoRange;
+    record.chromaSubsampling = convertSubsamplingXYToChromaSubsampling(parser.subsampling_x(), parser.subsampling_y());
+    record.colorPrimaries = VPConfigurationColorPrimaries::Unspecified;
+    record.transferCharacteristics = VPConfigurationTransferCharacteristics::Unspecified;
+    record.matrixCoefficients = VPConfigurationMatrixCoefficients::Unspecified;
+
+    // Container color values can override per-sample ones:
+    if (color.is_present()) {
+        auto& colorValue = color.value();
+        if (colorValue.chroma_subsampling_x.is_present() && colorValue.chroma_subsampling_y.is_present())
+            record.chromaSubsampling = convertSubsamplingXYToChromaSubsampling(colorValue.chroma_subsampling_x.value(), colorValue.chroma_subsampling_y.value());
+        if (colorValue.range.is_present() && colorValue.range.value() != Range::kUnspecified)
+            record.videoFullRangeFlag = colorValue.range.value() == Range::kFull ? VPConfigurationRange::FullRange : VPConfigurationRange::VideoRange;
+        if (colorValue.bits_per_channel.is_present())
+            record.bitDepth = colorValue.bits_per_channel.value();
+        if (colorValue.transfer_characteristics.is_present())
+            record.transferCharacteristics = convertToTransferCharacteristics(colorValue.transfer_characteristics.value());
+        if (colorValue.matrix_coefficients.is_present())
+            record.matrixCoefficients = convertToMatrixCoefficients(colorValue.matrix_coefficients.value());
+        if (colorValue.primaries.is_present())
+            record.colorPrimaries = convertToColorPrimaries(colorValue.primaries.value());
+    }
+
+    return createFormatDescriptionFromVPCodecConfigurationRecord(record, parser.width(), parser.height());
+}
+
+Optional<VP8FrameHeader> parseVP8FrameHeader(uint8_t* frameData, size_t frameSize)
+{
+    // VP8 frame headers are defined in RFC 6386: <https://tools.ietf.org/html/rfc6386>.
+
+    // Bail if the header is below a minimum size
+    if (frameSize < 11)
+        return WTF::nullopt;
+
+    VP8FrameHeader header;
+    size_t headerSize = 11;
+
+    auto view = JSC::DataView::create(ArrayBuffer::create(frameData, headerSize), 0, headerSize);
+    bool status = true;
+
+    auto uncompressedChunk = view->get<uint32_t>(0, true, &status);
+    if (!status)
+        return WTF::nullopt;
+
+    header.keyframe = uncompressedChunk & 0x80000000;
+    header.version = (uncompressedChunk >> 28) & 0x7;
+    header.showFrame = uncompressedChunk & 0x8000000;
+    header.partitionSize = (uncompressedChunk >> 8) & 0x7FFFF;
+
+    if (!header.keyframe)
+        return header;
+
+    auto startCode0 = view->get<uint8_t>(3, true, &status);
+    if (!status || startCode0 != 0x9d)
+        return WTF::nullopt;
+
+    auto startCode1 = view->get<uint8_t>(4, true, &status);
+    if (!status || startCode1 != 0x01)
+        return WTF::nullopt;
+
+    auto startCode2 = view->get<uint8_t>(5, true, &status);
+    if (!status || startCode2 != 0x2a)
+        return WTF::nullopt;
+
+    auto horizontalAndWidthField = view->get<uint16_t>(6, true, &status);
+    if (!status)
+        return WTF::nullopt;
+
+    header.horizontalScale = static_cast<uint8_t>(horizontalAndWidthField >> 14);
+    header.width = static_cast<uint16_t>(horizontalAndWidthField & 0x3FFF);
+
+    auto verticalAndHeightField = view->get<uint16_t>(8, true, &status);
+    if (!status)
+        return WTF::nullopt;
+
+    header.verticalScale = static_cast<uint8_t>(verticalAndHeightField >> 14);
+    header.height = static_cast<uint16_t>(verticalAndHeightField & 0x3FFF);
+
+    auto colorSpaceAndClampingField = view->get<uint8_t>(10, true, &status);
+    if (!status)
+        return WTF::nullopt;
+
+    header.colorSpace = colorSpaceAndClampingField & 0x80;
+    header.needsClamping = colorSpaceAndClampingField & 0x40;
+
+    return header;
+}
+
+RetainPtr<CMFormatDescriptionRef> createFormatDescriptionFromVP8Header(const VP8FrameHeader& header, const webm::Element<Colour>& color)
+{
+    VPCodecConfigurationRecord record;
+    record.codecName = "vp08";
+    record.profile = 0;
+    record.level = 10;
+    record.bitDepth = 8;
+    record.videoFullRangeFlag = VPConfigurationRange::FullRange;
+    record.chromaSubsampling = VPConfigurationChromaSubsampling::Subsampling_420_Colocated;
+    record.colorPrimaries = header.colorSpace ? VPConfigurationColorPrimaries::Unspecified : VPConfigurationColorPrimaries::BT_601_7;
+    record.transferCharacteristics =  header.colorSpace ? VPConfigurationTransferCharacteristics::Unspecified : VPConfigurationTransferCharacteristics::BT_601_7;
+    record.matrixCoefficients = header.colorSpace ? VPConfigurationMatrixCoefficients::Unspecified : VPConfigurationMatrixCoefficients::BT_601_7;
+
+    // Container color values can override per-sample ones:
+    if (color.is_present()) {
+        auto& colorValue = color.value();
+        if (colorValue.chroma_subsampling_x.is_present() && colorValue.chroma_subsampling_y.is_present())
+            record.chromaSubsampling = convertSubsamplingXYToChromaSubsampling(colorValue.chroma_subsampling_x.value(), colorValue.chroma_subsampling_y.value());
+        if (colorValue.range.is_present() && colorValue.range.value() != Range::kUnspecified)
+            record.videoFullRangeFlag = colorValue.range.value() == Range::kFull ? VPConfigurationRange::FullRange : VPConfigurationRange::VideoRange;
+        if (colorValue.bits_per_channel.is_present())
+            record.bitDepth = colorValue.bits_per_channel.value();
+        if (colorValue.transfer_characteristics.is_present())
+            record.transferCharacteristics = convertToTransferCharacteristics(colorValue.transfer_characteristics.value());
+        if (colorValue.matrix_coefficients.is_present())
+            record.matrixCoefficients = convertToMatrixCoefficients(colorValue.matrix_coefficients.value());
+        if (colorValue.primaries.is_present())
+            record.colorPrimaries = convertToColorPrimaries(colorValue.primaries.value());
+    }
+
+    return createFormatDescriptionFromVPCodecConfigurationRecord(record, header.width, header.height);
 }
 
 }

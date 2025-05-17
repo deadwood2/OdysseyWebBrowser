@@ -10,10 +10,13 @@ file(MAKE_DIRECTORY ${DERIVED_SOURCES_WPE_API_DIR})
 file(MAKE_DIRECTORY ${FORWARDING_HEADERS_WPE_DIR})
 file(MAKE_DIRECTORY ${FORWARDING_HEADERS_WPE_EXTENSION_DIR})
 file(MAKE_DIRECTORY ${FORWARDING_HEADERS_WPE_DOM_DIR})
+file(MAKE_DIRECTORY ${FORWARDING_HEADERS_WPE_JSC_DIR})
 
 configure_file(UIProcess/API/wpe/WebKitVersion.h.in ${DERIVED_SOURCES_WPE_API_DIR}/WebKitVersion.h)
 configure_file(wpe/wpe-webkit.pc.in ${WPE_PKGCONFIG_FILE} @ONLY)
 configure_file(wpe/wpe-web-extension.pc.in ${WPEWebExtension_PKGCONFIG_FILE} @ONLY)
+configure_file(wpe/wpe-webkit-uninstalled.pc.in ${CMAKE_BINARY_DIR}/wpe-webkit-${WPE_API_VERSION}-uninstalled.pc @ONLY)
+configure_file(wpe/wpe-web-extension-uninstalled.pc.in ${CMAKE_BINARY_DIR}/wpe-web-extension-${WPE_API_VERSION}-uninstalled.pc @ONLY)
 
 add_definitions(-DWEBKIT2_COMPILATION)
 
@@ -53,10 +56,18 @@ add_custom_command(
     VERBATIM
 )
 
+add_custom_command(
+    OUTPUT ${FORWARDING_HEADERS_WPE_JSC_DIR}/jsc
+    DEPENDS ${JAVASCRIPTCORE_DIR}/API/glib/
+    COMMAND ln -n -s -f ${JAVASCRIPTCORE_DIR}/API/glib ${FORWARDING_HEADERS_WPE_JSC_DIR}/jsc
+    VERBATIM
+)
+
 add_custom_target(webkitwpe-fake-api-headers
     DEPENDS ${FORWARDING_HEADERS_WPE_DIR}/wpe
             ${FORWARDING_HEADERS_WPE_EXTENSION_DIR}/wpe
             ${FORWARDING_HEADERS_WPE_DOM_DIR}/wpe
+            ${FORWARDING_HEADERS_WPE_JSC_DIR}/jsc
 )
 
 list(APPEND WebKit_DEPENDENCIES
@@ -82,9 +93,23 @@ list(APPEND WebKit_UNIFIED_SOURCE_LIST_FILES
 
 list(APPEND WebKit_DERIVED_SOURCES
     ${WebKit_DERIVED_SOURCES_DIR}/WebKitResourcesGResourceBundle.c
+    ${WebKit_DERIVED_SOURCES_DIR}/WebKitDirectoryInputStreamData.cpp
 
     ${DERIVED_SOURCES_WPE_API_DIR}/WebKitEnumTypes.cpp
     ${DERIVED_SOURCES_WPE_API_DIR}/WebKitWebProcessEnumTypes.cpp
+)
+
+set(WebKit_DirectoryInputStream_DATA
+    ${WEBKIT_DIR}/NetworkProcess/soup/Resources/directory.css
+    ${WEBKIT_DIR}/NetworkProcess/soup/Resources/directory.js
+)
+
+add_custom_command(
+    OUTPUT ${WebKit_DERIVED_SOURCES_DIR}/WebKitDirectoryInputStreamData.cpp ${WebKit_DERIVED_SOURCES_DIR}/WebKitDirectoryInputStreamData.h
+    MAIN_DEPENDENCY ${WEBCORE_DIR}/css/make-css-file-arrays.pl
+    DEPENDS ${WebKit_DirectoryInputStream_DATA}
+    COMMAND ${PERL_EXECUTABLE} ${WEBCORE_DIR}/css/make-css-file-arrays.pl --defines "${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}" --preprocessor "${CODE_GENERATOR_PREPROCESSOR}" ${WebKit_DERIVED_SOURCES_DIR}/WebKitDirectoryInputStreamData.h ${WebKit_DERIVED_SOURCES_DIR}/WebKitDirectoryInputStreamData.cpp ${WebKit_DirectoryInputStream_DATA}
+    VERBATIM
 )
 
 set(WPE_API_INSTALLED_HEADERS
@@ -118,6 +143,7 @@ set(WPE_API_INSTALLED_HEADERS
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitInputMethodContext.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitInstallMissingMediaPluginsPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitJavascriptResult.h
+    ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitMediaKeySystemPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitMimeInfo.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitNavigationAction.h
     ${WEBKIT_DIR}/UIProcess/API/wpe/WebKitNavigationPolicyDecision.h
@@ -265,6 +291,7 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/glib/DOM"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe/DOM"
+    "${WEBKIT_DIR}/WebProcess/glib"
     "${WEBKIT_DIR}/WebProcess/soup"
     "${WEBKIT_DIR}/WebProcess/WebCoreSupport/soup"
     "${WEBKIT_DIR}/WebProcess/WebPage/CoordinatedGraphics"
@@ -278,10 +305,8 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
 
 list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
     ${ATK_INCLUDE_DIRS}
-    ${ATK_BRIDGE_INCLUDE_DIRS}
     ${GIO_UNIX_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
-    ${LIBSECCOMP_INCLUDE_DIRS}
     ${LIBSOUP_INCLUDE_DIRS}
 )
 
@@ -292,12 +317,18 @@ list(APPEND WebKit_LIBRARIES
     HarfBuzz::ICU
     WPE::libwpe
     ${ATK_LIBRARIES}
-    ${ATK_BRIDGE_LIBRARIES}
     ${GLIB_LIBRARIES}
     ${GLIB_GMODULE_LIBRARIES}
-    ${LIBSECCOMP_LIBRARIES}
     ${LIBSOUP_LIBRARIES}
 )
+
+if (ENABLE_ACCESSIBILITY)
+    list(APPEND WebKit_LIBRARIES ATK::Bridge)
+endif ()
+
+if (ENABLE_BUBBLEWRAP_SANDBOX)
+    list(APPEND WebKit_LIBRARIES Libseccomp::Libseccomp)
+endif ()
 
 if (USE_GSTREAMER_FULL)
     list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
@@ -315,6 +346,17 @@ else ()
     )
     list(APPEND WebKit_LIBRARIES
         ${GSTREAMER_LIBRARIES}
+    )
+endif ()
+
+if (ENABLE_MEDIA_STREAM)
+    list(APPEND WebKit_SOURCES
+        UIProcess/glib/UserMediaPermissionRequestManagerProxyGLib.cpp
+
+        WebProcess/glib/UserMediaCaptureManager.cpp
+    )
+    list(APPEND WebKit_MESSAGES_IN_FILES
+        WebProcess/glib/UserMediaCaptureManager
     )
 endif ()
 
@@ -345,7 +387,7 @@ target_include_directories(WPEInjectedBundle PRIVATE ${WebKit_INCLUDE_DIRECTORIE
 target_include_directories(WPEInjectedBundle SYSTEM PRIVATE ${WebKit_SYSTEM_INCLUDE_DIRECTORIES})
 
 file(WRITE ${CMAKE_BINARY_DIR}/gtkdoc-wpe.cfg
-    "[wpe-${WPE_API_VERSION}]\n"
+    "[wpe-${WPE_API_DOC_VERSION}]\n"
     "pkgconfig_file=${WPE_PKGCONFIG_FILE}\n"
     "decorator=WEBKIT_API|WEBKIT_DEPRECATED|WEBKIT_DEPRECATED_FOR\\(.+\\)\n"
     "deprecation_guard=WEBKIT_DISABLE_DEPRECATED\n"
@@ -365,7 +407,7 @@ file(WRITE ${CMAKE_BINARY_DIR}/gtkdoc-wpe.cfg
 )
 
 file(WRITE ${CMAKE_BINARY_DIR}/gtkdoc-webextensions.cfg
-    "[wpe-webextensions-${WPE_API_VERSION}]\n"
+    "[wpe-webextensions-${WPE_API_DOC_VERSION}]\n"
     "pkgconfig_file=${WPEWebExtension_PKGCONFIG_FILE}\n"
     "decorator=WEBKIT_API|WEBKIT_DEPRECATED|WEBKIT_DEPRECATED_FOR\\(.+\\)\n"
     "deprecation_guard=WEBKIT_DISABLE_DEPRECATED\n"
@@ -394,6 +436,8 @@ if (ENABLE_WPE_QT_API)
     set(qtwpe_LIBRARIES
         Qt5::Core Qt5::Quick
         WebKit
+        ${GLIB_GOBJECT_LIBRARIES}
+        ${GLIB_LIBRARIES}
         ${LIBEPOXY_LIBRARIES}
         ${WPEBACKEND_FDO_LIBRARIES}
     )
@@ -405,6 +449,7 @@ if (ENABLE_WPE_QT_API)
         ${Qt5Gui_PRIVATE_INCLUDE_DIRS}
         ${LIBEPOXY_INCLUDE_DIRS}
         ${LIBSOUP_INCLUDE_DIRS}
+        ${WPE_INCLUDE_DIRS}
         ${WPEBACKEND_FDO_INCLUDE_DIRS}
     )
 

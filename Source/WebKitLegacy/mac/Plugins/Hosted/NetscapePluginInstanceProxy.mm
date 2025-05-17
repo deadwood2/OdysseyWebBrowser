@@ -651,11 +651,7 @@ void NetscapePluginInstanceProxy::performRequest(PluginRequest* pluginRequest)
         frame = kit(core([m_pluginView webFrame])->loader().findFrameForNavigation(frameName));
         if (!frame) {
             WebView *currentWebView = [m_pluginView webView];
-            NSDictionary *features = [[NSDictionary alloc] init];
-            WebView *newWebView = [[currentWebView _UIDelegateForwarder] webView:currentWebView
-                                                        createWebViewWithRequest:nil
-                                                                  windowFeatures:features];
-            [features release];
+            WebView *newWebView = [[currentWebView _UIDelegateForwarder] webView:currentWebView createWebViewWithRequest:nil windowFeatures:@{ }];
 
             if (!newWebView) {
                 _WKPHLoadURLNotify(m_pluginHostProxy->port(), m_pluginID, pluginRequest->requestID(), NPERR_GENERIC_ERROR);
@@ -1273,7 +1269,7 @@ bool NetscapePluginInstanceProxy::enumerate(uint32_t objectID, data_t& resultDat
     JSGlobalObject* lexicalGlobalObject = frame->script().globalObject(pluginWorld());
  
     PropertyNameArray propertyNames(vm, PropertyNameMode::Strings, PrivateSymbolMode::Exclude);
-    object->methodTable(vm)->getPropertyNames(object, lexicalGlobalObject, propertyNames, EnumerationMode());
+    object->getPropertyNames(lexicalGlobalObject, propertyNames, DontEnumPropertiesMode::Exclude);
 
     RetainPtr<NSMutableArray> array = adoptNS([[NSMutableArray alloc] init]);
     for (unsigned i = 0; i < propertyNames.size(); i++) {

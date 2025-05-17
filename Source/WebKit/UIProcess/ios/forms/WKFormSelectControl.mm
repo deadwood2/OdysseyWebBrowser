@@ -74,7 +74,18 @@ CGFloat adjustedFontSize(CGFloat textWidth, UIFont *font, CGFloat initialFontSiz
     }
 
     RetainPtr<NSObject <WKFormControl>> control;
-    if (currentUserInterfaceIdiomIsPad())
+
+#if ENABLE(IOS_FORM_CONTROL_REFRESH)
+    if ([view _formControlRefreshEnabled]) {
+        if (view.focusedElementInformation.isMultiSelect)
+            control = adoptNS([[WKSelectMultiplePicker alloc] initWithView:view]);
+        else
+            control = adoptNS([[WKSelectPicker alloc] initWithView:view]);
+        return [super initWithView:view control:WTFMove(control)];
+    }
+#endif
+
+    if (currentUserInterfaceIdiomIsPadOrMac())
         control = adoptNS([[WKSelectPopover alloc] initWithView:view hasGroups:hasGroups]);
     else if (view.focusedElementInformation.isMultiSelect || hasGroups)
         control = adoptNS([[WKMultipleSelectPicker alloc] initWithView:view]);

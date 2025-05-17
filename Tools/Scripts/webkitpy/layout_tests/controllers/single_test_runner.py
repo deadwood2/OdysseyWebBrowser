@@ -194,7 +194,6 @@ class SingleTestRunner(object):
               which html file is used for producing the driver_output.
         """
         failures = []
-        fs = self._filesystem
         if driver_output.timeout:
             failures.append(test_failures.FailureTimeout(bool(reference_filename)))
 
@@ -234,6 +233,8 @@ class SingleTestRunner(object):
 
     def _compare_text(self, expected_text, actual_text):
         failures = []
+        if self._options.ignore_render_tree_dump_results and actual_text and self._render_tree_dump_pattern.match(actual_text):
+            return failures
         if (expected_text and actual_text and
             # Assuming expected_text is already normalized.
             self._port.do_text_results_differ(expected_text, self._get_normalized_output_text(actual_text))):
@@ -241,7 +242,7 @@ class SingleTestRunner(object):
         elif actual_text and not expected_text:
             failures.append(test_failures.FailureMissingResult())
         elif not actual_text and expected_text:
-            failures.append(test_failures.FailureNotTested())
+            failures.append(test_failures.FailureNoOutput())
         return failures
 
     def _compare_audio(self, expected_audio, actual_audio):

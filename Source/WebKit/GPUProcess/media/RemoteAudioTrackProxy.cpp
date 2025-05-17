@@ -29,6 +29,8 @@
 
 #if ENABLE(GPU_PROCESS)
 
+#include "Connection.h"
+#include "GPUConnectionToWebProcess.h"
 #include "MediaPlayerPrivateRemoteMessages.h"
 #include "RemoteMediaPlayerProxy.h"
 #include "TrackPrivateRemoteConfiguration.h"
@@ -37,21 +39,25 @@ namespace WebKit {
 
 using namespace WebCore;
 
-RemoteAudioTrackProxy::RemoteAudioTrackProxy(RemoteMediaPlayerProxy& player, TrackPrivateRemoteIdentifier id, Ref<IPC::Connection>&& connection, AudioTrackPrivate& trackPrivate)
-    : m_player(player)
-    , m_identifier(id)
-    , m_webProcessConnection(WTFMove(connection))
+RemoteAudioTrackProxy::RemoteAudioTrackProxy(GPUConnectionToWebProcess& connectionToWebProcess, TrackPrivateRemoteIdentifier identifier, AudioTrackPrivate& trackPrivate, MediaPlayerIdentifier mediaPlayerIdentifier)
+    : m_connectionToWebProcess(makeWeakPtr(connectionToWebProcess))
+    , m_identifier(identifier)
     , m_trackPrivate(trackPrivate)
+    , m_mediaPlayerIdentifier(mediaPlayerIdentifier)
 {
     m_trackPrivate->setClient(this);
-    m_webProcessConnection->send(Messages::MediaPlayerPrivateRemote::AddRemoteAudioTrack(m_identifier, configuration()), m_player.idendifier());
+    m_connectionToWebProcess->connection().send(Messages::MediaPlayerPrivateRemote::AddRemoteAudioTrack(m_identifier, configuration()), m_mediaPlayerIdentifier);
+}
+
+RemoteAudioTrackProxy::~RemoteAudioTrackProxy()
+{
 }
 
 TrackPrivateRemoteConfiguration& RemoteAudioTrackProxy::configuration()
 {
     static NeverDestroyed<TrackPrivateRemoteConfiguration> configuration;
 
-    configuration->id = m_trackPrivate->id();
+    configuration->trackId = m_trackPrivate->id();
     configuration->label = m_trackPrivate->label();
     configuration->language = m_trackPrivate->language();
     configuration->trackIndex = m_trackPrivate->trackIndex();
@@ -64,12 +70,15 @@ TrackPrivateRemoteConfiguration& RemoteAudioTrackProxy::configuration()
 
 void RemoteAudioTrackProxy::configurationChanged()
 {
-    m_webProcessConnection->send(Messages::MediaPlayerPrivateRemote::RemoteAudioTrackConfigurationChanged(m_identifier, configuration()), m_player.idendifier());
+    if (!m_connectionToWebProcess)
+        return;
+
+    m_connectionToWebProcess->connection().send(Messages::MediaPlayerPrivateRemote::RemoteAudioTrackConfigurationChanged(m_identifier, configuration()), m_mediaPlayerIdentifier);
 }
 
 void RemoteAudioTrackProxy::willRemove()
 {
-    m_webProcessConnection->send(Messages::MediaPlayerPrivateRemote::RemoveRemoteAudioTrack(m_identifier), m_player.idendifier());
+    ASSERT_NOT_REACHED();
 }
 
 void RemoteAudioTrackProxy::enabledChanged(bool)

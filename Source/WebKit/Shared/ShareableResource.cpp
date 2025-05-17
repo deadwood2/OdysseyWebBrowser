@@ -40,19 +40,20 @@ ShareableResource::Handle::Handle()
 
 void ShareableResource::Handle::encode(IPC::Encoder& encoder) const
 {
-    encoder << m_handle;
+    encoder << SharedMemory::IPCHandle { WTFMove(m_handle), m_size };
     encoder << m_offset;
-    encoder << m_size;
 }
 
 bool ShareableResource::Handle::decode(IPC::Decoder& decoder, Handle& handle)
 {
-    if (!decoder.decode(handle.m_handle))
+    SharedMemory::IPCHandle ipcHandle;
+    if (!decoder.decode(ipcHandle))
         return false;
     if (!decoder.decode(handle.m_offset))
         return false;
-    if (!decoder.decode(handle.m_size))
-        return false;
+
+    handle.m_size = ipcHandle.dataSize;
+    handle.m_handle = WTFMove(ipcHandle.handle);
     return true;
 }
 
@@ -87,8 +88,11 @@ RefPtr<SharedBuffer> ShareableResource::wrapInSharedBuffer()
     RetainPtr<CFAllocatorRef> deallocator = adoptCF(createShareableResourceDeallocator(this));
     RetainPtr<CFDataRef> cfData = adoptCF(CFDataCreateWithBytesNoCopy(kCFAllocatorDefault, reinterpret_cast<const UInt8*>(data()), static_cast<CFIndex>(size()), deallocator.get()));
     return SharedBuffer::create(cfData.get());
-#elif USE(SOUP)
-    return SharedBuffer::wrapSoupBuffer(soup_buffer_new_with_owner(data(), size(), this, [](void* data) { static_cast<ShareableResource*>(data)->deref(); }));
+#elif USE(GLIB)
+    GRefPtr<GBytes> bytes = adoptGRef(g_bytes_new_with_free_func(data(), size(), [](void* data) {
+        static_cast<ShareableResource*>(data)->deref();
+    }, this));
+    return SharedBuffer::create(bytes.get());
 #else
     ASSERT_NOT_REACHED();
     return nullptr;

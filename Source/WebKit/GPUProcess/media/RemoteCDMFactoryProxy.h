@@ -28,6 +28,7 @@
 #if ENABLE(GPU_PROCESS) && ENABLE(ENCRYPTED_MEDIA)
 
 #include "Connection.h"
+#include "GPUConnectionToWebProcess.h"
 #include "MessageReceiver.h"
 #include "RemoteCDMIdentifier.h"
 #include "RemoteCDMInstanceIdentifier.h"
@@ -37,13 +38,12 @@
 
 namespace WebKit {
 
-class GPUConnectionToWebProcess;
 class RemoteCDMInstanceProxy;
 class RemoteCDMInstanceSessionProxy;
 class RemoteCDMProxy;
 struct RemoteCDMConfiguration;
 
-class RemoteCDMFactoryProxy final : private IPC::MessageReceiver, public CanMakeWeakPtr<RemoteCDMFactoryProxy> {
+class RemoteCDMFactoryProxy final : public IPC::MessageReceiver {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     RemoteCDMFactoryProxy(GPUConnectionToWebProcess&);
@@ -68,7 +68,7 @@ public:
     void addSession(const RemoteCDMInstanceSessionIdentifier&, std::unique_ptr<RemoteCDMInstanceSessionProxy>&&);
     void removeSession(const RemoteCDMInstanceSessionIdentifier&);
 
-    GPUConnectionToWebProcess& gpuConnectionToWebProcess() const { return m_gpuConnectionToWebProcess; }
+    GPUConnectionToWebProcess* gpuConnectionToWebProcess() { return m_gpuConnectionToWebProcess.get(); }
 
 private:
     friend class GPUProcessConnection;
@@ -80,7 +80,7 @@ private:
     void createCDM(const String& keySystem, CompletionHandler<void(RemoteCDMIdentifier&&, RemoteCDMConfiguration&&)>&&);
     void supportsKeySystem(const String& keySystem, CompletionHandler<void(bool)>&&);
 
-    GPUConnectionToWebProcess& m_gpuConnectionToWebProcess;
+    WeakPtr<GPUConnectionToWebProcess> m_gpuConnectionToWebProcess;
     HashMap<RemoteCDMIdentifier, std::unique_ptr<RemoteCDMProxy>> m_proxies;
     HashMap<RemoteCDMInstanceIdentifier, std::unique_ptr<RemoteCDMInstanceProxy>> m_instances;
     HashMap<RemoteCDMInstanceSessionIdentifier, std::unique_ptr<RemoteCDMInstanceSessionProxy>> m_sessions;

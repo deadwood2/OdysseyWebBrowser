@@ -86,7 +86,7 @@ class Git(SCM, SVNRepository):
         # git_bits = platform.architecture(executable=git_path, bits='default')[0]
         # git_bits is just 'default', meaning the call failed.
         file_output = self.run(['file', path])
-        return re.search('x86_64', file_output)
+        return re.search('64', file_output)
 
     def _check_git_architecture(self):
         if not self._machine_is_64bit():
@@ -113,7 +113,7 @@ class Git(SCM, SVNRepository):
         try:
             executive = executive or Executive()
             return executive.run_command([cls.executable_name, 'rev-parse', '--is-inside-work-tree'], cwd=path, ignore_errors=True).rstrip() == "true"
-        except OSError as e:
+        except OSError:
             # The Windows bots seem to through a WindowsError when git isn't installed.
             return False
 
@@ -122,7 +122,7 @@ class Git(SCM, SVNRepository):
         try:
             executive = executive or Executive()
             return executive.run_command([cls.executable_name, 'clone', '-v', url, directory], ignore_errors=True)
-        except OSError as e:
+        except OSError:
             return False
 
     def find_checkout_root(self, path):
@@ -386,7 +386,7 @@ class Git(SCM, SVNRepository):
     def _string_to_int_or_none(self, string):
         try:
             return int(string)
-        except ValueError as e:
+        except ValueError:
             return None
 
     @memoized
@@ -548,10 +548,10 @@ class Git(SCM, SVNRepository):
         # Use references so that we can avoid collisions, e.g. we don't want to operate on refs/heads/trunk if it exists.
         remote_branch_refs = self.read_git_config('svn-remote.svn.fetch', cwd=self.checkout_root, executive=self._executive)
         if not remote_branch_refs:
-            remote_master_ref = 'refs/remotes/origin/master'
-            if not self.branch_ref_exists(remote_master_ref):
-                raise ScriptError(message="Can't find a branch to diff against. svn-remote.svn.fetch is not in the git config and %s does not exist" % remote_master_ref)
-            return remote_master_ref
+            for ref in ['refs/remotes/origin/main', 'refs/remotes/origin/master']:
+                if self.branch_ref_exists(ref):
+                    return ref
+            raise ScriptError(message="Can't find a branch to diff against. svn-remote.svn.fetch is not in the git config and neither main nor master exist")
 
         # FIXME: What's the right behavior when there are multiple svn-remotes listed?
         # For now, just use the first one.

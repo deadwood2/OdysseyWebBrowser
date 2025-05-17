@@ -23,6 +23,7 @@
 #include "compiler/translator/tree_util/FindMain.h"
 #include "compiler/translator/tree_util/FindSymbolNode.h"
 #include "compiler/translator/tree_util/IntermNode_util.h"
+#include "compiler/translator/tree_util/ReplaceArrayOfMatrixVarying.h"
 #include "compiler/translator/tree_util/ReplaceVariable.h"
 #include "compiler/translator/tree_util/RunAtTheEndOfShader.h"
 #include "compiler/translator/util.h"
@@ -33,14 +34,21 @@ namespace sh
 namespace mtl
 {
 /** extern */
-const char kCoverageMaskEnabledConstName[] = "ANGLECoverageMaskEnabled";
+const char kCoverageMaskEnabledConstName[]      = "ANGLECoverageMaskEnabled";
+const char kRasterizerDiscardEnabledConstName[] = "ANGLERasterizerDisabled";
 }  // namespace mtl
 
 namespace
 {
 
+constexpr ImmutableString kRasterizationDiscardEnabledConstName =
+    ImmutableString("ANGLERasterizationDisabled");
+constexpr ImmutableString kCoverageMaskEnabledConstName =
+    ImmutableString("ANGLECoverageMaskEnabled");
 constexpr ImmutableString kCoverageMaskField       = ImmutableString("coverageMask");
+constexpr ImmutableString kEmuInstanceIDField      = ImmutableString("emulatedInstanceID");
 constexpr ImmutableString kSampleMaskWriteFuncName = ImmutableString("ANGLEWriteSampleMask");
+constexpr ImmutableString kDiscardWrapperFuncName  = ImmutableString("ANGLEDiscardWrapper");
 
 TIntermBinary *CreateDriverUniformRef(const TVariable *driverUniforms, const char *fieldName)
 {
@@ -84,6 +92,21 @@ ANGLE_NO_DISCARD bool AppendVertexShaderPositionYCorrectionToMain(TCompiler *com
     return RunAtTheEndOfShader(compiler, root, assignment, symbolTable);
 }
 
+ANGLE_NO_DISCARD bool EmulateInstanceID(TCompiler *compiler,
+                                        TIntermBlock *root,
+                                        TSymbolTable *symbolTable,
+                                        const TVariable *driverUniforms)
+{
+    // emuInstanceID
+    TIntermBinary *emuInstanceID =
+        CreateDriverUniformRef(driverUniforms, kEmuInstanceIDField.data());
+
+    // Create a symbol reference to "gl_InstanceIndex"
+    const TVariable *instanceID = BuiltInVariable::gl_InstanceIndex();
+
+    return ReplaceVariableWithTyped(compiler, root, instanceID, emuInstanceID);
+}
+
 // Initialize unused varying outputs.
 ANGLE_NO_DISCARD bool InitializeUnusedOutputs(TIntermBlock *root,
                                               TSymbolTable *symbolTable,
@@ -121,6 +144,18 @@ ANGLE_NO_DISCARD bool InitializeUnusedOutputs(TIntermBlock *root,
 
 }  // anonymous namespace
 
+/** static */
+const char *TranslatorMetal::GetCoverageMaskEnabledConstName()
+{
+    return kCoverageMaskEnabledConstName.data();
+}
+
+/** static */
+const char *TranslatorMetal::GetRasterizationDiscardEnabledConstName()
+{
+    return kRasterizationDiscardEnabledConstName.data();
+}
+
 TranslatorMetal::TranslatorMetal(sh::GLenum type, ShShaderSpec spec) : TranslatorVulkan(type, spec)
 {}
 
@@ -141,18 +176,68 @@ bool TranslatorMetal::translate(TIntermBlock *root,
         return false;
     }
 
+    // Replace array of matrix varyings
+    if (!ReplaceArrayOfMatrixVaryings(this, root, &getSymbolTable()))
+    {
+        return false;
+    }
+
     if (getShaderType() == GL_VERTEX_SHADER)
     {
         auto negFlipY = getDriverUniformNegFlipYRef(driverUniforms);
+
+        if (mEmulatedInstanceID)
+        {
+            // Emulate gl_InstanceID
+            if (!EmulateInstanceID(this, root, &getSymbolTable(), driverUniforms))
+            {
+                return false;
+            }
+        }
 
         // Append gl_Position.y correction to main
         if (!AppendVertexShaderPositionYCorrectionToMain(this, root, &getSymbolTable(), negFlipY))
         {
             return false;
         }
+
+        // Insert rasterization discard logic
+        if (!insertRasterizationDiscardLogic(root))
+        {
+            return false;
+        }
+    }
+
+    // Initialize unused varying outputs to avoid spirv-cross dead-code removing them in later
+    // stage. Only do this if SH_INIT_OUTPUT_VARIABLES is not specified.
+    if ((getShaderType() == GL_VERTEX_SHADER || getShaderType() == GL_GEOMETRY_SHADER_EXT) &&
+        !(compileOptions & SH_INIT_OUTPUT_VARIABLES))
+    {
+        InitVariableList list;
+        for (const sh::ShaderVariable &var : mOutputVaryings)
+        {
+            if (!var.active)
+            {
+                list.push_back(var);
+            }
+        }
+
+        if (!InitializeUnusedOutputs(root, &getSymbolTable(), list))
+        {
+            return false;
+        }
     }
     else if (getShaderType() == GL_FRAGMENT_SHADER)
     {
+        // For non void MSL fragment functions replace discard
+        // with ANGLEDiscardWrapper()
+        if (mOutputVariables.size() > 0)
+        {
+            if (!replaceAllMainDiscardUses(root))
+            {
+                return false;
+            }
+        }
         if (!insertSampleMaskWritingLogic(root, driverUniforms))
         {
             return false;
@@ -221,6 +306,13 @@ void TranslatorMetal::createAdditionalGraphicsDriverUniformFields(std::vector<TF
     TField *coverageMaskField =
         new TField(new TType(EbtUInt), kCoverageMaskField, TSourceLoc(), SymbolType::AngleInternal);
     fieldsOut->push_back(coverageMaskField);
+
+    if (mEmulatedInstanceID)
+    {
+        TField *emuInstanceIDField = new TField(new TType(EbtInt), kEmuInstanceIDField,
+                                                TSourceLoc(), SymbolType::AngleInternal);
+        fieldsOut->push_back(emuInstanceIDField);
+    }
 }
 
 // Add sample_mask writing to main, guarded by the specialization constant
@@ -277,6 +369,129 @@ ANGLE_NO_DISCARD bool TranslatorMetal::insertSampleMaskWritingLogic(TIntermBlock
     TIntermIfElse *ifCall              = new TIntermIfElse(coverageMaskEnabled, callBlock, nullptr);
 
     return RunAtTheEndOfShader(this, root, ifCall, symbolTable);
+}
+
+ANGLE_NO_DISCARD bool TranslatorMetal::insertRasterizationDiscardLogic(TIntermBlock *root)
+{
+    TInfoSinkBase &sink       = getInfoSink().obj;
+    TSymbolTable *symbolTable = &getSymbolTable();
+
+    // Insert rasterizationDisabled specialization constant.
+    sink << "layout (constant_id=0) const bool " << kRasterizationDiscardEnabledConstName;
+    sink << " = false;\n";
+
+    // Create kRasterizationDiscardEnabledConstName and kRasterizationDiscardFuncName variable
+    // references.
+    TType *boolType = new TType(EbtBool);
+    boolType->setQualifier(EvqConst);
+    TVariable *discardEnabledVar = new TVariable(symbolTable, kRasterizationDiscardEnabledConstName,
+                                                 boolType, SymbolType::AngleInternal);
+
+    // Insert this code to the end of main()
+    // if (ANGLERasterizationDisabled)
+    // {
+    //      gl_Position = vec4(-3.0, -3.0, -3.0, 1.0);
+    // }
+    // Create a symbol reference to "gl_Position"
+    const TVariable *position  = BuiltInVariable::gl_Position();
+    TIntermSymbol *positionRef = new TIntermSymbol(position);
+
+    // Create vec4(-3, -3, -3, 1):
+    auto vec4Type             = new TType(EbtFloat, 4);
+    TIntermSequence *vec4Args = new TIntermSequence();
+    vec4Args->push_back(CreateFloatNode(-3.0f));
+    vec4Args->push_back(CreateFloatNode(-3.0f));
+    vec4Args->push_back(CreateFloatNode(-3.0f));
+    vec4Args->push_back(CreateFloatNode(1.0f));
+    TIntermAggregate *constVarConstructor =
+        TIntermAggregate::CreateConstructor(*vec4Type, vec4Args);
+
+    // Create the assignment "gl_Position = vec4(-3, -3, -3, 1)"
+    TIntermBinary *assignment =
+        new TIntermBinary(TOperator::EOpAssign, positionRef->deepCopy(), constVarConstructor);
+
+    TIntermBlock *discardBlock = new TIntermBlock;
+    discardBlock->appendStatement(assignment);
+
+    TIntermSymbol *discardEnabled = new TIntermSymbol(discardEnabledVar);
+    TIntermIfElse *ifCall         = new TIntermIfElse(discardEnabled, discardBlock, nullptr);
+
+    return RunAtTheEndOfShader(this, root, ifCall, symbolTable);
+}
+
+// If the MSL fragment shader is non-void, we need to ensure
+// that there is a return at the end. The MSL compiler
+// will error out if there's no return at the end, even if all
+// paths lead to discard_fragment(). So wrap discard in a wrapper function.
+// Fixes dEQP-GLES3.functional.shaders.discard.basic_always
+ANGLE_NO_DISCARD bool TranslatorMetal::replaceAllMainDiscardUses(TIntermBlock *root)
+{
+    // before
+    // void main (void)
+    // {
+    //     o_color = v_color;
+    //     discard;
+    // }
+
+    // after
+    // void ANGLEDiscardWrapper()
+    // {
+    //    discard;
+    // }
+    // void main (void)
+    // {
+    //     o_color = v_color;
+    //     ANGLEDiscardWrapper();
+    // }
+
+    TIntermFunctionDefinition *main   = FindMain(root);
+    TIntermBlock *mainBody            = main->getBody();
+    TIntermSequence *functionSequence = mainBody->getSequence();
+    TIntermAggregate *discardFunc     = nullptr;
+    // Iterate over all branches in main function, and replace all uses
+    // of discard with ANGLEDiscardWrapper().
+    for (size_t index = 0; index < functionSequence->size(); ++index)
+    {
+        TIntermNode *functionNode = (*functionSequence)[index];
+        TIntermBranch *branchNode = functionNode->getAsBranchNode();
+        if (branchNode != nullptr)
+        {
+            if (branchNode->getFlowOp() == EOpKill)
+            {
+                if (discardFunc == nullptr)
+                {
+                    discardFunc = createDiscardWrapperFunc(root);
+                }
+                bool replaced = mainBody->replaceChildNode(branchNode, discardFunc);
+                if (!replaced)
+                {
+                    return false;
+                }
+            }
+        }
+    }
+    return validateAST(root);
+}
+
+// Create discard_wrapper function to ensure that SPIRV-Cross will always have a return at the end
+// of fragment shaders
+ANGLE_NO_DISCARD TIntermAggregate *TranslatorMetal::createDiscardWrapperFunc(TIntermBlock *root)
+{
+    TInfoSinkBase &sink       = getInfoSink().obj;
+    TSymbolTable *symbolTable = &getSymbolTable();
+
+    sink << "void " << kDiscardWrapperFuncName << "()\n";
+    sink << "{\n";
+    sink << "   discard;\n";
+    sink << "}\n";
+
+    TFunction *discardWrapperFunc =
+        new TFunction(symbolTable, kDiscardWrapperFuncName, SymbolType::AngleInternal,
+                      StaticType::GetBasic<EbtVoid>(), true);
+
+    TIntermAggregate *callDiscardWrapperFunc =
+        TIntermAggregate::CreateFunctionCall(*discardWrapperFunc, new TIntermSequence());
+    return callDiscardWrapperFunc;
 }
 
 }  // namespace sh

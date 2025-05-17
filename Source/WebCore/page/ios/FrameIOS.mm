@@ -57,6 +57,7 @@
 #import "Range.h"
 #import "RenderLayer.h"
 #import "RenderLayerCompositor.h"
+#import "RenderLayerScrollableArea.h"
 #import "RenderTextControl.h"
 #import "RenderView.h"
 #import "RenderedDocumentMarker.h"
@@ -722,7 +723,7 @@ NSArray *Frame::interpretationsForCurrentRoot() const
     if (!document())
         return nil;
 
-    auto* root = selection().selection().selectionType() == VisibleSelection::NoSelection ? document()->bodyOrFrameset() : selection().selection().rootEditableElement();
+    auto* root = selection().isNone() ? document()->bodyOrFrameset() : selection().selection().rootEditableElement();
     auto rangeOfRootContents = makeRangeSelectingNodeContents(*root);
 
     auto markersInRoot = document()->markers().markersInRange(rangeOfRootContents, DocumentMarker::DictationPhraseWithAlternatives);
@@ -740,7 +741,7 @@ NSArray *Frame::interpretationsForCurrentRoot() const
     Vector<Vector<UChar>> interpretations;
     interpretations.grow(interpretationsCount);
 
-    Position precedingTextStartPosition = createLegacyEditingPosition(root, 0);
+    Position precedingTextStartPosition = makeDeprecatedLegacyPosition(root, 0);
 
     unsigned combinationsSoFar = 1;
 
@@ -770,7 +771,7 @@ NSArray *Frame::interpretationsForCurrentRoot() const
 
             combinationsSoFar *= interpretationsCountForCurrentMarker;
 
-            precedingTextStartPosition = createLegacyEditingPosition(rangeForMarker.end);
+            precedingTextStartPosition = makeDeprecatedLegacyPosition(rangeForMarker.end);
         }
     }
 
@@ -819,14 +820,17 @@ void Frame::overflowScrollPositionChangedForNode(const IntPoint& position, Node*
     if (!renderer || !renderer->hasLayer())
         return;
 
-    RenderLayer& layer = *downcast<RenderBoxModelObject>(*renderer).layer();
+    auto* layer = downcast<RenderBoxModelObject>(*renderer).layer();
+    if (!layer)
+        return;
+    auto* scrollableArea = layer->ensureLayerScrollableArea();
 
-    auto oldScrollType = layer.currentScrollType();
-    layer.setCurrentScrollType(isUserScroll ? ScrollType::User : ScrollType::Programmatic);
-    layer.scrollToOffsetWithoutAnimation(position);
-    layer.setCurrentScrollType(oldScrollType);
+    auto oldScrollType = scrollableArea->currentScrollType();
+    scrollableArea->setCurrentScrollType(isUserScroll ? ScrollType::User : ScrollType::Programmatic);
+    scrollableArea->scrollToOffsetWithoutAnimation(position);
+    scrollableArea->setCurrentScrollType(oldScrollType);
 
-    layer.didEndScroll(); // FIXME: Should we always call this?
+    scrollableArea->didEndScroll(); // FIXME: Should we always call this?
 }
 
 void Frame::resetAllGeolocationPermission()

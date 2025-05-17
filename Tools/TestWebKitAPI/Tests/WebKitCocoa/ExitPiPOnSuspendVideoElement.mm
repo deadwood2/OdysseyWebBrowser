@@ -62,6 +62,11 @@ TEST(PictureInPicture, ExitPiPOnSuspendVideoElement)
     if (!WebCore::supportsPictureInPicture())
         return;
 
+    [[NSUserDefaults standardUserDefaults] registerDefaults:@{
+        @"WebCoreLogging": @"Fullscreen=debug",
+        @"WebKit2Logging": @"Fullscreen=debug",
+    }];
+
     RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     [configuration preferences]._fullScreenEnabled = YES;
     [configuration preferences]._allowsPictureInPictureMediaPlayback = YES;
@@ -71,15 +76,20 @@ TEST(PictureInPicture, ExitPiPOnSuspendVideoElement)
 
     [webView synchronouslyLoadTestPageNamed:@"ExitFullscreenOnEnterPiP"];
 
+    [[NSUserDefaults standardUserDefaults] registerDefaults:@{
+        @"WebCoreLogging": @"",
+        @"WebKit2Logging": @"",
+    }];
+
     didEnterPiP = false;
     [webView evaluateJavaScript:@"document.getElementById('enter-pip').click()" completionHandler: nil];
-    TestWebKitAPI::Util::run(&didEnterPiP);
+    ASSERT_TRUE(TestWebKitAPI::Util::runFor(&didEnterPiP, 10));
 
     sleep(1_s);
 
     didExitPiP = false;
     [webView synchronouslyLoadHTMLString:@"<body>Hello world</body>"];
-    TestWebKitAPI::Util::run(&didExitPiP);
+    ASSERT_TRUE(TestWebKitAPI::Util::runFor(&didExitPiP, 10));
 }
 
 } // namespace TestWebKitAPI

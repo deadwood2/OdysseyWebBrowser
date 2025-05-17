@@ -120,6 +120,8 @@ public:
     CDMInstanceSessionFairPlayStreamingAVFObjC* sessionForRequest(AVContentKeyRequest*) const;
 
 private:
+    void handleUnexpectedRequests(Vector<RetainPtr<AVContentKeyRequest>>&&);
+
 #if !RELEASE_LOG_DISABLED
     WTF::Logger* loggerPtr() const { return m_logger.get(); };
     const void* logIdentifier() const { return m_logIdentifier; }
@@ -190,9 +192,11 @@ private:
     bool ensureSessionOrGroup();
     bool isLicenseTypeSupported(LicenseType) const;
 
-    KeyStatusVector keyStatuses() const;
+    KeyStatusVector keyStatuses(Optional<PlatformDisplayID> = WTF::nullopt) const;
     void nextRequest();
     AVContentKeyRequest* lastKeyRequest() const;
+
+    Optional<CDMKeyStatus> protectionStatusForDisplayID(AVContentKeyRequest *, Optional<PlatformDisplayID>) const;
 
 #if !RELEASE_LOG_DISABLED
     WTF::Logger* loggerPtr() const { return m_logger.get(); };

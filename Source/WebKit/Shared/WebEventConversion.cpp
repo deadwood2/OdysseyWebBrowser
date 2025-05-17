@@ -26,7 +26,10 @@
 #include "config.h"
 #include "WebEventConversion.h"
 
-#include "WebEvent.h"
+#include "WebKeyboardEvent.h"
+#include "WebMouseEvent.h"
+#include "WebTouchEvent.h"
+#include "WebWheelEvent.h"
 
 #if ENABLE(MAC_GESTURE_EVENTS)
 #include "WebGestureEvent.h"
@@ -120,6 +123,9 @@ public:
             m_modifierFlags |= static_cast<unsigned>(WebEvent::Modifier::AltKey);
         if (webEvent.metaKey())
             m_modifierFlags |= static_cast<unsigned>(WebEvent::Modifier::MetaKey);
+
+        m_pointerId = webEvent.pointerId();
+        m_pointerType = webEvent.pointerType();
     }
 };
 

@@ -34,6 +34,7 @@
 #include <WebCore/IndexedDB.h>
 #include <WebCore/InputMode.h>
 #include <WebCore/MediaSelectionOption.h>
+#include <WebCore/NativeImage.h>
 #include <WebCore/NetworkLoadMetrics.h>
 #include <WebCore/NotificationDirection.h>
 #include <WebCore/RealtimeMediaSource.h>
@@ -53,17 +54,24 @@
 #include <WebCore/CurlProxySettings.h>
 #endif
 
-#if USE(APPLE_INTERNAL_SDK)
-#include <WebKitAdditions/WebCoreArgumentCodersAdditions.h>
-#endif
-
 #if ENABLE(ENCRYPTED_MEDIA)
 #include <WebCore/CDMInstance.h>
 #include <WebCore/CDMInstanceSession.h>
 #endif
 
+#if PLATFORM(IOS_FAMILY)
+#include <WebCore/InspectorOverlay.h>
+#endif
+
 #if PLATFORM(GTK)
 #include "ArgumentCodersGtk.h"
+#endif
+
+#if ENABLE(GPU_PROCESS) && ENABLE(WEBGL)
+#include "ArrayReference.h"
+#include <WebCore/GraphicsContextGL.h>
+#include <WebCore/GraphicsContextGLAttributes.h>
+#include <WebCore/GraphicsTypesGL.h>
 #endif
 
 #if PLATFORM(COCOA)
@@ -94,9 +102,9 @@ class FloatRect;
 class FloatRoundedRect;
 class FloatSize;
 class FixedPositionViewportConstraints;
-class FontHandle;
+class Font;
+class FontPlatformData;
 class HTTPHeaderMap;
-class ImageHandle;
 class IntPoint;
 class IntRect;
 class IntSize;
@@ -104,7 +112,6 @@ class KeyframeValueList;
 class LayoutSize;
 class LayoutPoint;
 class LinearTimingFunction;
-class NativeImageHandle;
 class Notification;
 class PasteboardCustomData;
 class PaymentInstallmentConfiguration;
@@ -162,7 +169,6 @@ struct KeypressCommand;
 #if PLATFORM(IOS_FAMILY)
 class FloatQuad;
 class SelectionRect;
-struct Highlight;
 struct PasteboardImage;
 struct PasteboardWebContent;
 #endif
@@ -187,10 +193,6 @@ class ContentFilterUnblockHandler;
 class MediaPlaybackTargetContext;
 #endif
 
-#if ENABLE(MEDIA_SESSION)
-class MediaSessionMetadata;
-#endif
-
 #if ENABLE(MEDIA_STREAM)
 struct MediaConstraints;
 #endif
@@ -201,6 +203,10 @@ struct SerializedAttachmentData;
 
 #if ENABLE(INDEXED_DATABASE)
 using IDBKeyPath = Variant<String, Vector<String>>;
+#endif
+
+#if ENABLE(GPU_PROCESS) && ENABLE(WEBGL)
+struct GraphicsContextGLAttributes;
 #endif
 
 namespace DOMCacheEngine {
@@ -314,13 +320,6 @@ template<> struct ArgumentCoder<WebCore::FloatRoundedRect> {
     static WARN_UNUSED_RETURN bool decode(Decoder&, WebCore::FloatRoundedRect&);
 };
 
-#if PLATFORM(IOS_FAMILY)
-template<> struct ArgumentCoder<WebCore::FloatQuad> {
-    static void encode(Encoder&, const WebCore::FloatQuad&);
-    static Optional<WebCore::FloatQuad> decode(Decoder&);
-};
-#endif // PLATFORM(IOS_FAMILY)
-
 #if ENABLE(META_VIEWPORT)
 template<> struct ArgumentCoder<WebCore::ViewportArguments> {
     static void encode(Encoder&, const WebCore::ViewportArguments&);
@@ -407,21 +406,11 @@ template<> struct ArgumentCoder<WebCore::Cursor> {
     static WARN_UNUSED_RETURN bool decode(Decoder&, WebCore::Cursor&);
 };
 
-template<> struct ArgumentCoder<WebCore::FontHandle> {
-    static void encode(Encoder&, const WebCore::FontHandle&);
-    static WARN_UNUSED_RETURN bool decode(Decoder&, WebCore::FontHandle&);
-    static void encodePlatformData(Encoder&, const WebCore::FontHandle&);
-    static WARN_UNUSED_RETURN bool decodePlatformData(Decoder&, WebCore::FontHandle&);
-};
-
-template<> struct ArgumentCoder<WebCore::ImageHandle> {
-    static void encode(Encoder&, const WebCore::ImageHandle&);
-    static WARN_UNUSED_RETURN bool decode(Decoder&, WebCore::ImageHandle&);
-};
-
-template<> struct ArgumentCoder<WebCore::NativeImageHandle> {
-    static void encode(Encoder&, const WebCore::NativeImageHandle&);
-    static WARN_UNUSED_RETURN bool decode(Decoder&, WebCore::NativeImageHandle&);
+template<> struct ArgumentCoder<Ref<WebCore::Font>> {
+    static void encode(Encoder&, const Ref<WebCore::Font>&);
+    static Optional<Ref<WebCore::Font>> decode(Decoder&);
+    static void encodePlatformData(Encoder&, const Ref<WebCore::Font>&);
+    static Optional<WebCore::FontPlatformData> decodePlatformData(Decoder&);
 };
 
 template<> struct ArgumentCoder<WebCore::ResourceRequest> {
@@ -489,9 +478,9 @@ template<> struct ArgumentCoder<WebCore::SelectionRect> {
     static Optional<WebCore::SelectionRect> decode(Decoder&);
 };
 
-template<> struct ArgumentCoder<WebCore::Highlight> {
-    static void encode(Encoder&, const WebCore::Highlight&);
-    static WARN_UNUSED_RETURN bool decode(Decoder&, WebCore::Highlight&);
+template<> struct ArgumentCoder<WebCore::InspectorOverlay::Highlight> {
+    static void encode(Encoder&, const WebCore::InspectorOverlay::Highlight&);
+    static WARN_UNUSED_RETURN bool decode(Decoder&, WebCore::InspectorOverlay::Highlight&);
 };
 
 template<> struct ArgumentCoder<WebCore::PasteboardWebContent> {
@@ -635,13 +624,6 @@ template<> struct ArgumentCoder<WebCore::ContentFilterUnblockHandler> {
 };
 #endif
 
-#if ENABLE(MEDIA_SESSION)
-template<> struct ArgumentCoder<WebCore::MediaSessionMetadata> {
-    static void encode(Encoder&, const WebCore::MediaSessionMetadata&);
-    static WARN_UNUSED_RETURN bool decode(Decoder&, WebCore::MediaSessionMetadata&);
-};
-#endif
-
 template<> struct ArgumentCoder<WebCore::TextIndicatorData> {
     static void encode(Encoder&, const WebCore::TextIndicatorData&);
     static Optional<WebCore::TextIndicatorData> decode(Decoder&);
@@ -695,11 +677,6 @@ template<> struct ArgumentCoder<WebCore::PaymentContact> {
     static Optional<WebCore::PaymentContact> decode(Decoder&);
 };
 
-template<> struct ArgumentCoder<WebCore::PaymentError> {
-    static void encode(Encoder&, const WebCore::PaymentError&);
-    static Optional<WebCore::PaymentError> decode(Decoder&);
-};
-
 template<> struct ArgumentCoder<WebCore::PaymentMerchantSession> {
     static void encode(Encoder&, const WebCore::PaymentMerchantSession&);
     static Optional<WebCore::PaymentMerchantSession> decode(Decoder&);
@@ -710,24 +687,13 @@ template<> struct ArgumentCoder<WebCore::PaymentMethod> {
     static Optional<WebCore::PaymentMethod> decode(Decoder&);
 };
 
-template<> struct ArgumentCoder<WebCore::PaymentMethodUpdate> {
-    static void encode(Encoder&, const WebCore::PaymentMethodUpdate&);
-    static Optional<WebCore::PaymentMethodUpdate> decode(Decoder&);
-};
-
 template<> struct ArgumentCoder<WebCore::ApplePaySessionPaymentRequest> {
     static void encode(Encoder&, const WebCore::ApplePaySessionPaymentRequest&);
     static WARN_UNUSED_RETURN bool decode(Decoder&, WebCore::ApplePaySessionPaymentRequest&);
 };
-
 template<> struct ArgumentCoder<WebCore::ApplePaySessionPaymentRequest::ContactFields> {
     static void encode(Encoder&, const WebCore::ApplePaySessionPaymentRequest::ContactFields&);
     static WARN_UNUSED_RETURN bool decode(Decoder&, WebCore::ApplePaySessionPaymentRequest::ContactFields&);
-};
-
-template<> struct ArgumentCoder<WebCore::ApplePaySessionPaymentRequest::LineItem> {
-    static void encode(Encoder&, const WebCore::ApplePaySessionPaymentRequest::LineItem&);
-    static Optional<WebCore::ApplePaySessionPaymentRequest::LineItem> decode(Decoder&);
 };
 
 template<> struct ArgumentCoder<WebCore::ApplePaySessionPaymentRequest::MerchantCapabilities> {
@@ -735,24 +701,9 @@ template<> struct ArgumentCoder<WebCore::ApplePaySessionPaymentRequest::Merchant
     static WARN_UNUSED_RETURN bool decode(Decoder&, WebCore::ApplePaySessionPaymentRequest::MerchantCapabilities&);
 };
 
-template<> struct ArgumentCoder<WebCore::ApplePaySessionPaymentRequest::ShippingMethod> {
-    static void encode(Encoder&, const WebCore::ApplePaySessionPaymentRequest::ShippingMethod&);
-    static Optional<WebCore::ApplePaySessionPaymentRequest::ShippingMethod> decode(Decoder&);
-};
-
-template<> struct ArgumentCoder<WebCore::ApplePaySessionPaymentRequest::TotalAndLineItems> {
-    static void encode(Encoder&, const WebCore::ApplePaySessionPaymentRequest::TotalAndLineItems&);
-    static Optional<WebCore::ApplePaySessionPaymentRequest::TotalAndLineItems> decode(Decoder&);
-};
-
-template<> struct ArgumentCoder<WebCore::ShippingContactUpdate> {
-    static void encode(Encoder&, const WebCore::ShippingContactUpdate&);
-    static Optional<WebCore::ShippingContactUpdate> decode(Decoder&);
-};
-
-template<> struct ArgumentCoder<WebCore::ShippingMethodUpdate> {
-    static void encode(Encoder&, const WebCore::ShippingMethodUpdate&);
-    static Optional<WebCore::ShippingMethodUpdate> decode(Decoder&);
+template<> struct ArgumentCoder<Vector<RefPtr<WebCore::ApplePayError>>> {
+    static void encode(Encoder&, const Vector<RefPtr<WebCore::ApplePayError>>&);
+    static Optional<Vector<RefPtr<WebCore::ApplePayError>>> decode(Decoder&);
 };
 
 template<> struct ArgumentCoder<WebCore::PaymentSessionError> {
@@ -880,28 +831,28 @@ template<> struct ArgumentCoder<WebCore::PaymentInstallmentConfiguration> {
 };
 #endif
 
+#if ENABLE(GPU_PROCESS) && ENABLE(WEBGL)
+
+template<> struct ArgumentCoder<WebCore::GraphicsContextGLAttributes> {
+    static void encode(Encoder&, const WebCore::GraphicsContextGLAttributes&);
+    static Optional<WebCore::GraphicsContextGLAttributes> decode(Decoder&);
+};
+
+template<> struct ArgumentCoder<WebCore::GraphicsContextGL::ActiveInfo> {
+    static void encode(Encoder&, const WebCore::GraphicsContextGL::ActiveInfo&);
+    static Optional<WebCore::GraphicsContextGL::ActiveInfo> decode(Decoder&);
+};
+#endif
+
 } // namespace IPC
 
 namespace WTF {
 
-template<> struct EnumTraits<WebCore::ColorSpace> {
-    using values = EnumValues<
-    WebCore::ColorSpace,
-    WebCore::ColorSpace::SRGB,
-    WebCore::ColorSpace::LinearRGB,
-    WebCore::ColorSpace::DisplayP3
-    >;
-};
-
 template<> struct EnumTraits<WebCore::RenderingMode> {
     using values = EnumValues<
-    WebCore::RenderingMode,
-    WebCore::RenderingMode::Accelerated,
-    WebCore::RenderingMode::Unaccelerated,
-    WebCore::RenderingMode::DisplayListAccelerated,
-    WebCore::RenderingMode::DisplayListUnaccelerated,
-    WebCore::RenderingMode::RemoteAccelerated,
-    WebCore::RenderingMode::RemoteUnaccelerated
+        WebCore::RenderingMode,
+        WebCore::RenderingMode::Unaccelerated,
+        WebCore::RenderingMode::Accelerated
     >;
 };
 
@@ -1050,6 +1001,28 @@ template <> struct EnumTraits<WebCore::CDMInstance::HDCPStatus> {
     >;
 };
 
+#endif
+
+#if ENABLE(GPU_PROCESS) && ENABLE(WEBGL)
+
+template <> struct EnumTraits<WebCore::GraphicsContextGLPowerPreference> {
+    using values = EnumValues <
+    WebCore::GraphicsContextGLPowerPreference,
+    WebCore::GraphicsContextGLPowerPreference::Default,
+    WebCore::GraphicsContextGLPowerPreference::LowPower,
+    WebCore::GraphicsContextGLPowerPreference::HighPerformance
+    >;
+};
+
+template <> struct EnumTraits<WebCore::GraphicsContextGLWebGLVersion> {
+    using values = EnumValues <
+    WebCore::GraphicsContextGLWebGLVersion,
+    WebCore::GraphicsContextGLWebGLVersion::WebGL1
+#if ENABLE(WEBGL2)
+    , WebCore::GraphicsContextGLWebGLVersion::WebGL2
+#endif
+    >;
+};
 #endif
 
 } // namespace WTF

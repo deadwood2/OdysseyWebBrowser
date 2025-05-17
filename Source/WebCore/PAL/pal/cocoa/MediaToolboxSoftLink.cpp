@@ -28,13 +28,38 @@
 #if USE(MEDIATOOLBOX)
 
 #include <MediaToolbox/MediaToolbox.h>
+#include <pal/spi/cocoa/MediaToolboxSPI.h>
 #include <wtf/SoftLinking.h>
 
 SOFT_LINK_FRAMEWORK_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, PAL_EXPORT)
+
+SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, FigPhotoDecompressionSetHardwareCutoff, void, (int format, size_t numPixelsCutoff), (format, numPixelsCutoff), PAL_EXPORT)
 
 SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MTShouldPlayHDRVideo, Boolean, (CFArrayRef displayList), (displayList), PAL_EXPORT)
 SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MTOverrideShouldPlayHDRVideo, void, (Boolean override, Boolean playHDRVideo), (override, playHDRVideo), PAL_EXPORT)
 SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MT_GetShouldPlayHDRVideoNotificationSingleton, CFTypeRef, (void), (), PAL_EXPORT)
 
 SOFT_LINK_CONSTANT_MAY_FAIL_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, kMTSupportNotification_ShouldPlayHDRVideoChanged, CFStringRef, PAL_EXPORT)
-#endif
+
+#if HAVE(MT_PLUGIN_FORMAT_READER)
+
+SOFT_LINK_CONSTANT_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, kMTPluginFormatReaderProperty_Duration, CFStringRef, PAL_EXPORT)
+SOFT_LINK_CONSTANT_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, kMTPluginTrackReaderProperty_Enabled, CFStringRef, PAL_EXPORT)
+SOFT_LINK_CONSTANT_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, kMTPluginTrackReaderProperty_FormatDescriptionArray, CFStringRef, PAL_EXPORT)
+SOFT_LINK_CONSTANT_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, kMTPluginTrackReaderProperty_NominalFrameRate, CFStringRef, PAL_EXPORT)
+SOFT_LINK_CONSTANT_MAY_FAIL_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, kMTPluginFormatReader_SupportsPlayableHorizonQueries, CFStringRef, PAL_EXPORT)
+
+SOFT_LINK_FUNCTION_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MTPluginByteSourceGetLength, int64_t, (MTPluginByteSourceRef byteSource), (byteSource), PAL_EXPORT)
+SOFT_LINK_FUNCTION_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MTPluginByteSourceRead, OSStatus, (MTPluginByteSourceRef byteSource, size_t num, int64_t offset, void* dest, size_t* bytesReadOut), (byteSource, num, offset, dest, bytesReadOut), PAL_EXPORT)
+SOFT_LINK_FUNCTION_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MTPluginFormatReaderGetClassID, CMBaseClassID, (), (), PAL_EXPORT)
+SOFT_LINK_FUNCTION_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MTPluginFormatReaderGetTypeID, CFTypeID, (), (), PAL_EXPORT)
+SOFT_LINK_FUNCTION_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MTPluginFormatReaderDisableSandboxing, OSStatus, (), (), PAL_EXPORT)
+SOFT_LINK_FUNCTION_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MTRegisterPluginFormatReaderBundleDirectory, void, (CFURLRef directoryURL), (directoryURL), PAL_EXPORT)
+SOFT_LINK_FUNCTION_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MTPluginSampleCursorGetClassID, CMBaseClassID, (), (), PAL_EXPORT)
+SOFT_LINK_FUNCTION_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MTPluginSampleCursorGetTypeID, CFTypeID, (), (), PAL_EXPORT)
+SOFT_LINK_FUNCTION_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MTPluginTrackReaderGetClassID, CMBaseClassID, (), (), PAL_EXPORT)
+SOFT_LINK_FUNCTION_FOR_SOURCE_WITH_EXPORT(PAL, MediaToolbox, MTPluginTrackReaderGetTypeID, CFTypeID, (), (), PAL_EXPORT)
+
+#endif // HAVE(MT_PLUGIN_FORMAT_READER)
+
+#endif // USE(MEDIATOOLBOX)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,24 +25,65 @@
 
 #pragma once
 
-#if PLATFORM(COCOA)
+#if ENABLE(VP9) && PLATFORM(COCOA)
 
 #include "VP9Utilities.h"
+#include <webm/dom_types.h>
+
+typedef const struct opaqueCMFormatDescription* CMFormatDescriptionRef;
+
+namespace vp9_parser {
+class Vp9HeaderParser;
+}
 
 namespace WebCore {
 
 struct MediaCapabilitiesInfo;
 struct VideoConfiguration;
 
-WEBCORE_EXPORT extern void setOverrideVP9HardwareDecoderDisabledForTesting(bool);
-WEBCORE_EXPORT extern void setOverrideVP9ScreenSizeAndScaleForTesting(float width, float height, float scale);
-WEBCORE_EXPORT extern void resetOverrideVP9ScreenSizeAndScaleForTesting();
-
 WEBCORE_EXPORT extern void registerWebKitVP9Decoder();
+WEBCORE_EXPORT extern void registerWebKitVP8Decoder();
 WEBCORE_EXPORT extern void registerSupplementalVP9Decoder();
 extern bool isVP9DecoderAvailable();
+extern bool isVP8DecoderAvailable();
 extern bool isVPCodecConfigurationRecordSupported(VPCodecConfigurationRecord&);
 extern bool validateVPParameters(VPCodecConfigurationRecord&, MediaCapabilitiesInfo&, const VideoConfiguration&);
+
+RetainPtr<CMFormatDescriptionRef> createFormatDescriptionFromVP9HeaderParser(const vp9_parser::Vp9HeaderParser&, const webm::Element<webm::Colour>&);
+
+struct VP8FrameHeader {
+    bool keyframe { false };
+    uint8_t version { 0 };
+    bool showFrame { true };
+    uint32_t partitionSize { 0 };
+    uint8_t horizontalScale { 0 };
+    uint16_t width { 0 };
+    uint8_t verticalScale { 0 };
+    uint16_t height;
+    bool colorSpace { false };
+    bool needsClamping { false };
+};
+
+Optional<VP8FrameHeader> parseVP8FrameHeader(uint8_t* frameData, size_t frameSize);
+RetainPtr<CMFormatDescriptionRef> createFormatDescriptionFromVP8Header(const VP8FrameHeader&, const webm::Element<webm::Colour>&);
+
+class WEBCORE_EXPORT VP9TestingOverrides {
+public:
+    static VP9TestingOverrides& singleton();
+
+    void setHardwareDecoderDisabled(Optional<bool>&&);
+    Optional<bool> hardwareDecoderDisabled() { return m_hardwareDecoderDisabled; }
+
+    void setVP9ScreenSizeAndScale(Optional<ScreenDataOverrides>&&);
+    Optional<ScreenDataOverrides> vp9ScreenSizeAndScale()  { return m_screenSizeAndScale; }
+
+    void setConfigurationChangedCallback(std::function<void()>&&);
+
+private:
+    Optional<bool> m_hardwareDecoderDisabled;
+    Optional<ScreenDataOverrides> m_screenSizeAndScale;
+    WTF::Function<void()> m_configurationChangedCallback;
+};
 
 }
 

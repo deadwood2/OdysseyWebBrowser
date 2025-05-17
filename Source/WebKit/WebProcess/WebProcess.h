@@ -27,9 +27,6 @@
 
 #include "AuxiliaryProcess.h"
 #include "CacheModel.h"
-#if ENABLE(MEDIA_STREAM)
-#include "MediaDeviceSandboxExtensions.h"
-#endif
 #include "PluginProcessConnectionManager.h"
 #include "SandboxExtension.h"
 #include "StorageAreaIdentifier.h"
@@ -47,6 +44,7 @@
 #include <WebCore/PageIdentifier.h>
 #include <WebCore/PluginData.h>
 #include <WebCore/RegistrableDomain.h>
+#include <WebCore/RenderingMode.h>
 #include <WebCore/ServiceWorkerTypes.h>
 #include <WebCore/Timer.h>
 #include <pal/HysteresisActivity.h>
@@ -57,6 +55,10 @@
 #include <wtf/RefCounter.h>
 #include <wtf/text/AtomString.h>
 #include <wtf/text/AtomStringHash.h>
+
+#if ENABLE(MEDIA_STREAM)
+#include "MediaDeviceSandboxExtensions.h"
+#endif
 
 #if PLATFORM(COCOA)
 #include <WebCore/ScreenProperties.h>
@@ -115,6 +117,7 @@ struct ServiceWorkerInitializationData;
 class StorageAreaMap;
 class UserData;
 class WaylandCompositorDisplay;
+class WebAuthnProcessConnection;
 class WebAutomationSessionProxy;
 class WebCacheStorageProvider;
 class WebCookieJar;
@@ -124,6 +127,8 @@ class WebFrame;
 class WebLoaderStrategy;
 class WebPage;
 class WebPageGroupProxy;
+struct GPUProcessConnectionInfo;
+struct GPUProcessConnectionParameters;
 struct UserMessage;
 struct WebProcessCreationParameters;
 struct WebProcessDataStoreParameters;
@@ -139,12 +144,19 @@ struct WebsiteDataStoreParameters;
 class LayerHostingContext;
 #endif
 
+#if ENABLE(MEDIA_STREAM)
+class SpeechRecognitionRealtimeMediaSourceManager;
+#endif
+
 class WebProcess : public AuxiliaryProcess
 {
     WTF_MAKE_FAST_ALLOCATED;
 public:
+    using TopFrameDomain = WebCore::RegistrableDomain;
+    using SubResourceDomain = WebCore::RegistrableDomain;
+
     static WebProcess& singleton();
-    static constexpr ProcessType processType = ProcessType::WebContent;
+    static constexpr WebCore::AuxiliaryProcessType processType = WebCore::AuxiliaryProcessType::WebContent;
 
     template <typename T>
     T* supplement()
@@ -177,15 +189,17 @@ public:
     const WTF::MachSendRight& compositingRenderServerPort() const { return m_compositingRenderServerPort; }
 #endif
 
-    bool shouldPlugInAutoStartFromOrigin(WebPage&, const String& pageOrigin, const String& pluginOrigin, const String& mimeType);
-    void plugInDidStartFromOrigin(const String& pageOrigin, const String& pluginOrigin, const String& mimeType);
-    void plugInDidReceiveUserInteraction(const String& pageOrigin, const String& pluginOrigin, const String& mimeType);
-    void setPluginLoadClientPolicy(WebCore::PluginLoadClientPolicy, const String& host, const String& bundleIdentifier, const String& versionString);
-    void resetPluginLoadClientPolicies(const HashMap<String, HashMap<String, HashMap<String, WebCore::PluginLoadClientPolicy>>>&);
-    void clearPluginClientPolicies();
     void refreshPlugins();
 
     bool fullKeyboardAccessEnabled() const { return m_fullKeyboardAccessEnabled; }
+
+#if HAVE(UIKIT_WITH_MOUSE_SUPPORT) && PLATFORM(IOS)
+    bool hasMouseDevice() const { return m_hasMouseDevice; }
+    void setHasMouseDevice(bool);
+#endif
+
+    bool hasStylusDevice() const { return m_hasStylusDevice; }
+    void setHasStylusDevice(bool);
 
     WebFrame* webFrame(WebCore::FrameIdentifier) const;
     Vector<WebFrame*> webFrames() const;
@@ -215,7 +229,7 @@ public:
 
 #if ENABLE(GPU_PROCESS)
     GPUProcessConnection& ensureGPUProcessConnection();
-    void gpuProcessConnectionClosed(GPUProcessConnection*);
+    void gpuProcessConnectionClosed(GPUProcessConnection&);
     GPUProcessConnection* existingGPUProcessConnection() { return m_gpuProcessConnection.get(); }
 
 #if PLATFORM(COCOA) && USE(LIBWEBRTC)
@@ -223,6 +237,12 @@ public:
 #endif
 
 #endif // ENABLE(GPU_PROCESS)
+
+#if ENABLE(WEB_AUTHN)
+    WebAuthnProcessConnection& ensureWebAuthnProcessConnection();
+    void webAuthnProcessConnectionClosed(WebAuthnProcessConnection*);
+    WebAuthnProcessConnection* existingWebAuthnProcessConnection() { return m_webAuthnProcessConnection.get(); }
+#endif
 
     LibWebRTCNetwork& libWebRTCNetwork();
 
@@ -300,7 +320,7 @@ public:
 #if PLATFORM(COCOA)
     void setMediaMIMETypes(const Vector<String>);
 #if ENABLE(REMOTE_INSPECTOR)
-    void enableRemoteWebInspector(const SandboxExtension::Handle&);
+    void enableRemoteWebInspector();
 #endif
     void unblockServicesRequiredByAccessibility(const SandboxExtension::HandleArray&);
 #if ENABLE(CFPREFS_DIRECT_MODE)
@@ -320,7 +340,7 @@ public:
 #endif
 
 #if PLATFORM(IOS)
-    void grantAccessToAssetServices(WebKit::SandboxExtension::Handle&& mobileAssetHandle,  WebKit::SandboxExtension::Handle&& mobileAssetV2Handle);
+    void grantAccessToAssetServices(WebKit::SandboxExtension::Handle&& mobileAssetV2Handle);
     void revokeAccessToAssetServices();
 #endif
 
@@ -329,16 +349,30 @@ public:
 #endif
 
 #if ENABLE(GPU_PROCESS)
+    void setUseGPUProcessForCanvasRendering(bool);
+    void setUseGPUProcessForDOMRendering(bool);
     void setUseGPUProcessForMedia(bool);
+    bool shouldUseRemoteRenderingFor(WebCore::RenderingPurpose);
+#if ENABLE(WEBGL)
+    void setUseGPUProcessForWebGL(bool);
+    bool shouldUseRemoteRenderingForWebGL() const;
+#endif
 #endif
 
+#if ENABLE(VP9)
     void enableVP9Decoder();
+    void enableVP8SWDecoder();
     void enableVP9SWDecoder();
+#endif
 
 #if PLATFORM(COCOA)
     void willWriteToPasteboardAsynchronously(const String& pasteboardName);
     void waitForPendingPasteboardWritesToFinish(const String& pasteboardName);
     void didWriteToPasteboardAsynchronously(const String& pasteboardName);
+#endif
+
+#if ENABLE(MEDIA_STREAM)
+    SpeechRecognitionRealtimeMediaSourceManager& ensureSpeechRecognitionRealtimeMediaSourceManager();
 #endif
 
 private:
@@ -390,12 +424,8 @@ private:
     void clearResourceLoadStatistics();
     void flushResourceLoadStatistics();
     void seedResourceLoadStatisticsForTesting(const WebCore::RegistrableDomain& firstPartyDomain, const WebCore::RegistrableDomain& thirdPartyDomain, bool shouldScheduleNotification, CompletionHandler<void()>&&);
-    void userPreferredLanguagesChanged() const;
+    void userPreferredLanguagesChanged(const Vector<String>&) const;
     void fullKeyboardAccessModeChanged(bool fullKeyboardAccessEnabled);
-
-    bool isPlugInAutoStartOriginHash(unsigned plugInOriginHash);
-    void didAddPlugInAutoStartOriginHash(unsigned plugInOriginHash, WallTime expirationTime);
-    void resetPlugInAutoStartOriginHashes(HashMap<unsigned, WallTime>&& hashes);
 
     void platformSetCacheModel(CacheModel);
 
@@ -475,8 +505,20 @@ private:
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
     void setThirdPartyCookieBlockingMode(WebCore::ThirdPartyCookieBlockingMode, CompletionHandler<void()>&&);
     void setDomainsWithUserInteraction(HashSet<WebCore::RegistrableDomain>&&);
+    void setDomainsWithCrossPageStorageAccess(HashMap<TopFrameDomain, SubResourceDomain>&&, CompletionHandler<void()>&&);
+    void sendResourceLoadStatisticsDataImmediately(CompletionHandler<void()>&&);
 #endif
 
+#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
+    void displayWasRefreshed(uint32_t displayID);
+#endif
+
+#if PLATFORM(MAC)
+    void systemWillPowerOn();
+    void systemWillSleep();
+    void systemDidWake();
+#endif
+    
     void platformInitializeProcess(const AuxiliaryProcessInitializationParameters&);
 
     // IPC::Connection::Client
@@ -494,16 +536,29 @@ private:
 
 #if PLATFORM(COCOA)
     void setScreenProperties(const WebCore::ScreenProperties&);
-    void updateProcessName();
+
+    enum class IsInProcessInitialization : bool { No, Yes };
+    void updateProcessName(IsInProcessInitialization);
 #endif
 
 #if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
     void backlightLevelDidChange(float backlightLevel);
 #endif
 
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+    void colorPreferencesDidChange();
+#endif
+
 #if PLATFORM(IOS_FAMILY)
+    void userInterfaceIdiomDidChange(bool);
+
     bool shouldFreezeOnSuspension() const;
     void updateFreezerStatus();
+#endif
+
+#if ENABLE(GPU_PROCESS)
+    static GPUProcessConnectionInfo getGPUProcessConnection(IPC::Connection&);
+    static void platformInitializeGPUProcessConnectionParameters(GPUProcessConnectionParameters&);
 #endif
 
 #if ENABLE(VIDEO)
@@ -523,10 +578,6 @@ private:
 
     bool isAlwaysOnLoggingAllowed() { return m_sessionID ? m_sessionID->isAlwaysOnLoggingAllowed() : true; }
 
-#if PLATFORM(COCOA)
-    void handleXPCEndpointMessages() const;
-#endif
-
     RefPtr<WebConnectionToUIProcess> m_webConnection;
 
     HashMap<WebCore::PageIdentifier, RefPtr<WebPage>> m_pageMap;
@@ -539,9 +590,6 @@ private:
 #endif
     RefPtr<WebInspectorInterruptDispatcher> m_webInspectorInterruptDispatcher;
 
-    HashMap<unsigned, WallTime> m_plugInAutoStartOriginHashes;
-    HashSet<String> m_plugInAutoStartOrigins;
-
     bool m_hasSetCacheModel { false };
     CacheModel m_cacheModel { CacheModel::DocumentViewer };
 
@@ -550,6 +598,12 @@ private:
 #endif
 
     bool m_fullKeyboardAccessEnabled { false };
+
+#if HAVE(UIKIT_WITH_MOUSE_SUPPORT) && PLATFORM(IOS)
+    bool m_hasMouseDevice { false };
+#endif
+
+    bool m_hasStylusDevice { false };
 
     HashMap<WebCore::FrameIdentifier, WebFrame*> m_frameMap;
 
@@ -567,6 +621,10 @@ private:
 #if PLATFORM(COCOA) && USE(LIBWEBRTC)
     std::unique_ptr<LibWebRTCCodecs> m_libWebRTCCodecs;
 #endif
+#endif
+
+#if ENABLE(WEB_AUTHN)
+    RefPtr<WebAuthnProcessConnection> m_webAuthnProcessConnection;
 #endif
 
     Ref<WebCacheStorageProvider> m_cacheStorageProvider;
@@ -651,7 +709,6 @@ private:
 #endif
 
 #if PLATFORM(IOS)
-    RefPtr<SandboxExtension> m_assetServiceExtension;
     RefPtr<SandboxExtension> m_assetServiceV2Extension;
 #endif
 
@@ -659,9 +716,24 @@ private:
     HashCountedSet<String> m_pendingPasteboardWriteCounts;
 #endif
 
+#if ENABLE(GPU_PROCESS)
+    bool m_useGPUProcessForCanvasRendering { false };
+    bool m_useGPUProcessForDOMRendering { false };
     bool m_useGPUProcessForMedia { false };
+#if ENABLE(WEBGL)
+    bool m_useGPUProcessForWebGL { false };
+#endif
+#endif
+
+#if ENABLE(VP9)
     bool m_vp9DecoderEnabled { false };
+    bool m_vp8SWDecoderEnabled { false };
     bool m_vp9SWDecoderEnabled { false };
+#endif
+
+#if ENABLE(MEDIA_STREAM)
+    std::unique_ptr<SpeechRecognitionRealtimeMediaSourceManager> m_speechRecognitionRealtimeMediaSourceManager;
+#endif
 };
 
 } // namespace WebKit

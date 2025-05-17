@@ -107,7 +107,7 @@
             return;
     }
 
-    auto request = adoptNS([WebKit::allocQLThumbnailGenerationRequestInstance() initWithFileAtURL:_filePath.get() size:CGSizeMake(400, 400) scale:1 representationTypes:QLThumbnailGenerationRequestRepresentationTypeAll]);
+    auto request = adoptNS([WebKit::allocQLThumbnailGenerationRequestInstance() initWithFileAtURL:_filePath.get() size:CGSizeMake(400, 400) scale:1 representationTypes:QLThumbnailGenerationRequestRepresentationTypeThumbnail]);
     [request setIconMode:YES];
     
     [[WebKit::getQLThumbnailGeneratorClass() sharedGenerator] generateBestRepresentationForRequest:request.get() completionHandler:^(QLThumbnailRepresentation *thumbnail, NSError *error) {
@@ -143,7 +143,7 @@
     return YES;
 }
 
-@synthesize executing=_executing;
+@synthesize executing = _executing;
 
 - (BOOL)isExecuting
 {
@@ -163,7 +163,7 @@
     }
 }
 
-@synthesize finished=_finished;
+@synthesize finished = _finished;
 
 - (BOOL)isFinished
 {

@@ -43,6 +43,7 @@
 #import <WebCore/Image.h>
 #import <WebCore/LegacyNSPasteboardTypes.h>
 #import <WebCore/MIMETypeRegistry.h>
+#import <WebCore/PasteboardCustomData.h>
 #import <WebCore/RenderAttachment.h>
 #import <WebCore/RenderImage.h>
 #import <WebKitLegacy/DOMExtensions.h>
@@ -70,17 +71,14 @@ NSString *WebURLNamePboardType = @"public.url-name";
     return types;
 }
 
-static inline NSArray *_createWritableTypesForImageWithoutArchive()
-{
-    NSMutableArray *types = [[NSMutableArray alloc] initWithObjects:legacyTIFFPasteboardType(), nil];
-    [types addObjectsFromArray:[NSPasteboard _web_writableTypesForURL]];
-    return types;
-}
-
 static NSArray *_writableTypesForImageWithoutArchive (void)
 {
-    static NSArray *types = _createWritableTypesForImageWithoutArchive();
-    return types;
+    static auto types = makeNeverDestroyed([] {
+        auto types = adoptNS([[NSMutableArray alloc] initWithObjects:legacyTIFFPasteboardType(), nil]);
+        [types addObjectsFromArray:[NSPasteboard _web_writableTypesForURL]];
+        return types;
+    }());
+    return types.get().get();
 }
 
 static inline NSArray *_createWritableTypesForImageWithArchive()
@@ -192,10 +190,8 @@ static NSArray *_writableTypesForImageWithArchive (void)
 
 - (void)_web_writeFileWrapperAsRTFDAttachment:(NSFileWrapper *)wrapper
 {
-    NSTextAttachment *attachment = [[NSTextAttachment alloc] initWithFileWrapper:wrapper];
-    
-    NSAttributedString *string = [NSAttributedString attributedStringWithAttachment:attachment];
-    [attachment release];
+    auto attachment = adoptNS([[NSTextAttachment alloc] initWithFileWrapper:wrapper]);
+    NSAttributedString *string = [NSAttributedString attributedStringWithAttachment:attachment.get()];
     
     NSData *RTFDData = [string RTFDFromRange:NSMakeRange(0, [string length]) documentAttributes:@{ }];
     [self setData:RTFDData forType:legacyRTFDPasteboardType()];
@@ -282,6 +278,15 @@ static CachedImage* imageFromElement(DOMElement *domElement)
 
     NSString *extension = @"";
     RetainPtr<NSMutableArray> types = adoptNS([[NSMutableArray alloc] initWithObjects:legacyFilesPromisePasteboardType(), nil]);
+    NSString *originIdentifier = core(element)->document().originIdentifierForPasteboard();
+    RetainPtr<NSData> customDataBuffer;
+    if (originIdentifier.length) {
+        [types addObject:@(PasteboardCustomData::cocoaType())];
+        PasteboardCustomData customData;
+        customData.setOrigin(originIdentifier);
+        customDataBuffer = customData.createSharedBuffer()->createNSData();
+    }
+
     if (auto* renderer = core(element)->renderer()) {
         if (is<RenderImage>(*renderer)) {
             if (auto* image = downcast<RenderImage>(*renderer).cachedImage()) {
@@ -304,10 +309,10 @@ static CachedImage* imageFromElement(DOMElement *domElement)
     }
 
     [self _web_writeImage:nil element:element URL:URL title:title archive:archive types:types.get() source:source];
+    if (customDataBuffer)
+        [self setData:customDataBuffer.get() forType:@(PasteboardCustomData::cocoaType())];
 
-    NSArray *extensions = [[NSArray alloc] initWithObjects:extension, nil];
-    [self setPropertyList:extensions forType:legacyFilesPromisePasteboardType()];
-    [extensions release];
+    [self setPropertyList:@[extension] forType:legacyFilesPromisePasteboardType()];
 
     return source;
 }

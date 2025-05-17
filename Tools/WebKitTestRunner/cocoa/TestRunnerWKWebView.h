@@ -54,6 +54,7 @@
 - (void)immediatelyDismissContextMenuIfNeeded;
 - (void)installCustomMenuAction:(NSString *)name dismissesAutomatically:(BOOL)dismissesAutomatically callback:(dispatch_block_t)callback;
 
+- (void)_didPresentViewController:(UIViewController *)viewController;
 - (void)zoomToScale:(double)scale animated:(BOOL)animated completionHandler:(void (^)(void))completionHandler;
 - (void)accessibilityRetrieveSpeakSelectionContentWithCompletionHandler:(void (^)(void))completionHandler;
 - (void)_didEndRotation;
@@ -73,6 +74,9 @@
 @property (nonatomic, readonly, getter=isShowingMenu) BOOL showingMenu;
 @property (nonatomic, copy) void (^didShowMenuCallback)(void);
 @property (nonatomic, copy) void (^didHideMenuCallback)(void);
+@property (nonatomic, readonly, getter=isShowingContactPicker) BOOL showingContactPicker;
+@property (nonatomic, copy) void (^didShowContactPickerCallback)(void);
+@property (nonatomic, copy) void (^didHideContactPickerCallback)(void);
 @property (nonatomic, retain, setter=_setStableStateOverride:) NSNumber *_stableStateOverride;
 @property (nonatomic, setter=_setScrollingUpdatesDisabledForTesting:) BOOL _scrollingUpdatesDisabledForTesting;
 

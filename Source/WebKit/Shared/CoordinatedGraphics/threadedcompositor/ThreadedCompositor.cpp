@@ -29,7 +29,9 @@
 #if USE(COORDINATED_GRAPHICS)
 
 #include "CompositingRunLoop.h"
+#include "EventDispatcher.h"
 #include "ThreadedDisplayRefreshMonitor.h"
+#include "WebProcess.h"
 #include <WebCore/PlatformDisplay.h>
 #include <WebCore/TransformationMatrix.h>
 #include <wtf/SetForScope.h>
@@ -68,9 +70,12 @@ ThreadedCompositor::ThreadedCompositor(Client& client, ThreadedDisplayRefreshMon
         m_scene = adoptRef(new CoordinatedGraphicsScene(this));
         m_nativeSurfaceHandle = m_client.nativeSurfaceHandleForCompositing();
 
-        m_scene->setActive(!!m_nativeSurfaceHandle);
-        if (m_nativeSurfaceHandle)
-            createGLContext();
+        createGLContext();
+        if (m_context) {
+            if (!m_nativeSurfaceHandle)
+                m_paintFlags |= TextureMapper::PaintingMirrored;
+            m_scene->setActive(true);
+        }
     });
 }
 
@@ -82,9 +87,13 @@ void ThreadedCompositor::createGLContext()
 {
     ASSERT(!RunLoop::isMain());
 
-    ASSERT(m_nativeSurfaceHandle);
-
-    m_context = GLContext::createContextForWindow(reinterpret_cast<GLNativeWindowType>(m_nativeSurfaceHandle), &PlatformDisplay::sharedDisplayForCompositing());
+    // GLNativeWindowType depends on the EGL implementation: reinterpret_cast works
+    // for pointers (only if they are 64-bit wide and not for other cases), and static_cast for
+    // numeric types (and when needed they get extended to 64-bit) but not for pointers. Using
+    // a plain C cast expression in this one instance works in all cases.
+    static_assert(sizeof(GLNativeWindowType) <= sizeof(uint64_t), "GLNativeWindowType must not be longer than 64 bits.");
+    auto windowType = (GLNativeWindowType) m_nativeSurfaceHandle;
+    m_context = GLContext::createContextForWindow(windowType, &PlatformDisplay::sharedDisplayForCompositing());
     if (m_context)
         m_context->makeContextCurrent();
 }
@@ -176,8 +185,6 @@ void ThreadedCompositor::renderLayerTree()
     if (!m_context || !m_context->makeContextCurrent())
         return;
 
-    m_client.willRenderFrame();
-
     // Retrieve the scene attributes in a thread-safe manner.
     WebCore::IntSize viewportSize;
     WebCore::IntPoint scrollPosition;
@@ -204,14 +211,22 @@ void ThreadedCompositor::renderLayerTree()
         m_attributes.needsResize = false;
     }
 
-    if (needsResize) {
-        m_client.resize(viewportSize);
-        glViewport(0, 0, viewportSize.width(), viewportSize.height());
-    }
-
     TransformationMatrix viewportTransform;
     viewportTransform.scale(scaleFactor);
     viewportTransform.translate(-scrollPosition.x(), -scrollPosition.y());
+
+    // Resize the client, if necessary, before the will-render-frame call is dispatched.
+    // GL viewport is updated separately, if necessary. This establishes sequencing where
+    // everything inside the will-render and did-render scope is done for a constant-sized scene,
+    // and similarly all GL operations are done inside that specific scope.
+
+    if (needsResize)
+        m_client.resize(viewportSize);
+
+    m_client.willRenderFrame();
+
+    if (needsResize)
+        glViewport(0, 0, viewportSize.width(), viewportSize.height());
 
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -246,6 +261,9 @@ void ThreadedCompositor::sceneUpdateFinished()
     // Schedule the DisplayRefreshMonitor callback, if necessary.
     if (shouldDispatchDisplayRefreshCallback)
         m_displayRefreshMonitor->dispatchDisplayRefreshCallback();
+
+    // Always notify the ScrollingTrees to make sure scrolling does not depend on the main thread.
+    WebProcess::singleton().eventDispatcher().notifyScrollingTreesDisplayWasRefreshed(m_displayRefreshMonitor->displayID());
 
     // Mark the scene update as completed.
     m_compositingRunLoop->updateCompleted(stateLocker);

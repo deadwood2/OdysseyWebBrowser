@@ -81,9 +81,8 @@ static NSRect convertRectToScreen(NSWindow *window, NSRect rect)
 - (id)init
 {
     // Do not defer window creation, to make sure -windowNumber is created (needed by WebWindowScaleAnimation).
-    NSWindow *window = [[WebCoreFullScreenWindow alloc] initWithContentRect:NSZeroRect styleMask:NSWindowStyleMaskClosable backing:NSBackingStoreBuffered defer:NO];
-    self = [super initWithWindow:window];
-    [window release];
+    auto window = adoptNS([[WebCoreFullScreenWindow alloc] initWithContentRect:NSZeroRect styleMask:NSWindowStyleMaskClosable backing:NSBackingStoreBuffered defer:NO]);
+    self = [super initWithWindow:window.get()];
     if (!self)
         return nil;
     [self windowDidLoad];
@@ -101,8 +100,8 @@ static NSRect convertRectToScreen(NSWindow *window, NSRect rect)
     [super dealloc];
 }
 
-@synthesize initialFrame=_initialFrame;
-@synthesize finalFrame=_finalFrame;
+@synthesize initialFrame = _initialFrame;
+@synthesize finalFrame = _finalFrame;
 
 - (void)windowDidLoad
 {
@@ -474,11 +473,11 @@ static void setClipRectForWindow(NSWindow *window, NSRect clipRect)
 
 static RetainPtr<NSWindow> createBackgroundFullscreenWindow(NSRect frame)
 {
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:frame styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
+    auto window = adoptNS([[NSWindow alloc] initWithContentRect:frame styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO]);
     [window setOpaque:YES];
     [window setBackgroundColor:[NSColor blackColor]];
     [window setReleasedWhenClosed:NO];
-    return adoptNS(window);
+    return window;
 }
 
 static NSRect windowFrameFromApparentFrames(NSRect screenFrame, NSRect initialFrame, NSRect finalFrame)

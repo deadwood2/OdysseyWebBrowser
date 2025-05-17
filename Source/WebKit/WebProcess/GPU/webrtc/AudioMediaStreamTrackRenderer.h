@@ -28,6 +28,7 @@
 #if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
 
 #include "AudioMediaStreamTrackRendererIdentifier.h"
+#include "GPUProcessConnection.h"
 #include "SharedRingBufferStorage.h"
 #include <WebCore/AudioMediaStreamTrackRenderer.h>
 #include <wtf/MediaTime.h>
@@ -38,7 +39,7 @@ class Connection;
 
 namespace WebKit {
 
-class AudioMediaStreamTrackRenderer final : public WebCore::AudioMediaStreamTrackRenderer, public SharedRingBufferStorage::Client {
+class AudioMediaStreamTrackRenderer final : public WebCore::AudioMediaStreamTrackRenderer, public GPUProcessConnection::Client {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     static std::unique_ptr<WebCore::AudioMediaStreamTrackRenderer> create();
@@ -49,8 +50,8 @@ public:
 private:
     explicit AudioMediaStreamTrackRenderer(Ref<IPC::Connection>&&);
 
-    // SharedRingBufferStorage::Client
-    void storageChanged(SharedMemory*);
+    void initialize();
+    void storageChanged(SharedMemory*, const WebCore::CAAudioStreamDescription& format, size_t frameCount);
 
     // WebCore::AudioMediaStreamTrackRenderer
     void start() final;
@@ -58,6 +59,9 @@ private:
     void clear() final;
     void setVolume(float) final;
     void pushSamples(const MediaTime&, const WebCore::PlatformAudioData&, const WebCore::AudioStreamDescription&, size_t) final;
+
+    // GPUProcessConnection::Client
+    void gpuProcessConnectionDidClose(GPUProcessConnection&) final;
 
     Ref<IPC::Connection> m_connection;
     AudioMediaStreamTrackRendererIdentifier m_identifier;

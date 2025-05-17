@@ -75,12 +75,6 @@ static const String platformVersionForUAString()
 #endif
 }
 
-static inline const char* versionForUAString()
-{
-    // https://bugs.webkit.org/show_bug.cgi?id=180365
-    return "605.1.15";
-}
-
 static String buildUserAgentString(const UserAgentQuirks& quirks)
 {
     StringBuilder uaString;
@@ -89,8 +83,6 @@ static String buildUserAgentString(const UserAgentQuirks& quirks)
 
     if (quirks.contains(UserAgentQuirks::NeedsMacintoshPlatform))
         uaString.append(UserAgentQuirks::stringForQuirk(UserAgentQuirks::NeedsMacintoshPlatform));
-    else if (quirks.contains(UserAgentQuirks::NeedsLinuxDesktopPlatform))
-        uaString.append(UserAgentQuirks::stringForQuirk(UserAgentQuirks::NeedsLinuxDesktopPlatform));
     else {
         uaString.append(platformForUAString());
         uaString.appendLiteral("; ");
@@ -105,9 +97,7 @@ static String buildUserAgentString(const UserAgentQuirks& quirks)
         return uaString.toString();
     }
 
-    uaString.appendLiteral(") AppleWebKit/");
-    uaString.append(versionForUAString());
-    uaString.appendLiteral(" (KHTML, like Gecko) ");
+    uaString.appendLiteral(") AppleWebKit/605.1.15 (KHTML, like Gecko) ");
 
     // Note that Chrome UAs advertise *both* Chrome/X and Safari/X, but it does
     // not advertise Version/X.
@@ -117,12 +107,11 @@ static String buildUserAgentString(const UserAgentQuirks& quirks)
     // Version/X is mandatory *before* Safari/X to be a valid Safari UA. See
     // https://bugs.webkit.org/show_bug.cgi?id=133403 for details.
     } else
-        uaString.appendLiteral("Version/13.0 ");
+        uaString.appendLiteral("Version/14.0 ");
 
     if (chassisType() == WTF::ChassisType::Mobile)
         uaString.appendLiteral("Mobile ");
-    uaString.appendLiteral("Safari/");
-    uaString.append(versionForUAString());
+    uaString.appendLiteral("Safari/605.1.15");
 
     return uaString.toString();
 }
@@ -150,7 +139,7 @@ String standardUserAgent(const String& applicationName, const String& applicatio
     } else {
         String finalApplicationVersion = applicationVersion;
         if (finalApplicationVersion.isEmpty())
-            finalApplicationVersion = versionForUAString();
+            finalApplicationVersion = "605.1.15";
         userAgent = standardUserAgentStatic() + ' ' + applicationName + '/' + finalApplicationVersion;
     }
 
@@ -169,6 +158,8 @@ String standardUserAgentForURL(const URL& url)
 {
     auto quirks = UserAgentQuirks::quirksForURL(url);
     // The null string means we don't need a specific UA for the given URL.
+    // Note: UserAgentQuirks::NeedsUnbrandedUserAgent is implemented by simply
+    // not returning here.
     if (quirks.isEmpty())
         return String();
 

@@ -20,7 +20,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from webkitcorepy import version
 from setuptools import setup
 
 
@@ -31,7 +30,7 @@ def readme():
 
 setup(
     name='webkitcorepy',
-    version=str(version),
+    version='0.5.2',
     description='Library containing various Python support classes and functions.',
     long_description=readme(),
     classifiers=[
@@ -48,10 +47,16 @@ setup(
     author='Jonathan Bedard',
     author_email='jbedard@apple.com',
     license='Modified BSD',
-    packages=['webkitcorepy'],
+    packages=[
+        'webkitcorepy',
+        'webkitcorepy.mocks',
+        'webkitcorepy.tests',
+        'webkitcorepy.tests.mocks',
+    ],
     install_requires=[
         'mock',
         'requests',
+        'six',
     ],
     include_package_data=True,
     zip_safe=False,

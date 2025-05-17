@@ -32,6 +32,7 @@
 #include <WebKit/WKRetainPtr.h>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <wtf/HashMap.h>
 #include <wtf/Noncopyable.h>
@@ -50,12 +51,12 @@ OBJC_CLASS WKWebViewConfiguration;
 
 namespace WTR {
 
-class TestInvocation;
+class EventSenderProxy;
 class OriginSettings;
 class PlatformWebView;
-class EventSenderProxy;
+class TestInvocation;
+class TestOptions;
 struct TestCommand;
-struct TestOptions;
 
 class AsyncTask {
 public:
@@ -91,11 +92,7 @@ public:
     static void configureWebsiteDataStoreTemporaryDirectories(WKWebsiteDataStoreConfigurationRef);
     static WKWebsiteDataStoreRef defaultWebsiteDataStore();
 
-    static const unsigned viewWidth;
-    static const unsigned viewHeight;
-
-    static const unsigned w3cSVGViewWidth;
-    static const unsigned w3cSVGViewHeight;
+    static WKURLRef createTestURL(const char* pathOrURL);
 
     static const WTF::Seconds defaultShortTimeout;
     static const WTF::Seconds noTimeout;
@@ -115,20 +112,15 @@ public:
     WKWebsiteDataStoreRef websiteDataStore();
 
     EventSenderProxy* eventSenderProxy() { return m_eventSenderProxy.get(); }
-
-    bool shouldUseRemoteLayerTree() const { return m_shouldUseRemoteLayerTree; }
     
     // Runs the run loop until `done` is true or the timeout elapses.
     bool useWaitToDumpWatchdogTimer() { return m_useWaitToDumpWatchdogTimer; }
     void runUntil(bool& done, WTF::Seconds timeout);
     void notifyDone();
 
-    bool shouldShowWebView() const { return m_shouldShowWebView; }
     bool usingServerMode() const { return m_usingServerMode; }
     void configureViewForTest(const TestInvocation&);
-    
-    bool shouldShowTouches() const { return m_shouldShowTouches; }
-    
+
     bool beforeUnloadReturnValue() const { return m_beforeUnloadReturnValue; }
     void setBeforeUnloadReturnValue(bool value) { m_beforeUnloadReturnValue = value; }
 
@@ -140,7 +132,7 @@ public:
     
     // Geolocation.
     void setGeolocationPermission(bool);
-    void setMockGeolocationPosition(double latitude, double longitude, double accuracy, bool providesAltitude, double altitude, bool providesAltitudeAccuracy, double altitudeAccuracy, bool providesHeading, double heading, bool providesSpeed, double speed, bool providesFloorLevel, double floorLevel);
+    void setMockGeolocationPosition(double latitude, double longitude, double accuracy, Optional<double> altitude, Optional<double> altitudeAccuracy, Optional<double> heading, Optional<double> speed, Optional<double> floorLevel);
     void setMockGeolocationPositionUnavailableError(WKStringRef errorMessage);
     void handleGeolocationPermissionRequest(WKGeolocationPermissionRequestRef);
     bool isGeolocationProviderActive() const;
@@ -236,7 +228,6 @@ public:
     bool isStatisticsOnlyInDatabaseOnce(WKStringRef subHost, WKStringRef topHost);
     void setStatisticsGrandfathered(WKStringRef hostName, bool value);
     bool isStatisticsGrandfathered(WKStringRef hostName);
-    void setUseITPDatabase(bool value);
     void setStatisticsSubframeUnderTopFrameOrigin(WKStringRef hostName, WKStringRef topFrameHostName);
     void setStatisticsSubresourceUnderTopFrameOrigin(WKStringRef hostName, WKStringRef topFrameHostName);
     void setStatisticsSubresourceUniqueRedirectTo(WKStringRef hostName, WKStringRef hostNameRedirectedTo);
@@ -247,7 +238,6 @@ public:
     void setStatisticsTimeToLiveUserInteraction(double seconds);
     void statisticsProcessStatisticsAndDataRecords();
     void statisticsUpdateCookieBlocking();
-    void statisticsSubmitTelemetry();
     void setStatisticsNotifyPagesWhenDataRecordsWereScanned(bool);
     void setStatisticsIsRunningTest(bool);
     void setStatisticsShouldClassifyResourcesBeforeDataRecordsRemoval(bool);
@@ -272,11 +262,11 @@ public:
     void statisticsResetToConsistentState();
 
     void getAllStorageAccessEntries();
-    void loadedThirdPartyDomains();
-    void clearLoadedThirdPartyDomains();
+    void loadedSubresourceDomains();
+    void clearLoadedSubresourceDomains();
     void clearAppBoundSession();
     void reinitializeAppBoundDomains();
-    void updateBundleIdentifierInNetworkProcess(const String& bundleIdentifier);
+    void updateBundleIdentifierInNetworkProcess(const std::string& bundleIdentifier);
     void clearBundleIdentifierInNetworkProcess();
 
     WKArrayRef openPanelFileURLs() const { return m_openPanelFileURLs.get(); }
@@ -350,18 +340,31 @@ public:
 
     bool isDoingMediaCapture() const;
 
-    String dumpAdClickAttribution();
-    void clearAdClickAttribution();
-    void clearAdClickAttributionsThroughWebsiteDataRemoval();
-    void setAdClickAttributionOverrideTimerForTesting(bool value);
-    void setAdClickAttributionConversionURLForTesting(WKURLRef);
-    void markAdClickAttributionsAsExpiredForTesting();
+    String dumpPrivateClickMeasurement();
+    void clearPrivateClickMeasurement();
+    void clearPrivateClickMeasurementsThroughWebsiteDataRemoval();
+    void setPrivateClickMeasurementOverrideTimerForTesting(bool value);
+    void markAttributedPrivateClickMeasurementsAsExpiredForTesting();
+    void simulateResourceLoadStatisticsSessionRestart();
+    void setPrivateClickMeasurementTokenPublicKeyURLForTesting(WKURLRef);
+    void setPrivateClickMeasurementTokenSignatureURLForTesting(WKURLRef);
+    void setPrivateClickMeasurementAttributionReportURLForTesting(WKURLRef);
+    void markPrivateClickMeasurementsAsExpiredForTesting();
+    void setFraudPreventionValuesForTesting(WKStringRef secretToken, WKStringRef unlinkableToken, WKStringRef signature, WKStringRef keyID);
 
     void didSetAppBoundDomains() const;
 
+    WKURLRef currentTestURL() const;
+
+    void completeSpeechRecognitionPermissionCheck(WKSpeechRecognitionPermissionCallbackRef);
+    void setIsSpeechRecognitionPermissionGranted(bool);
+
+    void completeMediaKeySystemPermissionCheck(WKMediaKeySystemPermissionCallbackRef);
+    void setIsMediaKeySystemPermissionGranted(bool);
+
 private:
     WKRetainPtr<WKPageConfigurationRef> generatePageConfiguration(const TestOptions&);
-    WKRetainPtr<WKContextConfigurationRef> generateContextConfiguration(const TestOptions::ContextOptions&) const;
+    WKRetainPtr<WKContextConfigurationRef> generateContextConfiguration(const TestOptions&) const;
     void initialize(int argc, const char* argv[]);
     void createWebViewWithOptions(const TestOptions&);
     void run();
@@ -379,7 +382,6 @@ private:
     void platformDestroy();
     WKContextRef platformAdjustContext(WKContextRef, WKContextConfigurationRef);
     void platformInitializeContext();
-    void platformAddTestOptions(TestOptions&) const;
     void platformCreateWebView(WKPageConfigurationRef, const TestOptions&);
     static PlatformWebView* platformCreateOtherPage(PlatformWebView* parentView, WKPageConfigurationRef, const TestOptions&);
     void platformResetPreferencesToConsistentValues();
@@ -388,7 +390,7 @@ private:
 #if PLATFORM(COCOA)
     void cocoaPlatformInitialize();
     void cocoaResetStateToConsistentValues(const TestOptions&);
-    void setApplicationBundleIdentifier(const String&);
+    void setApplicationBundleIdentifier(const std::string&);
     void clearApplicationBundleIdentifierTestingOverride();
 #endif
     void platformConfigureViewForTest(const TestInvocation&);
@@ -402,7 +404,8 @@ private:
 
     void ensureViewSupportsOptionsForTest(const TestInvocation&);
     TestOptions testOptionsForTest(const TestCommand&) const;
-    void updatePlatformSpecificTestOptionsForTest(TestOptions&, const std::string& pathOrURL) const;
+    TestFeatures platformSpecificFeatureDefaultsForTest(const TestCommand&) const;
+    TestFeatures platformSpecificFeatureOverridesDefaultsForTest(const TestCommand&) const;
 
     void updateWebViewSizeForTest(const TestInvocation&);
     void updateWindowScaleForTest(PlatformWebView*, const TestInvocation&);
@@ -447,19 +450,19 @@ private:
     static void didFinishNavigation(WKPageRef, WKNavigationRef, WKTypeRef userData, const void*);
     void didFinishNavigation(WKPageRef, WKNavigationRef);
 
-    // WKContextDownloadClient
-    static void downloadDidStart(WKContextRef, WKDownloadRef, const void*);
-    void downloadDidStart(WKContextRef, WKDownloadRef);
-    static WKStringRef decideDestinationWithSuggestedFilename(WKContextRef, WKDownloadRef, WKStringRef filename, bool* allowOverwrite, const void *clientInfo);
-    WKStringRef decideDestinationWithSuggestedFilename(WKContextRef, WKDownloadRef, WKStringRef filename, bool*& allowOverwrite);
-    static void downloadDidFinish(WKContextRef, WKDownloadRef, const void*);
-    void downloadDidFinish(WKContextRef, WKDownloadRef);
-    static void downloadDidFail(WKContextRef, WKDownloadRef, WKErrorRef, const void*);
-    void downloadDidFail(WKContextRef, WKDownloadRef, WKErrorRef);
-    static void downloadDidCancel(WKContextRef, WKDownloadRef, const void*);
-    void downloadDidCancel(WKContextRef, WKDownloadRef);
-    static void downloadDidReceiveServerRedirectToURL(WKContextRef, WKDownloadRef, WKURLRef, const void*);
-    void downloadDidReceiveServerRedirectToURL(WKContextRef, WKDownloadRef, WKURLRef);
+    // WKDownloadClient
+    static void navigationActionDidBecomeDownload(WKPageRef, WKNavigationActionRef, WKDownloadRef, const void*);
+    static void navigationResponseDidBecomeDownload(WKPageRef, WKNavigationResponseRef, WKDownloadRef, const void*);
+    static void navigationDidBecomeDownloadShared(WKDownloadRef, const void*);
+    void downloadDidStart(WKDownloadRef);
+    static WKStringRef decideDestinationWithSuggestedFilename(WKDownloadRef, WKURLResponseRef, WKStringRef suggestedFilename, const void* clientInfo);
+    WKStringRef decideDestinationWithSuggestedFilename(WKDownloadRef, WKStringRef filename);
+    static void downloadDidFinish(WKDownloadRef, const void*);
+    void downloadDidFinish(WKDownloadRef);
+    static void downloadDidFail(WKDownloadRef, WKErrorRef, WKDataRef, const void*);
+    void downloadDidFail(WKDownloadRef, WKErrorRef);
+    static bool downloadDidReceiveServerRedirectToURL(WKDownloadRef, WKURLResponseRef, WKURLRequestRef, const void*);
+    bool downloadDidReceiveServerRedirectToURL(WKDownloadRef, WKURLRequestRef);
     
     static void processDidCrash(WKPageRef, const void* clientInfo);
     void processDidCrash();
@@ -537,8 +540,7 @@ private:
     bool m_createdOtherPage { false };
     std::vector<std::string> m_paths;
     std::set<std::string> m_allowedHosts;
-    HashMap<String, bool> m_internalFeatures;
-    HashMap<String, bool> m_experimentalFeatures;
+    TestFeatures m_globalFeatures;
 
     WKRetainPtr<WKStringRef> m_injectedBundlePath;
     WKRetainPtr<WKStringRef> m_testPluginDirectory;
@@ -547,7 +549,6 @@ private:
 
     std::unique_ptr<PlatformWebView> m_mainWebView;
     WKRetainPtr<WKContextRef> m_context;
-    Optional<TestOptions::ContextOptions> m_contextOptions;
     WKRetainPtr<WKPageGroupRef> m_pageGroup;
     WKRetainPtr<WKUserContentControllerRef> m_userContentController;
 
@@ -603,15 +604,9 @@ private:
     String m_unsupportedPluginMode;
 
     bool m_forceComplexText { false };
-    bool m_shouldUseAcceleratedDrawing { false };
-    bool m_shouldUseRemoteLayerTree { false };
-
     bool m_shouldLogCanAuthenticateAgainstProtectionSpace { false };
     bool m_shouldLogDownloadCallbacks { false };
     bool m_shouldLogHistoryClientCallbacks { false };
-    bool m_shouldShowWebView { false };
-    
-    bool m_shouldShowTouches { false };
     bool m_checkForWorldLeaks { false };
 
     bool m_allowAnyHTTPSCertificateForAllowedHosts { false };
@@ -656,15 +651,10 @@ private:
 #if PLATFORM(COCOA)
     bool m_hasSetApplicationBundleIdentifier { false };
 #endif
-};
 
-struct TestCommand {
-    std::string pathOrURL;
-    std::string absolutePath;
-    std::string expectedPixelHash;
-    WTF::Seconds timeout;
-    bool shouldDumpPixels { false };
-    bool dumpJSConsoleLogInStdErr { false };
+    bool m_isSpeechRecognitionPermissionGranted { false };
+
+    bool m_isMediaKeySystemPermissionGranted { true };
 };
 
 } // namespace WTR

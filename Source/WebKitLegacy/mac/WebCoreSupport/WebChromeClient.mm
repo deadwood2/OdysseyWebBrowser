@@ -84,6 +84,7 @@
 #import <WebCore/ResourceRequest.h>
 #import <WebCore/SSLKeyGenerator.h>
 #import <WebCore/SerializedCryptoKeyWrap.h>
+#import <WebCore/UniversalAccessZoom.h>
 #import <WebCore/Widget.h>
 #import <WebCore/WindowFeatures.h>
 #import <pal/spi/mac/NSViewSPI.h>
@@ -124,7 +125,8 @@ NSString *WebConsoleMessageMediaMessageSource = @"MediaMessageSource";
 NSString *WebConsoleMessageMediaSourceMessageSource = @"MediaSourceMessageSource";
 NSString *WebConsoleMessageWebRTCMessageSource = @"WebRTCMessageSource";
 NSString *WebConsoleMessageITPDebugMessageSource = @"ITPDebugMessageSource";
-NSString *WebConsoleMessageAdClickAttributionMessageSource = @"AdClickAttributionMessageSource";
+NSString *WebConsoleMessagePrivateClickMeasurementMessageSource = @"PrivateClickMeasurementMessageSource";
+NSString *WebConsoleMessagePaymentRequestMessageSource = @"PaymentRequestMessageSource";
 NSString *WebConsoleMessageOtherMessageSource = @"OtherMessageSource";
 
 NSString *WebConsoleMessageDebugMessageLevel = @"DebugMessageLevel";
@@ -205,7 +207,7 @@ bool WebChromeClient::canTakeFocus(FocusDirection)
 void WebChromeClient::takeFocus(FocusDirection direction)
 {
 #if !PLATFORM(IOS_FAMILY)
-    if (direction == FocusDirectionForward) {
+    if (direction == FocusDirection::Forward) {
         // Since we're trying to move focus out of m_webView, and because
         // m_webView may contain subviews within it, we ask it for the next key
         // view of the last view in its key view loop. This makes m_webView
@@ -251,51 +253,26 @@ Page* WebChromeClient::createWindow(Frame& frame, const WindowFeatures& features
 #endif
     
     if ([delegate respondsToSelector:@selector(webView:createWebViewWithRequest:windowFeatures:)]) {
-        NSNumber *x = features.x ? [[NSNumber alloc] initWithFloat:*features.x] : nil;
-        NSNumber *y = features.y ? [[NSNumber alloc] initWithFloat:*features.y] : nil;
-        NSNumber *width = features.width ? [[NSNumber alloc] initWithFloat:*features.width] : nil;
-        NSNumber *height = features.height ? [[NSNumber alloc] initWithFloat:*features.height] : nil;
-        NSNumber *menuBarVisible = [[NSNumber alloc] initWithBool:features.menuBarVisible];
-        NSNumber *statusBarVisible = [[NSNumber alloc] initWithBool:features.statusBarVisible];
-        NSNumber *toolBarVisible = [[NSNumber alloc] initWithBool:features.toolBarVisible];
-        NSNumber *scrollbarsVisible = [[NSNumber alloc] initWithBool:features.scrollbarsVisible];
-        NSNumber *resizable = [[NSNumber alloc] initWithBool:features.resizable];
-        NSNumber *fullscreen = [[NSNumber alloc] initWithBool:features.fullscreen];
-        NSNumber *dialog = [[NSNumber alloc] initWithBool:features.dialog];
+        auto dictFeatures = adoptNS([[NSMutableDictionary alloc] initWithObjectsAndKeys:
+                                             @(features.menuBarVisible), @"menuBarVisible",
+                                             @(features.statusBarVisible), @"statusBarVisible",
+                                             @(features.toolBarVisible), @"toolBarVisible",
+                                             @(features.scrollbarsVisible), @"scrollbarsVisible",
+                                             @(features.resizable), @"resizable",
+                                             @(features.fullscreen), @"fullscreen",
+                                             @(features.dialog), @"dialog",
+                                             nil]);
         
-        NSMutableDictionary *dictFeatures = [[NSMutableDictionary alloc] initWithObjectsAndKeys:
-                                             menuBarVisible, @"menuBarVisible", 
-                                             statusBarVisible, @"statusBarVisible",
-                                             toolBarVisible, @"toolBarVisible",
-                                             scrollbarsVisible, @"scrollbarsVisible",
-                                             resizable, @"resizable",
-                                             fullscreen, @"fullscreen",
-                                             dialog, @"dialog",
-                                             nil];
+        if (features.x)
+            [dictFeatures setObject:@(*features.x) forKey:@"x"];
+        if (features.y)
+            [dictFeatures setObject:@(*features.y) forKey:@"y"];
+        if (features.width)
+            [dictFeatures setObject:@(*features.width) forKey:@"width"];
+        if (features.height)
+            [dictFeatures setObject:@(*features.height) forKey:@"height"];
         
-        if (x)
-            [dictFeatures setObject:x forKey:@"x"];
-        if (y)
-            [dictFeatures setObject:y forKey:@"y"];
-        if (width)
-            [dictFeatures setObject:width forKey:@"width"];
-        if (height)
-            [dictFeatures setObject:height forKey:@"height"];
-        
-        newWebView = CallUIDelegate(m_webView, @selector(webView:createWebViewWithRequest:windowFeatures:), nil, dictFeatures);
-        
-        [dictFeatures release];
-        [x release];
-        [y release];
-        [width release];
-        [height release];
-        [menuBarVisible release];
-        [statusBarVisible release];
-        [toolBarVisible release];
-        [scrollbarsVisible release];
-        [resizable release];
-        [fullscreen release];
-        [dialog release];
+        newWebView = CallUIDelegate(m_webView, @selector(webView:createWebViewWithRequest:windowFeatures:), nil, dictFeatures.get());
     } else if (features.dialog && [delegate respondsToSelector:@selector(webView:createWebViewModalDialogWithRequest:)]) {
         newWebView = CallUIDelegate(m_webView, @selector(webView:createWebViewModalDialogWithRequest:), nil);
     } else {
@@ -403,8 +380,10 @@ inline static NSString *stringForMessageSource(MessageSource source)
         return WebConsoleMessageWebRTCMessageSource;
     case MessageSource::ITPDebug:
         return WebConsoleMessageITPDebugMessageSource;
-    case MessageSource::AdClickAttribution:
-        return WebConsoleMessageAdClickAttributionMessageSource;
+    case MessageSource::PrivateClickMeasurement:
+        return WebConsoleMessagePrivateClickMeasurementMessageSource;
+    case MessageSource::PaymentRequest:
+        return WebConsoleMessagePaymentRequestMessageSource;
     case MessageSource::Other:
         return WebConsoleMessageOtherMessageSource;
     }
@@ -459,14 +438,14 @@ void WebChromeClient::addMessageToConsole(MessageSource source, MessageLevel lev
     }
 
     NSString *messageSource = stringForMessageSource(source);
-    NSDictionary *dictionary = [[NSDictionary alloc] initWithObjectsAndKeys:
-        (NSString *)message, @"message",
-        @(lineNumber), @"lineNumber",
-        @(columnNumber), @"columnNumber",
-        (NSString *)sourceURL, @"sourceURL",
-        messageSource, @"MessageSource",
-        stringForMessageLevel(level), @"MessageLevel",
-        NULL];
+    auto dictionary = @{
+        @"message": (NSString *)message,
+        @"lineNumber": @(lineNumber),
+        @"columnNumber": @(columnNumber),
+        @"sourceURL": (NSString *)sourceURL,
+        @"MessageSource": messageSource,
+        @"MessageLevel": stringForMessageLevel(level),
+    };
 
 #if PLATFORM(IOS_FAMILY)
     [[[m_webView _UIKitDelegateForwarder] asyncForwarder] webView:m_webView addMessageToConsole:dictionary withSource:messageSource];
@@ -476,8 +455,6 @@ void WebChromeClient::addMessageToConsole(MessageSource source, MessageLevel lev
     else
         CallUIDelegate(m_webView, selector, dictionary);
 #endif
-
-    [dictionary release];
 }
 
 bool WebChromeClient::canRunBeforeUnloadConfirmPanel()
@@ -664,9 +641,8 @@ void WebChromeClient::unavailablePluginButtonClicked(Element& element, RenderEmb
 
 void WebChromeClient::mouseDidMoveOverElement(const HitTestResult& result, unsigned modifierFlags, const String& toolTip, TextDirection)
 {
-    WebElementDictionary *element = [[WebElementDictionary alloc] initWithHitTestResult:result];
-    [m_webView _mouseDidMoveOverElement:element modifierFlags:modifierFlags];
-    [element release];
+    auto element = adoptNS([[WebElementDictionary alloc] initWithHitTestResult:result]);
+    [m_webView _mouseDidMoveOverElement:element.get() modifierFlags:modifierFlags];
     setToolTip(toolTip);
 }
 
@@ -677,7 +653,7 @@ void WebChromeClient::setToolTip(const String& toolTip)
         [(WebHTMLView *)documentView _setToolTip:toolTip];
 }
 
-void WebChromeClient::print(Frame& frame)
+void WebChromeClient::print(Frame& frame, const StringWithDirection&)
 {
     WebFrame *webFrame = kit(&frame);
     if ([[m_webView UIDelegate] respondsToSelector:@selector(webView:printFrame:)])
@@ -690,9 +666,8 @@ void WebChromeClient::exceededDatabaseQuota(Frame& frame, const String& database
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
 
-    WebSecurityOrigin *webOrigin = [[WebSecurityOrigin alloc] _initWithWebCoreSecurityOrigin:&frame.document()->securityOrigin()];
-    CallUIDelegate(m_webView, @selector(webView:frame:exceededDatabaseQuotaForSecurityOrigin:database:), kit(&frame), webOrigin, (NSString *)databaseName);
-    [webOrigin release];
+    auto webOrigin = adoptNS([[WebSecurityOrigin alloc] _initWithWebCoreSecurityOrigin:&frame.document()->securityOrigin()]);
+    CallUIDelegate(m_webView, @selector(webView:frame:exceededDatabaseQuotaForSecurityOrigin:database:), kit(&frame), webOrigin.get(), (NSString *)databaseName);
 
     END_BLOCK_OBJC_EXCEPTIONS
 }
@@ -706,9 +681,8 @@ void WebChromeClient::reachedApplicationCacheOriginQuota(SecurityOrigin& origin,
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
 
-    WebSecurityOrigin *webOrigin = [[WebSecurityOrigin alloc] _initWithWebCoreSecurityOrigin:&origin];
-    CallUIDelegate(m_webView, @selector(webView:exceededApplicationCacheOriginQuotaForSecurityOrigin:totalSpaceNeeded:), webOrigin, static_cast<NSUInteger>(totalSpaceNeeded));
-    [webOrigin release];
+    auto webOrigin = adoptNS([[WebSecurityOrigin alloc] _initWithWebCoreSecurityOrigin:&origin]);
+    CallUIDelegate(m_webView, @selector(webView:exceededApplicationCacheOriginQuotaForSecurityOrigin:totalSpaceNeeded:), webOrigin.get(), static_cast<NSUInteger>(totalSpaceNeeded));
 
     END_BLOCK_OBJC_EXCEPTIONS
 }
@@ -729,6 +703,20 @@ std::unique_ptr<DataListSuggestionPicker> WebChromeClient::createDataListSuggest
 {
     ASSERT_NOT_REACHED();
     return nullptr;
+}
+#endif
+
+#if ENABLE(DATE_AND_TIME_INPUT_TYPES)
+std::unique_ptr<DateTimeChooser> WebChromeClient::createDateTimeChooser(DateTimeChooserClient&)
+{
+    ASSERT_NOT_REACHED();
+    return nullptr;
+}
+#endif
+
+#if ENABLE(APP_HIGHLIGHTS)
+void WebChromeClient::storeAppHighlight(const WebCore::AppHighlight&) const
+{
 }
 #endif
 
@@ -764,15 +752,14 @@ void WebChromeClient::runOpenPanel(Frame&, FileChooser& chooser)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     BOOL allowMultipleFiles = chooser.settings().allowsMultipleFiles;
-    WebOpenPanelResultListener *listener = [[WebOpenPanelResultListener alloc] initWithChooser:chooser];
+    auto listener = adoptNS([[WebOpenPanelResultListener alloc] initWithChooser:chooser]);
     id delegate = [m_webView UIDelegate];
     if ([delegate respondsToSelector:@selector(webView:runOpenPanelForFileButtonWithResultListener:allowMultipleFiles:)])
-        CallUIDelegate(m_webView, @selector(webView:runOpenPanelForFileButtonWithResultListener:allowMultipleFiles:), listener, allowMultipleFiles);
+        CallUIDelegate(m_webView, @selector(webView:runOpenPanelForFileButtonWithResultListener:allowMultipleFiles:), listener.get(), allowMultipleFiles);
     else if ([delegate respondsToSelector:@selector(webView:runOpenPanelForFileButtonWithResultListener:)])
-        CallUIDelegate(m_webView, @selector(webView:runOpenPanelForFileButtonWithResultListener:), listener);
+        CallUIDelegate(m_webView, @selector(webView:runOpenPanelForFileButtonWithResultListener:), listener.get());
     else
         [listener cancel];
-    [listener release];
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
@@ -948,7 +935,7 @@ void WebChromeClient::setNeedsOneShotDrawingSynchronization()
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
-void WebChromeClient::scheduleRenderingUpdate()
+void WebChromeClient::triggerRenderingUpdate()
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     [m_webView _scheduleUpdateRendering];
@@ -985,14 +972,15 @@ void WebChromeClient::enterVideoFullscreenForVideoElement(HTMLVideoElement& vide
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
-void WebChromeClient::exitVideoFullscreenForVideoElement(WebCore::HTMLVideoElement& videoElement)
+void WebChromeClient::exitVideoFullscreenForVideoElement(WebCore::HTMLVideoElement& videoElement, CompletionHandler<void(bool)>&& completionHandler)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     if (m_mockVideoPresentationModeEnabled)
         videoElement.didStopBeingFullscreenElement();
     else
         [m_webView _exitVideoFullscreen];
-    END_BLOCK_OBJC_EXCEPTIONS    
+    END_BLOCK_OBJC_EXCEPTIONS
+    completionHandler(true);
 }
 
 void WebChromeClient::exitVideoFullscreenToModeWithoutAnimation(HTMLVideoElement& videoElement, HTMLMediaElementEnums::VideoFullscreenMode targetMode)
@@ -1021,6 +1009,11 @@ void WebChromeClient::clearPlaybackControlsManager()
     [m_webView _clearPlaybackControlsManager];
 }
 
+void WebChromeClient::playbackControlsMediaEngineChanged()
+{
+    [m_webView _playbackControlsMediaEngineChanged];
+}
+
 #endif
 
 #if ENABLE(FULLSCREEN_API)
@@ -1041,9 +1034,8 @@ void WebChromeClient::enterFullScreenForElement(Element& element)
 {
     SEL selector = @selector(webView:enterFullScreenForElement:listener:);
     if ([[m_webView UIDelegate] respondsToSelector:selector]) {
-        WebKitFullScreenListener* listener = [[WebKitFullScreenListener alloc] initWithElement:&element];
-        CallUIDelegate(m_webView, selector, kit(&element), listener);
-        [listener release];
+        auto listener = adoptNS([[WebKitFullScreenListener alloc] initWithElement:&element]);
+        CallUIDelegate(m_webView, selector, kit(&element), listener.get());
     }
 #if !PLATFORM(IOS_FAMILY)
     else
@@ -1055,9 +1047,8 @@ void WebChromeClient::exitFullScreenForElement(Element* element)
 {
     SEL selector = @selector(webView:exitFullScreenForElement:listener:);
     if ([[m_webView UIDelegate] respondsToSelector:selector]) {
-        WebKitFullScreenListener* listener = [[WebKitFullScreenListener alloc] initWithElement:element];
-        CallUIDelegate(m_webView, selector, kit(element), listener);
-        [listener release];
+        auto listener = adoptNS([[WebKitFullScreenListener alloc] initWithElement:element]);
+        CallUIDelegate(m_webView, selector, kit(element), listener.get());
     }
 #if !PLATFORM(IOS_FAMILY)
     else
@@ -1156,3 +1147,10 @@ String WebChromeClient::signedPublicKeyAndChallengeString(unsigned keySizeIndex,
         return CallUIDelegate(m_webView, selector);
     return WebCore::signedPublicKeyAndChallengeString(keySizeIndex, challengeString, url);
 }
+
+#if PLATFORM(MAC)
+void WebChromeClient::changeUniversalAccessZoomFocus(const WebCore::IntRect& viewRect, const WebCore::IntRect& selectionRect)
+{
+    WebCore::changeUniversalAccessZoomFocus(viewRect, selectionRect);
+}
+#endif

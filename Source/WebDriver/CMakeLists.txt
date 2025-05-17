@@ -17,9 +17,13 @@ set(WebDriver_SOURCES
     WebDriverService.cpp
 )
 
-set(WebDriver_LIBRARIES
-    WebKit::WTF
+set(WebDriver_FRAMEWORKS
+    WTF
 )
+if (NOT USE_SYSTEM_MALLOC)
+    list(APPEND WebDriver_FRAMEWORKS bmalloc)
+endif ()
+
 
 set(WebDriver_SCRIPTS
     ${WEBKIT_DIR}/UIProcess/Automation/atoms/ElementAttribute.js

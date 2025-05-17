@@ -4,14 +4,15 @@ sources:
 - kind: git_tag
   url: gitlab_gnome_org:GNOME/gtk.git
   track: master
-  ref: 3.98.5-67-g0d901ef174abd79908935430da3701bf4ce62121
+  track-tags: true
+  ref: 4.0.0-0-g591c2f05956935adbebed5fc345a309dde2d449c
 build-depends:
 - sdk-build-depends/sassc.bst
 - freedesktop-sdk.bst:public-stacks/buildsystem-meson.bst
 
 depends:
-- sdk/at-spi2-atk.bst
-- sdk/atk.bst
+- freedesktop-sdk.bst:components/at-spi2-atk.bst
+- freedesktop-sdk.bst:components/atk.bst
 - freedesktop-sdk.bst:components/gdk-pixbuf.bst
 - sdk/glib.bst
 - sdk/graphene.bst
@@ -30,6 +31,9 @@ depends:
 variables:
   meson-local: >-
     -Denable-broadway-backend=true
+    -Dprint-cloudprint=disabled
+    -Dmedia-ffmpeg=disabled
+    -Dvulkan=disabled
 
 public:
   bst:

@@ -26,6 +26,7 @@
 #pragma once
 
 #include <wtf/Forward.h>
+#include <wtf/WeakPtr.h>
 
 #if PLATFORM(COCOA)
 #include "PluginComplexTextInputState.h"
@@ -47,7 +48,7 @@ class ProtectionSpace;
 
 namespace WebKit {
 
-class PluginController {
+class PluginController : public CanMakeWeakPtr<PluginController> {
 public:
     // Tells the controller that the plug-in wants the given rect to be repainted. The rect is in the plug-in's coordinate system.
     virtual void invalidate(const WebCore::IntRect&) = 0;
@@ -143,13 +144,6 @@ public:
 
     // Decrements a counter that, when it reaches 0, stops preventing the plug-in from being destroyed.
     virtual void unprotectPluginFromDestruction() = 0;
-
-#if PLATFORM(X11) && ENABLE(NETSCAPE_PLUGIN_API)
-    // Create a plugin container for windowed plugins
-    virtual uint64_t createPluginContainer() = 0;
-    virtual void windowedPluginGeometryDidChange(const WebCore::IntRect& frameRect, const WebCore::IntRect& clipRect, uint64_t windowID) = 0;
-    virtual void windowedPluginVisibilityDidChange(bool isVisible, uint64_t windowID) = 0;
-#endif
 
     // Called when the a plug-in instance is successfully initialized, either synchronously or asynchronously.
     virtual void didInitializePlugin() = 0;

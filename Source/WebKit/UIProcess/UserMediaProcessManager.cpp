@@ -23,10 +23,10 @@
 
 #include "Logging.h"
 #include "MediaDeviceSandboxExtensions.h"
+#include "SpeechRecognitionPermissionManager.h"
 #include "WebPageProxy.h"
 #include "WebProcessMessages.h"
 #include "WebProcessProxy.h"
-#include <WebCore/RealtimeMediaSourceCenter.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/TranslatedProcess.h>
@@ -43,8 +43,6 @@ static const ASCIILiteral videoExtensionPath { "com.apple.webkit.camera"_s };
 static const ASCIILiteral appleCameraServicePath { "com.apple.applecamerad"_s };
 #endif
 
-static const Seconds deviceChangeDebounceTimerInterval { 200_ms };
-
 UserMediaProcessManager& UserMediaProcessManager::singleton()
 {
     static NeverDestroyed<UserMediaProcessManager> manager;
@@ -52,20 +50,7 @@ UserMediaProcessManager& UserMediaProcessManager::singleton()
 }
 
 UserMediaProcessManager::UserMediaProcessManager()
-    : m_debounceTimer(RunLoop::main(), this, &UserMediaProcessManager::captureDevicesChanged)
 {
-}
-
-void UserMediaProcessManager::muteCaptureMediaStreamsExceptIn(WebPageProxy& pageStartingCapture)
-{
-#if PLATFORM(COCOA)
-    UserMediaPermissionRequestManagerProxy::forEach([&pageStartingCapture](auto& proxy) {
-        if (&proxy.page() != &pageStartingCapture)
-            proxy.page().setMediaStreamCaptureMuted(true);
-    });
-#else
-    UNUSED_PARAM(pageStartingCapture);
-#endif
 }
 
 #if ENABLE(SANDBOX_EXTENSIONS)
@@ -228,42 +213,33 @@ void UserMediaProcessManager::captureDevicesChanged()
     });
 }
 
+void UserMediaProcessManager::updateCaptureDevices(ShouldNotify shouldNotify)
+{
+    WebCore::RealtimeMediaSourceCenter::singleton().getMediaStreamDevices([weakThis = makeWeakPtr(*this), this, shouldNotify](auto&& newDevices) mutable {
+        if (!weakThis)
+            return;
+
+        if (!haveDevicesChanged(m_captureDevices, newDevices))
+            return;
+
+        m_captureDevices = WTFMove(newDevices);
+        if (shouldNotify == ShouldNotify::Yes)
+            captureDevicesChanged();
+    });
+}
+
+void UserMediaProcessManager::devicesChanged()
+{
+    updateCaptureDevices(ShouldNotify::Yes);
+}
+
 void UserMediaProcessManager::beginMonitoringCaptureDevices()
 {
     static std::once_flag onceFlag;
 
     std::call_once(onceFlag, [this] {
-        m_captureDevices = WebCore::RealtimeMediaSourceCenter::singleton().getMediaStreamDevices();
-
-        WebCore::RealtimeMediaSourceCenter::singleton().setDevicesChangedObserver([this]() {
-            auto oldDevices = WTFMove(m_captureDevices);
-            m_captureDevices = WebCore::RealtimeMediaSourceCenter::singleton().getMediaStreamDevices();
-
-            if (m_captureDevices.size() == oldDevices.size()) {
-                bool haveChanges = false;
-                for (auto &newDevice : m_captureDevices) {
-                    if (newDevice.type() != WebCore::CaptureDevice::DeviceType::Camera && newDevice.type() != WebCore::CaptureDevice::DeviceType::Microphone)
-                        continue;
-
-                    auto index = oldDevices.findMatching([&newDevice] (auto& oldDevice) {
-                        return newDevice.persistentId() == oldDevice.persistentId() && newDevice.enabled() != oldDevice.enabled();
-                    });
-
-                    if (index == notFound) {
-                        haveChanges = true;
-                        break;
-                    }
-                }
-
-                if (!haveChanges)
-                    return;
-            }
-
-            // When a device with camera and microphone is attached or detached, the CaptureDevice notification for
-            // the different devices won't arrive at the same time so delay a bit so we can coalesce the callbacks.
-            if (!m_debounceTimer.isActive())
-                m_debounceTimer.startOneShot(deviceChangeDebounceTimerInterval);
-        });
+        updateCaptureDevices(ShouldNotify::No);
+        WebCore::RealtimeMediaSourceCenter::singleton().addDevicesChangedObserver(*this);
     });
 }
 

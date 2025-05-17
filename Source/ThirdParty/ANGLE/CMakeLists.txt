@@ -3,6 +3,9 @@ if (UNIX AND NOT APPLE)
 endif()
 if (WIN32)
     set(is_win TRUE)
+    set(angle_enable_d3d9 TRUE)
+    set(angle_enable_d3d11 TRUE)
+    set(angle_is_winuwp FALSE)
 endif()
 if (APPLE)
     set(is_mac TRUE)
@@ -10,13 +13,7 @@ endif()
 
 include(Compiler.cmake)
 include(GLESv2.cmake)
-
-if (WIN32)
-    # FIXME: DX11 support will not compile if this preprocessor definition is set
-    # DirectX Documentation is setting that version to 0x700 but there is no
-    # corresponding value in sdkddkver.h
-    remove_definitions(-D_WIN32_WINNT=0x601 -DWINVER=0x601)
-endif ()
+include(D3D.cmake)
 
 set(no_gl_prototypes
     GL_GLES_PROTOTYPES=0
@@ -72,8 +69,39 @@ set(ANGLE_SOURCES
     "src/libANGLE/FrameCapture_mock.cpp"
 )
 
+if (WIN32)
+    # FIXME: DX11 support will not compile if this preprocessor definition is set
+    # DirectX Documentation is setting that version to 0x700 but there is no
+    # corresponding value in sdkddkver.h
+    remove_definitions(-D_WIN32_WINNT=0x601 -DWINVER=0x601)
+
+    list(APPEND ANGLE_SOURCES
+        "src/libANGLE/renderer/dxgi_format_map.h"
+        "src/libANGLE/renderer/dxgi_format_map_autogen.cpp"
+        "src/libANGLE/renderer/dxgi_support_table.h"
+        "src/libANGLE/renderer/dxgi_support_table_autogen.cpp"
+    )
+    if (NOT angle_is_winuwp)
+        list(APPEND ANGLE_SOURCES
+            "src/libANGLE/renderer/d3d_format.cpp"
+            "src/libANGLE/renderer/d3d_format.h"
+        )
+    endif()
+endif ()
+
+
 set(ANGLEGLESv2_LIBRARIES
     ANGLE
+)
+
+set(zlib_wrapper_sources
+    "third_party/zlib/google/compression_utils_portable.h"
+    "third_party/zlib/google/compression_utils_portable.cc"
+)
+
+set(angle_gl_enum_utils
+    "src/libANGLE/gl_enum_utils.cpp"
+    "src/libANGLE/gl_enum_utils_autogen.cpp"
 )
 
 WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
@@ -142,6 +170,7 @@ endif ()
 if (USE_ANGLE_WEBGL)
     set(libglesv2_entry_points_headers
         src/libGLESv2/entry_points_egl.h
+        src/libGLESv2/entry_points_egl_ext.h
         src/libGLESv2/entry_points_gles_2_0_autogen.h
         src/libGLESv2/entry_points_gles_3_0_autogen.h
         src/libGLESv2/entry_points_gles_ext_autogen.h
@@ -152,13 +181,20 @@ if (USE_ANGLE_WEBGL)
         FILES ${libglesv2_entry_points_headers}
         FLATTENED
     )
+    if (WIN32 AND TARGET GLESv2)
+        # GLESv2 needs to have a direct or indirect dependency to
+        # LibGLESv2EntryPointsHeaders for CMake Visual Studio generator
+        # to eliminate duplicated custom commands. Otherwise,
+        # entry_points_*.h will be copied twice in both projects.
+        add_dependencies(GLESv2 LibGLESv2EntryPointsHeaders)
+    endif ()
 
     add_custom_target(ANGLE-webgl-headers
         DEPENDS LibGLESv2EntryPointsHeaders ANGLEWebGLHeaders
-        COMMAND BUILT_PRODUCTS_DIR=${ANGLE_FRAMEWORK_HEADERS_DIR}/
-            DERIVED_FILE_DIR=${BUILT_PRODUCTS_DIR}
-            PUBLIC_HEADERS_FOLDER_PATH=ANGLE
-            ${CMAKE_CURRENT_SOURCE_DIR}/adjust-angle-include-paths.sh
+        COMMAND ${CMAKE_COMMAND} -E env
+            BUILT_PRODUCTS_DIR=${ANGLE_FRAMEWORK_HEADERS_DIR}
+            PUBLIC_HEADERS_FOLDER_PATH=/ANGLE
+            ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/adjust-angle-include-paths.py
         VERBATIM
     )
     add_dependencies(ANGLEFramework ANGLE-webgl-headers)
@@ -166,9 +202,8 @@ endif ()
 
 if (COMPILER_IS_GCC_OR_CLANG)
     WEBKIT_ADD_TARGET_CXX_FLAGS(ANGLE -Wno-cast-align
-                                      -Wno-deprecated-copy
+                                      -Wno-extra
                                       -Wno-suggest-attribute=format
-                                      -Wno-type-limits
                                       -Wno-undef
                                       -Wno-unused-parameter)
 endif ()

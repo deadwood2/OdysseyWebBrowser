@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,7 +31,6 @@
 #include "GenericTaskQueue.h"
 #include "PlatformMediaSessionManager.h"
 #include "RemoteCommandListener.h"
-#include <pal/system/SystemSleepListener.h>
 
 namespace WebCore {
 
@@ -40,7 +39,6 @@ struct NowPlayingInfo;
 class MediaSessionManagerCocoa
     : public PlatformMediaSessionManager
     , private RemoteCommandListenerClient
-    , private PAL::SystemSleepListener::Client
     , private AudioHardwareListener::Client {
     WTF_MAKE_FAST_ALLOCATED;
 public:
@@ -84,23 +82,21 @@ protected:
 
     GenericTaskQueue<Timer>& taskQueue() { return m_taskQueue; }
 
+    void addSupportedCommand(PlatformMediaSession::RemoteControlCommandType) final;
+    void removeSupportedCommand(PlatformMediaSession::RemoteControlCommandType) final;
+
 private:
 #if !RELEASE_LOG_DISABLED
     const char* logClassName() const override { return "MediaSessionManagerCocoa"; }
 #endif
 
     // RemoteCommandListenerClient
-    void didReceiveRemoteControlCommand(PlatformMediaSession::RemoteControlCommandType type, const PlatformMediaSession::RemoteCommandArgument* argument) final { processDidReceiveRemoteControlCommand(type, argument); }
-    bool supportsSeeking() const final { return computeSupportsSeeking(); }
+    void didReceiveRemoteControlCommand(PlatformMediaSession::RemoteControlCommandType type, const PlatformMediaSession::RemoteCommandArgument& argument) final { processDidReceiveRemoteControlCommand(type, argument); }
 
     // AudioHardwareListenerClient
     void audioHardwareDidBecomeActive() final { }
     void audioHardwareDidBecomeInactive() final { }
-    void audioOutputDeviceChanged() final { updateSessionState(); }
-
-    // PAL::SystemSleepListener
-    void systemWillSleep() final { processSystemWillSleep(); }
-    void systemDidWake() final { processSystemDidWake(); }
+    void audioOutputDeviceChanged() final;
 
     bool m_nowPlayingActive { false };
     bool m_registeredAsNowPlayingApplication { false };
@@ -115,7 +111,6 @@ private:
     GenericTaskQueue<Timer> m_taskQueue;
 
     std::unique_ptr<RemoteCommandListener> m_remoteCommandListener;
-    std::unique_ptr<PAL::SystemSleepListener> m_systemSleepListener;
     RefPtr<AudioHardwareListener> m_audioHardwareListener;
 };
 

@@ -29,6 +29,7 @@
 #include "LogInitialization.h"
 #include <JavaScriptCore/InitializeThreading.h>
 #include <WebCore/LogInitialization.h>
+#include <WebCore/WebCoreJITOperations.h>
 #include <wtf/MainThread.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RunLoop.h>
@@ -49,6 +50,8 @@ void InitializeWebKit2()
     WebCore::initializeLogChannelsIfNecessary();
     WebKit::initializeLogChannelsIfNecessary();
 #endif // !LOG_DISABLED || !RELEASE_LOG_DISABLED
+
+    WebCore::populateJITOperations();
 }
 
 #endif // !PLATFORM(COCOA)

@@ -64,6 +64,7 @@ public:
     
     void deleteAllCookies(CompletionHandler<void()>&&);
     void setHTTPCookieAcceptPolicy(WebCore::HTTPCookieAcceptPolicy, CompletionHandler<void()>&&);
+    void flushCookies(CompletionHandler<void()>&&);
 
     class Observer {
     public:
@@ -82,10 +83,7 @@ public:
 private:
     HTTPCookieStore(WebKit::WebsiteDataStore&);
 
-    void registerForNewProcessPoolNotifications();
-    void unregisterForNewProcessPoolNotifications();
-
-    void flushDefaultUIProcessCookieStore(CompletionHandler<void()>&&);
+    void flushDefaultUIProcessCookieStore();
     static Vector<WebCore::Cookie> getAllDefaultUIProcessCookieStoreCookies();
     static void setCookieInDefaultUIProcessCookieStore(const WebCore::Cookie&);
     static void deleteCookieFromDefaultUIProcessCookieStore(const WebCore::Cookie&);

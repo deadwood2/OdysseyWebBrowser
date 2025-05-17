@@ -46,6 +46,9 @@
 
 #if PLATFORM(MAC)
 
+@interface WKWebView () <NSServicesMenuRequestor>
+@end
+
 NSData *readHTMLDataFromPasteboard()
 {
     return [[NSPasteboard generalPasteboard] dataForType:NSHTMLPboardType];
@@ -65,11 +68,11 @@ NSData *readHTMLDataFromPasteboard()
 
 NSString *readHTMLStringFromPasteboard()
 {
-    id value = [[UIPasteboard generalPasteboard] valueForPasteboardType:(__bridge NSString *)kUTTypeHTML];
+    RetainPtr<id> value = [[UIPasteboard generalPasteboard] valueForPasteboardType:(__bridge NSString *)kUTTypeHTML];
     if ([value isKindOfClass:[NSData class]])
-        value = [[[NSString alloc] initWithData:(NSData *)value encoding:NSUTF8StringEncoding] autorelease];
+        value = adoptNS([[NSString alloc] initWithData:(NSData *)value encoding:NSUTF8StringEncoding]);
     ASSERT([value isKindOfClass:[NSString class]]);
-    return (NSString *)value;
+    return (NSString *)value.autorelease();
 }
 
 #endif
@@ -191,6 +194,18 @@ TEST(CopyHTML, ItemTypesWhenCopyingWebContent)
     EXPECT_TRUE([types containsObject:(__bridge NSString *)NSPasteboardTypeRTF]);
     EXPECT_TRUE([types containsObject:(__bridge NSString *)NSPasteboardTypeString]);
     EXPECT_TRUE([types containsObject:(__bridge NSString *)NSPasteboardTypeHTML]);
+}
+
+TEST(CopyHTML, WriteRichTextSelectionToPasteboard)
+{
+    auto webView = createWebViewWithCustomPasteboardDataEnabled();
+    [webView synchronouslyLoadHTMLString:@"<strong style='color: rgb(255, 0, 0);'>This is some text to copy.</strong>"];
+    [webView stringByEvaluatingJavaScript:@"getSelection().selectAllChildren(document.body)"];
+
+    auto pasteboard = [NSPasteboard pasteboardWithUniqueName];
+    [webView writeSelectionToPasteboard:pasteboard types:@[ (__bridge NSString *)kUTTypeWebArchive ]];
+
+    EXPECT_GT([pasteboard dataForType:(__bridge NSString *)kUTTypeWebArchive].length, 0U);
 }
 
 #endif // PLATFORM(MAC)

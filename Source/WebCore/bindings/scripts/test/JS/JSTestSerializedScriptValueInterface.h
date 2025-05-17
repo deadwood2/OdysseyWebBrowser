@@ -60,7 +60,7 @@ public:
         return subspaceForImpl(vm);
     }
     static JSC::IsoSubspace* subspaceForImpl(JSC::VM& vm);
-    static void visitChildren(JSCell*, JSC::SlotVisitor&);
+    DECLARE_VISIT_CHILDREN;
 
     static void analyzeHeap(JSCell*, JSC::HeapAnalyzer&);
 protected:
@@ -69,10 +69,10 @@ protected:
     void finishCreation(JSC::VM&);
 };
 
-class JSTestSerializedScriptValueInterfaceOwner : public JSC::WeakHandleOwner {
+class JSTestSerializedScriptValueInterfaceOwner final : public JSC::WeakHandleOwner {
 public:
-    virtual bool isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown>, void* context, JSC::SlotVisitor&, const char**);
-    virtual void finalize(JSC::Handle<JSC::Unknown>, void* context);
+    bool isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown>, void* context, JSC::AbstractSlotVisitor&, const char**) final;
+    void finalize(JSC::Handle<JSC::Unknown>, void* context) final;
 };
 
 inline JSC::WeakHandleOwner* wrapperOwner(DOMWrapperWorld&, TestSerializedScriptValueInterface*)

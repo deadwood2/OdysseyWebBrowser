@@ -33,11 +33,25 @@
 #import "TestWKWebView.h"
 #import "WKWebViewConfigurationExtras.h"
 #import <LocalAuthentication/LocalAuthentication.h>
+#import <WebCore/PublicKeyCredentialCreationOptions.h>
+#import <WebCore/PublicKeyCredentialRequestOptions.h>
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKUIDelegatePrivate.h>
+#import <WebKit/_WKAuthenticationExtensionsClientInputs.h>
+#import <WebKit/_WKAuthenticationExtensionsClientOutputs.h>
+#import <WebKit/_WKAuthenticatorAssertionResponse.h>
+#import <WebKit/_WKAuthenticatorAttestationResponse.h>
+#import <WebKit/_WKAuthenticatorSelectionCriteria.h>
 #import <WebKit/_WKExperimentalFeature.h>
+#import <WebKit/_WKPublicKeyCredentialCreationOptions.h>
+#import <WebKit/_WKPublicKeyCredentialDescriptor.h>
+#import <WebKit/_WKPublicKeyCredentialParameters.h>
+#import <WebKit/_WKPublicKeyCredentialRequestOptions.h>
+#import <WebKit/_WKPublicKeyCredentialRelyingPartyEntity.h>
+#import <WebKit/_WKPublicKeyCredentialUserEntity.h>
 #import <WebKit/_WKWebAuthenticationAssertionResponse.h>
 #import <WebKit/_WKWebAuthenticationPanel.h>
+#import <WebKit/_WKWebAuthenticationPanelForTesting.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/RandomNumber.h>
 #import <wtf/spi/cocoa/SecuritySPI.h>
@@ -64,6 +78,7 @@ static String testES256PrivateKeyBase64 =
     "RQ==";
 static String testUserEntityBundleBase64 = "omJpZEoAAQIDBAUGBwgJZG5hbWVkSm9obg=="; // { "id": h'00010203040506070809', "name": "John" }
 static String webAuthenticationPanelSelectedCredentialName;
+static bool laContextRequested = false;
 
 @interface TestWebAuthenticationPanelDelegate : NSObject <_WKWebAuthenticationPanelDelegate>
 @end
@@ -136,15 +151,23 @@ static String webAuthenticationPanelSelectedCredentialName;
 - (void)panel:(_WKWebAuthenticationPanel *)panel selectAssertionResponse:(NSArray < _WKWebAuthenticationAssertionResponse *> *)responses source:(_WKWebAuthenticationSource)source completionHandler:(void (^)(_WKWebAuthenticationAssertionResponse *))completionHandler
 {
     if (responses.count == 1) {
-        completionHandler(responses[0]);
+        auto laContext = adoptNS([[LAContext alloc] init]);
+        [responses.firstObject setLAContext:laContext.get()];
+
+        completionHandler(responses.firstObject);
         return;
     }
 
     // Responses returned from LocalAuthenticator is in the order of LRU. Therefore, we use the last item to populate it to
     // the first to test its correctness.
     if (source == _WKWebAuthenticationSourceLocal) {
-        webAuthenticationPanelSelectedCredentialName = responses.lastObject.name;
-        completionHandler(responses.lastObject);
+        auto *object = responses.lastObject;
+
+        auto laContext = adoptNS([[LAContext alloc] init]);
+        [object setLAContext:laContext.get()];
+
+        webAuthenticationPanelSelectedCredentialName = object.name;
+        completionHandler(object);
         return;
     }
 
@@ -164,6 +187,12 @@ static String webAuthenticationPanelSelectedCredentialName;
 - (void)panel:(_WKWebAuthenticationPanel *)panel decidePolicyForLocalAuthenticatorWithCompletionHandler:(void (^)(_WKLocalAuthenticatorPolicy policy))completionHandler
 {
     completionHandler(localAuthenticatorPolicy);
+}
+
+- (void)panel:(_WKWebAuthenticationPanel *)panel requestLAContextForUserVerificationWithCompletionHandler:(void (^)(LAContext *context))completionHandler
+{
+    laContextRequested = true;
+    completionHandler(nil);
 }
 
 @end
@@ -237,6 +266,7 @@ static String webAuthenticationPanelSelectedCredentialName;
 @end
 
 namespace TestWebKitAPI {
+using namespace WebCore;
 
 namespace {
 
@@ -274,8 +304,7 @@ static _WKExperimentalFeature *webAuthenticationExperimentalFeature()
     return theFeature.get();
 }
 
-#if USE(APPLE_INTERNAL_SDK) || PLATFORM(IOS)
-static _WKExperimentalFeature *webAuthenticationLocalAuthenticatorExperimentalFeature()
+static _WKExperimentalFeature *webAuthenticationModernExperimentalFeature()
 {
     static RetainPtr<_WKExperimentalFeature> theFeature;
     if (theFeature)
@@ -283,14 +312,13 @@ static _WKExperimentalFeature *webAuthenticationLocalAuthenticatorExperimentalFe
 
     NSArray *features = [WKPreferences _experimentalFeatures];
     for (_WKExperimentalFeature *feature in features) {
-        if ([feature.key isEqual:@"WebAuthenticationLocalAuthenticatorEnabled"]) {
+        if ([feature.key isEqual:@"WebAuthenticationModernEnabled"]) {
             theFeature = feature;
             break;
         }
     }
     return theFeature.get();
 }
-#endif // USE(APPLE_INTERNAL_SDK) || PLATFORM(IOS)
 
 static void reset()
 {
@@ -310,6 +338,7 @@ static void reset()
     webAuthenticationPanelNullUserHandle = NO;
     localAuthenticatorPolicy = _WKLocalAuthenticatorPolicyDisallow;
     webAuthenticationPanelSelectedCredentialName = emptyString();
+    laContextRequested = false;
 }
 
 static void checkPanel(_WKWebAuthenticationPanel *panel, NSString *relyingPartyID, NSArray *transports, _WKWebAuthenticationType type)
@@ -393,7 +422,8 @@ void cleanUpKeychain(const String& rpId)
 
 } // namesapce;
 
-TEST(WebAuthenticationPanel, NoPanelTimeout)
+#if HAVE(NEAR_FIELD)
+TEST(WebAuthenticationPanel, NoPanelNfcSucceed)
 {
     RetainPtr<NSURL> testURL = [[NSBundle mainBundle] URLForResource:@"web-authentication-get-assertion-nfc" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
 
@@ -403,8 +433,9 @@ TEST(WebAuthenticationPanel, NoPanelTimeout)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
-    [webView waitForMessage:@"Operation timed out."];
+    [webView waitForMessage:@"Succeeded!"];
 }
+#endif
 
 TEST(WebAuthenticationPanel, NoPanelHidSuccess)
 {
@@ -419,23 +450,6 @@ TEST(WebAuthenticationPanel, NoPanelHidSuccess)
     [webView waitForMessage:@"Succeeded!"];
 }
 
-TEST(WebAuthenticationPanel, PanelTimeout)
-{
-    reset();
-    RetainPtr<NSURL> testURL = [[NSBundle mainBundle] URLForResource:@"web-authentication-get-assertion" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
-
-    auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
-    [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
-
-    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
-    auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
-    [webView setUIDelegate:delegate.get()];
-
-    [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
-    Util::run(&webAuthenticationPanelRan);
-    Util::run(&webAuthenticationPanelFailed);
-}
-
 TEST(WebAuthenticationPanel, PanelHidSuccess1)
 {
     reset();
@@ -443,6 +457,7 @@ TEST(WebAuthenticationPanel, PanelHidSuccess1)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -464,6 +479,7 @@ TEST(WebAuthenticationPanel, PanelHidSuccess2)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -489,6 +505,7 @@ TEST(WebAuthenticationPanel, PanelRacy1)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -512,6 +529,7 @@ TEST(WebAuthenticationPanel, PanelRacy2)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -535,6 +553,7 @@ TEST(WebAuthenticationPanel, PanelTwice)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -557,6 +576,7 @@ TEST(WebAuthenticationPanel, ReloadHidCancel)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -576,6 +596,7 @@ TEST(WebAuthenticationPanel, LocationChangeHidCancel)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -595,6 +616,7 @@ TEST(WebAuthenticationPanel, NewLoadHidCancel)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -613,6 +635,7 @@ TEST(WebAuthenticationPanel, CloseHidCancel)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -650,6 +673,7 @@ TEST(WebAuthenticationPanel, SubFrameChangeLocationHidCancel)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -693,6 +717,7 @@ TEST(WebAuthenticationPanel, SubFrameDestructionHidCancel)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -711,6 +736,7 @@ TEST(WebAuthenticationPanel, PanelHidCancel)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -730,6 +756,7 @@ TEST(WebAuthenticationPanel, PanelHidCtapNoCredentialsFound)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -747,6 +774,7 @@ TEST(WebAuthenticationPanel, PanelU2fCtapNoCredentialsFound)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -764,6 +792,7 @@ TEST(WebAuthenticationPanel, FakePanelHidSuccess)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -782,6 +811,7 @@ TEST(WebAuthenticationPanel, FakePanelHidCtapNoCredentialsFound)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -800,6 +830,7 @@ TEST(WebAuthenticationPanel, NullPanelHidSuccess)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -818,6 +849,7 @@ TEST(WebAuthenticationPanel, NullPanelHidCtapNoCredentialsFound)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -837,6 +869,7 @@ TEST(WebAuthenticationPanel, PanelMultipleNFCTagsPresent)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -855,6 +888,7 @@ TEST(WebAuthenticationPanel, PanelHidCancelReloadNoCrash)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -874,6 +908,7 @@ TEST(WebAuthenticationPanel, PanelHidSuccessCancelNoCrash)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -891,6 +926,7 @@ TEST(WebAuthenticationPanel, PanelHidCtapNoCredentialsFoundCancelNoCrash)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -908,6 +944,7 @@ TEST(WebAuthenticationPanel, PinGetRetriesError)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -921,6 +958,7 @@ TEST(WebAuthenticationPanel, PinGetKeyAgreementError)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -934,6 +972,7 @@ TEST(WebAuthenticationPanel, PinRequestPinErrorNoDelegate)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -947,6 +986,7 @@ TEST(WebAuthenticationPanel, PinRequestPinErrorNullDelegate)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -964,6 +1004,7 @@ TEST(WebAuthenticationPanel, PinRequestPinError)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -983,6 +1024,7 @@ TEST(WebAuthenticationPanel, PinGetPinTokenPinBlockedError)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1002,6 +1044,7 @@ TEST(WebAuthenticationPanel, PinGetPinTokenPinAuthBlockedError)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1021,6 +1064,7 @@ TEST(WebAuthenticationPanel, PinGetPinTokenPinInvalidErrorAndRetry)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1039,6 +1083,7 @@ TEST(WebAuthenticationPanel, PinGetPinTokenPinAuthInvalidErrorAndRetry)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1057,6 +1102,7 @@ TEST(WebAuthenticationPanel, MakeCredentialPin)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1074,6 +1120,7 @@ TEST(WebAuthenticationPanel, MakeCredentialPinAuthBlockedError)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1093,6 +1140,7 @@ TEST(WebAuthenticationPanel, MakeCredentialPinInvalidErrorAndRetry)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1111,6 +1159,7 @@ TEST(WebAuthenticationPanel, GetAssertionPin)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1128,6 +1177,7 @@ TEST(WebAuthenticationPanel, GetAssertionPinAuthBlockedError)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1147,6 +1197,7 @@ TEST(WebAuthenticationPanel, GetAssertionPinInvalidErrorAndRetry)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1166,6 +1217,7 @@ TEST(WebAuthenticationPanel, NfcPinCachedDisconnect)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1184,6 +1236,7 @@ TEST(WebAuthenticationPanel, MultipleAccountsNullDelegate)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1201,6 +1254,7 @@ TEST(WebAuthenticationPanel, MultipleAccounts)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1222,6 +1276,7 @@ TEST(WebAuthenticationPanel, LAError)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1238,6 +1293,7 @@ TEST(WebAuthenticationPanel, LADuplicateCredential)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1256,6 +1312,7 @@ TEST(WebAuthenticationPanel, LANoCredential)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1272,6 +1329,7 @@ TEST(WebAuthenticationPanel, LAMakeCredentialNullDelegate)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1289,6 +1347,7 @@ TEST(WebAuthenticationPanel, LAMakeCredentialDisallowLocalAuthenticator)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1305,6 +1364,7 @@ TEST(WebAuthenticationPanel, LAMakeCredentialAllowLocalAuthenticator)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1317,23 +1377,6 @@ TEST(WebAuthenticationPanel, LAMakeCredentialAllowLocalAuthenticator)
     cleanUpKeychain("");
 }
 
-TEST(WebAuthenticationPanel, LANoMockDefaultOff)
-{
-    reset();
-    RetainPtr<NSURL> testURL = [[NSBundle mainBundle] URLForResource:@"web-authentication-make-credential-la-no-mock" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"];
-
-    auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
-    [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
-
-    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
-    auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
-    [webView setUIDelegate:delegate.get()];
-
-    [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
-    Util::run(&webAuthenticationPanelRan);
-    checkPanel([delegate panel], @"", @[adoptNS([[NSNumber alloc] initWithInt:_WKWebAuthenticationTransportUSB]).get()], _WKWebAuthenticationTypeCreate);
-}
-
 TEST(WebAuthenticationPanel, LAMakeCredentialNoMockNoUserGesture)
 {
     reset();
@@ -1341,15 +1384,14 @@ TEST(WebAuthenticationPanel, LAMakeCredentialNoMockNoUserGesture)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
-    [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationLocalAuthenticatorExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
-    Util::run(&webAuthenticationPanelRan);
-    checkPanel([delegate panel], @"", @[adoptNS([[NSNumber alloc] initWithInt:_WKWebAuthenticationTransportUSB]).get()], _WKWebAuthenticationTypeCreate);
+    [webView waitForMessage:@"This request has been cancelled by the user."];
 }
 
 TEST(WebAuthenticationPanel, LAMakeCredentialRollBackCredential)
@@ -1359,6 +1401,7 @@ TEST(WebAuthenticationPanel, LAMakeCredentialRollBackCredential)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1392,6 +1435,7 @@ TEST(WebAuthenticationPanel, LAGetAssertion)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1411,15 +1455,14 @@ TEST(WebAuthenticationPanel, LAGetAssertionNoMockNoUserGesture)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
-    [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationLocalAuthenticatorExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
-    Util::run(&webAuthenticationPanelRan);
-    checkPanel([delegate panel], @"", @[adoptNS([[NSNumber alloc] initWithInt:_WKWebAuthenticationTransportUSB]).get()], _WKWebAuthenticationTypeGet);
+    [webView waitForMessage:@"This request has been cancelled by the user."];
 }
 
 TEST(WebAuthenticationPanel, LAGetAssertionMultipleOrder)
@@ -1429,7 +1472,7 @@ TEST(WebAuthenticationPanel, LAGetAssertionMultipleOrder)
 
     auto *configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
-    [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationLocalAuthenticatorExperimentalFeature()];
+    [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
@@ -1452,6 +1495,468 @@ TEST(WebAuthenticationPanel, LAGetAssertionMultipleOrder)
 #endif // PLATFORM(MAC)
 
 #endif // USE(APPLE_INTERNAL_SDK) || PLATFORM(IOS)
+
+TEST(WebAuthenticationPanel, PublicKeyCredentialCreationOptionsMinimun)
+{
+    uint8_t identifier[] = { 0x01, 0x02, 0x03, 0x04 };
+    NSData *nsIdentifier = [NSData dataWithBytes:identifier length:sizeof(identifier)];
+    auto parameters = adoptNS([[_WKPublicKeyCredentialParameters alloc] initWithAlgorithm:@-7]);
+
+    auto rp = adoptNS([[_WKPublicKeyCredentialRelyingPartyEntity alloc] initWithName:@"example.com"]);
+    auto user = adoptNS([[_WKPublicKeyCredentialUserEntity alloc] initWithName:@"jappleseed@example.com" identifier:nsIdentifier displayName:@"J Appleseed"]);
+    NSArray<_WKPublicKeyCredentialParameters *> *publicKeyCredentialParamaters = @[ parameters.get() ];
+
+    auto options = adoptNS([[_WKPublicKeyCredentialCreationOptions alloc] initWithRelyingParty:rp.get() user:user.get() publicKeyCredentialParamaters:publicKeyCredentialParamaters]);
+    auto result = [_WKWebAuthenticationPanel convertToCoreCreationOptionsWithOptions:options.get()];
+
+    EXPECT_WK_STREQ(result.rp.name, "example.com");
+    EXPECT_TRUE(result.rp.icon.isNull());
+    EXPECT_TRUE(result.rp.id.isNull());
+
+    EXPECT_WK_STREQ(result.user.name, "jappleseed@example.com");
+    EXPECT_TRUE(result.user.icon.isNull());
+    EXPECT_EQ(result.user.idVector.size(), sizeof(identifier));
+    EXPECT_EQ(memcmp(result.user.idVector.data(), identifier, sizeof(identifier)), 0);
+    EXPECT_WK_STREQ(result.user.displayName, "J Appleseed");
+
+    EXPECT_EQ(result.pubKeyCredParams.size(), 1lu);
+    EXPECT_EQ(result.pubKeyCredParams[0].type, WebCore::PublicKeyCredentialType::PublicKey);
+    EXPECT_EQ(result.pubKeyCredParams[0].alg, -7);
+
+    EXPECT_EQ(result.timeout, WTF::nullopt);
+    EXPECT_EQ(result.excludeCredentials.size(), 0lu);
+    EXPECT_EQ(result.authenticatorSelection, WTF::nullopt);
+    EXPECT_EQ(result.attestation, AttestationConveyancePreference::None);
+    EXPECT_TRUE(result.extensions->appid.isNull());
+    EXPECT_EQ(result.extensions->googleLegacyAppidSupport, false);
+}
+
+TEST(WebAuthenticationPanel, PublicKeyCredentialCreationOptionsMaximumDefault)
+{
+    uint8_t identifier[] = { 0x01, 0x02, 0x03, 0x04 };
+    NSData *nsIdentifier = [NSData dataWithBytes:identifier length:sizeof(identifier)];
+    auto parameters1 = adoptNS([[_WKPublicKeyCredentialParameters alloc] initWithAlgorithm:@-7]);
+    auto parameters2 = adoptNS([[_WKPublicKeyCredentialParameters alloc] initWithAlgorithm:@-257]);
+    auto descriptor = adoptNS([[_WKPublicKeyCredentialDescriptor alloc] initWithIdentifier:nsIdentifier]);
+
+    auto rp = adoptNS([[_WKPublicKeyCredentialRelyingPartyEntity alloc] initWithName:@"example.com"]);
+    auto user = adoptNS([[_WKPublicKeyCredentialUserEntity alloc] initWithName:@"jappleseed@example.com" identifier:nsIdentifier displayName:@"J Appleseed"]);
+    NSArray<_WKPublicKeyCredentialParameters *> *publicKeyCredentialParamaters = @[ parameters1.get(), parameters2.get() ];
+    auto authenticatorSelection = adoptNS([[_WKAuthenticatorSelectionCriteria alloc] init]);
+    auto extensions = adoptNS([[_WKAuthenticationExtensionsClientInputs alloc] init]);
+
+    auto options = adoptNS([[_WKPublicKeyCredentialCreationOptions alloc] initWithRelyingParty:rp.get() user:user.get() publicKeyCredentialParamaters:publicKeyCredentialParamaters]);
+    [options setTimeout:@120];
+    [options setExcludeCredentials:@[ descriptor.get() ]];
+    [options setAuthenticatorSelection:authenticatorSelection.get()];
+    [options setExtensions:extensions.get()];
+
+    auto result = [_WKWebAuthenticationPanel convertToCoreCreationOptionsWithOptions:options.get()];
+
+    EXPECT_WK_STREQ(result.rp.name, "example.com");
+    EXPECT_TRUE(result.rp.icon.isNull());
+    EXPECT_TRUE(result.rp.id.isNull());
+
+    EXPECT_WK_STREQ(result.user.name, "jappleseed@example.com");
+    EXPECT_TRUE(result.user.icon.isNull());
+    EXPECT_EQ(result.user.idVector.size(), sizeof(identifier));
+    EXPECT_EQ(memcmp(result.user.idVector.data(), identifier, sizeof(identifier)), 0);
+    EXPECT_WK_STREQ(result.user.displayName, "J Appleseed");
+
+    EXPECT_EQ(result.pubKeyCredParams.size(), 2lu);
+    EXPECT_EQ(result.pubKeyCredParams[0].type, WebCore::PublicKeyCredentialType::PublicKey);
+    EXPECT_EQ(result.pubKeyCredParams[0].alg, -7);
+    EXPECT_EQ(result.pubKeyCredParams[1].type, WebCore::PublicKeyCredentialType::PublicKey);
+    EXPECT_EQ(result.pubKeyCredParams[1].alg, -257);
+
+    EXPECT_EQ(result.timeout, 120u);
+
+    EXPECT_EQ(result.excludeCredentials.size(), 1lu);
+    EXPECT_EQ(result.excludeCredentials[0].type, WebCore::PublicKeyCredentialType::PublicKey);
+    EXPECT_EQ(result.excludeCredentials[0].idVector.size(), sizeof(identifier));
+    EXPECT_EQ(memcmp(result.excludeCredentials[0].idVector.data(), identifier, sizeof(identifier)), 0);
+
+    EXPECT_EQ(result.authenticatorSelection->authenticatorAttachment, WTF::nullopt);
+    EXPECT_EQ(result.authenticatorSelection->requireResidentKey, false);
+    EXPECT_EQ(result.authenticatorSelection->userVerification, UserVerificationRequirement::Preferred);
+
+    EXPECT_EQ(result.attestation, AttestationConveyancePreference::None);
+    EXPECT_TRUE(result.extensions->appid.isNull());
+}
+
+TEST(WebAuthenticationPanel, PublicKeyCredentialCreationOptionsMaximum1)
+{
+    uint8_t identifier[] = { 0x01, 0x02, 0x03, 0x04 };
+    NSData *nsIdentifier = [NSData dataWithBytes:identifier length:sizeof(identifier)];
+    auto parameters1 = adoptNS([[_WKPublicKeyCredentialParameters alloc] initWithAlgorithm:@-7]);
+    auto parameters2 = adoptNS([[_WKPublicKeyCredentialParameters alloc] initWithAlgorithm:@-257]);
+
+    auto rp = adoptNS([[_WKPublicKeyCredentialRelyingPartyEntity alloc] initWithName:@"example.com"]);
+    [rp setIcon:@"https//www.example.com/icon.jpg"];
+    [rp setIdentifier:@"example.com"];
+
+    auto user = adoptNS([[_WKPublicKeyCredentialUserEntity alloc] initWithName:@"jappleseed@example.com" identifier:nsIdentifier displayName:@"J Appleseed"]);
+    [user setIcon:@"https//www.example.com/icon.jpg"];
+
+    NSArray<_WKPublicKeyCredentialParameters *> *publicKeyCredentialParamaters = @[ parameters1.get(), parameters2.get() ];
+
+    auto options = adoptNS([[_WKPublicKeyCredentialCreationOptions alloc] initWithRelyingParty:rp.get() user:user.get() publicKeyCredentialParamaters:publicKeyCredentialParamaters]);
+    [options setTimeout:@120];
+
+    auto usb = adoptNS([NSNumber numberWithInt:_WKWebAuthenticationTransportUSB]);
+    auto nfc = adoptNS([NSNumber numberWithInt:_WKWebAuthenticationTransportNFC]);
+    auto internal = adoptNS([NSNumber numberWithInt:_WKWebAuthenticationTransportInternal]);
+    auto credential = adoptNS([[_WKPublicKeyCredentialDescriptor alloc] initWithIdentifier:nsIdentifier]);
+    [credential setTransports:@[ usb.get(), nfc.get(), internal.get() ]];
+    [options setExcludeCredentials:@[ credential.get(), credential.get() ]];
+
+    auto authenticatorSelection = adoptNS([[_WKAuthenticatorSelectionCriteria alloc] init]);
+    [authenticatorSelection setAuthenticatorAttachment:_WKAuthenticatorAttachmentPlatform];
+    [authenticatorSelection setRequireResidentKey:YES];
+    [authenticatorSelection setUserVerification:_WKUserVerificationRequirementRequired];
+    [options setAuthenticatorSelection:authenticatorSelection.get()];
+
+    [options setAttestation:_WKAttestationConveyancePreferenceDirect];
+
+    auto result = [_WKWebAuthenticationPanel convertToCoreCreationOptionsWithOptions:options.get()];
+
+    EXPECT_WK_STREQ(result.rp.name, "example.com");
+    EXPECT_WK_STREQ(result.rp.icon, @"https//www.example.com/icon.jpg");
+    EXPECT_WK_STREQ(result.rp.id, "example.com");
+
+    EXPECT_WK_STREQ(result.user.name, "jappleseed@example.com");
+    EXPECT_WK_STREQ(result.user.icon, @"https//www.example.com/icon.jpg");
+    EXPECT_EQ(result.user.idVector.size(), sizeof(identifier));
+    EXPECT_EQ(memcmp(result.user.idVector.data(), identifier, sizeof(identifier)), 0);
+    EXPECT_WK_STREQ(result.user.displayName, "J Appleseed");
+
+    EXPECT_EQ(result.pubKeyCredParams.size(), 2lu);
+    EXPECT_EQ(result.pubKeyCredParams[0].type, WebCore::PublicKeyCredentialType::PublicKey);
+    EXPECT_EQ(result.pubKeyCredParams[0].alg, -7);
+    EXPECT_EQ(result.pubKeyCredParams[1].type, WebCore::PublicKeyCredentialType::PublicKey);
+    EXPECT_EQ(result.pubKeyCredParams[1].alg, -257);
+
+    EXPECT_EQ(result.timeout, 120u);
+
+    EXPECT_EQ(result.excludeCredentials.size(), 2lu);
+    EXPECT_EQ(result.excludeCredentials[0].type, WebCore::PublicKeyCredentialType::PublicKey);
+    EXPECT_EQ(result.excludeCredentials[0].idVector.size(), sizeof(identifier));
+    EXPECT_EQ(memcmp(result.excludeCredentials[0].idVector.data(), identifier, sizeof(identifier)), 0);
+    EXPECT_EQ(result.excludeCredentials[0].transports.size(), 3lu);
+    EXPECT_EQ(result.excludeCredentials[0].transports[0], AuthenticatorTransport::Usb);
+    EXPECT_EQ(result.excludeCredentials[0].transports[1], AuthenticatorTransport::Nfc);
+    EXPECT_EQ(result.excludeCredentials[0].transports[2], AuthenticatorTransport::Internal);
+
+    EXPECT_EQ(result.authenticatorSelection->authenticatorAttachment, PublicKeyCredentialCreationOptions::AuthenticatorAttachment::Platform);
+    EXPECT_EQ(result.authenticatorSelection->requireResidentKey, true);
+    EXPECT_EQ(result.authenticatorSelection->userVerification, UserVerificationRequirement::Required);
+
+    EXPECT_EQ(result.attestation, AttestationConveyancePreference::Direct);
+}
+
+TEST(WebAuthenticationPanel, PublicKeyCredentialCreationOptionsMaximum2)
+{
+    uint8_t identifier[] = { 0x01, 0x02, 0x03, 0x04 };
+    NSData *nsIdentifier = [NSData dataWithBytes:identifier length:sizeof(identifier)];
+    auto parameters1 = adoptNS([[_WKPublicKeyCredentialParameters alloc] initWithAlgorithm:@-7]);
+    auto parameters2 = adoptNS([[_WKPublicKeyCredentialParameters alloc] initWithAlgorithm:@-257]);
+
+    auto rp = adoptNS([[_WKPublicKeyCredentialRelyingPartyEntity alloc] initWithName:@"example.com"]);
+    [rp setIcon:@"https//www.example.com/icon.jpg"];
+    [rp setIdentifier:@"example.com"];
+
+    auto user = adoptNS([[_WKPublicKeyCredentialUserEntity alloc] initWithName:@"jappleseed@example.com" identifier:nsIdentifier displayName:@"J Appleseed"]);
+    [user setIcon:@"https//www.example.com/icon.jpg"];
+
+    NSArray<_WKPublicKeyCredentialParameters *> *publicKeyCredentialParamaters = @[ parameters1.get(), parameters2.get() ];
+
+    auto options = adoptNS([[_WKPublicKeyCredentialCreationOptions alloc] initWithRelyingParty:rp.get() user:user.get() publicKeyCredentialParamaters:publicKeyCredentialParamaters]);
+    [options setTimeout:@120];
+
+    auto usb = adoptNS([NSNumber numberWithInt:_WKWebAuthenticationTransportUSB]);
+    auto nfc = adoptNS([NSNumber numberWithInt:_WKWebAuthenticationTransportNFC]);
+    auto internal = adoptNS([NSNumber numberWithInt:_WKWebAuthenticationTransportInternal]);
+    auto credential = adoptNS([[_WKPublicKeyCredentialDescriptor alloc] initWithIdentifier:nsIdentifier]);
+    [credential setTransports:@[ usb.get(), nfc.get(), internal.get() ]];
+    [options setExcludeCredentials:@[ credential.get(), credential.get() ]];
+
+    auto authenticatorSelection = adoptNS([[_WKAuthenticatorSelectionCriteria alloc] init]);
+    [authenticatorSelection setAuthenticatorAttachment:_WKAuthenticatorAttachmentCrossPlatform]; //
+    [authenticatorSelection setRequireResidentKey:YES];
+    [authenticatorSelection setUserVerification:_WKUserVerificationRequirementDiscouraged]; //
+    [options setAuthenticatorSelection:authenticatorSelection.get()];
+
+    [options setAttestation:_WKAttestationConveyancePreferenceIndirect]; //
+
+    auto result = [_WKWebAuthenticationPanel convertToCoreCreationOptionsWithOptions:options.get()];
+
+    EXPECT_WK_STREQ(result.rp.name, "example.com");
+    EXPECT_WK_STREQ(result.rp.icon, @"https//www.example.com/icon.jpg");
+    EXPECT_WK_STREQ(result.rp.id, "example.com");
+
+    EXPECT_WK_STREQ(result.user.name, "jappleseed@example.com");
+    EXPECT_WK_STREQ(result.user.icon, @"https//www.example.com/icon.jpg");
+    EXPECT_EQ(result.user.idVector.size(), sizeof(identifier));
+    EXPECT_EQ(memcmp(result.user.idVector.data(), identifier, sizeof(identifier)), 0);
+    EXPECT_WK_STREQ(result.user.displayName, "J Appleseed");
+
+    EXPECT_EQ(result.pubKeyCredParams.size(), 2lu);
+    EXPECT_EQ(result.pubKeyCredParams[0].type, WebCore::PublicKeyCredentialType::PublicKey);
+    EXPECT_EQ(result.pubKeyCredParams[0].alg, -7);
+    EXPECT_EQ(result.pubKeyCredParams[1].type, WebCore::PublicKeyCredentialType::PublicKey);
+    EXPECT_EQ(result.pubKeyCredParams[1].alg, -257);
+
+    EXPECT_EQ(result.timeout, 120u);
+
+    EXPECT_EQ(result.excludeCredentials.size(), 2lu);
+    EXPECT_EQ(result.excludeCredentials[0].type, WebCore::PublicKeyCredentialType::PublicKey);
+    EXPECT_EQ(result.excludeCredentials[0].idVector.size(), sizeof(identifier));
+    EXPECT_EQ(memcmp(result.excludeCredentials[0].idVector.data(), identifier, sizeof(identifier)), 0);
+    EXPECT_EQ(result.excludeCredentials[0].transports.size(), 3lu);
+    EXPECT_EQ(result.excludeCredentials[0].transports[0], AuthenticatorTransport::Usb);
+    EXPECT_EQ(result.excludeCredentials[0].transports[1], AuthenticatorTransport::Nfc);
+    EXPECT_EQ(result.excludeCredentials[0].transports[2], AuthenticatorTransport::Internal);
+
+    EXPECT_EQ(result.authenticatorSelection->authenticatorAttachment, PublicKeyCredentialCreationOptions::AuthenticatorAttachment::CrossPlatform);
+    EXPECT_EQ(result.authenticatorSelection->requireResidentKey, true);
+    EXPECT_EQ(result.authenticatorSelection->userVerification, UserVerificationRequirement::Discouraged);
+
+    EXPECT_EQ(result.attestation, AttestationConveyancePreference::Indirect);
+}
+
+TEST(WebAuthenticationPanel, MakeCredentialSPITimeout)
+{
+    reset();
+
+    uint8_t identifier[] = { 0x01, 0x02, 0x03, 0x04 };
+    uint8_t hash[] = { 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04 };
+    NSData *nsIdentifier = [NSData dataWithBytes:identifier length:sizeof(identifier)];
+    NSData *nsHash = [NSData dataWithBytes:hash length:sizeof(hash)];
+    auto parameters = adoptNS([[_WKPublicKeyCredentialParameters alloc] initWithAlgorithm:@-7]);
+
+    auto rp = adoptNS([[_WKPublicKeyCredentialRelyingPartyEntity alloc] initWithName:@"example.com"]);
+    auto user = adoptNS([[_WKPublicKeyCredentialUserEntity alloc] initWithName:@"jappleseed@example.com" identifier:nsIdentifier displayName:@"J Appleseed"]);
+    NSArray<_WKPublicKeyCredentialParameters *> *publicKeyCredentialParamaters = @[ parameters.get() ];
+    auto options = adoptNS([[_WKPublicKeyCredentialCreationOptions alloc] initWithRelyingParty:rp.get() user:user.get() publicKeyCredentialParamaters:publicKeyCredentialParamaters]);
+    [options setTimeout:@10];
+
+    auto panel = adoptNS([[_WKWebAuthenticationPanel alloc] init]);
+    [panel makeCredentialWithChallenge:nsHash origin:@"" options:options.get() completionHandler:^(_WKAuthenticatorAttestationResponse *response, NSError *error) {
+        webAuthenticationPanelRan = true;
+
+        EXPECT_NULL(response);
+        EXPECT_EQ(error.domain, WKErrorDomain);
+        EXPECT_EQ(error.code, WKErrorUnknown);
+    }];
+    Util::run(&webAuthenticationPanelRan);
+}
+
+// For macOS, only internal builds can sign keychain entitlemnets
+// which are required to run local authenticator tests.
+#if USE(APPLE_INTERNAL_SDK) || PLATFORM(IOS)
+TEST(WebAuthenticationPanel, MakeCredentialLA)
+{
+    reset();
+
+    uint8_t identifier[] = { 0x01, 0x02, 0x03, 0x04 };
+    uint8_t hash[] = { 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04 };
+    NSData *nsIdentifier = [NSData dataWithBytes:identifier length:sizeof(identifier)];
+    auto nsHash = adoptNS([[NSData alloc] initWithBytes:hash length:sizeof(hash)]);
+    auto parameters = adoptNS([[_WKPublicKeyCredentialParameters alloc] initWithAlgorithm:@-7]);
+
+    auto rp = adoptNS([[_WKPublicKeyCredentialRelyingPartyEntity alloc] initWithName:@"example.com"]);
+    [rp setIdentifier:@"example.com"];
+    auto user = adoptNS([[_WKPublicKeyCredentialUserEntity alloc] initWithName:@"jappleseed@example.com" identifier:nsIdentifier displayName:@"J Appleseed"]);
+    NSArray<_WKPublicKeyCredentialParameters *> *publicKeyCredentialParamaters = @[ parameters.get() ];
+    auto options = adoptNS([[_WKPublicKeyCredentialCreationOptions alloc] initWithRelyingParty:rp.get() user:user.get() publicKeyCredentialParamaters:publicKeyCredentialParamaters]);
+
+    auto panel = adoptNS([[_WKWebAuthenticationPanel alloc] init]);
+    [panel setMockConfiguration:@{ @"privateKeyBase64": testES256PrivateKeyBase64 }];
+    auto delegate = adoptNS([[TestWebAuthenticationPanelDelegate alloc] init]);
+    [panel setDelegate:delegate.get()];
+
+    [panel makeCredentialWithChallenge:nsHash.get() origin:@"example.com" options:options.get() completionHandler:^(_WKAuthenticatorAttestationResponse *response, NSError *error) {
+        webAuthenticationPanelRan = true;
+        cleanUpKeychain("example.com");
+
+        EXPECT_TRUE(laContextRequested);
+        EXPECT_NULL(error);
+
+        EXPECT_NOT_NULL(response);
+        EXPECT_WK_STREQ([response.clientDataJSON base64EncodedStringWithOptions:0], "eyJjaGFsbGVuZ2UiOiJBUUlEQkFFQ0F3UUJBZ01FQVFJREJBRUNBd1FCQWdNRUFRSURCQUVDQXdRIiwib3JpZ2luIjoiZXhhbXBsZS5jb20iLCJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIn0=");
+        EXPECT_WK_STREQ([response.rawId base64EncodedStringWithOptions:0], "SMSXHngF7hEOsElA73C3RY+8bR4=");
+        EXPECT_NULL(response.extensions);
+        EXPECT_WK_STREQ([response.attestationObject base64EncodedStringWithOptions:0], "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViYo3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAFEjElx54Be4RDrBJQO9wt0WPvG0epQECAyYgASFYIDj/zxSkzKgaBuS3cdWDF558of8AaIpgFpsjF/Qm1749IlggVBJPgqUIwfhWHJ91nb7UPH76c0+WFOzZKslPyyFse4g=");
+    }];
+    Util::run(&webAuthenticationPanelRan);
+}
+#endif
+
+TEST(WebAuthenticationPanel, PublicKeyCredentialRequestOptionsMinimun)
+{
+    auto options = adoptNS([[_WKPublicKeyCredentialRequestOptions alloc] init]);
+    auto result = [_WKWebAuthenticationPanel convertToCoreRequestOptionsWithOptions:options.get()];
+
+    EXPECT_EQ(result.timeout, WTF::nullopt);
+    EXPECT_TRUE(result.rpId.isNull());
+    EXPECT_EQ(result.allowCredentials.size(), 0lu);
+    EXPECT_EQ(result.userVerification, UserVerificationRequirement::Preferred);
+    EXPECT_TRUE(result.extensions->appid.isNull());
+    EXPECT_EQ(result.extensions->googleLegacyAppidSupport, false);
+}
+
+TEST(WebAuthenticationPanel, PublicKeyCredentialRequestOptionsMaximumDefault)
+{
+    uint8_t identifier[] = { 0x01, 0x02, 0x03, 0x04 };
+    NSData *nsIdentifier = [NSData dataWithBytes:identifier length:sizeof(identifier)];
+    auto descriptor = adoptNS([[_WKPublicKeyCredentialDescriptor alloc] initWithIdentifier:nsIdentifier]);
+    auto extensions = adoptNS([[_WKAuthenticationExtensionsClientInputs alloc] init]);
+
+    auto options = adoptNS([[_WKPublicKeyCredentialRequestOptions alloc] init]);
+    [options setTimeout:@120];
+    [options setAllowCredentials:@[ descriptor.get() ]];
+    [options setExtensions:extensions.get()];
+
+    auto result = [_WKWebAuthenticationPanel convertToCoreRequestOptionsWithOptions:options.get()];
+
+    EXPECT_EQ(result.timeout, 120u);
+
+    EXPECT_EQ(result.allowCredentials.size(), 1lu);
+    EXPECT_EQ(result.allowCredentials[0].type, WebCore::PublicKeyCredentialType::PublicKey);
+    EXPECT_EQ(result.allowCredentials[0].idVector.size(), sizeof(identifier));
+    EXPECT_EQ(memcmp(result.allowCredentials[0].idVector.data(), identifier, sizeof(identifier)), 0);
+
+    EXPECT_EQ(result.userVerification, UserVerificationRequirement::Preferred);
+    EXPECT_TRUE(result.extensions->appid.isNull());
+}
+
+TEST(WebAuthenticationPanel, PublicKeyCredentialRequestOptionsMaximum)
+{
+    uint8_t identifier[] = { 0x01, 0x02, 0x03, 0x04 };
+    NSData *nsIdentifier = [NSData dataWithBytes:identifier length:sizeof(identifier)];
+
+    auto options = adoptNS([[_WKPublicKeyCredentialRequestOptions alloc] init]);
+    [options setTimeout:@120];
+
+    auto usb = adoptNS([NSNumber numberWithInt:_WKWebAuthenticationTransportUSB]);
+    auto nfc = adoptNS([NSNumber numberWithInt:_WKWebAuthenticationTransportNFC]);
+    auto internal = adoptNS([NSNumber numberWithInt:_WKWebAuthenticationTransportInternal]);
+    auto credential = adoptNS([[_WKPublicKeyCredentialDescriptor alloc] initWithIdentifier:nsIdentifier]);
+    [credential setTransports:@[ usb.get(), nfc.get(), internal.get() ]];
+    [options setAllowCredentials:@[ credential.get(), credential.get() ]];
+
+    [options setUserVerification:_WKUserVerificationRequirementRequired];
+
+    auto extensions = adoptNS([[_WKAuthenticationExtensionsClientInputs alloc] init]);
+    [extensions setAppid:@"https//www.example.com/fido"];
+    [options setExtensions:extensions.get()];
+
+    auto result = [_WKWebAuthenticationPanel convertToCoreRequestOptionsWithOptions:options.get()];
+
+    EXPECT_EQ(result.timeout, 120u);
+
+    EXPECT_EQ(result.allowCredentials.size(), 2lu);
+    EXPECT_EQ(result.allowCredentials[0].type, WebCore::PublicKeyCredentialType::PublicKey);
+    EXPECT_EQ(result.allowCredentials[0].idVector.size(), sizeof(identifier));
+    EXPECT_EQ(memcmp(result.allowCredentials[0].idVector.data(), identifier, sizeof(identifier)), 0);
+    EXPECT_EQ(result.allowCredentials[0].transports.size(), 3lu);
+    EXPECT_EQ(result.allowCredentials[0].transports[0], AuthenticatorTransport::Usb);
+    EXPECT_EQ(result.allowCredentials[0].transports[1], AuthenticatorTransport::Nfc);
+    EXPECT_EQ(result.allowCredentials[0].transports[2], AuthenticatorTransport::Internal);
+
+    EXPECT_EQ(result.userVerification, UserVerificationRequirement::Required);
+    EXPECT_WK_STREQ(result.extensions->appid, "https//www.example.com/fido");
+}
+
+TEST(WebAuthenticationPanel, GetAssertionSPITimeout)
+{
+    reset();
+
+    uint8_t hash[] = { 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04 };
+    NSData *nsHash = [NSData dataWithBytes:hash length:sizeof(hash)];
+
+    auto options = adoptNS([[_WKPublicKeyCredentialRequestOptions alloc] init]);
+    [options setTimeout:@120];
+
+    auto panel = adoptNS([[_WKWebAuthenticationPanel alloc] init]);
+    [panel getAssertionWithChallenge:nsHash origin:@"" options:options.get() completionHandler:^(_WKAuthenticatorAssertionResponse *response, NSError *error) {
+        webAuthenticationPanelRan = true;
+
+        EXPECT_NULL(response);
+        EXPECT_EQ(error.domain, WKErrorDomain);
+        EXPECT_EQ(error.code, WKErrorUnknown);
+    }];
+    Util::run(&webAuthenticationPanelRan);
+}
+
+// For macOS, only internal builds can sign keychain entitlemnets
+// which are required to run local authenticator tests.
+#if USE(APPLE_INTERNAL_SDK) || PLATFORM(IOS)
+TEST(WebAuthenticationPanel, GetAssertionLA)
+{
+    reset();
+
+    ASSERT_TRUE(addKeyToKeychain(testES256PrivateKeyBase64, "", testUserEntityBundleBase64));
+
+    uint8_t hash[] = { 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04 };
+    NSData *nsHash = [NSData dataWithBytes:hash length:sizeof(hash)];
+
+    auto options = adoptNS([[_WKPublicKeyCredentialRequestOptions alloc] init]);
+    [options setRelyingPartyIdentifier:@""];
+
+    auto panel = adoptNS([[_WKWebAuthenticationPanel alloc] init]);
+    [panel setMockConfiguration:@{ }];
+    auto delegate = adoptNS([[TestWebAuthenticationPanelDelegate alloc] init]);
+    [panel setDelegate:delegate.get()];
+
+    [panel getAssertionWithChallenge:nsHash origin:@"" options:options.get() completionHandler:^(_WKAuthenticatorAssertionResponse *response, NSError *error) {
+        webAuthenticationPanelRan = true;
+        cleanUpKeychain("");
+
+        EXPECT_NULL(error);
+
+        EXPECT_NOT_NULL(response);
+        EXPECT_WK_STREQ([response.clientDataJSON base64EncodedStringWithOptions:0], "eyJjaGFsbGVuZ2UiOiJBUUlEQkFFQ0F3UUJBZ01FQVFJREJBRUNBd1FCQWdNRUFRSURCQUVDQXdRIiwib3JpZ2luIjoiIiwidHlwZSI6IndlYmF1dGhuLmNyZWF0ZSJ9");
+        EXPECT_WK_STREQ([response.rawId base64EncodedStringWithOptions:0], "SMSXHngF7hEOsElA73C3RY+8bR4=");
+        EXPECT_NULL(response.extensions);
+        EXPECT_WK_STREQ([response.authenticatorData base64EncodedStringWithOptions:0], "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFUFAAAAAA==");
+        EXPECT_NOT_NULL(response.signature);
+        EXPECT_WK_STREQ([response.userHandle base64EncodedStringWithOptions:0], "AAECAwQFBgcICQ==");
+    }];
+    Util::run(&webAuthenticationPanelRan);
+}
+
+TEST(WebAuthenticationPanel, GetAllCredential)
+{
+    reset();
+
+    ASSERT_TRUE(addKeyToKeychain(testES256PrivateKeyBase64, "example.com", testUserEntityBundleBase64));
+
+    auto *credentials = [_WKWebAuthenticationPanel getAllLocalAuthenticatorCredentialsWithAccessGroup:@"com.apple.TestWebKitAPI"];
+    EXPECT_NOT_NULL(credentials);
+    EXPECT_EQ([credentials count], 1lu);
+
+    EXPECT_NOT_NULL([credentials firstObject]);
+    EXPECT_WK_STREQ([credentials firstObject][_WKLocalAuthenticatorCredentialNameKey], "John");
+    EXPECT_WK_STREQ([[credentials firstObject][_WKLocalAuthenticatorCredentialIDKey] base64EncodedStringWithOptions:0], "SMSXHngF7hEOsElA73C3RY+8bR4=");
+    EXPECT_WK_STREQ([credentials firstObject][_WKLocalAuthenticatorCredentialRelyingPartyIDKey], "example.com");
+
+    cleanUpKeychain("example.com");
+}
+
+TEST(WebAuthenticationPanel, DeleteOneCredential)
+{
+    reset();
+
+    ASSERT_TRUE(addKeyToKeychain(testES256PrivateKeyBase64, "example.com", testUserEntityBundleBase64));
+
+    [_WKWebAuthenticationPanel deleteLocalAuthenticatorCredentialWithID:adoptNS([[NSData alloc] initWithBase64EncodedString:@"SMSXHngF7hEOsElA73C3RY+8bR4=" options:0]).get()];
+
+    auto *credentials = [_WKWebAuthenticationPanel getAllLocalAuthenticatorCredentialsWithAccessGroup:@"com.apple.TestWebKitAPI"];
+    EXPECT_NOT_NULL(credentials);
+    EXPECT_EQ([credentials count], 0lu);
+}
+#endif
 
 } // namespace TestWebKitAPI
 

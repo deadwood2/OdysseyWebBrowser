@@ -39,6 +39,7 @@ class BlobRegistryImpl;
 
 namespace WebKit {
 
+class NetworkLoadScheduler;
 class NetworkProcess;
 
 class NetworkLoad final : private NetworkDataTaskClient {
@@ -48,14 +49,17 @@ public:
     ~NetworkLoad();
 
     void start();
+    void startWithScheduling();
     void cancel();
 
     bool isAllowedToAskUserForCredentials() const;
 
     const WebCore::ResourceRequest& currentRequest() const { return m_currentRequest; }
     void updateRequestAfterRedirection(WebCore::ResourceRequest&) const;
+    void reprioritizeRequest(WebCore::ResourceLoadPriority);
 
     const NetworkLoadParameters& parameters() const { return m_parameters; }
+    const URL& url() const { return parameters().request.url(); }
 
     void continueWillSendRequest(WebCore::ResourceRequest&&);
 
@@ -84,17 +88,13 @@ private:
     void didNegotiateModernTLS(const WebCore::AuthenticationChallenge&) final;
 
     void notifyDidReceiveResponse(WebCore::ResourceResponse&&, NegotiatedLegacyTLS, ResponseCompletionHandler&&);
-    void throttleDelayCompleted();
 
     std::reference_wrapper<NetworkLoadClient> m_client;
     Ref<NetworkProcess> m_networkProcess;
     const NetworkLoadParameters m_parameters;
     CompletionHandler<void(WebCore::ResourceRequest&&)> m_redirectCompletionHandler;
     RefPtr<NetworkDataTask> m_task;
-    
-    struct Throttle;
-    std::unique_ptr<Throttle> m_throttle;
-    Seconds m_loadThrottleLatency;
+    WeakPtr<NetworkLoadScheduler> m_scheduler;
 
     WebCore::ResourceRequest m_currentRequest; // Updated on redirects.
 };

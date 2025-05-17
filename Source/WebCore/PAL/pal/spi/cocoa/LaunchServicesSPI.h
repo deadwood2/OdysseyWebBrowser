@@ -75,6 +75,10 @@ typedef void (^LSAppLinkOpenCompletionHandler)(BOOL success, NSError *error);
 enum LSSessionID {
     kLSDefaultSessionID = -2,
 };
+
+enum {
+    kLSServerConnectionStatusDoNotConnectToServerMask = 0x1ULL,
+};
 #endif
 
 #if HAVE(LSDATABASECONTEXT)
@@ -106,8 +110,10 @@ typedef struct ProcessSerialNumber ProcessSerialNumber;
 WTF_EXTERN_C_BEGIN
 
 extern const CFStringRef _kLSDisplayNameKey;
+extern const CFStringRef _kLSPersistenceSuppressRelaunchAtLoginKey;
 
 LSASNRef _LSGetCurrentApplicationASN();
+LSASNRef _LSCopyLSASNForAuditToken(LSSessionID, audit_token_t);
 OSStatus _LSSetApplicationInformationItem(LSSessionID, LSASNRef, CFStringRef keyToSetRef, CFTypeRef valueToSetRef, CFDictionaryRef* newInformationDictRef);
 CFTypeRef _LSCopyApplicationInformationItem(LSSessionID, LSASNRef, CFTypeRef);
 

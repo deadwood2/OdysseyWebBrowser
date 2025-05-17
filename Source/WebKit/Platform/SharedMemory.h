@@ -28,7 +28,7 @@
 
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
-#include <wtf/RefCounted.h>
+#include <wtf/ThreadSafeRefCounted.h>
 
 #if USE(UNIX_DOMAIN_SOCKETS)
 #include "Attachment.h"
@@ -56,7 +56,9 @@ class MachSendRight;
 
 namespace WebKit {
 
-class SharedMemory : public RefCounted<SharedMemory> {
+enum class MemoryLedger { None, Default, Network, Media, Graphics, Neural };
+
+class SharedMemory : public ThreadSafeRefCounted<SharedMemory> {
 public:
     enum class Protection {
         ReadOnly,
@@ -77,10 +79,10 @@ public:
         size_t size() const { return m_size; }
 #endif
 
-        void clear();
+        // Take ownership of the memory for jetsam purposes.
+        void takeOwnershipOfMemory(MemoryLedger) const;
 
-        void encode(IPC::Encoder&) const;
-        static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, Handle&);
+        void clear();
 
 #if USE(UNIX_DOMAIN_SOCKETS)
         IPC::Attachment releaseAttachment() const;
@@ -103,8 +105,22 @@ public:
 #endif
     };
 
+    struct IPCHandle {
+        IPCHandle() = default;
+        IPCHandle(Handle&& handle, uint64_t dataSize)
+            : handle(WTFMove(handle))
+            , dataSize(dataSize)
+        {
+        }
+        void encode(IPC::Encoder&) const;
+        static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, IPCHandle&);
+
+        Handle handle;
+        uint64_t dataSize { 0 };
+    };
+
+    // FIXME: Change these factory functions to return Ref<SharedMemory> and crash on failure.
     static RefPtr<SharedMemory> allocate(size_t);
-    static RefPtr<SharedMemory> create(void*, size_t, Protection);
     static RefPtr<SharedMemory> copyBuffer(const WebCore::SharedBuffer&);
     static RefPtr<SharedMemory> map(const Handle&, Protection);
 #if USE(UNIX_DOMAIN_SOCKETS)
@@ -129,6 +145,10 @@ public:
 
 #if OS(WINDOWS)
     HANDLE handle() const { return m_handle; }
+#endif
+
+#if PLATFORM(COCOA)
+    Protection protection() const { return m_protection; }
 #endif
 
     // Return the system page size in bytes.

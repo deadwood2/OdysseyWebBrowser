@@ -28,6 +28,7 @@
 #include "config.h"
 #include "Options.h"
 
+#include "StringFunctions.h"
 #include <string.h>
 
 namespace WTR {
@@ -65,25 +66,25 @@ static bool handleOptionComplexText(Options& options, const char*, const char*)
 
 static bool handleOptionAcceleratedDrawing(Options& options, const char*, const char*)
 {
-    options.shouldUseAcceleratedDrawing = true;
+    options.features.boolWebPreferenceFeatures.insert_or_assign("AcceleratedDrawingEnabled", true);
     return true;
 }
 
 static bool handleOptionRemoteLayerTree(Options& options, const char*, const char*)
 {
-    options.shouldUseRemoteLayerTree = true;
+    options.features.boolTestRunnerFeatures.insert_or_assign("useRemoteLayerTree", true);
     return true;
 }
 
 static bool handleOptionShowWebView(Options& options, const char*, const char*)
 {
-    options.shouldShowWebView = true;
+    options.features.boolTestRunnerFeatures.insert_or_assign("shouldShowWebView", true);
     return true;
 }
 
 static bool handleOptionShowTouches(Options& options, const char*, const char*)
 {
-    options.shouldShowTouches = true;
+    options.features.boolTestRunnerFeatures.insert_or_assign("shouldShowTouches", true);
     return true;
 }
 
@@ -113,27 +114,28 @@ static bool handleOptionAllowedHost(Options& options, const char*, const char* h
     return true;
 }
 
-static bool parseFeature(String featureString, HashMap<String, bool>& features)
+static bool parseFeature(std::string_view featureString, TestFeatures& features)
 {
-    auto strings = featureString.split('=');
-    if (strings.isEmpty() || strings.size() > 2)
+    auto strings = split(featureString, '=');
+    if (strings.empty() || strings.size() > 2)
         return false;
 
     auto featureName = strings[0];
     bool enabled = strings.size() == 1 || strings[1] == "true";
 
-    features.set(featureName, enabled);
+    // FIXME: Generalize this to work for any type of web preference using test header logic in TestFeatures.cpp
+    features.boolWebPreferenceFeatures.insert({ std::string { featureName }, enabled });
     return true;
 }
 
 static bool handleOptionExperimentalFeature(Options& options, const char*, const char* feature)
 {
-    return parseFeature(feature, options.experimentalFeatures);
+    return parseFeature(feature, options.features);
 }
 
 static bool handleOptionInternalFeature(Options& options, const char*, const char* feature)
 {
-    return parseFeature(feature, options.internalFeatures);
+    return parseFeature(feature, options.features);
 }
 
 static bool handleOptionUnmatched(Options& options, const char* option, const char*)
@@ -173,7 +175,12 @@ const char * OptionsHandler::usage = "Usage: WebKitTestRunner [options] filename
 const char * OptionsHandler::help = "Displays this help.";
 
 Option::Option(const char* name, const char* description, std::function<bool(Options&, const char*, const char*)> parameterHandler, bool hasArgument)
-    : name(name), description(description), parameterHandler(parameterHandler), hasArgument(hasArgument) { };
+    : name(name)
+    , description(description)
+    , parameterHandler(parameterHandler)
+    , hasArgument(hasArgument)
+{
+}
 
 bool Option::matches(const char* option)
 {

@@ -1368,8 +1368,7 @@ DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(HashTable);
         if (!m_table)
             return;
 
-        deallocateTable(m_table);
-        m_table = nullptr;
+        deallocateTable(std::exchange(m_table, nullptr));
     }
 
     template<typename Key, typename Value, typename Extractor, typename HashFunctions, typename Traits, typename KeyTraits>

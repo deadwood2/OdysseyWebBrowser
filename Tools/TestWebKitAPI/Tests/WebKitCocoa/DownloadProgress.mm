@@ -326,7 +326,7 @@ static void* progressObservingContext = &progressObservingContext;
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler
 {
     if (m_startType == DownloadStartType::ConvertLoadToDownload)
-        decisionHandler(_WKNavigationResponsePolicyBecomeDownload);
+        decisionHandler(WKNavigationResponsePolicyDownload);
     else
         decisionHandler(WKNavigationResponsePolicyAllow);
 }
@@ -487,7 +487,7 @@ TEST(DownloadProgress, CancelDownloadWhenProgressIsCanceled)
     [testRunner.get() subscribeAndWaitForProgress];
     [testRunner.get() receiveData:50];
     [testRunner.get().progress cancel];
-    [testRunner.get() waitForDownloadCanceled];
+    [testRunner.get() waitForDownloadFailed];
     [testRunner.get() waitToLoseProgress];
 
     [testRunner.get() tearDown];

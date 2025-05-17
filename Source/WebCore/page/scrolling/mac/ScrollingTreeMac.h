@@ -43,9 +43,12 @@ private:
     Ref<ScrollingTreeNode> createScrollingTreeNode(ScrollingNodeType, ScrollingNodeID) final;
 
     RefPtr<ScrollingTreeNode> scrollingNodeForPoint(FloatPoint) final;
+#if ENABLE(WHEEL_EVENT_REGIONS)
     OptionSet<EventListenerRegionType> eventListenerRegionTypesForPoint(FloatPoint) const final;
+#endif
 
     void setWheelEventTestMonitor(RefPtr<WheelEventTestMonitor>&&) final;
+    WheelEventTestMonitor* wheelEventTestMonitor() final { return m_wheelEventTestMonitor.get(); }
 
     void receivedWheelEvent(const PlatformWheelEvent&) final;
 

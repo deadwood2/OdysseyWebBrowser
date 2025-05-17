@@ -100,6 +100,22 @@ SOFT_LINK_CLASS(QuickLookUI, QLPreviewMenuItem)
     _currentActionContext = nil;
 }
 
+- (BOOL)isEnabled
+{
+    return [_immediateActionRecognizer isEnabled];
+}
+
+- (void)setEnabled:(BOOL)enabled
+{
+    if (enabled == [_immediateActionRecognizer isEnabled])
+        return;
+
+    [_immediateActionRecognizer setEnabled:enabled];
+
+    if (![_immediateActionRecognizer isEnabled])
+        [self _cancelImmediateAction];
+}
+
 - (void)webView:(WebView *)webView didHandleScrollWheel:(NSEvent *)event
 {
     [_currentQLPreviewMenuItem close];
@@ -115,8 +131,10 @@ SOFT_LINK_CLASS(QuickLookUI, QLPreviewMenuItem)
 - (void)_cancelImmediateAction
 {
     // Reset the recognizer by turning it off and on again.
-    [_immediateActionRecognizer setEnabled:NO];
-    [_immediateActionRecognizer setEnabled:YES];
+    if ([_immediateActionRecognizer isEnabled]) {
+        [_immediateActionRecognizer setEnabled:NO];
+        [_immediateActionRecognizer setEnabled:YES];
+    }
 
     [self _clearImmediateActionState];
     [_webView _clearTextIndicatorWithAnimation:WebCore::TextIndicatorWindowDismissalAnimation::FadeOut];
@@ -181,7 +199,7 @@ SOFT_LINK_CLASS(QuickLookUI, QLPreviewMenuItem)
 
     if (![_immediateActionRecognizer animationController]) {
         // FIXME: We should be able to remove the dispatch_async when rdar://problem/19502927 is resolved.
-        dispatch_async(dispatch_get_main_queue(), ^{
+        RunLoop::main().dispatch([self, strongSelf = retainPtr(self)] {
             [self _cancelImmediateAction];
         });
     }
@@ -252,7 +270,7 @@ SOFT_LINK_CLASS(QuickLookUI, QLPreviewMenuItem)
 - (id <NSImmediateActionAnimationController>)_defaultAnimationController
 {
     if (_contentPreventsDefault)
-        return [[[WebAnimationController alloc] init] autorelease];
+        return adoptNS([[WebAnimationController alloc] init]).autorelease();
 
     NSURL *url = _hitTestResult.absoluteLinkURL();
     String absoluteURLString = [url absoluteString];

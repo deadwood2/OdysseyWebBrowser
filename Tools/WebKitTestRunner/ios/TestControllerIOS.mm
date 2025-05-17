@@ -148,7 +148,9 @@ void TestController::platformResetPreferencesToConsistentValues()
     WKPreferencesSetTextAutosizingEnabled(preferences, false);
     WKPreferencesSetTextAutosizingUsesIdempotentMode(preferences, false);
     WKPreferencesSetContentChangeObserverEnabled(preferences, false);
-    [(__bridge WKPreferences *)preferences _setShouldIgnoreMetaViewport:NO];
+#if PLATFORM(IOS_FAMILY_SIMULATOR)
+    WKPreferencesSetVP9DecoderEnabled(preferences, false);
+#endif
 }
 
 bool TestController::platformResetStateToConsistentValues(const TestOptions& options)
@@ -190,7 +192,7 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
     }
 
     m_presentPopoverSwizzlers.clear();
-    if (!options.shouldPresentPopovers) {
+    if (!options.shouldPresentPopovers()) {
 #if USE(UICONTEXTMENU)
         m_presentPopoverSwizzlers.append(makeUnique<InstanceMethodSwizzler>([UIContextMenuInteraction class], @selector(_presentMenuAtLocation:), reinterpret_cast<IMP>(overridePresentMenuOrPopoverOrViewController)));
 #endif
@@ -213,8 +215,10 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
         UIScrollView *scrollView = webView.scrollView;
         [scrollView _removeAllAnimations:YES];
         [scrollView setZoomScale:1 animated:NO];
-        scrollView.contentInset = UIEdgeInsetsMake(options.contentInsetTop, 0, 0, 0);
-        scrollView.contentOffset = CGPointMake(0, -options.contentInsetTop);
+        
+        auto contentInsetTop = options.contentInsetTop();
+        scrollView.contentInset = UIEdgeInsetsMake(contentInsetTop, 0, 0, 0);
+        scrollView.contentOffset = CGPointMake(0, -contentInsetTop);
 
         if (webView.interactingWithFormControl)
             shouldRestoreFirstResponder = [webView resignFirstResponder];
@@ -258,19 +262,16 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
     if (shouldRestoreFirstResponder)
         [mainWebView()->platformView() becomeFirstResponder];
 
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"WebKitDebugIsInAppBrowserPrivacyEnabled"];
-
     return true;
 }
 
 void TestController::platformConfigureViewForTest(const TestInvocation& test)
 {
+    [[GeneratedTouchesDebugWindow sharedGeneratedTouchesDebugWindow] setShouldShowTouches:test.options().shouldShowTouches()];
+
     TestRunnerWKWebView *webView = mainWebView()->platformView();
 
-    if (test.options().shouldIgnoreMetaViewport)
-        webView.configuration.preferences._shouldIgnoreMetaViewport = YES;
-
-    if (!test.options().useFlexibleViewport)
+    if (!test.options().useFlexibleViewport())
         return;
 
     CGRect screenBounds = [UIScreen mainScreen].bounds;
@@ -291,10 +292,9 @@ void TestController::platformConfigureViewForTest(const TestInvocation& test)
     // WKBundlePageSetUseTestingViewportConfiguration(false).
 }
 
-void TestController::updatePlatformSpecificTestOptionsForTest(TestOptions& options, const std::string&) const
+TestFeatures TestController::platformSpecificFeatureDefaultsForTest(const TestCommand&) const
 {
-    options.shouldShowTouches = shouldShowTouches();
-    [[GeneratedTouchesDebugWindow sharedGeneratedTouchesDebugWindow] setShouldShowTouches:options.shouldShowTouches];
+    return { };
 }
 
 void TestController::platformInitializeContext()

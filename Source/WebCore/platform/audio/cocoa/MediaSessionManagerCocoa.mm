@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #if USE(AUDIO_SESSION) && PLATFORM(COCOA)
 
 #import "AudioSession.h"
+#import "AudioUtilities.h"
 #import "DeprecatedGlobalSettings.h"
 #import "HTMLMediaElement.h"
 #import "Logging.h"
@@ -42,7 +43,6 @@
 
 #import "MediaRemoteSoftLink.h"
 
-static const size_t kWebAudioBufferSize = 128;
 static const size_t kLowPowerVideoBufferSize = 4096;
 
 namespace WebCore {
@@ -55,7 +55,6 @@ std::unique_ptr<PlatformMediaSessionManager> PlatformMediaSessionManager::create
 #endif // !PLATFORM(MAC)
 
 MediaSessionManagerCocoa::MediaSessionManagerCocoa()
-    : m_systemSleepListener(PAL::SystemSleepListener::create(*this))
 {
 }
 
@@ -102,17 +101,17 @@ void MediaSessionManagerCocoa::updateSessionState()
         "WebAudio(", webAudioCount, ")");
 
     if (webAudioCount)
-        AudioSession::sharedSession().setPreferredBufferSize(kWebAudioBufferSize);
+        AudioSession::sharedSession().setPreferredBufferSize(AudioUtilities::renderQuantumSize);
     // In case of audio capture, we want to grab 20 ms chunks to limit the latency so that it is not noticeable by users
     // while having a large enough buffer so that the audio rendering remains stable, hence a computation based on sample rate.
     else if (captureCount)
         AudioSession::sharedSession().setPreferredBufferSize(AudioSession::sharedSession().sampleRate() / 50);
     else if ((videoAudioCount || audioCount) && DeprecatedGlobalSettings::lowPowerVideoAudioBufferSizeEnabled()) {
         size_t bufferSize;
-        if (m_audioHardwareListener && m_audioHardwareListener->outputDeviceSupportsLowPowerMode())
-            bufferSize = kLowPowerVideoBufferSize;
+        if (m_audioHardwareListener && m_audioHardwareListener->supportedBufferSizes())
+            bufferSize = m_audioHardwareListener->supportedBufferSizes().nearest(kLowPowerVideoBufferSize);
         else
-            bufferSize = kWebAudioBufferSize;
+            bufferSize = AudioUtilities::renderQuantumSize;
 
         AudioSession::sharedSession().setPreferredBufferSize(bufferSize);
     }
@@ -153,6 +152,11 @@ void MediaSessionManagerCocoa::prepareToSendUserMediaPermissionRequest()
 void MediaSessionManagerCocoa::scheduleSessionStatusUpdate()
 {
     m_taskQueue.enqueueTask([this] () mutable {
+        if (m_remoteCommandListener) {
+            m_remoteCommandListener->setSupportsSeeking(computeSupportsSeeking());
+            m_remoteCommandListener->updateSupportedCommands();
+        }
+
         updateNowPlayingInfo();
 
         forEachSession([] (auto& session) {
@@ -232,8 +236,21 @@ void MediaSessionManagerCocoa::clientCharacteristicsChanged(PlatformMediaSession
 
 void MediaSessionManagerCocoa::sessionCanProduceAudioChanged()
 {
+    ALWAYS_LOG(LOGIDENTIFIER);
     PlatformMediaSessionManager::sessionCanProduceAudioChanged();
     scheduleSessionStatusUpdate();
+}
+
+void MediaSessionManagerCocoa::addSupportedCommand(PlatformMediaSession::RemoteControlCommandType command)
+{
+    if (m_remoteCommandListener)
+        m_remoteCommandListener->addSupportedCommand(command);
+}
+
+void MediaSessionManagerCocoa::removeSupportedCommand(PlatformMediaSession::RemoteControlCommandType command)
+{
+    if (m_remoteCommandListener)
+        m_remoteCommandListener->removeSupportedCommand(command);
 }
 
 void MediaSessionManagerCocoa::clearNowPlayingInfo()
@@ -259,6 +276,12 @@ void MediaSessionManagerCocoa::setNowPlayingInfo(bool setAsNowPlayingApplication
         MRMediaRemoteSetCanBeNowPlayingApplication(true);
 
     auto info = adoptCF(CFDictionaryCreateMutable(kCFAllocatorDefault, 4, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+
+    if (!nowPlayingInfo.artist.isEmpty())
+        CFDictionarySetValue(info.get(), kMRMediaRemoteNowPlayingInfoArtist, nowPlayingInfo.artist.createCFString().get());
+
+    if (!nowPlayingInfo.album.isEmpty())
+        CFDictionarySetValue(info.get(), kMRMediaRemoteNowPlayingInfoAlbum, nowPlayingInfo.album.createCFString().get());
 
     if (!nowPlayingInfo.title.isEmpty())
         CFDictionarySetValue(info.get(), kMRMediaRemoteNowPlayingInfoTitle, nowPlayingInfo.title.createCFString().get());
@@ -364,6 +387,12 @@ void MediaSessionManagerCocoa::updateNowPlayingInfo()
     m_nowPlayingActive = nowPlayingInfo->allowsNowPlayingControlsVisibility;
 
     END_BLOCK_OBJC_EXCEPTIONS
+}
+
+void MediaSessionManagerCocoa::audioOutputDeviceChanged()
+{
+    AudioSession::sharedSession().audioOutputDeviceChanged();
+    updateSessionState();
 }
 
 } // namespace WebCore

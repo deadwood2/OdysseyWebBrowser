@@ -852,6 +852,11 @@ static gboolean checkUserData(GFile* file)
     return G_IS_FILE(file);
 }
 
+static char* valueToString(JSCValue* value)
+{
+    return jsc_value_to_string(value);
+}
+
 static void testJSCFunction()
 {
     {
@@ -1120,6 +1125,47 @@ static void testJSCFunction()
         checker.watch(value.get());
         g_assert_true(jsc_value_is_boolean(value.get()));
         g_assert_true(jsc_value_to_boolean(value.get()));
+    }
+
+    {
+        LeakChecker checker;
+        GRefPtr<JSCContext> context = adoptGRef(jsc_context_new());
+        checker.watch(context.get());
+        ExceptionHandler exceptionHandler(context.get());
+
+        GRefPtr<JSCValue> function = adoptGRef(jsc_value_new_function(context.get(), "valueToString", G_CALLBACK(valueToString), nullptr, nullptr, G_TYPE_STRING, 1, JSC_TYPE_VALUE));
+        checker.watch(function.get());
+        jsc_context_set_value(context.get(), "valueToString", function.get());
+
+        GRefPtr<JSCValue> value = adoptGRef(jsc_context_evaluate(context.get(), "valueToString(4)", -1));
+        checker.watch(value.get());
+        GUniquePtr<char> valueString(jsc_value_to_string(value.get()));
+        g_assert_cmpstr(valueString.get(), ==, "4");
+
+        value = adoptGRef(jsc_context_evaluate(context.get(), "valueToString('Hello World')", -1));
+        checker.watch(value.get());
+        valueString.reset(jsc_value_to_string(value.get()));
+        g_assert_cmpstr(valueString.get(), ==, "Hello World");
+
+        value = adoptGRef(jsc_context_evaluate(context.get(), "valueToString(undefined)", -1));
+        checker.watch(value.get());
+        valueString.reset(jsc_value_to_string(value.get()));
+        g_assert_cmpstr(valueString.get(), ==, "undefined");
+
+        value = adoptGRef(jsc_context_evaluate(context.get(), "valueToString(null)", -1));
+        checker.watch(value.get());
+        valueString.reset(jsc_value_to_string(value.get()));
+        g_assert_cmpstr(valueString.get(), ==, "null");
+
+        value = adoptGRef(jsc_context_evaluate(context.get(), "valueToString()", -1));
+        checker.watch(value.get());
+        valueString.reset(jsc_value_to_string(value.get()));
+        g_assert_cmpstr(valueString.get(), ==, "undefined");
+
+        value = adoptGRef(jsc_context_evaluate(context.get(), "valueToString(1,2,3)", -1));
+        checker.watch(value.get());
+        valueString.reset(jsc_value_to_string(value.get()));
+        g_assert_cmpstr(valueString.get(), ==, "1");
     }
 }
 
@@ -1810,6 +1856,14 @@ static void testJSCClass()
         checker.watch(value.get());
         g_assert_true(jsc_value_is_number(value.get()));
         g_assert_cmpint(jsc_value_to_int32(value.get()), ==, 52);
+
+        foo2 = adoptGRef(jsc_context_evaluate(context.get(), "f2 = new Foo.CreateWithFoo();", -1));
+        checker.watch(foo2.get());
+        g_assert_true(jsc_value_is_object(foo2.get()));
+        value = adoptGRef(jsc_context_evaluate(context.get(), "f2.foo", -1));
+        checker.watch(value.get());
+        g_assert_true(jsc_value_is_number(value.get()));
+        g_assert_cmpint(jsc_value_to_int32(value.get()), ==, 0);
 
         GRefPtr<JSCValue> constructorV = adoptGRef(jsc_class_add_constructor_variadic(jscClass, "CreateWithFoo", G_CALLBACK(fooCreateWithFooV), nullptr, nullptr, G_TYPE_POINTER));
         checker.watch(constructorV.get());
@@ -2805,11 +2859,11 @@ static void testJSCExceptions()
         g_assert_cmpuint(jsc_exception_get_line_number(exception), ==, 1);
         g_assert_cmpuint(jsc_exception_get_column_number(exception), ==, 4);
         g_assert_null(jsc_exception_get_source_uri(exception));
-        g_assert_cmpstr(jsc_exception_get_backtrace_string(exception), ==, "global code");
+        g_assert_cmpstr(jsc_exception_get_backtrace_string(exception), ==, "global code@");
         GUniquePtr<char> errorString(jsc_exception_to_string(exception));
         g_assert_cmpstr(errorString.get(), ==, "ReferenceError: Can't find variable: foo");
         GUniquePtr<char> reportString(jsc_exception_report(exception));
-        g_assert_cmpstr(reportString.get(), ==, ":1:4 ReferenceError: Can't find variable: foo\n  global code\n");
+        g_assert_cmpstr(reportString.get(), ==, ":1:4 ReferenceError: Can't find variable: foo\n  global code@\n");
 
         jsc_context_clear_exception(context.get());
         g_assert_null(jsc_context_get_exception(context.get()));
@@ -2902,11 +2956,11 @@ static void testJSCExceptions()
         g_assert_cmpuint(jsc_exception_get_line_number(exception), ==, 1);
         g_assert_cmpuint(jsc_exception_get_column_number(exception), ==, 24);
         g_assert_null(jsc_exception_get_source_uri(exception));
-        g_assert_cmpstr(jsc_exception_get_backtrace_string(exception), ==, "createError@[native code]\nglobal code");
+        g_assert_cmpstr(jsc_exception_get_backtrace_string(exception), ==, "createError@[native code]\nglobal code@");
         GUniquePtr<char> errorString(jsc_exception_to_string(exception));
         g_assert_cmpstr(errorString.get(), ==, "Error: API exception");
         GUniquePtr<char> reportString(jsc_exception_report(exception));
-        g_assert_cmpstr(reportString.get(), ==, ":1:24 Error: API exception\n  createError@[native code]\n  global code\n");
+        g_assert_cmpstr(reportString.get(), ==, ":1:24 Error: API exception\n  createError@[native code]\n  global code@\n");
 
         jsc_context_clear_exception(context.get());
         g_assert_null(jsc_context_get_exception(context.get()));
@@ -2933,11 +2987,11 @@ static void testJSCExceptions()
         g_assert_cmpuint(jsc_exception_get_line_number(exception), ==, 1);
         g_assert_cmpuint(jsc_exception_get_column_number(exception), ==, 30);
         g_assert_null(jsc_exception_get_source_uri(exception));
-        g_assert_cmpstr(jsc_exception_get_backtrace_string(exception), ==, "createCustomError@[native code]\nglobal code");
+        g_assert_cmpstr(jsc_exception_get_backtrace_string(exception), ==, "createCustomError@[native code]\nglobal code@");
         GUniquePtr<char> errorString(jsc_exception_to_string(exception));
         g_assert_cmpstr(errorString.get(), ==, "CustomAPIError: API custom exception");
         GUniquePtr<char> reportString(jsc_exception_report(exception));
-        g_assert_cmpstr(reportString.get(), ==, ":1:30 CustomAPIError: API custom exception\n  createCustomError@[native code]\n  global code\n");
+        g_assert_cmpstr(reportString.get(), ==, ":1:30 CustomAPIError: API custom exception\n  createCustomError@[native code]\n  global code@\n");
 
         jsc_context_clear_exception(context.get());
         g_assert_null(jsc_context_get_exception(context.get()));
@@ -2964,11 +3018,11 @@ static void testJSCExceptions()
         g_assert_cmpuint(jsc_exception_get_line_number(exception), ==, 1);
         g_assert_cmpuint(jsc_exception_get_column_number(exception), ==, 33);
         g_assert_null(jsc_exception_get_source_uri(exception));
-        g_assert_cmpstr(jsc_exception_get_backtrace_string(exception), ==, "createFormattedError@[native code]\nglobal code");
+        g_assert_cmpstr(jsc_exception_get_backtrace_string(exception), ==, "createFormattedError@[native code]\nglobal code@");
         GUniquePtr<char> errorString(jsc_exception_to_string(exception));
         g_assert_cmpstr(errorString.get(), ==, "Error: API exception: error details");
         GUniquePtr<char> reportString(jsc_exception_report(exception));
-        g_assert_cmpstr(reportString.get(), ==, ":1:33 Error: API exception: error details\n  createFormattedError@[native code]\n  global code\n");
+        g_assert_cmpstr(reportString.get(), ==, ":1:33 Error: API exception: error details\n  createFormattedError@[native code]\n  global code@\n");
 
         jsc_context_clear_exception(context.get());
         g_assert_null(jsc_context_get_exception(context.get()));
@@ -2995,11 +3049,11 @@ static void testJSCExceptions()
         g_assert_cmpuint(jsc_exception_get_line_number(exception), ==, 1);
         g_assert_cmpuint(jsc_exception_get_column_number(exception), ==, 39);
         g_assert_null(jsc_exception_get_source_uri(exception));
-        g_assert_cmpstr(jsc_exception_get_backtrace_string(exception), ==, "createCustomFormattedError@[native code]\nglobal code");
+        g_assert_cmpstr(jsc_exception_get_backtrace_string(exception), ==, "createCustomFormattedError@[native code]\nglobal code@");
         GUniquePtr<char> errorString(jsc_exception_to_string(exception));
         g_assert_cmpstr(errorString.get(), ==, "CustomFormattedAPIError: API custom exception: error details");
         GUniquePtr<char> reportString(jsc_exception_report(exception));
-        g_assert_cmpstr(reportString.get(), ==, ":1:39 CustomFormattedAPIError: API custom exception: error details\n  createCustomFormattedError@[native code]\n  global code\n");
+        g_assert_cmpstr(reportString.get(), ==, ":1:39 CustomFormattedAPIError: API custom exception: error details\n  createCustomFormattedError@[native code]\n  global code@\n");
 
         jsc_context_clear_exception(context.get());
         g_assert_null(jsc_context_get_exception(context.get()));

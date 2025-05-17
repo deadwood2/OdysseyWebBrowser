@@ -26,7 +26,6 @@
 #pragma once
 
 #include "APIObject.h"
-#include "WebViewCategory.h"
 #include <WebCore/ShouldRelaxThirdPartyCookieBlocking.h>
 #include <wtf/Forward.h>
 #include <wtf/GetPtr.h>
@@ -145,20 +144,25 @@ public:
     const WTF::String& processDisplayName() const { return m_processDisplayName; }
     void setProcessDisplayName(const WTF::String& name) { m_processDisplayName = name; }
 
-    WebKit::WebViewCategory webViewCategory() const { return m_webViewCategory; }
-    void setWebViewCategory(WebKit::WebViewCategory category) { m_webViewCategory = category; }
-
-    bool ignoresAppBoundDomains() const { return m_ignoresAppBoundDomains; }
-    void setIgnoresAppBoundDomains(bool shouldIgnore) { m_ignoresAppBoundDomains = shouldIgnore; }
-
     bool loadsSubresources() const { return m_loadsSubresources; }
     void setLoadsSubresources(bool loads) { m_loadsSubresources = loads; }
 
     bool loadsFromNetwork() const { return m_loadsFromNetwork; }
     void setLoadsFromNetwork(bool loads) { m_loadsFromNetwork = loads; }
 
+#if ENABLE(APP_BOUND_DOMAINS)
+    bool ignoresAppBoundDomains() const { return m_ignoresAppBoundDomains; }
+    void setIgnoresAppBoundDomains(bool shouldIgnore) { m_ignoresAppBoundDomains = shouldIgnore; }
+    
     bool limitsNavigationsToAppBoundDomains() const { return m_limitsNavigationsToAppBoundDomains; }
     void setLimitsNavigationsToAppBoundDomains(bool limits) { m_limitsNavigationsToAppBoundDomains = limits; }
+#endif
+
+    void setMediaCaptureEnabled(bool value) { m_mediaCaptureEnabled = value; }
+    bool mediaCaptureEnabled() const { return m_mediaCaptureEnabled; }
+
+    void setHTTPSUpgradeEnabled(bool enabled) { m_httpsUpgradeEnabled = enabled; }
+    bool httpsUpgradeEnabled() const { return m_httpsUpgradeEnabled; }
 
     void setShouldRelaxThirdPartyCookieBlocking(WebCore::ShouldRelaxThirdPartyCookieBlocking value) { m_shouldRelaxThirdPartyCookieBlocking = value; }
     WebCore::ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking() const { return m_shouldRelaxThirdPartyCookieBlocking; }
@@ -201,11 +205,17 @@ private:
     bool m_userScriptsShouldWaitUntilNotification { true };
     bool m_crossOriginAccessControlCheckEnabled { true };
     WTF::String m_processDisplayName;
-    WebKit::WebViewCategory m_webViewCategory { WebKit::WebViewCategory::AppBoundDomain };
-    bool m_ignoresAppBoundDomains { false };
     bool m_loadsSubresources { true };
     bool m_loadsFromNetwork { true };
+    
+#if ENABLE(APP_BOUND_DOMAINS)
+    bool m_ignoresAppBoundDomains { false };
     bool m_limitsNavigationsToAppBoundDomains { false };
+#endif
+
+    bool m_mediaCaptureEnabled { false };
+    bool m_httpsUpgradeEnabled { true };
+
     WebCore::ShouldRelaxThirdPartyCookieBlocking m_shouldRelaxThirdPartyCookieBlocking { WebCore::ShouldRelaxThirdPartyCookieBlocking::No };
 };
 

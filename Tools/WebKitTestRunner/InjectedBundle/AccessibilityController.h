@@ -25,12 +25,15 @@
 
 #pragma once
 
-#include "AccessibilityUIElement.h"
 #include "JSWrappable.h"
 #include <JavaScriptCore/JSObjectRef.h>
+#include <JavaScriptCore/JSRetainPtr.h>
 #include <wtf/Condition.h>
 #include <wtf/FastMalloc.h>
 #include <wtf/Platform.h>
+#if PLATFORM(COCOA)
+#include <wtf/RetainPtr.h>
+#endif
 #include <wtf/Threading.h>
 #include <wtf/threads/BinarySemaphore.h>
 
@@ -39,13 +42,15 @@
 #endif
 
 namespace WTR {
-    
+
+class AccessibilityUIElement;
+
 class AccessibilityController : public JSWrappable {
 public:
     static Ref<AccessibilityController> create();
     ~AccessibilityController();
 
-    void makeWindowObject(JSContextRef, JSObjectRef windowObject, JSValueRef* exception);
+    void makeWindowObject(JSContextRef);
     virtual JSClassRef wrapperClass();
     
     // Enhanced accessibility.

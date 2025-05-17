@@ -25,19 +25,24 @@
 
 #pragma once
 
-#import "UIScriptController.h"
+#import "UIScriptControllerCommon.h"
 
 OBJC_CLASS TestRunnerWKWebView;
 
 namespace WTR {
 
-class UIScriptControllerCocoa : public UIScriptController {
-public:
+class UIScriptControllerCocoa : public UIScriptControllerCommon {
+protected:
+    explicit UIScriptControllerCocoa(UIScriptContext&);
+    TestRunnerWKWebView *webView() const;
+
+    void doAsyncTask(JSValueRef) override;
+
+private:
     void setViewScale(double) override;
     void setMinimumEffectiveWidth(double) override;
     void becomeFirstResponder() override;
     void resignFirstResponder() override;
-    void doAsyncTask(JSValueRef) override;
     void removeViewFromWindow(JSValueRef) override;
     void addViewToWindow(JSValueRef) override;
     void overridePreference(JSStringRef, JSStringRef) override;
@@ -57,9 +62,14 @@ public:
 
     void setContinuousSpellCheckingEnabled(bool) override;
 
-protected:
-    explicit UIScriptControllerCocoa(UIScriptContext&);
-    TestRunnerWKWebView *webView() const;
+    void insertAttachmentForFilePath(JSStringRef filePath, JSStringRef contentType, JSValueRef callback) override;
+
+    void setDidShowContactPickerCallback(JSValueRef) override;
+    void setDidHideContactPickerCallback(JSValueRef) override;
+    bool isShowingContactPicker() const override;
+    void dismissContactPickerWithContacts(JSValueRef) override;
+
+    void completeTaskAsynchronouslyAfterActivityStateUpdate(unsigned callbackID);
 };
 
 } // namespace WTR

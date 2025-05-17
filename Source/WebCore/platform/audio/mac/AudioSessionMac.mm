@@ -33,6 +33,7 @@
 #import "NotImplemented.h"
 #import <CoreAudio/AudioHardware.h>
 #import <wtf/MainThread.h>
+#import <wtf/UniqueArray.h>
 #import <wtf/text/WTFString.h>
 
 #import <pal/cocoa/AVFoundationSoftLink.h>
@@ -54,18 +55,108 @@ static AudioDeviceID defaultDevice()
     return deviceID;
 }
 
+#if ENABLE(ROUTING_ARBITRATION)
+static Optional<bool> isPlayingToBluetoothOverride;
+
+static float defaultDeviceTransportIsBluetooth()
+{
+    if (isPlayingToBluetoothOverride)
+        return *isPlayingToBluetoothOverride;
+
+    static const AudioObjectPropertyAddress audioDeviceTransportTypeProperty = {
+        kAudioDevicePropertyTransportType,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMaster,
+    };
+    UInt32 transportType = kAudioDeviceTransportTypeUnknown;
+    UInt32 transportSize = sizeof(transportType);
+    if (AudioObjectGetPropertyData(defaultDevice(), &audioDeviceTransportTypeProperty, 0, 0, &transportSize, &transportType))
+        return false;
+
+    return transportType == kAudioDeviceTransportTypeBluetooth || transportType == kAudioDeviceTransportTypeBluetoothLE;
+}
+#endif
+
 class AudioSessionPrivate {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit AudioSessionPrivate() = default;
+
+    void addSampleRateObserverIfNeeded();
+    void addBufferSizeObserverIfNeeded();
+
+    static OSStatus handleSampleRateChange(AudioObjectID, UInt32, const AudioObjectPropertyAddress*, void* inClientData);
+    static OSStatus handleBufferSizeChange(AudioObjectID, UInt32, const AudioObjectPropertyAddress*, void* inClientData);
+
     Optional<bool> lastMutedState;
     AudioSession::CategoryType category { AudioSession::None };
 #if ENABLE(ROUTING_ARBITRATION)
     bool setupArbitrationOngoing { false };
+    Optional<bool> playingToBluetooth;
+    Optional<bool> playingToBluetoothOverride;
 #endif
     AudioSession::CategoryType m_categoryOverride;
     bool inRoutingArbitration { false };
+    bool hasSampleRateObserver { false };
+    bool hasBufferSizeObserver { false };
+    Optional<double> sampleRate;
+    Optional<size_t> bufferSize;
 };
+
+void AudioSessionPrivate::addSampleRateObserverIfNeeded()
+{
+    if (hasSampleRateObserver)
+        return;
+    hasSampleRateObserver = true;
+
+    AudioObjectPropertyAddress nominalSampleRateAddress = { kAudioDevicePropertyNominalSampleRate, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster };
+    AudioObjectAddPropertyListener(defaultDevice(), &nominalSampleRateAddress, handleSampleRateChange, this);
+}
+
+OSStatus AudioSessionPrivate::handleSampleRateChange(AudioObjectID device, UInt32, const AudioObjectPropertyAddress* sampleRateAddress, void* inClientData)
+{
+    ASSERT(inClientData);
+    if (!inClientData)
+        return noErr;
+
+    auto* sessionPrivate = static_cast<AudioSessionPrivate*>(inClientData);
+
+    Float64 nominalSampleRate;
+    UInt32 nominalSampleRateSize = sizeof(Float64);
+    OSStatus result = AudioObjectGetPropertyData(device, sampleRateAddress, 0, 0, &nominalSampleRateSize, (void*)&nominalSampleRate);
+    if (result)
+        return result;
+
+    sessionPrivate->sampleRate = narrowPrecisionToFloat(nominalSampleRate);
+    return noErr;
+}
+
+void AudioSessionPrivate::addBufferSizeObserverIfNeeded()
+{
+    if (hasBufferSizeObserver)
+        return;
+
+    AudioObjectPropertyAddress bufferSizeAddress = { kAudioDevicePropertyBufferFrameSize, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster };
+    AudioObjectAddPropertyListener(defaultDevice(), &bufferSizeAddress, handleBufferSizeChange, this);
+}
+
+OSStatus AudioSessionPrivate::handleBufferSizeChange(AudioObjectID device, UInt32, const AudioObjectPropertyAddress* bufferSizeAddress, void* inClientData)
+{
+    ASSERT(inClientData);
+    if (!inClientData)
+        return noErr;
+
+    auto* sessionPrivate = static_cast<AudioSessionPrivate*>(inClientData);
+
+    UInt32 bufferSize;
+    UInt32 bufferSizeSize = sizeof(bufferSize);
+    OSStatus result = AudioObjectGetPropertyData(device, bufferSizeAddress, 0, 0, &bufferSizeSize, &bufferSize);
+    if (result)
+        return result;
+
+    sessionPrivate->bufferSize = bufferSize;
+    return noErr;
+}
 
 AudioSession::AudioSession()
     : m_private(makeUnique<AudioSessionPrivate>())
@@ -79,11 +170,32 @@ AudioSession::CategoryType AudioSession::category() const
     return m_private->category;
 }
 
+void AudioSession::audioOutputDeviceChanged()
+{
+#if ENABLE(ROUTING_ARBITRATION)
+    if (!m_private->playingToBluetooth || *m_private->playingToBluetooth == defaultDeviceTransportIsBluetooth())
+        return;
+
+    m_private->playingToBluetooth = WTF::nullopt;
+#endif
+}
+
+void AudioSession::setIsPlayingToBluetoothOverride(Optional<bool> value)
+{
+#if ENABLE(ROUTING_ARBITRATION)
+    isPlayingToBluetoothOverride = value;
+#else
+    UNUSED_PARAM(value);
+#endif
+}
+
 void AudioSession::setCategory(CategoryType category, RouteSharingPolicy)
 {
 #if ENABLE(ROUTING_ARBITRATION)
-    if (category == m_private->category)
+    bool playingToBluetooth = defaultDeviceTransportIsBluetooth();
+    if (category == m_private->category && m_private->playingToBluetooth && *m_private->playingToBluetooth == playingToBluetooth)
         return;
+
     m_private->category = category;
 
     if (m_private->setupArbitrationOngoing) {
@@ -105,6 +217,7 @@ void AudioSession::setCategory(CategoryType category, RouteSharingPolicy)
     using RoutingArbitrationError = AudioSessionRoutingArbitrationClient::RoutingArbitrationError;
     using DefaultRouteChanged = AudioSessionRoutingArbitrationClient::DefaultRouteChanged;
 
+    m_private->playingToBluetooth = playingToBluetooth;
     m_private->setupArbitrationOngoing = true;
     m_routingArbitrationClient->beginRoutingArbitrationWithCategory(m_private->category, [this] (RoutingArbitrationError error, DefaultRouteChanged defaultRouteChanged) {
         m_private->setupArbitrationOngoing = false;
@@ -140,6 +253,11 @@ void AudioSession::setCategoryOverride(CategoryType category)
 
 float AudioSession::sampleRate() const
 {
+    if (m_private->sampleRate)
+        return *m_private->sampleRate;
+
+    m_private->addSampleRateObserverIfNeeded();
+
     Float64 nominalSampleRate;
     UInt32 nominalSampleRateSize = sizeof(Float64);
 
@@ -151,11 +269,18 @@ float AudioSession::sampleRate() const
     if (result)
         return 0;
 
+    m_private->sampleRate = narrowPrecisionToFloat(nominalSampleRate);
+
     return narrowPrecisionToFloat(nominalSampleRate);
 }
 
 size_t AudioSession::bufferSize() const
 {
+    if (m_private->bufferSize)
+        return *m_private->bufferSize;
+
+    m_private->addBufferSizeObserverIfNeeded();
+
     UInt32 bufferSize;
     UInt32 bufferSizeSize = sizeof(bufferSize);
 
@@ -167,6 +292,9 @@ size_t AudioSession::bufferSize() const
 
     if (result)
         return 0;
+
+    m_private->bufferSize = bufferSize;
+
     return bufferSize;
 }
 
@@ -174,6 +302,32 @@ size_t AudioSession::numberOfOutputChannels() const
 {
     notImplemented();
     return 0;
+}
+
+size_t AudioSession::maximumNumberOfOutputChannels() const
+{
+    AudioObjectPropertyAddress sizeAddress = {
+        kAudioDevicePropertyStreamConfiguration,
+        kAudioObjectPropertyScopeOutput,
+        kAudioObjectPropertyElementMaster
+    };
+
+    UInt32 size = 0;
+    OSStatus result = AudioObjectGetPropertyDataSize(defaultDevice(), &sizeAddress, 0, 0, &size);
+    if (result || !size)
+        return 0;
+
+    auto listMemory = makeUniqueArray<uint8_t>(size);
+    auto* audioBufferList = reinterpret_cast<AudioBufferList*>(listMemory.get());
+
+    result = AudioObjectGetPropertyData(defaultDevice(), &sizeAddress, 0, 0, &size, audioBufferList);
+    if (result)
+        return 0;
+
+    size_t channels = 0;
+    for (UInt32 i = 0; i < audioBufferList->mNumberBuffers; ++i)
+        channels += audioBufferList->mBuffers[i].mNumberChannels;
+    return channels;
 }
 
 bool AudioSession::tryToSetActiveInternal(bool)
@@ -194,22 +348,14 @@ String AudioSession::routingContextUID() const
 
 size_t AudioSession::preferredBufferSize() const
 {
-    UInt32 bufferSize;
-    UInt32 bufferSizeSize = sizeof(bufferSize);
-
-    AudioObjectPropertyAddress preferredBufferSizeAddress = {
-        kAudioDevicePropertyBufferFrameSize,
-        kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMaster };
-    OSStatus result = AudioObjectGetPropertyData(defaultDevice(), &preferredBufferSizeAddress, 0, 0, &bufferSizeSize, &bufferSize);
-
-    if (result)
-        return 0;
-    return bufferSize;
+    return bufferSize();
 }
 
 void AudioSession::setPreferredBufferSize(size_t bufferSize)
 {
+    if (m_private->bufferSize == bufferSize)
+        return;
+
     AudioValueRange bufferSizeRange = {0, 0};
     UInt32 bufferSizeRangeSize = sizeof(AudioValueRange);
     AudioObjectPropertyAddress bufferSizeRangeAddress = {
@@ -232,9 +378,10 @@ void AudioSession::setPreferredBufferSize(size_t bufferSize)
 
     result = AudioObjectSetPropertyData(defaultDevice(), &preferredBufferSizeAddress, 0, 0, sizeof(bufferSizeOut), (void*)&bufferSizeOut);
 
-#if LOG_DISABLED
-    UNUSED_PARAM(result);
-#else
+    if (!result)
+        m_private->bufferSize = bufferSizeOut;
+
+#if !LOG_DISABLED
     if (result)
         LOG(Media, "AudioSession::setPreferredBufferSize(%zu) - failed with error %d", bufferSize, static_cast<int>(result));
     else

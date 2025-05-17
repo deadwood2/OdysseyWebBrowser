@@ -104,6 +104,9 @@ typedef struct _CARenderContext CARenderContext;
 @property BOOL needsLayoutOnGeometryChange;
 @property BOOL shadowPathIsBounds;
 @property BOOL continuousCorners;
+#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
+@property (getter=isSeparated) BOOL separated;
+#endif
 @end
 
 #if ENABLE(FILTERS_LEVEL_2)
@@ -143,6 +146,7 @@ typedef enum {
 + (void)addCommitHandler:(void(^)(void))block forPhase:(CATransactionPhase)phase;
 + (CATransactionPhase)currentPhase;
 + (void)synchronize;
++ (uint32_t)currentState;
 @end
 
 @interface CALayerHost : CALayer

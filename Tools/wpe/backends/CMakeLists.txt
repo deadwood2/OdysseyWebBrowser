@@ -21,7 +21,6 @@ set(WPEToolingBackends_INCLUDE_DIRECTORIES
 
 set(WPEToolingBackends_SYSTEM_INCLUDE_DIRECTORIES
     ${ATK_INCLUDE_DIRS}
-    ${ATK_BRIDGE_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
     ${LIBEPOXY_INCLUDE_DIRS}
     ${WPEBACKEND_FDO_INCLUDE_DIRS}
@@ -31,7 +30,6 @@ set(WPEToolingBackends_LIBRARIES
     Cairo::Cairo
     WPE::libwpe
     ${ATK_LIBRARIES}
-    ${ATK_BRIDGE_LIBRARIES}
     ${GLIB_LIBRARIES}
     ${LIBEPOXY_LIBRARIES}
     ${LIBXKBCOMMON_LIBRARIES}
@@ -57,6 +55,7 @@ add_custom_command(
 if (ENABLE_ACCESSIBILITY)
     add_definitions(-DHAVE_ACCESSIBILITY=1)
     add_definitions(-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_40)
+    list(APPEND WPEToolingBackends_LIBRARIES ATK::Bridge)
 endif ()
 
 add_library(WPEToolingBackends STATIC ${WPEToolingBackends_SOURCES})

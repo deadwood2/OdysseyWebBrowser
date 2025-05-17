@@ -25,18 +25,26 @@
 
 #pragma once
 
+#include "DataReference.h"
 #include "LayerTreeContext.h"
+#include "PDFPluginIdentifier.h"
+#include "PasteboardAccessIntent.h"
 #include "SameDocumentNavigationType.h"
 #include "ShareableBitmap.h"
 #include "WebColorPicker.h"
 #include "WebDataListSuggestionsDropdown.h"
+#include "WebDateTimePicker.h"
 #include "WebPopupMenuProxy.h"
 #include <WebCore/ActivityState.h>
 #include <WebCore/AlternativeTextClient.h>
+#include <WebCore/ContactInfo.h>
+#include <WebCore/ContactsRequestData.h>
+#include <WebCore/DataOwnerType.h>
 #include <WebCore/DragActions.h>
 #include <WebCore/EditorClient.h>
 #include <WebCore/FocusDirection.h>
 #include <WebCore/InputMode.h>
+#include <WebCore/MediaControlsContextMenuItem.h>
 #include <WebCore/UserInterfaceLayoutDirection.h>
 #include <WebCore/ValidationBubble.h>
 #include <wtf/CompletionHandler.h>
@@ -50,13 +58,22 @@
 #include "RemoteLayerTreeNode.h"
 #include "WKFoundation.h"
 
+#if PLATFORM(IOS_FAMILY)
+#include <WebCore/InspectorOverlay.h>
+#endif
+
+#if ENABLE(IMAGE_EXTRACTION)
+#include <WebCore/ImageExtractionResult.h>
+#endif
+
 OBJC_CLASS CALayer;
 OBJC_CLASS NSFileWrapper;
 OBJC_CLASS NSMenu;
 OBJC_CLASS NSSet;
 OBJC_CLASS NSTextAlternatives;
 OBJC_CLASS UIGestureRecognizer;
-OBJC_CLASS WKDrawingView;
+OBJC_CLASS UIScrollEvent;
+OBJC_CLASS UIScrollView;
 OBJC_CLASS _WKRemoteObjectRegistry;
 
 #if USE(APPKIT)
@@ -73,14 +90,11 @@ class OpenPanelParameters;
 class SecurityOrigin;
 }
 
-namespace IPC {
-class DataReference;
-}
-
 namespace WebCore {
 class Color;
 class Cursor;
 class FloatQuad;
+class FloatRect;
 class Region;
 class TextIndicator;
 class WebMediaSessionManager;
@@ -96,8 +110,8 @@ enum class TextIndicatorWindowLifetime : uint8_t;
 enum class TextIndicatorWindowDismissalAnimation : uint8_t;
 enum class DOMPasteAccessResponse : uint8_t;
 
+struct AppHighlight;
 struct DictionaryPopupInfo;
-struct Highlight;
 struct TextIndicatorData;
 struct ViewportAttributes;
 struct ShareDataWithParsedURL;
@@ -158,6 +172,10 @@ class WebColorPicker;
 class WebDataListSuggestionsDropdown;
 #endif
 
+#if ENABLE(DATE_AND_TIME_INPUT_TYPES)
+class WebDateTimePicker;
+#endif
+
 #if ENABLE(FULLSCREEN_API)
 class WebFullScreenManagerProxyClient;
 #endif
@@ -204,8 +222,7 @@ public:
     virtual bool isViewVisible() = 0;
 
 #if PLATFORM(IOS_FAMILY)
-    // Return whether the application is visible.
-    virtual bool isApplicationVisible() = 0;
+    virtual bool canTakeForegroundAssertions() = 0;
 #endif
 
     // Return whether the view is visible, or occluded by another window.
@@ -238,10 +255,18 @@ public:
     virtual void didFailProvisionalLoadForMainFrame() { };
     virtual void didCommitLoadForMainFrame(const String& mimeType, bool useCustomContentProvider) = 0;
 
+#if ENABLE(UI_PROCESS_PDF_HUD)
+    virtual void createPDFHUD(PDFPluginIdentifier, const WebCore::IntRect&) = 0;
+    virtual void updatePDFHUDLocation(PDFPluginIdentifier, const WebCore::IntRect&) = 0;
+    virtual void removePDFHUD(PDFPluginIdentifier) = 0;
+    virtual void removeAllPDFHUDs() = 0;
+#endif
+    
     virtual void handleDownloadRequest(DownloadProxy&) = 0;
 
     virtual bool handleRunOpenPanel(WebPageProxy*, WebFrameProxy*, const FrameInfoData&, API::OpenPanelParameters*, WebOpenPanelResultListenerProxy*) { return false; }
     virtual bool showShareSheet(const WebCore::ShareDataWithParsedURL&, WTF::CompletionHandler<void (bool)>&&) { return false; }
+    virtual void showContactPicker(const WebCore::ContactsRequestData&, WTF::CompletionHandler<void(Optional<Vector<WebCore::ContactInfo>>&&)>&& completionHandler) { completionHandler(WTF::nullopt); }
 
     virtual void didChangeContentSize(const WebCore::IntSize&) = 0;
 
@@ -292,7 +317,7 @@ public:
 #endif
 
 #if USE(APPKIT)
-    virtual void setPromisedDataForImage(const String& pasteboardName, Ref<WebCore::SharedBuffer>&& imageBuffer, const String& filename, const String& extension, const String& title, const String& url, const String& visibleUrl, RefPtr<WebCore::SharedBuffer>&& archiveBuffer) = 0;
+    virtual void setPromisedDataForImage(const String& pasteboardName, Ref<WebCore::SharedBuffer>&& imageBuffer, const String& filename, const String& extension, const String& title, const String& url, const String& visibleURL, RefPtr<WebCore::SharedBuffer>&& archiveBuffer, const String& originIdentifier) = 0;
 #endif
 
     virtual WebCore::FloatRect convertToDeviceSpace(const WebCore::FloatRect&) = 0;
@@ -323,7 +348,8 @@ public:
     virtual void doneWithTouchEvent(const NativeWebTouchEvent&, bool wasEventHandled) = 0;
 #endif
 #if ENABLE(IOS_TOUCH_EVENTS)
-    virtual void doneDeferringNativeGestures(bool preventNativeGestures) = 0;
+    virtual void doneDeferringTouchStart(bool preventNativeGestures) = 0;
+    virtual void doneDeferringTouchEnd(bool preventNativeGestures) = 0;
 #endif
 
     virtual RefPtr<WebPopupMenuProxy> createPopupMenuProxy(WebPageProxy&) = 0;
@@ -337,6 +363,10 @@ public:
 
 #if ENABLE(DATALIST_ELEMENT)
     virtual RefPtr<WebDataListSuggestionsDropdown> createDataListSuggestionsDropdown(WebPageProxy&) = 0;
+#endif
+
+#if ENABLE(DATE_AND_TIME_INPUT_TYPES)
+    virtual RefPtr<WebDateTimePicker> createDateTimePicker(WebPageProxy&) = 0;
 #endif
 
 #if PLATFORM(COCOA)
@@ -370,6 +400,7 @@ public:
     virtual void removeDictationAlternatives(WebCore::DictationContext) = 0;
     virtual void showDictationAlternativeUI(const WebCore::FloatRect& boundingBoxOfDictatedText, WebCore::DictationContext) = 0;
     virtual Vector<String> dictationAlternatives(WebCore::DictationContext) = 0;
+    virtual NSTextAlternatives *platformDictationAlternatives(WebCore::DictationContext) = 0;
 #endif
 
 #if PLATFORM(MAC)
@@ -434,7 +465,7 @@ public:
     virtual void scrollingNodeScrollDidEndScroll() = 0;
     virtual Vector<String> mimeTypesWithCustomContentProviders() = 0;
 
-    virtual void showInspectorHighlight(const WebCore::Highlight&) = 0;
+    virtual void showInspectorHighlight(const WebCore::InspectorOverlay::Highlight&) = 0;
     virtual void hideInspectorHighlight() = 0;
 
     virtual void showInspectorIndication() = 0;
@@ -444,6 +475,10 @@ public:
     virtual void disableInspectorNodeSearch() = 0;
 
     virtual void handleAutocorrectionContext(const WebAutocorrectionContext&) = 0;
+
+#if HAVE(UISCROLLVIEW_ASYNCHRONOUS_SCROLL_EVENT_HANDLING)
+    virtual void handleAsynchronousCancelableScrollEvent(UIScrollView *, UIScrollEvent *, void (^completion)(BOOL handled)) = 0;
+#endif
 #endif
 
     // Auxiliary Client Creation
@@ -466,6 +501,10 @@ public:
     virtual void didFailNavigation(API::Navigation*) = 0;
     virtual void didSameDocumentNavigationForMainFrame(SameDocumentNavigationType) = 0;
 
+    virtual void themeColorWillChange() { }
+    virtual void themeColorDidChange() { }
+    virtual void pageExtendedBackgroundColorWillChange() { }
+    virtual void pageExtendedBackgroundColorDidChange() { }
     virtual void didChangeBackgroundColor() = 0;
     virtual void isPlayingAudioWillChange() = 0;
     virtual void isPlayingAudioDidChange() = 0;
@@ -477,6 +516,20 @@ public:
     virtual bool hasSafeBrowsingWarning() const { return false; }
 
     virtual void setMouseEventPolicy(WebCore::MouseEventPolicy) { }
+
+    virtual void setHasBlankOverlay(bool) { }
+
+#if HAVE(PASTEBOARD_DATA_OWNER)
+    virtual WebCore::DataOwnerType dataOwnerForPasteboard(PasteboardAccessIntent) const { return WebCore::DataOwnerType::Undefined; }
+#endif
+
+#if ENABLE(IMAGE_EXTRACTION)
+    virtual void requestImageExtraction(const ShareableBitmap::Handle&, CompletionHandler<void(WebCore::ImageExtractionResult&&)>&& completion) { completion({ }); }
+#endif
+
+#if ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
+    virtual void showMediaControlsContextMenu(WebCore::FloatRect&&, Vector<WebCore::MediaControlsContextMenuItem>&&, CompletionHandler<void(WebCore::MediaControlsContextMenuItem::ID)>&& completionHandler) { completionHandler(WebCore::MediaControlsContextMenuItem::invalidID); }
+#endif // ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
     
 #if PLATFORM(MAC)
     virtual void didPerformImmediateActionHitTest(const WebHitTestResultData&, bool contentPreventsDefault, API::Object*) = 0;
@@ -528,8 +581,8 @@ public:
 #endif
 #endif
 
-#if HAVE(PENCILKIT)
-    virtual RetainPtr<WKDrawingView> createDrawingView(WebCore::GraphicsLayer::EmbeddedViewID) { return nullptr; }
+#if ENABLE(APP_HIGHLIGHTS)
+    virtual void storeAppHighlight(const WebCore::AppHighlight&) = 0;
 #endif
 
 #if PLATFORM(COCOA)

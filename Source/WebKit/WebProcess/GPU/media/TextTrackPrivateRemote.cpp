@@ -29,6 +29,7 @@
 
 #if ENABLE(GPU_PROCESS)
 
+#include "Connection.h"
 #include "DataReference.h"
 #include "MediaPlayerPrivateRemote.h"
 #include "RemoteMediaPlayerProxyMessages.h"
@@ -37,10 +38,11 @@
 namespace WebKit {
 using namespace WebCore;
 
-TextTrackPrivateRemote::TextTrackPrivateRemote(MediaPlayerPrivateRemote& player, TrackPrivateRemoteIdentifier idendifier, TextTrackPrivateRemoteConfiguration&& configuration)
+TextTrackPrivateRemote::TextTrackPrivateRemote(IPC::Connection& connection, MediaPlayerIdentifier playerIdentifier, TrackPrivateRemoteIdentifier idendifier, TextTrackPrivateRemoteConfiguration&& configuration)
     : WebCore::InbandTextTrackPrivate(configuration.cueFormat)
-    , m_player(player)
-    , m_idendifier(idendifier)
+    , m_connection(connection)
+    , m_playerIdentifier(playerIdentifier)
+    , m_identifier(idendifier)
 {
     updateConfiguration(WTFMove(configuration));
 }
@@ -48,16 +50,16 @@ TextTrackPrivateRemote::TextTrackPrivateRemote(MediaPlayerPrivateRemote& player,
 void TextTrackPrivateRemote::setMode(TextTrackMode mode)
 {
     if (mode != m_mode)
-        m_player.connection().send(Messages::RemoteMediaPlayerProxy::TextTrackSetMode(m_idendifier, mode), m_player.itentifier());
+        m_connection.send(Messages::RemoteMediaPlayerProxy::TextTrackSetMode(m_identifier, mode), m_playerIdentifier);
 
     InbandTextTrackPrivate::setMode(mode);
 }
 
 void TextTrackPrivateRemote::updateConfiguration(TextTrackPrivateRemoteConfiguration&& configuration)
 {
-    if (configuration.id != m_id) {
+    if (configuration.trackId != m_id) {
         auto changed = !m_id.isEmpty();
-        m_id = configuration.id;
+        m_id = configuration.trackId;
         if (changed && client())
             client()->idChanged(m_id);
     }

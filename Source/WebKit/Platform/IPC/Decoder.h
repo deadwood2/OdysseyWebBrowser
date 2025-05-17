@@ -25,11 +25,10 @@
 
 #pragma once
 
-#include "ArgumentCoder.h"
 #include "Attachment.h"
 #include "MessageNames.h"
 #include "StringReference.h"
-#include <WebCore/ContextMenuItem.h>
+#include <WebCore/SharedBuffer.h>
 #include <wtf/OptionSet.h>
 #include <wtf/Vector.h>
 
@@ -39,16 +38,20 @@
 
 namespace IPC {
 
-class DataReference;
 class ImportanceAssertion;
 enum class MessageFlags : uint8_t;
 enum class ShouldDispatchWhenWaitingForSyncReply : uint8_t;
+
+template<typename, typename> struct ArgumentCoder;
+template<typename, typename> struct HasLegacyDecoder;
+template<typename, typename> struct HasModernDecoder;
 
 class Decoder {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     static std::unique_ptr<Decoder> create(const uint8_t* buffer, size_t bufferSize, void (*bufferDeallocator)(const uint8_t*, size_t), Vector<Attachment>&&);
-    explicit Decoder(const uint8_t* buffer, size_t bufferSize, void (*bufferDeallocator)(const uint8_t*, size_t), Vector<Attachment>&&);
+    Decoder(const uint8_t* stream, size_t streamSize, uint64_t destinationID);
+
     ~Decoder();
 
     Decoder(const Decoder&) = delete;
@@ -58,7 +61,7 @@ public:
     MessageName messageName() const { return m_messageName; }
     uint64_t destinationID() const { return m_destinationID; }
 
-    bool isSyncMessage() const;
+    bool isSyncMessage() const { return messageIsSync(messageName()); }
     ShouldDispatchWhenWaitingForSyncReply shouldDispatchMessageWhenWaitingForSyncReply() const;
     bool shouldUseFullySynchronousModeForTesting() const;
 
@@ -66,12 +69,10 @@ public:
     void setImportanceAssertion(std::unique_ptr<ImportanceAssertion>);
 #endif
 
-#if HAVE(QOS_CLASSES)
-    void setQOSClassOverride(pthread_override_t override) { m_qosClassOverride = override; }
-#endif
-
     static std::unique_ptr<Decoder> unwrapForTesting(Decoder&);
 
+    const uint8_t* buffer() const { return m_buffer; }
+    size_t currentBufferPosition() const { return m_bufferPos - m_buffer; }
     size_t length() const { return m_bufferEnd - m_buffer; }
 
     WARN_UNUSED_RETURN bool isValid() const { return m_bufferPos != nullptr; }
@@ -79,44 +80,37 @@ public:
 
     WARN_UNUSED_RETURN bool decodeFixedLengthData(uint8_t* data, size_t, size_t alignment);
 
-    // The data in the data reference here will only be valid for the lifetime of the ArgumentDecoder object.
-    WARN_UNUSED_RETURN bool decodeVariableLengthByteArray(DataReference&);
+    // The data in the returned pointer here will only be valid for the lifetime of the Decoder object.
+    // Returns nullptr on failure.
+    WARN_UNUSED_RETURN const uint8_t* decodeFixedLengthReference(size_t, size_t alignment);
 
-    template<typename T, std::enable_if_t<std::is_arithmetic<T>::value>* = nullptr>
-    WARN_UNUSED_RETURN bool decode(T& value)
+    template<typename T>
+    WARN_UNUSED_RETURN bool decode(T& t)
     {
-        return decodeFixedLengthData(reinterpret_cast<uint8_t*>(&value), sizeof(T), alignof(T));
+        using Impl = ArgumentCoder<std::remove_const_t<std::remove_reference_t<T>>, void>;
+        if constexpr(HasLegacyDecoder<T, Impl>::value)
+            return Impl::decode(*this, t);
+        else {
+            Optional<T> optional;
+            *this >> optional;
+            if (!optional)
+                return false;
+            t = WTFMove(*optional);
+            return true;
+        }
     }
 
-    template<typename T, std::enable_if_t<std::is_arithmetic<T>::value>* = nullptr>
-    Decoder& operator>>(Optional<T>& optional)
+    template<typename T>
+    Decoder& operator>>(Optional<T>& t)
     {
-        T result;
-        if (decodeFixedLengthData(reinterpret_cast<uint8_t*>(&result), sizeof(T), alignof(T)))
-            optional = result;
-        return *this;
-    }
-
-    template<typename E, std::enable_if_t<std::is_enum<E>::value>* = nullptr>
-    WARN_UNUSED_RETURN bool decode(E& enumValue)
-    {
-        std::underlying_type_t<E> value;
-        if (!decode(value))
-            return false;
-        if (!WTF::isValidEnum<E>(value))
-            return false;
-
-        enumValue = static_cast<E>(value);
-        return true;
-    }
-
-    template<typename E, std::enable_if_t<std::is_enum<E>::value>* = nullptr>
-    Decoder& operator>>(Optional<E>& optional)
-    {
-        Optional<std::underlying_type_t<E>> value;
-        *this >> value;
-        if (value && WTF::isValidEnum<E>(*value))
-            optional = static_cast<E>(*value);
+        using Impl = ArgumentCoder<std::remove_const_t<std::remove_reference_t<T>>, void>;
+        if constexpr(HasModernDecoder<T, Impl>::value)
+            t = Impl::decode(*this);
+        else {
+            T v;
+            if (Impl::decode(*this, v))
+                t = WTFMove(v);
+        }
         return *this;
     }
 
@@ -131,47 +125,28 @@ public:
         return bufferIsLargeEnoughToContain(alignof(T), numElements * sizeof(T));
     }
 
-    template<typename T, std::enable_if_t<!std::is_enum<T>::value && !std::is_arithmetic<T>::value && UsesLegacyDecoder<T>::value>* = nullptr>
-    WARN_UNUSED_RETURN bool decode(T& t)
-    {
-        return ArgumentCoder<T>::decode(*this, t);
-    }
-
-    template<typename T, std::enable_if_t<!std::is_enum<T>::value && !std::is_arithmetic<T>::value && !UsesLegacyDecoder<T>::value>* = nullptr>
-    WARN_UNUSED_RETURN bool decode(T& t)
-    {
-        Optional<T> optional;
-        *this >> optional;
-        if (!optional)
-            return false;
-        t = WTFMove(*optional);
-        return true;
-    }
-
-    template<typename T, std::enable_if_t<UsesModernDecoder<T>::value>* = nullptr>
-    Decoder& operator>>(Optional<T>& t)
-    {
-        t = ArgumentCoder<T>::decode(*this);
-        return *this;
-    }
-    
-    template<typename T, std::enable_if_t<!std::is_enum<T>::value && !std::is_arithmetic<T>::value && !UsesModernDecoder<T>::value>* = nullptr>
-    Decoder& operator>>(Optional<T>& optional)
-    {
-        T t;
-        if (ArgumentCoder<T>::decode(*this, t)) {
-            optional = WTFMove(t);
-            return *this;
-        }
-        optional = WTF::nullopt;
-        return *this;
-    }
-
     bool removeAttachment(Attachment&);
 
     static const bool isIPCDecoder = true;
 
+    template <typename T>
+    static Optional<T> decodeSingleObject(const uint8_t* source, size_t numberOfBytes)
+    {
+        Optional<T> result;
+        Decoder decoder(source, numberOfBytes, ConstructWithoutHeader);
+        if (!decoder.isValid())
+            return WTF::nullopt;
+
+        decoder >> result;
+        return result;
+    }
+
 private:
+    Decoder(const uint8_t* buffer, size_t bufferSize, void (*bufferDeallocator)(const uint8_t*, size_t), Vector<Attachment>&&);
+
+    enum ConstructWithoutHeaderTag { ConstructWithoutHeader };
+    Decoder(const uint8_t* buffer, size_t bufferSize, ConstructWithoutHeaderTag);
+
     bool alignBufferPosition(size_t alignment, size_t);
     bool bufferIsLargeEnoughToContain(size_t alignment, size_t) const;
 
@@ -189,10 +164,6 @@ private:
 
 #if PLATFORM(MAC)
     std::unique_ptr<ImportanceAssertion> m_importanceAssertion;
-#endif
-
-#if HAVE(QOS_CLASSES)
-    pthread_override_t m_qosClassOverride { nullptr };
 #endif
 };
 

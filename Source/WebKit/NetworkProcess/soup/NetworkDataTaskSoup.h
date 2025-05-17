@@ -26,6 +26,7 @@
 #pragma once
 
 #include "NetworkDataTask.h"
+#include <WebCore/DataURLDecoder.h>
 #include <WebCore/FrameIdentifier.h>
 #include <WebCore/NetworkLoadMetrics.h>
 #include <WebCore/PageIdentifier.h>
@@ -33,6 +34,7 @@
 #include <WebCore/ResourceResponse.h>
 #include <wtf/RunLoop.h>
 #include <wtf/glib/GRefPtr.h>
+#include <wtf/text/CString.h>
 
 namespace WebKit {
 
@@ -63,17 +65,34 @@ private:
     enum class WasBlockingCookies { No, Yes };
     void createRequest(WebCore::ResourceRequest&&, WasBlockingCookies);
     void clearRequest();
-    static void sendRequestCallback(SoupRequest*, GAsyncResult*, NetworkDataTaskSoup*);
+
+    struct SendRequestData {
+        WTF_MAKE_STRUCT_FAST_ALLOCATED;
+        GRefPtr<SoupMessage> soupMessage;
+        RefPtr<NetworkDataTaskSoup> task;
+    };
+    static void sendRequestCallback(SoupSession*, GAsyncResult*, SendRequestData*);
     void didSendRequest(GRefPtr<GInputStream>&&);
     void dispatchDidReceiveResponse();
     void dispatchDidCompleteWithError(const WebCore::ResourceError&);
 
+#if USE(SOUP2)
     static gboolean tlsConnectionAcceptCertificateCallback(GTlsConnection*, GTlsCertificate*, GTlsCertificateFlags, NetworkDataTaskSoup*);
-    bool tlsConnectionAcceptCertificate(GTlsCertificate*, GTlsCertificateFlags);
+#else
+    static gboolean acceptCertificateCallback(SoupMessage*, GTlsCertificate*, GTlsCertificateFlags, NetworkDataTaskSoup*);
+#endif
+    bool acceptCertificate(GTlsCertificate*, GTlsCertificateFlags);
+
+    static void didSniffContentCallback(SoupMessage*, const char* contentType, GHashTable* parameters, NetworkDataTaskSoup*);
+    void didSniffContent(CString&&);
 
     bool persistentCredentialStorageEnabled() const;
     void applyAuthenticationToRequest(WebCore::ResourceRequest&);
+#if USE(SOUP2)
     static void authenticateCallback(SoupSession*, SoupMessage*, SoupAuth*, gboolean retrying, NetworkDataTaskSoup*);
+#else
+    static gboolean authenticateCallback(SoupMessage*, SoupAuth*, gboolean retrying, NetworkDataTaskSoup*);
+#endif
     void authenticate(WebCore::AuthenticationChallenge&&);
     void continueAuthenticate(WebCore::AuthenticationChallenge&&);
 
@@ -96,7 +115,11 @@ private:
     static void gotHeadersCallback(SoupMessage*, NetworkDataTaskSoup*);
     void didGetHeaders();
 
+#if USE(SOUP2)
     static void wroteBodyDataCallback(SoupMessage*, SoupBuffer*, NetworkDataTaskSoup*);
+#else
+    static void wroteBodyDataCallback(SoupMessage*, unsigned, NetworkDataTaskSoup*);
+#endif
     void didWriteBodyData(uint64_t bytesSent);
 
     void download();
@@ -120,26 +143,40 @@ private:
     bool shouldAllowHSTSPolicySetting() const;
     bool shouldAllowHSTSProtocolUpgrade() const;
     void protocolUpgradedViaHSTS(SoupMessage*);
+#if USE(SOUP2)
     static void hstsEnforced(SoupHSTSEnforcer*, SoupMessage*, NetworkDataTaskSoup*);
+#else
+    static void hstsEnforced(SoupMessage*, NetworkDataTaskSoup*);
+#endif
 #endif
     void didStartRequest();
     static void restartedCallback(SoupMessage*, NetworkDataTaskSoup*);
     void didRestart();
 
+    static void fileQueryInfoCallback(GFile*, GAsyncResult*, NetworkDataTaskSoup*);
+    void didGetFileInfo(GFileInfo*);
+    static void readFileCallback(GFile*, GAsyncResult*, NetworkDataTaskSoup*);
+    static void enumerateFileChildrenCallback(GFile*, GAsyncResult*, NetworkDataTaskSoup*);
+    void didReadFile(GRefPtr<GInputStream>&&);
+
+    void didReadDataURL(Optional<WebCore::DataURLDecoder::Result>&&);
+
     WebCore::FrameIdentifier m_frameID;
     WebCore::PageIdentifier m_pageID;
     State m_state { State::Suspended };
     WebCore::ContentSniffingPolicy m_shouldContentSniff;
-    GRefPtr<SoupRequest> m_soupRequest;
     GRefPtr<SoupMessage> m_soupMessage;
+    GRefPtr<GFile> m_file;
     GRefPtr<GInputStream> m_inputStream;
     GRefPtr<SoupMultipartInputStream> m_multipartInputStream;
     GRefPtr<GCancellable> m_cancellable;
     GRefPtr<GAsyncResult> m_pendingResult;
+    Optional<WebCore::DataURLDecoder::Result> m_pendingDataURLResult;
     WebCore::ProtectionSpace m_protectionSpaceForPersistentStorage;
     WebCore::Credential m_credentialForPersistentStorage;
     WebCore::ResourceRequest m_currentRequest;
     WebCore::ResourceResponse m_response;
+    CString m_sniffedContentType;
     Vector<char> m_readBuffer;
     unsigned m_redirectCount { 0 };
     uint64_t m_bodyDataTotalBytesSent { 0 };

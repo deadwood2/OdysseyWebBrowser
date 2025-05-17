@@ -42,6 +42,7 @@
 #import <WebCore/FocusController.h>
 #import <WebCore/FontCascade.h>
 #import <WebCore/Frame.h>
+#import <WebCore/GeometryUtilities.h>
 #import <WebCore/HTMLLinkElement.h>
 #import <WebCore/HTMLNames.h>
 #import <WebCore/HTMLParserIdioms.h>
@@ -534,8 +535,10 @@ id <DOMEventTarget> kit(EventTarget* target)
     auto textIndicator = TextIndicator::createWithRange(makeRangeSelectingNodeContents(node), options, TextIndicatorPresentationTransition::None, FloatSize(margin, margin));
 
     if (textIndicator) {
-        if (Image* image = textIndicator->contentImage())
-            *cgImage = image->nativeImage().autorelease();
+        if (Image* image = textIndicator->contentImage()) {
+            auto contentImage = image->nativeImage()->platformImage();
+            *cgImage = contentImage.autorelease();
+        }
     }
 
     if (!*cgImage) {
@@ -569,10 +572,9 @@ id <DOMEventTarget> kit(EventTarget* target)
 - (NSRect)boundingBox
 #endif
 {
-    // FIXME: The call to updateLayoutIgnorePendingStylesheets should be moved into WebCore::Range.
-    auto& range = *core(self);
-    range.ownerDocument().updateLayoutIgnorePendingStylesheets();
-    return range.absoluteBoundingBox();
+    auto range = makeSimpleRange(*core(self));
+    range.start.document().updateLayoutIgnorePendingStylesheets();
+    return unionRect(RenderObject::absoluteTextRects(range));
 }
 
 #if PLATFORM(MAC)
@@ -582,7 +584,7 @@ id <DOMEventTarget> kit(EventTarget* target)
 #endif
 {
     auto range = makeSimpleRange(*core(self));
-    auto frame = makeRefPtr(range.start.container->document().frame());
+    auto frame = makeRefPtr(range.start.document().frame());
     if (!frame)
         return nil;
 
@@ -601,7 +603,7 @@ id <DOMEventTarget> kit(EventTarget* target)
 - (NSArray *)textRects
 {
     auto range = makeSimpleRange(*core(self));
-    range.start.container->document().updateLayoutIgnorePendingStylesheets();
+    range.start.document().updateLayoutIgnorePendingStylesheets();
     return createNSArray(RenderObject::absoluteTextRects(range)).autorelease();
 }
 
@@ -782,13 +784,13 @@ DOMNodeFilter *kit(WebCore::NodeFilter* impl)
         return nil;
     
     if (DOMNodeFilter *wrapper = getDOMWrapper(impl))
-        return [[wrapper retain] autorelease];
+        return retainPtr(wrapper).autorelease();
     
-    DOMNodeFilter *wrapper = [[DOMNodeFilter alloc] _init];
+    auto wrapper = adoptNS([[DOMNodeFilter alloc] _init]);
     wrapper->_internal = reinterpret_cast<DOMObjectInternal*>(impl);
     impl->ref();
-    addDOMWrapper(wrapper, impl);
-    return [wrapper autorelease];
+    addDOMWrapper(wrapper.get(), impl);
+    return wrapper.autorelease();
 }
 
 WebCore::NodeFilter* core(DOMNodeFilter *wrapper)

@@ -317,8 +317,10 @@ static bool arrayContainsUTIThatConformsTo(NSArray<NSString *> *typeIdentifiers,
     NSMutableArray<NSString *> *actionTitles = [NSMutableArray array];
 
     NSArray *mediaTypes = UTIsForMIMETypes(_mimeTypes.get()).allObjects;
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     BOOL allowsImageMediaType = !mediaTypes.count || arrayContainsUTIThatConformsTo(mediaTypes, kUTTypeImage);
     BOOL allowsVideoMediaType = !mediaTypes.count || arrayContainsUTIThatConformsTo(mediaTypes, kUTTypeMovie);
+ALLOW_DEPRECATED_DECLARATIONS_END
     if (allowsImageMediaType || allowsVideoMediaType) {
         [actionTitles addObject:@"Photo Library"];
         if (allowsImageMediaType && allowsVideoMediaType)
@@ -338,6 +340,7 @@ static NSSet<NSString *> *UTIsForMIMETypes(NSArray *mimeTypes)
 {
     NSMutableSet *mediaTypes = [NSMutableSet set];
     for (NSString *mimeType in mimeTypes) {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         if ([mimeType caseInsensitiveCompare:@"image/*"] == NSOrderedSame)
             [mediaTypes addObject:(__bridge NSString *)kUTTypeImage];
         else if ([mimeType caseInsensitiveCompare:@"video/*"] == NSOrderedSame)
@@ -351,6 +354,7 @@ static NSSet<NSString *> *UTIsForMIMETypes(NSArray *mimeTypes)
             if (!uti.isEmpty())
                 [mediaTypes addObject:(__bridge NSString *)uti];
         }
+ALLOW_DEPRECATED_DECLARATIONS_END
     }
     return mediaTypes;
 }
@@ -427,8 +431,10 @@ static NSSet<NSString *> *UTIsForMIMETypes(NSArray *mimeTypes)
         NSArray *actions;
         NSArray *mediaTypes = UTIsForMIMETypes(_mimeTypes.get()).allObjects;
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         BOOL allowsImageMediaType = !mediaTypes.count || arrayContainsUTIThatConformsTo(mediaTypes, kUTTypeImage);
         BOOL allowsVideoMediaType = !mediaTypes.count || arrayContainsUTIThatConformsTo(mediaTypes, kUTTypeMovie);
+ALLOW_DEPRECATED_DECLARATIONS_END
         auto strongSelf = weakSelf.get();
         
         if (!strongSelf)
@@ -494,7 +500,9 @@ static NSSet<NSString *> *UTIsForMIMETypes(NSArray *mimeTypes)
 - (void)showFilePickerMenu
 {
     NSArray *mediaTypes = UTIsForMIMETypes(_mimeTypes.get()).allObjects;
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     NSArray *documentTypes = mediaTypes.count ? mediaTypes : @[(__bridge NSString *)kUTTypeItem];
+ALLOW_DEPRECATED_DECLARATIONS_END
     
     _documentPickerController = adoptNS([[UIDocumentPickerViewController alloc] initWithDocumentTypes:documentTypes inMode:UIDocumentPickerModeImport]);
     [_documentPickerController setAllowsMultipleSelection:_allowMultipleFiles];
@@ -510,8 +518,10 @@ static NSSet<NSString *> *UTIsForMIMETypes(NSArray *mimeTypes)
     // FIXME 49961589: Support picking media with UIImagePickerController
 #if HAVE(UICONTEXTMENU_LOCATION)
     NSArray *mediaTypes = UTIsForMIMETypes(_mimeTypes.get()).allObjects;
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     BOOL allowsImageMediaType = !mediaTypes.count || arrayContainsUTIThatConformsTo(mediaTypes, kUTTypeImage);
     BOOL allowsVideoMediaType = !mediaTypes.count || arrayContainsUTIThatConformsTo(mediaTypes, kUTTypeMovie);
+ALLOW_DEPRECATED_DECLARATIONS_END
     BOOL shouldPresentDocumentMenuViewController = allowsImageMediaType || allowsVideoMediaType;
     if (shouldPresentDocumentMenuViewController) {
         [self ensureContextMenuInteraction];
@@ -556,33 +566,30 @@ static NSSet<NSString *> *UTIsForMIMETypes(NSArray *mimeTypes)
     _imagePicker = adoptNS([[UIImagePickerController alloc] init]);
     [_imagePicker setSourceType:sourceType];
     [_imagePicker setMediaTypes:[self _mediaTypesForPickerSourceType:sourceType]];
-    [self _configureImagePicker:_imagePicker.get()];
+    [_imagePicker setDelegate:self];
+    [_imagePicker setAllowsEditing:NO];
+    [_imagePicker setModalPresentationStyle:UIModalPresentationFullScreen];
+    [_imagePicker _setAllowsMultipleSelection:_allowMultipleFiles];
+    [_imagePicker _setRequiresPickingConfirmation:YES];
+    [_imagePicker _setShowsFileSizePicker:YES];
+
+    if (_mediaCaptureType != WebCore::MediaCaptureTypeNone)
+        [_imagePicker setCameraDevice:cameraDeviceForMediaCaptureType(_mediaCaptureType)];
 
     // Use a popover on the iPad if the source type is not the camera.
     // The camera will use a fullscreen, modal view controller.
-    BOOL usePopover = currentUserInterfaceIdiomIsPad() && sourceType != UIImagePickerControllerSourceTypeCamera;
+    BOOL usePopover = currentUserInterfaceIdiomIsPadOrMac() && sourceType != UIImagePickerControllerSourceTypeCamera;
     if (usePopover)
         [self _presentPopoverWithContentViewController:_imagePicker.get() animated:YES];
     else
         [self _presentFullscreenViewController:_imagePicker.get() animated:YES];
 }
 
-- (void)_configureImagePicker:(UIImagePickerController *)imagePicker
-{
-    [imagePicker setDelegate:self];
-    [imagePicker setAllowsEditing:NO];
-    [imagePicker setModalPresentationStyle:UIModalPresentationFullScreen];
-    [imagePicker _setAllowsMultipleSelection:_allowMultipleFiles];
-
-    if (_mediaCaptureType != WebCore::MediaCaptureTypeNone)
-        [imagePicker setCameraDevice:cameraDeviceForMediaCaptureType(_mediaCaptureType)];
-}
-
 #pragma mark - Presenting View Controllers
 
 - (void)_presentMenuOptionForCurrentInterfaceIdiom:(UIViewController *)viewController
 {
-    if (currentUserInterfaceIdiomIsPad())
+    if (currentUserInterfaceIdiomIsPadOrMac())
         [self _presentPopoverWithContentViewController:viewController animated:YES];
     else
         [self _presentFullscreenViewController:viewController animated:YES];
@@ -676,12 +683,12 @@ static NSString *displayStringForDocumentsAtURLs(NSArray<NSURL *> *urls)
         successBlock:^(NSArray *processedResults, NSString *displayString) {
             ASSERT([processedResults count] == 1);
             _WKFileUploadItem *result = [processedResults objectAtIndex:0];
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self _chooseFiles:@[result.fileURL] displayString:displayString iconImage:result.displayImage.get()];
+            RunLoop::main().dispatch([self, strongSelf = retainPtr(self), result = retainPtr(result), displayString = retainPtr(displayString)] {
+                [self _chooseFiles:@[result.get().fileURL] displayString:displayString.get() iconImage:result.get().displayImage.get()];
             });
         }
         failureBlock:^{
-            dispatch_async(dispatch_get_main_queue(), ^{
+            RunLoop::main().dispatch([self, strongSelf = retainPtr(self)] {
                 [self _cancel];
             });
         }
@@ -705,12 +712,12 @@ static NSString *displayStringForDocumentsAtURLs(NSArray<NSURL *> *urls)
                     iconImage = result.displayImage;
             }
 
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self _chooseFiles:fileURLs displayString:displayString iconImage:iconImage.get()];
+            RunLoop::main().dispatch([self, strongSelf = retainPtr(self), fileURLs = retainPtr(fileURLs), displayString = retainPtr(displayString), iconImage] {
+                [self _chooseFiles:fileURLs.get() displayString:displayString.get() iconImage:iconImage.get()];
             });
         }
         failureBlock:^{
-            dispatch_async(dispatch_get_main_queue(), ^{
+            RunLoop::main().dispatch([self, strongSelf = retainPtr(self)] {
                 [self _cancel];
             });
         }
@@ -809,6 +816,7 @@ static NSString *displayStringForDocumentsAtURLs(NSArray<NSURL *> *urls)
 {
     NSString *mediaType = [info objectForKey:UIImagePickerControllerMediaType];
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     // For videos from the existing library or camera, the media URL will give us a file path.
     if (UTTypeConformsTo((CFStringRef)mediaType, kUTTypeMovie)) {
         NSURL *mediaURL = [info objectForKey:UIImagePickerControllerMediaURL];
@@ -829,6 +837,7 @@ static NSString *displayStringForDocumentsAtURLs(NSArray<NSURL *> *urls)
         failureBlock();
         return;
     }
+ALLOW_DEPRECATED_DECLARATIONS_END
 
 #if PLATFORM(IOS_FAMILY)
     if (NSURL *imageURL = info[UIImagePickerControllerImageURL]) {

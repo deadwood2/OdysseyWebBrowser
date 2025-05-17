@@ -46,6 +46,7 @@
 #include "WebInspectorProxy.h"
 #include "WebKit2Initialize.h"
 #include "WebKitEmojiChooser.h"
+#include "WebKitInitialize.h"
 #include "WebKitInputMethodContextImplGtk.h"
 #include "WebKitWebViewAccessible.h"
 #include "WebKitWebViewBaseInternal.h"
@@ -64,6 +65,7 @@
 #include <WebCore/NotImplemented.h>
 #include <WebCore/PlatformDisplay.h>
 #include <WebCore/PlatformKeyboardEvent.h>
+#include <WebCore/PointerEvent.h>
 #include <WebCore/RefPtrCairo.h>
 #include <WebCore/Region.h>
 #include <gdk/gdk.h>
@@ -261,6 +263,7 @@ struct _WebKitWebViewBasePrivate {
 #endif
     std::unique_ptr<PageClientImpl> pageClient;
     RefPtr<WebPageProxy> pageProxy;
+    IntSize viewSize { };
     bool shouldForwardNextKeyEvent { false };
     bool shouldForwardNextWheelEvent { false };
 #if !USE(GTK4)
@@ -860,13 +863,15 @@ static void webkitWebViewBaseSizeAllocate(GtkWidget* widget, GtkAllocation* allo
 
 #if USE(GTK4)
     for (auto* child = gtk_widget_get_first_child(widget); child; child = gtk_widget_get_next_sibling(child)) {
-        if (GTK_IS_NATIVE(child))
-            gtk_native_check_resize(GTK_NATIVE(child));
+        if (GTK_IS_POPOVER(child))
+            gtk_popover_present(GTK_POPOVER(child));
     }
 #endif
 
+    priv->viewSize = viewRect.size();
+
     if (auto* drawingArea = static_cast<DrawingAreaProxyCoordinatedGraphics*>(priv->pageProxy->drawingArea()))
-        drawingArea->setSize(viewRect.size());
+        drawingArea->setSize(priv->viewSize);
 }
 
 #if USE(GTK4)
@@ -1735,7 +1740,6 @@ static gboolean webkitWebViewBaseEvent(GtkWidget* widget, GdkEvent* event)
         webkitWebViewBaseGestureController(WEBKIT_WEB_VIEW_BASE(widget)).handleEvent(event);
     return GDK_EVENT_PROPAGATE;
 }
-#endif
 
 static AtkObject* webkitWebViewBaseGetAccessible(GtkWidget* widget)
 {
@@ -1753,6 +1757,7 @@ static AtkObject* webkitWebViewBaseGetAccessible(GtkWidget* widget)
 
     return priv->accessible.get();
 }
+#endif
 
 #if USE(GTK4)
 static void toplevelWindowIsActiveChanged(GtkWindow* window, GParamSpec*, WebKitWebViewBase* webViewBase)
@@ -1778,7 +1783,7 @@ static void toplevelWindowIsActiveChanged(GtkWindow* window, GParamSpec*, WebKit
 static void toplevelWindowStateChanged(GdkSurface* surface, GParamSpec*, WebKitWebViewBase* webViewBase)
 {
     auto state = gdk_toplevel_get_state(GDK_TOPLEVEL(surface));
-    bool visible = !(state & GDK_SURFACE_STATE_MINIMIZED);
+    bool visible = !(state & GDK_TOPLEVEL_STATE_MINIMIZED);
     WebKitWebViewBasePrivate* priv = webViewBase->priv;
     if (visible) {
         if (priv->activityState & ActivityState::IsVisible)
@@ -2003,8 +2008,8 @@ static void webkit_web_view_base_class_init(WebKitWebViewBaseClass* webkitWebVie
     widgetClass->query_tooltip = webkitWebViewBaseQueryTooltip;
 #if !USE(GTK4)
     widgetClass->event = webkitWebViewBaseEvent;
-#endif
     widgetClass->get_accessible = webkitWebViewBaseGetAccessible;
+#endif
 #if USE(GTK4)
     widgetClass->root = webkitWebViewBaseRoot;
     widgetClass->unroot = webkitWebViewBaseUnroot;
@@ -2024,9 +2029,9 @@ static void webkit_web_view_base_class_init(WebKitWebViewBaseClass* webkitWebVie
 #endif
 
     // Before creating a WebKitWebViewBasePriv we need to be sure that WebKit is started.
-    // Usually starting a context triggers InitializeWebKit2, but in case
+    // Usually starting a context triggers webkitInitialize, but in case
     // we create a view without asking before for a default_context we get a crash.
-    WebKit::InitializeWebKit2();
+    WebKit::webkitInitialize();
 
     gtk_widget_class_set_css_name(widgetClass, "webkitwebview");
 }
@@ -2215,6 +2220,51 @@ void webkitWebViewBaseSetFocus(WebKitWebViewBase* webViewBase, bool focused)
     webkitWebViewBaseScheduleUpdateActivityState(webViewBase, flagsToUpdate);
 }
 
+IntSize webkitWebViewBaseGetViewSize(WebKitWebViewBase* webViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webViewBase->priv;
+    int width = priv->viewSize.width();
+    int height = priv->viewSize.height();
+
+    // First try the widget's own size. If it's already allocated,
+    // everything is fine and we'll just use that.
+    if (width > 0 || height > 0)
+        return IntSize(width, height);
+
+    GtkWidget* parent = gtk_widget_get_parent(GTK_WIDGET(webViewBase));
+
+    // If it's not allocated, then its size will be 0. This can be a problem
+    // if the web view is loaded in background and the container doesn't
+    // allocate non-visible children: e.g. GtkNotebook in GTK3 does allocate
+    // them, but GtkStack, and so GtkNotebook in GTK4 and HdyTabView don't.
+    // See https://gitlab.gnome.org/GNOME/epiphany/-/issues/1532
+    // In that case we go up through the hierarchy and try to find a parent
+    // with non-0 size.
+    while (parent) {
+#if USE(GTK4)
+        width = gtk_widget_get_width(parent);
+        height = gtk_widget_get_height(parent);
+
+        if (width > 0 || height > 0)
+#else
+        width = gtk_widget_get_allocated_width(parent);
+        height = gtk_widget_get_allocated_height(parent);
+
+        // The default widget size in GTK3 is 1x1, not 0x0.
+        if (width > 1 || height > 1)
+#endif
+            return IntSize(width, height);
+
+        parent = gtk_widget_get_parent(parent);
+    }
+
+    // If there was no such a parent, it's likely the widget widget isn't
+    // in a window, or the whole window isn't mapped. No point in trying
+    // in this case.
+
+    return IntSize();
+}
+
 bool webkitWebViewBaseIsInWindowActive(WebKitWebViewBase* webViewBase)
 {
     return webViewBase->priv->activityState.contains(ActivityState::WindowIsActive);
@@ -2340,7 +2390,7 @@ RefPtr<WebKit::ViewSnapshot> webkitWebViewBaseTakeViewSnapshot(WebKitWebViewBase
     size.scale(deviceScale);
 
     RefPtr<cairo_surface_t> surface = adoptRef(cairo_image_surface_create(CAIRO_FORMAT_RGB24, size.width(), size.height()));
-    cairoSurfaceSetDeviceScale(surface.get(), deviceScale, deviceScale);
+    cairo_surface_set_device_scale(surface.get(), deviceScale, deviceScale);
 
     RefPtr<cairo_t> cr = adoptRef(cairo_create(surface.get()));
     if (clipRect) {
@@ -2523,7 +2573,18 @@ static inline OptionSet<WebEvent::Modifier> toWebKitModifiers(unsigned modifiers
     return webEventModifiers;
 }
 
-void webkitWebViewBaseSynthesizeMouseEvent(WebKitWebViewBase* webViewBase, MouseEventType type, unsigned button, unsigned short buttons, int x, int y, unsigned modifiers, int clickCount)
+static inline PointerID primaryPointerForType(const String& pointerType)
+{
+    if (pointerType == mousePointerEventType())
+        return mousePointerID;
+
+    if (pointerType == penPointerEventType())
+        return 2;
+
+    return mousePointerID;
+}
+
+void webkitWebViewBaseSynthesizeMouseEvent(WebKitWebViewBase* webViewBase, MouseEventType type, unsigned button, unsigned short buttons, int x, int y, unsigned modifiers, int clickCount, const String& pointerType)
 {
     WebKitWebViewBasePrivate* priv = webViewBase->priv;
     if (priv->dialog)
@@ -2605,7 +2666,8 @@ void webkitWebViewBaseSynthesizeMouseEvent(WebKitWebViewBase* webViewBase, Mouse
     }
 
     priv->pageProxy->handleMouseEvent(NativeWebMouseEvent(webEventType, webEventButton, webEventButtons, { x, y },
-        widgetRootCoords(GTK_WIDGET(webViewBase), x, y), clickCount, toWebKitModifiers(modifiers), movementDelta));
+        widgetRootCoords(GTK_WIDGET(webViewBase), x, y), clickCount, toWebKitModifiers(modifiers), movementDelta,
+        primaryPointerForType(pointerType), pointerType.isNull() ? mousePointerEventType() : pointerType));
 }
 
 void webkitWebViewBaseSynthesizeKeyEvent(WebKitWebViewBase* webViewBase, KeyEventType type, unsigned keyval, unsigned modifiers, ShouldTranslateKeyboardState shouldTranslate)
@@ -2673,6 +2735,30 @@ void webkitWebViewBaseSynthesizeKeyEvent(WebKitWebViewBase* webViewBase, KeyEven
     auto webEventModifiers = toWebKitModifiers(modifiers);
 
     if (type != KeyEventType::Release) {
+        // Modifier masks are set different in X than other platforms. This code makes WebKitGTK
+        // to behave similar to other platforms and other browsers under X (see http://crbug.com/127142#c8).
+        switch (keyval) {
+        case GDK_KEY_Control_L:
+        case GDK_KEY_Control_R:
+            webEventModifiers.add(WebEvent::Modifier::ControlKey);
+            break;
+        case GDK_KEY_Shift_L:
+        case GDK_KEY_Shift_R:
+            webEventModifiers.add(WebEvent::Modifier::ShiftKey);
+            break;
+        case GDK_KEY_Alt_L:
+        case GDK_KEY_Alt_R:
+            webEventModifiers.add(WebEvent::Modifier::AltKey);
+            break;
+        case GDK_KEY_Meta_L:
+        case GDK_KEY_Meta_R:
+            webEventModifiers.add(WebEvent::Modifier::MetaKey);
+            break;
+        case GDK_KEY_Caps_Lock:
+            webEventModifiers.add(WebEvent::Modifier::CapsLockKey);
+            break;
+        }
+
         auto filterResult = priv->inputMethodFilter.filterKeyEvent(GDK_KEY_PRESS, keyval, keycode, modifiers);
         if (!filterResult.handled) {
             priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(

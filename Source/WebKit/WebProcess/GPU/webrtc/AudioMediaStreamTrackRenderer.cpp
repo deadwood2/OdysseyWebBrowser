@@ -46,14 +46,21 @@ std::unique_ptr<WebCore::AudioMediaStreamTrackRenderer> AudioMediaStreamTrackRen
 AudioMediaStreamTrackRenderer::AudioMediaStreamTrackRenderer(Ref<IPC::Connection>&& connection)
     : m_connection(WTFMove(connection))
     , m_identifier(AudioMediaStreamTrackRendererIdentifier::generate())
-    , m_ringBuffer(makeUnique<WebCore::CARingBuffer>(makeUniqueRef<SharedRingBufferStorage>(this)))
+    , m_ringBuffer(makeUnique<WebCore::CARingBuffer>(makeUniqueRef<SharedRingBufferStorage>(std::bind(&AudioMediaStreamTrackRenderer::storageChanged, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3))))
 {
-    m_connection->send(Messages::RemoteAudioMediaStreamTrackRendererManager::CreateRenderer { m_identifier }, 0);
+    initialize();
 }
 
 AudioMediaStreamTrackRenderer::~AudioMediaStreamTrackRenderer()
 {
+    WebProcess::singleton().ensureGPUProcessConnection().removeClient(*this);
     m_connection->send(Messages::RemoteAudioMediaStreamTrackRendererManager::ReleaseRenderer { m_identifier }, 0);
+}
+
+void AudioMediaStreamTrackRenderer::initialize()
+{
+    WebProcess::singleton().ensureGPUProcessConnection().addClient(*this);
+    m_connection->send(Messages::RemoteAudioMediaStreamTrackRendererManager::CreateRenderer { m_identifier }, 0);
 }
 
 void AudioMediaStreamTrackRenderer::start()
@@ -90,23 +97,32 @@ void AudioMediaStreamTrackRenderer::pushSamples(const MediaTime& time, const Web
 
         // Allocate a ring buffer large enough to contain 2 seconds of audio.
         m_numberOfFrames = m_description.sampleRate() * 2;
-        m_ringBuffer->allocate(m_description.streamDescription(), m_numberOfFrames);
+        m_ringBuffer->allocate(m_description, m_numberOfFrames);
     }
 
     ASSERT(is<WebCore::WebAudioBufferList>(audioData));
     m_ringBuffer->store(downcast<WebCore::WebAudioBufferList>(audioData).list(), numberOfFrames, time.timeValue());
-    uint64_t startFrame;
-    uint64_t endFrame;
-    m_ringBuffer->getCurrentFrameBounds(startFrame, endFrame);
-    m_connection->send(Messages::RemoteAudioMediaStreamTrackRenderer::AudioSamplesAvailable { time, numberOfFrames, startFrame, endFrame }, m_identifier);
+    m_connection->send(Messages::RemoteAudioMediaStreamTrackRenderer::AudioSamplesAvailable { time, numberOfFrames }, m_identifier);
 }
 
-void AudioMediaStreamTrackRenderer::storageChanged(SharedMemory* storage)
+void AudioMediaStreamTrackRenderer::storageChanged(SharedMemory* storage, const WebCore::CAAudioStreamDescription& format, size_t frameCount)
 {
     SharedMemory::Handle handle;
     if (storage)
         storage->createHandle(handle, SharedMemory::Protection::ReadOnly);
-    m_connection->send(Messages::RemoteAudioMediaStreamTrackRenderer::AudioSamplesStorageChanged { handle, m_description, static_cast<uint64_t>(m_numberOfFrames) }, m_identifier);
+    
+    // FIXME: Send the actual data size with IPCHandle.
+#if OS(DARWIN) || OS(WINDOWS)
+    uint64_t dataSize = handle.size();
+#else
+    uint64_t dataSize = 0;
+#endif
+    m_connection->send(Messages::RemoteAudioMediaStreamTrackRenderer::AudioSamplesStorageChanged { SharedMemory::IPCHandle { WTFMove(handle), dataSize }, format, frameCount }, m_identifier);
+}
+
+void AudioMediaStreamTrackRenderer::gpuProcessConnectionDidClose(GPUProcessConnection&)
+{
+    crashed();
 }
 
 }

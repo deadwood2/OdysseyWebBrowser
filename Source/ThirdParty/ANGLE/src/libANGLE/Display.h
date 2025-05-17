@@ -28,10 +28,16 @@
 #include "platform/Feature.h"
 #include "platform/FrontendFeatures.h"
 
+namespace angle
+{
+class FrameCaptureShared;
+}  // namespace angle
+
 namespace gl
 {
 class Context;
 class TextureManager;
+class SemaphoreManager;
 }  // namespace gl
 
 namespace rx
@@ -72,9 +78,13 @@ class ShareGroup final : angle::NonCopyable
 
     void addRef();
 
-    void release(const gl::Context *context);
+    void release(const egl::Display *display);
 
     rx::ShareGroupImpl *getImplementation() const { return mImplementation; }
+
+    rx::Serial generateFramebufferSerial() { return mFramebufferSerialFactory.generate(); }
+
+    angle::FrameCaptureShared *getFrameCaptureShared() { return mFrameCaptureShared.get(); }
 
   protected:
     ~ShareGroup();
@@ -82,9 +92,13 @@ class ShareGroup final : angle::NonCopyable
   private:
     size_t mRefCount;
     rx::ShareGroupImpl *mImplementation;
+    rx::SerialFactory mFramebufferSerialFactory;
+
+    // Note: we use a raw pointer here so we can exclude frame capture sources from the build.
+    std::unique_ptr<angle::FrameCaptureShared> mFrameCaptureShared;
 };
 
-// Constant coded here as a sanity limit.
+// Constant coded here as a reasonable limit.
 constexpr EGLAttrib kProgramCacheSizeAbsoluteMax = 0x4000000;
 
 class Display final : public LabeledObject,
@@ -102,6 +116,13 @@ class Display final : public LabeledObject,
 
     Error initialize();
     Error terminate(const Thread *thread);
+    // Called before all display state dependent EGL functions. Backends can set up, for example,
+    // thread-specific backend state through this function. Not called for functions that do not
+    // need the state.
+    Error prepareForCall();
+    // Called on eglReleaseThread. Backends can tear down thread-specific backend state through
+    // this function.
+    Error releaseThread();
 
     static Display *GetDisplayFromDevice(Device *device, const AttributeMap &attribMap);
     static Display *GetDisplayFromNativeDisplay(EGLNativeDisplayType nativeDisplay,
@@ -145,12 +166,17 @@ class Display final : public LabeledObject,
                         const AttributeMap &attribs,
                         gl::Context **outContext);
 
+    Error makeCurrent(const Thread *thread,
+                      Surface *drawSurface,
+                      Surface *readSurface,
+                      gl::Context *context);
+
     Error createSync(const gl::Context *currentContext,
                      EGLenum type,
                      const AttributeMap &attribs,
                      Sync **outSync);
 
-    Error makeCurrent(const Thread *thread,
+    Error makeCurrent(gl::Context *previousContext,
                       Surface *drawSurface,
                       Surface *readSurface,
                       gl::Context *context);
@@ -195,6 +221,8 @@ class Display final : public LabeledObject,
     BlobCache &getBlobCache() { return mBlobCache; }
 
     static EGLClientBuffer GetNativeClientBuffer(const struct AHardwareBuffer *buffer);
+    static Error CreateNativeClientBuffer(const egl::AttributeMap &attribMap,
+                                          EGLClientBuffer *eglClientBuffer);
 
     Error waitClient(const gl::Context *context);
     Error waitNative(const gl::Context *context, EGLint engine);
@@ -233,6 +261,7 @@ class Display final : public LabeledObject,
     const ContextSet &getContextSet() { return mContextSet; }
 
     const angle::FrontendFeatures &getFrontendFeatures() { return mFrontendFeatures; }
+    void overrideFrontendFeatures(const std::vector<std::string> &featureNames, bool enabled);
 
     const angle::FeatureList &getFeatures() const { return mFeatures; }
 
@@ -248,6 +277,13 @@ class Display final : public LabeledObject,
 
     egl::Error handleGPUSwitch();
 
+    std::mutex &getDisplayGlobalMutex() { return mDisplayGlobalMutex; }
+    std::mutex &getProgramCacheMutex() { return mProgramCacheMutex; }
+
+    // Installs LoggingAnnotator as the global DebugAnnotator, for back-ends that do not implement
+    // their own DebugAnnotator.
+    void setGlobalDebugAnnotator() { gl::InitializeDebugAnnotations(&mAnnotator); }
+
   private:
     Display(EGLenum platform, EGLNativeDisplayType displayId, Device *eglDevice);
 
@@ -258,6 +294,7 @@ class Display final : public LabeledObject,
     void updateAttribsFromEnvironment(const AttributeMap &attribMap);
 
     Error restoreLostDevice();
+    Error releaseContext(gl::Context *context);
 
     void initDisplayExtensions();
     void initVendorString();
@@ -302,9 +339,11 @@ class Display final : public LabeledObject,
     angle::LoggingAnnotator mAnnotator;
 
     gl::TextureManager *mTextureManager;
+    gl::SemaphoreManager *mSemaphoreManager;
     BlobCache mBlobCache;
     gl::MemoryProgramCache mMemoryProgramCache;
     size_t mGlobalTextureShareGroupUsers;
+    size_t mGlobalSemaphoreShareGroupUsers;
 
     angle::FrontendFeatures mFrontendFeatures;
 
@@ -313,6 +352,9 @@ class Display final : public LabeledObject,
     std::mutex mScratchBufferMutex;
     std::vector<angle::ScratchBuffer> mScratchBuffers;
     std::vector<angle::ScratchBuffer> mZeroFilledBuffers;
+
+    std::mutex mDisplayGlobalMutex;
+    std::mutex mProgramCacheMutex;
 };
 
 }  // namespace egl

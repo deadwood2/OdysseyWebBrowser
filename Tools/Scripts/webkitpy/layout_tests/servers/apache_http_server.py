@@ -90,17 +90,19 @@ class LayoutTestApacheHttpd(http_server_base.HttpServerBase):
 
         # FIXME: We shouldn't be calling a protected method of _port_obj!
         executable = self._port_obj._path_to_apache()
-        config_file_path = self._copy_apache_config_file(self.tests_dir, output_dir)
+        config_file_path = self._copy_apache_config_file(output_dir)
 
         start_cmd = [executable,
             '-f', config_file_path,
             '-C', 'DocumentRoot "%s"' % document_root,
             '-c', 'TypesConfig "%s"' % mime_types_path,
-            '-c', 'PHPINIDir "%s"' % php_ini_dir,
             '-c', 'CustomLog "%s" common' % access_log,
             '-c', 'ErrorLog "%s"' % error_log,
             '-c', 'PidFile "%s"' % self._pid_file,
             '-k', "start"]
+
+        if 'php' in self._filesystem.read_text_file(config_file_path):
+            start_cmd.extend(['-c', 'PHPINIDir "{}"'.format(php_ini_dir)])
 
         for (alias, path) in self.aliases():
             start_cmd.extend(['-c', 'Alias %s "%s"' % (alias, path)])
@@ -152,10 +154,9 @@ class LayoutTestApacheHttpd(http_server_base.HttpServerBase):
         self._start_cmd = start_cmd
         self._stop_cmd = stop_cmd
 
-    def _copy_apache_config_file(self, test_dir, output_dir):
+    def _copy_apache_config_file(self, output_dir):
         """Copy apache config file and returns the path to use.
         Args:
-          test_dir: absolute path to the LayoutTests directory.
           output_dir: absolute path to the layout test results directory.
         """
         httpd_config = self._port_obj._path_to_apache_config_file()

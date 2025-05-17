@@ -29,7 +29,6 @@
 #if PLATFORM(MAC)
 
 #import "AppKitSPI.h"
-#import "VersionChecks.h"
 #import "WKContentViewMac.h"
 #import "WKSafeBrowsingWarning.h"
 #import "WKScrollViewMac.h"
@@ -41,6 +40,7 @@
 #import "WebViewImpl.h"
 #import "_WKFrameHandleInternal.h"
 #import "_WKHitTestResultInternal.h"
+#import <WebCore/VersionChecks.h>
 #import <pal/spi/mac/NSTextFinderSPI.h>
 
 _WKOverlayScrollbarStyle toAPIScrollbarStyle(Optional<WebCore::ScrollbarOverlayStyle> coreScrollbarStyle)
@@ -1156,7 +1156,7 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
     if ([uiDelegate respondsToSelector:@selector(_webView:dragDestinationActionMaskForDraggingInfo:)])
         return [uiDelegate _webView:self dragDestinationActionMaskForDraggingInfo:draggingInfo];
 
-    if (!linkedOnOrAfter(WebKit::SDKVersion::FirstWithDropToNavigateDisallowedByDefault))
+    if (!linkedOnOrAfter(WebCore::SDKVersion::FirstWithDropToNavigateDisallowedByDefault))
         return WKDragDestinationActionAny;
 
     return WKDragDestinationActionAny & ~WKDragDestinationActionLoad;
@@ -1283,11 +1283,6 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 - (void)_setRubberBandingEnabled:(_WKRectEdge)state
 {
     _impl->setRubberBandingEnabled(state);
-}
-
-- (NSColor *)_pageExtendedBackgroundColor
-{
-    return _impl->pageExtendedBackgroundColor();
 }
 
 - (NSColor *)_backgroundColor

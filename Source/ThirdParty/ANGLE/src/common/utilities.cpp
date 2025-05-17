@@ -7,6 +7,7 @@
 // utilities.cpp: Conversion functions and other utility routines.
 
 // Older clang versions have a false positive on this warning here.
+// TODO(dino): Is this still necessary?
 #if defined(__clang__)
 #pragma clang diagnostic ignored "-Wglobal-constructors"
 #endif
@@ -170,6 +171,9 @@ GLenum VariableComponentType(GLenum type)
         case GL_IMAGE_CUBE_MAP_ARRAY:
         case GL_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_IMAGE_BUFFER:
+        case GL_INT_IMAGE_BUFFER:
+        case GL_UNSIGNED_INT_IMAGE_BUFFER:
         case GL_UNSIGNED_INT_ATOMIC_COUNTER:
         case GL_SAMPLER_VIDEO_IMAGE_WEBGL:
             return GL_INT;
@@ -321,6 +325,7 @@ int VariableRowCount(GLenum type)
         case GL_SAMPLER_2D_MULTISAMPLE:
         case GL_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_SAMPLER_BUFFER:
         case GL_INT_SAMPLER_2D:
         case GL_INT_SAMPLER_3D:
         case GL_INT_SAMPLER_CUBE:
@@ -328,6 +333,7 @@ int VariableRowCount(GLenum type)
         case GL_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_INT_SAMPLER_BUFFER:
         case GL_UNSIGNED_INT_SAMPLER_2D:
         case GL_UNSIGNED_INT_SAMPLER_3D:
         case GL_UNSIGNED_INT_SAMPLER_CUBE:
@@ -335,6 +341,7 @@ int VariableRowCount(GLenum type)
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_UNSIGNED_INT_SAMPLER_BUFFER:
         case GL_SAMPLER_2D_SHADOW:
         case GL_SAMPLER_CUBE_SHADOW:
         case GL_SAMPLER_2D_ARRAY_SHADOW:
@@ -355,6 +362,9 @@ int VariableRowCount(GLenum type)
         case GL_IMAGE_CUBE_MAP_ARRAY:
         case GL_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_IMAGE_BUFFER:
+        case GL_INT_IMAGE_BUFFER:
+        case GL_UNSIGNED_INT_IMAGE_BUFFER:
         case GL_SAMPLER_VIDEO_IMAGE_WEBGL:
             return 1;
         case GL_FLOAT_MAT2:
@@ -393,6 +403,7 @@ int VariableColumnCount(GLenum type)
         case GL_SAMPLER_2D_MULTISAMPLE:
         case GL_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_SAMPLER_BUFFER:
         case GL_INT_SAMPLER_2D:
         case GL_INT_SAMPLER_3D:
         case GL_INT_SAMPLER_CUBE:
@@ -400,6 +411,7 @@ int VariableColumnCount(GLenum type)
         case GL_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_INT_SAMPLER_BUFFER:
         case GL_SAMPLER_EXTERNAL_OES:
         case GL_SAMPLER_2D_RECT_ANGLE:
         case GL_UNSIGNED_INT_SAMPLER_2D:
@@ -409,6 +421,7 @@ int VariableColumnCount(GLenum type)
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_UNSIGNED_INT_SAMPLER_BUFFER:
         case GL_SAMPLER_2D_SHADOW:
         case GL_SAMPLER_CUBE_SHADOW:
         case GL_SAMPLER_2D_ARRAY_SHADOW:
@@ -425,6 +438,9 @@ int VariableColumnCount(GLenum type)
         case GL_IMAGE_CUBE_MAP_ARRAY:
         case GL_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_IMAGE_BUFFER:
+        case GL_INT_IMAGE_BUFFER:
+        case GL_UNSIGNED_INT_IMAGE_BUFFER:
         case GL_IMAGE_CUBE:
         case GL_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_IMAGE_CUBE:
@@ -461,6 +477,50 @@ int VariableColumnCount(GLenum type)
 
     return 0;
 }
+/**
+Determine the number of attribute slots used by a variable type
+*/
+int VariableAttributeCount(GLenum type)
+{
+    switch (type)
+    {
+        case GL_NONE:
+            return 0;
+        case GL_BOOL:
+        case GL_FLOAT:
+        case GL_INT:
+        case GL_UNSIGNED_INT:
+        case GL_BOOL_VEC2:
+        case GL_FLOAT_VEC2:
+        case GL_INT_VEC2:
+        case GL_UNSIGNED_INT_VEC2:
+        case GL_BOOL_VEC3:
+        case GL_FLOAT_VEC3:
+        case GL_INT_VEC3:
+        case GL_UNSIGNED_INT_VEC3:
+        case GL_BOOL_VEC4:
+        case GL_FLOAT_VEC4:
+        case GL_INT_VEC4:
+        case GL_UNSIGNED_INT_VEC4:
+            return 1;
+        case GL_FLOAT_MAT2:
+        case GL_FLOAT_MAT2x3:
+        case GL_FLOAT_MAT2x4:
+            return 2;
+        case GL_FLOAT_MAT3:
+        case GL_FLOAT_MAT3x2:
+        case GL_FLOAT_MAT3x4:
+            return 3;
+        case GL_FLOAT_MAT4:
+        case GL_FLOAT_MAT4x2:
+        case GL_FLOAT_MAT4x3:
+            return 4;
+        default:
+            UNREACHABLE();
+    }
+
+    return 0;
+}
 
 bool IsSamplerType(GLenum type)
 {
@@ -474,6 +534,7 @@ bool IsSamplerType(GLenum type)
         case GL_SAMPLER_2D_MULTISAMPLE:
         case GL_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_SAMPLER_BUFFER:
         case GL_SAMPLER_2D_RECT_ANGLE:
         case GL_INT_SAMPLER_2D:
         case GL_INT_SAMPLER_3D:
@@ -482,6 +543,7 @@ bool IsSamplerType(GLenum type)
         case GL_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_INT_SAMPLER_BUFFER:
         case GL_UNSIGNED_INT_SAMPLER_2D:
         case GL_UNSIGNED_INT_SAMPLER_3D:
         case GL_UNSIGNED_INT_SAMPLER_CUBE:
@@ -489,6 +551,7 @@ bool IsSamplerType(GLenum type)
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_UNSIGNED_INT_SAMPLER_BUFFER:
         case GL_SAMPLER_2D_SHADOW:
         case GL_SAMPLER_CUBE_SHADOW:
         case GL_SAMPLER_2D_ARRAY_SHADOW:
@@ -530,6 +593,9 @@ bool IsImageType(GLenum type)
         case GL_IMAGE_CUBE_MAP_ARRAY:
         case GL_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_IMAGE_BUFFER:
+        case GL_INT_IMAGE_BUFFER:
+        case GL_UNSIGNED_INT_IMAGE_BUFFER:
         case GL_IMAGE_CUBE:
         case GL_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_IMAGE_CUBE:

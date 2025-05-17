@@ -130,6 +130,18 @@ static NSString *overrideBundleIdentifier(id, SEL)
     return success;
 }
 
+- (NSString *)contentsAsString
+{
+    __block bool done = false;
+    __block RetainPtr<NSString> result;
+    [self _getContentsAsStringWithCompletionHandler:^(NSString *contents, NSError *error) {
+        result = contents;
+        done = true;
+    }];
+    TestWebKitAPI::Util::run(&done);
+    return result.autorelease();
+}
+
 - (NSArray<NSString *> *)tagsInBody
 {
     return [self objectByEvaluatingJavaScript:@"Array.from(document.body.getElementsByTagName('*')).map(e => e.tagName)"];
@@ -159,6 +171,11 @@ static NSString *overrideBundleIdentifier(id, SEL)
 - (void)expectElementTag:(NSString *)tagName toComeBefore:(NSString *)otherTagName
 {
     [self expectElementTagsInOrder:@[tagName, otherTagName]];
+}
+
+- (BOOL)evaluateMediaQuery:(NSString *)query
+{
+    return [[self objectByEvaluatingJavaScript:[NSString stringWithFormat:@"window.matchMedia(\"(%@)\").matches", query]] boolValue];
 }
 
 - (id)objectByEvaluatingJavaScript:(NSString *)script
@@ -198,16 +215,16 @@ static NSString *overrideBundleIdentifier(id, SEL)
         *errorOut = nil;
 
     RetainPtr<id> evalResult;
+    RetainPtr<NSError> strongError;
     [self callAsyncJavaScript:script arguments:arguments inFrame:nil inContentWorld:WKContentWorld.pageWorld completionHandler:[&] (id result, NSError *error) {
         evalResult = result;
-        if (errorOut)
-            *errorOut = [error retain];
+        strongError = error;
         isWaitingForJavaScript = true;
     }];
     TestWebKitAPI::Util::run(&isWaitingForJavaScript);
 
     if (errorOut)
-        [*errorOut autorelease];
+        *errorOut = strongError.autorelease();
 
     return evalResult.autorelease();
 }
@@ -411,8 +428,8 @@ static InputSessionChangeCount nextInputSessionChangeCount()
 
 - (instancetype)initWithFrame:(CGRect)frame
 {
-    WKWebViewConfiguration *defaultConfiguration = [[[WKWebViewConfiguration alloc] init] autorelease];
-    return [self initWithFrame:frame configuration:defaultConfiguration];
+    auto defaultConfiguration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    return [self initWithFrame:frame configuration:defaultConfiguration.get()];
 }
 
 - (instancetype)initWithFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration
@@ -449,7 +466,7 @@ static UICalloutBar *suppressUICalloutBar()
 
 - (instancetype)initWithFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration processPoolConfiguration:(_WKProcessPoolConfiguration *)processPoolConfiguration
 {
-    [configuration setProcessPool:[[[WKProcessPool alloc] _initWithConfiguration:processPoolConfiguration] autorelease]];
+    [configuration setProcessPool:adoptNS([[WKProcessPool alloc] _initWithConfiguration:processPoolConfiguration]).get()];
     return [self initWithFrame:frame configuration:configuration];
 }
 
@@ -457,7 +474,7 @@ static UICalloutBar *suppressUICalloutBar()
 {
 #if PLATFORM(MAC)
     _hostWindow = adoptNS([[TestWKWebViewHostWindow alloc] initWithWebView:self contentRect:frame styleMask:(NSWindowStyleMaskBorderless | NSWindowStyleMaskMiniaturizable) backing:NSBackingStoreBuffered defer:NO]);
-    [_hostWindow setFrameOrigin:NSMakePoint(0, 0)];
+    [_hostWindow setFrameOrigin:frame.origin];
     [_hostWindow setIsVisible:YES];
     [_hostWindow contentView].wantsLayer = YES;
     [[_hostWindow contentView] addSubview:self];
@@ -528,6 +545,16 @@ static UICalloutBar *suppressUICalloutBar()
 {
     __block bool done = false;
     [self _doAfterNextPresentationUpdate:^() {
+        done = true;
+    }];
+
+    TestWebKitAPI::Util::run(&done);
+}
+
+- (void)waitUntilActivityStateUpdateDone
+{
+    __block bool done = false;
+    [self _doAfterActivityStateUpdate:^() {
         done = true;
     }];
 

@@ -97,15 +97,22 @@ Ref<MediaSampleGStreamer> MediaSampleGStreamer::createFakeSample(GstCaps*, Media
     return adoptRef(*gstreamerMediaSample);
 }
 
-Ref<MediaSampleGStreamer> MediaSampleGStreamer::createImageSample(Vector<uint8_t>&& bgraData, unsigned width, unsigned height)
+Ref<MediaSampleGStreamer> MediaSampleGStreamer::createImageSample(Vector<uint8_t>&& bgraData, unsigned width, unsigned height, double frameRate)
 {
+    ensureGStreamerInitialized();
+
     size_t size = bgraData.sizeInBytes();
     auto* data = bgraData.releaseBuffer().leakPtr();
     auto buffer = adoptGRef(gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY, data, size, 0, size, data, [](gpointer data) {
         WTF::VectorMalloc::free(data);
     }));
     gst_buffer_add_video_meta(buffer.get(), GST_VIDEO_FRAME_FLAG_NONE, GST_VIDEO_FORMAT_BGRA, width, height);
-    auto caps = adoptGRef(gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "BGRA", "width", G_TYPE_INT, width, "height", G_TYPE_INT, height, "framerate", GST_TYPE_FRACTION, 1, 1, nullptr));
+
+    int frameRateNumerator, frameRateDenominator;
+    gst_util_double_to_fraction(frameRate, &frameRateNumerator, &frameRateDenominator);
+
+    auto caps = adoptGRef(gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "BGRA", "width", G_TYPE_INT, width,
+        "height", G_TYPE_INT, height, "framerate", GST_TYPE_FRACTION, frameRateNumerator, frameRateDenominator, nullptr));
     auto sample = adoptGRef(gst_sample_new(buffer.get(), caps.get(), nullptr, nullptr));
     return create(WTFMove(sample), FloatSize(width, height), { });
 }

@@ -7,11 +7,6 @@ file(MAKE_DIRECTORY ${WebKitTestRunner_DERIVED_SOURCES_DIR}/InjectedBundle)
 file(MAKE_DIRECTORY ${WebKitTestRunner_DERIVED_SOURCES_DIR}/UIScriptContext)
 
 set(WebKitTestRunner_SOURCES
-    ${WebKitTestRunner_BINDINGS_DIR}/JSWrapper.cpp
-
-    ${WebKitTestRunner_UISCRIPTCONTEXT_DIR}/UIScriptContext.cpp
-    ${WebKitTestRunner_UISCRIPTCONTEXT_DIR}/UIScriptControllerShared.cpp
-
     CyclicRedundancyCheck.cpp
     GeolocationProviderMock.cpp
     Options.cpp
@@ -19,20 +14,31 @@ set(WebKitTestRunner_SOURCES
     TestController.cpp
     TestInvocation.cpp
     TestOptions.cpp
-    UIScriptController.cpp
+    UIScriptControllerCommon.cpp
     WebNotificationProvider.cpp
     WorkQueueManager.cpp
 )
 
 set(WebKitTestRunner_LIBRARIES
-    WebCoreTestSupport
-    WebKit::JavaScriptCore
-    WebKit::WebKit
+    TestRunnerShared
 )
+set(WebKitTestRunner_FRAMEWORKS
+    JavaScriptCore
+    WebCoreTestSupport
+    WebKit
+)
+
+if (COMPILER_IS_GCC_OR_CLANG)
+    if (HAVE_STD_EXPERIMENTAL_FILESYSTEM)
+        list(APPEND WebKitTestRunner_LIBRARIES stdc++fs)
+    endif ()
+endif ()
 
 set(WebKitTestRunner_INCLUDE_DIRECTORIES
     ${CMAKE_BINARY_DIR}
+    ${WebKitTestRunner_SHARED_DIR}
     ${WebKitTestRunner_BINDINGS_DIR}
+    ${WebKitTestRunner_DERIVED_SOURCES_DIR}
     ${WebKitTestRunner_DERIVED_SOURCES_DIR}/UIScriptContext
     ${WebKitTestRunner_DIR}
     ${WebKitTestRunner_UISCRIPTCONTEXT_DIR}
@@ -46,9 +52,30 @@ list(APPEND WebKitTestRunner_INCLUDE_DIRECTORIES
     ${WebCore_PRIVATE_FRAMEWORK_HEADERS_DIR}
 )
 
-set(WebKitTestRunnerInjectedBundle_SOURCES
-    ${WebKitTestRunner_BINDINGS_DIR}/JSWrapper.cpp
+set(WebKitTestRunner_WEB_PREFERENCES_TEMPLATES
+    ${WebKitTestRunner_DIR}/Scripts/PreferencesTemplates/TestOptionsGeneratedKeys.h.erb
+)
 
+set(WebKitTestRunner_WEB_PREFERENCES
+    ${WTF_SCRIPTS_DIR}/Preferences/WebPreferences.yaml
+    ${WTF_SCRIPTS_DIR}/Preferences/WebPreferencesDebug.yaml
+    ${WTF_SCRIPTS_DIR}/Preferences/WebPreferencesExperimental.yaml
+    ${WTF_SCRIPTS_DIR}/Preferences/WebPreferencesInternal.yaml
+)
+
+set_source_files_properties(${WebKitTestRunner_WEB_PREFERENCES} PROPERTIES GENERATED TRUE)
+
+add_custom_command(
+    OUTPUT ${WebKitTestRunner_DERIVED_SOURCES_DIR}/TestOptionsGeneratedKeys.h
+    DEPENDS ${WebKitTestRunner_WEB_PREFERENCES_TEMPLATES} ${WebKitTestRunner_WEB_PREFERENCES} WTF_CopyPreferences
+    COMMAND ${RUBY_EXECUTABLE} ${WTF_SCRIPTS_DIR}/GeneratePreferences.rb --frontend WebKit --base ${WTF_SCRIPTS_DIR}/Preferences/WebPreferences.yaml --debug ${WTF_SCRIPTS_DIR}/Preferences/WebPreferencesDebug.yaml --experimental ${WTF_SCRIPTS_DIR}/Preferences/WebPreferencesExperimental.yaml --internal ${WTF_SCRIPTS_DIR}/Preferences/WebPreferencesInternal.yaml --outputDir "${WebKitTestRunner_DERIVED_SOURCES_DIR}" --template ${WebKitTestRunner_DIR}/Scripts/PreferencesTemplates/TestOptionsGeneratedKeys.h.erb
+    VERBATIM)
+
+list(APPEND WebKitTestRunner_SOURCES
+    ${WebKitTestRunner_DERIVED_SOURCES_DIR}/TestOptionsGeneratedKeys.h
+)
+
+set(WebKitTestRunnerInjectedBundle_SOURCES
     InjectedBundle/AccessibilityController.cpp
     InjectedBundle/AccessibilityTextMarker.cpp
     InjectedBundle/AccessibilityTextMarkerRange.cpp
@@ -64,6 +91,7 @@ set(WebKitTestRunnerInjectedBundle_SOURCES
 
 set(WebKitTestRunnerInjectedBundle_INCLUDE_DIRECTORIES
     ${CMAKE_BINARY_DIR}
+    ${WebKitTestRunner_SHARED_DIR}
     ${WebKitTestRunner_BINDINGS_DIR}
     ${WebKitTestRunner_DERIVED_SOURCES_DIR}/InjectedBundle
     ${WebKitTestRunner_DIR}
@@ -75,6 +103,7 @@ list(APPEND WebKitTestRunnerInjectedBundle_INCLUDE_DIRECTORIES
 )
 
 set(WebKitTestRunnerInjectedBundle_LIBRARIES
+    TestRunnerShared
     WebKit::WebCoreTestSupport
     WebKit::WebKit
 )
@@ -90,13 +119,8 @@ set(WebKitTestRunnerInjectedBundle_IDL_FILES
     "${WebKitTestRunner_DIR}/InjectedBundle/Bindings/TextInputController.idl"
 )
 
-set(WebKitTestRunner_IDL_FILES
-    "${WebKitTestRunner_UISCRIPTCONTEXT_DIR}/Bindings/UIScriptController.idl"
-)
-
 set(WebKitTestRunner_DEPENDENCIES
     TestRunnerInjectedBundle
-    WebKitTestRunnerBindings
 )
 
 GENERATE_BINDINGS(WebKitTestRunnerInjectedBundleBindings
@@ -106,15 +130,6 @@ GENERATE_BINDINGS(WebKitTestRunnerInjectedBundleBindings
     IDL_INCLUDES ${WebKitTestRunner_DIR}/InjectedBundle/Bindings
     FEATURES ${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}
     DESTINATION ${WebKitTestRunner_DERIVED_SOURCES_DIR}/InjectedBundle
-    GENERATOR TestRunner)
-
-GENERATE_BINDINGS(WebKitTestRunnerBindings
-    OUTPUT_SOURCE WebKitTestRunner_SOURCES
-    INPUT_FILES ${WebKitTestRunner_IDL_FILES}
-    BASE_DIR ${WebKitTestRunner_DIR}/InjectedBundle/Bindings
-    IDL_INCLUDES ${WebKitTestRunner_DIR}/InjectedBundle/Bindings
-    FEATURES ${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}
-    DESTINATION ${WebKitTestRunner_DERIVED_SOURCES_DIR}/UIScriptContext
     GENERATOR TestRunner)
 
 WEBKIT_EXECUTABLE_DECLARE(WebKitTestRunner)

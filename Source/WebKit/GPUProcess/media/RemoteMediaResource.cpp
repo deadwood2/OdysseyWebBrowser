@@ -36,15 +36,15 @@ namespace WebKit {
 
 using namespace WebCore;
 
-Ref<RemoteMediaResource> RemoteMediaResource::create(RemoteMediaResourceManager& remoteMediaResourceManager, RemoteMediaPlayerProxy& remoteMediaPlayerProxy, RemoteMediaResourceIdentifier id)
+Ref<RemoteMediaResource> RemoteMediaResource::create(RemoteMediaResourceManager& remoteMediaResourceManager, RemoteMediaPlayerProxy& remoteMediaPlayerProxy, RemoteMediaResourceIdentifier identifier)
 {
-    return adoptRef(*new RemoteMediaResource(remoteMediaResourceManager, remoteMediaPlayerProxy, id));
+    return adoptRef(*new RemoteMediaResource(remoteMediaResourceManager, remoteMediaPlayerProxy, identifier));
 }
 
-RemoteMediaResource::RemoteMediaResource(RemoteMediaResourceManager& remoteMediaResourceManager, RemoteMediaPlayerProxy& remoteMediaPlayerProxy, RemoteMediaResourceIdentifier id)
-    : m_remoteMediaResourceManager(remoteMediaResourceManager)
+RemoteMediaResource::RemoteMediaResource(RemoteMediaResourceManager& remoteMediaResourceManager, RemoteMediaPlayerProxy& remoteMediaPlayerProxy, RemoteMediaResourceIdentifier identifier)
+    : m_remoteMediaResourceManager(makeWeakPtr(remoteMediaResourceManager))
     , m_remoteMediaPlayerProxy(makeWeakPtr(remoteMediaPlayerProxy))
-    , m_id(id)
+    , m_id(identifier)
 {
 }
 
@@ -52,7 +52,10 @@ RemoteMediaResource::~RemoteMediaResource()
 {
     ASSERT(isMainThread());
     stop();
-    m_remoteMediaResourceManager.removeMediaResource(m_id);
+    if (!m_remoteMediaResourceManager)
+        return;
+
+    m_remoteMediaResourceManager->removeMediaResource(m_id);
 }
 
 void RemoteMediaResource::stop()

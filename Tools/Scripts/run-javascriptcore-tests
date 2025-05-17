@@ -106,6 +106,8 @@ my $createTarball = 0;
 my $remoteHost = 0;
 my $model = 0;
 my $archs = undef;
+my $ldd = undef;
+my $artifact_exec_wrapper = undef;
 my $version;
 my $versionName;
 my $sdk;
@@ -234,6 +236,8 @@ my $usage = <<EOF;
 Usage: $programName [options] [options to pass to build system]
   --help                        Show this help message
   --architecture                Attempt to override the native architecture of a machine.
+  --ldd                         Use alternate ldd
+  --artifact-exec-wrapper       Wrapper for executing a build artifact
   --root=                       Path to pre-built root containing jsc
   --[no-]ftl-jit                Turn the FTL JIT on or off
   --[no-]build                  Check (or don't check) to see if the jsc build is up-to-date (default: $buildJSCDefault)
@@ -331,6 +335,8 @@ GetOptions(
     'remote=s' => \$remoteHost,
     'model=s' => \$model,
     'architecture=s' => \$archs,
+    'ldd=s' => \$ldd,
+    'artifact-exec-wrapper=s' => \$artifact_exec_wrapper,
     'version=s' => \$version,
     'version-name=s' => \$versionName,
     'sdk=s' => \$sdk,
@@ -591,6 +597,11 @@ sub runTest {
     chdirWebKit();
     chdir($productDir) or die "Failed to switch directory to '$productDir'\n";
     my @command = (testPath($productDir, $testName));
+    if (defined($artifact_exec_wrapper)) {
+        # This needs to go first, as one use case is to override the
+        # ELF interpreter.
+        unshift @command, $artifact_exec_wrapper;
+    }
     unshift @command, ("xcrun", "-sdk", xcodeSDK(), "sim") if willUseIOSSimulatorSDK();
     unshift @command, ("/usr/bin/arch", "-$archs") if $archs ne nativeArchitecture($nativeTarget, $nativePort);
     unshift @command, wrapperPrefixIfNeeded() if isGtk() or isWPE();
@@ -761,6 +772,14 @@ sub runJSCStressTests
         push(@jscStressDriverCmd, $archs);
     }
 
+    if (defined($ldd)) {
+        push(@jscStressDriverCmd, "--ldd");
+        push(@jscStressDriverCmd, $ldd);
+    }
+    if (defined($artifact_exec_wrapper)) {
+        push(@jscStressDriverCmd, "--artifact-exec-wrapper");
+        push(@jscStressDriverCmd, $artifact_exec_wrapper);
+    }
     push(@jscStressDriverCmd, @testList);
 
     if (isWindows() && !isCygwin()) {

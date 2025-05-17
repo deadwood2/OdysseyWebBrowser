@@ -36,6 +36,10 @@
 #include <WebCore/SelectionRect.h>
 #endif
 
+#if USE(DICTATION_ALTERNATIVES)
+#include <WebCore/DictationContext.h>
+#endif
+
 namespace WTF {
 class TextStream;
 };
@@ -82,7 +86,6 @@ struct EditorState {
         WebCore::IntRect caretRectAtStart;
 #endif
 #if PLATFORM(COCOA)
-        WebCore::IntRect focusedElementRect;
         uint64_t selectedTextLength { 0 };
         uint32_t textAlignment { NoAlignment };
         WebCore::Color textColor { WebCore::Color::black };
@@ -90,6 +93,7 @@ struct EditorState {
         WebCore::WritingDirection baseWritingDirection { WebCore::WritingDirection::Natural };
 #endif
 #if PLATFORM(IOS_FAMILY)
+        WebCore::IntRect selectionClipRect;
         WebCore::IntRect caretRectAtEnd;
         Vector<WebCore::SelectionRect> selectionRects;
         Vector<WebCore::SelectionRect> markedTextRects;
@@ -100,6 +104,9 @@ struct EditorState {
         UChar32 characterAfterSelection { 0 };
         UChar32 characterBeforeSelection { 0 };
         UChar32 twoCharacterBeforeSelection { 0 };
+#if USE(DICTATION_ALTERNATIVES)
+        Vector<WebCore::DictationContext> dictationContextsForSelection;
+#endif
         bool isReplaceAllowed { false };
         bool hasContent { false };
         bool isStableStateUpdate { false };
@@ -112,9 +119,11 @@ struct EditorState {
         bool selectionEndIsAtParagraphBoundary { false };
 #endif
 #if PLATFORM(MAC)
+        WebCore::IntRect selectionBoundingRect;
         uint64_t candidateRequestStartPosition { 0 };
         String paragraphContextForCandidateRequest;
         String stringForCandidateRequest;
+        bool canEnableAutomaticSpellingCorrection { true };
 #endif
 #if PLATFORM(GTK) || PLATFORM(WPE)
         String surroundingContext;

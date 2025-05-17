@@ -40,6 +40,7 @@ WI.DOMManager = class DOMManager extends WI.Object
 
         this._idToDOMNode = {};
         this._document = null;
+        this._documentPromise = null;
         this._attributeLoadNodeIds = {};
         this._restoreSelectedNodeIsAllowed = true;
         this._loadNodeAttributesTimeout = 0;
@@ -50,7 +51,11 @@ WI.DOMManager = class DOMManager extends WI.Object
         this._hasRequestedDocument = false;
         this._pendingDocumentRequestCallbacks = null;
 
-        WI.EventBreakpoint.addEventListener(WI.EventBreakpoint.Event.DisabledStateChanged, this._handleEventBreakpointDisabledStateChanged, this);
+        WI.EventBreakpoint.addEventListener(WI.Breakpoint.Event.DisabledStateDidChange, this._handleEventBreakpointDisabledStateChanged, this);
+        WI.EventBreakpoint.addEventListener(WI.Breakpoint.Event.ConditionDidChange, this._handleEventBreakpointEditablePropertyChanged, this);
+        WI.EventBreakpoint.addEventListener(WI.Breakpoint.Event.IgnoreCountDidChange, this._handleEventBreakpointEditablePropertyChanged, this);
+        WI.EventBreakpoint.addEventListener(WI.Breakpoint.Event.AutoContinueDidChange, this._handleEventBreakpointEditablePropertyChanged, this);
+        WI.EventBreakpoint.addEventListener(WI.Breakpoint.Event.ActionsDidChange, this._handleEventBreakpointActionsChanged, this);
 
         WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
     }
@@ -126,6 +131,12 @@ WI.DOMManager = class DOMManager extends WI.Object
             && InspectorBackend.hasCommand("DOM.removeBreakpointForEventListener");
     }
 
+    static supportsEventListenerBreakpointConfiguration()
+    {
+        // COMPATIBILITY (iOS 14): DOM.setBreakpointForEventListener did not have an "options" parameter yet.
+        return InspectorBackend.hasCommand("DOM.setBreakpointForEventListener", "options");
+    }
+
     static supportsEditingUserAgentShadowTrees({frontendOnly, target} = {})
     {
         target = target || InspectorBackend;
@@ -145,36 +156,10 @@ WI.DOMManager = class DOMManager extends WI.Object
 
     requestDocument(callback)
     {
-        if (this._document) {
-            callback(this._document);
-            return;
-        }
+        if (typeof callback !== "function")
+            return this._requestDocumentWithPromise();
 
-        if (this._pendingDocumentRequestCallbacks)
-            this._pendingDocumentRequestCallbacks.push(callback);
-        else
-            this._pendingDocumentRequestCallbacks = [callback];
-
-        if (this._hasRequestedDocument)
-            return;
-
-        if (!WI.pageTarget)
-            return;
-
-        if (!WI.pageTarget.hasDomain("DOM"))
-            return;
-
-        this._hasRequestedDocument = true;
-
-        WI.pageTarget.DOMAgent.getDocument((error, root) => {
-            if (!error)
-                this._setDocument(root);
-
-            for (let callback of this._pendingDocumentRequestCallbacks)
-                callback(this._document);
-
-            this._pendingDocumentRequestCallbacks = null;
-        });
+        this._requestDocumentWithCallback(callback);
     }
 
     ensureDocument()
@@ -236,6 +221,21 @@ WI.DOMManager = class DOMManager extends WI.Object
         node.powerEfficientPlaybackStateChanged(timestamp, isPowerEfficient);
     }
 
+    nodeLayoutContextTypeChanged(nodeId, layoutContextType)
+    {
+        let domNode = this._idToDOMNode[nodeId];
+        console.assert(domNode instanceof WI.DOMNode, domNode, nodeId);
+        if (!domNode)
+            return;
+
+        domNode.layoutContextType = layoutContextType;
+    }
+
+    nodesWithLayoutContextType(layoutContextType)
+    {
+        return Object.values(this._idToDOMNode).filter((node) => node.layoutContextType === layoutContextType);
+    }
+
     // Private
 
     _dispatchWhenDocumentAvailable(func, callback)
@@ -252,6 +252,57 @@ WI.DOMManager = class DOMManager extends WI.Object
             }
         }
         this.requestDocument(onDocumentAvailable.bind(this));
+    }
+
+    _requestDocumentWithPromise()
+    {
+        if (this._documentPromise)
+            return this._documentPromise.promise;
+
+        this._documentPromise = new WI.WrappedPromise;
+        if (this._document)
+            this._documentPromise.resolve(this._document);
+        else {
+            this._requestDocumentWithCallback((doc) => {
+                this._documentPromise.resolve(doc);
+            });
+        }
+
+        return this._documentPromise.promise;
+    }
+
+    _requestDocumentWithCallback(callback)
+    {
+        if (this._document) {
+            callback(this._document);
+            return;
+        }
+
+        if (this._pendingDocumentRequestCallbacks)
+            this._pendingDocumentRequestCallbacks.push(callback);
+        else
+            this._pendingDocumentRequestCallbacks = [callback];
+
+        if (this._hasRequestedDocument)
+            return;
+
+        if (!WI.pageTarget)
+            return;
+
+        if (!WI.pageTarget.hasDomain("DOM"))
+            return;
+
+        this._hasRequestedDocument = true;
+
+        WI.pageTarget.DOMAgent.getDocument((error, root) => {
+            if (!error)
+                this._setDocument(root);
+
+            for (let callback of this._pendingDocumentRequestCallbacks)
+                callback(this._document);
+
+            this._pendingDocumentRequestCallbacks = null;
+        });
     }
 
     _attributeModified(nodeId, name, value)
@@ -351,6 +402,9 @@ WI.DOMManager = class DOMManager extends WI.Object
 
         this._document = newDocument;
 
+        // Force the promise to be recreated so that it resolves to the new document.
+        this._documentPromise = null;
+
         if (!this._document)
             this._hasRequestedDocument = false;
 
@@ -370,7 +424,16 @@ WI.DOMManager = class DOMManager extends WI.Object
         }
 
         var parent = this._idToDOMNode[parentId];
+
+        if (parent.children) {
+            for (let node of parent.children)
+                this.dispatchEventToListeners(WI.DOMManager.Event.NodeRemoved, {node, parent});
+        }
+
         parent._setChildrenPayload(payloads);
+
+        for (let node of parent.children)
+            this.dispatchEventToListeners(WI.DOMManager.Event.NodeInserted, {node, parent});
     }
 
     _childNodeCountUpdated(nodeId, newValue)
@@ -553,8 +616,10 @@ WI.DOMManager = class DOMManager extends WI.Object
 
     hideDOMNodeHighlight()
     {
-        let target = WI.assumingMainTarget();
-        target.DOMAgent.hideHighlight();
+        for (let target of WI.targets) {
+            if (target.hasCommand("DOM.hideHighlight"))
+                target.DOMAgent.hideHighlight();
+        }
     }
 
     highlightDOMNodeForTwoSeconds(nodeId)
@@ -664,8 +729,10 @@ WI.DOMManager = class DOMManager extends WI.Object
 
         for (let target of WI.targets) {
             if (target.hasDomain("DOM"))
-                this._updateEventBreakpoint(breakpoint, target);
+                this._setEventBreakpoint(breakpoint, target);
         }
+
+        WI.debuggerManager.addProbesForBreakpoint(breakpoint);
 
         WI.domDebuggerManager.dispatchEventToListeners(WI.DOMDebuggerManager.Event.EventBreakpointAdded, {breakpoint});
     }
@@ -673,12 +740,14 @@ WI.DOMManager = class DOMManager extends WI.Object
     removeBreakpointForEventListener(eventListener)
     {
         let breakpoint = this._breakpointsForEventListeners.take(eventListener.eventListenerId);
-        console.assert(breakpoint);
+        if (!breakpoint)
+            return;
 
-        for (let target of WI.targets) {
-            if (target.hasDomain("DOM"))
-                target.DOMAgent.removeBreakpointForEventListener(eventListener.eventListenerId);
-        }
+        // Disable the breakpoint first, so removing actions doesn't re-add the breakpoint.
+        breakpoint.disabled = true;
+        breakpoint.clearActions();
+
+        WI.debuggerManager.removeProbesForBreakpoint(breakpoint);
 
         WI.domDebuggerManager.dispatchEventToListeners(WI.DOMDebuggerManager.Event.EventBreakpointRemoved, {breakpoint});
     }
@@ -699,19 +768,28 @@ WI.DOMManager = class DOMManager extends WI.Object
 
     // Private
 
-    _updateEventBreakpoint(breakpoint, target)
+    _setEventBreakpoint(breakpoint, target)
+    {
+        console.assert(!breakpoint.disabled, breakpoint);
+
+        let eventListener = breakpoint.eventListener;
+        console.assert(eventListener);
+
+            if (!WI.debuggerManager.breakpointsDisabledTemporarily)
+                WI.debuggerManager.breakpointsEnabled = true;
+
+        target.DOMAgent.setBreakpointForEventListener.invoke({
+            eventListenerId: eventListener.eventListenerId,
+            options: breakpoint.optionsToProtocol(),
+        });
+    }
+
+    _removeEventBreakpoint(breakpoint, target)
     {
         let eventListener = breakpoint.eventListener;
         console.assert(eventListener);
 
-        if (breakpoint.disabled)
-            target.DOMAgent.removeBreakpointForEventListener(eventListener.eventListenerId);
-        else {
-            if (!WI.debuggerManager.breakpointsDisabledTemporarily)
-                WI.debuggerManager.breakpointsEnabled = true;
-
-            target.DOMAgent.setBreakpointForEventListener(eventListener.eventListenerId);
-        }
+        target.DOMAgent.removeBreakpointForEventListener(eventListener.eventListenerId);
     }
 
     _handleEventBreakpointDisabledStateChanged(event)
@@ -723,9 +801,45 @@ WI.DOMManager = class DOMManager extends WI.Object
             return;
 
         for (let target of WI.targets) {
-            if (target.hasDomain("DOM"))
-                this._updateEventBreakpoint(breakpoint, target);
+            if (!target.hasDomain("DOM"))
+                continue;
+
+            if (breakpoint.disabled)
+                this._removeEventBreakpoint(breakpoint, target);
+            else
+                this._setEventBreakpoint(breakpoint, target);
         }
+    }
+
+    _handleEventBreakpointEditablePropertyChanged(event)
+    {
+        let breakpoint = event.target;
+
+        // Non-specific event listener breakpoints are handled by `DOMDebuggerManager`.
+        if (!breakpoint.eventListener)
+            return;
+
+        if (breakpoint.disabled)
+            return;
+
+        for (let target of WI.targets) {
+            // Clear the old breakpoint from the backend before setting the new one.
+            this._removeEventBreakpoint(breakpoint, target);
+            this._setEventBreakpoint(breakpoint, target);
+        }
+    }
+
+    _handleEventBreakpointActionsChanged(event)
+    {
+        let breakpoint = event.target;
+
+        // Non-specific event listener breakpoints are handled by `DOMDebuggerManager`.
+        if (!breakpoint.eventListener)
+            return;
+
+        this._handleEventBreakpointEditablePropertyChanged(event);
+
+        WI.debuggerManager.updateProbesForBreakpoint(breakpoint);
     }
 
     _mainResourceDidChange(event)

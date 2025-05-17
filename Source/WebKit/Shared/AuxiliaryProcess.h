@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #include "MessageReceiverMap.h"
 #include "MessageSender.h"
 #include <WebCore/ProcessIdentifier.h>
+#include <WebCore/RuntimeApplicationChecks.h>
 #include <WebCore/UserActivity.h>
 #include <wtf/HashMap.h>
 #include <wtf/RunLoop.h>
@@ -40,19 +41,10 @@ namespace WebKit {
 class SandboxInitializationParameters;
 struct AuxiliaryProcessInitializationParameters;
 
-class AuxiliaryProcess : protected IPC::Connection::Client, public IPC::MessageSender {
+class AuxiliaryProcess : public IPC::Connection::Client, public IPC::MessageSender {
     WTF_MAKE_NONCOPYABLE(AuxiliaryProcess);
 
 public:
-    enum class ProcessType : uint8_t {
-        WebContent,
-        Network,
-        Plugin,
-#if ENABLE(GPU_PROCESS)
-        GPU
-#endif
-    };
-
     void initialize(const AuxiliaryProcessInitializationParameters&);
 
     // disable and enable termination of the process. when disableTermination is called, the
@@ -174,7 +166,7 @@ struct AuxiliaryProcessInitializationParameters {
     Optional<WebCore::ProcessIdentifier> processIdentifier;
     IPC::Connection::Identifier connectionIdentifier;
     HashMap<String, String> extraInitializationData;
-    AuxiliaryProcess::ProcessType processType;
+    WebCore::AuxiliaryProcessType processType;
 #if PLATFORM(COCOA)
     OSObjectPtr<xpc_object_t> priorityBoostMessage;
 #endif

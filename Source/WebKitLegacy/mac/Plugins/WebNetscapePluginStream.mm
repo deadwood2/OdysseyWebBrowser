@@ -106,11 +106,11 @@ NPReason WebNetscapePluginStream::reasonForError(NSError *error)
 
 NSError *WebNetscapePluginStream::pluginCancelledConnectionError() const
 {
-    return [[[NSError alloc] _initWithPluginErrorCode:WebKitErrorPlugInCancelledConnection
+    return adoptNS([[NSError alloc] _initWithPluginErrorCode:WebKitErrorPlugInCancelledConnection
                                            contentURL:m_responseURL ? m_responseURL.get() : (NSURL *)m_requestURL
                                         pluginPageURL:nil
                                            pluginName:[[m_pluginView.get() pluginPackage] pluginInfo].name
-                                             MIMEType:(NSString *)String::fromUTF8(m_mimeType.data(), m_mimeType.length())] autorelease];
+                                             MIMEType:(NSString *)String::fromUTF8(m_mimeType.data(), m_mimeType.length())]).autorelease();
 }
 
 NSError *WebNetscapePluginStream::errorForReason(NPReason reason) const
@@ -479,15 +479,11 @@ void WebNetscapePluginStream::cancelLoadWithError(NSError *error)
 {
     if (m_frameLoader) {
         ASSERT(!m_loader);
-        
-        DocumentLoader* documentLoader = m_frameLoader->activeDocumentLoader();
-        ASSERT(documentLoader);
-        
-        if (documentLoader->isLoadingMainResource())
+        auto documentLoader = m_frameLoader->activeDocumentLoader();
+        if (documentLoader && documentLoader->isLoadingMainResource())
             documentLoader->cancelMainResourceLoad(error);
         return;
     }
-    
     if (!m_loader->isDone())
         m_loader->cancel(error);
 }
@@ -552,10 +548,10 @@ void WebNetscapePluginStream::deliverData()
 
     if (totalBytesDelivered > 0) {
         if (totalBytesDelivered < totalBytes) {
-            NSMutableData *newDeliveryData = [[NSMutableData alloc] initWithCapacity:totalBytes - totalBytesDelivered];
+            auto newDeliveryData = adoptNS([[NSMutableData alloc] initWithCapacity:totalBytes - totalBytesDelivered]);
             [newDeliveryData appendBytes:static_cast<char*>(const_cast<void*>([m_deliveryData.get() bytes])) + totalBytesDelivered length:totalBytes - totalBytesDelivered];
             
-            m_deliveryData = adoptNS(newDeliveryData);
+            m_deliveryData = WTFMove(newDeliveryData);
         } else {
             [m_deliveryData.get() setLength:0];
             if (m_reason != WEB_REASON_NONE) 
@@ -617,20 +613,18 @@ void WebNetscapePluginStream::didFinishLoading(NetscapePlugInStreamLoader*)
 
 void WebNetscapePluginStream::didReceiveData(NetscapePlugInStreamLoader*, const char* bytes, int length)
 {
-    NSData *data = [[NSData alloc] initWithBytesNoCopy:(void*)bytes length:length freeWhenDone:NO];
+    auto data = adoptNS([[NSData alloc] initWithBytesNoCopy:(void*)bytes length:length freeWhenDone:NO]);
 
     ASSERT([data length] > 0);
     
     if (m_transferMode != NP_ASFILEONLY) {
         if (!m_deliveryData)
             m_deliveryData = adoptNS([[NSMutableData alloc] initWithCapacity:[data length]]);
-        [m_deliveryData.get() appendData:data];
+        [m_deliveryData.get() appendData:data.get()];
         deliverData();
     }
     if (m_transferMode == NP_ASFILE || m_transferMode == NP_ASFILEONLY)
-        deliverDataToFile(data);
-    
-    [data release];
+        deliverDataToFile(data.get());
 }
 
 #endif

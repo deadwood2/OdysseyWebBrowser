@@ -67,7 +67,7 @@ UserGestureToken::UserGestureToken(ProcessingUserGestureState state, UserGesture
     auto& documentOrigin = document->securityOrigin();
     for (auto* frame = &documentFrame->tree().top(); frame; frame = frame->tree().traverseNext()) {
         auto* frameDocument = frame->document();
-        if (frameDocument && documentOrigin.canAccess(frameDocument->securityOrigin()))
+        if (frameDocument && documentOrigin.isSameOriginDomain(frameDocument->securityOrigin()))
             m_documentsImpactedByUserGesture.add(*frameDocument);
     }
 }
@@ -89,7 +89,7 @@ void UserGestureToken::setMaximumIntervalForUserGestureForwardingForFetchForTest
     maxIntervalForUserGestureForwardingForFetch = WTFMove(value);
 }
 
-bool UserGestureToken::isValidForDocument(Document& document) const
+bool UserGestureToken::isValidForDocument(const Document& document) const
 {
     return m_documentsImpactedByUserGesture.contains(document);
 }
@@ -102,7 +102,7 @@ UserGestureIndicator::UserGestureIndicator(Optional<ProcessingUserGestureState> 
     if (state)
         currentToken() = UserGestureToken::create(state.value(), gestureType, document);
 
-    if (document && currentToken()->processingUserGesture() && state) {
+    if (state && document && currentToken()->processingUserGesture()) {
         document->updateLastHandledUserGestureTimestamp(currentToken()->startTime());
         if (processInteractionStyle == ProcessInteractionStyle::Immediate)
             ResourceLoadObserver::shared().logUserInteractionWithReducedTimeResolution(document->topDocument());
@@ -157,7 +157,7 @@ RefPtr<UserGestureToken> UserGestureIndicator::currentUserGesture()
     return currentToken();
 }
 
-bool UserGestureIndicator::processingUserGesture(Document* document)
+bool UserGestureIndicator::processingUserGesture(const Document* document)
 {
     if (!isMainThread())
         return false;

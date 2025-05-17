@@ -403,7 +403,7 @@ class Manager(object):
     def _run_tests(self, tests_to_run, tests_to_skip, repeat_each, iterations, num_workers, retrying, device_type=None):
         test_inputs = self._get_test_inputs(tests_to_run, repeat_each, iterations, device_type=device_type)
 
-        return self._runner.run_tests(self._expectations[device_type], test_inputs, tests_to_skip, num_workers, retrying)
+        return self._runner.run_tests(self._expectations[device_type], test_inputs, tests_to_skip, num_workers, retrying, device_type)
 
     def _clean_up_run(self):
         _log.debug("Flushing stdout")
@@ -422,7 +422,7 @@ class Manager(object):
         _log.debug("Restarting helper")
         self._port.stop_helper()
         self._options.pixel_tests = True
-        return self._port.start_helper()
+        return self._port.start_helper(prefer_integrated_gpu=self._options.prefer_integrated_gpu)
 
     def _look_for_new_crash_logs(self, run_results, start_time):
         """Since crash logs can take a long time to be written out if the system is
@@ -575,8 +575,8 @@ class Manager(object):
         master_name = self._options.master_name
         builder_name = self._options.builder_name
         build_number = self._options.build_number
-        build_slave = self._options.build_slave
-        if not master_name or not builder_name or not build_number or not build_slave:
+        build_worker = self._options.build_slave
+        if not master_name or not builder_name or not build_number or not build_worker:
             _log.error("--results-server-host was set, but --master-name, --builder-name, --build-number, or --build-slave was not. Not uploading JSON files.")
             return
 
@@ -588,13 +588,13 @@ class Manager(object):
             revisions[name] = {'revision': revision, 'timestamp': scm.timestamp_of_native_revision(path, revision)}
 
         for hostname in self._options.results_server_host:
-            _log.info("Uploading JSON files for master: %s builder: %s build: %s slave: %s to %s", master_name, builder_name, build_number, build_slave, hostname)
+            _log.info("Uploading JSON files for master: {} builder: {} build: {} worker: {} to {}".format(master_name, builder_name, build_number, build_worker, hostname))
 
             attrs = [
                 ('master', 'build.webkit.org' if master_name == 'webkit.org' else master_name),  # FIXME: Pass in build.webkit.org.
                 ('builder_name', builder_name),
                 ('build_number', build_number),
-                ('build_slave', build_slave),
+                ('build_slave', build_worker),
                 ('revisions', json.dumps(revisions)),
                 ('start_time', str(start_time)),
                 ('end_time', str(end_time)),
@@ -614,7 +614,7 @@ class Manager(object):
                 response_text = response.read()
                 try:
                     response_json = json.loads(response_text)
-                except ValueError as error:
+                except ValueError:
                     _log.error("JSON upload failed; failed to parse the response: %s", response_text)
                     continue
 

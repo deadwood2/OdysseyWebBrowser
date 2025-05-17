@@ -92,13 +92,13 @@ static Optional<SRGBA<uint8_t>> makeSimpleColorFromNSColor(NSColor *color)
         NSUInteger pixel[4];
         [offscreenRep getPixel:pixel atX:0 y:0];
 
-        return clampToComponentBytes<SRGBA>(pixel[0], pixel[1], pixel[2], pixel[3]);
+        return makeFromComponentsClamping<SRGBA<uint8_t>>(pixel[0], pixel[1], pixel[2], pixel[3]);
     }
 
     [rgbColor getRed:&redComponent green:&greenComponent blue:&blueComponent alpha:&alpha];
     END_BLOCK_OBJC_EXCEPTIONS
 
-    return convertToComponentBytes(SRGBA { static_cast<float>(redComponent), static_cast<float>(greenComponent), static_cast<float>(blueComponent), static_cast<float>(alpha) });
+    return convertColor<SRGBA<uint8_t>>(SRGBA<float> { static_cast<float>(redComponent), static_cast<float>(greenComponent), static_cast<float>(blueComponent), static_cast<float>(alpha) });
 }
 
 Color colorFromNSColor(NSColor *color)
@@ -108,22 +108,22 @@ Color colorFromNSColor(NSColor *color)
 
 Color semanticColorFromNSColor(NSColor *color)
 {
-    return Color(makeSimpleColorFromNSColor(color), Color::Semantic);
+    return Color(makeSimpleColorFromNSColor(color), Color::Flags::Semantic);
 }
 
 NSColor *nsColor(const Color& color)
 {
     if (color.isInline()) {
-        switch (Packed::RGBA { color.asInline() }.value) {
-        case Packed::RGBA { Color::transparentBlack }.value: {
+        switch (PackedColor::RGBA { color.asInline() }.value) {
+        case PackedColor::RGBA { Color::transparentBlack }.value: {
             static NSColor *clearColor = [[NSColor colorWithSRGBRed:0 green:0 blue:0 alpha:0] retain];
             return clearColor;
         }
-        case Packed::RGBA { Color::black }.value: {
+        case PackedColor::RGBA { Color::black }.value: {
             static NSColor *blackColor = [[NSColor colorWithSRGBRed:0 green:0 blue:0 alpha:1] retain];
             return blackColor;
         }
-        case Packed::RGBA { Color::white }.value: {
+        case PackedColor::RGBA { Color::white }.value: {
             static NSColor *whiteColor = [[NSColor colorWithSRGBRed:1 green:1 blue:1 alpha:1] retain];
             return whiteColor;
         }

@@ -60,6 +60,7 @@ struct _BrowserTab {
 };
 
 static GHashTable *userMediaPermissionGrantedOrigins;
+static GHashTable *mediaKeySystemPermissionGrantedOrigins;
 struct _BrowserTabClass {
     GtkBoxClass parent;
 };
@@ -218,9 +219,15 @@ static void tlsErrorsDialogResponse(GtkWidget *dialog, gint response, BrowserTab
     if (response == GTK_RESPONSE_YES) {
         const char *failingURI = (const char *)g_object_get_data(G_OBJECT(dialog), "failingURI");
         GTlsCertificate *certificate = (GTlsCertificate *)g_object_get_data(G_OBJECT(dialog), "certificate");
+#if SOUP_CHECK_VERSION(2, 91, 0)
+        GUri *uri = g_uri_parse(failingURI, SOUP_HTTP_URI_FLAGS, NULL);
+        webkit_web_context_allow_tls_certificate_for_host(webkit_web_view_get_context(tab->webView), certificate, g_uri_get_host(uri));
+        g_uri_unref(uri);
+#else
         SoupURI *uri = soup_uri_new(failingURI);
         webkit_web_context_allow_tls_certificate_for_host(webkit_web_view_get_context(tab->webView), certificate, uri->host);
         soup_uri_free(uri);
+#endif
         webkit_web_view_load_uri(tab->webView, failingURI);
     }
 #if GTK_CHECK_VERSION(3, 98, 5)
@@ -264,12 +271,16 @@ static void permissionRequestDialogResponse(GtkWidget *dialog, gint response, Pe
     case GTK_RESPONSE_YES:
         if (WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST(requestData->request))
             g_hash_table_add(userMediaPermissionGrantedOrigins, g_strdup(requestData->origin));
+        if (WEBKIT_IS_MEDIA_KEY_SYSTEM_PERMISSION_REQUEST(requestData->request))
+            g_hash_table_add(mediaKeySystemPermissionGrantedOrigins, g_strdup(requestData->origin));
 
         webkit_permission_request_allow(requestData->request);
         break;
     default:
         if (WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST(requestData->request))
             g_hash_table_remove(userMediaPermissionGrantedOrigins, requestData->origin);
+        if (WEBKIT_IS_MEDIA_KEY_SYSTEM_PERMISSION_REQUEST(requestData->request))
+            g_hash_table_remove(mediaKeySystemPermissionGrantedOrigins, requestData->origin);
 
         webkit_permission_request_deny(requestData->request);
         break;
@@ -340,6 +351,16 @@ static gboolean decidePermissionRequest(WebKitWebView *webView, WebKitPermission
         const gchar *currentDomain = webkit_website_data_access_permission_request_get_current_domain(websiteDataAccessRequest);
         text = g_strdup_printf("Do you want to allow \"%s\" to use cookies while browsing \"%s\"? This will allow \"%s\" to track your activity",
             requestingDomain, currentDomain, requestingDomain);
+    } else if (WEBKIT_IS_MEDIA_KEY_SYSTEM_PERMISSION_REQUEST(request)) {
+        char *origin = getWebViewOrigin(webView);
+        if (g_hash_table_contains(mediaKeySystemPermissionGrantedOrigins, origin)) {
+            webkit_permission_request_allow(request);
+            g_free(origin);
+            return TRUE;
+        }
+        g_free(origin);
+        title = "DRM system access request";
+        text = g_strdup_printf("Allow to use a CDM providing access to %s?", webkit_media_key_system_permission_get_name(WEBKIT_MEDIA_KEY_SYSTEM_PERMISSION_REQUEST(request)));
     } else {
         g_print("%s request not handled\n", G_OBJECT_TYPE_NAME(request));
         return FALSE;
@@ -415,6 +436,12 @@ static gboolean runColorChooserCallback(WebKitWebView *webView, WebKitColorChoos
     gtk_widget_show(popover);
 
     return TRUE;
+}
+
+static void webProcessTerminatedCallback(WebKitWebView *webView, WebKitWebProcessTerminationReason reason)
+{
+    if (reason == WEBKIT_WEB_PROCESS_CRASHED)
+        g_warning("WebProcess CRASHED");
 }
 
 static gboolean inspectorOpenedInWindow(WebKitWebInspector *inspector, BrowserTab *tab)
@@ -626,6 +653,7 @@ static void browserTabConstructed(GObject *gObject)
     g_signal_connect(tab->webView, "load-failed-with-tls-errors", G_CALLBACK(loadFailedWithTLSerrors), tab);
     g_signal_connect(tab->webView, "permission-request", G_CALLBACK(decidePermissionRequest), tab);
     g_signal_connect(tab->webView, "run-color-chooser", G_CALLBACK(runColorChooserCallback), tab);
+    g_signal_connect(tab->webView, "web-process-terminated", G_CALLBACK(webProcessTerminatedCallback), NULL);
 
     g_object_bind_property(tab->webView, "is-playing-audio", tab->titleAudioButton, "visible", G_BINDING_DEFAULT | G_BINDING_SYNC_CREATE);
     g_signal_connect(tab->webView, "notify::is-muted", G_CALLBACK(audioMutedChanged), tab);
@@ -647,6 +675,9 @@ static void browser_tab_class_init(BrowserTabClass *klass)
 
     if (!userMediaPermissionGrantedOrigins)
         userMediaPermissionGrantedOrigins = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+
+    if (!mediaKeySystemPermissionGrantedOrigins)
+        mediaKeySystemPermissionGrantedOrigins = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
     g_object_class_install_property(
         gobjectClass,

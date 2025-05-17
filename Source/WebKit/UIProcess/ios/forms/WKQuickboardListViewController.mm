@@ -26,7 +26,7 @@
 #import "config.h"
 #import "WKQuickboardListViewController.h"
 
-#if PLATFORM(WATCHOS)
+#if HAVE(PEPPER_UI_CORE)
 
 #import <wtf/RetainPtr.h>
 
@@ -159,7 +159,7 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 
     PUICActionItem *languageSelectionActionItem = [self.languageController languageSelectionActionItemForViewController:self];
     auto actionGroup = adoptNS([[PUICActionGroup alloc] initWithActionItems:@[ languageSelectionActionItem ] actionStyle:PUICActionStyleAutomatic]);
-    return [[[PUICActionController alloc] initWithActionGroup:actionGroup.get()] autorelease];
+    return adoptNS([[PUICActionController alloc] initWithActionGroup:actionGroup.get()]).autorelease();
 }
 
 ALLOW_DEPRECATED_IMPLEMENTATIONS_END
@@ -210,4 +210,4 @@ void configureStatusBarForController(PUICQuickboardViewController *controller, i
     [item commitChangesAnimated:NO];
 }
 
-#endif // PLATFORM(WATCHOS)
+#endif // HAVE(PEPPER_UI_CORE)

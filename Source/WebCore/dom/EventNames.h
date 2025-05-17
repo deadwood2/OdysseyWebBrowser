@@ -32,6 +32,10 @@
 #include "RuntimeEnabledFeatures.h"
 #endif
 
+#if USE(APPLE_INTERNAL_SDK)
+#include <WebKitAdditions/EventNamesAdditions.h>
+#endif
+
 namespace WebCore {
 
 #if !defined(ADDITIONAL_DOM_EVENT_NAMES_FOR_EACH)
@@ -214,6 +218,7 @@ namespace WebCore {
     macro(pointerup) \
     macro(popstate) \
     macro(previoustrack) \
+    macro(processorerror) \
     macro(progress) \
     macro(ratechange) \
     macro(readystatechange) \

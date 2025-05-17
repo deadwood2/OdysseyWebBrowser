@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,14 +25,12 @@
 
 #import "_WKInspector.h"
 
+@class WKBrowsingContextHandle;
 @protocol _WKDiagnosticLoggingDelegate;
 
 @interface _WKInspector (WKPrivate)
 
 @property (nonatomic, weak, setter=_setDiagnosticLoggingDelegate:) id<_WKDiagnosticLoggingDelegate> _diagnosticLoggingDelegate;
 
-// Browser
-- (void)_browserExtensionsEnabled:(NSDictionary<NSString *, NSString *> *)extensionIDToName;
-- (void)_browserExtensionsDisabled:(NSSet<NSString *> *)extensionIDs;
-
+@property (nonatomic, readonly) WKWebView *extensionHostWebView;
 @end

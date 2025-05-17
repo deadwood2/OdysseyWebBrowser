@@ -35,6 +35,7 @@
 #import "JSHTMLElement.h"
 #import "JSPluginElementFunctions.h"
 #import "ObjCRuntimeObject.h"
+#import "WebCoreJITOperations.h"
 #import "WebCoreObjCExtras.h"
 #import "objc_instance.h"
 #import "runtime_object.h"
@@ -85,7 +86,7 @@ NSObject *getJSWrapper(JSObject* impl)
     LockHolder holder(&spinLock);
 
     NSObject* wrapper = wrapperCache().get(impl);
-    return wrapper ? [[wrapper retain] autorelease] : nil;
+    return wrapper ? retainPtr(wrapper).autorelease() : nil;
 }
 
 void addJSWrapper(NSObject *wrapper, JSObject* impl)
@@ -115,7 +116,7 @@ id createJSWrapper(JSC::JSObject* object, RefPtr<JSC::Bindings::RootObject>&& or
 {
     if (id wrapper = getJSWrapper(object))
         return wrapper;
-    return [[[WebScriptObject alloc] _initWithJSObject:object originRootObject:WTFMove(origin) rootObject:WTFMove(root)] autorelease];
+    return adoptNS([[WebScriptObject alloc] _initWithJSObject:object originRootObject:WTFMove(origin) rootObject:WTFMove(root)]).autorelease();
 }
 
 static void addExceptionToConsole(JSC::JSGlobalObject* lexicalGlobalObject, JSC::Exception* exception)
@@ -166,6 +167,7 @@ void disconnectWindowWrapper(WebScriptObject *windowWrapper)
 #if !USE(WEB_THREAD)
     JSC::initialize();
     WTF::initializeMainThread();
+    WebCore::populateJITOperations();
 #endif
 }
 
@@ -712,7 +714,7 @@ IGNORE_WARNINGS_END
 
 + (WebUndefined *)undefined
 {
-    return [[[WebUndefined alloc] init] autorelease];
+    return adoptNS([[WebUndefined alloc] init]).autorelease();
 }
 
 @end

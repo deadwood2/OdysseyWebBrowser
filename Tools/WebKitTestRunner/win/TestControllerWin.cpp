@@ -227,9 +227,14 @@ void TestController::platformResetPreferencesToConsistentValues()
     notImplemented();
 }
 
-void TestController::updatePlatformSpecificTestOptionsForTest(TestOptions&, const std::string&) const
+bool TestController::platformResetStateToConsistentValues(const TestOptions&)
 {
-    notImplemented();
+    return true;
+}
+
+TestFeatures TestController::platformSpecificFeatureDefaultsForTest(const TestCommand&) const
+{
+    return { };
 }
 
 } // namespace WTR

@@ -4,7 +4,6 @@ set(WebKit_OUTPUT_NAME webkit2gtk-${WEBKITGTK_API_VERSION})
 set(WebProcess_OUTPUT_NAME WebKitWebProcess)
 set(NetworkProcess_OUTPUT_NAME WebKitNetworkProcess)
 set(GPUProcess_OUTPUT_NAME WebKitGPUProcess)
-set(PluginProcess_OUTPUT_NAME WebKitPluginProcess)
 
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_WEBKIT2GTK_API_DIR})
 file(MAKE_DIRECTORY ${FORWARDING_HEADERS_WEBKIT2GTK_DIR})
@@ -51,6 +50,7 @@ endif ()
 
 list(APPEND WebKit_DERIVED_SOURCES
     ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/InspectorGResourceBundle.c
+    ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitDirectoryInputStreamData.cpp
     ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitResourcesGResourceBundle.c
 
     ${DERIVED_SOURCES_WEBKIT2GTK_API_DIR}/WebKitEnumTypes.cpp
@@ -65,10 +65,25 @@ if (ENABLE_WAYLAND_TARGET)
     )
 endif ()
 
+set(WebKit_DirectoryInputStream_DATA
+    ${WEBKIT_DIR}/NetworkProcess/soup/Resources/directory.css
+    ${WEBKIT_DIR}/NetworkProcess/soup/Resources/directory.js
+)
+
+add_custom_command(
+    OUTPUT ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitDirectoryInputStreamData.cpp ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitDirectoryInputStreamData.h
+    MAIN_DEPENDENCY ${WEBCORE_DIR}/css/make-css-file-arrays.pl
+    DEPENDS ${WebKit_DirectoryInputStream_DATA}
+    COMMAND ${PERL_EXECUTABLE} ${WEBCORE_DIR}/css/make-css-file-arrays.pl --defines "${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}" --preprocessor "${CODE_GENERATOR_PREPROCESSOR}" ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitDirectoryInputStreamData.h ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/WebKitDirectoryInputStreamData.cpp ${WebKit_DirectoryInputStream_DATA}
+    VERBATIM
+)
+
 if (USE_GTK4)
     set(GTK_API_VERSION 4)
+    set(GTK_PKGCONFIG_PACKAGE gtk4)
 else ()
     set(GTK_API_VERSION 3)
+    set(GTK_PKGCONFIG_PACKAGE gtk+-3.0)
 endif ()
 
 set(WebKit2GTK_INSTALLED_HEADERS
@@ -104,6 +119,7 @@ set(WebKit2GTK_INSTALLED_HEADERS
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitHitTestResult.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitInstallMissingMediaPluginsPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitJavascriptResult.h
+    ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitMediaKeySystemPermissionRequest.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitMimeInfo.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitNavigationAction.h
     ${WEBKIT_DIR}/UIProcess/API/gtk/WebKitNavigationPolicyDecision.h
@@ -404,7 +420,6 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/Shared/API/glib"
     "${WEBKIT_DIR}/Shared/CoordinatedGraphics"
     "${WEBKIT_DIR}/Shared/CoordinatedGraphics/threadedcompositor"
-    "${WEBKIT_DIR}/Shared/Plugins/unix"
     "${WEBKIT_DIR}/Shared/glib"
     "${WEBKIT_DIR}/Shared/gtk"
     "${WEBKIT_DIR}/Shared/linux"
@@ -417,7 +432,6 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/UIProcess/CoordinatedGraphics"
     "${WEBKIT_DIR}/UIProcess/Inspector/glib"
     "${WEBKIT_DIR}/UIProcess/Inspector/gtk"
-    "${WEBKIT_DIR}/UIProcess/Plugins/gtk"
     "${WEBKIT_DIR}/UIProcess/geoclue"
     "${WEBKIT_DIR}/UIProcess/glib"
     "${WEBKIT_DIR}/UIProcess/gstreamer"
@@ -429,8 +443,7 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/gtk"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/gtk/DOM"
     "${WEBKIT_DIR}/WebProcess/Inspector/gtk"
-    "${WEBKIT_DIR}/WebProcess/Plugins/Netscape/unix"
-    "${WEBKIT_DIR}/WebProcess/Plugins/Netscape/x11"
+    "${WEBKIT_DIR}/WebProcess/glib"
     "${WEBKIT_DIR}/WebProcess/gtk"
     "${WEBKIT_DIR}/WebProcess/soup"
     "${WEBKIT_DIR}/WebProcess/WebCoreSupport/gtk"
@@ -441,13 +454,13 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
+    ${ATK_INCLUDE_DIRS}
     ${ENCHANT_INCLUDE_DIRS}
     ${GIO_UNIX_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
     ${GSTREAMER_INCLUDE_DIRS}
     ${GSTREAMER_PBUTILS_INCLUDE_DIRS}
     ${GTK_INCLUDE_DIRS}
-    ${LIBSECCOMP_INCLUDE_DIRS}
     ${LIBSOUP_INCLUDE_DIRS}
 )
 
@@ -502,6 +515,17 @@ if (USE_LIBWEBRTC)
     list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
         "${THIRDPARTY_DIR}/libwebrtc/Source/"
         "${THIRDPARTY_DIR}/libwebrtc/Source/webrtc"
+    )
+endif ()
+
+if (ENABLE_MEDIA_STREAM)
+    list(APPEND WebKit_SOURCES
+        UIProcess/glib/UserMediaPermissionRequestManagerProxyGLib.cpp
+
+        WebProcess/glib/UserMediaCaptureManager.cpp
+    )
+    list(APPEND WebKit_MESSAGES_IN_FILES
+        WebProcess/glib/UserMediaCaptureManager
     )
 endif ()
 
@@ -593,11 +617,6 @@ if (ENABLE_WAYLAND_TARGET)
     )
 endif ()
 
-# GTK3 PluginProcess
-list(APPEND PluginProcess_SOURCES
-    PluginProcess/EntryPoint/unix/PluginProcessMain.cpp
-)
-
 # Commands for building the built-in injected bundle.
 add_library(webkit2gtkinjectedbundle MODULE "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/glib/WebKitInjectedBundleMain.cpp")
 ADD_WEBKIT_PREFIX_HEADER(webkit2gtkinjectedbundle)
@@ -664,8 +683,8 @@ if (ENABLE_INTROSPECTION)
             --namespace=WebKit2
             --nsversion=${WEBKITGTK_API_VERSION}
             --include=GObject-2.0
-            --include=Gtk-3.0
-            --include=Soup-2.4
+            --include=Gtk-${GTK_API_VERSION}.0
+            --include=Soup-${SOUP_API_VERSION}
             --include-uninstalled=${CMAKE_BINARY_DIR}/JavaScriptCore-${WEBKITGTK_API_VERSION}.gir
             --library=webkit2gtk-${WEBKITGTK_API_VERSION}
             --library=javascriptcoregtk-${WEBKITGTK_API_VERSION}
@@ -673,8 +692,8 @@ if (ENABLE_INTROSPECTION)
             ${INTROSPECTION_ADDITIONAL_LINKER_FLAGS}
             --no-libtool
             --pkg=gobject-2.0
-            --pkg=gtk+-3.0
-            --pkg=libsoup-2.4
+            --pkg=${GTK_PKGCONFIG_PACKAGE}
+            --pkg=libsoup-${SOUP_API_VERSION}
             --pkg-export=webkit2gtk-${WEBKITGTK_API_VERSION}
             --output=${CMAKE_BINARY_DIR}/WebKit2-${WEBKITGTK_API_VERSION}.gir
             ${GIR_SOURCES_TOP_DIRS}
@@ -711,8 +730,8 @@ if (ENABLE_INTROSPECTION)
             --namespace=WebKit2WebExtension
             --nsversion=${WEBKITGTK_API_VERSION}
             --include=GObject-2.0
-            --include=Gtk-3.0
-            --include=Soup-2.4
+            --include=Gtk-${GTK_API_VERSION}.0
+            --include=Soup-${SOUP_API_VERSION}
             --include-uninstalled=${CMAKE_BINARY_DIR}/JavaScriptCore-${WEBKITGTK_API_VERSION}.gir
             --library=webkit2gtk-${WEBKITGTK_API_VERSION}
             --library=javascriptcoregtk-${WEBKITGTK_API_VERSION}
@@ -721,8 +740,8 @@ if (ENABLE_INTROSPECTION)
             ${INTROSPECTION_ADDITIONAL_LINKER_FLAGS}
             --no-libtool
             --pkg=gobject-2.0
-            --pkg=gtk+-3.0
-            --pkg=libsoup-2.4
+            --pkg=${GTK_PKGCONFIG_PACKAGE}
+            --pkg=libsoup-${SOUP_API_VERSION}
             --pkg-export=webkit2gtk-web-extension-${WEBKITGTK_API_VERSION}
             --output=${CMAKE_BINARY_DIR}/WebKit2WebExtension-${WEBKITGTK_API_VERSION}.gir
             ${GIR_SOURCES_TOP_DIRS}
@@ -802,7 +821,7 @@ if (ENABLE_INTROSPECTION)
 endif ()
 
 file(WRITE ${CMAKE_BINARY_DIR}/gtkdoc-webkit2gtk.cfg
-    "[webkit2gtk-${WEBKITGTK_API_VERSION}]\n"
+    "[webkit2gtk-${WEBKITGTK_API_DOC_VERSION}]\n"
     "pkgconfig_file=${WebKit2_PKGCONFIG_FILE}\n"
     "decorator=WEBKIT_API|WEBKIT_DEPRECATED|WEBKIT_DEPRECATED_FOR\\(.+\\)\n"
     "deprecation_guard=WEBKIT_DISABLE_DEPRECATED\n"
@@ -827,7 +846,7 @@ file(WRITE ${CMAKE_BINARY_DIR}/gtkdoc-webkit2gtk.cfg
 )
 
 file(WRITE ${CMAKE_BINARY_DIR}/gtkdoc-webkitdom.cfg
-    "[webkitdomgtk-${WEBKITGTK_API_VERSION}]\n"
+    "[webkitdomgtk-${WEBKITGTK_API_DOC_VERSION}]\n"
     "pkgconfig_file=${WebKit2_PKGCONFIG_FILE}\n"
     "decorator=WEBKIT_API|WEBKIT_DEPRECATED|WEBKIT_DEPRECATED_FOR\\(.+\\)\n"
     "deprecation_guard=WEBKIT_DISABLE_DEPRECATED\n"

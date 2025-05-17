@@ -17,9 +17,7 @@ class WebDriverBenchmarkRunner(BenchmarkRunner):
         return result
 
     def _run_one_test(self, web_root, test_file):
-        import webkitpy.thirdparty.autoinstalled.selenium
         from selenium.webdriver.support.ui import WebDriverWait
-        result = None
         try:
             url = 'file://{root}/{plan_name}/{test_file}'.format(root=web_root, plan_name=self._plan_name, test_file=test_file)
             driver = self._browser_driver.launch_driver(url, self._plan['options'], self._build_dir, self._browser_path)

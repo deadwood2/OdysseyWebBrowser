@@ -43,14 +43,16 @@ ShareableBitmap::Handle::Handle()
 
 void ShareableBitmap::Handle::encode(IPC::Encoder& encoder) const
 {
-    encoder << m_handle;
+    SharedMemory::IPCHandle ipcHandle(WTFMove(m_handle), numBytesForSize(m_size, m_configuration).unsafeGet());
+    encoder << ipcHandle;
     encoder << m_size;
     encoder << m_configuration;
 }
 
 bool ShareableBitmap::Handle::decode(IPC::Decoder& decoder, Handle& handle)
 {
-    if (!decoder.decode(handle.m_handle))
+    SharedMemory::IPCHandle ipcHandle;
+    if (!decoder.decode(ipcHandle))
         return false;
     if (!decoder.decode(handle.m_size))
         return false;
@@ -58,6 +60,8 @@ bool ShareableBitmap::Handle::decode(IPC::Decoder& decoder, Handle& handle)
         return false;
     if (!decoder.decode(handle.m_configuration))
         return false;
+    
+    handle.m_handle = WTFMove(ipcHandle.handle);
     return true;
 }
 
@@ -145,7 +149,6 @@ RefPtr<ShareableBitmap> ShareableBitmap::create(const IntSize& size, Configurati
 
 RefPtr<ShareableBitmap> ShareableBitmap::create(const Handle& handle, SharedMemory::Protection protection)
 {
-    // Create the shared memory.
     auto sharedMemory = SharedMemory::map(handle.m_handle, protection);
     if (!sharedMemory)
         return nullptr;
@@ -169,7 +172,6 @@ ShareableBitmap::ShareableBitmap(const IntSize& size, Configuration configuratio
     , m_configuration(configuration)
     , m_data(data)
 {
-    ASSERT(RunLoop::isMain());
 }
 
 ShareableBitmap::ShareableBitmap(const IntSize& size, Configuration configuration, RefPtr<SharedMemory> sharedMemory)
@@ -178,8 +180,6 @@ ShareableBitmap::ShareableBitmap(const IntSize& size, Configuration configuratio
     , m_sharedMemory(sharedMemory)
     , m_data(nullptr)
 {
-    ASSERT(RunLoop::isMain());
-
 #if USE(DIRECT2D)
     createSharedResource();
 #endif
@@ -187,8 +187,6 @@ ShareableBitmap::ShareableBitmap(const IntSize& size, Configuration configuratio
 
 ShareableBitmap::~ShareableBitmap()
 {
-    ASSERT(RunLoop::isMain());
-
     if (!isBackedBySharedMemory())
         ShareableBitmapMalloc::free(m_data);
 #if USE(DIRECT2D)

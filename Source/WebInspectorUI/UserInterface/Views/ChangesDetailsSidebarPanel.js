@@ -40,23 +40,18 @@ WI.ChangesDetailsSidebarPanel = class ChangesDetailsSidebarPanel extends WI.DOMD
         return nodeToInspect.nodeType() === Node.ELEMENT_NODE;
     }
 
-    shown()
+    attached()
     {
-        // `shown` may get called before initialLayout when Elements tab is opened.
-        // When Changes panel is selected, `shown` is called and this time it's after initialLayout.
-        if (this.didInitialLayout) {
-            this.needsLayout();
-            WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
-        }
+        super.attached();
 
-        super.shown();
+        WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
     }
 
     detached()
     {
-        super.detached();
-
         WI.Frame.removeEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+
+        super.detached();
     }
 
     // Protected

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,7 +45,6 @@ RemoteLayerTreeTransaction& RemoteLayerTreeTransaction::operator=(RemoteLayerTre
 RemoteLayerTreeTransaction::LayerCreationProperties::LayerCreationProperties()
     : layerID(0)
     , type(WebCore::PlatformCALayer::LayerTypeLayer)
-    , embeddedViewID(0)
     , hostingContextID(0)
     , hostingDeviceScaleFactor(1)
 {
@@ -55,7 +54,6 @@ void RemoteLayerTreeTransaction::LayerCreationProperties::encode(IPC::Encoder& e
 {
     encoder << layerID;
     encoder << type;
-    encoder << embeddedViewID;
     encoder << hostingContextID;
     encoder << hostingDeviceScaleFactor;
 }
@@ -67,9 +65,6 @@ auto RemoteLayerTreeTransaction::LayerCreationProperties::decode(IPC::Decoder& d
         return WTF::nullopt;
 
     if (!decoder.decode(result.type))
-        return WTF::nullopt;
-
-    if (!decoder.decode(result.embeddedViewID))
         return WTF::nullopt;
 
     if (!decoder.decode(result.hostingContextID))
@@ -108,6 +103,9 @@ RemoteLayerTreeTransaction::LayerProperties::LayerProperties()
     , opaque(false)
     , contentsHidden(false)
     , userInteractionEnabled(true)
+#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
+    , isSeparated(false)
+#endif
 {
 }
 
@@ -147,6 +145,9 @@ RemoteLayerTreeTransaction::LayerProperties::LayerProperties(const LayerProperti
     , contentsHidden(other.contentsHidden)
     , userInteractionEnabled(other.userInteractionEnabled)
     , eventRegion(other.eventRegion)
+#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
+    , isSeparated(other.isSeparated)
+#endif
 {
     // FIXME: LayerProperties should reference backing store by ID, so that two layers can have the same backing store (for clones).
     // FIXME: LayerProperties shouldn't be copyable; PlatformCALayerRemote::clone should copy the relevant properties.
@@ -163,7 +164,7 @@ RemoteLayerTreeTransaction::LayerProperties::LayerProperties(const LayerProperti
 
 void RemoteLayerTreeTransaction::LayerProperties::encode(IPC::Encoder& encoder) const
 {
-    encoder.encode(changedProperties);
+    encoder << changedProperties;
 
     if (changedProperties & NameChanged)
         encoder << name;
@@ -284,6 +285,11 @@ void RemoteLayerTreeTransaction::LayerProperties::encode(IPC::Encoder& encoder) 
 
     if (changedProperties & EventRegionChanged)
         encoder << eventRegion;
+
+#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
+    if (changedProperties & SeparatedChanged)
+        encoder << isSeparated;
+#endif
 }
 
 bool RemoteLayerTreeTransaction::LayerProperties::decode(IPC::Decoder& decoder, LayerProperties& result)
@@ -515,6 +521,13 @@ bool RemoteLayerTreeTransaction::LayerProperties::decode(IPC::Decoder& decoder, 
         result.eventRegion = WTFMove(*eventRegion);
     }
 
+#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
+    if (result.changedProperties & SeparatedChanged) {
+        if (!decoder.decode(result.isSeparated))
+            return false;
+    }
+#endif
+
     return true;
 }
 
@@ -551,6 +564,7 @@ void RemoteLayerTreeTransaction::encode(IPC::Encoder& encoder) const
 
     encoder << m_scrollPosition;
 
+    encoder << m_themeColor;
     encoder << m_pageExtendedBackgroundColor;
     encoder << m_pageScaleFactor;
     encoder << m_minimumScaleFactor;
@@ -645,7 +659,10 @@ bool RemoteLayerTreeTransaction::decode(IPC::Decoder& decoder, RemoteLayerTreeTr
 
     if (!decoder.decode(result.m_scrollPosition))
         return false;
-    
+
+    if (!decoder.decode(result.m_themeColor))
+        return false;
+
     if (!decoder.decode(result.m_pageExtendedBackgroundColor))
         return false;
 
@@ -888,6 +905,11 @@ static void dumpChangedLayers(TextStream& ts, const RemoteLayerTreeTransaction::
 
         if (layerProperties.changedProperties & RemoteLayerTreeTransaction::UserInteractionEnabledChanged)
             ts.dumpProperty("userInteractionEnabled", layerProperties.userInteractionEnabled);
+
+#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
+        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::SeparatedChanged)
+            ts.dumpProperty("isSeparated", layerProperties.isSeparated);
+#endif
     }
 }
 

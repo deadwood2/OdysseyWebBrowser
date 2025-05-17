@@ -33,8 +33,10 @@
 #endif
 
 #include "LibWebRTCNetwork.h"
+#include "WebPage.h"
 #include "WebProcess.h"
-#include <WebCore/RuntimeEnabledFeatures.h>
+#include <WebCore/Page.h>
+#include <WebCore/Settings.h>
 #include <webrtc/api/async_resolver_factory.h>
 #include <webrtc/pc/peer_connection_factory.h>
 
@@ -52,6 +54,15 @@ private:
 
 rtc::scoped_refptr<webrtc::PeerConnectionInterface> LibWebRTCProvider::createPeerConnection(webrtc::PeerConnectionObserver& observer, rtc::PacketSocketFactory* socketFactory, webrtc::PeerConnectionInterface::RTCConfiguration&& configuration)
 {
+#if ENABLE(GPU_PROCESS) && PLATFORM(COCOA) && !PLATFORM(MACCATALYST)
+    if (!m_didInitializeCallback) {
+        // We initialize only once since callbacks are used in background threads.
+        auto* page = m_webPage.corePage();
+        LibWebRTCCodecs::setCallbacks(page && page->settings().webRTCPlatformCodecsInGPUProcessEnabled());
+        m_didInitializeCallback = true;
+    }
+#endif
+
     return WebCore::LibWebRTCProvider::createPeerConnection(observer, WebProcess::singleton().libWebRTCNetwork().monitor(), *socketFactory, WTFMove(configuration), makeUnique<AsyncResolverFactory>());
 }
 
@@ -140,18 +151,6 @@ std::unique_ptr<LibWebRTCProvider::SuspendableSocketFactory> LibWebRTCProvider::
 {
     return makeUnique<RTCSocketFactory>(WTFMove(userAgent));
 }
-
-#if PLATFORM(COCOA)
-
-std::unique_ptr<webrtc::VideoDecoderFactory> LibWebRTCProvider::createDecoderFactory()
-{
-#if ENABLE(GPU_PROCESS) && !PLATFORM(MACCATALYST)
-    LibWebRTCCodecs::setCallbacks(RuntimeEnabledFeatures::sharedFeatures().webRTCPlatformCodecsInGPUProcessEnabled());
-#endif
-    return LibWebRTCProviderCocoa::createDecoderFactory();
-}
-
-#endif
 
 } // namespace WebKit
 

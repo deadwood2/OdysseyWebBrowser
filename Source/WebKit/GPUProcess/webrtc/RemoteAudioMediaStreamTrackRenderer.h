@@ -31,24 +31,26 @@
 #include "SharedMemory.h"
 #include <WebCore/CAAudioStreamDescription.h>
 #include <wtf/MediaTime.h>
+#include <wtf/UniqueRef.h>
 
 namespace WebCore {
 class AudioMediaStreamTrackRenderer;
 class CARingBuffer;
+class WebAudioBufferList;
 }
 
 namespace WebKit {
 
-class GPUConnectionToWebProcess;
+class RemoteAudioMediaStreamTrackRendererManager;
 class SharedRingBufferStorage;
 
-class RemoteAudioMediaStreamTrackRenderer final : private IPC::MessageReceiver {
+class RemoteAudioMediaStreamTrackRenderer {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    RemoteAudioMediaStreamTrackRenderer();
+    explicit RemoteAudioMediaStreamTrackRenderer(RemoteAudioMediaStreamTrackRendererManager&);
     ~RemoteAudioMediaStreamTrackRenderer();
 
-    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
+    void didReceiveMessage(IPC::Connection&, IPC::Decoder&);
 
 private:
     // IPC::MessageReceiver
@@ -56,15 +58,14 @@ private:
     void stop();
     void clear();
     void setVolume(float);
-    void audioSamplesStorageChanged(const SharedMemory::Handle&, const WebCore::CAAudioStreamDescription&, uint64_t numberOfFrames);
-    void audioSamplesAvailable(MediaTime, uint64_t numberOfFrames, uint64_t startFrame, uint64_t endFrame);
+    void audioSamplesStorageChanged(const SharedMemory::IPCHandle&, const WebCore::CAAudioStreamDescription&, uint64_t numberOfFrames);
+    void audioSamplesAvailable(MediaTime, uint64_t numberOfFrames);
 
-    SharedRingBufferStorage& storage();
-
+    RemoteAudioMediaStreamTrackRendererManager& m_manager;
     std::unique_ptr<WebCore::AudioMediaStreamTrackRenderer> m_renderer;
-
     WebCore::CAAudioStreamDescription m_description;
-    std::unique_ptr<WebCore::CARingBuffer> m_ringBuffer;
+    UniqueRef<WebCore::CARingBuffer> m_ringBuffer;
+    std::unique_ptr<WebCore::WebAudioBufferList> m_audioBufferList;
 };
 
 }

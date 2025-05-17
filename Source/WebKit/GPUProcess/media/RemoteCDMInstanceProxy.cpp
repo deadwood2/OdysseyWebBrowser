@@ -28,38 +28,61 @@
 
 #if ENABLE(GPU_PROCESS) && ENABLE(ENCRYPTED_MEDIA)
 
+#include "GPUConnectionToWebProcess.h"
 #include "RemoteCDMInstanceConfiguration.h"
+#include "RemoteCDMInstanceMessages.h"
 #include "RemoteCDMInstanceSessionProxy.h"
-#include "SharedBufferDataReference.h"
+#include "SharedBufferCopy.h"
 #include <WebCore/CDMInstance.h>
 
 namespace WebKit {
 
 using namespace WebCore;
 
-std::unique_ptr<RemoteCDMInstanceProxy> RemoteCDMInstanceProxy::create(WeakPtr<RemoteCDMProxy>&& cdm, Ref<CDMInstance>&& priv)
+std::unique_ptr<RemoteCDMInstanceProxy> RemoteCDMInstanceProxy::create(WeakPtr<RemoteCDMProxy>&& cdm, Ref<CDMInstance>&& priv, RemoteCDMInstanceIdentifier identifier)
 {
     auto configuration = makeUniqueRefWithoutFastMallocCheck<RemoteCDMInstanceConfiguration, RemoteCDMInstanceConfiguration&&>({
         priv->keySystem(),
     });
-    return std::unique_ptr<RemoteCDMInstanceProxy>(new RemoteCDMInstanceProxy(WTFMove(cdm), WTFMove(priv), WTFMove(configuration)));
+    return std::unique_ptr<RemoteCDMInstanceProxy>(new RemoteCDMInstanceProxy(WTFMove(cdm), WTFMove(priv), WTFMove(configuration), identifier));
 }
 
-RemoteCDMInstanceProxy::RemoteCDMInstanceProxy(WeakPtr<RemoteCDMProxy>&& cdm, Ref<CDMInstance>&& priv, UniqueRef<RemoteCDMInstanceConfiguration>&& configuration)
+RemoteCDMInstanceProxy::RemoteCDMInstanceProxy(WeakPtr<RemoteCDMProxy>&& cdm, Ref<CDMInstance>&& priv, UniqueRef<RemoteCDMInstanceConfiguration>&& configuration, RemoteCDMInstanceIdentifier identifier)
     : m_cdm(WTFMove(cdm))
     , m_instance(WTFMove(priv))
     , m_configuration(WTFMove(configuration))
+    , m_identifier(identifier)
 {
+    m_instance->setClient(makeWeakPtr<CDMInstanceClient>(this));
 }
 
-RemoteCDMInstanceProxy::~RemoteCDMInstanceProxy() = default;
+RemoteCDMInstanceProxy::~RemoteCDMInstanceProxy()
+{
+    m_instance->clearClient();
+}
+
+void RemoteCDMInstanceProxy::unrequestedInitializationDataReceived(const String& type, Ref<SharedBuffer>&& initData)
+{
+    if (!m_cdm)
+        return;
+
+    auto* factory = m_cdm->factory();
+    if (!factory)
+        return;
+
+    auto* gpuConnectionToWebProcess = factory->gpuConnectionToWebProcess();
+    if (!gpuConnectionToWebProcess)
+        return;
+
+    gpuConnectionToWebProcess->connection().send(Messages::RemoteCDMInstance::UnrequestedInitializationDataReceived(type, WTFMove(initData)), m_identifier);
+}
 
 void RemoteCDMInstanceProxy::initializeWithConfiguration(const WebCore::CDMKeySystemConfiguration& configuration, AllowDistinctiveIdentifiers allowDistinctiveIdentifiers, AllowPersistentState allowPersistentState, CompletionHandler<void(SuccessValue)>&& completion)
 {
     m_instance->initializeWithConfiguration(configuration, allowDistinctiveIdentifiers, allowPersistentState, WTFMove(completion));
 }
 
-void RemoteCDMInstanceProxy::setServerCertificate(IPC::SharedBufferDataReference&& certificate, CompletionHandler<void(SuccessValue)>&& completion)
+void RemoteCDMInstanceProxy::setServerCertificate(IPC::SharedBufferCopy&& certificate, CompletionHandler<void(SuccessValue)>&& completion)
 {
     if (!certificate.buffer()) {
         completion(CDMInstance::Failed);

@@ -37,22 +37,24 @@
 
 namespace WebCore {
 class NowPlayingManager;
+struct MockMediaDevice;
 }
 
 namespace WebKit {
 
 class GPUConnectionToWebProcess;
+struct GPUProcessConnectionParameters;
 struct GPUProcessCreationParameters;
 struct GPUProcessSessionParameters;
 class LayerHostingContext;
 class RemoteAudioSessionProxyManager;
 
-class GPUProcess : public AuxiliaryProcess, public ThreadSafeRefCounted<GPUProcess>, public CanMakeWeakPtr<GPUProcess> {
+class GPUProcess : public AuxiliaryProcess, public ThreadSafeRefCounted<GPUProcess> {
     WTF_MAKE_NONCOPYABLE(GPUProcess);
 public:
     explicit GPUProcess(AuxiliaryProcessInitializationParameters&&);
     ~GPUProcess();
-    static constexpr ProcessType processType = ProcessType::GPU;
+    static constexpr WebCore::AuxiliaryProcessType processType = WebCore::AuxiliaryProcessType::GPU;
 
     void removeGPUConnectionToWebProcess(GPUConnectionToWebProcess&);
 
@@ -75,8 +77,20 @@ public:
 
     WebCore::NowPlayingManager& nowPlayingManager();
 
+#if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA)
+    WorkQueue& audioMediaStreamTrackRendererQueue();
+    WorkQueue& videoMediaStreamTrackRendererQueue();
+#endif
+#if USE(LIBWEBRTC) && PLATFORM(COCOA)
+    WorkQueue& libWebRTCCodecsQueue();
+#endif
+
+#if ENABLE(VP9)
+    void enableVP9Decoders(bool shouldEnableVP8Decoder, bool shouldEnableVP9Decoder, bool shouldEnableVP9SWDecoder);
+#endif
+
 private:
-    void lowMemoryHandler(Critical);
+    void lowMemoryHandler(Critical, Synchronous);
 
     // AuxiliaryProcess
     void initializeProcess(const AuxiliaryProcessInitializationParameters&) override;
@@ -86,11 +100,10 @@ private:
 
     // IPC::Connection::Client
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
-    void didClose(IPC::Connection&) override;
 
     // Message Handlers
     void initializeGPUProcess(GPUProcessCreationParameters&&);
-    void createGPUConnectionToWebProcess(WebCore::ProcessIdentifier, PAL::SessionID, CompletionHandler<void(Optional<IPC::Attachment>&&)>&&);
+    void createGPUConnectionToWebProcess(WebCore::ProcessIdentifier, PAL::SessionID, GPUProcessConnectionParameters&&, CompletionHandler<void(Optional<IPC::Attachment>&&)>&&);
     void addSession(PAL::SessionID, GPUProcessSessionParameters&&);
     void removeSession(PAL::SessionID);
 
@@ -100,6 +113,10 @@ private:
     void setMockCaptureDevicesEnabled(bool);
     void setOrientationForMediaCapture(uint64_t orientation);
     void updateCaptureAccess(bool allowAudioCapture, bool allowVideoCapture, bool allowDisplayCapture, WebCore::ProcessIdentifier, CompletionHandler<void()>&&);
+    void addMockMediaDevice(const WebCore::MockMediaDevice&);
+    void clearMockMediaDevices();
+    void removeMockMediaDevice(const String& persistentId);
+    void resetMockMediaDevices();
 #endif
 
     // Connections to WebProcesses.
@@ -112,6 +129,13 @@ private:
         bool allowDisplayCapture { false };
     };
     HashMap<WebCore::ProcessIdentifier, MediaCaptureAccess> m_mediaCaptureAccessMap;
+#if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA)
+    RefPtr<WorkQueue> m_audioMediaStreamTrackRendererQueue;
+    RefPtr<WorkQueue> m_videoMediaStreamTrackRendererQueue;
+#endif
+#endif
+#if USE(LIBWEBRTC) && PLATFORM(COCOA)
+    RefPtr<WorkQueue> m_libWebRTCCodecsQueue;
 #endif
 
     struct GPUSession {
@@ -128,6 +152,11 @@ private:
     std::unique_ptr<WebCore::NowPlayingManager> m_nowPlayingManager;
 #if ENABLE(GPU_PROCESS) && USE(AUDIO_SESSION)
     mutable std::unique_ptr<RemoteAudioSessionProxyManager> m_audioSessionManager;
+#endif
+#if ENABLE(VP9)
+    bool m_enableVP8Decoder { false };
+    bool m_enableVP9Decoder { false };
+    bool m_enableVP9SWDecoder { false };
 #endif
 };
 

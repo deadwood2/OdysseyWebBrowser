@@ -21,6 +21,7 @@
 
 #include "WebKitTestServer.h"
 #include "WebViewTest.h"
+#include <WebCore/SoupVersioning.h>
 #include <cstdarg>
 #include <wtf/glib/GRefPtr.h>
 #include <wtf/glib/GUniquePtr.h>
@@ -186,6 +187,16 @@ static void testUserContentManagerInjectedStyleSheet(WebViewTest* test, gconstpo
     g_assert_false(isStyleSheetInjectedForURLAtPath(test, inTheAllowListAndBlockList));
     g_assert_false(isStyleSheetInjectedForURLAtPath(test, notInAllowList));
 
+    removeOldInjectedContentAndResetLists(test->m_userContentManager.get(), allowList, blockList);
+
+    g_assert_false(isStyleSheetInjectedForURLAtPath(test, randomPath));
+    styleSheet = webkit_user_style_sheet_new(kInjectedStyleSheet, WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES, WEBKIT_USER_STYLE_LEVEL_USER, nullptr, nullptr);
+    webkit_user_content_manager_add_style_sheet(test->m_userContentManager.get(), styleSheet);
+    g_assert_true(isStyleSheetInjectedForURLAtPath(test, randomPath));
+    webkit_user_content_manager_remove_style_sheet(test->m_userContentManager.get(), styleSheet);
+    g_assert_false(isStyleSheetInjectedForURLAtPath(test, randomPath));
+    webkit_user_style_sheet_unref(styleSheet);
+
     // It's important to clean up the environment before other tests.
     removeOldInjectedContentAndResetLists(test->m_userContentManager.get(), allowList, blockList);
 }
@@ -236,6 +247,16 @@ static void testUserContentManagerInjectedScript(WebViewTest* test, gconstpointe
     g_assert_true(isScriptInjectedForURLAtPath(test, inTheAllowList));
     g_assert_false(isScriptInjectedForURLAtPath(test, inTheAllowListAndBlockList));
     g_assert_false(isScriptInjectedForURLAtPath(test, notInAllowList));
+
+    removeOldInjectedContentAndResetLists(test->m_userContentManager.get(), allowList, blockList);
+
+    g_assert_false(isScriptInjectedForURLAtPath(test, randomPath));
+    script = webkit_user_script_new(kInjectedScript, WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_END, nullptr, nullptr);
+    webkit_user_content_manager_add_script(test->m_userContentManager.get(), script);
+    g_assert_true(isScriptInjectedForURLAtPath(test, randomPath));
+    webkit_user_content_manager_remove_script(test->m_userContentManager.get(), script);
+    g_assert_false(isScriptInjectedForURLAtPath(test, randomPath));
+    webkit_user_script_unref(script);
 
     // It's important to clean up the environment before other tests.
     removeOldInjectedContentAndResetLists(test->m_userContentManager.get(), allowList, blockList);
@@ -501,14 +522,19 @@ static void testUserContentManagerContentFilter(WebViewTest* test, gconstpointer
     webkit_user_content_filter_unref(filter);
 }
 
+#if USE(SOUP2)
 static void serverCallback(SoupServer* server, SoupMessage* message, const char* path, GHashTable*, SoupClientContext*, gpointer)
+#else
+static void serverCallback(SoupServer* server, SoupServerMessage* message, const char* path, GHashTable*, gpointer)
+#endif
 {
-    soup_message_set_status(message, SOUP_STATUS_OK);
+    soup_server_message_set_status(message, SOUP_STATUS_OK, nullptr);
+    auto* responseBody = soup_server_message_get_response_body(message);
     if (!g_strcmp0(path, "/extra.css"))
-        soup_message_body_append(message->response_body, SOUP_MEMORY_STATIC, kTestCSS, strlen(kTestCSS));
+        soup_message_body_append(responseBody, SOUP_MEMORY_STATIC, kTestCSS, strlen(kTestCSS));
     else
-        soup_message_body_append(message->response_body, SOUP_MEMORY_STATIC, kTestHTML, strlen(kTestHTML));
-    soup_message_body_complete(message->response_body);
+        soup_message_body_append(responseBody, SOUP_MEMORY_STATIC, kTestHTML, strlen(kTestHTML));
+    soup_message_body_complete(responseBody);
 }
 
 void beforeAll()

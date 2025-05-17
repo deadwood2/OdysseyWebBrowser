@@ -65,23 +65,23 @@ namespace WebKit {
 void WebPage::platformDidReceiveLoadParameters(const LoadParameters& parameters)
 {
 #if HAVE(LSDATABASECONTEXT)
-    auto startTime = WallTime::now();
-    bool databaseUpdated = LaunchServicesDatabaseManager::singleton().waitForDatabaseUpdate(1_s);
-    auto elapsedTime = WallTime::now() - startTime;
-    if (elapsedTime.value() > 0.5)
-        RELEASE_LOG(Loading, "Waiting for Launch Services database update took %f seconds", elapsedTime.value());
-    ASSERT_UNUSED(databaseUpdated, databaseUpdated);
-    if (!databaseUpdated)
-        RELEASE_LOG_ERROR(Loading, "Timed out waiting for Launch Services database update.");
+    static bool hasWaitedForLaunchServicesDatabase = false;
+    if (!hasWaitedForLaunchServicesDatabase) {
+        auto startTime = WallTime::now();
+        bool databaseUpdated = LaunchServicesDatabaseManager::singleton().waitForDatabaseUpdate(5_s);
+        auto elapsedTime = WallTime::now() - startTime;
+        if (elapsedTime.value() > 0.5)
+            RELEASE_LOG(Loading, "Waiting for Launch Services database update took %f seconds", elapsedTime.value());
+        ASSERT_UNUSED(databaseUpdated, databaseUpdated);
+        if (!databaseUpdated)
+            RELEASE_LOG_ERROR(Loading, "Timed out waiting for Launch Services database update.");
+        hasWaitedForLaunchServicesDatabase = true;
+    }
 #endif
 
     m_dataDetectionContext = parameters.dataDetectionContext;
 
-    if (parameters.neHelperExtensionHandle)
-        SandboxExtension::consumePermanently(*parameters.neHelperExtensionHandle);
-    if (parameters.neSessionManagerExtensionHandle)
-        SandboxExtension::consumePermanently(*parameters.neSessionManagerExtensionHandle);
-    NetworkExtensionContentFilter::setHasConsumedSandboxExtensions(parameters.neHelperExtensionHandle.hasValue() && parameters.neSessionManagerExtensionHandle.hasValue());
+    consumeNetworkExtensionSandboxExtensions(parameters.networkExtensionSandboxExtensionHandles);
 
 #if PLATFORM(IOS)
     if (parameters.contentFilterExtensionHandle)
@@ -93,7 +93,7 @@ void WebPage::platformDidReceiveLoadParameters(const LoadParameters& parameters)
 #endif
 }
 
-void WebPage::requestActiveNowPlayingSessionInfo(CallbackID callbackID)
+void WebPage::requestActiveNowPlayingSessionInfo(CompletionHandler<void(bool, bool, const String&, double, double, uint64_t)>&& completionHandler)
 {
     bool hasActiveSession = false;
     String title = emptyString();
@@ -110,7 +110,7 @@ void WebPage::requestActiveNowPlayingSessionInfo(CallbackID callbackID)
         registeredAsNowPlayingApplication = sharedManager->registeredAsNowPlayingApplication();
     }
 
-    send(Messages::WebPageProxy::NowPlayingInfoCallback(hasActiveSession, registeredAsNowPlayingApplication, title, duration, elapsedTime, uniqueIdentifier, callbackID));
+    completionHandler(hasActiveSession, registeredAsNowPlayingApplication, title, duration, elapsedTime, uniqueIdentifier);
 }
     
 void WebPage::performDictionaryLookupAtLocation(const FloatPoint& floatPoint)
@@ -227,7 +227,7 @@ void WebPage::insertDictatedTextAsync(const String& text, const EditingRange& re
     if (replacementEditingRange.location != notFound) {
         auto replacementRange = EditingRange::toRange(frame, replacementEditingRange);
         if (replacementRange)
-            frame.selection().setSelection(VisibleSelection { *replacementRange, SEL_DEFAULT_AFFINITY });
+            frame.selection().setSelection(VisibleSelection { *replacementRange });
     }
 
     if (options.registerUndoGroup)
@@ -406,6 +406,37 @@ void WebPage::getPlatformEditorStateCommon(const Frame& frame, EditorState& resu
     }
 
     postLayoutData.baseWritingDirection = frame.editor().baseWritingDirectionForSelectionStart();
+}
+
+void WebPage::consumeNetworkExtensionSandboxExtensions(const SandboxExtension::HandleArray& networkExtensionsHandles)
+{
+#if ENABLE(CONTENT_FILTERING)
+    SandboxExtension::consumePermanently(networkExtensionsHandles);
+    NetworkExtensionContentFilter::setHasConsumedSandboxExtensions(networkExtensionsHandles.size());
+#else
+    UNUSED_PARAM(networkExtensionsHandles);
+#endif
+}
+
+void WebPage::getPDFFirstPageSize(WebCore::FrameIdentifier frameID, CompletionHandler<void(WebCore::FloatSize)>&& completionHandler)
+{
+    auto* webFrame = WebProcess::singleton().webFrame(frameID);
+    if (!webFrame)
+        return completionHandler({ });
+
+    auto* coreFrame = webFrame->coreFrame();
+    if (!coreFrame)
+        return completionHandler({ });
+
+    auto* pluginView = pluginViewForFrame(coreFrame);
+    if (!pluginView)
+        return completionHandler({ });
+    
+    auto* plugin = pluginView->plugin();
+    if (!plugin)
+        return completionHandler({ });
+
+    completionHandler(FloatSize(plugin->pdfDocumentSizeForPrinting()));
 }
 
 } // namespace WebKit

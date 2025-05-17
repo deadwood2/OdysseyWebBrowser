@@ -38,9 +38,11 @@
 #include <WebCore/FrameView.h>
 #include <WebCore/FullscreenManager.h>
 #include <WebCore/HTMLVideoElement.h>
+#include <WebCore/Quirks.h>
 #include <WebCore/RenderLayerBacking.h>
 #include <WebCore/RenderView.h>
 #include <WebCore/Settings.h>
+#include <WebCore/UserGestureIndicator.h>
 
 #if PLATFORM(IOS_FAMILY) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
 #include "PlaybackSessionManager.h"
@@ -136,8 +138,14 @@ void WebFullScreenManager::enterFullScreenForElement(WebCore::Element* element)
     if (!element)
         return;
     m_element = element;
+
+#if PLATFORM(IOS_FAMILY) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
+    if (auto* currentPlaybackControlsElement = m_page->playbackSessionManager().currentPlaybackControlsElement())
+        currentPlaybackControlsElement->prepareForVideoFullscreenStandby();
+#endif
+
     m_initialFrame = screenRectOfContents(m_element.get());
-    m_page->injectedBundleFullScreenClient().enterFullScreenForElement(m_page.get(), element);
+    m_page->injectedBundleFullScreenClient().enterFullScreenForElement(m_page.get(), element, m_element->document().quirks().blocksReturnToFullscreenFromPictureInPictureQuirk());
 }
 
 void WebFullScreenManager::exitFullScreenForElement(WebCore::Element* element)
@@ -215,6 +223,16 @@ void WebFullScreenManager::setAnimatingFullScreen(bool animating)
     if (!m_element)
         return;
     m_element->document().fullscreenManager().setAnimatingFullscreen(animating);
+}
+
+void WebFullScreenManager::requestEnterFullScreen()
+{
+    ASSERT(m_element);
+    if (!m_element)
+        return;
+
+    WebCore::UserGestureIndicator gestureIndicator(WebCore::ProcessingUserGesture);
+    m_element->document().fullscreenManager().requestFullscreenForElement(m_element.get(), WebCore::FullscreenManager::ExemptIFrameAllowFullscreenRequirement);
 }
 
 void WebFullScreenManager::requestExitFullScreen()

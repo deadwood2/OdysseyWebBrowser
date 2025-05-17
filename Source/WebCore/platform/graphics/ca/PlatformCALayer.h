@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -76,7 +76,6 @@ public:
         LayerTypeLightSystemBackdropLayer,
         LayerTypeDarkSystemBackdropLayer,
         LayerTypeScrollContainerLayer,
-        LayerTypeEditableImageLayer,
         LayerTypeCustom,
     };
     enum FilterType { Linear, Nearest, Trilinear };
@@ -247,7 +246,10 @@ public:
     virtual GraphicsLayer::CustomAppearance customAppearance() const = 0;
     virtual void updateCustomAppearance(GraphicsLayer::CustomAppearance) = 0;
 
-    virtual GraphicsLayer::EmbeddedViewID embeddedViewID() const = 0;
+#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
+    virtual bool isSeparated() const = 0;
+    virtual void setSeparated(bool) = 0;
+#endif
 
     virtual TiledBacking* tiledBacking() = 0;
 
@@ -345,7 +347,6 @@ template<> struct EnumTraits<WebCore::PlatformCALayer::LayerType> {
         WebCore::PlatformCALayer::LayerType::LayerTypeLightSystemBackdropLayer,
         WebCore::PlatformCALayer::LayerType::LayerTypeDarkSystemBackdropLayer,
         WebCore::PlatformCALayer::LayerType::LayerTypeScrollContainerLayer,
-        WebCore::PlatformCALayer::LayerType::LayerTypeEditableImageLayer,
         WebCore::PlatformCALayer::LayerType::LayerTypeCustom
     >;
 };

@@ -49,6 +49,10 @@
 @end
 #endif
 
+#if HAVE(PEPPER_UI_CORE)
+#import "PepperUICoreSPI.h"
+#endif
+
 struct CustomMenuActionInfo {
     RetainPtr<NSString> name;
     BOOL dismissesAutomatically { NO };
@@ -78,6 +82,7 @@ struct CustomMenuActionInfo {
 @property (nonatomic, getter=isDismissingMenu, setter=setIsDismissingMenu:) BOOL dismissingMenu;
 @property (nonatomic, getter=isShowingPopover, setter=setIsShowingPopover:) BOOL showingPopover;
 @property (nonatomic, getter=isShowingContextMenu, setter=setIsShowingContextMenu:) BOOL showingContextMenu;
+@property (nonatomic, getter=isShowingContactPicker, setter=setIsShowingContactPicker:) BOOL showingContactPicker;
 
 @end
 
@@ -90,7 +95,7 @@ IGNORE_WARNINGS_BEGIN("deprecated-implementations")
 - (void)dragImage:(NSImage *)anImage at:(NSPoint)viewLocation offset:(NSSize)initialOffset event:(NSEvent *)event pasteboard:(NSPasteboard *)pboard source:(id)sourceObj slideBack:(BOOL)slideFlag
 IGNORE_WARNINGS_END
 {
-    RetainPtr<WebKitTestRunnerDraggingInfo> draggingInfo = adoptNS([[WebKitTestRunnerDraggingInfo alloc] initWithImage:anImage offset:initialOffset pasteboard:pboard source:sourceObj]);
+    auto draggingInfo = adoptNS([[WebKitTestRunnerDraggingInfo alloc] initWithImage:anImage offset:initialOffset pasteboard:pboard source:sourceObj]);
     [self draggingUpdated:draggingInfo.get()];
 }
 #endif
@@ -171,6 +176,8 @@ IGNORE_WARNINGS_END
 {
     self.didShowMenuCallback = nil;
     self.didHideMenuCallback = nil;
+    self.didShowContactPickerCallback = nil;
+    self.didHideContactPickerCallback = nil;
 #if PLATFORM(IOS_FAMILY)
     self.didStartFormControlInteractionCallback = nil;
     self.didEndFormControlInteractionCallback = nil;
@@ -522,6 +529,25 @@ IGNORE_WARNINGS_END
     return [self valueForKeyPath:@"_currentContentView"];
 }
 
+static bool isQuickboardViewController(UIViewController *viewController)
+{
+#if HAVE(PEPPER_UI_CORE)
+    if ([viewController isKindOfClass:PUICQuickboardViewController.class])
+        return true;
+#if HAVE(QUICKBOARD_CONTROLLER)
+    if ([viewController isKindOfClass:PUICQuickboardRemoteViewController.class])
+        return true;
+#endif // HAVE(QUICKBOARD_CONTROLLER)
+#endif // HAVE(PEPPER_UI_CORE)
+    return false;
+}
+
+- (void)_didPresentViewController:(UIViewController *)viewController
+{
+    if (isQuickboardViewController(viewController))
+        [self _invokeShowKeyboardCallbackIfNecessary];
+}
+
 #pragma mark - WKUIDelegatePrivate
 
 // In extra zoom mode, fullscreen form control UI takes on the same role as keyboards and input view controllers
@@ -544,5 +570,25 @@ IGNORE_WARNINGS_END
 }
 
 #endif // PLATFORM(IOS_FAMILY)
+
+- (void)_didPresentContactPicker
+{
+    if (self.showingContactPicker)
+        return;
+
+    self.showingContactPicker = YES;
+    if (self.didShowContactPickerCallback)
+        self.didShowContactPickerCallback();
+}
+
+- (void)_didDismissContactPicker
+{
+    if (!self.showingContactPicker)
+        return;
+
+    self.showingContactPicker = NO;
+    if (self.didHideContactPickerCallback)
+        self.didHideContactPickerCallback();
+}
 
 @end

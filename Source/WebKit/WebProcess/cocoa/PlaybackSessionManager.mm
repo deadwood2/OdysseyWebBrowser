@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -285,6 +285,18 @@ void PlaybackSessionManager::clearPlaybackControlsManager()
     m_page->send(Messages::PlaybackSessionManagerProxy::ClearPlaybackControlsManager());
 }
 
+void PlaybackSessionManager::mediaEngineChanged()
+{
+    if (!m_controlsManagerContextId)
+        return;
+
+    auto it = m_contextMap.find(m_controlsManagerContextId);
+    if (it == m_contextMap.end())
+        return;
+
+    std::get<0>(it->value)->mediaEngineChanged();
+}
+
 PlaybackSessionContextIdentifier PlaybackSessionManager::contextIdForMediaElement(WebCore::HTMLMediaElement& mediaElement)
 {
     auto addResult = m_mediaElements.ensure(&mediaElement, [&] {
@@ -504,6 +516,12 @@ void PlaybackSessionManager::setPlayingOnSecondScreen(PlaybackSessionContextIden
 {
     UserGestureIndicator indicator(ProcessingUserGesture);
     ensureModel(contextId).setPlayingOnSecondScreen(value);
+}
+
+void PlaybackSessionManager::sendRemoteCommand(PlaybackSessionContextIdentifier contextId, WebCore::PlatformMediaSession::RemoteControlCommandType command, const WebCore::PlatformMediaSession::RemoteCommandArgument& argument)
+{
+    UserGestureIndicator indicator(ProcessingUserGesture);
+    ensureModel(contextId).sendRemoteCommand(command, argument);
 }
 
 } // namespace WebKit

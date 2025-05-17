@@ -117,10 +117,13 @@
     ;; CoreVideo CVCGDisplayLink
     (allow iokit-open
         (iokit-registry-entry-class "IOFramebufferSharedUserClient"))
-    ;; H.264 Acceleration
+
+    ;; These are needed for Encrypted Media on some hardware (MacMini8,1 for example)
     (allow iokit-open
         (iokit-registry-entry-class "AppleIntelMEUserClient")
-        (iokit-registry-entry-class "AppleSNBFBUserClient"))
+        (iokit-registry-entry-class "AppleSNBFBUserClient")
+    )
+
     ;; QuartzCore
     (allow iokit-open
         (iokit-registry-entry-class "AGPMClient")
@@ -173,6 +176,7 @@
         "kern.version"
         "machdep.cpu.brand_string"
         "security.mac.sandbox.sentinel"
+        "sysctl.name2oid"
         "kern.tcsm_enable"
         "kern.tcsm_available"
         "vm.footprint_suspend")
@@ -213,6 +217,9 @@
     (iokit-property "CapsLockDelay")
     (iokit-property "CaseSensitive")
     (iokit-property "ConfigState")
+    (iokit-property "DPLanes")
+    (iokit-property "DPLinkBit")
+    (iokit-property "DPLinkRate")
     (iokit-property "Description")
     (iokit-property "Development")
     (iokit-property-regex #"^Device( Characteristics|EqID)")
@@ -225,10 +232,17 @@
     (iokit-property "Family ID")
     (iokit-property "ForceSupported")
     (iokit-property "Formats")
+    (iokit-property "FramebufferEnabled")
+    (iokit-property "FramebufferStarted")
     (iokit-property "GPUConfigurationVariable")
+    (iokit-property "GPUDCCDisplayable")
+    (iokit-property "GPUDebugNullClientMask")
     (iokit-property "GpuDebugPolicy")
+    (iokit-property "GPURawCounterBundleName")
+    (iokit-property "GPURawCounterPluginClassName")
     (iokit-property "HEVCSupported")
     (iokit-property "HIDPointerAccelerationType")
+    (iokit-property "HwCtxCacheUpdate")
     (iokit-property-regex #"^IOAccel(DisplayPipeCapabilities|Index|Types|Revision)")
     (iokit-property-regex #"^IO(Class|MatchCategory|NameMatch)")
     (iokit-property-regex #"^IOAudioControl(ChannelID|ID|SubType|Usage|Value)")
@@ -334,6 +348,7 @@
     (iokit-property "attached-gpu-control-path")
     (iokit-property-regex #"^audio-(codec-info|device-mvalue|device-nvalue|selector)")
     (iokit-property "av-signal-type")
+    (iokit-property "backlight-PWM-freq")
     (iokit-property "bcdVersion")
     (iokit-property-regex #"^(board|device|revision|subsystem|vendor)-id")
     (iokit-property "boot-gamma-restored")
@@ -346,6 +361,11 @@
     (iokit-property "connector-type")
     (iokit-property-regex #"^(device|revision|subsystem-vendor|touch-size)-id")
     (iokit-property "device_type")
+    (iokit-property "display-bpc")
+    (iokit-property "display-connect-flags")
+    (iokit-property "display-link-component-bits")
+    (iokit-property "display-pixel-component-bits")
+    (iokit-property "display-type")
     (iokit-property "dpm")
     (iokit-property "errordb") ;; Needed for OpenGL on older hardware
     (iokit-property "filevault-image") ;; Needed by LaunchServices
@@ -391,7 +411,49 @@
     (iokit-property "dpm")
 #endif
     (iokit-property "IOGVAH264EncodeCapabilities") ;; <rdar://problem/49498040>
+#if !PLATFORM(MAC) || __MAC_OS_X_VERSION_MIN_REQUIRED > 101500
+    (iokit-property "IOAVDHEVCDecodeCapabilities") ;; <rdar://problem/71100188>
+#endif
 )
+
+;; <rdar://problem/60088861>
+(if (equal? (param "CPU") "arm64")
+    (allow iokit-get-properties
+        (iokit-property "ADSSupported")
+        (iokit-property "IOAVDHEVCDecodeCapabilities")
+        (iokit-property "IOGLESBundleName") ;; <rdar://problem/67473780>
+        (iokit-property "MetalPluginClassName") ;; <rdar://problem/67473780>
+        (iokit-property "MetalPluginName") ;; <rdar://problem/67473780>
+        (iokit-property "IOSurfaceAcceleratorCapabilitiesDict") ;; <rdar://problem/63696732>
+        (iokit-property "acoustic-id") ;; <rdar://problem/65290967>
+    ))
+
+(if (equal? (param "CPU") "arm64")
+    (with-filter (iokit-registry-entry-class "IOService")
+        (allow iokit-get-properties
+            (iokit-property "IORegistryEntryPropertyKeys"))))
+
+(if (equal? (param "CPU") "arm64")
+    (with-filter (iokit-registry-entry-class "IOMobileFramebuffer")
+        (allow iokit-get-properties
+            (iokit-property "AppleTV"
+                            "DisplayPipePlaneBaseAlignment"
+                            "DisplayPipeStrideRequirements"
+                            "dfr"
+                            "external"
+                            "hdcp-hoover-protocol"))))
+
+(if (equal? (param "CPU") "arm64")
+    (with-filter (iokit-registry-entry-class "IOPlatformDevice")
+        (allow iokit-get-properties
+            (iokit-property "soc-generation"))))
+
+(if (equal? (param "CPU") "arm64")
+    (with-filter (iokit-registry-entry-class "IOService")
+        (allow iokit-get-properties
+            (iokit-property "chip-id"
+                            "display-rotation"
+                            "display-scale"))))
 
 (deny mach-lookup (xpc-service-name-prefix ""))
 (allow mach-lookup
@@ -462,8 +524,6 @@
     (subpath "/Library/Managed Preferences")
     (subpath "/Library/Speech/Synthesizers")
     (regex #"^/private/etc/(hosts|group|passwd)$")
-
-    (literal "/Library/Application Support/CrashReporter/SubmitDiagInfo.domains")
 
     ;; System and user preferences
     (home-literal "/.CFUserTextEncoding")
@@ -551,12 +611,6 @@
 
 (if (positive? (string-length (param "DARWIN_USER_CACHE_DIR")))
     (allow-read-write-directory-and-issue-read-write-extensions (param "DARWIN_USER_CACHE_DIR")))
-    (deny file-read* file-write*
-        (subpath (string-append (param "DARWIN_USER_CACHE_DIR") "/com.apple.WebKit.WebContent.Sandbox")))
-    (deny file-read* file-write*
-        (subpath (string-append (param "DARWIN_USER_CACHE_DIR") "/com.apple.WebKit.Networking.Sandbox")))
-    (deny file-read* file-write*
-        (subpath (string-append (param "DARWIN_USER_CACHE_DIR") "/com.apple.WebKit.GPU.Sandbox")))
 
 (if (positive? (string-length (param "DARWIN_USER_TEMP_DIR")))
     (allow-read-write-directory-and-issue-read-write-extensions (param "DARWIN_USER_TEMP_DIR")))
@@ -579,15 +633,6 @@
     (ipc-posix-name-regex #"\.PrivateBrowsing-")
     (ipc-posix-name-regex #"^WebKit Test-"))
 
-;; ColorSync
-(allow ipc-posix-shm*
-    (ipc-posix-name "com.apple.ColorSync.Gen.lock")
-    (ipc-posix-name "com.apple.ColorSync.Disp.lock")
-    (ipc-posix-name "com.apple.ColorSync.Gray2.2")
-    (ipc-posix-name "com.apple.ColorSync.sRGB")
-    (ipc-posix-name "com.apple.ColorSync.GenGray")
-    (ipc-posix-name "com.apple.ColorSync.GenRGB"))
-
 ;; Audio
 (allow ipc-posix-shm-read* ipc-posix-shm-write-data
     (ipc-posix-name-regex #"^AudioIO"))
@@ -600,12 +645,15 @@
     (global-name "com.apple.awdd")
     (global-name "com.apple.cfprefsd.agent")
     (global-name "com.apple.cookied")
-    (global-name "com.apple.diagnosticd")
     (global-name "com.apple.iconservices")
     (global-name "com.apple.iconservices.store")
-    (global-name "com.apple.mobileassetd")
-    (global-name "com.apple.powerlog.plxpclogger.xpc")
-    (global-name "com.apple.system.logger")
+)
+
+(with-filter (system-attribute apple-internal)
+    (allow mach-lookup
+        (global-name "com.apple.analyticsd")
+        (global-name "com.apple.diagnosticd")
+    )
 )
 
 ;; Various services required by AppKit and other frameworks
@@ -615,8 +663,8 @@
 #endif
        (global-name "com.apple.PowerManagement.control")
        (global-name "com.apple.SystemConfiguration.configd")
-       (global-name "com.apple.analyticsd")
        (global-name "com.apple.assertiond.processassertionconnection")
+       (global-name "com.apple.audio.toolbox.reporting.service")
        (global-name "com.apple.audio.SystemSoundServer-OSX")
        (global-name "com.apple.audio.audiohald")
        (global-name "com.apple.cfprefsd.daemon")
@@ -655,7 +703,11 @@
     (global-name "com.apple.SecurityServer")
     (global-name "com.apple.ocspd"))
 
-(allow file-read* file-write* (subpath "/private/var/db/mds/system")) ;; FIXME: This should be removed when <rdar://problem/9538414> is fixed.
+(allow file-read* (subpath "/private/var/db/mds/system")) ;; FIXME: This should be removed when <rdar://problem/9538414> is fixed.
+(with-filter (uid 0)
+    (allow file-write*
+        (subpath "/private/var/db/mds/system")) ;; FIXME: This should be removed when <rdar://problem/9538414> is fixed.
+)
 
 (allow file-read*
        (subpath "/private/var/db/mds")
@@ -683,13 +735,18 @@
 
 ;; Networking
 (allow network-outbound
+#if __MAC_OS_X_VERSION_MIN_REQUIRED <= 101500
        ;; Local mDNSResponder for DNS, arbitrary outbound TCP
        ;; Note: This is needed for some media playback features. <rdar://problem/38191574>
        ;; Remove this permission when <rdar://problem/38240572> is fixed.
        (literal "/private/var/run/mDNSResponder")
+#endif
        ;; ObjC map_images needs to send logging data to syslog. <rdar://problem/39778918>
        (literal "/private/var/run/syslog")
-       (remote tcp))
+#if __MAC_OS_X_VERSION_MIN_REQUIRED <= 101500
+       (remote tcp)
+#endif
+)
 
 ;; CFNetwork
 (allow file-read-data (path "/private/var/db/nsurlstoraged/dafsaData.bin"))
@@ -831,3 +888,11 @@
         (iokit-user-client-class "IOUSBInterfaceUserClientV2"))
     (allow device-camera))
 #endif // PLATFORM(MAC)
+
+(allow mach-lookup
+    (global-name "com.apple.relatived.tempest")
+)
+
+(allow iokit-open
+    (iokit-user-client-class "AppleAVDUserClient")
+)

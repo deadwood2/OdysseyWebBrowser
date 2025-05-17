@@ -41,31 +41,20 @@
     return self;
 }
 
-- (id <WKDeferringGestureRecognizerDelegate>)deferringGestureDelegate
-{
-    return _deferringGestureDelegate.get().get();
-}
-
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
+    auto shouldDeferGestures = [_deferringGestureDelegate deferringGestureRecognizer:self willBeginTouchesWithEvent:event];
     [super touchesBegan:touches withEvent:event];
-    if ([_deferringGestureDelegate deferringGestureRecognizer:self shouldDeferGesturesAfterBeginningTouchesWithEvent:event])
-        return;
 
-    self.state = UIGestureRecognizerStateFailed;
+    if (shouldDeferGestures == WebKit::ShouldDeferGestures::No)
+        self.state = UIGestureRecognizerStateFailed;
 }
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
     [super touchesEnded:touches withEvent:event];
 
-    if (self.state != UIGestureRecognizerStatePossible)
-        return;
-
-    if ([_deferringGestureDelegate deferringGestureRecognizer:self shouldDeferGesturesAfterEndingTouchesWithEvent:event])
-        return;
-
-    self.state = UIGestureRecognizerStateFailed;
+    [_deferringGestureDelegate deferringGestureRecognizer:self didEndTouchesWithEvent:event];
 }
 
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
@@ -90,6 +79,15 @@
 - (BOOL)shouldDeferGestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
 {
     return [_deferringGestureDelegate deferringGestureRecognizer:self shouldDeferOtherGestureRecognizer:gestureRecognizer];
+}
+
+- (void)setState:(UIGestureRecognizerState)state
+{
+    auto previousState = self.state;
+    [super setState:state];
+
+    if (previousState != self.state)
+        [_deferringGestureDelegate deferringGestureRecognizer:self didTransitionToState:state];
 }
 
 @end

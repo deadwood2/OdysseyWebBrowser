@@ -26,7 +26,6 @@
 #include "config.h"
 #include "WebSocketChannel.h"
 
-#include "DataReference.h"
 #include "NetworkConnectionToWebProcessMessages.h"
 #include "NetworkProcessConnection.h"
 #include "NetworkSocketChannelMessages.h"
@@ -71,7 +70,6 @@ NetworkSendQueue WebSocketChannel::createMessageQueue(Document& document, WebSoc
 
 WebSocketChannel::WebSocketChannel(Document& document, WebSocketChannelClient& client)
     : m_document(makeWeakPtr(document))
-    ,  m_identifier(WebSocketIdentifier::generate())
     , m_client(makeWeakPtr(client))
     , m_messageQueue(createMessageQueue(document, *this))
     , m_inspector(document)
@@ -117,7 +115,7 @@ WebSocketChannel::ConnectStatus WebSocketChannel::connect(const URL& url, const 
         m_client->didUpgradeURL();
 
     m_inspector.didCreateWebSocket(m_document.get(), url);
-
+    m_url = request->url();
     MessageSender::send(Messages::NetworkConnectionToWebProcess::CreateSocketChannel { *request, protocol, m_identifier });
     return ConnectStatus::OK;
 }
@@ -207,6 +205,9 @@ void WebSocketChannel::close(int code, const String& reason)
 
     ASSERT(code >= 0 || code == WebCore::WebSocketChannel::CloseEventCodeNotSpecified);
 
+    WebSocketFrame closingFrame(WebSocketFrame::OpCodeClose, true, false, true);
+    m_inspector.didSendWebSocketFrame(m_document.get(), closingFrame);
+
     MessageSender::send(Messages::NetworkSocketChannel::Close { code, reason });
 }
 
@@ -215,11 +216,15 @@ void WebSocketChannel::fail(const String& reason)
     // The client can close the channel, potentially removing the last reference.
     auto protectedThis = makeRef(*this);
 
+    logErrorMessage(reason);
     if (m_client)
         m_client->didReceiveMessageError();
 
-    if (!m_isClosing)
-        MessageSender::send(Messages::NetworkSocketChannel::Close { 0, reason });
+    if (m_isClosing)
+        return;
+
+    MessageSender::send(Messages::NetworkSocketChannel::Close { 0, reason });
+    didClose(WebCore::WebSocketChannel::CloseEventCodeAbnormalClosure, { });
 }
 
 void WebSocketChannel::disconnect()
@@ -326,6 +331,8 @@ void WebSocketChannel::didClose(unsigned short code, String&& reason)
         return;
     }
 
+    WebSocketFrame closingFrame(WebSocketFrame::OpCodeClose, true, false, false);
+    m_inspector.didReceiveWebSocketFrame(m_document.get(), closingFrame);
     m_inspector.didCloseWebSocket(m_document.get());
 
     // An attempt to send closing handshake may fail, which will get the channel closed and dereferenced.
@@ -336,6 +343,19 @@ void WebSocketChannel::didClose(unsigned short code, String&& reason)
         m_client->didStartClosingHandshake();
 
     m_client->didClose(m_bufferedAmount, (m_isClosing || receivedClosingHandshake) ? WebCore::WebSocketChannelClient::ClosingHandshakeComplete : WebCore::WebSocketChannelClient::ClosingHandshakeIncomplete, code, reason);
+}
+
+void WebSocketChannel::logErrorMessage(const String& errorMessage)
+{
+    if (!m_document)
+        return;
+
+    String consoleMessage;
+    if (!m_url.isNull())
+        consoleMessage = makeString("WebSocket connection to '", m_url.string(), "' failed: ", errorMessage);
+    else
+        consoleMessage = makeString("WebSocket connection failed: ", errorMessage);
+    m_document->addConsoleMessage(MessageSource::Network, MessageLevel::Error, consoleMessage);
 }
 
 void WebSocketChannel::didReceiveMessageError(String&& errorMessage)
@@ -350,9 +370,7 @@ void WebSocketChannel::didReceiveMessageError(String&& errorMessage)
         return;
     }
 
-    if (m_document)
-        m_document->addConsoleMessage(MessageSource::Network, MessageLevel::Error, errorMessage);
-
+    logErrorMessage(errorMessage);
     m_client->didReceiveMessageError();
 }
 
@@ -387,7 +405,9 @@ void WebSocketChannel::didSendHandshakeRequest(ResourceRequest&& request)
         });
         return;
     }
+
     m_inspector.willSendWebSocketHandshakeRequest(m_document.get(), request);
+    m_handshakeRequest = WTFMove(request);
 }
 
 void WebSocketChannel::didReceiveHandshakeResponse(ResourceResponse&& response)
@@ -398,7 +418,9 @@ void WebSocketChannel::didReceiveHandshakeResponse(ResourceResponse&& response)
         });
         return;
     }
+
     m_inspector.didReceiveWebSocketHandshakeResponse(m_document.get(), response);
+    m_handshakeResponse = WTFMove(response);
 }
 
 } // namespace WebKit

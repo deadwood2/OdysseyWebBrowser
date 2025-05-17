@@ -26,6 +26,7 @@
 #import "config.h"
 
 #import "PlatformUtilities.h"
+#import <WebKit/WKContentRuleListPrivate.h>
 #import <WebKit/WKContentRuleListStore.h>
 #import <WebKit/WKNavigationDelegatePrivate.h>
 #import <WebKit/WKURLSchemeHandler.h>
@@ -85,7 +86,7 @@ static RetainPtr<NSString> notificationIdentifier;
 
 - (void)webView:(WKWebView *)webView startURLSchemeTask:(id <WKURLSchemeTask>)urlSchemeTask
 {
-    [urlSchemeTask didReceiveResponse:[[[NSURLResponse alloc] initWithURL:urlSchemeTask.request.URL MIMEType:@"text/html" expectedContentLength:0 textEncodingName:nil] autorelease]];
+    [urlSchemeTask didReceiveResponse:adoptNS([[NSURLResponse alloc] initWithURL:urlSchemeTask.request.URL MIMEType:@"text/html" expectedContentLength:0 textEncodingName:nil]).get()];
     [urlSchemeTask didFinish];
 }
 
@@ -168,4 +169,30 @@ TEST(WebKit, PerformedActionForURL)
         { "secondList", "apitest:///block", true, false, false, { } }
     };
     EXPECT_TRUE(expectedNotifications == notificationList);
+}
+
+TEST(ContentRuleList, SupportsRegex)
+{
+    NSArray<NSString *> *allowed = @[
+        @".*",
+        @"a.*b"
+    ];
+    for (NSString *regex in allowed)
+        EXPECT_TRUE([WKContentRuleList _supportsRegularExpression:regex]);
+    
+    NSArray<NSString *> *disallowed = @[
+        @"Ä",
+        @"\\d\\D\\w\\s\\v\\h\\i\\c",
+        @"",
+        @"(?<A>a)\\k<A>",
+        @"a^",
+        @"\\b",
+        @"[\\d]",
+        @"(?!)",
+        @"this|that",
+        @"$$",
+        @"a{0,2}b"
+    ];
+    for (NSString *regex in disallowed)
+        EXPECT_FALSE([WKContentRuleList _supportsRegularExpression:regex]);
 }

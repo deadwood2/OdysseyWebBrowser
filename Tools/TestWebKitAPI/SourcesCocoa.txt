@@ -27,9 +27,12 @@ WKWebViewConfigurationExtras.mm
 cocoa/PlatformUtilitiesCocoa.mm
 cocoa/TestCocoa.mm
 cocoa/TestDownloadDelegate.mm
+cocoa/TestLegacyDownloadDelegate.mm
 cocoa/TestNavigationDelegate.mm
 cocoa/TestProtocol.mm
 cocoa/TestUIDelegate.mm
 cocoa/TestWKWebView.mm
+cocoa/UserMediaCaptureUIDelegate.mm
 
+Tests/WebKitCocoa/EventAttribution.mm
 Tests/WebKitCocoa/TLSDeprecation.mm
