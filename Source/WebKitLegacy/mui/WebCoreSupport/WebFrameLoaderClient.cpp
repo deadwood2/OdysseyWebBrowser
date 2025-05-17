@@ -515,6 +515,14 @@ Ref<DocumentLoader> WebFrameLoaderClient::createDocumentLoader(const ResourceReq
 
     WebDataSource* dataSource = WebDataSource::createInstance(loader.ptr());
     loader->setDataSource(dataSource);
+#if ENABLE(VIDEO)
+    WebPreferences* sharedPreferences = WebPreferences::sharedStandardPreferences();
+    if (sharedPreferences->mediaSourceEnabled())
+        loader->setMediaSourcePolicy(MediaSourcePolicy::Enable);
+    else
+        loader->setMediaSourcePolicy(MediaSourcePolicy::Disable);
+#endif
+
     return loader;
 }
 
