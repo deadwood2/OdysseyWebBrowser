@@ -89,9 +89,16 @@ class TextTrackRepresentation;
 struct GraphicsDeviceAdapter;
 struct SecurityOriginData;
 
+#if PLATFORM(MUI)
+class Page;
+#endif
+
 struct MediaEngineSupportParameters {
     ContentType type;
     URL url;
+#if PLATFORM(MUI)
+    Page* page { nullptr };
+#endif
     bool isMediaSource { false };
     bool isMediaStream { false };
     Vector<ContentType> contentTypesRequiringHardwareSupport;
@@ -134,7 +141,7 @@ struct MediaEngineSupportParameters {
         if (!typesRequiringHardware)
             return WTF::nullopt;
 
-        return {{ WTFMove(*type), WTFMove(*url), *isMediaSource, *isMediaStream, *typesRequiringHardware }};
+        return {{ WTFMove(*type), WTFMove(*url), nullptr, *isMediaSource, *isMediaStream, *typesRequiringHardware }};
     }
 };
 
@@ -285,6 +292,11 @@ public:
     virtual const void* mediaPlayerLogIdentifier() { return nullptr; }
     virtual const Logger& mediaPlayerLogger() = 0;
 #endif
+
+#if PLATFORM(MUI)
+    virtual Page* mediaPlayerPage() { return nullptr; }
+#endif
+
 };
 
 class WEBCORE_EXPORT MediaPlayer : public MediaPlayerEnums, public ThreadSafeRefCounted<MediaPlayer, WTF::DestructionThread::Main> {
@@ -512,6 +524,10 @@ public:
     GraphicsDeviceAdapter* graphicsDeviceAdapter() const;
 #endif
 
+#if PLATFORM(MUI)
+    void setOutputPixelFormat(int pixfmt);
+#endif
+
     bool hasSingleSecurityOrigin() const;
     bool didPassCORSAccessCheck() const;
     bool wouldTaintOrigin(const SecurityOrigin&) const;
@@ -658,8 +674,10 @@ private:
     MediaPlayer(MediaPlayerClient&);
     MediaPlayer(MediaPlayerClient&, MediaPlayerEnums::MediaEngineIdentifier);
 
+public:
     MediaPlayerClient& client() const { return *m_client; }
 
+private:
     const MediaPlayerFactory* nextBestMediaEngine(const MediaPlayerFactory*);
     void loadWithNextMediaEngine(const MediaPlayerFactory*);
     const MediaPlayerFactory* nextMediaEngine(const MediaPlayerFactory*);

@@ -194,6 +194,10 @@ public:
 
     virtual void setShouldMaintainAspectRatio(bool) { }
 
+#if PLATFORM(MUI)
+    virtual void setOutputPixelFormat(int) { };
+#endif
+
     virtual bool hasSingleSecurityOrigin() const { return false; }
     virtual bool didPassCORSAccessCheck() const { return false; }
     virtual Optional<bool> wouldTaintOrigin(const SecurityOrigin&) const { return WTF::nullopt; }
